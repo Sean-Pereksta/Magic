@@ -258,6 +258,8 @@
   .summary-table th { color: #fff08c; background: rgba(255, 227, 106, 0.12); }
   .summary-winner-row { background: rgba(255, 227, 106, 0.18); color: #fff08c; font-weight: 900; }
   .summary-small { color: #bfb8ff; font-size: 13px; }
+  .ult-ready { color: #ffe66d; font-weight: 900; text-shadow: 0 0 6px rgba(255,236,122,.95), 0 0 14px rgba(255,208,68,.75); animation: ultPulse .95s ease-in-out infinite alternate; }
+  @keyframes ultPulse { from { opacity: .84; } to { opacity: 1; } }
 
   #controlsConfigModal {
     position: fixed;
@@ -367,6 +369,7 @@
       <b>Crown Control:</b> hold the glowing crown to score. <b>Castle Defense:</b> attackers break gates and tower while defenders protect shared stocks.
     </p>
     <div id="classPreview" class="note"></div>
+    <div id="classLegend" class="note"></div>
   </div>
 </div>
 
@@ -458,6 +461,13 @@ let scene, renderer, clock;
 let camera1, camera2, spectatorCamera;
 let mode = "one";
 const GAME_SETTINGS = { mode: "stock", stockCount: 3, kingScoreTarget: 10000, crownScoreTarget: 5000, castleRoundsToWin: 2, castleTeamStocks: 18, castleTowerHealth: 35, enemyWizardCount: 5, killTarget: 10 };
+const CLASS_LEGEND_INFO = {
+  blast: { strength: "Burst damage and blast pressure", weakness: "Lowest max damage; punishable if cornered" },
+  trickster: { strength: "Best dash uptime and disruption", weakness: "Relies on movement and trick setups" },
+  bulwark: { strength: "Highest durability and zone control", weakness: "Slow movement and long dash cooldown" },
+  storm: { strength: "Fast ranged control and launch potential", weakness: "Needs spacing to stay safe" },
+  goose: { strength: "Summon pressure and area chaos", weakness: "Weaker direct burst dueling" }
+};
 const WIZARD_CLASSES = {
   blast: {
     id: "blast",
@@ -888,6 +898,17 @@ function updateClassPreview() {
     <b>P2 ${c2.displayName}:</b> ${c2.description}<br>
     <b>Ultimate:</b> ${c2.ultimateName} — ${c2.ultimateDescription}
   `;
+
+  const legend = document.getElementById("classLegend");
+  if (legend) legend.innerHTML = Object.values(WIZARD_CLASSES).map(c => `
+    <div style="margin:8px 0;padding:8px 10px;border:1px solid rgba(255,255,255,0.14);border-radius:10px;background:rgba(255,255,255,0.04);">
+      <b>${c.displayName}</b> <span style="color:#c8c2ff;">(${c.name})</span><br>
+      <b>Role:</b> ${c.description}<br>
+      <b>Ultimate:</b> ${c.ultimateName}<br>
+      <b>Strength:</b> ${CLASS_LEGEND_INFO[c.id]?.strength || "Versatile control"}<br>
+      <b>Weakness:</b> ${CLASS_LEGEND_INFO[c.id]?.weakness || "No major weakness listed"}
+    </div>
+  `).join("");
 }
 
 function randomClassId() {
@@ -1702,6 +1723,7 @@ function createWizard(name, color, spawnAngle, human, controls, classId = null) 
     invulnerableTimer: 0,
     score: 0,
     kills: 0,
+    stats: { damageDealt: 0, ultimatesUsed: 0, dashesUsed: 0, pickupsCollected: 0 },
     alive: true,
     ability: randomAbility(),
     queuedAbility: null,
@@ -1851,6 +1873,7 @@ function applyDamage(w, amount, sourceName) {
   if (!w.alive || w.invulnerableTimer>0) return;
   const attacker = wizards.find(x => sourceName && sourceName.includes(x.name));
   if (attacker && attacker !== w) gainUltimate(attacker, ULTIMATE_DAMAGE_GAIN * amount);
+  if (attacker && attacker !== w && attacker.stats) attacker.stats.damageDealt += amount;
 
   w.damage += amount;
   spawnDamageNumber(w.x, 2.8, w.z, amount);
@@ -2002,6 +2025,7 @@ function performDash(w, moveDirX = 0, moveDirZ = 0) {
   w.invulnerableTimer = Math.max(w.invulnerableTimer || 0, 0.18);
   w.dashCooldown = w.dashCooldownMax || 2.2;
   w.dashTrailTimer = 0.28;
+  if (w.stats) w.stats.dashesUsed++;
 
   createDashBurst(w.x, w.y + 1.2, w.z, w.classDef?.trimColor || 0xffffff);
 }
@@ -2359,6 +2383,7 @@ function tryActivateUltimate(w) {
   if (!w || !w.alive || !w.ultimate?.ready) return;
   w.ultimate.ready = false;
   w.ultimate.charge = 0;
+  if (w.stats) w.stats.ultimatesUsed++;
 
   const id = w.classId;
   if (id === "blast") activateMeteorMeltdown(w);
@@ -2720,6 +2745,7 @@ function pickupCheck(w) {
       }
       scene.remove(p.group);
       pickups.splice(i, 1);
+      if (w.stats) w.stats.pickupsCollected++;
 
       for (let j = 0; j < 24; j++) {
         spawnParticle(p.x, 1.5, p.z, 0xffe45c, rand(0.14, 0.4), rand(0.25, 0.65));
@@ -2744,6 +2770,9 @@ function castAbility(w, charge = 0) {
   hideTelegraph(w);
 
   const ability = w.ability;
+  w.abilityUsage = w.abilityUsage || {};
+  w.abilityUsage[ability] = (w.abilityUsage[ability] || 0) + 1;
+  w.favoriteAbility = Object.entries(w.abilityUsage).sort((a,b)=>b[1]-a[1])[0]?.[0] || ability;
   w.ability = w.queuedAbility || null;
   w.queuedAbility = null;
 
@@ -4853,39 +4882,28 @@ function updateLabels() {
 function buildHudCardHtml(w) {
   const abilityText = w.ability ? `${abilityEmoji[w.ability] || ""} ${w.ability}` : "None";
   const queueText = w.queuedAbility ? `${abilityEmoji[w.queuedAbility] || ""} ${w.queuedAbility}` : "Empty";
-  const fire = w.fireCooldown <= 0 ? "ready" : `${w.fireCooldown.toFixed(1)}s`;
-  const dash = (w.dashCooldown || 0) <= 0 ? "ready" : `${(w.dashCooldown || 0).toFixed(1)}s`;
+  const dash = (w.dashCooldown || 0) <= 0 ? "Ready" : `${(w.dashCooldown || 0).toFixed(1)}s`;
   const ultimateBind = w.name === "Player 2" ? "H" : "F";
-  const ultimateText = w.ultimate?.ready
-    ? `READY (${ultimateBind})`
-    : `${Math.floor(clamp(w.ultimate?.charge || 0, 0, ULTIMATE_MAX_CHARGE))}%`;
+  const ultimateText = w.ultimate?.ready ? `<span class="ult-ready">ULT READY: ${ultimateBind}</span>` : `${Math.floor(clamp(w.ultimate?.charge || 0, 0, ULTIMATE_MAX_CHARGE))}%`;
 
   let modeLine = "";
-  if (GAME_SETTINGS.mode === "stock") modeLine = `Stocks: ${"♥ ".repeat(w.stocks)}<br>Damage: ${Math.floor(w.damage)} / ${(w.maxDamage || MAX_DAMAGE)}`;
-  else if (GAME_SETTINGS.mode === "king") modeLine = `Hill: ${Math.floor(w.score)} / ${GAME_SETTINGS.kingScoreTarget}<br>Kills: ${w.kills}`;
-  else if (GAME_SETTINGS.mode === "kills") modeLine = `Kills: ${w.kills || 0} / ${GAME_SETTINGS.killTarget}<br>Damage: ${Math.floor(w.damage)} / ${(w.maxDamage || MAX_DAMAGE)}`;
-  else if (GAME_SETTINGS.mode === "crown") modeLine = `Crown: ${Math.floor(w.score)} / ${GAME_SETTINGS.crownScoreTarget}<br>Kills: ${w.kills}${crownState.carrier === w ? "<br>👑 CROWN CARRIER" : ""}`;
-  else if (GAME_SETTINGS.mode === "castle") {
-    modeLine = `
-      Team: ${w.team === "attackers" ? "Attackers" : "Defenders"}<br>
-      Attacker Stocks: ${castleState.attackerStocks}<br>
-      Defender Stocks: ${castleState.defenderStocks}<br>
-      Rounds: A ${castleState.attackerRoundWins} - D ${castleState.defenderRoundWins}
-    `;
-  } else if (GAME_SETTINGS.mode === "survival") {
-    modeLine = `Survival: ${Math.floor(survivalScore)}<br>Time: ${formatMatchTime(matchTime)}<br>Kills: ${w.kills}`;
-  }
+  if (GAME_SETTINGS.mode === "stock") modeLine = `Stocks: ${"♥ ".repeat(w.stocks)} • Kills: ${w.kills}`;
+  else if (GAME_SETTINGS.mode === "king") modeLine = `Hill: ${Math.floor(w.score)} / ${GAME_SETTINGS.kingScoreTarget} • Kills: ${w.kills}`;
+  else if (GAME_SETTINGS.mode === "kills") modeLine = `Kills: ${w.kills || 0} / ${GAME_SETTINGS.killTarget}`;
+  else if (GAME_SETTINGS.mode === "crown") modeLine = `Crown: ${Math.floor(w.score)} / ${GAME_SETTINGS.crownScoreTarget} • Kills: ${w.kills}${crownState.carrier === w ? " • 👑 CARRIER" : ""}`;
+  else if (GAME_SETTINGS.mode === "castle") modeLine = `Team: ${w.team === "attackers" ? "Attackers" : "Defenders"} • A ${castleState.attackerStocks} / D ${castleState.defenderStocks}`;
+  else if (GAME_SETTINGS.mode === "survival") modeLine = `Survival: ${Math.floor(survivalScore)} • Time: ${formatMatchTime(matchTime)} • Kills: ${w.kills}`;
 
   return `
     <div class="hud-card">
-      <strong>${escapeHtml(w.name)} (${escapeHtml(getModeLabel())})</strong>
+      <strong>${escapeHtml(w.name)}</strong><br>
       Class: ${escapeHtml(w.classDef?.name || "Wizard")}<br>
-      ${modeLine}<br>
+      HP: ${Math.floor(w.damage)} / ${(w.maxDamage || MAX_DAMAGE)} damage<br>
       Ability: ${escapeHtml(abilityText)}<br>
-      Queue: ${escapeHtml(queueText)}<br>
-      🔥 ${escapeHtml(fire)}<br>
+      Queued: ${escapeHtml(queueText)}<br>
       Dash: ${escapeHtml(dash)}<br>
-      Ultimate: ${escapeHtml(ultimateText)}
+      Ult: ${ultimateText}<br>
+      ${modeLine}
     </div>
   `;
 }
@@ -6098,10 +6116,15 @@ function buildSummaryHtml(winner) {
         <tr>
           <th>Wizard</th>
           <th>Team</th>
+          <th>Class</th>
           <th>Kills</th>
-          <th>Hill / Score</th>
+          <th>Score</th>
+          <th>Damage Dealt</th>
+          <th>Ults Used</th>
+          <th>Dashes</th>
+          <th>Pickups</th>
+          <th>Favorite Ability</th>
           <th>Stocks</th>
-          <th>Damage</th>
           <th>Status</th>
         </tr>
       </thead>
@@ -6114,10 +6137,15 @@ function buildSummaryHtml(winner) {
       <tr class="${isWinner ? 'summary-winner-row' : ''}">
         <td>${isWinner ? '🏆 ' : ''}${escapeHtml(w.name)}</td>
         <td>${GAME_SETTINGS.mode === "castle" ? (w.team === "attackers" ? "Attackers" : "Defenders") : "—"}</td>
+        <td>${escapeHtml(w.classDef?.displayName || w.classDef?.name || "Wizard")}</td>
         <td>${Math.floor(w.kills || 0)}</td>
         <td>${Math.floor(w.score || 0)}</td>
+        <td>${Math.floor(w.stats?.damageDealt || 0)}</td>
+        <td>${Math.floor(w.stats?.ultimatesUsed || 0)}</td>
+        <td>${Math.floor(w.stats?.dashesUsed || 0)}</td>
+        <td>${Math.floor(w.stats?.pickupsCollected || 0)}</td>
+        <td>${escapeHtml(w.favoriteAbility || w.ability || w.queuedAbility || "—")}</td>
         <td>${Math.floor(w.stocks || 0)}</td>
-        <td>${Math.floor(w.damage || 0)} / ${(w.maxDamage || MAX_DAMAGE)}</td>
         <td>${w.alive ? 'Alive' : 'Vaporized'}</td>
       </tr>
     `;
