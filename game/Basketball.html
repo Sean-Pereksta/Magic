@@ -2450,7 +2450,7 @@ function activateThunderSpiral(w) {
 
 function activateGoosepocalypse(w) {
   const enemies = wizards.filter(e => e.alive && e !== w);
-  const total = Math.floor(rand(10, 15));
+  const total = Math.floor(rand(10, 15)) + (w.classId === "goose" ? 2 : 0);
   for (let i = 0; i < total; i++) {
     const target = enemies.length ? enemies[i % enemies.length] : null;
     const baseX = target ? target.x : w.x;
@@ -2458,7 +2458,7 @@ function activateGoosepocalypse(w) {
     const g = createGooseMesh();
     g.position.set(baseX + rand(-2.8, 2.8), 0.2, baseZ + rand(-2.8, 2.8));
     scene.add(g);
-    geese.push({ owner: w, mesh: g, x: g.position.x, z: g.position.z, vx: rand(-2, 2), vz: rand(-2, 2), life: 8, cooldown: 0, hitsLeft: 4 });
+    geese.push({ owner: w, mesh: g, x: g.position.x, z: g.position.z, vx: rand(-2, 2), vz: rand(-2, 2), life: 8 * (w.classId === "goose" ? 1.25 : 1), cooldown: 0, hitsLeft: 4 });
   }
   createMagicSparkles(w.x, w.y + 1.6, w.z, 0xffffff, 36);
   addScreenShake(0.4, 0.25);
@@ -2711,7 +2711,7 @@ function pickupCheck(w) {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
     if (distancePoint(w.x, w.z, p.x, p.z) < 2.2) {
-      const newAbility = randomAbility();
+      const newAbility = randomAbilityForWizard(w);
       const prepared = !w.ability;
       if (prepared) {
         w.ability = newAbility;
@@ -2862,6 +2862,7 @@ function killGoose(goose, source = "") {
 
 function castBonkBolt(w) {
   const f = forwardVector(w);
+  const speedMult = getClassAbilityMultiplier(w, "projectileSpeed");
 
   createProjectile({
     owner: w,
@@ -2869,8 +2870,8 @@ function castBonkBolt(w) {
     x: w.x + f.x * 1.9,
     z: w.z + f.z * 1.9,
     y: w.y + PROJECTILE_HEIGHT_TUNING.castChestOffset,
-    vx: f.x * 40,
-    vz: f.z * 40,
+    vx: f.x * 40 * speedMult,
+    vz: f.z * 40 * speedMult,
     vy: 0,
     gravity: 0,
     heightMode: "straight",
@@ -2967,7 +2968,7 @@ function castSquidInk(w) {
     radius: 0.75,
     damage: 0,
     knock: 6,
-    life: 2.5,
+    life: 2.5 * getClassAbilityMultiplier(w, "debuffDuration"),
     bounce: 0,
     spawnGrace: 0.12,
     minTravelDistance: 2.0
@@ -2993,7 +2994,7 @@ function castBubble(w) {
     radius: 0.82,
     damage: 0,
     knock: 16,
-    life: 3.3,
+    life: 3.3 * getClassAbilityMultiplier(w, "defenseDuration"),
     bounce: 3,
     color: 0x9df4ff,
     trailColor: 0xffffff,
@@ -3201,7 +3202,8 @@ function castMagnetBeard(w) {
 }
 
 function castGooseSwarm(w) {
-  for (let i = 0; i < 6; i++) {
+  const count = Math.round(6 * getClassAbilityMultiplier(w, "summonCount"));
+  for (let i = 0; i < count; i++) {
     const g = createGooseMesh();
     g.position.set(w.x + rand(-1.2, 1.2), 0.2, w.z + rand(-1.2, 1.2));
     scene.add(g);
@@ -3213,7 +3215,7 @@ function castGooseSwarm(w) {
       z: g.position.z,
       vx: rand(-1, 1),
       vz: rand(-1, 1),
-      life: 8.5,
+      life: 8.5 * (w.classId === "goose" ? 1.2 : 1),
       cooldown: 0,
       hitsLeft: 3
     });
@@ -3298,7 +3300,7 @@ function castJellyLegs(w) {
     radius: 0.52,
     damage: 0,
     knock: 6,
-    life: 2.7,
+    life: 2.7 * getClassAbilityMultiplier(w, "debuffDuration"),
     bounce: 1,
     color: 0xff86ed,
     trailColor: 0xffd1fa
@@ -3332,7 +3334,7 @@ function castToadstoolWall(w) {
       radius: 1.05,
       bottomY: 0,
       topY: 2.4,
-      life: 7.5,
+      life: 7.5 * getClassAbilityMultiplier(w, "defenseDuration"),
       grow: true,
       maxScale: mushroomScale,
       growDelay: Math.abs(i) * 0.07
@@ -3418,6 +3420,7 @@ function dropAnvil(owner, x, z) {
 }
 
 function castVaporBeam(w) {
+  const beamBoost = w.classId === "storm" ? 1.2 : 1;
   createVaporBeamCharge(w);
   const f = forwardVector(w);
   const length = 30;
@@ -3475,7 +3478,7 @@ function castVaporBeam(w) {
 
   temporary.push({
     mesh: beamGroup,
-    life: 0.38,
+    life: 0.38 * beamBoost,
     pulse: true,
     beamPulse: true
   });
@@ -3505,7 +3508,7 @@ function castVaporBeam(w) {
     const sideDist = Math.hypot(sideX, sideZ);
 
     if (sideDist < 1.65) {
-      applyDamage(target, 5, `${w.name}'s Vapor Beam`);
+      applyDamage(target, w.classId === "storm" ? 6 : 5, `${w.name}'s Vapor Beam`);
       knockWizard(target, f.x, f.z, 19);
       createVaporHitEffect(target.x, 1.8, target.z);
     }
@@ -3744,8 +3747,8 @@ function triggerProjectileImpact(p, x, y, z, target = null, reason = "impact") {
 
   switch (p.type) {
     case "fireball":
-      createFireballImpact(x, y, z);
-      fireExplosion(x, z);
+      createFireballImpact(x, y, z, getClassAbilityMultiplier(p.owner, "explosionRadius"));
+      fireExplosion(x, z, p.owner);
       killProjectile(p);
       break;
     case "lava":
@@ -4400,8 +4403,8 @@ function createLavaPuddleVisual(x, z, radius, duration, owner) {
 function createLavaChargeGlow(wizard, chargeAmount) {
   createImpactBurst(wizard.x, 1.7, wizard.z, 0xff6a1f, 0.7 + chargeAmount * 0.7);
 }
-function createFireballImpact(x, y, z) {
-  createShockwaveRing(x, z, 0xff8a2a, 2.8, 0.4);
+function createFireballImpact(x, y, z, radiusMult = 1) {
+  createShockwaveRing(x, z, 0xff8a2a, 2.8 * radiusMult, 0.4);
   for (let i = 0; i < 18; i++) spawnParticle(x + rand(-1,1), y + rand(-0.2,1.2), z + rand(-1,1), i%2?0xfff3a5:0xff6a1f, rand(0.08,0.22), rand(0.2,0.55));
   spawnParticle(x, y + 0.4, z, 0x666666, 0.45, 0.5);
   createGroundCrackEffect(x, z, 0x3e2515);
@@ -4481,7 +4484,8 @@ function updateInkOverlays() {
 function applySquidInkHit(target, owner) {
   if (!target || !target.alive || !owner) return;
 
-  target.effect.ink = Math.max(target.effect.ink || 0, 5.0);
+  const duration = 5.0 * getClassAbilityMultiplier(owner, "debuffDuration");
+  target.effect.ink = Math.max(target.effect.ink || 0, duration);
   target.effect.stunned = Math.max(target.effect.stunned || 0, 0.15);
 
   knockWizard(target, target.x - owner.x, target.z - owner.z, 6);
@@ -4490,7 +4494,7 @@ function applySquidInkHit(target, owner) {
   createInkSplash(target.x, target.y + 1.4, target.z);
 
   if (target.human) {
-    showInkOverlayForWizard(target, 5.0);
+    showInkOverlayForWizard(target, duration);
   }
 }
 
@@ -5062,8 +5066,9 @@ function bounceBurst(x, z, color) {
   }
 }
 
-function fireExplosion(x, z) {
-  for (let i = 0; i < 28; i++) {
+function fireExplosion(x, z, owner = null) {
+  const boost = getClassAbilityMultiplier(owner, "explosionRadius");
+  for (let i = 0; i < Math.round(28 * boost); i++) {
     spawnParticle(x, 1.1, z, i % 2 ? 0xff6a1f : 0xffd15c, rand(0.08, 0.26), rand(0.25, 0.6));
   }
 }
@@ -6376,6 +6381,30 @@ function rightVector(w) {
 
 function randomAbility() {
   return abilityNames[Math.floor(Math.random() * abilityNames.length)];
+}
+
+function randomAbilityForWizard(w) {
+  if (!w?.classDef?.abilityBias) return randomAbility();
+
+  const pool = [...abilityNames];
+
+  for (const favored of w.classDef.abilityBias) {
+    pool.push(favored, favored, favored);
+  }
+
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function getClassAbilityMultiplier(w, type) {
+  if (!w || !w.classId) return 1;
+
+  if (w.classId === "blast" && type === "explosionRadius") return 1.2;
+  if (w.classId === "trickster" && type === "debuffDuration") return 1.3;
+  if (w.classId === "bulwark" && type === "defenseDuration") return 1.3;
+  if (w.classId === "storm" && type === "projectileSpeed") return 1.15;
+  if (w.classId === "goose" && type === "summonCount") return 1.35;
+
+  return 1;
 }
 
 function randomArenaPoint(margin = 3) {
