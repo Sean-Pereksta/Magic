@@ -1382,34 +1382,46 @@ function startGameFromMenu(){
   startGame(mode);
 }
 
-function startGame(selectedMode) {
-  mode = selectedMode;
-  menu.style.display = "none";
-  summaryScreen.style.display = "none";
-  gameOver = false;
+function reportStartupError(err, phase = "startup") {
+  console.error(`Game ${phase} error:`, err);
+  showMessage(`Game error during ${phase}: ${err?.message || err}`, 6000);
+  menu.style.display = "flex";
   restartBtn.style.display = "block";
-  tinyHud.style.display = mode === "two" ? "none" : "flex";
-  hudP1.style.display = mode === "two" ? "flex" : "none";
-  hudP2.style.display = mode === "two" ? "flex" : "none";
+  running = false;
+}
 
-  splitLine.style.display = mode === "two" ? "block" : "none";
-  crosshair1.style.display = mode === "bots" ? "none" : "block";
-  crosshair2.style.display = mode === "two" ? "block" : "none";
+function startGame(selectedMode) {
+  try {
+    mode = selectedMode;
+    menu.style.display = "none";
+    summaryScreen.style.display = "none";
+    gameOver = false;
+    restartBtn.style.display = "block";
+    tinyHud.style.display = mode === "two" ? "none" : "flex";
+    hudP1.style.display = mode === "two" ? "flex" : "none";
+    hudP2.style.display = mode === "two" ? "flex" : "none";
 
-  initThree();
-  setupWorld();
-  if (GAME_SETTINGS.mode === "castle") buildCastleArena();
-  if (isKingHillActive()) buildHillZone();
-  setupWizards();
-  if (GAME_SETTINGS.mode === "castle") assignCastleTeams();
-  if (GAME_SETTINGS.mode === "crown") buildCrown();
-  spawnStartingPickups();
+    splitLine.style.display = mode === "two" ? "block" : "none";
+    crosshair1.style.display = mode === "bots" ? "none" : "block";
+    crosshair2.style.display = mode === "two" ? "block" : "none";
 
-  clock = new THREE.Clock();
-  running = true;
-  if (GAME_SETTINGS.mode === "castle") showCastleRoundRoleMessage();
-  else showMessage("Grab blocks. Cast nonsense. Last wizard standing wins.");
-  animate();
+    initThree();
+    setupWorld();
+    if (GAME_SETTINGS.mode === "castle") buildCastleArena();
+    if (isKingHillActive()) buildHillZone();
+    setupWizards();
+    if (GAME_SETTINGS.mode === "castle") assignCastleTeams();
+    if (GAME_SETTINGS.mode === "crown") buildCrown();
+    spawnStartingPickups();
+
+    clock = new THREE.Clock();
+    running = true;
+    if (GAME_SETTINGS.mode === "castle") showCastleRoundRoleMessage();
+    else showMessage("Grab blocks. Cast nonsense. Last wizard standing wins.");
+    animate();
+  } catch (err) {
+    reportStartupError(err, "match startup");
+  }
 }
 
 function initThree() {
@@ -4650,16 +4662,18 @@ function createVaporBeamCharge(wizard) { createImpactBurst(wizard.x, 1.9, wizard
 function createVaporBeamAfterimage(beamGroup) { const clone = beamGroup.clone(); scene.add(clone); temporary.push({ mesh: clone, life: 0.16, rise: true }); }
 function createVaporHitEffect(x, y, z) { createFloatingText3D(x, y + 1.2, z, "VAPOR!", 0xffffaa); createImpactBurst(x, y, z, 0xffffff, 1.8); addScreenShake(0.3,0.15); }
 
-function createGroundRing(x, z, r, color, opacity = 0.8) {
+function createGroundRing(x, z, r, color = 0xffffff, opacity = 0.8) {
+  const safeColor = color ?? 0xffffff;
+
   const geo = new THREE.TorusGeometry(r, 0.08, 8, 64);
   const mat = new THREE.MeshStandardMaterial({
-    color: robeColor,
-    classId: classKey,
-    classDef,
-    emissive: color,
+    color: safeColor,
+    emissive: safeColor,
     transparent: true,
-    opacity
+    opacity,
+    side: THREE.DoubleSide
   });
+
   const ring = new THREE.Mesh(geo, mat);
   ring.rotation.x = Math.PI / 2;
   ring.position.set(x, getEffectiveGroundHeight(x, z) + 0.09, z);
@@ -5075,7 +5089,7 @@ function updateHud() {
    PARTICLES / FUN VISUALS
    ============================================================ */
 
-function spawnParticle(x, y, z, color, size, life) {
+function spawnParticle(x, y, z, color = 0xffffff, size = 0.12, life = 0.5) {
   const safeColor = color ?? 0xffffff;
 
   const mesh = new THREE.Mesh(
