@@ -89,6 +89,20 @@
     border-radius: 50%;
     z-index: 5;
   }
+  #menuOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 5, 12, 0.85);
+    color: #fff;
+  }
+  #menuCard { text-align:center; background:#111827; padding:32px 40px; border-radius:16px; border:1px solid rgba(255,255,255,.22); }
+  #menuCard h1 { margin:0; font-size:52px; }
+  #menuCard h2 { margin:8px 0 18px; font-size:24px; opacity:.9; font-weight:600; }
+  #menuControls { margin-top:14px; font-size:12px; opacity:.85; line-height:1.5; text-align:left; }
 </style>
 </head>
 <body>
@@ -116,6 +130,18 @@
 </div>
 
 <div id="crosshair"></div>
+<div id="menuOverlay">
+  <div id="menuCard">
+    <h1>Chris Runner</h1>
+    <h2>Endless 3D Chase</h2>
+    <button onclick="startGame(1)">1 Player</button>
+    <button onclick="startGame(2)">2 Player</button>
+    <div id="menuControls">
+      <div>Player 1: WASD or Arrow Keys, Shift sprint, Space dodge</div>
+      <div>Player 2: IJKL movement, U sprint, O dodge</div>
+    </div>
+  </div>
+</div>
 
 <div id="message">
   <div id="messageBox">
@@ -162,6 +188,10 @@ let torches = [];
 let fireZones = [];
 
 let gameOver = false;
+let gameStarted = false;
+let gameMode = 1;
+let players = [];
+let activeRunnerPlayers = [];
 let distance = 0;
 let pickupCount = 0;
 let energy = 100;
@@ -181,6 +211,10 @@ const CHUNK_LENGTH = 42;
 const CHUNK_COUNT_AHEAD = 9;
 const WALL_GRID_SIZE = 4;
 const PLAYER_RADIUS = 1.0;
+const PLAYER_FALL_BEHIND_DISTANCE = 42;
+const PLAYER_SAFE_RESPAWN_AHEAD = 28;
+const TWO_PLAYER_CAMERA_MIN_DISTANCE = 30;
+const TWO_PLAYER_CAMERA_MAX_DISTANCE = 80;
 
 const START_Z = 0;
 let furthestChunkZ = 0;
@@ -279,7 +313,6 @@ function init() {
   sun.shadow.camera.bottom = -90;
   scene.add(sun);
 
-  createPlayer();
   createStarryBackground();
 
   for (let i = 0; i < CHUNK_COUNT_AHEAD; i++) {
@@ -442,17 +475,18 @@ function updateStarryBackground(dt) {
    PLAYER
 ============================================================ */
 
-function createPlayer() {
+function createPlayer(index = 1, x = 0, z = START_Z) {
   playerRig = new THREE.Group();
-  playerRig.position.set(0, 0, START_Z);
+  playerRig.position.set(x, 0, z);
 
   const skin = new THREE.MeshStandardMaterial({ color: 0x8a4c2a, roughness: 0.65 });
-  const jersey = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.4 });
+  const jersey = new THREE.MeshStandardMaterial({ color: index === 1 ? 0x1d4ed8 : 0xea580c, roughness: 0.4 });
   const shorts = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.45 });
   const shoeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
   const beardMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
 
-  player = {
+  const created = {
+    id: index,
     rig: playerRig,
     velocity: new THREE.Vector3(),
     speed: playerBaseSpeed,
@@ -460,8 +494,14 @@ function createPlayer() {
     dodgeCooldown: 0,
     animTime: 0,
     burnCooldown: 0,
-    parts: {}
+    parts: {},
+    eliminated: false,
+    isChaser: false,
+    controlledChaser: null,
+    arrow: null,
+    energy: 100
   };
+  player = created;
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.2, 0.75), jersey);
   torso.position.y = 3.05;
@@ -513,6 +553,17 @@ function createPlayer() {
   player.parts.rightShoe = rightShoe;
 
   scene.add(playerRig);
+  created.arrow = createPlayerArrow(index === 1 ? 0x3b82f6 : 0xf97316);
+  scene.add(created.arrow);
+  return created;
+}
+
+function createPlayerArrow(color) {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.2, 10), new THREE.MeshBasicMaterial({ color }));
+  m.rotation.x = Math.PI;
+  g.add(m);
+  return g;
 }
 
 function makeLimb(name, x, y, z, mat, width, height) {
@@ -1142,77 +1193,79 @@ function addGrassPatches(chunk, zStart, biome) {
    PLAYER MOVEMENT
 ============================================================ */
 
-function updatePlayer(dt) {
+function updatePlayerActor(p, dt, controlSet) {
+  if (p.eliminated) return;
+  const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p;
   const move = new THREE.Vector3();
 
-  if (keys["w"] || keys["arrowup"]) move.z += 1;
-  if (keys["s"] || keys["arrowdown"]) move.z -= 1;
-  if (keys["d"] || keys["arrowleft"]) move.x -= 1;
-  if (keys["a"] || keys["arrowright"]) move.x += 1;
+  if (keys[controlSet.forwardA] || (controlSet.forwardB && keys[controlSet.forwardB])) move.z += 1;
+  if (keys[controlSet.backA] || (controlSet.backB && keys[controlSet.backB])) move.z -= 1;
+  if (keys[controlSet.leftA] || (controlSet.leftB && keys[controlSet.leftB])) move.x -= 1;
+  if (keys[controlSet.rightA] || (controlSet.rightB && keys[controlSet.rightB])) move.x += 1;
 
-  const sprinting = keys["shift"] && energy > 0;
-  let speed = sprinting ? player.sprintSpeed : player.speed;
+  const sprinting = keys[controlSet.sprint] && p.energy > 0;
+  let speed = sprinting ? actor.sprintSpeed : actor.speed;
 
   if (sprinting && move.lengthSq() > 0) {
-    energy -= dt * 22;
+    p.energy -= dt * 22;
   } else {
-    energy += dt * 13;
+    p.energy += dt * 13;
   }
 
-  energy = clamp(energy, 0, 100);
+  p.energy = clamp(p.energy, 0, 100);
 
-  if (keys[" "] && player.dodgeCooldown <= 0 && energy >= 18) {
-    player.dodgeCooldown = 0.65;
-    energy -= 18;
+  if (keys[controlSet.dodge] && actor.dodgeCooldown <= 0 && p.energy >= 18) {
+    actor.dodgeCooldown = 0.65;
+    p.energy -= 18;
 
     if (move.lengthSq() === 0) move.z = 1;
     move.normalize();
 
-    player.rig.position.x += move.x * 6;
-    player.rig.position.z += move.z * 6;
+    actor.rig.position.x += move.x * 6;
+    actor.rig.position.z += move.z * 6;
   }
 
-  player.dodgeCooldown -= dt;
-  player.burnCooldown -= dt;
+  actor.dodgeCooldown -= dt;
+  actor.burnCooldown -= dt;
 
   if (move.lengthSq() > 0) {
     move.normalize();
-    player.velocity.x = move.x * speed;
-    player.velocity.z = move.z * speed;
+    actor.velocity.x = move.x * speed;
+    actor.velocity.z = move.z * speed;
 
     const angle = Math.atan2(move.x, move.z);
-    player.rig.rotation.y = angle;
+    actor.rig.rotation.y = angle;
   } else {
-    player.velocity.multiplyScalar(0.82);
+    actor.velocity.multiplyScalar(0.82);
   }
 
-  const oldPos = player.rig.position.clone();
-  player.rig.position.addScaledVector(player.velocity, dt);
+  const oldPos = actor.rig.position.clone();
+  actor.rig.position.addScaledVector(actor.velocity, dt);
 
-  player.rig.position.x = clamp(
-    player.rig.position.x,
+  actor.rig.position.x = clamp(
+    actor.rig.position.x,
     -WORLD_WIDTH / 2 + 2,
     WORLD_WIDTH / 2 - 2
   );
 
   const minimumAllowedZ = Math.max(START_Z - 4, distance - HARD_BACK_LIMIT);
 
-  if (player.rig.position.z < minimumAllowedZ) {
-    player.rig.position.z = minimumAllowedZ;
-    player.velocity.z = Math.max(0, player.velocity.z);
+  if (actor.rig.position.z < minimumAllowedZ) {
+    actor.rig.position.z = minimumAllowedZ;
+    actor.velocity.z = Math.max(0, actor.velocity.z);
   }
 
-  if (collidesWithWall(player.rig.position, PLAYER_RADIUS)) {
-    player.rig.position.copy(oldPos);
-    player.velocity.multiplyScalar(0.2);
+  if (collidesWithWall(actor.rig.position, PLAYER_RADIUS)) {
+    actor.rig.position.copy(oldPos);
+    actor.velocity.multiplyScalar(0.2);
   }
 
-  distance = Math.max(distance, player.rig.position.z);
+  if (!p.isChaser) distance = Math.max(distance, actor.rig.position.z);
 
   checkFireDamage(dt);
 
   animateRunner(
-    player,
+    actor,
     dt,
     move.lengthSq() > 0 || player.velocity.length() > 1,
     false
@@ -1220,16 +1273,10 @@ function updatePlayer(dt) {
 }
 
 function checkFireDamage(dt) {
-  for (const fire of fireZones) {
-    const d = flatDistance(player.rig.position, fire.group.position);
-
-    if (d < fire.radius) {
-      energy -= 34 * dt;
-
-      if (energy <= 0) {
-        endGame("Chris ran out of energy in the fire!");
-      }
-    }
+  const targets = gameMode === 2 ? getActiveRunners() : [player];
+  for (const p of targets) for (const fire of fireZones) {
+    const d = flatDistance(p.rig.position, fire.group.position);
+    if (d < fire.radius) { p.energy -= 34 * dt; if (p.energy <= 0) endGame("Chris ran out of energy in the fire!"); }
   }
 }
 
@@ -1993,6 +2040,16 @@ function updateSpeedScaling() {
 }
 
 function updateCamera(dt) {
+  if (gameMode === 2 && players.length > 1) {
+    const a = getPlayerDisplayRig(players[0]).position;
+    const b = getPlayerDisplayRig(players[1]).position;
+    const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+    const spread = clamp(flatDistance(a, b) * 0.7, TWO_PLAYER_CAMERA_MIN_DISTANCE, TWO_PLAYER_CAMERA_MAX_DISTANCE);
+    const desired = new THREE.Vector3(mid.x * 0.5, 14 + spread * 0.08, mid.z - spread);
+    camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
+    camera.lookAt(mid.x, mid.y + 3, mid.z + 10);
+    return;
+  }
   const desired = new THREE.Vector3(
     player.rig.position.x * 0.45,
     14,
@@ -2096,6 +2153,23 @@ function updateHUD() {
 
   document.getElementById("hideText").style.color =
     playerHiddenInGrass ? "#22ff99" : "#ffffff";
+  let modeText = document.getElementById("modeText");
+  if (!modeText) {
+    modeText = document.createElement("div");
+    modeText.id = "modeText";
+    document.getElementById("hud").appendChild(modeText);
+  }
+  modeText.textContent = "Mode: " + (gameMode === 2 ? "2 Player" : "1 Player");
+  if (gameMode === 2 && players[1]) {
+    let p2 = document.getElementById("p2Text");
+    if (!p2) {
+      p2 = document.createElement("div");
+      p2.id = "p2Text";
+      document.getElementById("hud").appendChild(p2);
+    }
+    const s = p => p.eliminated ? "Caught" : (p.isChaser ? "Chaser" : "Running");
+    p2.textContent = `P1: ${s(players[0])} | P2: ${s(players[1])} | P2 Energy: ${Math.floor(players[1].energy)}`;
+  }
 }
 
 function endGame(reason) {
@@ -2131,14 +2205,19 @@ function animate() {
   requestAnimationFrame(animate);
   frameCount++;
 
-  if (gameOver) {
+  if (gameOver || !gameStarted) {
     renderer.render(scene, camera);
     return;
   }
 
   const dt = Math.min(clock.getDelta(), 0.04);
 
-  updatePlayer(dt);
+  updatePlayerActor(players[0], dt, { forwardA: "w", forwardB: "arrowup", backA: "s", backB: "arrowdown", leftA: "d", leftB: "arrowleft", rightA: "a", rightB: "arrowright", sprint: "shift", dodge: " " });
+  if (gameMode === 2 && players[1]) {
+    updatePlayerActor(players[1], dt, { forwardA: "i", backA: "k", leftA: "l", rightA: "j", sprint: "u", dodge: "o" });
+  }
+  activeRunnerPlayers = getActiveRunners();
+  if (players[0]) energy = players[0].energy;
   updateSpeedScaling();
   updateEnemies(dt);
   updateDogs(dt);
@@ -2195,6 +2274,19 @@ function onResize() {
 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function getPlayerDisplayRig(p) {
+  return p && p.isChaser && p.controlledChaser ? p.controlledChaser.rig : p.rig;
+}
+function updatePlayer(dt) { updatePlayerActor(player, dt, { forwardA: "w", forwardB: "arrowup", backA: "s", backB: "arrowdown", leftA: "d", leftB: "arrowleft", rightA: "a", rightB: "arrowright", sprint: "shift", dodge: " " }); }
+function getActiveRunners() { return players.filter(p => !p.eliminated && !p.isChaser); }
+function getLeadRunner() { const runners = getActiveRunners(); return runners.sort((a,b)=>b.rig.position.z-a.rig.position.z)[0] || player; }
+function getNearestActiveRunner(pos) { const runners = getActiveRunners(); let best = null; let bestDist = Infinity; for (const r of runners) { const d = flatDistance(pos, r.rig.position); if (d < bestDist) { best = r; bestDist = d; } } return best || player; }
+function startGame(mode) {
+  gameMode = mode; gameStarted = true; document.getElementById("menuOverlay").style.display = "none";
+  const p1 = createPlayer(1, mode === 2 ? -2.8 : 0, START_Z); const p2 = mode === 2 ? createPlayer(2, 2.8, START_Z) : null;
+  player = p1; players = mode === 2 ? [p1, p2] : [p1]; activeRunnerPlayers = players.slice();
 }
 </script>
 
