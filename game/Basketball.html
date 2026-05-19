@@ -1839,18 +1839,8 @@ function updateHuman(w, dt) {
     moveY *= -1;
   }
 
-  let turn = TURN_SPEED;
-  if (w.effect.jelly > 0) turn *= 0.65;
-
-  if (cfg.deviceType === "gamepad") {
-    w.angle -= moveX * turn * dt;
-  } else {
-    if (w.name === "Player 1") {
-      w.angle -= inputState.mouseLookDelta * mouseLookSensitivity;
-    } else {
-      if (left) w.angle += turn * dt;
-      if (right) w.angle -= turn * dt;
-    }
+  if (cfg.deviceType !== "gamepad" && w.name === "Player 1") {
+    w.angle -= inputState.mouseLookDelta * mouseLookSensitivity;
   }
 
   let speed = PLAYER_SPEED;
@@ -1860,27 +1850,28 @@ function updateHuman(w, dt) {
   if (GAME_SETTINGS.mode === "crown" && crownState.carrier === w) speed *= CROWN_CARRIER_SPEED_MULT;
 
   const f = forwardVector(w);
-  let throttle = 0;
+  const r = rightVector(w);
 
+  let moveDirX = 0;
+  let moveDirZ = 0;
   if (cfg.deviceType === "gamepad") {
-    throttle = -moveY;
+    moveDirX += f.x * (-moveY);
+    moveDirZ += f.z * (-moveY);
+    moveDirX += r.x * moveX;
+    moveDirZ += r.z * moveX;
   } else {
-    if (forward) throttle += 1;
-    if (back) throttle -= 0.58;
+    if (forward) { moveDirX += f.x; moveDirZ += f.z; }
+    if (back) { moveDirX -= f.x; moveDirZ -= f.z; }
+    if (right) { moveDirX += r.x; moveDirZ += r.z; }
+    if (left) { moveDirX -= r.x; moveDirZ -= r.z; }
   }
 
-  if (throttle !== 0) {
-    const accelMult = throttle > 0 ? 5.2 : 3.0;
-    w.vx += f.x * speed * dt * accelMult * throttle;
-    w.vz += f.z * speed * dt * accelMult * throttle;
-  }
-
-  let strafe = 0;
-  if (left) strafe -= 1;
-  if (right) strafe += 1;
-  if (strafe !== 0) {
-    w.vx += f.z * speed * dt * 3.5 * strafe;
-    w.vz -= f.x * speed * dt * 3.5 * strafe;
+  const moveLen = Math.hypot(moveDirX, moveDirZ);
+  if (moveLen > 0) {
+    moveDirX /= moveLen;
+    moveDirZ /= moveLen;
+    w.vx += moveDirX * speed * dt * 5.2;
+    w.vz += moveDirZ * speed * dt * 5.2;
   }
 
   const abilityHeld = getActionDown(w, "ability");
@@ -5576,6 +5567,13 @@ function forwardVector(w) {
   return {
     x: Math.sin(w.angle),
     z: Math.cos(w.angle)
+  };
+}
+
+function rightVector(w) {
+  return {
+    x: Math.cos(w.angle),
+    z: -Math.sin(w.angle)
   };
 }
 
