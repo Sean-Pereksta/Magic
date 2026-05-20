@@ -6445,7 +6445,7 @@ function createCastleInnerLadder(x, z) {
     radius: 2.1,
     topX: x,
     topZ: z,
-    topY: 7.35,
+    topY: 7.02,
     mesh: group
   };
 }
@@ -6728,6 +6728,8 @@ function canCastleRespawn(w) {
   return false;
 }
 
+const CASTLE_WALL_TOP_EPSILON = 0.45;
+
 function collideWithCastle(w) {
   if (GAME_SETTINGS.mode !== "castle") return;
   for (const c of castleColliders) {
@@ -6746,6 +6748,9 @@ function collideWithCastle(w) {
       }
       continue;
     }
+
+    if (c.kind === "castleWall" && resolveCastleWallCollision(w, c)) continue;
+
     if (!wizardVerticallyOverlapsCollider(w, c)) continue;
     const overlap = circleRectOverlap(w.x, w.z, w.radius, c.x, c.z, c.width, c.depth);
     if (!overlap.hit) continue;
@@ -6754,6 +6759,35 @@ function collideWithCastle(w) {
     const dot = w.vx * overlap.nx + w.vz * overlap.nz;
     if (dot < 0) { w.vx -= dot * overlap.nx * 1.4; w.vz -= dot * overlap.nz * 1.4; }
   }
+}
+
+function resolveCastleWallCollision(w, wall) {
+  const topY = wall.topY ?? wall.height ?? 0;
+  const withinWall = circleRectOverlap(w.x, w.z, w.radius, wall.x, wall.z, wall.width, wall.depth);
+  if (!withinWall.hit) return false;
+
+  const feetY = w.y;
+  const nearOrAboveTop = feetY >= topY - CASTLE_WALL_TOP_EPSILON;
+  const canLandOnTop = nearOrAboveTop && w.vy <= 0;
+
+  if (canLandOnTop) {
+    w.y = topY;
+    w.vy = Math.max(0, w.vy);
+    w.grounded = true;
+    w.airborne = false;
+    return true;
+  }
+
+  if (!wizardVerticallyOverlapsCollider(w, wall)) return false;
+
+  w.x += withinWall.nx * withinWall.push;
+  w.z += withinWall.nz * withinWall.push;
+  const dot = w.vx * withinWall.nx + w.vz * withinWall.nz;
+  if (dot < 0) {
+    w.vx -= dot * withinWall.nx * 1.4;
+    w.vz -= dot * withinWall.nz * 1.4;
+  }
+  return true;
 }
 
 function wizardVerticallyOverlapsCollider(w, collider) {
