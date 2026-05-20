@@ -216,7 +216,7 @@ const PLAYER_SAFE_RESPAWN_AHEAD = 28;
 const TWO_PLAYER_CAMERA_MIN_DISTANCE = 30;
 const TWO_PLAYER_CAMERA_MAX_DISTANCE = 80;
 const CHASER_PLAYER_RESPAWN_AHEAD = 100;
-const CONTROLLED_CHASER_FALL_BEHIND_DISTANCE = 55;
+const CONTROLLED_CHASER_RUNNER_GAP_TRIGGER = 20;
 
 const START_Z = 0;
 let furthestChunkZ = 0;
@@ -2636,13 +2636,15 @@ function updateControlledChaserRespawns() {
   const leader = getLeaderRunner();
   if (!leader) return;
 
-  for (const p of players) {
-    if (!p || !p.isChaser || !p.controlledChaser) continue;
+  const activeRunners = getActiveRunners();
+  const controlledChasers = players.filter(p => p && p.isChaser && p.controlledChaser);
+  if (activeRunners.length !== 1 || controlledChasers.length !== 1) return;
 
+  for (const p of controlledChasers) {
     const chaserRig = p.controlledChaser.rig;
-    const tooFarBehind = leader.rig.position.z - chaserRig.position.z > CONTROLLED_CHASER_FALL_BEHIND_DISTANCE;
+    const runnerGap = leader.rig.position.z - chaserRig.position.z;
 
-    if (tooFarBehind) {
+    if (runnerGap > CONTROLLED_CHASER_RUNNER_GAP_TRIGGER) {
       const safe = findSafeSpawnNearZ(
         leader.rig.position.z + CHASER_PLAYER_RESPAWN_AHEAD,
         leader.rig.position.x
