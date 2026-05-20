@@ -759,11 +759,11 @@ const GOOSE_HIT_COOLDOWN = 0.3;
 const MAGNET_BEARD_TRAP_LIFE = 6.0;
 const MAGNET_BEARD_TRAP_RADIUS = 13;
 const MAGNET_BEARD_TRAP_PULL = 22;
-const FISH_SLAP_RANGE = 8.5;
-const FISH_SLAP_CONE = 1.25;
+const FISH_SLAP_RANGE = 10.9;
+const FISH_SLAP_CONE = 1.45;
 const FISH_SLAP_DAMAGE = 2;
 const FISH_SLAP_KNOCKBACK = 34;
-const FISH_SLAP_UPWARD = 17;
+const FISH_SLAP_UPWARD = 24;
 const ULTIMATE_MAX_CHARGE = 100;
 const ULTIMATE_PASSIVE_GAIN = 4.5;
 const ULTIMATE_DAMAGE_GAIN = 8;
@@ -3183,6 +3183,7 @@ function castSlapGust(w) {
 
 function castFishSlap(w) {
   const f = forwardVector(w);
+  const right = rightVector(w);
 
   createFishSlapVisual(w);
 
@@ -3203,12 +3204,13 @@ function castFishSlap(w) {
     if (diff <= FISH_SLAP_CONE * 0.5) {
       applyDamage(target, FISH_SLAP_DAMAGE, w.name + "'s Fish Slap");
 
-      const len = d || 1;
-      const awayX = dx / len;
-      const awayZ = dz / len;
+      const side = Math.sign(normalizeAngle(targetAngle - w.angle)) || (Math.random() < 0.5 ? -1 : 1);
+      const diagonalX = f.x * 0.75 + right.x * side * 0.65;
+      const diagonalZ = f.z * 0.75 + right.z * side * 0.65;
+      const len = Math.hypot(diagonalX, diagonalZ) || 1;
 
-      target.vx += awayX * FISH_SLAP_KNOCKBACK;
-      target.vz += awayZ * FISH_SLAP_KNOCKBACK;
+      target.vx += (diagonalX / len) * FISH_SLAP_KNOCKBACK;
+      target.vz += (diagonalZ / len) * FISH_SLAP_KNOCKBACK;
       target.vy = Math.max(target.vy || 0, FISH_SLAP_UPWARD);
       target.airborne = true;
       target.grounded = false;
@@ -3216,8 +3218,9 @@ function castFishSlap(w) {
       target.effect.slapSpin = Math.max(target.effect.slapSpin || 0, 1.15);
 
       spawnPopText(target.x, target.z, "FISH SLAP!", 0x8eeaff);
-      createImpactBurst(target.x, target.y + 1.2, target.z, 0x8eeaff, 1.4);
-      addScreenShake(0.35, 0.16);
+      createImpactBurst(target.x, target.y + 1.25, target.z, 0x8eeaff, 1.85);
+      createShockwaveRing(target.x, target.z, 0xdaf7ff, 2.6, 0.34);
+      addScreenShake(0.38, 0.17);
     }
   }
 }
@@ -3232,7 +3235,7 @@ function createFishSlapVisual(w) {
   });
 
   const fishBody = new THREE.Mesh(new THREE.SphereGeometry(1.0, 18, 12), bodyMat);
-  fishBody.scale.set(2.4, 0.65, 0.75);
+  fishBody.scale.set(2.9, 0.85, 0.95);
   group.add(fishBody);
 
   const tail = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.1, 3), bodyMat);
@@ -3250,7 +3253,7 @@ function createFishSlapVisual(w) {
   const f = forwardVector(w);
   group.position.set(w.x + f.x * 3.2, w.y + 1.9, w.z + f.z * 3.2);
   group.rotation.y = w.angle + Math.PI / 2;
-  group.scale.setScalar(1.0);
+  group.scale.setScalar(1.68);
 
   scene.add(group);
 
@@ -3497,24 +3500,48 @@ function castBowlingBall(w) {
   addBowlingRunes(ball.mesh);
 }
 
-function castAnvilDrop(w) {
-  const f = forwardVector(w);
-  const x = w.x + f.x * 14;
-  const z = w.z + f.z * 14;
+function getNearestAnvilTarget(owner, maxRange = 42) {
+  let best = null;
+  let bestDist = Infinity;
 
-  const ring = createAnvilWarningCircle(x, z, 1.2);
+  for (const target of wizards) {
+    if (!target.alive || target === owner) continue;
+    if (owner.team && target.team && owner.team === target.team) continue;
+
+    const d = distancePoint(owner.x, owner.z, target.x, target.z);
+    if (d < bestDist && d <= maxRange) {
+      best = target;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+function castAnvilDrop(w) {
+  const target = getNearestAnvilTarget(w, 42);
+  if (!target) {
+    spawnPopText(w.x, w.z, "NO TARGET!", 0xff9090);
+    return false;
+  }
+
+  const x = target.x;
+  const z = target.z;
+  const ring = createAnvilWarningCircle(x, z, 1.5);
   temporary.push({
     kind: "anvilTelegraph",
     mesh: ring,
     x,
     z,
-    life: 1.2,
+    life: 1.5,
+    maxLife: 1.5,
     spin: 5,
     pulse: true,
-    onEnd: () => dropAnvil(w, x, z)
+    target,
+    onEnd: (obj) => dropAnvil(w, obj.x, obj.z)
   });
 
   spawnPopText(x, z, "LOOK OUT!", 0xff3030);
+  return true;
 }
 
 function dropAnvil(owner, x, z) {
@@ -4317,8 +4344,19 @@ function updateTemporary(dt) {
     }
 
     if (obj.pulse) {
-      const s = 1 + Math.sin(performance.now() * 0.035) * 0.17;
+      let pulseSpeed = 0.035;
+      if (obj.kind === "anvilTelegraph" && obj.maxLife) {
+        const progress = 1 - Math.max(0, obj.life) / obj.maxLife;
+        pulseSpeed = 0.02 + progress * 0.08;
+      }
+      const s = 1 + Math.sin(performance.now() * pulseSpeed) * 0.22;
       obj.mesh.scale.set(s, s, s);
+    }
+
+    if (obj.kind === "anvilTelegraph" && obj.target && obj.target.alive) {
+      obj.x = obj.target.x;
+      obj.z = obj.target.z;
+      obj.mesh.position.set(obj.x, getEffectiveGroundHeight(obj.x, obj.z) + 0.09, obj.z);
     }
 
     if (obj.grow) {
@@ -4367,13 +4405,21 @@ function updateTemporary(dt) {
 
         for (const w of wizards) {
           if (!w.alive || w === obj.owner) continue;
+          if (obj.owner?.team && w.team && obj.owner.team === w.team) continue;
           const d = distancePoint(w.x, w.z, obj.x, obj.z);
-          if (d < 3.4 && splashCanAffectWizard(groundY + 0.8, w, 1.3)) {
+          if (!splashCanAffectWizard(groundY + 0.8, w, 1.5)) continue;
+          if (d < 3.4) {
             applyDamage(w, 5, `${obj.owner.name}'s Anvil`);
-            knockWizard(w, w.x - obj.x, w.z - obj.z, 52);
-            w.effect.stunned = 2.5; createStunStars(w,2.5);
-            w.effect.bubble = 0.7;
+            knockWizard(w, w.x - obj.x, w.z - obj.z, 56);
+            w.vy = Math.max(w.vy || 0, 18);
+            w.effect.stunned = Math.max(w.effect.stunned || 0, 1.2); createStunStars(w, 1.2);
+            w.effect.bubble = Math.max(w.effect.bubble || 0, 0.7);
             createFloatingText3D(w.x,2.9,w.z,"HONK!",0xaaaaaa);
+          } else if (d < 8.0) {
+            knockWizard(w, w.x - obj.x, w.z - obj.z, 36 * (1 - d / 8.0) + 14);
+            w.vy = Math.max(w.vy || 0, 10);
+            w.effect.slapSpin = Math.max(w.effect.slapSpin || 0, 0.8);
+            applyDamage(w, 1, `${obj.owner.name}'s Anvil Shockwave`);
           }
         }
 
@@ -4381,7 +4427,11 @@ function updateTemporary(dt) {
           const pseudo = { type: "anvil", owner: obj.owner, x: obj.x, z: obj.z, radius: 3.4, hasArmed: true };
           checkProjectileCastleHit(pseudo);
         }
-        dustBurst(obj.x, obj.z); createGroundCrackEffect(obj.x, obj.z, 0x777777); addScreenShake(0.4,0.24);
+        createShockwaveRing(obj.x, obj.z, 0xcccccc, 8.0, 0.6);
+        dustBurst(obj.x, obj.z); createGroundCrackEffect(obj.x, obj.z, 0x777777);
+        createImpactBurst(obj.x, groundY + 0.8, obj.z, 0xbbbbbb, 2.2);
+        spawnPopText(obj.x, obj.z, "CLANG!", 0xcccccc);
+        addScreenShake(0.65,0.28);
         createAnvilImpact(obj.x, 0.8, obj.z);
       }
     }
@@ -4451,7 +4501,7 @@ function updateTemporary(dt) {
 
     if (obj.life <= 0) {
       obj.dead = true;
-      if (obj.onEnd) obj.onEnd();
+      if (obj.onEnd) obj.onEnd(obj);
       scene.remove(obj.mesh);
     }
   }
@@ -4642,7 +4692,7 @@ function createMushroomGrowBurst(x, z) { for (let i = 0; i < 10; i++) spawnParti
 function createSporeCloud(x, y, z) { for (let i = 0; i < 12; i++) spawnParticle(x + rand(-0.5,0.5), y + rand(0,1.1), z + rand(-0.5,0.5), i%2?0xfff7f7:0xff5555, rand(0.05,0.14), rand(0.4,0.8)); }
 function createBowlingImpact(x, y, z, hitWizard = false) { createFloatingText3D(x, y + 1.2, z, hitWizard ? "STRIKE!" : "SMASH!", 0x9cabff); createShockwaveRing(x, z, 0x4f65ff, hitWizard ? 3.1 : 2.2, 0.38); createImpactBurst(x, y, z, 0x4f65ff, 1.4); addScreenShake(hitWizard ? 0.38 : 0.24, hitWizard ? 0.2 : 0.12); }
 function addBowlingRunes(ballMesh) { for (let i = 0; i < 5; i++) { const r = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.03, 6, 14), new THREE.MeshStandardMaterial({ color: 0xb8c6ff, emissive: 0x4f65ff })); r.position.set(Math.cos(i * 1.2) * 0.72, Math.sin(i * 1.2) * 0.35, 0.2); r.rotation.y = i * 0.8; ballMesh.add(r); } }
-function createAnvilWarningCircle(x, z, duration) { return createGroundRing(x, z, 3.2, 0xff3030, 0.9); }
+function createAnvilWarningCircle(x, z, duration) { return createGroundRing(x, z, 4.4, 0xff3030, 0.95); }
 function createAnvilImpact(x, y, z) { createFloatingText3D(x, y + 1.2, z, "CLANG!", 0xcccccc); createShockwaveRing(x, z, 0xaaaaaa, 3.4, 0.42); }
 function createVaporBeamCharge(wizard) { createImpactBurst(wizard.x, 1.9, wizard.z, 0xffffcc, 1.1); }
 function createVaporBeamAfterimage(beamGroup) { const clone = beamGroup.clone(); scene.add(clone); temporary.push({ mesh: clone, life: 0.16, rise: true }); }
