@@ -536,6 +536,7 @@ const summarySubtitle = document.getElementById("summarySubtitle");
 const summaryStats = document.getElementById("summaryStats");
 
 let scene, renderer, clock;
+const skyAtmosphere = { dome: null, sun: null, clouds: [], auroras: [], glows: [], time: 0 };
 let camera1, camera2, spectatorCamera;
 let mode = "one";
 const GAME_SETTINGS = { mode: "stock", stockCount: 3, kingScoreTarget: 10000, crownScoreTarget: 5000, castleRoundsToWin: 2, castleTeamStocks: 18, castleTowerHealth: 35, enemyWizardCount: 5, killTarget: 10 };
@@ -1424,8 +1425,8 @@ function startGame(selectedMode) {
 
 function initThree() {
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x3d2d68);
-  scene.fog = new THREE.Fog(0x231c45, 70, 145);
+  scene.background = new THREE.Color(0x87cfff);
+  scene.fog = new THREE.Fog(0xaedbff, 95, 190);
 
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -1438,10 +1439,10 @@ function initThree() {
   spectatorCamera.position.set(0, ARENA_R + 13, ARENA_R + 18);
   spectatorCamera.lookAt(0, 0, 0);
 
-  const hemi = new THREE.HemisphereLight(0xceb8ff, 0x2c2141, 1.25);
+  const hemi = new THREE.HemisphereLight(0xe8f7ff, 0x5c7fb0, 1.48);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xffd7b0, 1.45);
+  const sun = new THREE.DirectionalLight(0xffe2b4, 1.62);
   sun.position.set(25, 55, 25);
   sun.castShadow = true;
   sun.shadow.mapSize.width = 2048;
@@ -6409,7 +6410,124 @@ function checkWin() {
 }
 
 
-function buildSkyAtmosphere(){ const sky=new THREE.Mesh(new THREE.SphereGeometry(220,40,28),new THREE.MeshBasicMaterial({color:0x4a3e86,side:THREE.BackSide})); scene.add(sky); for(let i=0;i<24;i++){const c=new THREE.Mesh(new THREE.SphereGeometry(rand(2.5,4.8),10,8),new THREE.MeshStandardMaterial({color:0xdccfff,transparent:true,opacity:0.28})); c.position.set(rand(-90,90),rand(28,60),rand(-90,90)); scene.add(c);} }
+function buildSkyAtmosphere() {
+  const domeGeo = new THREE.SphereGeometry(240, 48, 36);
+  const domeMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      topColor: { value: new THREE.Color(0x8ee8ff) },
+      midColor: { value: new THREE.Color(0xb9d6ff) },
+      horizonColor: { value: new THREE.Color(0xffd9b0) }
+    },
+    vertexShader: `varying vec3 vPos;\nvoid main(){ vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `varying vec3 vPos;\nuniform vec3 topColor;\nuniform vec3 midColor;\nuniform vec3 horizonColor;\nvoid main(){ float h = normalize(vPos).y * 0.5 + 0.5; vec3 c = mix(horizonColor, midColor, smoothstep(0.08,0.58,h)); c = mix(c, topColor, smoothstep(0.5,1.0,h)); gl_FragColor = vec4(c,1.0); }`
+  });
+  const dome = new THREE.Mesh(domeGeo, domeMat);
+  scene.add(dome);
+  skyAtmosphere.dome = dome;
+
+  for (let i = 0; i < 3; i++) {
+    const glow = new THREE.Mesh(
+      new THREE.RingGeometry(102 + i * 14, 128 + i * 14, 80),
+      new THREE.MeshBasicMaterial({
+        color: i === 0 ? 0xffd6b8 : i === 1 ? 0xffc5df : 0xd8cfff,
+        transparent: true,
+        opacity: 0.15 - i * 0.03,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = 8 + i * 0.8;
+    scene.add(glow);
+    skyAtmosphere.glows.push({ mesh: glow, baseOpacity: glow.material.opacity, pulseSpeed: 0.2 + i * 0.07, pulseOffset: Math.random() * Math.PI * 2 });
+  }
+
+  for (let i = 0; i < 9; i++) {
+    const cloud = new THREE.Mesh(
+      new THREE.SphereGeometry(rand(5.6, 10.8), 14, 10),
+      new THREE.MeshStandardMaterial({
+        color: i % 3 === 0 ? 0xffffff : (i % 3 === 1 ? 0xeedfff : 0xffefd7),
+        transparent: true,
+        opacity: rand(0.13, 0.22),
+        roughness: 0.75,
+        emissive: 0x1f1f25,
+        emissiveIntensity: 0.08
+      })
+    );
+    cloud.scale.y = rand(0.28, 0.46);
+    cloud.position.set(rand(-120, 120), rand(55, 82), rand(-120, 120));
+    scene.add(cloud);
+    skyAtmosphere.clouds.push({ mesh: cloud, driftSpeed: rand(0.7, 1.8), driftAxis: Math.random() < 0.5 ? 'x' : 'z', baseY: cloud.position.y, bobOffset: Math.random() * Math.PI * 2 });
+  }
+
+  const auroraPalette = [0x8effc8, 0x79fbff, 0x58d9ff, 0xd1a3ff, 0xffa9e2, 0x9de8ff];
+  for (let i = 0; i < 5; i++) {
+    const ribbonGeo = new THREE.PlaneGeometry(230, rand(10, 18), 64, 8);
+    const pos = ribbonGeo.attributes.position;
+    for (let v = 0; v < pos.count; v++) {
+      const x = pos.getX(v);
+      const y = Math.sin((x / 230) * Math.PI * (1.25 + i * 0.1)) * rand(3.2, 6.4);
+      pos.setY(v, pos.getY(v) + y);
+    }
+    pos.needsUpdate = true;
+    const ribbon = new THREE.Mesh(
+      ribbonGeo,
+      new THREE.MeshBasicMaterial({
+        color: auroraPalette[i % auroraPalette.length],
+        transparent: true,
+        opacity: 0.24,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending
+      })
+    );
+    ribbon.position.set(rand(-16, 16), 80 + i * 8, -90 + i * 10);
+    ribbon.rotation.x = -0.55 - i * 0.03;
+    ribbon.rotation.y = -0.52 + i * 0.18;
+    scene.add(ribbon);
+    skyAtmosphere.auroras.push({ mesh: ribbon, baseY: ribbon.position.y, waveOffset: Math.random() * Math.PI * 2, waveSpeed: rand(0.18, 0.34), driftSpeed: rand(0.9, 1.5), driftDir: Math.random() < 0.5 ? -1 : 1, baseOpacity: ribbon.material.opacity });
+  }
+
+  const sunCore = new THREE.Mesh(new THREE.SphereGeometry(6.5, 28, 20), new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0.9 }));
+  sunCore.position.set(-72, 60, -120);
+  scene.add(sunCore);
+  const sunHaloA = new THREE.Mesh(new THREE.RingGeometry(8.5, 16, 48), new THREE.MeshBasicMaterial({ color: 0xffe6ab, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
+  sunHaloA.position.copy(sunCore.position);
+  sunHaloA.lookAt(0, 24, 0);
+  scene.add(sunHaloA);
+  const sunHaloB = new THREE.Mesh(new THREE.RingGeometry(14, 24, 48), new THREE.MeshBasicMaterial({ color: 0xffd6a0, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }));
+  sunHaloB.position.copy(sunCore.position);
+  sunHaloB.lookAt(0, 24, 0);
+  scene.add(sunHaloB);
+  skyAtmosphere.sun = { core: sunCore, halos: [sunHaloA, sunHaloB] };
+}
+
+function updateSkyAtmosphere(dt) {
+  skyAtmosphere.time += dt;
+  for (const cloud of skyAtmosphere.clouds) {
+    cloud.mesh.position[cloud.driftAxis] += dt * cloud.driftSpeed;
+    if (cloud.mesh.position[cloud.driftAxis] > 128) cloud.mesh.position[cloud.driftAxis] = -128;
+    cloud.mesh.position.y = cloud.baseY + Math.sin(skyAtmosphere.time * 0.12 + cloud.bobOffset) * 0.55;
+  }
+  for (const aurora of skyAtmosphere.auroras) {
+    aurora.waveOffset += dt * aurora.waveSpeed;
+    aurora.mesh.position.y = aurora.baseY + Math.sin(aurora.waveOffset) * 1.2;
+    aurora.mesh.position.x += dt * aurora.driftSpeed * aurora.driftDir;
+    if (aurora.mesh.position.x > 30 || aurora.mesh.position.x < -30) aurora.driftDir *= -1;
+    aurora.mesh.rotation.z = Math.sin(aurora.waveOffset * 0.45) * 0.1;
+    aurora.mesh.material.opacity = aurora.baseOpacity + Math.sin(aurora.waveOffset * 1.2) * 0.045;
+  }
+  for (const glow of skyAtmosphere.glows) {
+    glow.mesh.material.opacity = glow.baseOpacity + Math.sin(skyAtmosphere.time * glow.pulseSpeed + glow.pulseOffset) * 0.025;
+  }
+  if (skyAtmosphere.sun) {
+    const pulse = 1 + Math.sin(skyAtmosphere.time * 0.32) * 0.04;
+    skyAtmosphere.sun.halos[0].scale.setScalar(pulse);
+    skyAtmosphere.sun.halos[1].scale.setScalar(1 + Math.sin(skyAtmosphere.time * 0.22 + 1.4) * 0.06);
+  }
+}
 function buildTiltPlaneRegion(){
   const p=new THREE.Mesh(new THREE.BoxGeometry(tiltPlane.width,1.1,tiltPlane.depth),new THREE.MeshStandardMaterial({color:0x746f7f,emissive:0x211b39,roughness:0.85}));
   p.position.set(tiltPlane.x,tiltPlane.baseY-0.5,tiltPlane.z); scene.add(p); tiltPlane.mesh=p;
@@ -6433,6 +6551,7 @@ function animate() {
 
     updateGeysers(dt);
     updateTiltPlane(dt);
+    updateSkyAtmosphere(dt);
     updateWizards(dt);
     inputState.mouseLookDelta = 0;
     inputState.mousePitchDelta = 0;
