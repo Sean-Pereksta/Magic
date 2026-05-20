@@ -1496,6 +1496,8 @@ function buildArenaGround() {
   ground.receiveShadow = true;
   scene.add(ground);
 
+  buildCheckeredGround();
+
   const runeGeo = new THREE.RingGeometry(5.5, 6.0, 5);
   const runeMat = new THREE.MeshStandardMaterial({
     color: 0xffdf70,
@@ -1507,19 +1509,43 @@ function buildArenaGround() {
   rune.position.y = 0.05;
   scene.add(rune);
 
-  for (let i = 0; i < 30; i++) {
-    const p = randomArenaPoint(3);
-    const geo = new THREE.CircleGeometry(rand(0.8, 2.6), 18);
-    const mat = new THREE.MeshStandardMaterial({
-      color: Math.random() < 0.5 ? 0x2d6037 : 0x456f36,
-      roughness: 1,
-      side: THREE.DoubleSide
-    });
-    const patch = new THREE.Mesh(geo, mat);
-    patch.rotation.x = -Math.PI / 2;
-    patch.position.set(p.x, 0.035, p.z);
-    patch.rotation.z = rand(0, Math.PI);
-    scene.add(patch);
+}
+
+function buildCheckeredGround() {
+  const tileSize = 5;
+  const half = ARENA_R;
+  const tileScale = 0.96;
+  const terrainPadding = 2.5;
+
+  const mats = [
+    new THREE.MeshStandardMaterial({ color: 0x4fbf4f, roughness: 0.95 }),
+    new THREE.MeshStandardMaterial({ color: 0x7ee879, roughness: 0.95 }),
+    new THREE.MeshStandardMaterial({ color: 0x8d7dff, roughness: 0.9, emissive: 0x221166, emissiveIntensity: 0.08 }),
+    new THREE.MeshStandardMaterial({ color: 0xffdf70, roughness: 0.9, emissive: 0x3d2c00, emissiveIntensity: 0.06 }),
+    new THREE.MeshStandardMaterial({ color: 0x79e1de, roughness: 0.92, emissive: 0x10343b, emissiveIntensity: 0.05 })
+  ];
+
+  const tileGeo = new THREE.PlaneGeometry(tileSize * tileScale, tileSize * tileScale);
+
+  for (let x = -half; x <= half; x += tileSize) {
+    for (let z = -half; z <= half; z += tileSize) {
+      const cx = x + tileSize / 2;
+      const cz = z + tileSize / 2;
+      if (Math.hypot(cx, cz) > ARENA_R - 1.5) continue;
+      if (Math.hypot(cx - tiltArea.x, cz - tiltArea.z) < tiltArea.r + terrainPadding) continue;
+
+      const parity = Math.floor((x + half) / tileSize) + Math.floor((z + half) / tileSize);
+      let mat = mats[parity % 2];
+      if (parity % 13 === 0) mat = mats[2];
+      else if (parity % 17 === 0) mat = mats[3];
+      else if (parity % 19 === 0) mat = mats[4];
+
+      const tile = new THREE.Mesh(tileGeo, mat);
+      tile.rotation.x = -Math.PI / 2;
+      tile.position.set(cx, getEffectiveGroundHeight(cx, cz) + 0.045, cz);
+      tile.receiveShadow = true;
+      scene.add(tile);
+    }
   }
 }
 
@@ -1618,6 +1644,30 @@ function createTree(x, z, r) {
   trunk.castShadow = true;
   group.add(trunk);
 
+  const barkPatchMats = [
+    new THREE.MeshStandardMaterial({ color: 0x5b341e, roughness: 0.95 }),
+    new THREE.MeshStandardMaterial({ color: 0x8f572d, roughness: 0.92 }),
+    new THREE.MeshStandardMaterial({ color: 0xb6844f, roughness: 0.9 })
+  ];
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 8; col++) {
+      if ((row + col) % 2 !== 0) continue;
+      const angle = col / 8 * Math.PI * 2 + (row % 2) * 0.1;
+      const patch = new THREE.Mesh(
+        new THREE.BoxGeometry(r * 0.13, 0.42, r * 0.055),
+        barkPatchMats[(row + col) % barkPatchMats.length]
+      );
+      patch.position.set(
+        Math.cos(angle) * r * 0.36,
+        0.85 + row * 0.66,
+        Math.sin(angle) * r * 0.36
+      );
+      patch.rotation.y = -angle;
+      patch.castShadow = true;
+      group.add(patch);
+    }
+  }
+
   const leafMat = new THREE.MeshStandardMaterial({ color: 0x1e8f48, roughness: 0.9 });
 
   for (let i = 0; i < 3; i++) {
@@ -1627,6 +1677,24 @@ function createTree(x, z, r) {
     leaf.position.set(rand(-0.25, 0.25), 3.6 + i * 0.55, rand(-0.25, 0.25));
     leaf.castShadow = true;
     group.add(leaf);
+  }
+
+  const leafPatchColors = [0x17693a, 0x4fbf4f, 0x7ee879, 0x2fa4a1, 0xaa80ff, 0xff8ccf];
+  for (let i = 0; i < 10 + Math.floor(Math.random() * 5); i++) {
+    const ang = rand(0, Math.PI * 2);
+    const radial = r * rand(0.35, 0.85);
+    const patch = new THREE.Mesh(
+      new THREE.SphereGeometry(r * rand(0.14, 0.2), 10, 8),
+      new THREE.MeshStandardMaterial({
+        color: leafPatchColors[(i + Math.floor(x + z)) % leafPatchColors.length],
+        roughness: 0.92,
+        emissive: (i % 9 === 0) ? 0x18220f : 0x000000,
+        emissiveIntensity: (i % 9 === 0) ? 0.08 : 0
+      })
+    );
+    patch.position.set(Math.cos(ang) * radial, rand(3.6, 5.2), Math.sin(ang) * radial);
+    patch.castShadow = true;
+    group.add(patch);
   }
 
   group.position.set(x, getEffectiveGroundHeight(x,z), z);
@@ -1926,8 +1994,12 @@ function updateWizardMesh(w, dt) {
   w.group.position.set(w.x, w.y, w.z);
   w.group.rotation.y = w.angle;
 
-  w.bob += dt * 8;
-  const bounce = Math.sin(w.bob) * 0.05;
+  const horizontalSpeed = Math.hypot(w.vx || 0, w.vz || 0);
+  const movingAmount = w.grounded ? clamp(horizontalSpeed / 12, 0, 1) : 0;
+  w.bob += dt * (7 + movingAmount * 9);
+  const idleBob = Math.sin(w.bob) * 0.045;
+  const moveBob = Math.sin(w.bob * 1.35) * 0.12 * movingAmount;
+  const bounce = idleBob + moveBob;
 
   let scale = 1;
   if (w.effect.bubble > 0) scale = 1.08 + Math.sin(performance.now() * 0.016) * 0.08;
@@ -1935,12 +2007,33 @@ function updateWizardMesh(w, dt) {
 
   w.group.position.y = w.y + bounce;
 
+  if (w.stepDustTimer == null) w.stepDustTimer = rand(0.06, 0.16);
+  if (w.grounded && movingAmount > 0.55) {
+    w.stepDustTimer -= dt;
+    if (w.stepDustTimer <= 0) {
+      const color = Math.random() < 0.5 ? 0x9b8755 : 0x6baa4b;
+      spawnParticle(
+        w.x + rand(-0.28, 0.28),
+        w.y + 0.18,
+        w.z + rand(-0.28, 0.28),
+        color,
+        rand(0.05, 0.12),
+        rand(0.15, 0.3)
+      );
+      w.stepDustTimer = rand(0.13, 0.2);
+    }
+  }
+
+  let normalMoveSway = 0;
+  if (movingAmount > 0.05 && w.grounded) {
+    normalMoveSway = Math.sin(w.bob * 0.9) * 0.06 * movingAmount;
+  }
   if (w.effect.jelly > 0) {
     w.group.rotation.z = Math.sin(performance.now() * 0.024) * 0.22;
   } else if (w.effect.slapSpin > 0) {
     w.group.rotation.z = Math.sin(performance.now() * 0.05) * 0.35;
   } else {
-    w.group.rotation.z = 0;
+    w.group.rotation.z = normalMoveSway;
   }
   if (w.invulnerableTimer > 0) {
     const flash = 0.5 + Math.sin(performance.now() * 0.03) * 0.5;
