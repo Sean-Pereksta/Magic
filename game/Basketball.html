@@ -2347,6 +2347,17 @@ function updateWizards(dt) {
     else updateBot(w, dt);
 
     applyPhysics(w, dt);
+    if ((w.effect.fishSlapWetTrail || 0) > 0 && ((Math.abs(w.vx) + Math.abs(w.vz) > 4.8) || !w.grounded) && Math.random() < 0.65) {
+      const trailBoost = clamp((w.effect.fishSlapWetTrail || 0) / 0.85, 0, 1);
+      spawnParticle(
+        w.x + rand(-0.26, 0.26),
+        w.y + rand(0.5, 1.45),
+        w.z + rand(-0.26, 0.26),
+        Math.random() < 0.4 ? 0xffffff : 0x91dfff,
+        rand(0.04, 0.12 + trailBoost * 0.08),
+        rand(0.16, 0.34 + trailBoost * 0.22)
+      );
+    }
     pickupCheck(w);
     updateWizardMesh(w, dt);
   }
@@ -3401,6 +3412,7 @@ function castBlastBomb(w) {
 function castFishSlap(w) {
   const f = forwardVector(w);
   const right = rightVector(w);
+  const hitTargets = [];
 
   createFishSlapVisual(w);
 
@@ -3433,13 +3445,16 @@ function castFishSlap(w) {
       target.grounded = false;
 
       target.effect.slapSpin = Math.max(target.effect.slapSpin || 0, 1.15);
+      target.effect.fishSlapWetTrail = Math.max(target.effect.fishSlapWetTrail || 0, 0.85);
+      hitTargets.push(target);
 
       spawnPopText(target.x, target.z, "FISH SLAP!", 0x8eeaff);
-      createImpactBurst(target.x, target.y + 1.25, target.z, 0x8eeaff, 1.85);
-      createShockwaveRing(target.x, target.z, 0xdaf7ff, 2.6, 0.34);
+      createFishSlapImpact(target);
       addScreenShake(0.38, 0.17);
     }
   }
+
+  if (hitTargets.length === 0) return;
 }
 
 function createFishSlapVisual(w) {
@@ -3468,30 +3483,62 @@ function createFishSlapVisual(w) {
   group.add(eye);
 
   const f = forwardVector(w);
-  group.position.set(w.x + f.x * 3.2, w.y + 1.9, w.z + f.z * 3.2);
+  const r = rightVector(w);
+  const startX = w.x - f.x * 0.95 - r.x * 1.15;
+  const startZ = w.z - f.z * 0.95 - r.z * 1.15;
+  group.position.set(startX, w.y + 1.82, startZ);
   group.rotation.y = w.angle + Math.PI / 2;
-  group.scale.setScalar(1.68);
+  group.rotation.z = -0.72;
+  group.scale.set(1.46, 1.36, 1.46);
 
   scene.add(group);
 
   temporary.push({
+    kind: "fishSlapSwing",
     mesh: group,
-    life: 0.32,
-    spin: 8,
-    follow: null,
-    fishSlap: true
+    owner: w,
+    life: 0.2,
+    maxLife: 0.2,
+    startX,
+    startZ,
+    dirX: f.x,
+    dirZ: f.z,
+    rightX: r.x,
+    rightZ: r.z
   });
+}
 
-  // Wet splash particles
-  for (let i = 0; i < 22; i++) {
+function createFishSlapImpact(target) {
+  createImpactBurst(target.x, target.y + 1.25, target.z, 0x8eeaff, 1.95);
+  createShockwaveRing(target.x, target.z, 0xdaf7ff, 2.8, 0.36);
+
+  for (let i = 0; i < 26; i++) {
     spawnParticle(
-      group.position.x + rand(-0.8, 0.8),
-      group.position.y + rand(-0.4, 0.4),
-      group.position.z + rand(-0.8, 0.8),
-      i % 2 ? 0x8eeaff : 0xffffff,
-      rand(0.08, 0.22),
-      rand(0.2, 0.55)
+      target.x + rand(-0.95, 0.95),
+      target.y + 1 + rand(-0.4, 1.1),
+      target.z + rand(-0.95, 0.95),
+      i % 3 === 0 ? 0xffffff : 0x78d7ff,
+      rand(0.08, 0.24),
+      rand(0.24, 0.62)
     );
+  }
+
+  for (let i = 0; i < 3; i++) {
+    const star = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xfff6ba, emissive: 0xffd94a, roughness: 0.35 })
+    );
+    scene.add(star);
+    temporary.push({
+      kind: "fishSlapStar",
+      mesh: star,
+      follow: target,
+      life: 0.65,
+      maxLife: 0.65,
+      angle: (Math.PI * 2 * i) / 3,
+      radius: 0.72 + i * 0.06,
+      height: 2.5 + i * 0.06
+    });
   }
 }
 
@@ -4661,6 +4708,43 @@ function updateTemporary(dt) {
           w.effect.glue = 0.45;
           attachGlueDrips(w, 0.5);
         }
+      }
+    }
+
+    if (obj.kind === "fishSlapSwing") {
+      const owner = obj.owner;
+      if (!owner || !owner.alive) {
+        obj.life = 0;
+      } else {
+        const progress = clamp(1 - obj.life / (obj.maxLife || 0.2), 0, 1);
+        const arc = Math.sin(progress * Math.PI * 0.95);
+        const sweep = -0.95 + progress * 2.15;
+        obj.mesh.position.set(
+          owner.x + obj.dirX * (0.9 + progress * 4.1) + obj.rightX * sweep,
+          owner.y + 1.76 + arc * 0.45,
+          owner.z + obj.dirZ * (0.9 + progress * 4.1) + obj.rightZ * sweep
+        );
+        obj.mesh.rotation.y = owner.angle + Math.PI / 2;
+        obj.mesh.rotation.z = -0.86 + progress * 1.5;
+        obj.mesh.scale.set(1.46 + progress * 0.9, 1.36 - arc * 0.36, 1.46 - progress * 0.14);
+      }
+    }
+
+    if (obj.kind === "fishSlapStar") {
+      if (!obj.follow || !obj.follow.alive) {
+        obj.life = 0;
+      } else {
+        const progress = clamp(1 - obj.life / (obj.maxLife || 0.65), 0, 1);
+        const angle = obj.angle + progress * 8.5;
+        obj.mesh.position.set(
+          obj.follow.x + Math.cos(angle) * obj.radius,
+          obj.follow.y + obj.height + Math.sin(progress * 6.2) * 0.15,
+          obj.follow.z + Math.sin(angle) * obj.radius
+        );
+        const fade = 1 - progress;
+        obj.mesh.material.opacity = 0.25 + fade * 0.75;
+        obj.mesh.material.transparent = true;
+        obj.mesh.scale.setScalar(0.82 + fade * 0.55);
       }
     }
     if (obj.kind === "lavaPuddle") {
