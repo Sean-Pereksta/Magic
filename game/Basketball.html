@@ -400,6 +400,7 @@
       <button onclick="openControlsConfig()">Controls / Controllers</button>
       <button onclick="openAdditionalSettings()">Additional Settings</button>
       <button onclick="openClassBreakdown()">Class Breakdown</button>
+      <button id="cartoonOutlineToggle">Cartoon Outlines: On</button>
     </div>
 
     <p class="note">
@@ -534,8 +535,12 @@ const summaryScreen = document.getElementById("summaryScreen");
 const summaryTitle = document.getElementById("summaryTitle");
 const summarySubtitle = document.getElementById("summarySubtitle");
 const summaryStats = document.getElementById("summaryStats");
+const cartoonOutlineToggle = document.getElementById("cartoonOutlineToggle");
 
 let scene, renderer, clock;
+let cartoonOutlinesEnabled = true;
+const CARTOON_OUTLINE_COLOR = 0x101018;
+const CARTOON_OUTLINE_DEFAULT_SCALE = 1.035;
 const skyAtmosphere = { dome: null, sun: null, clouds: [], auroras: [], glows: [], time: 0 };
 let camera1, camera2, spectatorCamera;
 let mode = "one";
@@ -722,6 +727,12 @@ const DEFAULT_CONTROL_CONFIG = {
 };
 
 let controlConfig = JSON.parse(JSON.stringify(DEFAULT_CONTROL_CONFIG));
+if (cartoonOutlineToggle) {
+  cartoonOutlineToggle.onclick = () => {
+    setCartoonOutlinesEnabled(!cartoonOutlinesEnabled);
+    cartoonOutlineToggle.textContent = cartoonOutlinesEnabled ? "Cartoon Outlines: On" : "Cartoon Outlines: Off";
+  };
+}
 
 const CONTROL_ACTIONS = [
   { key: "forward", label: "Forward" },
@@ -1437,6 +1448,7 @@ function startGame(selectedMode) {
     if (GAME_SETTINGS.mode === "castle") assignCastleTeams();
     if (GAME_SETTINGS.mode === "crown") buildCrown();
     spawnStartingPickups();
+    applyCartoonOutlinesToScene(scene);
 
     clock = new THREE.Clock();
     running = true;
@@ -1496,6 +1508,113 @@ function resize() {
   spectatorCamera.updateProjectionMatrix();
 }
 
+function shouldSkipCartoonOutline(obj) {
+  if (!obj) return true;
+  if (!obj.isMesh) return true;
+  if (!obj.geometry) return true;
+  if (obj.userData?.isCartoonOutline) return true;
+  if (obj.userData?.hasCartoonOutline) return true;
+  if (obj.userData?.noOutline) return true;
+  if (obj.userData?.isHitbox) return true;
+  if (obj.userData?.isCollider) return true;
+  if (obj.userData?.debug) return true;
+  if (obj.isSkinnedMesh) return true;
+  if (obj.type === "Sprite" || obj.type === "Line" || obj.type === "Points") return true;
+  const mat = obj.material;
+  if (Array.isArray(mat)) {
+    if (mat.some(m => m && m.transparent && m.opacity < 0.75)) return true;
+  } else if (mat && mat.transparent && mat.opacity < 0.75) return true;
+  return false;
+}
+
+function getCartoonOutlineScaleForObject(obj) {
+  const name = (obj.name || "").toLowerCase();
+  const ud = obj.userData || {};
+  if (ud.isPlayer || ud.isEnemy || ud.isCharacter || name.includes("wizard") || name.includes("enemy")) return 1.055;
+  if (ud.isProjectile || name.includes("projectile") || name.includes("bullet") || name.includes("fireball")) return 1.025;
+  if (ud.isPickup || ud.isPowerup || name.includes("pickup") || name.includes("power") || name.includes("box") || name.includes("crate")) return 1.045;
+  if (ud.isTerrainDetail || name.includes("tree") || name.includes("rock") || name.includes("wall")) return 1.03;
+  return CARTOON_OUTLINE_DEFAULT_SCALE;
+}
+
+function addCartoonOutline(mesh, options = {}) {
+  if (shouldSkipCartoonOutline(mesh)) return null;
+  const outlineMaterial = new THREE.MeshBasicMaterial({ color: options.color || CARTOON_OUTLINE_COLOR, side: THREE.BackSide, depthWrite: false });
+  const outline = new THREE.Mesh(mesh.geometry, outlineMaterial);
+  const outlineScale = options.scale || mesh.userData.outlineScale || CARTOON_OUTLINE_DEFAULT_SCALE;
+  outline.position.copy(mesh.position);
+  outline.rotation.copy(mesh.rotation);
+  outline.quaternion.copy(mesh.quaternion);
+  outline.scale.copy(mesh.scale).multiplyScalar(outlineScale);
+  outline.userData.isCartoonOutline = true;
+  outline.userData.ignoreRaycast = true;
+  outline.userData.noCollision = true;
+  outline.userData.noOutline = true;
+  outline.renderOrder = (mesh.renderOrder || 0) - 1;
+  outline.raycast = function () {};
+  mesh.userData.hasCartoonOutline = true;
+  mesh.userData.cartoonOutline = outline;
+  mesh.userData.outlineScale = outlineScale;
+  if (mesh.parent) mesh.parent.add(outline);
+  else if (scene) scene.add(outline);
+  return outline;
+}
+
+function applyCartoonOutlineToObject(obj) {
+  if (!obj) return;
+  if (obj.isMesh) {
+    addCartoonOutline(obj, { color: CARTOON_OUTLINE_COLOR, scale: obj.userData.outlineScale || getCartoonOutlineScaleForObject(obj) });
+    return;
+  }
+  obj.traverse(child => {
+    if (!child.isMesh) return;
+    addCartoonOutline(child, { color: CARTOON_OUTLINE_COLOR, scale: child.userData.outlineScale || getCartoonOutlineScaleForObject(child) });
+  });
+}
+
+function syncCartoonOutlines(root) {
+  if (!root) return;
+  root.traverse(obj => {
+    const outline = obj.userData?.cartoonOutline;
+    if (!outline) return;
+    const outlineScale = obj.userData.outlineScale || CARTOON_OUTLINE_DEFAULT_SCALE;
+    outline.position.copy(obj.position);
+    outline.rotation.copy(obj.rotation);
+    outline.quaternion.copy(obj.quaternion);
+    outline.scale.copy(obj.scale).multiplyScalar(outlineScale);
+    outline.visible = cartoonOutlinesEnabled && obj.visible;
+  });
+}
+
+function applyCartoonOutlinesToScene(root) {
+  if (!root) return;
+  const meshesToOutline = [];
+  root.traverse(obj => {
+    if (shouldSkipCartoonOutline(obj)) return;
+    const name = (obj.name || "").toLowerCase();
+    const ud = obj.userData || {};
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const largestSide = Math.max(size.x, size.y, size.z);
+    const isTiny = largestSide > 0 && largestSide < 0.08;
+    const isHugeFlatSurface = size.x > 40 && size.z > 40 && size.y < 0.25;
+    if (isTiny) return;
+    if (isHugeFlatSurface) { obj.userData.noOutline = true; return; }
+    const isLikelyImportant = ud.isPlayer || ud.isEnemy || ud.isCharacter || ud.isProjectile || ud.isPickup || ud.isPowerup || ud.isObstacle || ud.isStructure || ud.isProp || ud.isTerrainDetail || ud.outlineImportant || name.includes("wizard") || name.includes("enemy") || name.includes("projectile") || name.includes("pickup") || name.includes("tree") || name.includes("rock") || name.includes("wall") || name.includes("tower") || name.includes("building") || name.includes("item");
+    if (isLikelyImportant || largestSide >= 0.35) meshesToOutline.push(obj);
+  });
+  meshesToOutline.forEach(obj => addCartoonOutline(obj, { color: CARTOON_OUTLINE_COLOR, scale: obj.userData.outlineScale || getCartoonOutlineScaleForObject(obj) }));
+}
+
+function setCartoonOutlinesEnabled(enabled) {
+  cartoonOutlinesEnabled = !!enabled;
+  if (!scene) return;
+  scene.traverse(obj => {
+    if (obj.userData?.isCartoonOutline) obj.visible = cartoonOutlinesEnabled;
+  });
+}
+
 /* ============================================================
    WORLD
    ============================================================ */
@@ -1519,6 +1638,7 @@ function buildArenaGround() {
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
+  ground.userData.noOutline = true;
   scene.add(ground);
 
   buildCheckeredGround();
@@ -1573,6 +1693,7 @@ if (Math.hypot(cx - tiltCenterX, cz - tiltCenterZ) < tiltRadius + terrainPadding
       tile.rotation.x = -Math.PI / 2;
       tile.position.set(cx, getEffectiveGroundHeight(cx, cz) + 0.045, cz);
       tile.receiveShadow = true;
+      tile.userData.noOutline = true;
       scene.add(tile);
     }
   }
@@ -3037,9 +3158,12 @@ function spawnPickupAtSpawnPoint(sp) {
   const box = new THREE.Mesh(new THREE.BoxGeometry(1.55, 1.55, 1.55), new THREE.MeshStandardMaterial({ color: typeInfo.color, emissive: typeInfo.emissive, roughness: 0.25, metalness: 0.12 }));
   box.castShadow = true; group.add(box);
   const icon = createPickupIconSprite(typeInfo.icon, "#ffffff"); icon.position.set(0, 0.05, 0.83); group.add(icon);
-  const topIcon = createPickupIconSprite(typeInfo.icon, "#ffffff"); topIcon.position.set(0, 0.9, 0); topIcon.rotation.x = -Math.PI / 2; topIcon.scale.set(0.85, 0.85, 0.85); group.add(topIcon);
+  icon.userData.noOutline = true;
+  const topIcon = createPickupIconSprite(typeInfo.icon, "#ffffff"); topIcon.position.set(0, 0.9, 0); topIcon.rotation.x = -Math.PI / 2; topIcon.scale.set(0.85, 0.85, 0.85); topIcon.userData.noOutline = true; group.add(topIcon);
   group.position.set(sp.x, getEffectiveGroundHeight(sp.x, sp.z) + 1.65, sp.z);
+  box.userData.isPickup = true;
   scene.add(group);
+  applyCartoonOutlineToObject(group);
   const pickup = { x: sp.x, z: sp.z, type: sp.type, group, spin: rand(0, Math.PI * 2), spawnPoint: sp };
   sp.pickup = pickup; pickups.push(pickup);
 }
@@ -4165,7 +4289,9 @@ function createProjectile(o) {
 
   mesh.position.set(base.x, base.y, base.z);
   mesh.castShadow = true;
+  mesh.userData.isProjectile = true;
   scene.add(mesh);
+  applyCartoonOutlineToObject(mesh);
 
   base.mesh = mesh;
   if (base.type === "bonk") initializeBonkBoltVisuals(base);
@@ -5585,6 +5711,7 @@ function renderScene() {
   }
   renderer.setScissorTest(false);
   renderer.clear();
+  syncCartoonOutlines(scene);
 
   if (mode === "two") {
     const halfW = Math.floor(window.innerWidth / 2);
