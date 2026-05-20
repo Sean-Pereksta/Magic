@@ -1969,6 +1969,7 @@ function createWizard(name, color, spawnAngle, human, controls, classId = null) 
       desiredAngle: angle,
       wobble: rand(0, 100)
     },
+    bubbleSpinState: null,
     telegraph: { group: null, kind: null }
   };
 }
@@ -2021,6 +2022,7 @@ function showWizardLabels(w) {
 
 function updateWizardMesh(w, dt) {
   w.group.position.set(w.x, w.y, w.z);
+  if (!w.bubbleSpinState) w.bubbleSpinState = { spinAngle: 0, wobblePhase: rand(0, 100), active: false };
   w.group.rotation.y = w.angle;
 
   const horizontalSpeed = Math.hypot(w.vx || 0, w.vz || 0);
@@ -2059,10 +2061,27 @@ function updateWizardMesh(w, dt) {
   }
   if (w.effect.jelly > 0) {
     w.group.rotation.z = Math.sin(performance.now() * 0.024) * 0.22;
+    w.group.rotation.x = 0;
   } else if (w.effect.slapSpin > 0) {
     w.group.rotation.z = Math.sin(performance.now() * 0.05) * 0.35;
+    w.group.rotation.x = 0;
+  } else if (w.effect.bubble > 0) {
+    const moveSpeed = Math.hypot(w.vx || 0, w.vz || 0);
+    const moveFactor = clamp(moveSpeed / 10, 0, 1);
+    const spinSpeed = BUBBLE_PLAYER_MIN_SPIN_SPEED + (BUBBLE_PLAYER_MAX_SPIN_SPEED - BUBBLE_PLAYER_MIN_SPIN_SPEED) * moveFactor;
+    w.bubbleSpinState.spinAngle += dt * spinSpeed;
+    w.bubbleSpinState.wobblePhase += dt * (2.6 + moveFactor * 2.4);
+    w.group.rotation.y = w.angle + w.bubbleSpinState.spinAngle;
+    w.group.rotation.z = Math.sin(w.bubbleSpinState.wobblePhase) * BUBBLE_PLAYER_WOBBLE_AMOUNT * (0.55 + moveFactor * 0.7);
+    w.group.rotation.x = Math.cos(w.bubbleSpinState.wobblePhase * 0.84) * (BUBBLE_PLAYER_WOBBLE_AMOUNT * 0.6) * (0.5 + moveFactor * 0.65);
+    w.bubbleSpinState.active = true;
   } else {
     w.group.rotation.z = normalMoveSway;
+    w.group.rotation.x = 0;
+    if (w.bubbleSpinState.active) {
+      w.bubbleSpinState.active = false;
+      w.bubbleSpinState.spinAngle = 0;
+    }
   }
   if (w.invulnerableTimer > 0) {
     const flash = 0.5 + Math.sin(performance.now() * 0.03) * 0.5;
@@ -3356,6 +3375,32 @@ function castBubble(w) {
   });
 }
 
+const BUBBLE_PLAYER_MIN_SPIN_SPEED = 2.0;
+const BUBBLE_PLAYER_MAX_SPIN_SPEED = 9.0;
+const BUBBLE_PLAYER_WOBBLE_AMOUNT = 0.25;
+
+function createBubbleMiniBurst(x, y, z, color = 0xdffcff, count = 7) {
+  for (let i = 0; i < count; i++) {
+    spawnParticle(
+      x + rand(-0.28, 0.28),
+      y + rand(-0.22, 0.26),
+      z + rand(-0.28, 0.28),
+      color,
+      rand(0.03, 0.09),
+      rand(0.14, 0.36)
+    );
+  }
+}
+
+function createBubbleImpactFX(p, x, y, z, nx = 0, nz = 0, intensity = 1) {
+  const bubbleColor = 0xdffcff;
+  if (p?.mesh) p.mesh.scale.set(1.28, 0.78, 1.28);
+  if (p) p.bubbleBoing = 0.18 * intensity;
+  createShockwaveRing(x + nx * 0.25, z + nz * 0.25, bubbleColor, 1.55 * intensity, 0.2);
+  createShockwaveRing(x + nx * 0.4, z + nz * 0.4, 0xffffff, 2.25 * intensity, 0.15);
+  createBubbleMiniBurst(x + nx * 0.35, y, z + nz * 0.35, bubbleColor, 9);
+}
+
 function castReverse(w) {
   const f = forwardVector(w);
 
@@ -4052,6 +4097,34 @@ function createProjectile(o) {
     }
   } else {
     mesh = new THREE.Mesh(new THREE.SphereGeometry(base.radius, 20, 14), mat);
+    if (base.type === "bubble") {
+      mesh.material.color.setHex(0xbfeeff);
+      mesh.material.emissive.setHex(0x88ddff);
+      mesh.material.emissiveIntensity = 0.7;
+      mesh.material.opacity = 0.18;
+      mesh.material.metalness = 0.18;
+
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(base.radius * 0.9, 18, 14),
+        new THREE.MeshStandardMaterial({ color: 0xe9ffff, transparent: true, opacity: 0.1 })
+      );
+      mesh.add(core);
+
+      const shell = new THREE.Mesh(
+        new THREE.SphereGeometry(base.radius * 1.1, 22, 18),
+        new THREE.MeshStandardMaterial({ color: 0xd9f3ff, emissive: 0x9fe8ff, transparent: true, opacity: 0.24, side: THREE.DoubleSide })
+      );
+      mesh.add(shell);
+
+      const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(base.radius * 0.86, base.radius * 0.08, 12, 28),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xd7ffff, transparent: true, opacity: 0.45 })
+      );
+      rim.rotation.x = Math.PI * 0.35;
+      rim.rotation.z = Math.PI * 0.2;
+      mesh.add(rim);
+      base.visuals = { shell, rim, miniBubbleTimer: 0.04, miniBubbles: [] };
+    }
     if (base.type === "blastBomb") {
       mesh.material.color.setHex(0x308cff);
       mesh.material.emissive.setHex(0x0b4cff);
@@ -4310,6 +4383,42 @@ function updateProjectiles(dt) {
           p.mesh.rotation.x += dt * 4.2;
           p.mesh.rotation.y += dt * 5.4;
           p.mesh.scale.setScalar(1 + Math.sin(p.age * 18) * 0.06);
+        } else if (p.type === "bubble") {
+          const pulse = 1 + Math.sin(p.age * 8.5 + p.spin) * 0.08;
+          const boing = p.bubbleBoing > 0 ? p.bubbleBoing : 0;
+          p.mesh.scale.set(1 + boing, 1 - boing * 0.65, 1 + boing);
+          p.mesh.scale.multiplyScalar(pulse);
+          p.mesh.rotation.y += dt * 0.95;
+          if (p.visuals?.rim) p.visuals.rim.material.opacity = 0.3 + Math.sin(p.age * 6.4) * 0.13;
+          if (p.visuals?.shell) p.visuals.shell.material.opacity = 0.2 + Math.sin(p.age * 5.6) * 0.06;
+          p.bubbleBoing = Math.max(0, (p.bubbleBoing || 0) - dt * 4.8);
+          if (p.visuals) {
+            p.visuals.miniBubbleTimer = (p.visuals.miniBubbleTimer || 0) - dt;
+            if (p.visuals.miniBubbleTimer <= 0) {
+              p.visuals.miniBubbleTimer = 0.07;
+              const mini = new THREE.Mesh(
+                new THREE.SphereGeometry(rand(0.06, 0.11), 10, 8),
+                new THREE.MeshStandardMaterial({ color: 0xe7ffff, emissive: 0xbfefff, transparent: true, opacity: 0.26 })
+              );
+              mini.userData.life = rand(0.32, 0.65);
+              mini.userData.angle = rand(0, Math.PI * 2);
+              mini.userData.orbit = rand(0.35, 0.62);
+              mini.userData.rise = rand(0.35, 0.72);
+              p.mesh.add(mini);
+              p.visuals.miniBubbles.push(mini);
+            }
+            for (let mb = p.visuals.miniBubbles.length - 1; mb >= 0; mb--) {
+              const mini = p.visuals.miniBubbles[mb];
+              mini.userData.life -= dt;
+              mini.userData.angle += dt * 3.5;
+              mini.position.set(Math.cos(mini.userData.angle) * mini.userData.orbit, mini.userData.life * mini.userData.rise, Math.sin(mini.userData.angle) * mini.userData.orbit);
+              mini.material.opacity = Math.max(0, Math.min(0.28, mini.userData.life * 0.55));
+              if (mini.userData.life <= 0) {
+                p.mesh.remove(mini);
+                p.visuals.miniBubbles.splice(mb, 1);
+              }
+            }
+          }
         } else {
           p.mesh.position.y = p.y + ((p.heightMode === "groundFollow" || p.heightMode === "straight") ? Math.sin(performance.now() * 0.01 + p.spin) * 0.08 : 0);
         }
@@ -4394,6 +4503,7 @@ function projectileArenaBounce(p) {
       spawnPopText(p.x, p.z, "BOING!", 0xfff25c);
       bounceBurst(p.x, p.z, p.color || 0xffffff);
       createImpactBurst(p.x, p.y || 0.7, p.z, p.color || 0xffffff, 0.9);
+      if (p.type === "bubble") createBubbleImpactFX(p, p.x, p.y || 1.2, p.z, nx, nz, 1.0);
     } else triggerProjectileImpact(p, p.x, p.y || 0.7, p.z, null, "arena");
   }
 }
@@ -4442,6 +4552,7 @@ function projectileObstacleCollision(p) {
 
         spawnPopText(p.x, p.z, "BONK!", 0xfff25c);
         bounceBurst(p.x, p.z, p.color || 0xffffff);
+        if (p.type === "bubble") createBubbleImpactFX(p, p.x, p.y || 1.2, p.z, nx, nz, 0.95);
       } else {
         createShockwaveRing(p.x, p.z, p.color || 0xffffff, 2.2, 0.32);
         triggerProjectileImpact(p, p.x, p.y || 0.8, p.z, null, "obstacle");
@@ -4464,6 +4575,7 @@ function projectileObstacleCollision(p) {
         p.vz *= 0.9;
         if (typeof p.vy === "number") p.vy *= 0.9;
         p.bounce--;
+        if (p.type === "bubble") createBubbleImpactFX(p, p.x, p.y || 1.2, p.z, nx, nz, 0.9);
       } else {
         createShockwaveRing(p.x, p.z, p.color || 0xffffff, 2.2, 0.32);
         triggerProjectileImpact(p, p.x, p.y || 0.8, p.z, null, "obstacle");
@@ -4615,6 +4727,11 @@ function safelyRemoveProjectile(p) {
   if (!p || p._removed) return;
   p._removed = true;
   p.dead = true;
+
+  if (p.type === "bubble" && p.visuals?.miniBubbles?.length) {
+    for (const mini of p.visuals.miniBubbles) if (mini?.parent) mini.parent.remove(mini);
+    p.visuals.miniBubbles.length = 0;
+  }
 
   if (p.mesh) {
     scene.remove(p.mesh);
@@ -5173,7 +5290,12 @@ function pulseInkOverlay(playerIndex) {
   const humans = wizards.filter(x => x.human);
   showInkOverlayForWizard(humans[playerIndex] || humans[0], 5.0);
 }
-function createBubblePop(x, y, z) { createShockwaveRing(x, z, 0xdffcff, 2.6, 0.35); createFloatingText3D(x, y + 1.1, z, Math.random()<0.5?"POP!":"BUBBLED!", 0xaaf6ff); }
+function createBubblePop(x, y, z) {
+  createShockwaveRing(x, z, 0xdffcff, 2.6, 0.35);
+  createShockwaveRing(x, z, 0xffffff, 1.4, 0.2);
+  createBubbleMiniBurst(x, y, z, 0xdffcff, 12);
+  createFloatingText3D(x, y + 1.1, z, Math.random()<0.5?"POP!":"BUBBLED!", 0xaaf6ff);
+}
 function attachBubbleAura(wizard, duration) { wizard.effect.bubbleAura = Math.max(wizard.effect.bubbleAura || 0, duration); }
 function createMagnetOrbitObjects(wizard, duration) { wizard.effect.magnetOrbit = Math.max(wizard.effect.magnetOrbit || 0, duration); }
 function createMagnetPullLine(fromWizard, toWizard) { spawnParticle(fromWizard.x, 1.4, fromWizard.z, 0xffc15c, 0.08, 0.24); }
