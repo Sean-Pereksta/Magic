@@ -2079,14 +2079,25 @@ function updateSpeedScaling() {
 
 function updateCamera(dt) {
   if (gameMode === 2 && players.length > 1) {
-    const a = getPlayerDisplayRig(players[0]).position;
-    const b = getPlayerDisplayRig(players[1]).position;
-    const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
-    const spread = clamp(flatDistance(a, b) * 0.7, TWO_PLAYER_CAMERA_MIN_DISTANCE, TWO_PLAYER_CAMERA_MAX_DISTANCE);
-    const desired = new THREE.Vector3(mid.x * 0.5, 14 + spread * 0.08, mid.z - spread);
-    camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
-    camera.lookAt(mid.x, mid.y + 3, mid.z + 10);
-    return;
+    const runners = getActiveRunners();
+    if (runners.length > 1) {
+      const a = runners[0].rig.position;
+      const b = runners[1].rig.position;
+      const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+      const spread = clamp(flatDistance(a, b) * 0.7, TWO_PLAYER_CAMERA_MIN_DISTANCE, TWO_PLAYER_CAMERA_MAX_DISTANCE);
+      const desired = new THREE.Vector3(mid.x * 0.5, 14 + spread * 0.08, mid.z - spread);
+      camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
+      camera.lookAt(mid.x, mid.y + 3, mid.z + 10);
+      return;
+    }
+
+    const anchor = getWorldAnchorRig();
+    if (anchor) {
+      const desired = new THREE.Vector3(anchor.position.x * 0.45, 14, anchor.position.z - 20);
+      camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
+      camera.lookAt(anchor.position.x, anchor.position.y + 3, anchor.position.z + 8);
+      return;
+    }
   }
   const desired = new THREE.Vector3(
     player.rig.position.x * 0.45,
@@ -2104,7 +2115,10 @@ function updateCamera(dt) {
 }
 
 function manageWorld() {
-  while (player.rig.position.z + CHUNK_COUNT_AHEAD * CHUNK_LENGTH > furthestChunkZ) {
+  const worldAnchor = getWorldAnchorRig();
+  if (!worldAnchor) return;
+
+  while (worldAnchor.position.z + CHUNK_COUNT_AHEAD * CHUNK_LENGTH > furthestChunkZ) {
     furthestChunkZ += CHUNK_LENGTH;
     generateChunk(furthestChunkZ);
   }
@@ -2112,29 +2126,29 @@ function manageWorld() {
   for (let i = worldChunks.length - 1; i >= 0; i--) {
     const chunk = worldChunks[i];
 
-    if (chunk.userData.zStart + CHUNK_LENGTH < player.rig.position.z - CLEANUP_BEHIND_DISTANCE) {
+    if (chunk.userData.zStart + CHUNK_LENGTH < worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE) {
       scene.remove(chunk);
       worldChunks.splice(i, 1);
     }
   }
 
-  walls = walls.filter(w => w.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE);
-  pickups = pickups.filter(p => p.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE);
-  grassPatches = grassPatches.filter(g => g.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE);
+  walls = walls.filter(w => w.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE);
+  pickups = pickups.filter(p => p.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE);
+  grassPatches = grassPatches.filter(g => g.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE);
 
   torches = torches.filter(t => {
-    const keep = t.group.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    const keep = t.group.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE;
     if (!keep) scene.remove(t.group);
     return keep;
   });
 
   fireZones = fireZones.filter(f => {
-    const keep = f.group.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    const keep = f.group.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE;
     if (!keep) scene.remove(f.group);
     return keep;
   });
   desertStalkers = desertStalkers.filter(s => {
-    const keep = s.rig.position.z > player.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    const keep = s.rig.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE;
     if (!keep) scene.remove(s.rig);
     return keep;
   });
@@ -2543,6 +2557,12 @@ function getLeaderRunner() {
   return runners.reduce((best, p) => p.rig.position.z > best.rig.position.z ? p : best, runners[0]);
 }
 function getLeadRunner() { return getLeaderRunner() || player; }
+function getWorldAnchorRig() {
+  const leader = getLeaderRunner();
+  if (leader && leader.rig) return leader.rig;
+  if (player && player.rig) return player.rig;
+  return null;
+}
 function getNearestActiveRunner(pos) { const runners = getActiveRunners(); let best = null; let bestDist = Infinity; for (const r of runners) { const d = flatDistance(pos, r.rig.position); if (d < bestDist) { best = r; bestDist = d; } } return best || player; }
 function findSafeSpawnNearZ(targetZ, preferredX = 0) {
   for (let tries = 0; tries < 40; tries++) {
@@ -2565,6 +2585,9 @@ function convertPlayerToControlledChaser(p, reason) {
   if (!p || p.isChaser) return;
 
   const oldPos = p.rig.position.clone();
+  const leader = getLeaderRunner();
+  const respawnTarget = leader ? leader.rig.position.z + CHASER_PLAYER_RESPAWN_AHEAD : oldPos.z;
+  const safeSpawn = findSafeSpawnNearZ(respawnTarget, leader ? leader.rig.position.x : oldPos.x);
 
   p.isChaser = true;
   p.eliminated = false;
@@ -2572,7 +2595,7 @@ function convertPlayerToControlledChaser(p, reason) {
 
   if (p.rig) p.rig.visible = false;
 
-  const chaser = createEnemy(oldPos.x, oldPos.z);
+  const chaser = createEnemy(safeSpawn.x, safeSpawn.z);
   chaser.speed = 8 + enemyBaseSpeedBonus + 1.5;
   chaser.sprintSpeed = chaser.speed;
   chaser.dodgeCooldown = 0;
