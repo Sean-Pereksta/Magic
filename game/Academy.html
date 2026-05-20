@@ -2234,7 +2234,222 @@ function endGame(reason) {
 
   document.getElementById("message").style.display = "flex";
 }
+/* ============================================================
+   POLICE AI + BULLETS FIX
+============================================================ */
 
+function updatePoliceOfficers(dt) {
+  if (!Array.isArray(policeOfficers)) policeOfficers = [];
+
+  for (const cop of policeOfficers) {
+    const target = getNearestActiveRunner(cop.rig.position);
+
+    if (!target) {
+      if (cop.laser) cop.laser.visible = false;
+      continue;
+    }
+
+    const dist = flatDistance(cop.rig.position, target.rig.position);
+    const canSee = hasLineOfSightClear(cop.rig.position, target.rig.position, POLICE_RANGE);
+
+    cop.stateTimer -= dt;
+    cop.animTime += dt;
+
+    if (!canSee || dist > POLICE_RANGE) {
+      cop.state = "chase";
+      cop.stateTimer = POLICE_CHASE_TIME;
+      cop.aimTimer = 0;
+      cop.target = null;
+      if (cop.laser) cop.laser.visible = false;
+
+      const prevPlayer = player;
+      player = target;
+      chaseWithPathfinding(cop, dt, cop.speed, 0.9);
+      player = prevPlayer;
+    } else {
+      cop.target = target;
+
+      if (cop.state === "chase") {
+        const prevPlayer = player;
+        player = target;
+        chaseWithPathfinding(cop, dt, cop.speed, 0.9);
+        player = prevPlayer;
+
+        if (cop.stateTimer <= 0 || dist < POLICE_RANGE * 0.75) {
+          cop.state = "aim";
+          cop.aimTimer = POLICE_AIM_TIME;
+          cop.stateTimer = POLICE_AIM_TIME;
+        }
+      } else {
+        cop.aimTimer -= dt;
+
+        const dir = new THREE.Vector3().subVectors(target.rig.position, cop.rig.position);
+        dir.y = 0;
+        if (dir.lengthSq() > 0.01) {
+          dir.normalize();
+          cop.rig.rotation.y = Math.atan2(dir.x, dir.z);
+        }
+
+        updatePoliceLaserVisual(cop, target);
+
+        if (cop.aimTimer <= 0) {
+          firePoliceBullet(cop, target);
+          cop.state = "chase";
+          cop.stateTimer = POLICE_CHASE_TIME;
+          cop.aimTimer = 0;
+          if (cop.laser) cop.laser.visible = false;
+        }
+      }
+    }
+
+    if (dist < 1.7) {
+      handlePlayerCaught(target, "Player " + target.id + " got caught by a police officer!");
+    }
+  }
+
+  const cleanupLeader = getLeaderRunner() || player;
+  policeOfficers = policeOfficers.filter(cop => {
+    const keep = cop.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+
+    if (!keep) {
+      if (cop.laser) scene.remove(cop.laser);
+      scene.remove(cop.rig);
+    }
+
+    return keep;
+  });
+}
+
+function firePoliceBullet(cop, target) {
+  if (!cop || !target) return;
+  if (!hasLineOfSightClear(cop.rig.position, target.rig.position, POLICE_RANGE)) return;
+
+  const start = cop.rig.position.clone();
+  start.y = 3.35;
+
+  const end = target.rig.position.clone();
+  end.y = 3.0;
+
+  const dir = new THREE.Vector3().subVectors(end, start);
+  if (dir.lengthSq() < 0.01) return;
+  dir.normalize();
+
+  const bullet = new THREE.Mesh(
+    new THREE.SphereGeometry(0.18, 10, 10),
+    new THREE.MeshBasicMaterial({ color: 0xffe066 })
+  );
+
+  bullet.position.copy(start);
+  scene.add(bullet);
+
+  policeBullets.push({
+    mesh: bullet,
+    velocity: dir.multiplyScalar(POLICE_BULLET_SPEED),
+    life: 1.35,
+    owner: cop
+  });
+}
+
+function updatePoliceBullets(dt) {
+  if (!Array.isArray(policeBullets)) policeBullets = [];
+
+  for (const bullet of policeBullets) {
+    const oldPos = bullet.mesh.position.clone();
+
+    bullet.mesh.position.addScaledVector(bullet.velocity, dt);
+    bullet.life -= dt;
+
+    if (collidesWithWall(bullet.mesh.position, 0.22)) {
+      bullet.life = 0;
+      continue;
+    }
+
+    const runners = getActiveRunners();
+
+    for (const p of runners) {
+      const d = flatDistance(bullet.mesh.position, p.rig.position);
+      const heightOk = Math.abs(bullet.mesh.position.y - 3.0) < 2.2;
+
+      if (d < 1.15 && heightOk) {
+        bullet.life = 0;
+        handlePlayerCaught(p, "Player " + p.id + " got shot by a police officer!");
+        break;
+      }
+    }
+
+    const travelStep = new THREE.Vector3().subVectors(bullet.mesh.position, oldPos);
+    if (travelStep.lengthSq() > 0.01) {
+      bullet.mesh.rotation.x += dt * 12;
+    }
+  }
+
+  policeBullets = policeBullets.filter(bullet => {
+    const keep = bullet.life > 0;
+
+    if (!keep) {
+      scene.remove(bullet.mesh);
+    }
+
+    return keep;
+  });
+}
+/* ============================================================
+   TEMP VISUAL EFFECTS FIX
+   Prevents animate() crash when temporary effects are referenced.
+============================================================ */
+
+let tempEffects = Array.isArray(window.tempEffects) ? window.tempEffects : [];
+
+function addTempEffect(obj, life = 1, updateFn = null) {
+  if (!obj) return;
+
+  tempEffects.push({
+    obj,
+    life,
+    maxLife: life,
+    updateFn
+  });
+}
+
+function updateTempEffects(dt) {
+  if (!Array.isArray(tempEffects)) tempEffects = [];
+
+  for (const effect of tempEffects) {
+    effect.life -= dt;
+
+    if (typeof effect.updateFn === "function") {
+      effect.updateFn(effect, dt);
+    } else if (effect.obj) {
+      const fade = clamp(effect.life / effect.maxLife, 0, 1);
+
+      effect.obj.scale.multiplyScalar(1 + dt * 0.8);
+
+      if (effect.obj.material) {
+        effect.obj.material.transparent = true;
+        effect.obj.material.opacity = fade;
+      }
+
+      if (effect.obj.children) {
+        effect.obj.children.forEach(child => {
+          if (child.material) {
+            child.material.transparent = true;
+            child.material.opacity = fade;
+          }
+        });
+      }
+    }
+  }
+
+  tempEffects = tempEffects.filter(effect => {
+    const keep = effect.life > 0;
+
+    if (!keep && effect.obj) {
+      scene.remove(effect.obj);
+    }
+
+    return keep;
+  });
+}
 /* ============================================================
    MAIN LOOP
 ============================================================ */
@@ -2252,7 +2467,7 @@ function animate() {
 
   updatePlayerActor(players[0], dt, { forwardA: "w", forwardB: "arrowup", backA: "s", backB: "arrowdown", leftA: "d", leftB: "arrowleft", rightA: "a", rightB: "arrowright", sprint: "shift", dodge: " " });
   if (gameMode === 2 && players[1]) {
-    updatePlayerActor(players[1], dt, { forwardA: "i", backA: "k", leftA: "l", rightA: "j", sprint: "u", dodge: "o" });
+    updatePlayerActor(players[1], dt, { forwardA: "i", backA: "k", leftA: "l", rightA: "j", sprint: "enter", dodge: "o" });
   }
   updateControlledChaserRespawns();
   updatePlayerArrows();
