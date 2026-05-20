@@ -738,6 +738,7 @@ const CONTROL_ACTIONS = [
 const wizards = [];
 const projectiles = [];
 const pickups = [];
+const pickupSpawnPoints = [];
 const obstacles = [];
 const temporary = [];
 const particles = [];
@@ -746,7 +747,6 @@ const magnetTraps = [];
 const labels = [];
 const castleColliders = [];
 const castleDamageables = [];
-let pickupSpawnCooldown = 0;
 
 const ARENA_R = 65;
 const MAX_WIZARDS = 12;
@@ -754,8 +754,6 @@ const MAX_DAMAGE = 5;
 const PLAYER_SPEED = 21;
 const TURN_SPEED = 3.0;
 const FIREBALL_COOLDOWN = 2.15;
-const PICKUP_COUNT = 6;
-const PICKUP_RESPAWN_DELAY = 3.1;
 const GOOSE_HIT_COOLDOWN = 0.3;
 const MAGNET_BEARD_TRAP_LIFE = 6.0;
 const MAGNET_BEARD_TRAP_RADIUS = 13;
@@ -785,7 +783,8 @@ const abilityNames = [
   "Arcane Bowling Ball",
   "Anvil Drop",
   "Vapor Beam",
-  "Fish Slap"
+  "Fish Slap",
+  "Blast Bomb"
 ];
 
 const abilityEmoji = {
@@ -802,8 +801,26 @@ const abilityEmoji = {
   "Arcane Bowling Ball": "🎳",
   "Anvil Drop": "⚒️",
   "Vapor Beam": "🌈",
-  "Fish Slap": "🐟"
+  "Fish Slap": "🐟",
+  "Blast Bomb": "💣"
 };
+
+const ABILITY_CATEGORIES = {
+  damage: ["Bonk Bolt","Lava Lob","Arcane Bowling Ball","Anvil Drop","Vapor Beam","Fish Slap","Blast Bomb"],
+  defense: ["Bouncy Bubble","Toadstool Wall","Magnet Beard"],
+  utility: ["Wizard Glue Glob","Squid Ink","Goose Swarm","Hat Tornado","Jelly Legs"]
+};
+
+const PICKUP_TYPES = {
+  damage: { color: 0xff3030, emissive: 0x661010, icon: "⚔", label: "Damage Spell" },
+  defense: { color: 0x2f7dff, emissive: 0x102a66, icon: "🛡", label: "Defense Spell" },
+  utility: { color: 0x9b4dff, emissive: 0x351066, icon: "?", label: "Mystery Spell" }
+};
+
+const BLAST_BOMB_RADIUS = 8.5;
+const BLAST_BOMB_DAMAGE = 2;
+const BLAST_BOMB_KNOCKBACK = 46;
+const BLAST_BOMB_UPWARD = 26;
 
 const wizardColors = [
   0x48d9ff,
@@ -2856,68 +2873,85 @@ function collideWithWizards(w) {
    PICKUPS
    ============================================================ */
 
-function spawnStartingPickups() {
-  while (pickups.length < PICKUP_COUNT) spawnPickup();
-  pickupSpawnCooldown = PICKUP_RESPAWN_DELAY;
+function createPickupIconSprite(text, color = "#ffffff") {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128; canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, 128, 128);
+  ctx.font = "900 82px Trebuchet MS, Arial";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillStyle = color; ctx.strokeStyle = "rgba(0,0,0,0.8)"; ctx.lineWidth = 8;
+  ctx.strokeText(text, 64, 66); ctx.fillText(text, 64, 66);
+  const texture = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(1.15, 1.15, 1.15);
+  return sprite;
 }
 
-function spawnPickup() {
-  let p, tries = 0;
-  do {
-    p = randomArenaPoint(4);
-    tries++;
-  } while (isBlockedPoint(p.x, p.z, 2.6) && tries < 100);
+function createPickupSpawnPoint(x, z, type = "utility", mode = "all", team = null) {
+  const ringColor = type === "damage" ? 0xff3030 : type === "defense" ? 0x2f7dff : 0x9b4dff;
+  const ring = createGroundRing(x, z, 1.35, ringColor, 0.55);
+  ring.scale.setScalar(0.85);
+  pickupSpawnPoints.push({ x, z, type, mode, team, cooldown: 0, cooldownMax: 10, pickup: null, ring });
+}
 
+function setupCastlePickupSpawnPoints() {
+  createPickupSpawnPoint(-24, 0, "damage", "castle", "attackers");
+  createPickupSpawnPoint(-18, 12, "damage", "castle", "attackers");
+  createPickupSpawnPoint(-18, -12, "damage", "castle", "attackers");
+  createPickupSpawnPoint(18, -24, "defense", "castle", "defenders");
+  createPickupSpawnPoint(12, -30, "defense", "castle", "defenders");
+  createPickupSpawnPoint(12, -18, "defense", "castle", "defenders");
+  createPickupSpawnPoint(0, 6, "utility", "castle", null);
+  createPickupSpawnPoint(0, -2, "utility", "castle", null);
+}
+
+function setupPickupSpawnPoints() {
+  for (const sp of pickupSpawnPoints) if (sp.ring?.parent) scene.remove(sp.ring);
+  pickupSpawnPoints.length = 0;
+  createPickupSpawnPoint(0, 0, "utility", "all");
+  createPickupSpawnPoint(16, 0, "damage", "all");
+  createPickupSpawnPoint(-16, 0, "damage", "all");
+  createPickupSpawnPoint(0, 16, "defense", "all");
+  createPickupSpawnPoint(0, -16, "defense", "all");
+  createPickupSpawnPoint(24, 20, "utility", "all");
+  createPickupSpawnPoint(-24, -20, "utility", "all");
+  if (GAME_SETTINGS.mode === "castle") setupCastlePickupSpawnPoints();
+}
+
+function spawnPickupAtSpawnPoint(sp) {
+  if (sp.pickup) return;
+  const typeInfo = PICKUP_TYPES[sp.type] || PICKUP_TYPES.utility;
   const group = new THREE.Group();
-
-  const box = new THREE.Mesh(
-    new THREE.BoxGeometry(1.55, 1.55, 1.55),
-    new THREE.MeshStandardMaterial({
-      color: 0xffd83d,
-      emissive: 0x4d2c00,
-      roughness: 0.25,
-      metalness: 0.12
-    })
-  );
-  box.castShadow = true;
-  group.add(box);
-
-  const knot = new THREE.Mesh(
-    new THREE.TorusKnotGeometry(0.34, 0.075, 32, 8),
-    new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      emissive: 0xffff33
-    })
-  );
-  group.add(knot);
-
-  group.position.set(p.x, getEffectiveGroundHeight(p.x,p.z)+1.45, p.z);
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1.55, 1.55, 1.55), new THREE.MeshStandardMaterial({ color: typeInfo.color, emissive: typeInfo.emissive, roughness: 0.25, metalness: 0.12 }));
+  box.castShadow = true; group.add(box);
+  const icon = createPickupIconSprite(typeInfo.icon, "#ffffff"); icon.position.set(0, 0.05, 0.83); group.add(icon);
+  const topIcon = createPickupIconSprite(typeInfo.icon, "#ffffff"); topIcon.position.set(0, 0.9, 0); topIcon.rotation.x = -Math.PI / 2; topIcon.scale.set(0.85, 0.85, 0.85); group.add(topIcon);
+  group.position.set(sp.x, getEffectiveGroundHeight(sp.x, sp.z) + 1.65, sp.z);
   scene.add(group);
+  const pickup = { x: sp.x, z: sp.z, type: sp.type, group, spin: rand(0, Math.PI * 2), spawnPoint: sp };
+  sp.pickup = pickup; pickups.push(pickup);
+}
 
-  pickups.push({
-    x: p.x,
-    z: p.z,
-    group,
-    spin: rand(0, Math.PI * 2)
-  });
+function spawnStartingPickups() {
+  pickups.length = 0;
+  setupPickupSpawnPoints();
+  for (const sp of pickupSpawnPoints) spawnPickupAtSpawnPoint(sp);
 }
 
 function updatePickups(dt) {
   for (const p of pickups) {
-    p.spin += dt * 3.2;
-    p.group.rotation.y = p.spin;
-    p.group.rotation.x = Math.sin(p.spin) * 0.12;
-    p.group.position.y = getEffectiveGroundHeight(p.x,p.z) + 1.45 + Math.sin(performance.now() * 0.005 + p.spin) * 0.2;
+    p.spin += dt * 3.2; p.group.rotation.y = p.spin; p.group.rotation.x = Math.sin(p.spin) * 0.12;
+    p.group.position.y = getEffectiveGroundHeight(p.x, p.z) + 1.65 + Math.sin(performance.now() * 0.005 + p.spin) * 0.2;
   }
-
-  if (pickups.length >= PICKUP_COUNT) {
-    pickupSpawnCooldown = PICKUP_RESPAWN_DELAY;
-    return;
-  }
-  pickupSpawnCooldown -= dt;
-  if (pickupSpawnCooldown <= 0) {
-    spawnPickup();
-    pickupSpawnCooldown = PICKUP_RESPAWN_DELAY + rand(0.2, 0.9);
+  for (const sp of pickupSpawnPoints) {
+    if (sp.ring) {
+      const active = !!sp.pickup; const pulse = 0.9 + Math.sin(performance.now() * 0.006) * 0.08;
+      sp.ring.scale.setScalar(active ? pulse : 0.7 + Math.sin(performance.now() * 0.012) * 0.06);
+      sp.ring.material.opacity = active ? 0.55 : 0.22;
+    }
+    if (!sp.pickup) { sp.cooldown = Math.max(0, sp.cooldown - dt); if (sp.cooldown <= 0) spawnPickupAtSpawnPoint(sp); }
   }
 }
 
@@ -2927,7 +2961,14 @@ function pickupCheck(w) {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
     if (distancePoint(w.x, w.z, p.x, p.z) < 2.2) {
-      const newAbility = randomAbilityForWizard(w);
+      if (p.spawnPoint?.team && p.spawnPoint.team !== w.team) {
+        if (!w.enemySupplyWarn || performance.now() - w.enemySupplyWarn > 900) {
+          spawnPopText(w.x, w.z, "ENEMY SUPPLY!", 0xff6f6f);
+          w.enemySupplyWarn = performance.now();
+        }
+        continue;
+      }
+      const newAbility = randomAbilityFromType(p.type, w);
       const prepared = !w.ability;
       if (prepared) {
         w.ability = newAbility;
@@ -2936,10 +2977,11 @@ function pickupCheck(w) {
       }
       scene.remove(p.group);
       pickups.splice(i, 1);
+      if (p.spawnPoint) { p.spawnPoint.pickup = null; p.spawnPoint.cooldown = p.spawnPoint.cooldownMax; }
       if (w.stats) w.stats.pickupsCollected++;
 
       for (let j = 0; j < 24; j++) {
-        spawnParticle(p.x, 1.5, p.z, 0xffe45c, rand(0.14, 0.4), rand(0.25, 0.65));
+        spawnParticle(p.x, 1.5, p.z, PICKUP_TYPES[p.type]?.color || 0xffe45c, rand(0.14, 0.4), rand(0.25, 0.65));
       }
 
       if (w.human) {
@@ -2984,6 +3026,7 @@ function castAbility(w, charge = 0) {
     case "Anvil Drop": castAnvilDrop(w); break;
     case "Vapor Beam": castVaporBeam(w); break;
     case "Fish Slap": castFishSlap(w); break;
+    case "Blast Bomb": castBlastBomb(w); break;
   }
 }
 
@@ -3273,6 +3316,11 @@ function castSlapGust(w) {
       spawnPopText(target.x, target.z, "SLAP!", 0xffffff);
     }
   }
+}
+
+function castBlastBomb(w) {
+  const aim = getAimVector(w);
+  createProjectile({ owner: w, type: "blastBomb", x: w.x + aim.x * 1.7, z: w.z + aim.z * 1.7, y: w.y + PROJECTILE_HEIGHT_TUNING.castChestOffset, vx: aim.x * 24, vz: aim.z * 24, vy: Math.max(aim.y * 18, 6), gravity: 18, heightMode: "lob", explodeOnGround: true, minGroundOffset: 0.45, verticalRadius: 0.85, radius: 0.72, damage: 0, knock: 0, bounce: 0, life: 3.2, color: 0x308cff, trailColor: 0x9fd8ff, spawnGrace: 0.12, minTravelDistance: 1.2 });
 }
 
 function castFishSlap(w) {
@@ -3864,6 +3912,15 @@ function createProjectile(o) {
     }
   } else {
     mesh = new THREE.Mesh(new THREE.SphereGeometry(base.radius, 20, 14), mat);
+    if (base.type === "blastBomb") {
+      mesh.material.color.setHex(0x308cff);
+      mesh.material.emissive.setHex(0x0b4cff);
+      mesh.material.emissiveIntensity = 1.0;
+      const core = new THREE.Mesh(new THREE.SphereGeometry(base.radius * 0.4, 14, 10), new THREE.MeshStandardMaterial({ color: 0x1a2244, emissive: 0x1a2244 }));
+      mesh.add(core);
+      const shell = new THREE.Mesh(new THREE.SphereGeometry(base.radius * 1.35, 16, 12), new THREE.MeshStandardMaterial({ color: 0x9fd8ff, emissive: 0x4fb8ff, transparent: true, opacity: 0.38 }));
+      mesh.add(shell);
+    }
     if (base.type === "fireball") {
       const core = new THREE.Mesh(
         new THREE.SphereGeometry(base.radius * 0.45, 14, 10),
@@ -4017,6 +4074,10 @@ function triggerProjectileImpact(p, x, y, z, target = null, reason = "impact") {
       createBubblePop(x, y, z);
       killProjectile(p);
       break;
+    case "blastBomb":
+      createBlastBombExplosion(x, y, z, p.owner);
+      killProjectile(p);
+      break;
     case "jelly":
       createJellySplash(x, y, z);
       killProjectile(p);
@@ -4096,6 +4157,7 @@ function updateProjectiles(dt) {
         else if (p.type === "lava") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff6a1f, 3);
         else if (p.type === "ink") createMagicSparkles(p.x, p.y || 1.2, p.z, Math.random()<0.5?0x111111:0x7f3fd1, 2);
         else if (p.type === "bubble") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xdffcff, 2);
+        else if (p.type === "blastBomb") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xbfeaff, 4);
         else if (p.type === "bowling") { createMagicSparkles(p.x, p.y || 1.2, p.z, 0x4f65ff, 2); spawnParticle(p.x, 0.3, p.z, 0x9f8c72, rand(0.08,0.15), rand(0.2,0.4)); }
         else if (p.type === "jelly") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff86ed, 2);
       }
@@ -4269,6 +4331,10 @@ function projectileWizardCollision(p) {
         triggerProjectileImpact(p, p.x, p.y || 1.2, p.z, w, "wizard");
         attachGlueDrips(w, 2.5);
       }
+      if (p.type === "blastBomb") {
+        triggerProjectileImpact(p, p.x, p.y || 1.2, p.z, w, "wizard");
+      }
+
       if (p.type === "lava") {
         triggerProjectileImpact(p, p.x, p.y || 1.2, p.z, w, "wizard");
       }
@@ -4312,6 +4378,32 @@ function projectileWizardCollision(p) {
 
       return;
     }
+  }
+}
+
+
+function createBlastBombExplosion(x, y, z, owner) {
+  createShockwaveRing(x, z, 0x4fb8ff, BLAST_BOMB_RADIUS, 0.75);
+  createImpactBurst(x, y + 0.6, z, 0x4fb8ff, 2.8);
+  createImpactBurst(x, y + 1.2, z, 0xffffff, 1.7);
+  addScreenShake(0.62, 0.28);
+  spawnPopText(x, z, "BLAST!", 0x8eeaff);
+  if (GAME_SETTINGS.mode === "castle") {
+    if (castleState.tower && distancePoint(castleState.tower.x, castleState.tower.z, x, z) <= castleState.tower.radius + BLAST_BOMB_RADIUS * 0.35) damageCastleTower(2, owner);
+    for (const gate of castleState.gates || []) if (!gate.destroyed && distancePoint(gate.x, gate.z, x, z) <= Math.max(gate.width, gate.depth) + BLAST_BOMB_RADIUS * 0.35) damageCastleGate(gate, 2, owner);
+  }
+  for (const w of wizards) {
+    if (!w.alive) continue;
+    if (owner && w !== owner && owner.team && w.team && owner.team === w.team) continue;
+    const d = distancePoint(w.x, w.z, x, z); if (d > BLAST_BOMB_RADIUS) continue;
+    const groundY = getEffectiveGroundHeight(x, z); if (!splashCanAffectWizard(groundY + 0.8, w, 3.5)) continue;
+    const falloff = 1 - d / BLAST_BOMB_RADIUS; const dx = w.x - x; const dz = w.z - z; const len = Math.hypot(dx, dz) || 1;
+    const force = BLAST_BOMB_KNOCKBACK * (0.35 + falloff * 0.85);
+    w.vx += (dx / len) * force; w.vz += (dz / len) * force;
+    w.vy = Math.max(w.vy || 0, BLAST_BOMB_UPWARD * (0.45 + falloff));
+    w.grounded = false; w.airborne = true; w.effect.slapSpin = Math.max(w.effect.slapSpin || 0, 0.75 + falloff * 0.7);
+    if (w !== owner) applyDamage(w, BLAST_BOMB_DAMAGE, `${owner?.name || "Blast Bomb"}'s Blast Bomb`);
+    createImpactBurst(w.x, w.y + 1.2, w.z, 0x8eeaff, 1.2);
   }
 }
 
@@ -6412,7 +6504,6 @@ function cleanupMatch() {
   matchTime = 0;
   survivalScore = 0;
   survivalLevel = 1;
-  pickupSpawnCooldown = 0;
   screenShakeAmount = 0;
   screenShakeTimer = 0;
   messageBox.style.display = "none";
@@ -6712,6 +6803,17 @@ function rightVector(w) {
 
 function randomAbility() {
   return abilityNames[Math.floor(Math.random() * abilityNames.length)];
+}
+
+function randomAbilityFromType(type, wizard) {
+  const list = ABILITY_CATEGORIES[type] || ABILITY_CATEGORIES.utility;
+  const bias = wizard?.classDef?.abilityBias || [];
+  const weighted = [];
+  for (const ability of list) {
+    weighted.push(ability);
+    if (bias.includes(ability)) weighted.push(ability, ability);
+  }
+  return weighted[Math.floor(Math.random() * weighted.length)];
 }
 
 function randomAbilityForWizard(w) {
