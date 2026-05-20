@@ -2262,6 +2262,67 @@ function performDash(w, moveDirX = 0, moveDirZ = 0) {
 }
 function createSpellTrail(projectile, dt) { projectile.trailTimer -= dt; }
 
+function initializeBonkBoltVisuals(projectile) {
+  if (!projectile?.mesh || projectile.type !== "bonk") return;
+
+  projectile.mesh.material.emissive.setHex(0xcf8bff);
+  projectile.mesh.material.emissiveIntensity = 1.15;
+  projectile.mesh.material.roughness = 0.14;
+
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(projectile.radius * 0.52, 14, 10),
+    new THREE.MeshStandardMaterial({ color: 0xfffdf1, emissive: 0xffffff, emissiveIntensity: 1.9 })
+  );
+  projectile.mesh.add(core);
+
+  const glowShell = new THREE.Mesh(
+    new THREE.SphereGeometry(projectile.radius * 1.45, 18, 12),
+    new THREE.MeshStandardMaterial({ color: 0xfff25c, emissive: 0xfff25c, emissiveIntensity: 1.05, transparent: true, opacity: 0.35, depthWrite: false })
+  );
+  projectile.mesh.add(glowShell);
+
+  const ripple = new THREE.Mesh(
+    new THREE.RingGeometry(projectile.radius * 1.1, projectile.radius * 1.95, 28),
+    new THREE.MeshBasicMaterial({ color: 0xe9c1ff, transparent: true, opacity: 0.52, side: THREE.DoubleSide, depthWrite: false })
+  );
+  ripple.rotation.x = Math.PI / 2;
+  projectile.mesh.add(ripple);
+
+  const streak = new THREE.Mesh(
+    new THREE.ConeGeometry(projectile.radius * 0.46, projectile.radius * 2.7, 12),
+    new THREE.MeshStandardMaterial({ color: 0xfff7a8, emissive: 0xffdf61, emissiveIntensity: 1.2, transparent: true, opacity: 0.5, depthWrite: false })
+  );
+  projectile.mesh.add(streak);
+
+  projectile.bonkVisuals = { glowShell, ripple, streak };
+  projectile.bonkSparkTimer = 0;
+}
+
+function updateBonkBoltVisuals(projectile, dt) {
+  if (!projectile?.mesh || !projectile.bonkVisuals || projectile.type !== "bonk") return;
+  const { glowShell, ripple, streak } = projectile.bonkVisuals;
+  const speed = Math.hypot(projectile.vx || 0, projectile.vz || 0, projectile.vy || 0);
+  const pulse = 0.82 + Math.sin(projectile.age * 18 + projectile.spin) * 0.18;
+
+  glowShell.scale.setScalar(1 + pulse * 0.12);
+  glowShell.material.opacity = 0.26 + pulse * 0.2;
+
+  ripple.scale.setScalar(0.9 + Math.sin(projectile.age * 13 + projectile.spin * 0.3) * 0.2);
+  ripple.material.opacity = 0.3 + pulse * 0.22;
+
+  const dir = new THREE.Vector3(projectile.vx || 0.001, projectile.vy || 0, projectile.vz || 0.001).normalize();
+  streak.position.copy(dir).multiplyScalar(-projectile.radius * (1.45 + Math.min(1.4, speed * 0.03)));
+  streak.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().multiplyScalar(-1));
+  streak.scale.y = 0.85 + Math.min(1.2, speed * 0.05);
+  streak.material.opacity = 0.28 + Math.min(0.35, speed * 0.012);
+
+  projectile.bonkSparkTimer -= dt;
+  if (projectile.bonkSparkTimer <= 0) {
+    projectile.bonkSparkTimer = 0.028;
+    spawnParticle(projectile.x + rand(-0.15, 0.15), (projectile.y || 1.2) + rand(-0.1, 0.2), projectile.z + rand(-0.15, 0.15), Math.random() < 0.5 ? 0xfff25c : 0xe0a2ff, rand(0.06, 0.13), rand(0.14, 0.28));
+  }
+}
+
 /* ============================================================
    PLAYER / BOT MOVEMENT
    ============================================================ */
@@ -3951,6 +4012,7 @@ function createProjectile(o) {
   scene.add(mesh);
 
   base.mesh = mesh;
+  if (base.type === "bonk") initializeBonkBoltVisuals(base);
   projectiles.push(base);
   return projectiles[projectiles.length - 1];
 }
@@ -4150,6 +4212,7 @@ function updateProjectiles(dt) {
         } else {
           p.mesh.position.y = p.y + ((p.heightMode === "groundFollow" || p.heightMode === "straight") ? Math.sin(performance.now() * 0.01 + p.spin) * 0.08 : 0);
         }
+        if (p.type === "bonk") updateBonkBoltVisuals(p, dt);
       }
       createSpellTrail(p, dt);
       const traveled = Math.hypot(p.x - p.spawnX, p.z - p.spawnZ);
@@ -4783,7 +4846,23 @@ function createFireballImpact(x, y, z, radiusMult = 1) {
   createGroundCrackEffect(x, z, 0x3e2515);
 }
 function createBonkBounceEffect(x, y, z) { createShockwaveRing(x, z, 0xfff25c, 2.2, 0.3); createFloatingText3D(x, y + 0.9, z, "BOING!", 0xfff25c); }
-function createBonkHitEffect(x, y, z) { createImpactBurst(x, y, z, 0xa45cff, 1.55); createImpactBurst(x, y, z, 0xfff25c, 1.15); createFloatingText3D(x, y + 1.2, z, "BONK!", 0xfff25c); }
+function createBonkHitEffect(x, y, z) {
+  createImpactBurst(x, y, z, 0xa45cff, 1.55);
+  createImpactBurst(x, y, z, 0xfff25c, 1.15);
+  createShockwaveRing(x, z, 0xfff25c, 2.6, 0.24);
+  createShockwaveRing(x, z, 0xd59aff, 1.8, 0.18);
+  for (let i = 0; i < 14; i++) {
+    spawnParticle(
+      x + rand(-0.45, 0.45),
+      y + rand(-0.2, 0.9),
+      z + rand(-0.45, 0.45),
+      i % 2 ? 0xfff25c : 0xe0a2ff,
+      rand(0.08, 0.2),
+      rand(0.16, 0.42)
+    );
+  }
+  createFloatingText3D(x, y + 1.2, z, "BONK!", 0xfff25c);
+}
 function createInkSplash(x, y, z) {
   for (let i = 0; i < 28; i++) {
     spawnParticle(
