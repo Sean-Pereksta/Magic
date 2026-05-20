@@ -640,7 +640,7 @@ let castleState = {
   attackers: [], defenders: [], attackerStocks: 18, defenderStocks: 18,
   attackerRoundWins: 0, defenderRoundWins: 0, roundNumber: 1,
   tower: null, towerHealth: 35, towerMaxHealth: 35,
-  walls: [], gates: [], defenderWallPosts: [], active: false,
+  walls: [], gates: [], defenderWallPosts: [], ladder: null, active: false,
   roundOver: false, roundResetTimer: 0
 };
 const GEYSER_WARNING_TIME = 1.3;
@@ -670,6 +670,7 @@ const mouseLookSensitivity = 0.0025;
 const mousePitchSensitivity = 0.0018;
 const AIM_PITCH_MIN = -0.45;
 const AIM_PITCH_MAX = 0.45;
+const PROJECTILE_SPEED_MULT = 1.33;
 
 const DEFAULT_CONTROL_CONFIG = {
   player1: {
@@ -4160,9 +4161,9 @@ function createProjectile(o) {
     x: o.x || 0,
     y: o.y ?? groundY + PROJECTILE_HEIGHT_TUNING.castChestOffset,
     z: o.z || 0,
-    vx: o.vx || 0,
-    vy: o.vy || 0,
-    vz: o.vz || 0,
+    vx: (o.vx || 0) * PROJECTILE_SPEED_MULT,
+    vy: (o.vy || 0) * PROJECTILE_SPEED_MULT,
+    vz: (o.vz || 0) * PROJECTILE_SPEED_MULT,
     gravity: o.gravity ?? 0,
     heightMode,
     verticalRadius: o.verticalRadius || o.radius || 0.7,
@@ -6381,6 +6382,7 @@ function buildCastleArena() {
   castleState.walls.length = 0;
   castleState.gates.length = 0;
   castleState.defenderWallPosts.length = 0;
+  castleState.ladder = null;
 
   createCastleWall(0, -42, 42, 3.4, 7);
   createCastleWall(-21, -26, 3.4, 32, 7);
@@ -6400,7 +6402,7 @@ function buildCastleArena() {
   createCastleBanner(18, -40, 0xffd84a);
   createCastleTorch(-15, -9.3); createCastleTorch(15, -9.3);
   createCastleTorch(-20, -25); createCastleTorch(20, -25);
-  addScatteredCastleParapets();
+  createCastleInnerLadder(18.2, -33.5);
 }
 
 function createCastleWall(x, z, width, depth, height) {
@@ -6410,47 +6412,42 @@ function createCastleWall(x, z, width, depth, height) {
   mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh);
   const wall = { kind: "castleWall", x, z, width, depth, height, bottomY: 0, topY: height, mesh, blocksAttackers: true, blocksDefenders: true };
   castleState.walls.push(wall); castleColliders.push(wall);
-  const alongX = width >= depth;
-  const count = Math.max(2, Math.floor((alongX ? width : depth) / 4));
-  for (let i = 0; i < count; i++) {
-    const t = count === 1 ? 0 : (i / (count - 1) - 0.5);
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(alongX ? 1.2 : width, 0.8, alongX ? depth : 1.2), mat);
-    cap.position.set(x + (alongX ? t * width * 0.9 : 0), height + 0.4, z + (alongX ? 0 : t * depth * 0.9));
-    cap.castShadow = true; scene.add(cap);
-  }
   return wall;
 }
 
-function createCastleParapetBlock(x, z, width, depth, height = 1.1, y = 4.7) {
-  const geo = new THREE.BoxGeometry(width, height, depth);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8b8792, roughness: 0.95 });
-  const block = new THREE.Mesh(geo, mat);
-  const baseY = getEffectiveGroundHeight(x, z);
-  block.position.set(x, baseY + y, z);
-  block.castShadow = true;
-  block.receiveShadow = true;
-  scene.add(block);
-  castleColliders.push({
-    kind: "castleParapet", x, z, width, depth,
-    bottomY: baseY + y - height / 2,
-    topY: baseY + y + height / 2,
-    blocksAttackers: true, blocksDefenders: true, blocksPlayers: true
-  });
-  return block;
-}
+function createCastleInnerLadder(x, z) {
+  const y = getEffectiveGroundHeight(x, z);
+  const group = new THREE.Group();
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x5c391f, roughness: 0.72 });
+  const rungMat = new THREE.MeshStandardMaterial({ color: 0xb78a52, roughness: 0.62 });
+  const railOffset = 0.34;
+  const ladderHeight = 5.8;
 
-function addScatteredCastleParapets() {
-  const y = 4.7, blockW = 2.2, blockD = 1.0, blockH = 1.1;
-  const frontZ = -10, backZ = -42, leftX = -21, rightX = 21;
-  const frontParapetXs = [-24, -18, -11, 10, 17, 23];
-  const backParapetXs = [-20, -12, 0, 14, 22];
-  const sideParapetZs = [-50, -44, -38];
-  for (const x of frontParapetXs) createCastleParapetBlock(x, frontZ, blockW, blockD, blockH, y);
-  for (const x of backParapetXs) createCastleParapetBlock(x, backZ, blockW, blockD, blockH, y);
-  for (const z of sideParapetZs) {
-    createCastleParapetBlock(leftX, z, blockD, blockW, blockH, y);
-    createCastleParapetBlock(rightX, z, blockD, blockW, blockH, y);
+  for (const offset of [-railOffset, railOffset]) {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, ladderHeight, 8), railMat);
+    rail.position.set(offset, ladderHeight * 0.5, 0);
+    rail.castShadow = true;
+    rail.receiveShadow = true;
+    group.add(rail);
   }
+  for (let i = 0; i < 6; i++) {
+    const rung = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.11, 0.12), rungMat);
+    rung.position.set(0, 0.7 + i * 0.92, 0);
+    rung.castShadow = true;
+    rung.receiveShadow = true;
+    group.add(rung);
+  }
+
+  group.position.set(x, y, z);
+  scene.add(group);
+  castleState.ladder = {
+    x, z, y,
+    radius: 2.1,
+    topX: x,
+    topZ: z,
+    topY: 7.35,
+    mesh: group
+  };
 }
 
 function createCastleTorch(x, z) {
@@ -6680,6 +6677,10 @@ function updateCastleMode(dt) {
   }
   if (castleState.tower?.ring) {
     castleState.tower.ring.material.opacity = 0.38 + Math.sin(performance.now() * 0.006) * 0.14;
+  }
+  for (const w of wizards) {
+    if (!w.alive) continue;
+    tryCastleLadderTeleport(w);
   }
   if (castleState.roundOver && !gameOver) {
     castleState.roundResetTimer -= dt;
@@ -6911,6 +6912,19 @@ function getNearestEnemyWizard(w, enemyTeam) { return wizards.filter(x => x.aliv
 function getNearestCastleGate(w, wantDestroyed) { return castleState.gates.filter(g => !!g.destroyed === !!wantDestroyed).sort((a, b) => distancePoint(w.x, w.z, a.x, a.z) - distancePoint(w.x, w.z, b.x, b.z))[0] || null; }
 function isInsideCastleCourtyard(w) { return w.x > -20 && w.x < 20 && w.z < -11 && w.z > -42; }
 function isOnCastleWall(w) { return w.y > 6.4 && castleState.walls.some(c => circleRectOverlap(w.x, w.z, w.radius, c.x, c.z, c.width + 2.8, c.depth + 2.8).hit); }
+function tryCastleLadderTeleport(w) {
+  const ladder = castleState.ladder;
+  if (!ladder || !isInsideCastleCourtyard(w) || isOnCastleWall(w)) return;
+  if (distancePoint(w.x, w.z, ladder.x, ladder.z) > ladder.radius + (w.radius || 0.8)) return;
+  w.x = ladder.topX;
+  w.z = ladder.topZ;
+  w.y = ladder.topY;
+  w.vx = 0;
+  w.vz = 0;
+  w.vy = 0;
+  w.grounded = true;
+  w.airborne = false;
+}
 function isAttackerNearAnyGate() { return castleState.attackers.some(a => a.alive && castleState.gates.some(g => distancePoint(a.x, a.z, g.x, g.z) < 12)); }
 function steerBotTowardPoint(w, targetPoint, dt) {
   if (!targetPoint) return;
@@ -7144,6 +7158,7 @@ function cleanupMatch() {
   castleState.walls.length = 0;
   castleState.gates.length = 0;
   castleState.defenderWallPosts.length = 0;
+  castleState.ladder = null;
   castleState.tower = null;
   castleState.active = false;
   crownState.carrier = null;
