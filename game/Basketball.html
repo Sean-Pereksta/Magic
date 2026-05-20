@@ -1549,7 +1549,11 @@ function buildCheckeredGround() {
       const cx = x + tileSize / 2;
       const cz = z + tileSize / 2;
       if (Math.hypot(cx, cz) > ARENA_R - 1.5) continue;
-      if (Math.hypot(cx - tiltArea.x, cz - tiltArea.z) < tiltArea.r + terrainPadding) continue;
+     const tiltCenterX = tiltPlane?.x ?? 99999;
+const tiltCenterZ = tiltPlane?.z ?? 99999;
+const tiltRadius = Math.max(tiltPlane?.width ?? 0, tiltPlane?.depth ?? 0) * 0.65;
+
+if (Math.hypot(cx - tiltCenterX, cz - tiltCenterZ) < tiltRadius + terrainPadding) continue;
 
       const parity = Math.floor((x + half) / tileSize) + Math.floor((z + half) / tileSize);
       let mat = mats[parity % 2];
