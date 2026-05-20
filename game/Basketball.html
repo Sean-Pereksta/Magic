@@ -758,6 +758,9 @@ const GOOSE_HIT_COOLDOWN = 0.3;
 const MAGNET_BEARD_TRAP_LIFE = 6.0;
 const MAGNET_BEARD_TRAP_RADIUS = 13;
 const MAGNET_BEARD_TRAP_PULL = 22;
+const MAGNETIC_BEARD_PULL_FORCE_MULTIPLIER = 1.55;
+const MAGNETIC_BEARD_RING_INTERVAL = 0.18;
+const MAGNETIC_BEARD_LINE_ALPHA = 0.55;
 const FISH_SLAP_RANGE = 10.9;
 const FISH_SLAP_CONE = 1.45;
 const FISH_SLAP_DAMAGE = 2;
@@ -2385,7 +2388,7 @@ function showLavaTelegraph(w, charge = 0) {
     hideTelegraph(w);
     const group = new THREE.Group();
     const arc = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xff8f3d, transparent: true, opacity: 0.85 }));
-    const ring = createGroundRing(w.x, w.z, 2.1, 0xff5f1f, 0.35);
+    const ring = createGroundRing(w.x, w.z, 3.1, 0xff5f1f, 0.35);
     ring.position.y = 0.08;
     group.add(arc);
     group.add(ring);
@@ -2410,9 +2413,11 @@ function showLavaTelegraph(w, charge = 0) {
   w.telegraph.group.userData.arc.geometry.setFromPoints(points);
   const ring = w.telegraph.group.userData.ring;
   ring.position.set(landing.x, getEffectiveGroundHeight(landing.x, landing.z) + 0.08, landing.z);
-  const pulse = 0.78 + Math.sin(performance.now() * 0.011) * 0.14;
-  ring.scale.setScalar(0.92 + clamp(charge / 1.6, 0, 1) * 1.15);
-  ring.material.opacity = 0.22 + pulse * 0.28;
+  const progress = clamp((w.lavaCharge || 0) / 1.6, 0, 1);
+  const pulseSpeed = 0.011 + progress * 0.02;
+  const pulse = 0.72 + Math.sin(performance.now() * pulseSpeed) * 0.2;
+  ring.scale.setScalar(0.95 + progress * 0.1);
+  ring.material.opacity = 0.26 + pulse * 0.38;
 }
 
 function showGlueTelegraph(w) {
@@ -3556,13 +3561,11 @@ function castMagnetBeard(w) {
     roughness: 0.45
   });
 
-  const beard = new THREE.Mesh(
-    new THREE.TorusKnotGeometry(1.15, 0.22, 64, 10),
-    beardMat
-  );
+  const beard = new THREE.Mesh(new THREE.TorusKnotGeometry(1.15, 0.22, 64, 10), beardMat);
   beard.position.y = 0.9;
   beard.scale.set(1.2, 0.7, 1.2);
   group.add(beard);
+  group.userData.beard = beard;
 
   const magnetCore = new THREE.Mesh(
     new THREE.SphereGeometry(0.45, 16, 12),
@@ -3573,6 +3576,15 @@ function castMagnetBeard(w) {
   );
   magnetCore.position.y = 1.1;
   group.add(magnetCore);
+  group.userData.magnetCore = magnetCore;
+
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(0.95, 18, 14),
+    new THREE.MeshStandardMaterial({ color: 0xffd27a, emissive: 0xff8f30, transparent: true, opacity: 0.33 })
+  );
+  glow.position.y = 1.0;
+  group.add(glow);
+  group.userData.glow = glow;
 
   group.position.set(x, y, z);
   scene.add(group);
@@ -3586,9 +3598,13 @@ function castMagnetBeard(w) {
     y,
     life: MAGNET_BEARD_TRAP_LIFE,
     radius: MAGNET_BEARD_TRAP_RADIUS,
-    pull: MAGNET_BEARD_TRAP_PULL,
+    pull: MAGNET_BEARD_TRAP_PULL * MAGNETIC_BEARD_PULL_FORCE_MULTIPLIER,
     group,
-    ring
+    ring,
+    ringPulseTimer: 0,
+    pullLines: [],
+    dustTimer: 0,
+    ending: false
   });
 
   spawnPopText(x, z, "MAGNET BEARD!", 0xffc15c);
@@ -4057,6 +4073,21 @@ function createProjectile(o) {
       );
       mesh.add(shell);
     }
+    if (base.type === "lava") {
+      mesh.material.color.setHex(0x6b1a00);
+      mesh.material.emissive.setHex(0xff5a1f);
+      mesh.material.emissiveIntensity = 1.15;
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(base.radius * 0.72, 14, 10),
+        new THREE.MeshStandardMaterial({ color: 0xffeb9a, emissive: 0xffb347, emissiveIntensity: 1.8 })
+      );
+      mesh.add(core);
+      const shell = new THREE.Mesh(
+        new THREE.SphereGeometry(base.radius * 1.35, 16, 12),
+        new THREE.MeshStandardMaterial({ color: 0xff8f2d, emissive: 0xff4d1a, transparent: true, opacity: 0.45 })
+      );
+      mesh.add(shell);
+    }
   }
 
   mesh.position.set(base.x, base.y, base.z);
@@ -4275,6 +4306,10 @@ function updateProjectiles(dt) {
         } else if (p.type === "ink") {
           p.mesh.rotation.x += dt * 9;
           p.mesh.rotation.y += dt * 8;
+        } else if (p.type === "lava") {
+          p.mesh.rotation.x += dt * 4.2;
+          p.mesh.rotation.y += dt * 5.4;
+          p.mesh.scale.setScalar(1 + Math.sin(p.age * 18) * 0.06);
         } else {
           p.mesh.position.y = p.y + ((p.heightMode === "groundFollow" || p.heightMode === "straight") ? Math.sin(performance.now() * 0.01 + p.spin) * 0.08 : 0);
         }
@@ -4294,7 +4329,12 @@ function updateProjectiles(dt) {
           spawnParticle(p.x, (p.y || 1.2) - 0.1, p.z, 0x666666, rand(0.1,0.2), rand(0.3,0.55));
         } else if (p.type === "bonk") createMagicSparkles(p.x, p.y || 1.2, p.z, Math.random()<0.5?0xfff25c:0xa45cff, 3);
         else if (p.type === "glue") createMagicSparkles(p.x, p.y || 1.2, p.z, 0x66ff66, 2);
-        else if (p.type === "lava") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff6a1f, 3);
+        else if (p.type === "lava") {
+          createMagicSparkles(p.x, p.y || 1.2, p.z, 0xff6a1f, 4);
+          spawnParticle(p.x + rand(-0.25, 0.25), (p.y || 1.2) + rand(-0.1, 0.2), p.z + rand(-0.25, 0.25), Math.random() < 0.5 ? 0xffe08c : 0xff5a1f, rand(0.05, 0.12), rand(0.2, 0.4));
+          spawnParticle(p.x + rand(-0.3, 0.3), (p.y || 1.2) - 0.15, p.z + rand(-0.3, 0.3), 0x5a5a5a, rand(0.08, 0.16), rand(0.32, 0.55));
+          if (Math.random() < 0.7) spawnParticle(p.x + rand(-0.15, 0.15), Math.max(0.18, (p.y || 1.2) - rand(0.25, 0.55)), p.z + rand(-0.15, 0.15), 0xffc74a, rand(0.03, 0.08), rand(0.15, 0.28));
+        }
         else if (p.type === "ink") createMagicSparkles(p.x, p.y || 1.2, p.z, Math.random()<0.5?0x111111:0x7f3fd1, 2);
         else if (p.type === "bubble") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xdffcff, 2);
         else if (p.type === "blastBomb") createMagicSparkles(p.x, p.y || 1.2, p.z, 0xbfeaff, 4);
@@ -4605,16 +4645,29 @@ function updateMagnetTraps(dt) {
   for (let i = magnetTraps.length - 1; i >= 0; i--) {
     const trap = magnetTraps[i];
     trap.life -= dt;
+    trap.ringPulseTimer = (trap.ringPulseTimer || 0) - dt;
+    trap.dustTimer = (trap.dustTimer || 0) - dt;
 
     if (trap.group) {
       trap.group.rotation.y += dt * 4.0;
       trap.group.position.y = trap.y + Math.sin(performance.now() * 0.008) * 0.12;
+      const beard = trap.group.userData?.beard;
+      const core = trap.group.userData?.magnetCore;
+      const glow = trap.group.userData?.glow;
+      if (beard) {
+        beard.rotation.x = Math.sin(performance.now() * 0.014) * 0.28;
+        beard.scale.y = 0.64 + Math.sin(performance.now() * 0.018) * 0.12;
+      }
+      if (core) core.scale.setScalar(0.92 + Math.sin(performance.now() * 0.02) * 0.15);
+      if (glow) glow.material.opacity = 0.2 + Math.sin(performance.now() * 0.018) * 0.11;
     }
 
     if (trap.ring) {
       trap.ring.material.opacity = 0.28 + Math.sin(performance.now() * 0.012) * 0.12;
       trap.ring.scale.setScalar(0.96 + Math.sin(performance.now() * 0.01) * 0.04);
     }
+    for (const line of trap.pullLines || []) scene.remove(line);
+    trap.pullLines = [];
 
     for (const target of wizards) {
       if (!target.alive || target === trap.owner) continue;
@@ -4624,16 +4677,49 @@ function updateMagnetTraps(dt) {
       const d = distancePoint(target.x, target.z, trap.x, trap.z);
       if (d > trap.radius || d < 0.1) continue;
 
-      const strength = (1 - d / trap.radius) * trap.pull;
+      const radialFalloff = Math.max(0.2, 1 - d / trap.radius);
+      const closeBoost = 1 + Math.max(0, 1 - d / (trap.radius * 0.42)) * 0.38;
+      const strength = radialFalloff * trap.pull * closeBoost;
       const dx = trap.x - target.x;
       const dz = trap.z - target.z;
       const len = Math.hypot(dx, dz) || 1;
 
       target.vx += (dx / len) * strength * dt;
       target.vz += (dz / len) * strength * dt;
+      if (target.group && trap.group) {
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(trap.x, trap.group.position.y + 0.9, trap.z),
+          new THREE.Vector3(target.x, target.y + 1.4, target.z)
+        ]);
+        const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({
+          color: Math.random() < 0.5 ? 0xa76dff : 0x61b3ff, transparent: true, opacity: MAGNETIC_BEARD_LINE_ALPHA
+        }));
+        trap.pullLines.push(line);
+        scene.add(line);
+      }
 
       if (d < 2.1) {
         target.effect.jelly = Math.max(target.effect.jelly || 0, 0.25);
+      }
+    }
+    if (trap.ringPulseTimer <= 0) {
+      trap.ringPulseTimer = MAGNETIC_BEARD_RING_INTERVAL;
+      const pulse = createGroundRing(trap.x, trap.z, trap.radius * 0.5, 0x8e6bff, 0.4);
+      pulse.position.y = getEffectiveGroundHeight(trap.x, trap.z) + 0.06;
+      temporary.push({ kind: "magnetRingPulse", mesh: pulse, life: 0.54 });
+    }
+    if (trap.dustTimer <= 0) {
+      trap.dustTimer = 0.04;
+      for (let j = 0; j < 2; j++) {
+        const ang = Math.random() * Math.PI * 2;
+        const r = rand(0.4, trap.radius * 0.95);
+        const px = trap.x + Math.cos(ang) * r;
+        const pz = trap.z + Math.sin(ang) * r;
+        const dx = trap.x - px;
+        const dz = trap.z - pz;
+        const len = Math.hypot(dx, dz) || 1;
+        const drift = rand(0.16, 0.34);
+        spawnParticle(px + (dx / len) * drift, getEffectiveGroundHeight(px, pz) + 0.1, pz + (dz / len) * drift, 0xc4c4d6, rand(0.05, 0.11), rand(0.18, 0.34));
       }
     }
 
@@ -4651,6 +4737,13 @@ function updateMagnetTraps(dt) {
     }
 
     if (trap.life <= 0) {
+      for (const line of trap.pullLines || []) scene.remove(line);
+      trap.pullLines = [];
+      if (!trap.ending) {
+        trap.ending = true;
+        createImpactBurst(trap.x, trap.y + 1.1, trap.z, 0xcaa2ff, 1.45);
+        createShockwaveRing(trap.x, trap.z, 0xa574ff, trap.radius * 0.5, 0.26);
+      }
       if (trap.group) scene.remove(trap.group);
       if (trap.ring) scene.remove(trap.ring);
       magnetTraps.splice(i, 1);
@@ -4750,9 +4843,15 @@ function updateTemporary(dt) {
     if (obj.kind === "lavaPuddle") {
       obj.mesh.rotation.z += dt * 0.2;
       obj.tick -= dt;
+      obj.smokeTimer = (obj.smokeTimer || 0) - dt;
       if (obj.tick <= 0) {
         obj.tick = 0.32;
         spawnParticle(obj.x + rand(-obj.radius * 0.5, obj.radius * 0.5), 0.35, obj.z + rand(-obj.radius * 0.5, obj.radius * 0.5), 0xff7a22, rand(0.1, 0.24), rand(0.25, 0.5));
+      }
+      if (obj.smokeTimer <= 0) {
+        obj.smokeTimer = 0.07;
+        spawnParticle(obj.x + rand(-obj.radius * 0.65, obj.radius * 0.65), obj.y + rand(0.24, 0.6), obj.z + rand(-obj.radius * 0.65, obj.radius * 0.65), 0x535353, rand(0.08, 0.16), rand(0.35, 0.68));
+        if (Math.random() < 0.65) spawnParticle(obj.x + rand(-obj.radius * 0.7, obj.radius * 0.7), obj.y + rand(0.2, 0.5), obj.z + rand(-obj.radius * 0.7, obj.radius * 0.7), 0xffb13d, rand(0.04, 0.09), rand(0.16, 0.3));
       }
       for (const w of wizards) {
         if (!w.alive) continue;
@@ -4764,6 +4863,11 @@ function updateTemporary(dt) {
           }
         }
       }
+    }
+    if (obj.kind === "magnetRingPulse") {
+      const life = Math.max(0, obj.life);
+      obj.mesh.scale.setScalar(1 + (0.54 - life) * 2.8);
+      obj.mesh.material.opacity = clamp(life / 0.54, 0, 1) * 0.45;
     }
 
     if (obj.kind === "fallingAnvil") {
@@ -4939,13 +5043,16 @@ function createLavaPuddle(x, z, owner) {
     damageTick: 0.2,
     tick: 0.05,
     life: 6.2,
-    pulse: true
+    pulse: true,
+    smokeTimer: 0.04
   });
 }
 function createLavaPuddleVisual(x, z, radius, duration, owner) {
   createLavaPuddle(x, z, owner);
   createGroundCrackEffect(x, z, 0x5f2b1b);
-  createShockwaveRing(x, z, 0xff7a22, radius + 0.7, 0.45);
+  createShockwaveRing(x, z, 0xff7a22, radius + 0.9, 0.5);
+  createShockwaveRing(x, z, 0xffc35f, radius + 0.45, 0.35);
+  for (let i = 0; i < 28; i++) spawnParticle(x + rand(-1.2, 1.2), rand(0.2, 1.35), z + rand(-1.2, 1.2), i % 2 ? 0xff7524 : 0xffd15a, rand(0.09, 0.24), rand(0.24, 0.56));
   createFloatingText3D(x, 2.3, z, "BURN!", 0xff7a22);
 }
 function createLavaChargeGlow(wizard, chargeAmount) {
@@ -6760,6 +6867,7 @@ function cleanupMatch() {
   for (const trap of magnetTraps) {
     if (trap.group) scene.remove(trap.group);
     if (trap.ring) scene.remove(trap.ring);
+    if (trap.pullLines) for (const line of trap.pullLines) scene.remove(line);
   }
   magnetTraps.length = 0;
 
