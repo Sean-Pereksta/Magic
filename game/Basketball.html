@@ -768,6 +768,8 @@ const ULTIMATE_PASSIVE_GAIN = 4.5;
 const ULTIMATE_DAMAGE_GAIN = 8;
 const ULTIMATE_KILL_GAIN = 22;
 const ULTIMATE_OBJECTIVE_GAIN = 6;
+const NORMAL_ULT_CHARGE_MULTIPLIER = 2;
+const NECRO_GOOSE_ULT_CHARGE_MULTIPLIER = 3;
 
 const abilityNames = [
   "Bonk Bolt",
@@ -2081,10 +2083,15 @@ function createUltimateReadyBurst(w) {
   createShockwaveRing(w.x, w.z, w.classDef?.themeColor || 0xffffff, 3.2, 0.7);
 }
 
+function getUltimateChargeMultiplier(w) {
+  return w?.classId === "goose" ? NECRO_GOOSE_ULT_CHARGE_MULTIPLIER : NORMAL_ULT_CHARGE_MULTIPLIER;
+}
+
 function gainUltimate(w, amount) {
   if (!w || !w.ultimate) return;
   if (w.ultimate.ready) return;
-  w.ultimate.charge = clamp((w.ultimate.charge || 0) + amount, 0, ULTIMATE_MAX_CHARGE);
+  const scaledAmount = amount / getUltimateChargeMultiplier(w);
+  w.ultimate.charge = clamp((w.ultimate.charge || 0) + scaledAmount, 0, ULTIMATE_MAX_CHARGE);
   if (w.ultimate.charge >= ULTIMATE_MAX_CHARGE) {
     w.ultimate.charge = ULTIMATE_MAX_CHARGE;
     w.ultimate.ready = true;
