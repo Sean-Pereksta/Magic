@@ -2328,6 +2328,33 @@
   // Host enemies movement / logic (kept from your gameplay)
   // ============================================================
   async function hostMoveRats(){
+    const now = Date.now();
+    const RAT_THINK_INTERVAL_MS = 250;
+    const RAT_STUCK_TICKS_LIMIT = 8;
+    const RAT_TARGET_MAX_DISTANCE = 24;
+
+    const isRatTargetStillValid = (rat) => {
+      if (!rat.cachedTarget) return false;
+      const target = rat.cachedTarget;
+      const dist = Math.abs(rat.x - target.x) + Math.abs(rat.y - target.y);
+      if (dist > RAT_TARGET_MAX_DISTANCE) return false;
+
+      if (target.type === "mouse"){
+        const p = players[target.uid];
+        return !!p && (p.alive ?? true) !== false;
+      }
+
+      if (target.type === "rabbit"){
+        return rabbits.some(r => r.id === target.rabbitId && (r.health ?? 0) > 0);
+      }
+
+      if (target.type === "structure"){
+        return ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(grid[target.y]?.[target.x] ?? "");
+      }
+
+      return false;
+    };
+
     for (const rat of rats){
       if ((rat.health ?? 0) <= 0) continue;
 
@@ -2350,48 +2377,71 @@
         }
       }
 
-      let closestTarget = null;
-      let bestPath = null;
+      if (rat.lastX === rat.x && rat.lastY === rat.y){
+        rat.stuckTicks = (rat.stuckTicks || 0) + 1;
+      } else {
+        rat.stuckTicks = 0;
+      }
+      rat.lastX = rat.x;
+      rat.lastY = rat.y;
 
-      const rabbitTarget = getNearestRabbitTarget(rat.x, rat.y, (x, y) => {
-        const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
-        const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
-        return !isBlocked && !ratOccupied;
-      });
-
-      if (rabbitTarget){
-        closestTarget = { x:rabbitTarget.x, y:rabbitTarget.y, type:"rabbit", rabbit:rabbitTarget.rabbit };
-        bestPath = rabbitTarget.path;
+      if ((rat.stuckTicks || 0) > RAT_STUCK_TICKS_LIMIT){
+        rat.nextThinkAt = 0;
       }
 
-      const mouseTarget = !closestTarget ? getNearestMouseTarget(rat.x, rat.y, (x, y) => {
-        const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
-        const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
-        return !isBlocked && !ratOccupied;
-      }) : null;
+      const shouldThink = !rat.nextThinkAt || now >= rat.nextThinkAt || !isRatTargetStillValid(rat);
 
-      if (mouseTarget){
-        closestTarget = { x:mouseTarget.x, y:mouseTarget.y, type:"mouse", uid:mouseTarget.uid };
-        bestPath = mouseTarget.path;
-      }
+      if (shouldThink){
+        let closestTarget = null;
+        let bestPath = null;
 
-      if (!closestTarget){
-        const structureTarget = getNearestStructureContactTarget(
-          rat.x,
-          rat.y,
-          (x, y) => {
-            const symbol = grid[y][x];
-            const isBlocked = ["🧱","🏭","💎","🗼"].includes(symbol);
-            const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
-            return !isBlocked && !ratOccupied;
-          }
-        );
+        const rabbitTarget = getNearestRabbitTarget(rat.x, rat.y, (x, y) => {
+          const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+          const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+          return !isBlocked && !ratOccupied;
+        });
 
-        if (structureTarget){
-          bestPath = structureTarget.path;
-          closestTarget = { x: structureTarget.structureX, y: structureTarget.structureY, type:"structure" };
+        if (rabbitTarget){
+          closestTarget = { x:rabbitTarget.x, y:rabbitTarget.y, type:"rabbit", rabbitId:rabbitTarget.rabbit.id };
+          bestPath = rabbitTarget.path;
         }
+
+        const mouseTarget = !closestTarget ? getNearestMouseTarget(rat.x, rat.y, (x, y) => {
+          const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+          const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+          return !isBlocked && !ratOccupied;
+        }) : null;
+
+        if (mouseTarget){
+          closestTarget = { x:mouseTarget.x, y:mouseTarget.y, type:"mouse", uid:mouseTarget.uid };
+          bestPath = mouseTarget.path;
+        }
+
+        if (!closestTarget){
+          const structureTarget = getNearestStructureContactTarget(
+            rat.x,
+            rat.y,
+            (x, y) => {
+              const symbol = grid[y][x];
+              const isBlocked = ["🧱","🏭","💎","🗼"].includes(symbol);
+              const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+              return !isBlocked && !ratOccupied;
+            }
+          );
+
+          if (structureTarget){
+            bestPath = structureTarget.path;
+            closestTarget = { x: structureTarget.structureX, y: structureTarget.structureY, type:"structure" };
+          }
+        }
+
+        rat.cachedTarget = closestTarget;
+        rat.cachedPath = bestPath;
+        rat.nextThinkAt = now + RAT_THINK_INTERVAL_MS + Math.floor(Math.random() * 120);
       }
+
+      const closestTarget = rat.cachedTarget;
+      let bestPath = rat.cachedPath;
 
       if (closestTarget){
         const centerX = Math.floor(gridSize/2);
@@ -2411,6 +2461,7 @@
           const ratInWay = rats.some(r => r.id !== rat.id && r.x===next.x && r.y===next.y);
           if (!ratInWay){
             rat.x = next.x; rat.y = next.y;
+            rat.cachedPath = bestPath.slice(1);
             await updateDoc(ccRef(ID.rat(rat.id)), { x: rat.x, y: rat.y });
           }
         }
@@ -2419,9 +2470,12 @@
         if (closestTarget.type==="structure" && distance===1){
           await damageStructure(closestTarget.x, closestTarget.y, kingNearby ? Math.ceil(ratPower * 1.8) : ratPower);
         } else if (closestTarget.type==="rabbit" && distance===0){
-          closestTarget.rabbit.health -= (kingNearby ? Math.ceil(ratPower*5) : ratPower * 3);
-          if (closestTarget.rabbit.health <= 0) await deleteDoc(ccRef(ID.rabbit(closestTarget.rabbit.id)));
-          else await updateDoc(ccRef(ID.rabbit(closestTarget.rabbit.id)), { health: closestTarget.rabbit.health, updatedAt: Date.now() });
+          const liveRabbit = rabbits.find(r => r.id === closestTarget.rabbitId && (r.health ?? 0) > 0);
+          if (liveRabbit){
+            liveRabbit.health -= (kingNearby ? Math.ceil(ratPower*5) : ratPower * 3);
+            if (liveRabbit.health <= 0) await deleteDoc(ccRef(ID.rabbit(liveRabbit.id)));
+            else await updateDoc(ccRef(ID.rabbit(liveRabbit.id)), { health: liveRabbit.health, updatedAt: Date.now() });
+          }
         } else if (closestTarget.type==="mouse" && distance===0){
           showClawHit(closestTarget.x, closestTarget.y);
           await updateDoc(ccRef(ID.player(closestTarget.uid)), { alive:false, updatedAt: Date.now() });
