@@ -599,7 +599,7 @@
   const CHEESE_PICKUP_SYMBOL = "🧀";
   const STRUCTURE_TYPES = new Set([
     "🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️",
-    "🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"
+    "🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"
   ]);
   const structureIndex = {
     all: new Map(),
@@ -669,14 +669,15 @@
     16:{symbol:"🔮",name:"Teleporter Crystal",cost:20,hp:16,minWins:15},
     17:{symbol:"🌰",name:"Acorn Tower",cost:32,hp:18,minWins:18},
     18:{symbol:"🪭",name:"Whirlwind Fan",cost:24,hp:20,minWins:12},
-    19:{symbol:"🕸️",name:"Web Launcher",cost:27,hp:20,minWins:15}
+    19:{symbol:"🕸️",name:"Web Launcher",cost:27,hp:20,minWins:15},
+    20:{symbol:"🥁", name:"Rally Drum", cost:20, hp:22, minWins:10}
   };
   const BUILD_CATEGORIES = {
     defense: { label: "Defense", icon: "🛡️", ids: [1, 5, 14, 9] },
     damage: { label: "Damage", icon: "🔥", ids: [2, 8, 12, 13, 17] },
     control: { label: "Control", icon: "🌀", ids: [15, 18, 19, 16] },
     economy: { label: "Economy", icon: "🧀", ids: [4, 10, 6] },
-    troops: { label: "Troops", icon: "🐾", ids: [3, 11, 7] }
+    troops: { label: "Troops", icon: "🐾", ids: [3, 11, 7, 20] }
   };
   const DEFAULT_BUILD_CATEGORY = "defense";
   let activeBuildCategory = DEFAULT_BUILD_CATEGORY;
@@ -745,7 +746,7 @@
   const STRUCTURE_MAX_HP = {
     "🧱": 15, "🔫": 5, "🪳": 10, "🏭": 5,
     "💎": 75, "🗼": 25, "🐦‍🔥": 20, "🚀": 20, "🛠️": 24,
-    "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 22, "🟢": 20, "🔮": 16, "🌰": 18, "🪭": 20, "🕸️": 20
+    "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 22, "🟢": 20, "🔮": 16, "🌰": 18, "🪭": 20, "🕸️": 20, "🥁": 22
   };
 
   const CAT_ABILITY_DEFS = {
@@ -1236,6 +1237,7 @@
           }
 
           cell.textContent = isCheesePickupCell(symbol) ? CHEESE_PICKUP_SYMBOL : (symbol || "");
+          if (symbol === "🥁") cell.textContent = (Date.now() % 2000 < 1000) ? "🥁" : "🥁♪";
           if (objectiveState.supplyDrop?.active && objectiveState.supplyDrop.x===x && objectiveState.supplyDrop.y===y){
             cell.textContent = "📦";
             cell.style.boxShadow = "0 0 10px #fde047";
@@ -1364,7 +1366,7 @@
       if (
         cell &&
         Math.abs(x - centerX) + Math.abs(y - centerY) <= OVERLAY_RENDER_DISTANCE &&
-        ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(symbol)
+        ["🧱","🪳","💎","🚀","🏭","🔫","🗼","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(symbol)
       ){
         const shell = document.createElement("div");
         shell.className = "structure-health-shell";
@@ -1716,6 +1718,16 @@
   function isWithinBeaconAura(x, y, range = 2){
     for (const beacon of getStructuresByType("🗼")){
       if (Math.abs(beacon.x - x) <= range && Math.abs(beacon.y - y) <= range) return true;
+    }
+    return false;
+  }
+
+  function isNearRallyDrum(x, y, range = 5){
+    for (let yy = 0; yy < gridSize; yy++){
+      for (let xx = 0; xx < gridSize; xx++){
+        if (grid[yy][xx] !== "🥁") continue;
+        if (Math.abs(xx - x) + Math.abs(yy - y) <= range) return true;
+      }
     }
     return false;
   }
@@ -2170,7 +2182,7 @@
     let didHit = false;
     for (const c of cells){
       if (c.x<0 || c.y<0 || c.x>=gridSize || c.y>=gridSize) continue;
-      if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(grid[c.y][c.x])){
+      if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[c.y][c.x])){
         await damageStructure(c.x, c.y, 30);
         addCombatVfx(c.x, c.y, "🩸", "vfx-claw", 620, 14);
         didHit = true;
@@ -2329,7 +2341,7 @@
       for (let dx=-1; dx<=1 && !attacked; dx++){
         const tx = catPos.x+dx, ty=catPos.y+dy;
         if (tx<0||ty<0||tx>=gridSize||ty>=gridSize) continue;
-        if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(grid[ty][tx])){
+        if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[ty][tx])){
           await damageStructure(tx,ty);
           attacked = true;
         }
@@ -2528,7 +2540,7 @@
       }
 
       if (target.type === "structure"){
-        return ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(grid[target.y]?.[target.x] ?? "");
+        return ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[target.y]?.[target.x] ?? "");
       }
 
       return false;
@@ -2861,7 +2873,7 @@
       for (const cell of structureTargetCells(closestWall.x, closestWall.y)){
         if (grid[cell.y][cell.x] !== "") continue;
         const path = findPath(termite.x, termite.y, cell.x, cell.y, (x,y) => {
-          return !["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(grid[y][x]);
+          return !["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[y][x]);
         });
         if (path && (!bestPath || path.length < bestPath.length)){
           bestPath = path;
@@ -2934,23 +2946,26 @@
           flea.x = newX; flea.y = newY;
         }
 
+        const nearDrum = isNearRallyDrum(flea.x, flea.y);
+        const fleaDamage = nearDrum ? 8 : 5;
+
         // attack if reached
         if (flea.x===target.x && flea.y===target.y){
           addCombatVfx(flea.x, flea.y, "💥", "vfx-pop", 520, 17);
           flea.lifetime = 0;
 
           if (target.type==="cat"){
-            catHealth -= 1;
+            catHealth -= nearDrum ? 2 : 1;
             writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() } });
           } else if (target.type==="rat" && target.rat){
-            target.rat.health -= 5;
+            target.rat.health -= fleaDamage;
             if (target.rat.health <= 0){
               writes.push({ type:"delete", ref: ccRef(ID.rat(target.rat.id)) });
             } else {
               writes.push({ type:"update", ref: ccRef(ID.rat(target.rat.id)), data: { health: target.rat.health } });
             }
           } else if (target.type==="ox" && target.ox){
-            target.ox.health -= 5;
+            target.ox.health -= fleaDamage;
             if (target.ox.health <= 0){
               writes.push({ type:"delete", ref: ccRef(ID.ox(target.ox.id)) });
             } else {
@@ -2960,7 +2975,8 @@
         }
       }
 
-      flea.lifetime = (flea.lifetime ?? 15) - 1;
+      const fleaDecay = isNearRallyDrum(flea.x, flea.y) ? 0.5 : 1;
+      flea.lifetime = (flea.lifetime ?? 15) - fleaDecay;
       if (flea.lifetime <= 0){
         writes.push({ type:"delete", ref: ccRef(flea.docId) });
         fleas.splice(i,1);
@@ -3311,18 +3327,22 @@
         const tx = target.kind==="cat" ? catPos.x : target.enemy.x;
         const ty = target.kind==="cat" ? catPos.y : target.enemy.y;
         const distance = Math.abs(tx - rb.x) + Math.abs(ty - rb.y);
-        if (distance <= 4){
+        const nearDrum = isNearRallyDrum(rb.x, rb.y);
+        const rabbitDamage = nearDrum ? 10 : 7;
+        const rabbitAttackRange = nearDrum ? 5 : 4;
+        if (distance <= rabbitAttackRange){
           let cx = rb.x, cy = rb.y;
           while (cx!==tx || cy!==ty){ cx += Math.sign(tx-cx); cy += Math.sign(ty-cy); rabbitShots.push({x:cx,y:cy}); }
           if (target.kind==="cat"){
-            catHealth -= 7;
+            catHealth -= rabbitDamage;
             await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
           } else {
-            await damageEnemyUnit({...target.enemy,kind:target.kind}, 7);
+            await damageEnemyUnit({...target.enemy,kind:target.kind}, rabbitDamage);
           }
         } else {
-          const nx = rb.x + Math.sign(tx - rb.x);
-          const ny = rb.y + Math.sign(ty - rb.y);
+          const rabbitStride = nearDrum ? 2 : 1;
+          const nx = rb.x + (Math.sign(tx - rb.x) * rabbitStride);
+          const ny = rb.y + (Math.sign(ty - rb.y) * rabbitStride);
           if (nx>=0&&ny>=0&&nx<gridSize&&ny<gridSize&&grid[ny][nx]===""&&!rabbits.some(r=>r.id!==rb.id&&r.x===nx&&r.y===ny)){
             rb.x = nx;
             rb.y = ny;
@@ -4356,7 +4376,7 @@
               kind: "flea",
               id: fid,
               x: fx, y: fy,
-              lifetime: 15,
+              lifetime: isNearRallyDrum(fx, fy) ? 22 : 15,
               origin: "nest",
               createdAt: Date.now()
             }, { merge:true });
