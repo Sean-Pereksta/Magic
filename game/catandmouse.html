@@ -571,6 +571,46 @@
   let showingUpgrades = false;
   const CHEESE_PICKUP = "__CHEESE_PICKUP__";
   const CHEESE_PICKUP_SYMBOL = "🧀";
+  const STRUCTURE_TYPES = new Set([
+    "🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️",
+    "🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"
+  ]);
+  const structureIndex = {
+    all: new Map(),
+    byType: new Map()
+  };
+
+  function clearStructureIndex(){
+    structureIndex.all.clear();
+    structureIndex.byType.clear();
+  }
+  function addToStructureIndex(x, y, type, health = 1){
+    const key = `${x}_${y}`;
+    const prev = structureIndex.all.get(key);
+    if (prev && prev.type !== type){
+      const prevTyped = structureIndex.byType.get(prev.type);
+      if (prevTyped) prevTyped.delete(key);
+    }
+    const item = { x, y, type, health, key };
+    structureIndex.all.set(key, item);
+    if (!structureIndex.byType.has(type)) structureIndex.byType.set(type, new Map());
+    structureIndex.byType.get(type).set(key, item);
+  }
+  function removeFromStructureIndex(x, y){
+    const key = `${x}_${y}`;
+    const existing = structureIndex.all.get(key);
+    if (!existing) return;
+    structureIndex.all.delete(key);
+    const typed = structureIndex.byType.get(existing.type);
+    if (typed) typed.delete(key);
+  }
+  function getStructuresByType(type){
+    return Array.from(structureIndex.byType.get(type)?.values() || []);
+  }
+  function getAllStructures(){
+    return Array.from(structureIndex.all.values());
+  }
+
   const ENEMY_CHEESE_DROP_TTL_MS = 30000;
   const AUTO_CHEESE_SPAWN_DURATION_MS = 120000;
   const OVERLAY_RENDER_DISTANCE = 7;
@@ -1099,25 +1139,21 @@
 
     // generator trigger highlighting
     const generatorTriggers = new Set();
-    for (let y=0; y<gridSize; y++){
-      for (let x=0; x<gridSize; x++){
-        if (grid[y][x] === "🏭"){
-          for (const p of Object.values(players)){
-            if ((p.alive ?? true) === false) continue;
-            const dx = Math.abs((p.x ?? 0) - x);
-            const dy = Math.abs((p.y ?? 0) - y);
-            if (dx + dy <= 9){ generatorTriggers.add(`${x}_${y}`); break; }
-          }
-        }
+    for (const gen of getStructuresByType("🏭")){
+      const x = gen.x, y = gen.y;
+      for (const p of Object.values(players)){
+        if ((p.alive ?? true) === false) continue;
+        const dx = Math.abs((p.x ?? 0) - x);
+        const dy = Math.abs((p.y ?? 0) - y);
+        if (dx + dy <= 9){ generatorTriggers.add(`${x}_${y}`); break; }
       }
     }
 
     // beacon boosted tiles
     const beaconBoosted = new Set();
     const beaconWallBoosted = new Set();
-    for (let y=0; y<gridSize; y++){
-      for (let x=0; x<gridSize; x++){
-        if (grid[y][x] === "🗼"){
+    for (const beacon of getStructuresByType("🗼")){
+      const x = beacon.x, y = beacon.y;
           for (let dy=-2; dy<=2; dy++){
             for (let dx=-2; dx<=2; dx++){
               const tx = x+dx, ty = y+dy;
@@ -1128,8 +1164,6 @@
               }
             }
           }
-        }
-      }
     }
 
     // base tiles
@@ -1434,11 +1468,7 @@
   function spawnCheese(){
     if (cheeseAutoSpawnStartedAt && (Date.now() - cheeseAutoSpawnStartedAt) >= AUTO_CHEESE_SPAWN_DURATION_MS) return;
     let existingPickups = 0;
-    for (let y=0; y<gridSize; y++){
-      for (let x=0; x<gridSize; x++){
-        if (isCheesePickupCell(grid[y][x])) existingPickups++;
-      }
-    }
+    for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++) if (isCheesePickupCell(grid[y][x])) existingPickups++;
 
     const maxPickups = 14;
     if (existingPickups >= maxPickups) return;
@@ -1562,11 +1592,8 @@
 
 
   function isWithinBeaconAura(x, y, range = 2){
-    for (let by=0; by<gridSize; by++){
-      for (let bx=0; bx<gridSize; bx++){
-        if (grid[by][bx] !== "🗼") continue;
-        if (Math.abs(bx - x) <= range && Math.abs(by - y) <= range) return true;
-      }
+    for (const beacon of getStructuresByType("🗼")){
+      if (Math.abs(beacon.x - x) <= range && Math.abs(beacon.y - y) <= range) return true;
     }
     return false;
   }
@@ -1660,9 +1687,8 @@
   // Turrets / Rocket tower (host writes cat state to state doc)
   // ============================================================
   async function turretAttack(){
-    for (let y=0; y<gridSize; y++){
-      for (let x=0; x<gridSize; x++){
-        if (grid[y][x] !== "🔫") continue;
+    for (const turret of getStructuresByType("🔫")){
+      const x = turret.x, y = turret.y;
         if (isTowerSilenced(x, y)) continue;
 
         let attacked = false;
@@ -1733,15 +1759,13 @@
             }
           }
         }
-      }
     }
     requestRender("turretAttack");
   }
 
   async function rocketTowerAttack(){
-    for (let y=0; y<gridSize; y++){
-      for (let x=0; x<gridSize; x++){
-        if (grid[y][x] !== "🚀") continue;
+    for (const tower of getStructuresByType("🚀")){
+      const x = tower.x, y = tower.y;
         if (isTowerSilenced(x, y)) continue;
 
         // beacon boost?
@@ -1810,7 +1834,6 @@
             }
           }
         }
-      }
     }
     requestRender("rocketTowerAttack");
   }
@@ -1858,10 +1881,9 @@
 
   function getNearestReachableStructureTarget(startX, startY, passableFn = null){
     let best = null;
-    for (let y=0; y<gridSize; y++){
-      for (let x=0; x<gridSize; x++){
-        const symbol = grid[y][x];
-        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(symbol)) continue;
+    for (const s of getAllStructures()){
+      const x = s.x, y = s.y;
+      const symbol = s.type;
 
         const targetIsWall = (symbol === "🧱" || symbol === "💎");
         const passable = passableFn
@@ -1872,7 +1894,6 @@
         if (path && (!best || path.length < best.path.length)){
           best = { x, y, path };
         }
-      }
     }
     return best;
   }
@@ -1892,10 +1913,8 @@
 
   function getNearestStructureContactTarget(startX, startY, passableFn){
     let best = null;
-    for (let y=0; y<gridSize; y++){
-      for (let x=0; x<gridSize; x++){
-        const symbol = grid[y][x];
-        if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(symbol)) continue;
+    for (const s of getAllStructures()){
+      const x = s.x, y = s.y;
 
         for (const cell of structureTargetCells(x,y)){
           if (grid[cell.y][cell.x] !== "") continue;
@@ -1904,7 +1923,6 @@
             best = { structureX:x, structureY:y, moveX:cell.x, moveY:cell.y, path };
           }
         }
-      }
     }
     return best;
   }
@@ -2655,15 +2673,11 @@
 
       let closestWall = null;
       let minDist = Infinity;
-      for (let y=0; y<gridSize; y++){
-        for (let x=0; x<gridSize; x++){
-          if (grid[y][x]==="🧱" || grid[y][x]==="💎"){
-            const dist = Math.abs(termite.x - x) + Math.abs(termite.y - y);
-            if (dist < minDist){
-              minDist = dist;
-              closestWall = { x, y };
-            }
-          }
+      for (const wall of [...getStructuresByType("🧱"), ...getStructuresByType("💎")]){
+        const dist = Math.abs(termite.x - wall.x) + Math.abs(termite.y - wall.y);
+        if (dist < minDist){
+          minDist = dist;
+          closestWall = { x: wall.x, y: wall.y };
         }
       }
       if (!closestWall) continue;
@@ -2783,12 +2797,7 @@
   // ============================================================
   async function hostPhoenixRevive(){
     // find phoenix tile in grid
-    let phoenixSpot = null;
-    for (let y=0; y<gridSize && !phoenixSpot; y++){
-      for (let x=0; x<gridSize && !phoenixSpot; x++){
-        if (grid[y][x] === "🐦‍🔥") phoenixSpot = {x,y};
-      }
-    }
+    const phoenixSpot = getStructuresByType("🐦‍🔥")[0] || null;
     if (!phoenixSpot) return;
 
     let revived = false;
@@ -2817,9 +2826,8 @@
 
   async function repairStationTick(){
     const usedTargets = new Set();
-    for (let y=0; y<gridSize; y++){
-      for (let x=0; x<gridSize; x++){
-        if (grid[y][x] !== "🛠️") continue;
+    for (const station of getStructuresByType("🛠️")){
+      const x = station.x, y = station.y;
 
         const boostedByBeacon = isWithinBeaconAura(x, y, 2);
         const repairRange = boostedByBeacon ? 8 : 6;
@@ -2827,10 +2835,9 @@
         const repairsPerTick = boostedByBeacon ? 2 : 1;
         const candidates = [];
 
-        for (let ty=0; ty<gridSize; ty++){
-          for (let tx=0; tx<gridSize; tx++){
-            const symbol = grid[ty][tx];
-            if (!["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(symbol)) continue;
+        for (const targetStruct of getAllStructures()){
+            const tx = targetStruct.x, ty = targetStruct.y;
+            const symbol = targetStruct.type;
             if (tx===x && ty===y) continue;
 
             const key = `${tx}_${ty}`;
@@ -2842,7 +2849,6 @@
             const dist = Math.abs(tx - x) + Math.abs(ty - y);
             if (dist > repairRange) continue;
             candidates.push({ tx, ty, key, symbol, hp, maxHp, dist });
-          }
         }
 
         if (!candidates.length) continue;
@@ -2870,7 +2876,6 @@
         setTimeout(() => {
           if (fromCell) fromCell.style.backgroundColor = "";
         }, 220);
-      }
     }
     requestRender("repairStationTick");
   }
@@ -2880,9 +2885,8 @@
   // ============================================================
   async function generatorPayoutTick(){
     lastGeneratorPayoutAt = Date.now();
-    for (let y=0; y<gridSize; y++){
-      for (let x=0; x<gridSize; x++){
-        if (grid[y][x] !== "🏭") continue;
+    for (const gen of getStructuresByType("🏭")){
+      const x = gen.x, y = gen.y;
 
         const cell = document.getElementById(`cell-${x}-${y}`);
         if (cell){
@@ -2910,7 +2914,6 @@
             await updateDoc(ccRef(ID.player(uid)), { cheese: cheeseCount, updatedAt: Date.now() });
           }
         }
-      }
     }
   }
 
@@ -2974,8 +2977,8 @@
     if (!window.__lastFarmSpawn || Date.now() - window.__lastFarmSpawn > 20000){
       window.__lastFarmSpawn = Date.now();
       const neighborOffsets = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
-      for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++){
-        if (grid[y][x] !== "🧀") continue;
+      for (const farm of getStructuresByType("🧀")){
+        const x = farm.x, y = farm.y;
         const shuffled = [...neighborOffsets].sort(() => Math.random() - 0.5);
         for (const [dx,dy] of shuffled){
           const nx = x + dx;
@@ -2985,9 +2988,8 @@
       }
     }
 
-    for (let y=0; y<gridSize; y++){
-      for (let x=0; x<gridSize; x++){
-        const sym = grid[y][x];
+    for (const s of getAllStructures()){
+        const x = s.x, y = s.y, sym = s.type;
         if (sym === "🛡️"){
           for (let ty=0; ty<gridSize; ty++) for (let tx=0; tx<gridSize; tx++){
             const k = `${tx}_${ty}`;
@@ -3103,7 +3105,6 @@
           }
           lastFanBurstAt = Date.now();
         }
-      }
     }
     requestRender("generatorPayoutTick");
   }
@@ -3111,7 +3112,8 @@
   async function rabbitDenTick(){
     // spawn rabbits from dens
     if (!window.__lastRabbitSpawnAt) window.__lastRabbitSpawnAt = {};
-    for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++) if (grid[y][x] === "🐇"){
+    for (const den of getStructuresByType("🐇")){
+      const x = den.x, y = den.y;
       const local = rabbits.filter(r => Math.abs(r.x-x)+Math.abs(r.y-y)<=2 && (r.health??0)>0);
       if (local.length >= 3) continue;
       const denKey = `${x},${y}`;
@@ -3393,7 +3395,8 @@
               structures.delete(key);
               delete structureHealth[key];
               delete structureShields[key];
-              if (grid[y] && grid[y][x] && ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️"].includes(grid[y][x])){
+              removeFromStructureIndex(x, y);
+              if (grid[y] && grid[y][x] && STRUCTURE_TYPES.has(grid[y][x])){
                 grid[y][x] = "";
               }
             }
@@ -3486,6 +3489,7 @@
             structureHealth[key] = data.health ?? 1;
             structureShields[key] = Math.max(0, data.shield ?? structureShields[key] ?? 0);
             grid[y][x] = data.type;
+            addToStructureIndex(x, y, data.type, data.health ?? 1);
           }
         }
         else if (id.startsWith("trap_")){
