@@ -468,7 +468,8 @@
     onSnapshot,
     collection,
     getDocs,
-    runTransaction
+    runTransaction,
+    writeBatch
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -496,6 +497,26 @@
   const lobbyRef = doc(db, `lobbies/${gameId}`);
   const ccCol    = collection(db, `lobbies/${gameId}/crowncouncil`);
   const ccRef    = (id) => doc(db, `lobbies/${gameId}/crowncouncil/${id}`);
+
+
+
+  async function commitEnemyBatch(actions) {
+    if (!actions.length) return;
+
+    const batch = writeBatch(db);
+
+    for (const action of actions) {
+      if (action.type === "update") {
+        batch.update(action.ref, action.data);
+      } else if (action.type === "set") {
+        batch.set(action.ref, action.data, { merge: true });
+      } else if (action.type === "delete") {
+        batch.delete(action.ref);
+      }
+    }
+
+    await batch.commit();
+  }
 
   const ID = {
     STATE: "state",
@@ -1687,6 +1708,7 @@
   // Turrets / Rocket tower (host writes cat state to state doc)
   // ============================================================
   async function turretAttack(){
+    const writes = [];
     for (const turret of getStructuresByType("🔫")){
       const x = turret.x, y = turret.y;
         if (isTowerSilenced(x, y)) continue;
@@ -1710,7 +1732,7 @@
           addCombatVfx(x, y, "🔥", "vfx-flame", 460, 14);
           addCombatVfx(catPos.x, catPos.y, "💥", "vfx-hit", 420, 15);
           catHealth -= damage;
-          await updateDoc(ccRef(ID.STATE), { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() });
+          writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() } });
           if (catHealth <= 0){
             document.getElementById("status").textContent = "🎉 Mice win!";
             document.getElementById("returnButton").style.display = "block";
@@ -1730,9 +1752,9 @@
               r.health -= damage;
               attacked = true;
               if (r.health <= 0){
-                await deleteDoc(ccRef(ID.rat(r.id)));
+                writes.push({ type:"delete", ref: ccRef(ID.rat(r.id)) });
               } else {
-                await updateDoc(ccRef(ID.rat(r.id)), { health: r.health });
+                writes.push({ type:"update", ref: ccRef(ID.rat(r.id)), data: { health: r.health } });
               }
               break;
             }
@@ -1751,19 +1773,21 @@
               o.health -= damage;
               attacked = true;
               if (o.health <= 0){
-                await deleteDoc(ccRef(ID.ox(o.id)));
+                writes.push({ type:"delete", ref: ccRef(ID.ox(o.id)) });
               } else {
-                await updateDoc(ccRef(ID.ox(o.id)), { health: o.health });
+                writes.push({ type:"update", ref: ccRef(ID.ox(o.id)), data: { health: o.health } });
               }
               break;
             }
           }
         }
     }
+    await commitEnemyBatch(writes);
     requestRender("turretAttack");
   }
 
   async function rocketTowerAttack(){
+    const writes = [];
     for (const tower of getStructuresByType("🚀")){
       const x = tower.x, y = tower.y;
         if (isTowerSilenced(x, y)) continue;
@@ -1801,9 +1825,9 @@
 
         target.health -= mainDamage;
         if (target.health <= 0){
-          await deleteDoc(ccRef(ID.rat(target.id)));
+          writes.push({ type:"delete", ref: ccRef(ID.rat(target.id)) });
         } else {
-          await updateDoc(ccRef(ID.rat(target.id)), { health: target.health });
+          writes.push({ type:"update", ref: ccRef(ID.rat(target.id)), data: { health: target.health } });
         }
 
         for (let dy=-1; dy<=1; dy++){
@@ -1816,25 +1840,26 @@
             for (const r of rats){
               if (r.id !== target.id && r.x===sx && r.y===sy && (r.health ?? 0) > 0){
                 r.health -= splashDamage;
-                if (r.health <= 0) await deleteDoc(ccRef(ID.rat(r.id)));
-                else await updateDoc(ccRef(ID.rat(r.id)), { health: r.health });
+                if (r.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rat(r.id)) });
+                else writes.push({ type:"update", ref: ccRef(ID.rat(r.id)), data: { health: r.health } });
               }
             }
             for (const o of oxen){
               if (o.x===sx && o.y===sy && (o.health ?? 0) > 0){
                 o.health -= splashDamage;
-                if (o.health <= 0) await deleteDoc(ccRef(ID.ox(o.id)));
-                else await updateDoc(ccRef(ID.ox(o.id)), { health: o.health });
+                if (o.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.ox(o.id)) });
+                else writes.push({ type:"update", ref: ccRef(ID.ox(o.id)), data: { health: o.health } });
               }
             }
             if (catPos.x===sx && catPos.y===sy && catHealth>0){
               addCombatVfx(catPos.x, catPos.y, "💥", "vfx-hit", 450, 15);
               catHealth -= splashDamage;
-              await updateDoc(ccRef(ID.STATE), { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() });
+              writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() } });
             }
           }
         }
     }
+    await commitEnemyBatch(writes);
     requestRender("rocketTowerAttack");
   }
 
@@ -2267,6 +2292,7 @@
     if (getActiveEnemyCount() >= ENEMY_CAPS.totalEnemies) return;
 
     const waveTag = Date.now();
+    const writes = [];
     const allOffsets = [
       { x: 0, y: 0 },  { x: 1, y: 0 },  { x: -1, y: 0 },
       { x: 0, y: 1 },  { x: 0, y: -1 }, { x: 1, y: 1 },
@@ -2300,7 +2326,7 @@
       usedKeys.add(key);
 
       const id = `ox_${crypto.randomUUID()}`;
-      await setDoc(ccRef(ID.ox(id)), {
+      writes.push({ type:"set", ref: ccRef(ID.ox(id)), data: {
         kind: "ox",
         id,
         x: spot.x,
@@ -2308,7 +2334,7 @@
         health: getOxHealthForDifficulty(),
         wave: waveTag,
         createdAt: Date.now()
-      }, { merge:true });
+      }});
       oxSpawned++;
     }
 
@@ -2321,7 +2347,7 @@
         if (openSpot){
           usedKeys.add(`${openSpot.x}_${openSpot.y}`);
           const id = `ratking_${crypto.randomUUID()}`;
-          await setDoc(ccRef(ID.ratKing(id)), {
+          writes.push({ type:"set", ref: ccRef(ID.ratKing(id)), data: {
             kind: "ratking",
             id,
             x: openSpot.x,
@@ -2329,7 +2355,7 @@
             health: Math.max(120, getRatHealthForDifficulty() * 10),
             wave: waveTag,
             createdAt: Date.now()
-          }, { merge:true });
+          }});
         }
       }
     }
@@ -2347,7 +2373,7 @@
       usedKeys.add(key);
 
       const id = `rat_${crypto.randomUUID()}`;
-      await setDoc(ccRef(ID.rat(id)), {
+      writes.push({ type:"set", ref: ccRef(ID.rat(id)), data: {
         kind: "rat",
         id,
         x: spot.x,
@@ -2355,15 +2381,18 @@
         health: getRatHealthForDifficulty(),
         wave: waveTag,
         createdAt: Date.now()
-      }, { merge:true });
+      }});
       ratsSpawned++;
     }
+    await commitEnemyBatch(writes);
+    requestRender("enemy batch moved");
   }
 
   // ============================================================
   // Host enemies movement / logic (kept from your gameplay)
   // ============================================================
   async function hostMoveRats(){
+    const writes = [];
     const now = Date.now();
     const RAT_THINK_INTERVAL_MS = 350;
     const RAT_REPATH_JITTER_MS = 180;
@@ -2414,7 +2443,7 @@
       for (const t of traps){
         if (t.x===rat.x && t.y===rat.y){
           rat.trappedUntil = Date.now() + 3000;
-          await deleteDoc(ccRef(ID.trap(rat.x, rat.y)));
+          writes.push({ type:"delete", ref: ccRef(ID.trap(rat.x, rat.y)) });
           const cell = document.getElementById(`cell-${rat.x}-${rat.y}`);
           if (cell){
             cell.style.backgroundColor = "#ffcccc";
@@ -2530,7 +2559,7 @@
           const ratInWay = rats.some(r => r.id !== rat.id && r.x===next.x && r.y===next.y);
           if (!ratInWay){
             rat.x = next.x; rat.y = next.y;
-            await updateDoc(ccRef(ID.rat(rat.id)), { x: rat.x, y: rat.y, health: rat.health, updatedAt: Date.now() });
+            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, updatedAt: Date.now() } });
           }
         }
 
@@ -2541,12 +2570,12 @@
           const liveRabbit = rabbits.find(r => r.id === closestTarget.id && (r.health ?? 0) > 0);
           if (liveRabbit){
             liveRabbit.health -= (kingNearby ? Math.ceil(ratPower*5) : ratPower * 3);
-            if (liveRabbit.health <= 0) await deleteDoc(ccRef(ID.rabbit(liveRabbit.id)));
-            else await updateDoc(ccRef(ID.rabbit(liveRabbit.id)), { health: liveRabbit.health, updatedAt: Date.now() });
+            if (liveRabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(liveRabbit.id)) });
+            else writes.push({ type:"update", ref: ccRef(ID.rabbit(liveRabbit.id)), data: { health: liveRabbit.health, updatedAt: Date.now() } });
           }
         } else if (closestTarget.type==="mouse" && distance===0){
           showClawHit(closestTarget.x, closestTarget.y);
-          await updateDoc(ccRef(ID.player(closestTarget.id)), { alive:false, updatedAt: Date.now() });
+          writes.push({ type:"update", ref: ccRef(ID.player(closestTarget.id)), data: { alive:false, updatedAt: Date.now() } });
           if (closestTarget.id === uid){
             isAlive = false;
             document.getElementById("status").textContent = "💀 You are dead!";
@@ -2558,17 +2587,20 @@
     // cleanup dead rats
     for (let i=rats.length-1; i>=0; i--){
       if ((rats[i].health ?? 0) <= 0){
-        await deleteDoc(ccRef(ID.rat(rats[i].id)));
+        writes.push({ type:"delete", ref: ccRef(ID.rat(rats[i].id)) });
         rats.splice(i,1);
       }
     }
+    await commitEnemyBatch(writes);
+    requestRender("enemy batch moved");
   }
 
   async function hostMoveOxen(){
+    const writes = [];
     for (let i=oxen.length-1; i>=0; i--){
       const ox = oxen[i];
       if ((ox.health ?? 0) <= 0){
-        await deleteDoc(ccRef(ID.ox(ox.id)));
+        writes.push({ type:"delete", ref: ccRef(ID.ox(ox.id)) });
         oxen.splice(i,1);
         continue;
       }
@@ -2600,31 +2632,34 @@
         if (bestPath && bestPath.length>0){
           const next = bestPath[0];
           ox.x = next.x; ox.y = next.y;
-          await updateDoc(ccRef(ID.ox(ox.id)), { x: ox.x, y: ox.y });
+          writes.push({ type:"update", ref: ccRef(ID.ox(ox.id)), data: { x: ox.x, y: ox.y } });
         }
 
         const distance = Math.abs(ox.x - bestTarget.x) + Math.abs(ox.y - bestTarget.y);
         if (distance===1 && bestTarget.type === "structure"){
           await damageStructure(bestTarget.x, bestTarget.y, ratPower * 10);
           ox.health -= 1;
-          await updateDoc(ccRef(ID.ox(ox.id)), { health: ox.health });
+          writes.push({ type:"update", ref: ccRef(ID.ox(ox.id)), data: { health: ox.health } });
         } else if (distance===0 && bestTarget.type === "rabbit"){
           bestTarget.rabbit.health -= ratPower * 10;
-          if (bestTarget.rabbit.health <= 0) await deleteDoc(ccRef(ID.rabbit(bestTarget.rabbit.id)));
-          else await updateDoc(ccRef(ID.rabbit(bestTarget.rabbit.id)), { health: bestTarget.rabbit.health, updatedAt: Date.now() });
+          if (bestTarget.rabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(bestTarget.rabbit.id)) });
+          else writes.push({ type:"update", ref: ccRef(ID.rabbit(bestTarget.rabbit.id)), data: { health: bestTarget.rabbit.health, updatedAt: Date.now() } });
         } else if (distance===0 && bestTarget.type === "mouse"){
           showClawHit(bestTarget.x, bestTarget.y);
-          await updateDoc(ccRef(ID.player(bestTarget.uid)), { alive:false, updatedAt: Date.now() });
+          writes.push({ type:"update", ref: ccRef(ID.player(bestTarget.uid)), data: { alive:false, updatedAt: Date.now() } });
         }
       }
     }
+    await commitEnemyBatch(writes);
+    requestRender("enemy batch moved");
   }
 
   async function hostMoveRatKings(){
+    const writes = [];
     for (let i=ratKings.length-1; i>=0; i--){
       const king = ratKings[i];
       if ((king.health ?? 0) <= 0){
-        await deleteDoc(ccRef(ID.ratKing(king.id)));
+        writes.push({ type:"delete", ref: ccRef(ID.ratKing(king.id)) });
         ratKings.splice(i,1);
         continue;
       }
@@ -2639,23 +2674,26 @@
       if (bestPath && bestPath.length>0){
         king.x = bestPath[0].x;
         king.y = bestPath[0].y;
-        await updateDoc(ccRef(ID.ratKing(king.id)), { x: king.x, y: king.y, updatedAt: Date.now() });
+        writes.push({ type:"update", ref: ccRef(ID.ratKing(king.id)), data: { x: king.x, y: king.y, updatedAt: Date.now() } });
       }
 
       const d = Math.abs(king.x-finalTarget.x)+Math.abs(king.y-finalTarget.y);
       if (finalTarget.type === "structure" && d===1){
         await damageStructure(finalTarget.x, finalTarget.y, Math.max(10, ratPower * 2));
       } else if (finalTarget.type === "mouse" && d===0){
-        await updateDoc(ccRef(ID.player(finalTarget.uid)), { alive:false, updatedAt: Date.now() });
+        writes.push({ type:"update", ref: ccRef(ID.player(finalTarget.uid)), data: { alive:false, updatedAt: Date.now() } });
       }
     }
+    await commitEnemyBatch(writes);
+    requestRender("enemy batch moved");
   }
 
   async function hostMoveVultures(){
+    const writes = [];
     for (let i=vultures.length-1; i>=0; i--){
       const v = vultures[i];
       if ((v.health ?? 0) <= 0){
-        await deleteDoc(ccRef(ID.vulture(v.id)));
+        writes.push({ type:"delete", ref: ccRef(ID.vulture(v.id)) });
         vultures.splice(i,1);
         continue;
       }
@@ -2689,7 +2727,7 @@
         const next = bestPath[0];
         v.x = next.x;
         v.y = next.y;
-        await updateDoc(ccRef(ID.vulture(v.id)), { x: v.x, y: v.y, updatedAt: Date.now() });
+        writes.push({ type:"update", ref: ccRef(ID.vulture(v.id)), data: { x: v.x, y: v.y, updatedAt: Date.now() } });
       }
 
       const distance = Math.abs(v.x-bestTarget.x) + Math.abs(v.y-bestTarget.y);
@@ -2697,9 +2735,12 @@
         await damageStructure(bestTarget.x, bestTarget.y, ratPower * 4);
       }
     }
+    await commitEnemyBatch(writes);
+    requestRender("enemy batch moved");
   }
 
   async function hostMoveTermites(){
+    const writes = [];
     for (let i=termites.length-1; i>=0; i--){
       const termite = termites[i];
 
@@ -2728,19 +2769,22 @@
       if (bestPath && bestPath.length>0){
         const next = bestPath[0];
         termite.x = next.x; termite.y = next.y;
-        await updateDoc(ccRef(ID.termite(termite.id)), { x: termite.x, y: termite.y });
+        writes.push({ type:"update", ref: ccRef(ID.termite(termite.id)), data: { x: termite.x, y: termite.y } });
       }
 
       const distance = Math.abs(termite.x-closestWall.x) + Math.abs(termite.y-closestWall.y);
       if (distance===1){
         await damageStructure(closestWall.x, closestWall.y, 40);
-        await deleteDoc(ccRef(ID.termite(termite.id)));
+        writes.push({ type:"delete", ref: ccRef(ID.termite(termite.id)) });
         termites.splice(i,1);
       }
     }
+    await commitEnemyBatch(writes);
+    requestRender("enemy batch moved");
   }
 
   async function hostMoveFleas(){
+    const writes = [];
     // Fleas are stored as docs in crowncouncil (both nest fleas + player fleas)
     for (let i=fleas.length-1; i>=0; i--){
       const flea = fleas[i];
@@ -2795,20 +2839,20 @@
 
           if (target.type==="cat"){
             catHealth -= 1;
-            await updateDoc(ccRef(ID.STATE), { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() });
+            writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() } });
           } else if (target.type==="rat" && target.rat){
             target.rat.health -= 5;
             if (target.rat.health <= 0){
-              await deleteDoc(ccRef(ID.rat(target.rat.id)));
+              writes.push({ type:"delete", ref: ccRef(ID.rat(target.rat.id)) });
             } else {
-              await updateDoc(ccRef(ID.rat(target.rat.id)), { health: target.rat.health });
+              writes.push({ type:"update", ref: ccRef(ID.rat(target.rat.id)), data: { health: target.rat.health } });
             }
           } else if (target.type==="ox" && target.ox){
             target.ox.health -= 5;
             if (target.ox.health <= 0){
-              await deleteDoc(ccRef(ID.ox(target.ox.id)));
+              writes.push({ type:"delete", ref: ccRef(ID.ox(target.ox.id)) });
             } else {
-              await updateDoc(ccRef(ID.ox(target.ox.id)), { health: target.ox.health });
+              writes.push({ type:"update", ref: ccRef(ID.ox(target.ox.id)), data: { health: target.ox.health } });
             }
           }
         }
@@ -2816,12 +2860,14 @@
 
       flea.lifetime = (flea.lifetime ?? 15) - 1;
       if (flea.lifetime <= 0){
-        await deleteDoc(ccRef(flea.docId));
+        writes.push({ type:"delete", ref: ccRef(flea.docId) });
         fleas.splice(i,1);
       } else {
-        await updateDoc(ccRef(flea.docId), { x: flea.x, y: flea.y, lifetime: flea.lifetime, updatedAt: Date.now() });
+        writes.push({ type:"update", ref: ccRef(flea.docId), data: { x: flea.x, y: flea.y, lifetime: flea.lifetime, updatedAt: Date.now() } });
       }
     }
+    await commitEnemyBatch(writes);
+    requestRender("enemy batch moved");
   }
 
   // ============================================================
