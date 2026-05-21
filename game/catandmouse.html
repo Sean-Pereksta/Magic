@@ -538,7 +538,8 @@
     stinkRat: (id) => `stinkrat_${id}`,
     flea: (id) => `flea_${id}`,
     // Player-fleas (so a player can “own” their flea docs; host moves them)
-    pflea: (uid, i) => `pflea_${uid}_${i}`
+    pflea: (uid, i) => `pflea_${uid}_${i}`,
+    wallHealRequest: (uid, x, y) => `wallheal_${uid}_${x}_${y}`
   };
 
   // ============================================================
@@ -640,6 +641,8 @@
 
   const ENEMY_CHEESE_DROP_TTL_MS = 30000;
   const AUTO_CHEESE_SPAWN_DURATION_MS = 120000;
+  const HOST_HEARTBEAT_MS = 4000;
+  const HOST_STALE_MS = 12000;
   const OVERLAY_RENDER_DISTANCE = 7;
   const ENEMY_CAPS = {
     rats: 24,
@@ -695,6 +698,7 @@
 
   let isHost = false;
   let hostInitialized = false;
+  let lastHostCheckAt = 0;
   let catMoveInterval = null;
 
   // “Remote” objects pulled from Firestore
@@ -711,6 +715,8 @@
   let termites = [];  // {id,x,y}
   let stinkRats = []; // {id,x,y,health,...}
   let fleas = [];     // {id,x,y,lifetime,...}
+  let myFleaDocIds = new Set();
+  let myFleaCounter = 0;
 
   let lastPlayerWriteAt = 0;
   let lastPlayerPayload = null;
@@ -767,8 +773,27 @@
     return value === CHEESE_PICKUP;
   }
 
+  function isCellOccupiedBySharedObject(x, y){
+    if (x < 0 || y < 0 || x >= gridSize || y >= gridSize) return true;
+    const symbol = grid[y][x];
+    if (symbol && symbol !== CHEESE_PICKUP) return true;
+    for (const p of Object.values(players)){
+      if ((p.alive ?? true) !== false && p.x === x && p.y === y) return true;
+    }
+    if (catPos.x === x && catPos.y === y) return true;
+    if (rats.some(r => (r.health ?? 0) > 0 && r.x === x && r.y === y)) return true;
+    if (oxen.some(o => (o.health ?? 0) > 0 && o.x === x && o.y === y)) return true;
+    if (ratKings.some(k => (k.health ?? 0) > 0 && k.x === x && k.y === y)) return true;
+    if (vultures.some(v => (v.health ?? 0) > 0 && v.x === x && v.y === y)) return true;
+    if (termites.some(t => t.x === x && t.y === y)) return true;
+    if (fleas.some(f => f.x === x && f.y === y)) return true;
+    if (rabbits.some(r => (r.health ?? 0) > 0 && r.x === x && r.y === y)) return true;
+    return false;
+  }
+
   function canPlaceCheesePickupAt(x, y){
     if (x < 0 || y < 0 || x >= gridSize || y >= gridSize) return false;
+    if (isCellOccupiedBySharedObject(x, y)) return false;
     return grid[y][x] === "";
   }
 
@@ -1706,6 +1731,10 @@
     if (dir==="d") tx++;
     if (tx<0 || ty<0 || tx>=gridSize || ty>=gridSize) return;
 
+    if (isCheesePickupCell(grid[ty][tx])){
+      delete cheesePickupExpiryByCell[`${tx}_${ty}`];
+      grid[ty][tx] = "";
+    }
     if (grid[ty][tx] !== "") return;
 
         let symbol = def.symbol;
@@ -1809,32 +1838,23 @@
   // Player flea syncing (player-owned flea docs)
   // ============================================================
   async function syncMyFleas(){
-    // delete old player flea docs
-    const snap = await getDocs(ccCol);
-    const deletions = [];
-    snap.forEach(d => {
-      if (d.id.startsWith(`pflea_${uid}_`)){
-        deletions.push(deleteDoc(d.ref));
-      }
-    });
-    await Promise.all(deletions);
-
-    // write current player fleas (the “near me” fleas)
-    // we store minimal; host moves/attacks them too
     const now = Date.now();
-    let i=0;
+    const writes = [];
     for (const f of fleas.filter(ff => ff.ownerUid === uid && ff.origin === "player")){
-      const docId = ID.pflea(uid, i++);
-      await setDoc(ccRef(docId), {
+      if (!f.docId) continue;
+      myFleaDocIds.add(f.docId);
+      writes.push(setDoc(ccRef(f.docId), {
         kind: "flea",
-        id: docId,
+        id: f.id || f.docId,
+        docId: f.docId,
         x: f.x, y: f.y,
         lifetime: f.lifetime ?? 15,
         ownerUid: uid,
         origin: "player",
         updatedAt: now
-      }, { merge:true });
+      }, { merge:true }));
     }
+    await Promise.all(writes);
   }
 
   function isInStinkAura(x, y){
@@ -3085,6 +3105,9 @@
       const fleaDecay = isNearRallyDrum(flea.x, flea.y) ? 0.5 : 1;
       flea.lifetime = (flea.lifetime ?? 15) - fleaDecay;
       if (flea.lifetime <= 0){
+        if (flea.ownerUid === uid && flea.origin === "player" && flea.docId){
+          myFleaDocIds.delete(flea.docId);
+        }
         writes.push({ type:"delete", ref: ccRef(flea.docId) });
         fleas.splice(i,1);
       } else {
@@ -3473,7 +3496,7 @@
   // Wave scheduler (host updates state.nextRatWave)
   // ============================================================
   async function waveSchedulerTick(){
-    if (!gameStarted) return;
+    if (!canRunHostSimulation()) return;
     const now = Date.now();
     const next = nextRatWaveAt;
 
@@ -3880,6 +3903,7 @@
           const hostUid = data.hostUid;
           const hostName = data.hostName;
           isHost = (hostUid === uid);
+          if (isHost && gameStarted && !hostInitialized) startHostLoops();
 
           catPower = data.catPower ?? catPower;
           ratPower = data.ratPower ?? ratPower;
@@ -3941,6 +3965,7 @@
             structures.set(key, {x,y,type:data.type,health:data.health ?? 1});
             structureHealth[key] = data.health ?? 1;
             structureShields[key] = Math.max(0, data.shield ?? structureShields[key] ?? 0);
+            if (isCheesePickupCell(grid[y][x])) delete cheesePickupExpiryByCell[`${x}_${y}`];
             grid[y][x] = data.type;
             structureTargeting[key] = data.targeting || "Nearest";
             addToStructureIndex(x, y, data.type, data.health ?? 1);
@@ -3951,6 +3976,7 @@
           if (Number.isInteger(x) && Number.isInteger(y)){
             traps = traps.filter(t => !(t.x===x && t.y===y));
             traps.push({x,y,placedAt:data.placedAt ?? Date.now()});
+            if (isCheesePickupCell(grid[y][x])) delete cheesePickupExpiryByCell[`${x}_${y}`];
             grid[y][x] = "🪤";
           }
         }
@@ -4098,6 +4124,28 @@
       updateCatHealthBar();
       updateDifficultyUI();
     }
+  }
+
+  async function checkHostTransfer(){
+    if (!gameStarted) return;
+    const now = Date.now();
+    if (now - lastHostCheckAt < 3000) return;
+    lastHostCheckAt = now;
+    const sRef = ccRef(ID.STATE);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(sRef);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const heartbeat = data.hostHeartbeatAt || data.updatedAt || 0;
+      const hostIsStale = Date.now() - heartbeat > HOST_STALE_MS;
+      if (!hostIsStale) return;
+      tx.update(sRef, {
+        hostUid: uid,
+        hostName: username,
+        hostHeartbeatAt: Date.now(),
+        updatedAt: Date.now()
+      });
+    });
   }
 
   function renderSelectionOverlay(){
@@ -4389,14 +4437,20 @@
         // prevent overlap
         if (fleas.some(f => f.x===fx && f.y===fy && f.ownerUid===uid && f.origin==="player")) continue;
 
-        fleas.push({
-          docId: ID.pflea(uid, Date.now()+spawned),
+        const docId = ID.pflea(uid, myFleaCounter++);
+        myFleaDocIds.add(docId);
+        setDoc(ccRef(docId), {
+          kind: "flea",
+          id: docId,
+          docId,
           x: fx,
           y: fy,
           lifetime: 15,
           ownerUid: uid,
-          origin: "player"
-        });
+          origin: "player",
+          updatedAt: Date.now()
+        }, { merge:true }).catch(()=>{});
+        addCombatVfx(fx, fy, "🐞", "vfx-pop", 400, 14);
 
         spawned++;
         if (spawned >= 2) break;
@@ -4445,11 +4499,43 @@
     // wave countdown + host wave scheduling
     setInterval(() => { waveSchedulerTick().catch(()=>{}); }, 1000);
     setInterval(() => { objectiveSchedulerTick().catch(()=>{}); }, 1000);
+    setInterval(() => { checkHostTransfer().catch(()=>{}); }, 3000);
   }
 
   // ============================================================
   // Host loops (cat AI + spawns + enemy sim)
   // ============================================================
+  function canRunHostSimulation(){
+    return isHost && gameStarted && hostInitialized;
+  }
+
+  async function processWallHealRequests(){
+    if (!canRunHostSimulation()) return;
+    const snap = await getDocs(ccCol);
+    const now = Date.now();
+    for (const d of snap.docs){
+      if (!d.id.startsWith("wallheal_")) continue;
+      const req = d.data();
+      const x = req.x, y = req.y;
+      if (!Number.isInteger(x) || !Number.isInteger(y)){
+        await deleteDoc(d.ref);
+        continue;
+      }
+      const key = `${x}_${y}`;
+      const symbol = grid[y]?.[x];
+      if (!["🧱","💎"].includes(symbol)){
+        await deleteDoc(d.ref);
+        continue;
+      }
+      const maxHp = STRUCTURE_MAX_HP[symbol] || 80;
+      const currentHp = structureHealth[key] ?? maxHp;
+      const nextHp = Math.min(maxHp, currentHp + (req.amount || 4));
+      structureHealth[key] = nextHp;
+      await updateDoc(ccRef(ID.structure(x,y)), { health: nextHp, updatedAt: now });
+      await deleteDoc(d.ref);
+    }
+  }
+
   function startHostLoops(){
     if (!isHost || hostInitialized) return;
     hostInitialized = true;
@@ -4460,7 +4546,7 @@
 
     // power ramp
     setInterval(async () => {
-      if (!gameStarted) return;
+      if (!canRunHostSimulation()) return;
 
       catPower++;
       const playerCount = Object.keys(players).length;
@@ -4476,11 +4562,11 @@
     }, 20000);
 
     // turret + rocket
-    setInterval(() => turretAttack().catch(()=>{}), 1500);
-    setInterval(() => rocketTowerAttack().catch(()=>{}), 3500);
-    setInterval(() => repairStationTick().catch(()=>{}), 3000);
-    setInterval(() => specialStructureTick().catch(()=>{}), 2000);
-    setInterval(() => rabbitDenTick().catch(()=>{}), 2000);
+    setInterval(() => { if (!canRunHostSimulation()) return; turretAttack().catch(()=>{}); }, 1500);
+    setInterval(() => { if (!canRunHostSimulation()) return; rocketTowerAttack().catch(()=>{}); }, 3500);
+    setInterval(() => { if (!canRunHostSimulation()) return; repairStationTick().catch(()=>{}); }, 3000);
+    setInterval(() => { if (!canRunHostSimulation()) return; specialStructureTick().catch(()=>{}); }, 2000);
+    setInterval(() => { if (!canRunHostSimulation()) return; rabbitDenTick().catch(()=>{}); }, 2000);
 
     // rat power ramp
     setInterval(async () => {
@@ -4534,17 +4620,11 @@
       }
     }, 4000);
 
-    // wall master heal (runs host-side; writes structure hp)
-    setInterval(async () => {
-      // apply to all players who have wall master? (kept close to your behavior: only local player toggles)
-      // Since upgrades are local-only in your original, we keep it local-only:
-      // host will not try to “guess” who has wall master. We keep your original behavior by letting
-      // each client do their own wall heal writes if they have it.
-    }, 1000);
+    setInterval(() => { if (!canRunHostSimulation()) return; processWallHealRequests().catch(()=>{}); }, 1000);
 
     // termites spawn center
     setInterval(async () => {
-      if (!gameStarted || catPower <= 0) return;
+      if (!canRunHostSimulation() || catPower <= 0) return;
 
       const centerX = Math.floor(gridSize/2);
       const centerY = Math.floor(gridSize/2);
@@ -4581,7 +4661,7 @@
 
     // late game vultures (after oxen phase)
     setInterval(async () => {
-      if (!gameStarted || catPower < 25) return;
+      if (!canRunHostSimulation() || catPower < 25) return;
       const desired = Math.min(6, 1 + Math.floor((catPower - 25) / 6));
       const living = vultures.filter(v => (v.health ?? 0) > 0).length;
       const cappedDesired = Math.min(desired, ENEMY_CAPS.vultures);
@@ -4609,27 +4689,37 @@
     const scheduleRatTick = () => {
       const ratTickMs = Math.max(220, Math.floor((1050 - (catPower * 12)) / RAT_SPEED_MULTIPLIER));
       setTimeout(async () => {
-        await hostMoveRats().catch(()=>{});
-        scheduleRatTick();
+        if (canRunHostSimulation()) await hostMoveRats().catch(()=>{});
+        if (hostInitialized) scheduleRatTick();
       }, ratTickMs);
     };
     scheduleRatTick();
 
-    setInterval(() => hostMoveOxen().catch(()=>{}), 800);
-    setInterval(() => hostMoveRatKings().catch(()=>{}), 700);
-    setInterval(() => hostMoveVultures().catch(()=>{}), 600);
-    setInterval(() => hostMoveStinkRats().catch(()=>{}), 700);
-    setInterval(() => hostMoveTermites().catch(()=>{}), 400);
-    setInterval(() => hostMoveFleas().catch(()=>{}), 400);
+    setInterval(() => { if (!canRunHostSimulation()) return; hostMoveOxen().catch(()=>{}); }, 800);
+    setInterval(() => { if (!canRunHostSimulation()) return; hostMoveRatKings().catch(()=>{}); }, 700);
+    setInterval(() => { if (!canRunHostSimulation()) return; hostMoveVultures().catch(()=>{}); }, 600);
+    setInterval(() => { if (!canRunHostSimulation()) return; hostMoveStinkRats().catch(()=>{}); }, 700);
+    setInterval(() => { if (!canRunHostSimulation()) return; hostMoveTermites().catch(()=>{}); }, 400);
+    setInterval(() => { if (!canRunHostSimulation()) return; hostMoveFleas().catch(()=>{}); }, 400);
 
     // phoenix revive
-    setInterval(() => hostPhoenixRevive().catch(()=>{}), 2000);
+    setInterval(() => { if (!canRunHostSimulation()) return; hostPhoenixRevive().catch(()=>{}); }, 2000);
 
     // keep cat health synced (state already updated often; this keeps it in case)
     setInterval(async () => {
-      if (!gameStarted) return;
+      if (!canRunHostSimulation()) return;
       await updateDoc(ccRef(ID.STATE), { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() });
     }, 3000);
+
+    setInterval(async () => {
+      if (!isHost || !gameStarted) return;
+      await updateDoc(ccRef(ID.STATE), {
+        hostUid: uid,
+        hostName: username,
+        hostHeartbeatAt: Date.now(),
+        updatedAt: Date.now()
+      });
+    }, HOST_HEARTBEAT_MS);
   }
 
   // ============================================================
@@ -4646,8 +4736,14 @@
 
         const key = `${tx}_${ty}`;
         if ((grid[ty][tx]==="🧱" || grid[ty][tx]==="💎") && (structureHealth[key] ?? 0) < 80){
-          structureHealth[key] = (structureHealth[key] ?? 0) + 4;
-          await updateDoc(ccRef(ID.structure(tx,ty)), { health: structureHealth[key] });
+          await setDoc(ccRef(ID.wallHealRequest(uid, tx, ty)), {
+            kind: "wallheal",
+            uid,
+            x: tx,
+            y: ty,
+            amount: 4,
+            requestedAt: Date.now()
+          }, { merge:true });
         }
       }
     }
