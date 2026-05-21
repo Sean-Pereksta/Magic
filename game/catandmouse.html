@@ -549,6 +549,8 @@
   let canMove = true;
   let canBuild = true;
   let moveCooldown = 225; // ✅ was const before; upgrades change it
+  const CAT_SPEED_MULTIPLIER = 1.28;
+  const RAT_SPEED_MULTIPLIER = 1.85;
   let buildCooldown = 225;
 
   let advancementPoints = 0;
@@ -2067,7 +2069,7 @@
 
   function startCatBehaviorLoop(){
     if (catMoveInterval) clearInterval(catMoveInterval);
-    const speed = Math.max(200, 1300 - catPower * 40);
+    const speed = Math.max(160, Math.floor((1300 - catPower * 40) / CAT_SPEED_MULTIPLIER));
     catMoveInterval = setInterval(() => {
       if (gameStarted) catBehavior();
     }, speed);
@@ -3983,7 +3985,7 @@
 
     // enemy sim ticks
     const scheduleRatTick = () => {
-      const ratTickMs = Math.max(550, 1050 - (catPower * 12));
+      const ratTickMs = Math.max(220, Math.floor((1050 - (catPower * 12)) / RAT_SPEED_MULTIPLIER));
       setTimeout(async () => {
         await hostMoveRats().catch(()=>{});
         scheduleRatTick();
