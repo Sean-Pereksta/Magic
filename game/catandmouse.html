@@ -254,6 +254,9 @@
     #selectionOverlay{ position:fixed; inset:0; background:rgba(2,6,23,0.78); backdrop-filter: blur(3px); z-index:40; display:none; align-items:center; justify-content:center; padding:14px; }
     #selectionCard{ background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%); border-radius:14px; padding:14px; max-width:940px; width:100%; max-height:90vh; overflow:auto; border:1px solid #dbeafe; box-shadow:0 10px 30px rgba(15,23,42,0.25); }
     #selectionGrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:8px; max-height:40vh; overflow:auto; padding-right:4px; }
+    #selectionTabs{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 10px; }
+    .sel-tab{ border:1px solid #93c5fd; background:#eff6ff; border-radius:999px; padding:6px 10px; font-size:13px; font-weight:700; }
+    .sel-tab.active{ background:#dbeafe; border-color:#2563eb; color:#1e3a8a; }
     #slotList{ display:grid; grid-template-columns:repeat(auto-fit,minmax(115px,1fr)); gap:8px; margin-bottom:10px; }
     .slot-chip{ border:1px solid #bfdbfe; background:#eff6ff; border-radius:10px; padding:7px 8px; font-size:13px; text-align:left; min-height:44px; }
     .slot-chip.filled{ border-color:#60a5fa; background:#dbeafe; }
@@ -324,6 +327,7 @@
       </div>
       <div id="selectedSlots" style="font-size:13px; margin-bottom:6px;"></div>
       <div id="slotList"></div>
+      <div id="selectionTabs"></div>
       <div id="selectionGrid"></div>
       <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <button id="finishSelectionBtn" style="font-size:15px; padding:8px 12px;">✅ Finalize Selection</button>
@@ -667,6 +671,15 @@
     18:{symbol:"🪭",name:"Whirlwind Fan",cost:24,hp:20,minWins:12},
     19:{symbol:"🕸️",name:"Web Launcher",cost:27,hp:20,minWins:15}
   };
+  const BUILD_CATEGORIES = {
+    defense: { label: "Defense", icon: "🛡️", ids: [1, 5, 14, 9] },
+    damage: { label: "Damage", icon: "🔥", ids: [2, 8, 12, 13, 17] },
+    control: { label: "Control", icon: "🌀", ids: [15, 18, 19, 16] },
+    economy: { label: "Economy", icon: "🧀", ids: [4, 10, 6] },
+    troops: { label: "Troops", icon: "🐾", ids: [3, 11, 7] }
+  };
+  const DEFAULT_BUILD_CATEGORY = "defense";
+  let activeBuildCategory = DEFAULT_BUILD_CATEGORY;
   const MAX_BUILD_SLOTS = 8;
   const BASE_BUILD_ORDER = [1,2,3,4,5,6,7,8];
   let mobileBuildOrder = [...BASE_BUILD_ORDER];
@@ -3930,6 +3943,7 @@
 
     const info = document.getElementById("selectionInfo");
     const gridEl = document.getElementById("selectionGrid");
+    const tabsEl = document.getElementById("selectionTabs");
     const slotsEl = document.getElementById("selectedSlots");
     const slotListEl = document.getElementById("slotList");
     const finalizeMeta = document.getElementById("selectionFinalizeMeta");
@@ -3960,20 +3974,46 @@
     }
 
     const unlocked = new Set(getUnlockedBuildIds());
+    const categoryEntries = Object.entries(BUILD_CATEGORIES);
+    const activeCategory = BUILD_CATEGORIES[activeBuildCategory] ? activeBuildCategory : DEFAULT_BUILD_CATEGORY;
+    activeBuildCategory = activeCategory;
+
+    if (tabsEl){
+      tabsEl.innerHTML = "";
+      categoryEntries.forEach(([key, category]) => {
+        const tab = document.createElement("button");
+        tab.type = "button";
+        tab.className = `sel-tab ${key === activeCategory ? "active" : ""}`;
+        tab.textContent = `${category.icon} ${category.label}`;
+        tab.disabled = mySelectionDone;
+        tab.onclick = () => {
+          if (mySelectionDone || activeBuildCategory === key) return;
+          activeBuildCategory = key;
+          renderSelectionOverlay();
+        };
+        tabsEl.appendChild(tab);
+      });
+    }
+
     gridEl.innerHTML = "";
-    Object.entries(BUILD_DEFS).forEach(([id, def]) => {
+    BUILD_CATEGORIES[activeCategory].ids.forEach((buildId) => {
+      const def = BUILD_DEFS[buildId];
+      if (!def) return;
       const b = document.createElement("button");
       b.className = "sel-btn";
-      const winsTxt = `${Math.min(playerWins, def.minWins || 0)}/${def.minWins || 0}`;
-      const locked = !unlocked.has(Number(id));
-      const alreadyChosen = selectedBuildSlots.includes(Number(id));
-      b.innerHTML = `<div>${def.symbol} ${def.name}</div><div>🧀${def.cost}</div>${locked ? `<div>🔒 ${winsTxt}</div>` : ""}`;
+      const winsNeeded = def.minWins || 0;
+      const locked = !unlocked.has(buildId);
+      const alreadyChosen = selectedBuildSlots.includes(buildId);
+      b.innerHTML = `
+        <div><strong>${def.symbol} ${def.name}</strong></div>
+        <div style="font-size:12px;">Cost: ${def.cost} | HP: ${def.hp}</div>
+        ${locked ? `<div style="font-size:12px;">🔒 Requires ${winsNeeded} win${winsNeeded === 1 ? "" : "s"}</div>` : ""}
+      `;
       if (locked) b.classList.add("locked");
       if (alreadyChosen) b.classList.add("chosen");
       b.disabled = locked || mySelectionDone;
       b.onclick = async () => {
         if (mySelectionDone) return;
-        const buildId = Number(id);
         const alreadyIdx = selectedBuildSlots.indexOf(buildId);
         if (alreadyIdx !== -1){
           selectedBuildSlots.splice(alreadyIdx, 1);
