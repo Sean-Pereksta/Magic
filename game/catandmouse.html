@@ -702,7 +702,7 @@
       }
       delete cheesePickupExpiryByCell[key];
     }
-    if (removed) renderGrid();
+    if (removed) requestRender("cleanupExpiredCheeseDrops");
   }
 
   const localTileSeed = Math.floor(Math.random() * 9973);
@@ -1060,6 +1060,24 @@
   // ============================================================
   // Rendering
   // ============================================================
+  let renderQueued = false;
+  let lastRenderAt = 0;
+  const MIN_RENDER_INTERVAL_MS = 80;
+
+  function requestRender(reason = ""){
+    if (renderQueued) return;
+
+    const now = Date.now();
+    const delay = Math.max(0, MIN_RENDER_INTERVAL_MS - (now - lastRenderAt));
+
+    renderQueued = true;
+    setTimeout(() => {
+      renderQueued = false;
+      lastRenderAt = Date.now();
+      renderGrid();
+    }, delay);
+  }
+
   function renderGrid(){
     const now = Date.now();
     combatVfx = combatVfx.filter(v => v.expiresAt > now);
@@ -1377,7 +1395,7 @@
     savePosition();
     checkCheese();
     maybeTeleportOnCrystal().catch(()=>{});
-    renderGrid();
+    requestRender("movePlayer");
   }
 
   function move(dir){
@@ -1437,7 +1455,7 @@
       attempts++;
     }
 
-    if (spawned > 0) renderGrid();
+    if (spawned > 0) requestRender("spawnCheese");
   }
 
   function checkCheese(){
@@ -1447,7 +1465,7 @@
       cheeseCount += 3 + cheesePickupBonus;
       document.getElementById("cheeseCount").textContent = cheeseCount;
       savePosition();
-      renderGrid();
+      requestRender("checkCheese");
     }
   }
 
@@ -1580,7 +1598,7 @@
     } else {
       await updateDoc(ccRef(ID.structure(x,y)), { health: structureHealth[key], shield: structureShields[key] ?? 0 });
     }
-    renderGrid();
+    requestRender("damageStructure");
   }
 
   // ============================================================
@@ -1603,7 +1621,7 @@
       placedBy: uid
     }, { merge:true });
 
-    renderGrid();
+    requestRender("placeTrap");
   }
 
   // ============================================================
@@ -1717,7 +1735,7 @@
         }
       }
     }
-    renderGrid();
+    requestRender("turretAttack");
   }
 
   async function rocketTowerAttack(){
@@ -1794,7 +1812,7 @@
         }
       }
     }
-    renderGrid();
+    requestRender("rocketTowerAttack");
   }
 
   // ============================================================
@@ -2091,7 +2109,7 @@
         cat: { x: catPos.x, y: catPos.y, health: catHealth },
         updatedAt: Date.now()
       });
-      renderGrid();
+      requestRender("catBehaviorTrapped");
       return;
     }
 
@@ -2109,7 +2127,7 @@
           cell.style.backgroundColor = "#ffaaaa";
           setTimeout(()=>cell.style.backgroundColor="#c8f7c5", 300);
         }
-        renderGrid();
+        requestRender("catBehaviorAmbush");
         return;
       }
     }
@@ -2200,7 +2218,7 @@
     });
 
     updateCatHealthBar();
-    renderGrid();
+    requestRender("catBehaviorEnd");
   }
 
   function getActiveEnemyCount(type = null){
@@ -2372,7 +2390,7 @@
             cell.style.backgroundColor = "#ffcccc";
             setTimeout(()=>cell.style.backgroundColor="#c8f7c5", 300);
           }
-          renderGrid();
+          requestRender("hostMoveRatsTrapTrigger");
           continue;
         }
       }
@@ -2793,7 +2811,7 @@
         cell.style.backgroundColor = "#ff4d4d";
         setTimeout(()=>cell.style.backgroundColor="#c8f7c5", 300);
       }
-      renderGrid();
+      requestRender("listenToCrownCouncilRevive");
     }
   }
 
@@ -2854,7 +2872,7 @@
         }, 220);
       }
     }
-    renderGrid();
+    requestRender("repairStationTick");
   }
 
   // ============================================================
@@ -3087,7 +3105,7 @@
         }
       }
     }
-    renderGrid();
+    requestRender("generatorPayoutTick");
   }
 
   async function rabbitDenTick(){
@@ -3139,7 +3157,7 @@
         }
       }
     }
-    renderGrid();
+    requestRender("rabbitDenTick");
   }
 
   // ============================================================
@@ -3551,7 +3569,7 @@
         }
       }
 
-      renderGrid();
+      requestRender("listenToCrownCouncilSnapshot");
     });
   }
 
