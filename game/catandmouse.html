@@ -2365,23 +2365,35 @@
   // ============================================================
   async function hostMoveRats(){
     const now = Date.now();
-    const RAT_THINK_INTERVAL_MS = 250;
+    const RAT_THINK_INTERVAL_MS = 350;
+    const RAT_REPATH_JITTER_MS = 180;
     const RAT_STUCK_TICKS_LIMIT = 8;
     const RAT_TARGET_MAX_DISTANCE = 24;
 
     const isRatTargetStillValid = (rat) => {
-      if (!rat.cachedTarget) return false;
-      const target = rat.cachedTarget;
+      rat.ai = rat.ai || {
+        targetType: null,
+        targetId: null,
+        targetX: null,
+        targetY: null,
+        path: null,
+        nextThinkAt: 0,
+        stuckTicks: 0,
+        lastX: rat.x,
+        lastY: rat.y
+      };
+      if (!rat.ai.targetType) return false;
+      const target = { type: rat.ai.targetType, x: rat.ai.targetX, y: rat.ai.targetY, id: rat.ai.targetId };
       const dist = Math.abs(rat.x - target.x) + Math.abs(rat.y - target.y);
       if (dist > RAT_TARGET_MAX_DISTANCE) return false;
 
       if (target.type === "mouse"){
-        const p = players[target.uid];
+        const p = players[target.id];
         return !!p && (p.alive ?? true) !== false;
       }
 
       if (target.type === "rabbit"){
-        return rabbits.some(r => r.id === target.rabbitId && (r.health ?? 0) > 0);
+        return rabbits.some(r => r.id === target.id && (r.health ?? 0) > 0);
       }
 
       if (target.type === "structure"){
@@ -2413,19 +2425,35 @@
         }
       }
 
-      if (rat.lastX === rat.x && rat.lastY === rat.y){
-        rat.stuckTicks = (rat.stuckTicks || 0) + 1;
+      rat.ai = rat.ai || {
+        targetType: null,
+        targetId: null,
+        targetX: null,
+        targetY: null,
+        path: null,
+        nextThinkAt: 0,
+        stuckTicks: 0,
+        lastX: rat.x,
+        lastY: rat.y
+      };
+
+      if (rat.ai.lastX === rat.x && rat.ai.lastY === rat.y){
+        rat.ai.stuckTicks = (rat.ai.stuckTicks || 0) + 1;
       } else {
-        rat.stuckTicks = 0;
+        rat.ai.stuckTicks = 0;
       }
-      rat.lastX = rat.x;
-      rat.lastY = rat.y;
+      rat.ai.lastX = rat.x;
+      rat.ai.lastY = rat.y;
 
-      if ((rat.stuckTicks || 0) > RAT_STUCK_TICKS_LIMIT){
-        rat.nextThinkAt = 0;
-      }
+      const isStuck = (rat.ai.stuckTicks || 0) > RAT_STUCK_TICKS_LIMIT;
+      if (isStuck) rat.ai.nextThinkAt = 0;
 
-      const shouldThink = !rat.nextThinkAt || now >= rat.nextThinkAt || !isRatTargetStillValid(rat);
+      const currentTargetDistance = (rat.ai.targetX == null || rat.ai.targetY == null)
+        ? Infinity
+        : Math.abs(rat.x - rat.ai.targetX) + Math.abs(rat.y - rat.ai.targetY);
+      const targetMovedFarAway = currentTargetDistance > RAT_TARGET_MAX_DISTANCE;
+      const pathEmpty = !rat.ai.path || rat.ai.path.length === 0;
+      const shouldThink = !rat.ai.nextThinkAt || now >= rat.ai.nextThinkAt || !isRatTargetStillValid(rat) || pathEmpty || isStuck || targetMovedFarAway;
 
       if (shouldThink){
         let closestTarget = null;
@@ -2438,7 +2466,7 @@
         });
 
         if (rabbitTarget){
-          closestTarget = { x:rabbitTarget.x, y:rabbitTarget.y, type:"rabbit", rabbitId:rabbitTarget.rabbit.id };
+          closestTarget = { x:rabbitTarget.x, y:rabbitTarget.y, type:"rabbit", id:rabbitTarget.rabbit.id };
           bestPath = rabbitTarget.path;
         }
 
@@ -2449,7 +2477,7 @@
         }) : null;
 
         if (mouseTarget){
-          closestTarget = { x:mouseTarget.x, y:mouseTarget.y, type:"mouse", uid:mouseTarget.uid };
+          closestTarget = { x:mouseTarget.x, y:mouseTarget.y, type:"mouse", id:mouseTarget.uid };
           bestPath = mouseTarget.path;
         }
 
@@ -2471,13 +2499,16 @@
           }
         }
 
-        rat.cachedTarget = closestTarget;
-        rat.cachedPath = bestPath;
-        rat.nextThinkAt = now + RAT_THINK_INTERVAL_MS + Math.floor(Math.random() * 120);
+        rat.ai.targetType = closestTarget?.type ?? null;
+        rat.ai.targetId = closestTarget?.id ?? null;
+        rat.ai.targetX = closestTarget?.x ?? null;
+        rat.ai.targetY = closestTarget?.y ?? null;
+        rat.ai.path = bestPath ? [...bestPath] : null;
+        rat.ai.nextThinkAt = now + RAT_THINK_INTERVAL_MS + Math.floor(Math.random() * RAT_REPATH_JITTER_MS);
       }
 
-      const closestTarget = rat.cachedTarget;
-      let bestPath = rat.cachedPath;
+      const closestTarget = rat.ai.targetType ? { type: rat.ai.targetType, id: rat.ai.targetId, x: rat.ai.targetX, y: rat.ai.targetY } : null;
+      let bestPath = rat.ai.path;
 
       if (closestTarget){
         const centerX = Math.floor(gridSize/2);
@@ -2490,15 +2521,16 @@
             const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
             return !isBlocked && !isReviveCenter && !ratOccupied;
           });
+          rat.ai.path = bestPath ? [...bestPath] : null;
         }
 
-        if (bestPath && bestPath.length > 0){
-          const next = bestPath[0];
+        if (rat.ai.path && rat.ai.path.length > 0){
+          const next = rat.ai.path.shift();
+          if (!next) continue;
           const ratInWay = rats.some(r => r.id !== rat.id && r.x===next.x && r.y===next.y);
           if (!ratInWay){
             rat.x = next.x; rat.y = next.y;
-            rat.cachedPath = bestPath.slice(1);
-            await updateDoc(ccRef(ID.rat(rat.id)), { x: rat.x, y: rat.y });
+            await updateDoc(ccRef(ID.rat(rat.id)), { x: rat.x, y: rat.y, health: rat.health, updatedAt: Date.now() });
           }
         }
 
@@ -2506,7 +2538,7 @@
         if (closestTarget.type==="structure" && distance===1){
           await damageStructure(closestTarget.x, closestTarget.y, kingNearby ? Math.ceil(ratPower * 1.8) : ratPower);
         } else if (closestTarget.type==="rabbit" && distance===0){
-          const liveRabbit = rabbits.find(r => r.id === closestTarget.rabbitId && (r.health ?? 0) > 0);
+          const liveRabbit = rabbits.find(r => r.id === closestTarget.id && (r.health ?? 0) > 0);
           if (liveRabbit){
             liveRabbit.health -= (kingNearby ? Math.ceil(ratPower*5) : ratPower * 3);
             if (liveRabbit.health <= 0) await deleteDoc(ccRef(ID.rabbit(liveRabbit.id)));
@@ -2514,8 +2546,8 @@
           }
         } else if (closestTarget.type==="mouse" && distance===0){
           showClawHit(closestTarget.x, closestTarget.y);
-          await updateDoc(ccRef(ID.player(closestTarget.uid)), { alive:false, updatedAt: Date.now() });
-          if (closestTarget.uid === uid){
+          await updateDoc(ccRef(ID.player(closestTarget.id)), { alive:false, updatedAt: Date.now() });
+          if (closestTarget.id === uid){
             isAlive = false;
             document.getElementById("status").textContent = "💀 You are dead!";
           }
