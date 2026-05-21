@@ -335,6 +335,7 @@
   <div id="selectedBuildSlotsTop">Slots — 1: _ | 2: _ | 3: _ | 4: _ | 5: _ | 6: _ | 7: _ | 8: _</div>
 
   <div id="waveCountdown">🐀 Next wave: ?</div>
+  <div id="objectiveStatus" style="margin-top:6px; font-weight:700; color:#1f2937;">🎯 Objectives: initializing…</div>
 
   <div style="display:flex; justify-content:center; align-items:flex-start; gap:20px; margin-top:20px;">
     <div style="width:200px; font-size:14px;">
@@ -708,6 +709,15 @@
   const cheesePickupExpiryByCell = {};
 
   let catWebTrappedUntil = 0;
+  let catWeakenedUntil = 0;
+  const OBJECTIVE_CENTER = Math.floor(gridSize / 2);
+  const objectiveState = {
+    supplyDrop: null,
+    supplyLastSpawnAt: 0,
+    shrine: null,
+    repair: null,
+    rescue: null
+  };
   let catFacing = { dx: 1, dy: 0 };
   let catAbilityLoadout = [];
   const catAbilityState = {
@@ -1213,6 +1223,18 @@
           }
 
           cell.textContent = isCheesePickupCell(symbol) ? CHEESE_PICKUP_SYMBOL : (symbol || "");
+          if (objectiveState.supplyDrop?.active && objectiveState.supplyDrop.x===x && objectiveState.supplyDrop.y===y){
+            cell.textContent = "📦";
+            cell.style.boxShadow = "0 0 10px #fde047";
+          }
+          if (objectiveState.shrine?.active && objectiveState.shrine.x===x && objectiveState.shrine.y===y){
+            cell.textContent = "🛐";
+            cell.style.outline = "2px solid #a855f7";
+          }
+          if (objectiveState.rescue?.active && objectiveState.rescue.x===x && objectiveState.rescue.y===y){
+            cell.textContent = "✨";
+            cell.style.outline = "2px solid #60a5fa";
+          }
 
           if (beaconWallBoosted.has(key)){
             cell.style.outline = "2px solid #22d3ee";
@@ -1423,6 +1445,7 @@
       sp.textContent = `${(p.displayName||"mouse").toLowerCase()}: ${((p.alive ?? true) ? "ALIVE" : "DEAD")}`;
       statusDiv.appendChild(sp);
     }
+    updateObjectiveBanner();
   }
 
   // ============================================================
@@ -1518,6 +1541,71 @@
       savePosition();
       requestRender("checkCheese");
     }
+    checkObjectiveCollection().catch(()=>{});
+  }
+
+  function manhattanToCenter(x, y){
+    return Math.abs(x - OBJECTIVE_CENTER) + Math.abs(y - OBJECTIVE_CENTER);
+  }
+
+  function randomFarEmptyTile(minDist = 14){
+    for (let i=0; i<200; i++){
+      const x = Math.floor(Math.random() * gridSize);
+      const y = Math.floor(Math.random() * gridSize);
+      if (grid[y]?.[x] !== "") continue;
+      if (manhattanToCenter(x, y) < minDist) continue;
+      return { x, y };
+    }
+    return null;
+  }
+
+  async function checkObjectiveCollection(){
+    if (!gameStarted || !isAlive || !objectiveState.supplyDrop?.active || !isHost) return;
+    const sd = objectiveState.supplyDrop;
+    if (playerPos.x !== sd.x || playerPos.y !== sd.y) return;
+    const active = getActiveParticipantIds();
+    if (active.length <= 0) return;
+    const each = Math.floor(20 / active.length);
+    const remainder = 20 - (each * active.length);
+    for (let i=0; i<active.length; i++){
+      const pu = active[i];
+      const bonus = each + (i < remainder ? 1 : 0);
+      if (bonus <= 0) continue;
+      const p = players[pu];
+      if (!p) continue;
+      p.cheese = (p.cheese ?? 0) + bonus;
+      if (pu === uid) cheeseCount = p.cheese;
+      await updateDoc(ccRef(ID.player(pu)), { cheese: p.cheese, updatedAt: Date.now() });
+    }
+    grid[sd.y][sd.x] = "";
+    objectiveState.supplyDrop = { active:false };
+    document.getElementById("cheeseCount").textContent = cheeseCount;
+    await updateDoc(ccRef(ID.STATE), { objectives: objectiveState, updatedAt: Date.now() });
+    requestRender("checkObjectiveCollection");
+  }
+
+  function updateObjectiveBanner(){
+    const el = document.getElementById("objectiveStatus");
+    if (!el) return;
+    const now = Date.now();
+    const lines = [];
+    if (objectiveState.supplyDrop?.active){
+      lines.push(`📦 Supply Drop at (${objectiveState.supplyDrop.x},${objectiveState.supplyDrop.y})`);
+    } else {
+      const next = Math.max(0, Math.ceil(((objectiveState.supplyLastSpawnAt + 90000) - now)/1000));
+      lines.push(`📦 Supply Drop in ~${next}s`);
+    }
+    if (objectiveState.shrine?.active){
+      const hold = Math.max(0, Math.ceil((5000 - (objectiveState.shrine.holdMs ?? 0))/1000));
+      lines.push(`🛐 Shrine (${objectiveState.shrine.x},${objectiveState.shrine.y}) hold ${hold}s`);
+    }
+    if (objectiveState.repair?.active){
+      lines.push(`🛠️ Repair ${objectiveState.repair.type} at (${objectiveState.repair.x},${objectiveState.repair.y})`);
+    }
+    if (objectiveState.rescue?.active){
+      lines.push(`✨ Rescue spark at (${objectiveState.rescue.x},${objectiveState.rescue.y})`);
+    }
+    el.textContent = `🎯 Objectives: ${lines.join(" • ")}`;
   }
 
   // ============================================================
@@ -1628,6 +1716,7 @@
     const symbol = grid[y]?.[x] || "";
     const wallNearBeacon = ["🧱","💎"].includes(symbol) && isWithinBeaconAura(x, y, 2);
     let finalDamage = wallNearBeacon ? (damageAmount * 0.5) : damageAmount;
+    if (Date.now() < catWeakenedUntil) finalDamage *= 0.55;
 
     const shield = structureShields[key] ?? 0;
     if (shield > 0){
@@ -3261,6 +3350,110 @@
     document.getElementById("waveCountdown").textContent = `🐀 Next wave: ${secondsLeft}s`;
   }
 
+  async function objectiveSchedulerTick(){
+    if (!isHost || !gameStarted) return;
+    const now = Date.now();
+    let changed = false;
+
+    if (!objectiveState.supplyDrop?.active && (now - (objectiveState.supplyLastSpawnAt || 0)) >= 90000){
+      const tile = randomFarEmptyTile(13);
+      if (tile){
+        objectiveState.supplyDrop = { active:true, x:tile.x, y:tile.y, spawnedAt:now };
+        objectiveState.supplyLastSpawnAt = now;
+        changed = true;
+      }
+    }
+
+    if (!objectiveState.shrine?.active && Math.random() < 0.015){
+      const tile = randomFarEmptyTile(10);
+      if (tile){
+        objectiveState.shrine = { active:true, x:tile.x, y:tile.y, expiresAt:now + 20000, holdMs:0, weakenedUntil:0 };
+        changed = true;
+      }
+    }
+    if (objectiveState.shrine?.active){
+      const sh = objectiveState.shrine;
+      const onShrine = Object.values(players).some(p => (p.alive ?? true) !== false && p.x===sh.x && p.y===sh.y);
+      sh.holdMs = Math.max(0, Math.min(5000, (sh.holdMs ?? 0) + (onShrine ? 1000 : -700)));
+      if (sh.holdMs >= 5000){
+        catWeakenedUntil = now + 15000;
+        sh.active = false;
+        changed = true;
+      } else if (now >= sh.expiresAt){
+        sh.active = false;
+        changed = true;
+      }
+    }
+
+    if (!objectiveState.repair?.active && Math.random() < 0.02){
+      const damaged = getAllStructures().filter(s => (structureHealth[s.key] ?? s.health ?? 0) < (STRUCTURE_MAX_HP[s.type] ?? 1));
+      if (damaged.length){
+        const target = damaged[Math.floor(Math.random() * damaged.length)];
+        objectiveState.repair = { active:true, x:target.x, y:target.y, type:target.type, expiresAt:now + 30000, reward:14 };
+        changed = true;
+      }
+    }
+    if (objectiveState.repair?.active){
+      const rp = objectiveState.repair;
+      const key = `${rp.x}_${rp.y}`;
+      const hp = structureHealth[key] ?? 0;
+      const maxHp = STRUCTURE_MAX_HP[rp.type] ?? 1;
+      if (hp >= maxHp){
+        for (const pu of getActiveParticipantIds()){
+          const p = players[pu];
+          if (!p) continue;
+          p.cheese = (p.cheese ?? 0) + 7;
+          await updateDoc(ccRef(ID.player(pu)), { cheese: p.cheese, updatedAt: Date.now() });
+        }
+        objectiveState.repair.active = false;
+        changed = true;
+      } else if (now >= rp.expiresAt){
+        objectiveState.repair.active = false;
+        changed = true;
+      }
+    }
+
+    if (objectiveState.rescue?.active){
+      const rs = objectiveState.rescue;
+      if (now >= rs.expiresAt){
+        objectiveState.rescue.active = false;
+        changed = true;
+      } else {
+        for (const [pu, p] of Object.entries(players)){
+          if ((p.alive ?? true) === false) continue;
+          if (p.x===rs.x && p.y===rs.y){
+            const deadMouse = Object.entries(players).find(([,pp]) => (pp.alive ?? true) === false);
+            if (deadMouse){
+              const [deadUid, deadP] = deadMouse;
+              await updateDoc(ccRef(ID.player(deadUid)), { alive:true, x: deadP.x ?? 1, y: deadP.y ?? 1, updatedAt: Date.now() });
+            }
+            objectiveState.rescue.active = false;
+            changed = true;
+            break;
+          }
+        }
+      }
+    } else {
+      const deadExists = Object.values(players).some(p => (p.alive ?? true) === false);
+      if (deadExists){
+        const tile = randomFarEmptyTile(11);
+        if (tile){
+          objectiveState.rescue = { active:true, x:tile.x, y:tile.y, expiresAt: now + 30000 };
+          changed = true;
+        }
+      }
+    }
+
+    if (changed){
+      await updateDoc(ccRef(ID.STATE), {
+        objectives: objectiveState,
+        catWeakenedUntil,
+        updatedAt: now
+      });
+      requestRender("objectiveSchedulerTick");
+    }
+  }
+
   // ============================================================
   // Return to lobby (unchanged paths for /users, allowed by your rules)
   // ============================================================
@@ -3517,6 +3710,14 @@
           catPower = data.catPower ?? catPower;
           ratPower = data.ratPower ?? ratPower;
           nextRatWaveAt = (typeof data.nextRatWave === "number") ? data.nextRatWave : nextRatWaveAt;
+          catWeakenedUntil = (typeof data.catWeakenedUntil === "number") ? data.catWeakenedUntil : catWeakenedUntil;
+          if (data.objectives && typeof data.objectives === "object"){
+            objectiveState.supplyDrop = data.objectives.supplyDrop || objectiveState.supplyDrop;
+            objectiveState.supplyLastSpawnAt = data.objectives.supplyLastSpawnAt ?? objectiveState.supplyLastSpawnAt;
+            objectiveState.shrine = data.objectives.shrine || objectiveState.shrine;
+            objectiveState.repair = data.objectives.repair || objectiveState.repair;
+            objectiveState.rescue = data.objectives.rescue || objectiveState.rescue;
+          }
           applyDifficulty(data.difficulty || currentDifficulty || "medium");
 
           const cat = data.cat || {};
@@ -3681,6 +3882,14 @@
           catPower: 0,
           ratPower: 1,
           nextRatWave: Date.now() + 30000,
+          catWeakenedUntil: 0,
+          objectives: {
+            supplyDrop: { active:false },
+            supplyLastSpawnAt: Date.now(),
+            shrine: { active:false },
+            repair: { active:false },
+            rescue: { active:false }
+          },
           phase: "selection",
           selectionDeadline: Date.now() + 45000,
           createdAt: Date.now(),
@@ -4026,6 +4235,7 @@
 
     // wave countdown + host wave scheduling
     setInterval(() => { waveSchedulerTick().catch(()=>{}); }, 1000);
+    setInterval(() => { objectiveSchedulerTick().catch(()=>{}); }, 1000);
   }
 
   // ============================================================
