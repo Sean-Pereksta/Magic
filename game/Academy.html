@@ -1286,16 +1286,58 @@ function createShieldBubble() {
   return group;
 }
 function givePlayerShield(p) { if (!p) return; p.shieldActive = true; p.shieldCharges = 1; if (!p.shieldMesh) { p.shieldMesh = createShieldBubble(); scene.add(p.shieldMesh); } p.shieldMesh.visible = true; }
-function removeEnemyActor(enemy, list) { if (!enemy) return; if (enemy.rig) scene.remove(enemy.rig); if (enemy.laser) scene.remove(enemy.laser); const idx = list.indexOf(enemy); if (idx >= 0) list.splice(idx, 1); }
+function removeEnemyActor(enemy, list) {
+  if (!enemy) return;
+
+  enemy.dead = true;
+  enemy.removed = true;
+  enemy.disabled = true;
+  enemy.canDamage = false;
+  enemy.speed = 0;
+  enemy.velocity = enemy.velocity || new THREE.Vector3();
+  if (enemy.velocity) enemy.velocity.set(0, 0, 0);
+
+  if (enemy.rig) {
+    enemy.rig.visible = false;
+    enemy.rig.userData.dead = true;
+    enemy.rig.userData.removed = true;
+    enemy.rig.userData.canDamage = false;
+    enemy.rig.position.set(999999, -999999, 999999);
+
+    if (enemy.rig.parent) enemy.rig.parent.remove(enemy.rig);
+    else scene.remove(enemy.rig);
+  }
+
+  if (enemy.laser) {
+    enemy.laser.visible = false;
+    if (enemy.laser.parent) enemy.laser.parent.remove(enemy.laser);
+    else scene.remove(enemy.laser);
+  }
+
+  if (enemy.warningMesh) {
+    enemy.warningMesh.visible = false;
+    if (enemy.warningMesh.parent) enemy.warningMesh.parent.remove(enemy.warningMesh);
+    else scene.remove(enemy.warningMesh);
+  }
+
+  if (enemy.handTorch) enemy.handTorch.visible = false;
+
+  if (Array.isArray(list)) {
+    const idx = list.indexOf(enemy);
+    if (idx >= 0) list.splice(idx, 1);
+  }
+}
 function createBurstEffect(pos, colorA, colorB, count = 18) { const group = new THREE.Group(); group.position.copy(pos); group.position.y += 1.5; const matA = new THREE.MeshBasicMaterial({ color: colorA }); const matB = new THREE.MeshBasicMaterial({ color: colorB }); for (let i = 0; i < count; i++) { const particle = new THREE.Mesh(new THREE.SphereGeometry(rand(0.08, 0.18), 6, 6), Math.random() > 0.5 ? matA : matB); particle.userData.velocity = new THREE.Vector3(rand(-8, 8), rand(2, 10), rand(-8, 8)); group.add(particle); } group.userData.life = 0.45; scene.add(group); if (!window.burstEffects) window.burstEffects = []; window.burstEffects.push(group); }
 function createRedImpactBurst(pos) { createBurstEffect(pos, 0xef4444, 0x7f1d1d, 24); }
 function createShieldBreakEffect(p) { const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p; if (!actor || !actor.rig) return; createBurstEffect(actor.rig.position, 0x38bdf8, 0xfacc15, 18); }
 function tryShieldBlock(targetPlayer, attacker) { if (!targetPlayer || !targetPlayer.shieldActive || targetPlayer.shieldCharges <= 0) return false; targetPlayer.shieldCharges--; targetPlayer.shieldActive = false; if (targetPlayer.shieldMesh) targetPlayer.shieldMesh.visible = false; createShieldBreakEffect(targetPlayer); if (attacker) { if (attacker.type === "enemy") removeEnemyActor(attacker, enemies); else if (attacker.type === "dog") removeEnemyActor(attacker, dogs); else if (attacker.type === "desertStalker") removeEnemyActor(attacker, desertStalkers); else if (attacker.type === "police") removeEnemyActor(attacker, policeOfficers); } return true; }
 function handleShieldBlockControlledChaser(targetPlayer, chaserOwner) { if (!targetPlayer || !chaserOwner || !chaserOwner.controlledChaser) return false; if (!targetPlayer.shieldActive || targetPlayer.shieldCharges <= 0) return false; targetPlayer.shieldCharges = 0; targetPlayer.shieldActive = false; if (targetPlayer.shieldMesh) targetPlayer.shieldMesh.visible = false; createShieldBreakEffect(targetPlayer); const runnerActor = targetPlayer; const chaserActor = chaserOwner.controlledChaser; chaserActor.rig.position.z = runnerActor.rig.position.z + 100; chaserActor.rig.position.x = clamp(runnerActor.rig.position.x + rand(-8, 8), -WORLD_WIDTH / 2 + 3, WORLD_WIDTH / 2 - 3); chaserActor.velocity.set(0, 0, 0); showRoundToast("Shield blocked the chaser! Chaser warped ahead!"); return true; }
 function spawnDangerBehindPlayer(owner) { const actor = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!actor || !actor.rig) return; const spawnZ = Math.max(START_Z + 8, actor.rig.position.z - 28); const spawnX = clamp(actor.rig.position.x + rand(-10, 10), -WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4); if (enemies.length < MAX_ENEMIES) enemies.push(createEnemy(spawnX, spawnZ)); }
-function getBlackGlobeTargets(owner, maxTargets = 5) { const actor = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!actor || !actor.rig) return []; const all = []; for (const e of enemies) all.push({ actor: e, list: enemies }); for (const d of dogs) all.push({ actor: d, list: dogs }); for (const s of desertStalkers) all.push({ actor: s, list: desertStalkers }); for (const p of policeOfficers) all.push({ actor: p, list: policeOfficers }); all.sort((a, b) => flatDistance(actor.rig.position, a.actor.rig.position) - flatDistance(actor.rig.position, b.actor.rig.position)); return all.slice(0, maxTargets); }
+function getBlackGlobeTargets(owner, maxTargets = 5) { const actor = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!actor || !actor.rig) return []; const all = []; function addTarget(e, list) { if (!e || e.dead || e.removed || e.disabled) return; if (!e.rig || e.rig.visible === false) return; all.push({ actor: e, list }); } for (const e of enemies) addTarget(e, enemies); for (const d of dogs) addTarget(d, dogs); for (const s of desertStalkers) addTarget(s, desertStalkers); for (const p of policeOfficers) addTarget(p, policeOfficers); all.sort((a, b) => flatDistance(actor.rig.position, a.actor.rig.position) - flatDistance(actor.rig.position, b.actor.rig.position)); return all.slice(0, maxTargets); }
+
+function canEnemyDamage(enemy) { return !!(enemy && !enemy.dead && !enemy.removed && !enemy.disabled && enemy.canDamage !== false && enemy.rig && enemy.rig.visible !== false && enemy.rig.parent); }
 function createBlackGlobeProjectile(fromPos, toPos, onHit) { const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), new THREE.MeshBasicMaterial({ color: 0x111827 })); mesh.position.copy(fromPos); mesh.position.y += 2.2; const target = toPos.clone(); target.y += 1.8; scene.add(mesh); blackGlobeProjectiles.push({ mesh, target, speed: 85, onHit }); }
-function fireBlackGlobeAttack(owner) { const source = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!source || !source.rig) return; const targets = getBlackGlobeTargets(owner, 5); for (const target of targets) createBlackGlobeProjectile(source.rig.position, target.actor.rig.position, () => { createRedImpactBurst(target.actor.rig.position); removeEnemyActor(target.actor, target.list); }); }
+function fireBlackGlobeAttack(owner) { const source = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!source || !source.rig) return; const targets = getBlackGlobeTargets(owner, 5); for (const target of targets) { if (!target || !target.actor || target.actor.dead || target.actor.removed) continue; target.actor.dead = true; target.actor.disabled = true; target.actor.canDamage = false; target.actor.speed = 0; if (target.actor.velocity) target.actor.velocity.set(0, 0, 0); if (target.actor.rig) { target.actor.rig.userData.dead = true; target.actor.rig.userData.canDamage = false; } const targetPos = target.actor.rig && target.actor.rig.position ? target.actor.rig.position.clone() : source.rig.position.clone(); createBlackGlobeProjectile(source.rig.position, targetPos, () => { createRedImpactBurst(targetPos); removeEnemyActor(target.actor, target.list); }); } }
 function updateBlackGlobeProjectiles(dt) { for (let i = blackGlobeProjectiles.length - 1; i >= 0; i--) { const p = blackGlobeProjectiles[i]; const dir = p.target.clone().sub(p.mesh.position); const dist = dir.length(); if (dist < 1.2) { scene.remove(p.mesh); if (typeof p.onHit === "function") p.onHit(); blackGlobeProjectiles.splice(i, 1); continue; } dir.normalize(); p.mesh.position.addScaledVector(dir, p.speed * dt); } }
 function updateBurstEffects(dt) { if (!window.burstEffects) return; for (let i = window.burstEffects.length - 1; i >= 0; i--) { const group = window.burstEffects[i]; group.userData.life -= dt; for (const particle of group.children) { particle.position.addScaledVector(particle.userData.velocity, dt); particle.userData.velocity.y -= 22 * dt; particle.scale.multiplyScalar(0.96); } if (group.userData.life <= 0) { scene.remove(group); window.burstEffects.splice(i, 1); } } }
 function updatePlayerShieldVisuals(dt) { const playerList = gameMode === 2 ? players : [player]; for (const p of playerList) { if (!p || !p.shieldMesh) continue; const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p; if (!actor || !actor.rig) { p.shieldMesh.visible = false; continue; } p.shieldMesh.visible = !!p.shieldActive; if (p.shieldActive) { p.shieldMesh.position.copy(actor.rig.position); p.shieldMesh.position.y += 2.5; p.shieldMesh.rotation.y += dt * 1.7; p.shieldMesh.rotation.x += dt * 0.8; } } }
@@ -1548,6 +1590,7 @@ function updateEnemies(dt) {
   playerHiddenInGrass = isPlayerInGrass();
 
   for (const enemy of enemies) {
+    if (!canEnemyDamage(enemy)) continue;
     const target = getNearestActiveRunner(enemy.rig.position);
     if (!target) continue;
 
@@ -1563,7 +1606,7 @@ function updateEnemies(dt) {
       updateEnemyTorch(enemy, dt);
     }
 
-    if (!playerHiddenInGrass && distToTarget < 1.8) {
+    if (canEnemyDamage(enemy) && !playerHiddenInGrass && distToTarget < 1.8) {
       if (tryShieldBlock(target, enemy)) continue;
       handlePlayerCaught(target, "Player " + target.id + " got caught by a chaser!");
     }
@@ -1571,6 +1614,7 @@ function updateEnemies(dt) {
 
   const cleanupLeader = getLeaderRunner() || player;
   enemies = enemies.filter(e => {
+    if (!canEnemyDamage(e)) return false;
     const keep = e.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
     if (!keep) scene.remove(e.rig);
     return keep;
@@ -1578,6 +1622,7 @@ function updateEnemies(dt) {
 }
 function updateDesertStalkers(dt) {
   for (const s of desertStalkers) {
+    if (!canEnemyDamage(s)) continue;
     const target = getNearestActiveRunner(s.rig.position);
     if (!target) continue;
 
@@ -1595,7 +1640,7 @@ function updateDesertStalkers(dt) {
 
     player = prevPlayer;
 
-    if (!playerHiddenInGrass && dist < 1.7) {
+    if (canEnemyDamage(s) && !playerHiddenInGrass && dist < 1.7) {
       if (tryShieldBlock(target, s)) continue;
       handlePlayerCaught(target, "Player " + target.id + " got caught by a Desert Stalker!");
     }
@@ -1603,6 +1648,7 @@ function updateDesertStalkers(dt) {
 
   const cleanupLeader = getLeaderRunner() || player;
   desertStalkers = desertStalkers.filter(s => {
+    if (!canEnemyDamage(s)) return false;
     const keep = s.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
     if (!keep) scene.remove(s.rig);
     return keep;
@@ -1611,6 +1657,7 @@ function updateDesertStalkers(dt) {
 
 function updateDogs(dt) {
   for (const dog of dogs) {
+    if (!canEnemyDamage(dog)) continue;
     const target = getNearestActiveRunner(dog.rig.position);
     if (!target) continue;
 
@@ -1627,7 +1674,7 @@ function updateDogs(dt) {
 
     player = prevPlayer;
 
-    if (!playerHiddenInGrass && distToTarget < 1.55) {
+    if (canEnemyDamage(dog) && !playerHiddenInGrass && distToTarget < 1.55) {
       if (tryShieldBlock(target, dog)) continue;
       handlePlayerCaught(target, "Player " + target.id + " got caught by a dog!");
     }
@@ -1635,6 +1682,7 @@ function updateDogs(dt) {
 
   const cleanupLeader = getLeaderRunner() || player;
   dogs = dogs.filter(d => {
+    if (!canEnemyDamage(d)) return false;
     const keep = d.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
     if (!keep) scene.remove(d.rig);
     return keep;
@@ -2537,6 +2585,7 @@ function updatePoliceOfficers(dt) {
   if (!Array.isArray(policeOfficers)) policeOfficers = [];
 
   for (const cop of policeOfficers) {
+    if (!canEnemyDamage(cop)) continue;
     const target = getNearestActiveRunner(cop.rig.position);
 
     if (!target) {
@@ -2588,6 +2637,7 @@ function updatePoliceOfficers(dt) {
         updatePoliceLaserVisual(cop, target);
 
         if (cop.aimTimer <= 0) {
+          if (!canEnemyDamage(cop)) continue;
           firePoliceBullet(cop, target);
           cop.state = "chase";
           cop.stateTimer = POLICE_CHASE_TIME;
@@ -2597,7 +2647,7 @@ function updatePoliceOfficers(dt) {
       }
     }
 
-    if (dist < 1.7) {
+    if (canEnemyDamage(cop) && dist < 1.7) {
       if (tryShieldBlock(target, cop)) continue;
       handlePlayerCaught(target, "Player " + target.id + " got caught by a police officer!");
     }
@@ -2605,6 +2655,7 @@ function updatePoliceOfficers(dt) {
 
   const cleanupLeader = getLeaderRunner() || player;
   policeOfficers = policeOfficers.filter(cop => {
+    if (!canEnemyDamage(cop)) return false;
     const keep = cop.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
 
     if (!keep) {
@@ -2617,7 +2668,7 @@ function updatePoliceOfficers(dt) {
 }
 
 function firePoliceBullet(cop, target) {
-  if (!cop || !target) return;
+  if (!cop || !target || !canEnemyDamage(cop)) return;
   if (!hasLineOfSightClear(cop.rig.position, target.rig.position, POLICE_RANGE)) return;
 
   const start = cop.rig.position.clone();
@@ -2650,6 +2701,8 @@ function updatePoliceBullets(dt) {
   if (!Array.isArray(policeBullets)) policeBullets = [];
 
   for (const bullet of policeBullets) {
+    if (!bullet || !bullet.mesh) continue;
+    if (bullet.owner && (bullet.owner.dead || bullet.owner.removed || bullet.owner.disabled)) { bullet.life = 0; continue; }
     const oldPos = bullet.mesh.position.clone();
 
     bullet.mesh.position.addScaledVector(bullet.velocity, dt);
@@ -2667,6 +2720,7 @@ function updatePoliceBullets(dt) {
       const heightOk = Math.abs(bullet.mesh.position.y - 3.0) < 2.2;
 
       if (d < 1.15 && heightOk) {
+        if (bullet.owner && (bullet.owner.dead || bullet.owner.removed || bullet.owner.disabled)) { bullet.life = 0; continue; }
         bullet.life = 0;
         if (tryShieldBlock(p, bullet.owner)) break;
         handlePlayerCaught(p, "Player " + p.id + " got shot by a police officer!");
