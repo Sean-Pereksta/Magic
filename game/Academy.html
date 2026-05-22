@@ -2148,35 +2148,56 @@ function reconstructPath(came, current, gridToWorld) {
 
 function updatePickups(dt) {
   for (let i = pickups.length - 1; i >= 0; i--) {
-    const p = pickups[i];
+    const pickup = pickups[i];
+    if (!pickup || !pickup.userData) continue;
+    if (pickup.userData.collected) continue;
 
-    p.userData.pulse += dt;
+    pickup.userData.pulse += dt;
 
     if (frameCount % 2 === 0) {
-      p.rotation.y += dt * 4.8;
-      p.children[1].rotation.x += dt * 4.4;
-      if (p.children[2]) p.children[2].rotation.z -= dt * 3.6;
-      if (p.userData.pickupType === "red") p.scale.setScalar(0.94 + Math.sin(p.userData.pulse * 8) * 0.08);
-      p.position.y = 1.25 + Math.sin(p.userData.pulse * 4) * 0.22;
+      pickup.rotation.y += dt * 4.8;
+      if (pickup.children[1]) pickup.children[1].rotation.x += dt * 4.4;
+      if (pickup.children[2]) pickup.children[2].rotation.z -= dt * 3.6;
+      if (pickup.userData.pickupType === "red") pickup.scale.setScalar(0.94 + Math.sin(pickup.userData.pulse * 8) * 0.08);
+      pickup.position.y = 1.25 + Math.sin(pickup.userData.pulse * 4) * 0.22;
     }
+
     const pickupActors = getPickupActors();
-    let collected = false;
+
     for (const { owner, actor } of pickupActors) {
       if (!owner || !actor || !actor.rig) continue;
-      if (flatDistance(actor.rig.position, p.position) < 2.2) {
-        applyPickupEffect(owner, actor, p);
-        spawnPickupBurst(p.position, p.userData.pickupType);
-        collected = true;
+
+      const pickupType = pickup.userData.pickupType || "green";
+      const collectRadius = pickupType === "green" ? 2.35 : 3.1;
+
+      if (flatDistance(actor.rig.position, pickup.position) < collectRadius) {
+        const pickupPos = pickup.position.clone();
+        pickup.userData.collected = true;
+        removePickupObject(pickup);
+
+        try {
+          applyPickupEffect(owner, actor, pickup);
+        } catch (err) {
+          console.error("Pickup effect failed for", pickupType, err);
+        }
+
+        try {
+          spawnPickupBurst(pickupPos, pickupType);
+        } catch (err) {
+          console.error("Pickup burst failed for", pickupType, err);
+        }
+
         break;
       }
     }
-    if (collected) removePickupAtIndex(i);
   }
 }
 
-function removePickupAtIndex(index) {
-  const pickup = pickups[index];
+function removePickupObject(pickup) {
   if (!pickup) return;
+
+  const index = pickups.indexOf(pickup);
+  if (index >= 0) pickups.splice(index, 1);
 
   if (pickup.parent) {
     pickup.parent.remove(pickup);
@@ -2185,7 +2206,7 @@ function removePickupAtIndex(index) {
   }
 
   pickup.traverse(obj => {
-    if (obj.geometry) obj.geometry.dispose();
+    if (obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
 
     if (obj.material) {
       if (Array.isArray(obj.material)) {
@@ -2195,8 +2216,12 @@ function removePickupAtIndex(index) {
       }
     }
   });
+}
 
-  pickups.splice(index, 1);
+function removePickupAtIndex(index) {
+  const pickup = pickups[index];
+  if (!pickup) return;
+  removePickupObject(pickup);
 }
 
 function getPickupActors() {
