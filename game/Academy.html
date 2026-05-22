@@ -2164,7 +2164,7 @@ function updatePickups(dt) {
       if (!owner || !actor || !actor.rig) continue;
       if (flatDistance(actor.rig.position, p.position) < 2.2) {
         applyPickupEffect(owner, actor, p);
-        spawnPickupBurst(p.position);
+        spawnPickupBurst(p.position, p.userData.pickupType);
         removeObjectFromParentOrScene(p);
         pickups.splice(i, 1);
         break;
@@ -2187,12 +2187,21 @@ function getPickupActors() {
   return actors;
 }
 
-function spawnPickupBurst(pos) {
+function spawnPickupBurst(pos, pickupType = "green") {
   const burst = new THREE.Group();
 
+  const burstColors = {
+    green: { color: 0x22ff99, emissive: 0x22ff99 },
+    blue: { color: 0x38bdf8, emissive: 0x2563eb },
+    gold: { color: 0xfacc15, emissive: 0xf59e0b },
+    red: { color: 0xef4444, emissive: 0x991b1b },
+    black: { color: 0x7e22ce, emissive: 0x111827 }
+  };
+  const selected = burstColors[pickupType] || burstColors.green;
+
   const mat = new THREE.MeshStandardMaterial({
-    color: 0x22ff99,
-    emissive: 0x22ff99,
+    color: selected.color,
+    emissive: selected.emissive,
     emissiveIntensity: 1
   });
 
