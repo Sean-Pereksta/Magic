@@ -648,6 +648,13 @@
   const AUTO_CHEESE_SPAWN_DURATION_MS = 120000;
   const HOST_HEARTBEAT_MS = 4000;
   const HOST_STALE_MS = 12000;
+  const PLAYER_HEARTBEAT_MS = 3000;
+  const PLAYER_STALE_MS = 10000;
+  const STALE_ENEMY_MS = 30000;
+  const DEAD_ENEMY_CLEANUP_MS = 1500;
+  const PROJECTILE_TTL_MS = 2500;
+  const EFFECT_TTL_MS = 1200;
+  const ROOM_ABANDONED_MS = 30000;
   const OVERLAY_RENDER_DISTANCE = 7;
   const ENEMY_CAPS = {
     rats: MAX_RATS,
@@ -733,6 +740,8 @@
   let lastFanBurstAt = 0;
   let lastWebShotAt = 0;
   let cheeseAutoSpawnStartedAt = null;
+  const firebaseUnsubscribers = [];
+  let playerHeartbeatInterval = null;
   const cheesePickupExpiryByCell = {};
 
   let catWebTrappedUntil = 0;
@@ -851,6 +860,7 @@
     if (x<0 || y<0 || x>=gridSize || y>=gridSize) return;
     combatVfx.push({
       x, y, icon, className, size,
+      createdAt: Date.now(),
       expiresAt: Date.now() + durationMs
     });
   }
@@ -921,8 +931,25 @@
 
   function getActiveParticipantIds(){
     return getLobbyParticipants()
-      .filter(([,p]) => (p?.alive ?? true) !== false)
+            .filter(([,p]) => (p?.alive ?? true) !== false && isPlayerActive(p))
       .map(([pu]) => pu);
+  }
+
+
+
+  function addFirebaseListener(unsubscribeFn) {
+    if (typeof unsubscribeFn === "function") firebaseUnsubscribers.push(unsubscribeFn);
+  }
+
+  function cleanupFirebaseListeners() {
+    while (firebaseUnsubscribers.length) {
+      const unsub = firebaseUnsubscribers.pop();
+      try { unsub(); } catch (err) { console.warn("Listener cleanup failed", err); }
+    }
+  }
+
+  function isPlayerActive(p){
+    return !!(p && p.online !== false && (Date.now() - (p.lastSeen || 0)) <= PLAYER_STALE_MS);
   }
 
   function applyDifficulty(mode){
@@ -1705,6 +1732,8 @@
       y: playerPos.y,
       cheese: cheeseCount,
       alive: isAlive,
+      online: true,
+      lastSeen: now,
       updatedAt: now
     };
 
@@ -1731,8 +1760,27 @@
       y: playerPos.y,
       cheese: 0,
       alive: true,
+      online: true,
+      joinedAt: Date.now(),
+      lastSeen: Date.now(),
       updatedAt: Date.now()
     }, { merge:true });
+  }
+
+
+  async function sendPlayerHeartbeat(){
+    await updateDoc(ccRef(ID.player(uid)), { online: true, lastSeen: Date.now(), updatedAt: Date.now() });
+  }
+
+  function startPlayerHeartbeat(){
+    if (playerHeartbeatInterval) clearInterval(playerHeartbeatInterval);
+    playerHeartbeatInterval = setInterval(() => { sendPlayerHeartbeat().catch(()=>{}); }, PLAYER_HEARTBEAT_MS);
+  }
+
+  function stopPlayerHeartbeat(){
+    if (!playerHeartbeatInterval) return;
+    clearInterval(playerHeartbeatInterval);
+    playerHeartbeatInterval = null;
   }
 
   // ============================================================
@@ -3397,7 +3445,7 @@
             if (dx===0&&dy===0) dx=1;
             let cx=x+dx, cy=y+dy;
             while (cx>=0&&cy>=0&&cx<gridSize&&cy<gridSize){
-              if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({x:cx,y:cy});
+              if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:cx,y:cy});
               for (const r of rats){ if (r.x===cx && r.y===cy && (r.health??0)>0){ await damageEnemyUnit({...r,kind:"rat"}, 18); } }
               for (const o of oxen){ if (o.x===cx && o.y===cy && (o.health??0)>0){ await damageEnemyUnit({...o,kind:"ox"}, 18); } }
               for (const k of ratKings){ if (k.x===cx && k.y===cy && (k.health??0)>0){ await damageEnemyUnit({...k,kind:"ratking"}, 18); } }
@@ -3420,7 +3468,7 @@
               if (next && (Math.abs(next.x-h.x)+Math.abs(next.y-h.y)<=3)) hit.push(next);
               if (hit.length>=4) break;
             }
-            for (const h of hit){ if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({x:h.x,y:h.y}); if (h.kind==="cat"){ catHealth -= 4; } else { await damageEnemyUnit({...h.enemy,kind:h.kind}, 4); } }
+            for (const h of hit){ if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:h.x,y:h.y}); if (h.kind==="cat"){ catHealth -= 4; } else { await damageEnemyUnit({...h.enemy,kind:h.kind}, 4); } }
             await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
           }
         }
@@ -3434,7 +3482,7 @@
           const enemies = listCombatEnemies();
           const target = enemies.sort((a,b)=>(b.enemy.health||0)-(a.enemy.health||0))[0];
           if (target){
-            if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({x:target.enemy.x,y:target.enemy.y});
+            if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:target.enemy.x,y:target.enemy.y});
             await damageEnemyUnit({ ...target.enemy, kind: target.kind }, 55);
             lastAcornShotAt = Date.now();
           } else if (catHealth > 0){
@@ -3473,7 +3521,7 @@
               wy += dy + (Math.random()<0.25 ? (Math.floor(Math.random()*3)-1) : 0);
               wx = Math.max(0, Math.min(gridSize-1, wx));
               wy = Math.max(0, Math.min(gridSize-1, wy));
-              if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({x:wx,y:wy});
+              if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:wx,y:wy});
 
               for (const unit of listCombatEnemies()){
                 if (unit.enemy.x===wx && unit.enemy.y===wy){
@@ -3518,7 +3566,7 @@
         const rabbitAttackRange = nearDrum ? 5 : 4;
         if (distance <= rabbitAttackRange){
           let cx = rb.x, cy = rb.y;
-          while (cx!==tx || cy!==ty){ cx += Math.sign(tx-cx); cy += Math.sign(ty-cy); if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({x:cx,y:cy}); }
+          while (cx!==tx || cy!==ty){ cx += Math.sign(tx-cx); cy += Math.sign(ty-cy); if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:cx,y:cy}); }
           if (target.kind==="cat"){
             catHealth -= rabbitDamage;
             await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
@@ -3677,6 +3725,11 @@
   // Return to lobby (unchanged paths for /users, allowed by your rules)
   // ============================================================
   async function returnToLobby(){
+    stopPlayerHeartbeat();
+    cleanupFirebaseListeners();
+    try {
+      await updateDoc(ccRef(ID.player(uid)), { online:false, alive:false, updatedAt: Date.now() });
+    } catch {}
     const safeUsername = encodeURIComponent(username.trim());
 
     // award win if cat defeated
@@ -3899,7 +3952,8 @@
   // Listen to crowncouncil docs (this replaces all /games/... listeners)
   // ============================================================
   function listenToCrownCouncil(){
-    onSnapshot(ccCol, (snap) => {
+    cleanupFirebaseListeners();
+    const unsub = onSnapshot(ccCol, (snap) => {
       for (const ch of snap.docChanges()){
         const id = ch.doc.id;
         const data = ch.doc.data();
@@ -4003,7 +4057,10 @@
             x: data.x ?? 1,
             y: data.y ?? 1,
             cheese: data.cheese ?? 0,
-            alive: (data.alive !== false)
+            alive: (data.alive !== false),
+            online: data.online !== false,
+            lastSeen: data.lastSeen ?? data.updatedAt ?? 0,
+            joinedAt: data.joinedAt ?? data.createdAt ?? 0
           };
 
           // update my local copies from firestore (so multiple tabs stay consistent)
@@ -4120,6 +4177,7 @@
 
       requestRender("listenToCrownCouncilSnapshot");
     });
+    addFirebaseListener(unsub);
   }
 
   // ============================================================
@@ -4129,6 +4187,10 @@
     // lobby doc (your rules allow it)
     await setDoc(lobbyRef, {
       gameType: "catvsmouse",
+      hostId: uid,
+      status: "active",
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
       updatedAt: Date.now()
     }, { merge:true });
 
@@ -4197,9 +4259,14 @@
       const heartbeat = data.hostHeartbeatAt || data.updatedAt || 0;
       const hostIsStale = Date.now() - heartbeat > HOST_STALE_MS;
       if (!hostIsStale) return;
+      const active = Object.entries(players)
+        .filter(([, p]) => isPlayerActive(p))
+        .sort((a, b) => (a[1].joinedAt || 0) - (b[1].joinedAt || 0));
+      const elected = active.length ? active[0] : null;
+      if (!elected) return;
       tx.update(sRef, {
-        hostUid: uid,
-        hostName: username,
+        hostUid: elected[0],
+        hostName: elected[1].displayName || "mouse",
         hostHeartbeatAt: Date.now(),
         updatedAt: Date.now()
       });
@@ -4558,6 +4625,33 @@
     setInterval(() => { waveSchedulerTick().catch(()=>{}); }, 1000);
     setInterval(() => { objectiveSchedulerTick().catch(()=>{}); }, 1000);
     setInterval(() => { checkHostTransfer().catch(()=>{}); }, 3000);
+    setInterval(() => {
+      const now = Date.now();
+      rabbitShots = rabbitShots.filter(shot => now - (shot.createdAt || now) <= PROJECTILE_TTL_MS);
+      combatVfx = combatVfx.filter(v => now - (v.createdAt || now) <= EFFECT_TTL_MS);
+    }, 500);
+  }
+
+
+  async function hostCleanupStaleEntities(){
+    if (!canRunHostSimulation()) return;
+    const now = Date.now();
+    for (const [pu, p] of Object.entries(players)){
+      if (pu === uid) continue;
+      if (!p) continue;
+      if ((now - (p.lastSeen || 0)) > PLAYER_STALE_MS){
+        await updateDoc(ccRef(ID.player(pu)), { online:false, alive:false, updatedAt: now });
+      }
+    }
+    const staleEnemy = (e) => !e || !Number.isFinite(e.x) || !Number.isFinite(e.y) || (now - (e.updatedAt || e.createdAt || 0)) > STALE_ENEMY_MS || ((e.health ?? 1) <= 0 && (now - (e.updatedAt || now)) > DEAD_ENEMY_CLEANUP_MS);
+    for (const r of rats){ if (staleEnemy(r)) await deleteDoc(ccRef(ID.rat(r.id))); }
+    for (const o of oxen){ if (staleEnemy(o)) await deleteDoc(ccRef(ID.ox(o.id))); }
+    for (const k of ratKings){ if (staleEnemy(k)) await deleteDoc(ccRef(ID.ratKing(k.id))); }
+    for (const v of vultures){ if (staleEnemy(v)) await deleteDoc(ccRef(ID.vulture(v.id))); }
+    for (const t of termites){ if (staleEnemy(t)) await deleteDoc(ccRef(ID.termite(t.id))); }
+    for (const f of fleas){ if (!f || (now - (f.updatedAt || f.createdAt || 0)) > STALE_ENEMY_MS) await deleteDoc(ccRef(f.docId || ID.flea(f.id))); }
+    const activePlayers = Object.values(players).filter(p => isPlayerActive(p));
+    await setDoc(lobbyRef, { lastActivity: now, status: activePlayers.length ? "active" : "abandoned", updatedAt: now }, { merge:true });
   }
 
   // ============================================================
@@ -4762,6 +4856,7 @@
 
     // phoenix revive
     setInterval(() => { if (!canRunHostSimulation()) return; hostPhoenixRevive().catch(()=>{}); }, 2000);
+    setInterval(() => { if (!canRunHostSimulation()) return; hostCleanupStaleEntities().catch(()=>{}); }, 3000);
 
     // keep cat health synced (state already updated often; this keeps it in case)
     setInterval(async () => {
@@ -4813,6 +4908,11 @@
   await ensureLobbyAndState();
   await fetchPlayerWins();
   await upsertMyPlayerDoc();
+  startPlayerHeartbeat();
+  window.addEventListener("beforeunload", () => {
+    stopPlayerHeartbeat();
+    cleanupFirebaseListeners();
+  });
   await publishMySelection(false);
   listenToCrownCouncil();
 
