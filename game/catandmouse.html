@@ -314,17 +314,10 @@
 
 <body>
   <button id="fullscreenBtn" aria-label="Toggle full screen">⛶ Fullscreen</button>
-  <h1 style="text-align:center;">🐱 Cat vs 🐭 Mouse</h1>
-
-  <div style="text-align:center; margin-bottom:10px;">
-    <p style="margin:5px 0; font-size:14px; color:#444;">
-      🎮 Arrow keys to move | A/W/S/D to build | 1–8 to select building | Space = Upgrade Menu
-    </p>
-    <p style="margin:10px 0; font-size:13px; font-weight:bold; color:#333;">
-      🧱 Wall | 🔫 Turret | 🪳 Flea Nest | 🏭 Generator | 💎 Super Wall | 🗼 Beacon | 🐦‍🔥 Phoenix | 🚀 Rocket | 🛠️ Repair
-      <br>🧀 Cheese Farm | 🐇 Rabbit Den | 🛡️ Shield Tower | ☄️ Ultra Laser | ⚡ Tesla | 🟢 Slime Tower
-    </p>
+  <div id="topHud" style="position:sticky;top:0;z-index:35;background:rgba(15,23,42,.92);color:#fff;padding:8px 10px;font-size:14px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;backdrop-filter:blur(6px);">
+    <span id="hudPlayer">🐭 Player</span><span id="hudCheese">🧀 0</span><span id="hudWins">🏆 0</span><span id="hudTimer">⏱ --:--</span><span id="hudWave">🌊 Wave 1</span><span id="hudRole">🎭 Spectator</span>
   </div>
+  <div id="toastContainer" style="position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:6px;pointer-events:none;"></div>
 
   <div id="returnButton" style="display:none; margin-top:20px; text-align:center;">
     <button onclick="returnToLobby()" style="padding:10px 20px; font-size:16px;">🔙 Return to Lobby</button>
@@ -356,14 +349,13 @@
     </div>
   </div>
 
-  <div id="selectedBuildSlotsTop">Slots — 1: _ | 2: _ | 3: _ | 4: _ | 5: _ | 6: _ | 7: _ | 8: _</div>
-
-  <div id="waveCountdown">🐀 Next wave: ?</div>
-  <div id="objectiveStatus" style="margin-top:6px; font-weight:700; color:#1f2937;">🎯 Objectives: initializing…</div>
+  <div id="selectedBuildSlotsTop" style="display:none;">Slots — 1: _ | 2: _ | 3: _ | 4: _ | 5: _ | 6: _ | 7: _ | 8: _</div>
+  <div id="waveCountdown" style="display:none;">🐀 Next wave: ?</div>
+  <div id="objectiveStatus" style="display:none;">🎯 Objectives: initializing…</div>
 
   <div style="display:flex; justify-content:center; align-items:flex-start; gap:20px; margin-top:20px;">
-    <div style="width:200px; font-size:14px;">
-      <p><strong>🧀 Cheese:</strong> <span id="cheeseCount">0</span></p>
+    <div id="leftRail" style="width:200px; font-size:14px;">
+      <p style="display:none;"><strong>🧀 Cheese:</strong> <span id="cheeseCount">0</span></p>
       <p><strong>⚡ Advancement Points:</strong> <span id="advPoints">0</span></p>
       <div style="margin:8px 0 10px;">
         <div style="font-weight:bold; margin-bottom:3px;">🏭 Generator Cheese Timer</div>
@@ -379,7 +371,7 @@
         </div>
         <div id="advPointTimerText" style="font-size:12px; color:#444; margin-top:2px;">Waiting for game start…</div>
       </div>
-      <p><strong>🔨 Selected Build:</strong> <span id="buildType">None</span></p>
+      <p style="display:none;"><strong>🔨 Selected Build:</strong> <span id="buildType">None</span></p>
 
       <div id="abilityStatus" style="margin-top:10px;"></div>
 
@@ -387,7 +379,7 @@
         🟢 You gained an advancement point!
       </p>
 
-      <p id="status"></p>
+      <p id="status" style="display:none;"></p>
 
       <div id="playerStatus" style="margin-top:10px;"></div>
       <div id="hostDisplay" style="margin-top:10px; font-weight:bold; color:#333;"></div>
@@ -470,6 +462,11 @@
       </div>
     </div>
   </div>
+  <div id="bottomDock" style="position:fixed;left:50%;transform:translateX(-50%);bottom:8px;z-index:32;background:rgba(15,23,42,.9);padding:8px;border-radius:14px;display:flex;gap:8px;max-width:95vw;overflow:auto;"></div>
+  <div id="sidePanelButtons" style="position:fixed;left:8px;top:92px;z-index:33;display:flex;flex-direction:column;gap:6px;">
+    <button data-panel="stats">📊 Stats</button><button data-panel="buildings">🏗 Buildings</button><button data-panel="settings">⚙ Settings</button><button data-panel="help">❔ Help</button><button id="focusBtn">🎯 Focus (H)</button>
+  </div>
+  <div id="sidePanel" style="display:none;position:fixed;left:56px;top:92px;z-index:34;background:#fff;border:1px solid #bbb;border-radius:10px;padding:10px;max-width:300px;text-align:left;"></div>
 
 <script type="module">
   // ============================================================
@@ -759,6 +756,38 @@
   let lastAcornShotAt = 0;
   let lastFanBurstAt = 0;
   let unlockMessageTimeout = null;
+  let focusMode = false;
+  function showToast(message, type="info"){
+    const c = document.getElementById("toastContainer"); if (!c) return;
+    const t = document.createElement("div");
+    t.textContent = message;
+    t.style.cssText = `padding:8px 12px;border-radius:999px;color:#fff;font-weight:700;background:${type==="warn"?"#b91c1c":"#1d4ed8"};opacity:0;transition:.2s;`;
+    c.appendChild(t); requestAnimationFrame(()=>t.style.opacity="1");
+    setTimeout(()=>{ t.style.opacity="0"; setTimeout(()=>t.remove(),200); }, 1500);
+  }
+  function updateRoleHud(){
+    const role = !isAlive ? "Dead" : (isHost ? "Host" : (isCat ? "Cat" : "Mouse"));
+    document.getElementById("hudRole").textContent = `🎭 ${role}`;
+  }
+  function updateTopHud(){
+    document.getElementById("hudPlayer").textContent = `🐭 ${username}`;
+    document.getElementById("hudCheese").textContent = `🧀 ${cheeseCount}`;
+    document.getElementById("hudWins").textContent = `🏆 ${playerWins}`;
+    updateRoleHud();
+  }
+  function renderBuildingDock(){
+    const dock = document.getElementById("bottomDock"); if (!dock || !playerBuildSlots?.length) return;
+    dock.innerHTML = "";
+    playerBuildSlots.forEach((key,idx)=>{
+      const b = BUILDINGS[key]; if (!b) return;
+      const locked = wins < (b.unlockWins||0), afford = cheeseCount >= b.cost;
+      const item = document.createElement("button");
+      item.innerHTML = `${b.icon||"🏗"} <small>${b.cost}🧀</small>${locked?` <small style="color:#f87171;">❌${b.unlockWins}🏆</small>`:""}`;
+      item.style.cssText = `border-radius:10px;padding:8px 10px;border:1px solid #334155;background:${locked?"#374151":afford?"#14532d":"#4b5563"};color:#fff;white-space:nowrap;${selectedBuild===key?"box-shadow:0 0 0 2px #facc15 inset;":""}`;
+      item.onclick = ()=>selectBuildBySlot(idx);
+      dock.appendChild(item);
+    });
+  }
   let lastWebShotAt = 0;
   let cheeseAutoSpawnStartedAt = null;
   const firebaseUnsubscribers = [];
@@ -4483,6 +4512,7 @@
   }
 
   function showUnlockMessage(text){
+    showToast(text, "warn");
     const msg = document.getElementById("unlockMessage");
     if (!msg) return;
     msg.textContent = text;
@@ -4531,6 +4561,12 @@
   // Keyboard input (kept with your behavior)
   // ============================================================
   window.addEventListener("keydown", async (e) => {
+    if (e.key.toLowerCase() === "h"){
+      focusMode = !focusMode;
+      document.getElementById("sidePanelButtons").style.display = focusMode ? "none" : "flex";
+      document.getElementById("topHud").style.display = focusMode ? "none" : "flex";
+      showToast(focusMode ? "Focus mode enabled" : "Focus mode disabled");
+    }
     if (!isAlive) return;
 
     if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) e.preventDefault();
@@ -5033,6 +5069,30 @@
 
   startGlobalLoops();
   renderSelectionOverlay();
+  document.getElementById("focusBtn").addEventListener("click", () => window.dispatchEvent(new KeyboardEvent("keydown",{key:"h"})));
+  document.querySelectorAll("#sidePanelButtons [data-panel]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const panel = document.getElementById("sidePanel");
+      const k = btn.getAttribute("data-panel");
+      const map = {
+        stats:`<b>Stats</b><br>Wins: ${playerWins}<br>Cheese: ${cheeseCount}<br>Status: ${isAlive?"Alive":"Dead"}`,
+        buildings:`<b>Buildings</b><br>Use bottom dock for quick build.<br>Press 1-8 or click dock.`,
+        settings:`<b>Settings</b><br>H: Focus mode<br>Space: Upgrades<br>Arrows: Move`,
+        help:`<b>Help</b><br>Collect cheese, build defenses, survive waves.`
+      };
+      panel.innerHTML = map[k] || "";
+      panel.style.display = panel.style.display === "none" ? "block" : "none";
+    });
+  });
+  setInterval(()=>{
+    updateTopHud();
+    renderBuildingDock();
+    const waveText = document.getElementById("waveCountdown")?.textContent || "";
+    const secs = (waveText.match(/(\d+)s/)||[])[1];
+    if (secs) document.getElementById("hudTimer").textContent = `⏱ 0:${String(secs).padStart(2,"0")}`;
+    const wave = Math.max(1, Math.floor(catPower/5)+1);
+    document.getElementById("hudWave").textContent = `🌊 Wave ${wave}`;
+  }, 300);
   if (gameStarted) startHostLoops();
 
 </script>
