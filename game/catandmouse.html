@@ -579,6 +579,11 @@
   let moveCooldown = 225; // ✅ was const before; upgrades change it
   const CAT_SPEED_MULTIPLIER = 1.28;
   const RAT_SPEED_MULTIPLIER = 1.85;
+  const MAX_RATS = 18;
+  const MAX_FLEAS = 24;
+  const MAX_TOTAL_ENEMIES = 36;
+  const MAX_PROJECTILES = 80;
+  const ENEMIES_AI_PER_FRAME = 6;
   let buildCooldown = 225;
 
   let advancementPoints = 0;
@@ -645,13 +650,13 @@
   const HOST_STALE_MS = 12000;
   const OVERLAY_RENDER_DISTANCE = 7;
   const ENEMY_CAPS = {
-    rats: 24,
-    fleas: 18,
+    rats: MAX_RATS,
+    fleas: MAX_FLEAS,
     oxen: 8,
     ratKings: 2,
     vultures: 6,
     termites: 9,
-    totalEnemies: 42
+    totalEnemies: MAX_TOTAL_ENEMIES
   };
 
   const BUILD_DEFS = {
@@ -752,6 +757,24 @@
   const TARGETING_OPTIONS = ["Nearest","Weakest","Strongest","Cat","Rats","Oxen","Vultures","Termites"];
   const TARGETABLE_STRUCTURES = ["🔫","🚀","⚡","☄️","🌰","🟢","🕸️"];
   let structureTargeting = {};
+  let enemyUpdateCursor = 0;
+  let blockedGridCache = null;
+  let blockedGridDirty = true;
+
+  function markBlockedGridDirty(){ blockedGridDirty = true; }
+  function rebuildBlockedGridFromStructures(){
+    const blocked = Array.from({ length: gridSize }, () => Array(gridSize).fill(false));
+    for (const st of getAllStructures()){
+      if (["🧱","🏭","💎","🗼"].includes(st.type)) blocked[st.y][st.x] = true;
+    }
+    return blocked;
+  }
+  function getBlockedGrid(){
+    if (!blockedGridDirty && blockedGridCache) return blockedGridCache;
+    blockedGridCache = rebuildBlockedGridFromStructures();
+    blockedGridDirty = false;
+    return blockedGridCache;
+  }
 
   const GENERATOR_PAYOUT_MS = 15000;
   const ADV_POINT_MS = 180000;
@@ -1804,6 +1827,7 @@
       grid[y][x] = "";
       delete structureHealth[key];
       delete structureShields[key];
+      markBlockedGridDirty();
       await deleteDoc(ccRef(ID.structure(x,y)));
     } else {
       await updateDoc(ccRef(ID.structure(x,y)), { health: structureHealth[key], shield: structureShields[key] ?? 0 });
@@ -2600,7 +2624,7 @@
     const writes = [];
     const now = Date.now();
     const RAT_THINK_INTERVAL_MS = 350;
-    const RAT_REPATH_JITTER_MS = 180;
+    const RAT_REPATH_JITTER_MS = 200;
     const RAT_STUCK_TICKS_LIMIT = 8;
     const RAT_TARGET_MAX_DISTANCE = 24;
 
@@ -2636,6 +2660,16 @@
 
       return false;
     };
+
+    const blockedGrid = getBlockedGrid();
+    const ratsToAiUpdate = new Set();
+    const livingRatIds = rats.filter(r => (r.health ?? 0) > 0).map(r => r.id);
+    const aiBudget = Math.min(ENEMIES_AI_PER_FRAME, livingRatIds.length);
+    for (let i = 0; i < aiBudget; i++){
+      const idx = (enemyUpdateCursor + i) % livingRatIds.length;
+      ratsToAiUpdate.add(livingRatIds[idx]);
+    }
+    enemyUpdateCursor = (enemyUpdateCursor + aiBudget) % Math.max(1, livingRatIds.length);
 
     for (const rat of rats){
       if ((rat.health ?? 0) <= 0) continue;
@@ -2687,14 +2721,14 @@
         : Math.abs(rat.x - rat.ai.targetX) + Math.abs(rat.y - rat.ai.targetY);
       const targetMovedFarAway = currentTargetDistance > RAT_TARGET_MAX_DISTANCE;
       const pathEmpty = !rat.ai.path || rat.ai.path.length === 0;
-      const shouldThink = !rat.ai.nextThinkAt || now >= rat.ai.nextThinkAt || !isRatTargetStillValid(rat) || pathEmpty || isStuck || targetMovedFarAway;
+      const shouldThink = ratsToAiUpdate.has(rat.id) && (!rat.ai.nextThinkAt || now >= rat.ai.nextThinkAt || !isRatTargetStillValid(rat) || pathEmpty || isStuck || targetMovedFarAway);
 
       if (shouldThink){
         let closestTarget = null;
         let bestPath = null;
 
         const rabbitTarget = getNearestRabbitTarget(rat.x, rat.y, (x, y) => {
-          const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+          const isBlocked = blockedGrid[y]?.[x] === true;
           const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
           return !isBlocked && !ratOccupied;
         });
@@ -2705,7 +2739,7 @@
         }
 
         const mouseTarget = !closestTarget ? getNearestMouseTarget(rat.x, rat.y, (x, y) => {
-          const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+          const isBlocked = blockedGrid[y]?.[x] === true;
           const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
           return !isBlocked && !ratOccupied;
         }) : null;
@@ -2747,10 +2781,32 @@
       if (closestTarget){
         const centerX = Math.floor(gridSize/2);
         const centerY = Math.floor(gridSize/2);
+        const dx = closestTarget.x - rat.x;
+        const dy = closestTarget.y - rat.y;
+        const manhattan = Math.abs(dx) + Math.abs(dy);
+        const nearTarget = manhattan <= 6;
+        const lineOfSight = (nearTarget && (dx === 0 || dy === 0)) ? (() => {
+          const sx = Math.sign(dx), sy = Math.sign(dy);
+          let cx = rat.x + sx, cy = rat.y + sy;
+          while (cx !== closestTarget.x || cy !== closestTarget.y){
+            if (blockedGrid[cy]?.[cx]) return false;
+            cx += sx; cy += sy;
+          }
+          return true;
+        })() : false;
+        if (lineOfSight){
+          const nx = rat.x + Math.sign(dx);
+          const ny = rat.y + Math.sign(dy);
+          const ratInWay = rats.some(r => r.id !== rat.id && r.x===nx && r.y===ny);
+          if (!ratInWay && !blockedGrid[ny]?.[nx]){
+            rat.x = nx; rat.y = ny;
+            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, updatedAt: Date.now() } });
+          }
+        }
 
-        if (!bestPath){
+        if (!lineOfSight && !bestPath){
           bestPath = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
-            const isBlocked = ["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+            const isBlocked = blockedGrid[y]?.[x] === true;
             const isReviveCenter = (x===centerX && y===centerY);
             const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
             return !isBlocked && !isReviveCenter && !ratOccupied;
@@ -3341,7 +3397,7 @@
             if (dx===0&&dy===0) dx=1;
             let cx=x+dx, cy=y+dy;
             while (cx>=0&&cy>=0&&cx<gridSize&&cy<gridSize){
-              rabbitShots.push({x:cx,y:cy});
+              if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({x:cx,y:cy});
               for (const r of rats){ if (r.x===cx && r.y===cy && (r.health??0)>0){ await damageEnemyUnit({...r,kind:"rat"}, 18); } }
               for (const o of oxen){ if (o.x===cx && o.y===cy && (o.health??0)>0){ await damageEnemyUnit({...o,kind:"ox"}, 18); } }
               for (const k of ratKings){ if (k.x===cx && k.y===cy && (k.health??0)>0){ await damageEnemyUnit({...k,kind:"ratking"}, 18); } }
@@ -3364,7 +3420,7 @@
               if (next && (Math.abs(next.x-h.x)+Math.abs(next.y-h.y)<=3)) hit.push(next);
               if (hit.length>=4) break;
             }
-            for (const h of hit){ rabbitShots.push({x:h.x,y:h.y}); if (h.kind==="cat"){ catHealth -= 4; } else { await damageEnemyUnit({...h.enemy,kind:h.kind}, 4); } }
+            for (const h of hit){ if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({x:h.x,y:h.y}); if (h.kind==="cat"){ catHealth -= 4; } else { await damageEnemyUnit({...h.enemy,kind:h.kind}, 4); } }
             await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
           }
         }
@@ -3378,7 +3434,7 @@
           const enemies = listCombatEnemies();
           const target = enemies.sort((a,b)=>(b.enemy.health||0)-(a.enemy.health||0))[0];
           if (target){
-            rabbitShots.push({x:target.enemy.x,y:target.enemy.y});
+            if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({x:target.enemy.x,y:target.enemy.y});
             await damageEnemyUnit({ ...target.enemy, kind: target.kind }, 55);
             lastAcornShotAt = Date.now();
           } else if (catHealth > 0){
@@ -3417,7 +3473,7 @@
               wy += dy + (Math.random()<0.25 ? (Math.floor(Math.random()*3)-1) : 0);
               wx = Math.max(0, Math.min(gridSize-1, wx));
               wy = Math.max(0, Math.min(gridSize-1, wy));
-              rabbitShots.push({x:wx,y:wy});
+              if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({x:wx,y:wy});
 
               for (const unit of listCombatEnemies()){
                 if (unit.enemy.x===wx && unit.enemy.y===wy){
@@ -3462,7 +3518,7 @@
         const rabbitAttackRange = nearDrum ? 5 : 4;
         if (distance <= rabbitAttackRange){
           let cx = rb.x, cy = rb.y;
-          while (cx!==tx || cy!==ty){ cx += Math.sign(tx-cx); cy += Math.sign(ty-cy); rabbitShots.push({x:cx,y:cy}); }
+          while (cx!==tx || cy!==ty){ cx += Math.sign(tx-cx); cy += Math.sign(ty-cy); if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({x:cx,y:cy}); }
           if (target.kind==="cat"){
             catHealth -= rabbitDamage;
             await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
@@ -3859,6 +3915,7 @@
             if (Number.isInteger(x) && Number.isInteger(y)){
               const key = `${x}_${y}`;
               structures.delete(key);
+              markBlockedGridDirty();
               delete structureHealth[key];
               delete structureShields[key];
               removeFromStructureIndex(x, y);
@@ -3963,6 +4020,7 @@
           if (Number.isInteger(x) && Number.isInteger(y) && data.type){
             const key = `${x}_${y}`;
             structures.set(key, {x,y,type:data.type,health:data.health ?? 1});
+            markBlockedGridDirty();
             structureHealth[key] = data.health ?? 1;
             structureShields[key] = Math.max(0, data.shield ?? structureShields[key] ?? 0);
             if (isCheesePickupCell(grid[y][x])) delete cheesePickupExpiryByCell[`${x}_${y}`];
