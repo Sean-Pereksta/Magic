@@ -342,7 +342,7 @@
 <body>
   <button id="fullscreenBtn" aria-label="Toggle full screen">⛶ Fullscreen</button>
   <div id="topHud" style="position:sticky;top:0;z-index:35;background:rgba(15,23,42,.92);color:#fff;padding:8px 10px;font-size:14px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;backdrop-filter:blur(6px);">
-    <span id="hudPlayer">🐭 Player</span><span id="hudCheese">🧀 0</span><span id="hudWins">🏆 0</span><span id="hudTimer">⏱ --:--</span><span id="hudWave">🌊 Wave 1</span><span id="hudRole">🎭 Spectator</span>
+    <span id="hudPlayer">🐭 Player</span><span id="hudCheese">🧀 0</span><span id="hudWins">🏆 0</span><span id="hudTimer">⏱ --:--</span><span id="hudWave">🌊 Wave 1</span><span id="hudBuild">🏗 Build: None</span><span id="hudRole">🎭 Spectator</span>
   </div>
   <div id="toastContainer" style="position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:6px;pointer-events:none;"></div>
 
@@ -1080,12 +1080,20 @@
     display.textContent = def ? `${def.symbol} ${def.name}` : "Select";
   }
 
+  function updateHudBuildDisplay(){
+    const hudBuild = document.getElementById("hudBuild");
+    if (!hudBuild) return;
+    const def = BUILD_DEFS[selectedBuild];
+    hudBuild.textContent = def ? `🏗 Build: ${def.symbol} ${def.name}` : "🏗 Build: None";
+  }
+
   function selectBuild(value){
     selectedBuild = parseInt(value, 10);
     const def = BUILD_DEFS[selectedBuild];
     const text = def ? `${def.name} ${def.symbol} (Cost: ${def.cost})` : "None";
     document.getElementById("buildType").textContent = text;
     updateMobileBuildDisplay();
+    updateHudBuildDisplay();
   }
 
   function getUnlockedBuildIds(){
