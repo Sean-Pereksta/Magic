@@ -2090,6 +2090,7 @@ function reconstructPath(came, current, gridToWorld) {
 ============================================================ */
 
 function updatePickups(dt) {
+  const pickupActors = getPickupActors();
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
 
@@ -2101,16 +2102,33 @@ function updatePickups(dt) {
       p.position.y = 1.25 + Math.sin(p.userData.pulse * 4) * 0.22;
     }
 
-    if (p.position.distanceTo(player.rig.position) < 2) {
-      energy = clamp(energy + 30, 0, 100);
-      pickupCount++;
-
-      spawnPickupBurst(p.position);
-
-      removeObjectFromParentOrScene(p);
-      pickups.splice(i, 1);
+    for (const { owner, actor } of pickupActors) {
+      if (!owner || !actor || !actor.rig) continue;
+      if (p.position.distanceTo(actor.rig.position) < 2) {
+        owner.energy = clamp((owner.energy || 0) + 35, 0, 100);
+        if (actor !== owner) actor.energy = owner.energy;
+        pickupCount++;
+        spawnPickupBurst(p.position);
+        removeObjectFromParentOrScene(p);
+        pickups.splice(i, 1);
+        break;
+      }
     }
   }
+}
+
+function getPickupActors() {
+  if (gameMode !== 2) return [{ owner: player, actor: player }];
+
+  const actors = [];
+  for (const p of players) {
+    if (!p || p.eliminated) continue;
+    const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p;
+    if (actor && actor.rig && actor.rig.visible !== false) {
+      actors.push({ owner: p, actor });
+    }
+  }
+  return actors;
 }
 
 function spawnPickupBurst(pos) {
@@ -2359,7 +2377,15 @@ function updateHUD() {
       document.getElementById("hud").appendChild(p2);
     }
     const s = p => p.isChaser ? "Chaser" : (p.eliminated ? "Caught" : "Running");
-    p2.textContent = `P1: ${s(players[0])} | P2: ${s(players[1])} | P2 Energy: ${Math.floor(players[1].energy)}`;
+    p2.textContent = `P1: ${s(players[0])} | P2: ${s(players[1])} | Blue Energy: ${Math.floor(players[0].energy)}% | Orange Energy: ${Math.floor(players[1].energy)}%`;
+  }
+}
+
+function syncGlobalEnergyForHUD() {
+  if (gameMode === 2 && players[0]) {
+    energy = players[0].energy;
+  } else if (player) {
+    energy = player.energy;
   }
 }
 
@@ -2627,7 +2653,7 @@ function animate() {
   updatePlayerArrows();
 
   activeRunnerPlayers = getActiveRunners();
-  if (players[0]) energy = players[0].energy;
+  syncGlobalEnergyForHUD();
   updateSpeedScaling();
   updateEnemies(dt);
   updateDogs(dt);
@@ -2733,7 +2759,7 @@ function convertPlayerToControlledChaser(p, reason) {
 
   p.isChaser = true;
   p.eliminated = false;
-  p.energy = 100;
+  p.energy = Math.min(p.energy ?? 100, 85);
 
   if (p.rig) p.rig.visible = false;
 
@@ -2747,8 +2773,11 @@ function convertPlayerToControlledChaser(p, reason) {
   chaser.ownerPlayerId = p.id;
   chaser.baseControlledSpeed = playerBaseSpeed;
   chaser.baseControlledSprintSpeed = playerBaseSprintSpeed;
-  chaser.speed = chaser.baseControlledSpeed * 1.15;
-  chaser.sprintSpeed = chaser.baseControlledSprintSpeed * 1.15;
+  chaser.speed = chaser.baseControlledSpeed * 0.92;
+  chaser.sprintSpeed = chaser.baseControlledSprintSpeed * 0.92;
+  chaser.energy = p.energy;
+  chaser.dodgeCooldown = 0;
+  chaser.burnCooldown = 0;
   chaser.isPlayerControlledChaser = true;
 
   p.controlledChaser = chaser;
@@ -2776,8 +2805,19 @@ function restorePlayerFromControlledChaser(p) {
   p.isChaser = false;
   p.eliminated = false;
   p.controlledChaser = null;
-  p.energy = Math.max(p.energy || 0, 65);
+  const restoredEnergy = Math.max(p.energy || 0, 65);
+  resetPlayerMovementStats(p);
+  p.energy = restoredEnergy;
   activeRunnerPlayers = players.filter(x => x && !x.isChaser && !x.eliminated);
+}
+function resetPlayerMovementStats(p) {
+  if (!p) return;
+  p.speed = playerBaseSpeed;
+  p.sprintSpeed = playerBaseSprintSpeed;
+  p.energy = 100;
+  p.velocity.set(0, 0, 0);
+  p.dodgeCooldown = 0;
+  p.burnCooldown = 0;
 }
 function swapChaserAndRunner(chaserOwner, caughtRunner) {
   if (!chaserOwner || !caughtRunner || roundEnding) return;
@@ -2919,7 +2959,7 @@ function clearObjectArray(arr, objectKey, removeExtraPoliceLaser = false) {
 function resetTwoPlayerMatch() {
   twoPlayerRound = 1; roundActive = true; roundEnding = false;
   twoPlayerScores = { 1: { totalYards: 0, roundYards: 0, lastCountedZ: START_Z }, 2: { totalYards: 0, roundYards: 0, lastCountedZ: START_Z } };
-  for (const p of players) { if (!p) continue; p.isChaser = false; p.eliminated = false; p.roundCaughtByEnemy = false; p.roundWasRunner = true; p.energy = 100; p.rig.visible = true; twoPlayerScores[p.id].lastCountedZ = p.rig.position.z; }
+  for (const p of players) { if (!p) continue; p.isChaser = false; p.eliminated = false; p.roundCaughtByEnemy = false; p.roundWasRunner = true; resetPlayerMovementStats(p); p.rig.visible = true; twoPlayerScores[p.id].lastCountedZ = p.rig.position.z; }
   updateTwoPlayerScoreboard();
 }
 function resetWorldForNewTwoPlayerRound() {
@@ -2929,7 +2969,7 @@ function resetWorldForNewTwoPlayerRound() {
   distance = 0; furthestChunkZ = 0; pickupCount = 0; currentSpeedTier = 0; enemyBaseSpeedBonus = 0;
   for (let i = 0; i < CHUNK_COUNT_AHEAD; i++) generateChunk(i * CHUNK_LENGTH);
   furthestChunkZ = (CHUNK_COUNT_AHEAD - 1) * CHUNK_LENGTH;
-  for (const p of players) { if (!p) continue; if (p.controlledChaser && p.controlledChaser.rig) scene.remove(p.controlledChaser.rig); p.isChaser = false; p.eliminated = false; p.controlledChaser = null; p.energy = 100; p.velocity.set(0, 0, 0); p.rig.visible = true; p.rig.position.set(p.id === 1 ? -2.8 : 2.8, 0, START_Z); twoPlayerScores[p.id].roundYards = 0; twoPlayerScores[p.id].lastCountedZ = START_Z; }
+  for (const p of players) { if (!p) continue; if (p.controlledChaser && p.controlledChaser.rig) scene.remove(p.controlledChaser.rig); p.isChaser = false; p.eliminated = false; p.controlledChaser = null; resetPlayerMovementStats(p); p.rig.visible = true; p.rig.position.set(p.id === 1 ? -2.8 : 2.8, 0, START_Z); twoPlayerScores[p.id].roundYards = 0; twoPlayerScores[p.id].lastCountedZ = START_Z; }
   activeRunnerPlayers = players.slice(); player = players[0];
 }
 function showRoundTransition(reason) {
