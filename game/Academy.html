@@ -103,6 +103,112 @@
   #menuCard h1 { margin:0; font-size:52px; }
   #menuCard h2 { margin:8px 0 18px; font-size:24px; opacity:.9; font-weight:600; }
   #menuControls { margin-top:14px; font-size:12px; opacity:.85; line-height:1.5; text-align:left; }
+
+
+  #twoPlayerScoreboard {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 12;
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    color: white;
+    font-family: Arial, sans-serif;
+    pointer-events: none;
+    max-width: 760px;
+    width: min(760px, calc(100vw - 24px));
+  }
+
+  .tpSide {
+    flex: 1;
+    border-radius: 12px;
+    padding: 7px 10px;
+    box-shadow: 0 0 16px rgba(0,0,0,.45);
+    border: 1px solid rgba(255,255,255,.22);
+    text-shadow: 0 1px 2px rgba(0,0,0,.6);
+  }
+
+  .tpP1 {
+    background: linear-gradient(135deg, rgba(29,78,216,.92), rgba(37,99,235,.72));
+  }
+
+  .tpP2 {
+    background: linear-gradient(135deg, rgba(234,88,12,.92), rgba(249,115,22,.72));
+  }
+
+  .tpCenter {
+    width: 190px;
+    border-radius: 12px;
+    padding: 7px 10px;
+    text-align: center;
+    background: rgba(15,23,42,.88);
+    border: 1px solid rgba(255,255,255,.22);
+    box-shadow: 0 0 16px rgba(0,0,0,.45);
+  }
+
+  .tpName {
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: .5px;
+  }
+
+  .tpTotal {
+    font-size: 18px;
+    font-weight: 900;
+  }
+
+  .tpRound {
+    font-size: 13px;
+    opacity: .95;
+  }
+
+  .tpStatus {
+    margin-top: 2px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    opacity: .9;
+  }
+
+  #tpRoundText {
+    font-size: 18px;
+    font-weight: 900;
+  }
+
+  .tpSub {
+    font-size: 10px;
+    opacity: .78;
+  }
+
+  #roundToast {
+    position: fixed;
+    top: 92px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 13;
+    color: white;
+    background: rgba(15,23,42,.86);
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-weight: 900;
+    display: none;
+    pointer-events: none;
+    box-shadow: 0 0 18px rgba(0,0,0,.4);
+  }
+
+  .blueWin {
+    color: #60a5fa;
+    text-shadow: 0 0 18px rgba(96,165,250,.9);
+  }
+
+  .orangeWin {
+    color: #fb923c;
+    text-shadow: 0 0 18px rgba(251,146,60,.9);
+  }
+
 </style>
 </head>
 <body>
@@ -130,6 +236,29 @@
 </div>
 
 <div id="crosshair"></div>
+
+<div id="twoPlayerScoreboard" style="display:none;">
+  <div class="tpSide tpP1">
+    <div class="tpName">BLUE CHRIS</div>
+    <div class="tpTotal">Total: <span id="p1TotalYards">0</span></div>
+    <div class="tpRound">Round: <span id="p1RoundYards">0</span></div>
+    <div class="tpStatus" id="p1Status">Runner</div>
+  </div>
+
+  <div class="tpCenter">
+    <div id="tpRoundText">Round 1 / 3</div>
+    <div class="tpSub">Best of 3 · Highest total yards wins</div>
+  </div>
+
+  <div class="tpSide tpP2">
+    <div class="tpName">ORANGE CHRIS</div>
+    <div class="tpTotal">Total: <span id="p2TotalYards">0</span></div>
+    <div class="tpRound">Round: <span id="p2RoundYards">0</span></div>
+    <div class="tpStatus" id="p2Status">Runner</div>
+  </div>
+</div>
+<div id="roundToast"></div>
+
 <div id="menuOverlay">
   <div id="menuCard">
     <h1>Chris Runner</h1>
@@ -206,6 +335,16 @@ let playerHiddenInGrass = false;
 
 let frameCount = 0;
 
+let twoPlayerRound = 1;
+const TWO_PLAYER_MAX_ROUNDS = 3;
+let twoPlayerScores = {
+  1: { totalYards: 0, roundYards: 0, lastCountedZ: 0 },
+  2: { totalYards: 0, roundYards: 0, lastCountedZ: 0 }
+};
+let roundActive = false;
+let roundEnding = false;
+let roundToastTimer = null;
+
 const WORLD_WIDTH = 44;
 const CHUNK_LENGTH = 42;
 const CHUNK_COUNT_AHEAD = 9;
@@ -216,7 +355,7 @@ const PLAYER_SAFE_RESPAWN_AHEAD = 28;
 const TWO_PLAYER_CAMERA_MIN_DISTANCE = 30;
 const TWO_PLAYER_CAMERA_MAX_DISTANCE = 80;
 const CHASER_PLAYER_RESPAWN_AHEAD = 100;
-const CONTROLLED_CHASER_RUNNER_GAP_TRIGGER = 20;
+const CONTROLLED_CHASER_FALL_BEHIND_DISTANCE = 10;
 
 const START_Z = 0;
 let furthestChunkZ = 0;
@@ -2484,6 +2623,7 @@ function animate() {
     updatePlayerActor(players[1], dt, { forwardA: "i", backA: "k", leftA: "l", rightA: "j", sprint: "enter", dodge: "o" });
   }
   updateControlledChaserRespawns();
+  updatePlayerChaserTags();
   updatePlayerArrows();
 
   activeRunnerPlayers = getActiveRunners();
@@ -2501,6 +2641,8 @@ function animate() {
   updateCamera(dt);
   updateStarryBackground(dt);
   manageWorld();
+  updateTwoPlayerYards();
+  updateTwoPlayerScoreboard();
   updateHUD();
 
   renderer.render(scene, camera);
@@ -2603,21 +2745,77 @@ function convertPlayerToControlledChaser(p, reason) {
   chaser.velocity = new THREE.Vector3();
   chaser.isControlledChaser = true;
   chaser.ownerPlayerId = p.id;
+  chaser.baseControlledSpeed = playerBaseSpeed;
+  chaser.baseControlledSprintSpeed = playerBaseSprintSpeed;
+  chaser.speed = chaser.baseControlledSpeed * 1.15;
+  chaser.sprintSpeed = chaser.baseControlledSprintSpeed * 1.15;
+  chaser.isPlayerControlledChaser = true;
 
   p.controlledChaser = chaser;
+
+  if (gameMode === 2 && twoPlayerScores[p.id]) {
+    twoPlayerScores[p.id].lastCountedZ = chaser.rig.position.z;
+  }
 
   if (p.arrow) {
     p.arrow.visible = true;
     p.arrow.position.set(chaser.rig.position.x, 6.6, chaser.rig.position.z);
   }
+}
+function restorePlayerFromControlledChaser(p) {
+  if (!p) return;
 
-  const runnersLeft = getActiveRunners();
-  if (runnersLeft.length === 0) {
-    endGame((reason || "Both players got caught!") + " Both players are now chasers!");
+  if (p.controlledChaser && p.controlledChaser.rig) {
+    const chaserPos = p.controlledChaser.rig.position.clone();
+    scene.remove(p.controlledChaser.rig);
+    if (p.controlledChaser.arrow) scene.remove(p.controlledChaser.arrow);
+    p.rig.position.copy(chaserPos);
+  }
+
+  p.rig.visible = true;
+  p.isChaser = false;
+  p.eliminated = false;
+  p.controlledChaser = null;
+  p.energy = Math.max(p.energy || 0, 65);
+  activeRunnerPlayers = players.filter(x => x && !x.isChaser && !x.eliminated);
+}
+function swapChaserAndRunner(chaserOwner, caughtRunner) {
+  if (!chaserOwner || !caughtRunner || roundEnding) return;
+
+  restorePlayerFromControlledChaser(chaserOwner);
+  convertPlayerToControlledChaser(caughtRunner, "Player " + chaserOwner.id + " tagged Player " + caughtRunner.id + "!");
+
+  if (caughtRunner.controlledChaser) {
+    const safe = findSafeSpawnNearZ(chaserOwner.rig.position.z + CHASER_PLAYER_RESPAWN_AHEAD, chaserOwner.rig.position.x);
+    caughtRunner.controlledChaser.rig.position.copy(safe);
+    if (caughtRunner.controlledChaser.velocity) caughtRunner.controlledChaser.velocity.set(0, 0, 0);
+  }
+
+  if (twoPlayerScores[chaserOwner.id]) twoPlayerScores[chaserOwner.id].lastCountedZ = chaserOwner.rig.position.z;
+  if (twoPlayerScores[caughtRunner.id]) twoPlayerScores[caughtRunner.id].lastCountedZ = caughtRunner.controlledChaser ? caughtRunner.controlledChaser.rig.position.z : caughtRunner.rig.position.z;
+
+  flashRoundMessage("Player " + chaserOwner.id + " tagged Player " + caughtRunner.id + "! Roles swapped!");
+  updateTwoPlayerScoreboard();
+}
+function updatePlayerChaserTags() {
+  if (gameMode !== 2 || !roundActive || roundEnding) return;
+
+  const runners = getActiveRunners();
+  for (const chaserOwner of players) {
+    if (!chaserOwner || !chaserOwner.isChaser || !chaserOwner.controlledChaser) continue;
+    const chaserRig = chaserOwner.controlledChaser.rig;
+
+    for (const runner of runners) {
+      if (!runner || runner.id === chaserOwner.id || runner.isChaser) continue;
+      if (flatDistance(chaserRig.position, runner.rig.position) < 1.9) {
+        swapChaserAndRunner(chaserOwner, runner);
+        return;
+      }
+    }
   }
 }
 function handlePlayerCaught(p, reason) {
-  if (!p || p.isChaser || p.eliminated || gameOver) return;
+  if (!p || p.isChaser || p.eliminated || gameOver || roundEnding) return;
 
   if (gameMode !== 2) {
     endGame(reason || "Chris got caught!");
@@ -2627,8 +2825,11 @@ function handlePlayerCaught(p, reason) {
   convertPlayerToControlledChaser(p, reason);
 
   if (getActiveRunners().length <= 0) {
-    endGame("Both players got caught!");
+    endTwoPlayerRound(reason || "Both players were caught!");
+    return;
   }
+
+  updateTwoPlayerScoreboard();
 }
 function updateControlledChaserRespawns() {
   if (gameMode !== 2) return;
@@ -2636,15 +2837,13 @@ function updateControlledChaserRespawns() {
   const leader = getLeaderRunner();
   if (!leader) return;
 
-  const activeRunners = getActiveRunners();
-  const controlledChasers = players.filter(p => p && p.isChaser && p.controlledChaser);
-  if (activeRunners.length !== 1 || controlledChasers.length !== 1) return;
+  for (const p of players) {
+    if (!p || !p.isChaser || !p.controlledChaser) continue;
 
-  for (const p of controlledChasers) {
     const chaserRig = p.controlledChaser.rig;
-    const runnerGap = leader.rig.position.z - chaserRig.position.z;
+    const tooFarBehind = leader.rig.position.z - chaserRig.position.z > CONTROLLED_CHASER_FALL_BEHIND_DISTANCE;
 
-    if (runnerGap > CONTROLLED_CHASER_RUNNER_GAP_TRIGGER) {
+    if (tooFarBehind) {
       const safe = findSafeSpawnNearZ(
         leader.rig.position.z + CHASER_PLAYER_RESPAWN_AHEAD,
         leader.rig.position.x
@@ -2670,10 +2869,97 @@ function updatePlayerArrows() {
     p.arrow.rotation.y += 0.06;
   }
 }
+function updateTwoPlayerYards() {
+  if (gameMode !== 2 || !roundActive || roundEnding) return;
+  for (const p of players) {
+    if (!p || p.eliminated || p.isChaser) continue;
+    const score = twoPlayerScores[p.id];
+    if (!score) continue;
+    const currentZ = p.rig.position.z;
+    const gained = Math.max(0, currentZ - score.lastCountedZ);
+    if (gained > 0) {
+      score.roundYards += gained;
+      score.totalYards += gained;
+      score.lastCountedZ = currentZ;
+    }
+  }
+}
+function updateTwoPlayerScoreboard() {
+  if (gameMode !== 2) return;
+  const board = document.getElementById("twoPlayerScoreboard");
+  if (board) board.style.display = "flex";
+  const p1 = players.find(p => p && p.id === 1);
+  const p2 = players.find(p => p && p.id === 2);
+  document.getElementById("p1TotalYards").textContent = Math.floor(twoPlayerScores[1].totalYards);
+  document.getElementById("p1RoundYards").textContent = Math.floor(twoPlayerScores[1].roundYards);
+  document.getElementById("p2TotalYards").textContent = Math.floor(twoPlayerScores[2].totalYards);
+  document.getElementById("p2RoundYards").textContent = Math.floor(twoPlayerScores[2].roundYards);
+  document.getElementById("p1Status").textContent = p1 && p1.isChaser ? "Chaser - yards paused" : "Runner";
+  document.getElementById("p2Status").textContent = p2 && p2.isChaser ? "Chaser - yards paused" : "Runner";
+  document.getElementById("tpRoundText").textContent = "Round " + twoPlayerRound + " / " + TWO_PLAYER_MAX_ROUNDS;
+}
+function flashRoundMessage(text) {
+  const toast = document.getElementById("roundToast");
+  if (!toast) return;
+  toast.textContent = text;
+  toast.style.display = "block";
+  clearTimeout(roundToastTimer);
+  roundToastTimer = setTimeout(() => { toast.style.display = "none"; }, 1600);
+}
+function clearObjectArray(arr, objectKey, removeExtraPoliceLaser = false) {
+  if (!Array.isArray(arr)) return;
+  for (const item of arr) {
+    if (!item) continue;
+    if (removeExtraPoliceLaser && item.laser) scene.remove(item.laser);
+    if (objectKey && item[objectKey]) scene.remove(item[objectKey]);
+    else if (!objectKey && item.isObject3D) scene.remove(item);
+    else if (!objectKey && item.group) scene.remove(item.group);
+  }
+}
+function resetTwoPlayerMatch() {
+  twoPlayerRound = 1; roundActive = true; roundEnding = false;
+  twoPlayerScores = { 1: { totalYards: 0, roundYards: 0, lastCountedZ: START_Z }, 2: { totalYards: 0, roundYards: 0, lastCountedZ: START_Z } };
+  for (const p of players) { if (!p) continue; p.isChaser = false; p.eliminated = false; p.roundCaughtByEnemy = false; p.roundWasRunner = true; p.energy = 100; p.rig.visible = true; twoPlayerScores[p.id].lastCountedZ = p.rig.position.z; }
+  updateTwoPlayerScoreboard();
+}
+function resetWorldForNewTwoPlayerRound() {
+  clearObjectArray(enemies, "rig"); clearObjectArray(dogs, "rig"); clearObjectArray(desertStalkers, "rig"); clearObjectArray(policeOfficers, "rig", true); clearObjectArray(policeBullets, "mesh"); clearObjectArray(pickups, null); clearObjectArray(grassPatches, null); clearObjectArray(fireZones, "group");
+  for (const chunk of worldChunks) scene.remove(chunk);
+  enemies = []; dogs = []; desertStalkers = []; policeOfficers = []; policeBullets = []; pickups = []; grassPatches = []; torches = []; fireZones = []; walls = []; worldChunks = [];
+  distance = 0; furthestChunkZ = 0; pickupCount = 0; currentSpeedTier = 0; enemyBaseSpeedBonus = 0;
+  for (let i = 0; i < CHUNK_COUNT_AHEAD; i++) generateChunk(i * CHUNK_LENGTH);
+  furthestChunkZ = (CHUNK_COUNT_AHEAD - 1) * CHUNK_LENGTH;
+  for (const p of players) { if (!p) continue; if (p.controlledChaser && p.controlledChaser.rig) scene.remove(p.controlledChaser.rig); p.isChaser = false; p.eliminated = false; p.controlledChaser = null; p.energy = 100; p.velocity.set(0, 0, 0); p.rig.visible = true; p.rig.position.set(p.id === 1 ? -2.8 : 2.8, 0, START_Z); twoPlayerScores[p.id].roundYards = 0; twoPlayerScores[p.id].lastCountedZ = START_Z; }
+  activeRunnerPlayers = players.slice(); player = players[0];
+}
+function showRoundTransition(reason) {
+  const message = document.getElementById("message"); const box = document.getElementById("messageBox");
+  message.style.display = "flex";
+  box.innerHTML = `<h2>Round ${twoPlayerRound} Complete!</h2><p>${reason || "Both players were caught!"}</p><p><strong>Blue Chris:</strong> ${Math.floor(twoPlayerScores[1].roundYards)} round yards · ${Math.floor(twoPlayerScores[1].totalYards)} total<br><strong>Orange Chris:</strong> ${Math.floor(twoPlayerScores[2].roundYards)} round yards · ${Math.floor(twoPlayerScores[2].totalYards)} total</p><button onclick="startNextTwoPlayerRound()">Start Round ${twoPlayerRound + 1}</button>`;
+}
+function startNextTwoPlayerRound() { twoPlayerRound++; roundActive = true; roundEnding = false; gameOver = false; document.getElementById("message").style.display = "none"; resetWorldForNewTwoPlayerRound(); updateTwoPlayerScoreboard(); }
+function endTwoPlayerMatch(reason) {
+  roundActive = false; roundEnding = true; gameOver = true; updateTwoPlayerScoreboard();
+  const p1 = Math.floor(twoPlayerScores[1].totalYards); const p2 = Math.floor(twoPlayerScores[2].totalYards);
+  let winnerText = "It’s a tie!"; let winnerClass = "";
+  if (p1 > p2) { winnerText = "BLUE CHRIS WINS!"; winnerClass = "blueWin"; } else if (p2 > p1) { winnerText = "ORANGE CHRIS WINS!"; winnerClass = "orangeWin"; }
+  const message = document.getElementById("message"); const box = document.getElementById("messageBox");
+  message.style.display = "flex";
+  box.innerHTML = `<h2 class="${winnerClass}">${winnerText}</h2><p>${reason || "Best of 3 complete!"}</p><div style="display:flex;gap:12px;justify-content:center;margin:18px 0;"><div style="background:#1d4ed8;padding:14px 18px;border-radius:14px;min-width:150px;"><div style="font-weight:900;">BLUE CHRIS</div><div style="font-size:28px;font-weight:900;">${p1}</div><div>Total Yards</div></div><div style="background:#ea580c;padding:14px 18px;border-radius:14px;min-width:150px;"><div style="font-weight:900;">ORANGE CHRIS</div><div style="font-size:28px;font-weight:900;">${p2}</div><div>Total Yards</div></div></div><button onclick="location.reload()">Play Again</button>`;
+}
+function endTwoPlayerRound(reason) {
+  if (roundEnding) return;
+  roundEnding = true; roundActive = false;
+  updateTwoPlayerYards(); updateTwoPlayerScoreboard();
+  if (twoPlayerRound >= TWO_PLAYER_MAX_ROUNDS) { endTwoPlayerMatch(reason); return; }
+  showRoundTransition(reason);
+}
 function startGame(mode) {
-  gameMode = mode; gameStarted = true; document.getElementById("menuOverlay").style.display = "none";
+  gameMode = mode; gameStarted = true; gameOver = false; document.getElementById("menuOverlay").style.display = "none";
   const p1 = createPlayer(1, mode === 2 ? -2.8 : 0, START_Z); const p2 = mode === 2 ? createPlayer(2, 2.8, START_Z) : null;
   player = p1; players = mode === 2 ? [p1, p2] : [p1]; activeRunnerPlayers = players.slice();
+  if (mode === 2) { resetTwoPlayerMatch(); document.getElementById("twoPlayerScoreboard").style.display = "flex"; }
+  else { roundActive = false; roundEnding = false; document.getElementById("twoPlayerScoreboard").style.display = "none"; }
 }
 </script>
 
