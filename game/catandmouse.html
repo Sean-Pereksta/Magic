@@ -705,7 +705,6 @@
   }
 
   const ENEMY_CHEESE_DROP_TTL_MS = 30000;
-  const AUTO_CHEESE_SPAWN_DURATION_MS = 120000;
   const HOST_HEARTBEAT_MS = 4000;
   const HOST_STALE_MS = 12000;
   const PLAYER_HEARTBEAT_MS = 3000;
@@ -832,7 +831,6 @@
     });
   }
   let lastWebShotAt = 0;
-  let cheeseAutoSpawnStartedAt = null;
   const firebaseUnsubscribers = [];
   let playerHeartbeatInterval = null;
   const cheesePickupExpiryByCell = {};
@@ -1796,7 +1794,6 @@
   // Cheese
   // ============================================================
   function spawnCheese(){
-    if (cheeseAutoSpawnStartedAt && (Date.now() - cheeseAutoSpawnStartedAt) >= AUTO_CHEESE_SPAWN_DURATION_MS) return;
     let existingPickups = 0;
     for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++) if (isCheesePickupCell(grid[y][x])) existingPickups++;
 
@@ -4720,8 +4717,6 @@
 
     // no pre-placed walls on match start
     renderGrid();
-    cheeseAutoSpawnStartedAt = Date.now();
-
     // cheese spawn (local only, same as your original)
     setInterval(spawnCheese, 10000);
     setInterval(cleanupExpiredCheeseDrops, 1000);
