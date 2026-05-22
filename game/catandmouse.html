@@ -762,6 +762,40 @@
   };
   const towerSilencedUntil = {};
 
+  
+  const SPATIAL_CELL_SIZE = 3;
+
+  function createSpatialIndex(cellSize = SPATIAL_CELL_SIZE){
+    const buckets = new Map();
+    const key = (cx, cy) => `${cx},${cy}`;
+    const cellCoord = (value) => Math.floor(value / cellSize);
+
+    function insert(entity){
+      if (!entity || entity.x == null || entity.y == null) return;
+      const cx = cellCoord(entity.x);
+      const cy = cellCoord(entity.y);
+      const bucketKey = key(cx, cy);
+      if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+      buckets.get(bucketKey).push(entity);
+    }
+
+    function query(x, y, radiusCells = 1){
+      const cx = cellCoord(x);
+      const cy = cellCoord(y);
+      const results = [];
+      for (let dx=-radiusCells; dx<=radiusCells; dx++){
+        for (let dy=-radiusCells; dy<=radiusCells; dy++){
+          const bucket = buckets.get(key(cx + dx, cy + dy));
+          if (bucket) results.push(...bucket);
+        }
+      }
+      return results;
+    }
+
+    function clear(){ buckets.clear(); }
+    return { insert, query, clear };
+  }
+
   const STINK_DISABLED_TOWERS = ["🔫","🚀","⚡","☄️","🌰","🪭","🕸️","🟢"];
   const TARGETING_OPTIONS = ["Nearest","Weakest","Strongest","Cat","Rats","Oxen","Vultures","Termites"];
   const TARGETABLE_STRUCTURES = ["🔫","🚀","⚡","☄️","🌰","🟢","🕸️"];
@@ -769,6 +803,50 @@
   let enemyUpdateCursor = 0;
   let blockedGridCache = null;
   let blockedGridDirty = true;
+
+  let entitySpatialIndex = createSpatialIndex();
+  let structureSpatialIndex = createSpatialIndex();
+  let projectileSpatialIndex = createSpatialIndex();
+  let structureIndexDirty = true;
+
+  function markStructureIndexDirty(){ structureIndexDirty = true; }
+
+  function rebuildStructureIndexIfNeeded(){
+    if (!structureIndexDirty) return;
+    structureSpatialIndex.clear();
+    for (const s of getAllStructures()){
+      if (!s) continue;
+      s.entityType = "structure";
+      structureSpatialIndex.insert(s);
+    }
+    structureIndexDirty = false;
+  }
+
+  function rebuildSpatialIndexes(){
+    rebuildStructureIndexIfNeeded();
+    entitySpatialIndex.clear();
+    projectileSpatialIndex.clear();
+
+    for (const p of Object.values(players)){
+      if (!p) continue;
+      p.entityType = "player";
+      entitySpatialIndex.insert(p);
+    }
+    const enemyGroups = [rats, stinkRats, oxen, ratKings, vultures, termites, fleas];
+    for (const group of enemyGroups){
+      for (const e of (group || [])){
+        if (!e) continue;
+        e.entityType = "enemy";
+        entitySpatialIndex.insert(e);
+      }
+    }
+
+    for (const p of rabbitShots){
+      p.entityType = "projectile";
+      projectileSpatialIndex.insert(p);
+    }
+  }
+
 
   function markBlockedGridDirty(){ blockedGridDirty = true; }
   function rebuildBlockedGridFromStructures(){
@@ -1877,8 +1955,10 @@
       delete structureShields[key];
       markBlockedGridDirty();
       await deleteDoc(ccRef(ID.structure(x,y)));
+      markStructureIndexDirty();
     } else {
       await updateDoc(ccRef(ID.structure(x,y)), { health: structureHealth[key], shield: structureShields[key] ?? 0 });
+      markStructureIndexDirty();
     }
     requestRender("damageStructure");
   }
@@ -1947,13 +2027,14 @@
   }
 
   function pickTargetForStructure(x, y, range, targeting){
+    const radiusCells = Math.max(1, Math.ceil(range / SPATIAL_CELL_SIZE));
     let candidates = [];
     if (catHealth > 0) candidates.push({ kind:"Cat", refType:"cat", x:catPos.x, y:catPos.y, health:catHealth, dist:Math.abs(catPos.x-x)+Math.abs(catPos.y-y) });
-    for (const r of rats){ if ((r.health ?? 0) > 0) candidates.push({ kind:"Rats", refType:"rat", enemy:r, x:r.x, y:r.y, health:r.health, dist:Math.abs(r.x-x)+Math.abs(r.y-y) }); }
-    for (const sr of stinkRats){ if ((sr.health ?? 0) > 0) candidates.push({ kind:"Rats", refType:"stinkrat", enemy:sr, x:sr.x, y:sr.y, health:sr.health, dist:Math.abs(sr.x-x)+Math.abs(sr.y-y) }); }
-    for (const o of oxen){ if ((o.health ?? 0) > 0) candidates.push({ kind:"Oxen", refType:"ox", enemy:o, x:o.x, y:o.y, health:o.health, dist:Math.abs(o.x-x)+Math.abs(o.y-y) }); }
-    for (const v of vultures){ if ((v.health ?? 0) > 0) candidates.push({ kind:"Vultures", refType:"vulture", enemy:v, x:v.x, y:v.y, health:v.health, dist:Math.abs(v.x-x)+Math.abs(v.y-y) }); }
-    for (const t of termites){ candidates.push({ kind:"Termites", refType:"termite", enemy:t, x:t.x, y:t.y, health:1, dist:Math.abs(t.x-x)+Math.abs(t.y-y) }); }
+    const nearbyEnemies = entitySpatialIndex.query(x, y, radiusCells).filter(e => e.entityType === "enemy" && ((e.health ?? 1) > 0));
+    for (const e of nearbyEnemies){
+      const kindMap = (e.kind === "ox") ? ["Oxen","ox"] : (e.kind === "vulture") ? ["Vultures","vulture"] : (e.kind === "termite") ? ["Termites","termite"] : ["Rats", (e.kind === "stinkrat" ? "stinkrat" : "rat")];
+      candidates.push({ kind:kindMap[0], refType:kindMap[1], enemy:e, x:e.x, y:e.y, health:(e.health ?? 1), dist:Math.abs(e.x-x)+Math.abs(e.y-y) });
+    }
     candidates = candidates.filter(e => e.dist <= range);
     if (targeting === "Cat") candidates = candidates.filter(e => e.refType === "cat");
     if (targeting === "Rats") candidates = candidates.filter(e => e.refType === "rat" || e.refType === "stinkrat");
@@ -1971,6 +2052,7 @@
   // Turrets / Rocket tower (host writes cat state to state doc)
   // ============================================================
   async function turretAttack(){
+    rebuildSpatialIndexes();
     const writes = [];
     for (const turret of getStructuresByType("🔫")){
       const x = turret.x, y = turret.y;
@@ -2050,6 +2132,7 @@
   }
 
   async function rocketTowerAttack(){
+    rebuildSpatialIndexes();
     const writes = [];
     for (const tower of getStructuresByType("🚀")){
       const x = tower.x, y = tower.y;
@@ -2409,6 +2492,7 @@
   }
 
   async function catBehavior(){
+    rebuildSpatialIndexes();
     if (Date.now() < catWebTrappedUntil){
       addCombatVfx(catPos.x, catPos.y, "🕸️", "vfx-pop", 260, 14);
       await updateDoc(ccRef(ID.STATE), {
@@ -2486,14 +2570,11 @@
 
     // attack nearby
     let attacked = false;
-    for (let dy=-1; dy<=1 && !attacked; dy++){
-      for (let dx=-1; dx<=1 && !attacked; dx++){
-        const tx = catPos.x+dx, ty=catPos.y+dy;
-        if (tx<0||ty<0||tx>=gridSize||ty>=gridSize) continue;
-        if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[ty][tx])){
-          await damageStructure(tx,ty);
-          attacked = true;
-        }
+    const nearbyStructures = structureSpatialIndex.query(catPos.x, catPos.y, 1).filter(s => Math.abs(s.x-catPos.x) <= 1 && Math.abs(s.y-catPos.y) <= 1);
+    for (const s of nearbyStructures){
+      if (!attacked && ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[s.y]?.[s.x])){
+        await damageStructure(s.x, s.y);
+        attacked = true;
       }
     }
 
@@ -3373,26 +3454,13 @@
   }
 
   function nearestEnemyFrom(x, y, range = 6){
+    const radiusCells = Number.isFinite(range) ? Math.max(1, Math.ceil(range / SPATIAL_CELL_SIZE)) : 20;
+    const nearby = entitySpatialIndex.query(x, y, radiusCells).filter(e => e.entityType === "enemy" && (e.health ?? 1) > 0);
     let best = null;
-    for (const r of rats){
-      if ((r.health ?? 0) <= 0) continue;
-      const d = Math.abs(r.x - x) + Math.abs(r.y - y);
-      if (d <= range && (!best || d < best.d)) best = { kind:"rat", enemy:r, d };
-    }
-    for (const o of oxen){
-      if ((o.health ?? 0) <= 0) continue;
-      const d = Math.abs(o.x - x) + Math.abs(o.y - y);
-      if (d <= range && (!best || d < best.d)) best = { kind:"ox", enemy:o, d };
-    }
-    for (const k of ratKings){
-      if ((k.health ?? 0) <= 0) continue;
-      const d = Math.abs(k.x - x) + Math.abs(k.y - y);
-      if (d <= range && (!best || d < best.d)) best = { kind:"ratking", enemy:k, d };
-    }
-    for (const v of vultures){
-      if ((v.health ?? 0) <= 0) continue;
-      const d = Math.abs(v.x - x) + Math.abs(v.y - y);
-      if (d <= range && (!best || d < best.d)) best = { kind:"vulture", enemy:v, d };
+    for (const e of nearby){
+      const d = Math.abs(e.x - x) + Math.abs(e.y - y);
+      if (d > range) continue;
+      if (!best || d < best.d) best = { kind: e.kind === "stinkrat" ? "rat" : e.kind, enemy: e, d };
     }
     if (catHealth > 0){
       const d = Math.abs(catPos.x - x) + Math.abs(catPos.y - y);
@@ -3973,6 +4041,7 @@
               delete structureHealth[key];
               delete structureShields[key];
               removeFromStructureIndex(x, y);
+    markStructureIndexDirty();
               if (grid[y] && grid[y][x] && STRUCTURE_TYPES.has(grid[y][x])){
                 grid[y][x] = "";
               }
