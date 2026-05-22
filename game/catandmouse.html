@@ -261,9 +261,28 @@
     .slot-chip{ border:1px solid #bfdbfe; background:#eff6ff; border-radius:10px; padding:7px 8px; font-size:13px; text-align:left; min-height:44px; }
     .slot-chip.filled{ border-color:#60a5fa; background:#dbeafe; }
     .slot-chip.done{ opacity:0.9; }
-    .sel-btn{ border:1px solid #bfdbfe; background:#f8fbff; border-radius:10px; padding:8px; font-size:13px; text-align:left; }
-    .sel-btn.locked{ opacity:0.55; background:#e5e7eb; }
+    .sel-btn{ position:relative; border:1px solid #bfdbfe; background:#f8fbff; border-radius:10px; padding:8px; font-size:13px; text-align:left; overflow:hidden; }
+    .sel-btn.locked{ opacity:0.55; background:#e5e7eb; filter:grayscale(0.8); cursor:not-allowed; }
     .sel-btn.chosen{ border-color:#22c55e; background:#dcfce7; }
+    .building-lock-overlay{
+      position:absolute; inset:0; background:rgba(30,0,0,0.55); border:2px solid #ff3333; border-radius:inherit;
+      display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; text-align:center;
+      font-weight:900; color:#fff; text-shadow:0 2px 4px #000;
+    }
+    .building-lock-x{
+      font-size:34px; line-height:1; color:#ff2222;
+      text-shadow:0 0 4px #000, 0 0 8px #ff0000;
+    }
+    .building-lock-wins{
+      margin-top:4px; font-size:12px; background:rgba(0,0,0,0.65); padding:3px 6px; border-radius:8px;
+    }
+    .building-lock-label{
+      margin-top:3px; font-size:11px; letter-spacing:0.04em;
+    }
+    #unlockMessage{
+      display:none; margin-top:8px; padding:6px 10px; border-radius:8px;
+      border:1px solid #fca5a5; background:#fee2e2; color:#991b1b; font-size:13px; font-weight:700;
+    }
     #selectedBuildSlotsTop{ max-width:900px; margin:6px auto 0; font-size:13px; color:#1f2937; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:6px 10px; }
 
     @keyframes vfxFlame{
@@ -329,6 +348,7 @@
       <div id="slotList"></div>
       <div id="selectionTabs"></div>
       <div id="selectionGrid"></div>
+      <div id="unlockMessage" role="status" aria-live="polite"></div>
       <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <button id="finishSelectionBtn" style="font-size:15px; padding:8px 12px;">✅ Finalize Selection</button>
         <div id="selectionFinalizeMeta" style="font-size:13px; color:#374151;"></div>
@@ -738,6 +758,7 @@
   let lastAdvPointAt = Date.now();
   let lastAcornShotAt = 0;
   let lastFanBurstAt = 0;
+  let unlockMessageTimeout = null;
   let lastWebShotAt = 0;
   let cheeseAutoSpawnStartedAt = null;
   const firebaseUnsubscribers = [];
@@ -4412,19 +4433,33 @@
       if (!def) return;
       const b = document.createElement("button");
       b.className = "sel-btn";
-      const winsNeeded = def.minWins || 0;
+      const requiredWins = def.requiredWins ?? def.minWins ?? 0;
       const locked = !unlocked.has(buildId);
       const alreadyChosen = selectedBuildSlots.includes(buildId);
       b.innerHTML = `
         <div><strong>${def.symbol} ${def.name}</strong></div>
         <div style="font-size:12px;">Cost: ${def.cost} | HP: ${def.hp}</div>
-        ${locked ? `<div style="font-size:12px;">🔒 Requires ${winsNeeded} win${winsNeeded === 1 ? "" : "s"}</div>` : ""}
+        ${locked ? `<div style="font-size:12px;">🔒 Requires ${requiredWins} win${requiredWins === 1 ? "" : "s"}</div>` : ""}
       `;
-      if (locked) b.classList.add("locked");
+      if (locked){
+        b.classList.add("locked");
+        const overlay = document.createElement("div");
+        overlay.className = "building-lock-overlay";
+        overlay.innerHTML = `
+          <div class="building-lock-x">✖</div>
+          <div class="building-lock-wins">Requires ${requiredWins} Wins</div>
+          <div class="building-lock-label">Locked</div>
+        `;
+        b.appendChild(overlay);
+      }
       if (alreadyChosen) b.classList.add("chosen");
-      b.disabled = locked || mySelectionDone;
+      b.disabled = mySelectionDone;
       b.onclick = async () => {
         if (mySelectionDone) return;
+        if (locked){
+          showUnlockMessage(`Requires ${requiredWins} wins to unlock!`);
+          return;
+        }
         const alreadyIdx = selectedBuildSlots.indexOf(buildId);
         if (alreadyIdx !== -1){
           selectedBuildSlots.splice(alreadyIdx, 1);
@@ -4445,6 +4480,17 @@
     const doneCount = participantIds.reduce((acc, pu) => acc + (selectionStates[pu]?.done ? 1 : 0), 0);
     const stillNeeded = Math.max(0, participantIds.length - doneCount);
     if (finalizeMeta) finalizeMeta.textContent = `${stillNeeded} player(s) still need to finalize.`;
+  }
+
+  function showUnlockMessage(text){
+    const msg = document.getElementById("unlockMessage");
+    if (!msg) return;
+    msg.textContent = text;
+    msg.style.display = "block";
+    if (unlockMessageTimeout) clearTimeout(unlockMessageTimeout);
+    unlockMessageTimeout = setTimeout(() => {
+      msg.style.display = "none";
+    }, 1800);
   }
 
   async function publishMySelection(done=false){
