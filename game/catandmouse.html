@@ -1084,7 +1084,7 @@
     const hudBuild = document.getElementById("hudBuild");
     if (!hudBuild) return;
     const def = BUILD_DEFS[selectedBuild];
-    hudBuild.textContent = def ? `🏗 Build: ${def.symbol} ${def.name}` : "🏗 Build: None";
+    hudBuild.textContent = def ? `🏗 Build: ${def.symbol} ${def.name} (${def.cost})` : "🏗 Build: None";
   }
 
   function selectBuild(value){
@@ -3774,18 +3774,17 @@
   async function waveSchedulerTick(){
     if (!canRunHostSimulation()) return;
     const now = Date.now();
-    const next = nextRatWaveAt;
 
     if (isHost) await hostSyncDifficultyVote();
 
-    if (isHost && typeof next === "number" && now >= next){
+    if (isHost && typeof nextRatWaveAt === "number" && now >= nextRatWaveAt){
       await spawnRatWave();
       const nextTime = now + 40000;
       nextRatWaveAt = nextTime;
       await updateDoc(ccRef(ID.STATE), { nextRatWave: nextTime, updatedAt: now });
     }
 
-    const secondsLeft = (typeof next === "number") ? Math.max(0, Math.floor((next - now)/1000)) : "?";
+    const secondsLeft = (typeof nextRatWaveAt === "number") ? Math.max(0, Math.floor((nextRatWaveAt - now)/1000)) : "?";
     document.getElementById("waveCountdown").textContent = `🐀 Next wave: ${secondsLeft}s`;
   }
 
@@ -5137,9 +5136,16 @@
   setInterval(()=>{
     updateTopHud();
     renderBuildingDock();
-    const waveText = document.getElementById("waveCountdown")?.textContent || "";
-    const secs = (waveText.match(/(\d+)s/)||[])[1];
-    if (secs) document.getElementById("hudTimer").textContent = `⏱ 0:${String(secs).padStart(2,"0")}`;
+    const now = Date.now();
+    const hudTimer = document.getElementById("hudTimer");
+    if (hudTimer){
+      if (typeof nextRatWaveAt === "number") {
+        const secs = Math.max(0, Math.floor((nextRatWaveAt - now) / 1000));
+        hudTimer.textContent = `⏱ 0:${String(secs).padStart(2,"0")}`;
+      } else {
+        hudTimer.textContent = "⏱ --:--";
+      }
+    }
     const wave = Math.max(1, Math.floor(catPower/5)+1);
     document.getElementById("hudWave").textContent = `🌊 Wave ${wave}`;
   }, 300);
