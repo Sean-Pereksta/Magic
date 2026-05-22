@@ -206,7 +206,11 @@
         overflow-y:auto;
         -webkit-overflow-scrolling:touch;
       }
-      #selectionGrid{ max-height:30vh; }
+      .war-room-grid{ grid-template-columns:1fr; }
+      .difficulty-grid, .building-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .building-scroll-area{ max-height:300px; }
+      #selectionTabs.building-tabs{ overflow-x:auto; white-space:nowrap; flex-wrap:nowrap; }
+      .war-room-actions{ position:sticky; bottom:0; background:rgba(7,10,16,.95); padding:8px; border-radius:10px; }
     }
 
     #waveCountdown{
@@ -251,10 +255,33 @@
     .vfx-pop{ animation:vfxPop 0.45s ease-out forwards; }
     .vfx-claw{ animation:vfxClaw 0.55s ease-out forwards; color:#a30f0f; }
 
-    #selectionOverlay{ position:fixed; inset:0; background:rgba(2,6,23,0.78); backdrop-filter: blur(3px); z-index:40; display:none; align-items:center; justify-content:center; padding:14px; }
-    #selectionCard{ background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%); border-radius:14px; padding:14px; max-width:940px; width:100%; max-height:90vh; overflow:auto; border:1px solid #dbeafe; box-shadow:0 10px 30px rgba(15,23,42,0.25); }
-    #selectionGrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:8px; max-height:40vh; overflow:auto; padding-right:4px; }
-    #selectionTabs{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 10px; }
+    #selectionOverlay.war-room-screen{ position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center; padding:14px; background:radial-gradient(circle at top,rgba(45,59,40,0.4),rgba(2,6,23,0.9) 55%),#04070f; backdrop-filter: blur(3px); overflow:auto; }
+    .war-room-panel{position:relative;max-width:1080px;width:100%;max-height:92vh;overflow:auto;padding:16px;border-radius:18px;border:1px solid rgba(255,255,255,.17);background:linear-gradient(145deg,rgba(12,20,19,.96),rgba(7,10,16,.97));box-shadow:0 20px 45px rgba(0,0,0,.55);}
+    .war-room-panel:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);background-size:26px 26px;pointer-events:none}
+    .war-room-header{position:relative;color:#fff;text-align:left;margin-bottom:10px}
+    .war-room-title{font-size:30px;font-weight:900;margin:0}
+    .war-room-subtitle{margin:4px 0 0;color:#d1d5db}
+    .war-room-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .war-room-section{position:relative;background:rgba(8,14,16,.62);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:10px;color:#f3f4f6}
+    .difficulty-grid,.building-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .difficulty-card,.building-card{position:relative;border-radius:14px;padding:11px;border:1px solid rgba(255,255,255,.13);text-align:left;background:linear-gradient(145deg,rgba(20,30,24,0.96),rgba(8,14,12,0.96));color:#fff;cursor:pointer}
+    .difficulty-card.selected{border-color:#ffd85a;box-shadow:0 0 0 2px rgba(255,216,90,.25),0 0 18px rgba(255,216,90,.26)}
+    .difficulty-card:hover,.building-card:hover{transform:translateY(-2px)}
+    .difficulty-icon{font-size:18px;margin-right:6px}
+    .vote-count{font-size:12px;color:#d1d5db}
+    .difficulty-easy{border-color:rgba(250,204,21,.5)} .difficulty-normal{border-color:rgba(74,222,128,.5)} .difficulty-hard{border-color:rgba(251,146,60,.5)} .difficulty-chaos{border-color:rgba(192,132,252,.5)} .difficulty-nightmare{border-color:rgba(248,113,113,.6)}
+    #selectionTabs.building-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+    #selectionGrid.building-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px}
+    .building-scroll-area{max-height:420px;overflow-y:auto;padding-right:8px;scrollbar-width:thin}
+    .building-card.selected{border-color:#86efac;box-shadow:0 0 0 2px rgba(134,239,172,.2)}
+    .building-card.locked{opacity:.55;filter:grayscale(.75)}
+    .selected-loadout-strip{margin-top:8px;padding:8px;border-radius:10px;background:rgba(5,8,14,.5);border:1px solid rgba(255,255,255,.13);font-size:13px}
+    .player-lobby-list{display:flex;flex-direction:column;gap:6px;max-height:140px;overflow:auto}
+    .player-lobby-row{display:flex;justify-content:space-between;gap:8px;align-items:center;background:rgba(255,255,255,.05);padding:6px 8px;border-radius:999px}
+    .ready-badge,.choosing-badge,.idle-badge{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
+    .ready-badge{background:#14532d;color:#bbf7d0}.choosing-badge{background:#713f12;color:#fde68a}.idle-badge{background:#7f1d1d;color:#fecaca}
+    .war-room-actions{margin-top:10px;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+    .ready-button{background:#14532d;color:#dcfce7}.start-round-button{background:#a16207;color:#fef3c7}
     .sel-tab{ border:1px solid #93c5fd; background:#eff6ff; border-radius:999px; padding:6px 10px; font-size:13px; font-weight:700; }
     .sel-tab.active{ background:#dbeafe; border-color:#2563eb; color:#1e3a8a; }
     #slotList{ display:grid; grid-template-columns:repeat(auto-fit,minmax(115px,1fr)); gap:8px; margin-bottom:10px; }
@@ -323,28 +350,38 @@
     <button onclick="returnToLobby()" style="padding:10px 20px; font-size:16px;">🔙 Return to Lobby</button>
   </div>
 
-  <div id="selectionOverlay">
-    <div id="selectionCard">
-      <h3 style="margin:0 0 8px;">🏗️ Select up to 8 Structures (in order)</h3>
-      <div id="selectionInfo" style="font-size:13px; margin-bottom:8px;"></div>
-      <div id="difficultyPanel" style="margin:0 0 10px; padding:8px; border:1px solid #bbb; border-radius:8px; background:#f8fafc;">
-        <div style="font-weight:bold; margin-bottom:4px;">🎚️ Difficulty Vote (locks when selection ends)</div>
-        <div id="difficultyStatus" style="font-size:12px; color:#333; margin-bottom:6px;">Current: Medium</div>
-        <div style="display:flex; flex-wrap:wrap; gap:4px;">
-          <button class="difficulty-vote" data-diff="easy">Easy</button>
-          <button class="difficulty-vote" data-diff="medium">Medium</button>
-          <button class="difficulty-vote" data-diff="hard">Hard</button>
-          <button class="difficulty-vote" data-diff="insane">Insane</button>
-        </div>
+  <div id="selectionOverlay" class="war-room-screen">
+    <div id="selectionCard" class="war-room-panel">
+      <div class="war-room-header"><h3 class="war-room-title">🐭 Mouse War Room</h3><p class="war-room-subtitle">Choose your defenses. Vote the danger level. Survive the cat.</p></div>
+      <div id="selectionInfo" style="font-size:13px; margin-bottom:8px;color:#cbd5e1;"></div>
+      <div class="war-room-grid">
+        <section class="war-room-section">
+          <div style="font-weight:800;margin-bottom:6px;">🎚️ Difficulty Vote</div>
+          <div id="difficultyStatus" style="font-size:12px; margin-bottom:8px;color:#e5e7eb;">Current: Medium</div>
+          <div class="difficulty-grid">
+            <button class="difficulty-vote difficulty-card difficulty-easy" data-diff="easy"></button>
+            <button class="difficulty-vote difficulty-card difficulty-normal" data-diff="medium"></button>
+            <button class="difficulty-vote difficulty-card difficulty-hard" data-diff="hard"></button>
+            <button class="difficulty-vote difficulty-card difficulty-nightmare" data-diff="insane"></button>
+          </div>
+          <div id="selectedSlots" class="selected-loadout-strip"></div>
+        </section>
+        <section class="war-room-section">
+          <div style="font-weight:800;">🏗️ Building Loadout</div>
+          <div id="selectionTabs" class="building-tabs"></div>
+          <div class="building-scroll-area"><div id="selectionGrid" class="building-grid"></div></div>
+          <div id="slotList" class="selected-loadout-strip"></div>
+        </section>
       </div>
-      <div id="selectedSlots" style="font-size:13px; margin-bottom:6px;"></div>
-      <div id="slotList"></div>
-      <div id="selectionTabs"></div>
-      <div id="selectionGrid"></div>
+      <section class="war-room-section" style="margin-top:10px;">
+        <div style="font-weight:800;margin-bottom:6px;">Players</div>
+        <div id="playerLobbyList" class="player-lobby-list"></div>
+      </section>
       <div id="unlockMessage" role="status" aria-live="polite"></div>
-      <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <button id="finishSelectionBtn" style="font-size:15px; padding:8px 12px;">✅ Finalize Selection</button>
-        <div id="selectionFinalizeMeta" style="font-size:13px; color:#374151;"></div>
+      <div class="war-room-actions">
+        <button onclick="returnToLobby()">↩ Back</button>
+        <div id="selectionFinalizeMeta" style="font-size:13px; color:#cbd5e1;"></div>
+        <div><button id="finishSelectionBtn" class="ready-button" style="font-size:15px; padding:8px 12px;">✅ Ready Up</button></div>
       </div>
     </div>
   </div>
@@ -584,6 +621,12 @@
   let difficultyVotes = {};
 
   const DIFFICULTY_ORDER = ["easy", "medium", "hard", "insane"];
+  const DIFFICULTY_UI_META = {
+    easy: { icon:"🧀", label:"Easy", subtitle:"Calm cheese run", className:"difficulty-easy" },
+    medium: { icon:"🐱", label:"Normal", subtitle:"Balanced survival", className:"difficulty-normal" },
+    hard: { icon:"🐀", label:"Hard", subtitle:"More rats, faster cat", className:"difficulty-hard" },
+    insane: { icon:"💀", label:"Nightmare", subtitle:"The cat is hunting", className:"difficulty-nightmare" }
+  };
   const DIFFICULTY_SETTINGS = {
     easy:   { label:"Easy",   catStartHealth:1000, ratBaseHealth:4, oxBaseHealth:18 },
     medium: { label:"Medium", catStartHealth:1500, ratBaseHealth:5, oxBaseHealth:26 },
@@ -1123,10 +1166,16 @@
     }, 0);
     el.textContent = `Current: ${label} • Your vote: ${myVoteLabel} • Active votes: ${activeVotes}`;
 
+    const counts = { easy:0, medium:0, hard:0, insane:0 };
+    getActiveParticipantIds().forEach((pu) => {
+      const vote = difficultyVotes[pu];
+      if (counts[vote] !== undefined) counts[vote]++;
+    });
     document.querySelectorAll(".difficulty-vote").forEach(btn => {
       const key = btn.dataset.diff;
-      btn.style.opacity = key === myDifficultyVote ? "1" : "0.75";
-      btn.style.fontWeight = key === myDifficultyVote ? "700" : "500";
+      btn.classList.toggle("selected", key === myDifficultyVote);
+      const voteEl = btn.querySelector(".vote-count");
+      if (voteEl) voteEl.textContent = `Votes: ${counts[key] || 0}`;
       btn.disabled = gameStarted;
     });
   }
@@ -4412,27 +4461,9 @@
     const left = selectionDeadlineAt ? Math.max(0, Math.ceil((selectionDeadlineAt - now)/1000)) : 45;
     info.textContent = `Wins: ${playerWins}. Time left: ${left}s. Difficulty: ${DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium"}`;
 
-    slotsEl.textContent = `Your slots: ${slots}`;
+    slotsEl.textContent = `Selected: ${selectedBuildSlots.length} / ${MAX_BUILD_SLOTS}`;
 
-    slotListEl.innerHTML = "";
-    for (let i=0; i<MAX_BUILD_SLOTS; i++){
-      const buildId = selectedBuildSlots[i];
-      const chip = document.createElement("button");
-      chip.className = `slot-chip ${buildId ? "filled" : ""} ${mySelectionDone ? "done" : ""}`;
-      chip.type = "button";
-      chip.innerHTML = buildId
-        ? `<div><strong>${i+1}:</strong> ${BUILD_DEFS[buildId]?.symbol || ""} ${BUILD_DEFS[buildId]?.name || ""}</div><div style="font-size:12px;opacity:0.8;">Tap to remove</div>`
-        : `<div><strong>${i+1}:</strong> Empty</div><div style="font-size:12px;opacity:0.7;">Tap a building below</div>`;
-      chip.disabled = mySelectionDone || !buildId;
-      chip.onclick = async () => {
-        if (mySelectionDone || !buildId) return;
-        selectedBuildSlots.splice(i, 1);
-        selectedBuildSlots = selectedBuildSlots.filter(Boolean).slice(0,MAX_BUILD_SLOTS);
-        await publishMySelection(false);
-        renderSelectionOverlay();
-      };
-      slotListEl.appendChild(chip);
-    }
+    slotListEl.innerHTML = `Loadout: ${selectedBuildSlots.map((id)=>`${BUILD_DEFS[id]?.symbol || ""} ${BUILD_DEFS[id]?.name || ""}`).join(" | ") || "None yet"}`;
 
     const unlocked = new Set(getUnlockedBuildIds());
     const categoryEntries = Object.entries(BUILD_CATEGORIES);
@@ -4461,13 +4492,14 @@
       const def = BUILD_DEFS[buildId];
       if (!def) return;
       const b = document.createElement("button");
-      b.className = "sel-btn";
+      b.className = "building-card";
       const requiredWins = def.requiredWins ?? def.minWins ?? 0;
       const locked = !unlocked.has(buildId);
       const alreadyChosen = selectedBuildSlots.includes(buildId);
       b.innerHTML = `
         <div><strong>${def.symbol} ${def.name}</strong></div>
-        <div style="font-size:12px;">Cost: ${def.cost} | HP: ${def.hp}</div>
+        <div style="font-size:12px;">Cost: ${def.cost} Cheese</div>
+        <div style="font-size:12px;opacity:.9;">Role: ${def.category || "Utility"} • HP: ${def.hp}</div>
         ${locked ? `<div style="font-size:12px;">🔒 Requires ${requiredWins} win${requiredWins === 1 ? "" : "s"}</div>` : ""}
       `;
       if (locked){
@@ -4496,7 +4528,7 @@
           const emptyIndex = selectedBuildSlots.findIndex(v => !v);
           if (emptyIndex !== -1) selectedBuildSlots[emptyIndex] = buildId;
           else if (selectedBuildSlots.length < MAX_BUILD_SLOTS) selectedBuildSlots.push(buildId);
-          else return;
+          else return showToast("Loadout full! Remove one building first.", "warn");
         }
         selectedBuildSlots = selectedBuildSlots.filter(Boolean).slice(0,MAX_BUILD_SLOTS);
         await publishMySelection(false);
@@ -4509,6 +4541,19 @@
     const doneCount = participantIds.reduce((acc, pu) => acc + (selectionStates[pu]?.done ? 1 : 0), 0);
     const stillNeeded = Math.max(0, participantIds.length - doneCount);
     if (finalizeMeta) finalizeMeta.textContent = `${stillNeeded} player(s) still need to finalize.`;
+    const playerLobby = document.getElementById("playerLobbyList");
+    if (playerLobby){
+      playerLobby.innerHTML = "";
+      getLobbyParticipants().forEach(([pu, p]) => {
+        const row = document.createElement("div");
+        const vote = difficultyVotes[pu] || "";
+        const voteMeta = DIFFICULTY_UI_META[vote] || { icon:"❔", label:"No vote" };
+        const done = !!selectionStates[pu]?.done;
+        row.className = "player-lobby-row";
+        row.innerHTML = `<div>${p.displayName || "mouse"} <span style="opacity:.8">${voteMeta.icon} ${voteMeta.label}</span></div><span class="${done ? "ready-badge" : "choosing-badge"}">${done ? "✅ Ready" : "⏳ Choosing"}</span>`;
+        playerLobby.appendChild(row);
+      });
+    }
   }
 
   function showUnlockMessage(text){
@@ -4643,6 +4688,8 @@
     }
 
     document.querySelectorAll('.difficulty-vote').forEach(btn => {
+      const meta = DIFFICULTY_UI_META[btn.dataset.diff] || { icon:"🎚️", label:btn.dataset.diff, subtitle:"Vote" };
+      btn.innerHTML = `<div><span class="difficulty-icon">${meta.icon}</span><strong>${meta.label}</strong></div><div style="font-size:12px;opacity:.9">${meta.subtitle}</div><div class="vote-count">Votes: 0</div>`;
       btn.onclick = () => castDifficultyVote(btn.dataset.diff).catch(()=>{});
     });
     updateDifficultyUI();
