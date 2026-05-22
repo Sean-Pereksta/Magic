@@ -890,6 +890,15 @@
   const STINK_DISABLED_TOWERS = ["🔫","🚀","⚡","☄️","🌰","🪭","🕸️","🟢"];
   const TARGETING_OPTIONS = ["Nearest","Weakest","Strongest","Cat","Rats","Oxen","Vultures","Termites"];
   const TARGETABLE_STRUCTURES = ["🔫","🚀","⚡","☄️","🌰","🟢","🕸️"];
+  function isLivingEnemy(e) {
+    if (!e) return false;
+    if (!Number.isFinite(e.x) || !Number.isFinite(e.y)) return false;
+    if (typeof e.health === "number" && e.health <= 0) return false;
+    if (e.kind === "flea" && typeof e.lifetime === "number" && e.lifetime <= 0) return false;
+    return true;
+  }
+  function isLivingRat(r) { return isLivingEnemy(r) && (r.health ?? 0) > 0; }
+  function isLivingFlea(f) { return isLivingEnemy(f) && (f.lifetime ?? 1) > 0; }
   let structureTargeting = {};
   let enemyUpdateCursor = 0;
   let blockedGridCache = null;
@@ -926,7 +935,7 @@
     const enemyGroups = [rats, stinkRats, oxen, ratKings, vultures, termites, fleas];
     for (const group of enemyGroups){
       for (const e of (group || [])){
-        if (!e) continue;
+        if (!isLivingEnemy(e)) continue;
         e.entityType = "enemy";
         entitySpatialIndex.insert(e);
       }
@@ -982,12 +991,12 @@
       if ((p.alive ?? true) !== false && p.x === x && p.y === y) return true;
     }
     if (catPos.x === x && catPos.y === y) return true;
-    if (rats.some(r => (r.health ?? 0) > 0 && r.x === x && r.y === y)) return true;
-    if (oxen.some(o => (o.health ?? 0) > 0 && o.x === x && o.y === y)) return true;
-    if (ratKings.some(k => (k.health ?? 0) > 0 && k.x === x && k.y === y)) return true;
-    if (vultures.some(v => (v.health ?? 0) > 0 && v.x === x && v.y === y)) return true;
-    if (termites.some(t => t.x === x && t.y === y)) return true;
-    if (fleas.some(f => f.x === x && f.y === y)) return true;
+    if (rats.some(r => isLivingRat(r) && r.x === x && r.y === y)) return true;
+    if (oxen.some(o => isLivingEnemy(o) && o.x === x && o.y === y)) return true;
+    if (ratKings.some(k => isLivingEnemy(k) && k.x === x && k.y === y)) return true;
+    if (vultures.some(v => isLivingEnemy(v) && v.x === x && v.y === y)) return true;
+    if (termites.some(t => isLivingEnemy(t) && t.x === x && t.y === y)) return true;
+    if (fleas.some(f => isLivingFlea(f) && f.x === x && f.y === y)) return true;
     if (rabbits.some(r => (r.health ?? 0) > 0 && r.x === x && r.y === y)) return true;
     return false;
   }
@@ -1551,13 +1560,14 @@
 
     // fleas
     for (const f of fleas){
+      if (!isLivingFlea(f)) continue;
       const cell = document.getElementById(`cell-${f.x}-${f.y}`);
       if (cell) cell.textContent = "🐞";
     }
 
     // rats
     for (const r of rats){
-      if ((r.health ?? 0) <= 0) continue;
+      if (!isLivingRat(r)) continue;
       const cell = document.getElementById(`cell-${r.x}-${r.y}`);
       if (cell){
         cell.textContent = "🐀";
@@ -1573,7 +1583,7 @@
 
     // oxen
     for (const o of oxen){
-      if ((o.health ?? 0) <= 0) continue;
+      if (!isLivingEnemy(o)) continue;
       const cell = document.getElementById(`cell-${o.x}-${o.y}`);
       if (cell){
         cell.textContent = "🐂";
@@ -1589,7 +1599,7 @@
 
     // rat kings
     for (const k of ratKings){
-      if ((k.health ?? 0) <= 0) continue;
+      if (!isLivingEnemy(k)) continue;
       const cell = document.getElementById(`cell-${k.x}-${k.y}`);
       if (cell){
         cell.textContent = "👑";
@@ -2694,10 +2704,10 @@
     // kill players on cat tile
     for (const [pu, p] of Object.entries(players)){
       if ((p.alive ?? true) && catPos.x===p.x && catPos.y===p.y){
-        await updateDoc(ccRef(ID.player(pu)), { alive:false, updatedAt: Date.now() });
+        await updateDoc(ccRef(ID.player(pu)), { alive:false, killedBy:"cat", killedAt:Date.now(), updatedAt: Date.now() });
         if (pu === uid){
           isAlive = false;
-          document.getElementById("status").textContent = "💀 You are dead!";
+          document.getElementById("status").textContent = "💀 You were killed by: cat";
         }
       }
     }
@@ -2755,8 +2765,8 @@
       .filter(p =>
         p.x>=0 && p.x<gridSize && p.y>=0 && p.y<gridSize &&
         grid[p.y][p.x] === "" &&
-        !rats.some(r => r.x===p.x && r.y===p.y) &&
-        !oxen.some(o => o.x===p.x && o.y===p.y)
+        !rats.some(r => isLivingRat(r) && r.x===p.x && r.y===p.y) &&
+        !oxen.some(o => isLivingEnemy(o) && o.x===p.x && o.y===p.y)
       );
 
     const usedKeys = new Set();
@@ -2880,7 +2890,10 @@
 
       if (target.type === "mouse"){
         const p = players[target.id];
-        return !!p && (p.alive ?? true) !== false;
+        return !!p &&
+          (p.alive ?? true) !== false &&
+          p.x === target.x &&
+          p.y === target.y;
       }
 
       if (target.type === "rabbit"){
@@ -2896,7 +2909,7 @@
 
     const blockedGrid = getBlockedGrid();
     const ratsToAiUpdate = new Set();
-    const livingRatIds = rats.filter(r => (r.health ?? 0) > 0).map(r => r.id);
+    const livingRatIds = rats.filter(r => isLivingRat(r)).map(r => r.id);
     const aiBudget = Math.min(ENEMIES_AI_PER_FRAME, livingRatIds.length);
     for (let i = 0; i < aiBudget; i++){
       const idx = (enemyUpdateCursor + i) % livingRatIds.length;
@@ -2905,7 +2918,7 @@
     enemyUpdateCursor = (enemyUpdateCursor + aiBudget) % Math.max(1, livingRatIds.length);
 
     for (const rat of rats){
-      if ((rat.health ?? 0) <= 0) continue;
+      if (!isLivingRat(rat)) continue;
 
       if (rat.trappedUntil && Date.now() < rat.trappedUntil) continue;
       const kingNearby = ratKings.some(k => (k.health ?? 0) > 0 && (Math.abs(k.x-rat.x)+Math.abs(k.y-rat.y) <= 4));
@@ -2962,7 +2975,7 @@
 
         const rabbitTarget = getNearestRabbitTarget(rat.x, rat.y, (x, y) => {
           const isBlocked = blockedGrid[y]?.[x] === true;
-          const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+          const ratOccupied = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===x && r.y===y);
           return !isBlocked && !ratOccupied;
         });
 
@@ -2973,7 +2986,7 @@
 
         const mouseTarget = !closestTarget ? getNearestMouseTarget(rat.x, rat.y, (x, y) => {
           const isBlocked = blockedGrid[y]?.[x] === true;
-          const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+          const ratOccupied = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===x && r.y===y);
           return !isBlocked && !ratOccupied;
         }) : null;
 
@@ -2989,7 +3002,7 @@
             (x, y) => {
               const symbol = grid[y][x];
               const isBlocked = ["🧱","🏭","💎","🗼"].includes(symbol);
-              const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+              const ratOccupied = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===x && r.y===y);
               return !isBlocked && !ratOccupied;
             }
           );
@@ -3030,7 +3043,7 @@
         if (lineOfSight){
           const nx = rat.x + Math.sign(dx);
           const ny = rat.y + Math.sign(dy);
-          const ratInWay = rats.some(r => r.id !== rat.id && r.x===nx && r.y===ny);
+          const ratInWay = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===nx && r.y===ny);
           if (!ratInWay && !blockedGrid[ny]?.[nx]){
             rat.x = nx; rat.y = ny;
             writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, updatedAt: Date.now() } });
@@ -3041,7 +3054,7 @@
           bestPath = findPath(rat.x, rat.y, closestTarget.x, closestTarget.y, (x, y) => {
             const isBlocked = blockedGrid[y]?.[x] === true;
             const isReviveCenter = (x===centerX && y===centerY);
-            const ratOccupied = rats.some(r => r.id !== rat.id && r.x===x && r.y===y);
+            const ratOccupied = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===x && r.y===y);
             return !isBlocked && !isReviveCenter && !ratOccupied;
           });
           rat.ai.path = bestPath ? [...bestPath] : null;
@@ -3050,7 +3063,7 @@
         if (rat.ai.path && rat.ai.path.length > 0){
           const next = rat.ai.path.shift();
           if (!next) continue;
-          const ratInWay = rats.some(r => r.id !== rat.id && r.x===next.x && r.y===next.y);
+          const ratInWay = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===next.x && r.y===next.y);
           if (!ratInWay){
             rat.x = next.x; rat.y = next.y;
             writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, updatedAt: Date.now() } });
@@ -3068,11 +3081,31 @@
             else writes.push({ type:"update", ref: ccRef(ID.rabbit(liveRabbit.id)), data: { health: liveRabbit.health, updatedAt: Date.now() } });
           }
         } else if (closestTarget.type==="mouse" && distance===0){
-          showClawHit(closestTarget.x, closestTarget.y);
-          writes.push({ type:"update", ref: ccRef(ID.player(closestTarget.id)), data: { alive:false, updatedAt: Date.now() } });
+          const livePlayer = players[closestTarget.id];
+          const cachedMatchesPlayer = !!livePlayer && livePlayer.x === closestTarget.x && livePlayer.y === closestTarget.y;
+          const playerStillValid = cachedMatchesPlayer &&
+            (livePlayer.alive ?? true) !== false &&
+            livePlayer.x === rat.x &&
+            livePlayer.y === rat.y;
+          if (!playerStillValid){
+            rat.ai.targetType = null;
+            rat.ai.targetId = null;
+            rat.ai.targetX = null;
+            rat.ai.targetY = null;
+            rat.ai.path = null;
+            rat.ai.nextThinkAt = 0;
+            writes.push({
+              type:"update",
+              ref: ccRef(ID.rat(rat.id)),
+              data: { x: rat.x, y: rat.y, health: rat.health, ai: rat.ai, updatedAt: Date.now() }
+            });
+            continue;
+          }
+          showClawHit(rat.x, rat.y);
+          writes.push({ type:"update", ref: ccRef(ID.player(closestTarget.id)), data: { alive:false, killedBy:"rat", killedById:rat.id, killedAt:Date.now(), updatedAt: Date.now() } });
           if (closestTarget.id === uid){
             isAlive = false;
-            document.getElementById("status").textContent = "💀 You are dead!";
+            document.getElementById("status").textContent = "💀 You were killed by: rat";
           }
         }
       }
@@ -3140,7 +3173,7 @@
           else writes.push({ type:"update", ref: ccRef(ID.rabbit(bestTarget.rabbit.id)), data: { health: bestTarget.rabbit.health, updatedAt: Date.now() } });
         } else if (distance===0 && bestTarget.type === "mouse"){
           showClawHit(bestTarget.x, bestTarget.y);
-          writes.push({ type:"update", ref: ccRef(ID.player(bestTarget.uid)), data: { alive:false, updatedAt: Date.now() } });
+          writes.push({ type:"update", ref: ccRef(ID.player(bestTarget.uid)), data: { alive:false, killedBy:"ox", killedById:ox.id, killedAt:Date.now(), updatedAt: Date.now() } });
         }
       }
     }
@@ -3175,7 +3208,7 @@
       if (finalTarget.type === "structure" && d===1){
         await damageStructure(finalTarget.x, finalTarget.y, Math.max(10, ratPower * 2));
       } else if (finalTarget.type === "mouse" && d===0){
-        writes.push({ type:"update", ref: ccRef(ID.player(finalTarget.uid)), data: { alive:false, updatedAt: Date.now() } });
+        writes.push({ type:"update", ref: ccRef(ID.player(finalTarget.uid)), data: { alive:false, killedBy:"ratking", killedById:king.id, killedAt:Date.now(), updatedAt: Date.now() } });
       }
     }
     await commitEnemyBatch(writes);
@@ -4241,7 +4274,7 @@
             isAlive = players[pu].alive;
             cheeseCount = players[pu].cheese ?? 0;
             document.getElementById("cheeseCount").textContent = cheeseCount;
-            document.getElementById("status").textContent = isAlive ? "" : "💀 You are dead!";
+            document.getElementById("status").textContent = isAlive ? "" : ("💀 You were killed by: " + (data.killedBy || "unknown"));
           }
         }
         else if (id.startsWith("structure_")){
@@ -4270,6 +4303,10 @@
         else if (id.startsWith("rat_")){
           const r = { ...data };
           if (!r.id) r.id = data.id || id;
+          if (!isLivingRat(r)){
+            rats = rats.filter(rr => rr.id !== r.id);
+            continue;
+          }
           const existing = rats.find(rr => rr.id === r.id);
           if (existing) Object.assign(existing, r);
           else rats.push(r);
@@ -4277,6 +4314,10 @@
         else if (id.startsWith("ox_")){
           const o = { ...data };
           if (!o.id) o.id = data.id || id;
+          if (!isLivingEnemy(o)){
+            oxen = oxen.filter(oo => oo.id !== o.id);
+            continue;
+          }
           const existing = oxen.find(oo => oo.id === o.id);
           if (existing) Object.assign(existing, o);
           else oxen.push(o);
@@ -4291,6 +4332,10 @@
         else if (id.startsWith("vulture_")){
           const v = { ...data };
           if (!v.id) v.id = data.id || id;
+          if (!isLivingEnemy(v)){
+            vultures = vultures.filter(vv => vv.id !== v.id);
+            continue;
+          }
           const existing = vultures.find(vv => vv.id === v.id);
           if (existing) Object.assign(existing, v);
           else vultures.push(v);
@@ -4305,6 +4350,10 @@
         else if (id.startsWith("stinkrat_")){
           const sr = { ...data };
           if (!sr.id) sr.id = data.id || id;
+          if (!isLivingEnemy(sr)){
+            stinkRats = stinkRats.filter(ss => ss.id !== sr.id);
+            continue;
+          }
           const existing = stinkRats.find(ss => ss.id === sr.id);
           if (existing) Object.assign(existing, sr);
           else stinkRats.push(sr);
@@ -4313,6 +4362,10 @@
           const f = { ...data };
           f.docId = id;
           if (!f.id) f.id = id;
+          if (!isLivingFlea(f)){
+            fleas = fleas.filter(ff => ff.docId !== id);
+            continue;
+          }
           const existing = fleas.find(ff => ff.docId === id);
           if (existing) Object.assign(existing, f);
           else fleas.push(f);
@@ -4341,6 +4394,10 @@
         else if (id.startsWith("ratking_")){
           const rk = { ...data };
           if (!rk.id) rk.id = data.id || id;
+          if (!isLivingEnemy(rk)){
+            ratKings = ratKings.filter(rr => rr.id !== rk.id);
+            continue;
+          }
           const existing = ratKings.find(rr => rr.id === rk.id);
           if (existing) Object.assign(existing, rk);
           else ratKings.push(rk);
@@ -4843,13 +4900,19 @@
         await updateDoc(ccRef(ID.player(pu)), { online:false, alive:false, updatedAt: now });
       }
     }
-    const staleEnemy = (e) => !e || !Number.isFinite(e.x) || !Number.isFinite(e.y) || (now - (e.updatedAt || e.createdAt || 0)) > STALE_ENEMY_MS || ((e.health ?? 1) <= 0 && (now - (e.updatedAt || now)) > DEAD_ENEMY_CLEANUP_MS);
+    const staleEnemy = (e) =>
+      !e ||
+      !Number.isFinite(e.x) ||
+      !Number.isFinite(e.y) ||
+      (typeof e.health === "number" && e.health <= 0) ||
+      (typeof e.lifetime === "number" && e.lifetime <= 0) ||
+      (now - (e.updatedAt || e.createdAt || 0)) > STALE_ENEMY_MS;
     for (const r of rats){ if (staleEnemy(r)) await deleteDoc(ccRef(ID.rat(r.id))); }
     for (const o of oxen){ if (staleEnemy(o)) await deleteDoc(ccRef(ID.ox(o.id))); }
     for (const k of ratKings){ if (staleEnemy(k)) await deleteDoc(ccRef(ID.ratKing(k.id))); }
     for (const v of vultures){ if (staleEnemy(v)) await deleteDoc(ccRef(ID.vulture(v.id))); }
     for (const t of termites){ if (staleEnemy(t)) await deleteDoc(ccRef(ID.termite(t.id))); }
-    for (const f of fleas){ if (!f || (now - (f.updatedAt || f.createdAt || 0)) > STALE_ENEMY_MS) await deleteDoc(ccRef(f.docId || ID.flea(f.id))); }
+    for (const f of fleas){ if (!f || (typeof f.lifetime === "number" && f.lifetime <= 0) || (now - (f.updatedAt || f.createdAt || 0)) > STALE_ENEMY_MS) await deleteDoc(ccRef(f.docId || ID.flea(f.id))); }
     const activePlayers = Object.values(players).filter(p => isPlayerActive(p));
     await setDoc(lobbyRef, { lastActivity: now, status: activePlayers.length ? "active" : "abandoned", updatedAt: now }, { merge:true });
   }
@@ -4859,6 +4922,18 @@
   // ============================================================
   function canRunHostSimulation(){
     return isHost && gameStarted && hostInitialized;
+  }
+
+  async function scrubGhostEnemies() {
+    if (!canRunHostSimulation()) return;
+    const deletes = [];
+    for (const r of rats){ if (!isLivingRat(r)) deletes.push(deleteDoc(ccRef(ID.rat(r.id)))); }
+    for (const o of oxen){ if (!isLivingEnemy(o)) deletes.push(deleteDoc(ccRef(ID.ox(o.id)))); }
+    for (const k of ratKings){ if (!isLivingEnemy(k)) deletes.push(deleteDoc(ccRef(ID.ratKing(k.id)))); }
+    for (const v of vultures){ if (!isLivingEnemy(v)) deletes.push(deleteDoc(ccRef(ID.vulture(v.id)))); }
+    for (const sr of stinkRats){ if (!isLivingEnemy(sr)) deletes.push(deleteDoc(ccRef(ID.stinkRat(sr.id)))); }
+    for (const f of fleas){ if (!isLivingFlea(f)) deletes.push(deleteDoc(ccRef(f.docId || ID.flea(f.id)))); }
+    await Promise.allSettled(deletes);
   }
 
   async function processWallHealRequests(){
@@ -5057,6 +5132,7 @@
     // phoenix revive
     setInterval(() => { if (!canRunHostSimulation()) return; hostPhoenixRevive().catch(()=>{}); }, 2000);
     setInterval(() => { if (!canRunHostSimulation()) return; hostCleanupStaleEntities().catch(()=>{}); }, 3000);
+    setInterval(() => { if (!canRunHostSimulation()) return; scrubGhostEnemies().catch(()=>{}); }, 1500);
 
     // keep cat health synced (state already updated often; this keeps it in case)
     setInterval(async () => {
