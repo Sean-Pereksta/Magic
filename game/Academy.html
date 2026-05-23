@@ -211,8 +211,9 @@
 
   #replayHud {
     position: fixed;
-    top: 12px;
-    right: 12px;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 15;
     color: white;
     background: rgba(15,23,42,.88);
@@ -227,6 +228,19 @@
     margin: 4px;
     padding: 6px 10px;
     font-size: 12px;
+  }
+
+  #replayTimeline {
+    width: min(70vw, 480px);
+    vertical-align: middle;
+  }
+
+  #replayTimeLabel {
+    font-size: 12px;
+    opacity: 0.9;
+    min-width: 86px;
+    display: inline-block;
+    text-align: right;
   }
 
 </style>
@@ -282,9 +296,13 @@
 <div id="replayHud" style="display:none;">
   <strong>REPLAY</strong>
   <button onclick="toggleReplayPause()">Pause</button>
+  <button onclick="rewindReplay(5)">⏪ 5s</button>
   <button onclick="setReplaySpeed(0.5)">0.5x</button>
   <button onclick="setReplaySpeed(1)">1x</button>
   <button onclick="setReplaySpeed(2)">2x</button>
+  <br>
+  <input id="replayTimeline" type="range" min="0" max="1000" value="0" oninput="seekReplayFromTimeline(this.value)">
+  <span id="replayTimeLabel">0:00 / 0:00</span>
 </div>
 
 <div id="menuOverlay">
@@ -3778,10 +3796,12 @@ function startReplayMode(replay) {
   replayPlayback = {
     replay,
     startedAtPerf: performance.now(),
+    playheadTime: 0,
     inputIndex: 0,
     snapshotIndex: 0,
     done: false
   };
+  refreshReplayTimeline();
   setReplaySeed(replay.seed);
 
   keys = {};
@@ -3800,19 +3820,94 @@ function startReplayMode(replay) {
   showRoundToast("Replay loaded");
 }
 
-function toggleReplayPause() { replayPaused = !replayPaused; const btns = document.querySelectorAll("#replayHud button"); if (btns && btns[0]) btns[0].textContent = replayPaused ? "Resume" : "Pause"; }
-function setReplaySpeed(speed) { replaySpeed = speed; }
+function toggleReplayPause() {
+  if (!replayPlayback) return;
+  const t = getReplayPlaybackTime();
+  replayPlayback.playheadTime = t;
+  replayPlayback.startedAtPerf = performance.now();
+  replayPaused = !replayPaused;
+  const btns = document.querySelectorAll("#replayHud button");
+  if (btns && btns[0]) btns[0].textContent = replayPaused ? "Resume" : "Pause";
+}
+
+function setReplaySpeed(speed) {
+  if (!replayPlayback) { replaySpeed = speed; return; }
+  replayPlayback.playheadTime = getReplayPlaybackTime();
+  replayPlayback.startedAtPerf = performance.now();
+  replaySpeed = speed;
+}
 
 function getReplayPlaybackTime() {
   if (!replayPlayback) return 0;
-  return ((performance.now() - replayPlayback.startedAtPerf) / 1000) * replaySpeed;
+  const base = replayPlayback.playheadTime || 0;
+  if (replayPaused) return base;
+  return base + ((performance.now() - replayPlayback.startedAtPerf) / 1000) * replaySpeed;
+}
+
+function formatReplayTime(seconds) {
+  const t = Math.max(0, Math.floor(seconds || 0));
+  const m = Math.floor(t / 60);
+  const s = String(t % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function refreshReplayTimeline() {
+  if (!replayPlayback || !replayPlayback.replay) return;
+  const timeline = document.getElementById("replayTimeline");
+  const label = document.getElementById("replayTimeLabel");
+  const duration = replayPlayback.replay.duration || 0;
+  const now = Math.min(getReplayPlaybackTime(), duration);
+  if (timeline) timeline.value = duration > 0 ? Math.floor((now / duration) * 1000) : 0;
+  if (label) label.textContent = `${formatReplayTime(now)} / ${formatReplayTime(duration)}`;
+}
+
+function seekReplay(targetTime) {
+  if (!replayPlayback || !replayPlayback.replay) return;
+  const replay = replayPlayback.replay;
+  const duration = replay.duration || 0;
+  const t = Math.max(0, Math.min(targetTime || 0, duration));
+  replayPlayback.playheadTime = t;
+  replayPlayback.startedAtPerf = performance.now();
+  replayPlayback.done = false;
+
+  keys = {};
+  replayPlayback.inputIndex = 0;
+  while (replayPlayback.inputIndex < replay.inputs.length && replay.inputs[replayPlayback.inputIndex].t <= t) {
+    const input = replay.inputs[replayPlayback.inputIndex];
+    keys[input.key] = input.type === "keydown";
+    replayPlayback.inputIndex++;
+  }
+
+  replayPlayback.snapshotIndex = 0;
+  if (Array.isArray(replay.snapshots) && replay.snapshots.length) {
+    for (let i = replay.snapshots.length - 1; i >= 0; i--) {
+      if (replay.snapshots[i].t <= t) {
+        applyReplaySnapshot(replay.snapshots[i]);
+        replayPlayback.snapshotIndex = i + 1;
+        break;
+      }
+    }
+  }
+  refreshReplayTimeline();
+}
+
+function seekReplayFromTimeline(rawValue) {
+  if (!replayPlayback || !replayPlayback.replay) return;
+  const duration = replayPlayback.replay.duration || 0;
+  const target = (Number(rawValue) / 1000) * duration;
+  seekReplay(target);
+}
+
+function rewindReplay(seconds) {
+  seekReplay(getReplayPlaybackTime() - (seconds || 5));
 }
 
 function updateReplayPlayback() {
-  if (!replayMode || !replayPlayback || replayPlayback.done || replayPaused) return;
+  if (!replayMode || !replayPlayback || replayPlayback.done) return;
 
   const replay = replayPlayback.replay;
   const t = getReplayPlaybackTime();
+  if (replayPaused) { refreshReplayTimeline(); return; }
 
   while (
     replayPlayback.inputIndex < replay.inputs.length &&
@@ -3828,6 +3923,8 @@ function updateReplayPlayback() {
     if (replayPlayback.snapshotIndex % 3 === 0) applyReplaySnapshot(snap);
     replayPlayback.snapshotIndex++;
   }
+
+  refreshReplayTimeline();
 
   if (replay.duration && t >= replay.duration + 1) {
     replayPlayback.done = true;
