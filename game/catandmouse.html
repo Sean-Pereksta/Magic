@@ -985,18 +985,58 @@
     updateRoleHud();
   }
   function renderBuildingDock(){
-    const dock = document.getElementById("bottomDock"); if (!dock || !playerBuildSlots?.length) return;
+  const dock = document.getElementById("bottomDock");
+  if (!dock) return;
+
+  const slots = Array.isArray(selectedBuildSlots) && selectedBuildSlots.length
+    ? selectedBuildSlots
+    : mobileBuildOrder;
+
+  if (!Array.isArray(slots) || !slots.length) {
     dock.innerHTML = "";
-    playerBuildSlots.forEach((key,idx)=>{
-      const b = BUILDINGS[key]; if (!b) return;
-      const locked = wins < (b.unlockWins||0), afford = cheeseCount >= b.cost;
-      const item = document.createElement("button");
-      item.innerHTML = `${b.icon||"🏗"} <small>${b.cost}🧀</small>${locked?` <small style="color:#f87171;">❌${b.unlockWins}🏆</small>`:""}`;
-      item.style.cssText = `border-radius:10px;padding:8px 10px;border:1px solid #334155;background:${locked?"#374151":afford?"#14532d":"#4b5563"};color:#fff;white-space:nowrap;${selectedBuild===key?"box-shadow:0 0 0 2px #facc15 inset;":""}`;
-      item.onclick = ()=>selectBuildBySlot(idx);
-      dock.appendChild(item);
-    });
+    return;
   }
+
+  dock.innerHTML = "";
+
+  slots.forEach((buildId, idx) => {
+    const b = BUILD_DEFS[buildId];
+    if (!b) return;
+
+    const locked = playerWins < (b.minWins || 0);
+    const afford = cheeseCount >= b.cost;
+
+    const item = document.createElement("button");
+    item.innerHTML = `
+      ${b.symbol || "🏗"}
+      <small>${b.cost}🧀</small>
+      ${locked ? `<small style="color:#f87171;"> ❌${b.minWins || 0}🏆</small>` : ""}
+    `;
+
+    item.title = `${idx + 1}: ${b.name} — Cost ${b.cost}`;
+    item.style.cssText = `
+      border-radius:10px;
+      padding:8px 10px;
+      border:1px solid #334155;
+      background:${locked ? "#374151" : afford ? "#14532d" : "#4b5563"};
+      color:#fff;
+      white-space:nowrap;
+      ${selectedBuild === buildId ? "box-shadow:0 0 0 2px #facc15 inset;" : ""}
+    `;
+
+    item.disabled = locked;
+
+    item.onclick = () => {
+      if (locked) {
+        showToast?.(`Requires ${b.minWins || 0} wins to unlock!`, "warn");
+        return;
+      }
+      selectBuild(String(buildId));
+    };
+
+    dock.appendChild(item);
+  });
+}
   let lastWebShotAt = 0;
   const firebaseUnsubscribers = [];
   let playerHeartbeatInterval = null;
