@@ -209,6 +209,26 @@
     text-shadow: 0 0 18px rgba(251,146,60,.9);
   }
 
+  #replayHud {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 15;
+    color: white;
+    background: rgba(15,23,42,.88);
+    border: 1px solid rgba(255,255,255,.22);
+    border-radius: 12px;
+    padding: 8px 12px;
+    box-shadow: 0 0 16px rgba(0,0,0,.45);
+    font-family: Arial, sans-serif;
+  }
+
+  #replayHud button {
+    margin: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
 </style>
 </head>
 <body>
@@ -258,6 +278,14 @@
   </div>
 </div>
 <div id="roundToast"></div>
+
+<div id="replayHud" style="display:none;">
+  <strong>REPLAY</strong>
+  <button onclick="toggleReplayPause()">Pause</button>
+  <button onclick="setReplaySpeed(0.5)">0.5x</button>
+  <button onclick="setReplaySpeed(1)">1x</button>
+  <button onclick="setReplaySpeed(2)">2x</button>
+</div>
 
 <div id="menuOverlay">
   <div id="menuCard">
@@ -356,6 +384,8 @@ let replayPlayback = null;
 let replayMode = false;
 let replayPaused = false;
 let replaySpeed = 1;
+let replaySeed = null;
+let seededRandomState = 1;
 
 const WORLD_WIDTH = 44;
 const CHUNK_LENGTH = 42;
@@ -541,7 +571,7 @@ function createStarryBackground() {
     star.userData = {
       baseScale: rand(0.85, 1.55),
       twinkleSpeed: rand(0.7, 2.2),
-      phase: Math.random() * Math.PI * 2
+      phase: gameRandom() * Math.PI * 2
     };
 
     starGroup.add(star);
@@ -842,7 +872,7 @@ function createEnemy(x, z) {
   rightLeg.position.x = 0.42;
   rig.add(rightLeg);
 
-  const canHaveTorch = distance >= 500 && Math.random() < 0.38;
+  const canHaveTorch = distance >= 500 && gameRandom() < 0.38;
   let handTorch = null;
 
   if (canHaveTorch) {
@@ -872,8 +902,8 @@ function createEnemy(x, z) {
     type: "enemy",
     rig,
     velocity: new THREE.Vector3(),
-    speed: 8 + enemyBaseSpeedBonus + Math.random() * 2.5,
-    animTime: Math.random() * 10,
+    speed: 8 + enemyBaseSpeedBonus + gameRandom() * 2.5,
+    animTime: gameRandom() * 10,
     pathTimer: rand(0.4, 1.2),
     path: [],
     wanderDir: null,
@@ -904,7 +934,7 @@ function createPoliceOfficer(x, z) {
   const rightLeg = leftLeg.clone(); rightLeg.position.x = 0.4; rig.add(rightLeg);
   const gun = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.75), black); gun.position.set(1.15, 3.35, 0.55); gun.castShadow = true; rig.add(gun);
   const laser = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1), new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.0, depthWrite: false })); laser.position.y = 3.4; laser.visible = false; scene.add(laser); scene.add(rig);
-  return { type: "police", rig, speed: 10.5 + enemyBaseSpeedBonus, state: "chase", stateTimer: POLICE_CHASE_TIME, aimTimer: 0, target: null, laser, pathTimer: rand(0.3, 0.9), path: [], animTime: Math.random() * 5, wanderDir: null, wanderTimer: 0, parts: { leftArm, rightArm, leftLeg, rightLeg } };
+  return { type: "police", rig, speed: 10.5 + enemyBaseSpeedBonus, state: "chase", stateTimer: POLICE_CHASE_TIME, aimTimer: 0, target: null, laser, pathTimer: rand(0.3, 0.9), path: [], animTime: gameRandom() * 5, wanderDir: null, wanderTimer: 0, parts: { leftArm, rightArm, leftLeg, rightLeg } };
 }
 
 function createDog(x, z) {
@@ -989,10 +1019,10 @@ function createDog(x, z) {
   return {
     type: "dog",
     rig,
-    speed: 14 + enemyBaseSpeedBonus + Math.random() * 2.2,
+    speed: 14 + enemyBaseSpeedBonus + gameRandom() * 2.2,
     turnRate: 2.1,
-    heading: Math.random() * Math.PI * 2,
-    animTime: Math.random() * 5,
+    heading: gameRandom() * Math.PI * 2,
+    animTime: gameRandom() * 5,
     wanderDir: null,
     wanderTimer: 0,
     legs
@@ -1053,12 +1083,12 @@ function createParkedCar(color = 0x2563eb) {
   g.userData = { type: "wall", radiusX: 2.1, radiusZ: 2.9 };
   return g;
 }
-function createCrashedCar() { const colors = [0xef4444, 0xf97316, 0x22c55e, 0x3b82f6, 0xeab308, 0x64748b]; const car = createParkedCar(colors[Math.floor(Math.random() * colors.length)]); car.rotation.y = rand(-0.55, 0.55); car.scale.set(rand(0.9, 1.08), rand(0.8, 1.0), rand(0.9, 1.08)); const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6), new THREE.MeshStandardMaterial({ color: 0x374151, transparent: true, opacity: 0.5, roughness: 1 })); smoke.position.set(rand(-0.7, 0.7), 2.5, rand(-1.2, 1.2)); car.add(smoke); return car; }
+function createCrashedCar() { const colors = [0xef4444, 0xf97316, 0x22c55e, 0x3b82f6, 0xeab308, 0x64748b]; const car = createParkedCar(colors[Math.floor(gameRandom() * colors.length)]); car.rotation.y = rand(-0.55, 0.55); car.scale.set(rand(0.9, 1.08), rand(0.8, 1.0), rand(0.9, 1.08)); const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6), new THREE.MeshStandardMaterial({ color: 0x374151, transparent: true, opacity: 0.5, roughness: 1 })); smoke.position.set(rand(-0.7, 0.7), 2.5, rand(-1.2, 1.2)); car.add(smoke); return car; }
 function createTrafficBarrier() { const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.55 }); const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }); const base = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.2, 0.7), mat); base.position.y = 0.65; base.castShadow = true; base.receiveShadow = true; g.add(base); for (let i = -1; i <= 1; i += 2) { const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.25, 0.75), white); stripe.position.set(i * 1.1, 0.66, 0.03); stripe.rotation.z = 0.35; g.add(stripe); } g.userData = { type: "wall", radiusX: 2.4, radiusZ: 0.7 }; return g; }
 function createStreetLight() { const g = new THREE.Group(); const poleMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.45, metalness: 0.3 }); const lampMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfacc15, emissiveIntensity: 0.9 }); const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 6, 10), poleMat); pole.position.y = 3; pole.castShadow = true; g.add(pole); const arm = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 0.14), poleMat); arm.position.set(0.75, 5.8, 0); g.add(arm); const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), lampMat); lamp.position.set(1.6, 5.75, 0); g.add(lamp); g.userData = { type: "wall", radiusX: 0.7, radiusZ: 0.7 }; return g; }
 function createCitySign() { const g = new THREE.Group(); const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.5, 8), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 })); pole.position.y = 1.75; g.add(pole); const sign = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.0, 0.12), new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.4 })); sign.position.y = 3.3; g.add(sign); g.userData = { type: "wall", radiusX: 0.7, radiusZ: 0.7 }; return g; }
-function createBiomeTree(biome) { if (biome === "snow") return createPineTree(); if (biome === "desert") return createPalmTree(); if (biome === "city") { const roll = Math.random(); if (roll < 0.35) return createStreetLight(); if (roll < 0.65) return createCitySign(); return createParkedCar(); } return createForestTree(); }
-function createBiomeRock(biome) { if (biome === "snow") return createSnowRock(); if (biome === "desert") return createDesertRock(); if (biome === "city") { const roll = Math.random(); if (roll < 0.5) return createTrafficBarrier(); return createCrashedCar(); } return createForestRock(); }
+function createBiomeTree(biome) { if (biome === "snow") return createPineTree(); if (biome === "desert") return createPalmTree(); if (biome === "city") { const roll = gameRandom(); if (roll < 0.35) return createStreetLight(); if (roll < 0.65) return createCitySign(); return createParkedCar(); } return createForestTree(); }
+function createBiomeRock(biome) { if (biome === "snow") return createSnowRock(); if (biome === "desert") return createDesertRock(); if (biome === "city") { const roll = gameRandom(); if (roll < 0.5) return createTrafficBarrier(); return createCrashedCar(); } return createForestRock(); }
 
 
 function generateChunk(zStart) {
@@ -1105,7 +1135,7 @@ function generateChunk(zStart) {
 
   if (zStart >= 2000 && biome === "desert" && desertStalkers.length < MAX_DESERT_STALKERS) {
     const chance = zStart >= 3000 ? 0.6 : 0.45;
-    if (Math.random() < chance) {
+    if (gameRandom() < chance) {
       const sx = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
       const sz = zStart + rand(8, CHUNK_LENGTH - 8);
       if (!collidesWithWall(new THREE.Vector3(sx, 0, sz), 1.3)) {
@@ -1173,11 +1203,11 @@ function addGridWallsWithGuaranteedPaths(chunk, zStart, biome) {
     rowZs.push(z);
   }
 
-  const openLaneA = Math.floor(Math.random() * laneXs.length);
-  let openLaneB = Math.floor(Math.random() * laneXs.length);
+  const openLaneA = Math.floor(gameRandom() * laneXs.length);
+  let openLaneB = Math.floor(gameRandom() * laneXs.length);
 
   while (openLaneB === openLaneA) {
-    openLaneB = Math.floor(Math.random() * laneXs.length);
+    openLaneB = Math.floor(gameRandom() * laneXs.length);
   }
 
   for (let r = 0; r < rowZs.length; r++) {
@@ -1185,7 +1215,7 @@ function addGridWallsWithGuaranteedPaths(chunk, zStart, biome) {
       if (c === openLaneA || c === openLaneB) continue;
 
       const blockChance = distance > 600 ? 0.46 : 0.36;
-      if (Math.random() > blockChance) continue;
+      if (gameRandom() > blockChance) continue;
 
       const w = 4.4;
       const d = 3.5;
@@ -1194,14 +1224,14 @@ function addGridWallsWithGuaranteedPaths(chunk, zStart, biome) {
       let wall;
 
       if (biome === "city") {
-        const roll = Math.random();
-        if (roll < 0.55) wall = createParkedCar([0xef4444, 0x2563eb, 0xfacc15, 0x22c55e, 0x64748b][Math.floor(Math.random() * 5)]);
+        const roll = gameRandom();
+        if (roll < 0.55) wall = createParkedCar([0xef4444, 0x2563eb, 0xfacc15, 0x22c55e, 0x64748b][Math.floor(gameRandom() * 5)]);
         else if (roll < 0.8) wall = createCrashedCar();
         else wall = createTrafficBarrier();
         wall.position.set(laneXs[c], 0, rowZs[r]);
-        wall.rotation.y += Math.random() < 0.5 ? Math.PI / 2 : 0;
+        wall.rotation.y += gameRandom() < 0.5 ? Math.PI / 2 : 0;
       } else {
-        wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMats[Math.floor(Math.random() * wallMats.length)]);
+        wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMats[Math.floor(gameRandom() * wallMats.length)]);
         wall.position.set(laneXs[c], h / 2, rowZs[r]);
         wall.castShadow = h > 4.2;
         wall.receiveShadow = true;
@@ -1219,10 +1249,10 @@ function addGridWallsWithGuaranteedPaths(chunk, zStart, biome) {
 /* Taller brown blocks, now tree-like obstacles */
 function addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs, biome) {
   for (let i = 0; i < 4; i++) {
-    const c = Math.floor(Math.random() * laneXs.length);
+    const c = Math.floor(gameRandom() * laneXs.length);
     if (c === openLaneA || c === openLaneB) continue;
 
-    const tree = biome === "desert" && Math.random() < 0.35 ? createCactus() : createBiomeTree(biome);
+    const tree = biome === "desert" && gameRandom() < 0.35 ? createCactus() : createBiomeTree(biome);
     const trunkRadius = biome === "desert" ? 0.6 : 0.7;
 
     tree.position.set(
@@ -1243,11 +1273,11 @@ function addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs, biome) {
 }
 
 function addPickups(chunk, zStart) {
-  const amount = 3 + Math.floor(Math.random() * 3);
+  const amount = 3 + Math.floor(gameRandom() * 3);
 
   for (let i = 0; i < amount; i++) {
     const group = new THREE.Group();
-    const roll = Math.random();
+    const roll = gameRandom();
     let pickupType = "green";
     if (roll > 0.985) pickupType = "black";
     else if (roll > 0.955) pickupType = "blue";
@@ -1299,7 +1329,7 @@ function addPickups(chunk, zStart) {
     group.userData = {
       type: "pickup",
       pickupType,
-      pulse: Math.random() * 10
+      pulse: gameRandom() * 10
     };
 
     chunk.add(group);
@@ -1355,6 +1385,8 @@ function removeEnemyActor(enemy, list) {
 
   if (enemy.handTorch) enemy.handTorch.visible = false;
 
+  recordReplayEvent("enemy_removed", { type: enemy?.type || "enemy", x: enemy?.rig ? Number(enemy.rig.position.x.toFixed(2)) : null, z: enemy?.rig ? Number(enemy.rig.position.z.toFixed(2)) : null });
+
   if (Array.isArray(list)) {
     const idx = list.indexOf(enemy);
     if (idx >= 0) list.splice(idx, 1);
@@ -1363,7 +1395,7 @@ function removeEnemyActor(enemy, list) {
 function createBurstEffect(pos, colorA, colorB, count = 18) { const group = new THREE.Group(); group.position.copy(pos); group.position.y += 1.5; const matA = new THREE.MeshBasicMaterial({ color: colorA }); const matB = new THREE.MeshBasicMaterial({ color: colorB }); for (let i = 0; i < count; i++) { const particle = new THREE.Mesh(new THREE.SphereGeometry(rand(0.08, 0.18), 6, 6), Math.random() > 0.5 ? matA : matB); particle.userData.velocity = new THREE.Vector3(rand(-8, 8), rand(2, 10), rand(-8, 8)); group.add(particle); } group.userData.life = 0.45; scene.add(group); if (!window.burstEffects) window.burstEffects = []; window.burstEffects.push(group); }
 function createRedImpactBurst(pos) { createBurstEffect(pos, 0xef4444, 0x7f1d1d, 24); }
 function createShieldBreakEffect(p) { const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p; if (!actor || !actor.rig) return; createBurstEffect(actor.rig.position, 0x38bdf8, 0xfacc15, 18); }
-function tryShieldBlock(targetPlayer, attacker) { if (!targetPlayer || !targetPlayer.shieldActive || targetPlayer.shieldCharges <= 0) return false; targetPlayer.shieldCharges--; targetPlayer.shieldActive = false; if (targetPlayer.shieldMesh) targetPlayer.shieldMesh.visible = false; createShieldBreakEffect(targetPlayer); if (attacker) { if (attacker.type === "enemy") removeEnemyActor(attacker, enemies); else if (attacker.type === "dog") removeEnemyActor(attacker, dogs); else if (attacker.type === "desertStalker") removeEnemyActor(attacker, desertStalkers); else if (attacker.type === "police") removeEnemyActor(attacker, policeOfficers); } return true; }
+function tryShieldBlock(targetPlayer, attacker) { if (!targetPlayer || !targetPlayer.shieldActive || targetPlayer.shieldCharges <= 0) return false; recordReplayEvent("shield_block", { playerId: targetPlayer?.id || 1, attackerType: attacker?.type || "unknown" }); targetPlayer.shieldCharges--; targetPlayer.shieldActive = false; if (targetPlayer.shieldMesh) targetPlayer.shieldMesh.visible = false; createShieldBreakEffect(targetPlayer); if (attacker) { if (attacker.type === "enemy") removeEnemyActor(attacker, enemies); else if (attacker.type === "dog") removeEnemyActor(attacker, dogs); else if (attacker.type === "desertStalker") removeEnemyActor(attacker, desertStalkers); else if (attacker.type === "police") removeEnemyActor(attacker, policeOfficers); } return true; }
 function handleShieldBlockControlledChaser(targetPlayer, chaserOwner) { if (!targetPlayer || !chaserOwner || !chaserOwner.controlledChaser) return false; if (!targetPlayer.shieldActive || targetPlayer.shieldCharges <= 0) return false; targetPlayer.shieldCharges = 0; targetPlayer.shieldActive = false; if (targetPlayer.shieldMesh) targetPlayer.shieldMesh.visible = false; createShieldBreakEffect(targetPlayer); const runnerActor = targetPlayer; const chaserActor = chaserOwner.controlledChaser; chaserActor.rig.position.z = runnerActor.rig.position.z + 100; chaserActor.rig.position.x = clamp(runnerActor.rig.position.x + rand(-8, 8), -WORLD_WIDTH / 2 + 3, WORLD_WIDTH / 2 - 3); chaserActor.velocity.set(0, 0, 0); showRoundToast("Shield blocked the chaser! Chaser warped ahead!"); return true; }
 function spawnDangerBehindPlayer(owner) { const actor = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!actor || !actor.rig) return; const spawnZ = Math.max(START_Z + 8, actor.rig.position.z - 28); const spawnX = clamp(actor.rig.position.x + rand(-10, 10), -WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4); if (enemies.length < MAX_ENEMIES) enemies.push(createEnemy(spawnX, spawnZ)); }
 function getBlackGlobeTargets(owner, maxTargets = 5) { const actor = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!actor || !actor.rig) return []; const all = []; function addTarget(e, list) { if (!e || e.dead || e.removed || e.disabled) return; if (!e.rig || e.rig.visible === false) return; all.push({ actor: e, list }); } for (const e of enemies) addTarget(e, enemies); for (const d of dogs) addTarget(d, dogs); for (const s of desertStalkers) addTarget(s, desertStalkers); for (const p of policeOfficers) addTarget(p, policeOfficers); all.sort((a, b) => flatDistance(actor.rig.position, a.actor.rig.position) - flatDistance(actor.rig.position, b.actor.rig.position)); return all.slice(0, maxTargets); }
@@ -1396,7 +1428,7 @@ function applyPickupEffect(owner, actor, pickup) { const type = pickup.userData.
 
 function addGrassPatches(chunk, zStart, biome) {
   const skipChance = biome === "desert" ? 0.5 : biome === "snow" ? 0.35 : 0.28;
-  if (Math.random() > skipChance) return;
+  if (gameRandom() > skipChance) return;
 
   const patch = new THREE.Group();
 
@@ -1470,7 +1502,7 @@ function addGrassPatches(chunk, zStart, biome) {
     type: "grass",
     width,
     depth,
-    pulse: Math.random() * 10
+    pulse: gameRandom() * 10
   };
 
   chunk.add(patch);
@@ -1820,7 +1852,7 @@ function directChase(enemy, dt, speed, radius) {
 
 function updateEnemyWander(enemy, dt) {
   if (!enemy.wanderDir || enemy.wanderTimer <= 0) {
-    const angle = Math.random() * Math.PI * 2;
+    const angle = gameRandom() * Math.PI * 2;
 
     enemy.wanderDir = new THREE.Vector3(
       Math.sin(angle),
@@ -1893,7 +1925,7 @@ function updateDogChase(dog, dt) {
 
 function updateDogWander(dog, dt) {
   if (!dog.wanderDir || dog.wanderTimer <= 0) {
-    const angle = Math.random() * Math.PI * 2;
+    const angle = gameRandom() * Math.PI * 2;
     dog.wanderDir = angle;
     dog.wanderTimer = rand(0.7, 1.5);
   }
@@ -2061,7 +2093,7 @@ function createFireZone(pos) {
       flameMats[i % flameMats.length]
     );
 
-    const angle = Math.random() * Math.PI * 2;
+    const angle = gameRandom() * Math.PI * 2;
     const radius = rand(0, 1.35);
 
     flame.position.set(
@@ -2079,7 +2111,7 @@ function createFireZone(pos) {
     flames.push({
       mesh: flame,
       baseHeight: h,
-      phase: Math.random() * Math.PI * 2
+      phase: gameRandom() * Math.PI * 2
     });
   }
 
@@ -2275,6 +2307,7 @@ function updatePickups(dt) {
         removePickupObject(pickup);
 
         try {
+          recordReplayEvent("pickup_collected", { pickupType, playerId: owner?.id || 1, x: Number(pickup.position.x.toFixed(2)), z: Number(pickup.position.z.toFixed(2)) });
           applyPickupEffect(owner, actor, pickup);
         } catch (err) {
           console.error("Pickup effect failed for", pickupType, err);
@@ -2357,7 +2390,7 @@ function spawnPickupBurst(pos, pickupType = "green") {
 
   for (let i = 0; i < 7; i++) {
     const s = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), mat);
-    const angle = Math.random() * Math.PI * 2;
+    const angle = gameRandom() * Math.PI * 2;
 
     s.position.copy(pos);
     s.userData.vel = new THREE.Vector3(
@@ -3184,12 +3217,21 @@ function animate() {
   requestAnimationFrame(animate);
   frameCount++;
 
+  const replayHud = document.getElementById("replayHud");
+  if (replayHud) replayHud.style.display = replayMode ? "block" : "none";
+
   if (gameOver || !gameStarted) {
     renderer.render(scene, camera);
     return;
   }
 
   const dt = Math.min(clock.getDelta(), 0.04);
+
+  if (replayMode && replayPaused) {
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+    return;
+  }
 
   updateReplayPlayback();
 
@@ -3222,6 +3264,7 @@ function animate() {
   updateTwoPlayerYards();
   updateTwoPlayerScoreboard();
   updateHUD();
+  captureReplaySnapshot();
 
   renderer.render(scene, camera);
 }
@@ -3230,8 +3273,12 @@ function animate() {
    HELPERS
 ============================================================ */
 
+function setReplaySeed(seed) { seededRandomState = seed >>> 0; }
+function gameRandom() { seededRandomState = (seededRandomState * 1664525 + 1013904223) >>> 0; return seededRandomState / 4294967296; }
+function makeReplaySeed() { return (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0; }
+
 function rand(min, max) {
-  return min + Math.random() * (max - min);
+  return min + gameRandom() * (max - min);
 }
 
 function clamp(v, min, max) {
@@ -3386,6 +3433,7 @@ function swapChaserAndRunner(chaserOwner, caughtRunner) {
   if (twoPlayerScores[chaserOwner.id]) twoPlayerScores[chaserOwner.id].lastCountedZ = chaserOwner.rig.position.z;
   if (twoPlayerScores[caughtRunner.id]) twoPlayerScores[caughtRunner.id].lastCountedZ = caughtRunner.controlledChaser ? caughtRunner.controlledChaser.rig.position.z : caughtRunner.rig.position.z;
 
+  recordReplayEvent("role_swap", { chaserPlayerId: chaserOwner?.id, caughtPlayerId: caughtRunner?.id });
   flashRoundMessage("Player " + chaserOwner.id + " tagged Player " + caughtRunner.id + "! Roles swapped!");
   updateTwoPlayerScoreboard();
 }
@@ -3409,6 +3457,7 @@ function updatePlayerChaserTags() {
 }
 function handlePlayerCaught(p, reason) {
   if (!p || p.isChaser || p.eliminated || gameOver || roundEnding) return;
+  recordReplayEvent("player_caught", { playerId: p?.id || 1, reason: reason || "caught", x: Number(p.rig.position.x.toFixed(2)), z: Number(p.rig.position.z.toFixed(2)) });
 
   if (gameMode !== 2) {
     endGame(reason || "Chris got caught!");
@@ -3536,6 +3585,7 @@ function showRoundTransition(reason) {
 }
 function startNextTwoPlayerRound() { twoPlayerRound++; roundActive = true; roundEnding = false; gameOver = false; document.getElementById("message").style.display = "none"; resetWorldForNewTwoPlayerRound(); updateTwoPlayerScoreboard(); }
 function endTwoPlayerMatch(reason) {
+  recordReplayEvent("match_end", { reason, p1Total: Math.floor(twoPlayerScores[1]?.totalYards || 0), p2Total: Math.floor(twoPlayerScores[2]?.totalYards || 0) });
   roundActive = false; roundEnding = true; gameOver = true; updateTwoPlayerScoreboard();
   const p1 = Math.floor(twoPlayerScores[1].totalYards); const p2 = Math.floor(twoPlayerScores[2].totalYards);
   let winnerText = "It’s a tie!"; let winnerClass = "";
@@ -3546,6 +3596,7 @@ function endTwoPlayerMatch(reason) {
   finalizeReplay(reason);
 }
 function endTwoPlayerRound(reason) {
+  recordReplayEvent("round_end", { round: twoPlayerRound, p1RoundYards: Math.floor(twoPlayerScores[1]?.roundYards || 0), p2RoundYards: Math.floor(twoPlayerScores[2]?.roundYards || 0), reason });
   if (roundEnding) return;
   roundEnding = true; roundActive = false;
   updateTwoPlayerYards(); updateTwoPlayerScoreboard();
@@ -3565,15 +3616,23 @@ function startGame(mode) {
 }
 
 function createReplayRecorder(mode) {
+  const seed = makeReplaySeed();
+  replaySeed = seed;
+  setReplaySeed(seed);
+
   return {
     version: CHRIS_REPLAY_VERSION,
     gameBuild: GAME_BUILD_VERSION,
     createdAt: new Date().toISOString(),
     mode,
+    seed,
     startedAtPerf: performance.now(),
     duration: 0,
     final: null,
-    inputs: []
+    inputs: [],
+    events: [],
+    snapshots: [],
+    lastSnapshotTime: 0
   };
 }
 
@@ -3590,6 +3649,35 @@ function recordReplayInput(type, key) {
   });
 }
 
+function recordReplayEvent(type, data = {}) {
+  if (!replayRecorder || replayMode) return;
+  replayRecorder.events.push({
+    t: Number(getReplayTime().toFixed(4)),
+    type,
+    data
+  });
+}
+
+function captureReplaySnapshot() {
+  if (!replayRecorder || replayMode || !gameStarted || gameOver) return;
+  const t = getReplayTime();
+  if (t - replayRecorder.lastSnapshotTime < 1) return;
+  replayRecorder.lastSnapshotTime = t;
+  replayRecorder.snapshots.push({
+    t: Number(t.toFixed(4)),
+    distance: Math.floor(distance || 0),
+    pickupCount: pickupCount || 0,
+    gameMode,
+    twoPlayerRound,
+    players: players.map(p => ({ id: p.id, x: Number(p.rig.position.x.toFixed(2)), z: Number(p.rig.position.z.toFixed(2)), isChaser: !!p.isChaser, eliminated: !!p.eliminated, energy: Math.floor(p.energy || 0), shieldActive: !!p.shieldActive })),
+    twoPlayerScores: JSON.parse(JSON.stringify(twoPlayerScores || {})),
+    enemies: enemies.filter(canEnemyDamage).slice(0, 30).map(e => ({ type: e.type || "enemy", x: Number(e.rig.position.x.toFixed(2)), z: Number(e.rig.position.z.toFixed(2)) })),
+    dogs: dogs.filter(canEnemyDamage).slice(0, 20).map(d => ({ type: "dog", x: Number(d.rig.position.x.toFixed(2)), z: Number(d.rig.position.z.toFixed(2)) })),
+    desertStalkers: desertStalkers.filter(canEnemyDamage).slice(0, 20).map(s => ({ type: "desertStalker", x: Number(s.rig.position.x.toFixed(2)), z: Number(s.rig.position.z.toFixed(2)) })),
+    police: policeOfficers.filter(canEnemyDamage).slice(0, 20).map(p => ({ type: "police", x: Number(p.rig.position.x.toFixed(2)), z: Number(p.rig.position.z.toFixed(2)), state: p.state }))
+  });
+}
+
 function finalizeReplay(reason) {
   if (!replayRecorder || replayMode) return;
 
@@ -3600,7 +3688,9 @@ function finalizeReplay(reason) {
     pickupCount: pickupCount || 0,
     gameMode,
     twoPlayerRound,
-    twoPlayerScores: JSON.parse(JSON.stringify(twoPlayerScores || {}))
+    twoPlayerScores: JSON.parse(JSON.stringify(twoPlayerScores || {})),
+    eventCount: replayRecorder.events.length,
+    snapshotCount: replayRecorder.snapshots.length
   };
 
   window.lastChrisReplay = replayRecorder;
@@ -3672,19 +3762,27 @@ function validateAndStartReplay(replay) {
     alert("This is not a valid Chris Runner replay file.");
     return;
   }
+  if (!replay.seed) {
+    alert("Replay file is missing its random seed.");
+    return;
+  }
 
   startReplayMode(replay);
 }
 
 function startReplayMode(replay) {
   replayMode = true;
+  replayPaused = false;
+  replaySpeed = 1;
   replayRecorder = null;
   replayPlayback = {
     replay,
     startedAtPerf: performance.now(),
     inputIndex: 0,
+    snapshotIndex: 0,
     done: false
   };
+  setReplaySeed(replay.seed);
 
   keys = {};
 
@@ -3701,6 +3799,9 @@ function startReplayMode(replay) {
 
   showRoundToast("Replay loaded");
 }
+
+function toggleReplayPause() { replayPaused = !replayPaused; const btns = document.querySelectorAll("#replayHud button"); if (btns && btns[0]) btns[0].textContent = replayPaused ? "Resume" : "Pause"; }
+function setReplaySpeed(speed) { replaySpeed = speed; }
 
 function getReplayPlaybackTime() {
   if (!replayPlayback) return 0;
@@ -3722,10 +3823,32 @@ function updateReplayPlayback() {
     replayPlayback.inputIndex++;
   }
 
+  while (replay.snapshots && replayPlayback.snapshotIndex < replay.snapshots.length && replay.snapshots[replayPlayback.snapshotIndex].t <= t) {
+    const snap = replay.snapshots[replayPlayback.snapshotIndex];
+    if (replayPlayback.snapshotIndex % 3 === 0) applyReplaySnapshot(snap);
+    replayPlayback.snapshotIndex++;
+  }
+
   if (replay.duration && t >= replay.duration + 1) {
     replayPlayback.done = true;
     showReplayCompleteScreen(replay);
   }
+}
+
+function applyReplaySnapshot(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.players)) return;
+  for (const savedPlayer of snapshot.players) {
+    const p = players.find(x => x.id === savedPlayer.id);
+    if (!p || !p.rig) continue;
+    p.rig.position.x = savedPlayer.x;
+    p.rig.position.z = savedPlayer.z;
+    p.isChaser = !!savedPlayer.isChaser;
+    p.eliminated = !!savedPlayer.eliminated;
+    p.energy = savedPlayer.energy;
+    p.shieldActive = !!savedPlayer.shieldActive;
+  }
+  if (typeof snapshot.distance === "number") distance = snapshot.distance;
+  if (snapshot.twoPlayerScores) twoPlayerScores = JSON.parse(JSON.stringify(snapshot.twoPlayerScores));
 }
 
 function showReplayCompleteScreen(replay) {
