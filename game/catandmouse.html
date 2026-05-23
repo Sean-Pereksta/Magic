@@ -372,12 +372,20 @@
     }
 
     .iso-structure{position:absolute; width:34px; height:34px; transform:translate(-50%,-67%); pointer-events:none; z-index:9; filter:drop-shadow(0 2px 2px rgba(0,0,0,.35));}
-    .iso-structure .body{position:absolute; inset:6px 6px 7px 6px; border-radius:5px; transform:skewY(-8deg);}
+    .iso-structure > div{position:absolute;pointer-events:none;}
+    .iso-structure .iso-shadow{left:6px;right:6px;bottom:1px;height:7px;background:radial-gradient(ellipse at center,rgba(2,6,23,.36) 0%,rgba(2,6,23,.14) 58%,rgba(2,6,23,0) 100%);border-radius:999px;z-index:0;}
+    .iso-structure .base{left:5px;right:5px;bottom:4px;height:8px;background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(0,0,0,.12));clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);opacity:.82;z-index:1;}
+    .iso-structure .body{position:absolute; inset:6px 6px 7px 6px; border-radius:5px; transform:skewY(-8deg);z-index:3;}
+    .iso-structure .top{left:9px; right:9px; top:2px; height:10px; border-radius:4px; transform:skewX(-30deg); background:rgba(255,255,255,.32); z-index:4;}
+    .iso-structure .side{top:8px; bottom:7px; width:10px; border-radius:4px; opacity:.86; z-index:2;}
+    .iso-structure .side-left{left:3px; transform:skewY(-30deg); background:rgba(255,255,255,.12);}
+    .iso-structure .side-right{right:3px; transform:skewY(30deg); background:rgba(0,0,0,.16);}
     .iso-structure::before,.iso-structure::after{content:"";position:absolute;}
     .iso-structure::before{left:9px; right:9px; top:2px; height:10px; border-radius:4px; transform:skewX(-30deg);}
     .iso-structure::after{right:3px; top:8px; bottom:7px; width:10px; border-radius:4px; transform:skewY(30deg); opacity:.86}
     .iso-structure.tall{height:44px; transform:translate(-50%,-78%);} .iso-structure.wide{width:40px;}
-    .iso-structure .accent,.iso-structure .core,.iso-structure .ring,.iso-structure .tip{position:absolute;border-radius:999px;}
+    .iso-structure .accent,.iso-structure .core,.iso-structure .ring,.iso-structure .tip,.iso-structure .detail{position:absolute;border-radius:999px;z-index:5;}
+    .iso-structure .detail{opacity:.85;}
     .iso-wall{--c1:#8b5e3c;--c2:#6b3e2a;--c3:#4e2d1f;} .iso-wall .body{background:repeating-linear-gradient(0deg,var(--c1) 0 5px,var(--c2) 5px 10px);} .iso-wall::before{background:#b47a56}.iso-wall::after{background:var(--c3)}
     .iso-turret{--c1:#64748b;--c2:#475569;--c3:#1e293b;} .iso-turret .body{background:var(--c1)} .iso-turret::before{background:#94a3b8} .iso-turret::after{background:var(--c2)} .iso-turret .tip{left:18px;top:3px;width:12px;height:5px;background:var(--c3);border-radius:4px}
     .iso-flea-nest .body{background:#8b5a2b;border-radius:50% 50% 45% 45%;} .iso-flea-nest::before{background:#b67a3e} .iso-flea-nest::after{background:#6e431f} .iso-flea-nest .accent{left:11px;top:13px;width:4px;height:4px;background:#2d1b0e;box-shadow:7px 2px 0 #2d1b0e,-5px 5px 0 #2d1b0e}
@@ -928,7 +936,7 @@
     const wrap = document.createElement("div");
     const baseVisual = visual || "iso-unknown-structure";
     wrap.className = `iso-structure ${baseVisual} ${TALL_STRUCTURE_SYMBOLS.has(symbol) ? "tall" : ""} ${WIDE_STRUCTURE_SYMBOLS.has(symbol) ? "wide" : ""}`.trim();
-    wrap.innerHTML = '<div class="body"></div><div class="accent"></div><div class="core"></div><div class="ring"></div><div class="tip"></div>';
+    wrap.innerHTML = '<div class="iso-shadow"></div><div class="base"></div><div class="body"></div><div class="top"></div><div class="side side-left"></div><div class="side side-right"></div><div class="accent"></div><div class="core"></div><div class="ring"></div><div class="tip"></div><div class="detail detail-a"></div><div class="detail detail-b"></div><div class="detail detail-c"></div>';
     if (!visual){
       const unknownLabel = document.createElement("div");
       unknownLabel.className = "unknown-structure-label";
@@ -938,10 +946,12 @@
     if ((shield ?? 0) > 0){
       const sh = document.createElement("div");
       sh.className = "ring";
-      sh.style.left = "5px"; sh.style.top = "2px";
-      sh.style.width = "24px"; sh.style.height = "16px";
+      sh.style.left = "3px"; sh.style.top = "6px";
+      sh.style.width = "28px"; sh.style.height = "18px";
       sh.style.border = "2px solid rgba(125,211,252,.95)";
-      sh.style.background = "rgba(125,211,252,.16)";
+      sh.style.background = "rgba(125,211,252,.14)";
+      sh.style.boxShadow = "0 0 10px rgba(56,189,248,.35)";
+      sh.style.zIndex = "6";
       wrap.appendChild(sh);
     }
     const shell = document.createElement("div");
