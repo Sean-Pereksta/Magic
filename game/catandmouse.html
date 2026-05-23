@@ -1683,15 +1683,16 @@
   const ISO_TILE_H = 24;
   const ISO_ENTITY_W = 34;
   const ISO_ENTITY_H = 34;
-  // Camera tuning constants (safe to tweak later without touching camera math):
-  // - Zoom is intentionally tighter so the local player stays visually prominent.
-  // - Center Y is biased downward to show more map "ahead" in isometric view.
-  const ISO_DESKTOP_ZOOM = 1.45;
-  const ISO_MOBILE_ZOOM = 1.18;
-  const ISO_CENTER_Y_RATIO = 0.56;
+  // Camera tuning constants (safe to tweak later without touching camera math).
+  const ISO_CAMERA_DESKTOP_ZOOM = 1.55;
+  const ISO_CAMERA_MOBILE_ZOOM = 1.25;
+  const ISO_CAMERA_CENTER_X = 0.50;
+  // Keep this at 0.50 for true center framing; only change intentionally for
+  // an over-the-shoulder style composition.
+  const ISO_CAMERA_CENTER_Y = 0.50;
   const ISO_CAMERA_SMOOTHING = 0.32;
-  const ISO_EDGE_PADDING = 80;
-  const camera = { x: 0, y: 0, targetX: 0, targetY: 0 };
+  const ISO_CAMERA_CLAMP_PADDING_RATIO = 0.40;
+  const camera = { x: 0, y: 0, targetX: 0, targetY: 0, initialized: false };
   let cameraDebug = false;
 
   function isoToScreen(x, y){
@@ -1731,14 +1732,26 @@
     const wrapper = document.getElementById("gridWrapper");
     if (!wrapper || !stageMetrics) return;
     const focus = getLocalFocusPlayer();
-    if (focus){
+    if (focus && typeof focus.x === "number" && typeof focus.y === "number"){
       const focusScreen = isoToScreen(focus.x, focus.y);
       camera.targetX = focusScreen.x;
       camera.targetY = focusScreen.y;
-    } else {
+    } else if (!focus) {
       camera.targetX = stageMetrics.mapCenter.x;
       camera.targetY = stageMetrics.mapCenter.y;
+    } else {
+      // Debug-safe fallback: if a focus object exists but has invalid coordinates,
+      // keep current camera target and do not move.
+      return;
     }
+
+    if (!camera.initialized || !Number.isFinite(camera.x) || !Number.isFinite(camera.y)) {
+      camera.x = camera.targetX;
+      camera.y = camera.targetY;
+      camera.initialized = true;
+      return;
+    }
+
     const smooth = ISO_CAMERA_SMOOTHING;
     camera.x += (camera.targetX - camera.x) * smooth;
     camera.y += (camera.targetY - camera.y) * smooth;
@@ -1754,20 +1767,25 @@
     const stageW = stageMetrics.worldW;
     const stageH = stageMetrics.worldH;
     const isSmall = Math.min(wrapperW, wrapperH) < 430;
-    const scale = isSmall ? ISO_MOBILE_ZOOM : ISO_DESKTOP_ZOOM;
+    const scale = isSmall ? ISO_CAMERA_MOBILE_ZOOM : ISO_CAMERA_DESKTOP_ZOOM;
     wrapper.style.setProperty("--iso-scale", scale.toFixed(3));
 
-    const screenCenterX = wrapperW / 2;
-    const screenCenterY = wrapperH * ISO_CENTER_Y_RATIO;
+    const screenCenterX = wrapperW * ISO_CAMERA_CENTER_X;
+    const screenCenterY = wrapperH * ISO_CAMERA_CENTER_Y;
 
-    // Keep local focus centered first; only apply a loose guard clamp so the map
-    // cannot completely disappear from view when focus gets near/extents.
-    let translateX = screenCenterX - (camera.x * scale);
-    let translateY = screenCenterY - (camera.y * scale);
-    const minVisibleX = wrapperW - (stageW * scale) - ISO_EDGE_PADDING;
-    const maxVisibleX = ISO_EDGE_PADDING;
-    const minVisibleY = wrapperH - (stageH * scale) - ISO_EDGE_PADDING;
-    const maxVisibleY = ISO_EDGE_PADDING;
+    // True screen-space centering: camera point is mapped directly to the chosen
+    // viewport center.
+    let translateX = screenCenterX - camera.x * scale;
+    let translateY = screenCenterY - camera.y * scale;
+
+    // Very loose safety clamp only to keep some part of the map in view.
+    // Padding is intentionally large so clamping does not pin the player low.
+    const padX = wrapperW * ISO_CAMERA_CLAMP_PADDING_RATIO;
+    const padY = wrapperH * ISO_CAMERA_CLAMP_PADDING_RATIO;
+    const minVisibleX = wrapperW - (stageW * scale) - padX;
+    const maxVisibleX = padX;
+    const minVisibleY = wrapperH - (stageH * scale) - padY;
+    const maxVisibleY = padY;
     translateX = Math.min(maxVisibleX, Math.max(minVisibleX, translateX));
     translateY = Math.min(maxVisibleY, Math.max(minVisibleY, translateY));
 
