@@ -5567,53 +5567,70 @@
     }
   }, 1000);
 
-  // ============================================================
+   // ============================================================
   // Boot
   // ============================================================
   await ensureLobbyAndState();
   await fetchPlayerWins();
   await upsertMyPlayerDoc();
   startPlayerHeartbeat();
+
   window.addEventListener("beforeunload", () => {
     stopPlayerHeartbeat();
     cleanupFirebaseListeners();
   });
+
   await publishMySelection(false);
   listenToCrownCouncil();
 
   startGlobalLoops();
   renderSelectionOverlay();
-  document.getElementById("focusBtn").addEventListener("click", () => window.dispatchEvent(new KeyboardEvent("keydown",{key:"h"})));
-  document.querySelectorAll("#sidePanelButtons [data-panel]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
+
+  const focusBtn = document.getElementById("focusBtn");
+  if (focusBtn) {
+    focusBtn.addEventListener("click", () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "h" }));
+    });
+  }
+
+  document.querySelectorAll("#sidePanelButtons [data-panel]").forEach(btn => {
+    btn.addEventListener("click", () => {
       const panel = document.getElementById("sidePanel");
       const k = btn.getAttribute("data-panel");
+
       const map = {
-        stats:`<b>Stats</b><br>Wins: ${playerWins}<br>Cheese: ${cheeseCount}<br>Status: ${isAlive?"Alive":"Dead"}`,
-        buildings:`<b>Buildings</b><br>Use bottom dock for quick build.<br>Press 1-8 or click dock.`,
-        settings:`<b>Settings</b><br>H: Focus mode<br>Space: Upgrades<br>Arrows: Move`,
-        help:`<b>Help</b><br>Collect cheese, build defenses, survive waves.`
+        stats: `<b>Stats</b><br>Wins: ${playerWins}<br>Cheese: ${cheeseCount}<br>Status: ${isAlive ? "Alive" : "Dead"}`,
+        buildings: `<b>Buildings</b><br>Use bottom dock for quick build.<br>Press 1-8 or click dock.`,
+        settings: `<b>Settings</b><br>H: Focus mode<br>Space: Upgrades<br>Arrows: Move`,
+        help: `<b>Help</b><br>Collect cheese, build defenses, survive waves.`
       };
+
       panel.innerHTML = map[k] || "";
       panel.style.display = panel.style.display === "none" ? "block" : "none";
     });
   });
-  setInterval(()=>{
+
+  setInterval(() => {
     updateTopHud();
     renderBuildingDock();
+
     const now = Date.now();
     const hudTimer = document.getElementById("hudTimer");
-    if (hudTimer){
+
+    if (hudTimer) {
       if (typeof nextRatWaveAt === "number") {
         const secs = Math.max(0, Math.floor((nextRatWaveAt - now) / 1000));
-        hudTimer.textContent = `⏱ 0:${String(secs).padStart(2,"0")}`;
+        hudTimer.textContent = `⏱ 0:${String(secs).padStart(2, "0")}`;
       } else {
         hudTimer.textContent = "⏱ --:--";
       }
     }
-    const wave = Math.max(1, Math.floor(catPower/5)+1);
-    document.getElementById("hudWave").textContent = `🌊 Wave ${wave}`;
+
+    const wave = Math.max(1, Math.floor(catPower / 5) + 1);
+    const waveHud = document.getElementById("hudWave");
+    if (waveHud) waveHud.textContent = `🌊 Wave ${wave}`;
   }, 300);
+
   if (gameStarted) startHostLoops();
 
 </script>
