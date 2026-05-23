@@ -5576,51 +5576,82 @@
       await updateDoc(ccRef(ID.STATE), { ratPower, updatedAt: Date.now() });
     }, 120000);
 
-    // flea nests spawn fleas (now actually writes them, so everyone sees)
-    setInterval(async () => {
-      // count nests and spawn fleas in Firestore
-      for (let y=0; y<gridSize; y++){
-        for (let x=0; x<gridSize; x++){
-          if (grid[y][x] !== "🪳") continue;
-
-          let beaconBonus = 0;
-          for (let dy=-2; dy<=2; dy++){
-            for (let dx=-2; dx<=2; dx++){
-              const nx = x+dx, ny=y+dy;
-              if (nx>=0&&nx<gridSize&&ny>=0&&ny<gridSize && grid[ny][nx]==="🗼") beaconBonus++;
+    async function fleaNestAttackTick(){
+      const nests = getStructuresByType?.("🪳")?.length
+        ? getStructuresByType("🪳")
+        : (() => {
+            const found = [];
+            for (let y=0; y<gridSize; y++){
+              for (let x=0; x<gridSize; x++){
+                if (grid[y]?.[x] === "🪳") found.push({ x, y, symbol: "🪳" });
+              }
             }
-          }
-          const spawnCount = 1 + beaconBonus;
-          if (getActiveEnemyCount("fleas") >= ENEMY_CAPS.fleas) continue;
-          if (getActiveEnemyCount() >= ENEMY_CAPS.totalEnemies) continue;
-          const availableFleaSlots = Math.max(0, ENEMY_CAPS.fleas - getActiveEnemyCount("fleas"));
-          const availableGlobalEnemySlots = Math.max(0, ENEMY_CAPS.totalEnemies - getActiveEnemyCount());
-          const fleasToSpawn = Math.min(spawnCount, availableFleaSlots, availableGlobalEnemySlots);
+            return found;
+          })();
+      if (!nests.length) return;
 
-          const offsets = [
-            {dx:0,dy:0},{dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1},
-            {dx:1,dy:1},{dx:-1,dy:-1},{dx:1,dy:-1},{dx:-1,dy:1}
-          ];
+      const occupiedByLiveFlea = (x, y) => fleas.some(f => isLivingFlea(f) && f.x === x && f.y === y);
+      const isInside = (x, y) => x >= 0 && y >= 0 && x < gridSize && y < gridSize;
+      const isSpawnable = (x, y, allowNestCell = false) => {
+        if (!isInside(x, y)) return false;
+        const cell = grid[y]?.[x];
+        if (occupiedByLiveFlea(x, y)) return false;
+        if (allowNestCell && cell === "🪳") return true;
+        return cell === "";
+      };
 
-          for (let i=0; i<fleasToSpawn; i++){
-            const off = offsets[Math.floor(Math.random()*offsets.length)];
-            const fx = x + off.dx;
-            const fy = y + off.dy;
-            if (fx<0||fy<0||fx>=gridSize||fy>=gridSize) continue;
+      for (const nest of nests){
+        const x = nest.x, y = nest.y;
+        addCombatVfx(x, y, "🐞", "vfx-pop", 450, 14);
 
-            const fid = `nest_${crypto.randomUUID()}`;
-            await setDoc(ccRef(ID.flea(fid)), {
-              kind: "flea",
-              id: fid,
-              x: fx, y: fy,
-              lifetime: isNearRallyDrum(fx, fy) ? 22 : 15,
-              origin: "nest",
-              createdAt: Date.now()
-            }, { merge:true });
-          }
+        const beaconBonus = getStructuresByType("🗼").filter(b => Math.abs(b.x - x) <= 2 && Math.abs(b.y - y) <= 2).length;
+        const requestedSpawns = Math.min(3, 1 + beaconBonus);
+        const fleaSlots = Math.max(0, ENEMY_CAPS.fleas - getActiveEnemyCount("fleas"));
+        const totalSlots = Math.max(0, ENEMY_CAPS.totalEnemies - getActiveEnemyCount());
+        const spawnBudget = Math.min(requestedSpawns, fleaSlots, totalSlots);
+
+        if (spawnBudget <= 0){
+          if (cameraDebug && (fleaSlots <= 0 || totalSlots <= 0)) console.debug("[fleaNestAttackTick] cap reached");
+          continue;
+        }
+
+        const ringOffsets = [
+          {dx:1,dy:0},{dx:-1,dy:0},{dx:0,dy:1},{dx:0,dy:-1},
+          {dx:1,dy:1},{dx:1,dy:-1},{dx:-1,dy:1},{dx:-1,dy:-1}
+        ];
+        const candidateTiles = ringOffsets
+          .map(off => ({ x: x + off.dx, y: y + off.dy }))
+          .filter(p => isSpawnable(p.x, p.y, false));
+        if (isSpawnable(x, y, true)) candidateTiles.push({ x, y });
+
+        let spawned = 0;
+        const shuffled = candidateTiles.sort(() => Math.random() - 0.5);
+        for (const tile of shuffled){
+          if (spawned >= spawnBudget) break;
+          const fx = tile.x, fy = tile.y;
+          const now = Date.now();
+          const fid = `nest_${x}_${y}_${now}_${Math.floor(Math.random()*9999)}`;
+          await setDoc(ccRef(ID.flea(fid)), {
+            kind: "flea",
+            id: fid,
+            docId: ID.flea(fid),
+            x: fx, y: fy,
+            lifetime: isNearRallyDrum(fx, fy) ? 22 : 15,
+            origin: "nest",
+            createdAt: now,
+            updatedAt: now
+          }, { merge:true });
+          addCombatVfx(fx, fy, "✦", "vfx-pop", 350, 12);
+          spawned++;
         }
       }
-    }, 4000);
+      requestRender("flea nest fired");
+    }
+
+    setInterval(() => {
+      if (!canRunHostSimulation()) return;
+      fleaNestAttackTick().catch(console.error);
+    }, 2200);
 
     setInterval(() => { if (!canRunHostSimulation()) return; processWallHealRequests().catch(()=>{}); }, 1000);
 
@@ -5702,7 +5733,10 @@
     setInterval(() => { if (!canRunHostSimulation()) return; hostMoveVultures().catch(()=>{}); }, 600);
     setInterval(() => { if (!canRunHostSimulation()) return; hostMoveStinkRats().catch(()=>{}); }, 700);
     setInterval(() => { if (!canRunHostSimulation()) return; hostMoveTermites().catch(()=>{}); }, 400);
-    setInterval(() => { if (!canRunHostSimulation()) return; hostMoveFleas().catch(()=>{}); }, 400);
+    setInterval(() => {
+      if (!canRunHostSimulation()) return;
+      hostMoveFleas().catch(console.error);
+    }, 700);
 
     // phoenix revive
     setInterval(() => { if (!canRunHostSimulation()) return; hostPhoenixRevive().catch(()=>{}); }, 2000);
