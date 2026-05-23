@@ -55,6 +55,24 @@
       font-size: 24px;
       z-index: 10;
     }
+
+    .iso-creature{
+      --creature-body:#9ca3af;
+      --creature-accent:#d1d5db;
+      --creature-ear:#fda4af;
+      width:28px;height:24px;position:relative;transform-origin:50% 60%;
+      filter: drop-shadow(0 2px 1px rgba(0,0,0,.35));
+    }
+    .iso-creature::before,.iso-creature::after{content:"";position:absolute;}
+    .mouse-creature,.rat-creature,.cat-creature,.ox-creature,.rabbit-creature,.vulture-creature,.ratking-creature,.termite-creature,.stinkrat-creature,.flea-creature{background:var(--creature-body);border-radius:55% 45% 50% 50%;}
+    .mouse-creature{--creature-body:#9ca3af;--creature-accent:#cbd5e1;}
+    .mouse-creature::before{width:12px;height:10px;background:var(--creature-accent);border-radius:50%;left:16px;top:6px;}
+    .mouse-creature::after{width:11px;height:3px;background:#fca5a5;border-radius:999px;left:-8px;top:14px;}
+    .rat-creature{--creature-body:#6b7280;} .rat-creature::before{width:12px;height:8px;background:#9ca3af;left:16px;top:8px;clip-path:polygon(0 0,100% 50%,0 100%);} .rat-creature::after{width:12px;height:3px;background:#d97706;left:-10px;top:15px;border-radius:999px;}
+    .cat-creature{width:34px;height:28px;--creature-body:#f59e0b;} .cat-creature::before{width:14px;height:12px;background:#fbbf24;left:20px;top:7px;border-radius:50%;} .cat-creature::after{width:14px;height:4px;background:#92400e;left:-11px;top:17px;border-radius:999px;}
+    .facing-ne{transform:rotate(-35deg)} .facing-nw{transform:rotate(-145deg)} .facing-se{transform:rotate(35deg)} .facing-sw{transform:rotate(145deg)}
+    .facing-east{transform:rotate(0deg)} .facing-west{transform:rotate(180deg)} .facing-north{transform:rotate(-90deg)} .facing-south{transform:rotate(90deg)}
+
     .name{
       font-size: 10px;
       position: absolute;
@@ -859,6 +877,9 @@
     rescue: null
   };
   let catFacing = { dx: 1, dy: 0 };
+  let catFacingDir = "east";
+  let playerFacing = "se";
+  const previousEnemyPositions = {};
   let catAbilityLoadout = [];
   const catAbilityState = {
     pouncePending: null,
@@ -1482,6 +1503,48 @@
     }, delay);
   }
 
+
+  function normalizeDirection(dx, dy){
+    const sx = Math.sign(dx || 0);
+    const sy = Math.sign(dy || 0);
+    if (sx === 0 && sy === 0) return "se";
+    if (sx > 0 && sy < 0) return "ne";
+    if (sx < 0 && sy < 0) return "nw";
+    if (sx > 0 && sy > 0) return "se";
+    if (sx < 0 && sy > 0) return "sw";
+    if (sx > 0) return "east";
+    if (sx < 0) return "west";
+    if (sy < 0) return "north";
+    return "south";
+  }
+
+  function directionFromDelta(oldX, oldY, newX, newY){
+    return normalizeDirection((newX ?? oldX) - (oldX ?? newX), (newY ?? oldY) - (oldY ?? newY));
+  }
+
+  function getDirectionClass(dir){
+    return `facing-${dir || "se"}`;
+  }
+
+  function inferFacingFromMovement(id, x, y, fallback = "se"){
+    const prev = previousEnemyPositions[id];
+    let facing = fallback;
+    if (prev) facing = directionFromDelta(prev.x, prev.y, x, y) || prev.facing || fallback;
+    previousEnemyPositions[id] = { x, y, facing };
+    return facing;
+  }
+
+  function addCreatureEntityAt(entityLayer, x, y, creatureClass, facing = "se", opts = {}){
+    const el = document.createElement("div");
+    el.className = `cell iso-entity ${opts.entityClass || ""}`.trim();
+    positionIsoElement(el, x, y, 6);
+    const creature = document.createElement("div");
+    creature.className = `iso-creature ${creatureClass} ${getDirectionClass(facing)}`;
+    el.appendChild(creature);
+    entityLayer.appendChild(el);
+    return el;
+  }
+
   function renderGrid(){
     const now = Date.now();
     combatVfx = combatVfx.filter(v => v.expiresAt > now);
@@ -1549,7 +1612,7 @@
       const cell = document.getElementById(`cell-${x}-${y}`);
       if (!cell) return null;
       const el = document.createElement("div");
-      el.className = "cell iso-entity";
+      el.className = `cell iso-entity ${opts.entityClass || ""}`.trim();
       el.textContent = icon;
       el.style.fontSize = opts.fontSize || "24px";
       positionIsoElement(el, x, y, 6);
@@ -1618,7 +1681,7 @@
       if ((p.alive ?? true) === false) continue;
       const cell = document.getElementById(`cell-${p.x}-${p.y}`);
       if (cell){
-        const unit = addEntityAt(p.x, p.y, "🐭");
+        const unit = addCreatureEntityAt(entityLayer, p.x, p.y, "mouse-creature", p.facing || "se");
         if (Math.abs((p.x ?? 0) - centerX) + Math.abs((p.y ?? 0) - centerY) <= OVERLAY_RENDER_DISTANCE){
           const nameTag = document.createElement("div");
           nameTag.className = "name";
@@ -1632,7 +1695,7 @@
     for (const f of fleas){
       if (!isLivingFlea(f)) continue;
       const cell = document.getElementById(`cell-${f.x}-${f.y}`);
-      if (cell) addEntityAt(f.x, f.y, "🐞");
+      if (cell) addCreatureEntityAt(entityLayer, f.x, f.y, "flea-creature", f.facing || inferFacingFromMovement(f.id || f.docId, f.x, f.y, "east"));
     }
 
     // rats
@@ -1640,7 +1703,7 @@
       if (!isLivingRat(r)) continue;
       const cell = document.getElementById(`cell-${r.x}-${r.y}`);
       if (cell){
-        const unit = addEntityAt(r.x, r.y, "🐀");
+        const unit = addCreatureEntityAt(entityLayer, r.x, r.y, "rat-creature", r.facing || inferFacingFromMovement(r.id, r.x, r.y, "sw"));
         if (Math.abs(r.x - centerX) + Math.abs(r.y - centerY) <= OVERLAY_RENDER_DISTANCE){
           const hpTag = document.createElement("div");
           hpTag.className = "name";
@@ -1651,12 +1714,19 @@
       }
     }
 
+    // stink rats
+    for (const sr of stinkRats){
+      if (!isLivingEnemy(sr)) continue;
+      const cell = document.getElementById(`cell-${sr.x}-${sr.y}`);
+      if (cell) addCreatureEntityAt(entityLayer, sr.x, sr.y, "stinkrat-creature", sr.facing || inferFacingFromMovement(sr.id, sr.x, sr.y, "west"));
+    }
+
     // oxen
     for (const o of oxen){
       if (!isLivingEnemy(o)) continue;
       const cell = document.getElementById(`cell-${o.x}-${o.y}`);
       if (cell){
-        const unit = addEntityAt(o.x, o.y, "🐂");
+        const unit = addCreatureEntityAt(entityLayer, o.x, o.y, "ox-creature", o.facing || inferFacingFromMovement(o.id, o.x, o.y, "west"));
         if (Math.abs(o.x - centerX) + Math.abs(o.y - centerY) <= OVERLAY_RENDER_DISTANCE){
           const hpTag = document.createElement("div");
           hpTag.className = "name";
@@ -1672,7 +1742,7 @@
       if (!isLivingEnemy(k)) continue;
       const cell = document.getElementById(`cell-${k.x}-${k.y}`);
       if (cell){
-        const unit = addEntityAt(k.x, k.y, "👑");
+        const unit = addCreatureEntityAt(entityLayer, k.x, k.y, "ratking-creature", k.facing || inferFacingFromMovement(k.id, k.x, k.y, "sw"));
         if (Math.abs(k.x - centerX) + Math.abs(k.y - centerY) <= OVERLAY_RENDER_DISTANCE){
           const hpTag = document.createElement("div");
           hpTag.className = "name";
@@ -1688,7 +1758,7 @@
       if ((r.health ?? 0) <= 0) continue;
       const cell = document.getElementById(`cell-${r.x}-${r.y}`);
       if (cell){
-        const unit = addEntityAt(r.x, r.y, "🐇");
+        const unit = addCreatureEntityAt(entityLayer, r.x, r.y, "rabbit-creature", r.facing || inferFacingFromMovement(r.id, r.x, r.y, "east"));
         if (Math.abs(r.x - centerX) + Math.abs(r.y - centerY) <= OVERLAY_RENDER_DISTANCE){
           const hpTag = document.createElement("div");
           hpTag.className = "name";
@@ -1702,7 +1772,7 @@
     // termites
     for (const t of termites){
       const cell = document.getElementById(`cell-${t.x}-${t.y}`);
-      if (cell) addEntityAt(t.x, t.y, "🐛");
+      if (cell) addCreatureEntityAt(entityLayer, t.x, t.y, "termite-creature", t.facing || inferFacingFromMovement(t.id || `termite_${t.x}_${t.y}`, t.x, t.y, "east"));
     }
 
     // structure health bars
@@ -1746,13 +1816,13 @@
     for (const v of vultures){
       if ((v.health ?? 0) <= 0) continue;
       const cell = document.getElementById(`cell-${v.x}-${v.y}`);
-      if (cell) addEntityAt(v.x, v.y, "🦅");
+      if (cell) addCreatureEntityAt(entityLayer, v.x, v.y, "vulture-creature", v.facing || inferFacingFromMovement(v.id, v.x, v.y, "ne"));
     }
 
     // cat
     const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
     if (catCell){
-      const catUnit = addEntityAt(catPos.x, catPos.y, "🐱");
+      const catUnit = addCreatureEntityAt(entityLayer, catPos.x, catPos.y, "cat-creature", catFacingDir || "east");
       if (Math.abs(catPos.x - centerX) + Math.abs(catPos.y - centerY) <= OVERLAY_RENDER_DISTANCE){
         const levelTag = document.createElement("div");
         levelTag.className = "name";
@@ -1841,6 +1911,8 @@
     if (!gameStarted || !isAlive) return;
     const newX = Math.max(0, Math.min(gridSize-1, playerPos.x + dx));
     const newY = Math.max(0, Math.min(gridSize-1, playerPos.y + dy));
+    const facing = directionFromDelta(playerPos.x, playerPos.y, newX, newY);
+    playerFacing = facing || playerFacing;
     playerPos = { x: newX, y: newY };
     savePosition();
     checkCheese();
@@ -1992,6 +2064,7 @@
       nameKey: usernameNorm,
       x: playerPos.x,
       y: playerPos.y,
+      facing: playerFacing || "se",
       cheese: cheeseCount,
       alive: isAlive,
       online: true,
@@ -2020,6 +2093,7 @@
       nameKey: usernameNorm,
       x: playerPos.x,
       y: playerPos.y,
+      facing: playerFacing || "se",
       cheese: 0,
       alive: true,
       online: true,
@@ -2261,7 +2335,7 @@
           addCombatVfx(x, y, "🔥", "vfx-flame", 460, 14);
           addCombatVfx(catPos.x, catPos.y, "💥", "vfx-hit", 420, 15);
           catHealth -= damage;
-          writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() } });
+          writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt: Date.now() } });
           if (catHealth <= 0){
             document.getElementById("status").textContent = "🎉 Mice win!";
             document.getElementById("returnButton").style.display = "block";
@@ -2384,7 +2458,7 @@
             if (catPos.x===sx && catPos.y===sy && catHealth>0){
               addCombatVfx(catPos.x, catPos.y, "💥", "vfx-hit", 450, 15);
               catHealth -= splashDamage;
-              writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() } });
+              writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt: Date.now() } });
             }
           }
         }
@@ -2578,6 +2652,7 @@
 
     if (canCatLandOnCell(pending.x, pending.y)){
       catFacing = { dx: Math.sign(pending.x - catPos.x) || catFacing.dx || 1, dy: Math.sign(pending.y - catPos.y) || catFacing.dy || 0 };
+      catFacingDir = normalizeDirection(catFacing.dx, catFacing.dy);
       catPos = { x: pending.x, y: pending.y };
       addCombatVfx(catPos.x, catPos.y, "💨", "vfx-hit", 650, 17);
     }
@@ -2680,7 +2755,7 @@
     if (Date.now() < catWebTrappedUntil){
       addCombatVfx(catPos.x, catPos.y, "🕸️", "vfx-pop", 260, 14);
       await updateDoc(ccRef(ID.STATE), {
-        cat: { x: catPos.x, y: catPos.y, health: catHealth },
+        cat: { x: catPos.x, y: catPos.y, health: catHealth, facing: catFacingDir },
         updatedAt: Date.now()
       });
       requestRender("catBehaviorTrapped");
@@ -2747,6 +2822,7 @@
       const isBlocked = (symbol==="🧱" || symbol==="💎");
       if (!isBlocked){
         catFacing = { dx: Math.sign(next.x - catPos.x), dy: Math.sign(next.y - catPos.y) };
+        catFacingDir = normalizeDirection(catFacing.dx, catFacing.dy);
         catPos.x = next.x;
         catPos.y = next.y;
       }
@@ -2784,7 +2860,7 @@
 
     // write cat state
     await updateDoc(ccRef(ID.STATE), {
-      cat: { x: catPos.x, y: catPos.y, health: catHealth },
+      cat: { x: catPos.x, y: catPos.y, health: catHealth, facing: catFacingDir },
       updatedAt: Date.now()
     });
 
@@ -2840,13 +2916,6 @@
       );
 
     const usedKeys = new Set();
-
-    // stink rats
-    for (const sr of stinkRats){
-      if ((sr.health ?? 0) <= 0) continue;
-      const cell = document.getElementById(`cell-${sr.x}-${sr.y}`);
-      if (cell) cell.textContent = "🐀💨";
-    }
 
     // oxen
     const oxCount = (catPower>=15) ? (Math.floor((catPower-15)/10)+1) : 0;
@@ -3116,7 +3185,7 @@
           const ratInWay = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===nx && r.y===ny);
           if (!ratInWay && !blockedGrid[ny]?.[nx]){
             rat.x = nx; rat.y = ny;
-            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, updatedAt: Date.now() } });
+            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, facing: directionFromDelta(rat.ai?.lastX ?? rat.x, rat.ai?.lastY ?? rat.y, rat.x, rat.y), updatedAt: Date.now() } });
           }
         }
 
@@ -3136,7 +3205,7 @@
           const ratInWay = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===next.x && r.y===next.y);
           if (!ratInWay){
             rat.x = next.x; rat.y = next.y;
-            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, updatedAt: Date.now() } });
+            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, facing: directionFromDelta(rat.ai?.lastX ?? rat.x, rat.ai?.lastY ?? rat.y, rat.x, rat.y), updatedAt: Date.now() } });
           }
         }
 
@@ -3475,7 +3544,7 @@
 
           if (target.type==="cat"){
             catHealth -= nearDrum ? 2 : 1;
-            writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() } });
+            writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt: Date.now() } });
           } else if (target.type==="rat" && target.rat){
             target.rat.health -= fleaDamage;
             if (target.rat.health <= 0){
@@ -4307,6 +4376,7 @@
           const cat = data.cat || {};
           catPos = { x: (cat.x ?? catPos.x), y: (cat.y ?? catPos.y) };
           if (typeof cat.health === "number") catHealth = cat.health;
+          catFacingDir = cat.facing || catFacingDir;
           if (typeof data.selectionDeadline === "number") selectionDeadlineAt = data.selectionDeadline;
           if (data.phase === "playing" && !gameStarted){
             if (!(Array.isArray(selectedBuildSlots) && selectedBuildSlots.length===MAX_BUILD_SLOTS)){
@@ -4331,6 +4401,7 @@
             displayName: data.displayName || "mouse",
             x: data.x ?? 1,
             y: data.y ?? 1,
+            facing: data.facing || "se",
             cheese: data.cheese ?? 0,
             alive: (data.alive !== false),
             online: data.online !== false,
@@ -4340,6 +4411,7 @@
 
           // update my local copies from firestore (so multiple tabs stay consistent)
           if (pu === uid){
+            playerFacing = players[pu].facing || playerFacing;
             playerPos = { x: players[pu].x, y: players[pu].y };
             isAlive = players[pu].alive;
             cheeseCount = players[pu].cheese ?? 0;
@@ -4537,6 +4609,7 @@
       const cat = s.cat || {};
       catPos = { x: cat.x ?? catPos.x, y: cat.y ?? catPos.y };
       catHealth = (typeof cat.health === "number") ? cat.health : catHealth;
+      catFacingDir = cat.facing || catFacingDir;
       selectionDeadlineAt = (typeof s.selectionDeadline === "number") ? s.selectionDeadline : (Date.now()+45000);
       gameStarted = s.phase === "playing";
       updateHostDisplay(s.hostName);
@@ -5051,7 +5124,7 @@
 
       await updateDoc(ccRef(ID.STATE), {
         catPower,
-        cat: { x: catPos.x, y: catPos.y, health: catHealth },
+        cat: { x: catPos.x, y: catPos.y, health: catHealth, facing: catFacingDir },
         updatedAt: Date.now()
       });
 
@@ -5207,7 +5280,7 @@
     // keep cat health synced (state already updated often; this keeps it in case)
     setInterval(async () => {
       if (!canRunHostSimulation()) return;
-      await updateDoc(ccRef(ID.STATE), { cat: {x:catPos.x,y:catPos.y,health:catHealth}, updatedAt: Date.now() });
+      await updateDoc(ccRef(ID.STATE), { cat: {x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt: Date.now() });
     }, 3000);
 
     setInterval(async () => {
