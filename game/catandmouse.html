@@ -1638,6 +1638,14 @@
   const ISO_TILE_H = 24;
   const ISO_ENTITY_W = 34;
   const ISO_ENTITY_H = 34;
+  // Camera tuning constants (safe to tweak later without touching camera math):
+  // - Zoom is intentionally tighter so the local player stays visually prominent.
+  // - Center Y is biased downward to show more map "ahead" in isometric view.
+  const ISO_DESKTOP_ZOOM = 1.45;
+  const ISO_MOBILE_ZOOM = 1.18;
+  const ISO_CENTER_Y_RATIO = 0.56;
+  const ISO_CAMERA_SMOOTHING = 0.32;
+  const ISO_EDGE_PADDING = 80;
   const camera = { x: 0, y: 0, targetX: 0, targetY: 0 };
   let cameraDebug = false;
 
@@ -1686,7 +1694,7 @@
       camera.targetX = stageMetrics.mapCenter.x;
       camera.targetY = stageMetrics.mapCenter.y;
     }
-    const smooth = 0.18;
+    const smooth = ISO_CAMERA_SMOOTHING;
     camera.x += (camera.targetX - camera.x) * smooth;
     camera.y += (camera.targetY - camera.y) * smooth;
   }
@@ -1701,17 +1709,24 @@
     const stageW = stageMetrics.worldW;
     const stageH = stageMetrics.worldH;
     const isSmall = Math.min(wrapperW, wrapperH) < 430;
-    const scale = isSmall ? 0.82 : 1;
+    const scale = isSmall ? ISO_MOBILE_ZOOM : ISO_DESKTOP_ZOOM;
     wrapper.style.setProperty("--iso-scale", scale.toFixed(3));
 
-    const maxOffsetX = Math.max(0, (stageW * scale) - wrapperW);
-    const maxOffsetY = Math.max(0, (stageH * scale) - wrapperH);
-    const wantedX = ((wrapperW / scale) / 2) - camera.x;
-    const wantedY = ((wrapperH / scale) / 2) - camera.y;
-    const translateX = Math.min(0, Math.max(-maxOffsetX / scale, wantedX));
-    const translateY = Math.min(0, Math.max(-maxOffsetY / scale, wantedY));
+    const screenCenterX = wrapperW / 2;
+    const screenCenterY = wrapperH * ISO_CENTER_Y_RATIO;
 
-    viewport.style.transform = `translate(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px) scale(var(--iso-scale))`;
+    // Keep local focus centered first; only apply a loose guard clamp so the map
+    // cannot completely disappear from view when focus gets near/extents.
+    let translateX = screenCenterX - (camera.x * scale);
+    let translateY = screenCenterY - (camera.y * scale);
+    const minVisibleX = wrapperW - (stageW * scale) - ISO_EDGE_PADDING;
+    const maxVisibleX = ISO_EDGE_PADDING;
+    const minVisibleY = wrapperH - (stageH * scale) - ISO_EDGE_PADDING;
+    const maxVisibleY = ISO_EDGE_PADDING;
+    translateX = Math.min(maxVisibleX, Math.max(minVisibleX, translateX));
+    translateY = Math.min(maxVisibleY, Math.max(minVisibleY, translateY));
+
+    viewport.style.transform = `translate(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px) scale(${scale.toFixed(3)})`;
 
     if (cameraDebug){
       viewport.dataset.cam = `cam(${camera.x.toFixed(1)},${camera.y.toFixed(1)}) focus(${camera.targetX.toFixed(1)},${camera.targetY.toFixed(1)})`;
