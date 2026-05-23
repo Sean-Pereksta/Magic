@@ -172,6 +172,9 @@
     @keyframes fleaHop{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
     @keyframes stinkPulse{0%,100%{opacity:.6}50%{opacity:1}}
     @keyframes projPulse{from{transform:scale(.85)}to{transform:scale(1.1)}}
+    @keyframes fleaNestSkitter{0%,100%{transform:translateY(0)}50%{transform:translateY(-1px) translateX(1px)}}
+    @keyframes nestPulse{0%{transform:translate(-50%,-67%) scale(1)}55%{transform:translate(-50%,-67%) scale(1.09)}100%{transform:translate(-50%,-67%) scale(1)}}
+    @keyframes nestFlash{0%{opacity:.1;transform:scale(.7)}100%{opacity:0;transform:scale(1.2)}}
 
 
     .name{
@@ -401,7 +404,15 @@
     .iso-turret .tip{left:18px;top:4px;width:13px;height:4px;background:linear-gradient(90deg,#334155,#0f172a 75%);border-radius:3px;transform:rotate(-26deg);transform-origin:left center}
     .iso-turret .detail-a{left:28px;top:1px;width:4px;height:4px;background:#d1d5db;border-radius:2px;transform:rotate(-26deg)}
     .iso-turret .detail-b{left:14px;top:13px;width:5px;height:2px;background:#1f2937;border-radius:2px}
-    .iso-flea-nest .body{background:#8b5a2b;border-radius:50% 50% 45% 45%;} .iso-flea-nest::before{background:#b67a3e} .iso-flea-nest::after{background:#6e431f} .iso-flea-nest .accent{left:11px;top:13px;width:4px;height:4px;background:#2d1b0e;box-shadow:7px 2px 0 #2d1b0e,-5px 5px 0 #2d1b0e}
+    .iso-flea-nest .body{inset:7px 5px 8px 5px;background:radial-gradient(circle at 40% 25%,#b08963 0 22%,#8b5a2b 42%,#653a19 80%,#3d230f 100%);border-radius:60% 52% 50% 48%/58% 58% 42% 42%;box-shadow:inset 0 -2px 0 rgba(45,27,14,.5),inset 2px 2px 0 rgba(255,217,170,.2);}
+    .iso-flea-nest::before{left:8px;right:8px;top:2px;height:11px;background:radial-gradient(circle at 50% 30%,#c9a07a 0 18%,#9a6a3f 42%,#704322 88%);border-radius:58% 48% 55% 45%/62% 58% 45% 40%;}
+    .iso-flea-nest::after{right:2px;top:9px;bottom:8px;width:9px;background:linear-gradient(180deg,#5a3418,#341d0d);border-radius:50% 45% 55% 42%;}
+    .iso-flea-nest .accent{left:8px;top:11px;width:18px;height:10px;background:radial-gradient(circle at 20% 30%,#2d1b0e 0 2px,transparent 2.5px),radial-gradient(circle at 55% 75%,#2d1b0e 0 2px,transparent 2.5px),radial-gradient(circle at 83% 40%,#2d1b0e 0 1.8px,transparent 2.4px),radial-gradient(circle at 8% 84%,#1f130b 0 1.2px,transparent 1.8px),radial-gradient(circle at 92% 12%,#1f130b 0 1.3px,transparent 1.9px),radial-gradient(circle at 68% 10%,#1f130b 0 1.1px,transparent 1.8px);opacity:.95;}
+    .iso-flea-nest .detail-a,.iso-flea-nest .detail-b{width:3px;height:2px;background:#120b06;border-radius:999px;top:9px;animation:fleaNestSkitter 1s ease-in-out infinite;}
+    .iso-flea-nest .detail-a{left:9px;}
+    .iso-flea-nest .detail-b{left:20px;animation-delay:.35s;}
+    .iso-flea-nest.nest-firing{animation:nestPulse .33s ease-out 2;}
+    .iso-flea-nest.nest-firing .ring{left:4px;top:17px;width:26px;height:10px;border:2px solid rgba(251,191,36,.7);background:radial-gradient(ellipse at center,rgba(251,191,36,.3),rgba(217,119,6,0) 72%);box-shadow:0 0 8px rgba(251,191,36,.55);animation:nestFlash .36s ease-out;}
     .iso-generator .body{inset:7px 7px 8px 7px;background:linear-gradient(168deg,#6b7280 0%,#4b5563 55%,#1f2937 100%);border-radius:4px;box-shadow:inset 0 0 0 1px rgba(209,213,219,.28)}
     .iso-generator::before{left:9px;right:9px;top:3px;height:10px;background:linear-gradient(160deg,#9ca3af,#6b7280 58%,#4b5563)}
     .iso-generator::after{right:2px;top:9px;bottom:8px;width:9px;background:linear-gradient(180deg,#374151,#111827)}
@@ -445,7 +456,13 @@
     .iso-cheese-farm::before{left:4px;right:4px;top:5px;height:9px;background:repeating-linear-gradient(90deg,#a16207 0 2px,#65a30d 2px 5px,#854d0e 5px 7px);border-radius:3px;box-shadow:inset 0 1px 0 rgba(190,242,100,.35)}
     .iso-cheese-farm::after{right:1px;top:11px;bottom:8px;width:8px;background:linear-gradient(180deg,#365314,#1a2e05)}
     .iso-cheese-farm .accent{left:6px;top:12px;width:22px;height:7px;background:radial-gradient(circle at 10% 50%,#fde68a 0 2px,transparent 3px),radial-gradient(circle at 30% 40%,#facc15 0 2px,transparent 3px),radial-gradient(circle at 48% 60%,#fde047 0 2px,transparent 3px),radial-gradient(circle at 66% 40%,#fbbf24 0 2px,transparent 3px),radial-gradient(circle at 84% 52%,#fde68a 0 2px,transparent 3px)}
-    .iso-rabbit-den .body{background:#a16207;border-radius:55% 55% 40% 40%} .iso-rabbit-den::before{background:#d97706}.iso-rabbit-den::after{background:#78350f} .iso-rabbit-den .accent{left:11px;top:4px;width:4px;height:10px;background:#f3e8ff;box-shadow:8px 0 0 #f3e8ff}
+    .iso-rabbit-den .body{inset:7px 5px 8px 5px;background:radial-gradient(circle at 45% 28%,#cf9d6f 0 22%,#99663f 45%,#6f4428 78%,#4b2d1d 100%);border-radius:58% 55% 44% 42%/60% 58% 40% 38%;}
+    .iso-rabbit-den::before{left:8px;right:8px;top:2px;height:11px;background:radial-gradient(circle at 55% 25%,#e3ba8e 0 18%,#b78355 48%,#875631 100%);border-radius:58% 48% 52% 42%/60% 58% 44% 38%;}
+    .iso-rabbit-den::after{left:12px;top:11px;width:12px;height:9px;background:radial-gradient(circle at 50% 42%,#120f0a 0 58%,#291b12 84%,transparent 100%);border-radius:58% 42% 60% 40%;}
+    .iso-rabbit-den .accent{left:10px;top:3px;width:14px;height:11px;background:linear-gradient(180deg,#fef3c7,#f5deb3);clip-path:polygon(20% 100%,30% 12%,42% 0,52% 30%,62% 0,76% 10%,84% 100%,70% 100%,63% 38%,53% 100%,47% 100%,36% 42%,30% 100%);opacity:.9;}
+    .iso-rabbit-den .detail-a,.iso-rabbit-den .detail-b{width:4px;height:6px;border:1px solid rgba(245,222,179,.8);border-top:0;border-radius:0 0 90% 90%;top:15px;opacity:.75;}
+    .iso-rabbit-den .detail-a{left:9px;transform:rotate(-14deg);}
+    .iso-rabbit-den .detail-b{left:18px;transform:rotate(14deg);}
     .iso-tesla.tall .body{inset:2px 10px 7px 10px;background:linear-gradient(180deg,#1e40af,#1d4ed8 45%,#1e3a8a);border-radius:5px}
     .iso-tesla::before{left:11px;right:11px;top:0;height:10px;background:linear-gradient(160deg,#93c5fd,#3b82f6)}
     .iso-tesla::after{right:3px;top:7px;bottom:8px;width:8px;background:linear-gradient(180deg,#1e3a8a,#172554)}
@@ -1421,6 +1438,16 @@
       createdAt: Date.now(),
       expiresAt: Date.now() + durationMs
     });
+  }
+
+  function triggerNestFiringVfx(x, y, durationMs = 380){
+    const selector = `.iso-structure.iso-flea-nest[data-gx="${x}"][data-gy="${y}"]`;
+    const nestEl = entityLayer?.querySelector(selector);
+    if (!nestEl) return;
+    nestEl.classList.remove("nest-firing");
+    void nestEl.offsetWidth;
+    nestEl.classList.add("nest-firing");
+    setTimeout(() => nestEl.classList.remove("nest-firing"), durationMs);
   }
 
   function showClawHit(x, y){
@@ -5727,7 +5754,7 @@
 
       for (const nest of nests){
         const x = nest.x, y = nest.y;
-        addCombatVfx(x, y, "🐞", "vfx-pop", 450, 14);
+        let spawned = 0;
 
         const beaconBonus = getStructuresByType("🗼").filter(b => Math.abs(b.x - x) <= 2 && Math.abs(b.y - y) <= 2).length;
         const requestedSpawns = Math.min(3, 1 + beaconBonus);
@@ -5749,7 +5776,6 @@
           .filter(p => isSpawnable(p.x, p.y, false));
         if (isSpawnable(x, y, true)) candidateTiles.push({ x, y });
 
-        let spawned = 0;
         const shuffled = candidateTiles.sort(() => Math.random() - 0.5);
         for (const tile of shuffled){
           if (spawned >= spawnBudget) break;
@@ -5768,6 +5794,10 @@
           }, { merge:true });
           addCombatVfx(fx, fy, "✦", "vfx-pop", 350, 12);
           spawned++;
+        }
+        if (spawned > 0){
+          addCombatVfx(x, y, "🐞", "vfx-pop", 500, 14);
+          triggerNestFiringVfx(x, y);
         }
       }
       requestRender("flea nest fired");
