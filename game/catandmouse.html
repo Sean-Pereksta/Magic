@@ -52,6 +52,9 @@
       clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
       border: 1px solid rgba(50, 80, 35, 0.38);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25);
+      background-image:
+        radial-gradient(circle at 20% 25%, rgba(255,255,255,.18) 0 12%, transparent 13% 100%),
+        linear-gradient(135deg, rgba(34,197,94,.18), rgba(22,163,74,.06));
     }
     .iso-entity{
       width: 34px;
@@ -350,6 +353,12 @@
     .iso-fan .body{background:#475569} .iso-fan::before{background:#94a3b8}.iso-fan::after{background:#334155} .iso-fan .accent{left:10px;top:8px;width:14px;height:14px;background:conic-gradient(#e2e8f0 0 25%,#64748b 0 50%,#e2e8f0 0 75%,#64748b 0);animation:fanSpin 1.7s linear infinite}
     .iso-web .body{background:#334155} .iso-web::before{background:#94a3b8}.iso-web::after{background:#1e293b} .iso-web .ring{left:11px;top:8px;width:12px;height:12px;border:2px solid #e2e8f0;background:radial-gradient(circle,#cbd5e1 1px,transparent 1px);background-size:4px 4px}
     .iso-drum .body{background:#7c2d12} .iso-drum::before{background:#ef4444}.iso-drum::after{background:#5b1b0b} .iso-drum .accent{left:10px;top:3px;width:14px;height:6px;background:#fcd34d;border-radius:2px}
+    .iso-unknown-structure .body{background:#64748b}
+    .iso-unknown-structure::before{background:#94a3b8}
+    .iso-unknown-structure::after{background:#475569}
+    .unknown-structure-label{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);font-size:9px;font-weight:800;color:#e2e8f0;text-shadow:0 1px 1px rgba(0,0,0,.8);max-width:24px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    .build-preview-valid{outline:2px solid rgba(34,197,94,.9)!important; box-shadow:0 0 10px rgba(34,197,94,.35), inset 0 0 0 1px rgba(255,255,255,.5)!important;}
+    .build-preview-blocked{outline:2px solid rgba(239,68,68,.9)!important; box-shadow:0 0 10px rgba(239,68,68,.35), inset 0 0 0 1px rgba(255,255,255,.5)!important;}
     @keyframes fanSpin{to{transform:rotate(360deg)}}
     @media (max-width: 768px){ .iso-structure{transform:translate(-50%,-64%) scale(.88)} .iso-structure.tall{transform:translate(-50%,-75%) scale(.88)} }
 
@@ -871,10 +880,16 @@
   function getStructureVisualClass(symbol){ return STRUCTURE_VISUALS[symbol] || ""; }
   function renderStructureIso(symbol, x, y, health, shield){
     const visual = getStructureVisualClass(symbol);
-    if (!visual) return null;
     const wrap = document.createElement("div");
-    wrap.className = `iso-structure ${visual} ${TALL_STRUCTURE_SYMBOLS.has(symbol) ? "tall" : ""} ${WIDE_STRUCTURE_SYMBOLS.has(symbol) ? "wide" : ""}`.trim();
+    const baseVisual = visual || "iso-unknown-structure";
+    wrap.className = `iso-structure ${baseVisual} ${TALL_STRUCTURE_SYMBOLS.has(symbol) ? "tall" : ""} ${WIDE_STRUCTURE_SYMBOLS.has(symbol) ? "wide" : ""}`.trim();
     wrap.innerHTML = '<div class="body"></div><div class="accent"></div><div class="core"></div><div class="ring"></div><div class="tip"></div>';
+    if (!visual){
+      const unknownLabel = document.createElement("div");
+      unknownLabel.className = "unknown-structure-label";
+      unknownLabel.textContent = symbol || "?";
+      wrap.appendChild(unknownLabel);
+    }
     if ((shield ?? 0) > 0){
       const sh = document.createElement("div");
       sh.className = "ring";
@@ -1646,7 +1661,7 @@
     const stageW = stageMetrics.worldW;
     const stageH = stageMetrics.worldH;
     const isSmall = Math.min(wrapperW, wrapperH) < 430;
-    const scale = isSmall ? 0.9 : 1;
+    const scale = isSmall ? 0.82 : 1;
     wrapper.style.setProperty("--iso-scale", scale.toFixed(3));
 
     const maxOffsetX = Math.max(0, (stageW * scale) - wrapperW);
@@ -1731,6 +1746,60 @@
     return el;
   }
 
+  function getBuildPreviewCells(){
+    if (!gameStarted || !isAlive || !selectedBuild) return [];
+    const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
+    return dirs.map(([dx,dy])=>({x:playerPos.x+dx,y:playerPos.y+dy})).filter(c=>c.x>=0&&c.x<gridSize&&c.y>=0&&c.y<gridSize);
+  }
+
+  function renderIsoTiles(tileLayer){
+    for (let row=0; row<gridSize; row++){
+      for (let col=0; col<gridSize; col++){
+        tileLayer.appendChild(createIsoTile(col, row));
+      }
+    }
+  }
+
+  function renderIsoStructures(entityLayer, structureEntries){
+    for (const entry of structureEntries){
+      const {x,y,symbol,hp,shield} = entry;
+      const structureEl = renderStructureIso(symbol, x, y, hp, shield);
+      if (structureEl){ positionIsoElement(structureEl, x, y, 8); entityLayer.appendChild(structureEl); }
+    }
+  }
+
+  function renderIsoPickupsAndTraps(entityLayer){
+    for (const t of traps){
+      const trap = document.createElement("div");
+      trap.className = "iso-object iso-trap";
+      positionIsoElement(trap, t.x, t.y, 6);
+      entityLayer.appendChild(trap);
+    }
+  }
+
+  function renderIsoProjectiles(entityLayer){
+    for (const shot of rabbitShots){
+      const proj = document.createElement("div");
+      proj.className = `iso-object iso-projectile ${shot.source === "tower" ? "tower" : "rabbit"}`;
+      if (typeof shot.x === "number" && typeof shot.y === "number"){
+        positionIsoElement(proj, shot.x, shot.y, 12);
+        entityLayer.appendChild(proj);
+      }
+    }
+  }
+
+  function renderIsoVfx(){
+    for (const v of combatVfx){
+      const cell = document.getElementById(`cell-${v.x}-${v.y}`);
+      if (!cell) continue;
+      const fx = document.createElement("div");
+      fx.className = `combat-vfx ${v.className} shape`;
+      if (!["vfx-hit","vfx-claw","vfx-explosion","vfx-flame","vfx-pop"].includes(v.className)) fx.textContent = v.icon;
+      fx.style.fontSize = `${v.size}px`;
+      cell.appendChild(fx);
+    }
+  }
+
   function renderGrid(){
     const now = Date.now();
     combatVfx = combatVfx.filter(v => v.expiresAt > now);
@@ -1802,12 +1871,13 @@
     };
 
     // base tiles
+    renderIsoTiles(tileLayer);
+    const structureEntries = [];
     for (let row=0; row<gridSize; row++){
       for (let col=0; col<gridSize; col++){
         const x = col;
         const y = row;
-        const cell = createIsoTile(x, y);
-        tileLayer.appendChild(cell);
+        const cell = document.getElementById(`cell-${x}-${y}`);
 
         if (x>=0 && x<gridSize && y>=0 && y<gridSize){
           const key = `${x}_${y}`;
@@ -1834,8 +1904,7 @@
           if (STRUCTURE_SYMBOL_SET.has(symbol)){
             const hp = structureHealth[`${x}_${y}`] ?? (STRUCTURE_MAX_HP[symbol] ?? 1);
             const shield = structureShields[`${x}_${y}`] ?? 0;
-            const structureEl = renderStructureIso(symbol, x, y, hp, shield);
-            if (structureEl){ positionIsoElement(structureEl, x, y, 8); entityLayer.appendChild(structureEl); }
+            structureEntries.push({x,y,symbol,hp,shield});
           }
           if (objectiveState.supplyDrop?.active && objectiveState.supplyDrop.x===x && objectiveState.supplyDrop.y===y){
             const obj = document.createElement("div"); obj.className = "iso-object iso-objective iso-supply"; positionIsoElement(obj, x, y, 7); entityLayer.appendChild(obj);
@@ -1860,6 +1929,16 @@
             cell.style.boxShadow = "inset 0 0 0 1px rgba(255,255,255,0.75), 0 0 8px rgba(34,211,238,0.8)";
           }
       }
+    }
+
+    renderIsoStructures(entityLayer, structureEntries);
+
+    const previewCells = getBuildPreviewCells();
+    for (const c of previewCells){
+      const tile = document.getElementById(`cell-${c.x}-${c.y}`);
+      if (!tile) continue;
+      const open = grid[c.y]?.[c.x] === "";
+      tile.classList.add(open ? "build-preview-valid" : "build-preview-blocked");
     }
 
     // players
@@ -1984,12 +2063,7 @@
     }
 
     // traps
-    for (const t of traps){
-      const trap = document.createElement("div");
-      trap.className = "iso-object iso-trap";
-      positionIsoElement(trap, t.x, t.y, 6);
-      entityLayer.appendChild(trap);
-    }
+    renderIsoPickupsAndTraps(entityLayer);
 
     if (objectiveState.repair?.active){
       const rep = document.createElement("div");
@@ -2034,25 +2108,10 @@
     }
 
     // projectile overlays
-    for (const shot of rabbitShots){
-      const proj = document.createElement("div");
-      proj.className = `iso-object iso-projectile ${shot.source === "tower" ? "tower" : "rabbit"}`;
-      if (typeof shot.x === "number" && typeof shot.y === "number"){
-        positionIsoElement(proj, shot.x, shot.y, 12);
-        entityLayer.appendChild(proj);
-      }
-    }
+    renderIsoProjectiles(entityLayer);
 
     // combat VFX overlays
-    for (const v of combatVfx){
-      const cell = document.getElementById(`cell-${v.x}-${v.y}`);
-      if (!cell) continue;
-      const fx = document.createElement("div");
-      fx.className = `combat-vfx ${v.className} shape`;
-      if (!["vfx-hit","vfx-claw","vfx-explosion","vfx-flame","vfx-pop"].includes(v.className)) fx.textContent = v.icon;
-      fx.style.fontSize = `${v.size}px`;
-      cell.appendChild(fx);
-    }
+    renderIsoVfx();
 
     // status list
     const statusDiv = document.getElementById("playerStatus");
