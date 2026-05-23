@@ -664,10 +664,17 @@
   const app = initializeApp(firebaseConfig);
   const db  = getFirestore(app);
 
-  // ✅ Auth required by your rules
-  const auth = getAuth(app);
+// ✅ Auth required by your rules
+const auth = getAuth(app);
+let uid = null;
+
+async function initializeAuth(){
   await signInAnonymously(auth);
-  const uid = auth.currentUser.uid;
+  uid = auth.currentUser?.uid;
+  if (!uid) {
+    throw new Error("Anonymous sign-in did not return a uid.");
+  }
+}
 
   // ============================================================
   // Routing (use lobbies + crowncouncil so rules allow it)
@@ -5567,54 +5574,97 @@
     }
   }, 1000);
 
-  // ============================================================
+   // ============================================================
   // Boot
   // ============================================================
-  await ensureLobbyAndState();
-  await fetchPlayerWins();
-  await upsertMyPlayerDoc();
-  startPlayerHeartbeat();
-  window.addEventListener("beforeunload", () => {
-    stopPlayerHeartbeat();
-    cleanupFirebaseListeners();
-  });
-  await publishMySelection(false);
-  listenToCrownCouncil();
+  async function bootGame(){
+    await initializeAuth();
 
-  startGlobalLoops();
-  renderSelectionOverlay();
-  document.getElementById("focusBtn").addEventListener("click", () => window.dispatchEvent(new KeyboardEvent("keydown",{key:"h"})));
-  document.querySelectorAll("#sidePanelButtons [data-panel]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      const panel = document.getElementById("sidePanel");
-      const k = btn.getAttribute("data-panel");
-      const map = {
-        stats:`<b>Stats</b><br>Wins: ${playerWins}<br>Cheese: ${cheeseCount}<br>Status: ${isAlive?"Alive":"Dead"}`,
-        buildings:`<b>Buildings</b><br>Use bottom dock for quick build.<br>Press 1-8 or click dock.`,
-        settings:`<b>Settings</b><br>H: Focus mode<br>Space: Upgrades<br>Arrows: Move`,
-        help:`<b>Help</b><br>Collect cheese, build defenses, survive waves.`
-      };
-      panel.innerHTML = map[k] || "";
-      panel.style.display = panel.style.display === "none" ? "block" : "none";
+    await ensureLobbyAndState();
+    await fetchPlayerWins();
+    await upsertMyPlayerDoc();
+
+    startPlayerHeartbeat();
+
+    window.addEventListener("beforeunload", () => {
+      stopPlayerHeartbeat();
+      cleanupFirebaseListeners();
     });
-  });
-  setInterval(()=>{
-    updateTopHud();
-    renderBuildingDock();
-    const now = Date.now();
-    const hudTimer = document.getElementById("hudTimer");
-    if (hudTimer){
-      if (typeof nextRatWaveAt === "number") {
-        const secs = Math.max(0, Math.floor((nextRatWaveAt - now) / 1000));
-        hudTimer.textContent = `⏱ 0:${String(secs).padStart(2,"0")}`;
-      } else {
-        hudTimer.textContent = "⏱ --:--";
-      }
+
+    await publishMySelection(false);
+    listenToCrownCouncil();
+
+    startGlobalLoops();
+    renderSelectionOverlay();
+
+    const focusBtn = document.getElementById("focusBtn");
+    if (focusBtn) {
+      focusBtn.addEventListener("click", () => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "h" }));
+      });
     }
-    const wave = Math.max(1, Math.floor(catPower/5)+1);
-    document.getElementById("hudWave").textContent = `🌊 Wave ${wave}`;
-  }, 300);
-  if (gameStarted) startHostLoops();
+
+    document.querySelectorAll("#sidePanelButtons [data-panel]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const panel = document.getElementById("sidePanel");
+        const k = btn.getAttribute("data-panel");
+
+        const map = {
+          stats: `<b>Stats</b><br>Wins: ${playerWins}<br>Cheese: ${cheeseCount}<br>Status: ${isAlive ? "Alive" : "Dead"}`,
+          buildings: `<b>Buildings</b><br>Use bottom dock for quick build.<br>Press 1-8 or click dock.`,
+          settings: `<b>Settings</b><br>H: Focus mode<br>Space: Upgrades<br>Arrows: Move`,
+          help: `<b>Help</b><br>Collect cheese, build defenses, survive waves.`
+        };
+
+        panel.innerHTML = map[k] || "";
+        panel.style.display = panel.style.display === "none" ? "block" : "none";
+      });
+    });
+
+    setInterval(() => {
+      updateTopHud();
+      renderBuildingDock();
+
+      const now = Date.now();
+      const hudTimer = document.getElementById("hudTimer");
+
+      if (hudTimer) {
+        if (typeof nextRatWaveAt === "number") {
+          const secs = Math.max(0, Math.floor((nextRatWaveAt - now) / 1000));
+          hudTimer.textContent = `⏱ 0:${String(secs).padStart(2, "0")}`;
+        } else {
+          hudTimer.textContent = "⏱ --:--";
+        }
+      }
+
+      const wave = Math.max(1, Math.floor(catPower / 5) + 1);
+      const hudWave = document.getElementById("hudWave");
+      if (hudWave) hudWave.textContent = `🌊 Wave ${wave}`;
+    }, 300);
+
+    if (gameStarted) startHostLoops();
+  }
+
+  bootGame().catch(err => {
+    console.error("Cat vs Mouse boot failed:", err);
+
+    const msg = document.createElement("div");
+    msg.style.cssText = `
+      position:fixed;
+      left:50%;
+      top:80px;
+      transform:translateX(-50%);
+      z-index:9999;
+      background:#7f1d1d;
+      color:white;
+      padding:12px 16px;
+      border-radius:10px;
+      font-weight:bold;
+      max-width:90vw;
+    `;
+    msg.textContent = "Game failed to start. Check console for details: " + (err?.message || err);
+    document.body.appendChild(msg);
+  });
 
 </script>
 </body>
