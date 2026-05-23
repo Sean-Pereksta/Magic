@@ -16,19 +16,24 @@
     h1 { margin: 10px 0; }
 
     #gridWrapper{
+      --iso-scale: 1;
       width: min(96vw, 860px);
       height: min(78vh, 560px);
       border: 3px solid black;
       margin: 0 auto;
       background: linear-gradient(180deg, #dceef8 0%, #e8f8e6 45%, #d7ecd1 100%);
-      overflow: auto;
+      overflow: hidden;
       position: relative;
+      box-shadow: inset 0 0 0 2px rgba(255,255,255,0.26), inset 0 0 42px rgba(0,0,0,0.2);
     }
     #grid{
-      position: relative;
+      position: absolute;
+      left: 0;
+      top: 0;
       z-index: 0;
-      margin: 0 auto;
+      margin: 0;
       transform-origin: top center;
+      will-change: transform;
     }
 
     .cell{
@@ -1578,6 +1583,8 @@
   const ISO_TILE_H = 24;
   const ISO_ENTITY_W = 34;
   const ISO_ENTITY_H = 34;
+  const camera = { x: 0, y: 0, targetX: 0, targetY: 0 };
+  let cameraDebug = false;
 
   function isoToScreen(x, y){
     return {
@@ -1595,6 +1602,69 @@
     el.style.left = `${p.x}px`;
     el.style.top = `${p.y}px`;
     el.style.zIndex = `${getIsoDepth(x, y, zOffset)}`;
+  }
+
+  function getLocalFocusPlayer(){
+    if (!gameStarted) return null;
+    const me = players[uid];
+    if (me && (me.alive ?? true) && typeof me.x === "number" && typeof me.y === "number") return me;
+    const aliveTeammates = Object.values(players).filter(p => (p?.alive ?? true) && typeof p?.x === "number" && typeof p?.y === "number");
+    if (aliveTeammates.length){
+      const refX = typeof playerPos?.x === "number" ? playerPos.x : catPos.x;
+      const refY = typeof playerPos?.y === "number" ? playerPos.y : catPos.y;
+      aliveTeammates.sort((a,b) => (Math.abs(a.x - refX) + Math.abs(a.y - refY)) - (Math.abs(b.x - refX) + Math.abs(b.y - refY)));
+      return aliveTeammates[0];
+    }
+    if (typeof catPos?.x === "number" && typeof catPos?.y === "number") return catPos;
+    return null;
+  }
+
+  function updateIsoCamera(stageMetrics){
+    const wrapper = document.getElementById("gridWrapper");
+    if (!wrapper || !stageMetrics) return;
+    const focus = getLocalFocusPlayer();
+    if (focus){
+      const focusScreen = isoToScreen(focus.x, focus.y);
+      camera.targetX = focusScreen.x;
+      camera.targetY = focusScreen.y;
+    } else {
+      camera.targetX = stageMetrics.mapCenter.x;
+      camera.targetY = stageMetrics.mapCenter.y;
+    }
+    const smooth = 0.18;
+    camera.x += (camera.targetX - camera.x) * smooth;
+    camera.y += (camera.targetY - camera.y) * smooth;
+  }
+
+  function applyIsoCameraTransform(stageMetrics){
+    const wrapper = document.getElementById("gridWrapper");
+    const viewport = document.getElementById("grid");
+    if (!wrapper || !viewport || !stageMetrics) return;
+
+    const wrapperW = wrapper.clientWidth;
+    const wrapperH = wrapper.clientHeight;
+    const stageW = stageMetrics.worldW;
+    const stageH = stageMetrics.worldH;
+    const isSmall = Math.min(wrapperW, wrapperH) < 430;
+    const scale = isSmall ? 0.9 : 1;
+    wrapper.style.setProperty("--iso-scale", scale.toFixed(3));
+
+    const maxOffsetX = Math.max(0, (stageW * scale) - wrapperW);
+    const maxOffsetY = Math.max(0, (stageH * scale) - wrapperH);
+    const wantedX = ((wrapperW / scale) / 2) - camera.x;
+    const wantedY = ((wrapperH / scale) / 2) - camera.y;
+    const translateX = Math.min(0, Math.max(-maxOffsetX / scale, wantedX));
+    const translateY = Math.min(0, Math.max(-maxOffsetY / scale, wantedY));
+
+    viewport.style.transform = `translate(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px) scale(var(--iso-scale))`;
+
+    if (cameraDebug){
+      viewport.dataset.cam = `cam(${camera.x.toFixed(1)},${camera.y.toFixed(1)}) focus(${camera.targetX.toFixed(1)},${camera.targetY.toFixed(1)})`;
+      viewport.title = viewport.dataset.cam;
+    } else {
+      viewport.dataset.cam = "";
+      viewport.title = "";
+    }
   }
 
   function createIsoTile(x, y){
@@ -1665,15 +1735,10 @@
     const now = Date.now();
     combatVfx = combatVfx.filter(v => v.expiresAt > now);
 
-    const viewSize = 20;
-    const halfView = Math.floor(viewSize/2);
     const viewport = document.getElementById("grid");
     viewport.innerHTML = "";
-
     const centerX = playerPos.x;
     const centerY = playerPos.y;
-    const startX = centerX - halfView;
-    const startY = centerY - halfView;
 
     // generator trigger highlighting
     const generatorTriggers = new Set();
@@ -1704,14 +1769,14 @@
           }
     }
 
-    const leftPad = (viewSize * ISO_TILE_W) / 2 + ISO_TILE_W;
+    const leftPad = (gridSize * ISO_TILE_W) / 2 + ISO_TILE_W;
     const topPad = ISO_TILE_H * 2;
-    const worldW = (viewSize + viewSize) * (ISO_TILE_W / 2);
-    const worldH = (viewSize + viewSize) * (ISO_TILE_H / 2) + ISO_ENTITY_H + ISO_TILE_H * 3;
-    viewport.style.width = `${Math.ceil(worldW + leftPad * 2)}px`;
-    viewport.style.height = `${Math.ceil(worldH + topPad)}px`;
-    viewport.style.marginLeft = "auto";
-    viewport.style.marginRight = "auto";
+    const worldW = (gridSize + gridSize) * (ISO_TILE_W / 2);
+    const worldH = (gridSize + gridSize) * (ISO_TILE_H / 2) + ISO_ENTITY_H + ISO_TILE_H * 3;
+    const stageW = Math.ceil(worldW + leftPad * 2);
+    const stageH = Math.ceil(worldH + topPad);
+    viewport.style.width = `${stageW}px`;
+    viewport.style.height = `${stageH}px`;
 
     const tileLayer = document.createElement("div");
     tileLayer.style.position = "absolute";
@@ -1737,10 +1802,10 @@
     };
 
     // base tiles
-    for (let row=0; row<viewSize; row++){
-      for (let col=0; col<viewSize; col++){
-        const x = startX + col;
-        const y = startY + row;
+    for (let row=0; row<gridSize; row++){
+      for (let col=0; col<gridSize; col++){
+        const x = col;
+        const y = row;
         const cell = createIsoTile(x, y);
         tileLayer.appendChild(cell);
 
@@ -1794,10 +1859,6 @@
             cell.style.outline = "2px solid #22d3ee";
             cell.style.boxShadow = "inset 0 0 0 1px rgba(255,255,255,0.75), 0 0 8px rgba(34,211,238,0.8)";
           }
-        } else {
-          cell.style.background = "#888";
-        }
-
       }
     }
 
@@ -2004,6 +2065,15 @@
       sp.textContent = `${(p.displayName||"mouse").toLowerCase()}: ${((p.alive ?? true) ? "ALIVE" : "DEAD")}`;
       statusDiv.appendChild(sp);
     }
+    updateIsoCamera({
+      worldW: stageW,
+      worldH: stageH,
+      mapCenter: isoToScreen((gridSize - 1) / 2, (gridSize - 1) / 2)
+    });
+    applyIsoCameraTransform({
+      worldW: stageW,
+      worldH: stageH
+    });
     updateObjectiveBanner();
   }
 
