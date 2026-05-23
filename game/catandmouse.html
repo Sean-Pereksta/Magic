@@ -1098,7 +1098,7 @@
     rescue: null
   };
   let catFacing = { dx: 1, dy: 0 };
-  let catFacingDir = "east";
+  let catFacingDir = "se";
   let playerFacing = "se";
   const previousEnemyPositions = {};
   let catAbilityLoadout = [];
@@ -1808,7 +1808,7 @@
   function normalizeDirection(dx, dy){
     const sx = Math.sign(dx || 0);
     const sy = Math.sign(dy || 0);
-    if (sx === 0 && sy === 0) return "se";
+    if (sx === 0 && sy === 0) return null;
     if (sx > 0 && sy < 0) return "ne";
     if (sx < 0 && sy < 0) return "nw";
     if (sx > 0 && sy > 0) return "se";
@@ -1820,7 +1820,8 @@
   }
 
   function directionFromDelta(oldX, oldY, newX, newY){
-    return normalizeDirection((newX ?? oldX) - (oldX ?? newX), (newY ?? oldY) - (oldY ?? newY));
+    if (oldX == null || oldY == null || newX == null || newY == null) return null;
+    return normalizeDirection(newX - oldX, newY - oldY);
   }
 
   function getDirectionClass(dir){
@@ -2095,7 +2096,7 @@
       if (!isLivingRat(r)) continue;
       const cell = document.getElementById(`cell-${r.x}-${r.y}`);
       if (cell){
-        const unit = addCreatureEntityAt(entityLayer, r.x, r.y, "rat-creature", r.facing || inferFacingFromMovement(r.id, r.x, r.y, "sw"));
+        const unit = addCreatureEntityAt(entityLayer, r.x, r.y, "rat-creature", r.facing || inferFacingFromMovement(r.id, r.x, r.y, "se"));
         if (Math.abs(r.x - centerX) + Math.abs(r.y - centerY) <= OVERLAY_RENDER_DISTANCE){
           const hpTag = document.createElement("div");
           hpTag.className = "name";
@@ -2202,7 +2203,7 @@
     // cat
     const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
     if (catCell){
-      const catUnit = addCreatureEntityAt(entityLayer, catPos.x, catPos.y, "cat-creature", catFacingDir || "east");
+      const catUnit = addCreatureEntityAt(entityLayer, catPos.x, catPos.y, "cat-creature", catFacingDir || "se");
       if (Math.abs(catPos.x - centerX) + Math.abs(catPos.y - centerY) <= OVERLAY_RENDER_DISTANCE){
         const levelTag = document.createElement("div");
         levelTag.className = "name";
@@ -2285,7 +2286,7 @@
     const newX = Math.max(0, Math.min(gridSize-1, playerPos.x + dx));
     const newY = Math.max(0, Math.min(gridSize-1, playerPos.y + dy));
     const facing = directionFromDelta(playerPos.x, playerPos.y, newX, newY);
-    playerFacing = facing || playerFacing;
+    if (facing) playerFacing = facing;
     playerPos = { x: newX, y: newY };
     savePosition();
     checkCheese();
@@ -2448,12 +2449,13 @@
     const unchanged = lastPlayerPayload &&
       lastPlayerPayload.x === payload.x &&
       lastPlayerPayload.y === payload.y &&
+      lastPlayerPayload.facing === payload.facing &&
       lastPlayerPayload.cheese === payload.cheese &&
       lastPlayerPayload.alive === payload.alive;
     if (unchanged && (now - lastPlayerWriteAt) < 200) return;
 
     lastPlayerWriteAt = now;
-    lastPlayerPayload = { x: payload.x, y: payload.y, cheese: payload.cheese, alive: payload.alive };
+    lastPlayerPayload = { x: payload.x, y: payload.y, facing: payload.facing, cheese: payload.cheese, alive: payload.alive };
     await setDoc(pRef, payload, { merge:true });
   }
 
@@ -3025,7 +3027,7 @@
 
     if (canCatLandOnCell(pending.x, pending.y)){
       catFacing = { dx: Math.sign(pending.x - catPos.x) || catFacing.dx || 1, dy: Math.sign(pending.y - catPos.y) || catFacing.dy || 0 };
-      catFacingDir = normalizeDirection(catFacing.dx, catFacing.dy);
+      catFacingDir = normalizeDirection(catFacing.dx, catFacing.dy) || catFacingDir || "se";
       catPos = { x: pending.x, y: pending.y };
       addCombatVfx(catPos.x, catPos.y, "💨", "vfx-hit", 650, 17);
     }
@@ -3195,7 +3197,7 @@
       const isBlocked = (symbol==="🧱" || symbol==="💎");
       if (!isBlocked){
         catFacing = { dx: Math.sign(next.x - catPos.x), dy: Math.sign(next.y - catPos.y) };
-        catFacingDir = normalizeDirection(catFacing.dx, catFacing.dy);
+        catFacingDir = normalizeDirection(catFacing.dx, catFacing.dy) || catFacingDir || "se";
         catPos.x = next.x;
         catPos.y = next.y;
       }
@@ -3558,7 +3560,9 @@
           const ratInWay = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===nx && r.y===ny);
           if (!ratInWay && !blockedGrid[ny]?.[nx]){
             rat.x = nx; rat.y = ny;
-            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, facing: directionFromDelta(rat.ai?.lastX ?? rat.x, rat.ai?.lastY ?? rat.y, rat.x, rat.y), updatedAt: Date.now() } });
+            const nextFacing = directionFromDelta(rat.ai?.lastX, rat.ai?.lastY, rat.x, rat.y) || rat.facing || "se";
+            rat.facing = nextFacing;
+            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, facing: nextFacing, updatedAt: Date.now() } });
           }
         }
 
@@ -3578,7 +3582,9 @@
           const ratInWay = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===next.x && r.y===next.y);
           if (!ratInWay){
             rat.x = next.x; rat.y = next.y;
-            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, facing: directionFromDelta(rat.ai?.lastX ?? rat.x, rat.ai?.lastY ?? rat.y, rat.x, rat.y), updatedAt: Date.now() } });
+            const nextFacing = directionFromDelta(rat.ai?.lastX, rat.ai?.lastY, rat.x, rat.y) || rat.facing || "se";
+            rat.facing = nextFacing;
+            writes.push({ type:"update", ref: ccRef(ID.rat(rat.id)), data: { x: rat.x, y: rat.y, health: rat.health, facing: nextFacing, updatedAt: Date.now() } });
           }
         }
 
