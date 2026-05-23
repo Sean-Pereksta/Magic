@@ -265,6 +265,8 @@
     <h2>Endless 3D Chase</h2>
     <button onclick="startGame(1)">1 Player</button>
     <button onclick="startGame(2)">2 Player</button>
+    <button onclick="openReplayLoadPicker()">Load Replay</button>
+    <input id="replayFileInput" type="file" accept=".json,.chrisreplay.json" style="display:none">
     <div id="menuControls">
       <div>Player 1: WASD or Arrow Keys, Shift sprint, Space dodge</div>
       <div>Player 2: IJKL movement, U sprint, O dodge</div>
@@ -345,6 +347,15 @@ let twoPlayerScores = {
 let roundActive = false;
 let roundEnding = false;
 let roundToastTimer = null;
+
+const CHRIS_REPLAY_VERSION = 1;
+const GAME_BUILD_VERSION = "chris-runner-basic-replay-v1";
+
+let replayRecorder = null;
+let replayPlayback = null;
+let replayMode = false;
+let replayPaused = false;
+let replaySpeed = 1;
 
 const WORLD_WIDTH = 44;
 const CHUNK_LENGTH = 42;
@@ -464,14 +475,36 @@ function init() {
   furthestChunkZ = (CHUNK_COUNT_AHEAD - 1) * CHUNK_LENGTH;
 
   window.addEventListener("keydown", e => {
-    keys[e.key.toLowerCase()] = true;
+    const key = e.key.toLowerCase();
+
+    if (replayMode) return;
+
+    if (keys[key]) return;
+    keys[key] = true;
+
+    if (replayRecorder && gameStarted && !gameOver) {
+      recordReplayInput("keydown", key);
+    }
   });
 
   window.addEventListener("keyup", e => {
-    keys[e.key.toLowerCase()] = false;
+    const key = e.key.toLowerCase();
+
+    if (replayMode) return;
+
+    keys[key] = false;
+
+    if (replayRecorder && gameStarted && !gameOver) {
+      recordReplayInput("keyup", key);
+    }
   });
 
   window.addEventListener("resize", onResize);
+
+  const replayInput = document.getElementById("replayFileInput");
+  if (replayInput) {
+    replayInput.addEventListener("change", handleReplayFileSelected);
+  }
 }
 
 /* ============================================================
@@ -2579,7 +2612,7 @@ function endGame(reason) {
   const finalDistance = Math.floor(distance);
   let highScoreMessage = "";
 
-  if (finalDistance > highScore) {
+  if (!replayMode && finalDistance > highScore) {
     highScore = finalDistance;
     localStorage.setItem("chrisRunnerHighScore", String(highScore));
     highScoreMessage = " NEW HIGH SCORE!";
@@ -2594,6 +2627,15 @@ function endGame(reason) {
     " | Speed Level: " + currentSpeedTier;
 
   document.getElementById("message").style.display = "flex";
+
+  finalizeReplay(reason);
+
+  if (!replayMode) {
+    const box = document.getElementById("messageBox");
+    if (box && !box.querySelector("[data-replay-save-btn]")) {
+      box.insertAdjacentHTML("beforeend", '<button data-replay-save-btn onclick="downloadLastReplay()">Save Replay</button>');
+    }
+  }
 }
 function hasLineOfSightClear(fromPos, toPos, maxRange = Infinity) {
   if (!fromPos || !toPos) return false;
@@ -3149,6 +3191,8 @@ function animate() {
 
   const dt = Math.min(clock.getDelta(), 0.04);
 
+  updateReplayPlayback();
+
   updatePlayerActor(players[0], dt, { forwardA: "w", forwardB: "arrowup", backA: "s", backB: "arrowdown", leftA: "d", leftB: "arrowleft", rightA: "a", rightB: "arrowright", sprint: "shift", dodge: " " });
   if (gameMode === 2 && players[1]) {
     updatePlayerActor(players[1], dt, { forwardA: "i", backA: "k", leftA: "l", rightA: "j", sprint: "enter", dodge: "o" });
@@ -3498,7 +3542,8 @@ function endTwoPlayerMatch(reason) {
   if (p1 > p2) { winnerText = "BLUE CHRIS WINS!"; winnerClass = "blueWin"; } else if (p2 > p1) { winnerText = "ORANGE CHRIS WINS!"; winnerClass = "orangeWin"; }
   const message = document.getElementById("message"); const box = document.getElementById("messageBox");
   message.style.display = "flex";
-  box.innerHTML = `<h2 class="${winnerClass}">${winnerText}</h2><p>${reason || "Best of 3 complete!"}</p><div style="display:flex;gap:12px;justify-content:center;margin:18px 0;"><div style="background:#1d4ed8;padding:14px 18px;border-radius:14px;min-width:150px;"><div style="font-weight:900;">BLUE CHRIS</div><div style="font-size:28px;font-weight:900;">${p1}</div><div>Total Yards</div></div><div style="background:#ea580c;padding:14px 18px;border-radius:14px;min-width:150px;"><div style="font-weight:900;">ORANGE CHRIS</div><div style="font-size:28px;font-weight:900;">${p2}</div><div>Total Yards</div></div></div><button onclick="location.reload()">Play Again</button>`;
+  box.innerHTML = `<h2 class="${winnerClass}">${winnerText}</h2><p>${reason || "Best of 3 complete!"}</p><div style="display:flex;gap:12px;justify-content:center;margin:18px 0;"><div style="background:#1d4ed8;padding:14px 18px;border-radius:14px;min-width:150px;"><div style="font-weight:900;">BLUE CHRIS</div><div style="font-size:28px;font-weight:900;">${p1}</div><div>Total Yards</div></div><div style="background:#ea580c;padding:14px 18px;border-radius:14px;min-width:150px;"><div style="font-weight:900;">ORANGE CHRIS</div><div style="font-size:28px;font-weight:900;">${p2}</div><div>Total Yards</div></div></div><button onclick="location.reload()">Play Again</button>${replayMode ? "" : '<button onclick="downloadLastReplay()">Save Replay</button>'}`;
+  finalizeReplay(reason);
 }
 function endTwoPlayerRound(reason) {
   if (roundEnding) return;
@@ -3509,11 +3554,199 @@ function endTwoPlayerRound(reason) {
 }
 function startGame(mode) {
   gameMode = mode; gameStarted = true; gameOver = false; document.getElementById("menuOverlay").style.display = "none";
+
+  if (!replayMode) {
+    replayRecorder = createReplayRecorder(mode);
+  }
   const p1 = createPlayer(1, mode === 2 ? -2.8 : 0, START_Z); const p2 = mode === 2 ? createPlayer(2, 2.8, START_Z) : null;
   player = p1; players = mode === 2 ? [p1, p2] : [p1]; activeRunnerPlayers = players.slice();
   if (mode === 2) { resetTwoPlayerMatch(); document.getElementById("twoPlayerScoreboard").style.display = "flex"; }
   else { roundActive = false; roundEnding = false; document.getElementById("twoPlayerScoreboard").style.display = "none"; }
 }
+
+function createReplayRecorder(mode) {
+  return {
+    version: CHRIS_REPLAY_VERSION,
+    gameBuild: GAME_BUILD_VERSION,
+    createdAt: new Date().toISOString(),
+    mode,
+    startedAtPerf: performance.now(),
+    duration: 0,
+    final: null,
+    inputs: []
+  };
+}
+
+function getReplayTime() {
+  if (!replayRecorder) return 0;
+  return (performance.now() - replayRecorder.startedAtPerf) / 1000;
+}
+
+function recordReplayInput(type, key) {
+  replayRecorder.inputs.push({
+    t: Number(getReplayTime().toFixed(4)),
+    type,
+    key
+  });
+}
+
+function finalizeReplay(reason) {
+  if (!replayRecorder || replayMode) return;
+
+  replayRecorder.duration = Number(getReplayTime().toFixed(3));
+  replayRecorder.final = {
+    reason: reason || "ended",
+    distance: Math.floor(distance || 0),
+    pickupCount: pickupCount || 0,
+    gameMode,
+    twoPlayerRound,
+    twoPlayerScores: JSON.parse(JSON.stringify(twoPlayerScores || {}))
+  };
+
+  window.lastChrisReplay = replayRecorder;
+}
+
+function downloadLastReplay() {
+  const replay = window.lastChrisReplay || replayRecorder;
+
+  if (!replay || !replay.final) {
+    alert("No completed replay is available yet.");
+    return;
+  }
+
+  const json = JSON.stringify(replay, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const score = replay.final?.distance || 0;
+  const mode = replay.mode === 2 ? "2P" : "1P";
+  const safeDate = new Date().toISOString().replace(/[:.]/g, "-");
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ChrisRunner_${mode}_${score}yds_${safeDate}.chrisreplay.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  URL.revokeObjectURL(url);
+}
+
+function openReplayLoadPicker() {
+  const input = document.getElementById("replayFileInput");
+  if (!input) {
+    alert("Replay file input missing.");
+    return;
+  }
+
+  input.value = "";
+  input.click();
+}
+
+function handleReplayFileSelected(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    try {
+      const replay = JSON.parse(reader.result);
+      validateAndStartReplay(replay);
+    } catch (err) {
+      console.error(err);
+      alert("Could not load replay file. It may be corrupted or the wrong format.");
+    }
+  };
+
+  reader.readAsText(file);
+}
+
+function validateAndStartReplay(replay) {
+  if (
+    !replay ||
+    replay.version !== CHRIS_REPLAY_VERSION ||
+    !Array.isArray(replay.inputs) ||
+    !replay.mode
+  ) {
+    alert("This is not a valid Chris Runner replay file.");
+    return;
+  }
+
+  startReplayMode(replay);
+}
+
+function startReplayMode(replay) {
+  replayMode = true;
+  replayRecorder = null;
+  replayPlayback = {
+    replay,
+    startedAtPerf: performance.now(),
+    inputIndex: 0,
+    done: false
+  };
+
+  keys = {};
+
+  const menu = document.getElementById("menuOverlay");
+  if (menu) menu.style.display = "none";
+
+  const message = document.getElementById("message");
+  if (message) message.style.display = "none";
+
+  startGame(replay.mode || 1);
+
+  replayMode = true;
+  replayRecorder = null;
+
+  showRoundToast("Replay loaded");
+}
+
+function getReplayPlaybackTime() {
+  if (!replayPlayback) return 0;
+  return ((performance.now() - replayPlayback.startedAtPerf) / 1000) * replaySpeed;
+}
+
+function updateReplayPlayback() {
+  if (!replayMode || !replayPlayback || replayPlayback.done || replayPaused) return;
+
+  const replay = replayPlayback.replay;
+  const t = getReplayPlaybackTime();
+
+  while (
+    replayPlayback.inputIndex < replay.inputs.length &&
+    replay.inputs[replayPlayback.inputIndex].t <= t
+  ) {
+    const input = replay.inputs[replayPlayback.inputIndex];
+    keys[input.key] = input.type === "keydown";
+    replayPlayback.inputIndex++;
+  }
+
+  if (replay.duration && t >= replay.duration + 1) {
+    replayPlayback.done = true;
+    showReplayCompleteScreen(replay);
+  }
+}
+
+function showReplayCompleteScreen(replay) {
+  gameOver = true;
+
+  const message = document.getElementById("message");
+  const box = document.getElementById("messageBox");
+
+  if (!message || !box) return;
+
+  message.style.display = "flex";
+
+  box.innerHTML = `
+    <h2>Replay Complete</h2>
+    <p>Mode: ${replay.mode === 2 ? "2 Player" : "1 Player"}</p>
+    <p>Distance: ${replay.final?.distance || 0} yards</p>
+    <p>Duration: ${Math.floor(replay.duration || 0)} seconds</p>
+    <button onclick="location.reload()">Back to Menu</button>
+  `;
+}
+
 </script>
 
 </body>
