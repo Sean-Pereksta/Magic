@@ -16,30 +16,44 @@
     h1 { margin: 10px 0; }
 
     #gridWrapper{
-      width: 400px;
-      height: 400px;
+      width: min(96vw, 860px);
+      height: min(78vh, 560px);
       border: 3px solid black;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       margin: 0 auto;
-      background: #eaeaea;
+      background: linear-gradient(180deg, #dceef8 0%, #e8f8e6 45%, #d7ecd1 100%);
+      overflow: auto;
+      position: relative;
     }
     #grid{
-      display: grid;
-      justify-content: center;
-      margin: 0 auto;
       position: relative;
       z-index: 0;
+      margin: 0 auto;
+      transform-origin: top center;
     }
 
     .cell{
-      width: 20px;
-      height: 20px;
-      text-align: center;
+      position: absolute;
+      transform: translate(-50%, -50%);
+      border-radius: 4px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
       font-size: 16px;
-      position: relative;
-      background: #c8f7c5;
+      user-select:none;
+    }
+    .iso-tile{
+      width: 48px;
+      height: 24px;
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+      border: 1px solid rgba(50, 80, 35, 0.38);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25);
+    }
+    .iso-entity{
+      width: 34px;
+      height: 34px;
+      line-height: 1;
+      font-size: 24px;
+      z-index: 10;
     }
     .name{
       font-size: 10px;
@@ -191,8 +205,7 @@
       #fullscreenBtn{ display: inline-block; }
       #grid{ margin-top: 10px; }
       body{ padding-bottom: 210px; }
-      #gridWrapper{ width: min(96vw, 400px); height: min(96vw, 400px); }
-      .cell{ width: min(20px, 96vw/30); height: min(20px, 96vw/30); font-size: 14px; }
+      #gridWrapper{ width: 96vw; height: min(64vh, 520px); }
 
       #selectionOverlay{
         align-items:flex-start;
@@ -1422,6 +1435,38 @@
   let renderQueued = false;
   let lastRenderAt = 0;
   const MIN_RENDER_INTERVAL_MS = 80;
+  // ISOMETRIC VISUAL LAYER
+  // GAMEPLAY GRID REMAINS UNCHANGED
+  const ISO_TILE_W = 48;
+  const ISO_TILE_H = 24;
+  const ISO_ENTITY_W = 34;
+  const ISO_ENTITY_H = 34;
+
+  function isoToScreen(x, y){
+    return {
+      x: (x - y) * (ISO_TILE_W / 2),
+      y: (x + y) * (ISO_TILE_H / 2)
+    };
+  }
+
+  function getIsoDepth(x, y, zOffset = 0){
+    return Math.floor((x + y) * 10 + zOffset);
+  }
+
+  function positionIsoElement(el, x, y, zOffset = 0){
+    const p = isoToScreen(x, y);
+    el.style.left = `${p.x}px`;
+    el.style.top = `${p.y}px`;
+    el.style.zIndex = `${getIsoDepth(x, y, zOffset)}`;
+  }
+
+  function createIsoTile(x, y){
+    const tile = document.createElement("div");
+    tile.className = "cell iso-tile";
+    tile.id = `cell-${x}-${y}`;
+    positionIsoElement(tile, x, y, 0);
+    return tile;
+  }
 
   function requestRender(reason = ""){
     if (renderQueued) return;
@@ -1445,11 +1490,6 @@
     const halfView = Math.floor(viewSize/2);
     const viewport = document.getElementById("grid");
     viewport.innerHTML = "";
-
-    viewport.style.gridTemplateColumns = `repeat(${viewSize}, 20px)`;
-    viewport.style.gridTemplateRows    = `repeat(${viewSize}, 20px)`;
-    viewport.style.width = "400px";
-    viewport.style.height = "400px";
 
     const centerX = playerPos.x;
     const centerY = playerPos.y;
@@ -1485,14 +1525,45 @@
           }
     }
 
+    const leftPad = (viewSize * ISO_TILE_W) / 2 + ISO_TILE_W;
+    const topPad = ISO_TILE_H * 2;
+    const worldW = (viewSize + viewSize) * (ISO_TILE_W / 2);
+    const worldH = (viewSize + viewSize) * (ISO_TILE_H / 2) + ISO_ENTITY_H + ISO_TILE_H * 3;
+    viewport.style.width = `${Math.ceil(worldW + leftPad * 2)}px`;
+    viewport.style.height = `${Math.ceil(worldH + topPad)}px`;
+    viewport.style.marginLeft = "auto";
+    viewport.style.marginRight = "auto";
+
+    const tileLayer = document.createElement("div");
+    tileLayer.style.position = "absolute";
+    tileLayer.style.left = `${leftPad}px`;
+    tileLayer.style.top = `${topPad}px`;
+    const entityLayer = document.createElement("div");
+    entityLayer.style.position = "absolute";
+    entityLayer.style.left = `${leftPad}px`;
+    entityLayer.style.top = `${topPad}px`;
+    viewport.appendChild(tileLayer);
+    viewport.appendChild(entityLayer);
+
+    const addEntityAt = (x, y, icon, opts = {}) => {
+      const cell = document.getElementById(`cell-${x}-${y}`);
+      if (!cell) return null;
+      const el = document.createElement("div");
+      el.className = "cell iso-entity";
+      el.textContent = icon;
+      el.style.fontSize = opts.fontSize || "24px";
+      positionIsoElement(el, x, y, 6);
+      entityLayer.appendChild(el);
+      return el;
+    };
+
     // base tiles
     for (let row=0; row<viewSize; row++){
       for (let col=0; col<viewSize; col++){
         const x = startX + col;
         const y = startY + row;
-        const cell = document.createElement("div");
-        cell.className = "cell";
-        cell.id = `cell-${x}-${y}`;
+        const cell = createIsoTile(x, y);
+        tileLayer.appendChild(cell);
 
         if (x>=0 && x<gridSize && y>=0 && y<gridSize){
           const key = `${x}_${y}`;
@@ -1510,18 +1581,19 @@
             else cell.style.background = "#b7e8b5";
           }
 
-          cell.textContent = isCheesePickupCell(symbol) ? CHEESE_PICKUP_SYMBOL : (symbol || "");
-          if (symbol === "🥁") cell.textContent = (Date.now() % 2000 < 1000) ? "🥁" : "🥁♪";
+          const overlayIcon = isCheesePickupCell(symbol) ? CHEESE_PICKUP_SYMBOL : (symbol || "");
+          if (overlayIcon) addEntityAt(x, y, overlayIcon);
+          if (symbol === "🥁") addEntityAt(x, y, (Date.now() % 2000 < 1000) ? "🥁" : "🥁♪");
           if (objectiveState.supplyDrop?.active && objectiveState.supplyDrop.x===x && objectiveState.supplyDrop.y===y){
-            cell.textContent = "📦";
+            addEntityAt(x, y, "📦");
             cell.style.boxShadow = "0 0 10px #fde047";
           }
           if (objectiveState.shrine?.active && objectiveState.shrine.x===x && objectiveState.shrine.y===y){
-            cell.textContent = "🛐";
+            addEntityAt(x, y, "🛐");
             cell.style.outline = "2px solid #a855f7";
           }
           if (objectiveState.rescue?.active && objectiveState.rescue.x===x && objectiveState.rescue.y===y){
-            cell.textContent = "✨";
+            addEntityAt(x, y, "✨");
             cell.style.outline = "2px solid #60a5fa";
           }
 
@@ -1536,10 +1608,8 @@
           }
         } else {
           cell.style.background = "#888";
-          cell.textContent = "";
         }
 
-        viewport.appendChild(cell);
       }
     }
 
@@ -1548,12 +1618,12 @@
       if ((p.alive ?? true) === false) continue;
       const cell = document.getElementById(`cell-${p.x}-${p.y}`);
       if (cell){
-        cell.textContent = "🐭";
+        const unit = addEntityAt(p.x, p.y, "🐭");
         if (Math.abs((p.x ?? 0) - centerX) + Math.abs((p.y ?? 0) - centerY) <= OVERLAY_RENDER_DISTANCE){
           const nameTag = document.createElement("div");
           nameTag.className = "name";
           nameTag.textContent = (p.displayName || "mouse").toLowerCase();
-          cell.appendChild(nameTag);
+          unit?.appendChild(nameTag);
         }
       }
     }
@@ -1562,7 +1632,7 @@
     for (const f of fleas){
       if (!isLivingFlea(f)) continue;
       const cell = document.getElementById(`cell-${f.x}-${f.y}`);
-      if (cell) cell.textContent = "🐞";
+      if (cell) addEntityAt(f.x, f.y, "🐞");
     }
 
     // rats
@@ -1570,13 +1640,13 @@
       if (!isLivingRat(r)) continue;
       const cell = document.getElementById(`cell-${r.x}-${r.y}`);
       if (cell){
-        cell.textContent = "🐀";
+        const unit = addEntityAt(r.x, r.y, "🐀");
         if (Math.abs(r.x - centerX) + Math.abs(r.y - centerY) <= OVERLAY_RENDER_DISTANCE){
           const hpTag = document.createElement("div");
           hpTag.className = "name";
           hpTag.style.color = "brown";
           hpTag.textContent = `❤️${r.health}`;
-          cell.appendChild(hpTag);
+          unit?.appendChild(hpTag);
         }
       }
     }
@@ -1586,13 +1656,13 @@
       if (!isLivingEnemy(o)) continue;
       const cell = document.getElementById(`cell-${o.x}-${o.y}`);
       if (cell){
-        cell.textContent = "🐂";
+        const unit = addEntityAt(o.x, o.y, "🐂");
         if (Math.abs(o.x - centerX) + Math.abs(o.y - centerY) <= OVERLAY_RENDER_DISTANCE){
           const hpTag = document.createElement("div");
           hpTag.className = "name";
           hpTag.style.color = "orange";
           hpTag.textContent = `❤️${o.health}`;
-          cell.appendChild(hpTag);
+          unit?.appendChild(hpTag);
         }
       }
     }
@@ -1602,13 +1672,13 @@
       if (!isLivingEnemy(k)) continue;
       const cell = document.getElementById(`cell-${k.x}-${k.y}`);
       if (cell){
-        cell.textContent = "👑";
+        const unit = addEntityAt(k.x, k.y, "👑");
         if (Math.abs(k.x - centerX) + Math.abs(k.y - centerY) <= OVERLAY_RENDER_DISTANCE){
           const hpTag = document.createElement("div");
           hpTag.className = "name";
           hpTag.style.color = "#7c2d12";
           hpTag.textContent = `❤️${k.health}`;
-          cell.appendChild(hpTag);
+          unit?.appendChild(hpTag);
         }
       }
     }
@@ -1618,13 +1688,13 @@
       if ((r.health ?? 0) <= 0) continue;
       const cell = document.getElementById(`cell-${r.x}-${r.y}`);
       if (cell){
-        cell.textContent = "🐇";
+        const unit = addEntityAt(r.x, r.y, "🐇");
         if (Math.abs(r.x - centerX) + Math.abs(r.y - centerY) <= OVERLAY_RENDER_DISTANCE){
           const hpTag = document.createElement("div");
           hpTag.className = "name";
           hpTag.style.color = "#7c3aed";
           hpTag.textContent = `❤️${r.health}`;
-          cell.appendChild(hpTag);
+          unit?.appendChild(hpTag);
         }
       }
     }
@@ -1632,7 +1702,7 @@
     // termites
     for (const t of termites){
       const cell = document.getElementById(`cell-${t.x}-${t.y}`);
-      if (cell) cell.textContent = "🐛";
+      if (cell) addEntityAt(t.x, t.y, "🐛");
     }
 
     // structure health bars
@@ -1676,19 +1746,19 @@
     for (const v of vultures){
       if ((v.health ?? 0) <= 0) continue;
       const cell = document.getElementById(`cell-${v.x}-${v.y}`);
-      if (cell) cell.textContent = "🦅";
+      if (cell) addEntityAt(v.x, v.y, "🦅");
     }
 
     // cat
     const catCell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
     if (catCell){
-      catCell.textContent = "🐱";
+      const catUnit = addEntityAt(catPos.x, catPos.y, "🐱");
       if (Math.abs(catPos.x - centerX) + Math.abs(catPos.y - centerY) <= OVERLAY_RENDER_DISTANCE){
         const levelTag = document.createElement("div");
         levelTag.className = "name";
         levelTag.style.color = "red";
         levelTag.innerHTML = `⚡Lv.${catPower}`;
-        catCell.appendChild(levelTag);
+        catUnit?.appendChild(levelTag);
 
         const bar = document.createElement("div");
         bar.className = "health-bar";
@@ -1698,7 +1768,7 @@
         bar.style.background = "red";
         bar.style.height = "3px";
         bar.style.marginTop = "-10px";
-        catCell.appendChild(bar);
+        catUnit?.appendChild(bar);
       }
     }
 
