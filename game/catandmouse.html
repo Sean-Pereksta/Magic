@@ -1691,8 +1691,11 @@
   // an over-the-shoulder style composition.
   const ISO_CAMERA_CENTER_Y = 0.50;
   const ISO_CAMERA_SMOOTHING = 0.32;
+  const ISO_CAMERA_LEAD_TILES = 1.5;
+  const ISO_CAMERA_LEAD_SMOOTHING = 0.20;
+  const ISO_CAMERA_IDLE_LEAD_DAMPING = 0.72;
   const ISO_CAMERA_CLAMP_PADDING_RATIO = 0.40;
-  const camera = { x: 0, y: 0, targetX: 0, targetY: 0, initialized: false };
+  const camera = { x: 0, y: 0, targetX: 0, targetY: 0, leadX: 0, leadY: 0, lastFocusTileX: null, lastFocusTileY: null, initialized: false };
   let cameraDebug = false;
 
   function isoToScreen(x, y){
@@ -1711,6 +1714,22 @@
     el.style.left = `${p.x}px`;
     el.style.top = `${p.y}px`;
     el.style.zIndex = `${getIsoDepth(x, y, zOffset)}`;
+  }
+
+  
+
+  function directionToTileLead(direction){
+    switch ((direction || "").toLowerCase()){
+      case "east": return { x: 1, y: 0 };
+      case "west": return { x: -1, y: 0 };
+      case "north": return { x: 0, y: -1 };
+      case "south": return { x: 0, y: 1 };
+      case "ne": return { x: 1, y: -1 };
+      case "nw": return { x: -1, y: -1 };
+      case "se": return { x: 1, y: 1 };
+      case "sw": return { x: -1, y: 1 };
+      default: return { x: 0, y: 0 };
+    }
   }
 
   function getLocalFocusPlayer(){
@@ -1733,9 +1752,23 @@
     if (!wrapper || !stageMetrics) return;
     const focus = getLocalFocusPlayer();
     if (focus && typeof focus.x === "number" && typeof focus.y === "number"){
-      const focusScreen = isoToScreen(focus.x, focus.y);
-      camera.targetX = focusScreen.x;
-      camera.targetY = focusScreen.y;
+      const localPlayer = players[uid];
+      const isLocalFocus = localPlayer && focus === localPlayer;
+      const facingDirection = isLocalFocus ? (playerFacing || focus.facing || "se") : (focus.facing || playerFacing || "se");
+      const leadDir = directionToTileLead(facingDirection);
+      const hasLastFocus = Number.isFinite(camera.lastFocusTileX) && Number.isFinite(camera.lastFocusTileY);
+      const movedSinceLastFrame = hasLastFocus && (focus.x !== camera.lastFocusTileX || focus.y !== camera.lastFocusTileY);
+      const idleLeadScale = movedSinceLastFrame ? 1 : ISO_CAMERA_IDLE_LEAD_DAMPING;
+      const desiredLeadX = leadDir.x * ISO_CAMERA_LEAD_TILES * idleLeadScale;
+      const desiredLeadY = leadDir.y * ISO_CAMERA_LEAD_TILES * idleLeadScale;
+      camera.leadX += (desiredLeadX - camera.leadX) * ISO_CAMERA_LEAD_SMOOTHING;
+      camera.leadY += (desiredLeadY - camera.leadY) * ISO_CAMERA_LEAD_SMOOTHING;
+
+      const ledFocusScreen = isoToScreen(focus.x + camera.leadX, focus.y + camera.leadY);
+      camera.targetX = ledFocusScreen.x;
+      camera.targetY = ledFocusScreen.y;
+      camera.lastFocusTileX = focus.x;
+      camera.lastFocusTileY = focus.y;
     } else if (!focus) {
       camera.targetX = stageMetrics.mapCenter.x;
       camera.targetY = stageMetrics.mapCenter.y;
@@ -1748,6 +1781,8 @@
     if (!camera.initialized || !Number.isFinite(camera.x) || !Number.isFinite(camera.y)) {
       camera.x = camera.targetX;
       camera.y = camera.targetY;
+      if (!Number.isFinite(camera.leadX)) camera.leadX = 0;
+      if (!Number.isFinite(camera.leadY)) camera.leadY = 0;
       camera.initialized = true;
       return;
     }
