@@ -1341,6 +1341,24 @@ function fireBlackGlobeAttack(owner) { const source = owner.isChaser && owner.co
 function updateBlackGlobeProjectiles(dt) { for (let i = blackGlobeProjectiles.length - 1; i >= 0; i--) { const p = blackGlobeProjectiles[i]; const dir = p.target.clone().sub(p.mesh.position); const dist = dir.length(); if (dist < 1.2) { scene.remove(p.mesh); if (typeof p.onHit === "function") p.onHit(); blackGlobeProjectiles.splice(i, 1); continue; } dir.normalize(); p.mesh.position.addScaledVector(dir, p.speed * dt); } }
 function updateBurstEffects(dt) { if (!window.burstEffects) return; for (let i = window.burstEffects.length - 1; i >= 0; i--) { const group = window.burstEffects[i]; group.userData.life -= dt; for (const particle of group.children) { particle.position.addScaledVector(particle.userData.velocity, dt); particle.userData.velocity.y -= 22 * dt; particle.scale.multiplyScalar(0.96); } if (group.userData.life <= 0) { scene.remove(group); window.burstEffects.splice(i, 1); } } }
 function updatePlayerShieldVisuals(dt) { const playerList = gameMode === 2 ? players : [player]; for (const p of playerList) { if (!p || !p.shieldMesh) continue; const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p; if (!actor || !actor.rig) { p.shieldMesh.visible = false; continue; } p.shieldMesh.visible = !!p.shieldActive; if (p.shieldActive) { p.shieldMesh.position.copy(actor.rig.position); p.shieldMesh.position.y += 2.5; p.shieldMesh.rotation.y += dt * 1.7; p.shieldMesh.rotation.x += dt * 0.8; } } }
+function showRoundToast(text, duration = 1400) {
+  const toast = document.getElementById("roundToast");
+  if (!toast) {
+    console.log(text);
+    return;
+  }
+
+  toast.textContent = text;
+  toast.style.display = "block";
+
+  if (roundToastTimer) {
+    clearTimeout(roundToastTimer);
+  }
+
+  roundToastTimer = setTimeout(() => {
+    toast.style.display = "none";
+  }, duration);
+}
 function applyPickupEffect(owner, actor, pickup) { const type = pickup.userData.pickupType || "green"; if (type === "green") { owner.energy = clamp((owner.energy || 0) + 35, 0, 100); pickupCount++; return; } if (type === "blue") { givePlayerShield(owner); owner.energy = clamp((owner.energy || 0) + 15, 0, 100); pickupCount++; showRoundToast("Shield Globe!"); return; } if (type === "gold") { owner.energy = clamp((owner.energy || 0) + 15, 0, 100); if (gameMode === 2 && twoPlayerScores[owner.id]) { twoPlayerScores[owner.id].roundYards += 25; twoPlayerScores[owner.id].totalYards += 25; } else distance += 25; pickupCount++; showRoundToast("Gold Globe! +25 yards!"); return; } if (type === "red") { owner.energy = clamp((owner.energy || 0) + 60, 0, 100); spawnDangerBehindPlayer(owner); pickupCount++; showRoundToast("Red Globe! Big energy, new danger!"); return; } if (type === "black") { fireBlackGlobeAttack(owner); pickupCount++; showRoundToast("Black Globe! Enemy wipeout!"); } }
 
 function addGrassPatches(chunk, zStart, biome) {
@@ -2577,94 +2595,409 @@ function endGame(reason) {
 
   document.getElementById("message").style.display = "flex";
 }
+function hasLineOfSightClear(fromPos, toPos, maxRange = Infinity) {
+  if (!fromPos || !toPos) return false;
+
+  const dx = toPos.x - fromPos.x;
+  const dz = toPos.z - fromPos.z;
+  const distSq = dx * dx + dz * dz;
+
+  if (distSq < 0.0001) return true;
+
+  if (Number.isFinite(maxRange) && distSq > maxRange * maxRange) {
+    return false;
+  }
+
+  const segLen = Math.sqrt(distSq);
+
+  // Check whether the line from cop to player crosses any obstacle rectangle.
+  for (const wall of walls) {
+    if (!wall || !wall.position) continue;
+
+    const data = wall.userData || {};
+    const radiusX = (data.radiusX || 1.6) + 0.25;
+    const radiusZ = (data.radiusZ || 1.6) + 0.25;
+
+    // Skip far-away obstacles quickly.
+    const wallMinZ = wall.position.z - radiusZ;
+    const wallMaxZ = wall.position.z + radiusZ;
+    const losMinZ = Math.min(fromPos.z, toPos.z) - 2;
+    const losMaxZ = Math.max(fromPos.z, toPos.z) + 2;
+
+    if (wallMaxZ < losMinZ || wallMinZ > losMaxZ) continue;
+
+    const wallMinX = wall.position.x - radiusX;
+    const wallMaxX = wall.position.x + radiusX;
+    const losMinX = Math.min(fromPos.x, toPos.x) - 2;
+    const losMaxX = Math.max(fromPos.x, toPos.x) + 2;
+
+    if (wallMaxX < losMinX || wallMinX > losMaxX) continue;
+
+    if (segmentIntersectsAABB2D(
+      fromPos.x,
+      fromPos.z,
+      toPos.x,
+      toPos.z,
+      wallMinX,
+      wallMinZ,
+      wallMaxX,
+      wallMaxZ
+    )) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function segmentIntersectsAABB2D(x1, z1, x2, z2, minX, minZ, maxX, maxZ) {
+  let tMin = 0;
+  let tMax = 1;
+
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+
+  function clip(p, q) {
+    if (Math.abs(p) < 0.000001) {
+      return q >= 0;
+    }
+
+    const r = q / p;
+
+    if (p < 0) {
+      if (r > tMax) return false;
+      if (r > tMin) tMin = r;
+    } else {
+      if (r < tMin) return false;
+      if (r < tMax) tMax = r;
+    }
+
+    return true;
+  }
+
+  if (!clip(-dx, x1 - minX)) return false;
+  if (!clip(dx, maxX - x1)) return false;
+  if (!clip(-dz, z1 - minZ)) return false;
+  if (!clip(dz, maxZ - z1)) return false;
+
+  // Avoid counting the cop/player's own immediate position as blocked.
+  return tMax > 0.04 && tMin < 0.96;
+}
 /* ============================================================
    POLICE AI + BULLETS FIX
 ============================================================ */
+function updatePoliceLaserVisual(cop, target, aimProgress = 0) {
+  if (!cop || !cop.laser) return;
 
+  if (!target || !target.rig || !cop.rig || cop.dead || cop.removed || cop.disabled) {
+    cop.laser.visible = false;
+    return;
+  }
+
+  const start = cop.rig.position.clone();
+  start.y = 3.45;
+
+  const end = target.rig.position.clone();
+  end.y = 3.05;
+
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const dy = end.y - start.y;
+
+  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+  if (distance <= 0.1) {
+    cop.laser.visible = false;
+    return;
+  }
+
+  const clear = typeof hasLineOfSightClear === "function"
+    ? hasLineOfSightClear(start, end, POLICE_RANGE)
+    : true;
+
+  if (!clear) {
+    cop.laser.visible = false;
+    return;
+  }
+
+  cop.laser.visible = true;
+
+  // Put the laser halfway between the cop and the target.
+  cop.laser.position.set(
+    (start.x + end.x) / 2,
+    (start.y + end.y) / 2,
+    (start.z + end.z) / 2
+  );
+
+  // The laser mesh was created as a 1-unit box on the Z axis.
+  cop.laser.scale.set(
+    1,
+    1,
+    distance
+  );
+
+  // Point the laser from cop to player.
+  const direction = new THREE.Vector3(dx, dy, dz).normalize();
+  cop.laser.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0, 0, 1),
+    direction
+  );
+
+  // Blink faster as the officer gets closer to firing.
+  const pulseSpeed = 7 + aimProgress * 20;
+  const pulse = 0.35 + Math.abs(Math.sin(performance.now() * 0.001 * pulseSpeed)) * 0.65;
+
+  if (cop.laser.material) {
+    cop.laser.material.opacity = pulse;
+  }
+
+  // Make the beam thicker/brighter near the end of aiming.
+  const thickness = 0.07 + aimProgress * 0.08;
+  cop.laser.geometry.dispose();
+  cop.laser.geometry = new THREE.BoxGeometry(thickness, thickness, 1);
+}
 function updatePoliceOfficers(dt) {
   if (!Array.isArray(policeOfficers)) policeOfficers = [];
+  if (!dt || dt < 0) dt = 0;
+
+  const safeCanEnemyDamage = typeof canEnemyDamage === "function";
+  const safeFlatDistance = typeof flatDistance === "function";
+  const safeLOS = typeof hasLineOfSightClear === "function";
+  const safeNearestRunner = typeof getNearestActiveRunner === "function";
+  const safeLeaderRunner = typeof getLeaderRunner === "function";
+  const safeChase = typeof chaseWithPathfinding === "function";
+  const safeLaser = typeof updatePoliceLaserVisual === "function";
+  const safeFire = typeof firePoliceBullet === "function";
+  const safeShield = typeof tryShieldBlock === "function";
+  const safeCaught = typeof handlePlayerCaught === "function";
+  const safeRemove = typeof removeEnemyActor === "function";
 
   for (const cop of policeOfficers) {
-    if (!canEnemyDamage(cop)) continue;
-    const target = getNearestActiveRunner(cop.rig.position);
+    if (!cop || !cop.rig) continue;
 
-    if (!target) {
+    if (safeCanEnemyDamage && !canEnemyDamage(cop)) {
       if (cop.laser) cop.laser.visible = false;
       continue;
     }
 
-    const dist = flatDistance(cop.rig.position, target.rig.position);
-    const canSee = hasLineOfSightClear(cop.rig.position, target.rig.position, POLICE_RANGE);
+    const target = safeNearestRunner
+      ? getNearestActiveRunner(cop.rig.position)
+      : player;
 
-    cop.stateTimer -= dt;
-    cop.animTime += dt;
+    if (!target || !target.rig || target.eliminated) {
+      cop.target = null;
+      cop.state = "chase";
+      cop.aimTimer = 0;
+      cop.stateTimer = POLICE_CHASE_TIME;
 
-    if (!canSee || dist > POLICE_RANGE) {
+      if (cop.laser) cop.laser.visible = false;
+      continue;
+    }
+
+    const dist = safeFlatDistance
+      ? flatDistance(cop.rig.position, target.rig.position)
+      : cop.rig.position.distanceTo(target.rig.position);
+
+    const inRange = dist <= POLICE_RANGE;
+
+    const canSee = safeLOS
+      ? hasLineOfSightClear(cop.rig.position, target.rig.position, POLICE_RANGE)
+      : inRange;
+
+    cop.stateTimer = Math.max(0, (cop.stateTimer || 0) - dt);
+    cop.animTime = (cop.animTime || 0) + dt;
+
+    if (!cop.state) cop.state = "chase";
+    if (typeof cop.aimTimer !== "number") cop.aimTimer = 0;
+
+    // If blocked or out of range, chase and reset aiming.
+    if (!inRange || !canSee) {
       cop.state = "chase";
       cop.stateTimer = POLICE_CHASE_TIME;
       cop.aimTimer = 0;
       cop.target = null;
+
       if (cop.laser) cop.laser.visible = false;
 
-      const prevPlayer = player;
-      player = target;
-      chaseWithPathfinding(cop, dt, cop.speed, 0.9);
-      player = prevPlayer;
-    } else {
-      cop.target = target;
-
-      if (cop.state === "chase") {
+      if (safeChase) {
         const prevPlayer = player;
         player = target;
-        chaseWithPathfinding(cop, dt, cop.speed, 0.9);
+        chaseWithPathfinding(cop, dt, cop.speed || 10.5, 0.9);
         player = prevPlayer;
-
-        if (cop.stateTimer <= 0 || dist < POLICE_RANGE * 0.75) {
-          cop.state = "aim";
-          cop.aimTimer = POLICE_AIM_TIME;
-          cop.stateTimer = POLICE_AIM_TIME;
-        }
       } else {
-        cop.aimTimer -= dt;
+        movePoliceDirectlyTowardTarget(cop, target, dt);
+      }
 
-        const dir = new THREE.Vector3().subVectors(target.rig.position, cop.rig.position);
-        dir.y = 0;
-        if (dir.lengthSq() > 0.01) {
-          dir.normalize();
-          cop.rig.rotation.y = Math.atan2(dir.x, dir.z);
-        }
+      animatePoliceOfficer(cop, dt);
+      continue;
+    }
 
-        updatePoliceLaserVisual(cop, target);
+    cop.target = target;
 
-        if (cop.aimTimer <= 0) {
-          if (!canEnemyDamage(cop)) continue;
-          firePoliceBullet(cop, target);
-          cop.state = "chase";
-          cop.stateTimer = POLICE_CHASE_TIME;
-          cop.aimTimer = 0;
-          if (cop.laser) cop.laser.visible = false;
-        }
+    // CHASE PHASE: officer moves until close enough or timer expires.
+    if (cop.state === "chase") {
+      if (cop.laser) cop.laser.visible = false;
+
+      if (safeChase) {
+        const prevPlayer = player;
+        player = target;
+        chaseWithPathfinding(cop, dt, cop.speed || 10.5, 0.9);
+        player = prevPlayer;
+      } else {
+        movePoliceDirectlyTowardTarget(cop, target, dt);
+      }
+
+      if (cop.stateTimer <= 0 || dist < POLICE_RANGE * 0.75) {
+        cop.state = "aim";
+        cop.aimTimer = POLICE_AIM_TIME;
+        cop.stateTimer = POLICE_AIM_TIME;
       }
     }
 
-    if (canEnemyDamage(cop) && dist < 1.7) {
-      if (tryShieldBlock(target, cop)) continue;
-      handlePlayerCaught(target, "Player " + target.id + " got caught by a police officer!");
+    // AIM PHASE: officer stops, faces target, shows red laser, then fires.
+    else if (cop.state === "aim") {
+      cop.aimTimer = Math.max(0, cop.aimTimer - dt);
+
+      facePoliceTowardTarget(cop, target);
+
+      const aimProgress = 1 - clamp01(cop.aimTimer / POLICE_AIM_TIME);
+
+      if (safeLaser) {
+        updatePoliceLaserVisual(cop, target, aimProgress);
+      } else if (cop.laser) {
+        cop.laser.visible = false;
+      }
+
+      if (cop.aimTimer <= 0) {
+        const stillCanDamage = !safeCanEnemyDamage || canEnemyDamage(cop);
+        const stillCanSee = !safeLOS || hasLineOfSightClear(cop.rig.position, target.rig.position, POLICE_RANGE);
+
+        if (stillCanDamage && stillCanSee && safeFire) {
+          firePoliceBullet(cop, target);
+        }
+
+        cop.state = "chase";
+        cop.stateTimer = POLICE_CHASE_TIME;
+        cop.aimTimer = 0;
+        cop.target = null;
+
+        if (cop.laser) cop.laser.visible = false;
+      }
+    }
+
+    // Unknown state fallback.
+    else {
+      cop.state = "chase";
+      cop.stateTimer = POLICE_CHASE_TIME;
+      cop.aimTimer = 0;
+      if (cop.laser) cop.laser.visible = false;
+    }
+
+    animatePoliceOfficer(cop, dt);
+
+    // Touch collision.
+    const updatedDist = safeFlatDistance
+      ? flatDistance(cop.rig.position, target.rig.position)
+      : cop.rig.position.distanceTo(target.rig.position);
+
+    if (updatedDist < 1.7) {
+      if (safeShield && tryShieldBlock(target, cop)) continue;
+
+      if (safeCaught) {
+        handlePlayerCaught(target, "Player " + target.id + " got caught by a police officer!");
+      }
     }
   }
 
-  const cleanupLeader = getLeaderRunner() || player;
-  policeOfficers = policeOfficers.filter(cop => {
-    if (!canEnemyDamage(cop)) return false;
-    const keep = cop.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+  const cleanupLeader = safeLeaderRunner
+    ? (getLeaderRunner() || player)
+    : player;
 
-    if (!keep) {
-      if (cop.laser) scene.remove(cop.laser);
-      scene.remove(cop.rig);
+  policeOfficers = policeOfficers.filter(cop => {
+    if (!cop || !cop.rig) return false;
+
+    const alive = !safeCanEnemyDamage || canEnemyDamage(cop);
+
+    if (!alive) {
+      if (cop.laser) cop.laser.visible = false;
+      return false;
     }
 
-    return keep;
+    const leaderZ = cleanupLeader && cleanupLeader.rig
+      ? cleanupLeader.rig.position.z
+      : distance || 0;
+
+    const keep = cop.rig.position.z > leaderZ - CLEANUP_BEHIND_DISTANCE;
+
+    if (!keep) {
+      if (safeRemove) {
+        removeEnemyActor(cop, policeOfficers);
+      } else {
+        if (cop.laser) {
+          cop.laser.visible = false;
+          scene.remove(cop.laser);
+        }
+        scene.remove(cop.rig);
+      }
+
+      return false;
+    }
+
+    return true;
   });
+}
+
+function movePoliceDirectlyTowardTarget(cop, target, dt) {
+  if (!cop || !cop.rig || !target || !target.rig) return;
+
+  const dir = new THREE.Vector3().subVectors(target.rig.position, cop.rig.position);
+  dir.y = 0;
+
+  if (dir.lengthSq() <= 0.001) return;
+
+  dir.normalize();
+
+  const speed = cop.speed || 10.5;
+  cop.rig.position.x += dir.x * speed * dt;
+  cop.rig.position.z += dir.z * speed * dt;
+
+  cop.rig.position.x = clamp(
+    cop.rig.position.x,
+    -WORLD_WIDTH / 2 + 2,
+    WORLD_WIDTH / 2 - 2
+  );
+
+  cop.rig.rotation.y = Math.atan2(dir.x, dir.z);
+}
+
+function facePoliceTowardTarget(cop, target) {
+  if (!cop || !cop.rig || !target || !target.rig) return;
+
+  const dir = new THREE.Vector3().subVectors(target.rig.position, cop.rig.position);
+  dir.y = 0;
+
+  if (dir.lengthSq() > 0.01) {
+    dir.normalize();
+    cop.rig.rotation.y = Math.atan2(dir.x, dir.z);
+  }
+}
+
+function animatePoliceOfficer(cop, dt) {
+  if (!cop || !cop.parts) return;
+
+  const t = cop.animTime || 0;
+  const moving = cop.state === "chase";
+  const swing = moving ? Math.sin(t * 9) * 0.55 : 0.08;
+
+  if (cop.parts.leftArm) cop.parts.leftArm.rotation.x = swing;
+  if (cop.parts.rightArm) cop.parts.rightArm.rotation.x = -swing;
+  if (cop.parts.leftLeg) cop.parts.leftLeg.rotation.x = -swing;
+  if (cop.parts.rightLeg) cop.parts.rightLeg.rotation.x = swing;
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
 }
 
 function firePoliceBullet(cop, target) {
