@@ -875,7 +875,13 @@ function baseAnonName(raw){
 }
 function sanitizePersonNameForSave(raw){
   const cleaned = (raw || '').toString().trim().replace(/\s+/g,' ');
-  return cleaned;
+  if(!cleaned) return '';
+  const parts = cleaned.split(' ');
+  if(parts.length === 1) return parts[0];
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  const lastInitial = (last[0] || '').toUpperCase();
+  return lastInitial ? `${first} ${lastInitial}.` : first;
 }
 function collectKnownPersonNames(){
   const known = [];
@@ -2206,7 +2212,7 @@ submitForm.addEventListener('click', async ()=>{
     date,
     reviewerRaw,
     reviewerDisplay,
-    reviewer: reviewerRaw,
+    reviewer: reviewerDisplay,
     scenarioCategory: scenarioCategory || null,
     opportunities,
     notes,
