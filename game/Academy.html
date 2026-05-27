@@ -147,6 +147,12 @@
   .spark{ width:100px; height:26px; display:inline-block; border-radius:6px; background:#ffffff; border:1px solid #e5e7eb; overflow:hidden }
   .spark svg{ display:block; width:100%; height:100% }
   .spark .zero{ stroke:#e5e7eb; stroke-dasharray:3 3 }
+  .scoreHero{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center;margin-top:10px;padding:10px;border-radius:12px;background:linear-gradient(135deg,#f8fbff,#ffffff);border:1px solid #dbeafe}
+  .scoreHeroAvg .tiny{font-weight:900;text-transform:uppercase;letter-spacing:.05em}
+  .scoreHeroAvg .bigScore{font-size:28px;font-weight:1000;line-height:1}
+  .scoreHeroTrend{font-size:18px;font-weight:1000}
+  .scoreHeroTrend.good{color:#15803d}.scoreHeroTrend.bad{color:#b91c1c}.scoreHeroTrend.flat{color:#92400e}
+  .scoreHeroSpark .spark{width:130px;height:34px}
 
   /* Per-question trend grid */
   .qtrend-grid{ display:grid; grid-template-columns:1fr; gap:8px; }
@@ -307,6 +313,14 @@
             <input id="filterStart" type="date" aria-label="Start date">
             <input id="filterEnd" type="date" aria-label="End date">
             <button id="applyRange" class="ghost">Apply</button>
+            <select id="scoreWindowDays" title="Score Window">
+              <option value="7">Last 7 days</option>
+              <option value="14">Last 14 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="60">Last 60 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="all">All time</option>
+            </select>
 
             <select id="sortSelect" title="Sort" style="margin-left:auto">
               <option value="az">A–Z</option>
@@ -549,6 +563,21 @@
           <button class="btab-btn active" data-btab="coach">Coach Summary</button>
           <button class="btab-btn" data-btab="director">Director Snapshot</button>
           <button class="btab-btn" data-btab="engagement">Representatives Engagement</button>
+          <button class="btab-btn" data-btab="status">Status</button>
+        </div>
+        <div class="bpanelBox" style="margin-top:10px;">
+          <h4 style="margin:0 0 8px 0;">Top Representatives by Average Score</h4>
+          <div class="row">
+            <select id="directorScoreWindowDays"><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30" selected>Last 30 days</option><option value="60">Last 60 days</option><option value="90">Last 90 days</option><option value="all">All time</option></select>
+            <select id="directorFilter"><option value="all">All Directors</option><option value="Melick">Melick</option><option value="Nelson">Nelson</option><option value="Terry">Terry</option><option value="Richards">Richards</option><option value="unassigned">Unassigned Director</option></select>
+            <select id="coachFilter"><option value="all">All Coaches</option></select>
+            <label class="tiny"><input type="checkbox" id="includeNoScoreReps"> Include reps with no score</label>
+          </div>
+          <div style="overflow:auto;margin-top:8px"><table id="topRepScoresTable"><thead><tr><th>Rank</th><th>Representative</th><th>Average Score</th><th>Trend</th><th>Assessments</th><th>Last Assessment</th><th>Director</th><th>Coach</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+        </div>
+        <div class="bpanelBox" style="margin-top:10px;">
+          <h4 style="margin:0 0 8px 0;">Missing Assignments</h4>
+          <div style="overflow:auto"><table id="missingAssignmentsTable"><thead><tr><th>Representative</th><th>Coach</th><th>Director</th><th>Save</th><th>Open</th></tr></thead><tbody></tbody></table></div>
         </div>
 
         <div id="btabCoach" class="btabpanel">
@@ -680,6 +709,19 @@
               </div>
             </div>
 
+          </div>
+        </div>
+        <div id="btabStatus" class="btabpanel" hidden>
+          <div class="bpanelBox">
+            <div class="row">
+              <input id="statusSearch" placeholder="Search reps...">
+              <select id="statusDirectorFilter"><option value="all">All Directors</option><option value="Melick">Melick</option><option value="Nelson">Nelson</option><option value="Terry">Terry</option><option value="Richards">Richards</option><option value="unassigned">Unassigned Director</option></select>
+              <select id="statusCoachFilter"><option value="all">All Coaches</option></select>
+              <select id="statusScoreWindowDays"><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30" selected>Last 30 days</option><option value="60">Last 60 days</option><option value="90">Last 90 days</option><option value="all">All time</option></select>
+              <select id="statusStaleDays"><option value="14">Stale over 14 days</option><option value="30" selected>Stale over 30 days</option><option value="60">Stale over 60 days</option><option value="90">Stale over 90 days</option></select>
+            </div>
+            <div class="row" style="margin-top:8px;"><button class="soft statusFilter active" data-status="active">Active</button><button class="soft statusFilter" data-status="promoted">Promoted</button><button class="soft statusFilter" data-status="notPursuing">Not Pursuing</button><button class="soft statusFilter" data-status="stale">Stale</button></div>
+            <div style="overflow:auto;margin-top:8px"><table id="statusTable"><thead><tr><th>Representative</th><th>Average Score</th><th>Trend</th><th>Last Assessment</th><th>Director</th><th>Coach</th><th>Current Status</th><th>Move To</th><th>Remove From Category</th><th>Delete Rep</th></tr></thead><tbody></tbody></table></div>
           </div>
         </div>
         <div class="divider"></div>
@@ -842,6 +884,15 @@ const mainPageDirectors = document.getElementById('mainPageDirectors');
 const btabCoach = document.getElementById('btabCoach');
 const btabDirector = document.getElementById('btabDirector');
 const btabEngagement = document.getElementById('btabEngagement');
+const btabStatus = document.getElementById('btabStatus');
+const scoreWindowDaysEl = document.getElementById('scoreWindowDays');
+const directorScoreWindowDaysEl = document.getElementById('directorScoreWindowDays');
+const directorFilterEl = document.getElementById('directorFilter');
+const coachFilterEl = document.getElementById('coachFilter');
+const includeNoScoreRepsEl = document.getElementById('includeNoScoreReps');
+const topRepScoresTableBody = document.querySelector('#topRepScoresTable tbody');
+const missingAssignmentsTableBody = document.querySelector('#missingAssignmentsTable tbody');
+const statusTableBody = document.querySelector('#statusTable tbody');
 
 const engWeeks = document.getElementById('engWeeks');
 const engRefresh = document.getElementById('engRefresh');
@@ -1068,6 +1119,7 @@ function setBottomTab(which){
   btabCoach.hidden = which !== 'coach';
   btabDirector.hidden = which !== 'director';
   btabEngagement.hidden = which !== 'engagement';
+  if(btabStatus) btabStatus.hidden = which !== 'status';
 }
 document.addEventListener('click', (e)=>{
   if(e.target.classList.contains('btab-btn')) setBottomTab(e.target.dataset.btab);
@@ -1155,6 +1207,27 @@ function movementChipHTML(verdicts){
   const sign = d > 0 ? '+' : '';
   return `<span class="${cls}" title="Change vs previous assessment">${arrow} Δ ${sign}${d.toFixed(2)}</span>`;
 }
+function getScoreWindowStartTs(id='scoreWindowDays'){
+  const val = document.getElementById(id)?.value || '30';
+  if(val === 'all') return 0;
+  return Date.now() - Number(val) * 24 * 60 * 60 * 1000;
+}
+function trendFromScores(scores){
+  const last = scores.length ? scores[scores.length-1] : null;
+  const previous = scores.length>1 ? scores[scores.length-2] : null;
+  const delta = (last!==null && previous!==null) ? (last-previous) : null;
+  let trendLabel='—', trendClass='flat', trendIcon='•';
+  if(delta!==null){ if(delta>0.05){trendLabel=`+${delta.toFixed(2)}`;trendClass='good';trendIcon='▲';} else if(delta<-0.05){trendLabel=delta.toFixed(2);trendClass='bad';trendIcon='▼';} else {trendLabel='Flat';}}
+  return {last, previous, delta, trendLabel, trendClass, trendIcon};
+}
+function getRepScoreStats(repKey, id='scoreWindowDays'){
+  const startTs = getScoreWindowStartTs(id);
+  const formsObj = formsByRep[repKey] || {};
+  const ordered = Object.values(formsObj).map(f=>({...f,_ts:new Date(f.date).getTime()})).filter(f=>Number.isFinite(f._ts)).filter(f=>startTs===0||f._ts>=startTs).sort((a,b)=>a._ts-b._ts);
+  const scores = ordered.map(f=>Number(f.verdict ?? f.avgScore)).filter(Number.isFinite);
+  const t = trendFromScores(scores);
+  return { count:scores.length, average:scores.length?avg(scores):null, scores, ...t, lastDate:ordered.length?ordered[ordered.length-1].date:null };
+}
 
 /* =========================
    Render Rep List (normal or director tree)
@@ -1165,8 +1238,8 @@ function buildRepEntries(){
   let entries = Object.entries(reps).map(([k,v])=>{
     const formsObj = formsByRep[k] || {};
     const ordered = Object.values(formsObj).sort((a,b)=> new Date(a.date)-new Date(b.date));
-    const verdicts = ordered.map(f=>+f.verdict||0);
-    const scores   = ordered.map(f=>f.verdict).filter(x=>typeof x==='number');
+    const stats = getRepScoreStats(k, 'scoreWindowDays');
+    const verdicts = stats.scores;
     const last     = ordered[ordered.length-1];
     const lastTs   = last ? new Date(last.date).getTime() : 0;
 
@@ -1188,12 +1261,15 @@ function buildRepEntries(){
       ready: !!v.readyIn30,
       promoted,
       notPursuing,
-      count: ordered.length,
-      avg: scores.length ? avg(scores) : null,
-      lastDate: last ? last.date : null,
+      count: stats.count,
+      avg: stats.average,
+      lastDate: stats.lastDate || (last ? last.date : null),
       lastTs,
       lastScenario,
-      verdicts
+      verdicts,
+      trendLabel: stats.trendLabel,
+      trendClass: stats.trendClass,
+      trendIcon: stats.trendIcon
     };
   }).filter(r=>{
     const text = (r.name+' '+(r.coach||'')+' '+(r.director||'')).toLowerCase();
@@ -1234,11 +1310,12 @@ function repCardHTML(r){
         <div class="name">${escapeHtml(displayRepName(r.key))}</div>
         <div class="repRows">
           <div class="meta">${coachChip}${dirChip}</div>
-          <div class="meta">${avgChip}${countChip}${lastChip}${scenarioChip}${moveChip}</div>
+          <div class="scoreHero"><div class="scoreHeroAvg"><div class="tiny">AVG SCORE</div><div class="bigScore">${r.avg ? r.avg.toFixed(2) : '—'}</div></div><div class="scoreHeroTrend ${r.trendClass||'flat'}">TREND: ${r.trendIcon||'•'} ${r.trendLabel||'—'}</div><div class="scoreHeroSpark">${spark}</div></div>
+          <div class="meta">${countChip}${lastChip}${scenarioChip}${moveChip}</div>
           <div class="meta">${kpiChip}${roleChip}${star}${statusChip}</div>
         </div>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">${spark}</div>
+      <div style="display:flex; align-items:center; gap:8px;">${avgChip}</div>
     </div>`;
 }
 
@@ -1345,6 +1422,10 @@ function renderRepList(){
   renderDirectorSnapshot();
   renderRecentMeetingActivity();
   renderEngagement(); // keep it fresh as data changes
+  populateCoachFilters();
+  renderTopRepScores();
+  renderMissingAssignments();
+  renderStatusTab();
 }
 
 /* Dropdown should respect status visibility toggles */
@@ -1687,6 +1768,54 @@ function renderDirectorSnapshot(){
       showDirectorPopup(d);
     });
   });
+}
+
+function getRepCurrentStatus(repKey){
+  const rep = reps[repKey] || {};
+  if(rep.notPursuing) return 'notPursuing';
+  if(rep.promoted) return 'promoted';
+  return 'active';
+}
+async function setRepStatus(repKey, status){
+  if(!reps[repKey]) return;
+  const updates = status==='promoted' ? {promoted:true, notPursuing:false} : (status==='notPursuing' ? {promoted:false, notPursuing:true} : {promoted:false, notPursuing:false});
+  await db.ref(`reps/${repKey}`).update(updates);
+}
+async function deleteRepFromTracker(repKey){
+  const rep = reps[repKey] || {};
+  if(!confirm(`Delete ${rep.name||repKey}? This removes the rep from reps but does not delete historical coaching forms. Continue?`)) return;
+  await db.ref(`reps/${repKey}`).remove();
+}
+function populateCoachFilters(){
+  const coaches = [...new Set(Object.values(reps).map(r=>displayCoachName((r.coach||'').trim())).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const opts = `<option value="all">All Coaches</option>` + coaches.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  if(coachFilterEl) coachFilterEl.innerHTML = opts;
+  const s = document.getElementById('statusCoachFilter'); if(s) s.innerHTML = opts;
+}
+function renderTopRepScores(){
+  if(!topRepScoresTableBody) return;
+  const dir = directorFilterEl?.value || 'all', coach = coachFilterEl?.value || 'all', includeNo = !!includeNoScoreRepsEl?.checked;
+  const rows = Object.keys(reps).map(k=>({key:k,rep:reps[k],stats:getRepScoreStats(k,'directorScoreWindowDays')})).filter(o=> (dir==='all'||(dir==='unassigned'?!o.rep.director:o.rep.director===dir)) && (coach==='all'||displayCoachName(o.rep.coach||'')===coach) && (includeNo || o.stats.count>0)).sort((a,b)=>(b.stats.average??-1)-(a.stats.average??-1));
+  topRepScoresTableBody.innerHTML = rows.map((o,i)=>`<tr class="topRepRow" data-repkey="${o.key}"><td>${i+1}</td><td>${escapeHtml(displayRepName(o.key))}</td><td style="${o.stats.average?scoreColorStyle(o.stats.average):''}">${o.stats.average?o.stats.average.toFixed(2):'—'}</td><td class="${o.stats.trendClass}">${o.stats.trendIcon} ${o.stats.trendLabel}</td><td>${o.stats.count}</td><td>${o.stats.lastDate?fmtDate(o.stats.lastDate):'—'}</td><td>${escapeHtml(o.rep.director||'—')}</td><td>${escapeHtml(displayCoachName(o.rep.coach||'')||'—')}</td><td>${getRepCurrentStatus(o.key)}</td></tr>`).join('') || '<tr><td colspan="9" class="tiny">No reps in this filter.</td></tr>';
+}
+function renderMissingAssignments(){
+  if(!missingAssignmentsTableBody) return;
+  const rows = Object.entries(reps).filter(([,r])=>!(r.coach||'').trim() || !(r.director||'').trim());
+  missingAssignmentsTableBody.innerHTML = rows.map(([k,r])=>`<tr><td>${escapeHtml(displayRepName(k))}</td><td><input class="inlineCoachInput" data-repkey="${k}" value="${escapeHtml(r.coachRaw||r.coach||'')}" placeholder="Type coach name"></td><td><select class="inlineDirectorSelect" data-repkey="${k}"><option value="">— Unassigned —</option>${DIRECTORS.map(d=>`<option value="${d}" ${r.director===d?'selected':''}>${d}</option>`).join('')}</select></td><td><button class="saveAssignmentBtn" data-repkey="${k}">Save</button> <span class="tiny saveMsg" id="saveMsg_${k}"></span></td><td><button class="soft openRepBtn" data-repkey="${k}">Open</button></td></tr>`).join('') || '<tr><td colspan="5" class="tiny">No missing assignments.</td></tr>';
+}
+function renderStatusTab(){
+  if(!statusTableBody) return;
+  const filt = document.querySelector('.statusFilter.active')?.dataset.status || 'active';
+  const search = (document.getElementById('statusSearch')?.value||'').toLowerCase();
+  const dflt = document.getElementById('statusDirectorFilter')?.value || 'all';
+  const cflt = document.getElementById('statusCoachFilter')?.value || 'all';
+  const staleDays = Number(document.getElementById('statusStaleDays')?.value || 30);
+  const staleMs = staleDays*24*60*60*1000;
+  const rows = Object.entries(reps).filter(([k,r])=>{
+    const stats = getRepScoreStats(k,'statusScoreWindowDays'); const lastTs = stats.lastDate ? new Date(stats.lastDate).getTime() : 0; const stale = !lastTs || (Date.now()-lastTs>staleMs); const current = r.notPursuing?'notPursuing':(r.promoted?'promoted':(stale?'stale':'active'));
+    return current===filt && (displayRepName(k).toLowerCase().includes(search)) && (dflt==='all'||(dflt==='unassigned'?!r.director:r.director===dflt)) && (cflt==='all'||displayCoachName(r.coach||'')===cflt);
+  });
+  statusTableBody.innerHTML = rows.map(([k,r])=>{ const s=getRepScoreStats(k,'statusScoreWindowDays'); const cs=getRepCurrentStatus(k); return `<tr><td>${escapeHtml(displayRepName(k))}</td><td>${s.average?s.average.toFixed(2):'—'}</td><td class="${s.trendClass}">${s.trendIcon} ${s.trendLabel}</td><td>${s.lastDate?fmtDate(s.lastDate):'—'}</td><td>${escapeHtml(r.director||'—')}</td><td>${escapeHtml(displayCoachName(r.coach||'')||'—')}</td><td>${cs}</td><td><select class="moveStatusSelect" data-repkey="${k}"><option value=''>Move to...</option><option value='active'>Active</option><option value='promoted'>Promoted</option><option value='notPursuing'>Not Pursuing</option></select><button class="moveStatusBtn" data-repkey="${k}">Move</button></td><td>${cs==='active'?'—':`<button class="removeStatusBtn" data-repkey="${k}">Remove</button>`}</td><td><button class="deleteRepBtn" data-repkey="${k}">Delete</button></td></tr>`; }).join('') || '<tr><td colspan="10" class="tiny">No reps in this status/filter.</td></tr>';
 }
 
 function showDirectorPopup(dirName){
@@ -2221,6 +2350,27 @@ applyRange .addEventListener('click', renderRepList);
 directorModeEl.addEventListener('change', renderRepList);
 showPromotedEl.addEventListener('change', renderRepList);
 showNotPursuingEl.addEventListener('change', renderRepList);
+scoreWindowDaysEl?.addEventListener('change', renderRepList);
+directorScoreWindowDaysEl?.addEventListener('change', renderTopRepScores);
+directorFilterEl?.addEventListener('change', renderTopRepScores);
+coachFilterEl?.addEventListener('change', renderTopRepScores);
+includeNoScoreRepsEl?.addEventListener('change', renderTopRepScores);
+['statusSearch','statusDirectorFilter','statusCoachFilter','statusScoreWindowDays','statusStaleDays'].forEach(id=>{
+  document.getElementById(id)?.addEventListener('input', renderStatusTab);
+  document.getElementById(id)?.addEventListener('change', renderStatusTab);
+});
+document.addEventListener('click', async (e)=>{
+  if(e.target.classList.contains('statusFilter')){
+    document.querySelectorAll('.statusFilter').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active'); renderStatusTab();
+  }
+  if(e.target.classList.contains('topRepRow') || e.target.closest('.topRepRow')){ const row = e.target.closest('.topRepRow'); if(row?.dataset.repkey){ setMainTab('reps'); selectRep(row.dataset.repkey); } }
+  if(e.target.classList.contains('openRepBtn')){ setMainTab('reps'); selectRep(e.target.dataset.repkey); }
+  if(e.target.classList.contains('saveAssignmentBtn')){ const k=e.target.dataset.repkey; const rawCoach=document.querySelector(`.inlineCoachInput[data-repkey="${k}"]`)?.value?.trim()||''; const director=document.querySelector(`.inlineDirectorSelect[data-repkey="${k}"]`)?.value||''; await db.ref(`reps/${k}`).update({coachRaw:rawCoach||null,coach:sanitizePersonNameForSave(rawCoach)||null,director:director||null}); const msg=document.getElementById(`saveMsg_${k}`); if(msg) msg.textContent='Saved ✓'; renderRepList(); }
+  if(e.target.classList.contains('moveStatusBtn')){ const k=e.target.dataset.repkey; const next=document.querySelector(`.moveStatusSelect[data-repkey="${k}"]`)?.value; if(next) await setRepStatus(k,next); renderRepList(); }
+  if(e.target.classList.contains('removeStatusBtn')){ const k=e.target.dataset.repkey; const cur=getRepCurrentStatus(k); if(cur==='promoted') await db.ref(`reps/${k}`).update({promoted:false}); if(cur==='notPursuing') await db.ref(`reps/${k}`).update({notPursuing:false}); renderRepList(); }
+  if(e.target.classList.contains('deleteRepBtn')){ await deleteRepFromTracker(e.target.dataset.repkey); renderRepList(); }
+});
 
 document.getElementById('addRepBtn').addEventListener('click', async ()=>{
   const name = document.getElementById('newRepName').value.trim();
