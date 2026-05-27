@@ -101,7 +101,16 @@
     background:linear-gradient(180deg,#fff7f7 0%, #fff1f1 70%, #ffffff 100%);
   }
 
-  .name{font-weight:800}
+  .name{font-weight:900; font-size:17px; line-height:1.2}
+  .repRows{display:flex; flex-direction:column; gap:6px; margin-top:6px}
+  .rep.selected{border-color:#2563eb; background:linear-gradient(180deg,#eff6ff 0%, #eaf2ff 100%); box-shadow:0 0 0 2px rgba(37,99,235,.15), 0 10px 26px rgba(37,99,235,.16)}
+  .summaryRow{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:10px 0 4px}
+  .summaryItem{padding:8px 10px; border:1px solid var(--line); border-radius:10px; background:#f8fbff}
+  .summaryItem .label{font-size:11px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em}
+  .summaryItem .value{font-size:18px; font-weight:900; margin-top:2px}
+  details.sectionFold{border:1px solid var(--line); border-radius:12px; background:#fff; margin-top:8px; overflow:hidden}
+  details.sectionFold summary{cursor:pointer; padding:10px 12px; font-weight:800; background:#f8fafc}
+  details.sectionFold .foldBody{padding:10px 12px 12px}
   .meta{display:flex; gap:6px; flex-wrap:wrap}
   .chip{font-size:12px; padding:6px 10px; border-radius:999px; background:var(--chip); border:1px solid var(--chip-br); color:#0b1a37}
   .chip.good{background:#eafff3; color:#066b3c; border-color:#a7f3d0}
@@ -257,12 +266,17 @@
       <div class="card">
         <h3>Representatives</h3>
         <div class="body">
-          <div class="row">
-            <input id="search" placeholder="Search reps / coach / director…" style="flex:1;" />
-          </div>
+          <div id="repSummaryRow" class="summaryRow"></div>
 
-          <div class="row" style="gap:8px; margin-top:8px;">
-            <select id="repFilter" title="Filter">
+          <details class="sectionFold" open>
+            <summary>Filters &amp; Sorting</summary>
+            <div class="foldBody">
+              <div class="row">
+                <input id="search" placeholder="Search reps / coach / director…" style="flex:1;" />
+              </div>
+
+              <div class="row" style="gap:8px; margin-top:8px;">
+                <select id="repFilter" title="Filter">
               <option value="all">All reps</option>
               <option value="last30">Coached in last 30 days</option>
               <option value="stale30">No coaching in last 30 days</option>
@@ -285,40 +299,46 @@
             </select>
           </div>
 
-          <div class="row" style="gap:10px; margin-top:8px;">
-            <label class="row tiny" style="gap:8px; user-select:none">
-              <input type="checkbox" id="directorMode">
+              <div class="row" style="gap:10px; margin-top:8px;">
+                <label class="row tiny" style="gap:8px; user-select:none">
+                  <input type="checkbox" id="directorMode">
               <span style="font-weight:900; color:#0b1a37">Sort by Director (tree)</span>
             </label>
 
-            <label class="row tiny" style="gap:8px; user-select:none">
-              <input type="checkbox" id="showPromoted">
+                <label class="row tiny" style="gap:8px; user-select:none">
+                  <input type="checkbox" id="showPromoted">
               <span style="font-weight:800">Show Promoted</span>
             </label>
 
-            <label class="row tiny" style="gap:8px; user-select:none">
-              <input type="checkbox" id="showNotPursuing">
+                <label class="row tiny" style="gap:8px; user-select:none">
+                  <input type="checkbox" id="showNotPursuing">
               <span style="font-weight:800">Show Not Pursuing</span>
             </label>
           </div>
 
-          <div class="divider"></div>
+            </div>
+          </details>
 
-          <div class="row" style="gap:8px;">
-            <input id="newRepName" placeholder="Add new rep (First Last)" style="flex:1;">
+          <details class="sectionFold" open>
+            <summary>Add New Rep</summary>
+            <div class="foldBody">
+              <div class="row" style="gap:8px;">
+                <input id="newRepName" placeholder="Add new rep (First Last)" style="flex:1;">
             <input id="newRepCoach" placeholder="Coach (optional)" style="flex:1; min-width:140px;">
           </div>
 
-          <div class="row" style="gap:8px; margin-top:8px;">
-            <select id="newRepDirector" style="flex:1; min-width:170px" title="Director">
+              <div class="row" style="gap:8px; margin-top:8px;">
+                <select id="newRepDirector" style="flex:1; min-width:170px" title="Director">
               <option value="">Director (optional)…</option>
               <option value="Melick">Melick</option>
               <option value="Nelson">Nelson</option>
               <option value="Terry">Terry</option>
               <option value="Richards">Richards</option>
             </select>
-            <button id="addRepBtn">Add</button>
-          </div>
+                <button id="addRepBtn">Add</button>
+              </div>
+            </div>
+          </details>
         </div>
 
         <div class="list" id="repList"></div>
@@ -732,6 +752,7 @@ const WEEK_MS = 7*24*60*60*1000;
    DOM Refs
 ========================= */
 const repListEl = document.getElementById('repList');
+const repSummaryRowEl = document.getElementById('repSummaryRow');
 const searchEl = document.getElementById('search');
 const sortSelect = document.getElementById('sortSelect');
 const repFilter = document.getElementById('repFilter');
@@ -1138,14 +1159,16 @@ function repCardHTML(r){
     : (r.promoted ? `<span class="chip good" title="Promoted">✅ Promoted</span>` : '');
 
   const spark = buildSparkline(r.verdicts);
-  const cls = `rep ${r.promoted?'promoted':''} ${r.notPursuing?'notp':''}`.trim();
+  const cls = `rep ${r.promoted?'promoted':''} ${r.notPursuing?'notp':''} ${selectedRep===r.key?'selected':''}`.trim();
 
   return `
     <div class="${cls}" data-rep="${escapeHtml(r.key)}">
       <div>
         <div class="name">${escapeHtml(displayRepName(r.key))}</div>
-        <div class="meta">
-          ${coachChip}${dirChip}${avgChip}${countChip}${kpiChip}${roleChip}${star}${statusChip}${lastChip}${moveChip}${scenarioChip}
+        <div class="repRows">
+          <div class="meta">${coachChip}${dirChip}</div>
+          <div class="meta">${avgChip}${countChip}${lastChip}${scenarioChip}${moveChip}</div>
+          <div class="meta">${kpiChip}${roleChip}${star}${statusChip}</div>
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">${spark}</div>
@@ -1156,6 +1179,23 @@ function renderRepList(){
   buildAnonNameMaps();
   const entriesRaw = buildRepEntries();
   repListEl.innerHTML = '';
+
+  if(repSummaryRowEl){
+    const coachedLast30 = entriesRaw.filter(r=>r.lastTs && (Date.now()-r.lastTs<=DAYS_30_MS)).length;
+    const stale30 = entriesRaw.filter(r=>r.lastTs && (Date.now()-r.lastTs>DAYS_30_MS)).length;
+    const ready30 = entriesRaw.filter(r=>r.ready).length;
+    const promoted = entriesRaw.filter(r=>r.promoted).length;
+    const notP = entriesRaw.filter(r=>r.notPursuing).length;
+    const items = [
+      ['Total Visible Reps', entriesRaw.length],
+      ['Coached Last 30', coachedLast30],
+      ['Stale Over 30', stale30],
+      ['Ready in 30', ready30],
+      ['Promoted', promoted],
+      ['Not Pursuing', notP]
+    ];
+    repSummaryRowEl.innerHTML = items.map(([label,value])=>`<div class="summaryItem"><div class="label">${label}</div><div class="value">${value}</div></div>`).join('');
+  }
 
   if(directorModeEl.checked){
     // Tree mode
