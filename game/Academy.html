@@ -1881,6 +1881,20 @@ function renderAnonymityScanResults(results){
   if(!filtered.length){ anonymityResultsTableBody.innerHTML = `<tr><td colspan="7" class="tiny">✅ No names found in this view. Assessment notes are clean.</td></tr>`; return; }
   anonymityResultsTableBody.innerHTML = filtered.map(r=>`<tr data-anon-id="${escapeHtml(r.id)}"><td><input type="checkbox" class="anon-select"></td><td>${escapeHtml(r.foundName)}</td><td><input class="anon-edit" value="${escapeHtml(r.suggestedReplacement)}" /></td><td>${escapeHtml(r.repAssessmentDate)}</td><td>${escapeHtml(r.field)}</td><td>${escapeHtml(r.preview)}</td><td>${escapeHtml(r.status)}</td></tr>`).join('');
 }
+function escapeRegExp(str){
+  return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function replaceExactNameOccurrences(text, foundName, replacement){
+  if(typeof text !== 'string') return text;
+  const target = String(foundName || '').trim();
+  const nextValue = String(replacement || '').trim();
+  if(!target || !nextValue) return text;
+  if(target.split(/\s+/).length < 2) return text;
+  const escaped = escapeRegExp(target);
+  const re = new RegExp(`(^|[^A-Za-z0-9])(${escaped})(?=$|[^A-Za-z0-9])`, 'g');
+  const replaced = text.replace(re, (_, lead) => `${lead}${nextValue}`);
+  return replaced.replace(/\.{2,}/g, '.');
+}
 async function applySelectedAnonymityReplacements(){
   const selectedRows = [];
   anonymityResultsTableBody.querySelectorAll('tr[data-anon-id]').forEach(tr=>{
@@ -1893,26 +1907,65 @@ async function applySelectedAnonymityReplacements(){
   const replacementById = Object.fromEntries(selectedRows.map(r=>[r.id, r.replacement]));
   const updates = {};
   const statusById = {};
+  const selectedByField = {};
   anonymityScanResults.forEach(r=>{ statusById[r.id] = 'Skipped'; });
   anonymityScanResults.forEach(r=>{
     const replacement = replacementById[r.id];
-    if(!replacement || replacement === r.foundName || !replacement.trim()) return;
-    const text = formsByRep?.[r.repKey]?.[r.formId]?.[r.field];
-    if(typeof text !== 'string'){ statusById[r.id] = 'Error'; return; }
-    const escaped = r.foundName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`\\b${escaped}\\b`, 'g');
-    const next = text.replace(re, replacement);
-    if(next !== text){
-      updates[`coachingForms/${r.repKey}/${r.formId}/${r.field}`] = next;
-      statusById[r.id] = 'Applied';
-    } else {
-      statusById[r.id] = 'Error';
+    if(!replacement || replacement === r.foundName || !replacement.trim()){
+      statusById[r.id] = 'Skipped';
+      return;
+    }
+    if(r.foundName.split(/\s+/).length < 2){
+      statusById[r.id] = 'Skipped';
+      return;
+    }
+    const fieldKey = `${r.repKey}__${r.formId}__${r.field}`;
+    if(!selectedByField[fieldKey]) selectedByField[fieldKey] = [];
+    selectedByField[fieldKey].push({ id:r.id, foundName:r.foundName, replacement });
+  });
+  let appliedCount = 0;
+  let updatedFieldCount = 0;
+  Object.entries(selectedByField).forEach(([fieldKey, items])=>{
+    const [repKey, formId, field] = fieldKey.split('__');
+    const originalText = formsByRep?.[repKey]?.[formId]?.[field];
+    if(typeof originalText !== 'string'){
+      items.forEach(item=>{ statusById[item.id] = 'Error'; });
+      return;
+    }
+    let next = originalText;
+    items.forEach(item=>{
+      const updated = replaceExactNameOccurrences(next, item.foundName, item.replacement);
+      if(updated !== next){
+        next = updated;
+        statusById[item.id] = 'Applied';
+        appliedCount += 1;
+      } else {
+        statusById[item.id] = 'Error';
+      }
+    });
+    if(next !== originalText){
+      updates[`coachingForms/${repKey}/${formId}/${field}`] = next;
+      updatedFieldCount += 1;
     }
   });
-  if(!Object.keys(updates).length){ alert('No changes detected from selected rows.'); return; }
+  if(!Object.keys(updates).length){
+    Object.keys(replacementById).forEach(id=>{
+      if(statusById[id] === 'Skipped') statusById[id] = 'Error';
+    });
+    anonymityScanResults = anonymityScanResults.map(r=>({ ...r, status: statusById[r.id] || r.status }));
+    renderAnonymityScanResults(anonymityScanResults);
+    alert('No changes detected from selected rows.');
+    return;
+  }
   await db.ref().update(updates);
+  Object.keys(replacementById).forEach(id=>{
+    if(statusById[id] === 'Skipped'){
+      statusById[id] = 'Error';
+    }
+  });
   anonymityScanResults = anonymityScanResults.map(r=>({ ...r, status: statusById[r.id] || r.status }));
   renderAnonymityScanResults(anonymityScanResults);
+  alert(`Applied ${appliedCount} replacements across ${updatedFieldCount} assessment fields.`);
   await loadAllForms();
   scanAssessmentNotesForNames();
 }
