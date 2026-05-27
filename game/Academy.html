@@ -773,6 +773,83 @@ const modalClose = document.getElementById('modalClose');
 let reps = {};
 let formsByRep = {};
 let selectedRep = null;
+let anonRepDisplayByKey = {};
+let anonCoachDisplayByRaw = {};
+let anonReviewerDisplayByRaw = {};
+
+function splitPersonName(raw){
+  const cleaned = (raw || '').toString().trim().replace(/\s+/g,' ');
+  return cleaned ? cleaned.split(' ') : [];
+}
+function baseAnonName(raw){
+  const parts = splitPersonName(raw);
+  if(!parts.length) return '';
+  if(parts.length === 1) return parts[0];
+  const first = parts[0];
+  const lastInitial = (parts[parts.length - 1][0] || '').toUpperCase();
+  return lastInitial ? `${first} ${lastInitial}.` : first;
+}
+function buildAnonNameMaps(){
+  const repGroups = {}, coachGroups = {}, reviewerGroups = {};
+  for(const [repKey, rep] of Object.entries(reps || {})){
+    const repRaw = (rep?.name || repKey || '').trim();
+    const repBase = baseAnonName(repRaw);
+    if(repBase){
+      if(!repGroups[repBase]) repGroups[repBase] = [];
+      repGroups[repBase].push({ repKey, raw:repRaw });
+    }
+    const coachRaw = (rep?.coach || '').trim();
+    const coachBase = baseAnonName(coachRaw);
+    if(coachBase){
+      if(!coachGroups[coachBase]) coachGroups[coachBase] = [];
+      coachGroups[coachBase].push(coachRaw);
+    }
+  }
+  for(const forms of Object.values(formsByRep || {})){
+    for(const f of Object.values(forms || {})){
+      const raw = (f?.reviewer || '').trim();
+      const base = baseAnonName(raw);
+      if(base){
+        if(!reviewerGroups[base]) reviewerGroups[base] = [];
+        reviewerGroups[base].push(raw);
+      }
+    }
+  }
+  anonRepDisplayByKey = {};
+  for(const [base, entries] of Object.entries(repGroups)){
+    const ordered = entries.slice().sort((a,b)=>a.raw.localeCompare(b.raw) || a.repKey.localeCompare(b.repKey));
+    if(ordered.length === 1) anonRepDisplayByKey[ordered[0].repKey] = base;
+    else ordered.forEach((e,i)=>{ anonRepDisplayByKey[e.repKey] = `${base}${i+1}.`; });
+  }
+  const buildRawMap = groups => {
+    const out = {};
+    for(const [base, raws] of Object.entries(groups)){
+      const ordered = [...new Set(raws)].sort((a,b)=>a.localeCompare(b));
+      if(ordered.length === 1) out[ordered[0]] = base;
+      else ordered.forEach((r,i)=>{ out[r] = `${base}${i+1}.`; });
+    }
+    return out;
+  };
+  anonCoachDisplayByRaw = buildRawMap(coachGroups);
+  const coachReviewerGroups = {};
+  for(const [base, raws] of Object.entries(coachGroups)) coachReviewerGroups[base] = (coachReviewerGroups[base]||[]).concat(raws);
+  for(const [base, raws] of Object.entries(reviewerGroups)) coachReviewerGroups[base] = (coachReviewerGroups[base]||[]).concat(raws);
+  anonReviewerDisplayByRaw = buildRawMap(coachReviewerGroups);
+}
+function displayPersonName(raw, type = "person"){
+  const cleaned = (raw || '').toString().trim();
+  if(!cleaned) return '';
+  if(type === 'coach') return anonCoachDisplayByRaw[cleaned] || baseAnonName(cleaned) || cleaned;
+  if(type === 'reviewer') return anonReviewerDisplayByRaw[cleaned] || baseAnonName(cleaned) || cleaned;
+  return baseAnonName(cleaned) || cleaned;
+}
+function displayRepName(repKey){
+  const rep = reps[repKey] || {};
+  const raw = (rep.name || repKey || '').trim();
+  return anonRepDisplayByKey[repKey] || baseAnonName(raw) || raw;
+}
+function displayCoachName(raw){ return displayPersonName(raw, 'coach'); }
+function displayReviewerName(raw){ return displayPersonName(raw, 'reviewer'); }
 
 /* =========================
    Modal
@@ -1002,7 +1079,7 @@ function repCardHTML(r){
   const avgText   = r.avg ? `⌀ ${r.avg.toFixed(2)}` : '⌀ –';
   const avgStyle  = r.avg ? scoreColorStyle(r.avg) : '';
   const avgChip   = `<span class="chip" style="${avgStyle}">${avgText}</span>`;
-  const coachChip = `<span class="chip">${r.coach ? `Coach: ${escapeHtml(r.coach)}` : 'Coach: –'}</span>`;
+  const coachChip = `<span class="chip">${r.coach ? `Coach: ${escapeHtml(displayCoachName(r.coach))}` : 'Coach: –'}</span>`;
   const dirChip   = `<span class="chip dir">${r.director ? `Dir: ${escapeHtml(r.director)}` : 'Dir: —'}</span>`;
   const lastChip  = `<span class="chip">${r.lastDate ? `Last: ${escapeHtml(fmtDate(r.lastDate))}` : 'Last: —'}</span>`;
   const scenarioChip = r.lastScenario
@@ -1020,7 +1097,7 @@ function repCardHTML(r){
   return `
     <div class="${cls}" data-rep="${escapeHtml(r.key)}">
       <div>
-        <div class="name">${escapeHtml(r.name)}</div>
+        <div class="name">${escapeHtml(displayRepName(r.key))}</div>
         <div class="meta">
           ${coachChip}${dirChip}${avgChip}${countChip}${kpiChip}${roleChip}${star}${statusChip}${lastChip}${moveChip}${scenarioChip}
         </div>
@@ -1030,6 +1107,7 @@ function repCardHTML(r){
 }
 
 function renderRepList(){
+  buildAnonNameMaps();
   const entriesRaw = buildRepEntries();
   repListEl.innerHTML = '';
 
@@ -1131,7 +1209,7 @@ function syncFormDropdown(){
   const html = sorted.map(([k,v])=>{
     const star = v.readyIn30 ? '★ ' : '';
     const status = v.notPursuing ? '⛔ ' : (v.promoted ? '✅ ' : '');
-    return `<option value="${k}">${status}${star}${escapeHtml(v.name||k)}</option>`;
+    return `<option value="${k}">${status}${star}${escapeHtml(displayRepName(k))}</option>`;
   }).join('');
 
   formRep.innerHTML = html || `<option value="">(No reps visible)</option>`;
@@ -1211,7 +1289,7 @@ function renderPerQuestionTrends(orderedForms){
 function selectRep(repKey){
   selectedRep = repKey;
   const rep = reps[repKey] || {};
-  detailTitle.textContent = rep?.name ? `Details • ${rep.name}` : 'Details';
+  detailTitle.textContent = rep?.name ? `Details • ${displayRepName(repKey)}` : 'Details';
 
   coachInput.value = rep.coach || '';
   directorSelect.value = rep.director || '';
@@ -1291,7 +1369,7 @@ function renderLogList(entries){
       <div class="row" style="justify-content:space-between; align-items:center;">
         <div class="row" style="gap:8px;">
           <span class="badge">${dateLabel}</span>
-          ${f.reviewer?`<span class="badge">Reviewer: ${escapeHtml(f.reviewer)}</span>`:''}
+          ${f.reviewer?`<span class="badge">Reviewer: ${escapeHtml(displayReviewerName(f.reviewer))}</span>`:''}
           ${scenarioLabel?`<span class="badge">Scenario: ${escapeHtml(scenarioLabel)}</span>`:''}
         </div>
         <div ${verdictColor}><strong>Verdict:</strong> ${f.verdict?.toFixed?f.verdict.toFixed(2):f.verdict}</div>
@@ -1365,14 +1443,14 @@ function showCoachRepsPopup(coachName){
     .sort((a,b)=>a.name.localeCompare(b.name));
 
   const html = `
-    <div class="tiny" style="margin-bottom:10px">Reps assigned to <strong>${escapeHtml(coach)}</strong> (${list.length}). Click a rep to open details.</div>
+    <div class="tiny" style="margin-bottom:10px">Reps assigned to <strong>${escapeHtml(displayCoachName(coach))}</strong> (${list.length}). Click a rep to open details.</div>
     <div style="overflow:auto">
       <table>
         <thead><tr><th>Rep</th><th>Director</th><th>Status</th></tr></thead>
         <tbody>
           ${list.map(r=>`
             <tr style="cursor:pointer" data-repkey="${escapeHtml(r.key)}">
-              <td style="font-weight:900">${escapeHtml(r.name)}</td>
+              <td style="font-weight:900">${escapeHtml(displayRepName(r.key))}</td>
               <td>${escapeHtml(r.director)}</td>
               <td>${escapeHtml(r.status)}</td>
             </tr>
@@ -1381,7 +1459,7 @@ function showCoachRepsPopup(coachName){
       </table>
     </div>
   `;
-  openModal(`Coach • ${coach}`, html);
+  openModal(`Coach • ${displayCoachName(coach)}`, html);
 
   // delegate row clicks
   modalBody.querySelectorAll('tr[data-repkey]').forEach(tr=>{
@@ -1457,8 +1535,8 @@ function showDirectorPopup(dirName){
         <tbody>
           ${list.map(r=>`
             <tr style="cursor:pointer" data-repkey="${escapeHtml(r.key)}">
-              <td style="font-weight:900">${escapeHtml(r.name)}</td>
-              <td>${escapeHtml(r.coach)}</td>
+              <td style="font-weight:900">${escapeHtml(displayRepName(r.key))}</td>
+              <td>${escapeHtml(displayCoachName(r.coach))}</td>
               <td>${escapeHtml(r.status)}</td>
             </tr>
           `).join('') || `<tr><td colspan="3" class="tiny">No reps.</td></tr>`}
@@ -1565,9 +1643,9 @@ function renderEngagement(){
 
   engRepTableBody.innerHTML = repRows.map(r=>{
     return `<tr>
-      <td style="font-weight:900">${escapeHtml(r.name)}</td>
+      <td style="font-weight:900">${escapeHtml(displayRepName(r.key))}</td>
       <td>${escapeHtml(r.director)}</td>
-      <td>${escapeHtml(r.coach)}</td>
+      <td>${escapeHtml(displayCoachName(r.coach))}</td>
       <td>${r.count}</td>
       <td>${r.lastTs ? escapeHtml(fmtDate(new Date(r.lastTs).toISOString().slice(0,10))) : '—'}</td>
     </tr>`;
@@ -1577,7 +1655,7 @@ function renderEngagement(){
   engReviewerTableBody.innerHTML = data.reviewers.map(r=>{
     const pct = data.totalReviews ? (r.count / data.totalReviews * 100) : 0;
     return `<tr>
-      <td style="font-weight:900">${escapeHtml(r.name)}</td>
+      <td style="font-weight:900">${escapeHtml(displayReviewerName(r.name))}</td>
       <td>${r.count}</td>
       <td>${pct.toFixed(1)}%</td>
       <td>${r.lastTs ? escapeHtml(fmtDate(new Date(r.lastTs).toISOString().slice(0,10))) : '—'}</td>
@@ -1606,7 +1684,7 @@ function renderEngagement(){
     const ratioTxt = r.ratio==null ? '—' : r.ratio.toFixed(2);
     const ratioChip = r.ratio==null ? `chip warn` : (r.ratio >= 1 ? 'chip good' : 'chip bad');
     return `<tr>
-      <td style="font-weight:900">${escapeHtml(r.name)}</td>
+      <td style="font-weight:900">${escapeHtml(mode === 'coach' ? displayCoachName(r.name) : r.name)}</td>
       <td>${r.placed}</td>
       <td>${r.reviewed}</td>
       <td>${pretty}</td>
@@ -1766,7 +1844,7 @@ initFormDefaults();
 
 function updateSubmitFor(){
   const key = formRep.value;
-  const name = (reps[key]?.name) || '';
+  const name = key ? displayRepName(key) : '';
   const star = reps[key]?.readyIn30 ? ' ★' : '';
   const status = reps[key]?.notPursuing ? ' ⛔' : (reps[key]?.promoted ? ' ✅' : '');
   submitForLabel.textContent = name ? `Submit for ${name}${star}${status}` : 'Submit for —';
