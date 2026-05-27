@@ -686,6 +686,16 @@
         <div class="bpanelBox">
           <div class="pageHeader"><h2>Anonymity Cleanup</h2></div>
           <h3 style="padding:0; margin:0 0 10px 0;">Anonymity Cleanup</h3>
+          <div id="privacyStatusWidget" class="statCard green" style="margin:0 0 10px 0;">
+            <div class="statLabel"><span class="dot green"></span>Privacy Status</div>
+            <div class="grid2" style="margin-top:8px;">
+              <div class="entry"><div class="tiny">Total assessment text fields scanned</div><div id="privacyTotalScanned" style="font-weight:900;">0</div></div>
+              <div class="entry"><div class="tiny">Possible full-name mentions found</div><div id="privacyMentionsFound" style="font-weight:900;">0</div></div>
+              <div class="entry"><div class="tiny">Selected replacements pending</div><div id="privacyPendingSelected" style="font-weight:900;">0</div></div>
+              <div class="entry"><div class="tiny">High-risk count</div><div id="privacyHighRiskCount" style="font-weight:900;">0</div></div>
+            </div>
+            <div class="tiny" style="margin-top:8px;">Last scan time: <span id="privacyLastScanTime">Not scanned yet</span></div>
+          </div>
           <div class="tiny" style="margin-bottom:8px; color:#9a3412; font-weight:700;">Scan first, preview replacements, then apply selected changes.</div>
           <div class="row" style="margin-bottom:10px;">
             <button id="scanAssessmentNotesBtn" class="soft">Scan Assessment Notes</button>
@@ -851,6 +861,12 @@ const anonymityResultsCount = document.getElementById('anonymityResultsCount');
 const applySelectedReplacementsBtn = document.getElementById('applySelectedReplacementsBtn');
 const anonymityResultsTableBody = document.querySelector('#anonymityResultsTable tbody');
 const anonymitySelectAll = document.getElementById('anonymitySelectAll');
+const privacyStatusWidget = document.getElementById('privacyStatusWidget');
+const privacyTotalScanned = document.getElementById('privacyTotalScanned');
+const privacyMentionsFound = document.getElementById('privacyMentionsFound');
+const privacyPendingSelected = document.getElementById('privacyPendingSelected');
+const privacyHighRiskCount = document.getElementById('privacyHighRiskCount');
+const privacyLastScanTime = document.getElementById('privacyLastScanTime');
 
 /* =========================
    State
@@ -863,6 +879,8 @@ let anonCoachDisplayByRaw = {};
 let anonReviewerDisplayByRaw = {};
 let recentMeetingStats = null;
 let anonymityScanResults = [];
+let lastAnonymityScanTime = null;
+let lastScannedFieldCount = 0;
 
 function splitPersonName(raw){
   const cleaned = (raw || '').toString().trim().replace(/\s+/g,' ');
@@ -1853,33 +1871,87 @@ function getKnownFullNames(){
   });
   return knownNames;
 }
+function getKnownHighRiskNames(){
+  const highRisk = new Set();
+  const add = (v)=>{
+    const cleaned = (v || '').toString().trim().replace(/\s+/g,' ');
+    if(cleaned.split(/\s+/).length >= 2) highRisk.add(cleaned.toLowerCase());
+  };
+  Object.entries(reps || {}).forEach(([repKey, rep])=>{
+    add(rep?.name || repKey || '');
+    add(rep?.coach || '');
+    add(rep?.coachRaw || '');
+    add(rep?.reviewer || '');
+    add(rep?.reviewerRaw || '');
+  });
+  Object.values(formsByRep || {}).forEach(formsObj=>{
+    Object.values(formsObj || {}).forEach(f=>{
+      add(f?.reviewerRaw || '');
+      add(f?.reviewerDisplay || '');
+      add(f?.reviewer || '');
+      add(f?.coach || '');
+      add(f?.coachRaw || '');
+    });
+  });
+  return highRisk;
+}
+function updatePrivacyStatusWidget(){
+  if(!privacyStatusWidget) return;
+  const highRiskCount = anonymityScanResults.filter(r=>r.riskLevel === 'high').length;
+  const mentionCount = anonymityScanResults.length;
+  const pendingSelected = anonymityResultsTableBody
+    ? anonymityResultsTableBody.querySelectorAll('tr[data-anon-id] .anon-select:checked').length
+    : 0;
+  const hasKnown = highRiskCount > 0;
+  const hasRegexOnly = mentionCount > 0 && !hasKnown;
+  privacyStatusWidget.classList.remove('green','yellow','red');
+  privacyStatusWidget.classList.add(hasKnown ? 'red' : (hasRegexOnly ? 'yellow' : 'green'));
+  const dotEl = privacyStatusWidget.querySelector('.dot');
+  if(dotEl){
+    dotEl.classList.remove('green','yellow','red');
+    dotEl.classList.add(hasKnown ? 'red' : (hasRegexOnly ? 'yellow' : 'green'));
+  }
+  privacyTotalScanned.textContent = String(lastScannedFieldCount || 0);
+  privacyMentionsFound.textContent = String(mentionCount);
+  privacyPendingSelected.textContent = String(pendingSelected);
+  privacyHighRiskCount.textContent = String(highRiskCount);
+  privacyLastScanTime.textContent = lastAnonymityScanTime ? new Date(lastAnonymityScanTime).toLocaleString() : 'Not scanned yet';
+}
 function scanAssessmentNotesForNames(){
   const knownNames = getKnownFullNames();
+  const highRiskNames = getKnownHighRiskNames();
   const results = [];
+  let scannedFields = 0;
   Object.entries(formsByRep || {}).forEach(([repKey, formsObj])=>{
     Object.entries(formsObj || {}).forEach(([formId, form])=>{
       const repName = displayRepName(repKey);
       const date = form?.date || '—';
       const sources = getNarrativeFieldsFromForm(form).map(field=>({ field, text: form[field] })).filter(src=>shouldScanNarrativeField(src.field, src.text));
       sources.forEach(src=>{
+        scannedFields += 1;
         const fromKnown = [...knownNames].filter(n => src.text.includes(n) && n.split(/\s+/).length >= 2);
         const found = new Set([...findPotentialFullNamesInText(src.text), ...fromKnown]);
         found.forEach(name=>{
           const idx = src.text.indexOf(name);
-          results.push({ id:`${repKey}__${formId}__${src.field}__${name}`, repKey, formId, date, field:src.field, foundName:name, suggestedReplacement:suggestAnonReplacement(name), repAssessmentDate:`${repName} / ${fmtDate(date)}`, preview:src.text.slice(Math.max(0, idx-20), idx+name.length+40).trim(), currentFieldValue:src.text, status:'Ready' });
+          const isHighRisk = highRiskNames.has(String(name || '').trim().toLowerCase());
+          results.push({ id:`${repKey}__${formId}__${src.field}__${name}`, repKey, formId, date, field:src.field, foundName:name, suggestedReplacement:suggestAnonReplacement(name), repAssessmentDate:`${repName} / ${fmtDate(date)}`, preview:src.text.slice(Math.max(0, idx-20), idx+name.length+40).trim(), currentFieldValue:src.text, status:'Ready', riskLevel:isHighRisk?'high':'regex' });
         });
       });
     });
   });
+  lastScannedFieldCount = scannedFields;
+  lastAnonymityScanTime = Date.now();
   anonymityScanResults = results;
   renderAnonymityScanResults(results);
+  updatePrivacyStatusWidget();
 }
 function renderAnonymityScanResults(results){
   const q = (anonymityFilterInput?.value || '').toLowerCase().trim();
   const filtered = (results || []).filter(r => !q || `${r.foundName} ${r.suggestedReplacement} ${r.repAssessmentDate} ${r.field} ${r.preview}`.toLowerCase().includes(q));
   if(anonymityResultsCount) anonymityResultsCount.textContent = `Results: ${filtered.length}`;
-  if(!filtered.length){ anonymityResultsTableBody.innerHTML = `<tr><td colspan="7" class="tiny">✅ No names found in this view. Assessment notes are clean.</td></tr>`; return; }
+  if(!filtered.length){ anonymityResultsTableBody.innerHTML = `<tr><td colspan="7" class="tiny">✅ No names found in this view. Assessment notes are clean.</td></tr>`; updatePrivacyStatusWidget(); return; }
   anonymityResultsTableBody.innerHTML = filtered.map(r=>`<tr data-anon-id="${escapeHtml(r.id)}"><td><input type="checkbox" class="anon-select"></td><td>${escapeHtml(r.foundName)}</td><td><input class="anon-edit" value="${escapeHtml(r.suggestedReplacement)}" /></td><td>${escapeHtml(r.repAssessmentDate)}</td><td>${escapeHtml(r.field)}</td><td>${escapeHtml(r.preview)}</td><td>${escapeHtml(r.status)}</td></tr>`).join('');
+  updatePrivacyStatusWidget();
 }
 function escapeRegExp(str){
   return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2122,7 +2194,19 @@ anonymityFilterInput.addEventListener('input', ()=>renderAnonymityScanResults(an
 applySelectedReplacementsBtn.addEventListener('click', applySelectedAnonymityReplacements);
 anonymitySelectAll.addEventListener('change', ()=>{
   anonymityResultsTableBody.querySelectorAll('.anon-select').forEach(cb=>{ cb.checked = anonymitySelectAll.checked; });
+  updatePrivacyStatusWidget();
 });
+anonymityResultsTableBody.addEventListener('change', (e)=>{
+  if(e.target?.classList?.contains('anon-select') || e.target?.classList?.contains('anon-edit')){
+    updatePrivacyStatusWidget();
+  }
+});
+anonymityResultsTableBody.addEventListener('input', (e)=>{
+  if(e.target?.classList?.contains('anon-edit')){
+    updatePrivacyStatusWidget();
+  }
+});
+updatePrivacyStatusWidget();
 
 /* =========================
    Rep Meta Saves
