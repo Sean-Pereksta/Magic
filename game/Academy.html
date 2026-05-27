@@ -56,8 +56,12 @@
     box-shadow:0 10px 24px rgba(15,23,42,.25);
   }
   .mainPage[hidden]{display:none!important;}
+  .mainPage{animation:fadeIn .26s ease;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+  .pageHeader{margin:6px 0 14px; padding:12px 14px; border:1px solid var(--line); border-radius:14px; background:linear-gradient(100deg,#f8fbff,#ffffff 60%,#faf5ff); box-shadow:var(--shadow)}
+  .pageHeader h2{margin:0; font-size:20px}
 
-  .grid{ display:grid; gap:16px;
+  .grid{ display:grid; gap:22px;
     grid-template-columns: minmax(260px, 380px) minmax(420px, 1fr) minmax(320px, 440px) }
   @media (max-width:1200px){ .grid{grid-template-columns: 1fr 1fr} }
   @media (max-width:900px){ .grid{grid-template-columns: 1fr} }
@@ -66,8 +70,8 @@
     background:var(--card); border:1px solid var(--line); border-radius:16px;
     box-shadow:var(--shadow); overflow:hidden; min-width:0;
   }
-  .card h3{margin:0; padding:14px 14px 0}
-  .card .body{padding:14px}
+  .card h3{margin:0; padding:16px 16px 0}
+  .card .body{padding:16px}
 
   input, select, textarea, button{
     font:inherit; padding:10px 12px; border:1px solid var(--line);
@@ -151,8 +155,23 @@
   .qscore{ text-align:right; font-weight:800 }
 
   table{ border-collapse:collapse; width:100% }
-  th, td{ border:1px solid var(--line); padding:8px; text-align:left; }
-  th{ background:#f8fafc; }
+  th, td{ border:1px solid var(--line); padding:10px 12px; text-align:left; }
+  th{ background:#f8fafc; position:sticky; top:0; z-index:2; }
+  tbody tr:nth-child(even){background:#fbfdff}
+  tbody tr:hover{background:#eff6ff}
+  td.num, th.num{text-align:right}
+  .anonName{font-weight:900}
+  .tableWrap{overflow:auto; max-height:42vh; border:1px solid var(--line); border-radius:12px;}
+  .statCard{border:1px solid var(--line); border-left:4px solid #cbd5e1; border-radius:12px; padding:12px; background:linear-gradient(140deg,#ffffff,#f8fbff); box-shadow:0 8px 16px rgba(15,23,42,.05)}
+  .statCard.green{border-left-color:var(--green)}
+  .statCard.yellow{border-left-color:var(--amber)}
+  .statCard.red{border-left-color:var(--red)}
+  .statNumber{font-size:28px; font-weight:900}
+  .statLabel{font-size:12px; color:var(--muted); text-transform:uppercase; font-weight:800}
+  .statHint{font-size:12px; color:#334155}
+  .dot{display:inline-block; width:9px; height:9px; border-radius:999px; margin-right:6px}
+  .dot.green{background:var(--green)} .dot.yellow{background:var(--amber)} .dot.red{background:var(--red)}
+  .emptyState{padding:16px; border:1px dashed #cbd5e1; border-radius:12px; background:#f8fafc; color:#475569}
 
   /* Middle tabs (existing) */
   .tabs{display:flex; gap:8px; flex-wrap:wrap}
@@ -261,6 +280,7 @@
     </div>
 
     <section id="mainPageReps" class="mainPage">
+    <div class="pageHeader"><h2>Representatives List Page</h2></div>
     <div class="grid">
       <!-- LEFT: Representatives -->
       <div class="card">
@@ -516,11 +536,13 @@
     </section>
 
     <section id="mainPageDirectors" class="mainPage" hidden>
+    <div class="pageHeader"><h2>Directors Page</h2></div>
     <!-- DIRECTOR DASHBOARD: Tabs (Coach Summary / Director Snapshot / Engagement) -->
     <div class="card">
       <h3>Director Dashboard</h3>
       <div class="body">
         <div class="tiny">Everything here updates automatically from <code>reps</code> + <code>coachingForms</code>.</div>
+        <div class="pageHeader"><h2>Recent Meeting Activity</h2></div>
         <div id="recentMeetingActivity"></div>
 
         <div class="btabs">
@@ -662,6 +684,7 @@
         </div>
         <div class="divider"></div>
         <div class="bpanelBox">
+          <div class="pageHeader"><h2>Anonymity Cleanup</h2></div>
           <h3 style="padding:0; margin:0 0 10px 0;">Anonymity Cleanup</h3>
           <div class="row" style="margin-bottom:10px;">
             <button id="scanAssessmentNotesBtn" class="soft">Scan Assessment Notes</button>
@@ -1260,7 +1283,7 @@ function renderRepList(){
     // Normal list
     let entries = sortEntries(entriesRaw);
     if(!entries.length){
-      repListEl.innerHTML = `<div class="tiny" style="padding:10px 4px;">No reps match your filters.</div>`;
+      repListEl.innerHTML = `<div class="emptyState"><strong>No matching representatives</strong><div class="tiny">Try clearing filters, widening your date range, or searching by coach/director.</div></div>`;
     }else{
       repListEl.innerHTML = entries.map(repCardHTML).join('');
       repListEl.querySelectorAll('.rep').forEach(el=>{
@@ -1738,7 +1761,13 @@ function showRecentMeetingModal(type){
 }
 function renderRecentMeetingActivity(){
   const host=document.getElementById('recentMeetingActivity'); if(!host) return; const s=computeRecentMeetingStats(); const reviewers=Object.values(s.reviewerCounts); const who=Object.values(s.repRows).sort((a,b)=>b.lastTs-a.lastTs); const total30=s.in30.length||1;
-  host.innerHTML = `<div class="dashCards"><div class="dashCard clickable" data-rm="m7"><div class="tiny">Meetings in Last 7 Days</div><div class="dashNum">${s.in7.length}</div></div><div class="dashCard clickable" data-rm="m14"><div class="tiny">Meetings in Last 14 Days</div><div class="dashNum">${s.in14.length}</div></div><div class="dashCard clickable" data-rm="m30"><div class="tiny">Meetings in Last 30 Days</div><div class="dashNum">${s.in30.length}</div></div><div class="dashCard clickable" data-rm="reps30"><div class="tiny">Unique Reps Met With in Last 30 Days</div><div class="dashNum">${s.uniqReps30.size}</div></div><div class="dashCard clickable" data-rm="reviewers30"><div class="tiny">Unique Reviewers/Coaches Conducting Meetings in Last 30 Days</div><div class="dashNum">${reviewers.length}</div></div><div class="dashCard clickable" data-rm="stale30"><div class="tiny">Reps With No Meeting in Last 30 Days</div><div class="dashNum">${s.noMeeting30.length}</div></div></div>` + `<div style="overflow:auto"><table><thead><tr><th colspan="7">Who Has Been in Meetings Recently</th></tr><tr><th>Representative</th><th>Director</th><th>Coach</th><th># Meetings Last 7</th><th># Meetings Last 14</th><th># Meetings Last 30</th><th>Most Recent Meeting</th></tr></thead><tbody>${who.map(r=>`<tr class="${meetingAgeClass(r.lastTs)}"><td>${escapeHtml(displayRepName(r.repKey))}</td><td>${escapeHtml(r.director)}</td><td>${escapeHtml(displayCoachName(r.coach))}</td><td>${r.c7}</td><td>${r.c14}</td><td>${r.c30}</td><td>${r.lastTs?escapeHtml(fmtDate(new Date(r.lastTs).toISOString().slice(0,10))):'—'}</td></tr>`).join('')}</tbody></table></div>` + `<div style="overflow:auto; margin-top:10px"><table><thead><tr><th colspan="6">Who Has Been Conducting Meetings Recently</th></tr><tr><th>Reviewer/Coach</th><th># Meetings Last 7</th><th># Meetings Last 14</th><th># Meetings Last 30</th><th>Most Recent Meeting</th><th>% of Recent Meetings</th></tr></thead><tbody>${reviewers.map(v=>{const k=normalizeKeyName(v.name);const c7=s.in7.filter(f=>normalizeKeyName((f.reviewerDisplay||f.reviewerRaw||f.reviewer||''))===k).length;const c14=s.in14.filter(f=>normalizeKeyName((f.reviewerDisplay||f.reviewerRaw||f.reviewer||''))===k).length;return `<tr class="${meetingAgeClass(v.lastTs)}"><td>${escapeHtml(displayReviewerName(v.name))}</td><td>${c7}</td><td>${c14}</td><td>${v.count}</td><td>${escapeHtml(fmtDate(new Date(v.lastTs).toISOString().slice(0,10)))}</td><td>${((v.count/total30)*100).toFixed(1)}%</td></tr>`;}).join('')}</tbody></table></div>` + `<div style="overflow:auto; margin-top:10px"><table><thead><tr><th colspan="6">Stale Representatives</th></tr><tr><th>Representative</th><th>Director</th><th>Coach</th><th>Last Meeting</th><th>Days Since Last Meeting</th><th>Total Assessments</th></tr></thead><tbody>${s.noMeeting30.sort((a,b)=>(a.lastTs||0)-(b.lastTs||0)).map(r=>`<tr class="${meetingAgeClass(r.lastTs)}"><td>${escapeHtml(displayRepName(r.repKey))}</td><td>${escapeHtml(r.director)}</td><td>${escapeHtml(displayCoachName(r.coach))}</td><td>${r.lastTs?escapeHtml(fmtDate(new Date(r.lastTs).toISOString().slice(0,10))):'—'}</td><td>${isFinite(daysSince(r.lastTs))?daysSince(r.lastTs):'Never'}</td><td>${r.total}</td></tr>`).join('')}</tbody></table></div>`;
+  host.innerHTML = `<div class="dashCards">
+  <div class="statCard clickable green" data-rm="m7"><div class="statLabel"><span class="dot green"></span>Meetings in Last 7 Days</div><div class="statNumber">${s.in7.length}</div><div class="statHint">Newest recency pulse</div></div>
+  <div class="statCard clickable green" data-rm="m14"><div class="statLabel"><span class="dot green"></span>Meetings in Last 14 Days</div><div class="statNumber">${s.in14.length}</div><div class="statHint">2-week cadence</div></div>
+  <div class="statCard clickable yellow" data-rm="m30"><div class="statLabel"><span class="dot yellow"></span>Meetings in Last 30 Days</div><div class="statNumber">${s.in30.length}</div><div class="statHint">Monthly throughput</div></div>
+  <div class="statCard clickable green" data-rm="reps30"><div class="statLabel"><span class="dot green"></span>Unique Reps Met (30d)</div><div class="statNumber">${s.uniqReps30.size}</div><div class="statHint">Coverage breadth</div></div>
+  <div class="statCard clickable yellow" data-rm="reviewers30"><div class="statLabel"><span class="dot yellow"></span>Unique Reviewers (30d)</div><div class="statNumber">${reviewers.length}</div><div class="statHint">Reviewer participation</div></div>
+  <div class="statCard clickable ${s.noMeeting30.length?'red':'green'}" data-rm="stale30"><div class="statLabel"><span class="dot ${s.noMeeting30.length?'red':'green'}"></span>Stale Reps (30d)</div><div class="statNumber">${s.noMeeting30.length}</div><div class="statHint">Needs intervention</div></div></div>` + (s.in30.length?`<div class="tableWrap"><table><thead><tr><th colspan="7">Who Has Been in Meetings Recently</th></tr><tr><th>Representative</th><th>Director</th><th>Coach</th><th class="num"># Meetings Last 7</th><th class="num"># Meetings Last 14</th><th class="num"># Meetings Last 30</th><th>Most Recent Meeting</th></tr></thead><tbody>${who.map(r=>`<tr class="${meetingAgeClass(r.lastTs)}"><td class="anonName">${escapeHtml(displayRepName(r.repKey))}</td><td>${escapeHtml(r.director)}</td><td>${escapeHtml(displayCoachName(r.coach))}</td><td class="num">${r.c7}</td><td class="num">${r.c14}</td><td class="num">${r.c30}</td><td>${r.lastTs?escapeHtml(fmtDate(new Date(r.lastTs).toISOString().slice(0,10))):'—'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="emptyState">No recent meetings found yet. Once assessments are saved, this activity feed will populate automatically.</div>`);
   host.querySelectorAll('[data-rm]').forEach(el=>el.addEventListener('click', ()=>showRecentMeetingModal(el.dataset.rm)));
 }
 
@@ -1799,7 +1828,7 @@ function scanAssessmentNotesForNames(){
 function renderAnonymityScanResults(results){
   const q = (anonymityFilterInput?.value || '').toLowerCase().trim();
   const filtered = (results || []).filter(r => !q || `${r.foundName} ${r.suggestedReplacement} ${r.repAssessmentDate} ${r.field} ${r.preview}`.toLowerCase().includes(q));
-  if(!filtered.length){ anonymityResultsTableBody.innerHTML = `<tr><td colspan="7" class="tiny">No matching results.</td></tr>`; return; }
+  if(!filtered.length){ anonymityResultsTableBody.innerHTML = `<tr><td colspan="7" class="tiny">✅ No names found in this view. Assessment notes are clean.</td></tr>`; return; }
   anonymityResultsTableBody.innerHTML = filtered.map(r=>`<tr data-anon-id="${escapeHtml(r.id)}"><td><input type="checkbox" class="anon-select" checked></td><td>${escapeHtml(r.foundName)}</td><td><input class="anon-edit" value="${escapeHtml(r.suggestedReplacement)}" /></td><td>${escapeHtml(r.repAssessmentDate)}</td><td>${escapeHtml(r.field)}</td><td>${escapeHtml(r.preview)}</td><td>${escapeHtml(r.status)}</td></tr>`).join('');
 }
 async function applySelectedAnonymityReplacements(){
