@@ -224,6 +224,14 @@
   .modalTitle{font-weight:900}
   .modalBody{padding:12px 14px; overflow:auto}
   .xbtn{background:#111827; color:#fff; border:none; border-radius:10px; padding:8px 10px; font-weight:900}
+  .dashCards{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; margin:12px 0;}
+  .dashCard{border:1px solid var(--line); border-radius:12px; padding:10px; background:#fff; cursor:default;}
+  .dashCard.clickable{cursor:pointer;}
+  .dashCard.clickable:hover{border-color:#c7d2fe; box-shadow:0 8px 20px rgba(37,99,235,.12);}
+  .dashNum{font-size:28px; font-weight:900; margin-top:4px;}
+  .age-good{background:#ecfdf5;}
+  .age-warn{background:#fffbeb;}
+  .age-bad{background:#fef2f2;}
 </style>
 </head>
 
@@ -492,6 +500,7 @@
       <h3>Director Dashboard</h3>
       <div class="body">
         <div class="tiny">Everything here updates automatically from <code>reps</code> + <code>coachingForms</code>.</div>
+        <div id="recentMeetingActivity"></div>
 
         <div class="btabs">
           <button class="btab-btn active" data-btab="coach">Coach Summary</button>
@@ -776,6 +785,7 @@ let selectedRep = null;
 let anonRepDisplayByKey = {};
 let anonCoachDisplayByRaw = {};
 let anonReviewerDisplayByRaw = {};
+let recentMeetingStats = null;
 
 function splitPersonName(raw){
   const cleaned = (raw || '').toString().trim().replace(/\s+/g,' ');
@@ -926,6 +936,7 @@ function setMainTab(which){
   document.querySelectorAll('.mainTabBtn').forEach(b=>b.classList.toggle('active', b.dataset.mainTab===which));
   mainPageReps.hidden = which !== 'reps';
   mainPageDirectors.hidden = which !== 'directors';
+  if(which === 'directors') renderRecentMeetingActivity();
 }
 document.addEventListener('click', (e)=>{
   if(e.target.classList.contains('mainTabBtn')) setMainTab(e.target.dataset.mainTab);
@@ -1195,6 +1206,7 @@ function renderRepList(){
   updateSubmitFor();
   renderCoachSummary();
   renderDirectorSnapshot();
+  renderRecentMeetingActivity();
   renderEngagement(); // keep it fresh as data changes
 }
 
@@ -1558,6 +1570,50 @@ function showDirectorPopup(dirName){
       if(rk) selectRep(rk);
     });
   });
+}
+
+
+
+function flattenCoachingForms(){
+  const all = [];
+  for(const [repKey, forms] of Object.entries(formsByRep || {})){
+    for(const [formId, f] of Object.entries(forms || {})){
+      const ts = new Date(f.date).getTime();
+      if(!ts) continue;
+      all.push({ repKey, formId, ...f, _ts: ts });
+    }
+  }
+  return all.sort((a,b)=>b._ts-a._ts);
+}
+function daysSince(ts){ return !ts ? Infinity : Math.floor((Date.now()-ts)/(24*60*60*1000)); }
+function meetingAgeClass(ts){ const d = daysSince(ts); return d<=14?'age-good':(d<=30?'age-warn':'age-bad'); }
+function computeRecentMeetingStats(){
+  const allForms = flattenCoachingForms();
+  const now = Date.now(), d7 = now-7*24*60*60*1000, d14 = now-14*24*60*60*1000, d30 = now-30*24*60*60*1000;
+  const in7 = allForms.filter(f=>f._ts>=d7), in14 = allForms.filter(f=>f._ts>=d14), in30 = allForms.filter(f=>f._ts>=d30);
+  const uniqReps30 = new Set(in30.map(f=>f.repKey));
+  const reviewerCounts = {}, repRows = {};
+  in30.forEach(f=>{ const rev=(f.reviewerDisplay||f.reviewerRaw||f.reviewer||'').trim(); if(rev){ const k=normalizeKeyName(rev); reviewerCounts[k]=reviewerCounts[k]||{name:rev,count:0,lastTs:0}; reviewerCounts[k].count++; reviewerCounts[k].lastTs=Math.max(reviewerCounts[k].lastTs,f._ts);} });
+  Object.entries(reps).forEach(([repKey, rep])=>{ const repForms=allForms.filter(f=>f.repKey===repKey); const c7=repForms.filter(f=>f._ts>=d7).length, c14=repForms.filter(f=>f._ts>=d14).length, c30=repForms.filter(f=>f._ts>=d30).length; const lastTs=repForms.length?Math.max(...repForms.map(f=>f._ts)):0; repRows[repKey]={repKey,director:(rep.director||'—').trim()||'—',coach:(rep.coach||'—').trim()||'—',c7,c14,c30,lastTs,total:repForms.length}; });
+  const noMeeting30 = Object.values(repRows).filter(r=>r.c30===0);
+  recentMeetingStats = { allForms, in7, in14, in30, uniqReps30, reviewerCounts, repRows, noMeeting30 };
+  return recentMeetingStats;
+}
+function showRecentMeetingModal(type){
+  const s = recentMeetingStats || computeRecentMeetingStats(); let title='Recent Meeting Activity', html='';
+  const rowset = (arr)=>arr.map(f=>`<tr><td>${escapeHtml(displayRepName(f.repKey))}</td><td>${escapeHtml(fmtDate(f.date))}</td><td>${escapeHtml(displayReviewerName(f.reviewerDisplay||f.reviewerRaw||f.reviewer||'—'))}</td></tr>`).join('');
+  if(type==='m7'){ title='Meetings in Last 7 Days'; html=`<table><thead><tr><th>Representative</th><th>Meeting Date</th><th>Reviewer/Coach</th></tr></thead><tbody>${rowset(s.in7)||'<tr><td colspan="3">No rows.</td></tr>'}</tbody></table>`; }
+  if(type==='m14'){ title='Meetings in Last 14 Days'; html=`<table><thead><tr><th>Representative</th><th>Meeting Date</th><th>Reviewer/Coach</th></tr></thead><tbody>${rowset(s.in14)||'<tr><td colspan="3">No rows.</td></tr>'}</tbody></table>`; }
+  if(type==='m30'){ title='Meetings in Last 30 Days'; html=`<table><thead><tr><th>Representative</th><th>Meeting Date</th><th>Reviewer/Coach</th></tr></thead><tbody>${rowset(s.in30)||'<tr><td colspan="3">No rows.</td></tr>'}</tbody></table>`; }
+  if(type==='reps30'){ title='Unique Reps Met With in Last 30 Days'; const rows=[...s.uniqReps30].map(k=>`<tr><td>${escapeHtml(displayRepName(k))}</td></tr>`).join(''); html=`<table><thead><tr><th>Representative</th></tr></thead><tbody>${rows||'<tr><td>No rows.</td></tr>'}</tbody></table>`; }
+  if(type==='reviewers30'){ title='Unique Reviewers/Coaches Conducting Meetings in Last 30 Days'; const rows=Object.values(s.reviewerCounts).sort((a,b)=>b.count-a.count).map(v=>`<tr><td>${escapeHtml(displayReviewerName(v.name))}</td><td>${v.count}</td><td>${escapeHtml(fmtDate(new Date(v.lastTs).toISOString().slice(0,10)))}</td></tr>`).join(''); html=`<table><thead><tr><th>Reviewer/Coach</th><th># Meetings</th><th>Most Recent Meeting</th></tr></thead><tbody>${rows||'<tr><td colspan="3">No rows.</td></tr>'}</tbody></table>`; }
+  if(type==='stale30'){ title='Reps With No Meeting in Last 30 Days'; const rows=s.noMeeting30.map(r=>`<tr><td>${escapeHtml(displayRepName(r.repKey))}</td><td>${escapeHtml(r.director)}</td><td>${escapeHtml(displayCoachName(r.coach))}</td><td>${r.lastTs?escapeHtml(fmtDate(new Date(r.lastTs).toISOString().slice(0,10))):'—'}</td><td>${isFinite(daysSince(r.lastTs))?daysSince(r.lastTs):'Never'}</td></tr>`).join(''); html=`<table><thead><tr><th>Representative</th><th>Director</th><th>Coach</th><th>Last Meeting</th><th>Days Since Last Meeting</th></tr></thead><tbody>${rows||'<tr><td colspan="5">No rows.</td></tr>'}</tbody></table>`; }
+  openModal(title, html);
+}
+function renderRecentMeetingActivity(){
+  const host=document.getElementById('recentMeetingActivity'); if(!host) return; const s=computeRecentMeetingStats(); const reviewers=Object.values(s.reviewerCounts); const who=Object.values(s.repRows).sort((a,b)=>b.lastTs-a.lastTs); const total30=s.in30.length||1;
+  host.innerHTML = `<div class="dashCards"><div class="dashCard clickable" data-rm="m7"><div class="tiny">Meetings in Last 7 Days</div><div class="dashNum">${s.in7.length}</div></div><div class="dashCard clickable" data-rm="m14"><div class="tiny">Meetings in Last 14 Days</div><div class="dashNum">${s.in14.length}</div></div><div class="dashCard clickable" data-rm="m30"><div class="tiny">Meetings in Last 30 Days</div><div class="dashNum">${s.in30.length}</div></div><div class="dashCard clickable" data-rm="reps30"><div class="tiny">Unique Reps Met With in Last 30 Days</div><div class="dashNum">${s.uniqReps30.size}</div></div><div class="dashCard clickable" data-rm="reviewers30"><div class="tiny">Unique Reviewers/Coaches Conducting Meetings in Last 30 Days</div><div class="dashNum">${reviewers.length}</div></div><div class="dashCard clickable" data-rm="stale30"><div class="tiny">Reps With No Meeting in Last 30 Days</div><div class="dashNum">${s.noMeeting30.length}</div></div></div>` + `<div style="overflow:auto"><table><thead><tr><th colspan="7">Who Has Been in Meetings Recently</th></tr><tr><th>Representative</th><th>Director</th><th>Coach</th><th># Meetings Last 7</th><th># Meetings Last 14</th><th># Meetings Last 30</th><th>Most Recent Meeting</th></tr></thead><tbody>${who.map(r=>`<tr class="${meetingAgeClass(r.lastTs)}"><td>${escapeHtml(displayRepName(r.repKey))}</td><td>${escapeHtml(r.director)}</td><td>${escapeHtml(displayCoachName(r.coach))}</td><td>${r.c7}</td><td>${r.c14}</td><td>${r.c30}</td><td>${r.lastTs?escapeHtml(fmtDate(new Date(r.lastTs).toISOString().slice(0,10))):'—'}</td></tr>`).join('')}</tbody></table></div>` + `<div style="overflow:auto; margin-top:10px"><table><thead><tr><th colspan="6">Who Has Been Conducting Meetings Recently</th></tr><tr><th>Reviewer/Coach</th><th># Meetings Last 7</th><th># Meetings Last 14</th><th># Meetings Last 30</th><th>Most Recent Meeting</th><th>% of Recent Meetings</th></tr></thead><tbody>${reviewers.map(v=>{const k=normalizeKeyName(v.name);const c7=s.in7.filter(f=>normalizeKeyName((f.reviewerDisplay||f.reviewerRaw||f.reviewer||''))===k).length;const c14=s.in14.filter(f=>normalizeKeyName((f.reviewerDisplay||f.reviewerRaw||f.reviewer||''))===k).length;return `<tr class="${meetingAgeClass(v.lastTs)}"><td>${escapeHtml(displayReviewerName(v.name))}</td><td>${c7}</td><td>${c14}</td><td>${v.count}</td><td>${escapeHtml(fmtDate(new Date(v.lastTs).toISOString().slice(0,10)))}</td><td>${((v.count/total30)*100).toFixed(1)}%</td></tr>`;}).join('')}</tbody></table></div>` + `<div style="overflow:auto; margin-top:10px"><table><thead><tr><th colspan="6">Stale Representatives</th></tr><tr><th>Representative</th><th>Director</th><th>Coach</th><th>Last Meeting</th><th>Days Since Last Meeting</th><th>Total Assessments</th></tr></thead><tbody>${s.noMeeting30.sort((a,b)=>(a.lastTs||0)-(b.lastTs||0)).map(r=>`<tr class="${meetingAgeClass(r.lastTs)}"><td>${escapeHtml(displayRepName(r.repKey))}</td><td>${escapeHtml(r.director)}</td><td>${escapeHtml(displayCoachName(r.coach))}</td><td>${r.lastTs?escapeHtml(fmtDate(new Date(r.lastTs).toISOString().slice(0,10))):'—'}</td><td>${isFinite(daysSince(r.lastTs))?daysSince(r.lastTs):'Never'}</td><td>${r.total}</td></tr>`).join('')}</tbody></table></div>`;
+  host.querySelectorAll('[data-rm]').forEach(el=>el.addEventListener('click', ()=>showRecentMeetingModal(el.dataset.rm)));
 }
 
 /* =========================
