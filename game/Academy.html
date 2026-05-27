@@ -559,25 +559,23 @@
         <div class="pageHeader"><h2>Recent Meeting Activity</h2></div>
         <div id="recentMeetingActivity"></div>
 
-        <div class="btabs">
-          <button class="btab-btn active" data-btab="coach">Coach Summary</button>
-          <button class="btab-btn" data-btab="director">Director Snapshot</button>
-          <button class="btab-btn" data-btab="engagement">Representatives Engagement</button>
-          <button class="btab-btn" data-btab="status">Status</button>
-        </div>
-        <div class="bpanelBox" style="margin-top:10px;">
-          <h4 style="margin:0 0 8px 0;">Top Representatives by Average Score</h4>
-          <div class="row">
+        <div id="topRepScoresSection" class="bpanelBox" style="margin-top:10px;">
+          <div class="pageHeader"><h2>Top Representatives by Average Score</h2></div>
+          <div class="row" id="topRepScoreControls">
             <select id="directorScoreWindowDays"><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30" selected>Last 30 days</option><option value="60">Last 60 days</option><option value="90">Last 90 days</option><option value="all">All time</option></select>
             <select id="directorFilter"><option value="all">All Directors</option><option value="Melick">Melick</option><option value="Nelson">Nelson</option><option value="Terry">Terry</option><option value="Richards">Richards</option><option value="unassigned">Unassigned Director</option></select>
             <select id="coachFilter"><option value="all">All Coaches</option></select>
             <label class="tiny"><input type="checkbox" id="includeNoScoreReps"> Include reps with no score</label>
           </div>
-          <div style="overflow:auto;margin-top:8px"><table id="topRepScoresTable"><thead><tr><th>Rank</th><th>Representative</th><th>Average Score</th><th>Trend</th><th>Assessments</th><th>Last Assessment</th><th>Director</th><th>Coach</th><th>Status</th></tr></thead><tbody></tbody></table></div>
+          <div class="tableWrap" style="margin-top:8px"><table id="topRepScoresTable"><thead><tr><th>Rank</th><th>Representative</th><th>Average Score</th><th>Trend</th><th>Assessments</th><th>Last Assessment</th><th>Director</th><th>Coach</th><th>Status</th></tr></thead><tbody></tbody></table></div>
         </div>
-        <div class="bpanelBox" style="margin-top:10px;">
-          <h4 style="margin:0 0 8px 0;">Missing Assignments</h4>
-          <div style="overflow:auto"><table id="missingAssignmentsTable"><thead><tr><th>Representative</th><th>Coach</th><th>Director</th><th>Save</th><th>Open</th></tr></thead><tbody></tbody></table></div>
+
+        <div class="btabs">
+          <button class="btab-btn active" data-btab="coach">Coach Summary</button>
+          <button class="btab-btn" data-btab="director">Director Snapshot</button>
+          <button class="btab-btn" data-btab="engagement">Representatives Engagement</button>
+          <button class="btab-btn" data-btab="status">Status</button>
+          <button class="btab-btn" data-btab="assignments">Missing Assignments</button>
         </div>
 
         <div id="btabCoach" class="btabpanel">
@@ -722,6 +720,13 @@
             </div>
             <div class="row" style="margin-top:8px;"><button class="soft statusFilter active" data-status="active">Active</button><button class="soft statusFilter" data-status="promoted">Promoted</button><button class="soft statusFilter" data-status="notPursuing">Not Pursuing</button><button class="soft statusFilter" data-status="stale">Stale</button></div>
             <div style="overflow:auto;margin-top:8px"><table id="statusTable"><thead><tr><th>Representative</th><th>Average Score</th><th>Trend</th><th>Last Assessment</th><th>Director</th><th>Coach</th><th>Current Status</th><th>Move To</th><th>Remove From Category</th><th>Delete Rep</th></tr></thead><tbody></tbody></table></div>
+          </div>
+        </div>
+        <div id="btabAssignments" class="btabpanel" hidden>
+          <div class="bpanelBox">
+            <div class="pageHeader"><h2>Missing Assignments</h2></div>
+            <div id="missingAssignmentsControls"></div>
+            <div id="missingAssignmentsTableWrap"></div>
           </div>
         </div>
         <div class="divider"></div>
@@ -885,13 +890,15 @@ const btabCoach = document.getElementById('btabCoach');
 const btabDirector = document.getElementById('btabDirector');
 const btabEngagement = document.getElementById('btabEngagement');
 const btabStatus = document.getElementById('btabStatus');
+const btabAssignments = document.getElementById('btabAssignments');
 const scoreWindowDaysEl = document.getElementById('scoreWindowDays');
 const directorScoreWindowDaysEl = document.getElementById('directorScoreWindowDays');
 const directorFilterEl = document.getElementById('directorFilter');
 const coachFilterEl = document.getElementById('coachFilter');
 const includeNoScoreRepsEl = document.getElementById('includeNoScoreReps');
 const topRepScoresTableBody = document.querySelector('#topRepScoresTable tbody');
-const missingAssignmentsTableBody = document.querySelector('#missingAssignmentsTable tbody');
+const missingAssignmentsControls = document.getElementById('missingAssignmentsControls');
+const missingAssignmentsTableWrap = document.getElementById('missingAssignmentsTableWrap');
 const statusTableBody = document.querySelector('#statusTable tbody');
 
 const engWeeks = document.getElementById('engWeeks');
@@ -1120,6 +1127,7 @@ function setBottomTab(which){
   btabDirector.hidden = which !== 'director';
   btabEngagement.hidden = which !== 'engagement';
   if(btabStatus) btabStatus.hidden = which !== 'status';
+  if(btabAssignments) btabAssignments.hidden = which !== 'assignments';
 }
 document.addEventListener('click', (e)=>{
   if(e.target.classList.contains('btab-btn')) setBottomTab(e.target.dataset.btab);
@@ -1799,9 +1807,59 @@ function renderTopRepScores(){
   topRepScoresTableBody.innerHTML = rows.map((o,i)=>`<tr class="topRepRow" data-repkey="${o.key}"><td>${i+1}</td><td>${escapeHtml(displayRepName(o.key))}</td><td style="${o.stats.average?scoreColorStyle(o.stats.average):''}">${o.stats.average?o.stats.average.toFixed(2):'—'}</td><td class="${o.stats.trendClass}">${o.stats.trendIcon} ${o.stats.trendLabel}</td><td>${o.stats.count}</td><td>${o.stats.lastDate?fmtDate(o.stats.lastDate):'—'}</td><td>${escapeHtml(o.rep.director||'—')}</td><td>${escapeHtml(displayCoachName(o.rep.coach||'')||'—')}</td><td>${getRepCurrentStatus(o.key)}</td></tr>`).join('') || '<tr><td colspan="9" class="tiny">No reps in this filter.</td></tr>';
 }
 function renderMissingAssignments(){
-  if(!missingAssignmentsTableBody) return;
-  const rows = Object.entries(reps).filter(([,r])=>!(r.coach||'').trim() || !(r.director||'').trim());
-  missingAssignmentsTableBody.innerHTML = rows.map(([k,r])=>`<tr><td>${escapeHtml(displayRepName(k))}</td><td><input class="inlineCoachInput" data-repkey="${k}" value="${escapeHtml(r.coachRaw||r.coach||'')}" placeholder="Type coach name"></td><td><select class="inlineDirectorSelect" data-repkey="${k}"><option value="">— Unassigned —</option>${DIRECTORS.map(d=>`<option value="${d}" ${r.director===d?'selected':''}>${d}</option>`).join('')}</select></td><td><button class="saveAssignmentBtn" data-repkey="${k}">Save</button> <span class="tiny saveMsg" id="saveMsg_${k}"></span></td><td><button class="soft openRepBtn" data-repkey="${k}">Open</button></td></tr>`).join('') || '<tr><td colspan="5" class="tiny">No missing assignments.</td></tr>';
+  if(!missingAssignmentsControls || !missingAssignmentsTableWrap) return;
+  missingAssignmentsControls.innerHTML = `
+    <div class="row" style="margin-bottom:8px;">
+      <input id="assignmentSearch" placeholder="Search rep / coach / director...">
+      <select id="assignmentIssueFilter">
+        <option value="all">Missing Coach or Director</option>
+        <option value="coach">Missing Coach Only</option>
+        <option value="director">Missing Director Only</option>
+        <option value="both">Missing Both</option>
+      </select>
+      <select id="assignmentDirectorFilter">
+        <option value="all">All Directors</option>
+        <option value="unassigned">Unassigned Director</option>
+        <option value="Melick">Melick</option>
+        <option value="Nelson">Nelson</option>
+        <option value="Terry">Terry</option>
+        <option value="Richards">Richards</option>
+      </select>
+      <select id="assignmentScoreWindowDays">
+        <option value="7">Last 7 days</option>
+        <option value="14">Last 14 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="60">Last 60 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="all">All time</option>
+      </select>
+    </div>
+  `;
+  const applyFilters = ()=>{
+    const q = (document.getElementById('assignmentSearch')?.value || '').toLowerCase().trim();
+    const issue = document.getElementById('assignmentIssueFilter')?.value || 'all';
+    const dflt = document.getElementById('assignmentDirectorFilter')?.value || 'all';
+    const rows = Object.entries(reps).filter(([k,r])=>{
+      const coachMissing = !(r.coach||'').trim();
+      const dirMissing = !(r.director||'').trim();
+      if(!(coachMissing || dirMissing)) return false;
+      if(issue==='coach' && (!coachMissing || dirMissing)) return false;
+      if(issue==='director' && (coachMissing || !dirMissing)) return false;
+      if(issue==='both' && !(coachMissing && dirMissing)) return false;
+      if(dflt==='unassigned' && !dirMissing) return false;
+      if(dflt!=='all' && dflt!=='unassigned' && (r.director||'').trim() !== dflt) return false;
+      const hay = `${displayRepName(k)} ${(r.coachRaw||r.coach||'')} ${(r.director||'')}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+    missingAssignmentsTableWrap.innerHTML = `<div style="overflow:auto"><table id="missingAssignmentsTable"><thead><tr><th>Representative</th><th>Current Coach</th><th>Edit Coach</th><th>Current Director</th><th>Edit Director</th><th>Average Score</th><th>Trend</th><th>Last Assessment</th><th>Save</th><th>Open</th></tr></thead><tbody>${
+      rows.map(([k,r])=>{ const s=getRepScoreStats(k,'assignmentScoreWindowDays'); return `<tr><td>${escapeHtml(displayRepName(k))}</td><td>${escapeHtml(displayCoachName(r.coach||'')||'—')}</td><td><input class="inlineCoachInput" data-repkey="${k}" value="${escapeHtml(r.coachRaw||r.coach||'')}" placeholder="Type coach name"></td><td>${escapeHtml(r.director||'—')}</td><td><select class="inlineDirectorSelect" data-repkey="${k}"><option value="">— Unassigned —</option>${DIRECTORS.map(d=>`<option value="${d}" ${r.director===d?'selected':''}>${d}</option>`).join('')}</select></td><td>${s.average?s.average.toFixed(2):'—'}</td><td class="${s.trendClass}">${s.trendIcon} ${s.trendLabel}</td><td>${s.lastDate?fmtDate(s.lastDate):'—'}</td><td><button class="saveAssignmentBtn" data-repkey="${k}">Save</button> <span class="tiny saveMsg" id="saveMsg_${k}"></span></td><td><button class="soft openRepBtn" data-repkey="${k}">Open</button></td></tr>`; }).join('') || '<tr><td colspan="10" class="tiny">No missing assignments.</td></tr>'
+    }</tbody></table></div>`;
+  };
+  applyFilters();
+  ['assignmentSearch','assignmentIssueFilter','assignmentDirectorFilter','assignmentScoreWindowDays'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('input', applyFilters);
+    document.getElementById(id)?.addEventListener('change', applyFilters);
+  });
 }
 function renderStatusTab(){
   if(!statusTableBody) return;
@@ -2366,7 +2424,7 @@ document.addEventListener('click', async (e)=>{
   }
   if(e.target.classList.contains('topRepRow') || e.target.closest('.topRepRow')){ const row = e.target.closest('.topRepRow'); if(row?.dataset.repkey){ setMainTab('reps'); selectRep(row.dataset.repkey); } }
   if(e.target.classList.contains('openRepBtn')){ setMainTab('reps'); selectRep(e.target.dataset.repkey); }
-  if(e.target.classList.contains('saveAssignmentBtn')){ const k=e.target.dataset.repkey; const rawCoach=document.querySelector(`.inlineCoachInput[data-repkey="${k}"]`)?.value?.trim()||''; const director=document.querySelector(`.inlineDirectorSelect[data-repkey="${k}"]`)?.value||''; await db.ref(`reps/${k}`).update({coachRaw:rawCoach||null,coach:sanitizePersonNameForSave(rawCoach)||null,director:director||null}); const msg=document.getElementById(`saveMsg_${k}`); if(msg) msg.textContent='Saved ✓'; renderRepList(); }
+  if(e.target.classList.contains('saveAssignmentBtn')){ const k=e.target.dataset.repkey; const rawCoach=document.querySelector(`.inlineCoachInput[data-repkey="${k}"]`)?.value?.trim()||''; const director=document.querySelector(`.inlineDirectorSelect[data-repkey="${k}"]`)?.value||''; await db.ref(`reps/${k}`).update({coachRaw:rawCoach||null,coach:sanitizePersonNameForSave(rawCoach)||null,director:director||null}); const msg=document.getElementById(`saveMsg_${k}`); if(msg) msg.textContent='Saved ✓'; renderRepList(); renderTopRepScores(); renderMissingAssignments(); renderDirectorSnapshot(); renderEngagement(); renderStatusTab(); populateCoachFilters(); }
   if(e.target.classList.contains('moveStatusBtn')){ const k=e.target.dataset.repkey; const next=document.querySelector(`.moveStatusSelect[data-repkey="${k}"]`)?.value; if(next) await setRepStatus(k,next); renderRepList(); }
   if(e.target.classList.contains('removeStatusBtn')){ const k=e.target.dataset.repkey; const cur=getRepCurrentStatus(k); if(cur==='promoted') await db.ref(`reps/${k}`).update({promoted:false}); if(cur==='notPursuing') await db.ref(`reps/${k}`).update({notPursuing:false}); renderRepList(); }
   if(e.target.classList.contains('deleteRepBtn')){ await deleteRepFromTracker(e.target.dataset.repkey); renderRepList(); }
