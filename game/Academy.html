@@ -789,6 +789,11 @@ function baseAnonName(raw){
   const lastInitial = (parts[parts.length - 1][0] || '').toUpperCase();
   return lastInitial ? `${first} ${lastInitial}.` : first;
 }
+function sanitizePersonNameForSave(raw){
+  const cleaned = (raw || '').toString().trim().replace(/\s+/g,' ');
+  if(!cleaned) return '';
+  return baseAnonName(cleaned) || cleaned;
+}
 function buildAnonNameMaps(){
   const repGroups = {}, coachGroups = {}, reviewerGroups = {};
   for(const [repKey, rep] of Object.entries(reps || {})){
@@ -807,7 +812,7 @@ function buildAnonNameMaps(){
   }
   for(const forms of Object.values(formsByRep || {})){
     for(const f of Object.values(forms || {})){
-      const raw = (f?.reviewer || '').trim();
+      const raw = (f?.reviewerDisplay || f?.reviewerRaw || f?.reviewer || '').trim();
       const base = baseAnonName(raw);
       if(base){
         if(!reviewerGroups[base]) reviewerGroups[base] = [];
@@ -1369,7 +1374,7 @@ function renderLogList(entries){
       <div class="row" style="justify-content:space-between; align-items:center;">
         <div class="row" style="gap:8px;">
           <span class="badge">${dateLabel}</span>
-          ${f.reviewer?`<span class="badge">Reviewer: ${escapeHtml(displayReviewerName(f.reviewer))}</span>`:''}
+          ${f.reviewer?`<span class="badge">Reviewer: ${escapeHtml(displayReviewerName(f.reviewerDisplay || f.reviewerRaw || f.reviewer))}</span>`:''}
           ${scenarioLabel?`<span class="badge">Scenario: ${escapeHtml(scenarioLabel)}</span>`:''}
         </div>
         <div ${verdictColor}><strong>Verdict:</strong> ${f.verdict?.toFixed?f.verdict.toFixed(2):f.verdict}</div>
@@ -1586,7 +1591,7 @@ function computeEngagementData(weeks){
   // Reviewer counts
   const revMap = {};
   for(const f of allForms){
-    const raw = (f.reviewer || '').trim();
+    const raw = (f.reviewerDisplay || f.reviewerRaw || f.reviewer || '').trim();
     if(!raw) continue;
     const k = normalizeKeyName(raw);
     if(!revMap[k]) revMap[k] = { name: raw, count:0, lastTs:0 };
@@ -1733,9 +1738,11 @@ document.getElementById('addRepBtn').addEventListener('click', async ()=>{
   if(director && !DIRECTORS.includes(director)) return alert('Director must be Melick, Nelson, Terry, or Richards.');
 
   const key = keyify(name);
+  const coachSanitized = sanitizePersonNameForSave(coach);
   await db.ref(`reps/${key}`).update({
     name,
-    coach: coach || null,
+    coachRaw: coach || null,
+    coach: coachSanitized || null,
     director: director || null,
     meetingKPIs:false,
     understandsRole:false,
@@ -1751,10 +1758,15 @@ document.getElementById('addRepBtn').addEventListener('click', async ()=>{
 
 async function saveCoach(){
   if(!selectedRep) return;
-  const val = coachInput.value.trim() || null;
-  await db.ref(`reps/${selectedRep}/coach`).set(val);
+  const coachRaw = coachInput.value.trim();
+  const coachDisplay = sanitizePersonNameForSave(coachRaw);
+  await db.ref(`reps/${selectedRep}`).update({
+    coachRaw: coachRaw || null,
+    coach: coachDisplay || null
+  });
   if(!reps[selectedRep]) reps[selectedRep] = {};
-  reps[selectedRep].coach = val;
+  reps[selectedRep].coachRaw = coachRaw || null;
+  reps[selectedRep].coach = coachDisplay || null;
   renderRepList();
 }
 coachInput.addEventListener('keydown', async (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); await saveCoach(); }});
@@ -1855,12 +1867,13 @@ submitForm.addEventListener('click', async ()=>{
   const repKey = formRep.value;
   if(!repKey){ alert('Select a representative.'); return; }
   const date = formDate.value || new Date().toISOString().slice(0,10);
-  const reviewer = (formReviewer.value||'').trim();
+  const reviewerRaw = (formReviewer.value||'').trim();
+  const reviewerDisplay = sanitizePersonNameForSave(reviewerRaw);
   const scenarioCategory = (formScenarioCat.value||'').trim();
   const opportunities = (formOpps.value||'').trim();
   const notes = (formNotes.value||'').trim();
 
-  if(!reviewer){ alert('Reviewer (coach name) is required.'); return; }
+  if(!reviewerRaw){ alert('Reviewer (coach name) is required.'); return; }
   const selects = [...questionsEl.querySelectorAll('select')];
   const anyBlank = selects.some(s=>!s.value);
   if(anyBlank){ alert('Please score every section (no blanks).'); return; }
@@ -1877,7 +1890,9 @@ submitForm.addEventListener('click', async ()=>{
   const ref = db.ref(`coachingForms/${repKey}`).push();
   await ref.set({
     date,
-    reviewer,
+    reviewerRaw,
+    reviewerDisplay,
+    reviewer: reviewerRaw,
     scenarioCategory: scenarioCategory || null,
     opportunities,
     notes,
