@@ -875,11 +875,37 @@ function baseAnonName(raw){
 }
 function sanitizePersonNameForSave(raw){
   const cleaned = (raw || '').toString().trim().replace(/\s+/g,' ');
-  if(!cleaned) return '';
-  return baseAnonName(cleaned) || cleaned;
+  return cleaned;
+}
+function collectKnownPersonNames(){
+  const known = [];
+  const pushName = (v)=>{
+    const cleaned = (v || '').toString().trim().replace(/\s+/g,' ');
+    if(cleaned) known.push(cleaned);
+  };
+  for(const [repKey, rep] of Object.entries(reps || {})){
+    pushName(rep?.name || repKey || '');
+    pushName(rep?.coach || '');
+  }
+  for(const forms of Object.values(formsByRep || {})){
+    for(const f of Object.values(forms || {})){
+      pushName(f?.reviewerDisplay || '');
+      pushName(f?.reviewerRaw || '');
+      pushName(f?.reviewer || '');
+    }
+  }
+  return known;
 }
 function buildAnonNameMaps(){
-  const repGroups = {}, coachGroups = {}, reviewerGroups = {};
+  const repGroups = {}, coachGroups = {}, reviewerGroups = {}, personGroups = {};
+  const addGroup = (groups, base, raw)=>{
+    if(!base || !raw) return;
+    if(!groups[base]) groups[base] = [];
+    groups[base].push(raw);
+  };
+  for(const raw of collectKnownPersonNames()){
+    addGroup(personGroups, baseAnonName(raw), raw);
+  }
   for(const [repKey, rep] of Object.entries(reps || {})){
     const repRaw = (rep?.name || repKey || '').trim();
     const repBase = baseAnonName(repRaw);
@@ -887,21 +913,13 @@ function buildAnonNameMaps(){
       if(!repGroups[repBase]) repGroups[repBase] = [];
       repGroups[repBase].push({ repKey, raw:repRaw });
     }
-    const coachRaw = (rep?.coach || '').trim();
-    const coachBase = baseAnonName(coachRaw);
-    if(coachBase){
-      if(!coachGroups[coachBase]) coachGroups[coachBase] = [];
-      coachGroups[coachBase].push(coachRaw);
-    }
+    addGroup(coachGroups, baseAnonName(rep?.coach || ''), (rep?.coach || '').trim());
   }
   for(const forms of Object.values(formsByRep || {})){
     for(const f of Object.values(forms || {})){
       const raw = (f?.reviewerDisplay || f?.reviewerRaw || f?.reviewer || '').trim();
       const base = baseAnonName(raw);
-      if(base){
-        if(!reviewerGroups[base]) reviewerGroups[base] = [];
-        reviewerGroups[base].push(raw);
-      }
+      addGroup(reviewerGroups, base, raw);
     }
   }
   anonRepDisplayByKey = {};
@@ -915,19 +933,18 @@ function buildAnonNameMaps(){
     for(const [base, raws] of Object.entries(groups)){
       const ordered = [...new Set(raws)].sort((a,b)=>a.localeCompare(b));
       if(ordered.length === 1) out[ordered[0]] = base;
-      else ordered.forEach((r,i)=>{ out[r] = `${base}${i+1}.`; });
+      else ordered.forEach((r,i)=>{ out[r] = i===0 ? base : `${base.slice(0,-1)}${i+1}.`; });
     }
     return out;
   };
-  anonCoachDisplayByRaw = buildRawMap(coachGroups);
-  const coachReviewerGroups = {};
-  for(const [base, raws] of Object.entries(coachGroups)) coachReviewerGroups[base] = (coachReviewerGroups[base]||[]).concat(raws);
-  for(const [base, raws] of Object.entries(reviewerGroups)) coachReviewerGroups[base] = (coachReviewerGroups[base]||[]).concat(raws);
-  anonReviewerDisplayByRaw = buildRawMap(coachReviewerGroups);
+  const personMap = buildRawMap(personGroups);
+  anonCoachDisplayByRaw = {...personMap, ...buildRawMap(coachGroups)};
+  anonReviewerDisplayByRaw = {...personMap, ...buildRawMap(reviewerGroups)};
 }
 function displayPersonName(raw, type = "person"){
   const cleaned = (raw || '').toString().trim();
   if(!cleaned) return '';
+  if(type === 'person') return anonReviewerDisplayByRaw[cleaned] || anonCoachDisplayByRaw[cleaned] || baseAnonName(cleaned) || cleaned;
   if(type === 'coach') return anonCoachDisplayByRaw[cleaned] || baseAnonName(cleaned) || cleaned;
   if(type === 'reviewer') return anonReviewerDisplayByRaw[cleaned] || baseAnonName(cleaned) || cleaned;
   return baseAnonName(cleaned) || cleaned;
@@ -1523,7 +1540,7 @@ function renderCoachSummary(){
     .map(([coach, obj])=>{
       return `<tr>
         <td class="coachCell" data-coach="${escapeHtml(coach)}" style="cursor:pointer; font-weight:900; color:#1e3a8a">
-          ${escapeHtml(coach)}
+          ${escapeHtml(displayCoachName(coach))}
         </td>
         <td>${obj.reps.size}</td>
         <td>${obj.count30}</td>
