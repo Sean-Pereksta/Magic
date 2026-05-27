@@ -232,6 +232,7 @@
   .age-good{background:#ecfdf5;}
   .age-warn{background:#fffbeb;}
   .age-bad{background:#fef2f2;}
+  .anon-edit{width:100%; min-width:120px; padding:6px 8px;}
 </style>
 </head>
 
@@ -639,6 +640,21 @@
 
           </div>
         </div>
+        <div class="divider"></div>
+        <div class="bpanelBox">
+          <h3 style="padding:0; margin:0 0 10px 0;">Anonymity Cleanup</h3>
+          <div class="row" style="margin-bottom:10px;">
+            <button id="scanAssessmentNotesBtn" class="soft">Scan Assessment Notes</button>
+            <input id="anonymityFilterInput" placeholder="Filter found names / rep / field…" style="flex:1; min-width:220px;" />
+            <button id="applySelectedReplacementsBtn">Apply Selected Replacements</button>
+          </div>
+          <div style="overflow:auto;">
+            <table id="anonymityResultsTable">
+              <thead><tr><th><input type="checkbox" id="anonymitySelectAll" /></th><th>Found Name</th><th>Suggested Replacement</th><th>Rep/Assessment Date</th><th>Field Found In</th><th>Preview snippet</th><th>Status</th></tr></thead>
+              <tbody><tr><td colspan="7" class="tiny">Run a scan to see results.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
 
       </div>
     </div>
@@ -783,6 +799,11 @@ const modalOverlay = document.getElementById('modalOverlay');
 const modalTitle = document.getElementById('modalTitle');
 const modalBody = document.getElementById('modalBody');
 const modalClose = document.getElementById('modalClose');
+const scanAssessmentNotesBtn = document.getElementById('scanAssessmentNotesBtn');
+const anonymityFilterInput = document.getElementById('anonymityFilterInput');
+const applySelectedReplacementsBtn = document.getElementById('applySelectedReplacementsBtn');
+const anonymityResultsTableBody = document.querySelector('#anonymityResultsTable tbody');
+const anonymitySelectAll = document.getElementById('anonymitySelectAll');
 
 /* =========================
    State
@@ -794,6 +815,7 @@ let anonRepDisplayByKey = {};
 let anonCoachDisplayByRaw = {};
 let anonReviewerDisplayByRaw = {};
 let recentMeetingStats = null;
+let anonymityScanResults = [];
 
 function splitPersonName(raw){
   const cleaned = (raw || '').toString().trim().replace(/\s+/g,' ');
@@ -1686,6 +1708,86 @@ function renderRecentMeetingActivity(){
 function normalizeKeyName(s){
   return (s||'').toString().trim().toLowerCase().replace(/\s+/g,' ').replace(/[^\w\s-]/g,'');
 }
+function findPotentialFullNamesInText(text){
+  if(typeof text !== 'string' || !text.trim()) return [];
+  const matches = [...text.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g)].map(m=>m[1].trim());
+  const ignorePhrases = new Set(["Not Pursuing","Ready In","Last Meeting","Team Pereksta","Director Snapshot","Coach Summary"]);
+  return [...new Set(matches)].filter(name => !ignorePhrases.has(name));
+}
+function suggestAnonReplacement(name){
+  const parts = (name||'').trim().split(/\s+/).filter(Boolean);
+  if(parts.length < 2) return name;
+  return `${parts[0]} ${parts[parts.length-1][0].toUpperCase()}.`;
+}
+function shouldScanNarrativeField(fieldName, value){
+  if(typeof value !== 'string') return false;
+  const key = (fieldName||'').toLowerCase();
+  if(['notes','opportunities','comments'].includes(key)) return true;
+  return /(note|comment|opportun|narrative|feedback|summary|context|text)/.test(key) && value.trim().length >= 20;
+}
+function scanAssessmentNotesForNames(){
+  const knownNames = new Set();
+  Object.entries(reps || {}).forEach(([repKey, rep])=>{
+    [rep?.name, rep?.coach, rep?.coachRaw].forEach(n=>{ if(n && n.trim().split(/\s+/).length >= 2) knownNames.add(n.trim()); });
+    knownNames.add(repKey);
+  });
+  Object.values(formsByRep || {}).forEach(formsObj=>{
+    Object.values(formsObj || {}).forEach(f=>{
+      [f?.reviewerRaw, f?.reviewerDisplay, f?.reviewer].forEach(n=>{ if(n && n.trim().split(/\s+/).length >= 2) knownNames.add(n.trim()); });
+    });
+  });
+  const results = [];
+  Object.entries(formsByRep || {}).forEach(([repKey, formsObj])=>{
+    Object.entries(formsObj || {}).forEach(([formId, form])=>{
+      const repName = displayRepName(repKey);
+      const date = form?.date || '—';
+      const sources = [];
+      Object.entries(form || {}).forEach(([k,v])=>{ if(shouldScanNarrativeField(k, v)) sources.push({ field:k, text:v }); });
+      sources.forEach(src=>{
+        const fromKnown = [...knownNames].filter(n => src.text.includes(n) && n.split(/\s+/).length >= 2);
+        const found = new Set([...findPotentialFullNamesInText(src.text), ...fromKnown]);
+        found.forEach(name=>{
+          const idx = src.text.indexOf(name);
+          results.push({ id:`${repKey}__${formId}__${src.field}__${name}`, repKey, formId, field:src.field, foundName:name, suggestedReplacement:suggestAnonReplacement(name), repAssessmentDate:`${repName} / ${fmtDate(date)}`, preview:src.text.slice(Math.max(0, idx-20), idx+name.length+40).trim(), status:'Pending' });
+        });
+      });
+    });
+  });
+  anonymityScanResults = results;
+  renderAnonymityScanResults(results);
+}
+function renderAnonymityScanResults(results){
+  const q = (anonymityFilterInput?.value || '').toLowerCase().trim();
+  const filtered = (results || []).filter(r => !q || `${r.foundName} ${r.suggestedReplacement} ${r.repAssessmentDate} ${r.field} ${r.preview}`.toLowerCase().includes(q));
+  if(!filtered.length){ anonymityResultsTableBody.innerHTML = `<tr><td colspan="7" class="tiny">No matching results.</td></tr>`; return; }
+  anonymityResultsTableBody.innerHTML = filtered.map(r=>`<tr data-anon-id="${escapeHtml(r.id)}"><td><input type="checkbox" class="anon-select" checked></td><td>${escapeHtml(r.foundName)}</td><td><input class="anon-edit" value="${escapeHtml(r.suggestedReplacement)}" /></td><td>${escapeHtml(r.repAssessmentDate)}</td><td>${escapeHtml(r.field)}</td><td>${escapeHtml(r.preview)}</td><td>${escapeHtml(r.status)}</td></tr>`).join('');
+}
+async function applySelectedAnonymityReplacements(){
+  const selectedRows = [];
+  anonymityResultsTableBody.querySelectorAll('tr[data-anon-id]').forEach(tr=>{
+    if(tr.querySelector('.anon-select')?.checked){
+      selectedRows.push({ id:tr.dataset.anonId, replacement:(tr.querySelector('.anon-edit')?.value||'').trim() });
+    }
+  });
+  if(!selectedRows.length){ alert('Select at least one row before applying replacements.'); return; }
+  if(!confirm(`Apply ${selectedRows.length} selected name replacement(s)?`)) return;
+  const replacementById = Object.fromEntries(selectedRows.map(r=>[r.id, r.replacement]));
+  const updates = {};
+  anonymityScanResults.forEach(r=>{
+    const replacement = replacementById[r.id];
+    if(!replacement || replacement === r.foundName) return;
+    const text = formsByRep?.[r.repKey]?.[r.formId]?.[r.field];
+    if(typeof text !== 'string') return;
+    const escaped = r.foundName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\b${escaped}\\b`, 'g');
+    const next = text.replace(re, replacement);
+    if(next !== text) updates[`coachingForms/${r.repKey}/${r.formId}/${r.field}`] = next;
+  });
+  if(!Object.keys(updates).length){ alert('No changes detected from selected rows.'); return; }
+  await db.ref().update(updates);
+  await loadAllForms();
+  scanAssessmentNotesForNames();
+}
 
 function computeEngagementData(weeks){
   const cutoff = Date.now() - (weeks * WEEK_MS);
@@ -1833,6 +1935,12 @@ document.querySelectorAll('.engTab').forEach(btn=>{
     document.getElementById('engReviewers').hidden = which !== 'reviewers';
     document.getElementById('engRatio').hidden = which !== 'ratio';
   });
+});
+scanAssessmentNotesBtn.addEventListener('click', scanAssessmentNotesForNames);
+anonymityFilterInput.addEventListener('input', ()=>renderAnonymityScanResults(anonymityScanResults));
+applySelectedReplacementsBtn.addEventListener('click', applySelectedAnonymityReplacements);
+anonymitySelectAll.addEventListener('change', ()=>{
+  anonymityResultsTableBody.querySelectorAll('.anon-select').forEach(cb=>{ cb.checked = anonymitySelectAll.checked; });
 });
 
 /* =========================
