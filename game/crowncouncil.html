@@ -302,23 +302,31 @@
     left:50%;top:50%;
     transform:translate(-50%,-50%);
     display:flex;
-    gap:14px;
+    gap:8px;
     z-index:50;
-    flex-wrap:wrap;
+    flex-wrap:nowrap;
     justify-content:center;
-    max-width:960px;
+    align-items:stretch;
+    width:100%;
+    max-width:720px;
+    padding:8px;
+    box-sizing:border-box;
   }
   .card{
-    width:min(260px,40vw);
+    position:relative;
+    width:min(30vw,210px);
+    min-width:95px;
+    max-width:210px;
     background:radial-gradient(circle at top,#0b1120,#020617);
-    border-radius:16px;
+    border-radius:14px;
     border:1px solid rgba(148,163,184,.55);
-    box-shadow:0 18px 40px rgba(15,23,42,.9);
-    padding:12px 14px;
+    box-shadow:0 14px 30px rgba(15,23,42,.9);
+    padding:8px;
     cursor:pointer;
     display:grid;
-    gap:6px;
+    gap:5px;
     user-select:none;
+    box-sizing:border-box;
     transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
   }
   .card:before{
@@ -339,19 +347,20 @@
   .card.type-formation{ border-color:rgba(125,211,252,.9); box-shadow:0 0 0 1px rgba(56,189,248,.5) inset, 0 18px 40px rgba(14,116,144,.78); }
   .card.legendary{ border-width:2px; }
   .card .icon{
-    height:60px;
+    height:48px;
     border-radius:10px;
     display:grid;
     place-items:center;
-    font-size:30px;
+    font-size:26px;
     background:linear-gradient(180deg, rgba(148,163,184,.16), rgba(2,6,23,.5));
     border:1px solid rgba(148,163,184,.35);
   }
   .card .title{
     font-weight:800;
     letter-spacing:.02em;
-    font-size:.96rem;
+    font-size:.9rem;
     color:#e5e7eb;
+    line-height:1.08;
   }
   .card .meta{
     font-size:.7rem;
@@ -367,9 +376,33 @@
   }
   .card .desc{
     color:#cbd5f5;
-    font-size:.8rem;
-    line-height:1.28;
+    font-size:.76rem;
+    line-height:1.2;
   }
+  .card .desc.short{
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .cardInfoBtn{
+    position:absolute;
+    top:7px;
+    right:7px;
+    width:24px;
+    height:24px;
+    border-radius:999px;
+    border:1px solid rgba(147,197,253,.7);
+    background:rgba(15,23,42,.92);
+    color:#dbeafe;
+    display:grid;
+    place-items:center;
+    font-weight:900;
+    font-size:.78rem;
+    line-height:1;
+    cursor:pointer;
+    box-shadow:0 4px 12px rgba(2,6,23,.6);
+  }
+  .cardInfoBtn:hover{background:rgba(30,41,59,.98);border-color:#38bdf8;}
   .card .sectionLabel{font-size:.62rem;color:#93c5fd;letter-spacing:.08em;text-transform:uppercase;font-weight:800;}
   .card .typeTag{font-size:.64rem;display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;border:1px solid rgba(148,163,184,.5);width:max-content;font-weight:800;letter-spacing:.04em;}
   .card .typeTag .typeIcon{font-size:.72rem}
@@ -387,6 +420,45 @@
 .recommend-warn{background:rgba(239,68,68,.2);border-color:rgba(248,113,113,.65);color:#fee2e2;}
 .recommend-mid{background:rgba(59,130,246,.2);border-color:rgba(96,165,250,.65);color:#dbeafe;}
 .tipText{color:#cbd5f5;font-size:.76rem;line-height:1.28;}
+  .cardInfoModal{
+    position:absolute;
+    inset:0;
+    z-index:130;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:14px;
+    background:rgba(2,6,23,.55);
+    box-sizing:border-box;
+  }
+  .cardInfoPanel{
+    width:min(430px,94vw);
+    max-height:min(78vh,560px);
+    overflow:auto;
+    background:radial-gradient(circle at top,#111827,#020617);
+    border:1px solid rgba(148,163,184,.75);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+    padding:12px;
+    color:#e5e7eb;
+  }
+  .cardInfoHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px;}
+  .cardInfoHeader h3{margin:0;color:#dbeafe;font-size:1rem;line-height:1.15;}
+  .cardInfoClose{
+    width:30px;
+    height:30px;
+    border-radius:999px;
+    border:1px solid rgba(148,163,184,.55);
+    background:rgba(15,23,42,.9);
+    color:#e5e7eb;
+    font-weight:900;
+    cursor:pointer;
+    flex:0 0 auto;
+  }
+  .cardInfoBody{display:grid;gap:8px;font-size:.82rem;}
+  .infoSection{display:grid;gap:3px;padding:7px 8px;border:1px solid rgba(148,163,184,.18);border-radius:10px;background:rgba(15,23,42,.5);}
+  .infoLabel{font-size:.64rem;color:#93c5fd;text-transform:uppercase;letter-spacing:.08em;font-weight:900;}
+  .infoValue{color:#e2e8f0;line-height:1.3;}
   .card:hover{
     transform:translateY(-3px);
     box-shadow:0 22px 50px rgba(15,23,42,1);
@@ -533,7 +605,13 @@
   @media (max-width:768px){
     .badge{padding:5px 9px;font-size:.76rem}
     .btn{padding:6px 10px;font-size:.8rem}
-    .card{width:min(280px,92vw);padding:10px 11px;gap:5px;}
+    .cardRow{gap:7px;padding:7px;}
+    .card{width:31vw;min-width:0;padding:7px;gap:4px;border-radius:12px;}
+    .card .icon{height:42px;font-size:24px;}
+    .card .title{font-size:.82rem;}
+    .card .typeTag{font-size:.58rem;padding:2px 5px;}
+    .card .chip{font-size:.58rem;padding:3px 5px;}
+    .cardInfoBtn{width:22px;height:22px;top:5px;right:5px;font-size:.72rem;}
     .cells{padding:6px;}
     .viewport{height:calc(100dvh - 64px);}
   }
@@ -541,8 +619,13 @@
     :root{ --cell:56px; --gap:3px; }
     .topbar{padding:7px 8px; gap:8px;}
     .row{gap:6px;}
-    .cardRow{gap:10px;}
-    .card .desc{font-size:.76rem;}
+    .cardRow{gap:5px;padding:5px;}
+    .card{width:31vw;padding:6px;gap:4px;}
+    .card .icon{height:38px;font-size:22px;}
+    .card .title{font-size:.76rem;}
+    .card .desc{font-size:.66rem;}
+    .card .chip{font-size:.54rem;padding:2px 4px;}
+    .cardInfoPanel{max-height:82vh;}
   }
 </style>
 </head>
@@ -575,6 +658,15 @@
       <button id="counterGuideClose" class="btn ghost guideClose">Close</button>
     </div>
     <div id="cardRow" class="cardRow" style="display:none"></div>
+    <div id="cardInfoModal" class="cardInfoModal">
+      <div class="cardInfoPanel" role="dialog" aria-modal="true" aria-labelledby="cardInfoTitle">
+        <div class="cardInfoHeader">
+          <h3 id="cardInfoTitle">Card Info</h3>
+          <button class="cardInfoClose" type="button" aria-label="Close card info">×</button>
+        </div>
+        <div id="cardInfoBody" class="cardInfoBody"></div>
+      </div>
+    </div>
     <div id="pickNote" class="pickNote"></div>
     <div id="pickCounter" class="pickCounter"></div>
   </div>
@@ -646,6 +738,25 @@ let CELL=64, GAP=4, W=8, H=16;
 /* ---------------- DOM ---------------- */
 const $ = (id)=>document.getElementById(id);
 const cellsEl=$("cells"), canvas=$("canvas"), viewport=$("viewport"), beamsEl=$("beams"), partsEl=$("particles");
+function escapeHtml(value){
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
+}
+function infoSection(label, value){
+  if (Array.isArray(value)) value = value.filter(Boolean).join(", ");
+  if (!value) value = "—";
+  return '<div class="infoSection"><div class="infoLabel">'+escapeHtml(label)+'</div><div class="infoValue">'+escapeHtml(value)+'</div></div>';
+}
+function closeCardInfoModal(){
+  const modal = $("cardInfoModal");
+  if (modal) modal.style.display = "none";
+}
+function openCardInfoModal(title, bodyHtml){
+  const modal = $("cardInfoModal"), titleEl = $("cardInfoTitle"), bodyEl = $("cardInfoBody");
+  if (!modal || !titleEl || !bodyEl) return;
+  titleEl.textContent = title || "Card Info";
+  bodyEl.innerHTML = bodyHtml || "";
+  modal.style.display = "flex";
+}
 
 let unitLayerEl = null;
 
@@ -3004,7 +3115,7 @@ function render(){
   const guideBtn=$("counterGuideBtn"), guideModal=$("counterGuideModal"), guideList=$("counterGuideList");
   if (!draftishPh){
     overlay.style.display="none"; row.style.display="none"; note.style.display="none"; row.innerHTML="";
-    guideBtn.style.display="none"; guideModal.style.display="none";
+    guideBtn.style.display="none"; guideModal.style.display="none"; closeCardInfoModal();
     return;
   }
   overlay.style.display="block";
@@ -3054,7 +3165,7 @@ function render(){
 
   const pack=(S && S.currentPacks && S.currentPacks[sk]) ? S.currentPacks[sk] : [];
   if (pickedIndex!=null){
-    row.style.display="none"; row.innerHTML="";
+    row.style.display="none"; row.innerHTML=""; closeCardInfoModal();
     const picked = pack[pickedIndex];
     const label = picked ? (picked.name || picked.key || picked.type) : "(auto)";
     note.textContent="Selected: "+label;
@@ -3075,49 +3186,52 @@ function render(){
       formation:{label:"FORMATION", icon:"🔳"}
     };
     const draftEval = evaluateDraftCard(c, myRoster, enemyRoster, myRelics, enemyRelics);
-    const recLabels = (draftEval.labels||[]).slice(0,2).map(lbl=>{
-      const cls = lbl==="Risky Pick" ? "recommend-warn" : (lbl==="Build Around" || lbl==="Completes Combo" ? "recommend-mid" : "recommend-good");
-      return '<span class="recommendLabel '+cls+'">'+lbl+'</span>';
-    }).join("");
-    const reasonLine = (draftEval.reasons && draftEval.reasons[0]) ? ('<div class="tipText">'+draftEval.reasons[0]+'</div>') : '';
+    const recText = (draftEval.labels||[]).slice(0,2).join(", ");
+    const reasonText = (draftEval.reasons && draftEval.reasons[0]) ? draftEval.reasons[0] : "";
+    let infoTitle = c.name || c.key || c.type || "Card";
+    let infoBody = "";
+    let cardHtml = "";
+
     if (c.type==="troop"){
       const tro = TROOPS[c.key];
       el.classList.add("faction-"+tro.faction);
       const armor = Math.max(0, (tro.base && tro.base.armor) ? (tro.base.armor|0) : 0);
-      const trueTag = tro.trueDamage ? ' · true dmg' : '';
+      const trueTag = tro.trueDamage ? " · true damage" : "";
       const meta = TROOP_COUNTERS[c.key] || {
         roleLabel:(tro.role==="back"?"Backline":"Frontline"),
         archetype:"Generalist",
         strongAgainst:[], weakAgainst:[], bestWith:[],
         counterTip:"", dangerTip:""
       };
-      const strong = (meta.strongAgainst||[]).slice(0,3).map(v=>'<span class="counterChip strongChip">'+v+'</span>').join('');
-      const weak = (meta.weakAgainst||[]).slice(0,3).map(v=>'<span class="counterChip weakChip">'+v+'</span>').join('');
-      const synergies = (meta.bestWith||[]).slice(0,3).map(v=>'<span class="counterChip synergyChip">'+v+'</span>').join('');
-      const countersLine = (meta.strongAgainst||[]).slice(0,2).join(", ") || "Generalist";
-      const warningLine = (meta.weakAgainst||[]).slice(0,2).join(", ") || "Hard focus";
       const draftFit = enemyRoster.length ? evaluateDraftFit(meta, enemyRoster) : "";
-      const tip = meta.counterTip || meta.dangerTip || "";
-      el.innerHTML=''+
+      const legendary = (((S&&S.roster&&S.roster[sk])||[]).find(r=>r.type===c.key)?.lvl===2 && LEGENDARY_ABILITIES[c.key]) ? LEGENDARY_ABILITIES[c.key] : null;
+      const effectLine = meta.roleLabel || (tro.role==="back" ? "Backline damage" : "Frontline fighter");
+      cardHtml=''+
+        '<button class="cardInfoBtn" type="button" aria-label="More info about '+escapeHtml(c.name)+'">?</button>'+
         '<div class="typeTag"><span class="typeIcon">🛡️</span>TROOP</div>'+
-        '<div class="icon">'+c.emoji+'</div>'+
-        '<div class="title">'+c.name+'</div>'+
-        '<div class="counterRow"><span class="chip chip-role">'+meta.roleLabel+'</span><span class="chip chip-role">'+meta.archetype+'</span><span class="chip chip-role">'+tro.faction+'</span></div>'+
-        '<div class="sectionLabel">Main effect</div><div class="desc">'+(tip || ("Armor "+armor+trueTag))+'</div>'+
-        '<div class="sectionLabel">Strong vs</div><div class="counterRow">'+strong+'</div>'+
-        '<div class="sectionLabel">Weak vs</div><div class="counterRow">'+weak+'</div>'+
-        '<div class="sectionLabel">Best with</div><div class="counterRow">'+synergies+'</div>'+
-        (recLabels ? '<div class="recommendRow">'+recLabels+'</div>' : '')+
-        '<div class="tipText">Counters: '+countersLine+'</div><div class="tipText">Weak into: '+warningLine+'</div>'+
-        reasonLine+
-        (draftFit ? '<div class="tipText">'+draftFit+'</div>' : '')+
-        ((((S&&S.roster&&S.roster[sk])||[]).find(r=>r.type===c.key)?.lvl===2&&LEGENDARY_ABILITIES[c.key])?'<div class="legendaryLine">LEGENDARY UNLOCK</div><div class="chip chip-legend">'+LEGENDARY_ABILITIES[c.key].name+'</div><div class="legendaryDesc">'+LEGENDARY_ABILITIES[c.key].desc+'</div>':'');
+        '<div class="icon">'+escapeHtml(c.emoji)+'</div>'+
+        '<div class="title">'+escapeHtml(c.name)+'</div>'+
+        '<div class="desc short">'+escapeHtml(effectLine)+'</div>'+
+        '<div class="counterRow"><span class="chip chip-role">'+escapeHtml(meta.roleLabel)+'</span></div>';
+      infoBody = ''+
+        infoSection("Card type", "Troop · "+tro.faction)+
+        infoSection("Role / archetype", meta.roleLabel+" · "+meta.archetype)+
+        infoSection("Main effect", (meta.counterTip || ("Armor "+armor+trueTag)))+
+        infoSection("Strong against", meta.strongAgainst)+
+        infoSection("Weak against", meta.weakAgainst)+
+        infoSection("Best with", meta.bestWith)+
+        infoSection("Counter tip", meta.counterTip || "Use this unit where its role can safely generate value.")+
+        infoSection("Danger tip", meta.dangerTip || "Avoid exposing it to hard focus.")+
+        (recText ? infoSection("Draft read", recText) : "")+
+        (reasonText ? infoSection("Why it fits", reasonText) : "")+
+        (draftFit ? infoSection("Opponent matchup", draftFit) : "")+
+        (legendary ? infoSection("Legendary unlock", legendary.name+" — "+legendary.desc) : "");
     }else{
       el.classList.add("special");
       const nn=TROOPS[c.for]?.name||"Type";
-      let metaLabel = "SPECIAL";
-      let roleLabel = "Role: Special";
+      let roleLabel = "Special";
       let desc = c.desc || "";
+      let shortDesc = "Special effect";
       const specialType = c.type==="special" ? (c.special||"tactic") : c.type;
       const tm = typeMeta[specialType] || {label:"SPECIAL",icon:"✨"};
       el.classList.add("type-"+specialType);
@@ -3127,25 +3241,54 @@ function render(){
         const nxt = Math.min(3, cur+1);
         const t = TROOPS[c.for] || {};
         const nbase = t.base || {};
-        desc = "Upgrade "+nn+" L"+cur+" → L"+nxt+". Next: "+(nbase.dmg||0)+" dmg, "+(nbase.maxHp||0)+" HP."+(nxt===3?" LEGENDARY UNLOCK: "+(LEGENDARY_ABILITIES[c.for]?.name||"Legendary")+" — "+(LEGENDARY_ABILITIES[c.for]?.desc||""):"");
+        const legendary = nxt===3 ? LEGENDARY_ABILITIES[c.for] : null;
+        roleLabel = "Upgrade";
+        shortDesc = legendary ? "Upgrade toward Legendary" : "Improve this troop";
+        desc = "Upgrade "+nn+" L"+cur+" → L"+nxt+". Next: "+(nbase.dmg||0)+" dmg, "+(nbase.maxHp||0)+" HP.";
+        if (legendary) desc += " Legendary unlock: "+legendary.name+" — "+legendary.desc;
       } else if (c.type==="special" && c.special==="double"){
         const own = ((S && S.roster && S.roster[sk])||[]).find(r=>r.type===c.for);
         const cur = own ? Math.max(1, own.count|0) : 1;
+        roleLabel = "Army Count";
+        shortDesc = "Double this troop count";
         desc = "Double "+nn+": "+cur+" → "+(cur*2);
-      } else if (c.type==="relic"){ metaLabel = "RELIC"; roleLabel = "Army Modifier"; }
-      else if (c.type==="tactic"){ metaLabel = "TACTIC"; roleLabel = "Battle Start Effect"; }
-      else if (c.type==="formation"){ metaLabel = "FORMATION"; roleLabel = "Spawn Pattern"; }
-      el.innerHTML=''+
-        '<div class="typeTag"><span class="typeIcon">'+tm.icon+'</span>'+tm.label+'</div>'+
-        '<div class="icon">'+c.emoji+'</div>'+
-        '<div class="title">'+(c.name || c.type)+'</div>'+
-        '<div class="counterRow"><span class="chip chip-role">'+roleLabel+'</span></div>'+
-        '<div class="sectionLabel">Main effect</div><div class="desc">'+desc+'</div>'+
-        '<div class="sectionLabel">Strong vs</div><div class="counterRow"><span class="counterChip strongChip">Build Defining</span></div>'+
-        '<div class="sectionLabel">Weak vs</div><div class="counterRow"><span class="counterChip weakChip">Situational</span></div>'+
-        '<div class="sectionLabel">Best with</div><div class="counterRow"><span class="counterChip synergyChip">'+nn+'</span></div>'+
-        (recLabels ? '<div class="recommendRow">'+recLabels+'</div>' : '')+
-        reasonLine;
+      } else if (c.type==="relic"){
+        roleLabel = "Army Modifier";
+        shortDesc = "Army modifier";
+      } else if (c.type==="tactic"){
+        roleLabel = "Battle Start";
+        shortDesc = "Battle-start tactic";
+      } else if (c.type==="formation"){
+        roleLabel = "Spawn Pattern";
+        shortDesc = "Spawn formation";
+      }
+      cardHtml=''+
+        '<button class="cardInfoBtn" type="button" aria-label="More info about '+escapeHtml(c.name || c.type)+'">?</button>'+
+        '<div class="typeTag"><span class="typeIcon">'+escapeHtml(tm.icon)+'</span>'+escapeHtml(tm.label)+'</div>'+
+        '<div class="icon">'+escapeHtml(c.emoji || "✨")+'</div>'+
+        '<div class="title">'+escapeHtml(c.name || c.type)+'</div>'+
+        '<div class="desc short">'+escapeHtml(shortDesc)+'</div>'+
+        '<div class="counterRow"><span class="chip chip-role">'+escapeHtml(roleLabel)+'</span></div>';
+      infoBody = ''+
+        infoSection("Card type", tm.label)+
+        infoSection("Role / archetype", roleLabel)+
+        infoSection("Main effect", desc)+
+        infoSection("Strong against", c.type==="special" && c.special==="double" ? "Long fights and scaling boards" : "Build-defining plans")+
+        infoSection("Weak against", "Situational drafts that do not support the plan")+
+        infoSection("Best with", nn)+
+        infoSection("Counter tip", desc || "Use when it supports your current army plan.")+
+        infoSection("Danger tip", "Lower value if your board cannot use the effect immediately.")+
+        (recText ? infoSection("Draft read", recText) : "")+
+        (reasonText ? infoSection("Why it fits", reasonText) : "");
+    }
+
+    el.innerHTML = cardHtml;
+    const infoBtn = el.querySelector(".cardInfoBtn");
+    if (infoBtn){
+      infoBtn.onclick = (event)=>{
+        event.stopPropagation();
+        openCardInfoModal(infoTitle, infoBody);
+      };
     }
     (function(idx){
       el.onclick=function(){ chooseCard(idx); };
@@ -3374,6 +3517,16 @@ onAuthStateChanged(auth, (user) => {
   ensureVisualLoop();
   startListeners();
 });
+
+const cardInfoModal = $("cardInfoModal");
+if (cardInfoModal){
+  cardInfoModal.addEventListener("pointerdown", (event)=>{ event.stopPropagation(); });
+  cardInfoModal.addEventListener("click", (event)=>{
+    if (event.target === cardInfoModal) closeCardInfoModal();
+  });
+  const closeBtn = cardInfoModal.querySelector(".cardInfoClose");
+  if (closeBtn) closeBtn.onclick = closeCardInfoModal;
+}
 
 /* Fullscreen */
 $("fsBtn").onclick = async ()=>{
