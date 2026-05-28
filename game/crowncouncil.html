@@ -473,8 +473,9 @@ const PACE = {
   poisonSlowMs: 1100,
   toxicDotMs: 1000
 };
-const VIEW_MS  = 120;   // publish + render cadence
+const VIEW_MS  = 120;   // render cadence
 const LOGIC_MS = 560;   // core logic cadence
+const BATTLE_PUBLISH_MS = 280; // host battle publish cadence
 const MOVE_MS  = 560;   // gate movement per unit
 
 let CELL=64, GAP=4, W=8, H=16;
@@ -730,6 +731,7 @@ function rankColor(lvl){
 function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
 
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
+let lastRenderedBattleTickId = -1;
 const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
 
 /* 2×2 helpers */
@@ -1976,6 +1978,18 @@ function rankClass(m){
   return "nameBronze";
 }
 
+function unitSig(u){
+  return [u.id, u.x, u.y, u.hp, u.status||"", u.slowUntil||0, u.bindUntil||0].join("|");
+}
+function battleFieldSignature(field){
+  const units = (field.units||[]).map(unitSig).sort().join(";");
+  const wards = (field.wards||[]).map(w=>[w.id,w.x,w.y,w.hp].join("|")).sort().join(";");
+  const poisonN = (field.poison||[]).length;
+  const toxicN  = (field.toxic||[]).length;
+  const acidN   = (field.acid||[]).length;
+  return [ (field.units||[]).length, units, (field.wards||[]).length, wards, poisonN, toxicN, acidN ].join("#");
+}
+
 let hostTick=null, battleTick=null;
 
 /* keep lobby.players in state.players (host only) */
@@ -2077,7 +2091,8 @@ function startHostLoops(){
           currentPacks:{p0:[],p1:[]},
           phase:"battle",
           phaseEndsAt:0,
-          bonusFor:null
+          bonusFor:null,
+          battleTickId: 0
         });
         runBattle();
       }else{
@@ -2189,7 +2204,8 @@ function startHostLoops(){
           draftIndex:0,
           currentPacks:{p0:[],p1:[]},
           phase:"battle",
-          phaseEndsAt:0
+          phaseEndsAt:0,
+          battleTickId: 0
         });
         runBattle();
       }else{
@@ -2238,9 +2254,12 @@ function startHostLoops(){
 
 /* ----------- Battle loop ----------- */
 function runBattle(){
+  if (!isHost) return;
   if (battleTick) return;
 
   let lastLogic = 0;
+  let lastPublishAt = 0;
+  let lastPublishedSignature = null;
 
   battleTick = setInterval(async ()=>{
     const snap = await getDoc(stateRef);
@@ -2248,11 +2267,12 @@ function runBattle(){
       clearInterval(battleTick); battleTick=null; return;
     }
     const d = snap.data();
-    if (d.phase !== "battle"){
+    if (d.phase !== "battle" || !isHost){
       clearInterval(battleTick); battleTick=null; return;
     }
 
     const st = deepClone(d);
+    let battleTickId = Number.isFinite(d.battleTickId) ? d.battleTickId : 0;
     const units = st.field.units || [];
     const now = Date.now();
 
@@ -2398,7 +2418,16 @@ function runBattle(){
       }
     } else {
       st.field.wards = (st.field.wards||[]).filter(w=>w.hp>0 && w.until>now);
-      await updateDoc(stateRef, { field: st.field });
+      const nowPublish = Date.now();
+      if ((nowPublish - lastPublishAt) >= BATTLE_PUBLISH_MS){
+        const nextSig = battleFieldSignature(st.field);
+        if (nextSig !== lastPublishedSignature){
+          battleTickId += 1;
+          await updateDoc(stateRef, { field: st.field, battleTickId: battleTickId });
+          lastPublishedSignature = nextSig;
+        }
+        lastPublishAt = nowPublish;
+      }
     }
   }, VIEW_MS);
 }
@@ -2627,7 +2656,18 @@ function startListeners(){
 let lastFxSeen=new Set();
 onSnapshot(stateRef,(snap)=>{
   if(!snap.exists()) return;
-  S=snap.data();
+  const nextState = snap.data();
+  if (nextState.phase === "battle") {
+    const incomingTick = Number.isFinite(nextState.battleTickId) ? nextState.battleTickId : -1;
+    if (incomingTick <= lastRenderedBattleTickId && S && S.field){
+      nextState.field = S.field;
+    } else {
+      lastRenderedBattleTickId = incomingTick;
+    }
+  } else {
+    lastRenderedBattleTickId = -1;
+  }
+  S=nextState;
   const current = S.players || lobbyPlayers || [];
   let idx = current.indexOf(username);
   if (idx < 0) idx = 0;
