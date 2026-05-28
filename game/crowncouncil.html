@@ -463,6 +463,7 @@ if (!gameId || !username){ alert("Missing gameId or username in URL."); }
 
 const lobbyRef = doc(db,"lobbies",gameId);
 const stateRef = doc(db,"lobbies",gameId,"crowncouncil","state");
+const battleRef = doc(db,"lobbies",gameId,"crowncouncil","battle");
 
 /* ---------------- Pace / sizes ---------------- */
 const PACE = {
@@ -565,7 +566,6 @@ async function ensureStateExists(){
         phaseEndsAt: players.length < 2 ? 0 : now + 20000,
         roster:   { p0: [], p1: [] },
         factions: { p0: null, p1: null },
-        field:    { units: [], poison: [], toxic: [], acid: [], wards: [], fx: [] },
         selections:   { p0: [], p1: [] },
         currentPacks: { p0: [], p1: [] },
         bonusFor: null,
@@ -733,6 +733,22 @@ function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
 let lastRenderedBattleTickId = -1;
 const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
+const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[], wards:[], fx:[], updatedAt:0});
+
+function battleFromStateFallback(st){
+  const fld = (st && st.field) ? st.field : fieldEmpty();
+  return Object.assign(battleEmpty(), {
+    units: fld.units || [],
+    poison: fld.poison || [],
+    toxic: fld.toxic || [],
+    acid: fld.acid || [],
+    wards: fld.wards || [],
+    fx: fld.fx || [],
+    battleTickId: Number.isFinite(st && st.battleTickId) ? st.battleTickId : 0
+  });
+}
+
+let B = battleEmpty();
 
 /* 2×2 helpers */
 function unitSize(u){ return TROOPS[u.type] && TROOPS[u.type].size===2 ? 2 : 1; }
@@ -2085,15 +2101,14 @@ function startHostLoops(){
         rebuildFieldFromRoster(temp);
         await updateDoc(stateRef,{
           roster: temp.roster,
-          field: temp.field,
           selections:{p0:[],p1:[]},
           draftIndex:0,
           currentPacks:{p0:[],p1:[]},
           phase:"battle",
           phaseEndsAt:0,
-          bonusFor:null,
-          battleTickId: 0
+          bonusFor:null
         });
+        await setDoc(battleRef, Object.assign(battleEmpty(), temp.field, { battleTickId: 0, updatedAt: Date.now() }));
         runBattle();
       }else{
         await updateDoc(stateRef,{
@@ -2199,14 +2214,13 @@ function startHostLoops(){
         rebuildFieldFromRoster(temp);
         await updateDoc(stateRef,{
           roster: temp.roster,
-          field: temp.field,
           selections:{p0:[],p1:[]},
           draftIndex:0,
           currentPacks:{p0:[],p1:[]},
           phase:"battle",
-          phaseEndsAt:0,
-          battleTickId: 0
+          phaseEndsAt:0
         });
+        await setDoc(battleRef, Object.assign(battleEmpty(), temp.field, { battleTickId: 0, updatedAt: Date.now() }));
         runBattle();
       }else{
         await updateDoc(stateRef,{
@@ -2228,7 +2242,7 @@ function startHostLoops(){
     /* cleanup FX + terrain (skip during battle; battle loop owns the field) */
     if (d.phase === "battle") return;
 
-    const nf = d.field || fieldEmpty();
+    const nf = (B && (B.units||B.poison||B.toxic||B.acid||B.wards)) ? deepClone(B) : battleFromStateFallback(d);
     const now2=Date.now();
     const beforeFx = (nf.fx||[]).length;
     const beforePoison = (nf.poison||[]).length;
@@ -2248,7 +2262,7 @@ function startHostLoops(){
       beforeAcid !== nf.acid.length ||
       beforeWards !== nf.wards.length;
 
-    if (changed) await updateDoc(stateRef, { field: nf });
+    if (changed) await setDoc(battleRef, Object.assign(battleEmpty(), nf, { battleTickId: Number.isFinite(B.battleTickId)?B.battleTickId:0, updatedAt: Date.now() }), { merge:true });
   }, 260);
 }
 
@@ -2271,8 +2285,11 @@ function runBattle(){
       clearInterval(battleTick); battleTick=null; return;
     }
 
+    const bSnap = await getDoc(battleRef);
+    const battleData = bSnap.exists() ? bSnap.data() : battleFromStateFallback(d);
     const st = deepClone(d);
-    let battleTickId = Number.isFinite(d.battleTickId) ? d.battleTickId : 0;
+    st.field = Object.assign(fieldEmpty(), deepClone(battleData));
+    let battleTickId = Number.isFinite(battleData.battleTickId) ? battleData.battleTickId : 0;
     const units = st.field.units || [];
     const now = Date.now();
 
@@ -2423,7 +2440,7 @@ function runBattle(){
         const nextSig = battleFieldSignature(st.field);
         if (nextSig !== lastPublishedSignature){
           battleTickId += 1;
-          await updateDoc(stateRef, { field: st.field, battleTickId: battleTickId });
+          await setDoc(battleRef, Object.assign(battleEmpty(), st.field, { battleTickId: battleTickId, updatedAt: Date.now() }), { merge:true });
           lastPublishedSignature = nextSig;
         }
         lastPublishAt = nowPublish;
@@ -2490,7 +2507,8 @@ function render(){
     rebuildFieldFromRoster(ghost);
     paint(ghost.field.units, ghost.field);
   }else{
-    paint((S && S.field && S.field.units) || [], (S && S.field) || fieldEmpty());
+    const boardField = ((phase==="battle") ? B : null) || ((S && S.field) || fieldEmpty());
+    paint((boardField && boardField.units) || [], boardField || fieldEmpty());
   }
 
   const row=$("cardRow"), overlay=$("overlay"), note=$("pickNote");
@@ -2657,24 +2675,16 @@ let lastFxSeen=new Set();
 onSnapshot(stateRef,(snap)=>{
   if(!snap.exists()) return;
   const nextState = snap.data();
-  if (nextState.phase === "battle") {
-    const incomingTick = Number.isFinite(nextState.battleTickId) ? nextState.battleTickId : -1;
-    if (incomingTick <= lastRenderedBattleTickId && S && S.field){
-      nextState.field = S.field;
-    } else {
-      lastRenderedBattleTickId = incomingTick;
-    }
-  } else {
-    lastRenderedBattleTickId = -1;
-  }
   S=nextState;
+  if (S.phase !== "battle") lastRenderedBattleTickId = -1;
   const current = S.players || lobbyPlayers || [];
   let idx = current.indexOf(username);
   if (idx < 0) idx = 0;
   meIndex = Math.max(0, Math.min(1, idx));
   render();
 
-  const list=(S.field && S.field.fx) ? S.field.fx : [];
+  const fxSource = (B && B.fx) ? B.fx : ((S && S.field && S.field.fx) ? S.field.fx : []);
+  const list=fxSource;
   for(let i=0;i<list.length;i++){
     const ev=list[i];
     if (lastFxSeen.has(ev.id)) continue;
@@ -2690,6 +2700,26 @@ onSnapshot(stateRef,(snap)=>{
   }
 }, (err)=>{
   console.error("state listener failed", err);
+});
+
+onSnapshot(battleRef,(snap)=>{
+  if (!snap.exists()){
+    B = (S && S.phase === "battle") ? battleFromStateFallback(S) : battleEmpty();
+    render();
+    return;
+  }
+  const nextBattle = Object.assign(battleEmpty(), snap.data() || {});
+  const incomingTick = Number.isFinite(nextBattle.battleTickId) ? nextBattle.battleTickId : -1;
+  if (S && S.phase === "battle" && incomingTick >= lastRenderedBattleTickId){
+    lastRenderedBattleTickId = incomingTick;
+    B = nextBattle;
+    render();
+  } else if (!(S && S.phase === "battle")) {
+    B = nextBattle;
+    render();
+  }
+}, (err)=>{
+  console.error("battle listener failed", err);
 });
 }
 
