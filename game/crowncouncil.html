@@ -317,7 +317,7 @@
     padding:12px 14px;
     cursor:pointer;
     display:grid;
-    gap:7px;
+    gap:6px;
     user-select:none;
     transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
   }
@@ -332,6 +332,12 @@
   .card.faction-Aesir:before{ background:linear-gradient(90deg,#3b82f6,#60a5fa); }
   .card.faction-Vanir:before{ background:linear-gradient(90deg,#22c55e,#4ade80); }
   .card.special:before{ background:linear-gradient(90deg,#a855f7,#f59e0b); }
+  .card.type-upgrade{ border-color:rgba(96,165,250,.9); box-shadow:0 0 0 1px rgba(251,191,36,.45) inset, 0 18px 40px rgba(30,58,138,.75); }
+  .card.type-double{ border-color:rgba(168,85,247,.92); box-shadow:0 0 0 1px rgba(217,70,239,.45) inset, 0 18px 40px rgba(88,28,135,.75); }
+  .card.type-relic{ border-color:rgba(245,158,11,.95); box-shadow:0 0 0 1px rgba(251,191,36,.5) inset, 0 18px 40px rgba(120,53,15,.78); }
+  .card.type-tactic{ border-color:rgba(249,115,22,.95); box-shadow:0 0 0 1px rgba(239,68,68,.55) inset, 0 18px 40px rgba(124,45,18,.8); }
+  .card.type-formation{ border-color:rgba(125,211,252,.9); box-shadow:0 0 0 1px rgba(56,189,248,.5) inset, 0 18px 40px rgba(14,116,144,.78); }
+  .card.legendary{ border-width:2px; }
   .card .icon{
     height:60px;
     border-radius:10px;
@@ -348,21 +354,28 @@
     color:#e5e7eb;
   }
   .card .meta{
-    font-size:.78rem;
+    font-size:.7rem;
     text-transform:uppercase;
     letter-spacing:.08em;
     color:#93c5fd;
   }
   .card .roleTag{
-    font-size:.72rem;
+    font-size:.68rem;
     letter-spacing:.08em;
     text-transform:uppercase;
     color:#cbd5e1;
   }
   .card .desc{
     color:#cbd5f5;
-    font-size:.88rem;
+    font-size:.8rem;
+    line-height:1.28;
   }
+  .card .sectionLabel{font-size:.62rem;color:#93c5fd;letter-spacing:.08em;text-transform:uppercase;font-weight:800;}
+  .card .typeTag{font-size:.64rem;display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;border:1px solid rgba(148,163,184,.5);width:max-content;font-weight:800;letter-spacing:.04em;}
+  .card .typeTag .typeIcon{font-size:.72rem}
+  .card .chip{font-size:.65rem;line-height:1;padding:3px 7px;border-radius:999px;border:1px solid rgba(148,163,184,.35);font-weight:700;letter-spacing:.02em;}
+  .chip-role{background:rgba(100,116,139,.22);color:#e2e8f0;border-color:rgba(148,163,184,.45);}
+  .chip-legend{background:rgba(251,191,36,.2);color:#fef3c7;border-color:rgba(245,158,11,.75);}
   .counterRow{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
   .counterChip{font-size:.67rem;line-height:1;padding:4px 7px;border-radius:999px;border:1px solid rgba(148,163,184,.35);font-weight:700;letter-spacing:.02em;}
   .strongChip{background:rgba(59,130,246,.22);border-color:rgba(96,165,250,.65);color:#dbeafe;}
@@ -520,7 +533,7 @@
   @media (max-width:768px){
     .badge{padding:5px 9px;font-size:.76rem}
     .btn{padding:6px 10px;font-size:.8rem}
-    .card{width:min(280px,92vw);}
+    .card{width:min(280px,92vw);padding:10px 11px;gap:5px;}
     .cells{padding:6px;}
     .viewport{height:calc(100dvh - 64px);}
   }
@@ -529,6 +542,7 @@
     .topbar{padding:7px 8px; gap:8px;}
     .row{gap:6px;}
     .cardRow{gap:10px;}
+    .card .desc{font-size:.76rem;}
   }
 </style>
 </head>
@@ -554,9 +568,9 @@
       <div id="particles" class="particles"></div>
     </div>
     <div id="overlay" class="overlay"></div>
-    <button id="counterGuideBtn" class="btn ghost guideBtn" style="display:none">Counter Guide</button>
+    <button id="counterGuideBtn" class="btn ghost guideBtn" style="display:none">Strategy Guide</button>
     <div id="counterGuideModal" class="guideModal">
-      <h4>Counter Guide</h4>
+      <h4>Strategy Guide</h4>
       <ul id="counterGuideList"></ul>
       <button id="counterGuideClose" class="btn ghost guideClose">Close</button>
     </div>
@@ -912,14 +926,15 @@ const COUNTER_ARCHETYPES = {
   sustain: { label: "Healing / Sustain", beats: ["Poke", "Slow Damage"], losesTo: ["Burst", "Wound", "Anti-Support"] }
 };
 const GUIDE_LINES = [
-  "Swarm > Single Target",
-  "Splash > Swarm",
-  "Assassin > Backline",
-  "Tank > Assassin",
-  "True Damage > Tank",
-  "Burst > Healing",
-  "Healing > Poke",
-  "Control > Burst"
+  "Swarm beats Single Target",
+  "Splash beats Swarm",
+  "Assassins beat Backline",
+  "Tanks beat Assassins",
+  "True Damage beats Tanks",
+  "Burst beats Healing",
+  "Healing beats Poke",
+  "Control beats Burst",
+  "EMP / Anti-Ward beats Shields and Wards"
 ];
 const TROOP_ARCHETYPES = {
   hellspawn:["swarm"], matron:["swarm","sustain"], vrocket:["splash"], storm:["splash","control"],
@@ -3051,6 +3066,14 @@ function render(){
   for(let i=0;i<pack.length;i++){
     const c=pack[i];
     const el=document.createElement("div"); el.className="card";
+    const typeMeta = {
+      troop:{label:"TROOP", icon:"🛡️"},
+      upgrade:{label:"UPGRADE", icon:"⬆️"},
+      double:{label:"DOUBLE", icon:"🪞"},
+      relic:{label:"RELIC", icon:"🏺"},
+      tactic:{label:"TACTIC", icon:"🧭"},
+      formation:{label:"FORMATION", icon:"🔳"}
+    };
     const draftEval = evaluateDraftCard(c, myRoster, enemyRoster, myRelics, enemyRelics);
     const recLabels = (draftEval.labels||[]).slice(0,2).map(lbl=>{
       const cls = lbl==="Risky Pick" ? "recommend-warn" : (lbl==="Build Around" || lbl==="Completes Combo" ? "recommend-mid" : "recommend-good");
@@ -3076,25 +3099,28 @@ function render(){
       const draftFit = enemyRoster.length ? evaluateDraftFit(meta, enemyRoster) : "";
       const tip = meta.counterTip || meta.dangerTip || "";
       el.innerHTML=''+
-        '<div class="meta">TROOP · '+tro.faction+' · Armor '+armor+trueTag+'</div>'+
+        '<div class="typeTag"><span class="typeIcon">🛡️</span>TROOP</div>'+
         '<div class="icon">'+c.emoji+'</div>'+
-        '<div class="title">'+c.emoji+' '+c.name+'</div>'+
-        '<div class="roleTag">'+meta.roleLabel+' · '+meta.archetype+'</div>'+
-        '<div class="counterRow"><span class="roleTag">Strong vs</span>'+strong+'</div>'+
-        '<div class="counterRow"><span class="roleTag">Weak vs</span>'+weak+'</div>'+
+        '<div class="title">'+c.name+'</div>'+
+        '<div class="counterRow"><span class="chip chip-role">'+meta.roleLabel+'</span><span class="chip chip-role">'+meta.archetype+'</span><span class="chip chip-role">'+tro.faction+'</span></div>'+
+        '<div class="sectionLabel">Main effect</div><div class="desc">'+(tip || ("Armor "+armor+trueTag))+'</div>'+
+        '<div class="sectionLabel">Strong vs</div><div class="counterRow">'+strong+'</div>'+
+        '<div class="sectionLabel">Weak vs</div><div class="counterRow">'+weak+'</div>'+
+        '<div class="sectionLabel">Best with</div><div class="counterRow">'+synergies+'</div>'+
         (recLabels ? '<div class="recommendRow">'+recLabels+'</div>' : '')+
-        '<div class="tipText">Counters: '+countersLine+'</div>'+
-        '<div class="tipText">Watch out for: '+warningLine+'</div>'+
+        '<div class="tipText">Counters: '+countersLine+'</div><div class="tipText">Weak into: '+warningLine+'</div>'+
         reasonLine+
         (draftFit ? '<div class="tipText">'+draftFit+'</div>' : '')+
-        '<div class="counterRow"><span class="roleTag">Best with</span>'+synergies+'</div>'+
-        '<div class="tipText">'+tip+'</div>'+((((S&&S.roster&&S.roster[sk])||[]).find(r=>r.type===c.key)?.lvl===2&&LEGENDARY_ABILITIES[c.key])?'<div class="legendaryLine">Next Upgrade: LEGENDARY</div><div class="legendaryDesc">'+LEGENDARY_ABILITIES[c.key].name+' — '+LEGENDARY_ABILITIES[c.key].desc+'</div>':'');
+        ((((S&&S.roster&&S.roster[sk])||[]).find(r=>r.type===c.key)?.lvl===2&&LEGENDARY_ABILITIES[c.key])?'<div class="legendaryLine">LEGENDARY UNLOCK</div><div class="chip chip-legend">'+LEGENDARY_ABILITIES[c.key].name+'</div><div class="legendaryDesc">'+LEGENDARY_ABILITIES[c.key].desc+'</div>':'');
     }else{
       el.classList.add("special");
       const nn=TROOPS[c.for]?.name||"Type";
       let metaLabel = "SPECIAL";
       let roleLabel = "Role: Special";
       let desc = c.desc || "";
+      const specialType = c.type==="special" ? (c.special||"tactic") : c.type;
+      const tm = typeMeta[specialType] || {label:"SPECIAL",icon:"✨"};
+      el.classList.add("type-"+specialType);
       if (c.type==="special" && c.special==="upgrade"){
         const own = ((S && S.roster && S.roster[sk])||[]).find(r=>r.type===c.for);
         const cur = own ? (own.lvl||1) : 1;
@@ -3110,11 +3136,14 @@ function render(){
       else if (c.type==="tactic"){ metaLabel = "TACTIC"; roleLabel = "Battle Start Effect"; }
       else if (c.type==="formation"){ metaLabel = "FORMATION"; roleLabel = "Spawn Pattern"; }
       el.innerHTML=''+
-        '<div class="meta">'+metaLabel+'</div>'+
+        '<div class="typeTag"><span class="typeIcon">'+tm.icon+'</span>'+tm.label+'</div>'+
         '<div class="icon">'+c.emoji+'</div>'+
-        '<div class="title">'+c.emoji+' '+(c.name || c.type)+'</div>'+
-        '<div class="roleTag">'+roleLabel+'</div>'+
-        '<div class="desc">'+desc+'</div>'+
+        '<div class="title">'+(c.name || c.type)+'</div>'+
+        '<div class="counterRow"><span class="chip chip-role">'+roleLabel+'</span></div>'+
+        '<div class="sectionLabel">Main effect</div><div class="desc">'+desc+'</div>'+
+        '<div class="sectionLabel">Strong vs</div><div class="counterRow"><span class="counterChip strongChip">Build Defining</span></div>'+
+        '<div class="sectionLabel">Weak vs</div><div class="counterRow"><span class="counterChip weakChip">Situational</span></div>'+
+        '<div class="sectionLabel">Best with</div><div class="counterRow"><span class="counterChip synergyChip">'+nn+'</span></div>'+
         (recLabels ? '<div class="recommendRow">'+recLabels+'</div>' : '')+
         reasonLine;
     }
