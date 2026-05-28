@@ -380,6 +380,17 @@
     z-index:61;background:rgba(15,23,42,.96);border:1px solid rgba(148,163,184,.7);border-radius:999px;box-shadow:var(--shadow);
     padding:6px 14px;font-weight:800;display:none;font-size:.78rem;color:#bfdbfe;text-transform:uppercase;letter-spacing:.08em;
   }
+  .guideBtn{
+    position:absolute;right:12px;top:12%;z-index:62;
+  }
+  .guideModal{
+    position:absolute;inset:8% 5% auto 5%;z-index:120;
+    background:rgba(15,23,42,.98);border:1px solid rgba(148,163,184,.75);border-radius:14px;
+    box-shadow:var(--shadow);padding:12px;max-width:360px;margin:0 auto;display:none;
+  }
+  .guideModal h4{margin:0 0 8px 0;font-size:.92rem;color:#dbeafe;letter-spacing:.04em;text-transform:uppercase;}
+  .guideModal ul{margin:0;padding-left:18px;display:grid;gap:4px;color:#e2e8f0;font-size:.83rem;}
+  .guideClose{margin-top:10px;}
 
   /* VFX */
   .beams, .particles{ position:absolute; left:0; top:0; width:1px; height:1px; transform:translate3d(0,0,0); pointer-events:none; }
@@ -533,6 +544,12 @@
       <div id="particles" class="particles"></div>
     </div>
     <div id="overlay" class="overlay"></div>
+    <button id="counterGuideBtn" class="btn ghost guideBtn" style="display:none">Counter Guide</button>
+    <div id="counterGuideModal" class="guideModal">
+      <h4>Counter Guide</h4>
+      <ul id="counterGuideList"></ul>
+      <button id="counterGuideClose" class="btn ghost guideClose">Close</button>
+    </div>
     <div id="cardRow" class="cardRow" style="display:none"></div>
     <div id="pickNote" class="pickNote"></div>
     <div id="pickCounter" class="pickCounter"></div>
@@ -866,6 +883,55 @@ const TROOP_COUNTERS = {
   carrion:{ roleLabel:"Anti-Heal Support", archetype:"Wound Utility", strongAgainst:["Healers","Ward sustain","Tank healing"], weakAgainst:["Burst assassins","EMP","Backline snipers"], bestWith:["Defiler","Viper","Hell Spawn"], counterTip:"Carrion Priest denies healing to secure kills.", dangerTip:"Low stats mean it needs frontline cover." },
   burrower:{ roleLabel:"Backline Diver", archetype:"Ambush Melee", strongAgainst:["Ranged backline","Supports","Static ward users"], weakAgainst:["Splash","Bind","Knockback"], bestWith:["Viper","BloodBurst","Suppressor"], counterTip:"Burrow behind tanks to disrupt core damage dealers.", dangerTip:"Gets punished by layered control and AoE." }
 };
+
+const COUNTER_ARCHETYPES = {
+  swarm: { label: "Swarm", beats: ["Single Target", "Slow Burst"], losesTo: ["Splash", "Poison Fields", "Chain Damage"] },
+  splash: { label: "Splash / AOE", beats: ["Swarm", "Clumped Armies"], losesTo: ["Assassins", "Long Range"] },
+  assassin: { label: "Assassin", beats: ["Backline", "Supports"], losesTo: ["Tanks", "Control"] },
+  tank: { label: "Tank", beats: ["Assassins", "Fragile Melee"], losesTo: ["True Damage", "Anti-Armor", "Sustain"] },
+  control: { label: "Control", beats: ["Burst", "Fast Melee"], losesTo: ["Long Range", "Swarm"] },
+  sustain: { label: "Healing / Sustain", beats: ["Poke", "Slow Damage"], losesTo: ["Burst", "Wound", "Anti-Support"] }
+};
+const GUIDE_LINES = [
+  "Swarm > Single Target",
+  "Splash > Swarm",
+  "Assassin > Backline",
+  "Tank > Assassin",
+  "True Damage > Tank",
+  "Burst > Healing",
+  "Healing > Poke",
+  "Control > Burst"
+];
+const TROOP_ARCHETYPES = {
+  hellspawn:["swarm"], matron:["swarm","sustain"], vrocket:["splash"], storm:["splash","control"],
+  viper:["assassin"], burrower:["assassin","control"], vguard:["tank"], golem:["tank"],
+  medic:["sustain"], wardmaker:["sustain"], emp:["control"], marksman:["control"]
+};
+function archetypesForKey(key){
+  return TROOP_ARCHETYPES[key] || [];
+}
+function normalizeTag(t){
+  return String(t||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+}
+function evaluateDraftFit(meta, enemyRoster){
+  const strong = (meta.strongAgainst||[]).map(normalizeTag);
+  const weak = (meta.weakAgainst||[]).map(normalizeTag);
+  let score=0;
+  for (const ek of enemyRoster){
+    const em = TROOP_COUNTERS[ek];
+    const etags = [em?.archetype, ...(archetypesForKey(ek).map(k=>COUNTER_ARCHETYPES[k]?.label||""))].filter(Boolean).map(normalizeTag);
+    if (etags.some(t=>strong.some(s=>s && (t.includes(s) || s.includes(t))))) score += 1;
+    if (etags.some(t=>weak.some(w=>w && (t.includes(w) || w.includes(t))))) score -= 1;
+  }
+  if (score >= 2) return "Good into enemy army";
+  if (score <= -1) return "Risky pick";
+  return "";
+}
+for (const [key, meta] of Object.entries(TROOP_COUNTERS)){
+  const tags = archetypesForKey(key);
+  meta.counterArchetype = tags[0] || (meta.counterArchetype || "control");
+  meta.secondaryArchetype = tags[1] || (meta.secondaryArchetype || null);
+}
 const FACTIONS = {
   Vanir:  ["rifleman","vrocket","vguard","miner","medic","suppressor","shieldcap","marksman","emp"],
   Aesir:  ["phaser","blade","storm","guardian","wardmaker","architect","golem","runebinder"],
@@ -2734,14 +2800,22 @@ function render(){
   }
 
   const row=$("cardRow"), overlay=$("overlay"), note=$("pickNote");
+  const guideBtn=$("counterGuideBtn"), guideModal=$("counterGuideModal"), guideList=$("counterGuideList");
   if (!draftishPh){
     overlay.style.display="none"; row.style.display="none"; note.style.display="none"; row.innerHTML="";
+    guideBtn.style.display="none"; guideModal.style.display="none";
     return;
   }
   overlay.style.display="block";
+  guideBtn.style.display="block";
+  if (guideList && !guideList.childElementCount){
+    guideList.innerHTML = GUIDE_LINES.map(line=>"<li>"+line+"</li>").join("");
+  }
 
   const di=(S && S.draftIndex) ? S.draftIndex|0 : 0;
   const sk=pKey(meIndex);
+  const enemyKey = pKey(1-meIndex);
+  const enemyRoster = ((S && S.roster && S.roster[enemyKey]) || []).filter(Boolean);
   const pickedIndex = (S && S.selections && S.selections[sk]) ? S.selections[sk][di] : null;
 
   if (phase==="faction-select"){
@@ -2806,6 +2880,9 @@ function render(){
       const strong = (meta.strongAgainst||[]).slice(0,3).map(v=>'<span class="counterChip strongChip">'+v+'</span>').join('');
       const weak = (meta.weakAgainst||[]).slice(0,3).map(v=>'<span class="counterChip weakChip">'+v+'</span>').join('');
       const synergies = (meta.bestWith||[]).slice(0,3).map(v=>'<span class="counterChip synergyChip">'+v+'</span>').join('');
+      const countersLine = (meta.strongAgainst||[]).slice(0,2).join(", ") || "Generalist";
+      const warningLine = (meta.weakAgainst||[]).slice(0,2).join(", ") || "Hard focus";
+      const draftFit = enemyRoster.length ? evaluateDraftFit(meta, enemyRoster) : "";
       const tip = meta.counterTip || meta.dangerTip || "";
       el.innerHTML=''+
         '<div class="meta">TROOP · '+tro.faction+' · Armor '+armor+trueTag+'</div>'+
@@ -2814,6 +2891,9 @@ function render(){
         '<div class="roleTag">'+meta.roleLabel+' · '+meta.archetype+'</div>'+
         '<div class="counterRow"><span class="roleTag">Strong vs</span>'+strong+'</div>'+
         '<div class="counterRow"><span class="roleTag">Weak vs</span>'+weak+'</div>'+
+        '<div class="tipText">Counters: '+countersLine+'</div>'+
+        '<div class="tipText">Watch out for: '+warningLine+'</div>'+
+        (draftFit ? '<div class="tipText">'+draftFit+'</div>' : '')+
         '<div class="counterRow"><span class="roleTag">Best with</span>'+synergies+'</div>'+
         '<div class="tipText">'+tip+'</div>';
     }else{
@@ -2831,6 +2911,8 @@ function render(){
     })(i);
     row.appendChild(el);
   }
+  guideBtn.onclick = ()=>{ guideModal.style.display="block"; };
+  $("counterGuideClose").onclick = ()=>{ guideModal.style.display="none"; };
 }
 
 /* -------- transactional player actions -------- */
@@ -3065,10 +3147,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
-
-
-
 
 
 
