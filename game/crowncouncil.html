@@ -106,6 +106,9 @@
     gap:var(--gap);
     padding:10px;
   }
+  .unit-layer{ position:absolute; inset:10px; pointer-events:none; z-index:12; }
+  .vu{ position:absolute; width:var(--cell); height:var(--cell); pointer-events:none; will-change:transform,opacity; }
+  .vu.fading{ opacity:0; transition:opacity 220ms ease-out; }
   .cell{
     width:var(--cell);height:var(--cell);
     border-radius:12px;
@@ -167,6 +170,7 @@
     display:block;height:100%;
     background:linear-gradient(90deg,#22c55e,#16a34a);
     box-shadow:0 0 18px rgba(34,197,94,.6);
+    transition: width 160ms linear;
   }
   /* team-colored HP fills */
   .hp>i.team0{ background:linear-gradient(90deg,var(--team0),var(--team0b)); box-shadow:0 0 18px rgba(248,113,113,.7); }
@@ -606,6 +610,11 @@ function buildBoard(){
   }
   cellsEl.innerHTML="";
   cellsEl.appendChild(frag);
+  if (!unitLayerEl){
+    unitLayerEl = document.createElement("div");
+    unitLayerEl.className = "unit-layer";
+    canvas.appendChild(unitLayerEl);
+  }
 }
 buildBoard();
 
@@ -749,6 +758,11 @@ function battleFromStateFallback(st){
 }
 
 let B = battleEmpty();
+let serverBattleState = null;
+const visualUnits = new Map();
+const unitDomById = new Map();
+let visualFrameHandle = 0;
+let unitLayerEl = null;
 
 /* 2×2 helpers */
 function unitSize(u){ return TROOPS[u.type] && TROOPS[u.type].size===2 ? 2 : 1; }
@@ -1441,6 +1455,79 @@ function paint(units, field){
       statusEl.innerHTML = icons.map(i=>"<span>"+i+"</span>").join("");
     }
   }
+}
+
+function getStatusIcons(u, now, field){
+  const icons = [];
+  if (u.slowUntil && u.slowUntil > now) icons.push("🐢");
+  if (u.statusPoisonUntil && u.statusPoisonUntil > now) icons.push("☠");
+  if (u.statusAcidUntil && u.statusAcidUntil > now) icons.push("🧪");
+  if (u.statusShockUntil && u.statusShockUntil > now) icons.push("⚡");
+  if (u.woundUntil && u.woundUntil > now) icons.push("🩸");
+  if (u.bindUntil && u.bindUntil > now) icons.push("⚡");
+  if (auraDamageReduceFor(u, field) > 0) icons.push("🛡️");
+  return icons;
+}
+function upsertVisualUnitsFromBattle(battle){
+  if (!battle || !Array.isArray(battle.units)) return;
+  serverBattleState = battle;
+  const now = Date.now();
+  const liveIds = new Set();
+  for (const u of battle.units){
+    liveIds.add(u.id);
+    const icons = getStatusIcons(u, now, battle);
+    const ex = visualUnits.get(u.id);
+    if (!ex){
+      visualUnits.set(u.id, { id:u.id, type:u.type, p:u.p, x:u.x, y:u.y, targetX:u.x, targetY:u.y, hp:u.hp, targetHp:u.hp, maxhp:u.maxhp, statusIcons:icons, actionClass:unitActionClass(u, now), size:unitSize(u), lvl:u.lvl||1, lastSeenAt:now, removing:false });
+    } else {
+      ex.type=u.type; ex.p=u.p; ex.targetX=u.x; ex.targetY=u.y; ex.targetHp=u.hp; ex.maxhp=u.maxhp; ex.statusIcons=icons; ex.actionClass=unitActionClass(u, now); ex.size=unitSize(u); ex.lvl=u.lvl||1; ex.lastSeenAt=now; ex.removing=false;
+    }
+  }
+  for (const [id, vu] of visualUnits.entries()) if (!liveIds.has(id)) vu.removing = true;
+}
+function ensureVisualLoop(){
+  if (visualFrameHandle) return;
+  const step = ()=>{
+    const now = Date.now();
+    if (S && S.phase === "battle" && serverBattleState){
+      paint([], serverBattleState);
+      for (const [id, vu] of visualUnits.entries()){
+        vu.x += (vu.targetX - vu.x) * 0.22;
+        vu.y += (vu.targetY - vu.y) * 0.22;
+        vu.hp += (vu.targetHp - vu.hp) * 0.25;
+        let node = unitDomById.get(id);
+        if (!node){
+          node = document.createElement("div");
+          node.className = "vu";
+          node.innerHTML = '<div class="under"></div><div class="unit"></div><div class="hp"><i style="width:0%"></i></div><div class="status"></div>';
+          unitLayerEl.appendChild(node);
+          unitDomById.set(id, node);
+        }
+        node.classList.toggle("fading", !!vu.removing);
+        node.style.transform = `translate(${vu.x * (CELL + GAP)}px, ${vu.y * (CELL + GAP)}px)`;
+        node.style.width = vu.size===2 ? `calc((var(--cell) * 2) + var(--gap))` : "var(--cell)";
+        node.style.height = vu.size===2 ? `calc((var(--cell) * 2) + var(--gap))` : "var(--cell)";
+        const under = node.querySelector(".under");
+        if (under){ const color = (rankColor(vu.lvl).trim() || "#22c55e"); under.style.background = "radial-gradient(circle at top,"+color+","+color+")"; }
+        const uni = node.querySelector(".unit");
+        uni.className = "unit";
+        uni.classList.toggle("team0", vu.p===0); uni.classList.toggle("team1", vu.p===1); uni.classList.toggle("big", vu.size===2);
+        if (vu.actionClass) uni.classList.add(vu.actionClass);
+        uni.innerHTML = troopArt(vu.type, vu);
+        const hp = node.querySelector(".hp"); hp.classList.toggle("big", vu.size===2);
+        const hpFill = node.querySelector(".hp>i");
+        hpFill.classList.toggle("team0", vu.p===0); hpFill.classList.toggle("team1", vu.p===1);
+        hpFill.style.width = Math.max(0, Math.round(100 * vu.hp / Math.max(1, vu.maxhp))) + "%";
+        node.querySelector(".status").innerHTML = vu.statusIcons.map(i=>"<span>"+i+"</span>").join("");
+        if (vu.removing && (now - vu.lastSeenAt) > 240){ node.remove(); unitDomById.delete(id); visualUnits.delete(id); }
+      }
+    } else if (unitDomById.size){
+      for (const node of unitDomById.values()) node.remove();
+      unitDomById.clear(); visualUnits.clear(); serverBattleState = null;
+    }
+    visualFrameHandle = requestAnimationFrame(step);
+  };
+  visualFrameHandle = requestAnimationFrame(step);
 }
 
 /* Ranged helpers & AI */
@@ -2508,7 +2595,8 @@ function render(){
     paint(ghost.field.units, ghost.field);
   }else{
     const boardField = ((phase==="battle") ? B : null) || ((S && S.field) || fieldEmpty());
-    paint((boardField && boardField.units) || [], boardField || fieldEmpty());
+    const paintUnits = (phase==="battle") ? [] : ((boardField && boardField.units) || []);
+    paint(paintUnits, boardField || fieldEmpty());
   }
 
   const row=$("cardRow"), overlay=$("overlay"), note=$("pickNote");
@@ -2713,9 +2801,11 @@ onSnapshot(battleRef,(snap)=>{
   if (S && S.phase === "battle" && incomingTick >= lastRenderedBattleTickId){
     lastRenderedBattleTickId = incomingTick;
     B = nextBattle;
+    upsertVisualUnitsFromBattle(nextBattle);
     render();
   } else if (!(S && S.phase === "battle")) {
     B = nextBattle;
+    upsertVisualUnitsFromBattle(nextBattle);
     render();
   }
 }, (err)=>{
@@ -2726,6 +2816,7 @@ onSnapshot(battleRef,(snap)=>{
 onAuthStateChanged(auth, (user) => {
   if (!user) return;
   console.log("Signed in as anon uid:", user.uid);
+  ensureVisualLoop();
   startListeners();
 });
 
@@ -2742,12 +2833,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
-
-
-
-
-
 
 
 
