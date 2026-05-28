@@ -128,6 +128,7 @@
   }
   .unit-layer{ position:absolute; inset:10px; pointer-events:none; z-index:12; }
   .vu{ position:absolute; width:var(--cell); height:var(--cell); pointer-events:none; will-change:transform,opacity; }
+  .vu.big{ overflow:hidden; }
   .vu.fading{ opacity:0; transition:opacity 220ms ease-out; }
   .cell{
     width:var(--cell);height:var(--cell);
@@ -146,7 +147,12 @@
   .cell.center-divider{
     box-shadow:0 -1px 0 rgba(148,163,184,.32) inset, 0 1px 0 rgba(148,163,184,.32) inset;
   }
-  .cell.multi-origin{ overflow:visible; z-index:8; }
+  .cell.multi-origin{ z-index:8; }
+  .cell.big-footprint-debug{
+    outline:2px solid rgba(251,191,36,.9);
+    outline-offset:-3px;
+    box-shadow:0 0 0 999px rgba(251,191,36,.12) inset, 0 0 14px rgba(251,191,36,.35) inset;
+  }
 
   /* Layers (z-index order): under(0) < ground fx(1) < unit(3) < hp(4) < status(6) */
   .under{
@@ -182,7 +188,7 @@
     opacity:.9;
     box-shadow:0 0 0 1px rgba(2,6,23,.45) inset;
   }
-  .unit.big{ width:calc(200% + var(--gap)); height:calc(200% + var(--gap)); place-items:stretch; }
+  .unit.big{ inset:0; width:100%; height:100%; place-items:stretch; }
   .unit.big .troop-art{ width:100%; height:100%; }
   .unit svg{ width:100%; height:100%; overflow:visible; }
   .unit .stroke{ stroke:rgba(15,23,42,.95); stroke-width:2; }
@@ -218,9 +224,10 @@
     box-shadow:0 0 0 1px rgba(15,23,42,.85),0 0 18px rgba(15,23,42,.9) inset;
   }
   .hp.big{
-    width:calc(200% + var(--gap));
-    right:auto;
-    bottom:calc(4px - var(--cell) - var(--gap));
+    left:6px;
+    right:6px;
+    width:auto;
+    bottom:4px;
   }
   /* default (fallback) fill is green; team classes override it */
   .hp>i{
@@ -1173,6 +1180,7 @@ const BATTLE_SYNC_GAP_WARN = 5;
 const BATTLE_SYNC_BADGE_MS = 900;
 let battleSyncBadgeUntil = 0;
 const LOW_EFFECTS_MODE = false;
+const DEBUG_BIG_UNIT_FOOTPRINT = false;
 const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[]});
 const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], updatedAt:0});
 
@@ -1200,6 +1208,38 @@ const unitEls = new Map();
 let visualFrameHandle = 0;
 /* 2×2 helpers */
 function unitSize(u){ return TROOPS[u.type] && TROOPS[u.type].size===2 ? 2 : 1; }
+function rectDistance(a, b){
+  const as = unitSize(a);
+  const bs = unitSize(b);
+
+  const ax1 = a.x;
+  const ay1 = a.y;
+  const ax2 = a.x + as - 1;
+  const ay2 = a.y + as - 1;
+
+  const bx1 = b.x;
+  const by1 = b.y;
+  const bx2 = b.x + bs - 1;
+  const by2 = b.y + bs - 1;
+
+  const dx = ax1 > bx2 ? ax1 - bx2 : bx1 > ax2 ? bx1 - ax2 : 0;
+  const dy = ay1 > by2 ? ay1 - by2 : by1 > ay2 ? by1 - ay2 : 0;
+
+  return dx + dy;
+}
+function nearestPointOnRectToUnit(target, mover){
+  const ts = unitSize(target);
+  const tx1 = target.x;
+  const ty1 = target.y;
+  const tx2 = target.x + ts - 1;
+  const ty2 = target.y + ts - 1;
+  const mc = unitCenter(mover);
+
+  return {
+    x: Math.max(tx1, Math.min(mc.x, tx2)),
+    y: Math.max(ty1, Math.min(mc.y, ty2))
+  };
+}
 function armorTypeFor(type, unit){
   const t = TROOPS[type] || {};
   if (t.armorType) return t.armorType;
@@ -1884,6 +1924,7 @@ function applyWardShields(attacker, target, rawDmg, field){
 function paint(units, field){
   const total = W * H;
   const now = Date.now();
+  const paintUnits = (units && units.length) ? units : ((field && field.units) || []);
   const poisonSet = new Set();
   const toxicSet = new Set();
   const acidSet = new Set();
@@ -1897,10 +1938,10 @@ function paint(units, field){
   for (let i = 0; i < total; i++){
     const d = cellsEl.children[i];
     if (!d) continue;
+    d.classList.remove("multi-origin", "big-footprint-debug");
     const terrainKey = (poisonSet.has(i)?"1":"0") + (toxicSet.has(i)?"1":"0") + (acidSet.has(i)?"1":"0") + (wardSet.has(i)?"1":"0");
     if (lastCellTerrainKey.get(i) === terrainKey) continue;
     lastCellTerrainKey.set(i, terrainKey);
-
     d.querySelector(".poison")?.remove();
     d.querySelector(".toxic")?.remove();
     d.querySelector(".acid")?.remove();
@@ -1912,14 +1953,15 @@ function paint(units, field){
     if (terrainKey[3] === "1") { const el=document.createElement("div"); el.className="ward"; d.appendChild(el); }
   }
 
-  for (let i=0;i<units.length;i++){
-    const u = units[i];
+  for (let i=0;i<paintUnits.length;i++){
+    const u = paintUnits[i];
     const s = unitSize(u);
     const color = (rankColor(u.lvl||1).trim() || "#22c55e");
     for (let yy=0; yy<s; yy++) for (let xx=0; xx<s; xx++){
       const d = cellsEl.children[idx(u.x+xx, u.y+yy)]; if (!d) continue;
       const under = d.querySelector(".under"); if (!under) continue;
       under.style.background = "radial-gradient(circle at top,"+color+","+color+")";
+      if (DEBUG_BIG_UNIT_FOOTPRINT && s===2) d.classList.add("big-footprint-debug");
     }
     const d0 = cellsEl.children[idx(u.x, u.y)]; if (!d0) continue;
     d0.classList.toggle("multi-origin", s===2);
@@ -1974,6 +2016,7 @@ function ensureVisualLoop(){
           unitEls.set(id, node);
         }
         node.classList.toggle("fading", !!vu.removing);
+        node.classList.toggle("big", vu.size===2);
         const renderKey = [vu.type,vu.p,vu.lvl,vu.size].join("|");
         const prevRenderKey = lastUnitRenderKey.get(id);
         node.style.transform = `translate(${vu.x * (CELL + GAP)}px, ${vu.y * (CELL + GAP)}px)`;
@@ -2011,14 +2054,10 @@ function ensureVisualLoop(){
 function nearestEnemy(u,units,field){
   const wards = field.wards || [];
   let best=null, bd=1e9;
-  const c=unitCenter(u);
-
   function consider(obj,isWard){
     if (obj.p === u.p) return;
     if (obj.hp <= 0) return;
-    const sz = isWard ? 1 : unitSize(obj);
-    const center = isWard ? { x: obj.x + (sz-1)/2, y: obj.y + (sz-1)/2 } : unitCenter(obj);
-    const d = Math.abs(center.x - c.x) + Math.abs(center.y - c.y);
+    const d = rectDistance(u, obj);
     if (d < bd){ bd=d; best=obj; }
   }
 
@@ -2033,13 +2072,12 @@ function nearestEnemy(u,units,field){
 function strongestArmorTargetInRange(u, units){
   const strongVs = (u.strongVs || []).length ? u.strongVs : unitStrongVs(u.type);
   if (!strongVs.length) return null;
-  const c = unitCenter(u);
   const range = (u.range||1);
   let best=null, bd=1e9;
   for (let i=0;i<units.length;i++){
     const v = units[i];
     if (!v || v.p===u.p || v.hp<=0) continue;
-    const d = Math.abs(unitCenter(v).x-c.x)+Math.abs(unitCenter(v).y-c.y);
+    const d = rectDistance(u, v);
     if (d > range) continue;
     const armorType = v.armorType || armorTypeFor(v.type, v);
     if (!strongVs.includes(armorType)) continue;
@@ -2055,15 +2093,12 @@ function pickTarget(u, units, field){
 }
 function nearestEnemyRangedPriority(u,units,field){
   const wards = field.wards || [];
-  const c = unitCenter(u);
   let best=null, bd=1e9;
 
   function consider(obj,isWard){
     if (obj.p === u.p) return;
     if (obj.hp <= 0) return;
-    const sz = isWard ? 1 : unitSize(obj);
-    const center = isWard ? { x: obj.x + (sz-1)/2, y: obj.y + (sz-1)/2 } : unitCenter(obj);
-    const d = Math.abs(center.x - c.x) + Math.abs(center.y - c.y);
+    const d = rectDistance(u, obj);
     if (d < bd){ bd=d; best=obj; }
   }
 
@@ -2075,11 +2110,10 @@ function nearestEnemyRangedPriority(u,units,field){
   return nearestEnemy(u,units,field);
 }
 function manhattanUnits(u,t){
-  const a=unitCenter(u), b=unitCenter(t);
-  return Math.abs(a.x-b.x)+Math.abs(a.y-b.y);
+  return rectDistance(u,t);
 }
 function stepToward(u,t,units){
-  const a=unitCenter(u), b=unitCenter(t);
+  const a=unitCenter(u), b=nearestPointOnRectToUnit(t, u);
   const dx=b.x-a.x, dy=b.y-a.y;
   const sx=Math.sign(dx), sy=Math.sign(dy);
   const absx=Math.abs(dx), absy=Math.abs(dy);
@@ -2238,7 +2272,7 @@ function wardsHeal(st, now){
       const v = st.field.units[j];
       if (v.hp<=0) continue;
       if (w.p!=null && v.p !== w.p) continue;
-      const d = Math.abs(v.x - w.x) + Math.abs(v.y - w.y);
+      const d = rectDistance(w, v);
       if (d <= (w.hRange||3)){
         const r = v.hp / v.maxhp;
         if (r < 1 && r < minRatio){ minRatio = r; tgt = v; }
@@ -2268,7 +2302,7 @@ function wardsShoot(st, now){
       const v = st.field.units[j];
       if (v.hp<=0) continue;
       if (w.p!=null && v.p===w.p) continue;
-      const d = Math.abs(v.x - w.x) + Math.abs(v.y - w.y);
+      const d = rectDistance(w, v);
       if (d <= (w.wRange||3)) cand.push({v:v,d:d});
     }
     if (!cand.length) continue;
@@ -2295,7 +2329,7 @@ function healAction(u, st, now){
   let target=null, minRatio=1.01;
   for(let i=0;i<allies.length;i++){
     const a = allies[i];
-    const dist = Math.abs(unitCenter(a).x-unitCenter(u).x)+Math.abs(unitCenter(a).y-unitCenter(u).y);
+    const dist = rectDistance(u, a);
     if (dist <= (u.healRange||2)){
       const r = a.hp/a.maxhp;
       if (r < minRatio){ minRatio = r; target=a; }
@@ -2395,11 +2429,11 @@ function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
   while(cur && left>0){
     applyDamage(cur, reduceDamageForTarget(dmg, cur, field, opts), {field:field});
     hit.add(cur.id);
-    let cand=null,bd=1e9; const cx=cur.x, cy=cur.y;
+    let cand=null,bd=1e9;
     for(let i=0;i<units.length;i++){
       const v=units[i];
       if(v.p===srcP || hit.has(v.id)) continue;
-      const d=Math.abs(v.x-cx)+Math.abs(v.y-cy);
+      const d=rectDistance(cur, v);
       if(d<=2 && d<bd){ bd=d; cand=v; }
     }
     cur=cand; left--;
@@ -2407,7 +2441,7 @@ function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
 }
 function attack(u, t, now, st){
   const effRange = (u.rangeDebuffUntil && u.rangeDebuffUntil > now) ? Math.max(1,(u.range||1)-1) : (u.range||1);
-  const inRange = manhattanUnits(u,t) <= effRange;
+  const inRange = rectDistance(u,t) <= effRange;
   if (!inRange) return false;
   if (now < (u.nextAtk||0)) return true;
 
@@ -2937,7 +2971,7 @@ function runBattle(){
             const targetIsBack = isBacklineUnit(t2);
             if (u.viperLeap && targetIsBack && frontBlocked(u, units)){
               if (attemptViperLeap(u, units, st)){
-                if (manhattanUnits(u, t2) <= (u.range||1)){
+                if (rectDistance(u, t2) <= (u.range||1)){
                   attack(u, t2, now, st);
                 }
                 continue;
@@ -2945,7 +2979,7 @@ function runBattle(){
             }
 
             stepToward(u, t2, units);
-            if (manhattanUnits(u, t2) <= (u.range||1)){
+            if (rectDistance(u, t2) <= (u.range||1)){
               attack(u, t2, now, st);
               break;
             }
