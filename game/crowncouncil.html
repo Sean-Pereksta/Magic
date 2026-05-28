@@ -874,6 +874,10 @@ let B = battleEmpty();
 let serverBattleState = null;
 const visualUnits = new Map();
 const unitDomById = new Map();
+const lastCellTerrainKey = new Map();
+const lastUnitRenderKey = new Map();
+const lastHpPct = new Map();
+const unitEls = new Map();
 let visualFrameHandle = 0;
 let unitLayerEl = null;
 
@@ -1495,114 +1499,45 @@ function applyWardShields(attacker, target, rawDmg, field){
 function paint(units, field){
   const total = W * H;
   const now = Date.now();
+  const poisonSet = new Set();
+  const toxicSet = new Set();
+  const acidSet = new Set();
+  const wardSet = new Set();
+
+  (field.poison||[]).forEach(p=>{ if (p.until > now) poisonSet.add(idx(p.x,p.y)); });
+  (field.toxic||[]).forEach(t=>{ if (t.until > now) toxicSet.add(idx(t.x,t.y)); });
+  (field.acid||[]).forEach(a=>{ if (a.until > now) acidSet.add(idx(a.x,a.y)); });
+  (field.wards||[]).forEach(w=>{ if (w.until > now && w.hp > 0) wardSet.add(idx(w.x,w.y)); });
+
   for (let i = 0; i < total; i++){
     const d = cellsEl.children[i];
     if (!d) continue;
-
-    const under = d.querySelector(".under"); if (under) under.style.background = "transparent";
-    const uni = d.querySelector(".unit");
-    if (uni){
-      uni.textContent = "";
-      uni.classList.remove("team0","team1","attacking","casting","big");
-    }
-    const statusEl = d.querySelector(".status"); if (statusEl) statusEl.textContent = "";
-    d.classList.remove("multi-origin");
-    const hpWrap = d.querySelector(".hp"); if (hpWrap) hpWrap.classList.remove("big");
-
-    const hpFill = d.querySelector(".hp>i");
-    if (hpFill){
-      hpFill.style.width = "0%";
-      hpFill.classList.remove("team0","team1");
-    }
+    const terrainKey = (poisonSet.has(i)?"1":"0") + (toxicSet.has(i)?"1":"0") + (acidSet.has(i)?"1":"0") + (wardSet.has(i)?"1":"0");
+    if (lastCellTerrainKey.get(i) === terrainKey) continue;
+    lastCellTerrainKey.set(i, terrainKey);
 
     d.querySelector(".poison")?.remove();
     d.querySelector(".toxic")?.remove();
     d.querySelector(".acid")?.remove();
     d.querySelector(".ward")?.remove();
-  }
 
-  (field.poison||[]).forEach(p=>{
-    if (p.until <= now) return;
-    const d = cellsEl.children[idx(p.x,p.y)]; if (!d) return;
-    const el = document.createElement("div");
-    el.className="poison";
-    d.appendChild(el);
-  });
-  (field.toxic||[]).forEach(t=>{
-    if (t.until <= now) return;
-    const d = cellsEl.children[idx(t.x,t.y)]; if (!d) return;
-    const el = document.createElement("div");
-    el.className="toxic";
-    d.appendChild(el);
-  });
-  (field.acid||[]).forEach(a=>{
-    if (a.until <= now) return;
-    const d = cellsEl.children[idx(a.x,a.y)]; if (!d) return;
-    const el = document.createElement("div");
-    el.className="acid";
-    d.appendChild(el);
-  });
-  (field.wards||[]).forEach(w=>{
-    if (w.until <= now || w.hp <= 0) return;
-    const d = cellsEl.children[idx(w.x,w.y)]; if (!d) return;
-    const el = document.createElement("div");
-    el.className="ward";
-    d.appendChild(el);
-  });
+    if (terrainKey[0] === "1") { const el=document.createElement("div"); el.className="poison"; d.appendChild(el); }
+    if (terrainKey[1] === "1") { const el=document.createElement("div"); el.className="toxic"; d.appendChild(el); }
+    if (terrainKey[2] === "1") { const el=document.createElement("div"); el.className="acid"; d.appendChild(el); }
+    if (terrainKey[3] === "1") { const el=document.createElement("div"); el.className="ward"; d.appendChild(el); }
+  }
 
   for (let i=0;i<units.length;i++){
     const u = units[i];
     const s = unitSize(u);
     const color = (rankColor(u.lvl||1).trim() || "#22c55e");
-
-    for (let yy=0; yy<s; yy++){
-      for (let xx=0; xx<s; xx++){
-        const d = cellsEl.children[idx(u.x+xx, u.y+yy)]; if (!d) continue;
-        const under = d.querySelector(".under"); if (!under) continue;
-        under.style.background = "radial-gradient(circle at top,"+color+","+color+")";
-      }
+    for (let yy=0; yy<s; yy++) for (let xx=0; xx<s; xx++){
+      const d = cellsEl.children[idx(u.x+xx, u.y+yy)]; if (!d) continue;
+      const under = d.querySelector(".under"); if (!under) continue;
+      under.style.background = "radial-gradient(circle at top,"+color+","+color+")";
     }
-
     const d0 = cellsEl.children[idx(u.x, u.y)]; if (!d0) continue;
     d0.classList.toggle("multi-origin", s===2);
-
-    const uni = d0.querySelector(".unit");
-    if (uni){
-      uni.style.zIndex = "3";
-      uni.style.fontSize = s===2 ? "32px" : "26px";
-      uni.classList.remove("team0","team1","attacking","casting","big");
-      uni.classList.toggle("team0", u.p === 0);
-      uni.classList.toggle("team1", u.p === 1);
-      uni.classList.toggle("big", s===2);
-      uni.classList.toggle("lvl2", (u.lvl||1)===2);
-      uni.classList.toggle("lvl3", (u.lvl||1)>=3);
-      const actClass = unitActionClass(u, now);
-      if (actClass) uni.classList.add(actClass);
-      uni.innerHTML = troopArt(u.type, u);
-    }
-
-    const hpFill = d0.querySelector(".hp>i");
-    const hpWrap = d0.querySelector(".hp");
-    if (hpWrap) hpWrap.classList.toggle("big", s===2);
-    if (hpFill){
-      hpFill.classList.toggle("team0", u.p === 0);
-      hpFill.classList.toggle("team1", u.p === 1);
-      const pct = Math.max(0, Math.round(100 * u.hp / u.maxhp));
-      hpFill.style.width = pct + "%";
-    }
-
-    const statusEl = d0.querySelector(".status");
-    if (statusEl){
-      const icons = [];
-      if (u.slowUntil && u.slowUntil > now) icons.push("🐢");
-      if (u.statusPoisonUntil && u.statusPoisonUntil > now) icons.push("☠");
-      if (u.statusAcidUntil && u.statusAcidUntil > now) icons.push("🧪");
-      if (u.statusShockUntil && u.statusShockUntil > now) icons.push("⚡");
-      if (u.woundUntil && u.woundUntil > now) icons.push("🩸");
-      if (u.bindUntil && u.bindUntil > now) icons.push("⚡");
-      if (auraDamageReduceFor(u, field) > 0) icons.push("🛡️");
-      statusEl.innerHTML = icons.map(i=>"<span>"+i+"</span>").join("");
-    }
   }
 }
 
@@ -1644,15 +1579,18 @@ function ensureVisualLoop(){
         vu.x += (vu.targetX - vu.x) * 0.22;
         vu.y += (vu.targetY - vu.y) * 0.22;
         vu.hp += (vu.targetHp - vu.hp) * 0.25;
-        let node = unitDomById.get(id);
+        let node = unitEls.get(id) || unitDomById.get(id);
         if (!node){
           node = document.createElement("div");
           node.className = "vu";
           node.innerHTML = '<div class="under"></div><div class="unit"></div><div class="hp"><i style="width:0%"></i></div><div class="status"></div>';
           unitLayerEl.appendChild(node);
           unitDomById.set(id, node);
+          unitEls.set(id, node);
         }
         node.classList.toggle("fading", !!vu.removing);
+        const renderKey = [vu.type,vu.p,vu.lvl,vu.size].join("|");
+        const prevRenderKey = lastUnitRenderKey.get(id);
         node.style.transform = `translate(${vu.x * (CELL + GAP)}px, ${vu.y * (CELL + GAP)}px)`;
         node.style.width = vu.size===2 ? `calc((var(--cell) * 2) + var(--gap))` : "var(--cell)";
         node.style.height = vu.size===2 ? `calc((var(--cell) * 2) + var(--gap))` : "var(--cell)";
@@ -1663,17 +1601,21 @@ function ensureVisualLoop(){
         uni.classList.toggle("team0", vu.p===0); uni.classList.toggle("team1", vu.p===1); uni.classList.toggle("big", vu.size===2);
         uni.classList.toggle("lvl2", (vu.lvl||1)===2); uni.classList.toggle("lvl3", (vu.lvl||1)>=3);
         if (vu.actionClass) uni.classList.add(vu.actionClass);
-        uni.innerHTML = troopArt(vu.type, vu);
+        if (prevRenderKey !== renderKey){
+          uni.innerHTML = troopArt(vu.type, vu);
+          lastUnitRenderKey.set(id, renderKey);
+        }
         const hp = node.querySelector(".hp"); hp.classList.toggle("big", vu.size===2);
         const hpFill = node.querySelector(".hp>i");
         hpFill.classList.toggle("team0", vu.p===0); hpFill.classList.toggle("team1", vu.p===1);
-        hpFill.style.width = Math.max(0, Math.round(100 * vu.hp / Math.max(1, vu.maxhp))) + "%";
+        const hpPct = Math.max(0, Math.round(100 * vu.hp / Math.max(1, vu.maxhp)));
+        if (lastHpPct.get(id) !== hpPct){ hpFill.style.width = hpPct + "%"; lastHpPct.set(id, hpPct); }
         node.querySelector(".status").innerHTML = vu.statusIcons.map(i=>"<span>"+i+"</span>").join("");
-        if (vu.removing && (now - vu.lastSeenAt) > 240){ node.remove(); unitDomById.delete(id); visualUnits.delete(id); }
+        if (vu.removing && (now - vu.lastSeenAt) > 240){ node.remove(); unitDomById.delete(id); unitEls.delete(id); lastUnitRenderKey.delete(id); lastHpPct.delete(id); visualUnits.delete(id); }
       }
     } else if (unitDomById.size){
       for (const node of unitDomById.values()) node.remove();
-      unitDomById.clear(); visualUnits.clear(); serverBattleState = null;
+      unitDomById.clear(); unitEls.clear(); visualUnits.clear(); lastUnitRenderKey.clear(); lastHpPct.clear(); serverBattleState = null;
     }
     visualFrameHandle = requestAnimationFrame(step);
   };
