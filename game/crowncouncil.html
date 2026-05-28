@@ -367,8 +367,13 @@
   .counterChip{font-size:.67rem;line-height:1;padding:4px 7px;border-radius:999px;border:1px solid rgba(148,163,184,.35);font-weight:700;letter-spacing:.02em;}
   .strongChip{background:rgba(59,130,246,.22);border-color:rgba(96,165,250,.65);color:#dbeafe;}
   .weakChip{background:rgba(249,115,22,.2);border-color:rgba(251,146,60,.6);color:#fed7aa;}
-  .synergyChip{background:rgba(168,85,247,.2);border-color:rgba(217,70,239,.55);color:#e9d5ff;}
-  .tipText{color:#cbd5f5;font-size:.76rem;line-height:1.28;}
+.synergyChip{background:rgba(168,85,247,.2);border-color:rgba(217,70,239,.55);color:#e9d5ff;}
+.recommendRow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.recommendLabel{font-size:.66rem;line-height:1;padding:4px 7px;border-radius:999px;border:1px solid rgba(148,163,184,.35);font-weight:800;letter-spacing:.02em;}
+.recommend-good{background:rgba(16,185,129,.2);border-color:rgba(52,211,153,.65);color:#d1fae5;}
+.recommend-warn{background:rgba(239,68,68,.2);border-color:rgba(248,113,113,.65);color:#fee2e2;}
+.recommend-mid{background:rgba(59,130,246,.2);border-color:rgba(96,165,250,.65);color:#dbeafe;}
+.tipText{color:#cbd5f5;font-size:.76rem;line-height:1.28;}
   .card:hover{
     transform:translateY(-3px);
     box-shadow:0 22px 50px rgba(15,23,42,1);
@@ -940,6 +945,70 @@ function evaluateDraftFit(meta, enemyRoster){
   if (score >= 2) return "Good into enemy army";
   if (score <= -1) return "Risky pick";
   return "";
+}
+function rosterSummary(roster){
+  const out = { front:0, back:0, tank:0, swarm:0, assassin:0, splash:0, sustain:0, antiHeal:0, trueDamage:0, armor:0, damage:0 };
+  for (const entry of (roster||[])){
+    const t = TROOPS[entry.type];
+    if (!t) continue;
+    const cnt = Math.max(1, entry.count|0);
+    const tags = archetypesForKey(entry.type);
+    if (t.role==="front") out.front += cnt; else out.back += cnt;
+    if (tags.includes("tank")) out.tank += cnt;
+    if (tags.includes("swarm")) out.swarm += cnt;
+    if (tags.includes("assassin")) out.assassin += cnt;
+    if (tags.includes("splash")) out.splash += cnt;
+    if (tags.includes("sustain")) out.sustain += cnt;
+    if (entry.type==="carrion") out.antiHeal += cnt;
+    if (t.trueDamage) out.trueDamage += cnt;
+    out.armor += ((t.base && t.base.armor) ? t.base.armor : 0) * cnt;
+    out.damage += ((t.base && t.base.dmg) ? t.base.dmg : 0) * cnt;
+  }
+  return out;
+}
+function evaluateDraftCard(card, myRoster, enemyRoster, myRelics, enemyRelics) {
+  let score = 0;
+  const labels = [];
+  const reasons = [];
+  const mine = rosterSummary(myRoster);
+  const enemy = rosterSummary(enemyRoster);
+  const own = (myRoster||[]).find(r=>r.type===card.key);
+  const addLabel = (l)=>{ if (!labels.includes(l) && labels.length < 2) labels.push(l); };
+  const addReason = (txt)=>{ if (!reasons.includes(txt) && reasons.length < 3) reasons.push(txt); };
+
+  if (card.type==="troop"){
+    const troop = TROOPS[card.key] || {};
+    const meta = TROOP_COUNTERS[card.key] || {};
+    const tags = archetypesForKey(card.key);
+    const frontlineLow = mine.front <= 1;
+    const manySameRole = (troop.role==="front" ? mine.front : mine.back) >= 5;
+    if (meta.strongAgainst && enemyRoster.some(e => (meta.strongAgainst||[]).some(s => normalizeTag(s).includes(normalizeTag(TROOPS[e.type]?.name||""))))) { score += 1; addLabel("Strong Counter"); }
+    if (tags.includes("splash") && enemy.swarm >= 2){ score += 3; addLabel("Anti-Swarm"); addReason("Good pick: enemy has swarm pressure."); }
+    if (tags.includes("assassin") && enemy.back >= 2){ score += 3; addLabel("Protects Backline"); addReason("Good pick: enemy relies on backline/support units."); }
+    if (troop.trueDamage && (enemy.tank >= 2 || enemy.armor >= 4)){ score += 3; addLabel("Anti-Tank"); addReason("Good pick: enemy has armored/tank units."); }
+    if (tags.includes("sustain") && mine.tank >= 2){ score += 2; addReason("Good sustain fit for your frontline-heavy roster."); }
+    if (card.key==="carrion" && enemyRoster.some(e=>["medic","wardmaker","carrion"].includes(e.type))){ score += 2; addReason("Anti-heal value vs enemy sustain core."); }
+    if (troop.role==="front" && frontlineLow){ score += 2; addLabel("Needs Frontline"); addReason("Adds frontline to protect fragile backline."); }
+    if (mine.damage < 12 && (troop.base?.dmg||0) >= 6){ score += 2; addReason("Adds needed damage to your current build."); }
+    if (own && (own.lvl||1)===2 && LEGENDARY_ABILITIES[card.key]){ score += 3; addLabel("Legendary Setup"); addReason("Great setup: upgrades toward Legendary."); }
+    if (own && ((meta.bestWith||[]).length>0)){ score += 2; addLabel("Completes Combo"); addReason("Doubles a unit that already has support/synergy."); }
+    if ((meta.bestWith||[]).some(n => (myRoster||[]).some(r => normalizeTag(TROOPS[r.type]?.name||"").includes(normalizeTag(n))))){ score += 2; addLabel("Build Around"); addReason("Completes synergy pieces already in your roster."); }
+
+    if (enemy.assassin >= 2 && troop.role==="back" && (troop.base?.hp||0) <= 10){ score -= 3; addReason("Risky: enemy assassins punish fragile backline."); }
+    if (manySameRole){ score -= 2; addReason("Risky: too many units in the same role."); }
+    if ((meta.weakAgainst||[]).length && enemyRoster.some(e => (meta.weakAgainst||[]).some(w => normalizeTag(w).includes(normalizeTag(TROOPS[e.type]?.name||""))))){ score -= 2; addReason("Enemy roster already has tools that counter this pick."); }
+    if (mine.front===0 && troop.role!=="front"){ score -= 3; addReason("Risky: no frontline yet."); }
+    if ((mine.swarm===0 && enemy.swarm>=2 && !tags.includes("splash")) || (mine.trueDamage===0 && enemy.tank>=2 && !troop.trueDamage)){ score -= 1; }
+  } else {
+    const relicText = normalizeTag(card.name+" "+(card.desc||""));
+    const isSustainRelic = relicText.includes("heal") || relicText.includes("ward");
+    const isAssassinRelic = relicText.includes("dash") || relicText.includes("leap") || relicText.includes("assassin");
+    if (isSustainRelic && mine.tank >= 2){ score += 1; addReason("Relic/tactic supports your frontline sustain plan."); }
+    if (isAssassinRelic && mine.assassin >= 1){ score += 1; addReason("Relic/tactic enhances your dive tools."); }
+    if ((isSustainRelic && mine.tank===0) || (isAssassinRelic && mine.assassin===0)){ score -= 2; addReason("Relic/tactic does not fit current army."); }
+  }
+  if (score <= -2) addLabel("Risky Pick");
+  return { score, labels, reasons };
 }
 for (const [key, meta] of Object.entries(TROOP_COUNTERS)){
   const tags = archetypesForKey(key);
@@ -2933,6 +3002,9 @@ function render(){
   const sk=pKey(meIndex);
   const enemyKey = pKey(1-meIndex);
   const enemyRoster = ((S && S.roster && S.roster[enemyKey]) || []).filter(Boolean);
+  const myRoster = ((S && S.roster && S.roster[sk]) || []).filter(Boolean);
+  const myRelics = ((S && S.relics && S.relics[sk]) || []).filter(Boolean);
+  const enemyRelics = ((S && S.relics && S.relics[enemyKey]) || []).filter(Boolean);
   const pickedIndex = (S && S.selections && S.selections[sk]) ? S.selections[sk][di] : null;
 
   if (phase==="faction-select"){
@@ -2979,6 +3051,12 @@ function render(){
   for(let i=0;i<pack.length;i++){
     const c=pack[i];
     const el=document.createElement("div"); el.className="card";
+    const draftEval = evaluateDraftCard(c, myRoster, enemyRoster, myRelics, enemyRelics);
+    const recLabels = (draftEval.labels||[]).slice(0,2).map(lbl=>{
+      const cls = lbl==="Risky Pick" ? "recommend-warn" : (lbl==="Build Around" || lbl==="Completes Combo" ? "recommend-mid" : "recommend-good");
+      return '<span class="recommendLabel '+cls+'">'+lbl+'</span>';
+    }).join("");
+    const reasonLine = (draftEval.reasons && draftEval.reasons[0]) ? ('<div class="tipText">'+draftEval.reasons[0]+'</div>') : '';
     if (c.type==="troop"){
       const tro = TROOPS[c.key];
       el.classList.add("faction-"+tro.faction);
@@ -3004,8 +3082,10 @@ function render(){
         '<div class="roleTag">'+meta.roleLabel+' · '+meta.archetype+'</div>'+
         '<div class="counterRow"><span class="roleTag">Strong vs</span>'+strong+'</div>'+
         '<div class="counterRow"><span class="roleTag">Weak vs</span>'+weak+'</div>'+
+        (recLabels ? '<div class="recommendRow">'+recLabels+'</div>' : '')+
         '<div class="tipText">Counters: '+countersLine+'</div>'+
         '<div class="tipText">Watch out for: '+warningLine+'</div>'+
+        reasonLine+
         (draftFit ? '<div class="tipText">'+draftFit+'</div>' : '')+
         '<div class="counterRow"><span class="roleTag">Best with</span>'+synergies+'</div>'+
         '<div class="tipText">'+tip+'</div>'+((((S&&S.roster&&S.roster[sk])||[]).find(r=>r.type===c.key)?.lvl===2&&LEGENDARY_ABILITIES[c.key])?'<div class="legendaryLine">Next Upgrade: LEGENDARY</div><div class="legendaryDesc">'+LEGENDARY_ABILITIES[c.key].name+' — '+LEGENDARY_ABILITIES[c.key].desc+'</div>':'');
@@ -3034,7 +3114,9 @@ function render(){
         '<div class="icon">'+c.emoji+'</div>'+
         '<div class="title">'+c.emoji+' '+(c.name || c.type)+'</div>'+
         '<div class="roleTag">'+roleLabel+'</div>'+
-        '<div class="desc">'+desc+'</div>';
+        '<div class="desc">'+desc+'</div>'+
+        (recLabels ? '<div class="recommendRow">'+recLabels+'</div>' : '')+
+        reasonLine;
     }
     (function(idx){
       el.onclick=function(){ chooseCard(idx); };
