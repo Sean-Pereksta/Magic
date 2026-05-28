@@ -647,6 +647,8 @@ let CELL=64, GAP=4, W=8, H=16;
 const $ = (id)=>document.getElementById(id);
 const cellsEl=$("cells"), canvas=$("canvas"), viewport=$("viewport"), beamsEl=$("beams"), partsEl=$("particles");
 
+let unitLayerEl = null;
+
 /* ---------------- Fit/zoom & pan ---------------- */
 let boardScale=1, pan={x:12, y:12};
 function applyTransform(){
@@ -1085,8 +1087,6 @@ const lastUnitRenderKey = new Map();
 const lastHpPct = new Map();
 const unitEls = new Map();
 let visualFrameHandle = 0;
-let unitLayerEl = null;
-
 /* 2×2 helpers */
 function unitSize(u){ return TROOPS[u.type] && TROOPS[u.type].size===2 ? 2 : 1; }
 function armorTypeFor(type, unit){
