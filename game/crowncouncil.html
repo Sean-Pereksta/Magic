@@ -205,7 +205,12 @@
   .unit.team0::after{ border-color:rgba(248,113,113,.8); }
   .unit.team1::after{ border-color:rgba(96,165,250,.8); }
   .unit.lvl2::after{ box-shadow:0 0 8px rgba(203,213,225,.7), 0 0 0 1px rgba(203,213,225,.5) inset; }
-  .unit.lvl3::after{ border-color:rgba(251,191,36,.95); box-shadow:0 0 12px rgba(251,191,36,.75), 0 0 0 1px rgba(245,158,11,.7) inset; }
+  .unit.lvl3::after{ border-color:rgba(251,191,36,.95); box-shadow:0 0 18px rgba(251,191,36,.95), 0 0 0 2px rgba(245,158,11,.9) inset; }
+  .unit.lvl3::before{ background:radial-gradient(circle at 50% 100%, rgba(251,191,36,.55), rgba(245,158,11,.05) 68%, transparent 74%); }
+  .unit.lvl3 .troop-art{ filter:drop-shadow(0 0 10px rgba(251,191,36,.8)) drop-shadow(0 0 6px rgba(245,158,11,.45)); }
+  .card.legendary{ border-color:rgba(251,191,36,.95); box-shadow:0 0 0 1px rgba(245,158,11,.9) inset, 0 10px 25px rgba(245,158,11,.32); }
+  .card .legendaryLine{ color:#fef08a; font-weight:800; margin-top:6px; letter-spacing:.2px; }
+  .card .legendaryDesc{ color:#fde68a; font-size:12px; line-height:1.35; margin-top:4px; }
 
   .hp{
     position:absolute;left:6px;right:6px;bottom:4px;height:7px;border-radius:999px;
@@ -858,6 +863,12 @@ const TROOPS = {
     burrowCd:2200
   }
 };
+const LEGENDARY_ABILITIES = {
+  rifleman:{name:"Overwatch Line", desc:"Fires faster and gains +1 damage vs enemies already damaged this battle.", notes:"+28% attack speed."}, vrocket:{name:"Siege Burst", desc:"Wider burst splash for anti-clump pressure.", notes:"Splash up."}, vguard:{name:"Shield Wall", desc:"Nearby backline allies take -1 incoming damage.", notes:"Aura mitigation."}, miner:{name:"Tunnel Breakers", desc:"First hit vs ranged/support stuns briefly and deals bonus damage.", notes:"One-time proc."}, medic:{name:"Emergency Revival", desc:"Once per battle, prevents a nearby ally from dying and heals a small amount.", notes:"One revive."}, suppressor:{name:"Lockdown Foam", desc:"Suppressed targets lose 1 range for longer.", notes:"Range debuff window."}, shieldcap:{name:"Rally Banner", desc:"Nearby allies gain +1 armor.", notes:"Aura armor."}, marksman:{name:"Headshot Protocol", desc:"Better support kills and non-tank execute.", notes:"Non-tank execute."}, emp:{name:"System Crash", desc:"EMP also disables nearby enemy wards briefly.", notes:"Ward disable."},
+  phaser:{name:"Phase Echo", desc:"First blink grants brief invulnerability.", notes:"Short invuln."}, blade:{name:"Tempest Blades", desc:"Every third attack cleaves adjacent enemies.", notes:"3-hit cleave."}, storm:{name:"Chain Storm", desc:"Chains one additional target and prefers wounded units.", notes:"4 hops."}, guardian:{name:"Gravity Slam", desc:"First impact applies stronger slow/knock control.", notes:"First-hit control."}, wardmaker:{name:"Sanctuary Ward", desc:"First ward has bonus HP and pulse-heals nearby allies.", notes:"First ward bonus."}, architect:{name:"Arcane Turret Grid", desc:"Turret wards fire faster and deal +1 damage.", notes:"Ward buff."}, golem:{name:"Mountain Core", desc:"Reduced ranged damage and ignores first knockback.", notes:"First knock immunity."}, runebinder:{name:"Greater Bind", desc:"Bind lasts longer and amplifies magic/storm follow-up.", notes:"Longer bind."},
+  hellspawn:{name:"Frenzy Swarm", desc:"Gains speed/attack speed when near other Hell Spawn.", notes:"Swarm haste."}, roach:{name:"Hardened Carapace", desc:"Below 50% HP, gains damage reduction.", notes:"Low-HP DR."}, defiler:{name:"Plague Nova", desc:"First low-HP trigger spreads toxic nearby.", notes:"One nova."}, blood:{name:"Blood Detonation", desc:"Explosion applies wound with stronger splash.", notes:"Wound splash."}, matron:{name:"Endless Brood", desc:"Spawns faster and first spawn produces an extra Hell Spawn.", notes:"First double spawn."}, viper:{name:"Apex Venom", desc:"First leap deals bonus true damage to armored/support units.", notes:"One leap proc."}, spitter:{name:"Acid Rain", desc:"Acid lasts longer and strips armor by 1 on tiles.", notes:"Longer acid."}, carrion:{name:"Blood Curse", desc:"Wounded enemies receive reduced healing.", notes:"Anti-heal uptime."}, burrower:{name:"Deep Ambush", desc:"First burrow hit roots briefly and leaves poison behind.", notes:"One ambush proc."}
+};
+
 const TROOP_COUNTERS = {
   rifleman:{ roleLabel:"Backline Damage", archetype:"Single Target / Gunline", strongAgainst:["Slow melee","Unprotected frontliners"], weakAgainst:["Assassins","Splash damage","Burrowers"], bestWith:["Vanir Guard","Shield Captain","Medic"], counterTip:"Use Riflemen behind tanks to melt steady frontline pushes.", dangerTip:"Weak if enemies reach the backline." },
   vrocket:{ roleLabel:"Artillery", archetype:"Splash / Knockback", strongAgainst:["Swarms","Clustered pushes","Light backline"], weakAgainst:["Divers","Long-range picks","Fast flanks"], bestWith:["Vanir Guard","Suppressor","Shield Captain"], counterTip:"Fire Rockets into stacked enemy lanes for splash value.", dangerTip:"Falls off when enemies spread and dive." },
@@ -1108,13 +1119,20 @@ function placeUnit(state,p,key,lvl){
       nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0,
       nextStep:0
     };
+    u.legendary = (lvl||1) >= 3;
 
-    // Level 3+ special hooks
-    if (key === "rifleman" && (lvl||1) >= 3){
-      u.cd = Math.round(u.cd * 0.7);
-    }
-    if (key === "matron" && (lvl||1) >= 3){
-      u.broodCd = Math.round((t.broodCd || 3500) * 0.7);
+    // Level 3 legendary hooks
+    if (u.legendary){
+      if (key === "rifleman") u.cd = Math.round(u.cd * 0.72);
+      if (key === "matron"){ u.broodCd = Math.round((t.broodCd || 3500) * 0.7); u.firstBroodExtra = true; }
+      if (key === "suppressor") u.suppressDur = Math.round((u.suppressDur||900) * 1.4);
+      if (key === "runebinder") u.bindDur = Math.round((u.bindDur||1200) * 1.35);
+      if (key === "spitter") u.acidDur = Math.round((u.acidDur||3500) * 1.4);
+      if (key === "architect"){ u.wardDmg += 1; u.wardCdShoot = Math.round((u.wardCdShoot||1400) * 0.85); }
+      if (key === "golem"){ u.rangedReduce = (u.rangedReduce||0) + 1; u.firstKnockImmune = true; }
+      if (key === "wardmaker") u.firstWardBoost = true;
+      if (key === "medic") u.reviveReady = true;
+      if (key === "defiler") u.plagueReady = true;
     }
 
     state.field.units.push(u);
@@ -1164,7 +1182,7 @@ function troopArt(type, u){
   const hpPct = Math.max(0, Math.min(1, (u.hp||1)/Math.max(1,u.maxhp||1)));
   const hpGlow = hpPct < 0.35 ? "drop-shadow(0 0 6px rgba(248,113,113,.85))" : "none";
   const teamFill = u.p===0 ? "#f87171" : "#60a5fa";
-  const lvlGem = (u.lvl||1) >= 3 ? '<circle cx="39" cy="10" r="4" fill="#fde047" class="stroke" />' : '';
+  const lvlGem = (u.lvl||1) >= 3 ? '<circle cx="39" cy="10" r="4" fill="#fde047" class="stroke" /><path d="M39 5 L40.2 8.2 L43.5 8.3 L40.9 10.2 L41.8 13.4 L39 11.5 L36.2 13.4 L37.1 10.2 L34.5 8.3 L37.8 8.2 Z" fill="#f59e0b" />' : '';
   const ART = {
     rifleman:'<rect x="7" y="10" width="20" height="28" rx="7" fill="#9ca3af" class="stroke"/><rect x="25" y="13" width="16" height="7" rx="3" fill="#1f2937" class="stroke"/><rect x="29" y="21" width="14" height="4" rx="2" fill="#374151"/><rect x="12" y="16" width="10" height="4" fill="'+teamFill+'" opacity=".9"/><circle cx="13" cy="28" r="3" fill="#d1d5db"/><circle cx="21" cy="28" r="3" fill="#d1d5db"/>',
     vrocket:'<path d="M10 36 L24 7 L38 36 Z" fill="#64748b" class="stroke"/><path d="M24 10 L31 24 L24 27 L17 24 Z" fill="#e2e8f0"/><rect x="20" y="24" width="8" height="12" fill="#ef4444"/><path d="M14 33 L18 38 L10 38 Z" fill="#fb7185"/><path d="M34 33 L38 38 L30 38 Z" fill="#fb7185"/>',
@@ -1579,6 +1597,10 @@ function broodTick(st, now){
     if (!u.nextBrood) u.nextBrood = 0;
     if (now >= u.nextBrood){
       if (spawnAdjacentUnit(st, u, u.broodType || "hellspawn")){
+        if (u.firstBroodExtra){
+          spawnAdjacentUnit(st, u, u.broodType || "hellspawn");
+          u.firstBroodExtra = false;
+        }
         u.nextBrood = now + (u.broodCd || TROOPS[u.type]?.broodCd || 3500);
       } else {
         u.nextBrood = now + 800;
@@ -1596,6 +1618,7 @@ function reduceDamageForTarget(baseDmg, target, field, opts){
   const armor = target && target.armor ? (target.armor|0) : 0;
   const totalReduce = Math.max(0, auraReduce + armor);
   if (totalReduce > 0) dmg = Math.max(1, dmg - totalReduce);
+  if (target && target.legendary && target.type==="roach" && target.hp <= target.maxhp*0.5) dmg = Math.max(1, dmg - 1);
   return dmg;
 }
 function healScale(v, now){
@@ -2087,6 +2110,13 @@ function healAction(u, st, now){
   const raw = Math.max(1, u.healAmt|0);
   const amt = Math.max(1, Math.round(raw * healScale(target, now)));
   target.hp = Math.min(target.maxhp, target.hp + amt);
+  if (u.legendary && u.type==="medic" && u.reviveReady){
+    const critical = allies.find(a=>a.hp>0 && a.hp <= Math.max(2, Math.floor(a.maxhp*0.2)));
+    if (critical){
+      critical.hp = Math.min(critical.maxhp, critical.hp + 3);
+      u.reviveReady = false;
+    }
+  }
 
   u.nextHeal = now + (u.healCd||1200);
   return true;
@@ -2118,7 +2148,13 @@ function wardAction(u, st, now){
           hCd:(u.wardHealCd||1500)
         };
 
-    if (placeWard(st, tx, ty, u.wardHp||2, u.wardDur||6000, opts)){
+    const wardHp = (u.firstWardBoost ? (u.wardHp||2)+2 : (u.wardHp||2));
+    if (placeWard(st, tx, ty, wardHp, u.wardDur||6000, opts)){
+      if (u.firstWardBoost){
+        const allies = st.field.units.filter(v=>v.p===u.p && v.hp>0 && (Math.abs(v.x-tx)+Math.abs(v.y-ty)<=2));
+        for (const a of allies) a.hp = Math.min(a.maxhp, a.hp + 1);
+        u.firstWardBoost = false;
+      }
       u.nextWard = now + (u.wardCd||1700);
       return true;
     }
@@ -2127,6 +2163,11 @@ function wardAction(u, st, now){
 }
 
 function applyDamage(victim, dmg, st){
+  victim.lastDamagedAt = Date.now();
+  if (victim.legendary && victim.type==="defiler" && victim.plagueReady && victim.hp > 0 && (victim.hp-dmg) <= Math.floor(victim.maxhp*0.35)){
+    addToxicSplash(st, victim.x, victim.y, 4500, victim.p);
+    victim.plagueReady = false;
+  }
   victim.hp -= dmg;
   flashAt(victim.x, victim.y, dmg);
 
@@ -2145,6 +2186,7 @@ function splash(units, field, x,y,dmg,srcP,kn,strong,opts){
   }
 }
 function tryKnock(cx,cy,t,units,strong){
+  if (t.firstKnockImmune){ t.firstKnockImmune = false; return; }
   const tcx=t.x+(unitSize(t)-1)/2, tcy=t.y+(unitSize(t)-1)/2;
   const dx=Math.sign(tcx-cx), dy=Math.sign(tcy-cy);
   let steps = strong ? 2 : 1;
@@ -2169,7 +2211,8 @@ function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
   }
 }
 function attack(u, t, now, st){
-  const inRange = manhattanUnits(u,t) <= (u.range||1);
+  const effRange = (u.rangeDebuffUntil && u.rangeDebuffUntil > now) ? Math.max(1,(u.range||1)-1) : (u.range||1);
+  const inRange = manhattanUnits(u,t) <= effRange;
   if (!inRange) return false;
   if (now < (u.nextAtk||0)) return true;
 
@@ -2179,6 +2222,9 @@ function attack(u, t, now, st){
 
   function deal(victim, raw, isRanged){
     let dmg = raw|0;
+    if (u.legendary && u.type==="rifleman" && victim.lastDamagedAt) dmg += 1;
+    if (u.legendary && u.type==="miner" && !u.minerProc && (victim.range>1 || isSupportUnit(victim))){ dmg += 2; victim.bindUntil = Math.max(victim.bindUntil||0, now+700); u.minerProc = true; }
+    if (u.legendary && u.type==="marksman" && isSupportUnit(victim)) dmg += 1;
     const attackerStrongVs = (u.strongVs || []).length ? u.strongVs : unitStrongVs(u.type);
     const victimArmor = victim.armorType || armorTypeFor(victim.type, victim);
     if (attackerStrongVs.includes(victimArmor)) dmg += 2;
@@ -2205,13 +2251,13 @@ function attack(u, t, now, st){
   } else if (u.type === "vrocket"){
 
     deal(t, u.dmg, true);
-    const sd = Math.max(1, Math.floor(u.dmg * 0.6));
+    const sd = Math.max(1, Math.floor(u.dmg * (u.legendary ? 0.75 : 0.6)));
     splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
 
   } else if (u.chain3){
 
     if (u.type === "storm") pushSyncedFx(st.field, fxStorm(t.x,t.y), now);
-    chainLightning(st.field.units, st.field, t, u.p, 3, u.dmg, {ignoreArmor:!!u.trueDamage});
+    chainLightning(st.field.units, st.field, t, u.p, (u.legendary?4:3), u.dmg, {ignoreArmor:!!u.trueDamage});
 
   } else if (u.type === "roach" && (u.lvl||1) >= 3){
 
@@ -2251,6 +2297,11 @@ function attack(u, t, now, st){
   }
   if (u.empShock && t.hp > 0){
     applyShockDebuff(st, t, now, u.shockDur || 1500);
+    if (u.legendary){
+      for (const w of (st.field.wards||[])){
+        if ((w.p==null || w.p!==u.p) && Math.abs(w.x-t.x)+Math.abs(w.y-t.y)<=2) w.disabledUntil = Math.max(w.disabledUntil||0, now + 1400);
+      }
+    }
   }
   if (u.bind && t.hp > 0){
     const bd = u.bindDur || 1200;
@@ -2266,6 +2317,7 @@ function attack(u, t, now, st){
   if (u.suppress && t.hp > 0){
     t.slowUntil  = Math.max(t.slowUntil||0, now + (u.suppressDur || 900));
     t.slowFactor = u.slowFactor || 2;
+    if (u.legendary) t.rangeDebuffUntil = Math.max(t.rangeDebuffUntil||0, t.slowUntil||0);
   }
 
   u.nextAtk = now + (u.cd || 600);
@@ -2956,7 +3008,7 @@ function render(){
         '<div class="tipText">Watch out for: '+warningLine+'</div>'+
         (draftFit ? '<div class="tipText">'+draftFit+'</div>' : '')+
         '<div class="counterRow"><span class="roleTag">Best with</span>'+synergies+'</div>'+
-        '<div class="tipText">'+tip+'</div>';
+        '<div class="tipText">'+tip+'</div>'+((((S&&S.roster&&S.roster[sk])||[]).find(r=>r.type===c.key)?.lvl===2&&LEGENDARY_ABILITIES[c.key])?'<div class="legendaryLine">Next Upgrade: LEGENDARY</div><div class="legendaryDesc">'+LEGENDARY_ABILITIES[c.key].name+' — '+LEGENDARY_ABILITIES[c.key].desc+'</div>':'');
     }else{
       el.classList.add("special");
       const nn=TROOPS[c.for]?.name||"Type";
@@ -2969,7 +3021,7 @@ function render(){
         const nxt = Math.min(3, cur+1);
         const t = TROOPS[c.for] || {};
         const nbase = t.base || {};
-        desc = "Upgrade "+nn+" L"+cur+" → L"+nxt+". Next: "+(nbase.dmg||0)+" dmg, "+(nbase.maxHp||0)+" HP."+(nxt===3?" LEGENDARY UNLOCK: level 3 ability active.":"");
+        desc = "Upgrade "+nn+" L"+cur+" → L"+nxt+". Next: "+(nbase.dmg||0)+" dmg, "+(nbase.maxHp||0)+" HP."+(nxt===3?" LEGENDARY UNLOCK: "+(LEGENDARY_ABILITIES[c.for]?.name||"Legendary")+" — "+(LEGENDARY_ABILITIES[c.for]?.desc||""):"");
       } else if (c.type==="special" && c.special==="double"){
         const own = ((S && S.roster && S.roster[sk])||[]).find(r=>r.type===c.for);
         const cur = own ? Math.max(1, own.count|0) : 1;
