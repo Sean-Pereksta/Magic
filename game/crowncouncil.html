@@ -106,20 +106,45 @@
     gap:var(--gap);
     padding:10px;
   }
+  .cells::before{
+    content:"";
+    position:absolute;
+    inset:10px;
+    background:
+      linear-gradient(180deg, rgba(59,130,246,.14) 0 49.4%, rgba(255,255,255,0) 49.4% 50.6%, rgba(239,68,68,.14) 50.6% 100%);
+    pointer-events:none;
+    z-index:2;
+  }
+  .cells::after{
+    content:"";
+    position:absolute;
+    left:10px; right:10px;
+    top:50%;
+    height:2px;
+    transform:translateY(-50%);
+    background:linear-gradient(90deg, rgba(148,163,184,0), rgba(148,163,184,.6), rgba(148,163,184,0));
+    z-index:2;
+    pointer-events:none;
+  }
   .unit-layer{ position:absolute; inset:10px; pointer-events:none; z-index:12; }
   .vu{ position:absolute; width:var(--cell); height:var(--cell); pointer-events:none; will-change:transform,opacity; }
   .vu.fading{ opacity:0; transition:opacity 220ms ease-out; }
   .cell{
     width:var(--cell);height:var(--cell);
     border-radius:12px;
-    background:
-      radial-gradient(circle at 28% 26%, rgba(34,197,94,.28), transparent 40%),
-      radial-gradient(circle at 70% 60%, rgba(120,53,15,.24), transparent 42%),
-      linear-gradient(145deg,#d9f99d,#bbf7d0 55%,#86efac);
-    border:1px solid rgba(22,101,52,.28);
+    background:linear-gradient(145deg,#284e3a,#2c5d45 58%,#244936);
+    border:1px solid rgba(15,23,42,.28);
     position:relative;
     overflow:hidden;
-    box-shadow:0 1px 0 rgba(255,255,255,.75) inset, 0 2px 8px rgba(15,23,42,.12);
+    box-shadow:0 1px 0 rgba(255,255,255,.08) inset, 0 1px 3px rgba(15,23,42,.2);
+  }
+  .cell.tile-a{ background:linear-gradient(145deg,#294f3b,#2f6147 58%,#264d38); }
+  .cell.tile-b{ background:linear-gradient(145deg,#244736,#2a5842 58%,#214130); }
+  .cell.tile-c{ background:linear-gradient(145deg,#2f5640,#35684d 58%,#2a513c); }
+  .cell.side-top{ border-color:rgba(59,130,246,.2); }
+  .cell.side-bottom{ border-color:rgba(239,68,68,.2); }
+  .cell.center-divider{
+    box-shadow:0 -1px 0 rgba(148,163,184,.32) inset, 0 1px 0 rgba(148,163,184,.32) inset;
   }
   .cell.multi-origin{ overflow:visible; z-index:8; }
 
@@ -134,6 +159,29 @@
   .unit.attacking{ animation:unitAttack .35s ease-out; }
   .unit.casting{ animation:unitCast .5s ease-out; }
   .unit .troop-art{ width:88%; height:88%; filter:drop-shadow(0 0 7px rgba(0,0,0,.55)); }
+  .unit::before{
+    content:"";
+    position:absolute;
+    width:72%;
+    height:18%;
+    left:14%;
+    bottom:6%;
+    border-radius:50%;
+    background:radial-gradient(ellipse at center, rgba(2,6,23,.45), rgba(2,6,23,0) 72%);
+    z-index:-1;
+  }
+  .unit::after{
+    content:"";
+    position:absolute;
+    width:58%;
+    height:58%;
+    left:21%;
+    top:27%;
+    border-radius:50%;
+    border:2px solid rgba(148,163,184,.4);
+    opacity:.9;
+    box-shadow:0 0 0 1px rgba(2,6,23,.45) inset;
+  }
   .unit.big{ width:calc(200% + var(--gap)); height:calc(200% + var(--gap)); place-items:stretch; }
   .unit.big .troop-art{ width:100%; height:100%; }
   .unit svg{ width:100%; height:100%; overflow:visible; }
@@ -154,6 +202,10 @@
   .unit.team1{
     filter:drop-shadow(0 0 1px rgba(15,23,42,.95)) drop-shadow(0 0 4px var(--team1)) drop-shadow(0 0 1px var(--team1b));
   }
+  .unit.team0::after{ border-color:rgba(248,113,113,.8); }
+  .unit.team1::after{ border-color:rgba(96,165,250,.8); }
+  .unit.lvl2::after{ box-shadow:0 0 8px rgba(203,213,225,.7), 0 0 0 1px rgba(203,213,225,.5) inset; }
+  .unit.lvl3::after{ border-color:rgba(251,191,36,.95); box-shadow:0 0 12px rgba(251,191,36,.75), 0 0 0 1px rgba(245,158,11,.7) inset; }
 
   .hp{
     position:absolute;left:6px;right:6px;bottom:4px;height:7px;border-radius:999px;
@@ -190,7 +242,7 @@
     text-shadow:0 1px 2px rgba(0,0,0,.7);
   }
 
-  .hitflash{ position:absolute; inset:0; background:rgba(248,250,252,.9); animation:flash .12s ease; pointer-events:none; z-index:2 }
+  .hitflash{ position:absolute; inset:0; background:rgba(248,250,252,.55); animation:flash .16s ease; pointer-events:none; z-index:2 }
   @keyframes flash{ from{opacity:.9} to{opacity:0} }
   .dmg{
     position:absolute; left:50%; top:40%; transform:translate(-50%,-50%);
@@ -201,6 +253,30 @@
     0%{opacity:0; transform:translate(-50%,-40%) scale(.9)}
     10%{opacity:1;}
     100%{opacity:0; transform:translate(-50%,-100%) scale(1)}
+  }
+  .cell.hit-pulse::after{
+    content:"";
+    position:absolute;
+    inset:10%;
+    border-radius:10px;
+    border:2px solid rgba(248,113,113,.75);
+    animation:cellPulse .26s ease-out;
+    pointer-events:none;
+    z-index:5;
+  }
+  .cell.heal-pulse::after{
+    content:"";
+    position:absolute;
+    inset:12%;
+    border-radius:10px;
+    border:2px solid rgba(74,222,128,.7);
+    animation:cellPulse .3s ease-out;
+    pointer-events:none;
+    z-index:5;
+  }
+  @keyframes cellPulse{
+    0%{opacity:.95; transform:scale(.88);}
+    100%{opacity:0; transform:scale(1.08);}
   }
 
   /* Ground effects (more saturated) */
@@ -231,14 +307,34 @@
     width:min(260px,40vw);
     background:radial-gradient(circle at top,#0b1120,#020617);
     border-radius:16px;
-    border:1px solid rgba(148,163,184,.7);
+    border:1px solid rgba(148,163,184,.55);
     box-shadow:0 18px 40px rgba(15,23,42,.9);
     padding:12px 14px;
     cursor:pointer;
     display:grid;
-    gap:6px;
+    gap:7px;
     user-select:none;
     transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  }
+  .card:before{
+    content:"";
+    height:4px;
+    border-radius:999px;
+    display:block;
+    background:linear-gradient(90deg,#64748b,#cbd5e1);
+  }
+  .card.faction-Helions:before{ background:linear-gradient(90deg,#ef4444,#f97316); }
+  .card.faction-Aesir:before{ background:linear-gradient(90deg,#3b82f6,#60a5fa); }
+  .card.faction-Vanir:before{ background:linear-gradient(90deg,#22c55e,#4ade80); }
+  .card.special:before{ background:linear-gradient(90deg,#a855f7,#f59e0b); }
+  .card .icon{
+    height:60px;
+    border-radius:10px;
+    display:grid;
+    place-items:center;
+    font-size:30px;
+    background:linear-gradient(180deg, rgba(148,163,184,.16), rgba(2,6,23,.5));
+    border:1px solid rgba(148,163,184,.35);
   }
   .card .title{
     font-weight:800;
@@ -251,6 +347,12 @@
     text-transform:uppercase;
     letter-spacing:.08em;
     color:#93c5fd;
+  }
+  .card .roleTag{
+    font-size:.72rem;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:#cbd5e1;
   }
   .card .desc{
     color:#cbd5f5;
@@ -389,10 +491,17 @@
   .endSummary .mmrDown{ color:#ef4444; font-weight:700; }
 
   @media (max-width:768px){
-    .badge{padding:5px 10px;font-size:.8rem}
+    .badge{padding:5px 9px;font-size:.76rem}
     .btn{padding:6px 10px;font-size:.8rem}
-    .card{width:min(260px,88vw);}
+    .card{width:min(280px,92vw);}
     .cells{padding:6px;}
+    .viewport{height:calc(100dvh - 64px);}
+  }
+  @media (max-width:520px){
+    :root{ --cell:56px; --gap:3px; }
+    .topbar{padding:7px 8px; gap:8px;}
+    .row{gap:6px;}
+    .cardRow{gap:10px;}
   }
 </style>
 </head>
@@ -597,7 +706,10 @@ function buildBoard(){
   for (let y=0;y<H;y++){
     for (let x=0;x<W;x++){
       const d=document.createElement("div");
-      d.className="cell";
+      const variant = ((x + y) % 3 === 0) ? "tile-a" : ((x + y) % 3 === 1 ? "tile-b" : "tile-c");
+      const side = y < Math.floor(H/2) ? "side-top" : "side-bottom";
+      const centerBand = (y===Math.floor(H/2)-1 || y===Math.floor(H/2)) ? "center-divider" : "";
+      d.className="cell "+variant+" "+side+" "+centerBand;
       d.dataset.x=String(x); d.dataset.y=String(y);
       d.innerHTML = `
         <div class="under"></div>
@@ -1054,6 +1166,7 @@ function renderBeam(ev, heal){
   el.style.width = Math.max(1,len) + "px";
   el.style.transform = "rotate("+ang+"rad)";
   beamsEl.appendChild(el);
+  if (heal){ pulseCell(ev.x2, ev.y2, "heal-pulse"); }
   setTimeout(()=>el.remove(), ev.ttl);
 }
 function renderTransport(ev){
@@ -1149,11 +1262,20 @@ function groundTickParticles(x,y, purple){
 function flashAt(x,y, dmgNum){
   const i=idx(x,y); const cell=cellsEl.children[i]; if (!cell) return;
   const f=document.createElement("div"); f.className="hitflash"; cell.appendChild(f);
+  pulseCell(x,y,"hit-pulse");
   setTimeout(()=>f.remove(), 140);
   if (dmgNum>0){
     const t=document.createElement("div"); t.className="dmg"; t.textContent="-"+dmgNum;
     cell.appendChild(t); setTimeout(()=>t.remove(), 650);
   }
+}
+function pulseCell(x,y, cls){
+  const cell = cellsEl.children[idx(x,y)];
+  if (!cell) return;
+  cell.classList.remove(cls);
+  void cell.offsetWidth;
+  cell.classList.add(cls);
+  setTimeout(()=>cell.classList.remove(cls), 320);
 }
 
 /* ward helpers / aura */
@@ -1452,6 +1574,8 @@ function paint(units, field){
       uni.classList.toggle("team0", u.p === 0);
       uni.classList.toggle("team1", u.p === 1);
       uni.classList.toggle("big", s===2);
+      uni.classList.toggle("lvl2", (u.lvl||1)===2);
+      uni.classList.toggle("lvl3", (u.lvl||1)>=3);
       const actClass = unitActionClass(u, now);
       if (actClass) uni.classList.add(actClass);
       uni.innerHTML = troopArt(u.type, u);
@@ -1537,6 +1661,7 @@ function ensureVisualLoop(){
         const uni = node.querySelector(".unit");
         uni.className = "unit";
         uni.classList.toggle("team0", vu.p===0); uni.classList.toggle("team1", vu.p===1); uni.classList.toggle("big", vu.size===2);
+        uni.classList.toggle("lvl2", (vu.lvl||1)===2); uni.classList.toggle("lvl3", (vu.lvl||1)>=3);
         if (vu.actionClass) uni.classList.add(vu.actionClass);
         uni.innerHTML = troopArt(vu.type, vu);
         const hp = node.querySelector(".hp"); hp.classList.toggle("big", vu.size===2);
@@ -2644,10 +2769,10 @@ function render(){
     }
     row.style.display="flex"; row.innerHTML=""; note.style.display="none";
     ["Helions","Aesir","Vanir"].forEach(f=>{
-      const el=document.createElement("div"); el.className="card";
+      const el=document.createElement("div"); el.className="card faction-"+f;
       const units = (FACTIONS[f]||[]).map(k=>unitEmoji(k)+" "+TROOPS[k].name).join(" · ");
       el.innerHTML=''+
-        '<div class="meta">FACTION</div>'+
+        '<div class="meta">FACTION</div><div class="icon">🏰</div>'+
         '<div class="title">'+f+'</div>'+
         '<div class="desc">'+units+'</div>';
       el.onclick=()=> chooseFaction(f);
@@ -2685,17 +2810,24 @@ function render(){
     const el=document.createElement("div"); el.className="card";
     if (c.type==="troop"){
       const tro = TROOPS[c.key];
+      el.classList.add("faction-"+tro.faction);
       const armor = Math.max(0, (tro.base && tro.base.armor) ? (tro.base.armor|0) : 0);
       const trueTag = tro.trueDamage ? ' · true dmg' : '';
+      const roleLabel = tro.role==="back" ? "Back" : "Front";
       el.innerHTML=''+
         '<div class="meta">'+tro.faction+' · '+(tro.role==="back"?"Backline":"Frontline")+' · Armor '+armor+trueTag+'</div>'+
+        '<div class="icon">'+c.emoji+'</div>'+
         '<div class="title">'+c.emoji+' '+c.name+'</div>'+
+        '<div class="roleTag">Role: '+roleLabel+'</div>'+
         '<div class="desc">'+(tro.role==="back"?"Support / ranged":"Frontline pressure")+' from '+tro.faction+'. Armor reduces incoming hit damage.</div>';
     }else{
+      el.classList.add("special");
       const nn=TROOPS[c.for]?.name||"Type";
       el.innerHTML=''+
         '<div class="meta">SPECIAL</div>'+
+        '<div class="icon">'+c.emoji+'</div>'+
         '<div class="title">'+c.emoji+' '+(c.name || (c.special==="upgrade"?"Upgrade":"Double"))+'</div>'+
+        '<div class="roleTag">Role: Special</div>'+
         '<div class="desc">'+(c.special==="upgrade"?"Upgrade ":"Double ")+nn+' in your roster.</div>';
     }
     (function(idx){
@@ -2882,8 +3014,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
-
 
 
 
