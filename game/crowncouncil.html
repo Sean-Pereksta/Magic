@@ -741,8 +741,9 @@ function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
 
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
 let lastRenderedBattleTickId = -1;
-const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], fx:[]});
-const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[], wards:[], fx:[], updatedAt:0});
+const LOW_EFFECTS_MODE = false;
+const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[]});
+const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], updatedAt:0});
 
 function battleFromStateFallback(st){
   const fld = (st && st.field) ? st.field : fieldEmpty();
@@ -752,7 +753,7 @@ function battleFromStateFallback(st){
     toxic: fld.toxic || [],
     acid: fld.acid || [],
     wards: fld.wards || [],
-    fx: fld.fx || [],
+    syncedFx: fld.syncedFx || [],
     battleTickId: Number.isFinite(st && st.battleTickId) ? st.battleTickId : 0
   });
 }
@@ -1109,6 +1110,30 @@ function renderStatusPop(ev){
   setTimeout(()=>el.remove(), ev.ttl||620);
 }
 
+function emitLocalEffect(ev){
+  if (!ev) return;
+  if (LOW_EFFECTS_MODE && (ev.type === "burst" || ev.type === "status")) return;
+  if (ev.type==="beam") renderBeam(ev,false);
+  if (ev.type==="hbeam") renderBeam(ev,true);
+  if (ev.type==="burst") renderBurst(ev);
+  if (ev.type==="transport") renderTransport(ev);
+  if (ev.type==="impact") renderImpact(ev);
+  if (ev.type==="storm") renderStorm(ev);
+  if (ev.type==="status") renderStatusPop(ev);
+}
+
+function pushSyncedFx(field, ev, now){
+  if (!field || !ev) return;
+  if (!Array.isArray(field.syncedFx)) field.syncedFx = [];
+  field.syncedFx.push({
+    id: ev.id || crypto.randomUUID(),
+    type: ev.type,
+    x: ev.x, y: ev.y, cx: ev.cx, cy: ev.cy, x1: ev.x1, y1: ev.y1, x2: ev.x2, y2: ev.y2,
+    battleTickId: Number.isFinite(field.battleTickId) ? field.battleTickId : null,
+    createdAt: now || Date.now()
+  });
+}
+
 function groundTickParticles(x,y, purple){
   const a=centerPx(x,y);
   for(let i=0;i<4;i++){
@@ -1188,7 +1213,7 @@ function spawnAdjacentUnit(st, parent, typeKey){
         nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0, nextStep:0
       };
       st.field.units.push(u);
-      st.field.fx.push(fxBurst(x,y));
+      emitLocalEffect(fxBurst(x,y));
       return true;
     }
   }
@@ -1223,8 +1248,8 @@ function attemptViperLeap(u, units, st){
     if (!inside(nx,ny)) continue;
     if (canMoveTo(u, units, nx, ny)){
       u.x = nx; u.y = ny;
-      if ((u.lvl||1) >= 3 && st && st.field && st.field.fx){
-        st.field.fx.push(fxTransport(fromX, fromY, nx, ny));
+      if ((u.lvl||1) >= 3){
+        emitLocalEffect(fxTransport(fromX, fromY, nx, ny));
       }
       return true;
     }
@@ -1245,7 +1270,7 @@ function attemptBurrow(u, units, st, now){
     if (canMoveTo(u, units, nx, ny)){
       u.x=nx; u.y=ny;
       u.nextBurrow = now + (u.burrowCd || 2200);
-      if (st && st.field && st.field.fx) st.field.fx.push(fxTransport(fromX, fromY, nx, ny));
+      emitLocalEffect(fxTransport(fromX, fromY, nx, ny));
       return true;
     }
   }
@@ -1290,7 +1315,7 @@ function applyShockDebuff(st, target, now, dur){
   const d = dur || 1500;
   target.statusShockUntil = Math.max(target.statusShockUntil||0, now + d);
   target.slowUntil = Math.max(target.slowUntil||0, now + d);
-  if (st && st.field && st.field.fx) st.field.fx.push(fxStatus(target.x, target.y, "⚡"));
+  emitLocalEffect(fxStatus(target.x, target.y, "⚡"));
   const wards = (st && st.field && st.field.wards) ? st.field.wards : [];
   for (let i=0;i<wards.length;i++){
     const w=wards[i];
@@ -1772,7 +1797,7 @@ function wardsHeal(st, now){
     const raw = Math.max(1, w.hAmt|0);
     const amt = Math.max(1, Math.round(raw * healScale(tgt, now)));
     tgt.hp = Math.min(tgt.maxhp, tgt.hp + amt);
-    st.field.fx.push(fxHeal(w.x, w.y, tgt.x, tgt.y));
+
     w.nextHeal = now + (w.hCd || 1500);
   }
 }
@@ -1800,7 +1825,7 @@ function wardsShoot(st, now){
 
     for (let j=0;j<targets.length;j++){
       const tgt = targets[j];
-      st.field.fx.push(fxBeam(w.x, w.y, tgt.x, tgt.y));
+
       const raw = w.wDmg || 1;
       const dmg = reduceDamageForTarget(raw, tgt, st.field);
       applyDamage(tgt, dmg, st);
@@ -1828,7 +1853,7 @@ function healAction(u, st, now){
   const raw = Math.max(1, u.healAmt|0);
   const amt = Math.max(1, Math.round(raw * healScale(target, now)));
   target.hp = Math.min(target.maxhp, target.hp + amt);
-  st.field.fx.push(fxHeal(u.x,u.y,target.x,target.y));
+
   u.nextHeal = now + (u.healCd||1200);
   return true;
 }
@@ -1870,7 +1895,7 @@ function wardAction(u, st, now){
 function applyDamage(victim, dmg, st){
   victim.hp -= dmg;
   flashAt(victim.x, victim.y, dmg);
-  if (st && st.field && st.field.fx) st.field.fx.push(fxImpact(victim.x, victim.y));
+
 }
 function splash(units, field, x,y,dmg,srcP,kn,strong,opts){
   for(let dy=-1;dy<=1;dy++){
@@ -1932,7 +1957,7 @@ function attack(u, t, now, st){
   }
 
   if (u.kamikaze){
-    st.field.fx.push(fxBurst(u.x,u.y));
+    emitLocalEffect(fxBurst(u.x,u.y));
     deal(t, u.dmg, ranged);
 
     if (u.splash1){
@@ -1944,28 +1969,28 @@ function attack(u, t, now, st){
     u.hp = 0;
 
   } else if (u.type === "vrocket"){
-    st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+
     deal(t, u.dmg, true);
     const sd = Math.max(1, Math.floor(u.dmg * 0.6));
     splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
 
   } else if (u.chain3){
-    st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
-    if (u.type === "storm") st.field.fx.push(fxStorm(t.x,t.y));
+
+    if (u.type === "storm") pushSyncedFx(st.field, fxStorm(t.x,t.y), now);
     chainLightning(st.field.units, st.field, t, u.p, 3, u.dmg, {ignoreArmor:!!u.trueDamage});
 
   } else if (u.type === "roach" && (u.lvl||1) >= 3){
-    if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+
     deal(t, u.dmg, true);
     paintPoison(st, t.x, t.y, 5000, u.p);
 
   } else if (u.acid){
-    st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+
     deal(t, u.dmg, true);
     addAcid(st, t.x, t.y, TROOPS[u.type].base.acidDur || 3500);
 
   } else {
-    if (ranged) st.field.fx.push(fxBeam(u.x,u.y,t.x,t.y));
+
     deal(t, u.dmg, ranged);
     const strong = !!u.strongKnock;
     if (u.splash1){
@@ -1997,12 +2022,12 @@ function attack(u, t, now, st){
     const bd = u.bindDur || 1200;
     t.bindUntil = Math.max(t.bindUntil||0, now + bd);
     t.statusShockUntil = Math.max(t.statusShockUntil||0, now + bd);
-    st.field.fx.push(fxStatus(t.x, t.y, "⚡"));
+
   }
   if (u.wound && t.hp > 0){
     const wd = u.woundDur || 2400;
     t.woundUntil = Math.max(t.woundUntil||0, now + wd);
-    st.field.fx.push(fxStatus(t.x, t.y, "🩸"));
+
   }
   if (u.suppress && t.hp > 0){
     t.slowUntil  = Math.max(t.slowUntil||0, now + (u.suppressDur || 900));
@@ -2024,7 +2049,7 @@ function applyVguardRegen(u, st, now){
       const before = u.hp;
       u.hp = Math.min(u.maxhp, u.hp + amt);
       if (u.hp > before){
-        st.field.fx.push(fxHeal(u.x, u.y, u.x, u.y));
+
       }
       u.nextRegen = now + u.regenCd;
     }
@@ -2331,19 +2356,19 @@ function startHostLoops(){
 
     const nf = (B && (B.units||B.poison||B.toxic||B.acid||B.wards)) ? deepClone(B) : battleFromStateFallback(d);
     const now2=Date.now();
-    const beforeFx = (nf.fx||[]).length;
+    const beforeFx = (nf.syncedFx||[]).length;
     const beforePoison = (nf.poison||[]).length;
     const beforeToxic = (nf.toxic||[]).length;
     const beforeAcid = (nf.acid||[]).length;
     const beforeWards = (nf.wards||[]).length;
-    nf.fx    = (nf.fx||[]).filter(ev=>ev.at+ev.ttl > now2);
+    nf.syncedFx = (nf.syncedFx||[]).filter(ev=>ev.createdAt + 1200 > now2);
     nf.poison= (nf.poison||[]).filter(p=>p.until>now2);
     nf.toxic = (nf.toxic ||[]).filter(t=>t.until>now2);
     nf.acid  = (nf.acid  ||[]).filter(a=>a.until>now2);
     nf.wards = (nf.wards ||[]).filter(w=>w.until>now2 && w.hp>0);
 
     const changed =
-      beforeFx !== nf.fx.length ||
+      beforeFx !== nf.syncedFx.length ||
       beforePoison !== nf.poison.length ||
       beforeToxic !== nf.toxic.length ||
       beforeAcid !== nf.acid.length ||
@@ -2448,7 +2473,7 @@ function runBattle(){
         const u = dead[i];
         if (u.paints){
           paintPoison(st, u.x, u.y, 7000, u.p);
-          st.field.fx.push(fxBurst(u.x,u.y));
+          emitLocalEffect(fxBurst(u.x,u.y));
         }
       }
       st.field.units = st.field.units.filter(u=>u.hp>0);
@@ -2759,7 +2784,39 @@ function startListeners(){
   console.error("lobby listener failed", err);
 });
 
-let lastFxSeen=new Set();
+let seenEffectIds=new Set();
+let prevBattleForLocalFx = null;
+
+function renderLocalFxFromBattleDiff(prevBattle, nextBattle){
+  const prevUnits = new Map(((prevBattle&&prevBattle.units)||[]).map(u=>[u.id,u]));
+  const nextUnits = new Map(((nextBattle&&nextBattle.units)||[]).map(u=>[u.id,u]));
+  for (const u of nextUnits.values()){
+    const prev = prevUnits.get(u.id);
+    if (!prev) continue;
+    if (u.hp < prev.hp){
+      flashAt(u.x, u.y, prev.hp - u.hp);
+      if (!LOW_EFFECTS_MODE) emitLocalEffect(fxImpact(u.x, u.y));
+    } else if (u.hp > prev.hp){
+      emitLocalEffect(fxHeal(prev.x, prev.y, u.x, u.y));
+    }
+  }
+  for (const prev of prevUnits.values()){
+    if (!nextUnits.has(prev.id)){
+      emitLocalEffect(fxBurst(prev.x, prev.y));
+    }
+  }
+}
+
+function renderSyncedFxEvents(list){
+  for (let i=0;i<list.length;i++){
+    const ev=list[i];
+    if (!ev || !ev.id || seenEffectIds.has(ev.id)) continue;
+    seenEffectIds.add(ev.id);
+    emitLocalEffect(Object.assign({ttl:620}, ev));
+    setTimeout(()=> seenEffectIds.delete(ev.id), 2000);
+  }
+}
+
 onSnapshot(stateRef,(snap)=>{
   if(!snap.exists()) return;
   const nextState = snap.data();
@@ -2771,27 +2828,13 @@ onSnapshot(stateRef,(snap)=>{
   meIndex = Math.max(0, Math.min(1, idx));
   render();
 
-  const fxSource = (B && B.fx) ? B.fx : ((S && S.field && S.field.fx) ? S.field.fx : []);
-  const list=fxSource;
-  for(let i=0;i<list.length;i++){
-    const ev=list[i];
-    if (lastFxSeen.has(ev.id)) continue;
-    lastFxSeen.add(ev.id);
-    if (ev.type==="beam") renderBeam(ev,false);
-    if (ev.type==="hbeam") renderBeam(ev,true);
-    if (ev.type==="burst") renderBurst(ev);
-    if (ev.type==="transport") renderTransport(ev);
-    if (ev.type==="impact") renderImpact(ev);
-    if (ev.type==="storm") renderStorm(ev);
-    if (ev.type==="status") renderStatusPop(ev);
-    setTimeout(()=> lastFxSeen.delete(ev.id), ev.ttl+200);
-  }
 }, (err)=>{
   console.error("state listener failed", err);
 });
 
 onSnapshot(battleRef,(snap)=>{
   if (!snap.exists()){
+    prevBattleForLocalFx = null;
     B = (S && S.phase === "battle") ? battleFromStateFallback(S) : battleEmpty();
     render();
     return;
@@ -2800,10 +2843,16 @@ onSnapshot(battleRef,(snap)=>{
   const incomingTick = Number.isFinite(nextBattle.battleTickId) ? nextBattle.battleTickId : -1;
   if (S && S.phase === "battle" && incomingTick >= lastRenderedBattleTickId){
     lastRenderedBattleTickId = incomingTick;
+    renderLocalFxFromBattleDiff(prevBattleForLocalFx, nextBattle);
+    renderSyncedFxEvents(nextBattle.syncedFx || []);
+    prevBattleForLocalFx = deepClone(nextBattle);
     B = nextBattle;
     upsertVisualUnitsFromBattle(nextBattle);
     render();
   } else if (!(S && S.phase === "battle")) {
+    renderLocalFxFromBattleDiff(prevBattleForLocalFx, nextBattle);
+    renderSyncedFxEvents(nextBattle.syncedFx || []);
+    prevBattleForLocalFx = deepClone(nextBattle);
     B = nextBattle;
     upsertVisualUnitsFromBattle(nextBattle);
     render();
@@ -2833,7 +2882,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
 
 
 
