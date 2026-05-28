@@ -510,6 +510,7 @@
     <div class="row">
       <span class="badge">⚔️ Draft Brawl — Factions</span>
       <span id="phaseBadge" class="badge phase">—</span>
+      <span id="syncBadge" class="badge phase" style="display:none">syncing…</span>
     </div>
     <div class="row">
       <span id="p0Badge" class="badge p0">P0 — ❤❤❤❤</span>
@@ -572,6 +573,7 @@ function deepClone(obj){
 const params   = new URLSearchParams(location.search);
 const gameId   = params.get("gameId");
 const username = params.get("username");
+const BATTLE_DEBUG_MODE = params.get("debugBattle") === "1";
 if (!gameId || !username){ alert("Missing gameId or username in URL."); }
 
 const lobbyRef = doc(db,"lobbies",gameId);
@@ -853,6 +855,12 @@ function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
 
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
 let lastRenderedBattleTickId = -1;
+const battleSnapshotBuffer = [];
+const BATTLE_BUFFER_MS = 250;
+const BATTLE_BUFFER_MAX = 15;
+const BATTLE_SYNC_GAP_WARN = 5;
+const BATTLE_SYNC_BADGE_MS = 900;
+let battleSyncBadgeUntil = 0;
 const LOW_EFFECTS_MODE = false;
 const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[]});
 const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], updatedAt:0});
@@ -2891,11 +2899,76 @@ function renderSyncedFxEvents(list){
   }
 }
 
+function setBattleSyncBadgeVisible(visible){
+  if (!BATTLE_DEBUG_MODE) return;
+  const el = $("syncBadge");
+  if (!el) return;
+  el.style.display = visible ? "" : "none";
+}
+
+function enqueueBattleSnapshot(snapshot){
+  const tickId = Number.isFinite(snapshot && snapshot.battleTickId) ? snapshot.battleTickId : -1;
+  battleSnapshotBuffer.push({
+    battleTickId: tickId,
+    receivedAt: Date.now(),
+    units: Array.isArray(snapshot.units) ? snapshot.units : [],
+    poison: Array.isArray(snapshot.poison) ? snapshot.poison : [],
+    toxic: Array.isArray(snapshot.toxic) ? snapshot.toxic : [],
+    acid: Array.isArray(snapshot.acid) ? snapshot.acid : [],
+    wards: Array.isArray(snapshot.wards) ? snapshot.wards : [],
+    syncedFx: Array.isArray(snapshot.syncedFx) ? snapshot.syncedFx : [],
+    updatedAt: Number.isFinite(snapshot.updatedAt) ? snapshot.updatedAt : 0
+  });
+  battleSnapshotBuffer.sort((a,b)=>a.battleTickId-b.battleTickId || a.receivedAt-b.receivedAt);
+  while (battleSnapshotBuffer.length > BATTLE_BUFFER_MAX) battleSnapshotBuffer.shift();
+  const newestTick = battleSnapshotBuffer.length ? battleSnapshotBuffer[battleSnapshotBuffer.length-1].battleTickId : -1;
+  for (let i=battleSnapshotBuffer.length-2; i>=0; i--){
+    const snap = battleSnapshotBuffer[i];
+    if ((newestTick - snap.battleTickId) > BATTLE_BUFFER_MAX + 2) battleSnapshotBuffer.splice(i,1);
+  }
+}
+
+function pickBufferedBattleSnapshot(){
+  if (!battleSnapshotBuffer.length) return null;
+  const now = Date.now();
+  const targetTime = now - BATTLE_BUFFER_MS;
+  let pick = battleSnapshotBuffer[0];
+  for (let i=0;i<battleSnapshotBuffer.length;i++){
+    const snap = battleSnapshotBuffer[i];
+    if (snap.receivedAt <= targetTime) pick = snap;
+    else break;
+  }
+  const newest = battleSnapshotBuffer[battleSnapshotBuffer.length-1];
+  if ((newest.battleTickId - pick.battleTickId) > BATTLE_SYNC_GAP_WARN){
+    battleSyncBadgeUntil = now + BATTLE_SYNC_BADGE_MS;
+  }
+  setBattleSyncBadgeVisible(BATTLE_DEBUG_MODE && now < battleSyncBadgeUntil);
+  return pick || newest;
+}
+
+function applyBattleSnapshot(nextBattle){
+  const incomingTick = Number.isFinite(nextBattle.battleTickId) ? nextBattle.battleTickId : -1;
+  const tickGap = incomingTick - lastRenderedBattleTickId;
+  if (S && S.phase === "battle" && incomingTick < lastRenderedBattleTickId && tickGap > -BATTLE_SYNC_GAP_WARN) return;
+  if (tickGap > BATTLE_SYNC_GAP_WARN) battleSyncBadgeUntil = Date.now() + BATTLE_SYNC_BADGE_MS;
+  lastRenderedBattleTickId = Math.max(lastRenderedBattleTickId, incomingTick);
+  renderLocalFxFromBattleDiff(prevBattleForLocalFx, nextBattle);
+  renderSyncedFxEvents(nextBattle.syncedFx || []);
+  prevBattleForLocalFx = deepClone(nextBattle);
+  B = nextBattle;
+  upsertVisualUnitsFromBattle(nextBattle);
+  render();
+}
+
 onSnapshot(stateRef,(snap)=>{
   if(!snap.exists()) return;
   const nextState = snap.data();
   S=nextState;
-  if (S.phase !== "battle") lastRenderedBattleTickId = -1;
+  if (S.phase !== "battle"){
+    lastRenderedBattleTickId = -1;
+    battleSnapshotBuffer.length = 0;
+    setBattleSyncBadgeVisible(false);
+  }
   const current = S.players || lobbyPlayers || [];
   let idx = current.indexOf(username);
   if (idx < 0) idx = 0;
@@ -2909,28 +2982,18 @@ onSnapshot(stateRef,(snap)=>{
 onSnapshot(battleRef,(snap)=>{
   if (!snap.exists()){
     prevBattleForLocalFx = null;
+    battleSnapshotBuffer.length = 0;
+    setBattleSyncBadgeVisible(false);
     B = (S && S.phase === "battle") ? battleFromStateFallback(S) : battleEmpty();
     render();
     return;
   }
   const nextBattle = Object.assign(battleEmpty(), snap.data() || {});
-  const incomingTick = Number.isFinite(nextBattle.battleTickId) ? nextBattle.battleTickId : -1;
-  if (S && S.phase === "battle" && incomingTick >= lastRenderedBattleTickId){
-    lastRenderedBattleTickId = incomingTick;
-    renderLocalFxFromBattleDiff(prevBattleForLocalFx, nextBattle);
-    renderSyncedFxEvents(nextBattle.syncedFx || []);
-    prevBattleForLocalFx = deepClone(nextBattle);
-    B = nextBattle;
-    upsertVisualUnitsFromBattle(nextBattle);
-    render();
-  } else if (!(S && S.phase === "battle")) {
-    renderLocalFxFromBattleDiff(prevBattleForLocalFx, nextBattle);
-    renderSyncedFxEvents(nextBattle.syncedFx || []);
-    prevBattleForLocalFx = deepClone(nextBattle);
-    B = nextBattle;
-    upsertVisualUnitsFromBattle(nextBattle);
-    render();
-  }
+  if (!(S && S.phase === "battle")) return applyBattleSnapshot(nextBattle);
+  if (isHost) return applyBattleSnapshot(nextBattle);
+  enqueueBattleSnapshot(nextBattle);
+  const buffered = pickBufferedBattleSnapshot();
+  if (buffered) applyBattleSnapshot(buffered);
 }, (err)=>{
   console.error("battle listener failed", err);
 });
@@ -2956,7 +3019,6 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
 
 
 
