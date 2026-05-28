@@ -703,6 +703,9 @@ async function ensureStateExists(){
         phase: players.length < 2 ? "waiting" : "faction-select",
         phaseEndsAt: players.length < 2 ? 0 : now + 20000,
         roster:   { p0: [], p1: [] },
+        relics:   { p0: [], p1: [] },
+        tactics:  { p0: [], p1: [] },
+        formations:{ p0: "balanced", p1: "balanced" },
         factions: { p0: null, p1: null },
         selections:   { p0: [], p1: [] },
         currentPacks: { p0: [], p1: [] },
@@ -1198,6 +1201,30 @@ function unitActionClass(u, now){
   return u.animType === "cast" ? "casting" : "attacking";
 }
 function packFor(roster, faction){
+  const RELIC_CARDS = [
+    { key:"banner_frontline", name:"Banner of the Frontline", desc:"Frontline units gain +2 max HP." },
+    { key:"sharpshooter_doctrine", name:"Sharpshooter Doctrine", desc:"Backline units gain +1 range, -1 max HP." },
+    { key:"emergency_medkit", name:"Emergency Medkit", desc:"First allied unit below 35% HP heals 4 once." },
+    { key:"anti_armor_rounds", name:"Anti-Armor Rounds", desc:"Ranged units deal +1 damage to armored units." },
+    { key:"swarm_instinct", name:"Swarm Instinct", desc:"Small spawned units gain +1 speed for 3s." },
+    { key:"arcane_battery", name:"Arcane Battery", desc:"First ward or spell effect starts stronger." },
+    { key:"poisoned_blades", name:"Poisoned Blades", desc:"Melee attacks apply a tiny wound effect." }
+  ];
+  const TACTIC_CARDS = [
+    { key:"opening_volley", name:"Opening Volley", desc:"At battle start, enemy front row takes 2 damage." },
+    { key:"forced_march", name:"Forced March", desc:"Frontline units start 1 tile closer." },
+    { key:"scatter_formation", name:"Scatter Formation", desc:"Units start more spread out." },
+    { key:"bodyguard", name:"Bodyguard", desc:"Strongest backline unit starts with a temporary shield." },
+    { key:"sabotage", name:"Sabotage", desc:"Enemy highest-HP unit starts at 85% HP." },
+    { key:"cleanse", name:"Cleanse", desc:"Remove initial poison/toxic/acid from your side." }
+  ];
+  const FORMATION_CARDS = [
+    { key:"balanced", name:"Balanced Formation", desc:"Default spacing and lane balance." },
+    { key:"wide", name:"Wide Formation", desc:"Units spread across lanes; better vs splash." },
+    { key:"spearhead", name:"Spearhead Formation", desc:"Strongest tank starts center-front." },
+    { key:"protected_backline", name:"Protected Backline", desc:"Supports/ranged start farther back." },
+    { key:"ambush", name:"Ambush Formation", desc:"Assassin-types start wider and slightly advanced." }
+  ];
   const poolTypes = FACTIONS[faction] || [];
 
   const troopCards = poolTypes.map(k=>({
@@ -1227,13 +1254,45 @@ function packFor(roster, faction){
       name:"Double "+TROOPS[db].name, emoji:"🃏"
     });
   }
+  const relic = RELIC_CARDS[Math.floor(Math.random()*RELIC_CARDS.length)];
+  const tactic = TACTIC_CARDS[Math.floor(Math.random()*TACTIC_CARDS.length)];
+  const formation = FORMATION_CARDS[Math.floor(Math.random()*FORMATION_CARDS.length)];
 
   const pool = [
-    ...troopCards.map(item=>({ item:item, w:3 })),
-    ...specials   .map(item=>({ item:item, w:1 }))
+    ...troopCards.map(item=>({ item:item, w:6 })),
+    ...specials   .map(item=>({ item:item, w:3 })),
+    { item:{ type:"relic", key:relic.key, name:relic.name, desc:relic.desc, emoji:"🪖" }, w:2 },
+    { item:{ type:"tactic", key:tactic.key, name:tactic.name, desc:tactic.desc, emoji:"📜" }, w:2 },
+    { item:{ type:"formation", key:formation.key, name:formation.name, desc:formation.desc, emoji:"🧭" }, w:1 }
   ];
 
   return weightedPick(pool, 3);
+}
+function applyPickToState(data, sideKey, pick){
+  if (!pick || !sideKey) return;
+  const roster = data.roster || (data.roster = {p0:[],p1:[]});
+  if (!roster.p0) roster.p0 = [];
+  if (!roster.p1) roster.p1 = [];
+  const relics = data.relics || (data.relics = {p0:[],p1:[]});
+  if (!relics.p0) relics.p0 = [];
+  if (!relics.p1) relics.p1 = [];
+  const tactics = data.tactics || (data.tactics = {p0:[],p1:[]});
+  if (!tactics.p0) tactics.p0 = [];
+  if (!tactics.p1) tactics.p1 = [];
+  const formations = data.formations || (data.formations = {p0:"balanced",p1:"balanced"});
+  if (!formations.p0) formations.p0 = "balanced";
+  if (!formations.p1) formations.p1 = "balanced";
+  if (pick.type==="troop") rosterAdd(roster[sideKey], pick.key, 1);
+  else if (pick.type==="special"){
+    if(pick.special==="double") rosterDoubleOneSpecific(roster[sideKey], pick.for);
+    if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster[sideKey], pick.for);
+  } else if (pick.type==="relic"){
+    if (!relics[sideKey].includes(pick.key)) relics[sideKey].push(pick.key);
+  } else if (pick.type==="tactic"){
+    tactics[sideKey].push(pick.key);
+  } else if (pick.type==="formation"){
+    formations[sideKey] = pick.key || "balanced";
+  }
 }
 
 /* Roster ops */
@@ -2363,17 +2422,14 @@ function startHostLoops(){
       const roster = d.roster || {p0:[],p1:[]};
       if (!roster.p0) roster.p0 = [];
       if (!roster.p1) roster.p1 = [];
+      const draftState = { roster:roster, relics:d.relics, tactics:d.tactics, formations:d.formations };
 
       ["p0","p1"].forEach(sk=>{
         const pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
         const pickIndex = sel[sk][di];
         const pick = (pickIndex!=null) ? pack[pickIndex] : null;
         if(!pick) return;
-        if (pick.type==="troop") rosterAdd(roster[sk], pick.key, 1);
-        else if (pick.type==="special"){
-          if(pick.special==="double") rosterDoubleOneSpecific(roster[sk], pick.for);
-          if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster[sk], pick.for);
-        }
+        applyPickToState(draftState, sk, pick);
       });
 
       const nextIx=di+1;
@@ -2388,6 +2444,9 @@ function startHostLoops(){
         rebuildFieldFromRoster(temp);
         await updateDoc(stateRef,{
           roster: temp.roster,
+          relics: draftState.relics || {p0:[],p1:[]},
+          tactics: draftState.tactics || {p0:[],p1:[]},
+          formations: draftState.formations || {p0:"balanced",p1:"balanced"},
           selections:{p0:[],p1:[]},
           draftIndex:0,
           currentPacks:{p0:[],p1:[]},
@@ -2400,6 +2459,9 @@ function startHostLoops(){
       }else{
         await updateDoc(stateRef,{
           roster: roster,
+          relics: draftState.relics || {p0:[],p1:[]},
+          tactics: draftState.tactics || {p0:[],p1:[]},
+          formations: draftState.formations || {p0:"balanced",p1:"balanced"},
           selections: sel,
           draftIndex: nextIx,
           currentPacks:{
@@ -2431,19 +2493,19 @@ function startHostLoops(){
         const roster=d.roster || {p0:[],p1:[]};
         if (!roster.p0) roster.p0 = [];
         if (!roster.p1) roster.p1 = [];
+        const bonusState = { roster:roster, relics:d.relics, tactics:d.tactics, formations:d.formations };
 
         const pack=(d.currentPacks && d.currentPacks[loser]) ? d.currentPacks[loser] : [];
         const pickIndex = sel[loser][di];
         const pick = (pickIndex!=null) ? pack[pickIndex] : null;
         if (pick){
-          if (pick.type==="troop") rosterAdd(roster[loser], pick.key, 1);
-          else if (pick.type==="special"){
-            if(pick.special==="double") rosterDoubleOneSpecific(roster[loser], pick.for);
-            if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster[loser], pick.for);
-          }
+          applyPickToState(bonusState, loser, pick);
         }
         await updateDoc(stateRef,{
           roster: roster,
+          relics: bonusState.relics || {p0:[],p1:[]},
+          tactics: bonusState.tactics || {p0:[],p1:[]},
+          formations: bonusState.formations || {p0:"balanced",p1:"balanced"},
           selections:{p0:[],p1:[]},
           draftIndex:0,
           currentPacks:{
@@ -2476,17 +2538,14 @@ function startHostLoops(){
       const roster=d.roster || {p0:[],p1:[]};
       if (!roster.p0) roster.p0 = [];
       if (!roster.p1) roster.p1 = [];
+      const afterState = { roster:roster, relics:d.relics, tactics:d.tactics, formations:d.formations };
 
       ["p0","p1"].forEach(sk=>{
         const pack=(d.currentPacks && d.currentPacks[sk]) ? d.currentPacks[sk] : [];
         const pickIndex = sel[sk][di];
         const pick = (pickIndex!=null) ? pack[pickIndex] : null;
         if(!pick) return;
-        if (pick.type==="troop") rosterAdd(roster[sk], pick.key, 1);
-        else if (pick.type==="special"){
-          if(pick.special==="double") rosterDoubleOneSpecific(roster[sk], pick.for);
-          if(pick.special==="upgrade") rosterUpgradeOneSpecific(roster[sk], pick.for);
-        }
+        applyPickToState(afterState, sk, pick);
       });
 
       const nextIx=di+1;
@@ -2501,6 +2560,9 @@ function startHostLoops(){
         rebuildFieldFromRoster(temp);
         await updateDoc(stateRef,{
           roster: temp.roster,
+          relics: afterState.relics || {p0:[],p1:[]},
+          tactics: afterState.tactics || {p0:[],p1:[]},
+          formations: afterState.formations || {p0:"balanced",p1:"balanced"},
           selections:{p0:[],p1:[]},
           draftIndex:0,
           currentPacks:{p0:[],p1:[]},
@@ -2512,6 +2574,9 @@ function startHostLoops(){
       }else{
         await updateDoc(stateRef,{
           roster: roster,
+          relics: afterState.relics || {p0:[],p1:[]},
+          tactics: afterState.tactics || {p0:[],p1:[]},
+          formations: afterState.formations || {p0:"balanced",p1:"balanced"},
           selections: sel,
           draftIndex: nextIx,
           currentPacks:{
@@ -2852,11 +2917,7 @@ function render(){
   if (pickedIndex!=null){
     row.style.display="none"; row.innerHTML="";
     const picked = pack[pickedIndex];
-    const label = picked
-      ? (picked.type==="troop"
-          ? picked.name
-          : ((picked.special==="upgrade"?"Upgrade ":"Double ")+(TROOPS[picked.for] ? TROOPS[picked.for].name : "")))
-      : "(auto)";
+    const label = picked ? (picked.name || picked.key || picked.type) : "(auto)";
     note.textContent="Selected: "+label;
     note.style.display="block";
     return;
@@ -2899,12 +2960,29 @@ function render(){
     }else{
       el.classList.add("special");
       const nn=TROOPS[c.for]?.name||"Type";
+      let metaLabel = "SPECIAL";
+      let roleLabel = "Role: Special";
+      let desc = c.desc || "";
+      if (c.type==="special" && c.special==="upgrade"){
+        const own = ((S && S.roster && S.roster[sk])||[]).find(r=>r.type===c.for);
+        const cur = own ? (own.lvl||1) : 1;
+        const nxt = Math.min(3, cur+1);
+        const t = TROOPS[c.for] || {};
+        const nbase = t.base || {};
+        desc = "Upgrade "+nn+" L"+cur+" → L"+nxt+". Next: "+(nbase.dmg||0)+" dmg, "+(nbase.maxHp||0)+" HP."+(nxt===3?" LEGENDARY UNLOCK: level 3 ability active.":"");
+      } else if (c.type==="special" && c.special==="double"){
+        const own = ((S && S.roster && S.roster[sk])||[]).find(r=>r.type===c.for);
+        const cur = own ? Math.max(1, own.count|0) : 1;
+        desc = "Double "+nn+": "+cur+" → "+(cur*2);
+      } else if (c.type==="relic"){ metaLabel = "RELIC"; roleLabel = "Army Modifier"; }
+      else if (c.type==="tactic"){ metaLabel = "TACTIC"; roleLabel = "Battle Start Effect"; }
+      else if (c.type==="formation"){ metaLabel = "FORMATION"; roleLabel = "Spawn Pattern"; }
       el.innerHTML=''+
-        '<div class="meta">SPECIAL</div>'+
+        '<div class="meta">'+metaLabel+'</div>'+
         '<div class="icon">'+c.emoji+'</div>'+
-        '<div class="title">'+c.emoji+' '+(c.name || (c.special==="upgrade"?"Upgrade":"Double"))+'</div>'+
-        '<div class="roleTag">Role: Special</div>'+
-        '<div class="desc">'+(c.special==="upgrade"?"Upgrade ":"Double ")+nn+' in your roster.</div>';
+        '<div class="title">'+c.emoji+' '+(c.name || c.type)+'</div>'+
+        '<div class="roleTag">'+roleLabel+'</div>'+
+        '<div class="desc">'+desc+'</div>';
     }
     (function(idx){
       el.onclick=function(){ chooseCard(idx); };
@@ -3147,8 +3225,3 @@ $("fsBtn").onclick = async ()=>{
 
 </body>
 </html>
-
-
-
-
-
