@@ -56,6 +56,11 @@ public class BibleReaderApp extends JFrame {
     private Point readerSelectionPressPoint;
     private boolean readerSelectionDragged = false;
     private JPanel detailsPanel;
+    private JPanel pinnedItemsPanel;
+    private JPanel pinnedItemsBody;
+    private JScrollPane pinnedItemsScroll;
+    private JButton pinnedItemsToggleBtn;
+    private boolean pinnedItemsExpanded = true;
     private JTextArea importLog;
 
     private JTextField searchField;
@@ -343,8 +348,48 @@ public class BibleReaderApp extends JFrame {
         JPanel wrapper = new JPanel(new BorderLayout(8, 8));
         wrapper.setBackground(panelBg);
         wrapper.add(buildSideSearchPanel(), BorderLayout.NORTH);
-        wrapper.add(buildDetailsPanel(), BorderLayout.CENTER);
+
+        JPanel studyTools = new JPanel(new BorderLayout(8, 8));
+        studyTools.setOpaque(false);
+        studyTools.add(buildPinnedItemsPanel(), BorderLayout.NORTH);
+        studyTools.add(buildDetailsPanel(), BorderLayout.CENTER);
+
+        wrapper.add(studyTools, BorderLayout.CENTER);
         return wrapper;
+    }
+
+    private JPanel buildPinnedItemsPanel() {
+        pinnedItemsPanel = new JPanel(new BorderLayout(6, 6));
+        pinnedItemsPanel.setBorder(new CompoundBorder(
+                new EmptyBorder(0, 10, 0, 10),
+                new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(6, 6, 6, 6))
+        ));
+        pinnedItemsPanel.setBackground(panelBg);
+
+        JPanel header = new JPanel(new BorderLayout(6, 6));
+        header.setOpaque(false);
+
+        JLabel title = new JLabel("Pinned Study Items");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        title.setForeground(darkRed);
+
+        pinnedItemsToggleBtn = blackButton("Minimize");
+        pinnedItemsToggleBtn.addActionListener(e -> togglePinnedItems());
+
+        header.add(title, BorderLayout.WEST);
+        header.add(pinnedItemsToggleBtn, BorderLayout.EAST);
+
+        pinnedItemsBody = new JPanel();
+        pinnedItemsBody.setLayout(new BoxLayout(pinnedItemsBody, BoxLayout.Y_AXIS));
+        pinnedItemsBody.setBackground(cream);
+        pinnedItemsBody.setBorder(new EmptyBorder(6, 6, 6, 6));
+
+        pinnedItemsScroll = new JScrollPane(pinnedItemsBody);
+        pinnedItemsScroll.setPreferredSize(new Dimension(260, 185));
+
+        pinnedItemsPanel.add(header, BorderLayout.NORTH);
+        pinnedItemsPanel.add(pinnedItemsScroll, BorderLayout.CENTER);
+        return pinnedItemsPanel;
     }
 
     private JPanel buildDetailsPanel() {
@@ -755,6 +800,7 @@ public class BibleReaderApp extends JFrame {
             refreshCategories();
             refreshQuestions();
             refreshRecentNotes();
+            refreshPinnedItems();
             updateHeader();
         } finally {
             refreshingUi = false;
@@ -1069,6 +1115,7 @@ public class BibleReaderApp extends JFrame {
         addMenu(selectionActionPopup, "Add Category", this::addCategoryFromSelection);
         addMenu(selectionActionPopup, "Add Question", () -> addAnnotationFromSelection("Question", ""));
         addMenu(selectionActionPopup, "Attach", this::addAttachmentFromSelection);
+        addMenu(selectionActionPopup, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
         if (greekKeyForSelection() != null) {
             addMenu(selectionActionPopup, "View Greek For This Verse", this::showGreekForCurrentSelection);
             addMenu(selectionActionPopup, "Add Greek Note To Selected Phrase", this::addGreekNoteForSelectionOrVerse);
@@ -1120,6 +1167,7 @@ public class BibleReaderApp extends JFrame {
             addMenu(menu, "Add To Category", this::addCategoryFromSelection);
             addMenu(menu, "Attach To Bible Verse Or Book Section", this::addAttachmentFromSelection);
             addMenu(menu, "Add Unfinished Question", () -> addAnnotationFromSelection("Question", ""));
+            addMenu(menu, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
             menu.addSeparator();
         }
 
@@ -1135,6 +1183,7 @@ public class BibleReaderApp extends JFrame {
                 addMenu(menu, "Show Category: " + category, () -> showCategoryByName(category));
             }
             addMenu(menu, "View Highlight Details", () -> showAnnotationDetails(existing));
+            addMenu(menu, "Pin This Highlight To Sidebar", () -> pinAnnotationToSidebar(existing));
             addMenu(menu, "Edit This Highlight", () -> editAnnotation(existing));
             addMenu(menu, "Open Attachment", () -> openAnnotationTarget(existing));
             addMenu(menu, "Delete This Highlight", () -> deleteAnnotation(existing));
@@ -1495,6 +1544,7 @@ public class BibleReaderApp extends JFrame {
 
         saveData();
         refreshRecentNotes();
+        refreshPinnedItems();
         reloadCurrentSource();
         showAnnotationDetails(a);
     }
@@ -1703,6 +1753,10 @@ public class BibleReaderApp extends JFrame {
         }
         if (!a.note.isEmpty()) addDetailText(a.note);
 
+        JButton pin = blackButton("Pin This Highlight To Sidebar");
+        pin.setAlignmentX(Component.LEFT_ALIGNMENT);
+        pin.addActionListener(e -> pinAnnotationToSidebar(a));
+
         JButton edit = blackButton("Edit Highlight");
         edit.setAlignmentX(Component.LEFT_ALIGNMENT);
         edit.addActionListener(e -> editAnnotation(a));
@@ -1711,11 +1765,172 @@ public class BibleReaderApp extends JFrame {
         del.setAlignmentX(Component.LEFT_ALIGNMENT);
         del.addActionListener(e -> deleteAnnotation(a));
 
+        detailsPanel.add(pin);
+        detailsPanel.add(Box.createVerticalStrut(6));
         detailsPanel.add(edit);
         detailsPanel.add(Box.createVerticalStrut(6));
         detailsPanel.add(del);
         detailsPanel.revalidate();
         detailsPanel.repaint();
+    }
+
+    private void togglePinnedItems() {
+        pinnedItemsExpanded = !pinnedItemsExpanded;
+        if (pinnedItemsScroll != null) pinnedItemsScroll.setVisible(pinnedItemsExpanded);
+        if (pinnedItemsToggleBtn != null) pinnedItemsToggleBtn.setText(pinnedItemsExpanded ? "Minimize" : "Expand");
+        if (pinnedItemsPanel != null) {
+            pinnedItemsPanel.revalidate();
+            pinnedItemsPanel.repaint();
+        }
+    }
+
+    private void refreshPinnedItems() {
+        if (pinnedItemsBody == null) return;
+        pinnedItemsBody.removeAll();
+
+        if (currentProfile == null || currentProfile.pinnedItems == null || currentProfile.pinnedItems.isEmpty()) {
+            JLabel empty = new JLabel("No pinned study items yet.");
+            empty.setForeground(new Color(100, 70, 55));
+            empty.setAlignmentX(Component.LEFT_ALIGNMENT);
+            pinnedItemsBody.add(empty);
+        } else {
+            List<PinnedItem> items = new ArrayList<>(currentProfile.pinnedItems);
+            items.sort((a, b) -> Long.compare(b.createdAt, a.createdAt));
+            for (PinnedItem item : items) addPinnedItemCard(item);
+        }
+
+        pinnedItemsBody.revalidate();
+        pinnedItemsBody.repaint();
+    }
+
+    private void addPinnedItemCard(PinnedItem item) {
+        JPanel card = new JPanel(new BorderLayout(5, 5));
+        card.setBackground(new Color(255, 253, 248));
+        card.setBorder(new CompoundBorder(new LineBorder(new Color(210, 185, 160)), new EmptyBorder(6, 6, 6, 6)));
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        String title = item.sourceTitle == null || item.sourceTitle.trim().isEmpty() ? safe(item.sourceKey) : item.sourceTitle;
+        JLabel header = new JLabel("<html><b>" + esc(title) + "</b></html>");
+        header.setForeground(darkRed);
+
+        String noteLine = pinnedItemNoteLine(item);
+        JLabel body = new JLabel("<html>“" + esc(shorten(item.selectedText, 120)) + "”"
+                + (noteLine.isEmpty() ? "" : "<br><span style='color:#5f4035;'>" + esc(noteLine) + "</span>")
+                + "</html>");
+        body.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        buttons.setOpaque(false);
+        JButton open = blackButton("Open");
+        open.addActionListener(e -> openPinnedItem(item));
+        JButton remove = blackButton("Remove pin");
+        remove.addActionListener(e -> removePinnedItem(item));
+        buttons.add(open);
+        buttons.add(remove);
+
+        card.add(header, BorderLayout.NORTH);
+        card.add(body, BorderLayout.CENTER);
+        card.add(buttons, BorderLayout.SOUTH);
+        pinnedItemsBody.add(card);
+        pinnedItemsBody.add(Box.createVerticalStrut(6));
+    }
+
+    private String pinnedItemNoteLine(PinnedItem item) {
+        TextAnnotation a = item.annotationId == null || item.annotationId.trim().isEmpty() ? null : findAnnotationById(item.annotationId);
+        String type = a == null ? "" : a.type;
+        String note = item.note == null ? "" : item.note.trim();
+        if (!type.isEmpty() && !note.isEmpty()) return type + ": " + shorten(note, 90);
+        if (!type.isEmpty()) return type;
+        return shorten(note, 90);
+    }
+
+    private void pinSelectedTextToSidebar() {
+        if (readerPane == null || currentProfile == null) return;
+        int start = readerPane.getSelectionStart();
+        int end = readerPane.getSelectionEnd();
+        if (end <= start || readerPane.getSelectedText() == null || readerPane.getSelectedText().trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Select text first, then choose Pin Selected Text To Sidebar.");
+            return;
+        }
+
+        JTextArea note = new JTextArea(4, 36);
+        note.setLineWrap(true);
+        note.setWrapStyleWord(true);
+        int choice = JOptionPane.showConfirmDialog(this, new JScrollPane(note), "Optional pin note", JOptionPane.OK_CANCEL_OPTION);
+        if (choice != JOptionPane.OK_OPTION) return;
+
+        PinnedItem item = createPinnedItem(currentSourceKey, currentSourceTitle, start, end, readerPane.getSelectedText(), note.getText().trim(), "");
+        currentProfile.pinnedItems.add(item);
+        saveData();
+        refreshPinnedItems();
+        log("Pinned selected text to sidebar.");
+    }
+
+    private void pinAnnotationToSidebar(TextAnnotation a) {
+        if (a == null || currentProfile == null) return;
+        for (PinnedItem item : currentProfile.pinnedItems) {
+            if (a.id != null && a.id.equals(item.annotationId)) {
+                JOptionPane.showMessageDialog(this, "This highlight is already pinned.");
+                return;
+            }
+        }
+        PinnedItem item = createPinnedItem(a.sourceKey, a.sourceTitle, a.start, a.end, a.selectedText, a.note, a.id);
+        currentProfile.pinnedItems.add(item);
+        saveData();
+        refreshPinnedItems();
+        log("Pinned highlight to sidebar.");
+    }
+
+    private PinnedItem createPinnedItem(String sourceKey, String sourceTitle, int start, int end, String selectedText, String note, String annotationId) {
+        PinnedItem item = new PinnedItem();
+        item.id = UUID.randomUUID().toString();
+        item.sourceKey = sourceKey == null ? "" : sourceKey;
+        item.sourceTitle = sourceTitle == null ? "" : sourceTitle;
+        item.start = start;
+        item.end = end;
+        item.selectedText = selectedText == null ? "" : selectedText;
+        item.note = note == null ? "" : note;
+        item.annotationId = annotationId == null ? "" : annotationId;
+        item.createdAt = System.currentTimeMillis();
+        return item;
+    }
+
+    private void removePinnedItem(PinnedItem item) {
+        if (item == null || currentProfile == null || currentProfile.pinnedItems == null) return;
+        currentProfile.pinnedItems.removeIf(p -> safe(p.id).equals(safe(item.id)));
+        saveData();
+        refreshPinnedItems();
+    }
+
+    private void openPinnedItem(PinnedItem item) {
+        if (item == null) return;
+        TextAnnotation a = item.annotationId == null || item.annotationId.trim().isEmpty() ? null : findAnnotationById(item.annotationId);
+        if (a != null) {
+            openSourceForAnnotation(a);
+            safeSelect(a.start, a.end);
+            showAnnotationDetails(a);
+        } else {
+            openSourceForPinnedItem(item);
+            safeSelect(item.start, item.end);
+            showSourceSummary(item.sourceKey, item.sourceTitle);
+        }
+        showCard("study");
+    }
+
+    private void openSourceForPinnedItem(PinnedItem item) {
+        if (item == null || item.sourceKey == null) return;
+        if (item.sourceKey.startsWith("BIBLE:")) {
+            String ref = item.sourceKey.substring("BIBLE:".length()) + ":1";
+            RefParts rp = parseRef(ref);
+            if (rp != null) {
+                selectedBook = rp.book;
+                selectedChapter = rp.chapter;
+                refreshBookCombo();
+                showSelectedChapter(false);
+            }
+        } else if (item.sourceKey.startsWith("LIBRARY:")) {
+            showLibraryDoc(item.sourceKey.substring("LIBRARY:".length()));
+        }
     }
 
     private void openAnnotationTarget(TextAnnotation a) {
@@ -2902,6 +3117,8 @@ public class BibleReaderApp extends JFrame {
         if (p.categoryColors == null) p.categoryColors = new TreeMap<>();
         for (String c : p.categories.keySet()) p.categoryColors.putIfAbsent(c, categoryBlue.getRGB());
         if (p.visitCounts == null) p.visitCounts = new HashMap<>();
+        if (p.pinnedItems == null) p.pinnedItems = new ArrayList<>();
+        for (PinnedItem item : p.pinnedItems) repairPinnedItem(item);
         long fallbackBase = System.currentTimeMillis() - (long) p.annotations.size() * 1000L;
         for (int i = 0; i < p.annotations.size(); i++) {
             repairAnnotationTimestamps(p.annotations.get(i), fallbackBase + (long) i * 1000L);
@@ -2913,6 +3130,18 @@ public class BibleReaderApp extends JFrame {
             }
             p.oldNotes.clear();
         }
+    }
+
+    private void repairPinnedItem(PinnedItem item) {
+        if (item == null) return;
+        if (item.id == null || item.id.trim().isEmpty()) item.id = UUID.randomUUID().toString();
+        if (item.sourceKey == null) item.sourceKey = "";
+        if (item.sourceTitle == null) item.sourceTitle = "";
+        if (item.selectedText == null) item.selectedText = "";
+        if (item.note == null) item.note = "";
+        if (item.annotationId == null) item.annotationId = "";
+        if (item.createdAt <= 0L) item.createdAt = System.currentTimeMillis();
+        if (item.end < item.start) item.end = item.start;
     }
 
     private void repairAnnotationTimestamps(TextAnnotation a, long fallbackMillis) {
@@ -3073,11 +3302,26 @@ public class BibleReaderApp extends JFrame {
         String name;
         List<TextAnnotation> annotations = new ArrayList<>();
         List<StudyQuestion> questions = new ArrayList<>();
+        List<PinnedItem> pinnedItems = new ArrayList<>();
         Map<String, String> categories = new TreeMap<>();
         Map<String, Integer> categoryColors = new TreeMap<>();
         Map<String, Integer> visitCounts = new HashMap<>();
         List<StudyNote> oldNotes = new ArrayList<>();
         Profile(String n) { name = n; }
+    }
+
+
+    private static class PinnedItem implements Serializable {
+        private static final long serialVersionUID = 30L;
+        String id;
+        String sourceKey;
+        String sourceTitle;
+        int start;
+        int end;
+        String selectedText;
+        String note;
+        String annotationId;
+        long createdAt;
     }
 
     private static class TextAnnotation implements Serializable {
