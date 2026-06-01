@@ -1,5 +1,6 @@
 import javax.swing.*;
 import javax.swing.border.*;
+import javax.swing.event.*;
 import javax.swing.text.*;
 import javax.swing.tree.*;
 import java.awt.*;
@@ -65,6 +66,11 @@ public class BibleReaderApp extends JFrame {
 
     private DefaultListModel<String> questionModel;
     private JList<String> questionList;
+
+    private JTextField recentSearchField;
+    private JComboBox<String> recentFilterBox;
+    private DefaultListModel<RecentAnnotationListItem> recentModel;
+    private JList<RecentAnnotationListItem> recentList;
 
     private JPanel sideSearchBody;
     private JButton sideSearchToggleBtn;
@@ -142,6 +148,7 @@ public class BibleReaderApp extends JFrame {
         JButton study = navButton("Study");
         JButton importBtn = navButton("Import");
         JButton search = navButton("Search");
+        JButton recent = navButton("Recent Notes");
         JButton categories = navButton("Categories");
         JButton questions = navButton("Questions");
         JButton backup = navButton("Backup");
@@ -151,6 +158,7 @@ public class BibleReaderApp extends JFrame {
         study.addActionListener(e -> showCard("study"));
         importBtn.addActionListener(e -> showCard("import"));
         search.addActionListener(e -> showCard("search"));
+        recent.addActionListener(e -> { refreshRecentNotes(); showCard("recent"); });
         categories.addActionListener(e -> { refreshCategories(); showCard("categories"); });
         questions.addActionListener(e -> { refreshQuestions(); showCard("questions"); });
         backup.addActionListener(e -> backupNow());
@@ -162,6 +170,7 @@ public class BibleReaderApp extends JFrame {
         nav.add(study);
         nav.add(importBtn);
         nav.add(search);
+        nav.add(recent);
         nav.add(categories);
         nav.add(questions);
         nav.add(backup);
@@ -176,6 +185,7 @@ public class BibleReaderApp extends JFrame {
         cardPanel.add(buildStudyPage(), "study");
         cardPanel.add(buildImportPage(), "import");
         cardPanel.add(buildSearchPage(), "search");
+        cardPanel.add(buildRecentPage(), "recent");
         cardPanel.add(buildCategoriesPage(), "categories");
         cardPanel.add(buildQuestionsPage(), "questions");
         add(cardPanel, BorderLayout.CENTER);
@@ -551,6 +561,65 @@ public class BibleReaderApp extends JFrame {
         return page;
     }
 
+    private JPanel buildRecentPage() {
+        JPanel page = new JPanel(new BorderLayout(10, 10));
+        page.setBorder(new EmptyBorder(16, 16, 16, 16));
+        page.setBackground(panelBg);
+
+        JLabel h = new JLabel("Recent Notes");
+        h.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        h.setForeground(darkRed);
+
+        JPanel controls = new JPanel(new BorderLayout(8, 8));
+        controls.setOpaque(false);
+
+        recentSearchField = new JTextField();
+        recentSearchField.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        recentSearchField.addActionListener(e -> refreshRecentNotes());
+        recentSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshRecentNotes));
+
+        recentFilterBox = new JComboBox<>(new String[]{"All", "Notes", "Categories", "Questions", "Greek", "Attachments"});
+        recentFilterBox.setPreferredSize(new Dimension(150, 30));
+        recentFilterBox.addActionListener(e -> refreshRecentNotes());
+
+        JButton clear = blackButton("Clear");
+        clear.addActionListener(e -> {
+            recentSearchField.setText("");
+            recentFilterBox.setSelectedItem("All");
+            refreshRecentNotes();
+        });
+
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        right.setOpaque(false);
+        right.add(new JLabel("Filter:"));
+        right.add(recentFilterBox);
+        right.add(clear);
+
+        controls.add(recentSearchField, BorderLayout.CENTER);
+        controls.add(right, BorderLayout.EAST);
+
+        recentModel = new DefaultListModel<>();
+        recentList = new JList<>(recentModel);
+        recentList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        recentList.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        recentList.setFixedCellHeight(96);
+        recentList.setCellRenderer(new RecentAnnotationCellRenderer());
+        recentList.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) openSelectedRecentAnnotation();
+            }
+        });
+
+        JPanel north = new JPanel(new BorderLayout(8, 8));
+        north.setOpaque(false);
+        north.add(h, BorderLayout.NORTH);
+        north.add(controls, BorderLayout.SOUTH);
+
+        page.add(north, BorderLayout.NORTH);
+        page.add(new JScrollPane(recentList), BorderLayout.CENTER);
+        return page;
+    }
+
     private JPanel buildCategoriesPage() {
         JPanel page = new JPanel(new BorderLayout(10, 10));
         page.setBorder(new EmptyBorder(16, 16, 16, 16));
@@ -684,6 +753,7 @@ public class BibleReaderApp extends JFrame {
             refreshBookCombo();
             refreshCategories();
             refreshQuestions();
+            refreshRecentNotes();
             updateHeader();
         } finally {
             refreshingUi = false;
@@ -1240,6 +1310,7 @@ public class BibleReaderApp extends JFrame {
             TextAnnotation a = new TextAnnotation(currentSourceKey, currentSourceTitle, range[0], range[1], selected, "Greek", "", note.getText().trim(), key);
             currentProfile.annotations.add(a);
             saveData();
+            refreshRecentNotes();
             reloadCurrentSource();
             showAnnotationDetails(a);
         }
@@ -1272,6 +1343,7 @@ public class BibleReaderApp extends JFrame {
         }
 
         saveData();
+        refreshRecentNotes();
         reloadCurrentSource();
         showAnnotationDetails(a);
     }
@@ -1290,6 +1362,7 @@ public class BibleReaderApp extends JFrame {
 
         saveData();
         refreshCategories();
+        refreshRecentNotes();
         reloadCurrentSource();
         showAnnotationDetails(a);
     }
@@ -1380,6 +1453,7 @@ public class BibleReaderApp extends JFrame {
         TextAnnotation a = new TextAnnotation(currentSourceKey, currentSourceTitle, start, end, selected, "Link", "", body, target);
         currentProfile.annotations.add(a);
         saveData();
+        refreshRecentNotes();
         reloadCurrentSource();
         showAnnotationDetails(a);
     }
@@ -1391,9 +1465,11 @@ public class BibleReaderApp extends JFrame {
         newCategory = newCategory.trim();
         a.category = newCategory;
         a.note = "Added to category: " + newCategory;
+        touchAnnotation(a);
 
         saveData();
         refreshCategories();
+        refreshRecentNotes();
         reloadCurrentSource();
         showAnnotationDetails(a);
     }
@@ -1409,6 +1485,7 @@ public class BibleReaderApp extends JFrame {
         currentProfile.annotations.removeIf(x -> x.id.equals(a.id));
         currentProfile.questions.removeIf(q -> q.annotationId.equals(a.id));
         saveData();
+        refreshRecentNotes();
         reloadCurrentSource();
         refreshCategories();
         showSourceSummary(currentSourceKey, currentSourceTitle);
@@ -1435,8 +1512,10 @@ public class BibleReaderApp extends JFrame {
         a.category = cat.getText().trim();
         a.target = target.getText().trim();
         a.note = note.getText().trim();
+        touchAnnotation(a);
 
         saveData();
+        refreshRecentNotes();
         reloadCurrentSource();
         showAnnotationDetails(a);
     }
@@ -1446,6 +1525,7 @@ public class BibleReaderApp extends JFrame {
         currentProfile.annotations.removeIf(x -> x.id.equals(a.id));
         currentProfile.questions.removeIf(q -> q.annotationId.equals(a.id));
         saveData();
+        refreshRecentNotes();
         reloadCurrentSource();
         showSourceSummary(currentSourceKey, currentSourceTitle);
     }
@@ -1459,7 +1539,8 @@ public class BibleReaderApp extends JFrame {
     private void showAnnotationDetails(TextAnnotation a) {
         detailsPanel.removeAll();
         addDetailTitle(a.type + " Highlight");
-        addDetailText("Source: " + a.sourceTitle + "\nSelected text: “" + a.selectedText + "”");
+        addDetailText("Source: " + a.sourceTitle + "\nSelected text: “" + a.selectedText + "”"
+                + "\nCreated: " + displayDate(a.createdAt) + "\nUpdated: " + displayDate(a.updatedAt));
         if (!a.category.isEmpty()) addDetailText("Category: " + a.category + "\nColor: " + colorHex(colorForCategory(a.category)));
         if (!a.target.isEmpty()) {
             addDetailText("Attached to: " + a.target);
@@ -1791,6 +1872,73 @@ public class BibleReaderApp extends JFrame {
         updateHeader();
     }
 
+    private void refreshRecentNotes() {
+        if (recentModel == null || currentProfile == null) return;
+        recentModel.clear();
+
+        String filter = recentFilterBox == null || recentFilterBox.getSelectedItem() == null
+                ? "All" : recentFilterBox.getSelectedItem().toString();
+        String query = recentSearchField == null ? "" : recentSearchField.getText().trim().toLowerCase(Locale.ROOT);
+
+        List<TextAnnotation> annotations = new ArrayList<>(currentProfile.annotations);
+        annotations.sort((a, b) -> Long.compare(annotationSortTime(b), annotationSortTime(a)));
+
+        for (TextAnnotation a : annotations) {
+            repairAnnotationTimestamps(a, System.currentTimeMillis());
+            if (!matchesRecentFilter(a, filter)) continue;
+            if (!query.isEmpty() && !recentSearchText(a).contains(query)) continue;
+            recentModel.addElement(new RecentAnnotationListItem(a));
+        }
+    }
+
+    private long annotationSortTime(TextAnnotation a) {
+        if (a == null) return 0L;
+        if (a.updatedAt > 0L) return a.updatedAt;
+        if (a.createdAt > 0L) return a.createdAt;
+        if (a.created != null) return a.created.getTime();
+        return 0L;
+    }
+
+    private boolean matchesRecentFilter(TextAnnotation a, String filter) {
+        if (a == null || filter == null || "All".equals(filter)) return true;
+        if ("Notes".equals(filter)) return "Note".equals(a.type);
+        if ("Categories".equals(filter)) return "Category".equals(a.type);
+        if ("Questions".equals(filter)) return "Question".equals(a.type);
+        if ("Greek".equals(filter)) return "Greek".equals(a.type);
+        if ("Attachments".equals(filter)) return "Link".equals(a.type);
+        return true;
+    }
+
+    private String recentSearchText(TextAnnotation a) {
+        return (safe(a.selectedText) + " " + safe(a.note) + " " + safe(a.category) + " "
+                + safe(a.sourceTitle) + " " + safe(a.sourceKey) + " " + safe(a.target))
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private void openSelectedRecentAnnotation() {
+        RecentAnnotationListItem item = recentList == null ? null : recentList.getSelectedValue();
+        if (item == null || item.annotation == null) return;
+        TextAnnotation a = item.annotation;
+        openSourceForAnnotation(a);
+        safeSelect(a.start, a.end);
+        showAnnotationDetails(a);
+        showCard("study");
+    }
+
+    private String displayDate(long millis) {
+        if (millis <= 0L) return "Unknown";
+        return new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date(millis));
+    }
+
+    private String sourceTitleFor(TextAnnotation a) {
+        if (a == null) return "";
+        return a.sourceTitle == null || a.sourceTitle.trim().isEmpty() ? safe(a.sourceKey) : a.sourceTitle;
+    }
+
+    private void touchAnnotation(TextAnnotation a) {
+        if (a != null) a.updatedAt = System.currentTimeMillis();
+    }
+
     private int countUnanswered() {
         int c = 0;
         for (StudyQuestion q : currentProfile.questions) if (!q.answered) c++;
@@ -2033,6 +2181,10 @@ public class BibleReaderApp extends JFrame {
         int st = Math.max(0, i - 70);
         int en = Math.min(body.length(), i + 140);
         return body.substring(st, en).replace("\n", " ");
+    }
+
+    private String safe(String s) {
+        return s == null ? "" : s;
     }
 
     private String shorten(String s, int max) {
@@ -2599,6 +2751,10 @@ public class BibleReaderApp extends JFrame {
         if (p.categoryColors == null) p.categoryColors = new TreeMap<>();
         for (String c : p.categories.keySet()) p.categoryColors.putIfAbsent(c, categoryBlue.getRGB());
         if (p.visitCounts == null) p.visitCounts = new HashMap<>();
+        long fallbackBase = System.currentTimeMillis() - (long) p.annotations.size() * 1000L;
+        for (int i = 0; i < p.annotations.size(); i++) {
+            repairAnnotationTimestamps(p.annotations.get(i), fallbackBase + (long) i * 1000L);
+        }
         if (p.oldNotes != null && !p.oldNotes.isEmpty()) {
             for (StudyNote n : p.oldNotes) {
                 TextAnnotation a = new TextAnnotation(n.refKey, n.refKey, 0, 0, "", n.type, n.category, n.body, "");
@@ -2608,10 +2764,70 @@ public class BibleReaderApp extends JFrame {
         }
     }
 
+    private void repairAnnotationTimestamps(TextAnnotation a, long fallbackMillis) {
+        if (a == null) return;
+        if (a.id == null || a.id.trim().isEmpty()) a.id = UUID.randomUUID().toString();
+        if (a.sourceKey == null) a.sourceKey = "";
+        if (a.sourceTitle == null) a.sourceTitle = "";
+        if (a.selectedText == null) a.selectedText = "";
+        if (a.type == null || a.type.trim().isEmpty()) a.type = "Note";
+        if (a.category == null) a.category = "";
+        if (a.note == null) a.note = "";
+        if (a.target == null) a.target = "";
+
+        long fallback = fallbackMillis > 0L ? fallbackMillis : System.currentTimeMillis();
+        if (a.createdAt <= 0L) {
+            a.createdAt = a.created != null ? a.created.getTime() : fallback;
+        }
+        if (a.updatedAt <= 0L) a.updatedAt = a.createdAt;
+        if (a.created == null) a.created = new Date(a.createdAt);
+    }
+
     private void showError(String title, Exception ex) {
         ex.printStackTrace();
         SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, title + ":\n" + ex.getMessage()));
         log(title + ": " + ex.getMessage());
+    }
+
+    private class RecentAnnotationCellRenderer extends DefaultListCellRenderer {
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+            RecentAnnotationListItem item = value instanceof RecentAnnotationListItem ? (RecentAnnotationListItem) value : null;
+            TextAnnotation a = item == null ? null : item.annotation;
+            if (a == null) {
+                label.setText("");
+                return label;
+            }
+
+            String category = a.category == null || a.category.trim().isEmpty() ? "" : " • Category: " + esc(a.category);
+            String target = a.target == null || a.target.trim().isEmpty() ? "" : " • Target: " + esc(shorten(a.target, 70));
+            String note = a.note == null || a.note.trim().isEmpty() ? "No note text" : shorten(a.note, 150);
+            label.setText("<html><b>" + esc(a.type) + "</b> • " + esc(sourceTitleFor(a)) + category + target
+                    + "<br><span style='color:#5f4035;'>Selected:</span> " + esc(shorten(a.selectedText, 170))
+                    + "<br><span style='color:#5f4035;'>Note:</span> " + esc(note)
+                    + "<br><span style='font-size:10px;'>Created " + esc(displayDate(a.createdAt))
+                    + " • Updated " + esc(displayDate(a.updatedAt)) + "</span></html>");
+            label.setBorder(new CompoundBorder(new MatteBorder(0, 7, 1, 0, colorForAnnotation(a)), new EmptyBorder(7, 8, 7, 8)));
+            return label;
+        }
+    }
+
+    private static class RecentAnnotationListItem {
+        TextAnnotation annotation;
+        RecentAnnotationListItem(TextAnnotation annotation) { this.annotation = annotation; }
+        public String toString() {
+            if (annotation == null) return "";
+            String source = annotation.sourceTitle == null || annotation.sourceTitle.isEmpty() ? annotation.sourceKey : annotation.sourceTitle;
+            return annotation.type + " | " + source + " | " + annotation.selectedText;
+        }
+    }
+
+    private static class SimpleDocumentListener implements DocumentListener {
+        private final Runnable action;
+        SimpleDocumentListener(Runnable action) { this.action = action; }
+        public void insertUpdate(DocumentEvent e) { action.run(); }
+        public void removeUpdate(DocumentEvent e) { action.run(); }
+        public void changedUpdate(DocumentEvent e) { action.run(); }
     }
 
     private class CategoryCellRenderer extends DefaultListCellRenderer {
@@ -2725,9 +2941,14 @@ public class BibleReaderApp extends JFrame {
         String category;
         String note;
         String target;
+        long createdAt;
+        long updatedAt;
         Date created = new Date();
 
         TextAnnotation(String sourceKey, String sourceTitle, int start, int end, String selectedText, String type, String category, String note, String target) {
+            long now = System.currentTimeMillis();
+            this.createdAt = now;
+            this.updatedAt = now;
             this.sourceKey = sourceKey == null ? "" : sourceKey;
             this.sourceTitle = sourceTitle == null ? "" : sourceTitle;
             this.start = start;
