@@ -3,6 +3,7 @@ import javax.swing.border.*;
 import javax.swing.event.*;
 import javax.swing.text.*;
 import javax.swing.tree.*;
+import javax.swing.table.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.datatransfer.StringSelection;
@@ -26,6 +27,9 @@ public class BibleReaderApp extends JFrame {
 
     private static final String MORPHGNT_ZIP =
             "https://zenodo.org/records/376200/files/morphgnt%2Fsblgnt-6.12.zip?download=1";
+
+    private static final String GUTENBERG_CATALOG_CSV =
+            "https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv";
 
     private final Color darkRed = new Color(92, 23, 23);
     private final Color cream = new Color(255, 253, 248);
@@ -1017,6 +1021,7 @@ public class BibleReaderApp extends JFrame {
                 "After Greek is imported, right-click a verse number and choose 'Check Greek For This Verse'.\n\n" +
                 "Philosophy / other works:\n" +
                 "• Import TXT, then select exact words or paragraphs in the reader.\n" +
+                "• Browse Project Gutenberg books, then import the selected public-domain plain text.\n" +
                 "• Right-click selected text to add notes, categories, questions, or attachments.\n" +
                 "• Attachments can point to a Bible verse like Romans 14:13 or to a unique chunk inside a selected book.\n\n" +
                 "Hover over highlighted text to preview its note. Click highlighted text to see actions in the right panel."
@@ -1033,6 +1038,7 @@ public class BibleReaderApp extends JFrame {
         JButton importGreekZip = blackButton("Import MorphGNT ZIP / TXT Folder");
         JButton importGreekCsv = blackButton("Import Greek CSV");
         JButton importTxt = blackButton("Import Philosophy / Public Domain TXT");
+        JButton browseGutenberg = blackButton("Browse Project Gutenberg Books");
         JButton templates = blackButton("Create Import Templates");
         JButton clearBible = blackButton("Clear Bible Text Only");
 
@@ -1043,6 +1049,7 @@ public class BibleReaderApp extends JFrame {
         importGreekZip.addActionListener(e -> importMorphGntZipOrFolder());
         importGreekCsv.addActionListener(e -> importGreekCsv());
         importTxt.addActionListener(e -> importLibraryText());
+        browseGutenberg.addActionListener(e -> browseProjectGutenbergBooksDialog());
         templates.addActionListener(e -> createTemplates());
         clearBible.addActionListener(e -> clearBibleText());
 
@@ -1053,6 +1060,7 @@ public class BibleReaderApp extends JFrame {
         actions.add(importGreekZip);
         actions.add(importGreekCsv);
         actions.add(importTxt);
+        actions.add(browseGutenberg);
         actions.add(templates);
         actions.add(clearBible);
 
@@ -6720,6 +6728,327 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
     }
 
+
+    private void browseProjectGutenbergBooksDialog() {
+        JDialog dialog = new JDialog(this, "Project Gutenberg Book Browser", false);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setSize(1100, 650);
+        dialog.setLocationRelativeTo(this);
+
+        JTextField searchField = new JTextField();
+        searchField.setToolTipText("Search title, author, subject, bookshelf, or Book ID");
+        JComboBox<String> languageFilter = new JComboBox<>(new String[]{"English", "All Languages"});
+        JButton refreshCatalog = blackButton("Refresh Catalog");
+        JButton importSelected = blackButton("Import Selected Book");
+        JButton close = blackButton("Close");
+        JLabel status = new JLabel("Downloading Project Gutenberg catalog...");
+
+        DefaultTableModel model = new DefaultTableModel(new Object[]{"Book ID / Text#", "Title", "Author", "Language", "Subjects", "Bookshelves"}, 0) {
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        JTable table = new JTable(model);
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        table.setAutoCreateRowSorter(true);
+        table.setFillsViewportHeight(true);
+        table.getColumnModel().getColumn(0).setPreferredWidth(95);
+        table.getColumnModel().getColumn(1).setPreferredWidth(270);
+        table.getColumnModel().getColumn(2).setPreferredWidth(180);
+        table.getColumnModel().getColumn(3).setPreferredWidth(90);
+        table.getColumnModel().getColumn(4).setPreferredWidth(280);
+        table.getColumnModel().getColumn(5).setPreferredWidth(180);
+
+        List<GutenbergBook>[] catalogHolder = new List[]{new ArrayList<>()};
+        Runnable applyFilter = () -> {
+            List<GutenbergBook> filtered = filterGutenbergCatalog(catalogHolder[0], searchField.getText(), String.valueOf(languageFilter.getSelectedItem()));
+            model.setRowCount(0);
+            int maxRows = 2000;
+            for (int i = 0; i < filtered.size() && i < maxRows; i++) {
+                GutenbergBook b = filtered.get(i);
+                model.addRow(new Object[]{b.id, b.title, b.author, b.language, b.subjects, b.bookshelves});
+            }
+            String suffix = filtered.size() > maxRows ? " (showing first " + maxRows + ")" : "";
+            status.setText("Loaded " + catalogHolder[0].size() + " catalog rows. Matching: " + filtered.size() + suffix + ".");
+        };
+
+        DocumentListener filterListener = new SimpleDocumentListener(applyFilter);
+        searchField.getDocument().addDocumentListener(filterListener);
+        languageFilter.addActionListener(e -> applyFilter.run());
+
+        Runnable loadCatalog = () -> {
+            refreshCatalog.setEnabled(false);
+            importSelected.setEnabled(false);
+            status.setText("Downloading Project Gutenberg catalog CSV...");
+            model.setRowCount(0);
+            SwingWorker<List<GutenbergBook>, Void> worker = new SwingWorker<List<GutenbergBook>, Void>() {
+                protected List<GutenbergBook> doInBackground() throws Exception {
+                    String csv = downloadGutenbergCatalogCsv();
+                    return parseGutenbergCatalogCsv(csv);
+                }
+                protected void done() {
+                    try {
+                        catalogHolder[0] = get();
+                        List<String> languages = new ArrayList<>();
+                        languages.add("English");
+                        languages.add("All Languages");
+                        Set<String> seen = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                        for (GutenbergBook b : catalogHolder[0]) {
+                            String lang = safe(b.language).trim();
+                            if (!lang.isEmpty() && seen.add(lang) && !lang.equalsIgnoreCase("English")) languages.add(lang);
+                        }
+                        languageFilter.setModel(new DefaultComboBoxModel<>(languages.toArray(new String[0])));
+                        languageFilter.setSelectedItem("English");
+                        applyFilter.run();
+                        log("Loaded Project Gutenberg catalog: " + catalogHolder[0].size() + " books.");
+                    } catch (Exception ex) {
+                        status.setText("Catalog download failed: " + ex.getMessage());
+                        showError("Project Gutenberg catalog download failed", ex);
+                    } finally {
+                        refreshCatalog.setEnabled(true);
+                        importSelected.setEnabled(true);
+                    }
+                }
+            };
+            worker.execute();
+        };
+
+        refreshCatalog.addActionListener(e -> loadCatalog.run());
+        importSelected.addActionListener(e -> {
+            int viewRow = table.getSelectedRow();
+            if (viewRow < 0) {
+                JOptionPane.showMessageDialog(dialog, "Select a Project Gutenberg book first.");
+                return;
+            }
+            int row = table.convertRowIndexToModel(viewRow);
+            String id = String.valueOf(model.getValueAt(row, 0));
+            String title = String.valueOf(model.getValueAt(row, 1));
+            String author = String.valueOf(model.getValueAt(row, 2));
+            String displayTitle = title + (author.trim().isEmpty() ? "" : " — " + author.trim());
+            LibraryDoc existing = data.findLibraryDoc(displayTitle);
+            if (existing != null) {
+                Object[] options = {"Open Existing", "Import Another Copy", "Cancel"};
+                int choice = JOptionPane.showOptionDialog(dialog,
+                        "This book is already imported:\n" + displayTitle + "\n\nOpen the existing copy, or import another copy?",
+                        "Book Already Imported", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
+                if (choice == 0) {
+                    openImportedLibraryBook(displayTitle);
+                    dialog.dispose();
+                    return;
+                }
+                if (choice != 1) return;
+            }
+
+            refreshCatalog.setEnabled(false);
+            importSelected.setEnabled(false);
+            status.setText("Downloading plain text for Gutenberg book #" + id + "...");
+            SwingWorker<String, Void> worker = new SwingWorker<String, Void>() {
+                protected String doInBackground() throws Exception {
+                    String text = downloadGutenbergTextById(id);
+                    return importLibraryTextFromString(displayTitle, text);
+                }
+                protected void done() {
+                    try {
+                        String importedTitle = get();
+                        refreshEverything();
+                        openImportedLibraryBook(importedTitle);
+                        status.setText("Imported: " + importedTitle);
+                        log("Imported Project Gutenberg book: " + importedTitle + " (#" + id + ")");
+                        JOptionPane.showMessageDialog(dialog, "Imported Project Gutenberg book:\n" + importedTitle);
+                        dialog.dispose();
+                    } catch (Exception ex) {
+                        status.setText("Import failed: " + ex.getMessage());
+                        showError("Project Gutenberg import failed", ex);
+                    } finally {
+                        refreshCatalog.setEnabled(true);
+                        importSelected.setEnabled(true);
+                    }
+                }
+            };
+            worker.execute();
+        });
+        close.addActionListener(e -> dialog.dispose());
+
+        JPanel top = new JPanel(new BorderLayout(8, 8));
+        top.setBorder(new EmptyBorder(10, 10, 6, 10));
+        JPanel filters = new JPanel(new BorderLayout(8, 8));
+        filters.add(new JLabel("Search:"), BorderLayout.WEST);
+        filters.add(searchField, BorderLayout.CENTER);
+        JPanel filterActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        filterActions.add(new JLabel("Language:"));
+        filterActions.add(languageFilter);
+        filterActions.add(refreshCatalog);
+        filters.add(filterActions, BorderLayout.EAST);
+        top.add(filters, BorderLayout.CENTER);
+
+        JPanel bottom = new JPanel(new BorderLayout(8, 8));
+        bottom.setBorder(new EmptyBorder(6, 10, 10, 10));
+        bottom.add(status, BorderLayout.CENTER);
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttons.add(importSelected);
+        buttons.add(close);
+        bottom.add(buttons, BorderLayout.EAST);
+
+        dialog.add(top, BorderLayout.NORTH);
+        dialog.add(new JScrollPane(table), BorderLayout.CENTER);
+        dialog.add(bottom, BorderLayout.SOUTH);
+        dialog.setVisible(true);
+        loadCatalog.run();
+    }
+
+    private String downloadGutenbergCatalogCsv() throws IOException {
+        return new String(download(GUTENBERG_CATALOG_CSV), StandardCharsets.UTF_8);
+    }
+
+    private List<GutenbergBook> parseGutenbergCatalogCsv(String csv) {
+        List<List<String>> rows = parseCsvRows(csv);
+        List<GutenbergBook> books = new ArrayList<>();
+        if (rows.isEmpty()) return books;
+        Map<String, Integer> headers = new HashMap<>();
+        List<String> header = rows.get(0);
+        for (int i = 0; i < header.size(); i++) headers.put(normalizeCatalogHeader(header.get(i)), i);
+        for (int i = 1; i < rows.size(); i++) {
+            List<String> row = rows.get(i);
+            String id = firstCatalogValue(row, headers, "text", "textnumber", "bookid", "id");
+            id = id.replaceAll("[^0-9]", "");
+            String title = firstCatalogValue(row, headers, "title");
+            if (id.isEmpty() || title.trim().isEmpty()) continue;
+            String language = firstCatalogValue(row, headers, "language", "languages");
+            books.add(new GutenbergBook(
+                    id,
+                    title.trim(),
+                    firstCatalogValue(row, headers, "authors", "author", "creator").trim(),
+                    language.trim(),
+                    firstCatalogValue(row, headers, "subjects", "subject").trim(),
+                    firstCatalogValue(row, headers, "bookshelves", "bookshelf").trim()
+            ));
+        }
+        return books;
+    }
+
+    private List<List<String>> parseCsvRows(String csv) {
+        List<List<String>> rows = new ArrayList<>();
+        List<String> row = new ArrayList<>();
+        StringBuilder cell = new StringBuilder();
+        boolean quoted = false;
+        for (int i = 0; i < csv.length(); i++) {
+            char ch = csv.charAt(i);
+            if (quoted) {
+                if (ch == '"') {
+                    if (i + 1 < csv.length() && csv.charAt(i + 1) == '"') {
+                        cell.append('"');
+                        i++;
+                    } else quoted = false;
+                } else cell.append(ch);
+            } else {
+                if (ch == '"') quoted = true;
+                else if (ch == ',') { row.add(cell.toString()); cell.setLength(0); }
+                else if (ch == '\n' || ch == '\r') {
+                    if (ch == '\r' && i + 1 < csv.length() && csv.charAt(i + 1) == '\n') i++;
+                    row.add(cell.toString());
+                    if (!row.isEmpty() && row.stream().anyMatch(v -> !v.trim().isEmpty())) rows.add(row);
+                    row = new ArrayList<>();
+                    cell.setLength(0);
+                } else cell.append(ch);
+            }
+        }
+        row.add(cell.toString());
+        if (!row.isEmpty() && row.stream().anyMatch(v -> !v.trim().isEmpty())) rows.add(row);
+        return rows;
+    }
+
+    private String normalizeCatalogHeader(String header) {
+        return header == null ? "" : header.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+    }
+
+    private String firstCatalogValue(List<String> row, Map<String, Integer> headers, String... names) {
+        for (String name : names) {
+            Integer idx = headers.get(normalizeCatalogHeader(name));
+            if (idx != null && idx >= 0 && idx < row.size()) return row.get(idx);
+        }
+        return "";
+    }
+
+    private List<GutenbergBook> filterGutenbergCatalog(List<GutenbergBook> catalog, String query, String language) {
+        String q = safe(query).toLowerCase(Locale.ROOT).trim();
+        boolean allLanguages = language == null || language.equals("All Languages");
+        List<GutenbergBook> result = new ArrayList<>();
+        for (GutenbergBook b : catalog) {
+            if (!allLanguages && !matchesGutenbergLanguage(b.language, language)) continue;
+            String haystack = (b.id + " " + b.title + " " + b.author + " " + b.subjects + " " + b.bookshelves).toLowerCase(Locale.ROOT);
+            if (q.isEmpty() || haystack.contains(q)) result.add(b);
+        }
+        return result;
+    }
+
+    private boolean matchesGutenbergLanguage(String actual, String selected) {
+        String a = safe(actual).trim();
+        String s = safe(selected).trim();
+        if (s.equalsIgnoreCase("English")) return a.equalsIgnoreCase("English") || a.equalsIgnoreCase("en") || a.toLowerCase(Locale.ROOT).contains("english");
+        return a.equalsIgnoreCase(s);
+    }
+
+    private String downloadGutenbergTextById(String id) throws IOException {
+        String cleanId = safe(id).replaceAll("[^0-9]", "");
+        if (cleanId.isEmpty()) throw new IOException("Missing Project Gutenberg book ID.");
+        String[] urls = {
+                "https://www.gutenberg.org/files/" + cleanId + "/" + cleanId + "-0.txt",
+                "https://www.gutenberg.org/files/" + cleanId + "/" + cleanId + ".txt",
+                "https://www.gutenberg.org/ebooks/" + cleanId + ".txt.utf-8"
+        };
+        IOException last = null;
+        for (String url : urls) {
+            try {
+                URLConnection connection = new URL(url).openConnection();
+                connection.setRequestProperty("User-Agent", "BibleReaderApp/3.0");
+                connection.setConnectTimeout(20000);
+                connection.setReadTimeout(60000);
+                if (connection instanceof HttpURLConnection) {
+                    int code = ((HttpURLConnection) connection).getResponseCode();
+                    if (code < 200 || code >= 300) throw new IOException("HTTP " + code + " from " + url);
+                }
+                byte[] bytes;
+                try (InputStream in = connection.getInputStream()) { bytes = readAll(in); }
+                if (bytes.length == 0) throw new IOException("Empty text file from " + url);
+                return new String(bytes, StandardCharsets.UTF_8);
+            } catch (IOException ex) {
+                last = ex;
+            }
+        }
+        throw new IOException("Could not download a Project Gutenberg plain text file for book #" + cleanId + ".", last);
+    }
+
+    private String importLibraryTextFromString(String title, String text) {
+        String cleanTitle = safe(title).trim();
+        if (cleanTitle.isEmpty()) cleanTitle = "Project Gutenberg Book";
+        String uniqueTitle = cleanTitle;
+        int copy = 2;
+        while (data.findLibraryDoc(uniqueTitle) != null) uniqueTitle = cleanTitle + " (Copy " + (copy++) + ")";
+        data.libraryDocs.add(new LibraryDoc(uniqueTitle, "Philosophy / Other", text == null ? "" : text));
+        saveData();
+        return uniqueTitle;
+    }
+
+    private void openImportedLibraryBook(String titleOrKey) {
+        String title = safe(titleOrKey);
+        if (title.startsWith("LIBRARY:")) title = title.substring("LIBRARY:".length());
+        showLibraryDoc(title);
+        selectLibraryTreeTitle(title);
+        showCard("study");
+    }
+
+    private void selectLibraryTreeTitle(String title) {
+        if (rootNode == null || libraryTree == null) return;
+        Enumeration<?> nodes = rootNode.breadthFirstEnumeration();
+        while (nodes.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) nodes.nextElement();
+            if (title.equals(libraryTitleFromTreePathPart(node.getUserObject()))) {
+                TreePath path = new TreePath(node.getPath());
+                libraryTree.setSelectionPath(path);
+                libraryTree.scrollPathToVisible(path);
+                return;
+            }
+        }
+    }
+
     private void importLibraryText() {
         JFileChooser ch = new JFileChooser(new File("."));
         if (ch.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
@@ -7501,6 +7830,23 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         String body;
         Date created = new Date();
         StudyNote(String r, String t, String c, String b) { refKey = r; type = t; category = c == null ? "" : c; body = b; }
+    }
+
+    private static class GutenbergBook {
+        String id;
+        String title;
+        String author;
+        String language;
+        String subjects;
+        String bookshelves;
+        GutenbergBook(String id, String title, String author, String language, String subjects, String bookshelves) {
+            this.id = id == null ? "" : id;
+            this.title = title == null ? "" : title;
+            this.author = author == null ? "" : author;
+            this.language = language == null ? "" : language;
+            this.subjects = subjects == null ? "" : subjects;
+            this.bookshelves = bookshelves == null ? "" : bookshelves;
+        }
     }
 
     private static class LibraryDoc implements Serializable {
