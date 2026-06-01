@@ -210,6 +210,178 @@
     box-shadow: 0 0 0 2px rgba(185,28,28,.15);
   }
 
+  .people-search-row {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .people-search-row input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .filter-button {
+    white-space: nowrap;
+    background: #7f1d1d;
+  }
+
+  .people-list-summary {
+    font-size: 12px;
+    color: #4b5563;
+    font-weight: bold;
+    margin: 0 0 8px;
+    line-height: 1.4;
+  }
+
+  .advanced-filter-note {
+    display: inline-block;
+    margin-top: 2px;
+    color: #7f1d1d;
+  }
+
+  .filter-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(31, 41, 55, .55);
+  }
+
+  .filter-modal-backdrop.open {
+    display: flex;
+  }
+
+  .filter-modal {
+    width: min(900px, 96vw);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    box-shadow: 0 18px 45px rgba(0,0,0,.3);
+    overflow: hidden;
+  }
+
+  .filter-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    background: #fff1f2;
+    border-bottom: 1px solid #fecaca;
+  }
+
+  .filter-modal-header h2 {
+    margin: 0;
+    color: #7f1d1d;
+    font-size: 19px;
+  }
+
+  .filter-close-btn {
+    background: #6b7280;
+    border-radius: 999px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .filter-modal-body {
+    padding: 14px 16px;
+    overflow: auto;
+  }
+
+  .filter-modal-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+  }
+
+  .filter-row-card {
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: #fffafa;
+  }
+
+  .filter-row-top {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 130px auto;
+    gap: 8px;
+    align-items: start;
+    margin-bottom: 10px;
+  }
+
+  .filter-row-card label {
+    display: block;
+    margin-bottom: 4px;
+    color: #7f1d1d;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  .filter-row-card select,
+  .filter-row-card input[type="text"] {
+    width: 100%;
+  }
+
+  .filter-values-list {
+    max-height: 190px;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: white;
+    padding: 6px;
+  }
+
+  .filter-value-option {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 6px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .filter-value-option:hover {
+    background: #fff1f2;
+  }
+
+  .filter-value-option.selected {
+    background: #fee2e2;
+    color: #7f1d1d;
+    font-weight: bold;
+  }
+
+  .filter-empty-state {
+    padding: 10px;
+    color: #6b7280;
+    font-size: 13px;
+  }
+
+  @media (max-width: 700px) {
+    .filter-row-top {
+      grid-template-columns: 1fr;
+    }
+
+    .people-search-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+
   .small {
     font-size: 12px;
     color: #6b7280;
@@ -538,13 +710,17 @@
   <section class="panel">
     <h2>People Search</h2>
     <div class="panel-body">
-      <input
-        id="searchInput"
-        type="text"
-        placeholder="Search names or usernames..."
-        style="width:100%; margin-bottom:10px;"
-        oninput="renderPeopleList()"
-      />
+      <div class="people-search-row">
+        <input
+          id="searchInput"
+          type="text"
+          placeholder="Search names or usernames..."
+          oninput="renderPeopleList()"
+        />
+        <button id="peopleFilterButton" class="filter-button" onclick="openPeopleFilters()">Filters</button>
+      </div>
+
+      <div id="peopleListSummary" class="people-list-summary">Showing 0 of 0 people</div>
 
       <div class="notice">
         Drag a person into the org builder. Click a person anywhere to show their available direct reports on the right.
@@ -621,6 +797,22 @@
 
 </div>
 
+<div id="peopleFilterModalBackdrop" class="filter-modal-backdrop" onclick="handlePeopleFilterBackdropClick(event)">
+  <div class="filter-modal" role="dialog" aria-modal="true" aria-labelledby="peopleFilterTitle">
+    <div class="filter-modal-header">
+      <h2 id="peopleFilterTitle">People Filters</h2>
+      <button class="filter-close-btn" onclick="closePeopleFilters()" aria-label="Close people filters">×</button>
+    </div>
+    <div id="peopleFilterModalBody" class="filter-modal-body"></div>
+    <div class="filter-modal-actions">
+      <button onclick="addPeopleFilterRow()">+ Add Filter</button>
+      <button class="green" onclick="savePeopleFiltersAndClose()">Save Changes and Leave</button>
+      <button class="danger" onclick="clearPeopleFilters()">Clear Filters</button>
+      <button class="secondary" onclick="closePeopleFilters()">Leave</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const STORAGE_KEY = "safeliteOrgStructureBuilder_v7";
 
@@ -647,6 +839,8 @@ let lastBlueprintLoadSummary = null;
 let safeliteUsersEmails = [];
 let savedPersonEmails = {};
 let pendingEmailAttachments = {};
+let activePeopleFilters = [];
+let draftPeopleFilters = [];
 
 const possibleFirstNames = [
   "first",
@@ -715,6 +909,27 @@ function normalizeName(value) {
     .replace(/\s*,\s*/g, ", ")
     .toLowerCase();
 }
+
+function normalizeFilterValue(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function getPeopleFilterHeaders() {
+  return Object.keys(rawRows[0] || {});
+}
+
+function getValidPeopleFilters(filters = activePeopleFilters) {
+  const headers = new Set(getPeopleFilterHeaders());
+
+  return (Array.isArray(filters) ? filters : [])
+    .filter(filter => filter && headers.has(filter.header) && Array.isArray(filter.values) && filter.values.length)
+    .map(filter => ({
+      header: filter.header,
+      operator: filter.operator === "is not" ? "is not" : "is",
+      values: Array.from(new Set(filter.values.map(value => String(value ?? ""))))
+    }));
+}
+
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -940,20 +1155,245 @@ function renderAll() {
   renderOutputTable();
 }
 
+function updateFilterButtonLabel() {
+  const button = document.getElementById("peopleFilterButton");
+  if (!button) return;
+
+  const count = getValidPeopleFilters().length;
+  button.textContent = count ? `Filters (${count})` : "Filters";
+  button.disabled = !rawRows.length;
+  button.title = rawRows.length ? "Open people filters" : "Upload a file before creating people filters";
+}
+
+function getUniqueValuesForHeader(header) {
+  const seen = new Map();
+
+  rawRows.forEach(row => {
+    const rawValue = row ? row[header] : "";
+    const value = String(rawValue ?? "").trim();
+    const key = normalizeFilterValue(value);
+
+    if (!seen.has(key)) {
+      seen.set(key, value);
+    }
+  });
+
+  return Array.from(seen.values()).sort((a, b) => {
+    if (!a && b) return -1;
+    if (a && !b) return 1;
+    return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+  });
+}
+
+function openPeopleFilters() {
+  const backdrop = document.getElementById("peopleFilterModalBackdrop");
+
+  if (!rawRows.length) {
+    draftPeopleFilters = [];
+    if (backdrop) backdrop.classList.add("open");
+    renderPeopleFilterModal("Upload a people file before creating filters.");
+    return;
+  }
+
+  draftPeopleFilters = getValidPeopleFilters().map(filter => ({
+    header: filter.header,
+    operator: filter.operator,
+    values: [...filter.values],
+    search: ""
+  }));
+
+  if (!draftPeopleFilters.length) addPeopleFilterRow(false);
+  if (backdrop) backdrop.classList.add("open");
+  renderPeopleFilterModal();
+}
+
+function closePeopleFilters() {
+  const backdrop = document.getElementById("peopleFilterModalBackdrop");
+  if (backdrop) backdrop.classList.remove("open");
+}
+
+function handlePeopleFilterBackdropClick(event) {
+  if (event.target && event.target.id === "peopleFilterModalBackdrop") {
+    closePeopleFilters();
+  }
+}
+
+function addPeopleFilterRow(shouldRender = true) {
+  const headers = getPeopleFilterHeaders();
+
+  if (!headers.length) {
+    if (shouldRender) renderPeopleFilterModal("Upload a people file before creating filters.");
+    return;
+  }
+
+  draftPeopleFilters.push({
+    header: headers[0],
+    operator: "is",
+    values: [],
+    search: ""
+  });
+
+  if (shouldRender) renderPeopleFilterModal();
+}
+
+function removePeopleFilterRow(index) {
+  draftPeopleFilters.splice(index, 1);
+  renderPeopleFilterModal();
+}
+
+function updateDraftPeopleFilterHeader(index, header) {
+  if (!draftPeopleFilters[index]) return;
+  draftPeopleFilters[index].header = header;
+  draftPeopleFilters[index].values = [];
+  draftPeopleFilters[index].search = "";
+  renderPeopleFilterModal();
+}
+
+function updateDraftPeopleFilterOperator(index, operator) {
+  if (!draftPeopleFilters[index]) return;
+  draftPeopleFilters[index].operator = operator === "is not" ? "is not" : "is";
+}
+
+function updateDraftPeopleFilterSearch(index, search) {
+  if (!draftPeopleFilters[index]) return;
+  draftPeopleFilters[index].search = search;
+  renderPeopleFilterModal();
+}
+
+function toggleDraftPeopleFilterValue(index, value, checked) {
+  const filter = draftPeopleFilters[index];
+  if (!filter) return;
+
+  const normalized = normalizeFilterValue(value);
+  const values = Array.isArray(filter.values) ? filter.values : [];
+  const withoutValue = values.filter(item => normalizeFilterValue(item) !== normalized);
+  filter.values = checked ? [...withoutValue, String(value ?? "")] : withoutValue;
+  renderPeopleFilterModal();
+}
+
+function renderPeopleFilterModal(message = "") {
+  const body = document.getElementById("peopleFilterModalBody");
+  if (!body) return;
+
+  const headers = getPeopleFilterHeaders();
+
+  if (!headers.length) {
+    body.innerHTML = `<div class="notice">${escapeHTML(message || "Upload a people file before creating filters.")}</div>`;
+    return;
+  }
+
+  const rowsHtml = draftPeopleFilters.map((filter, index) => {
+    const header = headers.includes(filter.header) ? filter.header : headers[0];
+    if (header !== filter.header) {
+      filter.header = header;
+      filter.values = [];
+    }
+
+    const selectedValueKeys = new Set((filter.values || []).map(normalizeFilterValue));
+    const valueSearch = String(filter.search || "").toLowerCase().trim();
+    const uniqueValues = getUniqueValuesForHeader(header);
+    const visibleValues = uniqueValues.filter(value => !valueSearch || String(value || "(Blank)").toLowerCase().includes(valueSearch));
+    const valueList = visibleValues.length
+      ? visibleValues.map(value => {
+          const valueKey = normalizeFilterValue(value);
+          const checked = selectedValueKeys.has(valueKey);
+          const label = value === "" ? "(Blank)" : value;
+
+          return `
+            <label class="filter-value-option ${checked ? "selected" : ""}">
+              <input type="checkbox" ${checked ? "checked" : ""} onchange="toggleDraftPeopleFilterValue(${index}, '${escapeHTML(jsEscape(value))}', this.checked)" />
+              <span>${escapeHTML(label)}</span>
+            </label>
+          `;
+        }).join("")
+      : `<div class="filter-empty-state">No values match this search.</div>`;
+
+    return `
+      <div class="filter-row-card">
+        <div class="filter-row-top">
+          <div>
+            <label>Header</label>
+            <select onchange="updateDraftPeopleFilterHeader(${index}, this.value)">
+              ${headers.map(optionHeader => `<option value="${escapeHTML(optionHeader)}" ${optionHeader === header ? "selected" : ""}>${escapeHTML(optionHeader)}</option>`).join("")}
+            </select>
+          </div>
+          <div>
+            <label>Operator</label>
+            <select onchange="updateDraftPeopleFilterOperator(${index}, this.value)">
+              <option value="is" ${filter.operator !== "is not" ? "selected" : ""}>is</option>
+              <option value="is not" ${filter.operator === "is not" ? "selected" : ""}>is not</option>
+            </select>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button class="danger mini-btn" onclick="removePeopleFilterRow(${index})" aria-label="Remove this filter">×</button>
+          </div>
+        </div>
+        <label>Search values</label>
+        <input type="text" value="${escapeHTML(filter.search || "")}" placeholder="Search values under ${escapeHTML(header)}..." oninput="updateDraftPeopleFilterSearch(${index}, this.value)" />
+        <div class="small">Selected values: ${(filter.values || []).length ? (filter.values || []).map(value => escapeHTML(value === "" ? "(Blank)" : value)).join(", ") : "None selected"}</div>
+        <div class="filter-values-list">${valueList}</div>
+      </div>
+    `;
+  }).join("");
+
+  body.innerHTML = `
+    ${message ? `<div class="notice">${escapeHTML(message)}</div>` : ""}
+    <div class="notice">Build filters from any uploaded-file header. Values inside a row are OR; separate rows are AND.</div>
+    ${rowsHtml || `<div class="notice">No filter rows yet. Click + Add Filter to start.</div>`}
+  `;
+}
+
+function savePeopleFiltersAndClose() {
+  activePeopleFilters = getValidPeopleFilters(draftPeopleFilters);
+  closePeopleFilters();
+  updateFilterButtonLabel();
+  renderPeopleList();
+}
+
+function clearPeopleFilters() {
+  activePeopleFilters = [];
+  draftPeopleFilters = [];
+  updateFilterButtonLabel();
+  renderPeopleFilterModal("All people filters were cleared.");
+  renderPeopleList();
+}
+
+function personPassesAdvancedFilters(person) {
+  const validFilters = getValidPeopleFilters();
+
+  return validFilters.every(filter => {
+    const personValue = normalizeFilterValue(person && person.raw ? person.raw[filter.header] : "");
+    const selectedValues = new Set(filter.values.map(normalizeFilterValue));
+    const isMatch = selectedValues.has(personValue);
+
+    return filter.operator === "is not" ? !isMatch : isMatch;
+  });
+}
+
 function renderPeopleList() {
   const box = document.getElementById("peopleList");
+  const summary = document.getElementById("peopleListSummary");
   const search = normalizeName(document.getElementById("searchInput").value);
 
+  updateFilterButtonLabel();
   box.innerHTML = "";
 
   if (!people.length) {
+    if (summary) summary.textContent = "Showing 0 of 0 people";
     box.innerHTML = `<div class="notice">Upload an Excel file to begin.</div>`;
     return;
   }
 
-  const filtered = people
+  const filteredAll = people
     .filter(p => !search || p.nameKey.includes(search) || normalizeName(p.email).includes(search))
-    .slice(0, 500);
+    .filter(personPassesAdvancedFilters);
+  const filtered = filteredAll.slice(0, 500);
+  const activeFilterCount = getValidPeopleFilters().length;
+
+  if (summary) {
+    summary.innerHTML = `Showing ${filteredAll.length.toLocaleString()} of ${people.length.toLocaleString()} people${activeFilterCount ? `<br><span class="advanced-filter-note">Advanced filters active</span>` : ""}`;
+  }
 
   filtered.forEach(person => {
     const div = document.createElement("div");
@@ -983,7 +1423,12 @@ function renderPeopleList() {
   });
 
   if (!filtered.length) {
-    box.innerHTML = `<div class="notice">No matching names found.</div>`;
+    box.innerHTML = `<div class="notice">No matching people found.</div>`;
+  } else if (filteredAll.length > filtered.length) {
+    const limitNotice = document.createElement("div");
+    limitNotice.className = "notice";
+    limitNotice.textContent = `Showing the first ${filtered.length.toLocaleString()} matches. Refine search or filters to narrow the list.`;
+    box.appendChild(limitNotice);
   }
 }
 
@@ -2056,7 +2501,8 @@ function saveLocal() {
     filledReportEmails,
     orgBlueprint: buildOrgBlueprint(),
     safeliteUsersEmails,
-    savedPersonEmails
+    savedPersonEmails,
+    activePeopleFilters: getValidPeopleFilters()
   };
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -2078,7 +2524,10 @@ function loadLocal() {
     const hasBlueprint = payload.orgBlueprint && Array.isArray(payload.orgBlueprint.hierarchy);
 
     if (hasCurrentFileLoaded && hasBlueprint) {
+      activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
       rebuildOrgFromBlueprint(payload.orgBlueprint);
+      updateFilterButtonLabel();
+      renderPeopleList();
       setStatus("Loaded org blueprint onto current uploaded file");
       return;
     }
@@ -2090,6 +2539,7 @@ function loadLocal() {
     filledReportEmails = payload.filledReportEmails || {};
     safeliteUsersEmails = Array.isArray(payload.safeliteUsersEmails) ? payload.safeliteUsersEmails : [];
     savedPersonEmails = payload.savedPersonEmails || {};
+    activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
     currentViewMode = payload.currentViewMode || "org";
 
     if (typeof payload.includeEmail === "boolean") {
