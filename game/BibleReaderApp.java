@@ -1047,6 +1047,12 @@ public class BibleReaderApp extends JFrame {
         if (existing != null) {
             if ("Category".equals(existing.type) && existing.category != null && !existing.category.trim().isEmpty()) {
                 String category = existing.category.trim();
+                addMenu(menu, "Change Category", () -> changeAnnotationCategory(existing));
+                addMenu(menu, "Change Category Color", () -> {
+                    changeCategoryColorByName(category);
+                    showAnnotationDetails(existing);
+                });
+                addMenu(menu, "Remove From Category", () -> removeAnnotationFromCategory(existing));
                 addMenu(menu, "Show Category: " + category, () -> showCategoryByName(category));
             }
             addMenu(menu, "View Highlight Details", () -> showAnnotationDetails(existing));
@@ -1378,6 +1384,36 @@ public class BibleReaderApp extends JFrame {
         showAnnotationDetails(a);
     }
 
+    private void changeAnnotationCategory(TextAnnotation a) {
+        String newCategory = chooseOrCreateCategory();
+        if (newCategory == null || newCategory.trim().isEmpty()) return;
+
+        newCategory = newCategory.trim();
+        a.category = newCategory;
+        a.note = "Added to category: " + newCategory;
+
+        saveData();
+        refreshCategories();
+        reloadCurrentSource();
+        showAnnotationDetails(a);
+    }
+
+    private void removeAnnotationFromCategory(TextAnnotation a) {
+        int choice = JOptionPane.showConfirmDialog(
+                this,
+                "Remove this highlight from the category?",
+                "Remove From Category",
+                JOptionPane.YES_NO_OPTION);
+        if (choice != JOptionPane.YES_OPTION) return;
+
+        currentProfile.annotations.removeIf(x -> x.id.equals(a.id));
+        currentProfile.questions.removeIf(q -> q.annotationId.equals(a.id));
+        saveData();
+        reloadCurrentSource();
+        refreshCategories();
+        showSourceSummary(currentSourceKey, currentSourceTitle);
+    }
+
     private void editAnnotation(TextAnnotation a) {
         JTextField type = new JTextField(a.type);
         JTextField cat = new JTextField(a.category);
@@ -1653,6 +1689,12 @@ public class BibleReaderApp extends JFrame {
         }
 
         String cat = selectedCategoryNameFromListValue(s);
+        changeCategoryColorByName(cat);
+    }
+
+    private void changeCategoryColorByName(String cat) {
+        if (cat == null) return;
+        cat = cat.trim();
         if (cat.isEmpty()) return;
 
         Color current = colorForCategory(cat);
@@ -1664,6 +1706,7 @@ public class BibleReaderApp extends JFrame {
         saveData();
         refreshCategories();
         reloadCurrentSource();
+        showCategoryDetails(cat);
         JOptionPane.showMessageDialog(this, "Updated highlight color for: " + cat);
     }
 
