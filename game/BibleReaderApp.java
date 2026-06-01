@@ -405,10 +405,18 @@ public class BibleReaderApp extends JFrame {
                 mainStudySplit.setDividerLocation(Math.max(240, Math.min(320, mainStudySplit.getWidth() / 4)));
             }
             if (centerRightSplit != null && centerRightSplit.getWidth() > 0 && !readingMode) {
-                centerRightSplit.setDividerLocation(Math.max(520, centerRightSplit.getWidth() - 455));
+                int splitWidth = centerRightSplit.getWidth();
+                int sidebarWidth = Math.min(rightSidebarPreferredWidth(), Math.max(rightSidebarMinWidth(), splitWidth - 520));
+                centerRightSplit.setDividerLocation(Math.max(520, splitWidth - sidebarWidth));
             }
         });
     }
+
+    private int rightSidebarPreferredWidth() { return 405; }
+
+    private int rightSidebarMinWidth() { return 350; }
+
+    private int safeSidebarWidth() { return 370; }
 
     private JPanel buildLibraryPanel() {
         JPanel p = new JPanel(new BorderLayout(8, 8));
@@ -613,8 +621,11 @@ public class BibleReaderApp extends JFrame {
     }
 
     private JPanel buildRightSidebar() {
-        JPanel content = new JPanel(new BorderLayout(8, 8));
+        WidthTrackingPanel content = new WidthTrackingPanel();
+        content.setLayout(new BorderLayout(6, 8));
         content.setBackground(panelBg);
+        content.setBorder(new EmptyBorder(0, 2, 0, 8));
+        content.setPreferredSize(new Dimension(safeSidebarWidth(), 10));
         JPanel sidebarTop = new JPanel(new BorderLayout(8, 8));
         sidebarTop.setOpaque(false);
         sidebarTop.add(buildSideSearchPanel(), BorderLayout.NORTH);
@@ -637,8 +648,8 @@ public class BibleReaderApp extends JFrame {
 
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.setBackground(panelBg);
-        wrapper.setPreferredSize(new Dimension(450, 10));
-        wrapper.setMinimumSize(new Dimension(400, 10));
+        wrapper.setPreferredSize(new Dimension(rightSidebarPreferredWidth(), 10));
+        wrapper.setMinimumSize(new Dimension(rightSidebarMinWidth(), 10));
         wrapper.add(sidebarScroll, BorderLayout.CENTER);
         return wrapper;
     }
@@ -646,7 +657,7 @@ public class BibleReaderApp extends JFrame {
     private JPanel buildPinnedItemsPanel() {
         pinnedItemsPanel = new JPanel(new BorderLayout(6, 6));
         pinnedItemsPanel.setBorder(new CompoundBorder(
-                new EmptyBorder(0, 10, 0, 10),
+                new EmptyBorder(0, 6, 0, 6),
                 new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(6, 6, 6, 6))
         ));
         pinnedItemsPanel.setBackground(panelBg);
@@ -659,7 +670,7 @@ public class BibleReaderApp extends JFrame {
         title.setFont(new Font("Segoe UI", Font.BOLD, 14));
         title.setForeground(darkRed);
 
-        pinnedItemsToggleBtn = blackButton("Minimize");
+        pinnedItemsToggleBtn = sidebarUtilityButton("Minimize");
         pinnedItemsToggleBtn.addActionListener(e -> togglePinnedItems());
 
         header.add(title, BorderLayout.WEST);
@@ -672,7 +683,7 @@ public class BibleReaderApp extends JFrame {
 
         pinnedItemsScroll = new JScrollPane(pinnedItemsBody);
         pinnedItemsScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        pinnedItemsScroll.setPreferredSize(new Dimension(410, 185));
+        pinnedItemsScroll.setPreferredSize(new Dimension(safeSidebarWidth(), 185));
 
         pinnedItemsPanel.add(header, BorderLayout.NORTH);
         pinnedItemsPanel.add(pinnedItemsScroll, BorderLayout.CENTER);
@@ -681,7 +692,7 @@ public class BibleReaderApp extends JFrame {
 
     private JPanel buildDetailsPanel() {
         JPanel p = new JPanel(new BorderLayout(8, 8));
-        p.setBorder(new EmptyBorder(10, 10, 10, 10));
+        p.setBorder(new EmptyBorder(8, 6, 8, 6));
         p.setBackground(panelBg);
         styleModernCard(p);
 
@@ -704,7 +715,7 @@ public class BibleReaderApp extends JFrame {
     private JPanel buildSideSearchPanel() {
         JPanel outer = new JPanel(new BorderLayout(6, 6));
         outer.setBorder(new CompoundBorder(
-                new EmptyBorder(10, 10, 0, 10),
+                new EmptyBorder(8, 6, 0, 6),
                 new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(6, 6, 6, 6))
         ));
         outer.setBackground(panelBg);
@@ -717,7 +728,7 @@ public class BibleReaderApp extends JFrame {
         title.setFont(new Font("Segoe UI", Font.BOLD, 14));
         title.setForeground(darkRed);
 
-        sideSearchToggleBtn = blackButton("Minimize");
+        sideSearchToggleBtn = sidebarUtilityButton("Minimize");
         sideSearchToggleBtn.addActionListener(e -> toggleSideSearch());
 
         header.add(title, BorderLayout.WEST);
@@ -734,7 +745,7 @@ public class BibleReaderApp extends JFrame {
         sideSearchField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         sideSearchField.addActionListener(e -> doSideSearch());
 
-        JButton go = blackButton("Go");
+        JButton go = sidebarUtilityButton("Go");
         go.addActionListener(e -> doSideSearch());
 
         inputRow.add(sideSearchField, BorderLayout.CENTER);
@@ -744,6 +755,7 @@ public class BibleReaderApp extends JFrame {
         sideSearchList = new JList<>(sideSearchModel);
         sideSearchList.setFont(new Font("Consolas", Font.PLAIN, 12));
         sideSearchList.setVisibleRowCount(6);
+        sideSearchList.setFixedCellWidth(safeSidebarWidth() - 32);
         sideSearchList.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent e) {
                 if (SwingUtilities.isRightMouseButton(e)) {
@@ -769,9 +781,13 @@ public class BibleReaderApp extends JFrame {
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, new JScrollPane(sideSearchList), new JScrollPane(sideSearchPreview));
         split.setResizeWeight(0.48);
         split.setDividerSize(5);
-        split.setPreferredSize(new Dimension(410, 290));
-        ((JScrollPane) split.getTopComponent()).setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        ((JScrollPane) split.getBottomComponent()).setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        split.setPreferredSize(new Dimension(safeSidebarWidth(), 290));
+        JScrollPane sideSearchListScroll = (JScrollPane) split.getTopComponent();
+        JScrollPane sideSearchPreviewScroll = (JScrollPane) split.getBottomComponent();
+        sideSearchListScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        sideSearchPreviewScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        sideSearchListScroll.setPreferredSize(new Dimension(safeSidebarWidth(), 135));
+        sideSearchPreviewScroll.setPreferredSize(new Dimension(safeSidebarWidth(), 135));
 
         sideSearchBody.add(inputRow, BorderLayout.NORTH);
         sideSearchBody.add(split, BorderLayout.CENTER);
@@ -791,7 +807,7 @@ public class BibleReaderApp extends JFrame {
         JLabel title = new JLabel("Recently Opened");
         title.setFont(new Font("Segoe UI", Font.BOLD, 14));
         title.setForeground(darkRed);
-        recentlyOpenedToggleBtn = blackButton("Minimize");
+        recentlyOpenedToggleBtn = sidebarUtilityButton("Minimize");
         recentlyOpenedToggleBtn.addActionListener(e -> toggleRecentlyOpened());
         header.add(title, BorderLayout.WEST);
         header.add(recentlyOpenedToggleBtn, BorderLayout.EAST);
@@ -801,6 +817,7 @@ public class BibleReaderApp extends JFrame {
         recentlyOpenedList = new JList<>(recentlyOpenedModel);
         recentlyOpenedList.setVisibleRowCount(5);
         recentlyOpenedList.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        recentlyOpenedList.setFixedCellWidth(safeSidebarWidth() - 32);
         recentlyOpenedList.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent e) {
                 if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) openRecentlyOpenedSelection();
@@ -1430,6 +1447,21 @@ public class BibleReaderApp extends JFrame {
         b.putClientProperty("buttonType", type);
         styleModernButton(b, type);
         return b;
+    }
+
+    private JButton sidebarUtilityButton(String s) {
+        JButton b = styledButton(s, new Color(255, 248, 240), Color.BLACK);
+        b.putClientProperty("buttonType", ButtonType.UTILITY);
+        styleModernButton(b, ButtonType.UTILITY);
+        b.setMaximumSize(new Dimension(safeSidebarWidth(), b.getPreferredSize().height));
+        return b;
+    }
+
+    private void constrainSidebarComponent(JComponent c) {
+        if (c == null) return;
+        Dimension pref = c.getPreferredSize();
+        int height = Math.max(1, pref == null ? 1 : pref.height);
+        c.setMaximumSize(new Dimension(safeSidebarWidth(), height));
     }
 
     private JButton styledButton(String s, Color bg, Color fg) {
@@ -4517,13 +4549,13 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         card.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         String title = item.sourceTitle == null || item.sourceTitle.trim().isEmpty() ? safe(item.sourceKey) : item.sourceTitle;
-        JLabel header = new JLabel("<html><b>" + esc(title) + "</b></html>");
+        JLabel header = new JLabel("<html><div style='width:" + (safeSidebarWidth() - 40) + "px'><b>" + esc(title) + "</b></div></html>");
         header.setForeground(darkRed);
 
         String noteLine = pinnedItemNoteLine(item);
-        JLabel body = new JLabel("<html>“" + esc(shorten(item.selectedText, 120)) + "”"
+        JLabel body = new JLabel("<html><div style='width:" + (safeSidebarWidth() - 40) + "px'>“" + esc(shorten(item.selectedText, 120)) + "”"
                 + (noteLine.isEmpty() ? "" : "<br><span style='color:#5f4035;'>" + esc(noteLine) + "</span>")
-                + "</html>");
+                + "</div></html>");
         body.setFont(new Font("Segoe UI", Font.PLAIN, 12));
 
         JPanel buttons = new JPanel(new GridLayout(0, 1, 5, 5));
@@ -4774,10 +4806,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void addDetailTitle(String s) {
-        JLabel l = new JLabel("<html><b>" + esc(s) + "</b></html>");
+        JLabel l = new JLabel("<html><div style='width:" + safeSidebarWidth() + "px'><b>" + esc(s) + "</b></div></html>");
         l.setFont(new Font("Segoe UI", Font.BOLD, 18));
         l.setForeground(darkRed);
         l.setAlignmentX(Component.LEFT_ALIGNMENT);
+        constrainSidebarComponent(l);
         detailsPanel.add(l);
         detailsPanel.add(Box.createVerticalStrut(8));
     }
@@ -4786,6 +4819,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         JTextArea a = readonlyArea();
         a.setText(s == null ? "" : s);
         a.setAlignmentX(Component.LEFT_ALIGNMENT);
+        constrainSidebarComponent(a);
         detailsPanel.add(a);
         detailsPanel.add(Box.createVerticalStrut(8));
     }
