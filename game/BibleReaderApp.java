@@ -114,6 +114,13 @@ public class BibleReaderApp extends JFrame {
     private DefaultListModel<String> questionModel;
     private JList<String> questionList;
 
+    private DefaultListModel<TopicPage> topicPageModel;
+    private JList<TopicPage> topicPageList;
+    private JLabel topicTitleLabel;
+    private JTextArea topicSummaryArea;
+    private DefaultListModel<LinkedItem> topicLinkModel;
+    private JList<LinkedItem> topicLinkList;
+
     private DefaultListModel<StudyProject> studyProjectModel;
     private JList<StudyProject> studyProjectList;
     private JPanel studyProjectDetailsPanel;
@@ -218,6 +225,7 @@ public class BibleReaderApp extends JFrame {
         JButton recent = navButton("Recent Notes");
         JButton categories = navButton("Categories");
         JButton questions = navButton("Questions");
+        JButton topicPages = navButton("Topic Pages");
         JButton backup = navButton("Backup");
         JButton export = navButton("Export");
         modernViewToggleButton = navButton("Modern View: On");
@@ -232,6 +240,7 @@ public class BibleReaderApp extends JFrame {
         navButtonsByCard.put("recent", recent);
         navButtonsByCard.put("categories", categories);
         navButtonsByCard.put("questions", questions);
+        navButtonsByCard.put("topicPages", topicPages);
 
         newProfile.setToolTipText("Create a separate study profile.");
         greekSearch.setToolTipText("Search imported MorphGNT Greek text and morphology details.");
@@ -249,6 +258,7 @@ public class BibleReaderApp extends JFrame {
         recent.addActionListener(e -> { refreshRecentNotes(); showCard("recent"); });
         categories.addActionListener(e -> { refreshCategories(); showCard("categories"); });
         questions.addActionListener(e -> { refreshQuestions(); showCard("questions"); });
+        topicPages.addActionListener(e -> { refreshTopicPages(); showCard("topicPages"); });
         backup.addActionListener(e -> backupNow());
         export.addActionListener(e -> exportNotes());
         modernViewToggleButton.addActionListener(e -> toggleModernView());
@@ -256,7 +266,7 @@ public class BibleReaderApp extends JFrame {
         JPanel profileGroup = createNavGroup(labelWhite("Profile:"), profileBox, newProfile, modernViewToggleButton);
         JPanel studyGroup = createNavGroup(study, importBtn, search, greekSearch);
         JPanel memoryGroup = createNavGroup(memory, studyProjects, recent);
-        JPanel notesGroup = createNavGroup(categories, questions);
+        JPanel notesGroup = createNavGroup(categories, questions, topicPages);
         JPanel dataGroup = createNavGroup(backup, export);
 
         nav.add(profileGroup);
@@ -292,6 +302,7 @@ public class BibleReaderApp extends JFrame {
         cardPanel.add(buildRecentPage(), "recent");
         cardPanel.add(buildCategoriesPage(), "categories");
         cardPanel.add(buildQuestionsPage(), "questions");
+        cardPanel.add(buildTopicPagesPage(), "topicPages");
         add(cardPanel, BorderLayout.CENTER);
 
         statusLabel = new JLabel(" Ready");
@@ -1151,11 +1162,14 @@ public class BibleReaderApp extends JFrame {
 
         JButton toggle = blackButton("Toggle Answered / Unanswered");
         JButton add = blackButton("Add Question To Current Selection");
+        JButton addTopic = blackButton("Add Question to Topic Page");
         toggle.addActionListener(e -> toggleSelectedQuestion());
         add.addActionListener(e -> addQuestionForSelection());
+        addTopic.addActionListener(e -> addSelectedQuestionToTopicPage());
 
         top.add(toggle);
         top.add(add);
+        top.add(addTopic);
 
         questionModel = new DefaultListModel<>();
         questionList = new JList<>(questionModel);
@@ -1168,6 +1182,104 @@ public class BibleReaderApp extends JFrame {
 
         page.add(north, BorderLayout.NORTH);
         page.add(new JScrollPane(questionList), BorderLayout.CENTER);
+        return page;
+    }
+
+
+    private JPanel buildTopicPagesPage() {
+        JPanel page = new JPanel(new BorderLayout(10, 10));
+        page.setBorder(new EmptyBorder(16, 16, 16, 16));
+        page.setBackground(panelBg);
+
+        JLabel h = new JLabel("Topic Pages");
+        h.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        h.setForeground(darkRed);
+
+        topicPageModel = new DefaultListModel<>();
+        topicPageList = new JList<>(topicPageModel);
+        topicPageList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        topicPageList.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        topicPageList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) refreshSelectedTopicDetails();
+        });
+
+        JButton create = blackButton("Create Topic");
+        JButton rename = blackButton("Rename Topic");
+        JButton delete = blackButton("Delete Topic");
+        create.addActionListener(e -> createTopicPageDialog());
+        rename.addActionListener(e -> renameSelectedTopicPage());
+        delete.addActionListener(e -> deleteSelectedTopicPage());
+
+        JPanel leftButtons = new JPanel(new GridLayout(0, 1, 6, 6));
+        leftButtons.setOpaque(false);
+        leftButtons.add(create);
+        leftButtons.add(rename);
+        leftButtons.add(delete);
+
+        JPanel left = new JPanel(new BorderLayout(8, 8));
+        left.setOpaque(false);
+        left.add(new JScrollPane(topicPageList), BorderLayout.CENTER);
+        left.add(leftButtons, BorderLayout.SOUTH);
+        left.setPreferredSize(new Dimension(280, 10));
+
+        topicTitleLabel = new JLabel("Select or create a topic");
+        topicTitleLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        topicTitleLabel.setForeground(darkRed);
+
+        topicSummaryArea = new JTextArea(7, 40);
+        topicSummaryArea.setLineWrap(true);
+        topicSummaryArea.setWrapStyleWord(true);
+        topicSummaryArea.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+
+        JButton saveSummary = blackButton("Save Summary");
+        saveSummary.addActionListener(e -> saveSelectedTopicSummary());
+
+        topicLinkModel = new DefaultListModel<>();
+        topicLinkList = new JList<>(topicLinkModel);
+        topicLinkList.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        topicLinkList.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) openSelectedTopicLink();
+            }
+        });
+
+        JButton addVerse = blackButton("Add Current Verse");
+        JButton addSelection = blackButton("Add Current Selection");
+        JButton addExisting = blackButton("Add Existing Note/Question");
+        JButton removeLink = blackButton("Remove Selected Link");
+        JButton openLink = blackButton("Open Selected Link");
+        addVerse.addActionListener(e -> addCurrentVerseToSelectedTopic());
+        addSelection.addActionListener(e -> addCurrentSelectionToSelectedTopic());
+        addExisting.addActionListener(e -> addExistingNoteOrQuestionToSelectedTopic());
+        removeLink.addActionListener(e -> removeSelectedTopicLink());
+        openLink.addActionListener(e -> openSelectedTopicLink());
+
+        JPanel linkButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        linkButtons.setOpaque(false);
+        linkButtons.add(addVerse);
+        linkButtons.add(addSelection);
+        linkButtons.add(addExisting);
+        linkButtons.add(removeLink);
+        linkButtons.add(openLink);
+
+        JPanel summaryPanel = new JPanel(new BorderLayout(6, 6));
+        summaryPanel.setOpaque(false);
+        summaryPanel.add(topicTitleLabel, BorderLayout.NORTH);
+        summaryPanel.add(new JScrollPane(topicSummaryArea), BorderLayout.CENTER);
+        summaryPanel.add(saveSummary, BorderLayout.SOUTH);
+
+        JPanel right = new JPanel(new BorderLayout(8, 8));
+        right.setOpaque(false);
+        right.add(summaryPanel, BorderLayout.NORTH);
+        right.add(new JScrollPane(topicLinkList), BorderLayout.CENTER);
+        right.add(linkButtons, BorderLayout.SOUTH);
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, right);
+        split.setResizeWeight(0.25);
+        split.setDividerSize(7);
+
+        page.add(h, BorderLayout.NORTH);
+        page.add(split, BorderLayout.CENTER);
         return page;
     }
 
@@ -1498,6 +1610,7 @@ public class BibleReaderApp extends JFrame {
             refreshBookCombo();
             refreshCategories();
             refreshQuestions();
+            refreshTopicPages();
             refreshMemoryVerses();
             refreshRecentNotes();
             refreshStudyProjects();
@@ -2095,11 +2208,14 @@ public class BibleReaderApp extends JFrame {
             addMenu(menu, "View Greek For This Verse", this::showGreekForCurrentSelection);
             addMenu(menu, "Add Greek Note To Selected Phrase", this::addGreekNoteForSelectionOrVerse);
             addMenu(menu, "Search This In Greek", this::searchSelectedTextInGreek);
+            addMenu(menu, "Add Greek Entry to Topic Page", this::addGreekSelectionToTopicPage);
         } else if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:")) {
             addMenu(menu, "Search This In Greek", this::searchSelectedTextInGreek);
         }
         addMenu(menu, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
         addMenu(menu, "Add Selected Text To Study Project", this::addSelectedTextToStudyProject);
+        addMenu(menu, "Add Selected Text to Topic Page", this::addSelectedTextToTopicPage);
+        addMenu(menu, "Create Topic From This", this::createTopicFromCurrentSelection);
         if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:")) {
             addMenu(menu, "Add To Memory Verses", this::addMemoryVerseFromSelection);
         }
@@ -2111,6 +2227,7 @@ public class BibleReaderApp extends JFrame {
         addMenu(menu, "Edit This Highlight", () -> editAnnotation(existing));
         addMenu(menu, "Pin This Highlight To Sidebar", () -> pinAnnotationToSidebar(existing));
         addMenu(menu, "Add This Note To Study Project", () -> addAnnotationToStudyProject(existing));
+        addMenu(menu, "Add Selected Note to Topic Page", () -> addAnnotationToTopicPage(existing));
         if ("Category".equals(existing.type) && existing.category != null && !existing.category.trim().isEmpty()) {
             String category = existing.category.trim();
             addMenu(menu, "Show Category: " + category, () -> showCategoryByName(category));
@@ -2160,6 +2277,8 @@ public class BibleReaderApp extends JFrame {
         if (!hasSelection && containingVerseNumber != null) {
             String key = selectedBook + " " + selectedChapter + ":" + containingVerseNumber;
             addMenu(menu, "Add Verse To Memory", () -> addMemoryVerseByKey(key));
+            addMenu(menu, "Add Current Verse to Topic Page", () -> addLinkedItemToTopicPage(new LinkedItem("VERSE", key, "related")));
+            addMenu(menu, "Create Topic From This", () -> createTopicFromLinkedItem(new LinkedItem("VERSE", key, "related")));
         }
 
         if (verseNumber != null) {
@@ -2723,11 +2842,17 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         copy.setAlignmentX(Component.LEFT_ALIGNMENT);
         copy.addActionListener(e -> copyGreekTextToClipboard(key));
 
+        JButton addTopic = blackButton("Add Greek to Topic Page");
+        addTopic.setAlignmentX(Component.LEFT_ALIGNMENT);
+        addTopic.addActionListener(e -> addLinkedItemToTopicPage(new LinkedItem("GREEK", key, "related")));
+
         detailsPanel.add(open);
         detailsPanel.add(Box.createVerticalStrut(6));
         detailsPanel.add(note);
         detailsPanel.add(Box.createVerticalStrut(6));
         detailsPanel.add(copy);
+        detailsPanel.add(Box.createVerticalStrut(6));
+        detailsPanel.add(addTopic);
         detailsPanel.revalidate();
         detailsPanel.repaint();
         statusLabel.setText(" Showing Greek details for " + key);
@@ -2751,6 +2876,15 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         StringSelection selection = new StringSelection(greekText);
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
         statusLabel.setText(" Copied Greek text for " + key);
+    }
+
+    private void addGreekSelectionToTopicPage() {
+        String key = greekKeyForSelection();
+        if (key == null) {
+            JOptionPane.showMessageDialog(this, "Select text in a Bible verse first.");
+            return;
+        }
+        addLinkedItemToTopicPage(new LinkedItem("GREEK", key, "related"));
     }
 
     private void addGreekNoteForSelectionOrVerse() {
@@ -3183,6 +3317,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             detailsPanel.add(Box.createVerticalStrut(8));
         }
         if (!a.note.isEmpty()) addDetailText(a.note);
+        addLinkedReferencesSection(a);
+        addRelatedTopicButtons("NOTE", a.id);
 
         JButton pin = blackButton("Pin This Highlight To Sidebar");
         pin.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -3209,6 +3345,386 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         detailsPanel.add(del);
         detailsPanel.revalidate();
         detailsPanel.repaint();
+    }
+
+
+    private void refreshTopicPages() {
+        if (topicPageModel == null || currentProfile == null) return;
+        repairProfile(currentProfile);
+        TopicPage selected = topicPageList == null ? null : topicPageList.getSelectedValue();
+        String selectedId = selected == null ? "" : selected.id;
+        topicPageModel.clear();
+        for (TopicPage topic : currentProfile.topicPages) topicPageModel.addElement(topic);
+        if (!selectedId.isEmpty()) selectTopicById(selectedId);
+        else refreshSelectedTopicDetails();
+    }
+
+    private void refreshSelectedTopicDetails() {
+        TopicPage topic = topicPageList == null ? null : topicPageList.getSelectedValue();
+        if (topicTitleLabel != null) topicTitleLabel.setText(topic == null ? "Select or create a topic" : topic.title);
+        if (topicSummaryArea != null) {
+            topicSummaryArea.setEnabled(topic != null);
+            topicSummaryArea.setText(topic == null ? "" : safe(topic.summary));
+        }
+        if (topicLinkModel != null) {
+            topicLinkModel.clear();
+            if (topic != null) {
+                repairTopicPage(topic);
+                for (LinkedItem link : topic.links) topicLinkModel.addElement(link);
+            }
+        }
+    }
+
+    private TopicPage selectedTopicPage() {
+        return topicPageList == null ? null : topicPageList.getSelectedValue();
+    }
+
+    private TopicPage createTopicPage(String title) {
+        TopicPage topic = new TopicPage(title);
+        currentProfile.topicPages.add(topic);
+        saveData();
+        refreshTopicPages();
+        selectTopicById(topic.id);
+        return topic;
+    }
+
+    private void createTopicPageDialog() {
+        String title = JOptionPane.showInputDialog(this, "Topic title:", "Create Topic", JOptionPane.PLAIN_MESSAGE);
+        if (title == null || title.trim().isEmpty()) return;
+        createTopicPage(title);
+    }
+
+    private void renameSelectedTopicPage() {
+        TopicPage topic = selectedTopicPage();
+        if (topic == null) return;
+        String title = JOptionPane.showInputDialog(this, "New topic title:", topic.title);
+        if (title == null || title.trim().isEmpty()) return;
+        topic.title = title.trim();
+        saveData();
+        refreshTopicPages();
+        selectTopicById(topic.id);
+    }
+
+    private void deleteSelectedTopicPage() {
+        TopicPage topic = selectedTopicPage();
+        if (topic == null) return;
+        if (JOptionPane.showConfirmDialog(this, "Delete topic page: " + topic.title + "?", "Delete Topic", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+        currentProfile.topicPages.removeIf(t -> topic.id.equals(t.id));
+        saveData();
+        refreshTopicPages();
+    }
+
+    private void saveSelectedTopicSummary() {
+        TopicPage topic = selectedTopicPage();
+        if (topic == null) return;
+        topic.summary = topicSummaryArea == null ? "" : topicSummaryArea.getText();
+        saveData();
+        statusLabel.setText(" Saved topic summary: " + topic.title);
+    }
+
+    private void selectTopicById(String id) {
+        if (topicPageModel == null || topicPageList == null || id == null) return;
+        for (int i = 0; i < topicPageModel.size(); i++) {
+            TopicPage t = topicPageModel.get(i);
+            if (id.equals(t.id)) {
+                topicPageList.setSelectedIndex(i);
+                topicPageList.ensureIndexIsVisible(i);
+                refreshSelectedTopicDetails();
+                return;
+            }
+        }
+    }
+
+    private void addCurrentVerseToSelectedTopic() {
+        TopicPage topic = selectedTopicPage();
+        if (topic == null) { JOptionPane.showMessageDialog(this, "Select or create a topic first."); return; }
+        String ref = currentVerseReferenceFromSelectionOrCaret();
+        if (ref.isEmpty()) ref = currentChapterReference();
+        if (ref.isEmpty()) { JOptionPane.showMessageDialog(this, "Open a Bible chapter first."); return; }
+        addLinkToTopic(topic, new LinkedItem("VERSE", ref, "related"));
+    }
+
+    private void addCurrentSelectionToSelectedTopic() {
+        TopicPage topic = selectedTopicPage();
+        if (topic == null) { JOptionPane.showMessageDialog(this, "Select or create a topic first."); return; }
+        LinkedItem item = linkedItemForCurrentSelection("related");
+        if (item == null) { JOptionPane.showMessageDialog(this, "Select text in the reader first."); return; }
+        addLinkToTopic(topic, item);
+    }
+
+    private void addExistingNoteOrQuestionToSelectedTopic() {
+        TopicPage topic = selectedTopicPage();
+        if (topic == null) { JOptionPane.showMessageDialog(this, "Select or create a topic first."); return; }
+        LinkedItem item = chooseExistingNoteOrQuestionLink();
+        if (item != null) addLinkToTopic(topic, item);
+    }
+
+    private LinkedItem chooseExistingNoteOrQuestionLink() {
+        DefaultListModel<LinkedItem> model = new DefaultListModel<>();
+        for (TextAnnotation a : currentProfile.annotations) model.addElement(new LinkedItem("NOTE", a.id, shorten(sourceTitleFor(a) + " — " + a.selectedText, 80)));
+        for (StudyQuestion q : currentProfile.questions) model.addElement(new LinkedItem("QUESTION", q.annotationId, shorten(q.sourceTitle + " — " + q.question, 80)));
+        JList<LinkedItem> list = new JList<>(model);
+        list.setVisibleRowCount(12);
+        int result = JOptionPane.showConfirmDialog(this, new JScrollPane(list), "Choose Note or Question", JOptionPane.OK_CANCEL_OPTION);
+        return result == JOptionPane.OK_OPTION ? list.getSelectedValue() : null;
+    }
+
+    private void removeSelectedTopicLink() {
+        TopicPage topic = selectedTopicPage();
+        LinkedItem item = topicLinkList == null ? null : topicLinkList.getSelectedValue();
+        if (topic == null || item == null) return;
+        topic.links.remove(item);
+        saveData();
+        refreshSelectedTopicDetails();
+    }
+
+    private void openSelectedTopicLink() {
+        LinkedItem item = topicLinkList == null ? null : topicLinkList.getSelectedValue();
+        if (item != null) openLinkedItem(item);
+    }
+
+    private void addSelectedTextToTopicPage() {
+        LinkedItem item = linkedItemForCurrentSelection("related");
+        if (item == null) { JOptionPane.showMessageDialog(this, "Select text in the reader first."); return; }
+        addLinkedItemToTopicPage(item);
+    }
+
+    private void addAnnotationToTopicPage(TextAnnotation a) {
+        if (a == null) return;
+        addLinkedItemToTopicPage(new LinkedItem("NOTE", a.id, "related"));
+    }
+
+    private void addSelectedQuestionToTopicPage() {
+        String s = questionList == null ? null : questionList.getSelectedValue();
+        if (s == null) { JOptionPane.showMessageDialog(this, "Select a question first."); return; }
+        try {
+            int idx = Integer.parseInt(s.split("\\|")[0].trim());
+            StudyQuestion q = currentProfile.questions.get(idx);
+            addLinkedItemToTopicPage(new LinkedItem("QUESTION", q.annotationId, "related"));
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "Could not add selected question.");
+        }
+    }
+
+    private void addLinkedItemToTopicPage(LinkedItem item) {
+        if (item == null) return;
+        TopicPage topic = chooseTopicPageWithCreateOption();
+        if (topic == null) return;
+        String label = JOptionPane.showInputDialog(this, "Relationship label:", safe(item.label).isEmpty() ? "related" : item.label);
+        if (label == null) return;
+        item.label = label.trim();
+        addLinkToTopic(topic, item);
+        selectTopicById(topic.id);
+    }
+
+    private TopicPage chooseTopicPageWithCreateOption() {
+        repairProfile(currentProfile);
+        String create = "Create New Topic…";
+        DefaultComboBoxModel<Object> model = new DefaultComboBoxModel<>();
+        model.addElement(create);
+        for (TopicPage topic : currentProfile.topicPages) model.addElement(topic);
+        JComboBox<Object> combo = new JComboBox<>(model);
+        int result = JOptionPane.showConfirmDialog(this, combo, "Choose Topic Page", JOptionPane.OK_CANCEL_OPTION);
+        if (result != JOptionPane.OK_OPTION) return null;
+        Object selected = combo.getSelectedItem();
+        if (selected instanceof TopicPage) return (TopicPage) selected;
+        String title = JOptionPane.showInputDialog(this, "New topic title:", "New Topic", JOptionPane.PLAIN_MESSAGE);
+        if (title == null || title.trim().isEmpty()) return null;
+        return createTopicPage(title);
+    }
+
+    private void addLinkToTopic(TopicPage topic, LinkedItem item) {
+        if (topic == null || item == null) return;
+        repairTopicPage(topic);
+        topic.links.add(item);
+        saveData();
+        refreshTopicPages();
+        selectTopicById(topic.id);
+        statusLabel.setText(" Added link to topic: " + topic.title);
+    }
+
+    private LinkedItem linkedItemForCurrentSelection(String label) {
+        if (readerPane == null || currentSourceKey == null || currentSourceKey.isEmpty()) return null;
+        boolean hasSelection = readerPane.getSelectionEnd() > readerPane.getSelectionStart();
+        if (currentSourceKey.startsWith("BIBLE:")) {
+            String ref = currentVerseReferenceFromSelectionOrCaret();
+            if (ref.isEmpty()) ref = currentChapterReference();
+            return ref.isEmpty() ? null : new LinkedItem("VERSE", ref, label);
+        }
+        if (currentSourceKey.startsWith("LIBRARY:")) {
+            String selected = hasSelection ? safe(readerPane.getSelectedText()).trim() : "";
+            String title = currentSourceKey.substring("LIBRARY:".length());
+            String ref = "LIBRARY:" + title + (selected.isEmpty() ? "" : "::" + shorten(selected, 220));
+            return new LinkedItem("BOOK", ref, label);
+        }
+        return null;
+    }
+
+    private String currentChapterReference() {
+        if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:") && selectedBook != null && !selectedBook.isEmpty()) {
+            return selectedBook + " " + selectedChapter;
+        }
+        return "";
+    }
+
+    private String currentVerseReferenceFromSelectionOrCaret() {
+        if (currentSourceKey == null || !currentSourceKey.startsWith("BIBLE:")) return "";
+        int pos = readerPane == null ? 0 : readerPane.getCaretPosition();
+        if (readerPane != null && readerPane.getSelectionEnd() > readerPane.getSelectionStart()) pos = readerPane.getSelectionStart();
+        Integer verse = verseNumberContainingPosition(pos);
+        if (verse == null && readerPane != null && readerPane.getSelectionEnd() > readerPane.getSelectionStart()) verse = verseNumberContainingPosition(Math.max(readerPane.getSelectionStart(), readerPane.getSelectionEnd() - 1));
+        return verse == null ? "" : selectedBook + " " + selectedChapter + ":" + verse;
+    }
+
+    private void createTopicFromCurrentSelection() {
+        LinkedItem item = linkedItemForCurrentSelection("related");
+        if (item == null) { JOptionPane.showMessageDialog(this, "Select text or open a verse first."); return; }
+        createTopicFromLinkedItem(item);
+    }
+
+    private void createTopicFromLinkedItem(LinkedItem item) {
+        String title = JOptionPane.showInputDialog(this, "Topic title:", "Create Topic From This", JOptionPane.PLAIN_MESSAGE);
+        if (title == null || title.trim().isEmpty()) return;
+        TopicPage topic = createTopicPage(title);
+        topic.links.add(item);
+        saveData();
+        refreshTopicPages();
+        selectTopicById(topic.id);
+        showCard("topicPages");
+    }
+
+    private List<TopicPage> findTopicPagesLinkingTo(String type, String ref) {
+        List<TopicPage> out = new ArrayList<>();
+        if (currentProfile == null || type == null || ref == null) return out;
+        repairProfile(currentProfile);
+        String t = type.trim();
+        String r = ref.trim();
+        for (TopicPage topic : currentProfile.topicPages) {
+            repairTopicPage(topic);
+            for (LinkedItem link : topic.links) {
+                if (link != null && t.equalsIgnoreCase(safe(link.type).trim()) && r.equalsIgnoreCase(safe(link.ref).trim())) {
+                    out.add(topic);
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    private void addRelatedTopicButtons(String type, String ref) {
+        List<TopicPage> related = findTopicPagesLinkingTo(type, ref);
+        if (related.isEmpty()) return;
+        addDetailTitle("Related Topic Pages");
+        for (TopicPage topic : related) {
+            JButton b = blackButton(topic.title);
+            b.setAlignmentX(Component.LEFT_ALIGNMENT);
+            b.addActionListener(e -> { refreshTopicPages(); showCard("topicPages"); selectTopicById(topic.id); });
+            detailsPanel.add(b);
+            detailsPanel.add(Box.createVerticalStrut(6));
+        }
+    }
+
+    private void addLinkedReferencesSection(TextAnnotation a) {
+        repairAnnotation(a, System.currentTimeMillis());
+        addDetailTitle("Linked References");
+        if (a.links.isEmpty()) addDetailText("No linked references yet.");
+        else for (LinkedItem link : a.links) addDetailText(link.toString());
+
+        JButton add = blackButton("Add Link");
+        JButton remove = blackButton("Remove Link");
+        JButton open = blackButton("Open Link");
+        JButton addTopic = blackButton("Add This Note to Topic Page");
+        add.setAlignmentX(Component.LEFT_ALIGNMENT);
+        remove.setAlignmentX(Component.LEFT_ALIGNMENT);
+        open.setAlignmentX(Component.LEFT_ALIGNMENT);
+        addTopic.setAlignmentX(Component.LEFT_ALIGNMENT);
+        add.addActionListener(e -> addManualLinkToAnnotation(a));
+        remove.addActionListener(e -> removeLinkFromAnnotation(a));
+        open.addActionListener(e -> openLinkFromAnnotation(a));
+        addTopic.addActionListener(e -> addAnnotationToTopicPage(a));
+        detailsPanel.add(add); detailsPanel.add(Box.createVerticalStrut(6));
+        detailsPanel.add(remove); detailsPanel.add(Box.createVerticalStrut(6));
+        detailsPanel.add(open); detailsPanel.add(Box.createVerticalStrut(6));
+        detailsPanel.add(addTopic); detailsPanel.add(Box.createVerticalStrut(8));
+    }
+
+    private void addManualLinkToAnnotation(TextAnnotation a) {
+        String[] types = {"VERSE", "NOTE", "BOOK", "QUESTION", "GREEK", "TOPIC"};
+        JComboBox<String> type = new JComboBox<>(types);
+        JTextField ref = new JTextField(28);
+        JTextField label = new JTextField("related", 28);
+        JPanel p = new JPanel(new GridLayout(0, 1, 5, 5));
+        p.add(new JLabel("Type:")); p.add(type);
+        p.add(new JLabel("Reference:")); p.add(ref);
+        p.add(new JLabel("Label:")); p.add(label);
+        int result = JOptionPane.showConfirmDialog(this, p, "Add Linked Reference", JOptionPane.OK_CANCEL_OPTION);
+        if (result != JOptionPane.OK_OPTION || ref.getText().trim().isEmpty()) return;
+        a.links.add(new LinkedItem(String.valueOf(type.getSelectedItem()), ref.getText().trim(), label.getText().trim()));
+        touchAnnotation(a);
+        saveData();
+        showAnnotationDetails(a);
+    }
+
+    private LinkedItem chooseAnnotationLink(TextAnnotation a) {
+        if (a == null || a.links == null || a.links.isEmpty()) return null;
+        JList<LinkedItem> list = new JList<>(new Vector<>(a.links));
+        list.setVisibleRowCount(8);
+        int result = JOptionPane.showConfirmDialog(this, new JScrollPane(list), "Choose Linked Reference", JOptionPane.OK_CANCEL_OPTION);
+        return result == JOptionPane.OK_OPTION ? list.getSelectedValue() : null;
+    }
+
+    private void removeLinkFromAnnotation(TextAnnotation a) {
+        LinkedItem link = chooseAnnotationLink(a);
+        if (link == null) return;
+        a.links.remove(link);
+        touchAnnotation(a);
+        saveData();
+        showAnnotationDetails(a);
+    }
+
+    private void openLinkFromAnnotation(TextAnnotation a) {
+        LinkedItem link = chooseAnnotationLink(a);
+        if (link != null) openLinkedItem(link);
+    }
+
+    private void openLinkedItem(LinkedItem item) {
+        if (item == null) return;
+        String type = safe(item.type).trim().toUpperCase(Locale.ROOT);
+        String ref = safe(item.ref).trim();
+        if (ref.isEmpty()) return;
+        if ("VERSE".equals(type)) {
+            openTarget(ref);
+            return;
+        }
+        if ("TOPIC".equals(type)) {
+            refreshTopicPages();
+            showCard("topicPages");
+            selectTopicById(ref);
+            return;
+        }
+        if ("NOTE".equals(type)) {
+            TextAnnotation a = findAnnotationById(ref);
+            if (a != null) { openSourceForAnnotation(a); safeSelect(a.start, a.end); showAnnotationDetails(a); showCard("study"); return; }
+            showCard("recent");
+            if (recentSearchField != null) { recentSearchField.setText(ref); refreshRecentNotes(); }
+            return;
+        }
+        if ("QUESTION".equals(type)) {
+            showCard("questions");
+            refreshQuestions();
+            return;
+        }
+        if ("BOOK".equals(type)) {
+            openTarget(ref.startsWith("LIBRARY:") ? ref : "LIBRARY:" + ref);
+            return;
+        }
+        if ("GREEK".equals(type)) {
+            if (greekSearchField != null) {
+                greekSearchField.setText(ref);
+                doGreekSearch();
+            }
+            showCard("greekSearch");
+        }
     }
 
 
@@ -3786,6 +4302,16 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             return;
         }
 
+        ChapterRef chapterRef = parseChapterRef(target);
+        if (chapterRef != null && data.bible.containsKey(chapterRef.book)) {
+            selectedBook = chapterRef.book;
+            selectedChapter = chapterRef.chapter;
+            refreshBookCombo();
+            showSelectedChapter(false);
+            showCard("study");
+            return;
+        }
+
         PassageRef passage = parseBibleReferenceOrRange(target);
         if (passage != null && data.bible.containsKey(passage.book)) {
             selectedBook = passage.book;
@@ -3869,7 +4395,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         addDetailTitle(sourceTitle == null || sourceTitle.isEmpty() ? "Current Source" : sourceTitle);
         int count = 0;
         for (TextAnnotation a : currentProfile.annotations) if (sourceKey.equals(a.sourceKey)) count++;
-        addDetailText(count + " highlight note(s) in this source.\n\nSelect text and right-click to add a note, category, attachment, or question. Hover over highlighted text to preview notes. Click a highlight to view actions here.");
+        addDetailText(count + " highlight note(s) in this source.\n\nSelect text and right-click to add a note, category, attachment, question, or topic link. Hover over highlighted text to preview notes. Click a highlight to view actions here.");
+        if (sourceKey != null && sourceKey.startsWith("BIBLE:")) addRelatedTopicButtons("VERSE", sourceKey.substring("BIBLE:".length()));
         detailsPanel.revalidate();
         detailsPanel.repaint();
     }
@@ -4733,6 +5260,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             addMenu(m, "View Greek Details", () -> showGreekDetailsInSidebar(p.ref));
             addMenu(m, "Show Full Verse", () -> openGreekResultVerse(p.ref, true));
             addMenu(m, "Add Greek Note", () -> addGreekNoteFromSearchResult(p.ref));
+            addMenu(m, "Add Greek to Topic Page", () -> addLinkedItemToTopicPage(new LinkedItem("GREEK", p.ref, "related")));
         } else {
             addMenu(m, "View In Sidebar", this::previewSideSearchResult);
             addMenu(m, "Show Full View", this::showFullViewForSideSearchResult);
@@ -4894,6 +5422,21 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         readerPane.requestFocusInWindow();
         readerPane.select(s, e);
         readerPane.setCaretPosition(s);
+    }
+
+    private ChapterRef parseChapterRef(String key) {
+        try {
+            if (key == null || key.contains(":")) return null;
+            key = key.trim().replaceAll("\\s+", " ");
+            int sp = key.lastIndexOf(' ');
+            if (sp < 0) return null;
+            String book = normalizeBookName(key.substring(0, sp).trim());
+            int chapter = Integer.parseInt(key.substring(sp + 1).trim());
+            if (!data.getChapters(book).contains(chapter)) return null;
+            return new ChapterRef(book, chapter);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private RefParts parseRef(String key) {
@@ -5609,11 +6152,14 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (p.memoryVerses == null) p.memoryVerses = new ArrayList<>();
         if (p.bookmarks == null) p.bookmarks = new ArrayList<>();
         if (p.studyProjects == null) p.studyProjects = new TreeMap<>();
+        if (p.topicPages == null) p.topicPages = new ArrayList<>();
         p.annotations.removeIf(Objects::isNull);
         p.questions.removeIf(Objects::isNull);
         p.bookmarks.removeIf(Objects::isNull);
         p.pinnedItems.removeIf(Objects::isNull);
         p.memoryVerses.removeIf(Objects::isNull);
+        p.topicPages.removeIf(Objects::isNull);
+        for (TopicPage topic : p.topicPages) repairTopicPage(topic);
         for (StudyBookmark b : p.bookmarks) repairBookmark(b);
         p.studyProjects.values().removeIf(Objects::isNull);
         for (StudyProject project : p.studyProjects.values()) repairStudyProject(project);
@@ -5641,6 +6187,25 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
 
+
+    private void repairTopicPage(TopicPage topic) {
+        if (topic == null) return;
+        if (topic.id == null || topic.id.trim().isEmpty()) topic.id = UUID.randomUUID().toString();
+        if (topic.title == null || topic.title.trim().isEmpty()) topic.title = "Untitled Topic";
+        if (topic.summary == null) topic.summary = "";
+        if (topic.links == null) topic.links = new ArrayList<>();
+        topic.links.removeIf(Objects::isNull);
+        for (LinkedItem link : topic.links) repairLinkedItem(link);
+        if (topic.createdAt <= 0L) topic.createdAt = System.currentTimeMillis();
+    }
+
+    private void repairLinkedItem(LinkedItem link) {
+        if (link == null) return;
+        if (link.type == null) link.type = "";
+        if (link.ref == null) link.ref = "";
+        if (link.label == null) link.label = "";
+        if (link.createdAt <= 0L) link.createdAt = System.currentTimeMillis();
+    }
 
     private void repairStudyProject(StudyProject p) {
         if (p == null) return;
@@ -5737,6 +6302,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (a.category == null) a.category = "";
         if (a.note == null) a.note = "";
         if (a.target == null) a.target = "";
+        if (a.links == null) a.links = new ArrayList<>();
+        a.links.removeIf(Objects::isNull);
+        for (LinkedItem link : a.links) repairLinkedItem(link);
 
         long fallback = fallbackMillis > 0L ? fallbackMillis : System.currentTimeMillis();
         if (a.createdAt <= 0L) {
@@ -5826,6 +6394,12 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             label.setBorder(new CompoundBorder(new MatteBorder(0, 7, 0, 0, c), new EmptyBorder(4, 8, 4, 4)));
             return label;
         }
+    }
+
+    private static class ChapterRef {
+        String book;
+        int chapter;
+        ChapterRef(String b, int c) { book = b; chapter = c; }
     }
 
     private static class RefParts implements Serializable {
@@ -5939,12 +6513,49 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         List<PinnedItem> pinnedItems = new ArrayList<>();
         List<MemoryVerse> memoryVerses = new ArrayList<>();
         List<StudyBookmark> bookmarks = new ArrayList<>();
+        List<TopicPage> topicPages = new ArrayList<>();
         Map<String, StudyProject> studyProjects = new TreeMap<>();
         Map<String, String> categories = new TreeMap<>();
         Map<String, Integer> categoryColors = new TreeMap<>();
         Map<String, Integer> visitCounts = new HashMap<>();
         List<StudyNote> oldNotes = new ArrayList<>();
         Profile(String n) { name = n; }
+    }
+
+    private static class LinkedItem implements Serializable {
+        private static final long serialVersionUID = 30L;
+        String type;
+        String ref;
+        String label;
+        long createdAt = System.currentTimeMillis();
+
+        LinkedItem(String type, String ref, String label) {
+            this.type = type == null ? "" : type;
+            this.ref = ref == null ? "" : ref;
+            this.label = label == null ? "" : label;
+        }
+
+        public String toString() {
+            return type + ": " + ref + (label == null || label.isEmpty() ? "" : " — " + label);
+        }
+    }
+
+    private static class TopicPage implements Serializable {
+        private static final long serialVersionUID = 30L;
+        String id = UUID.randomUUID().toString();
+        String title;
+        String summary = "";
+        List<LinkedItem> links = new ArrayList<>();
+        long createdAt = System.currentTimeMillis();
+
+        TopicPage(String title) {
+            this.title = title == null ? "Untitled Topic" : title.trim();
+            if (this.title.isEmpty()) this.title = "Untitled Topic";
+        }
+
+        public String toString() {
+            return title;
+        }
     }
 
     private static class StudyProject implements Serializable {
@@ -6055,6 +6666,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         String category;
         String note;
         String target;
+        List<LinkedItem> links = new ArrayList<>();
         long createdAt;
         long updatedAt;
         Date created = new Date();
