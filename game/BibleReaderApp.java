@@ -132,6 +132,21 @@ public class BibleReaderApp extends JFrame {
     private JList<StudySearchResult> allNotesSearchList;
 
     private JTextField recentSearchField;
+    private JTextField categorySearchField;
+    private JTextField questionSearchField;
+    private JTextField topicPageSearchField;
+    private JTextField bookmarkSearchField;
+    private JTextField goToReferenceField;
+    private DefaultListModel<RecentLocation> recentlyOpenedModel;
+    private JList<RecentLocation> recentlyOpenedList;
+    private JPanel recentlyOpenedBody;
+    private JButton recentlyOpenedToggleBtn;
+    private boolean recentlyOpenedExpanded = true;
+    private final java.util.List<NavigationLocation> backHistory = new ArrayList<>();
+    private final java.util.List<NavigationLocation> forwardHistory = new ArrayList<>();
+    private boolean restoringHistory = false;
+    private JButton backButton;
+    private JButton forwardButton;
     private JComboBox<String> recentFilterBox;
     private DefaultListModel<RecentAnnotationListItem> recentModel;
     private JList<RecentAnnotationListItem> recentList;
@@ -243,7 +258,19 @@ public class BibleReaderApp extends JFrame {
         navButtonsByCard.put("topicPages", topicPages);
 
         newProfile.setToolTipText("Create a separate study profile.");
-        greekSearch.setToolTipText("Search imported MorphGNT Greek text and morphology details.");
+        study.setToolTipText("Study (Ctrl+1)");
+        search.setToolTipText("Search (Ctrl+2)");
+        greekSearch.setToolTipText("Greek Search (Ctrl+3)");
+        memory.setToolTipText("Memory Verses (Ctrl+4)");
+        studyProjects.setToolTipText("Study Projects (Ctrl+5)");
+        recent.setToolTipText("Recent Notes (Ctrl+6)");
+        categories.setToolTipText("Categories (Ctrl+7)");
+        questions.setToolTipText("Questions (Ctrl+8)");
+        topicPages.setToolTipText("Topic Pages (Ctrl+9)");
+        importBtn.setToolTipText("Import Bible, Greek, and library data.");
+        backup.setToolTipText("Backup saved data.");
+        export.setToolTipText("Export notes and study data.");
+        greekSearch.setToolTipText("Greek Search (Ctrl+3) — search imported MorphGNT Greek text and morphology details.");
         backup.setToolTipText("Create a timestamped backup of your saved Bible study data.");
         export.setToolTipText("Export notes, questions, and memory verses to text.");
         modernViewToggleButton.setToolTipText("Switch between the modern polished view and the classic red/cream view.");
@@ -318,18 +345,33 @@ public class BibleReaderApp extends JFrame {
         JRootPane root = getRootPane();
         InputMap input = root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         ActionMap actions = root.getActionMap();
-        input.put(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.CTRL_DOWN_MASK), "globalPreviousChapter");
-        actions.put("globalPreviousChapter", new AbstractAction() {
-            public void actionPerformed(ActionEvent e) { previousChapter(); }
-        });
-        input.put(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.CTRL_DOWN_MASK), "globalNextChapter");
-        actions.put("globalNextChapter", new AbstractAction() {
-            public void actionPerformed(ActionEvent e) { nextChapter(); }
-        });
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.CTRL_DOWN_MASK), "globalPreviousChapter", this::previousChapter);
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.CTRL_DOWN_MASK), "globalNextChapter", this::nextChapter);
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, InputEvent.ALT_DOWN_MASK), "globalBackLocation", this::goBackLocation);
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, InputEvent.ALT_DOWN_MASK), "globalForwardLocation", this::goForwardLocation);
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.CTRL_DOWN_MASK), "globalCommandPalette", this::showCommandPalette);
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_1, InputEvent.CTRL_DOWN_MASK), "globalStudy", () -> showCard("study"));
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_2, InputEvent.CTRL_DOWN_MASK), "globalSearch", () -> showCard("search"));
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_3, InputEvent.CTRL_DOWN_MASK), "globalGreekSearch", () -> showCard("greekSearch"));
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_4, InputEvent.CTRL_DOWN_MASK), "globalMemory", () -> { refreshMemoryVerses(); showCard("memory"); });
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_5, InputEvent.CTRL_DOWN_MASK), "globalStudyProjects", () -> { refreshStudyProjects(); showCard("studyProjects"); });
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_6, InputEvent.CTRL_DOWN_MASK), "globalRecent", () -> { refreshRecentNotes(); showCard("recent"); });
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_7, InputEvent.CTRL_DOWN_MASK), "globalCategories", () -> { refreshCategories(); showCard("categories"); });
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_8, InputEvent.CTRL_DOWN_MASK), "globalQuestions", () -> { refreshQuestions(); showCard("questions"); });
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_9, InputEvent.CTRL_DOWN_MASK), "globalTopics", () -> { refreshTopicPages(); showCard("topicPages"); });
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_B, InputEvent.CTRL_DOWN_MASK), "globalBookmarks", this::showBookmarksDialog);
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK), "globalFind", this::focusBestSearchField);
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_L, InputEvent.CTRL_DOWN_MASK), "globalBookSelector", () -> { showCard("study"); if (bookCombo != null) bookCombo.requestFocusInWindow(); });
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_F11, 0), "globalReadingMode", this::toggleReadingMode);
         input.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "globalExitReadingMode");
         actions.put("globalExitReadingMode", new AbstractAction() {
             public void actionPerformed(ActionEvent e) { if (readingMode) exitReadingMode(); }
         });
+    }
+
+    private void bindShortcut(InputMap input, ActionMap actions, KeyStroke key, String name, Runnable task) {
+        input.put(key, name);
+        actions.put(name, new AbstractAction() { public void actionPerformed(ActionEvent e) { task.run(); }});
     }
 
     private JPanel buildStudyPage() {
@@ -425,10 +467,20 @@ public class BibleReaderApp extends JFrame {
         exitReadingModeButton.setVisible(false);
         exitReadingModeButton.addActionListener(e -> exitReadingMode());
 
+        backButton = blackButton("← Back");
+        backButton.setToolTipText("Go back to the previous reader location (Alt+Left).");
+        backButton.addActionListener(e -> goBackLocation());
+
+        forwardButton = blackButton("Forward →");
+        forwardButton.setToolTipText("Go forward to the next reader location (Alt+Right).");
+        forwardButton.addActionListener(e -> goForwardLocation());
+
         JButton previousChapter = blackButton("← Previous Chapter");
+        previousChapter.setToolTipText("Previous Chapter (Ctrl+Left)");
         previousChapter.addActionListener(e -> previousChapter());
 
         JButton nextChapter = blackButton("Next Chapter →");
+        nextChapter.setToolTipText("Next Chapter (Ctrl+Right)");
         nextChapter.addActionListener(e -> nextChapter());
 
         JButton bookmarkButton = blackButton("🔖 Bookmark");
@@ -436,7 +488,7 @@ public class BibleReaderApp extends JFrame {
         bookmarkButton.addActionListener(e -> addBookmarkFromCurrentCaret(true));
 
         JButton bookmarksButton = blackButton("Bookmarks");
-        bookmarksButton.setToolTipText("Open, organize, or delete saved bookmarks.");
+        bookmarksButton.setToolTipText("Bookmarks (Ctrl+B) — open, organize, or delete saved bookmarks.");
         bookmarksButton.addActionListener(e -> showBookmarksDialog());
 
         JButton bibleBookmarkButton = blackButton("Go To Bible Bookmark");
@@ -444,7 +496,7 @@ public class BibleReaderApp extends JFrame {
         bibleBookmarkButton.addActionListener(e -> goToBibleBookmark());
 
         JButton readingModeButton = blackButton("Reading Mode");
-        readingModeButton.setToolTipText("Focus on the reader by temporarily hiding side panels.");
+        readingModeButton.setToolTipText("Reading Mode (F11) — focus on the reader by temporarily hiding side panels.");
         readingModeButton.addActionListener(e -> enterReadingMode());
 
         bookCombo.addActionListener(e -> {
@@ -471,6 +523,8 @@ public class BibleReaderApp extends JFrame {
         nav.add(bookCombo);
         nav.add(new JLabel("Chapter:"));
         nav.add(chapterCombo);
+        nav.add(backButton);
+        nav.add(forwardButton);
         nav.add(previousChapter);
         nav.add(nextChapter);
         nav.add(bookmarkButton);
@@ -478,6 +532,23 @@ public class BibleReaderApp extends JFrame {
         nav.add(bibleBookmarkButton);
         nav.add(readingModeButton);
         nav.add(sourceLabel);
+
+        JPanel goPanel = new JPanel(new BorderLayout(6, 0));
+        goPanel.setOpaque(false);
+        goToReferenceField = new JTextField();
+        goToReferenceField.setToolTipText("Go to Reference — type Romans 14, Romans 14:13, Gen 1, or John 3:16.");
+        goToReferenceField.addActionListener(e -> goToReferenceFromBox());
+        JButton goReferenceButton = blackButton("Go");
+        goReferenceButton.setToolTipText("Open the typed Bible reference.");
+        goReferenceButton.addActionListener(e -> goToReferenceFromBox());
+        goPanel.add(new JLabel("Go to Reference:"), BorderLayout.WEST);
+        goPanel.add(goToReferenceField, BorderLayout.CENTER);
+        goPanel.add(goReferenceButton, BorderLayout.EAST);
+
+        JPanel topPanel = new JPanel(new BorderLayout(6, 6));
+        topPanel.setOpaque(false);
+        topPanel.add(nav, BorderLayout.NORTH);
+        topPanel.add(goPanel, BorderLayout.SOUTH);
 
         readerPane = new JTextPane() {
             public String getToolTipText(MouseEvent e) {
@@ -536,7 +607,7 @@ public class BibleReaderApp extends JFrame {
         });
         installReaderShortcuts();
 
-        p.add(nav, BorderLayout.NORTH);
+        p.add(topPanel, BorderLayout.NORTH);
         p.add(new JScrollPane(readerPane), BorderLayout.CENTER);
         return p;
     }
@@ -544,7 +615,11 @@ public class BibleReaderApp extends JFrame {
     private JPanel buildRightSidebar() {
         JPanel content = new JPanel(new BorderLayout(8, 8));
         content.setBackground(panelBg);
-        content.add(buildSideSearchPanel(), BorderLayout.NORTH);
+        JPanel sidebarTop = new JPanel(new BorderLayout(8, 8));
+        sidebarTop.setOpaque(false);
+        sidebarTop.add(buildSideSearchPanel(), BorderLayout.NORTH);
+        sidebarTop.add(buildRecentlyOpenedPanel(), BorderLayout.CENTER);
+        content.add(sidebarTop, BorderLayout.NORTH);
 
         JPanel studyTools = new JPanel(new BorderLayout(8, 8));
         studyTools.setOpaque(false);
@@ -655,6 +730,7 @@ public class BibleReaderApp extends JFrame {
         inputRow.setOpaque(false);
 
         sideSearchField = new JTextField();
+        sideSearchField.setToolTipText("Quick Search (Ctrl+F)");
         sideSearchField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         sideSearchField.addActionListener(e -> doSideSearch());
 
@@ -705,6 +781,43 @@ public class BibleReaderApp extends JFrame {
         return outer;
     }
 
+
+    private JPanel buildRecentlyOpenedPanel() {
+        JPanel outer = new JPanel(new BorderLayout(6, 6));
+        outer.setBackground(panelBg);
+        outer.setBorder(new CompoundBorder(new LineBorder(new Color(190, 160, 150)), new EmptyBorder(7, 7, 7, 7)));
+        JPanel header = new JPanel(new BorderLayout(6, 6));
+        header.setOpaque(false);
+        JLabel title = new JLabel("Recently Opened");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        title.setForeground(darkRed);
+        recentlyOpenedToggleBtn = blackButton("Minimize");
+        recentlyOpenedToggleBtn.addActionListener(e -> toggleRecentlyOpened());
+        header.add(title, BorderLayout.WEST);
+        header.add(recentlyOpenedToggleBtn, BorderLayout.EAST);
+        recentlyOpenedBody = new JPanel(new BorderLayout(4, 4));
+        recentlyOpenedBody.setOpaque(false);
+        recentlyOpenedModel = new DefaultListModel<>();
+        recentlyOpenedList = new JList<>(recentlyOpenedModel);
+        recentlyOpenedList.setVisibleRowCount(5);
+        recentlyOpenedList.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        recentlyOpenedList.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) openRecentlyOpenedSelection();
+            }
+        });
+        recentlyOpenedBody.add(new JScrollPane(recentlyOpenedList), BorderLayout.CENTER);
+        outer.add(header, BorderLayout.NORTH);
+        outer.add(recentlyOpenedBody, BorderLayout.CENTER);
+        return outer;
+    }
+
+    private void toggleRecentlyOpened() {
+        recentlyOpenedExpanded = !recentlyOpenedExpanded;
+        if (recentlyOpenedBody != null) recentlyOpenedBody.setVisible(recentlyOpenedExpanded);
+        if (recentlyOpenedToggleBtn != null) recentlyOpenedToggleBtn.setText(recentlyOpenedExpanded ? "Minimize" : "Show");
+    }
+
     private JPanel buildStudyProjectsPage() {
         JPanel page = new JPanel(new BorderLayout(10, 10));
         page.setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -737,7 +850,10 @@ public class BibleReaderApp extends JFrame {
         JPanel left = new JPanel(new BorderLayout(8, 8));
         left.setBackground(panelBg);
         left.setBorder(new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(8, 8, 8, 8)));
-        left.add(new JLabel("Projects"), BorderLayout.NORTH);
+        JTextField projectFilterField = new JTextField();
+        projectFilterField.setToolTipText("Filter study projects...");
+        projectFilterField.getDocument().addDocumentListener(new SimpleDocumentListener(() -> { studyProjectSearchField.putClientProperty("projectFilter", projectFilterField.getText()); refreshStudyProjects(); }));
+        left.add(projectFilterField, BorderLayout.NORTH);
         left.add(new JScrollPane(studyProjectList), BorderLayout.CENTER);
         left.add(leftButtons, BorderLayout.SOUTH);
 
@@ -1124,9 +1240,14 @@ public class BibleReaderApp extends JFrame {
         view.addActionListener(e -> viewSelectedCategory());
         color.addActionListener(e -> changeSelectedCategoryColor());
 
+        categorySearchField = new JTextField(22);
+        categorySearchField.setToolTipText("Filter categories...");
+        categorySearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshCategories));
         top.add(add);
         top.add(view);
         top.add(color);
+        top.add(new JLabel("Filter:"));
+        top.add(categorySearchField);
 
         categoryModel = new DefaultListModel<>();
         categoryList = new JList<>(categoryModel);
@@ -1167,9 +1288,14 @@ public class BibleReaderApp extends JFrame {
         add.addActionListener(e -> addQuestionForSelection());
         addTopic.addActionListener(e -> addSelectedQuestionToTopicPage());
 
+        questionSearchField = new JTextField(22);
+        questionSearchField.setToolTipText("Filter questions...");
+        questionSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshQuestions));
         top.add(toggle);
         top.add(add);
         top.add(addTopic);
+        top.add(new JLabel("Filter:"));
+        top.add(questionSearchField);
 
         questionModel = new DefaultListModel<>();
         questionList = new JList<>(questionModel);
@@ -1218,6 +1344,10 @@ public class BibleReaderApp extends JFrame {
 
         JPanel left = new JPanel(new BorderLayout(8, 8));
         left.setOpaque(false);
+        topicPageSearchField = new JTextField();
+        topicPageSearchField.setToolTipText("Filter topic pages...");
+        topicPageSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshTopicPages));
+        left.add(topicPageSearchField, BorderLayout.NORTH);
         left.add(new JScrollPane(topicPageList), BorderLayout.CENTER);
         left.add(leftButtons, BorderLayout.SOUTH);
         left.setPreferredSize(new Dimension(280, 10));
@@ -1576,6 +1706,18 @@ public class BibleReaderApp extends JFrame {
         activeCardName = name;
         cards.show(cardPanel, name);
         updateActiveNavButton();
+        if (statusLabel != null) statusLabel.setText(" " + displayCardName(name));
+    }
+
+    private String displayCardName(String name) {
+        if ("study".equals(name)) return "Study";
+        if ("greekSearch".equals(name)) return "Greek Search";
+        if ("memory".equals(name)) return "Memory Verses";
+        if ("studyProjects".equals(name)) return "Study Projects";
+        if ("recent".equals(name)) return "Recent Notes";
+        if ("topicPages".equals(name)) return "Topic Pages";
+        if (name == null || name.isEmpty()) return "Ready";
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
     }
 
     private void updateActiveNavButton() {
@@ -1615,6 +1757,8 @@ public class BibleReaderApp extends JFrame {
             refreshRecentNotes();
             refreshStudyProjects();
             refreshPinnedItems();
+            refreshRecentlyOpened();
+            updateHistoryButtons();
             updateHeader();
         } finally {
             refreshingUi = false;
@@ -1980,6 +2124,205 @@ public class BibleReaderApp extends JFrame {
         showSelectedChapter(true);
     }
 
+
+
+    private void toggleReadingMode() {
+        if (readingMode) exitReadingMode(); else enterReadingMode();
+    }
+
+    private void focusBestSearchField() {
+        if ("study".equals(activeCardName) && sideSearchField != null) {
+            sideSearchField.requestFocusInWindow();
+            sideSearchField.selectAll();
+        } else if (searchField != null) {
+            showCard("search");
+            searchField.requestFocusInWindow();
+            searchField.selectAll();
+        }
+    }
+
+    private void showCommandPalette() {
+        final JDialog dialog = new JDialog(this, "Command Palette", true);
+        dialog.setLayout(new BorderLayout(8, 8));
+        ((JComponent) dialog.getContentPane()).setBorder(new EmptyBorder(12, 12, 12, 12));
+        JTextField field = new JTextField();
+        DefaultListModel<CommandPaletteItem> model = new DefaultListModel<>();
+        JList<CommandPaletteItem> list = new JList<>(model);
+        list.setVisibleRowCount(10);
+        Runnable refresh = () -> refreshCommandPaletteResults(field.getText(), model);
+        field.getDocument().addDocumentListener(new SimpleDocumentListener(refresh));
+        field.addActionListener(e -> activateCommandPaletteSelection(list, field.getText(), dialog));
+        list.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) activateCommandPaletteSelection(list, field.getText(), dialog);
+            }
+        });
+        InputMap input = dialog.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap actions = dialog.getRootPane().getActionMap();
+        input.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "closePalette");
+        actions.put("closePalette", new AbstractAction() { public void actionPerformed(ActionEvent e) { dialog.dispose(); }});
+        dialog.add(new JLabel("Type a command or Bible reference:"), BorderLayout.NORTH);
+        dialog.add(field, BorderLayout.CENTER);
+        dialog.add(new JScrollPane(list), BorderLayout.SOUTH);
+        dialog.setSize(460, 360);
+        dialog.setLocationRelativeTo(this);
+        refresh.run();
+        SwingUtilities.invokeLater(() -> field.requestFocusInWindow());
+        dialog.setVisible(true);
+    }
+
+    private void refreshCommandPaletteResults(String raw, DefaultListModel<CommandPaletteItem> model) {
+        model.clear();
+        String q = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+        addCommandIfMatches(model, q, "Study", () -> showCard("study"));
+        addCommandIfMatches(model, q, "Search", () -> showCard("search"));
+        addCommandIfMatches(model, q, "Greek Search", () -> showCard("greekSearch"));
+        addCommandIfMatches(model, q, "Memory Verses", () -> { refreshMemoryVerses(); showCard("memory"); });
+        addCommandIfMatches(model, q, "Study Projects", () -> { refreshStudyProjects(); showCard("studyProjects"); });
+        addCommandIfMatches(model, q, "Recent Notes", () -> { refreshRecentNotes(); showCard("recent"); });
+        addCommandIfMatches(model, q, "Categories", () -> { refreshCategories(); showCard("categories"); });
+        addCommandIfMatches(model, q, "Questions", () -> { refreshQuestions(); showCard("questions"); });
+        addCommandIfMatches(model, q, "Topic Pages", () -> { refreshTopicPages(); showCard("topicPages"); });
+        addCommandIfMatches(model, q, "Bookmarks", this::showBookmarksDialog);
+        addCommandIfMatches(model, q, "Reading Mode", this::toggleReadingMode);
+        addCommandIfMatches(model, q, "Import", () -> showCard("import"));
+        addCommandIfMatches(model, q, "Backup", this::backupNow);
+        addCommandIfMatches(model, q, "Export", this::exportNotes);
+        if (!q.isEmpty() && looksLikeBibleReference(raw)) {
+            model.insertElementAt(new CommandPaletteItem("Go to " + raw.trim(), () -> openReference(raw.trim(), true)), 0);
+        }
+        if (model.isEmpty()) model.addElement(new CommandPaletteItem("No matching commands", () -> {}));
+    }
+
+    private void addCommandIfMatches(DefaultListModel<CommandPaletteItem> model, String q, String label, Runnable action) {
+        if (q == null || q.isEmpty() || label.toLowerCase(Locale.ROOT).contains(q)) model.addElement(new CommandPaletteItem(label, action));
+    }
+
+    private void activateCommandPaletteSelection(JList<CommandPaletteItem> list, String raw, JDialog dialog) {
+        CommandPaletteItem item = list.getSelectedValue();
+        if (item == null && list.getModel().getSize() > 0) item = list.getModel().getElementAt(0);
+        if (item == null) return;
+        dialog.dispose();
+        item.action.run();
+    }
+
+    private boolean looksLikeBibleReference(String raw) {
+        if (raw == null) return false;
+        return parseChapterRef(raw.trim()) != null || parseRef(raw.trim()) != null || parseBibleReferenceOrRange(raw.trim()) != null;
+    }
+
+    private void goToReferenceFromBox() {
+        String raw = goToReferenceField == null ? "" : goToReferenceField.getText().trim();
+        if (raw.isEmpty()) return;
+        openReference(raw, true);
+    }
+
+    private boolean openReference(String raw, boolean showMessage) {
+        if (raw == null || raw.trim().isEmpty()) return false;
+        String target = raw.trim();
+        ChapterRef cr = parseChapterRef(target);
+        PassageRef pr = parseBibleReferenceOrRange(target);
+        RefParts rp = parseRef(target);
+        if (cr != null) {
+            selectedBook = cr.book; selectedChapter = cr.chapter; refreshBookCombo(); showSelectedChapter(true); showCard("study"); return true;
+        }
+        if (pr != null) {
+            selectedBook = pr.book; selectedChapter = pr.chapter; refreshBookCombo(); showSelectedChapter(true); showCard("study"); selectVerseText(pr.startVerse); return true;
+        }
+        if (rp != null && data.bible.containsKey(rp.book) && data.getChapters(rp.book).contains(rp.chapter)) {
+            selectedBook = rp.book; selectedChapter = rp.chapter; refreshBookCombo(); showSelectedChapter(true); showCard("study"); selectVerseText(rp.verse); return true;
+        }
+        if (showMessage) JOptionPane.showMessageDialog(this, "Reference not found: " + raw + "\nTry formats like Romans 14, Romans 14:13, Gen 1, or John 3:16.");
+        return false;
+    }
+
+    private NavigationLocation currentNavigationLocation() {
+        int caret = readerPane == null ? 0 : readerPane.getCaretPosition();
+        int ss = readerPane == null ? -1 : readerPane.getSelectionStart();
+        int se = readerPane == null ? -1 : readerPane.getSelectionEnd();
+        return new NavigationLocation(currentSourceKey, currentSourceTitle, selectedBook, selectedChapter, caret, ss, se);
+    }
+
+    private void trackReaderLocation() {
+        if (restoringHistory || currentSourceKey == null || currentSourceKey.trim().isEmpty()) return;
+        NavigationLocation loc = currentNavigationLocation();
+        if (backHistory.isEmpty() || !backHistory.get(backHistory.size() - 1).samePlace(loc)) backHistory.add(loc);
+        if (backHistory.size() > 80) backHistory.remove(0);
+        forwardHistory.clear();
+        addRecentlyOpened(loc);
+        updateHistoryButtons();
+    }
+
+    private void goBackLocation() {
+        if (backHistory.size() < 2) return;
+        NavigationLocation current = backHistory.remove(backHistory.size() - 1);
+        forwardHistory.add(current);
+        restoreNavigationLocation(backHistory.get(backHistory.size() - 1));
+        updateHistoryButtons();
+    }
+
+    private void goForwardLocation() {
+        if (forwardHistory.isEmpty()) return;
+        NavigationLocation loc = forwardHistory.remove(forwardHistory.size() - 1);
+        backHistory.add(loc);
+        restoreNavigationLocation(loc);
+        updateHistoryButtons();
+    }
+
+    private void restoreNavigationLocation(NavigationLocation loc) {
+        if (loc == null) return;
+        restoringHistory = true;
+        try {
+            if (safe(loc.sourceKey).startsWith("BIBLE:") || safe(loc.sourceKey).startsWith("LIBRARY:")) openSourceKey(loc.sourceKey);
+            else if (!safe(loc.selectedBook).isEmpty()) { selectedBook = loc.selectedBook; selectedChapter = loc.selectedChapter; refreshBookCombo(); showSelectedChapter(false); }
+            final int caret = loc.caretPosition, ss = loc.selectionStart, se = loc.selectionEnd;
+            SwingUtilities.invokeLater(() -> {
+                if (ss >= 0 && se > ss) safeSelect(ss, se); else moveReaderCaret(caret);
+                showCard("study");
+            });
+        } finally { restoringHistory = false; }
+    }
+
+    private void updateHistoryButtons() {
+        if (backButton != null) backButton.setEnabled(backHistory.size() > 1);
+        if (forwardButton != null) forwardButton.setEnabled(!forwardHistory.isEmpty());
+    }
+
+    private void addRecentlyOpened(NavigationLocation loc) {
+        if (currentProfile == null || loc == null || safe(loc.sourceKey).isEmpty()) return;
+        if (currentProfile.recentlyOpened == null) currentProfile.recentlyOpened = new ArrayList<>();
+        RecentLocation r = new RecentLocation(loc.sourceKey, safe(loc.sourceTitle).isEmpty() ? loc.sourceKey : loc.sourceTitle, loc.selectedBook, loc.selectedChapter, loc.caretPosition, loc.selectionStart, loc.selectionEnd);
+        currentProfile.recentlyOpened.removeIf(x -> x != null && safe(x.sourceKey).equals(r.sourceKey) && x.caretPosition == r.caretPosition);
+        currentProfile.recentlyOpened.add(0, r);
+        while (currentProfile.recentlyOpened.size() > 8) currentProfile.recentlyOpened.remove(currentProfile.recentlyOpened.size() - 1);
+        refreshRecentlyOpened();
+        saveData();
+    }
+
+    private void refreshRecentlyOpened() {
+        if (recentlyOpenedModel == null) return;
+        recentlyOpenedModel.clear();
+        if (currentProfile == null || currentProfile.recentlyOpened == null || currentProfile.recentlyOpened.isEmpty()) {
+            recentlyOpenedModel.addElement(new RecentLocation("", "No recent locations yet", "", 1, 0, -1, -1));
+            return;
+        }
+        for (RecentLocation r : currentProfile.recentlyOpened) recentlyOpenedModel.addElement(r);
+    }
+
+    private void openRecentlyOpenedSelection() {
+        RecentLocation r = recentlyOpenedList == null ? null : recentlyOpenedList.getSelectedValue();
+        if (r == null || safe(r.sourceKey).isEmpty()) return;
+        restoreNavigationLocation(new NavigationLocation(r.sourceKey, r.sourceTitle, r.selectedBook, r.selectedChapter, r.caretPosition, r.selectionStart, r.selectionEnd));
+    }
+
+    private void repairRecentLocation(RecentLocation r) {
+        if (r == null) return;
+        if (r.sourceKey == null) r.sourceKey = "";
+        if (r.sourceTitle == null) r.sourceTitle = r.sourceKey;
+        if (r.selectedBook == null) r.selectedBook = "";
+        if (r.openedAt <= 0L) r.openedAt = System.currentTimeMillis();
+    }
+
     private void enterReadingMode() {
         if (readingMode) return;
         readingMode = true;
@@ -2101,6 +2444,7 @@ public class BibleReaderApp extends JFrame {
             readerPane.setCaretPosition(0);
             showSourceSummary(sourceKey, sourceTitle);
             updateHeader();
+            SwingUtilities.invokeLater(this::trackReaderLocation);
         } catch (Exception ex) {
             showError("Reader display failed", ex);
         } finally {
@@ -2495,18 +2839,23 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         content.setBorder(new EmptyBorder(10, 10, 10, 10));
         content.setBackground(panelBg);
 
+        bookmarkSearchField = new JTextField();
+        bookmarkSearchField.setToolTipText("Filter bookmarks...");
         JPanel list = new JPanel();
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
         list.setBackground(panelBg);
-        if (currentProfile.bookmarks.isEmpty()) {
-            JLabel empty = new JLabel("No bookmarks saved yet.");
-            empty.setAlignmentX(Component.LEFT_ALIGNMENT);
-            list.add(empty);
-        } else {
+
+        final Runnable[] renderBookmarksRef = new Runnable[1];
+        renderBookmarksRef[0] = () -> {
+            list.removeAll();
+            String bookmarkQuery = bookmarkSearchField == null ? "" : bookmarkSearchField.getText().trim().toLowerCase(Locale.ROOT);
             List<StudyBookmark> bookmarks = new ArrayList<>(currentProfile.bookmarks);
             bookmarks.sort(Comparator.comparingLong((StudyBookmark b) -> b.createdAt).reversed());
+            boolean any = false;
             for (StudyBookmark b : bookmarks) {
                 if (b == null) continue;
+                if (!bookmarkQuery.isEmpty() && !(safe(b.title) + " " + safe(b.sourceTitle) + " " + safe(b.previewText)).toLowerCase(Locale.ROOT).contains(bookmarkQuery)) continue;
+                any = true;
                 JPanel row = new JPanel(new BorderLayout(8, 4));
                 row.setBorder(new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(6, 6, 6, 6)));
                 row.setBackground(cream);
@@ -2523,8 +2872,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                 delete.addActionListener(e -> {
                     currentProfile.bookmarks.removeIf(existing -> existing != null && safe(existing.id).equals(safe(b.id)));
                     saveData();
-                    dialog.dispose();
-                    showBookmarksDialog();
+                    renderBookmarksRef[0].run();
                 });
                 buttons.add(open);
                 buttons.add(addToProject);
@@ -2535,7 +2883,17 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                 list.add(row);
                 list.add(Box.createVerticalStrut(6));
             }
-        }
+            if (!any) {
+                JLabel empty = new JLabel(bookmarkQuery.isEmpty() ? "No bookmarks saved yet." : "No bookmarks match your filter.");
+                empty.setAlignmentX(Component.LEFT_ALIGNMENT);
+                list.add(empty);
+            }
+            list.revalidate();
+            list.repaint();
+        };
+        bookmarkSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(renderBookmarksRef[0]));
+        renderBookmarksRef[0].run();
+        content.add(bookmarkSearchField, BorderLayout.NORTH);
         content.add(new JScrollPane(list), BorderLayout.CENTER);
         dialog.setContentPane(content);
         applyModernTheme(dialog);
@@ -3354,14 +3712,18 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         TopicPage selected = topicPageList == null ? null : topicPageList.getSelectedValue();
         String selectedId = selected == null ? "" : selected.id;
         topicPageModel.clear();
-        for (TopicPage topic : currentProfile.topicPages) topicPageModel.addElement(topic);
+        String topicQuery = topicPageSearchField == null ? "" : topicPageSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        for (TopicPage topic : currentProfile.topicPages) {
+            if (!topicQuery.isEmpty() && !(safe(topic.title) + " " + safe(topic.summary)).toLowerCase(Locale.ROOT).contains(topicQuery)) continue;
+            topicPageModel.addElement(topic);
+        }
         if (!selectedId.isEmpty()) selectTopicById(selectedId);
         else refreshSelectedTopicDetails();
     }
 
     private void refreshSelectedTopicDetails() {
         TopicPage topic = topicPageList == null ? null : topicPageList.getSelectedValue();
-        if (topicTitleLabel != null) topicTitleLabel.setText(topic == null ? "Select or create a topic" : topic.title);
+        if (topicTitleLabel != null) topicTitleLabel.setText(topic == null ? "No topic selected — create a topic to gather related verses, notes, and questions." : topic.title);
         if (topicSummaryArea != null) {
             topicSummaryArea.setEnabled(topic != null);
             topicSummaryArea.setText(topic == null ? "" : safe(topic.summary));
@@ -3744,6 +4106,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             if (!"All Categories".equals(cat) && !cat.equals(safe(mv.category))) continue;
             if (!q.isEmpty() && !memoryVerseSearchText(mv).contains(q)) continue;
             memoryModel.addElement(mv);
+        }
+        if (memoryModel.isEmpty() && statusLabel != null && currentProfile.memoryVerses.isEmpty()) {
+            statusLabel.setText(" Memory Verses is empty — select Bible text and choose Add To Memory Verses, or use Manual Add By Reference.");
         }
         updateHeader();
     }
@@ -4481,7 +4846,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         ensureCategoryColors();
         categoryModel.clear();
 
+        String categoryQuery = categorySearchField == null ? "" : categorySearchField.getText().trim().toLowerCase(Locale.ROOT);
         for (String c : currentProfile.categories.keySet()) {
+            if (!categoryQuery.isEmpty() && !(c + " " + currentProfile.categories.getOrDefault(c, "")).toLowerCase(Locale.ROOT).contains(categoryQuery)) continue;
             currentProfile.categoryColors.putIfAbsent(c, categoryBlue.getRGB());
             int count = 0;
             for (TextAnnotation a : currentProfile.annotations) if (c.equals(a.category)) count++;
@@ -4602,8 +4969,10 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         StudyProject selected = studyProjectList == null ? null : studyProjectList.getSelectedValue();
         String selectedId = selected == null ? "" : safe(selected.id);
         studyProjectModel.clear();
+        String projectQuery = studyProjectSearchField == null || studyProjectSearchField.getClientProperty("projectFilter") == null ? "" : studyProjectSearchField.getClientProperty("projectFilter").toString().trim().toLowerCase(Locale.ROOT);
         for (StudyProject project : currentProfile.studyProjects.values()) {
             repairStudyProject(project);
+            if (!projectQuery.isEmpty() && !(safe(project.title) + " " + safe(project.description)).toLowerCase(Locale.ROOT).contains(projectQuery)) continue;
             studyProjectModel.addElement(project);
         }
         if (studyProjectModel.size() > 0 && studyProjectList != null) {
@@ -4705,7 +5074,14 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         studyProjectDetailsPanel.removeAll();
         StudyProject p = selectedStudyProject();
         if (p == null) {
-            studyProjectDetailsPanel.add(new JLabel("Create or select a study project."));
+            JLabel empty = new JLabel("No study project selected. Create a project to collect notes, bookmarks, and memory verses.");
+            empty.setAlignmentX(Component.LEFT_ALIGNMENT);
+            JButton createEmpty = blackButton("Create Project");
+            createEmpty.setAlignmentX(Component.LEFT_ALIGNMENT);
+            createEmpty.addActionListener(e -> createStudyProject());
+            studyProjectDetailsPanel.add(empty);
+            studyProjectDetailsPanel.add(Box.createVerticalStrut(8));
+            studyProjectDetailsPanel.add(createEmpty);
             studyProjectDetailsPanel.revalidate(); studyProjectDetailsPanel.repaint();
             return;
         }
@@ -5047,9 +5423,12 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private void refreshQuestions() {
         if (questionModel == null) return;
         questionModel.clear();
+        String questionQuery = questionSearchField == null ? "" : questionSearchField.getText().trim().toLowerCase(Locale.ROOT);
         for (int i = 0; i < currentProfile.questions.size(); i++) {
             StudyQuestion q = currentProfile.questions.get(i);
-            questionModel.addElement(i + " | " + (q.answered ? "✓" : "❗") + " | " + q.sourceTitle + " | " + shorten(q.question, 140));
+            String line = i + " | " + (q.answered ? "✓" : "❗") + " | " + q.sourceTitle + " | " + shorten(q.question, 140);
+            if (!questionQuery.isEmpty() && !(safe(q.sourceTitle) + " " + safe(q.selectedText) + " " + safe(q.question)).toLowerCase(Locale.ROOT).contains(questionQuery)) continue;
+            questionModel.addElement(line);
         }
         updateHeader();
     }
@@ -5070,6 +5449,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             if (!matchesRecentFilter(a, filter)) continue;
             if (!query.isEmpty() && !recentSearchText(a).contains(query)) continue;
             recentModel.addElement(new RecentAnnotationListItem(a));
+        }
+        if (recentModel.isEmpty() && statusLabel != null && currentProfile.annotations.isEmpty()) {
+            statusLabel.setText(" Recent Notes is empty — highlighted notes, categories, Greek notes, attachments, and questions will appear here.");
         }
     }
 
@@ -5153,6 +5535,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         lastGreekSearchQuery = greekSearchField == null ? "" : greekSearchField.getText().trim();
         if (greekSearchPreview != null) greekSearchPreview.setText("Type a Greek word, reference, morphology tag, or details text, then click Search.");
         if (greekSearchStatus != null) greekSearchStatus.setText(" ");
+        if (data.greek == null || data.greek.isEmpty()) {
+            if (greekSearchPreview != null) greekSearchPreview.setText("No Greek text has been imported yet. Open the Import tab and use Download + Import MorphGNT Greek, import a MorphGNT ZIP/TXT folder, or import a Greek CSV.");
+            if (greekSearchStatus != null) greekSearchStatus.setText("No Greek imported");
+            return;
+        }
         if (lastGreekSearchQuery.isEmpty()) return;
 
         int total = fillGreekSearchModel(greekSearchModel, lastGreekSearchQuery, 300, 120);
@@ -5459,7 +5846,14 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private String normalizeBookName(String s) {
         if (s == null) return "";
         s = s.trim().replaceAll("\\s+", " ");
-        for (String b : canonicalBooks()) if (b.equalsIgnoreCase(s)) return b;
+        String cleaned = s.replace(".", "");
+        Map<String, String> aliases = new HashMap<>();
+        aliases.put("Gen", "Genesis"); aliases.put("Ex", "Exodus"); aliases.put("Exo", "Exodus"); aliases.put("Lev", "Leviticus"); aliases.put("Num", "Numbers"); aliases.put("Deut", "Deuteronomy");
+        aliases.put("Josh", "Joshua"); aliases.put("Judg", "Judges"); aliases.put("Ps", "Psalms"); aliases.put("Psa", "Psalms"); aliases.put("Prov", "Proverbs"); aliases.put("Eccl", "Ecclesiastes");
+        aliases.put("Song", "Song of Solomon"); aliases.put("Isa", "Isaiah"); aliases.put("Jer", "Jeremiah"); aliases.put("Lam", "Lamentations"); aliases.put("Ezek", "Ezekiel"); aliases.put("Dan", "Daniel");
+        aliases.put("Matt", "Matthew"); aliases.put("Mt", "Matthew"); aliases.put("Mk", "Mark"); aliases.put("Lk", "Luke"); aliases.put("Jn", "John"); aliases.put("Rom", "Romans"); aliases.put("Rev", "Revelation");
+        for (String b : canonicalBooks()) if (b.equalsIgnoreCase(cleaned)) return b;
+        for (Map.Entry<String, String> e : aliases.entrySet()) if (e.getKey().equalsIgnoreCase(cleaned)) return e.getValue();
         return s;
     }
 
@@ -6153,12 +6547,15 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (p.bookmarks == null) p.bookmarks = new ArrayList<>();
         if (p.studyProjects == null) p.studyProjects = new TreeMap<>();
         if (p.topicPages == null) p.topicPages = new ArrayList<>();
+        if (p.recentlyOpened == null) p.recentlyOpened = new ArrayList<>();
         p.annotations.removeIf(Objects::isNull);
         p.questions.removeIf(Objects::isNull);
         p.bookmarks.removeIf(Objects::isNull);
         p.pinnedItems.removeIf(Objects::isNull);
         p.memoryVerses.removeIf(Objects::isNull);
         p.topicPages.removeIf(Objects::isNull);
+        p.recentlyOpened.removeIf(Objects::isNull);
+        for (RecentLocation loc : p.recentlyOpened) repairRecentLocation(loc);
         for (TopicPage topic : p.topicPages) repairTopicPage(topic);
         for (StudyBookmark b : p.bookmarks) repairBookmark(b);
         p.studyProjects.values().removeIf(Objects::isNull);
@@ -6459,6 +6856,59 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         VerseMarker(int s, int e, int v) { start = s; end = e; verse = v; }
     }
 
+
+
+    private static class CommandPaletteItem {
+        String label;
+        Runnable action;
+        CommandPaletteItem(String label, Runnable action) { this.label = label; this.action = action; }
+        public String toString() { return label; }
+    }
+
+    private static class NavigationLocation {
+        String sourceKey;
+        String sourceTitle;
+        String selectedBook;
+        int selectedChapter;
+        int caretPosition;
+        int selectionStart;
+        int selectionEnd;
+        NavigationLocation(String sourceKey, String sourceTitle, String selectedBook, int selectedChapter, int caretPosition, int selectionStart, int selectionEnd) {
+            this.sourceKey = sourceKey == null ? "" : sourceKey;
+            this.sourceTitle = sourceTitle == null ? "" : sourceTitle;
+            this.selectedBook = selectedBook == null ? "" : selectedBook;
+            this.selectedChapter = selectedChapter;
+            this.caretPosition = caretPosition;
+            this.selectionStart = selectionStart;
+            this.selectionEnd = selectionEnd;
+        }
+        boolean samePlace(NavigationLocation other) {
+            return other != null && sourceKey.equals(other.sourceKey) && caretPosition == other.caretPosition && selectionStart == other.selectionStart && selectionEnd == other.selectionEnd;
+        }
+    }
+
+    private static class RecentLocation implements Serializable {
+        private static final long serialVersionUID = 30L;
+        String sourceKey;
+        String sourceTitle;
+        String selectedBook;
+        int selectedChapter;
+        int caretPosition;
+        int selectionStart;
+        int selectionEnd;
+        long openedAt = System.currentTimeMillis();
+        RecentLocation(String sourceKey, String sourceTitle, String selectedBook, int selectedChapter, int caretPosition, int selectionStart, int selectionEnd) {
+            this.sourceKey = sourceKey == null ? "" : sourceKey;
+            this.sourceTitle = sourceTitle == null ? this.sourceKey : sourceTitle;
+            this.selectedBook = selectedBook == null ? "" : selectedBook;
+            this.selectedChapter = selectedChapter;
+            this.caretPosition = caretPosition;
+            this.selectionStart = selectionStart;
+            this.selectionEnd = selectionEnd;
+        }
+        public String toString() { return sourceTitle == null || sourceTitle.isEmpty() ? sourceKey : sourceTitle; }
+    }
+
     private static class AppData implements Serializable {
         private static final long serialVersionUID = 30L;
         Map<String, TreeMap<Integer, TreeMap<Integer, Verse>>> bible = new TreeMap<>();
@@ -6514,6 +6964,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         List<MemoryVerse> memoryVerses = new ArrayList<>();
         List<StudyBookmark> bookmarks = new ArrayList<>();
         List<TopicPage> topicPages = new ArrayList<>();
+        List<RecentLocation> recentlyOpened = new ArrayList<>();
         Map<String, StudyProject> studyProjects = new TreeMap<>();
         Map<String, String> categories = new TreeMap<>();
         Map<String, Integer> categoryColors = new TreeMap<>();
