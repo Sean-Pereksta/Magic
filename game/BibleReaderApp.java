@@ -81,6 +81,13 @@ public class BibleReaderApp extends JFrame {
     private DefaultListModel<String> searchModel;
     private JList<String> searchList;
 
+    private JTextField greekSearchField;
+    private DefaultListModel<String> greekSearchModel;
+    private JList<String> greekSearchList;
+    private JTextPane greekSearchPreview;
+    private JLabel greekSearchStatus;
+    private String lastGreekSearchQuery = "";
+
     private DefaultListModel<String> categoryModel;
     private JList<String> categoryList;
 
@@ -168,6 +175,7 @@ public class BibleReaderApp extends JFrame {
         JButton study = navButton("Study");
         JButton importBtn = navButton("Import");
         JButton search = navButton("Search");
+        JButton greekSearch = navButton("Greek Search");
         JButton memory = navButton("Memory Verses");
         JButton recent = navButton("Recent Notes");
         JButton categories = navButton("Categories");
@@ -179,6 +187,7 @@ public class BibleReaderApp extends JFrame {
         study.addActionListener(e -> showCard("study"));
         importBtn.addActionListener(e -> showCard("import"));
         search.addActionListener(e -> showCard("search"));
+        greekSearch.addActionListener(e -> showCard("greekSearch"));
         memory.addActionListener(e -> { refreshMemoryVerses(); showCard("memory"); });
         recent.addActionListener(e -> { refreshRecentNotes(); showCard("recent"); });
         categories.addActionListener(e -> { refreshCategories(); showCard("categories"); });
@@ -192,6 +201,7 @@ public class BibleReaderApp extends JFrame {
         nav.add(study);
         nav.add(importBtn);
         nav.add(search);
+        nav.add(greekSearch);
         nav.add(memory);
         nav.add(recent);
         nav.add(categories);
@@ -208,6 +218,7 @@ public class BibleReaderApp extends JFrame {
         cardPanel.add(buildStudyPage(), "study");
         cardPanel.add(buildImportPage(), "import");
         cardPanel.add(buildSearchPage(), "search");
+        cardPanel.add(buildGreekSearchPage(), "greekSearch");
         cardPanel.add(buildMemoryPage(), "memory");
         cardPanel.add(buildRecentPage(), "recent");
         cardPanel.add(buildCategoriesPage(), "categories");
@@ -763,6 +774,67 @@ public class BibleReaderApp extends JFrame {
 
         page.add(north, BorderLayout.NORTH);
         page.add(new JScrollPane(searchList), BorderLayout.CENTER);
+        return page;
+    }
+
+    private JPanel buildGreekSearchPage() {
+        JPanel page = new JPanel(new BorderLayout(10, 10));
+        page.setBorder(new EmptyBorder(16, 16, 16, 16));
+        page.setBackground(panelBg);
+
+        JLabel h = new JLabel("Greek Search");
+        h.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        h.setForeground(darkRed);
+
+        JLabel help = new JLabel("Search imported Greek text, MorphGNT details, verse references, and available English verse text.");
+        help.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        help.setForeground(new Color(90, 70, 60));
+
+        JPanel input = new JPanel(new BorderLayout(8, 8));
+        input.setOpaque(false);
+        greekSearchField = new JTextField();
+        greekSearchField.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        greekSearchField.addActionListener(e -> doGreekSearch());
+        JButton searchBtn = blackButton("Search");
+        searchBtn.addActionListener(e -> doGreekSearch());
+        input.add(greekSearchField, BorderLayout.CENTER);
+        input.add(searchBtn, BorderLayout.EAST);
+
+        JPanel north = new JPanel(new BorderLayout(6, 6));
+        north.setOpaque(false);
+        north.add(h, BorderLayout.NORTH);
+        north.add(help, BorderLayout.CENTER);
+        north.add(input, BorderLayout.SOUTH);
+
+        greekSearchModel = new DefaultListModel<>();
+        greekSearchList = new JList<>(greekSearchModel);
+        greekSearchList.setFont(new Font("Consolas", Font.PLAIN, 13));
+        greekSearchList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) previewGreekSearchSelection();
+        });
+        greekSearchList.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) openGreekSearchSelection();
+            }
+        });
+
+        greekSearchPreview = new JTextPane();
+        greekSearchPreview.setEditable(false);
+        greekSearchPreview.setFont(new Font("Consolas", Font.PLAIN, 13));
+        greekSearchPreview.setText("Type a Greek word, reference, morphology tag, details text, or English verse words, then click Search.");
+        greekSearchPreview.setCaretPosition(0);
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, new JScrollPane(greekSearchList), new JScrollPane(greekSearchPreview));
+        split.setResizeWeight(0.38);
+        split.setDividerSize(7);
+
+        greekSearchStatus = new JLabel(" ");
+        greekSearchStatus.setBorder(new EmptyBorder(4, 2, 0, 2));
+        greekSearchStatus.setForeground(new Color(90, 70, 60));
+
+        page.add(north, BorderLayout.NORTH);
+        page.add(split, BorderLayout.CENTER);
+        page.add(greekSearchStatus, BorderLayout.SOUTH);
         return page;
     }
 
@@ -1441,6 +1513,7 @@ public class BibleReaderApp extends JFrame {
         addMenu(selectionActionPopup, "Add To Memory Verses", this::addMemoryVerseFromSelection);
         addMenu(selectionActionPopup, "Attach", this::addAttachmentFromSelection);
         addMenu(selectionActionPopup, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
+        addMenu(selectionActionPopup, "Search This In Greek", this::searchSelectedTextInGreek);
         if (greekKeyForSelection() != null) {
             addMenu(selectionActionPopup, "View Greek For This Verse", this::showGreekForCurrentSelection);
             addMenu(selectionActionPopup, "Add Greek Note To Selected Phrase", this::addGreekNoteForSelectionOrVerse);
@@ -1493,6 +1566,7 @@ public class BibleReaderApp extends JFrame {
         }
 
         if (hasSelection) {
+            addMenu(menu, "Search This In Greek", this::searchSelectedTextInGreek);
             if (greekKeyForSelection() != null) {
                 addMenu(menu, "View Greek For This Verse", this::showGreekForCurrentSelection);
                 addMenu(menu, "Add Greek Note To Selected Phrase", this::addGreekNoteForSelectionOrVerse);
@@ -1862,6 +1936,40 @@ public class BibleReaderApp extends JFrame {
         showGreekForVerse(key);
     }
 
+    private void searchSelectedTextInGreek() {
+        String selected = readerPane == null ? "" : safe(readerPane.getSelectedText()).trim();
+        if (selected.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Select a word or phrase first.");
+            return;
+        }
+
+        if (containsGreekCharacters(selected)) {
+            if (greekSearchField != null) {
+                greekSearchField.setText(selected);
+                doGreekSearch();
+            }
+            showCard("greekSearch");
+            return;
+        }
+
+        String key = greekKeyForSelection();
+        if (key == null) {
+            JOptionPane.showMessageDialog(this, "Select text inside a Bible verse to open that verse's Greek details.");
+            return;
+        }
+        showGreekDetailsInSidebar(key);
+        statusLabel.setText(" Greek details for " + key + " opened from selected text: " + shorten(selected, 60));
+    }
+
+    private boolean containsGreekCharacters(String s) {
+        if (s == null) return false;
+        for (int i = 0; i < s.length(); i++) {
+            Character.UnicodeBlock block = Character.UnicodeBlock.of(s.charAt(i));
+            if (block == Character.UnicodeBlock.GREEK || block == Character.UnicodeBlock.GREEK_EXTENDED) return true;
+        }
+        return false;
+    }
+
     private int[] verseRangeInReader(int verse) {
         try {
             String txt = readerPane.getDocument().getText(0, readerPane.getDocument().getLength());
@@ -1880,6 +1988,62 @@ public class BibleReaderApp extends JFrame {
 
     private void showGreekForVerse(String key) {
         showGreekDialog(key, false);
+    }
+
+    private void showGreekDetailsInSidebar(String key) {
+        if (detailsPanel == null) return;
+        GreekEntry ge = data.greek.get(key);
+        String greekText = ge == null ? "" : ge.greekText;
+        String details = ge == null
+                ? "No Greek imported for " + key + " yet. Use Import > Download + Import MorphGNT Greek, import a MorphGNT ZIP/TXT folder, or import a Greek CSV."
+                : ge.details;
+
+        detailsPanel.removeAll();
+        addDetailTitle("Greek Details");
+        addDetailText("Reference: " + key);
+        addDetailText("Greek text:\n" + (greekText.isEmpty() ? "(No Greek text imported.)" : greekText));
+        addDetailText("Morphology/details:\n" + (details.isEmpty() ? "(No morphology/details imported.)" : details));
+
+        JButton open = blackButton("Open Verse");
+        open.setAlignmentX(Component.LEFT_ALIGNMENT);
+        open.addActionListener(e -> openGreekResultVerse(key, false));
+
+        JButton note = blackButton("Add Greek Note");
+        note.setAlignmentX(Component.LEFT_ALIGNMENT);
+        note.addActionListener(e -> addGreekNoteFromSearchResult(key));
+
+        JButton copy = blackButton("Copy Greek Text");
+        copy.setAlignmentX(Component.LEFT_ALIGNMENT);
+        copy.addActionListener(e -> copyGreekTextToClipboard(key));
+
+        detailsPanel.add(open);
+        detailsPanel.add(Box.createVerticalStrut(6));
+        detailsPanel.add(note);
+        detailsPanel.add(Box.createVerticalStrut(6));
+        detailsPanel.add(copy);
+        detailsPanel.revalidate();
+        detailsPanel.repaint();
+        statusLabel.setText(" Showing Greek details for " + key);
+    }
+
+    private void openGreekResultVerse(String key, boolean showDetails) {
+        openTarget(key);
+        RefParts rp = parseRef(key);
+        if (rp != null) selectVerseText(rp.verse);
+        if (showDetails) showGreekDetailsInSidebar(key);
+    }
+
+    private void addGreekNoteFromSearchResult(String key) {
+        openGreekResultVerse(key, true);
+        showGreekDialog(key, false);
+    }
+
+    private void copyGreekTextToClipboard(String key) {
+        GreekEntry ge = data.greek.get(key);
+        String greekText = ge == null ? "" : ge.greekText;
+        StringSelection selection = new StringSelection(greekText);
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+        statusLabel.setText(" Copied Greek text for " + key);
     }
 
     private void addGreekNoteForSelectionOrVerse() {
@@ -1992,11 +2156,15 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void highlightGreekDialogMatches(JTextPane info, String query, JLabel countLabel) {
+        highlightTextPaneMatches(info, query, countLabel);
+    }
+
+    private void highlightTextPaneMatches(JTextPane info, String query, JLabel countLabel) {
         Highlighter highlighter = info.getHighlighter();
         highlighter.removeAllHighlights();
         String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         if (q.isEmpty()) {
-            countLabel.setText(" ");
+            if (countLabel != null) countLabel.setText(" ");
             return;
         }
         String haystack = info.getText().toLowerCase(Locale.ROOT);
@@ -2010,7 +2178,7 @@ public class BibleReaderApp extends JFrame {
             count++;
             idx = haystack.indexOf(q, idx + q.length());
         }
-        countLabel.setText(count + (count == 1 ? " match" : " matches"));
+        if (countLabel != null) countLabel.setText(count + (count == 1 ? " match" : " matches"));
     }
 
     private TextAnnotation saveGreekNoteAnnotation(String key, RefParts rp, String noteText, boolean useSelectionWhenPossible) {
@@ -2045,6 +2213,11 @@ public class BibleReaderApp extends JFrame {
             }
         }
         return rp == null ? new int[]{0, 0} : verseRangeInReader(rp.verse);
+    }
+
+    private String englishVerseTextFromData(String key) {
+        Verse v = data.findVerse(key);
+        return v == null ? "" : v.text;
     }
 
     private String englishVerseTextForKey(String key) {
@@ -3221,6 +3394,65 @@ public class BibleReaderApp extends JFrame {
         if (sideSearchToggleBtn != null) sideSearchToggleBtn.setText(sideSearchExpanded ? "Minimize" : "Restore");
     }
 
+    private void doGreekSearch() {
+        if (greekSearchModel == null) return;
+        greekSearchModel.clear();
+        lastGreekSearchQuery = greekSearchField == null ? "" : greekSearchField.getText().trim();
+        if (greekSearchPreview != null) greekSearchPreview.setText("Type a Greek word, reference, morphology tag, details text, or English verse words, then click Search.");
+        if (greekSearchStatus != null) greekSearchStatus.setText(" ");
+        if (lastGreekSearchQuery.isEmpty()) return;
+
+        int total = fillGreekSearchModel(greekSearchModel, lastGreekSearchQuery, 300, 120);
+        if (greekSearchStatus != null) {
+            if (total > 300) {
+                greekSearchStatus.setText("Showing first 300 results. Refine your search for more specific matches. (" + total + " total matches)");
+            } else {
+                greekSearchStatus.setText(total + (total == 1 ? " result" : " results"));
+            }
+        }
+        if (greekSearchModel.isEmpty() && greekSearchPreview != null) greekSearchPreview.setText("No Greek entries found for: " + lastGreekSearchQuery);
+        if (!greekSearchModel.isEmpty()) greekSearchList.setSelectedIndex(0);
+    }
+
+    private int fillGreekSearchModel(DefaultListModel<String> model, String query, int limit, int maxSnippet) {
+        String q = safe(query).trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty()) return 0;
+        int matches = 0;
+        for (GreekEntry ge : data.greek.values()) {
+            String english = englishVerseTextFromData(ge.key());
+            String haystack = (ge.key() + " " + ge.greekText + " " + ge.details + " " + english).toLowerCase(Locale.ROOT);
+            if (!haystack.contains(q)) continue;
+            matches++;
+            if (model.size() < limit) model.addElement(ge.key() + " | " + shorten(ge.greekText, maxSnippet));
+        }
+        return matches;
+    }
+
+    private void previewGreekSearchSelection() {
+        if (greekSearchList == null || greekSearchPreview == null) return;
+        String s = greekSearchList.getSelectedValue();
+        if (s == null) return;
+        String key = greekSearchKeyFromLine(s);
+        GreekEntry ge = data.greek.get(key);
+        if (ge == null) return;
+        greekSearchPreview.setText(greekDialogText(key, englishVerseTextFromData(key), ge.greekText, ge.details));
+        greekSearchPreview.setCaretPosition(0);
+        highlightTextPaneMatches(greekSearchPreview, lastGreekSearchQuery, null);
+    }
+
+    private void openGreekSearchSelection() {
+        if (greekSearchList == null) return;
+        String s = greekSearchList.getSelectedValue();
+        if (s == null) return;
+        openGreekResultVerse(greekSearchKeyFromLine(s), true);
+    }
+
+    private String greekSearchKeyFromLine(String line) {
+        if (line == null) return "";
+        int split = line.indexOf('|');
+        return (split < 0 ? line : line.substring(0, split)).trim();
+    }
+
     private void doSideSearch() {
         if (sideSearchModel == null) return;
         sideSearchModel.clear();
@@ -3247,9 +3479,16 @@ public class BibleReaderApp extends JFrame {
         if (idx >= 0) sideSearchList.setSelectedIndex(idx);
         if (sideSearchList.getSelectedValue() == null) return;
 
+        SearchResultParts p = parseSearchLine(sideSearchList.getSelectedValue());
         JPopupMenu m = new JPopupMenu();
-        addMenu(m, "View In Sidebar", this::previewSideSearchResult);
-        addMenu(m, "Show Full View", this::showFullViewForSideSearchResult);
+        if ("GREEK".equals(p.type)) {
+            addMenu(m, "View Greek Details", () -> showGreekDetailsInSidebar(p.ref));
+            addMenu(m, "Show Full Verse", () -> openGreekResultVerse(p.ref, true));
+            addMenu(m, "Add Greek Note", () -> addGreekNoteFromSearchResult(p.ref));
+        } else {
+            addMenu(m, "View In Sidebar", this::previewSideSearchResult);
+            addMenu(m, "Show Full View", this::showFullViewForSideSearchResult);
+        }
         m.show(sideSearchList, e.getX(), e.getY());
     }
 
@@ -3285,7 +3524,8 @@ public class BibleReaderApp extends JFrame {
         }
 
         for (GreekEntry ge : data.greek.values()) {
-            if ((ge.key() + " " + ge.greekText + " " + ge.details).toLowerCase(Locale.ROOT).contains(q)) {
+            String english = englishVerseTextFromData(ge.key());
+            if ((ge.key() + " " + ge.greekText + " " + ge.details + " " + english).toLowerCase(Locale.ROOT).contains(q)) {
                 model.addElement("GREEK | " + ge.key() + " | " + shorten(ge.greekText + " — " + ge.details, maxSnippet));
             }
         }
@@ -3356,8 +3596,12 @@ public class BibleReaderApp extends JFrame {
 
     private void openSearchLineFullView(String s) {
         SearchResultParts p = parseSearchLine(s);
-        if (p.type.equals("BIBLE") || p.type.equals("GREEK")) {
+        if (p.type.equals("BIBLE")) {
             openTarget(p.ref);
+            return;
+        }
+        if (p.type.equals("GREEK")) {
+            openGreekResultVerse(p.ref, true);
             return;
         }
         if (p.type.equals("LIBRARY")) {
