@@ -14,6 +14,7 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
 import java.util.zip.*;
+import java.util.regex.*;
 
 public class BibleReaderApp extends JFrame {
     private static final long serialVersionUID = 1L;
@@ -273,7 +274,7 @@ public class BibleReaderApp extends JFrame {
         mainStudySplit.setLeftComponent(buildLibraryPanel());
 
         centerRightSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        centerRightSplit.setResizeWeight(0.67);
+        centerRightSplit.setResizeWeight(0.58);
         centerRightSplit.setDividerSize(7);
         centerRightSplit.setLeftComponent(buildReaderPanel());
         centerRightSplit.setRightComponent(buildRightSidebar());
@@ -450,16 +451,29 @@ public class BibleReaderApp extends JFrame {
     }
 
     private JPanel buildRightSidebar() {
-        JPanel wrapper = new JPanel(new BorderLayout(8, 8));
-        wrapper.setBackground(panelBg);
-        wrapper.add(buildSideSearchPanel(), BorderLayout.NORTH);
+        JPanel content = new JPanel(new BorderLayout(8, 8));
+        content.setBackground(panelBg);
+        content.add(buildSideSearchPanel(), BorderLayout.NORTH);
 
         JPanel studyTools = new JPanel(new BorderLayout(8, 8));
         studyTools.setOpaque(false);
         studyTools.add(buildPinnedItemsPanel(), BorderLayout.NORTH);
         studyTools.add(buildDetailsPanel(), BorderLayout.CENTER);
 
-        wrapper.add(studyTools, BorderLayout.CENTER);
+        content.add(studyTools, BorderLayout.CENTER);
+
+        JScrollPane sidebarScroll = new JScrollPane(content);
+        sidebarScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        sidebarScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        sidebarScroll.getVerticalScrollBar().setUnitIncrement(16);
+        sidebarScroll.setBorder(null);
+        sidebarScroll.getViewport().setBackground(panelBg);
+
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setBackground(panelBg);
+        wrapper.setPreferredSize(new Dimension(390, 10));
+        wrapper.setMinimumSize(new Dimension(340, 10));
+        wrapper.add(sidebarScroll, BorderLayout.CENTER);
         return wrapper;
     }
 
@@ -490,7 +504,7 @@ public class BibleReaderApp extends JFrame {
         pinnedItemsBody.setBorder(new EmptyBorder(6, 6, 6, 6));
 
         pinnedItemsScroll = new JScrollPane(pinnedItemsBody);
-        pinnedItemsScroll.setPreferredSize(new Dimension(260, 185));
+        pinnedItemsScroll.setPreferredSize(new Dimension(360, 185));
 
         pinnedItemsPanel.add(header, BorderLayout.NORTH);
         pinnedItemsPanel.add(pinnedItemsScroll, BorderLayout.CENTER);
@@ -582,7 +596,7 @@ public class BibleReaderApp extends JFrame {
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, new JScrollPane(sideSearchList), new JScrollPane(sideSearchPreview));
         split.setResizeWeight(0.48);
         split.setDividerSize(5);
-        split.setPreferredSize(new Dimension(260, 260));
+        split.setPreferredSize(new Dimension(360, 290));
 
         sideSearchBody.add(inputRow, BorderLayout.NORTH);
         sideSearchBody.add(split, BorderLayout.CENTER);
@@ -2115,7 +2129,7 @@ public class BibleReaderApp extends JFrame {
         String greekText = ge == null ? "" : ge.greekText;
         String englishText = englishVerseTextForKey(key);
         String details = ge == null
-                ? "No Greek imported for " + key + " yet. Use Import > Download + Import MorphGNT Greek, import a MorphGNT ZIP/TXT folder, or import a Greek CSV."
+                ? "No Greek entry imported for this verse. Use Import > Download + Import MorphGNT Greek, import a MorphGNT ZIP/TXT folder, or import a Greek CSV."
                 : ge.details;
 
         detailsPanel.removeAll();
@@ -2194,7 +2208,7 @@ public class BibleReaderApp extends JFrame {
         String englishText = englishVerseTextForKey(key);
         String greekText = ge == null ? "" : ge.greekText;
         String details = ge == null
-                ? "No Greek imported for " + key + " yet. Use Import > Download + Import MorphGNT Greek, import a MorphGNT ZIP/TXT folder, or import a Greek CSV."
+                ? "No Greek entry imported for this verse. Use Import > Download + Import MorphGNT Greek, import a MorphGNT ZIP/TXT folder, or import a Greek CSV."
                 : ge.details;
 
         JTextPane info = new JTextPane();
@@ -2674,12 +2688,22 @@ public class BibleReaderApp extends JFrame {
         }
 
         String reference = currentSourceTitle;
+        String text = selected.trim();
         if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:")) {
-            Integer verse = verseNumberContainingPosition(start);
-            if (verse == null) verse = verseNumberContainingPosition(Math.max(start, end - 1));
-            if (verse != null) reference = selectedBook + " " + selectedChapter + ":" + verse;
+            Integer startVerse = verseNumberContainingPosition(start);
+            Integer endVerse = verseNumberContainingPosition(Math.max(start, end - 1));
+            if (startVerse == null) startVerse = endVerse;
+            if (endVerse == null) endVerse = startVerse;
+            if (startVerse != null) {
+                int first = Math.min(startVerse, endVerse);
+                int last = Math.max(startVerse, endVerse);
+                PassageRef passage = new PassageRef(selectedBook, selectedChapter, first, last);
+                reference = passage.display();
+                String combined = getPassageText(passage.book, passage.chapter, passage.startVerse, passage.endVerse);
+                if (!combined.isEmpty()) text = combined;
+            }
         }
-        showMemoryVerseEditor(null, reference, selected.trim());
+        showMemoryVerseEditor(null, reference, text);
     }
 
     private void addMemoryVerseByKey(String key) {
@@ -2692,19 +2716,49 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void addMemoryVerseManually() {
-        String ref = JOptionPane.showInputDialog(this, "Bible reference, e.g. Romans 14:13:");
+        String ref = JOptionPane.showInputDialog(this, "Bible reference or same-chapter range, e.g. Romans 14:13 or Genesis 3:1-7:");
         if (ref == null) return;
-        RefParts rp = parseRef(ref);
-        if (rp == null) {
-            JOptionPane.showMessageDialog(this, "Use a format like Romans 14:13.");
+        PassageRef passage = parseBibleReferenceOrRange(ref);
+        if (passage == null) {
+            JOptionPane.showMessageDialog(this, "Use a format like Romans 14:13 or Genesis 3:1-7. Ranges must stay within one chapter.");
             return;
         }
-        Verse v = data.findVerse(rp.key());
-        if (v == null) {
-            JOptionPane.showMessageDialog(this, "I could not find that verse in the imported Bible text.");
+        String text = getPassageText(passage.book, passage.chapter, passage.startVerse, passage.endVerse);
+        if (text.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "I could not find that verse or complete passage range in the imported Bible text.");
             return;
         }
-        showMemoryVerseEditor(null, v.key(), v.text);
+        showMemoryVerseEditor(null, passage.display(), text);
+    }
+
+    private PassageRef parseBibleReferenceOrRange(String input) {
+        if (input == null) return null;
+        String ref = input.trim().replaceAll("\\s+", " ");
+        Matcher m = Pattern.compile("^(.+?)\\s+(\\d+)\\s*:\\s*(\\d+)(?:\\s*-\\s*(?:(\\d+)\\s*:\\s*)?(\\d+))?$").matcher(ref);
+        if (!m.matches()) return null;
+        try {
+            String book = normalizeBookName(m.group(1));
+            int chapter = Integer.parseInt(m.group(2));
+            int startVerse = Integer.parseInt(m.group(3));
+            if (m.group(4) != null) return null; // Cross-chapter ranges are intentionally not supported yet.
+            int endVerse = m.group(5) == null ? startVerse : Integer.parseInt(m.group(5));
+            if (startVerse <= 0 || endVerse < startVerse) return null;
+            return new PassageRef(book, chapter, startVerse, endVerse);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String getPassageText(String book, int chapter, int startVerse, int endVerse) {
+        StringBuilder sb = new StringBuilder();
+        Map<Integer, Verse> verses = data.getVerses(book, chapter);
+        for (int verse = startVerse; verse <= endVerse; verse++) {
+            Verse v = verses.get(verse);
+            if (v == null) return "";
+            if (sb.length() > 0) sb.append(" ");
+            sb.append(v.verse).append(" ").append(v.text);
+        }
+        return sb.toString().trim();
     }
 
     private void showMemoryVerseEditor(MemoryVerse existing, String defaultReference, String defaultText) {
@@ -3152,6 +3206,17 @@ public class BibleReaderApp extends JFrame {
             }
             showLibraryDoc(title);
             if (!chunk.isEmpty()) findAndSelectUniqueChunk(chunk);
+            showCard("study");
+            return;
+        }
+
+        PassageRef passage = parseBibleReferenceOrRange(target);
+        if (passage != null && data.bible.containsKey(passage.book)) {
+            selectedBook = passage.book;
+            selectedChapter = passage.chapter;
+            refreshBookCombo();
+            showSelectedChapter(false);
+            selectVerseText(passage.startVerse);
             showCard("study");
             return;
         }
@@ -4040,13 +4105,36 @@ public class BibleReaderApp extends JFrame {
     private void doSideSearch() {
         if (sideSearchModel == null) return;
         sideSearchModel.clear();
-        String q = sideSearchField == null ? "" : sideSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        String raw = sideSearchField == null ? "" : sideSearchField.getText().trim();
+        String q = raw.toLowerCase(Locale.ROOT);
         if (q.isEmpty()) {
             sideSearchPreview.setText("Type a search above.");
             return;
         }
+
+        PassageRef passage = parseBibleReferenceOrRange(raw);
+        if (passage != null) {
+            String text = getPassageText(passage.book, passage.chapter, passage.startVerse, passage.endVerse);
+            if (!text.isEmpty()) sideSearchModel.addElement("PASSAGE|" + passage.display() + "|" + passage.key() + "|" + shorten(text, 120));
+        }
+
+        addCategorySideSearchResults(q, 120);
         fillSearchModel(sideSearchModel, q, 120);
         sideSearchPreview.setText(sideSearchModel.isEmpty() ? "No results found." : sideSearchModel.size() + " result(s). Click to preview. Double-click or right-click > Show Full View to open.");
+    }
+
+    private void addCategorySideSearchResults(String q, int maxSnippet) {
+        if (currentProfile == null) return;
+        ensureCategoryColors();
+        for (String cat : currentProfile.categories.keySet()) {
+            if (!cat.toLowerCase(Locale.ROOT).contains(q)) continue;
+            sideSearchModel.addElement("CATEGORY|" + cat + "|" + cat + "|" + shorten(currentProfile.categories.getOrDefault(cat, ""), maxSnippet));
+            for (TextAnnotation a : currentProfile.annotations) {
+                if (cat.equals(a.category)) {
+                    sideSearchModel.addElement("CATEGORY_ITEM|" + a.id + "|" + a.sourceTitle + "|" + shorten(a.selectedText + " — " + a.note, maxSnippet));
+                }
+            }
+        }
     }
 
     private void previewSideSearchResult() {
@@ -4095,7 +4183,7 @@ public class BibleReaderApp extends JFrame {
             for (Integer ch : data.getChapters(book)) {
                 for (Verse v : data.getVerses(book, ch).values()) {
                     if ((v.key() + " " + v.text).toLowerCase(Locale.ROOT).contains(q)) {
-                        model.addElement("BIBLE | " + v.key() + " | " + shorten(v.text, maxSnippet));
+                        model.addElement("BIBLE|" + v.key() + "|" + v.key() + "|" + shorten(v.text, maxSnippet));
                     }
                 }
             }
@@ -4103,26 +4191,26 @@ public class BibleReaderApp extends JFrame {
 
         for (LibraryDoc d : data.libraryDocs) {
             if ((d.title + " " + d.body).toLowerCase(Locale.ROOT).contains(q)) {
-                model.addElement("LIBRARY | " + d.title + " | " + shorten(snippet(d.body, q), maxSnippet));
+                model.addElement("LIBRARY|" + d.title + "|" + d.title + "|" + shorten(snippet(d.body, q), maxSnippet));
             }
         }
 
         for (GreekEntry ge : data.greek.values()) {
             String english = englishVerseTextFromData(ge.key());
             if ((ge.key() + " " + ge.greekText + " " + ge.details + " " + english).toLowerCase(Locale.ROOT).contains(q)) {
-                model.addElement("GREEK | " + ge.key() + " | " + shorten(ge.greekText + " — " + ge.details, maxSnippet));
+                model.addElement("GREEK|" + ge.key() + "|" + ge.key() + "|" + shorten(ge.greekText + " — " + ge.details, maxSnippet));
             }
         }
 
         for (TextAnnotation a : currentProfile.annotations) {
             if ((a.sourceTitle + " " + a.selectedText + " " + a.type + " " + a.category + " " + a.note + " " + a.target).toLowerCase(Locale.ROOT).contains(q)) {
-                model.addElement("HIGHLIGHT | " + a.id + " | " + a.sourceTitle + " | " + shorten(a.selectedText + " — " + a.note, maxSnippet));
+                model.addElement("NOTE|" + a.id + "|" + a.sourceTitle + "|" + shorten(a.selectedText + " — " + a.note, maxSnippet));
             }
         }
 
         for (StudyQuestion qu : currentProfile.questions) {
             if ((qu.sourceTitle + " " + qu.selectedText + " " + qu.question).toLowerCase(Locale.ROOT).contains(q)) {
-                model.addElement("QUESTION | " + qu.annotationId + " | " + qu.sourceTitle + " | " + shorten(qu.question, maxSnippet));
+                model.addElement("NOTE|" + qu.annotationId + "|" + qu.sourceTitle + "|" + shorten(qu.question, maxSnippet));
             }
         }
     }
@@ -4147,7 +4235,16 @@ public class BibleReaderApp extends JFrame {
         StringBuilder sb = new StringBuilder();
         sb.append(p.type).append("\n----------------------\n");
 
-        if (p.type.equals("BIBLE")) {
+        if (p.type.equals("PASSAGE")) {
+            PassageRef passage = parseBibleReferenceOrRange(p.ref);
+            sb.append(p.ref).append("\n\n");
+            sb.append(passage == null ? p.extra : getPassageText(passage.book, passage.chapter, passage.startVerse, passage.endVerse));
+        } else if (p.type.equals("CATEGORY")) {
+            sb.append("CATEGORY: ").append(p.ref).append("\n\n").append(currentProfile.categories.getOrDefault(p.ref, ""));
+            int count = 0;
+            for (TextAnnotation a : currentProfile.annotations) if (p.ref.equals(a.category)) count++;
+            sb.append("\n\nAttached items: ").append(count);
+        } else if (p.type.equals("BIBLE")) {
             Verse v = data.findVerse(p.ref);
             sb.append(p.ref).append("\n\n");
             sb.append(v == null ? p.extra : v.text);
@@ -4161,7 +4258,7 @@ public class BibleReaderApp extends JFrame {
             }
         } else if (p.type.equals("LIBRARY")) {
             sb.append(p.ref).append("\n\n").append(p.extra);
-        } else if (p.type.equals("HIGHLIGHT") || p.type.equals("QUESTION")) {
+        } else if (p.type.equals("NOTE") || p.type.equals("CATEGORY_ITEM")) {
             TextAnnotation a = findAnnotationById(p.ref);
             if (a != null) {
                 sb.append(a.sourceTitle).append("\n\nSelected Text:\n").append(a.selectedText).append("\n\n");
@@ -4180,8 +4277,12 @@ public class BibleReaderApp extends JFrame {
 
     private void openSearchLineFullView(String s) {
         SearchResultParts p = parseSearchLine(s);
-        if (p.type.equals("BIBLE")) {
+        if (p.type.equals("PASSAGE") || p.type.equals("BIBLE")) {
             openTarget(p.ref);
+            return;
+        }
+        if (p.type.equals("CATEGORY")) {
+            showCategoryByName(p.ref);
             return;
         }
         if (p.type.equals("GREEK")) {
@@ -4193,7 +4294,7 @@ public class BibleReaderApp extends JFrame {
             showCard("study");
             return;
         }
-        if (p.type.equals("HIGHLIGHT") || p.type.equals("QUESTION")) {
+        if (p.type.equals("NOTE") || p.type.equals("CATEGORY_ITEM")) {
             TextAnnotation a = findAnnotationById(p.ref);
             if (a != null) {
                 openSourceForAnnotation(a);
@@ -4307,8 +4408,8 @@ public class BibleReaderApp extends JFrame {
                 log("Downloading MorphGNT/SBLGNT ZIP...");
                 byte[] bytes = download(MORPHGNT_ZIP);
                 log("Downloaded " + bytes.length + " bytes. Importing...");
-                int count = importMorphGntZipBytes(bytes);
-                log("Imported " + count + " Greek verse entries. Saved permanently.");
+                GreekImportStats stats = importMorphGntZipBytes(bytes);
+                log(stats.summary());
                 SwingUtilities.invokeLater(this::refreshEverything);
             } catch (Exception ex) {
                 showError("Download/import Greek failed", ex);
@@ -4576,13 +4677,15 @@ public class BibleReaderApp extends JFrame {
                 if (line.trim().isEmpty()) continue;
                 List<String> c = parseCsv(line);
                 if (c.size() < 5 || c.get(0).equalsIgnoreCase("Book")) continue;
-                GreekEntry ge = new GreekEntry(normalizeBookName(c.get(0)), Integer.parseInt(c.get(1).trim()), Integer.parseInt(c.get(2).trim()), c.get(3), c.get(4));
+                String book = normalizeGreekBookCode(c.get(0));
+                if (book.isEmpty()) book = normalizeBookName(c.get(0));
+                GreekEntry ge = new GreekEntry(book, Integer.parseInt(c.get(1).trim()), Integer.parseInt(c.get(2).trim()), c.get(3), c.get(4));
                 data.greek.put(ge.key(), ge);
                 count++;
             }
             saveData();
             refreshEverything();
-            log("Imported " + count + " Greek CSV entries.");
+            log("Imported " + count + " Greek CSV entries. Unique Greek verse references now imported: " + data.greek.size() + ".");
         } catch (Exception ex) {
             showError("Greek CSV import failed", ex);
         }
@@ -4615,8 +4718,8 @@ public class BibleReaderApp extends JFrame {
         File f = ch.getSelectedFile();
         new Thread(() -> {
             try {
-                int count = f.isDirectory() ? importMorphFolder(f) : importMorphGntZipBytes(Files.readAllBytes(f.toPath()));
-                log("Imported " + count + " Greek verse entries.");
+                GreekImportStats stats = f.isDirectory() ? importMorphFolder(f) : importMorphGntZipBytes(Files.readAllBytes(f.toPath()));
+                log(stats.summary());
                 SwingUtilities.invokeLater(this::refreshEverything);
             } catch (Exception ex) {
                 showError("Greek import failed", ex);
@@ -4624,53 +4727,141 @@ public class BibleReaderApp extends JFrame {
         }).start();
     }
 
-    private int importMorphFolder(File dir) throws IOException {
+    private GreekImportStats importMorphFolder(File dir) throws IOException {
         Map<String, List<String[]>> grouped = new TreeMap<>();
-        collectMorphFiles(dir, grouped);
-        int c = saveGreekGroups(grouped);
+        GreekImportStats stats = new GreekImportStats();
+        collectMorphFiles(dir, grouped, stats);
+        stats.uniqueVerses = saveGreekGroups(grouped);
         saveData();
-        return c;
+        return stats;
     }
 
-    private void collectMorphFiles(File dir, Map<String, List<String[]>> grouped) throws IOException {
+    private void collectMorphFiles(File dir, Map<String, List<String[]>> grouped, GreekImportStats stats) throws IOException {
         File[] files = dir.listFiles();
         if (files == null) return;
         for (File f : files) {
-            if (f.isDirectory()) collectMorphFiles(f, grouped);
-            else if (f.getName().toLowerCase(Locale.ROOT).endsWith(".txt")) parseMorphText(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8), grouped);
+            if (f.isDirectory()) collectMorphFiles(f, grouped, stats);
+            else if (f.getName().toLowerCase(Locale.ROOT).endsWith(".txt")) parseMorphText(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8), grouped, stats);
         }
     }
 
-    private int importMorphGntZipBytes(byte[] bytes) throws IOException {
+    private GreekImportStats importMorphGntZipBytes(byte[] bytes) throws IOException {
         Map<String, List<String[]>> grouped = new TreeMap<>();
+        GreekImportStats stats = new GreekImportStats();
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(bytes), StandardCharsets.UTF_8)) {
             ZipEntry e;
             while ((e = zin.getNextEntry()) != null) {
                 if (!e.isDirectory() && e.getName().toLowerCase(Locale.ROOT).endsWith(".txt")) {
-                    parseMorphText(new String(readAll(zin), StandardCharsets.UTF_8), grouped);
+                    parseMorphText(new String(readAll(zin), StandardCharsets.UTF_8), grouped, stats);
                 }
             }
         }
-        int c = saveGreekGroups(grouped);
+        stats.uniqueVerses = saveGreekGroups(grouped);
         saveData();
-        return c;
+        return stats;
     }
 
-    private void parseMorphText(String txt, Map<String, List<String[]>> grouped) {
+    private void parseMorphText(String txt, Map<String, List<String[]>> grouped, GreekImportStats stats) {
         for (String raw : txt.split("\\R")) {
             String line = raw.trim();
             if (line.isEmpty() || line.startsWith("#")) continue;
             String[] cols = line.split("\\s+");
-            if (cols.length < 6) continue;
-            String loc = cols[0].replaceAll("[^0-9]", "");
-            if (loc.length() < 6) continue;
-            String book = ntBookByNumber(loc.substring(0, 2));
-            if (book == null) continue;
-            int chapter = Integer.parseInt(loc.substring(2, 4));
-            int verse = Integer.parseInt(loc.substring(4, 6));
-            String key = book + " " + chapter + ":" + verse;
+            if (cols.length < 2) { stats.skipped++; continue; }
+            RefParts rp = greekRefFromMorphColumns(cols, stats);
+            if (rp == null) { stats.skipped++; continue; }
+            String key = rp.key();
+            if (stats.firstReference.isEmpty()) stats.firstReference = key;
+            stats.lastReference = key;
+            stats.wordEntries++;
             grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(cols);
         }
+    }
+
+    private RefParts greekRefFromMorphColumns(String[] cols, GreekImportStats stats) {
+        if (cols == null || cols.length == 0) return null;
+        RefParts fromLoc = greekRefFromToken(cols[0], stats);
+        if (fromLoc != null) return fromLoc;
+        if (cols.length >= 3) {
+            String book = normalizeGreekBookCode(cols[0]);
+            if (!book.isEmpty()) {
+                try {
+                    return new RefParts(book, Integer.parseInt(cols[1].replaceAll("[^0-9]", "")), Integer.parseInt(cols[2].replaceAll("[^0-9]", "")));
+                } catch (Exception ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    private RefParts greekRefFromToken(String token, GreekImportStats stats) {
+        if (token == null) return null;
+        String raw = token.trim();
+        String digits = raw.replaceAll("[^0-9]", "");
+        if (digits.length() >= 6 && raw.matches(".*\\d.*")) {
+            try {
+                String book = ntBookByNumber(digits.substring(0, 2));
+                if (book != null) {
+                    return new RefParts(book, Integer.parseInt(digits.substring(2, 4)), Integer.parseInt(digits.substring(4, 6)));
+                }
+            } catch (Exception ignored) {}
+        }
+
+        Matcher m = Pattern.compile("^([1-3]?[A-Za-z]+)[^0-9A-Za-z]+(\\d+)[^0-9A-Za-z]+(\\d+).*$").matcher(raw);
+        if (m.matches()) {
+            String book = normalizeGreekBookCode(m.group(1));
+            if (!book.isEmpty()) return new RefParts(book, Integer.parseInt(m.group(2)), Integer.parseInt(m.group(3)));
+            if (stats != null) stats.unknownBookCodes.add(m.group(1));
+        }
+        return null;
+    }
+
+    private String normalizeGreekBookCode(String code) {
+        if (code == null) return "";
+        String k = code.trim().replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        if (k.isEmpty()) return "";
+        Map<String, String> m = greekBookCodeMap();
+        String book = m.get(k);
+        if (book != null) return book;
+        String normalized = normalizeBookName(code);
+        for (String canonical : canonicalBooks()) if (canonical.equals(normalized)) return normalized;
+        return "";
+    }
+
+    private Map<String, String> greekBookCodeMap() {
+        Map<String, String> m = new HashMap<>();
+        addGreekBookCodes(m, "Matthew", "MATT", "MT", "MAT");
+        addGreekBookCodes(m, "Mark", "MARK", "MRK", "MAR", "MK");
+        addGreekBookCodes(m, "Luke", "LUKE", "LUK");
+        addGreekBookCodes(m, "John", "JOHN", "JHN", "JOH", "JN");
+        addGreekBookCodes(m, "Acts", "ACTS", "ACT");
+        addGreekBookCodes(m, "Romans", "ROM", "ROMANS");
+        addGreekBookCodes(m, "1 Corinthians", "1COR", "1CO", "ICOR");
+        addGreekBookCodes(m, "2 Corinthians", "2COR", "2CO", "IICOR");
+        addGreekBookCodes(m, "Galatians", "GAL");
+        addGreekBookCodes(m, "Ephesians", "EPH");
+        addGreekBookCodes(m, "Philippians", "PHIL", "PHP", "PHI");
+        addGreekBookCodes(m, "Colossians", "COL");
+        addGreekBookCodes(m, "1 Thessalonians", "1TH", "1THESS", "1THESSALONIANS");
+        addGreekBookCodes(m, "2 Thessalonians", "2TH", "2THESS", "2THESSALONIANS");
+        addGreekBookCodes(m, "1 Timothy", "1TIM", "1TI");
+        addGreekBookCodes(m, "2 Timothy", "2TIM", "2TI");
+        addGreekBookCodes(m, "Titus", "TITUS", "TIT");
+        addGreekBookCodes(m, "Philemon", "PHLM", "PHILEMON", "PHM");
+        addGreekBookCodes(m, "Hebrews", "HEB");
+        addGreekBookCodes(m, "James", "JAS", "JAMES", "JAM");
+        addGreekBookCodes(m, "1 Peter", "1PET", "1PE");
+        addGreekBookCodes(m, "2 Peter", "2PET", "2PE");
+        addGreekBookCodes(m, "1 John", "1JOHN", "1JN");
+        addGreekBookCodes(m, "2 John", "2JOHN", "2JN");
+        addGreekBookCodes(m, "3 John", "3JOHN", "3JN");
+        addGreekBookCodes(m, "Jude", "JUDE", "JUD");
+        addGreekBookCodes(m, "Revelation", "REV", "REVELATION");
+        return m;
+    }
+
+    private void addGreekBookCodes(Map<String, String> map, String book, String... codes) {
+        for (String code : codes) map.put(code.toUpperCase(Locale.ROOT), book);
     }
 
     private int saveGreekGroups(Map<String, List<String[]>> grouped) {
@@ -5067,6 +5258,34 @@ public class BibleReaderApp extends JFrame {
         int verse;
         RefParts(String b, int c, int v) { book = b; chapter = c; verse = v; }
         String key() { return book + " " + chapter + ":" + verse; }
+    }
+
+    private static class PassageRef implements Serializable {
+        private static final long serialVersionUID = 1L;
+        String book;
+        int chapter;
+        int startVerse;
+        int endVerse;
+        PassageRef(String b, int c, int s, int e) { book = b; chapter = c; startVerse = s; endVerse = e; }
+        String key() { return book + " " + chapter + ":" + startVerse; }
+        String display() { return book + " " + chapter + ":" + startVerse + (endVerse == startVerse ? "" : "-" + endVerse); }
+    }
+
+    private static class GreekImportStats {
+        int wordEntries;
+        int uniqueVerses;
+        int skipped;
+        String firstReference = "";
+        String lastReference = "";
+        Set<String> unknownBookCodes = new TreeSet<>();
+        String summary() {
+            return "Imported Greek word/line entries: " + wordEntries
+                    + " | Unique Greek verse references imported: " + uniqueVerses
+                    + " | Entries skipped: " + skipped
+                    + " | First reference: " + (firstReference.isEmpty() ? "(none)" : firstReference)
+                    + " | Last reference: " + (lastReference.isEmpty() ? "(none)" : lastReference)
+                    + " | Unknown book codes: " + (unknownBookCodes.isEmpty() ? "(none)" : unknownBookCodes);
+        }
     }
 
     private static class SearchResultParts {
