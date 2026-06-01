@@ -720,6 +720,11 @@
         <button id="peopleFilterButton" class="filter-button" onclick="openPeopleFilters()">Filters</button>
       </div>
 
+      <label class="toggle-label" style="margin-bottom:10px;">
+        <input type="checkbox" id="hideAssignedPeopleToggle" onchange="renderPeopleList()" />
+        Hide people already assigned in Org Builder
+      </label>
+
       <div id="peopleListSummary" class="people-list-summary">Showing 0 of 0 people</div>
 
       <div class="notice">
@@ -841,6 +846,7 @@ let savedPersonEmails = {};
 let pendingEmailAttachments = {};
 let activePeopleFilters = [];
 let draftPeopleFilters = [];
+let hideAssignedPeople = false;
 
 const possibleFirstNames = [
   "first",
@@ -1375,6 +1381,8 @@ function renderPeopleList() {
   const box = document.getElementById("peopleList");
   const summary = document.getElementById("peopleListSummary");
   const search = normalizeName(document.getElementById("searchInput").value);
+  const hideAssigned = document.getElementById("hideAssignedPeopleToggle")?.checked;
+  hideAssignedPeople = Boolean(hideAssigned);
 
   updateFilterButtonLabel();
   box.innerHTML = "";
@@ -1387,12 +1395,13 @@ function renderPeopleList() {
 
   const filteredAll = people
     .filter(p => !search || p.nameKey.includes(search) || normalizeName(p.email).includes(search))
-    .filter(personPassesAdvancedFilters);
+    .filter(personPassesAdvancedFilters)
+    .filter(p => !hideAssigned || !isPersonInOrg(p.name));
   const filtered = filteredAll.slice(0, 500);
   const activeFilterCount = getValidPeopleFilters().length;
 
   if (summary) {
-    summary.innerHTML = `Showing ${filteredAll.length.toLocaleString()} of ${people.length.toLocaleString()} people${activeFilterCount ? `<br><span class="advanced-filter-note">Advanced filters active</span>` : ""}`;
+    summary.innerHTML = `Showing ${filteredAll.length.toLocaleString()} of ${people.length.toLocaleString()} people${activeFilterCount ? `<br><span class="advanced-filter-note">Advanced filters active</span>` : ""}${hideAssigned ? `<br><span class="advanced-filter-note">Assigned people hidden</span>` : ""}`;
   }
 
   filtered.forEach(person => {
@@ -2498,6 +2507,7 @@ function saveLocal() {
     org,
     includeEmail: document.getElementById("includeEmailToggle").checked,
     currentViewMode,
+    hideAssignedPeople: document.getElementById("hideAssignedPeopleToggle")?.checked || false,
     filledReportEmails,
     orgBlueprint: buildOrgBlueprint(),
     safeliteUsersEmails,
@@ -2524,6 +2534,9 @@ function loadLocal() {
     const hasBlueprint = payload.orgBlueprint && Array.isArray(payload.orgBlueprint.hierarchy);
 
     if (hasCurrentFileLoaded && hasBlueprint) {
+      hideAssignedPeople = Boolean(payload.hideAssignedPeople);
+      const hideAssignedToggle = document.getElementById("hideAssignedPeopleToggle");
+      if (hideAssignedToggle) hideAssignedToggle.checked = hideAssignedPeople;
       activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
       rebuildOrgFromBlueprint(payload.orgBlueprint);
       updateFilterButtonLabel();
@@ -2541,6 +2554,9 @@ function loadLocal() {
     savedPersonEmails = payload.savedPersonEmails || {};
     activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
     currentViewMode = payload.currentViewMode || "org";
+    hideAssignedPeople = Boolean(payload.hideAssignedPeople);
+    const hideAssignedToggle = document.getElementById("hideAssignedPeopleToggle");
+    if (hideAssignedToggle) hideAssignedToggle.checked = hideAssignedPeople;
 
     if (typeof payload.includeEmail === "boolean") {
       document.getElementById("includeEmailToggle").checked = payload.includeEmail;
