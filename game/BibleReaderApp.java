@@ -585,9 +585,9 @@ public class BibleReaderApp extends JFrame {
         readerLocationControls.add(chapterCombo);
         readerLocationControls.add(backButton);
         readerLocationControls.add(forwardButton);
-        readerLocationControls.add(previousChapter);
-        readerLocationControls.add(nextChapter);
 
+        readerActionControls.add(previousChapter);
+        readerActionControls.add(nextChapter);
         readerActionControls.add(bookmarkButton);
         readerActionControls.add(bookmarksButton);
         readerActionControls.add(bibleBookmarkButton);
@@ -694,12 +694,13 @@ public class BibleReaderApp extends JFrame {
         content.add(sideSearchPanel, gbc);
 
         gbc.gridy = 1;
-        content.add(buildPinnedItemsPanel(), gbc);
+        gbc.weighty = 1.0;
+        content.add(buildDetailsPanel(), gbc);
 
         gbc.gridy = 2;
-        gbc.weighty = 1.0;
+        gbc.weighty = 0.0;
         gbc.insets = new Insets(0, 0, 0, 0);
-        content.add(buildDetailsPanel(), gbc);
+        content.add(buildPinnedItemsPanel(), gbc);
 
         JScrollPane sidebarScroll = new JScrollPane(content);
         sidebarScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
