@@ -944,13 +944,17 @@ function isLikelyEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
 }
 function parseEmailList(text) {
+  const seen = new Set();
+
   return String(text || "")
     .split(",")
     .map(email => email.trim())
     .filter(Boolean)
-    .filter((email, index, arr) => {
+    .filter(email => {
       const key = normalizeEmail(email);
-      return arr.findIndex(e => normalizeEmail(e) === key) === index;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
 }
 
@@ -1628,6 +1632,26 @@ function addManager(directorName, managerName) {
   renderAll();
 }
 
+function addTempStructureManager(directorIndex) {
+  const director = org[directorIndex];
+  if (!director) return;
+
+  const directorKey = normalizeName(director.name);
+  const alreadyExists = director.managers.some(manager => normalizeName(manager.name) === directorKey);
+
+  if (alreadyExists) {
+    alert("Temp structure already exists for this Director.");
+    return;
+  }
+
+  director.managers.push({
+    name: director.name,
+    coaches: []
+  });
+
+  renderAll();
+}
+
 function addCoach(directorName, managerName, coachName) {
   directorName = titleName(directorName);
   managerName = titleName(managerName);
@@ -1800,6 +1824,7 @@ function renderOrg() {
         <span class="small" style="color:#fee2e2;">Username/Email: ${escapeHTML(getEmailByName(director.name) || "—")}</span>
       </span>
       <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeDirector(${directorIndex})">Remove</button>
+      <button class="mini-btn" onclick="event.stopPropagation(); addTempStructureManager(${directorIndex})">Temp Structure</button>
     `;
 
     directorBlock.appendChild(directorHeader);
@@ -2060,6 +2085,27 @@ function blueprintFromImportedRows(rows) { const byDirector = new Map(); const i
 function handleBlueprintImport(event) { const file = event.target.files[0]; if (!file) return; if (!people.length) { alert("Upload and process a people file first."); event.target.value = ""; return; } const ext = file.name.split(".").pop().toLowerCase(); const reader = new FileReader(); reader.onload = function(e) { try { let blueprint; if (ext === "json") { blueprint = JSON.parse(String(e.target.result || "{}")); } else { let rows = []; if (ext === "csv") { const wb = XLSX.read(String(e.target.result), { type: "string" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } else { const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } blueprint = blueprintFromImportedRows(rows); } rebuildOrgFromBlueprint(blueprint); setStatus(`Blueprint imported from ${file.name}`); } catch (error) { console.error(error); alert("Unable to import blueprint file."); } finally { event.target.value = ""; } }; if (ext === "json" || ext === "csv") reader.readAsText(file); else reader.readAsArrayBuffer(file); }
 function applySafeliteEmailBox() { const box = document.getElementById("safeliteEmailBox"); safeliteUsersEmails = parseEmailList(box ? box.value : ""); renderOutputTable(); setStatus(`Safelite row updated with ${safeliteUsersEmails.length} emails`); }
 
+function bringRestIntoSafeliteEmails() {
+  const box = document.getElementById("safeliteEmailBox");
+  const startingEmails = parseEmailList([safeliteUsersEmails.join(", "), box ? box.value : ""].filter(Boolean).join(", "));
+  const safeliteEmailSet = new Set(startingEmails.map(normalizeEmail));
+  const remainingEmails = [];
+
+  getOrgPathRows().forEach(row => {
+    const rowEmail = getEmailByName(row.personName) || "";
+    const key = normalizeEmail(rowEmail);
+
+    if (!key || safeliteEmailSet.has(key)) return;
+
+    safeliteEmailSet.add(key);
+    remainingEmails.push(rowEmail.trim());
+  });
+
+  safeliteUsersEmails = parseEmailList([...startingEmails, ...remainingEmails].join(", "));
+  renderOutputTable();
+  setStatus(`Brought ${remainingEmails.length} remaining user emails into Safelite row`);
+}
+
 function setViewMode(mode) {
   currentViewMode = mode;
 
@@ -2140,7 +2186,7 @@ function renderUsersOutputTable() {
   tbody.innerHTML = "";
   const safeliteRow = document.createElement("tr");
   safeliteRow.className = "safelite-users-row";
-  safeliteRow.innerHTML = `<td class="path-cell"><strong>Safelite</strong></td><td><textarea id="safeliteEmailBox" class="safelite-email-box" placeholder="Paste comma-separated emails here..."></textarea><div class="small">Paste comma-separated emails. These will be removed from duplicate user rows below.</div><button class="mini-btn" onclick="applySafeliteEmailBox()">Apply Safelite Emails</button></td>`;
+  safeliteRow.innerHTML = `<td class="path-cell"><strong>Safelite</strong></td><td><textarea id="safeliteEmailBox" class="safelite-email-box" placeholder="Paste comma-separated emails here..."></textarea><div class="small">Paste comma-separated emails. These will be removed from duplicate user rows below.</div><button class="mini-btn" onclick="applySafeliteEmailBox()">Apply Safelite Emails</button> <button class="mini-btn" onclick="bringRestIntoSafeliteEmails()">Bring rest in</button></td>`;
   tbody.appendChild(safeliteRow);
   const safeliteEmailSet = new Set(safeliteUsersEmails.map(normalizeEmail));
 
@@ -2171,14 +2217,13 @@ function renderFiltersOutputTable() {
   tbody.innerHTML = "";
 
   getOrgPathRows().forEach(row => {
-    const emails = filledReportEmails[row.personName] || getReportEmailsForSupervisor(row.personName);
-    const formattedEmails = formatFilterEmails(emails);
+    const formattedEmails = formatFilterEmails(row.personName);
 
     const tr = document.createElement("tr");
 
     tr.innerHTML = `
       <td class="path-cell">${makeClickablePath(row.path)}</td>
-      <td class="email-list">${formattedEmails}</td>
+      <td class="email-list">${escapeHTML(formattedEmails)}</td>
     `;
 
     tbody.appendChild(tr);
@@ -2377,16 +2422,33 @@ function clearFilledEmails() {
   renderOutputTable();
 }
 
-function formatFilterEmails(emails) {
-  if (!emails || !emails.length) {
-    return `Username:`;
+function getFilterEmailsForPerson(personName) {
+  const emails = [
+    getEmailByName(personName),
+    ...(filledReportEmails[personName] || getReportEmailsForSupervisor(personName))
+  ];
+  const seen = new Set();
+
+  return emails
+    .map(email => String(email || "").trim())
+    .filter(email => {
+      const key = normalizeEmail(email);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function formatFilterEmails(personName) {
+  const emails = getFilterEmailsForPerson(personName);
+
+  if (!emails.length) {
+    return "";
   }
 
-  const quotedEmails = emails
-    .map(email => `"${escapeHTML(email)}"`)
+  return emails
+    .map(email => `username:"${email}"`)
     .join(", ");
-
-  return `Username: ${quotedEmails}`;
 }
 
 function getCurrentViewExportRows() {
@@ -2415,14 +2477,10 @@ function getCurrentViewExportRows() {
   }
 
   if (currentViewMode === "filters") {
-    return getOrgPathRows().map(row => {
-      const emails = filledReportEmails[row.personName] || getReportEmailsForSupervisor(row.personName);
-
-      return {
-        "Users": row.path,
-        "Studio Email Address": `Username: ${emails.map(email => `"${email}"`).join(", ")}`
-      };
-    });
+    return getOrgPathRows().map(row => ({
+      "Users": row.path,
+      "Studio Email Address": formatFilterEmails(row.personName)
+    }));
   }
 
   return [];
