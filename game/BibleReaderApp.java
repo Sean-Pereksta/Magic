@@ -54,6 +54,8 @@ public class BibleReaderApp extends JFrame {
     private static final int RIGHT_SIDEBAR_PREFERRED_WIDTH = 360;
     private static final int RIGHT_SIDEBAR_MIN_WIDTH = 250;
     private static final int RIGHT_SIDEBAR_CONTENT_WIDTH = 320;
+    private static final int RIGHT_SIDEBAR_SEARCH_HEIGHT = 300;
+    private static final int RIGHT_SIDEBAR_SEARCH_MIN_HEIGHT = 235;
     private static final int STUDY_READER_MIN_WIDTH = 520;
 
     private AppData data;
@@ -155,6 +157,7 @@ public class BibleReaderApp extends JFrame {
     private DefaultListModel<RecentAnnotationListItem> recentModel;
     private JList<RecentAnnotationListItem> recentList;
 
+    private JPanel sideSearchPanel;
     private JPanel sideSearchBody;
     private JButton sideSearchToggleBtn;
     private JTextField sideSearchField;
@@ -500,8 +503,15 @@ public class BibleReaderApp extends JFrame {
         p.setBackground(cream);
         styleModernCard(p);
 
-        JPanel nav = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel nav = new JPanel();
+        nav.setLayout(new BoxLayout(nav, BoxLayout.Y_AXIS));
         nav.setOpaque(false);
+
+        JPanel readerLocationControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        readerLocationControls.setOpaque(false);
+
+        JPanel readerActionControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        readerActionControls.setOpaque(false);
 
         bookCombo = new JComboBox<>();
         bookCombo.setPreferredSize(new Dimension(180, 30));
@@ -568,20 +578,24 @@ public class BibleReaderApp extends JFrame {
             }
         });
 
-        nav.add(exitReadingModeButton);
-        nav.add(new JLabel("Book:"));
-        nav.add(bookCombo);
-        nav.add(new JLabel("Chapter:"));
-        nav.add(chapterCombo);
-        nav.add(backButton);
-        nav.add(forwardButton);
-        nav.add(previousChapter);
-        nav.add(nextChapter);
-        nav.add(bookmarkButton);
-        nav.add(bookmarksButton);
-        nav.add(bibleBookmarkButton);
-        nav.add(readingModeButton);
-        nav.add(sourceLabel);
+        readerLocationControls.add(exitReadingModeButton);
+        readerLocationControls.add(new JLabel("Book:"));
+        readerLocationControls.add(bookCombo);
+        readerLocationControls.add(new JLabel("Chapter:"));
+        readerLocationControls.add(chapterCombo);
+        readerLocationControls.add(backButton);
+        readerLocationControls.add(forwardButton);
+        readerLocationControls.add(previousChapter);
+        readerLocationControls.add(nextChapter);
+
+        readerActionControls.add(bookmarkButton);
+        readerActionControls.add(bookmarksButton);
+        readerActionControls.add(bibleBookmarkButton);
+        readerActionControls.add(readingModeButton);
+        readerActionControls.add(sourceLabel);
+
+        nav.add(readerLocationControls);
+        nav.add(readerActionControls);
 
         JPanel goPanel = new JPanel(new BorderLayout(6, 0));
         goPanel.setOpaque(false);
@@ -676,7 +690,8 @@ public class BibleReaderApp extends JFrame {
 
         gbc.gridy = 0;
         gbc.weighty = 0.0;
-        content.add(buildSideSearchPanel(), gbc);
+        sideSearchPanel = buildSideSearchPanel();
+        content.add(sideSearchPanel, gbc);
 
         gbc.gridy = 1;
         content.add(buildPinnedItemsPanel(), gbc);
@@ -764,7 +779,8 @@ public class BibleReaderApp extends JFrame {
 
     private JPanel buildSideSearchPanel() {
         JPanel outer = new JPanel(new BorderLayout(4, 4));
-        outer.setMinimumSize(new Dimension(0, 0));
+        outer.setPreferredSize(new Dimension(RIGHT_SIDEBAR_CONTENT_WIDTH, RIGHT_SIDEBAR_SEARCH_HEIGHT));
+        outer.setMinimumSize(new Dimension(0, RIGHT_SIDEBAR_SEARCH_MIN_HEIGHT));
         outer.setBorder(new CompoundBorder(
                 new EmptyBorder(4, 4, 0, 4),
                 new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(4, 4, 4, 4))
@@ -5679,6 +5695,16 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         sideSearchExpanded = !sideSearchExpanded;
         if (sideSearchBody != null) sideSearchBody.setVisible(sideSearchExpanded);
         if (sideSearchToggleBtn != null) sideSearchToggleBtn.setText(sideSearchExpanded ? "Minimize" : "Restore");
+        if (sideSearchPanel != null) {
+            sideSearchPanel.setPreferredSize(sideSearchExpanded
+                    ? new Dimension(RIGHT_SIDEBAR_CONTENT_WIDTH, RIGHT_SIDEBAR_SEARCH_HEIGHT)
+                    : null);
+            sideSearchPanel.setMinimumSize(sideSearchExpanded
+                    ? new Dimension(0, RIGHT_SIDEBAR_SEARCH_MIN_HEIGHT)
+                    : new Dimension(0, 0));
+            sideSearchPanel.revalidate();
+            sideSearchPanel.repaint();
+        }
     }
 
     private void doGreekSearch() {
