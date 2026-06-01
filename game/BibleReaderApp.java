@@ -880,7 +880,7 @@ public class BibleReaderApp extends JFrame {
         h.setFont(new Font("Segoe UI", Font.BOLD, 26));
         h.setForeground(darkRed);
 
-        JLabel help = new JLabel("Search imported Greek text, MorphGNT details, verse references, and available English verse text.");
+        JLabel help = new JLabel("Search imported Greek text, MorphGNT details, and verse references.");
         help.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         help.setForeground(new Color(90, 70, 60));
 
@@ -915,7 +915,7 @@ public class BibleReaderApp extends JFrame {
         greekSearchPreview = new JTextPane();
         greekSearchPreview.setEditable(false);
         greekSearchPreview.setFont(new Font("Consolas", Font.PLAIN, 13));
-        greekSearchPreview.setText("Type a Greek word, reference, morphology tag, details text, or English verse words, then click Search.");
+        greekSearchPreview.setText("Type a Greek word, reference, morphology tag, or details text, then click Search.");
         greekSearchPreview.setCaretPosition(0);
 
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, new JScrollPane(greekSearchList), new JScrollPane(greekSearchPreview));
@@ -1602,21 +1602,53 @@ public class BibleReaderApp extends JFrame {
 
         hideSelectionActionPopup();
         selectionActionPopup = new JPopupMenu();
-        addMenu(selectionActionPopup, "Add Note", () -> addAnnotationFromSelection("Note", ""));
-        addMenu(selectionActionPopup, "Add Category", this::addCategoryFromSelection);
-        addMenu(selectionActionPopup, "Add Question", () -> addAnnotationFromSelection("Question", ""));
-        addMenu(selectionActionPopup, "Add To Memory Verses", this::addMemoryVerseFromSelection);
-        addMenu(selectionActionPopup, "Attach", this::addAttachmentFromSelection);
-        addMenu(selectionActionPopup, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
-        addMenu(selectionActionPopup, "Add Selected Text To Study Project", this::addSelectedTextToStudyProject);
-        addMenu(selectionActionPopup, "Search This In Greek", this::searchSelectedTextInGreek);
-        if (greekKeyForSelection() != null) {
-            addMenu(selectionActionPopup, "View Greek For This Verse", this::showGreekForCurrentSelection);
-            addMenu(selectionActionPopup, "Add Greek Note To Selected Phrase", this::addGreekNoteForSelectionOrVerse);
-        }
+        addSelectedTextActions(selectionActionPopup);
 
         Point popupPoint = selectionPopupPoint();
         selectionActionPopup.show(readerPane, popupPoint.x, popupPoint.y);
+    }
+
+
+    private void addSelectedTextActions(JPopupMenu menu) {
+        boolean bibleSelection = greekKeyForSelection() != null;
+        addMenu(menu, "Add Note", () -> addAnnotationFromSelection("Note", ""));
+        addMenu(menu, "Add To Category", this::addCategoryFromSelection);
+        addMenu(menu, "Add Question", () -> addAnnotationFromSelection("Question", ""));
+        addMenu(menu, "Attach To Bible Verse Or Book Section", this::addAttachmentFromSelection);
+        if (bibleSelection) {
+            addMenu(menu, "View Greek For This Verse", this::showGreekForCurrentSelection);
+            addMenu(menu, "Add Greek Note To Selected Phrase", this::addGreekNoteForSelectionOrVerse);
+            addMenu(menu, "Search This In Greek", this::searchSelectedTextInGreek);
+        } else if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:")) {
+            addMenu(menu, "Search This In Greek", this::searchSelectedTextInGreek);
+        }
+        addMenu(menu, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
+        addMenu(menu, "Add Selected Text To Study Project", this::addSelectedTextToStudyProject);
+        if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:")) {
+            addMenu(menu, "Add To Memory Verses", this::addMemoryVerseFromSelection);
+        }
+        addMenu(menu, "Add Bookmark Here", () -> addBookmarkAtPosition(readerPane.getSelectionStart(), true, ""));
+    }
+
+    private void addExistingHighlightActions(JPopupMenu menu, TextAnnotation existing) {
+        addMenu(menu, "View Highlight Details", () -> showAnnotationDetails(existing));
+        addMenu(menu, "Edit This Highlight", () -> editAnnotation(existing));
+        addMenu(menu, "Pin This Highlight To Sidebar", () -> pinAnnotationToSidebar(existing));
+        addMenu(menu, "Add This Note To Study Project", () -> addAnnotationToStudyProject(existing));
+        if ("Category".equals(existing.type) && existing.category != null && !existing.category.trim().isEmpty()) {
+            String category = existing.category.trim();
+            addMenu(menu, "Show Category: " + category, () -> showCategoryByName(category));
+            addMenu(menu, "Change Category", () -> changeAnnotationCategory(existing));
+            addMenu(menu, "Change Category Color", () -> {
+                changeCategoryColorByName(category);
+                showAnnotationDetails(existing);
+            });
+            addMenu(menu, "Remove From Category", () -> removeAnnotationFromCategory(existing));
+        }
+        if (existing.target != null && !existing.target.trim().isEmpty()) {
+            addMenu(menu, "Open Attachment", () -> openAnnotationTarget(existing));
+        }
+        addMenu(menu, "Delete This Highlight", () -> deleteAnnotation(existing));
     }
 
     private Point selectionPopupPoint() {
@@ -1643,11 +1675,13 @@ public class BibleReaderApp extends JFrame {
 
         Integer verseNumber = verseNumberAtPosition(pos);
         JPopupMenu menu = new JPopupMenu();
-        addMenu(menu, "Add Bookmark Here", () -> addBookmarkAtPosition(pos, true, ""));
-        menu.addSeparator();
+        if (!hasSelection) {
+            addMenu(menu, "Add Bookmark Here", () -> addBookmarkAtPosition(pos, true, ""));
+            menu.addSeparator();
+        }
 
         Integer containingVerseNumber = currentSourceKey.startsWith("BIBLE:") ? verseNumberContainingPosition(pos) : null;
-        if (containingVerseNumber != null) {
+        if (!hasSelection && containingVerseNumber != null) {
             String key = selectedBook + " " + selectedChapter + ":" + containingVerseNumber;
             addMenu(menu, "Add Verse To Memory", () -> addMemoryVerseByKey(key));
         }
@@ -1662,39 +1696,12 @@ public class BibleReaderApp extends JFrame {
         }
 
         if (hasSelection) {
-            addMenu(menu, "Search This In Greek", this::searchSelectedTextInGreek);
-            if (greekKeyForSelection() != null) {
-                addMenu(menu, "View Greek For This Verse", this::showGreekForCurrentSelection);
-                addMenu(menu, "Add Greek Note To Selected Phrase", this::addGreekNoteForSelectionOrVerse);
-                menu.addSeparator();
-            }
-            addMenu(menu, "Add Note To Selected Text", () -> addAnnotationFromSelection("Note", ""));
-            addMenu(menu, "Add To Category", this::addCategoryFromSelection);
-            addMenu(menu, "Add To Memory Verses", this::addMemoryVerseFromSelection);
-            addMenu(menu, "Attach To Bible Verse Or Book Section", this::addAttachmentFromSelection);
-            addMenu(menu, "Add Unfinished Question", () -> addAnnotationFromSelection("Question", ""));
-            addMenu(menu, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
-            addMenu(menu, "Add Selected Text To Study Project", this::addSelectedTextToStudyProject);
+            addSelectedTextActions(menu);
             menu.addSeparator();
         }
 
         if (existing != null) {
-            if ("Category".equals(existing.type) && existing.category != null && !existing.category.trim().isEmpty()) {
-                String category = existing.category.trim();
-                addMenu(menu, "Change Category", () -> changeAnnotationCategory(existing));
-                addMenu(menu, "Change Category Color", () -> {
-                    changeCategoryColorByName(category);
-                    showAnnotationDetails(existing);
-                });
-                addMenu(menu, "Remove From Category", () -> removeAnnotationFromCategory(existing));
-                addMenu(menu, "Show Category: " + category, () -> showCategoryByName(category));
-            }
-            addMenu(menu, "View Highlight Details", () -> showAnnotationDetails(existing));
-            addMenu(menu, "Pin This Highlight To Sidebar", () -> pinAnnotationToSidebar(existing));
-            addMenu(menu, "Add This Note To Study Project", () -> addAnnotationToStudyProject(existing));
-            addMenu(menu, "Edit This Highlight", () -> editAnnotation(existing));
-            addMenu(menu, "Open Attachment", () -> openAnnotationTarget(existing));
-            addMenu(menu, "Delete This Highlight", () -> deleteAnnotation(existing));
+            addExistingHighlightActions(menu, existing);
         }
 
         if (menu.getComponentCount() == 0) addMenu(menu, "Select text first", () -> {});
@@ -1877,6 +1884,7 @@ public class BibleReaderApp extends JFrame {
                 int e = Math.max(s, Math.min(bookmark.selectionEnd, len));
                 readerPane.requestFocusInWindow();
                 readerPane.select(s, e);
+                scrollReaderToPosition(s);
             } else {
                 moveReaderCaret(bookmark.caretPosition);
             }
@@ -1898,6 +1906,16 @@ public class BibleReaderApp extends JFrame {
         } else if (sourceKey.startsWith("LIBRARY:")) {
             showLibraryDoc(sourceKey.substring("LIBRARY:".length()));
         }
+    }
+
+
+    private void scrollReaderToPosition(int position) {
+        try {
+            int len = readerPane.getDocument().getLength();
+            int safePosition = Math.max(0, Math.min(position, len));
+            Rectangle r = readerPane.modelToView2D(safePosition).getBounds();
+            if (r != null) readerPane.scrollRectToVisible(r);
+        } catch (Exception ignored) {}
     }
 
     private void moveReaderCaret(int position) {
@@ -2095,6 +2113,7 @@ public class BibleReaderApp extends JFrame {
         if (detailsPanel == null) return;
         GreekEntry ge = data.greek.get(key);
         String greekText = ge == null ? "" : ge.greekText;
+        String englishText = englishVerseTextForKey(key);
         String details = ge == null
                 ? "No Greek imported for " + key + " yet. Use Import > Download + Import MorphGNT Greek, import a MorphGNT ZIP/TXT folder, or import a Greek CSV."
                 : ge.details;
@@ -2102,6 +2121,7 @@ public class BibleReaderApp extends JFrame {
         detailsPanel.removeAll();
         addDetailTitle("Greek Details");
         addDetailText("Reference: " + key);
+        addDetailText("English verse text:\n" + (englishText.isEmpty() ? "(English verse not found in the current Bible text.)" : englishText));
         addDetailText("Greek text:\n" + (greekText.isEmpty() ? "(No Greek text imported.)" : greekText));
         addDetailText("Morphology/details:\n" + (details.isEmpty() ? "(No morphology/details imported.)" : details));
 
@@ -2218,13 +2238,18 @@ public class BibleReaderApp extends JFrame {
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
         JButton copyGreek = blackButton("Copy Greek Text");
-        JButton saveNote = blackButton("Save Greek Note");
+        JButton openVerse = blackButton("Open Verse");
+        JButton saveNote = blackButton("Add Greek Note");
         JButton close = blackButton("Close");
 
         copyGreek.addActionListener(e -> {
             StringSelection selection = new StringSelection(greekText == null ? "" : greekText);
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
             statusLabel.setText(" Copied Greek text for " + key);
+        });
+        openVerse.addActionListener(e -> {
+            openGreekResultVerse(key, false);
+            dialog.dispose();
         });
         saveNote.addActionListener(e -> {
             String noteText = note.getText().trim();
@@ -2241,6 +2266,7 @@ public class BibleReaderApp extends JFrame {
         close.addActionListener(e -> dialog.dispose());
 
         buttons.add(copyGreek);
+        buttons.add(openVerse);
         buttons.add(saveNote);
         buttons.add(close);
         dialog.add(buttons, BorderLayout.SOUTH);
@@ -3872,7 +3898,7 @@ public class BibleReaderApp extends JFrame {
         annotations.sort((a, b) -> Long.compare(annotationSortTime(b), annotationSortTime(a)));
 
         for (TextAnnotation a : annotations) {
-            repairAnnotationTimestamps(a, System.currentTimeMillis());
+            repairAnnotation(a, System.currentTimeMillis());
             if (!matchesRecentFilter(a, filter)) continue;
             if (!query.isEmpty() && !recentSearchText(a).contains(query)) continue;
             recentModel.addElement(new RecentAnnotationListItem(a));
@@ -3957,7 +3983,7 @@ public class BibleReaderApp extends JFrame {
         if (greekSearchModel == null) return;
         greekSearchModel.clear();
         lastGreekSearchQuery = greekSearchField == null ? "" : greekSearchField.getText().trim();
-        if (greekSearchPreview != null) greekSearchPreview.setText("Type a Greek word, reference, morphology tag, details text, or English verse words, then click Search.");
+        if (greekSearchPreview != null) greekSearchPreview.setText("Type a Greek word, reference, morphology tag, or details text, then click Search.");
         if (greekSearchStatus != null) greekSearchStatus.setText(" ");
         if (lastGreekSearchQuery.isEmpty()) return;
 
@@ -3978,8 +4004,7 @@ public class BibleReaderApp extends JFrame {
         if (q.isEmpty()) return 0;
         int matches = 0;
         for (GreekEntry ge : data.greek.values()) {
-            String english = englishVerseTextFromData(ge.key());
-            String haystack = (ge.key() + " " + ge.greekText + " " + ge.details + " " + english).toLowerCase(Locale.ROOT);
+            String haystack = (ge.key() + " " + ge.greekText + " " + ge.details).toLowerCase(Locale.ROOT);
             if (!haystack.contains(q)) continue;
             matches++;
             if (model.size() < limit) model.addElement(ge.key() + " | " + shorten(ge.greekText, maxSnippet));
@@ -4816,19 +4841,31 @@ public class BibleReaderApp extends JFrame {
         if (p.memoryVerses == null) p.memoryVerses = new ArrayList<>();
         if (p.bookmarks == null) p.bookmarks = new ArrayList<>();
         if (p.studyProjects == null) p.studyProjects = new TreeMap<>();
+        p.annotations.removeIf(Objects::isNull);
+        p.questions.removeIf(Objects::isNull);
         p.bookmarks.removeIf(Objects::isNull);
+        p.pinnedItems.removeIf(Objects::isNull);
+        p.memoryVerses.removeIf(Objects::isNull);
         for (StudyBookmark b : p.bookmarks) repairBookmark(b);
         p.studyProjects.values().removeIf(Objects::isNull);
         for (StudyProject project : p.studyProjects.values()) repairStudyProject(project);
         for (PinnedItem item : p.pinnedItems) repairPinnedItem(item);
         for (MemoryVerse mv : p.memoryVerses) repairMemoryVerse(mv);
+        for (StudyQuestion q : p.questions) repairQuestion(q);
         long fallbackBase = System.currentTimeMillis() - (long) p.annotations.size() * 1000L;
         for (int i = 0; i < p.annotations.size(); i++) {
-            repairAnnotationTimestamps(p.annotations.get(i), fallbackBase + (long) i * 1000L);
+            repairAnnotation(p.annotations.get(i), fallbackBase + (long) i * 1000L);
         }
         if (p.oldNotes != null && !p.oldNotes.isEmpty()) {
             for (StudyNote n : p.oldNotes) {
+                if (n == null) continue;
                 TextAnnotation a = new TextAnnotation(n.refKey, n.refKey, 0, 0, "", n.type, n.category, n.body, "");
+                if (n.created != null) {
+                    a.createdAt = n.created.getTime();
+                    a.updatedAt = a.createdAt;
+                    a.created = n.created;
+                }
+                repairAnnotation(a, System.currentTimeMillis());
                 p.annotations.add(a);
             }
             p.oldNotes.clear();
@@ -4912,7 +4949,17 @@ public class BibleReaderApp extends JFrame {
         if (item.end < item.start) item.end = item.start;
     }
 
-    private void repairAnnotationTimestamps(TextAnnotation a, long fallbackMillis) {
+
+    private void repairQuestion(StudyQuestion q) {
+        if (q == null) return;
+        if (q.annotationId == null) q.annotationId = "";
+        if (q.sourceTitle == null) q.sourceTitle = "";
+        if (q.selectedText == null) q.selectedText = "";
+        if (q.question == null) q.question = "";
+        if (q.created == null) q.created = new Date();
+    }
+
+    private void repairAnnotation(TextAnnotation a, long fallbackMillis) {
         if (a == null) return;
         if (a.id == null || a.id.trim().isEmpty()) a.id = UUID.randomUUID().toString();
         if (a.sourceKey == null) a.sourceKey = "";
