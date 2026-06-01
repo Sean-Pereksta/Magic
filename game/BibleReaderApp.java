@@ -64,7 +64,7 @@ public class BibleReaderApp extends JFrame {
     private JButton modernViewToggleButton;
     private final Map<String, JButton> navButtonsByCard = new HashMap<>();
     private String activeCardName = "study";
-    private JComboBox<String> bookCombo;
+    private JComboBox<BookTreeItem> bookCombo;
     private JComboBox<Integer> chapterCombo;
 
     private DefaultMutableTreeNode rootNode;
@@ -169,6 +169,7 @@ public class BibleReaderApp extends JFrame {
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1450, 880);
+        initializeStudySplitDividers();
         setLocationRelativeTo(null);
     }
 
@@ -176,13 +177,15 @@ public class BibleReaderApp extends JFrame {
         setLayout(new BorderLayout());
         getContentPane().setBackground(panelBg);
 
-        JPanel top = new JPanel(new BorderLayout(12, 8));
+        JPanel top = new JPanel(new BorderLayout(6, 8));
         top.putClientProperty("modernHeader", Boolean.TRUE);
         top.setBackground(darkRed);
         top.setBorder(new EmptyBorder(10, 12, 10, 12));
 
         JPanel titlePanel = new JPanel(new GridLayout(2, 1));
         titlePanel.setOpaque(false);
+        titlePanel.setPreferredSize(new Dimension(250, 52));
+        titlePanel.setMinimumSize(new Dimension(210, 52));
 
         JLabel title = new JLabel("Bible Study Library");
         title.setForeground(Color.WHITE);
@@ -271,7 +274,8 @@ public class BibleReaderApp extends JFrame {
         navScroll.setOpaque(false);
         navScroll.getViewport().setOpaque(false);
         navScroll.getHorizontalScrollBar().setUnitIncrement(24);
-        navScroll.setPreferredSize(new Dimension(900, 58));
+        navScroll.setPreferredSize(new Dimension(1180, 58));
+        navScroll.setMinimumSize(new Dimension(720, 58));
 
         top.add(titlePanel, BorderLayout.WEST);
         top.add(navScroll, BorderLayout.CENTER);
@@ -324,17 +328,33 @@ public class BibleReaderApp extends JFrame {
         mainStudySplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         mainStudySplit.setResizeWeight(0.22);
         mainStudySplit.setDividerSize(7);
-        mainStudySplit.setLeftComponent(buildLibraryPanel());
+        JPanel libraryPanel = buildLibraryPanel();
+        libraryPanel.setMinimumSize(new Dimension(210, 10));
+        mainStudySplit.setLeftComponent(libraryPanel);
 
         centerRightSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        centerRightSplit.setResizeWeight(0.58);
+        centerRightSplit.setResizeWeight(1.0);
         centerRightSplit.setDividerSize(7);
-        centerRightSplit.setLeftComponent(buildReaderPanel());
-        centerRightSplit.setRightComponent(buildRightSidebar());
+        JPanel readerPanel = buildReaderPanel();
+        readerPanel.setMinimumSize(new Dimension(520, 10));
+        centerRightSplit.setLeftComponent(readerPanel);
+        JPanel rightSidebar = buildRightSidebar();
+        centerRightSplit.setRightComponent(rightSidebar);
 
         mainStudySplit.setRightComponent(centerRightSplit);
         page.add(mainStudySplit, BorderLayout.CENTER);
         return page;
+    }
+
+    private void initializeStudySplitDividers() {
+        SwingUtilities.invokeLater(() -> {
+            if (mainStudySplit != null && mainStudySplit.getWidth() > 0) {
+                mainStudySplit.setDividerLocation(Math.max(240, Math.min(320, mainStudySplit.getWidth() / 4)));
+            }
+            if (centerRightSplit != null && centerRightSplit.getWidth() > 0 && !readingMode) {
+                centerRightSplit.setDividerLocation(Math.max(520, centerRightSplit.getWidth() - 455));
+            }
+        });
     }
 
     private JPanel buildLibraryPanel() {
@@ -420,7 +440,7 @@ public class BibleReaderApp extends JFrame {
             if (refreshingUi) return;
             Object o = bookCombo.getSelectedItem();
             if (o != null) {
-                selectedBook = o.toString();
+                selectedBook = bookKeyFromComboItem(o);
                 refreshChapterCombo();
                 showSelectedChapter(true);
             }
@@ -531,8 +551,8 @@ public class BibleReaderApp extends JFrame {
 
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.setBackground(panelBg);
-        wrapper.setPreferredSize(new Dimension(390, 10));
-        wrapper.setMinimumSize(new Dimension(340, 10));
+        wrapper.setPreferredSize(new Dimension(450, 10));
+        wrapper.setMinimumSize(new Dimension(400, 10));
         wrapper.add(sidebarScroll, BorderLayout.CENTER);
         return wrapper;
     }
@@ -559,13 +579,14 @@ public class BibleReaderApp extends JFrame {
         header.add(title, BorderLayout.WEST);
         header.add(pinnedItemsToggleBtn, BorderLayout.EAST);
 
-        pinnedItemsBody = new JPanel();
+        pinnedItemsBody = new WidthTrackingPanel();
         pinnedItemsBody.setLayout(new BoxLayout(pinnedItemsBody, BoxLayout.Y_AXIS));
         pinnedItemsBody.setBackground(cream);
         pinnedItemsBody.setBorder(new EmptyBorder(6, 6, 6, 6));
 
         pinnedItemsScroll = new JScrollPane(pinnedItemsBody);
-        pinnedItemsScroll.setPreferredSize(new Dimension(360, 185));
+        pinnedItemsScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        pinnedItemsScroll.setPreferredSize(new Dimension(410, 185));
 
         pinnedItemsPanel.add(header, BorderLayout.NORTH);
         pinnedItemsPanel.add(pinnedItemsScroll, BorderLayout.CENTER);
@@ -582,13 +603,15 @@ public class BibleReaderApp extends JFrame {
         h.setFont(new Font("Segoe UI", Font.BOLD, 20));
         h.setForeground(darkRed);
 
-        detailsPanel = new JPanel();
+        detailsPanel = new WidthTrackingPanel();
         detailsPanel.setLayout(new BoxLayout(detailsPanel, BoxLayout.Y_AXIS));
         detailsPanel.setBackground(cream);
         detailsPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
         p.add(h, BorderLayout.NORTH);
-        p.add(new JScrollPane(detailsPanel), BorderLayout.CENTER);
+        JScrollPane detailsScroll = new JScrollPane(detailsPanel);
+        detailsScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        p.add(detailsScroll, BorderLayout.CENTER);
         return p;
     }
 
@@ -659,7 +682,9 @@ public class BibleReaderApp extends JFrame {
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, new JScrollPane(sideSearchList), new JScrollPane(sideSearchPreview));
         split.setResizeWeight(0.48);
         split.setDividerSize(5);
-        split.setPreferredSize(new Dimension(360, 290));
+        split.setPreferredSize(new Dimension(410, 290));
+        ((JScrollPane) split.getTopComponent()).setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        ((JScrollPane) split.getBottomComponent()).setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 
         sideSearchBody.add(inputRow, BorderLayout.NORTH);
         sideSearchBody.add(split, BorderLayout.CENTER);
@@ -1363,6 +1388,35 @@ public class BibleReaderApp extends JFrame {
         }
     }
 
+    private static class WidthTrackingPanel extends JPanel implements Scrollable {
+        public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) { return 16; }
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) { return Math.max(16, visibleRect.height - 16); }
+        public boolean getScrollableTracksViewportWidth() { return true; }
+        public boolean getScrollableTracksViewportHeight() { return false; }
+    }
+
+    private static class BookTreeItem {
+        final String bookKey;
+        final String displayName;
+
+        BookTreeItem(String bookKey, String displayName) {
+            this.bookKey = bookKey == null ? "" : bookKey;
+            this.displayName = displayName == null || displayName.trim().isEmpty() ? this.bookKey : displayName;
+        }
+
+        public String toString() { return displayName; }
+
+        public boolean equals(Object other) {
+            if (this == other) return true;
+            if (other instanceof BookTreeItem) return bookKey.equals(((BookTreeItem) other).bookKey);
+            if (other instanceof String) return bookKey.equals(other);
+            return false;
+        }
+
+        public int hashCode() { return bookKey.hashCode(); }
+    }
+
     private static class RoundedBorder extends AbstractBorder {
         private final Color color;
         private final int radius;
@@ -1515,7 +1569,7 @@ public class BibleReaderApp extends JFrame {
 
         DefaultMutableTreeNode bible = new DefaultMutableTreeNode("Bible");
         for (String book : orderedBooks()) {
-            DefaultMutableTreeNode bn = new DefaultMutableTreeNode(book);
+            DefaultMutableTreeNode bn = new DefaultMutableTreeNode(new BookTreeItem(book, displayBibleBookName(book)));
             for (Integer ch : data.getChapters(book)) {
                 String key = "BIBLE:" + book + " " + ch;
                 int visits = currentProfile.visitCounts.getOrDefault(key, 0);
@@ -1582,7 +1636,8 @@ public class BibleReaderApp extends JFrame {
         Object[] parts = path.getPath();
 
         if (parts.length >= 3 && "Bible".equals(parts[1].toString())) {
-            selectedBook = parts[2].toString();
+            selectedBook = bookKeyFromTreePathPart(parts[2]);
+            if (selectedBook == null || selectedBook.isEmpty() || !data.bible.containsKey(selectedBook)) return;
             if (parts.length >= 4) {
                 String num = parts[3].toString().replace("Chapter ", "").split("\\s+")[0];
                 try { selectedChapter = Integer.parseInt(num); } catch (Exception ignored) {}
@@ -1599,12 +1654,115 @@ public class BibleReaderApp extends JFrame {
     private List<String> orderedBooks() {
         List<String> list = new ArrayList<>(data.bible.keySet());
         Map<String, Integer> order = bibleBookOrder();
-        list.sort(Comparator.comparingInt((String b) -> order.getOrDefault(b.toLowerCase(Locale.ROOT), 999)).thenComparing(b -> b));
+        list.sort(Comparator.comparingInt((String b) -> order.getOrDefault(displayBibleBookName(b).toLowerCase(Locale.ROOT), 999)).thenComparing(b -> displayBibleBookName(b)).thenComparing(b -> b));
         return list;
     }
 
+    private String bookKeyFromTreePathPart(Object pathPart) {
+        Object value = pathPart;
+        if (pathPart instanceof DefaultMutableTreeNode) value = ((DefaultMutableTreeNode) pathPart).getUserObject();
+        if (value instanceof BookTreeItem) return ((BookTreeItem) value).bookKey;
+        return value == null ? "" : value.toString();
+    }
+
+    private String bookKeyFromComboItem(Object item) {
+        if (item instanceof BookTreeItem) return ((BookTreeItem) item).bookKey;
+        return item == null ? "" : item.toString();
+    }
+
+    private String displayBibleBookName(String importedName) {
+        String original = safe(importedName).trim();
+        if (original.isEmpty()) return original;
+
+        Map<String, Integer> order = bibleBookOrder();
+        Map<String, String> canonicalByLower = new HashMap<>();
+        for (String canonical : order.keySet()) canonicalByLower.put(canonical, toTitleBookName(canonical));
+
+        String normalized = normalizeBookDisplayName(original);
+        String direct = canonicalByLower.get(normalized);
+        if (direct != null) return direct;
+
+        if (normalized.equals("revelation to john") || normalized.equals("revelation of john")
+                || normalized.equals("the revelation to john") || normalized.equals("the revelation of john")
+                || normalized.equals("apocalypse of john")) return "Revelation";
+
+        String candidate = normalized;
+        if (candidate.startsWith("the ")) candidate = candidate.substring(4).trim();
+        if (candidate.startsWith("gospel according to ")) candidate = candidate.substring("gospel according to ".length()).trim();
+        if (candidate.startsWith("holy gospel according to ")) candidate = candidate.substring("holy gospel according to ".length()).trim();
+        if (candidate.startsWith("book of ")) candidate = candidate.substring("book of ".length()).trim();
+        if (candidate.startsWith("song of songs")) candidate = "song of solomon";
+        if (candidate.startsWith("canticle of canticles")) candidate = "song of solomon";
+
+        candidate = candidate.replaceFirst("^(pauls|paul s) letter to (the )?", "");
+        candidate = candidate.replaceFirst("^(letter|epistle) of paul to (the )?", "");
+        candidate = candidate.replaceFirst("^(letter|epistle) to (the )?", "");
+        candidate = candidate.replaceFirst("^(letter|epistle) of (the )?", "");
+        candidate = candidate.replaceFirst("^general (letter|epistle) of (the )?", "");
+        candidate = candidate.replaceFirst("^(1|2|3) (letter|epistle) (to|of) (the )?", "$1 ");
+        if (candidate.startsWith("the ")) candidate = candidate.substring(4).trim();
+
+        String alias = canonicalBookAlias(candidate);
+        if (!alias.isEmpty()) return alias;
+
+        for (String lower : canonicalByLower.keySet()) {
+            String canonical = canonicalByLower.get(lower);
+            if (candidate.equals(lower) || candidate.equals("the " + lower) || candidate.endsWith(" " + lower)) return canonical;
+        }
+        return original;
+    }
+
+    private String normalizeBookDisplayName(String name) {
+        String normalized = name.toLowerCase(Locale.ROOT)
+                .replace('’', '\'')
+                .replaceAll("[^a-z0-9']+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        normalized = normalized.replace("'", " ").replaceAll("\\s+", " ").trim();
+        normalized = normalized.replaceFirst("^first ", "1 ")
+                .replaceFirst("^second ", "2 ")
+                .replaceFirst("^third ", "3 ")
+                .replace(" first letter ", " 1 letter ")
+                .replace(" second letter ", " 2 letter ")
+                .replace(" third letter ", " 3 letter ")
+                .replace(" first epistle ", " 1 epistle ")
+                .replace(" second epistle ", " 2 epistle ")
+                .replace(" third epistle ", " 3 epistle ");
+        return normalized.replaceAll("\\s+", " ").trim();
+    }
+
+    private String canonicalBookAlias(String candidate) {
+        Map<String, String> aliases = new HashMap<>();
+        aliases.put("psalm", "Psalms");
+        aliases.put("psalms", "Psalms");
+        aliases.put("song of songs", "Song of Solomon");
+        aliases.put("song of solomon", "Song of Solomon");
+        aliases.put("canticles", "Song of Solomon");
+        aliases.put("acts of apostles", "Acts");
+        aliases.put("acts of the apostles", "Acts");
+        aliases.put("apocalypse", "Revelation");
+        aliases.put("apocalypse of john", "Revelation");
+        aliases.put("revelation", "Revelation");
+        aliases.put("the apocalypse", "Revelation");
+        return aliases.getOrDefault(candidate, "");
+    }
+
+    private String toTitleBookName(String lowerCanonical) {
+        for (String book : bibleBookOrderNames()) {
+            if (book.toLowerCase(Locale.ROOT).equals(lowerCanonical)) return book;
+        }
+        return lowerCanonical;
+    }
+
     private Map<String, Integer> bibleBookOrder() {
-        String[] a = {
+        String[] a = bibleBookOrderNames();
+        Map<String, Integer> m = new HashMap<>();
+        for (int i = 0; i < a.length; i++) m.put(a[i].toLowerCase(Locale.ROOT), i + 1);
+        return m;
+    }
+
+    private String[] bibleBookOrderNames() {
+        return new String[]{
                 "Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy", "Joshua", "Judges", "Ruth",
                 "1 Samuel", "2 Samuel", "1 Kings", "2 Kings", "1 Chronicles", "2 Chronicles", "Ezra", "Nehemiah", "Esther",
                 "Job", "Psalms", "Proverbs", "Ecclesiastes", "Song of Solomon", "Isaiah", "Jeremiah", "Lamentations", "Ezekiel", "Daniel",
@@ -1613,9 +1771,6 @@ public class BibleReaderApp extends JFrame {
                 "1 Thessalonians", "2 Thessalonians", "1 Timothy", "2 Timothy", "Titus", "Philemon", "Hebrews", "James", "1 Peter", "2 Peter",
                 "1 John", "2 John", "3 John", "Jude", "Revelation"
         };
-        Map<String, Integer> m = new HashMap<>();
-        for (int i = 0; i < a.length; i++) m.put(a[i].toLowerCase(Locale.ROOT), i + 1);
-        return m;
     }
 
     private void refreshBookCombo() {
@@ -1624,12 +1779,13 @@ public class BibleReaderApp extends JFrame {
         try {
             Object selected = bookCombo.getSelectedItem();
             bookCombo.removeAllItems();
-            for (String b : orderedBooks()) bookCombo.addItem(b);
+            for (String b : orderedBooks()) bookCombo.addItem(new BookTreeItem(b, displayBibleBookName(b)));
             if (selectedBook == null || selectedBook.isEmpty() || !data.bible.containsKey(selectedBook)) {
-                if (selected != null && data.bible.containsKey(selected.toString())) selectedBook = selected.toString();
-                else if (bookCombo.getItemCount() > 0) selectedBook = bookCombo.getItemAt(0);
+                String selectedKey = bookKeyFromComboItem(selected);
+                if (data.bible.containsKey(selectedKey)) selectedBook = selectedKey;
+                else if (bookCombo.getItemCount() > 0) selectedBook = bookCombo.getItemAt(0).bookKey;
             }
-            bookCombo.setSelectedItem(selectedBook);
+            bookCombo.setSelectedItem(new BookTreeItem(selectedBook, displayBibleBookName(selectedBook)));
             refreshChapterCombo();
         } finally {
             refreshingUi = false;
@@ -3489,7 +3645,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                 + "</html>");
         body.setFont(new Font("Segoe UI", Font.PLAIN, 12));
 
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        JPanel buttons = new JPanel(new GridLayout(0, 1, 5, 5));
         buttons.setOpaque(false);
         JButton open = blackButton("Open");
         open.addActionListener(e -> openPinnedItem(item));
