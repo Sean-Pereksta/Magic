@@ -36,6 +36,22 @@ public class BibleReaderApp extends JFrame {
     private final Color questionRed = new Color(255, 214, 214);
     private final Color greekGreen = new Color(218, 245, 218);
 
+    // Modern theme constants are centralized here so future UI polish can be made in one place.
+    private final Color modernPrimaryRed = new Color(112, 28, 32);
+    private final Color modernDarkRed = new Color(78, 18, 22);
+    private final Color modernBackground = new Color(247, 244, 238);
+    private final Color modernSurface = new Color(255, 252, 247);
+    private final Color modernBorder = new Color(220, 207, 195);
+    private final Color modernText = new Color(42, 35, 31);
+    private final Color modernMutedText = new Color(105, 92, 84);
+    private final Color modernSelection = new Color(236, 219, 207);
+    private final Color modernDanger = new Color(154, 54, 58);
+    private final Color modernDisabled = new Color(205, 196, 187);
+    private final Font modernBaseFont = new Font("Segoe UI", Font.PLAIN, 14);
+    private final Font modernBoldFont = new Font("Segoe UI", Font.BOLD, 14);
+    private final Font modernHeaderFont = new Font("Segoe UI", Font.BOLD, 24);
+    private final int modernGap = 10;
+
     private AppData data;
     private Profile currentProfile;
 
@@ -45,6 +61,9 @@ public class BibleReaderApp extends JFrame {
     private JLabel profileLabel;
     private JLabel sourceLabel;
     private JComboBox<String> profileBox;
+    private JButton modernViewToggleButton;
+    private final Map<String, JButton> navButtonsByCard = new HashMap<>();
+    private String activeCardName = "study";
     private JComboBox<String> bookCombo;
     private JComboBox<Integer> chapterCombo;
 
@@ -158,6 +177,7 @@ public class BibleReaderApp extends JFrame {
         getContentPane().setBackground(panelBg);
 
         JPanel top = new JPanel(new BorderLayout(12, 8));
+        top.putClientProperty("modernHeader", Boolean.TRUE);
         top.setBackground(darkRed);
         top.setBorder(new EmptyBorder(10, 12, 10, 12));
 
@@ -175,11 +195,14 @@ public class BibleReaderApp extends JFrame {
         titlePanel.add(title);
         titlePanel.add(profileLabel);
 
-        JPanel nav = new JPanel(new FlowLayout(FlowLayout.RIGHT, 7, 0));
+        JPanel nav = new JPanel();
         nav.setOpaque(false);
+        nav.setLayout(new BoxLayout(nav, BoxLayout.X_AXIS));
 
         profileBox = new JComboBox<>();
-        profileBox.setPreferredSize(new Dimension(190, 30));
+        profileBox.setPreferredSize(new Dimension(190, 34));
+        profileBox.setMinimumSize(new Dimension(160, 34));
+        profileBox.setMaximumSize(new Dimension(220, 34));
         profileBox.addActionListener(e -> switchProfile());
 
         JButton newProfile = navButton("New Profile");
@@ -194,6 +217,24 @@ public class BibleReaderApp extends JFrame {
         JButton questions = navButton("Questions");
         JButton backup = navButton("Backup");
         JButton export = navButton("Export");
+        modernViewToggleButton = navButton("Modern View: On");
+
+        navButtonsByCard.clear();
+        navButtonsByCard.put("study", study);
+        navButtonsByCard.put("import", importBtn);
+        navButtonsByCard.put("search", search);
+        navButtonsByCard.put("greekSearch", greekSearch);
+        navButtonsByCard.put("memory", memory);
+        navButtonsByCard.put("studyProjects", studyProjects);
+        navButtonsByCard.put("recent", recent);
+        navButtonsByCard.put("categories", categories);
+        navButtonsByCard.put("questions", questions);
+
+        newProfile.setToolTipText("Create a separate study profile.");
+        greekSearch.setToolTipText("Search imported MorphGNT Greek text and morphology details.");
+        backup.setToolTipText("Create a timestamped backup of your saved Bible study data.");
+        export.setToolTipText("Export notes, questions, and memory verses to text.");
+        modernViewToggleButton.setToolTipText("Switch between the modern polished view and the classic red/cream view.");
 
         newProfile.addActionListener(e -> createProfile());
         study.addActionListener(e -> showCard("study"));
@@ -207,24 +248,33 @@ public class BibleReaderApp extends JFrame {
         questions.addActionListener(e -> { refreshQuestions(); showCard("questions"); });
         backup.addActionListener(e -> backupNow());
         export.addActionListener(e -> exportNotes());
+        modernViewToggleButton.addActionListener(e -> toggleModernView());
 
-        nav.add(labelWhite("Profile:"));
-        nav.add(profileBox);
-        nav.add(newProfile);
-        nav.add(study);
-        nav.add(importBtn);
-        nav.add(search);
-        nav.add(greekSearch);
-        nav.add(memory);
-        nav.add(studyProjects);
-        nav.add(recent);
-        nav.add(categories);
-        nav.add(questions);
-        nav.add(backup);
-        nav.add(export);
+        JPanel profileGroup = createNavGroup(labelWhite("Profile:"), profileBox, newProfile, modernViewToggleButton);
+        JPanel studyGroup = createNavGroup(study, importBtn, search, greekSearch);
+        JPanel memoryGroup = createNavGroup(memory, studyProjects, recent);
+        JPanel notesGroup = createNavGroup(categories, questions);
+        JPanel dataGroup = createNavGroup(backup, export);
+
+        nav.add(profileGroup);
+        nav.add(Box.createHorizontalStrut(8));
+        nav.add(studyGroup);
+        nav.add(Box.createHorizontalStrut(8));
+        nav.add(memoryGroup);
+        nav.add(Box.createHorizontalStrut(8));
+        nav.add(notesGroup);
+        nav.add(Box.createHorizontalStrut(8));
+        nav.add(dataGroup);
+
+        JScrollPane navScroll = new JScrollPane(nav, JScrollPane.VERTICAL_SCROLLBAR_NEVER, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        navScroll.setBorder(null);
+        navScroll.setOpaque(false);
+        navScroll.getViewport().setOpaque(false);
+        navScroll.getHorizontalScrollBar().setUnitIncrement(24);
+        navScroll.setPreferredSize(new Dimension(900, 58));
 
         top.add(titlePanel, BorderLayout.WEST);
-        top.add(nav, BorderLayout.EAST);
+        top.add(navScroll, BorderLayout.CENTER);
         add(top, BorderLayout.NORTH);
 
         cards = new CardLayout();
@@ -241,9 +291,12 @@ public class BibleReaderApp extends JFrame {
         add(cardPanel, BorderLayout.CENTER);
 
         statusLabel = new JLabel(" Ready");
-        statusLabel.setBorder(new EmptyBorder(5, 10, 5, 10));
+        statusLabel.setBorder(new EmptyBorder(7, 12, 7, 12));
         add(statusLabel, BorderLayout.SOUTH);
         installGlobalShortcuts();
+        applyModernTheme(this);
+        updateModernToggleText();
+        updateActiveNavButton();
     }
 
     private void installGlobalShortcuts() {
@@ -288,6 +341,7 @@ public class BibleReaderApp extends JFrame {
         JPanel p = new JPanel(new BorderLayout(8, 8));
         p.setBorder(new EmptyBorder(10, 10, 10, 10));
         p.setBackground(panelBg);
+        styleModernCard(p);
 
         JLabel h = new JLabel("Library");
         h.setFont(new Font("Segoe UI", Font.BOLD, 20));
@@ -321,6 +375,7 @@ public class BibleReaderApp extends JFrame {
         JPanel p = new JPanel(new BorderLayout(8, 8));
         p.setBorder(new EmptyBorder(10, 10, 10, 10));
         p.setBackground(cream);
+        styleModernCard(p);
 
         JPanel nav = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         nav.setOpaque(false);
@@ -335,6 +390,7 @@ public class BibleReaderApp extends JFrame {
         sourceLabel.setForeground(new Color(100, 70, 55));
 
         exitReadingModeButton = blackButton("Exit Reading Mode");
+        exitReadingModeButton.setToolTipText("Return sidebars and chapter controls after focused reading mode.");
         exitReadingModeButton.setVisible(false);
         exitReadingModeButton.addActionListener(e -> exitReadingMode());
 
@@ -345,15 +401,19 @@ public class BibleReaderApp extends JFrame {
         nextChapter.addActionListener(e -> nextChapter());
 
         JButton bookmarkButton = blackButton("🔖 Bookmark");
+        bookmarkButton.setToolTipText("Save your current Bible or library reading position.");
         bookmarkButton.addActionListener(e -> addBookmarkFromCurrentCaret(true));
 
         JButton bookmarksButton = blackButton("Bookmarks");
+        bookmarksButton.setToolTipText("Open, organize, or delete saved bookmarks.");
         bookmarksButton.addActionListener(e -> showBookmarksDialog());
 
         JButton bibleBookmarkButton = blackButton("Go To Bible Bookmark");
+        bibleBookmarkButton.setToolTipText("Jump to your most recent Bible bookmark.");
         bibleBookmarkButton.addActionListener(e -> goToBibleBookmark());
 
         JButton readingModeButton = blackButton("Reading Mode");
+        readingModeButton.setToolTipText("Focus on the reader by temporarily hiding side panels.");
         readingModeButton.addActionListener(e -> enterReadingMode());
 
         bookCombo.addActionListener(e -> {
@@ -484,6 +544,7 @@ public class BibleReaderApp extends JFrame {
                 new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(6, 6, 6, 6))
         ));
         pinnedItemsPanel.setBackground(panelBg);
+        styleModernCard(pinnedItemsPanel);
 
         JPanel header = new JPanel(new BorderLayout(6, 6));
         header.setOpaque(false);
@@ -515,6 +576,7 @@ public class BibleReaderApp extends JFrame {
         JPanel p = new JPanel(new BorderLayout(8, 8));
         p.setBorder(new EmptyBorder(10, 10, 10, 10));
         p.setBackground(panelBg);
+        styleModernCard(p);
 
         JLabel h = new JLabel("Notes / Attachments");
         h.setFont(new Font("Segoe UI", Font.BOLD, 20));
@@ -537,6 +599,7 @@ public class BibleReaderApp extends JFrame {
                 new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(6, 6, 6, 6))
         ));
         outer.setBackground(panelBg);
+        styleModernCard(outer);
 
         JPanel header = new JPanel(new BorderLayout(6, 6));
         header.setOpaque(false);
@@ -1083,8 +1146,24 @@ public class BibleReaderApp extends JFrame {
         return page;
     }
 
-    private JButton navButton(String s) { return styledButton(s, new Color(255, 248, 240), Color.BLACK); }
-    private JButton blackButton(String s) { return styledButton(s, new Color(255, 248, 240), Color.BLACK); }
+    private enum ButtonType { PRIMARY, SECONDARY, DANGER, UTILITY, NAV, ACTIVE_NAV }
+
+    private JButton navButton(String s) {
+        JButton b = styledButton(s, new Color(255, 248, 240), Color.BLACK);
+        b.putClientProperty("buttonType", ButtonType.NAV);
+        styleModernButton(b, ButtonType.NAV);
+        return b;
+    }
+
+    private JButton blackButton(String s) {
+        JButton b = styledButton(s, new Color(255, 248, 240), Color.BLACK);
+        String lower = s.toLowerCase(Locale.ROOT);
+        ButtonType type = (lower.contains("delete") || lower.contains("clear") || lower.contains("remove"))
+                ? ButtonType.DANGER : ButtonType.SECONDARY;
+        b.putClientProperty("buttonType", type);
+        styleModernButton(b, type);
+        return b;
+    }
 
     private JButton styledButton(String s, Color bg, Color fg) {
         JButton b = new JButton(s);
@@ -1093,7 +1172,220 @@ public class BibleReaderApp extends JFrame {
         b.setBackground(bg);
         b.setForeground(fg);
         b.setBorder(new CompoundBorder(new LineBorder(new Color(120, 60, 60)), new EmptyBorder(6, 10, 6, 10)));
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        b.setMinimumSize(new Dimension(86, 32));
         return b;
+    }
+
+    private JPanel createNavGroup(Component... components) {
+        JPanel group = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        group.setOpaque(false);
+        group.setBorder(new CompoundBorder(
+                new LineBorder(new Color(255, 255, 255, 45), 1, true),
+                new EmptyBorder(6, 7, 6, 7)
+        ));
+        for (Component c : components) group.add(c);
+        return group;
+    }
+
+    /**
+     * Modern theme helpers. These methods intentionally style by component type so
+     * existing feature code can keep building Swing controls normally while the
+     * visual language stays consistent across pages, sidebars, dialogs, and lists.
+     */
+    private boolean isModernViewEnabled() {
+        return data == null || data.modernViewEnabled == null || data.modernViewEnabled;
+    }
+
+    private void toggleModernView() {
+        data.modernViewEnabled = !isModernViewEnabled();
+        saveData();
+        applyModernTheme(this);
+        updateModernToggleText();
+        updateActiveNavButton();
+        revalidate();
+        repaint();
+        log((isModernViewEnabled() ? "Modern" : "Classic") + " view enabled");
+    }
+
+    private void updateModernToggleText() {
+        if (modernViewToggleButton != null) {
+            modernViewToggleButton.setText(isModernViewEnabled() ? "Modern View: On" : "Classic View");
+            modernViewToggleButton.putClientProperty("buttonType", isModernViewEnabled() ? ButtonType.ACTIVE_NAV : ButtonType.NAV);
+        }
+    }
+
+    private void styleModernButton(JButton b, ButtonType type) {
+        if (b == null) return;
+        if (type == null) type = ButtonType.SECONDARY;
+        b.putClientProperty("buttonType", type);
+        b.setFocusPainted(false);
+        b.setOpaque(true);
+        b.setContentAreaFilled(true);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        b.setFont(type == ButtonType.UTILITY ? modernBaseFont.deriveFont(Font.BOLD, 12f) : modernBoldFont.deriveFont(13f));
+        b.setMargin(new Insets(0, 0, 0, 0));
+        b.setMinimumSize(new Dimension(type == ButtonType.UTILITY ? 66 : 92, type == ButtonType.NAV || type == ButtonType.ACTIVE_NAV ? 34 : 36));
+        b.setBorder(new RoundedBorder(type == ButtonType.PRIMARY || type == ButtonType.DANGER ? modernDarkRed : modernBorder, 13,
+                type == ButtonType.UTILITY ? new Insets(5, 9, 5, 9) : new Insets(8, 13, 8, 13)));
+        if (!Boolean.TRUE.equals(b.getClientProperty("modernStateListenerInstalled"))) {
+            b.getModel().addChangeListener(e -> applyButtonState(b));
+            b.putClientProperty("modernStateListenerInstalled", Boolean.TRUE);
+        }
+        applyButtonState(b);
+    }
+
+    private void applyButtonState(JButton b) {
+        ButtonType type = (ButtonType) b.getClientProperty("buttonType");
+        if (type == null) type = ButtonType.SECONDARY;
+        boolean modern = isModernViewEnabled();
+        if (!b.isEnabled()) {
+            b.setBackground(modern ? modernDisabled : new Color(225, 220, 215));
+            b.setForeground(modern ? modernMutedText : Color.GRAY);
+            return;
+        }
+        ButtonModel model = b.getModel();
+        boolean pressed = model.isPressed() && model.isArmed();
+        boolean rollover = model.isRollover();
+        if (!modern) {
+            b.setBackground(rollover ? new Color(255, 238, 224) : new Color(255, 248, 240));
+            b.setForeground(Color.BLACK);
+            b.setBorder(new CompoundBorder(new LineBorder(new Color(120, 60, 60)), new EmptyBorder(6, 10, 6, 10)));
+            return;
+        }
+        Color bg;
+        Color fg;
+        switch (type) {
+            case PRIMARY:
+                bg = pressed ? modernDarkRed : (rollover ? new Color(130, 36, 40) : modernPrimaryRed); fg = Color.WHITE; break;
+            case DANGER:
+                bg = pressed ? new Color(120, 36, 40) : (rollover ? new Color(174, 68, 72) : modernDanger); fg = Color.WHITE; break;
+            case NAV:
+                bg = pressed ? new Color(244, 230, 219) : (rollover ? new Color(255, 244, 232) : modernSurface); fg = modernText; break;
+            case ACTIVE_NAV:
+                bg = pressed ? new Color(244, 228, 214) : (rollover ? new Color(255, 241, 226) : new Color(255, 233, 214)); fg = modernDarkRed; break;
+            case UTILITY:
+                bg = pressed ? new Color(232, 222, 211) : (rollover ? new Color(255, 249, 241) : modernSurface); fg = modernText; break;
+            case SECONDARY:
+            default:
+                bg = pressed ? new Color(232, 222, 211) : (rollover ? Color.WHITE : modernSurface); fg = modernText;
+        }
+        b.setBackground(bg);
+        b.setForeground(fg);
+        b.setBorder(new RoundedBorder(type == ButtonType.PRIMARY || type == ButtonType.DANGER ? bg.darker() : modernBorder, 13,
+                type == ButtonType.UTILITY ? new Insets(5, 9, 5, 9) : new Insets(8, 13, 8, 13)));
+    }
+
+    private void styleModernPanel(JPanel p) {
+        if (p == null || !p.isOpaque()) return;
+        if (Boolean.TRUE.equals(p.getClientProperty("modernHeader"))) {
+            p.setBackground(isModernViewEnabled() ? modernDarkRed : darkRed);
+        } else {
+            p.setBackground(isModernViewEnabled() ? modernBackground : panelBg);
+        }
+    }
+
+    private void styleModernCard(JComponent c) {
+        if (c == null) return;
+        c.putClientProperty("modernCard", Boolean.TRUE);
+        c.setOpaque(true);
+        c.setBackground(isModernViewEnabled() ? modernSurface : cream);
+        c.setBorder(isModernViewEnabled()
+                ? new CompoundBorder(new RoundedBorder(modernBorder, 16, new Insets(1, 1, 1, 1)), new EmptyBorder(10, 10, 10, 10))
+                : new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(8, 8, 8, 8)));
+    }
+
+    private void styleModernInput(JComponent c) {
+        if (c == null) return;
+        c.setFont(modernBaseFont);
+        c.setBackground(isModernViewEnabled() ? Color.WHITE : cream);
+        c.setForeground(isModernViewEnabled() ? modernText : Color.BLACK);
+        c.setBorder(new CompoundBorder(new RoundedBorder(isModernViewEnabled() ? modernBorder : new Color(180, 145, 135), 10, new Insets(1, 1, 1, 1)), new EmptyBorder(6, 9, 6, 9)));
+        c.setMinimumSize(new Dimension(90, 34));
+    }
+
+    private void styleModernList(JList<?> list) {
+        if (list == null) return;
+        list.setFont(modernBaseFont);
+        list.setBackground(isModernViewEnabled() ? modernSurface : cream);
+        list.setForeground(isModernViewEnabled() ? modernText : Color.BLACK);
+        list.setSelectionBackground(isModernViewEnabled() ? modernSelection : new Color(210, 225, 245));
+        list.setSelectionForeground(isModernViewEnabled() ? modernText : Color.BLACK);
+        list.setFixedCellHeight(list.getFixedCellHeight() > 0 ? list.getFixedCellHeight() : 28);
+        list.setBorder(new EmptyBorder(4, 4, 4, 4));
+    }
+
+    private void styleModernScrollPane(JScrollPane sp) {
+        if (sp == null) return;
+        sp.setBorder(isModernViewEnabled() ? new RoundedBorder(modernBorder, 14, new Insets(1, 1, 1, 1)) : null);
+        sp.getViewport().setBackground(isModernViewEnabled() ? modernSurface : cream);
+        sp.getVerticalScrollBar().setUnitIncrement(16);
+        sp.getHorizontalScrollBar().setUnitIncrement(16);
+    }
+
+    private void applyModernTheme(Component root) {
+        if (root == null) return;
+        boolean modern = isModernViewEnabled();
+        UIManager.put("OptionPane.background", modern ? modernBackground : panelBg);
+        UIManager.put("Panel.background", modern ? modernBackground : panelBg);
+        UIManager.put("Button.rollover", Boolean.TRUE);
+
+        if (root instanceof JFrame) ((JFrame) root).getContentPane().setBackground(modern ? modernBackground : panelBg);
+        if (root instanceof JDialog) ((JDialog) root).getContentPane().setBackground(modern ? modernBackground : panelBg);
+        if (root instanceof JPanel) styleModernPanel((JPanel) root);
+        if (root instanceof JComponent && Boolean.TRUE.equals(((JComponent) root).getClientProperty("modernCard"))) styleModernCard((JComponent) root);
+        if (root instanceof JButton) {
+            ButtonType type = (ButtonType) ((JButton) root).getClientProperty("buttonType");
+            styleModernButton((JButton) root, type == null ? ButtonType.SECONDARY : type);
+        }
+        if (root instanceof JTextField || root instanceof JTextArea || root instanceof JTextPane || root instanceof JComboBox) styleModernInput((JComponent) root);
+        if (root instanceof JList) styleModernList((JList<?>) root);
+        if (root instanceof JScrollPane) styleModernScrollPane((JScrollPane) root);
+        if (root instanceof JSplitPane) {
+            JSplitPane split = (JSplitPane) root;
+            split.setDividerSize(modern ? 8 : 7);
+            split.setBorder(null);
+            split.setBackground(modern ? modernBackground : panelBg);
+        }
+        if (root instanceof JTree) {
+            JTree t = (JTree) root;
+            t.setFont(modernBaseFont);
+            t.setBackground(modern ? modernSurface : cream);
+            t.setForeground(modern ? modernText : Color.BLACK);
+            t.setRowHeight(28);
+        }
+        if (root instanceof Container) {
+            for (Component child : ((Container) root).getComponents()) applyModernTheme(child);
+        }
+        if (root == this) {
+            updateModernToggleText();
+            updateActiveNavButton();
+        }
+    }
+
+    private static class RoundedBorder extends AbstractBorder {
+        private final Color color;
+        private final int radius;
+        private final Insets insets;
+
+        RoundedBorder(Color color, int radius, Insets insets) {
+            this.color = color;
+            this.radius = radius;
+            this.insets = insets;
+        }
+
+        public Insets getBorderInsets(Component c) { return insets; }
+        public Insets getBorderInsets(Component c, Insets target) {
+            target.top = insets.top; target.left = insets.left; target.bottom = insets.bottom; target.right = insets.right;
+            return target;
+        }
+        public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(color);
+            g2.drawRoundRect(x, y, width - 1, height - 1, radius, radius);
+            g2.dispose();
+        }
     }
 
     private JLabel labelWhite(String s) {
@@ -1115,7 +1407,21 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void showCard(String name) {
+        activeCardName = name;
         cards.show(cardPanel, name);
+        updateActiveNavButton();
+    }
+
+    private void updateActiveNavButton() {
+        for (Map.Entry<String, JButton> entry : navButtonsByCard.entrySet()) {
+            JButton b = entry.getValue();
+            b.putClientProperty("buttonType", entry.getKey().equals(activeCardName) ? ButtonType.ACTIVE_NAV : ButtonType.NAV);
+            applyButtonState(b);
+        }
+        if (modernViewToggleButton != null) {
+            modernViewToggleButton.putClientProperty("buttonType", isModernViewEnabled() ? ButtonType.ACTIVE_NAV : ButtonType.NAV);
+            applyButtonState(modernViewToggleButton);
+        }
     }
 
     private void log(String s) {
@@ -1842,6 +2148,7 @@ public class BibleReaderApp extends JFrame {
                 JPanel row = new JPanel(new BorderLayout(8, 4));
                 row.setBorder(new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(6, 6, 6, 6)));
                 row.setBackground(cream);
+                styleModernCard(row);
                 JLabel info = new JLabel("<html><b>" + esc(safe(b.title)) + "</b><br>" + esc(safe(b.sourceTitle)) +
                         (safe(b.previewText).isEmpty() ? "" : "<br><i>" + esc(shorten(b.previewText, 160)) + "</i>") + "</html>");
                 JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
@@ -1869,6 +2176,8 @@ public class BibleReaderApp extends JFrame {
         }
         content.add(new JScrollPane(list), BorderLayout.CENTER);
         dialog.setContentPane(content);
+        applyModernTheme(dialog);
+        dialog.setMinimumSize(new Dimension(560, 360));
         dialog.setSize(620, 440);
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
@@ -2284,6 +2593,8 @@ public class BibleReaderApp extends JFrame {
         buttons.add(saveNote);
         buttons.add(close);
         dialog.add(buttons, BorderLayout.SOUTH);
+        applyModernTheme(dialog);
+        dialog.setMinimumSize(new Dimension(680, 500));
         dialog.setSize(760, 620);
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
@@ -3010,7 +3321,9 @@ public class BibleReaderApp extends JFrame {
         dialog.add(progress, BorderLayout.NORTH);
         dialog.add(new JScrollPane(cardText), BorderLayout.CENTER);
         dialog.add(buttons, BorderLayout.SOUTH);
+        applyModernTheme(dialog);
         render.run();
+        dialog.setMinimumSize(new Dimension(600, 390));
         dialog.setSize(680, 460);
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
@@ -5016,6 +5329,7 @@ public class BibleReaderApp extends JFrame {
         if (data.profiles == null) data.profiles = new TreeMap<>();
         if (data.libraryDocs == null) data.libraryDocs = new ArrayList<>();
         if (data.greek == null) data.greek = new TreeMap<>();
+        if (data.modernViewEnabled == null) data.modernViewEnabled = Boolean.TRUE;
         for (Profile p : data.profiles.values()) if (p != null) repairProfile(p);
     }
 
@@ -5314,6 +5628,7 @@ public class BibleReaderApp extends JFrame {
         Map<String, GreekEntry> greek = new TreeMap<>();
         Map<String, Profile> profiles = new TreeMap<>();
         List<LibraryDoc> libraryDocs = new ArrayList<>();
+        Boolean modernViewEnabled = Boolean.TRUE;
 
         void putVerse(Verse v) {
             bible.computeIfAbsent(v.book, k -> new TreeMap<>()).computeIfAbsent(v.chapter, k -> new TreeMap<>()).put(v.verse, v);
