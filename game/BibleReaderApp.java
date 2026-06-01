@@ -5,6 +5,7 @@ import javax.swing.text.*;
 import javax.swing.tree.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.datatransfer.StringSelection;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -1068,7 +1069,10 @@ public class BibleReaderApp extends JFrame {
         addMenu(selectionActionPopup, "Add Category", this::addCategoryFromSelection);
         addMenu(selectionActionPopup, "Add Question", () -> addAnnotationFromSelection("Question", ""));
         addMenu(selectionActionPopup, "Attach", this::addAttachmentFromSelection);
-        addMenu(selectionActionPopup, "View Greek", this::showGreekForCurrentSelection);
+        if (greekKeyForSelection() != null) {
+            addMenu(selectionActionPopup, "View Greek For This Verse", this::showGreekForCurrentSelection);
+            addMenu(selectionActionPopup, "Add Greek Note To Selected Phrase", this::addGreekNoteForSelectionOrVerse);
+        }
 
         Point popupPoint = selectionPopupPoint();
         selectionActionPopup.show(readerPane, popupPoint.x, popupPoint.y);
@@ -1107,6 +1111,11 @@ public class BibleReaderApp extends JFrame {
         }
 
         if (hasSelection) {
+            if (greekKeyForSelection() != null) {
+                addMenu(menu, "View Greek For This Verse", this::showGreekForCurrentSelection);
+                addMenu(menu, "Add Greek Note To Selected Phrase", this::addGreekNoteForSelectionOrVerse);
+                menu.addSeparator();
+            }
             addMenu(menu, "Add Note To Selected Text", () -> addAnnotationFromSelection("Note", ""));
             addMenu(menu, "Add To Category", this::addCategoryFromSelection);
             addMenu(menu, "Attach To Bible Verse Or Book Section", this::addAttachmentFromSelection);
@@ -1235,26 +1244,29 @@ public class BibleReaderApp extends JFrame {
         }
     }
 
+    private String greekKeyForSelection() {
+        if (currentSourceKey == null || !currentSourceKey.startsWith("BIBLE:")) return null;
+        if (readerPane == null) return null;
+        int start = readerPane.getSelectionStart();
+        int end = readerPane.getSelectionEnd();
+        if (end <= start || readerPane.getSelectedText() == null || readerPane.getSelectedText().trim().isEmpty()) return null;
+
+        Integer verse = verseNumberContainingPosition(start);
+        if (verse == null) verse = verseNumberContainingPosition(Math.max(start, end - 1));
+        if (verse == null) return null;
+        return selectedBook + " " + selectedChapter + ":" + verse;
+    }
+
     private void showGreekForCurrentSelection() {
         if (currentSourceKey == null || !currentSourceKey.startsWith("BIBLE:")) {
             JOptionPane.showMessageDialog(this, "Greek lookup is available when selected text is in a Bible chapter.");
             return;
         }
-        int start = readerPane.getSelectionStart();
-        int end = readerPane.getSelectionEnd();
-        if (end <= start || readerPane.getSelectedText() == null || readerPane.getSelectedText().trim().isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Select text in a Bible verse first, then choose View Greek.");
+        String key = greekKeyForSelection();
+        if (key == null) {
+            JOptionPane.showMessageDialog(this, "Select text in a Bible verse first, then choose View Greek For This Verse.");
             return;
         }
-
-        Integer verse = verseNumberContainingPosition(start);
-        if (verse == null) verse = verseNumberContainingPosition(Math.max(start, end - 1));
-        if (verse == null) {
-            JOptionPane.showMessageDialog(this, "I could not detect which Bible verse contains that selection.");
-            return;
-        }
-
-        String key = selectedBook + " " + selectedChapter + ":" + verse;
         showGreekForVerse(key);
     }
 
@@ -1275,45 +1287,184 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void showGreekForVerse(String key) {
-        GreekEntry ge = data.greek.get(key);
+        showGreekDialog(key, false);
+    }
 
-        JTextArea info = new JTextArea(12, 58);
-        info.setFont(new Font("Consolas", Font.PLAIN, 13));
-        info.setLineWrap(true);
-        info.setWrapStyleWord(true);
-        info.setEditable(false);
-
-        if (ge == null) {
-            info.setText("No Greek imported for " + key + " yet.\n\nUse Import > Download + Import MorphGNT Greek, or import a MorphGNT ZIP/TXT folder, or import a Greek CSV.");
-        } else {
-            info.setText("Greek Text:\n" + ge.greekText + "\n\nDetails:\n" + ge.details);
+    private void addGreekNoteForSelectionOrVerse() {
+        if (currentSourceKey == null || !currentSourceKey.startsWith("BIBLE:")) {
+            JOptionPane.showMessageDialog(this, "Greek notes are available when selected text is in a Bible chapter.");
+            return;
         }
+
+        String key = greekKeyForSelection();
+        if (key == null) {
+            int caret = readerPane.getCaretPosition();
+            Integer verse = verseNumberContainingPosition(caret);
+            if (verse == null) verse = verseNumberContainingPosition(Math.max(0, caret - 1));
+            if (verse != null) key = selectedBook + " " + selectedChapter + ":" + verse;
+        }
+        if (key == null) {
+            JOptionPane.showMessageDialog(this, "Select text in a Bible verse, or place the cursor inside a verse, before adding a Greek note.");
+            return;
+        }
+
+        showGreekDialog(key, true);
+    }
+
+    private void showGreekDialog(String key, boolean saveSelectionWhenPossible) {
+        GreekEntry ge = data.greek.get(key);
+        RefParts rp = parseRef(key);
+        String englishText = englishVerseTextForKey(key);
+        String greekText = ge == null ? "" : ge.greekText;
+        String details = ge == null
+                ? "No Greek imported for " + key + " yet. Use Import > Download + Import MorphGNT Greek, import a MorphGNT ZIP/TXT folder, or import a Greek CSV."
+                : ge.details;
+
+        JTextPane info = new JTextPane();
+        info.setFont(new Font("Consolas", Font.PLAIN, 13));
+        info.setEditable(false);
+        info.setText(greekDialogText(key, englishText, greekText, details));
+        info.setCaretPosition(0);
+
+        JTextField search = new JTextField();
+        search.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        JLabel searchCount = new JLabel(" ");
+        searchCount.setForeground(new Color(90, 70, 60));
+        Runnable highlightSearch = () -> highlightGreekDialogMatches(info, search.getText(), searchCount);
+        search.getDocument().addDocumentListener(new SimpleDocumentListener(highlightSearch));
+
+        JPanel searchPanel = new JPanel(new BorderLayout(5, 5));
+        searchPanel.add(new JLabel("Search Greek/details:"), BorderLayout.WEST);
+        searchPanel.add(search, BorderLayout.CENTER);
+        searchPanel.add(searchCount, BorderLayout.EAST);
 
         JTextArea note = new JTextArea(5, 58);
         note.setLineWrap(true);
         note.setWrapStyleWord(true);
 
-        JPanel p = new JPanel(new BorderLayout(6, 6));
-        p.add(new JScrollPane(info), BorderLayout.CENTER);
-        p.add(new JLabel("Optional Greek note to save on this verse:"), BorderLayout.NORTH);
-        p.add(new JScrollPane(note), BorderLayout.SOUTH);
+        JPanel notePanel = new JPanel(new BorderLayout(5, 5));
+        notePanel.add(new JLabel(saveSelectionWhenPossible
+                ? "Optional Greek note to save on selected phrase (or whole verse if no phrase is selected):"
+                : "Optional Greek note to save on this verse:"), BorderLayout.NORTH);
+        notePanel.add(new JScrollPane(note), BorderLayout.CENTER);
 
-        int r = JOptionPane.showConfirmDialog(this, p, "Greek Lookup - " + key, JOptionPane.OK_CANCEL_OPTION);
-        if (r == JOptionPane.OK_OPTION && !note.getText().trim().isEmpty()) {
-            RefParts rp = parseRef(key);
-            int[] range = rp == null ? new int[]{0, 0} : verseRangeInReader(rp.verse);
-            String selected = key;
-            try {
-                if (range[1] > range[0]) selected = readerPane.getDocument().getText(range[0], range[1] - range[0]);
-            } catch (Exception ignored) {}
+        JPanel center = new JPanel(new BorderLayout(6, 6));
+        center.add(searchPanel, BorderLayout.NORTH);
+        center.add(new JScrollPane(info), BorderLayout.CENTER);
+        center.add(notePanel, BorderLayout.SOUTH);
+        center.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-            TextAnnotation a = new TextAnnotation(currentSourceKey, currentSourceTitle, range[0], range[1], selected, "Greek", "", note.getText().trim(), key);
-            currentProfile.annotations.add(a);
-            saveData();
-            refreshRecentNotes();
-            reloadCurrentSource();
-            showAnnotationDetails(a);
+        JDialog dialog = new JDialog(this, "Greek Lookup - " + key, true);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setLayout(new BorderLayout(6, 6));
+        dialog.add(center, BorderLayout.CENTER);
+
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        JButton copyGreek = blackButton("Copy Greek Text");
+        JButton saveNote = blackButton("Save Greek Note");
+        JButton close = blackButton("Close");
+
+        copyGreek.addActionListener(e -> {
+            StringSelection selection = new StringSelection(greekText == null ? "" : greekText);
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+            statusLabel.setText(" Copied Greek text for " + key);
+        });
+        saveNote.addActionListener(e -> {
+            String noteText = note.getText().trim();
+            if (noteText.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog, "Write a Greek note before saving.");
+                return;
+            }
+            TextAnnotation saved = saveGreekNoteAnnotation(key, rp, noteText, saveSelectionWhenPossible);
+            if (saved != null) {
+                dialog.dispose();
+                showAnnotationDetails(saved);
+            }
+        });
+        close.addActionListener(e -> dialog.dispose());
+
+        buttons.add(copyGreek);
+        buttons.add(saveNote);
+        buttons.add(close);
+        dialog.add(buttons, BorderLayout.SOUTH);
+        dialog.setSize(760, 620);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    private String greekDialogText(String key, String englishText, String greekText, String details) {
+        return "Reference\n" + key +
+                "\n\nEnglish verse text\n" + (englishText == null || englishText.isEmpty() ? "(English verse not found in the current Bible text.)" : englishText) +
+                "\n\nGreek text\n" + (greekText == null || greekText.isEmpty() ? "(No Greek text imported.)" : greekText) +
+                "\n\nMorphology/details\n" + (details == null || details.isEmpty() ? "(No morphology/details imported.)" : details);
+    }
+
+    private void highlightGreekDialogMatches(JTextPane info, String query, JLabel countLabel) {
+        Highlighter highlighter = info.getHighlighter();
+        highlighter.removeAllHighlights();
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty()) {
+            countLabel.setText(" ");
+            return;
         }
+        String haystack = info.getText().toLowerCase(Locale.ROOT);
+        Highlighter.HighlightPainter painter = new DefaultHighlighter.DefaultHighlightPainter(new Color(255, 235, 130));
+        int count = 0;
+        int idx = haystack.indexOf(q);
+        while (idx >= 0 && count < 100) {
+            try {
+                highlighter.addHighlight(idx, idx + q.length(), painter);
+            } catch (BadLocationException ignored) {}
+            count++;
+            idx = haystack.indexOf(q, idx + q.length());
+        }
+        countLabel.setText(count + (count == 1 ? " match" : " matches"));
+    }
+
+    private TextAnnotation saveGreekNoteAnnotation(String key, RefParts rp, String noteText, boolean useSelectionWhenPossible) {
+        if (currentSourceKey == null || !currentSourceKey.startsWith("BIBLE:")) {
+            JOptionPane.showMessageDialog(this, "Open the Bible chapter before saving a Greek note.");
+            return null;
+        }
+        if (rp == null) rp = parseRef(key);
+        int[] range = greekNoteRange(rp, useSelectionWhenPossible);
+        String selected = key;
+        try {
+            if (range[1] > range[0]) selected = readerPane.getDocument().getText(range[0], range[1] - range[0]);
+        } catch (Exception ignored) {}
+
+        TextAnnotation a = new TextAnnotation(currentSourceKey, currentSourceTitle, range[0], range[1], selected, "Greek", "", noteText, key);
+        currentProfile.annotations.add(a);
+        saveData();
+        refreshRecentNotes();
+        reloadCurrentSource();
+        return a;
+    }
+
+    private int[] greekNoteRange(RefParts rp, boolean useSelectionWhenPossible) {
+        if (useSelectionWhenPossible) {
+            int start = readerPane.getSelectionStart();
+            int end = readerPane.getSelectionEnd();
+            String selected = readerPane.getSelectedText();
+            if (end > start && selected != null && !selected.trim().isEmpty()) {
+                Integer selectionVerse = verseNumberContainingPosition(start);
+                if (selectionVerse == null) selectionVerse = verseNumberContainingPosition(Math.max(start, end - 1));
+                if (selectionVerse != null && (rp == null || selectionVerse == rp.verse)) return new int[]{start, end};
+            }
+        }
+        return rp == null ? new int[]{0, 0} : verseRangeInReader(rp.verse);
+    }
+
+    private String englishVerseTextForKey(String key) {
+        RefParts rp = parseRef(key);
+        if (rp == null) return "";
+        Verse v = data.findVerse(key);
+        if (v != null) return v.text;
+        int[] range = verseRangeInReader(rp.verse);
+        try {
+            if (range[1] > range[0]) return readerPane.getDocument().getText(range[0], range[1] - range[0]).trim();
+        } catch (Exception ignored) {}
+        return "";
     }
 
     private void addAnnotationFromSelection(String type, String category) {
