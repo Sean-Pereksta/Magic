@@ -50,6 +50,9 @@ public class BibleReaderApp extends JFrame {
     private JTree libraryTree;
 
     private JTextPane readerPane;
+    private JPopupMenu selectionActionPopup;
+    private Point readerSelectionPressPoint;
+    private boolean readerSelectionDragged = false;
     private JPanel detailsPanel;
     private JTextArea importLog;
 
@@ -282,12 +285,42 @@ public class BibleReaderApp extends JFrame {
         readerPane.setMargin(new Insets(14, 16, 14, 16));
         readerPane.setBackground(cream);
         readerPane.addMouseListener(new MouseAdapter() {
-            public void mousePressed(MouseEvent e) { if (e.isPopupTrigger()) showReaderMenu(e); }
-            public void mouseReleased(MouseEvent e) { if (e.isPopupTrigger()) showReaderMenu(e); }
+            public void mousePressed(MouseEvent e) {
+                hideSelectionActionPopup();
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    readerSelectionPressPoint = e.getPoint();
+                    readerSelectionDragged = false;
+                }
+                if (e.isPopupTrigger()) showReaderMenu(e);
+            }
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    hideSelectionActionPopup();
+                    showReaderMenu(e);
+                    return;
+                }
+                if (SwingUtilities.isLeftMouseButton(e) && readerSelectionDragged && e.getClickCount() == 1) {
+                    showSelectionActionPopupIfNeeded();
+                }
+            }
             public void mouseClicked(MouseEvent e) {
                 if (SwingUtilities.isLeftMouseButton(e)) handleReaderLeftClick(e);
-                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) showQuickNoteForSelectionOrWord(e);
+                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                    hideSelectionActionPopup();
+                    showQuickNoteForSelectionOrWord(e);
+                }
             }
+        });
+        readerPane.addMouseMotionListener(new MouseMotionAdapter() {
+            public void mouseDragged(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && readerSelectionPressPoint != null
+                        && readerSelectionPressPoint.distance(e.getPoint()) > 4) {
+                    readerSelectionDragged = true;
+                }
+            }
+        });
+        readerPane.addCaretListener(e -> {
+            if (readerPane.getSelectionEnd() <= readerPane.getSelectionStart()) hideSelectionActionPopup();
         });
 
         p.add(nav, BorderLayout.NORTH);
@@ -940,6 +973,49 @@ public class BibleReaderApp extends JFrame {
         return String.format("#%02X%02X%02X", c.getRed(), c.getGreen(), c.getBlue());
     }
 
+
+    private void hideSelectionActionPopup() {
+        if (selectionActionPopup != null && selectionActionPopup.isVisible()) {
+            selectionActionPopup.setVisible(false);
+        }
+    }
+
+    private void showSelectionActionPopupIfNeeded() {
+        if (loadingReader || currentSourceKey == null || currentSourceKey.isEmpty()) return;
+        if (readerPane.getSelectionEnd() <= readerPane.getSelectionStart()) {
+            hideSelectionActionPopup();
+            return;
+        }
+        String selected = readerPane.getSelectedText();
+        if (selected == null || selected.trim().isEmpty()) {
+            hideSelectionActionPopup();
+            return;
+        }
+
+        hideSelectionActionPopup();
+        selectionActionPopup = new JPopupMenu();
+        addMenu(selectionActionPopup, "Add Note", () -> addAnnotationFromSelection("Note", ""));
+        addMenu(selectionActionPopup, "Add Category", this::addCategoryFromSelection);
+        addMenu(selectionActionPopup, "Add Question", () -> addAnnotationFromSelection("Question", ""));
+        addMenu(selectionActionPopup, "Attach", this::addAttachmentFromSelection);
+        addMenu(selectionActionPopup, "View Greek", this::showGreekForCurrentSelection);
+
+        Point popupPoint = selectionPopupPoint();
+        selectionActionPopup.show(readerPane, popupPoint.x, popupPoint.y);
+    }
+
+    private Point selectionPopupPoint() {
+        try {
+            int anchor = Math.min(readerPane.getSelectionStart(), readerPane.getSelectionEnd());
+            Rectangle r = readerPane.modelToView2D(anchor).getBounds();
+            int x = Math.max(0, r.x);
+            int y = Math.max(0, r.y - 34);
+            return new Point(x, y);
+        } catch (Exception ignored) {
+            return new Point(12, 12);
+        }
+    }
+
     private void showReaderMenu(MouseEvent e) {
         if (loadingReader || currentSourceKey == null || currentSourceKey.isEmpty()) return;
 
@@ -1046,6 +1122,60 @@ public class BibleReaderApp extends JFrame {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+
+    private Integer verseNumberContainingPosition(int pos) {
+        if (currentSourceKey == null || !currentSourceKey.startsWith("BIBLE:")) return null;
+        try {
+            String text = readerPane.getDocument().getText(0, readerPane.getDocument().getLength());
+            if (pos < 0 || pos > text.length()) return null;
+            if (pos == text.length() && pos > 0) pos--;
+
+            int lineStart = text.lastIndexOf('\n', Math.max(0, pos - 1));
+            lineStart = lineStart < 0 ? 0 : lineStart + 1;
+            int lineEnd = text.indexOf('\n', pos);
+            if (lineEnd < 0) lineEnd = text.length();
+
+            int i = lineStart;
+            while (i < lineEnd && Character.isWhitespace(text.charAt(i))) i++;
+            int numStart = i;
+            while (i < lineEnd && Character.isDigit(text.charAt(i))) i++;
+            int numEnd = i;
+
+            if (numEnd <= numStart) return null;
+            if (numEnd < lineEnd && !Character.isWhitespace(text.charAt(numEnd))) return null;
+            if (pos < numStart || pos > lineEnd) return null;
+
+            int verse = Integer.parseInt(text.substring(numStart, numEnd));
+            if (!data.getVerses(selectedBook, selectedChapter).containsKey(verse)) return null;
+            return verse;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void showGreekForCurrentSelection() {
+        if (currentSourceKey == null || !currentSourceKey.startsWith("BIBLE:")) {
+            JOptionPane.showMessageDialog(this, "Greek lookup is available when selected text is in a Bible chapter.");
+            return;
+        }
+        int start = readerPane.getSelectionStart();
+        int end = readerPane.getSelectionEnd();
+        if (end <= start || readerPane.getSelectedText() == null || readerPane.getSelectedText().trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Select text in a Bible verse first, then choose View Greek.");
+            return;
+        }
+
+        Integer verse = verseNumberContainingPosition(start);
+        if (verse == null) verse = verseNumberContainingPosition(Math.max(start, end - 1));
+        if (verse == null) {
+            JOptionPane.showMessageDialog(this, "I could not detect which Bible verse contains that selection.");
+            return;
+        }
+
+        String key = selectedBook + " " + selectedChapter + ":" + verse;
+        showGreekForVerse(key);
     }
 
     private int[] verseRangeInReader(int verse) {
