@@ -467,8 +467,30 @@ public class BibleReaderApp extends JFrame {
         libraryTree.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         libraryTree.addTreeSelectionListener(e -> onTreeSelected());
 
+        JScrollPane libraryScroll = new JScrollPane(libraryTree);
+        libraryScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        libraryScroll.setMinimumSize(new Dimension(0, 0));
+
+        JPanel libraryStack = new JPanel(new GridBagLayout());
+        libraryStack.setOpaque(false);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weightx = 1.0;
+        gbc.insets = new Insets(0, 0, 6, 0);
+        gbc.gridy = 0;
+        gbc.weighty = 0.8;
+        libraryStack.add(libraryScroll, gbc);
+
+        gbc.gridy = 1;
+        gbc.weighty = 0.2;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        JPanel recentlyOpenedPanel = buildRecentlyOpenedPanel();
+        recentlyOpenedPanel.setMinimumSize(new Dimension(0, 0));
+        libraryStack.add(recentlyOpenedPanel, gbc);
+
         p.add(header, BorderLayout.NORTH);
-        p.add(new JScrollPane(libraryTree), BorderLayout.CENTER);
+        p.add(libraryStack, BorderLayout.CENTER);
         return p;
     }
 
@@ -642,22 +664,27 @@ public class BibleReaderApp extends JFrame {
 
     private JPanel buildRightSidebar() {
         JPanel content = new WidthTrackingPanel();
-        content.setLayout(new BorderLayout(4, 4));
+        content.setLayout(new GridBagLayout());
         content.setMinimumSize(new Dimension(0, 0));
         content.setBackground(panelBg);
-        JPanel sidebarTop = new JPanel(new BorderLayout(4, 4));
-        sidebarTop.setOpaque(false);
-        sidebarTop.add(buildSideSearchPanel(), BorderLayout.NORTH);
-        sidebarTop.add(buildRecentlyOpenedPanel(), BorderLayout.CENTER);
-        content.add(sidebarTop, BorderLayout.NORTH);
 
-        JPanel studyTools = new JPanel(new BorderLayout(4, 4));
-        studyTools.setMinimumSize(new Dimension(0, 0));
-        studyTools.setOpaque(false);
-        studyTools.add(buildPinnedItemsPanel(), BorderLayout.NORTH);
-        studyTools.add(buildDetailsPanel(), BorderLayout.CENTER);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weightx = 1.0;
+        gbc.insets = new Insets(0, 0, 4, 0);
 
-        content.add(studyTools, BorderLayout.CENTER);
+        gbc.gridy = 0;
+        gbc.weighty = 0.0;
+        content.add(buildSideSearchPanel(), gbc);
+
+        gbc.gridy = 1;
+        content.add(buildPinnedItemsPanel(), gbc);
+
+        gbc.gridy = 2;
+        gbc.weighty = 1.0;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        content.add(buildDetailsPanel(), gbc);
 
         JScrollPane sidebarScroll = new JScrollPane(content);
         sidebarScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
