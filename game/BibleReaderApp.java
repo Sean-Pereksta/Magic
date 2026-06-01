@@ -63,6 +63,11 @@ public class BibleReaderApp extends JFrame {
     private boolean pinnedItemsExpanded = true;
     private JTextArea importLog;
 
+    private JTextField memorySearchField;
+    private JComboBox<String> memoryCategoryFilter;
+    private DefaultListModel<MemoryVerse> memoryModel;
+    private JList<MemoryVerse> memoryList;
+
     private JTextField searchField;
     private DefaultListModel<String> searchModel;
     private JList<String> searchList;
@@ -154,6 +159,7 @@ public class BibleReaderApp extends JFrame {
         JButton study = navButton("Study");
         JButton importBtn = navButton("Import");
         JButton search = navButton("Search");
+        JButton memory = navButton("Memory Verses");
         JButton recent = navButton("Recent Notes");
         JButton categories = navButton("Categories");
         JButton questions = navButton("Questions");
@@ -164,6 +170,7 @@ public class BibleReaderApp extends JFrame {
         study.addActionListener(e -> showCard("study"));
         importBtn.addActionListener(e -> showCard("import"));
         search.addActionListener(e -> showCard("search"));
+        memory.addActionListener(e -> { refreshMemoryVerses(); showCard("memory"); });
         recent.addActionListener(e -> { refreshRecentNotes(); showCard("recent"); });
         categories.addActionListener(e -> { refreshCategories(); showCard("categories"); });
         questions.addActionListener(e -> { refreshQuestions(); showCard("questions"); });
@@ -176,6 +183,7 @@ public class BibleReaderApp extends JFrame {
         nav.add(study);
         nav.add(importBtn);
         nav.add(search);
+        nav.add(memory);
         nav.add(recent);
         nav.add(categories);
         nav.add(questions);
@@ -191,6 +199,7 @@ public class BibleReaderApp extends JFrame {
         cardPanel.add(buildStudyPage(), "study");
         cardPanel.add(buildImportPage(), "import");
         cardPanel.add(buildSearchPage(), "search");
+        cardPanel.add(buildMemoryPage(), "memory");
         cardPanel.add(buildRecentPage(), "recent");
         cardPanel.add(buildCategoriesPage(), "categories");
         cardPanel.add(buildQuestionsPage(), "questions");
@@ -566,6 +575,85 @@ public class BibleReaderApp extends JFrame {
         return page;
     }
 
+
+    private JPanel buildMemoryPage() {
+        JPanel page = new JPanel(new BorderLayout(10, 10));
+        page.setBorder(new EmptyBorder(16, 16, 16, 16));
+        page.setBackground(panelBg);
+
+        JLabel h = new JLabel("Memory Verses");
+        h.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        h.setForeground(darkRed);
+
+        memorySearchField = new JTextField();
+        memorySearchField.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        memorySearchField.addActionListener(e -> refreshMemoryVerses());
+        memorySearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshMemoryVerses));
+
+        memoryCategoryFilter = new JComboBox<>();
+        memoryCategoryFilter.setPreferredSize(new Dimension(180, 30));
+        memoryCategoryFilter.addActionListener(e -> refreshMemoryVerses());
+
+        JButton clear = blackButton("Clear");
+        clear.addActionListener(e -> {
+            memorySearchField.setText("");
+            memoryCategoryFilter.setSelectedItem("All Categories");
+            refreshMemoryVerses();
+        });
+
+        JPanel filters = new JPanel(new BorderLayout(8, 8));
+        filters.setOpaque(false);
+        JPanel filterRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        filterRight.setOpaque(false);
+        filterRight.add(new JLabel("Category:"));
+        filterRight.add(memoryCategoryFilter);
+        filterRight.add(clear);
+        filters.add(memorySearchField, BorderLayout.CENTER);
+        filters.add(filterRight, BorderLayout.EAST);
+
+        JButton manualAdd = blackButton("Manual Add By Reference");
+        JButton review = blackButton("Review");
+        JButton edit = blackButton("Edit");
+        JButton delete = blackButton("Delete");
+        JButton flashcards = blackButton("Create Flashcards");
+
+        manualAdd.addActionListener(e -> addMemoryVerseManually());
+        review.addActionListener(e -> reviewSelectedMemoryVerse());
+        edit.addActionListener(e -> editSelectedMemoryVerse());
+        delete.addActionListener(e -> deleteSelectedMemoryVerse());
+        flashcards.addActionListener(e -> createMemoryFlashcards());
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        actions.setOpaque(false);
+        actions.add(manualAdd);
+        actions.add(review);
+        actions.add(edit);
+        actions.add(delete);
+        actions.add(flashcards);
+
+        JPanel north = new JPanel(new BorderLayout(8, 8));
+        north.setOpaque(false);
+        north.add(h, BorderLayout.NORTH);
+        north.add(filters, BorderLayout.CENTER);
+        north.add(actions, BorderLayout.SOUTH);
+
+        memoryModel = new DefaultListModel<>();
+        memoryList = new JList<>(memoryModel);
+        memoryList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        memoryList.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        memoryList.setFixedCellHeight(118);
+        memoryList.setCellRenderer(new MemoryVerseCellRenderer());
+        memoryList.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) reviewSelectedMemoryVerse();
+            }
+        });
+
+        page.add(north, BorderLayout.NORTH);
+        page.add(new JScrollPane(memoryList), BorderLayout.CENTER);
+        return page;
+    }
+
     private JPanel buildSearchPage() {
         JPanel page = new JPanel(new BorderLayout(10, 10));
         page.setBorder(new EmptyBorder(16, 16, 16, 16));
@@ -799,6 +887,7 @@ public class BibleReaderApp extends JFrame {
             refreshBookCombo();
             refreshCategories();
             refreshQuestions();
+            refreshMemoryVerses();
             refreshRecentNotes();
             refreshPinnedItems();
             updateHeader();
@@ -823,6 +912,7 @@ public class BibleReaderApp extends JFrame {
                 " | Greek entries: " + data.greek.size() +
                 " | Library works: " + data.libraryDocs.size() +
                 " | Text notes: " + currentProfile.annotations.size() +
+                " | Memory verses: " + currentProfile.memoryVerses.size() +
                 " | Unfinished questions: " + countUnanswered());
     }
 
@@ -1114,6 +1204,7 @@ public class BibleReaderApp extends JFrame {
         addMenu(selectionActionPopup, "Add Note", () -> addAnnotationFromSelection("Note", ""));
         addMenu(selectionActionPopup, "Add Category", this::addCategoryFromSelection);
         addMenu(selectionActionPopup, "Add Question", () -> addAnnotationFromSelection("Question", ""));
+        addMenu(selectionActionPopup, "Add To Memory Verses", this::addMemoryVerseFromSelection);
         addMenu(selectionActionPopup, "Attach", this::addAttachmentFromSelection);
         addMenu(selectionActionPopup, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
         if (greekKeyForSelection() != null) {
@@ -1150,10 +1241,18 @@ public class BibleReaderApp extends JFrame {
         Integer verseNumber = verseNumberAtPosition(pos);
         JPopupMenu menu = new JPopupMenu();
 
+        Integer containingVerseNumber = currentSourceKey.startsWith("BIBLE:") ? verseNumberContainingPosition(pos) : null;
+        if (containingVerseNumber != null) {
+            String key = selectedBook + " " + selectedChapter + ":" + containingVerseNumber;
+            addMenu(menu, "Add Verse To Memory", () -> addMemoryVerseByKey(key));
+        }
+
         if (verseNumber != null) {
             String key = selectedBook + " " + selectedChapter + ":" + verseNumber;
             addMenu(menu, "Check Greek For This Verse", () -> showGreekForVerse(key));
             addMenu(menu, "Add Greek Note To This Verse", () -> showGreekForVerse(key));
+            menu.addSeparator();
+        } else if (containingVerseNumber != null) {
             menu.addSeparator();
         }
 
@@ -1165,6 +1264,7 @@ public class BibleReaderApp extends JFrame {
             }
             addMenu(menu, "Add Note To Selected Text", () -> addAnnotationFromSelection("Note", ""));
             addMenu(menu, "Add To Category", this::addCategoryFromSelection);
+            addMenu(menu, "Add To Memory Verses", this::addMemoryVerseFromSelection);
             addMenu(menu, "Attach To Bible Verse Or Book Section", this::addAttachmentFromSelection);
             addMenu(menu, "Add Unfinished Question", () -> addAnnotationFromSelection("Question", ""));
             addMenu(menu, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
@@ -1772,6 +1872,269 @@ public class BibleReaderApp extends JFrame {
         detailsPanel.add(del);
         detailsPanel.revalidate();
         detailsPanel.repaint();
+    }
+
+
+    private void refreshMemoryVerses() {
+        if (memoryModel == null || currentProfile == null) return;
+        memoryModel.clear();
+        refreshMemoryCategoryFilter();
+
+        String q = memorySearchField == null ? "" : memorySearchField.getText().trim().toLowerCase(Locale.ROOT);
+        String cat = memoryCategoryFilter == null || memoryCategoryFilter.getSelectedItem() == null
+                ? "All Categories" : memoryCategoryFilter.getSelectedItem().toString();
+
+        List<MemoryVerse> verses = new ArrayList<>(currentProfile.memoryVerses);
+        verses.sort((a, b) -> Long.compare(b.createdAt, a.createdAt));
+        for (MemoryVerse mv : verses) {
+            repairMemoryVerse(mv);
+            if (!"All Categories".equals(cat) && !cat.equals(safe(mv.category))) continue;
+            if (!q.isEmpty() && !memoryVerseSearchText(mv).contains(q)) continue;
+            memoryModel.addElement(mv);
+        }
+        updateHeader();
+    }
+
+    private void refreshMemoryCategoryFilter() {
+        if (memoryCategoryFilter == null || currentProfile == null) return;
+        String selected = memoryCategoryFilter.getSelectedItem() == null ? "All Categories" : memoryCategoryFilter.getSelectedItem().toString();
+        Set<String> cats = new TreeSet<>();
+        for (MemoryVerse mv : currentProfile.memoryVerses) {
+            if (mv.category != null && !mv.category.trim().isEmpty()) cats.add(mv.category.trim());
+        }
+        ActionListener[] listeners = memoryCategoryFilter.getActionListeners();
+        for (ActionListener l : listeners) memoryCategoryFilter.removeActionListener(l);
+        memoryCategoryFilter.removeAllItems();
+        memoryCategoryFilter.addItem("All Categories");
+        for (String c : cats) memoryCategoryFilter.addItem(c);
+        memoryCategoryFilter.setSelectedItem(cats.contains(selected) ? selected : "All Categories");
+        for (ActionListener l : listeners) memoryCategoryFilter.addActionListener(l);
+    }
+
+    private String memoryVerseSearchText(MemoryVerse mv) {
+        return (safe(mv.reference) + " " + safe(mv.text) + " " + safe(mv.category) + " " + safe(mv.note)).toLowerCase(Locale.ROOT);
+    }
+
+    private void addMemoryVerseFromSelection() {
+        int start = readerPane.getSelectionStart();
+        int end = readerPane.getSelectionEnd();
+        String selected = readerPane.getSelectedText();
+        if (end <= start || selected == null || selected.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Select Bible text first, then choose Add To Memory Verses.");
+            return;
+        }
+
+        String reference = currentSourceTitle;
+        if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:")) {
+            Integer verse = verseNumberContainingPosition(start);
+            if (verse == null) verse = verseNumberContainingPosition(Math.max(start, end - 1));
+            if (verse != null) reference = selectedBook + " " + selectedChapter + ":" + verse;
+        }
+        showMemoryVerseEditor(null, reference, selected.trim());
+    }
+
+    private void addMemoryVerseByKey(String key) {
+        Verse v = data.findVerse(key);
+        if (v == null) {
+            JOptionPane.showMessageDialog(this, "I could not find that Bible verse.");
+            return;
+        }
+        showMemoryVerseEditor(null, v.key(), v.text);
+    }
+
+    private void addMemoryVerseManually() {
+        String ref = JOptionPane.showInputDialog(this, "Bible reference, e.g. Romans 14:13:");
+        if (ref == null) return;
+        RefParts rp = parseRef(ref);
+        if (rp == null) {
+            JOptionPane.showMessageDialog(this, "Use a format like Romans 14:13.");
+            return;
+        }
+        Verse v = data.findVerse(rp.key());
+        if (v == null) {
+            JOptionPane.showMessageDialog(this, "I could not find that verse in the imported Bible text.");
+            return;
+        }
+        showMemoryVerseEditor(null, v.key(), v.text);
+    }
+
+    private void showMemoryVerseEditor(MemoryVerse existing, String defaultReference, String defaultText) {
+        JTextField reference = new JTextField(existing == null ? safe(defaultReference) : safe(existing.reference));
+        JTextArea text = new JTextArea(existing == null ? safe(defaultText) : safe(existing.text), 5, 44);
+        text.setLineWrap(true);
+        text.setWrapStyleWord(true);
+        JTextField category = new JTextField(existing == null ? "" : safe(existing.category));
+        JTextArea note = new JTextArea(existing == null ? "" : safe(existing.note), 4, 44);
+        note.setLineWrap(true);
+        note.setWrapStyleWord(true);
+
+        JPanel p = new JPanel(new GridLayout(0, 1, 5, 5));
+        p.add(new JLabel("Reference:"));
+        p.add(reference);
+        p.add(new JLabel("Verse text:"));
+        p.add(new JScrollPane(text));
+        p.add(new JLabel("Category:"));
+        p.add(category);
+        p.add(new JLabel("Note:"));
+        p.add(new JScrollPane(note));
+
+        int r = JOptionPane.showConfirmDialog(this, p, existing == null ? "Add Memory Verse" : "Edit Memory Verse", JOptionPane.OK_CANCEL_OPTION);
+        if (r != JOptionPane.OK_OPTION) return;
+
+        String ref = reference.getText().trim();
+        String verseText = text.getText().trim();
+        if (ref.isEmpty() || verseText.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Reference and verse text are required.");
+            return;
+        }
+
+        MemoryVerse mv = existing == null ? new MemoryVerse() : existing;
+        if (mv.id == null || mv.id.trim().isEmpty()) mv.id = UUID.randomUUID().toString();
+        mv.reference = ref;
+        mv.text = verseText;
+        mv.category = category.getText().trim();
+        mv.note = note.getText().trim();
+        if (mv.createdAt <= 0L) mv.createdAt = System.currentTimeMillis();
+        if (existing == null) currentProfile.memoryVerses.add(mv);
+
+        saveData();
+        refreshMemoryVerses();
+        showCard("memory");
+        log((existing == null ? "Added" : "Updated") + " memory verse: " + mv.reference);
+    }
+
+    private MemoryVerse selectedMemoryVerse() {
+        return memoryList == null ? null : memoryList.getSelectedValue();
+    }
+
+    private void reviewSelectedMemoryVerse() {
+        MemoryVerse mv = selectedMemoryVerse();
+        if (mv == null) {
+            JOptionPane.showMessageDialog(this, "Select a memory verse first.");
+            return;
+        }
+        showMemoryReviewDialog(Collections.singletonList(mv), "Review Memory Verse");
+    }
+
+    private void editSelectedMemoryVerse() {
+        MemoryVerse mv = selectedMemoryVerse();
+        if (mv == null) {
+            JOptionPane.showMessageDialog(this, "Select a memory verse first.");
+            return;
+        }
+        showMemoryVerseEditor(mv, mv.reference, mv.text);
+    }
+
+    private void deleteSelectedMemoryVerse() {
+        MemoryVerse mv = selectedMemoryVerse();
+        if (mv == null) {
+            JOptionPane.showMessageDialog(this, "Select a memory verse first.");
+            return;
+        }
+        if (JOptionPane.showConfirmDialog(this, "Delete " + mv.reference + " from memory verses?", "Delete Memory Verse", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+        currentProfile.memoryVerses.removeIf(x -> safe(x.id).equals(safe(mv.id)));
+        saveData();
+        refreshMemoryVerses();
+    }
+
+    private void createMemoryFlashcards() {
+        if (memoryModel == null || memoryModel.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No memory verses match the current search/filter.");
+            return;
+        }
+        List<MemoryVerse> cards = new ArrayList<>();
+        for (int i = 0; i < memoryModel.size(); i++) cards.add(memoryModel.getElementAt(i));
+        showMemoryReviewDialog(cards, "Memory Verse Flashcards");
+    }
+
+    private void showMemoryReviewDialog(List<MemoryVerse> verses, String title) {
+        if (verses == null || verses.isEmpty()) return;
+        final int[] index = {0};
+        final boolean[] showingText = {false};
+
+        JDialog dialog = new JDialog(this, title, true);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setLayout(new BorderLayout(8, 8));
+
+        JLabel progress = new JLabel(" ");
+        progress.setBorder(new EmptyBorder(10, 12, 0, 12));
+        progress.setForeground(darkRed);
+        progress.setFont(new Font("Segoe UI", Font.BOLD, 16));
+
+        JTextArea cardText = readonlyArea();
+        cardText.setFont(new Font("Georgia", Font.PLAIN, 20));
+
+        JButton showVerse = blackButton("Show Verse");
+        JButton gotIt = blackButton("Got it");
+        JButton missed = blackButton("Missed it");
+        JButton close = blackButton("Close");
+        gotIt.setVisible(false);
+        missed.setVisible(false);
+
+        Runnable render = () -> {
+            MemoryVerse mv = verses.get(index[0]);
+            progress.setText("Card " + (index[0] + 1) + " of " + verses.size() + " — " + mv.reference);
+            cardText.setText(showingText[0]
+                    ? mv.reference + "\n\n" + mv.text + (safe(mv.note).isEmpty() ? "" : "\n\nNote: " + mv.note)
+                    : mv.reference + "\n\n(Verse hidden. Click Show Verse when ready.)");
+            cardText.setCaretPosition(0);
+            showVerse.setVisible(!showingText[0]);
+            gotIt.setVisible(showingText[0]);
+            missed.setVisible(showingText[0]);
+        };
+
+        Runnable advance = () -> {
+            if (index[0] + 1 >= verses.size()) {
+                saveData();
+                refreshMemoryVerses();
+                dialog.dispose();
+                JOptionPane.showMessageDialog(this, "Flashcard review complete.");
+                return;
+            }
+            index[0]++;
+            showingText[0] = false;
+            render.run();
+        };
+
+        showVerse.addActionListener(e -> {
+            showingText[0] = true;
+            render.run();
+        });
+        gotIt.addActionListener(e -> {
+            markMemoryVerseReviewed(verses.get(index[0]), true);
+            advance.run();
+        });
+        missed.addActionListener(e -> {
+            markMemoryVerseReviewed(verses.get(index[0]), false);
+            advance.run();
+        });
+        close.addActionListener(e -> {
+            saveData();
+            refreshMemoryVerses();
+            dialog.dispose();
+        });
+
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        buttons.add(showVerse);
+        buttons.add(gotIt);
+        buttons.add(missed);
+        buttons.add(close);
+
+        dialog.add(progress, BorderLayout.NORTH);
+        dialog.add(new JScrollPane(cardText), BorderLayout.CENTER);
+        dialog.add(buttons, BorderLayout.SOUTH);
+        render.run();
+        dialog.setSize(620, 420);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    private void markMemoryVerseReviewed(MemoryVerse mv, boolean correct) {
+        if (mv == null) return;
+        mv.reviewCount++;
+        if (correct) mv.correctCount++;
+        mv.lastReviewedAt = System.currentTimeMillis();
+        saveData();
     }
 
     private void togglePinnedItems() {
@@ -3118,7 +3481,9 @@ public class BibleReaderApp extends JFrame {
         for (String c : p.categories.keySet()) p.categoryColors.putIfAbsent(c, categoryBlue.getRGB());
         if (p.visitCounts == null) p.visitCounts = new HashMap<>();
         if (p.pinnedItems == null) p.pinnedItems = new ArrayList<>();
+        if (p.memoryVerses == null) p.memoryVerses = new ArrayList<>();
         for (PinnedItem item : p.pinnedItems) repairPinnedItem(item);
+        for (MemoryVerse mv : p.memoryVerses) repairMemoryVerse(mv);
         long fallbackBase = System.currentTimeMillis() - (long) p.annotations.size() * 1000L;
         for (int i = 0; i < p.annotations.size(); i++) {
             repairAnnotationTimestamps(p.annotations.get(i), fallbackBase + (long) i * 1000L);
@@ -3130,6 +3495,20 @@ public class BibleReaderApp extends JFrame {
             }
             p.oldNotes.clear();
         }
+    }
+
+
+    private void repairMemoryVerse(MemoryVerse mv) {
+        if (mv == null) return;
+        if (mv.id == null || mv.id.trim().isEmpty()) mv.id = UUID.randomUUID().toString();
+        if (mv.reference == null) mv.reference = "";
+        if (mv.text == null) mv.text = "";
+        if (mv.category == null) mv.category = "";
+        if (mv.note == null) mv.note = "";
+        if (mv.createdAt <= 0L) mv.createdAt = System.currentTimeMillis();
+        if (mv.reviewCount < 0) mv.reviewCount = 0;
+        if (mv.correctCount < 0) mv.correctCount = 0;
+        if (mv.correctCount > mv.reviewCount) mv.correctCount = mv.reviewCount;
     }
 
     private void repairPinnedItem(PinnedItem item) {
@@ -3167,6 +3546,28 @@ public class BibleReaderApp extends JFrame {
         ex.printStackTrace();
         SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, title + ":\n" + ex.getMessage()));
         log(title + ": " + ex.getMessage());
+    }
+
+
+    private class MemoryVerseCellRenderer extends DefaultListCellRenderer {
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+            MemoryVerse mv = value instanceof MemoryVerse ? (MemoryVerse) value : null;
+            if (mv == null) {
+                label.setText("");
+                return label;
+            }
+            String category = safe(mv.category).isEmpty() ? "Uncategorized" : mv.category;
+            String stats = mv.reviewCount + " review" + (mv.reviewCount == 1 ? "" : "s")
+                    + " • " + mv.correctCount + " correct"
+                    + (mv.lastReviewedAt > 0L ? " • Last reviewed: " + displayDate(mv.lastReviewedAt) : " • Not reviewed yet");
+            label.setText("<html><b>" + esc(mv.reference) + "</b> • " + esc(category)
+                    + "<br>" + esc(shorten(mv.text, 180))
+                    + (safe(mv.note).isEmpty() ? "" : "<br><span style='color:#5f4035;'>Note: " + esc(shorten(mv.note, 130)) + "</span>")
+                    + "<br><span style='color:#6d5b50;'>" + esc(stats) + "</span></html>");
+            label.setBorder(new EmptyBorder(8, 10, 8, 10));
+            return label;
+        }
     }
 
     private class RecentAnnotationCellRenderer extends DefaultListCellRenderer {
@@ -3303,6 +3704,7 @@ public class BibleReaderApp extends JFrame {
         List<TextAnnotation> annotations = new ArrayList<>();
         List<StudyQuestion> questions = new ArrayList<>();
         List<PinnedItem> pinnedItems = new ArrayList<>();
+        List<MemoryVerse> memoryVerses = new ArrayList<>();
         Map<String, String> categories = new TreeMap<>();
         Map<String, Integer> categoryColors = new TreeMap<>();
         Map<String, Integer> visitCounts = new HashMap<>();
@@ -3310,6 +3712,20 @@ public class BibleReaderApp extends JFrame {
         Profile(String n) { name = n; }
     }
 
+
+
+    private static class MemoryVerse implements Serializable {
+        private static final long serialVersionUID = 30L;
+        String id;
+        String reference;
+        String text;
+        String category;
+        String note;
+        int reviewCount;
+        int correctCount;
+        long createdAt;
+        long lastReviewedAt;
+    }
 
     private static class PinnedItem implements Serializable {
         private static final long serialVersionUID = 30L;
