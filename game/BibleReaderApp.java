@@ -94,6 +94,16 @@ public class BibleReaderApp extends JFrame {
     private DefaultListModel<String> questionModel;
     private JList<String> questionList;
 
+    private DefaultListModel<StudyProject> studyProjectModel;
+    private JList<StudyProject> studyProjectList;
+    private JPanel studyProjectDetailsPanel;
+    private JTextField studyProjectSearchField;
+    private JTextField allNotesSearchField;
+    private DefaultListModel<StudySearchResult> studyProjectSearchModel;
+    private JList<StudySearchResult> studyProjectSearchList;
+    private DefaultListModel<StudySearchResult> allNotesSearchModel;
+    private JList<StudySearchResult> allNotesSearchList;
+
     private JTextField recentSearchField;
     private JComboBox<String> recentFilterBox;
     private DefaultListModel<RecentAnnotationListItem> recentModel;
@@ -177,6 +187,7 @@ public class BibleReaderApp extends JFrame {
         JButton search = navButton("Search");
         JButton greekSearch = navButton("Greek Search");
         JButton memory = navButton("Memory Verses");
+        JButton studyProjects = navButton("Study Projects");
         JButton recent = navButton("Recent Notes");
         JButton categories = navButton("Categories");
         JButton questions = navButton("Questions");
@@ -189,6 +200,7 @@ public class BibleReaderApp extends JFrame {
         search.addActionListener(e -> showCard("search"));
         greekSearch.addActionListener(e -> showCard("greekSearch"));
         memory.addActionListener(e -> { refreshMemoryVerses(); showCard("memory"); });
+        studyProjects.addActionListener(e -> { refreshStudyProjects(); showCard("studyProjects"); });
         recent.addActionListener(e -> { refreshRecentNotes(); showCard("recent"); });
         categories.addActionListener(e -> { refreshCategories(); showCard("categories"); });
         questions.addActionListener(e -> { refreshQuestions(); showCard("questions"); });
@@ -203,6 +215,7 @@ public class BibleReaderApp extends JFrame {
         nav.add(search);
         nav.add(greekSearch);
         nav.add(memory);
+        nav.add(studyProjects);
         nav.add(recent);
         nav.add(categories);
         nav.add(questions);
@@ -220,6 +233,7 @@ public class BibleReaderApp extends JFrame {
         cardPanel.add(buildSearchPage(), "search");
         cardPanel.add(buildGreekSearchPage(), "greekSearch");
         cardPanel.add(buildMemoryPage(), "memory");
+        cardPanel.add(buildStudyProjectsPage(), "studyProjects");
         cardPanel.add(buildRecentPage(), "recent");
         cardPanel.add(buildCategoriesPage(), "categories");
         cardPanel.add(buildQuestionsPage(), "questions");
@@ -577,6 +591,86 @@ public class BibleReaderApp extends JFrame {
         outer.add(sideSearchBody, BorderLayout.CENTER);
         return outer;
     }
+
+    private JPanel buildStudyProjectsPage() {
+        JPanel page = new JPanel(new BorderLayout(10, 10));
+        page.setBorder(new EmptyBorder(10, 10, 10, 10));
+        page.setBackground(panelBg);
+
+        JLabel h = new JLabel("Study Projects");
+        h.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        h.setForeground(darkRed);
+        page.add(h, BorderLayout.NORTH);
+
+        studyProjectModel = new DefaultListModel<>();
+        studyProjectList = new JList<>(studyProjectModel);
+        studyProjectList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        studyProjectList.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        studyProjectList.addListSelectionListener(e -> { if (!e.getValueIsAdjusting()) renderSelectedStudyProject(); });
+
+        JButton create = blackButton("Create Project");
+        create.addActionListener(e -> createStudyProject());
+        JButton edit = blackButton("Rename/Edit Project");
+        edit.addActionListener(e -> editSelectedStudyProject());
+        JButton delete = blackButton("Delete Project");
+        delete.addActionListener(e -> deleteSelectedStudyProject());
+
+        JPanel leftButtons = new JPanel(new GridLayout(0, 1, 6, 6));
+        leftButtons.setOpaque(false);
+        leftButtons.add(create);
+        leftButtons.add(edit);
+        leftButtons.add(delete);
+
+        JPanel left = new JPanel(new BorderLayout(8, 8));
+        left.setBackground(panelBg);
+        left.setBorder(new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(8, 8, 8, 8)));
+        left.add(new JLabel("Projects"), BorderLayout.NORTH);
+        left.add(new JScrollPane(studyProjectList), BorderLayout.CENTER);
+        left.add(leftButtons, BorderLayout.SOUTH);
+
+        studyProjectDetailsPanel = new JPanel();
+        studyProjectDetailsPanel.setLayout(new BoxLayout(studyProjectDetailsPanel, BoxLayout.Y_AXIS));
+        studyProjectDetailsPanel.setBackground(cream);
+        studyProjectDetailsPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+        studyProjectSearchField = new JTextField();
+        studyProjectSearchField.setToolTipText("Search this study...");
+        JButton searchStudy = blackButton("Search this study...");
+        searchStudy.addActionListener(e -> searchSelectedStudyProject());
+        studyProjectSearchModel = new DefaultListModel<>();
+        studyProjectSearchList = new JList<>(studyProjectSearchModel);
+        studyProjectSearchList.setVisibleRowCount(5);
+        studyProjectSearchList.addMouseListener(new MouseAdapter() { public void mouseClicked(MouseEvent e) { if (e.getClickCount() == 2) openStudySearchResult(studyProjectSearchList.getSelectedValue()); }});
+
+        allNotesSearchField = new JTextField();
+        allNotesSearchField.setToolTipText("Search all notes...");
+        JButton searchAll = blackButton("Search all notes...");
+        searchAll.addActionListener(e -> searchAllStudyNotes());
+        allNotesSearchModel = new DefaultListModel<>();
+        allNotesSearchList = new JList<>(allNotesSearchModel);
+        allNotesSearchList.setVisibleRowCount(5);
+        allNotesSearchList.addMouseListener(new MouseAdapter() { public void mouseClicked(MouseEvent e) { if (e.getClickCount() == 2) openStudySearchResult(allNotesSearchList.getSelectedValue()); }});
+
+        JPanel searchBars = new JPanel(new GridLayout(0, 1, 5, 5));
+        searchBars.setOpaque(false);
+        searchBars.add(studyProjectSearchField);
+        searchBars.add(searchStudy);
+        searchBars.add(new JScrollPane(studyProjectSearchList));
+        searchBars.add(allNotesSearchField);
+        searchBars.add(searchAll);
+        searchBars.add(new JScrollPane(allNotesSearchList));
+
+        JPanel right = new JPanel(new BorderLayout(8, 8));
+        right.setBackground(panelBg);
+        right.add(searchBars, BorderLayout.NORTH);
+        right.add(new JScrollPane(studyProjectDetailsPanel), BorderLayout.CENTER);
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, right);
+        split.setResizeWeight(0.25);
+        page.add(split, BorderLayout.CENTER);
+        return page;
+    }
+
 
     private JPanel buildImportPage() {
         JPanel page = new JPanel(new BorderLayout(12, 12));
@@ -1032,6 +1126,7 @@ public class BibleReaderApp extends JFrame {
             refreshQuestions();
             refreshMemoryVerses();
             refreshRecentNotes();
+            refreshStudyProjects();
             refreshPinnedItems();
             updateHeader();
         } finally {
@@ -1513,6 +1608,7 @@ public class BibleReaderApp extends JFrame {
         addMenu(selectionActionPopup, "Add To Memory Verses", this::addMemoryVerseFromSelection);
         addMenu(selectionActionPopup, "Attach", this::addAttachmentFromSelection);
         addMenu(selectionActionPopup, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
+        addMenu(selectionActionPopup, "Add Selected Text To Study Project", this::addSelectedTextToStudyProject);
         addMenu(selectionActionPopup, "Search This In Greek", this::searchSelectedTextInGreek);
         if (greekKeyForSelection() != null) {
             addMenu(selectionActionPopup, "View Greek For This Verse", this::showGreekForCurrentSelection);
@@ -1578,6 +1674,7 @@ public class BibleReaderApp extends JFrame {
             addMenu(menu, "Attach To Bible Verse Or Book Section", this::addAttachmentFromSelection);
             addMenu(menu, "Add Unfinished Question", () -> addAnnotationFromSelection("Question", ""));
             addMenu(menu, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
+            addMenu(menu, "Add Selected Text To Study Project", this::addSelectedTextToStudyProject);
             menu.addSeparator();
         }
 
@@ -1594,6 +1691,7 @@ public class BibleReaderApp extends JFrame {
             }
             addMenu(menu, "View Highlight Details", () -> showAnnotationDetails(existing));
             addMenu(menu, "Pin This Highlight To Sidebar", () -> pinAnnotationToSidebar(existing));
+            addMenu(menu, "Add This Note To Study Project", () -> addAnnotationToStudyProject(existing));
             addMenu(menu, "Edit This Highlight", () -> editAnnotation(existing));
             addMenu(menu, "Open Attachment", () -> openAnnotationTarget(existing));
             addMenu(menu, "Delete This Highlight", () -> deleteAnnotation(existing));
@@ -1729,6 +1827,8 @@ public class BibleReaderApp extends JFrame {
                 buttons.setOpaque(false);
                 JButton open = blackButton("Open");
                 open.addActionListener(e -> { openBookmark(b); dialog.dispose(); });
+                JButton addToProject = blackButton("Add To Study Project");
+                addToProject.addActionListener(e -> addBookmarkToStudyProject(b));
                 JButton delete = blackButton("Delete");
                 delete.addActionListener(e -> {
                     currentProfile.bookmarks.removeIf(existing -> existing != null && safe(existing.id).equals(safe(b.id)));
@@ -1737,6 +1837,7 @@ public class BibleReaderApp extends JFrame {
                     showBookmarksDialog();
                 });
                 buttons.add(open);
+                buttons.add(addToProject);
                 buttons.add(delete);
                 row.add(info, BorderLayout.CENTER);
                 row.add(buttons, BorderLayout.EAST);
@@ -2473,6 +2574,10 @@ public class BibleReaderApp extends JFrame {
         pin.setAlignmentX(Component.LEFT_ALIGNMENT);
         pin.addActionListener(e -> pinAnnotationToSidebar(a));
 
+        JButton addToProject = blackButton("Add To Study Project");
+        addToProject.setAlignmentX(Component.LEFT_ALIGNMENT);
+        addToProject.addActionListener(e -> addAnnotationToStudyProject(a));
+
         JButton edit = blackButton("Edit Highlight");
         edit.setAlignmentX(Component.LEFT_ALIGNMENT);
         edit.addActionListener(e -> editAnnotation(a));
@@ -2482,6 +2587,8 @@ public class BibleReaderApp extends JFrame {
         del.addActionListener(e -> deleteAnnotation(a));
 
         detailsPanel.add(pin);
+        detailsPanel.add(Box.createVerticalStrut(6));
+        detailsPanel.add(addToProject);
         detailsPanel.add(Box.createVerticalStrut(6));
         detailsPanel.add(edit);
         detailsPanel.add(Box.createVerticalStrut(6));
@@ -2886,9 +2993,12 @@ public class BibleReaderApp extends JFrame {
         buttons.setOpaque(false);
         JButton open = blackButton("Open");
         open.addActionListener(e -> openPinnedItem(item));
+        JButton addToProject = blackButton("Add Pin To Study Project");
+        addToProject.addActionListener(e -> addPinnedItemToStudyProject(item));
         JButton remove = blackButton("Remove pin");
         remove.addActionListener(e -> removePinnedItem(item));
         buttons.add(open);
+        buttons.add(addToProject);
         buttons.add(remove);
 
         card.add(header, BorderLayout.NORTH);
@@ -3290,6 +3400,455 @@ public class BibleReaderApp extends JFrame {
     private void addQuestionForSelection() {
         addAnnotationFromSelection("Question", "");
     }
+
+    private void refreshStudyProjects() {
+        if (currentProfile == null) return;
+        if (currentProfile.studyProjects == null) currentProfile.studyProjects = new TreeMap<>();
+        if (studyProjectModel == null) return;
+        StudyProject selected = studyProjectList == null ? null : studyProjectList.getSelectedValue();
+        String selectedId = selected == null ? "" : safe(selected.id);
+        studyProjectModel.clear();
+        for (StudyProject project : currentProfile.studyProjects.values()) {
+            repairStudyProject(project);
+            studyProjectModel.addElement(project);
+        }
+        if (studyProjectModel.size() > 0 && studyProjectList != null) {
+            int idx = 0;
+            for (int i = 0; i < studyProjectModel.size(); i++) {
+                if (safe(studyProjectModel.get(i).id).equals(selectedId)) { idx = i; break; }
+            }
+            studyProjectList.setSelectedIndex(idx);
+        }
+        renderSelectedStudyProject();
+    }
+
+    private StudyProject selectedStudyProject() {
+        return studyProjectList == null ? null : studyProjectList.getSelectedValue();
+    }
+
+    private void createStudyProject() {
+        StudyProject p = promptForStudyProject(null);
+        if (p == null) return;
+        currentProfile.studyProjects.put(p.id, p);
+        saveData();
+        refreshStudyProjects();
+        if (studyProjectList != null) studyProjectList.setSelectedValue(p, true);
+        log("Created study project: " + p.title);
+    }
+
+    private void editSelectedStudyProject() {
+        StudyProject selected = selectedStudyProject();
+        if (selected == null) return;
+        StudyProject edited = promptForStudyProject(selected);
+        if (edited == null) return;
+        selected.title = edited.title;
+        selected.description = edited.description;
+        selected.updatedAt = System.currentTimeMillis();
+        saveData();
+        refreshStudyProjects();
+    }
+
+    private void deleteSelectedStudyProject() {
+        StudyProject selected = selectedStudyProject();
+        if (selected == null) return;
+        if (JOptionPane.showConfirmDialog(this, "Delete study project '" + selected.title + "'?", "Delete Project", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+        currentProfile.studyProjects.remove(selected.id);
+        saveData();
+        refreshStudyProjects();
+    }
+
+    private StudyProject promptForStudyProject(StudyProject existing) {
+        JTextField title = new JTextField(existing == null ? "" : safe(existing.title));
+        JTextArea desc = new JTextArea(existing == null ? "" : safe(existing.description), 5, 38);
+        desc.setLineWrap(true);
+        desc.setWrapStyleWord(true);
+        JPanel p = new JPanel(new GridLayout(0, 1, 5, 5));
+        p.add(new JLabel("Project title:")); p.add(title);
+        p.add(new JLabel("Description:")); p.add(new JScrollPane(desc));
+        int r = JOptionPane.showConfirmDialog(this, p, existing == null ? "Create Study Project" : "Edit Study Project", JOptionPane.OK_CANCEL_OPTION);
+        if (r != JOptionPane.OK_OPTION || title.getText().trim().isEmpty()) return null;
+        long now = System.currentTimeMillis();
+        StudyProject project = existing == null ? new StudyProject() : new StudyProject();
+        project.id = existing == null ? UUID.randomUUID().toString() : existing.id;
+        project.title = title.getText().trim();
+        project.description = desc.getText().trim();
+        project.createdAt = existing == null || existing.createdAt <= 0L ? now : existing.createdAt;
+        project.updatedAt = now;
+        return project;
+    }
+
+    private StudyProject chooseStudyProject(boolean allowCreate) {
+        if (currentProfile == null) return null;
+        if (currentProfile.studyProjects == null) currentProfile.studyProjects = new TreeMap<>();
+        List<String> names = new ArrayList<>();
+        Map<String, StudyProject> byName = new LinkedHashMap<>();
+        for (StudyProject p : currentProfile.studyProjects.values()) {
+            String label = p.title == null || p.title.trim().isEmpty() ? p.id : p.title;
+            names.add(label);
+            byName.put(label, p);
+        }
+        if (allowCreate) names.add("+ Create New Study Project");
+        if (names.isEmpty()) {
+            StudyProject created = promptForStudyProject(null);
+            if (created != null) {
+                currentProfile.studyProjects.put(created.id, created);
+                return created;
+            }
+            return null;
+        }
+        Object choice = JOptionPane.showInputDialog(this, "Choose study project:", "Study Project", JOptionPane.PLAIN_MESSAGE, null, names.toArray(), names.get(0));
+        if (choice == null) return null;
+        if (choice.toString().startsWith("+ Create")) {
+            StudyProject created = promptForStudyProject(null);
+            if (created != null) currentProfile.studyProjects.put(created.id, created);
+            return created;
+        }
+        return byName.get(choice.toString());
+    }
+
+    private void renderSelectedStudyProject() {
+        if (studyProjectDetailsPanel == null) return;
+        studyProjectDetailsPanel.removeAll();
+        StudyProject p = selectedStudyProject();
+        if (p == null) {
+            studyProjectDetailsPanel.add(new JLabel("Create or select a study project."));
+            studyProjectDetailsPanel.revalidate(); studyProjectDetailsPanel.repaint();
+            return;
+        }
+        addProjectTitle(p.title);
+        addProjectText(safe(p.description).isEmpty() ? "No description yet." : p.description);
+        JButton export = blackButton("Export Study Project");
+        export.setAlignmentX(Component.LEFT_ALIGNMENT);
+        export.addActionListener(e -> exportStudyProject(p));
+        studyProjectDetailsPanel.add(export);
+        studyProjectDetailsPanel.add(Box.createVerticalStrut(10));
+
+        addProjectSection("Project Notes");
+        if (p.projectNotes.isEmpty()) addProjectText("No project notes yet.");
+        for (ProjectNote n : p.projectNotes) addProjectNoteRow(p, n);
+
+        addProjectSection("Attached Annotations / Highlights");
+        boolean anyAnnotation = false;
+        for (String id : p.annotationIds) {
+            TextAnnotation a = findAnnotationById(id);
+            if (a != null) { anyAnnotation = true; addProjectAnnotationRow(a); }
+        }
+        if (!anyAnnotation) addProjectText("No attached annotations yet.");
+
+        addProjectSection("Bookmarks");
+        boolean anyBookmark = false;
+        for (String id : p.bookmarkIds) {
+            StudyBookmark b = findBookmarkById(id);
+            if (b != null) { anyBookmark = true; addProjectBookmarkRow(b); }
+        }
+        if (!anyBookmark) addProjectText("No attached bookmarks yet.");
+
+        studyProjectDetailsPanel.revalidate();
+        studyProjectDetailsPanel.repaint();
+    }
+
+    private void addProjectTitle(String text) {
+        JLabel l = new JLabel("<html><b>" + esc(text) + "</b></html>");
+        l.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        l.setForeground(darkRed);
+        l.setAlignmentX(Component.LEFT_ALIGNMENT);
+        studyProjectDetailsPanel.add(l);
+        studyProjectDetailsPanel.add(Box.createVerticalStrut(8));
+    }
+
+    private void addProjectSection(String text) {
+        JLabel l = new JLabel("<html><b>" + esc(text) + "</b></html>");
+        l.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        l.setForeground(darkRed);
+        l.setAlignmentX(Component.LEFT_ALIGNMENT);
+        studyProjectDetailsPanel.add(l);
+        studyProjectDetailsPanel.add(Box.createVerticalStrut(5));
+    }
+
+    private void addProjectText(String text) {
+        JTextArea a = readonlyArea();
+        a.setText(text == null ? "" : text);
+        a.setAlignmentX(Component.LEFT_ALIGNMENT);
+        studyProjectDetailsPanel.add(a);
+        studyProjectDetailsPanel.add(Box.createVerticalStrut(6));
+    }
+
+    private void addProjectNoteRow(StudyProject p, ProjectNote n) {
+        JPanel row = projectRow("Project Note", safe(n.title), safe(n.sourceTitle), safe(n.selectedText) + (safe(n.body).isEmpty() ? "" : "\n" + n.body));
+        JButton open = blackButton("Open");
+        open.addActionListener(e -> openProjectNote(n));
+        row.add(open, BorderLayout.EAST);
+        studyProjectDetailsPanel.add(row);
+        studyProjectDetailsPanel.add(Box.createVerticalStrut(6));
+    }
+
+    private void addProjectAnnotationRow(TextAnnotation a) {
+        JPanel row = projectRow(safe(a.type), safe(a.category), safe(a.sourceTitle), safe(a.selectedText) + (safe(a.note).isEmpty() ? "" : "\n" + a.note));
+        JButton open = blackButton("Open");
+        open.addActionListener(e -> { openSourceForAnnotation(a); safeSelect(a.start, a.end); showAnnotationDetails(a); showCard("study"); });
+        row.add(open, BorderLayout.EAST);
+        studyProjectDetailsPanel.add(row);
+        studyProjectDetailsPanel.add(Box.createVerticalStrut(6));
+    }
+
+    private void addProjectBookmarkRow(StudyBookmark b) {
+        JPanel row = projectRow("Bookmark", safe(b.title), safe(b.sourceTitle), safe(b.previewText));
+        JButton open = blackButton("Open");
+        open.addActionListener(e -> openBookmark(b));
+        row.add(open, BorderLayout.EAST);
+        studyProjectDetailsPanel.add(row);
+        studyProjectDetailsPanel.add(Box.createVerticalStrut(6));
+    }
+
+    private JPanel projectRow(String type, String title, String source, String preview) {
+        JPanel row = new JPanel(new BorderLayout(8, 4));
+        row.setBackground(cream);
+        row.setBorder(new CompoundBorder(new LineBorder(new Color(210, 185, 160)), new EmptyBorder(6, 6, 6, 6)));
+        JLabel label = new JLabel("<html><b>" + esc(type) + (safe(title).isEmpty() ? "" : ": " + esc(title)) + "</b><br>" + esc(source) + "<br><i>" + esc(shorten(preview, 220)) + "</i></html>");
+        row.add(label, BorderLayout.CENTER);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return row;
+    }
+
+    private void addSelectedTextToStudyProject() {
+        if (readerPane == null || currentProfile == null) return;
+        int start = readerPane.getSelectionStart();
+        int end = readerPane.getSelectionEnd();
+        String selected = readerPane.getSelectedText();
+        if (end <= start || selected == null || selected.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Select text first, then choose Add Selected Text To Study Project.");
+            return;
+        }
+        StudyProject project = chooseStudyProject(true);
+        if (project == null) return;
+        JTextArea body = new JTextArea(5, 38);
+        body.setLineWrap(true); body.setWrapStyleWord(true);
+        int r = JOptionPane.showConfirmDialog(this, new JScrollPane(body), "Optional project note", JOptionPane.OK_CANCEL_OPTION);
+        if (r != JOptionPane.OK_OPTION) return;
+        ProjectNote note = new ProjectNote();
+        long now = System.currentTimeMillis();
+        note.id = UUID.randomUUID().toString();
+        note.title = defaultBookmarkTitle(currentSourceTitle, selected);
+        note.body = body.getText().trim();
+        note.sourceKey = currentSourceKey;
+        note.sourceTitle = currentSourceTitle;
+        note.selectedText = selected;
+        note.start = start;
+        note.end = end;
+        note.createdAt = now;
+        note.updatedAt = now;
+        project.projectNotes.add(note);
+        project.updatedAt = now;
+        saveData();
+        refreshStudyProjects();
+        showDetailsText("Added selected text to study project: " + project.title + "\n\n" + selected);
+        log("Added selected text to study project: " + project.title);
+    }
+
+    private void addAnnotationToStudyProject(TextAnnotation a) {
+        if (a == null) return;
+        StudyProject p = chooseStudyProject(true);
+        if (p == null) return;
+        if (!p.annotationIds.contains(a.id)) p.annotationIds.add(a.id);
+        p.updatedAt = System.currentTimeMillis();
+        saveData();
+        refreshStudyProjects();
+        showDetailsText("Added note/highlight to study project: " + p.title + "\n\n" + a.selectedText);
+        log("Added note to study project: " + p.title);
+    }
+
+    private void addBookmarkToStudyProject(StudyBookmark b) {
+        if (b == null) return;
+        StudyProject p = chooseStudyProject(true);
+        if (p == null) return;
+        if (!p.bookmarkIds.contains(b.id)) p.bookmarkIds.add(b.id);
+        p.updatedAt = System.currentTimeMillis();
+        saveData();
+        refreshStudyProjects();
+        log("Added bookmark to study project: " + p.title);
+    }
+
+    private void addPinnedItemToStudyProject(PinnedItem item) {
+        if (item == null) return;
+        if (!safe(item.annotationId).isEmpty()) {
+            TextAnnotation a = findAnnotationById(item.annotationId);
+            if (a != null) { addAnnotationToStudyProject(a); return; }
+        }
+        StudyProject p = chooseStudyProject(true);
+        if (p == null) return;
+        ProjectNote note = new ProjectNote();
+        long now = System.currentTimeMillis();
+        note.id = UUID.randomUUID().toString();
+        note.title = "Pinned item";
+        note.body = item.note;
+        note.sourceKey = item.sourceKey;
+        note.sourceTitle = item.sourceTitle;
+        note.selectedText = item.selectedText;
+        note.start = item.start;
+        note.end = item.end;
+        note.createdAt = now;
+        note.updatedAt = now;
+        p.projectNotes.add(note);
+        p.updatedAt = now;
+        saveData();
+        refreshStudyProjects();
+        log("Added pinned item to study project: " + p.title);
+    }
+
+    private void searchSelectedStudyProject() {
+        if (studyProjectSearchModel == null) return;
+        studyProjectSearchModel.clear();
+        StudyProject p = selectedStudyProject();
+        String q = studyProjectSearchField == null ? "" : studyProjectSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        if (p == null || q.isEmpty()) return;
+        for (ProjectNote n : p.projectNotes) if (matchesProjectNote(n, q)) studyProjectSearchModel.addElement(resultForProjectNote(p, n));
+        for (String id : p.annotationIds) {
+            TextAnnotation a = findAnnotationById(id);
+            if (a != null && matchesAnnotation(a, q)) studyProjectSearchModel.addElement(resultForAnnotation(p, a));
+        }
+    }
+
+    private void searchAllStudyNotes() {
+        if (allNotesSearchModel == null) return;
+        allNotesSearchModel.clear();
+        String q = allNotesSearchField == null ? "" : allNotesSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty()) return;
+        for (TextAnnotation a : currentProfile.annotations) if (matchesAnnotation(a, q)) allNotesSearchModel.addElement(resultForAnnotation(null, a));
+        for (StudyProject p : currentProfile.studyProjects.values()) {
+            for (ProjectNote n : p.projectNotes) if (matchesProjectNote(n, q)) allNotesSearchModel.addElement(resultForProjectNote(p, n));
+        }
+    }
+
+    private boolean matchesProjectNote(ProjectNote n, String q) {
+        return (safe(n.title) + " " + safe(n.body) + " " + safe(n.selectedText) + " " + safe(n.sourceTitle)).toLowerCase(Locale.ROOT).contains(q);
+    }
+
+    private boolean matchesAnnotation(TextAnnotation a, String q) {
+        return (safe(a.selectedText) + " " + safe(a.note) + " " + safe(a.category) + " " + safe(a.target) + " " + safe(a.sourceTitle)).toLowerCase(Locale.ROOT).contains(q);
+    }
+
+    private StudySearchResult resultForProjectNote(StudyProject p, ProjectNote n) {
+        StudySearchResult r = new StudySearchResult();
+        r.type = "Project Note";
+        r.projectId = p == null ? "" : p.title;
+        r.itemId = n.id;
+        r.sourceKey = n.sourceKey;
+        r.sourceTitle = n.sourceTitle;
+        r.start = n.start;
+        r.end = n.end;
+        r.title = n.title;
+        r.preview = shorten((safe(n.title).isEmpty() ? "" : n.title + " — ") + safe(n.selectedText) + " " + safe(n.body), 180);
+        return r;
+    }
+
+    private StudySearchResult resultForAnnotation(StudyProject p, TextAnnotation a) {
+        StudySearchResult r = new StudySearchResult();
+        r.type = "Annotation";
+        r.projectId = p == null ? "" : p.title;
+        r.itemId = a.id;
+        r.sourceKey = a.sourceKey;
+        r.sourceTitle = a.sourceTitle;
+        r.start = a.start;
+        r.end = a.end;
+        r.title = a.type;
+        r.preview = shorten(safe(a.selectedText) + " " + safe(a.note), 180);
+        return r;
+    }
+
+    private void openStudySearchResult(StudySearchResult r) {
+        if (r == null) return;
+        if ("Annotation".equals(r.type)) {
+            TextAnnotation a = findAnnotationById(r.itemId);
+            if (a != null) { openSourceForAnnotation(a); safeSelect(a.start, a.end); showAnnotationDetails(a); showCard("study"); }
+        } else {
+            ProjectNote n = findProjectNoteById(r.itemId);
+            if (n != null) openProjectNote(n);
+        }
+    }
+
+    private void openProjectNote(ProjectNote n) {
+        if (n == null) return;
+        if (!safe(n.sourceKey).isEmpty()) openSourceKey(n.sourceKey);
+        safeSelect(n.start, n.end);
+        detailsPanel.removeAll();
+        addDetailTitle(safe(n.title).isEmpty() ? "Project Note" : n.title);
+        addDetailText("Source: " + safe(n.sourceTitle) + "\nSelected text: “" + safe(n.selectedText) + "”\nCreated: " + displayDate(n.createdAt) + "\nUpdated: " + displayDate(n.updatedAt));
+        if (!safe(n.body).isEmpty()) addDetailText(n.body);
+        detailsPanel.revalidate(); detailsPanel.repaint();
+        showCard("study");
+    }
+
+    private StudyBookmark findBookmarkById(String id) {
+        if (id == null || currentProfile == null || currentProfile.bookmarks == null) return null;
+        for (StudyBookmark b : currentProfile.bookmarks) if (b != null && id.equals(b.id)) return b;
+        return null;
+    }
+
+    private ProjectNote findProjectNoteById(String id) {
+        if (id == null || currentProfile == null || currentProfile.studyProjects == null) return null;
+        for (StudyProject p : currentProfile.studyProjects.values()) {
+            for (ProjectNote n : p.projectNotes) if (id.equals(n.id)) return n;
+        }
+        return null;
+    }
+
+    private void exportStudyProject(StudyProject p) {
+        if (p == null) return;
+        JFileChooser ch = new JFileChooser();
+        ch.setSelectedFile(new File(p.title.replaceAll("[^a-zA-Z0-9._-]+", "_") + ".txt"));
+        if (ch.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        try (PrintWriter out = new PrintWriter(new OutputStreamWriter(new FileOutputStream(ch.getSelectedFile()), StandardCharsets.UTF_8))) {
+            out.println("Study Project: " + p.title);
+            out.println("Description: " + safe(p.description));
+            out.println("Created: " + displayDate(p.createdAt));
+            out.println("Updated: " + displayDate(p.updatedAt));
+            out.println();
+            out.println("PROJECT NOTES"); out.println("=============");
+            for (ProjectNote n : p.projectNotes) {
+                out.println("- " + safe(n.title));
+                out.println("  Source: " + safe(n.sourceTitle));
+                out.println("  Selected: " + safe(n.selectedText));
+                if (!safe(n.body).isEmpty()) out.println("  Note: " + safe(n.body));
+                out.println();
+            }
+            out.println("ANNOTATIONS / HIGHLIGHTS"); out.println("========================");
+            for (String id : p.annotationIds) {
+                TextAnnotation a = findAnnotationById(id);
+                if (a == null) continue;
+                out.println("- " + safe(a.type) + " | " + safe(a.sourceTitle));
+                out.println("  Selected: " + safe(a.selectedText));
+                out.println("  Category: " + safe(a.category));
+                out.println("  Target: " + safe(a.target));
+                out.println("  Note / Greek notes: " + safe(a.note));
+                out.println();
+            }
+            out.println("BOOKMARKS"); out.println("=========");
+            for (String id : p.bookmarkIds) {
+                StudyBookmark b = findBookmarkById(id);
+                if (b == null) continue;
+                out.println("- " + safe(b.title) + " | " + safe(b.sourceTitle) + " | " + safe(b.type));
+                out.println("  Preview: " + safe(b.previewText));
+                out.println();
+            }
+            out.println("MEMORY VERSES"); out.println("=============");
+            for (String id : p.memoryVerseIds) {
+                MemoryVerse mv = findMemoryVerseById(id);
+                if (mv == null) continue;
+                out.println("- " + safe(mv.reference) + " | " + safe(mv.category));
+                out.println("  " + safe(mv.text));
+                if (!safe(mv.note).isEmpty()) out.println("  Note: " + safe(mv.note));
+                out.println();
+            }
+            log("Exported study project to " + ch.getSelectedFile().getAbsolutePath());
+        } catch (Exception ex) { showError("Export study project failed", ex); }
+    }
+
+    private MemoryVerse findMemoryVerseById(String id) {
+        if (id == null || currentProfile == null || currentProfile.memoryVerses == null) return null;
+        for (MemoryVerse mv : currentProfile.memoryVerses) if (mv != null && id.equals(mv.id)) return mv;
+        return null;
+    }
+
 
     private void refreshQuestions() {
         if (questionModel == null) return;
@@ -4256,8 +4815,11 @@ public class BibleReaderApp extends JFrame {
         if (p.pinnedItems == null) p.pinnedItems = new ArrayList<>();
         if (p.memoryVerses == null) p.memoryVerses = new ArrayList<>();
         if (p.bookmarks == null) p.bookmarks = new ArrayList<>();
+        if (p.studyProjects == null) p.studyProjects = new TreeMap<>();
         p.bookmarks.removeIf(Objects::isNull);
         for (StudyBookmark b : p.bookmarks) repairBookmark(b);
+        p.studyProjects.values().removeIf(Objects::isNull);
+        for (StudyProject project : p.studyProjects.values()) repairStudyProject(project);
         for (PinnedItem item : p.pinnedItems) repairPinnedItem(item);
         for (MemoryVerse mv : p.memoryVerses) repairMemoryVerse(mv);
         long fallbackBase = System.currentTimeMillis() - (long) p.annotations.size() * 1000L;
@@ -4273,6 +4835,40 @@ public class BibleReaderApp extends JFrame {
         }
     }
 
+
+
+    private void repairStudyProject(StudyProject p) {
+        if (p == null) return;
+        long now = System.currentTimeMillis();
+        if (p.id == null || p.id.trim().isEmpty()) p.id = UUID.randomUUID().toString();
+        if (p.title == null || p.title.trim().isEmpty()) p.title = "Untitled Study";
+        if (p.description == null) p.description = "";
+        if (p.annotationIds == null) p.annotationIds = new ArrayList<>();
+        if (p.bookmarkIds == null) p.bookmarkIds = new ArrayList<>();
+        if (p.memoryVerseIds == null) p.memoryVerseIds = new ArrayList<>();
+        if (p.projectNotes == null) p.projectNotes = new ArrayList<>();
+        p.annotationIds.removeIf(Objects::isNull);
+        p.bookmarkIds.removeIf(Objects::isNull);
+        p.memoryVerseIds.removeIf(Objects::isNull);
+        p.projectNotes.removeIf(Objects::isNull);
+        for (ProjectNote note : p.projectNotes) repairProjectNote(note);
+        if (p.createdAt <= 0L) p.createdAt = now;
+        if (p.updatedAt <= 0L) p.updatedAt = p.createdAt;
+    }
+
+    private void repairProjectNote(ProjectNote n) {
+        if (n == null) return;
+        long now = System.currentTimeMillis();
+        if (n.id == null || n.id.trim().isEmpty()) n.id = UUID.randomUUID().toString();
+        if (n.title == null) n.title = "Project Note";
+        if (n.body == null) n.body = "";
+        if (n.sourceKey == null) n.sourceKey = "";
+        if (n.sourceTitle == null) n.sourceTitle = "";
+        if (n.selectedText == null) n.selectedText = "";
+        if (n.end < n.start) n.end = n.start;
+        if (n.createdAt <= 0L) n.createdAt = now;
+        if (n.updatedAt <= 0L) n.updatedAt = n.createdAt;
+    }
 
     private void repairBookmark(StudyBookmark b) {
         if (b == null) return;
@@ -4499,6 +5095,7 @@ public class BibleReaderApp extends JFrame {
         List<PinnedItem> pinnedItems = new ArrayList<>();
         List<MemoryVerse> memoryVerses = new ArrayList<>();
         List<StudyBookmark> bookmarks = new ArrayList<>();
+        Map<String, StudyProject> studyProjects = new TreeMap<>();
         Map<String, String> categories = new TreeMap<>();
         Map<String, Integer> categoryColors = new TreeMap<>();
         Map<String, Integer> visitCounts = new HashMap<>();
@@ -4506,6 +5103,52 @@ public class BibleReaderApp extends JFrame {
         Profile(String n) { name = n; }
     }
 
+    private static class StudyProject implements Serializable {
+        private static final long serialVersionUID = 30L;
+        String id;
+        String title;
+        String description;
+        List<String> annotationIds = new ArrayList<>();
+        List<String> bookmarkIds = new ArrayList<>();
+        List<String> memoryVerseIds = new ArrayList<>();
+        List<ProjectNote> projectNotes = new ArrayList<>();
+        long createdAt;
+        long updatedAt;
+
+        public String toString() { return title == null || title.trim().isEmpty() ? "Untitled Study" : title; }
+    }
+
+    private static class ProjectNote implements Serializable {
+        private static final long serialVersionUID = 30L;
+        String id;
+        String title;
+        String body;
+        String sourceKey;
+        String sourceTitle;
+        String selectedText;
+        int start;
+        int end;
+        long createdAt;
+        long updatedAt;
+    }
+
+    private static class StudySearchResult {
+        String type;
+        String projectId;
+        String itemId;
+        String sourceKey;
+        String sourceTitle;
+        int start;
+        int end;
+        String title;
+        String preview;
+
+        public String toString() {
+            String project = projectId == null || projectId.isEmpty() ? "" : " • " + projectId;
+            String source = sourceTitle == null || sourceTitle.isEmpty() ? sourceKey : sourceTitle;
+            return type + project + " | " + (source == null ? "" : source) + " | " + (preview == null ? "" : preview);
+        }
+    }
 
 
     private static class StudyBookmark implements Serializable {
