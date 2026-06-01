@@ -405,18 +405,32 @@ public class BibleReaderApp extends JFrame {
                 mainStudySplit.setDividerLocation(Math.max(240, Math.min(320, mainStudySplit.getWidth() / 4)));
             }
             if (centerRightSplit != null && centerRightSplit.getWidth() > 0 && !readingMode) {
-                int splitWidth = centerRightSplit.getWidth();
-                int sidebarWidth = Math.min(rightSidebarPreferredWidth(), Math.max(rightSidebarMinWidth(), splitWidth - 520));
-                centerRightSplit.setDividerLocation(Math.max(520, splitWidth - sidebarWidth));
+                int total = centerRightSplit.getWidth();
+
+                int desiredSidebar = rightSidebarPreferredWidth();
+                int minSidebar = rightSidebarMinWidth();
+                int minReader = 520;
+
+                int divider = total - desiredSidebar;
+
+                if (divider < minReader) {
+                    divider = Math.max(300, total - minSidebar);
+                }
+
+                if (divider > total - minSidebar) {
+                    divider = total - minSidebar;
+                }
+
+                centerRightSplit.setDividerLocation(Math.max(300, divider));
             }
         });
     }
 
-    private int rightSidebarPreferredWidth() { return 405; }
+    private int rightSidebarPreferredWidth() { return 430; }
 
-    private int rightSidebarMinWidth() { return 350; }
+    private int rightSidebarMinWidth() { return 380; }
 
-    private int safeSidebarWidth() { return 370; }
+    private int safeSidebarWidth() { return 360; }
 
     private JPanel buildLibraryPanel() {
         JPanel p = new JPanel(new BorderLayout(8, 8));
@@ -624,7 +638,7 @@ public class BibleReaderApp extends JFrame {
         WidthTrackingPanel content = new WidthTrackingPanel();
         content.setLayout(new BorderLayout(6, 8));
         content.setBackground(panelBg);
-        content.setBorder(new EmptyBorder(0, 2, 0, 8));
+        content.setBorder(new EmptyBorder(0, 2, 0, 14));
         content.setPreferredSize(new Dimension(safeSidebarWidth(), 10));
         JPanel sidebarTop = new JPanel(new BorderLayout(8, 8));
         sidebarTop.setOpaque(false);
@@ -823,7 +837,9 @@ public class BibleReaderApp extends JFrame {
                 if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) openRecentlyOpenedSelection();
             }
         });
-        recentlyOpenedBody.add(new JScrollPane(recentlyOpenedList), BorderLayout.CENTER);
+        JScrollPane recentlyOpenedScroll = new JScrollPane(recentlyOpenedList);
+        recentlyOpenedScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        recentlyOpenedBody.add(recentlyOpenedScroll, BorderLayout.CENTER);
         outer.add(header, BorderLayout.NORTH);
         outer.add(recentlyOpenedBody, BorderLayout.CENTER);
         return outer;
