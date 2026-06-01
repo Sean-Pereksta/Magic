@@ -2029,14 +2029,101 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void addBookmarkFromCurrentCaret(boolean fromBookmarkButton) {
-        if (readerPane == null || currentSourceKey == null || currentSourceKey.isEmpty()) return;
-        int caret = readerPane.getCaretPosition();
-        if (fromBookmarkButton && currentSourceKey.startsWith("BIBLE:")) {
-            saveBibleOverallBookmark(caret, readerPane.getSelectionStart(), readerPane.getSelectionEnd());
-        }
-        addBookmarkAtPosition(caret, true, "General");
+    if (readerPane == null || currentSourceKey == null || currentSourceKey.isEmpty()) return;
+
+    // The toolbar bookmark button should follow the visible scroll position,
+    // not the old caret position. This is especially important for imported TXT books.
+    int visiblePosition = getTopVisibleDocumentPosition();
+    int viewportY = getCurrentReaderViewportY();
+
+    if (fromBookmarkButton) {
+        saveOrMoveReadingSpotBookmark(visiblePosition, viewportY);
+        return;
     }
 
+    addBookmarkAtPosition(visiblePosition, true, "General");
+}
+private int getCurrentReaderViewportY() {
+    try {
+        JViewport viewport = (JViewport) SwingUtilities.getAncestorOfClass(JViewport.class, readerPane);
+        if (viewport != null) return Math.max(0, viewport.getViewPosition().y);
+    } catch (Exception ignored) {}
+    return -1;
+}
+
+private int getTopVisibleDocumentPosition() {
+    try {
+        Rectangle visible = readerPane.getVisibleRect();
+
+        // A tiny inset keeps the point inside real visible text instead of the border/margin.
+        Point topVisiblePoint = new Point(
+                Math.max(0, visible.x + 6),
+                Math.max(0, visible.y + 6)
+        );
+
+        int pos = readerPane.viewToModel2D(topVisiblePoint);
+        int len = readerPane.getDocument().getLength();
+
+        if (pos >= 0) return Math.max(0, Math.min(pos, len));
+    } catch (Exception ignored) {}
+
+    // Fallback only if Swing cannot convert the visible point.
+    int len = readerPane.getDocument().getLength();
+    return Math.max(0, Math.min(readerPane.getCaretPosition(), len));
+}
+
+private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
+    if (currentProfile == null || readerPane == null || currentSourceKey == null || currentSourceKey.isEmpty()) return;
+    if (currentProfile.bookmarks == null) currentProfile.bookmarks = new ArrayList<>();
+
+    int len = readerPane.getDocument().getLength();
+    int safePosition = Math.max(0, Math.min(position, len));
+
+    String type = currentSourceKey.startsWith("BIBLE:") ? "BibleOverall" :
+            currentSourceKey.startsWith("LIBRARY:") ? "LibraryReadingSpot" :
+                    "ReadingSpot";
+
+    StudyBookmark bookmark = null;
+
+    // This makes the toolbar bookmark "move" the bookmark for that book/source
+    // instead of creating a new duplicate every time.
+    for (StudyBookmark b : currentProfile.bookmarks) {
+        if (b != null
+                && safe(type).equals(safe(b.type))
+                && safe(currentSourceKey).equals(safe(b.sourceKey))) {
+            bookmark = b;
+            break;
+        }
+    }
+
+    if (bookmark == null) {
+        bookmark = new StudyBookmark();
+        bookmark.id = UUID.randomUUID().toString();
+        bookmark.createdAt = System.currentTimeMillis();
+        currentProfile.bookmarks.add(bookmark);
+    }
+
+    String preview = previewAround(safePosition);
+
+    bookmark.title = currentSourceKey.startsWith("BIBLE:")
+            ? "Last Bible Reading Spot"
+            : "Reading Spot — " + safe(currentSourceTitle);
+
+    bookmark.sourceKey = currentSourceKey;
+    bookmark.sourceTitle = currentSourceTitle;
+    bookmark.caretPosition = safePosition;
+    bookmark.selectionStart = -1;
+    bookmark.selectionEnd = -1;
+    bookmark.previewText = preview;
+    bookmark.type = type;
+    bookmark.viewportY = viewportY;
+    bookmark.hasViewportY = viewportY >= 0;
+    bookmark.updatedAt = System.currentTimeMillis();
+
+    saveData();
+    updateHeader();
+    log("Bookmark moved to current reading spot: " + bookmark.title);
+}
     private void addBookmarkAtPosition(int position, boolean askForTitle, String typeOverride) {
         if (currentProfile == null || readerPane == null || currentSourceKey == null || currentSourceKey.isEmpty()) return;
         if (currentProfile.bookmarks == null) currentProfile.bookmarks = new ArrayList<>();
@@ -2198,23 +2285,31 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void openBookmark(StudyBookmark bookmark) {
-        if (bookmark == null || bookmark.sourceKey == null || bookmark.sourceKey.trim().isEmpty()) return;
-        openSourceKey(bookmark.sourceKey);
-        SwingUtilities.invokeLater(() -> {
-            int len = readerPane.getDocument().getLength();
-            if (bookmark.selectionStart >= 0 && bookmark.selectionEnd > bookmark.selectionStart && bookmark.selectionStart < len) {
-                int s = Math.max(0, Math.min(bookmark.selectionStart, len));
-                int e = Math.max(s, Math.min(bookmark.selectionEnd, len));
-                readerPane.requestFocusInWindow();
-                readerPane.select(s, e);
-                scrollReaderToPosition(s);
-            } else {
-                moveReaderCaret(bookmark.caretPosition);
-            }
-            showSourceSummary(currentSourceKey, currentSourceTitle);
-            showCard("study");
-        });
-    }
+    if (bookmark == null || bookmark.sourceKey == null || bookmark.sourceKey.trim().isEmpty()) return;
+
+    openSourceKey(bookmark.sourceKey);
+
+    SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(() -> {
+        int len = readerPane.getDocument().getLength();
+
+        if (bookmark.selectionStart >= 0 && bookmark.selectionEnd > bookmark.selectionStart && bookmark.selectionStart < len) {
+            int s = Math.max(0, Math.min(bookmark.selectionStart, len));
+            int e = Math.max(s, Math.min(bookmark.selectionEnd, len));
+            readerPane.requestFocusInWindow();
+            readerPane.select(s, e);
+            scrollReaderToPosition(s);
+        } else if (bookmark.hasViewportY) {
+            scrollReaderToViewportY(bookmark.viewportY);
+            int safeCaret = Math.max(0, Math.min(bookmark.caretPosition, len));
+            readerPane.setCaretPosition(safeCaret);
+        } else {
+            moveReaderCaret(bookmark.caretPosition);
+        }
+
+        showSourceSummary(currentSourceKey, currentSourceTitle);
+        showCard("study");
+    }));
+}
 
     private void openSourceKey(String sourceKey) {
         if (sourceKey.startsWith("BIBLE:")) {
@@ -2240,6 +2335,18 @@ public class BibleReaderApp extends JFrame {
             if (r != null) readerPane.scrollRectToVisible(r);
         } catch (Exception ignored) {}
     }
+    private void scrollReaderToViewportY(int viewportY) {
+    try {
+        JViewport viewport = (JViewport) SwingUtilities.getAncestorOfClass(JViewport.class, readerPane);
+        if (viewport == null) return;
+
+        int maxY = Math.max(0, readerPane.getHeight() - viewport.getExtentSize().height);
+        int safeY = Math.max(0, Math.min(viewportY, maxY));
+
+        viewport.setViewPosition(new Point(0, safeY));
+        readerPane.repaint();
+    } catch (Exception ignored) {}
+}
 
     private void moveReaderCaret(int position) {
         int len = readerPane.getDocument().getLength();
@@ -5733,18 +5840,26 @@ public class BibleReaderApp extends JFrame {
 
 
     private static class StudyBookmark implements Serializable {
-        private static final long serialVersionUID = 30L;
-        String id;
-        String title;
-        String sourceKey;
-        String sourceTitle;
-        int caretPosition;
-        int selectionStart;
-        int selectionEnd;
-        String previewText;
-        String type;
-        long createdAt;
-    }
+    private static final long serialVersionUID = 30L;
+    String id;
+    String title;
+    String sourceKey;
+    String sourceTitle;
+    int caretPosition;
+    int selectionStart;
+    int selectionEnd;
+    String previewText;
+    String type;
+    long createdAt;
+
+    // Added for imported TXT / philosophy books:
+    // saves the exact vertical scroll position of the reader.
+    int viewportY;
+    boolean hasViewportY;
+
+    // Helps later sorting/display if the same bookmark is moved repeatedly.
+    long updatedAt;
+}
 
     private static class MemoryVerse implements Serializable {
         private static final long serialVersionUID = 30L;
