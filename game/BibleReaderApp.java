@@ -1045,6 +1045,10 @@ public class BibleReaderApp extends JFrame {
         }
 
         if (existing != null) {
+            if ("Category".equals(existing.type) && existing.category != null && !existing.category.trim().isEmpty()) {
+                String category = existing.category.trim();
+                addMenu(menu, "Show Category: " + category, () -> showCategoryByName(category));
+            }
             addMenu(menu, "View Highlight Details", () -> showAnnotationDetails(existing));
             addMenu(menu, "Edit This Highlight", () -> editAnnotation(existing));
             addMenu(menu, "Open Attachment", () -> openAnnotationTarget(existing));
@@ -1672,7 +1676,27 @@ public class BibleReaderApp extends JFrame {
         String s = categoryList.getSelectedValue();
         if (s == null) return;
 
-        String cat = selectedCategoryNameFromListValue(s);
+        showCategoryByName(selectedCategoryNameFromListValue(s));
+    }
+
+    private void showCategoryByName(String cat) {
+        if (cat == null || cat.trim().isEmpty()) return;
+        cat = cat.trim();
+
+        refreshCategories();
+        for (int i = 0; i < categoryModel.size(); i++) {
+            if (cat.equals(selectedCategoryNameFromListValue(categoryModel.getElementAt(i)))) {
+                categoryList.setSelectedIndex(i);
+                categoryList.ensureIndexIsVisible(i);
+                break;
+            }
+        }
+
+        showCategoryDetails(cat);
+        showCard("study");
+    }
+
+    private void showCategoryDetails(String cat) {
         detailsPanel.removeAll();
         addDetailTitle("Category: " + cat);
         addDetailText(currentProfile.categories.getOrDefault(cat, "") + "\nHighlight color: " + colorHex(colorForCategory(cat)));
@@ -1693,7 +1717,6 @@ public class BibleReaderApp extends JFrame {
 
         detailsPanel.revalidate();
         detailsPanel.repaint();
-        showCard("study");
     }
 
     private void openSourceForAnnotation(TextAnnotation a) {
