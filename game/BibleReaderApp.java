@@ -1486,8 +1486,9 @@ public class BibleReaderApp extends JFrame {
     private enum ButtonType { PRIMARY, SECONDARY, DANGER, UTILITY, NAV, ACTIVE_NAV }
 
     private JButton navButton(String s) {
-        JButton b = styledButton(s, new Color(255, 248, 240), Color.BLACK);
+        JButton b = new ModernNavButton(s);
         b.putClientProperty("buttonType", ButtonType.NAV);
+        b.putClientProperty("navButton", Boolean.TRUE);
         styleModernButton(b, ButtonType.NAV);
         return b;
     }
@@ -1557,14 +1558,22 @@ public class BibleReaderApp extends JFrame {
         if (type == null) type = ButtonType.SECONDARY;
         b.putClientProperty("buttonType", type);
         b.setFocusPainted(false);
-        b.setOpaque(true);
-        b.setContentAreaFilled(true);
+        boolean nav = type == ButtonType.NAV || type == ButtonType.ACTIVE_NAV || Boolean.TRUE.equals(b.getClientProperty("navButton"));
+        b.setOpaque(!nav);
+        b.setContentAreaFilled(!nav);
+        b.setBorderPainted(!nav);
+        b.setRolloverEnabled(true);
         b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         b.setFont(type == ButtonType.UTILITY ? modernBaseFont.deriveFont(Font.BOLD, 12f) : modernBoldFont.deriveFont(13f));
         b.setMargin(new Insets(0, 0, 0, 0));
-        b.setMinimumSize(new Dimension(type == ButtonType.UTILITY ? 66 : 92, type == ButtonType.NAV || type == ButtonType.ACTIVE_NAV ? 34 : 36));
-        b.setBorder(new RoundedBorder(type == ButtonType.PRIMARY || type == ButtonType.DANGER ? modernDarkRed : modernBorder, 13,
-                type == ButtonType.UTILITY ? new Insets(5, 9, 5, 9) : new Insets(8, 13, 8, 13)));
+        int height = nav ? 34 : 36;
+        b.setMinimumSize(new Dimension(type == ButtonType.UTILITY ? 66 : 92, height));
+        if (nav) {
+            b.setBorder(new EmptyBorder(8, 14, 8, 14));
+        } else {
+            b.setBorder(new RoundedBorder(type == ButtonType.PRIMARY || type == ButtonType.DANGER ? modernDarkRed : modernBorder, 13,
+                    type == ButtonType.UTILITY ? new Insets(5, 9, 5, 9) : new Insets(8, 13, 8, 13)));
+        }
         if (!Boolean.TRUE.equals(b.getClientProperty("modernStateListenerInstalled"))) {
             b.getModel().addChangeListener(e -> applyButtonState(b));
             b.putClientProperty("modernStateListenerInstalled", Boolean.TRUE);
@@ -1576,18 +1585,32 @@ public class BibleReaderApp extends JFrame {
         ButtonType type = (ButtonType) b.getClientProperty("buttonType");
         if (type == null) type = ButtonType.SECONDARY;
         boolean modern = isModernViewEnabled();
+        boolean nav = type == ButtonType.NAV || type == ButtonType.ACTIVE_NAV || Boolean.TRUE.equals(b.getClientProperty("navButton"));
         if (!b.isEnabled()) {
             b.setBackground(modern ? modernDisabled : new Color(225, 220, 215));
             b.setForeground(modern ? modernMutedText : Color.GRAY);
+            if (nav) {
+                b.putClientProperty("navBorderColor", modern ? new Color(modernDarkRed.getRed(), modernDarkRed.getGreen(), modernDarkRed.getBlue(), 55) : new Color(120, 60, 60, 90));
+                b.repaint();
+            }
             return;
         }
         ButtonModel model = b.getModel();
         boolean pressed = model.isPressed() && model.isArmed();
         boolean rollover = model.isRollover();
         if (!modern) {
-            b.setBackground(rollover ? new Color(255, 238, 224) : new Color(255, 248, 240));
-            b.setForeground(Color.BLACK);
-            b.setBorder(new CompoundBorder(new LineBorder(new Color(120, 60, 60)), new EmptyBorder(6, 10, 6, 10)));
+            if (nav) {
+                Color bg = pressed ? new Color(255, 226, 206, 210) : (rollover ? new Color(255, 238, 224, 185) : new Color(255, 248, 240, 150));
+                b.setBackground(bg);
+                b.setForeground(Color.BLACK);
+                b.putClientProperty("navBorderColor", new Color(120, 60, 60, rollover || pressed ? 175 : 130));
+                b.setBorder(new EmptyBorder(8, 14, 8, 14));
+                b.repaint();
+            } else {
+                b.setBackground(rollover ? new Color(255, 238, 224) : new Color(255, 248, 240));
+                b.setForeground(Color.BLACK);
+                b.setBorder(new CompoundBorder(new LineBorder(new Color(120, 60, 60)), new EmptyBorder(6, 10, 6, 10)));
+            }
             return;
         }
         Color bg;
@@ -1598,9 +1621,9 @@ public class BibleReaderApp extends JFrame {
             case DANGER:
                 bg = pressed ? new Color(120, 36, 40) : (rollover ? new Color(174, 68, 72) : modernDanger); fg = Color.WHITE; break;
             case NAV:
-                bg = pressed ? new Color(244, 230, 219) : (rollover ? new Color(255, 244, 232) : modernSurface); fg = modernText; break;
+                bg = pressed ? new Color(255, 238, 224, 118) : (rollover ? new Color(255, 248, 240, 92) : new Color(255, 248, 240, 48)); fg = new Color(255, 248, 240); break;
             case ACTIVE_NAV:
-                bg = pressed ? new Color(244, 228, 214) : (rollover ? new Color(255, 241, 226) : new Color(255, 233, 214)); fg = modernDarkRed; break;
+                bg = pressed ? new Color(236, 211, 196, 225) : (rollover ? new Color(244, 221, 207, 232) : new Color(239, 215, 201, 218)); fg = modernDarkRed; break;
             case UTILITY:
                 bg = pressed ? new Color(232, 222, 211) : (rollover ? new Color(255, 249, 241) : modernSurface); fg = modernText; break;
             case SECONDARY:
@@ -1609,8 +1632,17 @@ public class BibleReaderApp extends JFrame {
         }
         b.setBackground(bg);
         b.setForeground(fg);
-        b.setBorder(new RoundedBorder(type == ButtonType.PRIMARY || type == ButtonType.DANGER ? bg.darker() : modernBorder, 13,
-                type == ButtonType.UTILITY ? new Insets(5, 9, 5, 9) : new Insets(8, 13, 8, 13)));
+        if (nav) {
+            Color border = type == ButtonType.ACTIVE_NAV
+                    ? new Color(modernDarkRed.getRed(), modernDarkRed.getGreen(), modernDarkRed.getBlue(), pressed ? 170 : (rollover ? 150 : 130))
+                    : new Color(255, 248, 240, pressed ? 112 : (rollover ? 92 : 62));
+            b.putClientProperty("navBorderColor", border);
+            b.setBorder(new EmptyBorder(8, 14, 8, 14));
+            b.repaint();
+        } else {
+            b.setBorder(new RoundedBorder(type == ButtonType.PRIMARY || type == ButtonType.DANGER ? bg.darker() : modernBorder, 13,
+                    type == ButtonType.UTILITY ? new Insets(5, 9, 5, 9) : new Insets(8, 13, 8, 13)));
+        }
     }
 
     private void styleModernPanel(JPanel p) {
@@ -1745,6 +1777,37 @@ public class BibleReaderApp extends JFrame {
         }
 
         public int hashCode() { return bookKey.hashCode(); }
+    }
+
+
+    private static class ModernNavButton extends JButton {
+        private static final long serialVersionUID = 1L;
+        private static final int ARC = 22;
+
+        ModernNavButton(String text) {
+            super(text);
+            setOpaque(false);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int inset = 1;
+            int width = getWidth() - 1 - (inset * 2);
+            int height = getHeight() - 1 - (inset * 2);
+            if (width > 0 && height > 0) {
+                g2.setColor(getBackground());
+                g2.fillRoundRect(inset, inset, width, height, ARC, ARC);
+                Object borderColor = getClientProperty("navBorderColor");
+                g2.setColor(borderColor instanceof Color ? (Color) borderColor : new Color(255, 248, 240, 70));
+                g2.drawRoundRect(inset, inset, width, height, ARC, ARC);
+            }
+            g2.dispose();
+            super.paintComponent(g);
+        }
     }
 
     private static class RoundedBorder extends AbstractBorder {
