@@ -1926,7 +1926,7 @@ public class BibleReaderApp extends JFrame {
             Component c = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
             if (c instanceof JLabel) {
                 TreePath path = tree == null || row < 0 ? null : tree.getPathForRow(row);
-                if (newestBookmarkForTreePath(path) != null) {
+                if (hasBookmarkForLibraryItem(path)) {
                     JLabel label = (JLabel) c;
                     label.setText(cleanTreeItemText(value instanceof DefaultMutableTreeNode ? ((DefaultMutableTreeNode) value).getUserObject() : value) + " 🔖");
                     label.setToolTipText("Click the bookmark indicator or right-click to open the most recent bookmark.");
@@ -2245,8 +2245,8 @@ public class BibleReaderApp extends JFrame {
             selectedBook = bookKeyFromTreePathPart(parts[2]);
             if (selectedBook == null || selectedBook.isEmpty() || !data.bible.containsKey(selectedBook)) return;
             if (parts.length >= 4) {
-                String num = parts[3].toString().replace("Chapter ", "").split("\\s+")[0];
-                try { selectedChapter = Integer.parseInt(num); } catch (Exception ignored) {}
+                Integer chapter = chapterNumberFromTreePathPart(parts[3]);
+                if (chapter != null) selectedChapter = chapter;
             }
             refreshBookCombo();
             showSelectedChapter(true);
@@ -2258,69 +2258,88 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void handleLibraryTreeBookmarkClick(MouseEvent e) {
-        if (libraryTree == null || !SwingUtilities.isLeftMouseButton(e) || e.getClickCount() != 1) return;
+        if (libraryTree == null || !SwingUtilities.isLeftMouseButton(e)) return;
         TreePath path = libraryTree.getPathForLocation(e.getX(), e.getY());
-        if (path == null || !isBookmarkIndicatorClick(path, e.getX())) return;
-        StudyBookmark bookmark = newestBookmarkForTreePath(path);
-        if (bookmark == null) return;
-        openBookmark(bookmark);
+        if (path == null || !hasBookmarkForLibraryItem(path)) return;
+
+        boolean directBookmarkClick = e.getClickCount() == 1 && isBookmarkIconClick(e, path);
+        boolean modifierDoubleClick = e.getClickCount() >= 2 && ((e.getModifiersEx() & (InputEvent.CTRL_DOWN_MASK | InputEvent.META_DOWN_MASK)) != 0);
+        if (!directBookmarkClick && !modifierDoubleClick) return;
+
+        openBookmarkForLibraryItem(path);
     }
 
     private void maybeShowLibraryBookmarkMenu(MouseEvent e) {
         if (libraryTree == null || !e.isPopupTrigger()) return;
         TreePath path = libraryTree.getPathForLocation(e.getX(), e.getY());
-        StudyBookmark bookmark = newestBookmarkForTreePath(path);
+        StudyBookmark bookmark = getMostRecentBookmarkForLibraryItem(path);
         if (path == null || bookmark == null) return;
         libraryTree.setSelectionPath(path);
         JPopupMenu menu = new JPopupMenu();
-        JMenuItem open = new JMenuItem("Open Bookmark 🔖");
-        open.addActionListener(a -> openBookmark(bookmark));
+        JMenuItem open = new JMenuItem("Open Bookmark");
+        open.addActionListener(a -> openBookmarkForLibraryItem(path));
         menu.add(open);
         menu.show(libraryTree, e.getX(), e.getY());
     }
 
-    private boolean isBookmarkIndicatorClick(TreePath path, int x) {
-        if (path == null || newestBookmarkForTreePath(path) == null) return false;
+    private boolean isBookmarkIconClick(MouseEvent e, TreePath path) {
+        if (e == null || path == null || !hasBookmarkForLibraryItem(path)) return false;
         Rectangle bounds = libraryTree.getPathBounds(path);
         if (bounds == null) return false;
+
         Object node = path.getLastPathComponent();
         Object value = node instanceof DefaultMutableTreeNode ? ((DefaultMutableTreeNode) node).getUserObject() : node;
-        String cleanText = cleanTreeItemText(value);
+        String renderedText = cleanTreeItemText(value) + " 🔖";
         FontMetrics fm = libraryTree.getFontMetrics(libraryTree.getFont());
-        int cleanWidth = fm.stringWidth(cleanText + " ");
+        int textWidth = fm.stringWidth(renderedText);
         int markerWidth = Math.max(fm.stringWidth("🔖"), 14);
-        int markerStart = bounds.x + Math.max(0, bounds.width - markerWidth - 4);
-        int textBasedStart = bounds.x + cleanWidth;
-        markerStart = Math.min(markerStart, textBasedStart + markerWidth);
-        return x >= markerStart - 2 && x <= bounds.x + bounds.width + 6;
+        int markerStart = bounds.x + Math.max(0, textWidth - markerWidth - 2);
+        int markerEnd = bounds.x + textWidth + 6;
+        return e.getX() >= markerStart && e.getX() <= markerEnd;
     }
 
-    private StudyBookmark newestBookmarkForTreePath(TreePath path) {
-        String sourcePrefix = sourcePrefixForBookmarkTreePath(path);
-        if (sourcePrefix == null || sourcePrefix.isEmpty() || currentProfile == null || currentProfile.bookmarks == null) return null;
+    private boolean hasBookmarkForLibraryItem(TreePath path) {
+        return getMostRecentBookmarkForLibraryItem(path) != null;
+    }
+
+    private StudyBookmark getMostRecentBookmarkForLibraryItem(TreePath path) {
+        if (path == null || currentProfile == null || currentProfile.bookmarks == null) return null;
         StudyBookmark newest = null;
         for (StudyBookmark b : currentProfile.bookmarks) {
-            if (b == null || b.sourceKey == null) continue;
-            boolean match = sourcePrefix.startsWith("BIBLE:")
-                    ? b.sourceKey.startsWith(sourcePrefix)
-                    : b.sourceKey.equals(sourcePrefix);
-            if (match && (newest == null || bookmarkTimestamp(b) > bookmarkTimestamp(newest))) newest = b;
+            if (bookmarkMatchesLibraryItem(b, path) && (newest == null || bookmarkTimestamp(b) > bookmarkTimestamp(newest))) newest = b;
         }
         return newest;
     }
 
-    private String sourcePrefixForBookmarkTreePath(TreePath path) {
-        if (path == null) return "";
+    private void openBookmarkForLibraryItem(TreePath path) {
+        StudyBookmark bookmark = getMostRecentBookmarkForLibraryItem(path);
+        if (bookmark != null) openBookmark(bookmark);
+    }
+
+    private boolean bookmarkMatchesLibraryItem(StudyBookmark bookmark, TreePath path) {
+        if (bookmark == null || bookmark.sourceKey == null || path == null) return false;
         Object[] parts = path.getPath();
-        if (parts.length == 3 && "Bible".equals(parts[1].toString())) {
+        if (parts.length >= 3 && "Bible".equals(parts[1].toString())) {
             String book = bookKeyFromTreePathPart(parts[2]);
-            return book == null || book.isEmpty() ? "" : "BIBLE:" + book + " ";
+            if (book == null || book.isEmpty()) return false;
+            if (parts.length >= 4) {
+                Integer chapter = chapterNumberFromTreePathPart(parts[3]);
+                return chapter != null && bookmark.sourceKey.equals("BIBLE:" + book + " " + chapter);
+            }
+            return bookmark.sourceKey.startsWith("BIBLE:" + book + " ");
         }
         if (parts.length >= 3 && "Philosophy / Other".equals(parts[1].toString())) {
             String title = libraryTitleFromTreePathPart(parts[2]);
-            return title == null || title.isEmpty() ? "" : "LIBRARY:" + title;
+            return title != null && !title.isEmpty() && bookmark.sourceKey.equals("LIBRARY:" + title);
         }
-        return "";
+        return false;
+    }
+
+    private Integer chapterNumberFromTreePathPart(Object pathPart) {
+        String s = cleanTreeItemText(pathPart);
+        if (s.startsWith("Chapter ")) s = s.substring("Chapter ".length());
+        s = s.trim().split("\\s+")[0];
+        try { return Integer.parseInt(s); } catch (Exception ignored) { return null; }
     }
 
     private long bookmarkTimestamp(StudyBookmark b) {
@@ -5131,9 +5150,39 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void reloadCurrentSource() {
+        reloadCurrentSource(true);
+    }
+
+    private void reloadCurrentSource(boolean preserveScroll) {
         if (currentSourceKey == null) return;
+        Point scroll = preserveScroll ? captureReaderScrollPosition() : null;
         if (currentSourceKey.startsWith("BIBLE:")) showSelectedChapter(false);
         else if (currentSourceKey.startsWith("LIBRARY:")) showLibraryDoc(currentSourceKey.substring("LIBRARY:".length()));
+        if (preserveScroll) restoreReaderScrollPosition(scroll);
+    }
+
+    private Point captureReaderScrollPosition() {
+        JScrollPane sp = getReaderScrollPane();
+        if (sp == null) return null;
+        return sp.getViewport().getViewPosition();
+    }
+
+    private JScrollPane getReaderScrollPane() {
+        return readerScrollPane;
+    }
+
+    private void restoreReaderScrollPosition(Point p) {
+        if (p == null) return;
+        SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(() -> {
+            JScrollPane sp = getReaderScrollPane();
+            if (sp == null) return;
+            JViewport viewport = sp.getViewport();
+            Dimension extent = viewport.getExtentSize();
+            Dimension viewSize = viewport.getViewSize();
+            int maxX = Math.max(0, viewSize.width - extent.width);
+            int maxY = Math.max(0, viewSize.height - extent.height);
+            viewport.setViewPosition(new Point(Math.max(0, Math.min(p.x, maxX)), Math.max(0, Math.min(p.y, maxY))));
+        }));
     }
 
     private void showAnnotationDetails(java.util.List<TextAnnotation> annotations) {
@@ -6357,7 +6406,6 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
         saveData();
         refreshCategories();
-        reloadCurrentSource();
         return n;
     }
 
