@@ -86,7 +86,7 @@ public class BibleReaderApp extends JFrame {
 
     private JSplitPane mainStudySplit;
     private JSplitPane centerRightSplit;
-    private Component normalRightSidebar;
+    private JPanel normalRightSidebar;
     private JButton exitReadingModeButton;
     private boolean readingMode = false;
     private int normalMainDividerLocation = -1;
@@ -569,11 +569,11 @@ public class BibleReaderApp extends JFrame {
         forwardButton.setToolTipText("Go forward to the next reader location (Alt+Right).");
         forwardButton.addActionListener(e -> goForwardLocation());
 
-        JButton previousChapter = blackButton("← Previous Chapter");
+        JButton previousChapter = blackButton("← Prev");
         previousChapter.setToolTipText("Previous Chapter (Ctrl+Left)");
         previousChapter.addActionListener(e -> previousChapter());
 
-        JButton nextChapter = blackButton("Next Chapter →");
+        JButton nextChapter = blackButton("Next →");
         nextChapter.setToolTipText("Next Chapter (Ctrl+Right)");
         nextChapter.addActionListener(e -> nextChapter());
 
@@ -585,7 +585,7 @@ public class BibleReaderApp extends JFrame {
         bookmarksButton.setToolTipText("Bookmarks (Ctrl+B) — open, organize, or delete saved bookmarks.");
         bookmarksButton.addActionListener(e -> showBookmarksDialog());
 
-        JButton bibleBookmarkButton = blackButton("Go To Bible Bookmark");
+        JButton bibleBookmarkButton = blackButton("Bible Bookmark");
         bibleBookmarkButton.setToolTipText("Jump to your most recent Bible bookmark.");
         bibleBookmarkButton.addActionListener(e -> goToBibleBookmark());
 
@@ -624,13 +624,13 @@ public class BibleReaderApp extends JFrame {
         readerLocationControls.add(backButton);
         readerLocationControls.add(forwardButton);
 
+        readerActionControls.add(readingModeButton);
+        readerActionControls.add(marginNotesToggleButton);
         readerActionControls.add(previousChapter);
         readerActionControls.add(nextChapter);
         readerActionControls.add(bookmarkButton);
         readerActionControls.add(bookmarksButton);
         readerActionControls.add(bibleBookmarkButton);
-        readerActionControls.add(readingModeButton);
-        readerActionControls.add(marginNotesToggleButton);
         readerActionControls.add(sourceLabel);
 
         nav.add(readerLocationControls);
@@ -2969,18 +2969,23 @@ public class BibleReaderApp extends JFrame {
     private void toggleMarginNotesMode() {
         if (centerRightSplit == null || readingMode) return;
         marginNotesMode = !marginNotesMode;
+
         if (marginNotesMode) {
-            if (normalRightSidebar == null) normalRightSidebar = centerRightSplit.getRightComponent();
-            if (marginNotesPanel == null) buildMarginNotesPanel();
+            if (marginNotesPanel == null) {
+                marginNotesPanel = buildMarginNotesPanel();
+            }
             refreshMarginNotesPanel();
             centerRightSplit.setRightComponent(marginNotesPanel);
             if (marginNotesToggleButton != null) marginNotesToggleButton.setText("Close Margin Notes");
             clampCenterRightDivider(false);
         } else {
-            restoreNormalRightSidebar();
+            centerRightSplit.setRightComponent(normalRightSidebar);
+            if (marginNotesToggleButton != null) marginNotesToggleButton.setText("Margin Notes");
+            clampCenterRightDivider(true);
         }
-        revalidate();
-        repaint();
+
+        centerRightSplit.revalidate();
+        centerRightSplit.repaint();
     }
 
     private JPanel buildMarginNotesPanel() {
@@ -2990,16 +2995,35 @@ public class BibleReaderApp extends JFrame {
         marginNotesPanel.setBackground(panelBg);
         marginNotesPanel.setBorder(new CompoundBorder(new EmptyBorder(4, 4, 4, 4), new LineBorder(new Color(180, 145, 135))));
 
-        JPanel header = new JPanel(new BorderLayout(6, 6));
+        JPanel header = new JPanel(new BorderLayout(8, 6));
         header.setOpaque(false);
-        header.setBorder(new EmptyBorder(6, 6, 0, 6));
+        header.setBorder(new EmptyBorder(8, 8, 4, 8));
+
+        JPanel headerText = new JPanel();
+        headerText.setLayout(new BoxLayout(headerText, BoxLayout.Y_AXIS));
+        headerText.setOpaque(false);
         JLabel title = new JLabel("Margin Notes");
-        title.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        title.setFont(new Font("Segoe UI", Font.BOLD, 20));
         title.setForeground(darkRed);
+        JLabel subtitle = new JLabel("Notes and questions for this chapter/source");
+        subtitle.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        subtitle.setForeground(new Color(95, 70, 60));
+        headerText.add(title);
+        headerText.add(subtitle);
+
+        JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        headerActions.setOpaque(false);
+        JButton refresh = blackButton("Refresh");
+        refresh.setToolTipText("Refresh margin notes for the current chapter or source.");
+        refresh.addActionListener(e -> refreshMarginNotesPanel());
         JButton close = blackButton("Close");
+        close.setToolTipText("Close Margin Notes and restore the normal right sidebar.");
         close.addActionListener(e -> { marginNotesMode = false; restoreNormalRightSidebar(); });
-        header.add(title, BorderLayout.WEST);
-        header.add(close, BorderLayout.EAST);
+        headerActions.add(refresh);
+        headerActions.add(close);
+
+        header.add(headerText, BorderLayout.CENTER);
+        header.add(headerActions, BorderLayout.EAST);
 
         marginNotesBody = new WidthTrackingPanel();
         marginNotesBody.setLayout(new BoxLayout(marginNotesBody, BoxLayout.Y_AXIS));
@@ -3023,7 +3047,7 @@ public class BibleReaderApp extends JFrame {
         if (annotations.isEmpty()) {
             JTextArea empty = readonlyArea();
             empty.setBackground(cream);
-            empty.setText("No notes or questions are attached to this chapter/source yet. Existing note bubbles in the reader remain available.");
+            empty.setText("No notes or questions found for this chapter yet.");
             marginNotesBody.add(empty);
         } else {
             int previousY = 0;
