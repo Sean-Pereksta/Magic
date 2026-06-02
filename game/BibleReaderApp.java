@@ -120,6 +120,11 @@ public class BibleReaderApp extends JFrame {
 
     private DefaultListModel<String> categoryModel;
     private JList<String> categoryList;
+    private JLabel selectedCategoryTitleLabel;
+    private JPanel categoryResultsPanel;
+    private JTextField categoryResultSearchField;
+    private JScrollPane categoryResultsScroll;
+    private final Set<String> expandedCategoryResultIds = new HashSet<>();
 
     private DefaultListModel<String> questionModel;
     private JList<String> questionList;
@@ -1330,9 +1335,6 @@ public class BibleReaderApp extends JFrame {
         h.setFont(new Font("Segoe UI", Font.BOLD, 26));
         h.setForeground(darkRed);
 
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        top.setOpaque(false);
-
         JButton add = blackButton("Create Category");
         JButton view = blackButton("View Selected");
         JButton color = blackButton("Change Highlight Color");
@@ -1344,29 +1346,99 @@ public class BibleReaderApp extends JFrame {
         categorySearchField = new JTextField(22);
         categorySearchField.setToolTipText("Filter categories...");
         categorySearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshCategories));
-        top.add(add);
-        top.add(view);
-        top.add(color);
-        top.add(new JLabel("Filter:"));
-        top.add(categorySearchField);
+
+        JPanel leftControls = new JPanel();
+        leftControls.setOpaque(false);
+        leftControls.setLayout(new BoxLayout(leftControls, BoxLayout.Y_AXIS));
+
+        JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        leftButtons.setOpaque(false);
+        leftButtons.add(add);
+        leftButtons.add(view);
+        leftButtons.add(color);
+
+        JPanel filterRow = new JPanel(new BorderLayout(6, 0));
+        filterRow.setOpaque(false);
+        filterRow.setBorder(new EmptyBorder(8, 0, 8, 0));
+        filterRow.add(new JLabel("Filter:"), BorderLayout.WEST);
+        filterRow.add(categorySearchField, BorderLayout.CENTER);
+
+        leftControls.add(leftButtons);
+        leftControls.add(filterRow);
 
         categoryModel = new DefaultListModel<>();
         categoryList = new JList<>(categoryModel);
         categoryList.setFont(new Font("Segoe UI", Font.PLAIN, 15));
         categoryList.setCellRenderer(new CategoryCellRenderer());
+        categoryList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        categoryList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) renderSelectedCategoryResults();
+        });
         categoryList.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) viewSelectedCategory();
             }
         });
 
+        JScrollPane categoryScroll = new JScrollPane(categoryList);
+        categoryScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+        categoryScroll.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(0, 0, 0, 0)));
+
+        JPanel left = new JPanel(new BorderLayout(8, 8));
+        left.setOpaque(false);
+        left.add(leftControls, BorderLayout.NORTH);
+        left.add(categoryScroll, BorderLayout.CENTER);
+
+        selectedCategoryTitleLabel = new JLabel("Select a category");
+        selectedCategoryTitleLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        selectedCategoryTitleLabel.setForeground(darkRed);
+
+        categoryResultSearchField = new JTextField(24);
+        categoryResultSearchField.setToolTipText("Search within the selected category...");
+        categoryResultSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::renderSelectedCategoryResults));
+
+        JButton expandAll = blackButton("Expand All");
+        JButton collapseAll = blackButton("Collapse All");
+        expandAll.addActionListener(e -> expandAllCategoryResults());
+        collapseAll.addActionListener(e -> collapseAllCategoryResults());
+
+        JPanel resultTools = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        resultTools.setOpaque(false);
+        resultTools.add(new JLabel("Search results:"));
+        resultTools.add(categoryResultSearchField);
+        resultTools.add(expandAll);
+        resultTools.add(collapseAll);
+
+        JPanel rightHeader = new JPanel(new BorderLayout(8, 8));
+        rightHeader.setOpaque(false);
+        rightHeader.add(selectedCategoryTitleLabel, BorderLayout.NORTH);
+        rightHeader.add(resultTools, BorderLayout.SOUTH);
+
+        categoryResultsPanel = new JPanel();
+        categoryResultsPanel.setBackground(modernSurface);
+        categoryResultsPanel.setLayout(new BoxLayout(categoryResultsPanel, BoxLayout.Y_AXIS));
+        categoryResultsScroll = new JScrollPane(categoryResultsPanel);
+        categoryResultsScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+        categoryResultsScroll.getVerticalScrollBar().setUnitIncrement(16);
+        categoryResultsScroll.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(0, 0, 0, 0)));
+
+        JPanel right = new JPanel(new BorderLayout(8, 8));
+        right.setOpaque(false);
+        right.add(rightHeader, BorderLayout.NORTH);
+        right.add(categoryResultsScroll, BorderLayout.CENTER);
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, right);
+        split.setResizeWeight(0.25);
+        split.setDividerLocation(260);
+        split.setContinuousLayout(true);
+        split.setBorder(null);
+
         JPanel north = new JPanel(new BorderLayout(8, 8));
         north.setOpaque(false);
         north.add(h, BorderLayout.NORTH);
-        north.add(top, BorderLayout.SOUTH);
 
         page.add(north, BorderLayout.NORTH);
-        page.add(new JScrollPane(categoryList), BorderLayout.CENTER);
+        page.add(split, BorderLayout.CENTER);
         return page;
     }
 
@@ -5151,15 +5223,27 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private void refreshCategories() {
         if (categoryModel == null) return;
         ensureCategoryColors();
+        String selected = selectedCategoryNameFromListValue(categoryList == null ? null : categoryList.getSelectedValue());
         categoryModel.clear();
 
         String categoryQuery = categorySearchField == null ? "" : categorySearchField.getText().trim().toLowerCase(Locale.ROOT);
+        int selectedIndex = -1;
         for (String c : currentProfile.categories.keySet()) {
             if (!categoryQuery.isEmpty() && !(c + " " + currentProfile.categories.getOrDefault(c, "")).toLowerCase(Locale.ROOT).contains(categoryQuery)) continue;
             currentProfile.categoryColors.putIfAbsent(c, categoryBlue.getRGB());
             int count = 0;
             for (TextAnnotation a : currentProfile.annotations) if (c.equals(a.category)) count++;
-            categoryModel.addElement(c + " (" + count + ") " + colorHex(colorForCategory(c)));
+            String row = c + " (" + count + ") " + colorHex(colorForCategory(c));
+            categoryModel.addElement(row);
+            if (!selected.isEmpty() && selected.equals(c)) selectedIndex = categoryModel.size() - 1;
+        }
+        if (selectedIndex >= 0) {
+            categoryList.setSelectedIndex(selectedIndex);
+            categoryList.ensureIndexIsVisible(selectedIndex);
+        } else if (categoryModel.size() > 0 && (selected.isEmpty() || categoryList.getSelectedIndex() < 0)) {
+            categoryList.setSelectedIndex(0);
+        } else if (categoryModel.isEmpty()) {
+            renderSelectedCategoryResults();
         }
     }
 
@@ -5193,6 +5277,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         currentProfile.categoryColors.put(cat, chosen.getRGB());
         saveData();
         refreshCategories();
+        renderSelectedCategoryResults();
         reloadCurrentSource();
         showCategoryDetails(cat);
         JOptionPane.showMessageDialog(this, "Updated highlight color for: " + cat);
@@ -5201,6 +5286,180 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private String selectedCategoryNameFromListValue(String s) {
         if (s == null) return "";
         return s.replaceAll("\\s+\\(.*$", "").trim();
+    }
+
+    private void renderSelectedCategoryResults() {
+        if (categoryResultsPanel == null) return;
+        categoryResultsPanel.removeAll();
+
+        String cat = selectedCategoryNameFromListValue(categoryList == null ? null : categoryList.getSelectedValue());
+        if (cat.isEmpty()) {
+            if (selectedCategoryTitleLabel != null) selectedCategoryTitleLabel.setText("Select a category");
+            addCategoryResultsEmptyMessage("Choose a category on the left to browse its attached verses and notes.");
+            refreshCategoryResultsPanel();
+            return;
+        }
+
+        List<TextAnnotation> entries = getEntriesForCategory(cat);
+        if (selectedCategoryTitleLabel != null) {
+            selectedCategoryTitleLabel.setText(cat + " — " + entries.size() + " item" + (entries.size() == 1 ? "" : "s"));
+        }
+
+        String q = categoryResultSearchField == null ? "" : categoryResultSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        int shown = 0;
+        for (TextAnnotation a : entries) {
+            if (!q.isEmpty() && !categoryResultSearchText(a).contains(q)) continue;
+            categoryResultsPanel.add(buildCategoryResultCard(a, expandedCategoryResultIds.contains(safe(a.id))));
+            categoryResultsPanel.add(Box.createVerticalStrut(8));
+            shown++;
+        }
+
+        if (shown == 0) {
+            addCategoryResultsEmptyMessage(q.isEmpty()
+                    ? "This category does not have any attached highlights yet."
+                    : "No attached items match your search in this category.");
+        }
+
+        refreshCategoryResultsPanel();
+    }
+
+    private List<TextAnnotation> getEntriesForCategory(String category) {
+        List<TextAnnotation> entries = new ArrayList<>();
+        if (currentProfile == null || currentProfile.annotations == null || category == null) return entries;
+        for (TextAnnotation a : currentProfile.annotations) {
+            if (a != null && category.equals(safe(a.category).trim())) entries.add(a);
+        }
+        entries.sort((a, b) -> Long.compare(b.createdAt, a.createdAt));
+        return entries;
+    }
+
+    private JPanel buildCategoryResultCard(TextAnnotation a, boolean expanded) {
+        JPanel card = new JPanel(new BorderLayout(8, 8));
+        card.setBackground(modernSurface);
+        card.setBorder(new CompoundBorder(new LineBorder(colorForCategory(a.category), 2, true), new EmptyBorder(10, 12, 10, 12)));
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, expanded ? 360 : 150));
+        card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        String location = categoryResultLocation(a);
+        JLabel header = new JLabel("<html><b>" + esc(location) + "</b> — " + esc(shorten(a.selectedText, 140)) + "</html>");
+        header.setForeground(darkRed);
+        header.setFont(new Font("Segoe UI", Font.BOLD, 14));
+
+        JTextArea body = readonlyArea();
+        body.setBackground(modernSurface);
+        body.setBorder(new EmptyBorder(2, 0, 2, 0));
+        body.setText(expanded ? categoryResultExpandedText(a) : categoryResultCollapsedText(a));
+        body.setRows(expanded ? 7 : 2);
+        body.setCaretPosition(0);
+        body.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        JButton expand = blackButton(expanded ? "Collapse" : "Expand");
+        expand.addActionListener(e -> toggleCategoryResultExpanded(a));
+        JButton jump = blackButton("Jump To");
+        jump.addActionListener(e -> jumpToCategoryResult(a));
+
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        buttons.setOpaque(false);
+        buttons.add(expand);
+        buttons.add(jump);
+
+        MouseAdapter toggle = new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) toggleCategoryResultExpanded(a);
+            }
+        };
+        card.addMouseListener(toggle);
+        header.addMouseListener(toggle);
+        body.addMouseListener(toggle);
+
+        card.add(header, BorderLayout.NORTH);
+        card.add(body, BorderLayout.CENTER);
+        card.add(buttons, BorderLayout.SOUTH);
+        return card;
+    }
+
+    private String categoryResultLocation(TextAnnotation a) {
+        String title = safe(a.sourceTitle).trim();
+        if (!title.isEmpty()) return title;
+        String key = safe(a.sourceKey).trim();
+        if (key.startsWith("BIBLE:")) return key.substring("BIBLE:".length());
+        if (key.startsWith("LIBRARY:")) return key.substring("LIBRARY:".length());
+        return key.isEmpty() ? "Unknown source" : key;
+    }
+
+    private String categoryResultCollapsedText(TextAnnotation a) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(shorten(a.selectedText, 220));
+        if (!safe(a.note).trim().isEmpty()) sb.append("\nNote: ").append(shorten(a.note, 160));
+        if (!safe(a.category).trim().isEmpty()) sb.append("\nCategory: ").append(a.category);
+        return sb.toString();
+    }
+
+    private String categoryResultExpandedText(TextAnnotation a) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(safe(a.selectedText).trim());
+        if (!safe(a.note).trim().isEmpty()) sb.append("\n\nNote / comment:\n").append(a.note.trim());
+        if (!safe(a.category).trim().isEmpty()) sb.append("\n\nCategory: ").append(a.category.trim());
+        if (!safe(a.target).trim().isEmpty()) sb.append("\nTarget: ").append(a.target.trim());
+        return sb.toString();
+    }
+
+    private String categoryResultSearchText(TextAnnotation a) {
+        return (categoryResultLocation(a) + " " + safe(a.selectedText) + " " + safe(a.note) + " "
+                + safe(a.category) + " " + safe(a.target)).toLowerCase(Locale.ROOT);
+    }
+
+    private void toggleCategoryResultExpanded(TextAnnotation a) {
+        if (a == null || a.id == null) return;
+        if (expandedCategoryResultIds.contains(a.id)) expandedCategoryResultIds.remove(a.id);
+        else expandedCategoryResultIds.add(a.id);
+        renderSelectedCategoryResults();
+    }
+
+    private void expandAllCategoryResults() {
+        String cat = selectedCategoryNameFromListValue(categoryList == null ? null : categoryList.getSelectedValue());
+        if (cat.isEmpty()) return;
+        String q = categoryResultSearchField == null ? "" : categoryResultSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        for (TextAnnotation a : getEntriesForCategory(cat)) {
+            if (q.isEmpty() || categoryResultSearchText(a).contains(q)) expandedCategoryResultIds.add(a.id);
+        }
+        renderSelectedCategoryResults();
+    }
+
+    private void collapseAllCategoryResults() {
+        String cat = selectedCategoryNameFromListValue(categoryList == null ? null : categoryList.getSelectedValue());
+        if (cat.isEmpty()) return;
+        String q = categoryResultSearchField == null ? "" : categoryResultSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        for (TextAnnotation a : getEntriesForCategory(cat)) {
+            if (q.isEmpty() || categoryResultSearchText(a).contains(q)) expandedCategoryResultIds.remove(a.id);
+        }
+        renderSelectedCategoryResults();
+    }
+
+    private void jumpToCategoryResult(TextAnnotation a) {
+        if (a == null) return;
+        openSourceForAnnotation(a);
+        safeSelect(a.start, a.end);
+        showAnnotationDetails(a);
+        showCard("study");
+    }
+
+    private void addCategoryResultsEmptyMessage(String message) {
+        JLabel empty = new JLabel("<html>" + esc(message) + "</html>");
+        empty.setForeground(modernMutedText);
+        empty.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        empty.setBorder(new EmptyBorder(16, 16, 16, 16));
+        empty.setAlignmentX(Component.LEFT_ALIGNMENT);
+        categoryResultsPanel.add(empty);
+    }
+
+    private void refreshCategoryResultsPanel() {
+        categoryResultsPanel.revalidate();
+        categoryResultsPanel.repaint();
+        if (categoryResultsScroll != null) {
+            SwingUtilities.invokeLater(() -> categoryResultsScroll.getVerticalScrollBar().setValue(0));
+        }
     }
 
     private void viewSelectedCategory() {
@@ -5224,7 +5483,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
 
         showCategoryDetails(cat);
-        showCard("study");
+        renderSelectedCategoryResults();
+        showCard("categories");
     }
 
     private void showCategoryDetails(String cat) {
