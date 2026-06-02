@@ -86,6 +86,7 @@ public class BibleReaderApp extends JFrame {
 
     private JSplitPane mainStudySplit;
     private JSplitPane centerRightSplit;
+    private Component normalRightSidebar;
     private JButton exitReadingModeButton;
     private boolean readingMode = false;
     private int normalMainDividerLocation = -1;
@@ -157,6 +158,16 @@ public class BibleReaderApp extends JFrame {
     private JTextField topicPageSearchField;
     private JTextField bookmarkSearchField;
     private JTextField goToReferenceField;
+    private JPopupMenu referenceSuggestionPopup;
+    private JList<String> referenceSuggestionList;
+    private DefaultListModel<String> referenceSuggestionModel;
+    private JScrollPane readerScrollPane;
+    private boolean marginNotesMode = false;
+    private JPanel marginNotesPanel;
+    private JPanel marginNotesBody;
+    private JScrollPane marginNotesScroll;
+    private JButton marginNotesToggleButton;
+    private final Set<String> expandedMarginNoteIds = new HashSet<>();
     private DefaultListModel<RecentLocation> recentlyOpenedModel;
     private JList<RecentLocation> recentlyOpenedList;
     private JPanel recentlyOpenedBody;
@@ -415,6 +426,7 @@ public class BibleReaderApp extends JFrame {
         readerPanel.setMinimumSize(new Dimension(STUDY_READER_MIN_WIDTH, 10));
         centerRightSplit.setLeftComponent(readerPanel);
         JPanel rightSidebar = buildRightSidebar();
+        normalRightSidebar = rightSidebar;
         centerRightSplit.setRightComponent(rightSidebar);
 
         mainStudySplit.setRightComponent(centerRightSplit);
@@ -581,6 +593,10 @@ public class BibleReaderApp extends JFrame {
         readingModeButton.setToolTipText("Reading Mode (F11) — focus on the reader by temporarily hiding side panels.");
         readingModeButton.addActionListener(e -> enterReadingMode());
 
+        marginNotesToggleButton = blackButton("Margin Notes");
+        marginNotesToggleButton.setToolTipText("Show notes and questions in a margin beside the current reader source.");
+        marginNotesToggleButton.addActionListener(e -> toggleMarginNotesMode());
+
         bookCombo.addActionListener(e -> {
             if (refreshingUi) return;
             Object o = bookCombo.getSelectedItem();
@@ -614,6 +630,7 @@ public class BibleReaderApp extends JFrame {
         readerActionControls.add(bookmarksButton);
         readerActionControls.add(bibleBookmarkButton);
         readerActionControls.add(readingModeButton);
+        readerActionControls.add(marginNotesToggleButton);
         readerActionControls.add(sourceLabel);
 
         nav.add(readerLocationControls);
@@ -623,7 +640,7 @@ public class BibleReaderApp extends JFrame {
         goPanel.setOpaque(false);
         goToReferenceField = new JTextField();
         goToReferenceField.setToolTipText("Go to Reference — type Romans 14, Romans 14:13, Gen 1, or John 3:16.");
-        goToReferenceField.addActionListener(e -> goToReferenceFromBox());
+        installReferenceAutocomplete();
         JButton goReferenceButton = blackButton("Go");
         goReferenceButton.setToolTipText("Open the typed Bible reference.");
         goReferenceButton.addActionListener(e -> goToReferenceFromBox());
@@ -696,7 +713,11 @@ public class BibleReaderApp extends JFrame {
         installReaderShortcuts();
 
         p.add(topPanel, BorderLayout.NORTH);
-        p.add(new JScrollPane(readerPane), BorderLayout.CENTER);
+        readerScrollPane = new JScrollPane(readerPane);
+        readerScrollPane.getVerticalScrollBar().addAdjustmentListener(e -> {
+            if (!e.getValueIsAdjusting() && marginNotesMode) SwingUtilities.invokeLater(this::refreshMarginNotesPanel);
+        });
+        p.add(readerScrollPane, BorderLayout.CENTER);
         return p;
     }
 
@@ -2622,6 +2643,158 @@ public class BibleReaderApp extends JFrame {
         return parseBibleReference(raw.trim()) != null || parseChapterRef(raw.trim()) != null || parseRef(raw.trim()) != null || parseBibleReferenceOrRange(raw.trim()) != null;
     }
 
+    private void installReferenceAutocomplete() {
+        if (goToReferenceField == null) return;
+        referenceSuggestionModel = new DefaultListModel<>();
+        referenceSuggestionList = new JList<>(referenceSuggestionModel);
+        referenceSuggestionList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        referenceSuggestionList.setVisibleRowCount(6);
+        referenceSuggestionList.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        referenceSuggestionList.setBorder(new EmptyBorder(2, 2, 2, 2));
+        referenceSuggestionList.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    String suggestion = referenceSuggestionList.getSelectedValue();
+                    if (suggestion != null) acceptReferenceSuggestion(suggestion);
+                }
+            }
+        });
+
+        referenceSuggestionPopup = new JPopupMenu();
+        referenceSuggestionPopup.setFocusable(false);
+        referenceSuggestionPopup.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(2, 2, 2, 2)));
+        JScrollPane scroll = new JScrollPane(referenceSuggestionList);
+        scroll.setBorder(null);
+        scroll.setPreferredSize(new Dimension(260, 138));
+        referenceSuggestionPopup.add(scroll);
+
+        goToReferenceField.getDocument().addDocumentListener(new SimpleDocumentListener(this::updateReferenceSuggestions));
+        goToReferenceField.addFocusListener(new FocusAdapter() {
+            public void focusLost(FocusEvent e) {
+                SwingUtilities.invokeLater(() -> {
+                    if (referenceSuggestionPopup != null && !referenceSuggestionPopup.isFocusOwner()) referenceSuggestionPopup.setVisible(false);
+                });
+            }
+        });
+
+        InputMap input = goToReferenceField.getInputMap(JComponent.WHEN_FOCUSED);
+        ActionMap actions = goToReferenceField.getActionMap();
+        input.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "acceptReferenceSuggestion");
+        actions.put("acceptReferenceSuggestion", new AbstractAction() {
+            public void actionPerformed(ActionEvent e) {
+                String suggestion = referenceSuggestionList == null ? null : referenceSuggestionList.getSelectedValue();
+                if (suggestion == null && referenceSuggestionModel != null && referenceSuggestionModel.getSize() > 0) suggestion = referenceSuggestionModel.getElementAt(0);
+                if (suggestion != null && referenceSuggestionPopup != null && referenceSuggestionPopup.isVisible()) acceptReferenceSuggestion(suggestion);
+                else goToReferenceFromBox();
+            }
+        });
+        input.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "nextReferenceSuggestion");
+        actions.put("nextReferenceSuggestion", new AbstractAction() {
+            public void actionPerformed(ActionEvent e) { moveReferenceSuggestionSelection(1); }
+        });
+        input.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "previousReferenceSuggestion");
+        actions.put("previousReferenceSuggestion", new AbstractAction() {
+            public void actionPerformed(ActionEvent e) { moveReferenceSuggestionSelection(-1); }
+        });
+        input.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "hideReferenceSuggestions");
+        actions.put("hideReferenceSuggestions", new AbstractAction() {
+            public void actionPerformed(ActionEvent e) { if (referenceSuggestionPopup != null) referenceSuggestionPopup.setVisible(false); }
+        });
+    }
+
+    private void moveReferenceSuggestionSelection(int delta) {
+        if (referenceSuggestionModel == null || referenceSuggestionModel.isEmpty()) {
+            updateReferenceSuggestions();
+            return;
+        }
+        if (referenceSuggestionPopup != null && !referenceSuggestionPopup.isVisible()) showReferenceSuggestionPopup();
+        int idx = referenceSuggestionList.getSelectedIndex();
+        if (idx < 0) idx = delta > 0 ? -1 : 0;
+        idx = Math.max(0, Math.min(referenceSuggestionModel.getSize() - 1, idx + delta));
+        referenceSuggestionList.setSelectedIndex(idx);
+        referenceSuggestionList.ensureIndexIsVisible(idx);
+    }
+
+    private void updateReferenceSuggestions() {
+        if (referenceSuggestionModel == null || goToReferenceField == null) return;
+        java.util.List<String> suggestions = getReferenceSuggestions(goToReferenceField.getText());
+        referenceSuggestionModel.clear();
+        for (String suggestion : suggestions) referenceSuggestionModel.addElement(suggestion);
+        if (!suggestions.isEmpty()) {
+            referenceSuggestionList.setSelectedIndex(0);
+            showReferenceSuggestionPopup();
+        } else if (referenceSuggestionPopup != null) {
+            referenceSuggestionPopup.setVisible(false);
+        }
+    }
+
+    private void showReferenceSuggestionPopup() {
+        if (referenceSuggestionPopup == null || goToReferenceField == null || referenceSuggestionModel == null || referenceSuggestionModel.isEmpty()) return;
+        int rowHeight = Math.max(22, referenceSuggestionList.getFixedCellHeight() > 0 ? referenceSuggestionList.getFixedCellHeight() : goToReferenceField.getFontMetrics(goToReferenceField.getFont()).getHeight() + 6);
+        int height = Math.min(160, Math.max(28, referenceSuggestionModel.getSize() * rowHeight + 6));
+        int width = Math.max(goToReferenceField.getWidth(), 260);
+        ((JScrollPane) referenceSuggestionPopup.getComponent(0)).setPreferredSize(new Dimension(width, height));
+        referenceSuggestionPopup.pack();
+        try {
+            referenceSuggestionPopup.show(goToReferenceField, 0, goToReferenceField.getHeight());
+        } catch (IllegalComponentStateException ignored) {}
+    }
+
+    private java.util.List<String> getReferenceSuggestions(String typedText) {
+        java.util.List<String> out = new ArrayList<>();
+        if (data == null || data.bible == null || data.bible.isEmpty()) return out;
+        String raw = safe(typedText).trim();
+        if (raw.isEmpty()) return out;
+        String normalized = normalizeReferenceInput(raw);
+        if (normalized.isEmpty()) return out;
+
+        String suffix = "";
+        String bookQuery = normalized;
+        Matcher suffixMatcher = Pattern.compile("^(.*?)(?:\\s+)(\\d+(?::\\d*)?)$").matcher(normalized);
+        if (suffixMatcher.matches() && !suffixMatcher.group(1).trim().isEmpty()) {
+            bookQuery = suffixMatcher.group(1).trim();
+            suffix = " " + suffixMatcher.group(2).trim();
+        }
+        String compactQuery = bookQuery.replace(" ", "");
+        if (bookQuery.isEmpty()) return out;
+
+        Map<String, String> aliases = buildBookAliasMap();
+        Map<String, Integer> bestScoreByBook = new HashMap<>();
+        for (Map.Entry<String, String> e : aliases.entrySet()) {
+            String alias = e.getKey();
+            String compactAlias = alias.replace(" ", "");
+            String display = displayBibleBookName(e.getValue());
+            String displayNorm = normalizeReferenceBookAlias(display);
+            int score = 0;
+            if (alias.equals(bookQuery) || compactAlias.equals(compactQuery)) score = 1000;
+            else if (displayNorm.startsWith(bookQuery)) score = 900 - Math.max(0, displayNorm.length() - bookQuery.length());
+            else if (alias.startsWith(bookQuery) || compactAlias.startsWith(compactQuery)) score = 820 - Math.max(0, alias.length() - bookQuery.length());
+            else if (displayNorm.contains(bookQuery)) score = 620 - displayNorm.indexOf(bookQuery);
+            else if (alias.contains(bookQuery) || compactAlias.contains(compactQuery)) score = 560 - Math.max(alias.indexOf(bookQuery), 0);
+            if (score > 0) bestScoreByBook.merge(e.getValue(), score, Math::max);
+        }
+
+        java.util.List<String> books = new ArrayList<>(bestScoreByBook.keySet());
+        Map<String, Integer> order = bibleBookOrder();
+        books.sort((a, b) -> {
+            int score = Integer.compare(bestScoreByBook.getOrDefault(b, 0), bestScoreByBook.getOrDefault(a, 0));
+            if (score != 0) return score;
+            return Integer.compare(order.getOrDefault(displayBibleBookName(a).toLowerCase(Locale.ROOT), 999), order.getOrDefault(displayBibleBookName(b).toLowerCase(Locale.ROOT), 999));
+        });
+        for (String bookKey : books) {
+            if (out.size() >= 8) break;
+            out.add(displayBibleBookName(bookKey) + suffix);
+        }
+        return out;
+    }
+
+    private void acceptReferenceSuggestion(String suggestion) {
+        if (suggestion == null || suggestion.trim().isEmpty()) return;
+        if (referenceSuggestionPopup != null) referenceSuggestionPopup.setVisible(false);
+        if (goToReferenceField != null) goToReferenceField.setText(suggestion);
+        openReference(suggestion, true);
+    }
+
     private void goToReferenceFromBox() {
         String raw = goToReferenceField == null ? "" : goToReferenceField.getText().trim();
         if (raw.isEmpty()) return;
@@ -2759,6 +2932,7 @@ public class BibleReaderApp extends JFrame {
             mainStudySplit.setDividerLocation(0);
         }
         if (centerRightSplit != null) {
+            if (marginNotesMode) restoreNormalRightSidebar();
             Component right = centerRightSplit.getRightComponent();
             if (right != null) right.setVisible(false);
             centerRightSplit.setDividerSize(0);
@@ -2790,6 +2964,217 @@ public class BibleReaderApp extends JFrame {
         setReaderBodyFontSize(normalReaderFontSize);
         revalidate();
         repaint();
+    }
+
+    private void toggleMarginNotesMode() {
+        if (centerRightSplit == null || readingMode) return;
+        marginNotesMode = !marginNotesMode;
+        if (marginNotesMode) {
+            if (normalRightSidebar == null) normalRightSidebar = centerRightSplit.getRightComponent();
+            if (marginNotesPanel == null) buildMarginNotesPanel();
+            refreshMarginNotesPanel();
+            centerRightSplit.setRightComponent(marginNotesPanel);
+            if (marginNotesToggleButton != null) marginNotesToggleButton.setText("Close Margin Notes");
+            clampCenterRightDivider(false);
+        } else {
+            restoreNormalRightSidebar();
+        }
+        revalidate();
+        repaint();
+    }
+
+    private JPanel buildMarginNotesPanel() {
+        marginNotesPanel = new JPanel(new BorderLayout(6, 6));
+        marginNotesPanel.setPreferredSize(new Dimension(RIGHT_SIDEBAR_PREFERRED_WIDTH, 10));
+        marginNotesPanel.setMinimumSize(new Dimension(RIGHT_SIDEBAR_MIN_WIDTH, 10));
+        marginNotesPanel.setBackground(panelBg);
+        marginNotesPanel.setBorder(new CompoundBorder(new EmptyBorder(4, 4, 4, 4), new LineBorder(new Color(180, 145, 135))));
+
+        JPanel header = new JPanel(new BorderLayout(6, 6));
+        header.setOpaque(false);
+        header.setBorder(new EmptyBorder(6, 6, 0, 6));
+        JLabel title = new JLabel("Margin Notes");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        title.setForeground(darkRed);
+        JButton close = blackButton("Close");
+        close.addActionListener(e -> { marginNotesMode = false; restoreNormalRightSidebar(); });
+        header.add(title, BorderLayout.WEST);
+        header.add(close, BorderLayout.EAST);
+
+        marginNotesBody = new WidthTrackingPanel();
+        marginNotesBody.setLayout(new BoxLayout(marginNotesBody, BoxLayout.Y_AXIS));
+        marginNotesBody.setBackground(cream);
+        marginNotesBody.setBorder(new EmptyBorder(8, 8, 8, 8));
+
+        marginNotesScroll = new JScrollPane(marginNotesBody);
+        marginNotesScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        marginNotesScroll.getVerticalScrollBar().setUnitIncrement(16);
+        marginNotesScroll.setBorder(new EmptyBorder(4, 6, 6, 6));
+
+        marginNotesPanel.add(header, BorderLayout.NORTH);
+        marginNotesPanel.add(marginNotesScroll, BorderLayout.CENTER);
+        return marginNotesPanel;
+    }
+
+    private void refreshMarginNotesPanel() {
+        if (!marginNotesMode || marginNotesBody == null) return;
+        marginNotesBody.removeAll();
+        java.util.List<TextAnnotation> annotations = getAnnotationsForCurrentReaderLocation();
+        if (annotations.isEmpty()) {
+            JTextArea empty = readonlyArea();
+            empty.setBackground(cream);
+            empty.setText("No notes or questions are attached to this chapter/source yet. Existing note bubbles in the reader remain available.");
+            marginNotesBody.add(empty);
+        } else {
+            int previousY = 0;
+            int stacked = 0;
+            for (TextAnnotation a : annotations) {
+                int y = getApproximateYForAnnotation(a);
+                int gap = Math.max(4, Math.min(28, y - previousY));
+                if (y > 0 && previousY > 0 && y - previousY < 34) {
+                    stacked++;
+                    gap = 3;
+                } else {
+                    stacked = 0;
+                }
+                if (gap > 0) marginNotesBody.add(Box.createVerticalStrut(gap));
+                JComponent card = buildMarginNoteCard(a, expandedMarginNoteIds.contains(safe(a.id)));
+                card.setBorder(new CompoundBorder(new EmptyBorder(0, Math.min(18, stacked * 6), 0, 0), card.getBorder()));
+                marginNotesBody.add(card);
+                previousY = Math.max(y, previousY + (expandedMarginNoteIds.contains(safe(a.id)) ? 120 : 58));
+            }
+        }
+        marginNotesBody.revalidate();
+        marginNotesBody.repaint();
+    }
+
+    private java.util.List<TextAnnotation> getAnnotationsForCurrentReaderLocation() {
+        java.util.List<TextAnnotation> list = new ArrayList<>();
+        if (currentProfile == null || safe(currentSourceKey).isEmpty()) return list;
+        for (TextAnnotation a : currentProfile.annotations) {
+            if (a == null || !currentSourceKey.equals(a.sourceKey)) continue;
+            if (!("Note".equals(a.type) || "Question".equals(a.type) || !safe(a.note).isEmpty())) continue;
+            list.add(a);
+        }
+        list.sort(Comparator
+                .comparingInt((TextAnnotation a) -> a.wholeChapter ? -1 : Math.max(0, a.start))
+                .thenComparingInt(this::annotationPriority)
+                .thenComparing(a -> safe(a.id)));
+        return list;
+    }
+
+    private int getApproximateYForAnnotation(TextAnnotation annotation) {
+        if (annotation == null || readerPane == null) return 0;
+        int offset = annotation.wholeChapter ? 0 : sourceOffsetToRenderedOffset(Math.max(0, annotation.start), true);
+        try {
+            Rectangle r = readerPane.modelToView2D(Math.max(0, Math.min(offset, readerPane.getDocument().getLength()))).getBounds();
+            int scrollTop = readerScrollPane == null ? 0 : readerScrollPane.getVerticalScrollBar().getValue();
+            return Math.max(0, r.y - scrollTop);
+        } catch (Exception ignored) {
+            return annotation.wholeChapter ? 0 : Math.max(0, annotation.start / 3);
+        }
+    }
+
+    private JComponent buildMarginNoteCard(TextAnnotation annotation, boolean expanded) {
+        JPanel card = new JPanel(new BorderLayout(6, 6));
+        card.setBackground(expanded ? modernSurface : new Color(255, 250, 232));
+        card.setBorder(new CompoundBorder(new MatteBorder(0, 5, 1, 1, colorForAnnotation(annotation)), new EmptyBorder(7, 8, 7, 8)));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, expanded ? 360 : 92));
+        card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        card.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 1) toggleMarginNoteExpanded(annotation.id);
+            }
+        });
+
+        String icon = "Question".equals(safe(annotation.type)) ? questionBubbleLabel(annotation) : "📝";
+        JLabel title = new JLabel(icon + " " + annotationDisplayName(annotation) + " — " + marginNoteLocation(annotation));
+        title.setFont(modernBoldFont);
+        title.setForeground(modernDarkRed);
+        card.add(title, BorderLayout.NORTH);
+
+        JTextArea body = readonlyArea();
+        body.setBackground(card.getBackground());
+        body.setText(expanded ? marginNoteExpandedText(annotation) : marginNotePreviewText(annotation));
+        card.add(body, BorderLayout.CENTER);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        actions.setOpaque(false);
+        JButton jump = new JButton("Jump To");
+        jump.addActionListener(e -> jumpToMarginNote(annotation));
+        JButton edit = new JButton("Edit");
+        edit.addActionListener(e -> editAnnotation(annotation));
+        JButton delete = new JButton("Delete");
+        delete.addActionListener(e -> deleteAnnotation(annotation));
+        actions.add(jump);
+        actions.add(edit);
+        actions.add(delete);
+        StudyQuestion q = questionForAnnotation(annotation.id);
+        if (q != null) {
+            JButton addAnswer = new JButton("Add Answer");
+            addAnswer.addActionListener(e -> { promptAddAnswer(q); refreshMarginNotesPanel(); });
+            actions.add(addAnswer);
+        }
+        card.add(actions, BorderLayout.SOUTH);
+        return card;
+    }
+
+    private void toggleMarginNoteExpanded(String annotationId) {
+        if (safe(annotationId).isEmpty()) return;
+        if (!expandedMarginNoteIds.add(annotationId)) expandedMarginNoteIds.remove(annotationId);
+        refreshMarginNotesPanel();
+    }
+
+    private void restoreNormalRightSidebar() {
+        marginNotesMode = false;
+        if (centerRightSplit != null && normalRightSidebar != null) {
+            centerRightSplit.setRightComponent(normalRightSidebar);
+            normalRightSidebar.setVisible(true);
+            centerRightSplit.setDividerSize(7);
+            clampCenterRightDivider(true);
+        }
+        if (marginNotesToggleButton != null) marginNotesToggleButton.setText("Margin Notes");
+        revalidate();
+        repaint();
+    }
+
+    private String marginNoteLocation(TextAnnotation a) {
+        if (a == null) return "Unknown";
+        if (a.wholeChapter) return safe(a.sourceTitle).isEmpty() ? safe(a.sourceKey) : a.sourceTitle;
+        Integer verse = currentSourceKey != null && currentSourceKey.startsWith("BIBLE:") ? verseNumberContainingPosition(sourceOffsetToRenderedOffset(Math.max(0, a.start), true)) : null;
+        if (verse != null) return safe(a.sourceTitle) + ":" + verse;
+        return safe(a.sourceTitle).isEmpty() ? safe(a.sourceKey) : a.sourceTitle;
+    }
+
+    private String marginNotePreviewText(TextAnnotation a) {
+        String meta = "Question".equals(safe(a.type)) ? questionTypeDisplay(questionTypeForAnnotation(a)) + "\n" : (safe(a.category).isEmpty() ? "" : "Category: " + safe(a.category) + "\n");
+        return meta + shorten(annotationSummaryText(a).replace("\n", " "), 120);
+    }
+
+    private String marginNoteExpandedText(TextAnnotation a) {
+        StringBuilder sb = new StringBuilder();
+        if ("Question".equals(safe(a.type))) {
+            StudyQuestion q = questionForAnnotation(a.id);
+            sb.append(questionTypeDisplay(q == null ? questionTypeForAnnotation(a) : q.questionType)).append("\n");
+            sb.append(q != null && q.answered ? "Answered" : "Unanswered");
+            sb.append(q == null ? "" : " • " + q.answers.size() + " answer(s)").append("\n\n");
+        } else if (!safe(a.category).isEmpty()) {
+            sb.append("Category: ").append(a.category).append("\n\n");
+        }
+        if (!safe(a.selectedText).isEmpty()) sb.append("Selected: “").append(shorten(a.selectedText, 180)).append("”\n\n");
+        sb.append(annotationSummaryText(a));
+        StudyQuestion q = questionForAnnotation(a.id);
+        if (q != null && !q.answers.isEmpty()) sb.append("\n\nAnswers:\n").append(answersSummary(q));
+        return sb.toString();
+    }
+
+    private void jumpToMarginNote(TextAnnotation a) {
+        if (a == null) return;
+        openSourceForAnnotation(a);
+        if (a.wholeChapter) moveReaderCaret(0); else safeSelect(a.start, a.end);
+        showAnnotationDetails(a);
+        showCard("study");
+        if (marginNotesMode) SwingUtilities.invokeLater(this::refreshMarginNotesPanel);
     }
 
     private int currentReaderBodyFontSize() {
@@ -2869,6 +3254,7 @@ public class BibleReaderApp extends JFrame {
             applyAnnotationsForSource(sourceKey);
             readerPane.setCaretPosition(0);
             showSourceSummary(sourceKey, sourceTitle);
+            if (marginNotesMode) SwingUtilities.invokeLater(this::refreshMarginNotesPanel);
             updateHeader();
             SwingUtilities.invokeLater(this::trackReaderLocation);
         } catch (Exception ex) {
