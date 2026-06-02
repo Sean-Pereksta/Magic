@@ -1921,20 +1921,25 @@ public class BibleReaderApp extends JFrame {
     }
 
     private class BookmarkTreeCellRenderer extends DefaultTreeCellRenderer {
+        @Override
         public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected, boolean expanded,
                                                       boolean leaf, int row, boolean hasFocus) {
-            Component c = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
-            if (c instanceof JLabel) {
-                TreePath path = tree == null || row < 0 ? null : tree.getPathForRow(row);
-                if (hasBookmarkForLibraryItem(path)) {
-                    JLabel label = (JLabel) c;
-                    label.setText(cleanTreeItemText(value instanceof DefaultMutableTreeNode ? ((DefaultMutableTreeNode) value).getUserObject() : value) + " 🔖");
-                    label.setToolTipText("Click the bookmark indicator or right-click to open the most recent bookmark.");
-                } else {
-                    ((JLabel) c).setToolTipText(null);
-                }
+            JLabel label = (JLabel) super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
+
+            Object userObject = value;
+            if (value instanceof DefaultMutableTreeNode) {
+                userObject = ((DefaultMutableTreeNode) value).getUserObject();
             }
-            return c;
+
+            String sourceKey = sourceKeyForTreeItem(userObject);
+            if (sourceKey != null && hasBookmarkForSourceKey(sourceKey)) {
+                label.setText(cleanTreeItemText(userObject) + " 🔖");
+                label.setToolTipText("Click the bookmark indicator or right-click to open the most recent bookmark.");
+            } else {
+                label.setToolTipText(null);
+            }
+
+            return label;
         }
     }
 
@@ -1976,6 +1981,18 @@ public class BibleReaderApp extends JFrame {
         }
 
         public int hashCode() { return title.hashCode(); }
+    }
+
+    private static class TreeSourceItem {
+        final String displayName;
+        final String sourceKey;
+
+        TreeSourceItem(String displayName, String sourceKey) {
+            this.displayName = displayName == null ? "" : displayName;
+            this.sourceKey = sourceKey == null ? "" : sourceKey;
+        }
+
+        public String toString() { return displayName; }
     }
 
     private static class ModernNavButton extends JButton {
@@ -2177,9 +2194,11 @@ public class BibleReaderApp extends JFrame {
         for (String book : orderedBooks()) {
             DefaultMutableTreeNode bn = new DefaultMutableTreeNode(new BookTreeItem(book, displayBibleBookName(book)));
             for (Integer ch : data.getChapters(book)) {
-                String key = "BIBLE:" + book + " " + ch;
-                int visits = currentProfile.visitCounts.getOrDefault(key, 0);
-                bn.add(new DefaultMutableTreeNode("Chapter " + ch + (visits > 0 ? " (" + visits + " visits)" : "")));
+                String legacyKey = "BIBLE:" + book + " " + ch;
+                String sourceKey = "BIBLE:" + book + ":" + ch;
+                int visits = currentProfile.visitCounts.getOrDefault(legacyKey, currentProfile.visitCounts.getOrDefault(sourceKey, 0));
+                String displayName = "Chapter " + ch + (visits > 0 ? " (" + visits + " visits)" : "");
+                bn.add(new DefaultMutableTreeNode(new TreeSourceItem(displayName, sourceKey)));
             }
             bible.add(bn);
         }
@@ -2192,6 +2211,7 @@ public class BibleReaderApp extends JFrame {
         treeModel.reload();
         libraryTree.expandRow(0);
         if (bibleTreeExpanded) expandBibleTreeRows();
+        libraryTree.repaint();
     }
 
     private void collapseBibleTree() {
@@ -2303,12 +2323,9 @@ public class BibleReaderApp extends JFrame {
     }
 
     private StudyBookmark getMostRecentBookmarkForLibraryItem(TreePath path) {
-        if (path == null || currentProfile == null || currentProfile.bookmarks == null) return null;
-        StudyBookmark newest = null;
-        for (StudyBookmark b : currentProfile.bookmarks) {
-            if (bookmarkMatchesLibraryItem(b, path) && (newest == null || bookmarkTimestamp(b) > bookmarkTimestamp(newest))) newest = b;
-        }
-        return newest;
+        Object userObject = userObjectFromTreePath(path);
+        String sourceKey = sourceKeyForTreeItem(userObject);
+        return sourceKey == null ? null : getMostRecentBookmarkForSourceKey(sourceKey);
     }
 
     private void openBookmarkForLibraryItem(TreePath path) {
@@ -2316,23 +2333,85 @@ public class BibleReaderApp extends JFrame {
         if (bookmark != null) openBookmark(bookmark);
     }
 
-    private boolean bookmarkMatchesLibraryItem(StudyBookmark bookmark, TreePath path) {
-        if (bookmark == null || bookmark.sourceKey == null || path == null) return false;
-        Object[] parts = path.getPath();
-        if (parts.length >= 3 && "Bible".equals(parts[1].toString())) {
-            String book = bookKeyFromTreePathPart(parts[2]);
-            if (book == null || book.isEmpty()) return false;
-            if (parts.length >= 4) {
-                Integer chapter = chapterNumberFromTreePathPart(parts[3]);
-                return chapter != null && bookmark.sourceKey.equals("BIBLE:" + book + " " + chapter);
-            }
-            return bookmark.sourceKey.startsWith("BIBLE:" + book + " ");
+    private boolean hasBookmarkForSourceKey(String sourceKey) {
+        return getMostRecentBookmarkForSourceKey(sourceKey) != null;
+    }
+
+    private StudyBookmark getMostRecentBookmarkForSourceKey(String sourceKey) {
+        if (sourceKey == null || sourceKey.trim().isEmpty() || currentProfile == null || currentProfile.bookmarks == null) return null;
+        StudyBookmark newest = null;
+        for (StudyBookmark b : currentProfile.bookmarks) {
+            if (bookmarkMatchesSourceKey(b, sourceKey) && (newest == null || bookmarkTimestamp(b) > bookmarkTimestamp(newest))) newest = b;
         }
-        if (parts.length >= 3 && "Philosophy / Other".equals(parts[1].toString())) {
-            String title = libraryTitleFromTreePathPart(parts[2]);
-            return title != null && !title.isEmpty() && bookmark.sourceKey.equals("LIBRARY:" + title);
+        return newest;
+    }
+
+    private String sourceKeyForTreeItem(Object userObject) {
+        Object value = userObject;
+        if (value instanceof DefaultMutableTreeNode) value = ((DefaultMutableTreeNode) value).getUserObject();
+        if (value instanceof TreeSourceItem) return emptyToNull(((TreeSourceItem) value).sourceKey);
+        if (value instanceof LibraryTreeItem) return "LIBRARY:" + ((LibraryTreeItem) value).title;
+        if (value instanceof BookTreeItem) return "BIBLE:" + ((BookTreeItem) value).bookKey;
+        if (value instanceof String) {
+            String s = ((String) value).trim();
+            if (s.startsWith("BIBLE:") || s.startsWith("LIBRARY:")) return s;
+        }
+        String reflectedSourceKey = reflectedStringField(value, "sourceKey");
+        if (reflectedSourceKey != null && !reflectedSourceKey.trim().isEmpty()) return reflectedSourceKey.trim();
+        return null;
+    }
+
+    private Object userObjectFromTreePath(TreePath path) {
+        if (path == null) return null;
+        Object node = path.getLastPathComponent();
+        return node instanceof DefaultMutableTreeNode ? ((DefaultMutableTreeNode) node).getUserObject() : node;
+    }
+
+    private boolean bookmarkMatchesSourceKey(StudyBookmark bookmark, String sourceKey) {
+        if (bookmark == null || bookmark.sourceKey == null || sourceKey == null) return false;
+        String bookmarkKey = canonicalSourceKey(bookmark.sourceKey);
+        String treeKey = canonicalSourceKey(sourceKey);
+        if (bookmarkKey.equals(treeKey)) return true;
+
+        // Optional parent-book indicator: a Bible book node is bookmarked when any chapter under it has a bookmark.
+        if (treeKey.startsWith("BIBLE:") && !bibleSourceKeyHasChapter(treeKey)) {
+            return bookmarkKey.startsWith(treeKey + ":");
         }
         return false;
+    }
+
+    private String canonicalSourceKey(String sourceKey) {
+        String key = safe(sourceKey).trim();
+        if (!key.startsWith("BIBLE:")) return key;
+
+        String rest = key.substring("BIBLE:".length()).trim();
+        Matcher chapterMatcher = Pattern.compile("^(.+?)[\\s:]+(\\d+)$").matcher(rest);
+        if (chapterMatcher.matches()) {
+            return "BIBLE:" + chapterMatcher.group(1).trim() + ":" + chapterMatcher.group(2);
+        }
+        return "BIBLE:" + rest;
+    }
+
+    private boolean bibleSourceKeyHasChapter(String sourceKey) {
+        if (sourceKey == null || !sourceKey.startsWith("BIBLE:")) return false;
+        String rest = sourceKey.substring("BIBLE:".length()).trim();
+        return Pattern.compile("^.+[\\s:]+\\d+$").matcher(rest).matches();
+    }
+
+    private String emptyToNull(String value) {
+        return value == null || value.trim().isEmpty() ? null : value.trim();
+    }
+
+    private String reflectedStringField(Object value, String fieldName) {
+        if (value == null) return null;
+        try {
+            java.lang.reflect.Field field = value.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            Object fieldValue = field.get(value);
+            return fieldValue == null ? null : fieldValue.toString();
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
     }
 
     private Integer chapterNumberFromTreePathPart(Object pathPart) {
@@ -2349,6 +2428,7 @@ public class BibleReaderApp extends JFrame {
     private String cleanTreeItemText(Object value) {
         if (value instanceof BookTreeItem) return ((BookTreeItem) value).displayName;
         if (value instanceof LibraryTreeItem) return ((LibraryTreeItem) value).title;
+        if (value instanceof TreeSourceItem) return ((TreeSourceItem) value).displayName;
         return value == null ? "" : value.toString();
     }
 
@@ -4164,8 +4244,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void openSourceKey(String sourceKey) {
         if (sourceKey.startsWith("BIBLE:")) {
-            String ref = sourceKey.substring("BIBLE:".length()) + ":1";
-            RefParts rp = parseRef(ref);
+            RefParts rp = refPartsFromBibleSourceKey(sourceKey);
             if (rp != null && data.bible.containsKey(rp.book)) {
                 selectedBook = rp.book;
                 selectedChapter = rp.chapter;
@@ -4175,6 +4254,18 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         } else if (sourceKey.startsWith("LIBRARY:")) {
             showLibraryDoc(sourceKey.substring("LIBRARY:".length()));
         }
+    }
+
+    private RefParts refPartsFromBibleSourceKey(String sourceKey) {
+        if (sourceKey == null || !sourceKey.startsWith("BIBLE:")) return null;
+        String rest = sourceKey.substring("BIBLE:".length()).trim();
+        RefParts rp = parseRef(rest + ":1");
+        if (rp != null) return rp;
+        Matcher chapterMatcher = Pattern.compile("^(.+):(\\d+)$").matcher(rest);
+        if (chapterMatcher.matches()) {
+            return parseRef(chapterMatcher.group(1).trim() + " " + chapterMatcher.group(2) + ":1");
+        }
+        return null;
     }
 
 
