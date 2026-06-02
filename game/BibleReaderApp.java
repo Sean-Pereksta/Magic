@@ -38,6 +38,8 @@ public class BibleReaderApp extends JFrame {
     private final Color categoryBlue = new Color(211, 233, 255);
     private final Color linkPurple = new Color(231, 218, 255);
     private final Color questionRed = new Color(255, 214, 214);
+    private final Color discussionQuestionBlue = new Color(213, 226, 255);
+    private final Color personalQuestionOrange = new Color(255, 229, 196);
     private final Color greekGreen = new Color(218, 245, 218);
 
     // Modern theme constants are centralized here so future UI polish can be made in one place.
@@ -128,6 +130,9 @@ public class BibleReaderApp extends JFrame {
 
     private DefaultListModel<String> questionModel;
     private JList<String> questionList;
+    private JPanel discussionQuestionsPanel;
+    private JPanel personalQuestionsPanel;
+    private StudyQuestion selectedQuestion;
 
     private DefaultListModel<TopicPage> topicPageModel;
     private JList<TopicPage> topicPageList;
@@ -1451,7 +1456,7 @@ public class BibleReaderApp extends JFrame {
         page.setBorder(new EmptyBorder(16, 16, 16, 16));
         page.setBackground(panelBg);
 
-        JLabel h = new JLabel("Unfinished Questions");
+        JLabel h = new JLabel("Questions");
         h.setFont(new Font("Segoe UI", Font.BOLD, 26));
         h.setForeground(darkRed);
 
@@ -1483,11 +1488,40 @@ public class BibleReaderApp extends JFrame {
         north.add(h, BorderLayout.NORTH);
         north.add(top, BorderLayout.SOUTH);
 
+        discussionQuestionsPanel = new JPanel();
+        discussionQuestionsPanel.setLayout(new BoxLayout(discussionQuestionsPanel, BoxLayout.Y_AXIS));
+        discussionQuestionsPanel.setBackground(modernSurface);
+        personalQuestionsPanel = new JPanel();
+        personalQuestionsPanel.setLayout(new BoxLayout(personalQuestionsPanel, BoxLayout.Y_AXIS));
+        personalQuestionsPanel.setBackground(modernSurface);
+
+        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
+                labeledQuestionSection("Discussion Questions", discussionQuestionsPanel),
+                labeledQuestionSection("Personal Questions", personalQuestionsPanel));
+        split.setResizeWeight(0.5);
+        split.setBorder(null);
+
         page.add(north, BorderLayout.NORTH);
-        page.add(new JScrollPane(questionList), BorderLayout.CENTER);
+        page.add(split, BorderLayout.CENTER);
         return page;
     }
 
+
+
+    private JComponent labeledQuestionSection(String title, JPanel body) {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBackground(panelBg);
+        panel.setBorder(new EmptyBorder(6, 0, 6, 0));
+        JLabel label = new JLabel(title);
+        label.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        label.setForeground(darkRed);
+        panel.add(label, BorderLayout.NORTH);
+        JScrollPane scroll = new JScrollPane(body);
+        scroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+        panel.add(scroll, BorderLayout.CENTER);
+        return panel;
+    }
 
     private JPanel buildTopicPagesPage() {
         JPanel page = new JPanel(new BorderLayout(10, 10));
@@ -2876,7 +2910,7 @@ public class BibleReaderApp extends JFrame {
         Set<String> paintedRanges = new HashSet<>();
         java.util.List<TextAnnotation> annotations = new ArrayList<>();
         for (TextAnnotation a : currentProfile.annotations) {
-            if (!sourceKey.equals(a.sourceKey)) continue;
+            if (!sourceKey.equals(a.sourceKey) || a.wholeChapter) continue;
             if (a.start < 0 || a.end <= a.start || a.start >= originalLen) continue;
             annotations.add(a);
         }
@@ -2920,6 +2954,11 @@ public class BibleReaderApp extends JFrame {
         Map<String, java.util.List<TextAnnotation>> grouped = new LinkedHashMap<>();
         for (TextAnnotation a : currentProfile.annotations) {
             if (!sourceKey.equals(a.sourceKey) || !hasReaderBubble(a)) continue;
+            if (a.wholeChapter) {
+                int headingEnd = chapterHeadingEndOffset();
+                grouped.computeIfAbsent(annotationRangeKey(sourceKey, 0, headingEnd) + "|chapter", k -> getWholeChapterAnnotations(sourceKey));
+                continue;
+            }
             if (a.start < 0 || a.end <= a.start || a.start >= originalLen) continue;
             int safeEnd = Math.min(a.end, originalLen);
             String rangeKey = annotationRangeKey(sourceKey, a.start, safeEnd);
@@ -2935,7 +2974,7 @@ public class BibleReaderApp extends JFrame {
         for (java.util.List<TextAnnotation> group : bubbleGroups) {
             if (group.isEmpty()) continue;
             TextAnnotation primary = primaryAnnotation(group);
-            int sourceOffset = Math.max(0, Math.min(primary.end, originalLen));
+            int sourceOffset = primary.wholeChapter ? chapterHeadingEndOffset() : Math.max(0, Math.min(primary.end, originalLen));
             int renderedOffset = sourceOffset + inserted;
             String markerText = bubbleTextForAnnotations(group);
             SimpleAttributeSet bubbleStyle = bubbleStyleForAnnotations(group);
@@ -2957,7 +2996,8 @@ public class BibleReaderApp extends JFrame {
         int count = annotations == null ? 0 : annotations.size();
         if (count > 1) return "  💬" + count + " ";
         TextAnnotation a = annotations == null || annotations.isEmpty() ? null : annotations.get(0);
-        return "Question".equals(a == null ? "" : a.type) ? "  ? " : "  📝 ";
+        if ("Question".equals(a == null ? "" : a.type)) return "  " + questionBubbleLabel(a) + " ";
+        return "  📝 ";
     }
 
     private SimpleAttributeSet bubbleStyleForAnnotation(TextAnnotation a) {
@@ -2971,10 +3011,66 @@ public class BibleReaderApp extends JFrame {
         StyleConstants.setFontFamily(set, "Segoe UI Emoji");
         StyleConstants.setFontSize(set, Math.max(12, currentReaderBodyFontSize() - 1));
         StyleConstants.setBold(set, true);
-        StyleConstants.setForeground(set, multi ? new Color(78, 46, 118) : ("Question".equals(safe(primary == null ? "" : primary.type)) ? new Color(135, 35, 35) : new Color(82, 88, 27)));
-        StyleConstants.setBackground(set, multi ? new Color(240, 230, 255) : ("Question".equals(safe(primary == null ? "" : primary.type)) ? new Color(255, 232, 232) : new Color(255, 250, 190)));
+        StyleConstants.setForeground(set, multi ? new Color(78, 46, 118) : ("Question".equals(safe(primary == null ? "" : primary.type)) ? new Color(44, 72, 135) : new Color(82, 88, 27)));
+        StyleConstants.setBackground(set, multi ? new Color(240, 230, 255) : bubbleBackgroundForAnnotation(primary));
         StyleConstants.setUnderline(set, true);
         return set;
+    }
+
+
+    private int chapterHeadingEndOffset() {
+        try {
+            String txt = readerPane.getDocument().getText(0, readerPane.getDocument().getLength());
+            int firstBreak = txt.indexOf('\n');
+            return firstBreak >= 0 ? firstBreak : txt.length();
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private boolean isChapterTitleOffset(int renderedOffset) {
+        return currentSourceKey != null && currentSourceKey.startsWith("BIBLE:") && renderedOffset >= 0 && renderedOffset <= chapterHeadingEndOffset();
+    }
+
+    private java.util.List<TextAnnotation> getWholeChapterAnnotations(String sourceKey) {
+        java.util.List<TextAnnotation> list = new ArrayList<>();
+        if (currentProfile == null || sourceKey == null) return list;
+        for (TextAnnotation a : currentProfile.annotations) {
+            if (a != null && a.wholeChapter && sourceKey.equals(a.sourceKey) && hasReaderBubble(a)) list.add(a);
+        }
+        list.sort(Comparator.comparingInt((TextAnnotation a) -> annotationPriority(a)).thenComparing(a -> safe(a.id)));
+        return list;
+    }
+
+    private Color questionColorForType(String type) {
+        return "personal".equals(normalizeQuestionType(type)) ? personalQuestionOrange : discussionQuestionBlue;
+    }
+
+    private Color bubbleBackgroundForAnnotation(TextAnnotation a) {
+        if (a != null && "Question".equals(a.type)) return questionColorForType(questionTypeForAnnotation(a));
+        return new Color(255, 250, 190);
+    }
+
+    private String questionBubbleLabel(TextAnnotation a) {
+        return "personal".equals(questionTypeForAnnotation(a)) ? "PQ" : "DQ";
+    }
+
+    private String questionTypeForAnnotation(TextAnnotation a) {
+        if (a == null) return "discussion";
+        String cat = normalizeQuestionType(a.category);
+        if (!cat.isEmpty()) return cat;
+        StudyQuestion q = questionForAnnotation(a.id);
+        return q == null ? "discussion" : normalizeQuestionType(q.questionType);
+    }
+
+    private String normalizeQuestionType(String type) {
+        String t = safe(type).trim().toLowerCase(Locale.ROOT);
+        if (t.startsWith("p")) return "personal";
+        return "discussion";
+    }
+
+    private String questionTypeDisplay(String type) {
+        return "personal".equals(normalizeQuestionType(type)) ? "Personal Question" : "Discussion Question";
     }
 
     private int readerOriginalLength() {
@@ -3015,7 +3111,7 @@ public class BibleReaderApp extends JFrame {
         String type = a == null ? "" : safe(a.type);
         if ("Category".equals(type)) return colorForCategory(a.category);
         if ("Link".equals(type) || "Topic".equals(type)) return linkPurple;
-        if ("Question".equals(type)) return questionRed;
+        if ("Question".equals(type)) return questionColorForType(questionTypeForAnnotation(a));
         if ("Greek".equals(type)) return greekGreen;
         if ("Memory".equals(type) || "Memory Verse".equals(type)) return new Color(245, 190, 55);
         if ("Attachment".equals(type)) return new Color(145, 166, 190);
@@ -3040,7 +3136,7 @@ public class BibleReaderApp extends JFrame {
         int sourcePos = renderedOffsetToSourceOffset(renderedOffset);
         java.util.List<TextAnnotation> matches = new ArrayList<>();
         for (TextAnnotation a : currentProfile.annotations) {
-            if (a != null && currentSourceKey.equals(a.sourceKey) && sourcePos >= a.start && sourcePos < a.end) matches.add(a);
+            if (a != null && !a.wholeChapter && currentSourceKey.equals(a.sourceKey) && sourcePos >= a.start && sourcePos < a.end) matches.add(a);
         }
         matches.sort(this::compareAnnotationsForDisplay);
         return matches;
@@ -3050,7 +3146,7 @@ public class BibleReaderApp extends JFrame {
         java.util.List<TextAnnotation> matches = new ArrayList<>();
         if (currentProfile == null || sourceKey == null) return matches;
         for (TextAnnotation a : currentProfile.annotations) {
-            if (a != null && sourceKey.equals(a.sourceKey) && a.start == start && a.end == end) matches.add(a);
+            if (a != null && !a.wholeChapter && sourceKey.equals(a.sourceKey) && a.start == start && a.end == end) matches.add(a);
         }
         matches.sort(this::compareAnnotationsForDisplay);
         return matches;
@@ -3150,7 +3246,8 @@ public class BibleReaderApp extends JFrame {
         boolean bibleSelection = greekKeyForSelection() != null;
         addMenu(menu, "Add Note", () -> addAnnotationFromSelection("Note", ""));
         addMenu(menu, "Add To Category", this::addCategoryFromSelection);
-        addMenu(menu, "Add Question", () -> addAnnotationFromSelection("Question", ""));
+        addMenu(menu, "Add Discussion Question", () -> addAnnotationFromSelection("Question", "discussion"));
+        addMenu(menu, "Add Personal Question", () -> addAnnotationFromSelection("Question", "personal"));
         addMenu(menu, "Attach To Bible Verse Or Book Section", this::addAttachmentFromSelection);
         if (bibleSelection) {
             addMenu(menu, "View Greek For This Verse", this::showGreekForCurrentSelection);
@@ -3206,10 +3303,91 @@ public class BibleReaderApp extends JFrame {
         }
     }
 
+
+    private void showChapterTitleMenu(int x, int y) {
+        if (currentSourceKey == null || !currentSourceKey.startsWith("BIBLE:")) return;
+        JPopupMenu menu = new JPopupMenu();
+        addMenu(menu, "Add Whole Chapter to Category", this::addWholeChapterToCategory);
+        addMenu(menu, "Add Whole Chapter Note", this::addWholeChapterNote);
+        addMenu(menu, "Add Discussion Question", () -> addWholeChapterQuestion("discussion"));
+        addMenu(menu, "Add Personal Question", () -> addWholeChapterQuestion("personal"));
+        addMenu(menu, "View Chapter Notes / Questions", this::viewWholeChapterAnnotations);
+        menu.show(readerPane, x, y);
+    }
+
+    private void addWholeChapterToCategory() {
+        String cat = chooseOrCreateCategory();
+        if (cat == null || cat.trim().isEmpty()) return;
+        TextAnnotation a = chapterAnnotation("Category", cat.trim(), "Whole chapter category: " + cat.trim());
+        currentProfile.annotations.add(a);
+        saveData();
+        refreshCategories();
+        refreshRecentNotes();
+        reloadCurrentSource();
+        showCategoryByName(cat.trim());
+    }
+
+    private void addWholeChapterNote() {
+        String note = promptMultiline("Add Whole Chapter Note", "Note for " + currentSourceTitle + ":", "");
+        if (note == null || note.trim().isEmpty()) return;
+        TextAnnotation a = chapterAnnotation("Note", "", note.trim());
+        currentProfile.annotations.add(a);
+        saveData();
+        refreshRecentNotes();
+        reloadCurrentSource();
+        showAnnotationDetails(a);
+    }
+
+    private void addWholeChapterQuestion(String questionType) {
+        String body = promptMultiline("Add " + questionTypeDisplay(questionType), "Question for " + currentSourceTitle + ":", "");
+        if (body == null || body.trim().isEmpty()) return;
+        TextAnnotation a = chapterAnnotation("Question", normalizeQuestionType(questionType), body.trim());
+        currentProfile.annotations.add(a);
+        currentProfile.questions.add(new StudyQuestion(a.id, currentSourceTitle, currentSourceTitle, body.trim(), normalizeQuestionType(questionType), currentSourceKey, currentSourceTitle, selectedBook, selectedChapter, true));
+        saveData();
+        refreshQuestions();
+        refreshRecentNotes();
+        reloadCurrentSource();
+        showAnnotationDetails(a);
+    }
+
+    private TextAnnotation chapterAnnotation(String type, String category, String note) {
+        int end = Math.max(1, chapterHeadingEndOffset());
+        TextAnnotation a = new TextAnnotation(currentSourceKey, currentSourceTitle, 0, end, currentSourceTitle, type, category, note, "");
+        a.book = selectedBook;
+        a.chapter = selectedChapter;
+        a.wholeChapter = true;
+        return a;
+    }
+
+    private void viewWholeChapterAnnotations() {
+        java.util.List<TextAnnotation> list = getWholeChapterAnnotations(currentSourceKey);
+        if (list.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No chapter-level notes or questions yet for " + currentSourceTitle + ".");
+            return;
+        }
+        showAnnotationDetails(list);
+    }
+
+    private String promptMultiline(String title, String label, String initial) {
+        JTextArea area = new JTextArea(safe(initial), 8, 44);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        JPanel panel = new JPanel(new BorderLayout(6, 6));
+        panel.add(new JLabel(label), BorderLayout.NORTH);
+        panel.add(new JScrollPane(area), BorderLayout.CENTER);
+        int r = JOptionPane.showConfirmDialog(this, panel, title, JOptionPane.OK_CANCEL_OPTION);
+        return r == JOptionPane.OK_OPTION ? area.getText() : null;
+    }
+
     private void showReaderMenu(MouseEvent e) {
         if (loadingReader || currentSourceKey == null || currentSourceKey.isEmpty()) return;
 
         int pos = readerPane.viewToModel2D(e.getPoint());
+        if (isChapterTitleOffset(pos)) {
+            showChapterTitleMenu(e.getX(), e.getY());
+            return;
+        }
         TextAnnotation existing = annotationAt(pos);
         boolean hasSelection = readerPane.getSelectionEnd() > readerPane.getSelectionStart();
 
@@ -3622,6 +3800,10 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             }
             return true;
         }
+        if (isChapterTitleOffset(pos)) {
+            showChapterTitleMenu(e.getX(), e.getY());
+            return true;
+        }
         java.util.List<TextAnnotation> annotations = getAnnotationsAtOffset(pos);
         if (!annotations.isEmpty()) {
             showAnnotationDetails(annotations);
@@ -3655,7 +3837,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         int sourcePos = renderedOffsetToSourceOffset(pos);
         TextAnnotation best = null;
         for (TextAnnotation a : currentProfile.annotations) {
-            if (currentSourceKey.equals(a.sourceKey) && sourcePos >= a.start && sourcePos < a.end) {
+            if (!a.wholeChapter && currentSourceKey.equals(a.sourceKey) && sourcePos >= a.start && sourcePos < a.end) {
                 if (best == null || (a.end - a.start) < (best.end - best.start)) best = a;
             }
         }
@@ -3717,19 +3899,13 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             }
         });
 
-        JLabel title = new JLabel(("Question".equals(a.type) ? "? Question" : "📝 Note") + (safe(a.category).isEmpty() ? "" : " — " + safe(a.category)));
+        JLabel title = new JLabel(annotationDisplayName(a) + (a.wholeChapter ? " — Whole Chapter" : "") + (safe(a.category).isEmpty() || "Question".equals(a.type) ? "" : " — " + safe(a.category)));
         title.setFont(modernBoldFont);
         title.setForeground("Question".equals(a.type) ? modernDanger : modernDarkRed);
         panel.add(title, BorderLayout.NORTH);
 
-        JTextArea body = new JTextArea(safe(a.note).isEmpty() ? "(No note text)" : a.note);
-        body.setEditable(false);
-        body.setLineWrap(true);
-        body.setWrapStyleWord(true);
-        body.setFont(modernBaseFont);
-        body.setBackground(modernSurface);
-        body.setBorder(new EmptyBorder(2, 2, 2, 2));
-        panel.add(new JScrollPane(body), BorderLayout.CENTER);
+        JComponent center = "Question".equals(a.type) ? buildQuestionPopupBody(a) : buildPlainAnnotationBody(a);
+        panel.add(center, BorderLayout.CENTER);
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         actions.setOpaque(false);
@@ -3751,6 +3927,59 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         return panel;
     }
 
+
+
+    private JComponent buildPlainAnnotationBody(TextAnnotation a) {
+        JTextArea body = new JTextArea(safe(a.note).isEmpty() ? "(No note text)" : a.note);
+        body.setEditable(false);
+        body.setLineWrap(true);
+        body.setWrapStyleWord(true);
+        body.setFont(modernBaseFont);
+        body.setBackground(modernSurface);
+        body.setBorder(new EmptyBorder(2, 2, 2, 2));
+        return new JScrollPane(body);
+    }
+
+    private JComponent buildQuestionPopupBody(TextAnnotation a) {
+        StudyQuestion q = questionForAnnotation(a.id);
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(modernSurface);
+        JTextArea question = readonlyArea();
+        question.setBackground(modernSurface);
+        question.setText(questionTypeDisplay(q == null ? questionTypeForAnnotation(a) : q.questionType) + "\n"
+                + (q != null && q.answered ? "Answered" : "Unanswered") + " • " + (q == null ? 0 : q.answers.size()) + " answer(s)\n\n"
+                + safe(a.note));
+        panel.add(question);
+        if (q != null) {
+            for (QuestionAnswer ans : q.answers) {
+                JTextArea answer = readonlyArea();
+                answer.setBackground(new Color(255, 252, 247));
+                answer.setBorder(new CompoundBorder(new MatteBorder(1, 0, 0, 0, modernBorder), new EmptyBorder(5, 2, 5, 2)));
+                answer.setText("Answer — " + displayDate(ans.createdAt) + (ans.updatedAt > ans.createdAt ? " (edited " + displayDate(ans.updatedAt) + ")" : "") + "\n" + safe(ans.text));
+                panel.add(answer);
+            }
+            JTextArea newAnswer = new JTextArea(3, 28);
+            newAnswer.setLineWrap(true);
+            newAnswer.setWrapStyleWord(true);
+            JButton add = new JButton("Add Answer");
+            add.addActionListener(e -> {
+                String text = newAnswer.getText().trim();
+                if (text.isEmpty()) return;
+                addAnswerToQuestion(q, text);
+                closeAllAnnotationBubblePopups();
+                refreshQuestions();
+                reloadCurrentSource();
+            });
+            JPanel addPanel = new JPanel(new BorderLayout(4, 4));
+            addPanel.setOpaque(false);
+            addPanel.setBorder(new EmptyBorder(6, 0, 0, 0));
+            addPanel.add(new JScrollPane(newAnswer), BorderLayout.CENTER);
+            addPanel.add(add, BorderLayout.SOUTH);
+            panel.add(addPanel);
+        }
+        return new JScrollPane(panel);
+    }
 
     private JComponent buildAnnotationPopupContent(java.util.List<TextAnnotation> annotations) {
         if (annotations == null || annotations.isEmpty()) return buildAnnotationPopupContent(new TextAnnotation("", "", 0, 0, "", "Note", "", "", ""));
@@ -4297,7 +4526,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         currentProfile.annotations.add(a);
 
         if ("Question".equals(type)) {
-            currentProfile.questions.add(new StudyQuestion(a.id, currentSourceTitle, selected, body));
+            currentProfile.questions.add(new StudyQuestion(a.id, currentSourceTitle, selected, body, normalizeQuestionType(category), currentSourceKey, currentSourceTitle, selectedBook, selectedChapter, false));
         }
 
         saveData();
@@ -5844,7 +6073,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         String location = categoryResultLocation(a);
-        JLabel header = new JLabel("<html><b>" + esc(location) + "</b> — " + esc(shorten(a.selectedText, 140)) + "</html>");
+        JLabel header = new JLabel("<html><b>" + esc(location) + "</b> — " + esc(a.wholeChapter ? "Whole chapter" : shorten(a.selectedText, 140)) + "</html>");
         header.setForeground(darkRed);
         header.setFont(new Font("Segoe UI", Font.BOLD, 14));
 
@@ -5892,7 +6121,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private String categoryResultCollapsedText(TextAnnotation a) {
         StringBuilder sb = new StringBuilder();
-        sb.append(shorten(a.selectedText, 220));
+        sb.append(a.wholeChapter ? "Whole chapter: " + categoryResultLocation(a) : shorten(a.selectedText, 220));
         if (!safe(a.note).trim().isEmpty()) sb.append("\nNote: ").append(shorten(a.note, 160));
         if (!safe(a.category).trim().isEmpty()) sb.append("\nCategory: ").append(a.category);
         return sb.toString();
@@ -5900,7 +6129,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private String categoryResultExpandedText(TextAnnotation a) {
         StringBuilder sb = new StringBuilder();
-        sb.append(safe(a.selectedText).trim());
+        sb.append(a.wholeChapter ? "Whole chapter: " + categoryResultLocation(a) : safe(a.selectedText).trim());
         if (!safe(a.note).trim().isEmpty()) sb.append("\n\nNote / comment:\n").append(a.note.trim());
         if (!safe(a.category).trim().isEmpty()) sb.append("\n\nCategory: ").append(a.category.trim());
         if (!safe(a.target).trim().isEmpty()) sb.append("\nTarget: ").append(a.target.trim());
@@ -5942,7 +6171,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private void jumpToCategoryResult(TextAnnotation a) {
         if (a == null) return;
         openSourceForAnnotation(a);
-        safeSelect(a.start, a.end);
+        if (a.wholeChapter) moveReaderCaret(0); else safeSelect(a.start, a.end);
         showAnnotationDetails(a);
         showCard("study");
     }
@@ -6028,7 +6257,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void addQuestionForSelection() {
-        addAnnotationFromSelection("Question", "");
+        String[] choices = {"Discussion Question", "Personal Question"};
+        int choice = JOptionPane.showOptionDialog(this, "What type of question do you want to add?", "Question Type",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, choices, choices[0]);
+        if (choice < 0) return;
+        addAnnotationFromSelection("Question", choice == 1 ? "personal" : "discussion");
     }
 
     private void refreshStudyProjects() {
@@ -6492,14 +6725,148 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private void refreshQuestions() {
         if (questionModel == null) return;
         questionModel.clear();
+        if (discussionQuestionsPanel != null) discussionQuestionsPanel.removeAll();
+        if (personalQuestionsPanel != null) personalQuestionsPanel.removeAll();
         String questionQuery = questionSearchField == null ? "" : questionSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        int discussionCount = 0;
+        int personalCount = 0;
         for (int i = 0; i < currentProfile.questions.size(); i++) {
             StudyQuestion q = currentProfile.questions.get(i);
-            String line = i + " | " + (q.answered ? "✓" : "❗") + " | " + q.sourceTitle + " | " + shorten(q.question, 140);
-            if (!questionQuery.isEmpty() && !(safe(q.sourceTitle) + " " + safe(q.selectedText) + " " + safe(q.question)).toLowerCase(Locale.ROOT).contains(questionQuery)) continue;
+            repairQuestion(q);
+            String line = i + " | " + (q.answered ? "✓" : "❗") + " | " + questionTypeDisplay(q.questionType) + " | " + questionLocation(q) + " | " + shorten(q.question, 140);
+            if (!questionQuery.isEmpty() && !questionSearchText(q).contains(questionQuery)) continue;
             questionModel.addElement(line);
+            JPanel target = "personal".equals(normalizeQuestionType(q.questionType)) ? personalQuestionsPanel : discussionQuestionsPanel;
+            if (target != null) target.add(buildQuestionCard(q, i));
+            if ("personal".equals(normalizeQuestionType(q.questionType))) personalCount++; else discussionCount++;
         }
+        if (discussionQuestionsPanel != null && discussionCount == 0) discussionQuestionsPanel.add(emptySectionLabel("No discussion questions match this filter."));
+        if (personalQuestionsPanel != null && personalCount == 0) personalQuestionsPanel.add(emptySectionLabel("No personal questions match this filter."));
+        if (discussionQuestionsPanel != null) { discussionQuestionsPanel.revalidate(); discussionQuestionsPanel.repaint(); }
+        if (personalQuestionsPanel != null) { personalQuestionsPanel.revalidate(); personalQuestionsPanel.repaint(); }
         updateHeader();
+    }
+
+    private JLabel emptySectionLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(modernMutedText);
+        label.setBorder(new EmptyBorder(12, 12, 12, 12));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return label;
+    }
+
+    private JPanel buildQuestionCard(StudyQuestion q, int index) {
+        JPanel card = new JPanel(new BorderLayout(8, 8));
+        card.setBackground(new Color(255, 252, 247));
+        card.setBorder(new CompoundBorder(new MatteBorder(0, 5, 0, 0, questionColorForType(q.questionType)), new EmptyBorder(8, 10, 8, 10)));
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JTextArea text = readonlyArea();
+        text.setBackground(card.getBackground());
+        text.setText(q.question + "\n\nSource: " + questionLocation(q) + "\nStatus: " + (q.answered ? "Answered" : "Unanswered") + " • " + q.answers.size() + " answer(s)" + answersSummary(q));
+        card.add(text, BorderLayout.CENTER);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        actions.setOpaque(false);
+        JButton jump = new JButton("Jump To");
+        jump.addActionListener(e -> jumpToQuestion(q));
+        JButton addAnswer = new JButton("Add Answer");
+        addAnswer.addActionListener(e -> promptAddAnswer(q));
+        JButton viewAnswers = new JButton("View Answers");
+        viewAnswers.addActionListener(e -> showQuestionAnswers(q));
+        JButton edit = new JButton("Edit Question");
+        edit.addActionListener(e -> editQuestion(q));
+        JButton delete = new JButton("Delete Question");
+        delete.addActionListener(e -> deleteQuestion(q));
+        JButton toggle = new JButton(q.answered ? "Mark Unanswered" : "Mark Answered");
+        toggle.addActionListener(e -> { selectedQuestion = q; toggleSelectedQuestion(); });
+        for (JButton b : new JButton[]{jump, addAnswer, viewAnswers, edit, delete, toggle}) actions.add(b);
+        card.add(actions, BorderLayout.SOUTH);
+        card.addMouseListener(new MouseAdapter() { public void mouseClicked(MouseEvent e) { selectedQuestion = q; if (questionList != null && index >= 0 && index < questionModel.size()) questionList.setSelectedIndex(index); } });
+        return card;
+    }
+
+    private String answersSummary(StudyQuestion q) {
+        if (q.answers.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("\n\nAnswers:");
+        for (QuestionAnswer a : q.answers) sb.append("\n- ").append(displayDate(a.createdAt)).append(": ").append(shorten(safe(a.text), 160));
+        return sb.toString();
+    }
+
+    private String questionSearchText(StudyQuestion q) {
+        return (safe(q.sourceTitle) + " " + safe(q.selectedText) + " " + safe(q.question) + " " + questionLocation(q) + " " + questionTypeDisplay(q.questionType)).toLowerCase(Locale.ROOT);
+    }
+
+    private String questionLocation(StudyQuestion q) {
+        if (q == null) return "Unknown";
+        if (q.wholeChapter && !safe(q.book).isEmpty() && q.chapter > 0) return q.book + " " + q.chapter;
+        return safe(q.sourceTitle).isEmpty() ? safe(q.sourceKey) : safe(q.sourceTitle);
+    }
+
+    private StudyQuestion questionForAnnotation(String annotationId) {
+        if (currentProfile == null || annotationId == null) return null;
+        for (StudyQuestion q : currentProfile.questions) if (q != null && annotationId.equals(q.annotationId)) return q;
+        return null;
+    }
+
+    private void addAnswerToQuestion(StudyQuestion q, String text) {
+        if (q == null || text == null || text.trim().isEmpty()) return;
+        repairQuestion(q);
+        q.answers.add(new QuestionAnswer(text.trim()));
+        q.answered = true;
+        saveData();
+    }
+
+    private void promptAddAnswer(StudyQuestion q) {
+        String answer = promptMultiline("Add Answer", "Answer for: " + shorten(q.question, 80), "");
+        if (answer == null || answer.trim().isEmpty()) return;
+        addAnswerToQuestion(q, answer);
+        refreshQuestions();
+    }
+
+    private void showQuestionAnswers(StudyQuestion q) {
+        JTextArea area = readonlyArea();
+        area.setText(q.question + "\n\n" + (q.answers.isEmpty() ? "No answers yet." : answersSummary(q)));
+        JOptionPane.showMessageDialog(this, new JScrollPane(area), "Answers", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void editQuestion(StudyQuestion q) {
+        String edited = promptMultiline("Edit Question", "Question:", q.question);
+        if (edited == null || edited.trim().isEmpty()) return;
+        q.question = edited.trim();
+        TextAnnotation a = annotationById(q.annotationId);
+        if (a != null) { a.note = q.question; touchAnnotation(a); }
+        saveData();
+        refreshQuestions();
+        reloadCurrentSource();
+    }
+
+    private void deleteQuestion(StudyQuestion q) {
+        if (q == null) return;
+        int r = JOptionPane.showConfirmDialog(this, "Delete this question and its answers?", "Delete Question", JOptionPane.OK_CANCEL_OPTION);
+        if (r != JOptionPane.OK_OPTION) return;
+        currentProfile.questions.remove(q);
+        currentProfile.annotations.removeIf(a -> a != null && safe(q.annotationId).equals(safe(a.id)));
+        saveData();
+        refreshQuestions();
+        refreshRecentNotes();
+        reloadCurrentSource();
+    }
+
+    private void jumpToQuestion(StudyQuestion q) {
+        TextAnnotation a = annotationById(q.annotationId);
+        if (a != null) {
+            openSourceForAnnotation(a);
+            if (!a.wholeChapter) safeSelect(a.start, a.end);
+            else moveReaderCaret(0);
+            showAnnotationDetails(a);
+            showCard("study");
+        }
+    }
+
+    private TextAnnotation annotationById(String id) {
+        if (currentProfile == null || id == null) return null;
+        for (TextAnnotation a : currentProfile.annotations) if (a != null && id.equals(a.id)) return a;
+        return null;
     }
 
     private void refreshRecentNotes() {
@@ -8284,7 +8651,27 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (q.sourceTitle == null) q.sourceTitle = "";
         if (q.selectedText == null) q.selectedText = "";
         if (q.question == null) q.question = "";
+        q.questionType = normalizeQuestionType(q.questionType);
+        if (q.answers == null) q.answers = new ArrayList<>();
+        q.answers.removeIf(Objects::isNull);
+        for (QuestionAnswer a : q.answers) repairQuestionAnswer(a);
+        if (q.sourceKey == null) q.sourceKey = "";
+        if (q.sourceKey.isEmpty()) {
+            TextAnnotation a = annotationById(q.annotationId);
+            if (a != null) q.sourceKey = safe(a.sourceKey);
+        }
+        if (q.sourceLocation == null) q.sourceLocation = q.sourceTitle;
+        if (q.book == null) q.book = "";
+        if (q.chapter < 0) q.chapter = 0;
         if (q.created == null) q.created = new Date();
+    }
+
+    private void repairQuestionAnswer(QuestionAnswer a) {
+        if (a == null) return;
+        if (a.id == null || a.id.trim().isEmpty()) a.id = UUID.randomUUID().toString();
+        if (a.text == null) a.text = "";
+        if (a.createdAt <= 0L) a.createdAt = System.currentTimeMillis();
+        if (a.updatedAt < a.createdAt) a.updatedAt = a.createdAt;
     }
 
     private void repairAnnotation(TextAnnotation a, long fallbackMillis) {
@@ -8297,6 +8684,12 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (a.category == null) a.category = "";
         if (a.note == null) a.note = "";
         if (a.target == null) a.target = "";
+        if (a.book == null) a.book = "";
+        if (a.chapter < 0) a.chapter = 0;
+        if (a.wholeChapter && a.book.isEmpty() && a.sourceKey.startsWith("BIBLE:")) {
+            RefParts rp = parseRef(a.sourceKey.substring("BIBLE:".length()) + ":1");
+            if (rp != null) { a.book = rp.book; a.chapter = rp.chapter; }
+        }
         if (a.links == null) a.links = new ArrayList<>();
         a.links.removeIf(Objects::isNull);
         for (LinkedItem link : a.links) repairLinkedItem(link);
@@ -8800,6 +9193,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         String category;
         String note;
         String target;
+        String book;
+        int chapter;
+        boolean wholeChapter;
         List<LinkedItem> links = new ArrayList<>();
         long createdAt;
         long updatedAt;
@@ -8851,19 +9247,52 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private static class StudyQuestion implements Serializable {
-        private static final long serialVersionUID = 30L;
+        private static final long serialVersionUID = 31L;
         String annotationId;
         String sourceTitle;
         String selectedText;
         String question;
+        String questionType = "discussion";
+        List<QuestionAnswer> answers = new ArrayList<>();
         boolean answered = false;
+        String sourceKey = "";
+        String sourceLocation = "";
+        String book = "";
+        int chapter;
+        boolean wholeChapter;
         Date created = new Date();
 
         StudyQuestion(String annotationId, String sourceTitle, String selectedText, String question) {
+            this(annotationId, sourceTitle, selectedText, question, "discussion", "", sourceTitle, "", 0, false);
+        }
+
+        StudyQuestion(String annotationId, String sourceTitle, String selectedText, String question, String questionType, String sourceKey, String sourceLocation, String book, int chapter, boolean wholeChapter) {
             this.annotationId = annotationId;
             this.sourceTitle = sourceTitle;
             this.selectedText = selectedText;
             this.question = question;
+            this.questionType = questionType == null || questionType.toLowerCase(Locale.ROOT).startsWith("p") ? "personal" : "discussion";
+            this.sourceKey = sourceKey == null ? "" : sourceKey;
+            this.sourceLocation = sourceLocation == null ? sourceTitle : sourceLocation;
+            this.book = book == null ? "" : book;
+            this.chapter = chapter;
+            this.wholeChapter = wholeChapter;
+        }
+    }
+
+    private static class QuestionAnswer implements Serializable {
+        private static final long serialVersionUID = 31L;
+        String id;
+        String text;
+        long createdAt;
+        long updatedAt;
+
+        QuestionAnswer(String text) {
+            long now = System.currentTimeMillis();
+            this.id = UUID.randomUUID().toString();
+            this.text = text == null ? "" : text;
+            this.createdAt = now;
+            this.updatedAt = now;
         }
     }
 
