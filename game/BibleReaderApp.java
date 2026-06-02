@@ -2871,19 +2871,44 @@ public class BibleReaderApp extends JFrame {
 
     private void applyAnnotationsForSource(String sourceKey) {
         StyledDocument doc = readerPane.getStyledDocument();
+        readerPane.getHighlighter().removeAllHighlights();
         int originalLen = readerOriginalLength();
+        Set<String> paintedRanges = new HashSet<>();
+        java.util.List<TextAnnotation> annotations = new ArrayList<>();
         for (TextAnnotation a : currentProfile.annotations) {
             if (!sourceKey.equals(a.sourceKey)) continue;
             if (a.start < 0 || a.end <= a.start || a.start >= originalLen) continue;
+            annotations.add(a);
+        }
+        annotations.sort(Comparator
+                .comparingInt((TextAnnotation a) -> Math.max(0, a.end - a.start)).reversed()
+                .thenComparingInt(this::annotationPriority)
+                .thenComparing(a -> safe(a.id)));
+
+        for (TextAnnotation a : annotations) {
             int safeEnd = Math.min(a.end, originalLen);
+            String rangeKey = annotationRangeKey(sourceKey, a.start, safeEnd);
+            if (!paintedRanges.add(rangeKey)) continue;
+
+            java.util.List<TextAnnotation> rangeAnnotations = getAnnotationsForRange(sourceKey, a.start, safeEnd);
+            TextAnnotation primary = primaryAnnotation(rangeAnnotations);
+            TextAnnotation secondary = secondaryAnnotation(rangeAnnotations, primary);
             int renderedStart = sourceOffsetToRenderedOffset(a.start, true);
             int renderedEnd = sourceOffsetToRenderedOffset(safeEnd, false);
             if (renderedEnd <= renderedStart) continue;
+
             SimpleAttributeSet set = new SimpleAttributeSet();
-            StyleConstants.setBackground(set, colorForAnnotation(a));
+            StyleConstants.setBackground(set, colorForAnnotation(primary == null ? a : primary));
             StyleConstants.setForeground(set, new Color(35, 25, 20));
-            StyleConstants.setBold(set, "Question".equals(a.type));
+            StyleConstants.setBold(set, anyAnnotationType(rangeAnnotations, "Question"));
             doc.setCharacterAttributes(renderedStart, renderedEnd - renderedStart, set, false);
+
+            if (rangeAnnotations.size() > 1 && secondary != null) {
+                try {
+                    readerPane.getHighlighter().addHighlight(renderedStart, renderedEnd,
+                            new AnnotationUnderlinePainter(colorForAnnotation(secondary)));
+                } catch (BadLocationException ignored) {}
+            }
         }
     }
 
@@ -2892,25 +2917,30 @@ public class BibleReaderApp extends JFrame {
         if (currentProfile == null || sourceKey == null) return;
         StyledDocument doc = readerPane.getStyledDocument();
         int originalLen = doc.getLength();
-        java.util.List<TextAnnotation> annotations = new ArrayList<>();
+        Map<String, java.util.List<TextAnnotation>> grouped = new LinkedHashMap<>();
         for (TextAnnotation a : currentProfile.annotations) {
             if (!sourceKey.equals(a.sourceKey) || !hasReaderBubble(a)) continue;
             if (a.start < 0 || a.end <= a.start || a.start >= originalLen) continue;
-            annotations.add(a);
+            int safeEnd = Math.min(a.end, originalLen);
+            String rangeKey = annotationRangeKey(sourceKey, a.start, safeEnd);
+            grouped.computeIfAbsent(rangeKey, k -> getAnnotationsForRange(sourceKey, a.start, safeEnd));
         }
-        annotations.sort(Comparator
-                .comparingInt((TextAnnotation a) -> Math.min(a.end, originalLen))
-                .thenComparing(a -> safe(a.type))
-                .thenComparing(a -> safe(a.id)));
+        java.util.List<java.util.List<TextAnnotation>> bubbleGroups = new ArrayList<>(grouped.values());
+        bubbleGroups.sort(Comparator
+                .comparingInt((java.util.List<TextAnnotation> group) -> group.stream().mapToInt(x -> Math.min(x.end, originalLen)).max().orElse(0))
+                .thenComparing(group -> safe(primaryAnnotation(group).type))
+                .thenComparing(group -> safe(primaryAnnotation(group).id)));
 
         int inserted = 0;
-        for (TextAnnotation a : annotations) {
-            int sourceOffset = Math.max(0, Math.min(a.end, originalLen));
+        for (java.util.List<TextAnnotation> group : bubbleGroups) {
+            if (group.isEmpty()) continue;
+            TextAnnotation primary = primaryAnnotation(group);
+            int sourceOffset = Math.max(0, Math.min(primary.end, originalLen));
             int renderedOffset = sourceOffset + inserted;
-            String markerText = bubbleTextForAnnotation(a);
-            SimpleAttributeSet bubbleStyle = bubbleStyleForAnnotation(a);
+            String markerText = bubbleTextForAnnotations(group);
+            SimpleAttributeSet bubbleStyle = bubbleStyleForAnnotations(group);
             doc.insertString(renderedOffset, markerText, bubbleStyle);
-            visibleAnnotationBubbles.add(new AnnotationBubbleMarker(a, sourceOffset, renderedOffset, renderedOffset + markerText.length()));
+            visibleAnnotationBubbles.add(new AnnotationBubbleMarker(primary, group, markerText, sourceOffset, renderedOffset, renderedOffset + markerText.length()));
             inserted += markerText.length();
         }
     }
@@ -2920,16 +2950,29 @@ public class BibleReaderApp extends JFrame {
     }
 
     private String bubbleTextForAnnotation(TextAnnotation a) {
-        return "Question".equals(a.type) ? "  ? " : "  📝 ";
+        return bubbleTextForAnnotations(Collections.singletonList(a));
+    }
+
+    private String bubbleTextForAnnotations(java.util.List<TextAnnotation> annotations) {
+        int count = annotations == null ? 0 : annotations.size();
+        if (count > 1) return "  💬" + count + " ";
+        TextAnnotation a = annotations == null || annotations.isEmpty() ? null : annotations.get(0);
+        return "Question".equals(a == null ? "" : a.type) ? "  ? " : "  📝 ";
     }
 
     private SimpleAttributeSet bubbleStyleForAnnotation(TextAnnotation a) {
+        return bubbleStyleForAnnotations(Collections.singletonList(a));
+    }
+
+    private SimpleAttributeSet bubbleStyleForAnnotations(java.util.List<TextAnnotation> annotations) {
+        TextAnnotation primary = primaryAnnotation(annotations);
+        boolean multi = annotations != null && annotations.size() > 1;
         SimpleAttributeSet set = new SimpleAttributeSet();
         StyleConstants.setFontFamily(set, "Segoe UI Emoji");
         StyleConstants.setFontSize(set, Math.max(12, currentReaderBodyFontSize() - 1));
         StyleConstants.setBold(set, true);
-        StyleConstants.setForeground(set, "Question".equals(a.type) ? new Color(135, 35, 35) : new Color(82, 88, 27));
-        StyleConstants.setBackground(set, "Question".equals(a.type) ? new Color(255, 232, 232) : new Color(255, 250, 190));
+        StyleConstants.setForeground(set, multi ? new Color(78, 46, 118) : ("Question".equals(safe(primary == null ? "" : primary.type)) ? new Color(135, 35, 35) : new Color(82, 88, 27)));
+        StyleConstants.setBackground(set, multi ? new Color(240, 230, 255) : ("Question".equals(safe(primary == null ? "" : primary.type)) ? new Color(255, 232, 232) : new Color(255, 250, 190)));
         StyleConstants.setUnderline(set, true);
         return set;
     }
@@ -2969,10 +3012,13 @@ public class BibleReaderApp extends JFrame {
     }
 
     private Color colorForAnnotation(TextAnnotation a) {
-        if ("Category".equals(a.type)) return colorForCategory(a.category);
-        if ("Link".equals(a.type)) return linkPurple;
-        if ("Question".equals(a.type)) return questionRed;
-        if ("Greek".equals(a.type)) return greekGreen;
+        String type = a == null ? "" : safe(a.type);
+        if ("Category".equals(type)) return colorForCategory(a.category);
+        if ("Link".equals(type) || "Topic".equals(type)) return linkPurple;
+        if ("Question".equals(type)) return questionRed;
+        if ("Greek".equals(type)) return greekGreen;
+        if ("Memory".equals(type) || "Memory Verse".equals(type)) return new Color(245, 190, 55);
+        if ("Attachment".equals(type)) return new Color(145, 166, 190);
         return noteYellow;
     }
 
@@ -2983,6 +3029,88 @@ public class BibleReaderApp extends JFrame {
             if (rgb != null) return new Color(rgb, true);
         }
         return categoryBlue;
+    }
+
+    private String annotationRangeKey(String sourceKey, int start, int end) {
+        return safe(sourceKey) + "|" + Math.max(0, start) + "|" + Math.max(0, end);
+    }
+
+    private java.util.List<TextAnnotation> getAnnotationsAtOffset(int renderedOffset) {
+        if (currentProfile == null || currentSourceKey == null) return new ArrayList<>();
+        int sourcePos = renderedOffsetToSourceOffset(renderedOffset);
+        java.util.List<TextAnnotation> matches = new ArrayList<>();
+        for (TextAnnotation a : currentProfile.annotations) {
+            if (a != null && currentSourceKey.equals(a.sourceKey) && sourcePos >= a.start && sourcePos < a.end) matches.add(a);
+        }
+        matches.sort(this::compareAnnotationsForDisplay);
+        return matches;
+    }
+
+    private java.util.List<TextAnnotation> getAnnotationsForRange(String sourceKey, int start, int end) {
+        java.util.List<TextAnnotation> matches = new ArrayList<>();
+        if (currentProfile == null || sourceKey == null) return matches;
+        for (TextAnnotation a : currentProfile.annotations) {
+            if (a != null && sourceKey.equals(a.sourceKey) && a.start == start && a.end == end) matches.add(a);
+        }
+        matches.sort(this::compareAnnotationsForDisplay);
+        return matches;
+    }
+
+    private java.util.List<TextAnnotation> getOverlappingAnnotations(TextAnnotation annotation) {
+        java.util.List<TextAnnotation> matches = new ArrayList<>();
+        if (annotation == null || currentProfile == null) return matches;
+        for (TextAnnotation a : currentProfile.annotations) {
+            if (a != null && safe(annotation.sourceKey).equals(safe(a.sourceKey)) && rangesOverlap(annotation.start, annotation.end, a.start, a.end)) matches.add(a);
+        }
+        matches.sort(this::compareAnnotationsForDisplay);
+        return matches;
+    }
+
+    private boolean rangesOverlap(int aStart, int aEnd, int bStart, int bEnd) {
+        return Math.max(aStart, bStart) < Math.min(aEnd, bEnd);
+    }
+
+    private int compareAnnotationsForDisplay(TextAnnotation a, TextAnnotation b) {
+        int p = Integer.compare(annotationPriority(a), annotationPriority(b));
+        if (p != 0) return p;
+        int c = Long.compare(a == null ? 0 : a.createdAt, b == null ? 0 : b.createdAt);
+        if (c != 0) return c;
+        return safe(a == null ? "" : a.id).compareTo(safe(b == null ? "" : b.id));
+    }
+
+    private int annotationPriority(TextAnnotation a) {
+        return annotationPriority(a == null ? "" : a.type);
+    }
+
+    private int annotationPriority(String type) {
+        if ("Question".equals(type)) return 1;
+        if ("Note".equals(type)) return 2;
+        if ("Category".equals(type)) return 3;
+        if ("Link".equals(type) || "Topic".equals(type)) return 4;
+        if ("Greek".equals(type)) return 5;
+        if ("Memory".equals(type) || "Memory Verse".equals(type)) return 6;
+        if ("Attachment".equals(type)) return 7;
+        return 99;
+    }
+
+    private TextAnnotation primaryAnnotation(java.util.List<TextAnnotation> annotations) {
+        if (annotations == null || annotations.isEmpty()) return null;
+        for (TextAnnotation a : annotations) if ("Category".equals(a.type)) return a;
+        return annotations.stream().min(this::compareAnnotationsForDisplay).orElse(annotations.get(0));
+    }
+
+    private TextAnnotation secondaryAnnotation(java.util.List<TextAnnotation> annotations, TextAnnotation primary) {
+        if (annotations == null) return null;
+        return annotations.stream()
+                .filter(a -> a != null && (primary == null || !safe(a.id).equals(safe(primary.id))))
+                .min(this::compareAnnotationsForDisplay)
+                .orElse(null);
+    }
+
+    private boolean anyAnnotationType(java.util.List<TextAnnotation> annotations, String type) {
+        if (annotations == null) return false;
+        for (TextAnnotation a : annotations) if (a != null && type.equals(a.type)) return true;
+        return false;
     }
 
     private String colorHex(Color c) {
@@ -3044,6 +3172,8 @@ public class BibleReaderApp extends JFrame {
 
     private void addExistingHighlightActions(JPopupMenu menu, TextAnnotation existing) {
         addMenu(menu, "View Highlight Details", () -> showAnnotationDetails(existing));
+        java.util.List<TextAnnotation> attached = getAnnotationsForRange(existing.sourceKey, existing.start, existing.end);
+        if (attached.size() > 1) addMenu(menu, "View All Attached Annotations (" + attached.size() + ")", () -> showAnnotationDetails(attached));
         addMenu(menu, "Edit This Highlight", () -> editAnnotation(existing));
         addMenu(menu, "Pin This Highlight To Sidebar", () -> pinAnnotationToSidebar(existing));
         addMenu(menu, "Add This Note To Study Project", () -> addAnnotationToStudyProject(existing));
@@ -3492,9 +3622,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             }
             return true;
         }
-        TextAnnotation a = annotationAt(pos);
-        if (a != null) {
-            showAnnotationDetails(a);
+        java.util.List<TextAnnotation> annotations = getAnnotationsAtOffset(pos);
+        if (!annotations.isEmpty()) {
+            showAnnotationDetails(annotations);
             return true;
         }
         closeAllAnnotationBubblePopups();
@@ -3534,7 +3664,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void toggleAnnotationBubblePopup(AnnotationBubbleMarker bubble) {
         if (bubble == null || bubble.annotation == null) return;
-        String id = bubble.annotation.id;
+        String id = bubble.popupKey();
         JPopupMenu existing = openAnnotationPopups.get(id);
         if (existing != null && existing.isVisible()) {
             existing.setVisible(false);
@@ -3557,15 +3687,16 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void showAnnotationBubblePopup(AnnotationBubbleMarker bubble) {
         if (bubble == null || bubble.annotation == null) return;
-        JPopupMenu old = openAnnotationPopups.remove(bubble.annotation.id);
+        String popupKey = bubble.popupKey();
+        JPopupMenu old = openAnnotationPopups.remove(popupKey);
         if (old != null) old.setVisible(false);
         JPopupMenu popup = new JPopupMenu();
         popup.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(6, 6, 6, 6)));
-        popup.add(buildAnnotationPopupContent(bubble.annotation));
+        popup.add(buildAnnotationPopupContent(bubble.annotations));
         popup.addPopupMenuListener(new PopupMenuListener() {
             public void popupMenuWillBecomeVisible(PopupMenuEvent e) {}
-            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) { openAnnotationPopups.remove(bubble.annotation.id); }
-            public void popupMenuCanceled(PopupMenuEvent e) { openAnnotationPopups.remove(bubble.annotation.id); }
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) { openAnnotationPopups.remove(popupKey); }
+            public void popupMenuCanceled(PopupMenuEvent e) { openAnnotationPopups.remove(popupKey); }
         });
         try {
             Rectangle r = readerPane.modelToView2D(bubble.startOffset).getBounds();
@@ -3573,7 +3704,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         } catch (Exception ex) {
             popup.show(readerPane, 24, 24);
         }
-        openAnnotationPopups.put(bubble.annotation.id, popup);
+        openAnnotationPopups.put(popupKey, popup);
     }
 
     private JComponent buildAnnotationPopupContent(TextAnnotation a) {
@@ -3618,6 +3749,90 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         actions.add(delete);
         panel.add(actions, BorderLayout.SOUTH);
         return panel;
+    }
+
+
+    private JComponent buildAnnotationPopupContent(java.util.List<TextAnnotation> annotations) {
+        if (annotations == null || annotations.isEmpty()) return buildAnnotationPopupContent(new TextAnnotation("", "", 0, 0, "", "Note", "", "", ""));
+        if (annotations.size() == 1) return buildAnnotationPopupContent(annotations.get(0));
+
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBackground(modernSurface);
+        panel.setPreferredSize(new Dimension(380, 300));
+        panel.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() >= 2) closeAllAnnotationBubblePopups();
+            }
+        });
+
+        TextAnnotation primary = primaryAnnotation(annotations);
+        JLabel title = new JLabel("💬 " + annotations.size() + " annotations on this text");
+        title.setFont(modernBoldFont);
+        title.setForeground(modernDarkRed);
+        panel.add(title, BorderLayout.NORTH);
+
+        JPanel list = new JPanel();
+        list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
+        list.setBackground(modernSurface);
+        for (TextAnnotation a : annotations) {
+            JPanel card = new JPanel(new BorderLayout(5, 5));
+            card.setBackground(new Color(255, 252, 247));
+            card.setBorder(new CompoundBorder(new MatteBorder(0, 5, 0, 0, colorForAnnotation(a)), new EmptyBorder(6, 8, 6, 6)));
+            JLabel label = new JLabel(annotationDisplayName(a) + (safe(a.category).isEmpty() ? "" : " — " + safe(a.category)));
+            label.setFont(modernBoldFont);
+            card.add(label, BorderLayout.NORTH);
+            JTextArea body = new JTextArea(annotationSummaryText(a));
+            body.setEditable(false);
+            body.setLineWrap(true);
+            body.setWrapStyleWord(true);
+            body.setFont(modernBaseFont);
+            body.setBackground(card.getBackground());
+            card.add(body, BorderLayout.CENTER);
+            JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+            actions.setOpaque(false);
+            JButton details = new JButton("Details");
+            details.addActionListener(e -> { showAnnotationDetails(a); closeAllAnnotationBubblePopups(); });
+            JButton edit = new JButton("Edit");
+            edit.addActionListener(e -> { closeAllAnnotationBubblePopups(); editAnnotation(a); });
+            actions.add(details);
+            actions.add(edit);
+            if (!safe(a.target).isEmpty()) {
+                JButton open = new JButton("Open");
+                open.addActionListener(e -> { closeAllAnnotationBubblePopups(); openAnnotationTarget(a); });
+                actions.add(open);
+            }
+            card.add(actions, BorderLayout.SOUTH);
+            list.add(card);
+            list.add(Box.createVerticalStrut(6));
+        }
+        panel.add(new JScrollPane(list), BorderLayout.CENTER);
+        JButton allDetails = new JButton("Show All Details");
+        allDetails.addActionListener(e -> { showAnnotationDetails(annotations); closeAllAnnotationBubblePopups(); });
+        JPanel bottom = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        bottom.setOpaque(false);
+        bottom.add(allDetails);
+        if (primary != null) {
+            JButton select = new JButton("Select Text");
+            select.addActionListener(e -> { safeSelect(primary.start, primary.end); closeAllAnnotationBubblePopups(); });
+            bottom.add(select);
+        }
+        panel.add(bottom, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private String annotationDisplayName(TextAnnotation a) {
+        String type = safe(a == null ? "" : a.type);
+        if (type.isEmpty()) type = "Annotation";
+        return type + " Highlight";
+    }
+
+    private String annotationSummaryText(TextAnnotation a) {
+        if (a == null) return "";
+        StringBuilder sb = new StringBuilder();
+        if (!safe(a.target).isEmpty()) sb.append("Target: ").append(a.target).append("\n");
+        if (!safe(a.note).isEmpty()) sb.append(a.note);
+        if (sb.length() == 0) sb.append("(No note text)");
+        return sb.toString();
     }
 
     private Integer verseNumberAtPosition(int pos) {
@@ -4050,7 +4265,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             int renderedEnd = sourceOffsetToRenderedOffset(sourceEnd, false);
             String selected = readerPane.getDocument().getText(renderedStart, Math.max(0, renderedEnd - renderedStart));
             for (AnnotationBubbleMarker marker : visibleAnnotationBubbles) {
-                selected = selected.replace(bubbleTextForAnnotation(marker.annotation), "");
+                selected = selected.replace(marker.markerText, "");
             }
             return selected;
         } catch (Exception ignored) {
@@ -4280,6 +4495,50 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (currentSourceKey == null) return;
         if (currentSourceKey.startsWith("BIBLE:")) showSelectedChapter(false);
         else if (currentSourceKey.startsWith("LIBRARY:")) showLibraryDoc(currentSourceKey.substring("LIBRARY:".length()));
+    }
+
+    private void showAnnotationDetails(java.util.List<TextAnnotation> annotations) {
+        if (annotations == null || annotations.isEmpty()) return;
+        annotations = new ArrayList<>(annotations);
+        annotations.sort(this::compareAnnotationsForDisplay);
+        if (annotations.size() == 1) {
+            showAnnotationDetails(annotations.get(0));
+            return;
+        }
+
+        detailsPanel.removeAll();
+        TextAnnotation primary = primaryAnnotation(annotations);
+        addDetailTitle(annotations.size() + " Attached Annotations");
+        if (primary != null) {
+            addDetailText("Source: " + primary.sourceTitle + "\nSelected text: “" + primary.selectedText + "”");
+        }
+        for (TextAnnotation a : annotations) {
+            addDetailText(annotationDisplayName(a)
+                    + (safe(a.category).isEmpty() ? "" : "\nCategory: " + a.category + "\nColor: " + colorHex(colorForCategory(a.category)))
+                    + (safe(a.target).isEmpty() ? "" : "\nAttached to: " + a.target)
+                    + (safe(a.note).isEmpty() ? "" : "\n" + a.note));
+            JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+            actions.setOpaque(false);
+            actions.setAlignmentX(Component.LEFT_ALIGNMENT);
+            JButton edit = blackButton("Edit " + safe(a.type));
+            edit.addActionListener(e -> editAnnotation(a));
+            actions.add(edit);
+            if (!safe(a.target).isEmpty()) {
+                JButton open = blackButton("Open Target");
+                open.addActionListener(e -> openAnnotationTarget(a));
+                actions.add(open);
+            }
+            detailsPanel.add(actions);
+            detailsPanel.add(Box.createVerticalStrut(8));
+        }
+        if (primary != null) {
+            JButton pin = blackButton("Pin This Text To Sidebar");
+            pin.setAlignmentX(Component.LEFT_ALIGNMENT);
+            pin.addActionListener(e -> pinAnnotationToSidebar(primary));
+            detailsPanel.add(pin);
+        }
+        detailsPanel.revalidate();
+        detailsPanel.repaint();
     }
 
     private void showAnnotationDetails(TextAnnotation a) {
@@ -8134,15 +8393,74 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private static class AnnotationBubbleMarker {
         TextAnnotation annotation;
+        java.util.List<TextAnnotation> annotations = new ArrayList<>();
+        String markerText;
         int sourceOffset;
         int startOffset;
         int endOffset;
 
         AnnotationBubbleMarker(TextAnnotation annotation, int sourceOffset, int startOffset, int endOffset) {
+            this(annotation, Collections.singletonList(annotation), "", sourceOffset, startOffset, endOffset);
+        }
+
+        AnnotationBubbleMarker(TextAnnotation annotation, java.util.List<TextAnnotation> annotations, String markerText, int sourceOffset, int startOffset, int endOffset) {
             this.annotation = annotation;
+            if (annotations != null) this.annotations = new ArrayList<>(annotations);
+            this.markerText = markerText == null ? "" : markerText;
             this.sourceOffset = sourceOffset;
             this.startOffset = startOffset;
             this.endOffset = endOffset;
+        }
+
+        String popupKey() {
+            if (annotations == null || annotations.isEmpty()) return annotation == null ? "" : annotation.id;
+            StringBuilder sb = new StringBuilder();
+            for (TextAnnotation a : annotations) {
+                if (a == null) continue;
+                if (sb.length() > 0) sb.append('|');
+                sb.append(a.id);
+            }
+            return sb.toString();
+        }
+    }
+
+    private static class AnnotationUnderlinePainter extends LayeredHighlighter.LayerPainter {
+        private final Color color;
+
+        AnnotationUnderlinePainter(Color color) {
+            this.color = color == null ? Color.GRAY : color;
+        }
+
+        public void paint(Graphics g, int offs0, int offs1, Shape bounds, JTextComponent c) {
+            try {
+                Rectangle start = c.modelToView(offs0);
+                Rectangle end = c.modelToView(Math.max(offs0, offs1 - 1));
+                if (start == null || end == null) return;
+                Rectangle r = start.union(end);
+                paintLine(g, r);
+            } catch (BadLocationException ignored) {}
+        }
+
+        public Shape paintLayer(Graphics g, int offs0, int offs1, Shape bounds, JTextComponent c, View view) {
+            try {
+                Shape shape = view.modelToView(offs0, Position.Bias.Forward, offs1, Position.Bias.Backward, bounds);
+                Rectangle r = shape == null ? bounds.getBounds() : shape.getBounds();
+                paintLine(g, r);
+                return r;
+            } catch (BadLocationException ex) {
+                Rectangle r = bounds.getBounds();
+                paintLine(g, r);
+                return r;
+            }
+        }
+
+        private void paintLine(Graphics g, Rectangle r) {
+            if (r == null) return;
+            Color old = g.getColor();
+            g.setColor(color.darker());
+            int y = Math.max(r.y, r.y + r.height - 3);
+            g.fillRect(r.x, y, Math.max(1, r.width), 2);
+            g.setColor(old);
         }
     }
 
