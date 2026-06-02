@@ -2581,7 +2581,7 @@ public class BibleReaderApp extends JFrame {
 
     private boolean looksLikeBibleReference(String raw) {
         if (raw == null) return false;
-        return parseChapterRef(raw.trim()) != null || parseRef(raw.trim()) != null || parseBibleReferenceOrRange(raw.trim()) != null;
+        return parseBibleReference(raw.trim()) != null || parseChapterRef(raw.trim()) != null || parseRef(raw.trim()) != null || parseBibleReferenceOrRange(raw.trim()) != null;
     }
 
     private void goToReferenceFromBox() {
@@ -2593,19 +2593,30 @@ public class BibleReaderApp extends JFrame {
     private boolean openReference(String raw, boolean showMessage) {
         if (raw == null || raw.trim().isEmpty()) return false;
         String target = raw.trim();
+        ParsedReference parsed = parseBibleReference(target);
+        if (parsed != null) {
+            goToBibleReference(parsed.bookKey, parsed.chapter, parsed.verse);
+            return true;
+        }
+
         ChapterRef cr = parseChapterRef(target);
         PassageRef pr = parseBibleReferenceOrRange(target);
         RefParts rp = parseRef(target);
         if (cr != null) {
-            selectedBook = cr.book; selectedChapter = cr.chapter; refreshBookCombo(); showSelectedChapter(true); showCard("study"); return true;
+            goToBibleReference(cr.book, cr.chapter, null);
+            return true;
         }
         if (pr != null) {
-            selectedBook = pr.book; selectedChapter = pr.chapter; refreshBookCombo(); showSelectedChapter(true); showCard("study"); selectVerseText(pr.startVerse); return true;
+            goToBibleReference(pr.book, pr.chapter, pr.startVerse);
+            return true;
         }
         if (rp != null && data.bible.containsKey(rp.book) && data.getChapters(rp.book).contains(rp.chapter)) {
-            selectedBook = rp.book; selectedChapter = rp.chapter; refreshBookCombo(); showSelectedChapter(true); showCard("study"); selectVerseText(rp.verse); return true;
+            goToBibleReference(rp.book, rp.chapter, rp.verse);
+            return true;
         }
-        if (showMessage) JOptionPane.showMessageDialog(this, "Reference not found: " + raw + "\nTry formats like Romans 14, Romans 14:13, Gen 1, or John 3:16.");
+        String message = "Reference not found: " + raw + "\nTry formats like Romans 3:23, Rom 3, 1 John 1:9, Gen 1, or John 3:16.";
+        setStatusMessage(message.replace("\n", " "));
+        if (showMessage) JOptionPane.showMessageDialog(this, message);
         return false;
     }
 
@@ -6388,6 +6399,196 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         readerPane.setCaretPosition(s);
     }
 
+    private ParsedReference parseBibleReference(String input) {
+        if (data == null || data.bible == null || data.bible.isEmpty()) return null;
+        String normalized = normalizeReferenceInput(input);
+        if (normalized.isEmpty()) return null;
+
+        Map<String, String> aliases = buildBookAliasMap();
+        List<String> sortedAliases = new ArrayList<>(aliases.keySet());
+        sortedAliases.sort((a, b) -> Integer.compare(b.length(), a.length()));
+
+        for (String alias : sortedAliases) {
+            if (!normalized.equals(alias) && !normalized.startsWith(alias + " ")) continue;
+            String remaining = normalized.length() == alias.length() ? "" : normalized.substring(alias.length()).trim();
+            Matcher matcher = Pattern.compile("^(\\d+)(?:\\s*:\\s*(\\d+))?$").matcher(remaining);
+            if (!matcher.matches()) continue;
+            try {
+                String bookKey = aliases.get(alias);
+                int chapter = Integer.parseInt(matcher.group(1));
+                Integer verse = matcher.group(2) == null ? null : Integer.parseInt(matcher.group(2));
+                if (chapter <= 0 || (verse != null && verse <= 0)) return null;
+                if (!data.bible.containsKey(bookKey) || !data.getChapters(bookKey).contains(chapter)) return null;
+                return new ParsedReference(bookKey, chapter, verse);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private Map<String, String> buildBookAliasMap() {
+        Map<String, String> aliases = new HashMap<>();
+        if (data == null || data.bible == null) return aliases;
+
+        for (String bookKey : data.bible.keySet()) {
+            addBookAlias(aliases, bookKey, bookKey);
+            addBookAlias(aliases, displayBibleBookName(bookKey), bookKey);
+        }
+
+        addCanonicalBookAliases(aliases, "Genesis", "Gen", "Ge", "Gn");
+        addCanonicalBookAliases(aliases, "Exodus", "Ex", "Exo", "Exod");
+        addCanonicalBookAliases(aliases, "Leviticus", "Lev", "Le", "Lv");
+        addCanonicalBookAliases(aliases, "Numbers", "Num", "Nu", "Nm", "Nb");
+        addCanonicalBookAliases(aliases, "Deuteronomy", "Deut", "Dt");
+        addCanonicalBookAliases(aliases, "Joshua", "Josh", "Jos", "Jsh");
+        addCanonicalBookAliases(aliases, "Judges", "Judg", "Jdg", "Jg");
+        addCanonicalBookAliases(aliases, "Ruth", "Ru");
+        addCanonicalBookAliases(aliases, "1 Samuel", "1 Sam", "1Sa", "1 Sm", "I Samuel", "First Samuel");
+        addCanonicalBookAliases(aliases, "2 Samuel", "2 Sam", "2Sa", "2 Sm", "II Samuel", "Second Samuel");
+        addCanonicalBookAliases(aliases, "1 Kings", "1 Kgs", "1Ki", "1 Kin", "I Kings", "First Kings");
+        addCanonicalBookAliases(aliases, "2 Kings", "2 Kgs", "2Ki", "2 Kin", "II Kings", "Second Kings");
+        addCanonicalBookAliases(aliases, "1 Chronicles", "1 Chr", "1Ch", "1 Chron", "I Chronicles", "First Chronicles");
+        addCanonicalBookAliases(aliases, "2 Chronicles", "2 Chr", "2Ch", "2 Chron", "II Chronicles", "Second Chronicles");
+        addCanonicalBookAliases(aliases, "Ezra", "Ezr");
+        addCanonicalBookAliases(aliases, "Nehemiah", "Neh", "Ne");
+        addCanonicalBookAliases(aliases, "Esther", "Est", "Esth");
+        addCanonicalBookAliases(aliases, "Job", "Jb");
+        addCanonicalBookAliases(aliases, "Psalms", "Psalm", "Ps", "Psa", "Pss");
+        addCanonicalBookAliases(aliases, "Proverbs", "Prov", "Pr", "Prv");
+        addCanonicalBookAliases(aliases, "Ecclesiastes", "Eccl", "Ecc", "Qoheleth");
+        addCanonicalBookAliases(aliases, "Song of Solomon", "Song", "Song of Songs", "SOS", "Canticles");
+        addCanonicalBookAliases(aliases, "Isaiah", "Isa", "Is");
+        addCanonicalBookAliases(aliases, "Jeremiah", "Jer", "Je", "Jr");
+        addCanonicalBookAliases(aliases, "Lamentations", "Lam", "La");
+        addCanonicalBookAliases(aliases, "Ezekiel", "Ezek", "Eze", "Ez");
+        addCanonicalBookAliases(aliases, "Daniel", "Dan", "Da", "Dn");
+        addCanonicalBookAliases(aliases, "Hosea", "Hos", "Ho");
+        addCanonicalBookAliases(aliases, "Joel", "Jl");
+        addCanonicalBookAliases(aliases, "Amos", "Am");
+        addCanonicalBookAliases(aliases, "Obadiah", "Obad", "Ob");
+        addCanonicalBookAliases(aliases, "Jonah", "Jon");
+        addCanonicalBookAliases(aliases, "Micah", "Mic", "Mc");
+        addCanonicalBookAliases(aliases, "Nahum", "Nah", "Na");
+        addCanonicalBookAliases(aliases, "Habakkuk", "Hab");
+        addCanonicalBookAliases(aliases, "Zephaniah", "Zeph", "Zep");
+        addCanonicalBookAliases(aliases, "Haggai", "Hag", "Hg");
+        addCanonicalBookAliases(aliases, "Zechariah", "Zech", "Zec", "Zc");
+        addCanonicalBookAliases(aliases, "Malachi", "Mal", "Ml");
+        addCanonicalBookAliases(aliases, "Matthew", "Matt", "Mt");
+        addCanonicalBookAliases(aliases, "Mark", "Mrk", "Mk", "Mr");
+        addCanonicalBookAliases(aliases, "Luke", "Luk", "Lk");
+        addCanonicalBookAliases(aliases, "John", "Jn", "Jhn", "Joh");
+        addCanonicalBookAliases(aliases, "Acts", "Act", "Ac");
+        addCanonicalBookAliases(aliases, "Romans", "Rom", "Ro", "Rm");
+        addCanonicalBookAliases(aliases, "1 Corinthians", "1 Cor", "1Co", "I Corinthians", "First Corinthians");
+        addCanonicalBookAliases(aliases, "2 Corinthians", "2 Cor", "2Co", "II Corinthians", "Second Corinthians");
+        addCanonicalBookAliases(aliases, "Galatians", "Gal", "Ga");
+        addCanonicalBookAliases(aliases, "Ephesians", "Eph", "Ep");
+        addCanonicalBookAliases(aliases, "Philippians", "Phil", "Php", "Pp");
+        addCanonicalBookAliases(aliases, "Colossians", "Col", "Co");
+        addCanonicalBookAliases(aliases, "1 Thessalonians", "1 Thess", "1Th", "I Thessalonians", "First Thessalonians");
+        addCanonicalBookAliases(aliases, "2 Thessalonians", "2 Thess", "2Th", "II Thessalonians", "Second Thessalonians");
+        addCanonicalBookAliases(aliases, "1 Timothy", "1 Tim", "1Ti", "I Timothy", "First Timothy");
+        addCanonicalBookAliases(aliases, "2 Timothy", "2 Tim", "2Ti", "II Timothy", "Second Timothy");
+        addCanonicalBookAliases(aliases, "Titus", "Tit", "Ti");
+        addCanonicalBookAliases(aliases, "Philemon", "Philem", "Phm", "Pm");
+        addCanonicalBookAliases(aliases, "Hebrews", "Heb");
+        addCanonicalBookAliases(aliases, "James", "Jas", "Jm");
+        addCanonicalBookAliases(aliases, "1 Peter", "1 Pet", "1Pe", "1 Pt", "I Peter", "First Peter");
+        addCanonicalBookAliases(aliases, "2 Peter", "2 Pet", "2Pe", "2 Pt", "II Peter", "Second Peter");
+        addCanonicalBookAliases(aliases, "1 John", "1 Jn", "1Jn", "1Jo", "I John", "First John");
+        addCanonicalBookAliases(aliases, "2 John", "2 Jn", "2Jn", "2Jo", "II John", "Second John");
+        addCanonicalBookAliases(aliases, "3 John", "3 Jn", "3Jn", "3Jo", "III John", "Third John");
+        addCanonicalBookAliases(aliases, "Jude", "Jud");
+        addCanonicalBookAliases(aliases, "Revelation", "Rev", "Re", "The Revelation", "Apocalypse");
+        return aliases;
+    }
+
+    private void addCanonicalBookAliases(Map<String, String> aliases, String canonical, String... variants) {
+        String bookKey = findBibleBookKey(canonical);
+        if (bookKey == null || bookKey.isEmpty()) return;
+        addBookAlias(aliases, canonical, bookKey);
+        for (String variant : variants) addBookAlias(aliases, variant, bookKey);
+    }
+
+    private void addBookAlias(Map<String, String> aliases, String alias, String bookKey) {
+        String normalized = normalizeReferenceBookAlias(alias);
+        if (normalized.isEmpty() || bookKey == null || bookKey.isEmpty()) return;
+        aliases.putIfAbsent(normalized, bookKey);
+        String compact = normalized.replace(" ", "");
+        if (!compact.equals(normalized)) aliases.putIfAbsent(compact, bookKey);
+    }
+
+    private String findBibleBookKey(String canonical) {
+        if (data == null || data.bible == null) return "";
+        if (data.bible.containsKey(canonical)) return canonical;
+        String wanted = normalizeReferenceBookAlias(canonical);
+        for (String bookKey : data.bible.keySet()) {
+            if (normalizeReferenceBookAlias(bookKey).equals(wanted)
+                    || normalizeReferenceBookAlias(displayBibleBookName(bookKey)).equals(wanted)) return bookKey;
+        }
+        return "";
+    }
+
+    private String normalizeReferenceInput(String input) {
+        if (input == null) return "";
+        String normalized = input.toLowerCase(Locale.ROOT)
+                .replace('’', '\'')
+                .replaceAll("[.;,!?]+$", "")
+                .replaceAll("[.]", "")
+                .replaceAll("[^a-z0-9:']+", " ")
+                .replaceAll("\\s*:\\s*", ":")
+                .replaceAll("\\s+", " ")
+                .trim();
+        normalized = normalized.replace("'", " ").replaceAll("\\s+", " ").trim();
+        normalized = normalized.replaceFirst("^first ", "1 ")
+                .replaceFirst("^second ", "2 ")
+                .replaceFirst("^third ", "3 ");
+        return normalized.replaceAll("\\s+", " ").trim();
+    }
+
+    private String normalizeReferenceBookAlias(String alias) {
+        String normalized = normalizeReferenceInput(alias);
+        return normalized.replace(":", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    private void goToBibleReference(String bookKey, int chapter, Integer verse) {
+        selectedBook = bookKey;
+        selectedChapter = chapter;
+        refreshBookCombo();
+        showSelectedChapter(true);
+        showCard("study");
+        if (verse != null) {
+            SwingUtilities.invokeLater(() -> scrollToVerse(verse));
+        }
+        setStatusMessage("Opened " + displayBibleBookName(bookKey) + " " + chapter + (verse == null ? "" : ":" + verse) + ".");
+    }
+
+    private void scrollToVerse(int verse) {
+        try {
+            String txt = readerPane.getDocument().getText(0, readerPane.getDocument().getLength());
+            Matcher marker = Pattern.compile("(?m)^" + Pattern.quote(String.valueOf(verse)) + "\\s").matcher(txt);
+            if (!marker.find()) {
+                setStatusMessage("Opened " + currentSourceTitle + ", but verse " + verse + " was not found in this chapter.");
+                return;
+            }
+            int start = marker.start();
+            int end = txt.indexOf("\n\n", start);
+            if (end < 0) end = txt.length();
+            readerPane.requestFocusInWindow();
+            readerPane.setCaretPosition(start);
+            readerPane.moveCaretPosition(end);
+            Rectangle r = readerPane.modelToView2D(start).getBounds();
+            readerPane.scrollRectToVisible(r);
+        } catch (Exception ignored) {}
+    }
+
+    private void setStatusMessage(String message) {
+        if (statusLabel == null || message == null) return;
+        statusLabel.setText(" " + message);
+    }
+
     private ChapterRef parseChapterRef(String key) {
         try {
             if (key == null || key.contains(":")) return null;
@@ -7688,6 +7889,18 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             label.setForeground(isSelected ? list.getSelectionForeground() : c.darker());
             label.setBorder(new CompoundBorder(new MatteBorder(0, 7, 0, 0, c), new EmptyBorder(4, 8, 4, 4)));
             return label;
+        }
+    }
+
+    private static class ParsedReference {
+        String bookKey;
+        int chapter;
+        Integer verse;
+
+        ParsedReference(String bookKey, int chapter, Integer verse) {
+            this.bookKey = bookKey;
+            this.chapter = chapter;
+            this.verse = verse;
         }
     }
 
