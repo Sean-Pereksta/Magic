@@ -1,0 +1,3095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Safelite Org Structure Builder</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+<style>
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f9fafb;
+    color: #1f2933;
+  }
+
+  header {
+    background: linear-gradient(135deg, #7f1d1d, #dc2626);
+    color: white;
+    padding: 18px 24px;
+    box-shadow: 0 3px 10px rgba(0,0,0,.25);
+  }
+
+  header h1 {
+    margin: 0;
+    font-size: 25px;
+  }
+
+  header p {
+    margin: 6px 0 0;
+    opacity: .92;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+    box-shadow: 0 2px 6px rgba(0,0,0,.05);
+  }
+
+  input,
+  select,
+  button {
+    font-size: 14px;
+  }
+
+  input[type="file"],
+  input[type="text"],
+  select {
+    padding: 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: white;
+  }
+
+  button {
+    border: none;
+    border-radius: 6px;
+    padding: 9px 12px;
+    cursor: pointer;
+    font-weight: bold;
+    background: #b91c1c;
+    color: white;
+  }
+
+  button:hover {
+    filter: brightness(.92);
+  }
+
+  button.secondary {
+    background: #6b7280;
+  }
+
+  button.green {
+    background: #15803d;
+  }
+
+  button.orange {
+    background: #c2410c;
+  }
+
+  button.danger {
+    background: #991b1b;
+  }
+
+  .primary-add-btn {
+    background: #b91c1c;
+    padding: 8px 11px;
+    font-size: 13px;
+    font-weight: bold;
+  }
+
+  .secondary-add-btn {
+    background: #6b7280;
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: bold;
+    font-size: 13px;
+  }
+
+  #progressWrap {
+    display: none;
+    padding: 8px 16px;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .progress-top {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+
+  .progress-track {
+    height: 12px;
+    background: #fee2e2;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  #progressBar {
+    height: 100%;
+    width: 0%;
+    background: #dc2626;
+    transition: width .15s;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 310px 1fr 360px;
+    gap: 14px;
+    padding: 14px;
+    height: calc(100vh - 175px);
+  }
+
+  .panel {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 11px;
+    box-shadow: 0 3px 10px rgba(0,0,0,.07);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .panel h2 {
+    margin: 0;
+    padding: 12px 14px;
+    background: #fff1f2;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 16px;
+    color: #7f1d1d;
+  }
+
+  .panel-body {
+    padding: 12px;
+    overflow: auto;
+    min-height: 0;
+  }
+
+  .notice {
+    background: #fff8dc;
+    border: 1px solid #e5d28b;
+    padding: 9px;
+    border-radius: 7px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+
+  .person-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .person-card {
+    padding: 9px;
+    background: #fffafa;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: grab;
+    user-select: none;
+  }
+
+  .person-card:hover {
+    background: #fee2e2;
+    border-color: #ef4444;
+  }
+
+  .person-card.selected {
+    background: #fecaca;
+    border-color: #b91c1c;
+    box-shadow: 0 0 0 2px rgba(185,28,28,.15);
+  }
+
+  .people-search-row {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .people-search-row input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .filter-button {
+    white-space: nowrap;
+    background: #7f1d1d;
+  }
+
+  .people-list-summary {
+    font-size: 12px;
+    color: #4b5563;
+    font-weight: bold;
+    margin: 0 0 8px;
+    line-height: 1.4;
+  }
+
+  .advanced-filter-note {
+    display: inline-block;
+    margin-top: 2px;
+    color: #7f1d1d;
+  }
+
+  .filter-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(31, 41, 55, .55);
+  }
+
+  .filter-modal-backdrop.open {
+    display: flex;
+  }
+
+  .filter-modal {
+    width: min(900px, 96vw);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    box-shadow: 0 18px 45px rgba(0,0,0,.3);
+    overflow: hidden;
+  }
+
+  .filter-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    background: #fff1f2;
+    border-bottom: 1px solid #fecaca;
+  }
+
+  .filter-modal-header h2 {
+    margin: 0;
+    color: #7f1d1d;
+    font-size: 19px;
+  }
+
+  .filter-close-btn {
+    background: #6b7280;
+    border-radius: 999px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .filter-modal-body {
+    padding: 14px 16px;
+    overflow: auto;
+  }
+
+  .filter-modal-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+  }
+
+  .filter-row-card {
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: #fffafa;
+  }
+
+  .filter-row-top {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 130px auto;
+    gap: 8px;
+    align-items: start;
+    margin-bottom: 10px;
+  }
+
+  .filter-row-card label {
+    display: block;
+    margin-bottom: 4px;
+    color: #7f1d1d;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  .filter-row-card select,
+  .filter-row-card input[type="text"] {
+    width: 100%;
+  }
+
+  .filter-values-list {
+    max-height: 190px;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: white;
+    padding: 6px;
+  }
+
+  .filter-value-option {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 6px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .filter-value-option:hover {
+    background: #fff1f2;
+  }
+
+  .filter-value-option.selected {
+    background: #fee2e2;
+    color: #7f1d1d;
+    font-weight: bold;
+  }
+
+  .filter-empty-state {
+    padding: 10px;
+    color: #6b7280;
+    font-size: 13px;
+  }
+
+  @media (max-width: 700px) {
+    .filter-row-top {
+      grid-template-columns: 1fr;
+    }
+
+    .people-search-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+
+  .small {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 3px;
+  }
+
+  .drop-zone {
+    padding: 12px;
+    border: 2px dashed #fca5a5;
+    background: #fff7f7;
+    color: #7f1d1d;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 12px;
+    font-weight: bold;
+  }
+
+  .drop-zone.drag-over,
+  .drop-target.drag-over {
+    background: #fee2e2 !important;
+    outline: 3px solid #dc2626;
+    outline-offset: -3px;
+  }
+
+  .org-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .director-block {
+    border: 2px solid #7f1d1d;
+    border-radius: 11px;
+    overflow: hidden;
+    background: #fff7f7;
+  }
+
+  .director-header {
+    background: #7f1d1d;
+    color: white;
+    padding: 10px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    cursor: grab;
+  }
+
+  .manager-block {
+    margin: 10px;
+    border: 1px solid #fca5a5;
+    border-radius: 9px;
+    background: white;
+    overflow: hidden;
+  }
+
+  .manager-header {
+    background: #fee2e2;
+    color: #7f1d1d;
+    padding: 9px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: grab;
+  }
+
+  .coach-row {
+    margin: 8px 10px;
+    padding: 8px;
+    border: 1px solid #fecaca;
+    background: #fffafa;
+    border-radius: 7px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: grab;
+  }
+
+  .name-click {
+    cursor: pointer;
+    color: #7f1d1d;
+    font-weight: bold;
+  }
+
+  .name-click:hover {
+    text-decoration: underline;
+  }
+
+  .director-header .name-click {
+    color: white;
+  }
+
+  .mini-btn {
+    padding: 4px 7px;
+    font-size: 11px;
+    border-radius: 4px;
+  }
+
+  .remove-btn {
+    background: #991b1b;
+  }
+
+  .role-actions {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: white;
+  }
+
+  th {
+    background: #7f1d1d;
+    color: white;
+    padding: 8px;
+    border: 1px solid #450a0a;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    text-align: left;
+  }
+
+  td {
+    padding: 7px;
+    border: 1px solid #e5e7eb;
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td {
+    background: #fff7f7;
+  }
+
+  .output-preview-wrap {
+    height: 360px;
+    max-height: 45vh;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 0 0 8px 8px;
+    background: white;
+  }
+
+  .direct-report {
+    border: 1px solid #fecaca;
+    background: #fffafa;
+    border-radius: 8px;
+    padding: 9px;
+    margin-bottom: 8px;
+    cursor: grab;
+  }
+
+  .direct-report-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+
+  .mapping-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .mapping-row label {
+    font-weight: bold;
+    font-size: 13px;
+  }
+
+  .status-pill {
+    background: #fff1f2;
+    border: 1px solid #fecaca;
+    border-radius: 999px;
+    padding: 6px 9px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #7f1d1d;
+  }
+
+  .view-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .view-tab {
+    background: #6b7280;
+  }
+
+  .view-tab.active {
+    background: #7f1d1d;
+  }
+
+  .view-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .path-cell {
+    font-weight: bold;
+    color: #7f1d1d;
+    min-width: 420px;
+    white-space: nowrap;
+  }
+
+  .email-list {
+    font-size: 12px;
+    line-height: 1.45;
+    min-width: 360px;
+  }
+
+  .options-wrap {
+    padding: 4px;
+  }
+
+  .options-card {
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    background: #fffafa;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+
+  .options-card h3 {
+    margin: 0 0 10px;
+    color: #7f1d1d;
+  }
+
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+    gap: 10px;
+  }
+
+  .options-field label {
+    display: block;
+    margin-bottom: 4px;
+    color: #7f1d1d;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  .options-field input,
+  .options-field select {
+    width: 100%;
+  }
+
+  .options-actions {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .options-table-wrap {
+    max-height: 220px;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: white;
+  }
+
+  .original-name-note {
+    display: block;
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: normal;
+    margin-top: 2px;
+  }
+
+  .director-header .original-name-note {
+    color: #fee2e2;
+  }
+
+
+  @media (max-width: 1150px) {
+    .layout {
+      grid-template-columns: 1fr;
+      height: auto;
+    }
+
+    .panel {
+      min-height: 340px;
+    }
+
+    .output-preview-wrap {
+      max-height: 420px;
+    }
+  }
+
+  .compare-wrap { padding: 10px; }
+  .compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .compare-card { border:1px solid #e5e7eb; border-radius:9px; padding:10px; background:#fffafa; }
+  .compare-card h3 { margin:0 0 8px; color:#7f1d1d; }
+  .compare-good { background:#dcfce7; border-left:5px solid #15803d; }
+  .emails-tool-wrap { padding: 10px; }
+  .email-tool-actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .manual-email-input { width:100%; min-width:260px; padding:7px; border:1px solid #d1d5db; border-radius:6px; font-size:12px; }
+  .email-status-good { background:#dcfce7 !important; color:#166534; font-weight:bold; }
+  .email-status-warning { background:#fef9c3 !important; color:#854d0e; font-weight:bold; }
+  .email-status-bad { background:#fee2e2 !important; color:#991b1b; font-weight:bold; }
+  .compare-warning { background:#fef9c3; border-left:5px solid #ca8a04; }
+  .compare-bad { background:#fee2e2; border-left:5px solid #b91c1c; }
+  .compare-section { margin-top:12px; border:1px solid #e5e7eb; border-radius:9px; overflow:hidden; }
+  .compare-section h3 { margin:0; padding:9px 10px; background:#fff1f2; color:#7f1d1d; border-bottom:1px solid #e5e7eb; }
+  .diff-cell { background:#fee2e2 !important; color:#7f1d1d; font-weight:bold; }
+  .match-cell { background:#dcfce7 !important; }
+  .partial-cell { background:#fef9c3 !important; }
+  .safelite-email-box,
+  #safeliteEmailBox {
+    width: 100%;
+    min-height: 70px;
+    resize: vertical;
+    padding: 7px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+  }
+  .safelite-users-row td {
+    background: #fff1f2 !important;
+    border-top: 3px solid #7f1d1d;
+  }
+
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>Safelite Org Structure Builder</h1>
+  <p>Upload Excel, combine Last/First names, build the Director → Manager → Coach structure, save locally, and export Org, Users, or Filters views.</p>
+</header>
+
+<div class="toolbar">
+  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+
+  <div class="mapping-row">
+    <label>First:</label>
+    <select id="firstNameSelect"></select>
+
+    <label>Last:</label>
+    <select id="lastNameSelect"></select>
+
+    <label>Supervisor:</label>
+    <select id="supervisorSelect"></select>
+
+    <label>Username / Studio Email:</label>
+    <select id="emailSelect"></select>
+
+    <button onclick="applyColumnMapping()">Apply Mapping</button>
+  </div>
+
+  <label class="toggle-label">
+    <input type="checkbox" id="includeEmailToggle" checked onchange="renderAll()" />
+    Include Username/Email Column
+  </label>
+
+  <button class="green" onclick="saveLocal()">Local Save</button>
+  <button class="orange" onclick="loadLocal()">Local Load</button>
+  <button class="green" onclick="exportOrgBlueprint()">Export Org Blueprint</button>
+  <input type="file" id="blueprintImportInput" accept=".json,.xlsx,.xls,.csv" style="display:none;" onchange="handleBlueprintImport(event)" />
+  <button class="orange" onclick="document.getElementById('blueprintImportInput').click()">Upload Org Blueprint</button>
+  <button onclick="exportCSV()">Export CSV</button>
+  <button onclick="exportExcel()">Export Excel</button>
+  <button class="danger" onclick="clearOrg()">Clear Org</button>
+
+  <span id="statusPill" class="status-pill">No file loaded</span>
+</div>
+
+<div id="progressWrap">
+  <div class="progress-top">
+    <span id="progressText">Processing...</span>
+    <span id="progressPercent">0%</span>
+  </div>
+  <div class="progress-track">
+    <div id="progressBar"></div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <section class="panel">
+    <h2>People Search</h2>
+    <div class="panel-body">
+      <div class="people-search-row">
+        <input
+          id="searchInput"
+          type="text"
+          placeholder="Search names, overrides, or usernames..."
+          oninput="renderPeopleList()"
+        />
+        <button id="peopleFilterButton" class="filter-button" onclick="openPeopleFilters()">Filters</button>
+      </div>
+
+      <label class="toggle-label" style="margin-bottom:10px;">
+        <input type="checkbox" id="hideAssignedPeopleToggle" onchange="renderPeopleList()" />
+        Hide people already assigned in Org Builder
+      </label>
+
+      <div id="peopleListSummary" class="people-list-summary">Showing 0 of 0 people</div>
+
+      <div class="notice">
+        Drag a person into the org builder. Click a person anywhere to show their available direct reports on the right.
+      </div>
+
+      <div id="peopleList" class="person-list"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Org Builder</h2>
+    <div class="panel-body">
+
+      <div
+        id="directorDropZone"
+        class="drop-zone"
+        ondragover="allowDrop(event)"
+        ondragleave="removeDragOver(event)"
+        ondrop="dropAsDirector(event)"
+      >
+        Drop a person here to add them as a Director
+      </div>
+
+      <div class="notice">
+        Drag a name onto a Director to make them a Manager. Drag a name onto a Manager to make them a Coach.
+        Existing Directors, Managers, and Coaches can be dragged to change their placement.
+      </div>
+
+      <div id="orgTree" class="org-tree"></div>
+
+      <h2 style="margin:15px 0 0; border-radius:8px 8px 0 0;">Output Preview</h2>
+
+      <div class="view-tabs">
+        <button id="orgViewBtn" class="view-tab active" onclick="setViewMode('org')">Org View</button>
+        <button id="usersViewBtn" class="view-tab" onclick="setViewMode('users')">Users View</button>
+        <button id="filtersViewBtn" class="view-tab" onclick="setViewMode('filters')">Filters View</button>
+        <button id="emailsViewBtn" class="view-tab" onclick="setViewMode('emails')">Emails</button>
+        <button id="compareViewBtn" class="view-tab" onclick="setViewMode('compare')">Compare Files</button>
+        <button id="optionsViewBtn" class="view-tab" onclick="setViewMode('options')">Options</button>
+      </div>
+
+      <div class="view-actions">
+        <button class="green" onclick="autoFillCoaches()">Auto Fill Coaches</button>
+        <button class="secondary" onclick="autoFillAllLeaders()">Auto Fill All Leaders</button>
+        <button class="secondary" onclick="clearFilledEmails()">Clear Filled Emails</button>
+      </div>
+
+      <div class="output-preview-wrap">
+        <table id="outputTable">
+          <thead>
+            <tr id="outputTableHeader"></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Selected Person / Direct Reports</h2>
+    <div class="panel-body">
+      <div id="selectedBox" class="notice">
+        Click a person to show everyone who has that person listed under the Supervisor column.
+      </div>
+
+      <div class="role-actions" style="margin-bottom:10px;">
+        <button class="primary-add-btn" onclick="autoAddAllDirectReports()">Add All Direct Reports Under Selected</button>
+        <button class="secondary-add-btn" onclick="addSelectedAsDirector()">Add Selected as Director</button>
+      </div>
+
+      <div id="directReportsBox"></div>
+    </div>
+  </section>
+
+</div>
+
+<div id="peopleFilterModalBackdrop" class="filter-modal-backdrop" onclick="handlePeopleFilterBackdropClick(event)">
+  <div class="filter-modal" role="dialog" aria-modal="true" aria-labelledby="peopleFilterTitle">
+    <div class="filter-modal-header">
+      <h2 id="peopleFilterTitle">People Filters</h2>
+      <button class="filter-close-btn" onclick="closePeopleFilters()" aria-label="Close people filters">×</button>
+    </div>
+    <div id="peopleFilterModalBody" class="filter-modal-body"></div>
+    <div class="filter-modal-actions">
+      <button onclick="addPeopleFilterRow()">+ Add Filter</button>
+      <button class="green" onclick="savePeopleFiltersAndClose()">Save Changes and Leave</button>
+      <button class="danger" onclick="clearPeopleFilters()">Clear Filters</button>
+      <button class="secondary" onclick="closePeopleFilters()">Leave</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = "safeliteOrgStructureBuilder_v7";
+
+let rawRows = [];
+let people = [];
+let selectedPerson = null;
+let draggedItem = null;
+
+let columns = {
+  first: null,
+  last: null,
+  supervisor: null,
+  email: null
+};
+
+let org = [];
+let currentViewMode = "org";
+let filledReportEmails = {};
+let compareRawRows = [];
+let comparePeople = [];
+let compareColumns = { first: null, last: null, supervisor: null, email: null };
+let compareResults = null;
+let lastBlueprintLoadSummary = null;
+let safeliteUsersEmails = [];
+let savedPersonEmails = {};
+let personOverrides = {};
+let optionsSelectedOriginalName = "";
+let pendingEmailAttachments = {};
+let activePeopleFilters = [];
+let draftPeopleFilters = [];
+let hideAssignedPeople = false;
+
+const possibleFirstNames = [
+  "first",
+  "firstname",
+  "first name",
+  "given name",
+  "employee first name",
+  "associate first name"
+];
+
+const possibleLastNames = [
+  "last",
+  "lastname",
+  "last name",
+  "surname",
+  "employee last name",
+  "associate last name"
+];
+
+const possibleSupervisorNames = [
+  "supervisor",
+  "supervisor name",
+  "manager",
+  "manager name",
+  "reports to",
+  "leader",
+  "coach",
+  "direct supervisor"
+];
+
+const possibleEmailNames = [
+  "username",
+  "user name",
+  "studio username",
+  "network username",
+  "login",
+  "login id",
+  "user id",
+  "userid",
+  "studio email address",
+  "studio email",
+  "email",
+  "email address",
+  "work email",
+  "business email",
+  "employee email",
+  "associate email",
+  "e-mail",
+  "mail"
+];
+
+document.getElementById("fileInput").addEventListener("change", handleFileUpload);
+
+function normalizeHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function normalizeName(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .toLowerCase();
+}
+
+function normalizeFilterValue(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function getPeopleFilterHeaders() {
+  return Object.keys(rawRows[0] || {});
+}
+
+function getValidPeopleFilters(filters = activePeopleFilters) {
+  const headers = new Set(getPeopleFilterHeaders());
+
+  return (Array.isArray(filters) ? filters : [])
+    .filter(filter => filter && headers.has(filter.header) && Array.isArray(filter.values) && filter.values.length)
+    .map(filter => ({
+      header: filter.header,
+      operator: filter.operator === "is not" ? "is not" : "is",
+      values: Array.from(new Set(filter.values.map(value => String(value ?? ""))))
+    }));
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+function isLikelyEmail(value) {
+  const text = String(value || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
+}
+function parseEmailList(text) {
+  const seen = new Set();
+
+  return String(text || "")
+    .split(",")
+    .map(email => email.trim())
+    .filter(Boolean)
+    .filter(email => {
+      const key = normalizeEmail(email);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function titleName(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ");
+}
+
+function makeDisplayName(first, last) {
+  first = String(first || "").trim();
+  last = String(last || "").trim();
+
+  if (!first && !last) return "";
+  if (!last) return first;
+  if (!first) return last;
+
+  return `${last}, ${first}`;
+}
+
+function showProgress(text, percent) {
+  const wrap = document.getElementById("progressWrap");
+  const bar = document.getElementById("progressBar");
+  const label = document.getElementById("progressText");
+  const pct = document.getElementById("progressPercent");
+
+  wrap.style.display = "block";
+  label.textContent = text;
+  pct.textContent = `${Math.round(percent)}%`;
+  bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+}
+
+function hideProgress() {
+  document.getElementById("progressWrap").style.display = "none";
+  document.getElementById("progressBar").style.width = "0%";
+  document.getElementById("progressPercent").textContent = "0%";
+}
+
+function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  showProgress("Reading Excel file...", 5);
+
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    showProgress("Parsing workbook...", 15);
+
+    setTimeout(() => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+
+        showProgress("Converting sheet to rows...", 30);
+
+        rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+        if (!rawRows.length) {
+          hideProgress();
+          alert("No rows found in this file.");
+          return;
+        }
+
+        setupColumnSelectors();
+
+        showProgress("Preparing Last, First names and usernames...", 40);
+
+        processPeopleInChunks(() => {
+          selectedPerson = null;
+          renderAll();
+          showProgress("Complete", 100);
+          setTimeout(hideProgress, 600);
+          setStatus(`${people.length} people loaded from ${file.name}`);
+        });
+
+      } catch (error) {
+        console.error(error);
+        hideProgress();
+        alert("There was an issue reading this file.");
+      }
+    }, 50);
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function setupColumnSelectors() {
+  const headers = Object.keys(rawRows[0] || {});
+
+  columns.first = findBestHeader(headers, possibleFirstNames);
+  columns.last = findBestHeader(headers, possibleLastNames);
+  columns.supervisor = findBestHeader(headers, possibleSupervisorNames);
+  columns.email = findBestHeader(headers, possibleEmailNames);
+
+  fillSelect("firstNameSelect", headers, columns.first);
+  fillSelect("lastNameSelect", headers, columns.last);
+  fillSelect("supervisorSelect", headers, columns.supervisor);
+  fillSelect("emailSelect", headers, columns.email);
+}
+
+function findBestHeader(headers, possibleNames) {
+  for (const header of headers) {
+    const normalized = normalizeHeader(header);
+    if (possibleNames.includes(normalized)) {
+      return header;
+    }
+  }
+
+  for (const header of headers) {
+    const normalized = normalizeHeader(header);
+    if (possibleNames.some(p => normalized.includes(p))) {
+      return header;
+    }
+  }
+
+  return headers[0] || null;
+}
+
+function fillSelect(id, headers, selectedHeader) {
+  const select = document.getElementById(id);
+  select.innerHTML = "";
+
+  headers.forEach(header => {
+    const option = document.createElement("option");
+    option.value = header;
+    option.textContent = header;
+    if (header === selectedHeader) option.selected = true;
+    select.appendChild(option);
+  });
+}
+
+function applyColumnMapping() {
+  if (!rawRows.length) {
+    alert("Upload a file first.");
+    return;
+  }
+
+  columns.first = document.getElementById("firstNameSelect").value;
+  columns.last = document.getElementById("lastNameSelect").value;
+  columns.supervisor = document.getElementById("supervisorSelect").value;
+  columns.email = document.getElementById("emailSelect").value;
+
+  showProgress("Processing names in chunks...", 0);
+
+  processPeopleInChunks(() => {
+    selectedPerson = null;
+    renderAll();
+    showProgress("Complete", 100);
+    setTimeout(hideProgress, 500);
+    setStatus(`${people.length} people mapped`);
+  });
+}
+
+function processPeopleInChunks(doneCallback) {
+  people = [];
+
+  const total = rawRows.length;
+  const chunkSize = 500;
+  let index = 0;
+
+  function processChunk() {
+    const end = Math.min(index + chunkSize, total);
+
+    for (; index < end; index++) {
+      const row = rawRows[index];
+
+      const first = row[columns.first];
+      const last = row[columns.last];
+      const name = makeDisplayName(first, last);
+
+      if (!name) continue;
+
+      people.push({
+        id: `person_${index}`,
+        first: String(first || "").trim(),
+        last: String(last || "").trim(),
+        name,
+        nameKey: normalizeName(name),
+        email: String(row[columns.email] || "").trim(),
+        supervisorRaw: titleName(row[columns.supervisor]),
+        supervisorKey: normalizeName(row[columns.supervisor]),
+        raw: row
+      });
+    }
+
+    const percent = total ? 40 + ((index / total) * 55) : 95;
+    showProgress(`Processing rows ${index.toLocaleString()} of ${total.toLocaleString()}...`, percent);
+
+    if (index < total) {
+      setTimeout(processChunk, 0);
+    } else {
+      people.sort((a, b) => a.name.localeCompare(b.name));
+      doneCallback();
+    }
+  }
+
+  processChunk();
+}
+
+function renderAll() {
+  renderPeopleList();
+  renderSelectedPerson();
+  renderOrg();
+  renderOutputTable();
+}
+
+function updateFilterButtonLabel() {
+  const button = document.getElementById("peopleFilterButton");
+  if (!button) return;
+
+  const count = getValidPeopleFilters().length;
+  button.textContent = count ? `Filters (${count})` : "Filters";
+  button.disabled = !rawRows.length;
+  button.title = rawRows.length ? "Open people filters" : "Upload a file before creating people filters";
+}
+
+function getUniqueValuesForHeader(header) {
+  const seen = new Map();
+
+  rawRows.forEach(row => {
+    const rawValue = row ? row[header] : "";
+    const value = String(rawValue ?? "").trim();
+    const key = normalizeFilterValue(value);
+
+    if (!seen.has(key)) {
+      seen.set(key, value);
+    }
+  });
+
+  return Array.from(seen.values()).sort((a, b) => {
+    if (!a && b) return -1;
+    if (a && !b) return 1;
+    return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+  });
+}
+
+function openPeopleFilters() {
+  const backdrop = document.getElementById("peopleFilterModalBackdrop");
+
+  if (!rawRows.length) {
+    draftPeopleFilters = [];
+    if (backdrop) backdrop.classList.add("open");
+    renderPeopleFilterModal("Upload a people file before creating filters.");
+    return;
+  }
+
+  draftPeopleFilters = getValidPeopleFilters().map(filter => ({
+    header: filter.header,
+    operator: filter.operator,
+    values: [...filter.values],
+    search: ""
+  }));
+
+  if (!draftPeopleFilters.length) addPeopleFilterRow(false);
+  if (backdrop) backdrop.classList.add("open");
+  renderPeopleFilterModal();
+}
+
+function closePeopleFilters() {
+  const backdrop = document.getElementById("peopleFilterModalBackdrop");
+  if (backdrop) backdrop.classList.remove("open");
+}
+
+function handlePeopleFilterBackdropClick(event) {
+  if (event.target && event.target.id === "peopleFilterModalBackdrop") {
+    closePeopleFilters();
+  }
+}
+
+function addPeopleFilterRow(shouldRender = true) {
+  const headers = getPeopleFilterHeaders();
+
+  if (!headers.length) {
+    if (shouldRender) renderPeopleFilterModal("Upload a people file before creating filters.");
+    return;
+  }
+
+  draftPeopleFilters.push({
+    header: headers[0],
+    operator: "is",
+    values: [],
+    search: ""
+  });
+
+  if (shouldRender) renderPeopleFilterModal();
+}
+
+function removePeopleFilterRow(index) {
+  draftPeopleFilters.splice(index, 1);
+  renderPeopleFilterModal();
+}
+
+function updateDraftPeopleFilterHeader(index, header) {
+  if (!draftPeopleFilters[index]) return;
+  draftPeopleFilters[index].header = header;
+  draftPeopleFilters[index].values = [];
+  draftPeopleFilters[index].search = "";
+  renderPeopleFilterModal();
+}
+
+function updateDraftPeopleFilterOperator(index, operator) {
+  if (!draftPeopleFilters[index]) return;
+  draftPeopleFilters[index].operator = operator === "is not" ? "is not" : "is";
+}
+
+function updateDraftPeopleFilterSearch(index, search) {
+  if (!draftPeopleFilters[index]) return;
+  draftPeopleFilters[index].search = search;
+  renderPeopleFilterModal();
+}
+
+function toggleDraftPeopleFilterValue(index, value, checked) {
+  const filter = draftPeopleFilters[index];
+  if (!filter) return;
+
+  const normalized = normalizeFilterValue(value);
+  const values = Array.isArray(filter.values) ? filter.values : [];
+  const withoutValue = values.filter(item => normalizeFilterValue(item) !== normalized);
+  filter.values = checked ? [...withoutValue, String(value ?? "")] : withoutValue;
+  renderPeopleFilterModal();
+}
+
+function renderPeopleFilterModal(message = "") {
+  const body = document.getElementById("peopleFilterModalBody");
+  if (!body) return;
+
+  const headers = getPeopleFilterHeaders();
+
+  if (!headers.length) {
+    body.innerHTML = `<div class="notice">${escapeHTML(message || "Upload a people file before creating filters.")}</div>`;
+    return;
+  }
+
+  const rowsHtml = draftPeopleFilters.map((filter, index) => {
+    const header = headers.includes(filter.header) ? filter.header : headers[0];
+    if (header !== filter.header) {
+      filter.header = header;
+      filter.values = [];
+    }
+
+    const selectedValueKeys = new Set((filter.values || []).map(normalizeFilterValue));
+    const valueSearch = String(filter.search || "").toLowerCase().trim();
+    const uniqueValues = getUniqueValuesForHeader(header);
+    const visibleValues = uniqueValues.filter(value => !valueSearch || String(value || "(Blank)").toLowerCase().includes(valueSearch));
+    const valueList = visibleValues.length
+      ? visibleValues.map(value => {
+          const valueKey = normalizeFilterValue(value);
+          const checked = selectedValueKeys.has(valueKey);
+          const label = value === "" ? "(Blank)" : value;
+
+          return `
+            <label class="filter-value-option ${checked ? "selected" : ""}">
+              <input type="checkbox" ${checked ? "checked" : ""} onchange="toggleDraftPeopleFilterValue(${index}, '${escapeHTML(jsEscape(value))}', this.checked)" />
+              <span>${escapeHTML(label)}</span>
+            </label>
+          `;
+        }).join("")
+      : `<div class="filter-empty-state">No values match this search.</div>`;
+
+    return `
+      <div class="filter-row-card">
+        <div class="filter-row-top">
+          <div>
+            <label>Header</label>
+            <select onchange="updateDraftPeopleFilterHeader(${index}, this.value)">
+              ${headers.map(optionHeader => `<option value="${escapeHTML(optionHeader)}" ${optionHeader === header ? "selected" : ""}>${escapeHTML(optionHeader)}</option>`).join("")}
+            </select>
+          </div>
+          <div>
+            <label>Operator</label>
+            <select onchange="updateDraftPeopleFilterOperator(${index}, this.value)">
+              <option value="is" ${filter.operator !== "is not" ? "selected" : ""}>is</option>
+              <option value="is not" ${filter.operator === "is not" ? "selected" : ""}>is not</option>
+            </select>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button class="danger mini-btn" onclick="removePeopleFilterRow(${index})" aria-label="Remove this filter">×</button>
+          </div>
+        </div>
+        <label>Search values</label>
+        <input type="text" value="${escapeHTML(filter.search || "")}" placeholder="Search values under ${escapeHTML(header)}..." oninput="updateDraftPeopleFilterSearch(${index}, this.value)" />
+        <div class="small">Selected values: ${(filter.values || []).length ? (filter.values || []).map(value => escapeHTML(value === "" ? "(Blank)" : value)).join(", ") : "None selected"}</div>
+        <div class="filter-values-list">${valueList}</div>
+      </div>
+    `;
+  }).join("");
+
+  body.innerHTML = `
+    ${message ? `<div class="notice">${escapeHTML(message)}</div>` : ""}
+    <div class="notice">Build filters from any uploaded-file header. Values inside a row are OR; separate rows are AND.</div>
+    ${rowsHtml || `<div class="notice">No filter rows yet. Click + Add Filter to start.</div>`}
+  `;
+}
+
+function savePeopleFiltersAndClose() {
+  activePeopleFilters = getValidPeopleFilters(draftPeopleFilters);
+  closePeopleFilters();
+  updateFilterButtonLabel();
+  renderPeopleList();
+}
+
+function clearPeopleFilters() {
+  activePeopleFilters = [];
+  draftPeopleFilters = [];
+  updateFilterButtonLabel();
+  renderPeopleFilterModal("All people filters were cleared.");
+  renderPeopleList();
+}
+
+function personPassesAdvancedFilters(person) {
+  const validFilters = getValidPeopleFilters();
+
+  return validFilters.every(filter => {
+    const personValue = normalizeFilterValue(person && person.raw ? person.raw[filter.header] : "");
+    const selectedValues = new Set(filter.values.map(normalizeFilterValue));
+    const isMatch = selectedValues.has(personValue);
+
+    return filter.operator === "is not" ? !isMatch : isMatch;
+  });
+}
+
+function renderPeopleList() {
+  const box = document.getElementById("peopleList");
+  const summary = document.getElementById("peopleListSummary");
+  const search = normalizeName(document.getElementById("searchInput").value);
+  const hideAssigned = document.getElementById("hideAssignedPeopleToggle")?.checked;
+  hideAssignedPeople = Boolean(hideAssigned);
+
+  updateFilterButtonLabel();
+  box.innerHTML = "";
+
+  if (!people.length) {
+    if (summary) summary.textContent = "Showing 0 of 0 people";
+    box.innerHTML = `<div class="notice">Upload an Excel file to begin.</div>`;
+    return;
+  }
+
+  const filteredAll = people
+    .filter(p => {
+      if (!search) return true;
+      const override = getPersonOverride(p.name);
+      return p.nameKey.includes(search) ||
+        normalizeName(p.email).includes(search) ||
+        normalizeName(getDisplayNameByName(p.name)).includes(search) ||
+        normalizeName(override?.email || "").includes(search);
+    })
+    .filter(personPassesAdvancedFilters)
+    .filter(p => !hideAssigned || !isPersonInOrg(p.name));
+  const filtered = filteredAll.slice(0, 500);
+  const activeFilterCount = getValidPeopleFilters().length;
+
+  if (summary) {
+    summary.innerHTML = `Showing ${filteredAll.length.toLocaleString()} of ${people.length.toLocaleString()} people${activeFilterCount ? `<br><span class="advanced-filter-note">Advanced filters active</span>` : ""}${hideAssigned ? `<br><span class="advanced-filter-note">Assigned people hidden</span>` : ""}`;
+  }
+
+  filtered.forEach(person => {
+    const div = document.createElement("div");
+    div.className = "person-card";
+
+    if (selectedPerson && selectedPerson.nameKey === person.nameKey) {
+      div.classList.add("selected");
+    }
+
+    div.draggable = true;
+
+    const displayName = getDisplayNameByName(person.name);
+    const email = getEmailByName(person.name) || "—";
+    const originalNote = normalizeName(displayName) !== person.nameKey ? `<div class="small">Original: ${escapeHTML(person.name)}</div>` : "";
+
+    div.innerHTML = `
+      <div><strong>${escapeHTML(displayName)}</strong></div>
+      ${originalNote}
+      <div class="small">Supervisor: ${escapeHTML(person.supervisorRaw || "—")}</div>
+      <div class="small">Username/Email: ${escapeHTML(email)}</div>
+    `;
+
+    div.onclick = () => selectPerson(person);
+    div.ondragstart = () => {
+      draggedItem = {
+        type: "person",
+        name: person.name
+      };
+    };
+
+    box.appendChild(div);
+  });
+
+  if (!filtered.length) {
+    box.innerHTML = `<div class="notice">No matching people found.</div>`;
+  } else if (filteredAll.length > filtered.length) {
+    const limitNotice = document.createElement("div");
+    limitNotice.className = "notice";
+    limitNotice.textContent = `Showing the first ${filtered.length.toLocaleString()} matches. Refine search or filters to narrow the list.`;
+    box.appendChild(limitNotice);
+  }
+}
+
+function selectPerson(person) {
+  selectedPerson = person;
+  renderPeopleList();
+  renderSelectedPerson();
+}
+
+function renderSelectedPerson() {
+  const selectedBox = document.getElementById("selectedBox");
+  const reportsBox = document.getElementById("directReportsBox");
+
+  if (!selectedPerson) {
+    selectedBox.innerHTML = "Click a person to show everyone who has that person listed under the Supervisor column.";
+    reportsBox.innerHTML = "";
+    return;
+  }
+
+  const allReports = getDirectReports(selectedPerson.name);
+  const reports = allReports.filter(report => !isPersonInOrg(report.name));
+
+  const selectedDisplayName = getDisplayNameByName(selectedPerson.name);
+  const selectedOriginalNote = normalizeName(selectedDisplayName) !== normalizeName(selectedPerson.name)
+    ? `<span class="small">Original Name: ${escapeHTML(selectedPerson.name)}</span><br>`
+    : "";
+
+  selectedBox.innerHTML = `
+    <strong>Display Name:</strong> ${escapeHTML(selectedDisplayName)}<br>
+    ${selectedOriginalNote}
+    <span class="small">Username/Email: ${escapeHTML(getEmailByName(selectedPerson.name) || "—")}</span><br>
+    <span class="small">Direct Reports Found: ${allReports.length}</span><br>
+    <span class="small">Available to Add: ${reports.length}</span>
+  `;
+
+  reportsBox.innerHTML = "";
+
+  if (!reports.length) {
+    reportsBox.innerHTML = `<div class="notice">No available direct reports found. Anyone already in the org table is hidden here.</div>`;
+    return;
+  }
+
+  reports.forEach(report => {
+    const div = document.createElement("div");
+    div.className = "direct-report";
+    div.draggable = true;
+
+    div.ondragstart = () => {
+      draggedItem = {
+        type: "person",
+        name: report.name
+      };
+    };
+
+    const reportDisplayName = getDisplayNameByName(report.name);
+    const reportOriginalNote = normalizeName(reportDisplayName) !== report.nameKey ? `<div class="small">Original: ${escapeHTML(report.name)}</div>` : "";
+
+    div.innerHTML = `
+      <div class="direct-report-title">${escapeHTML(reportDisplayName)}</div>
+      ${reportOriginalNote}
+      <div class="small">Supervisor: ${escapeHTML(report.supervisorRaw || "—")}</div>
+      <div class="small">Username/Email: ${escapeHTML(getEmailByName(report.name) || "—")}</div>
+      <div class="role-actions" style="margin-top:7px;">
+        <button class="primary-add-btn" onclick="autoAddDirectReport('${jsEscape(report.name)}')">Add Under Selected</button>
+        <button class="secondary-add-btn" onclick="addDirector('${jsEscape(report.name)}')">Add Director</button>
+      </div>
+    `;
+
+    reportsBox.appendChild(div);
+  });
+}
+
+function getDirectReports(supervisorName) {
+  const supervisorKey = normalizeName(supervisorName);
+  const flipped = normalizeName(flipName(supervisorName));
+
+  return people.filter(p => {
+    if (!p.supervisorKey) return false;
+    return p.supervisorKey === supervisorKey || p.supervisorKey === flipped;
+  });
+}
+
+function getAllReportsUnderSupervisor(supervisorName) {
+  const result = [];
+  const visited = new Set();
+
+  function walk(name) {
+    const directReports = getDirectReports(name);
+
+    directReports.forEach(person => {
+      const key = normalizeName(person.name);
+
+      if (visited.has(key)) return;
+
+      visited.add(key);
+      result.push(person);
+
+      walk(person.name);
+    });
+  }
+
+  walk(supervisorName);
+
+  return result;
+}
+
+function getAllReportEmailsForSupervisor(supervisorName) {
+  return getAllReportsUnderSupervisor(supervisorName)
+    .map(person => person.email)
+    .filter(email => email && String(email).trim())
+    .filter((email, index, arr) => arr.indexOf(email) === index);
+}
+
+function getReportEmailsForSupervisor(supervisorName) {
+  return getAllReportEmailsForSupervisor(supervisorName);
+}
+
+function flipName(name) {
+  const text = String(name || "").trim();
+
+  if (text.includes(",")) {
+    const parts = text.split(",");
+    const last = parts[0]?.trim() || "";
+    const first = parts.slice(1).join(",").trim();
+    return `${first} ${last}`.trim();
+  }
+
+  const pieces = text.split(/\s+/);
+  if (pieces.length >= 2) {
+    const first = pieces[0];
+    const last = pieces.slice(1).join(" ");
+    return `${last}, ${first}`;
+  }
+
+  return text;
+}
+
+function isPersonInOrg(name) {
+  const key = normalizeName(name);
+
+  for (const director of org) {
+    if (normalizeName(director.name) === key) return true;
+
+    for (const manager of director.managers) {
+      if (normalizeName(manager.name) === key) return true;
+
+      for (const coach of manager.coaches) {
+        if (normalizeName(coach) === key) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function addSelectedAsDirector() {
+  if (!selectedPerson) {
+    alert("Select a person first.");
+    return;
+  }
+
+  addDirector(selectedPerson.name);
+}
+
+function addDirector(name) {
+  name = titleName(name);
+  if (!name) return;
+
+  removePersonFromOrg(name);
+
+  org.push({
+    name,
+    managers: []
+  });
+
+  renderAll();
+}
+
+function addManager(directorName, managerName) {
+  directorName = titleName(directorName);
+  managerName = titleName(managerName);
+
+  if (normalizeName(directorName) === normalizeName(managerName)) {
+    alert("A person cannot report to themselves.");
+    return;
+  }
+
+  removePersonFromOrg(managerName);
+
+  const director = org.find(d => normalizeName(d.name) === normalizeName(directorName));
+  if (!director) return;
+
+  director.managers.push({
+    name: managerName,
+    coaches: []
+  });
+
+  renderAll();
+}
+
+function addTempStructureManager(directorIndex) {
+  const director = org[directorIndex];
+  if (!director) return;
+
+  const directorKey = normalizeName(director.name);
+  const alreadyExists = director.managers.some(manager => normalizeName(manager.name) === directorKey);
+
+  if (alreadyExists) {
+    alert("Temp structure already exists for this Director.");
+    return;
+  }
+
+  director.managers.push({
+    name: director.name,
+    coaches: []
+  });
+
+  renderAll();
+}
+
+function addCoach(directorName, managerName, coachName) {
+  directorName = titleName(directorName);
+  managerName = titleName(managerName);
+  coachName = titleName(coachName);
+
+  if (
+    normalizeName(coachName) === normalizeName(directorName) ||
+    normalizeName(coachName) === normalizeName(managerName)
+  ) {
+    alert("A person cannot report to themselves.");
+    return;
+  }
+
+  removePersonFromOrg(coachName);
+
+  const director = org.find(d => normalizeName(d.name) === normalizeName(directorName));
+  if (!director) return;
+
+  const manager = director.managers.find(m => normalizeName(m.name) === normalizeName(managerName));
+  if (!manager) return;
+
+  manager.coaches.push(coachName);
+
+  renderAll();
+}
+
+function autoAddDirectReport(reportName) {
+  if (!selectedPerson) return;
+
+  const selectedName = selectedPerson.name;
+
+  const director = org.find(d => normalizeName(d.name) === normalizeName(selectedName));
+  if (director) {
+    addManager(director.name, reportName);
+    return;
+  }
+
+  for (const d of org) {
+    const manager = d.managers.find(m => normalizeName(m.name) === normalizeName(selectedName));
+    if (manager) {
+      addCoach(d.name, manager.name, reportName);
+      return;
+    }
+  }
+
+  alert("Selected person is not currently a Director or Manager. Add them to the org first.");
+}
+
+function autoAddAllDirectReports() {
+  if (!selectedPerson) {
+    alert("Select someone first.");
+    return;
+  }
+
+  const reports = getDirectReports(selectedPerson.name).filter(report => !isPersonInOrg(report.name));
+
+  if (!reports.length) {
+    alert("No available direct reports found.");
+    return;
+  }
+
+  const selectedName = selectedPerson.name;
+  const director = org.find(d => normalizeName(d.name) === normalizeName(selectedName));
+
+  if (director) {
+    reports.forEach(r => {
+      if (normalizeName(r.name) !== normalizeName(selectedName)) {
+        removePersonFromOrg(r.name);
+        director.managers.push({
+          name: r.name,
+          coaches: []
+        });
+      }
+    });
+
+    renderAll();
+    return;
+  }
+
+  for (const d of org) {
+    const manager = d.managers.find(m => normalizeName(m.name) === normalizeName(selectedName));
+    if (manager) {
+      reports.forEach(r => {
+        if (normalizeName(r.name) !== normalizeName(selectedName)) {
+          removePersonFromOrg(r.name);
+          manager.coaches.push(r.name);
+        }
+      });
+
+      renderAll();
+      return;
+    }
+  }
+
+  alert("Selected person must already be a Director or Manager before adding all direct reports under them.");
+}
+
+function removePersonFromOrg(name) {
+  const key = normalizeName(name);
+
+  for (let dIndex = org.length - 1; dIndex >= 0; dIndex--) {
+    const director = org[dIndex];
+
+    if (normalizeName(director.name) === key) {
+      org.splice(dIndex, 1);
+      continue;
+    }
+
+    for (let mIndex = director.managers.length - 1; mIndex >= 0; mIndex--) {
+      const manager = director.managers[mIndex];
+
+      if (normalizeName(manager.name) === key) {
+        director.managers.splice(mIndex, 1);
+        continue;
+      }
+
+      manager.coaches = manager.coaches.filter(c => normalizeName(c) !== key);
+    }
+  }
+}
+
+function renderOrg() {
+  const tree = document.getElementById("orgTree");
+  tree.innerHTML = "";
+
+  if (!org.length) {
+    tree.innerHTML = `<div class="notice">No Directors added yet. Search or drag names to begin.</div>`;
+    return;
+  }
+
+  org.forEach((director, directorIndex) => {
+    const directorBlock = document.createElement("div");
+    directorBlock.className = "director-block drop-target";
+
+    directorBlock.ondragover = allowDrop;
+    directorBlock.ondragleave = removeDragOver;
+    directorBlock.ondrop = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      removeDragOver(event);
+
+      if (!draggedItem) return;
+
+      const draggedName = draggedItem.name;
+
+      if (normalizeName(draggedName) === normalizeName(director.name)) {
+        draggedItem = null;
+        return;
+      }
+
+      addManager(director.name, draggedName);
+      draggedItem = null;
+    };
+
+    const directorHeader = document.createElement("div");
+    directorHeader.className = "director-header";
+    directorHeader.draggable = true;
+
+    directorHeader.ondragstart = event => {
+      event.stopPropagation();
+      draggedItem = {
+        type: "director",
+        name: director.name
+      };
+    };
+
+    const directorDisplayName = getDisplayNameByName(director.name);
+    const directorOriginalNote = normalizeName(directorDisplayName) !== normalizeName(director.name)
+      ? `<span class="original-name-note">Original: ${escapeHTML(director.name)}</span>`
+      : "";
+
+    directorHeader.innerHTML = `
+      <span class="name-click" onclick="selectPersonByName('${jsEscape(director.name)}')">
+        Director: ${escapeHTML(directorDisplayName)}
+        ${directorOriginalNote}
+        <span class="small" style="color:#fee2e2;">Username/Email: ${escapeHTML(getEmailByName(director.name) || "—")}</span>
+      </span>
+      <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeDirector(${directorIndex})">Remove</button>
+      <button class="mini-btn" onclick="event.stopPropagation(); addTempStructureManager(${directorIndex})">Temp Structure</button>
+    `;
+
+    directorBlock.appendChild(directorHeader);
+
+    if (!director.managers.length) {
+      const empty = document.createElement("div");
+      empty.className = "notice";
+      empty.style.margin = "10px";
+      empty.textContent = "No managers yet. Drag someone onto this Director.";
+      directorBlock.appendChild(empty);
+    }
+
+    director.managers.forEach((manager, managerIndex) => {
+      const managerBlock = document.createElement("div");
+      managerBlock.className = "manager-block drop-target";
+
+      managerBlock.ondragover = allowDrop;
+      managerBlock.ondragleave = removeDragOver;
+      managerBlock.ondrop = event => {
+        event.preventDefault();
+        event.stopPropagation();
+        removeDragOver(event);
+
+        if (!draggedItem) return;
+
+        const draggedName = draggedItem.name;
+
+        if (
+          normalizeName(draggedName) === normalizeName(director.name) ||
+          normalizeName(draggedName) === normalizeName(manager.name)
+        ) {
+          draggedItem = null;
+          return;
+        }
+
+        addCoach(director.name, manager.name, draggedName);
+        draggedItem = null;
+      };
+
+      const managerHeader = document.createElement("div");
+      managerHeader.className = "manager-header";
+      managerHeader.draggable = true;
+
+      managerHeader.ondragstart = event => {
+        event.stopPropagation();
+        draggedItem = {
+          type: "manager",
+          name: manager.name
+        };
+      };
+
+      const managerDisplayName = getDisplayNameByName(manager.name);
+      const managerOriginalNote = normalizeName(managerDisplayName) !== normalizeName(manager.name)
+        ? `<span class="original-name-note">Original: ${escapeHTML(manager.name)}</span>`
+        : "";
+
+      managerHeader.innerHTML = `
+        <span class="name-click" onclick="selectPersonByName('${jsEscape(manager.name)}')">
+          Manager: ${escapeHTML(managerDisplayName)}
+          ${managerOriginalNote}
+          <span class="small">Username/Email: ${escapeHTML(getEmailByName(manager.name) || "—")}</span>
+        </span>
+        <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeManager(${directorIndex}, ${managerIndex})">Remove</button>
+      `;
+
+      managerBlock.appendChild(managerHeader);
+
+      if (!manager.coaches.length) {
+        const emptyCoach = document.createElement("div");
+        emptyCoach.className = "small";
+        emptyCoach.style.padding = "8px 10px";
+        emptyCoach.textContent = "No coaches yet. Drag someone onto this Manager.";
+        managerBlock.appendChild(emptyCoach);
+      }
+
+      manager.coaches.forEach((coach, coachIndex) => {
+        const coachRow = document.createElement("div");
+        coachRow.className = "coach-row";
+        coachRow.draggable = true;
+
+        coachRow.ondragstart = event => {
+          event.stopPropagation();
+          draggedItem = {
+            type: "coach",
+            name: coach
+          };
+        };
+
+        const coachDisplayName = getDisplayNameByName(coach);
+        const coachOriginalNote = normalizeName(coachDisplayName) !== normalizeName(coach)
+          ? `<span class="original-name-note">Original: ${escapeHTML(coach)}</span>`
+          : "";
+
+        coachRow.innerHTML = `
+          <span class="name-click" onclick="selectPersonByName('${jsEscape(coach)}')">
+            Coach: ${escapeHTML(coachDisplayName)}
+            ${coachOriginalNote}
+            <span class="small">Username/Email: ${escapeHTML(getEmailByName(coach) || "—")}</span>
+          </span>
+          <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeCoach(${directorIndex}, ${managerIndex}, ${coachIndex})">Remove</button>
+        `;
+
+        managerBlock.appendChild(coachRow);
+      });
+
+      directorBlock.appendChild(managerBlock);
+    });
+
+    tree.appendChild(directorBlock);
+  });
+}
+
+function removeDirector(index) {
+  org.splice(index, 1);
+  renderAll();
+}
+
+function removeManager(directorIndex, managerIndex) {
+  org[directorIndex].managers.splice(managerIndex, 1);
+  renderAll();
+}
+
+function removeCoach(directorIndex, managerIndex, coachIndex) {
+  org[directorIndex].managers[managerIndex].coaches.splice(coachIndex, 1);
+  renderAll();
+}
+
+function clearOrg() {
+  if (!confirm("Clear the current org structure?")) return;
+  org = [];
+  filledReportEmails = {};
+  renderAll();
+}
+
+function selectPersonByName(name) {
+  const nameKey = normalizeName(name);
+  const person = people.find(p => p.nameKey === nameKey) || people.find(p => normalizeName(getDisplayNameByName(p.name)) === nameKey);
+
+  if (person) {
+    selectPerson(person);
+    return;
+  }
+
+  selectedPerson = {
+    name,
+    nameKey: normalizeName(name),
+    email: "",
+    supervisorRaw: "",
+    supervisorKey: ""
+  };
+
+  renderPeopleList();
+  renderSelectedPerson();
+}
+
+function getPersonOverride(name) {
+  return personOverrides[normalizeName(name)] || null;
+}
+
+function getDisplayNameByName(name) {
+  const override = getPersonOverride(name);
+  return String(override && override.displayName ? override.displayName : name || "").trim();
+}
+
+function getFileEmailByName(name) {
+  const person = people.find(p => p.nameKey === normalizeName(name));
+  return person && person.email ? String(person.email || "").trim() : "";
+}
+
+function getEmailByName(name) {
+  const override = getPersonOverride(name);
+  if (override && override.email) return String(override.email || "").trim();
+  const fileEmail = getFileEmailByName(name);
+  if (fileEmail) return fileEmail;
+  return getSavedEmailForName(name);
+}
+
+function getSavedEmailForName(name) {
+  return savedPersonEmails[normalizeName(name)] || "";
+}
+
+function savePersonOverride(originalName, displayName, email) {
+  const key = normalizeName(originalName);
+  const original = titleName(originalName);
+  const cleanedDisplay = String(displayName || "").trim();
+  const cleanedEmail = String(email || "").trim();
+
+  if (!key || !original) return false;
+  if (!cleanedDisplay && !cleanedEmail) {
+    if (personOverrides[key]) delete personOverrides[key];
+    return false;
+  }
+
+  personOverrides[key] = {
+    originalName: original,
+    displayName: cleanedDisplay,
+    email: cleanedEmail,
+    updatedAt: new Date().toISOString()
+  };
+  return true;
+}
+
+function deletePersonOverride(originalName) {
+  const key = normalizeName(originalName);
+  if (!key) return;
+  delete personOverrides[key];
+}
+
+function applyPersonDisplayOverridesToOrg() {
+  renderAll();
+}
+
+function normalizePersonOverrides(overrides) {
+  const normalized = {};
+  Object.entries(overrides || {}).forEach(([nameKey, override]) => {
+    if (!override || typeof override !== "object") return;
+    const originalName = titleName(override.originalName || nameKey);
+    const key = normalizeName(originalName || nameKey);
+    const displayName = String(override.displayName || "").trim();
+    const email = String(override.email || "").trim();
+    if (!key || (!displayName && !email)) return;
+    normalized[key] = {
+      originalName: originalName || nameKey,
+      displayName,
+      email,
+      updatedAt: override.updatedAt || new Date().toISOString()
+    };
+  });
+  return normalized;
+}
+
+function setSavedEmailForName(name, email) {
+  const key = normalizeName(name);
+  const cleaned = String(email || "").trim();
+  if (!key || !cleaned) return;
+  savedPersonEmails[key] = cleaned;
+}
+
+function getExportRows() {
+  const rows = [];
+
+  org.forEach(director => {
+    rows.push({
+      company: "Safelite",
+      director: getDisplayNameByName(director.name),
+      manager: "",
+      coach: "",
+      email: getEmailByName(director.name),
+      personName: director.name,
+      level: "Director"
+    });
+
+    director.managers.forEach(manager => {
+      rows.push({
+        company: "Safelite",
+        director: getDisplayNameByName(director.name),
+        manager: getDisplayNameByName(manager.name),
+        coach: "",
+        email: getEmailByName(manager.name),
+        personName: manager.name,
+        level: "Manager"
+      });
+
+      manager.coaches.forEach(coach => {
+        rows.push({
+          company: "Safelite",
+          director: getDisplayNameByName(director.name),
+          manager: getDisplayNameByName(manager.name),
+          coach: getDisplayNameByName(coach),
+          email: getEmailByName(coach),
+          personName: coach,
+          level: "Coach"
+        });
+      });
+    });
+  });
+
+  return rows;
+}
+
+function getOrgPathRows() {
+  return getExportRows().map(row => {
+    let path = "Safelite";
+
+    if (row.director) path += ` --> ${row.director}`;
+    if (row.manager) path += ` --> ${row.manager}`;
+    if (row.coach) path += ` --> ${row.coach}`;
+
+    return {
+      path,
+      personName: row.personName,
+      level: row.level,
+      director: row.director,
+      manager: row.manager,
+      coach: row.coach,
+      email: row.email || ""
+    };
+  });
+}
+
+function buildOrgBlueprint() {
+  return {
+    type: "SafeliteOrgBlueprint",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email },
+    safeliteUsersEmails: [...safeliteUsersEmails],
+    savedPersonEmails: { ...savedPersonEmails },
+    personOverrides: { ...personOverrides },
+    hierarchy: org.map(director => ({
+      directorName: director.name,
+      directorDisplayName: getDisplayNameByName(director.name),
+      directorKey: normalizeName(director.name),
+      directorEmail: getEmailByName(director.name) || "",
+      managers: director.managers.map(manager => ({
+        managerName: manager.name,
+        managerDisplayName: getDisplayNameByName(manager.name),
+        managerKey: normalizeName(manager.name),
+        managerEmail: getEmailByName(manager.name) || "",
+        coaches: manager.coaches.map(coach => ({ coachName: coach, coachDisplayName: getDisplayNameByName(coach), coachKey: normalizeName(coach), coachEmail: getEmailByName(coach) || "" }))
+      }))
+    }))
+  };
+}
+
+function findCurrentPersonFromBlueprint(savedPerson) { const savedName = savedPerson.name || savedPerson.directorName || savedPerson.managerName || savedPerson.coachName || ""; const savedKey = savedPerson.key || savedPerson.directorKey || savedPerson.managerKey || savedPerson.coachKey || normalizeName(savedName); const savedEmail = normalizeEmail(savedPerson.email || savedPerson.directorEmail || savedPerson.managerEmail || savedPerson.coachEmail || ""); let match = people.find(p => p.nameKey === normalizeName(savedKey)); if (match) return match; match = people.find(p => p.nameKey === normalizeName(savedName)); if (match) return match; match = people.find(p => p.nameKey === normalizeName(flipName(savedName))); if (match) return match; if (savedEmail) { match = people.find(p => normalizeEmail(p.email) === savedEmail); if (match) return match; } return null; }
+function findCurrentPersonBySavedKey(savedKey, savedName) { return findCurrentPersonFromBlueprint({ key: savedKey, name: savedName }); }
+function showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches = []) { const directorCount = rebuiltOrg.length; const managerCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.length, 0); const coachCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.reduce((mSum, m) => mSum + m.coaches.length, 0), 0); lastBlueprintLoadSummary = { loadedAt: new Date().toISOString(), missing, directorCount, managerCount, coachCount, duplicateMatches }; let message = `Org blueprint loaded from current file.
+
+Directors loaded: ${directorCount}
+Managers loaded: ${managerCount}
+Coaches loaded: ${coachCount}
+Missing names: ${missing.length}
+Duplicate matches: ${duplicateMatches.length}`; if (missing.length) message += `
+
+Missing names were not added because they were not found in the current uploaded file.`; alert(message); }
+function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; const duplicateMatches = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonFromBlueprint(savedDirector); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } if (rebuiltOrg.some(d => normalizeName(d.name) === normalizeName(directorPerson.name))) duplicateMatches.push({ level: "Director", name: directorPerson.name }); const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonFromBlueprint(savedManager); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonFromBlueprint(savedCoach); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } if (managerNode.coaches.some(c => normalizeName(c) === normalizeName(coachPerson.name))) duplicateMatches.push({ level: "Coach", name: coachPerson.name }); else managerNode.coaches.push(coachPerson.name); }); if (directorNode.managers.some(m => normalizeName(m.name) === normalizeName(managerNode.name))) duplicateMatches.push({ level: "Manager", name: managerNode.name }); else directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; if (Array.isArray(blueprint.safeliteUsersEmails)) safeliteUsersEmails = parseEmailList(blueprint.safeliteUsersEmails.join(", ")); if (blueprint.savedPersonEmails && typeof blueprint.savedPersonEmails === "object") Object.entries(blueprint.savedPersonEmails).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (cleanKey && cleanEmail) savedPersonEmails[cleanKey] = cleanEmail; }); if (blueprint.personOverrides && typeof blueprint.personOverrides === "object") personOverrides = normalizePersonOverrides(blueprint.personOverrides); selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches); }
+function exportOrgBlueprint() { const blueprint = buildOrgBlueprint(); const day = new Date().toISOString().slice(0, 10); downloadBlob(JSON.stringify(blueprint, null, 2), `safelite_org_blueprint_${day}.json`, "application/json;charset=utf-8;"); setStatus("Org blueprint exported"); }
+function blueprintFromImportedRows(rows) { const byDirector = new Map(); const isUsers = rows[0] && Object.prototype.hasOwnProperty.call(rows[0], "Users"); rows.forEach(row => { let director = "", manager = "", coach = "", email = ""; if (isUsers) { const users = String(row["Users"] || "").trim(); if (!users || users === "Safelite") return; const parts = users.split(" --> ").map(x => x.trim()).filter(Boolean); if (parts[0] === "Safelite") parts.shift(); [director, manager, coach] = parts; email = String(row["Studio Email Address"] || "").trim(); } else { director = String(row["Director"] || "").trim(); manager = String(row["Manager"] || "").trim(); coach = String(row["Coach"] || "").trim(); email = String(row["Username / Studio Email Address"] || "").trim(); } if (!director) return; if (!byDirector.has(director)) byDirector.set(director, { directorName: director, directorKey: normalizeName(director), directorEmail: !manager && !coach ? email : "", managers: [] }); const d = byDirector.get(director); if (!manager) return; let m = d.managers.find(x => normalizeName(x.managerName) === normalizeName(manager)); if (!m) { m = { managerName: manager, managerKey: normalizeName(manager), managerEmail: !coach ? email : "", coaches: [] }; d.managers.push(m); } if (!coach) return; if (!m.coaches.some(c => normalizeName(c.coachName) === normalizeName(coach))) m.coaches.push({ coachName: coach, coachKey: normalizeName(coach), coachEmail: email }); }); return { type: "SafeliteOrgBlueprint", version: 1, exportedAt: new Date().toISOString(), columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email }, personOverrides: { ...personOverrides }, hierarchy: Array.from(byDirector.values()) }; }
+function handleBlueprintImport(event) { const file = event.target.files[0]; if (!file) return; if (!people.length) { alert("Upload and process a people file first."); event.target.value = ""; return; } const ext = file.name.split(".").pop().toLowerCase(); const reader = new FileReader(); reader.onload = function(e) { try { let blueprint; if (ext === "json") { blueprint = JSON.parse(String(e.target.result || "{}")); } else { let rows = []; if (ext === "csv") { const wb = XLSX.read(String(e.target.result), { type: "string" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } else { const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } blueprint = blueprintFromImportedRows(rows); } rebuildOrgFromBlueprint(blueprint); setStatus(`Blueprint imported from ${file.name}`); } catch (error) { console.error(error); alert("Unable to import blueprint file."); } finally { event.target.value = ""; } }; if (ext === "json" || ext === "csv") reader.readAsText(file); else reader.readAsArrayBuffer(file); }
+function applySafeliteEmailBox() { const box = document.getElementById("safeliteEmailBox"); safeliteUsersEmails = parseEmailList(box ? box.value : ""); renderOutputTable(); setStatus(`Safelite row updated with ${safeliteUsersEmails.length} emails`); }
+
+function bringRestIntoSafeliteEmails() {
+  const box = document.getElementById("safeliteEmailBox");
+  const startingEmails = parseEmailList([safeliteUsersEmails.join(", "), box ? box.value : ""].filter(Boolean).join(", "));
+  const safeliteEmailSet = new Set(startingEmails.map(normalizeEmail));
+  const remainingEmails = [];
+
+  getOrgPathRows().forEach(row => {
+    const rowEmail = getEmailByName(row.personName) || "";
+    const key = normalizeEmail(rowEmail);
+
+    if (!key || safeliteEmailSet.has(key)) return;
+
+    safeliteEmailSet.add(key);
+    remainingEmails.push(rowEmail.trim());
+  });
+
+  safeliteUsersEmails = parseEmailList([...startingEmails, ...remainingEmails].join(", "));
+  renderOutputTable();
+  setStatus(`Brought ${remainingEmails.length} remaining user emails into Safelite row`);
+}
+
+function setViewMode(mode) {
+  currentViewMode = mode;
+
+  document.getElementById("orgViewBtn").classList.toggle("active", mode === "org");
+  document.getElementById("usersViewBtn").classList.toggle("active", mode === "users");
+  document.getElementById("filtersViewBtn").classList.toggle("active", mode === "filters");
+  document.getElementById("emailsViewBtn").classList.toggle("active", mode === "emails");
+  document.getElementById("compareViewBtn").classList.toggle("active", mode === "compare");
+  document.getElementById("optionsViewBtn").classList.toggle("active", mode === "options");
+
+  renderOutputTable();
+}
+
+function renderOutputTable() {
+  if (currentViewMode === "compare") {
+    renderCompareView();
+    return;
+  }
+
+  if (currentViewMode === "org") {
+    renderOrgOutputTable();
+    return;
+  }
+
+  if (currentViewMode === "users") {
+    renderUsersOutputTable();
+    return;
+  }
+
+  if (currentViewMode === "filters") {
+    renderFiltersOutputTable();
+    return;
+  }
+  if (currentViewMode === "emails") {
+    renderEmailsView();
+    return;
+  }
+
+  if (currentViewMode === "options") {
+    renderOptionsView();
+    return;
+  }
+}
+
+function renderOrgOutputTable() {
+  const tbody = document.querySelector("#outputTable tbody");
+  const header = document.getElementById("outputTableHeader");
+  const includeEmail = document.getElementById("includeEmailToggle").checked;
+
+  header.innerHTML = `
+    <th>Company Name</th>
+    <th>Director</th>
+    <th>Manager</th>
+    <th>Coach</th>
+    ${includeEmail ? "<th>Username / Studio Email Address</th>" : ""}
+  `;
+
+  tbody.innerHTML = "";
+
+  getExportRows().forEach(row => {
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td>${escapeHTML(row.company)}</td>
+      <td>${row.director ? clickableName(row.director) : ""}</td>
+      <td>${row.manager ? clickableName(row.manager) : ""}</td>
+      <td>${row.coach ? clickableName(row.coach) : ""}</td>
+      ${includeEmail ? `<td>${escapeHTML(row.email || "")}</td>` : ""}
+    `;
+
+    tbody.appendChild(tr);
+  });
+}
+
+function renderUsersOutputTable() {
+  const tbody = document.querySelector("#outputTable tbody");
+  const header = document.getElementById("outputTableHeader");
+
+  header.innerHTML = `
+    <th>Users</th>
+    <th>Studio Email Address</th>
+  `;
+
+  tbody.innerHTML = "";
+  const safeliteRow = document.createElement("tr");
+  safeliteRow.className = "safelite-users-row";
+  safeliteRow.innerHTML = `<td class="path-cell"><strong>Safelite</strong></td><td><textarea id="safeliteEmailBox" class="safelite-email-box" placeholder="Paste comma-separated emails here..."></textarea><div class="small">Paste comma-separated emails. These will be removed from duplicate user rows below.</div><button class="mini-btn" onclick="applySafeliteEmailBox()">Apply Safelite Emails</button> <button class="mini-btn" onclick="bringRestIntoSafeliteEmails()">Bring rest in</button></td>`;
+  tbody.appendChild(safeliteRow);
+  const safeliteEmailSet = new Set(safeliteUsersEmails.map(normalizeEmail));
+
+  getOrgPathRows().forEach(row => {
+    const tr = document.createElement("tr");
+    const rowEmail = getEmailByName(row.personName) || "";
+    const displayEmail = safeliteEmailSet.has(normalizeEmail(rowEmail)) ? "" : rowEmail;
+
+    tr.innerHTML = `
+      <td class="path-cell">${makeClickablePath(row.path)}</td>
+      <td>${escapeHTML(displayEmail)}</td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+  setTimeout(() => { const box = document.getElementById("safeliteEmailBox"); if (box) box.value = safeliteUsersEmails.join(", "); }, 0);
+}
+
+function renderFiltersOutputTable() {
+  const tbody = document.querySelector("#outputTable tbody");
+  const header = document.getElementById("outputTableHeader");
+
+  header.innerHTML = `
+    <th>Users</th>
+    <th>Studio Email Address</th>
+  `;
+
+  tbody.innerHTML = "";
+
+  getOrgPathRows().forEach(row => {
+    const formattedEmails = formatFilterEmails(row.personName);
+
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td class="path-cell">${makeClickablePath(row.path)}</td>
+      <td class="email-list">${escapeHTML(formattedEmails)}</td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+}
+
+function getMissingEmailRows() {
+  const safeliteEmailSet = new Set((safeliteUsersEmails || []).map(normalizeEmail));
+  return getOrgPathRows().map(row => {
+    const uploadedOrSavedEmail = getEmailByName(row.personName);
+    const savedEmail = getSavedEmailForName(row.personName);
+    return { ...row, uploadedOrSavedEmail, savedEmail, isGlobalCovered: uploadedOrSavedEmail && safeliteEmailSet.has(normalizeEmail(uploadedOrSavedEmail)) };
+  }).filter(row => !row.isGlobalCovered && !row.uploadedOrSavedEmail);
+}
+
+function getAttachableSavedEmailRows() {
+  const safeliteEmailSet = new Set((safeliteUsersEmails || []).map(normalizeEmail));
+  return getOrgPathRows().map(row => {
+    const person = people.find(p => normalizeName(p.name) === normalizeName(row.personName));
+    const uploadedEmail = person ? String(person.email || "").trim() : "";
+    const savedEmail = getSavedEmailForName(row.personName);
+    return { ...row, uploadedEmail, savedEmail, isGlobalCovered: savedEmail && safeliteEmailSet.has(normalizeEmail(savedEmail)) };
+  }).filter(row => row.savedEmail && !row.uploadedEmail && !row.isGlobalCovered);
+}
+
+function renderAttachableSavedEmailsTable(rows) {
+  if (!rows.length) return `<div class="compare-section"><h3>Saved Emails Ready to Attach</h3><div class="notice">No saved emails are waiting to be attached.</div></div>`;
+  return `<div class="compare-section"><h3>Saved Emails Ready to Attach</h3><div class="notice compare-good">These people have blank emails in the current upload, but a saved email exists for their name. Click Attach Saved Emails to apply them.</div><table><thead><tr><th>User Path</th><th>Saved Email</th><th>Status</th></tr></thead><tbody>${rows.map(row => `<tr><td class="path-cell">${makeClickablePath(row.path)}</td><td>${escapeHTML(row.savedEmail)}</td><td class="email-status-good">Ready to attach</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function renderMissingEmailsTable(rows) {
+  if (!rows.length) return `<div class="compare-section"><h3>Missing User Emails</h3><div class="notice compare-good">No missing user emails found.</div></div>`;
+  return `<div class="compare-section"><h3>Missing User Emails</h3><table><thead><tr><th>User Path</th><th>Person Name</th><th>Type Email</th><th>Status</th></tr></thead><tbody>${rows.map(row => { const key = normalizeName(row.personName); const savedEmail = getSavedEmailForName(row.personName); return `<tr><td class="path-cell">${makeClickablePath(row.path)}</td><td>${escapeHTML(getDisplayNameByName(row.personName))}</td><td><input class="manual-email-input" data-person-name="${escapeHTML(row.personName)}" data-person-key="${escapeHTML(key)}" value="${escapeHTML(savedEmail)}" placeholder="type email..." /></td><td class="email-status-warning">Needs email</td></tr>`; }).join("")}</tbody></table></div>`;
+}
+
+function renderEmailsView() {
+  const tbody = document.querySelector("#outputTable tbody");
+  const header = document.getElementById("outputTableHeader");
+  header.innerHTML = `<th>Emails Tool</th>`;
+  const missingRows = getMissingEmailRows();
+  const attachableRows = getAttachableSavedEmailRows();
+  pendingEmailAttachments = { rows: attachableRows };
+  tbody.innerHTML = `<tr><td><div class="emails-tool-wrap"><div class="notice">Use this tab to fill blank user emails. Saved emails are remembered by person name and can be attached again when that name appears in future uploaded files.</div><div class="email-tool-actions"><button class="green" onclick="saveManualEmails()">Save Typed Emails</button><button class="orange" onclick="attachSavedEmails()">Attach Saved Emails</button><button class="secondary" onclick="exportSavedEmailLibrary()">Export Email Library</button><input type="file" id="emailLibraryImportInput" accept=".json,.xlsx,.xls,.csv" style="display:none;" onchange="handleEmailLibraryImport(event)" /><button class="secondary" onclick="document.getElementById('emailLibraryImportInput').click()">Upload Email Library</button></div><div class="notice">Missing emails: <strong>${missingRows.length}</strong><br>Saved emails ready to attach: <strong>${attachableRows.length}</strong><br>Saved email library size: <strong>${Object.keys(savedPersonEmails || {}).length}</strong></div>${renderAttachableSavedEmailsTable(attachableRows)}${renderMissingEmailsTable(missingRows)}</div></td></tr>`;
+}
+
+function renderOptionsView() {
+  const tbody = document.querySelector("#outputTable tbody");
+  const header = document.getElementById("outputTableHeader");
+  header.innerHTML = `<th>Options</th>`;
+
+  const overrideRows = Object.entries(personOverrides || {})
+    .map(([nameKey, override]) => ({ nameKey, ...override }))
+    .sort((a, b) => String(a.originalName || "").localeCompare(String(b.originalName || "")));
+
+  tbody.innerHTML = `<tr><td><div class="options-wrap">
+    <div class="options-card">
+      <h3>Display Name / Email Overrides</h3>
+      <div class="notice">Overrides only change visible/exported display names and output emails. Original loaded names remain the matching keys for supervisors, direct reports, drag/drop placement, and blueprint matching.</div>
+      <div class="options-grid">
+        <div class="options-field">
+          <label for="overridePersonSearch">Search Loaded People</label>
+          <input id="overridePersonSearch" type="text" placeholder="Search original name, display override, or email..." oninput="populateOverridePersonMatches()" />
+        </div>
+        <div class="options-field">
+          <label for="overridePersonSelect">Matching People</label>
+          <select id="overridePersonSelect" onchange="selectOverridePerson(this.value)"></select>
+        </div>
+        <div class="options-field">
+          <label for="overrideOriginalName">Original Name</label>
+          <input id="overrideOriginalName" type="text" readonly />
+        </div>
+        <div class="options-field">
+          <label for="overrideCurrentEmail">Current File Email</label>
+          <input id="overrideCurrentEmail" type="text" readonly />
+        </div>
+        <div class="options-field">
+          <label for="overrideDisplayName">Display Name Override</label>
+          <input id="overrideDisplayName" type="text" placeholder="Optional display name..." />
+        </div>
+        <div class="options-field">
+          <label for="overrideEmail">Email Override</label>
+          <input id="overrideEmail" type="text" placeholder="Optional email override..." />
+        </div>
+      </div>
+      <div class="options-actions">
+        <button class="green mini-btn" onclick="saveOverrideFromForm()">Save Override</button>
+        <button class="danger mini-btn" onclick="deleteOverrideFromForm()">Delete Override</button>
+        <button class="secondary mini-btn" onclick="clearOverrideForm()">Clear Form</button>
+      </div>
+    </div>
+    <div class="options-card">
+      <h3>Saved Overrides</h3>
+      <div class="options-table-wrap">
+        <table>
+          <thead><tr><th>Original Name</th><th>Display Name Override</th><th>Email Override</th><th>Updated At</th><th>Actions</th></tr></thead>
+          <tbody>${overrideRows.length ? overrideRows.map(row => `<tr><td>${escapeHTML(row.originalName || "")}</td><td>${escapeHTML(row.displayName || "")}</td><td>${escapeHTML(row.email || "")}</td><td>${escapeHTML(row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "")}</td><td><button class="mini-btn" onclick="editOverride('${jsEscape(row.originalName || row.nameKey)}')">Edit</button> <button class="danger mini-btn" onclick="deleteOverrideAndRefresh('${jsEscape(row.originalName || row.nameKey)}')">Delete</button></td></tr>`).join("") : `<tr><td colspan="5">No saved overrides yet.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  </div></td></tr>`;
+
+  populateOverridePersonMatches();
+  if (optionsSelectedOriginalName) loadOverrideForm(optionsSelectedOriginalName);
+}
+
+function getOverrideSearchMatches() {
+  const searchInput = document.getElementById("overridePersonSearch");
+  const search = normalizeName(searchInput ? searchInput.value : "");
+
+  return people.filter(person => {
+    if (!search) return true;
+    const override = getPersonOverride(person.name);
+    return person.nameKey.includes(search) ||
+      normalizeName(getDisplayNameByName(person.name)).includes(search) ||
+      normalizeName(person.email).includes(search) ||
+      normalizeName(override?.email || "").includes(search);
+  }).slice(0, 500);
+}
+
+function populateOverridePersonMatches() {
+  const select = document.getElementById("overridePersonSelect");
+  if (!select) return;
+  const matches = getOverrideSearchMatches();
+  select.innerHTML = matches.map(person => `<option value="${escapeHTML(person.name)}">${escapeHTML(getDisplayNameByName(person.name))}${normalizeName(getDisplayNameByName(person.name)) !== person.nameKey ? ` (Original: ${escapeHTML(person.name)})` : ""}</option>`).join("");
+
+  if (!matches.length) {
+    select.innerHTML = `<option value="">No matching people</option>`;
+    clearOverrideForm(false);
+    return;
+  }
+
+  const selectedStillVisible = optionsSelectedOriginalName && matches.some(person => person.nameKey === normalizeName(optionsSelectedOriginalName));
+  select.value = selectedStillVisible ? optionsSelectedOriginalName : matches[0].name;
+  loadOverrideForm(select.value);
+}
+
+function selectOverridePerson(originalName) {
+  loadOverrideForm(originalName);
+}
+
+function loadOverrideForm(originalName) {
+  const person = people.find(p => p.nameKey === normalizeName(originalName));
+  const original = person ? person.name : titleName(originalName);
+  const override = getPersonOverride(original);
+  optionsSelectedOriginalName = original;
+
+  const originalInput = document.getElementById("overrideOriginalName");
+  const emailInput = document.getElementById("overrideCurrentEmail");
+  const displayInput = document.getElementById("overrideDisplayName");
+  const overrideEmailInput = document.getElementById("overrideEmail");
+
+  if (originalInput) originalInput.value = original || "";
+  if (emailInput) emailInput.value = getFileEmailByName(original) || "";
+  if (displayInput) displayInput.value = override?.displayName || "";
+  if (overrideEmailInput) overrideEmailInput.value = override?.email || "";
+}
+
+function saveOverrideFromForm() {
+  const originalName = document.getElementById("overrideOriginalName")?.value || "";
+  const displayName = document.getElementById("overrideDisplayName")?.value || "";
+  const email = document.getElementById("overrideEmail")?.value || "";
+
+  if (!normalizeName(originalName)) {
+    alert("Select a loaded person first.");
+    return;
+  }
+
+  if (!String(displayName || "").trim() && !String(email || "").trim()) {
+    if (getPersonOverride(originalName)) {
+      deletePersonOverride(originalName);
+      setStatus("Blank override removed");
+    } else {
+      alert("Enter a display name override, an email override, or choose Delete Override.");
+      return;
+    }
+  } else {
+    savePersonOverride(originalName, displayName, email);
+    setStatus(`Override saved for ${getDisplayNameByName(originalName)}`);
+  }
+
+  applyPersonDisplayOverridesToOrg();
+}
+
+function deleteOverrideFromForm() {
+  const originalName = document.getElementById("overrideOriginalName")?.value || optionsSelectedOriginalName;
+  if (!normalizeName(originalName)) return;
+  deleteOverrideAndRefresh(originalName);
+}
+
+function deleteOverrideAndRefresh(originalName) {
+  deletePersonOverride(originalName);
+  setStatus(`Override deleted for ${titleName(originalName)}`);
+  applyPersonDisplayOverridesToOrg();
+}
+
+function editOverride(originalName) {
+  optionsSelectedOriginalName = originalName;
+  const searchInput = document.getElementById("overridePersonSearch");
+  if (searchInput) searchInput.value = originalName;
+  populateOverridePersonMatches();
+  loadOverrideForm(originalName);
+}
+
+function clearOverrideForm(keepSelection = true) {
+  if (!keepSelection) optionsSelectedOriginalName = "";
+  ["overrideOriginalName", "overrideCurrentEmail", "overrideDisplayName", "overrideEmail"].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = "";
+  });
+}
+
+function saveManualEmails() {
+  const inputs = Array.from(document.querySelectorAll(".manual-email-input"));
+  let saved = 0;
+  const invalid = [];
+  inputs.forEach(input => {
+    const personName = input.getAttribute("data-person-name") || "";
+    const email = String(input.value || "").trim();
+    if (!email) return;
+    if (!isLikelyEmail(email)) { invalid.push({ personName, email }); return; }
+    setSavedEmailForName(personName, email); saved++;
+  });
+  if (invalid.length) alert(`Some emails do not look valid and were not saved:\n\n${invalid.slice(0, 20).map(item => `${item.personName}: ${item.email}`).join("\n")}`);
+  setStatus(`Saved ${saved} manual emails`);
+  renderOutputTable();
+}
+
+function attachSavedEmails() {
+  const attachableRows = getAttachableSavedEmailRows();
+  if (!attachableRows.length) { alert("No saved emails are ready to attach."); return; }
+  let attached = 0;
+  attachableRows.forEach(row => {
+    const savedEmail = getSavedEmailForName(row.personName);
+    const person = people.find(p => normalizeName(p.name) === normalizeName(row.personName));
+    if (person && savedEmail && !person.email) { person.email = savedEmail; attached++; }
+  });
+  setStatus(`Attached ${attached} saved emails by name`);
+  alert(`Attached ${attached} saved emails by matching saved person names.`);
+  renderAll();
+}
+
+function exportSavedEmailLibrary() {
+  const rows = Object.entries(savedPersonEmails || {}).map(([nameKey, email]) => ({ nameKey, email }));
+  if (!rows.length) { alert("No saved emails to export."); return; }
+  const payload = { type: "SafeliteSavedEmailLibrary", version: 1, exportedAt: new Date().toISOString(), savedPersonEmails };
+  const date = new Date().toISOString().slice(0, 10);
+  downloadBlob(JSON.stringify(payload, null, 2), `safelite_saved_email_library_${date}.json`, "application/json;charset=utf-8;");
+}
+
+function emailLibraryFromRows(rows) {
+  const imported = {};
+  rows.forEach(row => {
+    const keys = Object.keys(row);
+    const nameKeyHeader = keys.find(k => normalizeHeader(k) === "namekey" || normalizeHeader(k) === "name key");
+    const nameHeader = keys.find(k => normalizeHeader(k) === "name" || normalizeHeader(k) === "person name" || normalizeHeader(k) === "users");
+    const emailHeader = keys.find(k => normalizeHeader(k).includes("email") || normalizeHeader(k).includes("studio email"));
+    const rawName = nameKeyHeader ? row[nameKeyHeader] : nameHeader ? row[nameHeader] : "";
+    const rawEmail = emailHeader ? row[emailHeader] : "";
+    const nameKey = normalizeName(rawName);
+    const email = String(rawEmail || "").trim();
+    if (nameKey && email && isLikelyEmail(email)) imported[nameKey] = email;
+  });
+  return imported;
+}
+
+function handleEmailLibraryImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      let imported = {};
+      if (file.name.toLowerCase().endsWith(".json")) {
+        const payload = JSON.parse(e.target.result);
+        if (payload.type === "SafeliteSavedEmailLibrary" && payload.savedPersonEmails) imported = payload.savedPersonEmails;
+        else if (payload.savedPersonEmails) imported = payload.savedPersonEmails;
+        else { alert("This JSON does not look like a saved email library."); return; }
+      } else {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+        imported = emailLibraryFromRows(rows);
+      }
+      let added = 0; let updated = 0;
+      Object.entries(imported || {}).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (!cleanKey || !cleanEmail) return; if (savedPersonEmails[cleanKey]) updated++; else added++; savedPersonEmails[cleanKey] = cleanEmail; });
+      setStatus(`Email library loaded: ${added} added, ${updated} updated`);
+      alert(`Email library loaded.\n\nAdded: ${added}\nUpdated: ${updated}`);
+      renderAll();
+    } catch (error) { console.error(error); alert("Could not import the saved email library."); }
+  };
+  if (file.name.toLowerCase().endsWith(".json")) reader.readAsText(file); else reader.readAsArrayBuffer(file);
+  event.target.value = "";
+}
+
+function clickableName(name) {
+  return `<span class="name-click" onclick="selectPersonByName('${jsEscape(name)}')">${escapeHTML(getDisplayNameByName(name))}</span>`;
+}
+
+function makeClickablePath(path) {
+  return path
+    .split(" --> ")
+    .map(part => {
+      if (part === "Safelite") {
+        return escapeHTML(part);
+      }
+
+      return clickableName(part);
+    })
+    .join(" --> ");
+}
+
+function fillReportsForPerson(personName) {
+  const emails = getReportEmailsForSupervisor(personName);
+  filledReportEmails[personName] = emails;
+
+  if (!emails.length) {
+    alert(`No reporting usernames/emails found for ${personName}.`);
+  }
+
+  renderOutputTable();
+}
+
+function autoFillCoaches() {
+  let filledCount = 0;
+
+  getOrgPathRows().forEach(row => {
+    if (row.level === "Coach") {
+      const emails = getReportEmailsForSupervisor(row.personName);
+      filledReportEmails[row.personName] = emails;
+
+      if (emails.length) {
+        filledCount++;
+      }
+    }
+  });
+
+  alert(`Auto-filled reporting usernames/emails for ${filledCount} coach rows.`);
+  renderOutputTable();
+}
+
+function autoFillAllLeaders() {
+  let filledCount = 0;
+
+  getOrgPathRows().forEach(row => {
+    const emails = getReportEmailsForSupervisor(row.personName);
+    filledReportEmails[row.personName] = emails;
+
+    if (emails.length) {
+      filledCount++;
+    }
+  });
+
+  alert(`Auto-filled reporting usernames/emails for ${filledCount} rows.`);
+  renderOutputTable();
+}
+
+function clearFilledEmails() {
+  if (!confirm("Clear all filled reporting username/email lists?")) return;
+
+  filledReportEmails = {};
+  renderOutputTable();
+}
+
+function getFilterEmailsForPerson(personName) {
+  const emails = [
+    getEmailByName(personName),
+    ...(filledReportEmails[personName] || getReportEmailsForSupervisor(personName))
+  ];
+  const seen = new Set();
+
+  return emails
+    .map(email => String(email || "").trim())
+    .filter(email => {
+      const key = normalizeEmail(email);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function formatFilterEmails(personName) {
+  const emails = getFilterEmailsForPerson(personName);
+
+  if (!emails.length) {
+    return "";
+  }
+
+  return emails
+    .map(email => `username:"${email}"`)
+    .join(", ");
+}
+
+function getCurrentViewExportRows() {
+  if (currentViewMode === "org") {
+    const includeEmail = document.getElementById("includeEmailToggle").checked;
+
+    return getExportRows().map(row => {
+      const output = {
+        "Company Name": row.company,
+        "Director": row.director,
+        "Manager": row.manager,
+        "Coach": row.coach
+      };
+
+      if (includeEmail) {
+        output["Username / Studio Email Address"] = row.email || "";
+      }
+
+      return output;
+    });
+  }
+
+  if (currentViewMode === "users") {
+    const safeliteEmailSet = new Set(safeliteUsersEmails.map(normalizeEmail));
+    return [{ "Users": "Safelite", "Studio Email Address": safeliteUsersEmails.join(", ") }, ...getOrgPathRows().map(row => { const rowEmail = getEmailByName(row.personName) || ""; return ({ "Users": row.path, "Studio Email Address": safeliteEmailSet.has(normalizeEmail(rowEmail)) ? "" : rowEmail }); })];
+  }
+
+  if (currentViewMode === "filters") {
+    return getOrgPathRows().map(row => ({
+      "Users": row.path,
+      "Studio Email Address": formatFilterEmails(row.personName)
+    }));
+  }
+
+  return [];
+}
+
+function getExportFileName(extension) {
+  const label =
+    currentViewMode === "org"
+      ? "org_view"
+      : currentViewMode === "users"
+        ? "users_view"
+        : "filters_view";
+
+  return `safelite_${label}_export.${extension}`;
+}
+
+function exportCSV() {
+  const exportRows = getCurrentViewExportRows();
+
+  if (!exportRows.length) {
+    alert("No rows to export.");
+    return;
+  }
+
+  const headers = Object.keys(exportRows[0]);
+
+  const csvRows = [
+    headers.map(csvEscape).join(","),
+    ...exportRows.map(row => headers.map(header => csvEscape(row[header])).join(","))
+  ];
+
+  downloadBlob(csvRows.join("\n"), getExportFileName("csv"), "text/csv;charset=utf-8;");
+}
+
+function exportExcel() {
+  const exportRows = getCurrentViewExportRows();
+
+  if (!exportRows.length) {
+    alert("No rows to export.");
+    return;
+  }
+
+  const worksheet = XLSX.utils.json_to_sheet(exportRows);
+  const workbook = XLSX.utils.book_new();
+
+  const sheetName =
+    currentViewMode === "org"
+      ? "Org View"
+      : currentViewMode === "users"
+        ? "Users View"
+        : "Filters View";
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+  if (worksheet["!ref"]) {
+    const range = XLSX.utils.decode_range(worksheet["!ref"]);
+    worksheet["!cols"] = [];
+
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      let maxWidth = 14;
+
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
+        if (cell && cell.v) {
+          maxWidth = Math.max(maxWidth, String(cell.v).length + 2);
+        }
+      }
+
+      worksheet["!cols"].push({ wch: Math.min(maxWidth, 100) });
+    }
+  }
+
+  XLSX.writeFile(workbook, getExportFileName("xlsx"));
+}
+
+function saveLocal() {
+  const payload = {
+    savedAt: new Date().toISOString(),
+    rawRows,
+    people,
+    columns,
+    org,
+    includeEmail: document.getElementById("includeEmailToggle").checked,
+    currentViewMode,
+    hideAssignedPeople: document.getElementById("hideAssignedPeopleToggle")?.checked || false,
+    filledReportEmails,
+    orgBlueprint: buildOrgBlueprint(),
+    safeliteUsersEmails,
+    savedPersonEmails,
+    personOverrides,
+    activePeopleFilters: getValidPeopleFilters()
+  };
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  setStatus("Saved locally");
+  alert("Saved locally in this browser.");
+}
+
+function loadLocal() {
+  const text = localStorage.getItem(STORAGE_KEY);
+
+  if (!text) {
+    alert("No local save found.");
+    return;
+  }
+
+  try {
+    const payload = JSON.parse(text);
+    const hasCurrentFileLoaded = rawRows.length > 0 && people.length > 0;
+    const hasBlueprint = payload.orgBlueprint && Array.isArray(payload.orgBlueprint.hierarchy);
+
+    if (hasCurrentFileLoaded && hasBlueprint) {
+      hideAssignedPeople = Boolean(payload.hideAssignedPeople);
+      const hideAssignedToggle = document.getElementById("hideAssignedPeopleToggle");
+      if (hideAssignedToggle) hideAssignedToggle.checked = hideAssignedPeople;
+      savedPersonEmails = payload.savedPersonEmails || savedPersonEmails || {};
+      personOverrides = normalizePersonOverrides(payload.personOverrides || payload.orgBlueprint.personOverrides || personOverrides || {});
+      activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
+      rebuildOrgFromBlueprint(payload.orgBlueprint);
+      updateFilterButtonLabel();
+      renderPeopleList();
+      setStatus("Loaded org blueprint onto current uploaded file");
+      return;
+    }
+
+    rawRows = payload.rawRows || [];
+    people = payload.people || [];
+    columns = payload.columns || columns;
+    org = payload.org || [];
+    filledReportEmails = payload.filledReportEmails || {};
+    safeliteUsersEmails = Array.isArray(payload.safeliteUsersEmails) ? payload.safeliteUsersEmails : [];
+    savedPersonEmails = payload.savedPersonEmails || {};
+    personOverrides = normalizePersonOverrides(payload.personOverrides || payload.orgBlueprint?.personOverrides || {});
+    activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
+    currentViewMode = payload.currentViewMode || "org";
+    hideAssignedPeople = Boolean(payload.hideAssignedPeople);
+    const hideAssignedToggle = document.getElementById("hideAssignedPeopleToggle");
+    if (hideAssignedToggle) hideAssignedToggle.checked = hideAssignedPeople;
+
+    if (typeof payload.includeEmail === "boolean") {
+      document.getElementById("includeEmailToggle").checked = payload.includeEmail;
+    }
+
+    if (rawRows.length) {
+      setupColumnSelectors();
+
+      if (columns.first) document.getElementById("firstNameSelect").value = columns.first;
+      if (columns.last) document.getElementById("lastNameSelect").value = columns.last;
+      if (columns.supervisor) document.getElementById("supervisorSelect").value = columns.supervisor;
+      if (columns.email) document.getElementById("emailSelect").value = columns.email;
+    }
+
+    selectedPerson = null;
+    renderAll();
+    setViewMode(currentViewMode);
+
+    const savedDate = payload.savedAt ? new Date(payload.savedAt).toLocaleString() : "unknown time";
+    setStatus(`Loaded local save from ${savedDate}`);
+  } catch (error) {
+    console.error(error);
+    alert("Local save could not be loaded.");
+  }
+}
+
+function allowDrop(event) {
+  event.preventDefault();
+  event.currentTarget.classList.add("drag-over");
+}
+
+function removeDragOver(event) {
+  event.currentTarget.classList.remove("drag-over");
+}
+
+function dropAsDirector(event) {
+  event.preventDefault();
+  event.currentTarget.classList.remove("drag-over");
+
+  if (!draggedItem) return;
+
+  addDirector(draggedItem.name);
+  draggedItem = null;
+}
+
+function downloadBlob(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  URL.revokeObjectURL(url);
+}
+
+function csvEscape(value) {
+  const text = String(value || "");
+
+  if (text.includes(",") || text.includes('"') || text.includes("\n")) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  return text;
+}
+
+function escapeHTML(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function jsEscape(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'");
+}
+
+
+function renderCompareView() { const header = document.getElementById("outputTableHeader"); const tbody = document.querySelector("#outputTable tbody"); header.innerHTML = `<th>Compare Files</th>`; tbody.innerHTML = `<tr><td><div class="compare-wrap"><div class="notice">Upload a second file to compare its format and names against the currently loaded file.</div>${lastBlueprintLoadSummary ? `<div class="notice compare-warning">Last blueprint load (${new Date(lastBlueprintLoadSummary.loadedAt).toLocaleString()}): Directors ${lastBlueprintLoadSummary.directorCount}, Managers ${lastBlueprintLoadSummary.managerCount}, Coaches ${lastBlueprintLoadSummary.coachCount}, Missing ${lastBlueprintLoadSummary.missing.length}.</div>` : ""}<div class="compare-grid"><div class="compare-card"><h3>Current File</h3><div id="currentFileSummary"></div></div><div class="compare-card"><h3>Comparison File</h3><input type="file" id="compareFileInput" accept=".xlsx,.xls,.csv" /><div id="compareFileSummary" class="small" style="margin-top:8px;">No comparison file loaded.</div></div></div><div id="compareResultsBox" style="margin-top:12px;"></div></div></td></tr>`; renderCurrentFileSummary(); const compareInput = document.getElementById("compareFileInput"); if (compareInput) compareInput.addEventListener("change", handleCompareFileUpload); if (compareResults) renderCompareResults(); }
+function handleCompareFileUpload(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { try { const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, { type: "array" }); const sheetName = workbook.SheetNames[0]; const sheet = workbook.Sheets[sheetName]; compareRawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" }); if (!compareRawRows.length) { alert("No rows found in comparison file."); return; } setupCompareColumns(); processComparePeople(); compareResults = compareFiles(); renderCompareView(); setStatus(`Compared current file to ${file.name}`); } catch (error) { console.error(error); alert("There was an issue reading the comparison file."); } }; reader.readAsArrayBuffer(file); }
+function setupCompareColumns() { const headers = Object.keys(compareRawRows[0] || {}); compareColumns.first = findBestHeader(headers, possibleFirstNames); compareColumns.last = findBestHeader(headers, possibleLastNames); compareColumns.supervisor = findBestHeader(headers, possibleSupervisorNames); compareColumns.email = findBestHeader(headers, possibleEmailNames); }
+function processComparePeople() { comparePeople = []; compareRawRows.forEach((row, index) => { const first = row[compareColumns.first]; const last = row[compareColumns.last]; const name = makeDisplayName(first, last); if (!name) return; comparePeople.push({ id: `compare_person_${index}`, first: String(first || "").trim(), last: String(last || "").trim(), name, nameKey: normalizeName(name), email: String(row[compareColumns.email] || "").trim(), supervisorRaw: titleName(row[compareColumns.supervisor]), supervisorKey: normalizeName(row[compareColumns.supervisor]), raw: row }); }); comparePeople.sort((a, b) => a.name.localeCompare(b.name)); }
+function compareFiles() { const currentHeaders = Object.keys(rawRows[0] || {}); const compareHeaders = Object.keys(compareRawRows[0] || {}); const currentNormalizedHeaders = currentHeaders.map(normalizeHeader); const compareNormalizedHeaders = compareHeaders.map(normalizeHeader); const missingFromCompare = currentHeaders.filter(header => !compareNormalizedHeaders.includes(normalizeHeader(header))); const extraInCompare = compareHeaders.filter(header => !currentNormalizedHeaders.includes(normalizeHeader(header))); const sameHeaderOrder = currentHeaders.length === compareHeaders.length && currentHeaders.every((header, index) => normalizeHeader(header) === normalizeHeader(compareHeaders[index])); const requiredMappings = [{ label: "First Name", current: columns.first, compare: compareColumns.first }, { label: "Last Name", current: columns.last, compare: compareColumns.last }, { label: "Supervisor", current: columns.supervisor, compare: compareColumns.supervisor }, { label: "Username / Email", current: columns.email, compare: compareColumns.email }]; const currentNameKeys = new Set(people.map(p => p.nameKey)); const compareNameKeys = new Set(comparePeople.map(p => p.nameKey)); const matchedNames = people.filter(p => compareNameKeys.has(p.nameKey)); const missingNames = people.filter(p => !compareNameKeys.has(p.nameKey)); const newNames = comparePeople.filter(p => !currentNameKeys.has(p.nameKey)); const supervisorDifferences = []; matchedNames.forEach(currentPerson => { const comparePerson = comparePeople.find(p => p.nameKey === currentPerson.nameKey); if (!comparePerson) return; if (currentPerson.supervisorKey !== comparePerson.supervisorKey) supervisorDifferences.push({ name: currentPerson.name, currentSupervisor: currentPerson.supervisorRaw || "", compareSupervisor: comparePerson.supervisorRaw || "" }); }); return { currentHeaders, compareHeaders, sameHeaderOrder, missingFromCompare, extraInCompare, requiredMappings, currentCount: people.length, compareCount: comparePeople.length, matchedNames, missingNames, newNames, supervisorDifferences }; }
+function renderCurrentFileSummary() { const box = document.getElementById("currentFileSummary"); if (!box) return; if (!rawRows.length) { box.innerHTML = `<div class="notice">No current file loaded.</div>`; return; } box.innerHTML = `<div><strong>Rows:</strong> ${rawRows.length.toLocaleString()}</div><div><strong>People:</strong> ${people.length.toLocaleString()}</div><div><strong>First:</strong> ${escapeHTML(columns.first || "—")}</div><div><strong>Last:</strong> ${escapeHTML(columns.last || "—")}</div><div><strong>Supervisor:</strong> ${escapeHTML(columns.supervisor || "—")}</div><div><strong>Email:</strong> ${escapeHTML(columns.email || "—")}</div>`; }
+function renderCompareResults() { const box = document.getElementById("compareResultsBox"); const summaryBox = document.getElementById("compareFileSummary"); if (!box || !compareResults) return; if (summaryBox) summaryBox.innerHTML = `Rows: ${compareRawRows.length.toLocaleString()}<br>People: ${comparePeople.length.toLocaleString()}<br>First: ${escapeHTML(compareColumns.first || "—")}<br>Last: ${escapeHTML(compareColumns.last || "—")}<br>Supervisor: ${escapeHTML(compareColumns.supervisor || "—")}<br>Email: ${escapeHTML(compareColumns.email || "—")}`; const formatClass = compareResults.missingFromCompare.length === 0 && compareResults.extraInCompare.length === 0 ? "compare-good" : "compare-warning"; const orderText = compareResults.sameHeaderOrder ? "Headers match in the same order." : "Headers do not perfectly match in the same order."; box.innerHTML = `<div class="compare-section"><h3>Format Equivalency Summary</h3><div class="notice ${formatClass}"><strong>${orderText}</strong><br>Missing columns in comparison file: ${compareResults.missingFromCompare.length}<br>Extra columns in comparison file: ${compareResults.extraInCompare.length}</div>${renderRequiredMappingTable()}${renderHeaderComparisonTable()}</div><div class="compare-section"><h3>Name Match Summary</h3><div class="notice ${compareResults.missingNames.length === 0 ? "compare-good" : "compare-warning"}">Current people: ${compareResults.currentCount}<br>Comparison people: ${compareResults.compareCount}<br>Matched names: ${compareResults.matchedNames.length}<br>Missing from comparison file: ${compareResults.missingNames.length}<br>New names in comparison file: ${compareResults.newNames.length}</div>${renderNameDifferenceTable()}</div><div class="compare-section"><h3>Supervisor / Row Relationship Differences</h3><div class="notice ${compareResults.supervisorDifferences.length === 0 ? "compare-good" : "compare-warning"}">Supervisor differences found: ${compareResults.supervisorDifferences.length}</div>${renderSupervisorDifferenceTable()}</div>`; }
+function renderRequiredMappingTable() { return `<table><thead><tr><th>Required Field</th><th>Current File Column</th><th>Comparison File Column</th><th>Status</th></tr></thead><tbody>${compareResults.requiredMappings.map(item => { const same = normalizeHeader(item.current) === normalizeHeader(item.compare); return `<tr><td>${escapeHTML(item.label)}</td><td>${escapeHTML(item.current || "—")}</td><td>${escapeHTML(item.compare || "—")}</td><td class="${same ? "match-cell" : "partial-cell"}">${same ? "Equivalent" : "Different column name / mapping"}</td></tr>`; }).join("")}</tbody></table>`; }
+function renderHeaderComparisonTable() { const max = Math.max(compareResults.currentHeaders.length, compareResults.compareHeaders.length); let rows = ""; for (let i = 0; i < max; i++) { const currentHeader = compareResults.currentHeaders[i] || ""; const compareHeader = compareResults.compareHeaders[i] || ""; const same = normalizeHeader(currentHeader) === normalizeHeader(compareHeader); rows += `<tr><td>${i + 1}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(currentHeader || "—")}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(compareHeader || "—")}</td><td>${same ? "Same position" : "Different"}</td></tr>`; } return `<table><thead><tr><th>#</th><th>Current Header</th><th>Comparison Header</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`; }
+function renderNameDifferenceTable() { const missing = compareResults.missingNames.slice(0, 150); const added = compareResults.newNames.slice(0, 150); return `<table><thead><tr><th>Difference Type</th><th>Name</th><th>Supervisor</th><th>Email</th></tr></thead><tbody>${missing.map(p => `<tr><td class="diff-cell">Missing from comparison</td><td>${escapeHTML(getDisplayNameByName(p.name))}${normalizeName(getDisplayNameByName(p.name)) !== p.nameKey ? `<span class="original-name-note">Original: ${escapeHTML(p.name)}</span>` : ""}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(getEmailByName(p.name) || "—")}</td></tr>`).join("")}${added.map(p => `<tr><td class="partial-cell">New in comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}</tbody></table>`; }
+function renderSupervisorDifferenceTable() { if (!compareResults.supervisorDifferences.length) return `<div class="notice compare-good">No supervisor differences found for matched names.</div>`; return `<table><thead><tr><th>Name</th><th>Current Supervisor</th><th>Comparison Supervisor</th></tr></thead><tbody>${compareResults.supervisorDifferences.slice(0, 200).map(item => `<tr><td>${escapeHTML(getDisplayNameByName(item.name))}</td><td class="diff-cell">${escapeHTML(item.currentSupervisor || "—")}</td><td class="diff-cell">${escapeHTML(item.compareSupervisor || "—")}</td></tr>`).join("")}</tbody></table>`; }
+
+function setStatus(text) {
+  document.getElementById("statusPill").textContent = text;
+}
+
+renderAll();
+</script>
+
+</body>
+</html>
+
+    if ($issues.Count -gt 0) {
+        Write-Host ""
+        Write-Host "Issues / unmatched names:" -ForegroundColor Yellow
+
+        foreach ($issue in $issues) {
+            Write-Host " - $issue" -ForegroundColor Yellow
+        }
+    }
+
+    Write-Host ""
+    Write-Host "Done. Outlook email windows were opened. Nothing was sent automatically." -ForegroundColor Green
+}
+catch {
+    Write-Host ""
+    Write-Host "ERROR:" -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+}
+
