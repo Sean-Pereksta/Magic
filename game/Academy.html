@@ -1207,6 +1207,8 @@ function processPeopleInChunks(doneCallback) {
         email: String(row[columns.email] || "").trim(),
         supervisorRaw: titleName(row[columns.supervisor]),
         supervisorKey: normalizeName(row[columns.supervisor]),
+        originalSupervisorRaw: titleName(row[columns.supervisor]),
+        originalSupervisorKey: normalizeName(row[columns.supervisor]),
         raw: row
       });
     }
@@ -1499,7 +1501,7 @@ function renderPeopleList() {
     div.innerHTML = `
       <div><strong>${escapeHTML(displayName)}</strong></div>
       ${originalNote}
-      <div class="small">Supervisor: ${escapeHTML(person.supervisorRaw || "—")}</div>
+      <div class="small">Supervisor: ${escapeHTML(getDisplayNameByName(person.supervisorRaw) || "—")}</div>
       <div class="small">Username/Email: ${escapeHTML(email)}</div>
     `;
 
@@ -1581,7 +1583,7 @@ function renderSelectedPerson() {
     div.innerHTML = `
       <div class="direct-report-title">${escapeHTML(reportDisplayName)}</div>
       ${reportOriginalNote}
-      <div class="small">Supervisor: ${escapeHTML(report.supervisorRaw || "—")}</div>
+      <div class="small">Supervisor: ${escapeHTML(getDisplayNameByName(report.supervisorRaw) || "—")}</div>
       <div class="small">Username/Email: ${escapeHTML(getEmailByName(report.name) || "—")}</div>
       <div class="role-actions" style="margin-top:7px;">
         <button class="primary-add-btn" onclick="autoAddDirectReport('${jsEscape(report.name)}')">Add Under Selected</button>
@@ -1594,12 +1596,20 @@ function renderSelectedPerson() {
 }
 
 function getDirectReports(supervisorName) {
-  const supervisorKey = normalizeName(supervisorName);
-  const flipped = normalizeName(flipName(supervisorName));
+  if (!normalizeName(supervisorName)) return [];
 
-  return people.filter(p => {
-    if (!p.supervisorKey) return false;
-    return p.supervisorKey === supervisorKey || p.supervisorKey === flipped;
+  const supervisorKeys = getSupervisorMatchKeysForPerson(supervisorName);
+
+  return people.filter(person => {
+    const rawSupervisor = person.originalSupervisorRaw || person.supervisorRaw || "";
+    if (!normalizeName(rawSupervisor)) return false;
+
+    const supervisorCandidates = [
+      rawSupervisor,
+      flipName(rawSupervisor)
+    ];
+
+    return supervisorCandidates.some(candidate => supervisorKeys.has(normalizeName(candidate)));
   });
 }
 
@@ -2068,7 +2078,9 @@ function selectPersonByName(name) {
     nameKey: normalizeName(name),
     email: "",
     supervisorRaw: "",
-    supervisorKey: ""
+    supervisorKey: "",
+    originalSupervisorRaw: "",
+    originalSupervisorKey: ""
   };
 
   renderPeopleList();
@@ -2077,6 +2089,25 @@ function selectPersonByName(name) {
 
 function getPersonOverride(name) {
   return personOverrides[normalizeName(name)] || null;
+}
+
+function getSupervisorMatchKeysForPerson(name) {
+  const keys = new Set();
+
+  function add(value) {
+    const clean = titleName(value);
+    if (!clean) return;
+    keys.add(normalizeName(clean));
+    keys.add(normalizeName(flipName(clean)));
+  }
+
+  add(name);
+
+  const override = getPersonOverride(name);
+  if (override && override.displayName) add(override.displayName);
+  if (override && override.originalName) add(override.originalName);
+
+  return keys;
 }
 
 function getDisplayNameByName(name) {
