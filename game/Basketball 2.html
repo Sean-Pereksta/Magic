@@ -131,6 +131,12 @@
   .entry{border:1px solid var(--line); border-radius:12px; padding:10px; background:#ffffff; overflow-wrap:anywhere;}
   .badge{font-size:12px; padding:4px 8px; border-radius:8px; background:#f7faff; border:1px solid #dbeafe; color:#0b1a37}
   .kv{display:grid; grid-template-columns:1fr auto; gap:6px; font-size:13px}
+  .entry-actions{display:flex; gap:8px; align-items:center; justify-content:flex-end; flex-wrap:wrap}
+  .editCoachingBtn{padding:7px 10px; border-radius:9px}
+  .edit-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px}
+  .edit-score-row{display:grid; grid-template-columns:minmax(0,1fr) 190px; gap:10px; align-items:center; padding:10px; border:1px solid var(--line); border-radius:12px; background:#fbfdff; margin:8px 0}
+  .modal-actions{display:flex; gap:10px; justify-content:flex-end; align-items:center; position:sticky; bottom:-12px; background:linear-gradient(to top,#fff 70%,rgba(255,255,255,.84)); border-top:1px solid var(--line); padding:12px 0 0; margin-top:12px}
+  @media (max-width:700px){ .edit-grid,.edit-score-row{grid-template-columns:1fr} }
 
   .pill-toggle{display:inline-flex; border:1px solid var(--line); border-radius:999px; overflow:hidden}
   .pill-toggle button{padding:8px 12px; background:#ffffff; color:#1f2937; border:none}
@@ -1098,6 +1104,58 @@ function activeScoreMode(){ return isCondensedMode() ? 'condensed_1_4' : 'full_1
 function activeItems(){ return isCondensedMode() ? CONDENSED_ITEMS : FULL_ITEMS; }
 function activeScoreOptions(){ return isCondensedMode() ? CONDENSED_SCORE_OPTIONS : FULL_SCORE_OPTIONS; }
 function itemById(id, items=FULL_ITEMS){ return items.find(i=>i.id===id); }
+function getScenarioOptionsHtml(selected=''){
+  const baseOptions = ['', 'Accountability Conversation', 'Talent Development', 'Procedural Conversation', 'KPI Growth', 'Mindset Discussion', 'Coaching to Generalities'];
+  const options = selected && !baseOptions.includes(selected) ? baseOptions.concat(selected) : baseOptions;
+  return options.map(opt=>{
+    const label = opt || '— Select —';
+    return `<option value="${escapeHtml(opt)}"${opt === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
+}
+function isCondensedRecord(f={}){
+  return f.condensedVersion === true || f.teamRichardsVersion === true || f.scoreMode === 'condensed_1_4' || Number(f.scoreMax) === 4;
+}
+function normalizeCoachingRecord(f={}){
+  const condensed = isCondensedRecord(f);
+  return {
+    ...f,
+    scoreMode: f.scoreMode || (condensed ? 'condensed_1_4' : 'full_1_5'),
+    scoreMax: Number(f.scoreMax) || (condensed ? 4 : 5),
+    condensedVersion: condensed,
+    teamRichardsVersion: !!f.teamRichardsVersion
+  };
+}
+function getRecordItems(f){ return isCondensedRecord(f) ? CONDENSED_ITEMS : FULL_ITEMS; }
+function getRecordScoreMax(f){ return Number(f.scoreMax) || (isCondensedRecord(f) ? 4 : 5); }
+function getRecordScoreOptions(f){ return getRecordScoreMax(f) === 4 ? CONDENSED_SCORE_OPTIONS : FULL_SCORE_OPTIONS; }
+function buildScoresForMode(items, valuesById, condensedMode){
+  const values = [];
+  for(const item of items){
+    const v = Number(valuesById[item.id]);
+    if(Number.isFinite(v)) values.push(v);
+  }
+
+  if(condensedMode){
+    const condensedScores = {};
+    const scores = {};
+    for(const item of CONDENSED_ITEMS){
+      const v = Number(valuesById[item.id]);
+      if(!Number.isFinite(v)) continue;
+      condensedScores[item.id] = v;
+      // Keep the same condensed-to-legacy expansion used by the new coaching form.
+      if(item.id === 'selfAwareness') continue;
+      for(const sourceId of (item.sourceIds || [item.id])) scores[sourceId] = v;
+    }
+    return { scores, condensedScores, values };
+  }
+
+  const scores = {};
+  for(const item of FULL_ITEMS){
+    const v = Number(valuesById[item.id]);
+    if(Number.isFinite(v)) scores[item.id] = v;
+  }
+  return { scores, condensedScores:null, values };
+}
 
 function syncModeCheckboxes(changed){
   if(isTeamRichardsMode() && condensedVersionEl && !condensedVersionEl.checked){
@@ -1309,8 +1367,8 @@ function buildRepEntries(){
     const lastTs   = last ? new Date(last.date).getTime() : 0;
 
     const lastScenario =
-      (last?.scenarioMeta && last.scenarioMeta.scenarioTitle) ? last.scenarioMeta.scenarioTitle :
-      (last?.scenarioCategory || null);
+      (last?.scenarioCategory || null) ||
+      ((last?.scenarioMeta && last.scenarioMeta.scenarioTitle) ? last.scenarioMeta.scenarioTitle : null);
 
     const director = (v.director || '').trim();
     const promoted = !!v.promoted;
@@ -1596,9 +1654,6 @@ function getFormAverageForMode(f, condensedMode=isCondensedMode()){
     .filter(v=>typeof v === 'number');
   return vals.length ? avg(vals) : null;
 }
-function getRecordItems(f){ return f.condensedVersion || f.scoreMode === 'condensed_1_4' ? CONDENSED_ITEMS : FULL_ITEMS; }
-function getRecordScoreMax(f){ return Number(f.scoreMax) || (f.condensedVersion || f.scoreMode === 'condensed_1_4' ? 4 : 5); }
-
 function renderPerQuestionTrends(orderedForms){
   const condensedMode = isCondensedMode();
   const max = activeScoreMax();
@@ -1702,8 +1757,8 @@ function renderLogList(entries){
     const verdictColor = displayVerdict>=4?'style="color:#166534"':(displayVerdict<=2?'style="color:#b91c1c"':'');
 
     const scenarioLabel =
-      (f.scenarioMeta && f.scenarioMeta.scenarioTitle) ? f.scenarioMeta.scenarioTitle :
-      (f.scenarioCategory || '');
+      (f.scenarioCategory || '') ||
+      ((f.scenarioMeta && f.scenarioMeta.scenarioTitle) ? f.scenarioMeta.scenarioTitle : '');
 
     entry.innerHTML = `
       <div class="row" style="justify-content:space-between; align-items:center;">
@@ -1713,7 +1768,10 @@ function renderLogList(entries){
           ${scenarioLabel?`<span class="badge">Scenario: ${escapeHtml(scenarioLabel)}</span>`:''}
           <span class="badge">${recordMax === 4 ? 'Condensed 1–4' : 'Full 1–5'}</span>
         </div>
-        <div ${verdictColor}><strong>Verdict:</strong> ${displayVerdict?.toFixed?displayVerdict.toFixed(2):displayVerdict}</div>
+        <div class="entry-actions">
+          <div ${verdictColor}><strong>Verdict:</strong> ${displayVerdict?.toFixed?displayVerdict.toFixed(2):displayVerdict}</div>
+          <button class="soft editCoachingBtn" data-repkey="${escapeHtml(selectedRep || '')}" data-coaching-id="${escapeHtml(f.id || '')}">Edit</button>
+        </div>
       </div>
       <div class="divider"></div>
       <div class="grid2">
@@ -1730,6 +1788,120 @@ function renderLogList(entries){
     frag.appendChild(entry);
   }
   logList.appendChild(frag);
+  logList.querySelectorAll('.editCoachingBtn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const repKey = btn.getAttribute('data-repkey') || selectedRep;
+      const coachingId = btn.getAttribute('data-coaching-id');
+      const coachingRecord = (formsByRep[repKey] || {})[coachingId];
+      if(repKey && coachingId && coachingRecord) openEditCoachingModal(repKey, coachingId, coachingRecord);
+    });
+  });
+}
+
+function openEditCoachingModal(repKey, coachingId, coachingRecord){
+  const record = normalizeCoachingRecord(coachingRecord || {});
+  const condensedMode = getRecordScoreMax(record) === 4;
+  const items = getRecordItems(record);
+  const options = getRecordScoreOptions(record);
+  const modeLabel = condensedMode
+    ? (record.teamRichardsVersion ? 'Team Richards / Condensed 1–4' : 'Condensed 1–4')
+    : 'Full 1–5';
+  const optionHtml = (selected)=> [`<option value="">–</option>`]
+    .concat(options.map(([value,label])=>`<option value="${value}"${Number(selected) === value ? ' selected' : ''}>${escapeHtml(label)}</option>`))
+    .join('');
+
+  const scoreRows = items.map(item=>{
+    const current = getVisibleScore(record, item, condensedMode);
+    const mapped = condensedMode && item.sourceIds?.length ? `<div class="tiny">Legacy mapping: ${item.sourceIds.map(escapeHtml).join(', ')}</div>` : '';
+    return `
+      <div class="edit-score-row">
+        <div><strong>${escapeHtml(item.q)}</strong><div class="tiny">${escapeHtml(item.tip || '')}</div>${mapped}</div>
+        <select data-edit-score="${escapeHtml(item.id)}" required>${optionHtml(current)}</select>
+      </div>`;
+  }).join('');
+
+  const html = `
+    <div class="tiny" style="margin-bottom:10px"><strong>Editing existing coaching:</strong> ${escapeHtml(displayRepName(repKey))} • ${escapeHtml(modeLabel)} • Firebase ID ${escapeHtml(coachingId)}</div>
+    <div class="edit-grid">
+      <div class="field"><div class="tiny">Date</div><input type="date" id="editCoachingDate" value="${escapeHtml(record.date || '')}"></div>
+      <div class="field"><div class="tiny">Reviewer</div><input type="text" id="editCoachingReviewer" value="${escapeHtml(record.reviewerRaw || record.reviewerDisplay || record.reviewer || '')}" placeholder="Reviewer name"></div>
+      <div class="field" style="grid-column:1 / -1"><div class="tiny">Scenario Category</div><select id="editCoachingScenario">${getScenarioOptionsHtml(record.scenarioCategory || '')}</select></div>
+    </div>
+    <div class="divider"></div>
+    <div><div class="tiny" style="font-weight:900; margin-bottom:6px">Scores (${escapeHtml(modeLabel)})</div>${scoreRows}</div>
+    <div class="divider"></div>
+    <div class="field"><div class="tiny">Opportunities</div><textarea id="editCoachingOpps" placeholder="Where can this rep grow? Specific, actionable…">${escapeHtml(record.opportunities || '')}</textarea></div>
+    <div class="field"><div class="tiny">Comments</div><textarea id="editCoachingNotes" placeholder="Overall feedback, context, and next steps…">${escapeHtml(record.notes || '')}</textarea></div>
+    <div class="modal-actions">
+      <div class="tiny" id="editCoachingSummary" style="margin-right:auto">Average: –</div>
+      <button class="ghost" id="cancelEditCoaching">Cancel</button>
+      <button id="saveEditCoaching">Save and Leave</button>
+    </div>
+  `;
+  openModal('Edit Previous Coaching', html);
+
+  const updateEditSummary = ()=>{
+    const vals = [...modalBody.querySelectorAll('[data-edit-score]')].map(sel=>+sel.value||0).filter(Boolean);
+    const a = avg(vals);
+    const summary = modalBody.querySelector('#editCoachingSummary');
+    if(summary) summary.textContent = `Average: ${a ? a.toFixed(2) : '–'} / ${condensedMode ? 4 : 5} (${modeLabel})`;
+  };
+  modalBody.querySelectorAll('[data-edit-score]').forEach(sel=>sel.addEventListener('change', updateEditSummary));
+  updateEditSummary();
+
+  modalBody.querySelector('#cancelEditCoaching')?.addEventListener('click', closeModal);
+  modalBody.querySelector('#saveEditCoaching')?.addEventListener('click', async ()=>{
+    const saveBtn = modalBody.querySelector('#saveEditCoaching');
+    const date = modalBody.querySelector('#editCoachingDate')?.value || new Date().toISOString().slice(0,10);
+    const reviewerRaw = (modalBody.querySelector('#editCoachingReviewer')?.value || '').trim();
+    const reviewerDisplay = sanitizePersonNameForSave(reviewerRaw);
+    const scenarioCategory = (modalBody.querySelector('#editCoachingScenario')?.value || '').trim();
+    const opportunities = (modalBody.querySelector('#editCoachingOpps')?.value || '').trim();
+    const notes = (modalBody.querySelector('#editCoachingNotes')?.value || '').trim();
+    if(!reviewerRaw){ alert('Reviewer is required.'); return; }
+    const selects = [...modalBody.querySelectorAll('[data-edit-score]')];
+    if(selects.some(sel=>!sel.value)){ alert('Please score every section (no blanks).'); return; }
+    const valuesById = {};
+    for(const sel of selects) valuesById[sel.dataset.editScore] = +sel.value;
+    const { scores, condensedScores, values } = buildScoresForMode(items, valuesById, condensedMode);
+    const verdict = values.length ? avg(values) : null;
+    const updatedRecord = {
+      date,
+      reviewerRaw,
+      reviewerDisplay,
+      reviewer: reviewerDisplay,
+      scenarioCategory: scenarioCategory || null,
+      opportunities,
+      notes,
+      scores,
+      verdict,
+      avgScore: verdict,
+      scoreMode: record.scoreMode,
+      scoreMax: record.scoreMax,
+      condensedVersion: record.condensedVersion,
+      teamRichardsVersion: record.teamRichardsVersion
+    };
+    if(condensedMode) updatedRecord.condensedScores = condensedScores;
+    else updatedRecord.condensedScores = null;
+
+    try{
+      if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+      await saveEditedCoaching(repKey, coachingId, updatedRecord);
+      await loadOneRepForms(repKey);
+      renderRepList();
+      if(selectedRep === repKey) selectRep(repKey);
+      closeModal();
+    }catch(err){
+      console.error(err);
+      alert('Could not save edits. Please try again.');
+      if(saveBtn){ saveBtn.disabled = false; saveBtn.textContent = 'Save and Leave'; }
+    }
+  });
+}
+
+function saveEditedCoaching(repKey, coachingId, updatedRecord){
+  return db.ref(`coachingForms/${repKey}/${coachingId}`).update(updatedRecord);
 }
 
 /* =========================
@@ -2683,25 +2855,9 @@ submitForm.addEventListener('click', async ()=>{
   const condensedMode = isCondensedMode();
   const teamRichardsMode = isTeamRichardsMode();
   const scoreMax = activeScoreMax();
-  const visibleScores = {}; const scores = {}; const values = [];
-  for(const sel of selects){
-    const v = +sel.value; values.push(v);
-    visibleScores[sel.dataset.q] = v;
-  }
-
-  let condensedScores = null;
-  if(condensedMode){
-    condensedScores = {...visibleScores};
-    // Expand visible condensed scores back to the legacy score object for existing Firebase consumers.
-    for(const item of CONDENSED_ITEMS){
-      const v = visibleScores[item.id];
-      if(typeof v !== 'number') continue;
-      if(item.id === 'selfAwareness') continue; // saved in condensed metadata; awarenessAccountability remains the direct legacy own value.
-      for(const sourceId of (item.sourceIds || [item.id])) scores[sourceId] = v;
-    }
-  }else{
-    Object.assign(scores, visibleScores);
-  }
+  const valuesById = {};
+  for(const sel of selects) valuesById[sel.dataset.q] = +sel.value;
+  const { scores, condensedScores, values } = buildScoresForMode(activeItems(), valuesById, condensedMode);
   const verdict = values.length ? avg(values) : null;
 
   const payload = {
