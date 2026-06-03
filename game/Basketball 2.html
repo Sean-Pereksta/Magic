@@ -823,11 +823,10 @@ const FULL_ITEMS = [
 const CONDENSED_ITEMS = [
   { id:"prep", q:"How they show Up", tip:"Confidence, clarity, polish.", sourceIds:["prep"] },
   { id:"feed", q:"Seeking Understanding", tip:"Dug into mindset & the why.", sourceIds:["feed"] },
-  { id:"commit", q:"Setting Goals", tip:"Clear actions & accountability.", sourceIds:["commit"] },
-  { id:"selfAwareness", q:"Self Awareness", tip:"Awareness of impact and ownership of growth.", sourceIds:["own"] },
+  { id:"selfAwarenessTakeFeedback", q:"Self Awareness & Take Feedback", tip:"Awareness of impact and openness to feedback.", sourceIds:[], legacyCondensedIds:["selfAwareness"] },
   { id:"problemSolving", q:"Problem Solving", tip:"Adapted approach and connected solutions to business outcomes.", sourceIds:["solve","biz"] },
   { id:"engagementEmpathy", q:"Engagement & Empathy", tip:"Listened actively, validated feelings, and built trust.", sourceIds:["listen","empathy"] },
-  { id:"awarenessAccountability", q:"Awareness and Accountability", tip:"Receives feedback and turns it into accountable action.", sourceIds:["own"] }
+  { id:"awarenessAccountability", q:"Awareness and Accountability", tip:"Receives feedback and turns it into accountable action.", sourceIds:["own","commit"] }
 ];
 const ITEMS = FULL_ITEMS;
 const FULL_SCORE_OPTIONS = [
@@ -1137,15 +1136,21 @@ function buildScoresForMode(items, valuesById, condensedMode){
 
   if(condensedMode){
     const condensedScores = {};
-    const scores = {};
     for(const item of CONDENSED_ITEMS){
       const v = Number(valuesById[item.id]);
-      if(!Number.isFinite(v)) continue;
-      condensedScores[item.id] = v;
-      // Keep the same condensed-to-legacy expansion used by the new coaching form.
-      if(item.id === 'selfAwareness') continue;
-      for(const sourceId of (item.sourceIds || [item.id])) scores[sourceId] = v;
+      if(Number.isFinite(v)) condensedScores[item.id] = v;
     }
+    const scores = {
+      prep: condensedScores.prep,
+      feed: condensedScores.feed,
+      commit: condensedScores.awarenessAccountability,
+      listen: condensedScores.engagementEmpathy,
+      empathy: condensedScores.engagementEmpathy,
+      solve: condensedScores.problemSolving,
+      biz: condensedScores.problemSolving,
+      own: condensedScores.awarenessAccountability
+    };
+    Object.keys(scores).forEach(key=>{ if(!Number.isFinite(scores[key])) delete scores[key]; });
     return { scores, condensedScores, values };
   }
 
@@ -1636,6 +1641,9 @@ function getLegacyScore(f, id){
 function getCondensedScore(f, item){
   const condensed = f.condensedScores || {};
   if(typeof condensed[item.id] === 'number') return condensed[item.id];
+  for(const legacyId of (item.legacyCondensedIds || [])){
+    if(typeof condensed[legacyId] === 'number') return condensed[legacyId];
+  }
   const sourceIds = item.sourceIds || [item.id];
   const vals = sourceIds.map(id=>getLegacyScore(f, id)).filter(v=>typeof v === 'number');
   return vals.length ? avg(vals) : null;
