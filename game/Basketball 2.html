@@ -274,7 +274,11 @@
   <header>
     <div class="row">
       <h1>Talent Tracker V 5.0</h1><span class="tiny">Team Pereksta</span>
-      <span class="chip dir" style="margin-left:auto">Directors: Melick • Nelson • Terry • Richards</span>
+      <label class="row tiny" style="gap:8px; user-select:none; margin-left:auto">
+        <input type="checkbox" id="teamRichardsVersion">
+        <span style="font-weight:900; color:#0b1a37">Team Richards Version</span>
+      </label>
+      <span class="chip dir">Directors: Melick • Nelson • Terry • Richards</span>
     </div>
     <div class="accent"></div>
   </header>
@@ -461,11 +465,11 @@
 
           <div class="row" style="gap:12px">
             <div style="flex:1">
-              <div class="tiny" style="font-weight:900">Most Frequent Highs (4–5)</div>
+              <div class="tiny" id="highListTitle" style="font-weight:900">Most Frequent Highs (4–5)</div>
               <ul id="highList" style="margin:0; padding-left:16px"></ul>
             </div>
             <div style="flex:1">
-              <div class="tiny" style="font-weight:900">Most Frequent Lows (1–2)</div>
+              <div class="tiny" id="lowListTitle" style="font-weight:900">Most Frequent Lows (1–2)</div>
               <ul id="lowList" style="margin:0; padding-left:16px"></ul>
             </div>
           </div>
@@ -491,6 +495,10 @@
       <div class="card">
         <h3>New Coaching Form</h3>
         <div class="body">
+          <label class="row tiny" style="gap:8px; user-select:none; margin-bottom:12px">
+            <input type="checkbox" id="condensedVersion">
+            <span style="font-weight:900; color:#0b1a37">Condensed Version</span>
+          </label>
           <div class="row">
             <div class="field" style="flex:1">
               <div class="tiny">Representative</div>
@@ -796,7 +804,7 @@ const db = firebase.database();
 ========================= */
 const DIRECTORS = ["Melick","Nelson","Terry","Richards"];
 
-const ITEMS = [
+const FULL_ITEMS = [
   { id:"prep",  q:"How they show Up", tip:"Confidence, clarity, polish." },
   { id:"feed",  q:"Seeking Understanding", tip:"Dug into mindset & the why." },
   { id:"commit",q:"Setting Goals", tip:"Clear actions & accountability." },
@@ -805,6 +813,22 @@ const ITEMS = [
   { id:"solve", q:"Problem Solving & Adaptability", tip:"Found root issues; adapted." },
   { id:"biz",   q:"Understanding the business", tip:"Tied actions to outcomes." },
   { id:"own",   q:"Taking Feedback", tip:"Receipt & action on feedback." }
+];
+const CONDENSED_ITEMS = [
+  { id:"prep", q:"How they show Up", tip:"Confidence, clarity, polish.", sourceIds:["prep"] },
+  { id:"feed", q:"Seeking Understanding", tip:"Dug into mindset & the why.", sourceIds:["feed"] },
+  { id:"commit", q:"Setting Goals", tip:"Clear actions & accountability.", sourceIds:["commit"] },
+  { id:"selfAwareness", q:"Self Awareness", tip:"Awareness of impact and ownership of growth.", sourceIds:["own"] },
+  { id:"problemSolving", q:"Problem Solving", tip:"Adapted approach and connected solutions to business outcomes.", sourceIds:["solve","biz"] },
+  { id:"engagementEmpathy", q:"Engagement & Empathy", tip:"Listened actively, validated feelings, and built trust.", sourceIds:["listen","empathy"] },
+  { id:"awarenessAccountability", q:"Awareness and Accountability", tip:"Receives feedback and turns it into accountable action.", sourceIds:["own"] }
+];
+const ITEMS = FULL_ITEMS;
+const FULL_SCORE_OPTIONS = [
+  [1, "1 — Poor"], [2, "2"], [3, "3 — Adequate"], [4, "4"], [5, "5 — Excellent"]
+];
+const CONDENSED_SCORE_OPTIONS = [
+  [1, "1 — Does not demonstrate"], [2, "2 — Needs development"], [3, "3 — Meets"], [4, "4 — Exceeds"]
 ];
 
 const keyify = s => (s||"").toLowerCase().trim().replace(/\./g,'_').replace(/[^a-z0-9_]/g,'_');
@@ -821,10 +845,11 @@ function fmtDate(s){
   }catch(_){}
   return s;
 }
-function scoreColorStyle(score){
+function scoreColorStyle(score, maxScore=5){
   if(!score) return '';
-  const s = clamp(+score,1,5);
-  const hue = (s - 1) * (120/4);
+  const max = maxScore === 4 ? 4 : 5;
+  const s = clamp(+score,1,max);
+  const hue = (s - 1) * (120/(max-1));
   return `color:hsl(${hue}, 80%, 30%); border:1px solid hsl(${hue}, 70%, 55%); background:hsla(${hue}, 90%, 65%, .20)`;
 }
 const DAYS_30_MS = 30*24*60*60*1000;
@@ -864,6 +889,8 @@ const movementChips = document.getElementById('movementChips');
 
 const highList = document.getElementById('highList');
 const lowList = document.getElementById('lowList');
+const highListTitle = document.getElementById('highListTitle');
+const lowListTitle = document.getElementById('lowListTitle');
 const logList = document.getElementById('logList');
 
 const formRep = document.getElementById('formRep');
@@ -872,6 +899,8 @@ const formReviewer = document.getElementById('formReviewer');
 const formScenarioCat = document.getElementById('formScenarioCat');
 const formOpps = document.getElementById('formOpps');
 const formNotes = document.getElementById('formNotes');
+const condensedVersionEl = document.getElementById('condensedVersion');
+const teamRichardsVersionEl = document.getElementById('teamRichardsVersion');
 const submitForm = document.getElementById('submitForm');
 const questionsEl = document.getElementById('questions');
 const formSummary = document.getElementById('formSummary');
@@ -1062,23 +1091,47 @@ document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeModal();
 /* =========================
    Build Questions + Avg
 ========================= */
+function isTeamRichardsMode(){ return !!teamRichardsVersionEl?.checked; }
+function isCondensedMode(){ return !!condensedVersionEl?.checked || isTeamRichardsMode(); }
+function activeScoreMax(){ return isCondensedMode() ? 4 : 5; }
+function activeScoreMode(){ return isCondensedMode() ? 'condensed_1_4' : 'full_1_5'; }
+function activeItems(){ return isCondensedMode() ? CONDENSED_ITEMS : FULL_ITEMS; }
+function activeScoreOptions(){ return isCondensedMode() ? CONDENSED_SCORE_OPTIONS : FULL_SCORE_OPTIONS; }
+function itemById(id, items=FULL_ITEMS){ return items.find(i=>i.id===id); }
+
+function syncModeCheckboxes(changed){
+  if(isTeamRichardsMode() && condensedVersionEl && !condensedVersionEl.checked){
+    condensedVersionEl.checked = true;
+  }
+  if(changed === 'condensed' && condensedVersionEl && !condensedVersionEl.checked && isTeamRichardsMode()){
+    condensedVersionEl.checked = true;
+  }
+}
+
+function rebuildModeSensitiveUI(changed){
+  syncModeCheckboxes(changed);
+  buildQuestionRows();
+  updateFormAverage();
+  if(selectedRep) selectRep(selectedRep);
+  else renderRepList();
+}
+
 function buildQuestionRows(){
+  const previousValues = {};
+  questionsEl.querySelectorAll('select').forEach(sel=>{ if(sel.dataset.q) previousValues[sel.dataset.q] = sel.value; });
   const frag = document.createDocumentFragment();
-  ITEMS.forEach(item=>{
+  const options = activeScoreOptions();
+  activeItems().forEach(item=>{
     const wrap = document.createElement('div');
     wrap.className = 'field';
+    const optionHtml = [`<option value="">–</option>`].concat(options.map(([value,label])=>`<option value="${value}">${label}</option>`)).join('');
     wrap.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px">
-        <div><strong>${item.q}</strong><div class="tiny">${item.tip}</div></div>
-        <select data-q="${item.id}" required>
-          <option value="">–</option>
-          <option value="1">1 — Poor</option>
-          <option value="2">2</option>
-          <option value="3">3 — Adequate</option>
-          <option value="4">4</option>
-          <option value="5">5 — Excellent</option>
-        </select>
+        <div><strong>${escapeHtml(item.q)}</strong><div class="tiny">${escapeHtml(item.tip || '')}</div></div>
+        <select data-q="${item.id}" required>${optionHtml}</select>
       </div>`;
+    const sel = wrap.querySelector('select');
+    if(previousValues[item.id] && options.some(([value])=>String(value) === previousValues[item.id])) sel.value = previousValues[item.id];
     frag.appendChild(wrap);
   });
   questionsEl.innerHTML = '';
@@ -1090,8 +1143,11 @@ buildQuestionRows();
 function updateFormAverage(){
   const vals = [...questionsEl.querySelectorAll('select')].map(s=>+s.value||0).filter(Boolean);
   const a = avg(vals);
-  formSummary.textContent = `Average: ${a ? a.toFixed(2) : '–'}`;
+  formSummary.textContent = `Average: ${a ? a.toFixed(2) : '–'} / ${activeScoreMax()} (${isCondensedMode() ? 'Condensed 1–4' : 'Full 1–5'})`;
 }
+
+condensedVersionEl?.addEventListener('change', ()=>rebuildModeSensitiveUI('condensed'));
+teamRichardsVersionEl?.addEventListener('change', ()=>rebuildModeSensitiveUI('team'));
 
 /* =========================
    Tabs (middle)
@@ -1184,9 +1240,9 @@ function passFilter(entry){
   return true;
 }
 
-/* Tiny sparkline SVG (1–5) */
-function buildSparkline(values){
-  const w=100, h=26, pad=3, min=1, max=5;
+/* Tiny sparkline SVG */
+function buildSparkline(values, maxScore=5){
+  const w=100, h=26, pad=3, min=1, max=maxScore === 4 ? 4 : 5;
   if(!values || values.length===0){ return `<div class="spark"></div>`; }
   const v = values.map(x=>clamp(+x||0,min,max));
   const xs = v.map((_,i)=> pad + (i/(Math.max(1,v.length-1)))*(w-2*pad));
@@ -1232,7 +1288,8 @@ function getRepScoreStats(repKey, id='scoreWindowDays'){
   const startTs = getScoreWindowStartTs(id);
   const formsObj = formsByRep[repKey] || {};
   const ordered = Object.values(formsObj).map(f=>({...f,_ts:new Date(f.date).getTime()})).filter(f=>Number.isFinite(f._ts)).filter(f=>startTs===0||f._ts>=startTs).sort((a,b)=>a._ts-b._ts);
-  const scores = ordered.map(f=>Number(f.verdict ?? f.avgScore)).filter(Number.isFinite);
+  const condensedMode = isCondensedMode();
+  const scores = ordered.map(f=>getFormAverageForMode(f, condensedMode)).filter(Number.isFinite);
   const t = trendFromScores(scores);
   return { count:scores.length, average:scores.length?avg(scores):null, scores, ...t, lastDate:ordered.length?ordered[ordered.length-1].date:null };
 }
@@ -1295,7 +1352,7 @@ function repCardHTML(r){
   const roleChip  = `<span class="chip ${r.role?'good':'warn'}">${r.role?'JCIT: Yes':'JCIT: No'}</span>`;
   const countChip = `<span class="chip">${r.count} coaching${r.count===1?'':'s'}</span>`;
   const avgText   = r.avg ? `⌀ ${r.avg.toFixed(2)}` : '⌀ –';
-  const avgStyle  = r.avg ? scoreColorStyle(r.avg) : '';
+  const avgStyle  = r.avg ? scoreColorStyle(r.avg, activeScoreMax()) : '';
   const avgChip   = `<span class="chip" style="${avgStyle}">${avgText}</span>`;
   const coachChip = `<span class="chip">${r.coach ? `Coach: ${escapeHtml(displayCoachName(r.coach))}` : 'Coach: –'}</span>`;
   const dirChip   = `<span class="chip dir">${r.director ? `Dir: ${escapeHtml(r.director)}` : 'Dir: —'}</span>`;
@@ -1309,7 +1366,7 @@ function repCardHTML(r){
     ? `<span class="chip bad" title="Not Pursuing">⛔ Not Pursuing</span>`
     : (r.promoted ? `<span class="chip good" title="Promoted">✅ Promoted</span>` : '');
 
-  const spark = buildSparkline(r.verdicts);
+  const spark = buildSparkline(r.verdicts, activeScoreMax());
   const cls = `rep ${r.promoted?'promoted':''} ${r.notPursuing?'notp':''} ${selectedRep===r.key?'selected':''}`.trim();
 
   return `
@@ -1470,7 +1527,7 @@ function setToggle(container, val){
   if(btn) btn.classList.add('active');
 }
 
-function drawVerdictTrend(verdicts){
+function drawVerdictTrend(verdicts, maxScore=5){
   const holder = trendCanvas.parentElement;
   const cssW = holder.clientWidth, cssH = holder.clientHeight;
   const dpr = window.devicePixelRatio || 1;
@@ -1480,10 +1537,11 @@ function drawVerdictTrend(verdicts){
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
+  const max = maxScore === 4 ? 4 : 5;
   // grid
   ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
-  for(let y=1;y<=5;y++){
-    const yPx = 8 + (5 - y) / 4 * (cssH-16);
+  for(let y=1;y<=max;y++){
+    const yPx = 8 + (max - y) / (max-1) * (cssH-16);
     ctx.beginPath(); ctx.moveTo(8, yPx); ctx.lineTo(cssW-8, yPx); ctx.stroke();
   }
   ctx.setLineDash([]);
@@ -1493,7 +1551,7 @@ function drawVerdictTrend(verdicts){
     return;
   }
 
-  const ys = verdicts.map(v=>clamp(+v||0,1,5));
+  const ys = verdicts.map(v=>clamp(+v||0,1,max));
   const n = ys.length, xs = ys.map((_,i)=>i);
   const meanX = xs.reduce((a,b)=>a+b,0)/n, meanY = ys.reduce((a,b)=>a+b,0)/n;
   let num=0, den=0; for(let i=0;i<n;i++){ const dx=xs[i]-meanX; num+=dx*(ys[i]-meanY); den+=dx*dx;}
@@ -1501,11 +1559,11 @@ function drawVerdictTrend(verdicts){
 
   const pad=8, innerW = cssW-2*pad, innerH = cssH-2*pad;
   const mapX = i => pad + (i/(n-1))*innerW;
-  const mapY = y => pad + ( (5 - y) / 4 )*innerH;
+  const mapY = y => pad + ( (max - y) / (max-1) )*innerH;
 
   ctx.lineWidth = 3; ctx.lineCap='round'; ctx.strokeStyle = '#2563eb';
-  ctx.beginPath(); ctx.moveTo(mapX(0), mapY(clamp(m*0+b,1,5)));
-  ctx.lineTo(mapX(n-1), mapY(clamp(m*(n-1)+b,1,5))); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(mapX(0), mapY(clamp(m*0+b,1,max)));
+  ctx.lineTo(mapX(n-1), mapY(clamp(m*(n-1)+b,1,max))); ctx.stroke();
 
   const delta = (m*(n-1)+b) - (m*0+b);
   const dir = Math.abs(delta) < 0.05 ? 'Stable' : (delta > 0 ? 'Increasing' : 'Decreasing');
@@ -1513,12 +1571,42 @@ function drawVerdictTrend(verdicts){
   trendSummaryTxt.textContent = `Trend: ${dir} (${sign}${delta.toFixed(2)} over ${n-1} step${n-1===1?'':'s'})`;
 }
 
+function getLegacyScore(f, id){
+  const v = (f.scores||{})[id];
+  return typeof v === 'number' ? v : null;
+}
+function getCondensedScore(f, item){
+  const condensed = f.condensedScores || {};
+  if(typeof condensed[item.id] === 'number') return condensed[item.id];
+  const sourceIds = item.sourceIds || [item.id];
+  const vals = sourceIds.map(id=>getLegacyScore(f, id)).filter(v=>typeof v === 'number');
+  return vals.length ? avg(vals) : null;
+}
+function getVisibleScore(f, item, condensedMode=isCondensedMode()){
+  if(condensedMode) return getCondensedScore(f, item);
+  return getLegacyScore(f, item.id);
+}
+function getFormAverageForMode(f, condensedMode=isCondensedMode()){
+  if(!condensedMode){
+    const direct = Number(f.verdict ?? f.avgScore);
+    if(Number.isFinite(direct)) return direct;
+  }
+  const vals = (condensedMode ? CONDENSED_ITEMS : FULL_ITEMS)
+    .map(item=>getVisibleScore(f, item, condensedMode))
+    .filter(v=>typeof v === 'number');
+  return vals.length ? avg(vals) : null;
+}
+function getRecordItems(f){ return f.condensedVersion || f.scoreMode === 'condensed_1_4' ? CONDENSED_ITEMS : FULL_ITEMS; }
+function getRecordScoreMax(f){ return Number(f.scoreMax) || (f.condensedVersion || f.scoreMode === 'condensed_1_4' ? 4 : 5); }
+
 function renderPerQuestionTrends(orderedForms){
-  const rows = ITEMS.map(it=>{
-    const vals = orderedForms.map(f => (f.scores||{})[it.id]).filter(v=>typeof v==='number');
-    const spark = buildSparkline(vals);
+  const condensedMode = isCondensedMode();
+  const max = activeScoreMax();
+  const rows = activeItems().map(it=>{
+    const vals = orderedForms.map(f => getVisibleScore(f, it, condensedMode)).filter(v=>typeof v==='number');
+    const spark = buildSparkline(vals, max);
     const last = vals.length ? vals[vals.length-1] : null;
-    const lastCell = last!=null ? `<span class="qscore" style="${scoreColorStyle(last)}">${last}</span>` : `<span class="qscore tiny">–</span>`;
+    const lastCell = last!=null ? `<span class="qscore" style="${scoreColorStyle(last, max)}">${last % 1 ? last.toFixed(2) : last}</span>` : `<span class="qscore tiny">–</span>`;
     return `
       <div class="qtrend-row">
         <div class="qname">${escapeHtml(it.q)}</div>
@@ -1548,9 +1636,11 @@ function selectRep(repKey){
     .map(([id,f])=>({id, ...f}))
     .sort((a,b)=>new Date(a.date)-new Date(b.date));
 
-  const verdicts = ordered.map(f=>+f.verdict||0);
+  const condensedMode = isCondensedMode();
+  const max = activeScoreMax();
+  const verdicts = ordered.map(f=>getFormAverageForMode(f, condensedMode)).filter(Number.isFinite);
   const avgScore = verdicts.length ? avg(verdicts) : null;
-  const avgStyle = avgScore ? scoreColorStyle(avgScore) : '';
+  const avgStyle = avgScore ? scoreColorStyle(avgScore, max) : '';
 
   const statusChip = rep.notPursuing
     ? `<span class="chip bad">⛔ Not Pursuing</span>`
@@ -1568,20 +1658,24 @@ function selectRep(repKey){
     ${statusChip}
   `;
 
-  drawVerdictTrend(verdicts);
+  drawVerdictTrend(verdicts, max);
   renderPerQuestionTrends(ordered);
   movementChips.innerHTML = movementChipHTML(verdicts) || `<span class="tiny">Movement: –</span>`;
 
   // Highs / Lows
+  if(highListTitle) highListTitle.textContent = `Most Frequent Highs (${condensedMode ? '4' : '4–5'})`;
+  if(lowListTitle) lowListTitle.textContent = 'Most Frequent Lows (1–2)';
   const countsHigh = {}, countsLow = {};
+  const highThreshold = condensedMode ? 4 : 4;
   for(const f of ordered){
-    const s = f.scores||{};
-    for(const [id,val] of Object.entries(s)){
-      if(val>=4) countsHigh[id]=(countsHigh[id]||0)+1;
-      if(val<=2) countsLow[id]=(countsLow[id]||0)+1;
+    for(const item of activeItems()){
+      const val = getVisibleScore(f, item, condensedMode);
+      if(typeof val !== 'number') continue;
+      if(val>=highThreshold) countsHigh[item.id]=(countsHigh[item.id]||0)+1;
+      if(val<=2) countsLow[item.id]=(countsLow[item.id]||0)+1;
     }
   }
-  const itemName = id => ITEMS.find(i=>i.id===id)?.q || id;
+  const itemName = id => activeItems().find(i=>i.id===id)?.q || itemById(id)?.q || id;
   const top = obj => Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,5);
   highList.innerHTML = top(countsHigh).map(([id,c])=>`<li>▲ ${itemName(id)} <span class="tiny">(${c})</span></li>`).join('') || '<li class="tiny">No highs yet.</li>';
   lowList .innerHTML = top(countsLow ).map(([id,c])=>`<li>▼ ${itemName(id)} <span class="tiny">(${c})</span></li>`).join('') || '<li class="tiny">No lows yet.</li>';
@@ -1602,7 +1696,10 @@ function renderLogList(entries){
     const entry = document.createElement('div');
     entry.className = 'entry';
     const dateLabel = fmtDate(f.date);
-    const verdictColor = f.verdict>=4?'style="color:#166534"':(f.verdict<=2?'style="color:#b91c1c"':'');
+    const recordItems = getRecordItems(f);
+    const recordMax = getRecordScoreMax(f);
+    const displayVerdict = getFormAverageForMode(f, recordMax === 4);
+    const verdictColor = displayVerdict>=4?'style="color:#166534"':(displayVerdict<=2?'style="color:#b91c1c"':'');
 
     const scenarioLabel =
       (f.scenarioMeta && f.scenarioMeta.scenarioTitle) ? f.scenarioMeta.scenarioTitle :
@@ -1614,15 +1711,17 @@ function renderLogList(entries){
           <span class="badge">${dateLabel}</span>
           ${f.reviewer?`<span class="badge">Reviewer: ${escapeHtml(displayReviewerName(f.reviewerDisplay || f.reviewerRaw || f.reviewer))}</span>`:''}
           ${scenarioLabel?`<span class="badge">Scenario: ${escapeHtml(scenarioLabel)}</span>`:''}
+          <span class="badge">${recordMax === 4 ? 'Condensed 1–4' : 'Full 1–5'}</span>
         </div>
-        <div ${verdictColor}><strong>Verdict:</strong> ${f.verdict?.toFixed?f.verdict.toFixed(2):f.verdict}</div>
+        <div ${verdictColor}><strong>Verdict:</strong> ${displayVerdict?.toFixed?displayVerdict.toFixed(2):displayVerdict}</div>
       </div>
       <div class="divider"></div>
       <div class="grid2">
-        ${ITEMS.map(it=>{
-          const sc = (f.scores||{})[it.id];
-          const col = (sc>=4)?'style="color:#166534"':(sc<=2?'style="color:#b91c1c"':'');
-          return `<div class="kv"><div>${it.q}</div><div ${col}><strong>${sc??'–'}</strong></div></div>`;
+        ${recordItems.map(it=>{
+          const sc = getVisibleScore(f, it, recordMax === 4);
+          const col = (sc>=recordMax)?'style="color:#166534"':(sc<=2?'style="color:#b91c1c"':'');
+          const displayScore = typeof sc === 'number' && sc % 1 ? sc.toFixed(2) : (sc ?? '–');
+          return `<div class="kv"><div>${escapeHtml(it.q)}</div><div ${col}><strong>${displayScore}</strong></div></div>`;
         }).join('')}
       </div>
       ${f.opportunities?`<div class="divider"></div><div><strong>Opportunities:</strong><br>${escapeHtml(f.opportunities)}</div>`:''}
@@ -1804,7 +1903,7 @@ function renderTopRepScores(){
   if(!topRepScoresTableBody) return;
   const dir = directorFilterEl?.value || 'all', coach = coachFilterEl?.value || 'all', includeNo = !!includeNoScoreRepsEl?.checked;
   const rows = Object.keys(reps).map(k=>({key:k,rep:reps[k],stats:getRepScoreStats(k,'directorScoreWindowDays')})).filter(o=> (dir==='all'||(dir==='unassigned'?!o.rep.director:o.rep.director===dir)) && (coach==='all'||displayCoachName(o.rep.coach||'')===coach) && (includeNo || o.stats.count>0)).sort((a,b)=>(b.stats.average??-1)-(a.stats.average??-1));
-  topRepScoresTableBody.innerHTML = rows.map((o,i)=>`<tr class="topRepRow" data-repkey="${o.key}"><td>${i+1}</td><td>${escapeHtml(displayRepName(o.key))}</td><td style="${o.stats.average?scoreColorStyle(o.stats.average):''}">${o.stats.average?o.stats.average.toFixed(2):'—'}</td><td class="${o.stats.trendClass}">${o.stats.trendIcon} ${o.stats.trendLabel}</td><td>${o.stats.count}</td><td>${o.stats.lastDate?fmtDate(o.stats.lastDate):'—'}</td><td>${escapeHtml(o.rep.director||'—')}</td><td>${escapeHtml(displayCoachName(o.rep.coach||'')||'—')}</td><td>${getRepCurrentStatus(o.key)}</td></tr>`).join('') || '<tr><td colspan="9" class="tiny">No reps in this filter.</td></tr>';
+  topRepScoresTableBody.innerHTML = rows.map((o,i)=>`<tr class="topRepRow" data-repkey="${o.key}"><td>${i+1}</td><td>${escapeHtml(displayRepName(o.key))}</td><td style="${o.stats.average?scoreColorStyle(o.stats.average, activeScoreMax()):''}">${o.stats.average?o.stats.average.toFixed(2):'—'}</td><td class="${o.stats.trendClass}">${o.stats.trendIcon} ${o.stats.trendLabel}</td><td>${o.stats.count}</td><td>${o.stats.lastDate?fmtDate(o.stats.lastDate):'—'}</td><td>${escapeHtml(o.rep.director||'—')}</td><td>${escapeHtml(displayCoachName(o.rep.coach||'')||'—')}</td><td>${getRepCurrentStatus(o.key)}</td></tr>`).join('') || '<tr><td colspan="9" class="tiny">No reps in this filter.</td></tr>';
 }
 function renderMissingAssignments(){
   if(!missingAssignmentsControls || !missingAssignmentsTableWrap) return;
@@ -2581,15 +2680,31 @@ submitForm.addEventListener('click', async ()=>{
   if(opportunities.length < 50){ alert('Opportunities must be at least 50 characters.'); return; }
   if(notes.length < 100){ alert('Comments must be at least 100 characters.'); return; }
 
-  const scores = {}; const values = [];
+  const condensedMode = isCondensedMode();
+  const teamRichardsMode = isTeamRichardsMode();
+  const scoreMax = activeScoreMax();
+  const visibleScores = {}; const scores = {}; const values = [];
   for(const sel of selects){
     const v = +sel.value; values.push(v);
-    scores[sel.dataset.q] = v;
+    visibleScores[sel.dataset.q] = v;
+  }
+
+  let condensedScores = null;
+  if(condensedMode){
+    condensedScores = {...visibleScores};
+    // Expand visible condensed scores back to the legacy score object for existing Firebase consumers.
+    for(const item of CONDENSED_ITEMS){
+      const v = visibleScores[item.id];
+      if(typeof v !== 'number') continue;
+      if(item.id === 'selfAwareness') continue; // saved in condensed metadata; awarenessAccountability remains the direct legacy own value.
+      for(const sourceId of (item.sourceIds || [item.id])) scores[sourceId] = v;
+    }
+  }else{
+    Object.assign(scores, visibleScores);
   }
   const verdict = values.length ? avg(values) : null;
 
-  const ref = db.ref(`coachingForms/${repKey}`).push();
-  await ref.set({
+  const payload = {
     date,
     reviewerRaw,
     reviewerDisplay,
@@ -2598,8 +2713,17 @@ submitForm.addEventListener('click', async ()=>{
     opportunities,
     notes,
     scores,
-    verdict
-  });
+    verdict,
+    avgScore: verdict,
+    scoreMode: condensedMode ? 'condensed_1_4' : 'full_1_5',
+    scoreMax,
+    condensedVersion: condensedMode,
+    teamRichardsVersion: teamRichardsMode
+  };
+  if(condensedMode) payload.condensedScores = condensedScores;
+
+  const ref = db.ref(`coachingForms/${repKey}`).push();
+  await ref.set(payload);
 
   await loadOneRepForms(repKey);
   renderRepList();
@@ -2659,8 +2783,9 @@ db.ref('coachingForms').on('value', (snap)=>{
   const ro = new ResizeObserver(() => {
     if (!selectedRep) return;
     const forms = formsByRep[selectedRep] || {};
-    const verdicts = Object.values(forms).sort((a,b)=> new Date(a.date) - new Date(b.date)).map(f=>+f.verdict||0);
-    drawVerdictTrend(verdicts);
+    const condensedMode = isCondensedMode();
+    const verdicts = Object.values(forms).sort((a,b)=> new Date(a.date) - new Date(b.date)).map(f=>getFormAverageForMode(f, condensedMode)).filter(Number.isFinite);
+    drawVerdictTrend(verdicts, activeScoreMax());
   });
   ro.observe(trendHolder);
 })();
