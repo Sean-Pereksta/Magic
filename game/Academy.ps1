@@ -1482,6 +1482,18 @@ function Open-OutlookEmails {
         line-height: 1.5;
     }
 
+    .instructions {
+        background-color: #F9FAFB;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        padding: 12px 16px;
+    }
+
+    a {
+        color: #1D4ED8;
+        text-decoration: underline;
+    }
+
     .report-card {
         border: 1px solid #D1D5DB;
         border-radius: 8px;
@@ -1528,8 +1540,34 @@ function Open-OutlookEmails {
     <p>Hello,</p>
 
     <p class="intro">
-        Please review the coaching follow-up items below and Fill out this form. Fakeform.com
+        Please review the coaching follow-up items below and fill out this form:
+        <a href="https://fakeform.com" target="_blank">Fakeform.com</a>
     </p>
+
+    <div class="instructions" style="margin: 0 0 24px 0; line-height: 1.6;">
+        <p style="margin: 0 0 10px 0;">
+            <strong>1:</strong> Go to
+            <a href="https://cxstudio.clarabridge.net/dashboard/#/dashboards" target="_blank">
+                https://cxstudio.clarabridge.net/dashboard/#/dashboards
+            </a>
+        </p>
+
+        <p style="margin: 0 0 10px 0;">
+            <strong>2:</strong> Log in and scroll down until you see <strong>Explore Dashboards &amp; Books</strong>.
+        </p>
+
+        <p style="margin: 0 0 10px 0;">
+            <strong>3:</strong> Search <strong>Coach Dashboard</strong>.
+        </p>
+
+        <p style="margin: 0 0 10px 0;">
+            <strong>4:</strong> You can filter by your team by selecting your name from the <strong>Coach Name</strong> drop down.
+        </p>
+
+        <p style="margin: 0 0 18px 0;">
+            <strong>5:</strong> Find the relevant tables/graphs to the information provided below. You can click on your representative’s name and click <strong>Open Document Explorer</strong> to look into the call. The call’s <strong>ConversationId</strong> will be on the right side bar, under <strong>Attributes</strong>, should you need it.
+        </p>
+    </div>
 "@
 
         foreach ($reportKey in $group.Reports.Keys) {
