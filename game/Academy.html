@@ -371,58 +371,6 @@
     font-size: 13px;
   }
 
-  .person-context-menu {
-    position: fixed;
-    z-index: 1200;
-    display: none;
-    min-width: 190px;
-    background: white;
-    border: 1px solid #fecaca;
-    border-radius: 9px;
-    box-shadow: 0 12px 30px rgba(0,0,0,.24);
-    overflow: hidden;
-  }
-
-  .person-context-menu.open {
-    display: block;
-  }
-
-  .person-context-menu button {
-    width: 100%;
-    border-radius: 0;
-    background: white;
-    color: #7f1d1d;
-    text-align: left;
-    padding: 10px 12px;
-  }
-
-  .person-context-menu button:hover {
-    background: #fee2e2;
-    filter: none;
-  }
-
-  .supervisor-original-note {
-    color: #7f1d1d;
-  }
-
-  .supervisor-modal-grid {
-    display: grid;
-    gap: 10px;
-  }
-
-  .supervisor-modal-grid label {
-    display: block;
-    margin-bottom: 4px;
-    color: #7f1d1d;
-    font-size: 12px;
-    font-weight: bold;
-  }
-
-  .supervisor-modal-grid input,
-  .supervisor-modal-grid select {
-    width: 100%;
-  }
-
   @media (max-width: 700px) {
     .filter-row-top {
       grid-template-columns: 1fr;
@@ -935,25 +883,6 @@
   </div>
 </div>
 
-<div id="personContextMenu" class="person-context-menu" role="menu">
-  <button type="button" onclick="openSupervisorReassignModalFromContext()">Assign New Supervisor</button>
-</div>
-
-<div id="supervisorReassignModalBackdrop" class="filter-modal-backdrop" onclick="handleSupervisorReassignBackdropClick(event)">
-  <div class="filter-modal" role="dialog" aria-modal="true" aria-labelledby="supervisorReassignTitle">
-    <div class="filter-modal-header">
-      <h2 id="supervisorReassignTitle">Assign New Supervisor</h2>
-      <button class="filter-close-btn" onclick="closeSupervisorReassignModal()" aria-label="Close supervisor reassignment">×</button>
-    </div>
-    <div id="supervisorReassignModalBody" class="filter-modal-body"></div>
-    <div class="filter-modal-actions">
-      <button class="green" onclick="saveSupervisorReassignment('single')">Save for this person only</button>
-      <button class="orange" onclick="saveSupervisorReassignment('all')">Apply to all with this supervisor</button>
-      <button class="secondary" onclick="closeSupervisorReassignModal()">Cancel</button>
-    </div>
-  </div>
-</div>
-
 <script>
 const STORAGE_KEY = "safeliteOrgStructureBuilder_v7";
 
@@ -972,8 +901,6 @@ let columns = {
 let org = [];
 let currentViewMode = "org";
 let filledReportEmails = {};
-let reportEmailCache = {};
-let nameMatchKeyCache = {};
 let compareRawRows = [];
 let comparePeople = [];
 let compareColumns = { first: null, last: null, supervisor: null, email: null };
@@ -982,11 +909,6 @@ let lastBlueprintLoadSummary = null;
 let safeliteUsersEmails = [];
 let savedPersonEmails = {};
 let personOverrides = {};
-let supervisorOverridesByPerson = {};
-let supervisorOverrideRules = [];
-let activeContextPersonName = "";
-let supervisorReassignPersonName = "";
-let supervisorSearchTerm = "";
 let optionsSelectedOriginalName = "";
 let pendingEmailAttachments = {};
 let activePeopleFilters = [];
@@ -1110,181 +1032,6 @@ function titleName(value) {
     .replace(/\s*,\s*/g, ", ");
 }
 
-
-function addNameKeyVariant(keys, value) {
-  const normalized = normalizeName(value);
-  if (!normalized) return;
-  keys.add(normalized);
-  const loose = normalized.replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
-  if (loose) keys.add(loose);
-}
-
-function getNameVariantValues(name) {
-  const text = titleName(name);
-  const variants = new Set();
-  if (!text) return variants;
-
-  variants.add(text);
-  variants.add(flipName(text));
-
-  if (text.includes(",")) {
-    const parts = text.split(",").map(part => part.trim()).filter(Boolean);
-    const last = parts[0] || "";
-    const firstAndSuffix = parts.slice(1).join(" ").trim();
-    if (last && firstAndSuffix) variants.add(`${firstAndSuffix} ${last}`.trim());
-  } else {
-    const pieces = text.split(/\s+/).filter(Boolean);
-    if (pieces.length >= 2) {
-      const first = pieces[0];
-      const last = pieces[1];
-      const suffix = pieces.slice(2).join(" ");
-      variants.add(`${last}, ${first}${suffix ? `, ${suffix}` : ""}`.trim());
-    }
-  }
-
-  return variants;
-}
-
-function getResolvedDisplayName(name) {
-  const override = getPersonOverride(name);
-  return String(override && override.displayName ? override.displayName : name || "").trim();
-}
-
-function getAllNameMatchKeys(name) {
-  const keys = new Set();
-  const addVariants = value => getNameVariantValues(value).forEach(variant => addNameKeyVariant(keys, variant));
-
-  addVariants(name);
-
-  Object.values(personOverrides || {}).forEach(override => {
-    if (!override || typeof override !== "object") return;
-    const overrideNames = [override.originalName, override.displayName].filter(Boolean);
-    const matchesInput = overrideNames.some(overrideName => {
-      addVariants(name);
-      return Array.from(getNameVariantValues(overrideName)).some(variant => {
-        const variantKeys = new Set();
-        getNameVariantValues(variant).forEach(v => addNameKeyVariant(variantKeys, v));
-        return Array.from(variantKeys).some(key => keys.has(key));
-      });
-    });
-
-    if (matchesInput) overrideNames.forEach(addVariants);
-  });
-
-  return keys;
-}
-
-function getCachedNameMatchKeys(name) {
-  const key = normalizeName(name);
-  if (!key) return new Set();
-  if (!nameMatchKeyCache[key]) {
-    nameMatchKeyCache[key] = getAllNameMatchKeys(name);
-  }
-  return nameMatchKeyCache[key];
-}
-
-function clearNameMatchKeyCache() {
-  nameMatchKeyCache = {};
-}
-
-function clearReportEmailCache() {
-  reportEmailCache = {};
-}
-
-function clearMatchingAndReportCaches() {
-  clearNameMatchKeyCache();
-  clearReportEmailCache();
-}
-
-function namesMatch(nameA, nameB) {
-  const keysA = getCachedNameMatchKeys(nameA);
-  const keysB = getCachedNameMatchKeys(nameB);
-  if (!keysA.size || !keysB.size) return false;
-  for (const key of keysA) {
-    if (keysB.has(key)) return true;
-  }
-  return false;
-}
-
-
-function getSupervisorNameCandidates(person) {
-  return [
-    person?.supervisorRaw,
-    person?.originalSupervisorRaw,
-    person?.supervisorKey,
-    person?.originalSupervisorKey
-  ].filter(Boolean);
-}
-
-function getResolvedSupervisorForPerson(personName, supervisorRaw) {
-  const originalSupervisor = titleName(supervisorRaw);
-  if (!originalSupervisor) return "";
-
-  const personOverride = findSupervisorOverrideForPerson(personName);
-  if (personOverride) return titleName(personOverride.newSupervisor || originalSupervisor);
-
-  const rule = (supervisorOverrideRules || []).find(rule => rule && namesMatch(rule.oldSupervisor, originalSupervisor));
-  if (rule) return titleName(rule.newSupervisor || originalSupervisor);
-
-  return getResolvedDisplayName(originalSupervisor);
-}
-
-function applySupervisorResolutionToPeople() {
-  clearMatchingAndReportCaches();
-  people.forEach(person => {
-    const uploadedSupervisor = person.originalSupervisorRaw || person.supervisorRaw || "";
-    person.originalSupervisorRaw = titleName(uploadedSupervisor);
-    person.originalSupervisorKey = normalizeName(uploadedSupervisor);
-    const resolvedSupervisor = getResolvedSupervisorForPerson(person.name, person.originalSupervisorRaw);
-    person.supervisorRaw = resolvedSupervisor;
-    person.supervisorKey = normalizeName(resolvedSupervisor);
-  });
-}
-
-function supervisorOriginalNote(person) {
-  const resolved = person?.supervisorRaw || "";
-  const original = person?.originalSupervisorRaw || "";
-  if (!resolved || !original || normalizeName(resolved) === normalizeName(original)) return "";
-  return `<div class="small supervisor-original-note">Original Supervisor: ${escapeHTML(original)}</div>`;
-}
-
-function findSupervisorOverrideForPerson(personName) {
-  const personKey = normalizeName(personName);
-  return Object.values(supervisorOverridesByPerson || {}).find(override => {
-    if (!override || typeof override !== "object") return false;
-    return normalizeName(override.personName) === personKey || namesMatch(override.personName, personName);
-  }) || null;
-}
-
-function normalizeSupervisorOverridesByPerson(overrides) {
-  const normalized = {};
-  Object.values(overrides || {}).forEach(override => {
-    if (!override || typeof override !== "object") return;
-    const personName = titleName(override.personName || "");
-    const newSupervisor = titleName(override.newSupervisor || "");
-    if (!personName || !newSupervisor) return;
-    normalized[normalizeName(personName)] = {
-      personName,
-      oldSupervisor: titleName(override.oldSupervisor || ""),
-      newSupervisor,
-      applyMode: override.applyMode === "all" ? "all" : "single",
-      updatedAt: override.updatedAt || new Date().toISOString()
-    };
-  });
-  return normalized;
-}
-
-function normalizeSupervisorOverrideRules(rules) {
-  return (Array.isArray(rules) ? rules : Object.values(rules || {}))
-    .filter(rule => rule && typeof rule === "object")
-    .map(rule => ({
-      oldSupervisor: titleName(rule.oldSupervisor || ""),
-      newSupervisor: titleName(rule.newSupervisor || ""),
-      updatedAt: rule.updatedAt || new Date().toISOString()
-    }))
-    .filter(rule => rule.oldSupervisor && rule.newSupervisor);
-}
-
 function makeDisplayName(first, last) {
   first = String(first || "").trim();
   last = String(last || "").trim();
@@ -1335,7 +1082,6 @@ function handleFileUpload(event) {
         showProgress("Converting sheet to rows...", 30);
 
         rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-        clearMatchingAndReportCaches();
 
         if (!rawRows.length) {
           hideProgress();
@@ -1421,7 +1167,6 @@ function applyColumnMapping() {
   columns.last = document.getElementById("lastNameSelect").value;
   columns.supervisor = document.getElementById("supervisorSelect").value;
   columns.email = document.getElementById("emailSelect").value;
-  clearMatchingAndReportCaches();
 
   showProgress("Processing names in chunks...", 0);
 
@@ -1453,9 +1198,6 @@ function processPeopleInChunks(doneCallback) {
 
       if (!name) continue;
 
-      const originalSupervisorRaw = titleName(row[columns.supervisor]);
-      const resolvedSupervisor = getResolvedSupervisorForPerson(name, originalSupervisorRaw);
-
       people.push({
         id: `person_${index}`,
         first: String(first || "").trim(),
@@ -1463,10 +1205,8 @@ function processPeopleInChunks(doneCallback) {
         name,
         nameKey: normalizeName(name),
         email: String(row[columns.email] || "").trim(),
-        originalSupervisorRaw,
-        originalSupervisorKey: normalizeName(row[columns.supervisor]),
-        supervisorRaw: resolvedSupervisor,
-        supervisorKey: normalizeName(resolvedSupervisor),
+        supervisorRaw: titleName(row[columns.supervisor]),
+        supervisorKey: normalizeName(row[columns.supervisor]),
         raw: row
       });
     }
@@ -1708,196 +1448,6 @@ function personPassesAdvancedFilters(person) {
   });
 }
 
-
-function openPersonContextMenu(event, personName) {
-  if (!personName) return;
-  event.preventDefault();
-  event.stopPropagation();
-  activeContextPersonName = personName;
-  const menu = document.getElementById("personContextMenu");
-  if (!menu) return;
-  menu.style.left = `${Math.min(event.clientX, window.innerWidth - 210)}px`;
-  menu.style.top = `${Math.min(event.clientY, window.innerHeight - 60)}px`;
-  menu.classList.add("open");
-}
-
-function closePersonContextMenu() {
-  const menu = document.getElementById("personContextMenu");
-  if (menu) menu.classList.remove("open");
-}
-
-function openSupervisorReassignModalFromContext() {
-  const personName = activeContextPersonName;
-  closePersonContextMenu();
-  openSupervisorReassignModal(personName);
-}
-
-function openSupervisorReassignModal(personName) {
-  const person = people.find(p => namesMatch(p.name, personName));
-  if (!person) {
-    alert("Could not find that person in the current people file.");
-    return;
-  }
-
-  supervisorReassignPersonName = person.name;
-  supervisorSearchTerm = "";
-  const backdrop = document.getElementById("supervisorReassignModalBackdrop");
-  if (backdrop) backdrop.classList.add("open");
-  renderSupervisorReassignModal();
-}
-
-function closeSupervisorReassignModal() {
-  const backdrop = document.getElementById("supervisorReassignModalBackdrop");
-  if (backdrop) backdrop.classList.remove("open");
-  supervisorReassignPersonName = "";
-  supervisorSearchTerm = "";
-}
-
-function handleSupervisorReassignBackdropClick(event) {
-  if (event.target && event.target.id === "supervisorReassignModalBackdrop") closeSupervisorReassignModal();
-}
-
-function updateSupervisorSearch(value) {
-  supervisorSearchTerm = String(value || "");
-  renderSupervisorReassignModal();
-}
-
-function getSupervisorSelectOptions(currentPersonName) {
-  const search = normalizeName(supervisorSearchTerm);
-  return people
-    .filter(person => !namesMatch(person.name, currentPersonName))
-    .filter(person => {
-      if (!search) return true;
-      return person.nameKey.includes(search) ||
-        normalizeName(getDisplayNameByName(person.name)).includes(search) ||
-        normalizeName(person.email).includes(search);
-    })
-    .slice(0, 500);
-}
-
-function renderSupervisorReassignModal() {
-  const body = document.getElementById("supervisorReassignModalBody");
-  if (!body) return;
-  const person = people.find(p => namesMatch(p.name, supervisorReassignPersonName));
-  if (!person) {
-    body.innerHTML = `<div class="notice">No person selected.</div>`;
-    return;
-  }
-
-  const options = getSupervisorSelectOptions(person.name);
-  const optionHtml = options.map(supervisor => {
-    const display = getDisplayNameByName(supervisor.name);
-    const original = normalizeName(display) !== supervisor.nameKey ? ` (Original: ${supervisor.name})` : "";
-    return `<option value="${escapeHTML(supervisor.name)}">${escapeHTML(display + original)}</option>`;
-  }).join("");
-
-  body.innerHTML = `
-    <div class="supervisor-modal-grid">
-      <div class="notice">Choose a new supervisor for this person. The change is applied immediately in memory and included in local saves and org blueprints.</div>
-      <div>
-        <label>Person being changed</label>
-        <div><strong>${escapeHTML(getDisplayNameByName(person.name))}</strong>${normalizeName(getDisplayNameByName(person.name)) !== person.nameKey ? `<div class="small">Original: ${escapeHTML(person.name)}</div>` : ""}</div>
-      </div>
-      <div>
-        <label>Current supervisor</label>
-        <div>${escapeHTML(person.supervisorRaw || "—")}</div>
-        ${supervisorOriginalNote(person)}
-      </div>
-      <div>
-        <label for="newSupervisorSearch">Search supervisors</label>
-        <input id="newSupervisorSearch" type="text" value="${escapeHTML(supervisorSearchTerm)}" placeholder="Search all people..." oninput="updateSupervisorSearch(this.value)" />
-      </div>
-      <div>
-        <label for="newSupervisorSelect">New supervisor</label>
-        <select id="newSupervisorSelect">${optionHtml || `<option value="">No matching supervisors</option>`}</select>
-      </div>
-      <div class="small">Showing ${options.length.toLocaleString()} possible supervisors. Refine search if needed.</div>
-    </div>
-  `;
-}
-
-function getSelectedNewSupervisorName() {
-  return document.getElementById("newSupervisorSelect")?.value || "";
-}
-
-function getPeopleWithSupervisor(supervisorName) {
-  return people.filter(person => getSupervisorNameCandidates(person).some(candidate => candidate && namesMatch(candidate, supervisorName)));
-}
-
-function updatePersonSupervisor(person, newSupervisor, oldSupervisor, applyMode) {
-  const resolvedSupervisor = getResolvedDisplayName(newSupervisor);
-  person.supervisorRaw = resolvedSupervisor;
-  person.supervisorKey = normalizeName(resolvedSupervisor);
-  if (!person.originalSupervisorRaw) person.originalSupervisorRaw = titleName(oldSupervisor || "");
-  if (!person.originalSupervisorKey) person.originalSupervisorKey = normalizeName(oldSupervisor || "");
-  supervisorOverridesByPerson[normalizeName(person.name)] = {
-    personName: person.name,
-    oldSupervisor: titleName(oldSupervisor || person.originalSupervisorRaw || ""),
-    newSupervisor: resolvedSupervisor,
-    applyMode,
-    updatedAt: new Date().toISOString()
-  };
-  clearMatchingAndReportCaches();
-}
-
-function saveSupervisorReassignment(mode) {
-  const person = people.find(p => namesMatch(p.name, supervisorReassignPersonName));
-  const newSupervisor = getSelectedNewSupervisorName();
-
-  if (!person) {
-    alert("No person selected.");
-    return;
-  }
-
-  if (!newSupervisor) {
-    alert("Choose a new supervisor first.");
-    return;
-  }
-
-  if (namesMatch(person.name, newSupervisor)) {
-    alert("A person cannot be assigned as their own supervisor.");
-    return;
-  }
-
-  const oldSupervisor = person.supervisorRaw || person.originalSupervisorRaw || "";
-
-  if (mode === "all") {
-    const affected = getPeopleWithSupervisor(oldSupervisor);
-    if (!affected.length) {
-      alert("No people are affected by this supervisor change.");
-      return;
-    }
-    if (affected.length > 10 && !confirm(`This will update ${affected.length} people from ${oldSupervisor || "—"} to ${getDisplayNameByName(newSupervisor)}. Continue?`)) return;
-
-    affected.forEach(affectedPerson => updatePersonSupervisor(affectedPerson, newSupervisor, oldSupervisor, "all"));
-    supervisorOverrideRules.push({
-      oldSupervisor: titleName(oldSupervisor),
-      newSupervisor: getResolvedDisplayName(newSupervisor),
-      updatedAt: new Date().toISOString()
-    });
-    clearMatchingAndReportCaches();
-    setStatus(`Supervisor reassignment applied to ${affected.length} people`);
-  } else {
-    updatePersonSupervisor(person, newSupervisor, oldSupervisor, "single");
-    setStatus(`Supervisor reassigned for ${getDisplayNameByName(person.name)}`);
-  }
-
-  closeSupervisorReassignModal();
-  renderAll();
-}
-
-document.addEventListener("click", event => {
-  const menu = document.getElementById("personContextMenu");
-  if (menu && !menu.contains(event.target)) closePersonContextMenu();
-});
-
-document.addEventListener("keydown", event => {
-  if (event.key === "Escape") {
-    closePersonContextMenu();
-    closeSupervisorReassignModal();
-  }
-});
-
 function renderPeopleList() {
   const box = document.getElementById("peopleList");
   const summary = document.getElementById("peopleListSummary");
@@ -1945,18 +1495,15 @@ function renderPeopleList() {
     const displayName = getDisplayNameByName(person.name);
     const email = getEmailByName(person.name) || "—";
     const originalNote = normalizeName(displayName) !== person.nameKey ? `<div class="small">Original: ${escapeHTML(person.name)}</div>` : "";
-    const supervisorNote = supervisorOriginalNote(person);
 
     div.innerHTML = `
       <div><strong>${escapeHTML(displayName)}</strong></div>
       ${originalNote}
       <div class="small">Supervisor: ${escapeHTML(person.supervisorRaw || "—")}</div>
-      ${supervisorNote}
       <div class="small">Username/Email: ${escapeHTML(email)}</div>
     `;
 
     div.onclick = () => selectPerson(person);
-    div.oncontextmenu = event => openPersonContextMenu(event, person.name);
     div.ondragstart = () => {
       draggedItem = {
         type: "person",
@@ -2027,17 +1574,14 @@ function renderSelectedPerson() {
         name: report.name
       };
     };
-    div.oncontextmenu = event => openPersonContextMenu(event, report.name);
 
     const reportDisplayName = getDisplayNameByName(report.name);
     const reportOriginalNote = normalizeName(reportDisplayName) !== report.nameKey ? `<div class="small">Original: ${escapeHTML(report.name)}</div>` : "";
-    const reportSupervisorNote = supervisorOriginalNote(report);
 
     div.innerHTML = `
       <div class="direct-report-title">${escapeHTML(reportDisplayName)}</div>
       ${reportOriginalNote}
       <div class="small">Supervisor: ${escapeHTML(report.supervisorRaw || "—")}</div>
-      ${reportSupervisorNote}
       <div class="small">Username/Email: ${escapeHTML(getEmailByName(report.name) || "—")}</div>
       <div class="role-actions" style="margin-top:7px;">
         <button class="primary-add-btn" onclick="autoAddDirectReport('${jsEscape(report.name)}')">Add Under Selected</button>
@@ -2050,38 +1594,31 @@ function renderSelectedPerson() {
 }
 
 function getDirectReports(supervisorName) {
-  if (!normalizeName(supervisorName)) return [];
+  const supervisorKey = normalizeName(supervisorName);
+  const flipped = normalizeName(flipName(supervisorName));
 
-  return people.filter(person => {
-    const supervisorCandidates = getSupervisorNameCandidates(person);
-    return supervisorCandidates.some(candidate => candidate && namesMatch(candidate, supervisorName));
+  return people.filter(p => {
+    if (!p.supervisorKey) return false;
+    return p.supervisorKey === supervisorKey || p.supervisorKey === flipped;
   });
-}
-
-function getResolvedReportKey(name) {
-  return normalizeName(getDisplayNameByName(name) || name);
 }
 
 function getAllReportsUnderSupervisor(supervisorName) {
   const result = [];
   const visited = new Set();
-  const rootKey = getResolvedReportKey(supervisorName);
-  if (rootKey) visited.add(rootKey);
 
-  function walk(name, depth = 0) {
-    if (depth > 15) return;
-
+  function walk(name) {
     const directReports = getDirectReports(name);
 
     directReports.forEach(person => {
-      const key = getResolvedReportKey(person.name);
+      const key = normalizeName(person.name);
 
-      if (!key || visited.has(key)) return;
+      if (visited.has(key)) return;
 
       visited.add(key);
       result.push(person);
 
-      walk(person.name, depth + 1);
+      walk(person.name);
     });
   }
 
@@ -2098,13 +1635,7 @@ function getAllReportEmailsForSupervisor(supervisorName) {
 }
 
 function getReportEmailsForSupervisor(supervisorName) {
-  const key = getResolvedReportKey(supervisorName);
-  if (!key) return [];
-  if (reportEmailCache[key]) return reportEmailCache[key];
-
-  const emails = getAllReportEmailsForSupervisor(supervisorName);
-  reportEmailCache[key] = emails;
-  return emails;
+  return getAllReportEmailsForSupervisor(supervisorName);
 }
 
 function flipName(name) {
@@ -2131,13 +1662,13 @@ function isPersonInOrg(name) {
   const key = normalizeName(name);
 
   for (const director of org) {
-    if (normalizeName(director.name) === key || namesMatch(director.name, name)) return true;
+    if (normalizeName(director.name) === key) return true;
 
     for (const manager of director.managers) {
-      if (normalizeName(manager.name) === key || namesMatch(manager.name, name)) return true;
+      if (normalizeName(manager.name) === key) return true;
 
       for (const coach of manager.coaches) {
-        if (normalizeName(coach) === key || namesMatch(coach, name)) return true;
+        if (normalizeName(coach) === key) return true;
       }
     }
   }
@@ -2172,14 +1703,14 @@ function addManager(directorName, managerName) {
   directorName = titleName(directorName);
   managerName = titleName(managerName);
 
-  if (namesMatch(directorName, managerName)) {
+  if (normalizeName(directorName) === normalizeName(managerName)) {
     alert("A person cannot report to themselves.");
     return;
   }
 
   removePersonFromOrg(managerName);
 
-  const director = org.find(d => namesMatch(d.name, directorName));
+  const director = org.find(d => normalizeName(d.name) === normalizeName(directorName));
   if (!director) return;
 
   director.managers.push({
@@ -2195,7 +1726,7 @@ function addTempStructureManager(directorIndex) {
   if (!director) return;
 
   const directorKey = normalizeName(director.name);
-  const alreadyExists = director.managers.some(manager => namesMatch(manager.name, director.name));
+  const alreadyExists = director.managers.some(manager => normalizeName(manager.name) === directorKey);
 
   if (alreadyExists) {
     alert("Temp structure already exists for this Director.");
@@ -2216,8 +1747,8 @@ function addCoach(directorName, managerName, coachName) {
   coachName = titleName(coachName);
 
   if (
-    namesMatch(coachName, directorName) ||
-    namesMatch(coachName, managerName)
+    normalizeName(coachName) === normalizeName(directorName) ||
+    normalizeName(coachName) === normalizeName(managerName)
   ) {
     alert("A person cannot report to themselves.");
     return;
@@ -2225,10 +1756,10 @@ function addCoach(directorName, managerName, coachName) {
 
   removePersonFromOrg(coachName);
 
-  const director = org.find(d => namesMatch(d.name, directorName));
+  const director = org.find(d => normalizeName(d.name) === normalizeName(directorName));
   if (!director) return;
 
-  const manager = director.managers.find(m => namesMatch(m.name, managerName));
+  const manager = director.managers.find(m => normalizeName(m.name) === normalizeName(managerName));
   if (!manager) return;
 
   manager.coaches.push(coachName);
@@ -2241,14 +1772,14 @@ function autoAddDirectReport(reportName) {
 
   const selectedName = selectedPerson.name;
 
-  const director = org.find(d => namesMatch(d.name, selectedName));
+  const director = org.find(d => normalizeName(d.name) === normalizeName(selectedName));
   if (director) {
     addManager(director.name, reportName);
     return;
   }
 
   for (const d of org) {
-    const manager = d.managers.find(m => namesMatch(m.name, selectedName));
+    const manager = d.managers.find(m => normalizeName(m.name) === normalizeName(selectedName));
     if (manager) {
       addCoach(d.name, manager.name, reportName);
       return;
@@ -2272,11 +1803,11 @@ function autoAddAllDirectReports() {
   }
 
   const selectedName = selectedPerson.name;
-  const director = org.find(d => namesMatch(d.name, selectedName));
+  const director = org.find(d => normalizeName(d.name) === normalizeName(selectedName));
 
   if (director) {
     reports.forEach(r => {
-      if (!namesMatch(r.name, selectedName)) {
+      if (normalizeName(r.name) !== normalizeName(selectedName)) {
         removePersonFromOrg(r.name);
         director.managers.push({
           name: r.name,
@@ -2290,10 +1821,10 @@ function autoAddAllDirectReports() {
   }
 
   for (const d of org) {
-    const manager = d.managers.find(m => namesMatch(m.name, selectedName));
+    const manager = d.managers.find(m => normalizeName(m.name) === normalizeName(selectedName));
     if (manager) {
       reports.forEach(r => {
-        if (!namesMatch(r.name, selectedName)) {
+        if (normalizeName(r.name) !== normalizeName(selectedName)) {
           removePersonFromOrg(r.name);
           manager.coaches.push(r.name);
         }
@@ -2313,7 +1844,7 @@ function removePersonFromOrg(name) {
   for (let dIndex = org.length - 1; dIndex >= 0; dIndex--) {
     const director = org[dIndex];
 
-    if (normalizeName(director.name) === key || namesMatch(director.name, name)) {
+    if (normalizeName(director.name) === key) {
       org.splice(dIndex, 1);
       continue;
     }
@@ -2321,12 +1852,12 @@ function removePersonFromOrg(name) {
     for (let mIndex = director.managers.length - 1; mIndex >= 0; mIndex--) {
       const manager = director.managers[mIndex];
 
-      if (normalizeName(manager.name) === key || namesMatch(manager.name, name)) {
+      if (normalizeName(manager.name) === key) {
         director.managers.splice(mIndex, 1);
         continue;
       }
 
-      manager.coaches = manager.coaches.filter(c => normalizeName(c) !== key && !namesMatch(c, name));
+      manager.coaches = manager.coaches.filter(c => normalizeName(c) !== key);
     }
   }
 }
@@ -2355,7 +1886,7 @@ function renderOrg() {
 
       const draggedName = draggedItem.name;
 
-      if (namesMatch(draggedName, director.name)) {
+      if (normalizeName(draggedName) === normalizeName(director.name)) {
         draggedItem = null;
         return;
       }
@@ -2375,7 +1906,6 @@ function renderOrg() {
         name: director.name
       };
     };
-    directorHeader.oncontextmenu = event => openPersonContextMenu(event, director.name);
 
     const directorDisplayName = getDisplayNameByName(director.name);
     const directorOriginalNote = normalizeName(directorDisplayName) !== normalizeName(director.name)
@@ -2418,8 +1948,8 @@ function renderOrg() {
         const draggedName = draggedItem.name;
 
         if (
-          namesMatch(draggedName, director.name) ||
-          namesMatch(draggedName, manager.name)
+          normalizeName(draggedName) === normalizeName(director.name) ||
+          normalizeName(draggedName) === normalizeName(manager.name)
         ) {
           draggedItem = null;
           return;
@@ -2440,7 +1970,6 @@ function renderOrg() {
           name: manager.name
         };
       };
-      managerHeader.oncontextmenu = event => openPersonContextMenu(event, manager.name);
 
       const managerDisplayName = getDisplayNameByName(manager.name);
       const managerOriginalNote = normalizeName(managerDisplayName) !== normalizeName(manager.name)
@@ -2478,7 +2007,6 @@ function renderOrg() {
             name: coach
           };
         };
-        coachRow.oncontextmenu = event => openPersonContextMenu(event, coach);
 
         const coachDisplayName = getDisplayNameByName(coach);
         const coachOriginalNote = normalizeName(coachDisplayName) !== normalizeName(coach)
@@ -2523,7 +2051,6 @@ function clearOrg() {
   if (!confirm("Clear the current org structure?")) return;
   org = [];
   filledReportEmails = {};
-  clearMatchingAndReportCaches();
   renderAll();
 }
 
@@ -2549,22 +2076,12 @@ function selectPersonByName(name) {
 }
 
 function getPersonOverride(name) {
-  const key = normalizeName(name);
-  if (!key) return null;
-  if (personOverrides[key]) return personOverrides[key];
-
-  const lookupKeys = getCachedNameMatchKeys(name);
-  return Object.values(personOverrides || {}).find(override => {
-    if (!override || typeof override !== "object") return false;
-    return [override.originalName, override.displayName].filter(Boolean).some(overrideName => {
-      const overrideKeys = getCachedNameMatchKeys(overrideName);
-      return Array.from(overrideKeys).some(matchKey => lookupKeys.has(matchKey));
-    });
-  }) || null;
+  return personOverrides[normalizeName(name)] || null;
 }
 
 function getDisplayNameByName(name) {
-  return getResolvedDisplayName(name);
+  const override = getPersonOverride(name);
+  return String(override && override.displayName ? override.displayName : name || "").trim();
 }
 
 function getFileEmailByName(name) {
@@ -2592,10 +2109,7 @@ function savePersonOverride(originalName, displayName, email) {
 
   if (!key || !original) return false;
   if (!cleanedDisplay && !cleanedEmail) {
-    if (personOverrides[key]) {
-      delete personOverrides[key];
-      clearMatchingAndReportCaches();
-    }
+    if (personOverrides[key]) delete personOverrides[key];
     return false;
   }
 
@@ -2603,28 +2117,18 @@ function savePersonOverride(originalName, displayName, email) {
     originalName: original,
     displayName: cleanedDisplay,
     email: cleanedEmail,
-    matchKeys: Array.from(getAllNameMatchKeys([original, cleanedDisplay].filter(Boolean).join(" "))),
     updatedAt: new Date().toISOString()
   };
-  clearMatchingAndReportCaches();
-  applySupervisorResolutionToPeople();
   return true;
 }
 
 function deletePersonOverride(originalName) {
   const key = normalizeName(originalName);
   if (!key) return;
-  Object.entries(personOverrides || {}).forEach(([overrideKey, override]) => {
-    if (overrideKey === key || [override?.originalName, override?.displayName].filter(Boolean).some(name => namesMatch(name, originalName))) {
-      delete personOverrides[overrideKey];
-    }
-  });
-  clearMatchingAndReportCaches();
-  applySupervisorResolutionToPeople();
+  delete personOverrides[key];
 }
 
 function applyPersonDisplayOverridesToOrg() {
-  applySupervisorResolutionToPeople();
   renderAll();
 }
 
@@ -2641,7 +2145,6 @@ function normalizePersonOverrides(overrides) {
       originalName: originalName || nameKey,
       displayName,
       email,
-      matchKeys: Array.from(getAllNameMatchKeys([originalName, displayName].filter(Boolean).join(" "))),
       updatedAt: override.updatedAt || new Date().toISOString()
     };
   });
@@ -2726,8 +2229,6 @@ function buildOrgBlueprint() {
     safeliteUsersEmails: [...safeliteUsersEmails],
     savedPersonEmails: { ...savedPersonEmails },
     personOverrides: { ...personOverrides },
-    supervisorOverridesByPerson: { ...supervisorOverridesByPerson },
-    supervisorOverrideRules: [...supervisorOverrideRules],
     hierarchy: org.map(director => ({
       directorName: director.name,
       directorDisplayName: getDisplayNameByName(director.name),
@@ -2744,120 +2245,20 @@ function buildOrgBlueprint() {
   };
 }
 
-function findCurrentPersonFromBlueprint(savedPerson) {
-  const savedName = savedPerson.name || savedPerson.directorName || savedPerson.managerName || savedPerson.coachName || "";
-  const savedDisplayName = savedPerson.displayName || savedPerson.directorDisplayName || savedPerson.managerDisplayName || savedPerson.coachDisplayName || "";
-  const savedKey = savedPerson.key || savedPerson.directorKey || savedPerson.managerKey || savedPerson.coachKey || normalizeName(savedName);
-  const savedEmail = normalizeEmail(savedPerson.email || savedPerson.directorEmail || savedPerson.managerEmail || savedPerson.coachEmail || "");
-  const savedCandidates = [savedName, savedDisplayName, savedKey, flipName(savedName), flipName(savedDisplayName)].filter(Boolean);
-
-  let match = people.find(person => savedCandidates.some(candidate => namesMatch(person.name, candidate) || namesMatch(getDisplayNameByName(person.name), candidate)));
-  if (match) return match;
-
-  if (savedEmail) {
-    match = people.find(p => normalizeEmail(p.email) === savedEmail || normalizeEmail(getEmailByName(p.name)) === savedEmail);
-    if (match) return match;
-  }
-
-  return null;
-}
-
-function findCurrentPersonBySavedKey(savedKey, savedName) {
-  return findCurrentPersonFromBlueprint({ key: savedKey, name: savedName });
-}
-
-function showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches = []) {
-  const directorCount = rebuiltOrg.length;
-  const managerCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.length, 0);
-  const coachCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.reduce((mSum, m) => mSum + m.coaches.length, 0), 0);
-  lastBlueprintLoadSummary = { loadedAt: new Date().toISOString(), missing, directorCount, managerCount, coachCount, duplicateMatches };
-  let message = `Org blueprint loaded from current file.
+function findCurrentPersonFromBlueprint(savedPerson) { const savedName = savedPerson.name || savedPerson.directorName || savedPerson.managerName || savedPerson.coachName || ""; const savedKey = savedPerson.key || savedPerson.directorKey || savedPerson.managerKey || savedPerson.coachKey || normalizeName(savedName); const savedEmail = normalizeEmail(savedPerson.email || savedPerson.directorEmail || savedPerson.managerEmail || savedPerson.coachEmail || ""); let match = people.find(p => p.nameKey === normalizeName(savedKey)); if (match) return match; match = people.find(p => p.nameKey === normalizeName(savedName)); if (match) return match; match = people.find(p => p.nameKey === normalizeName(flipName(savedName))); if (match) return match; if (savedEmail) { match = people.find(p => normalizeEmail(p.email) === savedEmail); if (match) return match; } return null; }
+function findCurrentPersonBySavedKey(savedKey, savedName) { return findCurrentPersonFromBlueprint({ key: savedKey, name: savedName }); }
+function showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches = []) { const directorCount = rebuiltOrg.length; const managerCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.length, 0); const coachCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.reduce((mSum, m) => mSum + m.coaches.length, 0), 0); lastBlueprintLoadSummary = { loadedAt: new Date().toISOString(), missing, directorCount, managerCount, coachCount, duplicateMatches }; let message = `Org blueprint loaded from current file.
 
 Directors loaded: ${directorCount}
 Managers loaded: ${managerCount}
 Coaches loaded: ${coachCount}
 Missing names: ${missing.length}
-Duplicate matches: ${duplicateMatches.length}`;
-  if (missing.length) message += `
+Duplicate matches: ${duplicateMatches.length}`; if (missing.length) message += `
 
-Missing names were not added because they were not found in the current uploaded file.`;
-  alert(message);
-}
-
-function rebuildOrgFromBlueprint(blueprint) {
-  const rebuiltOrg = [];
-  const missing = [];
-  const duplicateMatches = [];
-
-  if (!blueprint || !Array.isArray(blueprint.hierarchy)) {
-    alert("No org blueprint found in the local save.");
-    return;
-  }
-
-  if (blueprint.personOverrides && typeof blueprint.personOverrides === "object") {
-    personOverrides = normalizePersonOverrides({ ...personOverrides, ...blueprint.personOverrides });
-  }
-  if (blueprint.supervisorOverridesByPerson && typeof blueprint.supervisorOverridesByPerson === "object") {
-    supervisorOverridesByPerson = normalizeSupervisorOverridesByPerson({ ...supervisorOverridesByPerson, ...blueprint.supervisorOverridesByPerson });
-  }
-  if (blueprint.supervisorOverrideRules) {
-    supervisorOverrideRules = normalizeSupervisorOverrideRules([
-      ...(supervisorOverrideRules || []),
-      ...(Array.isArray(blueprint.supervisorOverrideRules) ? blueprint.supervisorOverrideRules : Object.values(blueprint.supervisorOverrideRules || {}))
-    ]);
-  }
-  clearMatchingAndReportCaches();
-  applySupervisorResolutionToPeople();
-
-  blueprint.hierarchy.forEach(savedDirector => {
-    const directorPerson = findCurrentPersonFromBlueprint(savedDirector);
-    if (!directorPerson) {
-      missing.push({ level: "Director", name: savedDirector.directorName });
-      return;
-    }
-    if (rebuiltOrg.some(d => namesMatch(d.name, directorPerson.name))) duplicateMatches.push({ level: "Director", name: directorPerson.name });
-    const directorNode = { name: directorPerson.name, managers: [] };
-
-    (savedDirector.managers || []).forEach(savedManager => {
-      const managerPerson = findCurrentPersonFromBlueprint(savedManager);
-      if (!managerPerson) {
-        missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName });
-        return;
-      }
-      const managerNode = { name: managerPerson.name, coaches: [] };
-
-      (savedManager.coaches || []).forEach(savedCoach => {
-        const coachPerson = findCurrentPersonFromBlueprint(savedCoach);
-        if (!coachPerson) {
-          missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName });
-          return;
-        }
-        if (managerNode.coaches.some(c => namesMatch(c, coachPerson.name))) duplicateMatches.push({ level: "Coach", name: coachPerson.name });
-        else managerNode.coaches.push(coachPerson.name);
-      });
-
-      if (directorNode.managers.some(m => namesMatch(m.name, managerNode.name))) duplicateMatches.push({ level: "Manager", name: managerNode.name });
-      else directorNode.managers.push(managerNode);
-    });
-
-    rebuiltOrg.push(directorNode);
-  });
-
-  org = rebuiltOrg;
-  if (Array.isArray(blueprint.safeliteUsersEmails)) safeliteUsersEmails = parseEmailList(blueprint.safeliteUsersEmails.join(", "));
-  if (blueprint.savedPersonEmails && typeof blueprint.savedPersonEmails === "object") {
-    Object.entries(blueprint.savedPersonEmails).forEach(([nameKey, email]) => {
-      const cleanKey = normalizeName(nameKey);
-      const cleanEmail = String(email || "").trim();
-      if (cleanKey && cleanEmail) savedPersonEmails[cleanKey] = cleanEmail;
-    });
-  }
-  selectedPerson = null;
-  renderAll();
-  showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches);
-}
+Missing names were not added because they were not found in the current uploaded file.`; alert(message); }
+function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; const duplicateMatches = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonFromBlueprint(savedDirector); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } if (rebuiltOrg.some(d => normalizeName(d.name) === normalizeName(directorPerson.name))) duplicateMatches.push({ level: "Director", name: directorPerson.name }); const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonFromBlueprint(savedManager); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonFromBlueprint(savedCoach); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } if (managerNode.coaches.some(c => normalizeName(c) === normalizeName(coachPerson.name))) duplicateMatches.push({ level: "Coach", name: coachPerson.name }); else managerNode.coaches.push(coachPerson.name); }); if (directorNode.managers.some(m => normalizeName(m.name) === normalizeName(managerNode.name))) duplicateMatches.push({ level: "Manager", name: managerNode.name }); else directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; if (Array.isArray(blueprint.safeliteUsersEmails)) safeliteUsersEmails = parseEmailList(blueprint.safeliteUsersEmails.join(", ")); if (blueprint.savedPersonEmails && typeof blueprint.savedPersonEmails === "object") Object.entries(blueprint.savedPersonEmails).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (cleanKey && cleanEmail) savedPersonEmails[cleanKey] = cleanEmail; }); if (blueprint.personOverrides && typeof blueprint.personOverrides === "object") personOverrides = normalizePersonOverrides(blueprint.personOverrides); selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches); }
 function exportOrgBlueprint() { const blueprint = buildOrgBlueprint(); const day = new Date().toISOString().slice(0, 10); downloadBlob(JSON.stringify(blueprint, null, 2), `safelite_org_blueprint_${day}.json`, "application/json;charset=utf-8;"); setStatus("Org blueprint exported"); }
-function blueprintFromImportedRows(rows) { const byDirector = new Map(); const isUsers = rows[0] && Object.prototype.hasOwnProperty.call(rows[0], "Users"); rows.forEach(row => { let director = "", manager = "", coach = "", email = ""; if (isUsers) { const users = String(row["Users"] || "").trim(); if (!users || users === "Safelite") return; const parts = users.split(" --> ").map(x => x.trim()).filter(Boolean); if (parts[0] === "Safelite") parts.shift(); [director, manager, coach] = parts; email = String(row["Studio Email Address"] || "").trim(); } else { director = String(row["Director"] || "").trim(); manager = String(row["Manager"] || "").trim(); coach = String(row["Coach"] || "").trim(); email = String(row["Username / Studio Email Address"] || "").trim(); } if (!director) return; if (!byDirector.has(director)) byDirector.set(director, { directorName: director, directorKey: normalizeName(director), directorEmail: !manager && !coach ? email : "", managers: [] }); const d = byDirector.get(director); if (!manager) return; let m = d.managers.find(x => normalizeName(x.managerName) === normalizeName(manager)); if (!m) { m = { managerName: manager, managerKey: normalizeName(manager), managerEmail: !coach ? email : "", coaches: [] }; d.managers.push(m); } if (!coach) return; if (!m.coaches.some(c => normalizeName(c.coachName) === normalizeName(coach))) m.coaches.push({ coachName: coach, coachKey: normalizeName(coach), coachEmail: email }); }); return { type: "SafeliteOrgBlueprint", version: 1, exportedAt: new Date().toISOString(), columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email }, personOverrides: { ...personOverrides }, supervisorOverridesByPerson: { ...supervisorOverridesByPerson }, supervisorOverrideRules: [...supervisorOverrideRules], hierarchy: Array.from(byDirector.values()) }; }
+function blueprintFromImportedRows(rows) { const byDirector = new Map(); const isUsers = rows[0] && Object.prototype.hasOwnProperty.call(rows[0], "Users"); rows.forEach(row => { let director = "", manager = "", coach = "", email = ""; if (isUsers) { const users = String(row["Users"] || "").trim(); if (!users || users === "Safelite") return; const parts = users.split(" --> ").map(x => x.trim()).filter(Boolean); if (parts[0] === "Safelite") parts.shift(); [director, manager, coach] = parts; email = String(row["Studio Email Address"] || "").trim(); } else { director = String(row["Director"] || "").trim(); manager = String(row["Manager"] || "").trim(); coach = String(row["Coach"] || "").trim(); email = String(row["Username / Studio Email Address"] || "").trim(); } if (!director) return; if (!byDirector.has(director)) byDirector.set(director, { directorName: director, directorKey: normalizeName(director), directorEmail: !manager && !coach ? email : "", managers: [] }); const d = byDirector.get(director); if (!manager) return; let m = d.managers.find(x => normalizeName(x.managerName) === normalizeName(manager)); if (!m) { m = { managerName: manager, managerKey: normalizeName(manager), managerEmail: !coach ? email : "", coaches: [] }; d.managers.push(m); } if (!coach) return; if (!m.coaches.some(c => normalizeName(c.coachName) === normalizeName(coach))) m.coaches.push({ coachName: coach, coachKey: normalizeName(coach), coachEmail: email }); }); return { type: "SafeliteOrgBlueprint", version: 1, exportedAt: new Date().toISOString(), columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email }, personOverrides: { ...personOverrides }, hierarchy: Array.from(byDirector.values()) }; }
 function handleBlueprintImport(event) { const file = event.target.files[0]; if (!file) return; if (!people.length) { alert("Upload and process a people file first."); event.target.value = ""; return; } const ext = file.name.split(".").pop().toLowerCase(); const reader = new FileReader(); reader.onload = function(e) { try { let blueprint; if (ext === "json") { blueprint = JSON.parse(String(e.target.result || "{}")); } else { let rows = []; if (ext === "csv") { const wb = XLSX.read(String(e.target.result), { type: "string" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } else { const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } blueprint = blueprintFromImportedRows(rows); } rebuildOrgFromBlueprint(blueprint); setStatus(`Blueprint imported from ${file.name}`); } catch (error) { console.error(error); alert("Unable to import blueprint file."); } finally { event.target.value = ""; } }; if (ext === "json" || ext === "csv") reader.readAsText(file); else reader.readAsArrayBuffer(file); }
 function applySafeliteEmailBox() { const box = document.getElementById("safeliteEmailBox"); safeliteUsersEmails = parseEmailList(box ? box.value : ""); renderOutputTable(); setStatus(`Safelite row updated with ${safeliteUsersEmails.length} emails`); }
 
@@ -2996,13 +2397,7 @@ function renderFiltersOutputTable() {
     <th>Studio Email Address</th>
   `;
 
-  tbody.innerHTML = `
-    <tr>
-      <td colspan="2">
-        <div class="notice">Filters View only shows already-filled reporting emails. Use Auto Fill Coaches or Auto Fill All Leaders if you want subordinate emails included.</div>
-      </td>
-    </tr>
-  `;
+  tbody.innerHTML = "";
 
   getOrgPathRows().forEach(row => {
     const formattedEmails = formatFilterEmails(row.personName);
@@ -3069,7 +2464,7 @@ function renderOptionsView() {
   tbody.innerHTML = `<tr><td><div class="options-wrap">
     <div class="options-card">
       <h3>Display Name / Email Overrides</h3>
-      <div class="notice">Overrides change visible/exported display names and output emails, and supervisor/direct-report matching now treats original names, display names, and flipped name formats as the same person.</div>
+      <div class="notice">Overrides only change visible/exported display names and output emails. Original loaded names remain the matching keys for supervisors, direct reports, drag/drop placement, and blueprint matching.</div>
       <div class="options-grid">
         <div class="options-field">
           <label for="overridePersonSearch">Search Loaded People</label>
@@ -3248,7 +2643,6 @@ function attachSavedEmails() {
     const person = people.find(p => normalizeName(p.name) === normalizeName(row.personName));
     if (person && savedEmail && !person.email) { person.email = savedEmail; attached++; }
   });
-  if (attached) clearReportEmailCache();
   setStatus(`Attached ${attached} saved emails by name`);
   alert(`Attached ${attached} saved emails by matching saved person names.`);
   renderAll();
@@ -3380,9 +2774,8 @@ function clearFilledEmails() {
 function getFilterEmailsForPerson(personName) {
   const emails = [
     getEmailByName(personName),
-    ...(filledReportEmails[personName] || [])
+    ...(filledReportEmails[personName] || getReportEmailsForSupervisor(personName))
   ];
-
   const seen = new Set();
 
   return emails
@@ -3527,8 +2920,6 @@ function saveLocal() {
     safeliteUsersEmails,
     savedPersonEmails,
     personOverrides,
-    supervisorOverridesByPerson,
-    supervisorOverrideRules,
     activePeopleFilters: getValidPeopleFilters()
   };
 
@@ -3556,10 +2947,6 @@ function loadLocal() {
       if (hideAssignedToggle) hideAssignedToggle.checked = hideAssignedPeople;
       savedPersonEmails = payload.savedPersonEmails || savedPersonEmails || {};
       personOverrides = normalizePersonOverrides(payload.personOverrides || payload.orgBlueprint.personOverrides || personOverrides || {});
-      supervisorOverridesByPerson = normalizeSupervisorOverridesByPerson(payload.supervisorOverridesByPerson || payload.orgBlueprint.supervisorOverridesByPerson || supervisorOverridesByPerson || {});
-      supervisorOverrideRules = normalizeSupervisorOverrideRules(payload.supervisorOverrideRules || payload.orgBlueprint.supervisorOverrideRules || supervisorOverrideRules || []);
-      clearMatchingAndReportCaches();
-      applySupervisorResolutionToPeople();
       activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
       rebuildOrgFromBlueprint(payload.orgBlueprint);
       updateFilterButtonLabel();
@@ -3576,10 +2963,6 @@ function loadLocal() {
     safeliteUsersEmails = Array.isArray(payload.safeliteUsersEmails) ? payload.safeliteUsersEmails : [];
     savedPersonEmails = payload.savedPersonEmails || {};
     personOverrides = normalizePersonOverrides(payload.personOverrides || payload.orgBlueprint?.personOverrides || {});
-    supervisorOverridesByPerson = normalizeSupervisorOverridesByPerson(payload.supervisorOverridesByPerson || payload.orgBlueprint?.supervisorOverridesByPerson || {});
-    supervisorOverrideRules = normalizeSupervisorOverrideRules(payload.supervisorOverrideRules || payload.orgBlueprint?.supervisorOverrideRules || []);
-    clearMatchingAndReportCaches();
-    applySupervisorResolutionToPeople();
     activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
     currentViewMode = payload.currentViewMode || "org";
     hideAssignedPeople = Boolean(payload.hideAssignedPeople);
