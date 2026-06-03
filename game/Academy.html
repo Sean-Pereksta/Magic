@@ -600,6 +600,70 @@
     min-width: 360px;
   }
 
+  .options-wrap {
+    padding: 4px;
+  }
+
+  .options-card {
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    background: #fffafa;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+
+  .options-card h3 {
+    margin: 0 0 10px;
+    color: #7f1d1d;
+  }
+
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+    gap: 10px;
+  }
+
+  .options-field label {
+    display: block;
+    margin-bottom: 4px;
+    color: #7f1d1d;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  .options-field input,
+  .options-field select {
+    width: 100%;
+  }
+
+  .options-actions {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .options-table-wrap {
+    max-height: 220px;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: white;
+  }
+
+  .original-name-note {
+    display: block;
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: normal;
+    margin-top: 2px;
+  }
+
+  .director-header .original-name-note {
+    color: #fee2e2;
+  }
+
+
   @media (max-width: 1150px) {
     .layout {
       grid-template-columns: 1fr;
@@ -714,7 +778,7 @@
         <input
           id="searchInput"
           type="text"
-          placeholder="Search names or usernames..."
+          placeholder="Search names, overrides, or usernames..."
           oninput="renderPeopleList()"
         />
         <button id="peopleFilterButton" class="filter-button" onclick="openPeopleFilters()">Filters</button>
@@ -764,6 +828,7 @@
         <button id="filtersViewBtn" class="view-tab" onclick="setViewMode('filters')">Filters View</button>
         <button id="emailsViewBtn" class="view-tab" onclick="setViewMode('emails')">Emails</button>
         <button id="compareViewBtn" class="view-tab" onclick="setViewMode('compare')">Compare Files</button>
+        <button id="optionsViewBtn" class="view-tab" onclick="setViewMode('options')">Options</button>
       </div>
 
       <div class="view-actions">
@@ -843,6 +908,8 @@ let compareResults = null;
 let lastBlueprintLoadSummary = null;
 let safeliteUsersEmails = [];
 let savedPersonEmails = {};
+let personOverrides = {};
+let optionsSelectedOriginalName = "";
 let pendingEmailAttachments = {};
 let activePeopleFilters = [];
 let draftPeopleFilters = [];
@@ -1398,7 +1465,14 @@ function renderPeopleList() {
   }
 
   const filteredAll = people
-    .filter(p => !search || p.nameKey.includes(search) || normalizeName(p.email).includes(search))
+    .filter(p => {
+      if (!search) return true;
+      const override = getPersonOverride(p.name);
+      return p.nameKey.includes(search) ||
+        normalizeName(p.email).includes(search) ||
+        normalizeName(getDisplayNameByName(p.name)).includes(search) ||
+        normalizeName(override?.email || "").includes(search);
+    })
     .filter(personPassesAdvancedFilters)
     .filter(p => !hideAssigned || !isPersonInOrg(p.name));
   const filtered = filteredAll.slice(0, 500);
@@ -1418,10 +1492,15 @@ function renderPeopleList() {
 
     div.draggable = true;
 
+    const displayName = getDisplayNameByName(person.name);
+    const email = getEmailByName(person.name) || "—";
+    const originalNote = normalizeName(displayName) !== person.nameKey ? `<div class="small">Original: ${escapeHTML(person.name)}</div>` : "";
+
     div.innerHTML = `
-      <div><strong>${escapeHTML(person.name)}</strong></div>
+      <div><strong>${escapeHTML(displayName)}</strong></div>
+      ${originalNote}
       <div class="small">Supervisor: ${escapeHTML(person.supervisorRaw || "—")}</div>
-      <div class="small">Username/Email: ${escapeHTML(person.email || "—")}</div>
+      <div class="small">Username/Email: ${escapeHTML(email)}</div>
     `;
 
     div.onclick = () => selectPerson(person);
@@ -1464,9 +1543,15 @@ function renderSelectedPerson() {
   const allReports = getDirectReports(selectedPerson.name);
   const reports = allReports.filter(report => !isPersonInOrg(report.name));
 
+  const selectedDisplayName = getDisplayNameByName(selectedPerson.name);
+  const selectedOriginalNote = normalizeName(selectedDisplayName) !== normalizeName(selectedPerson.name)
+    ? `<span class="small">Original Name: ${escapeHTML(selectedPerson.name)}</span><br>`
+    : "";
+
   selectedBox.innerHTML = `
-    <strong>Selected:</strong> ${escapeHTML(selectedPerson.name)}<br>
-    <span class="small">Username/Email: ${escapeHTML(selectedPerson.email || getEmailByName(selectedPerson.name) || "—")}</span><br>
+    <strong>Display Name:</strong> ${escapeHTML(selectedDisplayName)}<br>
+    ${selectedOriginalNote}
+    <span class="small">Username/Email: ${escapeHTML(getEmailByName(selectedPerson.name) || "—")}</span><br>
     <span class="small">Direct Reports Found: ${allReports.length}</span><br>
     <span class="small">Available to Add: ${reports.length}</span>
   `;
@@ -1490,10 +1575,14 @@ function renderSelectedPerson() {
       };
     };
 
+    const reportDisplayName = getDisplayNameByName(report.name);
+    const reportOriginalNote = normalizeName(reportDisplayName) !== report.nameKey ? `<div class="small">Original: ${escapeHTML(report.name)}</div>` : "";
+
     div.innerHTML = `
-      <div class="direct-report-title">${escapeHTML(report.name)}</div>
+      <div class="direct-report-title">${escapeHTML(reportDisplayName)}</div>
+      ${reportOriginalNote}
       <div class="small">Supervisor: ${escapeHTML(report.supervisorRaw || "—")}</div>
-      <div class="small">Username/Email: ${escapeHTML(report.email || "—")}</div>
+      <div class="small">Username/Email: ${escapeHTML(getEmailByName(report.name) || "—")}</div>
       <div class="role-actions" style="margin-top:7px;">
         <button class="primary-add-btn" onclick="autoAddDirectReport('${jsEscape(report.name)}')">Add Under Selected</button>
         <button class="secondary-add-btn" onclick="addDirector('${jsEscape(report.name)}')">Add Director</button>
@@ -1818,9 +1907,15 @@ function renderOrg() {
       };
     };
 
+    const directorDisplayName = getDisplayNameByName(director.name);
+    const directorOriginalNote = normalizeName(directorDisplayName) !== normalizeName(director.name)
+      ? `<span class="original-name-note">Original: ${escapeHTML(director.name)}</span>`
+      : "";
+
     directorHeader.innerHTML = `
       <span class="name-click" onclick="selectPersonByName('${jsEscape(director.name)}')">
-        Director: ${escapeHTML(director.name)}
+        Director: ${escapeHTML(directorDisplayName)}
+        ${directorOriginalNote}
         <span class="small" style="color:#fee2e2;">Username/Email: ${escapeHTML(getEmailByName(director.name) || "—")}</span>
       </span>
       <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeDirector(${directorIndex})">Remove</button>
@@ -1876,9 +1971,15 @@ function renderOrg() {
         };
       };
 
+      const managerDisplayName = getDisplayNameByName(manager.name);
+      const managerOriginalNote = normalizeName(managerDisplayName) !== normalizeName(manager.name)
+        ? `<span class="original-name-note">Original: ${escapeHTML(manager.name)}</span>`
+        : "";
+
       managerHeader.innerHTML = `
         <span class="name-click" onclick="selectPersonByName('${jsEscape(manager.name)}')">
-          Manager: ${escapeHTML(manager.name)}
+          Manager: ${escapeHTML(managerDisplayName)}
+          ${managerOriginalNote}
           <span class="small">Username/Email: ${escapeHTML(getEmailByName(manager.name) || "—")}</span>
         </span>
         <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeManager(${directorIndex}, ${managerIndex})">Remove</button>
@@ -1907,9 +2008,15 @@ function renderOrg() {
           };
         };
 
+        const coachDisplayName = getDisplayNameByName(coach);
+        const coachOriginalNote = normalizeName(coachDisplayName) !== normalizeName(coach)
+          ? `<span class="original-name-note">Original: ${escapeHTML(coach)}</span>`
+          : "";
+
         coachRow.innerHTML = `
           <span class="name-click" onclick="selectPersonByName('${jsEscape(coach)}')">
-            Coach: ${escapeHTML(coach)}
+            Coach: ${escapeHTML(coachDisplayName)}
+            ${coachOriginalNote}
             <span class="small">Username/Email: ${escapeHTML(getEmailByName(coach) || "—")}</span>
           </span>
           <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeCoach(${directorIndex}, ${managerIndex}, ${coachIndex})">Remove</button>
@@ -1948,7 +2055,8 @@ function clearOrg() {
 }
 
 function selectPersonByName(name) {
-  const person = people.find(p => normalizeName(p.name) === normalizeName(name));
+  const nameKey = normalizeName(name);
+  const person = people.find(p => p.nameKey === nameKey) || people.find(p => normalizeName(getDisplayNameByName(p.name)) === nameKey);
 
   if (person) {
     selectPerson(person);
@@ -1967,14 +2075,80 @@ function selectPersonByName(name) {
   renderSelectedPerson();
 }
 
+function getPersonOverride(name) {
+  return personOverrides[normalizeName(name)] || null;
+}
+
+function getDisplayNameByName(name) {
+  const override = getPersonOverride(name);
+  return String(override && override.displayName ? override.displayName : name || "").trim();
+}
+
+function getFileEmailByName(name) {
+  const person = people.find(p => p.nameKey === normalizeName(name));
+  return person && person.email ? String(person.email || "").trim() : "";
+}
+
 function getEmailByName(name) {
-  const person = people.find(p => normalizeName(p.name) === normalizeName(name));
-  if (person && person.email) return person.email || "";
+  const override = getPersonOverride(name);
+  if (override && override.email) return String(override.email || "").trim();
+  const fileEmail = getFileEmailByName(name);
+  if (fileEmail) return fileEmail;
   return getSavedEmailForName(name);
 }
 
 function getSavedEmailForName(name) {
   return savedPersonEmails[normalizeName(name)] || "";
+}
+
+function savePersonOverride(originalName, displayName, email) {
+  const key = normalizeName(originalName);
+  const original = titleName(originalName);
+  const cleanedDisplay = String(displayName || "").trim();
+  const cleanedEmail = String(email || "").trim();
+
+  if (!key || !original) return false;
+  if (!cleanedDisplay && !cleanedEmail) {
+    if (personOverrides[key]) delete personOverrides[key];
+    return false;
+  }
+
+  personOverrides[key] = {
+    originalName: original,
+    displayName: cleanedDisplay,
+    email: cleanedEmail,
+    updatedAt: new Date().toISOString()
+  };
+  return true;
+}
+
+function deletePersonOverride(originalName) {
+  const key = normalizeName(originalName);
+  if (!key) return;
+  delete personOverrides[key];
+}
+
+function applyPersonDisplayOverridesToOrg() {
+  renderAll();
+}
+
+function normalizePersonOverrides(overrides) {
+  const normalized = {};
+  Object.entries(overrides || {}).forEach(([nameKey, override]) => {
+    if (!override || typeof override !== "object") return;
+    const originalName = titleName(override.originalName || nameKey);
+    const key = normalizeName(originalName || nameKey);
+    const displayName = String(override.displayName || "").trim();
+    const email = String(override.email || "").trim();
+    if (!key || (!displayName && !email)) return;
+    normalized[key] = {
+      originalName: originalName || nameKey,
+      displayName,
+      email,
+      updatedAt: override.updatedAt || new Date().toISOString()
+    };
+  });
+  return normalized;
 }
 
 function setSavedEmailForName(name, email) {
@@ -1990,7 +2164,7 @@ function getExportRows() {
   org.forEach(director => {
     rows.push({
       company: "Safelite",
-      director: director.name,
+      director: getDisplayNameByName(director.name),
       manager: "",
       coach: "",
       email: getEmailByName(director.name),
@@ -2001,8 +2175,8 @@ function getExportRows() {
     director.managers.forEach(manager => {
       rows.push({
         company: "Safelite",
-        director: director.name,
-        manager: manager.name,
+        director: getDisplayNameByName(director.name),
+        manager: getDisplayNameByName(manager.name),
         coach: "",
         email: getEmailByName(manager.name),
         personName: manager.name,
@@ -2012,9 +2186,9 @@ function getExportRows() {
       manager.coaches.forEach(coach => {
         rows.push({
           company: "Safelite",
-          director: director.name,
-          manager: manager.name,
-          coach,
+          director: getDisplayNameByName(director.name),
+          manager: getDisplayNameByName(manager.name),
+          coach: getDisplayNameByName(coach),
           email: getEmailByName(coach),
           personName: coach,
           level: "Coach"
@@ -2054,15 +2228,18 @@ function buildOrgBlueprint() {
     columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email },
     safeliteUsersEmails: [...safeliteUsersEmails],
     savedPersonEmails: { ...savedPersonEmails },
+    personOverrides: { ...personOverrides },
     hierarchy: org.map(director => ({
       directorName: director.name,
+      directorDisplayName: getDisplayNameByName(director.name),
       directorKey: normalizeName(director.name),
       directorEmail: getEmailByName(director.name) || "",
       managers: director.managers.map(manager => ({
         managerName: manager.name,
+        managerDisplayName: getDisplayNameByName(manager.name),
         managerKey: normalizeName(manager.name),
         managerEmail: getEmailByName(manager.name) || "",
-        coaches: manager.coaches.map(coach => ({ coachName: coach, coachKey: normalizeName(coach), coachEmail: getEmailByName(coach) || "" }))
+        coaches: manager.coaches.map(coach => ({ coachName: coach, coachDisplayName: getDisplayNameByName(coach), coachKey: normalizeName(coach), coachEmail: getEmailByName(coach) || "" }))
       }))
     }))
   };
@@ -2079,9 +2256,9 @@ Missing names: ${missing.length}
 Duplicate matches: ${duplicateMatches.length}`; if (missing.length) message += `
 
 Missing names were not added because they were not found in the current uploaded file.`; alert(message); }
-function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; const duplicateMatches = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonFromBlueprint(savedDirector); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } if (rebuiltOrg.some(d => normalizeName(d.name) === normalizeName(directorPerson.name))) duplicateMatches.push({ level: "Director", name: directorPerson.name }); const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonFromBlueprint(savedManager); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonFromBlueprint(savedCoach); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } if (managerNode.coaches.some(c => normalizeName(c) === normalizeName(coachPerson.name))) duplicateMatches.push({ level: "Coach", name: coachPerson.name }); else managerNode.coaches.push(coachPerson.name); }); if (directorNode.managers.some(m => normalizeName(m.name) === normalizeName(managerNode.name))) duplicateMatches.push({ level: "Manager", name: managerNode.name }); else directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; if (Array.isArray(blueprint.safeliteUsersEmails)) safeliteUsersEmails = parseEmailList(blueprint.safeliteUsersEmails.join(", ")); if (blueprint.savedPersonEmails && typeof blueprint.savedPersonEmails === "object") Object.entries(blueprint.savedPersonEmails).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (cleanKey && cleanEmail) savedPersonEmails[cleanKey] = cleanEmail; }); selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches); }
+function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; const duplicateMatches = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonFromBlueprint(savedDirector); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } if (rebuiltOrg.some(d => normalizeName(d.name) === normalizeName(directorPerson.name))) duplicateMatches.push({ level: "Director", name: directorPerson.name }); const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonFromBlueprint(savedManager); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonFromBlueprint(savedCoach); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } if (managerNode.coaches.some(c => normalizeName(c) === normalizeName(coachPerson.name))) duplicateMatches.push({ level: "Coach", name: coachPerson.name }); else managerNode.coaches.push(coachPerson.name); }); if (directorNode.managers.some(m => normalizeName(m.name) === normalizeName(managerNode.name))) duplicateMatches.push({ level: "Manager", name: managerNode.name }); else directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; if (Array.isArray(blueprint.safeliteUsersEmails)) safeliteUsersEmails = parseEmailList(blueprint.safeliteUsersEmails.join(", ")); if (blueprint.savedPersonEmails && typeof blueprint.savedPersonEmails === "object") Object.entries(blueprint.savedPersonEmails).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (cleanKey && cleanEmail) savedPersonEmails[cleanKey] = cleanEmail; }); if (blueprint.personOverrides && typeof blueprint.personOverrides === "object") personOverrides = normalizePersonOverrides(blueprint.personOverrides); selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches); }
 function exportOrgBlueprint() { const blueprint = buildOrgBlueprint(); const day = new Date().toISOString().slice(0, 10); downloadBlob(JSON.stringify(blueprint, null, 2), `safelite_org_blueprint_${day}.json`, "application/json;charset=utf-8;"); setStatus("Org blueprint exported"); }
-function blueprintFromImportedRows(rows) { const byDirector = new Map(); const isUsers = rows[0] && Object.prototype.hasOwnProperty.call(rows[0], "Users"); rows.forEach(row => { let director = "", manager = "", coach = "", email = ""; if (isUsers) { const users = String(row["Users"] || "").trim(); if (!users || users === "Safelite") return; const parts = users.split(" --> ").map(x => x.trim()).filter(Boolean); if (parts[0] === "Safelite") parts.shift(); [director, manager, coach] = parts; email = String(row["Studio Email Address"] || "").trim(); } else { director = String(row["Director"] || "").trim(); manager = String(row["Manager"] || "").trim(); coach = String(row["Coach"] || "").trim(); email = String(row["Username / Studio Email Address"] || "").trim(); } if (!director) return; if (!byDirector.has(director)) byDirector.set(director, { directorName: director, directorKey: normalizeName(director), directorEmail: !manager && !coach ? email : "", managers: [] }); const d = byDirector.get(director); if (!manager) return; let m = d.managers.find(x => normalizeName(x.managerName) === normalizeName(manager)); if (!m) { m = { managerName: manager, managerKey: normalizeName(manager), managerEmail: !coach ? email : "", coaches: [] }; d.managers.push(m); } if (!coach) return; if (!m.coaches.some(c => normalizeName(c.coachName) === normalizeName(coach))) m.coaches.push({ coachName: coach, coachKey: normalizeName(coach), coachEmail: email }); }); return { type: "SafeliteOrgBlueprint", version: 1, exportedAt: new Date().toISOString(), columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email }, hierarchy: Array.from(byDirector.values()) }; }
+function blueprintFromImportedRows(rows) { const byDirector = new Map(); const isUsers = rows[0] && Object.prototype.hasOwnProperty.call(rows[0], "Users"); rows.forEach(row => { let director = "", manager = "", coach = "", email = ""; if (isUsers) { const users = String(row["Users"] || "").trim(); if (!users || users === "Safelite") return; const parts = users.split(" --> ").map(x => x.trim()).filter(Boolean); if (parts[0] === "Safelite") parts.shift(); [director, manager, coach] = parts; email = String(row["Studio Email Address"] || "").trim(); } else { director = String(row["Director"] || "").trim(); manager = String(row["Manager"] || "").trim(); coach = String(row["Coach"] || "").trim(); email = String(row["Username / Studio Email Address"] || "").trim(); } if (!director) return; if (!byDirector.has(director)) byDirector.set(director, { directorName: director, directorKey: normalizeName(director), directorEmail: !manager && !coach ? email : "", managers: [] }); const d = byDirector.get(director); if (!manager) return; let m = d.managers.find(x => normalizeName(x.managerName) === normalizeName(manager)); if (!m) { m = { managerName: manager, managerKey: normalizeName(manager), managerEmail: !coach ? email : "", coaches: [] }; d.managers.push(m); } if (!coach) return; if (!m.coaches.some(c => normalizeName(c.coachName) === normalizeName(coach))) m.coaches.push({ coachName: coach, coachKey: normalizeName(coach), coachEmail: email }); }); return { type: "SafeliteOrgBlueprint", version: 1, exportedAt: new Date().toISOString(), columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email }, personOverrides: { ...personOverrides }, hierarchy: Array.from(byDirector.values()) }; }
 function handleBlueprintImport(event) { const file = event.target.files[0]; if (!file) return; if (!people.length) { alert("Upload and process a people file first."); event.target.value = ""; return; } const ext = file.name.split(".").pop().toLowerCase(); const reader = new FileReader(); reader.onload = function(e) { try { let blueprint; if (ext === "json") { blueprint = JSON.parse(String(e.target.result || "{}")); } else { let rows = []; if (ext === "csv") { const wb = XLSX.read(String(e.target.result), { type: "string" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } else { const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } blueprint = blueprintFromImportedRows(rows); } rebuildOrgFromBlueprint(blueprint); setStatus(`Blueprint imported from ${file.name}`); } catch (error) { console.error(error); alert("Unable to import blueprint file."); } finally { event.target.value = ""; } }; if (ext === "json" || ext === "csv") reader.readAsText(file); else reader.readAsArrayBuffer(file); }
 function applySafeliteEmailBox() { const box = document.getElementById("safeliteEmailBox"); safeliteUsersEmails = parseEmailList(box ? box.value : ""); renderOutputTable(); setStatus(`Safelite row updated with ${safeliteUsersEmails.length} emails`); }
 
@@ -2114,6 +2291,7 @@ function setViewMode(mode) {
   document.getElementById("filtersViewBtn").classList.toggle("active", mode === "filters");
   document.getElementById("emailsViewBtn").classList.toggle("active", mode === "emails");
   document.getElementById("compareViewBtn").classList.toggle("active", mode === "compare");
+  document.getElementById("optionsViewBtn").classList.toggle("active", mode === "options");
 
   renderOutputTable();
 }
@@ -2140,6 +2318,11 @@ function renderOutputTable() {
   }
   if (currentViewMode === "emails") {
     renderEmailsView();
+    return;
+  }
+
+  if (currentViewMode === "options") {
+    renderOptionsView();
     return;
   }
 }
@@ -2256,7 +2439,7 @@ function renderAttachableSavedEmailsTable(rows) {
 
 function renderMissingEmailsTable(rows) {
   if (!rows.length) return `<div class="compare-section"><h3>Missing User Emails</h3><div class="notice compare-good">No missing user emails found.</div></div>`;
-  return `<div class="compare-section"><h3>Missing User Emails</h3><table><thead><tr><th>User Path</th><th>Person Name</th><th>Type Email</th><th>Status</th></tr></thead><tbody>${rows.map(row => { const key = normalizeName(row.personName); const savedEmail = getSavedEmailForName(row.personName); return `<tr><td class="path-cell">${makeClickablePath(row.path)}</td><td>${escapeHTML(row.personName)}</td><td><input class="manual-email-input" data-person-name="${escapeHTML(row.personName)}" data-person-key="${escapeHTML(key)}" value="${escapeHTML(savedEmail)}" placeholder="type email..." /></td><td class="email-status-warning">Needs email</td></tr>`; }).join("")}</tbody></table></div>`;
+  return `<div class="compare-section"><h3>Missing User Emails</h3><table><thead><tr><th>User Path</th><th>Person Name</th><th>Type Email</th><th>Status</th></tr></thead><tbody>${rows.map(row => { const key = normalizeName(row.personName); const savedEmail = getSavedEmailForName(row.personName); return `<tr><td class="path-cell">${makeClickablePath(row.path)}</td><td>${escapeHTML(getDisplayNameByName(row.personName))}</td><td><input class="manual-email-input" data-person-name="${escapeHTML(row.personName)}" data-person-key="${escapeHTML(key)}" value="${escapeHTML(savedEmail)}" placeholder="type email..." /></td><td class="email-status-warning">Needs email</td></tr>`; }).join("")}</tbody></table></div>`;
 }
 
 function renderEmailsView() {
@@ -2267,6 +2450,172 @@ function renderEmailsView() {
   const attachableRows = getAttachableSavedEmailRows();
   pendingEmailAttachments = { rows: attachableRows };
   tbody.innerHTML = `<tr><td><div class="emails-tool-wrap"><div class="notice">Use this tab to fill blank user emails. Saved emails are remembered by person name and can be attached again when that name appears in future uploaded files.</div><div class="email-tool-actions"><button class="green" onclick="saveManualEmails()">Save Typed Emails</button><button class="orange" onclick="attachSavedEmails()">Attach Saved Emails</button><button class="secondary" onclick="exportSavedEmailLibrary()">Export Email Library</button><input type="file" id="emailLibraryImportInput" accept=".json,.xlsx,.xls,.csv" style="display:none;" onchange="handleEmailLibraryImport(event)" /><button class="secondary" onclick="document.getElementById('emailLibraryImportInput').click()">Upload Email Library</button></div><div class="notice">Missing emails: <strong>${missingRows.length}</strong><br>Saved emails ready to attach: <strong>${attachableRows.length}</strong><br>Saved email library size: <strong>${Object.keys(savedPersonEmails || {}).length}</strong></div>${renderAttachableSavedEmailsTable(attachableRows)}${renderMissingEmailsTable(missingRows)}</div></td></tr>`;
+}
+
+function renderOptionsView() {
+  const tbody = document.querySelector("#outputTable tbody");
+  const header = document.getElementById("outputTableHeader");
+  header.innerHTML = `<th>Options</th>`;
+
+  const overrideRows = Object.entries(personOverrides || {})
+    .map(([nameKey, override]) => ({ nameKey, ...override }))
+    .sort((a, b) => String(a.originalName || "").localeCompare(String(b.originalName || "")));
+
+  tbody.innerHTML = `<tr><td><div class="options-wrap">
+    <div class="options-card">
+      <h3>Display Name / Email Overrides</h3>
+      <div class="notice">Overrides only change visible/exported display names and output emails. Original loaded names remain the matching keys for supervisors, direct reports, drag/drop placement, and blueprint matching.</div>
+      <div class="options-grid">
+        <div class="options-field">
+          <label for="overridePersonSearch">Search Loaded People</label>
+          <input id="overridePersonSearch" type="text" placeholder="Search original name, display override, or email..." oninput="populateOverridePersonMatches()" />
+        </div>
+        <div class="options-field">
+          <label for="overridePersonSelect">Matching People</label>
+          <select id="overridePersonSelect" onchange="selectOverridePerson(this.value)"></select>
+        </div>
+        <div class="options-field">
+          <label for="overrideOriginalName">Original Name</label>
+          <input id="overrideOriginalName" type="text" readonly />
+        </div>
+        <div class="options-field">
+          <label for="overrideCurrentEmail">Current File Email</label>
+          <input id="overrideCurrentEmail" type="text" readonly />
+        </div>
+        <div class="options-field">
+          <label for="overrideDisplayName">Display Name Override</label>
+          <input id="overrideDisplayName" type="text" placeholder="Optional display name..." />
+        </div>
+        <div class="options-field">
+          <label for="overrideEmail">Email Override</label>
+          <input id="overrideEmail" type="text" placeholder="Optional email override..." />
+        </div>
+      </div>
+      <div class="options-actions">
+        <button class="green mini-btn" onclick="saveOverrideFromForm()">Save Override</button>
+        <button class="danger mini-btn" onclick="deleteOverrideFromForm()">Delete Override</button>
+        <button class="secondary mini-btn" onclick="clearOverrideForm()">Clear Form</button>
+      </div>
+    </div>
+    <div class="options-card">
+      <h3>Saved Overrides</h3>
+      <div class="options-table-wrap">
+        <table>
+          <thead><tr><th>Original Name</th><th>Display Name Override</th><th>Email Override</th><th>Updated At</th><th>Actions</th></tr></thead>
+          <tbody>${overrideRows.length ? overrideRows.map(row => `<tr><td>${escapeHTML(row.originalName || "")}</td><td>${escapeHTML(row.displayName || "")}</td><td>${escapeHTML(row.email || "")}</td><td>${escapeHTML(row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "")}</td><td><button class="mini-btn" onclick="editOverride('${jsEscape(row.originalName || row.nameKey)}')">Edit</button> <button class="danger mini-btn" onclick="deleteOverrideAndRefresh('${jsEscape(row.originalName || row.nameKey)}')">Delete</button></td></tr>`).join("") : `<tr><td colspan="5">No saved overrides yet.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  </div></td></tr>`;
+
+  populateOverridePersonMatches();
+  if (optionsSelectedOriginalName) loadOverrideForm(optionsSelectedOriginalName);
+}
+
+function getOverrideSearchMatches() {
+  const searchInput = document.getElementById("overridePersonSearch");
+  const search = normalizeName(searchInput ? searchInput.value : "");
+
+  return people.filter(person => {
+    if (!search) return true;
+    const override = getPersonOverride(person.name);
+    return person.nameKey.includes(search) ||
+      normalizeName(getDisplayNameByName(person.name)).includes(search) ||
+      normalizeName(person.email).includes(search) ||
+      normalizeName(override?.email || "").includes(search);
+  }).slice(0, 500);
+}
+
+function populateOverridePersonMatches() {
+  const select = document.getElementById("overridePersonSelect");
+  if (!select) return;
+  const matches = getOverrideSearchMatches();
+  select.innerHTML = matches.map(person => `<option value="${escapeHTML(person.name)}">${escapeHTML(getDisplayNameByName(person.name))}${normalizeName(getDisplayNameByName(person.name)) !== person.nameKey ? ` (Original: ${escapeHTML(person.name)})` : ""}</option>`).join("");
+
+  if (!matches.length) {
+    select.innerHTML = `<option value="">No matching people</option>`;
+    clearOverrideForm(false);
+    return;
+  }
+
+  const selectedStillVisible = optionsSelectedOriginalName && matches.some(person => person.nameKey === normalizeName(optionsSelectedOriginalName));
+  select.value = selectedStillVisible ? optionsSelectedOriginalName : matches[0].name;
+  loadOverrideForm(select.value);
+}
+
+function selectOverridePerson(originalName) {
+  loadOverrideForm(originalName);
+}
+
+function loadOverrideForm(originalName) {
+  const person = people.find(p => p.nameKey === normalizeName(originalName));
+  const original = person ? person.name : titleName(originalName);
+  const override = getPersonOverride(original);
+  optionsSelectedOriginalName = original;
+
+  const originalInput = document.getElementById("overrideOriginalName");
+  const emailInput = document.getElementById("overrideCurrentEmail");
+  const displayInput = document.getElementById("overrideDisplayName");
+  const overrideEmailInput = document.getElementById("overrideEmail");
+
+  if (originalInput) originalInput.value = original || "";
+  if (emailInput) emailInput.value = getFileEmailByName(original) || "";
+  if (displayInput) displayInput.value = override?.displayName || "";
+  if (overrideEmailInput) overrideEmailInput.value = override?.email || "";
+}
+
+function saveOverrideFromForm() {
+  const originalName = document.getElementById("overrideOriginalName")?.value || "";
+  const displayName = document.getElementById("overrideDisplayName")?.value || "";
+  const email = document.getElementById("overrideEmail")?.value || "";
+
+  if (!normalizeName(originalName)) {
+    alert("Select a loaded person first.");
+    return;
+  }
+
+  if (!String(displayName || "").trim() && !String(email || "").trim()) {
+    if (getPersonOverride(originalName)) {
+      deletePersonOverride(originalName);
+      setStatus("Blank override removed");
+    } else {
+      alert("Enter a display name override, an email override, or choose Delete Override.");
+      return;
+    }
+  } else {
+    savePersonOverride(originalName, displayName, email);
+    setStatus(`Override saved for ${getDisplayNameByName(originalName)}`);
+  }
+
+  applyPersonDisplayOverridesToOrg();
+}
+
+function deleteOverrideFromForm() {
+  const originalName = document.getElementById("overrideOriginalName")?.value || optionsSelectedOriginalName;
+  if (!normalizeName(originalName)) return;
+  deleteOverrideAndRefresh(originalName);
+}
+
+function deleteOverrideAndRefresh(originalName) {
+  deletePersonOverride(originalName);
+  setStatus(`Override deleted for ${titleName(originalName)}`);
+  applyPersonDisplayOverridesToOrg();
+}
+
+function editOverride(originalName) {
+  optionsSelectedOriginalName = originalName;
+  const searchInput = document.getElementById("overridePersonSearch");
+  if (searchInput) searchInput.value = originalName;
+  populateOverridePersonMatches();
+  loadOverrideForm(originalName);
+}
+
+function clearOverrideForm(keepSelection = true) {
+  if (!keepSelection) optionsSelectedOriginalName = "";
+  ["overrideOriginalName", "overrideCurrentEmail", "overrideDisplayName", "overrideEmail"].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = "";
+  });
 }
 
 function saveManualEmails() {
@@ -2354,7 +2703,7 @@ function handleEmailLibraryImport(event) {
 }
 
 function clickableName(name) {
-  return `<span class="name-click" onclick="selectPersonByName('${jsEscape(name)}')">${escapeHTML(name)}</span>`;
+  return `<span class="name-click" onclick="selectPersonByName('${jsEscape(name)}')">${escapeHTML(getDisplayNameByName(name))}</span>`;
 }
 
 function makeClickablePath(path) {
@@ -2570,6 +2919,7 @@ function saveLocal() {
     orgBlueprint: buildOrgBlueprint(),
     safeliteUsersEmails,
     savedPersonEmails,
+    personOverrides,
     activePeopleFilters: getValidPeopleFilters()
   };
 
@@ -2595,6 +2945,8 @@ function loadLocal() {
       hideAssignedPeople = Boolean(payload.hideAssignedPeople);
       const hideAssignedToggle = document.getElementById("hideAssignedPeopleToggle");
       if (hideAssignedToggle) hideAssignedToggle.checked = hideAssignedPeople;
+      savedPersonEmails = payload.savedPersonEmails || savedPersonEmails || {};
+      personOverrides = normalizePersonOverrides(payload.personOverrides || payload.orgBlueprint.personOverrides || personOverrides || {});
       activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
       rebuildOrgFromBlueprint(payload.orgBlueprint);
       updateFilterButtonLabel();
@@ -2610,6 +2962,7 @@ function loadLocal() {
     filledReportEmails = payload.filledReportEmails || {};
     safeliteUsersEmails = Array.isArray(payload.safeliteUsersEmails) ? payload.safeliteUsersEmails : [];
     savedPersonEmails = payload.savedPersonEmails || {};
+    personOverrides = normalizePersonOverrides(payload.personOverrides || payload.orgBlueprint?.personOverrides || {});
     activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
     currentViewMode = payload.currentViewMode || "org";
     hideAssignedPeople = Boolean(payload.hideAssignedPeople);
@@ -2709,8 +3062,8 @@ function renderCurrentFileSummary() { const box = document.getElementById("curre
 function renderCompareResults() { const box = document.getElementById("compareResultsBox"); const summaryBox = document.getElementById("compareFileSummary"); if (!box || !compareResults) return; if (summaryBox) summaryBox.innerHTML = `Rows: ${compareRawRows.length.toLocaleString()}<br>People: ${comparePeople.length.toLocaleString()}<br>First: ${escapeHTML(compareColumns.first || "—")}<br>Last: ${escapeHTML(compareColumns.last || "—")}<br>Supervisor: ${escapeHTML(compareColumns.supervisor || "—")}<br>Email: ${escapeHTML(compareColumns.email || "—")}`; const formatClass = compareResults.missingFromCompare.length === 0 && compareResults.extraInCompare.length === 0 ? "compare-good" : "compare-warning"; const orderText = compareResults.sameHeaderOrder ? "Headers match in the same order." : "Headers do not perfectly match in the same order."; box.innerHTML = `<div class="compare-section"><h3>Format Equivalency Summary</h3><div class="notice ${formatClass}"><strong>${orderText}</strong><br>Missing columns in comparison file: ${compareResults.missingFromCompare.length}<br>Extra columns in comparison file: ${compareResults.extraInCompare.length}</div>${renderRequiredMappingTable()}${renderHeaderComparisonTable()}</div><div class="compare-section"><h3>Name Match Summary</h3><div class="notice ${compareResults.missingNames.length === 0 ? "compare-good" : "compare-warning"}">Current people: ${compareResults.currentCount}<br>Comparison people: ${compareResults.compareCount}<br>Matched names: ${compareResults.matchedNames.length}<br>Missing from comparison file: ${compareResults.missingNames.length}<br>New names in comparison file: ${compareResults.newNames.length}</div>${renderNameDifferenceTable()}</div><div class="compare-section"><h3>Supervisor / Row Relationship Differences</h3><div class="notice ${compareResults.supervisorDifferences.length === 0 ? "compare-good" : "compare-warning"}">Supervisor differences found: ${compareResults.supervisorDifferences.length}</div>${renderSupervisorDifferenceTable()}</div>`; }
 function renderRequiredMappingTable() { return `<table><thead><tr><th>Required Field</th><th>Current File Column</th><th>Comparison File Column</th><th>Status</th></tr></thead><tbody>${compareResults.requiredMappings.map(item => { const same = normalizeHeader(item.current) === normalizeHeader(item.compare); return `<tr><td>${escapeHTML(item.label)}</td><td>${escapeHTML(item.current || "—")}</td><td>${escapeHTML(item.compare || "—")}</td><td class="${same ? "match-cell" : "partial-cell"}">${same ? "Equivalent" : "Different column name / mapping"}</td></tr>`; }).join("")}</tbody></table>`; }
 function renderHeaderComparisonTable() { const max = Math.max(compareResults.currentHeaders.length, compareResults.compareHeaders.length); let rows = ""; for (let i = 0; i < max; i++) { const currentHeader = compareResults.currentHeaders[i] || ""; const compareHeader = compareResults.compareHeaders[i] || ""; const same = normalizeHeader(currentHeader) === normalizeHeader(compareHeader); rows += `<tr><td>${i + 1}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(currentHeader || "—")}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(compareHeader || "—")}</td><td>${same ? "Same position" : "Different"}</td></tr>`; } return `<table><thead><tr><th>#</th><th>Current Header</th><th>Comparison Header</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`; }
-function renderNameDifferenceTable() { const missing = compareResults.missingNames.slice(0, 150); const added = compareResults.newNames.slice(0, 150); return `<table><thead><tr><th>Difference Type</th><th>Name</th><th>Supervisor</th><th>Email</th></tr></thead><tbody>${missing.map(p => `<tr><td class="diff-cell">Missing from comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}${added.map(p => `<tr><td class="partial-cell">New in comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}</tbody></table>`; }
-function renderSupervisorDifferenceTable() { if (!compareResults.supervisorDifferences.length) return `<div class="notice compare-good">No supervisor differences found for matched names.</div>`; return `<table><thead><tr><th>Name</th><th>Current Supervisor</th><th>Comparison Supervisor</th></tr></thead><tbody>${compareResults.supervisorDifferences.slice(0, 200).map(item => `<tr><td>${escapeHTML(item.name)}</td><td class="diff-cell">${escapeHTML(item.currentSupervisor || "—")}</td><td class="diff-cell">${escapeHTML(item.compareSupervisor || "—")}</td></tr>`).join("")}</tbody></table>`; }
+function renderNameDifferenceTable() { const missing = compareResults.missingNames.slice(0, 150); const added = compareResults.newNames.slice(0, 150); return `<table><thead><tr><th>Difference Type</th><th>Name</th><th>Supervisor</th><th>Email</th></tr></thead><tbody>${missing.map(p => `<tr><td class="diff-cell">Missing from comparison</td><td>${escapeHTML(getDisplayNameByName(p.name))}${normalizeName(getDisplayNameByName(p.name)) !== p.nameKey ? `<span class="original-name-note">Original: ${escapeHTML(p.name)}</span>` : ""}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(getEmailByName(p.name) || "—")}</td></tr>`).join("")}${added.map(p => `<tr><td class="partial-cell">New in comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}</tbody></table>`; }
+function renderSupervisorDifferenceTable() { if (!compareResults.supervisorDifferences.length) return `<div class="notice compare-good">No supervisor differences found for matched names.</div>`; return `<table><thead><tr><th>Name</th><th>Current Supervisor</th><th>Comparison Supervisor</th></tr></thead><tbody>${compareResults.supervisorDifferences.slice(0, 200).map(item => `<tr><td>${escapeHTML(getDisplayNameByName(item.name))}</td><td class="diff-cell">${escapeHTML(item.currentSupervisor || "—")}</td><td class="diff-cell">${escapeHTML(item.compareSupervisor || "—")}</td></tr>`).join("")}</tbody></table>`; }
 
 function setStatus(text) {
   document.getElementById("statusPill").textContent = text;
