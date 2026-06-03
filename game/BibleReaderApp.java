@@ -82,7 +82,7 @@ public class BibleReaderApp extends JFrame {
     private DefaultMutableTreeNode rootNode;
     private DefaultTreeModel treeModel;
     private JTree libraryTree;
-    private static final int LIBRARY_BOOKMARK_COLUMN_WIDTH = 38;
+    private static final int LIBRARY_BOOKMARK_COLUMN_WIDTH = 44;
     private static final int LIBRARY_ROW_HEIGHT = 24;
     private boolean bibleTreeExpanded = false;
     private int libraryHoverRow = -1;
@@ -756,29 +756,31 @@ public class BibleReaderApp extends JFrame {
         wrapper.setPreferredSize(new Dimension(RIGHT_SIDEBAR_PREFERRED_WIDTH, 10));
         wrapper.setMinimumSize(new Dimension(RIGHT_SIDEBAR_MIN_WIDTH, 10));
 
-        JPanel header = new JPanel(new BorderLayout(8, 4));
+        JPanel header = new JPanel();
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
         header.setOpaque(false);
 
-        JPanel headerText = new JPanel();
-        headerText.setLayout(new BoxLayout(headerText, BoxLayout.Y_AXIS));
-        headerText.setOpaque(false);
-        JLabel title = new JLabel("Study Sidebar");
+        JLabel title = new JLabel("Study Notes");
         title.setFont(new Font("Segoe UI", Font.BOLD, 16));
         title.setForeground(darkRed);
-        JLabel subtitle = new JLabel("Choose one focused view");
-        subtitle.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        subtitle.setForeground(modernMutedText);
-        headerText.add(title);
-        headerText.add(subtitle);
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JPanel toggles = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        JPanel toggles = new JPanel(new GridLayout(0, 2, 4, 4));
         toggles.setOpaque(false);
         addRightSidebarToggle(toggles, "margin", "Margin Notes");
         addRightSidebarToggle(toggles, "search", "Quick Search");
         addRightSidebarToggle(toggles, "pinned", "Pinned Items");
+        JButton wholeChapterNotes = blackButton("Whole Chapter Notes");
+        wholeChapterNotes.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        wholeChapterNotes.setMargin(new Insets(3, 4, 3, 4));
+        wholeChapterNotes.setToolTipText("Open notes for the current chapter.");
+        wholeChapterNotes.addActionListener(e -> openCurrentChapterNoteEditor());
+        toggles.add(wholeChapterNotes);
+        toggles.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        header.add(headerText, BorderLayout.WEST);
-        header.add(toggles, BorderLayout.EAST);
+        header.add(title);
+        header.add(Box.createVerticalStrut(6));
+        header.add(toggles);
 
         rightSidebarCards = new CardLayout();
         rightSidebarCardPanel = new JPanel(rightSidebarCards);
@@ -2081,7 +2083,7 @@ public class BibleReaderApp extends JFrame {
                 StudyBookmark bookmark = getBookmarkForLibraryRow(row);
                 if (bookmark != null) {
                     String rowName = row == null ? "" : getLibraryDisplayName(row.value);
-                    return rowName == null || rowName.trim().isEmpty() ? "Go to bookmark" : "Go to bookmark in " + rowName;
+                    return "Go to bookmark";
                 }
             }
             TreePath path = event == null ? null : getPathForLocation(event.getX(), event.getY());
@@ -2094,7 +2096,7 @@ public class BibleReaderApp extends JFrame {
     private class BookmarkTreeCellRenderer extends JPanel implements TreeCellRenderer {
         private static final long serialVersionUID = 1L;
         private final DefaultTreeCellRenderer treeLabel = new DefaultTreeCellRenderer();
-        private final JLabel bookmarkLabel = new JLabel("📖", SwingConstants.CENTER);
+        private final JLabel bookmarkLabel = new JLabel("BM", SwingConstants.CENTER);
         private JTree renderingTree;
         private int renderingRow;
 
@@ -2102,8 +2104,8 @@ public class BibleReaderApp extends JFrame {
             super(new BorderLayout(0, 0));
             setOpaque(true);
             treeLabel.setOpaque(false);
-            bookmarkLabel.setOpaque(false);
-            bookmarkLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 14));
+            bookmarkLabel.setOpaque(true);
+            bookmarkLabel.setFont(new Font("Segoe UI", Font.BOLD, 11));
             bookmarkLabel.setPreferredSize(new Dimension(LIBRARY_BOOKMARK_COLUMN_WIDTH, LIBRARY_ROW_HEIGHT));
             bookmarkLabel.setMinimumSize(new Dimension(LIBRARY_BOOKMARK_COLUMN_WIDTH, LIBRARY_ROW_HEIGHT));
             bookmarkLabel.setMaximumSize(new Dimension(LIBRARY_BOOKMARK_COLUMN_WIDTH, Integer.MAX_VALUE));
@@ -2127,13 +2129,15 @@ public class BibleReaderApp extends JFrame {
 
             LibraryRow libraryRow = new LibraryRow(pathForTreeRow(tree, row), userObject);
             StudyBookmark bookmark = getBookmarkForLibraryRow(libraryRow);
-            bookmarkLabel.setText(bookmark == null ? "" : "📖");
-            bookmarkLabel.setToolTipText(bookmark == null ? null : "Go to bookmark in " + displayName);
+            bookmarkLabel.setText(bookmark == null ? "" : "BM");
+            bookmarkLabel.setToolTipText(bookmark == null ? null : "Go to bookmark");
+            bookmarkLabel.setBorder(bookmark == null ? new EmptyBorder(2, 4, 2, 4) : new CompoundBorder(new RoundedBorder(modernPrimaryRed, 10, new Insets(1, 1, 1, 1)), new EmptyBorder(2, 4, 2, 4)));
+            bookmarkLabel.setForeground(bookmark == null ? modernMutedText : modernPrimaryRed);
             bookmarkLabel.setCursor(bookmark == null ? Cursor.getDefaultCursor() : Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
             Color bg = selected ? modernSelection : (row >= 0 && row == libraryHoverRow ? new Color(244, 237, 229) : tree.getBackground());
             setBackground(bg);
-            bookmarkLabel.setBackground(bg);
+            bookmarkLabel.setBackground(bookmark == null ? bg : blend(modernPrimaryRed, Color.WHITE, 0.80));
             treeLabel.setBackground(bg);
             setPreferredSize(new Dimension(libraryRendererWidth(tree, row), LIBRARY_ROW_HEIGHT));
             return this;
@@ -3432,17 +3436,13 @@ public class BibleReaderApp extends JFrame {
         marginNotesPanel.setBackground(panelBg);
         marginNotesPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
 
-        JPanel top = new JPanel(new BorderLayout(6, 6));
+        JPanel top = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         top.setOpaque(false);
-        JLabel hint = new JLabel("Chapter notes, questions, categories, and annotated note text");
-        hint.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        hint.setForeground(modernMutedText);
         JButton refresh = blackButton("↻");
         refresh.setMargin(new Insets(2, 7, 2, 7));
         refresh.setToolTipText("Refresh margin notes for the current chapter or source.");
         refresh.addActionListener(e -> refreshMarginNotesPanel());
-        top.add(hint, BorderLayout.WEST);
-        top.add(refresh, BorderLayout.EAST);
+        top.add(refresh);
 
         marginNotesBody = new WidthTrackingPanel();
         marginNotesBody.setLayout(new BoxLayout(marginNotesBody, BoxLayout.Y_AXIS));
@@ -3455,13 +3455,8 @@ public class BibleReaderApp extends JFrame {
         marginNotesScroll.setBorder(new RoundedBorder(modernBorder, 12, new Insets(1, 1, 1, 1)));
         marginNotesScroll.getViewport().setBackground(cream);
 
-        JPanel notesAndDetails = new JPanel(new BorderLayout(0, 6));
-        notesAndDetails.setOpaque(false);
-        notesAndDetails.add(marginNotesScroll, BorderLayout.CENTER);
-        notesAndDetails.add(buildDetailsPanel(), BorderLayout.SOUTH);
-
         marginNotesPanel.add(top, BorderLayout.NORTH);
-        marginNotesPanel.add(notesAndDetails, BorderLayout.CENTER);
+        marginNotesPanel.add(marginNotesScroll, BorderLayout.CENTER);
         return marginNotesPanel;
     }
 
@@ -3497,6 +3492,7 @@ public class BibleReaderApp extends JFrame {
         if (currentProfile == null || safe(currentSourceKey).isEmpty()) return list;
         for (TextAnnotation a : currentProfile.annotations) {
             if (a == null || !currentSourceKey.equals(a.sourceKey)) continue;
+            if (isChapterLevelNote(a)) continue;
             boolean hasNoteText = !safe(a.note).isEmpty();
             boolean isChapterNote = "Note".equals(a.type) || "Question".equals(a.type);
             boolean isCategoryWithNote = "Category".equals(a.type) && hasNoteText;
@@ -3562,12 +3558,69 @@ public class BibleReaderApp extends JFrame {
         JButton open = smallSidebarActionButton("Open");
         open.addActionListener(e -> openChapterNoteViewer(note));
         JButton edit = smallSidebarActionButton("Edit");
-        edit.addActionListener(e -> showChapterNoteDialog(note, true));
+        edit.addActionListener(e -> {
+            TextAnnotation annotation = annotationForChapterNote(note);
+            if (annotation != null) showChapterAnnotationDialog(annotation, true);
+            else showChapterNoteDialog(note, true);
+        });
         JButton jump = smallSidebarActionButton("Jump To Chapter");
         jump.addActionListener(e -> jumpToChapterNote(note));
         actions.add(open); actions.add(edit); actions.add(jump);
         card.add(actions, BorderLayout.SOUTH);
         return card;
+    }
+
+    private void showChapterAnnotationDialog(TextAnnotation annotation, boolean editMode) {
+        if (annotation == null) return;
+        repairAnnotation(annotation, System.currentTimeMillis());
+        ChapterNote proxy = chapterNoteFromAnnotation(annotation);
+        final JDialog dialog = new JDialog(this, "Chapter Notes — " + chapterNoteReference(proxy), false);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setSize(850, 650);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel root = new JPanel(new BorderLayout(10, 10));
+        root.setBorder(new EmptyBorder(14, 14, 14, 14));
+        root.setBackground(modernBackground);
+        JLabel title = new JLabel("Chapter Notes — " + chapterNoteReference(proxy));
+        title.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        title.setForeground(darkRed);
+        root.add(title, BorderLayout.NORTH);
+
+        JTextArea noteArea = new JTextArea(safe(annotation.note));
+        noteArea.setEditable(editMode);
+        noteArea.setLineWrap(true);
+        noteArea.setWrapStyleWord(true);
+        noteArea.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        noteArea.setBackground(modernSurface);
+        noteArea.setBorder(new EmptyBorder(12, 12, 12, 12));
+        JScrollPane scroll = new JScrollPane(noteArea);
+        scroll.getVerticalScrollBar().setUnitIncrement(18);
+        scroll.setBorder(new RoundedBorder(modernBorder, 12, new Insets(1, 1, 1, 1)));
+        root.add(scroll, BorderLayout.CENTER);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        actions.setOpaque(false);
+        JButton save = blackButton("Save");
+        save.setEnabled(editMode);
+        save.addActionListener(e -> {
+            annotation.note = noteArea.getText() == null ? "" : noteArea.getText();
+            annotation.wholeChapter = true;
+            annotation.updatedAt = System.currentTimeMillis();
+            saveData();
+            refreshRecentNotes();
+            refreshMarginNotesPanel();
+            dialog.dispose();
+        });
+        JButton edit = blackButton(editMode ? "Editing" : "Edit");
+        edit.addActionListener(e -> { noteArea.setEditable(true); save.setEnabled(true); edit.setText("Editing"); });
+        JButton close = blackButton("Close");
+        close.addActionListener(e -> dialog.dispose());
+        actions.add(edit); actions.add(save); actions.add(close);
+        root.add(actions, BorderLayout.SOUTH);
+        dialog.setContentPane(root);
+        applyModernTheme(dialog);
+        dialog.setVisible(true);
     }
 
     private String shortenLines(String text, int max) {
@@ -4508,12 +4561,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     StudyBookmark bookmark = null;
 
-    // This makes the toolbar bookmark "move" the bookmark for that book/source
+    String currentRowKey = bookmarkRowKeyForCurrentLocation();
+    // This makes the toolbar bookmark "move" the bookmark for that book/source/chapter
     // instead of creating a new duplicate every time.
     for (StudyBookmark b : currentProfile.bookmarks) {
-        if (b != null
-                && safe(type).equals(safe(b.type))
-                && safe(currentSourceKey).equals(safe(b.sourceKey))) {
+        if (b != null && currentRowKey.equals(bookmarkRowKey(b))) {
             bookmark = b;
             break;
         }
@@ -4542,6 +4594,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     bookmark.viewportY = viewportY;
     bookmark.hasViewportY = viewportY >= 0;
     bookmark.updatedAt = System.currentTimeMillis();
+    saveSingleBookmarkForCurrentLocation(bookmark);
 
     saveData();
     refreshLibraryTree();
@@ -4579,6 +4632,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         bookmark.previewText = preview;
         bookmark.type = bookmarkTypeForCurrentSource(typeOverride);
         bookmark.createdAt = System.currentTimeMillis();
+        bookmark.updatedAt = bookmark.createdAt;
+        saveSingleBookmarkForCurrentLocation(null);
         currentProfile.bookmarks.add(bookmark);
         saveData();
         refreshLibraryTree();
@@ -4611,8 +4666,35 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         bookmark.previewText = previewAround(bookmark.caretPosition);
         bookmark.type = "BibleOverall";
         bookmark.updatedAt = System.currentTimeMillis();
+        saveSingleBookmarkForCurrentLocation(bookmark);
         saveData();
         refreshLibraryTree();
+    }
+
+
+    private String bookmarkRowKeyForCurrentLocation() {
+        return bookmarkRowKey(currentSourceKey, selectedBook, selectedChapter);
+    }
+
+    private String bookmarkRowKey(StudyBookmark bookmark) {
+        if (bookmark == null) return "";
+        return bookmarkRowKey(bookmark.sourceKey, "", 0);
+    }
+
+    private String bookmarkRowKey(String sourceKey, String book, int chapter) {
+        String key = canonicalSourceKey(sourceKey);
+        if (!safe(key).isEmpty()) return key;
+        if (!safe(book).isEmpty() && chapter > 0) return safe(book) + "|" + chapter;
+        return "";
+    }
+
+    private void saveSingleBookmarkForCurrentLocation(StudyBookmark keep) {
+        if (currentProfile == null || currentProfile.bookmarks == null) return;
+        String rowKey = bookmarkRowKeyForCurrentLocation();
+        if (rowKey.isEmpty()) return;
+        currentProfile.bookmarks.removeIf(existing -> existing != null
+                && existing != keep
+                && rowKey.equals(bookmarkRowKey(existing)));
     }
 
     private String bookmarkTypeForCurrentSource(String typeOverride) {
@@ -7991,6 +8073,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
         for (TextAnnotation a : annotations) {
             repairAnnotation(a, System.currentTimeMillis());
+            if (isChapterLevelNote(a)) continue;
             if (!matchesRecentFilter(a, filter)) continue;
             if (!query.isEmpty() && !recentSearchText(a).contains(query)) continue;
             recentModel.addElement(new RecentAnnotationListItem(a));
@@ -8007,12 +8090,44 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         String q = chapterNotesSearchField == null ? "" : chapterNotesSearchField.getText().trim().toLowerCase(Locale.ROOT);
         java.util.List<ChapterNote> notes = new ArrayList<>(currentProfile.chapterNotes.values());
         notes.removeIf(n -> n == null || safe(n.noteText).trim().isEmpty());
+        for (TextAnnotation a : currentProfile.annotations) {
+            repairAnnotation(a, System.currentTimeMillis());
+            if (isChapterLevelNote(a) && !safe(a.note).trim().isEmpty()) notes.add(chapterNoteFromAnnotation(a));
+        }
         notes.sort((a, b) -> Long.compare(b.updatedAt, a.updatedAt));
         for (ChapterNote n : notes) {
             repairChapterNote(n);
             if (!q.isEmpty() && !chapterNoteSearchText(n).contains(q)) continue;
             chapterNotesModel.addElement(n);
         }
+    }
+
+    private boolean isChapterLevelNote(TextAnnotation a) {
+        if (a == null) return false;
+        if (a.wholeChapter) return true;
+        if ("Chapter Note".equalsIgnoreCase(safe(a.type))) return true;
+        boolean hasNoRange = a.start <= 0 && a.end <= 0;
+        boolean hasNoSelection = safe(a.selectedText).trim().isEmpty() && safe(a.target).trim().isEmpty();
+        return hasNoRange && hasNoSelection;
+    }
+
+    private ChapterNote chapterNoteFromAnnotation(TextAnnotation a) {
+        ChapterNote n = new ChapterNote();
+        n.id = "annotation:" + safe(a.id);
+        n.annotationId = safe(a.id);
+        n.sourceKey = safe(a.sourceKey);
+        n.sourceTitle = safe(a.sourceTitle);
+        n.book = safe(a.book);
+        n.chapter = a.chapter;
+        n.noteText = safe(a.note);
+        n.createdAt = a.createdAt > 0L ? a.createdAt : (a.created == null ? System.currentTimeMillis() : a.created.getTime());
+        n.updatedAt = annotationSortTime(a);
+        if (!safe(a.category).isEmpty()) n.linkedCategoryNames.add(a.category);
+        return n;
+    }
+
+    private TextAnnotation annotationForChapterNote(ChapterNote note) {
+        return note == null || safe(note.annotationId).isEmpty() ? null : annotationById(note.annotationId);
     }
 
     private String chapterNoteSearchText(ChapterNote n) {
@@ -8024,8 +8139,14 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         java.util.List<ChapterNote> notes = new ArrayList<>();
         if (currentProfile == null || safe(currentSourceKey).isEmpty()) return notes;
         repairProfile(currentProfile);
-        ChapterNote n = currentProfile.chapterNotes.get(chapterNoteKey(currentSourceKey, selectedBook, selectedChapter));
+        String noteBook = currentSourceKey.startsWith("BIBLE:") ? selectedBook : "";
+        int noteChapter = currentSourceKey.startsWith("BIBLE:") ? selectedChapter : 0;
+        ChapterNote n = currentProfile.chapterNotes.get(chapterNoteKey(currentSourceKey, noteBook, noteChapter));
         if (n != null && !safe(n.noteText).trim().isEmpty()) notes.add(n);
+        for (TextAnnotation a : currentProfile.annotations) {
+            repairAnnotation(a, System.currentTimeMillis());
+            if (currentSourceKey.equals(a.sourceKey) && isChapterLevelNote(a) && !safe(a.note).trim().isEmpty()) notes.add(chapterNoteFromAnnotation(a));
+        }
         notes.sort((a, b) -> Long.compare(b.updatedAt, a.updatedAt));
         return notes;
     }
@@ -8061,18 +8182,31 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void openCurrentChapterNoteEditor() {
-        if (currentProfile == null || safe(currentSourceKey).isEmpty() || safe(selectedBook).isEmpty()) return;
-        ChapterNote note = getOrCreateChapterNote(currentSourceKey, currentSourceTitle, selectedBook, selectedChapter);
+        if (currentProfile == null || safe(currentSourceKey).isEmpty()) return;
+        String noteBook = currentSourceKey.startsWith("BIBLE:") ? selectedBook : "";
+        int noteChapter = currentSourceKey.startsWith("BIBLE:") ? selectedChapter : 0;
+        ChapterNote note = getOrCreateChapterNote(currentSourceKey, currentSourceTitle, noteBook, noteChapter);
         showChapterNoteDialog(note, true);
     }
 
     private void openChapterNoteViewer(ChapterNote note) {
         if (note == null) return;
+        TextAnnotation annotation = annotationForChapterNote(note);
+        if (annotation != null) {
+            showChapterAnnotationDialog(annotation, false);
+            return;
+        }
         showChapterNoteDialog(note, false);
     }
 
     private void jumpToChapterNote(ChapterNote note) {
         if (note == null) return;
+        TextAnnotation annotation = annotationForChapterNote(note);
+        if (annotation != null) {
+            openSourceForAnnotation(annotation);
+            showCard("study");
+            return;
+        }
         if (!safe(note.book).isEmpty() && note.chapter > 0) {
             selectedBook = note.book;
             selectedChapter = note.chapter;
@@ -8087,6 +8221,15 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void deleteChapterNote(ChapterNote note) {
         if (note == null || currentProfile == null) return;
+        TextAnnotation annotation = annotationForChapterNote(note);
+        if (annotation != null) {
+            if (JOptionPane.showConfirmDialog(this, "Delete chapter note for " + chapterNoteReference(note) + "?", "Delete Chapter Note", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+            currentProfile.annotations.removeIf(a -> a != null && safe(annotation.id).equals(safe(a.id)));
+            saveData();
+            refreshRecentNotes();
+            refreshMarginNotesPanel();
+            return;
+        }
         if (JOptionPane.showConfirmDialog(this, "Delete chapter notes for " + chapterNoteReference(note) + "?", "Delete Chapter Note", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
         currentProfile.chapterNotes.values().removeIf(n -> n != null && safe(note.id).equals(n.id));
         saveData();
@@ -10628,6 +10771,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         List<String> linkedTopicPageIds = new ArrayList<>();
         List<String> linkedTopicPageNames = new ArrayList<>();
         List<ChapterNoteHighlight> highlights = new ArrayList<>();
+        String annotationId = "";
         public String toString() { return (book == null || book.isEmpty() ? sourceTitle : book + " " + chapter); }
     }
 
