@@ -2582,6 +2582,10 @@ public class BibleReaderApp extends JFrame {
         return value == null ? "" : value.toString();
     }
 
+    private String getShortBookDisplayName(String bookName) {
+        return displayBibleBookName(bookName);
+    }
+
     private String displayBibleBookName(String importedName) {
         String original = safe(importedName).trim();
         if (original.isEmpty()) return original;
@@ -2905,10 +2909,12 @@ public class BibleReaderApp extends JFrame {
         input.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "acceptReferenceSuggestion");
         actions.put("acceptReferenceSuggestion", new AbstractAction() {
             public void actionPerformed(ActionEvent e) {
-                String suggestion = referenceSuggestionList == null ? null : referenceSuggestionList.getSelectedValue();
-                if (suggestion == null && referenceSuggestionModel != null && referenceSuggestionModel.getSize() > 0) suggestion = referenceSuggestionModel.getElementAt(0);
-                if (suggestion != null && referenceSuggestionPopup != null && referenceSuggestionPopup.isVisible()) acceptReferenceSuggestion(suggestion);
-                else goToReferenceFromBox();
+                if (!referenceTextHasNumbers(goToReferenceField == null ? "" : goToReferenceField.getText())
+                        && hasVisibleReferenceSuggestion()) {
+                    acceptTopReferenceSuggestionOnly();
+                    return;
+                }
+                goToReferenceFromBox();
             }
         });
         input.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "nextReferenceSuggestion");
@@ -3011,10 +3017,39 @@ public class BibleReaderApp extends JFrame {
         return out;
     }
 
+    private boolean referenceTextHasNumbers(String text) {
+        return text != null && text.matches(".*\\d+.*");
+    }
+
+    private boolean hasVisibleReferenceSuggestion() {
+        return referenceSuggestionPopup != null && referenceSuggestionPopup.isVisible()
+                && referenceSuggestionModel != null && referenceSuggestionModel.getSize() > 0;
+    }
+
+    private String topReferenceSuggestion() {
+        String suggestion = referenceSuggestionList == null ? null : referenceSuggestionList.getSelectedValue();
+        if (suggestion == null && referenceSuggestionModel != null && referenceSuggestionModel.getSize() > 0) {
+            suggestion = referenceSuggestionModel.getElementAt(0);
+        }
+        return suggestion;
+    }
+
+    private void acceptTopReferenceSuggestionOnly() {
+        acceptReferenceSuggestionOnly(topReferenceSuggestion());
+    }
+
+    private void acceptReferenceSuggestionOnly(String suggestion) {
+        if (suggestion == null || suggestion.trim().isEmpty()) return;
+        if (goToReferenceField != null) {
+            goToReferenceField.setText(suggestion.trim());
+            goToReferenceField.setCaretPosition(goToReferenceField.getText().length());
+        }
+        if (referenceSuggestionPopup != null) referenceSuggestionPopup.setVisible(false);
+    }
+
     private void acceptReferenceSuggestion(String suggestion) {
         if (suggestion == null || suggestion.trim().isEmpty()) return;
-        if (referenceSuggestionPopup != null) referenceSuggestionPopup.setVisible(false);
-        if (goToReferenceField != null) goToReferenceField.setText(suggestion);
+        acceptReferenceSuggestionOnly(suggestion);
         openReference(suggestion, true);
     }
 
@@ -3480,13 +3515,13 @@ public class BibleReaderApp extends JFrame {
 
     private String getAnnotationReferenceLabel(TextAnnotation a) {
         if (a == null) return fallbackAnnotationSourceTitle(a);
-        if (a.wholeChapter) return "Whole Chapter";
+        if (a.wholeChapter) return shortAnnotationChapterReference(a, "Whole Chapter");
         String sourceTitle = fallbackAnnotationSourceTitle(a);
         if (safe(a.sourceKey).startsWith("BIBLE:") || safe(currentSourceKey).startsWith("BIBLE:")) {
             Integer startVerse = verseForAnnotationOffset(a.start);
             Integer endVerse = verseForAnnotationOffset(Math.max(a.start, a.end - 1));
-            String chapterTitle = sourceTitle;
-            if (chapterTitle.isEmpty()) chapterTitle = currentSourceTitle;
+            String chapterTitle = shortBibleReferenceTitle(a, sourceTitle);
+            if (chapterTitle.isEmpty()) chapterTitle = shortBibleSourceTitle(currentSourceTitle);
             if (startVerse != null && endVerse != null) {
                 return chapterTitle + ":" + (startVerse.equals(endVerse) ? startVerse : startVerse + "–" + endVerse);
             }
@@ -3494,6 +3529,33 @@ public class BibleReaderApp extends JFrame {
             return chapterTitle.isEmpty() ? "Current Chapter" : chapterTitle;
         }
         return sourceTitle.isEmpty() ? "Current Source" : shorten(sourceTitle, 58);
+    }
+
+    private String shortAnnotationChapterReference(TextAnnotation a, String fallback) {
+        String ref = shortBibleReferenceTitle(a, fallbackAnnotationSourceTitle(a));
+        if (!ref.isEmpty()) return ref;
+        return fallback;
+    }
+
+    private String shortBibleReferenceTitle(TextAnnotation a, String fallbackTitle) {
+        if (a != null && !safe(a.book).isEmpty() && a.chapter > 0) {
+            return getShortBookDisplayName(a.book) + " " + a.chapter;
+        }
+        RefParts rp = refPartsFromBibleSourceKey(a == null ? "" : a.sourceKey);
+        if (rp != null) return getShortBookDisplayName(rp.book) + " " + rp.chapter;
+        return shortBibleSourceTitle(fallbackTitle);
+    }
+
+    private String shortBibleSourceTitle(String title) {
+        String raw = safe(title).trim();
+        if (raw.startsWith("BIBLE:")) raw = raw.substring("BIBLE:".length()).trim();
+        if (raw.isEmpty()) return raw;
+        Matcher matcher = Pattern.compile("^(.+?)\\s+(\\d+)(.*)$").matcher(raw);
+        if (matcher.matches()) {
+            String shortBook = getShortBookDisplayName(matcher.group(1).trim());
+            return shortBook + " " + matcher.group(2).trim() + matcher.group(3).trim();
+        }
+        return getShortBookDisplayName(raw);
     }
 
     private Integer verseForAnnotationOffset(int sourceOffset) {
@@ -8124,7 +8186,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private String chapterNoteReference(ChapterNote n) {
         if (n == null) return "Chapter Note";
-        return (safe(n.book).isEmpty() ? safe(n.sourceTitle) : n.book + " " + n.chapter);
+        return (safe(n.book).isEmpty() ? shortBibleSourceTitle(n.sourceTitle) : getShortBookDisplayName(n.book) + " " + n.chapter);
     }
 
     private long annotationSortTime(TextAnnotation a) {
@@ -8168,7 +8230,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private String sourceTitleFor(TextAnnotation a) {
         if (a == null) return "";
-        return a.sourceTitle == null || a.sourceTitle.trim().isEmpty() ? safe(a.sourceKey) : a.sourceTitle;
+        String title = a.sourceTitle == null || a.sourceTitle.trim().isEmpty() ? safe(a.sourceKey) : a.sourceTitle;
+        if (safe(a.sourceKey).startsWith("BIBLE:")) return shortBibleReferenceTitle(a, title);
+        return title;
     }
 
     private void touchAnnotation(TextAnnotation a) {
