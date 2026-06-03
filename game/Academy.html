@@ -972,6 +972,8 @@ let columns = {
 let org = [];
 let currentViewMode = "org";
 let filledReportEmails = {};
+let reportEmailCache = {};
+let nameMatchKeyCache = {};
 let compareRawRows = [];
 let comparePeople = [];
 let compareColumns = { first: null, last: null, supervisor: null, email: null };
@@ -1172,9 +1174,31 @@ function getAllNameMatchKeys(name) {
   return keys;
 }
 
+function getCachedNameMatchKeys(name) {
+  const key = normalizeName(name);
+  if (!key) return new Set();
+  if (!nameMatchKeyCache[key]) {
+    nameMatchKeyCache[key] = getAllNameMatchKeys(name);
+  }
+  return nameMatchKeyCache[key];
+}
+
+function clearNameMatchKeyCache() {
+  nameMatchKeyCache = {};
+}
+
+function clearReportEmailCache() {
+  reportEmailCache = {};
+}
+
+function clearMatchingAndReportCaches() {
+  clearNameMatchKeyCache();
+  clearReportEmailCache();
+}
+
 function namesMatch(nameA, nameB) {
-  const keysA = getAllNameMatchKeys(nameA);
-  const keysB = getAllNameMatchKeys(nameB);
+  const keysA = getCachedNameMatchKeys(nameA);
+  const keysB = getCachedNameMatchKeys(nameB);
   if (!keysA.size || !keysB.size) return false;
   for (const key of keysA) {
     if (keysB.has(key)) return true;
@@ -1206,6 +1230,7 @@ function getResolvedSupervisorForPerson(personName, supervisorRaw) {
 }
 
 function applySupervisorResolutionToPeople() {
+  clearMatchingAndReportCaches();
   people.forEach(person => {
     const uploadedSupervisor = person.originalSupervisorRaw || person.supervisorRaw || "";
     person.originalSupervisorRaw = titleName(uploadedSupervisor);
@@ -1310,6 +1335,7 @@ function handleFileUpload(event) {
         showProgress("Converting sheet to rows...", 30);
 
         rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+        clearMatchingAndReportCaches();
 
         if (!rawRows.length) {
           hideProgress();
@@ -1395,6 +1421,7 @@ function applyColumnMapping() {
   columns.last = document.getElementById("lastNameSelect").value;
   columns.supervisor = document.getElementById("supervisorSelect").value;
   columns.email = document.getElementById("emailSelect").value;
+  clearMatchingAndReportCaches();
 
   showProgress("Processing names in chunks...", 0);
 
@@ -1810,6 +1837,7 @@ function updatePersonSupervisor(person, newSupervisor, oldSupervisor, applyMode)
     applyMode,
     updatedAt: new Date().toISOString()
   };
+  clearMatchingAndReportCaches();
 }
 
 function saveSupervisorReassignment(mode) {
@@ -1847,6 +1875,7 @@ function saveSupervisorReassignment(mode) {
       newSupervisor: getResolvedDisplayName(newSupervisor),
       updatedAt: new Date().toISOString()
     });
+    clearMatchingAndReportCaches();
     setStatus(`Supervisor reassignment applied to ${affected.length} people`);
   } else {
     updatePersonSupervisor(person, newSupervisor, oldSupervisor, "single");
@@ -2029,22 +2058,30 @@ function getDirectReports(supervisorName) {
   });
 }
 
+function getResolvedReportKey(name) {
+  return normalizeName(getDisplayNameByName(name) || name);
+}
+
 function getAllReportsUnderSupervisor(supervisorName) {
   const result = [];
   const visited = new Set();
+  const rootKey = getResolvedReportKey(supervisorName);
+  if (rootKey) visited.add(rootKey);
 
-  function walk(name) {
+  function walk(name, depth = 0) {
+    if (depth > 15) return;
+
     const directReports = getDirectReports(name);
 
     directReports.forEach(person => {
-      const key = normalizeName(person.name);
+      const key = getResolvedReportKey(person.name);
 
-      if (visited.has(key)) return;
+      if (!key || visited.has(key)) return;
 
       visited.add(key);
       result.push(person);
 
-      walk(person.name);
+      walk(person.name, depth + 1);
     });
   }
 
@@ -2061,7 +2098,13 @@ function getAllReportEmailsForSupervisor(supervisorName) {
 }
 
 function getReportEmailsForSupervisor(supervisorName) {
-  return getAllReportEmailsForSupervisor(supervisorName);
+  const key = getResolvedReportKey(supervisorName);
+  if (!key) return [];
+  if (reportEmailCache[key]) return reportEmailCache[key];
+
+  const emails = getAllReportEmailsForSupervisor(supervisorName);
+  reportEmailCache[key] = emails;
+  return emails;
 }
 
 function flipName(name) {
@@ -2480,6 +2523,7 @@ function clearOrg() {
   if (!confirm("Clear the current org structure?")) return;
   org = [];
   filledReportEmails = {};
+  clearMatchingAndReportCaches();
   renderAll();
 }
 
@@ -2509,11 +2553,11 @@ function getPersonOverride(name) {
   if (!key) return null;
   if (personOverrides[key]) return personOverrides[key];
 
-  const lookupKeys = getAllNameMatchKeys(name);
+  const lookupKeys = getCachedNameMatchKeys(name);
   return Object.values(personOverrides || {}).find(override => {
     if (!override || typeof override !== "object") return false;
     return [override.originalName, override.displayName].filter(Boolean).some(overrideName => {
-      const overrideKeys = getAllNameMatchKeys(overrideName);
+      const overrideKeys = getCachedNameMatchKeys(overrideName);
       return Array.from(overrideKeys).some(matchKey => lookupKeys.has(matchKey));
     });
   }) || null;
@@ -2548,7 +2592,10 @@ function savePersonOverride(originalName, displayName, email) {
 
   if (!key || !original) return false;
   if (!cleanedDisplay && !cleanedEmail) {
-    if (personOverrides[key]) delete personOverrides[key];
+    if (personOverrides[key]) {
+      delete personOverrides[key];
+      clearMatchingAndReportCaches();
+    }
     return false;
   }
 
@@ -2559,6 +2606,7 @@ function savePersonOverride(originalName, displayName, email) {
     matchKeys: Array.from(getAllNameMatchKeys([original, cleanedDisplay].filter(Boolean).join(" "))),
     updatedAt: new Date().toISOString()
   };
+  clearMatchingAndReportCaches();
   applySupervisorResolutionToPeople();
   return true;
 }
@@ -2571,6 +2619,7 @@ function deletePersonOverride(originalName) {
       delete personOverrides[overrideKey];
     }
   });
+  clearMatchingAndReportCaches();
   applySupervisorResolutionToPeople();
 }
 
@@ -2757,6 +2806,7 @@ function rebuildOrgFromBlueprint(blueprint) {
       ...(Array.isArray(blueprint.supervisorOverrideRules) ? blueprint.supervisorOverrideRules : Object.values(blueprint.supervisorOverrideRules || {}))
     ]);
   }
+  clearMatchingAndReportCaches();
   applySupervisorResolutionToPeople();
 
   blueprint.hierarchy.forEach(savedDirector => {
@@ -2946,7 +2996,13 @@ function renderFiltersOutputTable() {
     <th>Studio Email Address</th>
   `;
 
-  tbody.innerHTML = "";
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="2">
+        <div class="notice">Filters View only shows already-filled reporting emails. Use Auto Fill Coaches or Auto Fill All Leaders if you want subordinate emails included.</div>
+      </td>
+    </tr>
+  `;
 
   getOrgPathRows().forEach(row => {
     const formattedEmails = formatFilterEmails(row.personName);
@@ -3192,6 +3248,7 @@ function attachSavedEmails() {
     const person = people.find(p => normalizeName(p.name) === normalizeName(row.personName));
     if (person && savedEmail && !person.email) { person.email = savedEmail; attached++; }
   });
+  if (attached) clearReportEmailCache();
   setStatus(`Attached ${attached} saved emails by name`);
   alert(`Attached ${attached} saved emails by matching saved person names.`);
   renderAll();
@@ -3323,8 +3380,9 @@ function clearFilledEmails() {
 function getFilterEmailsForPerson(personName) {
   const emails = [
     getEmailByName(personName),
-    ...(filledReportEmails[personName] || getReportEmailsForSupervisor(personName))
+    ...(filledReportEmails[personName] || [])
   ];
+
   const seen = new Set();
 
   return emails
@@ -3500,6 +3558,7 @@ function loadLocal() {
       personOverrides = normalizePersonOverrides(payload.personOverrides || payload.orgBlueprint.personOverrides || personOverrides || {});
       supervisorOverridesByPerson = normalizeSupervisorOverridesByPerson(payload.supervisorOverridesByPerson || payload.orgBlueprint.supervisorOverridesByPerson || supervisorOverridesByPerson || {});
       supervisorOverrideRules = normalizeSupervisorOverrideRules(payload.supervisorOverrideRules || payload.orgBlueprint.supervisorOverrideRules || supervisorOverrideRules || []);
+      clearMatchingAndReportCaches();
       applySupervisorResolutionToPeople();
       activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
       rebuildOrgFromBlueprint(payload.orgBlueprint);
@@ -3519,6 +3578,7 @@ function loadLocal() {
     personOverrides = normalizePersonOverrides(payload.personOverrides || payload.orgBlueprint?.personOverrides || {});
     supervisorOverridesByPerson = normalizeSupervisorOverridesByPerson(payload.supervisorOverridesByPerson || payload.orgBlueprint?.supervisorOverridesByPerson || {});
     supervisorOverrideRules = normalizeSupervisorOverrideRules(payload.supervisorOverrideRules || payload.orgBlueprint?.supervisorOverrideRules || []);
+    clearMatchingAndReportCaches();
     applySupervisorResolutionToPeople();
     activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
     currentViewMode = payload.currentViewMode || "org";
