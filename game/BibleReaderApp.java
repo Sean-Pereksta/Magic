@@ -750,6 +750,11 @@ public class BibleReaderApp extends JFrame {
     }
 
     private JPanel buildRightSidebar() {
+        // The old Selection Details panel is no longer displayed,
+        // but older reader/detail methods still write to detailsPanel.
+        // Keep an invisible backing panel so those methods do not crash.
+        ensureDetailsPanel();
+
         JPanel wrapper = new JPanel(new BorderLayout(8, 8));
         wrapper.setBackground(panelBg);
         wrapper.setBorder(new EmptyBorder(6, 6, 6, 6));
@@ -867,6 +872,16 @@ public class BibleReaderApp extends JFrame {
         return pinnedItemsPanel;
     }
 
+    private JPanel ensureDetailsPanel() {
+        if (detailsPanel == null) {
+            detailsPanel = new WidthTrackingPanel();
+            detailsPanel.setLayout(new BoxLayout(detailsPanel, BoxLayout.Y_AXIS));
+            detailsPanel.setBackground(cream);
+            detailsPanel.setBorder(new EmptyBorder(6, 8, 8, 8));
+        }
+        return detailsPanel;
+    }
+
     private JPanel buildDetailsPanel() {
         JPanel p = new JPanel(new BorderLayout(4, 4));
         p.setMinimumSize(new Dimension(0, 90));
@@ -879,10 +894,7 @@ public class BibleReaderApp extends JFrame {
         h.setForeground(modernMutedText);
         h.setBorder(new EmptyBorder(6, 8, 0, 8));
 
-        detailsPanel = new WidthTrackingPanel();
-        detailsPanel.setLayout(new BoxLayout(detailsPanel, BoxLayout.Y_AXIS));
-        detailsPanel.setBackground(cream);
-        detailsPanel.setBorder(new EmptyBorder(6, 8, 8, 8));
+        ensureDetailsPanel();
 
         p.add(h, BorderLayout.NORTH);
         JScrollPane detailsScroll = new JScrollPane(detailsPanel);
@@ -5317,7 +5329,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void showGreekDetailsInSidebar(String key) {
-        if (detailsPanel == null) return;
+        JPanel panel = ensureDetailsPanel();
         GreekEntry ge = data.greek.get(key);
         String greekText = ge == null ? "" : ge.greekText;
         String englishText = englishVerseTextForKey(key);
@@ -5325,7 +5337,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                 ? "No Greek entry imported for this verse. Use Import > Download + Import MorphGNT Greek, import a MorphGNT ZIP/TXT folder, or import a Greek CSV."
                 : ge.details;
 
-        detailsPanel.removeAll();
+        panel.removeAll();
         addDetailTitle("Greek Details");
         addDetailText("Reference: " + key);
         addDetailText("English verse text:\n" + (englishText.isEmpty() ? "(English verse not found in the current Bible text.)" : englishText));
@@ -5348,15 +5360,15 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         addTopic.setAlignmentX(Component.LEFT_ALIGNMENT);
         addTopic.addActionListener(e -> addLinkedItemToTopicPage(new LinkedItem("GREEK", key, "related")));
 
-        detailsPanel.add(open);
-        detailsPanel.add(Box.createVerticalStrut(6));
-        detailsPanel.add(note);
-        detailsPanel.add(Box.createVerticalStrut(6));
-        detailsPanel.add(copy);
-        detailsPanel.add(Box.createVerticalStrut(6));
-        detailsPanel.add(addTopic);
-        detailsPanel.revalidate();
-        detailsPanel.repaint();
+        panel.add(open);
+        panel.add(Box.createVerticalStrut(6));
+        panel.add(note);
+        panel.add(Box.createVerticalStrut(6));
+        panel.add(copy);
+        panel.add(Box.createVerticalStrut(6));
+        panel.add(addTopic);
+        panel.revalidate();
+        panel.repaint();
         statusLabel.setText(" Showing Greek details for " + key);
     }
 
@@ -5870,6 +5882,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void showAnnotationDetails(java.util.List<TextAnnotation> annotations) {
+        JPanel panel = ensureDetailsPanel();
         if (annotations == null || annotations.isEmpty()) return;
         annotations = new ArrayList<>(annotations);
         annotations.sort(this::compareAnnotationsForDisplay);
@@ -5878,7 +5891,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             return;
         }
 
-        detailsPanel.removeAll();
+        panel.removeAll();
         TextAnnotation primary = primaryAnnotation(annotations);
         addDetailTitle(annotations.size() + " Attached Annotations");
         if (primary != null) {
@@ -5900,21 +5913,22 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                 open.addActionListener(e -> openAnnotationTarget(a));
                 actions.add(open);
             }
-            detailsPanel.add(actions);
-            detailsPanel.add(Box.createVerticalStrut(8));
+            panel.add(actions);
+            panel.add(Box.createVerticalStrut(8));
         }
         if (primary != null) {
             JButton pin = blackButton("Pin This Text To Sidebar");
             pin.setAlignmentX(Component.LEFT_ALIGNMENT);
             pin.addActionListener(e -> pinAnnotationToSidebar(primary));
-            detailsPanel.add(pin);
+            panel.add(pin);
         }
-        detailsPanel.revalidate();
-        detailsPanel.repaint();
+        panel.revalidate();
+        panel.repaint();
     }
 
     private void showAnnotationDetails(TextAnnotation a) {
-        detailsPanel.removeAll();
+        JPanel panel = ensureDetailsPanel();
+        panel.removeAll();
         addDetailTitle(a.type + " Highlight");
         addDetailText("Source: " + a.sourceTitle + "\nSelected text: “" + a.selectedText + "”"
                 + "\nCreated: " + displayDate(a.createdAt) + "\nUpdated: " + displayDate(a.updatedAt));
@@ -5924,8 +5938,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             JButton open = blackButton("Open Attachment");
             open.setAlignmentX(Component.LEFT_ALIGNMENT);
             open.addActionListener(e -> openAnnotationTarget(a));
-            detailsPanel.add(open);
-            detailsPanel.add(Box.createVerticalStrut(8));
+            panel.add(open);
+            panel.add(Box.createVerticalStrut(8));
         }
         if (!a.note.isEmpty()) addDetailText(a.note);
         addLinkedReferencesSection(a);
@@ -5947,15 +5961,15 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         del.setAlignmentX(Component.LEFT_ALIGNMENT);
         del.addActionListener(e -> deleteAnnotation(a));
 
-        detailsPanel.add(pin);
-        detailsPanel.add(Box.createVerticalStrut(6));
-        detailsPanel.add(addToProject);
-        detailsPanel.add(Box.createVerticalStrut(6));
-        detailsPanel.add(edit);
-        detailsPanel.add(Box.createVerticalStrut(6));
-        detailsPanel.add(del);
-        detailsPanel.revalidate();
-        detailsPanel.repaint();
+        panel.add(pin);
+        panel.add(Box.createVerticalStrut(6));
+        panel.add(addToProject);
+        panel.add(Box.createVerticalStrut(6));
+        panel.add(edit);
+        panel.add(Box.createVerticalStrut(6));
+        panel.add(del);
+        panel.revalidate();
+        panel.repaint();
     }
 
 
@@ -6229,13 +6243,14 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private void addRelatedTopicButtons(String type, String ref) {
         List<TopicPage> related = findTopicPagesLinkingTo(type, ref);
         if (related.isEmpty()) return;
+        JPanel panel = ensureDetailsPanel();
         addDetailTitle("Related Topic Pages");
         for (TopicPage topic : related) {
             JButton b = blackButton(topic.title);
             b.setAlignmentX(Component.LEFT_ALIGNMENT);
             b.addActionListener(e -> { refreshTopicPages(); showCard("topicPages"); selectTopicById(topic.id); });
-            detailsPanel.add(b);
-            detailsPanel.add(Box.createVerticalStrut(6));
+            panel.add(b);
+            panel.add(Box.createVerticalStrut(6));
         }
     }
 
@@ -6257,10 +6272,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         remove.addActionListener(e -> removeLinkFromAnnotation(a));
         open.addActionListener(e -> openLinkFromAnnotation(a));
         addTopic.addActionListener(e -> addAnnotationToTopicPage(a));
-        detailsPanel.add(add); detailsPanel.add(Box.createVerticalStrut(6));
-        detailsPanel.add(remove); detailsPanel.add(Box.createVerticalStrut(6));
-        detailsPanel.add(open); detailsPanel.add(Box.createVerticalStrut(6));
-        detailsPanel.add(addTopic); detailsPanel.add(Box.createVerticalStrut(8));
+        JPanel panel = ensureDetailsPanel();
+        panel.add(add); panel.add(Box.createVerticalStrut(6));
+        panel.add(remove); panel.add(Box.createVerticalStrut(6));
+        panel.add(open); panel.add(Box.createVerticalStrut(6));
+        panel.add(addTopic); panel.add(Box.createVerticalStrut(8));
     }
 
     private void addManualLinkToAnnotation(TextAnnotation a) {
@@ -7014,21 +7030,27 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void showSourceSummary(String sourceKey, String sourceTitle) {
-        detailsPanel.removeAll();
+        JPanel panel = ensureDetailsPanel();
+        panel.removeAll();
         addDetailTitle(sourceTitle == null || sourceTitle.isEmpty() ? "Current Source" : sourceTitle);
         int count = 0;
         for (TextAnnotation a : currentProfile.annotations) if (sourceKey.equals(a.sourceKey)) count++;
         addDetailText(count + " highlight note(s) in this source.\n\nSelect text and right-click to add a note, category, attachment, question, or topic link. Hover over highlighted text to preview notes. Click a highlight to view actions here.");
         if (sourceKey != null && sourceKey.startsWith("BIBLE:")) addRelatedTopicButtons("VERSE", sourceKey.substring("BIBLE:".length()));
-        detailsPanel.revalidate();
-        detailsPanel.repaint();
+        panel.revalidate();
+        panel.repaint();
     }
 
     private void showDetailsText(String text) {
-        detailsPanel.removeAll();
-        addDetailText(text);
-        detailsPanel.revalidate();
-        detailsPanel.repaint();
+        JPanel panel = ensureDetailsPanel();
+        panel.removeAll();
+
+        if (text != null && !text.trim().isEmpty()) {
+            addDetailText(text);
+        }
+
+        panel.revalidate();
+        panel.repaint();
     }
 
     private void addDetailTitle(String s) {
@@ -7036,16 +7058,18 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         l.setFont(new Font("Segoe UI", Font.BOLD, 18));
         l.setForeground(darkRed);
         l.setAlignmentX(Component.LEFT_ALIGNMENT);
-        detailsPanel.add(l);
-        detailsPanel.add(Box.createVerticalStrut(8));
+        JPanel panel = ensureDetailsPanel();
+        panel.add(l);
+        panel.add(Box.createVerticalStrut(8));
     }
 
     private void addDetailText(String s) {
         JTextArea a = readonlyArea();
         a.setText(s == null ? "" : s);
         a.setAlignmentX(Component.LEFT_ALIGNMENT);
-        detailsPanel.add(a);
-        detailsPanel.add(Box.createVerticalStrut(8));
+        JPanel panel = ensureDetailsPanel();
+        panel.add(a);
+        panel.add(Box.createVerticalStrut(8));
     }
 
     private String createCategory(String optionalAnnotationId) {
@@ -7366,7 +7390,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void showCategoryDetails(String cat) {
-        detailsPanel.removeAll();
+        JPanel panel = ensureDetailsPanel();
+        panel.removeAll();
         addDetailTitle("Category: " + cat);
         addDetailText(currentProfile.categories.getOrDefault(cat, "") + "\nHighlight color: " + colorHex(colorForCategory(cat)));
 
@@ -7379,8 +7404,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                     safeSelect(a.start, a.end);
                     showAnnotationDetails(a);
                 });
-                detailsPanel.add(b);
-                detailsPanel.add(Box.createVerticalStrut(6));
+                panel.add(b);
+                panel.add(Box.createVerticalStrut(6));
             }
         }
         for (ChapterNote n : currentProfile.chapterNotes.values()) {
@@ -7388,13 +7413,13 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                 JButton b = blackButton("Chapter Note: " + chapterNoteReference(n) + " — “" + shortenLines(n.noteText, 70) + "”");
                 b.setAlignmentX(Component.LEFT_ALIGNMENT);
                 b.addActionListener(e -> openChapterNoteViewer(n));
-                detailsPanel.add(b);
-                detailsPanel.add(Box.createVerticalStrut(6));
+                panel.add(b);
+                panel.add(Box.createVerticalStrut(6));
             }
         }
 
-        detailsPanel.revalidate();
-        detailsPanel.repaint();
+        panel.revalidate();
+        panel.repaint();
     }
 
     private void openSourceForAnnotation(TextAnnotation a) {
@@ -7832,11 +7857,12 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (n == null) return;
         if (!safe(n.sourceKey).isEmpty()) openSourceKey(n.sourceKey);
         safeSelect(n.start, n.end);
-        detailsPanel.removeAll();
+        JPanel panel = ensureDetailsPanel();
+        panel.removeAll();
         addDetailTitle(safe(n.title).isEmpty() ? "Project Note" : n.title);
         addDetailText("Source: " + safe(n.sourceTitle) + "\nSelected text: “" + safe(n.selectedText) + "”\nCreated: " + displayDate(n.createdAt) + "\nUpdated: " + displayDate(n.updatedAt));
         if (!safe(n.body).isEmpty()) addDetailText(n.body);
-        detailsPanel.revalidate(); detailsPanel.repaint();
+        panel.revalidate(); panel.repaint();
         showCard("study");
     }
 
@@ -8219,25 +8245,89 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
     }
 
-    private void deleteChapterNote(ChapterNote note) {
-        if (note == null || currentProfile == null) return;
-        TextAnnotation annotation = annotationForChapterNote(note);
-        if (annotation != null) {
-            if (JOptionPane.showConfirmDialog(this, "Delete chapter note for " + chapterNoteReference(note) + "?", "Delete Chapter Note", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
-            currentProfile.annotations.removeIf(a -> a != null && safe(annotation.id).equals(safe(a.id)));
-            saveData();
-            refreshRecentNotes();
-            refreshMarginNotesPanel();
-            return;
+    private boolean hasPersistedChapterNote(ChapterNote note) {
+        if (note == null || currentProfile == null) return false;
+        repairProfile(currentProfile);
+        for (ChapterNote n : currentProfile.chapterNotes.values()) {
+            if (n != null && safe(note.id).equals(n.id) && !safe(n.noteText).trim().isEmpty()) return true;
         }
-        if (JOptionPane.showConfirmDialog(this, "Delete chapter notes for " + chapterNoteReference(note) + "?", "Delete Chapter Note", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
-        currentProfile.chapterNotes.values().removeIf(n -> n != null && safe(note.id).equals(n.id));
-        saveData();
+        TextAnnotation annotation = annotationForChapterNote(note);
+        return annotation != null && !safe(annotation.note).trim().isEmpty();
+    }
+
+    private void refreshAfterChapterNoteDelete() {
+        refreshRecentNotes();
         refreshChapterNotesList();
         refreshMarginNotesPanel();
         refreshStudyProjects();
         refreshTopicPages();
-        if (statusLabel != null) statusLabel.setText(" Deleted chapter notes for " + chapterNoteReference(note) + ".");
+        refreshCategories();
+    }
+
+    private void removeChapterNoteLinks(String noteId) {
+        if (currentProfile == null || safe(noteId).isEmpty()) return;
+        for (StudyProject project : currentProfile.studyProjects.values()) {
+            if (project == null) continue;
+            repairStudyProject(project);
+            project.chapterNoteIds.removeIf(id -> safe(noteId).equals(safe(id)));
+        }
+        for (TopicPage topic : currentProfile.topicPages) {
+            if (topic == null) continue;
+            repairTopicPage(topic);
+            topic.links.removeIf(link -> link != null
+                    && "CHAPTER_NOTE".equalsIgnoreCase(safe(link.type))
+                    && safe(noteId).equals(safe(link.ref)));
+        }
+    }
+
+    private void performChapterNoteDelete(ChapterNote note) {
+        if (note == null || currentProfile == null) return;
+        repairProfile(currentProfile);
+        String noteId = safe(note.id);
+        TextAnnotation annotation = annotationForChapterNote(note);
+        if (annotation != null) {
+            String annotationId = safe(annotation.id);
+            currentProfile.annotations.removeIf(a -> a != null && annotationId.equals(safe(a.id)));
+            currentProfile.questions.removeIf(q -> q != null && annotationId.equals(safe(q.annotationId)));
+        }
+        currentProfile.chapterNotes.values().removeIf(n -> n != null && noteId.equals(safe(n.id)));
+        removeChapterNoteLinks(noteId);
+        saveData();
+        refreshAfterChapterNoteDelete();
+        if (statusLabel != null) statusLabel.setText(" Deleted chapter note for " + chapterNoteReference(note) + ".");
+    }
+
+    private void deleteChapterNote(ChapterNote note) {
+        if (note == null || currentProfile == null) return;
+        String ref = chapterNoteReference(note);
+        if (!hasPersistedChapterNote(note)) {
+            JOptionPane.showMessageDialog(this, "Nothing to delete.", "Delete Chapter Note", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        int ok = JOptionPane.showConfirmDialog(this,
+                "Delete the chapter note for " + ref + "? This cannot be undone.",
+                "Delete Chapter Note",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+        if (ok != JOptionPane.YES_OPTION) return;
+        performChapterNoteDelete(note);
+    }
+
+    private void deleteChapterNoteFromEditor(ChapterNote note, JDialog dialog) {
+        if (note == null || currentProfile == null) return;
+        String ref = chapterNoteReference(note);
+        if (!hasPersistedChapterNote(note)) {
+            JOptionPane.showMessageDialog(dialog, "Nothing to delete.", "Delete Chapter Note", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        int ok = JOptionPane.showConfirmDialog(dialog,
+                "Delete the chapter note for " + ref + "? This cannot be undone.",
+                "Delete Chapter Note",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+        if (ok != JOptionPane.YES_OPTION) return;
+        performChapterNoteDelete(note);
+        if (dialog != null) dialog.dispose();
     }
 
     private void showChapterNoteDialog(ChapterNote note, boolean editMode) {
@@ -8276,6 +8366,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         status.setForeground(modernMutedText);
 
         final boolean[] dirty = {false};
+        final JButton[] deleteButtonRef = {null};
         notePane.getDocument().addDocumentListener(new SimpleDocumentListener(() -> dirty[0] = true));
 
         Runnable save = () -> {
@@ -8293,6 +8384,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             String msg = "Chapter notes saved for " + chapterNoteReference(note) + ".";
             status.setText(msg);
             if (statusLabel != null) statusLabel.setText(" " + msg);
+            if (deleteButtonRef[0] != null) deleteButtonRef[0].setEnabled(hasPersistedChapterNote(note));
             applySmartVerseHighlights(notePane, note);
         };
 
@@ -8314,9 +8406,14 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         });
         JButton saveBtn = blackButton("Save");
         saveBtn.addActionListener(e -> save.run());
-        JButton clear = blackButton("Delete/Clear");
+        JButton deleteBtn = blackButton("Delete");
+        deleteBtn.setToolTipText("Delete this saved chapter note.");
+        deleteBtn.setEnabled(hasPersistedChapterNote(note));
+        deleteBtn.addActionListener(e -> deleteChapterNoteFromEditor(note, dialog));
+        deleteButtonRef[0] = deleteBtn;
+        JButton clear = blackButton("Clear Text");
         clear.addActionListener(e -> {
-            int ok = JOptionPane.showConfirmDialog(dialog, "Clear this chapter note?", "Clear Chapter Note", JOptionPane.YES_NO_OPTION);
+            int ok = JOptionPane.showConfirmDialog(dialog, "Clear this chapter note text?", "Clear Chapter Note Text", JOptionPane.YES_NO_OPTION);
             if (ok == JOptionPane.YES_OPTION) { notePane.setText(""); save.run(); }
         });
         JButton linkCat = blackButton("Link Whole Note to Category");
@@ -8330,7 +8427,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         buttons.setOpaque(false);
-        for (JButton b : new JButton[]{mode, saveBtn, clear, linkCat, linkStudy, linkTopic, closeBtn}) buttons.add(b);
+        for (JButton b : new JButton[]{mode, saveBtn, deleteBtn, clear, linkCat, linkStudy, linkTopic, closeBtn}) buttons.add(b);
         JPanel south = new JPanel(new BorderLayout(8, 6));
         south.setOpaque(false);
         south.add(buttons, BorderLayout.CENTER);
