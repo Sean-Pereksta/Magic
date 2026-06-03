@@ -163,6 +163,10 @@ public class BibleReaderApp extends JFrame {
     private DefaultListModel<String> referenceSuggestionModel;
     private JScrollPane readerScrollPane;
     private boolean marginNotesMode = false;
+    private String rightSidebarMode = "margin";
+    private CardLayout rightSidebarCards;
+    private JPanel rightSidebarCardPanel;
+    private final Map<String, JButton> rightSidebarToggleButtons = new HashMap<>();
     private JPanel marginNotesPanel;
     private JPanel marginNotesBody;
     private JScrollPane marginNotesScroll;
@@ -722,77 +726,115 @@ public class BibleReaderApp extends JFrame {
     }
 
     private JPanel buildRightSidebar() {
-        JPanel content = new WidthTrackingPanel();
-        content.setLayout(new GridBagLayout());
-        content.setMinimumSize(new Dimension(0, 0));
-        content.setBackground(panelBg);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.fill = GridBagConstraints.BOTH;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 0, 4, 0);
-
-        gbc.gridy = 0;
-        gbc.weighty = 0.0;
-        sideSearchPanel = buildSideSearchPanel();
-        content.add(sideSearchPanel, gbc);
-
-        gbc.gridy = 1;
-        gbc.weighty = 1.0;
-        content.add(buildDetailsPanel(), gbc);
-
-        gbc.gridy = 2;
-        gbc.weighty = 0.0;
-        gbc.insets = new Insets(0, 0, 0, 0);
-        content.add(buildPinnedItemsPanel(), gbc);
-
-        JScrollPane sidebarScroll = new JScrollPane(content);
-        sidebarScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-        sidebarScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        sidebarScroll.getVerticalScrollBar().setUnitIncrement(16);
-        sidebarScroll.setBorder(null);
-        sidebarScroll.getViewport().setBackground(panelBg);
-
-        JPanel wrapper = new JPanel(new BorderLayout());
+        JPanel wrapper = new JPanel(new BorderLayout(8, 8));
         wrapper.setBackground(panelBg);
+        wrapper.setBorder(new EmptyBorder(6, 6, 6, 6));
         wrapper.setPreferredSize(new Dimension(RIGHT_SIDEBAR_PREFERRED_WIDTH, 10));
         wrapper.setMinimumSize(new Dimension(RIGHT_SIDEBAR_MIN_WIDTH, 10));
-        wrapper.add(sidebarScroll, BorderLayout.CENTER);
+
+        JPanel header = new JPanel(new BorderLayout(8, 4));
+        header.setOpaque(false);
+
+        JPanel headerText = new JPanel();
+        headerText.setLayout(new BoxLayout(headerText, BoxLayout.Y_AXIS));
+        headerText.setOpaque(false);
+        JLabel title = new JLabel("Study Sidebar");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        title.setForeground(darkRed);
+        JLabel subtitle = new JLabel("Choose one focused view");
+        subtitle.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        subtitle.setForeground(modernMutedText);
+        headerText.add(title);
+        headerText.add(subtitle);
+
+        JPanel toggles = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        toggles.setOpaque(false);
+        addRightSidebarToggle(toggles, "margin", "Margin Notes");
+        addRightSidebarToggle(toggles, "search", "Quick Search");
+        addRightSidebarToggle(toggles, "pinned", "Pinned Items");
+
+        header.add(headerText, BorderLayout.WEST);
+        header.add(toggles, BorderLayout.EAST);
+
+        rightSidebarCards = new CardLayout();
+        rightSidebarCardPanel = new JPanel(rightSidebarCards);
+        rightSidebarCardPanel.setBackground(panelBg);
+        rightSidebarCardPanel.add(buildMarginNotesPanel(), "margin");
+        rightSidebarCardPanel.add(buildSideSearchPanel(), "search");
+        rightSidebarCardPanel.add(buildPinnedItemsPanel(), "pinned");
+
+        wrapper.add(header, BorderLayout.NORTH);
+        wrapper.add(rightSidebarCardPanel, BorderLayout.CENTER);
+        SwingUtilities.invokeLater(() -> showRightSidebarMode(rightSidebarMode));
         return wrapper;
+    }
+
+    private void addRightSidebarToggle(JPanel parent, String mode, String label) {
+        JButton button = blackButton(label);
+        button.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        button.setMargin(new Insets(3, 4, 3, 4));
+        button.setToolTipText("Show " + label + " in the right sidebar.");
+        button.addActionListener(e -> showRightSidebarMode(mode));
+        rightSidebarToggleButtons.put(mode, button);
+        parent.add(button);
+    }
+
+    private void showRightSidebarMode(String mode) {
+        String normalized = safe(mode).isEmpty() ? "margin" : mode;
+        if (!"margin".equals(normalized) && !"search".equals(normalized) && !"pinned".equals(normalized)) normalized = "margin";
+        rightSidebarMode = normalized;
+        marginNotesMode = "margin".equals(rightSidebarMode);
+        if (rightSidebarCards != null && rightSidebarCardPanel != null) {
+            rightSidebarCards.show(rightSidebarCardPanel, rightSidebarMode);
+        }
+        updateRightSidebarToggleButtons();
+        if (marginNotesMode) refreshMarginNotesPanel();
+        if ("pinned".equals(rightSidebarMode)) refreshPinnedItems();
+        if (rightSidebarCardPanel != null) {
+            rightSidebarCardPanel.revalidate();
+            rightSidebarCardPanel.repaint();
+        }
+    }
+
+    private void updateRightSidebarToggleButtons() {
+        for (Map.Entry<String, JButton> entry : rightSidebarToggleButtons.entrySet()) {
+            JButton button = entry.getValue();
+            if (button == null) continue;
+            boolean active = entry.getKey().equals(rightSidebarMode);
+            button.setFont(new Font("Segoe UI", Font.BOLD, 11));
+            button.setBackground(active ? modernPrimaryRed : modernDarkRed);
+            button.setForeground(Color.WHITE);
+            button.setBorder(new CompoundBorder(
+                    new RoundedBorder(active ? modernPrimaryRed : modernBorder, 12, new Insets(1, 1, 1, 1)),
+                    new EmptyBorder(3, 4, 3, 4)));
+        }
     }
 
     private JPanel buildPinnedItemsPanel() {
         pinnedItemsPanel = new JPanel(new BorderLayout(6, 6));
-        pinnedItemsPanel.setBorder(new CompoundBorder(
-                new EmptyBorder(0, 4, 0, 4),
-                new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(4, 4, 4, 4))
-        ));
         pinnedItemsPanel.setBackground(panelBg);
-        styleCompactSidebarCard(pinnedItemsPanel);
+        pinnedItemsPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
 
         JPanel header = new JPanel(new BorderLayout(6, 6));
         header.setOpaque(false);
-
         JLabel title = new JLabel("Pinned Study Items");
         title.setFont(new Font("Segoe UI", Font.BOLD, 14));
         title.setForeground(darkRed);
-
-        pinnedItemsToggleBtn = blackButton("Minimize");
-        pinnedItemsToggleBtn.addActionListener(e -> togglePinnedItems());
-
+        JButton refresh = blackButton("Refresh");
+        refresh.setMargin(new Insets(3, 7, 3, 7));
+        refresh.addActionListener(e -> refreshPinnedItems());
         header.add(title, BorderLayout.WEST);
-        header.add(pinnedItemsToggleBtn, BorderLayout.EAST);
+        header.add(refresh, BorderLayout.EAST);
 
         pinnedItemsBody = new WidthTrackingPanel();
         pinnedItemsBody.setLayout(new BoxLayout(pinnedItemsBody, BoxLayout.Y_AXIS));
         pinnedItemsBody.setBackground(cream);
-        pinnedItemsBody.setBorder(new EmptyBorder(6, 6, 6, 6));
+        pinnedItemsBody.setBorder(new EmptyBorder(8, 8, 8, 8));
 
         pinnedItemsScroll = new JScrollPane(pinnedItemsBody);
         pinnedItemsScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        pinnedItemsScroll.setPreferredSize(new Dimension(RIGHT_SIDEBAR_CONTENT_WIDTH, 170));
-        pinnedItemsScroll.setMinimumSize(new Dimension(0, 120));
+        pinnedItemsScroll.getVerticalScrollBar().setUnitIncrement(16);
+        pinnedItemsScroll.setMinimumSize(new Dimension(0, 0));
 
         pinnedItemsPanel.add(header, BorderLayout.NORTH);
         pinnedItemsPanel.add(pinnedItemsScroll, BorderLayout.CENTER);
@@ -801,38 +843,35 @@ public class BibleReaderApp extends JFrame {
 
     private JPanel buildDetailsPanel() {
         JPanel p = new JPanel(new BorderLayout(4, 4));
-        p.setMinimumSize(new Dimension(0, 0));
-        p.setBorder(new EmptyBorder(4, 4, 4, 4));
-        p.setBackground(panelBg);
-        styleCompactSidebarCard(p);
+        p.setMinimumSize(new Dimension(0, 90));
+        p.setPreferredSize(new Dimension(RIGHT_SIDEBAR_CONTENT_WIDTH, 125));
+        p.setBorder(new CompoundBorder(new EmptyBorder(6, 0, 0, 0), new RoundedBorder(modernBorder, 12, new Insets(1, 1, 1, 1))));
+        p.setBackground(cream);
 
-        JLabel h = new JLabel("Notes / Attachments");
-        h.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        h.setForeground(darkRed);
+        JLabel h = new JLabel("Selection Details");
+        h.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        h.setForeground(modernMutedText);
+        h.setBorder(new EmptyBorder(6, 8, 0, 8));
 
         detailsPanel = new WidthTrackingPanel();
         detailsPanel.setLayout(new BoxLayout(detailsPanel, BoxLayout.Y_AXIS));
         detailsPanel.setBackground(cream);
-        detailsPanel.setBorder(new EmptyBorder(6, 6, 6, 6));
+        detailsPanel.setBorder(new EmptyBorder(6, 8, 8, 8));
 
         p.add(h, BorderLayout.NORTH);
         JScrollPane detailsScroll = new JScrollPane(detailsPanel);
         detailsScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         detailsScroll.setMinimumSize(new Dimension(0, 0));
+        detailsScroll.setBorder(null);
         p.add(detailsScroll, BorderLayout.CENTER);
         return p;
     }
 
     private JPanel buildSideSearchPanel() {
-        JPanel outer = new JPanel(new BorderLayout(4, 4));
-        outer.setPreferredSize(new Dimension(RIGHT_SIDEBAR_CONTENT_WIDTH, RIGHT_SIDEBAR_SEARCH_HEIGHT));
-        outer.setMinimumSize(new Dimension(0, RIGHT_SIDEBAR_SEARCH_MIN_HEIGHT));
-        outer.setBorder(new CompoundBorder(
-                new EmptyBorder(4, 4, 0, 4),
-                new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(4, 4, 4, 4))
-        ));
+        JPanel outer = new JPanel(new BorderLayout(6, 6));
+        outer.setMinimumSize(new Dimension(0, 0));
+        outer.setBorder(new EmptyBorder(0, 0, 0, 0));
         outer.setBackground(panelBg);
-        styleCompactSidebarCard(outer);
 
         JPanel header = new JPanel(new BorderLayout(6, 6));
         header.setOpaque(false);
@@ -840,14 +879,17 @@ public class BibleReaderApp extends JFrame {
         JLabel title = new JLabel("Quick Search");
         title.setFont(new Font("Segoe UI", Font.BOLD, 14));
         title.setForeground(darkRed);
+        JLabel hint = new JLabel("Search verses, books, highlights, and questions");
+        hint.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        hint.setForeground(modernMutedText);
+        JPanel titleStack = new JPanel();
+        titleStack.setLayout(new BoxLayout(titleStack, BoxLayout.Y_AXIS));
+        titleStack.setOpaque(false);
+        titleStack.add(title);
+        titleStack.add(hint);
+        header.add(titleStack, BorderLayout.WEST);
 
-        sideSearchToggleBtn = blackButton("Minimize");
-        sideSearchToggleBtn.addActionListener(e -> toggleSideSearch());
-
-        header.add(title, BorderLayout.WEST);
-        header.add(sideSearchToggleBtn, BorderLayout.EAST);
-
-        sideSearchBody = new JPanel(new BorderLayout(4, 4));
+        sideSearchBody = new JPanel(new BorderLayout(6, 6));
         sideSearchBody.setMinimumSize(new Dimension(0, 0));
         sideSearchBody.setOpaque(false);
 
@@ -868,7 +910,7 @@ public class BibleReaderApp extends JFrame {
         sideSearchModel = new DefaultListModel<>();
         sideSearchList = new JList<>(sideSearchModel);
         sideSearchList.setFont(new Font("Consolas", Font.PLAIN, 12));
-        sideSearchList.setVisibleRowCount(6);
+        sideSearchList.setVisibleRowCount(8);
         sideSearchList.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent e) {
                 if (SwingUtilities.isRightMouseButton(e)) {
@@ -896,7 +938,6 @@ public class BibleReaderApp extends JFrame {
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, sideSearchListScroll, sideSearchPreviewScroll);
         split.setResizeWeight(0.48);
         split.setDividerSize(5);
-        split.setPreferredSize(new Dimension(RIGHT_SIDEBAR_CONTENT_WIDTH, 260));
         split.setMinimumSize(new Dimension(0, 180));
         ((JScrollPane) split.getTopComponent()).setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         ((JScrollPane) split.getBottomComponent()).setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
@@ -1909,6 +1950,7 @@ public class BibleReaderApp extends JFrame {
         if (root == this) {
             updateModernToggleText();
             updateActiveNavButton();
+            updateRightSidebarToggleButtons();
         }
     }
 
@@ -3031,7 +3073,6 @@ public class BibleReaderApp extends JFrame {
             mainStudySplit.setDividerLocation(0);
         }
         if (centerRightSplit != null) {
-            if (marginNotesMode) restoreNormalRightSidebar();
             Component right = centerRightSplit.getRightComponent();
             if (right != null) right.setVisible(false);
             centerRightSplit.setDividerSize(0);
@@ -3066,63 +3107,35 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void toggleMarginNotesMode() {
-        if (centerRightSplit == null || readingMode) return;
-        marginNotesMode = !marginNotesMode;
-
-        if (marginNotesMode) {
-            if (marginNotesPanel == null) {
-                marginNotesPanel = buildMarginNotesPanel();
-            }
-            refreshMarginNotesPanel();
-            centerRightSplit.setRightComponent(marginNotesPanel);
-            if (marginNotesToggleButton != null) marginNotesToggleButton.setText("Close Margin Notes");
+        if (readingMode) return;
+        showRightSidebarMode("margin");
+        if (centerRightSplit != null) {
+            Component right = centerRightSplit.getRightComponent();
+            if (right != null) right.setVisible(true);
+            centerRightSplit.setDividerSize(7);
             clampCenterRightDivider(false);
-        } else {
-            centerRightSplit.setRightComponent(normalRightSidebar);
-            if (marginNotesToggleButton != null) marginNotesToggleButton.setText("Margin Notes");
-            clampCenterRightDivider(true);
+            centerRightSplit.revalidate();
+            centerRightSplit.repaint();
         }
-
-        centerRightSplit.revalidate();
-        centerRightSplit.repaint();
     }
 
     private JPanel buildMarginNotesPanel() {
         marginNotesPanel = new JPanel(new BorderLayout(6, 6));
-        marginNotesPanel.setPreferredSize(new Dimension(RIGHT_SIDEBAR_PREFERRED_WIDTH, 10));
-        marginNotesPanel.setMinimumSize(new Dimension(RIGHT_SIDEBAR_MIN_WIDTH, 10));
+        marginNotesPanel.setMinimumSize(new Dimension(0, 0));
         marginNotesPanel.setBackground(panelBg);
-        marginNotesPanel.setBorder(new CompoundBorder(new EmptyBorder(4, 4, 4, 4), new LineBorder(new Color(180, 145, 135))));
+        marginNotesPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
 
-        JPanel header = new JPanel(new BorderLayout(8, 6));
-        header.setOpaque(false);
-        header.setBorder(new EmptyBorder(8, 8, 4, 8));
-
-        JPanel headerText = new JPanel();
-        headerText.setLayout(new BoxLayout(headerText, BoxLayout.Y_AXIS));
-        headerText.setOpaque(false);
-        JLabel title = new JLabel("Margin Notes");
-        title.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        title.setForeground(darkRed);
-        JLabel subtitle = new JLabel("Notes and questions for this chapter/source");
-        subtitle.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        subtitle.setForeground(new Color(95, 70, 60));
-        headerText.add(title);
-        headerText.add(subtitle);
-
-        JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
-        headerActions.setOpaque(false);
-        JButton refresh = blackButton("Refresh");
+        JPanel top = new JPanel(new BorderLayout(6, 6));
+        top.setOpaque(false);
+        JLabel hint = new JLabel("Chapter notes, questions, categories, and annotated note text");
+        hint.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        hint.setForeground(modernMutedText);
+        JButton refresh = blackButton("↻");
+        refresh.setMargin(new Insets(2, 7, 2, 7));
         refresh.setToolTipText("Refresh margin notes for the current chapter or source.");
         refresh.addActionListener(e -> refreshMarginNotesPanel());
-        JButton close = blackButton("Close");
-        close.setToolTipText("Close Margin Notes and restore the normal right sidebar.");
-        close.addActionListener(e -> { marginNotesMode = false; restoreNormalRightSidebar(); });
-        headerActions.add(refresh);
-        headerActions.add(close);
-
-        header.add(headerText, BorderLayout.CENTER);
-        header.add(headerActions, BorderLayout.EAST);
+        top.add(hint, BorderLayout.WEST);
+        top.add(refresh, BorderLayout.EAST);
 
         marginNotesBody = new WidthTrackingPanel();
         marginNotesBody.setLayout(new BoxLayout(marginNotesBody, BoxLayout.Y_AXIS));
@@ -3132,39 +3145,33 @@ public class BibleReaderApp extends JFrame {
         marginNotesScroll = new JScrollPane(marginNotesBody);
         marginNotesScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         marginNotesScroll.getVerticalScrollBar().setUnitIncrement(16);
-        marginNotesScroll.setBorder(new EmptyBorder(4, 6, 6, 6));
+        marginNotesScroll.setBorder(new RoundedBorder(modernBorder, 12, new Insets(1, 1, 1, 1)));
+        marginNotesScroll.getViewport().setBackground(cream);
 
-        marginNotesPanel.add(header, BorderLayout.NORTH);
-        marginNotesPanel.add(marginNotesScroll, BorderLayout.CENTER);
+        JPanel notesAndDetails = new JPanel(new BorderLayout(0, 6));
+        notesAndDetails.setOpaque(false);
+        notesAndDetails.add(marginNotesScroll, BorderLayout.CENTER);
+        notesAndDetails.add(buildDetailsPanel(), BorderLayout.SOUTH);
+
+        marginNotesPanel.add(top, BorderLayout.NORTH);
+        marginNotesPanel.add(notesAndDetails, BorderLayout.CENTER);
         return marginNotesPanel;
     }
 
     private void refreshMarginNotesPanel() {
-        if (!marginNotesMode || marginNotesBody == null) return;
+        if (!"margin".equals(rightSidebarMode) || marginNotesBody == null) return;
         marginNotesBody.removeAll();
         java.util.List<TextAnnotation> annotations = getAnnotationsForCurrentReaderLocation();
         if (annotations.isEmpty()) {
             JTextArea empty = readonlyArea();
             empty.setBackground(cream);
-            empty.setText("No notes or questions found for this chapter yet.");
+            empty.setText("No notes or questions found for this chapter yet. Add a note, question, or category note from selected reader text and it will appear here automatically.");
             marginNotesBody.add(empty);
         } else {
-            int previousY = 0;
-            int stacked = 0;
-            for (TextAnnotation a : annotations) {
-                int y = getApproximateYForAnnotation(a);
-                int gap = Math.max(4, Math.min(28, y - previousY));
-                if (y > 0 && previousY > 0 && y - previousY < 34) {
-                    stacked++;
-                    gap = 3;
-                } else {
-                    stacked = 0;
-                }
-                if (gap > 0) marginNotesBody.add(Box.createVerticalStrut(gap));
-                JComponent card = buildMarginNoteCard(a, expandedMarginNoteIds.contains(safe(a.id)));
-                card.setBorder(new CompoundBorder(new EmptyBorder(0, Math.min(18, stacked * 6), 0, 0), card.getBorder()));
-                marginNotesBody.add(card);
-                previousY = Math.max(y, previousY + (expandedMarginNoteIds.contains(safe(a.id)) ? 120 : 58));
+            for (int i = 0; i < annotations.size(); i++) {
+                TextAnnotation a = annotations.get(i);
+                if (i > 0) marginNotesBody.add(Box.createVerticalStrut(7));
+                marginNotesBody.add(buildMarginNoteCard(a, expandedMarginNoteIds.contains(safe(a.id))));
             }
         }
         marginNotesBody.revalidate();
@@ -3176,11 +3183,15 @@ public class BibleReaderApp extends JFrame {
         if (currentProfile == null || safe(currentSourceKey).isEmpty()) return list;
         for (TextAnnotation a : currentProfile.annotations) {
             if (a == null || !currentSourceKey.equals(a.sourceKey)) continue;
-            if (!("Note".equals(a.type) || "Question".equals(a.type) || !safe(a.note).isEmpty())) continue;
+            boolean hasNoteText = !safe(a.note).isEmpty();
+            boolean isChapterNote = "Note".equals(a.type) || "Question".equals(a.type);
+            boolean isCategoryWithNote = "Category".equals(a.type) && hasNoteText;
+            if (!(isChapterNote || isCategoryWithNote || hasNoteText)) continue;
             list.add(a);
         }
         list.sort(Comparator
                 .comparingInt((TextAnnotation a) -> a.wholeChapter ? -1 : Math.max(0, a.start))
+                .thenComparingInt(a -> a.wholeChapter ? -1 : Math.max(0, a.end))
                 .thenComparingInt(this::annotationPriority)
                 .thenComparing(a -> safe(a.id)));
         return list;
@@ -3199,10 +3210,14 @@ public class BibleReaderApp extends JFrame {
     }
 
     private JComponent buildMarginNoteCard(TextAnnotation annotation, boolean expanded) {
-        JPanel card = new JPanel(new BorderLayout(6, 6));
-        card.setBackground(expanded ? modernSurface : new Color(255, 250, 232));
-        card.setBorder(new CompoundBorder(new MatteBorder(0, 5, 1, 1, colorForAnnotation(annotation)), new EmptyBorder(7, 8, 7, 8)));
-        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, expanded ? 360 : 92));
+        Color accent = colorForAnnotation(annotation);
+        Color cardBg = blend(accent, Color.WHITE, expanded ? 0.88 : 0.82);
+        JPanel card = new JPanel(new BorderLayout(6, 5));
+        card.setBackground(cardBg);
+        card.setBorder(new CompoundBorder(
+                new CompoundBorder(new RoundedBorder(new Color(206, 192, 180), 13, new Insets(1, 1, 1, 1)), new MatteBorder(0, 5, 0, 0, accent)),
+                new EmptyBorder(7, 8, 7, 8)));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, expanded ? 260 : 150));
         card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         card.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent e) {
@@ -3210,36 +3225,98 @@ public class BibleReaderApp extends JFrame {
             }
         });
 
-        String icon = "Question".equals(safe(annotation.type)) ? questionBubbleLabel(annotation) : "📝";
-        JLabel title = new JLabel(icon + " " + annotationDisplayName(annotation) + " — " + marginNoteLocation(annotation));
-        title.setFont(modernBoldFont);
-        title.setForeground(modernDarkRed);
-        card.add(title, BorderLayout.NORTH);
+        JPanel top = new JPanel(new BorderLayout(6, 2));
+        top.setOpaque(false);
+        JLabel chip = new JLabel(marginNoteChipText(annotation));
+        chip.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        chip.setForeground(modernDarkRed);
+        chip.setBorder(new CompoundBorder(new RoundedBorder(accent.darker(), 10, new Insets(1, 1, 1, 1)), new EmptyBorder(2, 7, 2, 7)));
+        chip.setOpaque(true);
+        chip.setBackground(blend(accent, Color.WHITE, 0.55));
 
-        JTextArea body = readonlyArea();
-        body.setBackground(card.getBackground());
-        body.setText(expanded ? marginNoteExpandedText(annotation) : marginNotePreviewText(annotation));
-        card.add(body, BorderLayout.CENTER);
+        JLabel reference = new JLabel(getAnnotationReferenceLabel(annotation));
+        reference.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        reference.setForeground(modernText);
+        top.add(chip, BorderLayout.WEST);
+        top.add(reference, BorderLayout.CENTER);
+        card.add(top, BorderLayout.NORTH);
 
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        JPanel textStack = new JPanel();
+        textStack.setLayout(new BoxLayout(textStack, BoxLayout.Y_AXIS));
+        textStack.setOpaque(false);
+        String targetPreview = getAnnotationTargetPreview(annotation);
+        if (!targetPreview.isEmpty()) {
+            JTextArea target = compactMarginText("“" + targetPreview + "”", cardBg, new Font("Segoe UI", Font.ITALIC, 12), modernMutedText);
+            textStack.add(target);
+            textStack.add(Box.createVerticalStrut(3));
+        }
+        JTextArea body = compactMarginText(expanded ? marginNoteExpandedText(annotation) : marginNotePreviewText(annotation), cardBg, new Font("Segoe UI", Font.PLAIN, 12), modernText);
+        textStack.add(body);
+        card.add(textStack, BorderLayout.CENTER);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         actions.setOpaque(false);
-        JButton jump = new JButton("Jump To");
+        JButton jump = smallSidebarActionButton("Jump To");
         jump.addActionListener(e -> jumpToMarginNote(annotation));
-        JButton edit = new JButton("Edit");
+        JButton edit = smallSidebarActionButton("Edit");
         edit.addActionListener(e -> editAnnotation(annotation));
-        JButton delete = new JButton("Delete");
+        JButton delete = smallSidebarActionButton("Delete");
         delete.addActionListener(e -> deleteAnnotation(annotation));
         actions.add(jump);
         actions.add(edit);
         actions.add(delete);
+        if (annotationSummaryText(annotation).length() > 150) {
+            JButton expand = smallSidebarActionButton(expanded ? "Collapse" : "Expand");
+            expand.addActionListener(e -> toggleMarginNoteExpanded(annotation.id));
+            actions.add(expand);
+        }
         StudyQuestion q = questionForAnnotation(annotation.id);
         if (q != null) {
-            JButton addAnswer = new JButton("Add Answer");
+            JButton addAnswer = smallSidebarActionButton("Answer");
             addAnswer.addActionListener(e -> { promptAddAnswer(q); refreshMarginNotesPanel(); });
             actions.add(addAnswer);
         }
         card.add(actions, BorderLayout.SOUTH);
         return card;
+    }
+
+    private JTextArea compactMarginText(String text, Color bg, Font font, Color fg) {
+        JTextArea area = readonlyArea();
+        area.setText(safe(text));
+        area.setFont(font);
+        area.setForeground(fg);
+        area.setBackground(bg);
+        area.setBorder(new EmptyBorder(0, 0, 0, 0));
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setRows(0);
+        area.setMinimumSize(new Dimension(0, 0));
+        return area;
+    }
+
+    private JButton smallSidebarActionButton(String text) {
+        JButton button = new JButton(text);
+        button.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        button.setMargin(new Insets(2, 6, 2, 6));
+        button.setFocusable(false);
+        return button;
+    }
+
+    private Color blend(Color a, Color b, double bWeight) {
+        double aw = 1.0 - bWeight;
+        return new Color(
+                (int) Math.max(0, Math.min(255, a.getRed() * aw + b.getRed() * bWeight)),
+                (int) Math.max(0, Math.min(255, a.getGreen() * aw + b.getGreen() * bWeight)),
+                (int) Math.max(0, Math.min(255, a.getBlue() * aw + b.getBlue() * bWeight)));
+    }
+
+    private String marginNoteChipText(TextAnnotation a) {
+        String type = safe(a == null ? "" : a.type);
+        if ("Question".equals(type)) return questionBubbleLabel(a) + " Question";
+        if ("Category".equals(type)) return safe(a.category).isEmpty() ? "Category" : shorten(a.category, 18);
+        if ("Link".equals(type)) return "Attachment";
+        if (type.isEmpty()) return "Note";
+        return type;
     }
 
     private void toggleMarginNoteExpanded(String annotationId) {
@@ -3249,10 +3326,10 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void restoreNormalRightSidebar() {
-        marginNotesMode = false;
-        if (centerRightSplit != null && normalRightSidebar != null) {
-            centerRightSplit.setRightComponent(normalRightSidebar);
-            normalRightSidebar.setVisible(true);
+        showRightSidebarMode("search");
+        if (centerRightSplit != null) {
+            Component right = centerRightSplit.getRightComponent();
+            if (right != null) right.setVisible(true);
             centerRightSplit.setDividerSize(7);
             clampCenterRightDivider(true);
         }
@@ -3261,30 +3338,71 @@ public class BibleReaderApp extends JFrame {
         repaint();
     }
 
+    private String getAnnotationReferenceLabel(TextAnnotation a) {
+        if (a == null) return fallbackAnnotationSourceTitle(a);
+        if (a.wholeChapter) return "Whole Chapter";
+        String sourceTitle = fallbackAnnotationSourceTitle(a);
+        if (safe(a.sourceKey).startsWith("BIBLE:") || safe(currentSourceKey).startsWith("BIBLE:")) {
+            Integer startVerse = verseForAnnotationOffset(a.start);
+            Integer endVerse = verseForAnnotationOffset(Math.max(a.start, a.end - 1));
+            String chapterTitle = sourceTitle;
+            if (chapterTitle.isEmpty()) chapterTitle = currentSourceTitle;
+            if (startVerse != null && endVerse != null) {
+                return chapterTitle + ":" + (startVerse.equals(endVerse) ? startVerse : startVerse + "–" + endVerse);
+            }
+            if (startVerse != null) return chapterTitle + ":" + startVerse;
+            return chapterTitle.isEmpty() ? "Current Chapter" : chapterTitle;
+        }
+        return sourceTitle.isEmpty() ? "Current Source" : shorten(sourceTitle, 58);
+    }
+
+    private Integer verseForAnnotationOffset(int sourceOffset) {
+        if (readerPane == null) return null;
+        Integer verse = verseNumberContainingPosition(sourceOffsetToRenderedOffset(Math.max(0, sourceOffset), true));
+        if (verse == null) verse = verseNumberContainingPosition(sourceOffsetToRenderedOffset(Math.max(0, sourceOffset - 1), true));
+        return verse;
+    }
+
+    private String fallbackAnnotationSourceTitle(TextAnnotation a) {
+        String title = a == null ? "" : safe(a.sourceTitle);
+        if (title.isEmpty() && a != null) title = safe(a.sourceKey);
+        if (title.isEmpty()) title = safe(currentSourceTitle);
+        if (title.isEmpty() && !safe(selectedBook).isEmpty()) title = selectedBook + " " + selectedChapter;
+        return title;
+    }
+
+    private String getAnnotationTargetPreview(TextAnnotation a) {
+        if (a == null) return "";
+        String text = safe(a.selectedText).trim();
+        if (text.isEmpty()) text = safe(a.target).trim();
+        text = text.replaceAll("\\s+", " ");
+        return shorten(text, 90);
+    }
+
     private String marginNoteLocation(TextAnnotation a) {
-        if (a == null) return "Unknown";
-        if (a.wholeChapter) return safe(a.sourceTitle).isEmpty() ? safe(a.sourceKey) : a.sourceTitle;
-        Integer verse = currentSourceKey != null && currentSourceKey.startsWith("BIBLE:") ? verseNumberContainingPosition(sourceOffsetToRenderedOffset(Math.max(0, a.start), true)) : null;
-        if (verse != null) return safe(a.sourceTitle) + ":" + verse;
-        return safe(a.sourceTitle).isEmpty() ? safe(a.sourceKey) : a.sourceTitle;
+        return getAnnotationReferenceLabel(a);
     }
 
     private String marginNotePreviewText(TextAnnotation a) {
-        String meta = "Question".equals(safe(a.type)) ? questionTypeDisplay(questionTypeForAnnotation(a)) + "\n" : (safe(a.category).isEmpty() ? "" : "Category: " + safe(a.category) + "\n");
-        return meta + shorten(annotationSummaryText(a).replace("\n", " "), 120);
+        String text = annotationSummaryText(a).replace("\n", " ");
+        if ("Question".equals(safe(a.type))) {
+            text = questionTypeDisplay(questionTypeForAnnotation(a)) + " • " + text;
+        } else if (!safe(a.category).isEmpty() && !"Category".equals(safe(a.type))) {
+            text = "Category: " + safe(a.category) + " • " + text;
+        }
+        return shorten(text, 165);
     }
 
     private String marginNoteExpandedText(TextAnnotation a) {
         StringBuilder sb = new StringBuilder();
         if ("Question".equals(safe(a.type))) {
             StudyQuestion q = questionForAnnotation(a.id);
-            sb.append(questionTypeDisplay(q == null ? questionTypeForAnnotation(a) : q.questionType)).append("\n");
+            sb.append(questionTypeDisplay(q == null ? questionTypeForAnnotation(a) : q.questionType)).append(" — ");
             sb.append(q != null && q.answered ? "Answered" : "Unanswered");
             sb.append(q == null ? "" : " • " + q.answers.size() + " answer(s)").append("\n\n");
         } else if (!safe(a.category).isEmpty()) {
             sb.append("Category: ").append(a.category).append("\n\n");
         }
-        if (!safe(a.selectedText).isEmpty()) sb.append("Selected: “").append(shorten(a.selectedText, 180)).append("”\n\n");
         sb.append(annotationSummaryText(a));
         StudyQuestion q = questionForAnnotation(a.id);
         if (q != null && !q.answers.isEmpty()) sb.append("\n\nAnswers:\n").append(answersSummary(q));
@@ -3297,7 +3415,8 @@ public class BibleReaderApp extends JFrame {
         if (a.wholeChapter) moveReaderCaret(0); else safeSelect(a.start, a.end);
         showAnnotationDetails(a);
         showCard("study");
-        if (marginNotesMode) SwingUtilities.invokeLater(this::refreshMarginNotesPanel);
+        showRightSidebarMode("margin");
+        SwingUtilities.invokeLater(this::refreshMarginNotesPanel);
     }
 
     private int currentReaderBodyFontSize() {
