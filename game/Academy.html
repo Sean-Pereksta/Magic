@@ -116,6 +116,9 @@
   .legend{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:12px; color:#475569 }
 
   .gridHead{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:10px; flex-wrap:wrap }
+  .gridHeadTitleRow{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-width:0 }
+  .attendance3WeeksToggle{ display:flex; align-items:center; gap:6px; font-size:12px; color:#334155; font-weight:900; min-width:0; white-space:normal; overflow-wrap:anywhere }
+  .attendance3WeeksToggle input{ margin:0 }
 
   .heatmapWrap{
     border:1px solid var(--line);
@@ -241,7 +244,8 @@
     padding:0;
   }
   .heatmapRepBtn:hover .heatmapRepName{ text-decoration:underline; }
-  .heatmapRepName{ font-weight:900; line-height:1.15; }
+  .heatmapRepName{ font-weight:900; line-height:1.15; white-space:normal; overflow-wrap:anywhere; min-width:0; }
+  .heatmapRepCoachDate{ font-size:11px; color:#475569; font-weight:900; line-height:1.2; white-space:normal; overflow-wrap:anywhere; min-width:0; }
   .heatmapRepMeta{ font-size:11px; color:#64748b; font-weight:800; }
   .heatmapWeekBtn{
     width:100%;
@@ -457,6 +461,7 @@
   .repName{
     font-weight:900;
     display:flex;
+    white-space:normal;
     gap:6px;
     align-items:flex-start;
     line-height:1.15;
@@ -987,7 +992,13 @@
   <!-- RIGHT -->
   <main class="card">
     <div class="gridHead">
-      <strong>Member Impacts</strong>
+      <div class="gridHeadTitleRow">
+        <strong>Member Impacts</strong>
+        <label class="attendance3WeeksToggle" title="Only show reps with at least one stat row in the 21 days ending on the latest stats date in the loaded data.">
+          <input type="checkbox" id="attendance3WeeksOnly">
+          <span>3 weeks attendance</span>
+        </label>
+      </div>
       <span class="muted" id="contextHint">—</span>
 
       <div class="row" style="margin-left:auto">
@@ -997,6 +1008,8 @@
             <option value="pos">Most positive → most negative</option>
             <option value="neg">Most negative → most positive</option>
             <option value="negNeedCoach">Most negative impactor + fewest coaching (weighted)</option>
+            <option value="coachDesc">Most recent coaching ↓</option>
+            <option value="coachAsc">Most recent coaching ↑</option>
             <option value="rateDesc">Highest % → lowest</option>
             <option value="rateAsc">Lowest % → highest</option>
           </select>
@@ -1453,6 +1466,7 @@ let selectedSet = null;
 let metricMode = 'auto';
 let excluded = new Set();
 let showCompare = true;
+let attendance3WeeksOnly = false;
 
 let includeRetail = true;
 let includeReferral = true;
@@ -1513,6 +1527,17 @@ function latestCoachingForRep(repName){
     if(match) return c;
   }
   return null;
+}
+function coachingSortTime(repName){
+  const c = latestCoachingForRep(repName);
+  return c?.date instanceof Date && !isNaN(c.date) ? c.date.getTime() : null;
+}
+function formatCoachingDateForLabel(repName){
+  const c = latestCoachingForRep(repName);
+  return c?.date instanceof Date && !isNaN(c.date) ? `${c.date.getMonth()+1}/${c.date.getDate()}/${c.date.getFullYear()}` : '—';
+}
+function repLastCoachedLabel(repName){
+  return `${repName} (Last Coached ${formatCoachingDateForLabel(repName)})`;
 }
 
 /* =========================
@@ -1588,7 +1613,7 @@ function linearTrend(points){
   return { slope, intercept };
 }
 function buildRepTrendSummary(rep){
-  const model = lastHeatmapModel || buildWeeklyHeatmapModel(effectiveSet(), getRepNamesInScope().filter(n => !excluded.has(n)), new Set());
+  const model = lastHeatmapModel || buildWeeklyHeatmapModel(effectiveSet(), applyAttendance3WeeksFilter(getRepNamesInScope()).filter(n => !excluded.has(n)), new Set());
   const entries = (model?.weekly || []).map(w => (w.rows || []).find(r => r.rep === rep) || null);
   const filled = entries.map((entry, idx)=>{
     const week = model.weekly[idx];
@@ -1995,6 +2020,34 @@ function getRepNamesInScope(){
   const rows = rowsInScope();
   return Array.from(new Set(rows.map(r=>String(r.Name||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
 }
+function attendanceReferenceRows(){
+  return allRows
+    .filter(r => !selectedSheet || String(r.Sheet||'').trim()===selectedSheet)
+    .filter(r => !isTotalName(r.Name))
+    .filter(r => r._d instanceof Date && !isNaN(r._d));
+}
+function latestStatsDateInActiveDataset(){
+  const rows = attendanceReferenceRows();
+  if(!rows.length) return null;
+  return rows.reduce((latest, r)=> (!latest || r._d > latest ? r._d : latest), null);
+}
+function attendance3WeeksCutoff(){
+  const latest = latestStatsDateInActiveDataset();
+  if(!latest) return null;
+  const cutoff = new Date(latest.getFullYear(), latest.getMonth(), latest.getDate());
+  cutoff.setDate(cutoff.getDate() - 21);
+  return cutoff;
+}
+function hasStatsInLast3Weeks(repName){
+  const cutoff = attendance3WeeksCutoff();
+  if(!cutoff) return true;
+  const repKey = personKey(repName);
+  return attendanceReferenceRows().some(r => personKey(r.Name) === repKey && r._d >= cutoff);
+}
+function applyAttendance3WeeksFilter(names){
+  if(!attendance3WeeksOnly) return [...names];
+  return names.filter(n => hasStatsInLast3Weeks(n));
+}
 function effectiveSet(){
   if (!selectedSet || !selectedSet.A || !selectedSet.B) return null;
   return selectedSet;
@@ -2057,6 +2110,12 @@ function computeImpacts(set, excludedNow){
 const sortSel = document.getElementById('sortSel');
 sortSel.onchange = ()=> renderAll();
 
+const attendance3WeeksOnlyCb = document.getElementById('attendance3WeeksOnly');
+attendance3WeeksOnlyCb.onchange = ()=>{
+  attendance3WeeksOnly = attendance3WeeksOnlyCb.checked;
+  renderAll();
+};
+
 const toggleCompareBtn = document.getElementById('toggleCompare');
 toggleCompareBtn.onclick = ()=>{
   showCompare = !showCompare;
@@ -2097,8 +2156,9 @@ function paintTeamSummary(orig, curr){
   d.classList.toggle('good', delta>0);
   d.classList.toggle('bad', delta<0);
 }
-function updateRepCount(total, excl){
-  document.getElementById('repCount').textContent = `${total - excl} included of ${total} total`;
+function updateRepCount(total, excl, visibleTotal=total){
+  const suffix = attendance3WeeksOnly ? ` • ${visibleTotal} with 3-week attendance` : '';
+  document.getElementById('repCount').textContent = `${total - excl} included of ${total} total${suffix}`;
 }
 
 /* =========================
@@ -2577,6 +2637,7 @@ function paintHeatmap(model){
     repBtn.title = 'Open rep coaching history';
     repBtn.innerHTML = `
       <span class="heatmapRepName">${repSummary.rep}</span>
+      <span class="heatmapRepCoachDate">(Last Coached ${formatCoachingDateForLabel(repSummary.rep)})</span>
       <span class="heatmapRepMeta">Below goal: ${repSummary.neededCount} • ✅ ${repSummary.coachedWhenNeeded} • ❌ ${repSummary.redXCount}</span>
       <span class="heatmapOpportunity">Red Xs: ${repSummary.redXCount}</span>
       ${repSummary.hasCoachingOpportunity ? `<span class="heatmapOpportunity">Concern</span>` : ''}
@@ -2621,7 +2682,7 @@ function findHeatmapEntry(model, rep, weekKey){
   return week?.rows?.find(r => r.rep === rep) || null;
 }
 function openHeatmapWeekDetail(weekKey){
-  const model = lastHeatmapModel || buildWeeklyHeatmapModel(effectiveSet(), getRepNamesInScope().filter(n => !excluded.has(n)), new Set());
+  const model = lastHeatmapModel || buildWeeklyHeatmapModel(effectiveSet(), applyAttendance3WeeksFilter(getRepNamesInScope()).filter(n => !excluded.has(n)), new Set());
   heatmapModalState.type = 'week';
   heatmapModalState.weekKey = weekKey;
   heatmapModalState.rep = null;
@@ -2632,7 +2693,7 @@ function openHeatmapWeekDetail(weekKey){
   ov.setAttribute('aria-hidden','false');
 }
 function openHeatmapCellDetail(rep, weekKey){
-  const model = lastHeatmapModel || buildWeeklyHeatmapModel(effectiveSet(), getRepNamesInScope().filter(n => !excluded.has(n)), new Set());
+  const model = lastHeatmapModel || buildWeeklyHeatmapModel(effectiveSet(), applyAttendance3WeeksFilter(getRepNamesInScope()).filter(n => !excluded.has(n)), new Set());
   heatmapModalState.type = 'cell';
   heatmapModalState.weekKey = weekKey;
   heatmapModalState.rep = rep;
@@ -2668,7 +2729,7 @@ function detailItemMarkup(entry){
   ].join('');
   wrap.innerHTML = `
     <div class="heatDetailTop">
-      <button class="heatDetailRepBtn" type="button">${entry.rep}</button>
+      <button class="heatDetailRepBtn" type="button">${repLastCoachedLabel(entry.rep)}</button>
       <div class="heatDetailBadges">${badges}</div>
     </div>
     <div class="heatDetailMetrics">
@@ -2713,7 +2774,7 @@ function paintHeatmapModal(){
 
   if(heatmapModalState.type === 'cell'){
     const entry = findHeatmapEntry(model, heatmapModalState.rep, heatmapModalState.weekKey);
-    title.textContent = `${heatmapModalState.rep} — ${week.weekKey}`;
+    title.textContent = `${repLastCoachedLabel(heatmapModalState.rep)} — ${week.weekKey}`;
     meta.textContent = `${week.label} • ${selectedSheet || '—'} • ${selectedSet?.A || 'A'} ÷ ${selectedSet?.B || 'B'}`;
     if(!entry){
       body.innerHTML = `<div class="muted" style="font-weight:900">No detail is available for that rep/week cell.</div>`;
@@ -2827,7 +2888,7 @@ function paintRepGrid(rows, teamRate, allNames, maxVal, bottomHalfSet){
 
     const nameDiv = document.createElement('div');
     nameDiv.className = 'repName';
-    nameDiv.innerHTML = `${r.rep} ${star||warn? `<span class="muted">${star}${warn}</span>`:''}`;
+    nameDiv.innerHTML = `${repLastCoachedLabel(r.rep)} ${star||warn? `<span class="muted">${star}${warn}</span>`:''}`;
 
     const badgeStack = document.createElement('div');
     badgeStack.className = 'badgeStack';
@@ -2978,13 +3039,16 @@ function renderAll(){
 
   const names = getRepNamesInScope();
   excluded.forEach(n=>{ if (!names.includes(n)) excluded.delete(n); });
+  const visibleNames = applyAttendance3WeeksFilter(names);
+  const visibleNameSet = new Set(visibleNames);
 
-  const {base, rows:impRowsDefault} = computeImpacts(set, excluded);
+  const {base, rows:impRowsRaw} = computeImpacts(set, excluded);
+  const impRowsDefault = impRowsRaw.filter(r => visibleNameSet.has(r.rep));
   const originalAll = computeTeamMetrics(set, new Set());
 
   paintTotals(originalAll, base);
   paintTeamSummary(originalAll.rate, base.rate);
-  updateRepCount(names.length, excluded.size);
+  updateRepCount(names.length, excluded.size, visibleNames.length);
 
   const maxVal = Math.max(
     ...originalAll.byRep.map(r=>Math.max(r.apps||0, r.opps||0)),
@@ -3018,6 +3082,26 @@ function renderAll(){
     rowsSorted.sort((a,b)=> (b.repRate ?? -Infinity) - (a.repRate ?? -Infinity));
   } else if (mode === 'rateAsc'){
     rowsSorted.sort((a,b)=> (a.repRate ?? Infinity) - (b.repRate ?? Infinity));
+  } else if (mode === 'coachDesc'){
+    rowsSorted.sort((a,b)=>{
+      const A = coachingSortTime(a.rep);
+      const B = coachingSortTime(b.rep);
+      if(A === null && B === null) return String(a.rep).localeCompare(String(b.rep));
+      if(A === null) return 1;
+      if(B === null) return -1;
+      if(B !== A) return B - A;
+      return String(a.rep).localeCompare(String(b.rep));
+    });
+  } else if (mode === 'coachAsc'){
+    rowsSorted.sort((a,b)=>{
+      const A = coachingSortTime(a.rep);
+      const B = coachingSortTime(b.rep);
+      if(A === null && B === null) return String(a.rep).localeCompare(String(b.rep));
+      if(A === null) return 1;
+      if(B === null) return -1;
+      if(A !== B) return A - B;
+      return String(a.rep).localeCompare(String(b.rep));
+    });
   } else if (mode === 'negNeedCoach'){
     rowsSorted.sort((a,b)=>{
       const A = needCoachingScore(a.rep, a.impact);
@@ -3033,11 +3117,11 @@ function renderAll(){
     rowsSorted.sort((a,b)=> Math.abs(b.impact) - Math.abs(a.impact));
   }
 
-  const includedNames = names.filter(n => !excluded.has(n));
+  const includedNames = visibleNames.filter(n => !excluded.has(n));
   const heatmapModel = buildWeeklyHeatmapModel(set, includedNames, bottomHalfSet);
   paintHeatmap(heatmapModel);
 
-  paintRepGrid(rowsSorted, base.rate, names, maxVal, bottomHalfSet);
+  paintRepGrid(rowsSorted, base.rate, visibleNames, maxVal, bottomHalfSet);
 }
 
 /* =========================
