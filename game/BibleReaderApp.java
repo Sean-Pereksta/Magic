@@ -172,6 +172,8 @@ public class BibleReaderApp extends JFrame {
     private JPanel marginNotesBody;
     private JScrollPane marginNotesScroll;
     private JButton marginNotesToggleButton;
+    private TextAnnotation activeInlineNoteEditorAnnotation;
+    private ChapterNote activeInlineChapterNoteEditorNote;
     private final Set<String> expandedMarginNoteIds = new HashSet<>();
     private DefaultListModel<RecentLocation> recentlyOpenedModel;
     private JList<RecentLocation> recentlyOpenedList;
@@ -767,7 +769,7 @@ public class BibleReaderApp extends JFrame {
         JButton wholeChapterNotes = blackButton("Whole Chapter Notes");
         wholeChapterNotes.setFont(new Font("Segoe UI", Font.BOLD, 11));
         wholeChapterNotes.setMargin(new Insets(3, 4, 3, 4));
-        wholeChapterNotes.setToolTipText("Open notes for the current chapter.");
+        wholeChapterNotes.setToolTipText("Open notes for the current chapter in the margin editor.");
         wholeChapterNotes.addActionListener(e -> openCurrentChapterNoteEditor());
         toggles.add(wholeChapterNotes);
         toggles.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -3331,7 +3333,13 @@ public class BibleReaderApp extends JFrame {
         JButton refresh = blackButton("↻");
         refresh.setMargin(new Insets(2, 7, 2, 7));
         refresh.setToolTipText("Refresh margin notes for the current chapter or source.");
-        refresh.addActionListener(e -> refreshMarginNotesPanel());
+        refresh.addActionListener(e -> { clearInlineMarginEditor(); refreshMarginNotesPanel(); });
+        JButton addChapterNote = blackButton("+ Chapter Note");
+        addChapterNote.setMargin(new Insets(2, 7, 2, 7));
+        addChapterNote.setToolTipText("Create or edit this chapter's note in the margin.");
+        addChapterNote.addActionListener(e -> openCurrentChapterNoteEditor());
+        top.add(addChapterNote);
+        top.add(Box.createHorizontalStrut(4));
         top.add(refresh);
 
         marginNotesBody = new WidthTrackingPanel();
@@ -3353,24 +3361,30 @@ public class BibleReaderApp extends JFrame {
     private void refreshMarginNotesPanel() {
         if (!"margin".equals(rightSidebarMode) || marginNotesBody == null) return;
         marginNotesBody.removeAll();
-        java.util.List<ChapterNote> chapterNotes = currentChapterNotesForReader();
-        java.util.List<TextAnnotation> annotations = getAnnotationsForCurrentReaderLocation();
-        if (chapterNotes.isEmpty() && annotations.isEmpty()) {
-            JTextArea empty = readonlyArea();
-            empty.setBackground(cream);
-            empty.setText("No notes or questions found for this chapter yet. Add a chapter note with the pencil button, or add a note, question, or category note from selected reader text.");
-            marginNotesBody.add(empty);
+        if (activeInlineChapterNoteEditorNote != null) {
+            marginNotesBody.add(buildInlineChapterNoteEditorPanel(activeInlineChapterNoteEditorNote));
+        } else if (activeInlineNoteEditorAnnotation != null) {
+            marginNotesBody.add(buildInlineNoteEditorPanel(activeInlineNoteEditorAnnotation));
         } else {
-            boolean first = true;
-            for (ChapterNote n : chapterNotes) {
-                if (!first) marginNotesBody.add(Box.createVerticalStrut(7));
-                marginNotesBody.add(buildMarginChapterNoteCard(n));
-                first = false;
-            }
-            for (TextAnnotation a : annotations) {
-                if (!first) marginNotesBody.add(Box.createVerticalStrut(7));
-                marginNotesBody.add(buildMarginNoteCard(a, expandedMarginNoteIds.contains(safe(a.id))));
-                first = false;
+            java.util.List<ChapterNote> chapterNotes = currentChapterNotesForReader();
+            java.util.List<TextAnnotation> annotations = getAnnotationsForCurrentReaderLocation();
+            if (chapterNotes.isEmpty() && annotations.isEmpty()) {
+                JTextArea empty = readonlyArea();
+                empty.setBackground(cream);
+                empty.setText("No notes or questions found for this chapter yet. Add a chapter note with the pencil button, or add a note, question, or category note from selected reader text.");
+                marginNotesBody.add(empty);
+            } else {
+                boolean first = true;
+                for (ChapterNote n : chapterNotes) {
+                    if (!first) marginNotesBody.add(Box.createVerticalStrut(7));
+                    marginNotesBody.add(buildMarginChapterNoteCard(n));
+                    first = false;
+                }
+                for (TextAnnotation a : annotations) {
+                    if (!first) marginNotesBody.add(Box.createVerticalStrut(7));
+                    marginNotesBody.add(buildMarginNoteCard(a, expandedMarginNoteIds.contains(safe(a.id))));
+                    first = false;
+                }
             }
         }
         marginNotesBody.revalidate();
@@ -3447,11 +3461,11 @@ public class BibleReaderApp extends JFrame {
         actions.setOpaque(false);
         JButton open = smallSidebarActionButton("Open");
         open.addActionListener(e -> openChapterNoteViewer(note));
-        JButton edit = smallSidebarActionButton("Edit");
+        JButton edit = smallSidebarActionButton("Edit in Margin");
         edit.addActionListener(e -> {
             TextAnnotation annotation = annotationForChapterNote(note);
-            if (annotation != null) showChapterAnnotationDialog(annotation, true);
-            else showChapterNoteDialog(note, true);
+            if (annotation != null) showInlineNoteEditor(annotation);
+            else showInlineChapterNoteEditor(note);
         });
         JButton jump = smallSidebarActionButton("Jump To Chapter");
         jump.addActionListener(e -> jumpToChapterNote(note));
@@ -3500,6 +3514,8 @@ public class BibleReaderApp extends JFrame {
             saveData();
             refreshRecentNotes();
             refreshMarginNotesPanel();
+            refreshCategories();
+            refreshChapterNotesList();
             dialog.dispose();
         });
         JButton edit = blackButton(editMode ? "Editing" : "Edit");
@@ -3511,6 +3527,283 @@ public class BibleReaderApp extends JFrame {
         dialog.setContentPane(root);
         applyModernTheme(dialog);
         dialog.setVisible(true);
+    }
+
+
+    private void clearInlineMarginEditor() {
+        activeInlineNoteEditorAnnotation = null;
+        activeInlineChapterNoteEditorNote = null;
+    }
+
+    private void showInlineNoteEditor(TextAnnotation annotation) {
+        if (annotation == null) return;
+        repairAnnotation(annotation, System.currentTimeMillis());
+        activeInlineChapterNoteEditorNote = null;
+        activeInlineNoteEditorAnnotation = annotation;
+        showRightSidebarMode("margin");
+        refreshMarginNotesPanel();
+        SwingUtilities.invokeLater(() -> focusInlineEditorTextArea(marginNotesBody));
+    }
+
+    private void showInlineChapterNoteEditor(ChapterNote note) {
+        if (note == null) return;
+        repairChapterNote(note);
+        activeInlineNoteEditorAnnotation = null;
+        activeInlineChapterNoteEditorNote = note;
+        showRightSidebarMode("margin");
+        refreshMarginNotesPanel();
+        SwingUtilities.invokeLater(() -> focusInlineEditorTextArea(marginNotesBody));
+    }
+
+    private void focusInlineEditorTextArea(Container root) {
+        if (root == null) return;
+        for (Component c : root.getComponents()) {
+            if (c instanceof JTextComponent && ((JTextComponent) c).isEditable()) {
+                c.requestFocusInWindow();
+                return;
+            }
+            if (c instanceof Container) focusInlineEditorTextArea((Container) c);
+        }
+    }
+
+    private JComponent buildInlineNoteEditorPanel(TextAnnotation annotation) {
+        JPanel panel = baseInlineEditorPanel(annotation.wholeChapter ? "Whole Chapter Note" : "Margin Note", getAnnotationReferenceLabel(annotation));
+        JTextArea body = inlineEditorTextArea(safe(annotation.note));
+        JComboBox<String> categoryBox = inlineCategoryCombo(annotation.category);
+        JTextField type = new JTextField(safe(annotation.type).isEmpty() ? "Note" : annotation.type);
+        JTextField target = new JTextField(safe(annotation.target));
+
+        JPanel fields = new JPanel(new GridBagLayout());
+        fields.setOpaque(false);
+        GridBagConstraints gbc = inlineEditorGbc();
+        addInlineEditorRow(fields, gbc, "Type", type);
+        addInlineEditorRow(fields, gbc, "Category", categoryBox);
+        if (!safe(annotation.target).isEmpty() || "Link".equals(annotation.type)) addInlineEditorRow(fields, gbc, "Attachment", target);
+        addInlineEditorRow(fields, gbc, "Note", new JScrollPane(body), true);
+        panel.add(fields, BorderLayout.CENTER);
+
+        JLabel status = new JLabel(" ");
+        status.setForeground(modernMutedText);
+        JButton save = smallSidebarActionButton("Save");
+        save.addActionListener(e -> {
+            saveInlineNoteEditor(annotation, body, categoryBox, type, target, status);
+            clearInlineMarginEditor();
+            refreshMarginNotesPanel();
+        });
+        JButton full = smallSidebarActionButton("Pop Out");
+        full.addActionListener(e -> editAnnotationInDialog(annotation));
+        JButton cancel = smallSidebarActionButton("Close");
+        cancel.addActionListener(e -> { clearInlineMarginEditor(); refreshMarginNotesPanel(); });
+        JButton delete = smallSidebarActionButton("Delete");
+        delete.addActionListener(e -> deleteAnnotation(annotation));
+        panel.add(inlineEditorActions(status, save, full, cancel, delete), BorderLayout.SOUTH);
+        installCtrlSSave(body, () -> save.doClick());
+        return panel;
+    }
+
+    private JComponent buildInlineChapterNoteEditorPanel(ChapterNote note) {
+        JPanel panel = baseInlineEditorPanel("Whole Chapter Note", chapterNoteReference(note));
+        JTextPane body = smartVerseTextPane(note, true);
+        body.setText(safe(note.noteText));
+        body.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        body.setBackground(modernSurface);
+        body.setBorder(new EmptyBorder(8, 8, 8, 8));
+        installChapterNotePopupMenu(body, note);
+        body.getDocument().addDocumentListener(new SimpleDocumentListener(() -> { if (!Boolean.TRUE.equals(body.getClientProperty("applyingSmartVerseHighlights"))) applySmartVerseHighlights(body, note); }));
+        SwingUtilities.invokeLater(() -> applySmartVerseHighlights(body, note));
+        JComboBox<String> categoryBox = inlineCategoryCombo(note.linkedCategoryNames.isEmpty() ? "" : note.linkedCategoryNames.get(0));
+
+        JPanel fields = new JPanel(new GridBagLayout());
+        fields.setOpaque(false);
+        GridBagConstraints gbc = inlineEditorGbc();
+        addInlineEditorRow(fields, gbc, "Category", categoryBox);
+        addInlineEditorRow(fields, gbc, "Note", new JScrollPane(body), true);
+        panel.add(fields, BorderLayout.CENTER);
+
+        JLabel status = new JLabel(" ");
+        status.setForeground(modernMutedText);
+        JButton save = smallSidebarActionButton("Save");
+        save.addActionListener(e -> {
+            saveInlineChapterNoteEditor(note, body, categoryBox, status);
+            clearInlineMarginEditor();
+            refreshMarginNotesPanel();
+        });
+        JButton full = smallSidebarActionButton("Pop Out");
+        full.addActionListener(e -> showChapterNoteDialog(note, true));
+        JButton close = smallSidebarActionButton("Close");
+        close.addActionListener(e -> { clearInlineMarginEditor(); refreshMarginNotesPanel(); });
+        JButton delete = smallSidebarActionButton("Delete");
+        delete.addActionListener(e -> deleteChapterNote(note));
+        panel.add(inlineEditorActions(status, save, full, close, delete), BorderLayout.SOUTH);
+        installCtrlSSave(body, () -> save.doClick());
+        return panel;
+    }
+
+    private JPanel baseInlineEditorPanel(String titleText, String referenceText) {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBackground(modernSurface);
+        panel.setBorder(new CompoundBorder(new RoundedBorder(modernBorder, 14, new Insets(1, 1, 1, 1)), new EmptyBorder(10, 10, 10, 10)));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        JPanel title = new JPanel(new BorderLayout(4, 2));
+        title.setOpaque(false);
+        JLabel chip = new JLabel(titleText);
+        chip.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        chip.setForeground(modernDarkRed);
+        JLabel ref = new JLabel(shorten(safe(referenceText), 48));
+        ref.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        ref.setForeground(modernMutedText);
+        title.add(chip, BorderLayout.NORTH);
+        title.add(ref, BorderLayout.SOUTH);
+        panel.add(title, BorderLayout.NORTH);
+        return panel;
+    }
+
+    private JTextArea inlineEditorTextArea(String text) {
+        JTextArea area = new JTextArea(safe(text), 12, 20);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        area.setBackground(modernSurface);
+        area.setBorder(new EmptyBorder(8, 8, 8, 8));
+        return area;
+    }
+
+    private GridBagConstraints inlineEditorGbc() {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.weightx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(3, 0, 3, 0);
+        return gbc;
+    }
+
+    private void addInlineEditorRow(JPanel parent, GridBagConstraints gbc, String label, JComponent component) {
+        addInlineEditorRow(parent, gbc, label, component, false);
+    }
+
+    private void addInlineEditorRow(JPanel parent, GridBagConstraints gbc, String label, JComponent component, boolean grow) {
+        JLabel l = new JLabel(label + ":");
+        l.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        l.setForeground(modernMutedText);
+        gbc.gridx = 0;
+        gbc.weightx = 1;
+        gbc.weighty = 0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        parent.add(l, gbc);
+        gbc.gridy++;
+        gbc.weighty = grow ? 1 : 0;
+        gbc.fill = grow ? GridBagConstraints.BOTH : GridBagConstraints.HORIZONTAL;
+        parent.add(component, gbc);
+        gbc.gridy++;
+    }
+
+    private JPanel inlineEditorActions(JLabel status, JButton... buttons) {
+        JPanel root = new JPanel(new BorderLayout(4, 4));
+        root.setOpaque(false);
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setOpaque(false);
+        for (JButton b : buttons) row.add(b);
+        root.add(row, BorderLayout.CENTER);
+        root.add(status, BorderLayout.SOUTH);
+        return root;
+    }
+
+    private JComboBox<String> inlineCategoryCombo(String selectedCategory) {
+        repairProfile(currentProfile);
+        JComboBox<String> combo = new JComboBox<>();
+        combo.addItem("(No Category)");
+        combo.addItem("Create New Category…");
+        for (String c : currentProfile.categories.keySet()) combo.addItem(c);
+        String selected = safe(selectedCategory).trim();
+        combo.setSelectedItem(selected.isEmpty() ? "(No Category)" : selected);
+        return combo;
+    }
+
+    private String resolveInlineCategorySelection(JComboBox<String> combo) {
+        String selected = Objects.toString(combo.getSelectedItem(), "").trim();
+        if (selected.isEmpty() || "(No Category)".equals(selected)) return "";
+        if ("Create New Category…".equals(selected)) {
+            String name = JOptionPane.showInputDialog(this, "Category name:", "New Category", JOptionPane.PLAIN_MESSAGE);
+            if (name == null || name.trim().isEmpty()) return "";
+            selected = name.trim();
+            currentProfile.categories.putIfAbsent(selected, "");
+            currentProfile.categoryColors.putIfAbsent(selected, categoryBlue.getRGB());
+            refreshCategories();
+        }
+        return selected;
+    }
+
+    private void saveInlineNoteEditor(TextAnnotation annotation, JTextComponent body, JComboBox<String> categoryBox, JTextField typeField, JTextField targetField, JLabel status) {
+        if (annotation == null || currentProfile == null) return;
+        annotation.type = safe(typeField.getText()).trim().isEmpty() ? "Note" : typeField.getText().trim();
+        annotation.category = resolveInlineCategorySelection(categoryBox);
+        annotation.target = targetField == null ? safe(annotation.target) : targetField.getText().trim();
+        annotation.note = body.getText() == null ? "" : body.getText().trim();
+        if (annotation.wholeChapter) {
+            annotation.book = safe(annotation.book).isEmpty() ? selectedBook : annotation.book;
+            annotation.chapter = annotation.chapter <= 0 ? selectedChapter : annotation.chapter;
+            if (!annotation.category.isEmpty()) linkInlineCategoryToChapterNote(annotation);
+        }
+        if (!currentProfile.annotations.contains(annotation)) currentProfile.annotations.add(annotation);
+        StudyQuestion q = questionForAnnotation(annotation.id);
+        if ("Question".equals(annotation.type)) {
+            if (q == null) currentProfile.questions.add(new StudyQuestion(annotation.id, annotation.sourceTitle, annotation.selectedText, annotation.note, normalizeQuestionType(annotation.category), annotation.sourceKey, annotation.sourceTitle, annotation.book, annotation.chapter, annotation.wholeChapter));
+            else { q.question = annotation.note; q.questionType = normalizeQuestionType(annotation.category); }
+        }
+        touchAnnotation(annotation);
+        saveData();
+        refreshRecentNotes();
+        refreshCategories();
+        refreshChapterNotesList();
+        refreshStudyProjects();
+        refreshTopicPages();
+        reloadCurrentSourcePreservingScroll();
+        showAnnotationDetails(annotation);
+        if (status != null) status.setText("Saved.");
+        if (statusLabel != null) statusLabel.setText(" Saved margin note.");
+    }
+
+    private void saveInlineChapterNoteEditor(ChapterNote note, JTextComponent body, JComboBox<String> categoryBox, JLabel status) {
+        if (note == null || currentProfile == null) return;
+        note.noteText = body.getText() == null ? "" : body.getText();
+        String category = resolveInlineCategorySelection(categoryBox);
+        if (!category.isEmpty() && !note.linkedCategoryNames.contains(category)) note.linkedCategoryNames.add(category);
+        note.updatedAt = System.currentTimeMillis();
+        if (note.createdAt <= 0L) note.createdAt = note.updatedAt;
+        currentProfile.chapterNotes.put(chapterNoteKey(note.sourceKey, note.book, note.chapter), note);
+        saveData();
+        refreshRecentNotes();
+        refreshCategories();
+        refreshChapterNotesList();
+        refreshStudyProjects();
+        refreshTopicPages();
+        if (status != null) status.setText("Saved.");
+        if (statusLabel != null) statusLabel.setText(" Saved chapter note for " + chapterNoteReference(note) + ".");
+    }
+
+    private void linkInlineCategoryToChapterNote(TextAnnotation annotation) {
+        if (annotation == null || currentProfile == null || safe(annotation.category).isEmpty()) return;
+        String noteBook = safe(annotation.book).isEmpty() ? (safe(annotation.sourceKey).startsWith("BIBLE:") ? selectedBook : "") : annotation.book;
+        int noteChapter = annotation.chapter > 0 ? annotation.chapter : (safe(annotation.sourceKey).startsWith("BIBLE:") ? selectedChapter : 0);
+        ChapterNote note = getOrCreateChapterNote(annotation.sourceKey, annotation.sourceTitle, noteBook, noteChapter);
+        if (!note.linkedCategoryNames.contains(annotation.category)) note.linkedCategoryNames.add(annotation.category);
+        note.updatedAt = System.currentTimeMillis();
+    }
+
+    private void installCtrlSSave(JTextComponent component, Runnable saveAction) {
+        component.getInputMap(JComponent.WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.CTRL_DOWN_MASK), "saveInlineNote");
+        component.getActionMap().put("saveInlineNote", new AbstractAction() { public void actionPerformed(ActionEvent e) { saveAction.run(); }});
+    }
+
+    private void reloadCurrentSourcePreservingScroll() {
+        int y = readerScrollPane == null ? -1 : readerScrollPane.getVerticalScrollBar().getValue();
+        int caret = readerPane == null ? -1 : readerPane.getCaretPosition();
+        reloadCurrentSource();
+        if (y >= 0 || caret >= 0) SwingUtilities.invokeLater(() -> {
+            if (readerPane != null && caret >= 0) readerPane.setCaretPosition(Math.min(caret, readerPane.getDocument().getLength()));
+            if (readerScrollPane != null && y >= 0) readerScrollPane.getVerticalScrollBar().setValue(Math.min(y, readerScrollPane.getVerticalScrollBar().getMaximum()));
+        });
     }
 
     private String shortenLines(String text, int max) {
@@ -3566,12 +3859,15 @@ public class BibleReaderApp extends JFrame {
         actions.setOpaque(false);
         JButton jump = smallSidebarActionButton("Jump To");
         jump.addActionListener(e -> jumpToMarginNote(annotation));
-        JButton edit = smallSidebarActionButton("Edit");
-        edit.addActionListener(e -> editAnnotation(annotation));
+        JButton edit = smallSidebarActionButton("Edit in Margin");
+        edit.addActionListener(e -> showInlineNoteEditor(annotation));
+        JButton full = smallSidebarActionButton("Full View");
+        full.addActionListener(e -> editAnnotationInDialog(annotation));
         JButton delete = smallSidebarActionButton("Delete");
         delete.addActionListener(e -> deleteAnnotation(annotation));
         actions.add(jump);
         actions.add(edit);
+        actions.add(full);
         actions.add(delete);
         if (annotationSummaryText(annotation).length() > 150) {
             JButton expand = smallSidebarActionButton(expanded ? "Collapse" : "Expand");
@@ -4291,18 +4587,9 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void addWholeChapterNote() {
-        String note = promptMultiline("Add Whole Chapter Note", "Note for " + currentSourceTitle + ":", "");
-        if (note == null || note.trim().isEmpty()) return;
-        TextAnnotation a = chapterAnnotation("Note", "", note.trim());
+        TextAnnotation a = chapterAnnotation("Note", "", "");
         currentProfile.annotations.add(a);
-        saveData();
-        refreshRecentNotes();
-        refreshMarginNotesPanel();
-        refreshCategories();
-        refreshStudyProjects();
-        refreshTopicPages();
-        reloadCurrentSource();
-        showAnnotationDetails(a);
+        showInlineNoteEditor(a);
     }
 
     private void addWholeChapterQuestion(String questionType) {
@@ -5519,28 +5806,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
 
         String selected = readerSelectedPlainText(start, end);
-        JTextArea note = new JTextArea(8, 44);
-        note.setLineWrap(true);
-        note.setWrapStyleWord(true);
-
-        int r = JOptionPane.showConfirmDialog(this, new JScrollPane(note), "Add " + type + " to: " + shorten(selected, 70), JOptionPane.OK_CANCEL_OPTION);
-        if (r != JOptionPane.OK_OPTION) return;
-
-        String body = note.getText().trim();
-        if (body.isEmpty() && !"Category".equals(type)) return;
-
-        TextAnnotation a = new TextAnnotation(currentSourceKey, currentSourceTitle, start, end, selected, type, category, body, "");
+        TextAnnotation a = new TextAnnotation(currentSourceKey, currentSourceTitle, start, end, selected, type, category, "", "");
         currentProfile.annotations.add(a);
-
-        if ("Question".equals(type)) {
-            currentProfile.questions.add(new StudyQuestion(a.id, currentSourceTitle, selected, body, normalizeQuestionType(category), currentSourceKey, currentSourceTitle, selectedBook, selectedChapter, false));
-        }
-
-        saveData();
-        refreshRecentNotes();
-        refreshPinnedItems();
-        reloadCurrentSource();
-        showAnnotationDetails(a);
+        showInlineNoteEditor(a);
     }
 
     private void addCategoryFromSelection() {
@@ -5693,6 +5961,10 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void editAnnotation(TextAnnotation a) {
+        showInlineNoteEditor(a);
+    }
+
+    private void editAnnotationInDialog(TextAnnotation a) {
         JTextField type = new JTextField(a.type);
         JTextField cat = new JTextField(a.category);
         JTextField target = new JTextField(a.target);
@@ -5729,6 +6001,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (a == null || currentProfile == null) return;
         if (JOptionPane.showConfirmDialog(this, "Delete this note? This cannot be undone.", "Delete Note", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
         String annotationId = safe(a.id);
+        if (activeInlineNoteEditorAnnotation != null && annotationId.equals(safe(activeInlineNoteEditorAnnotation.id))) clearInlineMarginEditor();
         currentProfile.annotations.removeIf(x -> x != null && annotationId.equals(safe(x.id)));
         currentProfile.questions.removeIf(q -> q != null && annotationId.equals(safe(q.annotationId)));
         saveData();
@@ -8108,7 +8381,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         String noteBook = currentSourceKey.startsWith("BIBLE:") ? selectedBook : "";
         int noteChapter = currentSourceKey.startsWith("BIBLE:") ? selectedChapter : 0;
         ChapterNote note = getOrCreateChapterNote(currentSourceKey, currentSourceTitle, noteBook, noteChapter);
-        showChapterNoteDialog(note, true);
+        showInlineChapterNoteEditor(note);
     }
 
     private void openChapterNoteViewer(ChapterNote note) {
@@ -8180,6 +8453,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (note == null || currentProfile == null) return;
         repairProfile(currentProfile);
         String noteId = safe(note.id);
+        if (activeInlineChapterNoteEditorNote != null && noteId.equals(safe(activeInlineChapterNoteEditorNote.id))) clearInlineMarginEditor();
         TextAnnotation annotation = annotationForChapterNote(note);
         if (annotation != null) {
             String annotationId = safe(annotation.id);
@@ -8275,6 +8549,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             dirty[0] = false;
             refreshRecentNotes();
             refreshMarginNotesPanel();
+            refreshCategories();
+            refreshChapterNotesList();
             refreshStudyProjects();
             refreshTopicPages();
             String msg = "Chapter notes saved for " + chapterNoteReference(note) + ".";
@@ -8603,8 +8879,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private void editChapterNote(ChapterNote note) {
         if (note == null) return;
         TextAnnotation annotation = annotationForChapterNote(note);
-        if (annotation != null) showChapterAnnotationDialog(annotation, true);
-        else showChapterNoteDialog(note, true);
+        if (annotation != null) showInlineNoteEditor(annotation);
+        else showInlineChapterNoteEditor(note);
     }
 
     private String displayDate(long millis) {
