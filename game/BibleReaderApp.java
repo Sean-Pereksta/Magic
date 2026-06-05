@@ -12,6 +12,8 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.List;
 import java.util.zip.*;
@@ -128,6 +130,12 @@ public class BibleReaderApp extends JFrame {
     private JPanel categoryResultsPanel;
     private JTextField categoryResultSearchField;
     private JScrollPane categoryResultsScroll;
+    private CardLayout categoryViewCards;
+    private JPanel categoryViewCardPanel;
+    private JPanel categoryBookMapPanel;
+    private JButton categoryListViewButton;
+    private JButton categoryBookMapViewButton;
+    private String activeCategoryView = "list";
     private final Set<String> expandedCategoryResultIds = new HashSet<>();
 
     private DefaultListModel<String> questionModel;
@@ -200,6 +208,13 @@ public class BibleReaderApp extends JFrame {
     private JList<String> sideSearchList;
     private JTextArea sideSearchPreview;
     private boolean sideSearchExpanded = true;
+
+    private JButton studyTimerButton;
+    private javax.swing.Timer studyCountdownTimer;
+    private javax.swing.Timer studyTimerBlinkTimer;
+    private long studyTimerEndMillis = 0L;
+    private boolean studyTimerRunning = false;
+    private boolean studyTimerBlinkOn = false;
 
     private String selectedBook = "";
     private int selectedChapter = 1;
@@ -772,6 +787,9 @@ public class BibleReaderApp extends JFrame {
         wholeChapterNotes.setToolTipText("Open notes for the current chapter in the margin editor.");
         wholeChapterNotes.addActionListener(e -> openCurrentChapterNoteEditor());
         toggles.add(wholeChapterNotes);
+        toggles.add(buildStudyTimerButton());
+        JLabel timerSpacer = new JLabel("");
+        toggles.add(timerSpacer);
         toggles.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         header.add(title);
@@ -829,6 +847,161 @@ public class BibleReaderApp extends JFrame {
             button.setBorder(new CompoundBorder(
                     new RoundedBorder(active ? modernPrimaryRed : modernBorder, 12, new Insets(1, 1, 1, 1)),
                     new EmptyBorder(3, 4, 3, 4)));
+        }
+    }
+
+
+    private JButton buildStudyTimerButton() {
+        studyTimerButton = blackButton("🕘");
+        studyTimerButton.setFont(new Font("Segoe UI Symbol", Font.BOLD, 16));
+        studyTimerButton.setMargin(new Insets(2, 4, 2, 4));
+        studyTimerButton.setToolTipText("Study timer");
+        studyTimerButton.addActionListener(e -> {
+            if (studyTimerRunning) stopStudyTimer(); else startStudyTimer();
+        });
+        studyTimerButton.addMouseListener(new MouseAdapter() {
+            public void mousePressed(MouseEvent e) { if (e.isPopupTrigger()) showStudyTimerMenu(e); }
+            public void mouseReleased(MouseEvent e) { if (e.isPopupTrigger()) showStudyTimerMenu(e); }
+        });
+        updateStudyTimerTooltip();
+        return studyTimerButton;
+    }
+
+    private void showStudyTimerMenu(MouseEvent e) {
+        if (currentProfile == null) return;
+        JPopupMenu menu = new JPopupMenu();
+        int[] minutes = {5, 10, 15, 20, 30, 45, 60};
+        for (int minute : minutes) {
+            JMenuItem item = new JMenuItem(minute + " minutes" + (currentProfile.selectedStudyTimerMinutes == minute ? " ✓" : ""));
+            item.addActionListener(ev -> setStudyTimerMinutes(minute));
+            menu.add(item);
+        }
+        menu.addSeparator();
+        JMenuItem custom = new JMenuItem("Custom minutes...");
+        custom.addActionListener(ev -> chooseCustomStudyTimerMinutes());
+        menu.add(custom);
+        JMenuItem sound = new JMenuItem((Boolean.TRUE.equals(currentProfile.studySoundEnabled) ? "Disable" : "Enable") + " finish sound");
+        sound.addActionListener(ev -> {
+            currentProfile.studySoundEnabled = !Boolean.TRUE.equals(currentProfile.studySoundEnabled);
+            saveData();
+            updateStudyTimerTooltip();
+        });
+        menu.add(sound);
+        menu.show(e.getComponent(), e.getX(), e.getY());
+    }
+
+    private void setStudyTimerMinutes(int minutes) {
+        if (currentProfile == null) return;
+        currentProfile.selectedStudyTimerMinutes = Math.max(1, Math.min(24 * 60, minutes));
+        saveData();
+        updateStudyTimerTooltip();
+    }
+
+    private void chooseCustomStudyTimerMinutes() {
+        if (currentProfile == null) return;
+        String input = JOptionPane.showInputDialog(this, "Study timer minutes:", currentProfile.selectedStudyTimerMinutes);
+        if (input == null) return;
+        try {
+            setStudyTimerMinutes(Integer.parseInt(input.trim()));
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, "Please enter a whole number of minutes.");
+        }
+    }
+
+    private void startStudyTimer() {
+        if (currentProfile == null) return;
+        stopStudyTimerBlink();
+        int minutes = Math.max(1, currentProfile.selectedStudyTimerMinutes);
+        studyTimerEndMillis = System.currentTimeMillis() + minutes * 60_000L;
+        studyTimerRunning = true;
+        recordStudyActivityToday(0);
+        if (studyCountdownTimer != null) studyCountdownTimer.stop();
+        studyCountdownTimer = new javax.swing.Timer(1000, e -> {
+            if (System.currentTimeMillis() >= studyTimerEndMillis) finishStudyTimer();
+            else updateStudyTimerTooltip();
+        });
+        studyCountdownTimer.start();
+        updateStudyTimerTooltip();
+        if (studyTimerButton != null) studyTimerButton.setBackground(modernPrimaryRed);
+    }
+
+    private void stopStudyTimer() {
+        if (studyCountdownTimer != null) studyCountdownTimer.stop();
+        studyTimerRunning = false;
+        studyTimerEndMillis = 0L;
+        updateStudyTimerTooltip();
+        if (studyTimerButton != null) studyTimerButton.setBackground(modernDarkRed);
+    }
+
+    private void finishStudyTimer() {
+        if (studyCountdownTimer != null) studyCountdownTimer.stop();
+        studyTimerRunning = false;
+        int minutes = currentProfile == null ? 0 : Math.max(1, currentProfile.selectedStudyTimerMinutes);
+        recordStudyActivityToday(minutes);
+        if (currentProfile != null && Boolean.TRUE.equals(currentProfile.studySoundEnabled)) Toolkit.getDefaultToolkit().beep();
+        startStudyTimerBlink();
+        updateStudyTimerTooltip();
+    }
+
+    private void startStudyTimerBlink() {
+        stopStudyTimerBlink();
+        studyTimerBlinkOn = false;
+        studyTimerBlinkTimer = new javax.swing.Timer(350, e -> {
+            studyTimerBlinkOn = !studyTimerBlinkOn;
+            if (studyTimerButton != null) {
+                studyTimerButton.setBackground(studyTimerBlinkOn ? new Color(32, 145, 72) : modernDarkRed);
+                studyTimerButton.repaint();
+            }
+        });
+        studyTimerBlinkTimer.setRepeats(true);
+        studyTimerBlinkTimer.start();
+        javax.swing.Timer stopBlink = new javax.swing.Timer(5200, e -> stopStudyTimerBlink());
+        stopBlink.setRepeats(false);
+        stopBlink.start();
+    }
+
+    private void stopStudyTimerBlink() {
+        if (studyTimerBlinkTimer != null) studyTimerBlinkTimer.stop();
+        studyTimerBlinkTimer = null;
+        studyTimerBlinkOn = false;
+        if (studyTimerButton != null) studyTimerButton.setBackground(studyTimerRunning ? modernPrimaryRed : modernDarkRed);
+    }
+
+    private void recordStudyActivityToday(int completedMinutes) {
+        if (currentProfile == null) return;
+        LocalDate today = LocalDate.now();
+        LocalDate last = parseStudyDate(currentProfile.lastStudyDate);
+        if (last == null) {
+            currentProfile.currentStudyStreak = 1;
+        } else if (last.equals(today)) {
+            currentProfile.currentStudyStreak = Math.max(1, currentProfile.currentStudyStreak);
+        } else if (ChronoUnit.DAYS.between(last, today) == 1L) {
+            currentProfile.currentStudyStreak = Math.max(0, currentProfile.currentStudyStreak) + 1;
+        } else {
+            currentProfile.currentStudyStreak = 1;
+        }
+        currentProfile.lastStudyDate = today.toString();
+        if (completedMinutes > 0) currentProfile.totalStudyMinutes = Math.max(0, currentProfile.totalStudyMinutes) + completedMinutes;
+        saveData();
+        updateStudyTimerTooltip();
+    }
+
+    private LocalDate parseStudyDate(String value) {
+        try { return safe(value).isEmpty() ? null : LocalDate.parse(value); }
+        catch (Exception ex) { return null; }
+    }
+
+    private void updateStudyTimerTooltip() {
+        if (studyTimerButton == null || currentProfile == null) return;
+        String streak = "Current streak: " + Math.max(0, currentProfile.currentStudyStreak) + " day" + (currentProfile.currentStudyStreak == 1 ? "" : "s") + ".";
+        String sound = Boolean.TRUE.equals(currentProfile.studySoundEnabled) ? "Sound on." : "Sound off.";
+        if (studyTimerRunning) {
+            long seconds = Math.max(0L, (studyTimerEndMillis - System.currentTimeMillis() + 999L) / 1000L);
+            long mins = seconds / 60L;
+            long secs = seconds % 60L;
+            studyTimerButton.setToolTipText("<html>Study timer: " + mins + ":" + String.format(Locale.ROOT, "%02d", secs) + " remaining.<br>Click to stop.<br>" + streak + "<br>" + sound + "</html>");
+        } else {
+            studyTimerButton.setToolTipText("<html>Study timer: " + Math.max(1, currentProfile.selectedStudyTimerMinutes) + " minutes.<br>Click to start. Right-click to change time.<br>" + streak + "<br>" + sound + "</html>");
         }
     }
 
@@ -1611,13 +1784,166 @@ public class BibleReaderApp extends JFrame {
         split.setContinuousLayout(true);
         split.setBorder(null);
 
+        categoryListViewButton = blackButton("Category List");
+        categoryBookMapViewButton = blackButton("Book Map");
+        categoryListViewButton.addActionListener(e -> showCategoryView("list"));
+        categoryBookMapViewButton.addActionListener(e -> showCategoryView("bookMap"));
+
+        JPanel viewTabs = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        viewTabs.setOpaque(false);
+        viewTabs.add(categoryListViewButton);
+        viewTabs.add(categoryBookMapViewButton);
+
         JPanel north = new JPanel(new BorderLayout(8, 8));
         north.setOpaque(false);
         north.add(h, BorderLayout.NORTH);
+        north.add(viewTabs, BorderLayout.SOUTH);
+
+        categoryViewCards = new CardLayout();
+        categoryViewCardPanel = new JPanel(categoryViewCards);
+        categoryViewCardPanel.setOpaque(false);
+        categoryViewCardPanel.add(split, "list");
+        categoryViewCardPanel.add(buildCategoryBookMapPanel(), "bookMap");
 
         page.add(north, BorderLayout.NORTH);
-        page.add(split, BorderLayout.CENTER);
+        page.add(categoryViewCardPanel, BorderLayout.CENTER);
+        SwingUtilities.invokeLater(() -> showCategoryView(activeCategoryView));
         return page;
+    }
+
+
+    private void showCategoryView(String view) {
+        activeCategoryView = "bookMap".equals(view) ? "bookMap" : "list";
+        if (categoryViewCards != null && categoryViewCardPanel != null) categoryViewCards.show(categoryViewCardPanel, activeCategoryView);
+        if (categoryListViewButton != null) categoryListViewButton.setBackground("list".equals(activeCategoryView) ? modernPrimaryRed : modernDarkRed);
+        if (categoryBookMapViewButton != null) categoryBookMapViewButton.setBackground("bookMap".equals(activeCategoryView) ? modernPrimaryRed : modernDarkRed);
+        if ("bookMap".equals(activeCategoryView)) refreshCategoryBookMap();
+    }
+
+    private JPanel buildCategoryBookMapPanel() {
+        JPanel outer = new JPanel(new BorderLayout(8, 8));
+        outer.setOpaque(false);
+        JPanel header = new JPanel(new BorderLayout(6, 6));
+        header.setOpaque(false);
+        JLabel title = new JLabel("Book Map");
+        title.setForeground(darkRed);
+        title.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        JLabel help = new JLabel("Each tile groups categorized notes by Bible book or imported source. Color segments use category highlight colors; larger/brighter tiles have more items.");
+        help.setForeground(modernMutedText);
+        header.add(title, BorderLayout.NORTH);
+        header.add(help, BorderLayout.SOUTH);
+
+        categoryBookMapPanel = new WidthTrackingPanel();
+        categoryBookMapPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 12, 12));
+        categoryBookMapPanel.setBackground(modernSurface);
+        JScrollPane scroll = new JScrollPane(categoryBookMapPanel);
+        scroll.getVerticalScrollBar().setUnitIncrement(18);
+        scroll.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(8, 8, 8, 8)));
+        outer.add(header, BorderLayout.NORTH);
+        outer.add(scroll, BorderLayout.CENTER);
+        return outer;
+    }
+
+    private void refreshCategoryBookMap() {
+        if (categoryBookMapPanel == null) return;
+        categoryBookMapPanel.removeAll();
+        List<BookMapEntry> entries = collectBookMapEntries();
+        if (entries.isEmpty()) {
+            JLabel empty = new JLabel("No categorized notes yet. Add categories to highlights or notes to populate this map.");
+            empty.setForeground(modernMutedText);
+            empty.setBorder(new EmptyBorder(20, 20, 20, 20));
+            categoryBookMapPanel.add(empty);
+        } else {
+            int max = entries.stream().mapToInt(BookMapEntry::totalCount).max().orElse(1);
+            for (BookMapEntry entry : entries) categoryBookMapPanel.add(new BookMapTile(entry, max));
+        }
+        categoryBookMapPanel.revalidate();
+        categoryBookMapPanel.repaint();
+    }
+
+    private List<BookMapEntry> collectBookMapEntries() {
+        Map<String, BookMapEntry> map = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        if (currentProfile == null || currentProfile.annotations == null) return new ArrayList<>();
+        ensureCategoryColors();
+        for (TextAnnotation a : currentProfile.annotations) {
+            if (a == null || safe(a.category).trim().isEmpty()) continue;
+            String label = bookMapLabelFor(a);
+            if (label.isEmpty()) label = "Unknown Source";
+            BookMapEntry entry = map.computeIfAbsent(label, BookMapEntry::new);
+            entry.byCategory.computeIfAbsent(a.category.trim(), k -> new ArrayList<>()).add(a);
+        }
+        List<BookMapEntry> entries = new ArrayList<>(map.values());
+        entries.sort(Comparator.comparingInt(BookMapEntry::totalCount).reversed().thenComparing(e -> e.label, String.CASE_INSENSITIVE_ORDER));
+        return entries;
+    }
+
+    private String bookMapLabelFor(TextAnnotation a) {
+        String key = safe(a.sourceKey).trim();
+        if (key.startsWith("BIBLE:")) {
+            if (!safe(a.book).trim().isEmpty()) return a.book.trim();
+            RefParts rp = parseRef(key.substring("BIBLE:".length()) + ":1");
+            if (rp != null) return rp.book;
+            String ref = key.substring("BIBLE:".length()).trim();
+            int sp = ref.lastIndexOf(' ');
+            return sp > 0 ? ref.substring(0, sp).trim() : ref;
+        }
+        if (!safe(a.sourceTitle).trim().isEmpty()) return a.sourceTitle.trim();
+        if (key.startsWith("LIBRARY:")) return key.substring("LIBRARY:".length()).trim();
+        return key;
+    }
+
+    private String tooltipForBookMapEntry(BookMapEntry entry) {
+        StringBuilder sb = new StringBuilder("<html><b>").append(esc(entry.label)).append("</b><br>")
+                .append(entry.totalCount()).append(" categorized item").append(entry.totalCount() == 1 ? "" : "s");
+        int categoryShown = 0;
+        for (Map.Entry<String, List<TextAnnotation>> cat : entry.byCategory.entrySet()) {
+            if (categoryShown++ >= 6) { sb.append("<br>… more categories"); break; }
+            sb.append("<br><br><b><span style='color:").append(colorHex(colorForCategory(cat.getKey()))).append(";'>")
+                    .append(esc(cat.getKey())).append("</span></b>");
+            List<TextAnnotation> items = cat.getValue();
+            int limit = Math.min(4, items.size());
+            for (int i = 0; i < limit; i++) sb.append("<br>• ").append(esc(shorten(categoryResultLocation(items.get(i)) + " — " + safe(items.get(i).selectedText), 95)));
+            if (items.size() > limit) sb.append("<br>… ").append(items.size() - limit).append(" more");
+        }
+        sb.append("</html>");
+        return sb.toString();
+    }
+
+    private void showBookMapDetails(BookMapEntry entry) {
+        if (entry == null) return;
+        JDialog dialog = new JDialog(this, "Book Map — " + entry.label, false);
+        dialog.setLayout(new BorderLayout(8, 8));
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBackground(modernSurface);
+        content.setBorder(new EmptyBorder(10, 10, 10, 10));
+        for (Map.Entry<String, List<TextAnnotation>> cat : entry.byCategory.entrySet()) {
+            JLabel category = new JLabel(cat.getKey() + " (" + cat.getValue().size() + ")");
+            category.setForeground(colorForCategory(cat.getKey()));
+            category.setFont(new Font("Segoe UI", Font.BOLD, 16));
+            category.setAlignmentX(Component.LEFT_ALIGNMENT);
+            content.add(category);
+            for (TextAnnotation a : cat.getValue()) {
+                JButton row = blackButton("  " + categoryResultLocation(a) + " — " + shorten(a.wholeChapter ? "Whole chapter" : safe(a.selectedText), 120));
+                row.setHorizontalAlignment(SwingConstants.LEFT);
+                row.setToolTipText("Double-click or press Jump to open this item.");
+                row.setAlignmentX(Component.LEFT_ALIGNMENT);
+                row.addActionListener(e -> jumpToCategoryResult(a));
+                row.addMouseListener(new MouseAdapter() { public void mouseClicked(MouseEvent e) { if (e.getClickCount() == 2) { dialog.dispose(); jumpToCategoryResult(a); } }});
+                content.add(row);
+                content.add(Box.createVerticalStrut(4));
+            }
+            content.add(Box.createVerticalStrut(8));
+        }
+        dialog.add(new JScrollPane(content), BorderLayout.CENTER);
+        JButton close = blackButton("Close");
+        close.addActionListener(e -> dialog.dispose());
+        JPanel bottom = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        bottom.add(close);
+        dialog.add(bottom, BorderLayout.SOUTH);
+        dialog.setSize(720, 520);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
     }
 
     private JPanel buildQuestionsPage() {
@@ -2315,9 +2641,11 @@ public class BibleReaderApp extends JFrame {
         if (o == null) return;
         Profile p = data.profiles.get(o.toString());
         if (p != null && p != currentProfile) {
+            stopStudyTimer();
             currentProfile = p;
             repairProfile(currentProfile);
             refreshEverything();
+            updateStudyTimerTooltip();
         }
     }
 
@@ -2332,9 +2660,11 @@ public class BibleReaderApp extends JFrame {
         }
         Profile p = new Profile(n);
         data.profiles.put(n, p);
+        stopStudyTimer();
         currentProfile = p;
         saveData();
         refreshEverything();
+        updateStudyTimerTooltip();
     }
 
     private void refreshLibraryTree() {
@@ -7316,6 +7646,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         } else if (categoryModel.isEmpty()) {
             renderSelectedCategoryResults();
         }
+        if ("bookMap".equals(activeCategoryView)) refreshCategoryBookMap();
     }
 
     private void ensureCategoryColors() {
@@ -10474,6 +10805,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (p.chapterNotes == null) p.chapterNotes = new TreeMap<>();
         if (p.topicPages == null) p.topicPages = new ArrayList<>();
         if (p.recentlyOpened == null) p.recentlyOpened = new ArrayList<>();
+        if (p.selectedStudyTimerMinutes <= 0) p.selectedStudyTimerMinutes = 15;
+        if (p.currentStudyStreak < 0) p.currentStudyStreak = 0;
+        if (p.lastStudyDate == null) p.lastStudyDate = "";
+        if (p.totalStudyMinutes < 0) p.totalStudyMinutes = 0;
+        if (p.studySoundEnabled == null) p.studySoundEnabled = Boolean.TRUE;
         p.annotations.removeIf(Objects::isNull);
         p.questions.removeIf(Objects::isNull);
         p.bookmarks.removeIf(Objects::isNull);
@@ -11017,6 +11353,86 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         public String toString() { return sourceTitle == null || sourceTitle.isEmpty() ? sourceKey : sourceTitle; }
     }
 
+
+    private static class BookMapEntry {
+        String label;
+        Map<String, List<TextAnnotation>> byCategory = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        BookMapEntry(String label) { this.label = label == null ? "Unknown Source" : label; }
+        int totalCount() {
+            int total = 0;
+            for (List<TextAnnotation> items : byCategory.values()) total += items.size();
+            return total;
+        }
+    }
+
+    private class BookMapTile extends JPanel {
+        private final BookMapEntry entry;
+        private final int maxCount;
+
+        BookMapTile(BookMapEntry entry, int maxCount) {
+            this.entry = entry;
+            this.maxCount = Math.max(1, maxCount);
+            int emphasis = Math.min(34, Math.max(0, entry.totalCount() * 34 / this.maxCount));
+            setPreferredSize(new Dimension(112 + emphasis, 94 + emphasis / 2));
+            setMinimumSize(new Dimension(112, 94));
+            setOpaque(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setToolTipText(tooltipForBookMapEntry(entry));
+            addMouseListener(new MouseAdapter() {
+                public void mouseClicked(MouseEvent e) {
+                    if (SwingUtilities.isLeftMouseButton(e)) showBookMapDetails(entry);
+                }
+            });
+        }
+
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int w = getWidth() - 10;
+            int h = getHeight() - 10;
+            int x = 5;
+            int y = 5;
+            g2.setColor(modernSurface);
+            g2.fillRoundRect(x, y, w, h, 18, 18);
+            int total = Math.max(1, entry.totalCount());
+            int fillHeight = Math.max(18, (int) Math.round((h - 34) * Math.min(1.0, total / (double) maxCount)));
+            int fillY = y + h - fillHeight;
+            int used = 0;
+            for (Map.Entry<String, List<TextAnnotation>> cat : entry.byCategory.entrySet()) {
+                int seg = cat.getValue().size() * fillHeight / total;
+                if (used + seg > fillHeight || cat.equals(lastEntry(entry.byCategory))) seg = fillHeight - used;
+                if (seg <= 0) continue;
+                g2.setColor(colorForCategory(cat.getKey()));
+                g2.fillRect(x + 1, fillY + used, w - 1, seg);
+                used += seg;
+            }
+            g2.setColor(new Color(255, 255, 255, 120));
+            g2.fillRoundRect(x + 1, y + 1, w - 2, h - fillHeight - 1, 18, 18);
+            g2.setColor(darkRed);
+            g2.setStroke(new BasicStroke(2f));
+            g2.drawRoundRect(x, y, w, h, 18, 18);
+            g2.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            FontMetrics fm = g2.getFontMetrics();
+            String label = shorten(entry.label, 18);
+            g2.setColor(new Color(255, 252, 247, 230));
+            g2.fillRoundRect(x + 6, y + 8, w - 12, 26, 12, 12);
+            g2.setColor(modernText);
+            g2.drawString(label, x + Math.max(8, (w - fm.stringWidth(label)) / 2), y + 26);
+            g2.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            String count = total + " item" + (total == 1 ? "" : "s");
+            g2.setColor(modernText);
+            g2.drawString(count, x + Math.max(8, (w - g2.getFontMetrics().stringWidth(count)) / 2), y + h - 10);
+            g2.dispose();
+        }
+    }
+
+    private <K, V> Map.Entry<K, V> lastEntry(Map<K, V> map) {
+        Map.Entry<K, V> last = null;
+        for (Map.Entry<K, V> entry : map.entrySet()) last = entry;
+        return last;
+    }
+
     private static class AppData implements Serializable {
         private static final long serialVersionUID = 30L;
         Map<String, TreeMap<Integer, TreeMap<Integer, Verse>>> bible = new TreeMap<>();
@@ -11079,6 +11495,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         Map<String, Integer> categoryColors = new TreeMap<>();
         Map<String, Integer> visitCounts = new HashMap<>();
         List<StudyNote> oldNotes = new ArrayList<>();
+        int selectedStudyTimerMinutes = 15;
+        int currentStudyStreak = 0;
+        String lastStudyDate = "";
+        int totalStudyMinutes = 0;
+        Boolean studySoundEnabled = Boolean.TRUE;
         Profile(String n) { name = n; }
     }
 
