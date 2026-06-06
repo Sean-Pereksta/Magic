@@ -212,8 +212,19 @@ public class BibleReaderApp extends JFrame {
     private JButton studyTimerButton;
     private javax.swing.Timer studyCountdownTimer;
     private javax.swing.Timer studyTimerBlinkTimer;
+    private long studyTimerStartMillis = 0L;
     private long studyTimerEndMillis = 0L;
+    private int studyTimerPlannedMinutes = 0;
     private boolean studyTimerRunning = false;
+
+    private JComboBox<String> studyTimeRangeBox;
+    private JComboBox<String> studyTimeChartTypeBox;
+    private JPanel studyTimeSummaryPanel;
+    private StudyChartPanel studyTimeChartPanel;
+    private StudyHeatBarPanel studyTimeHeatBarPanel;
+    private JTabbedPane prayerLogTabs;
+    private final Map<String, PrayerSectionPanel> prayerSectionPanels = new LinkedHashMap<>();
+    private final Set<Profile> loginRecordedProfiles = Collections.newSetFromMap(new IdentityHashMap<>());
     private boolean studyTimerBlinkOn = false;
 
     private String selectedBook = "";
@@ -245,6 +256,7 @@ public class BibleReaderApp extends JFrame {
         }
 
         currentProfile = data.profiles.values().iterator().next();
+        recordProfileLogin(currentProfile);
         buildUi();
         refreshEverything();
 
@@ -296,6 +308,7 @@ public class BibleReaderApp extends JFrame {
         JButton greekSearch = navButton("Greek Search");
         JButton memory = navButton("Memory Verses");
         JButton studyProjects = navButton("Study Projects");
+        JButton studyTime = navButton("Study Time");
         JButton recent = navButton("Notes Page");
         JButton categories = navButton("Categories");
         JButton questions = navButton("Questions");
@@ -311,6 +324,7 @@ public class BibleReaderApp extends JFrame {
         navButtonsByCard.put("greekSearch", greekSearch);
         navButtonsByCard.put("memory", memory);
         navButtonsByCard.put("studyProjects", studyProjects);
+        navButtonsByCard.put("studyTime", studyTime);
         navButtonsByCard.put("recent", recent);
         navButtonsByCard.put("categories", categories);
         navButtonsByCard.put("questions", questions);
@@ -322,6 +336,7 @@ public class BibleReaderApp extends JFrame {
         greekSearch.setToolTipText("Greek Search (Ctrl+3)");
         memory.setToolTipText("Memory Verses (Ctrl+4)");
         studyProjects.setToolTipText("Study Projects (Ctrl+5)");
+        studyTime.setToolTipText("Study Time (Ctrl+0)");
         recent.setToolTipText("Notes Page (Ctrl+6)");
         categories.setToolTipText("Categories (Ctrl+7)");
         questions.setToolTipText("Questions (Ctrl+8)");
@@ -341,6 +356,7 @@ public class BibleReaderApp extends JFrame {
         greekSearch.addActionListener(e -> showCard("greekSearch"));
         memory.addActionListener(e -> { refreshMemoryVerses(); showCard("memory"); });
         studyProjects.addActionListener(e -> { refreshStudyProjects(); showCard("studyProjects"); });
+        studyTime.addActionListener(e -> { refreshStudyTimePage(); showCard("studyTime"); });
         recent.addActionListener(e -> { refreshRecentNotes(); showCard("recent"); });
         categories.addActionListener(e -> { refreshCategories(); showCard("categories"); });
         questions.addActionListener(e -> { refreshQuestions(); showCard("questions"); });
@@ -351,7 +367,7 @@ public class BibleReaderApp extends JFrame {
 
         JPanel profileGroup = createNavGroup(labelWhite("Profile:"), profileBox, newProfile, modernViewToggleButton);
         JPanel studyGroup = createNavGroup(study, importBtn, search, greekSearch);
-        JPanel memoryGroup = createNavGroup(memory, studyProjects, recent);
+        JPanel memoryGroup = createNavGroup(memory, studyProjects, studyTime, recent);
         JPanel notesGroup = createNavGroup(categories, questions, topicPages);
         JPanel dataGroup = createNavGroup(backup, export);
 
@@ -385,6 +401,7 @@ public class BibleReaderApp extends JFrame {
         cardPanel.add(buildGreekSearchPage(), "greekSearch");
         cardPanel.add(buildMemoryPage(), "memory");
         cardPanel.add(buildStudyProjectsPage(), "studyProjects");
+        cardPanel.add(buildStudyTimePage(), "studyTime");
         cardPanel.add(buildRecentPage(), "recent");
         cardPanel.add(buildCategoriesPage(), "categories");
         cardPanel.add(buildQuestionsPage(), "questions");
@@ -418,6 +435,7 @@ public class BibleReaderApp extends JFrame {
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_7, InputEvent.CTRL_DOWN_MASK), "globalCategories", () -> { refreshCategories(); showCard("categories"); });
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_8, InputEvent.CTRL_DOWN_MASK), "globalQuestions", () -> { refreshQuestions(); showCard("questions"); });
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_9, InputEvent.CTRL_DOWN_MASK), "globalTopics", () -> { refreshTopicPages(); showCard("topicPages"); });
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_0, InputEvent.CTRL_DOWN_MASK), "globalStudyTime", () -> { refreshStudyTimePage(); showCard("studyTime"); });
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_B, InputEvent.CTRL_DOWN_MASK), "globalBookmarks", this::showBookmarksDialog);
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK), "globalFind", this::focusBestSearchField);
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_L, InputEvent.CTRL_DOWN_MASK), "globalBookSelector", () -> { showCard("study"); if (bookCombo != null) bookCombo.requestFocusInWindow(); });
@@ -911,8 +929,9 @@ public class BibleReaderApp extends JFrame {
     private void startStudyTimer() {
         if (currentProfile == null) return;
         stopStudyTimerBlink();
-        int minutes = Math.max(1, currentProfile.selectedStudyTimerMinutes);
-        studyTimerEndMillis = System.currentTimeMillis() + minutes * 60_000L;
+        studyTimerPlannedMinutes = Math.max(1, currentProfile.selectedStudyTimerMinutes);
+        studyTimerStartMillis = System.currentTimeMillis();
+        studyTimerEndMillis = studyTimerStartMillis + studyTimerPlannedMinutes * 60_000L;
         studyTimerRunning = true;
         recordStudyActivityToday(0);
         if (studyCountdownTimer != null) studyCountdownTimer.stop();
@@ -927,16 +946,31 @@ public class BibleReaderApp extends JFrame {
 
     private void stopStudyTimer() {
         if (studyCountdownTimer != null) studyCountdownTimer.stop();
+        if (studyTimerRunning && studyTimerStartMillis > 0L) {
+            long elapsedMillis = Math.max(0L, Math.min(System.currentTimeMillis(), studyTimerEndMillis) - studyTimerStartMillis);
+            int elapsedMinutes = roundedStudyMinutes(elapsedMillis);
+            if (elapsedMinutes > 0) recordStudyActivityToday(elapsedMinutes);
+        }
         studyTimerRunning = false;
+        studyTimerStartMillis = 0L;
         studyTimerEndMillis = 0L;
+        studyTimerPlannedMinutes = 0;
         updateStudyTimerTooltip();
         if (studyTimerButton != null) studyTimerButton.setBackground(modernDarkRed);
+    }
+
+    private int roundedStudyMinutes(long elapsedMillis) {
+        if (elapsedMillis < 30_000L) return 0;
+        return Math.max(1, (int) Math.round(elapsedMillis / 60_000.0));
     }
 
     private void finishStudyTimer() {
         if (studyCountdownTimer != null) studyCountdownTimer.stop();
         studyTimerRunning = false;
-        int minutes = currentProfile == null ? 0 : Math.max(1, currentProfile.selectedStudyTimerMinutes);
+        int minutes = Math.max(1, studyTimerPlannedMinutes);
+        studyTimerStartMillis = 0L;
+        studyTimerEndMillis = 0L;
+        studyTimerPlannedMinutes = 0;
         recordStudyActivityToday(minutes);
         if (currentProfile != null && Boolean.TRUE.equals(currentProfile.studySoundEnabled)) Toolkit.getDefaultToolkit().beep();
         startStudyTimerBlink();
@@ -969,6 +1003,7 @@ public class BibleReaderApp extends JFrame {
 
     private void recordStudyActivityToday(int completedMinutes) {
         if (currentProfile == null) return;
+        repairProfile(currentProfile);
         LocalDate today = LocalDate.now();
         LocalDate last = parseStudyDate(currentProfile.lastStudyDate);
         if (last == null) {
@@ -981,9 +1016,38 @@ public class BibleReaderApp extends JFrame {
             currentProfile.currentStudyStreak = 1;
         }
         currentProfile.lastStudyDate = today.toString();
-        if (completedMinutes > 0) currentProfile.totalStudyMinutes = Math.max(0, currentProfile.totalStudyMinutes) + completedMinutes;
+        if (completedMinutes > 0) {
+            StudyDayLog log = studyLogFor(currentProfile, today);
+            log.timerMinutes = Math.max(0, log.timerMinutes) + completedMinutes;
+            currentProfile.totalStudyMinutes = Math.max(0, currentProfile.totalStudyMinutes) + completedMinutes;
+        }
         saveData();
         updateStudyTimerTooltip();
+        refreshStudyTimePage();
+    }
+
+    private StudyDayLog studyLogFor(Profile profile, LocalDate date) {
+        repairProfile(profile);
+        String key = date.toString();
+        StudyDayLog log = profile.studyDayLogs.get(key);
+        if (log == null) {
+            log = new StudyDayLog();
+            log.date = key;
+            profile.studyDayLogs.put(key, log);
+        }
+        repairStudyDayLog(log, key);
+        return log;
+    }
+
+    private void recordProfileLogin(Profile profile) {
+        if (profile == null || loginRecordedProfiles.contains(profile)) return;
+        repairProfile(profile);
+        StudyDayLog log = studyLogFor(profile, LocalDate.now());
+        log.loginCount = Math.max(0, log.loginCount) + 1;
+        log.lastLoginMillis = System.currentTimeMillis();
+        loginRecordedProfiles.add(profile);
+        saveData();
+        refreshStudyTimePage();
     }
 
     private LocalDate parseStudyDate(String value) {
@@ -1273,6 +1337,415 @@ public class BibleReaderApp extends JFrame {
         split.setResizeWeight(0.25);
         page.add(split, BorderLayout.CENTER);
         return page;
+    }
+
+
+    private JPanel buildStudyTimePage() {
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBackground(panelBg);
+        content.setBorder(new EmptyBorder(16, 16, 20, 16));
+
+        JLabel header = new JLabel("Study Time");
+        header.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        header.setForeground(darkRed);
+        header.setAlignmentX(Component.LEFT_ALIGNMENT);
+        content.add(header);
+        content.add(Box.createVerticalStrut(10));
+
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
+        controls.setOpaque(false);
+        controls.setAlignmentX(Component.LEFT_ALIGNMENT);
+        controls.add(new JLabel("Range:"));
+        studyTimeRangeBox = new JComboBox<>(new String[]{"Last 7 Days", "Last 30 Days", "Last 90 Days", "Last Year"});
+        studyTimeRangeBox.setSelectedItem("Last 30 Days");
+        controls.add(studyTimeRangeBox);
+        controls.add(new JLabel("Chart:"));
+        studyTimeChartTypeBox = new JComboBox<>(new String[]{"Bar Graph", "Line Graph"});
+        controls.add(studyTimeChartTypeBox);
+        studyTimeRangeBox.addActionListener(e -> refreshStudyTimePage());
+        studyTimeChartTypeBox.addActionListener(e -> refreshStudyTimePage());
+        content.add(controls);
+
+        studyTimeSummaryPanel = new JPanel(new GridLayout(2, 4, 8, 8));
+        studyTimeSummaryPanel.setOpaque(false);
+        studyTimeSummaryPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        content.add(studyTimeSummaryPanel);
+        content.add(Box.createVerticalStrut(10));
+
+        studyTimeChartPanel = new StudyChartPanel();
+        studyTimeChartPanel.setPreferredSize(new Dimension(900, 285));
+        studyTimeChartPanel.setMinimumSize(new Dimension(500, 240));
+        styleModernCard(studyTimeChartPanel);
+        JPanel chartWrap = new JPanel(new BorderLayout());
+        chartWrap.setOpaque(false);
+        chartWrap.setAlignmentX(Component.LEFT_ALIGNMENT);
+        chartWrap.setBorder(new TitledBorder(new LineBorder(modernBorder), "Daily Study Minutes"));
+        chartWrap.add(studyTimeChartPanel, BorderLayout.CENTER);
+        chartWrap.setMaximumSize(new Dimension(Integer.MAX_VALUE, 320));
+        content.add(chartWrap);
+        content.add(Box.createVerticalStrut(10));
+
+        studyTimeHeatBarPanel = new StudyHeatBarPanel();
+        JScrollPane heatScroll = new JScrollPane(studyTimeHeatBarPanel, JScrollPane.VERTICAL_SCROLLBAR_NEVER, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        heatScroll.setBorder(new TitledBorder(new LineBorder(modernBorder), "Activity Heat Bar"));
+        heatScroll.setPreferredSize(new Dimension(900, 90));
+        heatScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
+        heatScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+        heatScroll.getHorizontalScrollBar().setUnitIncrement(20);
+        content.add(heatScroll);
+        content.add(Box.createVerticalStrut(14));
+
+        JLabel prayerHeader = new JLabel("Prayer Log");
+        prayerHeader.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        prayerHeader.setForeground(darkRed);
+        prayerHeader.setAlignmentX(Component.LEFT_ALIGNMENT);
+        content.add(prayerHeader);
+        content.add(Box.createVerticalStrut(6));
+
+        prayerLogTabs = new JTabbedPane();
+        prayerLogTabs.setAlignmentX(Component.LEFT_ALIGNMENT);
+        prayerLogTabs.setPreferredSize(new Dimension(900, 390));
+        prayerLogTabs.setMaximumSize(new Dimension(Integer.MAX_VALUE, 430));
+        prayerSectionPanels.clear();
+        for (String section : Arrays.asList("Gratitude", "Requests", "Recognition")) {
+            PrayerSectionPanel panel = new PrayerSectionPanel(section);
+            prayerSectionPanels.put(section, panel);
+            prayerLogTabs.addTab(section, panel);
+        }
+        content.add(prayerLogTabs);
+
+        JScrollPane scroll = new JScrollPane(content);
+        scroll.setBorder(null);
+        scroll.getVerticalScrollBar().setUnitIncrement(18);
+        JPanel page = new JPanel(new BorderLayout());
+        page.setBackground(panelBg);
+        page.add(scroll, BorderLayout.CENTER);
+        return page;
+    }
+
+    private int selectedStudyRangeDays() {
+        String value = studyTimeRangeBox == null ? "Last 30 Days" : String.valueOf(studyTimeRangeBox.getSelectedItem());
+        if (value.contains("7 ")) return 7;
+        if (value.contains("90")) return 90;
+        if (value.contains("Year")) return 365;
+        return 30;
+    }
+
+    private List<StudyDayView> selectedStudyDays() {
+        List<StudyDayView> days = new ArrayList<>();
+        if (currentProfile == null) return days;
+        repairProfile(currentProfile);
+        LocalDate end = LocalDate.now();
+        LocalDate start = end.minusDays(selectedStudyRangeDays() - 1L);
+        for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
+            StudyDayLog log = currentProfile.studyDayLogs.get(date.toString());
+            days.add(new StudyDayView(date, log));
+        }
+        return days;
+    }
+
+    private void refreshStudyTimePage() {
+        if (studyTimeSummaryPanel == null || currentProfile == null) return;
+        List<StudyDayView> days = selectedStudyDays();
+        int total = 0, timer = 0, studied = 0, loginDays = 0;
+        for (StudyDayView day : days) {
+            total += day.studyMinutes;
+            timer += day.timerMinutes;
+            if (day.studyMinutes > 0) studied++;
+            if (day.loginCount > 0) loginDays++;
+        }
+        int missed = Math.max(0, days.size() - studied);
+        double average = days.isEmpty() ? 0.0 : total / (double) days.size();
+        int longest = longestStudyStreak(currentProfile);
+        studyTimeSummaryPanel.removeAll();
+        addStudyStat("Total study time", total + " min");
+        addStudyStat("Average per day", String.format(Locale.ROOT, "%.1f min", average));
+        addStudyStat("Days studied", String.valueOf(studied));
+        addStudyStat("Days missed", String.valueOf(missed));
+        addStudyStat("Current streak", Math.max(0, currentProfile.currentStudyStreak) + " days");
+        addStudyStat("Longest streak", longest + " days");
+        addStudyStat("Total timer minutes", timer + " min");
+        addStudyStat("Total login days", String.valueOf(loginDays));
+        studyTimeSummaryPanel.revalidate();
+        studyTimeSummaryPanel.repaint();
+        studyTimeChartPanel.setDays(days, studyTimeChartTypeBox != null && "Line Graph".equals(studyTimeChartTypeBox.getSelectedItem()));
+        studyTimeHeatBarPanel.setDays(days);
+        for (PrayerSectionPanel panel : prayerSectionPanels.values()) panel.refreshEntries();
+    }
+
+    private void addStudyStat(String label, String value) {
+        JPanel card = new JPanel(new BorderLayout(4, 4));
+        card.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(8, 10, 8, 10)));
+        card.setBackground(modernSurface);
+        JLabel valueLabel = new JLabel(value);
+        valueLabel.setFont(new Font("Segoe UI", Font.BOLD, 19));
+        valueLabel.setForeground(modernPrimaryRed);
+        JLabel titleLabel = new JLabel(label);
+        titleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        titleLabel.setForeground(modernMutedText);
+        card.add(valueLabel, BorderLayout.CENTER);
+        card.add(titleLabel, BorderLayout.SOUTH);
+        studyTimeSummaryPanel.add(card);
+    }
+
+    private int longestStudyStreak(Profile profile) {
+        if (profile == null || profile.studyDayLogs == null) return 0;
+        int best = 0, run = 0;
+        LocalDate previous = null;
+        for (Map.Entry<String, StudyDayLog> entry : new TreeMap<>(profile.studyDayLogs).entrySet()) {
+            LocalDate date = parseStudyDate(entry.getKey());
+            StudyDayLog log = entry.getValue();
+            if (date == null || log == null || log.timerMinutes + log.manualMinutes <= 0) continue;
+            run = previous != null && ChronoUnit.DAYS.between(previous, date) == 1L ? run + 1 : 1;
+            best = Math.max(best, run);
+            previous = date;
+        }
+        return best;
+    }
+
+    private Color studyIntensityColor(int minutes, int maxMinutes, boolean visited) {
+        if (minutes <= 0) return visited ? new Color(239, 224, 211) : new Color(232, 230, 226);
+        float ratio = maxMinutes <= 0 ? 1f : Math.min(1f, minutes / (float) maxMinutes);
+        ratio = 0.28f + ratio * 0.72f;
+        return blend(new Color(244, 215, 205), modernPrimaryRed, ratio);
+    }
+
+    private Color blend(Color from, Color to, float amount) {
+        float a = Math.max(0f, Math.min(1f, amount));
+        return new Color(Math.round(from.getRed() + (to.getRed() - from.getRed()) * a),
+                Math.round(from.getGreen() + (to.getGreen() - from.getGreen()) * a),
+                Math.round(from.getBlue() + (to.getBlue() - from.getBlue()) * a));
+    }
+
+    private void addPrayerEntry(String section) {
+        PrayerLogEntry entry = editPrayerEntryDialog(null, section);
+        if (entry == null) return;
+        currentProfile.prayerLogEntries.add(entry);
+        saveData();
+        refreshStudyTimePage();
+    }
+
+    private void editPrayerEntry(PrayerLogEntry existing) {
+        if (existing == null) return;
+        PrayerLogEntry edited = editPrayerEntryDialog(existing, existing.section);
+        if (edited == null) return;
+        existing.title = edited.title;
+        existing.body = edited.body;
+        existing.updatedDate = LocalDate.now().toString();
+        saveData();
+        refreshStudyTimePage();
+    }
+
+    private PrayerLogEntry editPrayerEntryDialog(PrayerLogEntry existing, String section) {
+        JTextField title = new JTextField(existing == null ? "" : existing.title, 30);
+        JTextArea body = new JTextArea(existing == null ? "" : existing.body, 8, 34);
+        body.setLineWrap(true);
+        body.setWrapStyleWord(true);
+        JPanel form = new JPanel(new BorderLayout(6, 6));
+        JPanel titleRow = new JPanel(new BorderLayout(6, 6));
+        titleRow.add(new JLabel("Title:"), BorderLayout.WEST);
+        titleRow.add(title, BorderLayout.CENTER);
+        form.add(titleRow, BorderLayout.NORTH);
+        form.add(new JScrollPane(body), BorderLayout.CENTER);
+        if (JOptionPane.showConfirmDialog(this, form, (existing == null ? "Add " : "Edit ") + section + " Entry", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return null;
+        if (title.getText().trim().isEmpty() && body.getText().trim().isEmpty()) return null;
+        PrayerLogEntry result = new PrayerLogEntry();
+        result.id = existing == null ? UUID.randomUUID().toString() : existing.id;
+        result.section = section;
+        result.title = title.getText().trim();
+        result.body = body.getText().trim();
+        result.createdDate = existing == null || safe(existing.createdDate).isEmpty() ? LocalDate.now().toString() : existing.createdDate;
+        result.updatedDate = LocalDate.now().toString();
+        result.answered = existing != null && existing.answered;
+        result.answeredDate = existing == null ? "" : safe(existing.answeredDate);
+        return result;
+    }
+
+    private void deletePrayerEntry(PrayerLogEntry entry) {
+        if (entry == null || JOptionPane.showConfirmDialog(this, "Delete this prayer log entry?", "Delete Entry", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+        currentProfile.prayerLogEntries.removeIf(item -> safe(item.id).equals(safe(entry.id)));
+        saveData();
+        refreshStudyTimePage();
+    }
+
+    private void togglePrayerAnswered(PrayerLogEntry entry) {
+        if (entry == null || !"Requests".equals(entry.section)) return;
+        entry.answered = !entry.answered;
+        entry.answeredDate = entry.answered ? LocalDate.now().toString() : "";
+        entry.updatedDate = LocalDate.now().toString();
+        saveData();
+        refreshStudyTimePage();
+    }
+
+    private class PrayerSectionPanel extends JPanel {
+        final String section;
+        final JTextField search = new JTextField(20);
+        final JComboBox<String> requestFilter;
+        final DefaultListModel<PrayerLogEntry> model = new DefaultListModel<>();
+        final JList<PrayerLogEntry> list = new JList<>(model);
+
+        PrayerSectionPanel(String section) {
+            super(new BorderLayout(8, 8));
+            this.section = section;
+            setBackground(panelBg);
+            setBorder(new EmptyBorder(8, 8, 8, 8));
+            JPanel tools = new JPanel(new FlowLayout(FlowLayout.LEFT, 7, 3));
+            tools.setOpaque(false);
+            JButton add = blackButton("Add Entry");
+            JButton edit = blackButton("Edit Entry");
+            JButton delete = blackButton("Delete Entry");
+            add.addActionListener(e -> addPrayerEntry(section));
+            edit.addActionListener(e -> editPrayerEntry(list.getSelectedValue()));
+            delete.addActionListener(e -> deletePrayerEntry(list.getSelectedValue()));
+            tools.add(add);
+            tools.add(edit);
+            tools.add(delete);
+            if ("Requests".equals(section)) {
+                JButton answered = blackButton("Mark / Unmark Answered");
+                answered.addActionListener(e -> togglePrayerAnswered(list.getSelectedValue()));
+                tools.add(answered);
+                requestFilter = new JComboBox<>(new String[]{"All Requests", "Open Requests", "Answered Prayers"});
+                requestFilter.addActionListener(e -> refreshEntries());
+                tools.add(requestFilter);
+            } else requestFilter = null;
+            tools.add(new JLabel("Search:"));
+            search.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshEntries));
+            tools.add(search);
+            add(tools, BorderLayout.NORTH);
+            list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            list.setFixedCellHeight(52);
+            list.setCellRenderer(new DefaultListCellRenderer() {
+                public Component getListCellRendererComponent(JList<?> source, Object value, int index, boolean selected, boolean focus) {
+                    JLabel label = (JLabel) super.getListCellRendererComponent(source, value, index, selected, focus);
+                    PrayerLogEntry entry = (PrayerLogEntry) value;
+                    String preview = safe(entry.body).replace('\n', ' ');
+                    label.setText("<html><b>" + html(entry.title.isEmpty() ? "Untitled" : entry.title) + "</b>" + (entry.answered ? " <font color='#287a42'>✓ Answered</font>" : "") + "<br><font color='#695c54'>" + html(shorten(preview, 100)) + "</font></html>");
+                    if (!selected) label.setBackground(entry.answered ? new Color(225, 245, 229) : modernSurface);
+                    label.setBorder(new CompoundBorder(new LineBorder(entry.answered ? new Color(82, 145, 94) : modernBorder), new EmptyBorder(4, 8, 4, 8)));
+                    return label;
+                }
+            });
+            list.addMouseListener(new MouseAdapter() { public void mouseClicked(MouseEvent e) { if (e.getClickCount() == 2) editPrayerEntry(list.getSelectedValue()); }});
+            add(new JScrollPane(list), BorderLayout.CENTER);
+        }
+
+        void refreshEntries() {
+            model.clear();
+            if (currentProfile == null || currentProfile.prayerLogEntries == null) return;
+            String query = search.getText().trim().toLowerCase(Locale.ROOT);
+            for (PrayerLogEntry entry : currentProfile.prayerLogEntries) {
+                if (!section.equals(entry.section)) continue;
+                if (!query.isEmpty() && !(safe(entry.title) + " " + safe(entry.body)).toLowerCase(Locale.ROOT).contains(query)) continue;
+                if (requestFilter != null && "Open Requests".equals(requestFilter.getSelectedItem()) && entry.answered) continue;
+                if (requestFilter != null && "Answered Prayers".equals(requestFilter.getSelectedItem()) && !entry.answered) continue;
+                model.addElement(entry);
+            }
+        }
+    }
+
+    private String html(String value) {
+        return safe(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    private static class StudyDayView {
+        final LocalDate date;
+        final int studyMinutes;
+        final int timerMinutes;
+        final int loginCount;
+        StudyDayView(LocalDate date, StudyDayLog log) {
+            this.date = date;
+            timerMinutes = log == null ? 0 : Math.max(0, log.timerMinutes);
+            studyMinutes = timerMinutes + (log == null ? 0 : Math.max(0, log.manualMinutes));
+            loginCount = log == null ? 0 : Math.max(0, log.loginCount);
+        }
+        String tooltip() { return date + " — " + studyMinutes + " study min, " + loginCount + " login" + (loginCount == 1 ? "" : "s"); }
+    }
+
+    private class StudyChartPanel extends JPanel {
+        private List<StudyDayView> days = Collections.emptyList();
+        private boolean lineGraph;
+        private final List<Rectangle> hitAreas = new ArrayList<>();
+        StudyChartPanel() { ToolTipManager.sharedInstance().registerComponent(this); }
+        void setDays(List<StudyDayView> days, boolean lineGraph) { this.days = new ArrayList<>(days); this.lineGraph = lineGraph; repaint(); }
+        public String getToolTipText(MouseEvent e) {
+            for (int i = 0; i < hitAreas.size() && i < days.size(); i++) if (hitAreas.get(i).contains(e.getPoint())) return days.get(i).tooltip();
+            return null;
+        }
+        protected void paintComponent(Graphics graphics) {
+            super.paintComponent(graphics);
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int left = 48, top = 24, right = 18, bottom = 42;
+            int width = Math.max(1, getWidth() - left - right), height = Math.max(1, getHeight() - top - bottom);
+            int max = 1;
+            for (StudyDayView day : days) max = Math.max(max, day.studyMinutes);
+            g.setColor(new Color(220, 212, 204));
+            g.drawLine(left, top + height, left + width, top + height);
+            g.drawLine(left, top, left, top + height);
+            hitAreas.clear();
+            if (days.isEmpty()) { g.dispose(); return; }
+            double step = width / (double) days.size();
+            int previousX = -1, previousY = -1;
+            for (int i = 0; i < days.size(); i++) {
+                StudyDayView day = days.get(i);
+                int x = left + (int) Math.round(i * step);
+                int barWidth = Math.max(2, (int) Math.ceil(step) - 2);
+                int barHeight = (int) Math.round(height * day.studyMinutes / (double) max);
+                int y = top + height - barHeight;
+                Color color = studyIntensityColor(day.studyMinutes, max, day.loginCount > 0);
+                if (lineGraph) {
+                    int cx = x + Math.max(1, barWidth / 2), cy = y;
+                    if (previousX >= 0) { g.setStroke(new BasicStroke(2.2f)); g.setColor(modernPrimaryRed); g.drawLine(previousX, previousY, cx, cy); }
+                    g.setColor(color.darker()); g.fillOval(cx - 4, cy - 4, 8, 8);
+                    hitAreas.add(new Rectangle(cx - Math.max(6, barWidth / 2), cy - 8, Math.max(12, barWidth), 16));
+                    previousX = cx; previousY = cy;
+                } else {
+                    g.setColor(color);
+                    g.fillRoundRect(x + 1, y, barWidth, Math.max(2, barHeight), 4, 4);
+                    hitAreas.add(new Rectangle(x, top, Math.max(3, barWidth + 2), height));
+                }
+                int labelEvery = Math.max(1, days.size() / 8);
+                if (i % labelEvery == 0 || i == days.size() - 1) {
+                    g.setColor(modernMutedText); g.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+                    g.drawString(day.date.getMonthValue() + "/" + day.date.getDayOfMonth(), x, top + height + 18);
+                }
+            }
+            g.setColor(modernMutedText); g.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+            g.drawString(max + " min", 4, top + 5); g.drawString("0", 28, top + height + 4);
+            g.dispose();
+        }
+    }
+
+    private class StudyHeatBarPanel extends JPanel {
+        private List<StudyDayView> days = Collections.emptyList();
+        private final List<Rectangle> hitAreas = new ArrayList<>();
+        StudyHeatBarPanel() { setBackground(modernSurface); ToolTipManager.sharedInstance().registerComponent(this); }
+        void setDays(List<StudyDayView> days) {
+            this.days = new ArrayList<>(days);
+            setPreferredSize(new Dimension(Math.max(850, days.size() * 17 + 20), 58));
+            revalidate(); repaint();
+        }
+        public String getToolTipText(MouseEvent e) {
+            for (int i = 0; i < hitAreas.size() && i < days.size(); i++) if (hitAreas.get(i).contains(e.getPoint())) return days.get(i).tooltip();
+            return null;
+        }
+        protected void paintComponent(Graphics graphics) {
+            super.paintComponent(graphics);
+            Graphics2D g = (Graphics2D) graphics.create();
+            int max = 1;
+            for (StudyDayView day : days) max = Math.max(max, day.studyMinutes);
+            hitAreas.clear();
+            for (int i = 0; i < days.size(); i++) {
+                StudyDayView day = days.get(i);
+                Rectangle rect = new Rectangle(10 + i * 17, 12, 14, 26);
+                hitAreas.add(rect);
+                g.setColor(studyIntensityColor(day.studyMinutes, max, day.loginCount > 0));
+                g.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 3, 3);
+                g.setColor(new Color(205, 195, 188)); g.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 3, 3);
+            }
+            g.dispose();
+        }
     }
 
 
@@ -2557,6 +3030,7 @@ public class BibleReaderApp extends JFrame {
         if ("greekSearch".equals(name)) return "Greek Search";
         if ("memory".equals(name)) return "Memory Verses";
         if ("studyProjects".equals(name)) return "Study Projects";
+        if ("studyTime".equals(name)) return "Study Time";
         if ("recent".equals(name)) return "Notes Page";
         if ("topicPages".equals(name)) return "Topic Pages";
         if (name == null || name.isEmpty()) return "Ready";
@@ -2599,6 +3073,7 @@ public class BibleReaderApp extends JFrame {
             refreshMemoryVerses();
             refreshRecentNotes();
             refreshStudyProjects();
+            refreshStudyTimePage();
             refreshPinnedItems();
             refreshRecentlyOpened();
             updateHistoryButtons();
@@ -2644,6 +3119,7 @@ public class BibleReaderApp extends JFrame {
             stopStudyTimer();
             currentProfile = p;
             repairProfile(currentProfile);
+            recordProfileLogin(currentProfile);
             refreshEverything();
             updateStudyTimerTooltip();
         }
@@ -2662,6 +3138,7 @@ public class BibleReaderApp extends JFrame {
         data.profiles.put(n, p);
         stopStudyTimer();
         currentProfile = p;
+        recordProfileLogin(currentProfile);
         saveData();
         refreshEverything();
         updateStudyTimerTooltip();
@@ -10743,6 +11220,23 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                 pw.println(q.question);
                 pw.println("----------------------------------------");
             }
+            pw.println("PRAYER LOG");
+            pw.println("========================================");
+            for (String section : Arrays.asList("Gratitude", "Requests", "Recognition")) {
+                pw.println(section.toUpperCase(Locale.ROOT));
+                pw.println("----------------------------------------");
+                for (PrayerLogEntry entry : currentProfile.prayerLogEntries) {
+                    if (!section.equals(entry.section)) continue;
+                    pw.println(entry.title);
+                    pw.println(entry.body);
+                    pw.println("Created: " + entry.createdDate + (entry.updatedDate.isEmpty() ? "" : " | Updated: " + entry.updatedDate));
+                    if ("Requests".equals(section)) {
+                        pw.println("Status: " + (entry.answered ? "Answered" + (entry.answeredDate.isEmpty() ? "" : " on " + entry.answeredDate) : "Open"));
+                    }
+                    pw.println("----------------------------------------");
+                }
+                pw.println();
+            }
             log("Exported notes to " + ch.getSelectedFile().getAbsolutePath());
         } catch (Exception ex) {
             showError("Export failed", ex);
@@ -10798,6 +11292,12 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (p.categoryColors == null) p.categoryColors = new TreeMap<>();
         for (String c : p.categories.keySet()) p.categoryColors.putIfAbsent(c, categoryBlue.getRGB());
         if (p.visitCounts == null) p.visitCounts = new HashMap<>();
+        if (p.studyDayLogs == null) p.studyDayLogs = new TreeMap<>();
+        p.studyDayLogs.entrySet().removeIf(e -> e.getKey() == null || e.getValue() == null);
+        for (Map.Entry<String, StudyDayLog> entry : p.studyDayLogs.entrySet()) repairStudyDayLog(entry.getValue(), entry.getKey());
+        if (p.prayerLogEntries == null) p.prayerLogEntries = new ArrayList<>();
+        p.prayerLogEntries.removeIf(Objects::isNull);
+        for (PrayerLogEntry entry : p.prayerLogEntries) repairPrayerLogEntry(entry);
         if (p.pinnedItems == null) p.pinnedItems = new ArrayList<>();
         if (p.memoryVerses == null) p.memoryVerses = new ArrayList<>();
         if (p.bookmarks == null) p.bookmarks = new ArrayList<>();
@@ -10848,6 +11348,29 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
 
+
+    private void repairStudyDayLog(StudyDayLog log, String fallbackDate) {
+        if (log == null) return;
+        if (log.date == null || parseStudyDate(log.date) == null) log.date = safe(fallbackDate);
+        log.loginCount = Math.max(0, log.loginCount);
+        log.timerMinutes = Math.max(0, log.timerMinutes);
+        log.manualMinutes = Math.max(0, log.manualMinutes);
+        log.lastLoginMillis = Math.max(0L, log.lastLoginMillis);
+    }
+
+    private void repairPrayerLogEntry(PrayerLogEntry entry) {
+        if (entry.id == null || entry.id.trim().isEmpty()) entry.id = UUID.randomUUID().toString();
+        if (!Arrays.asList("Gratitude", "Requests", "Recognition").contains(entry.section)) entry.section = "Gratitude";
+        entry.title = safe(entry.title);
+        entry.body = safe(entry.body);
+        entry.createdDate = safe(entry.createdDate);
+        entry.updatedDate = safe(entry.updatedDate);
+        entry.answeredDate = safe(entry.answeredDate);
+        if (!"Requests".equals(entry.section)) {
+            entry.answered = false;
+            entry.answeredDate = "";
+        }
+    }
 
     private void repairChapterNote(ChapterNote n) {
         if (n == null) return;
@@ -11479,6 +12002,32 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
     }
 
+    private static class StudyDayLog implements Serializable {
+        private static final long serialVersionUID = 1L;
+        String date = "";
+        int loginCount;
+        int timerMinutes;
+        int manualMinutes;
+        long lastLoginMillis;
+    }
+
+    private static class PrayerLogEntry implements Serializable {
+        private static final long serialVersionUID = 1L;
+        String id = UUID.randomUUID().toString();
+        String section = "Gratitude";
+        String title = "";
+        String body = "";
+        String createdDate = "";
+        String updatedDate = "";
+        boolean answered;
+        String answeredDate = "";
+
+        public String toString() {
+            String status = answered && "Requests".equals(section) ? "  ✓ Answered" : "";
+            return (title == null || title.trim().isEmpty() ? "Untitled" : title) + status;
+        }
+    }
+
     private static class Profile implements Serializable {
         private static final long serialVersionUID = 30L;
         String name;
@@ -11494,6 +12043,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         Map<String, String> categories = new TreeMap<>();
         Map<String, Integer> categoryColors = new TreeMap<>();
         Map<String, Integer> visitCounts = new HashMap<>();
+        Map<String, StudyDayLog> studyDayLogs = new TreeMap<>();
+        List<PrayerLogEntry> prayerLogEntries = new ArrayList<>();
         List<StudyNote> oldNotes = new ArrayList<>();
         int selectedStudyTimerMinutes = 15;
         int currentStudyStreak = 0;
