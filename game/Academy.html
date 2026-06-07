@@ -2,3125 +2,355 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Safelite Org Structure Builder</title>
-
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Neon Pastel FPS Arena</title>
 <style>
-  * {
-    box-sizing: border-box;
-  }
-
-  body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background: #f9fafb;
-    color: #1f2933;
-  }
-
-  header {
-    background: linear-gradient(135deg, #7f1d1d, #dc2626);
-    color: white;
-    padding: 18px 24px;
-    box-shadow: 0 3px 10px rgba(0,0,0,.25);
-  }
-
-  header h1 {
-    margin: 0;
-    font-size: 25px;
-  }
-
-  header p {
-    margin: 6px 0 0;
-    opacity: .92;
-  }
-
-  .toolbar {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-    padding: 12px 16px;
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
-    box-shadow: 0 2px 6px rgba(0,0,0,.05);
-  }
-
-  input,
-  select,
-  button {
-    font-size: 14px;
-  }
-
-  input[type="file"],
-  input[type="text"],
-  select {
-    padding: 8px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    background: white;
-  }
-
-  button {
-    border: none;
-    border-radius: 6px;
-    padding: 9px 12px;
-    cursor: pointer;
-    font-weight: bold;
-    background: #b91c1c;
-    color: white;
-  }
-
-  button:hover {
-    filter: brightness(.92);
-  }
-
-  button.secondary {
-    background: #6b7280;
-  }
-
-  button.green {
-    background: #15803d;
-  }
-
-  button.orange {
-    background: #c2410c;
-  }
-
-  button.danger {
-    background: #991b1b;
-  }
-
-  .primary-add-btn {
-    background: #b91c1c;
-    padding: 8px 11px;
-    font-size: 13px;
-    font-weight: bold;
-  }
-
-  .secondary-add-btn {
-    background: #6b7280;
-    padding: 5px 8px;
-    font-size: 11px;
-  }
-
-  .toggle-label {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-weight: bold;
-    font-size: 13px;
-  }
-
-  #progressWrap {
-    display: none;
-    padding: 8px 16px;
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
-  }
-
-  .progress-top {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    font-weight: bold;
-    margin-bottom: 4px;
-  }
-
-  .progress-track {
-    height: 12px;
-    background: #fee2e2;
-    border-radius: 999px;
-    overflow: hidden;
-  }
-
-  #progressBar {
-    height: 100%;
-    width: 0%;
-    background: #dc2626;
-    transition: width .15s;
-  }
-
-  .layout {
-    display: grid;
-    grid-template-columns: 310px 1fr 360px;
-    gap: 14px;
-    padding: 14px;
-    height: calc(100vh - 175px);
-  }
-
-  .panel {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 11px;
-    box-shadow: 0 3px 10px rgba(0,0,0,.07);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  .panel h2 {
-    margin: 0;
-    padding: 12px 14px;
-    background: #fff1f2;
-    border-bottom: 1px solid #e5e7eb;
-    font-size: 16px;
-    color: #7f1d1d;
-  }
-
-  .panel-body {
-    padding: 12px;
-    overflow: auto;
-    min-height: 0;
-  }
-
-  .notice {
-    background: #fff8dc;
-    border: 1px solid #e5d28b;
-    padding: 9px;
-    border-radius: 7px;
-    font-size: 13px;
-    margin-bottom: 10px;
-  }
-
-  .person-list {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-  }
-
-  .person-card {
-    padding: 9px;
-    background: #fffafa;
-    border: 1px solid #fecaca;
-    border-radius: 8px;
-    cursor: grab;
-    user-select: none;
-  }
-
-  .person-card:hover {
-    background: #fee2e2;
-    border-color: #ef4444;
-  }
-
-  .person-card.selected {
-    background: #fecaca;
-    border-color: #b91c1c;
-    box-shadow: 0 0 0 2px rgba(185,28,28,.15);
-  }
-
-  .people-search-row {
-    display: flex;
-    gap: 7px;
-    align-items: center;
-    margin-bottom: 8px;
-  }
-
-  .people-search-row input {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .filter-button {
-    white-space: nowrap;
-    background: #7f1d1d;
-  }
-
-  .people-list-summary {
-    font-size: 12px;
-    color: #4b5563;
-    font-weight: bold;
-    margin: 0 0 8px;
-    line-height: 1.4;
-  }
-
-  .advanced-filter-note {
-    display: inline-block;
-    margin-top: 2px;
-    color: #7f1d1d;
-  }
-
-  .filter-modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1000;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 18px;
-    background: rgba(31, 41, 55, .55);
-  }
-
-  .filter-modal-backdrop.open {
-    display: flex;
-  }
-
-  .filter-modal {
-    width: min(900px, 96vw);
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    background: white;
-    border: 1px solid #fecaca;
-    border-radius: 12px;
-    box-shadow: 0 18px 45px rgba(0,0,0,.3);
-    overflow: hidden;
-  }
-
-  .filter-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 16px;
-    background: #fff1f2;
-    border-bottom: 1px solid #fecaca;
-  }
-
-  .filter-modal-header h2 {
-    margin: 0;
-    color: #7f1d1d;
-    font-size: 19px;
-  }
-
-  .filter-close-btn {
-    background: #6b7280;
-    border-radius: 999px;
-    width: 34px;
-    height: 34px;
-    padding: 0;
-    font-size: 18px;
-    line-height: 1;
-  }
-
-  .filter-modal-body {
-    padding: 14px 16px;
-    overflow: auto;
-  }
-
-  .filter-modal-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    padding: 12px 16px;
-    border-top: 1px solid #e5e7eb;
-    background: #f9fafb;
-  }
-
-  .filter-row-card {
-    border: 1px solid #fecaca;
-    border-radius: 10px;
-    padding: 12px;
-    margin-bottom: 12px;
-    background: #fffafa;
-  }
-
-  .filter-row-top {
-    display: grid;
-    grid-template-columns: minmax(180px, 1fr) 130px auto;
-    gap: 8px;
-    align-items: start;
-    margin-bottom: 10px;
-  }
-
-  .filter-row-card label {
-    display: block;
-    margin-bottom: 4px;
-    color: #7f1d1d;
-    font-size: 12px;
-    font-weight: bold;
-  }
-
-  .filter-row-card select,
-  .filter-row-card input[type="text"] {
-    width: 100%;
-  }
-
-  .filter-values-list {
-    max-height: 190px;
-    overflow: auto;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    background: white;
-    padding: 6px;
-  }
-
-  .filter-value-option {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 5px 6px;
-    border-radius: 6px;
-    font-size: 13px;
-  }
-
-  .filter-value-option:hover {
-    background: #fff1f2;
-  }
-
-  .filter-value-option.selected {
-    background: #fee2e2;
-    color: #7f1d1d;
-    font-weight: bold;
-  }
-
-  .filter-empty-state {
-    padding: 10px;
-    color: #6b7280;
-    font-size: 13px;
-  }
-
-  @media (max-width: 700px) {
-    .filter-row-top {
-      grid-template-columns: 1fr;
-    }
-
-    .people-search-row {
-      flex-direction: column;
-      align-items: stretch;
-    }
-  }
-
-  .small {
-    font-size: 12px;
-    color: #6b7280;
-    margin-top: 3px;
-  }
-
-  .drop-zone {
-    padding: 12px;
-    border: 2px dashed #fca5a5;
-    background: #fff7f7;
-    color: #7f1d1d;
-    border-radius: 10px;
-    text-align: center;
-    margin-bottom: 12px;
-    font-weight: bold;
-  }
-
-  .drop-zone.drag-over,
-  .drop-target.drag-over {
-    background: #fee2e2 !important;
-    outline: 3px solid #dc2626;
-    outline-offset: -3px;
-  }
-
-  .org-tree {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .director-block {
-    border: 2px solid #7f1d1d;
-    border-radius: 11px;
-    overflow: hidden;
-    background: #fff7f7;
-  }
-
-  .director-header {
-    background: #7f1d1d;
-    color: white;
-    padding: 10px;
-    font-weight: bold;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    cursor: grab;
-  }
-
-  .manager-block {
-    margin: 10px;
-    border: 1px solid #fca5a5;
-    border-radius: 9px;
-    background: white;
-    overflow: hidden;
-  }
-
-  .manager-header {
-    background: #fee2e2;
-    color: #7f1d1d;
-    padding: 9px;
-    font-weight: bold;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: grab;
-  }
-
-  .coach-row {
-    margin: 8px 10px;
-    padding: 8px;
-    border: 1px solid #fecaca;
-    background: #fffafa;
-    border-radius: 7px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: grab;
-  }
-
-  .name-click {
-    cursor: pointer;
-    color: #7f1d1d;
-    font-weight: bold;
-  }
-
-  .name-click:hover {
-    text-decoration: underline;
-  }
-
-  .director-header .name-click {
-    color: white;
-  }
-
-  .mini-btn {
-    padding: 4px 7px;
-    font-size: 11px;
-    border-radius: 4px;
-  }
-
-  .remove-btn {
-    background: #991b1b;
-  }
-
-  .role-actions {
-    display: flex;
-    gap: 5px;
-    flex-wrap: wrap;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    background: white;
-  }
-
-  th {
-    background: #7f1d1d;
-    color: white;
-    padding: 8px;
-    border: 1px solid #450a0a;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    text-align: left;
-  }
-
-  td {
-    padding: 7px;
-    border: 1px solid #e5e7eb;
-    vertical-align: top;
-  }
-
-  tr:nth-child(even) td {
-    background: #fff7f7;
-  }
-
-  .output-preview-wrap {
-    height: 360px;
-    max-height: 45vh;
-    overflow: auto;
-    border: 1px solid #e5e7eb;
-    border-radius: 0 0 8px 8px;
-    background: white;
-  }
-
-  .direct-report {
-    border: 1px solid #fecaca;
-    background: #fffafa;
-    border-radius: 8px;
-    padding: 9px;
-    margin-bottom: 8px;
-    cursor: grab;
-  }
-
-  .direct-report-title {
-    font-weight: bold;
-    margin-bottom: 4px;
-  }
-
-  .mapping-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .mapping-row label {
-    font-weight: bold;
-    font-size: 13px;
-  }
-
-  .status-pill {
-    background: #fff1f2;
-    border: 1px solid #fecaca;
-    border-radius: 999px;
-    padding: 6px 9px;
-    font-size: 12px;
-    font-weight: bold;
-    color: #7f1d1d;
-  }
-
-  .view-tabs {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-bottom: 10px;
-  }
-
-  .view-tab {
-    background: #6b7280;
-  }
-
-  .view-tab.active {
-    background: #7f1d1d;
-  }
-
-  .view-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 10px;
-  }
-
-  .path-cell {
-    font-weight: bold;
-    color: #7f1d1d;
-    min-width: 420px;
-    white-space: nowrap;
-  }
-
-  .email-list {
-    font-size: 12px;
-    line-height: 1.45;
-    min-width: 360px;
-  }
-
-  .options-wrap {
-    padding: 4px;
-  }
-
-  .options-card {
-    border: 1px solid #fecaca;
-    border-radius: 10px;
-    background: #fffafa;
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-
-  .options-card h3 {
-    margin: 0 0 10px;
-    color: #7f1d1d;
-  }
-
-  .options-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(180px, 1fr));
-    gap: 10px;
-  }
-
-  .options-field label {
-    display: block;
-    margin-bottom: 4px;
-    color: #7f1d1d;
-    font-size: 12px;
-    font-weight: bold;
-  }
-
-  .options-field input,
-  .options-field select {
-    width: 100%;
-  }
-
-  .options-actions {
-    display: flex;
-    gap: 7px;
-    flex-wrap: wrap;
-    margin-top: 10px;
-  }
-
-  .options-table-wrap {
-    max-height: 220px;
-    overflow: auto;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    background: white;
-  }
-
-  .original-name-note {
-    display: block;
-    font-size: 11px;
-    color: #6b7280;
-    font-weight: normal;
-    margin-top: 2px;
-  }
-
-  .director-header .original-name-note {
-    color: #fee2e2;
-  }
-
-
-  @media (max-width: 1150px) {
-    .layout {
-      grid-template-columns: 1fr;
-      height: auto;
-    }
-
-    .panel {
-      min-height: 340px;
-    }
-
-    .output-preview-wrap {
-      max-height: 420px;
-    }
-  }
-
-  .compare-wrap { padding: 10px; }
-  .compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-  .compare-card { border:1px solid #e5e7eb; border-radius:9px; padding:10px; background:#fffafa; }
-  .compare-card h3 { margin:0 0 8px; color:#7f1d1d; }
-  .compare-good { background:#dcfce7; border-left:5px solid #15803d; }
-  .emails-tool-wrap { padding: 10px; }
-  .email-tool-actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
-  .manual-email-input { width:100%; min-width:260px; padding:7px; border:1px solid #d1d5db; border-radius:6px; font-size:12px; }
-  .email-status-good { background:#dcfce7 !important; color:#166534; font-weight:bold; }
-  .email-status-warning { background:#fef9c3 !important; color:#854d0e; font-weight:bold; }
-  .email-status-bad { background:#fee2e2 !important; color:#991b1b; font-weight:bold; }
-  .compare-warning { background:#fef9c3; border-left:5px solid #ca8a04; }
-  .compare-bad { background:#fee2e2; border-left:5px solid #b91c1c; }
-  .compare-section { margin-top:12px; border:1px solid #e5e7eb; border-radius:9px; overflow:hidden; }
-  .compare-section h3 { margin:0; padding:9px 10px; background:#fff1f2; color:#7f1d1d; border-bottom:1px solid #e5e7eb; }
-  .diff-cell { background:#fee2e2 !important; color:#7f1d1d; font-weight:bold; }
-  .match-cell { background:#dcfce7 !important; }
-  .partial-cell { background:#fef9c3 !important; }
-  .safelite-email-box,
-  #safeliteEmailBox {
-    width: 100%;
-    min-height: 70px;
-    resize: vertical;
-    padding: 7px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-family: Arial, sans-serif;
-    font-size: 12px;
-  }
-  .safelite-users-row td {
-    background: #fff1f2 !important;
-    border-top: 3px solid #7f1d1d;
-  }
-
+  html,body{margin:0;height:100%;overflow:hidden;background:#f8fbff;font-family:Arial,Helvetica,sans-serif;color:#08111f;}
+  #game{width:100vw;height:100vh;display:block;cursor:crosshair;background:#fff;}
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5;color:#fff;text-shadow:0 0 10px #00eaff,0 1px 2px #001;}
+  #topbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;padding:10px 14px;background:rgba(8,12,28,.62);border:1px solid rgba(0,240,255,.55);border-radius:18px;box-shadow:0 0 28px rgba(0,220,255,.25);font-weight:900;}
+  .pill{padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);white-space:nowrap;}
+  #healthWrap{position:absolute;left:18px;top:18px;width:260px;padding:11px 13px;background:rgba(8,12,28,.62);border:1px solid rgba(255,0,180,.45);border-radius:16px;box-shadow:0 0 24px rgba(255,0,180,.18);font-weight:900;}
+  #healthBar{height:16px;border-radius:999px;background:rgba(255,255,255,.15);overflow:hidden;margin-top:7px;border:1px solid rgba(255,255,255,.22);}
+  #healthFill{height:100%;width:100%;background:linear-gradient(90deg,#00ffa8,#fff44f,#ff2b80);box-shadow:0 0 16px #00ffa8;}
+  #weaponName{font-size:17px;margin-top:9px;color:#fff;}
+  #crosshair{position:absolute;left:50%;top:50%;width:30px;height:30px;transform:translate(-50%,-50%);}
+  #crosshair:before,#crosshair:after{content:"";position:absolute;background:#071018;box-shadow:0 0 10px #fff,0 0 16px #00eaff;}
+  #crosshair:before{left:14px;top:0;width:2px;height:30px;} #crosshair:after{top:14px;left:0;height:2px;width:30px;}
+  #msg{position:absolute;left:50%;top:20%;transform:translateX(-50%);font-size:32px;font-weight:1000;color:#fff;text-align:center;text-shadow:0 0 14px #ff00c8,0 0 28px #00eaff,0 2px 3px #000;opacity:0;transition:opacity .15s;}
+  #feed{position:absolute;left:18px;bottom:18px;width:430px;max-height:190px;overflow:hidden;display:flex;flex-direction:column-reverse;gap:6px;}
+  #feed div{background:rgba(8,12,28,.66);border-left:4px solid #00eaff;padding:8px 10px;border-radius:9px;font-weight:800;box-shadow:0 0 16px rgba(0,220,255,.16);}
+  #minimap{position:absolute;right:16px;top:16px;width:178px;height:178px;border-radius:18px;border:1px solid rgba(0,220,255,.55);background:rgba(8,12,28,.62);box-shadow:0 0 24px rgba(0,220,255,.22);}
+  #death{position:fixed;inset:0;z-index:8;display:none;place-items:center;background:rgba(255,255,255,.34);backdrop-filter:blur(4px);font-size:36px;font-weight:1000;text-align:center;color:#fff;text-shadow:0 0 18px #ff004c,0 2px 4px #000;}
+  #menu{position:fixed;inset:0;z-index:10;background:radial-gradient(circle at 50% 35%,rgba(255,255,255,.92),rgba(224,249,255,.9) 45%,rgba(14,18,38,.96) 100%);display:flex;align-items:center;justify-content:center;color:#fff;}
+  #panel{width:min(840px,92vw);border:1px solid rgba(0,234,255,.7);border-radius:30px;padding:30px;background:linear-gradient(135deg,rgba(7,10,28,.95),rgba(22,8,46,.88));box-shadow:0 0 60px rgba(0,220,255,.28),inset 0 0 45px rgba(255,0,220,.12);}
+  h1{margin:0 0 8px;font-size:48px;letter-spacing:.035em;text-shadow:0 0 16px #ff00c8,0 0 30px #00eaff;}
+  .sub{opacity:.9;line-height:1.45;margin-bottom:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0;}
+  label{display:block;font-size:13px;text-transform:uppercase;letter-spacing:.08em;opacity:.82;margin-bottom:6px;}
+  select,button{width:100%;box-sizing:border-box;border-radius:14px;border:1px solid rgba(0,234,255,.45);background:#09091c;color:#fff;padding:13px 14px;font-weight:900;font-size:16px;outline:none;box-shadow:0 0 16px rgba(0,234,255,.12);}
+  button{cursor:pointer;background:linear-gradient(90deg,#ff2bbd,#00eaff);border:none;text-shadow:0 1px 3px #000;font-size:21px;margin-top:12px;}
+  .keys{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;font-size:14px;margin-top:14px;opacity:.95;}
+  .keys span{padding:9px 11px;background:rgba(255,255,255,.08);border-radius:12px;border:1px solid rgba(255,255,255,.13);}
 </style>
 </head>
-
 <body>
-
-<header>
-  <h1>Safelite Org Structure Builder</h1>
-  <p>Upload Excel, combine Last/First names, build the Director → Manager → Coach structure, save locally, and export Org, Users, or Filters views.</p>
-</header>
-
-<div class="toolbar">
-  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
-
-  <div class="mapping-row">
-    <label>First:</label>
-    <select id="firstNameSelect"></select>
-
-    <label>Last:</label>
-    <select id="lastNameSelect"></select>
-
-    <label>Supervisor:</label>
-    <select id="supervisorSelect"></select>
-
-    <label>Username / Studio Email:</label>
-    <select id="emailSelect"></select>
-
-    <button onclick="applyColumnMapping()">Apply Mapping</button>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="topbar">
+    <span class="pill" id="score">YOU 0</span>
+    <span class="pill" id="modeLabel">DM</span>
+    <span class="pill" id="ammo">READY</span>
+    <span class="pill" id="timer">05:00</span>
+    <span class="pill" id="botsLeft">BOTS 0</span>
   </div>
-
-  <label class="toggle-label">
-    <input type="checkbox" id="includeEmailToggle" checked onchange="renderAll()" />
-    Include Username/Email Column
-  </label>
-
-  <button class="green" onclick="saveLocal()">Local Save</button>
-  <button class="orange" onclick="loadLocal()">Local Load</button>
-  <button class="green" onclick="exportOrgBlueprint()">Export Org Blueprint</button>
-  <input type="file" id="blueprintImportInput" accept=".json,.xlsx,.xls,.csv" style="display:none;" onchange="handleBlueprintImport(event)" />
-  <button class="orange" onclick="document.getElementById('blueprintImportInput').click()">Upload Org Blueprint</button>
-  <button onclick="exportCSV()">Export CSV</button>
-  <button onclick="exportExcel()">Export Excel</button>
-  <button class="danger" onclick="clearOrg()">Clear Org</button>
-
-  <span id="statusPill" class="status-pill">No file loaded</span>
+  <div id="healthWrap">HEALTH <span id="healthText">100</span><div id="healthBar"><div id="healthFill"></div></div><div id="weaponName">ASSAULT RIFLE</div></div>
+  <canvas id="minimap" width="178" height="178"></canvas>
+  <div id="crosshair"></div>
+  <div id="msg"></div><div id="feed"></div>
 </div>
-
-<div id="progressWrap">
-  <div class="progress-top">
-    <span id="progressText">Processing...</span>
-    <span id="progressPercent">0%</span>
+<div id="death">YOU WERE DROPPED<br><small style="font-size:18px">Respawning...</small></div>
+<div id="menu"><div id="panel">
+  <h1>NEON PASTEL FPS ARENA</h1>
+  <div class="sub">Bigger Quake-style arena with real health, weapon pickups, charged plasma tiers, a continuous overheating plasma laser, automatic guns, visible projectile trails, solid opaque pastel platforms, tall no-fall boundary walls, animated 3D enemy bodies, and fast bots whose accuracy falls off hard with distance.</div>
+  <div class="grid">
+    <div><label>Game Mode</label><select id="mode"><option value="dm">Deathmatch</option><option value="tdm">Team Deathmatch</option></select></div>
+    <div><label>Difficulty</label><select id="difficulty"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option><option value="nightmare">Nightmare</option></select></div>
+    <div><label>Bot Count</label><select id="botCount"><option>4</option><option selected>6</option><option>8</option><option>10</option></select></div>
+    <div><label>Match Length</label><select id="matchLen"><option value="180">3 Minutes</option><option value="300" selected>5 Minutes</option><option value="600">10 Minutes</option></select></div>
   </div>
-  <div class="progress-track">
-    <div id="progressBar"></div>
-  </div>
-</div>
-
-<div class="layout">
-
-  <section class="panel">
-    <h2>People Search</h2>
-    <div class="panel-body">
-      <div class="people-search-row">
-        <input
-          id="searchInput"
-          type="text"
-          placeholder="Search names, overrides, or usernames..."
-          oninput="renderPeopleList()"
-        />
-        <button id="peopleFilterButton" class="filter-button" onclick="openPeopleFilters()">Filters</button>
-      </div>
-
-      <label class="toggle-label" style="margin-bottom:10px;">
-        <input type="checkbox" id="hideAssignedPeopleToggle" onchange="renderPeopleList()" />
-        Hide people already assigned in Org Builder
-      </label>
-
-      <div id="peopleListSummary" class="people-list-summary">Showing 0 of 0 people</div>
-
-      <div class="notice">
-        Drag a person into the org builder. Click a person anywhere to show their available direct reports on the right.
-      </div>
-
-      <div id="peopleList" class="person-list"></div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Org Builder</h2>
-    <div class="panel-body">
-
-      <div
-        id="directorDropZone"
-        class="drop-zone"
-        ondragover="allowDrop(event)"
-        ondragleave="removeDragOver(event)"
-        ondrop="dropAsDirector(event)"
-      >
-        Drop a person here to add them as a Director
-      </div>
-
-      <div class="notice">
-        Drag a name onto a Director to make them a Manager. Drag a name onto a Manager to make them a Coach.
-        Existing Directors, Managers, and Coaches can be dragged to change their placement.
-      </div>
-
-      <div id="orgTree" class="org-tree"></div>
-
-      <h2 style="margin:15px 0 0; border-radius:8px 8px 0 0;">Output Preview</h2>
-
-      <div class="view-tabs">
-        <button id="orgViewBtn" class="view-tab active" onclick="setViewMode('org')">Org View</button>
-        <button id="usersViewBtn" class="view-tab" onclick="setViewMode('users')">Users View</button>
-        <button id="filtersViewBtn" class="view-tab" onclick="setViewMode('filters')">Filters View</button>
-        <button id="emailsViewBtn" class="view-tab" onclick="setViewMode('emails')">Emails</button>
-        <button id="compareViewBtn" class="view-tab" onclick="setViewMode('compare')">Compare Files</button>
-        <button id="optionsViewBtn" class="view-tab" onclick="setViewMode('options')">Options</button>
-      </div>
-
-      <div class="view-actions">
-        <button class="green" onclick="autoFillCoaches()">Auto Fill Coaches</button>
-        <button class="secondary" onclick="autoFillAllLeaders()">Auto Fill All Leaders</button>
-        <button class="secondary" onclick="clearFilledEmails()">Clear Filled Emails</button>
-      </div>
-
-      <div class="output-preview-wrap">
-        <table id="outputTable">
-          <thead>
-            <tr id="outputTableHeader"></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Selected Person / Direct Reports</h2>
-    <div class="panel-body">
-      <div id="selectedBox" class="notice">
-        Click a person to show everyone who has that person listed under the Supervisor column.
-      </div>
-
-      <div class="role-actions" style="margin-bottom:10px;">
-        <button class="primary-add-btn" onclick="autoAddAllDirectReports()">Add All Direct Reports Under Selected</button>
-        <button class="secondary-add-btn" onclick="addSelectedAsDirector()">Add Selected as Director</button>
-      </div>
-
-      <div id="directReportsBox"></div>
-    </div>
-  </section>
-
-</div>
-
-<div id="peopleFilterModalBackdrop" class="filter-modal-backdrop" onclick="handlePeopleFilterBackdropClick(event)">
-  <div class="filter-modal" role="dialog" aria-modal="true" aria-labelledby="peopleFilterTitle">
-    <div class="filter-modal-header">
-      <h2 id="peopleFilterTitle">People Filters</h2>
-      <button class="filter-close-btn" onclick="closePeopleFilters()" aria-label="Close people filters">×</button>
-    </div>
-    <div id="peopleFilterModalBody" class="filter-modal-body"></div>
-    <div class="filter-modal-actions">
-      <button onclick="addPeopleFilterRow()">+ Add Filter</button>
-      <button class="green" onclick="savePeopleFiltersAndClose()">Save Changes and Leave</button>
-      <button class="danger" onclick="clearPeopleFilters()">Clear Filters</button>
-      <button class="secondary" onclick="closePeopleFilters()">Leave</button>
-    </div>
-  </div>
-</div>
-
+  <button id="start">START MATCH</button>
+  <div class="keys"><span>W/S: camera forward/back</span><span>A/D: true left/right strafe</span><span>Mouse: look around</span><span>Hold left click: auto-fire / charge plasma</span><span>Space: high jump</span><span>Run over hovering guns, including plasma laser, to pick them up</span></div>
+</div></div>
 <script>
-const STORAGE_KEY = "safeliteOrgStructureBuilder_v7";
-
-let rawRows = [];
-let people = [];
-let selectedPerson = null;
-let draggedItem = null;
-
-let columns = {
-  first: null,
-  last: null,
-  supervisor: null,
-  email: null
+(() => {
+'use strict';
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+const mm=document.getElementById('minimap'), mctx=mm.getContext('2d');
+const hud={score:el('score'),ammo:el('ammo'),timer:el('timer'),botsLeft:el('botsLeft'),mode:el('modeLabel'),msg:el('msg'),feed:el('feed'),death:el('death'),healthText:el('healthText'),healthFill:el('healthFill'),weaponName:el('weaponName')};
+function el(id){return document.getElementById(id)}
+let W=innerWidth,H=innerHeight,DPR=Math.min(2,devicePixelRatio||1);
+function resize(){W=innerWidth;H=innerHeight;canvas.width=W*DPR;canvas.height=H*DPR;canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize); resize();
+const TAU=Math.PI*2, GRAV=34, PLAYER_H=1.72, HEAD_CLEAR=.18, MAP_LIMIT=46.5;
+const keys=Object.create(null); addEventListener('keydown',e=>{keys[e.code]=true}); addEventListener('keyup',e=>keys[e.code]=false);
+let pointer=false, mouseDX=0, mouseDY=0, fireHeld=false;
+canvas.addEventListener('click',()=>{if(game.started) canvas.requestPointerLock()});
+document.addEventListener('pointerlockchange',()=>pointer=document.pointerLockElement===canvas);
+document.addEventListener('mousemove',e=>{if(pointer){mouseDX+=e.movementX; mouseDY+=e.movementY}});
+canvas.addEventListener('mousedown',e=>{if(e.button===0&&game.started){fireHeld=true;if(player.weapon!=='plasma'&&player.weapon!=='laser')tryFire(player,true)}});
+addEventListener('mouseup',e=>{if(e.button===0){if(game.started&&player.weapon==='plasma')releasePlayerPlasma();fireHeld=false}});
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))} function rand(a,b){return a+Math.random()*(b-a)} function pick(a){return a[(Math.random()*a.length)|0]} function hypot2(x,z){return Math.hypot(x,z)}
+function msg(t){hud.msg.textContent=t;hud.msg.style.opacity=1;clearTimeout(msg.t);msg.t=setTimeout(()=>hud.msg.style.opacity=0,950)}
+function feed(t){const d=document.createElement('div');d.textContent=t;hud.feed.prepend(d);while(hud.feed.children.length>8)hud.feed.lastChild.remove()}
+const WEAPONS={
+  assault:{name:'ASSAULT RIFLE',damage:16,range:82,cool:.085,spread:.014,mag:36,reload:1.05,tracers:1,color:'#00eaff',falloff:.28,kind:'hitscan'},
+  sniper:{name:'SNIPER',damage:78,head:999,range:120,cool:.72,spread:.002,mag:5,reload:1.65,tracers:1,color:'#ffffff',falloff:.02,kind:'hitscan'},
+  smg:{name:'SMG',damage:10,range:54,cool:.055,spread:.045,mag:42,reload:.95,tracers:1,color:'#ffea00',falloff:.72,kind:'hitscan'},
+  shotgun:{name:'SHOTGUN',damage:16,range:34,cool:.58,spread:.125,mag:8,reload:1.20,tracers:8,color:'#ff7a2b',falloff:1.05,kind:'shotgun'},
+  plasma:{name:'PLASMA BLASTER',damage:22,range:90,cool:.22,spread:.006,mag:999,reload:0,tracers:1,color:'#9b5cff',falloff:.08,kind:'plasma',heat:.18,coolRate:.48,chargeRate:.92},
+  laser:{name:'PLASMA LASER',damage:8.5,range:86,cool:.035,spread:.001,mag:999,reload:0,tracers:1,color:'#ff2bff',falloff:.04,kind:'laser',heatRate:1.28,coolRate:.62}
 };
-
-let org = [];
-let currentViewMode = "org";
-let filledReportEmails = {};
-let compareRawRows = [];
-let comparePeople = [];
-let compareColumns = { first: null, last: null, supervisor: null, email: null };
-let compareResults = null;
-let lastBlueprintLoadSummary = null;
-let safeliteUsersEmails = [];
-let savedPersonEmails = {};
-let personOverrides = {};
-let optionsSelectedOriginalName = "";
-let pendingEmailAttachments = {};
-let activePeopleFilters = [];
-let draftPeopleFilters = [];
-let hideAssignedPeople = false;
-
-const possibleFirstNames = [
-  "first",
-  "firstname",
-  "first name",
-  "given name",
-  "employee first name",
-  "associate first name"
-];
-
-const possibleLastNames = [
-  "last",
-  "lastname",
-  "last name",
-  "surname",
-  "employee last name",
-  "associate last name"
-];
-
-const possibleSupervisorNames = [
-  "supervisor",
-  "supervisor name",
-  "manager",
-  "manager name",
-  "reports to",
-  "leader",
-  "coach",
-  "direct supervisor"
-];
-
-const possibleEmailNames = [
-  "username",
-  "user name",
-  "studio username",
-  "network username",
-  "login",
-  "login id",
-  "user id",
-  "userid",
-  "studio email address",
-  "studio email",
-  "email",
-  "email address",
-  "work email",
-  "business email",
-  "employee email",
-  "associate email",
-  "e-mail",
-  "mail"
-];
-
-document.getElementById("fileInput").addEventListener("change", handleFileUpload);
-
-function normalizeHeader(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_\-]+/g, " ")
-    .replace(/\s+/g, " ");
+const DIFF={easy:{aim:.25,react:.55,move:7.2,fire:.88},normal:{aim:.38,react:.38,move:8.4,fire:.68},hard:{aim:.52,react:.28,move:9.5,fire:.54},nightmare:{aim:.64,react:.22,move:10.7,fire:.43}};
+const game={started:false,mode:'dm',difficulty:'normal',botCount:6,time:300,timeLeft:300,over:false};
+const player={name:'YOU',x:0,y:PLAYER_H,z:24,vx:0,vy:0,vz:0,yaw:Math.PI,pitch:0,onGround:false,r:.46,team:1,score:0,deaths:0,dead:false,hp:100,maxHp:100,weapon:'assault',ammo:30,reload:0,cool:0,heat:0,spawnGrace:0};
+let bots=[],platforms=[],walls=[],nav=[],pads=[],pickups=[],shots=[],projectiles=[],particles=[],lasers=[];
+const pastel=['#9ee7ff','#ffc3e6','#c8ffd4','#fff0a8','#d8c9ff','#ffcfb8','#b9fff5','#e9ffbd'];
+function addPlat(x,z,w,d,y,h,c){platforms.push({x,z,w,d,y,h,c});nav.push({x,z,y:y+h+PLAYER_H,r:Math.max(w,d)*.34})}
+function addWall(x,z,w,d,h,c){walls.push({x,z,w,d,y:h/2,h,c});}
+function buildMap(){platforms=[];walls=[];nav=[];pads=[];pickups=[];
+  addPlat(0,0,88,88,-.7,.7,'#eef2ff');
+  addPlat(-31,-31,18,18,2.5,.9,pastel[0]); addPlat(31,-31,18,18,2.5,.9,pastel[1]); addPlat(-31,31,18,18,2.5,.9,pastel[2]); addPlat(31,31,18,18,2.5,.9,pastel[3]);
+  addPlat(0,-35,21,13,5.7,.9,pastel[4]); addPlat(0,35,21,13,5.7,.9,pastel[5]); addPlat(-35,0,13,21,5.4,.9,pastel[6]); addPlat(35,0,13,21,5.4,.9,pastel[7]);
+  addPlat(0,0,22,22,9.3,.9,'#f2d1ff'); addPlat(0,0,10,10,13.0,.9,'#d7fbff');
+  addPlat(0,-18,10,29,3.0,.55,'#dff7ff'); addPlat(0,18,10,29,3.0,.55,'#ffe0f2'); addPlat(-18,0,29,10,3.0,.55,'#e2ffd9'); addPlat(18,0,29,10,3.0,.55,'#fff6c9');
+  addPlat(-18,-18,12,12,7.4,.8,'#cfe0ff'); addPlat(18,-18,12,12,7.4,.8,'#ffd8d8'); addPlat(-18,18,12,12,7.4,.8,'#d4ffd9'); addPlat(18,18,12,12,7.4,.8,'#fff5c4');
+  // Tall bright boundary walls: impossible to jump over, impossible to fall off map.
+  addWall(0,-46,96,2.2,22,'#00eaff'); addWall(0,46,96,2.2,22,'#ff2bbd'); addWall(-46,0,2.2,96,22,'#00ffa8'); addWall(46,0,2.2,96,22,'#ffea00');
+  addWall(-12,-12,2.4,18,5.6,'#f5ff6b'); addWall(12,12,2.4,18,5.6,'#f5ff6b'); addWall(12,-12,18,2.4,5.6,'#78ffd8'); addWall(-12,12,18,2.4,5.6,'#78ffd8');
+  pads=[{x:-39,z:39},{x:39,z:-39},{x:-39,z:-39},{x:39,z:39},{x:0,z:0},{x:0,z:-39},{x:0,z:39}];
+  for(const p of pads)nav.push({x:p.x,z:p.z,y:PLAYER_H,r:4});
+  addPickup('sniper',-31,-31,4.1); addPickup('shotgun',31,-31,4.1); addPickup('smg',-31,31,4.1); addPickup('plasma',31,31,4.1); addPickup('assault',0,0,14.5); addPickup('sniper',0,35,7.3); addPickup('plasma',35,0,7.0); addPickup('laser',-35,0,7.0); addPickup('shotgun',-35,0,7.0);
 }
-
-function normalizeName(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/\s*,\s*/g, ", ")
-    .toLowerCase();
+function addPickup(type,x,z,y){pickups.push({type,x,z,y,spin:rand(0,TAU),taken:0})}
+function topAtPoint(x,z){let best=-999;for(const p of platforms){if(Math.abs(x-p.x)<=p.w/2&&Math.abs(z-p.z)<=p.d/2)best=Math.max(best,p.y+p.h)}return best}
+function blocks(){const out=[];for(const p of platforms)out.push({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h,c:p.c,kind:'platform'});for(const w of walls)out.push({...w,kind:'wall'});return out}
+function pushOutXZ(ent){const r=ent.r||.45,feet=ent.y-PLAYER_H+HEAD_CLEAR,head=ent.y;for(const b of blocks()){const b0=b.y-b.h/2,b1=b.y+b.h/2;if(feet>=b1-.04||head<=b0+.04)continue;const dx=ent.x-b.x,dz=ent.z-b.z,ox=b.w/2+r-Math.abs(dx),oz=b.d/2+r-Math.abs(dz);if(ox>0&&oz>0){if(ox<oz){ent.x+=dx<0?-ox:ox;ent.vx=0}else{ent.z+=dz<0?-oz:oz;ent.vz=0}}}
+  if(ent.x<-MAP_LIMIT){ent.x=-MAP_LIMIT;ent.vx=0} if(ent.x>MAP_LIMIT){ent.x=MAP_LIMIT;ent.vx=0} if(ent.z<-MAP_LIMIT){ent.z=-MAP_LIMIT;ent.vz=0} if(ent.z>MAP_LIMIT){ent.z=MAP_LIMIT;ent.vz=0}
 }
-
-function normalizeFilterValue(value) {
-  return String(value ?? "").trim().toLowerCase();
+function verticalCollide(ent,oldY){ent.onGround=false;const r=ent.r||.45,oldFeet=oldY-PLAYER_H,newFeet=ent.y-PLAYER_H,oldHead=oldY,newHead=ent.y;for(const b of blocks()){const xok=Math.abs(ent.x-b.x)<=b.w/2+r*.72,zok=Math.abs(ent.z-b.z)<=b.d/2+r*.72;if(!xok||!zok)continue;const b0=b.y-b.h/2,b1=b.y+b.h/2;if(ent.vy<=0&&oldFeet>=b1-.04&&newFeet<=b1+.04){ent.y=b1+PLAYER_H;ent.vy=0;ent.onGround=true}else if(ent.vy>0&&oldHead<=b0+.08&&newHead>=b0-.08){ent.y=b0-.10;ent.vy=0}}
 }
+function physics(ent,dt){const oldY=ent.y;ent.vy-=GRAV*dt;ent.x+=ent.vx*dt;ent.z+=ent.vz*dt;pushOutXZ(ent);ent.y+=ent.vy*dt;verticalCollide(ent,oldY);if(ent.y<-8)spawn(ent)}
+function spawn(ent){const sp=pick(nav);ent.x=sp.x+rand(-3.4,3.4);ent.z=sp.z+rand(-3.4,3.4);ent.y=topAtPoint(ent.x,ent.z)+PLAYER_H;if(ent.y<-20)ent.y=PLAYER_H;ent.vx=ent.vy=ent.vz=0;ent.dead=false;ent.hp=ent.maxHp||100;ent.spawnGrace=.9;ent.target=pick(nav);ent.walk=0;ent.faceYaw=ent.yaw||0;if(ent!==player){ent.weapon=pick(['assault','smg','shotgun','sniper','plasma','laser']);equip(ent,ent.weapon,false)}}
+function equip(ent,type,announce=true){ent.weapon=type;const w=WEAPONS[type];ent.ammo=w.mag;ent.reload=0;ent.cool=.12;ent.heat=0;ent.charge=0;if(ent===player){styleGun(type);if(announce)msg('PICKED UP '+w.name)}}
+function styleGun(type){const w=WEAPONS[type]||WEAPONS.assault;hud.weaponName.textContent=w.name}
+function initBots(){bots=[];const names=['VOLT','NOVA','RAZOR','GLITCH','ONYX','PULSE','HEX','ECHO','RIFT','BLITZ'];for(let i=0;i<game.botCount;i++){const b={name:names[i%names.length],x:0,y:PLAYER_H,z:0,vx:0,vy:0,vz:0,r:.48,yaw:0,pitch:0,onGround:false,team:game.mode==='tdm'?(i%2)+2:10+i,score:0,deaths:0,dead:false,hp:100,maxHp:100,weapon:'assault',ammo:30,reload:0,cool:0,heat:0,think:0,fireCd:rand(.2,1),target:null,enemy:null,strafe:Math.random()<.5?-1:1,strafeT:0,color:i%2?'#ff2bbd':'#00eaff',walk:0,faceYaw:0};spawn(b);bots.push(b)}}
+function reset(){buildMap();game.mode=el('mode').value;game.difficulty=el('difficulty').value;game.botCount=+el('botCount').value;game.time=+el('matchLen').value;game.timeLeft=game.time;game.over=false;player.score=0;player.deaths=0;player.team=game.mode==='tdm'?1:0;player.dead=false;player.yaw=Math.PI;player.pitch=0;equip(player,'assault',false);spawn(player);initBots();shots=[];projectiles=[];particles=[];lasers=[];hud.feed.innerHTML='';hud.mode.textContent=game.mode==='tdm'?'TEAM DM':'DEATHMATCH';game.started=true;styleGun(player.weapon);feed('Match started. Weapons hover over the arena. Run through them to swap guns, including the new overheating plasma laser.');}
+el('start').onclick=()=>{el('menu').style.display='none';reset();canvas.requestPointerLock()};
+function sameTeam(a,b){return game.mode==='tdm'&&a.team===b.team}
+function updatePlayer(dt){player.spawnGrace=Math.max(0,player.spawnGrace-dt);if(player.dead)return;player.yaw+=mouseDX*.00225;player.pitch=clamp(player.pitch+mouseDY*.00225,-1.25,1.25);mouseDX=mouseDY=0;
+  const fX=Math.sin(player.yaw),fZ=Math.cos(player.yaw),rX=Math.cos(player.yaw),rZ=-Math.sin(player.yaw);let ax=0,az=0;if(keys.KeyW){ax+=fX;az+=fZ}if(keys.KeyS){ax-=fX;az-=fZ}if(keys.KeyD){ax+=rX;az+=rZ}if(keys.KeyA){ax-=rX;az-=rZ}const l=Math.hypot(ax,az)||1,speed=13.2,targetVX=ax/l*speed,targetVZ=az/l*speed,accel=player.onGround?25:8;player.vx+=(targetVX-player.vx)*clamp(accel*dt,0,1);player.vz+=(targetVZ-player.vz)*clamp(accel*dt,0,1);if(keys.Space&&player.onGround){player.vy=19.4;player.onGround=false;burst(player.x,player.y-1,player.z,'#fff')}for(const p of pads){if(hypot2(player.x-p.x,player.z-p.z)<2.5&&player.onGround){player.vy=23;burst(player.x,player.y-1,player.z,'#00eaff')}}physics(player,dt);updateWeaponTimers(player,dt);pickupCheck(player);if(fireHeld&&!player.dead){if(player.weapon==='plasma')chargePlayerPlasma(dt);else if(player.weapon==='laser')tryFire(player,true);else tryFire(player,true)}}
+function updateWeaponTimers(ent,dt){if(ent.cool>0)ent.cool-=dt;if(ent.reload>0){ent.reload-=dt;if(ent.reload<=0){ent.ammo=WEAPONS[ent.weapon].mag;ent.reload=0;if(ent===player)msg(WEAPONS[ent.weapon].name+' READY')}}if(ent.weapon==='plasma')ent.heat=Math.max(0,(ent.heat||0)-WEAPONS.plasma.coolRate*dt);else if(ent.weapon==='laser')ent.heat=Math.max(0,(ent.heat||0)-WEAPONS.laser.coolRate*dt)}
+function pickupCheck(ent){for(const p of pickups){if(p.taken>0)continue;const dy=Math.abs(ent.y-(p.y+1.1));if(hypot2(ent.x-p.x,ent.z-p.z)<1.8&&dy<3.5){equip(ent,p.type,ent===player);p.taken=8;if(ent===player)feed('Picked up '+WEAPONS[p.type].name)}}}
+function chargeColor(tier){return tier>=4?'#ff2bff':tier>=3?'#ffea00':tier>=2?'#00ffa8':'#9b5cff'}
+function chargeTier(charge){return charge>.92?4:charge>.62?3:charge>.32?2:1}
+function chargePlayerPlasma(dt){if(player.cool>0||player.reload>0||player.heat>.92)return;player.charge=clamp((player.charge||0)+WEAPONS.plasma.chargeRate*dt,0,1);}
+function releasePlayerPlasma(){if(player.weapon!=='plasma'||player.dead)return;if((player.charge||0)>.05)tryFire(player,true,player.charge);player.charge=0;styleGun(player.weapon)}
+function tryFire(shooter,isPlayer,charge=0){if(shooter.dead||shooter.cool>0||shooter.reload>0)return;const w=WEAPONS[shooter.weapon];if(w.kind==='laser')return fireLaserBeam(shooter,isPlayer);if(w.kind!=='plasma'&&shooter.ammo<=0){shooter.reload=w.reload;return}if(w.kind==='plasma'){const tier=chargeTier(charge||.08), heatCost=.10+.09*tier;if((shooter.heat||0)+heatCost>.99)return;shooter.heat=(shooter.heat||0)+heatCost;shooter.cool=w.cool+.08*tier;}else{shooter.ammo--;shooter.cool=w.cool;if(shooter.ammo<=0)shooter.reload=w.reload}flash(isPlayer,w.kind==='plasma'?chargeColor(chargeTier(charge||.08)):w.color);if(w.kind==='plasma')firePlasma(shooter,isPlayer,charge||.08);else fireHitscan(shooter,isPlayer,w);}
+function flash(isPlayer,c){if(isPlayer){if(hud.muzzle){hud.muzzle.style.opacity=1;setTimeout(()=>hud.muzzle.style.opacity=0,55)}}}
+function dirFrom(shooter,spread=0){let yaw=shooter.yaw+rand(-spread,spread), pitch=(shooter.pitch||0)+rand(-spread,spread);const sy=Math.sin(yaw),cy=Math.cos(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);return {x:sy*cp,y:-sp,z:cy*cp}}
+function fireHitscan(shooter,isPlayer,w){const pellets=w.kind==='shotgun'?w.tracers:1;for(let i=0;i<pellets;i++){const d=dirFrom(shooter,w.spread*(w.kind==='shotgun'?rand(.45,1.35):1));let hit=null,hitDist=w.range,head=false;for(const t of targetsFor(shooter,isPlayer)){if(t.spawnGrace>0)continue;const res=rayEntity(shooter,d,t,w.range);if(res&&res.dist<hitDist&&lineClear(shooter.x,shooter.y,shooter.z,t.x,t.y,t.z)){hit=t;hitDist=res.dist;head=res.head}}shots.push({x:shooter.x,y:shooter.y-.05,z:shooter.z,dx:d.x,dy:d.y,dz:d.z,life:w.kind==='shotgun'?.16:.13,maxLife:w.kind==='shotgun'?.16:.13,len:hitDist,color:w.color,width:w.kind==='shotgun'?2.2:(shooter.weapon==='sniper'?4:2.7)});if(hit){let dmg=w.damage;if(head&&shooter.weapon==='sniper')dmg=w.head;const fall=clamp(1-(hitDist/w.range)*w.falloff,.18,1);damage(hit,dmg*fall,shooter,head)}}}
 
-function getPeopleFilterHeaders() {
-  return Object.keys(rawRows[0] || {});
+function fireLaserBeam(shooter,isPlayer){
+  const w=WEAPONS.laser;if(shooter.dead||shooter.reload>0)return;
+  if((shooter.heat||0)>.96){shooter.reload=.72;shooter.heat=.82;if(isPlayer)msg('LASER OVERHEATED');return;}
+  shooter.cool=w.cool;shooter.heat=clamp((shooter.heat||0)+w.heatRate*w.cool,0,1.05);
+  const d=dirFrom(shooter,w.spread);let hit=null,hitDist=w.range;
+  for(const t of targetsFor(shooter,isPlayer)){if(t.spawnGrace>0)continue;const res=rayEntity(shooter,d,t,w.range);if(res&&res.dist<hitDist&&lineClear(shooter.x,shooter.y,shooter.z,t.x,t.y,t.z)){hit=t;hitDist=res.dist}}
+  lasers.push({x:shooter.x,y:shooter.y-.05,z:shooter.z,dx:d.x,dy:d.y,dz:d.z,life:.075,maxLife:.075,len:hitDist,color:w.color,width:isPlayer?7:4});
+  if(hit){const fall=clamp(1-(hitDist/w.range)*w.falloff,.35,1);damage(hit,w.damage*fall,shooter,false)}
 }
-
-function getValidPeopleFilters(filters = activePeopleFilters) {
-  const headers = new Set(getPeopleFilterHeaders());
-
-  return (Array.isArray(filters) ? filters : [])
-    .filter(filter => filter && headers.has(filter.header) && Array.isArray(filter.values) && filter.values.length)
-    .map(filter => ({
-      header: filter.header,
-      operator: filter.operator === "is not" ? "is not" : "is",
-      values: Array.from(new Set(filter.values.map(value => String(value ?? ""))))
-    }));
-}
-
-function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
-}
-function isLikelyEmail(value) {
-  const text = String(value || "").trim();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
-}
-function parseEmailList(text) {
-  const seen = new Set();
-
-  return String(text || "")
-    .split(",")
-    .map(email => email.trim())
-    .filter(Boolean)
-    .filter(email => {
-      const key = normalizeEmail(email);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-}
-
-function titleName(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/\s*,\s*/g, ", ");
-}
-
-function makeDisplayName(first, last) {
-  first = String(first || "").trim();
-  last = String(last || "").trim();
-
-  if (!first && !last) return "";
-  if (!last) return first;
-  if (!first) return last;
-
-  return `${last}, ${first}`;
-}
-
-function showProgress(text, percent) {
-  const wrap = document.getElementById("progressWrap");
-  const bar = document.getElementById("progressBar");
-  const label = document.getElementById("progressText");
-  const pct = document.getElementById("progressPercent");
-
-  wrap.style.display = "block";
-  label.textContent = text;
-  pct.textContent = `${Math.round(percent)}%`;
-  bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-}
-
-function hideProgress() {
-  document.getElementById("progressWrap").style.display = "none";
-  document.getElementById("progressBar").style.width = "0%";
-  document.getElementById("progressPercent").textContent = "0%";
-}
-
-function handleFileUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  showProgress("Reading Excel file...", 5);
-
-  const reader = new FileReader();
-
-  reader.onload = function(e) {
-    showProgress("Parsing workbook...", 15);
-
-    setTimeout(() => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-
-        showProgress("Converting sheet to rows...", 30);
-
-        rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-        if (!rawRows.length) {
-          hideProgress();
-          alert("No rows found in this file.");
-          return;
-        }
-
-        setupColumnSelectors();
-
-        showProgress("Preparing Last, First names and usernames...", 40);
-
-        processPeopleInChunks(() => {
-          selectedPerson = null;
-          renderAll();
-          showProgress("Complete", 100);
-          setTimeout(hideProgress, 600);
-          setStatus(`${people.length} people loaded from ${file.name}`);
-        });
-
-      } catch (error) {
-        console.error(error);
-        hideProgress();
-        alert("There was an issue reading this file.");
-      }
-    }, 50);
-  };
-
-  reader.readAsArrayBuffer(file);
-}
-
-function setupColumnSelectors() {
-  const headers = Object.keys(rawRows[0] || {});
-
-  columns.first = findBestHeader(headers, possibleFirstNames);
-  columns.last = findBestHeader(headers, possibleLastNames);
-  columns.supervisor = findBestHeader(headers, possibleSupervisorNames);
-  columns.email = findBestHeader(headers, possibleEmailNames);
-
-  fillSelect("firstNameSelect", headers, columns.first);
-  fillSelect("lastNameSelect", headers, columns.last);
-  fillSelect("supervisorSelect", headers, columns.supervisor);
-  fillSelect("emailSelect", headers, columns.email);
-}
-
-function findBestHeader(headers, possibleNames) {
-  for (const header of headers) {
-    const normalized = normalizeHeader(header);
-    if (possibleNames.includes(normalized)) {
-      return header;
-    }
-  }
-
-  for (const header of headers) {
-    const normalized = normalizeHeader(header);
-    if (possibleNames.some(p => normalized.includes(p))) {
-      return header;
-    }
-  }
-
-  return headers[0] || null;
-}
-
-function fillSelect(id, headers, selectedHeader) {
-  const select = document.getElementById(id);
-  select.innerHTML = "";
-
-  headers.forEach(header => {
-    const option = document.createElement("option");
-    option.value = header;
-    option.textContent = header;
-    if (header === selectedHeader) option.selected = true;
-    select.appendChild(option);
-  });
-}
-
-function applyColumnMapping() {
-  if (!rawRows.length) {
-    alert("Upload a file first.");
-    return;
-  }
-
-  columns.first = document.getElementById("firstNameSelect").value;
-  columns.last = document.getElementById("lastNameSelect").value;
-  columns.supervisor = document.getElementById("supervisorSelect").value;
-  columns.email = document.getElementById("emailSelect").value;
-
-  showProgress("Processing names in chunks...", 0);
-
-  processPeopleInChunks(() => {
-    selectedPerson = null;
-    renderAll();
-    showProgress("Complete", 100);
-    setTimeout(hideProgress, 500);
-    setStatus(`${people.length} people mapped`);
-  });
-}
-
-function processPeopleInChunks(doneCallback) {
-  people = [];
-
-  const total = rawRows.length;
-  const chunkSize = 500;
-  let index = 0;
-
-  function processChunk() {
-    const end = Math.min(index + chunkSize, total);
-
-    for (; index < end; index++) {
-      const row = rawRows[index];
-
-      const first = row[columns.first];
-      const last = row[columns.last];
-      const name = makeDisplayName(first, last);
-
-      if (!name) continue;
-
-      people.push({
-        id: `person_${index}`,
-        first: String(first || "").trim(),
-        last: String(last || "").trim(),
-        name,
-        nameKey: normalizeName(name),
-        email: String(row[columns.email] || "").trim(),
-        supervisorRaw: titleName(row[columns.supervisor]),
-        supervisorKey: normalizeName(row[columns.supervisor]),
-        originalSupervisorRaw: titleName(row[columns.supervisor]),
-        originalSupervisorKey: normalizeName(row[columns.supervisor]),
-        raw: row
-      });
-    }
-
-    const percent = total ? 40 + ((index / total) * 55) : 95;
-    showProgress(`Processing rows ${index.toLocaleString()} of ${total.toLocaleString()}...`, percent);
-
-    if (index < total) {
-      setTimeout(processChunk, 0);
-    } else {
-      people.sort((a, b) => a.name.localeCompare(b.name));
-      doneCallback();
-    }
-  }
-
-  processChunk();
-}
-
-function renderAll() {
-  renderPeopleList();
-  renderSelectedPerson();
-  renderOrg();
-  renderOutputTable();
-}
-
-function updateFilterButtonLabel() {
-  const button = document.getElementById("peopleFilterButton");
-  if (!button) return;
-
-  const count = getValidPeopleFilters().length;
-  button.textContent = count ? `Filters (${count})` : "Filters";
-  button.disabled = !rawRows.length;
-  button.title = rawRows.length ? "Open people filters" : "Upload a file before creating people filters";
-}
-
-function getUniqueValuesForHeader(header) {
-  const seen = new Map();
-
-  rawRows.forEach(row => {
-    const rawValue = row ? row[header] : "";
-    const value = String(rawValue ?? "").trim();
-    const key = normalizeFilterValue(value);
-
-    if (!seen.has(key)) {
-      seen.set(key, value);
-    }
-  });
-
-  return Array.from(seen.values()).sort((a, b) => {
-    if (!a && b) return -1;
-    if (a && !b) return 1;
-    return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
-  });
-}
-
-function openPeopleFilters() {
-  const backdrop = document.getElementById("peopleFilterModalBackdrop");
-
-  if (!rawRows.length) {
-    draftPeopleFilters = [];
-    if (backdrop) backdrop.classList.add("open");
-    renderPeopleFilterModal("Upload a people file before creating filters.");
-    return;
-  }
-
-  draftPeopleFilters = getValidPeopleFilters().map(filter => ({
-    header: filter.header,
-    operator: filter.operator,
-    values: [...filter.values],
-    search: ""
-  }));
-
-  if (!draftPeopleFilters.length) addPeopleFilterRow(false);
-  if (backdrop) backdrop.classList.add("open");
-  renderPeopleFilterModal();
-}
-
-function closePeopleFilters() {
-  const backdrop = document.getElementById("peopleFilterModalBackdrop");
-  if (backdrop) backdrop.classList.remove("open");
-}
-
-function handlePeopleFilterBackdropClick(event) {
-  if (event.target && event.target.id === "peopleFilterModalBackdrop") {
-    closePeopleFilters();
-  }
-}
-
-function addPeopleFilterRow(shouldRender = true) {
-  const headers = getPeopleFilterHeaders();
-
-  if (!headers.length) {
-    if (shouldRender) renderPeopleFilterModal("Upload a people file before creating filters.");
-    return;
-  }
-
-  draftPeopleFilters.push({
-    header: headers[0],
-    operator: "is",
-    values: [],
-    search: ""
-  });
-
-  if (shouldRender) renderPeopleFilterModal();
-}
-
-function removePeopleFilterRow(index) {
-  draftPeopleFilters.splice(index, 1);
-  renderPeopleFilterModal();
-}
-
-function updateDraftPeopleFilterHeader(index, header) {
-  if (!draftPeopleFilters[index]) return;
-  draftPeopleFilters[index].header = header;
-  draftPeopleFilters[index].values = [];
-  draftPeopleFilters[index].search = "";
-  renderPeopleFilterModal();
-}
-
-function updateDraftPeopleFilterOperator(index, operator) {
-  if (!draftPeopleFilters[index]) return;
-  draftPeopleFilters[index].operator = operator === "is not" ? "is not" : "is";
-}
-
-function updateDraftPeopleFilterSearch(index, search) {
-  if (!draftPeopleFilters[index]) return;
-  draftPeopleFilters[index].search = search;
-  renderPeopleFilterModal();
-}
-
-function toggleDraftPeopleFilterValue(index, value, checked) {
-  const filter = draftPeopleFilters[index];
-  if (!filter) return;
-
-  const normalized = normalizeFilterValue(value);
-  const values = Array.isArray(filter.values) ? filter.values : [];
-  const withoutValue = values.filter(item => normalizeFilterValue(item) !== normalized);
-  filter.values = checked ? [...withoutValue, String(value ?? "")] : withoutValue;
-  renderPeopleFilterModal();
-}
-
-function renderPeopleFilterModal(message = "") {
-  const body = document.getElementById("peopleFilterModalBody");
-  if (!body) return;
-
-  const headers = getPeopleFilterHeaders();
-
-  if (!headers.length) {
-    body.innerHTML = `<div class="notice">${escapeHTML(message || "Upload a people file before creating filters.")}</div>`;
-    return;
-  }
-
-  const rowsHtml = draftPeopleFilters.map((filter, index) => {
-    const header = headers.includes(filter.header) ? filter.header : headers[0];
-    if (header !== filter.header) {
-      filter.header = header;
-      filter.values = [];
-    }
-
-    const selectedValueKeys = new Set((filter.values || []).map(normalizeFilterValue));
-    const valueSearch = String(filter.search || "").toLowerCase().trim();
-    const uniqueValues = getUniqueValuesForHeader(header);
-    const visibleValues = uniqueValues.filter(value => !valueSearch || String(value || "(Blank)").toLowerCase().includes(valueSearch));
-    const valueList = visibleValues.length
-      ? visibleValues.map(value => {
-          const valueKey = normalizeFilterValue(value);
-          const checked = selectedValueKeys.has(valueKey);
-          const label = value === "" ? "(Blank)" : value;
-
-          return `
-            <label class="filter-value-option ${checked ? "selected" : ""}">
-              <input type="checkbox" ${checked ? "checked" : ""} onchange="toggleDraftPeopleFilterValue(${index}, '${escapeHTML(jsEscape(value))}', this.checked)" />
-              <span>${escapeHTML(label)}</span>
-            </label>
-          `;
-        }).join("")
-      : `<div class="filter-empty-state">No values match this search.</div>`;
-
-    return `
-      <div class="filter-row-card">
-        <div class="filter-row-top">
-          <div>
-            <label>Header</label>
-            <select onchange="updateDraftPeopleFilterHeader(${index}, this.value)">
-              ${headers.map(optionHeader => `<option value="${escapeHTML(optionHeader)}" ${optionHeader === header ? "selected" : ""}>${escapeHTML(optionHeader)}</option>`).join("")}
-            </select>
-          </div>
-          <div>
-            <label>Operator</label>
-            <select onchange="updateDraftPeopleFilterOperator(${index}, this.value)">
-              <option value="is" ${filter.operator !== "is not" ? "selected" : ""}>is</option>
-              <option value="is not" ${filter.operator === "is not" ? "selected" : ""}>is not</option>
-            </select>
-          </div>
-          <div>
-            <label>&nbsp;</label>
-            <button class="danger mini-btn" onclick="removePeopleFilterRow(${index})" aria-label="Remove this filter">×</button>
-          </div>
-        </div>
-        <label>Search values</label>
-        <input type="text" value="${escapeHTML(filter.search || "")}" placeholder="Search values under ${escapeHTML(header)}..." oninput="updateDraftPeopleFilterSearch(${index}, this.value)" />
-        <div class="small">Selected values: ${(filter.values || []).length ? (filter.values || []).map(value => escapeHTML(value === "" ? "(Blank)" : value)).join(", ") : "None selected"}</div>
-        <div class="filter-values-list">${valueList}</div>
-      </div>
-    `;
-  }).join("");
-
-  body.innerHTML = `
-    ${message ? `<div class="notice">${escapeHTML(message)}</div>` : ""}
-    <div class="notice">Build filters from any uploaded-file header. Values inside a row are OR; separate rows are AND.</div>
-    ${rowsHtml || `<div class="notice">No filter rows yet. Click + Add Filter to start.</div>`}
-  `;
-}
-
-function savePeopleFiltersAndClose() {
-  activePeopleFilters = getValidPeopleFilters(draftPeopleFilters);
-  closePeopleFilters();
-  updateFilterButtonLabel();
-  renderPeopleList();
-}
-
-function clearPeopleFilters() {
-  activePeopleFilters = [];
-  draftPeopleFilters = [];
-  updateFilterButtonLabel();
-  renderPeopleFilterModal("All people filters were cleared.");
-  renderPeopleList();
-}
-
-function personPassesAdvancedFilters(person) {
-  const validFilters = getValidPeopleFilters();
-
-  return validFilters.every(filter => {
-    const personValue = normalizeFilterValue(person && person.raw ? person.raw[filter.header] : "");
-    const selectedValues = new Set(filter.values.map(normalizeFilterValue));
-    const isMatch = selectedValues.has(personValue);
-
-    return filter.operator === "is not" ? !isMatch : isMatch;
-  });
-}
-
-function renderPeopleList() {
-  const box = document.getElementById("peopleList");
-  const summary = document.getElementById("peopleListSummary");
-  const search = normalizeName(document.getElementById("searchInput").value);
-  const hideAssigned = document.getElementById("hideAssignedPeopleToggle")?.checked;
-  hideAssignedPeople = Boolean(hideAssigned);
-
-  updateFilterButtonLabel();
-  box.innerHTML = "";
-
-  if (!people.length) {
-    if (summary) summary.textContent = "Showing 0 of 0 people";
-    box.innerHTML = `<div class="notice">Upload an Excel file to begin.</div>`;
-    return;
-  }
-
-  const filteredAll = people
-    .filter(p => {
-      if (!search) return true;
-      const override = getPersonOverride(p.name);
-      return p.nameKey.includes(search) ||
-        normalizeName(p.email).includes(search) ||
-        normalizeName(getDisplayNameByName(p.name)).includes(search) ||
-        normalizeName(override?.email || "").includes(search);
-    })
-    .filter(personPassesAdvancedFilters)
-    .filter(p => !hideAssigned || !isPersonInOrg(p.name));
-  const filtered = filteredAll.slice(0, 500);
-  const activeFilterCount = getValidPeopleFilters().length;
-
-  if (summary) {
-    summary.innerHTML = `Showing ${filteredAll.length.toLocaleString()} of ${people.length.toLocaleString()} people${activeFilterCount ? `<br><span class="advanced-filter-note">Advanced filters active</span>` : ""}${hideAssigned ? `<br><span class="advanced-filter-note">Assigned people hidden</span>` : ""}`;
-  }
-
-  filtered.forEach(person => {
-    const div = document.createElement("div");
-    div.className = "person-card";
-
-    if (selectedPerson && selectedPerson.nameKey === person.nameKey) {
-      div.classList.add("selected");
-    }
-
-    div.draggable = true;
-
-    const displayName = getDisplayNameByName(person.name);
-    const email = getEmailByName(person.name) || "—";
-    const originalNote = normalizeName(displayName) !== person.nameKey ? `<div class="small">Original: ${escapeHTML(person.name)}</div>` : "";
-
-    div.innerHTML = `
-      <div><strong>${escapeHTML(displayName)}</strong></div>
-      ${originalNote}
-      <div class="small">Supervisor: ${escapeHTML(getDisplayNameByName(person.supervisorRaw) || "—")}</div>
-      <div class="small">Username/Email: ${escapeHTML(email)}</div>
-    `;
-
-    div.onclick = () => selectPerson(person);
-    div.ondragstart = () => {
-      draggedItem = {
-        type: "person",
-        name: person.name
-      };
-    };
-
-    box.appendChild(div);
-  });
-
-  if (!filtered.length) {
-    box.innerHTML = `<div class="notice">No matching people found.</div>`;
-  } else if (filteredAll.length > filtered.length) {
-    const limitNotice = document.createElement("div");
-    limitNotice.className = "notice";
-    limitNotice.textContent = `Showing the first ${filtered.length.toLocaleString()} matches. Refine search or filters to narrow the list.`;
-    box.appendChild(limitNotice);
-  }
-}
-
-function selectPerson(person) {
-  selectedPerson = person;
-  renderPeopleList();
-  renderSelectedPerson();
-}
-
-function renderSelectedPerson() {
-  const selectedBox = document.getElementById("selectedBox");
-  const reportsBox = document.getElementById("directReportsBox");
-
-  if (!selectedPerson) {
-    selectedBox.innerHTML = "Click a person to show everyone who has that person listed under the Supervisor column.";
-    reportsBox.innerHTML = "";
-    return;
-  }
-
-  const allReports = getDirectReports(selectedPerson.name);
-  const reports = allReports.filter(report => !isPersonInOrg(report.name));
-
-  const selectedDisplayName = getDisplayNameByName(selectedPerson.name);
-  const selectedOriginalNote = normalizeName(selectedDisplayName) !== normalizeName(selectedPerson.name)
-    ? `<span class="small">Original Name: ${escapeHTML(selectedPerson.name)}</span><br>`
-    : "";
-
-  selectedBox.innerHTML = `
-    <strong>Display Name:</strong> ${escapeHTML(selectedDisplayName)}<br>
-    ${selectedOriginalNote}
-    <span class="small">Username/Email: ${escapeHTML(getEmailByName(selectedPerson.name) || "—")}</span><br>
-    <span class="small">Direct Reports Found: ${allReports.length}</span><br>
-    <span class="small">Available to Add: ${reports.length}</span>
-  `;
-
-  reportsBox.innerHTML = "";
-
-  if (!reports.length) {
-    reportsBox.innerHTML = `<div class="notice">No available direct reports found. Anyone already in the org table is hidden here.</div>`;
-    return;
-  }
-
-  reports.forEach(report => {
-    const div = document.createElement("div");
-    div.className = "direct-report";
-    div.draggable = true;
-
-    div.ondragstart = () => {
-      draggedItem = {
-        type: "person",
-        name: report.name
-      };
-    };
-
-    const reportDisplayName = getDisplayNameByName(report.name);
-    const reportOriginalNote = normalizeName(reportDisplayName) !== report.nameKey ? `<div class="small">Original: ${escapeHTML(report.name)}</div>` : "";
-
-    div.innerHTML = `
-      <div class="direct-report-title">${escapeHTML(reportDisplayName)}</div>
-      ${reportOriginalNote}
-      <div class="small">Supervisor: ${escapeHTML(getDisplayNameByName(report.supervisorRaw) || "—")}</div>
-      <div class="small">Username/Email: ${escapeHTML(getEmailByName(report.name) || "—")}</div>
-      <div class="role-actions" style="margin-top:7px;">
-        <button class="primary-add-btn" onclick="autoAddDirectReport('${jsEscape(report.name)}')">Add Under Selected</button>
-        <button class="secondary-add-btn" onclick="addDirector('${jsEscape(report.name)}')">Add Director</button>
-      </div>
-    `;
-
-    reportsBox.appendChild(div);
-  });
-}
-
-function getDirectReports(supervisorName) {
-  if (!normalizeName(supervisorName)) return [];
-
-  const supervisorKeys = getSupervisorMatchKeysForPerson(supervisorName);
-
-  return people.filter(person => {
-    const rawSupervisor = person.originalSupervisorRaw || person.supervisorRaw || "";
-    if (!normalizeName(rawSupervisor)) return false;
-
-    const supervisorCandidates = [
-      rawSupervisor,
-      flipName(rawSupervisor)
-    ];
-
-    return supervisorCandidates.some(candidate => supervisorKeys.has(normalizeName(candidate)));
-  });
-}
-
-function getAllReportsUnderSupervisor(supervisorName) {
-  const result = [];
-  const visited = new Set();
-
-  function walk(name) {
-    const directReports = getDirectReports(name);
-
-    directReports.forEach(person => {
-      const key = normalizeName(person.name);
-
-      if (visited.has(key)) return;
-
-      visited.add(key);
-      result.push(person);
-
-      walk(person.name);
-    });
-  }
-
-  walk(supervisorName);
-
-  return result;
-}
-
-function getAllReportEmailsForSupervisor(supervisorName) {
-  return getAllReportsUnderSupervisor(supervisorName)
-    .map(person => person.email)
-    .filter(email => email && String(email).trim())
-    .filter((email, index, arr) => arr.indexOf(email) === index);
-}
-
-function getReportEmailsForSupervisor(supervisorName) {
-  return getAllReportEmailsForSupervisor(supervisorName);
-}
-
-function flipName(name) {
-  const text = String(name || "").trim();
-
-  if (text.includes(",")) {
-    const parts = text.split(",");
-    const last = parts[0]?.trim() || "";
-    const first = parts.slice(1).join(",").trim();
-    return `${first} ${last}`.trim();
-  }
-
-  const pieces = text.split(/\s+/);
-  if (pieces.length >= 2) {
-    const first = pieces[0];
-    const last = pieces.slice(1).join(" ");
-    return `${last}, ${first}`;
-  }
-
-  return text;
-}
-
-function isPersonInOrg(name) {
-  const key = normalizeName(name);
-
-  for (const director of org) {
-    if (normalizeName(director.name) === key) return true;
-
-    for (const manager of director.managers) {
-      if (normalizeName(manager.name) === key) return true;
-
-      for (const coach of manager.coaches) {
-        if (normalizeName(coach) === key) return true;
-      }
-    }
-  }
-
+function firePlasma(shooter,isPlayer,charge=.08){const w=WEAPONS.plasma,d=dirFrom(shooter,w.spread),tier=chargeTier(charge),size=[0,.34,.48,.66,.9][tier],speed=[0,34,31,28,24][tier],color=chargeColor(tier),damage=w.damage+[0,0,18,42,78][tier];projectiles.push({owner:shooter,x:shooter.x+d.x*.8,y:shooter.y-.05+d.y*.8,z:shooter.z+d.z*.8,vx:d.x*speed,vy:d.y*speed,vz:d.z*speed,life:2.6,color,damage,r:size,tier})}
+function targetsFor(shooter,isPlayer){return isPlayer?bots.filter(b=>!b.dead&&!sameTeam(player,b)):[player,...bots.filter(b=>b!==shooter&&!b.dead&&!sameTeam(shooter,b))]}
+function rayEntity(o,d,t,range){const vx=t.x-o.x,vy=t.y-o.y,vz=t.z-o.z,dist=vx*d.x+vy*d.y+vz*d.z;if(dist<0||dist>range)return null;const px=o.x+d.x*dist,py=o.y+d.y*dist,pz=o.z+d.z*dist;const bodyMiss=Math.hypot(t.x-px,(t.y-.85)-py,t.z-pz),headMiss=Math.hypot(t.x-px,(t.y-.24)-py,t.z-pz);if(headMiss<.34)return {dist,head:true};if(bodyMiss<.62)return {dist,head:false};return null}
+function lineClear(x1,y1,z1,x2,y2,z2){const steps=44;for(let i=1;i<steps;i++){const t=i/steps,x=x1+(x2-x1)*t,y=y1+(y2-y1)*t,z=z1+(z2-z1)*t;for(const b of blocks()){if(b.kind==='platform'&&b.y<.2)continue;if(Math.abs(x-b.x)<b.w/2&&Math.abs(z-b.z)<b.d/2&&y<b.y+b.h/2&&y>b.y-b.h/2)return false}}return true}
+function visibleToPlayer(ent){
+  if(ent.dead)return false;
+  // Do not draw enemy bodies, labels, or guns unless at least one meaningful point is actually visible.
+  // This prevents enemies from visually bleeding through the opaque pastel walls and platforms.
+  const eyeY=player.y-.05;
+  const pts=[[ent.x,ent.y-.25,ent.z],[ent.x,ent.y-.86,ent.z],[ent.x,ent.y-1.48,ent.z]];
+  for(const pt of pts){if(lineClear(player.x,eyeY,player.z,pt[0],pt[1],pt[2]))return true;}
   return false;
 }
-
-function addSelectedAsDirector() {
-  if (!selectedPerson) {
-    alert("Select a person first.");
-    return;
+function visibleOnMinimap(ent){return visibleToPlayer(ent) || hypot2(ent.x-player.x,ent.z-player.z)<7.5;}
+function damage(victim,amount,attacker,head=false){if(victim.dead||victim.spawnGrace>0)return;victim.hp-=amount;burst(victim.x,victim.y-.8,victim.z,head?'#fff':(victim.color||'#ff2b80'));if(victim===player)msg('-'+Math.round(amount)+' HP');if(victim.hp<=0)kill(victim,attacker,head)}
+function kill(victim,killer,head=false){if(victim.dead)return;victim.dead=true;victim.deaths=(victim.deaths||0)+1;if(killer===player){player.score++;feed('YOU dropped '+victim.name+(head?' with a headshot':''));msg(head?'HEADSHOT!':'+1 FRAG')}else if(victim===player){killer.score++;player.deaths++;feed(killer.name+' eliminated YOU with '+WEAPONS[killer.weapon].name);hud.death.style.display='grid';setTimeout(()=>{hud.death.style.display='none';spawn(player)},1150)}else{killer.score++;feed(killer.name+' dropped '+victim.name)}burst(victim.x,victim.y,victim.z,victim.color||'#ff2b80');setTimeout(()=>{if(victim!==player)spawn(victim)},900)}
+function burst(x,y,z,c){for(let i=0;i<18;i++)particles.push({x,y,z,vx:rand(-6,6),vy:rand(0,8),vz:rand(-6,6),life:rand(.25,.7),c})}
+function nearestEnemy(bot){let best=null,bd=999;for(const e of [player,...bots]){if(e===bot||e.dead||sameTeam(bot,e)||e.spawnGrace>0)continue;const d=hypot2(e.x-bot.x,e.z-bot.z);if(d<bd&&lineClear(bot.x,bot.y,bot.z,e.x,e.y,e.z)){bd=d;best=e}}return {e:best,d:bd}}
+function nearestPickup(bot){let best=null,bd=999;for(const p of pickups){if(p.taken>0)continue;const d=hypot2(p.x-bot.x,p.z-bot.z);if(d<bd){bd=d;best=p}}return {p:best,d:bd}}
+function aiProfile(type){return {
+  sniper:{min:32,ideal:48,max:82,strafe:.38,advance:.72,retreat:1.05,pickups:.24,jump:.08,fireBias:1.55},
+  shotgun:{min:4,ideal:10,max:22,strafe:.30,advance:1.62,retreat:.55,pickups:.30,jump:.06,fireBias:1.35},
+  smg:{min:8,ideal:17,max:34,strafe:.66,advance:1.26,retreat:.74,pickups:.34,jump:.05,fireBias:1.32},
+  assault:{min:14,ideal:27,max:52,strafe:.52,advance:1.12,retreat:.86,pickups:.30,jump:.05,fireBias:1.30},
+  plasma:{min:15,ideal:29,max:56,strafe:.46,advance:1.02,retreat:.84,pickups:.32,jump:.05,fireBias:1.18},
+  laser:{min:17,ideal:31,max:60,strafe:.40,advance:.94,retreat:.95,pickups:.30,jump:.04,fireBias:1.38}
+}[type]||{min:14,ideal:25,max:44,strafe:.55,advance:1,retreat:1,pickups:.34,jump:.06,fireBias:1}}
+function botSeparation(bot){let sx=0,sz=0;for(const o of bots){if(o===bot||o.dead)continue;const dx=bot.x-o.x,dz=bot.z-o.z,d=Math.hypot(dx,dz);if(d>0&&d<3.2){const push=(3.2-d)/3.2;sx+=dx/d*push;sz+=dz/d*push}}return {x:sx,z:sz}}
+function updateBot(b,dt){
+  b.spawnGrace=Math.max(0,b.spawnGrace-dt);if(b.dead)return;
+  const cfg=DIFF[game.difficulty],prof=aiProfile(b.weapon);
+  updateWeaponTimers(b,dt);pickupCheck(b);
+  b.think-=dt;b.fireCd-=dt;b.strafeT-=dt;b.jumpCd=(b.jumpCd||0)-dt;
+  if(b.think<=0){
+    const ne=nearestEnemy(b);b.enemy=ne.d<prof.max+22?ne.e:null;b.enemyDist=ne.d;
+    const np=nearestPickup(b);
+    const currentWeak=(b.weapon==='shotgun'&&b.enemyDist>30)||(b.weapon==='sniper'&&b.enemyDist<18)||(b.hp<45);
+    if(!b.enemy&&np.p&&np.d<26&&Math.random()<prof.pickups)b.target={x:np.p.x,z:np.p.z,y:np.p.y,r:2};
+    else if(currentWeak&&np.p&&np.d<34&&Math.random()<prof.pickups+.25)b.target={x:np.p.x,z:np.p.z,y:np.p.y,r:2};
+    else if(!b.target||hypot2(b.x-b.target.x,b.z-b.target.z)<b.target.r||Math.random()<.055)b.target=pick(nav);
+    if(b.strafeT<=0){b.strafe=Math.random()<.5?-1:1;b.strafeT=rand(.75,1.65)}
+    b.think=cfg.react+rand(0,.12);
   }
-
-  addDirector(selectedPerson.name);
-}
-
-function addDirector(name) {
-  name = titleName(name);
-  if (!name) return;
-
-  removePersonFromOrg(name);
-
-  org.push({
-    name,
-    managers: []
-  });
-
-  renderAll();
-}
-
-function addManager(directorName, managerName) {
-  directorName = titleName(directorName);
-  managerName = titleName(managerName);
-
-  if (normalizeName(directorName) === normalizeName(managerName)) {
-    alert("A person cannot report to themselves.");
-    return;
+  let wantX=0,wantZ=0,speed=cfg.move;
+  if(b.enemy){
+    const ex=b.enemy.x-b.x,ez=b.enemy.z-b.z,dist=Math.hypot(ex,ez)||1,nx=ex/dist,nz=ez/dist,sideX=-nz*b.strafe,sideZ=nx*b.strafe;
+    b.faceYaw=Math.atan2(nx,nz);
+    const tooClose=dist<prof.min,tooFar=dist>prof.ideal;
+    let rangeMove=0;if(tooClose)rangeMove=-prof.retreat;else if(tooFar)rangeMove=prof.advance;else rangeMove=.16;
+    // Snipers and lasers hold lanes, shotguns close gaps, SMGs orbit aggressively.
+    wantX=(nx*rangeMove+sideX*prof.strafe)*speed;wantZ=(nz*rangeMove+sideZ*prof.strafe)*speed;
+    if(!lineClear(b.x,b.y,b.z,b.enemy.x,b.enemy.y,b.enemy.z)){wantX+=nx*speed*.42;wantZ+=nz*speed*.42;}
+  }else{
+    let tx=b.target?.x||0,tz=b.target?.z||0,dx=tx-b.x,dz=tz-b.z,d=Math.hypot(dx,dz)||1;dx/=d;dz/=d;wantX=dx*speed*.88;wantZ=dz*speed*.88;b.faceYaw=Math.atan2(dx,dz);
   }
-
-  removePersonFromOrg(managerName);
-
-  const director = org.find(d => normalizeName(d.name) === normalizeName(directorName));
-  if (!director) return;
-
-  director.managers.push({
-    name: managerName,
-    coaches: []
-  });
-
-  renderAll();
-}
-
-function addTempStructureManager(directorIndex) {
-  const director = org[directorIndex];
-  if (!director) return;
-
-  const directorKey = normalizeName(director.name);
-  const alreadyExists = director.managers.some(manager => normalizeName(manager.name) === directorKey);
-
-  if (alreadyExists) {
-    alert("Temp structure already exists for this Director.");
-    return;
-  }
-
-  director.managers.push({
-    name: director.name,
-    coaches: []
-  });
-
-  renderAll();
-}
-
-function addCoach(directorName, managerName, coachName) {
-  directorName = titleName(directorName);
-  managerName = titleName(managerName);
-  coachName = titleName(coachName);
-
-  if (
-    normalizeName(coachName) === normalizeName(directorName) ||
-    normalizeName(coachName) === normalizeName(managerName)
-  ) {
-    alert("A person cannot report to themselves.");
-    return;
-  }
-
-  removePersonFromOrg(coachName);
-
-  const director = org.find(d => normalizeName(d.name) === normalizeName(directorName));
-  if (!director) return;
-
-  const manager = director.managers.find(m => normalizeName(m.name) === normalizeName(managerName));
-  if (!manager) return;
-
-  manager.coaches.push(coachName);
-
-  renderAll();
-}
-
-function autoAddDirectReport(reportName) {
-  if (!selectedPerson) return;
-
-  const selectedName = selectedPerson.name;
-
-  const director = org.find(d => normalizeName(d.name) === normalizeName(selectedName));
-  if (director) {
-    addManager(director.name, reportName);
-    return;
-  }
-
-  for (const d of org) {
-    const manager = d.managers.find(m => normalizeName(m.name) === normalizeName(selectedName));
-    if (manager) {
-      addCoach(d.name, manager.name, reportName);
-      return;
-    }
-  }
-
-  alert("Selected person is not currently a Director or Manager. Add them to the org first.");
-}
-
-function autoAddAllDirectReports() {
-  if (!selectedPerson) {
-    alert("Select someone first.");
-    return;
-  }
-
-  const reports = getDirectReports(selectedPerson.name).filter(report => !isPersonInOrg(report.name));
-
-  if (!reports.length) {
-    alert("No available direct reports found.");
-    return;
-  }
-
-  const selectedName = selectedPerson.name;
-  const director = org.find(d => normalizeName(d.name) === normalizeName(selectedName));
-
-  if (director) {
-    reports.forEach(r => {
-      if (normalizeName(r.name) !== normalizeName(selectedName)) {
-        removePersonFromOrg(r.name);
-        director.managers.push({
-          name: r.name,
-          coaches: []
-        });
-      }
-    });
-
-    renderAll();
-    return;
-  }
-
-  for (const d of org) {
-    const manager = d.managers.find(m => normalizeName(m.name) === normalizeName(selectedName));
-    if (manager) {
-      reports.forEach(r => {
-        if (normalizeName(r.name) !== normalizeName(selectedName)) {
-          removePersonFromOrg(r.name);
-          manager.coaches.push(r.name);
-        }
-      });
-
-      renderAll();
-      return;
-    }
-  }
-
-  alert("Selected person must already be a Director or Manager before adding all direct reports under them.");
-}
-
-function removePersonFromOrg(name) {
-  const key = normalizeName(name);
-
-  for (let dIndex = org.length - 1; dIndex >= 0; dIndex--) {
-    const director = org[dIndex];
-
-    if (normalizeName(director.name) === key) {
-      org.splice(dIndex, 1);
-      continue;
-    }
-
-    for (let mIndex = director.managers.length - 1; mIndex >= 0; mIndex--) {
-      const manager = director.managers[mIndex];
-
-      if (normalizeName(manager.name) === key) {
-        director.managers.splice(mIndex, 1);
-        continue;
-      }
-
-      manager.coaches = manager.coaches.filter(c => normalizeName(c) !== key);
-    }
+  const sep=botSeparation(b);wantX+=sep.x*speed*1.65;wantZ+=sep.z*speed*1.65;
+  b.vx+=(wantX-b.vx)*clamp(7.5*dt,0,1);b.vz+=(wantZ-b.vz)*clamp(7.5*dt,0,1);
+  const mv=Math.hypot(b.vx,b.vz);if(mv>.2){b.faceYaw=Math.atan2(b.vx,b.vz);b.walk+=mv*dt*4.2}b.yaw=b.faceYaw;
+  const dirX=Math.sin(b.faceYaw),dirZ=Math.cos(b.faceYaw),gHere=topAtPoint(b.x,b.z),gAhead=topAtPoint(b.x+dirX*2.8,b.z+dirZ*2.8),higher=b.target&&b.target.y>b.y+.55,nearWall=walls.some(w=>Math.abs(b.x+dirX*1.25-w.x)<w.w/2+.72&&Math.abs(b.z+dirZ*1.25-w.z)<w.d/2+.72&&b.y<w.y+w.h/2+.8);
+  // Jump only when navigation needs it. This removes the old pogo-stick bot behavior.
+  if(b.onGround&&b.jumpCd<=0&&(gAhead>gHere+.45||higher||nearWall)&&(Math.random()<.72)){b.vy=rand(14.5,17.2);b.jumpCd=rand(1.0,1.8)}
+  for(const p of pads){if(hypot2(b.x-p.x,b.z-p.z)<2.4&&b.onGround&&b.jumpCd<=0&&Math.random()<.30){b.vy=23;b.jumpCd=1.4;burst(b.x,b.y-1,b.z,b.color)}}
+  physics(b,dt);
+  if(b.enemy&&b.fireCd<=0&&lineClear(b.x,b.y-.05,b.z,b.enemy.x,b.enemy.y-.55,b.enemy.z)){
+    const dist=hypot2(b.enemy.x-b.x,b.enemy.z-b.z);
+    let rangeQuality=1-Math.abs(dist-prof.ideal)/(prof.max-prof.min+1);rangeQuality=clamp(rangeQuality,.22,1);
+    let aimErr=(1-cfg.aim)*.45+Math.max(0,dist-12)*.017+dist*dist*.00011;
+    if(b.weapon==='sniper')aimErr*=dist<prof.min?1.7:.72;if(b.weapon==='shotgun')aimErr*=dist>prof.max?1.9:1.15;if(b.weapon==='laser')aimErr*=.62;if(b.weapon==='smg')aimErr*=1.10;
+    const yaw=Math.atan2(b.enemy.x-b.x,b.enemy.z-b.z)+rand(-aimErr,aimErr);
+    const pitch=Math.atan2((b.y-b.enemy.y),Math.max(.01,dist))+rand(-aimErr*.65,aimErr*.65);
+    b.yaw=yaw;b.pitch=pitch;
+    const chance=clamp((rangeQuality*(1-dist/(prof.max+42))*cfg.aim*prof.fireBias)+.10,.14,.96);
+    if(Math.random()<chance)tryFire(b,false,b.weapon==='plasma'?rand(.35,.98):0);
+    b.yaw=b.faceYaw;b.pitch=0;
+    const base=(b.weapon==='assault'||b.weapon==='smg'||b.weapon==='laser'?Math.max(.045,WEAPONS[b.weapon].cool*1.08):cfg.fire*.72);
+    b.fireCd=base+rand(.015,.085);
   }
 }
-
-function renderOrg() {
-  const tree = document.getElementById("orgTree");
-  tree.innerHTML = "";
-
-  if (!org.length) {
-    tree.innerHTML = `<div class="notice">No Directors added yet. Search or drag names to begin.</div>`;
-    return;
-  }
-
-  org.forEach((director, directorIndex) => {
-    const directorBlock = document.createElement("div");
-    directorBlock.className = "director-block drop-target";
-
-    directorBlock.ondragover = allowDrop;
-    directorBlock.ondragleave = removeDragOver;
-    directorBlock.ondrop = event => {
-      event.preventDefault();
-      event.stopPropagation();
-      removeDragOver(event);
-
-      if (!draggedItem) return;
-
-      const draggedName = draggedItem.name;
-
-      if (normalizeName(draggedName) === normalizeName(director.name)) {
-        draggedItem = null;
-        return;
-      }
-
-      addManager(director.name, draggedName);
-      draggedItem = null;
-    };
-
-    const directorHeader = document.createElement("div");
-    directorHeader.className = "director-header";
-    directorHeader.draggable = true;
-
-    directorHeader.ondragstart = event => {
-      event.stopPropagation();
-      draggedItem = {
-        type: "director",
-        name: director.name
-      };
-    };
-
-    const directorDisplayName = getDisplayNameByName(director.name);
-    const directorOriginalNote = normalizeName(directorDisplayName) !== normalizeName(director.name)
-      ? `<span class="original-name-note">Original: ${escapeHTML(director.name)}</span>`
-      : "";
-
-    directorHeader.innerHTML = `
-      <span class="name-click" onclick="selectPersonByName('${jsEscape(director.name)}')">
-        Director: ${escapeHTML(directorDisplayName)}
-        ${directorOriginalNote}
-        <span class="small" style="color:#fee2e2;">Username/Email: ${escapeHTML(getEmailByName(director.name) || "—")}</span>
-      </span>
-      <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeDirector(${directorIndex})">Remove</button>
-      <button class="mini-btn" onclick="event.stopPropagation(); addTempStructureManager(${directorIndex})">Temp Structure</button>
-    `;
-
-    directorBlock.appendChild(directorHeader);
-
-    if (!director.managers.length) {
-      const empty = document.createElement("div");
-      empty.className = "notice";
-      empty.style.margin = "10px";
-      empty.textContent = "No managers yet. Drag someone onto this Director.";
-      directorBlock.appendChild(empty);
-    }
-
-    director.managers.forEach((manager, managerIndex) => {
-      const managerBlock = document.createElement("div");
-      managerBlock.className = "manager-block drop-target";
-
-      managerBlock.ondragover = allowDrop;
-      managerBlock.ondragleave = removeDragOver;
-      managerBlock.ondrop = event => {
-        event.preventDefault();
-        event.stopPropagation();
-        removeDragOver(event);
-
-        if (!draggedItem) return;
-
-        const draggedName = draggedItem.name;
-
-        if (
-          normalizeName(draggedName) === normalizeName(director.name) ||
-          normalizeName(draggedName) === normalizeName(manager.name)
-        ) {
-          draggedItem = null;
-          return;
-        }
-
-        addCoach(director.name, manager.name, draggedName);
-        draggedItem = null;
-      };
-
-      const managerHeader = document.createElement("div");
-      managerHeader.className = "manager-header";
-      managerHeader.draggable = true;
-
-      managerHeader.ondragstart = event => {
-        event.stopPropagation();
-        draggedItem = {
-          type: "manager",
-          name: manager.name
-        };
-      };
-
-      const managerDisplayName = getDisplayNameByName(manager.name);
-      const managerOriginalNote = normalizeName(managerDisplayName) !== normalizeName(manager.name)
-        ? `<span class="original-name-note">Original: ${escapeHTML(manager.name)}</span>`
-        : "";
-
-      managerHeader.innerHTML = `
-        <span class="name-click" onclick="selectPersonByName('${jsEscape(manager.name)}')">
-          Manager: ${escapeHTML(managerDisplayName)}
-          ${managerOriginalNote}
-          <span class="small">Username/Email: ${escapeHTML(getEmailByName(manager.name) || "—")}</span>
-        </span>
-        <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeManager(${directorIndex}, ${managerIndex})">Remove</button>
-      `;
-
-      managerBlock.appendChild(managerHeader);
-
-      if (!manager.coaches.length) {
-        const emptyCoach = document.createElement("div");
-        emptyCoach.className = "small";
-        emptyCoach.style.padding = "8px 10px";
-        emptyCoach.textContent = "No coaches yet. Drag someone onto this Manager.";
-        managerBlock.appendChild(emptyCoach);
-      }
-
-      manager.coaches.forEach((coach, coachIndex) => {
-        const coachRow = document.createElement("div");
-        coachRow.className = "coach-row";
-        coachRow.draggable = true;
-
-        coachRow.ondragstart = event => {
-          event.stopPropagation();
-          draggedItem = {
-            type: "coach",
-            name: coach
-          };
-        };
-
-        const coachDisplayName = getDisplayNameByName(coach);
-        const coachOriginalNote = normalizeName(coachDisplayName) !== normalizeName(coach)
-          ? `<span class="original-name-note">Original: ${escapeHTML(coach)}</span>`
-          : "";
-
-        coachRow.innerHTML = `
-          <span class="name-click" onclick="selectPersonByName('${jsEscape(coach)}')">
-            Coach: ${escapeHTML(coachDisplayName)}
-            ${coachOriginalNote}
-            <span class="small">Username/Email: ${escapeHTML(getEmailByName(coach) || "—")}</span>
-          </span>
-          <button class="mini-btn remove-btn" onclick="event.stopPropagation(); removeCoach(${directorIndex}, ${managerIndex}, ${coachIndex})">Remove</button>
-        `;
-
-        managerBlock.appendChild(coachRow);
-      });
-
-      directorBlock.appendChild(managerBlock);
-    });
-
-    tree.appendChild(directorBlock);
-  });
-}
-
-function removeDirector(index) {
-  org.splice(index, 1);
-  renderAll();
-}
-
-function removeManager(directorIndex, managerIndex) {
-  org[directorIndex].managers.splice(managerIndex, 1);
-  renderAll();
-}
-
-function removeCoach(directorIndex, managerIndex, coachIndex) {
-  org[directorIndex].managers[managerIndex].coaches.splice(coachIndex, 1);
-  renderAll();
-}
-
-function clearOrg() {
-  if (!confirm("Clear the current org structure?")) return;
-  org = [];
-  filledReportEmails = {};
-  renderAll();
-}
-
-function selectPersonByName(name) {
-  const nameKey = normalizeName(name);
-  const person = people.find(p => p.nameKey === nameKey) || people.find(p => normalizeName(getDisplayNameByName(p.name)) === nameKey);
-
-  if (person) {
-    selectPerson(person);
-    return;
-  }
-
-  selectedPerson = {
-    name,
-    nameKey: normalizeName(name),
-    email: "",
-    supervisorRaw: "",
-    supervisorKey: "",
-    originalSupervisorRaw: "",
-    originalSupervisorKey: ""
-  };
-
-  renderPeopleList();
-  renderSelectedPerson();
-}
-
-function getPersonOverride(name) {
-  return personOverrides[normalizeName(name)] || null;
-}
-
-function getSupervisorMatchKeysForPerson(name) {
-  const keys = new Set();
-
-  function add(value) {
-    const clean = titleName(value);
-    if (!clean) return;
-    keys.add(normalizeName(clean));
-    keys.add(normalizeName(flipName(clean)));
-  }
-
-  add(name);
-
-  const override = getPersonOverride(name);
-  if (override && override.displayName) add(override.displayName);
-  if (override && override.originalName) add(override.originalName);
-
-  return keys;
-}
-
-function getDisplayNameByName(name) {
-  const override = getPersonOverride(name);
-  return String(override && override.displayName ? override.displayName : name || "").trim();
-}
-
-function getFileEmailByName(name) {
-  const person = people.find(p => p.nameKey === normalizeName(name));
-  return person && person.email ? String(person.email || "").trim() : "";
-}
-
-function getEmailByName(name) {
-  const override = getPersonOverride(name);
-  if (override && override.email) return String(override.email || "").trim();
-  const fileEmail = getFileEmailByName(name);
-  if (fileEmail) return fileEmail;
-  return getSavedEmailForName(name);
-}
-
-function getSavedEmailForName(name) {
-  return savedPersonEmails[normalizeName(name)] || "";
-}
-
-function savePersonOverride(originalName, displayName, email) {
-  const key = normalizeName(originalName);
-  const original = titleName(originalName);
-  const cleanedDisplay = String(displayName || "").trim();
-  const cleanedEmail = String(email || "").trim();
-
-  if (!key || !original) return false;
-  if (!cleanedDisplay && !cleanedEmail) {
-    if (personOverrides[key]) delete personOverrides[key];
-    return false;
-  }
-
-  personOverrides[key] = {
-    originalName: original,
-    displayName: cleanedDisplay,
-    email: cleanedEmail,
-    updatedAt: new Date().toISOString()
-  };
-  return true;
-}
-
-function deletePersonOverride(originalName) {
-  const key = normalizeName(originalName);
-  if (!key) return;
-  delete personOverrides[key];
-}
-
-function applyPersonDisplayOverridesToOrg() {
-  renderAll();
-}
-
-function normalizePersonOverrides(overrides) {
-  const normalized = {};
-  Object.entries(overrides || {}).forEach(([nameKey, override]) => {
-    if (!override || typeof override !== "object") return;
-    const originalName = titleName(override.originalName || nameKey);
-    const key = normalizeName(originalName || nameKey);
-    const displayName = String(override.displayName || "").trim();
-    const email = String(override.email || "").trim();
-    if (!key || (!displayName && !email)) return;
-    normalized[key] = {
-      originalName: originalName || nameKey,
-      displayName,
-      email,
-      updatedAt: override.updatedAt || new Date().toISOString()
-    };
-  });
-  return normalized;
-}
-
-function setSavedEmailForName(name, email) {
-  const key = normalizeName(name);
-  const cleaned = String(email || "").trim();
-  if (!key || !cleaned) return;
-  savedPersonEmails[key] = cleaned;
-}
-
-function getExportRows() {
-  const rows = [];
-
-  org.forEach(director => {
-    rows.push({
-      company: "Safelite",
-      director: getDisplayNameByName(director.name),
-      manager: "",
-      coach: "",
-      email: getEmailByName(director.name),
-      personName: director.name,
-      level: "Director"
-    });
-
-    director.managers.forEach(manager => {
-      rows.push({
-        company: "Safelite",
-        director: getDisplayNameByName(director.name),
-        manager: getDisplayNameByName(manager.name),
-        coach: "",
-        email: getEmailByName(manager.name),
-        personName: manager.name,
-        level: "Manager"
-      });
-
-      manager.coaches.forEach(coach => {
-        rows.push({
-          company: "Safelite",
-          director: getDisplayNameByName(director.name),
-          manager: getDisplayNameByName(manager.name),
-          coach: getDisplayNameByName(coach),
-          email: getEmailByName(coach),
-          personName: coach,
-          level: "Coach"
-        });
-      });
-    });
-  });
-
-  return rows;
-}
-
-function getOrgPathRows() {
-  return getExportRows().map(row => {
-    let path = "Safelite";
-
-    if (row.director) path += ` --> ${row.director}`;
-    if (row.manager) path += ` --> ${row.manager}`;
-    if (row.coach) path += ` --> ${row.coach}`;
-
-    return {
-      path,
-      personName: row.personName,
-      level: row.level,
-      director: row.director,
-      manager: row.manager,
-      coach: row.coach,
-      email: row.email || ""
-    };
-  });
-}
-
-function buildOrgBlueprint() {
-  return {
-    type: "SafeliteOrgBlueprint",
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email },
-    safeliteUsersEmails: [...safeliteUsersEmails],
-    savedPersonEmails: { ...savedPersonEmails },
-    personOverrides: { ...personOverrides },
-    hierarchy: org.map(director => ({
-      directorName: director.name,
-      directorDisplayName: getDisplayNameByName(director.name),
-      directorKey: normalizeName(director.name),
-      directorEmail: getEmailByName(director.name) || "",
-      managers: director.managers.map(manager => ({
-        managerName: manager.name,
-        managerDisplayName: getDisplayNameByName(manager.name),
-        managerKey: normalizeName(manager.name),
-        managerEmail: getEmailByName(manager.name) || "",
-        coaches: manager.coaches.map(coach => ({ coachName: coach, coachDisplayName: getDisplayNameByName(coach), coachKey: normalizeName(coach), coachEmail: getEmailByName(coach) || "" }))
-      }))
-    }))
-  };
-}
-
-function findCurrentPersonFromBlueprint(savedPerson) { const savedName = savedPerson.name || savedPerson.directorName || savedPerson.managerName || savedPerson.coachName || ""; const savedKey = savedPerson.key || savedPerson.directorKey || savedPerson.managerKey || savedPerson.coachKey || normalizeName(savedName); const savedEmail = normalizeEmail(savedPerson.email || savedPerson.directorEmail || savedPerson.managerEmail || savedPerson.coachEmail || ""); let match = people.find(p => p.nameKey === normalizeName(savedKey)); if (match) return match; match = people.find(p => p.nameKey === normalizeName(savedName)); if (match) return match; match = people.find(p => p.nameKey === normalizeName(flipName(savedName))); if (match) return match; if (savedEmail) { match = people.find(p => normalizeEmail(p.email) === savedEmail); if (match) return match; } return null; }
-function findCurrentPersonBySavedKey(savedKey, savedName) { return findCurrentPersonFromBlueprint({ key: savedKey, name: savedName }); }
-function showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches = []) { const directorCount = rebuiltOrg.length; const managerCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.length, 0); const coachCount = rebuiltOrg.reduce((sum, d) => sum + d.managers.reduce((mSum, m) => mSum + m.coaches.length, 0), 0); lastBlueprintLoadSummary = { loadedAt: new Date().toISOString(), missing, directorCount, managerCount, coachCount, duplicateMatches }; let message = `Org blueprint loaded from current file.
-
-Directors loaded: ${directorCount}
-Managers loaded: ${managerCount}
-Coaches loaded: ${coachCount}
-Missing names: ${missing.length}
-Duplicate matches: ${duplicateMatches.length}`; if (missing.length) message += `
-
-Missing names were not added because they were not found in the current uploaded file.`; alert(message); }
-function rebuildOrgFromBlueprint(blueprint) { const rebuiltOrg = []; const missing = []; const duplicateMatches = []; if (!blueprint || !Array.isArray(blueprint.hierarchy)) { alert("No org blueprint found in the local save."); return; } blueprint.hierarchy.forEach(savedDirector => { const directorPerson = findCurrentPersonFromBlueprint(savedDirector); if (!directorPerson) { missing.push({ level: "Director", name: savedDirector.directorName }); return; } if (rebuiltOrg.some(d => normalizeName(d.name) === normalizeName(directorPerson.name))) duplicateMatches.push({ level: "Director", name: directorPerson.name }); const directorNode = { name: directorPerson.name, managers: [] }; (savedDirector.managers || []).forEach(savedManager => { const managerPerson = findCurrentPersonFromBlueprint(savedManager); if (!managerPerson) { missing.push({ level: "Manager", name: savedManager.managerName, director: savedDirector.directorName }); return; } const managerNode = { name: managerPerson.name, coaches: [] }; (savedManager.coaches || []).forEach(savedCoach => { const coachPerson = findCurrentPersonFromBlueprint(savedCoach); if (!coachPerson) { missing.push({ level: "Coach", name: savedCoach.coachName, director: savedDirector.directorName, manager: savedManager.managerName }); return; } if (managerNode.coaches.some(c => normalizeName(c) === normalizeName(coachPerson.name))) duplicateMatches.push({ level: "Coach", name: coachPerson.name }); else managerNode.coaches.push(coachPerson.name); }); if (directorNode.managers.some(m => normalizeName(m.name) === normalizeName(managerNode.name))) duplicateMatches.push({ level: "Manager", name: managerNode.name }); else directorNode.managers.push(managerNode); }); rebuiltOrg.push(directorNode); }); org = rebuiltOrg; if (Array.isArray(blueprint.safeliteUsersEmails)) safeliteUsersEmails = parseEmailList(blueprint.safeliteUsersEmails.join(", ")); if (blueprint.savedPersonEmails && typeof blueprint.savedPersonEmails === "object") Object.entries(blueprint.savedPersonEmails).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (cleanKey && cleanEmail) savedPersonEmails[cleanKey] = cleanEmail; }); if (blueprint.personOverrides && typeof blueprint.personOverrides === "object") personOverrides = normalizePersonOverrides(blueprint.personOverrides); selectedPerson = null; renderAll(); showBlueprintLoadSummary(missing, rebuiltOrg, duplicateMatches); }
-function exportOrgBlueprint() { const blueprint = buildOrgBlueprint(); const day = new Date().toISOString().slice(0, 10); downloadBlob(JSON.stringify(blueprint, null, 2), `safelite_org_blueprint_${day}.json`, "application/json;charset=utf-8;"); setStatus("Org blueprint exported"); }
-function blueprintFromImportedRows(rows) { const byDirector = new Map(); const isUsers = rows[0] && Object.prototype.hasOwnProperty.call(rows[0], "Users"); rows.forEach(row => { let director = "", manager = "", coach = "", email = ""; if (isUsers) { const users = String(row["Users"] || "").trim(); if (!users || users === "Safelite") return; const parts = users.split(" --> ").map(x => x.trim()).filter(Boolean); if (parts[0] === "Safelite") parts.shift(); [director, manager, coach] = parts; email = String(row["Studio Email Address"] || "").trim(); } else { director = String(row["Director"] || "").trim(); manager = String(row["Manager"] || "").trim(); coach = String(row["Coach"] || "").trim(); email = String(row["Username / Studio Email Address"] || "").trim(); } if (!director) return; if (!byDirector.has(director)) byDirector.set(director, { directorName: director, directorKey: normalizeName(director), directorEmail: !manager && !coach ? email : "", managers: [] }); const d = byDirector.get(director); if (!manager) return; let m = d.managers.find(x => normalizeName(x.managerName) === normalizeName(manager)); if (!m) { m = { managerName: manager, managerKey: normalizeName(manager), managerEmail: !coach ? email : "", coaches: [] }; d.managers.push(m); } if (!coach) return; if (!m.coaches.some(c => normalizeName(c.coachName) === normalizeName(coach))) m.coaches.push({ coachName: coach, coachKey: normalizeName(coach), coachEmail: email }); }); return { type: "SafeliteOrgBlueprint", version: 1, exportedAt: new Date().toISOString(), columnsUsed: { first: columns.first, last: columns.last, supervisor: columns.supervisor, email: columns.email }, personOverrides: { ...personOverrides }, hierarchy: Array.from(byDirector.values()) }; }
-function handleBlueprintImport(event) { const file = event.target.files[0]; if (!file) return; if (!people.length) { alert("Upload and process a people file first."); event.target.value = ""; return; } const ext = file.name.split(".").pop().toLowerCase(); const reader = new FileReader(); reader.onload = function(e) { try { let blueprint; if (ext === "json") { blueprint = JSON.parse(String(e.target.result || "{}")); } else { let rows = []; if (ext === "csv") { const wb = XLSX.read(String(e.target.result), { type: "string" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } else { const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); } blueprint = blueprintFromImportedRows(rows); } rebuildOrgFromBlueprint(blueprint); setStatus(`Blueprint imported from ${file.name}`); } catch (error) { console.error(error); alert("Unable to import blueprint file."); } finally { event.target.value = ""; } }; if (ext === "json" || ext === "csv") reader.readAsText(file); else reader.readAsArrayBuffer(file); }
-function applySafeliteEmailBox() { const box = document.getElementById("safeliteEmailBox"); safeliteUsersEmails = parseEmailList(box ? box.value : ""); renderOutputTable(); setStatus(`Safelite row updated with ${safeliteUsersEmails.length} emails`); }
-
-function bringRestIntoSafeliteEmails() {
-  const box = document.getElementById("safeliteEmailBox");
-  const startingEmails = parseEmailList([safeliteUsersEmails.join(", "), box ? box.value : ""].filter(Boolean).join(", "));
-  const safeliteEmailSet = new Set(startingEmails.map(normalizeEmail));
-  const remainingEmails = [];
-
-  getOrgPathRows().forEach(row => {
-    const rowEmail = getEmailByName(row.personName) || "";
-    const key = normalizeEmail(rowEmail);
-
-    if (!key || safeliteEmailSet.has(key)) return;
-
-    safeliteEmailSet.add(key);
-    remainingEmails.push(rowEmail.trim());
-  });
-
-  safeliteUsersEmails = parseEmailList([...startingEmails, ...remainingEmails].join(", "));
-  renderOutputTable();
-  setStatus(`Brought ${remainingEmails.length} remaining user emails into Safelite row`);
-}
-
-function setViewMode(mode) {
-  currentViewMode = mode;
-
-  document.getElementById("orgViewBtn").classList.toggle("active", mode === "org");
-  document.getElementById("usersViewBtn").classList.toggle("active", mode === "users");
-  document.getElementById("filtersViewBtn").classList.toggle("active", mode === "filters");
-  document.getElementById("emailsViewBtn").classList.toggle("active", mode === "emails");
-  document.getElementById("compareViewBtn").classList.toggle("active", mode === "compare");
-  document.getElementById("optionsViewBtn").classList.toggle("active", mode === "options");
-
-  renderOutputTable();
-}
-
-function renderOutputTable() {
-  if (currentViewMode === "compare") {
-    renderCompareView();
-    return;
-  }
-
-  if (currentViewMode === "org") {
-    renderOrgOutputTable();
-    return;
-  }
-
-  if (currentViewMode === "users") {
-    renderUsersOutputTable();
-    return;
-  }
-
-  if (currentViewMode === "filters") {
-    renderFiltersOutputTable();
-    return;
-  }
-  if (currentViewMode === "emails") {
-    renderEmailsView();
-    return;
-  }
-
-  if (currentViewMode === "options") {
-    renderOptionsView();
-    return;
-  }
-}
-
-function renderOrgOutputTable() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-  const includeEmail = document.getElementById("includeEmailToggle").checked;
-
-  header.innerHTML = `
-    <th>Company Name</th>
-    <th>Director</th>
-    <th>Manager</th>
-    <th>Coach</th>
-    ${includeEmail ? "<th>Username / Studio Email Address</th>" : ""}
-  `;
-
-  tbody.innerHTML = "";
-
-  getExportRows().forEach(row => {
-    const tr = document.createElement("tr");
-
-    tr.innerHTML = `
-      <td>${escapeHTML(row.company)}</td>
-      <td>${row.director ? clickableName(row.director) : ""}</td>
-      <td>${row.manager ? clickableName(row.manager) : ""}</td>
-      <td>${row.coach ? clickableName(row.coach) : ""}</td>
-      ${includeEmail ? `<td>${escapeHTML(row.email || "")}</td>` : ""}
-    `;
-
-    tbody.appendChild(tr);
-  });
-}
-
-function renderUsersOutputTable() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-
-  header.innerHTML = `
-    <th>Users</th>
-    <th>Studio Email Address</th>
-  `;
-
-  tbody.innerHTML = "";
-  const safeliteRow = document.createElement("tr");
-  safeliteRow.className = "safelite-users-row";
-  safeliteRow.innerHTML = `<td class="path-cell"><strong>Safelite</strong></td><td><textarea id="safeliteEmailBox" class="safelite-email-box" placeholder="Paste comma-separated emails here..."></textarea><div class="small">Paste comma-separated emails. These will be removed from duplicate user rows below.</div><button class="mini-btn" onclick="applySafeliteEmailBox()">Apply Safelite Emails</button> <button class="mini-btn" onclick="bringRestIntoSafeliteEmails()">Bring rest in</button></td>`;
-  tbody.appendChild(safeliteRow);
-  const safeliteEmailSet = new Set(safeliteUsersEmails.map(normalizeEmail));
-
-  getOrgPathRows().forEach(row => {
-    const tr = document.createElement("tr");
-    const rowEmail = getEmailByName(row.personName) || "";
-    const displayEmail = safeliteEmailSet.has(normalizeEmail(rowEmail)) ? "" : rowEmail;
-
-    tr.innerHTML = `
-      <td class="path-cell">${makeClickablePath(row.path)}</td>
-      <td>${escapeHTML(displayEmail)}</td>
-    `;
-
-    tbody.appendChild(tr);
-  });
-  setTimeout(() => { const box = document.getElementById("safeliteEmailBox"); if (box) box.value = safeliteUsersEmails.join(", "); }, 0);
-}
-
-function renderFiltersOutputTable() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-
-  header.innerHTML = `
-    <th>Users</th>
-    <th>Studio Email Address</th>
-  `;
-
-  tbody.innerHTML = "";
-
-  getOrgPathRows().forEach(row => {
-    const formattedEmails = formatFilterEmails(row.personName);
-
-    const tr = document.createElement("tr");
-
-    tr.innerHTML = `
-      <td class="path-cell">${makeClickablePath(row.path)}</td>
-      <td class="email-list">${escapeHTML(formattedEmails)}</td>
-    `;
-
-    tbody.appendChild(tr);
-  });
-}
-
-function getMissingEmailRows() {
-  const safeliteEmailSet = new Set((safeliteUsersEmails || []).map(normalizeEmail));
-  return getOrgPathRows().map(row => {
-    const uploadedOrSavedEmail = getEmailByName(row.personName);
-    const savedEmail = getSavedEmailForName(row.personName);
-    return { ...row, uploadedOrSavedEmail, savedEmail, isGlobalCovered: uploadedOrSavedEmail && safeliteEmailSet.has(normalizeEmail(uploadedOrSavedEmail)) };
-  }).filter(row => !row.isGlobalCovered && !row.uploadedOrSavedEmail);
-}
-
-function getAttachableSavedEmailRows() {
-  const safeliteEmailSet = new Set((safeliteUsersEmails || []).map(normalizeEmail));
-  return getOrgPathRows().map(row => {
-    const person = people.find(p => normalizeName(p.name) === normalizeName(row.personName));
-    const uploadedEmail = person ? String(person.email || "").trim() : "";
-    const savedEmail = getSavedEmailForName(row.personName);
-    return { ...row, uploadedEmail, savedEmail, isGlobalCovered: savedEmail && safeliteEmailSet.has(normalizeEmail(savedEmail)) };
-  }).filter(row => row.savedEmail && !row.uploadedEmail && !row.isGlobalCovered);
-}
-
-function renderAttachableSavedEmailsTable(rows) {
-  if (!rows.length) return `<div class="compare-section"><h3>Saved Emails Ready to Attach</h3><div class="notice">No saved emails are waiting to be attached.</div></div>`;
-  return `<div class="compare-section"><h3>Saved Emails Ready to Attach</h3><div class="notice compare-good">These people have blank emails in the current upload, but a saved email exists for their name. Click Attach Saved Emails to apply them.</div><table><thead><tr><th>User Path</th><th>Saved Email</th><th>Status</th></tr></thead><tbody>${rows.map(row => `<tr><td class="path-cell">${makeClickablePath(row.path)}</td><td>${escapeHTML(row.savedEmail)}</td><td class="email-status-good">Ready to attach</td></tr>`).join("")}</tbody></table></div>`;
-}
-
-function renderMissingEmailsTable(rows) {
-  if (!rows.length) return `<div class="compare-section"><h3>Missing User Emails</h3><div class="notice compare-good">No missing user emails found.</div></div>`;
-  return `<div class="compare-section"><h3>Missing User Emails</h3><table><thead><tr><th>User Path</th><th>Person Name</th><th>Type Email</th><th>Status</th></tr></thead><tbody>${rows.map(row => { const key = normalizeName(row.personName); const savedEmail = getSavedEmailForName(row.personName); return `<tr><td class="path-cell">${makeClickablePath(row.path)}</td><td>${escapeHTML(getDisplayNameByName(row.personName))}</td><td><input class="manual-email-input" data-person-name="${escapeHTML(row.personName)}" data-person-key="${escapeHTML(key)}" value="${escapeHTML(savedEmail)}" placeholder="type email..." /></td><td class="email-status-warning">Needs email</td></tr>`; }).join("")}</tbody></table></div>`;
-}
-
-function renderEmailsView() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-  header.innerHTML = `<th>Emails Tool</th>`;
-  const missingRows = getMissingEmailRows();
-  const attachableRows = getAttachableSavedEmailRows();
-  pendingEmailAttachments = { rows: attachableRows };
-  tbody.innerHTML = `<tr><td><div class="emails-tool-wrap"><div class="notice">Use this tab to fill blank user emails. Saved emails are remembered by person name and can be attached again when that name appears in future uploaded files.</div><div class="email-tool-actions"><button class="green" onclick="saveManualEmails()">Save Typed Emails</button><button class="orange" onclick="attachSavedEmails()">Attach Saved Emails</button><button class="secondary" onclick="exportSavedEmailLibrary()">Export Email Library</button><input type="file" id="emailLibraryImportInput" accept=".json,.xlsx,.xls,.csv" style="display:none;" onchange="handleEmailLibraryImport(event)" /><button class="secondary" onclick="document.getElementById('emailLibraryImportInput').click()">Upload Email Library</button></div><div class="notice">Missing emails: <strong>${missingRows.length}</strong><br>Saved emails ready to attach: <strong>${attachableRows.length}</strong><br>Saved email library size: <strong>${Object.keys(savedPersonEmails || {}).length}</strong></div>${renderAttachableSavedEmailsTable(attachableRows)}${renderMissingEmailsTable(missingRows)}</div></td></tr>`;
-}
-
-function renderOptionsView() {
-  const tbody = document.querySelector("#outputTable tbody");
-  const header = document.getElementById("outputTableHeader");
-  header.innerHTML = `<th>Options</th>`;
-
-  const overrideRows = Object.entries(personOverrides || {})
-    .map(([nameKey, override]) => ({ nameKey, ...override }))
-    .sort((a, b) => String(a.originalName || "").localeCompare(String(b.originalName || "")));
-
-  tbody.innerHTML = `<tr><td><div class="options-wrap">
-    <div class="options-card">
-      <h3>Display Name / Email Overrides</h3>
-      <div class="notice">Overrides only change visible/exported display names and output emails. Original loaded names remain the matching keys for supervisors, direct reports, drag/drop placement, and blueprint matching.</div>
-      <div class="options-grid">
-        <div class="options-field">
-          <label for="overridePersonSearch">Search Loaded People</label>
-          <input id="overridePersonSearch" type="text" placeholder="Search original name, display override, or email..." oninput="populateOverridePersonMatches()" />
-        </div>
-        <div class="options-field">
-          <label for="overridePersonSelect">Matching People</label>
-          <select id="overridePersonSelect" onchange="selectOverridePerson(this.value)"></select>
-        </div>
-        <div class="options-field">
-          <label for="overrideOriginalName">Original Name</label>
-          <input id="overrideOriginalName" type="text" readonly />
-        </div>
-        <div class="options-field">
-          <label for="overrideCurrentEmail">Current File Email</label>
-          <input id="overrideCurrentEmail" type="text" readonly />
-        </div>
-        <div class="options-field">
-          <label for="overrideDisplayName">Display Name Override</label>
-          <input id="overrideDisplayName" type="text" placeholder="Optional display name..." />
-        </div>
-        <div class="options-field">
-          <label for="overrideEmail">Email Override</label>
-          <input id="overrideEmail" type="text" placeholder="Optional email override..." />
-        </div>
-      </div>
-      <div class="options-actions">
-        <button class="green mini-btn" onclick="saveOverrideFromForm()">Save Override</button>
-        <button class="danger mini-btn" onclick="deleteOverrideFromForm()">Delete Override</button>
-        <button class="secondary mini-btn" onclick="clearOverrideForm()">Clear Form</button>
-      </div>
-    </div>
-    <div class="options-card">
-      <h3>Saved Overrides</h3>
-      <div class="options-table-wrap">
-        <table>
-          <thead><tr><th>Original Name</th><th>Display Name Override</th><th>Email Override</th><th>Updated At</th><th>Actions</th></tr></thead>
-          <tbody>${overrideRows.length ? overrideRows.map(row => `<tr><td>${escapeHTML(row.originalName || "")}</td><td>${escapeHTML(row.displayName || "")}</td><td>${escapeHTML(row.email || "")}</td><td>${escapeHTML(row.updatedAt ? new Date(row.updatedAt).toLocaleString() : "")}</td><td><button class="mini-btn" onclick="editOverride('${jsEscape(row.originalName || row.nameKey)}')">Edit</button> <button class="danger mini-btn" onclick="deleteOverrideAndRefresh('${jsEscape(row.originalName || row.nameKey)}')">Delete</button></td></tr>`).join("") : `<tr><td colspan="5">No saved overrides yet.</td></tr>`}</tbody>
-        </table>
-      </div>
-    </div>
-  </div></td></tr>`;
-
-  populateOverridePersonMatches();
-  if (optionsSelectedOriginalName) loadOverrideForm(optionsSelectedOriginalName);
-}
-
-function getOverrideSearchMatches() {
-  const searchInput = document.getElementById("overridePersonSearch");
-  const search = normalizeName(searchInput ? searchInput.value : "");
-
-  return people.filter(person => {
-    if (!search) return true;
-    const override = getPersonOverride(person.name);
-    return person.nameKey.includes(search) ||
-      normalizeName(getDisplayNameByName(person.name)).includes(search) ||
-      normalizeName(person.email).includes(search) ||
-      normalizeName(override?.email || "").includes(search);
-  }).slice(0, 500);
-}
-
-function populateOverridePersonMatches() {
-  const select = document.getElementById("overridePersonSelect");
-  if (!select) return;
-  const matches = getOverrideSearchMatches();
-  select.innerHTML = matches.map(person => `<option value="${escapeHTML(person.name)}">${escapeHTML(getDisplayNameByName(person.name))}${normalizeName(getDisplayNameByName(person.name)) !== person.nameKey ? ` (Original: ${escapeHTML(person.name)})` : ""}</option>`).join("");
-
-  if (!matches.length) {
-    select.innerHTML = `<option value="">No matching people</option>`;
-    clearOverrideForm(false);
-    return;
-  }
-
-  const selectedStillVisible = optionsSelectedOriginalName && matches.some(person => person.nameKey === normalizeName(optionsSelectedOriginalName));
-  select.value = selectedStillVisible ? optionsSelectedOriginalName : matches[0].name;
-  loadOverrideForm(select.value);
-}
-
-function selectOverridePerson(originalName) {
-  loadOverrideForm(originalName);
-}
-
-function loadOverrideForm(originalName) {
-  const person = people.find(p => p.nameKey === normalizeName(originalName));
-  const original = person ? person.name : titleName(originalName);
-  const override = getPersonOverride(original);
-  optionsSelectedOriginalName = original;
-
-  const originalInput = document.getElementById("overrideOriginalName");
-  const emailInput = document.getElementById("overrideCurrentEmail");
-  const displayInput = document.getElementById("overrideDisplayName");
-  const overrideEmailInput = document.getElementById("overrideEmail");
-
-  if (originalInput) originalInput.value = original || "";
-  if (emailInput) emailInput.value = getFileEmailByName(original) || "";
-  if (displayInput) displayInput.value = override?.displayName || "";
-  if (overrideEmailInput) overrideEmailInput.value = override?.email || "";
-}
-
-function saveOverrideFromForm() {
-  const originalName = document.getElementById("overrideOriginalName")?.value || "";
-  const displayName = document.getElementById("overrideDisplayName")?.value || "";
-  const email = document.getElementById("overrideEmail")?.value || "";
-
-  if (!normalizeName(originalName)) {
-    alert("Select a loaded person first.");
-    return;
-  }
-
-  if (!String(displayName || "").trim() && !String(email || "").trim()) {
-    if (getPersonOverride(originalName)) {
-      deletePersonOverride(originalName);
-      setStatus("Blank override removed");
-    } else {
-      alert("Enter a display name override, an email override, or choose Delete Override.");
-      return;
-    }
-  } else {
-    savePersonOverride(originalName, displayName, email);
-    setStatus(`Override saved for ${getDisplayNameByName(originalName)}`);
-  }
-
-  applyPersonDisplayOverridesToOrg();
-}
-
-function deleteOverrideFromForm() {
-  const originalName = document.getElementById("overrideOriginalName")?.value || optionsSelectedOriginalName;
-  if (!normalizeName(originalName)) return;
-  deleteOverrideAndRefresh(originalName);
-}
-
-function deleteOverrideAndRefresh(originalName) {
-  deletePersonOverride(originalName);
-  setStatus(`Override deleted for ${titleName(originalName)}`);
-  applyPersonDisplayOverridesToOrg();
-}
-
-function editOverride(originalName) {
-  optionsSelectedOriginalName = originalName;
-  const searchInput = document.getElementById("overridePersonSearch");
-  if (searchInput) searchInput.value = originalName;
-  populateOverridePersonMatches();
-  loadOverrideForm(originalName);
-}
-
-function clearOverrideForm(keepSelection = true) {
-  if (!keepSelection) optionsSelectedOriginalName = "";
-  ["overrideOriginalName", "overrideCurrentEmail", "overrideDisplayName", "overrideEmail"].forEach(id => {
-    const input = document.getElementById(id);
-    if (input) input.value = "";
-  });
-}
-
-function saveManualEmails() {
-  const inputs = Array.from(document.querySelectorAll(".manual-email-input"));
-  let saved = 0;
-  const invalid = [];
-  inputs.forEach(input => {
-    const personName = input.getAttribute("data-person-name") || "";
-    const email = String(input.value || "").trim();
-    if (!email) return;
-    if (!isLikelyEmail(email)) { invalid.push({ personName, email }); return; }
-    setSavedEmailForName(personName, email); saved++;
-  });
-  if (invalid.length) alert(`Some emails do not look valid and were not saved:\n\n${invalid.slice(0, 20).map(item => `${item.personName}: ${item.email}`).join("\n")}`);
-  setStatus(`Saved ${saved} manual emails`);
-  renderOutputTable();
-}
-
-function attachSavedEmails() {
-  const attachableRows = getAttachableSavedEmailRows();
-  if (!attachableRows.length) { alert("No saved emails are ready to attach."); return; }
-  let attached = 0;
-  attachableRows.forEach(row => {
-    const savedEmail = getSavedEmailForName(row.personName);
-    const person = people.find(p => normalizeName(p.name) === normalizeName(row.personName));
-    if (person && savedEmail && !person.email) { person.email = savedEmail; attached++; }
-  });
-  setStatus(`Attached ${attached} saved emails by name`);
-  alert(`Attached ${attached} saved emails by matching saved person names.`);
-  renderAll();
-}
-
-function exportSavedEmailLibrary() {
-  const rows = Object.entries(savedPersonEmails || {}).map(([nameKey, email]) => ({ nameKey, email }));
-  if (!rows.length) { alert("No saved emails to export."); return; }
-  const payload = { type: "SafeliteSavedEmailLibrary", version: 1, exportedAt: new Date().toISOString(), savedPersonEmails };
-  const date = new Date().toISOString().slice(0, 10);
-  downloadBlob(JSON.stringify(payload, null, 2), `safelite_saved_email_library_${date}.json`, "application/json;charset=utf-8;");
-}
-
-function emailLibraryFromRows(rows) {
-  const imported = {};
-  rows.forEach(row => {
-    const keys = Object.keys(row);
-    const nameKeyHeader = keys.find(k => normalizeHeader(k) === "namekey" || normalizeHeader(k) === "name key");
-    const nameHeader = keys.find(k => normalizeHeader(k) === "name" || normalizeHeader(k) === "person name" || normalizeHeader(k) === "users");
-    const emailHeader = keys.find(k => normalizeHeader(k).includes("email") || normalizeHeader(k).includes("studio email"));
-    const rawName = nameKeyHeader ? row[nameKeyHeader] : nameHeader ? row[nameHeader] : "";
-    const rawEmail = emailHeader ? row[emailHeader] : "";
-    const nameKey = normalizeName(rawName);
-    const email = String(rawEmail || "").trim();
-    if (nameKey && email && isLikelyEmail(email)) imported[nameKey] = email;
-  });
-  return imported;
-}
-
-function handleEmailLibraryImport(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      let imported = {};
-      if (file.name.toLowerCase().endsWith(".json")) {
-        const payload = JSON.parse(e.target.result);
-        if (payload.type === "SafeliteSavedEmailLibrary" && payload.savedPersonEmails) imported = payload.savedPersonEmails;
-        else if (payload.savedPersonEmails) imported = payload.savedPersonEmails;
-        else { alert("This JSON does not look like a saved email library."); return; }
-      } else {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-        imported = emailLibraryFromRows(rows);
-      }
-      let added = 0; let updated = 0;
-      Object.entries(imported || {}).forEach(([nameKey, email]) => { const cleanKey = normalizeName(nameKey); const cleanEmail = String(email || "").trim(); if (!cleanKey || !cleanEmail) return; if (savedPersonEmails[cleanKey]) updated++; else added++; savedPersonEmails[cleanKey] = cleanEmail; });
-      setStatus(`Email library loaded: ${added} added, ${updated} updated`);
-      alert(`Email library loaded.\n\nAdded: ${added}\nUpdated: ${updated}`);
-      renderAll();
-    } catch (error) { console.error(error); alert("Could not import the saved email library."); }
-  };
-  if (file.name.toLowerCase().endsWith(".json")) reader.readAsText(file); else reader.readAsArrayBuffer(file);
-  event.target.value = "";
-}
-
-function clickableName(name) {
-  return `<span class="name-click" onclick="selectPersonByName('${jsEscape(name)}')">${escapeHTML(getDisplayNameByName(name))}</span>`;
-}
-
-function makeClickablePath(path) {
-  return path
-    .split(" --> ")
-    .map(part => {
-      if (part === "Safelite") {
-        return escapeHTML(part);
-      }
-
-      return clickableName(part);
-    })
-    .join(" --> ");
-}
-
-function fillReportsForPerson(personName) {
-  const emails = getReportEmailsForSupervisor(personName);
-  filledReportEmails[personName] = emails;
-
-  if (!emails.length) {
-    alert(`No reporting usernames/emails found for ${personName}.`);
-  }
-
-  renderOutputTable();
-}
-
-function autoFillCoaches() {
-  let filledCount = 0;
-
-  getOrgPathRows().forEach(row => {
-    if (row.level === "Coach") {
-      const emails = getReportEmailsForSupervisor(row.personName);
-      filledReportEmails[row.personName] = emails;
-
-      if (emails.length) {
-        filledCount++;
-      }
-    }
-  });
-
-  alert(`Auto-filled reporting usernames/emails for ${filledCount} coach rows.`);
-  renderOutputTable();
-}
-
-function autoFillAllLeaders() {
-  let filledCount = 0;
-
-  getOrgPathRows().forEach(row => {
-    const emails = getReportEmailsForSupervisor(row.personName);
-    filledReportEmails[row.personName] = emails;
-
-    if (emails.length) {
-      filledCount++;
-    }
-  });
-
-  alert(`Auto-filled reporting usernames/emails for ${filledCount} rows.`);
-  renderOutputTable();
-}
-
-function clearFilledEmails() {
-  if (!confirm("Clear all filled reporting username/email lists?")) return;
-
-  filledReportEmails = {};
-  renderOutputTable();
-}
-
-function getFilterEmailsForPerson(personName) {
-  const emails = [
-    getEmailByName(personName),
-    ...(filledReportEmails[personName] || getReportEmailsForSupervisor(personName))
-  ];
-  const seen = new Set();
-
-  return emails
-    .map(email => String(email || "").trim())
-    .filter(email => {
-      const key = normalizeEmail(email);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-}
-
-function formatFilterEmails(personName) {
-  const emails = getFilterEmailsForPerson(personName);
-
-  if (!emails.length) {
-    return "";
-  }
-
-  return emails
-    .map(email => `username:"${email}"`)
-    .join(", ");
-}
-
-function getCurrentViewExportRows() {
-  if (currentViewMode === "org") {
-    const includeEmail = document.getElementById("includeEmailToggle").checked;
-
-    return getExportRows().map(row => {
-      const output = {
-        "Company Name": row.company,
-        "Director": row.director,
-        "Manager": row.manager,
-        "Coach": row.coach
-      };
-
-      if (includeEmail) {
-        output["Username / Studio Email Address"] = row.email || "";
-      }
-
-      return output;
-    });
-  }
-
-  if (currentViewMode === "users") {
-    const safeliteEmailSet = new Set(safeliteUsersEmails.map(normalizeEmail));
-    return [{ "Users": "Safelite", "Studio Email Address": safeliteUsersEmails.join(", ") }, ...getOrgPathRows().map(row => { const rowEmail = getEmailByName(row.personName) || ""; return ({ "Users": row.path, "Studio Email Address": safeliteEmailSet.has(normalizeEmail(rowEmail)) ? "" : rowEmail }); })];
-  }
-
-  if (currentViewMode === "filters") {
-    return getOrgPathRows().map(row => ({
-      "Users": row.path,
-      "Studio Email Address": formatFilterEmails(row.personName)
-    }));
-  }
-
-  return [];
-}
-
-function getExportFileName(extension) {
-  const label =
-    currentViewMode === "org"
-      ? "org_view"
-      : currentViewMode === "users"
-        ? "users_view"
-        : "filters_view";
-
-  return `safelite_${label}_export.${extension}`;
-}
-
-function exportCSV() {
-  const exportRows = getCurrentViewExportRows();
-
-  if (!exportRows.length) {
-    alert("No rows to export.");
-    return;
-  }
-
-  const headers = Object.keys(exportRows[0]);
-
-  const csvRows = [
-    headers.map(csvEscape).join(","),
-    ...exportRows.map(row => headers.map(header => csvEscape(row[header])).join(","))
-  ];
-
-  downloadBlob(csvRows.join("\n"), getExportFileName("csv"), "text/csv;charset=utf-8;");
-}
-
-function exportExcel() {
-  const exportRows = getCurrentViewExportRows();
-
-  if (!exportRows.length) {
-    alert("No rows to export.");
-    return;
-  }
-
-  const worksheet = XLSX.utils.json_to_sheet(exportRows);
-  const workbook = XLSX.utils.book_new();
-
-  const sheetName =
-    currentViewMode === "org"
-      ? "Org View"
-      : currentViewMode === "users"
-        ? "Users View"
-        : "Filters View";
-
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-
-  if (worksheet["!ref"]) {
-    const range = XLSX.utils.decode_range(worksheet["!ref"]);
-    worksheet["!cols"] = [];
-
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-      let maxWidth = 14;
-
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
-        if (cell && cell.v) {
-          maxWidth = Math.max(maxWidth, String(cell.v).length + 2);
-        }
-      }
-
-      worksheet["!cols"].push({ wch: Math.min(maxWidth, 100) });
-    }
-  }
-
-  XLSX.writeFile(workbook, getExportFileName("xlsx"));
-}
-
-function saveLocal() {
-  const payload = {
-    savedAt: new Date().toISOString(),
-    rawRows,
-    people,
-    columns,
-    org,
-    includeEmail: document.getElementById("includeEmailToggle").checked,
-    currentViewMode,
-    hideAssignedPeople: document.getElementById("hideAssignedPeopleToggle")?.checked || false,
-    filledReportEmails,
-    orgBlueprint: buildOrgBlueprint(),
-    safeliteUsersEmails,
-    savedPersonEmails,
-    personOverrides,
-    activePeopleFilters: getValidPeopleFilters()
-  };
-
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  setStatus("Saved locally");
-  alert("Saved locally in this browser.");
-}
-
-function loadLocal() {
-  const text = localStorage.getItem(STORAGE_KEY);
-
-  if (!text) {
-    alert("No local save found.");
-    return;
-  }
-
-  try {
-    const payload = JSON.parse(text);
-    const hasCurrentFileLoaded = rawRows.length > 0 && people.length > 0;
-    const hasBlueprint = payload.orgBlueprint && Array.isArray(payload.orgBlueprint.hierarchy);
-
-    if (hasCurrentFileLoaded && hasBlueprint) {
-      hideAssignedPeople = Boolean(payload.hideAssignedPeople);
-      const hideAssignedToggle = document.getElementById("hideAssignedPeopleToggle");
-      if (hideAssignedToggle) hideAssignedToggle.checked = hideAssignedPeople;
-      savedPersonEmails = payload.savedPersonEmails || savedPersonEmails || {};
-      personOverrides = normalizePersonOverrides(payload.personOverrides || payload.orgBlueprint.personOverrides || personOverrides || {});
-      activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
-      rebuildOrgFromBlueprint(payload.orgBlueprint);
-      updateFilterButtonLabel();
-      renderPeopleList();
-      setStatus("Loaded org blueprint onto current uploaded file");
-      return;
-    }
-
-    rawRows = payload.rawRows || [];
-    people = payload.people || [];
-    columns = payload.columns || columns;
-    org = payload.org || [];
-    filledReportEmails = payload.filledReportEmails || {};
-    safeliteUsersEmails = Array.isArray(payload.safeliteUsersEmails) ? payload.safeliteUsersEmails : [];
-    savedPersonEmails = payload.savedPersonEmails || {};
-    personOverrides = normalizePersonOverrides(payload.personOverrides || payload.orgBlueprint?.personOverrides || {});
-    activePeopleFilters = getValidPeopleFilters(payload.activePeopleFilters || []);
-    currentViewMode = payload.currentViewMode || "org";
-    hideAssignedPeople = Boolean(payload.hideAssignedPeople);
-    const hideAssignedToggle = document.getElementById("hideAssignedPeopleToggle");
-    if (hideAssignedToggle) hideAssignedToggle.checked = hideAssignedPeople;
-
-    if (typeof payload.includeEmail === "boolean") {
-      document.getElementById("includeEmailToggle").checked = payload.includeEmail;
-    }
-
-    if (rawRows.length) {
-      setupColumnSelectors();
-
-      if (columns.first) document.getElementById("firstNameSelect").value = columns.first;
-      if (columns.last) document.getElementById("lastNameSelect").value = columns.last;
-      if (columns.supervisor) document.getElementById("supervisorSelect").value = columns.supervisor;
-      if (columns.email) document.getElementById("emailSelect").value = columns.email;
-    }
-
-    selectedPerson = null;
-    renderAll();
-    setViewMode(currentViewMode);
-
-    const savedDate = payload.savedAt ? new Date(payload.savedAt).toLocaleString() : "unknown time";
-    setStatus(`Loaded local save from ${savedDate}`);
-  } catch (error) {
-    console.error(error);
-    alert("Local save could not be loaded.");
-  }
-}
-
-function allowDrop(event) {
-  event.preventDefault();
-  event.currentTarget.classList.add("drag-over");
-}
-
-function removeDragOver(event) {
-  event.currentTarget.classList.remove("drag-over");
-}
-
-function dropAsDirector(event) {
-  event.preventDefault();
-  event.currentTarget.classList.remove("drag-over");
-
-  if (!draggedItem) return;
-
-  addDirector(draggedItem.name);
-  draggedItem = null;
-}
-
-function downloadBlob(content, filename, type) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  URL.revokeObjectURL(url);
-}
-
-function csvEscape(value) {
-  const text = String(value || "");
-
-  if (text.includes(",") || text.includes('"') || text.includes("\n")) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-
-  return text;
-}
-
-function escapeHTML(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function jsEscape(value) {
-  return String(value || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/'/g, "\\'");
-}
-
-
-function renderCompareView() { const header = document.getElementById("outputTableHeader"); const tbody = document.querySelector("#outputTable tbody"); header.innerHTML = `<th>Compare Files</th>`; tbody.innerHTML = `<tr><td><div class="compare-wrap"><div class="notice">Upload a second file to compare its format and names against the currently loaded file.</div>${lastBlueprintLoadSummary ? `<div class="notice compare-warning">Last blueprint load (${new Date(lastBlueprintLoadSummary.loadedAt).toLocaleString()}): Directors ${lastBlueprintLoadSummary.directorCount}, Managers ${lastBlueprintLoadSummary.managerCount}, Coaches ${lastBlueprintLoadSummary.coachCount}, Missing ${lastBlueprintLoadSummary.missing.length}.</div>` : ""}<div class="compare-grid"><div class="compare-card"><h3>Current File</h3><div id="currentFileSummary"></div></div><div class="compare-card"><h3>Comparison File</h3><input type="file" id="compareFileInput" accept=".xlsx,.xls,.csv" /><div id="compareFileSummary" class="small" style="margin-top:8px;">No comparison file loaded.</div></div></div><div id="compareResultsBox" style="margin-top:12px;"></div></div></td></tr>`; renderCurrentFileSummary(); const compareInput = document.getElementById("compareFileInput"); if (compareInput) compareInput.addEventListener("change", handleCompareFileUpload); if (compareResults) renderCompareResults(); }
-function handleCompareFileUpload(event) { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = function(e) { try { const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, { type: "array" }); const sheetName = workbook.SheetNames[0]; const sheet = workbook.Sheets[sheetName]; compareRawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" }); if (!compareRawRows.length) { alert("No rows found in comparison file."); return; } setupCompareColumns(); processComparePeople(); compareResults = compareFiles(); renderCompareView(); setStatus(`Compared current file to ${file.name}`); } catch (error) { console.error(error); alert("There was an issue reading the comparison file."); } }; reader.readAsArrayBuffer(file); }
-function setupCompareColumns() { const headers = Object.keys(compareRawRows[0] || {}); compareColumns.first = findBestHeader(headers, possibleFirstNames); compareColumns.last = findBestHeader(headers, possibleLastNames); compareColumns.supervisor = findBestHeader(headers, possibleSupervisorNames); compareColumns.email = findBestHeader(headers, possibleEmailNames); }
-function processComparePeople() { comparePeople = []; compareRawRows.forEach((row, index) => { const first = row[compareColumns.first]; const last = row[compareColumns.last]; const name = makeDisplayName(first, last); if (!name) return; comparePeople.push({ id: `compare_person_${index}`, first: String(first || "").trim(), last: String(last || "").trim(), name, nameKey: normalizeName(name), email: String(row[compareColumns.email] || "").trim(), supervisorRaw: titleName(row[compareColumns.supervisor]), supervisorKey: normalizeName(row[compareColumns.supervisor]), raw: row }); }); comparePeople.sort((a, b) => a.name.localeCompare(b.name)); }
-function compareFiles() { const currentHeaders = Object.keys(rawRows[0] || {}); const compareHeaders = Object.keys(compareRawRows[0] || {}); const currentNormalizedHeaders = currentHeaders.map(normalizeHeader); const compareNormalizedHeaders = compareHeaders.map(normalizeHeader); const missingFromCompare = currentHeaders.filter(header => !compareNormalizedHeaders.includes(normalizeHeader(header))); const extraInCompare = compareHeaders.filter(header => !currentNormalizedHeaders.includes(normalizeHeader(header))); const sameHeaderOrder = currentHeaders.length === compareHeaders.length && currentHeaders.every((header, index) => normalizeHeader(header) === normalizeHeader(compareHeaders[index])); const requiredMappings = [{ label: "First Name", current: columns.first, compare: compareColumns.first }, { label: "Last Name", current: columns.last, compare: compareColumns.last }, { label: "Supervisor", current: columns.supervisor, compare: compareColumns.supervisor }, { label: "Username / Email", current: columns.email, compare: compareColumns.email }]; const currentNameKeys = new Set(people.map(p => p.nameKey)); const compareNameKeys = new Set(comparePeople.map(p => p.nameKey)); const matchedNames = people.filter(p => compareNameKeys.has(p.nameKey)); const missingNames = people.filter(p => !compareNameKeys.has(p.nameKey)); const newNames = comparePeople.filter(p => !currentNameKeys.has(p.nameKey)); const supervisorDifferences = []; matchedNames.forEach(currentPerson => { const comparePerson = comparePeople.find(p => p.nameKey === currentPerson.nameKey); if (!comparePerson) return; if (currentPerson.supervisorKey !== comparePerson.supervisorKey) supervisorDifferences.push({ name: currentPerson.name, currentSupervisor: currentPerson.supervisorRaw || "", compareSupervisor: comparePerson.supervisorRaw || "" }); }); return { currentHeaders, compareHeaders, sameHeaderOrder, missingFromCompare, extraInCompare, requiredMappings, currentCount: people.length, compareCount: comparePeople.length, matchedNames, missingNames, newNames, supervisorDifferences }; }
-function renderCurrentFileSummary() { const box = document.getElementById("currentFileSummary"); if (!box) return; if (!rawRows.length) { box.innerHTML = `<div class="notice">No current file loaded.</div>`; return; } box.innerHTML = `<div><strong>Rows:</strong> ${rawRows.length.toLocaleString()}</div><div><strong>People:</strong> ${people.length.toLocaleString()}</div><div><strong>First:</strong> ${escapeHTML(columns.first || "—")}</div><div><strong>Last:</strong> ${escapeHTML(columns.last || "—")}</div><div><strong>Supervisor:</strong> ${escapeHTML(columns.supervisor || "—")}</div><div><strong>Email:</strong> ${escapeHTML(columns.email || "—")}</div>`; }
-function renderCompareResults() { const box = document.getElementById("compareResultsBox"); const summaryBox = document.getElementById("compareFileSummary"); if (!box || !compareResults) return; if (summaryBox) summaryBox.innerHTML = `Rows: ${compareRawRows.length.toLocaleString()}<br>People: ${comparePeople.length.toLocaleString()}<br>First: ${escapeHTML(compareColumns.first || "—")}<br>Last: ${escapeHTML(compareColumns.last || "—")}<br>Supervisor: ${escapeHTML(compareColumns.supervisor || "—")}<br>Email: ${escapeHTML(compareColumns.email || "—")}`; const formatClass = compareResults.missingFromCompare.length === 0 && compareResults.extraInCompare.length === 0 ? "compare-good" : "compare-warning"; const orderText = compareResults.sameHeaderOrder ? "Headers match in the same order." : "Headers do not perfectly match in the same order."; box.innerHTML = `<div class="compare-section"><h3>Format Equivalency Summary</h3><div class="notice ${formatClass}"><strong>${orderText}</strong><br>Missing columns in comparison file: ${compareResults.missingFromCompare.length}<br>Extra columns in comparison file: ${compareResults.extraInCompare.length}</div>${renderRequiredMappingTable()}${renderHeaderComparisonTable()}</div><div class="compare-section"><h3>Name Match Summary</h3><div class="notice ${compareResults.missingNames.length === 0 ? "compare-good" : "compare-warning"}">Current people: ${compareResults.currentCount}<br>Comparison people: ${compareResults.compareCount}<br>Matched names: ${compareResults.matchedNames.length}<br>Missing from comparison file: ${compareResults.missingNames.length}<br>New names in comparison file: ${compareResults.newNames.length}</div>${renderNameDifferenceTable()}</div><div class="compare-section"><h3>Supervisor / Row Relationship Differences</h3><div class="notice ${compareResults.supervisorDifferences.length === 0 ? "compare-good" : "compare-warning"}">Supervisor differences found: ${compareResults.supervisorDifferences.length}</div>${renderSupervisorDifferenceTable()}</div>`; }
-function renderRequiredMappingTable() { return `<table><thead><tr><th>Required Field</th><th>Current File Column</th><th>Comparison File Column</th><th>Status</th></tr></thead><tbody>${compareResults.requiredMappings.map(item => { const same = normalizeHeader(item.current) === normalizeHeader(item.compare); return `<tr><td>${escapeHTML(item.label)}</td><td>${escapeHTML(item.current || "—")}</td><td>${escapeHTML(item.compare || "—")}</td><td class="${same ? "match-cell" : "partial-cell"}">${same ? "Equivalent" : "Different column name / mapping"}</td></tr>`; }).join("")}</tbody></table>`; }
-function renderHeaderComparisonTable() { const max = Math.max(compareResults.currentHeaders.length, compareResults.compareHeaders.length); let rows = ""; for (let i = 0; i < max; i++) { const currentHeader = compareResults.currentHeaders[i] || ""; const compareHeader = compareResults.compareHeaders[i] || ""; const same = normalizeHeader(currentHeader) === normalizeHeader(compareHeader); rows += `<tr><td>${i + 1}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(currentHeader || "—")}</td><td class="${same ? "match-cell" : "diff-cell"}">${escapeHTML(compareHeader || "—")}</td><td>${same ? "Same position" : "Different"}</td></tr>`; } return `<table><thead><tr><th>#</th><th>Current Header</th><th>Comparison Header</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`; }
-function renderNameDifferenceTable() { const missing = compareResults.missingNames.slice(0, 150); const added = compareResults.newNames.slice(0, 150); return `<table><thead><tr><th>Difference Type</th><th>Name</th><th>Supervisor</th><th>Email</th></tr></thead><tbody>${missing.map(p => `<tr><td class="diff-cell">Missing from comparison</td><td>${escapeHTML(getDisplayNameByName(p.name))}${normalizeName(getDisplayNameByName(p.name)) !== p.nameKey ? `<span class="original-name-note">Original: ${escapeHTML(p.name)}</span>` : ""}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(getEmailByName(p.name) || "—")}</td></tr>`).join("")}${added.map(p => `<tr><td class="partial-cell">New in comparison</td><td>${escapeHTML(p.name)}</td><td>${escapeHTML(p.supervisorRaw || "—")}</td><td>${escapeHTML(p.email || "—")}</td></tr>`).join("")}</tbody></table>`; }
-function renderSupervisorDifferenceTable() { if (!compareResults.supervisorDifferences.length) return `<div class="notice compare-good">No supervisor differences found for matched names.</div>`; return `<table><thead><tr><th>Name</th><th>Current Supervisor</th><th>Comparison Supervisor</th></tr></thead><tbody>${compareResults.supervisorDifferences.slice(0, 200).map(item => `<tr><td>${escapeHTML(getDisplayNameByName(item.name))}</td><td class="diff-cell">${escapeHTML(item.currentSupervisor || "—")}</td><td class="diff-cell">${escapeHTML(item.compareSupervisor || "—")}</td></tr>`).join("")}</tbody></table>`; }
-
-function setStatus(text) {
-  document.getElementById("statusPill").textContent = text;
-}
-
-renderAll();
+function updateProjectiles(dt){for(const p of projectiles){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;for(const t of targetsFor(p.owner,p.owner===player)){if(t.dead||t.spawnGrace>0)continue;if(Math.hypot(t.x-p.x,(t.y-.8)-p.y,t.z-p.z)<(.55+(p.r||.34))){damage(t,p.damage,p.owner,false);p.life=0;burst(p.x,p.y,p.z,p.color);break}}for(const b of blocks()){if(Math.abs(p.x-b.x)<b.w/2&&Math.abs(p.z-b.z)<b.d/2&&p.y>b.y-b.h/2&&p.y<b.y+b.h/2){p.life=0;burst(p.x,p.y,p.z,p.color);break}}}projectiles=projectiles.filter(p=>p.life>0)}
+function shadeColor(hex,amt){const n=parseInt(hex.slice(1),16),r=clamp((n>>16)+amt,0,255)|0,g=clamp(((n>>8)&255)+amt,0,255)|0,b=clamp((n&255)+amt,0,255)|0;return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)}
+function cameraPoint(x,y,z){const dx=x-player.x,dy=y-player.y,dz=z-player.z;const sy=Math.sin(player.yaw),cy=Math.cos(player.yaw);const x1=dx*cy-dz*sy,z1=dx*sy+dz*cy;const cp=Math.cos(-player.pitch),sp=Math.sin(-player.pitch);return {x:x1,y:dy*cp-z1*sp,z:dy*sp+z1*cp}}
+function projectCam(p){const f=H*.72/p.z;return {x:W/2+p.x*f,y:H/2-p.y*f,z:p.z,s:f}}
+function project(x,y,z){const p=cameraPoint(x,y,z);if(p.z<.08)return null;return projectCam(p)}
+function clipCamPoly(poly,near=.08){let out=[];for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length],ain=a.z>=near,bin=b.z>=near;if(ain&&bin)out.push(b);else if(ain&&!bin){const t=(near-a.z)/(b.z-a.z);out.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:near})}else if(!ain&&bin){const t=(near-a.z)/(b.z-a.z);out.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:near});out.push(b)}}return out}
+function drawPoly(points,fill,stroke,line=2){let cam=points.map(p=>cameraPoint(p[0],p[1],p[2]));cam=clipCamPoly(cam);if(cam.length<3)return;const ps=cam.map(projectCam);ctx.beginPath();ctx.moveTo(ps[0].x,ps[0].y);for(let i=1;i<ps.length;i++)ctx.lineTo(ps[i].x,ps[i].y);ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=line;ctx.shadowBlur=0;ctx.stroke()}}
+function boxFaces(o){const x=o.x,z=o.z,w=o.w/2,d=o.d/2,y0=o.y-o.h/2,y1=o.y+o.h/2;return [
+ {pts:[[x-w,y1,z-d],[x+w,y1,z-d],[x+w,y1,z+d],[x-w,y1,z+d]],shade:28,edge:'#ffffff'},
+ // Bottom/underside face matters for platforms above the player. Without it, bots standing on top could be seen through the platform floor from below.
+ {pts:[[x-w,y0,z+d],[x+w,y0,z+d],[x+w,y0,z-d],[x-w,y0,z-d]],shade:-44,edge:'#071018'},
+ {pts:[[x-w,y0,z-d],[x-w,y1,z-d],[x-w,y1,z+d],[x-w,y0,z+d]],shade:-28,edge:'#071018'},
+ {pts:[[x+w,y0,z-d],[x+w,y1,z-d],[x+w,y1,z+d],[x+w,y0,z+d]],shade:-36,edge:'#071018'},
+ {pts:[[x-w,y0,z-d],[x+w,y0,z-d],[x+w,y1,z-d],[x-w,y1,z-d]],shade:-15,edge:'#071018'},
+ {pts:[[x-w,y0,z+d],[x+w,y0,z+d],[x+w,y1,z+d],[x-w,y1,z+d]],shade:-22,edge:'#071018'}]}
+function orientedBoxFaces(x,y,z,w,h,d,yaw,c,line=1.5){const sx=Math.cos(yaw),sz=-Math.sin(yaw),fx=Math.sin(yaw),fz=Math.cos(yaw),hw=w/2,hd=d/2,y0=y-h/2,y1=y+h/2;function pt(a,b,yy){return [x+sx*a+fx*b,yy,z+sz*a+fz*b]}return [
+ {pts:[pt(-hw,-hd,y1),pt(hw,-hd,y1),pt(hw,hd,y1),pt(-hw,hd,y1)],c:shadeColor(c,18),edge:'#071018',line},
+ {pts:[pt(-hw,-hd,y0),pt(-hw,-hd,y1),pt(-hw,hd,y1),pt(-hw,hd,y0)],c:shadeColor(c,-30),edge:'#071018',line},
+ {pts:[pt(hw,-hd,y0),pt(hw,-hd,y1),pt(hw,hd,y1),pt(hw,hd,y0)],c:shadeColor(c,-36),edge:'#071018',line},
+ {pts:[pt(-hw,-hd,y0),pt(hw,-hd,y0),pt(hw,-hd,y1),pt(-hw,-hd,y1)],c:shadeColor(c,-18),edge:'#071018',line},
+ {pts:[pt(-hw,hd,y0),pt(hw,hd,y0),pt(hw,hd,y1),pt(-hw,hd,y1)],c:shadeColor(c,-24),edge:'#071018',line}];}
+function orientedBox(x,y,z,w,h,d,yaw,c){for(const f of orientedBoxFaces(x,y,z,w,h,d,yaw,c))drawPoly(f.pts,f.c,f.edge,f.line)}
+function pushOrientedBoxFaces(queue,x,y,z,w,h,d,yaw,c,line=1.5){for(const f of orientedBoxFaces(x,y,z,w,h,d,yaw,c,line)){f.d=faceDepth(f.pts);queue.push(f)}}
+function draw(){ctx.clearRect(0,0,W,H);const sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#eaf8ff');sky.addColorStop(.48,'#ffffff');sky.addColorStop(1,'#dbe8ff');ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+  drawGroundBase();
+  const faces=[];
+  for(const p of platforms){for(const f of boxFaces({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h}))faces.push({d:faceDepth(f.pts),pts:f.pts,c:shadeColor(p.c,f.shade),edge:f.edge||'#071018',line:p.y<0?2.5:2})}
+  for(const w of walls){for(const f of boxFaces(w))faces.push({d:faceDepth(f.pts),pts:f.pts,c:shadeColor(w.c,f.shade),edge:'#071018',line:2.5})}
+  // Enemies are now part of the same painter queue as the world. This means walls/platforms in front of an arm/leg/body face are drawn over that face, but exposed body parts still remain visible.
+  for(const b of bots)if(!b.dead)pushBot3DFaces(faces,b);
+  faces.sort((a,b)=>b.d-a.d);for(const f of faces)drawPoly(f.pts,f.c,f.edge,f.line);
+  for(const p of pads){const q=project(p.x,.12,p.z);if(q){ctx.beginPath();ctx.arc(q.x,q.y,Math.max(8,q.s*1.9),0,TAU);ctx.fillStyle='rgba(0,234,255,.22)';ctx.fill();ctx.strokeStyle='#00eaff';ctx.lineWidth=2;ctx.shadowBlur=18;ctx.shadowColor='#00eaff';ctx.stroke();ctx.shadowBlur=0}}
+  drawPickups();
+  for(const b of bots)if(!b.dead)drawBotLabelIfVisible(b);
+  for(const s of shots)drawBeamTrail(s,false);
+  for(const l of lasers)drawBeamTrail(l,true);
+  for(const p of projectiles){const q=project(p.x,p.y,p.z);if(q){ctx.fillStyle=p.color;ctx.shadowBlur=26;ctx.shadowColor=p.color;ctx.beginPath();ctx.arc(q.x,q.y,Math.max(6,q.s*.16),0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();ctx.shadowBlur=0}}
+  for(const p of particles){const q=project(p.x,p.y,p.z);if(q){ctx.fillStyle=p.c;ctx.shadowBlur=12;ctx.shadowColor=p.c;ctx.fillRect(q.x-2,q.y-2,4,4);ctx.shadowBlur=0}} drawFirstPersonGun(); drawMinimap();}
+
+function drawBeamTrail(s,isLaser){const p1=project(s.x,s.y,s.z),p2=project(s.x+s.dx*s.len,s.y+s.dy*s.len,s.z+s.dz*s.len);if(!p1||!p2)return;const a=clamp(s.life/(s.maxLife||s.life||.1),0,1);ctx.save();ctx.lineCap='round';ctx.globalAlpha=isLaser?.95*a:.78*a;ctx.strokeStyle=s.color;ctx.lineWidth=(s.width||3)*(isLaser?2.4:1.2);ctx.shadowBlur=isLaser?28:18;ctx.shadowColor=s.color;ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();ctx.globalAlpha=isLaser?1:a;ctx.strokeStyle='#fff';ctx.lineWidth=isLaser?3.2:1.2;ctx.shadowBlur=isLaser?16:0;ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();if(isLaser){ctx.fillStyle=s.color;ctx.shadowBlur=22;ctx.beginPath();ctx.arc(p2.x,p2.y,7+8*a,0,TAU);ctx.fill()}ctx.restore();}
+function faceDepth(pts){let d=0;for(const p of pts)d+=hypot2(p[0]-player.x,p[2]-player.z);return d/pts.length}
+function drawGroundBase(){drawPoly([[-52,-.02,-52],[52,-.02,-52],[52,-.02,52],[-52,-.02,52]],'#dfe6f5','#071018',3);for(let i=-48;i<=48;i+=4){const a=project(i,.02,-48),b=project(i,.02,48),c=project(-48,.021,i),d=project(48,.021,i);ctx.strokeStyle=i%16===0?'rgba(25,34,54,.55)':'rgba(25,34,54,.22)';ctx.lineWidth=i%16===0?2.2:1.1;if(a&&b){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}if(c&&d){ctx.beginPath();ctx.moveTo(c.x,c.y);ctx.lineTo(d.x,d.y);ctx.stroke()}}ctx.shadowBlur=0}
+function drawGroundTiles(){drawGroundBase()}
+function drawPickups(){for(const p of pickups){if(p.taken>0)continue;p.spin+=.035;const q=project(p.x,p.y+1+Math.sin(p.spin*2)*.22,p.z);if(!q)continue;const w=WEAPONS[p.type],size=Math.max(12,q.s*.45);ctx.save();ctx.translate(q.x,q.y);ctx.rotate(p.spin);ctx.fillStyle=w.color;ctx.strokeStyle='#071018';ctx.lineWidth=3;ctx.shadowBlur=22;ctx.shadowColor=w.color;ctx.fillRect(-size*.8,-size*.18,size*1.6,size*.36);ctx.strokeRect(-size*.8,-size*.18,size*1.6,size*.36);ctx.fillRect(size*.35,-size*.32,size*.55,size*.18);ctx.restore();ctx.shadowBlur=0;ctx.font='bold 11px Arial';ctx.fillStyle='#071018';ctx.textAlign='center';ctx.fillText(w.name,q.x,q.y-size*.75)}}
+function gunSpec(type){return {
+  assault:{body:[.34,.22,.82],barrel:[.13,.13,.78],stock:[.34,.24,.34],grip:[.18,.46,.20],accent:.28},
+  sniper:{body:[.28,.20,1.08],barrel:[.08,.08,1.12],stock:[.28,.22,.46],grip:[.14,.38,.18],accent:.42},
+  smg:{body:[.38,.25,.56],barrel:[.13,.13,.44],stock:[.24,.2,.22],grip:[.20,.46,.18],accent:.22},
+  shotgun:{body:[.42,.25,.78],barrel:[.16,.16,.88],stock:[.36,.26,.38],grip:[.18,.44,.18],accent:.24},
+  plasma:{body:[.54,.40,.60],barrel:[.24,.24,.55],stock:[.24,.24,.24],grip:[.20,.42,.20],accent:.36},
+  laser:{body:[.34,.26,.86],barrel:[.12,.12,1.10],stock:[.26,.22,.34],grip:[.16,.42,.18],accent:.38}
+}[type]||{body:[.34,.22,.82],barrel:[.13,.13,.78],stock:[.34,.24,.34],grip:[.18,.46,.20],accent:.28}}
+function pushHeldGun3DFaces(queue,b,yaw){
+  const w=WEAPONS[b.weapon]||WEAPONS.assault,c=w.color,g=gunSpec(b.weapon);
+  const fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw);
+  const handX=b.x+fx*.54+sx*.18, handY=b.y-1.02, handZ=b.z+fz*.54+sz*.18;
+  const bodyZ=.18, barrelZ=.18+g.body[2]/2+g.barrel[2]/2, stockZ=.18-g.body[2]/2-g.stock[2]/2;
+  const part=(side,up,forward,ww,hh,dd,col,line=1.25)=>pushOrientedBoxFaces(queue,handX+sx*side+fx*forward,handY+up,handZ+sz*side+fz*forward,ww,hh,dd,yaw,col,line);
+  part(0,0,bodyZ,g.body[0],g.body[1],g.body[2],'#172033');
+  part(0,.03,barrelZ,g.barrel[0],g.barrel[1],g.barrel[2],c);
+  part(0,-.02,stockZ,g.stock[0],g.stock[1],g.stock[2],'#101526');
+  part(-.11,-.31,.04,g.grip[0]*.92,g.grip[1]*.92,g.grip[2]*.92,'#0c1320');
+  if(b.weapon==='sniper')part(.02,.18,.05,g.accent*.72,.09,.20,'#ffffff');
+  if(b.weapon==='shotgun')part(.14,.03,barrelZ,.10,.10,g.barrel[2]*.92,'#ffb15c');
+  if(b.weapon==='plasma')part(0,.18,barrelZ-.22,.34,.28,.34,'#9b5cff');
+  if(b.weapon==='laser')part(0,.17,barrelZ-.12,.20,.16,.54,'#ffffff');
+}
+function pushBot3DFaces(queue,b){const yaw=b.faceYaw||b.yaw||0,c=b.color,step=Math.sin(b.walk)*.34,step2=Math.sin(b.walk+Math.PI)*.34,fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw);pushOrientedBoxFaces(queue,b.x,b.y-.92,b.z,.72,1.05,.42,yaw,c,1.45);pushOrientedBoxFaces(queue,b.x+fx*.08,b.y-.22,b.z+fz*.08,.56,.48,.52,yaw,'#ffffff',1.35);pushOrientedBoxFaces(queue,b.x-sx*.46,b.y-1.03,b.z-sz*.46,.2,.9,.2,yaw,c,1.25);pushOrientedBoxFaces(queue,b.x+sx*.46,b.y-1.03,b.z+sz*.46,.2,.9,.2,yaw,c,1.25);pushOrientedBoxFaces(queue,b.x-sx*.22+fx*step,b.y-1.62,b.z-sz*.22+fz*step,.24,.86,.24,yaw,c,1.25);pushOrientedBoxFaces(queue,b.x+sx*.22+fx*step2,b.y-1.62,b.z+sz*.22+fz*step2,.24,.86,.24,yaw,c,1.25);pushHeldGun3DFaces(queue,b,yaw)}
+function drawBotLabelIfVisible(b){
+  const points=[[b.x,b.y+.25,b.z],[b.x,b.y-.25,b.z],[b.x,b.y-1.2,b.z]];
+  if(!points.some(pt=>lineClear(player.x,player.y,player.z,pt[0],pt[1],pt[2])))return;
+  const label=project(b.x,b.y+.25,b.z);if(label){ctx.fillStyle='#071018';ctx.font='bold 12px Arial';ctx.textAlign='center';ctx.fillText(b.name+' '+Math.max(0,Math.round(b.hp))+' '+(WEAPONS[b.weapon]?.name||''),label.x,label.y)}
+}
+
+function poly2(points,fill,stroke='#071018',line=2){ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)ctx.lineTo(points[i][0],points[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=line;ctx.stroke();}}
+function prism2(x,y,w,h,depth,color){const dx=depth*.65,dy=-depth*.42;poly2([[x,y],[x+w,y],[x+w+dx,y+dy],[x+dx,y+dy]],shadeColor(color,24),'#071018',2);poly2([[x+w,y],[x+w,y+h],[x+w+dx,y+h+dy],[x+w+dx,y+dy]],shadeColor(color,-32),'#071018',2);poly2([[x,y],[x+w,y],[x+w,y+h],[x,y+h]],color,'#071018',2.4)}
+function tube2(x,y,w,h,depth,color){prism2(x,y,w,h,depth,color);ctx.fillStyle=shadeColor(color,36);ctx.beginPath();ctx.ellipse(x+w+depth*.65,y+h*.5-depth*.42,Math.max(4,h*.42),Math.max(3,h*.28),0,0,TAU);ctx.fill();ctx.strokeStyle='#071018';ctx.lineWidth=2;ctx.stroke();}
+function fpAxes(){
+  const yaw=player.yaw,pitch=player.pitch,sy=Math.sin(yaw),cy=Math.cos(yaw),sp=Math.sin(pitch),cp=Math.cos(pitch);
+  const F={x:sy*cp,y:-sp,z:cy*cp}, R={x:cy,y:0,z:-sy}, U={x:sy*sp,y:cp,z:cy*sp};
+  return {F,R,U};
+}
+function fpPoint(rx,ry,rz){const a=fpAxes();return [player.x+a.R.x*rx+a.U.x*ry+a.F.x*rz,player.y+a.R.y*rx+a.U.y*ry+a.F.y*rz,player.z+a.R.z*rx+a.U.z*ry+a.F.z*rz]}
+function fpBoxFaces(rx,ry,rz,w,h,d,c,line=2){const a=fpAxes(),hw=w/2,hh=h/2,hd=d/2;function pt(x,y,z){return [player.x+a.R.x*(rx+x)+a.U.x*(ry+y)+a.F.x*(rz+z),player.y+a.R.y*(rx+x)+a.U.y*(ry+y)+a.F.y*(rz+z),player.z+a.R.z*(rx+x)+a.U.z*(ry+y)+a.F.z*(rz+z)]}return [
+  {pts:[pt(-hw,hh,-hd),pt(hw,hh,-hd),pt(hw,hh,hd),pt(-hw,hh,hd)],c:shadeColor(c,26),edge:'#071018',line},
+  {pts:[pt(-hw,-hh,-hd),pt(-hw,hh,-hd),pt(-hw,hh,hd),pt(-hw,-hh,hd)],c:shadeColor(c,-26),edge:'#071018',line},
+  {pts:[pt(hw,-hh,-hd),pt(hw,hh,-hd),pt(hw,hh,hd),pt(hw,-hh,hd)],c:shadeColor(c,-34),edge:'#071018',line},
+  {pts:[pt(-hw,-hh,-hd),pt(hw,-hh,-hd),pt(hw,hh,-hd),pt(-hw,hh,-hd)],c:shadeColor(c,-18),edge:'#071018',line},
+  {pts:[pt(-hw,-hh,hd),pt(hw,-hh,hd),pt(hw,hh,hd),pt(-hw,hh,hd)],c:shadeColor(c,-8),edge:'#071018',line}
+]}
+function drawFPBox(rx,ry,rz,w,h,d,c,line=2){const fs=fpBoxFaces(rx,ry,rz,w,h,d,c,line);fs.sort((a,b)=>faceDepth(b.pts)-faceDepth(a.pts));for(const f of fs)drawPoly(f.pts,f.c,f.edge,f.line)}
+function drawFirstPersonGun(){
+  if(!game.started||player.dead)return;
+  const type=player.weapon,w=WEAPONS[type]||WEAPONS.assault,c=w.color;
+  const bob=(player.onGround?Math.sin(performance.now()/95)*Math.min(.035,Math.hypot(player.vx,player.vz)*.0024):0);
+  const kick=player.cool>0?Math.min(.12,player.cool/(w.cool||.1)*.10):0;
+  const g=gunSpec(type),heat=player.heat||0,charge=player.charge||0;
+  // Camera-relative 3D model: right hand is down/right, barrel runs forward along the camera direction.
+  const bx=.43, by=-.54+bob-kick*.35, bz=.86-kick;
+  drawFPBox(bx,by,bz,g.body[0]*1.02,g.body[1]*.96,g.body[2]*.88,type==='shotgun'?'#2a1608':'#182033',1.8);
+  drawFPBox(bx,by+.025,bz+g.body[2]*.42+g.barrel[2]*.41,g.barrel[0]*.86,g.barrel[1]*.86,g.barrel[2]*1.02,c,1.75);
+  drawFPBox(bx,by-.02,bz-g.body[2]*.44-g.stock[2]*.34,g.stock[0]*.90,g.stock[1]*.86,g.stock[2]*.78,'#101526',1.7);
+  drawFPBox(bx-.085,by-.275,bz-.03,g.grip[0]*.82,g.grip[1]*.82,g.grip[2]*.82,'#0c1320',1.7);
+  // Only the sniper keeps a sight/scope. Other guns stay clean and uncluttered.
+  if(type==='sniper'){drawFPBox(bx,by+.17,bz+.04,g.accent*.52,.07,.16,'#ffffff',1.35);drawFPBox(bx,by+.205,bz+.12,.22,.12,.28,'#ffffff',1.35);drawFPBox(bx,by+.04,bz+1.15,.035,.035,.48,'#ffffff',1.35)}
+  if(type==='smg')drawFPBox(bx-.025,by-.16,bz+.13,.18,.26,.15,'#202b42',1.5);
+  if(type==='shotgun'){drawFPBox(bx+.095,by+.025,bz+g.body[2]*.42+g.barrel[2]*.41,.09,.09,g.barrel[2]*.98,'#ffb15c',1.65);drawFPBox(bx,by-.125,bz+.25,.25,.09,.40,'#5a2c10',1.45)}
+  if(type==='plasma')drawFPBox(bx,by+.115,bz+.36,.30,.23,.30,'#9b5cff',1.65);
+  if(type==='laser')drawFPBox(bx,by+.125,bz+.45,.16,.12,.45,'#ffffff',1.55);
+  // Muzzle glow is projected from the actual forward tip, not hand-drawn in the center.
+  const tip=fpPoint(bx,by+.03,bz+g.body[2]*.52+g.barrel[2]*1.22),q=project(tip[0],tip[1],tip[2]);
+  if(q){ctx.fillStyle=c;ctx.shadowBlur=18+heat*20;ctx.shadowColor=c;ctx.beginPath();ctx.ellipse(q.x,q.y,(type==='plasma'?8:4.5)*Math.max(.65,q.s*.055),(type==='plasma'?6:3.5)*Math.max(.65,q.s*.055),0,0,TAU);ctx.fill();ctx.strokeStyle='#071018';ctx.lineWidth=2;ctx.stroke();ctx.shadowBlur=0}
+  if(type==='plasma'&&charge>.04){const orb=fpPoint(bx,by+.18,bz+.58),o=project(orb[0],orb[1],orb[2]);if(o){const cc=chargeColor(chargeTier(charge));ctx.shadowBlur=26+charge*34;ctx.shadowColor=cc;ctx.fillStyle=cc;ctx.beginPath();ctx.arc(o.x,o.y,(5+charge*8)*Math.max(.75,o.s*.045),0,TAU);ctx.fill();ctx.shadowBlur=0}}
+  if(type==='laser'&&fireHeld){const a=fpPoint(bx,by+.03,bz+1.12),b=fpPoint(bx,by+.03,bz+1.72),p1=project(a[0],a[1],a[2]),p2=project(b[0],b[1],b[2]);if(p1&&p2){ctx.shadowBlur=22+heat*30;ctx.shadowColor=c;ctx.strokeStyle=c;ctx.lineWidth=3+heat*3;ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();ctx.shadowBlur=0}}
+}
+
+function drawMinimap(){mctx.clearRect(0,0,178,178);mctx.fillStyle='rgba(8,12,28,.82)';mctx.fillRect(0,0,178,178);const sc=178/100,ox=89,oz=89;mctx.strokeStyle='rgba(255,255,255,.25)';for(const p of platforms)mctx.strokeRect(ox+(p.x-p.w/2)*sc,oz+(p.z-p.d/2)*sc,p.w*sc,p.d*sc);function dot(x,z,c,r=3){mctx.fillStyle=c;mctx.beginPath();mctx.arc(ox+x*sc,oz+z*sc,r,0,TAU);mctx.fill()}dot(player.x,player.z,'#fff',4);for(const b of bots)if(!b.dead&&visibleOnMinimap(b))dot(b.x,b.z,b.color,3);for(const p of pickups)if(p.taken<=0)dot(p.x,p.z,WEAPONS[p.type].color,2)}
+let last=performance.now();function loop(now){const dt=Math.min(.033,(now-last)/1000);last=now;if(game.started&&!game.over){game.timeLeft-=dt;updatePlayer(dt);for(const b of bots)updateBot(b,dt);updateProjectiles(dt);for(const s of shots)s.life-=dt;shots=shots.filter(s=>s.life>0);for(const l of lasers)l.life-=dt;lasers=lasers.filter(l=>l.life>0);for(const p of pickups)if(p.taken>0)p.taken-=dt;for(const p of particles){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;p.vy-=18*dt}particles=particles.filter(p=>p.life>0);if(game.timeLeft<=0)endMatch();updateHud()}draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+function updateHud(){hud.score.textContent='YOU '+player.score+' / D '+player.deaths;const w=WEAPONS[player.weapon];let ammoText=(player.weapon==='plasma')?'HEAT '+Math.round((player.heat||0)*100)+'%  CHARGE '+Math.round((player.charge||0)*100)+'%':(player.weapon==='laser'?(player.reload>0?'COOLING '+player.reload.toFixed(1)+'s':'LASER HEAT '+Math.round((player.heat||0)*100)+'%'):(player.reload>0?'RELOAD '+player.reload.toFixed(1)+'s':player.ammo+'/'+w.mag));hud.ammo.textContent=ammoText;const t=Math.max(0,game.timeLeft|0),m=(t/60)|0,s=(t%60+'').padStart(2,'0');hud.timer.textContent=m+':'+s;hud.botsLeft.textContent='BOTS '+bots.filter(b=>!b.dead).length;hud.healthText.textContent=Math.max(0,Math.round(player.hp));hud.healthFill.style.width=clamp(player.hp/player.maxHp,0,1)*100+'%';hud.weaponName.textContent=w.name}
+function endMatch(){game.over=true;const all=[{name:'YOU',score:player.score},...bots.map(b=>({name:b.name,score:b.score}))].sort((a,b)=>b.score-a.score);feed('MATCH OVER — winner: '+all[0].name+' with '+all[0].score);msg('MATCH OVER — '+all[0].name+' WINS');document.exitPointerLock?.();setTimeout(()=>{el('menu').style.display='flex'},1600)}
+if(!CanvasRenderingContext2D.prototype.roundRect){CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){this.moveTo(x+r,y);this.arcTo(x+w,y,x+w,y+h,r);this.arcTo(x+w,y+h,x,y+h,r);this.arcTo(x,y+h,x,y,r);this.arcTo(x,y,x+w,y,r);return this}}
+})();
 </script>
-
 </body>
 </html>
-
-    if ($issues.Count -gt 0) {
-        Write-Host ""
-        Write-Host "Issues / unmatched names:" -ForegroundColor Yellow
-
-        foreach ($issue in $issues) {
-            Write-Host " - $issue" -ForegroundColor Yellow
-        }
-    }
-
-    Write-Host ""
-    Write-Host "Done. Outlook email windows were opened. Nothing was sent automatically." -ForegroundColor Green
-}
-catch {
-    Write-Host ""
-    Write-Host "ERROR:" -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Red
-}
 
