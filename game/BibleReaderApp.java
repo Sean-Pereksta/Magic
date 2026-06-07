@@ -278,6 +278,9 @@ public class BibleReaderApp extends JFrame {
     private JTabbedPane prayerLogTabs;
     private final Map<String, PrayerSectionPanel> prayerSectionPanels = new LinkedHashMap<>();
     private final Set<Profile> loginRecordedProfiles = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Profile> fullyRepairedProfiles = Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+    private volatile boolean startupDataLoaded = false;
+    private volatile boolean startupRepairRunning = false;
     private boolean studyTimerBlinkOn = false;
 
     private String selectedBook = "";
@@ -301,24 +304,97 @@ public class BibleReaderApp extends JFrame {
 
     public BibleReaderApp() {
         super("Bible Study Library - Phrase Notes");
-        data = loadData();
-        repairLoadedData();
-
-        if (data.profiles.isEmpty()) {
-            data.profiles.put("Default Study", new Profile("Default Study"));
-        }
-
+        long step = System.currentTimeMillis();
+        data = new AppData();
+        repairLoadedDataStructure();
+        data.profiles.put("Default Study", new Profile("Default Study"));
         currentProfile = data.profiles.values().iterator().next();
-        recordProfileLogin(currentProfile);
-        buildUi();
-        refreshEverything();
-        SwingUtilities.invokeLater(this::restoreProfileLastPlace);
+        ensureProfileStructure(currentProfile);
+
+        refreshingUi = true;
+        try {
+            buildUi();
+        } finally {
+            refreshingUi = false;
+        }
+        step = logStep("buildUi()", step);
+        refreshStartupOnly();
+        logStep("refreshStartupOnly()", step);
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        addWindowListener(new WindowAdapter() { public void windowClosing(WindowEvent e) { saveCurrentWritingDocument(false); persistCurrentProfileLocation(true); }});
+        addWindowListener(new WindowAdapter() {
+            public void windowClosing(WindowEvent e) {
+                if (!startupDataLoaded) return;
+                saveCurrentWritingDocument(false);
+                persistCurrentProfileLocation(true);
+            }
+        });
         setSize(1450, 880);
         initializeStudySplitDividers();
         setLocationRelativeTo(null);
+        SwingUtilities.invokeLater(this::loadStartupDataInBackground);
+    }
+
+    private long logStep(String label, long start) {
+        long now = System.currentTimeMillis();
+        System.out.println("[Startup] " + label + " took " + (now - start) + " ms");
+        return now;
+    }
+
+    private void loadStartupDataInBackground() {
+        if (statusLabel != null) statusLabel.setText(" Loading study data...");
+        final long started = System.currentTimeMillis();
+        new SwingWorker<AppData, Void>() {
+            protected AppData doInBackground() {
+                AppData loaded = loadData();
+                logStep("loadData()", started);
+                return loaded;
+            }
+
+            protected void done() {
+                long step = System.currentTimeMillis();
+                try {
+                    data = get();
+                } catch (Exception ex) {
+                    System.err.println("Startup load failed: " + ex.getMessage());
+                    data = new AppData();
+                }
+                repairLoadedDataStructure();
+                if (data.profiles.isEmpty()) data.profiles.put("Default Study", new Profile("Default Study"));
+                currentProfile = data.profiles.values().iterator().next();
+                ensureProfileStructure(currentProfile);
+                startupDataLoaded = true;
+                recordProfileLogin(currentProfile, false);
+                step = logStep("recordProfileLogin()", step);
+                refreshStartupOnly();
+                step = logStep("refreshStartupOnly()", step);
+                restoreProfileLastPlace();
+                logStep("restoreProfileLastPlace()", step);
+                startDeferredRepairs();
+            }
+        }.execute();
+    }
+
+    private void startDeferredRepairs() {
+        if (startupRepairRunning) return;
+        startupRepairRunning = true;
+        if (statusLabel != null) statusLabel.setText(" Optimizing saved notes...");
+        final long started = System.currentTimeMillis();
+        new SwingWorker<Void, Void>() {
+            protected Void doInBackground() {
+                repairLoadedData();
+                logStep("repairLoadedData()", started);
+                saveData();
+                return null;
+            }
+
+            protected void done() {
+                startupRepairRunning = false;
+                if (statusLabel != null) statusLabel.setText(" Ready");
+                updateHeader();
+                refreshActiveLazyPage();
+            }
+        }.execute();
     }
 
     private void buildUi() {
@@ -409,13 +485,13 @@ public class BibleReaderApp extends JFrame {
         importBtn.addActionListener(e -> showCard("import"));
         search.addActionListener(e -> showCard("search"));
         greekSearch.addActionListener(e -> showCard("greekSearch"));
-        memory.addActionListener(e -> { refreshMemoryVerses(); showCard("memory"); });
-        studyProjects.addActionListener(e -> { refreshStudyProjects(); showCard("studyProjects"); });
-        studyTime.addActionListener(e -> { refreshStudyTimePage(); showCard("studyTime"); });
-        recent.addActionListener(e -> { refreshRecentNotes(); showCard("recent"); });
-        categories.addActionListener(e -> { refreshCategories(); showCard("categories"); });
-        questions.addActionListener(e -> { refreshQuestions(); showCard("questions"); });
-        topicPages.addActionListener(e -> { refreshTopicPages(); showCard("topicPages"); });
+        memory.addActionListener(e -> showCard("memory"));
+        studyProjects.addActionListener(e -> showCard("studyProjects"));
+        studyTime.addActionListener(e -> showCard("studyTime"));
+        recent.addActionListener(e -> showCard("recent"));
+        categories.addActionListener(e -> showCard("categories"));
+        questions.addActionListener(e -> showCard("questions"));
+        topicPages.addActionListener(e -> showCard("topicPages"));
         backup.addActionListener(e -> backupNow());
         export.addActionListener(e -> exportNotes());
         modernViewToggleButton.addActionListener(e -> toggleModernView());
@@ -484,13 +560,13 @@ public class BibleReaderApp extends JFrame {
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_1, InputEvent.CTRL_DOWN_MASK), "globalStudy", () -> showCard("study"));
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_2, InputEvent.CTRL_DOWN_MASK), "globalSearch", () -> showCard("search"));
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_3, InputEvent.CTRL_DOWN_MASK), "globalGreekSearch", () -> showCard("greekSearch"));
-        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_4, InputEvent.CTRL_DOWN_MASK), "globalMemory", () -> { refreshMemoryVerses(); showCard("memory"); });
-        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_5, InputEvent.CTRL_DOWN_MASK), "globalStudyProjects", () -> { refreshStudyProjects(); showCard("studyProjects"); });
-        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_6, InputEvent.CTRL_DOWN_MASK), "globalRecent", () -> { refreshRecentNotes(); showCard("recent"); });
-        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_7, InputEvent.CTRL_DOWN_MASK), "globalCategories", () -> { refreshCategories(); showCard("categories"); });
-        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_8, InputEvent.CTRL_DOWN_MASK), "globalQuestions", () -> { refreshQuestions(); showCard("questions"); });
-        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_9, InputEvent.CTRL_DOWN_MASK), "globalTopics", () -> { refreshTopicPages(); showCard("topicPages"); });
-        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_0, InputEvent.CTRL_DOWN_MASK), "globalStudyTime", () -> { refreshStudyTimePage(); showCard("studyTime"); });
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_4, InputEvent.CTRL_DOWN_MASK), "globalMemory", () -> showCard("memory"));
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_5, InputEvent.CTRL_DOWN_MASK), "globalStudyProjects", () -> showCard("studyProjects"));
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_6, InputEvent.CTRL_DOWN_MASK), "globalRecent", () -> showCard("recent"));
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_7, InputEvent.CTRL_DOWN_MASK), "globalCategories", () -> showCard("categories"));
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_8, InputEvent.CTRL_DOWN_MASK), "globalQuestions", () -> showCard("questions"));
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_9, InputEvent.CTRL_DOWN_MASK), "globalTopics", () -> showCard("topicPages"));
+        bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_0, InputEvent.CTRL_DOWN_MASK), "globalStudyTime", () -> showCard("studyTime"));
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_B, InputEvent.CTRL_DOWN_MASK), "globalBookmarks", this::showBookmarksDialog);
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK), "globalFind", this::focusBestSearchField);
         bindShortcut(input, actions, KeyStroke.getKeyStroke(KeyEvent.VK_L, InputEvent.CTRL_DOWN_MASK), "globalReferenceBox", () -> { showCard("study"); if (goToReferenceField != null) { goToReferenceField.requestFocusInWindow(); goToReferenceField.selectAll(); } });
@@ -1108,7 +1184,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private StudyDayLog studyLogFor(Profile profile, LocalDate date) {
-        repairProfile(profile);
+        ensureProfileStructure(profile);
         String key = date.toString();
         StudyDayLog log = profile.studyDayLogs.get(key);
         if (log == null) {
@@ -1121,14 +1197,18 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void recordProfileLogin(Profile profile) {
+        recordProfileLogin(profile, true);
+    }
+
+    private void recordProfileLogin(Profile profile, boolean saveImmediately) {
         if (profile == null || loginRecordedProfiles.contains(profile)) return;
-        repairProfile(profile);
+        ensureProfileStructure(profile);
         StudyDayLog log = studyLogFor(profile, LocalDate.now());
         log.loginCount = Math.max(0, log.loginCount) + 1;
         log.lastLoginMillis = System.currentTimeMillis();
         loginRecordedProfiles.add(profile);
-        saveData();
-        refreshStudyTimePage();
+        if (saveImmediately) saveData();
+        if (startupDataLoaded && "studyTime".equals(activeCardName)) refreshStudyTimePage();
     }
 
     private LocalDate parseStudyDate(String value) {
@@ -1566,7 +1646,7 @@ public class BibleReaderApp extends JFrame {
         studyDashboardTabs.addTab("Prayer", buildPrayerDashboardTab());
         studyDashboardTabs.addTab("Book Mapping", buildBookMappingTab());
         studyDashboardTabs.addChangeListener(e -> {
-            if (studyDashboardTabs.getSelectedIndex() == 2) refreshBookMapping();
+            if (studyDashboardTabs.getSelectedIndex() == 2) refreshBookMapSelector();
         });
         page.add(studyDashboardTabs, BorderLayout.CENTER);
         return page;
@@ -1654,7 +1734,7 @@ public class BibleReaderApp extends JFrame {
         selector.add(new JLabel("Book or source:"));
         bookMapSelector = new JComboBox<>();
         bookMapSelector.setPrototypeDisplayValue("Library: A reasonably long imported title");
-        bookMapSelector.addActionListener(e -> refreshBookMapping());
+        bookMapSelector.addActionListener(e -> { if (!refreshingUi) refreshBookMapping(); });
         selector.add(bookMapSelector);
         JButton refresh = blackButton("Refresh");
         refresh.addActionListener(e -> refreshBookMapping());
@@ -1688,7 +1768,6 @@ public class BibleReaderApp extends JFrame {
         mappingTabs.addTab("Chapter Map", chapterMap);
         mappingTabs.addTab("Word Web", buildWordWebTab());
         panel.add(mappingTabs, BorderLayout.CENTER);
-        SwingUtilities.invokeLater(this::refreshBookMapSelector);
         return panel;
     }
 
@@ -1727,13 +1806,19 @@ public class BibleReaderApp extends JFrame {
 
     private void refreshBookMapSelector() {
         if (bookMapSelector == null || data == null) return;
-        String selected = String.valueOf(bookMapSelector.getSelectedItem());
-        bookMapSelector.removeAllItems();
-        for (String book : orderedBooks()) bookMapSelector.addItem(book);
-        for (LibraryDoc doc : data.libraryDocs) bookMapSelector.addItem("Library: " + doc.title);
-        if (selected != null && !"null".equals(selected)) bookMapSelector.setSelectedItem(selected);
-        if (bookMapSelector.getSelectedIndex() < 0 && bookMapSelector.getItemCount() > 0) bookMapSelector.setSelectedIndex(0);
-        refreshWordWebCategories();
+        boolean wasRefreshing = refreshingUi;
+        refreshingUi = true;
+        try {
+            String selected = String.valueOf(bookMapSelector.getSelectedItem());
+            bookMapSelector.removeAllItems();
+            for (String book : orderedBooks()) bookMapSelector.addItem(book);
+            for (LibraryDoc doc : data.libraryDocs) bookMapSelector.addItem("Library: " + doc.title);
+            if (selected != null && !"null".equals(selected)) bookMapSelector.setSelectedItem(selected);
+            if (bookMapSelector.getSelectedIndex() < 0 && bookMapSelector.getItemCount() > 0) bookMapSelector.setSelectedIndex(0);
+            refreshWordWebCategories();
+        } finally {
+            refreshingUi = wasRefreshing;
+        }
         refreshBookMapping();
     }
 
@@ -3537,7 +3622,19 @@ public class BibleReaderApp extends JFrame {
         activeCardName = name;
         cards.show(cardPanel, name);
         updateActiveNavButton();
-        if (statusLabel != null) statusLabel.setText(" " + displayCardName(name));
+        refreshActiveLazyPage();
+        if (statusLabel != null && !startupRepairRunning) statusLabel.setText(" " + displayCardName(name));
+    }
+
+    private void refreshActiveLazyPage() {
+        if (!startupDataLoaded || refreshingUi) return;
+        if ("memory".equals(activeCardName)) refreshMemoryVerses();
+        else if ("studyProjects".equals(activeCardName)) refreshStudyProjects();
+        else if ("studyTime".equals(activeCardName)) refreshStudyTimePage();
+        else if ("recent".equals(activeCardName)) refreshRecentNotes();
+        else if ("categories".equals(activeCardName)) refreshCategories();
+        else if ("questions".equals(activeCardName)) refreshQuestions();
+        else if ("topicPages".equals(activeCardName)) refreshTopicPages();
     }
 
     private String displayCardName(String name) {
@@ -3576,21 +3673,12 @@ public class BibleReaderApp extends JFrame {
         else SwingUtilities.invokeLater(r);
     }
 
-    private void refreshEverything() {
+    private void refreshStartupOnly() {
         refreshingUi = true;
         try {
             refreshProfiles();
             refreshLibraryTree();
             refreshBookCombo();
-            refreshCategories();
-            refreshQuestions();
-            refreshTopicPages();
-            refreshMemoryVerses();
-            refreshRecentNotes();
-            refreshStudyProjects();
-            refreshStudyTimePage();
-            refreshBookMapSelector();
-            refreshPinnedItems();
             refreshRecentlyOpened();
             updateHistoryButtons();
             updateHeader();
@@ -3598,14 +3686,21 @@ public class BibleReaderApp extends JFrame {
             refreshingUi = false;
         }
 
-        if (!selectedBook.isEmpty() && data.bible.containsKey(selectedBook)) showSelectedChapter(false);
-        else if (!data.bible.isEmpty()) {
+        if (!selectedBook.isEmpty() && data.bible.containsKey(selectedBook)) {
+            showSelectedChapter(false);
+        } else if (!data.bible.isEmpty()) {
             selectedBook = orderedBooks().get(0);
-            selectedChapter = data.getChapters(selectedBook).iterator().next();
+            Set<Integer> chapters = data.getChapters(selectedBook);
+            selectedChapter = chapters.isEmpty() ? 1 : chapters.iterator().next();
             showSelectedChapter(false);
         } else {
             showBlankReader();
         }
+    }
+
+    private void refreshEverything() {
+        refreshStartupOnly();
+        refreshActiveLazyPage();
     }
 
     private void updateHeader() {
@@ -10744,7 +10839,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private java.util.List<ChapterNote> currentChapterNotesForReader() {
         java.util.List<ChapterNote> notes = new ArrayList<>();
         if (currentProfile == null || safe(currentSourceKey).isEmpty()) return notes;
-        repairProfile(currentProfile);
+        ensureProfileStructure(currentProfile);
         String noteBook = currentSourceKey.startsWith("BIBLE:") ? selectedBook : "";
         int noteChapter = currentSourceKey.startsWith("BIBLE:") ? selectedChapter : 0;
         ChapterNote n = currentProfile.chapterNotes.get(chapterNoteKey(currentSourceKey, noteBook, noteChapter));
@@ -10762,19 +10857,33 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void syncChapterNoteAnnotation(Profile profile, ChapterNote note) {
+        if (profile == null) return;
+        Map<String, TextAnnotation> annotationsById = new HashMap<>();
+        Map<String, TextAnnotation> chapterAnnotationsByKey = new HashMap<>();
+        indexChapterAnnotations(profile, annotationsById, chapterAnnotationsByKey);
+        syncChapterNoteAnnotation(profile, note, annotationsById, chapterAnnotationsByKey);
+    }
+
+    private void indexChapterAnnotations(Profile profile, Map<String, TextAnnotation> annotationsById,
+                                         Map<String, TextAnnotation> chapterAnnotationsByKey) {
+        for (TextAnnotation annotation : profile.annotations) {
+            if (annotation == null) continue;
+            if (!safe(annotation.id).isEmpty()) annotationsById.putIfAbsent(annotation.id, annotation);
+            if (!isChapterLevelNote(annotation)) continue;
+            ChapterNote indexedNote = chapterNoteFromAnnotation(annotation);
+            String key = chapterNoteKey(indexedNote.sourceKey, indexedNote.book, indexedNote.chapter);
+            chapterAnnotationsByKey.putIfAbsent(key, annotation);
+        }
+    }
+
+    private void syncChapterNoteAnnotation(Profile profile, ChapterNote note,
+                                           Map<String, TextAnnotation> annotationsById,
+                                           Map<String, TextAnnotation> chapterAnnotationsByKey) {
         if (note == null || profile == null || safe(note.sourceKey).isEmpty()) return;
         repairChapterNote(note);
-        TextAnnotation annotation = null;
-        if (!safe(note.annotationId).isEmpty()) {
-            for (TextAnnotation candidate : profile.annotations) {
-                if (candidate != null && safe(note.annotationId).equals(safe(candidate.id))) { annotation = candidate; break; }
-            }
-        }
-        if (annotation == null) {
-            for (TextAnnotation candidate : profile.annotations) {
-                if (sameChapterNoteLocation(note, candidate) && isChapterLevelNote(candidate)) { annotation = candidate; break; }
-            }
-        }
+        String noteKey = chapterNoteKey(note.sourceKey, note.book, note.chapter);
+        TextAnnotation annotation = safe(note.annotationId).isEmpty() ? null : annotationsById.get(note.annotationId);
+        if (annotation == null) annotation = chapterAnnotationsByKey.get(noteKey);
         if (annotation == null && safe(note.noteText).trim().isEmpty()) return;
         if (annotation == null) {
             annotation = new TextAnnotation(note.sourceKey, note.sourceTitle, 0, 0, "", "Chapter Note", "", note.noteText, "");
@@ -10796,6 +10905,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         annotation.updatedAt = note.updatedAt;
         annotation.created = new Date(annotation.createdAt);
         note.annotationId = annotation.id;
+        annotationsById.put(annotation.id, annotation);
+        chapterAnnotationsByKey.put(noteKey, annotation);
     }
 
     private void mergeChapterNote(ChapterNote target, ChapterNote incoming) {
@@ -10825,7 +10936,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             ChapterNote existing = normalized.get(key);
             if (existing == null) normalized.put(key, note); else mergeChapterNote(existing, note);
         }
-        java.util.List<TextAnnotation> duplicateAnnotations = new ArrayList<>();
+        Set<TextAnnotation> duplicateAnnotations = Collections.newSetFromMap(new IdentityHashMap<>());
         for (TextAnnotation annotation : new ArrayList<>(profile.annotations)) {
             if (annotation == null || !isChapterLevelNote(annotation)) continue;
             ChapterNote fromAnnotation = chapterNoteFromAnnotation(annotation);
@@ -10841,10 +10952,15 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             }
             if (safe(note.annotationId).isEmpty()) note.annotationId = annotation.id;
         }
-        if (!duplicateAnnotations.isEmpty()) profile.annotations.removeAll(duplicateAnnotations);
+        if (!duplicateAnnotations.isEmpty()) profile.annotations.removeIf(duplicateAnnotations::contains);
         profile.chapterNotes.clear();
         profile.chapterNotes.putAll(normalized);
-        for (ChapterNote note : profile.chapterNotes.values()) syncChapterNoteAnnotation(profile, note);
+        Map<String, TextAnnotation> annotationsById = new HashMap<>();
+        Map<String, TextAnnotation> chapterAnnotationsByKey = new HashMap<>();
+        indexChapterAnnotations(profile, annotationsById, chapterAnnotationsByKey);
+        for (ChapterNote note : profile.chapterNotes.values()) {
+            syncChapterNoteAnnotation(profile, note, annotationsById, chapterAnnotationsByKey);
+        }
     }
 
 
@@ -13152,12 +13268,15 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(DATA_FILE))) {
                 Object o = in.readObject();
                 if (o instanceof AppData) return (AppData) o;
-            } catch (Exception ignored) {}
+            } catch (Exception ex) {
+                System.err.println("Load failed: " + ex.getMessage());
+            }
         }
         return new AppData();
     }
 
     private void saveData() {
+        if (!startupDataLoaded) return;
         try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(DATA_FILE))) {
             out.writeObject(data);
         } catch (Exception ex) {
@@ -13165,18 +13284,52 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
     }
 
-    private void repairLoadedData() {
+    private void repairLoadedDataStructure() {
         if (data == null) data = new AppData();
         if (data.bible == null) data.bible = new TreeMap<>();
         if (data.profiles == null) data.profiles = new TreeMap<>();
+        data.profiles.values().removeIf(Objects::isNull);
         if (data.libraryDocs == null) data.libraryDocs = new ArrayList<>();
         if (data.greek == null) data.greek = new TreeMap<>();
         if (data.modernViewEnabled == null) data.modernViewEnabled = Boolean.TRUE;
+    }
+
+    private void ensureProfileStructure(Profile p) {
+        if (p == null) return;
+        if (p.name == null) p.name = "";
+        if (p.annotations == null) p.annotations = new ArrayList<>();
+        if (p.questions == null) p.questions = new ArrayList<>();
+        if (p.categories == null) p.categories = new TreeMap<>();
+        if (p.categoryColors == null) p.categoryColors = new TreeMap<>();
+        if (p.visitCounts == null) p.visitCounts = new HashMap<>();
+        if (p.studyDayLogs == null) p.studyDayLogs = new TreeMap<>();
+        if (p.openedBibleChaptersByBook == null) p.openedBibleChaptersByBook = new TreeMap<>();
+        if (p.prayerLogEntries == null) p.prayerLogEntries = new ArrayList<>();
+        if (p.pinnedItems == null) p.pinnedItems = new ArrayList<>();
+        if (p.memoryVerses == null) p.memoryVerses = new ArrayList<>();
+        if (p.bookmarks == null) p.bookmarks = new ArrayList<>();
+        if (p.studyProjects == null) p.studyProjects = new TreeMap<>();
+        if (p.writingDocuments == null) p.writingDocuments = new LinkedHashMap<>();
+        if (p.chapterNotes == null) p.chapterNotes = new TreeMap<>();
+        if (p.topicPages == null) p.topicPages = new ArrayList<>();
+        if (p.recentlyOpened == null) p.recentlyOpened = new ArrayList<>();
+        if (p.studyTrail == null) p.studyTrail = new ArrayList<>();
+        if (p.lastSourceKey == null) p.lastSourceKey = "";
+        if (p.lastSourceTitle == null) p.lastSourceTitle = "";
+        if (p.lastSelectedBook == null) p.lastSelectedBook = "";
+        if (p.selectedStudyTimerMinutes <= 0) p.selectedStudyTimerMinutes = 15;
+        if (p.lastStudyDate == null) p.lastStudyDate = "";
+        if (p.studySoundEnabled == null) p.studySoundEnabled = Boolean.TRUE;
+    }
+
+    private void repairLoadedData() {
+        repairLoadedDataStructure();
         for (Profile p : data.profiles.values()) if (p != null) repairProfile(p);
     }
 
     private void repairProfile(Profile p) {
-        if (p == null) return;
+        if (p == null || fullyRepairedProfiles.contains(p)) return;
+        ensureProfileStructure(p);
         if (p.name == null) p.name = "";
         if (p.annotations == null) p.annotations = new ArrayList<>();
         if (p.questions == null) p.questions = new ArrayList<>();
@@ -13248,6 +13401,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             p.oldNotes.clear();
         }
         normalizeChapterNotes(p);
+        fullyRepairedProfiles.add(p);
     }
 
 
