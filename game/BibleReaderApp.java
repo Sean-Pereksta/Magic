@@ -4269,14 +4269,25 @@ public class BibleReaderApp extends JFrame {
         JButton open = smallSidebarActionButton("Open");
         open.addActionListener(e -> openChapterNoteViewer(note));
         JButton edit = smallSidebarActionButton("Edit in Margin");
-        edit.addActionListener(e -> {
-            TextAnnotation annotation = annotationForChapterNote(note);
-            if (annotation != null) showInlineNoteEditor(annotation);
-            else showInlineChapterNoteEditor(note);
-        });
+        edit.addActionListener(e -> showInlineChapterNoteEditor(note));
         JButton jump = smallSidebarActionButton("Jump To Chapter");
         jump.addActionListener(e -> jumpToChapterNote(note));
-        actions.add(open); actions.add(edit); actions.add(jump);
+        JButton category = smallSidebarActionButton("Add Category");
+        category.addActionListener(e -> linkWholeChapterNoteToCategory(note));
+        JButton study = smallSidebarActionButton("Add to Study");
+        study.addActionListener(e -> linkWholeChapterNoteToStudy(note));
+        JButton topic = smallSidebarActionButton("Add to Topic");
+        topic.addActionListener(e -> linkWholeChapterNoteToTopic(note));
+        JButton pin = smallSidebarActionButton("Pin");
+        pin.addActionListener(e -> {
+            syncChapterNoteAnnotation(note);
+            TextAnnotation annotation = annotationForChapterNote(note);
+            if (annotation != null) pinAnnotationToSidebar(annotation);
+        });
+        JButton delete = smallSidebarActionButton("Delete");
+        delete.addActionListener(e -> deleteChapterNote(note));
+        actions.add(open); actions.add(edit); actions.add(jump); actions.add(category);
+        actions.add(study); actions.add(topic); actions.add(pin); actions.add(delete);
         card.add(actions, BorderLayout.SOUTH);
         return card;
     }
@@ -4409,15 +4420,13 @@ public class BibleReaderApp extends JFrame {
     }
 
     private JComponent buildInlineChapterNoteEditorPanel(ChapterNote note) {
+        repairChapterNote(note);
         JPanel panel = baseInlineEditorPanel("Whole Chapter Note", chapterNoteReference(note));
-        JTextPane body = smartVerseTextPane(note, true);
-        body.setText(safe(note.noteText));
-        body.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        body.setBackground(modernSurface);
-        body.setBorder(new EmptyBorder(8, 8, 8, 8));
+        // Use the same plain multiline editor as normal notes. Re-styling a JTextPane's
+        // document while it is being edited can move the caret and generate nested document
+        // events, which made chapter-note typing, deletion, and paste unreliable.
+        JTextArea body = inlineEditorTextArea(note.noteText);
         installChapterNotePopupMenu(body, note);
-        body.getDocument().addDocumentListener(new SimpleDocumentListener(() -> { if (!Boolean.TRUE.equals(body.getClientProperty("applyingSmartVerseHighlights"))) applySmartVerseHighlights(body, note); }));
-        SwingUtilities.invokeLater(() -> applySmartVerseHighlights(body, note));
         JComboBox<String> categoryBox = inlineCategoryCombo(note.linkedCategoryNames.isEmpty() ? "" : note.linkedCategoryNames.get(0));
 
         JPanel fields = new JPanel(new GridBagLayout());
@@ -4520,7 +4529,7 @@ public class BibleReaderApp extends JFrame {
         repairProfile(currentProfile);
         JComboBox<String> combo = new JComboBox<>();
         combo.addItem("(No Category)");
-        combo.addItem("Create New Category…");
+        combo.addItem("Search / Add Category…");
         for (String c : currentProfile.categories.keySet()) combo.addItem(c);
         String selected = safe(selectedCategory).trim();
         combo.setSelectedItem(selected.isEmpty() ? "(No Category)" : selected);
@@ -4530,13 +4539,9 @@ public class BibleReaderApp extends JFrame {
     private String resolveInlineCategorySelection(JComboBox<String> combo) {
         String selected = Objects.toString(combo.getSelectedItem(), "").trim();
         if (selected.isEmpty() || "(No Category)".equals(selected)) return "";
-        if ("Create New Category…".equals(selected)) {
-            String name = JOptionPane.showInputDialog(this, "Category name:", "New Category", JOptionPane.PLAIN_MESSAGE);
-            if (name == null || name.trim().isEmpty()) return "";
-            selected = name.trim();
-            currentProfile.categories.putIfAbsent(selected, "");
-            currentProfile.categoryColors.putIfAbsent(selected, categoryBlue.getRGB());
-            refreshCategories();
+        if ("Search / Add Category…".equals(selected)) {
+            String chosen = chooseCategoryWithSearch("Choose Category", "");
+            return chosen == null ? "" : chosen;
         }
         return selected;
     }
@@ -4579,6 +4584,7 @@ public class BibleReaderApp extends JFrame {
         note.updatedAt = System.currentTimeMillis();
         if (note.createdAt <= 0L) note.createdAt = note.updatedAt;
         currentProfile.chapterNotes.put(chapterNoteKey(note.sourceKey, note.book, note.chapter), note);
+        syncChapterNoteAnnotation(note);
         saveData();
         refreshRecentNotes();
         refreshCategories();
@@ -4688,6 +4694,7 @@ public class BibleReaderApp extends JFrame {
             actions.add(addAnswer);
         }
         card.add(actions, BorderLayout.SOUTH);
+        if (q != null) installQuestionContextMenu(card, q);
         return card;
     }
 
@@ -5445,6 +5452,12 @@ public class BibleReaderApp extends JFrame {
         if (loadingReader || currentSourceKey == null || currentSourceKey.isEmpty()) return;
 
         int pos = readerPane.viewToModel2D(e.getPoint());
+        AnnotationBubbleMarker bubble = bubbleAt(pos);
+        StudyQuestion bubbleQuestion = questionForBubble(bubble);
+        if (bubbleQuestion != null) {
+            showQuestionContextMenu(readerPane, e.getX(), e.getY(), bubbleQuestion);
+            return;
+        }
         if (isChapterTitleOffset(pos)) {
             showChapterTitleMenu(e.getX(), e.getY());
             return;
@@ -6639,19 +6652,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private String chooseOrCreateCategory() {
-        ensureCategoryColors();
-
-        Object[] opts = new Object[currentProfile.categories.size() + 1];
-        opts[0] = "+ Create New Category";
-        int i = 1;
-        for (String c : currentProfile.categories.keySet()) opts[i++] = c;
-
-        Object o = JOptionPane.showInputDialog(this, "Choose category:", "Category", JOptionPane.PLAIN_MESSAGE, null, opts, opts[0]);
-        if (o == null) return null;
-
-        String cat = o.toString();
-        if (cat.startsWith("+")) return createCategory(null);
-        return cat;
+        return chooseCategoryWithSearch("Choose Category", "");
     }
 
     private void addAttachmentFromSelection() {
@@ -8971,10 +8972,16 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         JButton delete = new JButton("Delete Question");
         delete.addActionListener(e -> deleteQuestion(q));
         JButton toggle = new JButton(q.answered ? "Mark Unanswered" : "Mark Answered");
-        toggle.addActionListener(e -> { selectedQuestion = q; toggleSelectedQuestion(); });
+        toggle.addActionListener(e -> setQuestionAnswered(q, !q.answered));
         for (JButton b : new JButton[]{jump, addAnswer, viewAnswers, edit, delete, toggle}) actions.add(b);
         card.add(actions, BorderLayout.SOUTH);
-        card.addMouseListener(new MouseAdapter() { public void mouseClicked(MouseEvent e) { selectedQuestion = q; if (questionList != null && index >= 0 && index < questionModel.size()) questionList.setSelectedIndex(index); } });
+        card.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                selectedQuestion = q;
+                if (questionList != null && index >= 0 && index < questionModel.size()) questionList.setSelectedIndex(index);
+            }
+        });
+        installQuestionContextMenu(card, q);
         return card;
     }
 
@@ -8995,6 +9002,56 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         return safe(q.sourceTitle).isEmpty() ? safe(q.sourceKey) : safe(q.sourceTitle);
     }
 
+    private StudyQuestion questionForBubble(AnnotationBubbleMarker bubble) {
+        if (bubble == null) return null;
+        if (bubble.annotations != null) {
+            for (TextAnnotation annotation : bubble.annotations) {
+                StudyQuestion question = annotation == null ? null : questionForAnnotation(annotation.id);
+                if (question != null) return question;
+            }
+        }
+        return bubble.annotation == null ? null : questionForAnnotation(bubble.annotation.id);
+    }
+
+    private void refreshAfterQuestionChange(boolean reloadReader) {
+        refreshQuestions();
+        refreshMarginNotesPanel();
+        refreshRecentNotes();
+        if (reloadReader) reloadCurrentSourcePreservingScroll();
+    }
+
+    private void setQuestionAnswered(StudyQuestion question, boolean answered) {
+        if (question == null) return;
+        question.answered = answered;
+        saveData();
+        refreshAfterQuestionChange(true);
+    }
+
+    private void installQuestionContextMenu(Component component, StudyQuestion question) {
+        if (component == null || question == null) return;
+        component.addMouseListener(new MouseAdapter() {
+            private void show(MouseEvent event) {
+                if (event.isPopupTrigger()) showQuestionContextMenu(component, event.getX(), event.getY(), question);
+            }
+            public void mousePressed(MouseEvent event) { show(event); }
+            public void mouseReleased(MouseEvent event) { show(event); }
+        });
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) installQuestionContextMenu(child, question);
+        }
+    }
+
+    private void showQuestionContextMenu(Component parent, int x, int y, StudyQuestion question) {
+        if (parent == null || question == null) return;
+        JPopupMenu menu = new JPopupMenu();
+        addMenu(menu, "Edit Question", () -> editQuestion(question));
+        addMenu(menu, question.answers.isEmpty() ? "Answer Question" : "Add Answer", () -> promptAddAnswer(question));
+        addMenu(menu, "View Answers", () -> showQuestionAnswers(question));
+        addMenu(menu, question.answered ? "Mark Unanswered" : "Mark Answered", () -> setQuestionAnswered(question, !question.answered));
+        addMenu(menu, "Jump To", () -> jumpToQuestion(question));
+        menu.show(parent, x, y);
+    }
+
     private StudyQuestion questionForAnnotation(String annotationId) {
         if (currentProfile == null || annotationId == null) return null;
         for (StudyQuestion q : currentProfile.questions) if (q != null && annotationId.equals(q.annotationId)) return q;
@@ -9010,27 +9067,29 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void promptAddAnswer(StudyQuestion q) {
+        if (q == null) return;
         String answer = promptMultiline("Add Answer", "Answer for: " + shorten(q.question, 80), "");
         if (answer == null || answer.trim().isEmpty()) return;
         addAnswerToQuestion(q, answer);
-        refreshQuestions();
+        refreshAfterQuestionChange(true);
     }
 
     private void showQuestionAnswers(StudyQuestion q) {
+        if (q == null) return;
         JTextArea area = readonlyArea();
         area.setText(q.question + "\n\n" + (q.answers.isEmpty() ? "No answers yet." : answersSummary(q)));
         JOptionPane.showMessageDialog(this, new JScrollPane(area), "Answers", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void editQuestion(StudyQuestion q) {
+        if (q == null) return;
         String edited = promptMultiline("Edit Question", "Question:", q.question);
         if (edited == null || edited.trim().isEmpty()) return;
         q.question = edited.trim();
         TextAnnotation a = annotationById(q.annotationId);
         if (a != null) { a.note = q.question; touchAnnotation(a); }
         saveData();
-        refreshQuestions();
-        reloadCurrentSource();
+        refreshAfterQuestionChange(true);
     }
 
     private void deleteQuestion(StudyQuestion q) {
@@ -9093,10 +9152,6 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         String q = chapterNotesSearchField == null ? "" : chapterNotesSearchField.getText().trim().toLowerCase(Locale.ROOT);
         java.util.List<ChapterNote> notes = new ArrayList<>(currentProfile.chapterNotes.values());
         notes.removeIf(n -> n == null || safe(n.noteText).trim().isEmpty());
-        for (TextAnnotation a : currentProfile.annotations) {
-            repairAnnotation(a, System.currentTimeMillis());
-            if (isChapterLevelNote(a) && !safe(a.note).trim().isEmpty()) notes.add(chapterNoteFromAnnotation(a));
-        }
         notes.sort((a, b) -> Long.compare(b.updatedAt, a.updatedAt));
         for (ChapterNote n : notes) {
             repairChapterNote(n);
@@ -9107,11 +9162,14 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private boolean isChapterLevelNote(TextAnnotation a) {
         if (a == null) return false;
-        if (a.wholeChapter) return true;
-        if ("Chapter Note".equalsIgnoreCase(safe(a.type))) return true;
+        String type = safe(a.type).trim();
+        if ("Question".equalsIgnoreCase(type) || "Category".equalsIgnoreCase(type)) return false;
+        if ("Chapter Note".equalsIgnoreCase(type)) return true;
+        boolean noteType = type.isEmpty() || "Note".equalsIgnoreCase(type);
+        if (a.wholeChapter) return noteType;
         boolean hasNoRange = a.start <= 0 && a.end <= 0;
         boolean hasNoSelection = safe(a.selectedText).trim().isEmpty() && safe(a.target).trim().isEmpty();
-        return hasNoRange && hasNoSelection;
+        return noteType && hasNoRange && hasNoSelection;
     }
 
     private ChapterNote chapterNoteFromAnnotation(TextAnnotation a) {
@@ -9130,7 +9188,20 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private TextAnnotation annotationForChapterNote(ChapterNote note) {
-        return note == null || safe(note.annotationId).isEmpty() ? null : annotationById(note.annotationId);
+        if (note == null || currentProfile == null) return null;
+        TextAnnotation linked = safe(note.annotationId).isEmpty() ? null : annotationById(note.annotationId);
+        if (linked != null) return linked;
+        for (TextAnnotation annotation : currentProfile.annotations) {
+            if (sameChapterNoteLocation(note, annotation) && isChapterLevelNote(annotation)) return annotation;
+        }
+        return null;
+    }
+
+    private boolean sameChapterNoteLocation(ChapterNote note, TextAnnotation annotation) {
+        return note != null && annotation != null
+                && safe(note.sourceKey).equals(safe(annotation.sourceKey))
+                && safe(note.book).equals(safe(annotation.book))
+                && note.chapter == annotation.chapter;
     }
 
     private String chapterNoteSearchText(ChapterNote n) {
@@ -9146,10 +9217,6 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         int noteChapter = currentSourceKey.startsWith("BIBLE:") ? selectedChapter : 0;
         ChapterNote n = currentProfile.chapterNotes.get(chapterNoteKey(currentSourceKey, noteBook, noteChapter));
         if (n != null && !safe(n.noteText).trim().isEmpty()) notes.add(n);
-        for (TextAnnotation a : currentProfile.annotations) {
-            repairAnnotation(a, System.currentTimeMillis());
-            if (currentSourceKey.equals(a.sourceKey) && isChapterLevelNote(a) && !safe(a.note).trim().isEmpty()) notes.add(chapterNoteFromAnnotation(a));
-        }
         notes.sort((a, b) -> Long.compare(b.updatedAt, a.updatedAt));
         return notes;
     }
@@ -9158,7 +9225,98 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         return safe(sourceKey) + "|" + safe(book) + "|" + chapter;
     }
 
+    private void syncChapterNoteAnnotation(ChapterNote note) {
+        syncChapterNoteAnnotation(currentProfile, note);
+    }
+
+    private void syncChapterNoteAnnotation(Profile profile, ChapterNote note) {
+        if (note == null || profile == null || safe(note.sourceKey).isEmpty()) return;
+        repairChapterNote(note);
+        TextAnnotation annotation = null;
+        if (!safe(note.annotationId).isEmpty()) {
+            for (TextAnnotation candidate : profile.annotations) {
+                if (candidate != null && safe(note.annotationId).equals(safe(candidate.id))) { annotation = candidate; break; }
+            }
+        }
+        if (annotation == null) {
+            for (TextAnnotation candidate : profile.annotations) {
+                if (sameChapterNoteLocation(note, candidate) && isChapterLevelNote(candidate)) { annotation = candidate; break; }
+            }
+        }
+        if (annotation == null && safe(note.noteText).trim().isEmpty()) return;
+        if (annotation == null) {
+            annotation = new TextAnnotation(note.sourceKey, note.sourceTitle, 0, 0, "", "Chapter Note", "", note.noteText, "");
+            annotation.id = UUID.randomUUID().toString();
+            profile.annotations.add(annotation);
+        }
+        annotation.sourceKey = note.sourceKey;
+        annotation.sourceTitle = note.sourceTitle;
+        annotation.book = note.book;
+        annotation.chapter = note.chapter;
+        annotation.wholeChapter = true;
+        annotation.start = 0;
+        annotation.end = 0;
+        annotation.selectedText = "";
+        annotation.type = "Chapter Note";
+        annotation.note = safe(note.noteText);
+        annotation.category = note.linkedCategoryNames.isEmpty() ? "" : safe(note.linkedCategoryNames.get(0));
+        if (annotation.createdAt <= 0L) annotation.createdAt = note.createdAt;
+        annotation.updatedAt = note.updatedAt;
+        annotation.created = new Date(annotation.createdAt);
+        note.annotationId = annotation.id;
+    }
+
+    private void mergeChapterNote(ChapterNote target, ChapterNote incoming) {
+        if (target == null || incoming == null || target == incoming) return;
+        repairChapterNote(target);
+        repairChapterNote(incoming);
+        if (safe(target.noteText).trim().isEmpty() || incoming.updatedAt > target.updatedAt) target.noteText = incoming.noteText;
+        if (safe(target.sourceTitle).isEmpty()) target.sourceTitle = incoming.sourceTitle;
+        if (safe(target.annotationId).isEmpty()) target.annotationId = incoming.annotationId;
+        for (String category : incoming.linkedCategoryNames) if (!target.linkedCategoryNames.contains(category)) target.linkedCategoryNames.add(category);
+        for (String id : incoming.linkedStudyProjectIds) if (!target.linkedStudyProjectIds.contains(id)) target.linkedStudyProjectIds.add(id);
+        for (String name : incoming.linkedStudyProjectNames) if (!target.linkedStudyProjectNames.contains(name)) target.linkedStudyProjectNames.add(name);
+        for (String id : incoming.linkedTopicPageIds) if (!target.linkedTopicPageIds.contains(id)) target.linkedTopicPageIds.add(id);
+        for (String name : incoming.linkedTopicPageNames) if (!target.linkedTopicPageNames.contains(name)) target.linkedTopicPageNames.add(name);
+        for (ChapterNoteHighlight highlight : incoming.highlights) if (!target.highlights.contains(highlight)) target.highlights.add(highlight);
+        target.createdAt = Math.min(target.createdAt, incoming.createdAt);
+        target.updatedAt = Math.max(target.updatedAt, incoming.updatedAt);
+    }
+
+    private void normalizeChapterNotes(Profile profile) {
+        if (profile == null) return;
+        Map<String, ChapterNote> normalized = new TreeMap<>();
+        for (ChapterNote note : new ArrayList<>(profile.chapterNotes.values())) {
+            if (note == null) continue;
+            repairChapterNote(note);
+            String key = chapterNoteKey(note.sourceKey, note.book, note.chapter);
+            ChapterNote existing = normalized.get(key);
+            if (existing == null) normalized.put(key, note); else mergeChapterNote(existing, note);
+        }
+        java.util.List<TextAnnotation> duplicateAnnotations = new ArrayList<>();
+        for (TextAnnotation annotation : new ArrayList<>(profile.annotations)) {
+            if (annotation == null || !isChapterLevelNote(annotation)) continue;
+            ChapterNote fromAnnotation = chapterNoteFromAnnotation(annotation);
+            String key = chapterNoteKey(fromAnnotation.sourceKey, fromAnnotation.book, fromAnnotation.chapter);
+            ChapterNote note = normalized.get(key);
+            if (note == null) {
+                note = fromAnnotation;
+                note.id = UUID.randomUUID().toString();
+                normalized.put(key, note);
+            } else {
+                mergeChapterNote(note, fromAnnotation);
+                if (!safe(note.annotationId).isEmpty() && !safe(note.annotationId).equals(safe(annotation.id))) duplicateAnnotations.add(annotation);
+            }
+            if (safe(note.annotationId).isEmpty()) note.annotationId = annotation.id;
+        }
+        if (!duplicateAnnotations.isEmpty()) profile.annotations.removeAll(duplicateAnnotations);
+        profile.chapterNotes.clear();
+        profile.chapterNotes.putAll(normalized);
+        for (ChapterNote note : profile.chapterNotes.values()) syncChapterNoteAnnotation(profile, note);
+    }
+
     private ChapterNote getOrCreateChapterNote(String sourceKey, String sourceTitle, String book, int chapter) {
+        if (currentProfile == null || safe(sourceKey).isEmpty()) return null;
         repairProfile(currentProfile);
         String key = chapterNoteKey(sourceKey, book, chapter);
         ChapterNote note = currentProfile.chapterNotes.get(key);
@@ -9194,11 +9352,6 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void openChapterNoteViewer(ChapterNote note) {
         if (note == null) return;
-        TextAnnotation annotation = annotationForChapterNote(note);
-        if (annotation != null) {
-            showChapterAnnotationDialog(annotation, false);
-            return;
-        }
         showChapterNoteDialog(note, false);
     }
 
@@ -9353,6 +9506,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             note.updatedAt = System.currentTimeMillis();
             if (note.createdAt <= 0L) note.createdAt = note.updatedAt;
             currentProfile.chapterNotes.put(chapterNoteKey(note.sourceKey, note.book, note.chapter), note);
+            syncChapterNoteAnnotation(note);
             saveData();
             dirty[0] = false;
             refreshRecentNotes();
@@ -9499,7 +9653,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         return sb.toString();
     }
 
-    private void installChapterNotePopupMenu(JTextPane pane, ChapterNote note) {
+    private void installChapterNotePopupMenu(JTextComponent pane, ChapterNote note) {
         JPopupMenu menu = new JPopupMenu();
         JMenuItem cat = new JMenuItem("Attach Selected Note Text to Category");
         cat.addActionListener(e -> attachSelectedNoteText(note, pane, "CATEGORY"));
@@ -9513,7 +9667,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         pane.setComponentPopupMenu(menu);
     }
 
-    private void attachSelectedNoteText(ChapterNote note, JTextPane pane, String type) {
+    private void attachSelectedNoteText(ChapterNote note, JTextComponent pane, String type) {
         if (note == null || pane == null) return;
         int start = Math.min(pane.getSelectionStart(), pane.getSelectionEnd());
         int end = Math.max(pane.getSelectionStart(), pane.getSelectionEnd());
@@ -9544,35 +9698,97 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
         note.highlights.add(h);
         note.updatedAt = System.currentTimeMillis();
-        saveData(); refreshRecentNotes(); refreshStudyProjects(); refreshTopicPages(); refreshMarginNotesPanel();
+        syncChapterNoteAnnotation(note);
+        saveData(); refreshRecentNotes(); refreshCategories(); refreshStudyProjects(); refreshTopicPages(); refreshMarginNotesPanel();
         if (statusLabel != null) statusLabel.setText(" Attached selected chapter-note text to " + h.linkName + ".");
     }
 
-    private String chooseCategoryName(boolean allowCreate) {
+    private String chooseCategoryWithSearch(String title, String initialQuery) {
+        if (currentProfile == null) return null;
         repairProfile(currentProfile);
-        java.util.List<String> names = new ArrayList<>(currentProfile.categories.keySet());
-        if (allowCreate) names.add(0, "Create New Category…");
-        if (names.isEmpty()) names.add("Create New Category…");
-        JComboBox<String> combo = new JComboBox<>(names.toArray(new String[0]));
-        int result = JOptionPane.showConfirmDialog(this, combo, "Choose Category", JOptionPane.OK_CANCEL_OPTION);
-        if (result != JOptionPane.OK_OPTION) return null;
-        String selected = (String) combo.getSelectedItem();
-        if ("Create New Category…".equals(selected)) {
-            String name = JOptionPane.showInputDialog(this, "Category name:", "New Category", JOptionPane.PLAIN_MESSAGE);
-            if (name == null || name.trim().isEmpty()) return null;
-            currentProfile.categories.putIfAbsent(name.trim(), "");
-            currentProfile.categoryColors.putIfAbsent(name.trim(), categoryBlue.getRGB());
-            refreshCategories();
-            return name.trim();
-        }
-        return selected;
+        final JDialog dialog = new JDialog(this, safe(title).isEmpty() ? "Choose Category" : title, true);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setSize(430, 430);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel root = new JPanel(new BorderLayout(8, 8));
+        root.setBorder(new EmptyBorder(12, 12, 12, 12));
+        root.setBackground(modernBackground);
+        JTextField search = new JTextField(safe(initialQuery));
+        search.setToolTipText("Search categories or type a name to create a new category.");
+        DefaultListModel<String> model = new DefaultListModel<>();
+        JList<String> list = new JList<>(model);
+        list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        list.setBackground(modernSurface);
+        JScrollPane scroll = new JScrollPane(list);
+        scroll.setBorder(new RoundedBorder(modernBorder, 10, new Insets(1, 1, 1, 1)));
+        JLabel hint = new JLabel("Type to filter. A new category can be created when there is no exact match.");
+        hint.setForeground(modernMutedText);
+        JPanel north = new JPanel(new BorderLayout(4, 4));
+        north.setOpaque(false);
+        north.add(new JLabel("Search categories:"), BorderLayout.NORTH);
+        north.add(search, BorderLayout.CENTER);
+        north.add(hint, BorderLayout.SOUTH);
+        root.add(north, BorderLayout.NORTH);
+        root.add(scroll, BorderLayout.CENTER);
+
+        final String[] result = {null};
+        JButton ok = blackButton("OK");
+        JButton cancel = blackButton("Cancel");
+        Runnable refresh = () -> {
+            String query = search.getText().trim().toLowerCase(Locale.ROOT);
+            model.clear();
+            for (String category : currentProfile.categories.keySet()) {
+                if (query.isEmpty() || category.toLowerCase(Locale.ROOT).contains(query)) model.addElement(category);
+            }
+            String typed = search.getText().trim();
+            boolean exact = currentProfile.categories.keySet().stream().anyMatch(c -> c.equalsIgnoreCase(typed));
+            if (!typed.isEmpty() && !exact) model.addElement("+ Create “" + typed + "”");
+            if (!model.isEmpty()) list.setSelectedIndex(0);
+            ok.setEnabled(!model.isEmpty());
+        };
+        Runnable accept = () -> {
+            String selected = list.getSelectedValue();
+            if (selected == null) return;
+            if (selected.startsWith("+ Create “") && selected.endsWith("”")) {
+                selected = selected.substring(10, selected.length() - 1).trim();
+                if (selected.isEmpty()) return;
+                currentProfile.categories.putIfAbsent(selected, "");
+                currentProfile.categoryColors.putIfAbsent(selected, categoryBlue.getRGB());
+                saveData();
+                refreshCategories();
+            }
+            result[0] = selected;
+            dialog.dispose();
+        };
+        search.getDocument().addDocumentListener(new SimpleDocumentListener(refresh));
+        search.addActionListener(e -> accept.run());
+        list.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) { if (e.getClickCount() == 2) accept.run(); }
+        });
+        ok.addActionListener(e -> accept.run());
+        cancel.addActionListener(e -> dialog.dispose());
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        buttons.setOpaque(false);
+        buttons.add(ok); buttons.add(cancel);
+        root.add(buttons, BorderLayout.SOUTH);
+        dialog.setContentPane(root);
+        applyModernTheme(dialog);
+        refresh.run();
+        SwingUtilities.invokeLater(search::requestFocusInWindow);
+        dialog.setVisible(true);
+        return result[0];
+    }
+
+    private String chooseCategoryName(boolean allowCreate) {
+        return chooseCategoryWithSearch("Choose Category", "");
     }
 
     private void linkWholeChapterNoteToCategory(ChapterNote note) {
         String cat = chooseCategoryName(true);
         if (cat == null) return;
         if (!note.linkedCategoryNames.contains(cat)) note.linkedCategoryNames.add(cat);
-        note.updatedAt = System.currentTimeMillis(); saveData(); refreshRecentNotes(); refreshCategories(); refreshMarginNotesPanel();
+        note.updatedAt = System.currentTimeMillis(); syncChapterNoteAnnotation(note); saveData(); refreshRecentNotes(); refreshCategories(); refreshChapterNotesList(); refreshMarginNotesPanel();
     }
 
     private void linkWholeChapterNoteToStudy(ChapterNote note) {
@@ -9582,7 +9798,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (!p.chapterNoteIds.contains(note.id)) p.chapterNoteIds.add(note.id);
         if (!note.linkedStudyProjectIds.contains(p.id)) note.linkedStudyProjectIds.add(p.id);
         if (!note.linkedStudyProjectNames.contains(p.title)) note.linkedStudyProjectNames.add(p.title);
-        p.updatedAt = note.updatedAt = System.currentTimeMillis(); saveData(); refreshRecentNotes(); refreshStudyProjects(); refreshMarginNotesPanel();
+        p.updatedAt = note.updatedAt = System.currentTimeMillis(); syncChapterNoteAnnotation(note); saveData(); refreshRecentNotes(); refreshChapterNotesList(); refreshStudyProjects(); refreshMarginNotesPanel();
     }
 
     private void linkWholeChapterNoteToTopic(ChapterNote note) {
@@ -9591,7 +9807,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (!note.linkedTopicPageIds.contains(topic.id)) note.linkedTopicPageIds.add(topic.id);
         if (!note.linkedTopicPageNames.contains(topic.title)) note.linkedTopicPageNames.add(topic.title);
         addLinkToTopic(topic, new LinkedItem("CHAPTER_NOTE", note.id, "whole chapter note"));
-        note.updatedAt = System.currentTimeMillis(); saveData(); refreshRecentNotes(); refreshTopicPages(); refreshMarginNotesPanel();
+        note.updatedAt = System.currentTimeMillis(); syncChapterNoteAnnotation(note); saveData(); refreshRecentNotes(); refreshChapterNotesList(); refreshTopicPages(); refreshMarginNotesPanel();
     }
 
     private String chapterNoteReference(ChapterNote n) {
@@ -11345,6 +11561,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             }
             p.oldNotes.clear();
         }
+        normalizeChapterNotes(p);
     }
 
 
