@@ -96,15 +96,15 @@ const WEAPONS={
   plasma:{name:'PLASMA BLASTER',damage:22,range:90,cool:.22,spread:.006,mag:999,reload:0,tracers:1,color:'#9b5cff',falloff:.08,kind:'plasma',heat:.18,coolRate:.48,chargeRate:.92},
   laser:{name:'PLASMA LASER',damage:8.5,range:86,cool:.035,spread:.001,mag:999,reload:0,tracers:1,color:'#ff2bff',falloff:.04,kind:'laser',heatRate:1.28,coolRate:.62}
 };
-const DIFF={easy:{aim:.25,react:.55,move:7.2,fire:.88},normal:{aim:.38,react:.38,move:8.4,fire:.68},hard:{aim:.52,react:.28,move:9.5,fire:.54},nightmare:{aim:.64,react:.22,move:10.7,fire:.43}};
+const DIFF={easy:{aim:.25,react:.55,move:8.8,fire:.88},normal:{aim:.38,react:.38,move:10.2,fire:.68},hard:{aim:.52,react:.28,move:11.6,fire:.54},nightmare:{aim:.64,react:.22,move:13.0,fire:.43}};
 const game={started:false,mode:'dm',difficulty:'normal',botCount:6,time:300,timeLeft:300,over:false};
 const player={name:'YOU',x:0,y:PLAYER_H,z:24,vx:0,vy:0,vz:0,yaw:Math.PI,pitch:0,onGround:false,r:.46,team:1,score:0,deaths:0,dead:false,hp:100,maxHp:100,weapon:'assault',ammo:30,reload:0,cool:0,heat:0,spawnGrace:0};
-let bots=[],platforms=[],walls=[],nav=[],pads=[],pickups=[],shots=[],projectiles=[],particles=[],lasers=[],impacts=[],muzzleFlashes=[];
+let bots=[],platforms=[],walls=[],nav=[],pickups=[],shots=[],projectiles=[],particles=[],lasers=[],impacts=[],muzzleFlashes=[];
 const MAX_PARTICLES=260,MAX_IMPACTS=80,ARENA_SAFE=44.35;
 const pastel=['#9ee7ff','#ffc3e6','#c8ffd4','#fff0a8','#d8c9ff','#ffcfb8','#b9fff5','#e9ffbd'];
 function addPlat(x,z,w,d,y,h,c){platforms.push({x,z,w,d,y,h,c});nav.push({x,z,y:y+h+PLAYER_H,r:Math.max(w,d)*.34})}
 function addWall(x,z,w,d,h,c){walls.push({x,z,w,d,y:h/2,h,c});}
-function buildMap(){platforms=[];walls=[];nav=[];pads=[];pickups=[];
+function buildMap(){platforms=[];walls=[];nav=[];pickups=[];
   addPlat(0,0,89.8,89.8,-.7,.7,'#9fb4cb');
   addPlat(-31,-31,18,18,2.5,.9,pastel[0]); addPlat(31,-31,18,18,2.5,.9,pastel[1]); addPlat(-31,31,18,18,2.5,.9,pastel[2]); addPlat(31,31,18,18,2.5,.9,pastel[3]);
   addPlat(0,-35,21,13,5.7,.9,pastel[4]); addPlat(0,35,21,13,5.7,.9,pastel[5]); addPlat(-35,0,13,21,5.4,.9,pastel[6]); addPlat(35,0,13,21,5.4,.9,pastel[7]);
@@ -114,9 +114,7 @@ function buildMap(){platforms=[];walls=[];nav=[];pads=[];pickups=[];
   // Tall bright boundary walls: impossible to jump over, impossible to fall off map.
   addWall(0,-46,96,2.2,22,'#00eaff'); addWall(0,46,96,2.2,22,'#ff2bbd'); addWall(-46,0,2.2,96,22,'#00ffa8'); addWall(46,0,2.2,96,22,'#ffea00');
   addWall(-12,-12,2.4,18,5.6,'#f5ff6b'); addWall(12,12,2.4,18,5.6,'#f5ff6b'); addWall(12,-12,18,2.4,5.6,'#78ffd8'); addWall(-12,12,18,2.4,5.6,'#78ffd8');
-  pads=[{x:-39,z:39},{x:39,z:-39},{x:-39,z:-39},{x:39,z:39},{x:0,z:0},{x:0,z:-39},{x:0,z:39}];
-  for(const p of pads)nav.push({x:p.x,z:p.z,y:PLAYER_H,r:4});
-  addPickup('sniper',-31,-31,4.1); addPickup('shotgun',31,-31,4.1); addPickup('smg',-31,31,4.1); addPickup('plasma',31,31,4.1); addPickup('assault',0,0,14.5); addPickup('sniper',0,35,7.3); addPickup('plasma',35,0,7.0); addPickup('laser',-35,0,7.0); addPickup('shotgun',-35,0,7.0);
+  addPickup('sniper',-31,-31,4.1); addPickup('shotgun',31,-31,4.1); addPickup('smg',-31,31,4.1); addPickup('plasma',31,31,4.1); addPickup('assault',0,0,14.5); addPickup('sniper',0,35,7.3); addPickup('plasma',35,0,7.0); addPickup('laser',18,-18,8.9); addPickup('shotgun',-35,0,7.0);
 }
 function addPickup(type,x,z,y){pickups.push({type,x,z,y,spin:rand(0,TAU),taken:0})}
 function topAtPoint(x,z){let best=-999;for(const p of platforms){if(Math.abs(x-p.x)<=p.w/2&&Math.abs(z-p.z)<=p.d/2)best=Math.max(best,p.y+p.h)}return best}
@@ -137,7 +135,7 @@ function reset(){buildMap();game.mode=el('mode').value;game.difficulty=el('diffi
 el('start').onclick=()=>{el('menu').style.display='none';reset();canvas.requestPointerLock()};
 function sameTeam(a,b){return game.mode==='tdm'&&a.team===b.team}
 function updatePlayer(dt){player.spawnGrace=Math.max(0,player.spawnGrace-dt);if(player.dead)return;player.yaw+=mouseDX*.00225;player.pitch=clamp(player.pitch+mouseDY*.00225,-1.25,1.25);mouseDX=mouseDY=0;
-  const fX=Math.sin(player.yaw),fZ=Math.cos(player.yaw),rX=Math.cos(player.yaw),rZ=-Math.sin(player.yaw);let ax=0,az=0;if(keys.KeyW){ax+=fX;az+=fZ}if(keys.KeyS){ax-=fX;az-=fZ}if(keys.KeyD){ax+=rX;az+=rZ}if(keys.KeyA){ax-=rX;az-=rZ}const l=Math.hypot(ax,az)||1,speed=13.2,targetVX=ax/l*speed,targetVZ=az/l*speed,accel=player.onGround?25:8;player.vx+=(targetVX-player.vx)*clamp(accel*dt,0,1);player.vz+=(targetVZ-player.vz)*clamp(accel*dt,0,1);if(keys.Space&&player.onGround){player.vy=19.4;player.onGround=false;burst(player.x,player.y-1,player.z,'#fff')}for(const p of pads){if(hypot2(player.x-p.x,player.z-p.z)<2.5&&player.onGround){player.vy=23;burst(player.x,player.y-1,player.z,'#00eaff')}}physics(player,dt);updateWeaponTimers(player,dt);pickupCheck(player);if(fireHeld&&!player.dead){if(player.weapon==='plasma')chargePlayerPlasma(dt);else if(player.weapon==='laser')tryFire(player,true);else tryFire(player,true)}}
+  const fX=Math.sin(player.yaw),fZ=Math.cos(player.yaw),rX=Math.cos(player.yaw),rZ=-Math.sin(player.yaw);let ax=0,az=0;if(keys.KeyW){ax+=fX;az+=fZ}if(keys.KeyS){ax-=fX;az-=fZ}if(keys.KeyD){ax+=rX;az+=rZ}if(keys.KeyA){ax-=rX;az-=rZ}const l=Math.hypot(ax,az)||1,speed=15.8,targetVX=ax/l*speed,targetVZ=az/l*speed,accel=player.onGround?25:8;player.vx+=(targetVX-player.vx)*clamp(accel*dt,0,1);player.vz+=(targetVZ-player.vz)*clamp(accel*dt,0,1);if(keys.Space&&player.onGround){player.vy=19.4;player.onGround=false;burst(player.x,player.y-1,player.z,'#fff')}physics(player,dt);updateWeaponTimers(player,dt);pickupCheck(player);if(fireHeld&&!player.dead){if(player.weapon==='plasma')chargePlayerPlasma(dt);else if(player.weapon==='laser')tryFire(player,true);else tryFire(player,true)}}
 function updateWeaponTimers(ent,dt){if(ent.cool>0)ent.cool-=dt;if(ent.reload>0){ent.reload-=dt;if(ent.reload<=0){ent.ammo=WEAPONS[ent.weapon].mag;ent.reload=0;if(ent===player)msg(WEAPONS[ent.weapon].name+' READY')}}if(ent.weapon==='plasma')ent.heat=Math.max(0,(ent.heat||0)-WEAPONS.plasma.coolRate*dt);else if(ent.weapon==='laser')ent.heat=Math.max(0,(ent.heat||0)-WEAPONS.laser.coolRate*dt)}
 function pickupCheck(ent){for(const p of pickups){if(p.taken>0)continue;const dy=Math.abs(ent.y-(p.y+1.1));if(hypot2(ent.x-p.x,ent.z-p.z)<1.8&&dy<3.5){equip(ent,p.type,ent===player);p.taken=8;if(ent===player)feed('Picked up '+WEAPONS[p.type].name)}}}
 function chargeColor(tier){return tier>=4?'#ff2bff':tier>=3?'#ffea00':tier>=2?'#00ffa8':'#9b5cff'}
@@ -200,6 +198,7 @@ function aiProfile(type){return {
   plasma:{min:15,ideal:29,max:56,strafe:.46,advance:1.02,retreat:.84,pickups:.32,jump:.05,fireBias:1.18},
   laser:{min:17,ideal:31,max:60,strafe:.40,advance:.94,retreat:.95,pickups:.30,jump:.04,fireBias:1.38}
 }[type]||{min:14,ideal:25,max:44,strafe:.55,advance:1,retreat:1,pickups:.34,jump:.06,fireBias:1}}
+function botRetreatOpen(bot,nx,nz,enemy){const x=bot.x-nx*2.6,z=bot.z-nz*2.6;if(Math.abs(x)>ARENA_SAFE-1||Math.abs(z)>ARENA_SAFE-1||topAtPoint(x,z)<-20)return false;const blocked=walls.some(w=>Math.abs(x-w.x)<w.w/2+bot.r+.35&&Math.abs(z-w.z)<w.d/2+bot.r+.35&&bot.y-PLAYER_H<w.y+w.h/2);return !blocked&&lineClear(x,bot.y,z,enemy.x,enemy.y-.55,enemy.z)}
 function botSeparation(bot){let sx=0,sz=0;for(const o of bots){if(o===bot||o.dead)continue;const dx=bot.x-o.x,dz=bot.z-o.z,d=Math.hypot(dx,dz);if(d>0&&d<3.2){const push=(3.2-d)/3.2;sx+=dx/d*push;sz+=dz/d*push}}return {x:sx,z:sz}}
 function updateBot(b,dt){
   b.spawnGrace=Math.max(0,b.spawnGrace-dt);if(b.dead)return;
@@ -216,25 +215,37 @@ function updateBot(b,dt){
     if(b.strafeT<=0){b.strafe=Math.random()<.5?-1:1;b.strafeT=rand(.75,1.65)}
     b.think=cfg.react+rand(0,.12);
   }
-  let wantX=0,wantZ=0,speed=cfg.move;
+  let wantX=0,wantZ=0,speed=cfg.move,closeThreat=false;
   if(b.enemy){
     const ex=b.enemy.x-b.x,ez=b.enemy.z-b.z,dist=Math.hypot(ex,ez)||1,nx=ex/dist,nz=ez/dist,sideX=-nz*b.strafe,sideZ=nx*b.strafe;
     b.faceYaw=Math.atan2(nx,nz);
-    const tooClose=dist<prof.min,tooFar=dist>prof.ideal;
-    let rangeMove=0;if(tooClose)rangeMove=-prof.retreat;else if(tooFar)rangeMove=prof.advance;else rangeMove=.16;
-    // Snipers and lasers hold lanes, shotguns close gaps, SMGs orbit aggressively.
-    wantX=(nx*rangeMove+sideX*prof.strafe)*speed;wantZ=(nz*rangeMove+sideZ*prof.strafe)*speed;
+    const closeRange={shotgun:9,smg:9,assault:8,sniper:11,plasma:9,laser:10}[b.weapon]||8;
+    closeThreat=dist<closeRange;
+    let rangeMove=0,strafeMove=prof.strafe;
+    if(closeThreat){
+      // Stay squared to immediate threats. Each weapon keeps its own close-range style,
+      // and defensive backpedaling is only allowed when it preserves space and sight.
+      const retreatOpen=botRetreatOpen(b,nx,nz,b.enemy);
+      if(b.weapon==='shotgun'){rangeMove=1.45;strafeMove=.34}
+      else if(b.weapon==='smg'){rangeMove=.18;strafeMove=1.02}
+      else if(b.weapon==='assault'){rangeMove=retreatOpen?-.18:.12;strafeMove=.78}
+      else if(b.weapon==='sniper'){rangeMove=retreatOpen?-.68:0;strafeMove=1.08}
+      else if(b.weapon==='plasma'){rangeMove=retreatOpen?-.10:.16;strafeMove=.82}
+      else if(b.weapon==='laser'){rangeMove=retreatOpen?-.08:.14;strafeMove=.88}
+    }else if(dist<prof.min&&botRetreatOpen(b,nx,nz,b.enemy))rangeMove=-prof.retreat;
+    else if(dist>prof.ideal)rangeMove=prof.advance;
+    else rangeMove=.16;
+    wantX=(nx*rangeMove+sideX*strafeMove)*speed;wantZ=(nz*rangeMove+sideZ*strafeMove)*speed;
     if(!lineClear(b.x,b.y,b.z,b.enemy.x,b.enemy.y,b.enemy.z)){wantX+=nx*speed*.42;wantZ+=nz*speed*.42;}
   }else{
     let tx=b.target?.x||0,tz=b.target?.z||0,dx=tx-b.x,dz=tz-b.z,d=Math.hypot(dx,dz)||1;dx/=d;dz/=d;wantX=dx*speed*.88;wantZ=dz*speed*.88;b.faceYaw=Math.atan2(dx,dz);
   }
   const sep=botSeparation(b);wantX+=sep.x*speed*1.65;wantZ+=sep.z*speed*1.65;
-  b.vx+=(wantX-b.vx)*clamp(7.5*dt,0,1);b.vz+=(wantZ-b.vz)*clamp(7.5*dt,0,1);
-  const mv=Math.hypot(b.vx,b.vz);if(mv>.2){b.faceYaw=Math.atan2(b.vx,b.vz);b.walk+=mv*dt*4.2}b.yaw=b.faceYaw;
-  const dirX=Math.sin(b.faceYaw),dirZ=Math.cos(b.faceYaw),gHere=topAtPoint(b.x,b.z),gAhead=topAtPoint(b.x+dirX*2.8,b.z+dirZ*2.8),higher=b.target&&b.target.y>b.y+.55,nearWall=walls.some(w=>Math.abs(b.x+dirX*1.25-w.x)<w.w/2+.72&&Math.abs(b.z+dirZ*1.25-w.z)<w.d/2+.72&&b.y<w.y+w.h/2+.8);
+  b.vx+=(wantX-b.vx)*clamp(8.4*dt,0,1);b.vz+=(wantZ-b.vz)*clamp(8.4*dt,0,1);
+  const mv=Math.hypot(b.vx,b.vz),moveYaw=mv>.2?Math.atan2(b.vx,b.vz):b.faceYaw;if(mv>.2){if(!b.enemy)b.faceYaw=moveYaw;b.walk+=mv*dt*4.2}b.yaw=b.faceYaw;
+  const dirX=Math.sin(moveYaw),dirZ=Math.cos(moveYaw),gHere=topAtPoint(b.x,b.z),gAhead=topAtPoint(b.x+dirX*2.8,b.z+dirZ*2.8),higher=b.target&&b.target.y>b.y+.55,nearWall=walls.some(w=>Math.abs(b.x+dirX*1.25-w.x)<w.w/2+.72&&Math.abs(b.z+dirZ*1.25-w.z)<w.d/2+.72&&b.y<w.y+w.h/2+.8);
   // Jump only when navigation needs it. This removes the old pogo-stick bot behavior.
   if(b.onGround&&b.jumpCd<=0&&(gAhead>gHere+.45||higher||nearWall)&&(Math.random()<.72)){b.vy=rand(14.5,17.2);b.jumpCd=rand(1.0,1.8)}
-  for(const p of pads){if(hypot2(b.x-p.x,b.z-p.z)<2.4&&b.onGround&&b.jumpCd<=0&&Math.random()<.30){b.vy=23;b.jumpCd=1.4;burst(b.x,b.y-1,b.z,b.color)}}
   physics(b,dt);
   if(b.enemy&&b.fireCd<=0&&lineClear(b.x,b.y-.05,b.z,b.enemy.x,b.enemy.y-.55,b.enemy.z)){
     const dist=hypot2(b.enemy.x-b.x,b.enemy.z-b.z);
@@ -244,7 +255,8 @@ function updateBot(b,dt){
     const yaw=Math.atan2(b.enemy.x-b.x,b.enemy.z-b.z)+rand(-aimErr,aimErr);
     const pitch=Math.atan2((b.y-b.enemy.y),Math.max(.01,dist))+rand(-aimErr*.65,aimErr*.65);
     b.yaw=yaw;b.pitch=pitch;
-    const chance=clamp((rangeQuality*(1-dist/(prof.max+42))*cfg.aim*prof.fireBias)+.10,.14,.96);
+    let chance=clamp((rangeQuality*(1-dist/(prof.max+42))*cfg.aim*prof.fireBias)+.10,.14,.96);
+    if(closeThreat)chance=Math.max(chance,{shotgun:.82,smg:.76,assault:.64,sniper:.58,plasma:.68,laser:.82}[b.weapon]||.62);
     if(Math.random()<chance)tryFire(b,false,b.weapon==='plasma'?rand(.35,.98):0);
     b.yaw=b.faceYaw;b.pitch=0;
     const base=(b.weapon==='assault'||b.weapon==='smg'||b.weapon==='laser'?Math.max(.045,WEAPONS[b.weapon].cool*1.08):cfg.fire*.72);
@@ -308,7 +320,6 @@ function addHeldGunGeometry(b,yaw){const w=WEAPONS[b.weapon]||WEAPONS.assault,c=
 function uploadAndDraw(items,mode){if(!items.length)return;const data=[];for(const item of items)for(const p of item.p){const q=cameraClipPoint(p);data.push(q[0],q[1],q[2],q[3],item.rgb[0],item.rgb[1],item.rgb[2])}const arr=new Float32Array(data);gl.bindBuffer(gl.ARRAY_BUFFER,worldBuffer);gl.bufferData(gl.ARRAY_BUFFER,arr,gl.DYNAMIC_DRAW);gl.enableVertexAttribArray(worldPos);gl.vertexAttribPointer(worldPos,4,gl.FLOAT,false,28,0);gl.enableVertexAttribArray(worldColor);gl.vertexAttribPointer(worldColor,3,gl.FLOAT,false,28,16);gl.drawArrays(mode,0,arr.length/7)}
 function renderDepthWorld(){solidTriangles=[];lineSegments=[];for(const p of platforms)addBoxGeometry({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h},p.c);addFloorTiles();for(const w of walls)addBoxGeometry(w,w.c);for(const b of bots)if(!b.dead)addBotGeometry(b);gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.disable(gl.BLEND);gl.clearColor(.78,.88,.96,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(worldProgram);uploadAndDraw(solidTriangles,gl.TRIANGLES);gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-1,-1);gl.lineWidth(1);uploadAndDraw(lineSegments,gl.LINES);gl.disable(gl.POLYGON_OFFSET_FILL)}
 function draw(){renderDepthWorld();ctx.clearRect(0,0,W,H);ctx.drawImage(worldCanvas,0,0,W,H);
-  for(const p of pads){const q=project(p.x,.04,p.z);if(q&&lineClear(player.x,player.y-.05,player.z,p.x,.04,p.z)){ctx.beginPath();ctx.arc(q.x,q.y,Math.max(8,q.s*1.9),0,TAU);ctx.fillStyle='rgba(0,234,255,.22)';ctx.fill();ctx.strokeStyle='#00eaff';ctx.lineWidth=2;ctx.shadowBlur=18;ctx.shadowColor='#00eaff';ctx.stroke();ctx.shadowBlur=0}}
   drawPickups();drawImpacts();drawMuzzleFlashes(false);for(const b of bots)if(!b.dead)drawBotLabelIfVisible(b);for(const s of shots)drawBeamTrail(s,false);for(const l of lasers)drawBeamTrail(l,true);
   for(const p of projectiles){if(!lineClear(player.x,player.y-.05,player.z,p.x,p.y,p.z))continue;const q=project(p.x,p.y,p.z),tail=project(p.px??p.x,p.py??p.y,p.pz??p.z);if(q){if(tail){ctx.strokeStyle=p.color;ctx.lineWidth=3+(p.tier||1)*1.5;ctx.shadowBlur=24;ctx.shadowColor=p.color;ctx.beginPath();ctx.moveTo(tail.x,tail.y);ctx.lineTo(q.x,q.y);ctx.stroke()}ctx.fillStyle=p.color;ctx.shadowBlur=26;ctx.shadowColor=p.color;ctx.beginPath();ctx.arc(q.x,q.y,Math.max(6,q.s*.16),0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();ctx.shadowBlur=0}}
   for(const p of particles){if(!lineClear(player.x,player.y-.05,player.z,p.x,p.y,p.z))continue;const q=project(p.x,p.y,p.z);if(q){const a=clamp(p.life/(p.maxLife||.7),0,1),sz=(p.size||4)*(p.kind==='blood'?.72+q.s*.012:1);ctx.globalAlpha=a;ctx.fillStyle=p.c;ctx.shadowBlur=p.kind==='blood'?0:12;ctx.shadowColor=p.c;ctx.fillRect(q.x-sz/2,q.y-sz/2,sz,sz);ctx.globalAlpha=1;ctx.shadowBlur=0}}drawFirstPersonGun();drawMuzzleFlashes(true);drawMinimap()}
