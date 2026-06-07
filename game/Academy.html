@@ -66,11 +66,16 @@
 (() => {
 'use strict';
 const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+// The arena itself is rendered into an offscreen WebGL depth buffer, then composited
+// beneath the 2D HUD and effects. A real z-buffer removes the impossible painter-sort
+// cases caused by intersecting floors, walls, platforms, and animated actors.
+const worldCanvas=document.createElement('canvas'), gl=worldCanvas.getContext('webgl',{alpha:false,antialias:true,premultipliedAlpha:false});
+if(!gl)throw new Error('WebGL is required for the depth-buffered arena renderer.');
 const mm=document.getElementById('minimap'), mctx=mm.getContext('2d');
 const hud={score:el('score'),ammo:el('ammo'),timer:el('timer'),botsLeft:el('botsLeft'),mode:el('modeLabel'),msg:el('msg'),feed:el('feed'),death:el('death'),healthText:el('healthText'),healthFill:el('healthFill'),weaponName:el('weaponName')};
 function el(id){return document.getElementById(id)}
 let W=innerWidth,H=innerHeight,DPR=Math.min(2,devicePixelRatio||1);
-function resize(){W=innerWidth;H=innerHeight;canvas.width=W*DPR;canvas.height=H*DPR;canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0)}
+function resize(){W=innerWidth;H=innerHeight;canvas.width=W*DPR;canvas.height=H*DPR;worldCanvas.width=W*DPR;worldCanvas.height=H*DPR;canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0);gl.viewport(0,0,worldCanvas.width,worldCanvas.height)}
 addEventListener('resize',resize); resize();
 const TAU=Math.PI*2, GRAV=34, PLAYER_H=1.72, HEAD_CLEAR=.18, MAP_LIMIT=46.5;
 const keys=Object.create(null); addEventListener('keydown',e=>{keys[e.code]=true}); addEventListener('keyup',e=>keys[e.code]=false);
@@ -100,7 +105,7 @@ const pastel=['#9ee7ff','#ffc3e6','#c8ffd4','#fff0a8','#d8c9ff','#ffcfb8','#b9ff
 function addPlat(x,z,w,d,y,h,c){platforms.push({x,z,w,d,y,h,c});nav.push({x,z,y:y+h+PLAYER_H,r:Math.max(w,d)*.34})}
 function addWall(x,z,w,d,h,c){walls.push({x,z,w,d,y:h/2,h,c});}
 function buildMap(){platforms=[];walls=[];nav=[];pads=[];pickups=[];
-  addPlat(0,0,88,88,-.7,.7,'#eef2ff');
+  addPlat(0,0,89.8,89.8,-.7,.7,'#9fb4cb');
   addPlat(-31,-31,18,18,2.5,.9,pastel[0]); addPlat(31,-31,18,18,2.5,.9,pastel[1]); addPlat(-31,31,18,18,2.5,.9,pastel[2]); addPlat(31,31,18,18,2.5,.9,pastel[3]);
   addPlat(0,-35,21,13,5.7,.9,pastel[4]); addPlat(0,35,21,13,5.7,.9,pastel[5]); addPlat(-35,0,13,21,5.4,.9,pastel[6]); addPlat(35,0,13,21,5.4,.9,pastel[7]);
   addPlat(0,0,22,22,9.3,.9,'#f2d1ff'); addPlat(0,0,10,10,13.0,.9,'#d7fbff');
@@ -124,7 +129,7 @@ function verticalCollide(ent,oldY){ent.onGround=false;const r=ent.r||.45,oldFeet
 }
 function physics(ent,dt){if(!Number.isFinite(ent.x+ent.y+ent.z)||Math.abs(ent.x)>MAP_LIMIT+8||Math.abs(ent.z)>MAP_LIMIT+8||ent.y<-8){recoverActor(ent);return}const oldY=ent.y;ent.vy-=GRAV*dt;ent.x+=ent.vx*dt;ent.z+=ent.vz*dt;pushOutXZ(ent);ent.y+=ent.vy*dt;verticalCollide(ent,oldY);if(ent.y<-8)recoverActor(ent)}
 function recoverActor(ent){const wasDead=ent.dead;spawn(ent);ent.dead=wasDead;if(ent===player&&!wasDead)msg('RETURNED TO ARENA')}
-function spawn(ent){const sp=pick(nav);ent.x=sp.x+rand(-3.4,3.4);ent.z=sp.z+rand(-3.4,3.4);ent.y=topAtPoint(ent.x,ent.z)+PLAYER_H;if(ent.y<-20)ent.y=PLAYER_H;ent.vx=ent.vy=ent.vz=0;ent.dead=false;ent.hp=ent.maxHp||100;ent.spawnGrace=.9;ent.target=pick(nav);ent.walk=0;ent.faceYaw=ent.yaw||0;if(ent!==player){ent.weapon=pick(['assault','smg','shotgun','sniper','plasma','laser']);equip(ent,ent.weapon,false)}}
+function spawn(ent){let sp=pick(nav),x=sp.x,z=sp.z;for(let i=0;i<16;i++){sp=pick(nav);x=clamp(sp.x+rand(-Math.min(3.4,sp.r*.55),Math.min(3.4,sp.r*.55)),-ARENA_SAFE+1,ARENA_SAFE-1);z=clamp(sp.z+rand(-Math.min(3.4,sp.r*.55),Math.min(3.4,sp.r*.55)),-ARENA_SAFE+1,ARENA_SAFE-1);const y=topAtPoint(x,z)+PLAYER_H,blocked=walls.some(w=>Math.abs(x-w.x)<w.w/2+.7&&Math.abs(z-w.z)<w.d/2+.7&&y-PLAYER_H<w.y+w.h/2);if(!blocked)break}ent.x=x;ent.z=z;ent.y=topAtPoint(x,z)+PLAYER_H;if(ent.y<-20)ent.y=PLAYER_H;ent.vx=ent.vy=ent.vz=0;ent.onGround=true;ent.dead=false;ent.hp=ent.maxHp||100;ent.spawnGrace=.9;ent.target=pick(nav);ent.walk=0;ent.faceYaw=ent.yaw||0;pushOutXZ(ent);if(ent!==player){ent.weapon=pick(['assault','smg','shotgun','sniper','plasma','laser']);equip(ent,ent.weapon,false)}}
 function equip(ent,type,announce=true){ent.weapon=type;const w=WEAPONS[type];ent.ammo=w.mag;ent.reload=0;ent.cool=.12;ent.heat=0;ent.charge=0;if(ent===player){styleGun(type);if(announce)msg('PICKED UP '+w.name)}}
 function styleGun(type){const w=WEAPONS[type]||WEAPONS.assault;hud.weaponName.textContent=w.name}
 function initBots(){bots=[];const names=['VOLT','NOVA','RAZOR','GLITCH','ONYX','PULSE','HEX','ECHO','RIFT','BLITZ'];for(let i=0;i<game.botCount;i++){const b={name:names[i%names.length],x:0,y:PLAYER_H,z:0,vx:0,vy:0,vz:0,r:.48,yaw:0,pitch:0,onGround:false,team:game.mode==='tdm'?(i%2)+2:10+i,score:0,deaths:0,dead:false,hp:100,maxHp:100,weapon:'assault',ammo:30,reload:0,cool:0,heat:0,think:0,fireCd:rand(.2,1),target:null,enemy:null,strafe:Math.random()<.5?-1:1,strafeT:0,color:i%2?'#ff2bbd':'#00eaff',walk:0,faceYaw:0};spawn(b);bots.push(b)}}
@@ -236,52 +241,43 @@ function updateBot(b,dt){
     b.fireCd=base+rand(.015,.085);
   }
 }
-function updateProjectiles(dt){for(const p of projectiles){p.life-=dt;const ox=p.x,oy=p.y,oz=p.z; p.px=ox;p.py=oy;p.pz=oz;const dx=p.vx*dt,dy=p.vy*dt,dz=p.vz*dt,step=Math.hypot(dx,dy,dz),dir=step?{x:dx/step,y:dy/step,z:dz/step}:{x:0,y:0,z:0},worldHit=step?rayWorld({x:ox,y:oy,z:oz},dir,step):null;p.x+=dx;p.y+=dy;p.z+=dz;let struck=false;for(const t of targetsFor(p.owner,p.owner===player)){if(t.dead||t.spawnGrace>0)continue;if(Math.hypot(t.x-p.x,(t.y-.8)-p.y,t.z-p.z)<(.55+(p.r||.34))){damage(t,p.damage,p.owner,false,{x:p.x,y:p.y,z:p.z});p.life=0;burst(p.x,p.y,p.z,p.color,12,.5);struck=true;break}}if(!struck&&worldHit){p.x=worldHit.x;p.y=worldHit.y;p.z=worldHit.z;p.life=0;addImpact(worldHit,p.color,.2+(p.tier||1)*.04);burst(p.x,p.y,p.z,p.color,12+(p.tier||1)*3,.55)}}projectiles=projectiles.filter(p=>p.life>0)}
+function updateProjectiles(dt){for(const p of projectiles){p.life-=dt;const ox=p.x,oy=p.y,oz=p.z;p.px=ox;p.py=oy;p.pz=oz;const dx=p.vx*dt,dy=p.vy*dt,dz=p.vz*dt,step=Math.hypot(dx,dy,dz),dir=step?{x:dx/step,y:dy/step,z:dz/step}:{x:0,y:0,z:0},worldHit=step?rayWorld({x:ox,y:oy,z:oz},dir,step):null;let targetHit=null,targetDist=worldHit?.dist??step;for(const t of targetsFor(p.owner,p.owner===player)){if(t.dead||t.spawnGrace>0)continue;const hit=rayEntity({x:ox,y:oy,z:oz},dir,t,step);if(hit&&hit.dist<targetDist){targetHit=t;targetDist=hit.dist}}if(targetHit){p.x=ox+dir.x*targetDist;p.y=oy+dir.y*targetDist;p.z=oz+dir.z*targetDist;damage(targetHit,p.damage,p.owner,false,{x:p.x,y:p.y,z:p.z});p.life=0;burst(p.x,p.y,p.z,p.color,12,.5)}else if(worldHit){p.x=worldHit.x;p.y=worldHit.y;p.z=worldHit.z;p.life=0;addImpact(worldHit,p.color,.2+(p.tier||1)*.04);burst(p.x,p.y,p.z,p.color,12+(p.tier||1)*3,.55)}else{p.x+=dx;p.y+=dy;p.z+=dz}}projectiles=projectiles.filter(p=>p.life>0)}
 function shadeColor(hex,amt){const n=parseInt(hex.slice(1),16),r=clamp((n>>16)+amt,0,255)|0,g=clamp(((n>>8)&255)+amt,0,255)|0,b=clamp((n&255)+amt,0,255)|0;return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)}
 function cameraPoint(x,y,z){const dx=x-player.x,dy=y-player.y,dz=z-player.z;const sy=Math.sin(player.yaw),cy=Math.cos(player.yaw);const x1=dx*cy-dz*sy,z1=dx*sy+dz*cy;const cp=Math.cos(-player.pitch),sp=Math.sin(-player.pitch);return {x:x1,y:dy*cp-z1*sp,z:dy*sp+z1*cp}}
 function projectCam(p){const f=H*.72/p.z;return {x:W/2+p.x*f,y:H/2-p.y*f,z:p.z,s:f}}
 function project(x,y,z){const p=cameraPoint(x,y,z);if(p.z<.08)return null;return projectCam(p)}
 function clipCamPoly(poly,near=.08){let out=[];for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length],ain=a.z>=near,bin=b.z>=near;if(ain&&bin)out.push(b);else if(ain&&!bin){const t=(near-a.z)/(b.z-a.z);out.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:near})}else if(!ain&&bin){const t=(near-a.z)/(b.z-a.z);out.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:near});out.push(b)}}return out}
 function drawPoly(points,fill,stroke,line=2){let cam=points.map(p=>cameraPoint(p[0],p[1],p[2]));cam=clipCamPoly(cam);if(cam.length<3)return;const ps=cam.map(projectCam);ctx.beginPath();ctx.moveTo(ps[0].x,ps[0].y);for(let i=1;i<ps.length;i++)ctx.lineTo(ps[i].x,ps[i].y);ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=line;ctx.shadowBlur=0;ctx.stroke()}}
-function boxFaces(o){const x=o.x,z=o.z,w=o.w/2,d=o.d/2,y0=o.y-o.h/2,y1=o.y+o.h/2;return [
- {pts:[[x-w,y1,z-d],[x+w,y1,z-d],[x+w,y1,z+d],[x-w,y1,z+d]],shade:28,edge:'#ffffff'},
- // Bottom/underside face matters for platforms above the player. Without it, bots standing on top could be seen through the platform floor from below.
- {pts:[[x-w,y0,z+d],[x+w,y0,z+d],[x+w,y0,z-d],[x-w,y0,z-d]],shade:-44,edge:'#071018'},
- {pts:[[x-w,y0,z-d],[x-w,y1,z-d],[x-w,y1,z+d],[x-w,y0,z+d]],shade:-28,edge:'#071018'},
- {pts:[[x+w,y0,z-d],[x+w,y1,z-d],[x+w,y1,z+d],[x+w,y0,z+d]],shade:-36,edge:'#071018'},
- {pts:[[x-w,y0,z-d],[x+w,y0,z-d],[x+w,y1,z-d],[x-w,y1,z-d]],shade:-15,edge:'#071018'},
- {pts:[[x-w,y0,z+d],[x+w,y0,z+d],[x+w,y1,z+d],[x-w,y1,z+d]],shade:-22,edge:'#071018'}]}
-function orientedBoxFaces(x,y,z,w,h,d,yaw,c,line=1.5){const sx=Math.cos(yaw),sz=-Math.sin(yaw),fx=Math.sin(yaw),fz=Math.cos(yaw),hw=w/2,hd=d/2,y0=y-h/2,y1=y+h/2;function pt(a,b,yy){return [x+sx*a+fx*b,yy,z+sz*a+fz*b]}return [
- {pts:[pt(-hw,-hd,y1),pt(hw,-hd,y1),pt(hw,hd,y1),pt(-hw,hd,y1)],c:shadeColor(c,18),edge:'#071018',line},
- {pts:[pt(-hw,-hd,y0),pt(-hw,-hd,y1),pt(-hw,hd,y1),pt(-hw,hd,y0)],c:shadeColor(c,-30),edge:'#071018',line},
- {pts:[pt(hw,-hd,y0),pt(hw,-hd,y1),pt(hw,hd,y1),pt(hw,hd,y0)],c:shadeColor(c,-36),edge:'#071018',line},
- {pts:[pt(-hw,-hd,y0),pt(hw,-hd,y0),pt(hw,-hd,y1),pt(-hw,-hd,y1)],c:shadeColor(c,-18),edge:'#071018',line},
- {pts:[pt(-hw,hd,y0),pt(hw,hd,y0),pt(hw,hd,y1),pt(-hw,hd,y1)],c:shadeColor(c,-24),edge:'#071018',line}];}
-function orientedBox(x,y,z,w,h,d,yaw,c){for(const f of orientedBoxFaces(x,y,z,w,h,d,yaw,c))drawPoly(f.pts,f.c,f.edge,f.line)}
-function pushOrientedBoxFaces(queue,x,y,z,w,h,d,yaw,c,line=1.5){for(const f of orientedBoxFaces(x,y,z,w,h,d,yaw,c,line)){f.d=faceDepth(f.pts);queue.push(f)}}
-function draw(){ctx.clearRect(0,0,W,H);const sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#eaf8ff');sky.addColorStop(.48,'#ffffff');sky.addColorStop(1,'#dbe8ff');ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
-  drawGroundBase();
-  const faces=[];let faceOrder=0;
-  // Opaque world blocks and dynamic faces share one stable camera-space painter queue. Camera Z is monotonic along the view direction; the previous radial-distance sort could reverse two large faces as the player merely turned in place.
-  for(const p of platforms){for(const f of boxFaces({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h}))faces.push({d:faceDepth(f.pts),order:faceOrder++,pts:f.pts,c:shadeColor(p.c,f.shade),edge:f.edge||'#071018',line:p.y<0?2.5:2})}
-  for(const w of walls){for(const f of boxFaces(w))faces.push({d:faceDepth(f.pts),order:faceOrder++,pts:f.pts,c:shadeColor(w.c,f.shade),edge:'#071018',line:2.5})}
-  for(const b of bots)if(!b.dead&&visibleToPlayer(b))pushBot3DFaces(faces,b);
-  for(const f of faces)if(f.order==null)f.order=faceOrder++;faces.sort((a,b)=>(b.d-a.d)||(a.order-b.order));for(const f of faces)drawPoly(f.pts,f.c,f.edge,f.line);
-  for(const p of pads){const q=project(p.x,.12,p.z);if(q){ctx.beginPath();ctx.arc(q.x,q.y,Math.max(8,q.s*1.9),0,TAU);ctx.fillStyle='rgba(0,234,255,.22)';ctx.fill();ctx.strokeStyle='#00eaff';ctx.lineWidth=2;ctx.shadowBlur=18;ctx.shadowColor='#00eaff';ctx.stroke();ctx.shadowBlur=0}}
-  drawPickups();
-  drawImpacts();
-  for(const b of bots)if(!b.dead)drawBotLabelIfVisible(b);
-  for(const s of shots)drawBeamTrail(s,false);
-  for(const l of lasers)drawBeamTrail(l,true);
+function hexRgb(hex){const n=parseInt(hex.slice(1),16);return [((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255]}
+function compileShader(type,source){const sh=gl.createShader(type);gl.shaderSource(sh,source);gl.compileShader(sh);if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(sh));return sh}
+const worldProgram=gl.createProgram();
+gl.attachShader(worldProgram,compileShader(gl.VERTEX_SHADER,'attribute vec4 aPos;attribute vec3 aColor;varying vec3 vColor;void main(){gl_Position=aPos;vColor=aColor;}'));
+gl.attachShader(worldProgram,compileShader(gl.FRAGMENT_SHADER,'precision mediump float;varying vec3 vColor;void main(){gl_FragColor=vec4(vColor,1.0);}'));
+gl.linkProgram(worldProgram);if(!gl.getProgramParameter(worldProgram,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(worldProgram));
+const worldBuffer=gl.createBuffer(),worldPos=gl.getAttribLocation(worldProgram,'aPos'),worldColor=gl.getAttribLocation(worldProgram,'aColor');
+let solidTriangles=[],lineSegments=[];
+function cameraClipPoint(p){const c=cameraPoint(p[0],p[1],p[2]),near=.055,far=180,A=(far+near)/(far-near),B=-2*far*near/(far-near);return [c.x*1.44*H/W,c.y*1.44,A*c.z+B,c.z]}
+function addTriangle(a,b,c,color){const rgb=hexRgb(color);solidTriangles.push({p:[a,b,c],rgb})}
+function addQuad(a,b,c,d,color,edge='#17253a'){addTriangle(a,b,c,color);addTriangle(a,c,d,color);if(edge){addLine(a,b,edge);addLine(b,c,edge);addLine(c,d,edge);addLine(d,a,edge)}}
+function addLine(a,b,color){lineSegments.push({p:[a,b],rgb:hexRgb(color)})}
+function addBoxGeometry(o,color,line=1){const x=o.x,z=o.z,hw=o.w/2,hd=o.d/2,y0=o.y-o.h/2,y1=o.y+o.h/2,A=[x-hw,y0,z-hd],B=[x+hw,y0,z-hd],C=[x+hw,y0,z+hd],D=[x-hw,y0,z+hd],E=[x-hw,y1,z-hd],F=[x+hw,y1,z-hd],G=[x+hw,y1,z+hd],Hh=[x-hw,y1,z+hd];addQuad(E,F,G,Hh,shadeColor(color,28));addQuad(D,C,B,A,shadeColor(color,-44));addQuad(A,E,Hh,D,shadeColor(color,-28));addQuad(B,C,G,F,shadeColor(color,-36));addQuad(A,B,F,E,shadeColor(color,-15));addQuad(C,D,Hh,G,shadeColor(color,-22))}
+function orientedPoints(x,y,z,w,h,d,yaw){const sx=Math.cos(yaw),sz=-Math.sin(yaw),fx=Math.sin(yaw),fz=Math.cos(yaw),hw=w/2,hd=d/2,y0=y-h/2,y1=y+h/2,pt=(a,b,yy)=>[x+sx*a+fx*b,yy,z+sz*a+fz*b];return [pt(-hw,-hd,y0),pt(hw,-hd,y0),pt(hw,hd,y0),pt(-hw,hd,y0),pt(-hw,-hd,y1),pt(hw,-hd,y1),pt(hw,hd,y1),pt(-hw,hd,y1)]}
+function addOrientedBox(x,y,z,w,h,d,yaw,color){const p=orientedPoints(x,y,z,w,h,d,yaw);addQuad(p[4],p[5],p[6],p[7],shadeColor(color,18));addQuad(p[3],p[2],p[1],p[0],shadeColor(color,-42));addQuad(p[0],p[4],p[7],p[3],shadeColor(color,-30));addQuad(p[1],p[2],p[6],p[5],shadeColor(color,-36));addQuad(p[0],p[1],p[5],p[4],shadeColor(color,-18));addQuad(p[2],p[3],p[7],p[6],shadeColor(color,-24))}
+function addFloorTiles(){const y=.012,size=4,min=-44.9,max=44.9;for(let z=min,zi=0;z<max;z+=size,zi++)for(let x=min,xi=0;x<max;x+=size,xi++){const x1=Math.min(max,x+size),z1=Math.min(max,z+size),major=xi%4===0||zi%4===0,base=(xi+zi)&1?'#a9bbcf':'#b5c7d9';addQuad([x,y,z],[x1,y,z],[x1,y,z1],[x,y,z1],base,major?'#526a85':'#71869d')}}
+function addBotGeometry(b){const yaw=b.faceYaw||b.yaw||0,c=b.color,step=Math.sin(b.walk)*.22,step2=Math.sin(b.walk+Math.PI)*.22,fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw);addOrientedBox(b.x,b.y-.91,b.z,.72,1.02,.42,yaw,c);addOrientedBox(b.x+fx*.08,b.y-.22,b.z+fz*.08,.56,.48,.52,yaw,'#f5f8ff');addOrientedBox(b.x-sx*.46,b.y-1.01,b.z-sz*.46,.2,.86,.2,yaw,c);addOrientedBox(b.x+sx*.46,b.y-1.01,b.z+sz*.46,.2,.86,.2,yaw,c);addOrientedBox(b.x-sx*.22+fx*step,b.y-1.29,b.z-sz*.22+fz*step,.24,.78,.24,yaw,c);addOrientedBox(b.x+sx*.22+fx*step2,b.y-1.29,b.z+sz*.22+fz*step2,.24,.78,.24,yaw,c);addHeldGunGeometry(b,yaw)}
+function addHeldGunGeometry(b,yaw){const w=WEAPONS[b.weapon]||WEAPONS.assault,c=w.color,g=gunSpec(b.weapon),fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw),hx=b.x+fx*.54+sx*.18,hy=b.y-1.02,hz=b.z+fz*.54+sz*.18,part=(side,up,forward,ww,hh,dd,col)=>addOrientedBox(hx+sx*side+fx*forward,hy+up,hz+sz*side+fz*forward,ww,hh,dd,yaw,col);part(0,0,.18,g.body[0],g.body[1],g.body[2],'#172033');part(0,.03,.18+g.body[2]/2+g.barrel[2]/2,g.barrel[0],g.barrel[1],g.barrel[2],c);part(0,-.02,.18-g.body[2]/2-g.stock[2]/2,g.stock[0],g.stock[1],g.stock[2],'#101526');part(-.11,-.31,.04,g.grip[0]*.92,g.grip[1]*.92,g.grip[2]*.92,'#0c1320')}
+function uploadAndDraw(items,mode){if(!items.length)return;const data=[];for(const item of items)for(const p of item.p){const q=cameraClipPoint(p);data.push(q[0],q[1],q[2],q[3],item.rgb[0],item.rgb[1],item.rgb[2])}const arr=new Float32Array(data);gl.bindBuffer(gl.ARRAY_BUFFER,worldBuffer);gl.bufferData(gl.ARRAY_BUFFER,arr,gl.DYNAMIC_DRAW);gl.enableVertexAttribArray(worldPos);gl.vertexAttribPointer(worldPos,4,gl.FLOAT,false,28,0);gl.enableVertexAttribArray(worldColor);gl.vertexAttribPointer(worldColor,3,gl.FLOAT,false,28,16);gl.drawArrays(mode,0,arr.length/7)}
+function renderDepthWorld(){solidTriangles=[];lineSegments=[];for(const p of platforms)addBoxGeometry({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h},p.c);addFloorTiles();for(const w of walls)addBoxGeometry(w,w.c);for(const b of bots)if(!b.dead)addBotGeometry(b);gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.disable(gl.BLEND);gl.clearColor(.78,.88,.96,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(worldProgram);uploadAndDraw(solidTriangles,gl.TRIANGLES);gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-1,-1);gl.lineWidth(1);uploadAndDraw(lineSegments,gl.LINES);gl.disable(gl.POLYGON_OFFSET_FILL)}
+function draw(){renderDepthWorld();ctx.clearRect(0,0,W,H);ctx.drawImage(worldCanvas,0,0,W,H);
+  for(const p of pads){const q=project(p.x,.04,p.z);if(q&&lineClear(player.x,player.y-.05,player.z,p.x,.04,p.z)){ctx.beginPath();ctx.arc(q.x,q.y,Math.max(8,q.s*1.9),0,TAU);ctx.fillStyle='rgba(0,234,255,.22)';ctx.fill();ctx.strokeStyle='#00eaff';ctx.lineWidth=2;ctx.shadowBlur=18;ctx.shadowColor='#00eaff';ctx.stroke();ctx.shadowBlur=0}}
+  drawPickups();drawImpacts();for(const b of bots)if(!b.dead)drawBotLabelIfVisible(b);for(const s of shots)drawBeamTrail(s,false);for(const l of lasers)drawBeamTrail(l,true);
   for(const p of projectiles){if(!lineClear(player.x,player.y-.05,player.z,p.x,p.y,p.z))continue;const q=project(p.x,p.y,p.z),tail=project(p.px??p.x,p.py??p.y,p.pz??p.z);if(q){if(tail){ctx.strokeStyle=p.color;ctx.lineWidth=3+(p.tier||1)*1.5;ctx.shadowBlur=24;ctx.shadowColor=p.color;ctx.beginPath();ctx.moveTo(tail.x,tail.y);ctx.lineTo(q.x,q.y);ctx.stroke()}ctx.fillStyle=p.color;ctx.shadowBlur=26;ctx.shadowColor=p.color;ctx.beginPath();ctx.arc(q.x,q.y,Math.max(6,q.s*.16),0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();ctx.shadowBlur=0}}
-  for(const p of particles){if(!lineClear(player.x,player.y-.05,player.z,p.x,p.y,p.z))continue;const q=project(p.x,p.y,p.z);if(q){const a=clamp(p.life/(p.maxLife||.7),0,1),sz=(p.size||4)*(p.kind==='blood'?.72+q.s*.012:1);ctx.globalAlpha=a;ctx.fillStyle=p.c;ctx.shadowBlur=p.kind==='blood'?0:12;ctx.shadowColor=p.c;ctx.fillRect(q.x-sz/2,q.y-sz/2,sz,sz);ctx.globalAlpha=1;ctx.shadowBlur=0}} drawFirstPersonGun(); drawMinimap();}
+  for(const p of particles){if(!lineClear(player.x,player.y-.05,player.z,p.x,p.y,p.z))continue;const q=project(p.x,p.y,p.z);if(q){const a=clamp(p.life/(p.maxLife||.7),0,1),sz=(p.size||4)*(p.kind==='blood'?.72+q.s*.012:1);ctx.globalAlpha=a;ctx.fillStyle=p.c;ctx.shadowBlur=p.kind==='blood'?0:12;ctx.shadowColor=p.c;ctx.fillRect(q.x-sz/2,q.y-sz/2,sz,sz);ctx.globalAlpha=1;ctx.shadowBlur=0}}drawFirstPersonGun();drawMinimap()}
 
 function drawImpacts(){for(const m of impacts){if(!lineClear(player.x,player.y-.05,player.z,m.x+m.nx*.04,m.y+m.ny*.04,m.z+m.nz*.04))continue;const n={x:m.nx,y:m.ny,z:m.nz},up=Math.abs(n.y)>.8?{x:1,y:0,z:0}:{x:0,y:1,z:0},ux=n.y*up.z-n.z*up.y,uy=n.z*up.x-n.x*up.z,uz=n.x*up.y-n.y*up.x,ul=Math.hypot(ux,uy,uz)||1,u={x:ux/ul,y:uy/ul,z:uz/ul},v={x:n.y*u.z-n.z*u.y,y:n.z*u.x-n.x*u.z,z:n.x*u.y-n.y*u.x},r=m.size,a=clamp(m.life/.65,0,1)*clamp(m.life/(m.maxLife||5),0,1),pts=[[-1,-.45],[.05,-1],[1,-.25],[.55,.25],[.85,.9],[-.1,.62],[-.8,1],[-.55,.15]].map(([i,j])=>[m.x+u.x*i*r+v.x*j*r,m.y+u.y*i*r+v.y*j*r,m.z+u.z*i*r+v.z*j*r]);ctx.save();ctx.globalAlpha=.82*a;drawPoly(pts,shadeColor(m.color,-105),'rgba(7,16,24,.7)',1);ctx.restore()}}
 
-function drawBeamTrail(s,isLaser){const mx=s.x+s.dx*s.len*.5,my=s.y+s.dy*s.len*.5,mz=s.z+s.dz*s.len*.5;if(!lineClear(player.x,player.y-.05,player.z,mx,my,mz))return;const p1=project(s.x,s.y,s.z),p2=project(s.x+s.dx*s.len,s.y+s.dy*s.len,s.z+s.dz*s.len);if(!p1||!p2)return;const a=clamp(s.life/(s.maxLife||s.life||.1),0,1);ctx.save();ctx.lineCap='round';ctx.globalAlpha=isLaser?.95*a:.78*a;ctx.strokeStyle=s.color;ctx.lineWidth=(s.width||3)*(isLaser?2.4:1.2);ctx.shadowBlur=isLaser?28:18;ctx.shadowColor=s.color;ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();ctx.globalAlpha=isLaser?1:a;ctx.strokeStyle='#fff';ctx.lineWidth=isLaser?3.2:1.2;ctx.shadowBlur=isLaser?16:0;ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();if(isLaser){ctx.fillStyle=s.color;ctx.shadowBlur=22;ctx.beginPath();ctx.arc(p2.x,p2.y,7+8*a,0,TAU);ctx.fill()}ctx.restore();}
+function drawBeamTrail(s,isLaser){const a=clamp(s.life/(s.maxLife||s.life||.1),0,1),steps=Math.max(4,Math.ceil(s.len/3)),segments=[];let run=null;for(let i=0;i<=steps;i++){const t=i/steps,x=s.x+s.dx*s.len*t,y=s.y+s.dy*s.len*t,z=s.z+s.dz*s.len*t,q=project(x,y,z),visible=q&&lineClear(player.x,player.y-.05,player.z,x,y,z);if(visible){if(!run)run=[q,q];else run[1]=q}else if(run){segments.push(run);run=null}}if(run)segments.push(run);if(!segments.length)return;ctx.save();ctx.lineCap='round';for(const seg of segments){ctx.globalAlpha=isLaser?.95*a:.78*a;ctx.strokeStyle=s.color;ctx.lineWidth=(s.width||3)*(isLaser?2.4:1.2);ctx.shadowBlur=isLaser?28:18;ctx.shadowColor=s.color;ctx.beginPath();ctx.moveTo(seg[0].x,seg[0].y);ctx.lineTo(seg[1].x,seg[1].y);ctx.stroke();ctx.globalAlpha=isLaser?1:a;ctx.strokeStyle='#fff';ctx.lineWidth=isLaser?3.2:1.2;ctx.shadowBlur=isLaser?16:0;ctx.beginPath();ctx.moveTo(seg[0].x,seg[0].y);ctx.lineTo(seg[1].x,seg[1].y);ctx.stroke()}if(isLaser){const end=segments[segments.length-1][1];ctx.fillStyle=s.color;ctx.shadowBlur=22;ctx.beginPath();ctx.arc(end.x,end.y,7+8*a,0,TAU);ctx.fill()}ctx.restore()}
 function faceDepth(pts){let d=0;for(const p of pts)d+=cameraPoint(p[0],p[1],p[2]).z;return d/pts.length}
-function drawGroundBase(){drawPoly([[-52,-.02,-52],[52,-.02,-52],[52,-.02,52],[-52,-.02,52]],'#dfe6f5','#071018',3);for(let i=-48;i<=48;i+=4){const a=project(i,.02,-48),b=project(i,.02,48),c=project(-48,.021,i),d=project(48,.021,i);ctx.strokeStyle=i%16===0?'rgba(25,34,54,.55)':'rgba(25,34,54,.22)';ctx.lineWidth=i%16===0?2.2:1.1;if(a&&b){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}if(c&&d){ctx.beginPath();ctx.moveTo(c.x,c.y);ctx.lineTo(d.x,d.y);ctx.stroke()}}ctx.shadowBlur=0}
-function drawGroundTiles(){drawGroundBase()}
 function drawPickups(){for(const p of pickups){if(p.taken>0)continue;p.spin+=.035;const hoverY=p.y+1+Math.sin(p.spin*2)*.22;if(!lineClear(player.x,player.y-.05,player.z,p.x,hoverY,p.z))continue;const q=project(p.x,hoverY,p.z);if(!q)continue;const w=WEAPONS[p.type],size=Math.max(12,q.s*.45);ctx.save();ctx.translate(q.x,q.y);ctx.rotate(p.spin);ctx.fillStyle=w.color;ctx.strokeStyle='#071018';ctx.lineWidth=3;ctx.shadowBlur=22;ctx.shadowColor=w.color;ctx.fillRect(-size*.8,-size*.18,size*1.6,size*.36);ctx.strokeRect(-size*.8,-size*.18,size*1.6,size*.36);ctx.fillRect(size*.35,-size*.32,size*.55,size*.18);ctx.restore();ctx.shadowBlur=0;ctx.font='bold 11px Arial';ctx.fillStyle='#071018';ctx.textAlign='center';ctx.fillText(w.name,q.x,q.y-size*.75)}}
 function gunSpec(type){return {
   assault:{body:[.34,.22,.82],barrel:[.13,.13,.78],stock:[.34,.24,.34],grip:[.18,.46,.20],accent:.28},
@@ -291,22 +287,6 @@ function gunSpec(type){return {
   plasma:{body:[.54,.40,.60],barrel:[.24,.24,.55],stock:[.24,.24,.24],grip:[.20,.42,.20],accent:.36},
   laser:{body:[.34,.26,.86],barrel:[.12,.12,1.10],stock:[.26,.22,.34],grip:[.16,.42,.18],accent:.38}
 }[type]||{body:[.34,.22,.82],barrel:[.13,.13,.78],stock:[.34,.24,.34],grip:[.18,.46,.20],accent:.28}}
-function pushHeldGun3DFaces(queue,b,yaw){
-  const w=WEAPONS[b.weapon]||WEAPONS.assault,c=w.color,g=gunSpec(b.weapon);
-  const fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw);
-  const handX=b.x+fx*.54+sx*.18, handY=b.y-1.02, handZ=b.z+fz*.54+sz*.18;
-  const bodyZ=.18, barrelZ=.18+g.body[2]/2+g.barrel[2]/2, stockZ=.18-g.body[2]/2-g.stock[2]/2;
-  const part=(side,up,forward,ww,hh,dd,col,line=1.25)=>pushOrientedBoxFaces(queue,handX+sx*side+fx*forward,handY+up,handZ+sz*side+fz*forward,ww,hh,dd,yaw,col,line);
-  part(0,0,bodyZ,g.body[0],g.body[1],g.body[2],'#172033');
-  part(0,.03,barrelZ,g.barrel[0],g.barrel[1],g.barrel[2],c);
-  part(0,-.02,stockZ,g.stock[0],g.stock[1],g.stock[2],'#101526');
-  part(-.11,-.31,.04,g.grip[0]*.92,g.grip[1]*.92,g.grip[2]*.92,'#0c1320');
-  if(b.weapon==='sniper')part(.02,.18,.05,g.accent*.72,.09,.20,'#ffffff');
-  if(b.weapon==='shotgun')part(.14,.03,barrelZ,.10,.10,g.barrel[2]*.92,'#ffb15c');
-  if(b.weapon==='plasma')part(0,.18,barrelZ-.22,.34,.28,.34,'#9b5cff');
-  if(b.weapon==='laser')part(0,.17,barrelZ-.12,.20,.16,.54,'#ffffff');
-}
-function pushBot3DFaces(queue,b){const yaw=b.faceYaw||b.yaw||0,c=b.color,step=Math.sin(b.walk)*.34,step2=Math.sin(b.walk+Math.PI)*.34,fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw);pushOrientedBoxFaces(queue,b.x,b.y-.92,b.z,.72,1.05,.42,yaw,c,1.45);pushOrientedBoxFaces(queue,b.x+fx*.08,b.y-.22,b.z+fz*.08,.56,.48,.52,yaw,'#ffffff',1.35);pushOrientedBoxFaces(queue,b.x-sx*.46,b.y-1.03,b.z-sz*.46,.2,.9,.2,yaw,c,1.25);pushOrientedBoxFaces(queue,b.x+sx*.46,b.y-1.03,b.z+sz*.46,.2,.9,.2,yaw,c,1.25);pushOrientedBoxFaces(queue,b.x-sx*.22+fx*step,b.y-1.62,b.z-sz*.22+fz*step,.24,.86,.24,yaw,c,1.25);pushOrientedBoxFaces(queue,b.x+sx*.22+fx*step2,b.y-1.62,b.z+sz*.22+fz*step2,.24,.86,.24,yaw,c,1.25);pushHeldGun3DFaces(queue,b,yaw)}
 function drawBotLabelIfVisible(b){
   const points=[[b.x,b.y+.25,b.z],[b.x,b.y-.25,b.z],[b.x,b.y-1.2,b.z]];
   if(!points.some(pt=>lineClear(player.x,player.y,player.z,pt[0],pt[1],pt[2])))return;
