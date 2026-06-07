@@ -65,6 +65,10 @@ public class BibleReaderApp extends JFrame {
     private static final int RIGHT_SIDEBAR_SEARCH_HEIGHT = 300;
     private static final int RIGHT_SIDEBAR_SEARCH_MIN_HEIGHT = 235;
     private static final int STUDY_READER_MIN_WIDTH = 520;
+    private static final Set<String> STUDY_STOP_WORDS = new HashSet<>(Arrays.asList(
+            "the", "and", "an", "a", "so", "if", "it", "is", "but", "or", "to", "of", "in", "on", "for", "with", "as", "at", "by", "from",
+            "this", "that", "these", "those", "be", "are", "was", "were", "have", "has", "had", "do", "does", "did", "not", "no", "yes",
+            "you", "your", "i", "me", "my", "we", "our", "they", "them"));
 
     private AppData data;
     private Profile currentProfile;
@@ -100,6 +104,7 @@ public class BibleReaderApp extends JFrame {
     private JPopupMenu selectionActionPopup;
     private Point readerSelectionPressPoint;
     private boolean readerSelectionDragged = false;
+    private boolean selectionActionRunning = false;
     private JPanel detailsPanel;
     private JPanel pinnedItemsPanel;
     private JPanel pinnedItemsBody;
@@ -114,8 +119,20 @@ public class BibleReaderApp extends JFrame {
     private JList<MemoryVerse> memoryList;
 
     private JTextField searchField;
-    private DefaultListModel<String> searchModel;
-    private JList<String> searchList;
+    private DefaultListModel<GroupedSearchResult> searchModel;
+    private JList<GroupedSearchResult> searchList;
+
+    private JTabbedPane studyDashboardTabs;
+    private JComboBox<String> bookMapSelector;
+    private JPanel bookMapSummaryPanel;
+    private JPanel bookMapGridPanel;
+    private DefaultListModel<String> topNotesChapterModel;
+    private DefaultListModel<String> topQuestionsChapterModel;
+    private WordWebPanel studyWordWebPanel;
+    private JComboBox<String> wordWebScopeBox;
+    private JComboBox<String> wordWebCategoryBox;
+    private JSpinner wordWebMinimumSpinner;
+    private JComboBox<Integer> wordWebLimitBox;
 
     private JTextField greekSearchField;
     private DefaultListModel<String> greekSearchModel;
@@ -1422,17 +1439,31 @@ public class BibleReaderApp extends JFrame {
 
 
     private JPanel buildStudyTimePage() {
+        JPanel page = new JPanel(new BorderLayout(10, 10));
+        page.setBackground(panelBg);
+        page.setBorder(new EmptyBorder(14, 14, 14, 14));
+
+        JLabel header = new JLabel("Study Dashboard");
+        header.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        header.setForeground(darkRed);
+        page.add(header, BorderLayout.NORTH);
+
+        studyDashboardTabs = new JTabbedPane();
+        studyDashboardTabs.addTab("Time Studying", buildTimeStudyingTab());
+        studyDashboardTabs.addTab("Prayer", buildPrayerDashboardTab());
+        studyDashboardTabs.addTab("Book Mapping", buildBookMappingTab());
+        studyDashboardTabs.addChangeListener(e -> {
+            if (studyDashboardTabs.getSelectedIndex() == 2) refreshBookMapping();
+        });
+        page.add(studyDashboardTabs, BorderLayout.CENTER);
+        return page;
+    }
+
+    private JPanel buildTimeStudyingTab() {
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         content.setBackground(panelBg);
-        content.setBorder(new EmptyBorder(16, 16, 20, 16));
-
-        JLabel header = new JLabel("Study Time");
-        header.setFont(new Font("Segoe UI", Font.BOLD, 26));
-        header.setForeground(darkRed);
-        header.setAlignmentX(Component.LEFT_ALIGNMENT);
-        content.add(header);
-        content.add(Box.createVerticalStrut(10));
+        content.setBorder(new EmptyBorder(12, 12, 16, 12));
 
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
         controls.setOpaque(false);
@@ -1475,34 +1506,327 @@ public class BibleReaderApp extends JFrame {
         heatScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
         heatScroll.getHorizontalScrollBar().setUnitIncrement(20);
         content.add(heatScroll);
-        content.add(Box.createVerticalStrut(14));
-
-        JLabel prayerHeader = new JLabel("Prayer Log");
-        prayerHeader.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        prayerHeader.setForeground(darkRed);
-        prayerHeader.setAlignmentX(Component.LEFT_ALIGNMENT);
-        content.add(prayerHeader);
-        content.add(Box.createVerticalStrut(6));
-
-        prayerLogTabs = new JTabbedPane();
-        prayerLogTabs.setAlignmentX(Component.LEFT_ALIGNMENT);
-        prayerLogTabs.setPreferredSize(new Dimension(900, 390));
-        prayerLogTabs.setMaximumSize(new Dimension(Integer.MAX_VALUE, 430));
-        prayerSectionPanels.clear();
-        for (String section : Arrays.asList("Gratitude", "Requests", "Recognition")) {
-            PrayerSectionPanel panel = new PrayerSectionPanel(section);
-            prayerSectionPanels.put(section, panel);
-            prayerLogTabs.addTab(section, panel);
-        }
-        content.add(prayerLogTabs);
 
         JScrollPane scroll = new JScrollPane(content);
         scroll.setBorder(null);
         scroll.getVerticalScrollBar().setUnitIncrement(18);
-        JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(panelBg);
-        page.add(scroll, BorderLayout.CENTER);
-        return page;
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(panelBg);
+        panel.add(scroll, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel buildPrayerDashboardTab() {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBackground(panelBg);
+        panel.setBorder(new EmptyBorder(12, 12, 12, 12));
+        prayerLogTabs = new JTabbedPane();
+        prayerSectionPanels.clear();
+        for (String section : Arrays.asList("Gratitude", "Requests", "Recognition")) {
+            PrayerSectionPanel sectionPanel = new PrayerSectionPanel(section);
+            prayerSectionPanels.put(section, sectionPanel);
+            prayerLogTabs.addTab(section, sectionPanel);
+        }
+        panel.add(prayerLogTabs, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel buildBookMappingTab() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBackground(panelBg);
+        panel.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+        JPanel selector = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
+        selector.setOpaque(false);
+        selector.add(new JLabel("Book or source:"));
+        bookMapSelector = new JComboBox<>();
+        bookMapSelector.setPrototypeDisplayValue("Library: A reasonably long imported title");
+        bookMapSelector.addActionListener(e -> refreshBookMapping());
+        selector.add(bookMapSelector);
+        JButton refresh = blackButton("Refresh");
+        refresh.addActionListener(e -> refreshBookMapping());
+        selector.add(refresh);
+        panel.add(selector, BorderLayout.NORTH);
+
+        JTabbedPane mappingTabs = new JTabbedPane();
+        JPanel chapterMap = new JPanel(new BorderLayout(8, 8));
+        chapterMap.setBackground(panelBg);
+        bookMapSummaryPanel = new JPanel(new GridLayout(0, 4, 8, 8));
+        bookMapSummaryPanel.setOpaque(false);
+        chapterMap.add(bookMapSummaryPanel, BorderLayout.NORTH);
+        bookMapGridPanel = new JPanel(new GridLayout(0, 10, 8, 8));
+        bookMapGridPanel.setBackground(modernSurface);
+        JScrollPane gridScroll = new JScrollPane(bookMapGridPanel);
+        gridScroll.setBorder(new TitledBorder(new LineBorder(modernBorder), "Chapter Activity"));
+        gridScroll.getVerticalScrollBar().setUnitIncrement(18);
+        chapterMap.add(gridScroll, BorderLayout.CENTER);
+
+        topNotesChapterModel = new DefaultListModel<>();
+        topQuestionsChapterModel = new DefaultListModel<>();
+        JList<String> topNotes = new JList<>(topNotesChapterModel);
+        JList<String> topQuestions = new JList<>(topQuestionsChapterModel);
+        JPanel topLists = new JPanel(new GridLayout(1, 2, 8, 8));
+        topLists.setOpaque(false);
+        topLists.add(titledScroll("Top Chapters by Notes", topNotes));
+        topLists.add(titledScroll("Top Chapters by Questions", topQuestions));
+        topLists.setPreferredSize(new Dimension(800, 150));
+        chapterMap.add(topLists, BorderLayout.SOUTH);
+
+        mappingTabs.addTab("Chapter Map", chapterMap);
+        mappingTabs.addTab("Word Web", buildWordWebTab());
+        panel.add(mappingTabs, BorderLayout.CENTER);
+        SwingUtilities.invokeLater(this::refreshBookMapSelector);
+        return panel;
+    }
+
+    private JScrollPane titledScroll(String title, Component component) {
+        JScrollPane scroll = new JScrollPane(component);
+        scroll.setBorder(new TitledBorder(new LineBorder(modernBorder), title));
+        return scroll;
+    }
+
+    private JPanel buildWordWebTab() {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBackground(panelBg);
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 7, 3));
+        controls.setOpaque(false);
+        wordWebScopeBox = new JComboBox<>(new String[]{"All notes", "Selected category", "Selected book"});
+        wordWebCategoryBox = new JComboBox<>();
+        wordWebMinimumSpinner = new JSpinner(new SpinnerNumberModel(2, 1, 100, 1));
+        wordWebLimitBox = new JComboBox<>(new Integer[]{25, 50, 100});
+        controls.add(new JLabel("Scope:")); controls.add(wordWebScopeBox);
+        controls.add(new JLabel("Category:")); controls.add(wordWebCategoryBox);
+        controls.add(new JLabel("Minimum count:")); controls.add(wordWebMinimumSpinner);
+        controls.add(new JLabel("Words:")); controls.add(wordWebLimitBox);
+        JButton update = blackButton("Update");
+        update.addActionListener(e -> refreshWordWeb());
+        controls.add(update);
+        wordWebScopeBox.addActionListener(e -> refreshWordWeb());
+        wordWebCategoryBox.addActionListener(e -> { if ("Selected category".equals(String.valueOf(wordWebScopeBox.getSelectedItem()))) refreshWordWeb(); });
+        panel.add(controls, BorderLayout.NORTH);
+        studyWordWebPanel = new WordWebPanel();
+        studyWordWebPanel.setPreferredSize(new Dimension(900, 600));
+        JScrollPane scroll = new JScrollPane(studyWordWebPanel);
+        scroll.setBorder(new LineBorder(modernBorder));
+        panel.add(scroll, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private void refreshBookMapSelector() {
+        if (bookMapSelector == null || data == null) return;
+        String selected = String.valueOf(bookMapSelector.getSelectedItem());
+        bookMapSelector.removeAllItems();
+        for (String book : orderedBooks()) bookMapSelector.addItem(book);
+        for (LibraryDoc doc : data.libraryDocs) bookMapSelector.addItem("Library: " + doc.title);
+        if (selected != null && !"null".equals(selected)) bookMapSelector.setSelectedItem(selected);
+        if (bookMapSelector.getSelectedIndex() < 0 && bookMapSelector.getItemCount() > 0) bookMapSelector.setSelectedIndex(0);
+        refreshWordWebCategories();
+        refreshBookMapping();
+    }
+
+    private void refreshBookMapping() {
+        if (bookMapSelector == null || bookMapGridPanel == null || currentProfile == null) return;
+        repairProfile(currentProfile);
+        String selected = String.valueOf(bookMapSelector.getSelectedItem());
+        bookMapGridPanel.removeAll();
+        bookMapSummaryPanel.removeAll();
+        topNotesChapterModel.clear();
+        topQuestionsChapterModel.clear();
+        if (selected == null || "null".equals(selected)) return;
+        if (selected.startsWith("Library: ")) {
+            String title = selected.substring("Library: ".length());
+            LibraryDoc doc = data.findLibraryDoc(title);
+            int annotations = 0, questions = 0;
+            for (TextAnnotation a : currentProfile.annotations) if (("LIBRARY:" + title).equals(a.sourceKey)) annotations++;
+            for (StudyQuestion q : currentProfile.questions) if (("LIBRARY:" + title).equals(q.sourceKey)) questions++;
+            bookMapSummaryPanel.add(summaryCard("Source Notes", annotations));
+            bookMapSummaryPanel.add(summaryCard("Questions", questions));
+            JLabel message = new JLabel("<html><b>" + esc(title) + "</b><br><br>This imported source has no Bible-style chapter metadata. Activity is shown by source instead.</html>");
+            message.setBorder(new EmptyBorder(20, 20, 20, 20));
+            bookMapGridPanel.add(message);
+        } else {
+            renderBibleBookMap(selected);
+        }
+        bookMapSummaryPanel.revalidate(); bookMapSummaryPanel.repaint();
+        bookMapGridPanel.revalidate(); bookMapGridPanel.repaint();
+        refreshWordWeb();
+    }
+
+    private void renderBibleBookMap(String book) {
+        Set<Integer> chapters = data.getChapters(book);
+        int read = 0, withNotes = 0, withQuestions = 0, unanswered = 0, memoryChapters = 0;
+        List<ChapterActivity> activities = new ArrayList<>();
+        for (Integer chapter : chapters) {
+            ChapterActivity activity = chapterActivity(book, chapter);
+            activities.add(activity);
+            if (activity.opened) read++;
+            if (activity.noteCount + activity.chapterNoteCount > 0) withNotes++;
+            if (activity.questionCount > 0) withQuestions++;
+            unanswered += activity.unansweredCount;
+            if (activity.memoryCount > 0) memoryChapters++;
+            JButton square = new JButton(String.valueOf(chapter));
+            square.setPreferredSize(new Dimension(54, 44));
+            int intensity = Math.min(190, activity.activityScore() * 18);
+            square.setBackground(new Color(255 - intensity / 2, 242 - intensity / 2, 225 - intensity / 2));
+            square.setForeground(activity.activityScore() > 5 ? Color.WHITE : modernText);
+            square.setToolTipText(activity.tooltip());
+            square.addActionListener(e -> openMappedChapter(book, chapter));
+            bookMapGridPanel.add(square);
+        }
+        activities.sort(Comparator.comparingInt(ChapterActivity::activityScore).reversed());
+        ChapterActivity most = activities.isEmpty() ? null : activities.get(0);
+        bookMapSummaryPanel.add(summaryCard("Chapters Read", read));
+        bookMapSummaryPanel.add(summaryCard("Chapters With Notes", withNotes));
+        bookMapSummaryPanel.add(summaryCard("Chapters With Questions", withQuestions));
+        bookMapSummaryPanel.add(summaryCard("Unanswered Questions", unanswered));
+        bookMapSummaryPanel.add(summaryCard("Memory Verse Chapters", memoryChapters));
+        bookMapSummaryPanel.add(summaryCard("Percent With Notes", chapters.isEmpty() ? "0%" : Math.round(withNotes * 100.0 / chapters.size()) + "%"));
+        bookMapSummaryPanel.add(summaryCard("Any Study Activity", chapters.isEmpty() ? "0%" : Math.round(activities.stream().filter(a -> a.activityScore() > 0).count() * 100.0 / chapters.size()) + "%"));
+        bookMapSummaryPanel.add(summaryCard("Most Studied Chapter", most == null ? "None" : book + " " + most.chapter));
+
+        activities.stream().filter(a -> a.noteCount + a.chapterNoteCount > 0)
+                .sorted(Comparator.comparingInt((ChapterActivity a) -> a.noteCount + a.chapterNoteCount).reversed()).limit(10)
+                .forEach(a -> topNotesChapterModel.addElement(book + " " + a.chapter + " — " + (a.noteCount + a.chapterNoteCount) + " note(s)"));
+        activities.stream().filter(a -> a.questionCount > 0)
+                .sorted(Comparator.comparingInt((ChapterActivity a) -> a.questionCount).reversed()).limit(10)
+                .forEach(a -> topQuestionsChapterModel.addElement(book + " " + a.chapter + " — " + a.questionCount + " question(s)"));
+    }
+
+    private JPanel summaryCard(String label, Object value) {
+        JPanel card = new JPanel(new BorderLayout(3, 3));
+        card.setBackground(modernSurface);
+        card.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(7, 9, 7, 9)));
+        JLabel valueLabel = new JLabel(String.valueOf(value));
+        valueLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        valueLabel.setForeground(darkRed);
+        JLabel labelView = new JLabel(label);
+        labelView.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        labelView.setForeground(modernMutedText);
+        card.add(valueLabel, BorderLayout.CENTER); card.add(labelView, BorderLayout.SOUTH);
+        return card;
+    }
+
+    private ChapterActivity chapterActivity(String book, int chapter) {
+        ChapterActivity result = new ChapterActivity(book, chapter);
+        result.opened = currentProfile.openedBibleChaptersByBook.getOrDefault(book, Collections.emptySet()).contains(chapter);
+        for (TextAnnotation annotation : currentProfile.annotations) {
+            BookChapter location = annotationBookChapter(annotation);
+            if (book.equals(location.book) && chapter == location.chapter && "Note".equals(annotation.type)) result.noteCount++;
+        }
+        for (ChapterNote note : currentProfile.chapterNotes.values()) if (book.equals(note.book) && chapter == note.chapter) result.chapterNoteCount++;
+        for (StudyQuestion question : currentProfile.questions) if (book.equals(question.book) && chapter == question.chapter) {
+            result.questionCount++; if (!question.answered) result.unansweredCount++;
+        }
+        for (MemoryVerse verse : currentProfile.memoryVerses) {
+            ParsedReference ref = parseBibleReference(verse.reference);
+            if (ref != null && book.equals(ref.bookKey) && chapter == ref.chapter) result.memoryCount++;
+        }
+        return result;
+    }
+
+    private BookChapter annotationBookChapter(TextAnnotation annotation) {
+        if (annotation == null) return new BookChapter("", 0);
+        if (!safe(annotation.book).isEmpty() && annotation.chapter > 0) return new BookChapter(annotation.book, annotation.chapter);
+        if (safe(annotation.sourceKey).startsWith("BIBLE:")) {
+            ChapterRef ref = parseChapterRef(annotation.sourceKey.substring("BIBLE:".length()));
+            if (ref != null) return new BookChapter(ref.book, ref.chapter);
+        }
+        return new BookChapter("", 0);
+    }
+
+    private void openMappedChapter(String book, int chapter) {
+        selectedBook = book;
+        selectedChapter = chapter;
+        refreshBookCombo();
+        showSelectedChapter(true);
+        showCard("study");
+    }
+
+    private void showInBookMap(String book, int chapter) {
+        showCard("studyTime");
+        if (studyDashboardTabs != null) studyDashboardTabs.setSelectedIndex(2);
+        if (bookMapSelector != null) bookMapSelector.setSelectedItem(book);
+        refreshBookMapping();
+        if (statusLabel != null) statusLabel.setText(" Book Map: " + book + " " + chapter);
+    }
+
+    private void refreshWordWebCategories() {
+        if (wordWebCategoryBox == null || currentProfile == null) return;
+        String selected = String.valueOf(wordWebCategoryBox.getSelectedItem());
+        wordWebCategoryBox.removeAllItems();
+        for (String category : currentProfile.categories.keySet()) wordWebCategoryBox.addItem(category);
+        wordWebCategoryBox.setSelectedItem(selected);
+    }
+
+    private void refreshWordWeb() {
+        if (studyWordWebPanel == null || currentProfile == null) return;
+        String scope = wordWebScopeBox == null ? "All notes" : String.valueOf(wordWebScopeBox.getSelectedItem());
+        String category = wordWebCategoryBox == null ? "" : String.valueOf(wordWebCategoryBox.getSelectedItem());
+        String book = bookMapSelector == null ? "" : String.valueOf(bookMapSelector.getSelectedItem());
+        int minimum = wordWebMinimumSpinner == null ? 2 : (Integer) wordWebMinimumSpinner.getValue();
+        int limit = wordWebLimitBox == null ? 25 : (Integer) wordWebLimitBox.getSelectedItem();
+        Map<String, WordStat> stats = buildWordStats(scope, category, book);
+        List<WordStat> words = new ArrayList<>();
+        for (WordStat stat : stats.values()) if (stat.count >= minimum) words.add(stat);
+        words.sort(Comparator.comparingInt((WordStat stat) -> stat.count).reversed().thenComparing(stat -> stat.word));
+        if (words.size() > limit) words = new ArrayList<>(words.subList(0, limit));
+        studyWordWebPanel.setWords(words, "Selected category".equals(scope) && !safe(category).isEmpty() ? category : "Study Words");
+    }
+
+    private Map<String, WordStat> buildWordStats(String scope, String selectedCategory, String selectedBookName) {
+        Map<String, WordStat> stats = new HashMap<>();
+        for (TextAnnotation annotation : currentProfile.annotations) {
+            if ("Selected category".equals(scope) && !safe(selectedCategory).equals(safe(annotation.category))) continue;
+            if ("Selected book".equals(scope) && !safe(selectedBookName).equals(annotationBookChapter(annotation).book)) continue;
+            addWords(stats, safe(annotation.note) + " " + safe(annotation.selectedText), annotation.category, annotation.sourceTitle);
+        }
+        for (ChapterNote note : currentProfile.chapterNotes.values()) {
+            if ("Selected book".equals(scope) && !safe(selectedBookName).equals(note.book)) continue;
+            if ("Selected category".equals(scope) && (note.linkedCategoryNames == null || !note.linkedCategoryNames.contains(selectedCategory))) continue;
+            String category = note.linkedCategoryNames == null || note.linkedCategoryNames.isEmpty() ? "" : note.linkedCategoryNames.get(0);
+            addWords(stats, note.noteText, category, note.toString());
+        }
+        for (StudyQuestion question : currentProfile.questions) {
+            if ("Selected book".equals(scope) && !safe(selectedBookName).equals(question.book)) continue;
+            if ("Selected category".equals(scope)) continue;
+            addWords(stats, question.question + " " + answersSummary(question), "", question.sourceTitle);
+        }
+        if (!"Selected book".equals(scope)) {
+            for (String category : currentProfile.categories.keySet()) {
+                if ("Selected category".equals(scope) && !safe(selectedCategory).equals(category)) continue;
+                addWords(stats, category + " " + currentProfile.categories.get(category), category, "Category: " + category);
+            }
+            for (TopicPage topic : currentProfile.topicPages) addWords(stats, topic.title + " " + topic.summary, "", "Topic: " + topic.title);
+            for (StudyProject project : currentProfile.studyProjects.values()) addWords(stats, project.title + " " + project.description, "", "Project: " + project.title);
+        }
+        return stats;
+    }
+
+    private void addWords(Map<String, WordStat> stats, String text, String category, String example) {
+        for (String token : safe(text).toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}']+")) {
+            String word = token.replaceAll("^'+|'+$", "");
+            if (word.length() < 3 || STUDY_STOP_WORDS.contains(word)) continue;
+            WordStat stat = stats.computeIfAbsent(word, WordStat::new);
+            stat.count++;
+            if (!safe(category).isEmpty()) stat.categories.add(category);
+            if (!safe(example).isEmpty() && stat.examples.size() < 4) stat.examples.add(example);
+        }
+    }
+
+    private void showWordMatches(String word) {
+        Map<String, List<GroupedSearchResult>> groups = collectGroupedSearchResults(word, 180);
+        StringBuilder text = new StringBuilder("Matches for: ").append(word).append("\n\n");
+        for (String group : Arrays.asList("Notes", "Chapter Notes", "Questions", "Categories")) {
+            List<GroupedSearchResult> results = groups.get(group);
+            if (results == null || results.isEmpty()) continue;
+            text.append(group).append(" (").append(results.size()).append(")\n");
+            for (GroupedSearchResult result : results) text.append("  ").append(result.title).append(" — ").append(result.preview).append("\n");
+            text.append('\n');
+        }
+        JTextArea area = readonlyArea();
+        area.setEditable(false); area.setText(text.toString()); area.setCaretPosition(0);
+        JScrollPane scroll = new JScrollPane(area); scroll.setPreferredSize(new Dimension(720, 460));
+        JOptionPane.showMessageDialog(this, scroll, "Grouped Study Results", JOptionPane.PLAIN_MESSAGE);
     }
 
     private int selectedStudyRangeDays() {
@@ -2016,10 +2340,16 @@ public class BibleReaderApp extends JFrame {
 
         searchModel = new DefaultListModel<>();
         searchList = new JList<>(searchModel);
-        searchList.setFont(new Font("Consolas", Font.PLAIN, 13));
+        searchList.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        searchList.setCellRenderer(new GroupedSearchResultRenderer());
+        searchList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         searchList.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) openSearchResult();
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    int index = searchList.locationToIndex(e.getPoint());
+                    if (index >= 0) searchList.setSelectedIndex(index);
+                    showGroupedSearchMenu(e);
+                } else if (e.getClickCount() == 2) openSearchResult();
             }
         });
 
@@ -3155,6 +3485,7 @@ public class BibleReaderApp extends JFrame {
             refreshRecentNotes();
             refreshStudyProjects();
             refreshStudyTimePage();
+            refreshBookMapSelector();
             refreshPinnedItems();
             refreshRecentlyOpened();
             updateHistoryButtons();
@@ -5425,6 +5756,8 @@ public class BibleReaderApp extends JFrame {
         if (countVisit && currentProfile != null) {
             if (currentProfile.visitCounts == null) currentProfile.visitCounts = new HashMap<>();
             currentProfile.visitCounts.put(currentSourceKey, currentProfile.visitCounts.getOrDefault(currentSourceKey, 0) + 1);
+            if (currentProfile.openedBibleChaptersByBook == null) currentProfile.openedBibleChaptersByBook = new TreeMap<>();
+            currentProfile.openedBibleChaptersByBook.computeIfAbsent(selectedBook, key -> new TreeSet<>()).add(selectedChapter);
             saveData();
         }
 
@@ -5836,12 +6169,45 @@ public class BibleReaderApp extends JFrame {
 
         hideSelectionActionPopup();
         selectionActionPopup = new JPopupMenu();
-        addSelectedTextActions(selectionActionPopup);
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 3));
+        toolbar.setBackground(modernSurface);
+        toolbar.setBorder(new LineBorder(modernBorder));
+        addSelectionToolbarButton(toolbar, "Note", () -> addAnnotationFromSelection("Note", ""));
+        addSelectionToolbarButton(toolbar, "Question", () -> addAnnotationFromSelection("Question", "discussion"));
+        addSelectionToolbarButton(toolbar, "Category", this::addCategoryFromSelection);
+        if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:"))
+            addSelectionToolbarButton(toolbar, "Memory", this::addMemoryVerseFromSelection);
+        addSelectionToolbarButton(toolbar, "Greek", this::searchSelectedTextInGreek);
+        addSelectionToolbarButton(toolbar, "Copy", () -> copyTextToClipboard(readerPane.getSelectedText()));
+        selectionActionPopup.setBorder(new EmptyBorder(0, 0, 0, 0));
+        selectionActionPopup.add(toolbar);
 
         Point popupPoint = selectionPopupPoint();
-        selectionActionPopup.show(readerPane, popupPoint.x, popupPoint.y);
+        javax.swing.Timer timer = new javax.swing.Timer(120, e -> {
+            if (readerPane.getSelectionEnd() > readerPane.getSelectionStart() && readerPane.isShowing())
+                selectionActionPopup.show(readerPane, popupPoint.x, popupPoint.y);
+        });
+        timer.setRepeats(false);
+        timer.start();
     }
 
+
+    private void addSelectionToolbarButton(JPanel toolbar, String label, Runnable action) {
+        JButton button = new JButton(label);
+        button.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        button.setMargin(new Insets(4, 7, 4, 7));
+        button.setFocusable(false);
+        button.setBackground(darkRed);
+        button.setForeground(Color.WHITE);
+        button.addActionListener(e -> {
+            if (selectionActionRunning) return;
+            selectionActionRunning = true;
+            hideSelectionActionPopup();
+            try { action.run(); }
+            finally { SwingUtilities.invokeLater(() -> selectionActionRunning = false); }
+        });
+        toolbar.add(button);
+    }
 
     private void addSelectedTextActions(JPopupMenu menu) {
         boolean bibleSelection = greekKeyForSelection() != null;
@@ -10670,55 +11036,145 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         openSearchLineFullView(s);
     }
 
-    private void doSearch() {
-        if (searchModel == null) return;
-        searchModel.clear();
-        String q = searchField.getText().trim().toLowerCase(Locale.ROOT);
-        if (q.isEmpty()) return;
-        fillSearchModel(searchModel, q, 150);
+    private void fillSearchModel(DefaultListModel<String> model, String query, int maxSnippet) {
+        Map<String, List<GroupedSearchResult>> groups = collectGroupedSearchResults(query, maxSnippet);
+        for (List<GroupedSearchResult> results : groups.values()) for (GroupedSearchResult result : results) {
+            String legacyType = result.type;
+            if ("QUESTION".equals(legacyType)) legacyType = "NOTE";
+            if (!("BIBLE".equals(legacyType) || "LIBRARY".equals(legacyType) || "GREEK".equals(legacyType) || "NOTE".equals(legacyType))) continue;
+            model.addElement(legacyType + "|" + safe(result.id) + "|" + safe(result.title) + "|" + safe(result.preview));
+        }
     }
 
-    private void fillSearchModel(DefaultListModel<String> model, String q, int maxSnippet) {
-        for (String book : data.bible.keySet()) {
-            for (Integer ch : data.getChapters(book)) {
-                for (Verse v : data.getVerses(book, ch).values()) {
-                    if ((v.key() + " " + v.text).toLowerCase(Locale.ROOT).contains(q)) {
-                        model.addElement("BIBLE|" + v.key() + "|" + v.key() + "|" + shorten(v.text, maxSnippet));
-                    }
-                }
-            }
+    private void doSearch() {
+        if (searchModel == null || currentProfile == null) return;
+        String query = searchField.getText().trim();
+        searchModel.clear();
+        if (query.isEmpty()) return;
+        Map<String, List<GroupedSearchResult>> groups = collectGroupedSearchResults(query, 150);
+        for (String group : SEARCH_GROUP_ORDER) {
+            List<GroupedSearchResult> results = groups.get(group);
+            if (results == null || results.isEmpty()) continue;
+            searchModel.addElement(GroupedSearchResult.header(group, results.size()));
+            for (GroupedSearchResult result : results) searchModel.addElement(result);
         }
+    }
 
-        for (LibraryDoc d : data.libraryDocs) {
-            if ((d.title + " " + d.body).toLowerCase(Locale.ROOT).contains(q)) {
-                model.addElement("LIBRARY|" + d.title + "|" + d.title + "|" + shorten(snippet(d.body, q), maxSnippet));
-            }
-        }
+    private static final List<String> SEARCH_GROUP_ORDER = Arrays.asList(
+            "Bible Results", "Notes", "Chapter Notes", "Questions", "Categories",
+            "Greek", "Topic Pages", "Study Projects", "Memory Verses", "Library");
 
-        for (GreekEntry ge : data.greek.values()) {
-            String english = englishVerseTextFromData(ge.key());
-            if ((ge.key() + " " + ge.greekText + " " + ge.details + " " + english).toLowerCase(Locale.ROOT).contains(q)) {
-                model.addElement("GREEK|" + ge.key() + "|" + ge.key() + "|" + shorten(ge.greekText + " — " + ge.details, maxSnippet));
-            }
-        }
+    private Map<String, List<GroupedSearchResult>> collectGroupedSearchResults(String rawQuery, int maxSnippet) {
+        String q = safe(rawQuery).trim().toLowerCase(Locale.ROOT);
+        Map<String, List<GroupedSearchResult>> groups = new LinkedHashMap<>();
+        for (String name : SEARCH_GROUP_ORDER) groups.put(name, new ArrayList<>());
+        if (q.isEmpty()) return groups;
 
-        for (TextAnnotation a : currentProfile.annotations) {
-            if ((a.sourceTitle + " " + a.selectedText + " " + a.type + " " + a.category + " " + a.note + " " + a.target).toLowerCase(Locale.ROOT).contains(q)) {
-                model.addElement("NOTE|" + a.id + "|" + a.sourceTitle + "|" + shorten(a.selectedText + " — " + a.note, maxSnippet));
+        for (String book : data.bible.keySet()) for (Integer chapter : data.getChapters(book)) {
+            for (Verse verse : data.getVerses(book, chapter).values()) {
+                if ((verse.key() + " " + verse.text).toLowerCase(Locale.ROOT).contains(q))
+                    groups.get("Bible Results").add(new GroupedSearchResult("BIBLE", verse.key(), verse.key(), shorten(verse.text, maxSnippet), book, chapter, null));
             }
         }
-
-        for (StudyQuestion qu : currentProfile.questions) {
-            if ((qu.sourceTitle + " " + qu.selectedText + " " + qu.question).toLowerCase(Locale.ROOT).contains(q)) {
-                model.addElement("NOTE|" + qu.annotationId + "|" + qu.sourceTitle + "|" + shorten(qu.question, maxSnippet));
+        for (TextAnnotation annotation : currentProfile.annotations) {
+            if (!"Note".equals(annotation.type)) continue;
+            String haystack = safe(annotation.sourceTitle) + " " + safe(annotation.selectedText) + " " + safe(annotation.note) + " " + safe(annotation.category) + " " + safe(annotation.target);
+            if (!haystack.toLowerCase(Locale.ROOT).contains(q)) continue;
+            groups.get("Notes").add(new GroupedSearchResult("NOTE", annotation.id, safe(annotation.sourceTitle), shorten(safe(annotation.selectedText) + " — " + safe(annotation.note), maxSnippet), annotation.book, annotation.chapter, annotation));
+        }
+        for (ChapterNote note : currentProfile.chapterNotes.values()) {
+            String title = safe(note.book).isEmpty() ? safe(note.sourceTitle) : note.book + " " + note.chapter;
+            if ((title + " " + safe(note.noteText)).toLowerCase(Locale.ROOT).contains(q))
+                groups.get("Chapter Notes").add(new GroupedSearchResult("CHAPTER_NOTE", note.id, title, shorten(note.noteText, maxSnippet), note.book, note.chapter, note));
+        }
+        for (StudyQuestion question : currentProfile.questions) {
+            String answers = answersSummary(question);
+            String haystack = safe(question.sourceTitle) + " " + safe(question.selectedText) + " " + safe(question.question) + " " + answers;
+            if (haystack.toLowerCase(Locale.ROOT).contains(q)) {
+                String status = question.answered ? "Answered" : "Unanswered";
+                groups.get("Questions").add(new GroupedSearchResult("QUESTION", question.annotationId, safe(question.sourceTitle) + " — " + status, shorten(question.question, maxSnippet), question.book, question.chapter, question));
             }
         }
+        for (Map.Entry<String, String> category : currentProfile.categories.entrySet()) {
+            if ((safe(category.getKey()) + " " + safe(category.getValue())).toLowerCase(Locale.ROOT).contains(q))
+                groups.get("Categories").add(new GroupedSearchResult("CATEGORY", category.getKey(), category.getKey(), shorten(category.getValue(), maxSnippet), "", 0, category.getKey()));
+        }
+        for (GreekEntry entry : data.greek.values()) {
+            String english = englishVerseTextFromData(entry.key());
+            if ((entry.key() + " " + safe(entry.greekText) + " " + safe(entry.details) + " " + english).toLowerCase(Locale.ROOT).contains(q))
+                groups.get("Greek").add(new GroupedSearchResult("GREEK", entry.key(), entry.key(), shorten(entry.greekText + " — " + entry.details, maxSnippet), entry.book, entry.chapter, entry));
+        }
+        for (TopicPage topic : currentProfile.topicPages) {
+            if ((safe(topic.title) + " " + safe(topic.summary)).toLowerCase(Locale.ROOT).contains(q))
+                groups.get("Topic Pages").add(new GroupedSearchResult("TOPIC", topic.id, topic.title, shorten(topic.summary, maxSnippet), "", 0, topic));
+        }
+        for (StudyProject project : currentProfile.studyProjects.values()) {
+            if ((safe(project.title) + " " + safe(project.description)).toLowerCase(Locale.ROOT).contains(q))
+                groups.get("Study Projects").add(new GroupedSearchResult("PROJECT", project.id, project.title, shorten(project.description, maxSnippet), "", 0, project));
+        }
+        for (MemoryVerse verse : currentProfile.memoryVerses) {
+            if (memoryVerseSearchText(verse).contains(q)) {
+                ParsedReference ref = parseBibleReference(verse.reference);
+                groups.get("Memory Verses").add(new GroupedSearchResult("MEMORY", verse.id, verse.reference, shorten(verse.text + " — " + safe(verse.note), maxSnippet), ref == null ? "" : ref.bookKey, ref == null ? 0 : ref.chapter, verse));
+            }
+        }
+        for (LibraryDoc doc : data.libraryDocs) {
+            if ((safe(doc.title) + " " + safe(doc.body)).toLowerCase(Locale.ROOT).contains(q))
+                groups.get("Library").add(new GroupedSearchResult("LIBRARY", doc.title, doc.title, shorten(snippet(doc.body, q), maxSnippet), "", 0, doc));
+        }
+        return groups;
     }
 
     private void openSearchResult() {
-        String s = searchList.getSelectedValue();
-        if (s == null) return;
-        openSearchLineFullView(s);
+        GroupedSearchResult result = searchList == null ? null : searchList.getSelectedValue();
+        if (result == null || result.header) return;
+        openGroupedSearchResult(result);
+    }
+
+    private void openGroupedSearchResult(GroupedSearchResult result) {
+        if (result == null || result.header) return;
+        if ("BIBLE".equals(result.type)) openTarget(result.id);
+        else if ("NOTE".equals(result.type)) {
+            TextAnnotation annotation = result.payload instanceof TextAnnotation ? (TextAnnotation) result.payload : findAnnotationById(result.id);
+            if (annotation != null) openAnnotationFromNavigation(annotation, "Note");
+        } else if ("CHAPTER_NOTE".equals(result.type) && result.payload instanceof ChapterNote) openChapterNoteViewer((ChapterNote) result.payload);
+        else if ("QUESTION".equals(result.type) && result.payload instanceof StudyQuestion) openQuestionFromNavigation((StudyQuestion) result.payload);
+        else if ("CATEGORY".equals(result.type)) showCategoryByName(result.id);
+        else if ("GREEK".equals(result.type)) openGreekResultVerse(result.id, true);
+        else if ("TOPIC".equals(result.type)) { refreshTopicPages(); showCard("topicPages"); selectTopicById(result.id); }
+        else if ("PROJECT".equals(result.type) && result.payload instanceof StudyProject) { refreshStudyProjects(); studyProjectList.setSelectedValue((StudyProject) result.payload, true); showCard("studyProjects"); }
+        else if ("MEMORY".equals(result.type) && result.payload instanceof MemoryVerse) { refreshMemoryVerses(); memoryList.setSelectedValue((MemoryVerse) result.payload, true); showCard("memory"); }
+        else if ("LIBRARY".equals(result.type)) { showLibraryDoc(result.id); showCard("study"); }
+    }
+
+    private void showGroupedSearchMenu(MouseEvent event) {
+        GroupedSearchResult result = searchList == null ? null : searchList.getSelectedValue();
+        if (result == null || result.header) return;
+        JPopupMenu menu = new JPopupMenu();
+        addMenu(menu, "Open", () -> openGroupedSearchResult(result));
+        if (!safe(result.title).isEmpty()) addMenu(menu, "Copy Reference", () -> copyTextToClipboard(result.title));
+        if ("NOTE".equals(result.type) && result.payload instanceof TextAnnotation) {
+            addMenu(menu, "Edit Note", () -> editAnnotation((TextAnnotation) result.payload));
+            addMenu(menu, "Add to Category", () -> changeAnnotationCategory((TextAnnotation) result.payload));
+            addMenu(menu, "Pin", () -> pinAnnotationToSidebar((TextAnnotation) result.payload));
+        }
+        if ("QUESTION".equals(result.type) && result.payload instanceof StudyQuestion) {
+            StudyQuestion question = (StudyQuestion) result.payload;
+            addMenu(menu, "Answer Question", () -> promptAddAnswer(question));
+            TextAnnotation annotation = findAnnotationById(question.annotationId);
+            if (annotation != null) {
+                addMenu(menu, "Add to Category", () -> changeAnnotationCategory(annotation));
+                addMenu(menu, "Pin", () -> pinAnnotationToSidebar(annotation));
+            }
+        }
+        if (("NOTE".equals(result.type) || "QUESTION".equals(result.type) || "CHAPTER_NOTE".equals(result.type)) && !safe(result.book).isEmpty() && result.chapter > 0)
+            addMenu(menu, "Show in Book Map", () -> showInBookMap(result.book, result.chapter));
+        menu.show(searchList, event.getX(), event.getY());
+    }
+
+    private void copyTextToClipboard(String text) {
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(safe(text)), null);
+        if (statusLabel != null) statusLabel.setText(" Copied to clipboard");
     }
 
     private SearchResultParts parseSearchLine(String s) {
@@ -12093,6 +12549,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         for (String c : p.categories.keySet()) p.categoryColors.putIfAbsent(c, categoryBlue.getRGB());
         if (p.visitCounts == null) p.visitCounts = new HashMap<>();
         if (p.studyDayLogs == null) p.studyDayLogs = new TreeMap<>();
+        if (p.openedBibleChaptersByBook == null) p.openedBibleChaptersByBook = new TreeMap<>();
+        p.openedBibleChaptersByBook.entrySet().removeIf(e -> e.getKey() == null || e.getValue() == null);
         p.studyDayLogs.entrySet().removeIf(e -> e.getKey() == null || e.getValue() == null);
         for (Map.Entry<String, StudyDayLog> entry : p.studyDayLogs.entrySet()) repairStudyDayLog(entry.getValue(), entry.getKey());
         if (p.prayerLogEntries == null) p.prayerLogEntries = new ArrayList<>();
@@ -12184,6 +12642,10 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (n.sourceKey == null) n.sourceKey = "";
         if (n.sourceTitle == null) n.sourceTitle = "";
         if (n.book == null) n.book = "";
+        if ((n.book.isEmpty() || n.chapter <= 0) && n.sourceKey.startsWith("BIBLE:")) {
+            ChapterRef ref = parseChapterRef(n.sourceKey.substring("BIBLE:".length()));
+            if (ref != null) { n.book = ref.book; n.chapter = ref.chapter; }
+        }
         if (n.noteText == null) n.noteText = "";
         if (n.createdAt <= 0L) n.createdAt = System.currentTimeMillis();
         if (n.updatedAt <= 0L) n.updatedAt = n.createdAt;
@@ -12327,6 +12789,17 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (q.sourceLocation == null) q.sourceLocation = q.sourceTitle;
         if (q.book == null) q.book = "";
         if (q.chapter < 0) q.chapter = 0;
+        if (q.book.isEmpty() || q.chapter <= 0) {
+            TextAnnotation annotation = annotationById(q.annotationId);
+            if (annotation != null) {
+                BookChapter location = annotationBookChapter(annotation);
+                q.book = location.book;
+                q.chapter = location.chapter;
+            } else if (q.sourceKey.startsWith("BIBLE:")) {
+                ChapterRef ref = parseChapterRef(q.sourceKey.substring("BIBLE:".length()));
+                if (ref != null) { q.book = ref.book; q.chapter = ref.chapter; }
+            }
+        }
         if (q.created == null) q.created = new Date();
     }
 
@@ -12350,7 +12823,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (a.target == null) a.target = "";
         if (a.book == null) a.book = "";
         if (a.chapter < 0) a.chapter = 0;
-        if (a.wholeChapter && a.book.isEmpty() && a.sourceKey.startsWith("BIBLE:")) {
+        if ((a.book.isEmpty() || a.chapter <= 0) && a.sourceKey.startsWith("BIBLE:")) {
             RefParts rp = parseRef(a.sourceKey.substring("BIBLE:".length()) + ":1");
             if (rp != null) { a.book = rp.book; a.chapter = rp.chapter; }
         }
@@ -12606,6 +13079,176 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                     + " | First reference: " + (firstReference.isEmpty() ? "(none)" : firstReference)
                     + " | Last reference: " + (lastReference.isEmpty() ? "(none)" : lastReference)
                     + " | Unknown book codes: " + (unknownBookCodes.isEmpty() ? "(none)" : unknownBookCodes);
+        }
+    }
+
+    private static class GroupedSearchResult {
+        String type;
+        String id;
+        String title;
+        String preview;
+        String book;
+        int chapter;
+        Object payload;
+        boolean header;
+        int count;
+
+        GroupedSearchResult(String type, String id, String title, String preview, String book, int chapter, Object payload) {
+            this.type = type;
+            this.id = id;
+            this.title = title;
+            this.preview = preview;
+            this.book = book == null ? "" : book;
+            this.chapter = chapter;
+            this.payload = payload;
+        }
+
+        static GroupedSearchResult header(String title, int count) {
+            GroupedSearchResult result = new GroupedSearchResult("HEADER", "", title, "", "", 0, null);
+            result.header = true;
+            result.count = count;
+            return result;
+        }
+
+        public String toString() { return header ? title + " (" + count + ")" : title + " — " + preview; }
+    }
+
+    private class GroupedSearchResultRenderer extends JPanel implements ListCellRenderer<GroupedSearchResult> {
+        private final JLabel title = new JLabel();
+        private final JLabel preview = new JLabel();
+        GroupedSearchResultRenderer() {
+            super(new BorderLayout(6, 2));
+            setBorder(new EmptyBorder(7, 10, 7, 10));
+            JPanel text = new JPanel(new GridLayout(0, 1, 0, 2));
+            text.setOpaque(false);
+            text.add(title);
+            text.add(preview);
+            add(text, BorderLayout.CENTER);
+        }
+        public Component getListCellRendererComponent(JList<? extends GroupedSearchResult> list, GroupedSearchResult value, int index, boolean selected, boolean focus) {
+            if (value == null) return this;
+            if (value.header) {
+                title.setText(value.title + " (" + value.count + ")");
+                title.setFont(modernBoldFont.deriveFont(15f));
+                title.setForeground(Color.WHITE);
+                preview.setText("");
+                preview.setVisible(false);
+                setBackground(darkRed);
+                setBorder(new EmptyBorder(8, 10, 8, 10));
+            } else {
+                title.setText(value.title);
+                title.setFont(modernBoldFont);
+                title.setForeground(modernText);
+                preview.setText("<html>" + esc(shorten(value.preview, 180)) + "</html>");
+                preview.setFont(modernBaseFont.deriveFont(12f));
+                preview.setForeground(modernMutedText);
+                preview.setVisible(true);
+                setBackground(selected ? modernSelection : (index % 2 == 0 ? modernSurface : cream));
+                setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, modernBorder), new EmptyBorder(7, 18, 7, 10)));
+            }
+            setOpaque(true);
+            return this;
+        }
+    }
+
+    private static class BookChapter {
+        final String book; final int chapter;
+        BookChapter(String book, int chapter) { this.book = book == null ? "" : book; this.chapter = chapter; }
+    }
+
+    private static class ChapterActivity {
+        final String book; final int chapter;
+        boolean opened; int noteCount; int chapterNoteCount; int questionCount; int unansweredCount; int memoryCount;
+        ChapterActivity(String book, int chapter) { this.book = book; this.chapter = chapter; }
+        int activityScore() { return (opened ? 1 : 0) + noteCount * 2 + chapterNoteCount * 3 + questionCount * 2 + memoryCount * 2; }
+        String tooltip() {
+            return "<html><b>" + book + " " + chapter + "</b><br>Read/opened: " + (opened ? "Yes" : "No") +
+                    "<br>Notes: " + noteCount + "<br>Chapter notes: " + chapterNoteCount + "<br>Questions: " + questionCount +
+                    "<br>Unanswered: " + unansweredCount + "<br>Memory verses: " + memoryCount + "</html>";
+        }
+    }
+
+    private static class WordStat {
+        final String word; int count;
+        final Set<String> categories = new TreeSet<>();
+        final List<String> examples = new ArrayList<>();
+        WordStat(String word) { this.word = word; }
+    }
+
+    private class WordWebPanel extends JPanel {
+        private List<WordStat> words = new ArrayList<>();
+        private String center = "Study Words";
+        private final Map<WordStat, Rectangle> bounds = new LinkedHashMap<>();
+        WordWebPanel() {
+            setBackground(modernSurface);
+            ToolTipManager.sharedInstance().registerComponent(this);
+            addMouseListener(new MouseAdapter() {
+                public void mouseClicked(MouseEvent e) {
+                    for (Map.Entry<WordStat, Rectangle> entry : bounds.entrySet()) if (entry.getValue().contains(e.getPoint())) {
+                        showWordMatches(entry.getKey().word); return;
+                    }
+                }
+            });
+        }
+        void setWords(List<WordStat> words, String center) {
+            this.words = words == null ? new ArrayList<>() : new ArrayList<>(words);
+            this.center = safe(center).isEmpty() ? "Study Words" : center;
+            setPreferredSize(new Dimension(900, Math.max(560, 300 + this.words.size() * 5)));
+            revalidate(); repaint();
+        }
+        public String getToolTipText(MouseEvent e) {
+            for (Map.Entry<WordStat, Rectangle> entry : bounds.entrySet()) if (entry.getValue().contains(e.getPoint())) {
+                WordStat stat = entry.getKey();
+                return "<html><b>" + esc(stat.word) + "</b><br>Count: " + stat.count +
+                        (stat.categories.isEmpty() ? "" : "<br>Categories: " + esc(String.join(", ", stat.categories))) +
+                        (stat.examples.isEmpty() ? "" : "<br>Examples: " + esc(String.join("; ", stat.examples))) + "</html>";
+            }
+            return null;
+        }
+        protected void paintComponent(Graphics graphics) {
+            super.paintComponent(graphics);
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            bounds.clear();
+            int cx = getWidth() / 2, cy = getHeight() / 2;
+            g.setColor(darkRed); g.fillOval(cx - 65, cy - 30, 130, 60);
+            g.setColor(Color.WHITE); g.setFont(modernBoldFont.deriveFont(16f));
+            FontMetrics centerMetrics = g.getFontMetrics();
+            g.drawString(center, cx - centerMetrics.stringWidth(center) / 2, cy + 6);
+            if (words.isEmpty()) {
+                g.setColor(modernMutedText); g.setFont(modernBaseFont);
+                g.drawString("No words match the current filters.", 24, 35); g.dispose(); return;
+            }
+            int max = Math.max(1, words.get(0).count);
+            for (int i = 0; i < words.size(); i++) {
+                WordStat stat = words.get(i);
+                double angle = i * 2.399963229728653;
+                double radius = 105 + 13 * Math.sqrt(i + 1);
+                int x = (int) (cx + Math.cos(angle) * radius);
+                int y = (int) (cy + Math.sin(angle) * radius);
+                Color color = wordColor(stat);
+                g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 105));
+                g.setStroke(new BasicStroke(1.2f)); g.drawLine(cx, cy, x, y);
+                float size = 11f + 11f * stat.count / max;
+                g.setFont(modernBoldFont.deriveFont(size));
+                FontMetrics fm = g.getFontMetrics();
+                int width = fm.stringWidth(stat.word) + 14, height = fm.getHeight() + 6;
+                Rectangle rectangle = new Rectangle(x - width / 2, y - height / 2, width, height);
+                bounds.put(stat, rectangle);
+                g.setColor(new Color(255, 252, 247, 235)); g.fillRoundRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height, 14, 14);
+                g.setColor(color.darker()); g.drawRoundRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height, 14, 14);
+                g.drawString(stat.word, rectangle.x + 7, rectangle.y + fm.getAscent() + 3);
+            }
+            g.dispose();
+        }
+        private Color wordColor(WordStat stat) {
+            if (!stat.categories.isEmpty()) {
+                String category = stat.categories.iterator().next();
+                Integer rgb = currentProfile == null ? null : currentProfile.categoryColors.get(category);
+                if (rgb != null) return new Color(rgb, true);
+                return Color.getHSBColor((Math.abs(category.hashCode()) % 360) / 360f, .45f, .78f);
+            }
+            return modernPrimaryRed;
         }
     }
 
@@ -12882,6 +13525,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         Map<String, Integer> categoryColors = new TreeMap<>();
         Map<String, Integer> visitCounts = new HashMap<>();
         Map<String, StudyDayLog> studyDayLogs = new TreeMap<>();
+        Map<String, Set<Integer>> openedBibleChaptersByBook = new TreeMap<>();
         List<PrayerLogEntry> prayerLogEntries = new ArrayList<>();
         List<StudyNote> oldNotes = new ArrayList<>();
         int selectedStudyTimerMinutes = 15;
