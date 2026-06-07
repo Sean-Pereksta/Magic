@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Neon Pastel FPS Arena</title>
+<title>Neon Arena FPS</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#f8fbff;font-family:Arial,Helvetica,sans-serif;color:#08111f;}
   #game{width:100vw;height:100vh;display:block;cursor:crosshair;background:#fff;}
@@ -23,10 +23,11 @@
   #minimap{position:absolute;right:16px;top:16px;width:178px;height:178px;border-radius:18px;border:1px solid rgba(0,220,255,.55);background:rgba(8,12,28,.62);box-shadow:0 0 24px rgba(0,220,255,.22);}
   #death{position:fixed;inset:0;z-index:8;display:none;place-items:center;background:rgba(255,255,255,.34);backdrop-filter:blur(4px);font-size:36px;font-weight:1000;text-align:center;color:#fff;text-shadow:0 0 18px #ff004c,0 2px 4px #000;}
   #menu{position:fixed;inset:0;z-index:10;background:radial-gradient(circle at 50% 35%,rgba(255,255,255,.92),rgba(224,249,255,.9) 45%,rgba(14,18,38,.96) 100%);display:flex;align-items:center;justify-content:center;color:#fff;}
-  #panel{width:min(840px,92vw);border:1px solid rgba(0,234,255,.7);border-radius:30px;padding:30px;background:linear-gradient(135deg,rgba(7,10,28,.95),rgba(22,8,46,.88));box-shadow:0 0 60px rgba(0,220,255,.28),inset 0 0 45px rgba(255,0,220,.12);}
+  #panel{width:min(840px,92vw);max-height:90vh;overflow:auto;box-sizing:border-box;border:1px solid rgba(0,234,255,.7);border-radius:30px;padding:30px;background:linear-gradient(135deg,rgba(7,10,28,.95),rgba(22,8,46,.88));box-shadow:0 0 60px rgba(0,220,255,.28),inset 0 0 45px rgba(255,0,220,.12);}
   h1{margin:0 0 8px;font-size:48px;letter-spacing:.035em;text-shadow:0 0 16px #ff00c8,0 0 30px #00eaff;}
   .sub{opacity:.9;line-height:1.45;margin-bottom:20px;}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0;}
+  .map-choice{grid-column:1/-1;}
   label{display:block;font-size:13px;text-transform:uppercase;letter-spacing:.08em;opacity:.82;margin-bottom:6px;}
   select,button{width:100%;box-sizing:border-box;border-radius:14px;border:1px solid rgba(0,234,255,.45);background:#09091c;color:#fff;padding:13px 14px;font-weight:900;font-size:16px;outline:none;box-shadow:0 0 16px rgba(0,234,255,.12);}
   button{cursor:pointer;background:linear-gradient(90deg,#ff2bbd,#00eaff);border:none;text-shadow:0 1px 3px #000;font-size:21px;margin-top:12px;}
@@ -51,9 +52,10 @@
 </div>
 <div id="death">YOU WERE DROPPED<br><small style="font-size:18px">Respawning...</small></div>
 <div id="menu"><div id="panel">
-  <h1>NEON PASTEL FPS ARENA</h1>
-  <div class="sub">Bigger Quake-style arena with real health, weapon pickups, charged plasma tiers, a continuous overheating plasma laser, automatic guns, visible projectile trails, solid opaque pastel platforms, tall no-fall boundary walls, animated 3D enemy bodies, and fast bots whose accuracy falls off hard with distance.</div>
+  <h1>NEON ARENA FPS</h1>
+  <div class="sub">Choose your arena, then launch a faster and more lethal Quake-style match. Both maps feature solid opaque geometry, no-fall boundary walls, weapon pickups, charged 3D plasma, an overheating plasma laser, and weapon-aware bots.</div>
   <div class="grid">
+    <div class="map-choice"><label>Choose Map</label><select id="map"><option value="pastel" selected>Original Neon Pastel Arena</option><option value="reactor">Vertical Reactor Arena</option></select></div>
     <div><label>Game Mode</label><select id="mode"><option value="dm">Deathmatch</option><option value="tdm">Team Deathmatch</option></select></div>
     <div><label>Difficulty</label><select id="difficulty"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option><option value="nightmare">Nightmare</option></select></div>
     <div><label>Bot Count</label><select id="botCount"><option>4</option><option selected>6</option><option>8</option><option>10</option></select></div>
@@ -89,34 +91,72 @@ function clamp(v,a,b){return Math.max(a,Math.min(b,v))} function rand(a,b){retur
 function msg(t){hud.msg.textContent=t;hud.msg.style.opacity=1;clearTimeout(msg.t);msg.t=setTimeout(()=>hud.msg.style.opacity=0,950)}
 function feed(t){const d=document.createElement('div');d.textContent=t;hud.feed.prepend(d);while(hud.feed.children.length>8)hud.feed.lastChild.remove()}
 const WEAPONS={
-  assault:{name:'ASSAULT RIFLE',damage:32,range:82,cool:.085,spread:.014,mag:36,reload:1.05,tracers:1,color:'#00eaff',falloff:.28,kind:'hitscan'},
-  sniper:{name:'SNIPER',damage:80,head:999,range:120,cool:.72,spread:.002,mag:5,reload:1.65,tracers:1,color:'#ffffff',falloff:.02,kind:'hitscan'},
-  smg:{name:'SMG',damage:20,range:54,cool:.055,spread:.045,mag:42,reload:.95,tracers:1,color:'#ffea00',falloff:.72,kind:'hitscan'},
-  shotgun:{name:'SHOTGUN',damage:32,range:34,cool:.58,spread:.125,mag:8,reload:1.20,tracers:8,color:'#ff7a2b',falloff:1.05,kind:'shotgun'},
-  plasma:{name:'PLASMA BLASTER',damage:44,range:90,cool:.22,spread:.006,mag:999,reload:0,tracers:1,color:'#9b5cff',falloff:.08,kind:'plasma',heat:.18,coolRate:.48,chargeRate:.92},
-  laser:{name:'PLASMA LASER',damage:17,range:86,cool:.035,spread:.001,mag:999,reload:0,tracers:1,color:'#ff2bff',falloff:.04,kind:'laser',heatRate:1.28,coolRate:.62}
+  assault:{name:'ASSAULT RIFLE',damage:46,range:82,cool:.085,spread:.014,mag:36,reload:1.05,tracers:1,color:'#00eaff',falloff:.28,kind:'hitscan'},
+  sniper:{name:'SNIPER',damage:95,head:999,range:120,cool:.72,spread:.002,mag:5,reload:1.65,tracers:1,color:'#ffffff',falloff:.02,kind:'hitscan'},
+  smg:{name:'SMG',damage:32,range:54,cool:.055,spread:.045,mag:42,reload:.95,tracers:1,color:'#ffea00',falloff:.72,kind:'hitscan'},
+  shotgun:{name:'SHOTGUN',damage:46,range:34,cool:.58,spread:.125,mag:8,reload:1.20,tracers:8,color:'#ff7a2b',falloff:1.05,kind:'shotgun'},
+  plasma:{name:'PLASMA BLASTER',damage:66,range:90,cool:.22,spread:.006,mag:999,reload:0,tracers:1,color:'#9b5cff',falloff:.08,kind:'plasma',heat:.18,coolRate:.48,chargeRate:.92},
+  laser:{name:'PLASMA LASER',damage:25,range:86,cool:.035,spread:.001,mag:999,reload:0,tracers:1,color:'#ff2bff',falloff:.04,kind:'laser',heatRate:1.28,coolRate:.62}
 };
 const DIFF={easy:{aim:.25,react:.55,move:8.8,fire:.88},normal:{aim:.38,react:.38,move:10.2,fire:.68},hard:{aim:.52,react:.28,move:11.6,fire:.54},nightmare:{aim:.64,react:.22,move:13.0,fire:.43}};
-const game={started:false,mode:'dm',difficulty:'normal',botCount:6,time:300,timeLeft:300,over:false};
+const game={started:false,map:'pastel',mode:'dm',difficulty:'normal',botCount:6,time:300,timeLeft:300,over:false};
 const player={name:'YOU',x:0,y:PLAYER_H,z:24,vx:0,vy:0,vz:0,yaw:Math.PI,pitch:0,onGround:false,r:.46,team:1,score:0,deaths:0,dead:false,hp:100,maxHp:100,weapon:'assault',ammo:30,reload:0,cool:0,heat:0,spawnGrace:0};
 let bots=[],platforms=[],walls=[],nav=[],pickups=[],shots=[],projectiles=[],particles=[],lasers=[],impacts=[],muzzleFlashes=[];
 const MAX_PARTICLES=260,MAX_IMPACTS=80,ARENA_SAFE=44.35;
 const pastel=['#9ee7ff','#ffc3e6','#c8ffd4','#fff0a8','#d8c9ff','#ffcfb8','#b9fff5','#e9ffbd'];
-function addPlat(x,z,w,d,y,h,c){platforms.push({x,z,w,d,y,h,c});nav.push({x,z,y:y+h+PLAYER_H,r:Math.max(w,d)*.34})}
-function addWall(x,z,w,d,h,c){walls.push({x,z,w,d,y:h/2,h,c});}
-function buildMap(){platforms=[];walls=[];nav=[];pickups=[];
-  addPlat(0,0,89.8,89.8,-.7,.7,'#9fb4cb');
-  addPlat(-31,-31,18,18,2.5,.9,pastel[0]); addPlat(31,-31,18,18,2.5,.9,pastel[1]); addPlat(-31,31,18,18,2.5,.9,pastel[2]); addPlat(31,31,18,18,2.5,.9,pastel[3]);
-  addPlat(0,-35,21,13,5.7,.9,pastel[4]); addPlat(0,35,21,13,5.7,.9,pastel[5]); addPlat(-35,0,13,21,5.4,.9,pastel[6]); addPlat(35,0,13,21,5.4,.9,pastel[7]);
-  addPlat(0,0,22,22,9.3,.9,'#f2d1ff'); addPlat(0,0,10,10,13.0,.9,'#d7fbff');
-  addPlat(0,-18,10,29,3.0,.55,'#dff7ff'); addPlat(0,18,10,29,3.0,.55,'#ffe0f2'); addPlat(-18,0,29,10,3.0,.55,'#e2ffd9'); addPlat(18,0,29,10,3.0,.55,'#fff6c9');
-  addPlat(-18,-18,12,12,7.4,.8,'#cfe0ff'); addPlat(18,-18,12,12,7.4,.8,'#ffd8d8'); addPlat(-18,18,12,12,7.4,.8,'#d4ffd9'); addPlat(18,18,12,12,7.4,.8,'#fff5c4');
-  // Tall bright boundary walls: impossible to jump over, impossible to fall off map.
-  addWall(0,-46,96,2.2,22,'#00eaff'); addWall(0,46,96,2.2,22,'#ff2bbd'); addWall(-46,0,2.2,96,22,'#00ffa8'); addWall(46,0,2.2,96,22,'#ffea00');
-  addWall(-12,-12,2.4,18,5.6,'#f5ff6b'); addWall(12,12,2.4,18,5.6,'#f5ff6b'); addWall(12,-12,18,2.4,5.6,'#78ffd8'); addWall(-12,12,18,2.4,5.6,'#78ffd8');
-  addPickup('sniper',-31,-31,4.1); addPickup('shotgun',31,-31,4.1); addPickup('smg',-31,31,4.1); addPickup('plasma',31,31,4.1); addPickup('assault',0,0,14.5); addPickup('sniper',0,35,7.3); addPickup('plasma',35,0,7.0); addPickup('laser',18,-18,8.9); addPickup('shotgun',-35,0,7.0);
+function addPlat(x,z,w,d,y,h,c){platforms.push({x,z,w,d,y,h,c});nav.push({x,z,y:y+h+PLAYER_H,r:Math.max(2.2,Math.min(6,Math.max(w,d)*.34))})}
+function addTopPlat(x,z,w,d,top,h,c){addPlat(x,z,w,d,top-h,h,c)}
+function addWall(x,z,w,d,h,c,y=0){walls.push({x,z,w,d,y:y+h/2,h,c});}
+function addNav(x,z,r=2.5){const top=topAtPoint(x,z);if(top>-20)nav.push({x,z,y:top+PLAYER_H,r})}
+function addPickup(type,x,z){const top=topAtPoint(x,z);if(top<-20)throw new Error('Pickup '+type+' has no platform at '+x+','+z);pickups.push({type,x,z,y:top+.7,spin:rand(0,TAU),taken:0})}
+function addArenaBounds(){
+  addWall(0,-46,96,2.2,22,'#00eaff');addWall(0,46,96,2.2,22,'#ff2bbd');
+  addWall(-46,0,2.2,96,22,'#00ffa8');addWall(46,0,2.2,96,22,'#ffea00');
 }
-function addPickup(type,x,z,y){pickups.push({type,x,z,y,spin:rand(0,TAU),taken:0})}
+function buildMap(){
+  platforms=[];walls=[];nav=[];pickups=[];
+  if(game.map==='reactor')buildReactorArenaMap();else buildPastelArenaMap();
+  for(const n of nav)n.y=topAtPoint(n.x,n.z)+PLAYER_H;
+}
+function buildPastelArenaMap(){
+  addPlat(0,0,89.8,89.8,-.7,.7,'#9fb4cb');
+  addPlat(-31,-31,18,18,2.5,.9,pastel[0]);addPlat(31,-31,18,18,2.5,.9,pastel[1]);addPlat(-31,31,18,18,2.5,.9,pastel[2]);addPlat(31,31,18,18,2.5,.9,pastel[3]);
+  addPlat(0,-35,21,13,5.7,.9,pastel[4]);addPlat(0,35,21,13,5.7,.9,pastel[5]);addPlat(-35,0,13,21,5.4,.9,pastel[6]);addPlat(35,0,13,21,5.4,.9,pastel[7]);
+  addPlat(0,0,22,22,9.3,.9,'#f2d1ff');addPlat(0,0,10,10,13.0,.9,'#d7fbff');
+  addPlat(0,-18,10,29,3.0,.55,'#dff7ff');addPlat(0,18,10,29,3.0,.55,'#ffe0f2');addPlat(-18,0,29,10,3.0,.55,'#e2ffd9');addPlat(18,0,29,10,3.0,.55,'#fff6c9');
+  addPlat(-18,-18,12,12,7.4,.8,'#cfe0ff');addPlat(18,-18,12,12,7.4,.8,'#ffd8d8');addPlat(-18,18,12,12,7.4,.8,'#d4ffd9');addPlat(18,18,12,12,7.4,.8,'#fff5c4');
+  addArenaBounds();
+  addWall(-12,-12,2.4,18,5.6,'#f5ff6b');addWall(12,12,2.4,18,5.6,'#f5ff6b');addWall(12,-12,18,2.4,5.6,'#78ffd8');addWall(-12,12,18,2.4,5.6,'#78ffd8');
+  addPickup('sniper',-31,-31);addPickup('shotgun',31,-31);addPickup('smg',-31,31);addPickup('plasma',31,31);addPickup('assault',0,0);addPickup('sniper',0,35);addPickup('plasma',35,0);addPickup('laser',18,-18);addPickup('shotgun',-35,0);
+  [[-38,-18],[-38,18],[38,-18],[38,18],[-20,-35],[20,-35],[-20,35],[20,35],[-18,0],[18,0],[0,-18],[0,18]].forEach(([x,z])=>addNav(x,z,3));
+}
+function buildReactorArenaMap(){
+  // Broad sealed floor plus stepped routes: every height change is within the normal jump arc.
+  addTopPlat(0,0,89.8,89.8,0,.7,'#73849d');
+  addTopPlat(0,0,25,25,3.0,.9,'#7046a8');
+  addTopPlat(0,0,17,17,6.0,.9,'#9b5cff');
+  addTopPlat(0,0,9,9,9.0,.9,'#d9b8ff');
+  // Four overlapping approach chains act as ramps made from solid, opaque steps.
+  addTopPlat(0,-18,12,15,2.0,.7,'#5bd6e8');addTopPlat(0,-29,16,10,3.8,.8,'#46a9c9');addTopPlat(0,-37,20,9,6.2,.9,'#8deaff');
+  addTopPlat(18,0,15,12,2.0,.7,'#ff8fcf');addTopPlat(29,0,10,16,3.8,.8,'#df65ad');addTopPlat(37,0,9,20,6.2,.9,'#ffc1e5');
+  addTopPlat(0,18,12,15,2.0,.7,'#ffd96b');addTopPlat(0,29,16,10,3.8,.8,'#d9ad3e');addTopPlat(0,37,20,9,6.2,.9,'#fff0a8');
+  addTopPlat(-18,0,15,12,2.0,.7,'#75e8a3');addTopPlat(-29,0,10,16,3.8,.8,'#49bc77');addTopPlat(-37,0,9,20,6.2,.9,'#b8ffd0');
+  // Offset side decks create different combat pockets and keep major pickups separated.
+  addTopPlat(-31,-29,17,14,7.0,.9,'#c8e5ff');addTopPlat(31,-29,17,14,5.2,.9,'#efc8ff');
+  addTopPlat(-18,-29,11,10,4.6,.8,'#83cdec');addTopPlat(18,-29,11,10,4.5,.8,'#c88bea');
+  addTopPlat(-31,29,17,14,3.0,.9,'#ffc6a8');addTopPlat(31,29,17,14,4.6,.9,'#fff59b');
+  addTopPlat(-18,29,11,10,2.2,.8,'#e99b76');addTopPlat(18,29,11,10,3.0,.8,'#dfca55');
+  addTopPlat(-20,20,10,10,5.5,.8,'#a8ffd8');addTopPlat(20,-20,10,10,5.5,.8,'#ffb8dd');
+  addArenaBounds();
+  // Reactor fins and offset cover break long sight lines without sealing the routes.
+  addWall(-15,-15,2.2,12,6.5,'#38e8ff');addWall(15,15,2.2,12,6.5,'#ff46c8');
+  addWall(15,-15,12,2.2,6.5,'#ffe45c');addWall(-15,15,12,2.2,6.5,'#72ffae');
+  addWall(-31,-18,7,2.2,4.5,'#d8f4ff');addWall(31,18,7,2.2,4.5,'#fff0b8');
+  addWall(-18,31,2.2,7,4.5,'#b8ffd7');addWall(18,-31,2.2,7,4.5,'#ffd0eb');
+  addPickup('laser',0,0);addPickup('sniper',-31,-29);addPickup('plasma',31,-29);
+  addPickup('shotgun',-31,29);addPickup('smg',31,29);addPickup('assault',0,37);
+  [[-6,0],[6,0],[0,-6],[0,6],[-10,-10],[10,-10],[-10,10],[10,10],[0,-18],[0,-29],[0,-37],[18,0],[29,0],[37,0],[0,18],[0,29],[0,37],[-18,0],[-29,0],[-37,0],[-31,-29],[-18,-29],[18,-29],[31,-29],[-31,29],[-18,29],[18,29],[31,29],[-20,20],[20,-20],[-36,-15],[36,15],[-15,36],[15,-36]].forEach(([x,z])=>addNav(x,z,2.8));
+}
 function topAtPoint(x,z){let best=-999;for(const p of platforms){if(Math.abs(x-p.x)<=p.w/2&&Math.abs(z-p.z)<=p.d/2)best=Math.max(best,p.y+p.h)}return best}
 function blocks(){const out=[];for(const p of platforms)out.push({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h,c:p.c,kind:'platform'});for(const w of walls)out.push({...w,kind:'wall'});return out}
 function pushOutXZ(ent){const r=ent.r||.45,feet=ent.y-PLAYER_H+HEAD_CLEAR,head=ent.y;for(const b of blocks()){const b0=b.y-b.h/2,b1=b.y+b.h/2;if(feet>=b1-.04||head<=b0+.04)continue;const dx=ent.x-b.x,dz=ent.z-b.z,ox=b.w/2+r-Math.abs(dx),oz=b.d/2+r-Math.abs(dz);if(ox>0&&oz>0){if(ox<oz){ent.x+=dx<0?-ox:ox;ent.vx=0}else{ent.z+=dz<0?-oz:oz;ent.vz=0}}}
@@ -131,7 +171,7 @@ function spawn(ent){let sp=pick(nav),x=sp.x,z=sp.z;for(let i=0;i<16;i++){sp=pick
 function equip(ent,type,announce=true){ent.weapon=type;const w=WEAPONS[type];ent.ammo=w.mag;ent.reload=0;ent.cool=.12;ent.heat=0;ent.charge=0;if(ent===player){styleGun(type);if(announce)msg('PICKED UP '+w.name)}}
 function styleGun(type){const w=WEAPONS[type]||WEAPONS.assault;hud.weaponName.textContent=w.name}
 function initBots(){bots=[];const names=['VOLT','NOVA','RAZOR','GLITCH','ONYX','PULSE','HEX','ECHO','RIFT','BLITZ'];for(let i=0;i<game.botCount;i++){const b={name:names[i%names.length],x:0,y:PLAYER_H,z:0,vx:0,vy:0,vz:0,r:.48,yaw:0,pitch:0,onGround:false,team:game.mode==='tdm'?(i%2)+2:10+i,score:0,deaths:0,dead:false,hp:100,maxHp:100,weapon:'assault',ammo:30,reload:0,cool:0,heat:0,think:0,fireCd:rand(.2,1),target:null,enemy:null,strafe:Math.random()<.5?-1:1,strafeT:0,color:i%2?'#ff2bbd':'#00eaff',walk:0,faceYaw:0};spawn(b);bots.push(b)}}
-function reset(){buildMap();game.mode=el('mode').value;game.difficulty=el('difficulty').value;game.botCount=+el('botCount').value;game.time=+el('matchLen').value;game.timeLeft=game.time;game.over=false;player.score=0;player.deaths=0;player.team=game.mode==='tdm'?1:0;player.dead=false;player.yaw=Math.PI;player.pitch=0;equip(player,'assault',false);spawn(player);initBots();shots=[];projectiles=[];particles=[];lasers=[];impacts=[];muzzleFlashes=[];hud.feed.innerHTML='';hud.mode.textContent=game.mode==='tdm'?'TEAM DM':'DEATHMATCH';game.started=true;styleGun(player.weapon);feed('Match started. Weapons hover over the arena. Run through them to swap guns, including the new overheating plasma laser.');}
+function reset(){game.map=el('map').value;game.mode=el('mode').value;game.difficulty=el('difficulty').value;game.botCount=+el('botCount').value;game.time=+el('matchLen').value;buildMap();game.timeLeft=game.time;game.over=false;player.score=0;player.deaths=0;player.team=game.mode==='tdm'?1:0;player.dead=false;player.yaw=Math.PI;player.pitch=0;equip(player,'assault',false);spawn(player);initBots();shots=[];projectiles=[];particles=[];lasers=[];impacts=[];muzzleFlashes=[];hud.feed.innerHTML='';hud.mode.textContent=game.mode==='tdm'?'TEAM DM':'DEATHMATCH';game.started=true;styleGun(player.weapon);feed((game.map==='reactor'?'Vertical Reactor Arena':'Original Neon Pastel Arena')+' loaded. Weapons hover over distinct combat platforms.');}
 el('start').onclick=()=>{el('menu').style.display='none';reset();canvas.requestPointerLock()};
 function sameTeam(a,b){return game.mode==='tdm'&&a.team===b.team}
 function updatePlayer(dt){player.spawnGrace=Math.max(0,player.spawnGrace-dt);if(player.dead)return;player.yaw+=mouseDX*.00225;player.pitch=clamp(player.pitch+mouseDY*.00225,-1.25,1.25);mouseDX=mouseDY=0;
@@ -171,7 +211,7 @@ function fireLaserBeam(shooter,isPlayer){
   lasers.push({x:muzzle.x,y:muzzle.y,z:muzzle.z,dx:d.x,dy:d.y,dz:d.z,life:.09,maxLife:.09,len:Math.max(.05,hitDist-.48),color:w.color,width:isPlayer?7:4});
   if(hit){const fall=clamp(1-(hitDist/w.range)*w.falloff,.35,1);damage(hit,w.damage*fall,shooter,false,hitPoint)}else if(worldHit&&Math.random()<.34)addImpact(worldHit,w.color,.16);
 }
-function firePlasma(shooter,isPlayer,charge=.08){const w=WEAPONS.plasma,d=dirFrom(shooter,w.spread),tier=chargeTier(charge),size=[0,.34,.48,.66,.9][tier],speed=[0,58,55,51,46][tier],color=chargeColor(tier),damage=w.damage+[0,0,36,84,156][tier];addMuzzleFlash(shooter,isPlayer,d,color,charge);projectiles.push({owner:shooter,x:shooter.x+d.x*.8,y:shooter.y-.05+d.y*.8,z:shooter.z+d.z*.8,px:shooter.x,py:shooter.y-.05,pz:shooter.z,vx:d.x*speed,vy:d.y*speed,vz:d.z*speed,life:2.6,color,damage,r:size,tier})}
+function firePlasma(shooter,isPlayer,charge=.08){const w=WEAPONS.plasma,d=dirFrom(shooter,w.spread),tier=chargeTier(charge),size=[0,.34,.48,.66,.9][tier],speed=[0,58,55,51,46][tier],color=chargeColor(tier),damage=w.damage+[0,0,48,108,204][tier];addMuzzleFlash(shooter,isPlayer,d,color,charge);projectiles.push({owner:shooter,x:shooter.x+d.x*.8,y:shooter.y-.05+d.y*.8,z:shooter.z+d.z*.8,px:shooter.x,py:shooter.y-.05,pz:shooter.z,vx:d.x*speed,vy:d.y*speed,vz:d.z*speed,life:2.6,color,damage,r:size,tier})}
 function targetsFor(shooter,isPlayer){return isPlayer?bots.filter(b=>!b.dead&&!sameTeam(player,b)):[player,...bots.filter(b=>b!==shooter&&!b.dead&&!sameTeam(shooter,b))]}
 function rayEntity(o,d,t,range,radius=0){const vx=t.x-o.x,vy=t.y-o.y,vz=t.z-o.z,dist=vx*d.x+vy*d.y+vz*d.z;if(dist<0||dist>range)return null;const px=o.x+d.x*dist,py=o.y+d.y*dist,pz=o.z+d.z*dist,bodyMiss=Math.hypot(t.x-px,(t.y-.85)-py,t.z-pz),headMiss=Math.hypot(t.x-px,(t.y-.24)-py,t.z-pz);if(headMiss<.34+radius)return {dist,head:true};if(bodyMiss<.62+radius)return {dist,head:false};return null}
 function lineClear(x1,y1,z1,x2,y2,z2){const dx=x2-x1,dy=y2-y1,dz=z2-z1,dist=Math.hypot(dx,dy,dz);if(dist<.02)return true;const hit=rayWorld({x:x1,y:y1,z:z1},{x:dx/dist,y:dy/dist,z:dz/dist},Math.max(0,dist-.08),false);return !hit}
