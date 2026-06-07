@@ -2,6 +2,10 @@ import javax.swing.*;
 import javax.swing.border.*;
 import javax.swing.event.*;
 import javax.swing.text.*;
+import javax.swing.text.rtf.RTFEditorKit;
+import javax.swing.undo.UndoManager;
+import javax.swing.undo.CannotUndoException;
+import javax.swing.undo.CannotRedoException;
 import javax.swing.tree.*;
 import javax.swing.table.*;
 import java.awt.*;
@@ -12,6 +16,7 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.text.SimpleDateFormat;
+import java.text.MessageFormat;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -178,6 +183,29 @@ public class BibleReaderApp extends JFrame {
     private DefaultListModel<StudySearchResult> allNotesSearchModel;
     private JList<StudySearchResult> allNotesSearchList;
 
+    // Study Writer replaces the former project-detail workspace. Projects remain available as folders/tags.
+    private DefaultListModel<StudyWritingDocument> writingDocumentModel;
+    private JList<StudyWritingDocument> writingDocumentList;
+    private JTextField writingSearchField;
+    private JComboBox<WriterFilterItem> writingProjectFilter;
+    private JComboBox<String> writingCategoryFilter;
+    private JComboBox<String> writingTopicFilter;
+    private JComboBox<String> writingSortBox;
+    private JTextField writingTitleField;
+    private JTextPane writingEditor;
+    private JLabel writingSaveStatus;
+    private JTextField writerPassageField;
+    private JTextArea writerPassagePreview;
+    private JButton writerUndoButton;
+    private JButton writerRedoButton;
+    private UndoManager writingUndoManager = new UndoManager();
+    private javax.swing.Timer writingAutosaveTimer;
+    private StudyWritingDocument currentWritingDocument;
+    private boolean writingDirty;
+    private boolean loadingWritingDocument;
+    private String writerPreviewReference = "";
+    private String writerPreviewText = "";
+
     private JTextField recentSearchField;
     private JTextField categorySearchField;
     private JTextField questionSearchField;
@@ -288,7 +316,7 @@ public class BibleReaderApp extends JFrame {
         SwingUtilities.invokeLater(this::restoreProfileLastPlace);
 
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        addWindowListener(new WindowAdapter() { public void windowClosing(WindowEvent e) { persistCurrentProfileLocation(true); }});
+        addWindowListener(new WindowAdapter() { public void windowClosing(WindowEvent e) { saveCurrentWritingDocument(false); persistCurrentProfileLocation(true); }});
         setSize(1450, 880);
         initializeStudySplitDividers();
         setLocationRelativeTo(null);
@@ -335,7 +363,7 @@ public class BibleReaderApp extends JFrame {
         JButton search = navButton("Search");
         JButton greekSearch = navButton("Greek Search");
         JButton memory = navButton("Memory Verses");
-        JButton studyProjects = navButton("Study Projects");
+        JButton studyProjects = navButton("Study Writer");
         JButton studyTime = navButton("Study Time");
         JButton recent = navButton("Notes Page");
         JButton categories = navButton("Categories");
@@ -363,7 +391,7 @@ public class BibleReaderApp extends JFrame {
         search.setToolTipText("Search (Ctrl+2)");
         greekSearch.setToolTipText("Greek Search (Ctrl+3)");
         memory.setToolTipText("Memory Verses (Ctrl+4)");
-        studyProjects.setToolTipText("Study Projects (Ctrl+5)");
+        studyProjects.setToolTipText("Study Writer (Ctrl+5)");
         studyTime.setToolTipText("Study Time (Ctrl+0)");
         recent.setToolTipText("Notes Page (Ctrl+6)");
         categories.setToolTipText("Categories (Ctrl+7)");
@@ -428,7 +456,7 @@ public class BibleReaderApp extends JFrame {
         cardPanel.add(buildSearchPage(), "search");
         cardPanel.add(buildGreekSearchPage(), "greekSearch");
         cardPanel.add(buildMemoryPage(), "memory");
-        cardPanel.add(buildStudyProjectsPage(), "studyProjects");
+        cardPanel.add(buildStudyWriterPage(), "studyProjects");
         cardPanel.add(buildStudyTimePage(), "studyTime");
         cardPanel.add(buildRecentPage(), "recent");
         cardPanel.add(buildCategoriesPage(), "categories");
@@ -1355,86 +1383,194 @@ public class BibleReaderApp extends JFrame {
         if (recentlyOpenedToggleBtn != null) recentlyOpenedToggleBtn.setText(recentlyOpenedExpanded ? "Minimize" : "Show");
     }
 
-    private JPanel buildStudyProjectsPage() {
+    private JPanel buildStudyWriterPage() {
         JPanel page = new JPanel(new BorderLayout(10, 10));
         page.setBorder(new EmptyBorder(10, 10, 10, 10));
         page.setBackground(panelBg);
 
-        JLabel h = new JLabel("Study Projects");
-        h.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        JPanel header = new JPanel(new BorderLayout(8, 8));
+        header.setOpaque(false);
+        JLabel h = new JLabel("Study Writer");
+        h.setFont(new Font("Segoe UI", Font.BOLD, 24));
         h.setForeground(darkRed);
-        page.add(h, BorderLayout.NORTH);
+        JLabel hint = new JLabel("Long-form Bible study writing with linked passages, notes, topics, categories, and project folders");
+        hint.setForeground(modernMutedText);
+        header.add(h, BorderLayout.WEST);
+        header.add(hint, BorderLayout.CENTER);
+        page.add(header, BorderLayout.NORTH);
 
-        studyProjectModel = new DefaultListModel<>();
-        studyProjectList = new JList<>(studyProjectModel);
-        studyProjectList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        studyProjectList.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-        studyProjectList.addListSelectionListener(e -> { if (!e.getValueIsAdjusting()) renderSelectedStudyProject(); });
+        writingDocumentModel = new DefaultListModel<>();
+        writingDocumentList = new JList<>(writingDocumentModel);
+        writingDocumentList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        writingDocumentList.setCellRenderer(new WritingDocumentRenderer());
+        writingDocumentList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && !loadingWritingDocument) {
+                StudyWritingDocument selected = writingDocumentList.getSelectedValue();
+                if (selected != currentWritingDocument) {
+                    saveCurrentWritingDocument(false);
+                    loadWritingDocument(selected);
+                }
+            }
+        });
 
-        JButton create = blackButton("Create Project");
-        create.addActionListener(e -> createStudyProject());
-        JButton edit = blackButton("Rename/Edit Project");
-        edit.addActionListener(e -> editSelectedStudyProject());
-        JButton delete = blackButton("Delete Project");
-        delete.addActionListener(e -> deleteSelectedStudyProject());
+        writingSearchField = new JTextField();
+        writingSearchField.setToolTipText("Search writing titles and content");
+        writingSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshWritingDocuments));
+        writingProjectFilter = new JComboBox<>();
+        writingProjectFilter.addActionListener(e -> { if (!loadingWritingDocument) refreshWritingDocuments(); });
+        writingCategoryFilter = new JComboBox<>();
+        writingCategoryFilter.addActionListener(e -> { if (!loadingWritingDocument) refreshWritingDocuments(); });
+        writingTopicFilter = new JComboBox<>();
+        writingTopicFilter.addActionListener(e -> { if (!loadingWritingDocument) refreshWritingDocuments(); });
+        writingSortBox = new JComboBox<>(new String[]{"Recently updated", "Title", "Created date"});
+        writingSortBox.addActionListener(e -> refreshWritingDocuments());
 
-        JPanel leftButtons = new JPanel(new GridLayout(0, 1, 6, 6));
-        leftButtons.setOpaque(false);
-        leftButtons.add(create);
-        leftButtons.add(edit);
-        leftButtons.add(delete);
+        JPanel filters = new JPanel(new GridLayout(0, 1, 4, 4));
+        filters.setOpaque(false);
+        filters.add(new JLabel("Search writings")); filters.add(writingSearchField);
+        filters.add(new JLabel("Project folder")); filters.add(writingProjectFilter);
+        filters.add(new JLabel("Category")); filters.add(writingCategoryFilter);
+        filters.add(new JLabel("Topic page")); filters.add(writingTopicFilter);
+        filters.add(new JLabel("Sort")); filters.add(writingSortBox);
 
-        JPanel left = new JPanel(new BorderLayout(8, 8));
+        JButton newWriting = blackButton("New Writing");
+        newWriting.addActionListener(e -> createWritingDocument());
+        JButton rename = blackButton("Rename");
+        rename.addActionListener(e -> renameWritingDocument(currentWritingDocument));
+        JButton duplicate = blackButton("Duplicate");
+        duplicate.addActionListener(e -> duplicateWritingDocument());
+        JButton delete = blackButton("Delete");
+        delete.addActionListener(e -> deleteWritingDocument(currentWritingDocument));
+        JPanel writingButtons = new JPanel(new GridLayout(2, 2, 5, 5));
+        writingButtons.setOpaque(false);
+        writingButtons.add(newWriting); writingButtons.add(rename); writingButtons.add(duplicate); writingButtons.add(delete);
+
+        JPanel projectButtons = new JPanel(new GridLayout(0, 1, 4, 4));
+        projectButtons.setOpaque(false);
+        JButton linkProject = blackButton("Link Project Folder"); linkProject.addActionListener(e -> linkCurrentWritingToProject());
+        JButton newProject = blackButton("New Project Folder"); newProject.addActionListener(e -> { createStudyProject(); refreshWritingFilters(); });
+        JButton linkCategory = blackButton("Link Category"); linkCategory.addActionListener(e -> linkCurrentWritingToCategory());
+        JButton linkTopic = blackButton("Link Topic Page"); linkTopic.addActionListener(e -> linkCurrentWritingToTopicPage());
+        projectButtons.add(linkProject); projectButtons.add(newProject); projectButtons.add(linkCategory); projectButtons.add(linkTopic);
+
+        JPanel miniReader = buildWriterMiniReader();
+        JPanel left = new JPanel(new BorderLayout(7, 7));
         left.setBackground(panelBg);
-        left.setBorder(new CompoundBorder(new LineBorder(new Color(180, 145, 135)), new EmptyBorder(8, 8, 8, 8)));
-        JTextField projectFilterField = new JTextField();
-        projectFilterField.setToolTipText("Filter study projects...");
-        projectFilterField.getDocument().addDocumentListener(new SimpleDocumentListener(() -> { studyProjectSearchField.putClientProperty("projectFilter", projectFilterField.getText()); refreshStudyProjects(); }));
-        left.add(projectFilterField, BorderLayout.NORTH);
-        left.add(new JScrollPane(studyProjectList), BorderLayout.CENTER);
-        left.add(leftButtons, BorderLayout.SOUTH);
+        left.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(8, 8, 8, 8)));
+        left.add(filters, BorderLayout.NORTH);
+        left.add(new JScrollPane(writingDocumentList), BorderLayout.CENTER);
+        JPanel lowerLeft = new JPanel(new BorderLayout(6, 6));
+        lowerLeft.setOpaque(false);
+        lowerLeft.add(writingButtons, BorderLayout.NORTH);
+        lowerLeft.add(projectButtons, BorderLayout.CENTER);
+        lowerLeft.add(miniReader, BorderLayout.SOUTH);
+        left.add(lowerLeft, BorderLayout.SOUTH);
+        left.setPreferredSize(new Dimension(340, 700));
 
-        studyProjectDetailsPanel = new JPanel();
-        studyProjectDetailsPanel.setLayout(new BoxLayout(studyProjectDetailsPanel, BoxLayout.Y_AXIS));
-        studyProjectDetailsPanel.setBackground(cream);
-        studyProjectDetailsPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+        writingTitleField = new JTextField();
+        writingTitleField.setFont(new Font("Segoe UI", Font.BOLD, 25));
+        writingTitleField.setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, modernBorder), new EmptyBorder(8, 8, 8, 8)));
+        writingTitleField.getDocument().addDocumentListener(new SimpleDocumentListener(this::markWritingDirty));
 
-        studyProjectSearchField = new JTextField();
-        studyProjectSearchField.setToolTipText("Search this study...");
-        JButton searchStudy = blackButton("Search this study...");
-        searchStudy.addActionListener(e -> searchSelectedStudyProject());
-        studyProjectSearchModel = new DefaultListModel<>();
-        studyProjectSearchList = new JList<>(studyProjectSearchModel);
-        studyProjectSearchList.setVisibleRowCount(5);
-        studyProjectSearchList.addMouseListener(new MouseAdapter() { public void mouseClicked(MouseEvent e) { if (e.getClickCount() == 2) openStudySearchResult(studyProjectSearchList.getSelectedValue()); }});
+        writingEditor = new JTextPane();
+        writingEditor.setFont(new Font("Serif", Font.PLAIN, 17));
+        writingEditor.setMargin(new Insets(26, 38, 36, 38));
+        writingEditor.setBackground(Color.WHITE);
+        writingEditor.getDocument().addDocumentListener(new SimpleDocumentListener(this::markWritingDirty));
+        writingEditor.getDocument().addUndoableEditListener(e -> {
+            if (!loadingWritingDocument) {
+                writingUndoManager.addEdit(e.getEdit());
+                updateWriterUndoButtons();
+            }
+        });
+        installWriterKeyboardActions();
 
-        allNotesSearchField = new JTextField();
-        allNotesSearchField.setToolTipText("Search all notes...");
-        JButton searchAll = blackButton("Search all notes...");
-        searchAll.addActionListener(e -> searchAllStudyNotes());
-        allNotesSearchModel = new DefaultListModel<>();
-        allNotesSearchList = new JList<>(allNotesSearchModel);
-        allNotesSearchList.setVisibleRowCount(5);
-        allNotesSearchList.addMouseListener(new MouseAdapter() { public void mouseClicked(MouseEvent e) { if (e.getClickCount() == 2) openStudySearchResult(allNotesSearchList.getSelectedValue()); }});
+        JToolBar toolbar = buildWriterToolbar();
+        writingSaveStatus = new JLabel("Saved");
+        writingSaveStatus.setForeground(modernMutedText);
+        writingSaveStatus.setBorder(new EmptyBorder(4, 8, 4, 8));
 
-        JPanel searchBars = new JPanel(new GridLayout(0, 1, 5, 5));
-        searchBars.setOpaque(false);
-        searchBars.add(studyProjectSearchField);
-        searchBars.add(searchStudy);
-        searchBars.add(new JScrollPane(studyProjectSearchList));
-        searchBars.add(allNotesSearchField);
-        searchBars.add(searchAll);
-        searchBars.add(new JScrollPane(allNotesSearchList));
+        JPanel editorHeader = new JPanel(new BorderLayout(5, 5));
+        editorHeader.setOpaque(false);
+        editorHeader.add(writingTitleField, BorderLayout.NORTH);
+        editorHeader.add(toolbar, BorderLayout.CENTER);
+        editorHeader.add(writingSaveStatus, BorderLayout.SOUTH);
 
-        JPanel right = new JPanel(new BorderLayout(8, 8));
-        right.setBackground(panelBg);
-        right.add(searchBars, BorderLayout.NORTH);
-        right.add(new JScrollPane(studyProjectDetailsPanel), BorderLayout.CENTER);
+        JPanel editorPanel = new JPanel(new BorderLayout(0, 8));
+        editorPanel.setOpaque(false);
+        editorPanel.add(editorHeader, BorderLayout.NORTH);
+        JScrollPane editorScroll = new JScrollPane(writingEditor);
+        editorScroll.setBorder(new LineBorder(modernBorder));
+        editorPanel.add(editorScroll, BorderLayout.CENTER);
 
-        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, right);
-        split.setResizeWeight(0.25);
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, editorPanel);
+        split.setResizeWeight(0.23);
+        split.setDividerLocation(340);
         page.add(split, BorderLayout.CENTER);
+
+        writingAutosaveTimer = new javax.swing.Timer(20000, e -> autosaveCurrentWritingDocument());
+        writingAutosaveTimer.setRepeats(true);
+        writingAutosaveTimer.start();
         return page;
+    }
+
+    private JToolBar buildWriterToolbar() {
+        JToolBar bar = new JToolBar();
+        bar.setFloatable(false);
+        bar.setOpaque(false);
+        addWriterToolbarButton(bar, "New", this::createWritingDocument);
+        addWriterToolbarButton(bar, "Save", () -> saveCurrentWritingDocument(true));
+        writerUndoButton = addWriterToolbarButton(bar, "Undo", this::undoWritingEdit);
+        writerRedoButton = addWriterToolbarButton(bar, "Redo", this::redoWritingEdit);
+        bar.addSeparator();
+        addWriterToolbarButton(bar, "Bold", () -> applyWriterCharacterStyle(StyleConstants.Bold, true));
+        addWriterToolbarButton(bar, "Italic", () -> applyWriterCharacterStyle(StyleConstants.Italic, true));
+        addWriterToolbarButton(bar, "Underline", () -> applyWriterCharacterStyle(StyleConstants.Underline, true));
+        addWriterToolbarButton(bar, "Heading", this::applyWriterHeading);
+        JComboBox<String> sizes = new JComboBox<>(new String[]{"12", "14", "16", "18", "22", "28", "36"});
+        sizes.setSelectedItem("18");
+        sizes.setToolTipText("Font size");
+        sizes.addActionListener(e -> applyWriterFontSize(Integer.parseInt(String.valueOf(sizes.getSelectedItem()))));
+        bar.add(sizes);
+        addWriterToolbarButton(bar, "Bullet", () -> insertWriterListPrefix("• "));
+        addWriterToolbarButton(bar, "Numbered", this::insertWriterNumberedPrefix);
+        addWriterToolbarButton(bar, "Clear Formatting", this::clearWriterFormatting);
+        bar.addSeparator();
+        addWriterToolbarButton(bar, "Passage Reference", this::insertPassageReferenceIntoWriter);
+        addWriterToolbarButton(bar, "Notes Reference", this::insertNotesReferenceIntoWriter);
+        addWriterToolbarButton(bar, "Search My Writings", this::showWritingSearchDialog);
+        addWriterToolbarButton(bar, "Export PDF", this::exportCurrentWritingToPdf);
+        updateWriterUndoButtons();
+        return bar;
+    }
+
+    private JButton addWriterToolbarButton(JToolBar bar, String text, Runnable action) {
+        JButton button = blackButton(text);
+        button.setMargin(new Insets(4, 7, 4, 7));
+        button.addActionListener(e -> action.run());
+        bar.add(button);
+        return button;
+    }
+
+    private JPanel buildWriterMiniReader() {
+        JPanel panel = new JPanel(new BorderLayout(4, 4));
+        panel.setOpaque(false);
+        panel.setBorder(new TitledBorder(new LineBorder(modernBorder), "Passage mini reader"));
+        writerPassageField = new JTextField();
+        writerPassageField.setToolTipText("John 3, John 3:16, or Romans 8:1-4");
+        JButton find = blackButton("Read Passage");
+        find.addActionListener(e -> showPassageMiniReader());
+        writerPassageField.addActionListener(e -> showPassageMiniReader());
+        JPanel top = new JPanel(new BorderLayout(4, 4)); top.setOpaque(false); top.add(writerPassageField, BorderLayout.CENTER); top.add(find, BorderLayout.EAST);
+        writerPassagePreview = new JTextArea(8, 24);
+        writerPassagePreview.setLineWrap(true); writerPassagePreview.setWrapStyleWord(true); writerPassagePreview.setEditable(false);
+        JPanel buttons = new JPanel(new GridLayout(1, 3, 4, 4)); buttons.setOpaque(false);
+        JButton insert = blackButton("Insert Passage into Writer"); insert.addActionListener(e -> insertWriterPreviewPassage());
+        JButton open = blackButton("Open Full Chapter"); open.addActionListener(e -> openWriterPreviewChapter());
+        JButton copy = blackButton("Copy Passage"); copy.addActionListener(e -> copyTextToClipboard(writerPreviewText));
+        buttons.add(insert); buttons.add(open); buttons.add(copy);
+        panel.add(top, BorderLayout.NORTH); panel.add(new JScrollPane(writerPassagePreview), BorderLayout.CENTER); panel.add(buttons, BorderLayout.SOUTH);
+        return panel;
     }
 
 
@@ -3440,7 +3576,7 @@ public class BibleReaderApp extends JFrame {
         if ("study".equals(name)) return "Study";
         if ("greekSearch".equals(name)) return "Greek Search";
         if ("memory".equals(name)) return "Memory Verses";
-        if ("studyProjects".equals(name)) return "Study Projects";
+        if ("studyProjects".equals(name)) return "Study Writer";
         if ("studyTime".equals(name)) return "Study Time";
         if ("recent".equals(name)) return "Notes Page";
         if ("topicPages".equals(name)) return "Topic Pages";
@@ -3528,11 +3664,13 @@ public class BibleReaderApp extends JFrame {
         if (o == null) return;
         Profile p = data.profiles.get(o.toString());
         if (p != null && p != currentProfile) {
+            saveCurrentWritingDocument(false);
             persistCurrentProfileLocation(true);
             stopStudyTimer();
             backHistory.clear();
             forwardHistory.clear();
             currentProfile = p;
+            currentWritingDocument = null;
             repairProfile(currentProfile);
             recordProfileLogin(currentProfile);
             refreshEverything();
@@ -3557,6 +3695,7 @@ public class BibleReaderApp extends JFrame {
         backHistory.clear();
         forwardHistory.clear();
         currentProfile = p;
+        currentWritingDocument = null;
         recordProfileLogin(currentProfile);
         saveData();
         refreshEverything();
@@ -4221,7 +4360,7 @@ public class BibleReaderApp extends JFrame {
             }
             for (StudyProject project : currentProfile.studyProjects.values()) {
                 String label = "Study Project: " + project;
-                if (paletteMatches(q, label + " " + project.description)) model.addElement(new CommandPaletteItem(label, project.description, () -> { refreshStudyProjects(); studyProjectList.setSelectedValue(project, true); showCard("studyProjects"); }));
+                if (paletteMatches(q, label + " " + project.description)) model.addElement(new CommandPaletteItem(label, project.description, () -> { showCard("studyProjects"); refreshStudyProjects(); selectWriterFilter(writingProjectFilter, project.id); refreshWritingDocuments(); }));
             }
             for (TopicPage topic : currentProfile.topicPages) {
                 String label = "Topic Page: " + topic.title;
@@ -4585,7 +4724,9 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void persistCurrentProfileLocation(boolean saveNow) {
-        if (currentProfile == null || safe(currentSourceKey).isEmpty()) return;
+        if (currentProfile == null) return;
+        saveCurrentWritingDocument(false);
+        if (safe(currentSourceKey).isEmpty()) { if (saveNow) saveData(); return; }
         NavigationLocation location = currentNavigationLocation();
         currentProfile.lastSourceKey = location.sourceKey;
         currentProfile.lastSourceTitle = location.sourceTitle;
@@ -7921,6 +8062,10 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             if (topic != null) {
                 repairTopicPage(topic);
                 for (LinkedItem link : topic.links) topicLinkModel.addElement(link);
+                for (StudyWritingDocument writing : currentProfile.writingDocuments.values()) {
+                    if (writing.linkedTopicPageIds.contains(topic.id) && topic.links.stream().noneMatch(link -> "WRITING".equalsIgnoreCase(safe(link.type)) && safe(writing.id).equals(safe(link.ref))))
+                        topicLinkModel.addElement(new LinkedItem("WRITING", writing.id, writing.title));
+                }
             }
         }
     }
@@ -8246,6 +8391,10 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (ref.isEmpty()) return;
         if ("VERSE".equals(type)) {
             openTarget(ref);
+            return;
+        }
+        if ("WRITING".equals(type)) {
+            openWritingDocumentFromSearch(currentProfile.writingDocuments.get(ref));
             return;
         }
         if ("TOPIC".equals(type)) {
@@ -9125,8 +9274,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
 
         List<TextAnnotation> entries = getEntriesForCategory(cat);
+        List<StudyWritingDocument> linkedWritings = new ArrayList<>();
+        for (StudyWritingDocument document : currentProfile.writingDocuments.values()) if (document.linkedCategoryNames.contains(cat)) linkedWritings.add(document);
+        int totalItems = entries.size() + linkedWritings.size();
         if (selectedCategoryTitleLabel != null) {
-            selectedCategoryTitleLabel.setText(cat + " — " + entries.size() + " item" + (entries.size() == 1 ? "" : "s"));
+            selectedCategoryTitleLabel.setText(cat + " — " + totalItems + " item" + (totalItems == 1 ? "" : "s"));
         }
 
         String q = categoryResultSearchField == null ? "" : categoryResultSearchField.getText().trim().toLowerCase(Locale.ROOT);
@@ -9136,6 +9288,19 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             categoryResultsPanel.add(buildCategoryResultCard(a, expandedCategoryResultIds.contains(safe(a.id))));
             categoryResultsPanel.add(Box.createVerticalStrut(8));
             shown++;
+        }
+
+        for (StudyWritingDocument document : linkedWritings) {
+            if (!q.isEmpty() && !(safe(document.title) + " " + safe(document.plainText)).toLowerCase(Locale.ROOT).contains(q)) continue;
+            JPanel writingCard = new JPanel(new BorderLayout(8, 8));
+            writingCard.setBackground(modernSurface);
+            writingCard.setBorder(new CompoundBorder(new LineBorder(colorForCategory(cat), 2, true), new EmptyBorder(10, 12, 10, 12)));
+            writingCard.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
+            JLabel title = new JLabel("<html><b>Study Writing — " + esc(document.title) + "</b></html>");
+            JTextArea preview = readonlyArea(); preview.setBackground(modernSurface); preview.setText(shorten(document.plainText, 300)); preview.setRows(3);
+            JButton open = blackButton("Open Writing"); open.addActionListener(e -> openWritingDocumentFromSearch(document));
+            writingCard.add(title, BorderLayout.NORTH); writingCard.add(preview, BorderLayout.CENTER); writingCard.add(open, BorderLayout.EAST);
+            categoryResultsPanel.add(writingCard); categoryResultsPanel.add(Box.createVerticalStrut(8)); shown++;
         }
 
         if (shown == 0) {
@@ -9367,9 +9532,390 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         addAnnotationFromSelection("Question", choice == 1 ? "personal" : "discussion");
     }
 
+    private void installWriterKeyboardActions() {
+        if (writingEditor == null) return;
+        InputMap input = writingEditor.getInputMap();
+        ActionMap actions = writingEditor.getActionMap();
+        input.put(KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK), "writerUndo");
+        input.put(KeyStroke.getKeyStroke(KeyEvent.VK_Y, InputEvent.CTRL_DOWN_MASK), "writerRedo");
+        input.put(KeyStroke.getKeyStroke(KeyEvent.VK_Z, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK), "writerRedo");
+        actions.put("writerUndo", new AbstractAction() { public void actionPerformed(ActionEvent e) { undoWritingEdit(); }});
+        actions.put("writerRedo", new AbstractAction() { public void actionPerformed(ActionEvent e) { redoWritingEdit(); }});
+    }
+
+    private void attachWritingDocumentListeners() {
+        if (writingEditor == null) return;
+        writingEditor.getDocument().addDocumentListener(new SimpleDocumentListener(this::markWritingDirty));
+        writingEditor.getDocument().addUndoableEditListener(e -> {
+            if (!loadingWritingDocument) {
+                writingUndoManager.addEdit(e.getEdit());
+                updateWriterUndoButtons();
+            }
+        });
+    }
+
+    private void markWritingDirty() {
+        if (loadingWritingDocument) return;
+        writingDirty = true;
+        if (writingSaveStatus != null) {
+            writingSaveStatus.setText("Unsaved changes");
+            writingSaveStatus.setForeground(modernDanger);
+        }
+    }
+
+    private void refreshWritingFilters() {
+        if (currentProfile == null || writingProjectFilter == null) return;
+        loadingWritingDocument = true;
+        String projectId = selectedWriterProjectId();
+        String category = selectedComboText(writingCategoryFilter);
+        String topicId = selectedWriterTopicId();
+        writingProjectFilter.removeAllItems();
+        writingProjectFilter.addItem(new WriterFilterItem("", "All projects"));
+        for (StudyProject project : currentProfile.studyProjects.values()) writingProjectFilter.addItem(new WriterFilterItem(project.id, project.toString()));
+        selectWriterFilter(writingProjectFilter, projectId);
+        writingCategoryFilter.removeAllItems(); writingCategoryFilter.addItem("All categories");
+        for (String name : currentProfile.categories.keySet()) writingCategoryFilter.addItem(name);
+        writingCategoryFilter.setSelectedItem(category.isEmpty() ? "All categories" : category);
+        writingTopicFilter.removeAllItems(); writingTopicFilter.addItem("All topic pages");
+        for (TopicPage topic : currentProfile.topicPages) writingTopicFilter.addItem(topic.id + " | " + topic.title);
+        if (!topicId.isEmpty()) for (int i = 0; i < writingTopicFilter.getItemCount(); i++) if (String.valueOf(writingTopicFilter.getItemAt(i)).startsWith(topicId + " | ")) writingTopicFilter.setSelectedIndex(i);
+        loadingWritingDocument = false;
+    }
+
+    private String selectedComboText(JComboBox<String> box) {
+        Object value = box == null ? null : box.getSelectedItem();
+        return value == null ? "" : value.toString();
+    }
+
+    private String selectedWriterProjectId() {
+        Object value = writingProjectFilter == null ? null : writingProjectFilter.getSelectedItem();
+        return value instanceof WriterFilterItem ? ((WriterFilterItem) value).id : "";
+    }
+
+    private String selectedWriterTopicId() {
+        String value = selectedComboText(writingTopicFilter);
+        int split = value.indexOf(" | ");
+        return split > 0 ? value.substring(0, split) : "";
+    }
+
+    private void selectWriterFilter(JComboBox<WriterFilterItem> box, String id) {
+        for (int i = 0; i < box.getItemCount(); i++) if (safe(box.getItemAt(i).id).equals(safe(id))) { box.setSelectedIndex(i); return; }
+        if (box.getItemCount() > 0) box.setSelectedIndex(0);
+    }
+
+    private void refreshWritingDocuments() {
+        if (currentProfile == null || writingDocumentModel == null) return;
+        repairProfile(currentProfile);
+        String selectedId = currentWritingDocument == null ? "" : safe(currentWritingDocument.id);
+        String query = writingSearchField == null ? "" : writingSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        String projectId = selectedWriterProjectId();
+        String category = selectedComboText(writingCategoryFilter);
+        String topicId = selectedWriterTopicId();
+        List<StudyWritingDocument> docs = new ArrayList<>();
+        for (StudyWritingDocument doc : currentProfile.writingDocuments.values()) {
+            repairStudyWritingDocument(doc);
+            if (!query.isEmpty() && !(safe(doc.title) + " " + safe(doc.plainText)).toLowerCase(Locale.ROOT).contains(query)) continue;
+            if (!projectId.isEmpty() && !doc.linkedStudyProjectIds.contains(projectId)) continue;
+            if (!category.isEmpty() && !"All categories".equals(category) && !doc.linkedCategoryNames.contains(category)) continue;
+            if (!topicId.isEmpty() && !doc.linkedTopicPageIds.contains(topicId)) continue;
+            docs.add(doc);
+        }
+        String sort = writingSortBox == null ? "Recently updated" : String.valueOf(writingSortBox.getSelectedItem());
+        if ("Title".equals(sort)) docs.sort(Comparator.comparing(d -> safe(d.title).toLowerCase(Locale.ROOT)));
+        else if ("Created date".equals(sort)) docs.sort(Comparator.comparingLong((StudyWritingDocument d) -> d.createdAt).reversed());
+        else docs.sort(Comparator.comparingLong((StudyWritingDocument d) -> d.updatedAt).reversed());
+        loadingWritingDocument = true;
+        writingDocumentModel.clear();
+        for (StudyWritingDocument doc : docs) writingDocumentModel.addElement(doc);
+        StudyWritingDocument select = null;
+        for (StudyWritingDocument doc : docs) if (safe(doc.id).equals(selectedId)) select = doc;
+        if (select != null) writingDocumentList.setSelectedValue(select, true);
+        else if (!docs.isEmpty() && currentWritingDocument == null) writingDocumentList.setSelectedIndex(0);
+        loadingWritingDocument = false;
+        if (currentWritingDocument == null && writingDocumentList.getSelectedValue() != null) loadWritingDocument(writingDocumentList.getSelectedValue());
+    }
+
+    private void createWritingDocument() {
+        saveCurrentWritingDocument(false);
+        long now = System.currentTimeMillis();
+        StudyWritingDocument doc = new StudyWritingDocument();
+        doc.id = UUID.randomUUID().toString(); doc.title = "Untitled Writing"; doc.createdAt = now; doc.updatedAt = now;
+        currentProfile.writingDocuments.put(doc.id, doc);
+        refreshWritingDocuments();
+        loadWritingDocument(doc);
+        writingDocumentList.setSelectedValue(doc, true);
+        writingTitleField.requestFocusInWindow(); writingTitleField.selectAll();
+    }
+
+    private void loadWritingDocument(StudyWritingDocument doc) {
+        loadingWritingDocument = true;
+        currentWritingDocument = doc;
+        writingUndoManager.discardAllEdits();
+        if (doc == null) {
+            writingTitleField.setText("");
+            writingEditor.setDocument(new DefaultStyledDocument());
+            attachWritingDocumentListeners();
+            writingEditor.setEnabled(false); writingTitleField.setEnabled(false);
+            writingSaveStatus.setText("Create or select a writing");
+        } else {
+            repairStudyWritingDocument(doc);
+            writingTitleField.setEnabled(true); writingEditor.setEnabled(true);
+            writingTitleField.setText(doc.title);
+            StyledDocument styled = decodeWritingDocument(doc);
+            writingEditor.setDocument(styled);
+            attachWritingDocumentListeners();
+            writingEditor.setCaretPosition(0);
+            writingSaveStatus.setText("Saved"); writingSaveStatus.setForeground(modernMutedText);
+        }
+        writingDirty = false;
+        loadingWritingDocument = false;
+        updateWriterUndoButtons();
+    }
+
+    private StyledDocument decodeWritingDocument(StudyWritingDocument doc) {
+        DefaultStyledDocument document = new DefaultStyledDocument();
+        if (!safe(doc.styledContent).isEmpty()) {
+            try {
+                byte[] bytes = Base64.getDecoder().decode(doc.styledContent);
+                new RTFEditorKit().read(new ByteArrayInputStream(bytes), document, 0);
+                return document;
+            } catch (Exception ignored) {}
+        }
+        try { document.insertString(0, safe(doc.plainText), null); } catch (BadLocationException ignored) {}
+        return document;
+    }
+
+    private String encodeWritingDocument(StyledDocument document) {
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            new RTFEditorKit().write(out, document, 0, document.getLength());
+            return Base64.getEncoder().encodeToString(out.toByteArray());
+        } catch (Exception e) { return ""; }
+    }
+
+    private boolean saveCurrentWritingDocument(boolean manual) {
+        if (currentWritingDocument == null || writingEditor == null) return false;
+        String title = writingTitleField.getText().trim();
+        String body = writingEditor.getText();
+        boolean blankUntitled = (title.isEmpty() || "Untitled Writing".equals(title)) && body.trim().isEmpty();
+        if (blankUntitled && !manual) return false;
+        currentWritingDocument.title = title.isEmpty() ? "Untitled Writing" : title;
+        currentWritingDocument.plainText = body;
+        currentWritingDocument.styledContent = encodeWritingDocument(writingEditor.getStyledDocument());
+        currentWritingDocument.updatedAt = System.currentTimeMillis();
+        currentProfile.writingDocuments.put(currentWritingDocument.id, currentWritingDocument);
+        writingDirty = false;
+        saveData();
+        if (writingSaveStatus != null) {
+            String time = new SimpleDateFormat("h:mm a").format(new Date());
+            writingSaveStatus.setText(manual ? "Saved at " + time : "Autosaved at " + time);
+            writingSaveStatus.setForeground(new Color(45, 115, 65));
+        }
+        refreshWritingDocuments();
+        return true;
+    }
+
+    private void autosaveCurrentWritingDocument() { if (writingDirty) saveCurrentWritingDocument(false); }
+
+    private void renameWritingDocument(StudyWritingDocument doc) {
+        if (doc == null) return;
+        String name = JOptionPane.showInputDialog(this, "Writing title:", doc.title);
+        if (name == null || name.trim().isEmpty()) return;
+        doc.title = name.trim(); doc.updatedAt = System.currentTimeMillis();
+        if (doc == currentWritingDocument) { loadingWritingDocument = true; writingTitleField.setText(doc.title); loadingWritingDocument = false; }
+        saveData(); refreshWritingDocuments();
+    }
+
+    private void duplicateWritingDocument() {
+        if (currentWritingDocument == null) return;
+        saveCurrentWritingDocument(false);
+        StudyWritingDocument copy = currentWritingDocument.copy();
+        copy.id = UUID.randomUUID().toString(); copy.title = currentWritingDocument.title + " (Copy)";
+        copy.createdAt = copy.updatedAt = System.currentTimeMillis();
+        currentProfile.writingDocuments.put(copy.id, copy); saveData(); refreshWritingDocuments(); loadWritingDocument(copy); writingDocumentList.setSelectedValue(copy, true);
+    }
+
+    private void deleteWritingDocument(StudyWritingDocument doc) {
+        if (doc == null) return;
+        if (JOptionPane.showConfirmDialog(this, "Delete writing '" + doc.title + "'?", "Delete Writing", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+        currentProfile.writingDocuments.remove(doc.id); currentWritingDocument = null; saveData(); refreshWritingDocuments();
+        if (writingDocumentModel.isEmpty()) loadWritingDocument(null); else { writingDocumentList.setSelectedIndex(0); loadWritingDocument(writingDocumentList.getSelectedValue()); }
+    }
+
+    private void undoWritingEdit() { try { if (writingUndoManager.canUndo()) writingUndoManager.undo(); } catch (CannotUndoException ignored) {} updateWriterUndoButtons(); }
+    private void redoWritingEdit() { try { if (writingUndoManager.canRedo()) writingUndoManager.redo(); } catch (CannotRedoException ignored) {} updateWriterUndoButtons(); }
+    private void updateWriterUndoButtons() { if (writerUndoButton != null) writerUndoButton.setEnabled(writingUndoManager.canUndo()); if (writerRedoButton != null) writerRedoButton.setEnabled(writingUndoManager.canRedo()); }
+
+    private void applyWriterCharacterStyle(Object key, boolean toggle) {
+        if (writingEditor == null) return;
+        MutableAttributeSet attrs = new SimpleAttributeSet();
+        AttributeSet current = writingEditor.getCharacterAttributes();
+        boolean value = true;
+        if (toggle) value = !Boolean.TRUE.equals(current.getAttribute(key));
+        attrs.addAttribute(key, value);
+        writingEditor.setCharacterAttributes(attrs, false);
+        writingEditor.requestFocusInWindow();
+    }
+
+    private void applyWriterHeading() { MutableAttributeSet a = new SimpleAttributeSet(); StyleConstants.setBold(a, true); StyleConstants.setFontSize(a, 24); writingEditor.setCharacterAttributes(a, false); }
+    private void applyWriterFontSize(int size) { MutableAttributeSet a = new SimpleAttributeSet(); StyleConstants.setFontSize(a, size); writingEditor.setCharacterAttributes(a, false); }
+    private void clearWriterFormatting() { MutableAttributeSet a = new SimpleAttributeSet(); StyleConstants.setFontFamily(a, "Serif"); StyleConstants.setFontSize(a, 17); StyleConstants.setBold(a, false); StyleConstants.setItalic(a, false); StyleConstants.setUnderline(a, false); writingEditor.setCharacterAttributes(a, true); }
+    private void insertWriterListPrefix(String prefix) { insertWriterText(prefix); }
+    private void insertWriterNumberedPrefix() { insertWriterText("1. "); }
+    private void insertWriterText(String text) { if (writingEditor == null || text == null || text.isEmpty()) return; writingEditor.replaceSelection(text); writingEditor.requestFocusInWindow(); }
+
+    private WriterPassage resolveWriterPassage(String input) {
+        if (input == null || input.trim().isEmpty()) return null;
+        PassageRef range = parseBibleReferenceOrRange(input);
+        if (range != null) {
+            String text = getPassageText(range.book, range.chapter, range.startVerse, range.endVerse);
+            if (text.isEmpty()) return null;
+            return new WriterPassage(range.display(), range.book, range.chapter, range.startVerse, range.endVerse, formatWriterPassage(range.display(), range.book, range.chapter, range.startVerse, range.endVerse));
+        }
+        ParsedReference ref = parseBibleReference(input);
+        if (ref == null) return null;
+        Map<Integer, Verse> verses = data.getVerses(ref.bookKey, ref.chapter);
+        if (verses.isEmpty()) return null;
+        int first = ref.verse == null ? verses.keySet().iterator().next() : ref.verse;
+        int last = ref.verse == null ? Collections.max(verses.keySet()) : ref.verse;
+        String display = ref.bookKey + " " + ref.chapter + (ref.verse == null ? "" : ":" + ref.verse);
+        return new WriterPassage(display, ref.bookKey, ref.chapter, first, last, formatWriterPassage(display, ref.bookKey, ref.chapter, first, last));
+    }
+
+    private String formatWriterPassage(String display, String book, int chapter, int first, int last) {
+        Map<Integer, Verse> verses = data.getVerses(book, chapter);
+        StringBuilder out = new StringBuilder(display).append("\n");
+        boolean multiple = last > first;
+        for (int number = first; number <= last; number++) {
+            Verse verse = verses.get(number); if (verse == null) return "";
+            if (number > first) out.append("\n");
+            if (multiple || first == 1) out.append(number).append(" ");
+            out.append(verse.text);
+        }
+        return out.toString();
+    }
+
+    private void insertPassageReferenceIntoWriter() {
+        String input = JOptionPane.showInputDialog(this, "Passage reference (for example John 3:16, John 3:16-19, or Romans 8):");
+        if (input == null) return;
+        WriterPassage passage = resolveWriterPassage(input);
+        if (passage == null || passage.text.isEmpty()) { JOptionPane.showMessageDialog(this, "I could not find that reference in the currently imported Bible. Try a reference such as John 3:16 or Romans 8."); return; }
+        insertWriterText(passage.text + "\n\n");
+        if (currentWritingDocument != null && !currentWritingDocument.insertedReferences.contains(passage.reference)) currentWritingDocument.insertedReferences.add(passage.reference);
+    }
+
+    private void showPassageMiniReader() {
+        WriterPassage passage = resolveWriterPassage(writerPassageField.getText());
+        if (passage == null || passage.text.isEmpty()) { writerPassagePreview.setText("Reference not found in the imported Bible. Try John 3, John 3:16, or Romans 8:1-4."); writerPreviewText = ""; return; }
+        writerPreviewReference = passage.reference; writerPreviewText = passage.text; writerPassagePreview.setText(passage.text); writerPassagePreview.setCaretPosition(0);
+    }
+
+    private void insertWriterPreviewPassage() {
+        if (writerPreviewText.isEmpty()) return;
+        insertWriterText(writerPreviewText + "\n\n");
+        if (currentWritingDocument != null && !writerPreviewReference.isEmpty() && !currentWritingDocument.insertedReferences.contains(writerPreviewReference)) currentWritingDocument.insertedReferences.add(writerPreviewReference);
+    }
+
+    private void openWriterPreviewChapter() {
+        WriterPassage passage = resolveWriterPassage(writerPreviewReference);
+        if (passage == null) return;
+        selectedBook = passage.book; selectedChapter = passage.chapter; refreshBookCombo(); showSelectedChapter(false); showCard("study");
+    }
+
+    private void insertNotesReferenceIntoWriter() {
+        if (currentProfile == null) return;
+        JTextField search = new JTextField();
+        DefaultListModel<WriterReferenceItem> model = new DefaultListModel<>();
+        JList<WriterReferenceItem> list = new JList<>(model); list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        Runnable refresh = () -> fillWriterReferenceModel(model, search.getText());
+        search.getDocument().addDocumentListener(new SimpleDocumentListener(refresh)); refresh.run();
+        JPanel panel = new JPanel(new BorderLayout(5, 5)); panel.add(new JLabel("Search notes, chapter notes, questions, topics, projects, and memory verses:"), BorderLayout.NORTH);
+        JPanel center = new JPanel(new BorderLayout(4, 4)); center.add(search, BorderLayout.NORTH); center.add(new JScrollPane(list), BorderLayout.CENTER); panel.add(center, BorderLayout.CENTER);
+        panel.setPreferredSize(new Dimension(760, 480));
+        if (JOptionPane.showConfirmDialog(this, panel, "Insert Notes Reference", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+        for (WriterReferenceItem item : list.getSelectedValuesList()) {
+            insertWriterText(item.insertionText + "\n\n");
+            if (currentWritingDocument == null) continue;
+            if ("ANNOTATION".equals(item.linkType) && !currentWritingDocument.linkedAnnotationIds.contains(item.id)) currentWritingDocument.linkedAnnotationIds.add(item.id);
+            if ("CHAPTER_NOTE".equals(item.linkType) && !currentWritingDocument.linkedChapterNoteIds.contains(item.id)) currentWritingDocument.linkedChapterNoteIds.add(item.id);
+            if ("QUESTION".equals(item.linkType) && !currentWritingDocument.linkedAnnotationIds.contains(item.id)) currentWritingDocument.linkedAnnotationIds.add(item.id);
+        }
+    }
+
+    private void fillWriterReferenceModel(DefaultListModel<WriterReferenceItem> model, String query) {
+        model.clear(); String q = safe(query).trim().toLowerCase(Locale.ROOT);
+        for (TextAnnotation a : currentProfile.annotations) if (!"Question".equals(a.type) && writerReferenceMatches(q, a.sourceTitle, a.selectedText, a.note)) model.addElement(new WriterReferenceItem("Notes", "ANNOTATION", a.id, "My Note — " + firstNonEmpty(a.sourceTitle, a.sourceKey) + "\n" + firstNonEmpty(a.note, a.selectedText)));
+        for (ChapterNote n : currentProfile.chapterNotes.values()) if (writerReferenceMatches(q, chapterNoteReference(n), n.noteText)) model.addElement(new WriterReferenceItem("Chapter Notes", "CHAPTER_NOTE", n.id, "Chapter Note — " + chapterNoteReference(n) + "\n" + n.noteText));
+        for (StudyQuestion question : currentProfile.questions) if (writerReferenceMatches(q, question.sourceLocation, question.question, writerQuestionAnswers(question))) model.addElement(new WriterReferenceItem("Questions", "QUESTION", question.annotationId, "Question — " + firstNonEmpty(question.sourceLocation, question.sourceTitle) + "\nQ: " + question.question + (question.answers.isEmpty() ? "" : "\nA: " + writerQuestionAnswers(question))));
+        for (TopicPage topic : currentProfile.topicPages) if (writerReferenceMatches(q, topic.title, topic.summary)) model.addElement(new WriterReferenceItem("Topic Pages", "TOPIC", topic.id, "Topic Page — " + topic.title + "\n" + topic.summary));
+        for (StudyProject project : currentProfile.studyProjects.values()) if (writerReferenceMatches(q, project.title, project.description)) model.addElement(new WriterReferenceItem("Study Projects", "PROJECT", project.id, "Study Project — " + project.title + "\n" + project.description + writerProjectNotes(project)));
+        for (MemoryVerse verse : currentProfile.memoryVerses) if (writerReferenceMatches(q, verse.reference, verse.text, verse.note)) model.addElement(new WriterReferenceItem("Memory Verses", "MEMORY", verse.id, "Memory Verse — " + verse.reference + "\n" + verse.text + (safe(verse.note).isEmpty() ? "" : "\n" + verse.note)));
+    }
+
+    private boolean writerReferenceMatches(String q, String... values) { if (q.isEmpty()) return true; StringBuilder text = new StringBuilder(); for (String value : values) text.append(' ').append(safe(value)); return text.toString().toLowerCase(Locale.ROOT).contains(q); }
+    private String writerQuestionAnswers(StudyQuestion q) { StringBuilder out = new StringBuilder(); for (QuestionAnswer a : q.answers) { if (out.length() > 0) out.append("\n"); out.append(a.text); } return out.toString(); }
+    private String writerProjectNotes(StudyProject p) { StringBuilder out = new StringBuilder(); for (ProjectNote n : p.projectNotes) out.append("\n\n").append(firstNonEmpty(n.title, "Project Note")).append("\n").append(safe(n.body)); return out.toString(); }
+
+    private void showWritingSearchDialog() {
+        JTextField query = new JTextField();
+        DefaultListModel<StudyWritingDocument> model = new DefaultListModel<>();
+        JList<StudyWritingDocument> list = new JList<>(model); list.setCellRenderer(new WritingDocumentRenderer());
+        Runnable run = () -> { model.clear(); String q = query.getText().trim().toLowerCase(Locale.ROOT); for (StudyWritingDocument doc : currentProfile.writingDocuments.values()) if (q.isEmpty() || (safe(doc.title) + " " + safe(doc.plainText)).toLowerCase(Locale.ROOT).contains(q)) model.addElement(doc); };
+        query.getDocument().addDocumentListener(new SimpleDocumentListener(run)); run.run();
+        JPanel panel = new JPanel(new BorderLayout(5, 5)); panel.add(query, BorderLayout.NORTH); panel.add(new JScrollPane(list), BorderLayout.CENTER); panel.setPreferredSize(new Dimension(700, 420));
+        list.addMouseListener(new MouseAdapter() { public void mouseClicked(MouseEvent e) { if (e.getClickCount() == 2) { openWritingDocumentFromSearch(list.getSelectedValue()); SwingUtilities.getWindowAncestor(list).dispose(); } }});
+        JOptionPane.showMessageDialog(this, panel, "Search My Writings", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    private void openWritingDocumentFromSearch(StudyWritingDocument doc) { if (doc == null) return; showCard("studyProjects"); refreshWritingDocuments(); loadWritingDocument(doc); writingDocumentList.setSelectedValue(doc, true); }
+
+    private void exportCurrentWritingToPdf() {
+        if (currentWritingDocument == null) { JOptionPane.showMessageDialog(this, "Create or select a writing first."); return; }
+        saveCurrentWritingDocument(true);
+        try {
+            MessageFormat header = new MessageFormat(currentWritingDocument.title);
+            MessageFormat footer = new MessageFormat("Exported " + new SimpleDateFormat("MMMM d, yyyy").format(new Date()) + " — page {0}");
+            boolean printed = writingEditor.print(header, footer, true, null, null, true);
+            if (printed) JOptionPane.showMessageDialog(this, "The print job was sent. Choose your system's Save as PDF printer to create a PDF file.");
+        } catch (Exception e) { JOptionPane.showMessageDialog(this, "Could not export/print this writing: " + e.getMessage()); }
+    }
+
+    private void linkCurrentWritingToProject() {
+        if (currentWritingDocument == null) return;
+        StudyProject project = chooseStudyProject(true); if (project == null) return;
+        if (!currentWritingDocument.linkedStudyProjectIds.contains(project.id)) currentWritingDocument.linkedStudyProjectIds.add(project.id);
+        markWritingDirty(); saveCurrentWritingDocument(true); refreshWritingFilters();
+    }
+
+    private void linkCurrentWritingToCategory() {
+        if (currentWritingDocument == null) return;
+        List<String> choices = new ArrayList<>(currentProfile.categories.keySet());
+        choices.add(0, "+ Create New Category");
+        Object choice = JOptionPane.showInputDialog(this, "Choose a category:", "Link Category", JOptionPane.PLAIN_MESSAGE, null, choices.toArray(), choices.get(0));
+        if (choice == null) return;
+        String name = choice.toString();
+        if (name.startsWith("+")) { name = JOptionPane.showInputDialog(this, "New category name:"); if (name == null || name.trim().isEmpty()) return; name = name.trim(); currentProfile.categories.putIfAbsent(name, ""); }
+        if (!currentWritingDocument.linkedCategoryNames.contains(name)) currentWritingDocument.linkedCategoryNames.add(name);
+        markWritingDirty(); saveCurrentWritingDocument(true); refreshWritingFilters();
+    }
+
+    private void linkCurrentWritingToTopicPage() {
+        if (currentWritingDocument == null || currentProfile.topicPages.isEmpty()) { JOptionPane.showMessageDialog(this, "Create a Topic Page first, then link it here."); return; }
+        TopicPage topic = (TopicPage) JOptionPane.showInputDialog(this, "Choose a Topic Page:", "Link Topic Page", JOptionPane.PLAIN_MESSAGE, null, currentProfile.topicPages.toArray(), currentProfile.topicPages.get(0));
+        if (topic == null) return;
+        if (!currentWritingDocument.linkedTopicPageIds.contains(topic.id)) currentWritingDocument.linkedTopicPageIds.add(topic.id);
+        repairTopicPage(topic);
+        if (topic.links.stream().noneMatch(link -> "WRITING".equalsIgnoreCase(safe(link.type)) && currentWritingDocument.id.equals(safe(link.ref)))) topic.links.add(new LinkedItem("WRITING", currentWritingDocument.id, currentWritingDocument.title));
+        markWritingDirty(); saveCurrentWritingDocument(true); refreshWritingFilters(); refreshTopicPages();
+    }
+
     private void refreshStudyProjects() {
         if (currentProfile == null) return;
         if (currentProfile.studyProjects == null) currentProfile.studyProjects = new TreeMap<>();
+        if (writingDocumentModel != null) {
+            refreshWritingFilters();
+            refreshWritingDocuments();
+        }
         if (studyProjectModel == null) return;
         StudyProject selected = studyProjectList == null ? null : studyProjectList.getSelectedValue();
         String selectedId = selected == null ? "" : safe(selected.id);
@@ -11041,7 +11587,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         for (List<GroupedSearchResult> results : groups.values()) for (GroupedSearchResult result : results) {
             String legacyType = result.type;
             if ("QUESTION".equals(legacyType)) legacyType = "NOTE";
-            if (!("BIBLE".equals(legacyType) || "LIBRARY".equals(legacyType) || "GREEK".equals(legacyType) || "NOTE".equals(legacyType))) continue;
+            if (!("BIBLE".equals(legacyType) || "LIBRARY".equals(legacyType) || "GREEK".equals(legacyType) || "NOTE".equals(legacyType) || "WRITING".equals(legacyType))) continue;
             model.addElement(legacyType + "|" + safe(result.id) + "|" + safe(result.title) + "|" + safe(result.preview));
         }
     }
@@ -11062,7 +11608,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private static final List<String> SEARCH_GROUP_ORDER = Arrays.asList(
             "Bible Results", "Notes", "Chapter Notes", "Questions", "Categories",
-            "Greek", "Topic Pages", "Study Projects", "Memory Verses", "Library");
+            "Greek", "Topic Pages", "Study Writings", "Study Projects", "Memory Verses", "Library");
 
     private Map<String, List<GroupedSearchResult>> collectGroupedSearchResults(String rawQuery, int maxSnippet) {
         String q = safe(rawQuery).trim().toLowerCase(Locale.ROOT);
@@ -11108,6 +11654,10 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             if ((safe(topic.title) + " " + safe(topic.summary)).toLowerCase(Locale.ROOT).contains(q))
                 groups.get("Topic Pages").add(new GroupedSearchResult("TOPIC", topic.id, topic.title, shorten(topic.summary, maxSnippet), "", 0, topic));
         }
+        for (StudyWritingDocument document : currentProfile.writingDocuments.values()) {
+            if ((safe(document.title) + " " + safe(document.plainText) + " " + String.join(" ", document.tags)).toLowerCase(Locale.ROOT).contains(q))
+                groups.get("Study Writings").add(new GroupedSearchResult("WRITING", document.id, document.title, shorten(snippet(document.plainText, q), maxSnippet), "", 0, document));
+        }
         for (StudyProject project : currentProfile.studyProjects.values()) {
             if ((safe(project.title) + " " + safe(project.description)).toLowerCase(Locale.ROOT).contains(q))
                 groups.get("Study Projects").add(new GroupedSearchResult("PROJECT", project.id, project.title, shorten(project.description, maxSnippet), "", 0, project));
@@ -11142,7 +11692,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         else if ("CATEGORY".equals(result.type)) showCategoryByName(result.id);
         else if ("GREEK".equals(result.type)) openGreekResultVerse(result.id, true);
         else if ("TOPIC".equals(result.type)) { refreshTopicPages(); showCard("topicPages"); selectTopicById(result.id); }
-        else if ("PROJECT".equals(result.type) && result.payload instanceof StudyProject) { refreshStudyProjects(); studyProjectList.setSelectedValue((StudyProject) result.payload, true); showCard("studyProjects"); }
+        else if ("WRITING".equals(result.type) && result.payload instanceof StudyWritingDocument) openWritingDocumentFromSearch((StudyWritingDocument) result.payload);
+        else if ("PROJECT".equals(result.type) && result.payload instanceof StudyProject) { showCard("studyProjects"); refreshStudyProjects(); selectWriterFilter(writingProjectFilter, result.id); refreshWritingDocuments(); }
         else if ("MEMORY".equals(result.type) && result.payload instanceof MemoryVerse) { refreshMemoryVerses(); memoryList.setSelectedValue((MemoryVerse) result.payload, true); showCard("memory"); }
         else if ("LIBRARY".equals(result.type)) { showLibraryDoc(result.id); showCard("study"); }
     }
@@ -11153,6 +11704,14 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         JPopupMenu menu = new JPopupMenu();
         addMenu(menu, "Open", () -> openGroupedSearchResult(result));
         if (!safe(result.title).isEmpty()) addMenu(menu, "Copy Reference", () -> copyTextToClipboard(result.title));
+        if ("WRITING".equals(result.type) && result.payload instanceof StudyWritingDocument) {
+            StudyWritingDocument writing = (StudyWritingDocument) result.payload;
+            addMenu(menu, "Rename", () -> renameWritingDocument(writing));
+            addMenu(menu, "Export PDF", () -> { openWritingDocumentFromSearch(writing); exportCurrentWritingToPdf(); });
+            addMenu(menu, "Add to Category", () -> { openWritingDocumentFromSearch(writing); linkCurrentWritingToCategory(); });
+            addMenu(menu, "Link to Project", () -> { openWritingDocumentFromSearch(writing); linkCurrentWritingToProject(); });
+            addMenu(menu, "Link to Topic Page", () -> { openWritingDocumentFromSearch(writing); linkCurrentWritingToTopicPage(); });
+        }
         if ("NOTE".equals(result.type) && result.payload instanceof TextAnnotation) {
             addMenu(menu, "Edit Note", () -> editAnnotation((TextAnnotation) result.payload));
             addMenu(menu, "Add to Category", () -> changeAnnotationCategory((TextAnnotation) result.payload));
@@ -11214,6 +11773,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             }
         } else if (p.type.equals("LIBRARY")) {
             sb.append(p.ref).append("\n\n").append(p.extra);
+        } else if (p.type.equals("WRITING")) {
+            StudyWritingDocument document = currentProfile.writingDocuments.get(p.ref);
+            sb.append(document == null ? p.title + "\n\n" + p.extra : document.title + "\n\n" + document.plainText);
         } else if (p.type.equals("NOTE") || p.type.equals("CATEGORY_ITEM")) {
             TextAnnotation a = findAnnotationById(p.ref);
             if (a != null) {
@@ -11248,6 +11810,10 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (p.type.equals("LIBRARY")) {
             showLibraryDoc(p.ref);
             showCard("study");
+            return;
+        }
+        if (p.type.equals("WRITING")) {
+            openWritingDocumentFromSearch(currentProfile.writingDocuments.get(p.ref));
             return;
         }
         if (p.type.equals("NOTE") || p.type.equals("CATEGORY_ITEM")) {
@@ -11519,7 +12085,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         aliases.put("Gen", "Genesis"); aliases.put("Ex", "Exodus"); aliases.put("Exo", "Exodus"); aliases.put("Lev", "Leviticus"); aliases.put("Num", "Numbers"); aliases.put("Deut", "Deuteronomy");
         aliases.put("Josh", "Joshua"); aliases.put("Judg", "Judges"); aliases.put("Ps", "Psalms"); aliases.put("Psa", "Psalms"); aliases.put("Prov", "Proverbs"); aliases.put("Eccl", "Ecclesiastes");
         aliases.put("Song", "Song of Solomon"); aliases.put("Isa", "Isaiah"); aliases.put("Jer", "Jeremiah"); aliases.put("Lam", "Lamentations"); aliases.put("Ezek", "Ezekiel"); aliases.put("Dan", "Daniel");
-        aliases.put("Matt", "Matthew"); aliases.put("Mt", "Matthew"); aliases.put("Mk", "Mark"); aliases.put("Lk", "Luke"); aliases.put("Jn", "John"); aliases.put("Rom", "Romans"); aliases.put("Rev", "Revelation");
+        aliases.put("Matt", "Matthew"); aliases.put("Mt", "Matthew"); aliases.put("Mk", "Mark"); aliases.put("Lk", "Luke"); aliases.put("Jn", "John"); aliases.put("Rom", "Romans"); aliases.put("Ro", "Romans"); aliases.put("1 Cor", "1 Corinthians"); aliases.put("1Cor", "1 Corinthians"); aliases.put("2 Cor", "2 Corinthians"); aliases.put("2Cor", "2 Corinthians"); aliases.put("Rev", "Revelation");
         for (String b : canonicalBooks()) if (b.equalsIgnoreCase(cleaned)) return b;
         for (Map.Entry<String, String> e : aliases.entrySet()) if (e.getKey().equalsIgnoreCase(cleaned)) return e.getValue();
         return s;
@@ -12560,6 +13126,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (p.memoryVerses == null) p.memoryVerses = new ArrayList<>();
         if (p.bookmarks == null) p.bookmarks = new ArrayList<>();
         if (p.studyProjects == null) p.studyProjects = new TreeMap<>();
+        if (p.writingDocuments == null) p.writingDocuments = new LinkedHashMap<>();
         if (p.chapterNotes == null) p.chapterNotes = new TreeMap<>();
         if (p.topicPages == null) p.topicPages = new ArrayList<>();
         if (p.recentlyOpened == null) p.recentlyOpened = new ArrayList<>();
@@ -12587,6 +13154,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         for (ChapterNote note : p.chapterNotes.values()) repairChapterNote(note);
         p.studyProjects.values().removeIf(Objects::isNull);
         for (StudyProject project : p.studyProjects.values()) repairStudyProject(project);
+        p.writingDocuments.values().removeIf(Objects::isNull);
+        for (StudyWritingDocument document : p.writingDocuments.values()) repairStudyWritingDocument(document);
         for (PinnedItem item : p.pinnedItems) repairPinnedItem(item);
         for (MemoryVerse mv : p.memoryVerses) repairMemoryVerse(mv);
         for (StudyQuestion q : p.questions) repairQuestion(q);
@@ -12691,6 +13260,24 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (link.ref == null) link.ref = "";
         if (link.label == null) link.label = "";
         if (link.createdAt <= 0L) link.createdAt = System.currentTimeMillis();
+    }
+
+    private void repairStudyWritingDocument(StudyWritingDocument document) {
+        if (document == null) return;
+        if (document.id == null || document.id.trim().isEmpty()) document.id = UUID.randomUUID().toString();
+        if (document.title == null) document.title = "Untitled Writing";
+        if (document.plainText == null) document.plainText = "";
+        if (document.styledContent == null) document.styledContent = "";
+        long now = System.currentTimeMillis();
+        if (document.createdAt <= 0L) document.createdAt = now;
+        if (document.updatedAt <= 0L) document.updatedAt = document.createdAt;
+        if (document.linkedCategoryNames == null) document.linkedCategoryNames = new ArrayList<>();
+        if (document.linkedStudyProjectIds == null) document.linkedStudyProjectIds = new ArrayList<>();
+        if (document.linkedTopicPageIds == null) document.linkedTopicPageIds = new ArrayList<>();
+        if (document.linkedAnnotationIds == null) document.linkedAnnotationIds = new ArrayList<>();
+        if (document.linkedChapterNoteIds == null) document.linkedChapterNoteIds = new ArrayList<>();
+        if (document.insertedReferences == null) document.insertedReferences = new ArrayList<>();
+        if (document.tags == null) document.tags = new ArrayList<>();
     }
 
     private void repairStudyProject(StudyProject p) {
@@ -13521,6 +14108,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         int lastViewportY = 0;
         Map<String, ChapterNote> chapterNotes = new TreeMap<>();
         Map<String, StudyProject> studyProjects = new TreeMap<>();
+        Map<String, StudyWritingDocument> writingDocuments = new LinkedHashMap<>();
         Map<String, String> categories = new TreeMap<>();
         Map<String, Integer> categoryColors = new TreeMap<>();
         Map<String, Integer> visitCounts = new HashMap<>();
@@ -13601,6 +14189,82 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
         public String toString() {
             return title;
+        }
+    }
+
+    private static class StudyWritingDocument implements Serializable {
+        private static final long serialVersionUID = 1L;
+        String id = UUID.randomUUID().toString();
+        String title = "Untitled Writing";
+        String plainText = "";
+        String styledContent = "";
+        long createdAt = System.currentTimeMillis();
+        long updatedAt = createdAt;
+        List<String> linkedCategoryNames = new ArrayList<>();
+        List<String> linkedStudyProjectIds = new ArrayList<>();
+        List<String> linkedTopicPageIds = new ArrayList<>();
+        List<String> linkedAnnotationIds = new ArrayList<>();
+        List<String> linkedChapterNoteIds = new ArrayList<>();
+        List<String> insertedReferences = new ArrayList<>();
+        List<String> tags = new ArrayList<>();
+
+        StudyWritingDocument copy() {
+            StudyWritingDocument copy = new StudyWritingDocument();
+            copy.title = title; copy.plainText = plainText; copy.styledContent = styledContent;
+            copy.linkedCategoryNames = new ArrayList<>(linkedCategoryNames);
+            copy.linkedStudyProjectIds = new ArrayList<>(linkedStudyProjectIds);
+            copy.linkedTopicPageIds = new ArrayList<>(linkedTopicPageIds);
+            copy.linkedAnnotationIds = new ArrayList<>(linkedAnnotationIds);
+            copy.linkedChapterNoteIds = new ArrayList<>(linkedChapterNoteIds);
+            copy.insertedReferences = new ArrayList<>(insertedReferences);
+            copy.tags = new ArrayList<>(tags);
+            return copy;
+        }
+
+        public String toString() { return title == null || title.trim().isEmpty() ? "Untitled Writing" : title; }
+    }
+
+    private static class WriterFilterItem {
+        final String id;
+        final String label;
+        WriterFilterItem(String id, String label) { this.id = id == null ? "" : id; this.label = label == null ? "" : label; }
+        public String toString() { return label; }
+    }
+
+    private static class WriterPassage {
+        final String reference;
+        final String book;
+        final int chapter;
+        final int startVerse;
+        final int endVerse;
+        final String text;
+        WriterPassage(String reference, String book, int chapter, int startVerse, int endVerse, String text) {
+            this.reference = reference; this.book = book; this.chapter = chapter; this.startVerse = startVerse; this.endVerse = endVerse; this.text = text;
+        }
+    }
+
+    private static class WriterReferenceItem {
+        final String group;
+        final String linkType;
+        final String id;
+        final String insertionText;
+        WriterReferenceItem(String group, String linkType, String id, String insertionText) {
+            this.group = group; this.linkType = linkType; this.id = id == null ? "" : id; this.insertionText = insertionText == null ? "" : insertionText;
+        }
+        public String toString() { return group + " — " + insertionText.replace('\n', ' '); }
+    }
+
+    private class WritingDocumentRenderer extends DefaultListCellRenderer {
+        private final SimpleDateFormat dateFormat = new SimpleDateFormat("MMM d, h:mm a");
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
+            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, selected, focus);
+            if (value instanceof StudyWritingDocument) {
+                StudyWritingDocument doc = (StudyWritingDocument) value;
+                String title = safe(doc.title).isEmpty() ? "Untitled Writing" : doc.title;
+                label.setText("<html><b>" + esc(title) + "</b><br><span style='color:#75665d'>Updated " + dateFormat.format(new Date(doc.updatedAt)) + " — " + esc(shorten(doc.plainText, 60)) + "</span></html>");
+                label.setBorder(new EmptyBorder(7, 7, 7, 7));
+            }
+            return label;
         }
     }
 
