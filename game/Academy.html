@@ -55,7 +55,7 @@
   <h1>NEON ARENA FPS</h1>
   <div class="sub">Choose your arena, then launch a faster and more lethal Quake-style match. Both maps feature solid opaque geometry, no-fall boundary walls, weapon pickups, charged 3D plasma, an overheating plasma laser, and weapon-aware bots.</div>
   <div class="grid">
-    <div class="map-choice"><label>Choose Map</label><select id="map"><option value="pastel" selected>Original Neon Pastel Arena</option><option value="reactor">Vertical Reactor Arena</option></select></div>
+    <div class="map-choice"><label>Choose Map</label><select id="map"><option value="pastel" selected>Prism Garden Arena</option><option value="reactor">Obsidian Reactor Spire</option></select></div>
     <div><label>Game Mode</label><select id="mode"><option value="dm">Deathmatch</option><option value="tdm">Team Deathmatch</option></select></div>
     <div><label>Difficulty</label><select id="difficulty"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option><option value="nightmare">Nightmare</option></select></div>
     <div><label>Bot Count</label><select id="botCount"><option>4</option><option selected>6</option><option>8</option><option>10</option></select></div>
@@ -98,20 +98,21 @@ const WEAPONS={
   plasma:{name:'PLASMA BLASTER',damage:66,range:90,cool:.22,spread:.006,mag:999,reload:0,tracers:1,color:'#9b5cff',falloff:.08,kind:'plasma',heat:.18,coolRate:.48,chargeRate:.92},
   laser:{name:'PLASMA LASER',damage:25,range:86,cool:.035,spread:.001,mag:999,reload:0,tracers:1,color:'#ff2bff',falloff:.04,kind:'laser',heatRate:1.28,coolRate:.62}
 };
-const DIFF={easy:{aim:.25,react:.55,move:8.8,fire:.88},normal:{aim:.38,react:.38,move:10.2,fire:.68},hard:{aim:.52,react:.28,move:11.6,fire:.54},nightmare:{aim:.64,react:.22,move:13.0,fire:.43}};
+const DIFF={easy:{aim:.25,react:.55,move:10.8,fire:.88},normal:{aim:.38,react:.38,move:12.5,fire:.68},hard:{aim:.52,react:.28,move:14.2,fire:.54},nightmare:{aim:.64,react:.22,move:15.9,fire:.43}};
 const game={started:false,map:'pastel',mode:'dm',difficulty:'normal',botCount:6,time:300,timeLeft:300,over:false};
 const player={name:'YOU',x:0,y:PLAYER_H,z:24,vx:0,vy:0,vz:0,yaw:Math.PI,pitch:0,onGround:false,r:.46,team:1,score:0,deaths:0,dead:false,hp:100,maxHp:100,weapon:'assault',ammo:30,reload:0,cool:0,heat:0,spawnGrace:0};
 let bots=[],platforms=[],walls=[],nav=[],pickups=[],shots=[],projectiles=[],particles=[],lasers=[],impacts=[],muzzleFlashes=[];
+let mapTheme={sky:[.78,.88,.96],floorA:'#a9bbcf',floorB:'#b5c7d9',grid:'#526a85',gridSoft:'#71869d'};
 const MAX_PARTICLES=260,MAX_IMPACTS=80,ARENA_SAFE=44.35;
-const pastel=['#9ee7ff','#ffc3e6','#c8ffd4','#fff0a8','#d8c9ff','#ffcfb8','#b9fff5','#e9ffbd'];
 function addPlat(x,z,w,d,y,h,c){platforms.push({x,z,w,d,y,h,c});nav.push({x,z,y:y+h+PLAYER_H,r:Math.max(2.2,Math.min(6,Math.max(w,d)*.34))})}
 function addTopPlat(x,z,w,d,top,h,c){addPlat(x,z,w,d,top-h,h,c)}
 function addWall(x,z,w,d,h,c,y=0){walls.push({x,z,w,d,y:y+h/2,h,c});}
 function addNav(x,z,r=2.5){const top=topAtPoint(x,z);if(top>-20)nav.push({x,z,y:top+PLAYER_H,r})}
 function addPickup(type,x,z){const top=topAtPoint(x,z);if(top<-20)throw new Error('Pickup '+type+' has no platform at '+x+','+z);pickups.push({type,x,z,y:top+.7,spin:rand(0,TAU),taken:0})}
 function addArenaBounds(){
-  addWall(0,-46,96,2.2,22,'#00eaff');addWall(0,46,96,2.2,22,'#ff2bbd');
-  addWall(-46,0,2.2,96,22,'#00ffa8');addWall(46,0,2.2,96,22,'#ffea00');
+  const c=game.map==='reactor'?['#124b5a','#55243f','#183a50','#49243d']:['#00eaff','#ff2bbd','#00ffa8','#ffea00'];
+  addWall(0,-46,96,2.2,22,c[0]);addWall(0,46,96,2.2,22,c[1]);
+  addWall(-46,0,2.2,96,22,c[2]);addWall(46,0,2.2,96,22,c[3]);
 }
 function buildMap(){
   platforms=[];walls=[];nav=[];pickups=[];
@@ -119,43 +120,67 @@ function buildMap(){
   for(const n of nav)n.y=topAtPoint(n.x,n.z)+PLAYER_H;
 }
 function buildPastelArenaMap(){
-  addPlat(0,0,89.8,89.8,-.7,.7,'#9fb4cb');
-  addPlat(-31,-31,18,18,2.5,.9,pastel[0]);addPlat(31,-31,18,18,2.5,.9,pastel[1]);addPlat(-31,31,18,18,2.5,.9,pastel[2]);addPlat(31,31,18,18,2.5,.9,pastel[3]);
-  addPlat(0,-35,21,13,5.7,.9,pastel[4]);addPlat(0,35,21,13,5.7,.9,pastel[5]);addPlat(-35,0,13,21,5.4,.9,pastel[6]);addPlat(35,0,13,21,5.4,.9,pastel[7]);
-  addPlat(0,0,22,22,9.3,.9,'#f2d1ff');addPlat(0,0,10,10,13.0,.9,'#d7fbff');
-  addPlat(0,-18,10,29,3.0,.55,'#dff7ff');addPlat(0,18,10,29,3.0,.55,'#ffe0f2');addPlat(-18,0,29,10,3.0,.55,'#e2ffd9');addPlat(18,0,29,10,3.0,.55,'#fff6c9');
-  addPlat(-18,-18,12,12,7.4,.8,'#cfe0ff');addPlat(18,-18,12,12,7.4,.8,'#ffd8d8');addPlat(-18,18,12,12,7.4,.8,'#d4ffd9');addPlat(18,18,12,12,7.4,.8,'#fff5c4');
+  mapTheme={sky:[.72,.89,.98],floorA:'#d7eff5',floorB:'#c9e6ef',grid:'#77b8c8',gridSoft:'#9fcbd4'};
+  // Prism Garden is an open, readable circuit: broad lawns, four pavilion corners,
+  // low bridges and a single central control garden keep sight lines clean.
+  addTopPlat(0,0,89.8,89.8,0,.7,'#b9dce5');
+  addTopPlat(0,0,24,24,4.2,.9,'#ffe6f5');addTopPlat(0,0,11,11,7.4,.8,'#fff7bd');
+  addTopPlat(0,-27,16,28,2.4,.65,'#c9f5ff');addTopPlat(0,27,16,28,2.4,.65,'#ffd9ed');
+  addTopPlat(-27,0,28,16,2.4,.65,'#d8ffd9');addTopPlat(27,0,28,16,2.4,.65,'#fff0bd');
+  addTopPlat(-32,-32,18,18,4.8,.85,'#aee9ff');addTopPlat(32,-32,18,18,4.8,.85,'#ffc5e5');
+  addTopPlat(-32,32,18,18,4.8,.85,'#c4ffd5');addTopPlat(32,32,18,18,4.8,.85,'#ffe5a8');
+  // Small stepping blooms connect the loop without turning it into a staircase map.
+  [[-17,-17,'#d8ccff'],[17,-17,'#ffd2c5'],[-17,17,'#c9ffe9'],[17,17,'#fff2c4']].forEach(([x,z,c])=>addTopPlat(x,z,9,9,2.1,.6,c));
   addArenaBounds();
-  addWall(-12,-12,2.4,18,5.6,'#f5ff6b');addWall(12,12,2.4,18,5.6,'#f5ff6b');addWall(12,-12,18,2.4,5.6,'#78ffd8');addWall(-12,12,18,2.4,5.6,'#78ffd8');
-  addPickup('sniper',-31,-31);addPickup('shotgun',31,-31);addPickup('smg',-31,31);addPickup('plasma',31,31);addPickup('assault',0,0);addPickup('sniper',0,35);addPickup('plasma',35,0);addPickup('laser',18,-18);addPickup('shotgun',-35,0);
-  [[-38,-18],[-38,18],[38,-18],[38,18],[-20,-35],[20,-35],[-20,35],[20,35],[-18,0],[18,0],[0,-18],[0,18]].forEach(([x,z])=>addNav(x,z,3));
+  // Garden pylons, bright wall panels and light columns establish the airy theme.
+  [[-41,-28,'#71e6ff'],[-41,28,'#9dffbd'],[41,-28,'#ff8ed2'],[41,28,'#ffe46b']].forEach(([x,z,c])=>addWall(x,z,2.4,10,12,c));
+  addWall(-18,-41,13,1.4,4,'#8feaff');addWall(18,-41,13,1.4,4,'#ff9bd6');
+  addWall(-18,41,13,1.4,4,'#a7ffc2');addWall(18,41,13,1.4,4,'#ffe783');
+  addWall(-7,-7,1.4,7,3.2,'#ffffff');addWall(7,7,1.4,7,3.2,'#ffffff');
+  addPickup('assault',0,-27);addPickup('smg',-27,0);addPickup('shotgun',27,0);
+  addPickup('plasma',-32,32);addPickup('sniper',32,-32);addPickup('laser',0,0);
+  addPickup('shotgun',-32,-32);addPickup('plasma',32,32);
+  [[-38,0],[38,0],[0,-38],[0,38],[-32,-32],[32,-32],[-32,32],[32,32],[-17,-17],[17,-17],[-17,17],[17,17],[-8,0],[8,0],[0,-8],[0,8]].forEach(([x,z])=>addNav(x,z,3.2));
 }
 function buildReactorArenaMap(){
-  // Broad sealed floor plus stepped routes: every height change is within the normal jump arc.
-  addTopPlat(0,0,89.8,89.8,0,.7,'#73849d');
-  addTopPlat(0,0,25,25,3.0,.9,'#7046a8');
-  addTopPlat(0,0,17,17,6.0,.9,'#9b5cff');
-  addTopPlat(0,0,9,9,9.0,.9,'#d9b8ff');
-  // Four overlapping approach chains act as ramps made from solid, opaque steps.
-  addTopPlat(0,-18,12,15,2.0,.7,'#5bd6e8');addTopPlat(0,-29,16,10,3.8,.8,'#46a9c9');addTopPlat(0,-37,20,9,6.2,.9,'#8deaff');
-  addTopPlat(18,0,15,12,2.0,.7,'#ff8fcf');addTopPlat(29,0,10,16,3.8,.8,'#df65ad');addTopPlat(37,0,9,20,6.2,.9,'#ffc1e5');
-  addTopPlat(0,18,12,15,2.0,.7,'#ffd96b');addTopPlat(0,29,16,10,3.8,.8,'#d9ad3e');addTopPlat(0,37,20,9,6.2,.9,'#fff0a8');
-  addTopPlat(-18,0,15,12,2.0,.7,'#75e8a3');addTopPlat(-29,0,10,16,3.8,.8,'#49bc77');addTopPlat(-37,0,9,20,6.2,.9,'#b8ffd0');
-  // Offset side decks create different combat pockets and keep major pickups separated.
-  addTopPlat(-31,-29,17,14,7.0,.9,'#c8e5ff');addTopPlat(31,-29,17,14,5.2,.9,'#efc8ff');
-  addTopPlat(-18,-29,11,10,4.6,.8,'#83cdec');addTopPlat(18,-29,11,10,4.5,.8,'#c88bea');
-  addTopPlat(-31,29,17,14,3.0,.9,'#ffc6a8');addTopPlat(31,29,17,14,4.6,.9,'#fff59b');
-  addTopPlat(-18,29,11,10,2.2,.8,'#e99b76');addTopPlat(18,29,11,10,3.0,.8,'#dfca55');
-  addTopPlat(-20,20,10,10,5.5,.8,'#a8ffd8');addTopPlat(20,-20,10,10,5.5,.8,'#ffb8dd');
+  mapTheme={sky:[.025,.035,.075],floorA:'#111827',floorB:'#182235',grid:'#0b6f78',gridSoft:'#24334d'};
+  // Obsidian Reactor is a vertical catwalk arena. Its offset decks expose every tier,
+  // while four stepped ascent routes and two outer switchback routes prevent dead ends.
+  addTopPlat(0,0,89.8,89.8,0,.8,'#162033');
+  // Lower machinery floor and first combat shelf.
+  addTopPlat(-28,0,22,30,2.6,.8,'#24324a');addTopPlat(28,0,22,30,2.6,.8,'#29354a');
+  addTopPlat(0,-29,30,16,3.2,.8,'#203b46');addTopPlat(0,29,30,16,3.2,.8,'#34263f');
+  // Mid-level offset catwalk ring.
+  addTopPlat(-21,-20,23,11,6.0,.8,'#18505a');addTopPlat(21,-20,23,11,6.0,.8,'#54304f');
+  addTopPlat(-21,20,23,11,7.0,.8,'#3d4057');addTopPlat(21,20,23,11,7.0,.8,'#4a354e');
+  addTopPlat(-35,-16,10,22,5.0,.8,'#21445a');addTopPlat(35,16,10,22,5.0,.8,'#4d2b4b');
+  // Upper combat lanes cross without sharing the same footprint.
+  addTopPlat(0,-13,13,31,9.4,.85,'#145b66');addTopPlat(0,18,13,27,10.4,.85,'#57334f');
+  addTopPlat(-18,0,25,10,11.8,.85,'#31506a');addTopPlat(20,0,29,10,12.8,.85,'#5b364d');
+  // Top control positions and reactor crown.
+  addTopPlat(-13,-14,11,11,14.6,.8,'#167985');addTopPlat(13,14,11,11,15.6,.8,'#7a365b');
+  addTopPlat(0,0,10,10,18.2,.9,'#ca5cff');
+  // Four climb chains; 2.2–3.4 unit rises make every layer reachable by normal jumps.
+  [[-38,-34,1.8],[-31,-31,3.8],[-27,-26,5.8],[-22,-22,7.8],[-16,-18,10.0],[-12,-14,12.4],[-9,-10,14.8],[-5,-6,16.8]].forEach(([x,z,y],i)=>addTopPlat(x,z,9,8,y,.65,i%2?'#145e68':'#263d52'));
+  [[38,34,1.8],[31,31,3.8],[27,26,5.8],[22,22,7.8],[16,18,10.0],[12,14,12.4],[9,10,14.8],[5,6,16.8]].forEach(([x,z,y],i)=>addTopPlat(x,z,9,8,y,.65,i%2?'#74344f':'#433047'));
+  [[-34,34,2.0],[-29,29,4.2],[-26,23,6.6],[-22,17,9.0],[-18,11,11.4]].forEach(([x,z,y])=>addTopPlat(x,z,9,9,y,.65,'#1d5d68'));
+  [[34,-34,2.0],[29,-29,4.2],[26,-23,6.6],[22,-17,9.0],[18,-11,11.4]].forEach(([x,z,y])=>addTopPlat(x,z,9,9,y,.65,'#69364e'));
   addArenaBounds();
-  // Reactor fins and offset cover break long sight lines without sealing the routes.
-  addWall(-15,-15,2.2,12,6.5,'#38e8ff');addWall(15,15,2.2,12,6.5,'#ff46c8');
-  addWall(15,-15,12,2.2,6.5,'#ffe45c');addWall(-15,15,12,2.2,6.5,'#72ffae');
-  addWall(-31,-18,7,2.2,4.5,'#d8f4ff');addWall(31,18,7,2.2,4.5,'#fff0b8');
-  addWall(-18,31,2.2,7,4.5,'#b8ffd7');addWall(18,-31,2.2,7,4.5,'#ffd0eb');
-  addPickup('laser',0,0);addPickup('sniper',-31,-29);addPickup('plasma',31,-29);
-  addPickup('shotgun',-31,29);addPickup('smg',31,29);addPickup('assault',0,37);
-  [[-6,0],[6,0],[0,-6],[0,6],[-10,-10],[10,-10],[-10,10],[10,10],[0,-18],[0,-29],[0,-37],[18,0],[29,0],[37,0],[0,18],[0,29],[0,37],[-18,0],[-29,0],[-37,0],[-31,-29],[-18,-29],[18,-29],[31,-29],[-31,29],[-18,29],[18,29],[31,29],[-20,20],[20,-20],[-36,-15],[36,15],[-15,36],[15,-36]].forEach(([x,z])=>addNav(x,z,2.8));
+  // Dark structural ribs and luminous reactor columns sit between routes, not on them.
+  addWall(-43,0,2.4,30,24,'#26364d');addWall(43,0,2.4,30,24,'#3d263d');
+  addWall(0,-43,30,2.4,24,'#173f4a');addWall(0,43,30,2.4,24,'#47233e');
+  [[-8,-30,'#00eaff'],[8,30,'#ff3f9f'],[-32,8,'#20d6c7'],[32,-8,'#ff765c']].forEach(([x,z,c])=>addWall(x,z,2.2,2.2,16,c));
+  addWall(-5,0,1.5,8,12,'#00cbd8');addWall(5,0,1.5,8,12,'#ff3fa4');
+  addPickup('shotgun',-28,0);addPickup('smg',28,0);addPickup('assault',0,-29);
+  addPickup('plasma',-21,20);addPickup('sniper',20,0);addPickup('laser',0,0);
+  addPickup('plasma',-13,-14);addPickup('sniper',13,14);
+  // Dense navigation coverage includes every ascent chain, catwalk end and control deck.
+  [[-28,-10],[-28,10],[28,-10],[28,10],[-10,-29],[10,-29],[-10,29],[10,29],
+   [-21,-20],[21,-20],[-21,20],[21,20],[-35,-20],[-35,-10],[35,10],[35,20],
+   [0,-20],[0,-10],[0,12],[0,23],[-25,0],[-12,0],[12,0],[27,0],[-13,-14],[13,14],[0,0],
+   [-38,-34],[-31,-31],[-27,-26],[-22,-22],[-16,-18],[-12,-14],[-9,-10],[-5,-6],
+   [38,34],[31,31],[27,26],[22,22],[16,18],[12,14],[9,10],[5,6],
+   [-34,34],[-29,29],[-26,23],[-22,17],[-18,11],[34,-34],[29,-29],[26,-23],[22,-17],[18,-11]].forEach(([x,z])=>addNav(x,z,2.6));
 }
 function topAtPoint(x,z){let best=-999;for(const p of platforms){if(Math.abs(x-p.x)<=p.w/2&&Math.abs(z-p.z)<=p.d/2)best=Math.max(best,p.y+p.h)}return best}
 function blocks(){const out=[];for(const p of platforms)out.push({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h,c:p.c,kind:'platform'});for(const w of walls)out.push({...w,kind:'wall'});return out}
@@ -171,11 +196,11 @@ function spawn(ent){let sp=pick(nav),x=sp.x,z=sp.z;for(let i=0;i<16;i++){sp=pick
 function equip(ent,type,announce=true){ent.weapon=type;const w=WEAPONS[type];ent.ammo=w.mag;ent.reload=0;ent.cool=.12;ent.heat=0;ent.charge=0;if(ent===player){styleGun(type);if(announce)msg('PICKED UP '+w.name)}}
 function styleGun(type){const w=WEAPONS[type]||WEAPONS.assault;hud.weaponName.textContent=w.name}
 function initBots(){bots=[];const names=['VOLT','NOVA','RAZOR','GLITCH','ONYX','PULSE','HEX','ECHO','RIFT','BLITZ'];for(let i=0;i<game.botCount;i++){const b={name:names[i%names.length],x:0,y:PLAYER_H,z:0,vx:0,vy:0,vz:0,r:.48,yaw:0,pitch:0,onGround:false,team:game.mode==='tdm'?(i%2)+2:10+i,score:0,deaths:0,dead:false,hp:100,maxHp:100,weapon:'assault',ammo:30,reload:0,cool:0,heat:0,think:0,fireCd:rand(.2,1),target:null,enemy:null,strafe:Math.random()<.5?-1:1,strafeT:0,color:i%2?'#ff2bbd':'#00eaff',walk:0,faceYaw:0};spawn(b);bots.push(b)}}
-function reset(){game.map=el('map').value;game.mode=el('mode').value;game.difficulty=el('difficulty').value;game.botCount=+el('botCount').value;game.time=+el('matchLen').value;buildMap();game.timeLeft=game.time;game.over=false;player.score=0;player.deaths=0;player.team=game.mode==='tdm'?1:0;player.dead=false;player.yaw=Math.PI;player.pitch=0;equip(player,'assault',false);spawn(player);initBots();shots=[];projectiles=[];particles=[];lasers=[];impacts=[];muzzleFlashes=[];hud.feed.innerHTML='';hud.mode.textContent=game.mode==='tdm'?'TEAM DM':'DEATHMATCH';game.started=true;styleGun(player.weapon);feed((game.map==='reactor'?'Vertical Reactor Arena':'Original Neon Pastel Arena')+' loaded. Weapons hover over distinct combat platforms.');}
+function reset(){game.map=el('map').value;game.mode=el('mode').value;game.difficulty=el('difficulty').value;game.botCount=+el('botCount').value;game.time=+el('matchLen').value;buildMap();game.timeLeft=game.time;game.over=false;player.score=0;player.deaths=0;player.team=game.mode==='tdm'?1:0;player.dead=false;player.yaw=Math.PI;player.pitch=0;equip(player,'assault',false);spawn(player);initBots();shots=[];projectiles=[];particles=[];lasers=[];impacts=[];muzzleFlashes=[];hud.feed.innerHTML='';hud.mode.textContent=game.mode==='tdm'?'TEAM DM':'DEATHMATCH';game.started=true;styleGun(player.weapon);feed((game.map==='reactor'?'Obsidian Reactor Spire':'Prism Garden Arena')+' loaded. Weapons hover over distinct combat platforms.');}
 el('start').onclick=()=>{el('menu').style.display='none';reset();canvas.requestPointerLock()};
 function sameTeam(a,b){return game.mode==='tdm'&&a.team===b.team}
 function updatePlayer(dt){player.spawnGrace=Math.max(0,player.spawnGrace-dt);if(player.dead)return;player.yaw+=mouseDX*.00225;player.pitch=clamp(player.pitch+mouseDY*.00225,-1.25,1.25);mouseDX=mouseDY=0;
-  const fX=Math.sin(player.yaw),fZ=Math.cos(player.yaw),rX=Math.cos(player.yaw),rZ=-Math.sin(player.yaw);let ax=0,az=0;if(keys.KeyW){ax+=fX;az+=fZ}if(keys.KeyS){ax-=fX;az-=fZ}if(keys.KeyD){ax+=rX;az+=rZ}if(keys.KeyA){ax-=rX;az-=rZ}const l=Math.hypot(ax,az)||1,speed=15.8,targetVX=ax/l*speed,targetVZ=az/l*speed,accel=player.onGround?25:8;player.vx+=(targetVX-player.vx)*clamp(accel*dt,0,1);player.vz+=(targetVZ-player.vz)*clamp(accel*dt,0,1);if(keys.Space&&player.onGround){player.vy=19.4;player.onGround=false;burst(player.x,player.y-1,player.z,'#fff')}physics(player,dt);updateWeaponTimers(player,dt);pickupCheck(player);if(fireHeld&&!player.dead){if(player.weapon==='plasma')chargePlayerPlasma(dt);else if(player.weapon==='laser')tryFire(player,true);else tryFire(player,true)}}
+  const fX=Math.sin(player.yaw),fZ=Math.cos(player.yaw),rX=Math.cos(player.yaw),rZ=-Math.sin(player.yaw);let ax=0,az=0;if(keys.KeyW){ax+=fX;az+=fZ}if(keys.KeyS){ax-=fX;az-=fZ}if(keys.KeyD){ax+=rX;az+=rZ}if(keys.KeyA){ax-=rX;az-=rZ}const l=Math.hypot(ax,az)||1,speed=18.4,targetVX=ax/l*speed,targetVZ=az/l*speed,accel=player.onGround?25:8;player.vx+=(targetVX-player.vx)*clamp(accel*dt,0,1);player.vz+=(targetVZ-player.vz)*clamp(accel*dt,0,1);if(keys.Space&&player.onGround){player.vy=23.0;player.onGround=false;burst(player.x,player.y-1,player.z,'#fff')}physics(player,dt);updateWeaponTimers(player,dt);pickupCheck(player);if(fireHeld&&!player.dead){if(player.weapon==='plasma')chargePlayerPlasma(dt);else if(player.weapon==='laser')tryFire(player,true);else tryFire(player,true)}}
 function updateWeaponTimers(ent,dt){if(ent.cool>0)ent.cool-=dt;if(ent.reload>0){ent.reload-=dt;if(ent.reload<=0){ent.ammo=WEAPONS[ent.weapon].mag;ent.reload=0;if(ent===player)msg(WEAPONS[ent.weapon].name+' READY')}}if(ent.weapon==='plasma')ent.heat=Math.max(0,(ent.heat||0)-WEAPONS.plasma.coolRate*dt);else if(ent.weapon==='laser')ent.heat=Math.max(0,(ent.heat||0)-WEAPONS.laser.coolRate*dt)}
 function pickupCheck(ent){for(const p of pickups){if(p.taken>0)continue;const dy=Math.abs(ent.y-(p.y+1.1));if(hypot2(ent.x-p.x,ent.z-p.z)<1.8&&dy<3.5){equip(ent,p.type,ent===player);p.taken=8;if(ent===player)feed('Picked up '+WEAPONS[p.type].name)}}}
 function chargeColor(tier){return tier>=4?'#ff2bff':tier>=3?'#ffea00':tier>=2?'#00ffa8':'#9b5cff'}
@@ -240,6 +265,10 @@ function aiProfile(type){return {
 }[type]||{min:14,ideal:25,max:44,strafe:.55,advance:1,retreat:1,pickups:.34,jump:.06,fireBias:1}}
 function botRetreatOpen(bot,nx,nz,enemy){const x=bot.x-nx*2.6,z=bot.z-nz*2.6;if(Math.abs(x)>ARENA_SAFE-1||Math.abs(z)>ARENA_SAFE-1||topAtPoint(x,z)<-20)return false;const blocked=walls.some(w=>Math.abs(x-w.x)<w.w/2+bot.r+.35&&Math.abs(z-w.z)<w.d/2+bot.r+.35&&bot.y-PLAYER_H<w.y+w.h/2);return !blocked&&lineClear(x,bot.y,z,enemy.x,enemy.y-.55,enemy.z)}
 function botSeparation(bot){let sx=0,sz=0;for(const o of bots){if(o===bot||o.dead)continue;const dx=bot.x-o.x,dz=bot.z-o.z,d=Math.hypot(dx,dz);if(d>0&&d<3.2){const push=(3.2-d)/3.2;sx+=dx/d*push;sz+=dz/d*push}}return {x:sx,z:sz}}
+function chooseVerticalRoute(bot,goal){
+  if(!goal)return null;const desiredY=goal.y||topAtPoint(goal.x,goal.z)+PLAYER_H,dy=desiredY-bot.y;if(Math.abs(dy)<1.8)return null;
+  let best=null,bestScore=1e9;for(const n of nav){const step=n.y-bot.y,from=Math.hypot(n.x-bot.x,n.z-bot.z);if(from>24||step>7.2||step<-11)continue;if(dy>0&&step<.35)continue;if(dy<0&&step>-.2)continue;const toward=Math.hypot(n.x-goal.x,n.z-goal.z),height=Math.abs(n.y-desiredY),score=from*.72+toward*.38+height*1.25;if(score<bestScore){bestScore=score;best=n}}return best;
+}
 function updateBot(b,dt){
   b.spawnGrace=Math.max(0,b.spawnGrace-dt);if(b.dead)return;
   const cfg=DIFF[game.difficulty],prof=aiProfile(b.weapon);
@@ -252,11 +281,14 @@ function updateBot(b,dt){
     if(!b.enemy&&np.p&&np.d<26&&Math.random()<prof.pickups)b.target={x:np.p.x,z:np.p.z,y:np.p.y,r:2};
     else if(currentWeak&&np.p&&np.d<34&&Math.random()<prof.pickups+.25)b.target={x:np.p.x,z:np.p.z,y:np.p.y,r:2};
     else if(!b.target||hypot2(b.x-b.target.x,b.z-b.target.z)<b.target.r||Math.random()<.055)b.target=pick(nav);
+    const routeGoal=b.enemy||b.target;b.route=chooseVerticalRoute(b,routeGoal);
+    if(b.route)b.target={x:b.route.x,z:b.route.z,y:b.route.y,r:Math.max(1.5,b.route.r*.65)};
     if(b.strafeT<=0){b.strafe=Math.random()<.5?-1:1;b.strafeT=rand(.75,1.65)}
     b.think=cfg.react+rand(0,.12);
   }
   let wantX=0,wantZ=0,speed=cfg.move,closeThreat=false;
-  if(b.enemy){
+  const routing=b.route&&hypot2(b.x-b.route.x,b.z-b.route.z)>Math.max(1.2,b.route.r*.55);
+  if(b.enemy&&!routing){
     const ex=b.enemy.x-b.x,ez=b.enemy.z-b.z,dist=Math.hypot(ex,ez)||1,nx=ex/dist,nz=ez/dist,sideX=-nz*b.strafe,sideZ=nx*b.strafe;
     b.faceYaw=Math.atan2(nx,nz);
     const closeRange={shotgun:9,smg:9,assault:8,sniper:11,plasma:9,laser:10}[b.weapon]||8;
@@ -278,14 +310,14 @@ function updateBot(b,dt){
     wantX=(nx*rangeMove+sideX*strafeMove)*speed;wantZ=(nz*rangeMove+sideZ*strafeMove)*speed;
     if(!lineClear(b.x,b.y,b.z,b.enemy.x,b.enemy.y,b.enemy.z)){wantX+=nx*speed*.42;wantZ+=nz*speed*.42;}
   }else{
-    let tx=b.target?.x||0,tz=b.target?.z||0,dx=tx-b.x,dz=tz-b.z,d=Math.hypot(dx,dz)||1;dx/=d;dz/=d;wantX=dx*speed*.88;wantZ=dz*speed*.88;b.faceYaw=Math.atan2(dx,dz);
+    let tx=(routing?b.route:b.target)?.x||0,tz=(routing?b.route:b.target)?.z||0,dx=tx-b.x,dz=tz-b.z,d=Math.hypot(dx,dz)||1;dx/=d;dz/=d;wantX=dx*speed*.88;wantZ=dz*speed*.88;b.faceYaw=Math.atan2(dx,dz);
   }
   const sep=botSeparation(b);wantX+=sep.x*speed*1.65;wantZ+=sep.z*speed*1.65;
   b.vx+=(wantX-b.vx)*clamp(8.4*dt,0,1);b.vz+=(wantZ-b.vz)*clamp(8.4*dt,0,1);
   const mv=Math.hypot(b.vx,b.vz),moveYaw=mv>.2?Math.atan2(b.vx,b.vz):b.faceYaw;if(mv>.2){if(!b.enemy)b.faceYaw=moveYaw;b.walk+=mv*dt*4.2}b.yaw=b.faceYaw;
-  const dirX=Math.sin(moveYaw),dirZ=Math.cos(moveYaw),gHere=topAtPoint(b.x,b.z),gAhead=topAtPoint(b.x+dirX*2.8,b.z+dirZ*2.8),higher=b.target&&b.target.y>b.y+.55,nearWall=walls.some(w=>Math.abs(b.x+dirX*1.25-w.x)<w.w/2+.72&&Math.abs(b.z+dirZ*1.25-w.z)<w.d/2+.72&&b.y<w.y+w.h/2+.8);
+  const dirX=Math.sin(moveYaw),dirZ=Math.cos(moveYaw),gHere=topAtPoint(b.x,b.z),gAhead=topAtPoint(b.x+dirX*2.8,b.z+dirZ*2.8),higher=(routing?b.route:b.target)&&((routing?b.route:b.target).y>b.y+.55),nearWall=walls.some(w=>Math.abs(b.x+dirX*1.25-w.x)<w.w/2+.72&&Math.abs(b.z+dirZ*1.25-w.z)<w.d/2+.72&&b.y<w.y+w.h/2+.8);
   // Jump only when navigation needs it. This removes the old pogo-stick bot behavior.
-  if(b.onGround&&b.jumpCd<=0&&(gAhead>gHere+.45||higher||nearWall)&&(Math.random()<.72)){b.vy=rand(14.5,17.2);b.jumpCd=rand(1.0,1.8)}
+  if(b.onGround&&b.jumpCd<=0&&(gAhead>gHere+.45||higher||nearWall)&&(Math.random()<.72)){b.vy=rand(20.5,23.0);b.jumpCd=rand(.72,1.28)}
   physics(b,dt);
   if(b.enemy&&b.fireCd<=0&&lineClear(b.x,b.y-.05,b.z,b.enemy.x,b.enemy.y-.55,b.enemy.z)){
     const dist=hypot2(b.enemy.x-b.x,b.enemy.z-b.z);
@@ -325,7 +357,7 @@ function addLine(a,b,color){lineSegments.push({p:[a,b],rgb:hexRgb(color)})}
 function addBoxGeometry(o,color,line=1){const x=o.x,z=o.z,hw=o.w/2,hd=o.d/2,y0=o.y-o.h/2,y1=o.y+o.h/2,A=[x-hw,y0,z-hd],B=[x+hw,y0,z-hd],C=[x+hw,y0,z+hd],D=[x-hw,y0,z+hd],E=[x-hw,y1,z-hd],F=[x+hw,y1,z-hd],G=[x+hw,y1,z+hd],Hh=[x-hw,y1,z+hd];addQuad(E,F,G,Hh,shadeColor(color,28));addQuad(D,C,B,A,shadeColor(color,-44));addQuad(A,E,Hh,D,shadeColor(color,-28));addQuad(B,C,G,F,shadeColor(color,-36));addQuad(A,B,F,E,shadeColor(color,-15));addQuad(C,D,Hh,G,shadeColor(color,-22))}
 function orientedPoints(x,y,z,w,h,d,yaw){const sx=Math.cos(yaw),sz=-Math.sin(yaw),fx=Math.sin(yaw),fz=Math.cos(yaw),hw=w/2,hd=d/2,y0=y-h/2,y1=y+h/2,pt=(a,b,yy)=>[x+sx*a+fx*b,yy,z+sz*a+fz*b];return [pt(-hw,-hd,y0),pt(hw,-hd,y0),pt(hw,hd,y0),pt(-hw,hd,y0),pt(-hw,-hd,y1),pt(hw,-hd,y1),pt(hw,hd,y1),pt(-hw,hd,y1)]}
 function addOrientedBox(x,y,z,w,h,d,yaw,color){const p=orientedPoints(x,y,z,w,h,d,yaw);addQuad(p[4],p[5],p[6],p[7],shadeColor(color,18));addQuad(p[3],p[2],p[1],p[0],shadeColor(color,-42));addQuad(p[0],p[4],p[7],p[3],shadeColor(color,-30));addQuad(p[1],p[2],p[6],p[5],shadeColor(color,-36));addQuad(p[0],p[1],p[5],p[4],shadeColor(color,-18));addQuad(p[2],p[3],p[7],p[6],shadeColor(color,-24))}
-function addFloorTiles(){const y=.012,size=4,min=-44.9,max=44.9;for(let z=min,zi=0;z<max;z+=size,zi++)for(let x=min,xi=0;x<max;x+=size,xi++){const x1=Math.min(max,x+size),z1=Math.min(max,z+size),major=xi%4===0||zi%4===0,base=(xi+zi)&1?'#a9bbcf':'#b5c7d9';addQuad([x,y,z],[x1,y,z],[x1,y,z1],[x,y,z1],base,major?'#526a85':'#71869d')}}
+function addFloorTiles(){const y=.012,size=4,min=-44.9,max=44.9;for(let z=min,zi=0;z<max;z+=size,zi++)for(let x=min,xi=0;x<max;x+=size,xi++){const x1=Math.min(max,x+size),z1=Math.min(max,z+size),major=xi%4===0||zi%4===0,base=(xi+zi)&1?mapTheme.floorA:mapTheme.floorB;addQuad([x,y,z],[x1,y,z],[x1,y,z1],[x,y,z1],base,major?mapTheme.grid:mapTheme.gridSoft)}}
 function addHelmetGeometry(b,yaw){
   const c=b.color,fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw),dark='#111a2b',deep='#080f1c';
   addOrientedBox(b.x,b.y-.24,b.z,.64,.48,.58,yaw,dark);
@@ -358,7 +390,7 @@ function addBotGeometry(b){
 }
 function addHeldGunGeometry(b,yaw){const w=WEAPONS[b.weapon]||WEAPONS.assault,c=w.color,g=gunSpec(b.weapon),fx=Math.sin(yaw),fz=Math.cos(yaw),sx=Math.cos(yaw),sz=-Math.sin(yaw),hx=b.x+fx*.54+sx*.18,hy=b.y-1.02,hz=b.z+fz*.54+sz*.18,part=(side,up,forward,ww,hh,dd,col)=>addOrientedBox(hx+sx*side+fx*forward,hy+up,hz+sz*side+fz*forward,ww,hh,dd,yaw,col);part(0,0,.18,g.body[0],g.body[1],g.body[2],'#172033');part(0,.03,.18+g.body[2]/2+g.barrel[2]/2,g.barrel[0],g.barrel[1],g.barrel[2],c);part(0,-.02,.18-g.body[2]/2-g.stock[2]/2,g.stock[0],g.stock[1],g.stock[2],'#101526');part(-.11,-.31,.04,g.grip[0]*.92,g.grip[1]*.92,g.grip[2]*.92,'#0c1320')}
 function uploadAndDraw(items,mode){if(!items.length)return;const data=[];for(const item of items)for(const p of item.p){const q=cameraClipPoint(p);data.push(q[0],q[1],q[2],q[3],item.rgb[0],item.rgb[1],item.rgb[2])}const arr=new Float32Array(data);gl.bindBuffer(gl.ARRAY_BUFFER,worldBuffer);gl.bufferData(gl.ARRAY_BUFFER,arr,gl.DYNAMIC_DRAW);gl.enableVertexAttribArray(worldPos);gl.vertexAttribPointer(worldPos,4,gl.FLOAT,false,28,0);gl.enableVertexAttribArray(worldColor);gl.vertexAttribPointer(worldColor,3,gl.FLOAT,false,28,16);gl.drawArrays(mode,0,arr.length/7)}
-function renderDepthWorld(){solidTriangles=[];lineSegments=[];for(const p of platforms)addBoxGeometry({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h},p.c);addFloorTiles();for(const w of walls)addBoxGeometry(w,w.c);for(const b of bots)if(!b.dead)addBotGeometry(b);gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.disable(gl.BLEND);gl.clearColor(.78,.88,.96,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(worldProgram);uploadAndDraw(solidTriangles,gl.TRIANGLES);gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-1,-1);gl.lineWidth(1);uploadAndDraw(lineSegments,gl.LINES);gl.disable(gl.POLYGON_OFFSET_FILL)}
+function renderDepthWorld(){solidTriangles=[];lineSegments=[];for(const p of platforms)addBoxGeometry({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h},p.c);addFloorTiles();for(const w of walls)addBoxGeometry(w,w.c);for(const b of bots)if(!b.dead)addBotGeometry(b);gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.disable(gl.BLEND);gl.clearColor(mapTheme.sky[0],mapTheme.sky[1],mapTheme.sky[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(worldProgram);uploadAndDraw(solidTriangles,gl.TRIANGLES);gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-1,-1);gl.lineWidth(1);uploadAndDraw(lineSegments,gl.LINES);gl.disable(gl.POLYGON_OFFSET_FILL)}
 function draw(){renderDepthWorld();ctx.clearRect(0,0,W,H);ctx.drawImage(worldCanvas,0,0,W,H);
   drawPickups();drawImpacts();drawMuzzleFlashes(false);for(const b of bots)if(!b.dead)drawBotLabelIfVisible(b);for(const s of shots)drawBeamTrail(s,false);for(const l of lasers)drawBeamTrail(l,true);
   for(const p of projectiles)drawPlasmaProjectile3D(p);
