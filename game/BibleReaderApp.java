@@ -1058,15 +1058,15 @@ public class BibleReaderApp extends JFrame {
         JPopupMenu menu = new JPopupMenu();
         int[] minutes = {5, 10, 15, 20, 30, 45, 60};
         for (int minute : minutes) {
-            JMenuItem item = new JMenuItem(minute + " minutes" + (currentProfile.selectedStudyTimerMinutes == minute ? " ✓" : ""));
+            JMenuItem item = popupMenuItem(minute + " minutes" + (currentProfile.selectedStudyTimerMinutes == minute ? " ✓" : ""));
             item.addActionListener(ev -> setStudyTimerMinutes(minute));
             menu.add(item);
         }
         menu.addSeparator();
-        JMenuItem custom = new JMenuItem("Custom minutes...");
+        JMenuItem custom = popupMenuItem("Custom minutes...");
         custom.addActionListener(ev -> chooseCustomStudyTimerMinutes());
         menu.add(custom);
-        JMenuItem sound = new JMenuItem((Boolean.TRUE.equals(currentProfile.studySoundEnabled) ? "Disable" : "Enable") + " finish sound");
+        JMenuItem sound = popupMenuItem((Boolean.TRUE.equals(currentProfile.studySoundEnabled) ? "Disable" : "Enable") + " finish sound");
         sound.addActionListener(ev -> {
             currentProfile.studySoundEnabled = !Boolean.TRUE.equals(currentProfile.studySoundEnabled);
             saveData();
@@ -3556,6 +3556,15 @@ public class BibleReaderApp extends JFrame {
         UIManager.put("OptionPane.background", modern ? modernBackground : panelBg);
         UIManager.put("Panel.background", modern ? modernBackground : panelBg);
         UIManager.put("Button.rollover", Boolean.TRUE);
+        Color menuBackground = modern ? modernSurface : cream;
+        Color menuForeground = modern ? modernText : Color.BLACK;
+        Color menuSelectionBackground = modern ? modernDarkRed : darkRed;
+        UIManager.put("PopupMenu.background", menuBackground);
+        UIManager.put("MenuItem.background", menuBackground);
+        UIManager.put("MenuItem.foreground", menuForeground);
+        UIManager.put("MenuItem.selectionBackground", menuSelectionBackground);
+        UIManager.put("MenuItem.selectionForeground", Color.WHITE);
+        UIManager.put("MenuItem.disabledForeground", modern ? modernMutedText : Color.DARK_GRAY);
 
         if (root instanceof JFrame) ((JFrame) root).getContentPane().setBackground(modern ? modernBackground : panelBg);
         if (root instanceof JDialog) ((JDialog) root).getContentPane().setBackground(modern ? modernBackground : panelBg);
@@ -4058,10 +4067,10 @@ public class BibleReaderApp extends JFrame {
         Object value = userObjectFromTreePath(path);
         boolean openable = canOpenLibraryNode(value);
         JPopupMenu menu = new JPopupMenu();
-        JMenuItem open = new JMenuItem("Open");
+        JMenuItem open = popupMenuItem("Open");
         open.setEnabled(openable);
         open.addActionListener(a -> openLibraryNode(value, true));
-        JMenuItem fromBeginning = new JMenuItem("Open from Beginning");
+        JMenuItem fromBeginning = popupMenuItem("Open from Beginning");
         fromBeginning.setEnabled(openable);
         fromBeginning.addActionListener(a -> openLibraryNodeFromBeginning(value));
         menu.add(open);
@@ -6624,11 +6633,12 @@ public class BibleReaderApp extends JFrame {
 
     private void addSelectionToolbarButton(JPanel toolbar, String label, Runnable action) {
         JButton button = new JButton(label);
+        button.putClientProperty("buttonType", ButtonType.PRIMARY);
+        styleModernButton(button, ButtonType.PRIMARY);
         button.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        button.setMargin(new Insets(4, 7, 4, 7));
         button.setFocusable(false);
-        button.setBackground(darkRed);
-        button.setForeground(Color.WHITE);
+        button.setMinimumSize(new Dimension(64, 30));
+        button.setBorder(new RoundedBorder(button.getBackground().darker(), 10, new Insets(5, 8, 5, 8)));
         button.addActionListener(e -> {
             if (selectionActionRunning) return;
             selectionActionRunning = true;
@@ -7268,8 +7278,40 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         } catch (Exception ignored) {}
     }
 
-    private void addMenu(JPopupMenu m, String label, Runnable r) {
+    private JMenuItem popupMenuItem(String label) {
         JMenuItem item = new JMenuItem(label);
+        item.setFont(modernBaseFont.deriveFont(Font.BOLD, 13f));
+        item.setOpaque(true);
+        item.setContentAreaFilled(true);
+        item.setBorderPainted(false);
+        item.setRolloverEnabled(true);
+        item.setBorder(new EmptyBorder(7, 12, 7, 12));
+        if (!Boolean.TRUE.equals(item.getClientProperty("contrastStateListenerInstalled"))) {
+            item.getModel().addChangeListener(e -> applyPopupMenuItemState(item));
+            item.putClientProperty("contrastStateListenerInstalled", Boolean.TRUE);
+        }
+        applyPopupMenuItemState(item);
+        return item;
+    }
+
+    private void applyPopupMenuItemState(JMenuItem item) {
+        boolean modern = isModernViewEnabled();
+        Color normalBackground = modern ? modernSurface : cream;
+        Color normalForeground = modern ? modernText : Color.BLACK;
+        if (!item.isEnabled()) {
+            item.setBackground(normalBackground);
+            item.setForeground(modern ? modernMutedText : Color.DARK_GRAY);
+        } else if (item.getModel().isArmed() || item.getModel().isPressed() || item.getModel().isRollover()) {
+            item.setBackground(modern ? modernDarkRed : darkRed);
+            item.setForeground(Color.WHITE);
+        } else {
+            item.setBackground(normalBackground);
+            item.setForeground(normalForeground);
+        }
+    }
+
+    private void addMenu(JPopupMenu m, String label, Runnable r) {
+        JMenuItem item = popupMenuItem(label);
         item.addActionListener(e -> r.run());
         m.add(item);
     }
@@ -11935,13 +11977,13 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void installChapterNotePopupMenu(JTextComponent pane, ChapterNote note) {
         JPopupMenu menu = new JPopupMenu();
-        JMenuItem cat = new JMenuItem("Attach Selected Note Text to Category");
+        JMenuItem cat = popupMenuItem("Attach Selected Note Text to Category");
         cat.addActionListener(e -> attachSelectedNoteText(note, pane, "CATEGORY"));
-        JMenuItem study = new JMenuItem("Attach Selected Note Text to Study Project");
+        JMenuItem study = popupMenuItem("Attach Selected Note Text to Study Project");
         study.addActionListener(e -> attachSelectedNoteText(note, pane, "STUDY"));
-        JMenuItem topic = new JMenuItem("Attach Selected Note Text to Teaching Page");
+        JMenuItem topic = popupMenuItem("Attach Selected Note Text to Teaching Page");
         topic.addActionListener(e -> attachSelectedNoteText(note, pane, "TOPIC"));
-        JMenuItem copy = new JMenuItem("Copy");
+        JMenuItem copy = popupMenuItem("Copy");
         copy.addActionListener(e -> pane.copy());
         menu.add(cat); menu.add(study); menu.add(topic); menu.addSeparator(); menu.add(copy);
         pane.setComponentPopupMenu(menu);
@@ -12134,11 +12176,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         TextAnnotation annotation = item == null ? null : item.annotation;
         if (annotation == null) return;
         JPopupMenu menu = new JPopupMenu();
-        JMenuItem open = new JMenuItem("Open / Jump To");
+        JMenuItem open = popupMenuItem("Open / Jump To");
         open.addActionListener(a -> openRecentAnnotation(annotation));
-        JMenuItem edit = new JMenuItem("Edit Note");
+        JMenuItem edit = popupMenuItem("Edit Note");
         edit.addActionListener(a -> editAnnotation(annotation));
-        JMenuItem delete = new JMenuItem("Delete Note");
+        JMenuItem delete = popupMenuItem("Delete Note");
         delete.addActionListener(a -> deleteAnnotation(annotation));
         menu.add(open);
         menu.add(edit);
@@ -12155,13 +12197,13 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         ChapterNote note = chapterNotesList.getModel().getElementAt(index);
         if (note == null) return;
         JPopupMenu menu = new JPopupMenu();
-        JMenuItem open = new JMenuItem("Open Chapter Note");
+        JMenuItem open = popupMenuItem("Open Chapter Note");
         open.addActionListener(a -> openChapterNoteViewer(note));
-        JMenuItem edit = new JMenuItem("Edit Chapter Note");
+        JMenuItem edit = popupMenuItem("Edit Chapter Note");
         edit.addActionListener(a -> editChapterNote(note));
-        JMenuItem jump = new JMenuItem("Jump To Chapter");
+        JMenuItem jump = popupMenuItem("Jump To Chapter");
         jump.addActionListener(a -> jumpToChapterNote(note));
-        JMenuItem delete = new JMenuItem("Delete Chapter Note");
+        JMenuItem delete = popupMenuItem("Delete Chapter Note");
         delete.addActionListener(a -> deleteChapterNote(note));
         menu.add(open);
         menu.add(edit);
