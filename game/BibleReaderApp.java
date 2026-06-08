@@ -3256,8 +3256,25 @@ public class BibleReaderApp extends JFrame {
         teachingTimelineList.setDragEnabled(true);
         teachingTimelineList.setTransferHandler(new TeachingTimelineTransferHandler());
         teachingTimelineList.setCellRenderer(new TeachingTimelineItemRenderer());
+        teachingTimelineList.setFixedCellHeight(-1);
+        teachingTimelineList.setAutoscrolls(true);
+        teachingTimelineList.setToolTipText("Double-click an item to expand or collapse it. Right-click for item actions.");
         teachingTimelineList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) loadSelectedTeachingTimelineDetails();
+        });
+        teachingTimelineList.addMouseListener(new MouseAdapter() {
+            public void mousePressed(MouseEvent e) { showTeachingTimelineContextMenu(e); }
+            public void mouseReleased(MouseEvent e) { showTeachingTimelineContextMenu(e); }
+            public void mouseClicked(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2
+                        && selectTeachingTimelineItemAt(e.getPoint())) {
+                    toggleSelectedTeachingTimelineItemExpanded();
+                }
+            }
+        });
+        teachingTimelineList.getInputMap(JComponent.WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "toggleExpanded");
+        teachingTimelineList.getActionMap().put("toggleExpanded", new AbstractAction() {
+            public void actionPerformed(ActionEvent e) { toggleSelectedTeachingTimelineItemExpanded(); }
         });
 
         JButton addMainPoint = blackButton("Add Main Point");
@@ -3278,7 +3295,11 @@ public class BibleReaderApp extends JFrame {
         JLabel timelineHeading = new JLabel("Teaching Timeline — drag to reorder");
         timelineHeading.setFont(modernBoldFont);
         timelineListPanel.add(timelineHeading, BorderLayout.NORTH);
-        timelineListPanel.add(new JScrollPane(teachingTimelineList), BorderLayout.CENTER);
+        JScrollPane timelineScroll = new JScrollPane(teachingTimelineList,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS, ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        timelineScroll.getVerticalScrollBar().setUnitIncrement(18);
+        timelineScroll.getViewport().setScrollMode(JViewport.BLIT_SCROLL_MODE);
+        timelineListPanel.add(timelineScroll, BorderLayout.CENTER);
         timelineListPanel.add(timelineButtons, BorderLayout.SOUTH);
 
         teachingAvailableItemModel = new DefaultListModel<>();
@@ -3300,7 +3321,11 @@ public class BibleReaderApp extends JFrame {
         JPanel availablePanel = new JPanel(new BorderLayout(5, 5));
         availablePanel.setOpaque(false);
         availablePanel.add(availableHeader, BorderLayout.NORTH);
-        availablePanel.add(new JScrollPane(teachingAvailableItemList), BorderLayout.CENTER);
+        JScrollPane availableScroll = new JScrollPane(teachingAvailableItemList,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS, ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        availableScroll.getVerticalScrollBar().setUnitIncrement(18);
+        teachingAvailableItemList.setAutoscrolls(true);
+        availablePanel.add(availableScroll, BorderLayout.CENTER);
         availablePanel.add(addAvailable, BorderLayout.SOUTH);
 
         JSplitPane listsSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, timelineListPanel, availablePanel);
@@ -8783,6 +8808,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         copy.sourceTitle = source.sourceTitle;
         copy.customTitle = source.customTitle;
         copy.bodyPreview = source.bodyPreview;
+        copy.expanded = source.expanded;
         for (TeachingBulletPoint sourceBullet : source.bulletPoints) copy.bulletPoints.add(new TeachingBulletPoint(sourceBullet.text));
         int sourceIndex = topic.timelineItems.indexOf(source);
         topic.timelineItems.add(Math.max(0, sourceIndex + 1), copy);
@@ -8808,8 +8834,120 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void removeSelectedTeachingTimelineItem() {
-        TopicPage topic = selectedTopicPage(); TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue();
-        if (topic == null || item == null) return; topic.timelineItems.remove(item); normalizeTeachingTimelineOrder(topic); touchTeachingPage(topic); saveData(); refreshSelectedTopicDetails();
+        TopicPage topic = selectedTopicPage();
+        TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue();
+        if (topic == null || item == null) return;
+        boolean timelineOnlyCustom = isTimelineOnlyCustomItem(topic, item);
+        if (timelineOnlyCustom) {
+            String message = "This custom item exists only on the timeline. Delete it completely?";
+            if (JOptionPane.showConfirmDialog(this, message, "Delete Timeline Item", JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
+        }
+        int removedIndex = topic.timelineItems.indexOf(item);
+        topic.timelineItems.remove(item);
+        normalizeTeachingTimelineOrder(topic);
+        touchTeachingPage(topic);
+        saveData();
+        refreshTeachingWorkspace(topic);
+        if (teachingTimelineList != null && !teachingTimelineModel.isEmpty()) {
+            teachingTimelineList.setSelectedIndex(Math.min(Math.max(0, removedIndex), teachingTimelineModel.size() - 1));
+        }
+        if (statusLabel != null) statusLabel.setText(timelineOnlyCustom
+                ? " Deleted custom timeline item." : " Removed item from the timeline; Teaching Page data was kept.");
+    }
+
+    private boolean isTimelineOnlyCustomItem(TopicPage topic, TeachingTimelineItem item) {
+        String type = normalizedTeachingType(item == null ? "" : item.type);
+        if (!("MAIN_POINT".equals(type) || "CUSTOM".equals(type))) return false;
+        return topic == null || topic.links == null || topic.links.stream().noneMatch(link -> timelineMatchesLink(item, link));
+    }
+
+    private LinkedItem teachingLinkForTimelineItem(TopicPage topic, TeachingTimelineItem item) {
+        if (topic == null || item == null || topic.links == null) return null;
+        return topic.links.stream().filter(link -> timelineMatchesLink(item, link)).findFirst().orElse(null);
+    }
+
+    private void removeSelectedTimelineItemFromTeachingPage() {
+        TopicPage topic = selectedTopicPage();
+        TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue();
+        LinkedItem link = teachingLinkForTimelineItem(topic, item);
+        if (topic == null || item == null || link == null) return;
+        String message = "Remove \"" + teachingTimelineItemTitle(item)
+                + "\" from this Teaching Page and remove all of its timeline entries?";
+        if (JOptionPane.showConfirmDialog(this, message, "Remove from Teaching Page", JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
+        topic.links.remove(link);
+        topic.timelineItems.removeIf(candidate -> timelineMatchesLink(candidate, link));
+        if ("WRITING".equalsIgnoreCase(safe(link.type))) {
+            StudyWritingDocument document = currentProfile.writingDocuments.get(link.ref);
+            if (document != null && document.linkedTopicPageIds != null) document.linkedTopicPageIds.remove(topic.id);
+        }
+        normalizeTeachingTimelineOrder(topic);
+        touchTeachingPage(topic);
+        saveData();
+        refreshSelectedTopicDetails();
+        if (statusLabel != null) statusLabel.setText(" Removed item from the Teaching Page.");
+    }
+
+    private boolean selectTeachingTimelineItemAt(Point point) {
+        if (teachingTimelineList == null || point == null) return false;
+        int index = teachingTimelineList.locationToIndex(point);
+        if (index < 0) return false;
+        Rectangle bounds = teachingTimelineList.getCellBounds(index, index);
+        if (bounds == null || !bounds.contains(point)) return false;
+        teachingTimelineList.setSelectedIndex(index);
+        return true;
+    }
+
+    private void showTeachingTimelineContextMenu(MouseEvent event) {
+        if (teachingTimelineList == null || event == null || !event.isPopupTrigger()
+                || !selectTeachingTimelineItemAt(event.getPoint())) return;
+        TeachingTimelineItem item = teachingTimelineList.getSelectedValue();
+        if (item == null) return;
+        TopicPage topic = selectedTopicPage();
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem edit = new JMenuItem("Edit Item");
+        edit.addActionListener(e -> focusSelectedTeachingTimelineEditor());
+        JMenuItem delete = new JMenuItem("Delete from Timeline");
+        delete.addActionListener(e -> removeSelectedTeachingTimelineItem());
+        JMenuItem removeFromPage = new JMenuItem("Remove from Teaching Page");
+        removeFromPage.setEnabled(teachingLinkForTimelineItem(topic, item) != null);
+        removeFromPage.addActionListener(e -> removeSelectedTimelineItemFromTeachingPage());
+        JMenuItem expand = new JMenuItem(item.expanded ? "Collapse" : "Expand");
+        expand.addActionListener(e -> toggleSelectedTeachingTimelineItemExpanded());
+        menu.add(edit);
+        menu.add(delete);
+        if (removeFromPage.isEnabled()) menu.add(removeFromPage);
+        menu.addSeparator();
+        menu.add(expand);
+        menu.show(teachingTimelineList, event.getX(), event.getY());
+    }
+
+    private void focusSelectedTeachingTimelineEditor() {
+        TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue();
+        if (item == null) return;
+        loadSelectedTeachingTimelineDetails();
+        String type = normalizedTeachingType(item.type);
+        if (("MAIN_POINT".equals(type) || "CUSTOM".equals(type)) && teachingTimelineTitleField != null) {
+            teachingTimelineTitleField.requestFocusInWindow();
+            teachingTimelineTitleField.selectAll();
+        } else if (teachingBulletList != null) {
+            teachingBulletList.requestFocusInWindow();
+        }
+    }
+
+    private void toggleSelectedTeachingTimelineItemExpanded() {
+        TopicPage topic = selectedTopicPage();
+        TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue();
+        if (topic == null || item == null) return;
+        item.expanded = !item.expanded;
+        item.updatedAt = System.currentTimeMillis();
+        touchTeachingPage(topic);
+        saveData();
+        teachingTimelineList.revalidate();
+        teachingTimelineList.repaint();
+        int index = teachingTimelineList.getSelectedIndex();
+        if (index >= 0) teachingTimelineList.ensureIndexIsVisible(index);
     }
 
     private void normalizeTeachingTimelineOrder(TopicPage topic) {
@@ -8966,18 +9104,68 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
     }
 
-    private class TeachingTimelineItemRenderer extends DefaultListCellRenderer {
-        private static final long serialVersionUID = 1L;
-        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
-            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, selected, focus);
-            TeachingTimelineItem item = (TeachingTimelineItem) value;
-            String preview = shortenLines(safe(item.bodyPreview), 90);
-            label.setText("<html><b>" + (index + 1) + ". " + esc(teachingTimelineItemTitle(item)) + "</b>"
-                    + " <span style='color:#6b5c54'>[" + esc(normalizedTeachingType(item.type)) + "]</span>"
-                    + (preview.isEmpty() ? "" : "<br><span style='color:#6b5c54'>" + esc(preview) + "</span>") + "</html>");
-            label.setBorder(new EmptyBorder(7, 8, 7, 8));
-            return label;
+    private class TeachingTimelineItemRenderer implements ListCellRenderer<TeachingTimelineItem> {
+        public Component getListCellRendererComponent(JList<? extends TeachingTimelineItem> list, TeachingTimelineItem item,
+                                                       int index, boolean selected, boolean focus) {
+            JPanel card = new JPanel(new BorderLayout(8, 5));
+            Color background = selected ? modernSelection : modernSurface;
+            card.setBackground(background);
+            card.setOpaque(true);
+            card.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(index == 0 ? 1 : 0, 1, 1, 1, selected ? modernPrimaryRed : modernBorder),
+                    new EmptyBorder(8, 10, 8, 10)));
+
+            String marker = item.expanded ? "▼" : "▶";
+            JLabel heading = new JLabel("<html><b>" + marker + " " + (index + 1) + ". "
+                    + esc(teachingTimelineItemTitle(item)) + "</b> &nbsp;<span style='color:#6b5c54'>["
+                    + esc(normalizedTeachingType(item.type)) + "]</span></html>");
+            heading.setForeground(modernText);
+            card.add(heading, BorderLayout.NORTH);
+
+            int availableWidth = Math.max(220, list.getWidth() - 55);
+            String body = safe(item.bodyPreview).trim();
+            StringBuilder content = new StringBuilder("<html><div style='width:").append(availableWidth).append("px'>");
+            if (item.expanded) {
+                if (!body.isEmpty()) content.append(htmlWithLineBreaks(body));
+                if (item.bulletPoints != null && !item.bulletPoints.isEmpty()) {
+                    content.append("<br><b>Bullet points</b><ul>");
+                    for (TeachingBulletPoint bullet : item.bulletPoints) {
+                        content.append("<li>").append(htmlWithLineBreaks(safe(bullet.text))).append("</li>");
+                    }
+                    content.append("</ul>");
+                }
+                if (body.isEmpty() && (item.bulletPoints == null || item.bulletPoints.isEmpty())) {
+                    content.append("<span style='color:#6b5c54'><i>No preview text or bullet points.</i></span>");
+                }
+            } else {
+                String preview = firstTeachingTimelinePreviewLine(item);
+                content.append("<span style='color:#6b5c54'>")
+                        .append(preview.isEmpty() ? "<i>No preview</i>" : esc(preview)).append("</span>");
+            }
+            content.append("</div></html>");
+            JLabel details = new JLabel(content.toString());
+            details.setForeground(modernText);
+            details.setVerticalAlignment(SwingConstants.TOP);
+            card.add(details, BorderLayout.CENTER);
+            return card;
         }
+    }
+
+    private String firstTeachingTimelinePreviewLine(TeachingTimelineItem item) {
+        String body = safe(item == null ? "" : item.bodyPreview).trim();
+        if (!body.isEmpty()) {
+            String firstLine = body.split("\\R", 2)[0].trim();
+            return firstLine.length() <= 120 ? firstLine : firstLine.substring(0, 117) + "...";
+        }
+        if (item != null && item.bulletPoints != null && !item.bulletPoints.isEmpty()) {
+            String bullet = safe(item.bulletPoints.get(0).text).trim();
+            return bullet.length() <= 118 ? "• " + bullet : "• " + bullet.substring(0, 115) + "...";
+        }
+        return "";
+    }
+
+    private String htmlWithLineBreaks(String text) {
+        return esc(safe(text)).replace("\r\n", "<br>").replace("\n", "<br>").replace("\r", "<br>");
     }
 
     private class AvailableTeachingItemRenderer extends DefaultListCellRenderer {
@@ -15397,6 +15585,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         String customTitle = "";
         String bodyPreview = "";
         List<TeachingBulletPoint> bulletPoints = new ArrayList<>();
+        boolean expanded = true;
         int order;
         long createdAt = System.currentTimeMillis();
         long updatedAt = createdAt;
