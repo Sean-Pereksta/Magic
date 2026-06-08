@@ -172,6 +172,17 @@ public class BibleReaderApp extends JFrame {
     private JTextArea topicSummaryArea;
     private DefaultListModel<LinkedItem> topicLinkModel;
     private JList<LinkedItem> topicLinkList;
+    private JTable teachingLinkedTable;
+    private TeachingLinkedTableModel teachingLinkedTableModel;
+    private DefaultListModel<TeachingTimelineItem> teachingTimelineModel;
+    private JList<TeachingTimelineItem> teachingTimelineList;
+    private JTextField teachingTimelineTitleField;
+    private JTextArea teachingTimelineBodyArea;
+    private DefaultListModel<TeachingBulletPoint> teachingBulletModel;
+    private JList<TeachingBulletPoint> teachingBulletList;
+    private JPanel teachingTimelineViewPanel;
+    private JTabbedPane teachingWorkspaceTabs;
+    private boolean loadingTeachingTimelineDetails;
 
     private DefaultListModel<StudyProject> studyProjectModel;
     private JList<StudyProject> studyProjectList;
@@ -443,7 +454,7 @@ public class BibleReaderApp extends JFrame {
         JButton recent = navButton("All Notes");
         JButton categories = navButton("Categories");
         JButton questions = navButton("Questions");
-        JButton topicPages = navButton("Topic Pages");
+        JButton topicPages = navButton("Teaching");
         JButton backup = navButton("Backup");
         JButton export = navButton("Export");
         modernViewToggleButton = navButton("Modern View: On");
@@ -471,7 +482,7 @@ public class BibleReaderApp extends JFrame {
         recent.setToolTipText("All Notes (Ctrl+6) — search and browse notes from every chapter and source.");
         categories.setToolTipText("Categories (Ctrl+7)");
         questions.setToolTipText("Questions (Ctrl+8)");
-        topicPages.setToolTipText("Topic Pages (Ctrl+9)");
+        topicPages.setToolTipText("Teaching (Ctrl+9) — prepare lessons, sermons, studies, and timelines.");
         importBtn.setToolTipText("Import Bible, Greek, and library data.");
         backup.setToolTipText("Backup saved data.");
         export.setToolTipText("Export notes and study data.");
@@ -1507,7 +1518,7 @@ public class BibleReaderApp extends JFrame {
         JButton linkProject = blackButton("Link Project Folder"); linkProject.addActionListener(e -> linkCurrentWritingToProject());
         JButton newProject = blackButton("New Project Folder"); newProject.addActionListener(e -> { createStudyProject(); refreshWritingFilters(); });
         JButton linkCategory = blackButton("Link Category"); linkCategory.addActionListener(e -> linkCurrentWritingToCategory());
-        JButton linkTopic = blackButton("Link Topic Page"); linkTopic.addActionListener(e -> linkCurrentWritingToTopicPage());
+        JButton linkTopic = blackButton("Link Teaching Page"); linkTopic.addActionListener(e -> linkCurrentWritingToTopicPage());
         projectButtons.add(linkProject); projectButtons.add(newProject); projectButtons.add(linkCategory); projectButtons.add(linkTopic);
 
         JPanel miniReader = buildWriterMiniReader();
@@ -3033,7 +3044,7 @@ public class BibleReaderApp extends JFrame {
 
         JButton toggle = blackButton("Toggle Answered / Unanswered");
         JButton add = blackButton("Add Question To Current Selection");
-        JButton addTopic = blackButton("Add Question to Topic Page");
+        JButton addTopic = blackButton("Add Question to Teaching Page");
         toggle.addActionListener(e -> toggleSelectedQuestion());
         add.addActionListener(e -> addQuestionForSelection());
         addTopic.addActionListener(e -> addSelectedQuestionToTopicPage());
@@ -3093,12 +3104,12 @@ public class BibleReaderApp extends JFrame {
 
     private JPanel buildTopicPagesPage() {
         JPanel page = new JPanel(new BorderLayout(10, 10));
-        page.setBorder(new EmptyBorder(16, 16, 16, 16));
+        page.setBorder(new EmptyBorder(14, 14, 14, 14));
         page.setBackground(panelBg);
 
-        JLabel h = new JLabel("Topic Pages");
-        h.setFont(new Font("Segoe UI", Font.BOLD, 26));
-        h.setForeground(darkRed);
+        JLabel heading = new JLabel("Teaching");
+        heading.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        heading.setForeground(darkRed);
 
         topicPageModel = new DefaultListModel<>();
         topicPageList = new JList<>(topicPageModel);
@@ -3108,88 +3119,212 @@ public class BibleReaderApp extends JFrame {
             if (!e.getValueIsAdjusting()) refreshSelectedTopicDetails();
         });
 
-        JButton create = blackButton("Create Topic");
-        JButton rename = blackButton("Rename Topic");
-        JButton delete = blackButton("Delete Topic");
+        topicPageSearchField = new JTextField();
+        topicPageSearchField.setToolTipText("Search Teaching Pages...");
+        topicPageSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshTopicPages));
+
+        JButton create = blackButton("Create Teaching Page");
+        JButton rename = blackButton("Rename");
+        JButton delete = blackButton("Delete");
         create.addActionListener(e -> createTopicPageDialog());
         rename.addActionListener(e -> renameSelectedTopicPage());
         delete.addActionListener(e -> deleteSelectedTopicPage());
 
-        JPanel leftButtons = new JPanel(new GridLayout(0, 1, 6, 6));
+        JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
         leftButtons.setOpaque(false);
         leftButtons.add(create);
         leftButtons.add(rename);
         leftButtons.add(delete);
 
-        JPanel left = new JPanel(new BorderLayout(8, 8));
+        JPanel left = new JPanel(new BorderLayout(7, 7));
         left.setOpaque(false);
-        topicPageSearchField = new JTextField();
-        topicPageSearchField.setToolTipText("Filter topic pages...");
-        topicPageSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshTopicPages));
         left.add(topicPageSearchField, BorderLayout.NORTH);
         left.add(new JScrollPane(topicPageList), BorderLayout.CENTER);
         left.add(leftButtons, BorderLayout.SOUTH);
-        left.setPreferredSize(new Dimension(280, 10));
+        left.setMinimumSize(new Dimension(220, 200));
+        left.setPreferredSize(new Dimension(270, 400));
+        styleModernCard(left);
 
-        topicTitleLabel = new JLabel("Select or create a topic");
+        teachingWorkspaceTabs = new JTabbedPane();
+        teachingWorkspaceTabs.addTab("Manage Data", buildTeachingManageDataTab());
+        teachingWorkspaceTabs.addTab("Edit Timeline", buildTeachingTimelineEditorTab());
+        teachingWorkspaceTabs.addTab("View Timeline", buildTeachingTimelineViewTab());
+        teachingWorkspaceTabs.addChangeListener(e -> {
+            if (teachingWorkspaceTabs.getSelectedIndex() == 2) refreshTeachingTimelineView();
+        });
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, teachingWorkspaceTabs);
+        split.setResizeWeight(0.23);
+        split.setDividerLocation(270);
+        split.setContinuousLayout(true);
+
+        page.add(heading, BorderLayout.NORTH);
+        page.add(split, BorderLayout.CENTER);
+        return page;
+    }
+
+    private JPanel buildTeachingManageDataTab() {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBorder(new EmptyBorder(10, 10, 10, 10));
+        panel.setOpaque(false);
+
+        topicTitleLabel = new JLabel("Select or create a Teaching Page");
         topicTitleLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
         topicTitleLabel.setForeground(darkRed);
 
-        topicSummaryArea = new JTextArea(7, 40);
+        topicSummaryArea = new JTextArea(4, 30);
         topicSummaryArea.setLineWrap(true);
         topicSummaryArea.setWrapStyleWord(true);
         topicSummaryArea.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-
-        JButton saveSummary = blackButton("Save Summary");
+        JButton saveSummary = blackButton("Save Overview");
         saveSummary.addActionListener(e -> saveSelectedTopicSummary());
 
-        topicLinkModel = new DefaultListModel<>();
-        topicLinkList = new JList<>(topicLinkModel);
-        topicLinkList.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        topicLinkList.addMouseListener(new MouseAdapter() {
+        JPanel overview = new JPanel(new BorderLayout(6, 6));
+        overview.setOpaque(false);
+        overview.add(topicTitleLabel, BorderLayout.NORTH);
+        overview.add(new JScrollPane(topicSummaryArea), BorderLayout.CENTER);
+        overview.add(saveSummary, BorderLayout.EAST);
+
+        teachingLinkedTableModel = new TeachingLinkedTableModel();
+        teachingLinkedTable = new JTable(teachingLinkedTableModel);
+        teachingLinkedTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        teachingLinkedTable.setAutoCreateRowSorter(true);
+        teachingLinkedTable.setRowHeight(26);
+        teachingLinkedTable.getColumnModel().getColumn(0).setPreferredWidth(70);
+        teachingLinkedTable.getColumnModel().getColumn(1).setPreferredWidth(190);
+        teachingLinkedTable.getColumnModel().getColumn(2).setPreferredWidth(110);
+        teachingLinkedTable.getColumnModel().getColumn(3).setPreferredWidth(360);
+        teachingLinkedTable.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent e) {
-                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) openSelectedTopicLink();
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) openSelectedTeachingLink();
             }
         });
 
-        JButton addVerse = blackButton("Add Current Verse");
-        JButton addSelection = blackButton("Add Current Selection");
-        JButton addExisting = blackButton("Add Existing Note/Question");
-        JButton removeLink = blackButton("Remove Selected Link");
-        JButton openLink = blackButton("Open Selected Link");
-        addVerse.addActionListener(e -> addCurrentVerseToSelectedTopic());
-        addSelection.addActionListener(e -> addCurrentSelectionToSelectedTopic());
-        addExisting.addActionListener(e -> addExistingNoteOrQuestionToSelectedTopic());
-        removeLink.addActionListener(e -> removeSelectedTopicLink());
-        openLink.addActionListener(e -> openSelectedTopicLink());
+        JButton addWriting = blackButton("Add Study Writing Document");
+        JButton addNotes = blackButton("Add Notes");
+        JButton addVerses = blackButton("Add Verses");
+        JButton addCustom = blackButton("Add Custom Item");
+        JButton remove = blackButton("Remove Selected");
+        JButton open = blackButton("Open Selected");
+        JButton timeline = blackButton("Move Selected to Timeline");
+        addWriting.addActionListener(e -> showAddWritingDocumentsDialog());
+        addNotes.addActionListener(e -> showAddNotesDialog());
+        addVerses.addActionListener(e -> showAddVersesDialog());
+        addCustom.addActionListener(e -> addCustomTeachingItem());
+        remove.addActionListener(e -> removeSelectedTeachingLinks());
+        open.addActionListener(e -> openSelectedTeachingLink());
+        timeline.addActionListener(e -> addSelectedTeachingLinksToTimeline());
 
-        JPanel linkButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        linkButtons.setOpaque(false);
-        linkButtons.add(addVerse);
-        linkButtons.add(addSelection);
-        linkButtons.add(addExisting);
-        linkButtons.add(removeLink);
-        linkButtons.add(openLink);
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        buttons.setOpaque(false);
+        for (JButton button : Arrays.asList(addWriting, addNotes, addVerses, addCustom, remove, open, timeline)) buttons.add(button);
 
-        JPanel summaryPanel = new JPanel(new BorderLayout(6, 6));
-        summaryPanel.setOpaque(false);
-        summaryPanel.add(topicTitleLabel, BorderLayout.NORTH);
-        summaryPanel.add(new JScrollPane(topicSummaryArea), BorderLayout.CENTER);
-        summaryPanel.add(saveSummary, BorderLayout.SOUTH);
+        panel.add(overview, BorderLayout.NORTH);
+        panel.add(new JScrollPane(teachingLinkedTable), BorderLayout.CENTER);
+        panel.add(buttons, BorderLayout.SOUTH);
+        return panel;
+    }
 
-        JPanel right = new JPanel(new BorderLayout(8, 8));
-        right.setOpaque(false);
-        right.add(summaryPanel, BorderLayout.NORTH);
-        right.add(new JScrollPane(topicLinkList), BorderLayout.CENTER);
-        right.add(linkButtons, BorderLayout.SOUTH);
+    private JPanel buildTeachingTimelineEditorTab() {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBorder(new EmptyBorder(10, 10, 10, 10));
+        panel.setOpaque(false);
 
-        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, right);
-        split.setResizeWeight(0.25);
-        split.setDividerSize(7);
+        teachingTimelineModel = new DefaultListModel<>();
+        teachingTimelineList = new JList<>(teachingTimelineModel);
+        teachingTimelineList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        teachingTimelineList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) loadSelectedTeachingTimelineDetails();
+        });
 
-        page.add(h, BorderLayout.NORTH);
-        page.add(split, BorderLayout.CENTER);
-        return page;
+        JButton addLinked = blackButton("Add Selected Linked Item");
+        JButton addCustom = blackButton("Add Custom Timeline Item");
+        JButton up = blackButton("Move Up");
+        JButton down = blackButton("Move Down");
+        JButton remove = blackButton("Remove from Timeline");
+        addLinked.addActionListener(e -> addSelectedTeachingLinksToTimeline());
+        addCustom.addActionListener(e -> addCustomTeachingTimelineItem());
+        up.addActionListener(e -> moveSelectedTeachingTimelineItem(-1));
+        down.addActionListener(e -> moveSelectedTeachingTimelineItem(1));
+        remove.addActionListener(e -> removeSelectedTeachingTimelineItem());
+
+        JPanel timelineButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 3));
+        timelineButtons.setOpaque(false);
+        for (JButton button : Arrays.asList(addLinked, addCustom, up, down, remove)) timelineButtons.add(button);
+
+        JPanel timelineListPanel = new JPanel(new BorderLayout(5, 5));
+        timelineListPanel.setOpaque(false);
+        timelineListPanel.add(new JLabel("Teaching order"), BorderLayout.NORTH);
+        timelineListPanel.add(new JScrollPane(teachingTimelineList), BorderLayout.CENTER);
+        timelineListPanel.add(timelineButtons, BorderLayout.SOUTH);
+
+        teachingTimelineTitleField = new JTextField();
+        teachingTimelineBodyArea = new JTextArea(6, 30);
+        teachingTimelineBodyArea.setLineWrap(true);
+        teachingTimelineBodyArea.setWrapStyleWord(true);
+        teachingTimelineTitleField.getDocument().addDocumentListener(new SimpleDocumentListener(this::saveTeachingTimelineDetails));
+        teachingTimelineBodyArea.getDocument().addDocumentListener(new SimpleDocumentListener(this::saveTeachingTimelineDetails));
+
+        teachingBulletModel = new DefaultListModel<>();
+        teachingBulletList = new JList<>(teachingBulletModel);
+        teachingBulletList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        JButton addBullet = blackButton("Add Bullet Point");
+        JButton editBullet = blackButton("Edit Bullet Point");
+        JButton deleteBullet = blackButton("Delete Bullet Point");
+        JButton bulletUp = blackButton("Move Bullet Up");
+        JButton bulletDown = blackButton("Move Bullet Down");
+        addBullet.addActionListener(e -> addTeachingBulletPoint());
+        editBullet.addActionListener(e -> editTeachingBulletPoint());
+        deleteBullet.addActionListener(e -> deleteTeachingBulletPoint());
+        bulletUp.addActionListener(e -> moveTeachingBulletPoint(-1));
+        bulletDown.addActionListener(e -> moveTeachingBulletPoint(1));
+
+        JPanel bulletButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 3));
+        bulletButtons.setOpaque(false);
+        for (JButton button : Arrays.asList(addBullet, editBullet, deleteBullet, bulletUp, bulletDown)) bulletButtons.add(button);
+
+        JPanel detail = new JPanel(new BorderLayout(6, 6));
+        detail.setOpaque(false);
+        JPanel fields = new JPanel(new GridLayout(0, 1, 4, 4));
+        fields.setOpaque(false);
+        fields.add(new JLabel("Optional custom title"));
+        fields.add(teachingTimelineTitleField);
+        fields.add(new JLabel("Notes / body / preview"));
+        fields.add(new JScrollPane(teachingTimelineBodyArea));
+        detail.add(fields, BorderLayout.NORTH);
+        detail.add(new JScrollPane(teachingBulletList), BorderLayout.CENTER);
+        detail.add(bulletButtons, BorderLayout.SOUTH);
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, timelineListPanel, detail);
+        split.setResizeWeight(0.38);
+        split.setDividerLocation(360);
+        panel.add(split, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel buildTeachingTimelineViewTab() {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBorder(new EmptyBorder(10, 10, 10, 10));
+        panel.setOpaque(false);
+        teachingTimelineViewPanel = new JPanel();
+        teachingTimelineViewPanel.setLayout(new BoxLayout(teachingTimelineViewPanel, BoxLayout.X_AXIS));
+        teachingTimelineViewPanel.setOpaque(false);
+        JScrollPane scroll = new JScrollPane(teachingTimelineViewPanel,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED, ScrollPaneConstants.HORIZONTAL_SCROLLBAR_ALWAYS);
+        scroll.getHorizontalScrollBar().setUnitIncrement(24);
+
+        JButton refresh = blackButton("Refresh");
+        JButton copy = blackButton("Copy Teaching Timeline Text");
+        JButton export = blackButton("Export Text");
+        refresh.addActionListener(e -> refreshTeachingTimelineView());
+        copy.addActionListener(e -> copyTeachingTimelineText());
+        export.addActionListener(e -> exportTeachingTimelineText());
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        buttons.setOpaque(false);
+        buttons.add(refresh); buttons.add(copy); buttons.add(export);
+        panel.add(buttons, BorderLayout.NORTH);
+        panel.add(scroll, BorderLayout.CENTER);
+        return panel;
     }
 
     private enum ButtonType { PRIMARY, SECONDARY, DANGER, UTILITY, NAV, ACTIVE_NAV }
@@ -3460,6 +3595,29 @@ public class BibleReaderApp extends JFrame {
         }
     }
 
+    private class TeachingLinkedTableModel extends AbstractTableModel {
+        private static final long serialVersionUID = 1L;
+        private final String[] columns = {"Type", "Title / Reference", "Category", "Preview"};
+        private final List<LinkedItem> items = new ArrayList<>();
+        void setTopic(TopicPage topic) {
+            items.clear();
+            if (topic != null) { repairTopicPage(topic); items.addAll(topic.links); }
+            fireTableDataChanged();
+        }
+        LinkedItem itemAt(int row) { return row >= 0 && row < items.size() ? items.get(row) : null; }
+        public int getRowCount() { return items.size(); }
+        public int getColumnCount() { return columns.length; }
+        public String getColumnName(int column) { return columns[column]; }
+        public Object getValueAt(int row, int column) {
+            LinkedItem item = itemAt(row);
+            if (item == null) return "";
+            if (column == 0) return normalizedTeachingType(item.type);
+            if (column == 1) return teachingLinkTitle(item);
+            if (column == 2) return teachingLinkCategory(item);
+            return shortenLines(teachingLinkPreview(item), 180);
+        }
+    }
+
     private static class WidthTrackingPanel extends JPanel implements Scrollable {
         public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
         public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) { return 16; }
@@ -3644,7 +3802,7 @@ public class BibleReaderApp extends JFrame {
         if ("studyProjects".equals(name)) return "Study Writer";
         if ("studyTime".equals(name)) return "Study Time";
         if ("recent".equals(name)) return "All Notes";
-        if ("topicPages".equals(name)) return "Topic Pages";
+        if ("topicPages".equals(name)) return "Teaching";
         if (name == null || name.isEmpty()) return "Ready";
         return Character.toUpperCase(name.charAt(0)) + name.substring(1);
     }
@@ -4322,7 +4480,7 @@ public class BibleReaderApp extends JFrame {
         dialog.setLayout(new BorderLayout(8, 8));
         ((JComponent) dialog.getContentPane()).setBorder(new EmptyBorder(12, 12, 12, 12));
         JTextField field = new JTextField();
-        field.setToolTipText("Search Bible references, bookmarks, recent places, categories, notes, questions, projects, and topic pages.");
+        field.setToolTipText("Search Bible references, bookmarks, recent places, categories, notes, questions, projects, and Teaching Pages.");
         DefaultListModel<CommandPaletteItem> model = new DefaultListModel<>();
         JList<CommandPaletteItem> list = new JList<>(model);
         list.setVisibleRowCount(12);
@@ -4428,7 +4586,7 @@ public class BibleReaderApp extends JFrame {
                 if (paletteMatches(q, label + " " + project.description)) model.addElement(new CommandPaletteItem(label, project.description, () -> { showCard("studyProjects"); refreshStudyProjects(); selectWriterFilter(writingProjectFilter, project.id); refreshWritingDocuments(); }));
             }
             for (TopicPage topic : currentProfile.topicPages) {
-                String label = "Topic Page: " + topic.title;
+                String label = "Teaching Page: " + topic.title;
                 if (paletteMatches(q, label + " " + topic.summary)) model.addElement(new CommandPaletteItem(label, topic.summary, () -> { refreshTopicPages(); topicPageList.setSelectedValue(topic, true); showCard("topicPages"); }));
             }
         }
@@ -5363,7 +5521,7 @@ public class BibleReaderApp extends JFrame {
         JPopupMenu menu = new JPopupMenu();
         addMenu(menu, "Add to category", () -> linkWholeChapterNoteToCategory(note));
         addMenu(menu, "Add to Study Writer", () -> linkWholeChapterNoteToStudy(note));
-        addMenu(menu, "Add to topic page", () -> linkWholeChapterNoteToTopic(note));
+        addMenu(menu, "Add to Teaching Page", () -> linkWholeChapterNoteToTopic(note));
         addMenu(menu, "Pin", () -> {
             syncChapterNoteAnnotation(note);
             TextAnnotation annotation = annotationForChapterNote(note);
@@ -6492,14 +6650,14 @@ public class BibleReaderApp extends JFrame {
             addMenu(menu, "View Greek For This Verse", this::showGreekForCurrentSelection);
             addMenu(menu, "Add Greek Note To Selected Phrase", this::addGreekNoteForSelectionOrVerse);
             addMenu(menu, "Search This In Greek", this::searchSelectedTextInGreek);
-            addMenu(menu, "Add Greek Entry to Topic Page", this::addGreekSelectionToTopicPage);
+            addMenu(menu, "Add Greek Entry to Teaching Page", this::addGreekSelectionToTopicPage);
         } else if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:")) {
             addMenu(menu, "Search This In Greek", this::searchSelectedTextInGreek);
         }
         addMenu(menu, "Pin Selected Text To Sidebar", this::pinSelectedTextToSidebar);
         addMenu(menu, "Add Selected Text To Study Project", this::addSelectedTextToStudyProject);
-        addMenu(menu, "Add Selected Text to Topic Page", this::addSelectedTextToTopicPage);
-        addMenu(menu, "Create Topic From This", this::createTopicFromCurrentSelection);
+        addMenu(menu, "Add Selected Text to Teaching Page", this::addSelectedTextToTopicPage);
+        addMenu(menu, "Create Teaching Page From This", this::createTopicFromCurrentSelection);
         if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:")) {
             addMenu(menu, "Add To Memory Verses", this::addMemoryVerseFromSelection);
         }
@@ -6513,7 +6671,7 @@ public class BibleReaderApp extends JFrame {
         addMenu(menu, "Edit This Highlight", () -> editAnnotation(existing));
         addMenu(menu, "Pin This Highlight To Sidebar", () -> pinAnnotationToSidebar(existing));
         addMenu(menu, "Add This Note To Study Project", () -> addAnnotationToStudyProject(existing));
-        addMenu(menu, "Add Selected Note to Topic Page", () -> addAnnotationToTopicPage(existing));
+        addMenu(menu, "Add Selected Note to Teaching Page", () -> addAnnotationToTopicPage(existing));
         if ("Category".equals(existing.type) && existing.category != null && !existing.category.trim().isEmpty()) {
             String category = existing.category.trim();
             addMenu(menu, "Show Category: " + category, () -> showCategoryByName(category));
@@ -6645,8 +6803,8 @@ public class BibleReaderApp extends JFrame {
         if (!hasSelection && containingVerseNumber != null) {
             String key = selectedBook + " " + selectedChapter + ":" + containingVerseNumber;
             addMenu(menu, "Add Verse To Memory", () -> addMemoryVerseByKey(key));
-            addMenu(menu, "Add Current Verse to Topic Page", () -> addLinkedItemToTopicPage(new LinkedItem("VERSE", key, "related")));
-            addMenu(menu, "Create Topic From This", () -> createTopicFromLinkedItem(new LinkedItem("VERSE", key, "related")));
+            addMenu(menu, "Add Current Verse to Teaching Page", () -> addLinkedItemToTopicPage(new LinkedItem("VERSE", key, "related")));
+            addMenu(menu, "Create Teaching Page From This", () -> createTopicFromLinkedItem(new LinkedItem("VERSE", key, "related")));
         }
 
         if (verseNumber != null) {
@@ -7560,7 +7718,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         copy.setAlignmentX(Component.LEFT_ALIGNMENT);
         copy.addActionListener(e -> copyGreekTextToClipboard(key));
 
-        JButton addTopic = blackButton("Add Greek to Topic Page");
+        JButton addTopic = blackButton("Add Greek to Teaching Page");
         addTopic.setAlignmentX(Component.LEFT_ALIGNMENT);
         addTopic.addActionListener(e -> addLinkedItemToTopicPage(new LinkedItem("GREEK", key, "related")));
 
@@ -8168,6 +8326,444 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
 
+    private void refreshTeachingWorkspace(TopicPage topic) {
+        if (teachingLinkedTableModel != null) teachingLinkedTableModel.setTopic(topic);
+        if (teachingTimelineModel != null) {
+            teachingTimelineModel.clear();
+            if (topic != null) {
+                repairTopicPage(topic);
+                for (TeachingTimelineItem item : topic.timelineItems) teachingTimelineModel.addElement(item);
+            }
+        }
+        if (teachingTimelineList != null && teachingTimelineModel != null && !teachingTimelineModel.isEmpty()) teachingTimelineList.setSelectedIndex(0);
+        else clearTeachingTimelineDetails();
+        refreshTeachingTimelineView();
+    }
+
+    private LinkedItem selectedTeachingLink() {
+        if (teachingLinkedTable == null || teachingLinkedTableModel == null) return null;
+        int row = teachingLinkedTable.getSelectedRow();
+        return row < 0 ? null : teachingLinkedTableModel.itemAt(teachingLinkedTable.convertRowIndexToModel(row));
+    }
+
+    private List<LinkedItem> selectedTeachingLinks() {
+        List<LinkedItem> result = new ArrayList<>();
+        if (teachingLinkedTable == null || teachingLinkedTableModel == null) return result;
+        for (int row : teachingLinkedTable.getSelectedRows()) {
+            LinkedItem item = teachingLinkedTableModel.itemAt(teachingLinkedTable.convertRowIndexToModel(row));
+            if (item != null) result.add(item);
+        }
+        return result;
+    }
+
+    private void openSelectedTeachingLink() {
+        LinkedItem item = selectedTeachingLink();
+        if (item != null) openLinkedItem(item);
+    }
+
+    private void removeSelectedTeachingLinks() {
+        TopicPage topic = selectedTopicPage();
+        List<LinkedItem> selected = selectedTeachingLinks();
+        if (topic == null || selected.isEmpty()) return;
+        repairTopicPage(topic);
+        long onTimeline = selected.stream().filter(link -> topic.timelineItems.stream().anyMatch(item -> timelineMatchesLink(item, link))).count();
+        String warning = onTimeline == 0 ? "Remove the selected item(s) from this Teaching Page?"
+                : "Some selected items are on the timeline. Removing them from linked data will also remove those timeline cards. Continue?";
+        if (JOptionPane.showConfirmDialog(this, warning, "Remove Teaching Data", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+        for (LinkedItem link : selected) {
+            topic.links.remove(link);
+            topic.timelineItems.removeIf(item -> timelineMatchesLink(item, link));
+            if ("WRITING".equalsIgnoreCase(safe(link.type))) {
+                StudyWritingDocument document = currentProfile.writingDocuments.get(link.ref);
+                if (document != null && document.linkedTopicPageIds != null) document.linkedTopicPageIds.remove(topic.id);
+            }
+        }
+        touchTeachingPage(topic);
+        saveData();
+        refreshSelectedTopicDetails();
+    }
+
+    private boolean timelineMatchesLink(TeachingTimelineItem timeline, LinkedItem link) {
+        return timeline != null && link != null && safe(timeline.sourceRef).equals(safe(link.ref))
+                && safe(timeline.type).equalsIgnoreCase(safe(link.type));
+    }
+
+    private void addCustomTeachingItem() {
+        TopicPage topic = requireSelectedTeachingPage();
+        if (topic == null) return;
+        JTextField title = new JTextField();
+        JTextArea body = new JTextArea(6, 34);
+        body.setLineWrap(true); body.setWrapStyleWord(true);
+        JPanel form = new JPanel(new BorderLayout(5, 5));
+        form.add(title, BorderLayout.NORTH); form.add(new JScrollPane(body), BorderLayout.CENTER);
+        if (JOptionPane.showConfirmDialog(this, form, "Add Custom Teaching Item", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+        if (title.getText().trim().isEmpty() && body.getText().trim().isEmpty()) return;
+        LinkedItem item = new LinkedItem("CUSTOM", UUID.randomUUID().toString(), "");
+        item.title = title.getText().trim().isEmpty() ? "Custom Item" : title.getText().trim();
+        item.preview = body.getText().trim();
+        addLinkToTopic(topic, item);
+    }
+
+    private TopicPage requireSelectedTeachingPage() {
+        TopicPage topic = selectedTopicPage();
+        if (topic == null) JOptionPane.showMessageDialog(this, "Select or create a Teaching Page first.");
+        return topic;
+    }
+
+    private void showAddNotesDialog() {
+        TopicPage topic = requireSelectedTeachingPage();
+        if (topic == null) return;
+        JDialog dialog = new JDialog(this, "Add Notes to Teaching Page", true);
+        dialog.setLayout(new BorderLayout(8, 8));
+        dialog.getRootPane().setBorder(new EmptyBorder(10, 10, 10, 10));
+        JComboBox<String> book = new JComboBox<>();
+        JComboBox<String> category = new JComboBox<>();
+        JTextField search = new JTextField(22);
+        book.addItem("All Books");
+        for (String b : data.bible.keySet()) book.addItem(b);
+        category.addItem("All Categories");
+        TreeSet<String> categories = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        categories.addAll(currentProfile.categories.keySet());
+        for (TextAnnotation a : currentProfile.annotations) if (!safe(a.category).isEmpty()) categories.add(a.category);
+        for (String c : categories) category.addItem(c);
+
+        DefaultTableModel model = checkTableModel(new String[]{"Add", "Reference", "Category", "Selected text", "Note preview"});
+        JTable table = new JTable(model); table.setRowHeight(25); table.setAutoCreateRowSorter(true); table.removeColumn(table.getColumnModel().getColumn(model.getColumnCount() - 1));
+        Runnable refill = () -> {
+            model.setRowCount(0);
+            String selectedBook = safe((String) book.getSelectedItem());
+            String selectedCategory = safe((String) category.getSelectedItem());
+            String q = search.getText().trim().toLowerCase(Locale.ROOT);
+            for (TextAnnotation a : currentProfile.annotations) {
+                if (a == null || "Question".equalsIgnoreCase(safe(a.type))) continue;
+                String ref = getAnnotationReferenceLabel(a);
+                String haystack = (ref + " " + safe(a.book) + " " + safe(a.category) + " " + safe(a.selectedText) + " " + safe(a.note)).toLowerCase(Locale.ROOT);
+                if (!"All Books".equals(selectedBook) && !selectedBook.equalsIgnoreCase(safe(a.book)) && !haystack.contains(selectedBook.toLowerCase(Locale.ROOT))) continue;
+                if (!"All Categories".equals(selectedCategory) && !selectedCategory.equalsIgnoreCase(safe(a.category))) continue;
+                if (!q.isEmpty() && !haystack.contains(q)) continue;
+                model.addRow(new Object[]{Boolean.FALSE, ref, safe(a.category), shortenLines(a.selectedText, 90), shortenLines(a.note, 130), a});
+            }
+            for (ChapterNote n : currentProfile.chapterNotes.values()) {
+                if (n == null) continue;
+                String ref = chapterNoteReference(n);
+                String cats = String.join(", ", n.linkedCategoryNames == null ? Collections.emptyList() : n.linkedCategoryNames);
+                String haystack = (ref + " " + safe(n.book) + " " + cats + " " + safe(n.noteText)).toLowerCase(Locale.ROOT);
+                if (!"All Books".equals(selectedBook) && !selectedBook.equalsIgnoreCase(safe(n.book))) continue;
+                if (!"All Categories".equals(selectedCategory) && (n.linkedCategoryNames == null || n.linkedCategoryNames.stream().noneMatch(selectedCategory::equalsIgnoreCase))) continue;
+                if (!q.isEmpty() && !haystack.contains(q)) continue;
+                model.addRow(new Object[]{Boolean.FALSE, ref, cats, "Chapter note", shortenLines(n.noteText, 130), n});
+            }
+        };
+        book.addActionListener(e -> refill.run()); category.addActionListener(e -> refill.run());
+        search.getDocument().addDocumentListener(new SimpleDocumentListener(refill)); refill.run();
+        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        filters.add(new JLabel("Book:")); filters.add(book); filters.add(new JLabel("Category:")); filters.add(category); filters.add(new JLabel("Search:")); filters.add(search);
+        JButton add = blackButton("Add Selected Notes"); JButton cancel = blackButton("Cancel");
+        add.addActionListener(e -> {
+            for (int i = 0; i < model.getRowCount(); i++) if (Boolean.TRUE.equals(model.getValueAt(i, 0))) {
+                Object source = model.getValueAt(i, 5);
+                if (source instanceof TextAnnotation) {
+                    TextAnnotation a = (TextAnnotation) source;
+                    LinkedItem link = new LinkedItem("NOTE", a.id, "");
+                    link.title = getAnnotationReferenceLabel(a); link.category = safe(a.category);
+                    link.preview = !safe(a.note).trim().isEmpty() ? a.note : a.selectedText;
+                    addLinkToTopicWithoutRefresh(topic, link);
+                } else if (source instanceof ChapterNote) {
+                    ChapterNote n = (ChapterNote) source;
+                    LinkedItem link = new LinkedItem("CHAPTER_NOTE", n.id, "");
+                    link.title = chapterNoteReference(n); link.category = safe((String) model.getValueAt(i, 2)); link.preview = n.noteText;
+                    addLinkToTopicWithoutRefresh(topic, link);
+                }
+            }
+            touchTeachingPage(topic); saveData(); refreshSelectedTopicDetails(); dialog.dispose();
+        });
+        cancel.addActionListener(e -> dialog.dispose());
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT)); actions.add(add); actions.add(cancel);
+        dialog.add(filters, BorderLayout.NORTH); dialog.add(new JScrollPane(table), BorderLayout.CENTER); dialog.add(actions, BorderLayout.SOUTH);
+        dialog.setSize(900, 560); dialog.setLocationRelativeTo(this); applyModernTheme(dialog); dialog.setVisible(true);
+    }
+
+    private void showAddVersesDialog() {
+        TopicPage topic = requireSelectedTeachingPage();
+        if (topic == null) return;
+        JDialog dialog = new JDialog(this, "Add Verses to Teaching Page", true);
+        dialog.setLayout(new BorderLayout(8, 8)); dialog.getRootPane().setBorder(new EmptyBorder(10, 10, 10, 10));
+        JComboBox<String> book = new JComboBox<>(); book.addItem("All Books"); for (String b : data.bible.keySet()) book.addItem(b);
+        JTextField chapter = new JTextField(5); JTextField search = new JTextField(25);
+        DefaultTableModel model = checkTableModel(new String[]{"Add", "Reference", "Verse text preview"});
+        JTable table = new JTable(model); table.setRowHeight(25); table.setAutoCreateRowSorter(true); table.removeColumn(table.getColumnModel().getColumn(model.getColumnCount() - 1));
+        Runnable refill = () -> {
+            model.setRowCount(0);
+            String selectedBook = safe((String) book.getSelectedItem());
+            String chapterFilter = chapter.getText().trim();
+            String q = search.getText().trim().toLowerCase(Locale.ROOT);
+            for (Map.Entry<String, TreeMap<Integer, TreeMap<Integer, Verse>>> be : data.bible.entrySet()) {
+                if (!"All Books".equals(selectedBook) && !selectedBook.equals(be.getKey())) continue;
+                for (Map.Entry<Integer, TreeMap<Integer, Verse>> ce : be.getValue().entrySet()) {
+                    if (!chapterFilter.isEmpty() && !String.valueOf(ce.getKey()).equals(chapterFilter)) continue;
+                    for (Verse verse : ce.getValue().values()) {
+                        String ref = verse.key();
+                        String haystack = (ref + " " + safe(verse.text)).toLowerCase(Locale.ROOT);
+                        if (!q.isEmpty() && !haystack.contains(q)) continue;
+                        model.addRow(new Object[]{Boolean.FALSE, ref, shortenLines(verse.text, 180), verse});
+                    }
+                }
+            }
+        };
+        book.addActionListener(e -> refill.run()); chapter.getDocument().addDocumentListener(new SimpleDocumentListener(refill)); search.getDocument().addDocumentListener(new SimpleDocumentListener(refill)); refill.run();
+        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
+        filters.add(new JLabel("Book:")); filters.add(book); filters.add(new JLabel("Chapter:")); filters.add(chapter); filters.add(new JLabel("Reference or words:")); filters.add(search);
+        JButton add = blackButton("Add Selected Verses"); JButton cancel = blackButton("Cancel");
+        add.addActionListener(e -> {
+            for (int i = 0; i < model.getRowCount(); i++) if (Boolean.TRUE.equals(model.getValueAt(i, 0))) {
+                Verse verse = (Verse) model.getValueAt(i, 3);
+                LinkedItem link = new LinkedItem("VERSE", verse.key(), ""); link.title = verse.key(); link.preview = verse.text;
+                addLinkToTopicWithoutRefresh(topic, link);
+            }
+            touchTeachingPage(topic); saveData(); refreshSelectedTopicDetails(); dialog.dispose();
+        });
+        cancel.addActionListener(e -> dialog.dispose()); JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT)); actions.add(add); actions.add(cancel);
+        dialog.add(filters, BorderLayout.NORTH); dialog.add(new JScrollPane(table), BorderLayout.CENTER); dialog.add(actions, BorderLayout.SOUTH);
+        dialog.setSize(850, 560); dialog.setLocationRelativeTo(this); applyModernTheme(dialog); dialog.setVisible(true);
+    }
+
+    private void showAddWritingDocumentsDialog() {
+        TopicPage topic = requireSelectedTeachingPage();
+        if (topic == null) return;
+        JDialog dialog = new JDialog(this, "Add Study Writing Documents", true);
+        dialog.setLayout(new BorderLayout(8, 8)); dialog.getRootPane().setBorder(new EmptyBorder(10, 10, 10, 10));
+        JTextField search = new JTextField(22); JComboBox<String> category = new JComboBox<>(); JComboBox<String> project = new JComboBox<>(); JComboBox<Object> teachingPage = new JComboBox<>();
+        category.addItem("All Categories"); for (String c : currentProfile.categories.keySet()) category.addItem(c);
+        project.addItem("All Projects"); for (StudyProject p : currentProfile.studyProjects.values()) project.addItem(safe(p.title));
+        teachingPage.addItem("All Teaching Pages"); for (TopicPage page : currentProfile.topicPages) teachingPage.addItem(page);
+        DefaultTableModel model = checkTableModel(new String[]{"Add", "Title", "Category", "Project", "Preview"});
+        JTable table = new JTable(model); table.setRowHeight(25); table.setAutoCreateRowSorter(true); table.removeColumn(table.getColumnModel().getColumn(model.getColumnCount() - 1));
+        Runnable refill = () -> {
+            model.setRowCount(0); String q = search.getText().trim().toLowerCase(Locale.ROOT);
+            String cat = safe((String) category.getSelectedItem()); String proj = safe((String) project.getSelectedItem()); Object pageFilter = teachingPage.getSelectedItem();
+            for (StudyWritingDocument d : currentProfile.writingDocuments.values()) {
+                repairStudyWritingDocument(d);
+                if (!"All Categories".equals(cat) && !d.linkedCategoryNames.contains(cat)) continue;
+                if (!"All Projects".equals(proj) && d.linkedStudyProjectIds.stream().map(currentProfile.studyProjects::get).filter(Objects::nonNull).noneMatch(p -> proj.equals(safe(p.title)))) continue;
+                if (pageFilter instanceof TopicPage && !d.linkedTopicPageIds.contains(((TopicPage) pageFilter).id)) continue;
+                String haystack = (safe(d.title) + " " + safe(d.plainText)).toLowerCase(Locale.ROOT); if (!q.isEmpty() && !haystack.contains(q)) continue;
+                String projects = d.linkedStudyProjectIds.stream().map(currentProfile.studyProjects::get).filter(Objects::nonNull).map(p -> safe(p.title)).collect(java.util.stream.Collectors.joining(", "));
+                model.addRow(new Object[]{Boolean.FALSE, d.title, String.join(", ", d.linkedCategoryNames), projects, shortenLines(d.plainText, 150), d});
+            }
+        };
+        search.getDocument().addDocumentListener(new SimpleDocumentListener(refill)); category.addActionListener(e -> refill.run()); project.addActionListener(e -> refill.run()); teachingPage.addActionListener(e -> refill.run()); refill.run();
+        JPanel filters = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3)); filters.add(new JLabel("Search:")); filters.add(search); filters.add(new JLabel("Category:")); filters.add(category); filters.add(new JLabel("Project:")); filters.add(project); filters.add(new JLabel("Teaching:")); filters.add(teachingPage);
+        JButton add = blackButton("Add Selected Documents"); JButton cancel = blackButton("Cancel");
+        add.addActionListener(e -> {
+            for (int i = 0; i < model.getRowCount(); i++) if (Boolean.TRUE.equals(model.getValueAt(i, 0))) {
+                StudyWritingDocument d = (StudyWritingDocument) model.getValueAt(i, 5);
+                LinkedItem link = new LinkedItem("WRITING", d.id, ""); link.title = d.title; link.category = String.join(", ", d.linkedCategoryNames); link.preview = d.plainText;
+                addLinkToTopicWithoutRefresh(topic, link);
+                if (!d.linkedTopicPageIds.contains(topic.id)) d.linkedTopicPageIds.add(topic.id);
+            }
+            touchTeachingPage(topic); saveData(); refreshSelectedTopicDetails(); dialog.dispose();
+        });
+        cancel.addActionListener(e -> dialog.dispose()); JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT)); actions.add(add); actions.add(cancel);
+        dialog.add(filters, BorderLayout.NORTH); dialog.add(new JScrollPane(table), BorderLayout.CENTER); dialog.add(actions, BorderLayout.SOUTH);
+        dialog.setSize(900, 560); dialog.setLocationRelativeTo(this); applyModernTheme(dialog); dialog.setVisible(true);
+    }
+
+    private DefaultTableModel checkTableModel(String[] visibleColumns) {
+        String[] columns = Arrays.copyOf(visibleColumns, visibleColumns.length + 1);
+        columns[columns.length - 1] = "Source";
+        return new DefaultTableModel(columns, 0) {
+            public Class<?> getColumnClass(int column) { return column == 0 ? Boolean.class : Object.class; }
+            public boolean isCellEditable(int row, int column) { return column == 0; }
+        };
+    }
+
+    private void addLinkToTopicWithoutRefresh(TopicPage topic, LinkedItem item) {
+        if (topic == null || item == null) return;
+        repairTopicPage(topic); repairLinkedItem(item);
+        boolean duplicate = topic.links.stream().anyMatch(existing -> safe(existing.type).equalsIgnoreCase(item.type) && safe(existing.ref).equals(item.ref));
+        if (!duplicate) topic.links.add(item);
+    }
+
+    private void addSelectedTeachingLinksToTimeline() {
+        TopicPage topic = requireSelectedTeachingPage();
+        if (topic == null) return;
+        List<LinkedItem> selected = selectedTeachingLinks();
+        if (selected.isEmpty()) { JOptionPane.showMessageDialog(this, "Select one or more linked items in Manage Data first."); return; }
+        repairTopicPage(topic);
+        for (LinkedItem link : selected) {
+            if (topic.timelineItems.stream().noneMatch(item -> timelineMatchesLink(item, link))) topic.timelineItems.add(timelineItemFor(link));
+        }
+        normalizeTeachingTimelineOrder(topic); touchTeachingPage(topic); saveData(); refreshSelectedTopicDetails();
+        if (teachingWorkspaceTabs != null) teachingWorkspaceTabs.setSelectedIndex(1);
+    }
+
+    private TeachingTimelineItem timelineItemFor(LinkedItem link) {
+        TeachingTimelineItem item = new TeachingTimelineItem();
+        item.type = normalizedTeachingType(link.type); item.sourceRef = safe(link.ref);
+        item.sourceTitle = teachingLinkTitle(link); item.bodyPreview = teachingLinkPreview(link);
+        return item;
+    }
+
+    private void addCustomTeachingTimelineItem() {
+        TopicPage topic = requireSelectedTeachingPage(); if (topic == null) return;
+        TeachingTimelineItem item = new TeachingTimelineItem(); item.type = "CUSTOM"; item.sourceTitle = "Custom Timeline Item";
+        topic.timelineItems.add(item); normalizeTeachingTimelineOrder(topic); touchTeachingPage(topic); saveData(); refreshSelectedTopicDetails();
+        teachingTimelineList.setSelectedValue(item, true);
+    }
+
+    private void moveSelectedTeachingTimelineItem(int delta) {
+        TopicPage topic = selectedTopicPage(); TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue();
+        if (topic == null || item == null) return; int index = topic.timelineItems.indexOf(item); int target = index + delta;
+        if (index < 0 || target < 0 || target >= topic.timelineItems.size()) return;
+        Collections.swap(topic.timelineItems, index, target); normalizeTeachingTimelineOrder(topic); touchTeachingPage(topic); saveData(); refreshSelectedTopicDetails(); teachingTimelineList.setSelectedValue(item, true);
+    }
+
+    private void removeSelectedTeachingTimelineItem() {
+        TopicPage topic = selectedTopicPage(); TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue();
+        if (topic == null || item == null) return; topic.timelineItems.remove(item); normalizeTeachingTimelineOrder(topic); touchTeachingPage(topic); saveData(); refreshSelectedTopicDetails();
+    }
+
+    private void normalizeTeachingTimelineOrder(TopicPage topic) {
+        if (topic == null || topic.timelineItems == null) return;
+        for (int i = 0; i < topic.timelineItems.size(); i++) topic.timelineItems.get(i).order = i;
+    }
+
+    private void loadSelectedTeachingTimelineDetails() {
+        TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue();
+        loadingTeachingTimelineDetails = true;
+        if (teachingTimelineTitleField != null) { teachingTimelineTitleField.setEnabled(item != null); teachingTimelineTitleField.setText(item == null ? "" : safe(item.customTitle)); }
+        if (teachingTimelineBodyArea != null) { teachingTimelineBodyArea.setEnabled(item != null); teachingTimelineBodyArea.setText(item == null ? "" : safe(item.bodyPreview)); }
+        if (teachingBulletModel != null) { teachingBulletModel.clear(); if (item != null) { repairTeachingTimelineItem(item); for (TeachingBulletPoint bullet : item.bulletPoints) teachingBulletModel.addElement(bullet); } }
+        loadingTeachingTimelineDetails = false;
+    }
+
+    private void clearTeachingTimelineDetails() { loadSelectedTeachingTimelineDetails(); }
+
+    private void saveTeachingTimelineDetails() {
+        if (loadingTeachingTimelineDetails) return;
+        TopicPage topic = selectedTopicPage(); TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue();
+        if (topic == null || item == null) return;
+        item.customTitle = teachingTimelineTitleField == null ? "" : teachingTimelineTitleField.getText();
+        item.bodyPreview = teachingTimelineBodyArea == null ? "" : teachingTimelineBodyArea.getText(); item.updatedAt = System.currentTimeMillis(); touchTeachingPage(topic); saveData();
+        if (teachingTimelineList != null) teachingTimelineList.repaint();
+    }
+
+    private void addTeachingBulletPoint() {
+        TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue(); if (item == null) return;
+        String text = JOptionPane.showInputDialog(this, "Bullet point:", "Add Bullet Point", JOptionPane.PLAIN_MESSAGE); if (text == null || text.trim().isEmpty()) return;
+        item.bulletPoints.add(new TeachingBulletPoint(text.trim())); saveTeachingTimelineChange(item);
+    }
+
+    private void editTeachingBulletPoint() {
+        TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue(); TeachingBulletPoint bullet = teachingBulletList == null ? null : teachingBulletList.getSelectedValue(); if (item == null || bullet == null) return;
+        String text = JOptionPane.showInputDialog(this, "Bullet point:", bullet.text); if (text == null || text.trim().isEmpty()) return; bullet.text = text.trim(); bullet.updatedAt = System.currentTimeMillis(); saveTeachingTimelineChange(item);
+    }
+
+    private void deleteTeachingBulletPoint() {
+        TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue(); TeachingBulletPoint bullet = teachingBulletList == null ? null : teachingBulletList.getSelectedValue(); if (item == null || bullet == null) return;
+        item.bulletPoints.remove(bullet); saveTeachingTimelineChange(item);
+    }
+
+    private void moveTeachingBulletPoint(int delta) {
+        TeachingTimelineItem item = teachingTimelineList == null ? null : teachingTimelineList.getSelectedValue(); TeachingBulletPoint bullet = teachingBulletList == null ? null : teachingBulletList.getSelectedValue(); if (item == null || bullet == null) return;
+        int index = item.bulletPoints.indexOf(bullet), target = index + delta; if (index < 0 || target < 0 || target >= item.bulletPoints.size()) return;
+        Collections.swap(item.bulletPoints, index, target); saveTeachingTimelineChange(item); teachingBulletList.setSelectedValue(bullet, true);
+    }
+
+    private void saveTeachingTimelineChange(TeachingTimelineItem item) {
+        TopicPage topic = selectedTopicPage(); if (topic == null || item == null) return;
+        for (int i = 0; i < item.bulletPoints.size(); i++) item.bulletPoints.get(i).order = i;
+        item.updatedAt = System.currentTimeMillis(); touchTeachingPage(topic); saveData(); loadSelectedTeachingTimelineDetails(); refreshTeachingTimelineView();
+    }
+
+    private void refreshTeachingTimelineView() {
+        if (teachingTimelineViewPanel == null) return;
+        teachingTimelineViewPanel.removeAll(); TopicPage topic = selectedTopicPage();
+        if (topic == null || topic.timelineItems == null || topic.timelineItems.isEmpty()) {
+            teachingTimelineViewPanel.add(new JLabel("Add linked data, then arrange it in Edit Timeline."));
+        } else {
+            int number = 1;
+            for (TeachingTimelineItem item : topic.timelineItems) {
+                JPanel card = new JPanel(new BorderLayout(6, 6)); card.setPreferredSize(new Dimension(300, 390)); card.setMaximumSize(new Dimension(300, Integer.MAX_VALUE)); styleModernCard(card);
+                JLabel title = new JLabel("<html><b>" + number++ + ". " + esc(teachingTimelineItemTitle(item)) + "</b><br><span style='color:#6b5c54'>" + esc(normalizedTeachingType(item.type)) + "</span></html>");
+                JTextArea preview = new JTextArea(safe(item.bodyPreview)); preview.setLineWrap(true); preview.setWrapStyleWord(true); preview.setEditable(false); preview.setOpaque(false);
+                DefaultListModel<String> bullets = new DefaultListModel<>(); for (TeachingBulletPoint bullet : item.bulletPoints) bullets.addElement("• " + safe(bullet.text));
+                JList<String> bulletList = new JList<>(bullets); bulletList.setVisibleRowCount(Math.max(2, Math.min(8, bullets.size()))); bulletList.setOpaque(false);
+                JSplitPane body = new JSplitPane(JSplitPane.VERTICAL_SPLIT, new JScrollPane(preview), new JScrollPane(bulletList)); body.setResizeWeight(0.58); body.setDividerSize(5);
+                card.add(title, BorderLayout.NORTH); card.add(body, BorderLayout.CENTER);
+                teachingTimelineViewPanel.add(card); teachingTimelineViewPanel.add(Box.createHorizontalStrut(10));
+            }
+        }
+        teachingTimelineViewPanel.revalidate(); teachingTimelineViewPanel.repaint();
+    }
+
+    private String teachingTimelineText() {
+        TopicPage topic = selectedTopicPage(); if (topic == null) return "";
+        StringBuilder out = new StringBuilder(safe(topic.title)).append("\n\n"); int number = 1;
+        for (TeachingTimelineItem item : topic.timelineItems) {
+            out.append(number++).append(". ").append(teachingTimelineItemTitle(item)).append("\n");
+            if (!safe(item.bodyPreview).trim().isEmpty()) out.append("   ").append(safe(item.bodyPreview).trim().replace("\n", "\n   ")).append("\n");
+            for (TeachingBulletPoint bullet : item.bulletPoints) out.append("\n* ").append(safe(bullet.text).trim()).append("\n");
+            out.append("\n");
+        }
+        return out.toString();
+    }
+
+    private void copyTeachingTimelineText() {
+        String text = teachingTimelineText(); if (text.isEmpty()) { JOptionPane.showMessageDialog(this, "Select a Teaching Page first."); return; }
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(text), null); if (statusLabel != null) statusLabel.setText(" Copied Teaching Timeline text.");
+    }
+
+    private void exportTeachingTimelineText() {
+        String text = teachingTimelineText(); if (text.isEmpty()) { JOptionPane.showMessageDialog(this, "Select a Teaching Page first."); return; }
+        JFileChooser chooser = new JFileChooser(); chooser.setSelectedFile(new File(safe(selectedTopicPage().title).replaceAll("[^a-zA-Z0-9._-]+", "_") + "_teaching.txt"));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        try { Files.write(chooser.getSelectedFile().toPath(), text.getBytes(StandardCharsets.UTF_8)); statusLabel.setText(" Exported Teaching Timeline text."); }
+        catch (IOException ex) { JOptionPane.showMessageDialog(this, "Could not export timeline: " + ex.getMessage()); }
+    }
+
+    private String teachingTimelineItemTitle(TeachingTimelineItem item) {
+        if (item == null) return "Untitled";
+        return !safe(item.customTitle).trim().isEmpty() ? item.customTitle.trim() : (!safe(item.sourceTitle).trim().isEmpty() ? item.sourceTitle.trim() : "Untitled " + normalizedTeachingType(item.type));
+    }
+
+    private String normalizedTeachingType(String type) {
+        String value = safe(type).trim().toUpperCase(Locale.ROOT);
+        if ("NOTE".equals(value) || "CHAPTER_NOTE".equals(value)) return "NOTE";
+        if ("VERSE".equals(value) || "WRITING".equals(value) || "QUESTION".equals(value) || "CUSTOM".equals(value)) return value;
+        return "CUSTOM";
+    }
+
+    private String teachingLinkTitle(LinkedItem link) {
+        if (link == null) return ""; if (!safe(link.title).trim().isEmpty()) return link.title;
+        String type = safe(link.type).toUpperCase(Locale.ROOT);
+        if ("WRITING".equals(type)) { StudyWritingDocument d = currentProfile.writingDocuments.get(link.ref); return d == null ? link.ref : d.title; }
+        if ("NOTE".equals(type)) { TextAnnotation a = findAnnotationById(link.ref); return a == null ? link.ref : getAnnotationReferenceLabel(a); }
+        if ("QUESTION".equals(type)) { StudyQuestion q = questionForAnnotation(link.ref); return q == null ? link.ref : safe(q.question); }
+        if ("CHAPTER_NOTE".equals(type)) { ChapterNote n = findChapterNoteById(link.ref); return n == null ? link.ref : chapterNoteReference(n); }
+        return safe(link.ref).isEmpty() ? "Custom Item" : link.ref;
+    }
+
+    private String teachingLinkCategory(LinkedItem link) {
+        if (link == null) return ""; if (!safe(link.category).trim().isEmpty()) return link.category;
+        if ("NOTE".equalsIgnoreCase(link.type)) { TextAnnotation a = findAnnotationById(link.ref); return a == null ? "" : safe(a.category); }
+        if ("WRITING".equalsIgnoreCase(link.type)) { StudyWritingDocument d = currentProfile.writingDocuments.get(link.ref); return d == null ? "" : String.join(", ", d.linkedCategoryNames); }
+        return safe(link.label);
+    }
+
+    private String teachingLinkPreview(LinkedItem link) {
+        if (link == null) return ""; if (!safe(link.preview).trim().isEmpty()) return link.preview;
+        String type = safe(link.type).toUpperCase(Locale.ROOT);
+        if ("VERSE".equals(type)) { Verse v = data.findVerse(link.ref); return v == null ? "" : safe(v.text); }
+        if ("WRITING".equals(type)) { StudyWritingDocument d = currentProfile.writingDocuments.get(link.ref); return d == null ? "" : safe(d.plainText); }
+        if ("NOTE".equals(type)) { TextAnnotation a = findAnnotationById(link.ref); return a == null ? "" : (!safe(a.note).isEmpty() ? a.note : a.selectedText); }
+        if ("QUESTION".equals(type)) { StudyQuestion q = questionForAnnotation(link.ref); return q == null ? "" : safe(q.question); }
+        if ("CHAPTER_NOTE".equals(type)) { ChapterNote n = findChapterNoteById(link.ref); return n == null ? "" : safe(n.noteText); }
+        return safe(link.label);
+    }
+
+    private void touchTeachingPage(TopicPage topic) { if (topic != null) topic.updatedAt = System.currentTimeMillis(); }
+
     private void refreshTopicPages() {
         if (topicPageModel == null || currentProfile == null) return;
         repairProfile(currentProfile);
@@ -8185,22 +8781,26 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void refreshSelectedTopicDetails() {
         TopicPage topic = topicPageList == null ? null : topicPageList.getSelectedValue();
-        if (topicTitleLabel != null) topicTitleLabel.setText(topic == null ? "No topic selected — create a topic to gather related verses, notes, and questions." : topic.title);
+        if (topicTitleLabel != null) topicTitleLabel.setText(topic == null ? "No Teaching Page selected — create one to gather verses, notes, questions, and writing." : topic.title);
         if (topicSummaryArea != null) {
             topicSummaryArea.setEnabled(topic != null);
             topicSummaryArea.setText(topic == null ? "" : safe(topic.summary));
         }
         if (topicLinkModel != null) {
             topicLinkModel.clear();
-            if (topic != null) {
-                repairTopicPage(topic);
-                for (LinkedItem link : topic.links) topicLinkModel.addElement(link);
-                for (StudyWritingDocument writing : currentProfile.writingDocuments.values()) {
-                    if (writing.linkedTopicPageIds.contains(topic.id) && topic.links.stream().noneMatch(link -> "WRITING".equalsIgnoreCase(safe(link.type)) && safe(writing.id).equals(safe(link.ref))))
-                        topicLinkModel.addElement(new LinkedItem("WRITING", writing.id, writing.title));
+            if (topic != null) for (LinkedItem link : topic.links) topicLinkModel.addElement(link);
+        }
+        if (topic != null) {
+            repairTopicPage(topic);
+            for (StudyWritingDocument writing : currentProfile.writingDocuments.values()) {
+                if (writing.linkedTopicPageIds.contains(topic.id) && topic.links.stream().noneMatch(link -> "WRITING".equalsIgnoreCase(safe(link.type)) && safe(writing.id).equals(safe(link.ref)))) {
+                    LinkedItem migrated = new LinkedItem("WRITING", writing.id, "");
+                    migrated.title = writing.title; migrated.preview = writing.plainText;
+                    topic.links.add(migrated);
                 }
             }
         }
+        refreshTeachingWorkspace(topic);
     }
 
     private TopicPage selectedTopicPage() {
@@ -8217,7 +8817,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void createTopicPageDialog() {
-        String title = JOptionPane.showInputDialog(this, "Topic title:", "Create Topic", JOptionPane.PLAIN_MESSAGE);
+        String title = JOptionPane.showInputDialog(this, "Teaching Page title:", "Create Teaching Page", JOptionPane.PLAIN_MESSAGE);
         if (title == null || title.trim().isEmpty()) return;
         createTopicPage(title);
     }
@@ -8225,9 +8825,10 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private void renameSelectedTopicPage() {
         TopicPage topic = selectedTopicPage();
         if (topic == null) return;
-        String title = JOptionPane.showInputDialog(this, "New topic title:", topic.title);
+        String title = JOptionPane.showInputDialog(this, "New Teaching Page title:", topic.title);
         if (title == null || title.trim().isEmpty()) return;
         topic.title = title.trim();
+        touchTeachingPage(topic);
         saveData();
         refreshTopicPages();
         selectTopicById(topic.id);
@@ -8236,7 +8837,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private void deleteSelectedTopicPage() {
         TopicPage topic = selectedTopicPage();
         if (topic == null) return;
-        if (JOptionPane.showConfirmDialog(this, "Delete topic page: " + topic.title + "?", "Delete Topic", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+        if (JOptionPane.showConfirmDialog(this, "Delete Teaching Page: " + topic.title + "?", "Delete Teaching Page", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
         currentProfile.topicPages.removeIf(t -> topic.id.equals(t.id));
         saveData();
         refreshTopicPages();
@@ -8246,8 +8847,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         TopicPage topic = selectedTopicPage();
         if (topic == null) return;
         topic.summary = topicSummaryArea == null ? "" : topicSummaryArea.getText();
+        touchTeachingPage(topic);
         saveData();
-        statusLabel.setText(" Saved topic summary: " + topic.title);
+        statusLabel.setText(" Saved Teaching Page overview: " + topic.title);
     }
 
     private void selectTopicById(String id) {
@@ -8265,7 +8867,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void addCurrentVerseToSelectedTopic() {
         TopicPage topic = selectedTopicPage();
-        if (topic == null) { JOptionPane.showMessageDialog(this, "Select or create a topic first."); return; }
+        if (topic == null) { JOptionPane.showMessageDialog(this, "Select or create a Teaching Page first."); return; }
         String ref = currentVerseReferenceFromSelectionOrCaret();
         if (ref.isEmpty()) ref = currentChapterReference();
         if (ref.isEmpty()) { JOptionPane.showMessageDialog(this, "Open a Bible chapter first."); return; }
@@ -8274,7 +8876,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void addCurrentSelectionToSelectedTopic() {
         TopicPage topic = selectedTopicPage();
-        if (topic == null) { JOptionPane.showMessageDialog(this, "Select or create a topic first."); return; }
+        if (topic == null) { JOptionPane.showMessageDialog(this, "Select or create a Teaching Page first."); return; }
         LinkedItem item = linkedItemForCurrentSelection("related");
         if (item == null) { JOptionPane.showMessageDialog(this, "Select text in the reader first."); return; }
         addLinkToTopic(topic, item);
@@ -8282,7 +8884,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void addExistingNoteOrQuestionToSelectedTopic() {
         TopicPage topic = selectedTopicPage();
-        if (topic == null) { JOptionPane.showMessageDialog(this, "Select or create a topic first."); return; }
+        if (topic == null) { JOptionPane.showMessageDialog(this, "Select or create a Teaching Page first."); return; }
         LinkedItem item = chooseExistingNoteOrQuestionLink();
         if (item != null) addLinkToTopic(topic, item);
     }
@@ -8347,16 +8949,16 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private TopicPage chooseTopicPageWithCreateOption() {
         repairProfile(currentProfile);
-        String create = "Create New Topic…";
+        String create = "Create New Teaching Page…";
         DefaultComboBoxModel<Object> model = new DefaultComboBoxModel<>();
         model.addElement(create);
         for (TopicPage topic : currentProfile.topicPages) model.addElement(topic);
         JComboBox<Object> combo = new JComboBox<>(model);
-        int result = JOptionPane.showConfirmDialog(this, combo, "Choose Topic Page", JOptionPane.OK_CANCEL_OPTION);
+        int result = JOptionPane.showConfirmDialog(this, combo, "Choose Teaching Page", JOptionPane.OK_CANCEL_OPTION);
         if (result != JOptionPane.OK_OPTION) return null;
         Object selected = combo.getSelectedItem();
         if (selected instanceof TopicPage) return (TopicPage) selected;
-        String title = JOptionPane.showInputDialog(this, "New topic title:", "New Topic", JOptionPane.PLAIN_MESSAGE);
+        String title = JOptionPane.showInputDialog(this, "New Teaching Page title:", "New Teaching Page", JOptionPane.PLAIN_MESSAGE);
         if (title == null || title.trim().isEmpty()) return null;
         return createTopicPage(title);
     }
@@ -8364,11 +8966,12 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private void addLinkToTopic(TopicPage topic, LinkedItem item) {
         if (topic == null || item == null) return;
         repairTopicPage(topic);
-        topic.links.add(item);
+        addLinkToTopicWithoutRefresh(topic, item);
+        touchTeachingPage(topic);
         saveData();
         refreshTopicPages();
         selectTopicById(topic.id);
-        statusLabel.setText(" Added link to topic: " + topic.title);
+        statusLabel.setText(" Added item to Teaching Page: " + topic.title);
     }
 
     private LinkedItem linkedItemForCurrentSelection(String label) {
@@ -8411,7 +9014,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void createTopicFromLinkedItem(LinkedItem item) {
-        String title = JOptionPane.showInputDialog(this, "Topic title:", "Create Topic From This", JOptionPane.PLAIN_MESSAGE);
+        String title = JOptionPane.showInputDialog(this, "Teaching Page title:", "Create Teaching Page From This", JOptionPane.PLAIN_MESSAGE);
         if (title == null || title.trim().isEmpty()) return;
         TopicPage topic = createTopicPage(title);
         topic.links.add(item);
@@ -8443,7 +9046,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         List<TopicPage> related = findTopicPagesLinkingTo(type, ref);
         if (related.isEmpty()) return;
         JPanel panel = ensureDetailsPanel();
-        addDetailTitle("Related Topic Pages");
+        addDetailTitle("Related Teaching Pages");
         for (TopicPage topic : related) {
             JButton b = blackButton(topic.title);
             b.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -8462,7 +9065,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         JButton add = blackButton("Add Link");
         JButton remove = blackButton("Remove Link");
         JButton open = blackButton("Open Link");
-        JButton addTopic = blackButton("Add This Note to Topic Page");
+        JButton addTopic = blackButton("Add This Note to Teaching Page");
         add.setAlignmentX(Component.LEFT_ALIGNMENT);
         remove.setAlignmentX(Component.LEFT_ALIGNMENT);
         open.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -9712,7 +10315,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         writingCategoryFilter.removeAllItems(); writingCategoryFilter.addItem("All categories");
         for (String name : currentProfile.categories.keySet()) writingCategoryFilter.addItem(name);
         writingCategoryFilter.setSelectedItem(category.isEmpty() ? "All categories" : category);
-        writingTopicFilter.removeAllItems(); writingTopicFilter.addItem("All topic pages");
+        writingTopicFilter.removeAllItems(); writingTopicFilter.addItem("All Teaching Pages");
         for (TopicPage topic : currentProfile.topicPages) writingTopicFilter.addItem(topic.id + " | " + topic.title);
         if (!topicId.isEmpty()) for (int i = 0; i < writingTopicFilter.getItemCount(); i++) if (String.valueOf(writingTopicFilter.getItemAt(i)).startsWith(topicId + " | ")) writingTopicFilter.setSelectedIndex(i);
         loadingWritingDocument = false;
@@ -9983,7 +10586,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         for (TextAnnotation a : currentProfile.annotations) if (!"Question".equals(a.type) && writerReferenceMatches(q, a.sourceTitle, a.selectedText, a.note)) model.addElement(new WriterReferenceItem("Notes", "ANNOTATION", a.id, "My Note — " + firstNonEmpty(a.sourceTitle, a.sourceKey) + "\n" + firstNonEmpty(a.note, a.selectedText)));
         for (ChapterNote n : currentProfile.chapterNotes.values()) if (writerReferenceMatches(q, chapterNoteReference(n), n.noteText)) model.addElement(new WriterReferenceItem("Chapter Notes", "CHAPTER_NOTE", n.id, "Chapter Note — " + chapterNoteReference(n) + "\n" + n.noteText));
         for (StudyQuestion question : currentProfile.questions) if (writerReferenceMatches(q, question.sourceLocation, question.question, writerQuestionAnswers(question))) model.addElement(new WriterReferenceItem("Questions", "QUESTION", question.annotationId, "Question — " + firstNonEmpty(question.sourceLocation, question.sourceTitle) + "\nQ: " + question.question + (question.answers.isEmpty() ? "" : "\nA: " + writerQuestionAnswers(question))));
-        for (TopicPage topic : currentProfile.topicPages) if (writerReferenceMatches(q, topic.title, topic.summary)) model.addElement(new WriterReferenceItem("Topic Pages", "TOPIC", topic.id, "Topic Page — " + topic.title + "\n" + topic.summary));
+        for (TopicPage topic : currentProfile.topicPages) if (writerReferenceMatches(q, topic.title, topic.summary)) model.addElement(new WriterReferenceItem("Teaching", "TOPIC", topic.id, "Teaching Page — " + topic.title + "\n" + topic.summary));
         for (StudyProject project : currentProfile.studyProjects.values()) if (writerReferenceMatches(q, project.title, project.description)) model.addElement(new WriterReferenceItem("Study Projects", "PROJECT", project.id, "Study Project — " + project.title + "\n" + project.description + writerProjectNotes(project)));
         for (MemoryVerse verse : currentProfile.memoryVerses) if (writerReferenceMatches(q, verse.reference, verse.text, verse.note)) model.addElement(new WriterReferenceItem("Memory Verses", "MEMORY", verse.id, "Memory Verse — " + verse.reference + "\n" + verse.text + (safe(verse.note).isEmpty() ? "" : "\n" + verse.note)));
     }
@@ -10036,8 +10639,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void linkCurrentWritingToTopicPage() {
-        if (currentWritingDocument == null || currentProfile.topicPages.isEmpty()) { JOptionPane.showMessageDialog(this, "Create a Topic Page first, then link it here."); return; }
-        TopicPage topic = (TopicPage) JOptionPane.showInputDialog(this, "Choose a Topic Page:", "Link Topic Page", JOptionPane.PLAIN_MESSAGE, null, currentProfile.topicPages.toArray(), currentProfile.topicPages.get(0));
+        if (currentWritingDocument == null || currentProfile.topicPages.isEmpty()) { JOptionPane.showMessageDialog(this, "Create a Teaching Page first, then link it here."); return; }
+        TopicPage topic = (TopicPage) JOptionPane.showInputDialog(this, "Choose a Teaching Page:", "Link Teaching Page", JOptionPane.PLAIN_MESSAGE, null, currentProfile.topicPages.toArray(), currentProfile.topicPages.get(0));
         if (topic == null) return;
         if (!currentWritingDocument.linkedTopicPageIds.contains(topic.id)) currentWritingDocument.linkedTopicPageIds.add(topic.id);
         repairTopicPage(topic);
@@ -11231,7 +11834,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         linkCat.addActionListener(e -> linkWholeChapterNoteToCategory(note));
         JButton linkStudy = blackButton("Add to Study Writer");
         linkStudy.addActionListener(e -> linkWholeChapterNoteToStudy(note));
-        JButton linkTopic = blackButton("Add to Topic Page");
+        JButton linkTopic = blackButton("Add to Teaching Page");
         linkTopic.addActionListener(e -> linkWholeChapterNoteToTopic(note));
         JButton closeBtn = blackButton("Close");
         closeBtn.addActionListener(e -> close.run());
@@ -11336,7 +11939,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         cat.addActionListener(e -> attachSelectedNoteText(note, pane, "CATEGORY"));
         JMenuItem study = new JMenuItem("Attach Selected Note Text to Study Project");
         study.addActionListener(e -> attachSelectedNoteText(note, pane, "STUDY"));
-        JMenuItem topic = new JMenuItem("Attach Selected Note Text to Topic Page");
+        JMenuItem topic = new JMenuItem("Attach Selected Note Text to Teaching Page");
         topic.addActionListener(e -> attachSelectedNoteText(note, pane, "TOPIC"));
         JMenuItem copy = new JMenuItem("Copy");
         copy.addActionListener(e -> pane.copy());
@@ -11754,7 +12357,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             addMenu(m, "View Greek Details", () -> showGreekDetailsInSidebar(p.ref));
             addMenu(m, "Show Full Verse", () -> openGreekResultVerse(p.ref, true));
             addMenu(m, "Add Greek Note", () -> addGreekNoteFromSearchResult(p.ref));
-            addMenu(m, "Add Greek to Topic Page", () -> addLinkedItemToTopicPage(new LinkedItem("GREEK", p.ref, "related")));
+            addMenu(m, "Add Greek to Teaching Page", () -> addLinkedItemToTopicPage(new LinkedItem("GREEK", p.ref, "related")));
         } else {
             addMenu(m, "View In Sidebar", this::previewSideSearchResult);
             addMenu(m, "Show Full View", this::showFullViewForSideSearchResult);
@@ -11794,7 +12397,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private static final List<String> SEARCH_GROUP_ORDER = Arrays.asList(
             "Bible Results", "Notes", "Chapter Notes", "Questions", "Categories",
-            "Greek", "Topic Pages", "Study Writings", "Study Projects", "Memory Verses", "Library");
+            "Greek", "Teaching", "Study Writings", "Study Projects", "Memory Verses", "Library");
 
     private Map<String, List<GroupedSearchResult>> collectGroupedSearchResults(String rawQuery, int maxSnippet) {
         String q = safe(rawQuery).trim().toLowerCase(Locale.ROOT);
@@ -11838,7 +12441,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
         for (TopicPage topic : currentProfile.topicPages) {
             if ((safe(topic.title) + " " + safe(topic.summary)).toLowerCase(Locale.ROOT).contains(q))
-                groups.get("Topic Pages").add(new GroupedSearchResult("TOPIC", topic.id, topic.title, shorten(topic.summary, maxSnippet), "", 0, topic));
+                groups.get("Teaching").add(new GroupedSearchResult("TOPIC", topic.id, topic.title, shorten(topic.summary, maxSnippet), "", 0, topic));
         }
         for (StudyWritingDocument document : currentProfile.writingDocuments.values()) {
             if ((safe(document.title) + " " + safe(document.plainText) + " " + String.join(" ", document.tags)).toLowerCase(Locale.ROOT).contains(q))
@@ -11896,7 +12499,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             addMenu(menu, "Export PDF", () -> { openWritingDocumentFromSearch(writing); exportCurrentWritingToPdf(); });
             addMenu(menu, "Add to Category", () -> { openWritingDocumentFromSearch(writing); linkCurrentWritingToCategory(); });
             addMenu(menu, "Link to Project", () -> { openWritingDocumentFromSearch(writing); linkCurrentWritingToProject(); });
-            addMenu(menu, "Link to Topic Page", () -> { openWritingDocumentFromSearch(writing); linkCurrentWritingToTopicPage(); });
+            addMenu(menu, "Link to Teaching Page", () -> { openWritingDocumentFromSearch(writing); linkCurrentWritingToTopicPage(); });
         }
         if ("NOTE".equals(result.type) && result.payload instanceof TextAnnotation) {
             addMenu(menu, "Edit Note", () -> editAnnotation((TextAnnotation) result.payload));
@@ -13470,12 +14073,39 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     private void repairTopicPage(TopicPage topic) {
         if (topic == null) return;
         if (topic.id == null || topic.id.trim().isEmpty()) topic.id = UUID.randomUUID().toString();
-        if (topic.title == null || topic.title.trim().isEmpty()) topic.title = "Untitled Topic";
+        if (topic.title == null || topic.title.trim().isEmpty()) topic.title = "Untitled Teaching Page";
         if (topic.summary == null) topic.summary = "";
         if (topic.links == null) topic.links = new ArrayList<>();
         topic.links.removeIf(Objects::isNull);
         for (LinkedItem link : topic.links) repairLinkedItem(link);
+        if (topic.timelineItems == null) topic.timelineItems = new ArrayList<>();
+        topic.timelineItems.removeIf(Objects::isNull);
+        for (TeachingTimelineItem item : topic.timelineItems) repairTeachingTimelineItem(item);
+        normalizeTeachingTimelineOrder(topic);
         if (topic.createdAt <= 0L) topic.createdAt = System.currentTimeMillis();
+        if (topic.updatedAt <= 0L) topic.updatedAt = topic.createdAt;
+    }
+
+    private void repairTeachingTimelineItem(TeachingTimelineItem item) {
+        if (item == null) return;
+        if (item.id == null || item.id.trim().isEmpty()) item.id = UUID.randomUUID().toString();
+        item.type = normalizedTeachingType(item.type);
+        if (item.sourceRef == null) item.sourceRef = "";
+        if (item.sourceTitle == null) item.sourceTitle = "";
+        if (item.customTitle == null) item.customTitle = "";
+        if (item.bodyPreview == null) item.bodyPreview = "";
+        if (item.bulletPoints == null) item.bulletPoints = new ArrayList<>();
+        item.bulletPoints.removeIf(Objects::isNull);
+        for (int i = 0; i < item.bulletPoints.size(); i++) {
+            TeachingBulletPoint bullet = item.bulletPoints.get(i);
+            if (bullet.id == null || bullet.id.trim().isEmpty()) bullet.id = UUID.randomUUID().toString();
+            if (bullet.text == null) bullet.text = "";
+            bullet.order = i;
+            if (bullet.createdAt <= 0L) bullet.createdAt = System.currentTimeMillis();
+            if (bullet.updatedAt <= 0L) bullet.updatedAt = bullet.createdAt;
+        }
+        if (item.createdAt <= 0L) item.createdAt = System.currentTimeMillis();
+        if (item.updatedAt <= 0L) item.updatedAt = item.createdAt;
     }
 
     private void repairLinkedItem(LinkedItem link) {
@@ -13483,7 +14113,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (link.type == null) link.type = "";
         if (link.ref == null) link.ref = "";
         if (link.label == null) link.label = "";
+        if (link.title == null) link.title = "";
+        if (link.category == null) link.category = "";
+        if (link.preview == null) link.preview = "";
         if (link.createdAt <= 0L) link.createdAt = System.currentTimeMillis();
+        if (link.updatedAt <= 0L) link.updatedAt = link.createdAt;
     }
 
     private void repairStudyWritingDocument(StudyWritingDocument document) {
@@ -14385,7 +15019,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         String type;
         String ref;
         String label;
+        String title = "";
+        String category = "";
+        String preview = "";
         long createdAt = System.currentTimeMillis();
+        long updatedAt = createdAt;
 
         LinkedItem(String type, String ref, String label) {
             this.type = type == null ? "" : type;
@@ -14398,17 +15036,49 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
     }
 
+
+    private static class TeachingBulletPoint implements Serializable {
+        private static final long serialVersionUID = 1L;
+        String id = UUID.randomUUID().toString();
+        String text = "";
+        int order;
+        long createdAt = System.currentTimeMillis();
+        long updatedAt = createdAt;
+        TeachingBulletPoint(String text) { this.text = text == null ? "" : text; }
+        public String toString() { return text; }
+    }
+
+    private static class TeachingTimelineItem implements Serializable {
+        private static final long serialVersionUID = 1L;
+        String id = UUID.randomUUID().toString();
+        String type = "CUSTOM";
+        String sourceRef = "";
+        String sourceTitle = "";
+        String customTitle = "";
+        String bodyPreview = "";
+        List<TeachingBulletPoint> bulletPoints = new ArrayList<>();
+        int order;
+        long createdAt = System.currentTimeMillis();
+        long updatedAt = createdAt;
+        public String toString() {
+            String title = customTitle == null || customTitle.trim().isEmpty() ? sourceTitle : customTitle;
+            return (order + 1) + ". [" + (type == null ? "CUSTOM" : type) + "] " + (title == null || title.trim().isEmpty() ? "Untitled" : title);
+        }
+    }
+
     private static class TopicPage implements Serializable {
         private static final long serialVersionUID = 30L;
         String id = UUID.randomUUID().toString();
         String title;
         String summary = "";
         List<LinkedItem> links = new ArrayList<>();
+        List<TeachingTimelineItem> timelineItems = new ArrayList<>();
         long createdAt = System.currentTimeMillis();
+        long updatedAt = createdAt;
 
         TopicPage(String title) {
-            this.title = title == null ? "Untitled Topic" : title.trim();
-            if (this.title.isEmpty()) this.title = "Untitled Topic";
+            this.title = title == null ? "Untitled Teaching Page" : title.trim();
+            if (this.title.isEmpty()) this.title = "Untitled Teaching Page";
         }
 
         public String toString() {
