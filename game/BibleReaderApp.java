@@ -160,11 +160,26 @@ public class BibleReaderApp extends JFrame {
     private String activeCategoryView = "list";
     private final Set<String> expandedCategoryResultIds = new HashSet<>();
 
-    private DefaultListModel<String> questionModel;
-    private JList<String> questionList;
-    private JPanel discussionQuestionsPanel;
-    private JPanel personalQuestionsPanel;
+    private DefaultListModel<StudyQuestion> questionModel;
+    private JList<StudyQuestion> questionList;
     private StudyQuestion selectedQuestion;
+    private JComboBox<String> questionStatusFilter;
+    private JComboBox<String> questionBookFilter;
+    private JComboBox<String> questionChapterFilter;
+    private JTextField questionReferenceFilterField;
+    private JTextField answerSearchField;
+    private JLabel questionResultsLabel;
+    private JLabel selectedQuestionTypeLabel;
+    private JLabel selectedQuestionReferenceLabel;
+    private JTextArea selectedQuestionTextArea;
+    private JTextArea selectedQuestionPassageArea;
+    private DefaultListModel<QuestionAnswer> questionAnswerModel;
+    private JList<QuestionAnswer> questionAnswerList;
+    private JButton editAnswerButton;
+    private JButton deleteAnswerButton;
+    private JButton duplicateAnswerButton;
+    private JButton copyAnswerButton;
+    private boolean updatingQuestionFilters;
 
     private DefaultListModel<TopicPage> topicPageModel;
     private JList<TopicPage> topicPageList;
@@ -3042,71 +3057,192 @@ public class BibleReaderApp extends JFrame {
         page.setBorder(new EmptyBorder(16, 16, 16, 16));
         page.setBackground(panelBg);
 
-        JLabel h = new JLabel("Questions");
-        h.setFont(new Font("Segoe UI", Font.BOLD, 26));
-        h.setForeground(darkRed);
+        JLabel heading = new JLabel("Questions & Answers");
+        heading.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        heading.setForeground(darkRed);
 
-        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        top.setOpaque(false);
-
+        JPanel pageActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        pageActions.setOpaque(false);
+        JButton addQuestion = blackButton("Add Question To Current Selection");
+        JButton addTopic = blackButton("Add Selected Question to Teaching Page");
+        JButton jump = blackButton("Jump To Scripture");
+        JButton editQuestion = blackButton("Edit Question");
+        JButton deleteQuestion = blackButton("Delete Question");
         JButton toggle = blackButton("Toggle Answered / Unanswered");
-        JButton add = blackButton("Add Question To Current Selection");
-        JButton addTopic = blackButton("Add Question to Teaching Page");
-        toggle.addActionListener(e -> toggleSelectedQuestion());
-        add.addActionListener(e -> addQuestionForSelection());
+        addQuestion.addActionListener(e -> addQuestionForSelection());
         addTopic.addActionListener(e -> addSelectedQuestionToTopicPage());
-
-        questionSearchField = new JTextField(22);
-        questionSearchField.setToolTipText("Filter questions...");
-        questionSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshQuestions));
-        top.add(toggle);
-        top.add(add);
-        top.add(addTopic);
-        top.add(new JLabel("Filter:"));
-        top.add(questionSearchField);
-
-        questionModel = new DefaultListModel<>();
-        questionList = new JList<>(questionModel);
-        questionList.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        jump.addActionListener(e -> jumpToQuestion(selectedQuestion));
+        editQuestion.addActionListener(e -> editQuestion(selectedQuestion));
+        deleteQuestion.addActionListener(e -> deleteQuestion(selectedQuestion));
+        toggle.addActionListener(e -> toggleSelectedQuestion());
+        for (JButton button : new JButton[]{addQuestion, addTopic, jump, editQuestion, deleteQuestion, toggle}) pageActions.add(button);
 
         JPanel north = new JPanel(new BorderLayout(8, 8));
         north.setOpaque(false);
-        north.add(h, BorderLayout.NORTH);
-        north.add(top, BorderLayout.SOUTH);
+        north.add(heading, BorderLayout.NORTH);
+        north.add(pageActions, BorderLayout.SOUTH);
 
-        discussionQuestionsPanel = new JPanel();
-        discussionQuestionsPanel.setLayout(new BoxLayout(discussionQuestionsPanel, BoxLayout.Y_AXIS));
-        discussionQuestionsPanel.setBackground(modernSurface);
-        personalQuestionsPanel = new JPanel();
-        personalQuestionsPanel.setLayout(new BoxLayout(personalQuestionsPanel, BoxLayout.Y_AXIS));
-        personalQuestionsPanel.setBackground(modernSurface);
+        questionModel = new DefaultListModel<>();
+        questionList = new JList<>(questionModel);
+        questionList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        questionList.setFixedCellHeight(72);
+        questionList.setCellRenderer(new QuestionWorkspaceRenderer());
+        questionList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                selectedQuestion = questionList.getSelectedValue();
+                refreshSelectedQuestionDetails();
+            }
+        });
+        questionList.addMouseListener(new MouseAdapter() {
+            private void showMenu(MouseEvent event) {
+                if (!event.isPopupTrigger()) return;
+                int index = questionList.locationToIndex(event.getPoint());
+                if (index < 0) return;
+                questionList.setSelectedIndex(index);
+                StudyQuestion question = questionList.getSelectedValue();
+                if (question != null) showQuestionContextMenu(questionList, event.getX(), event.getY(), question);
+            }
+            public void mousePressed(MouseEvent event) { showMenu(event); }
+            public void mouseReleased(MouseEvent event) { showMenu(event); }
+        });
 
-        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
-                labeledQuestionSection("Discussion Questions", discussionQuestionsPanel),
-                labeledQuestionSection("Personal Questions", personalQuestionsPanel));
-        split.setResizeWeight(0.5);
+        JPanel filters = new JPanel(new GridBagLayout());
+        filters.setOpaque(false);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(2, 3, 2, 3);
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        questionStatusFilter = new JComboBox<>(new String[]{"All", "Unanswered", "Answered"});
+        questionBookFilter = new JComboBox<>(new String[]{"All Books"});
+        questionChapterFilter = new JComboBox<>(new String[]{"All Chapters"});
+        questionSearchField = new JTextField(18);
+        answerSearchField = new JTextField(18);
+        questionReferenceFilterField = new JTextField(12);
+        questionSearchField.setToolTipText("Search words or phrases in question text.");
+        answerSearchField.setToolTipText("Search words or phrases in saved answers.");
+        questionReferenceFilterField.setToolTipText("Filter by a verse or reference, such as John 3:16.");
+        questionSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshQuestions));
+        answerSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshQuestions));
+        questionReferenceFilterField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshQuestions));
+        questionStatusFilter.addActionListener(e -> { if (!updatingQuestionFilters) refreshQuestions(); });
+        questionBookFilter.addActionListener(e -> {
+            if (!updatingQuestionFilters) { refreshQuestionChapterFilter(); refreshQuestions(); }
+        });
+        questionChapterFilter.addActionListener(e -> { if (!updatingQuestionFilters) refreshQuestions(); });
+
+        addFilterRow(filters, gbc, 0, "Status", questionStatusFilter, "Book", questionBookFilter);
+        addFilterRow(filters, gbc, 1, "Chapter", questionChapterFilter, "Reference", questionReferenceFilterField);
+        addFilterRow(filters, gbc, 2, "Question", questionSearchField, "Answer", answerSearchField);
+
+        questionResultsLabel = new JLabel("0 questions");
+        questionResultsLabel.setForeground(modernMutedText);
+        JPanel left = new JPanel(new BorderLayout(6, 6));
+        left.setBackground(panelBg);
+        left.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(8, 8, 8, 8)));
+        JPanel leftTop = new JPanel(new BorderLayout(4, 4));
+        leftTop.setOpaque(false);
+        JLabel listTitle = new JLabel("Question Library");
+        listTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        listTitle.setForeground(darkRed);
+        leftTop.add(listTitle, BorderLayout.NORTH);
+        leftTop.add(filters, BorderLayout.CENTER);
+        leftTop.add(questionResultsLabel, BorderLayout.SOUTH);
+        left.add(leftTop, BorderLayout.NORTH);
+        JScrollPane questionScroll = new JScrollPane(questionList);
+        questionScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+        questionScroll.getVerticalScrollBar().setUnitIncrement(18);
+        left.add(questionScroll, BorderLayout.CENTER);
+
+        JPanel detail = buildQuestionDetailPanel();
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, left, detail);
+        split.setResizeWeight(0.4);
+        split.setDividerLocation(480);
         split.setBorder(null);
+        left.setMinimumSize(new Dimension(360, 300));
+        detail.setMinimumSize(new Dimension(440, 300));
 
         page.add(north, BorderLayout.NORTH);
         page.add(split, BorderLayout.CENTER);
         return page;
     }
 
+    private void addFilterRow(JPanel panel, GridBagConstraints gbc, int row, String leftLabel, JComponent leftControl,
+                              String rightLabel, JComponent rightControl) {
+        gbc.gridy = row;
+        gbc.weightx = 0;
+        gbc.gridx = 0;
+        panel.add(new JLabel(leftLabel + ":"), gbc);
+        gbc.weightx = 1;
+        gbc.gridx = 1;
+        panel.add(leftControl, gbc);
+        gbc.weightx = 0;
+        gbc.gridx = 2;
+        panel.add(new JLabel(rightLabel + ":"), gbc);
+        gbc.weightx = 1;
+        gbc.gridx = 3;
+        panel.add(rightControl, gbc);
+    }
 
+    private JPanel buildQuestionDetailPanel() {
+        JPanel detail = new JPanel(new BorderLayout(8, 8));
+        detail.setBackground(modernSurface);
+        detail.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(12, 12, 12, 12)));
 
-    private JComponent labeledQuestionSection(String title, JPanel body) {
-        JPanel panel = new JPanel(new BorderLayout(8, 8));
-        panel.setBackground(panelBg);
-        panel.setBorder(new EmptyBorder(6, 0, 6, 0));
-        JLabel label = new JLabel(title);
-        label.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        label.setForeground(darkRed);
-        panel.add(label, BorderLayout.NORTH);
-        JScrollPane scroll = new JScrollPane(body);
-        scroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
-        scroll.getVerticalScrollBar().setUnitIncrement(16);
-        panel.add(scroll, BorderLayout.CENTER);
-        return panel;
+        JLabel title = new JLabel("Selected Question");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        title.setForeground(darkRed);
+        selectedQuestionTypeLabel = new JLabel("Select a question from the library.");
+        selectedQuestionTypeLabel.setForeground(modernMutedText);
+        selectedQuestionReferenceLabel = new JLabel(" ");
+        selectedQuestionReferenceLabel.setForeground(modernMutedText);
+        selectedQuestionTextArea = readonlyArea();
+        selectedQuestionTextArea.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        selectedQuestionTextArea.setBackground(modernSurface);
+        selectedQuestionTextArea.setRows(4);
+        selectedQuestionPassageArea = readonlyArea();
+        selectedQuestionPassageArea.setBackground(new Color(255, 249, 236));
+        selectedQuestionPassageArea.setRows(3);
+
+        JPanel questionHeader = new JPanel();
+        questionHeader.setLayout(new BoxLayout(questionHeader, BoxLayout.Y_AXIS));
+        questionHeader.setOpaque(false);
+        for (JComponent component : new JComponent[]{title, selectedQuestionTypeLabel, selectedQuestionReferenceLabel,
+                selectedQuestionTextArea, selectedQuestionPassageArea}) {
+            component.setAlignmentX(Component.LEFT_ALIGNMENT);
+            questionHeader.add(component);
+            questionHeader.add(Box.createVerticalStrut(5));
+        }
+
+        questionAnswerModel = new DefaultListModel<>();
+        questionAnswerList = new JList<>(questionAnswerModel);
+        questionAnswerList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        questionAnswerList.setCellRenderer(new QuestionAnswerRenderer());
+        questionAnswerList.addListSelectionListener(e -> updateAnswerActionState());
+        JScrollPane answerScroll = new JScrollPane(questionAnswerList);
+        answerScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+        answerScroll.getVerticalScrollBar().setUnitIncrement(18);
+        answerScroll.setBorder(new TitledBorder(new LineBorder(modernBorder), "Answers"));
+
+        JButton addAnswer = blackButton("Add Answer");
+        editAnswerButton = blackButton("Edit Selected Answer");
+        deleteAnswerButton = blackButton("Delete Selected Answer");
+        duplicateAnswerButton = blackButton("Duplicate Answer");
+        copyAnswerButton = blackButton("Copy Answer Text");
+        addAnswer.addActionListener(e -> promptAddAnswer(selectedQuestion));
+        editAnswerButton.addActionListener(e -> editSelectedAnswer());
+        deleteAnswerButton.addActionListener(e -> deleteSelectedAnswer());
+        duplicateAnswerButton.addActionListener(e -> duplicateSelectedAnswer());
+        copyAnswerButton.addActionListener(e -> copySelectedAnswer());
+        JPanel answerActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        answerActions.setOpaque(false);
+        for (JButton button : new JButton[]{addAnswer, editAnswerButton, deleteAnswerButton, duplicateAnswerButton, copyAnswerButton}) answerActions.add(button);
+
+        detail.add(questionHeader, BorderLayout.NORTH);
+        detail.add(answerScroll, BorderLayout.CENTER);
+        detail.add(answerActions, BorderLayout.SOUTH);
+        updateAnswerActionState();
+        return detail;
     }
 
     private JPanel buildTopicPagesPage() {
@@ -9602,15 +9738,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void addSelectedQuestionToTopicPage() {
-        String s = questionList == null ? null : questionList.getSelectedValue();
-        if (s == null) { JOptionPane.showMessageDialog(this, "Select a question first."); return; }
-        try {
-            int idx = Integer.parseInt(s.split("\\|")[0].trim());
-            StudyQuestion q = currentProfile.questions.get(idx);
-            addLinkedItemToTopicPage(new LinkedItem("QUESTION", q.annotationId, "related"));
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Could not add selected question.");
-        }
+        StudyQuestion q = questionList == null ? null : questionList.getSelectedValue();
+        if (q == null) { JOptionPane.showMessageDialog(this, "Select a question first."); return; }
+        addLinkedItemToTopicPage(new LinkedItem("QUESTION", q.annotationId, "related"));
     }
 
     private void addLinkedItemToTopicPage(LinkedItem item) {
@@ -11823,72 +11953,245 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
 
     private void refreshQuestions() {
-        if (questionModel == null) return;
+        if (questionModel == null || currentProfile == null) return;
+        repairProfile(currentProfile);
+        refreshQuestionBookFilter();
+
+        String selectedId = selectedQuestion == null ? "" : safe(selectedQuestion.annotationId);
+        String status = selectedComboText(questionStatusFilter, "All");
+        String book = selectedComboText(questionBookFilter, "All Books");
+        String chapter = selectedComboText(questionChapterFilter, "All Chapters");
+        String questionQuery = fieldText(questionSearchField);
+        String answerQuery = fieldText(answerSearchField);
+        String referenceQuery = fieldText(questionReferenceFilterField);
+
         questionModel.clear();
-        if (discussionQuestionsPanel != null) discussionQuestionsPanel.removeAll();
-        if (personalQuestionsPanel != null) personalQuestionsPanel.removeAll();
-        String questionQuery = questionSearchField == null ? "" : questionSearchField.getText().trim().toLowerCase(Locale.ROOT);
-        int discussionCount = 0;
-        int personalCount = 0;
-        for (int i = 0; i < currentProfile.questions.size(); i++) {
-            StudyQuestion q = currentProfile.questions.get(i);
+        StudyQuestion selection = null;
+        for (StudyQuestion q : currentProfile.questions) {
             repairQuestion(q);
-            String line = i + " | " + (q.answered ? "✓" : "❗") + " | " + questionTypeDisplay(q.questionType) + " | " + questionLocation(q) + " | " + shorten(q.question, 140);
+            if ("Answered".equals(status) && !q.answered) continue;
+            if ("Unanswered".equals(status) && q.answered) continue;
+            if (!"All Books".equals(book) && !book.equals(safe(q.book))) continue;
+            if (!"All Chapters".equals(chapter) && !chapter.equals(Integer.toString(q.chapter))) continue;
             if (!questionQuery.isEmpty() && !questionSearchText(q).contains(questionQuery)) continue;
-            questionModel.addElement(line);
-            JPanel target = "personal".equals(normalizeQuestionType(q.questionType)) ? personalQuestionsPanel : discussionQuestionsPanel;
-            if (target != null) target.add(buildQuestionCard(q, i));
-            if ("personal".equals(normalizeQuestionType(q.questionType))) personalCount++; else discussionCount++;
+            if (!answerQuery.isEmpty() && !answerSearchText(q).contains(answerQuery)) continue;
+            if (!referenceQuery.isEmpty() && !questionReferenceSearchText(q).contains(referenceQuery)) continue;
+            questionModel.addElement(q);
+            if (q == selectedQuestion || (!selectedId.isEmpty() && selectedId.equals(safe(q.annotationId)))) selection = q;
         }
-        if (discussionQuestionsPanel != null && discussionCount == 0) discussionQuestionsPanel.add(emptySectionLabel("No discussion questions match this filter."));
-        if (personalQuestionsPanel != null && personalCount == 0) personalQuestionsPanel.add(emptySectionLabel("No personal questions match this filter."));
-        if (discussionQuestionsPanel != null) { discussionQuestionsPanel.revalidate(); discussionQuestionsPanel.repaint(); }
-        if (personalQuestionsPanel != null) { personalQuestionsPanel.revalidate(); personalQuestionsPanel.repaint(); }
+
+        if (questionResultsLabel != null) questionResultsLabel.setText(questionModel.size() + " of " + currentProfile.questions.size() + " questions");
+        if (selection != null) questionList.setSelectedValue(selection, true);
+        else if (!questionModel.isEmpty()) questionList.setSelectedIndex(0);
+        else {
+            selectedQuestion = null;
+            questionList.clearSelection();
+            refreshSelectedQuestionDetails();
+        }
         updateHeader();
     }
 
-    private JLabel emptySectionLabel(String text) {
-        JLabel label = new JLabel(text);
-        label.setForeground(modernMutedText);
-        label.setBorder(new EmptyBorder(12, 12, 12, 12));
-        label.setAlignmentX(Component.LEFT_ALIGNMENT);
-        return label;
+    private String selectedComboText(JComboBox<String> combo, String fallback) {
+        return combo == null || combo.getSelectedItem() == null ? fallback : combo.getSelectedItem().toString();
     }
 
-    private JPanel buildQuestionCard(StudyQuestion q, int index) {
-        JPanel card = new JPanel(new BorderLayout(8, 8));
-        card.setBackground(new Color(255, 252, 247));
-        card.setBorder(new CompoundBorder(new MatteBorder(0, 5, 0, 0, questionColorForType(q.questionType)), new EmptyBorder(8, 10, 8, 10)));
-        card.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JTextArea text = readonlyArea();
-        text.setBackground(card.getBackground());
-        text.setText(q.question + "\n\nSource: " + questionLocation(q) + "\nStatus: " + (q.answered ? "Answered" : "Unanswered") + " • " + q.answers.size() + " answer(s)" + answersSummary(q));
-        card.add(text, BorderLayout.CENTER);
+    private String fieldText(JTextField field) {
+        return field == null ? "" : field.getText().trim().toLowerCase(Locale.ROOT);
+    }
 
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        actions.setOpaque(false);
-        JButton jump = blackButton("Jump To");
-        jump.addActionListener(e -> jumpToQuestion(q));
-        JButton addAnswer = blackButton("Add Answer");
-        addAnswer.addActionListener(e -> promptAddAnswer(q));
-        JButton viewAnswers = blackButton("View Answers");
-        viewAnswers.addActionListener(e -> showQuestionAnswers(q));
-        JButton edit = blackButton("Edit Question");
-        edit.addActionListener(e -> editQuestion(q));
-        JButton delete = blackButton("Delete Question");
-        delete.addActionListener(e -> deleteQuestion(q));
-        JButton toggle = blackButton(q.answered ? "Mark Unanswered" : "Mark Answered");
-        toggle.addActionListener(e -> setQuestionAnswered(q, !q.answered));
-        for (JButton b : new JButton[]{jump, addAnswer, viewAnswers, edit, delete, toggle}) actions.add(b);
-        card.add(actions, BorderLayout.SOUTH);
-        card.addMouseListener(new MouseAdapter() {
-            public void mouseClicked(MouseEvent e) {
-                selectedQuestion = q;
-                if (questionList != null && index >= 0 && index < questionModel.size()) questionList.setSelectedIndex(index);
+    private void refreshQuestionBookFilter() {
+        if (updatingQuestionFilters || questionBookFilter == null || currentProfile == null) return;
+        updatingQuestionFilters = true;
+        try {
+            String selectedBook = selectedComboText(questionBookFilter, "All Books");
+            TreeSet<String> books = new TreeSet<>();
+            for (StudyQuestion q : currentProfile.questions) if (q != null && !safe(q.book).trim().isEmpty()) books.add(q.book.trim());
+            questionBookFilter.removeAllItems();
+            questionBookFilter.addItem("All Books");
+            for (String book : books) questionBookFilter.addItem(book);
+            questionBookFilter.setSelectedItem(books.contains(selectedBook) ? selectedBook : "All Books");
+            refreshQuestionChapterFilter();
+        } finally {
+            updatingQuestionFilters = false;
+        }
+    }
+
+    private void refreshQuestionChapterFilter() {
+        if (questionChapterFilter == null || currentProfile == null) return;
+        boolean wasUpdating = updatingQuestionFilters;
+        updatingQuestionFilters = true;
+        try {
+            String selectedChapter = selectedComboText(questionChapterFilter, "All Chapters");
+            String selectedBook = selectedComboText(questionBookFilter, "All Books");
+            TreeSet<Integer> chapters = new TreeSet<>();
+            for (StudyQuestion q : currentProfile.questions) {
+                if (q == null || q.chapter <= 0) continue;
+                if (!"All Books".equals(selectedBook) && !selectedBook.equals(safe(q.book))) continue;
+                chapters.add(q.chapter);
             }
-        });
-        installQuestionContextMenu(card, q);
-        return card;
+            questionChapterFilter.removeAllItems();
+            questionChapterFilter.addItem("All Chapters");
+            for (Integer value : chapters) questionChapterFilter.addItem(value.toString());
+            try {
+                int value = Integer.parseInt(selectedChapter);
+                questionChapterFilter.setSelectedItem(chapters.contains(value) ? selectedChapter : "All Chapters");
+            } catch (NumberFormatException ex) {
+                questionChapterFilter.setSelectedItem("All Chapters");
+            }
+        } finally {
+            updatingQuestionFilters = wasUpdating;
+        }
+    }
+
+    private String answerSearchText(StudyQuestion q) {
+        StringBuilder text = new StringBuilder();
+        if (q != null && q.answers != null) for (QuestionAnswer answer : q.answers) text.append(' ').append(safe(answer == null ? "" : answer.text));
+        return text.toString().toLowerCase(Locale.ROOT);
+    }
+
+    private String questionReferenceSearchText(StudyQuestion q) {
+        StringBuilder text = new StringBuilder(questionLocation(q)).append(' ').append(safe(q.sourceKey)).append(' ')
+                .append(safe(q.sourceLocation)).append(' ').append(safe(q.book)).append(' ')
+                .append(q.chapter > 0 ? q.chapter : "").append(' ').append(safe(q.selectedText));
+        TextAnnotation annotation = annotationById(q.annotationId);
+        if (annotation != null && annotation.scriptureReferences != null) {
+            for (ScriptureReferenceAttachment attachment : annotation.scriptureReferences) {
+                if (attachment != null) text.append(' ').append(safe(attachment.reference));
+            }
+        }
+        return text.toString().toLowerCase(Locale.ROOT);
+    }
+
+    private void refreshSelectedQuestionDetails() {
+        if (questionAnswerModel == null) return;
+        questionAnswerModel.clear();
+        StudyQuestion q = selectedQuestion;
+        if (q == null) {
+            selectedQuestionTypeLabel.setText("Select a question from the library.");
+            selectedQuestionReferenceLabel.setText(" ");
+            selectedQuestionTextArea.setText("");
+            selectedQuestionPassageArea.setText("");
+            selectedQuestionPassageArea.setVisible(false);
+            updateAnswerActionState();
+            return;
+        }
+        repairQuestion(q);
+        selectedQuestionTypeLabel.setText(questionTypeDisplay(q.questionType) + " • " + (q.answered ? "Answered" : "Unanswered")
+                + " • " + q.answers.size() + " answer" + (q.answers.size() == 1 ? "" : "s"));
+        selectedQuestionReferenceLabel.setText("Reference: " + questionWorkspaceReference(q));
+        selectedQuestionTextArea.setText(q.question);
+        String passage = questionPassageText(q);
+        selectedQuestionPassageArea.setText(passage);
+        selectedQuestionPassageArea.setVisible(!passage.isEmpty());
+        for (QuestionAnswer answer : q.answers) questionAnswerModel.addElement(answer);
+        if (!questionAnswerModel.isEmpty()) questionAnswerList.setSelectedIndex(0);
+        updateAnswerActionState();
+    }
+
+    private String questionWorkspaceReference(StudyQuestion q) {
+        String location = questionLocation(q);
+        TextAnnotation annotation = q == null ? null : annotationById(q.annotationId);
+        if (annotation != null && annotation.scriptureReferences != null) {
+            for (ScriptureReferenceAttachment attachment : annotation.scriptureReferences) {
+                String reference = attachment == null ? "" : safe(attachment.reference).trim();
+                if (!reference.isEmpty() && !location.toLowerCase(Locale.ROOT).contains(reference.toLowerCase(Locale.ROOT))) {
+                    return location + " • " + reference;
+                }
+            }
+        }
+        return location;
+    }
+
+    private String questionPassageText(StudyQuestion q) {
+        if (q == null) return "";
+        StringBuilder passage = new StringBuilder();
+        if (!safe(q.selectedText).trim().isEmpty()) passage.append("Attached passage: ").append(q.selectedText.trim());
+        TextAnnotation annotation = annotationById(q.annotationId);
+        if (annotation != null && annotation.scriptureReferences != null) {
+            for (ScriptureReferenceAttachment attachment : annotation.scriptureReferences) {
+                if (attachment == null) continue;
+                if (passage.length() > 0) passage.append("\n\n");
+                passage.append(safe(attachment.reference));
+                if (!safe(attachment.scriptureText).trim().isEmpty()) passage.append("\n").append(attachment.scriptureText.trim());
+            }
+        }
+        return passage.toString();
+    }
+
+    private void updateAnswerActionState() {
+        boolean hasQuestion = selectedQuestion != null;
+        boolean hasAnswer = hasQuestion && questionAnswerList != null && questionAnswerList.getSelectedValue() != null;
+        if (editAnswerButton != null) editAnswerButton.setEnabled(hasAnswer);
+        if (deleteAnswerButton != null) deleteAnswerButton.setEnabled(hasAnswer);
+        if (duplicateAnswerButton != null) duplicateAnswerButton.setEnabled(hasAnswer);
+        if (copyAnswerButton != null) copyAnswerButton.setEnabled(hasAnswer);
+    }
+
+    private void editSelectedAnswer() {
+        QuestionAnswer answer = questionAnswerList == null ? null : questionAnswerList.getSelectedValue();
+        if (selectedQuestion == null || answer == null) return;
+        String edited = promptMultiline("Edit Answer", "Answer for: " + shorten(selectedQuestion.question, 80), answer.text);
+        if (edited == null || edited.trim().isEmpty()) return;
+        answer.text = edited.trim();
+        answer.updatedAt = System.currentTimeMillis();
+        selectedQuestion.answered = true;
+        saveData();
+        refreshAfterQuestionChange(true);
+    }
+
+    private void deleteSelectedAnswer() {
+        QuestionAnswer answer = questionAnswerList == null ? null : questionAnswerList.getSelectedValue();
+        if (selectedQuestion == null || answer == null) return;
+        int result = JOptionPane.showConfirmDialog(this, "Delete the selected answer?", "Delete Answer", JOptionPane.OK_CANCEL_OPTION);
+        if (result != JOptionPane.OK_OPTION) return;
+        selectedQuestion.answers.remove(answer);
+        selectedQuestion.answered = !selectedQuestion.answers.isEmpty();
+        saveData();
+        refreshAfterQuestionChange(true);
+    }
+
+    private void duplicateSelectedAnswer() {
+        QuestionAnswer answer = questionAnswerList == null ? null : questionAnswerList.getSelectedValue();
+        if (selectedQuestion == null || answer == null || safe(answer.text).trim().isEmpty()) return;
+        addAnswerToQuestion(selectedQuestion, answer.text);
+        refreshAfterQuestionChange(true);
+    }
+
+    private void copySelectedAnswer() {
+        QuestionAnswer answer = questionAnswerList == null ? null : questionAnswerList.getSelectedValue();
+        if (answer == null) return;
+        copyTextToClipboard(answer.text);
+        if (statusLabel != null) statusLabel.setText(" Copied answer text.");
+    }
+
+    private class QuestionWorkspaceRenderer extends DefaultListCellRenderer {
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
+            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, selected, focus);
+            StudyQuestion q = value instanceof StudyQuestion ? (StudyQuestion) value : null;
+            if (q == null) return label;
+            String type = "personal".equals(normalizeQuestionType(q.questionType)) ? "Personal" : "DQ";
+            String status = q.answered ? "Answered" : "Unanswered";
+            label.setText("<html><b>" + html(type) + "</b> &nbsp; " + html(questionWorkspaceReference(q)) + " &nbsp; • &nbsp; " + status
+                    + "<br><span style='color:#5f554f'>" + html(shorten(q.question, 105)) + "</span></html>");
+            label.setBorder(new CompoundBorder(new MatteBorder(0, 5, 1, 0, questionColorForType(q.questionType)), new EmptyBorder(5, 8, 5, 8)));
+            if (!selected) label.setBackground(modernSurface);
+            return label;
+        }
+    }
+
+    private class QuestionAnswerRenderer extends DefaultListCellRenderer {
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
+            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, selected, focus);
+            QuestionAnswer answer = value instanceof QuestionAnswer ? (QuestionAnswer) value : null;
+            if (answer == null) return label;
+            String dates = "Created " + displayDate(answer.createdAt);
+            if (answer.updatedAt > answer.createdAt) dates += " • Updated " + displayDate(answer.updatedAt);
+            label.setText("<html><b>Answer " + (index + 1) + "</b> &nbsp; <span style='color:#6b5c54'>" + html(dates)
+                    + "</span><br>" + html(shorten(answer.text, 220)) + "</html>");
+            label.setBorder(new CompoundBorder(new MatteBorder(0, 0, 1, 0, modernBorder), new EmptyBorder(8, 8, 8, 8)));
+            if (!selected) label.setBackground(new Color(255, 252, 247));
+            return label;
+        }
     }
 
     private String answersSummary(StudyQuestion q) {
@@ -12014,6 +12317,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void jumpToQuestion(StudyQuestion q) {
+        if (q == null) return;
         TextAnnotation a = annotationById(q.annotationId);
         if (a != null) {
             openSourceForAnnotation(a);
@@ -12890,17 +13194,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private void toggleSelectedQuestion() {
-        String s = questionList.getSelectedValue();
-        if (s == null) return;
-        try {
-            int idx = Integer.parseInt(s.split("\\|")[0].trim());
-            StudyQuestion q = currentProfile.questions.get(idx);
-            q.answered = !q.answered;
-            saveData();
-            refreshQuestions();
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Could not toggle question.");
-        }
+        StudyQuestion q = questionList == null ? null : questionList.getSelectedValue();
+        if (q == null) return;
+        setQuestionAnswered(q, !q.answered);
     }
 
     private void toggleSideSearch() {
@@ -14904,7 +15200,17 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (q.question == null) q.question = "";
         q.questionType = normalizeQuestionType(q.questionType);
         if (q.answers == null) q.answers = new ArrayList<>();
-        q.answers.removeIf(Objects::isNull);
+        if (q.answer != null && !q.answer.trim().isEmpty() && q.answers.isEmpty()) {
+            QuestionAnswer migrated = new QuestionAnswer(q.answer.trim());
+            if (q.created != null) {
+                migrated.createdAt = q.created.getTime();
+                migrated.updatedAt = migrated.createdAt;
+            }
+            q.answers.add(migrated);
+            q.answered = true;
+        }
+        q.answer = "";
+        q.answers.removeIf(a -> a == null || safe(a.text).trim().isEmpty());
         for (QuestionAnswer a : q.answers) repairQuestionAnswer(a);
         if (q.sourceKey == null) q.sourceKey = "";
         if (q.sourceKey.isEmpty()) {
@@ -16037,6 +16343,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         String selectedText;
         String question;
         String questionType = "discussion";
+        // Retained for compatibility with saves from versions that stored one answer directly on the question.
+        String answer = "";
         List<QuestionAnswer> answers = new ArrayList<>();
         boolean answered = false;
         String sourceKey = "";
