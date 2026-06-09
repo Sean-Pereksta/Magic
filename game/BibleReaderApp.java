@@ -888,9 +888,11 @@ public class BibleReaderApp extends JFrame {
                 AnnotationBubbleMarker bubble = bubbleAt(pos);
                 TextAnnotation a = bubble == null ? annotationAt(pos) : bubble.annotation;
                 if (a == null) return null;
+                String scripturePreview = scriptureReferenceTooltipHtml(a);
                 return "<html><b>" + esc(a.type) + "</b>" +
                         (a.category.isEmpty() ? "" : "<br>Category: " + esc(a.category)) +
                         (a.target.isEmpty() ? "" : "<br>Attached: " + esc(a.target)) +
+                        scripturePreview +
                         "<br>" + esc(shorten(a.note, 240)).replace("\n", "<br>") + "</html>";
             }
         };
@@ -1078,7 +1080,7 @@ public class BibleReaderApp extends JFrame {
             updateStudyTimerTooltip();
         });
         menu.add(sound);
-        menu.show(e.getComponent(), e.getX(), e.getY());
+        showActionPopup(menu, e.getComponent(), e.getX(), e.getY());
     }
 
     private void setStudyTimerMinutes(int minutes) {
@@ -1878,7 +1880,7 @@ public class BibleReaderApp extends JFrame {
             if (activity.questionCount > 0) withQuestions++;
             unanswered += activity.unansweredCount;
             if (activity.memoryCount > 0) memoryChapters++;
-            JButton square = new JButton(String.valueOf(chapter));
+            JButton square = blackButton(String.valueOf(chapter));
             square.setPreferredSize(new Dimension(54, 44));
             int intensity = Math.min(190, activity.activityScore() * 18);
             square.setBackground(new Color(255 - intensity / 2, 242 - intensity / 2, 225 - intensity / 2));
@@ -3524,7 +3526,7 @@ public class BibleReaderApp extends JFrame {
         boolean nav = type == ButtonType.NAV || type == ButtonType.ACTIVE_NAV || Boolean.TRUE.equals(b.getClientProperty("navButton"));
         if (!b.isEnabled()) {
             b.setBackground(modern ? modernDisabled : new Color(225, 220, 215));
-            b.setForeground(modern ? modernMutedText : Color.GRAY);
+            b.setForeground(modern ? new Color(80, 70, 64) : Color.DARK_GRAY);
             if (nav) {
                 b.putClientProperty("navBorderColor", modern ? new Color(modernDarkRed.getRed(), modernDarkRed.getGreen(), modernDarkRed.getBlue(), 55) : new Color(120, 60, 60, 90));
                 b.repaint();
@@ -3532,7 +3534,8 @@ public class BibleReaderApp extends JFrame {
             return;
         }
         ButtonModel model = b.getModel();
-        boolean pressed = model.isPressed() && model.isArmed();
+        boolean selected = model.isSelected();
+        boolean pressed = (model.isPressed() && model.isArmed()) || selected;
         boolean rollover = model.isRollover();
         if (!modern) {
             if (nav) {
@@ -4167,7 +4170,7 @@ public class BibleReaderApp extends JFrame {
         fromBeginning.addActionListener(a -> openLibraryNodeFromBeginning(value));
         menu.add(open);
         menu.add(fromBeginning);
-        menu.show(libraryTree, e.getX(), e.getY());
+        showActionPopup(menu, libraryTree, e.getX(), e.getY());
         e.consume();
     }
 
@@ -5245,7 +5248,7 @@ public class BibleReaderApp extends JFrame {
         JPopupMenu menu = new JPopupMenu();
         addMenu(menu, "Open", this::openRecentlyOpenedSelection);
         addMenu(menu, "Copy reference", () -> copyText(firstNonEmpty(location.sourceTitle, location.sourceKey)));
-        menu.show(recentlyOpenedList, event.getX(), event.getY());
+        showActionPopup(menu, recentlyOpenedList, event.getX(), event.getY());
     }
 
     private void showStudyTrailMenu(MouseEvent event) {
@@ -5256,7 +5259,7 @@ public class BibleReaderApp extends JFrame {
         JPopupMenu menu = new JPopupMenu();
         addMenu(menu, "Open", this::openStudyTrailSelection);
         addMenu(menu, "Copy reference", () -> copyText(item.label));
-        menu.show(studyTrailList, event.getX(), event.getY());
+        showActionPopup(menu, studyTrailList, event.getX(), event.getY());
     }
 
     private void copyText(String text) {
@@ -5365,7 +5368,7 @@ public class BibleReaderApp extends JFrame {
         JPanel chips = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 2));
         chips.setOpaque(false);
         for (String filter : new String[]{"All", "Notes", "Chapter Notes", "Questions", "Unanswered", "Pinned"}) {
-            JButton chip = new JButton(filter);
+            JButton chip = blackButton(filter);
             chip.setFont(new Font("Segoe UI", Font.PLAIN, 10));
             chip.setMargin(new Insets(2, 5, 2, 5));
             chip.addActionListener(e -> { marginNotesFilter = filter; refreshMarginNotesPanel(); });
@@ -5513,7 +5516,7 @@ public class BibleReaderApp extends JFrame {
                     addMenu(menu, question.answered ? "Mark unanswered" : "Mark answered", () -> setQuestionAnswered(question, !question.answered));
                 }
                 addMenu(menu, "Delete", () -> deleteAnnotation(annotation));
-                menu.show(component, event.getX(), event.getY());
+                showActionPopup(menu, component, event.getX(), event.getY());
             }
             public void mousePressed(MouseEvent event) { show(event); }
             public void mouseReleased(MouseEvent event) { show(event); }
@@ -5630,7 +5633,7 @@ public class BibleReaderApp extends JFrame {
         });
         menu.addSeparator();
         addMenu(menu, "Delete", () -> deleteChapterNote(note));
-        menu.show(invoker, 0, invoker.getHeight());
+        showActionPopup(menu, invoker, 0, invoker.getHeight());
     }
 
     private void showChapterAnnotationDialog(TextAnnotation annotation, boolean editMode) {
@@ -6089,7 +6092,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private JButton smallSidebarActionButton(String text) {
-        JButton button = new JButton(text);
+        JButton button = blackButton(text);
         button.setFont(new Font("Segoe UI", Font.PLAIN, 11));
         button.setMargin(new Insets(2, 6, 2, 6));
         button.setFocusable(false);
@@ -6461,7 +6464,7 @@ public class BibleReaderApp extends JFrame {
         int count = annotations == null ? 0 : annotations.size();
         if (count > 1) return "  💬" + count + " ";
         TextAnnotation a = annotations == null || annotations.isEmpty() ? null : annotations.get(0);
-        if ("Question".equals(a == null ? "" : a.type)) return "  " + questionBubbleLabel(a) + " ";
+        if ("Question".equals(a == null ? "" : a.type)) return "  " + questionBubbleLabel(a) + " ▸ ";
         return "  📝 ";
     }
 
@@ -6706,12 +6709,19 @@ public class BibleReaderApp extends JFrame {
         addSelectionToolbarButton(toolbar, "Note", () -> addAnnotationFromSelection("Note", ""));
         addSelectionToolbarButton(toolbar, "Question", () -> addAnnotationFromSelection("Question", "discussion"));
         addSelectionToolbarButton(toolbar, "Category", this::addCategoryFromSelection);
+        addSelectionToolbarButton(toolbar, "Scripture Reference", this::addScriptureReferenceFromSelection);
         if (currentSourceKey != null && currentSourceKey.startsWith("BIBLE:"))
             addSelectionToolbarButton(toolbar, "Memory", this::addMemoryVerseFromSelection);
         addSelectionToolbarButton(toolbar, "Greek", this::searchSelectedTextInGreek);
         addSelectionToolbarButton(toolbar, "Copy", () -> copyTextToClipboard(readerPane.getSelectedText()));
         selectionActionPopup.setBorder(new EmptyBorder(0, 0, 0, 0));
-        selectionActionPopup.add(toolbar);
+        JScrollPane toolbarScroll = new JScrollPane(toolbar, ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        toolbarScroll.setBorder(null);
+        toolbarScroll.getHorizontalScrollBar().setUnitIncrement(18);
+        toolbarScroll.setPreferredSize(new Dimension(Math.min(620, toolbar.getPreferredSize().width + 8),
+                toolbar.getPreferredSize().height + 18));
+        selectionActionPopup.add(toolbarScroll);
 
         Point popupPoint = selectionPopupPoint();
         javax.swing.Timer timer = new javax.swing.Timer(120, e -> {
@@ -6747,6 +6757,7 @@ public class BibleReaderApp extends JFrame {
         addMenu(menu, "Add To Category", this::addCategoryFromSelection);
         addMenu(menu, "Add Discussion Question", () -> addAnnotationFromSelection("Question", "discussion"));
         addMenu(menu, "Add Personal Question", () -> addAnnotationFromSelection("Question", "personal"));
+        addMenu(menu, "Scripture Reference", this::addScriptureReferenceFromSelection);
         addMenu(menu, "Attach To Bible Verse Or Book Section", this::addAttachmentFromSelection);
         if (bibleSelection) {
             addMenu(menu, "View Greek For This Verse", this::showGreekForCurrentSelection);
@@ -6771,6 +6782,7 @@ public class BibleReaderApp extends JFrame {
         java.util.List<TextAnnotation> attached = getAnnotationsForRange(existing.sourceKey, existing.start, existing.end);
         if (attached.size() > 1) addMenu(menu, "View All Attached Annotations (" + attached.size() + ")", () -> showAnnotationDetails(attached));
         addMenu(menu, "Edit This Highlight", () -> editAnnotation(existing));
+        addMenu(menu, "Attach Scripture Reference", () -> attachScriptureReference(existing));
         addMenu(menu, "Pin This Highlight To Sidebar", () -> pinAnnotationToSidebar(existing));
         addMenu(menu, "Add This Note To Study Project", () -> addAnnotationToStudyProject(existing));
         addMenu(menu, "Add Selected Note to Teaching Page", () -> addAnnotationToTopicPage(existing));
@@ -6810,7 +6822,7 @@ public class BibleReaderApp extends JFrame {
         addMenu(menu, "Add Discussion Question", () -> addWholeChapterQuestion("discussion"));
         addMenu(menu, "Add Personal Question", () -> addWholeChapterQuestion("personal"));
         addMenu(menu, "View Chapter Notes / Questions", this::viewWholeChapterAnnotations);
-        menu.show(readerPane, x, y);
+        showActionPopup(menu, readerPane, x, y);
     }
 
     private void addWholeChapterToCategory() {
@@ -6928,7 +6940,7 @@ public class BibleReaderApp extends JFrame {
         }
 
         if (menu.getComponentCount() == 0) addMenu(menu, "Select text first", () -> {});
-        menu.show(readerPane, e.getX(), e.getY());
+        showActionPopup(menu, readerPane, e.getX(), e.getY());
     }
 
     private void addBookmarkFromCurrentCaret(boolean fromBookmarkButton) {
@@ -7172,7 +7184,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                 addMenu(menu, "Add to study project", () -> addBookmarkToStudyProject(bookmark));
                 addMenu(menu, "Copy reference", () -> copyText(firstNonEmpty(bookmark.sourceTitle, bookmark.sourceKey)));
                 addMenu(menu, "Delete", () -> { currentProfile.bookmarks.remove(bookmark); saveData(); refreshLibraryTree(); refresh.run(); });
-                menu.show(component, event.getX(), event.getY());
+                showActionPopup(menu, component, event.getX(), event.getY());
             }
             public void mousePressed(MouseEvent event) { show(event); }
             public void mouseReleased(MouseEvent event) { show(event); }
@@ -7408,6 +7420,32 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         m.add(item);
     }
 
+    private void showActionPopup(JPopupMenu menu, Component invoker, int x, int y) {
+        if (menu == null || invoker == null) return;
+        int itemCount = menu.getComponentCount();
+        int availableHeight = Math.max(220, Toolkit.getDefaultToolkit().getScreenSize().height - 140);
+        if (itemCount > 10 || menu.getPreferredSize().height > availableHeight) {
+            Component[] items = menu.getComponents();
+            menu.removeAll();
+            JPanel list = new JPanel();
+            list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
+            list.setBackground(isModernViewEnabled() ? modernSurface : cream);
+            for (Component item : items) {
+                item.setMaximumSize(new Dimension(Integer.MAX_VALUE, Math.max(28, item.getPreferredSize().height)));
+                list.add(item);
+            }
+            JScrollPane scroll = new JScrollPane(list, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                    ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+            scroll.setBorder(null);
+            scroll.getVerticalScrollBar().setUnitIncrement(18);
+            int width = Math.min(430, Math.max(250, list.getPreferredSize().width + 24));
+            int height = Math.min(availableHeight, Math.max(180, list.getPreferredSize().height));
+            scroll.setPreferredSize(new Dimension(width, height));
+            menu.add(scroll);
+        }
+        menu.show(invoker, x, y);
+    }
+
     private boolean handleReaderLeftClick(MouseEvent e) {
         int pos = readerPane.viewToModel2D(e.getPoint());
         AnnotationBubbleMarker bubble = bubbleAt(pos);
@@ -7530,16 +7568,16 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         actions.setOpaque(false);
-        JButton details = new JButton("Details");
+        JButton details = blackButton("Details");
         details.addActionListener(e -> { showAnnotationDetails(a); closeAllAnnotationBubblePopups(); });
-        JButton edit = new JButton("Edit");
+        JButton edit = blackButton("Edit");
         edit.addActionListener(e -> { closeAllAnnotationBubblePopups(); editAnnotation(a); });
-        JButton delete = new JButton("Delete");
+        JButton delete = blackButton("Delete");
         delete.addActionListener(e -> { closeAllAnnotationBubblePopups(); deleteAnnotation(a); });
         actions.add(details);
         actions.add(edit);
         if (!safe(a.target).isEmpty()) {
-            JButton open = new JButton("Open");
+            JButton open = blackButton("Open");
             open.addActionListener(e -> { closeAllAnnotationBubblePopups(); openAnnotationTarget(a); });
             actions.add(open);
         }
@@ -7566,24 +7604,58 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBackground(modernSurface);
+
         JTextArea question = readonlyArea();
         question.setBackground(modernSurface);
         question.setText(questionTypeDisplay(q == null ? questionTypeForAnnotation(a) : q.questionType) + "\n"
                 + (q != null && q.answered ? "Answered" : "Unanswered") + " • " + (q == null ? 0 : q.answers.size()) + " answer(s)\n\n"
                 + safe(a.note));
         panel.add(question);
+
         if (q != null) {
-            for (QuestionAnswer ans : q.answers) {
-                JTextArea answer = readonlyArea();
-                answer.setBackground(new Color(255, 252, 247));
-                answer.setBorder(new CompoundBorder(new MatteBorder(1, 0, 0, 0, modernBorder), new EmptyBorder(5, 2, 5, 2)));
-                answer.setText("Answer — " + displayDate(ans.createdAt) + (ans.updatedAt > ans.createdAt ? " (edited " + displayDate(ans.updatedAt) + ")" : "") + "\n" + safe(ans.text));
-                panel.add(answer);
+            JPanel answers = new JPanel();
+            answers.setLayout(new BoxLayout(answers, BoxLayout.Y_AXIS));
+            answers.setBackground(new Color(255, 252, 247));
+            if (q.answers.isEmpty()) {
+                JLabel none = new JLabel("No answers have been added yet.");
+                none.setForeground(modernMutedText);
+                none.setBorder(new EmptyBorder(7, 7, 7, 7));
+                answers.add(none);
+            } else {
+                for (QuestionAnswer ans : q.answers) {
+                    JTextArea answer = readonlyArea();
+                    answer.setBackground(new Color(255, 252, 247));
+                    answer.setBorder(new CompoundBorder(new MatteBorder(1, 0, 0, 0, modernBorder), new EmptyBorder(5, 7, 5, 7)));
+                    answer.setText("Answer — " + displayDate(ans.createdAt)
+                            + (ans.updatedAt > ans.createdAt ? " (edited " + displayDate(ans.updatedAt) + ")" : "")
+                            + "\n" + safe(ans.text));
+                    answers.add(answer);
+                }
             }
+            JScrollPane answersScroll = new JScrollPane(answers, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                    ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+            answersScroll.setPreferredSize(new Dimension(285, 125));
+            answersScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 145));
+            answersScroll.setVisible(false);
+
+            JButton toggleAnswers = blackButton("▸ Answers (" + q.answers.size() + ")");
+            toggleAnswers.setAlignmentX(Component.LEFT_ALIGNMENT);
+            toggleAnswers.setToolTipText("Expand or collapse the answers for this Discussion Question.");
+            toggleAnswers.addActionListener(e -> {
+                boolean show = !answersScroll.isVisible();
+                answersScroll.setVisible(show);
+                toggleAnswers.setText((show ? "▾" : "▸") + " Answers (" + q.answers.size() + ")");
+                panel.revalidate();
+                panel.repaint();
+            });
+            panel.add(Box.createVerticalStrut(5));
+            panel.add(toggleAnswers);
+            panel.add(answersScroll);
+
             JTextArea newAnswer = new JTextArea(3, 28);
             newAnswer.setLineWrap(true);
             newAnswer.setWrapStyleWord(true);
-            JButton add = new JButton("Add Answer");
+            JButton add = blackButton("Add Answer");
             add.addActionListener(e -> {
                 String text = newAnswer.getText().trim();
                 if (text.isEmpty()) return;
@@ -7599,7 +7671,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             addPanel.add(add, BorderLayout.SOUTH);
             panel.add(addPanel);
         }
-        return new JScrollPane(panel);
+        return new JScrollPane(panel, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
     }
 
     private JComponent buildAnnotationPopupContent(java.util.List<TextAnnotation> annotations) {
@@ -7640,14 +7713,14 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             card.add(body, BorderLayout.CENTER);
             JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
             actions.setOpaque(false);
-            JButton details = new JButton("Details");
+            JButton details = blackButton("Details");
             details.addActionListener(e -> { showAnnotationDetails(a); closeAllAnnotationBubblePopups(); });
-            JButton edit = new JButton("Edit");
+            JButton edit = blackButton("Edit");
             edit.addActionListener(e -> { closeAllAnnotationBubblePopups(); editAnnotation(a); });
             actions.add(details);
             actions.add(edit);
             if (!safe(a.target).isEmpty()) {
-                JButton open = new JButton("Open");
+                JButton open = blackButton("Open");
                 open.addActionListener(e -> { closeAllAnnotationBubblePopups(); openAnnotationTarget(a); });
                 actions.add(open);
             }
@@ -7656,13 +7729,13 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             list.add(Box.createVerticalStrut(6));
         }
         panel.add(new JScrollPane(list), BorderLayout.CENTER);
-        JButton allDetails = new JButton("Show All Details");
+        JButton allDetails = blackButton("Show All Details");
         allDetails.addActionListener(e -> { showAnnotationDetails(annotations); closeAllAnnotationBubblePopups(); });
         JPanel bottom = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         bottom.setOpaque(false);
         bottom.add(allDetails);
         if (primary != null) {
-            JButton select = new JButton("Select Text");
+            JButton select = blackButton("Select Text");
             select.addActionListener(e -> { safeSelect(primary.start, primary.end); closeAllAnnotationBubblePopups(); });
             bottom.add(select);
         }
@@ -8162,6 +8235,67 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         return chooseCategoryWithSearch("Choose Category", "");
     }
 
+    private void addScriptureReferenceFromSelection() {
+        int[] range = readerSelectionSourceRange();
+        int start = range[0];
+        int end = range[1];
+        if (end <= start) {
+            JOptionPane.showMessageDialog(this, "Highlight/select text first, then choose Scripture Reference.");
+            return;
+        }
+        TextAnnotation annotation = new TextAnnotation(currentSourceKey, currentSourceTitle, start, end,
+                readerSelectedPlainText(start, end), "Link", "", "Scripture cross-reference", "");
+        if (!promptAndAttachScriptureReference(annotation)) return;
+        currentProfile.annotations.add(annotation);
+        saveData();
+        refreshRecentNotes();
+        refreshMarginNotesPanel();
+        reloadCurrentSource();
+        showAnnotationDetails(annotation);
+    }
+
+    private void attachScriptureReference(TextAnnotation annotation) {
+        if (annotation == null || !promptAndAttachScriptureReference(annotation)) return;
+        touchAnnotation(annotation);
+        saveData();
+        refreshRecentNotes();
+        refreshMarginNotesPanel();
+        reloadCurrentSourcePreservingScroll();
+        showAnnotationDetails(annotation);
+    }
+
+    private boolean promptAndAttachScriptureReference(TextAnnotation annotation) {
+        String input = JOptionPane.showInputDialog(this,
+                "Scripture reference (for example John 3:16, Romans 8, Romans 8:1-4, or Gen 1):",
+                "Attach Scripture Reference", JOptionPane.PLAIN_MESSAGE);
+        if (input == null) return false;
+        WriterPassage passage = resolveWriterPassage(input);
+        if (passage == null || passage.text.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "I could not find that Scripture reference in the imported Bible. Nothing was saved.\n"
+                            + "Try a reference such as John 3:16, Romans 8, Romans 8:1-4, or Gen 1.",
+                    "Reference Not Found", JOptionPane.INFORMATION_MESSAGE);
+            return false;
+        }
+        repairAnnotation(annotation, System.currentTimeMillis());
+        String scriptureText = getPassageText(passage.book, passage.chapter, passage.startVerse, passage.endVerse);
+        ScriptureReferenceAttachment attachment = new ScriptureReferenceAttachment(passage.reference, scriptureText);
+        annotation.scriptureReferences.add(attachment);
+        if (safe(annotation.target).isEmpty()) annotation.target = passage.reference;
+        return true;
+    }
+
+    private String scriptureReferenceTooltipHtml(TextAnnotation annotation) {
+        if (annotation == null || annotation.scriptureReferences == null || annotation.scriptureReferences.isEmpty()) return "";
+        StringBuilder html = new StringBuilder();
+        for (ScriptureReferenceAttachment attachment : annotation.scriptureReferences) {
+            if (attachment == null) continue;
+            html.append("<br><br><b>Scripture: ").append(esc(attachment.reference)).append("</b><br>")
+                    .append(esc(shorten(attachment.scriptureText, 420)).replace("\n", "<br>"));
+        }
+        return html.toString();
+    }
+
     private void addAttachmentFromSelection() {
         int[] range = readerSelectionSourceRange();
         int start = range[0];
@@ -8413,6 +8547,20 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         panel.repaint();
     }
 
+    private void addScriptureReferenceDetails(TextAnnotation annotation, JPanel panel) {
+        if (annotation == null || panel == null || annotation.scriptureReferences == null || annotation.scriptureReferences.isEmpty()) return;
+        addDetailTitle("Scripture References");
+        for (ScriptureReferenceAttachment attachment : annotation.scriptureReferences) {
+            if (attachment == null) continue;
+            addDetailText(attachment.reference + "\n" + attachment.scriptureText);
+            JButton open = blackButton("Open " + attachment.reference);
+            open.setAlignmentX(Component.LEFT_ALIGNMENT);
+            open.addActionListener(e -> openTarget(attachment.reference));
+            panel.add(open);
+            panel.add(Box.createVerticalStrut(6));
+        }
+    }
+
     private void showAnnotationDetails(TextAnnotation a) {
         JPanel panel = ensureDetailsPanel();
         panel.removeAll();
@@ -8429,6 +8577,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             panel.add(Box.createVerticalStrut(8));
         }
         if (!a.note.isEmpty()) addDetailText(a.note);
+        addScriptureReferenceDetails(a, panel);
         addLinkedReferencesSection(a);
         addRelatedTopicButtons("NOTE", a.id);
 
@@ -8920,7 +9069,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (removeFromPage.isEnabled()) menu.add(removeFromPage);
         menu.addSeparator();
         menu.add(expand);
-        menu.show(teachingTimelineList, event.getX(), event.getY());
+        showActionPopup(menu, teachingTimelineList, event.getX(), event.getY());
     }
 
     private void focusSelectedTeachingTimelineEditor() {
@@ -11718,17 +11867,17 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         actions.setOpaque(false);
-        JButton jump = new JButton("Jump To");
+        JButton jump = blackButton("Jump To");
         jump.addActionListener(e -> jumpToQuestion(q));
-        JButton addAnswer = new JButton("Add Answer");
+        JButton addAnswer = blackButton("Add Answer");
         addAnswer.addActionListener(e -> promptAddAnswer(q));
-        JButton viewAnswers = new JButton("View Answers");
+        JButton viewAnswers = blackButton("View Answers");
         viewAnswers.addActionListener(e -> showQuestionAnswers(q));
-        JButton edit = new JButton("Edit Question");
+        JButton edit = blackButton("Edit Question");
         edit.addActionListener(e -> editQuestion(q));
-        JButton delete = new JButton("Delete Question");
+        JButton delete = blackButton("Delete Question");
         delete.addActionListener(e -> deleteQuestion(q));
-        JButton toggle = new JButton(q.answered ? "Mark Unanswered" : "Mark Answered");
+        JButton toggle = blackButton(q.answered ? "Mark Unanswered" : "Mark Answered");
         toggle.addActionListener(e -> setQuestionAnswered(q, !q.answered));
         for (JButton b : new JButton[]{jump, addAnswer, viewAnswers, edit, delete, toggle}) actions.add(b);
         card.add(actions, BorderLayout.SOUTH);
@@ -11804,9 +11953,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         addMenu(menu, "Edit Question", () -> editQuestion(question));
         addMenu(menu, question.answers.isEmpty() ? "Answer Question" : "Add Answer", () -> promptAddAnswer(question));
         addMenu(menu, "View Answers", () -> showQuestionAnswers(question));
+        TextAnnotation questionAnnotation = annotationById(question.annotationId);
+        if (questionAnnotation != null) addMenu(menu, "Attach Scripture Reference", () -> attachScriptureReference(questionAnnotation));
         addMenu(menu, question.answered ? "Mark Unanswered" : "Mark Answered", () -> setQuestionAnswered(question, !question.answered));
         addMenu(menu, "Jump To", () -> jumpToQuestion(question));
-        menu.show(parent, x, y);
+        showActionPopup(menu, parent, x, y);
     }
 
     private StudyQuestion questionForAnnotation(String annotationId) {
@@ -12562,7 +12713,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
                 selected = selected.substring(10, selected.length() - 1).trim();
                 if (selected.isEmpty()) return;
                 currentProfile.categories.putIfAbsent(selected, "");
-                currentProfile.categoryColors.putIfAbsent(selected, categoryBlue.getRGB());
+                Color chosenColor = JColorChooser.showDialog(dialog, "Choose Color for " + selected, categoryBlue);
+                currentProfile.categoryColors.put(selected, (chosenColor == null ? categoryBlue : chosenColor).getRGB());
                 saveData();
                 refreshCategories();
             }
@@ -12671,7 +12823,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         menu.add(open);
         menu.add(edit);
         menu.add(delete);
-        menu.show(recentList, e.getX(), e.getY());
+        showActionPopup(menu, recentList, e.getX(), e.getY());
         e.consume();
     }
 
@@ -12695,7 +12847,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         menu.add(edit);
         menu.add(jump);
         menu.add(delete);
-        menu.show(chapterNotesList, e.getX(), e.getY());
+        showActionPopup(menu, chapterNotesList, e.getX(), e.getY());
         e.consume();
     }
 
@@ -13045,7 +13197,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
         if (("NOTE".equals(result.type) || "QUESTION".equals(result.type) || "CHAPTER_NOTE".equals(result.type)) && !safe(result.book).isEmpty() && result.chapter > 0)
             addMenu(menu, "Show in Book Map", () -> showInBookMap(result.book, result.chapter));
-        menu.show(searchList, event.getX(), event.getY());
+        showActionPopup(menu, searchList, event.getX(), event.getY());
     }
 
     private void copyTextToClipboard(String text) {
@@ -14784,6 +14936,14 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (a.updatedAt < a.createdAt) a.updatedAt = a.createdAt;
     }
 
+    private void repairScriptureReferenceAttachment(ScriptureReferenceAttachment attachment) {
+        if (attachment == null) return;
+        if (attachment.id == null || attachment.id.trim().isEmpty()) attachment.id = UUID.randomUUID().toString();
+        if (attachment.reference == null) attachment.reference = "";
+        if (attachment.scriptureText == null) attachment.scriptureText = "";
+        if (attachment.createdAt <= 0L) attachment.createdAt = System.currentTimeMillis();
+    }
+
     private void repairAnnotation(TextAnnotation a, long fallbackMillis) {
         if (a == null) return;
         if (a.id == null || a.id.trim().isEmpty()) a.id = UUID.randomUUID().toString();
@@ -14803,6 +14963,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         if (a.links == null) a.links = new ArrayList<>();
         a.links.removeIf(Objects::isNull);
         for (LinkedItem link : a.links) repairLinkedItem(link);
+        if (a.scriptureReferences == null) a.scriptureReferences = new ArrayList<>();
+        a.scriptureReferences.removeIf(Objects::isNull);
+        for (ScriptureReferenceAttachment attachment : a.scriptureReferences) repairScriptureReferenceAttachment(attachment);
 
         long fallback = fallbackMillis > 0L ? fallbackMillis : System.currentTimeMillis();
         if (a.createdAt <= 0L) {
@@ -15788,6 +15951,19 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         long createdAt;
     }
 
+    private static class ScriptureReferenceAttachment implements Serializable {
+        private static final long serialVersionUID = 1L;
+        String id = UUID.randomUUID().toString();
+        String reference = "";
+        String scriptureText = "";
+        long createdAt = System.currentTimeMillis();
+
+        ScriptureReferenceAttachment(String reference, String scriptureText) {
+            this.reference = reference == null ? "" : reference;
+            this.scriptureText = scriptureText == null ? "" : scriptureText;
+        }
+    }
+
     private static class TextAnnotation implements Serializable {
         private static final long serialVersionUID = 30L;
         String id = UUID.randomUUID().toString();
@@ -15804,6 +15980,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         int chapter;
         boolean wholeChapter;
         List<LinkedItem> links = new ArrayList<>();
+        List<ScriptureReferenceAttachment> scriptureReferences = new ArrayList<>();
         long createdAt;
         long updatedAt;
         Date created = new Date();
