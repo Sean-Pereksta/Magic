@@ -227,7 +227,13 @@ const UPGRADE_TREE={
     blast:{tier:1,cost:2,name:'Bigger Blast',desc:'Greatly increases the already-large explosion radius and cover-breaking damage.'},
     cluster:{tier:2,cost:4,requires:'blast',name:'Cluster Payload',desc:'Rocket explosions release extra micro-blasts around the impact.'},
     velocity:{tier:2,cost:3,requires:'grenade',name:'Smart Fuse Springs',desc:'Bouncy grenades travel faster, keep more speed after bounces, and fuse sooner.'}},
-  punch:{},
+  punch:{
+    heavyKnuckles:{tier:1,cost:1,name:'Heavy Knuckles',desc:'Increases punch damage and adds slightly stronger knockback.'},
+    longerChain:{tier:1,cost:2,name:'Longer Chain',desc:'Moderately extends the chain while keeping the Punch Gun short-range.'},
+    wallBreaker:{tier:2,cost:3,requires:'heavyKnuckles',name:'Wall Breaker',desc:'Greatly increases damage to walls, structures, and enemy cover.'},
+    snapbackChain:{tier:2,cost:3,requires:'longerChain',name:'Snapback Chain',desc:'Retracts the fist faster and shortens Punch Gun reload time.'},
+    seismicPunch:{tier:3,cost:5,requires:'wallBreaker',name:'Seismic Punch',desc:'Impacts release a small shockwave that damages nearby enemies and structures.'},
+    grappleImpact:{tier:3,cost:5,requires:'snapbackChain',name:'Grapple Impact',desc:'Enemy hits tug the target inward before launching it with stronger knockback.'}},
   plasma:{
     gravity:{tier:1,cost:1,name:'Gravity Core',desc:'Charged plasma subtly pulls nearby enemies.'},
     larger:{tier:1,cost:2,name:'Larger Core',desc:'Charged projectiles have a larger collision core.'},
@@ -244,7 +250,7 @@ function hasUpgrade(weapon,key,ent=player){return ent===player&&!!ent.upgrades?.
 function toggleUpgradeTree(force){if(!game.started)return;game.upgradesOpen=force===undefined?!game.upgradesOpen:force;el('upgradeOverlay').style.display=game.upgradesOpen?'flex':'none';fireHeld=false;if(game.upgradesOpen){document.exitPointerLock?.();renderUpgradeTree();setTimeout(()=>moveMenuFocus(1),0)}else if(game.p1Input!=='controller')canvas.requestPointerLock?.()}
 function renderUpgradeTree(){const weapon=player.weapon,defs=UPGRADE_TREE[weapon]||{},state=player.upgrades?.[weapon]||{};el('upgradeTitle').textContent=WEAPONS[weapon].name+' UPGRADES';el('upgradePointLabel').textContent=player.upgradePoints+' POINT'+(player.upgradePoints===1?'':'S');const grid=el('upgradeGrid');grid.innerHTML='';const tiers=[...new Set(Object.values(defs).map(u=>u.tier))].sort((a,b)=>a-b);for(const tier of tiers){const label=document.createElement('div');label.className='tierLabel';label.textContent='TIER '+tier;grid.appendChild(label);for(const [key,u] of Object.entries(defs).filter(([,v])=>v.tier===tier)){const bought=!!state[key],prereq=!u.requires||state[u.requires],canBuy=!bought&&prereq&&player.upgradePoints>=u.cost,card=document.createElement('div');card.className='upgradeCard '+(bought?'bought':(!prereq?'locked':''));const req=u.requires?' · Requires '+defs[u.requires].name:'';card.innerHTML='<h3>'+u.name+'</h3><p>'+u.desc+'</p><button '+(canBuy?'':'disabled')+'>'+(bought?'PURCHASED':u.cost+' POINTS'+req)+'</button>';card.querySelector('button').onclick=()=>buyUpgrade(weapon,key);grid.appendChild(card)}}}
 function buyUpgrade(weapon,key){const u=UPGRADE_TREE[weapon]?.[key],state=player.upgrades?.[weapon];if(!u||!state||state[key]||(u.requires&&!state[u.requires])||player.upgradePoints<u.cost)return;player.upgradePoints-=u.cost;state[key]=true;msg(u.name.toUpperCase()+' ONLINE');feed('Upgrade purchased: '+u.name);renderUpgradeTree();updateHud()}
-function manualReload(ent){if(!game.started||ent.dead||ent.reload>0)return;const w=WEAPONS[ent.weapon];if(!w)return;const ready=getUltimateReady(ent),active=ultimateActive(ent,ent.weapon);if((w.kind==='plasma'||w.kind==='laser')){if(!ready&&!active)return;const time=w.kind==='laser'?1.35:1.45;ent.reload=time;ent.reloadTotal=time;ent.reloadAnimType=ent.weapon;ent.cool=Math.max(ent.cool,.18);if(ent===player){msg((ready?'LOADING ULTIMATE ':'COOLING ')+w.name);fireHeld=false}return;}if(ent.ammo>=w.mag&&!ready&&!active)return;let time=w.reload;if(ent===player&&ent.weapon==='sniper'&&hasUpgrade('sniper','precision'))time*=.72;if(ent===player&&ent.weapon==='assault'&&hasUpgrade('assault','overdrive'))time*=1.16;ent.reload=time;ent.reloadTotal=time;ent.reloadAnimType=ent.weapon;ent.cool=Math.max(ent.cool,.18);if(ent===player){msg((ready?'LOADING ULTIMATE ':'RELOADING ')+w.name);fireHeld=false}}
+function manualReload(ent){if(!game.started||ent.dead||ent.reload>0)return;const w=WEAPONS[ent.weapon];if(!w)return;const ready=getUltimateReady(ent),active=ultimateActive(ent,ent.weapon);if((w.kind==='plasma'||w.kind==='laser')){if(!ready&&!active)return;const time=w.kind==='laser'?1.35:1.45;ent.reload=time;ent.reloadTotal=time;ent.reloadAnimType=ent.weapon;ent.cool=Math.max(ent.cool,.18);if(ent===player){msg((ready?'LOADING ULTIMATE ':'COOLING ')+w.name);fireHeld=false}return;}if(ent.ammo>=w.mag&&!ready&&!active)return;let time=w.reload;if(ent===player&&ent.weapon==='sniper'&&hasUpgrade('sniper','precision'))time*=.72;if(ent===player&&ent.weapon==='assault'&&hasUpgrade('assault','overdrive'))time*=1.16;if(ent===player&&ent.weapon==='punch'&&hasUpgrade('punch','snapbackChain'))time*=.68;ent.reload=time;ent.reloadTotal=time;ent.reloadAnimType=ent.weapon;ent.cool=Math.max(ent.cool,.18);if(ent===player){msg((ready?'LOADING ULTIMATE ':'RELOADING ')+w.name);fireHeld=false}}
 function applySlow(ent,amount,time){ent.slowAmount=Math.max(ent.slowAmount||0,amount);ent.slowTimer=Math.max(ent.slowTimer||0,time);burst(ent.x,ent.y-.75,ent.z,'#65f7ff',7,.3)}
 const DIFF={easy:{aim:.28,react:.52,move:10.8,fire:.82,strategy:.55,lockRate:.18},normal:{aim:.44,react:.34,move:12.8,fire:.60,strategy:.75,lockRate:.32},hard:{aim:.70,react:.18,move:15.3,fire:.36,strategy:1.22,lockRate:.55},nightmare:{aim:.88,react:.10,move:17.6,fire:.24,strategy:1.58,lockRate:.82}};
 const FRAG_KILL_LIMIT=10;
@@ -867,13 +873,20 @@ function fireHitscan(shooter,isPlayer,w){
 }
 
 function firePunchGun(shooter,isPlayer){
-  const w=WEAPONS.punch,d=dirFrom(shooter,w.spread),ult=ultimateActive(shooter,'punch'),m=muzzlePoint(shooter,d),damage=w.damage*(ult?1.85:1),knock=w.knockback*(ult?1.45:1);
+  const w=WEAPONS.punch,d=dirFrom(shooter,w.spread),ult=ultimateActive(shooter,'punch'),m=muzzlePoint(shooter,d),heavy=isPlayer&&hasUpgrade('punch','heavyKnuckles'),longer=isPlayer&&hasUpgrade('punch','longerChain'),wallBreaker=isPlayer&&hasUpgrade('punch','wallBreaker'),snapback=isPlayer&&hasUpgrade('punch','snapbackChain'),seismic=isPlayer&&hasUpgrade('punch','seismicPunch'),grapple=isPlayer&&hasUpgrade('punch','grappleImpact'),damage=w.damage*(heavy?1.25:1)*(ult?1.85:1),knock=w.knockback*(heavy?1.12:1)*(grapple?1.28:1)*(ult?1.45:1);
   addMuzzleFlash(shooter,isPlayer,d,ult?ultimateColor('punch'):w.color,.35);if(ult)addUltimateMuzzleVisual(shooter,'punch',d);
-  projectiles.push({kind:'punch',owner:shooter,x:m.x+d.x*.35,y:m.y+d.y*.35,z:m.z+d.z*.35,px:m.x,py:m.y,pz:m.z,vx:d.x*54,vy:d.y*54,vz:d.z*54,dx:d.x,dy:d.y,dz:d.z,life:1.8,color:ult?ultimateColor('punch'):w.color,damage,knock,range:w.range*(ult?1.22:1),traveled:0,r:ult?1.05:.82,state:'out',hit:false,pulse:0,ultimate:ult});
+  projectiles.push({kind:'punch',owner:shooter,x:m.x+d.x*.35,y:m.y+d.y*.35,z:m.z+d.z*.35,px:m.x,py:m.y,pz:m.z,vx:d.x*54,vy:d.y*54,vz:d.z*54,dx:d.x,dy:d.y,dz:d.z,life:1.8,color:ult?ultimateColor('punch'):w.color,damage,knock,wallDamage:w.wallDamage*(heavy?1.12:1)*(wallBreaker?2.05:1),range:w.range*(longer?1.32:1)*(ult?1.22:1),traveled:0,r:ult?1.05:.82,state:'out',hit:false,pulse:0,ultimate:ult,snapback,seismic,grapple,wallBreaker});
+}
+function punchSeismicShockwave(p,directTarget=null,directStructure=null){
+  const radius=5.25,baseDamage=32;
+  particles.push({kind:'ring',x:p.x,y:p.y,z:p.z,vx:0,vy:0,vz:0,life:.28,maxLife:.28,c:p.color,size:34});
+  burst(p.x,p.y,p.z,p.color,6,.24);
+  for(const t of targetsFor(p.owner,isHumanActor(p.owner))){if(t===directTarget||t.dead||t.spawnGrace>0)continue;const dist=Math.hypot(t.x-p.x,(t.y-.7)-p.y,t.z-p.z);if(dist>=radius)continue;damage(t,baseDamage*(1-dist/radius),p.owner,false,{x:t.x,y:t.y-.7,z:t.z},{weapon:'punch',armorMult:1.2});}
+  for(const piece of [...walls,...platforms]){if(piece===directStructure||piece.active===false||!piece.destructible)continue;const py=piece.type==='platform'?piece.y+piece.h/2:piece.y,dx=Math.max(0,Math.abs(p.x-piece.x)-piece.w/2),dy=Math.max(0,Math.abs(p.y-py)-piece.h/2),dz=Math.max(0,Math.abs(p.z-piece.z)-piece.d/2),dist=Math.hypot(dx,dy,dz);if(dist<radius)damageStructure(piece,42*(p.wallBreaker?1.4:1)*(1-dist/radius),p.owner,'punch');}
 }
 function updatePunchProjectile(p,dt){
   if(!p.owner||p.owner.dead){p.life=0;return;}
-  const d={x:p.dx,y:p.dy,z:p.dz},m=muzzlePoint(p.owner,d),speedOut=68,speedBack=92;
+  const d={x:p.dx,y:p.dy,z:p.dz},m=muzzlePoint(p.owner,d),speedOut=68,speedBack=p.snapback?128:92;
   p.pulse=(p.pulse||0)+dt;p.life-=dt;
   if(p.state==='out'){
     const step=speedOut*dt,origin={x:p.x,y:p.y,z:p.z};let targetHit=null,targetDist=step,worldHit=rayWorld(origin,d,step,true,p.r*.45);
@@ -882,10 +895,11 @@ function updatePunchProjectile(p,dt){
     p.x=origin.x+d.x*targetDist;p.y=origin.y+d.y*targetDist;p.z=origin.z+d.z*targetDist;p.traveled=(p.traveled||0)+targetDist;
     if(targetHit){
       const hp={x:p.x,y:p.y,z:p.z};damage(targetHit,p.damage,p.owner,false,hp,{weapon:'punch',armorMult:1.45,bypassArmor:p.ultimate});
-      targetHit.vx+=d.x*p.knock;targetHit.vy+=Math.max(3.5,d.y*p.knock*.5+5.5);targetHit.vz+=d.z*p.knock;targetHit.stagger=Math.max(targetHit.stagger||0,.34);
-      burst(p.x,p.y,p.z,p.color,18,.48);if(p.ultimate)addUltimateImpactVisual('punch',p.x,p.y,p.z,d,targetHit);p.state='back';p.hit=true;
+      if(p.grapple){const pullX=p.owner.x-targetHit.x,pullZ=p.owner.z-targetHit.z,pullDist=Math.hypot(pullX,pullZ)||1;targetHit.vx+=pullX/pullDist*5.5;targetHit.vz+=pullZ/pullDist*5.5;}
+      targetHit.vx+=d.x*p.knock;targetHit.vy+=Math.max(3.5,d.y*p.knock*.5+5.5);targetHit.vz+=d.z*p.knock;targetHit.stagger=Math.max(targetHit.stagger||0,p.grapple?.44:.34);
+      burst(p.x,p.y,p.z,p.color,18,.48);if(p.seismic)punchSeismicShockwave(p,targetHit);if(p.ultimate)addUltimateImpactVisual('punch',p.x,p.y,p.z,d,targetHit);p.state='back';p.hit=true;
     }else if(worldHit){
-      damageStructure(worldHit.block.structure,p.damage*1.65,p.owner,'punch',worldHit);burst(p.x,p.y,p.z,p.color,12,.36);p.state='back';p.hit=true;
+      damageStructure(worldHit.block.structure,p.wallDamage,p.owner,'punch',worldHit);burst(p.x,p.y,p.z,p.color,12,.36);if(p.seismic)punchSeismicShockwave(p,null,worldHit.block.structure);p.state='back';p.hit=true;
     }else if(p.traveled>=p.range){p.state='back';}
   }else{
     const dx=m.x-p.x,dy=m.y-p.y,dz=m.z-p.z,dist=Math.hypot(dx,dy,dz);
