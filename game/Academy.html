@@ -295,7 +295,7 @@ const game={started:false,map:'pastel',mode:'dm',difficulty:'normal',botCount:6,
 const player={name:'YOU',human:true,x:0,y:PLAYER_H,z:24,vx:0,vy:0,vz:0,yaw:Math.PI,pitch:0,onGround:false,r:.50,team:1,score:0,deaths:0,dead:false,hp:100,maxHp:100,armor:50,maxArmor:100,weapon:'assault',ammo:30,reload:0,cool:0,heat:0,spawnGrace:0,upgradePoints:0,killStreak:0,upgrades:null,slowTimer:0,slowAmount:0};
 function makeHumanPlayer(name,color){return {name,x:0,y:PLAYER_H,z:24,vx:0,vy:0,vz:0,yaw:0,pitch:0,onGround:false,r:.50,team:2,score:0,deaths:0,dead:false,hp:100,maxHp:100,armor:50,maxArmor:100,weapon:'pistol',ammo:6,reload:0,cool:0,heat:0,spawnGrace:0,upgradePoints:0,killStreak:0,upgrades:null,slowTimer:0,slowAmount:0,color,human:true,faceYaw:0,walk:0,controllerFireHeld:false,buildHeld:false,buildPreview:null,buildCharges:BUILD_MAX,buildRecharge:0,buildFeedback:0,buildType:'wall'};}
 let player2=null,activePadIndex=null,menuPadPrev={},menuAxisLock=false,activeControllerTab=1,p2KeyPrev={},viewEnt=player,viewRect={x:0,y:0,w:W,h:H};
-let bots=[],platforms=[],walls=[],nav=[],pickups=[],shots=[],projectiles=[],particles=[],lasers=[],impacts=[],muzzleFlashes=[],decals=[],ultimateFx=[],buildPieces=[];
+let bots=[],platforms=[],walls=[],activeBlocks=[],nav=[],pickups=[],shots=[],projectiles=[],particles=[],lasers=[],impacts=[],muzzleFlashes=[],decals=[],ultimateFx=[],buildPieces=[],blocksDirty=true;
 const gridSize=4,WALL_H=4,WALL_T=.55,PLATFORM_CELLS=1,PLATFORM_SIZE=gridSize*PLATFORM_CELLS,PLATFORM_H=.55,BUILD_LEVEL=WALL_H,BUILD_MAX=10,BUILD_RECHARGE=.8,BUILD_CELL_LIMIT=2,BUILD_RANGE=26,BUILD_MAX_STACK=8,PLATFORM_EDGE_HINT=8.75,PLATFORM_LOOKDOWN_EDGE_HINT=12.5;
 // Build intent rules:
 // - Looking at a wall face/top center builds or stacks a wall.
@@ -307,9 +307,9 @@ let buildCharges=BUILD_MAX,buildRecharge=0,structureId=0,buildFeedback=0,selecte
 let mapTheme={sky:[.78,.88,.96],floorA:'#a9bbcf',floorB:'#b5c7d9',grid:'#526a85',gridSoft:'#71869d'};
 const MAX_PARTICLES=170,MAX_IMPACTS=70,MAX_MUZZLE_FLASHES=28,MAX_DECALS=60,ARENA_SAFE=64.3,MAX_CHAIN_JUMPS=5,MAX_PLASMA_MINES=3,MAX_REMOTE_GRENADES=2,MAX_PRISM_SPLITS=2;
 function makeStructurePiece(type,o={}){const built=!!o.builtBy,safety=!!o.safety,area=(o.w||1)*(o.d||1);let maxHp=o.maxHp||(type==='platform'?(built?1500:(area>300?2200:1850)):(built?1200:(area>180?1900:1450)));if(type==='wall')maxHp=Math.max(80,Math.round(maxHp*.5));return {...o,id:++structureId,type,hp:safety?Infinity:maxHp,maxHp:safety?Infinity:maxHp,destructible:!safety,active:true,createdAt:performance.now()/1000}}
-function addPlat(x,z,w,d,y,h,c,safety=false){x*=WORLD_SCALE;z*=WORLD_SCALE;w*=WORLD_SCALE;d*=WORLD_SCALE;platforms.push(makeStructurePiece('platform',{x,z,w,d,y,h,c,safety}));nav.push({x,z,y:y+h+PLAYER_H,r:Math.max(2.2,Math.min(6,Math.max(w,d)*.34))})}
+function addPlat(x,z,w,d,y,h,c,safety=false){x*=WORLD_SCALE;z*=WORLD_SCALE;w*=WORLD_SCALE;d*=WORLD_SCALE;platforms.push(makeStructurePiece('platform',{x,z,w,d,y,h,c,safety}));markBlocksDirty();nav.push({x,z,y:y+h+PLAYER_H,r:Math.max(2.2,Math.min(6,Math.max(w,d)*.34))})}
 function addTopPlat(x,z,w,d,top,h,c){addPlat(x,z,w,d,top-h,h,c)}
-function addWall(x,z,w,d,h,c,y=0,safety=false){x*=WORLD_SCALE;z*=WORLD_SCALE;w*=WORLD_SCALE;d*=WORLD_SCALE;walls.push(makeStructurePiece('wall',{x,z,w,d,y:y+h/2,h,c,safety}));}
+function addWall(x,z,w,d,h,c,y=0,safety=false){x*=WORLD_SCALE;z*=WORLD_SCALE;w*=WORLD_SCALE;d*=WORLD_SCALE;walls.push(makeStructurePiece('wall',{x,z,w,d,y:y+h/2,h,c,safety}));markBlocksDirty();}
 function addNav(x,z,r=2.5){x*=WORLD_SCALE;z*=WORLD_SCALE;r*=WORLD_SCALE;const top=topAtPoint(x,z);if(top>-20)nav.push({x,z,y:top+PLAYER_H,r})}
 function addPickup(type,x,z){if(game.mode==='frag')return;x*=WORLD_SCALE;z*=WORLD_SCALE;const top=0,oneShot=game.mode==='survivor';pickups.push({kind:'weapon',type,x,z,y:top+.7,spin:rand(0,TAU),taken:0,respawn:oneShot?0:10,oneShot,gone:false})}
 function addArmorPickup(size,x,z){if(game.mode==='frag')return;x*=WORLD_SCALE;z*=WORLD_SCALE;const top=0,oneShot=game.mode==='survivor';pickups.push({kind:'armor',size,amount:size==='large'?50:25,x,z,y:top+.55,spin:rand(0,TAU),taken:0,respawn:oneShot?0:(size==='large'?18:12),oneShot,gone:false})}
@@ -429,7 +429,7 @@ function survivorBreachTarget(a){
   return route?.chew||null;
 }
 function buildMap(){
-  platforms=[];walls=[];nav=[];pickups=[];buildPieces=[];buildOccupancy.clear();structureId=0;edgeSpawns=[];spawnIndex=0;
+  platforms=[];walls=[];activeBlocks.length=0;blocksDirty=true;nav=[];pickups=[];buildPieces=[];buildOccupancy.clear();structureId=0;edgeSpawns=[];spawnIndex=0;
   if(game.mode==='survivor'){
     buildSurvivorBreachMap();
     addSurvivorBreachRing(1);
@@ -437,6 +437,7 @@ function buildMap(){
     buildStarterGridArenaMap();
   }
   registerStaticGridOccupancy();
+  rebuildActiveBlocks();
   for(const n of nav)n.y=topAtPoint(n.x,n.z)+PLAYER_H;
 }
 function buildSurvivorBreachMap(){
@@ -557,8 +558,16 @@ function buildReactorArenaMap(){
    [38,34],[31,31],[27,26],[22,22],[16,18],[12,14],[9,10],[5,6],
    [-34,34],[-29,29],[-26,23],[-22,17],[-18,11],[34,-34],[29,-29],[26,-23],[22,-17],[18,-11]].forEach(([x,z])=>addNav(x,z,2.6));
 }
-function topAtPoint(x,z){let best=-999;for(const p of platforms)if(p.active!==false&&Math.abs(x-p.x)<=p.w/2&&Math.abs(z-p.z)<=p.d/2)best=Math.max(best,p.y+p.h);return best}
-function blocks(){const out=[];for(const p of platforms)if(p.active!==false)out.push({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h,c:p.c,kind:'platform',structure:p});for(const w of walls)if(w.active!==false)out.push({...w,kind:'wall',structure:w});return out}
+function markBlocksDirty(){blocksDirty=true}
+function rebuildActiveBlocks(){
+  activeBlocks.length=0;
+  for(const p of platforms)if(p.active!==false)activeBlocks.push({x:p.x,z:p.z,w:p.w,d:p.d,y:p.y+p.h/2,h:p.h,c:p.c,kind:'platform',structure:p});
+  for(const w of walls)if(w.active!==false)activeBlocks.push({...w,kind:'wall',structure:w});
+  blocksDirty=false;
+  return activeBlocks;
+}
+function blocks(){return blocksDirty?rebuildActiveBlocks():activeBlocks}
+function topAtPoint(x,z){let best=-999;for(const b of blocks())if(b.kind==='platform'&&Math.abs(x-b.x)<=b.w/2&&Math.abs(z-b.z)<=b.d/2)best=Math.max(best,b.y+b.h/2);return best}
 function pushOutXZ(ent){const r=ent.r||.45,feet=ent.y-PLAYER_H+HEAD_CLEAR,head=ent.y;for(const b of blocks()){const b0=b.y-b.h/2,b1=b.y+b.h/2;if(feet>=b1-.04||head<=b0+.04)continue;const dx=ent.x-b.x,dz=ent.z-b.z,ox=b.w/2+r-Math.abs(dx),oz=b.d/2+r-Math.abs(dz);if(ox>0&&oz>0){if(ox<oz){ent.x+=dx<0?-ox:ox;ent.vx=0}else{ent.z+=dz<0?-oz:oz;ent.vz=0}}}
   // Hard fail-safe inside the inner faces of the boundary walls. This runs after normal block collision, so even a large frame step cannot tunnel an actor out of the arena.
   const lim=ARENA_SAFE-r;ent.x=clamp(ent.x,-lim,lim);ent.z=clamp(ent.z,-lim,lim);if(Math.abs(ent.x)>=lim-.001)ent.vx=0;if(Math.abs(ent.z)>=lim-.001)ent.vz=0;
@@ -842,7 +851,7 @@ function rayBox(o,d,b,maxDist){let near=0,far=maxDist,normal={x:0,y:0,z:0};const
 function rayWorld(o,d,range,includeFloor=true,inflate=0){let best=null;for(const b of blocks()){if(!includeFloor&&b.kind==='platform'&&b.y<.2)continue;const shape=inflate?{...b,w:b.w+inflate*2,h:b.h+inflate*2,d:b.d+inflate*2}:b,hit=rayBox(o,d,shape,range);if(hit&&(!best||hit.dist<best.dist))best=hit}return best}
 function structureDamageMultiplier(weapon,source){let m={assault:1,smg:.75,burst:1.05,arc:.9,shotgun:1.2,sniper:1.5,plasma:1.4,laser:1.1,rocket:2.35,punch:2.15}[weapon]||1;if(source===player&&weapon==='shotgun'&&hasUpgrade('shotgun','breacher'))m*=1.45;if(source===player&&weapon==='shotgun'&&hasUpgrade('shotgun','breacher2'))m*=1.3;return m}
 function damageStructure(piece,amount,source,weapon='assault',hit=null){if(!piece||piece.active===false||!piece.destructible)return false;if(game.mode==='survivor'&&game.wallThorns&&source?.alien&&piece.builtBy&&!source.dead){source.hp-=Math.min(28,Math.max(5,amount*.10));source.stagger=Math.max(source.stagger||0,.18);if(source.hp<=0)kill(source,piece.builtBy,false);}if(performance.now()/1000-piece.createdAt<.2&&piece.builtBy===source)return false;piece.hp-=amount*structureDamageMultiplier(weapon,source);piece.flash=.12;if(hit){addImpact(hit,WEAPONS[weapon]?.color||'#ffffff',.2);if(Math.random()<.55)armorSpark(hit.x,hit.y,hit.z,3)}if(piece.hp<=0)destroyStructure(piece,source);return true}
-function destroyStructure(piece,source){if(!piece||piece.active===false||!piece.destructible)return;piece.active=false;unregisterBuildPiece(piece);burst(piece.x,piece.type==='platform'?piece.y+piece.h:piece.y,piece.z,piece.builtBy?'#65f7ff':piece.c,16,.55);for(let i=0;i<10;i++)particles.push({kind:'debris',x:piece.x+rand(-piece.w/3,piece.w/3),y:(piece.type==='platform'?piece.y+piece.h:piece.y)+rand(-.4,.4),z:piece.z+rand(-piece.d/3,piece.d/3),vx:rand(-5,5),vy:rand(2,8),vz:rand(-5,5),life:rand(.3,.7),maxLife:.7,c:shadeColor(piece.c,-35),size:rand(3,6)});if(source===player)feed('Cover destroyed');for(const b of bots){b.route=null;b.think=0}collapseUnsupportedBuilds()}
+function destroyStructure(piece,source){if(!piece||piece.active===false||!piece.destructible)return;piece.active=false;markBlocksDirty();unregisterBuildPiece(piece);burst(piece.x,piece.type==='platform'?piece.y+piece.h:piece.y,piece.z,piece.builtBy?'#65f7ff':piece.c,16,.55);for(let i=0;i<10;i++)particles.push({kind:'debris',x:piece.x+rand(-piece.w/3,piece.w/3),y:(piece.type==='platform'?piece.y+piece.h:piece.y)+rand(-.4,.4),z:piece.z+rand(-piece.d/3,piece.d/3),vx:rand(-5,5),vy:rand(2,8),vz:rand(-5,5),life:rand(.3,.7),maxLife:.7,c:shadeColor(piece.c,-35),size:rand(3,6)});if(source===player)feed('Cover destroyed');for(const b of bots){b.route=null;b.think=0}collapseUnsupportedBuilds()}
 function damageStructuresInRadius(x,y,z,radius,amount,source,weapon){for(const piece of [...walls,...platforms]){if(piece.active===false||!piece.destructible)continue;const py=piece.type==='platform'?piece.y+piece.h/2:piece.y,dx=Math.max(0,Math.abs(x-piece.x)-piece.w/2),dy=Math.max(0,Math.abs(y-py)-piece.h/2),dz=Math.max(0,Math.abs(z-piece.z)-piece.d/2),dist=Math.hypot(dx,dy,dz);if(dist<radius)damageStructure(piece,amount*(1-dist/radius),source,weapon)}}
 function addImpact(hit,color='#ffffff',size=.18){if(!hit)return;const n=hit.normal,eps=.012;impacts.push({x:hit.x+n.x*eps,y:hit.y+n.y*eps,z:hit.z+n.z*eps,nx:n.x,ny:n.y,nz:n.z,size:size*rand(.78,1.22),life:rand(3.4,5.2),maxLife:5.2,color});if(impacts.length>MAX_IMPACTS)impacts.splice(0,impacts.length-MAX_IMPACTS)}
 function bloodBurst(x,y,z,head=false,damage=0){const count=Math.min(24,head?16+Math.round(damage/20):9+Math.round(damage/28));for(let i=0;i<count;i++)particles.push({kind:'blood',x,y,z,vx:rand(-4.8,4.8),vy:rand(1.1,7.2)+(head?1.8:0),vz:rand(-4.8,4.8),life:rand(.28,.72),maxLife:.72,c:i%3?'#d7194b':'#7d0928',size:rand(2.2,4.6)});if(particles.length>MAX_PARTICLES)particles.splice(0,particles.length-MAX_PARTICLES)}
@@ -1873,7 +1882,7 @@ function connectedWallForPlatform(p){return directSupportForCandidate(p)}
 function supportForCandidate(p){return directSupportForCandidate(p)}
 function candidateHasSupport(p){return !!supportForCandidate(p)}
 function builtPieceStable(piece){if(!piece||piece.active===false||!piece.builtBy||!piece.grid)return true;return connectedToGround(piece)}
-function collapseStructure(piece){if(!piece||piece.active===false||!piece.destructible)return;piece.active=false;unregisterBuildPiece(piece);const y=piece.type==='platform'?piece.y+piece.h:piece.y;burst(piece.x,y,piece.z,'#ffb02e',20,.75);for(let i=0;i<22;i++)particles.push({kind:'debris',x:piece.x+rand(-piece.w/2,piece.w/2),y:y+rand(-.25,.55),z:piece.z+rand(-piece.d/2,piece.d/2),vx:rand(-3.5,3.5),vy:rand(-2,2),vz:rand(-3.5,3.5),life:rand(.65,1.25),maxLife:1.25,c:shadeColor(piece.c||'#65f7ff',-25),size:rand(3,7)});for(const b of bots){b.route=null;b.think=0}}
+function collapseStructure(piece){if(!piece||piece.active===false||!piece.destructible)return;piece.active=false;markBlocksDirty();unregisterBuildPiece(piece);const y=piece.type==='platform'?piece.y+piece.h:piece.y;burst(piece.x,y,piece.z,'#ffb02e',20,.75);for(let i=0;i<22;i++)particles.push({kind:'debris',x:piece.x+rand(-piece.w/2,piece.w/2),y:y+rand(-.25,.55),z:piece.z+rand(-piece.d/2,piece.d/2),vx:rand(-3.5,3.5),vy:rand(-2,2),vz:rand(-3.5,3.5),life:rand(.65,1.25),maxLife:1.25,c:shadeColor(piece.c||'#65f7ff',-25),size:rand(3,7)});for(const b of bots){b.route=null;b.think=0}}
 function collapseUnsupportedBuilds(){let changed=true,guard=0;while(changed&&guard++<24){changed=false;for(const piece of buildPieces){if(piece.active!==false&&!builtPieceStable(piece)){collapseStructure(piece);changed=true}}}}
 
 function boxesOverlap(a,b,pad=0){
@@ -1917,7 +1926,7 @@ function validateBuildPlacementRaw(p){
 }
 function validateBuildPlacement(p){return validateBuildPlacementRaw(p)}
 function isBuildPlacementValid(p){return validateBuildPlacement(p).valid}
-function placeBuild(p){const actor=buildActor||player,freeBuild=siegeBuildActive();if(!p||p.type!==buildTypeFor(actor)){setHumanBuildFeedback(actor,.3);if(actor===player)msg('WRONG BUILD MODE');return}const result=validateBuildPlacement(p);if(!result.valid){setHumanBuildFeedback(actor,.3);if(actor===player)msg(result.reason);return}if(!freeBuild&&humanCharges(actor)<=0){setHumanBuildFeedback(actor,.3);if(actor===player)msg('NO BUILDS');return}const support=supportForCandidate(p),grid={type:p.type,gx:p.gx,gy:p.gy,gz:p.gz,orientation:p.orientation},piece=makeStructurePiece(p.type,{x:p.x,z:p.z,w:p.w,d:p.d,h:p.h,y:p.type==='platform'?p.y-p.h/2:p.y,c:p.type==='wall'?'#176b87':'#5f2d86',builtBy:actor,grid,orientation:p.orientation,supportId:support&&support.id});if(p.type==='wall')walls.push(piece);else platforms.push(piece);buildPieces.push(piece);registerBuildPiece(piece,buildKeysFor(p));if(freeBuild){setHumanCharges(actor,BUILD_MAX);setHumanRecharge(actor,0)}else{setHumanCharges(actor,humanCharges(actor)-1);if(humanCharges(actor)===BUILD_MAX-1)setHumanRecharge(actor,0)}burst(p.x,p.y,p.z,p.type==='wall'?'#00eaff':'#d36bff',8,.25);if(actor===player)msg(p.type.toUpperCase()+(freeBuild?' FREE':' BUILT'));for(const b of bots){b.route=null;b.think=0}}
+function placeBuild(p){const actor=buildActor||player,freeBuild=siegeBuildActive();if(!p||p.type!==buildTypeFor(actor)){setHumanBuildFeedback(actor,.3);if(actor===player)msg('WRONG BUILD MODE');return}const result=validateBuildPlacement(p);if(!result.valid){setHumanBuildFeedback(actor,.3);if(actor===player)msg(result.reason);return}if(!freeBuild&&humanCharges(actor)<=0){setHumanBuildFeedback(actor,.3);if(actor===player)msg('NO BUILDS');return}const support=supportForCandidate(p),grid={type:p.type,gx:p.gx,gy:p.gy,gz:p.gz,orientation:p.orientation},piece=makeStructurePiece(p.type,{x:p.x,z:p.z,w:p.w,d:p.d,h:p.h,y:p.type==='platform'?p.y-p.h/2:p.y,c:p.type==='wall'?'#176b87':'#5f2d86',builtBy:actor,grid,orientation:p.orientation,supportId:support&&support.id});if(p.type==='wall')walls.push(piece);else platforms.push(piece);markBlocksDirty();buildPieces.push(piece);registerBuildPiece(piece,buildKeysFor(p));if(freeBuild){setHumanCharges(actor,BUILD_MAX);setHumanRecharge(actor,0)}else{setHumanCharges(actor,humanCharges(actor)-1);if(humanCharges(actor)===BUILD_MAX-1)setHumanRecharge(actor,0)}burst(p.x,p.y,p.z,p.type==='wall'?'#00eaff':'#d36bff',8,.25);if(actor===player)msg(p.type.toUpperCase()+(freeBuild?' FREE':' BUILT'));for(const b of bots){b.route=null;b.think=0}}
 function updateBuildCharges(dt){const max=survivorBuildMax(),rate=survivorBuildRecharge();if(siegeBuildActive()){buildCharges=BUILD_MAX;buildRecharge=0;return}if(buildCharges>=max){buildRecharge=0;return}buildRecharge+=dt;while(buildRecharge>=rate&&buildCharges<max){buildRecharge-=rate;buildCharges++;if(buildCharges===max)buildRecharge=0}}
 
 function drawUltimateReadyAura(ent,label=''){
