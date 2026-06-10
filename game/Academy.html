@@ -322,7 +322,7 @@ function tryVoltDash(ent){if(ent!==player||ent.weapon!=='smg'||!hasUpgrade('smg'
 function registerUpgradeKill(killer){if(killer!==player)return;if(hasUpgrade('assault','momentumClip')&&player.weapon==='assault'){player.momentumLock=.9;player.momentumGrace=1.1}if(hasUpgrade('smg','voltDash')&&player.weapon==='smg')player.voltKillWindow=1.5;if(hasUpgrade('smg','slipstream')&&player.weapon==='smg')player.slipstreamKillWindow=2;if(player.weapon==='burst'&&hasUpgrade('burst','tacticalRollout')&&(player.tacticalTimer||0)>0)player.ammo=Math.min(WEAPONS.burst.mag,player.ammo+5)}
 const DIFF={easy:{aim:.28,react:.52,move:10.8,fire:.82,strategy:.55,lockRate:.18},normal:{aim:.44,react:.34,move:12.8,fire:.60,strategy:.75,lockRate:.32},hard:{aim:.70,react:.18,move:15.3,fire:.36,strategy:1.22,lockRate:.55},nightmare:{aim:.88,react:.10,move:17.6,fire:.24,strategy:1.58,lockRate:.82}};
 const FRAG_KILL_LIMIT=10;
-const game={started:false,map:'pastel',mode:'dm',difficulty:'normal',botCount:6,time:300,timeLeft:300,over:false,upgradesOpen:false,secondPlayer:false,secondInput:'off'};
+const game={started:false,map:'pastel',mode:'dm',difficulty:'normal',botCount:6,time:300,timeLeft:300,over:false,upgradesOpen:false,secondPlayer:false,secondInput:'off',dmItemSpawnTimer:15};
 const player={name:'YOU',human:true,x:0,y:PLAYER_H,z:24,vx:0,vy:0,vz:0,yaw:Math.PI,pitch:0,onGround:false,r:.50,team:1,score:0,deaths:0,dead:false,hp:100,maxHp:100,armor:50,maxArmor:100,weapon:'assault',ammo:30,reload:0,cool:0,heat:0,spawnGrace:0,upgradePoints:0,killStreak:0,upgrades:null,slowTimer:0,slowAmount:0};
 function makeHumanPlayer(name,color){return {name,x:0,y:PLAYER_H,z:24,vx:0,vy:0,vz:0,yaw:0,pitch:0,onGround:false,r:.50,team:2,score:0,deaths:0,dead:false,hp:100,maxHp:100,armor:50,maxArmor:100,weapon:'pistol',ammo:6,reload:0,cool:0,heat:0,menderOverheated:false,spawnGrace:0,upgradePoints:0,killStreak:0,upgrades:null,slowTimer:0,slowAmount:0,color,human:true,faceYaw:0,walk:0,controllerFireHeld:false,buildHeld:false,buildPreview:null,buildCharges:BUILD_MAX,buildRecharge:0,buildFeedback:0,buildType:'wall'};}
 let player2=null,activePadIndex=null,menuPadPrev={},menuAxisLock=false,activeControllerTab=1,p2KeyPrev={},viewEnt=player,viewRect={x:0,y:0,w:W,h:H};
@@ -823,7 +823,7 @@ function reset(){
     return;
   }
   buildMap();if(game.mode==='frag')applyFragArena();if(game.mode==='survivor'||game.mode==='frag')pickups=[];
-  buildCharges=BUILD_MAX;buildRecharge=0;buildFeedback=0;selectedBuildType='wall';buildHeld=false;buildPreview=null;game.timeLeft=game.time;game.centerItemTimer=15;game.centerDropCount=0;
+  buildCharges=BUILD_MAX;buildRecharge=0;buildFeedback=0;selectedBuildType='wall';buildHeld=false;buildPreview=null;game.timeLeft=game.time;game.dmItemSpawnTimer=15;
   player.team=game.mode==='survivor'?1:(game.mode==='tdm'?1:0);player.dead=false;player.upgradePoints=0;player.killStreak=0;player.upgrades=createUpgradeState();player.yaw=Math.PI;player.pitch=0;resetWeaponInventory(player,'pistol');spawn(player);
   player2=game.secondPlayer?makeHumanPlayer('PLAYER 2','#ff9d2e'):null;if(player2){player2.team=game.mode==='survivor'?1:(game.mode==='tdm'?2:99);player2.upgrades=createUpgradeState();player2.yaw=0;player2.pitch=0;}
   initBots();if(game.mode==='frag')setupFragLoadout();shots=[];projectiles=[];particles=[];lasers=[];impacts=[];muzzleFlashes=[];decals=[];ultimateFx=[];plasmaResidues=[];
@@ -834,7 +834,7 @@ function reset(){
 el('start').onclick=()=>{el('menu').style.display='none';reset();canvas.requestPointerLock()};
 function toggleFullScreen(){const root=document.documentElement;if(!document.fullscreenElement){root.requestFullscreen?.();el('fullscreenBtn').textContent='EXIT FULL SCREEN'}else{document.exitFullscreen?.();el('fullscreenBtn').textContent='FULL SCREEN'}}
 try{visualQuality=localStorage.getItem('neonArenaVisualQuality')||'high'}catch{};if(!VISUAL_PRESETS[visualQuality])visualQuality='high';if(el('visualQuality'))el('visualQuality').value=visualQuality;
-el('controllerSettings').onclick=openControllerSettings;el('fullscreenBtn').onclick=toggleFullScreen;document.addEventListener('fullscreenchange',()=>{const b=el('fullscreenBtn');if(b)b.textContent=document.fullscreenElement?'EXIT FULL SCREEN':'FULL SCREEN'});el('controllerTabP1').onclick=()=>setControllerTab(1);el('controllerTabP2').onclick=()=>setControllerTab(2);setTimeout(()=>el('start')?.focus(),0);el('saveController').onclick=()=>{saveControllerSettings();closeControllerSettings()};el('closeController').onclick=closeControllerSettings;el('nextRound').onclick=()=>{if(game.mode==='siege'){nextSiegeRoundOrMatch();return;}el('scoreboardOverlay').style.display='none';reset();canvas.requestPointerLock?.()};el('returnMenu').onclick=()=>{el('scoreboardOverlay').style.display='none';el('menu').style.display='flex';game.started=false;game.over=true};loadControllerSettings();
+el('controllerSettings').onclick=openControllerSettings;el('fullscreenBtn').onclick=toggleFullScreen;document.addEventListener('fullscreenchange',()=>{const b=el('fullscreenBtn');if(b)b.textContent=document.fullscreenElement?'EXIT FULL SCREEN':'FULL SCREEN'});el('controllerTabP1').onclick=()=>setControllerTab(1);el('controllerTabP2').onclick=()=>setControllerTab(2);setTimeout(()=>el('start')?.focus(),0);el('saveController').onclick=()=>{saveControllerSettings();closeControllerSettings()};el('closeController').onclick=closeControllerSettings;el('nextRound').onclick=()=>{if(game.mode==='siege'){nextSiegeRoundOrMatch();return;}el('scoreboardOverlay').style.display='none';reset();canvas.requestPointerLock?.()};el('returnMenu').onclick=()=>{el('scoreboardOverlay').style.display='none';el('menu').style.display='flex';game.started=false;game.over=true;game.dmItemSpawnTimer=15};loadControllerSettings();
 function isHumanActor(e){return e===player||e===player2||!!e?.human}
 function sameTeam(a,b){if(game.mode==='survivor')return (!!a?.alien&&!!b?.alien)||(isHumanActor(a)&&isHumanActor(b));if(game.mode==='siege')return (isHumanActor(a)&&isHumanActor(b))||(!!a?.siegeEnemy&&!!b?.siegeEnemy);return game.mode==='tdm'&&a.team===b.team}
 
@@ -1350,25 +1350,49 @@ function survivorPickupCount(kind){return pickups.filter(p=>!p.gone&&p.taken<=0&
 function spawnSurvivorPickup(forceArmor=false){if(game.mode!=='survivor')return;if(survivorPickupCount('weapon')>=4&&!forceArmor)return;if(survivorPickupCount('armor')>=1&&forceArmor)return;const n=pick(nav)||{x:rand(-40,40),z:rand(-40,40)},x=clamp(n.x+rand(-3,3),-ARENA_SAFE+3,ARENA_SAFE-3)/WORLD_SCALE,z=clamp(n.z+rand(-3,3),-ARENA_SAFE+3,ARENA_SAFE-3)/WORLD_SCALE;if(forceArmor||Math.random()<.14){addArmorPickup(Math.random()<.2?'large':'small',x,z);feed('Rare armor dropped somewhere on the arena.')}else{addPickup(pick(['assault','smg','shotgun','sniper','plasma','laser','mender','burst','arc','rocket','mortar','punch','harpoon']),x,z);feed('Weapon pickup dropped somewhere on the arena.')}}
 function spawnSurvivorHealthDrop(){if(game.mode!=='survivor')return;if(survivorPickupCount('health')>=2)return;const n=pick(nav)||{x:rand(-40,40),z:rand(-40,40)},x=clamp(n.x+rand(-3,3),-ARENA_SAFE+3,ARENA_SAFE-3)/WORLD_SCALE,z=clamp(n.z+rand(-3,3),-ARENA_SAFE+3,ARENA_SAFE-3)/WORLD_SCALE;addHealthPickup(x,z);feed('Small +10 HP health drop appeared somewhere on the arena.')}
 
-function activeCenterItemCount(){return pickups.filter(p=>!p.gone&&p.taken<=0&&p.centerDrop).length}
-function spawnCenterItems(){
-  if(!(game.mode==='dm'||game.mode==='tdm'))return;
-  const open=pick(nav.filter(n=>Math.abs(n.x)<30&&Math.abs(n.z)<30))||{x:0,z:0,y:PLAYER_H};
-  const itemPool=['assault','smg','shotgun','sniper','plasma','laser','mender','burst','arc','rocket','mortar','punch','harpoon'];
-  for(let i=0;i<2;i++){
-    if(activeCenterItemCount()>=6)break;
-    const x=clamp((open.x+rand(-12,12)),-32,32)/WORLD_SCALE,z=clamp((open.z+rand(-12,12)),-32,32)/WORLD_SCALE,roll=Math.random();
-    const before=pickups.length;
-    if(roll<.18)addHealthPickup(x,z);else if(roll<.36)addArmorPickup(Math.random()<.22?'large':'small',x,z);else addPickup(pick(itemPool),x,z);
-    if(pickups.length>before){const p=pickups[pickups.length-1];p.centerDrop=true;p.respawn=0;p.oneShot=true;p.centerLife=27;}
-  }
-  feed('Center supply surge: 2 items dropped near mid-map.');
+function activeLooseItemCount(){return pickups.filter(p=>!p.gone&&p.taken<=0).length}
+function activeDeathmatchPlayerCount(){
+  const humans=[player,player2].filter(p=>p&&!p.dead).length;
+  const enemies=bots.filter(b=>!b.human&&!b.dead).length;
+  return humans+enemies;
 }
-function updateCenterItemSpawns(dt){
-  if(!(game.mode==='dm'||game.mode==='tdm'))return;
-  game.centerItemTimer=(game.centerItemTimer??15)-dt;
-  if(game.centerItemTimer<=0){spawnCenterItems();game.centerItemTimer=15;}
-  for(const p of pickups)if(p.centerDrop&&p.taken<=0){p.centerLife=(p.centerLife??27)-dt;if(p.centerLife<=0)p.gone=true;}
+function validDeathmatchItemPosition(x,z,placed=[]){
+  const edgePadding=2.5,ground=topAtPoint(x,z);
+  if(Math.abs(x)>ARENA_SAFE-edgePadding||Math.abs(z)>ARENA_SAFE-edgePadding||ground<-20)return false;
+  if(walls.some(w=>w.active!==false&&Math.abs(x-w.x)<w.w/2+1&&Math.abs(z-w.z)<w.d/2+1&&ground<w.y+w.h/2+.2))return false;
+  const actors=[player,player2,...bots].filter((a,i,list)=>a&&!a.dead&&list.indexOf(a)===i);
+  if(actors.some(a=>hypot2(x-a.x,z-a.z)<3.2))return false;
+  if(pickups.some(p=>!p.gone&&p.taken<=0&&hypot2(x-p.x,z-p.z)<3.2))return false;
+  return !placed.some(p=>hypot2(x-p.x,z-p.z)<5);
+}
+function findDeathmatchItemPosition(placed=[]){
+  for(let i=0;i<40;i++){
+    const n=pick(nav);if(!n)break;
+    const spread=Math.min(3.5,Math.max(1.2,(n.r||2.5)*.45));
+    const x=clamp(n.x+rand(-spread,spread),-ARENA_SAFE+2.5,ARENA_SAFE-2.5),z=clamp(n.z+rand(-spread,spread),-ARENA_SAFE+2.5,ARENA_SAFE-2.5);
+    if(validDeathmatchItemPosition(x,z,placed))return {x,z,y:topAtPoint(x,z)};
+  }
+  return null;
+}
+function spawnDeathmatchItems(count){
+  if(!(game.mode==='dm'||game.mode==='tdm')||count<=0)return 0;
+  const itemPool=['assault','smg','shotgun','sniper','plasma','laser','mender','burst','arc','rocket','mortar','punch','harpoon'],placed=[];
+  for(let i=0;i<count;i++){
+    const spot=findDeathmatchItemPosition(placed);if(!spot)break;
+    const before=pickups.length,roll=Math.random(),x=spot.x/WORLD_SCALE,z=spot.z/WORLD_SCALE;
+    if(roll<.18)addHealthPickup(x,z);else if(roll<.36)addArmorPickup(Math.random()<.22?'large':'small',x,z);else addPickup(pick(itemPool),x,z);
+    if(pickups.length>before){const p=pickups[pickups.length-1];p.y=spot.y+(p.kind==='weapon'?.7:.55);p.dmDrop=true;p.respawn=0;p.oneShot=true;placed.push(spot);}
+  }
+  if(placed.length)feed('Arena supply drop: '+placed.length+' item'+(placed.length===1?'':'s')+' spawned around the map.');
+  return placed.length;
+}
+function updateDeathmatchItemSpawns(dt){
+  if(!(game.mode==='dm'||game.mode==='tdm')||!game.started||game.over)return;
+  game.dmItemSpawnTimer=(game.dmItemSpawnTimer??15)-dt;
+  if(game.dmItemSpawnTimer>0)return;
+  game.dmItemSpawnTimer=15;
+  if(activeLooseItemCount()>8)return;
+  spawnDeathmatchItems(activeDeathmatchPlayerCount());
 }
 function updateSurvivorItems(dt){if(game.mode!=='survivor')return;game.survivorDropTimer=(game.survivorDropTimer||5)-dt;if(game.survivorDropTimer<=0){spawnSurvivorPickup(false);game.survivorDropTimer=rand(17,26)}}
 function repairSurvivorBuilds(percent){let repaired=0;for(const p of [...walls,...platforms])if(p.active!==false&&p.builtBy&&p.hp<p.maxHp){const before=p.hp;p.hp=Math.min(p.maxHp,p.hp+p.maxHp*percent);repaired+=p.hp-before;}return repaired}
@@ -2628,7 +2652,7 @@ function drawFirstPersonGun(){
 }
 
 function drawMinimap(dt=0){minimapTimer-=dt;if(!minimapNeedsRedraw&&minimapTimer>0)return;const crowdedSurvivor=game.mode==='survivor'&&bots.filter(b=>b.alien&&!b.dead).length>15;minimapTimer=1/(crowdedSurvivor?6:9);minimapNeedsRedraw=false;mctx.clearRect(0,0,178,178);mctx.fillStyle='rgba(8,12,28,.82)';mctx.fillRect(0,0,178,178);const sc=178/(ARENA_SAFE*2+8),ox=89,oz=89;mctx.strokeStyle='rgba(255,255,255,.25)';for(const p of platforms)if(p.active!==false)mctx.strokeRect(ox+(p.x-p.w/2)*sc,oz+(p.z-p.d/2)*sc,p.w*sc,p.d*sc);function dot(x,z,c,r=3){mctx.fillStyle=c;mctx.beginPath();mctx.arc(ox+x*sc,oz+z*sc,r,0,TAU);mctx.fill()}dot(player.x,player.z,'#fff',4);for(const b of bots)if(!b.dead&&visibleOnMinimap(b))dot(b.x,b.z,b.color,3);for(const p of pickups)if(!p.gone&&p.taken<=0)dot(p.x,p.z,p.kind==='health'?'#ff315d':(p.kind==='armor'?'#237dff':WEAPONS[p.type].color),(p.kind==='armor'||p.kind==='health')?2.8:2)}
-let last=performance.now(),lastFrameDt=0;function loop(now){const dt=Math.min(.033,(now-last)/1000);last=now;lastFrameDt=dt;if(!game.started||game.over)pollController();if(game.started&&!game.over){if(game.mode!=='survivor'&&game.mode!=='frag'&&game.mode!=='siege')game.timeLeft-=dt;updatePlayer(dt);for(const b of bots)updateBot(b,dt);updateSurvivor(dt);updateSiege(dt);updateCenterItemSpawns(dt);updateProjectiles(dt);updateCombatUpgradeEffects(dt);updateCameraKick(player,dt);updateCameraKick(player2,dt);buildFeedback=Math.max(0,buildFeedback-dt);if(player2)player2.buildFeedback=Math.max(0,(player2.buildFeedback||0)-dt);for(const p of [...walls,...platforms]){p.flash=Math.max(0,(p.flash||0)-dt);p.fortifySealTimer=Math.max(0,(p.fortifySealTimer||0)-dt);p.thunderGuardTimer=Math.max(0,(p.thunderGuardTimer||0)-dt);p.armorBoosted=(p.bonusHp||0)>0;}for(const s of shots)s.life-=dt;shots=shots.filter(s=>s.life>0);for(const l of lasers)l.life-=dt;lasers=lasers.filter(l=>l.life>0);for(const m of impacts)m.life-=dt;impacts=impacts.filter(m=>m.life>0);for(const d of decals)d.life-=dt;decals=decals.filter(d=>d.life>0);for(const u of ultimateFx)u.life-=dt;ultimateFx=ultimateFx.filter(u=>u.life>0);for(const f of muzzleFlashes)f.life-=dt;muzzleFlashes=muzzleFlashes.filter(f=>f.life>0);for(const p of pickups)if(!p.oneShot&&p.taken>0)p.taken-=dt;pickups=pickups.filter(p=>!p.gone);for(const p of particles){p.life-=dt;if(p.kind!=='ring'){p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;p.vy-=18*dt}}particles=particles.filter(p=>p.life>0);if(game.mode!=='survivor'&&game.mode!=='frag'&&game.mode!=='siege'&&game.timeLeft<=0)endMatch('Time expired');updateHud()}draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+let last=performance.now(),lastFrameDt=0;function loop(now){const dt=Math.min(.033,(now-last)/1000);last=now;lastFrameDt=dt;if(!game.started||game.over)pollController();if(game.started&&!game.over){if(game.mode!=='survivor'&&game.mode!=='frag'&&game.mode!=='siege')game.timeLeft-=dt;updatePlayer(dt);for(const b of bots)updateBot(b,dt);updateSurvivor(dt);updateSiege(dt);updateDeathmatchItemSpawns(dt);updateProjectiles(dt);updateCombatUpgradeEffects(dt);updateCameraKick(player,dt);updateCameraKick(player2,dt);buildFeedback=Math.max(0,buildFeedback-dt);if(player2)player2.buildFeedback=Math.max(0,(player2.buildFeedback||0)-dt);for(const p of [...walls,...platforms]){p.flash=Math.max(0,(p.flash||0)-dt);p.fortifySealTimer=Math.max(0,(p.fortifySealTimer||0)-dt);p.thunderGuardTimer=Math.max(0,(p.thunderGuardTimer||0)-dt);p.armorBoosted=(p.bonusHp||0)>0;}for(const s of shots)s.life-=dt;shots=shots.filter(s=>s.life>0);for(const l of lasers)l.life-=dt;lasers=lasers.filter(l=>l.life>0);for(const m of impacts)m.life-=dt;impacts=impacts.filter(m=>m.life>0);for(const d of decals)d.life-=dt;decals=decals.filter(d=>d.life>0);for(const u of ultimateFx)u.life-=dt;ultimateFx=ultimateFx.filter(u=>u.life>0);for(const f of muzzleFlashes)f.life-=dt;muzzleFlashes=muzzleFlashes.filter(f=>f.life>0);for(const p of pickups)if(!p.oneShot&&p.taken>0)p.taken-=dt;pickups=pickups.filter(p=>!p.gone);for(const p of particles){p.life-=dt;if(p.kind!=='ring'){p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;p.vy-=18*dt}}particles=particles.filter(p=>p.life>0);if(game.mode!=='survivor'&&game.mode!=='frag'&&game.mode!=='siege'&&game.timeLeft<=0)endMatch('Time expired');updateHud()}draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
 function updateHud(){
   const aliveAliens=survivorAliveAliens().length;
   if(game.mode==='siege'){
