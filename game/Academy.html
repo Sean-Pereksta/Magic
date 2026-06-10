@@ -179,7 +179,7 @@ function feed(t){const d=document.createElement('div');d.textContent=t;hud.feed.
 const WEAPONS={
   pistol:{name:'PISTOL',damage:31,range:72,cool:.145,spread:.018,mag:6,reload:1.55,tracers:1,color:'#d9f7ff',falloff:.34,kind:'hitscan',semi:true},
   assault:{name:'ASSAULT RIFLE',damage:46,range:104,cool:.085,spread:.014,mag:36,reload:2.35,tracers:1,color:'#00eaff',falloff:.28,kind:'hitscan'},
-  sniper:{name:'SNIPER',damage:95,head:999,range:165,cool:.82,spread:.002,mag:5,reload:3.65,tracers:1,color:'#ffffff',falloff:.02,kind:'hitscan'},
+  sniper:{name:'SNIPER',damage:95,head:999,range:165,cool:.82,spread:.002,mag:1,reload:.75,tracers:1,color:'#ffffff',falloff:.02,kind:'hitscan'},
   smg:{name:'SMG',damage:32,range:62,cool:.055,spread:.045,mag:42,reload:1.85,tracers:1,color:'#ffea00',falloff:.72,kind:'hitscan'},
   shotgun:{name:'SHOTGUN',damage:46,range:38,cool:.62,spread:.125,mag:8,reload:4.10,tracers:8,color:'#ff7a2b',falloff:1.05,kind:'shotgun'},
   burst:{name:'CARBINE RIFLE',damage:29,range:88,cool:.235,spread:.010,mag:30,reload:2.25,tracers:3,color:'#7cffd5',falloff:.26,kind:'burst'},
@@ -209,7 +209,9 @@ const UPGRADE_TREE={
     rail:{tier:1,cost:2,name:'Rail Lance',desc:'Shots pierce through one enemy.'},
     precision:{tier:1,cost:2,name:'Precision Chamber',desc:'Faster shot recovery and tactical reload.'},
     rail2:{tier:2,cost:4,requires:'rail',name:'Rail Lance II',desc:'Pierces up to three enemies with better damage retention.'},
-    critical:{tier:2,cost:3,requires:'precision',name:'Critical Trace',desc:'Headshots leave a short damaging energy trace.'}},
+    critical:{tier:2,cost:3,requires:'precision',name:'Critical Trace',desc:'Headshots leave a short damaging energy trace.'},
+    phaseRail:{tier:3,cost:5,requires:'rail2',name:'Phase Rail',desc:'Shots pierce one wall, dealing 50% damage to targets beyond it.'},
+    thermalScope:{tier:3,cost:5,requires:'critical',name:'Thermal Scope',desc:'Highlights enemies hidden behind exactly one wall near your aim.'}},
   burst:{
     tungsten:{tier:1,cost:1,name:'Tungsten Burst',desc:'Carbine bursts hit harder and chew cover better.'},
     quickCycle:{tier:1,cost:2,name:'Quick-Cycle Receiver',desc:'Shortens burst delay and reload time for aggressive mid-range duels.'},
@@ -240,7 +242,7 @@ const UPGRADE_TREE={
 function createUpgradeState(){const state={};for(const [weapon,defs] of Object.entries(UPGRADE_TREE)){state[weapon]={};for(const key of Object.keys(defs))state[weapon][key]=false}return state}
 function hasUpgrade(weapon,key,ent=player){return ent===player&&!!ent.upgrades?.[weapon]?.[key]}
 function toggleUpgradeTree(force){if(!game.started)return;game.upgradesOpen=force===undefined?!game.upgradesOpen:force;el('upgradeOverlay').style.display=game.upgradesOpen?'flex':'none';fireHeld=false;if(game.upgradesOpen){document.exitPointerLock?.();renderUpgradeTree();setTimeout(()=>moveMenuFocus(1),0)}else if(game.p1Input!=='controller')canvas.requestPointerLock?.()}
-function renderUpgradeTree(){const weapon=player.weapon,defs=UPGRADE_TREE[weapon]||{},state=player.upgrades?.[weapon]||{};el('upgradeTitle').textContent=WEAPONS[weapon].name+' UPGRADES';el('upgradePointLabel').textContent=player.upgradePoints+' POINT'+(player.upgradePoints===1?'':'S');const grid=el('upgradeGrid');grid.innerHTML='';for(const tier of [1,2]){const label=document.createElement('div');label.className='tierLabel';label.textContent='TIER '+tier;grid.appendChild(label);for(const [key,u] of Object.entries(defs).filter(([,v])=>v.tier===tier)){const bought=!!state[key],prereq=!u.requires||state[u.requires],canBuy=!bought&&prereq&&player.upgradePoints>=u.cost,card=document.createElement('div');card.className='upgradeCard '+(bought?'bought':(!prereq?'locked':''));const req=u.requires?' · Requires '+defs[u.requires].name:'';card.innerHTML='<h3>'+u.name+'</h3><p>'+u.desc+'</p><button '+(canBuy?'':'disabled')+'>'+(bought?'PURCHASED':u.cost+' POINTS'+req)+'</button>';card.querySelector('button').onclick=()=>buyUpgrade(weapon,key);grid.appendChild(card)}}}
+function renderUpgradeTree(){const weapon=player.weapon,defs=UPGRADE_TREE[weapon]||{},state=player.upgrades?.[weapon]||{};el('upgradeTitle').textContent=WEAPONS[weapon].name+' UPGRADES';el('upgradePointLabel').textContent=player.upgradePoints+' POINT'+(player.upgradePoints===1?'':'S');const grid=el('upgradeGrid');grid.innerHTML='';const tiers=[...new Set(Object.values(defs).map(u=>u.tier))].sort((a,b)=>a-b);for(const tier of tiers){const label=document.createElement('div');label.className='tierLabel';label.textContent='TIER '+tier;grid.appendChild(label);for(const [key,u] of Object.entries(defs).filter(([,v])=>v.tier===tier)){const bought=!!state[key],prereq=!u.requires||state[u.requires],canBuy=!bought&&prereq&&player.upgradePoints>=u.cost,card=document.createElement('div');card.className='upgradeCard '+(bought?'bought':(!prereq?'locked':''));const req=u.requires?' · Requires '+defs[u.requires].name:'';card.innerHTML='<h3>'+u.name+'</h3><p>'+u.desc+'</p><button '+(canBuy?'':'disabled')+'>'+(bought?'PURCHASED':u.cost+' POINTS'+req)+'</button>';card.querySelector('button').onclick=()=>buyUpgrade(weapon,key);grid.appendChild(card)}}}
 function buyUpgrade(weapon,key){const u=UPGRADE_TREE[weapon]?.[key],state=player.upgrades?.[weapon];if(!u||!state||state[key]||(u.requires&&!state[u.requires])||player.upgradePoints<u.cost)return;player.upgradePoints-=u.cost;state[key]=true;msg(u.name.toUpperCase()+' ONLINE');feed('Upgrade purchased: '+u.name);renderUpgradeTree();updateHud()}
 function manualReload(ent){if(!game.started||ent.dead||ent.reload>0)return;const w=WEAPONS[ent.weapon];if(!w)return;const ready=getUltimateReady(ent),active=ultimateActive(ent,ent.weapon);if((w.kind==='plasma'||w.kind==='laser')){if(!ready&&!active)return;const time=w.kind==='laser'?1.35:1.45;ent.reload=time;ent.reloadTotal=time;ent.reloadAnimType=ent.weapon;ent.cool=Math.max(ent.cool,.18);if(ent===player){msg((ready?'LOADING ULTIMATE ':'COOLING ')+w.name);fireHeld=false}return;}if(ent.ammo>=w.mag&&!ready&&!active)return;let time=w.reload;if(ent===player&&ent.weapon==='sniper'&&hasUpgrade('sniper','precision'))time*=.72;if(ent===player&&ent.weapon==='assault'&&hasUpgrade('assault','overdrive'))time*=1.16;ent.reload=time;ent.reloadTotal=time;ent.reloadAnimType=ent.weapon;ent.cool=Math.max(ent.cool,.18);if(ent===player){msg((ready?'LOADING ULTIMATE ':'RELOADING ')+w.name);fireHeld=false}}
 function applySlow(ent,amount,time){ent.slowAmount=Math.max(ent.slowAmount||0,amount);ent.slowTimer=Math.max(ent.slowTimer||0,time);burst(ent.x,ent.y-.75,ent.z,'#65f7ff',7,.3)}
@@ -789,9 +791,80 @@ function addImpact(hit,color='#ffffff',size=.18){if(!hit)return;const n=hit.norm
 function bloodBurst(x,y,z,head=false,damage=0){const count=Math.min(24,head?16+Math.round(damage/20):9+Math.round(damage/28));for(let i=0;i<count;i++)particles.push({kind:'blood',x,y,z,vx:rand(-4.8,4.8),vy:rand(1.1,7.2)+(head?1.8:0),vz:rand(-4.8,4.8),life:rand(.28,.72),maxLife:.72,c:i%3?'#d7194b':'#7d0928',size:rand(2.2,4.6)});if(particles.length>MAX_PARTICLES)particles.splice(0,particles.length-MAX_PARTICLES)}
 function armorSpark(x,y,z,count=10){for(let i=0;i<count;i++)particles.push({kind:'spark',x,y,z,vx:rand(-5.5,5.5),vy:rand(0,7.4),vz:rand(-5.5,5.5),life:rand(.16,.48),maxLife:.5,c:i%2?'#8ffaff':'#237dff',size:rand(2.5,5.2)});if(particles.length>MAX_PARTICLES)particles.splice(0,particles.length-MAX_PARTICLES)}
 function applyHitUpgrade(shooter,victim,weapon,head,hitPoint,dir,dist){if(shooter!==player||!victim)return;const hp=hitPoint||{x:victim.x,y:victim.y-.7,z:victim.z};if((weapon==='assault'&&hasUpgrade('assault','electric'))||(weapon==='smg'&&hasUpgrade('smg','static')&&dist<18)){applySlow(victim,weapon==='smg'&&hasUpgrade('smg','swarm')?.42:.28,weapon==='smg'?1.2:1.05)}if(weapon==='assault'&&hasUpgrade('assault','chain')&&Math.random()<.55){let other=null,bd=7.5;for(const t of bots){if(t!==victim&&!t.dead&&!sameTeam(player,t)){const d=hypot2(t.x-victim.x,t.z-victim.z);if(d<bd){bd=d;other=t}}}if(other){damage(other,18,shooter,false,{x:other.x,y:other.y-.7,z:other.z},{weapon:'assault',armorMult:.75});shots.push({x:hp.x,y:hp.y,z:hp.z,dx:(other.x-hp.x)/(bd||1),dy:0,dz:(other.z-hp.z)/(bd||1),life:.16,maxLife:.16,len:bd,color:'#65f7ff',width:3.5})}}if(weapon==='shotgun'&&(hasUpgrade('shotgun','breacher')||hasUpgrade('shotgun','breacher2'))){const k=hasUpgrade('shotgun','breacher2')?10.5:6.5;victim.vx+=dir.x*k;victim.vz+=dir.z*k;if(hasUpgrade('shotgun','breacher2'))victim.stagger=Math.max(victim.stagger||0,.38)}if(weapon==='sniper'&&head&&hasUpgrade('sniper','critical')){burst(hp.x,hp.y,hp.z,'#ffffff',18,.55);shots.push({x:hp.x,y:hp.y,z:hp.z,dx:dir.x,dy:dir.y,dz:dir.z,life:.22,maxLife:.22,len:18,color:'#ffffff',width:6})}if(weapon==='burst'){if(hasUpgrade('burst','suppressor'))applySlow(victim,.16,.55);if(head&&hasUpgrade('burst','marksman')){damage(victim,18,shooter,true,hp,{weapon:'burst',armorMult:.7,bypassArmor:true});burst(hp.x,hp.y,hp.z,'#7cffd5',7,.25)}}if(weapon==='arc'){if(hasUpgrade('arc','capacitor'))applySlow(victim,.34,1.35);if(hasUpgrade('arc','storm')){victim.arcBuild=(victim.arcBuild||0)+1;if(victim.arcBuild>=3){victim.arcBuild=0;victim.stagger=Math.max(victim.stagger||0,.48);burst(hp.x,hp.y,hp.z,'#65f7ff',18,.45)}}}}
-function fireHitscan(shooter,isPlayer,w){const weapon=shooter.weapon,ult=ultimateActive(shooter,weapon),clipUlt=ultimateClipActive(shooter,weapon),pellets=ult?(weapon==='shotgun'?16:(weapon==='smg'?(clipUlt?3:7):(weapon==='burst'?(clipUlt?4:5):1))):(weapon==='burst'?3:(w.kind==='shotgun'?w.tracers:1)),spread=(ult?(weapon==='shotgun'?w.spread*.72:w.spread*.35):w.spread)*((isPlayer&&weapon==='assault'&&hasUpgrade('assault','stabilizer'))?.48:(isPlayer&&weapon==='burst'&&hasUpgrade('burst','marksman')?.62:1)),pierceMax=ult?(weapon==='sniper'?99:(weapon==='pistol'?4:0)):((isPlayer&&weapon==='sniper')?(hasUpgrade('sniper','rail2')?3:(hasUpgrade('sniper','rail')?1:0)):0);for(let i=0;i<pellets;i++){const burstOffset=weapon==='burst'?(i-1)*.006:0,d=dirFrom(shooter,spread*(w.kind==='shotgun'?rand(.45,1.35):1)+Math.abs(burstOffset));if(weapon==='burst'){d.x+=Math.sin(shooter.yaw+Math.PI/2)*burstOffset;d.z+=Math.cos(shooter.yaw+Math.PI/2)*burstOffset;const dl=Math.hypot(d.x,d.y,d.z)||1;d.x/=dl;d.y/=dl;d.z/=dl;}const origin={x:shooter.x,y:shooter.y-.05,z:shooter.z},muzzle=muzzlePoint(shooter,d),worldHit=rayWorld(origin,d,w.range),worldDist=worldHit?.dist??w.range;if(i===0){addMuzzleFlash(shooter,isPlayer,d,ult?ultimateColor(weapon):w.color,ult?.42:.2);if(ult&&!clipUlt)addUltimateMuzzleVisual(shooter,weapon,d);}let hits=[];for(const t of targetsFor(shooter,isPlayer)){if(t.spawnGrace>0)continue;const res=rayEntity(origin,d,t,w.range,weapon==='arc'?.08:0);if(res&&res.dist<worldDist)hits.push({t,dist:res.dist,head:res.head,pt:{x:origin.x+d.x*res.dist,y:origin.y+d.y*res.dist,z:origin.z+d.z*res.dist}})}hits.sort((a,b)=>a.dist-b.dist);if(!pierceMax)hits=hits.slice(0,1);else hits=hits.slice(0,pierceMax+1);const firstDist=hits[0]?.dist??worldDist,traceLen=Math.max(.05,firstDist-.48);shots.push({x:muzzle.x,y:muzzle.y,z:muzzle.z,dx:d.x,dy:d.y,dz:d.z,life:w.kind==='shotgun'?.18:(weapon==='burst'?.20:.15),maxLife:w.kind==='shotgun'?.18:(weapon==='burst'?.20:.15),len:traceLen,color:ult?ultimateColor(weapon):w.color,width:ult?(weapon==='sniper'?10:(weapon==='arc'?9:6)):(w.kind==='shotgun'?2.1:(weapon==='sniper'?4.4:(weapon==='arc'?5.2:2.8)))});if(ult&&!clipUlt)addUltimateBeamVisual(weapon,muzzle.x,muzzle.y,muzzle.z,d.x,d.y,d.z,traceLen);if(hits.length){hits.forEach((h,idx)=>{let dmg=w.damage;if(ult){const clip=ultimateClipActive(shooter,weapon);dmg*=clip?(CLIP_ULTIMATE_WEAK_MULT[weapon]||1.2):(weapon==='pistol'?3.2:weapon==='assault'?1.85:weapon==='sniper'?1.45:weapon==='smg'?1.55:weapon==='shotgun'?1.55:weapon==='burst'?1.72:weapon==='arc'?1.9:1.6);}if(h.head&&weapon==='sniper')dmg=ult?999:w.head;if(isPlayer&&weapon==='burst'&&hasUpgrade('burst','tungsten'))dmg*=1.16;if(isPlayer&&weapon==='burst'&&h.head&&hasUpgrade('burst','marksman'))dmg*=1.28;if(isPlayer&&weapon==='arc'&&hasUpgrade('arc','capacitor'))dmg*=1.18;if(isPlayer&&weapon==='smg'&&hasUpgrade('smg','closeBurst')&&h.dist<10)dmg*=1.30;const fall=clamp(1-(h.dist/w.range)*w.falloff,.18,1),pierce=idx? (hasUpgrade('sniper','rail2')?.72:.48):1,armorMult=weapon==='shotgun'?(hasUpgrade('shotgun','armorBreaker')?2.2:(hasUpgrade('shotgun','breacher')?1.55:1.15)):(weapon==='sniper'?.65:(weapon==='arc'?1.45:1));const result=damage(h.t,dmg*fall*pierce,shooter,h.head,h.pt,{weapon,armorMult,bypassArmor:(h.head&&weapon==='sniper')||ult});if(ult){burst(h.pt.x,h.pt.y,h.pt.z,ultimateColor(weapon),clipUlt?2:(weapon==='arc'?8:6),clipUlt?.12:.28);if(!clipUlt)addUltimateImpactVisual(weapon,h.pt.x,h.pt.y,h.pt.z,d,h.t);if(weapon==='assault'||weapon==='arc'){for(const extra of targetsFor(shooter,isPlayer).filter(t=>t!==h.t&&!t.dead&&hypot2(t.x-h.t.x,t.z-h.t.z)<13).slice(0,weapon==='arc'?5:3)){shots.push({x:h.pt.x,y:h.pt.y,z:h.pt.z,dx:(extra.x-h.pt.x)/(hypot2(extra.x-h.pt.x,extra.z-h.pt.z)||1),dy:0,dz:(extra.z-h.pt.z)/(hypot2(extra.x-h.pt.x,extra.z-h.pt.z)||1),life:.24,maxLife:.24,len:hypot2(extra.x-h.pt.x,extra.z-h.pt.z),color:ultimateColor(weapon),width:5});damage(extra,dmg*(clipUlt?.32:.55),shooter,false,{x:extra.x,y:extra.y-.7,z:extra.z},{weapon,armorMult:1.5,bypassArmor:weapon==='arc'});applySlow(extra,clipUlt?.28:.42,1.4)}}if(weapon==='shotgun'||weapon==='smg')applySlow(h.t,.35,.8);}if(weapon==='arc'){applySlow(h.t,.18,.75);const chainTargets=targetsFor(shooter,isPlayer).filter(t=>t!==h.t&&!t.dead&&t.spawnGrace<=0&&hypot2(t.x-h.t.x,t.z-h.t.z)<(isPlayer&&hasUpgrade('arc','web')?11:7.5)&&Math.abs(t.y-h.t.y)<4);chainTargets.sort((a,b)=>hypot2(a.x-h.t.x,a.z-h.t.z)-hypot2(b.x-h.t.x,b.z-h.t.z));const arcJumps=(isPlayer&&hasUpgrade('arc','web'))?chainTargets.slice(0,3):chainTargets.slice(0,(isPlayer&&hasUpgrade('arc','fork'))?2:1);for(const c of arcJumps){shots.push({x:h.t.x,y:h.t.y-.7,z:h.t.z,dx:(c.x-h.t.x)/(hypot2(c.x-h.t.x,c.z-h.t.z)||1),dy:0,dz:(c.z-h.t.z)/(hypot2(c.x-h.t.x,c.z-h.t.z)||1),life:.20,maxLife:.20,len:hypot2(c.x-h.t.x,c.z-h.t.z),color:w.color,width:3.8});damage(c,dmg*.55,shooter,false,{x:c.x,y:c.y-.7,z:c.z},{weapon,armorMult:1.2});applySlow(c,.12,.55);}}
-        applyHitUpgrade(shooter,h.t,weapon,h.head,h.pt,d,h.dist);if(result?.armorBroken&&shooter===player&&weapon==='shotgun'&&hasUpgrade('shotgun','shatter')){burst(h.pt.x,h.pt.y,h.pt.z,'#8ffaff',18,.5);for(const t of targetsFor(shooter,isPlayer))if(t!==h.t&&hypot2(t.x-h.t.x,t.z-h.t.z)<4.5)damage(t,16,shooter,false,{x:t.x,y:t.y-.7,z:t.z},{weapon:'shotgun',armorMult:1.5})}})}else if(worldHit){if(ult)addUltimateImpactVisual(weapon,worldHit.x+worldHit.normal.x*.08,worldHit.y+worldHit.normal.y*.08,worldHit.z+worldHit.normal.z*.08,d,null);damageStructure(worldHit.block.structure,w.damage*(weapon==='burst'?.62:1)*(ult?2.2:1),shooter,weapon,worldHit);burst(worldHit.x+worldHit.normal.x*.08,worldHit.y+worldHit.normal.y*.08,worldHit.z+worldHit.normal.z*.08,ult?ultimateColor(weapon):w.color,ult?12:5,.28)}}}
-
+function rayBlockersBetween(origin,dir,range){
+  const blockers=[];
+  for(const block of blocks()){
+    const hit=rayBox(origin,dir,block,range);
+    if(hit)blockers.push({...hit,block});
+  }
+  blockers.sort((a,b)=>a.dist-b.dist);
+  return blockers;
+}
+function fireHitscan(shooter,isPlayer,w){
+  const weapon=shooter.weapon,ult=ultimateActive(shooter,weapon),clipUlt=ultimateClipActive(shooter,weapon),pellets=ult?(weapon==='shotgun'?16:(weapon==='smg'?(clipUlt?3:7):(weapon==='burst'?(clipUlt?4:5):1))):(weapon==='burst'?3:(w.kind==='shotgun'?w.tracers:1)),spread=(ult?(weapon==='shotgun'?w.spread*.72:w.spread*.35):w.spread)*((isPlayer&&weapon==='assault'&&hasUpgrade('assault','stabilizer'))?.48:(isPlayer&&weapon==='burst'&&hasUpgrade('burst','marksman')?.62:1)),pierceMax=ult?(weapon==='sniper'?99:(weapon==='pistol'?4:0)):((isPlayer&&weapon==='sniper')?(hasUpgrade('sniper','rail2')?3:(hasUpgrade('sniper','rail')?1:0)):0),phaseRail=isPlayer&&weapon==='sniper'&&hasUpgrade('sniper','phaseRail');
+  for(let i=0;i<pellets;i++){
+    const burstOffset=weapon==='burst'?(i-1)*.006:0,d=dirFrom(shooter,spread*(w.kind==='shotgun'?rand(.45,1.35):1)+Math.abs(burstOffset));
+    if(weapon==='burst'){
+      d.x+=Math.sin(shooter.yaw+Math.PI/2)*burstOffset;d.z+=Math.cos(shooter.yaw+Math.PI/2)*burstOffset;
+      const dl=Math.hypot(d.x,d.y,d.z)||1;d.x/=dl;d.y/=dl;d.z/=dl;
+    }
+    const origin={x:shooter.x,y:shooter.y-.05,z:shooter.z},muzzle=muzzlePoint(shooter,d),worldHit=rayWorld(origin,d,w.range),worldDist=worldHit?.dist??w.range,blockers=phaseRail?rayBlockersBetween(origin,d,w.range):[];
+    if(i===0){addMuzzleFlash(shooter,isPlayer,d,ult?ultimateColor(weapon):w.color,ult?.42:.2);if(ult&&!clipUlt)addUltimateMuzzleVisual(shooter,weapon,d);}
+    let hits=[];
+    for(const t of targetsFor(shooter,isPlayer)){
+      if(t.spawnGrace>0)continue;
+      const res=rayEntity(origin,d,t,w.range,weapon==='arc'?.08:0);
+      if(!res)continue;
+      const blockersBefore=phaseRail?blockers.filter(b=>b.dist<res.dist-.04):[],wallPenetrated=blockersBefore.length===1&&blockersBefore[0].block.kind==='wall';
+      if(res.dist<worldDist||wallPenetrated)hits.push({t,dist:res.dist,head:res.head,wallsBefore:wallPenetrated?1:0,pt:{x:origin.x+d.x*res.dist,y:origin.y+d.y*res.dist,z:origin.z+d.z*res.dist}});
+    }
+    hits.sort((a,b)=>a.dist-b.dist);
+    if(!pierceMax)hits=hits.slice(0,1);else hits=hits.slice(0,pierceMax+1);
+    const firstDist=hits[0]?.dist??worldDist,traceLen=Math.max(.05,firstDist-.48),piercedWall=phaseRail&&hits.some(h=>h.wallsBefore>0);
+    shots.push({x:muzzle.x,y:muzzle.y,z:muzzle.z,dx:d.x,dy:d.y,dz:d.z,life:w.kind==='shotgun'?.18:(weapon==='burst'?.20:.15),maxLife:w.kind==='shotgun'?.18:(weapon==='burst'?.20:.15),len:traceLen,color:piercedWall?'#ff4f6d':(ult?ultimateColor(weapon):w.color),width:ult?(weapon==='sniper'?10:(weapon==='arc'?9:6)):(w.kind==='shotgun'?2.1:(weapon==='sniper'?4.4:(weapon==='arc'?5.2:2.8)))});
+    if(ult&&!clipUlt)addUltimateBeamVisual(weapon,muzzle.x,muzzle.y,muzzle.z,d.x,d.y,d.z,traceLen);
+    if(piercedWall&&worldHit){
+      const entry={...worldHit,x:worldHit.x+worldHit.normal.x*.08,y:worldHit.y+worldHit.normal.y*.08,z:worldHit.z+worldHit.normal.z*.08};
+      addImpact(entry,'#ff4f6d',.32);burst(entry.x,entry.y,entry.z,'#ff4f6d',12,.42);
+    }
+    if(hits.length){
+      hits.forEach((h,idx)=>{
+        let dmg=w.damage;
+        if(ult){const clip=ultimateClipActive(shooter,weapon);dmg*=clip?(CLIP_ULTIMATE_WEAK_MULT[weapon]||1.2):(weapon==='pistol'?3.2:weapon==='assault'?1.85:weapon==='sniper'?1.45:weapon==='smg'?1.55:weapon==='shotgun'?1.55:weapon==='burst'?1.72:weapon==='arc'?1.9:1.6);}
+        if(h.head&&weapon==='sniper')dmg=ult?999:w.head;
+        if(isPlayer&&weapon==='burst'&&hasUpgrade('burst','tungsten'))dmg*=1.16;
+        if(isPlayer&&weapon==='burst'&&h.head&&hasUpgrade('burst','marksman'))dmg*=1.28;
+        if(isPlayer&&weapon==='arc'&&hasUpgrade('arc','capacitor'))dmg*=1.18;
+        if(isPlayer&&weapon==='smg'&&hasUpgrade('smg','closeBurst')&&h.dist<10)dmg*=1.30;
+        const fall=clamp(1-(h.dist/w.range)*w.falloff,.18,1),enemyPierce=idx?(hasUpgrade('sniper','rail2')?.72:.48):1,wallPierce=h.wallsBefore>0?.5:1,armorMult=weapon==='shotgun'?(hasUpgrade('shotgun','armorBreaker')?2.2:(hasUpgrade('shotgun','breacher')?1.55:1.15)):(weapon==='sniper'?.65:(weapon==='arc'?1.45:1));
+        const result=damage(h.t,dmg*fall*enemyPierce*wallPierce,shooter,h.head,h.pt,{weapon,armorMult,bypassArmor:(h.head&&weapon==='sniper')||ult});
+        if(h.wallsBefore>0)burst(h.pt.x,h.pt.y,h.pt.z,'#ff4f6d',10,.36);
+        if(ult){
+          burst(h.pt.x,h.pt.y,h.pt.z,ultimateColor(weapon),clipUlt?2:(weapon==='arc'?8:6),clipUlt?.12:.28);if(!clipUlt)addUltimateImpactVisual(weapon,h.pt.x,h.pt.y,h.pt.z,d,h.t);
+          if(weapon==='assault'||weapon==='arc'){
+            for(const extra of targetsFor(shooter,isPlayer).filter(t=>t!==h.t&&!t.dead&&hypot2(t.x-h.t.x,t.z-h.t.z)<13).slice(0,weapon==='arc'?5:3)){
+              shots.push({x:h.pt.x,y:h.pt.y,z:h.pt.z,dx:(extra.x-h.pt.x)/(hypot2(extra.x-h.pt.x,extra.z-h.pt.z)||1),dy:0,dz:(extra.z-h.pt.z)/(hypot2(extra.x-h.pt.x,extra.z-h.pt.z)||1),life:.24,maxLife:.24,len:hypot2(extra.x-h.pt.x,extra.z-h.pt.z),color:ultimateColor(weapon),width:5});
+              damage(extra,dmg*(clipUlt?.32:.55),shooter,false,{x:extra.x,y:extra.y-.7,z:extra.z},{weapon,armorMult:1.5,bypassArmor:weapon==='arc'});applySlow(extra,clipUlt?.28:.42,1.4);
+            }
+          }
+          if(weapon==='shotgun'||weapon==='smg')applySlow(h.t,.35,.8);
+        }
+        if(weapon==='arc'){
+          applySlow(h.t,.18,.75);
+          const chainTargets=targetsFor(shooter,isPlayer).filter(t=>t!==h.t&&!t.dead&&t.spawnGrace<=0&&hypot2(t.x-h.t.x,t.z-h.t.z)<(isPlayer&&hasUpgrade('arc','web')?11:7.5)&&Math.abs(t.y-h.t.y)<4);
+          chainTargets.sort((a,b)=>hypot2(a.x-h.t.x,a.z-h.t.z)-hypot2(b.x-h.t.x,b.z-h.t.z));
+          const arcJumps=(isPlayer&&hasUpgrade('arc','web'))?chainTargets.slice(0,3):chainTargets.slice(0,(isPlayer&&hasUpgrade('arc','fork'))?2:1);
+          for(const c of arcJumps){shots.push({x:h.t.x,y:h.t.y-.7,z:h.t.z,dx:(c.x-h.t.x)/(hypot2(c.x-h.t.x,c.z-h.t.z)||1),dy:0,dz:(c.z-h.t.z)/(hypot2(c.x-h.t.x,c.z-h.t.z)||1),life:.20,maxLife:.20,len:hypot2(c.x-h.t.x,c.z-h.t.z),color:w.color,width:3.8});damage(c,dmg*.55,shooter,false,{x:c.x,y:c.y-.7,z:c.z},{weapon,armorMult:1.2});applySlow(c,.12,.55);}
+        }
+        applyHitUpgrade(shooter,h.t,weapon,h.head,h.pt,d,h.dist);
+        if(result?.armorBroken&&shooter===player&&weapon==='shotgun'&&hasUpgrade('shotgun','shatter')){burst(h.pt.x,h.pt.y,h.pt.z,'#8ffaff',18,.5);for(const t of targetsFor(shooter,isPlayer))if(t!==h.t&&hypot2(t.x-h.t.x,t.z-h.t.z)<4.5)damage(t,16,shooter,false,{x:t.x,y:t.y-.7,z:t.z},{weapon:'shotgun',armorMult:1.5});}
+      });
+    }else if(worldHit){
+      if(ult)addUltimateImpactVisual(weapon,worldHit.x+worldHit.normal.x*.08,worldHit.y+worldHit.normal.y*.08,worldHit.z+worldHit.normal.z*.08,d,null);
+      damageStructure(worldHit.block.structure,w.damage*(weapon==='burst'?.62:1)*(ult?2.2:1),shooter,weapon,worldHit);burst(worldHit.x+worldHit.normal.x*.08,worldHit.y+worldHit.normal.y*.08,worldHit.z+worldHit.normal.z*.08,ult?ultimateColor(weapon):w.color,ult?12:5,.28);
+    }
+  }
+}
 
 function firePunchGun(shooter,isPlayer){
   const w=WEAPONS.punch,d=dirFrom(shooter,w.spread),ult=ultimateActive(shooter,'punch'),m=muzzlePoint(shooter,d),damage=w.damage*(ult?1.85:1),knock=w.knockback*(ult?1.45:1);
@@ -1911,7 +1984,7 @@ function renderDepthWorld(){solidTriangles=[];lineSegments=[];for(const p of pla
 function splitRects(){if(!(game.secondPlayer&&player2))return [{ent:player,x:0,y:0,w:W,h:H,label:'P1'}];const l1='P1 '+(game.p1Input==='controller'?'CONTROLLER':'KEYBOARD'),l2='P2 '+(game.p2Input==='controller'?'CONTROLLER':'KEYBOARD');if(W>=H)return [{ent:player,x:0,y:0,w:Math.floor(W/2),h:H,label:l1},{ent:player2,x:Math.floor(W/2),y:0,w:W-Math.floor(W/2),h:H,label:l2}];const hh=Math.floor(H/2);return [{ent:player,x:0,y:0,w:W,h:hh,label:l1},{ent:player2,x:0,y:hh,w:W,h:H-hh,label:l2}]}
 function drawView(rect){viewEnt=rect.ent;viewRect={x:rect.x,y:rect.y,w:rect.w,h:rect.h};renderDepthWorld();}
 function draw(){ctx.clearRect(0,0,W,H);gl.viewport(0,0,worldCanvas.width,worldCanvas.height);gl.clearColor(mapTheme.sky[0],mapTheme.sky[1],mapTheme.sky[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);const rects=splitRects();for(const r of rects)drawView(r);ctx.drawImage(worldCanvas,0,0,W,H);for(const r of rects){viewEnt=r.ent;viewRect={x:r.x,y:r.y,w:r.w,h:r.h};ctx.save();ctx.beginPath();ctx.rect(r.x,r.y,r.w,r.h);ctx.clip();const bs=humanBuildState(r.ent);if(bs.held&&bs.preview){drawBuildIntentZones(bs.preview);drawBuildPreview(bs.preview);}drawBuildFeedbackFor(r.ent);drawStructureHealthFor(r.ent);
-  for(const p of projectiles)drawPlasmaProjectile3D(p);drawPunchProjectiles2D();drawUltimateFx();drawImpacts();drawPickups();for(const s of shots)drawBeamTrail(s,false);for(const l of lasers)drawBeamTrail(l,true);drawMuzzleFlashes(false);drawUltimateAurasForView(r.ent);for(const b of bots)if(!b.dead&&b!==r.ent)drawBotLabelIfVisible(b);if(r.ent!==player&&!player.dead)drawBotLabelIfVisible({...player,name:'PLAYER 1',color:'#ffffff'});
+  for(const p of projectiles)drawPlasmaProjectile3D(p);drawPunchProjectiles2D();drawUltimateFx();drawImpacts();drawPickups();for(const s of shots)drawBeamTrail(s,false);for(const l of lasers)drawBeamTrail(l,true);drawMuzzleFlashes(false);drawUltimateAurasForView(r.ent);drawThermalScopeHighlights(r.ent);for(const b of bots)if(!b.dead&&b!==r.ent)drawBotLabelIfVisible(b);if(r.ent!==player&&!player.dead)drawBotLabelIfVisible({...player,name:'PLAYER 1',color:'#ffffff'});
   for(const p of particles){if(!lineClear(r.ent.x,r.ent.y-.05,r.ent.z,p.x,p.y,p.z))continue;const q=project(p.x,p.y,p.z);if(q){const a=clamp(p.life/(p.maxLife||.7),0,1),sz=(p.size||4)*(p.kind==='blood'?.72+q.s*.012:1);ctx.globalAlpha=a;ctx.strokeStyle=ctx.fillStyle=p.c;ctx.shadowBlur=p.kind==='blood'?0:12;ctx.shadowColor=p.c;if(p.kind==='ring'){ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(q.x,q.y,sz*(1.35-a),0,TAU);ctx.stroke()}else ctx.fillRect(q.x-sz/2,q.y-sz/2,sz,sz);ctx.globalAlpha=1;ctx.shadowBlur=0}}
   drawFirstPersonGunFor(r.ent);drawMuzzleFlashes(true);drawPlayerCrosshairFor(r.ent);ctx.restore();if(rects.length>1){ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=3;ctx.strokeRect(r.x+1,r.y+1,r.w-2,r.h-2);ctx.fillStyle='rgba(8,12,28,.7)';ctx.fillRect(r.x+12,r.y+12,160,30);ctx.fillStyle='#fff';ctx.font='900 13px Arial';ctx.fillText(r.label+' · '+r.ent.score+' KO',r.x+22,r.y+32)}drawPlayerMiniHud(r.ent,r.label)}drawMinimap()}
 function playerCrosshairColor(ent){
@@ -2099,6 +2172,23 @@ function gunSpec(type){return {
   rocket:{body:[.48,.34,.92],barrel:[.26,.26,1.05],stock:[.30,.24,.32],grip:[.20,.46,.20],accent:.44},
   punch:{body:[.42,.30,.62],barrel:[.24,.24,.34],stock:[.22,.22,.22],grip:[.22,.46,.20],accent:.36}
 }[type]||{body:[.34,.22,.82],barrel:[.13,.13,.78],stock:[.34,.24,.34],grip:[.18,.46,.20],accent:.28}}
+function drawThermalScopeHighlights(ent){
+  if(ent!==player||ent.weapon!=='sniper'||!hasUpgrade('sniper','thermalScope')||ent.dead)return;
+  const origin={x:ent.x,y:ent.y-.05,z:ent.z},forward=dirFrom(ent,0),maxRange=72;
+  for(const target of targetsFor(ent,true)){
+    if(target.dead||target.spawnGrace>0)continue;
+    const tx=target.x,ty=target.y-.72,tz=target.z,dx=tx-origin.x,dy=ty-origin.y,dz=tz-origin.z,dist=Math.hypot(dx,dy,dz);
+    if(dist<2||dist>maxRange)continue;
+    const inv=1/dist,dir={x:dx*inv,y:dy*inv,z:dz*inv};
+    if(dir.x*forward.x+dir.y*forward.y+dir.z*forward.z<.72)continue;
+    const blockers=rayBlockersBetween(origin,dir,Math.max(0,dist-.18));
+    if(blockers.length!==1||blockers[0].block.kind!=='wall')continue;
+    const head=project(target.x,target.y-.12,target.z),feet=project(target.x,target.y-1.72,target.z);
+    if(!head||!feet)continue;
+    const height=clamp(Math.abs(feet.y-head.y)*1.18,18,150),width=clamp(height*.48,12,72),cx=(head.x+feet.x)/2,cy=(head.y+feet.y)/2;
+    ctx.save();ctx.globalAlpha=.82;ctx.strokeStyle='#ff2f55';ctx.lineWidth=2;ctx.shadowBlur=10;ctx.shadowColor='#ff2f55';ctx.setLineDash([7,4]);ctx.strokeRect(cx-width/2,cy-height/2,width,height);ctx.setLineDash([]);ctx.globalAlpha=.16;ctx.fillStyle='#ff2f55';ctx.fillRect(cx-width/2,cy-height/2,width,height);ctx.restore();
+  }
+}
 function drawBotLabelIfVisible(b){
   const points=b.flying?[[b.x,b.y+.45,b.z],[b.x,b.y-.25,b.z],[b.x,b.y-.85,b.z]]:[[b.x,b.y+.25,b.z],[b.x,b.y-.25,b.z],[b.x,b.y-1.2,b.z]];
   if(!points.some(pt=>lineClear(player.x,player.y,player.z,pt[0],pt[1],pt[2])))return;
