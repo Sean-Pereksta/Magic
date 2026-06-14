@@ -16,6 +16,16 @@ service cloud.firestore {
       match /crowncouncil/{docId} {
         allow read, write: if isAuthed();
       }
+
+      match /alliances/{allianceId} {
+        allow read, write: if isAuthed();
+      }
+
+      // Academy and the other lobby-backed games keep their world state in
+      // authenticated subcollections (accounts, territories, troops, etc.).
+      match /{document=**} {
+        allow read, write: if isAuthed();
+      }
     }
 
     match /metrics_dailyUsers/{dateKey} {
