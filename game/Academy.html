@@ -63,7 +63,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, serverTimestamp, writeBatch, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, serverTimestamp, writeBatch, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -91,6 +91,30 @@ const CAPTURE_REQUIRED_MS = 24 * 3600000;
 const ENEMY_ALLOWED_MS = 3600000;
 const TRAINING_POLL_MS = 5000;
 const GOBLIN_COOLDOWN_MS = 3600000;
+const BARBARIAN_OWNER_PREFIX = "barbarian";
+const BARBARIAN_SPAWN_CHECK_MS = 3600000;
+const BARBARIAN_SPAWN_LOCK_MS = 30000;
+const BARBARIAN_THINK_MS = 10000;
+const BARBARIAN_SIM_LOCK_MS = 25000;
+const MAX_BARBARIAN_CAMPS = 80;
+const MAX_BARBARIAN_FORCE_COUNT = 40;
+const BARBARIAN_CAMP_RESPAWN_ATTEMPTS = 200;
+const BARBARIAN_NEW_PLAYER_GRACE_MS = 12 * 3600000;
+const BARBARIAN_LEVEL_MS = 12 * 3600000;
+const BARBARIAN_RAID_MIN_MS = 30 * 60000;
+const BARBARIAN_RAID_MAX_MS = 60 * 60000;
+const BARBARIAN_FORCE_EXPIRE_MS = 2 * 3600000;
+const BARBARIAN_CAMP_LEVELS = {
+  1:{hp:220,raiders:5,throwers:1,brutes:0,drummers:0,chieftains:0,raidMs:90*60000},
+  2:{hp:320,raiders:8,throwers:2,brutes:1,drummers:0,chieftains:0,raidMs:75*60000},
+  3:{hp:450,raiders:12,throwers:3,brutes:2,drummers:1,chieftains:0,raidMs:60*60000},
+  4:{hp:620,raiders:16,throwers:5,brutes:3,drummers:1,chieftains:1,raidMs:50*60000},
+  5:{hp:850,raiders:22,throwers:7,brutes:5,drummers:2,chieftains:1,raidMs:45*60000}
+};
+const BARBARIAN_CAMP_REWARDS = {
+  1:{gold:100,lumber:90,oil:10},2:{gold:180,lumber:160,oil:25},3:{gold:320,lumber:280,oil:55},
+  4:{gold:575,lumber:475,oil:100},5:{gold:950,lumber:800,oil:180}
+};
 
 const UNIT = {
   footman:{name:"Footman", hp:20, dmg:3, range:1, attackMs:1200, moveMs:760, cost:{gold:18,lumber:22,oil:0}, building:"barracks"},
@@ -114,7 +138,12 @@ const UNIT = {
   bannerKnight:{name:"Banner Knight", hp:38, dmg:5, range:1, attackMs:1200, moveMs:760, cost:{gold:150,lumber:60,oil:60}, building:"championsHall"},
   engineer:{name:"Engineer", hp:16, dmg:1, range:1, attackMs:1400, moveMs:760, cost:{gold:20,lumber:30,oil:0}, building:"engineerShop", ability:"build"},
   runeMason:{name:"Rune Mason", hp:20, dmg:1, range:1, attackMs:1500, moveMs:850, cost:{gold:55,lumber:80,oil:20}, building:"engineerShop"},
-  goblin:{name:"Goblin", hp:12, dmg:2, range:1, attackMs:1150, moveMs:650, cost:{gold:0,lumber:0,oil:0}, supply:0, trainMs:0}
+  goblin:{name:"Goblin", hp:12, dmg:2, range:1, attackMs:1150, moveMs:650, cost:{gold:0,lumber:0,oil:0}, supply:0, trainMs:0},
+  barbarianRaider:{name:"Barbarian Raider",hp:18,dmg:3,range:1,attackMs:1050,moveMs:600,cost:{gold:0,lumber:0,oil:0},supply:0,trainMs:0,barbarian:true},
+  barbarianThrower:{name:"Barbarian Thrower",hp:14,dmg:2,range:3,attackMs:1300,moveMs:680,cost:{gold:0,lumber:0,oil:0},supply:0,trainMs:0,barbarian:true},
+  barbarianBrute:{name:"Barbarian Brute",hp:42,dmg:5,range:1,attackMs:1500,moveMs:850,structureBonus:5,cost:{gold:0,lumber:0,oil:0},supply:0,trainMs:0,barbarian:true},
+  barbarianDrummer:{name:"War Drummer",hp:20,dmg:1,range:1,attackMs:1800,moveMs:760,aura:"barbarianHaste",cost:{gold:0,lumber:0,oil:0},supply:0,trainMs:0,barbarian:true},
+  barbarianChieftain:{name:"Barbarian Chieftain",hp:75,dmg:7,range:1,attackMs:1200,moveMs:760,ability:"battleCry",cost:{gold:0,lumber:0,oil:0},supply:0,trainMs:0,barbarian:true}
 };
 const UNIT_BALANCE = {
   footman:{supply:1,trainMs:10*60000},
@@ -159,17 +188,19 @@ const BUILDING = {
   workshop:{name:"Workshop", hp:90, cost:{gold:100,lumber:140,oil:0}, workshop:true},
   portal:{name:"Portal", hp:180, cost:{gold:300,lumber:250,oil:120}},
   mobileTower:{name:"Mobile Tower", hp:60, dmg:3, range:3, attackMs:1500, cost:{gold:0,lumber:80,oil:0}, defense:true, temporaryMs:24*3600000},
-  barricade:{name:"Barricade", hp:10, cost:{gold:0,lumber:25,oil:0}, wall:true}
+  barricade:{name:"Barricade", hp:10, cost:{gold:0,lumber:25,oil:0}, wall:true},
+  barbarianCamp:{name:"Barbarian Camp",hp:220,cost:{gold:0,lumber:0,oil:0},barbarian:true,neutralHostile:true}
 };
 const FORT_CAP = [0,12,20,32,48,70,95,125,160,210,275];
 const FORT_UPGRADE_COST = {2:{gold:200,lumber:180,oil:0},3:{gold:380,lumber:300,oil:20},4:{gold:700,lumber:520,oil:40},5:{gold:1200,lumber:850,oil:85},6:{gold:1900,lumber:1300,oil:150},7:{gold:2900,lumber:2000,oil:250},8:{gold:4300,lumber:3100,oil:400},9:{gold:6200,lumber:4500,oil:650},10:{gold:9000,lumber:6500,oil:1000}};
 
 let uid=null, player=null, playerKey=null;
-let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map();
+let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), playerAccounts=new Map();
 let unsub=[]; let selected=new Set(); let hoveredTile=null; let hoveredEntity=null; let attackMode=false; let buildMode=null;
 let currentAbilityHotkeys=new Map();
 let camera={x:0,y:0,zoom:1}; let mouse={x:0,y:0,down:false,startX:0,startY:0};
-let lastSave=0, lastTick=0, lastCaptureCheck=0, lastProductionCheck=0;
+let lastSave=0, lastTick=0, lastCaptureCheck=0, lastProductionCheck=0, lastBarbarianPoll=0, lastBarbarianThink=0;
+let barbarianWorldState={nextBarbarianSpawnCheckAt:0}; let barbarianSpawnCheckRunning=false, barbarianThinkRunning=false;
 
 function pruneSelection(){
   // Firestore snapshots arrive separately for troops and buildings.
@@ -269,7 +300,10 @@ async function startGame(){
   unsub.push(onSnapshot(col('troops'),s=>{troops.clear();s.forEach(d=>troops.set(d.id,{id:d.id,...d.data()})); pruneSelection(); updateUI();}));
   unsub.push(onSnapshot(col('buildings'),s=>{buildings.clear();s.forEach(d=>buildings.set(d.id,{id:d.id,...d.data()})); pruneSelection(); updateUI();}));
   unsub.push(onSnapshot(col('battles'),s=>{battles.clear();s.forEach(d=>battles.set(d.id,{id:d.id,...d.data()})); updateUI();}));
+  unsub.push(onSnapshot(col('accounts'),s=>{playerAccounts.clear();s.forEach(d=>playerAccounts.set(d.id,{id:d.id,...d.data()}));}));
+  unsub.push(onSnapshot(ref('worldState','barbarians'),s=>{barbarianWorldState=s.exists()?s.data():{nextBarbarianSpawnCheckAt:0};}));
   await collectOfflineResources(); buildButtons(); requestAnimationFrame(loop); log('Entered world at your fortress.');
+  setTimeout(()=>maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message)),1200);
 }
 async function collectOfflineResources(){
   await new Promise(r=>setTimeout(r,700));
@@ -285,7 +319,11 @@ function getChunkOfTile(x,y){return {cx:Math.floor(x/CHUNK_SIZE),cy:Math.floor(y
 function ownerOfTile(x,y){const c=getChunkOfTile(x,y); return territories.get(c.key)?.ownerId || null}
 function territoryOfTile(x,y){const c=getChunkOfTile(x,y); return territories.get(c.key) || {id:c.key,cx:c.cx,cy:c.cy,ownerId:null,resource:chunkResource(c.cx,c.cy)};}
 function activeBattleAllows(owner,x,y){const c=getChunkOfTile(x,y); const t=territories.get(c.key); if(!t) return false; const n=now(); for(const b of battles.values()){ if(b.chunkKey===c.key && b.status!=='ended' && n>=b.startAt && n<=b.endAt && (b.attackerId===owner || b.defenderId===owner)) return true; } return false; }
-function isEnemyOwnedBlocked(unit,x,y){const o=ownerOfTile(x,y); return o && o!==unit.ownerId && !activeBattleAllows(unit.ownerId,x,y);}
+function isBarbarianOwner(ownerId){return String(ownerId||'').startsWith(BARBARIAN_OWNER_PREFIX);}
+function isBarbarianUnit(u){return !!u&&(u.barbarian||UNIT[u.type]?.barbarian||isBarbarianOwner(u.ownerId));}
+function isBarbarianCamp(b){return !!b&&b.type==='barbarianCamp';}
+function areHostile(a,b){const ab=isBarbarianOwner(a?.ownerId),bb=isBarbarianOwner(b?.ownerId); if(ab&&bb)return false; return a?.ownerId!==b?.ownerId;}
+function isEnemyOwnedBlocked(unit,x,y){const o=ownerOfTile(x,y); if(isBarbarianUnit(unit))return false; return o && o!==unit.ownerId && !activeBattleAllows(unit.ownerId,x,y);}
 function entityAtTile(x,y){for(const u of troops.values()) if(u.hp>0&&u.x===x&&u.y===y) return {kind:'troop',id:u.id,data:u}; for(const b of buildings.values()) if(b.hp>0&&b.x===x&&b.y===y) return {kind:'building',id:b.id,data:b}; return null;}
 function isBlocked(x,y,unit=null,targetKey=null){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)return true; const e=entityAtTile(x,y); if(unit?.inArena){ if(e && e.id!==targetKey && e.id!==unit.id && e.kind==='troop') return true; return false; } const terr=terrainAt(x,y); if(terr==='water'||terr==='mountain')return true; if(e && e.id!==targetKey && e.data.ownerId!==unit?.ownerId) return true; if(e && e.id!==unit?.id && e.kind==='troop') return true; if(e && e.kind==='building' && BUILDING[e.data.type]?.wall && e.data.ownerId!==unit?.ownerId) return true; if(unit && isEnemyOwnedBlocked(unit,x,y)) return true; return false; }
 
@@ -364,6 +402,90 @@ let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>sav
 async function flushTroopSaves(){ if(!saveQueue.size)return; const batch=writeBatch(db); const ids=[...saveQueue].slice(0,80); ids.forEach(id=>{const u=troops.get(id); if(u)batch.set(ref('troops',id),u,{merge:true}); saveQueue.delete(id);}); await batch.commit().catch(e=>log('Save troop error: '+e.message)); }
 async function saveBuilding(b){await setDoc(ref('buildings',b.id),b,{merge:true});}
 
+function barbarianCampCount(){return [...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0).length;}
+function wanderingBarbarianOwners(){return new Set([...troops.values()].filter(u=>isBarbarianUnit(u)&&!u.campId&&u.hp>0).map(u=>u.ownerId));}
+function randomOpenTileInChunk(cx,cy,unit={ownerId:`${BARBARIAN_OWNER_PREFIX}_spawn`,barbarian:true}){
+  const candidates=[];
+  for(let i=0;i<40;i++){const x=cx*CHUNK_SIZE+1+Math.floor(Math.random()*(CHUNK_SIZE-2)),y=cy*CHUNK_SIZE+1+Math.floor(Math.random()*(CHUNK_SIZE-2)); if(!isBlocked(x,y,unit))candidates.push({x,y});}
+  return candidates[0]||null;
+}
+function findFreeBarbarianCampSpot(){
+  const camps=[...buildings.values()].filter(isBarbarianCamp), forts=[...buildings.values()].filter(b=>b.type==='fortress'&&b.hp>0);
+  for(let attempt=0;attempt<BARBARIAN_CAMP_RESPAWN_ATTEMPTS;attempt++){
+    const cx=Math.floor(Math.random()*WORLD_CHUNKS),cy=Math.floor(Math.random()*WORLD_CHUNKS),key=chunkKey(cx,cy),res=chunkResource(cx,cy);
+    if(territories.get(key)?.ownerId||[...buildings.values()].some(b=>b.hp>0&&b.chunkKey===key))continue;
+    if(forts.some(f=>{const c=parseChunkKey(f.chunkKey);return Math.max(Math.abs(c.cx-cx),Math.abs(c.cy-cy))<3;}))continue;
+    if(camps.some(c=>{const cc=parseChunkKey(c.chunkKey);return Math.max(Math.abs(cc.cx-cx),Math.abs(cc.cy-cy))<4;}))continue;
+    if((res==='gold'||res==='oil')&&Math.random()<.65)continue;
+    const tile=randomOpenTileInChunk(cx,cy); if(tile)return {...tile,cx,cy,chunkKey:key,resource:res};
+  }
+  return null;
+}
+async function claimBarbarianSpawnLock(){
+  if(!uid)return false; const stateRef=ref('worldState','barbarians'),n=now();
+  return runTransaction(db,async tx=>{const snap=await tx.get(stateRef),state=snap.exists()?snap.data():{}; if((state.barbarianSpawnLockUntil||0)>n&&state.barbarianSpawnLockUid!==uid)return false; tx.set(stateRef,{...state,barbarianSpawnLockUid:uid,barbarianSpawnLockUntil:n+BARBARIAN_SPAWN_LOCK_MS},{merge:true}); return true;});
+}
+function barbarianRoster(level){const cfg=BARBARIAN_CAMP_LEVELS[clamp(level,1,5)];return {barbarianRaider:cfg.raiders,barbarianThrower:cfg.throwers,barbarianBrute:cfg.brutes,barbarianDrummer:cfg.drummers,barbarianChieftain:cfg.chieftains};}
+function makeBarbarianUnit(type,ownerId,spot,extra={}){const def=UNIT[type],n=now(),id=`${ownerId}_${type}_${n}_${Math.floor(Math.random()*1e7)}`;return {id,ownerId,type,x:spot.x,y:spot.y,hp:def.hp,maxHp:def.hp,order:'guardCamp',targetId:null,path:[],nextMoveAt:0,nextAttackAt:0,buffs:{},barbarian:true,createdAt:n,...extra};}
+async function spawnBarbarianDefenders(camp,limit=Infinity){
+  const roster=barbarianRoster(camp.campLevel||1),existing=[...troops.values()].filter(u=>u.campId===camp.id&&u.hp>0),counts={};existing.forEach(u=>counts[u.type]=(counts[u.type]||0)+1);
+  const batch=writeBatch(db),claimed=new Set(existing.map(u=>tileKey(u.x,u.y)));let made=0;
+  for(const [type,wanted] of Object.entries(roster))for(let i=counts[type]||0;i<wanted&&made<limit;i++){const spot=formationTargets(camp.x,camp.y,wanted,{ownerId:camp.ownerId,barbarian:true},claimed)[0];if(!spot)continue;const u=makeBarbarianUnit(type,camp.ownerId,spot,{campId:camp.id,homeX:camp.x,homeY:camp.y,homeChunkKey:camp.chunkKey});batch.set(ref('troops',u.id),u);made++;}
+  if(made)await batch.commit(); return made;
+}
+async function spawnBarbarianCamp(spot){
+  const n=now(),id=`barbCamp_${n}_${Math.floor(Math.random()*1e7)}`,ownerId=`${BARBARIAN_OWNER_PREFIX}_${id}`,cfg=BARBARIAN_CAMP_LEVELS[1];
+  const camp={id,ownerId,type:'barbarianCamp',x:spot.x,y:spot.y,hp:cfg.hp,maxHp:cfg.hp,chunkKey:spot.chunkKey,campLevel:1,createdAt:n,lastLevelAt:n,lastSpawnAt:n,lastRaidAt:0,nextRaidAt:n+cfg.raidMs,lastThinkAt:n,simOwnerUid:null,simLockedUntil:0,state:'guard',barbarian:true};
+  await setDoc(ref('buildings',id),camp);buildings.set(id,camp);await spawnBarbarianDefenders(camp);log(`Barbarian camp spawned in chunk ${spot.chunkKey}.`);return camp;
+}
+async function spawnWanderingBarbarianForce(){
+  if(wanderingBarbarianOwners().size>=MAX_BARBARIAN_FORCE_COUNT)return false;
+  for(let tries=0;tries<200;tries++){const cx=Math.floor(Math.random()*WORLD_CHUNKS),cy=Math.floor(Math.random()*WORLD_CHUNKS),key=chunkKey(cx,cy),fort=[...buildings.values()].some(b=>b.type==='fortress'&&b.chunkKey===key);if(fort)continue;const spot=randomOpenTileInChunk(cx,cy);if(!spot)continue;
+    const n=now(),ownerId=`${BARBARIAN_OWNER_PREFIX}_force_${n}_${Math.floor(Math.random()*1e6)}`,count=5+Math.floor(Math.random()*8),claimed=new Set(),batch=writeBatch(db),target=chooseWanderingTarget(spot);
+    for(let i=0;i<count;i++){const pos=formationTargets(spot.x,spot.y,1,{ownerId,barbarian:true},claimed)[0]||spot,type=i===count-1&&count>9?'barbarianBrute':i%4===0?'barbarianThrower':'barbarianRaider';const u=makeBarbarianUnit(type,ownerId,pos,{order:target?'attackMove':'wander',moveGoal:target||{x:clamp(pos.x+Math.floor(Math.random()*25)-12,0,WORLD_TILES-1),y:clamp(pos.y+Math.floor(Math.random()*25)-12,0,WORLD_TILES-1)},expiresAt:n+BARBARIAN_FORCE_EXPIRE_MS});batch.set(ref('troops',u.id),u);}
+    await batch.commit();log(`Wandering barbarian force spawned in chunk ${key}.`);return true;
+  } return false;
+}
+function chooseWanderingTarget(spot){const candidates=[...territories.values()].filter(t=>t.ownerId).map(t=>({x:t.cx*CHUNK_SIZE+8,y:t.cy*CHUNK_SIZE+8,d:dist(spot,{x:t.cx*CHUNK_SIZE+8,y:t.cy*CHUNK_SIZE+8})})).sort((a,b)=>a.d-b.d);return candidates[0]?{x:candidates[0].x,y:candidates[0].y}:null;}
+async function maybeRunBarbarianSpawnCheck(){
+  if(barbarianSpawnCheckRunning||!playerKey)return;const n=now();if((barbarianWorldState.nextBarbarianSpawnCheckAt||0)>n)return;barbarianSpawnCheckRunning=true;
+  try{if(!await claimBarbarianSpawnLock()){log('Barbarian spawn check skipped because another player holds the lock.');return;}const verify=await getDoc(ref('worldState','barbarians'));if(!verify.exists()||verify.data().barbarianSpawnLockUid!==uid||verify.data().barbarianSpawnLockUntil<n)return;
+    if(barbarianCampCount()<MAX_BARBARIAN_CAMPS){const spot=findFreeBarbarianCampSpot();if(spot)await spawnBarbarianCamp(spot);else await spawnWanderingBarbarianForce();}else await spawnWanderingBarbarianForce();
+    const next=n+BARBARIAN_SPAWN_CHECK_MS;await setDoc(ref('worldState','barbarians'),{lastBarbarianSpawnCheckAt:n,nextBarbarianSpawnCheckAt:next,barbarianSpawnLockUid:null,barbarianSpawnLockUntil:0},{merge:true});barbarianWorldState.nextBarbarianSpawnCheckAt=next;
+  }finally{barbarianSpawnCheckRunning=false;}
+}
+async function claimBarbarianCampSimLock(camp){const n=now(),r=ref('buildings',camp.id);return runTransaction(db,async tx=>{const snap=await tx.get(r);if(!snap.exists()||snap.data().hp<=0)return false;const data=snap.data();if((data.simLockedUntil||0)>n&&data.simOwnerUid!==uid)return false;tx.update(r,{simOwnerUid:uid,simLockedUntil:n+BARBARIAN_SIM_LOCK_MS});return true;});}
+function chooseBarbarianRaidTarget(camp){
+  const cc=parseChunkKey(camp.chunkKey),level=camp.campLevel||1,candidates=[];
+  for(const t of territories.values()){if(!t.ownerId||isBarbarianOwner(t.ownerId))continue;const d=Math.max(Math.abs(t.cx-cc.cx),Math.abs(t.cy-cc.cy));if(d<4||d>8)continue;const acct=playerAccounts.get(t.ownerId);if(acct?.createdAt&&now()-acct.createdAt<BARBARIAN_NEW_PLAYER_GRACE_MS)continue;const fortress=[...buildings.values()].some(b=>b.ownerId===t.ownerId&&b.type==='fortress'&&b.chunkKey===t.id&&b.hp>0);if(fortress&&level<4)continue;const defenders=[...troops.values()].filter(u=>u.ownerId===t.ownerId&&u.hp>0&&getChunkOfTile(u.x,u.y).key===t.id).length;const resource=t.resource||chunkResource(t.cx,t.cy),resourceScore=['gold','forest','oil'].includes(resource)?30:0,recency=t.claimedAt?Math.max(0,20-(now()-t.claimedAt)/3600000):0;candidates.push({t,score:resourceScore+recency-defenders*3-d});}
+  candidates.sort((a,b)=>b.score-a.score);return candidates[0]?.t||null;
+}
+async function startBarbarianRaid(camp,target){
+  const n=now(),units=[...troops.values()].filter(u=>u.campId===camp.id&&u.hp>0),send=units.slice(0,Math.max(3,Math.ceil(units.length*.55))),goal={x:target.cx*CHUNK_SIZE+8,y:target.cy*CHUNK_SIZE+8},raidUntil=n+BARBARIAN_RAID_MIN_MS+Math.random()*(BARBARIAN_RAID_MAX_MS-BARBARIAN_RAID_MIN_MS);
+  send.forEach(u=>{u.order='attackMove';u.moveGoal=goal;u.assignedGoal=null;u.path=findPath(u,goal.x,goal.y,1400);u.raidTargetChunk=target.id;u.raidUntil=raidUntil;scheduleSaveTroops([u]);});camp.state='raiding';camp.lastRaidAt=n;camp.nextRaidAt=n+BARBARIAN_CAMP_LEVELS[camp.campLevel||1].raidMs;await saveBuilding(camp);log(`Barbarian raid started from ${camp.chunkKey} toward ${target.id}.`);
+}
+async function thinkBarbarianCamp(camp){
+  const n=now(),elapsed=n-(camp.lastThinkAt||camp.createdAt||n),level=camp.campLevel||1;
+  if(level<5&&n-(camp.lastLevelAt||camp.createdAt||n)>=BARBARIAN_LEVEL_MS){camp.campLevel=level+1;camp.lastLevelAt=n;const cfg=BARBARIAN_CAMP_LEVELS[camp.campLevel];const ratio=camp.hp/Math.max(1,camp.maxHp);camp.maxHp=cfg.hp;camp.hp=Math.max(1,Math.round(cfg.hp*ratio));log(`Barbarian camp ${camp.chunkKey} leveled up to ${camp.campLevel}.`);}
+  const defenders=[...troops.values()].filter(u=>u.campId===camp.id&&u.hp>0),nearEnemies=[...troops.values()].filter(u=>u.hp>0&&!isBarbarianUnit(u)&&dist(u,camp)<=10);
+  if(nearEnemies.length){camp.state='defend';for(const u of defenders){const target=nearEnemies.sort((a,b)=>dist(u,a)-dist(u,b))[0];if(target){u.order='attack';u.targetId=target.id;scheduleSaveTroops([u]);}}}
+  else if(n>=(camp.nextRaidAt||0)){camp.state='raidReady';const target=chooseBarbarianRaidTarget(camp);if(target)await startBarbarianRaid(camp,target);}
+  else{camp.state=defenders.length<Math.max(2,Object.values(barbarianRoster(camp.campLevel||1)).reduce((a,b)=>a+b,0)*.6)?'regroup':'guard';for(const u of defenders){if(u.raidUntil&&u.raidUntil<n){u.order='move';u.moveGoal={x:camp.x,y:camp.y};u.targetId=null;u.raidUntil=0;scheduleSaveTroops([u]);}else if(!u.raidUntil&&dist(u,camp)>9){u.order='move';u.moveGoal={x:camp.x,y:camp.y};u.targetId=null;scheduleSaveTroops([u]);}}}
+  if(camp.state==='regroup'&&elapsed>BARBARIAN_THINK_MS)await spawnBarbarianDefenders(camp,Math.min(3,1+Math.floor(elapsed/BARBARIAN_THINK_MS)));
+  camp.lastThinkAt=n;camp.lastSpawnAt=camp.state==='regroup'?n:(camp.lastSpawnAt||n);await saveBuilding(camp);
+}
+async function maybeSimulateNearbyBarbarianCamps(){
+  if(barbarianThinkRunning||!playerKey)return;barbarianThinkRunning=true;try{const center=screenToTile(canvas.width/2,canvas.height/2),camps=[...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0&&dist(b,center)<=CHUNK_SIZE*4);for(const camp of camps)if(await claimBarbarianCampSimLock(camp))await thinkBarbarianCamp(camp);
+    const n=now();for(const u of troops.values())if(isBarbarianUnit(u)&&!u.campId&&u.expiresAt&&u.expiresAt<n)await deleteDoc(ref('troops',u.id));
+  }finally{barbarianThinkRunning=false;}
+}
+async function destroyBarbarianCamp(camp,killerId){
+  const campRef=ref('buildings',camp.id),reward=BARBARIAN_CAMP_REWARDS[camp.campLevel||1]||BARBARIAN_CAMP_REWARDS[1],claimed=await runTransaction(db,async tx=>{const snap=await tx.get(campRef);if(!snap.exists()||snap.data().rewardedAt)return false;tx.update(campRef,{hp:0,rewardedAt:now(),rewardedBy:killerId||null,defeated:true});return true;});
+  if(!claimed)return;camp.rewardedAt=now();
+  if(killerId===playerKey){addRes(reward);await saveAccount();log(`Barbarian camp destroyed! Reward: +${reward.gold} gold, +${reward.lumber} lumber, +${reward.oil} oil.`);}else log(`Barbarian camp ${camp.chunkKey} was destroyed by ${killerId||'an unknown army'}.`);
+  const batch=writeBatch(db);for(const u of troops.values())if(u.campId===camp.id)batch.delete(ref('troops',u.id));await batch.commit();selected.delete(camp.id);updateUI();
+}
+
 function tick(dt){
   const n=now(); const reservations=new Set();
   // remove expired mobile towers
@@ -378,27 +500,30 @@ function tick(dt){
     const def=UNIT[u.type]; if(!def)continue;
     const mine = u.ownerId===playerKey;
     if(mine) handleLocalTroopAI(u,def,n,reservations);
+    else if(isBarbarianUnit(u) && shouldSimOfflineEnemy(u)) handleLocalTroopAI(u,def,n,reservations,true);
     else if(!isOwnerOnline(u.ownerId) && shouldSimOfflineEnemy(u)) handleLocalTroopAI(u,def,n,reservations,true);
   }
   for(const b of buildings.values()) if(b.hp>0 && BUILDING[b.type]?.defense && (b.ownerId===playerKey || !isOwnerOnline(b.ownerId))) buildingAggro(b,n);
   if(n-lastProductionCheck>TRAINING_POLL_MS){lastProductionCheck=n; completeTrainingQueues().catch(e=>log('Production error: '+e.message)); checkGoblinPortalBattle().catch(e=>log('Portal error: '+e.message));}
   if(n-lastCaptureCheck>30000){lastCaptureCheck=n; resolveCapturePressure().catch(e=>log('Capture check error: '+e.message));}
+  if(n-lastBarbarianPoll>60000){lastBarbarianPoll=n;maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message));}
+  if(n-lastBarbarianThink>BARBARIAN_THINK_MS){lastBarbarianThink=n;maybeSimulateNearbyBarbarianCamps().catch(e=>log('Barbarian AI error: '+e.message));}
   if(n-lastSave>SAVE_EVERY_MS){lastSave=n; flushTroopSaves();}
 }
 function isOwnerOnline(owner){ if(owner===playerKey)return true; return false; } // prototype: current browser simulates visible/offline enemy actions if needed
-function shouldSimOfflineEnemy(u){ if(String(u.ownerId).startsWith(`goblin_${playerKey}`)) return true; const c=getChunkOfTile(u.x,u.y); const hc=getChunkOfTile(Math.floor((camera.x+canvas.width/2)/(32*camera.zoom)),Math.floor((camera.y+canvas.height/2)/(32*camera.zoom))); return Math.abs(c.cx-hc.cx)<=2 && Math.abs(c.cy-hc.cy)<=2; }
-function enemiesNear(unit,range){return [...troops.values()].filter(e=>e.hp>0&&e.ownerId!==unit.ownerId&&dist(unit,e)<=range && canFightHere(unit,e));}
-function enemyBuildingsNear(unit,range){return [...buildings.values()].filter(b=>b.hp>0&&b.ownerId!==unit.ownerId&&dist(unit,b)<=range && canFightHere(unit,b));}
-function canFightHere(a,target){ if(a.inArena||target.inArena)return true; const t=territoryOfTile(target.x,target.y); if(!t.ownerId)return true; if(t.ownerId===a.ownerId)return true; return activeBattleAllows(a.ownerId,target.x,target.y); }
+function shouldSimOfflineEnemy(u){ if(isBarbarianUnit(u)){const center=screenToTile(canvas.width/2,canvas.height/2);return dist(u,center)<=CHUNK_SIZE*4;} if(String(u.ownerId).startsWith(`goblin_${playerKey}`)) return true; const c=getChunkOfTile(u.x,u.y); const hc=getChunkOfTile(Math.floor((camera.x+canvas.width/2)/(32*camera.zoom)),Math.floor((camera.y+canvas.height/2)/(32*camera.zoom))); return Math.abs(c.cx-hc.cx)<=2 && Math.abs(c.cy-hc.cy)<=2; }
+function enemiesNear(unit,range){return [...troops.values()].filter(e=>e.hp>0&&areHostile(unit,e)&&dist(unit,e)<=range && canFightHere(unit,e));}
+function enemyBuildingsNear(unit,range){return [...buildings.values()].filter(b=>b.hp>0&&areHostile(unit,b)&&dist(unit,b)<=range && canFightHere(unit,b));}
+function canFightHere(a,target){ if(isBarbarianUnit(a)||isBarbarianUnit(target)||isBarbarianCamp(a)||isBarbarianCamp(target)||isBarbarianOwner(a.ownerId)||isBarbarianOwner(target.ownerId))return true; if(a.inArena||target.inArena)return true; const t=territoryOfTile(target.x,target.y); if(!t.ownerId)return true; if(t.ownerId===a.ownerId)return true; return activeBattleAllows(a.ownerId,target.x,target.y); }
 function handleLocalTroopAI(u,def,n,reservations,offline=false){
   // build task overrides aggro/attack.
   if(u.buildTask){ if(dist(u,u.buildTask)>0){moveOneStep(u,def,n,reservations,u.buildTask.x,u.buildTask.y);return;} if(!u.buildTask.startedAt)u.buildTask.startedAt=n; const need=u.buildTask.kind==='mobileTower'?600000:300000; if(n-u.buildTask.startedAt>=need){completeEngineerBuild(u); } scheduleSaveTroops([u]); return; }
   if(def.ability==='heal' && u.order==='idle'){ const ally=[...troops.values()].find(a=>a.ownerId===u.ownerId&&a.hp<a.maxHp&&dist(a,u)<=def.range); if(ally && n>=(u.nextAttackAt||0)){ally.hp=Math.min(ally.maxHp,ally.hp+2); u.nextAttackAt=n+1500; scheduleSaveTroops([u,ally]);}}
   let target=null;
   if(u.targetId){target=troops.get(u.targetId)||buildings.get(u.targetId); if(!target||target.hp<=0){u.targetId=null;u.order='idle';target=null;}}
-  if(!target && (u.order==='idle'||u.order==='attackMove')) target = enemiesNear(u,def.range+5)[0] || enemyBuildingsNear(u,def.range+5)[0];
+  if(!target && (u.order==='idle'||u.order==='attackMove'||u.order==='guardCamp'||u.order==='wander')) target = enemiesNear(u,def.range+5)[0] || enemyBuildingsNear(u,def.range+5)[0];
   if(target){ if(dist(u,target)<=def.range){ if(n>=(u.nextAttackAt||0)){performAttack(u,target); u.nextAttackAt=n+attackDelay(u,def); scheduleSaveTroops([u,target]);} return; } else { moveOneStep(u,def,n,reservations,target.x,target.y); return; } }
-  if((u.order==='move'||u.order==='attackMove')){
+  if((u.order==='move'||u.order==='attackMove'||u.order==='wander')){
     if(u.path && u.path.length){ moveAlongPath(u,def,n,reservations); return; }
     if(u.moveGoal){
       // Do not stop just because one troop arrived or the first assigned square became blocked.
@@ -419,15 +544,16 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   else if(u.order!=='idle' && (!u.path || !u.path.length)) {u.order='idle'; scheduleSaveTroops([u]);}
 }
 function moveOneStep(u,def,n,res,tx,ty){ if(!u.path||!u.path.length||hash2(n%999,u.x+u.y)>.88) u.path=findPath(u,tx,ty,1200); moveAlongPath(u,def,n,res); }
-function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(slowed?1.5:1); scheduleSaveTroops([u]); }
+function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1); scheduleSaveTroops([u]); }
 function hasBannerAura(u){return [...troops.values()].some(ally=>ally.hp>0&&ally.ownerId===u.ownerId&&ally.type==='bannerKnight'&&dist(ally,u)<=3)}
-function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)?0.9:1))}
+function hasBarbarianDrummerAura(u){return isBarbarianUnit(u)&&[...troops.values()].some(a=>a.hp>0&&a.ownerId===u.ownerId&&a.type==='barbarianDrummer'&&dist(a,u)<=3)}
+function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)||hasBarbarianDrummerAura(u)?0.9:1))}
 function effectiveMaxHp(e,n=now()){return (e.maxHp||e.hp||1)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
 function applyDamage(target,amount,n=now()){const defended=target.buffs?.shieldWallUntil>n||target.buffs?.holdLineUntil>n; const dealt=Math.max(1,amount-(defended?1:0)); target.hp=Math.max(0,(target.hp||1)-dealt); return dealt}
-function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const n=now(); const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>n)?1:0; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
-  if(def.splash){ for(const e of [...troops.values(),...buildings.values()].filter(e=>e.hp>0&&e.ownerId!==u.ownerId&&Math.abs(e.x-target.x)<def.splash&&Math.abs(e.y-target.y)<def.splash)) if(!targets.includes(e))targets.push(e); }
-  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0; applyDamage(t,def.dmg+rally+marked,n); if(t.hp<=0 && troops.has(t.id)) selected.delete(t.id);}); }
-function buildingAggro(b,n){ const bd=BUILDING[b.type]; if(n<(b.nextAttackAt||0))return; const target=[...troops.values()].find(u=>u.hp>0&&u.ownerId!==b.ownerId&&dist(u,b)<=bd.range&&canFightHere({ownerId:b.ownerId},u)); if(target){applyDamage(target,bd.dmg,n); b.nextAttackAt=n+bd.attackMs; scheduleSaveTroops([target]); saveBuilding(b);}}
+function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const n=now(); const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>n)?1:0; const battleCry=(u.buffs?.battleCryUntil&&u.buffs.battleCryUntil>n)?1:0; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
+  if(def.splash){ for(const e of [...troops.values(),...buildings.values()].filter(e=>e.hp>0&&areHostile(u,e)&&Math.abs(e.x-target.x)<def.splash&&Math.abs(e.y-target.y)<def.splash)) if(!targets.includes(e))targets.push(e); }
+  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0,structure=buildings.has(t.id)?(def.structureBonus||0):0; applyDamage(t,def.dmg+rally+battleCry+marked+structure,n); if(buildings.has(t.id)&&!isBarbarianUnit(u))t.lastDamagedBy=u.ownerId;if(t.hp<=0&&troops.has(t.id))selected.delete(t.id);if(buildings.has(t.id)){if(t.hp<=0&&isBarbarianCamp(t))destroyBarbarianCamp(t,t.lastDamagedBy||u.ownerId).catch(e=>log('Camp reward error: '+e.message));else saveBuilding(t);}}); if(def.ability==='battleCry'&&(!u.lastBattleCryAt||n-u.lastBattleCryAt>=60000)){u.lastBattleCryAt=n;for(const ally of troops.values())if(isBarbarianUnit(ally)&&ally.ownerId===u.ownerId&&dist(u,ally)<=3){ally.buffs=ally.buffs||{};ally.buffs.battleCryUntil=n+30000;scheduleSaveTroops([ally]);}} }
+function buildingAggro(b,n){ const bd=BUILDING[b.type]; if(n<(b.nextAttackAt||0))return; const target=[...troops.values()].find(u=>u.hp>0&&areHostile(b,u)&&dist(u,b)<=bd.range&&canFightHere({ownerId:b.ownerId},u)); if(target){applyDamage(target,bd.dmg,n); b.nextAttackAt=n+bd.attackMs; scheduleSaveTroops([target]); saveBuilding(b);}}
 async function completeEngineerBuild(u){ const task=u.buildTask; if(!task)return; const type=task.kind; const id=`${playerKey}_${type}_${u.id}_${now()}`; const bdef=BUILDING[type]; const b={id,ownerId:playerKey,type,x:u.x,y:u.y,hp:bdef.hp,maxHp:bdef.hp,chunkKey:getChunkOfTile(u.x,u.y).key,createdAt:now()}; if(type==='mobileTower'){ // one mobile tower per engineer; remove old
     for(const old of buildings.values()) if(old.type==='mobileTower'&&old.engineerId===u.id) await deleteDoc(ref('buildings',old.id)); b.engineerId=u.id; b.expiresAt=now()+bdef.temporaryMs;
   }
@@ -436,7 +562,7 @@ async function completeEngineerBuild(u){ const task=u.buildTask; if(!task)return
 
 async function resolveCapturePressure(){
   const counts=new Map(); const enemyPresence=new Map();
-  for(const u of troops.values()){if(u.hp<=0)continue; const k=getChunkOfTile(u.x,u.y).key; if(!counts.has(k))counts.set(k,new Map()); const m=counts.get(k); m.set(u.ownerId,(m.get(u.ownerId)||0)+1);}
+  for(const u of troops.values()){if(u.hp<=0||isBarbarianUnit(u))continue; const k=getChunkOfTile(u.x,u.y).key; if(!counts.has(k))counts.set(k,new Map()); const m=counts.get(k); m.set(u.ownerId,(m.get(u.ownerId)||0)+1);}
   for(const [k,m] of counts){ const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]); if(!arr.length)continue; const [leader,leadCount]=arr[0]; const second=arr[1]?.[1]||0; const t=territories.get(k); if(!t || t.ownerId===leader)continue; const canContest = !t.ownerId || activeBattleAllows(leader,parseChunkKey(k).cx*CHUNK_SIZE+1,parseChunkKey(k).cy*CHUNK_SIZE+1);
     if(!canContest)continue; if(leadCount-second<5)continue;
     const n=now(); const cap=t.capture&&t.capture.playerId===leader?t.capture:{playerId:leader,startedAt:n,enemyMs:0,lastAt:n}; if(second>0)cap.enemyMs+=(n-(cap.lastAt||n)); cap.lastAt=n; t.capture=cap; await setDoc(ref('territories',k),t,{merge:true});
@@ -491,7 +617,7 @@ function renderBuildButtons(){
   if(!build)return;
   build.innerHTML='';
   for(const [type,bdef] of Object.entries(BUILDING)){
-    if(['fortress','goldMine'].includes(type))continue;
+    if(['fortress','goldMine'].includes(type)||bdef.barbarian)continue;
     const btn=document.createElement('button');
     btn.innerHTML=`${bdef.name}<br><span class="muted">${costText(bdef.cost)}</span>`;
     btn.onclick=()=>{buildMode=type; log(`Build mode: ${bdef.name}. Right-click owned ground.`)};
@@ -750,8 +876,8 @@ $('homeBtn').onclick=()=>{camera.x=account.home.x*32*camera.zoom-canvas.width/2;
 
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('mousedown',e=>{ if(e.button===0){mouse.down=true;mouse.startX=e.clientX;mouse.startY=e.clientY; selBox.style.display='block'; selBox.style.left=e.clientX+'px';selBox.style.top=e.clientY+'px';selBox.style.width='0px';selBox.style.height='0px';}});
-window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); hoveredEntity=entityAtTile(hoveredTile.x,hoveredTile.y); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=`${c.cx},${c.cy}`; const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br>Chunk ${terr.id}<br>Resource: ${terr.resource}<br>Owner: ${terr.ownerId||'neutral'}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`; if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
-window.addEventListener('mouseup',e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=entityAtTile(t.x,t.y); if(ent&&ent.data.ownerId===playerKey){ if(!e.shiftKey)selected.clear(); selected.add(ent.id);} else if(!e.shiftKey) selected.clear(); } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
+window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); hoveredEntity=entityAtTile(hoveredTile.x,hoveredTile.y); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=`${c.cx},${c.cy}`; const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br>Chunk ${terr.id}<br>Resource: ${terr.resource}<br>Owner: ${terr.ownerId||'neutral'}${camp?`<br><b style="color:#ff9b45">Barbarian Camp (Level ${camp.campLevel||1})</b>`:''}${hoverName?`<br>Hovered: ${hoverName}`:''}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`; if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
+window.addEventListener('mouseup',e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=entityAtTile(t.x,t.y); if(ent){ if(!e.shiftKey)selected.clear(); selected.add(ent.id);} else if(!e.shiftKey) selected.clear(); } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
 canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; $('modeReadout').textContent='Move'; return;} const ent=entityAtTile(t.x,t.y); if(ent&&ent.data.ownerId!==playerKey) issueAttack(selected,ent); else issueMove(selected,t.x,t.y,attackMode); attackMode=false; $('modeReadout').textContent='Move'; }});
 canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; camera.zoom=clamp(camera.zoom*(e.deltaY<0?1.1:.9),.45,2.2); const mx=e.offsetX,my=e.offsetY; camera.x=(camera.x+mx)*(camera.zoom/old)-mx; camera.y=(camera.y+my)*(camera.zoom/old)-my;},{passive:false});
 window.addEventListener('keydown',e=>{ if(e.key.toLowerCase()==='a'){attackMode=true;$('modeReadout').textContent='Attack-move';} const ability=currentAbilityHotkeys.get(e.key); if(ability&&!e.repeat){e.preventDefault();ability.trigger();}});
@@ -765,8 +891,8 @@ function svgDataUrl(svg){return 'data:image/svg+xml;charset=utf-8,'+encodeURICom
 function getIcon(kind,type,ownerKind){
   const key=`${kind}:${type}:${ownerKind}`; if(iconCache.has(key)) return iconCache.get(key);
   const friendly=ownerKind==='self';
-  const primary=friendly?'#18e982':(ownerKind==='goblin'?'#8be05e':'#ff4d4d');
-  const secondary=friendly?'#0b8f50':(ownerKind==='goblin'?'#4b7f2a':'#9e1f2f');
+  const primary=friendly?'#18e982':(ownerKind==='goblin'?'#8be05e':ownerKind==='barbarian'?'#c95c2b':'#ff4d4d');
+  const secondary=friendly?'#0b8f50':(ownerKind==='goblin'?'#4b7f2a':ownerKind==='barbarian'?'#6f2d20':'#9e1f2f');
   const gold='#f4c542', wood='#8b5a2b', stone='#9aa3ad', oil='#a79cff', dark='#101722', white='#f4f7fb';
   let body='';
   if(kind==='troop'){
@@ -796,6 +922,11 @@ function getIcon(kind,type,ownerKind){
     else if(type==='bannerKnight') body=base+sword+`<path d="M17 7 V53" stroke="${wood}" stroke-width="4"/><path d="M19 9 H45 L38 20 H19 Z" fill="${gold}" stroke="${dark}" stroke-width="2"/>`;
     else if(type==='engineer') body=base+gear;
     else if(type==='runeMason') body=base+gear+`<path d="M15 48 L24 27 L33 48 Z" fill="#7df9ff" stroke="${dark}" stroke-width="2"/>`;
+    else if(type==='barbarianRaider') body=base+sword+`<path d="M15 15 L24 7 L29 19" fill="${secondary}" stroke="${dark}" stroke-width="3"/>`;
+    else if(type==='barbarianThrower') body=base+bow;
+    else if(type==='barbarianBrute') body=`<circle cx="32" cy="35" r="27" fill="${primary}" stroke="${dark}" stroke-width="5"/>`+shield;
+    else if(type==='barbarianDrummer') body=base+`<circle cx="34" cy="42" r="14" fill="${wood}" stroke="${dark}" stroke-width="4"/><path d="M18 16 L45 48 M48 15 L22 48" stroke="${gold}" stroke-width="3"/>`;
+    else if(type==='barbarianChieftain') body=base+crown+sword;
     else if(type==='goblin') body=`<path d="M11 38 L20 16 L29 31 L38 16 L53 42 Q42 58 24 54 Z" fill="${primary}" stroke="${dark}" stroke-width="4"/><circle cx="25" cy="37" r="4" fill="${dark}"/><circle cx="40" cy="37" r="4" fill="${dark}"/><path d="M26 47 Q33 52 42 46" fill="none" stroke="${dark}" stroke-width="3"/>`;
     else body=base;
   } else {
@@ -804,6 +935,7 @@ function getIcon(kind,type,ownerKind){
     const tower=`<rect x="18" y="16" width="28" height="40" fill="${stone}" stroke="${dark}" stroke-width="4"/><path d="M15 17 H49 V8 H42 V14 H35 V8 H29 V14 H22 V8 H15 Z" fill="${stone}" stroke="${dark}" stroke-width="3"/>`;
     const wall=`<rect x="7" y="24" width="50" height="27" fill="${type==='stoneWall'?stone:wood}" stroke="${dark}" stroke-width="4"/><path d="M10 31 H55 M17 24 V51 M32 24 V51 M47 24 V51" stroke="${dark}" stroke-width="2" opacity=".55"/>`;
     if(type==='fortress') body=`<rect x="11" y="25" width="42" height="29" fill="${stone}" stroke="${dark}" stroke-width="4"/><path d="M9 27 H55 V13 H47 V22 H39 V13 H31 V22 H23 V13 H15 V22 H9 Z" fill="${stone}" stroke="${dark}" stroke-width="3"/><path d="M27 54 V39 Q32 34 37 39 V54" fill="${dark}"/>`;
+    else if(type==='barbarianCamp') body=`<path d="M7 53 L21 17 L32 31 L44 14 L58 53 Z" fill="${secondary}" stroke="${dark}" stroke-width="4"/><path d="M32 31 V53" stroke="${dark}" stroke-width="4"/><path d="M43 14 V5 L58 11 L43 18" fill="#b51f2e" stroke="${dark}" stroke-width="2"/>`;
     else if(type==='goldMine') body=`<path d="M8 51 L18 22 L46 14 L56 51 Z" fill="#5b4a36" stroke="${dark}" stroke-width="4"/><circle cx="34" cy="35" r="10" fill="${gold}" stroke="${dark}" stroke-width="3"/>`;
     else if(['lumberWall','stoneWall','barricade'].includes(type)) body=wall;
     else if(['arrowTower','guardTower','oilTower','mobileTower'].includes(type)) body=tower+`<path d="M24 36 H40" stroke="${dark}" stroke-width="5"/>`;
@@ -815,10 +947,10 @@ function getIcon(kind,type,ownerKind){
   const img=new Image(); img.src=svgDataUrl(svg); iconCache.set(key,img); return img;
 }
 function drawSvgIcon(kind,type,ownerId,x,y,size){
-  const ownerKind=ownerId===playerKey?'self':(String(ownerId).startsWith('goblin_')?'goblin':'enemy');
+  const ownerKind=ownerId===playerKey?'self':(String(ownerId).startsWith('goblin_')?'goblin':isBarbarianOwner(ownerId)?'barbarian':'enemy');
   const img=getIcon(kind,type,ownerKind);
   if(img.complete) ctx.drawImage(img,x,y,size,size);
-  else {ctx.fillStyle=ownerKind==='self'?'#17e57c':ownerKind==='goblin'?'#8be05e':'#ff4b4b';ctx.fillRect(x+size*.15,y+size*.15,size*.7,size*.7);}
+  else {ctx.fillStyle=ownerKind==='self'?'#17e57c':ownerKind==='goblin'?'#8be05e':ownerKind==='barbarian'?'#c95c2b':'#ff4b4b';ctx.fillRect(x+size*.15,y+size*.15,size*.7,size*.7);}
 }
 function draw(){ const size=32*camera.zoom; ctx.clearRect(0,0,canvas.width,canvas.height); const startX=Math.floor(camera.x/size), startY=Math.floor(camera.y/size), endX=Math.ceil((camera.x+canvas.width)/size), endY=Math.ceil((camera.y+canvas.height)/size);
   for(let y=startY;y<=endY;y++) for(let x=startX;x<=endX;x++){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)continue; const s=tileToScreen(x,y); const terr=terrainAt(x,y); ctx.fillStyle=terr==='water'?'#12304a':terr==='mountain'?'#40434a':terr==='forest'?'#153b25':'#1c2a1f'; ctx.fillRect(s.x,s.y,size+1,size+1); const owner=ownerOfTile(x,y); if(owner){ctx.fillStyle=owner===playerKey?'rgba(24,201,100,.22)':'rgba(255,77,77,.22)'; ctx.fillRect(s.x,s.y,size,size);} const cres=chunkResource(Math.floor(x/CHUNK_SIZE),Math.floor(y/CHUNK_SIZE)); if(camera.zoom>.85&&cres!=='plain'){ctx.fillStyle=cres==='oil'?'rgba(199,192,255,.85)':cres==='gold'?'rgba(255,211,94,.85)':'rgba(88,214,141,.85)'; ctx.font=`${Math.max(7,8*camera.zoom)}px Segoe UI`; ctx.fillText(cres[0].toUpperCase(),s.x+2,s.y+9*camera.zoom);} }
