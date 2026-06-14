@@ -100,6 +100,8 @@ const SAVE_EVERY_MS = 1200;
 const RESOURCE_HOUR_MS = 3600000;
 const UNCLAIMED_CAPTURE_REQUIRED_MS = 5 * 3600000;
 const CAPTURE_POLL_MS = 30000;
+const UNCLAIMED_CAPTURE_DECAY_MULTIPLIER = 0.5;
+const TERRAIN_REBALANCE_VERSION = 2;
 const TRAINING_POLL_MS = 5000;
 const CONSTRUCTION_POLL_MS = 5000;
 const GOBLIN_COOLDOWN_MS = 3600000;
@@ -433,20 +435,40 @@ function isTileVisible(x,y){const c=getChunkOfTile(x,y);return isChunkVisible(c.
 
 function hash2(x,y,seed=12345){let n=(x*374761393+y*668265263+seed*1442695041)>>>0;n=(n^(n>>13))*1274126177;return ((n^(n>>16))>>>0)/4294967295;}
 function chunkResource(cx,cy){
+  // Balanced fallback for unowned / not-yet-saved chunks. Existing player-owned territory keeps its saved resource.
   const r=hash2(cx,cy,777);
-  if(r>0.965) return 'oil';      // rarest
-  if(r>0.79) return 'gold';
-  if(r>0.50) return 'forest';
-  return 'plain';
+  if(r<0.20) return 'gold';
+  if(r<0.40) return 'forest';
+  if(r<0.60) return 'oil';
+  if(r<0.80) return 'plain';
+  const s=hash2(cx,cy,778);
+  if(s<0.25) return 'tradePost';
+  if(s<0.50) return 'ancientShrine';
+  if(s<0.78) return 'pveBoss';
+  return 'relicRuin';
 }
-function resourceDisplayName(resource){return resource==='gold'?'Gold':resource==='forest'?'Lumber':resource==='oil'?'Oil':'Plain';}
-function resourceColor(resource){return resource==='gold'?'#ffd36b':resource==='forest'?'#58d68d':resource==='oil'?'#b9b6c7':'#9aa7b4';}
-function resourceIcon(resource){return resource==='gold'?'G':resource==='forest'?'L':resource==='oil'?'O':'P';}
-function resourceForChunk(cx,cy){return territories.get(chunkKey(cx,cy))?.resource||chunkResource(cx,cy);}
+function normalizedResource(resource){return resource==='lumber'?'forest':(resource||'plain');}
+function resourceDisplayName(resource){resource=normalizedResource(resource);return resource==='gold'?'Gold':resource==='forest'?'Lumber':resource==='oil'?'Oil':resource==='tradePost'?'Trade Route':resource==='ancientShrine'?'Ancient Shrine':resource==='pveBoss'?'PvE Boss Land':resource==='relicRuin'?'Relic Ruins':'Plain';}
+function resourceColor(resource){resource=normalizedResource(resource);return resource==='gold'?'#ffd36b':resource==='forest'?'#58d68d':resource==='oil'?'#b9b6c7':resource==='tradePost'?'#f4c542':resource==='ancientShrine'?'#ba8cff':resource==='pveBoss'?'#ff684f':resource==='relicRuin'?'#7de7ff':'#9aa7b4';}
+function resourceIcon(resource){resource=normalizedResource(resource);return resource==='gold'?'G':resource==='forest'?'L':resource==='oil'?'O':resource==='tradePost'?'T':resource==='ancientShrine'?'S':resource==='pveBoss'?'B':resource==='relicRuin'?'R':'P';}
+function resourceForChunk(cx,cy){
+  const t=territories.get(chunkKey(cx,cy));
+  if(t?.ownerId)return t.resource||chunkResource(cx,cy);
+  return t?.resource||chunkResource(cx,cy);
+}
+function resourceIsPlain(resource){return !resource||normalizedResource(resource)==='plain';}
+function balancedResourceForChunk(cx,cy){return chunkResource(cx,cy);}
+function specialLandmarkTypeForResource(resource,cx,cy){
+  resource=normalizedResource(resource);
+  if(resource==='tradePost')return 'tradePost';
+  if(resource==='ancientShrine')return 'ancientShrine';
+  if(resource==='pveBoss'){const bossTypes=['dragonNest','giantCave','undeadCrypt','warlordFortress','ancientTitanRuins'];return bossTypes[Math.floor(hash2(cx,cy,779)*bossTypes.length)]||'dragonNest';}
+  return null;
+}
 function terrainAt(x,y){const r=hash2(x,y,999); if(r>.93)return 'water'; if(r>.82)return 'mountain'; if(r>.66)return 'forest'; return 'plain';}
 function resourceIncomeForTerritory(t){
   let inc={gold:4,lumber:4,oil:0};
-  const res=t.resource||chunkResource(t.cx,t.cy);
+  const res=normalizedResource(t.resource||chunkResource(t.cx,t.cy));
   if(res==='gold') inc.gold+=34;
   if(res==='forest') inc.lumber+=46;
   if(res==='oil') inc.oil+=9;
@@ -547,6 +569,27 @@ async function setupNewPlayer(owner,home){
   await batch.commit();
 }
 
+
+async function maybeRunTerrainRebalance(){
+  const stateSnap=await getDoc(ref('worldState','terrainBalance'));
+  const state=stateSnap.exists()?stateSnap.data():{};
+  if(state.version>=TERRAIN_REBALANCE_VERSION)return;
+  const unowned=[...territories.values()].filter(t=>!t.ownerId);
+  if(unowned.length<25)return;
+  const plainCount=unowned.filter(t=>resourceIsPlain(t.resource)).length;
+  if(plainCount/unowned.length<=0.90)return;
+  let batch=writeBatch(db),writes=0,total=0;
+  for(const t of unowned){
+    const resource=balancedResourceForChunk(t.cx,t.cy);
+    batch.set(ref('territories',t.id),{id:t.id,cx:t.cx,cy:t.cy,ownerId:null,resource},{merge:true});
+    writes++;total++;
+    if(writes>=450){await batch.commit();batch=writeBatch(db);writes=0;}
+  }
+  if(writes)await batch.commit();
+  await setDoc(ref('worldState','terrainBalance'),{version:TERRAIN_REBALANCE_VERSION,ranAt:now(),updatedUnownedTerritories:total},{merge:true});
+  log(`Rebalanced ${total} unowned territories into gold, lumber, oil, plains, and special terrain. Player-controlled land was skipped.`);
+}
+
 async function startGame(){
   $('login').style.display='none'; $('game').style.display='block'; $('playerTitle').textContent=account.displayName||playerKey;
   resize(); camera.x=account.home.x*32 - canvas.width/2; camera.y=account.home.y*32 - canvas.height/2;
@@ -562,6 +605,7 @@ async function startGame(){
   await collectOfflineResources(); buildButtons(); requestAnimationFrame(loop); log('Entered world at your fortress.');
   setTimeout(()=>maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message)),1200);
   setTimeout(()=>ensureLandmarksGenerated().catch(e=>log('Landmark generation error: '+e.message)),1800);
+  setTimeout(()=>maybeRunTerrainRebalance().catch(e=>log('Terrain rebalance error: '+e.message)),2400);
   updatePresence();setInterval(updatePresence,30000);
 }
 async function collectOfflineResources(){
@@ -938,20 +982,59 @@ async function completeEngineerBuild(u){ const task=u.buildTask; if(!task)return
 }
 
 async function resolveCapturePressure(){
+  const n=now();
   const counts=new Map();
-  for(const u of troops.values()){if(u.hp<=0||isBarbarianUnit(u))continue; const k=getChunkOfTile(u.x,u.y).key; if(!counts.has(k))counts.set(k,new Map()); const m=counts.get(k); m.set(u.ownerId,(m.get(u.ownerId)||0)+1);}
-  for(const [k,m] of counts){const players=[...m.keys()],local=territories.get(k),contested=players.length>1,leader=contested&&players.includes(local?.capture?.ownerId)?local.capture.ownerId:players[0],leadCount=m.get(leader)||0,second=[...m.entries()].filter(([id])=>id!==leader).reduce((sum,[,count])=>sum+count,0),landmark=landmarkAtChunk(k);if(landmark&&!isBossLandmark(landmark)&&landmark.ownerId!==leader&&leadCount>second&&(landmark.hp<=0||leadCount>=5)){landmark.hp=0;landmark.bossAlive=false;landmark.ownerId=leader;landmark.lastDefeatedBy=leader;landmark.lastDefeatedAt=now();await saveLandmark(landmark);log(`${leader} occupied and captured ${LANDMARK[landmark.type].name}.`);}
-    if(!local||local.ownerId)continue;const n=now();
-    const result=await runTransaction(db,async tx=>{const territoryRef=ref('territories',k),snap=await tx.get(territoryRef);if(!snap.exists()||snap.data().ownerId)return null;const data=snap.data(),old=data.capture||null;let capture;
+  for(const u of troops.values()){
+    if(u.hp<=0||isBarbarianUnit(u))continue;
+    const k=getChunkOfTile(u.x,u.y).key;
+    if(!counts.has(k))counts.set(k,new Map());
+    const m=counts.get(k);
+    m.set(u.ownerId,(m.get(u.ownerId)||0)+1);
+  }
+
+  const touched=new Set();
+  for(const [k,m] of counts){
+    touched.add(k);
+    const players=[...m.keys()],local=territories.get(k),contested=players.length>1,leader=contested&&players.includes(local?.capture?.ownerId)?local.capture.ownerId:players[0],leadCount=m.get(leader)||0,second=[...m.entries()].filter(([id])=>id!==leader).reduce((sum,[,count])=>sum+count,0),landmark=landmarkAtChunk(k);
+    if(landmark&&!isBossLandmark(landmark)&&landmark.ownerId!==leader&&leadCount>second&&(landmark.hp<=0||leadCount>=5)){
+      landmark.hp=0;landmark.bossAlive=false;landmark.ownerId=leader;landmark.lastDefeatedBy=leader;landmark.lastDefeatedAt=n;await saveLandmark(landmark);log(`${leader} occupied and captured ${LANDMARK[landmark.type].name}.`);
+    }
+    if(local?.ownerId)continue;
+    const {cx,cy}=parseChunkKey(k);
+    const result=await runTransaction(db,async tx=>{
+      const territoryRef=ref('territories',k),snap=await tx.get(territoryRef);
+      const data=snap.exists()?snap.data():{id:k,cx,cy,ownerId:null,resource:balancedResourceForChunk(cx,cy),capture:null};
+      if(data.ownerId)return null;
+      const old=data.capture||null;
+      let capture;
       if(!old||old.ownerId!==leader)capture={ownerId:leader,progressMs:0,lastUpdatedAt:n,contested};
       else capture={...old,progressMs:Number(old.progressMs||0)+(contested?0:Math.max(0,n-Number(old.lastUpdatedAt||n))),lastUpdatedAt:n,contested};
-      if(capture.progressMs>=UNCLAIMED_CAPTURE_REQUIRED_MS){tx.update(territoryRef,{ownerId:capture.ownerId,claimedAt:n,capture:null});return {captured:true,ownerId:capture.ownerId};}
-      tx.update(territoryRef,{capture});return {capture};
+      if(capture.progressMs>=UNCLAIMED_CAPTURE_REQUIRED_MS){
+        tx.set(territoryRef,{id:k,cx,cy,resource:data.resource||balancedResourceForChunk(cx,cy),ownerId:capture.ownerId,claimedAt:n,capture:null},{merge:true});
+        return {captured:true,ownerId:capture.ownerId};
+      }
+      tx.set(territoryRef,{id:k,cx,cy,resource:data.resource||balancedResourceForChunk(cx,cy),ownerId:null,capture},{merge:true});
+      return {capture};
     });
     if(result?.captured)log(`${result.ownerId} captured unclaimed territory ${k}.`);
   }
-}
 
+  // Abandoned unclaimed captures decay instead of freezing forever.
+  for(const [k,t] of territories){
+    if(t.ownerId||!t.capture||touched.has(k))continue;
+    const {cx,cy}=parseChunkKey(k);
+    await runTransaction(db,async tx=>{
+      const territoryRef=ref('territories',k),snap=await tx.get(territoryRef);
+      if(!snap.exists())return;
+      const data=snap.data();
+      if(data.ownerId||!data.capture)return;
+      const old=data.capture,elapsed=Math.max(0,n-Number(old.lastUpdatedAt||n));
+      const progressMs=Math.max(0,Number(old.progressMs||0)-elapsed*UNCLAIMED_CAPTURE_DECAY_MULTIPLIER);
+      const patch={id:k,cx,cy,ownerId:null,resource:data.resource||balancedResourceForChunk(cx,cy),capture:progressMs>0?{...old,progressMs,lastUpdatedAt:n,contested:false}:null};
+      tx.set(territoryRef,patch,{merge:true});
+    });
+  }
+}
 async function processConstruction(){
   const n=now();
   for(const b of buildings.values()){
@@ -1422,7 +1505,6 @@ function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPla
     const compact=camera.zoom<.7, label=compact?resourceIcon(res):resourceDisplayName(res), fontSize=compact?11:Math.min(18,11+camera.zoom*3), padX=compact?6:9, badgeH=compact?22:fontSize+12;
     ctx.save(); ctx.font=`700 ${fontSize}px Segoe UI`; const badgeW=compact?22:Math.ceil(ctx.measureText(label).width+padX*2); const bx=s.x+chunkPixels/2-badgeW/2, by=s.y+chunkPixels/2-badgeH/2;
     ctx.fillStyle='rgba(9,13,19,.82)'; ctx.strokeStyle=color; ctx.lineWidth=compact?2:2.5; ctx.beginPath(); ctx.roundRect(bx,by,badgeW,badgeH,compact?11:7); ctx.fill(); ctx.stroke(); ctx.fillStyle=color; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(label,s.x+chunkPixels/2,s.y+chunkPixels/2+(compact?0:1)); ctx.restore();
-    const territory=territories.get(chunkKey(cx,cy)),capture=territory?.capture;if(!territory?.ownerId&&capture){const pct=clamp(Number(capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS,0,1),barW=Math.min(chunkPixels-16,180),barX=s.x+(chunkPixels-barW)/2,barY=s.y+chunkPixels-18;ctx.fillStyle='rgba(0,0,0,.8)';ctx.fillRect(barX,barY,barW,9);ctx.fillStyle=capture.contested?'#ff9f43':'#54d6ff';ctx.fillRect(barX+1,barY+1,(barW-2)*pct,7);ctx.fillStyle='#fff';ctx.font='11px Segoe UI';ctx.textAlign='center';ctx.fillText(capture.contested?'Contested — capture paused':`${Math.floor(pct*100)}% · ${fmt(UNCLAIMED_CAPTURE_REQUIRED_MS-Number(capture.progressMs||0))}`,s.x+chunkPixels/2,barY-4);}
   }
   // battle overlays
   for(const b of battles.values()){const n=now(); if(n>b.endAt)continue; const {cx,cy}=parseChunkKey(b.chunkKey); if(!isChunkVisible(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE); ctx.strokeStyle=n>=b.startAt?'#ff2d45':'#ffb547'; ctx.lineWidth=4; ctx.strokeRect(s.x+3,s.y+3,CHUNK_SIZE*size-6,CHUNK_SIZE*size-6);}
@@ -1469,6 +1551,29 @@ function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPla
     if(selected.has(u.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,size*.48,0,Math.PI*2);ctx.stroke();}
     drawHp(u,s,size);
     drawVeterancyStars(u,s,size);
+  }
+  drawCaptureProgressOverlays(size,startX,startY,endX,endY);
+}
+function drawCaptureProgressOverlays(size,startX,startY,endX,endY){
+  const scx=Math.floor(startX/CHUNK_SIZE), ecx=Math.floor(endX/CHUNK_SIZE), scy=Math.floor(startY/CHUNK_SIZE), ecy=Math.floor(endY/CHUNK_SIZE);
+  for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++){
+    if(cx<0||cy<0||cx>=WORLD_CHUNKS||cy>=WORLD_CHUNKS||!isChunkVisible(cx,cy))continue;
+    const territory=territories.get(chunkKey(cx,cy)),capture=territory?.capture;
+    if(territory?.ownerId||!capture)continue;
+    const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE),chunkPixels=CHUNK_SIZE*size;
+    if(s.x>canvas.width||s.y>canvas.height||s.x+chunkPixels<0||s.y+chunkPixels<0)continue;
+    const pct=clamp(Number(capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS,0,1),barW=Math.min(chunkPixels-20,220),barH=14,barX=s.x+(chunkPixels-barW)/2,barY=s.y+chunkPixels/2-barH/2+18;
+    ctx.save();
+    ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=8;
+    ctx.fillStyle='rgba(3,6,10,.9)';ctx.strokeStyle='rgba(255,255,255,.65)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.roundRect(barX,barY,barW,barH,7);ctx.fill();ctx.stroke();
+    ctx.shadowBlur=0;
+    ctx.fillStyle=capture.contested?'#ff9f43':'#54d6ff';
+    ctx.beginPath();ctx.roundRect(barX+2,barY+2,Math.max(0,(barW-4)*pct),barH-4,5);ctx.fill();
+    ctx.font=`700 ${Math.max(11,Math.min(15,10+camera.zoom*2))}px Segoe UI`;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillStyle='#fff';ctx.strokeStyle='rgba(0,0,0,.85)';ctx.lineWidth=3;
+    const label=capture.contested?'CONTESTED — capture paused':`${Math.floor(pct*100)}% claiming land`;
+    ctx.strokeText(label,s.x+chunkPixels/2,barY-4);ctx.fillText(label,s.x+chunkPixels/2,barY-4);
+    ctx.restore();
   }
 }
 function drawHp(e,s,size){ const pct=clamp((e.hp||1)/effectiveMaxHp(e),0,1); ctx.fillStyle='rgba(0,0,0,.7)'; ctx.fillRect(s.x+2,s.y+size-5,size-4,4); ctx.fillStyle=pct>.5?'#48ff8f':pct>.25?'#ffd35e':'#ff3b3b'; ctx.fillRect(s.x+2,s.y+size-5,(size-4)*pct,4);}
