@@ -19,6 +19,7 @@
   .missionCard,.questCard,.relicCard{margin:7px 0;padding:8px;border:1px solid #384556;border-radius:8px;background:linear-gradient(135deg,#1b2431,#131923);font-size:12px}.missionCard b,.questCard b,.relicCard b{color:#f3d782}.missionMeta{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin:5px 0;color:#aeb9c7}.panelTitle{display:flex;justify-content:space-between;align-items:center}.reward{color:#8cffb7}.activeRelic{border-color:#d9ad45;box-shadow:inset 3px 0 #d9ad45}.progress{height:6px;background:#26303e;border-radius:5px;overflow:hidden;margin:5px 0}.progress span{display:block;height:100%;background:#37c978}
   .allianceCard{margin:7px 0;padding:8px;border:1px solid #384556;border-radius:8px;background:#151d28;font-size:12px}
   .researchBranch{margin:8px 0;padding:8px;border:1px solid #384556;border-radius:9px;background:#121a25}.researchBranch h4{margin:0 0 7px;color:#79d8ff}.techGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.techCard{padding:7px;border:1px solid #3c4859;border-radius:7px;background:#1a2431;font-size:11px}.techCard.unlocked{border-color:#28a866;background:#142a22}.techCard.locked{opacity:.62}.techCard b{display:block;color:#f3d782;margin-bottom:3px}.techCard button{width:100%;margin-top:5px}.researchSummary{padding:7px;border-radius:7px;background:#0d1117;border:1px solid #2b3442;line-height:1.45}.allianceMember{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #2a3442}.statusDot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:#687485}.statusDot.online{background:#18c964;box-shadow:0 0 6px #18c964}.settingLine{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.settingLine input{width:auto}.allianceBadge{color:#79d8ff}
+  #invasionBanner{display:none;height:40px;align-items:center;justify-content:center;padding:0 48px;background:linear-gradient(90deg,#6d4a00,#bd7b00,#6d4a00);border-bottom:2px solid #ffd45a;color:#fff6cf;font-weight:800;letter-spacing:.04em;cursor:pointer;box-shadow:0 3px 14px rgba(255,185,35,.3);position:relative;z-index:8}#invasionBanner.visible{display:flex}#invasionBanner.active{background:linear-gradient(90deg,#7b1b0c,#d64b13,#7b1b0c);border-color:#ffb13b;color:white;animation:invasionPulse 1s infinite alternate}#game.hasInvasionBanner #main{height:calc(100vh - 82px)}@keyframes invasionPulse{from{filter:brightness(.9)}to{filter:brightness(1.25);box-shadow:0 3px 22px rgba(255,90,20,.65)}}
 </style>
 </head>
 <body>
@@ -47,6 +48,7 @@
     <button id="homeBtn" class="small">Home</button>
     <button id="saveBtn" class="small">Save Now</button>
   </div>
+  <div id="invasionBanner" role="alert" aria-live="assertive"></div>
   <div id="main">
     <div id="canvasWrap"><canvas id="map"></canvas><div id="selectionBox" class="selectionBox"></div>
       <div id="abilityHotbar" aria-label="Selected unit abilities"></div>
@@ -322,6 +324,9 @@ const BUILDING_VISUALS={
 function getBuildingVisual(type){return BUILDING_VISUALS[type]||BUILDING_VISUAL_FALLBACK}
 const FORT_CAP = [0,12,20,32,48,70,95,125,160,210,275];
 const FORT_UPGRADE_COST = {2:{gold:200,lumber:180,oil:0},3:{gold:380,lumber:300,oil:20},4:{gold:700,lumber:520,oil:40},5:{gold:1200,lumber:850,oil:85},6:{gold:1900,lumber:1300,oil:150},7:{gold:2900,lumber:2000,oil:250},8:{gold:4300,lumber:3100,oil:400},9:{gold:6200,lumber:4500,oil:650},10:{gold:9000,lumber:6500,oil:1000}};
+const UPGRADEABLE_BUILDINGS=new Set(['fortress','barracks','stable','siegeShop','engineerShop','workshop','alchemistHall','championsHall','watchtower','arrowTower','guardTower','ballistaTower','flameTower','oilTower','repairStation','portal']);
+const BUILDING_LEVEL_CAP={fortress:10,portal:5};
+const BUILDING_UNLOCK_LEVEL={centurion:2,medic:2,shieldbearer:2,rangerCaptain:3,lancer:2,mountedArcher:2,cataphract:3,catapult:2,trebuchet:3,runeMason:2,electricPriest:2,mage:3,plagueSlinger:2,bannerKnight:2,champion:3};
 const VETERANCY = {
   thresholds:[0,40,120,260,480,800],
   names:['Recruit','Trained','Veteran','Elite','Legendary','Mythic'],
@@ -373,6 +378,12 @@ function dist(a,b){return Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y))}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function isBuildingComplete(b){return !!b&&b.hp>0&&!b.constructing}
 function constructionProgress(b,n=now()){const start=Number(b.buildStartedAt||b.createdAt||n),end=Number(b.buildCompleteAt||start);return end<=start?1:clamp((n-start)/(end-start),0,1)}
+function getBuildingLevel(b){return clamp(Math.round(Number(b?.level||1)),1,BUILDING_LEVEL_CAP[b?.type]||3)}
+function getBuildingLevelCap(type){return BUILDING_LEVEL_CAP[type]||3}
+function getUpgradeCost(type,currentLevel){if(type==='fortress')return FORT_UPGRADE_COST[currentLevel+1]||null;const base=BUILDING[type]?.cost;if(!base)return null;const scale=currentLevel===1?.65:1.05;return {gold:Math.ceil((base.gold||80)*scale),lumber:Math.ceil((base.lumber||100)*scale),oil:Math.ceil((base.oil||0)*scale)}}
+function getUpgradeTime(type,currentLevel){return Math.max(30*60000,Math.round((BUILDING[type]?.buildMs||3600000)*(currentLevel===1?.55:.8)))}
+function upgradeProgress(b,n=now()){const start=Number(b.upgradeStartedAt||n),end=Number(b.upgradeCompleteAt||start);return end<=start?1:clamp((n-start)/(end-start),0,1)}
+function canUpgradeBuilding(b){return !!b&&b.ownerId===playerKey&&UPGRADEABLE_BUILDINGS.has(b.type)&&isBuildingComplete(b)&&!b.upgrading&&getBuildingLevel(b)<getBuildingLevelCap(b.type)&&canPay(getUpgradeCost(b.type,getBuildingLevel(b)))}
 function normCost(cost={}){return {gold:Number(cost.gold||0),lumber:Number(cost.lumber||0),oil:Number(cost.oil||0)}}
 function canPay(cost){const c=normCost(cost);const r=account.resources||{};return (Number(r.gold||0)>=c.gold && Number(r.lumber||0)>=c.lumber && Number(r.oil||0)>=c.oil)}
 function pay(cost){const c=normCost(cost);account.resources=account.resources||{gold:0,lumber:0,oil:0};account.resources.gold=Number(account.resources.gold||0)-c.gold; account.resources.lumber=Number(account.resources.lumber||0)-c.lumber; account.resources.oil=Number(account.resources.oil||0)-c.oil;}
@@ -633,7 +644,7 @@ async function startGame(){
   unsub.forEach(u=>u()); unsub=[];
   unsub.push(onSnapshot(col('territories'),s=>{territories.clear();s.forEach(d=>territories.set(d.id,{id:d.id,...d.data()})); updateUI();}));
   unsub.push(onSnapshot(col('troops'),s=>{troops.clear();s.forEach(d=>troops.set(d.id,normalizeTroop({id:d.id,...d.data()}))); pruneSelection(); updateUI();}));
-  unsub.push(onSnapshot(col('buildings'),s=>{buildings.clear();s.forEach(d=>buildings.set(d.id,{id:d.id,...d.data()})); pruneSelection(); updateUI();}));
+  unsub.push(onSnapshot(col('buildings'),s=>{buildings.clear();s.forEach(d=>{const b={id:d.id,...d.data()};if(!b.level)b.level=1;buildings.set(d.id,b)}); pruneSelection(); updateUI();}));
   unsub.push(onSnapshot(col('battles'),s=>{battles.clear();s.forEach(d=>battles.set(d.id,{id:d.id,...d.data()})); updateUI();}));
   unsub.push(onSnapshot(col('landmarks'),s=>{landmarks.clear();s.forEach(d=>landmarks.set(d.id,{id:d.id,...d.data()})); updateUI();}));
   unsub.push(onSnapshot(col('accounts'),s=>{playerAccounts.clear();s.forEach(d=>playerAccounts.set(d.id,{id:d.id,...d.data()}));}));
@@ -982,7 +993,7 @@ function tick(dt){
   processDefensiveUtilities(n);
   for(const l of landmarks.values())if(isBossLandmark(l)&&!l.bossAlive&&l.respawnAt&&l.respawnAt<=n)respawnLandmark(l).catch(e=>log('Landmark respawn error: '+e.message));
   if(n-lastProductionCheck>TRAINING_POLL_MS){lastProductionCheck=n; completeTrainingQueues().catch(e=>log('Production error: '+e.message)); checkGoblinPortalBattle().catch(e=>log('Portal error: '+e.message));}
-  if(n-lastConstructionCheck>CONSTRUCTION_POLL_MS){lastConstructionCheck=n;processConstruction().catch(e=>log('Construction error: '+e.message));}
+  if(n-lastConstructionCheck>CONSTRUCTION_POLL_MS){lastConstructionCheck=n;processConstruction().catch(e=>log('Construction error: '+e.message));finishBuildingUpgrades().catch(e=>log('Upgrade error: '+e.message));}
   if(n-lastCaptureCheck>CAPTURE_POLL_MS){lastCaptureCheck=n; resolveCapturePressure().catch(e=>log('Capture check error: '+e.message));}
   if(n-lastInvasionCheck>15000){lastInvasionCheck=n;resolveExpiredInvasions().catch(e=>log('Invasion resolution error: '+e.message));}
   if(n-lastBarbarianPoll>60000){lastBarbarianPoll=n;maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message));}
@@ -1188,7 +1199,9 @@ function renderProductionPanel(){
   const options=Object.entries(UNIT).filter(([type,u])=>u.building===b.type);
   options.forEach(([type,u])=>{
     const btn=document.createElement('button');
-    btn.innerHTML=`${u.name}<br><span class="muted">${costText(u.cost)} · ${u.supply||1} supply · ${trainTimeText(u.trainMs)}</span>`;
+    const required=BUILDING_UNLOCK_LEVEL[type]||1,locked=getBuildingLevel(b)<required;
+    btn.disabled=locked||b.upgrading;
+    btn.innerHTML=`${u.name}<br><span class="muted">${locked?`Requires level ${required}`:b.upgrading?'Upgrade in progress':`${costText(u.cost)} · ${u.supply||1} supply · ${trainTimeText(u.trainMs)}`}</span>`;
     btn.onclick=()=>queueUnitTraining(b.id,type);
     train.appendChild(btn);
   });
@@ -1217,13 +1230,16 @@ async function queueUnitTraining(buildingId,type){
   const b=buildings.get(buildingId); const def=UNIT[type];
   if(!b||b.ownerId!==playerKey||b.type!==def.building){log(`Select the correct building to train ${def.name}.`);return;}
   if(!isBuildingComplete(b)){log(`${BUILDING[b.type].name} is still under construction.`);return;}
+  if(b.upgrading){log(`${BUILDING[b.type].name} cannot begin new training while upgrading.`);return;}
+  if(getBuildingLevel(b)<(BUILDING_UNLOCK_LEVEL[type]||1)){log(`${def.name} requires a level ${BUILDING_UNLOCK_LEVEL[type]} ${BUILDING[b.type].name}.`);return;}
   const used=supplyUsed()+queuedSupply();
   if(used+(def.supply||1)>supplyCap()){log(`Not enough supply. Used/queued ${used}/${supplyCap()}. Upgrade fortress.`);return;}
   if(!canPay(def.cost)){logCannotAfford(def.name,def.cost);return;}
   pay(def.cost);
   const q=b.productionQueue||[];
   const startAt=q.length?Math.max(now(),q[q.length-1].finishAt):now();
-  q.push({id:`q_${now()}_${Math.floor(Math.random()*9999)}`,type,startedAt:startAt,finishAt:startAt+def.trainMs});
+  const level=getBuildingLevel(b),speed=['barracks','stable','siegeShop','alchemistHall','championsHall'].includes(b.type)?(level>=3?.8:level>=2?.9:1):1;
+  q.push({id:`q_${now()}_${Math.floor(Math.random()*9999)}`,type,startedAt:startAt,finishAt:startAt+def.trainMs*speed});
   b.productionQueue=q;
   buildings.set(b.id,b);
   await saveBuilding(b); await saveAccount(); updateUI();
@@ -1246,7 +1262,8 @@ async function spawnUnitFromBuilding(type,b){
   const def=UNIT[type];
   const spot=formationTargets(b.x,b.y+1,1,{ownerId:playerKey})[0]||formationTargets(b.x,b.y,1,{ownerId:playerKey})[0]||{x:b.x+1,y:b.y+1};
   const id=`${playerKey}_${type}_${now()}_${Math.floor(Math.random()*9999)}`;
-  const u={id,ownerId:playerKey,type,x:spot.x,y:spot.y,hp:def.hp,maxHp:def.hp,xp:0,veterancy:0,order:'idle',path:[],createdAt:now(),inArena:false};
+  const bonusXp=getBuildingLevel(b)>=3&&['barracks','stable','championsHall'].includes(b.type)?20:0;
+  const u={id,ownerId:playerKey,type,x:spot.x,y:spot.y,hp:def.hp,maxHp:def.hp,xp:bonusXp,veterancy:0,order:'idle',path:[],createdAt:now(),inArena:false,structureDamageBonus:b.type==='siegeShop'&&getBuildingLevel(b)>=3?.05:0,speedBoostUntil:b.type==='stable'&&getBuildingLevel(b)>=3?now()+5*60000:0};
   await setDoc(ref('troops',id),u);
   log(`${def.name} completed at ${BUILDING[b.type].name}.`);
 }
@@ -1295,8 +1312,8 @@ function researchRequirementsMet(tech){return (tech.requires||[]).every(hasTech)
 async function researchTech(id){const tech=RESEARCH[id];if(!tech||hasTech(id))return;if(!researchBuildingReady(tech.building)){log(`Build a ${BUILDING[tech.building].name} before researching ${tech.name}.`);return;}if(!researchRequirementsMet(tech)){log(`Research prerequisites first: ${tech.requires.map(x=>RESEARCH[x].name).join(', ')}.`);return;}if((account.researchPoints||0)<tech.cost){log(`Need ${tech.cost} research points for ${tech.name}.`);return;}account.researchPoints-=tech.cost;account.research=account.research||{};account.research[id]=true;await saveAccount();updateUI();log(`Research complete: ${tech.name} — ${tech.effect}`);}
 function renderResearch(){const el=$('researchInfo');if(!el)return;const selectedResearch=selectedOwnedBuildings().find(b=>Object.values(RESEARCH).some(t=>t.building===b.type));$('researchBuilding').textContent=selectedResearch?BUILDING[selectedResearch.type].name:'All branches';const branches=[...new Set(Object.values(RESEARCH).map(t=>t.branch))],active=Object.entries(RESEARCH).filter(([id])=>hasTech(id));el.innerHTML=`<div class="researchSummary"><b>${account.researchPoints||0} research points</b><br>${active.length}/${Object.keys(RESEARCH).length} technologies unlocked${active.length?`<br>Active: ${active.map(([,t])=>t.name).join(', ')}`:''}</div>`+branches.map(branch=>`<div class="researchBranch"><h4>${branch}</h4><div class="techGrid">${Object.entries(RESEARCH).filter(([,t])=>t.branch===branch&&(!selectedResearch||t.building===selectedResearch.type)).map(([id,t])=>{const unlocked=hasTech(id),requirements=researchRequirementsMet(t),building=researchBuildingReady(t.building),disabled=unlocked||!requirements||!building||(account.researchPoints||0)<t.cost;return `<div class="techCard ${unlocked?'unlocked':requirements?'':'locked'}"><b>${unlocked?'✓ ':''}${t.name}</b>${t.effect}<br><span class="muted">${t.cost} RP · ${BUILDING[t.building].name}${t.requires?.length?`<br>Requires: ${t.requires.map(x=>RESEARCH[x].name).join(', ')}`:''}</span><button class="small ${!disabled?'primary':''}" ${disabled?'disabled':''} onclick="window.researchTech('${id}')">${unlocked?'Unlocked':!building?'Building required':!requirements?'Locked':`Research (${t.cost} RP)`}</button></div>`}).join('')}</div></div>`).join('');window.researchTech=researchTech;}
 function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(account.resources?.gold||0);$('lumberVal').textContent=Math.floor(account.resources?.lumber||0);$('oilVal').textContent=Math.floor(account.resources?.oil||0);$('researchVal').textContent=account.researchPoints||0;$('fortLv').textContent=account.fortressLevel||1; $('troopCount').textContent=supplyUsed()+queuedSupply(); $('troopCap').textContent=supplyCap(); const income=totalHourlyIncome(); $('incomeInfo').innerHTML=`Full income:<br><span class="gold">+${income.full.gold} gold</span>, <span class="lumber">+${income.full.lumber} lumber</span>, <span class="oil">+${income.full.oil} oil</span><br>Lost to cut-off territories:<br><span class="dangerText">-${income.lost.gold} gold, -${income.lost.lumber} lumber, -${income.lost.oil} oil</span>`;
-  const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>{const construction=e.constructing?`<br><b style="color:#ffc35c">Constructing · ${Math.floor(constructionProgress(e)*100)}%</b> · ${fmt(Number(e.buildCompleteAt)-now())} remaining`:'';return `${UNIT[e.type]?.name||BUILDING[e.type]?.name||e.type}: ${Math.ceil(e.hp)}/${effectiveMaxHp(e)}${troops.has(e.id)?` · ${'★'.repeat(e.veterancy||0)}${'☆'.repeat(5-(e.veterancy||0))} ${VETERANCY.names[e.veterancy||0]} (${Math.floor(e.xp||0)} XP)`:''} @ ${e.x},${e.y}${construction}`}).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
-  renderAbilities(sels); renderProductionPanel(); renderResearch(); renderPortalInfo(sels); renderRelics(); renderDailyQuests(); renderAlliance(); renderBattles();
+  const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>{const construction=e.constructing?`<br><b style="color:#ffc35c">Constructing · ${Math.floor(constructionProgress(e)*100)}%</b> · ${fmt(Number(e.buildCompleteAt)-now())} remaining`:'';const upgrade=e.upgrading?`<br><b style="color:#79d8ff">Upgrading to Level ${getBuildingLevel(e)+1} · ${Math.floor(upgradeProgress(e)*100)}%</b> · ${fmt(Number(e.upgradeCompleteAt)-now())} remaining<div class="progress"><span style="width:${upgradeProgress(e)*100}%;background:#79d8ff"></span></div>`:'';const level=buildings.has(e.id)?` · Level ${getBuildingLevel(e)}/${getBuildingLevelCap(e.type)}`:'';return `${UNIT[e.type]?.name||BUILDING[e.type]?.name||e.type}${level}: ${Math.ceil(e.hp)}/${effectiveMaxHp(e)}${troops.has(e.id)?` · ${'★'.repeat(e.veterancy||0)}${'☆'.repeat(5-(e.veterancy||0))} ${VETERANCY.names[e.veterancy||0]} (${Math.floor(e.xp||0)} XP)`:''} @ ${e.x},${e.y}${construction}${upgrade}`}).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
+  renderAbilities(sels); renderProductionPanel(); renderResearch(); renderPortalInfo(sels); renderRelics(); renderDailyQuests(); renderAlliance(); renderBattles(); renderInvasionBanner();
 }
 async function tradeAtPost(from,to,amount,received){
   const l=hoveredTile&&landmarkAtChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y).key);if(!l||l.type!=='tradePost'||l.ownerId!==playerKey){$('landmarkMsg').textContent='Control this Trade Post first.';return;}if((account.resources[from]||0)<amount){$('landmarkMsg').textContent=`Not enough ${from}.`;return;}account.resources[from]-=amount;account.resources[to]=(account.resources[to]||0)+received;await saveAccount();updateUI();$('landmarkMsg').textContent=`Traded ${amount} ${from} for ${received} ${to}.`;
@@ -1320,8 +1337,7 @@ const ABILITY_REGISTRY=[
   {id:'poisonCloud',types:['plagueSlinger'],label:'Poison Cloud',description:()=>`Hovered tile: enemies within 2 take 4 damage and are slowed 20s · 5 min cooldown`,canUse:sels=>sels.some(e=>e.type==='plagueSlinger'&&e.ownerId===playerKey&&(!e.poisonCloudCdUntil||e.poisonCloudCdUntil<=now())),action:()=>usePoisonCloud()},
   {id:'holdLine',types:['bannerKnight'],label:'Hold the Line',description:()=>`Allies within 3 take 1 less damage and ignore slows for 30s · War Banner passive · 5 min cooldown`,canUse:sels=>sels.some(e=>e.type==='bannerKnight'&&e.ownerId===playerKey&&(!e.holdLineCdUntil||e.holdLineCdUntil<=now())),action:()=>useAreaBuff('bannerKnight','holdLineCdUntil','holdLineUntil',30000,300000,'Hold the Line',true)},
   {id:'siege',types:['trebuchet'],label:'Siege',description:()=>`Target hovered enemy territory within 5 tiles · fires every 3h`,canUse:sels=>sels.some(e=>e.type==='trebuchet'),action:()=>useSiege()},
-  {id:'upgradeFortress',types:['fortress'],label:'Upgrade Fortress',description:()=>{const lvl=(account.fortressLevel||1)+1,cost=FORT_UPGRADE_COST[lvl];return cost?`Level ${lvl} · ${costText(cost)}`:'Maximum level';},canUse:()=>!!FORT_UPGRADE_COST[(account.fortressLevel||1)+1],action:()=>upgradeFortress()},
-  {id:'upgradeWorkshop',types:['workshop'],label:'Upgrade Workshop',description:sels=>{const w=sels.find(e=>e.type==='workshop'),lvl=(w?.level||1)+1;return `Level ${lvl} · ${costText({gold:100*lvl,lumber:120*lvl,oil:10*Math.max(0,lvl-2)})}`;},canUse:sels=>sels.some(e=>e.type==='workshop'),action:sels=>upgradeWorkshop(sels.find(e=>e.type==='workshop'))},
+  {id:'upgradeBuilding',types:[...UPGRADEABLE_BUILDINGS],label:'Upgrade Structure',description:sels=>{const b=sels.find(e=>UPGRADEABLE_BUILDINGS.has(e.type));if(!b)return '';const level=getBuildingLevel(b),cost=getUpgradeCost(b.type,level);return level>=getBuildingLevelCap(b.type)?'Maximum level':b.upgrading?`Level ${level+1} · ${fmt(b.upgradeCompleteAt-now())} remaining`:`Level ${level+1} · ${costText(cost)} · ${fmt(getUpgradeTime(b.type,level))}`;},canUse:sels=>sels.some(canUpgradeBuilding),action:sels=>startBuildingUpgrade(sels.find(e=>UPGRADEABLE_BUILDINGS.has(e.type)))},
   {id:'enterPortal',types:['portal'],label:'Enter Goblin Portal',description:()=>{const g=account.goblin||{};return g.nextAt&&g.nextAt>now()?`Cooldown ${fmt(g.nextAt-now())}`:'Enter with troops standing on this square';},canUse:sels=>{const p=sels.find(e=>e.type==='portal'),g=account.goblin||{};return !!p&&(!g.nextAt||g.nextAt<=now())&&[...troops.values()].some(u=>u.ownerId===playerKey&&u.hp>0&&u.x===p.x&&u.y===p.y&&!u.inArena);},action:sels=>enterGoblinPortal(sels.find(e=>e.type==='portal'))},
   {id:'mobileTower',types:['engineer'],label:'Mobile Tower',description:()=>`Temporary defense · ${costText(BUILDING.mobileTower.cost)} · 10 min build`,canUse:sels=>sels.some(e=>e.type==='engineer'&&e.ownerId===playerKey),action:()=>startEngineerBuild('mobileTower')},
   {id:'barricade',types:['engineer'],label:'Temporary Barricade',description:()=>`${costText(BUILDING.barricade.cost)} · 5 min build`,canUse:sels=>sels.some(e=>e.type==='engineer'&&e.ownerId===playerKey),action:()=>startEngineerBuild('barricade')}
@@ -1505,6 +1521,11 @@ async function fireSiege(u){ const terr=territories.get(u.siege.targetChunk); if
 
 function localDateTimeValue(ms){const source=new Date(ms),local=new Date(ms-source.getTimezoneOffset()*60000);return local.toISOString().slice(0,16);}
 function updateBattleTimeMinimum(){const input=$('battleTime'),minimum=now()+MIN_INVASION_NOTICE_MS;input.min=localDateTimeValue(minimum);if(!input.value||new Date(input.value).getTime()<minimum)input.value=localDateTimeValue(minimum+5*60000);}
+function getIncomingInvasionsForPlayer(id){const n=now();return [...battles.values()].filter(b=>b.defenderId===id&&b.status!=='ended'&&n<Number(b.startAt)&&Number(b.endAt)>n).sort((a,c)=>a.startAt-c.startAt)}
+function getActiveInvasionsForPlayer(id){const n=now();return [...battles.values()].filter(b=>b.defenderId===id&&b.status!=='ended'&&n>=Number(b.startAt)&&n<Number(b.endAt)).sort((a,c)=>a.endAt-c.endAt)}
+function centerCameraOnChunk(cx,cy){const size=32*camera.zoom;camera.x=clamp((cx*CHUNK_SIZE+CHUNK_SIZE/2)*size-canvas.width/2,0,WORLD_TILES*size-canvas.width);camera.y=clamp((cy*CHUNK_SIZE+CHUNK_SIZE/2)*size-canvas.height/2,0,WORLD_TILES*size-canvas.height)}
+function renderInvasionBanner(){const el=$('invasionBanner'),active=getActiveInvasionsForPlayer(playerKey),incoming=getIncomingInvasionsForPlayer(playerKey),list=active.length?active:incoming,b=list[0];if(!b){el.className='';el.textContent='';$('game').classList.remove('hasInvasionBanner');el.onclick=null;return;}const isActive=active.length>0,{cx,cy}=parseChunkKey(b.chunkKey),enemy=playerAccounts.get(b.attackerId)?.displayName||playerAccounts.get(b.attackerId)?.username||b.attackerId,more=list.length>1?` · +${list.length-1} more`:'';el.className=`visible${isActive?' active':''}`;el.textContent=isActive?`🚨 INVASION ACTIVE: Defend Province ${cx},${cy} — ${fmt(b.endAt-now())} remaining${more}`:`⚠️ INCOMING INVASION: ${enemy} attacks Province ${cx},${cy} in ${fmt(b.startAt-now())}${more}`;$('game').classList.add('hasInvasionBanner');el.onclick=()=>centerCameraOnChunk(cx,cy)}
+function drawInvasionHighlights(size){const n=now(),pulse=.45+.25*Math.sin(n/260);for(const b of [...getIncomingInvasionsForPlayer(playerKey),...getActiveInvasionsForPlayer(playerKey)]){const active=n>=b.startAt,{cx,cy}=parseChunkKey(b.chunkKey),s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE),w=CHUNK_SIZE*size;ctx.save();ctx.fillStyle=active?`rgba(255,112,20,${pulse*.42})`:`rgba(255,220,35,${pulse*.18})`;ctx.fillRect(s.x,s.y,w,w);ctx.strokeStyle=active?'#ff8a1f':'#ffe34d';ctx.lineWidth=active?8:5;ctx.setLineDash([14,8]);ctx.strokeRect(s.x+4,s.y+4,w-8,w-8);ctx.setLineDash([]);ctx.font=`700 ${clamp(size*.8,18,38)}px Segoe UI Symbol`;ctx.textAlign='center';ctx.fillStyle=active?'#ff7a18':'#ffe34d';ctx.strokeStyle='#1b1200';ctx.lineWidth=4;ctx.strokeText(active?'🚨':'⚠',s.x+w/2,s.y+clamp(size*1.2,28,54));ctx.fillText(active?'🚨':'⚠',s.x+w/2,s.y+clamp(size*1.2,28,54));ctx.restore();}}
 updateBattleTimeMinimum();
 $('battleTime').addEventListener('focus',updateBattleTimeMinimum);
 $('declareBtn').onclick=async()=>{if(!hoveredTile){$('warMsg').textContent='Hover an enemy territory first.';return;}const terr=territoryOfTile(hoveredTile.x,hoveredTile.y);if(!terr.ownerId||terr.ownerId===playerKey||isAllied(playerKey,terr.ownerId)){$('warMsg').textContent=isAllied(playerKey,terr.ownerId)?'You cannot declare battle on alliance territory.':'That is not enemy controlled territory.';return;}const startAt=new Date($('battleTime').value).getTime();if(!startAt||startAt<now()+MIN_INVASION_NOTICE_MS){$('warMsg').textContent='Invasions must be declared at least 8 hours in advance.';return;}const base=getDefenderBaseInChunk(terr.ownerId,terr.id);if(!base){$('warMsg').textContent='This territory has no defender base structure to invade.';return;}const duplicate=[...battles.values()].some(b=>b.chunkKey===terr.id&&b.status!=='ended');if(duplicate){$('warMsg').textContent='This territory already has a scheduled or active invasion.';return;}const declaredAt=now(),id=`battle_${playerKey}_${terr.id}_${declaredAt}`,b={id,attackerId:playerKey,defenderId:terr.ownerId,chunkKey:terr.id,status:'scheduled',declaredAt,startAt,endAt:startAt+INVASION_ACTIVE_MS,resolvedAt:null,winnerId:null,result:null,baseBuildingId:base.id,baseType:base.type};await setDoc(ref('battles',id),b);$('warMsg').textContent=`Invasion declared on ${terr.id}; ${BUILDING[base.type]?.name||base.type} is the required target.`;log(`Declared invasion on ${terr.id}. It begins in ${fmt(startAt-declaredAt)} and lasts 2 hours.`);};
@@ -1518,7 +1539,7 @@ canvas.addEventListener('mouseup',async e=>{ if(e.button===2){ const rect=canvas
 canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; camera.zoom=clamp(camera.zoom*(e.deltaY<0?1.1:.9),.45,2.2); const mx=e.offsetX,my=e.offsetY; camera.x=(camera.x+mx)*(camera.zoom/old)-mx; camera.y=(camera.y+my)*(camera.zoom/old)-my;},{passive:false});
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&buildMode){buildMode=null;$('modeReadout').textContent='Move';log('Build mode cancelled.');return;} if(e.key.toLowerCase()==='a'){buildMode=null;attackMode=true;$('modeReadout').textContent='Attack-move';} const ability=currentAbilityHotkeys.get(e.key); if(ability&&!e.repeat){buildMode=null;e.preventDefault();ability.trigger();}});
 
-function loop(ts){ const dt=ts-lastTick; lastTick=ts; handleCamera(); tick(dt); draw(); requestAnimationFrame(loop); }
+function loop(ts){ const dt=ts-lastTick; lastTick=ts; handleCamera(); tick(dt); draw(); renderInvasionBanner(); requestAnimationFrame(loop); }
 function handleCamera(){ const speed=18; if(keys['ArrowLeft']||keys.a&&!attackMode)camera.x-=speed;if(keys['ArrowRight']||keys.d)camera.x+=speed;if(keys['ArrowUp']||keys.w)camera.y-=speed;if(keys['ArrowDown']||keys.s)camera.y+=speed; camera.x=clamp(camera.x,0,WORLD_TILES*32*camera.zoom-canvas.width); camera.y=clamp(camera.y,0,WORLD_TILES*32*camera.zoom-canvas.height); }
 const keys={}; window.addEventListener('keydown',e=>{keys[e.key]=true}); window.addEventListener('keyup',e=>{keys[e.key]=false;if(e.key.toLowerCase()==='a'){attackMode=false;$('modeReadout').textContent='Move';}});
 
@@ -1590,6 +1611,24 @@ function drawSvgIcon(kind,type,ownerId,x,y,size){
   const img=getIcon(kind,type,ownerKind);
   if(img.complete) ctx.drawImage(img,x,y,size,size);
   else {ctx.fillStyle=ownerKind==='self'?'#17e57c':ownerKind==='goblin'?'#8be05e':ownerKind==='barbarian'?'#c95c2b':'#ff4b4b';ctx.fillRect(x+size*.15,y+size*.15,size*.7,size*.7);}
+}
+async function startBuildingUpgrade(b){
+  if(!b||!UPGRADEABLE_BUILDINGS.has(b.type)){log('This structure cannot be upgraded.');return;}
+  const level=getBuildingLevel(b),cost=getUpgradeCost(b.type,level);
+  if(b.constructing||b.upgrading||level>=getBuildingLevelCap(b.type)){log(level>=getBuildingLevelCap(b.type)?`${BUILDING[b.type].name} is already maximum level.`:'Finish the current construction or upgrade first.');return;}
+  if(!canPay(cost)){logCannotAfford(`${BUILDING[b.type].name} upgrade`,cost);return;}
+  pay(cost);const started=now();Object.assign(b,{level,upgrading:true,upgradeStartedAt:started,upgradeCompleteAt:started+getUpgradeTime(b.type,level)});
+  await Promise.all([saveBuilding(b),saveAccount()]);updateUI();log(`${BUILDING[b.type].name} upgrade to level ${level+1} started.`);
+}
+async function finishBuildingUpgrades(){
+  const n=now();
+  for(const b of buildings.values()){
+    if(b.ownerId!==playerKey||!b.upgrading||n<Number(b.upgradeCompleteAt||Infinity))continue;
+    const next=Math.min(getBuildingLevelCap(b.type),getBuildingLevel(b)+1),hpMult=b.type==='fortress'?1:(next===2?1.15:1.3),maxHp=Math.round((BUILDING[b.type]?.hp||b.maxHp||1)*hpMult);
+    await updateDoc(ref('buildings',b.id),{level:next,upgrading:false,upgradeStartedAt:null,upgradeCompleteAt:null,maxHp,hp:Math.max(Number(b.hp||1),maxHp)});
+    if(b.type==='fortress'){account.fortressLevel=next;await saveAccount();}
+    log(`${BUILDING[b.type]?.name||b.type} reached level ${next}.`);
+  }
 }
 function buildingOwnerColor(b){
   if(isBarbarianCamp(b)||b.ownerId==null)return '#b85332';
@@ -1670,6 +1709,8 @@ function drawFortressByLevel(ctx,b,x,y,size,level){
   ctx.restore();
 }
 function drawBuildingShape(ctx,b,visual,x,y,size){
+  const level=getBuildingLevel(b),evolution=visual.shape==='fortress'?1:1+(level-1)*.08,evolvedSize=size*evolution;
+  if(level>1&&visual.shape!=='fortress'){x-=(evolvedSize-size)/2;y-=(evolvedSize-size)/2;size=evolvedSize}
   const u=size/64, X=n=>x+n*u,Y=n=>y+n*u, owner=buildingOwnerColor(b);
   ctx.save();ctx.lineJoin='round';ctx.lineCap='round';ctx.lineWidth=Math.max(1,3*u);ctx.strokeStyle=visual.outline;ctx.fillStyle=visual.base;
   const rect=(a,c,w,h,r=2)=>{ctx.fillStyle=visual.base;buildingPathRect(X(a),Y(c),w*u,h*u,r*u)};
@@ -1710,6 +1751,7 @@ function drawConstructionOverlay(ctx,b,x,y,size){
   for(const n of [.2,.5,.8]){ctx.beginPath();ctx.moveTo(x+size*n,y+size*.12);ctx.lineTo(x+size*n,y+size*.86);ctx.stroke()}ctx.beginPath();ctx.moveTo(x+size*.08,y+size*.3);ctx.lineTo(x+size*.92,y+size*.3);ctx.moveTo(x+size*.08,y+size*.68);ctx.lineTo(x+size*.92,y+size*.68);ctx.stroke();
   ctx.globalAlpha=1;ctx.strokeStyle='#ffb547';ctx.strokeRect(x+2,y+2,size-4,size-4);ctx.fillStyle='rgba(0,0,0,.82)';ctx.fillRect(x+2,y-7,size-4,6);ctx.fillStyle='#ffc35c';ctx.fillRect(x+3,y-6,(size-6)*pct,4);ctx.restore();
 }
+function drawUpgradeProgress(b,x,y,size){const pct=upgradeProgress(b);ctx.save();ctx.strokeStyle='#79d8ff';ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,size-2,size-2);ctx.fillStyle='rgba(0,0,0,.85)';ctx.fillRect(x+2,y-8,size-4,7);ctx.fillStyle='#64dcff';ctx.fillRect(x+3,y-7,(size-6)*pct,5);ctx.fillStyle='#d8f8ff';ctx.font=`700 ${Math.max(8,size*.24)}px Segoe UI`;ctx.textAlign='center';ctx.fillText(`L${getBuildingLevel(b)+1}`,x+size/2,y+size*.2);ctx.restore()}
 function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPlayer(playerKey); ctx.clearRect(0,0,canvas.width,canvas.height); const startX=Math.floor(camera.x/size), startY=Math.floor(camera.y/size), endX=Math.ceil((camera.x+canvas.width)/size), endY=Math.ceil((camera.y+canvas.height)/size);
   for(let y=startY;y<=endY;y++) for(let x=startX;x<=endX;x++){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)continue; const s=tileToScreen(x,y),c=getChunkOfTile(x,y); if(!isChunkVisible(c.cx,c.cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,size+1,size+1);continue;} const terr=terrainAt(x,y); ctx.fillStyle=terr==='water'?'#12304a':terr==='mountain'?'#40434a':terr==='forest'?'#153b25':'#1c2a1f'; ctx.fillRect(s.x,s.y,size+1,size+1); const owner=ownerOfTile(x,y); if(owner){ctx.fillStyle=owner===playerKey||isAllied(playerKey,owner)?'rgba(24,201,100,.22)':'rgba(255,77,77,.22)'; ctx.fillRect(s.x,s.y,size,size);} }
   if(buildMode)for(let y=startY;y<=endY;y++)for(let x=startX;x<=endX;x++){if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES||!isTileVisible(x,y))continue;const s=tileToScreen(x,y),valid=isValidBuildPlacement(buildMode,x,y),hovered=hoveredTile?.x===x&&hoveredTile?.y===y;if(valid||hovered){ctx.fillStyle=valid?'rgba(55,205,150,.3)':'rgba(255,70,70,.42)';ctx.fillRect(s.x+1,s.y+1,size-2,size-2);ctx.strokeStyle=valid?'rgba(110,245,220,.7)':'#ff5555';ctx.lineWidth=1;ctx.strokeRect(s.x+1,s.y+1,size-2,size-2);}}
@@ -1723,6 +1765,7 @@ function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPla
   }
   // battle overlays
   for(const b of battles.values()){const n=now(); if(n>b.endAt)continue; const {cx,cy}=parseChunkKey(b.chunkKey); if(!isChunkVisible(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE); ctx.strokeStyle=n>=b.startAt?'#ff2d45':'#ffb547'; ctx.lineWidth=4; ctx.strokeRect(s.x+3,s.y+3,CHUNK_SIZE*size-6,CHUNK_SIZE*size-6);}
+  drawInvasionHighlights(size);
   // Strategic landmarks are only rendered in chunks currently revealed by fog of war.
   for(const l of landmarks.values()){
     const c=parseChunkKey(l.chunkKey);if(!isChunkVisible(c.cx,c.cy))continue;const d=LANDMARK[l.type],s=tileToScreen(l.x,l.y),iconSize=clamp(size*1.35,18,54);
@@ -1748,6 +1791,7 @@ function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPla
     if(s.x<-size||s.y<-size||s.x>canvas.width+size||s.y>canvas.height+size)continue;
     const visual=getBuildingVisual(b.type);ctx.save();if(b.constructing)ctx.globalAlpha=.62;drawBuildingGlow(ctx,visual,s.x,s.y,size);drawBuildingShape(ctx,b,visual,s.x+size*.04,s.y+size*.04,size*.92);ctx.restore();
     if(b.constructing)drawConstructionOverlay(ctx,b,s.x,s.y,size);
+    if(b.upgrading)drawUpgradeProgress(b,s.x,s.y,size);
     if(isBarbarianCamp(b)){const d=campTypeDef(b);ctx.save();ctx.strokeStyle=d.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,size*.48,0,Math.PI*2);ctx.stroke();ctx.fillStyle=d.color;ctx.font=`700 ${Math.max(10,size*.32)}px Segoe UI Symbol`;ctx.textAlign='center';ctx.fillText(d.icon,s.x+size*.78,s.y+size*.3);ctx.restore();}
     if(b.productionQueue?.length){
       const item=b.productionQueue[0], left=Math.max(0,item.finishAt-now()), pct=100-clamp(left/(UNIT[item.type]?.trainMs||1)*100,0,100);
