@@ -50,7 +50,7 @@
   <div id="main">
     <div id="canvasWrap"><canvas id="map"></canvas><div id="selectionBox" class="selectionBox"></div>
       <div id="abilityHotbar" aria-label="Selected unit abilities"></div>
-      <div class="hint"><b>Controls</b><br>Drag select troops. Right-click ground to move. Right-click enemy to focus attack. Hold/press <span class="kbd">A</span> then right-click for attack-move. WASD/Arrows pan. Mouse wheel zoom. Commands override auto-aggro/building.</div>
+      <div class="hint"><b>Controls</b><br>Drag select troops. Right-click ground to move. Right-click enemy to focus attack. Hold/press <span class="kbd">A</span> then left-click or right-click to attack-move/search that area. WASD/Arrows pan. Mouse wheel zoom. Commands override auto-aggro/building.</div>
     </div>
     <aside id="side">
       <div class="section"><h3>Selected</h3><div id="selectedInfo" class="selectedList muted">Nothing selected.</div><div id="abilities"></div></div>
@@ -304,6 +304,9 @@ const DAMAGED_DEFENDER_BONUS_XP = 10;
 const UNSUPPLIED_INCOME_MULTIPLIER = .25;
 const ROAD_MOVEMENT_COST = .72;
 const ROAD_SPEED_MULTIPLIER = 1/1.5;
+const IDLE_AGGRO_RANGE = 8;
+const ATTACK_MOVE_AGGRO_RANGE = 12;
+const ATTACK_AREA_SEARCH_RANGE = 14;
 
 let uid=null, player=null, playerKey=null;
 let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), landmarks=new Map(), playerAccounts=new Map(), alliances=new Map();
@@ -727,7 +730,7 @@ function pathTowardMoveGoal(u){
   return [];
 }
 function issueMove(ids,tx,ty,attackMove=false){
-  const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey);
+  const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey&&u.hp>0);
   if(!units.length)return;
   const groupId=`move_${playerKey}_${now()}`;
   const claimed=new Set();
@@ -746,10 +749,44 @@ function issueMove(ids,tx,ty,attackMove=false){
     u.waitTicks=0;
     troops.set(u.id,u);
   });
-  log(`${attackMove?'Attack-move':'Move'} order: ${units.length} troop(s). They will keep closing on the target until stopped.`);
+  log(`${attackMove?'Attack-move':'Move'} order: ${units.length} troop(s).`);
   scheduleSaveTroops(units);
 }
-function issueAttack(ids,target){if(target?.data?.ownerId&&isAllied(playerKey,target.data.ownerId)){log('Allied troops and buildings cannot be attacked.');return;} const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey); units.forEach(u=>{u.order='attack';u.targetId=target.id;u.path=[];u.moveGoal=null;u.assignedGoal=null;u.buildTask=null; troops.set(u.id,u);}); log(`Focus attack order on ${LANDMARK[target.data.type]?.name||target.data.type||target.data.ownerId}.`); scheduleSaveTroops(units); }
+function isAttackableEntity(ent){
+  if(!ent||!ent.data||ent.data.hp<=0)return false;
+  if(ent.kind==='landmark')return ent.data.hp>0;
+  return areHostile({ownerId:playerKey},ent.data);
+}
+function targetSortPointScore(point,target){return dist(point,target)+(target.kind==='building'?0.35:0)+(target.kind==='landmark'?0.75:0);}
+function closestAttackTargetNearPoint(point,range=ATTACK_AREA_SEARCH_RANGE){
+  const candidates=[];
+  for(const u of troops.values()){
+    if(u.hp>0&&areHostile({ownerId:playerKey},u)&&dist(point,u)<=range&&canFightHere({ownerId:playerKey,x:point.x,y:point.y},u)) candidates.push({kind:'troop',id:u.id,data:u,score:targetSortPointScore(point,u)});
+  }
+  for(const b of buildings.values()){
+    if(b.hp>0&&areHostile({ownerId:playerKey},b)&&dist(point,b)<=range&&canFightHere({ownerId:playerKey,x:point.x,y:point.y},b)) candidates.push({kind:'building',id:b.id,data:b,score:targetSortPointScore(point,b)});
+  }
+  for(const l of landmarks.values()){
+    if(l.hp>0&&dist(point,l)<=range) candidates.push({kind:'landmark',id:l.id,data:l,score:targetSortPointScore(point,l)});
+  }
+  candidates.sort((a,b)=>a.score-b.score);
+  return candidates[0]||null;
+}
+function issueAttack(ids,target){
+  if(!isAttackableEntity(target)){log('No valid enemy target selected.');return;}
+  if(target?.data?.ownerId&&isAllied(playerKey,target.data.ownerId)){log('Allied troops and buildings cannot be attacked.');return;}
+  const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey&&u.hp>0);
+  if(!units.length)return;
+  units.forEach(u=>{u.order='attack';u.targetId=target.id;u.path=[];u.moveGoal=null;u.assignedGoal=null;u.buildTask=null; troops.set(u.id,u);});
+  log(`Focus attack order on ${LANDMARK[target.data.type]?.name||UNIT[target.data.type]?.name||BUILDING[target.data.type]?.name||target.data.type||target.data.ownerId}.`);
+  scheduleSaveTroops(units);
+}
+function issueAttackArea(ids,tx,ty){
+  const target=closestAttackTargetNearPoint({x:tx,y:ty},ATTACK_AREA_SEARCH_RANGE);
+  if(target){issueAttack(ids,target);return;}
+  issueMove(ids,tx,ty,true);
+  log('No immediate target in that area; attack-moving toward the clicked point.');
+}
 
 let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>saveQueue.add(u.id));}
 async function flushTroopSaves(){ if(!saveQueue.size)return; const batch=writeBatch(db); const ids=[...saveQueue].slice(0,80); ids.forEach(id=>{const u=troops.get(id); if(u)batch.set(ref('troops',id),u,{merge:true}); saveQueue.delete(id);}); await batch.commit().catch(e=>log('Save troop error: '+e.message)); }
@@ -920,8 +957,14 @@ function tick(dt){
 }
 function isOwnerOnline(owner){ if(owner===playerKey)return true; return false; } // prototype: current browser simulates visible/offline enemy actions if needed
 function shouldSimOfflineEnemy(u){ if(isBarbarianUnit(u)){const center=screenToTile(canvas.width/2,canvas.height/2);return dist(u,center)<=CHUNK_SIZE*4;} if(String(u.ownerId).startsWith(`goblin_${playerKey}`)) return true; const c=getChunkOfTile(u.x,u.y); const hc=getChunkOfTile(Math.floor((camera.x+canvas.width/2)/(32*camera.zoom)),Math.floor((camera.y+canvas.height/2)/(32*camera.zoom))); return Math.abs(c.cx-hc.cx)<=2 && Math.abs(c.cy-hc.cy)<=2; }
-function enemiesNear(unit,range){return [...troops.values()].filter(e=>e.hp>0&&areHostile(unit,e)&&dist(unit,e)<=range && canFightHere(unit,e));}
-function enemyBuildingsNear(unit,range){return [...buildings.values()].filter(b=>b.hp>0&&areHostile(unit,b)&&dist(unit,b)<=range && canFightHere(unit,b));}
+function enemiesNear(unit,range){return [...troops.values()].filter(e=>e.hp>0&&areHostile(unit,e)&&dist(unit,e)<=range && canFightHere(unit,e)).sort((a,b)=>dist(unit,a)-dist(unit,b));}
+function enemyBuildingsNear(unit,range){return [...buildings.values()].filter(b=>b.hp>0&&areHostile(unit,b)&&dist(unit,b)<=range && canFightHere(unit,b)).sort((a,b)=>dist(unit,a)-dist(unit,b));}
+function autoAggroTarget(unit,def){
+  const range=unit.order==='attackMove'?ATTACK_MOVE_AGGRO_RANGE:IDLE_AGGRO_RANGE;
+  const troopsFound=enemiesNear(unit,range);
+  const buildingsFound=enemyBuildingsNear(unit,Math.max(def.range+2,Math.floor(range*.75)));
+  return [...troopsFound,...buildingsFound].sort((a,b)=>dist(unit,a)-dist(unit,b))[0]||null;
+}
 function canFightHere(a,target){ if(isBarbarianUnit(a)||isBarbarianUnit(target)||isBarbarianCamp(a)||isBarbarianCamp(target)||isBarbarianOwner(a.ownerId)||isBarbarianOwner(target.ownerId))return true; if(a.inArena||target.inArena)return true; const t=territoryOfTile(target.x,target.y); if(!t.ownerId)return true; if(t.ownerId===a.ownerId)return true;if(isAllied(a.ownerId,t.ownerId)&&allianceSettingFor(a.ownerId,'allowReinforce',true))return true; return activeBattleAllows(a.ownerId,target.x,target.y); }
 function handleLocalTroopAI(u,def,n,reservations,offline=false){
   // build task overrides aggro/attack.
@@ -929,20 +972,28 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   if(def.ability==='heal' && u.order==='idle'){ const ally=[...troops.values()].find(a=>a.ownerId===u.ownerId&&a.hp<effectiveMaxHp(a)&&dist(a,u)<=def.range); if(ally && n>=(u.nextAttackAt||0)){ally.hp=Math.min(effectiveMaxHp(ally),ally.hp+Math.round(((u.veterancy||0)>=5?3:2)*(u.ownerId===playerKey&&hasTech('fieldMedicine')?1.5:1))); u.nextAttackAt=n+1500; scheduleSaveTroops([u,ally]);}}
   let target=null;
   if(u.targetId){target=troops.get(u.targetId)||buildings.get(u.targetId)||landmarks.get(u.targetId); if(!target||target.hp<=0){u.targetId=null;u.order='idle';target=null;}}
-  if(!target && (u.order==='idle'||u.order==='attackMove'||u.order==='guardCamp'||u.order==='wander')) target = enemiesNear(u,def.range+5)[0] || enemyBuildingsNear(u,def.range+5)[0];
+  if(!target && (u.order==='idle'||u.order==='attackMove'||u.order==='guardCamp'||u.order==='wander')) target = autoAggroTarget(u,def);
   if(target){ if(dist(u,target)<=def.range){ if(n>=(u.nextAttackAt||0)){performAttack(u,target); u.nextAttackAt=n+attackDelay(u,def); scheduleSaveTroops([u,target]);} return; } else { moveOneStep(u,def,n,reservations,target.x,target.y); return; } }
   if((u.order==='move'||u.order==='attackMove'||u.order==='wander')){
     if(u.path && u.path.length){ moveAlongPath(u,def,n,reservations); return; }
     if(u.moveGoal){
-      // Do not stop just because one troop arrived or the first assigned square became blocked.
-      // This troop keeps looking for the closest legal tile around the clicked point until commanded otherwise.
       const atAssigned = u.assignedGoal && u.x===u.assignedGoal.x && u.y===u.assignedGoal.y;
-      const nearGoal = dist(u,u.moveGoal)<=1;
-      if(!atAssigned || !nearGoal){
+      const closeEnough = dist(u,u.moveGoal)<=1 || atAssigned;
+      if(!closeEnough){
         u.path=pathTowardMoveGoal(u);
         if(u.path.length){ moveAlongPath(u,def,n,reservations); return; }
       }
-      // No legal improvement exists this tick; remain in move mode so later openings are used.
+      // End normal move as soon as the troop reaches the closest reachable point.
+      // This returns it to neutral/idle status so normal aggro immediately works again.
+      if(u.order==='move'){
+        u.order='idle';
+        u.moveGoal=null;
+        u.assignedGoal=null;
+        u.moveGroupId=null;
+        u.waitTicks=0;
+        scheduleSaveTroops([u]);
+        return;
+      }
       u.waitTicks=(u.waitTicks||0)+1;
       if(u.waitTicks>5){u.path=pathTowardMoveGoal(u);u.waitTicks=0;}
       scheduleSaveTroops([u]);
@@ -1086,7 +1137,7 @@ function selectedProductionBuilding(){
   const prodTypes=new Set(Object.values(UNIT).map(u=>u.building).filter(Boolean));
   return selectedOwnedBuildings().find(b=>prodTypes.has(b.type)&&isBuildingComplete(b));
 }
-function costText(cost){return `${cost.gold||0}g ${cost.lumber||0}l ${cost.oil||0}o`}
+function costText(cost){return `🪙 ${cost.gold||0}  🪵 ${cost.lumber||0}  🛢️ ${cost.oil||0}`}
 function trainTimeText(ms){return ms>=3600000?`${Math.round(ms/360000)/10}h`:`${Math.round(ms/60000)}m`}
 
 function renderProductionPanel(){
@@ -1417,8 +1468,8 @@ $('homeBtn').onclick=()=>{camera.x=account.home.x*32*camera.zoom-canvas.width/2;
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('mousedown',e=>{ if(e.button===0){mouse.down=true;mouse.startX=e.clientX;mouse.startY=e.clientY; selBox.style.display='block'; selBox.style.left=e.clientX+'px';selBox.style.top=e.clientY+'px';selBox.style.width='0px';selBox.style.height='0px';}});
 window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y),visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y)||visibleLandmarkAtTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; renderLandmarkPanel(visible?landmarkAtChunk(c.key):null);if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const supplied=terr.ownerId?getSuppliedChunks(terr.ownerId).has(terr.id):false,supplyText=!terr.ownerId?'None':supplied?'Connected':`Cut off - income reduced to ${Math.round(UNSUPPLIED_INCOME_MULTIPLIER*100)}%`,ownerAlliance=terr.ownerId?allianceForPlayer(terr.ownerId):null; const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||LANDMARK[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null,battle=[...battles.values()].find(b=>b.chunkKey===terr.id&&b.status!=='ended')||[...battles.values()].filter(b=>b.chunkKey===terr.id).sort((a,b)=>(b.resolvedAt||0)-(a.resolvedAt||0))[0],base=battle&&battleBase(battle),state=battle&&battleState(battle),battleInfo=battle?`<br><b>Invasion: ${escapeHtml(state.replace('_',' '))}</b><br>Starts: ${new Date(battle.startAt).toLocaleString()}<br>Ends: ${new Date(battle.endAt).toLocaleString()}<br>Required target: ${escapeHtml(BUILDING[battle.baseType||base?.type]?.name||battle.baseType||'Defender base')} — ${base&&base.hp>0?`standing (${Math.ceil(base.hp)} HP)`:'destroyed'}`:''; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${escapeHtml(terr.ownerId||'Neutral')}${ownerAlliance?`<br>Alliance: <span class="allianceBadge">${escapeHtml(ownerAlliance.name)}</span>`:''}<br>Supply: <b class="${supplied?'okText':'dangerText'}">${supplyText}</b><br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${battleInfo}${camp?(()=>{const d=campTypeDef(camp),raid=camp.state==='raiding'?`Raiding ${camp.raidTargetChunk||'nearby territory'}`:`${fmt(Math.max(0,(camp.nextRaidAt||now())-now()))} until raid ready`;return `<br><b style="color:${d.color}">${d.icon} ${d.name} · Level ${camp.campLevel||1}</b><br><i>${d.flavor}</i><br>Raid status: ${raid}<br>Reward preview: ${barbarianRewardPreview(camp)}`;})():''}${hoverName?`<br>Hovered: ${hoverName}`:''}${terr.capture?`<br><b>Capturing player: ${escapeHtml(terr.capture.ownerId||'Unknown')}</b><br>${Math.floor(clamp(Number(terr.capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS,0,1)*100)}% · ${fmt(UNCLAIMED_CAPTURE_REQUIRED_MS-Number(terr.capture.progressMs||0))} remaining<div class="progress"><span style="width:${clamp(Number(terr.capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS*100,0,100)}%;background:${terr.capture.contested?'#ff9f43':'#54d6ff'}"></span></div>${terr.capture.contested?'<b class="dangerText">Contested — capture paused</b>':''}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
-window.addEventListener('mouseup',e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(buildMode&&Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top),type=buildMode;if(isValidBuildPlacement(type,t.x,t.y)){buildMode=null;$('modeReadout').textContent='Move';placeBuilding(type,t.x,t.y);}else log('Invalid build tile. Choose a highlighted square in your territory.');return;} if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=visibleEntityAtTile(t.x,t.y); if(ent){ if(!e.shiftKey)selected.clear(); selected.add(ent.id);} else if(!e.shiftKey) selected.clear(); } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
-canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; $('modeReadout').textContent='Move'; return;} const ent=visibleEntityAtTile(t.x,t.y)||visibleLandmarkAtTile(t.x,t.y); if(ent&&ent.data.ownerId!==playerKey&&(ent.kind!=='landmark'||ent.data.hp>0)) issueAttack(selected,ent); else issueMove(selected,t.x,t.y,attackMode); attackMode=false; $('modeReadout').textContent='Move'; }});
+window.addEventListener('mouseup',e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(buildMode&&Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top),type=buildMode;if(isValidBuildPlacement(type,t.x,t.y)){buildMode=null;$('modeReadout').textContent='Move';placeBuilding(type,t.x,t.y);}else log('Invalid build tile. Choose a highlighted square in your territory.');return;} if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=visibleEntityAtTile(t.x,t.y)||visibleLandmarkAtTile(t.x,t.y); if(attackMode){ if(ent&&isAttackableEntity(ent)) issueAttack(selected,ent); else issueAttackArea(selected,t.x,t.y); attackMode=false; $('modeReadout').textContent='Move'; } else { const selectable=ent&&ent.kind!=='landmark'?ent:null; if(selectable){ if(!e.shiftKey)selected.clear(); selected.add(selectable.id);} else if(!e.shiftKey) selected.clear(); } } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
+canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; $('modeReadout').textContent='Move'; return;} const ent=visibleEntityAtTile(t.x,t.y)||visibleLandmarkAtTile(t.x,t.y); if(ent&&isAttackableEntity(ent)) issueAttack(selected,ent); else if(attackMode) issueAttackArea(selected,t.x,t.y); else issueMove(selected,t.x,t.y,false); attackMode=false; $('modeReadout').textContent='Move'; }});
 canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; camera.zoom=clamp(camera.zoom*(e.deltaY<0?1.1:.9),.45,2.2); const mx=e.offsetX,my=e.offsetY; camera.x=(camera.x+mx)*(camera.zoom/old)-mx; camera.y=(camera.y+my)*(camera.zoom/old)-my;},{passive:false});
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&buildMode){buildMode=null;$('modeReadout').textContent='Move';log('Build mode cancelled.');return;} if(e.key.toLowerCase()==='a'){buildMode=null;attackMode=true;$('modeReadout').textContent='Attack-move';} const ability=currentAbilityHotkeys.get(e.key); if(ability&&!e.repeat){buildMode=null;e.preventDefault();ability.trigger();}});
 
