@@ -196,6 +196,7 @@ for(const [type,balance] of Object.entries(UNIT_BALANCE)){
 }
 const BUILDING = {
   fortress:{name:"Fortress", hp:400, cost:{gold:0,lumber:0,oil:0}},
+  road:{name:"Road", hp:35, cost:{gold:0,lumber:15,oil:0}, road:true},
   goldMine:{name:"Gold Mine", hp:80, cost:{gold:0,lumber:0,oil:0}},
   barracks:{name:"Barracks", hp:100, cost:{gold:75,lumber:120,oil:0}},
   stable:{name:"Stable", hp:100, cost:{gold:95,lumber:130,oil:0}},
@@ -221,6 +222,9 @@ const VETERANCY = {
   names:['Recruit','Trained','Veteran','Elite','Legendary','Mythic'],
   damageXp:.35, killXp:12, survivalXp:18, campXp:35, landmarkXp:45, bossParticipationXp:20, bossVictoryXp:55
 };
+const UNSUPPLIED_INCOME_MULTIPLIER = .25;
+const ROAD_MOVEMENT_COST = .72;
+const ROAD_SPEED_MULTIPLIER = 1/1.5;
 
 let uid=null, player=null, playerKey=null;
 let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), landmarks=new Map(), playerAccounts=new Map();
@@ -269,6 +273,34 @@ function isAllied(playerId,otherPlayerId){
   const otherAllies=other?.allies||other?.alliance?.members||[];
   return playerAllies.includes?.(otherPlayerId)||otherAllies.includes?.(playerId);
 }
+function allianceAllowsSupply(playerId,otherPlayerId){
+  if(playerId===otherPlayerId)return true;
+  if(!isAllied(playerId,otherPlayerId))return false;
+  const player=playerId===playerKey?account:playerAccounts.get(playerId);
+  const other=otherPlayerId===playerKey?account:playerAccounts.get(otherPlayerId);
+  const denied=player?.alliancePermissions?.supply===false||player?.allowAlliedSupply===false||
+    other?.alliancePermissions?.supply===false||other?.allowAlliedSupply===false;
+  return !denied;
+}
+function getSuppliedChunks(playerId){
+  const supplied=new Set(),queue=[];
+  for(const fortress of buildings.values()){
+    if(fortress.type!=='fortress'||fortress.ownerId!==playerId||fortress.hp<=0)continue;
+    const key=fortress.chunkKey||getChunkOfTile(fortress.x,fortress.y).key;
+    if(!supplied.has(key)){supplied.add(key);queue.push(key);}
+  }
+  while(queue.length){
+    const {cx,cy}=parseChunkKey(queue.shift());
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx=cx+dx,ny=cy+dy;
+      if(nx<0||ny<0||nx>=WORLD_CHUNKS||ny>=WORLD_CHUNKS)continue;
+      const key=chunkKey(nx,ny),territory=territories.get(key);
+      if(supplied.has(key)||!territory?.ownerId||!allianceAllowsSupply(playerId,territory.ownerId))continue;
+      supplied.add(key);queue.push(key);
+    }
+  }
+  return supplied;
+}
 function addChunkAndAdjacent(set,cx,cy){
   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
     const nx=cx+dx,ny=cy+dy;
@@ -316,7 +348,17 @@ function resourceIncomeText(t){
   const inc=resourceIncomeForTerritory(t);
   return [`+${inc.gold} gold/hr`,`+${inc.lumber} lumber/hr`,inc.oil?`+${inc.oil} oil/hr`:null].filter(Boolean).join(', ');
 }
-function totalHourlyIncome(){let r={gold:0,lumber:0,oil:0}; for(const t of territories.values()){if(t.ownerId===playerKey){const inc=resourceIncomeForTerritory(t); r.gold+=inc.gold;r.lumber+=inc.lumber;r.oil+=inc.oil;}} for(const l of landmarks.values())if(l.ownerId===playerKey&&l.type==='tradePost'){r.gold+=15;r.lumber+=15;r.oil+=3;} const harvest=account.globalBuffs?.harvestUntil>now()?1.2:1;return {gold:Math.floor(r.gold*harvest),lumber:Math.floor(r.lumber*harvest),oil:Math.floor(r.oil*harvest)};}
+function totalHourlyIncome(){
+  const full={gold:0,lumber:0,oil:0},lost={gold:0,lumber:0,oil:0},supplied=getSuppliedChunks(playerKey);
+  for(const t of territories.values())if(t.ownerId===playerKey){
+    const inc=resourceIncomeForTerritory(t),mult=supplied.has(t.id)?1:UNSUPPLIED_INCOME_MULTIPLIER;
+    for(const resource of ['gold','lumber','oil']){full[resource]+=inc[resource]*mult;lost[resource]+=inc[resource]*(1-mult);}
+  }
+  for(const l of landmarks.values())if(l.ownerId===playerKey&&l.type==='tradePost')for(const [resource,value] of Object.entries(LANDMARK.tradePost.income))full[resource]+=value;
+  const harvest=account.globalBuffs?.harvestUntil>now()?1.2:1,result={full:{},lost:{}};
+  for(const resource of ['gold','lumber','oil']){result[resource]=Math.floor(full[resource]*harvest);result.full[resource]=result[resource];result.lost[resource]=Math.floor(lost[resource]*harvest);}
+  return result;
+}
 
 async function authReady(){return new Promise(res=>onAuthStateChanged(auth,u=>{if(u){uid=u.uid;res(u)}}));}
 signInAnonymously(auth).catch(e=>{$('loginMsg').textContent=e.message});
@@ -395,16 +437,18 @@ function isBarbarianUnit(u){return !!u&&(u.barbarian||UNIT[u.type]?.barbarian||i
 function isBarbarianCamp(b){return !!b&&b.type==='barbarianCamp';}
 function areHostile(a,b){const ab=isBarbarianOwner(a?.ownerId),bb=isBarbarianOwner(b?.ownerId); if(ab&&bb)return false; return a?.ownerId!==b?.ownerId;}
 function isEnemyOwnedBlocked(unit,x,y){const o=ownerOfTile(x,y); if(isBarbarianUnit(unit))return false; return o && o!==unit.ownerId && !activeBattleAllows(unit.ownerId,x,y);}
+function roadAt(x,y){return [...buildings.values()].find(b=>b.type==='road'&&b.hp>0&&b.x===x&&b.y===y);}
 function entityAtTile(x,y){for(const u of troops.values()) if(u.hp>0&&u.x===x&&u.y===y) return {kind:'troop',id:u.id,data:u}; for(const b of buildings.values()) if(b.hp>0&&b.x===x&&b.y===y) return {kind:'building',id:b.id,data:b}; return null;}
+function blockingEntityAtTile(x,y){for(const u of troops.values())if(u.hp>0&&u.x===x&&u.y===y)return {kind:'troop',id:u.id,data:u};for(const b of buildings.values())if(b.hp>0&&b.type!=='road'&&b.x===x&&b.y===y)return {kind:'building',id:b.id,data:b};return null;}
 function visibleEntityAtTile(x,y){return isTileVisible(x,y)?entityAtTile(x,y):null;}
 function visibleLandmarkAtTile(x,y){if(!isTileVisible(x,y))return null;const c=getChunkOfTile(x,y),l=landmarkAtChunk(c.key);if(!l)return null;return {kind:'landmark',id:l.id,data:l};}
-function isBlocked(x,y,unit=null,targetKey=null){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)return true; const e=entityAtTile(x,y); if(unit?.inArena){ if(e && e.id!==targetKey && e.id!==unit.id && e.kind==='troop') return true; return false; } const terr=terrainAt(x,y); if(terr==='water'||terr==='mountain')return true; if(e && e.id!==targetKey && e.data.ownerId!==unit?.ownerId) return true; if(e && e.id!==unit?.id && e.kind==='troop') return true; if(e && e.kind==='building' && BUILDING[e.data.type]?.wall && e.data.ownerId!==unit?.ownerId) return true; if(unit && isEnemyOwnedBlocked(unit,x,y)) return true; return false; }
+function isBlocked(x,y,unit=null,targetKey=null){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)return true; const e=blockingEntityAtTile(x,y); if(unit?.inArena){ if(e && e.id!==targetKey && e.id!==unit.id && e.kind==='troop') return true; return false; } const terr=terrainAt(x,y); if(terr==='water'||terr==='mountain')return true; if(e && e.id!==targetKey && e.data.ownerId!==unit?.ownerId) return true; if(e && e.id!==unit?.id && e.kind==='troop') return true; if(e && e.kind==='building' && BUILDING[e.data.type]?.wall && e.data.ownerId!==unit?.ownerId) return true; if(unit && isEnemyOwnedBlocked(unit,x,y)) return true; return false; }
 
 const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
 function findPath(unit,tx,ty,maxNodes=800){
   const start={x:unit.x,y:unit.y}; const goal={x:tx,y:ty}; const open=[start], came=new Map(), g=new Map([[tileKey(start.x,start.y),0]]), f=new Map([[tileKey(start.x,start.y),dist(start,goal)]]); const closed=new Set(); let nodes=0;
   while(open.length && nodes++<maxNodes){ open.sort((a,b)=>(f.get(tileKey(a.x,a.y))||999999)-(f.get(tileKey(b.x,b.y))||999999)); const cur=open.shift(); const ck=tileKey(cur.x,cur.y); if(cur.x===tx&&cur.y===ty){const path=[];let k=ck;while(came.has(k)){const [px,py]=k.split(',').map(Number);path.unshift({x:px,y:py});k=came.get(k);}return path.slice(0,80);} closed.add(ck);
-    for(const [dx,dy] of dirs){const nx=cur.x+dx,ny=cur.y+dy,nk=tileKey(nx,ny); if(closed.has(nk)||isBlocked(nx,ny,unit,tileKey(tx,ty)))continue; const ng=(g.get(ck)||0)+((dx&&dy)?1.4:1); if(ng<(g.get(nk)||999999)){came.set(nk,ck);g.set(nk,ng);f.set(nk,ng+dist({x:nx,y:ny},goal)); if(!open.some(p=>p.x===nx&&p.y===ny))open.push({x:nx,y:ny});}}
+    for(const [dx,dy] of dirs){const nx=cur.x+dx,ny=cur.y+dy,nk=tileKey(nx,ny); if(closed.has(nk)||isBlocked(nx,ny,unit,tileKey(tx,ty)))continue; const roadCost=roadAt(nx,ny)?ROAD_MOVEMENT_COST:1,ng=(g.get(ck)||0)+((dx&&dy)?1.4:1)*roadCost; if(ng<(g.get(nk)||999999)){came.set(nk,ck);g.set(nk,ng);f.set(nk,ng+dist({x:nx,y:ny},goal)); if(!open.some(p=>p.x===nx&&p.y===ny))open.push({x:nx,y:ny});}}
   } return [];
 }
 function formationTargets(cx,cy,count,unit,claimed=new Set()){
@@ -670,7 +714,7 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   else if(u.order!=='idle' && (!u.path || !u.path.length)) {u.order='idle'; scheduleSaveTroops([u]);}
 }
 function moveOneStep(u,def,n,res,tx,ty){ if(!u.path||!u.path.length||hash2(n%999,u.x+u.y)>.88) u.path=findPath(u,tx,ty,1200); moveAlongPath(u,def,n,res); }
-function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=3?.95:1); scheduleSaveTroops([u]); }
+function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=3?.95:1)*(roadAt(u.x,u.y)?ROAD_SPEED_MULTIPLIER:1); scheduleSaveTroops([u]); }
 function hasBannerAura(u){return [...troops.values()].some(ally=>ally.hp>0&&ally.ownerId===u.ownerId&&ally.type==='bannerKnight'&&dist(ally,u)<=3)}
 function hasBarbarianDrummerAura(u){return isBarbarianUnit(u)&&[...troops.values()].some(a=>a.hp>0&&a.ownerId===u.ownerId&&a.type==='barbarianDrummer'&&dist(a,u)<=3)}
 function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)||hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=4?.9:1))}
@@ -792,10 +836,12 @@ async function placeBuilding(type,x,y){
   const def=BUILDING[type];
   const terr=territoryOfTile(x,y);
   if(terr.ownerId!==playerKey){log('You can only build in controlled territory.');return;}
+  if(type==='road'&&roadAt(x,y)){log('There is already a road on that tile.');return;}
+  if(blockingEntityAtTile(x,y)){log('That tile is occupied.');return;}
   if(isBlocked(x,y,{ownerId:playerKey})){log('Tile blocked.');return;}
-  if((type==='mobileTower'||type==='barricade')){
+  if((type==='mobileTower'||type==='barricade'||type==='road')){
     const eng=[...selected].map(id=>troops.get(id)).find(u=>u?.type==='engineer'&&u.ownerId===playerKey);
-    if(!eng){log('Select an Engineer for mobile towers or barricades.');return;}
+    if(!eng){log('Select an Engineer for mobile towers, barricades, or roads.');return;}
     if(!canPay(def.cost)){log('Not enough resources.');return;}
     pay(def.cost);
     eng.order='build'; eng.buildTask={kind:type,x,y,startedAt:null}; eng.path=findPath(eng,x,y);
@@ -808,7 +854,7 @@ async function placeBuilding(type,x,y){
   const b={id,ownerId:playerKey,type,x,y,hp:def.hp,maxHp:def.hp,chunkKey:getChunkOfTile(x,y).key,createdAt:now(),level:1,productionQueue:[]};
   await setDoc(ref('buildings',id),b); await saveAccount(); updateUI(); log(`Built ${def.name}.`);
 }
-function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(account.resources?.gold||0);$('lumberVal').textContent=Math.floor(account.resources?.lumber||0);$('oilVal').textContent=Math.floor(account.resources?.oil||0);$('fortLv').textContent=account.fortressLevel||1; $('troopCount').textContent=supplyUsed()+queuedSupply(); $('troopCap').textContent=supplyCap(); const income=totalHourlyIncome(); $('incomeInfo').innerHTML=`Hourly income from held territories:<br><span class="gold">+${income.gold} gold</span>, <span class="lumber">+${income.lumber} lumber</span>, <span class="oil">+${income.oil} oil</span>`;
+function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(account.resources?.gold||0);$('lumberVal').textContent=Math.floor(account.resources?.lumber||0);$('oilVal').textContent=Math.floor(account.resources?.oil||0);$('fortLv').textContent=account.fortressLevel||1; $('troopCount').textContent=supplyUsed()+queuedSupply(); $('troopCap').textContent=supplyCap(); const income=totalHourlyIncome(); $('incomeInfo').innerHTML=`Full income:<br><span class="gold">+${income.full.gold} gold</span>, <span class="lumber">+${income.full.lumber} lumber</span>, <span class="oil">+${income.full.oil} oil</span><br>Lost to cut-off territories:<br><span class="dangerText">-${income.lost.gold} gold, -${income.lost.lumber} lumber, -${income.lost.oil} oil</span>`;
   const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>`${UNIT[e.type]?.name||BUILDING[e.type]?.name||e.type}: ${Math.ceil(e.hp)}/${effectiveMaxHp(e)}${troops.has(e.id)?` · ${'★'.repeat(e.veterancy||0)}${'☆'.repeat(5-(e.veterancy||0))} ${VETERANCY.names[e.veterancy||0]} (${Math.floor(e.xp||0)} XP)`:''} @ ${e.x},${e.y}`).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
   renderAbilities(sels); renderProductionPanel(); renderPortalInfo(sels); renderBattles();
 }
@@ -839,6 +885,7 @@ const ABILITY_REGISTRY=[
   {id:'enterPortal',types:['portal'],label:'Enter Goblin Portal',description:()=>{const g=account.goblin||{};return g.nextAt&&g.nextAt>now()?`Cooldown ${fmt(g.nextAt-now())}`:'Enter with troops standing on this square';},canUse:sels=>{const p=sels.find(e=>e.type==='portal'),g=account.goblin||{};return !!p&&(!g.nextAt||g.nextAt<=now())&&[...troops.values()].some(u=>u.ownerId===playerKey&&u.hp>0&&u.x===p.x&&u.y===p.y&&!u.inArena);},action:sels=>enterGoblinPortal(sels.find(e=>e.type==='portal'))},
   {id:'mobileTower',types:['engineer'],label:'Mobile Tower',description:()=>`Temporary defense · ${costText(BUILDING.mobileTower.cost)} · 10 min build`,canUse:sels=>sels.some(e=>e.type==='engineer'&&e.ownerId===playerKey),action:()=>startEngineerBuild('mobileTower')},
   {id:'barricade',types:['engineer'],label:'Temporary Barricade',description:()=>`${costText(BUILDING.barricade.cost)} · 5 min build`,canUse:sels=>sels.some(e=>e.type==='engineer'&&e.ownerId===playerKey),action:()=>startEngineerBuild('barricade')}
+  ,{id:'road',types:['engineer'],label:'Build Road',description:()=>`${costText(BUILDING.road.cost)} · 5 min build · 1.5x movement`,canUse:sels=>sels.some(e=>e.type==='engineer'&&e.ownerId===playerKey),action:()=>startEngineerBuild('road')}
 ];
 function startEngineerBuild(type){
   if(![...selected].some(id=>troops.get(id)?.type==='engineer')){log('Select an Engineer first.');return;}
@@ -1016,7 +1063,7 @@ $('homeBtn').onclick=()=>{camera.x=account.home.x*32*camera.zoom-canvas.width/2;
 
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('mousedown',e=>{ if(e.button===0){mouse.down=true;mouse.startX=e.clientX;mouse.startY=e.clientY; selBox.style.display='block'; selBox.style.left=e.clientX+'px';selBox.style.top=e.clientY+'px';selBox.style.width='0px';selBox.style.height='0px';}});
-window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y),visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y)||visibleLandmarkAtTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; renderLandmarkPanel(visible?landmarkAtChunk(c.key):null);if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||LANDMARK[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${terr.ownerId||'Neutral'}<br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${camp?(()=>{const d=campTypeDef(camp),raid=camp.state==='raiding'?`Raiding ${camp.raidTargetChunk||'nearby territory'}`:`${fmt(Math.max(0,(camp.nextRaidAt||now())-now()))} until raid ready`;return `<br><b style="color:${d.color}">${d.icon} ${d.name} · Level ${camp.campLevel||1}</b><br><i>${d.flavor}</i><br>Raid status: ${raid}<br>Reward preview: ${barbarianRewardPreview(camp)}`;})():''}${hoverName?`<br>Hovered: ${hoverName}`:''}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
+window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y),visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y)||visibleLandmarkAtTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; renderLandmarkPanel(visible?landmarkAtChunk(c.key):null);if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const supplied=terr.ownerId?getSuppliedChunks(terr.ownerId).has(terr.id):false,supplyText=!terr.ownerId?'None':supplied?'Connected':`Cut off - income reduced to ${Math.round(UNSUPPLIED_INCOME_MULTIPLIER*100)}%`; const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||LANDMARK[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${terr.ownerId||'Neutral'}<br>Supply: <b class="${supplied?'okText':'dangerText'}">${supplyText}</b><br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${camp?(()=>{const d=campTypeDef(camp),raid=camp.state==='raiding'?`Raiding ${camp.raidTargetChunk||'nearby territory'}`:`${fmt(Math.max(0,(camp.nextRaidAt||now())-now()))} until raid ready`;return `<br><b style="color:${d.color}">${d.icon} ${d.name} · Level ${camp.campLevel||1}</b><br><i>${d.flavor}</i><br>Raid status: ${raid}<br>Reward preview: ${barbarianRewardPreview(camp)}`;})():''}${hoverName?`<br>Hovered: ${hoverName}`:''}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
 window.addEventListener('mouseup',e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=visibleEntityAtTile(t.x,t.y); if(ent){ if(!e.shiftKey)selected.clear(); selected.add(ent.id);} else if(!e.shiftKey) selected.clear(); } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
 canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; $('modeReadout').textContent='Move'; return;} const ent=visibleEntityAtTile(t.x,t.y)||visibleLandmarkAtTile(t.x,t.y); if(ent&&ent.data.ownerId!==playerKey&&(ent.kind!=='landmark'||ent.data.hp>0)) issueAttack(selected,ent); else issueMove(selected,t.x,t.y,attackMode); attackMode=false; $('modeReadout').textContent='Move'; }});
 canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; camera.zoom=clamp(camera.zoom*(e.deltaY<0?1.1:.9),.45,2.2); const mx=e.offsetX,my=e.offsetY; camera.x=(camera.x+mx)*(camera.zoom/old)-mx; camera.y=(camera.y+my)*(camera.zoom/old)-my;},{passive:false});
@@ -1110,9 +1157,20 @@ function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPla
     ctx.save();ctx.shadowColor=d.color;ctx.shadowBlur=10;ctx.fillStyle='rgba(9,13,19,.9)';ctx.strokeStyle=l.ownerId===playerKey?'#48ff8f':d.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,iconSize*.48,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle=d.color;ctx.font=`700 ${Math.floor(iconSize*.62)}px Segoe UI Symbol`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(d.icon,s.x+size/2,s.y+size/2+1);ctx.restore();
     if(l.hp>0)drawHp(l,{x:s.x+(size-iconSize)/2,y:s.y+(size-iconSize)/2},iconSize);
   }
+  // Roads are non-blocking infrastructure, drawn below buildings and troops with joined edges.
+  for(const road of buildings.values()){
+    if(road.type!=='road'||road.hp<=0||!isTileVisible(road.x,road.y))continue;
+    const s=tileToScreen(road.x,road.y),cx=s.x+size/2,cy=s.y+size/2;
+    ctx.save();ctx.strokeStyle='#a8875f';ctx.lineWidth=Math.max(3,size*.28);ctx.lineCap='square';ctx.beginPath();
+    ctx.moveTo(cx,cy);ctx.lineTo(cx,cy);
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(roadAt(road.x+dx,road.y+dy)){ctx.moveTo(cx,cy);ctx.lineTo(cx+dx*size/2,cy+dy*size/2);}
+    ctx.stroke();ctx.fillStyle='#c7a878';ctx.beginPath();ctx.arc(cx,cy,Math.max(2,size*.13),0,Math.PI*2);ctx.fill();ctx.restore();
+    if(selected.has(road.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=2;ctx.strokeRect(s.x+2,s.y+2,size-4,size-4);}
+    drawHp(road,s,size);
+  }
   // buildings
   for(const b of buildings.values()){
-    if(b.hp<=0||!isTileVisible(b.x,b.y))continue;
+    if(b.hp<=0||b.type==='road'||!isTileVisible(b.x,b.y))continue;
     const s=tileToScreen(b.x,b.y);
     if(s.x<-size||s.y<-size||s.x>canvas.width+size||s.y>canvas.height+size)continue;
     drawSvgIcon('building',b.type,b.ownerId,s.x+size*.04,s.y+size*.04,size*.92);
