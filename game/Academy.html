@@ -82,7 +82,7 @@ const db = getFirestore(app);
 const GAME_ID = "massive_grid_rts_v1";
 const basePath = `lobbies/${GAME_ID}`;
 
-const WORLD_CHUNKS = 100;
+const WORLD_CHUNKS = 200;
 const CHUNK_SIZE = 16;
 const WORLD_TILES = WORLD_CHUNKS * CHUNK_SIZE;
 const SAVE_EVERY_MS = 1200;
@@ -197,6 +197,7 @@ const FORT_UPGRADE_COST = {2:{gold:200,lumber:180,oil:0},3:{gold:380,lumber:300,
 let uid=null, player=null, playerKey=null;
 let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), playerAccounts=new Map();
 let unsub=[]; let selected=new Set(); let hoveredTile=null; let hoveredEntity=null; let attackMode=false; let buildMode=null;
+let visibleChunks=new Set();
 let currentAbilityHotkeys=new Map();
 let camera={x:0,y:0,zoom:1}; let mouse={x:0,y:0,down:false,startX:0,startY:0};
 let lastSave=0, lastTick=0, lastCaptureCheck=0, lastProductionCheck=0, lastBarbarianPoll=0, lastBarbarianThink=0;
@@ -227,6 +228,34 @@ function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function canPay(cost){return (account.resources.gold>=cost.gold && account.resources.lumber>=cost.lumber && account.resources.oil>=cost.oil)}
 function pay(cost){account.resources.gold-=cost.gold; account.resources.lumber-=cost.lumber; account.resources.oil-=cost.oil;}
 function addRes(r){account.resources.gold+=r.gold||0;account.resources.lumber+=r.lumber||0;account.resources.oil+=r.oil||0;}
+
+function isAllied(playerId,otherPlayerId){
+  if(!playerId||!otherPlayerId)return false;
+  if(playerId===otherPlayerId)return true;
+  const player=playerId===playerKey?account:playerAccounts.get(playerId);
+  const other=otherPlayerId===playerKey?account:playerAccounts.get(otherPlayerId);
+  const playerAllies=player?.allies||player?.alliance?.members||[];
+  const otherAllies=other?.allies||other?.alliance?.members||[];
+  return playerAllies.includes?.(otherPlayerId)||otherAllies.includes?.(playerId);
+}
+function addChunkAndAdjacent(set,cx,cy){
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    const nx=cx+dx,ny=cy+dy;
+    if(nx>=0&&ny>=0&&nx<WORLD_CHUNKS&&ny<WORLD_CHUNKS)set.add(chunkKey(nx,ny));
+  }
+}
+function getVisibleChunksForPlayer(playerId){
+  const visible=new Set();
+  for(const t of territories.values())if(t.ownerId===playerId||isAllied(playerId,t.ownerId))addChunkAndAdjacent(visible,t.cx,t.cy);
+  for(const u of troops.values())if(u.hp>0&&(u.ownerId===playerId||isAllied(playerId,u.ownerId))){
+    const c=getChunkOfTile(u.x,u.y);addChunkAndAdjacent(visible,c.cx,c.cy);
+  }
+  // Extension point for watchtowers, research, relics, or other permanent reveal systems.
+  for(const key of account.revealedChunks||[]){const c=parseChunkKey(key);addChunkAndAdjacent(visible,c.cx,c.cy);}
+  return visible;
+}
+function isChunkVisible(cx,cy){return visibleChunks.has(chunkKey(cx,cy));}
+function isTileVisible(x,y){const c=getChunkOfTile(x,y);return isChunkVisible(c.cx,c.cy);}
 
 function hash2(x,y,seed=12345){let n=(x*374761393+y*668265263+seed*1442695041)>>>0;n=(n^(n>>13))*1274126177;return ((n^(n>>16))>>>0)/4294967295;}
 function chunkResource(cx,cy){
@@ -333,6 +362,7 @@ function isBarbarianCamp(b){return !!b&&b.type==='barbarianCamp';}
 function areHostile(a,b){const ab=isBarbarianOwner(a?.ownerId),bb=isBarbarianOwner(b?.ownerId); if(ab&&bb)return false; return a?.ownerId!==b?.ownerId;}
 function isEnemyOwnedBlocked(unit,x,y){const o=ownerOfTile(x,y); if(isBarbarianUnit(unit))return false; return o && o!==unit.ownerId && !activeBattleAllows(unit.ownerId,x,y);}
 function entityAtTile(x,y){for(const u of troops.values()) if(u.hp>0&&u.x===x&&u.y===y) return {kind:'troop',id:u.id,data:u}; for(const b of buildings.values()) if(b.hp>0&&b.x===x&&b.y===y) return {kind:'building',id:b.id,data:b}; return null;}
+function visibleEntityAtTile(x,y){return isTileVisible(x,y)?entityAtTile(x,y):null;}
 function isBlocked(x,y,unit=null,targetKey=null){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)return true; const e=entityAtTile(x,y); if(unit?.inArena){ if(e && e.id!==targetKey && e.id!==unit.id && e.kind==='troop') return true; return false; } const terr=terrainAt(x,y); if(terr==='water'||terr==='mountain')return true; if(e && e.id!==targetKey && e.data.ownerId!==unit?.ownerId) return true; if(e && e.id!==unit?.id && e.kind==='troop') return true; if(e && e.kind==='building' && BUILDING[e.data.type]?.wall && e.data.ownerId!==unit?.ownerId) return true; if(unit && isEnemyOwnedBlocked(unit,x,y)) return true; return false; }
 
 const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
@@ -884,9 +914,9 @@ $('homeBtn').onclick=()=>{camera.x=account.home.x*32*camera.zoom-canvas.width/2;
 
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('mousedown',e=>{ if(e.button===0){mouse.down=true;mouse.startX=e.clientX;mouse.startY=e.clientY; selBox.style.display='block'; selBox.style.left=e.clientX+'px';selBox.style.top=e.clientY+'px';selBox.style.width='0px';selBox.style.height='0px';}});
-window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); hoveredEntity=entityAtTile(hoveredTile.x,hoveredTile.y); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=`${c.cx},${c.cy}`; const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${terr.ownerId||'Neutral'}<br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${camp?`<br><b style="color:#ff9b45">Barbarian Camp (Level ${camp.campLevel||1})</b>`:''}${hoverName?`<br>Hovered: ${hoverName}`:''}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`; if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
-window.addEventListener('mouseup',e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=entityAtTile(t.x,t.y); if(ent){ if(!e.shiftKey)selected.clear(); selected.add(ent.id);} else if(!e.shiftKey) selected.clear(); } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
-canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; $('modeReadout').textContent='Move'; return;} const ent=entityAtTile(t.x,t.y); if(ent&&ent.data.ownerId!==playerKey) issueAttack(selected,ent); else issueMove(selected,t.x,t.y,attackMode); attackMode=false; $('modeReadout').textContent='Move'; }});
+window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y),visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${terr.ownerId||'Neutral'}<br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${camp?`<br><b style="color:#ff9b45">Barbarian Camp (Level ${camp.campLevel||1})</b>`:''}${hoverName?`<br>Hovered: ${hoverName}`:''}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
+window.addEventListener('mouseup',e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=visibleEntityAtTile(t.x,t.y); if(ent){ if(!e.shiftKey)selected.clear(); selected.add(ent.id);} else if(!e.shiftKey) selected.clear(); } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
+canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; $('modeReadout').textContent='Move'; return;} const ent=visibleEntityAtTile(t.x,t.y); if(ent&&ent.data.ownerId!==playerKey) issueAttack(selected,ent); else issueMove(selected,t.x,t.y,attackMode); attackMode=false; $('modeReadout').textContent='Move'; }});
 canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; camera.zoom=clamp(camera.zoom*(e.deltaY<0?1.1:.9),.45,2.2); const mx=e.offsetX,my=e.offsetY; camera.x=(camera.x+mx)*(camera.zoom/old)-mx; camera.y=(camera.y+my)*(camera.zoom/old)-my;},{passive:false});
 window.addEventListener('keydown',e=>{ if(e.key.toLowerCase()==='a'){attackMode=true;$('modeReadout').textContent='Attack-move';} const ability=currentAbilityHotkeys.get(e.key); if(ability&&!e.repeat){e.preventDefault();ability.trigger();}});
 
@@ -960,20 +990,20 @@ function drawSvgIcon(kind,type,ownerId,x,y,size){
   if(img.complete) ctx.drawImage(img,x,y,size,size);
   else {ctx.fillStyle=ownerKind==='self'?'#17e57c':ownerKind==='goblin'?'#8be05e':ownerKind==='barbarian'?'#c95c2b':'#ff4b4b';ctx.fillRect(x+size*.15,y+size*.15,size*.7,size*.7);}
 }
-function draw(){ const size=32*camera.zoom; ctx.clearRect(0,0,canvas.width,canvas.height); const startX=Math.floor(camera.x/size), startY=Math.floor(camera.y/size), endX=Math.ceil((camera.x+canvas.width)/size), endY=Math.ceil((camera.y+canvas.height)/size);
-  for(let y=startY;y<=endY;y++) for(let x=startX;x<=endX;x++){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)continue; const s=tileToScreen(x,y); const terr=terrainAt(x,y); ctx.fillStyle=terr==='water'?'#12304a':terr==='mountain'?'#40434a':terr==='forest'?'#153b25':'#1c2a1f'; ctx.fillRect(s.x,s.y,size+1,size+1); const owner=ownerOfTile(x,y); if(owner){ctx.fillStyle=owner===playerKey?'rgba(24,201,100,.22)':'rgba(255,77,77,.22)'; ctx.fillRect(s.x,s.y,size,size);} }
+function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPlayer(playerKey); ctx.clearRect(0,0,canvas.width,canvas.height); const startX=Math.floor(camera.x/size), startY=Math.floor(camera.y/size), endX=Math.ceil((camera.x+canvas.width)/size), endY=Math.ceil((camera.y+canvas.height)/size);
+  for(let y=startY;y<=endY;y++) for(let x=startX;x<=endX;x++){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)continue; const s=tileToScreen(x,y),c=getChunkOfTile(x,y); if(!isChunkVisible(c.cx,c.cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,size+1,size+1);continue;} const terr=terrainAt(x,y); ctx.fillStyle=terr==='water'?'#12304a':terr==='mountain'?'#40434a':terr==='forest'?'#153b25':'#1c2a1f'; ctx.fillRect(s.x,s.y,size+1,size+1); const owner=ownerOfTile(x,y); if(owner){ctx.fillStyle=owner===playerKey||isAllied(playerKey,owner)?'rgba(24,201,100,.22)':'rgba(255,77,77,.22)'; ctx.fillRect(s.x,s.y,size,size);} }
   // chunk boundaries and resource icons
   const scx=Math.floor(startX/CHUNK_SIZE), ecx=Math.floor(endX/CHUNK_SIZE), scy=Math.floor(startY/CHUNK_SIZE), ecy=Math.floor(endY/CHUNK_SIZE);
-  for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++){ if(cx<0||cy<0||cx>=WORLD_CHUNKS||cy>=WORLD_CHUNKS)continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE), chunkPixels=CHUNK_SIZE*size, res=resourceForChunk(cx,cy), color=resourceColor(res); ctx.strokeStyle='#536070'; ctx.lineWidth=2; ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);
+  for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++){ if(cx<0||cy<0||cx>=WORLD_CHUNKS||cy>=WORLD_CHUNKS)continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE), chunkPixels=CHUNK_SIZE*size; if(!isChunkVisible(cx,cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);ctx.strokeStyle='#111722';ctx.lineWidth=2;ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);continue;} const res=resourceForChunk(cx,cy), color=resourceColor(res); ctx.strokeStyle='#536070'; ctx.lineWidth=2; ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);
     const compact=camera.zoom<.7, label=compact?resourceIcon(res):resourceDisplayName(res), fontSize=compact?11:Math.min(18,11+camera.zoom*3), padX=compact?6:9, badgeH=compact?22:fontSize+12;
     ctx.save(); ctx.font=`700 ${fontSize}px Segoe UI`; const badgeW=compact?22:Math.ceil(ctx.measureText(label).width+padX*2); const bx=s.x+chunkPixels/2-badgeW/2, by=s.y+chunkPixels/2-badgeH/2;
     ctx.fillStyle='rgba(9,13,19,.82)'; ctx.strokeStyle=color; ctx.lineWidth=compact?2:2.5; ctx.beginPath(); ctx.roundRect(bx,by,badgeW,badgeH,compact?11:7); ctx.fill(); ctx.stroke(); ctx.fillStyle=color; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(label,s.x+chunkPixels/2,s.y+chunkPixels/2+(compact?0:1)); ctx.restore();
   }
   // battle overlays
-  for(const b of battles.values()){const n=now(); if(n>b.endAt)continue; const {cx,cy}=parseChunkKey(b.chunkKey); const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE); ctx.strokeStyle=n>=b.startAt?'#ff2d45':'#ffb547'; ctx.lineWidth=4; ctx.strokeRect(s.x+3,s.y+3,CHUNK_SIZE*size-6,CHUNK_SIZE*size-6);}
+  for(const b of battles.values()){const n=now(); if(n>b.endAt)continue; const {cx,cy}=parseChunkKey(b.chunkKey); if(!isChunkVisible(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE); ctx.strokeStyle=n>=b.startAt?'#ff2d45':'#ffb547'; ctx.lineWidth=4; ctx.strokeRect(s.x+3,s.y+3,CHUNK_SIZE*size-6,CHUNK_SIZE*size-6);}
   // buildings
   for(const b of buildings.values()){
-    if(b.hp<=0)continue;
+    if(b.hp<=0||!isTileVisible(b.x,b.y))continue;
     const s=tileToScreen(b.x,b.y);
     if(s.x<-size||s.y<-size||s.x>canvas.width+size||s.y>canvas.height+size)continue;
     drawSvgIcon('building',b.type,b.ownerId,s.x+size*.04,s.y+size*.04,size*.92);
@@ -986,7 +1016,7 @@ function draw(){ const size=32*camera.zoom; ctx.clearRect(0,0,canvas.width,canva
   }
   // troops
   for(const u of troops.values()){
-    if(u.hp<=0)continue;
+    if(u.hp<=0||!isTileVisible(u.x,u.y))continue;
     const s=tileToScreen(u.x,u.y);
     if(s.x<-size||s.y<-size||s.x>canvas.width+size||s.y>canvas.height+size)continue;
     drawSvgIcon('troop',u.type,u.ownerId,s.x+size*.02,s.y+size*.02,size*.96);
