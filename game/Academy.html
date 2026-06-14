@@ -216,6 +216,11 @@ const BUILDING = {
 };
 const FORT_CAP = [0,12,20,32,48,70,95,125,160,210,275];
 const FORT_UPGRADE_COST = {2:{gold:200,lumber:180,oil:0},3:{gold:380,lumber:300,oil:20},4:{gold:700,lumber:520,oil:40},5:{gold:1200,lumber:850,oil:85},6:{gold:1900,lumber:1300,oil:150},7:{gold:2900,lumber:2000,oil:250},8:{gold:4300,lumber:3100,oil:400},9:{gold:6200,lumber:4500,oil:650},10:{gold:9000,lumber:6500,oil:1000}};
+const VETERANCY = {
+  thresholds:[0,40,120,260,480,800],
+  names:['Recruit','Trained','Veteran','Elite','Legendary','Mythic'],
+  damageXp:.35, killXp:12, survivalXp:18, campXp:35, landmarkXp:45, bossParticipationXp:20, bossVictoryXp:55
+};
 
 let uid=null, player=null, playerKey=null;
 let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), landmarks=new Map(), playerAccounts=new Map();
@@ -352,7 +357,7 @@ async function setupNewPlayer(owner,home){
   batch.set(ref('buildings',`${owner}_barracks`),{id:`${owner}_barracks`,ownerId:owner,type:'barracks',x:home.x,y:home.y+3,hp:100,maxHp:100,chunkKey:tk,createdAt:now()});
   batch.set(ref('buildings',`${owner}_engineerShop`),{id:`${owner}_engineerShop`,ownerId:owner,type:'engineerShop',x:home.x-2,y:home.y+3,hp:95,maxHp:95,chunkKey:tk,createdAt:now()});
   const starters=[['footman',-1,1],['footman',0,1],['skirmisher',1,1],['medic',-1,2],['engineer',1,2]];
-  starters.forEach((s,idx)=>{const [type,dx,dy]=s,u=UNIT[type],id=`${owner}_start_${idx}`;batch.set(ref('troops',id),{id,ownerId:owner,type,x:home.x+dx,y:home.y+dy,hp:u.hp,maxHp:u.hp,order:'idle',targetId:null,path:[],nextMoveAt:0,nextAttackAt:0,buffs:{},createdAt:now()});});
+  starters.forEach((s,idx)=>{const [type,dx,dy]=s,u=UNIT[type],id=`${owner}_start_${idx}`;batch.set(ref('troops',id),{id,ownerId:owner,type,x:home.x+dx,y:home.y+dy,hp:u.hp,maxHp:u.hp,xp:0,veterancy:0,order:'idle',targetId:null,path:[],nextMoveAt:0,nextAttackAt:0,buffs:{},createdAt:now()});});
   await batch.commit();
 }
 
@@ -361,7 +366,7 @@ async function startGame(){
   resize(); camera.x=account.home.x*32 - canvas.width/2; camera.y=account.home.y*32 - canvas.height/2;
   unsub.forEach(u=>u()); unsub=[];
   unsub.push(onSnapshot(col('territories'),s=>{territories.clear();s.forEach(d=>territories.set(d.id,{id:d.id,...d.data()})); updateUI();}));
-  unsub.push(onSnapshot(col('troops'),s=>{troops.clear();s.forEach(d=>troops.set(d.id,{id:d.id,...d.data()})); pruneSelection(); updateUI();}));
+  unsub.push(onSnapshot(col('troops'),s=>{troops.clear();s.forEach(d=>troops.set(d.id,normalizeTroop({id:d.id,...d.data()}))); pruneSelection(); updateUI();}));
   unsub.push(onSnapshot(col('buildings'),s=>{buildings.clear();s.forEach(d=>buildings.set(d.id,{id:d.id,...d.data()})); pruneSelection(); updateUI();}));
   unsub.push(onSnapshot(col('battles'),s=>{battles.clear();s.forEach(d=>battles.set(d.id,{id:d.id,...d.data()})); updateUI();}));
   unsub.push(onSnapshot(col('landmarks'),s=>{landmarks.clear();s.forEach(d=>landmarks.set(d.id,{id:d.id,...d.data()})); updateUI();}));
@@ -470,6 +475,15 @@ let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>sav
 async function flushTroopSaves(){ if(!saveQueue.size)return; const batch=writeBatch(db); const ids=[...saveQueue].slice(0,80); ids.forEach(id=>{const u=troops.get(id); if(u)batch.set(ref('troops',id),u,{merge:true}); saveQueue.delete(id);}); await batch.commit().catch(e=>log('Save troop error: '+e.message)); }
 async function saveBuilding(b){await setDoc(ref('buildings',b.id),b,{merge:true});}
 async function saveLandmark(l){await setDoc(ref('landmarks',l.id),l,{merge:true});}
+function veterancyForXp(xp){let level=0;for(let i=1;i<VETERANCY.thresholds.length;i++)if(xp>=VETERANCY.thresholds[i])level=i;return level;}
+function normalizeTroop(u){u.xp=Math.max(0,Number(u.xp)||0);u.veterancy=veterancyForXp(u.xp);return u;}
+function addTroopXp(u,amount,reason='battle'){
+  if(!u||u.hp<=0||amount<=0)return;
+  const old=u.veterancy||0;u.xp=Math.round(((Number(u.xp)||0)+amount)*10)/10;u.veterancy=veterancyForXp(u.xp);
+  if(u.veterancy!==old){const base=UNIT[u.type]?.hp||u.maxHp||1,newMax=Math.round(base*(u.veterancy>=1?1.05:1));u.hp=Math.min(newMax,u.hp+Math.max(0,newMax-(u.maxHp||base)));u.maxHp=newMax;if(u.ownerId===playerKey)log(`${UNIT[u.type]?.name||u.type} reached ${VETERANCY.names[u.veterancy]} (${u.veterancy}★) through ${reason}.`);}
+  scheduleSaveTroops([u]);
+}
+function awardNearbyTroopXp(ownerId,point,radius,amount,reason,filter=()=>true){for(const u of troops.values())if(u.hp>0&&u.ownerId===ownerId&&dist(u,point)<=radius&&filter(u))addTroopXp(u,amount,reason);}
 
 function landmarkCandidate(type,index,used,forts){
   for(let attempt=0;attempt<600;attempt++){
@@ -501,7 +515,8 @@ async function respawnLandmark(l){
 async function defeatLandmark(l,killerId){
   const d=LANDMARK[l.type],n=now(),claimed=await runTransaction(db,async tx=>{const r=ref('landmarks',l.id),snap=await tx.get(r);if(!snap.exists()||snap.data().rewardClaimedAt||snap.data().hp>0)return false;tx.update(r,{rewardClaimedAt:n,lastDefeatedAt:n,lastDefeatedBy:killerId||null,ownerId:isBossLandmark(l)?null:killerId||null,bossAlive:false,respawnAt:isBossLandmark(l)?n+d.cooldownMs:null});return true;});
   if(!claimed)return;l.rewardClaimedAt=n;l.lastDefeatedAt=n;l.lastDefeatedBy=killerId;l.ownerId=isBossLandmark(l)?null:killerId;l.bossAlive=false;l.respawnAt=isBossLandmark(l)?n+d.cooldownMs:null;
-  if(killerId===playerKey&&d.reward){addRes(d.reward);account.globalBuffs=account.globalBuffs||{};account.globalBuffs[`${l.type}Until`]=n+d.buffMs;account.veterancyXp=(account.veterancyXp||0)+100;account.relicFragments=(account.relicFragments||0)+1;if(Math.random()<d.relicChance){account.relics=account.relics||[];if(!account.relics.includes(d.relic))account.relics.push(d.relic);log(`${d.relic} discovered!`);}if(Math.random()<.08){account.rareTroopUnlocks=account.rareTroopUnlocks||[];if(!account.rareTroopUnlocks.includes(l.type))account.rareTroopUnlocks.push(l.type);}await saveAccount();log(`${d.name} conquered: +${d.reward.gold}g +${d.reward.lumber}l +${d.reward.oil}o and ${d.buff} for ${fmt(d.buffMs)}.`);}
+  awardNearbyTroopXp(killerId,l,8,isBossLandmark(l)?VETERANCY.bossVictoryXp:VETERANCY.landmarkXp,isBossLandmark(l)?'defeating a boss':'conquering a landmark');
+  if(killerId===playerKey&&d.reward){addRes(d.reward);account.globalBuffs=account.globalBuffs||{};account.globalBuffs[`${l.type}Until`]=n+d.buffMs;account.relicFragments=(account.relicFragments||0)+1;if(Math.random()<d.relicChance){account.relics=account.relics||[];if(!account.relics.includes(d.relic))account.relics.push(d.relic);log(`${d.relic} discovered!`);}if(Math.random()<.08){account.rareTroopUnlocks=account.rareTroopUnlocks||[];if(!account.rareTroopUnlocks.includes(l.type))account.rareTroopUnlocks.push(l.type);}await saveAccount();log(`${d.name} conquered: +${d.reward.gold}g +${d.reward.lumber}l +${d.reward.oil}o and ${d.buff} for ${fmt(d.buffMs)}.`);}
   else if(killerId===playerKey)log(`${d.name} captured. Its strategic benefits are now yours.`);
 }
 
@@ -590,7 +605,7 @@ async function maybeSimulateNearbyBarbarianCamps(){
 }
 async function destroyBarbarianCamp(camp,killerId){
   const campRef=ref('buildings',camp.id),reward=barbarianReward(camp),n=now(),claimed=await runTransaction(db,async tx=>{const snap=await tx.get(campRef);if(!snap.exists()||snap.data().rewardedAt)return false;tx.update(campRef,{hp:0,rewardedAt:n,rewardedBy:killerId||null,defeated:true});return true;});
-  if(!claimed)return;camp.rewardedAt=n;
+  if(!claimed)return;camp.rewardedAt=n;awardNearbyTroopXp(killerId,camp,8,VETERANCY.campXp,'destroying a barbarian camp');
   if(killerId===playerKey){addRes(reward);account.globalBuffs=account.globalBuffs||{};account.globalBuffs.antiBarbarianUntil=n+reward.buffMs;account.temporaryVision=(account.temporaryVision||[]).filter(v=>v.until>n);account.temporaryVision.push({chunkKey:camp.chunkKey,until:n+3600000});const extras=[];if(Math.random()<reward.relicChance){account.relicFragments=(account.relicFragments||0)+1;extras.push('1 relic fragment');}if(Math.random()<reward.mercenaryChance){const spot=formationTargets(camp.x,camp.y,1,{ownerId:playerKey})[0];if(spot){const merc=makeBarbarianUnit('barbarianMercenary',playerKey,spot,{barbarian:false,mercenary:true,order:'idle'});await setDoc(ref('troops',merc.id),merc);extras.push('a barbarian mercenary');}}await saveAccount();log(`${reward.type.name} destroyed! +${reward.gold} gold, +${reward.lumber} lumber, +${reward.oil} oil; anti-barbarian buff and camp vision active${extras.length?`; found ${extras.join(' and ')}`:''}.`);}else log(`${campTypeDef(camp).name} ${camp.chunkKey} was destroyed by ${killerId||'an unknown army'}.`);
   const batch=writeBatch(db);for(const u of troops.values())if(u.campId===camp.id)batch.delete(ref('troops',u.id));await batch.commit();selected.delete(camp.id);updateUI();
 }
@@ -614,6 +629,7 @@ function tick(dt){
   }
   for(const b of buildings.values()) if(b.hp>0 && BUILDING[b.type]?.defense && (b.ownerId===playerKey || !isOwnerOnline(b.ownerId))) buildingAggro(b,n);
   for(const l of landmarks.values())if(isBossLandmark(l)&&!l.bossAlive&&l.respawnAt&&l.respawnAt<=n)respawnLandmark(l).catch(e=>log('Landmark respawn error: '+e.message));
+  for(const battle of battles.values())if(n>=battle.endAt){for(const u of troops.values()){if(u.hp<=0||(u.ownerId!==battle.attackerId&&u.ownerId!==battle.defenderId)||getChunkOfTile(u.x,u.y).key!==battle.chunkKey)continue;u.survivedBattles=u.survivedBattles||{};if(!u.survivedBattles[battle.id]){u.survivedBattles[battle.id]=n;addTroopXp(u,VETERANCY.survivalXp,'surviving a battle');}}}
   if(n-lastProductionCheck>TRAINING_POLL_MS){lastProductionCheck=n; completeTrainingQueues().catch(e=>log('Production error: '+e.message)); checkGoblinPortalBattle().catch(e=>log('Portal error: '+e.message));}
   if(n-lastCaptureCheck>30000){lastCaptureCheck=n; resolveCapturePressure().catch(e=>log('Capture check error: '+e.message));}
   if(n-lastBarbarianPoll>60000){lastBarbarianPoll=n;maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message));}
@@ -627,8 +643,8 @@ function enemyBuildingsNear(unit,range){return [...buildings.values()].filter(b=
 function canFightHere(a,target){ if(isBarbarianUnit(a)||isBarbarianUnit(target)||isBarbarianCamp(a)||isBarbarianCamp(target)||isBarbarianOwner(a.ownerId)||isBarbarianOwner(target.ownerId))return true; if(a.inArena||target.inArena)return true; const t=territoryOfTile(target.x,target.y); if(!t.ownerId)return true; if(t.ownerId===a.ownerId)return true; return activeBattleAllows(a.ownerId,target.x,target.y); }
 function handleLocalTroopAI(u,def,n,reservations,offline=false){
   // build task overrides aggro/attack.
-  if(u.buildTask){ if(dist(u,u.buildTask)>0){moveOneStep(u,def,n,reservations,u.buildTask.x,u.buildTask.y);return;} if(!u.buildTask.startedAt)u.buildTask.startedAt=n; const need=u.buildTask.kind==='mobileTower'?600000:300000; if(n-u.buildTask.startedAt>=need){completeEngineerBuild(u); } scheduleSaveTroops([u]); return; }
-  if(def.ability==='heal' && u.order==='idle'){ const ally=[...troops.values()].find(a=>a.ownerId===u.ownerId&&a.hp<a.maxHp&&dist(a,u)<=def.range); if(ally && n>=(u.nextAttackAt||0)){ally.hp=Math.min(ally.maxHp,ally.hp+2); u.nextAttackAt=n+1500; scheduleSaveTroops([u,ally]);}}
+  if(u.buildTask){ if(dist(u,u.buildTask)>0){moveOneStep(u,def,n,reservations,u.buildTask.x,u.buildTask.y);return;} if(!u.buildTask.startedAt)u.buildTask.startedAt=n; const need=(u.buildTask.kind==='mobileTower'?600000:300000)*((u.veterancy||0)>=5?.9:1); if(n-u.buildTask.startedAt>=need){completeEngineerBuild(u); } scheduleSaveTroops([u]); return; }
+  if(def.ability==='heal' && u.order==='idle'){ const ally=[...troops.values()].find(a=>a.ownerId===u.ownerId&&a.hp<effectiveMaxHp(a)&&dist(a,u)<=def.range); if(ally && n>=(u.nextAttackAt||0)){ally.hp=Math.min(effectiveMaxHp(ally),ally.hp+((u.veterancy||0)>=5?3:2)); u.nextAttackAt=n+1500; scheduleSaveTroops([u,ally]);}}
   let target=null;
   if(u.targetId){target=troops.get(u.targetId)||buildings.get(u.targetId)||landmarks.get(u.targetId); if(!target||target.hp<=0){u.targetId=null;u.order='idle';target=null;}}
   if(!target && (u.order==='idle'||u.order==='attackMove'||u.order==='guardCamp'||u.order==='wander')) target = enemiesNear(u,def.range+5)[0] || enemyBuildingsNear(u,def.range+5)[0];
@@ -654,15 +670,16 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   else if(u.order!=='idle' && (!u.path || !u.path.length)) {u.order='idle'; scheduleSaveTroops([u]);}
 }
 function moveOneStep(u,def,n,res,tx,ty){ if(!u.path||!u.path.length||hash2(n%999,u.x+u.y)>.88) u.path=findPath(u,tx,ty,1200); moveAlongPath(u,def,n,res); }
-function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1); scheduleSaveTroops([u]); }
+function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=3?.95:1); scheduleSaveTroops([u]); }
 function hasBannerAura(u){return [...troops.values()].some(ally=>ally.hp>0&&ally.ownerId===u.ownerId&&ally.type==='bannerKnight'&&dist(ally,u)<=3)}
 function hasBarbarianDrummerAura(u){return isBarbarianUnit(u)&&[...troops.values()].some(a=>a.hp>0&&a.ownerId===u.ownerId&&a.type==='barbarianDrummer'&&dist(a,u)<=3)}
-function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)||hasBarbarianDrummerAura(u)?0.9:1))}
-function effectiveMaxHp(e,n=now()){return (e.maxHp||e.hp||1)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
-function applyDamage(target,amount,n=now()){const defended=target.buffs?.shieldWallUntil>n||target.buffs?.holdLineUntil>n; const dealt=Math.max(1,amount-(defended?1:0)); target.hp=Math.max(0,(target.hp||1)-dealt); return dealt}
+function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)||hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=4?.9:1))}
+function effectiveMaxHp(e,n=now()){const veteranBase=troops.has(e.id)&&UNIT[e.type]?(UNIT[e.type].hp*((e.veterancy||0)>=1?1.05:1)):(e.maxHp||e.hp||1);return Math.round(veteranBase)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
+function applyDamage(target,amount,n=now(),attacker=null){const defended=target.buffs?.shieldWallUntil>n||target.buffs?.holdLineUntil>n;const mythicBlock=attacker&&troops.has(target.id)&&(target.veterancy||0)>=5&&['footman','shieldbearer'].includes(target.type)&&Math.random()<.08; const dealt=mythicBlock?0:Math.max(1,amount-(defended?1:0)); target.hp=Math.max(0,(target.hp||1)-dealt); return dealt}
 function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const n=now(); const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>n)?1:0; const battleCry=(u.buffs?.battleCryUntil&&u.buffs.battleCryUntil>n)?1:0; const globalDamage=Object.entries(account.globalBuffs||{}).some(([k,v])=>k.endsWith('Until')&&v>n)?Math.max(1,Math.floor(def.dmg*.1)):0; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
+  if((u.veterancy||0)>=5&&['mage','pyromancer','electricPriest'].includes(u.type)){const extra=enemiesNear(target,2).find(e=>e.id!==target.id&&!targets.includes(e));if(extra)targets.push(extra);}
   if(def.splash){ for(const e of [...troops.values(),...buildings.values()].filter(e=>e.hp>0&&areHostile(u,e)&&Math.abs(e.x-target.x)<def.splash&&Math.abs(e.y-target.y)<def.splash)) if(!targets.includes(e))targets.push(e); }
-  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0,structure=buildings.has(t.id)?(def.structureBonus||0):0; applyDamage(t,def.dmg+rally+battleCry+marked+structure+(u.ownerId===playerKey?globalDamage+(account.globalBuffs?.antiBarbarianUntil>n&&(isBarbarianUnit(t)||isBarbarianCamp(t))?2:0):0),n); if((buildings.has(t.id)||landmarks.has(t.id))&&!isBarbarianUnit(u))t.lastDamagedBy=u.ownerId;if(t.hp<=0&&troops.has(t.id))selected.delete(t.id);if(landmarks.has(t.id)){saveLandmark(t).then(()=>{if(t.hp<=0)defeatLandmark(t,t.lastDamagedBy||u.ownerId);});}else if(buildings.has(t.id)){if(t.hp<=0&&isBarbarianCamp(t))destroyBarbarianCamp(t,t.lastDamagedBy||u.ownerId).catch(e=>log('Camp reward error: '+e.message));else saveBuilding(t);}}); if(def.ability==='battleCry'&&(!u.lastBattleCryAt||n-u.lastBattleCryAt>=60000)){u.lastBattleCryAt=n;for(const ally of troops.values())if(isBarbarianUnit(ally)&&ally.ownerId===u.ownerId&&dist(u,ally)<=3){ally.buffs=ally.buffs||{};ally.buffs.battleCryUntil=n+30000;scheduleSaveTroops([ally]);}} }
+  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0,structure=buildings.has(t.id)?(def.structureBonus||0):0,wasAlive=t.hp>0;let damage=def.dmg*((u.veterancy||0)>=2?1.05:1)+rally+battleCry+marked+structure+(u.ownerId===playerKey?globalDamage+(account.globalBuffs?.antiBarbarianUntil>n&&(isBarbarianUnit(t)||isBarbarianCamp(t))?2:0):0);if((u.veterancy||0)>=5&&buildings.has(t.id)&&['ballista','catapult','trebuchet'].includes(u.type))damage+=2;const dealt=applyDamage(t,damage,n,u);addTroopXp(u,dealt*VETERANCY.damageXp,'dealing damage');if(isBossLandmark(t)){u.bossParticipations=u.bossParticipations||{};if(!u.bossParticipations[t.id]){u.bossParticipations[t.id]=n;addTroopXp(u,VETERANCY.bossParticipationXp,'participating in a boss fight');}}if(wasAlive&&t.hp<=0)addTroopXp(u,VETERANCY.killXp,'defeating an enemy'); if((buildings.has(t.id)||landmarks.has(t.id))&&!isBarbarianUnit(u))t.lastDamagedBy=u.ownerId;if(t.hp<=0&&troops.has(t.id))selected.delete(t.id);if(landmarks.has(t.id)){saveLandmark(t).then(()=>{if(t.hp<=0)defeatLandmark(t,t.lastDamagedBy||u.ownerId);});}else if(buildings.has(t.id)){if(t.hp<=0&&isBarbarianCamp(t))destroyBarbarianCamp(t,t.lastDamagedBy||u.ownerId).catch(e=>log('Camp reward error: '+e.message));else saveBuilding(t);}}); if(def.ability==='battleCry'&&(!u.lastBattleCryAt||n-u.lastBattleCryAt>=60000)){u.lastBattleCryAt=n;for(const ally of troops.values())if(isBarbarianUnit(ally)&&ally.ownerId===u.ownerId&&dist(u,ally)<=3){ally.buffs=ally.buffs||{};ally.buffs.battleCryUntil=n+30000;scheduleSaveTroops([ally]);}} }
 function buildingAggro(b,n){ const bd=BUILDING[b.type]; if(n<(b.nextAttackAt||0))return; const target=[...troops.values()].find(u=>u.hp>0&&areHostile(b,u)&&dist(u,b)<=bd.range&&canFightHere({ownerId:b.ownerId},u)); if(target){applyDamage(target,bd.dmg,n); b.nextAttackAt=n+bd.attackMs; scheduleSaveTroops([target]); saveBuilding(b);}}
 async function completeEngineerBuild(u){ const task=u.buildTask; if(!task)return; const type=task.kind; const id=`${playerKey}_${type}_${u.id}_${now()}`; const bdef=BUILDING[type]; const b={id,ownerId:playerKey,type,x:u.x,y:u.y,hp:bdef.hp,maxHp:bdef.hp,chunkKey:getChunkOfTile(u.x,u.y).key,createdAt:now()}; if(type==='mobileTower'){ // one mobile tower per engineer; remove old
     for(const old of buildings.values()) if(old.type==='mobileTower'&&old.engineerId===u.id) await deleteDoc(ref('buildings',old.id)); b.engineerId=u.id; b.expiresAt=now()+bdef.temporaryMs;
@@ -767,7 +784,7 @@ async function spawnUnitFromBuilding(type,b){
   const def=UNIT[type];
   const spot=formationTargets(b.x,b.y+1,1,{ownerId:playerKey})[0]||formationTargets(b.x,b.y,1,{ownerId:playerKey})[0]||{x:b.x+1,y:b.y+1};
   const id=`${playerKey}_${type}_${now()}_${Math.floor(Math.random()*9999)}`;
-  const u={id,ownerId:playerKey,type,x:spot.x,y:spot.y,hp:def.hp,maxHp:def.hp,order:'idle',path:[],createdAt:now(),inArena:false};
+  const u={id,ownerId:playerKey,type,x:spot.x,y:spot.y,hp:def.hp,maxHp:def.hp,xp:0,veterancy:0,order:'idle',path:[],createdAt:now(),inArena:false};
   await setDoc(ref('troops',id),u);
   log(`${def.name} completed at ${BUILDING[b.type].name}.`);
 }
@@ -792,7 +809,7 @@ async function placeBuilding(type,x,y){
   await setDoc(ref('buildings',id),b); await saveAccount(); updateUI(); log(`Built ${def.name}.`);
 }
 function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(account.resources?.gold||0);$('lumberVal').textContent=Math.floor(account.resources?.lumber||0);$('oilVal').textContent=Math.floor(account.resources?.oil||0);$('fortLv').textContent=account.fortressLevel||1; $('troopCount').textContent=supplyUsed()+queuedSupply(); $('troopCap').textContent=supplyCap(); const income=totalHourlyIncome(); $('incomeInfo').innerHTML=`Hourly income from held territories:<br><span class="gold">+${income.gold} gold</span>, <span class="lumber">+${income.lumber} lumber</span>, <span class="oil">+${income.oil} oil</span>`;
-  const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>`${UNIT[e.type]?.name||BUILDING[e.type]?.name||e.type}: ${e.hp}/${effectiveMaxHp(e)} @ ${e.x},${e.y}`).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
+  const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>`${UNIT[e.type]?.name||BUILDING[e.type]?.name||e.type}: ${Math.ceil(e.hp)}/${effectiveMaxHp(e)}${troops.has(e.id)?` · ${'★'.repeat(e.veterancy||0)}${'☆'.repeat(5-(e.veterancy||0))} ${VETERANCY.names[e.veterancy||0]} (${Math.floor(e.xp||0)} XP)`:''} @ ${e.x},${e.y}`).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
   renderAbilities(sels); renderProductionPanel(); renderPortalInfo(sels); renderBattles();
 }
 async function tradeAtPost(from,to,amount,received){
@@ -1116,9 +1133,11 @@ function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPla
     if(u.moveGoal && (u.order==='move'||u.order==='attackMove')){ctx.strokeStyle=u.order==='attackMove'?'#ffcf5e':'#8ee8ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,size*.47,0,Math.PI*2);ctx.stroke();}
     if(selected.has(u.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,size*.48,0,Math.PI*2);ctx.stroke();}
     drawHp(u,s,size);
+    drawVeterancyStars(u,s,size);
   }
 }
 function drawHp(e,s,size){ const pct=clamp((e.hp||1)/effectiveMaxHp(e),0,1); ctx.fillStyle='rgba(0,0,0,.7)'; ctx.fillRect(s.x+2,s.y+size-5,size-4,4); ctx.fillStyle=pct>.5?'#48ff8f':pct>.25?'#ffd35e':'#ff3b3b'; ctx.fillRect(s.x+2,s.y+size-5,(size-4)*pct,4);}
+function drawVeterancyStars(u,s,size){const stars=u.veterancy||0;if(!stars||camera.zoom<.65)return;const fontSize=clamp(Math.floor(size*.2),6,10),gap=fontSize*.9,total=gap*stars;ctx.save();ctx.font=`700 ${fontSize}px Segoe UI Symbol`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=u.ownerId===playerKey?'#ffd84d':'#b95b5b';ctx.strokeStyle='rgba(0,0,0,.9)';ctx.lineWidth=2;for(let i=0;i<stars;i++){const x=s.x+size/2-total/2+gap*(i+.5),y=s.y+size+fontSize*.35;ctx.strokeText('★',x,y);ctx.fillText('★',x,y);}ctx.restore();}
 </script>
 </body>
 </html>
