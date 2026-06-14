@@ -97,6 +97,8 @@ const UNIT = {
   skirmisher:{name:"Skirmisher", hp:15, dmg:2, range:3, attackMs:1250, moveMs:620, cost:{gold:12,lumber:32,oil:0}, building:"barracks"},
   centurion:{name:"Centurion", hp:30, dmg:4, range:1, attackMs:1200, moveMs:790, cost:{gold:55,lumber:0,oil:0}, building:"barracks", ability:"rally"},
   medic:{name:"Medic", hp:14, dmg:0, range:2, attackMs:1500, moveMs:720, cost:{gold:20,lumber:15,oil:0}, building:"barracks", ability:"heal"},
+  shieldbearer:{name:"Shieldbearer", hp:42, dmg:2, range:1, attackMs:1400, moveMs:900, cost:{gold:45,lumber:65,oil:0}, building:"barracks"},
+  rangerCaptain:{name:"Ranger Captain", hp:22, dmg:3, range:4, attackMs:1300, moveMs:620, cost:{gold:70,lumber:85,oil:0}, building:"barracks"},
   scout:{name:"Scout", hp:18, dmg:2, range:1, attackMs:1050, moveMs:420, cost:{gold:35,lumber:12,oil:0}, building:"stable"},
   lancer:{name:"Lancer", hp:26, dmg:4, range:1, attackMs:1100, moveMs:480, cost:{gold:55,lumber:18,oil:0}, building:"stable"},
   mountedArcher:{name:"Mounted Archer", hp:20, dmg:2, range:2, attackMs:1150, moveMs:500, cost:{gold:50,lumber:45,oil:0}, building:"stable"},
@@ -107,8 +109,11 @@ const UNIT = {
   pyromancer:{name:"Pyromancer", hp:14, dmg:3, range:2, splash:3, attackMs:2200, moveMs:760, cost:{gold:35,lumber:0,oil:45}, building:"alchemistHall"},
   electricPriest:{name:"Electric Priest", hp:16, dmg:4, range:3, chain:3, attackMs:2100, moveMs:790, cost:{gold:45,lumber:0,oil:75}, building:"alchemistHall"},
   mage:{name:"Mage", hp:24, dmg:6, range:3, attackMs:1800, moveMs:760, cost:{gold:95,lumber:0,oil:95}, building:"alchemistHall"},
+  plagueSlinger:{name:"Plague Slinger", hp:16, dmg:2, range:3, attackMs:2300, moveMs:820, cost:{gold:40,lumber:20,oil:90}, building:"alchemistHall"},
   champion:{name:"Champion", hp:50, dmg:8, range:1, attackMs:1200, moveMs:820, cost:{gold:180,lumber:0,oil:40}, building:"championsHall"},
+  bannerKnight:{name:"Banner Knight", hp:38, dmg:5, range:1, attackMs:1200, moveMs:760, cost:{gold:150,lumber:60,oil:60}, building:"championsHall"},
   engineer:{name:"Engineer", hp:16, dmg:1, range:1, attackMs:1400, moveMs:760, cost:{gold:20,lumber:30,oil:0}, building:"engineerShop", ability:"build"},
+  runeMason:{name:"Rune Mason", hp:20, dmg:1, range:1, attackMs:1500, moveMs:850, cost:{gold:55,lumber:80,oil:20}, building:"engineerShop"},
   goblin:{name:"Goblin", hp:12, dmg:2, range:1, attackMs:1150, moveMs:650, cost:{gold:0,lumber:0,oil:0}, supply:0, trainMs:0}
 };
 const UNIT_BALANCE = {
@@ -119,13 +124,18 @@ const UNIT_BALANCE = {
   scout:{supply:1,trainMs:25*60000},
   lancer:{supply:2,trainMs:40*60000},
   mountedArcher:{supply:2,trainMs:55*60000},
+  shieldbearer:{supply:2,trainMs:45*60000},
+  rangerCaptain:{supply:2,trainMs:80*60000},
+  runeMason:{supply:2,trainMs:90*60000},
   centurion:{supply:2,trainMs:75*60000},
   ballista:{supply:3,trainMs:90*60000},
   pyromancer:{supply:3,trainMs:105*60000},
   electricPriest:{supply:3,trainMs:120*60000},
+  plagueSlinger:{supply:3,trainMs:130*60000},
   catapult:{supply:4,trainMs:150*60000},
   cataphract:{supply:4,trainMs:180*60000},
   mage:{supply:5,trainMs:240*60000},
+  bannerKnight:{supply:5,trainMs:240*60000},
   trebuchet:{supply:6,trainMs:300*60000},
   champion:{supply:8,trainMs:360*60000}
 };
@@ -357,7 +367,12 @@ async function saveBuilding(b){await setDoc(ref('buildings',b.id),b,{merge:true}
 function tick(dt){
   const n=now(); const reservations=new Set();
   // remove expired mobile towers
-  for(const b of buildings.values()){if(b.type==='mobileTower' && b.expiresAt && n>b.expiresAt && b.ownerId===playerKey){deleteDoc(ref('buildings',b.id));}}
+  for(const b of buildings.values()){
+    if(b.type==='mobileTower' && b.expiresAt && n>b.expiresAt && b.ownerId===playerKey) deleteDoc(ref('buildings',b.id));
+    if(b.ownerId===playerKey&&b.reinforcedUntil&&b.reinforcedUntil<=n){
+      b.reinforcedUntil=0; b.reinforceBonusHp=0; b.hp=Math.min(b.hp,b.maxHp||b.hp); saveBuilding(b);
+    }
+  }
   for(const u of troops.values()){
     if(u.hp<=0) continue;
     const def=UNIT[u.type]; if(!def)continue;
@@ -382,7 +397,7 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   let target=null;
   if(u.targetId){target=troops.get(u.targetId)||buildings.get(u.targetId); if(!target||target.hp<=0){u.targetId=null;u.order='idle';target=null;}}
   if(!target && (u.order==='idle'||u.order==='attackMove')) target = enemiesNear(u,def.range+5)[0] || enemyBuildingsNear(u,def.range+5)[0];
-  if(target){ if(dist(u,target)<=def.range){ if(n>=(u.nextAttackAt||0)){performAttack(u,target); u.nextAttackAt=n+def.attackMs; scheduleSaveTroops([u,target]);} return; } else { moveOneStep(u,def,n,reservations,target.x,target.y); return; } }
+  if(target){ if(dist(u,target)<=def.range){ if(n>=(u.nextAttackAt||0)){performAttack(u,target); u.nextAttackAt=n+attackDelay(u,def); scheduleSaveTroops([u,target]);} return; } else { moveOneStep(u,def,n,reservations,target.x,target.y); return; } }
   if((u.order==='move'||u.order==='attackMove')){
     if(u.path && u.path.length){ moveAlongPath(u,def,n,reservations); return; }
     if(u.moveGoal){
@@ -404,11 +419,15 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   else if(u.order!=='idle' && (!u.path || !u.path.length)) {u.order='idle'; scheduleSaveTroops([u]);}
 }
 function moveOneStep(u,def,n,res,tx,ty){ if(!u.path||!u.path.length||hash2(n%999,u.x+u.y)>.88) u.path=findPath(u,tx,ty,1200); moveAlongPath(u,def,n,res); }
-function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); u.nextMoveAt=n+def.moveMs; scheduleSaveTroops([u]); }
-function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>now())?1:0; const dmg=def.dmg+rally; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
+function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(slowed?1.5:1); scheduleSaveTroops([u]); }
+function hasBannerAura(u){return [...troops.values()].some(ally=>ally.hp>0&&ally.ownerId===u.ownerId&&ally.type==='bannerKnight'&&dist(ally,u)<=3)}
+function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)?0.9:1))}
+function effectiveMaxHp(e,n=now()){return (e.maxHp||e.hp||1)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
+function applyDamage(target,amount,n=now()){const defended=target.buffs?.shieldWallUntil>n||target.buffs?.holdLineUntil>n; const dealt=Math.max(1,amount-(defended?1:0)); target.hp=Math.max(0,(target.hp||1)-dealt); return dealt}
+function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const n=now(); const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>n)?1:0; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
   if(def.splash){ for(const e of [...troops.values(),...buildings.values()].filter(e=>e.hp>0&&e.ownerId!==u.ownerId&&Math.abs(e.x-target.x)<def.splash&&Math.abs(e.y-target.y)<def.splash)) if(!targets.includes(e))targets.push(e); }
-  targets.forEach(t=>{t.hp=Math.max(0,(t.hp||1)-dmg); if(t.hp<=0 && troops.has(t.id)) selected.delete(t.id);}); }
-function buildingAggro(b,n){ const bd=BUILDING[b.type]; if(n<(b.nextAttackAt||0))return; const target=[...troops.values()].find(u=>u.hp>0&&u.ownerId!==b.ownerId&&dist(u,b)<=bd.range&&canFightHere({ownerId:b.ownerId},u)); if(target){target.hp=Math.max(0,target.hp-bd.dmg); b.nextAttackAt=n+bd.attackMs; scheduleSaveTroops([target]); saveBuilding(b);}}
+  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0; applyDamage(t,def.dmg+rally+marked,n); if(t.hp<=0 && troops.has(t.id)) selected.delete(t.id);}); }
+function buildingAggro(b,n){ const bd=BUILDING[b.type]; if(n<(b.nextAttackAt||0))return; const target=[...troops.values()].find(u=>u.hp>0&&u.ownerId!==b.ownerId&&dist(u,b)<=bd.range&&canFightHere({ownerId:b.ownerId},u)); if(target){applyDamage(target,bd.dmg,n); b.nextAttackAt=n+bd.attackMs; scheduleSaveTroops([target]); saveBuilding(b);}}
 async function completeEngineerBuild(u){ const task=u.buildTask; if(!task)return; const type=task.kind; const id=`${playerKey}_${type}_${u.id}_${now()}`; const bdef=BUILDING[type]; const b={id,ownerId:playerKey,type,x:u.x,y:u.y,hp:bdef.hp,maxHp:bdef.hp,chunkKey:getChunkOfTile(u.x,u.y).key,createdAt:now()}; if(type==='mobileTower'){ // one mobile tower per engineer; remove old
     for(const old of buildings.values()) if(old.type==='mobileTower'&&old.engineerId===u.id) await deleteDoc(ref('buildings',old.id)); b.engineerId=u.id; b.expiresAt=now()+bdef.temporaryMs;
   }
@@ -536,12 +555,18 @@ async function placeBuilding(type,x,y){
   await setDoc(ref('buildings',id),b); await saveAccount(); updateUI(); log(`Built ${def.name}.`);
 }
 function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(account.resources?.gold||0);$('lumberVal').textContent=Math.floor(account.resources?.lumber||0);$('oilVal').textContent=Math.floor(account.resources?.oil||0);$('fortLv').textContent=account.fortressLevel||1; $('troopCount').textContent=supplyUsed()+queuedSupply(); $('troopCap').textContent=supplyCap(); const income=totalHourlyIncome(); $('incomeInfo').innerHTML=`Hourly income from held territories:<br><span class="gold">+${income.gold} gold</span>, <span class="lumber">+${income.lumber} lumber</span>, <span class="oil">+${income.oil} oil</span>`;
-  const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>`${e.type}: ${e.hp}/${e.maxHp||e.hp} @ ${e.x},${e.y}`).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
+  const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>`${UNIT[e.type]?.name||BUILDING[e.type]?.name||e.type}: ${e.hp}/${effectiveMaxHp(e)} @ ${e.x},${e.y}`).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
   renderAbilities(sels); renderProductionPanel(); renderPortalInfo(sels); renderBattles();
 }
 const ABILITY_HOTKEYS=['1','2','3','4','5','6','7','8','9'];
 const ABILITY_REGISTRY=[
   {id:'rally',types:['centurion'],label:'Rally',description:()=>`Nearby troops gain +1 damage for 1 min · 5 min cooldown`,canUse:sels=>sels.some(e=>e.type==='centurion'&&(!e.rallyCdUntil||e.rallyCdUntil<=now())),action:()=>useRally()},
+  {id:'shieldWall',types:['shieldbearer'],label:'Shield Wall',description:()=>`Allies within 3 tiles take 1 less damage for 45s · 4 min cooldown`,canUse:sels=>sels.some(e=>e.type==='shieldbearer'&&e.ownerId===playerKey&&(!e.shieldWallCdUntil||e.shieldWallCdUntil<=now())),action:()=>useAreaBuff('shieldbearer','shieldWallCdUntil','shieldWallUntil',45000,240000,'Shield Wall')},
+  {id:'markTarget',types:['rangerCaptain'],label:'Mark Target',description:()=>`Hovered enemy takes +1 friendly damage for 60s · Scout Eyes passive · 3 min cooldown`,canUse:sels=>sels.some(e=>e.type==='rangerCaptain'&&e.ownerId===playerKey&&(!e.markTargetCdUntil||e.markTargetCdUntil<=now())),action:()=>useMarkTarget()},
+  {id:'reinforce',types:['runeMason'],label:'Reinforce Structure',description:()=>`Hovered friendly building gains 50 max HP and healing for 10 min · 5 min cooldown`,canUse:sels=>sels.some(e=>e.type==='runeMason'&&e.ownerId===playerKey&&(!e.reinforceCdUntil||e.reinforceCdUntil<=now())),action:()=>useReinforce()},
+  {id:'repairPulse',types:['runeMason'],label:'Repair Pulse',description:()=>`Repair friendly buildings within 3 tiles by 20 · 4 min cooldown`,canUse:sels=>sels.some(e=>e.type==='runeMason'&&e.ownerId===playerKey&&(!e.repairPulseCdUntil||e.repairPulseCdUntil<=now())),action:()=>useRepairPulse()},
+  {id:'poisonCloud',types:['plagueSlinger'],label:'Poison Cloud',description:()=>`Hovered tile: enemies within 2 take 4 damage and are slowed 20s · 5 min cooldown`,canUse:sels=>sels.some(e=>e.type==='plagueSlinger'&&e.ownerId===playerKey&&(!e.poisonCloudCdUntil||e.poisonCloudCdUntil<=now())),action:()=>usePoisonCloud()},
+  {id:'holdLine',types:['bannerKnight'],label:'Hold the Line',description:()=>`Allies within 3 take 1 less damage and ignore slows for 30s · War Banner passive · 5 min cooldown`,canUse:sels=>sels.some(e=>e.type==='bannerKnight'&&e.ownerId===playerKey&&(!e.holdLineCdUntil||e.holdLineCdUntil<=now())),action:()=>useAreaBuff('bannerKnight','holdLineCdUntil','holdLineUntil',30000,300000,'Hold the Line',true)},
   {id:'siege',types:['trebuchet'],label:'Siege',description:()=>`Target hovered enemy territory within 5 tiles · fires every 3h`,canUse:sels=>sels.some(e=>e.type==='trebuchet'),action:()=>useSiege()},
   {id:'upgradeFortress',types:['fortress'],label:'Upgrade Fortress',description:()=>{const lvl=(account.fortressLevel||1)+1,cost=FORT_UPGRADE_COST[lvl];return cost?`Level ${lvl} · ${costText(cost)}`:'Maximum level';},canUse:()=>!!FORT_UPGRADE_COST[(account.fortressLevel||1)+1],action:()=>upgradeFortress()},
   {id:'upgradeWorkshop',types:['workshop'],label:'Upgrade Workshop',description:sels=>{const w=sels.find(e=>e.type==='workshop'),lvl=(w?.level||1)+1;return `Level ${lvl} · ${costText({gold:100*lvl,lumber:120*lvl,oil:10*Math.max(0,lvl-2)})}`;},canUse:sels=>sels.some(e=>e.type==='workshop'),action:sels=>upgradeWorkshop(sels.find(e=>e.type==='workshop'))},
@@ -554,6 +579,73 @@ function startEngineerBuild(type){
   buildMode=type;
   $('modeReadout').textContent=`Place ${BUILDING[type].name}`;
   log(`${BUILDING[type].name} placement: right-click owned ground.`);
+}
+function readySelectedTroops(type,cdField){
+  return [...selected].map(id=>troops.get(id)).filter(u=>u?.ownerId===playerKey&&u.type===type&&(!u[cdField]||u[cdField]<=now()));
+}
+function useAreaBuff(type,cdField,buffField,duration,cooldown,label,clearSlow=false){
+  const casters=readySelectedTroops(type,cdField);
+  if(!casters.length){log(`${label} is on cooldown or no eligible ${UNIT[type].name} is selected.`);return;}
+  const n=now(), affected=new Map();
+  casters.forEach(caster=>{
+    caster[cdField]=n+cooldown;
+    for(const ally of troops.values()) if(ally.hp>0&&ally.ownerId===caster.ownerId&&dist(caster,ally)<=3){
+      ally.buffs=ally.buffs||{}; ally.buffs[buffField]=Math.max(ally.buffs[buffField]||0,n+duration);
+      if(clearSlow) delete ally.buffs.slowedUntil;
+      affected.set(ally.id,ally);
+    }
+    affected.set(caster.id,caster);
+  });
+  scheduleSaveTroops([...affected.values()]); updateUI();
+  log(`${label} protects ${affected.size} friendly troop(s).`);
+}
+function useMarkTarget(){
+  const casters=readySelectedTroops('rangerCaptain','markTargetCdUntil');
+  const target=hoveredEntity?.data;
+  if(!casters.length){log('Mark Target is on cooldown or no eligible Ranger Captain is selected.');return;}
+  if(!target||target.hp<=0||target.ownerId===playerKey){log('Mark Target requires a hovered enemy troop or building.');return;}
+  const n=now(); target.markedBy=playerKey; target.markedUntil=n+60000;
+  casters.forEach(u=>u.markTargetCdUntil=n+180000);
+  scheduleSaveTroops(casters);
+  if(hoveredEntity.kind==='troop') scheduleSaveTroops([target]); else saveBuilding(target);
+  updateUI(); log(`${UNIT[target.type]?.name||BUILDING[target.type]?.name||'Enemy'} marked for 60 seconds.`);
+}
+function useReinforce(){
+  const casters=readySelectedTroops('runeMason','reinforceCdUntil');
+  const target=hoveredEntity?.kind==='building'?hoveredEntity.data:null;
+  if(!casters.length){log('Reinforce Structure is on cooldown or no eligible Rune Mason is selected.');return;}
+  if(!target||target.hp<=0||target.ownerId!==playerKey){log('Reinforce Structure requires a hovered friendly building or wall.');return;}
+  const n=now(); target.reinforcedUntil=n+600000; target.reinforceBonusHp=50; target.hp=Math.min(effectiveMaxHp(target,n),target.hp+50);
+  casters.forEach(u=>u.reinforceCdUntil=n+300000);
+  scheduleSaveTroops(casters); saveBuilding(target); updateUI();
+  log(`${BUILDING[target.type]?.name||'Structure'} reinforced for 10 minutes.`);
+}
+function useRepairPulse(){
+  const casters=readySelectedTroops('runeMason','repairPulseCdUntil');
+  if(!casters.length){log('Repair Pulse is on cooldown or no eligible Rune Mason is selected.');return;}
+  const n=now(), repaired=new Map();
+  casters.forEach(caster=>{
+    caster.repairPulseCdUntil=n+240000;
+    for(const b of buildings.values()) if(b.hp>0&&b.ownerId===caster.ownerId&&dist(caster,b)<=3&&b.hp<effectiveMaxHp(b,n)){
+      b.hp=Math.min(effectiveMaxHp(b,n),b.hp+20); repaired.set(b.id,b);
+    }
+  });
+  scheduleSaveTroops(casters); repaired.forEach(b=>saveBuilding(b)); updateUI();
+  log(`Repair Pulse repaired ${repaired.size} nearby structure(s).`);
+}
+function usePoisonCloud(){
+  const casters=readySelectedTroops('plagueSlinger','poisonCloudCdUntil');
+  if(!casters.length){log('Poison Cloud is on cooldown or no eligible Plague Slinger is selected.');return;}
+  if(!hoveredTile){log('Poison Cloud requires a hovered map tile.');return;}
+  const n=now(), affected=[];
+  for(const enemy of troops.values()) if(enemy.hp>0&&enemy.ownerId!==playerKey&&dist(enemy,hoveredTile)<=2&&canFightHere({ownerId:playerKey},enemy)){
+    applyDamage(enemy,4,n); enemy.buffs=enemy.buffs||{};
+    if(!(enemy.buffs.holdLineUntil>n)) enemy.buffs.slowedUntil=n+20000;
+    affected.push(enemy);
+  }
+  casters.forEach(u=>u.poisonCloudCdUntil=n+300000);
+  scheduleSaveTroops([...casters,...affected]); updateUI();
+  log(`Poison Cloud struck ${affected.length} enemy troop(s) and slowed unprotected survivors.`);
 }
 function getVisibleAbilities(sels){
   return ABILITY_REGISTRY.filter(ability=>ability.types.some(type=>sels.some(entity=>entity.type===type))).map((ability,index)=>({...ability,hotkey:ABILITY_HOTKEYS[index]}));
@@ -692,13 +784,18 @@ function getIcon(kind,type,ownerKind){
     else if(type==='skirmisher') body=base+bow;
     else if(type==='centurion') body=base+shield+`<path d="M16 14 H48" stroke="${gold}" stroke-width="5"/>`;
     else if(type==='medic') body=base+cross;
+    else if(type==='shieldbearer') body=base+`<path d="M17 25 Q32 14 47 25 L44 51 Q32 60 20 51 Z" fill="#5f86a6" stroke="${dark}" stroke-width="4"/><path d="M32 20 V54 M19 34 H45" stroke="${white}" stroke-width="2" opacity=".75"/>`;
+    else if(type==='rangerCaptain') body=base+bow+`<path d="M18 13 L32 7 L46 13" fill="none" stroke="${gold}" stroke-width="4"/>`;
     else if(['scout','lancer','mountedArcher','cataphract'].includes(type)) body=horse+(type==='mountedArcher'?bow:type==='lancer'?`<path d="M47 10 L14 43" stroke="${stone}" stroke-width="5"/>`:type==='cataphract'?shield:sword);
     else if(['ballista','catapult','trebuchet'].includes(type)) body=`<rect x="10" y="39" width="44" height="12" rx="4" fill="${wood}" stroke="${dark}" stroke-width="3"/><circle cx="20" cy="54" r="6" fill="${stone}" stroke="${dark}" stroke-width="3"/><circle cx="46" cy="54" r="6" fill="${stone}" stroke="${dark}" stroke-width="3"/>`+(type==='ballista'?`<path d="M12 34 L54 18 L58 23 L17 39 Z" fill="${stone}" stroke="${dark}" stroke-width="3"/>`:type==='catapult'?`<path d="M20 38 L45 14" stroke="${wood}" stroke-width="7"/><circle cx="49" cy="12" r="7" fill="${stone}" stroke="${dark}" stroke-width="3"/>`:`<path d="M16 42 L32 10 L49 42" fill="none" stroke="${wood}" stroke-width="6"/><path d="M32 12 L50 22" stroke="${stone}" stroke-width="5"/>`);
     else if(type==='pyromancer') body=base+fire;
     else if(type==='electricPriest') body=base+bolt;
     else if(type==='mage') body=base+bolt+fire;
+    else if(type==='plagueSlinger') body=base+`<circle cx="42" cy="38" r="11" fill="#7b3fa1" stroke="${dark}" stroke-width="3"/><circle cx="39" cy="34" r="3" fill="#8cff67"/><path d="M17 48 Q27 32 39 44" fill="none" stroke="#85d65d" stroke-width="5"/>`;
     else if(type==='champion') body=base+crown+sword;
+    else if(type==='bannerKnight') body=base+sword+`<path d="M17 7 V53" stroke="${wood}" stroke-width="4"/><path d="M19 9 H45 L38 20 H19 Z" fill="${gold}" stroke="${dark}" stroke-width="2"/>`;
     else if(type==='engineer') body=base+gear;
+    else if(type==='runeMason') body=base+gear+`<path d="M15 48 L24 27 L33 48 Z" fill="#7df9ff" stroke="${dark}" stroke-width="2"/>`;
     else if(type==='goblin') body=`<path d="M11 38 L20 16 L29 31 L38 16 L53 42 Q42 58 24 54 Z" fill="${primary}" stroke="${dark}" stroke-width="4"/><circle cx="25" cy="37" r="4" fill="${dark}"/><circle cx="40" cy="37" r="4" fill="${dark}"/><path d="M26 47 Q33 52 42 46" fill="none" stroke="${dark}" stroke-width="3"/>`;
     else body=base;
   } else {
@@ -754,7 +851,7 @@ function draw(){ const size=32*camera.zoom; ctx.clearRect(0,0,canvas.width,canva
     drawHp(u,s,size);
   }
 }
-function drawHp(e,s,size){ const pct=clamp((e.hp||1)/(e.maxHp||e.hp||1),0,1); ctx.fillStyle='rgba(0,0,0,.7)'; ctx.fillRect(s.x+2,s.y+size-5,size-4,4); ctx.fillStyle=pct>.5?'#48ff8f':pct>.25?'#ffd35e':'#ff3b3b'; ctx.fillRect(s.x+2,s.y+size-5,(size-4)*pct,4);}
+function drawHp(e,s,size){ const pct=clamp((e.hp||1)/effectiveMaxHp(e),0,1); ctx.fillStyle='rgba(0,0,0,.7)'; ctx.fillRect(s.x+2,s.y+size-5,size-4,4); ctx.fillStyle=pct>.5?'#48ff8f':pct>.25?'#ffd35e':'#ff3b3b'; ctx.fillRect(s.x+2,s.y+size-5,(size-4)*pct,4);}
 </script>
 </body>
 </html>
