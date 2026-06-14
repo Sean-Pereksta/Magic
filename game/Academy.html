@@ -17,6 +17,7 @@
   #abilityHotbar{position:absolute;left:10px;bottom:78px;display:none;max-width:calc(100% - 20px);padding:7px;background:rgba(10,14,20,.94);border:1px solid #445064;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.45);gap:7px;z-index:4}.hotbarAbility{position:relative;display:flex;align-items:flex-start;gap:8px;width:172px;min-height:62px;padding:8px 8px 7px 34px;text-align:left;background:linear-gradient(180deg,#263246,#192331);border:1px solid #53647b;border-radius:8px;color:var(--text)}.hotbarAbility:hover:not(:disabled){background:linear-gradient(180deg,#34455e,#223147);border-color:#8ee8ff;transform:translateY(-1px)}.hotbarAbility:disabled{cursor:not-allowed;opacity:.48;filter:saturate(.55)}.hotbarKey{position:absolute;left:7px;top:7px;min-width:20px;padding:2px 4px;border:1px solid #8291a6;border-radius:5px;background:#0d1117;color:#fff;text-align:center;font-size:12px;line-height:16px;box-shadow:inset 0 -1px 0 rgba(255,255,255,.14)}.hotbarText{display:flex;min-width:0;flex-direction:column;gap:3px}.hotbarLabel{font-size:12px;font-weight:700;line-height:1.15}.hotbarDescription{color:#aeb9c7;font-size:10px;line-height:1.25}.ability{cursor:pointer}.ability.disabled{cursor:not-allowed;opacity:.5}.ability:hover:not(.disabled){background:#29374a;border-color:#60758e}
   #side{background:var(--panel);border-left:1px solid #2b3442;overflow:auto;padding:10px}.section{background:#111722;border:1px solid #2b3442;border-radius:10px;padding:10px;margin-bottom:10px}.section h3{margin:0 0 8px;font-size:15px}.muted{color:var(--muted);font-size:12px}.gridBtns{display:grid;grid-template-columns:1fr 1fr;gap:6px}.unitLine,.buildingLine,.battleLine{display:flex;justify-content:space-between;gap:6px;border-top:1px solid #2a3442;padding:6px 0;font-size:12px}.selectedList{max-height:105px;overflow:auto;border:1px solid #2b3442;border-radius:8px;padding:6px;background:#0d1117}.ability{display:flex;justify-content:space-between;margin:5px 0;background:#1c2532;border:1px solid #384556;border-radius:7px;padding:6px;font-size:12px}.barOuter{height:8px;background:#2b1420;border:1px solid #5e2635;border-radius:999px;overflow:hidden}.barInner{height:100%;background:#ff3e59;width:50%}.msg{color:#ffcc66;font-size:12px;min-height:16px;margin-top:6px}.kbd{border:1px solid #566273;background:#222b38;border-radius:4px;padding:1px 5px;font-size:11px}.hr{height:1px;background:#2b3442;margin:8px 0}.dangerText{color:#ff8b8b}.okText{color:#8cffb7}
   .missionCard,.questCard,.relicCard{margin:7px 0;padding:8px;border:1px solid #384556;border-radius:8px;background:linear-gradient(135deg,#1b2431,#131923);font-size:12px}.missionCard b,.questCard b,.relicCard b{color:#f3d782}.missionMeta{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin:5px 0;color:#aeb9c7}.panelTitle{display:flex;justify-content:space-between;align-items:center}.reward{color:#8cffb7}.activeRelic{border-color:#d9ad45;box-shadow:inset 3px 0 #d9ad45}.progress{height:6px;background:#26303e;border-radius:5px;overflow:hidden;margin:5px 0}.progress span{display:block;height:100%;background:#37c978}
+  .allianceCard{margin:7px 0;padding:8px;border:1px solid #384556;border-radius:8px;background:#151d28;font-size:12px}.allianceMember{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #2a3442}.statusDot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:#687485}.statusDot.online{background:#18c964;box-shadow:0 0 6px #18c964}.settingLine{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.settingLine input{width:auto}.allianceBadge{color:#79d8ff}
 </style>
 </head>
 <body>
@@ -56,6 +57,7 @@
       <div class="section"><h3>Portal Missions</h3><div id="portalInfo" class="muted">Build and select a Portal to launch PvE missions.</div></div>
       <div class="section"><div class="panelTitle"><h3>Relics</h3><span id="fragmentInfo" class="muted"></span></div><div id="relicInfo" class="muted"></div></div>
       <div class="section"><div class="panelTitle"><h3>Daily Quests</h3><span id="dailyTimer" class="muted"></span></div><div id="dailyInfo" class="muted"></div></div>
+      <div class="section"><div class="panelTitle"><h3>Alliance</h3><span id="allianceBadge" class="allianceBadge"></span></div><div id="allianceInfo" class="muted">Loading alliance status...</div><div id="allianceMsg" class="msg"></div></div>
       <div class="section"><h3>Territory & War</h3><div id="tileInfo" class="muted">Hover a chunk.</div><div class="hr"></div><button id="declareBtn" class="danger">Declare Battle on Hovered Enemy Territory</button><div class="row" style="margin-top:6px"><input id="battleTime" type="datetime-local" style="width:100%"></div><div id="warMsg" class="msg"></div></div>
       <div class="section"><h3>Landmark</h3><div id="landmarkInfo" class="muted">Hover a discovered landmark.</div><div id="landmarkActions" class="gridBtns" style="margin-top:8px"></div><div id="landmarkMsg" class="msg"></div></div>
       <div class="section"><h3>Active Battles / Siege</h3><div id="battleList" class="muted">None.</div></div>
@@ -257,7 +259,7 @@ const ROAD_MOVEMENT_COST = .72;
 const ROAD_SPEED_MULTIPLIER = 1/1.5;
 
 let uid=null, player=null, playerKey=null;
-let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), landmarks=new Map(), playerAccounts=new Map();
+let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), landmarks=new Map(), playerAccounts=new Map(), alliances=new Map();
 let unsub=[]; let selected=new Set(); let hoveredTile=null; let hoveredEntity=null; let attackMode=false; let buildMode=null;
 let visibleChunks=new Set();
 let currentAbilityHotkeys=new Map();
@@ -280,6 +282,7 @@ const canvas=$('map'), ctx=canvas.getContext('2d'), wrap=$('canvasWrap'), selBox
 
 function log(s){ const el=$('log'); const t=new Date().toLocaleTimeString(); el.innerHTML = `<div>[${t}] ${s}</div>` + el.innerHTML; }
 function cleanName(s){return (s||'').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'').slice(0,24)}
+function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function sha256(text){ const data=new TextEncoder().encode(text); const hash=await crypto.subtle.digest('SHA-256',data); return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
 function ref(...parts){return doc(db, basePath, ...parts)}
 function col(...parts){return collection(db, basePath, ...parts)}
@@ -329,18 +332,15 @@ function isAllied(playerId,otherPlayerId){
   if(playerId===otherPlayerId)return true;
   const player=playerId===playerKey?account:playerAccounts.get(playerId);
   const other=otherPlayerId===playerKey?account:playerAccounts.get(otherPlayerId);
-  const playerAllies=player?.allies||player?.alliance?.members||[];
-  const otherAllies=other?.allies||other?.alliance?.members||[];
-  return playerAllies.includes?.(otherPlayerId)||otherAllies.includes?.(playerId);
+  return !!player?.allianceId&&player.allianceId===other?.allianceId;
 }
+function allianceForPlayer(id){const acct=id===playerKey?account:playerAccounts.get(id);return acct?.allianceId?alliances.get(acct.allianceId):null;}
+function currentAlliance(){return account.allianceId?alliances.get(account.allianceId):null;}
+function allianceSettingFor(playerId,setting,fallback=true){const alliance=allianceForPlayer(playerId);return alliance?.settings?.[setting]??fallback;}
 function allianceAllowsSupply(playerId,otherPlayerId){
   if(playerId===otherPlayerId)return true;
   if(!isAllied(playerId,otherPlayerId))return false;
-  const player=playerId===playerKey?account:playerAccounts.get(playerId);
-  const other=otherPlayerId===playerKey?account:playerAccounts.get(otherPlayerId);
-  const denied=player?.alliancePermissions?.supply===false||player?.allowAlliedSupply===false||
-    other?.alliancePermissions?.supply===false||other?.allowAlliedSupply===false;
-  return !denied;
+  return allianceSettingFor(playerId,'sharedSupply',false);
 }
 function getSuppliedChunks(playerId){
   const supplied=new Set(),queue=[];
@@ -369,8 +369,9 @@ function addChunkAndAdjacent(set,cx,cy){
 }
 function getVisibleChunksForPlayer(playerId){
   const visible=new Set(),n=now();
-  for(const t of territories.values())if(t.ownerId===playerId||isAllied(playerId,t.ownerId))addChunkAndAdjacent(visible,t.cx,t.cy);
-  for(const u of troops.values())if(u.hp>0&&(u.ownerId===playerId||isAllied(playerId,u.ownerId))){
+  const sharedVision=allianceSettingFor(playerId,'sharedVision',true);
+  for(const t of territories.values())if(t.ownerId===playerId||(sharedVision&&isAllied(playerId,t.ownerId)))addChunkAndAdjacent(visible,t.cx,t.cy);
+  for(const u of troops.values())if(u.hp>0&&(u.ownerId===playerId||(sharedVision&&isAllied(playerId,u.ownerId)))){
     const c=getChunkOfTile(u.x,u.y);addChunkAndAdjacent(visible,c.cx,c.cy);
   }
   // Permanent discoveries and one-hour vision earned by clearing barbarian camps.
@@ -433,14 +434,14 @@ async function createOrLogin(create){
   if(create){
     if(snap.exists()){$('loginMsg').textContent='That player name already exists.';return;}
     const spawn=await findFreeSpawn();
-    const acct={username:name,displayName:$('loginName').value.trim(),passHash,createdAt:now(),lastLoginAt:now(),lastResourceAt:now(),resources:{gold:420,lumber:430,oil:60},fortressLevel:1,home:spawn};
+    const acct={username:name,displayName:$('loginName').value.trim(),passHash,createdAt:now(),lastLoginAt:now(),lastSeenAt:now(),allianceId:null,lastResourceAt:now(),resources:{gold:420,lumber:430,oil:60},fortressLevel:1,home:spawn};
     await setDoc(acctRef,acct);
     await setupNewPlayer(name,spawn);
     account=acct; playerKey=name; startGame();
   }else{
     if(!snap.exists()){$('loginMsg').textContent='No account found. Create it first.';return;}
     const data=snap.data(); if(data.passHash!==passHash){$('loginMsg').textContent='Wrong password.';return;}
-    account=data; playerKey=name; await updateDoc(acctRef,{lastLoginAt:now()}); startGame();
+    account={allianceId:null,...data}; playerKey=name; await updateDoc(acctRef,{lastLoginAt:now(),lastSeenAt:now()}); startGame();
   }
 }
 async function findFreeSpawn(){
@@ -474,10 +475,12 @@ async function startGame(){
   unsub.push(onSnapshot(col('battles'),s=>{battles.clear();s.forEach(d=>battles.set(d.id,{id:d.id,...d.data()})); updateUI();}));
   unsub.push(onSnapshot(col('landmarks'),s=>{landmarks.clear();s.forEach(d=>landmarks.set(d.id,{id:d.id,...d.data()})); updateUI();}));
   unsub.push(onSnapshot(col('accounts'),s=>{playerAccounts.clear();s.forEach(d=>playerAccounts.set(d.id,{id:d.id,...d.data()}));}));
+  unsub.push(onSnapshot(col('alliances'),s=>{alliances.clear();s.forEach(d=>alliances.set(d.id,{id:d.id,...d.data()}));updateUI();}));
   unsub.push(onSnapshot(ref('worldState','barbarians'),s=>{barbarianWorldState=s.exists()?s.data():{nextBarbarianSpawnCheckAt:0};}));
   await collectOfflineResources(); buildButtons(); requestAnimationFrame(loop); log('Entered world at your fortress.');
   setTimeout(()=>maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message)),1200);
   setTimeout(()=>ensureLandmarksGenerated().catch(e=>log('Landmark generation error: '+e.message)),1800);
+  updatePresence();setInterval(updatePresence,30000);
 }
 async function collectOfflineResources(){
   await new Promise(r=>setTimeout(r,700));
@@ -485,6 +488,42 @@ async function collectOfflineResources(){
   if(elapsed>0){ const income=totalHourlyIncome(); const grant={gold:income.gold*elapsed,lumber:income.lumber*elapsed,oil:income.oil*elapsed}; addRes(grant); account.lastResourceAt=(account.lastResourceAt||now())+elapsed*RESOURCE_HOUR_MS; await saveAccount(); log(`Collected ${elapsed} hour(s) of income: +${grant.gold} gold, +${grant.lumber} lumber, +${grant.oil} oil.`); }
 }
 async function saveAccount(){ if(!playerKey)return; await setDoc(ref('accounts',playerKey),account,{merge:true}); }
+async function updatePresence(){if(!playerKey)return;account.lastSeenAt=now();await setDoc(ref('accounts',playerKey),{lastSeenAt:account.lastSeenAt},{merge:true}).catch(()=>{});}
+
+async function createAlliance(){
+  const name=$('allianceNameInput')?.value.trim();
+  if(account.allianceId)return allianceMessage('Leave your current alliance first.');
+  if(name.length<3||name.length>32)return allianceMessage('Alliance name must be 3–32 characters.');
+  const id=cleanName(name);if(!id)return allianceMessage('Enter a valid alliance name.');
+  try{await runTransaction(db,async tx=>{const ar=ref('alliances',id),pr=ref('accounts',playerKey),snap=await tx.get(ar);if(snap.exists())throw new Error('That alliance name is already taken.');const alliance={id,name,leaderId:playerKey,members:[playerKey],officers:[],invites:[],createdAt:now(),settings:{sharedVision:true,sharedSupply:false,allowReinforce:true,allowTrade:true}};tx.set(ar,alliance);tx.set(pr,{allianceId:id},{merge:true});});account.allianceId=id;allianceMessage(`Alliance ${name} created.`);log(`Founded alliance ${name}.`);}
+  catch(e){allianceMessage(e.message);}
+}
+async function inviteAlliancePlayer(){
+  const alliance=currentAlliance(),target=cleanName($('allianceInviteInput')?.value);if(!alliance||!canManageAlliance(alliance))return allianceMessage('Only the leader or an officer can invite players.');if(!target||target===playerKey)return allianceMessage('Enter another player name.');
+  try{await runTransaction(db,async tx=>{const ar=ref('alliances',alliance.id),pr=ref('accounts',target),[as,ps]=await Promise.all([tx.get(ar),tx.get(pr)]);if(!ps.exists())throw new Error('Player not found.');if(ps.data().allianceId)throw new Error('That player is already in an alliance.');const data=as.data(),invites=[...new Set([...(data.invites||[]),target])];tx.update(ar,{invites});});allianceMessage(`Invited ${target}.`);}catch(e){allianceMessage(e.message);}
+}
+async function respondAllianceInvite(allianceId,accept){
+  try{await runTransaction(db,async tx=>{const ar=ref('alliances',allianceId),pr=ref('accounts',playerKey),[as,ps]=await Promise.all([tx.get(ar),tx.get(pr)]);if(!as.exists()||!(as.data().invites||[]).includes(playerKey))throw new Error('Invite no longer exists.');if(accept&&ps.data().allianceId)throw new Error('You are already in an alliance.');const a=as.data(),invites=(a.invites||[]).filter(id=>id!==playerKey),members=accept?[...new Set([...(a.members||[]),playerKey])]:(a.members||[]);tx.update(ar,{invites,members});if(accept)tx.set(pr,{allianceId},{merge:true});});if(accept)account.allianceId=allianceId;allianceMessage(accept?'Alliance joined.':'Invite declined.');}catch(e){allianceMessage(e.message);}
+}
+async function leaveAlliance(){
+  const alliance=currentAlliance();if(!alliance)return;if(alliance.leaderId===playerKey&&(alliance.members||[]).length>1)return allianceMessage('The leader must remove other members before leaving.');
+  try{await runTransaction(db,async tx=>{const ar=ref('alliances',alliance.id),pr=ref('accounts',playerKey),as=await tx.get(ar);if(!as.exists()){tx.set(pr,{allianceId:null},{merge:true});return;}const a=as.data(),members=(a.members||[]).filter(id=>id!==playerKey);if(!members.length)tx.delete(ar);else tx.update(ar,{members,officers:(a.officers||[]).filter(id=>id!==playerKey),leaderId:a.leaderId===playerKey?members[0]:a.leaderId});tx.set(pr,{allianceId:null},{merge:true});});account.allianceId=null;allianceMessage('You left the alliance.');}catch(e){allianceMessage(e.message);}
+}
+async function removeAllianceMember(memberId){
+  const alliance=currentAlliance();if(!alliance||alliance.leaderId!==playerKey||memberId===playerKey)return;
+  try{await runTransaction(db,async tx=>{const ar=ref('alliances',alliance.id),pr=ref('accounts',memberId),as=await tx.get(ar);if(!as.exists())return;const a=as.data();tx.update(ar,{members:(a.members||[]).filter(id=>id!==memberId),officers:(a.officers||[]).filter(id=>id!==memberId)});tx.set(pr,{allianceId:null},{merge:true});});allianceMessage(`${memberId} removed.`);}catch(e){allianceMessage(e.message);}
+}
+async function updateAllianceSetting(setting,enabled){const alliance=currentAlliance();if(!alliance||alliance.leaderId!==playerKey)return;await updateDoc(ref('alliances',alliance.id),{[`settings.${setting}`]:enabled}).catch(e=>allianceMessage(e.message));}
+function canManageAlliance(a){return a?.leaderId===playerKey||(a?.officers||[]).includes(playerKey);}
+function allianceMessage(text){if($('allianceMsg'))$('allianceMsg').textContent=text;}
+function renderAlliance(){
+  const el=$('allianceInfo'),badge=$('allianceBadge');if(!el)return;const alliance=currentAlliance(),incoming=[...alliances.values()].filter(a=>(a.invites||[]).includes(playerKey));
+  badge.textContent=alliance?alliance.name:'';
+  if(!alliance){el.innerHTML=`<div class="allianceCard"><b>Create an alliance</b><div class="row" style="margin-top:6px"><input id="allianceNameInput" maxlength="32" placeholder="Alliance name" style="min-width:0;width:100%"><button class="small primary" onclick="window.createAlliance()">Create</button></div></div>${incoming.length?`<b>Invitations</b>${incoming.map(a=>`<div class="allianceCard"><b>${escapeHtml(a.name)}</b><br>Leader: ${escapeHtml(a.leaderId)}<div class="row" style="margin-top:6px"><button class="small primary" onclick="window.respondAllianceInvite('${a.id}',true)">Accept</button><button class="small" onclick="window.respondAllianceInvite('${a.id}',false)">Decline</button></div></div>`).join('')}`:'No pending alliance invitations.'}`;return;}
+  const leader=alliance.leaderId===playerKey,manager=canManageAlliance(alliance),members=alliance.members||[],settings=alliance.settings||{};
+  el.innerHTML=`<b>${escapeHtml(alliance.name)}</b><br>${members.length} member(s) · Leader: ${escapeHtml(alliance.leaderId)}<div class="allianceCard"><b>Members</b>${members.map(id=>{const acct=id===playerKey?account:playerAccounts.get(id),online=now()-(acct?.lastSeenAt||0)<90000,role=id===alliance.leaderId?'Leader':(alliance.officers||[]).includes(id)?'Officer':'Member';return `<div class="allianceMember"><span><i class="statusDot ${online?'online':''}"></i>${escapeHtml(acct?.displayName||id)} <span class="muted">(${role}${online?' · online':' · offline'})</span></span>${leader&&id!==playerKey?`<button class="small danger" onclick="window.removeAllianceMember('${id}')">Remove</button>`:''}</div>`}).join('')}</div>${manager?`<div class="allianceCard"><b>Invite player</b><div class="row" style="margin-top:6px"><input id="allianceInviteInput" placeholder="Player name" style="min-width:0;width:100%"><button class="small" onclick="window.inviteAlliancePlayer()">Invite</button></div>${(alliance.invites||[]).length?`<div style="margin-top:6px">Pending: ${(alliance.invites||[]).map(escapeHtml).join(', ')}</div>`:''}</div>`:''}<div class="allianceCard"><b>Settings</b>${[['sharedVision','Shared vision'],['sharedSupply','Shared supply lines'],['allowReinforce','Allow reinforcement'],['allowTrade','Allow future trade']].map(([key,label])=>`<label class="settingLine"><span>${label}</span><input type="checkbox" ${settings[key]?'checked':''} ${leader?'':'disabled'} onchange="window.updateAllianceSetting('${key}',this.checked)"></label>`).join('')}</div><button class="small danger" onclick="window.leaveAlliance()">Leave Alliance</button>`;
+}
+Object.assign(window,{createAlliance,inviteAlliancePlayer,respondAllianceInvite,leaveAlliance,removeAllianceMember,updateAllianceSetting});
 
 function resize(){canvas.width=wrap.clientWidth; canvas.height=wrap.clientHeight;} window.addEventListener('resize',resize);
 function screenToTile(sx,sy){const size=32*camera.zoom; return {x:Math.floor((camera.x+sx)/size), y:Math.floor((camera.y+sy)/size)}}
@@ -496,8 +535,8 @@ function activeBattleAllows(owner,x,y){const c=getChunkOfTile(x,y); const t=terr
 function isBarbarianOwner(ownerId){return String(ownerId||'').startsWith(BARBARIAN_OWNER_PREFIX);}
 function isBarbarianUnit(u){return !!u&&(u.barbarian||UNIT[u.type]?.barbarian||isBarbarianOwner(u.ownerId));}
 function isBarbarianCamp(b){return !!b&&b.type==='barbarianCamp';}
-function areHostile(a,b){const ab=isBarbarianOwner(a?.ownerId),bb=isBarbarianOwner(b?.ownerId); if(ab&&bb)return false; return a?.ownerId!==b?.ownerId;}
-function isEnemyOwnedBlocked(unit,x,y){const o=ownerOfTile(x,y); if(isBarbarianUnit(unit))return false; return o && o!==unit.ownerId && !activeBattleAllows(unit.ownerId,x,y);}
+function areHostile(a,b){const ab=isBarbarianOwner(a?.ownerId),bb=isBarbarianOwner(b?.ownerId);if(ab&&bb)return false;if(a?.ownerId===b?.ownerId||isAllied(a?.ownerId,b?.ownerId))return false;return true;}
+function isEnemyOwnedBlocked(unit,x,y){const o=ownerOfTile(x,y); if(isBarbarianUnit(unit))return false; return o && o!==unit.ownerId&&!isAllied(unit.ownerId,o) && !activeBattleAllows(unit.ownerId,x,y);}
 function roadAt(x,y){return [...buildings.values()].find(b=>b.type==='road'&&b.hp>0&&b.x===x&&b.y===y);}
 function entityAtTile(x,y){for(const u of troops.values()) if(u.hp>0&&u.x===x&&u.y===y) return {kind:'troop',id:u.id,data:u}; for(const b of buildings.values()) if(b.hp>0&&b.x===x&&b.y===y) return {kind:'building',id:b.id,data:b}; return null;}
 function blockingEntityAtTile(x,y){for(const u of troops.values())if(u.hp>0&&u.x===x&&u.y===y)return {kind:'troop',id:u.id,data:u};for(const b of buildings.values())if(b.hp>0&&b.type!=='road'&&b.x===x&&b.y===y)return {kind:'building',id:b.id,data:b};return null;}
@@ -574,7 +613,7 @@ function issueMove(ids,tx,ty,attackMove=false){
   log(`${attackMove?'Attack-move':'Move'} order: ${units.length} troop(s). They will keep closing on the target until stopped.`);
   scheduleSaveTroops(units);
 }
-function issueAttack(ids,target){ const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey); units.forEach(u=>{u.order='attack';u.targetId=target.id;u.path=[];u.moveGoal=null;u.assignedGoal=null;u.buildTask=null; troops.set(u.id,u);}); log(`Focus attack order on ${LANDMARK[target.data.type]?.name||target.data.type||target.data.ownerId}.`); scheduleSaveTroops(units); }
+function issueAttack(ids,target){if(target?.data?.ownerId&&isAllied(playerKey,target.data.ownerId)){log('Allied troops and buildings cannot be attacked.');return;} const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey); units.forEach(u=>{u.order='attack';u.targetId=target.id;u.path=[];u.moveGoal=null;u.assignedGoal=null;u.buildTask=null; troops.set(u.id,u);}); log(`Focus attack order on ${LANDMARK[target.data.type]?.name||target.data.type||target.data.ownerId}.`); scheduleSaveTroops(units); }
 
 let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>saveQueue.add(u.id));}
 async function flushTroopSaves(){ if(!saveQueue.size)return; const batch=writeBatch(db); const ids=[...saveQueue].slice(0,80); ids.forEach(id=>{const u=troops.get(id); if(u)batch.set(ref('troops',id),u,{merge:true}); saveQueue.delete(id);}); await batch.commit().catch(e=>log('Save troop error: '+e.message)); }
@@ -745,7 +784,7 @@ function isOwnerOnline(owner){ if(owner===playerKey)return true; return false; }
 function shouldSimOfflineEnemy(u){ if(isBarbarianUnit(u)){const center=screenToTile(canvas.width/2,canvas.height/2);return dist(u,center)<=CHUNK_SIZE*4;} if(String(u.ownerId).startsWith(`goblin_${playerKey}`)) return true; const c=getChunkOfTile(u.x,u.y); const hc=getChunkOfTile(Math.floor((camera.x+canvas.width/2)/(32*camera.zoom)),Math.floor((camera.y+canvas.height/2)/(32*camera.zoom))); return Math.abs(c.cx-hc.cx)<=2 && Math.abs(c.cy-hc.cy)<=2; }
 function enemiesNear(unit,range){return [...troops.values()].filter(e=>e.hp>0&&areHostile(unit,e)&&dist(unit,e)<=range && canFightHere(unit,e));}
 function enemyBuildingsNear(unit,range){return [...buildings.values()].filter(b=>b.hp>0&&areHostile(unit,b)&&dist(unit,b)<=range && canFightHere(unit,b));}
-function canFightHere(a,target){ if(isBarbarianUnit(a)||isBarbarianUnit(target)||isBarbarianCamp(a)||isBarbarianCamp(target)||isBarbarianOwner(a.ownerId)||isBarbarianOwner(target.ownerId))return true; if(a.inArena||target.inArena)return true; const t=territoryOfTile(target.x,target.y); if(!t.ownerId)return true; if(t.ownerId===a.ownerId)return true; return activeBattleAllows(a.ownerId,target.x,target.y); }
+function canFightHere(a,target){ if(isBarbarianUnit(a)||isBarbarianUnit(target)||isBarbarianCamp(a)||isBarbarianCamp(target)||isBarbarianOwner(a.ownerId)||isBarbarianOwner(target.ownerId))return true; if(a.inArena||target.inArena)return true; const t=territoryOfTile(target.x,target.y); if(!t.ownerId)return true; if(t.ownerId===a.ownerId)return true;if(isAllied(a.ownerId,t.ownerId)&&allianceSettingFor(a.ownerId,'allowReinforce',true))return true; return activeBattleAllows(a.ownerId,target.x,target.y); }
 function handleLocalTroopAI(u,def,n,reservations,offline=false){
   // build task overrides aggro/attack.
   if(u.buildTask){ if(dist(u,u.buildTask)>0){moveOneStep(u,def,n,reservations,u.buildTask.x,u.buildTask.y);return;} if(!u.buildTask.startedAt)u.buildTask.startedAt=n; const need=(u.buildTask.kind==='mobileTower'?600000:300000)*((u.veterancy||0)>=5?.9:1); if(n-u.buildTask.startedAt>=need){completeEngineerBuild(u); } scheduleSaveTroops([u]); return; }
@@ -917,7 +956,7 @@ async function placeBuilding(type,x,y){
 }
 function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(account.resources?.gold||0);$('lumberVal').textContent=Math.floor(account.resources?.lumber||0);$('oilVal').textContent=Math.floor(account.resources?.oil||0);$('fortLv').textContent=account.fortressLevel||1; $('troopCount').textContent=supplyUsed()+queuedSupply(); $('troopCap').textContent=supplyCap(); const income=totalHourlyIncome(); $('incomeInfo').innerHTML=`Full income:<br><span class="gold">+${income.full.gold} gold</span>, <span class="lumber">+${income.full.lumber} lumber</span>, <span class="oil">+${income.full.oil} oil</span><br>Lost to cut-off territories:<br><span class="dangerText">-${income.lost.gold} gold, -${income.lost.lumber} lumber, -${income.lost.oil} oil</span>`;
   const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>`${UNIT[e.type]?.name||BUILDING[e.type]?.name||e.type}: ${Math.ceil(e.hp)}/${effectiveMaxHp(e)}${troops.has(e.id)?` · ${'★'.repeat(e.veterancy||0)}${'☆'.repeat(5-(e.veterancy||0))} ${VETERANCY.names[e.veterancy||0]} (${Math.floor(e.xp||0)} XP)`:''} @ ${e.x},${e.y}`).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
-  renderAbilities(sels); renderProductionPanel(); renderPortalInfo(sels); renderRelics(); renderDailyQuests(); renderBattles();
+  renderAbilities(sels); renderProductionPanel(); renderPortalInfo(sels); renderRelics(); renderDailyQuests(); renderAlliance(); renderBattles();
 }
 async function tradeAtPost(from,to,amount,received){
   const l=hoveredTile&&landmarkAtChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y).key);if(!l||l.type!=='tradePost'||l.ownerId!==playerKey){$('landmarkMsg').textContent='Control this Trade Post first.';return;}if((account.resources[from]||0)<amount){$('landmarkMsg').textContent=`Not enough ${from}.`;return;}account.resources[from]-=amount;account.resources[to]=(account.resources[to]||0)+received;await saveAccount();updateUI();$('landmarkMsg').textContent=`Traded ${amount} ${from} for ${received} ${to}.`;
@@ -977,7 +1016,7 @@ function useMarkTarget(){
   const casters=readySelectedTroops('rangerCaptain','markTargetCdUntil');
   const target=hoveredEntity?.data;
   if(!casters.length){log('Mark Target is on cooldown or no eligible Ranger Captain is selected.');return;}
-  if(!target||target.hp<=0||target.ownerId===playerKey){log('Mark Target requires a hovered enemy troop or building.');return;}
+  if(!target||target.hp<=0||!areHostile({ownerId:playerKey},target)){log('Mark Target requires a hovered enemy troop or building.');return;}
   const n=now(); target.markedBy=playerKey; target.markedUntil=n+60000;
   casters.forEach(u=>u.markTargetCdUntil=n+180000);
   scheduleSaveTroops(casters);
@@ -1012,7 +1051,7 @@ function usePoisonCloud(){
   if(!casters.length){log('Poison Cloud is on cooldown or no eligible Plague Slinger is selected.');return;}
   if(!hoveredTile){log('Poison Cloud requires a hovered map tile.');return;}
   const n=now(), affected=[];
-  for(const enemy of troops.values()) if(enemy.hp>0&&enemy.ownerId!==playerKey&&dist(enemy,hoveredTile)<=2&&canFightHere({ownerId:playerKey},enemy)){
+  for(const enemy of troops.values()) if(enemy.hp>0&&areHostile({ownerId:playerKey},enemy)&&dist(enemy,hoveredTile)<=2&&canFightHere({ownerId:playerKey},enemy)){
     applyDamage(enemy,4,n); enemy.buffs=enemy.buffs||{};
     if(!(enemy.buffs.holdLineUntil>n)) enemy.buffs.slowedUntil=n+20000;
     affected.push(enemy);
@@ -1114,7 +1153,7 @@ async function checkGoblinPortalBattle(){
   }
 }
 async function useRally(){ const n=now(); const cents=[...selected].map(id=>troops.get(id)).filter(u=>u?.type==='centurion'); for(const c of cents){ if(c.rallyCdUntil&&c.rallyCdUntil>n){log('Rally still on cooldown.'); continue;} for(const u of troops.values()) if(u.ownerId===playerKey&&dist(u,c)<=3){u.buffs=u.buffs||{};u.buffs.rallyUntil=n+60000;scheduleSaveTroops([u]);} c.rallyCdUntil=n+300000;scheduleSaveTroops([c]); log('Rally used.'); }}
-async function useSiege(){ const trebs=[...selected].map(id=>troops.get(id)).filter(u=>u?.type==='trebuchet'); if(!trebs.length || !hoveredTile){log('Select trebuchet and hover enemy territory within 5 tiles.');return;} const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); const tr=trebs[0]; if(!terr.ownerId||terr.ownerId===playerKey){log('Hover an enemy controlled territory.');return;} const center={x:terr.cx*CHUNK_SIZE+8,y:terr.cy*CHUNK_SIZE+8}; if(dist(tr,center)>5){log('Enemy territory must be up to 5 squares away from trebuchet.');return;} const siege={id:`siege_${tr.id}`,troopId:tr.id,ownerId:playerKey,targetChunk:terr.id,nextFireAt:now()+3*RESOURCE_HOUR_MS}; tr.siege=siege; troops.set(tr.id,tr); scheduleSaveTroops([tr]); log('Trebuchet siege set. Red countdown bar appears in battles panel.');}
+async function useSiege(){ const trebs=[...selected].map(id=>troops.get(id)).filter(u=>u?.type==='trebuchet'); if(!trebs.length || !hoveredTile){log('Select trebuchet and hover enemy territory within 5 tiles.');return;} const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); const tr=trebs[0]; if(!terr.ownerId||terr.ownerId===playerKey||isAllied(playerKey,terr.ownerId)){log('Hover an enemy controlled territory. Allied territory cannot be targeted.');return;} const center={x:terr.cx*CHUNK_SIZE+8,y:terr.cy*CHUNK_SIZE+8}; if(dist(tr,center)>5){log('Enemy territory must be up to 5 squares away from trebuchet.');return;} const siege={id:`siege_${tr.id}`,troopId:tr.id,ownerId:playerKey,targetChunk:terr.id,nextFireAt:now()+3*RESOURCE_HOUR_MS}; tr.siege=siege; troops.set(tr.id,tr); scheduleSaveTroops([tr]); log('Trebuchet siege set. Red countdown bar appears in battles panel.');}
 async function upgradeFortress(){ const lvl=(account.fortressLevel||1)+1; if(lvl>10){log('Fortress already max level.');return;} const cost=FORT_UPGRADE_COST[lvl]; if(!canPay(cost)){log(`Need ${cost.gold}g ${cost.lumber}l ${cost.oil}o.`);return;} pay(cost); account.fortressLevel=lvl; const f=[...buildings.values()].find(b=>b.ownerId===playerKey&&b.type==='fortress'); if(f){f.level=lvl;f.maxHp=400+lvl*80;f.hp=f.maxHp;await saveBuilding(f);} await saveAccount(); updateUI(); log(`Fortress upgraded to level ${lvl}.`);}
 async function upgradeWorkshop(w){ const lvl=(w.level||1)+1; const cost={gold:100*lvl,lumber:120*lvl,oil:10*Math.max(0,lvl-2)}; if(!canPay(cost)){log(`Need ${cost.gold}g ${cost.lumber}l ${cost.oil}o.`);return;} pay(cost); w.level=lvl; await saveBuilding(w); await saveAccount(); log(`Workshop upgraded to level ${lvl}.`);}
 function renderBattles(){ const el=$('battleList'); const n=now(); let lines=[]; for(const b of battles.values()){ if(b.status==='ended')continue; const state=n<b.startAt?'starts in':n>b.endAt?'ended':'ACTIVE'; const ms=n<b.startAt?b.startAt-n:b.endAt-n; lines.push(`<div class="battleLine"><span>${b.attackerId} vs ${b.defenderId}<br>${b.chunkKey} ${state} ${fmt(ms)}</span></div>`); }
@@ -1123,12 +1162,12 @@ function renderBattles(){ const el=$('battleList'); const n=now(); let lines=[];
 function fmt(ms){ms=Math.max(0,ms);const h=Math.floor(ms/3600000),m=Math.floor(ms%3600000/60000),s=Math.floor(ms%60000/1000);return h?`${h}h ${m}m`:`${m}m ${s}s`;}
 async function fireSiege(u){ const terr=territories.get(u.siege.targetChunk); if(!terr)return; const targets=[...buildings.values()].filter(b=>b.ownerId===terr.ownerId&&b.chunkKey===terr.id); if(targets.length){const t=targets[Math.floor(Math.random()*targets.length)]; t.hp=Math.max(0,t.hp-10); await saveBuilding(t); log(`Trebuchet siege hit ${BUILDING[t.type].name} in ${terr.id} for 10 damage.`);} u.siege.nextFireAt=now()+3*RESOURCE_HOUR_MS; troops.set(u.id,u); scheduleSaveTroops([u]);}
 
-$('declareBtn').onclick=async()=>{ if(!hoveredTile){$('warMsg').textContent='Hover an enemy territory first.';return;} const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); if(!terr.ownerId || terr.ownerId===playerKey){$('warMsg').textContent='That is not enemy controlled territory.';return;} const val=$('battleTime').value; const start=val?new Date(val).getTime():now()+5*60000; if(start<now()+60000){$('warMsg').textContent='Pick a time at least 1 minute from now.';return;} const id=`battle_${playerKey}_${terr.id}_${now()}`; const b={id,attackerId:playerKey,defenderId:terr.ownerId,chunkKey:terr.id,startAt:start,endAt:start+30*60000,status:'scheduled',createdAt:now()}; await setDoc(ref('battles',id),b); $('warMsg').textContent=`Battle declared on ${terr.id}.`; log(`Declared battle on ${terr.id}.`); };
+$('declareBtn').onclick=async()=>{ if(!hoveredTile){$('warMsg').textContent='Hover an enemy territory first.';return;} const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); if(!terr.ownerId || terr.ownerId===playerKey||isAllied(playerKey,terr.ownerId)){$('warMsg').textContent=isAllied(playerKey,terr.ownerId)?'You cannot declare battle on alliance territory.':'That is not enemy controlled territory.';return;} const val=$('battleTime').value; const start=val?new Date(val).getTime():now()+5*60000; if(start<now()+60000){$('warMsg').textContent='Pick a time at least 1 minute from now.';return;} const id=`battle_${playerKey}_${terr.id}_${now()}`; const b={id,attackerId:playerKey,defenderId:terr.ownerId,chunkKey:terr.id,startAt:start,endAt:start+30*60000,status:'scheduled',createdAt:now()}; await setDoc(ref('battles',id),b); $('warMsg').textContent=`Battle declared on ${terr.id}.`; log(`Declared battle on ${terr.id}.`); };
 $('homeBtn').onclick=()=>{camera.x=account.home.x*32*camera.zoom-canvas.width/2;camera.y=account.home.y*32*camera.zoom-canvas.height/2;}; $('saveBtn').onclick=async()=>{await flushTroopSaves();await saveAccount();log('Saved.')};
 
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('mousedown',e=>{ if(e.button===0){mouse.down=true;mouse.startX=e.clientX;mouse.startY=e.clientY; selBox.style.display='block'; selBox.style.left=e.clientX+'px';selBox.style.top=e.clientY+'px';selBox.style.width='0px';selBox.style.height='0px';}});
-window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y),visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y)||visibleLandmarkAtTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; renderLandmarkPanel(visible?landmarkAtChunk(c.key):null);if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const supplied=terr.ownerId?getSuppliedChunks(terr.ownerId).has(terr.id):false,supplyText=!terr.ownerId?'None':supplied?'Connected':`Cut off - income reduced to ${Math.round(UNSUPPLIED_INCOME_MULTIPLIER*100)}%`; const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||LANDMARK[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${terr.ownerId||'Neutral'}<br>Supply: <b class="${supplied?'okText':'dangerText'}">${supplyText}</b><br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${camp?(()=>{const d=campTypeDef(camp),raid=camp.state==='raiding'?`Raiding ${camp.raidTargetChunk||'nearby territory'}`:`${fmt(Math.max(0,(camp.nextRaidAt||now())-now()))} until raid ready`;return `<br><b style="color:${d.color}">${d.icon} ${d.name} · Level ${camp.campLevel||1}</b><br><i>${d.flavor}</i><br>Raid status: ${raid}<br>Reward preview: ${barbarianRewardPreview(camp)}`;})():''}${hoverName?`<br>Hovered: ${hoverName}`:''}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
+window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y),visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y)||visibleLandmarkAtTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; renderLandmarkPanel(visible?landmarkAtChunk(c.key):null);if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const supplied=terr.ownerId?getSuppliedChunks(terr.ownerId).has(terr.id):false,supplyText=!terr.ownerId?'None':supplied?'Connected':`Cut off - income reduced to ${Math.round(UNSUPPLIED_INCOME_MULTIPLIER*100)}%`,ownerAlliance=terr.ownerId?allianceForPlayer(terr.ownerId):null; const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||LANDMARK[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${escapeHtml(terr.ownerId||'Neutral')}${ownerAlliance?`<br>Alliance: <span class="allianceBadge">${escapeHtml(ownerAlliance.name)}</span>`:''}<br>Supply: <b class="${supplied?'okText':'dangerText'}">${supplyText}</b><br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${camp?(()=>{const d=campTypeDef(camp),raid=camp.state==='raiding'?`Raiding ${camp.raidTargetChunk||'nearby territory'}`:`${fmt(Math.max(0,(camp.nextRaidAt||now())-now()))} until raid ready`;return `<br><b style="color:${d.color}">${d.icon} ${d.name} · Level ${camp.campLevel||1}</b><br><i>${d.flavor}</i><br>Raid status: ${raid}<br>Reward preview: ${barbarianRewardPreview(camp)}`;})():''}${hoverName?`<br>Hovered: ${hoverName}`:''}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
 window.addEventListener('mouseup',e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=visibleEntityAtTile(t.x,t.y); if(ent){ if(!e.shiftKey)selected.clear(); selected.add(ent.id);} else if(!e.shiftKey) selected.clear(); } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
 canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; $('modeReadout').textContent='Move'; return;} const ent=visibleEntityAtTile(t.x,t.y)||visibleLandmarkAtTile(t.x,t.y); if(ent&&ent.data.ownerId!==playerKey&&(ent.kind!=='landmark'||ent.data.hp>0)) issueAttack(selected,ent); else issueMove(selected,t.x,t.y,attackMode); attackMode=false; $('modeReadout').textContent='Move'; }});
 canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; camera.zoom=clamp(camera.zoom*(e.deltaY<0?1.1:.9),.45,2.2); const mx=e.offsetX,my=e.offsetY; camera.x=(camera.x+mx)*(camera.zoom/old)-mx; camera.y=(camera.y+my)*(camera.zoom/old)-my;},{passive:false});
@@ -1210,6 +1249,7 @@ function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPla
   // chunk boundaries and resource icons
   const scx=Math.floor(startX/CHUNK_SIZE), ecx=Math.floor(endX/CHUNK_SIZE), scy=Math.floor(startY/CHUNK_SIZE), ecy=Math.floor(endY/CHUNK_SIZE);
   for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++){ if(cx<0||cy<0||cx>=WORLD_CHUNKS||cy>=WORLD_CHUNKS)continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE), chunkPixels=CHUNK_SIZE*size; if(!isChunkVisible(cx,cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);ctx.strokeStyle='#111722';ctx.lineWidth=2;ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);continue;} const res=resourceForChunk(cx,cy), color=resourceColor(res); ctx.strokeStyle='#536070'; ctx.lineWidth=2; ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);
+    const owner=territories.get(chunkKey(cx,cy))?.ownerId,allied=owner&&owner!==playerKey&&isAllied(playerKey,owner);ctx.strokeStyle=owner===playerKey?'#18c964':allied?'#42cfff':owner?'#ff4d4d':'#536070';ctx.lineWidth=allied?4:2;ctx.strokeRect(s.x+1,s.y+1,chunkPixels-2,chunkPixels-2);
     const compact=camera.zoom<.7, label=compact?resourceIcon(res):resourceDisplayName(res), fontSize=compact?11:Math.min(18,11+camera.zoom*3), padX=compact?6:9, badgeH=compact?22:fontSize+12;
     ctx.save(); ctx.font=`700 ${fontSize}px Segoe UI`; const badgeW=compact?22:Math.ceil(ctx.measureText(label).width+padX*2); const bx=s.x+chunkPixels/2-badgeW/2, by=s.y+chunkPixels/2-badgeH/2;
     ctx.fillStyle='rgba(9,13,19,.82)'; ctx.strokeStyle=color; ctx.lineWidth=compact?2:2.5; ctx.beginPath(); ctx.roundRect(bx,by,badgeW,badgeH,compact?11:7); ctx.fill(); ctx.stroke(); ctx.fillStyle=color; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(label,s.x+chunkPixels/2,s.y+chunkPixels/2+(compact?0:1)); ctx.restore();
