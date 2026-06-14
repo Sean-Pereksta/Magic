@@ -94,6 +94,8 @@ const basePath = `lobbies/${GAME_ID}`;
 const WORLD_CHUNKS = 200;
 const CHUNK_SIZE = 16;
 const WORLD_TILES = WORLD_CHUNKS * CHUNK_SIZE;
+const NEW_PLAYER_MIN_SPAWN_DISTANCE_CHUNKS = 12;
+const NEW_PLAYER_FALLBACK_DISTANCES = [NEW_PLAYER_MIN_SPAWN_DISTANCE_CHUNKS,10,8,6,4,2,0];
 const SAVE_EVERY_MS = 1200;
 const RESOURCE_HOUR_MS = 3600000;
 const UNCLAIMED_CAPTURE_REQUIRED_MS = 5 * 3600000;
@@ -494,13 +496,43 @@ async function createOrLogin(create){
     account={allianceId:null,...data}; playerKey=name; await updateDoc(acctRef,{lastLoginAt:now(),lastSeenAt:now()}); startGame();
   }
 }
+function chunkDistance(a,b){return Math.max(Math.abs(a.cx-b.cx),Math.abs(a.cy-b.cy));}
+function isFarEnoughFromPlayers(cx,cy,ownedChunks,minDistance){return ownedChunks.every(o=>chunkDistance({cx,cy},o)>=minDistance);}
+function spawnAtChunk(cx,cy){return {cx,cy,x:cx*CHUNK_SIZE+8,y:cy*CHUNK_SIZE+8};}
 async function findFreeSpawn(){
-  const owned=new Set(); const ts=await getDocs(col('territories')); ts.forEach(d=>owned.add(d.id));
-  for(let i=0;i<5000;i++){
-    const cx=Math.floor(hash2(i,17,321)*WORLD_CHUNKS), cy=Math.floor(hash2(i,41,654)*WORLD_CHUNKS);
-    if(chunkResource(cx,cy)==='gold' && !owned.has(chunkKey(cx,cy))) return {cx,cy,x:cx*CHUNK_SIZE+8,y:cy*CHUNK_SIZE+8};
+  const occupied=new Set(),ownedChunks=[],ownedChunkKeys=new Set();
+  const [territorySnap,buildingSnap]=await Promise.all([getDocs(col('territories')),getDocs(col('buildings'))]);
+  territorySnap.forEach(d=>{
+    occupied.add(d.id);
+    const data=d.data();
+    if(data.ownerId&&Number.isFinite(data.cx)&&Number.isFinite(data.cy)&&!ownedChunkKeys.has(d.id)){
+      ownedChunkKeys.add(d.id);
+      ownedChunks.push({cx:data.cx,cy:data.cy});
+    }
+  });
+  buildingSnap.forEach(d=>{
+    const data=d.data();
+    if(data.type!=='fortress'||!data.ownerId)return;
+    const position=data.chunkKey?parseChunkKey(data.chunkKey):getChunkOfTile(data.x,data.y);
+    const key=chunkKey(position.cx,position.cy);
+    if(!ownedChunkKeys.has(key)){
+      ownedChunkKeys.add(key);
+      ownedChunks.push({cx:position.cx,cy:position.cy});
+    }
+  });
+  for(const minDistance of NEW_PLAYER_FALLBACK_DISTANCES){
+    for(let i=0;i<8000;i++){
+      const cx=Math.floor(hash2(i,17,321)*WORLD_CHUNKS),cy=Math.floor(hash2(i,41,654)*WORLD_CHUNKS);
+      if(occupied.has(chunkKey(cx,cy))||chunkResource(cx,cy)!=='gold'||!isFarEnoughFromPlayers(cx,cy,ownedChunks,minDistance))continue;
+      return spawnAtChunk(cx,cy);
+    }
   }
-  for(let cy=0;cy<WORLD_CHUNKS;cy++)for(let cx=0;cx<WORLD_CHUNKS;cx++) if(!owned.has(chunkKey(cx,cy))) return {cx,cy,x:cx*CHUNK_SIZE+8,y:cy*CHUNK_SIZE+8};
+  for(const minDistance of NEW_PLAYER_FALLBACK_DISTANCES){
+    for(let cy=0;cy<WORLD_CHUNKS;cy++)for(let cx=0;cx<WORLD_CHUNKS;cx++){
+      if(occupied.has(chunkKey(cx,cy))||!isFarEnoughFromPlayers(cx,cy,ownedChunks,minDistance))continue;
+      return spawnAtChunk(cx,cy);
+    }
+  }
   throw new Error('No free territories available.');
 }
 async function setupNewPlayer(owner,home){
