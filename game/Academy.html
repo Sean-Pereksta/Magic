@@ -16,6 +16,7 @@
   #main{display:grid;grid-template-columns:1fr 360px;height:calc(100vh - 42px)}#canvasWrap{position:relative;overflow:hidden}#map{display:block;background:#121820;width:100%;height:100%}.hint{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.58);border:1px solid #394354;border-radius:8px;padding:8px 10px;color:#d7dde6;font-size:12px;line-height:1.45}.selectionBox{position:absolute;border:1px solid #8ee8ff;background:rgba(64,180,255,.12);pointer-events:none;display:none}
   #abilityHotbar{position:absolute;left:10px;bottom:78px;display:none;max-width:calc(100% - 20px);padding:7px;background:rgba(10,14,20,.94);border:1px solid #445064;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.45);gap:7px;z-index:4}.hotbarAbility{position:relative;display:flex;align-items:flex-start;gap:8px;width:172px;min-height:62px;padding:8px 8px 7px 34px;text-align:left;background:linear-gradient(180deg,#263246,#192331);border:1px solid #53647b;border-radius:8px;color:var(--text)}.hotbarAbility:hover:not(:disabled){background:linear-gradient(180deg,#34455e,#223147);border-color:#8ee8ff;transform:translateY(-1px)}.hotbarAbility:disabled{cursor:not-allowed;opacity:.48;filter:saturate(.55)}.hotbarKey{position:absolute;left:7px;top:7px;min-width:20px;padding:2px 4px;border:1px solid #8291a6;border-radius:5px;background:#0d1117;color:#fff;text-align:center;font-size:12px;line-height:16px;box-shadow:inset 0 -1px 0 rgba(255,255,255,.14)}.hotbarText{display:flex;min-width:0;flex-direction:column;gap:3px}.hotbarLabel{font-size:12px;font-weight:700;line-height:1.15}.hotbarDescription{color:#aeb9c7;font-size:10px;line-height:1.25}.ability{cursor:pointer}.ability.disabled{cursor:not-allowed;opacity:.5}.ability:hover:not(.disabled){background:#29374a;border-color:#60758e}
   #side{background:var(--panel);border-left:1px solid #2b3442;overflow:auto;padding:10px}.section{background:#111722;border:1px solid #2b3442;border-radius:10px;padding:10px;margin-bottom:10px}.section h3{margin:0 0 8px;font-size:15px}.muted{color:var(--muted);font-size:12px}.gridBtns{display:grid;grid-template-columns:1fr 1fr;gap:6px}.unitLine,.buildingLine,.battleLine{display:flex;justify-content:space-between;gap:6px;border-top:1px solid #2a3442;padding:6px 0;font-size:12px}.selectedList{max-height:105px;overflow:auto;border:1px solid #2b3442;border-radius:8px;padding:6px;background:#0d1117}.ability{display:flex;justify-content:space-between;margin:5px 0;background:#1c2532;border:1px solid #384556;border-radius:7px;padding:6px;font-size:12px}.barOuter{height:8px;background:#2b1420;border:1px solid #5e2635;border-radius:999px;overflow:hidden}.barInner{height:100%;background:#ff3e59;width:50%}.msg{color:#ffcc66;font-size:12px;min-height:16px;margin-top:6px}.kbd{border:1px solid #566273;background:#222b38;border-radius:4px;padding:1px 5px;font-size:11px}.hr{height:1px;background:#2b3442;margin:8px 0}.dangerText{color:#ff8b8b}.okText{color:#8cffb7}
+  .missionCard,.questCard,.relicCard{margin:7px 0;padding:8px;border:1px solid #384556;border-radius:8px;background:linear-gradient(135deg,#1b2431,#131923);font-size:12px}.missionCard b,.questCard b,.relicCard b{color:#f3d782}.missionMeta{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin:5px 0;color:#aeb9c7}.panelTitle{display:flex;justify-content:space-between;align-items:center}.reward{color:#8cffb7}.activeRelic{border-color:#d9ad45;box-shadow:inset 3px 0 #d9ad45}.progress{height:6px;background:#26303e;border-radius:5px;overflow:hidden;margin:5px 0}.progress span{display:block;height:100%;background:#37c978}
 </style>
 </head>
 <body>
@@ -52,7 +53,9 @@
       <div class="section"><h3>Selected</h3><div id="selectedInfo" class="selectedList muted">Nothing selected.</div><div id="abilities"></div></div>
       <div class="section"><h3>Train Troops</h3><div class="muted">Select one of your troop-production buildings to show its training options.</div><div id="trainBtns" class="gridBtns"></div><div id="queueInfo" class="muted" style="margin-top:8px">Select a production building to view its queue.</div></div>
       <div class="section"><h3>Build Structures</h3><div class="muted">Buildings may only be placed in controlled territory. Select an Engineer for mobile towers/barricades.</div><div id="buildBtns" class="gridBtns"></div></div>
-      <div class="section"><h3>Portal</h3><div id="portalInfo" class="muted">Build and select a Portal to fight goblin hordes for prizes.</div></div>
+      <div class="section"><h3>Portal Missions</h3><div id="portalInfo" class="muted">Build and select a Portal to launch PvE missions.</div></div>
+      <div class="section"><div class="panelTitle"><h3>Relics</h3><span id="fragmentInfo" class="muted"></span></div><div id="relicInfo" class="muted"></div></div>
+      <div class="section"><div class="panelTitle"><h3>Daily Quests</h3><span id="dailyTimer" class="muted"></span></div><div id="dailyInfo" class="muted"></div></div>
       <div class="section"><h3>Territory & War</h3><div id="tileInfo" class="muted">Hover a chunk.</div><div class="hr"></div><button id="declareBtn" class="danger">Declare Battle on Hovered Enemy Territory</button><div class="row" style="margin-top:6px"><input id="battleTime" type="datetime-local" style="width:100%"></div><div id="warMsg" class="msg"></div></div>
       <div class="section"><h3>Landmark</h3><div id="landmarkInfo" class="muted">Hover a discovered landmark.</div><div id="landmarkActions" class="gridBtns" style="margin-top:8px"></div><div id="landmarkMsg" class="msg"></div></div>
       <div class="section"><h3>Active Battles / Siege</h3><div id="battleList" class="muted">None.</div></div>
@@ -92,6 +95,33 @@ const CAPTURE_REQUIRED_MS = 24 * 3600000;
 const ENEMY_ALLOWED_MS = 3600000;
 const TRAINING_POLL_MS = 5000;
 const GOBLIN_COOLDOWN_MS = 3600000;
+const PORTAL_MISSIONS = {
+  goblinHorde:{name:"Goblin Horde",difficulty:"★☆☆",strength:45,cooldownMs:3600000,description:"Survive a growing wave fight.",reward:"Resources",count:9,hp:1,rewardBase:{gold:150,lumber:110,oil:20}},
+  ancientTrial:{name:"Ancient Trial",difficulty:"★★☆",strength:90,cooldownMs:3*3600000,description:"Defeat elite ancient guardians.",reward:"2–4 relic fragments",count:7,hp:2.2,rewardBase:{gold:100,lumber:100,oil:35},fragments:2},
+  bossHunt:{name:"Boss Hunt",difficulty:"★★★",strength:145,cooldownMs:6*3600000,description:"Slay a powerful boss and its guards.",reward:"Rare relic chance",count:5,hp:3.4,rewardBase:{gold:350,lumber:180,oil:80},relicChance:.35},
+  rescueMission:{name:"Rescue Mission",difficulty:"★★☆",strength:75,cooldownMs:4*3600000,description:"Break through guards and free prisoners.",reward:"Free troops or +5 supply",count:8,hp:1.6,rewardBase:{gold:90,lumber:140,oil:15},rescue:true},
+  treasureExpedition:{name:"Treasure Expedition",difficulty:"★★★",strength:120,cooldownMs:5*3600000,description:"Risk your force for a rich ancient cache.",reward:"Very high resources",count:12,hp:2,rewardBase:{gold:700,lumber:550,oil:160}}
+};
+const RELICS = {
+  crownOfTribute:{name:"Crown of Tribute",icon:"♛",effect:"+8% gold income"},
+  forestIdol:{name:"Forest Idol",icon:"♣",effect:"+10% lumber income"},
+  oilHeart:{name:"Oil Heart",icon:"♦",effect:"+10% oil income"},
+  bannerOfIron:{name:"Banner of Iron",icon:"⚑",effect:"Infantry +8% HP"},
+  scoutsEye:{name:"Scout’s Eye",icon:"◉",effect:"+1 chunk troop vision"},
+  buildersHammer:{name:"Builder’s Hammer",icon:"⚒",effect:"Engineers build 20% faster"},
+  dragonScale:{name:"Dragon Scale",icon:"◆",effect:"Fire/oil towers gain extra splash"},
+  titanCore:{name:"Titan Core",icon:"Ω",effect:"+5% global troop HP and damage"}
+};
+const DAILY_QUESTS = [
+  {id:"portal",name:"Rift Walker",text:"Complete 1 portal mission",goal:1,reward:{fragments:2}},
+  {id:"barbarians",name:"Horde Breaker",text:"Defeat 20 barbarian units",goal:20,reward:{gold:350,lumber:200}},
+  {id:"camp",name:"Camp Crusher",text:"Clear 1 barbarian camp",goal:1,reward:{fragments:1,gold:250}},
+  {id:"train",name:"Fresh Recruits",text:"Train 10 troops",goal:10,reward:{research:2,gold:200}},
+  {id:"road",name:"Royal Highway",text:"Build 5 road tiles",goal:5,reward:{lumber:400}},
+  {id:"boss",name:"Monster Slayer",text:"Defeat a PvE boss",goal:1,reward:{fragments:3,oil:100}},
+  {id:"shrine",name:"Ancient Favor",text:"Activate an Ancient Shrine",goal:1,reward:{gold:300,buff:"Harvest +10% (1h)"}},
+  {id:"defense",name:"Fortify",text:"Build 2 defensive structures",goal:2,reward:{lumber:300,oil:50}}
+];
 const BARBARIAN_OWNER_PREFIX = "barbarian";
 const BARBARIAN_SPAWN_CHECK_MS = 3600000;
 const BARBARIAN_SPAWN_LOCK_MS = 30000;
@@ -260,6 +290,36 @@ function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function canPay(cost){return (account.resources.gold>=cost.gold && account.resources.lumber>=cost.lumber && account.resources.oil>=cost.oil)}
 function pay(cost){account.resources.gold-=cost.gold; account.resources.lumber-=cost.lumber; account.resources.oil-=cost.oil;}
 function addRes(r){account.resources.gold+=r.gold||0;account.resources.lumber+=r.lumber||0;account.resources.oil+=r.oil||0;}
+function activeRelic(id){return (account.activeRelics||[]).includes(id)}
+function dailyDay(){return Math.floor(now()/86400000)}
+function ensureDailyQuests(){
+  if(account.dailyQuests?.day===dailyDay())return;
+  const day=dailyDay(),start=day%DAILY_QUESTS.length;
+  account.dailyQuests={day,quests:Array.from({length:5},(_,i)=>({...DAILY_QUESTS[(start+i)%DAILY_QUESTS.length],progress:0,claimed:false}))};
+  saveAccount();
+}
+function progressQuest(id,amount=1){ensureDailyQuests();for(const q of account.dailyQuests.quests)if(q.id===id&&!q.claimed)q.progress=Math.min(q.goal,(q.progress||0)+amount);saveAccount();renderDailyQuests()}
+function rewardText(r){return Object.entries(r).map(([k,v])=>k==='buff'?v:`${v} ${k}`).join(" · ")}
+async function claimDailyQuest(index){
+  ensureDailyQuests();const q=account.dailyQuests.quests[index];if(!q||q.claimed||(q.progress||0)<q.goal)return;
+  addRes(q.reward);account.relicFragments=(account.relicFragments||0)+(q.reward.fragments||0);account.researchPoints=(account.researchPoints||0)+(q.reward.research||0);
+  if(q.reward.buff){account.globalBuffs=account.globalBuffs||{};account.globalBuffs.dailyHarvestUntil=now()+3600000}
+  q.claimed=true;await saveAccount();updateUI();log(`Daily quest claimed: ${rewardText(q.reward)}.`);
+}
+function renderDailyQuests(){
+  const el=$('dailyInfo');if(!el)return;ensureDailyQuests();const reset=(dailyDay()+1)*86400000-now();$('dailyTimer').textContent=`Refresh ${fmt(reset)}`;
+  el.innerHTML=account.dailyQuests.quests.map((q,i)=>{const done=(q.progress||0)>=q.goal;return `<div class="questCard"><b>${q.name}</b><br>${q.text}<div class="progress"><span style="width:${Math.min(100,(q.progress||0)/q.goal*100)}%"></span></div>${q.progress||0}/${q.goal}<br><span class="reward">${rewardText(q.reward)}</span><br><button class="small ${done&&!q.claimed?'primary':''}" ${!done||q.claimed?'disabled':''} onclick="window.claimDaily(${i})">${q.claimed?'Claimed':'Claim reward'}</button></div>`}).join('');
+  window.claimDaily=claimDailyQuest;
+}
+function renderRelics(){
+  const el=$('relicInfo');if(!el)return;const owned=account.relics||[],active=account.activeRelics||[];$('fragmentInfo').textContent=`${account.relicFragments||0} fragments · ${active.length}/3 active`;
+  el.innerHTML=owned.length?owned.map(id=>{const r=RELICS[id]||{name:id,effect:"Rare passive relic",icon:"✦"},on=active.includes(id);return `<div class="relicCard ${on?'activeRelic':''}"><b>${r.icon} ${r.name}</b><br>${r.effect}<br><button class="small" onclick="window.toggleRelic('${id}')">${on?'Unequip':'Activate'}</button></div>`}).join(''):'No relics discovered yet. Conquer bosses, shrines, Warlord camps, portal missions, and daily quests.';
+  window.toggleRelic=async id=>{account.activeRelics=account.activeRelics||[];const i=account.activeRelics.indexOf(id);if(i>=0)account.activeRelics.splice(i,1);else if(account.activeRelics.length<3)account.activeRelics.push(id);else return log('All 3 relic slots are occupied.');await saveAccount();updateUI()};
+}
+function awardRandomRelic(){
+  const missing=Object.keys(RELICS).filter(id=>!(account.relics||[]).includes(id));if(!missing.length){account.relicFragments=(account.relicFragments||0)+3;return "3 relic fragments";}
+  const id=missing[Math.floor(Math.random()*missing.length)];account.relics=account.relics||[];account.relics.push(id);return RELICS[id].name;
+}
 function landmarkAtChunk(key){return [...landmarks.values()].find(l=>l.chunkKey===key);}
 function isBossLandmark(l){return !!l&&!!LANDMARK[l.type]?.reward;}
 function landmarkRewardText(l){const d=LANDMARK[l.type];if(!d)return '';if(d.reward){const r=d.reward;return `Reward: +${r.gold} gold, +${r.lumber} lumber, +${r.oil} oil · ${Math.round(d.relicChance*100)}% ${d.relic} · ${d.buff} buff`;}return d.rewardText;}
@@ -355,8 +415,9 @@ function totalHourlyIncome(){
     for(const resource of ['gold','lumber','oil']){full[resource]+=inc[resource]*mult;lost[resource]+=inc[resource]*(1-mult);}
   }
   for(const l of landmarks.values())if(l.ownerId===playerKey&&l.type==='tradePost')for(const [resource,value] of Object.entries(LANDMARK.tradePost.income))full[resource]+=value;
-  const harvest=account.globalBuffs?.harvestUntil>now()?1.2:1,result={full:{},lost:{}};
-  for(const resource of ['gold','lumber','oil']){result[resource]=Math.floor(full[resource]*harvest);result.full[resource]=result[resource];result.lost[resource]=Math.floor(lost[resource]*harvest);}
+  const harvest=(account.globalBuffs?.harvestUntil>now()?1.2:1)*(account.globalBuffs?.dailyHarvestUntil>now()?1.1:1),result={full:{},lost:{}};
+  const relicMult={gold:activeRelic('crownOfTribute')?1.08:1,lumber:activeRelic('forestIdol')?1.1:1,oil:activeRelic('oilHeart')?1.1:1};
+  for(const resource of ['gold','lumber','oil']){result[resource]=Math.floor(full[resource]*harvest*relicMult[resource]);result.full[resource]=result[resource];result.lost[resource]=Math.floor(lost[resource]*harvest*relicMult[resource]);}
   return result;
 }
 
@@ -718,7 +779,7 @@ function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)ret
 function hasBannerAura(u){return [...troops.values()].some(ally=>ally.hp>0&&ally.ownerId===u.ownerId&&ally.type==='bannerKnight'&&dist(ally,u)<=3)}
 function hasBarbarianDrummerAura(u){return isBarbarianUnit(u)&&[...troops.values()].some(a=>a.hp>0&&a.ownerId===u.ownerId&&a.type==='barbarianDrummer'&&dist(a,u)<=3)}
 function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)||hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=4?.9:1))}
-function effectiveMaxHp(e,n=now()){const veteranBase=troops.has(e.id)&&UNIT[e.type]?(UNIT[e.type].hp*((e.veterancy||0)>=1?1.05:1)):(e.maxHp||e.hp||1);return Math.round(veteranBase)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
+function effectiveMaxHp(e,n=now()){let relic=1;if(e.ownerId===playerKey&&troops.has(e.id)){if(activeRelic('titanCore'))relic*=1.05;if(activeRelic('bannerOfIron')&&['footman','shieldbearer','centurion','champion'].includes(e.type))relic*=1.08}const veteranBase=troops.has(e.id)&&UNIT[e.type]?(UNIT[e.type].hp*((e.veterancy||0)>=1?1.05:1)*relic):(e.maxHp||e.hp||1);return Math.round(veteranBase)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
 function applyDamage(target,amount,n=now(),attacker=null){const defended=target.buffs?.shieldWallUntil>n||target.buffs?.holdLineUntil>n;const mythicBlock=attacker&&troops.has(target.id)&&(target.veterancy||0)>=5&&['footman','shieldbearer'].includes(target.type)&&Math.random()<.08; const dealt=mythicBlock?0:Math.max(1,amount-(defended?1:0)); target.hp=Math.max(0,(target.hp||1)-dealt); return dealt}
 function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const n=now(); const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>n)?1:0; const battleCry=(u.buffs?.battleCryUntil&&u.buffs.battleCryUntil>n)?1:0; const globalDamage=Object.entries(account.globalBuffs||{}).some(([k,v])=>k.endsWith('Until')&&v>n)?Math.max(1,Math.floor(def.dmg*.1)):0; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
   if((u.veterancy||0)>=5&&['mage','pyromancer','electricPriest'].includes(u.type)){const extra=enemiesNear(target,2).find(e=>e.id!==target.id&&!targets.includes(e));if(extra)targets.push(extra);}
@@ -749,7 +810,7 @@ function buildButtons(){
 function hasBuilding(type){return [...buildings.values()].some(b=>b.ownerId===playerKey&&b.type===type&&b.hp>0)}
 function supplyUsed(){return [...troops.values()].filter(u=>u.ownerId===playerKey&&u.hp>0).reduce((a,u)=>a+(UNIT[u.type]?.supply||1),0)}
 function queuedSupply(){return [...buildings.values()].filter(b=>b.ownerId===playerKey&&b.productionQueue).reduce((a,b)=>a+b.productionQueue.reduce((x,q)=>x+(UNIT[q.type]?.supply||1),0),0)}
-function supplyCap(){return FORT_CAP[account.fortressLevel||1]}
+function supplyCap(){return FORT_CAP[account.fortressLevel||1]+(account.bonusSupply||0)}
 function selectedOwnedBuildings(){return [...selected].map(id=>buildings.get(id)).filter(b=>b&&b.ownerId===playerKey&&b.hp>0)}
 function selectedProductionBuilding(){
   const prodTypes=new Set(Object.values(UNIT).map(u=>u.building).filter(Boolean));
@@ -856,13 +917,13 @@ async function placeBuilding(type,x,y){
 }
 function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(account.resources?.gold||0);$('lumberVal').textContent=Math.floor(account.resources?.lumber||0);$('oilVal').textContent=Math.floor(account.resources?.oil||0);$('fortLv').textContent=account.fortressLevel||1; $('troopCount').textContent=supplyUsed()+queuedSupply(); $('troopCap').textContent=supplyCap(); const income=totalHourlyIncome(); $('incomeInfo').innerHTML=`Full income:<br><span class="gold">+${income.full.gold} gold</span>, <span class="lumber">+${income.full.lumber} lumber</span>, <span class="oil">+${income.full.oil} oil</span><br>Lost to cut-off territories:<br><span class="dangerText">-${income.lost.gold} gold, -${income.lost.lumber} lumber, -${income.lost.oil} oil</span>`;
   const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>`${UNIT[e.type]?.name||BUILDING[e.type]?.name||e.type}: ${Math.ceil(e.hp)}/${effectiveMaxHp(e)}${troops.has(e.id)?` · ${'★'.repeat(e.veterancy||0)}${'☆'.repeat(5-(e.veterancy||0))} ${VETERANCY.names[e.veterancy||0]} (${Math.floor(e.xp||0)} XP)`:''} @ ${e.x},${e.y}`).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
-  renderAbilities(sels); renderProductionPanel(); renderPortalInfo(sels); renderBattles();
+  renderAbilities(sels); renderProductionPanel(); renderPortalInfo(sels); renderRelics(); renderDailyQuests(); renderBattles();
 }
 async function tradeAtPost(from,to,amount,received){
   const l=hoveredTile&&landmarkAtChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y).key);if(!l||l.type!=='tradePost'||l.ownerId!==playerKey){$('landmarkMsg').textContent='Control this Trade Post first.';return;}if((account.resources[from]||0)<amount){$('landmarkMsg').textContent=`Not enough ${from}.`;return;}account.resources[from]-=amount;account.resources[to]=(account.resources[to]||0)+received;await saveAccount();updateUI();$('landmarkMsg').textContent=`Traded ${amount} ${from} for ${received} ${to}.`;
 }
 async function activateShrine(kind){
-  const l=hoveredTile&&landmarkAtChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y).key),n=now();if(!l||l.type!=='ancientShrine'||l.ownerId!==playerKey){$('landmarkMsg').textContent='Control this Ancient Shrine first.';return;}if((l.blessingReadyAt||0)>n){$('landmarkMsg').textContent=`Shrine ready in ${fmt(l.blessingReadyAt-n)}.`;return;}account.globalBuffs=account.globalBuffs||{};const duration=kind==='harvest'?3600000:1800000;account.globalBuffs[`${kind}Until`]=n+duration;l.blessingReadyAt=n+l.cooldownMs;l.lastBlessing=kind;l.lastBlessingBy=playerKey;if(Math.random()<.3)account.relicFragments=(account.relicFragments||0)+1;if(Math.random()<.05){account.relics=account.relics||[];if(!account.relics.includes('Shrine Relic'))account.relics.push('Shrine Relic');}await Promise.all([saveAccount(),saveLandmark(l)]);$('landmarkMsg').textContent=`${kind[0].toUpperCase()+kind.slice(1)} Blessing active for ${fmt(duration)}.`;
+  const l=hoveredTile&&landmarkAtChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y).key),n=now();if(!l||l.type!=='ancientShrine'||l.ownerId!==playerKey){$('landmarkMsg').textContent='Control this Ancient Shrine first.';return;}if((l.blessingReadyAt||0)>n){$('landmarkMsg').textContent=`Shrine ready in ${fmt(l.blessingReadyAt-n)}.`;return;}account.globalBuffs=account.globalBuffs||{};const duration=kind==='harvest'?3600000:1800000;account.globalBuffs[`${kind}Until`]=n+duration;l.blessingReadyAt=n+l.cooldownMs;l.lastBlessing=kind;l.lastBlessingBy=playerKey;if(Math.random()<.3)account.relicFragments=(account.relicFragments||0)+1;if(Math.random()<.05)log(`Ancient Shrine revealed ${awardRandomRelic()}!`);progressQuest('shrine');await Promise.all([saveAccount(),saveLandmark(l)]);$('landmarkMsg').textContent=`${kind[0].toUpperCase()+kind.slice(1)} Blessing active for ${fmt(duration)}.`;
 }
 function renderLandmarkPanel(l){
   const info=$('landmarkInfo'),actions=$('landmarkActions');actions.innerHTML='';if(!l){info.textContent='Hover a discovered landmark.';return;}const d=LANDMARK[l.type],n=now(),status=isBossLandmark(l)?(l.bossAlive?'Boss available':`Boss respawns in: ${fmt((l.respawnAt||n)-n)}`):(l.ownerId?'Controlled':'Neutral guards active');info.innerHTML=`<b style="color:${d.color}">${d.icon} ${d.name}</b><br>Owner: ${l.ownerId||'Neutral'}<br>Status: ${status}<br>HP: ${Math.ceil(l.hp)}/${l.maxHp}<br>Guard strength: ${l.guardStrength||d.guards}<br>${landmarkRewardText(l)}${l.type==='ancientShrine'?`<br>Blessing cooldown: ${(l.blessingReadyAt||0)>n?fmt(l.blessingReadyAt-n):'Ready'}`:''}`;
@@ -987,21 +1048,21 @@ function renderAbilities(sels){
 function renderPortalInfo(sels){
   const el=$('portalInfo'); if(!el)return;
   const portal=sels.find(e=>e.type==='portal');
-  const g=account.goblin||{level:1,nextAt:0};
-  if(!portal){el.innerHTML=`Next horde level: ${g.level||1}<br>Cooldown: ${g.nextAt&&g.nextAt>now()?fmt(g.nextAt-now()):'ready'}<br>Select a Portal to enter.`; return;}
+  const g=account.goblin||{level:1,nextAt:0},cooldowns=account.portalCooldowns||{};
+  if(!portal){el.innerHTML=`Select one of your Portals to view five available PvE missions.<br>Portal rank: ${g.level||1}`; return;}
   const standing=[...troops.values()].filter(u=>u.ownerId===playerKey&&u.hp>0&&u.x===portal.x&&u.y===portal.y&&!u.inArena);
-  el.innerHTML=`Selected Portal @ ${portal.x},${portal.y}<br>Troops on portal square: ${standing.length}<br>Next horde level: ${g.level||1}<br>Cooldown: ${g.nextAt&&g.nextAt>now()?fmt(g.nextAt-now()):'ready'}<br><button class="small primary" onclick="window.enterSelectedPortal && window.enterSelectedPortal()">Enter Portal</button>`;
-  window.enterSelectedPortal=()=>enterGoblinPortal(portal);
+  el.innerHTML=`Selected Portal @ ${portal.x},${portal.y} · Army on tile: <b>${standing.length}</b>${Object.entries(PORTAL_MISSIONS).map(([id,m])=>{const left=(cooldowns[id]||0)-now(),ready=left<=0&&!g.active;return `<div class="missionCard"><b>${m.name}</b><br>${m.description}<div class="missionMeta"><span>Difficulty ${m.difficulty}</span><span>Army ${m.strength}+</span><span>Cooldown ${fmt(m.cooldownMs)}</span><span>${ready?'Ready':g.active?'Mission active':fmt(left)}</span></div><span class="reward">Reward: ${m.reward}</span><br><button class="small ${ready?'primary':''}" ${!ready||!standing.length?'disabled':''} onclick="window.startPortalMission('${id}')">Start mission</button></div>`}).join('')}`;
+  window.startPortalMission=id=>enterGoblinPortal(portal,id);
 }
 function arenaOrigin(){
   const h=Math.floor(hash2(playerKey.length, playerKey.charCodeAt(0)||1, 4242)*1200);
   return {x:WORLD_TILES-96, y:40+h};
 }
-async function enterGoblinPortal(portal){
+async function enterGoblinPortal(portal,missionId='goblinHorde'){
   if(!portal||portal.ownerId!==playerKey||portal.type!=='portal'){log('Select one of your Portals.');return;}
-  const g=account.goblin||{level:1,nextAt:0,active:false};
-  if(g.active){log('A goblin portal battle is already active.');return;}
-  if(g.nextAt&&g.nextAt>now()){log(`Portal cooldown: ${fmt(g.nextAt-now())}.`);return;}
+  const g=account.goblin||{level:1,active:false},mission=PORTAL_MISSIONS[missionId]||PORTAL_MISSIONS.goblinHorde,cooldown=account.portalCooldowns?.[missionId]||0;
+  if(g.active){log('A portal mission is already active.');return;}
+  if(cooldown>now()){log(`${mission.name} cooldown: ${fmt(cooldown-now())}.`);return;}
   const entrants=[...troops.values()].filter(u=>u.ownerId===playerKey&&u.hp>0&&u.x===portal.x&&u.y===portal.y&&!u.inArena);
   if(!entrants.length){log('Move troops onto the Portal square first.');return;}
   const origin=arenaOrigin();
@@ -1011,18 +1072,18 @@ async function enterGoblinPortal(portal){
     u.x=spot.x; u.y=spot.y; u.inArena=true; u.portalId=portal.id; u.order='idle'; u.path=[]; troops.set(u.id,u); scheduleSaveTroops([u]);
   }
   const level=g.level||1;
-  const goblinCount=6+level*3;
+  const goblinCount=mission.count+Math.floor(level*1.5);
   const batch=writeBatch(db);
   for(let i=0;i<goblinCount;i++){
     const gx=origin.x+28+(i%6), gy=origin.y+4+Math.floor(i/6)*2;
     const id=`goblin_${playerKey}_${level}_${now()}_${i}`;
-    const hp=12+Math.floor(level*2.5);
+    const hp=Math.floor((12+level*2.5)*mission.hp);
     batch.set(ref('troops',id),{id,ownerId:`goblin_${playerKey}`,type:'goblin',x:gx,y:gy,hp,maxHp:hp,order:'attackMove',moveGoal:{x:origin.x+5,y:origin.y+8},path:[],nextMoveAt:0,nextAttackAt:0,inArena:true,arenaOwner:playerKey,createdAt:now()});
   }
-  account.goblin={level,active:true,portalId:portal.id,arenaOrigin:origin,startedAt:now(),nextAt:0};
+  account.goblin={level,active:true,missionId,portalId:portal.id,arenaOrigin:origin,startedAt:now()};
   await saveAccount(); await batch.commit();
   camera.x=origin.x*32*camera.zoom-canvas.width/2; camera.y=origin.y*32*camera.zoom-canvas.height/2;
-  log(`Portal opened: Horde level ${level}. Defeat ${goblinCount} goblins for prizes.`);
+  log(`${mission.name} opened at rank ${level}. Defeat ${goblinCount} enemies for ${mission.reward}.`);
 }
 async function checkGoblinPortalBattle(){
   const g=account.goblin;
@@ -1032,20 +1093,24 @@ async function checkGoblinPortalBattle(){
   if(goblins.length && myArena.length)return;
   const portal=buildings.get(g.portalId);
   if(goblins.length && !myArena.length){
-    account.goblin={level:g.level||1,active:false,nextAt:now()+GOBLIN_COOLDOWN_MS};
-    await saveAccount(); log('Your portal force was defeated. You may try again after 1 hour.'); return;
+    const mission=PORTAL_MISSIONS[g.missionId]||PORTAL_MISSIONS.goblinHorde;account.portalCooldowns=account.portalCooldowns||{};account.portalCooldowns[g.missionId||'goblinHorde']=now()+Math.floor(mission.cooldownMs/2);account.goblin={level:g.level||1,active:false};
+    await saveAccount(); log(`Your ${mission.name} force was defeated. Its reduced failure cooldown has begun.`); return;
   }
   if(!goblins.length){
     for(const dead of [...troops.values()].filter(u=>u.ownerId===`goblin_${playerKey}`&&u.inArena)) await deleteDoc(ref('troops',dead.id));
-    const reward={gold:80+(g.level||1)*45,lumber:70+(g.level||1)*35,oil:10+(g.level||1)*8};
+    const mission=PORTAL_MISSIONS[g.missionId]||PORTAL_MISSIONS.goblinHorde,rank=1+(g.level||1)*.18,reward=Object.fromEntries(Object.entries(mission.rewardBase).map(([k,v])=>[k,Math.floor(v*rank)]));
     addRes(reward);
     const claimed=new Set();
     for(const u of myArena){
       const spot=portal?formationTargets(portal.x,portal.y,1,{ownerId:playerKey},claimed)[0]:{x:account.home.x,y:account.home.y};
       u.x=spot.x; u.y=spot.y; u.inArena=false; u.portalId=null; u.order='idle'; u.path=[]; troops.set(u.id,u); scheduleSaveTroops([u]);
     }
-    account.goblin={level:(g.level||1)+1,active:false,nextAt:now()+GOBLIN_COOLDOWN_MS,lastReward:reward};
-    await saveAccount(); log(`Goblin horde defeated! Reward: +${reward.gold}g +${reward.lumber}l +${reward.oil}o. Next horde is stronger.`);
+    const extras=[];account.portalCooldowns=account.portalCooldowns||{};account.portalCooldowns[g.missionId||'goblinHorde']=now()+mission.cooldownMs;
+    if(mission.fragments){const found=mission.fragments+Math.floor(Math.random()*3);account.relicFragments=(account.relicFragments||0)+found;extras.push(`${found} relic fragments`)}
+    if(mission.relicChance&&Math.random()<mission.relicChance)extras.push(awardRandomRelic());
+    if(mission.rescue){if(Math.random()<.55){account.bonusSupply=(account.bonusSupply||0)+5;extras.push("+5 permanent supply")}else extras.push("free rescued troops")}
+    account.goblin={level:(g.level||1)+1,active:false,lastReward:reward,lastMission:g.missionId};progressQuest('portal');if(g.missionId==='bossHunt')progressQuest('boss');
+    await saveAccount(); log(`${mission.name} complete! +${reward.gold}g +${reward.lumber}l +${reward.oil}o${extras.length?` and ${extras.join(', ')}`:''}.`);
   }
 }
 async function useRally(){ const n=now(); const cents=[...selected].map(id=>troops.get(id)).filter(u=>u?.type==='centurion'); for(const c of cents){ if(c.rallyCdUntil&&c.rallyCdUntil>n){log('Rally still on cooldown.'); continue;} for(const u of troops.values()) if(u.ownerId===playerKey&&dist(u,c)<=3){u.buffs=u.buffs||{};u.buffs.rallyUntil=n+60000;scheduleSaveTroops([u]);} c.rallyCdUntil=n+300000;scheduleSaveTroops([c]); log('Rally used.'); }}
