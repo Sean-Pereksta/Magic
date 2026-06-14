@@ -14,6 +14,7 @@
   button{background:#273346;color:var(--text);border:1px solid #445064;border-radius:8px;padding:8px 10px;cursor:pointer} button:hover{background:#344156} button.primary{background:#0f7b45;border-color:#1da260} button.danger{background:#76272a;border-color:#aa3d41} button.small{font-size:12px;padding:5px 7px}
   #game{display:none;height:100vh;width:100vw}.topbar{height:42px;background:#111722;border-bottom:1px solid #2b3442;display:flex;align-items:center;gap:12px;padding:0 12px;white-space:nowrap}.pill{background:#222b38;border:1px solid #374456;border-radius:999px;padding:4px 9px;font-size:13px}.gold{color:#ffd36b}.lumber{color:#58d68d}.oil{color:#b9b6c7}
   #main{display:grid;grid-template-columns:1fr 360px;height:calc(100vh - 42px)}#canvasWrap{position:relative;overflow:hidden}#map{display:block;background:#121820;width:100%;height:100%}.hint{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.58);border:1px solid #394354;border-radius:8px;padding:8px 10px;color:#d7dde6;font-size:12px;line-height:1.45}.selectionBox{position:absolute;border:1px solid #8ee8ff;background:rgba(64,180,255,.12);pointer-events:none;display:none}
+  #abilityHotbar{position:absolute;left:10px;bottom:78px;display:none;max-width:calc(100% - 20px);padding:7px;background:rgba(10,14,20,.94);border:1px solid #445064;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.45);gap:7px;z-index:4}.hotbarAbility{position:relative;display:flex;align-items:flex-start;gap:8px;width:172px;min-height:62px;padding:8px 8px 7px 34px;text-align:left;background:linear-gradient(180deg,#263246,#192331);border:1px solid #53647b;border-radius:8px;color:var(--text)}.hotbarAbility:hover:not(:disabled){background:linear-gradient(180deg,#34455e,#223147);border-color:#8ee8ff;transform:translateY(-1px)}.hotbarAbility:disabled{cursor:not-allowed;opacity:.48;filter:saturate(.55)}.hotbarKey{position:absolute;left:7px;top:7px;min-width:20px;padding:2px 4px;border:1px solid #8291a6;border-radius:5px;background:#0d1117;color:#fff;text-align:center;font-size:12px;line-height:16px;box-shadow:inset 0 -1px 0 rgba(255,255,255,.14)}.hotbarText{display:flex;min-width:0;flex-direction:column;gap:3px}.hotbarLabel{font-size:12px;font-weight:700;line-height:1.15}.hotbarDescription{color:#aeb9c7;font-size:10px;line-height:1.25}.ability{cursor:pointer}.ability.disabled{cursor:not-allowed;opacity:.5}.ability:hover:not(.disabled){background:#29374a;border-color:#60758e}
   #side{background:var(--panel);border-left:1px solid #2b3442;overflow:auto;padding:10px}.section{background:#111722;border:1px solid #2b3442;border-radius:10px;padding:10px;margin-bottom:10px}.section h3{margin:0 0 8px;font-size:15px}.muted{color:var(--muted);font-size:12px}.gridBtns{display:grid;grid-template-columns:1fr 1fr;gap:6px}.unitLine,.buildingLine,.battleLine{display:flex;justify-content:space-between;gap:6px;border-top:1px solid #2a3442;padding:6px 0;font-size:12px}.selectedList{max-height:105px;overflow:auto;border:1px solid #2b3442;border-radius:8px;padding:6px;background:#0d1117}.ability{display:flex;justify-content:space-between;margin:5px 0;background:#1c2532;border:1px solid #384556;border-radius:7px;padding:6px;font-size:12px}.barOuter{height:8px;background:#2b1420;border:1px solid #5e2635;border-radius:999px;overflow:hidden}.barInner{height:100%;background:#ff3e59;width:50%}.msg{color:#ffcc66;font-size:12px;min-height:16px;margin-top:6px}.kbd{border:1px solid #566273;background:#222b38;border-radius:4px;padding:1px 5px;font-size:11px}.hr{height:1px;background:#2b3442;margin:8px 0}.dangerText{color:#ff8b8b}.okText{color:#8cffb7}
 </style>
 </head>
@@ -44,6 +45,7 @@
   </div>
   <div id="main">
     <div id="canvasWrap"><canvas id="map"></canvas><div id="selectionBox" class="selectionBox"></div>
+      <div id="abilityHotbar" aria-label="Selected unit abilities"></div>
       <div class="hint"><b>Controls</b><br>Drag select troops. Right-click ground to move. Right-click enemy to focus attack. Hold/press <span class="kbd">A</span> then right-click for attack-move. WASD/Arrows pan. Mouse wheel zoom. Commands override auto-aggro/building.</div>
     </div>
     <aside id="side">
@@ -155,6 +157,7 @@ const FORT_UPGRADE_COST = {2:{gold:200,lumber:180,oil:0},3:{gold:380,lumber:300,
 let uid=null, player=null, playerKey=null;
 let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map();
 let unsub=[]; let selected=new Set(); let hoveredTile=null; let hoveredEntity=null; let attackMode=false; let buildMode=null;
+let currentAbilityHotkeys=new Map();
 let camera={x:0,y:0,zoom:1}; let mouse={x:0,y:0,down:false,startX:0,startY:0};
 let lastSave=0, lastTick=0, lastCaptureCheck=0, lastProductionCheck=0;
 
@@ -536,13 +539,45 @@ function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(a
   const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>`${e.type}: ${e.hp}/${e.maxHp||e.hp} @ ${e.x},${e.y}`).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
   renderAbilities(sels); renderProductionPanel(); renderPortalInfo(sels); renderBattles();
 }
-function renderAbilities(sels){ const a=$('abilities'); a.innerHTML=''; let idx=1; const add=(label,fn)=>{const div=document.createElement('div');div.className='ability';div.innerHTML=`<span>${label}</span><b>${idx}</b>`; const n=idx++; div.onclick=fn; a.appendChild(div);};
-  if(sels.some(e=>e.type==='centurion')) add('Rally nearby troops (+1 damage, 1 min)',()=>useRally());
-  if(sels.some(e=>e.type==='trebuchet')) add('Siege enemy territory up to 5 tiles',()=>useSiege());
-  if(sels.some(e=>e.type==='fortress')) add('Upgrade Fortress',()=>upgradeFortress());
-  if(sels.some(e=>e.type==='workshop')) add('Upgrade Workshop Income %',()=>upgradeWorkshop(sels.find(e=>e.type==='workshop')));
-  if(sels.some(e=>e.type==='portal')) add('Enter Goblin Portal with troops on this square',()=>enterGoblinPortal(sels.find(e=>e.type==='portal')));
-  window.abilityHotkeys=[...a.children].map(c=>c.onclick);
+const ABILITY_HOTKEYS=['1','2','3','4','5','6','7','8','9'];
+const ABILITY_REGISTRY=[
+  {id:'rally',types:['centurion'],label:'Rally',description:()=>`Nearby troops gain +1 damage for 1 min · 5 min cooldown`,canUse:sels=>sels.some(e=>e.type==='centurion'&&(!e.rallyCdUntil||e.rallyCdUntil<=now())),action:()=>useRally()},
+  {id:'siege',types:['trebuchet'],label:'Siege',description:()=>`Target hovered enemy territory within 5 tiles · fires every 3h`,canUse:sels=>sels.some(e=>e.type==='trebuchet'),action:()=>useSiege()},
+  {id:'upgradeFortress',types:['fortress'],label:'Upgrade Fortress',description:()=>{const lvl=(account.fortressLevel||1)+1,cost=FORT_UPGRADE_COST[lvl];return cost?`Level ${lvl} · ${costText(cost)}`:'Maximum level';},canUse:()=>!!FORT_UPGRADE_COST[(account.fortressLevel||1)+1],action:()=>upgradeFortress()},
+  {id:'upgradeWorkshop',types:['workshop'],label:'Upgrade Workshop',description:sels=>{const w=sels.find(e=>e.type==='workshop'),lvl=(w?.level||1)+1;return `Level ${lvl} · ${costText({gold:100*lvl,lumber:120*lvl,oil:10*Math.max(0,lvl-2)})}`;},canUse:sels=>sels.some(e=>e.type==='workshop'),action:sels=>upgradeWorkshop(sels.find(e=>e.type==='workshop'))},
+  {id:'enterPortal',types:['portal'],label:'Enter Goblin Portal',description:()=>{const g=account.goblin||{};return g.nextAt&&g.nextAt>now()?`Cooldown ${fmt(g.nextAt-now())}`:'Enter with troops standing on this square';},canUse:sels=>{const p=sels.find(e=>e.type==='portal'),g=account.goblin||{};return !!p&&(!g.nextAt||g.nextAt<=now())&&[...troops.values()].some(u=>u.ownerId===playerKey&&u.hp>0&&u.x===p.x&&u.y===p.y&&!u.inArena);},action:sels=>enterGoblinPortal(sels.find(e=>e.type==='portal'))},
+  {id:'mobileTower',types:['engineer'],label:'Mobile Tower',description:()=>`Temporary defense · ${costText(BUILDING.mobileTower.cost)} · 10 min build`,canUse:sels=>sels.some(e=>e.type==='engineer'&&e.ownerId===playerKey),action:()=>startEngineerBuild('mobileTower')},
+  {id:'barricade',types:['engineer'],label:'Temporary Barricade',description:()=>`${costText(BUILDING.barricade.cost)} · 5 min build`,canUse:sels=>sels.some(e=>e.type==='engineer'&&e.ownerId===playerKey),action:()=>startEngineerBuild('barricade')}
+];
+function startEngineerBuild(type){
+  if(![...selected].some(id=>troops.get(id)?.type==='engineer')){log('Select an Engineer first.');return;}
+  buildMode=type;
+  $('modeReadout').textContent=`Place ${BUILDING[type].name}`;
+  log(`${BUILDING[type].name} placement: right-click owned ground.`);
+}
+function getVisibleAbilities(sels){
+  return ABILITY_REGISTRY.filter(ability=>ability.types.some(type=>sels.some(entity=>entity.type===type))).map((ability,index)=>({...ability,hotkey:ABILITY_HOTKEYS[index]}));
+}
+function renderAbilities(sels){
+  const side=$('abilities'),hotbar=$('abilityHotbar'),visible=getVisibleAbilities(sels);
+  side.innerHTML=''; hotbar.innerHTML=''; currentAbilityHotkeys=new Map();
+  visible.forEach(ability=>{
+    const enabled=ability.canUse?ability.canUse(sels):true;
+    const description=typeof ability.description==='function'?ability.description(sels):ability.description;
+    const trigger=()=>{if(enabled)ability.action(sels);};
+    currentAbilityHotkeys.set(ability.hotkey,{...ability,enabled,trigger});
+    const sideButton=document.createElement('div');
+    sideButton.className=`ability${enabled?'':' disabled'}`;
+    sideButton.innerHTML=`<span><b>${ability.label}</b><br><span class="muted">${description||''}</span></span><b>${ability.hotkey}</b>`;
+    sideButton.onclick=trigger;
+    side.appendChild(sideButton);
+    const button=document.createElement('button');
+    button.className='hotbarAbility'; button.disabled=!enabled;
+    button.innerHTML=`<span class="hotbarKey">${ability.hotkey}</span><span class="hotbarText"><span class="hotbarLabel">${ability.label}</span><span class="hotbarDescription">${description||''}</span></span>`;
+    button.onclick=trigger;
+    hotbar.appendChild(button);
+  });
+  hotbar.style.display=visible.length?'flex':'none';
 }
 function renderPortalInfo(sels){
   const el=$('portalInfo'); if(!el)return;
@@ -625,9 +660,9 @@ canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('mousedown',e=>{ if(e.button===0){mouse.down=true;mouse.startX=e.clientX;mouse.startY=e.clientY; selBox.style.display='block'; selBox.style.left=e.clientX+'px';selBox.style.top=e.clientY+'px';selBox.style.width='0px';selBox.style.height='0px';}});
 window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); hoveredEntity=entityAtTile(hoveredTile.x,hoveredTile.y); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=`${c.cx},${c.cy}`; const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br>Chunk ${terr.id}<br>Resource: ${terr.resource}<br>Owner: ${terr.ownerId||'neutral'}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`; if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
 window.addEventListener('mouseup',e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=entityAtTile(t.x,t.y); if(ent&&ent.data.ownerId===playerKey){ if(!e.shiftKey)selected.clear(); selected.add(ent.id);} else if(!e.shiftKey) selected.clear(); } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
-canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; return;} const ent=entityAtTile(t.x,t.y); if(ent&&ent.data.ownerId!==playerKey) issueAttack(selected,ent); else issueMove(selected,t.x,t.y,attackMode); attackMode=false; $('modeReadout').textContent='Move'; }});
+canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; $('modeReadout').textContent='Move'; return;} const ent=entityAtTile(t.x,t.y); if(ent&&ent.data.ownerId!==playerKey) issueAttack(selected,ent); else issueMove(selected,t.x,t.y,attackMode); attackMode=false; $('modeReadout').textContent='Move'; }});
 canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; camera.zoom=clamp(camera.zoom*(e.deltaY<0?1.1:.9),.45,2.2); const mx=e.offsetX,my=e.offsetY; camera.x=(camera.x+mx)*(camera.zoom/old)-mx; camera.y=(camera.y+my)*(camera.zoom/old)-my;},{passive:false});
-window.addEventListener('keydown',e=>{ if(e.key.toLowerCase()==='a'){attackMode=true;$('modeReadout').textContent='Attack-move';} if(e.key>='1'&&e.key<='9'&&window.abilityHotkeys?.[Number(e.key)-1]) window.abilityHotkeys[Number(e.key)-1]();});
+window.addEventListener('keydown',e=>{ if(e.key.toLowerCase()==='a'){attackMode=true;$('modeReadout').textContent='Attack-move';} const ability=currentAbilityHotkeys.get(e.key); if(ability&&!e.repeat){e.preventDefault();ability.trigger();}});
 
 function loop(ts){ const dt=ts-lastTick; lastTick=ts; handleCamera(); tick(dt); draw(); requestAnimationFrame(loop); }
 function handleCamera(){ const speed=18; if(keys['ArrowLeft']||keys.a&&!attackMode)camera.x-=speed;if(keys['ArrowRight']||keys.d)camera.x+=speed;if(keys['ArrowUp']||keys.w)camera.y-=speed;if(keys['ArrowDown']||keys.s)camera.y+=speed; camera.x=clamp(camera.x,0,WORLD_TILES*32*camera.zoom-canvas.width); camera.y=clamp(camera.y,0,WORLD_TILES*32*camera.zoom-canvas.height); }
