@@ -513,6 +513,7 @@
                   <option value="estate">🏡 Estate Defense</option>
                   <option value="mountain">🗻 Mountain Blade Skirmish (4P)</option>
                   <option value="mountonline">🗻🌐 Mountain Blade Online</option>
+                  <option value="crownlands">👑🌐 Crownlands Online</option>
                   <option value="rock">✊📄✂️ Rock Paper Scissors MMO</option>
                   <option value="stockkings">📈 Stock Kings</option>
                   <option value="dutchblitz">🃏 Dutch Blitz Arena (4P)</option>
@@ -604,6 +605,7 @@
       estate:     "/game/estatedefense.html",
       mountain:   "/game/mountainblade.html",
       mountonline:"/game/mountonline.html",
+      crownlands: "/game/crownlands.html",
       rock:       "/game/rock.html",
       stockkings: "/game/stockkings.html",
       dutchblitz: "/game/dutchblitz.html",
@@ -924,6 +926,7 @@
              type==='estate'? '🏡 Estate Defense' :
              type==='mountain'?'🗻 Mountain Blade Skirmish (4P)' :
              type==='mountonline'?'🗻🌐 Mountain Blade Online' :
+             type==='crownlands'?'👑🌐 Crownlands Online' :
              type==='rock'?'✊📄✂️ RPS MMO' :
              type==='stockkings'?'📈 Stock Kings' :
              type==='dutchblitz'?'🃏 Dutch Blitz Arena (4P)' :
@@ -954,7 +957,7 @@
       const lobbiesCard = document.getElementById("availLobbiesCard");
       const playersCard = document.getElementById("playersCard");
 
-      const isQuickPlay = (gt === "mountonline" || gt === "rock");
+      const isQuickPlay = (gt === "mountonline" || gt === "crownlands" || gt === "rock");
 
       title.textContent = isQuickPlay ? "Quick Play" : "Start a Lobby";
       nameWrap.style.display = isQuickPlay ? "none" : "block";
@@ -970,7 +973,7 @@
         return showError("⏳ Connecting to server, please try again in a moment.");
       }
 
-      if (gameType === "mountonline" || gameType === "rock") {
+      if (gameType === "mountonline" || gameType === "crownlands" || gameType === "rock") {
         if (!username) return showError("❌ You must be logged in.");
         const route = ROUTES[gameType];
         save(SK.lastGame, gameType);
