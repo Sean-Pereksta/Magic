@@ -17,7 +17,8 @@
   #abilityHotbar{position:absolute;left:10px;bottom:78px;display:none;max-width:calc(100% - 20px);padding:7px;background:rgba(10,14,20,.94);border:1px solid #445064;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.45);gap:7px;z-index:4}.hotbarAbility{position:relative;display:flex;align-items:flex-start;gap:8px;width:172px;min-height:62px;padding:8px 8px 7px 34px;text-align:left;background:linear-gradient(180deg,#263246,#192331);border:1px solid #53647b;border-radius:8px;color:var(--text)}.hotbarAbility:hover:not(:disabled){background:linear-gradient(180deg,#34455e,#223147);border-color:#8ee8ff;transform:translateY(-1px)}.hotbarAbility:disabled{cursor:not-allowed;opacity:.48;filter:saturate(.55)}.hotbarKey{position:absolute;left:7px;top:7px;min-width:20px;padding:2px 4px;border:1px solid #8291a6;border-radius:5px;background:#0d1117;color:#fff;text-align:center;font-size:12px;line-height:16px;box-shadow:inset 0 -1px 0 rgba(255,255,255,.14)}.hotbarText{display:flex;min-width:0;flex-direction:column;gap:3px}.hotbarLabel{font-size:12px;font-weight:700;line-height:1.15}.hotbarDescription{color:#aeb9c7;font-size:10px;line-height:1.25}.ability{cursor:pointer}.ability.disabled{cursor:not-allowed;opacity:.5}.ability:hover:not(.disabled){background:#29374a;border-color:#60758e}
   #side{background:var(--panel);border-left:1px solid #2b3442;overflow:auto;padding:10px}.section{background:#111722;border:1px solid #2b3442;border-radius:10px;padding:10px;margin-bottom:10px}.section h3{margin:0 0 8px;font-size:15px}.muted{color:var(--muted);font-size:12px}.gridBtns{display:grid;grid-template-columns:1fr 1fr;gap:6px}.unitLine,.buildingLine,.battleLine{display:flex;justify-content:space-between;gap:6px;border-top:1px solid #2a3442;padding:6px 0;font-size:12px}.selectedList{max-height:105px;overflow:auto;border:1px solid #2b3442;border-radius:8px;padding:6px;background:#0d1117}.ability{display:flex;justify-content:space-between;margin:5px 0;background:#1c2532;border:1px solid #384556;border-radius:7px;padding:6px;font-size:12px}.barOuter{height:8px;background:#2b1420;border:1px solid #5e2635;border-radius:999px;overflow:hidden}.barInner{height:100%;background:#ff3e59;width:50%}.msg{color:#ffcc66;font-size:12px;min-height:16px;margin-top:6px}.kbd{border:1px solid #566273;background:#222b38;border-radius:4px;padding:1px 5px;font-size:11px}.hr{height:1px;background:#2b3442;margin:8px 0}.dangerText{color:#ff8b8b}.okText{color:#8cffb7}
   .missionCard,.questCard,.relicCard{margin:7px 0;padding:8px;border:1px solid #384556;border-radius:8px;background:linear-gradient(135deg,#1b2431,#131923);font-size:12px}.missionCard b,.questCard b,.relicCard b{color:#f3d782}.missionMeta{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin:5px 0;color:#aeb9c7}.panelTitle{display:flex;justify-content:space-between;align-items:center}.reward{color:#8cffb7}.activeRelic{border-color:#d9ad45;box-shadow:inset 3px 0 #d9ad45}.progress{height:6px;background:#26303e;border-radius:5px;overflow:hidden;margin:5px 0}.progress span{display:block;height:100%;background:#37c978}
-  .allianceCard{margin:7px 0;padding:8px;border:1px solid #384556;border-radius:8px;background:#151d28;font-size:12px}.allianceMember{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #2a3442}.statusDot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:#687485}.statusDot.online{background:#18c964;box-shadow:0 0 6px #18c964}.settingLine{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.settingLine input{width:auto}.allianceBadge{color:#79d8ff}
+  .allianceCard{margin:7px 0;padding:8px;border:1px solid #384556;border-radius:8px;background:#151d28;font-size:12px}
+  .researchBranch{margin:8px 0;padding:8px;border:1px solid #384556;border-radius:9px;background:#121a25}.researchBranch h4{margin:0 0 7px;color:#79d8ff}.techGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.techCard{padding:7px;border:1px solid #3c4859;border-radius:7px;background:#1a2431;font-size:11px}.techCard.unlocked{border-color:#28a866;background:#142a22}.techCard.locked{opacity:.62}.techCard b{display:block;color:#f3d782;margin-bottom:3px}.techCard button{width:100%;margin-top:5px}.researchSummary{padding:7px;border-radius:7px;background:#0d1117;border:1px solid #2b3442;line-height:1.45}.allianceMember{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #2a3442}.statusDot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:#687485}.statusDot.online{background:#18c964;box-shadow:0 0 6px #18c964}.settingLine{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.settingLine input{width:auto}.allianceBadge{color:#79d8ff}
 </style>
 </head>
 <body>
@@ -38,6 +39,7 @@
     <span class="pill gold">Gold: <b id="goldVal">0</b></span>
     <span class="pill lumber">Lumber: <b id="lumberVal">0</b></span>
     <span class="pill oil">Oil: <b id="oilVal">0</b></span>
+    <span class="pill">Research <b id="researchVal">0</b></span>
     <span class="pill">Fortress Lv <b id="fortLv">1</b></span>
     <span class="pill">Troops <b id="troopCount">0</b>/<b id="troopCap">0</b></span>
     <span class="pill">Chunk <b id="chunkReadout">0,0</b></span>
@@ -54,6 +56,7 @@
       <div class="section"><h3>Selected</h3><div id="selectedInfo" class="selectedList muted">Nothing selected.</div><div id="abilities"></div></div>
       <div class="section"><h3>Train Troops</h3><div class="muted">Select one of your troop-production buildings to show its training options.</div><div id="trainBtns" class="gridBtns"></div><div id="queueInfo" class="muted" style="margin-top:8px">Select a production building to view its queue.</div></div>
       <div class="section"><h3>Build Structures</h3><div class="muted">Buildings may only be placed in controlled territory. Select an Engineer for mobile towers/barricades.</div><div id="buildBtns" class="gridBtns"></div></div>
+      <div class="section"><div class="panelTitle"><h3>Research</h3><span id="researchBuilding" class="muted"></span></div><div id="researchInfo" class="muted"></div></div>
       <div class="section"><h3>Portal Missions</h3><div id="portalInfo" class="muted">Build and select a Portal to launch PvE missions.</div></div>
       <div class="section"><div class="panelTitle"><h3>Relics</h3><span id="fragmentInfo" class="muted"></span></div><div id="relicInfo" class="muted"></div></div>
       <div class="section"><div class="panelTitle"><h3>Daily Quests</h3><span id="dailyTimer" class="muted"></span></div><div id="dailyInfo" class="muted"></div></div>
@@ -124,6 +127,34 @@ const DAILY_QUESTS = [
   {id:"shrine",name:"Ancient Favor",text:"Activate an Ancient Shrine",goal:1,reward:{gold:300,buff:"Harvest +10% (1h)"}},
   {id:"defense",name:"Fortify",text:"Build 2 defensive structures",goal:2,reward:{lumber:300,oil:50}}
 ];
+
+const RESEARCH = {
+  improvedMining:{name:"Improved Mining",branch:"Economy",building:"workshop",cost:2,effect:"Gold regions produce +10% gold."},
+  lumberLogistics:{name:"Lumber Logistics",branch:"Economy",building:"workshop",cost:2,effect:"Forest regions produce +10% lumber.",requires:["improvedMining"]},
+  oilRefining:{name:"Oil Refining",branch:"Economy",building:"alchemistHall",cost:3,effect:"Oil regions produce +10% oil.",requires:["lumberLogistics"]},
+  tradeNetworks:{name:"Trade Networks",branch:"Economy",building:"workshop",cost:3,effect:"Trade Posts produce 25% more income.",requires:["improvedMining"]},
+  supplyAdministration:{name:"Supply Administration",branch:"Economy",building:"fortress",cost:4,effect:"Cut-off territories retain 50% income.",requires:["tradeNetworks"]},
+  infantryDrills:{name:"Infantry Drills",branch:"Military",building:"barracks",cost:2,effect:"Infantry gain +5% maximum HP."},
+  cavalryTraining:{name:"Cavalry Training",branch:"Military",building:"stable",cost:2,effect:"Cavalry move 5% faster."},
+  siegeEngineering:{name:"Siege Engineering",branch:"Military",building:"siegeShop",cost:3,effect:"Siege deals +10% structure damage."},
+  fieldMedicine:{name:"Field Medicine",branch:"Military",building:"barracks",cost:3,effect:"Medics heal 50% more.",requires:["infantryDrills"]},
+  veteranStandards:{name:"Veteran Standards",branch:"Military",building:"fortress",cost:4,effect:"Troops earn XP 20% faster.",requires:["infantryDrills","cavalryTraining"]},
+  masonry:{name:"Masonry",branch:"Defense",building:"workshop",cost:2,effect:"Walls gain +20% maximum HP."},
+  towerCrews:{name:"Tower Crews",branch:"Defense",building:"fortress",cost:3,effect:"Defensive towers fire 10% faster.",requires:["masonry"]},
+  gateMechanisms:{name:"Gate Mechanisms",branch:"Defense",building:"workshop",cost:3,effect:"Gates gain +30% maximum HP.",requires:["masonry"]},
+  trapEngineering:{name:"Trap Engineering",branch:"Defense",building:"workshop",cost:3,effect:"Spike traps deal +50% damage.",requires:["masonry"]},
+  fortifiedBorder:{name:"Fortified Border",branch:"Defense",building:"fortress",cost:4,effect:"Border towers gain +1 range.",requires:["towerCrews","gateMechanisms"]},
+  portalStabilization:{name:"Portal Stabilization",branch:"Arcane / Portal",building:"alchemistHall",cost:3,effect:"Portal mission cooldowns are reduced 15%."},
+  relicAttunement:{name:"Relic Attunement",branch:"Arcane / Portal",building:"fortress",cost:5,effect:"Unlocks a fourth active relic slot.",requires:["portalStabilization"]},
+  shrineLore:{name:"Shrine Lore",branch:"Arcane / Portal",building:"alchemistHall",cost:3,effect:"Shrine blessings last 50% longer.",requires:["portalStabilization"]},
+  oilInfusion:{name:"Oil Infusion",branch:"Arcane / Portal",building:"alchemistHall",cost:4,effect:"Flame towers deal +25% damage.",requires:["oilRefining"]},
+  ancientMaps:{name:"Ancient Maps",branch:"Arcane / Portal",building:"fortress",cost:3,effect:"Scouts and watchtowers reveal one extra chunk."}
+};
+const INFANTRY_TYPES=new Set(['footman','skirmisher','centurion','medic','shieldbearer','rangerCaptain','champion','bannerKnight']);
+const CAVALRY_TYPES=new Set(['scout','lancer','mountedArcher','cataphract']);
+const SIEGE_TYPES=new Set(['ballista','catapult','trebuchet']);
+function hasTech(id,ownerId=playerKey){const a=ownerId===playerKey?account:playerAccounts.get(ownerId);return !!a?.research?.[id];}
+function researchPointCap(){return 99;}
 const BARBARIAN_OWNER_PREFIX = "barbarian";
 const BARBARIAN_SPAWN_CHECK_MS = 3600000;
 const BARBARIAN_SPAWN_LOCK_MS = 30000;
@@ -236,11 +267,18 @@ const BUILDING = {
   alchemistHall:{name:"Alchemist Hall", hp:100, cost:{gold:135,lumber:80,oil:80}},
   championsHall:{name:"Champions Hall", hp:160, cost:{gold:250,lumber:180,oil:120}},
   engineerShop:{name:"Engineer Shop", hp:95, cost:{gold:80,lumber:90,oil:0}},
-  lumberWall:{name:"Lumber Wall", hp:45, cost:{gold:0,lumber:25,oil:0}, wall:true},
-  stoneWall:{name:"Stone Wall", hp:140, cost:{gold:85,lumber:0,oil:0}, wall:true},
+  lumberWall:{name:"Lumber Wall", hp:65, cost:{gold:0,lumber:25,oil:0}, wall:true},
+  stoneWall:{name:"Stone Wall", hp:190, cost:{gold:85,lumber:0,oil:0}, wall:true},
+  fortifiedWall:{name:"Fortified Wall", hp:420, cost:{gold:180,lumber:120,oil:20}, wall:true,engineerOnly:true},
+  gate:{name:"Gate", hp:175, cost:{gold:55,lumber:80,oil:0}, wall:true,gate:true,engineerOnly:true},
+  spikeTrap:{name:"Spike Trap", hp:30, damage:12, cost:{gold:0,lumber:45,oil:5}, trap:true,engineerOnly:true},
+  watchtower:{name:"Watchtower", hp:80, vision:2, cost:{gold:40,lumber:100,oil:0}, defense:true,scouting:true},
   arrowTower:{name:"Arrow Tower", hp:85, dmg:2, range:4, attackMs:1300, cost:{gold:60,lumber:95,oil:0}, defense:true},
   guardTower:{name:"Guard Tower", hp:130, dmg:4, range:4, attackMs:1600, cost:{gold:120,lumber:120,oil:0}, defense:true},
-  oilTower:{name:"Oil Fire Tower", hp:95, dmg:5, range:3, splash:2, attackMs:2200, cost:{gold:80,lumber:80,oil:45}, defense:true},
+  ballistaTower:{name:"Ballista Tower", hp:145, dmg:11, range:5, attackMs:3600, cost:{gold:150,lumber:180,oil:25}, defense:true,antiSiege:true},
+  flameTower:{name:"Flame Tower", hp:105, dmg:5, range:3, splash:2, attackMs:2300, shotOil:1, cost:{gold:90,lumber:90,oil:55}, defense:true,flame:true},
+  oilTower:{name:"Oil Fire Tower", hp:95, dmg:5, range:3, splash:2, attackMs:2200, shotOil:1, cost:{gold:80,lumber:80,oil:45}, defense:true,flame:true},
+  repairStation:{name:"Repair Station", hp:110, repairRange:3, repairAmount:2, repairMs:5000, cost:{gold:100,lumber:160,oil:20},engineerOnly:true},
   workshop:{name:"Workshop", hp:90, cost:{gold:100,lumber:140,oil:0}, workshop:true},
   portal:{name:"Portal", hp:180, cost:{gold:300,lumber:250,oil:120}},
   mobileTower:{name:"Mobile Tower", hp:60, dmg:3, range:3, attackMs:1500, cost:{gold:0,lumber:80,oil:0}, defense:true, temporaryMs:24*3600000},
@@ -315,9 +353,9 @@ function renderDailyQuests(){
   window.claimDaily=claimDailyQuest;
 }
 function renderRelics(){
-  const el=$('relicInfo');if(!el)return;const owned=account.relics||[],active=account.activeRelics||[];$('fragmentInfo').textContent=`${account.relicFragments||0} fragments · ${active.length}/3 active`;
+  const el=$('relicInfo');if(!el)return;const owned=account.relics||[],active=account.activeRelics||[];$('fragmentInfo').textContent=`${account.relicFragments||0} fragments · ${active.length}/${hasTech('relicAttunement')?4:3} active`;
   el.innerHTML=owned.length?owned.map(id=>{const r=RELICS[id]||{name:id,effect:"Rare passive relic",icon:"✦"},on=active.includes(id);return `<div class="relicCard ${on?'activeRelic':''}"><b>${r.icon} ${r.name}</b><br>${r.effect}<br><button class="small" onclick="window.toggleRelic('${id}')">${on?'Unequip':'Activate'}</button></div>`}).join(''):'No relics discovered yet. Conquer bosses, shrines, Warlord camps, portal missions, and daily quests.';
-  window.toggleRelic=async id=>{account.activeRelics=account.activeRelics||[];const i=account.activeRelics.indexOf(id);if(i>=0)account.activeRelics.splice(i,1);else if(account.activeRelics.length<3)account.activeRelics.push(id);else return log('All 3 relic slots are occupied.');await saveAccount();updateUI()};
+  window.toggleRelic=async id=>{account.activeRelics=account.activeRelics||[];const i=account.activeRelics.indexOf(id);if(i>=0)account.activeRelics.splice(i,1);else if(account.activeRelics.length<(hasTech('relicAttunement')?4:3))account.activeRelics.push(id);else return log('All 3 relic slots are occupied.');await saveAccount();updateUI()};
 }
 function awardRandomRelic(){
   const missing=Object.keys(RELICS).filter(id=>!(account.relics||[]).includes(id));if(!missing.length){account.relicFragments=(account.relicFragments||0)+3;return "3 relic fragments";}
@@ -372,8 +410,9 @@ function getVisibleChunksForPlayer(playerId){
   const sharedVision=allianceSettingFor(playerId,'sharedVision',true);
   for(const t of territories.values())if(t.ownerId===playerId||(sharedVision&&isAllied(playerId,t.ownerId)))addChunkAndAdjacent(visible,t.cx,t.cy);
   for(const u of troops.values())if(u.hp>0&&(u.ownerId===playerId||(sharedVision&&isAllied(playerId,u.ownerId)))){
-    const c=getChunkOfTile(u.x,u.y);addChunkAndAdjacent(visible,c.cx,c.cy);
+    const c=getChunkOfTile(u.x,u.y),radius=(u.type==='scout'&&hasTech('ancientMaps',playerId))?2:1;for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(c.cx+dx>=0&&c.cy+dy>=0&&c.cx+dx<WORLD_CHUNKS&&c.cy+dy<WORLD_CHUNKS)visible.add(chunkKey(c.cx+dx,c.cy+dy));
   }
+  for(const b of buildings.values())if(b.hp>0&&b.type==='watchtower'&&(b.ownerId===playerId||(sharedVision&&isAllied(playerId,b.ownerId)))){const c=getChunkOfTile(b.x,b.y),radius=BUILDING.watchtower.vision+(hasTech('ancientMaps',playerId)?1:0);for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(c.cx+dx>=0&&c.cy+dy>=0&&c.cx+dx<WORLD_CHUNKS&&c.cy+dy<WORLD_CHUNKS)visible.add(chunkKey(c.cx+dx,c.cy+dy));}
   // Permanent discoveries and one-hour vision earned by clearing barbarian camps.
   for(const key of account.revealedChunks||[]){const c=parseChunkKey(key);addChunkAndAdjacent(visible,c.cx,c.cy);}
   for(const vision of account.temporaryVision||[])if(vision.until>n){const c=parseChunkKey(vision.chunkKey);for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)if(c.cx+dx>=0&&c.cy+dy>=0&&c.cx+dx<WORLD_CHUNKS&&c.cy+dy<WORLD_CHUNKS)visible.add(chunkKey(c.cx+dx,c.cy+dy));}
@@ -401,6 +440,9 @@ function resourceIncomeForTerritory(t){
   if(res==='gold') inc.gold+=34;
   if(res==='forest') inc.lumber+=46;
   if(res==='oil') inc.oil+=9;
+  if(res==='gold'&&hasTech('improvedMining'))inc.gold*=1.1;
+  if(res==='forest'&&hasTech('lumberLogistics'))inc.lumber*=1.1;
+  if(res==='oil'&&hasTech('oilRefining'))inc.oil*=1.1;
   const ws=[...buildings.values()].filter(b=>b.ownerId===playerKey && b.type==='workshop' && b.chunkKey===t.id);
   let mult=1; for(const w of ws) mult += 0.15*(w.level||1);
   return {gold:Math.floor(inc.gold*mult),lumber:Math.floor(inc.lumber*mult),oil:Math.floor(inc.oil*mult)};
@@ -412,10 +454,10 @@ function resourceIncomeText(t){
 function totalHourlyIncome(){
   const full={gold:0,lumber:0,oil:0},lost={gold:0,lumber:0,oil:0},supplied=getSuppliedChunks(playerKey);
   for(const t of territories.values())if(t.ownerId===playerKey){
-    const inc=resourceIncomeForTerritory(t),mult=supplied.has(t.id)?1:UNSUPPLIED_INCOME_MULTIPLIER;
+    const inc=resourceIncomeForTerritory(t),mult=supplied.has(t.id)?1:(hasTech('supplyAdministration')?.5:UNSUPPLIED_INCOME_MULTIPLIER);
     for(const resource of ['gold','lumber','oil']){full[resource]+=inc[resource]*mult;lost[resource]+=inc[resource]*(1-mult);}
   }
-  for(const l of landmarks.values())if(l.ownerId===playerKey&&l.type==='tradePost')for(const [resource,value] of Object.entries(LANDMARK.tradePost.income))full[resource]+=value;
+  for(const l of landmarks.values())if(l.ownerId===playerKey&&l.type==='tradePost')for(const [resource,value] of Object.entries(LANDMARK.tradePost.income))full[resource]+=value*(hasTech('tradeNetworks')?1.25:1);
   const harvest=(account.globalBuffs?.harvestUntil>now()?1.2:1)*(account.globalBuffs?.dailyHarvestUntil>now()?1.1:1),result={full:{},lost:{}};
   const relicMult={gold:activeRelic('crownOfTribute')?1.08:1,lumber:activeRelic('forestIdol')?1.1:1,oil:activeRelic('oilHeart')?1.1:1};
   for(const resource of ['gold','lumber','oil']){result[resource]=Math.floor(full[resource]*harvest*relicMult[resource]);result.full[resource]=result[resource];result.lost[resource]=Math.floor(lost[resource]*harvest*relicMult[resource]);}
@@ -434,7 +476,7 @@ async function createOrLogin(create){
   if(create){
     if(snap.exists()){$('loginMsg').textContent='That player name already exists.';return;}
     const spawn=await findFreeSpawn();
-    const acct={username:name,displayName:$('loginName').value.trim(),passHash,createdAt:now(),lastLoginAt:now(),lastSeenAt:now(),allianceId:null,lastResourceAt:now(),resources:{gold:420,lumber:430,oil:60},fortressLevel:1,home:spawn};
+    const acct={username:name,displayName:$('loginName').value.trim(),passHash,createdAt:now(),lastLoginAt:now(),lastSeenAt:now(),allianceId:null,lastResourceAt:now(),resources:{gold:420,lumber:430,oil:60},researchPoints:1,research:{},fortressLevel:1,home:spawn};
     await setDoc(acctRef,acct);
     await setupNewPlayer(name,spawn);
     account=acct; playerKey=name; startGame();
@@ -485,7 +527,7 @@ async function startGame(){
 async function collectOfflineResources(){
   await new Promise(r=>setTimeout(r,700));
   const elapsed=Math.floor((now()-(account.lastResourceAt||now()))/RESOURCE_HOUR_MS);
-  if(elapsed>0){ const income=totalHourlyIncome(); const grant={gold:income.gold*elapsed,lumber:income.lumber*elapsed,oil:income.oil*elapsed}; addRes(grant); account.lastResourceAt=(account.lastResourceAt||now())+elapsed*RESOURCE_HOUR_MS; await saveAccount(); log(`Collected ${elapsed} hour(s) of income: +${grant.gold} gold, +${grant.lumber} lumber, +${grant.oil} oil.`); }
+  if(elapsed>0){ const income=totalHourlyIncome();account.researchPoints=Math.min(researchPointCap(),(account.researchPoints||0)+Math.floor(elapsed/24)); const grant={gold:income.gold*elapsed,lumber:income.lumber*elapsed,oil:income.oil*elapsed}; addRes(grant); account.lastResourceAt=(account.lastResourceAt||now())+elapsed*RESOURCE_HOUR_MS; await saveAccount(); log(`Collected ${elapsed} hour(s) of income: +${grant.gold} gold, +${grant.lumber} lumber, +${grant.oil} oil.`); }
 }
 async function saveAccount(){ if(!playerKey)return; await setDoc(ref('accounts',playerKey),account,{merge:true}); }
 async function updatePresence(){if(!playerKey)return;account.lastSeenAt=now();await setDoc(ref('accounts',playerKey),{lastSeenAt:account.lastSeenAt},{merge:true}).catch(()=>{});}
@@ -538,11 +580,12 @@ function isBarbarianCamp(b){return !!b&&b.type==='barbarianCamp';}
 function areHostile(a,b){const ab=isBarbarianOwner(a?.ownerId),bb=isBarbarianOwner(b?.ownerId);if(ab&&bb)return false;if(a?.ownerId===b?.ownerId||isAllied(a?.ownerId,b?.ownerId))return false;return true;}
 function isEnemyOwnedBlocked(unit,x,y){const o=ownerOfTile(x,y); if(isBarbarianUnit(unit))return false; return o && o!==unit.ownerId&&!isAllied(unit.ownerId,o) && !activeBattleAllows(unit.ownerId,x,y);}
 function roadAt(x,y){return [...buildings.values()].find(b=>b.type==='road'&&b.hp>0&&b.x===x&&b.y===y);}
-function entityAtTile(x,y){for(const u of troops.values()) if(u.hp>0&&u.x===x&&u.y===y) return {kind:'troop',id:u.id,data:u}; for(const b of buildings.values()) if(b.hp>0&&b.x===x&&b.y===y) return {kind:'building',id:b.id,data:b}; return null;}
+function trapIsDetected(b,viewer=playerKey){return b.ownerId===viewer||b.revealed||[...troops.values()].some(u=>u.hp>0&&(u.ownerId===viewer||isAllied(viewer,u.ownerId))&&['scout','rangerCaptain'].includes(u.type)&&dist(u,b)<=3);}
+function entityAtTile(x,y){for(const u of troops.values()) if(u.hp>0&&u.x===x&&u.y===y) return {kind:'troop',id:u.id,data:u}; for(const b of buildings.values()) if(b.hp>0&&b.x===x&&b.y===y&&(b.type!=='spikeTrap'||trapIsDetected(b))) return {kind:'building',id:b.id,data:b}; return null;}
 function blockingEntityAtTile(x,y){for(const u of troops.values())if(u.hp>0&&u.x===x&&u.y===y)return {kind:'troop',id:u.id,data:u};for(const b of buildings.values())if(b.hp>0&&b.type!=='road'&&b.x===x&&b.y===y)return {kind:'building',id:b.id,data:b};return null;}
 function visibleEntityAtTile(x,y){return isTileVisible(x,y)?entityAtTile(x,y):null;}
 function visibleLandmarkAtTile(x,y){if(!isTileVisible(x,y))return null;const c=getChunkOfTile(x,y),l=landmarkAtChunk(c.key);if(!l)return null;return {kind:'landmark',id:l.id,data:l};}
-function isBlocked(x,y,unit=null,targetKey=null){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)return true; const e=blockingEntityAtTile(x,y); if(unit?.inArena){ if(e && e.id!==targetKey && e.id!==unit.id && e.kind==='troop') return true; return false; } const terr=terrainAt(x,y); if(terr==='water'||terr==='mountain')return true; if(e && e.id!==targetKey && e.data.ownerId!==unit?.ownerId) return true; if(e && e.id!==unit?.id && e.kind==='troop') return true; if(e && e.kind==='building' && BUILDING[e.data.type]?.wall && e.data.ownerId!==unit?.ownerId) return true; if(unit && isEnemyOwnedBlocked(unit,x,y)) return true; return false; }
+function isBlocked(x,y,unit=null,targetKey=null){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)return true; const e=blockingEntityAtTile(x,y); if(unit?.inArena){ if(e && e.id!==targetKey && e.id!==unit.id && e.kind==='troop') return true; return false; } const terr=terrainAt(x,y); if(terr==='water'||terr==='mountain')return true; if(e && e.id!==targetKey && e.data.ownerId!==unit?.ownerId) return true; if(e && e.id!==unit?.id && e.kind==='troop') return true; if(e&&e.kind==='building'&&BUILDING[e.data.type]?.gate&&(e.data.ownerId===unit?.ownerId||isAllied(e.data.ownerId,unit?.ownerId)))return false; if(e && e.kind==='building' && BUILDING[e.data.type]?.wall && e.data.ownerId!==unit?.ownerId) return true; if(unit && isEnemyOwnedBlocked(unit,x,y)) return true; return false; }
 
 const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
 function findPath(unit,tx,ty,maxNodes=800){
@@ -622,7 +665,7 @@ async function saveLandmark(l){await setDoc(ref('landmarks',l.id),l,{merge:true}
 function veterancyForXp(xp){let level=0;for(let i=1;i<VETERANCY.thresholds.length;i++)if(xp>=VETERANCY.thresholds[i])level=i;return level;}
 function normalizeTroop(u){u.xp=Math.max(0,Number(u.xp)||0);u.veterancy=veterancyForXp(u.xp);return u;}
 function addTroopXp(u,amount,reason='battle'){
-  if(!u||u.hp<=0||amount<=0)return;
+  if(!u||u.hp<=0||amount<=0)return;if(u.ownerId===playerKey&&hasTech('veteranStandards'))amount*=1.2;
   const old=u.veterancy||0;u.xp=Math.round(((Number(u.xp)||0)+amount)*10)/10;u.veterancy=veterancyForXp(u.xp);
   if(u.veterancy!==old){const base=UNIT[u.type]?.hp||u.maxHp||1,newMax=Math.round(base*(u.veterancy>=1?1.05:1));u.hp=Math.min(newMax,u.hp+Math.max(0,newMax-(u.maxHp||base)));u.maxHp=newMax;if(u.ownerId===playerKey)log(`${UNIT[u.type]?.name||u.type} reached ${VETERANCY.names[u.veterancy]} (${u.veterancy}★) through ${reason}.`);}
   scheduleSaveTroops([u]);
@@ -660,7 +703,7 @@ async function defeatLandmark(l,killerId){
   const d=LANDMARK[l.type],n=now(),claimed=await runTransaction(db,async tx=>{const r=ref('landmarks',l.id),snap=await tx.get(r);if(!snap.exists()||snap.data().rewardClaimedAt||snap.data().hp>0)return false;tx.update(r,{rewardClaimedAt:n,lastDefeatedAt:n,lastDefeatedBy:killerId||null,ownerId:isBossLandmark(l)?null:killerId||null,bossAlive:false,respawnAt:isBossLandmark(l)?n+d.cooldownMs:null});return true;});
   if(!claimed)return;l.rewardClaimedAt=n;l.lastDefeatedAt=n;l.lastDefeatedBy=killerId;l.ownerId=isBossLandmark(l)?null:killerId;l.bossAlive=false;l.respawnAt=isBossLandmark(l)?n+d.cooldownMs:null;
   awardNearbyTroopXp(killerId,l,8,isBossLandmark(l)?VETERANCY.bossVictoryXp:VETERANCY.landmarkXp,isBossLandmark(l)?'defeating a boss':'conquering a landmark');
-  if(killerId===playerKey&&d.reward){addRes(d.reward);account.globalBuffs=account.globalBuffs||{};account.globalBuffs[`${l.type}Until`]=n+d.buffMs;account.relicFragments=(account.relicFragments||0)+1;if(Math.random()<d.relicChance){account.relics=account.relics||[];if(!account.relics.includes(d.relic))account.relics.push(d.relic);log(`${d.relic} discovered!`);}if(Math.random()<.08){account.rareTroopUnlocks=account.rareTroopUnlocks||[];if(!account.rareTroopUnlocks.includes(l.type))account.rareTroopUnlocks.push(l.type);}await saveAccount();log(`${d.name} conquered: +${d.reward.gold}g +${d.reward.lumber}l +${d.reward.oil}o and ${d.buff} for ${fmt(d.buffMs)}.`);}
+  if(killerId===playerKey&&d.reward){addRes(d.reward);account.researchPoints=Math.min(researchPointCap(),(account.researchPoints||0)+2);account.globalBuffs=account.globalBuffs||{};account.globalBuffs[`${l.type}Until`]=n+d.buffMs;account.relicFragments=(account.relicFragments||0)+1;if(Math.random()<d.relicChance){account.relics=account.relics||[];if(!account.relics.includes(d.relic))account.relics.push(d.relic);log(`${d.relic} discovered!`);}if(Math.random()<.08){account.rareTroopUnlocks=account.rareTroopUnlocks||[];if(!account.rareTroopUnlocks.includes(l.type))account.rareTroopUnlocks.push(l.type);}await saveAccount();log(`${d.name} conquered: +${d.reward.gold}g +${d.reward.lumber}l +${d.reward.oil}o and ${d.buff} for ${fmt(d.buffMs)}.`);}
   else if(killerId===playerKey)log(`${d.name} captured. Its strategic benefits are now yours.`);
 }
 
@@ -771,7 +814,8 @@ function tick(dt){
     else if(isBarbarianUnit(u) && shouldSimOfflineEnemy(u)) handleLocalTroopAI(u,def,n,reservations,true);
     else if(!isOwnerOnline(u.ownerId) && shouldSimOfflineEnemy(u)) handleLocalTroopAI(u,def,n,reservations,true);
   }
-  for(const b of buildings.values()) if(b.hp>0 && BUILDING[b.type]?.defense && (b.ownerId===playerKey || !isOwnerOnline(b.ownerId))) buildingAggro(b,n);
+  for(const b of buildings.values()) if(b.hp>0 && BUILDING[b.type]?.defense && BUILDING[b.type]?.dmg && (b.ownerId===playerKey || !isOwnerOnline(b.ownerId))) buildingAggro(b,n);
+  processDefensiveUtilities(n);
   for(const l of landmarks.values())if(isBossLandmark(l)&&!l.bossAlive&&l.respawnAt&&l.respawnAt<=n)respawnLandmark(l).catch(e=>log('Landmark respawn error: '+e.message));
   for(const battle of battles.values())if(n>=battle.endAt){for(const u of troops.values()){if(u.hp<=0||(u.ownerId!==battle.attackerId&&u.ownerId!==battle.defenderId)||getChunkOfTile(u.x,u.y).key!==battle.chunkKey)continue;u.survivedBattles=u.survivedBattles||{};if(!u.survivedBattles[battle.id]){u.survivedBattles[battle.id]=n;addTroopXp(u,VETERANCY.survivalXp,'surviving a battle');}}}
   if(n-lastProductionCheck>TRAINING_POLL_MS){lastProductionCheck=n; completeTrainingQueues().catch(e=>log('Production error: '+e.message)); checkGoblinPortalBattle().catch(e=>log('Portal error: '+e.message));}
@@ -788,7 +832,7 @@ function canFightHere(a,target){ if(isBarbarianUnit(a)||isBarbarianUnit(target)|
 function handleLocalTroopAI(u,def,n,reservations,offline=false){
   // build task overrides aggro/attack.
   if(u.buildTask){ if(dist(u,u.buildTask)>0){moveOneStep(u,def,n,reservations,u.buildTask.x,u.buildTask.y);return;} if(!u.buildTask.startedAt)u.buildTask.startedAt=n; const need=(u.buildTask.kind==='mobileTower'?600000:300000)*((u.veterancy||0)>=5?.9:1); if(n-u.buildTask.startedAt>=need){completeEngineerBuild(u); } scheduleSaveTroops([u]); return; }
-  if(def.ability==='heal' && u.order==='idle'){ const ally=[...troops.values()].find(a=>a.ownerId===u.ownerId&&a.hp<effectiveMaxHp(a)&&dist(a,u)<=def.range); if(ally && n>=(u.nextAttackAt||0)){ally.hp=Math.min(effectiveMaxHp(ally),ally.hp+((u.veterancy||0)>=5?3:2)); u.nextAttackAt=n+1500; scheduleSaveTroops([u,ally]);}}
+  if(def.ability==='heal' && u.order==='idle'){ const ally=[...troops.values()].find(a=>a.ownerId===u.ownerId&&a.hp<effectiveMaxHp(a)&&dist(a,u)<=def.range); if(ally && n>=(u.nextAttackAt||0)){ally.hp=Math.min(effectiveMaxHp(ally),ally.hp+Math.round(((u.veterancy||0)>=5?3:2)*(u.ownerId===playerKey&&hasTech('fieldMedicine')?1.5:1))); u.nextAttackAt=n+1500; scheduleSaveTroops([u,ally]);}}
   let target=null;
   if(u.targetId){target=troops.get(u.targetId)||buildings.get(u.targetId)||landmarks.get(u.targetId); if(!target||target.hp<=0){u.targetId=null;u.order='idle';target=null;}}
   if(!target && (u.order==='idle'||u.order==='attackMove'||u.order==='guardCamp'||u.order==='wander')) target = enemiesNear(u,def.range+5)[0] || enemyBuildingsNear(u,def.range+5)[0];
@@ -814,21 +858,32 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   else if(u.order!=='idle' && (!u.path || !u.path.length)) {u.order='idle'; scheduleSaveTroops([u]);}
 }
 function moveOneStep(u,def,n,res,tx,ty){ if(!u.path||!u.path.length||hash2(n%999,u.x+u.y)>.88) u.path=findPath(u,tx,ty,1200); moveAlongPath(u,def,n,res); }
-function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=3?.95:1)*(roadAt(u.x,u.y)?ROAD_SPEED_MULTIPLIER:1); scheduleSaveTroops([u]); }
+function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(u.ownerId===playerKey&&CAVALRY_TYPES.has(u.type)&&hasTech('cavalryTraining')?.95:1)*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=3?.95:1)*(roadAt(u.x,u.y)?ROAD_SPEED_MULTIPLIER:1); scheduleSaveTroops([u]); }
 function hasBannerAura(u){return [...troops.values()].some(ally=>ally.hp>0&&ally.ownerId===u.ownerId&&ally.type==='bannerKnight'&&dist(ally,u)<=3)}
 function hasBarbarianDrummerAura(u){return isBarbarianUnit(u)&&[...troops.values()].some(a=>a.hp>0&&a.ownerId===u.ownerId&&a.type==='barbarianDrummer'&&dist(a,u)<=3)}
 function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)||hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=4?.9:1))}
-function effectiveMaxHp(e,n=now()){let relic=1;if(e.ownerId===playerKey&&troops.has(e.id)){if(activeRelic('titanCore'))relic*=1.05;if(activeRelic('bannerOfIron')&&['footman','shieldbearer','centurion','champion'].includes(e.type))relic*=1.08}const veteranBase=troops.has(e.id)&&UNIT[e.type]?(UNIT[e.type].hp*((e.veterancy||0)>=1?1.05:1)*relic):(e.maxHp||e.hp||1);return Math.round(veteranBase)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
+function effectiveMaxHp(e,n=now()){let relic=1;if(e.ownerId===playerKey&&troops.has(e.id)&&INFANTRY_TYPES.has(e.type)&&hasTech('infantryDrills'))relic*=1.05;if(e.ownerId===playerKey&&buildings.has(e.id)&&BUILDING[e.type]?.wall&&hasTech('masonry'))relic*=1.2;if(e.ownerId===playerKey&&e.type==='gate'&&hasTech('gateMechanisms'))relic*=1.3;if(e.ownerId===playerKey&&troops.has(e.id)){if(activeRelic('titanCore'))relic*=1.05;if(activeRelic('bannerOfIron')&&['footman','shieldbearer','centurion','champion'].includes(e.type))relic*=1.08}const veteranBase=troops.has(e.id)&&UNIT[e.type]?(UNIT[e.type].hp*((e.veterancy||0)>=1?1.05:1)*relic):(e.maxHp||e.hp||1);return Math.round(veteranBase)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
 function applyDamage(target,amount,n=now(),attacker=null){const defended=target.buffs?.shieldWallUntil>n||target.buffs?.holdLineUntil>n;const mythicBlock=attacker&&troops.has(target.id)&&(target.veterancy||0)>=5&&['footman','shieldbearer'].includes(target.type)&&Math.random()<.08; const dealt=mythicBlock?0:Math.max(1,amount-(defended?1:0)); target.hp=Math.max(0,(target.hp||1)-dealt); return dealt}
 function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const n=now(); const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>n)?1:0; const battleCry=(u.buffs?.battleCryUntil&&u.buffs.battleCryUntil>n)?1:0; const globalDamage=Object.entries(account.globalBuffs||{}).some(([k,v])=>k.endsWith('Until')&&v>n)?Math.max(1,Math.floor(def.dmg*.1)):0; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
   if((u.veterancy||0)>=5&&['mage','pyromancer','electricPriest'].includes(u.type)){const extra=enemiesNear(target,2).find(e=>e.id!==target.id&&!targets.includes(e));if(extra)targets.push(extra);}
   if(def.splash){ for(const e of [...troops.values(),...buildings.values()].filter(e=>e.hp>0&&areHostile(u,e)&&Math.abs(e.x-target.x)<def.splash&&Math.abs(e.y-target.y)<def.splash)) if(!targets.includes(e))targets.push(e); }
-  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0,structure=buildings.has(t.id)?(def.structureBonus||0):0,wasAlive=t.hp>0;let damage=def.dmg*((u.veterancy||0)>=2?1.05:1)+rally+battleCry+marked+structure+(u.ownerId===playerKey?globalDamage+(account.globalBuffs?.antiBarbarianUntil>n&&(isBarbarianUnit(t)||isBarbarianCamp(t))?2:0):0);if((u.veterancy||0)>=5&&buildings.has(t.id)&&['ballista','catapult','trebuchet'].includes(u.type))damage+=2;const dealt=applyDamage(t,damage,n,u);addTroopXp(u,dealt*VETERANCY.damageXp,'dealing damage');if(isBossLandmark(t)){u.bossParticipations=u.bossParticipations||{};if(!u.bossParticipations[t.id]){u.bossParticipations[t.id]=n;addTroopXp(u,VETERANCY.bossParticipationXp,'participating in a boss fight');}}if(wasAlive&&t.hp<=0)addTroopXp(u,VETERANCY.killXp,'defeating an enemy'); if((buildings.has(t.id)||landmarks.has(t.id))&&!isBarbarianUnit(u))t.lastDamagedBy=u.ownerId;if(t.hp<=0&&troops.has(t.id))selected.delete(t.id);if(landmarks.has(t.id)){saveLandmark(t).then(()=>{if(t.hp<=0)defeatLandmark(t,t.lastDamagedBy||u.ownerId);});}else if(buildings.has(t.id)){if(t.hp<=0&&isBarbarianCamp(t))destroyBarbarianCamp(t,t.lastDamagedBy||u.ownerId).catch(e=>log('Camp reward error: '+e.message));else saveBuilding(t);}}); if(def.ability==='battleCry'&&(!u.lastBattleCryAt||n-u.lastBattleCryAt>=60000)){u.lastBattleCryAt=n;for(const ally of troops.values())if(isBarbarianUnit(ally)&&ally.ownerId===u.ownerId&&dist(u,ally)<=3){ally.buffs=ally.buffs||{};ally.buffs.battleCryUntil=n+30000;scheduleSaveTroops([ally]);}} }
-function buildingAggro(b,n){ const bd=BUILDING[b.type]; if(n<(b.nextAttackAt||0))return; const target=[...troops.values()].find(u=>u.hp>0&&areHostile(b,u)&&dist(u,b)<=bd.range&&canFightHere({ownerId:b.ownerId},u)); if(target){applyDamage(target,bd.dmg,n); b.nextAttackAt=n+bd.attackMs; scheduleSaveTroops([target]); saveBuilding(b);}}
+  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0,structure=buildings.has(t.id)?(def.structureBonus||0):0,wasAlive=t.hp>0;let damage=def.dmg*((u.veterancy||0)>=2?1.05:1)+rally+battleCry+marked+structure+(u.ownerId===playerKey?globalDamage+(account.globalBuffs?.antiBarbarianUntil>n&&(isBarbarianUnit(t)||isBarbarianCamp(t))?2:0):0);if(buildings.has(t.id)&&u.ownerId===playerKey&&SIEGE_TYPES.has(u.type)&&hasTech('siegeEngineering'))damage*=1.1;if((u.veterancy||0)>=5&&buildings.has(t.id)&&['ballista','catapult','trebuchet'].includes(u.type))damage+=2;const dealt=applyDamage(t,damage,n,u);addTroopXp(u,dealt*VETERANCY.damageXp,'dealing damage');if(isBossLandmark(t)){u.bossParticipations=u.bossParticipations||{};if(!u.bossParticipations[t.id]){u.bossParticipations[t.id]=n;addTroopXp(u,VETERANCY.bossParticipationXp,'participating in a boss fight');}}if(wasAlive&&t.hp<=0)addTroopXp(u,VETERANCY.killXp,'defeating an enemy'); if((buildings.has(t.id)||landmarks.has(t.id))&&!isBarbarianUnit(u))t.lastDamagedBy=u.ownerId;if(t.hp<=0&&troops.has(t.id))selected.delete(t.id);if(landmarks.has(t.id)){saveLandmark(t).then(()=>{if(t.hp<=0)defeatLandmark(t,t.lastDamagedBy||u.ownerId);});}else if(buildings.has(t.id)){if(t.hp<=0&&isBarbarianCamp(t))destroyBarbarianCamp(t,t.lastDamagedBy||u.ownerId).catch(e=>log('Camp reward error: '+e.message));else saveBuilding(t);}}); if(def.ability==='battleCry'&&(!u.lastBattleCryAt||n-u.lastBattleCryAt>=60000)){u.lastBattleCryAt=n;for(const ally of troops.values())if(isBarbarianUnit(ally)&&ally.ownerId===u.ownerId&&dist(u,ally)<=3){ally.buffs=ally.buffs||{};ally.buffs.battleCryUntil=n+30000;scheduleSaveTroops([ally]);}} }
+function isBorderTower(b){const c=getChunkOfTile(b.x,b.y);return [[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>territories.get(chunkKey(c.cx+dx,c.cy+dy))?.ownerId!==b.ownerId);}
+function buildingAggro(b,n){
+  const bd=BUILDING[b.type];if(n<(b.nextAttackAt||0))return;if(bd.shotOil&&b.ownerId===playerKey&&(account.resources.oil||0)<bd.shotOil)return;
+  const range=bd.range+(b.ownerId===playerKey&&hasTech('fortifiedBorder')&&isBorderTower(b)?1:0);let candidates=[...troops.values()].filter(u=>u.hp>0&&areHostile(b,u)&&dist(u,b)<=range&&canFightHere({ownerId:b.ownerId},u));
+  if(bd.antiSiege)candidates.sort((a,c)=>(SIEGE_TYPES.has(c.type)?1:0)-(SIEGE_TYPES.has(a.type)?1:0));const target=candidates[0];if(!target)return;
+  let damage=bd.dmg;if(bd.antiSiege&&SIEGE_TYPES.has(target.type))damage*=1.75;if(bd.flame&&b.ownerId===playerKey&&hasTech('oilInfusion'))damage*=1.25;const targets=[target];if(bd.splash)for(const u of troops.values())if(u.id!==target.id&&u.hp>0&&areHostile(b,u)&&dist(u,target)<bd.splash)targets.push(u);targets.forEach(u=>applyDamage(u,damage,n,b));scheduleSaveTroops(targets);
+  if(bd.shotOil&&b.ownerId===playerKey){account.resources.oil=Math.max(0,account.resources.oil-bd.shotOil);saveAccount();}b.nextAttackAt=n+bd.attackMs*(b.ownerId===playerKey&&hasTech('towerCrews')?.9:1);saveBuilding(b);
+}
+function processDefensiveUtilities(n){
+  for(const trap of buildings.values())if(trap.hp>0&&trap.type==='spikeTrap'&&!trap.triggered){const victim=[...troops.values()].find(u=>u.hp>0&&areHostile(trap,u)&&u.x===trap.x&&u.y===trap.y);if(victim){let damage=BUILDING.spikeTrap.damage*(trap.ownerId===playerKey&&hasTech('trapEngineering')?1.5:1);if(CAVALRY_TYPES.has(victim.type)||victim.type==='scout')damage*=1.5;applyDamage(victim,damage,n,trap);trap.triggered=true;trap.revealed=true;trap.hp=0;scheduleSaveTroops([victim]);saveBuilding(trap);log(`Spike Trap triggered for ${Math.round(damage)} damage.`);}}
+  for(const station of buildings.values())if(station.hp>0&&station.type==='repairStation'&&n>=(station.nextRepairAt||0)){const targets=[...buildings.values()].filter(b=>b.id!==station.id&&b.ownerId===station.ownerId&&b.hp>0&&b.hp<effectiveMaxHp(b,n)&&dist(b,station)<=BUILDING.repairStation.repairRange);for(const b of targets.slice(0,3)){b.hp=Math.min(effectiveMaxHp(b,n),b.hp+BUILDING.repairStation.repairAmount);saveBuilding(b);}station.nextRepairAt=n+BUILDING.repairStation.repairMs;saveBuilding(station);}
+}
 async function completeEngineerBuild(u){ const task=u.buildTask; if(!task)return; const type=task.kind; const id=`${playerKey}_${type}_${u.id}_${now()}`; const bdef=BUILDING[type]; const b={id,ownerId:playerKey,type,x:u.x,y:u.y,hp:bdef.hp,maxHp:bdef.hp,chunkKey:getChunkOfTile(u.x,u.y).key,createdAt:now()}; if(type==='mobileTower'){ // one mobile tower per engineer; remove old
     for(const old of buildings.values()) if(old.type==='mobileTower'&&old.engineerId===u.id) await deleteDoc(ref('buildings',old.id)); b.engineerId=u.id; b.expiresAt=now()+bdef.temporaryMs;
   }
-  await setDoc(ref('buildings',id),b); u.buildTask=null; u.order='idle'; scheduleSaveTroops([u]); log(`${UNIT[u.type].name} finished ${bdef.name}.`);
+  await setDoc(ref('buildings',id),b);if(bdef.defense||bdef.wall||bdef.trap)progressQuest('defense');u.buildTask=null; u.order='idle'; scheduleSaveTroops([u]); log(`${UNIT[u.type].name} finished ${bdef.name}.`);
 }
 
 async function resolveCapturePressure(){
@@ -937,13 +992,14 @@ async function placeBuilding(type,x,y){
   const terr=territoryOfTile(x,y);
   if(terr.ownerId!==playerKey){log('You can only build in controlled territory.');return;}
   if(type==='road'&&roadAt(x,y)){log('There is already a road on that tile.');return;}
-  if(blockingEntityAtTile(x,y)){log('That tile is occupied.');return;}
-  if(isBlocked(x,y,{ownerId:playerKey})){log('Tile blocked.');return;}
-  if((type==='mobileTower'||type==='barricade'||type==='road')){
+  const replacedWall=type==='gate'?[...buildings.values()].find(b=>b.hp>0&&b.ownerId===playerKey&&BUILDING[b.type]?.wall&&!BUILDING[b.type]?.gate&&b.x===x&&b.y===y):null;if(type==='gate'&&!replacedWall){log('Place a Gate on one of your existing wall tiles.');return;}if(type!=='gate'&&blockingEntityAtTile(x,y)){log('That tile is occupied.');return;}
+  if(type!=='gate'&&isBlocked(x,y,{ownerId:playerKey})){log('Tile blocked.');return;}
+  if(def.engineerOnly||type==='mobileTower'||type==='barricade'||type==='road'){
     const eng=[...selected].map(id=>troops.get(id)).find(u=>u?.type==='engineer'&&u.ownerId===playerKey);
     if(!eng){log('Select an Engineer for mobile towers, barricades, or roads.');return;}
     if(!canPay(def.cost)){log('Not enough resources.');return;}
     pay(def.cost);
+    if(replacedWall)await deleteDoc(ref('buildings',replacedWall.id));
     eng.order='build'; eng.buildTask={kind:type,x,y,startedAt:null}; eng.path=findPath(eng,x,y);
     troops.set(eng.id,eng); scheduleSaveTroops([eng]); await saveAccount();
     log(`Engineer assigned to build ${def.name}.`); return;
@@ -952,17 +1008,21 @@ async function placeBuilding(type,x,y){
   pay(def.cost);
   const id=`${playerKey}_${type}_${now()}_${Math.floor(Math.random()*9999)}`;
   const b={id,ownerId:playerKey,type,x,y,hp:def.hp,maxHp:def.hp,chunkKey:getChunkOfTile(x,y).key,createdAt:now(),level:1,productionQueue:[]};
-  await setDoc(ref('buildings',id),b); await saveAccount(); updateUI(); log(`Built ${def.name}.`);
+  await setDoc(ref('buildings',id),b);if(def.defense||def.wall||def.trap)progressQuest('defense');await saveAccount(); updateUI(); log(`Built ${def.name}.`);
 }
-function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(account.resources?.gold||0);$('lumberVal').textContent=Math.floor(account.resources?.lumber||0);$('oilVal').textContent=Math.floor(account.resources?.oil||0);$('fortLv').textContent=account.fortressLevel||1; $('troopCount').textContent=supplyUsed()+queuedSupply(); $('troopCap').textContent=supplyCap(); const income=totalHourlyIncome(); $('incomeInfo').innerHTML=`Full income:<br><span class="gold">+${income.full.gold} gold</span>, <span class="lumber">+${income.full.lumber} lumber</span>, <span class="oil">+${income.full.oil} oil</span><br>Lost to cut-off territories:<br><span class="dangerText">-${income.lost.gold} gold, -${income.lost.lumber} lumber, -${income.lost.oil} oil</span>`;
+function researchBuildingReady(type){return hasBuilding(type);}
+function researchRequirementsMet(tech){return (tech.requires||[]).every(hasTech);}
+async function researchTech(id){const tech=RESEARCH[id];if(!tech||hasTech(id))return;if(!researchBuildingReady(tech.building)){log(`Build a ${BUILDING[tech.building].name} before researching ${tech.name}.`);return;}if(!researchRequirementsMet(tech)){log(`Research prerequisites first: ${tech.requires.map(x=>RESEARCH[x].name).join(', ')}.`);return;}if((account.researchPoints||0)<tech.cost){log(`Need ${tech.cost} research points for ${tech.name}.`);return;}account.researchPoints-=tech.cost;account.research=account.research||{};account.research[id]=true;await saveAccount();updateUI();log(`Research complete: ${tech.name} — ${tech.effect}`);}
+function renderResearch(){const el=$('researchInfo');if(!el)return;const selectedResearch=selectedOwnedBuildings().find(b=>Object.values(RESEARCH).some(t=>t.building===b.type));$('researchBuilding').textContent=selectedResearch?BUILDING[selectedResearch.type].name:'All branches';const branches=[...new Set(Object.values(RESEARCH).map(t=>t.branch))],active=Object.entries(RESEARCH).filter(([id])=>hasTech(id));el.innerHTML=`<div class="researchSummary"><b>${account.researchPoints||0} research points</b><br>${active.length}/${Object.keys(RESEARCH).length} technologies unlocked${active.length?`<br>Active: ${active.map(([,t])=>t.name).join(', ')}`:''}</div>`+branches.map(branch=>`<div class="researchBranch"><h4>${branch}</h4><div class="techGrid">${Object.entries(RESEARCH).filter(([,t])=>t.branch===branch&&(!selectedResearch||t.building===selectedResearch.type)).map(([id,t])=>{const unlocked=hasTech(id),requirements=researchRequirementsMet(t),building=researchBuildingReady(t.building),disabled=unlocked||!requirements||!building||(account.researchPoints||0)<t.cost;return `<div class="techCard ${unlocked?'unlocked':requirements?'':'locked'}"><b>${unlocked?'✓ ':''}${t.name}</b>${t.effect}<br><span class="muted">${t.cost} RP · ${BUILDING[t.building].name}${t.requires?.length?`<br>Requires: ${t.requires.map(x=>RESEARCH[x].name).join(', ')}`:''}</span><button class="small ${!disabled?'primary':''}" ${disabled?'disabled':''} onclick="window.researchTech('${id}')">${unlocked?'Unlocked':!building?'Building required':!requirements?'Locked':`Research (${t.cost} RP)`}</button></div>`}).join('')}</div></div>`).join('');window.researchTech=researchTech;}
+function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(account.resources?.gold||0);$('lumberVal').textContent=Math.floor(account.resources?.lumber||0);$('oilVal').textContent=Math.floor(account.resources?.oil||0);$('researchVal').textContent=account.researchPoints||0;$('fortLv').textContent=account.fortressLevel||1; $('troopCount').textContent=supplyUsed()+queuedSupply(); $('troopCap').textContent=supplyCap(); const income=totalHourlyIncome(); $('incomeInfo').innerHTML=`Full income:<br><span class="gold">+${income.full.gold} gold</span>, <span class="lumber">+${income.full.lumber} lumber</span>, <span class="oil">+${income.full.oil} oil</span><br>Lost to cut-off territories:<br><span class="dangerText">-${income.lost.gold} gold, -${income.lost.lumber} lumber, -${income.lost.oil} oil</span>`;
   const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>`${UNIT[e.type]?.name||BUILDING[e.type]?.name||e.type}: ${Math.ceil(e.hp)}/${effectiveMaxHp(e)}${troops.has(e.id)?` · ${'★'.repeat(e.veterancy||0)}${'☆'.repeat(5-(e.veterancy||0))} ${VETERANCY.names[e.veterancy||0]} (${Math.floor(e.xp||0)} XP)`:''} @ ${e.x},${e.y}`).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
-  renderAbilities(sels); renderProductionPanel(); renderPortalInfo(sels); renderRelics(); renderDailyQuests(); renderAlliance(); renderBattles();
+  renderAbilities(sels); renderProductionPanel(); renderResearch(); renderPortalInfo(sels); renderRelics(); renderDailyQuests(); renderAlliance(); renderBattles();
 }
 async function tradeAtPost(from,to,amount,received){
   const l=hoveredTile&&landmarkAtChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y).key);if(!l||l.type!=='tradePost'||l.ownerId!==playerKey){$('landmarkMsg').textContent='Control this Trade Post first.';return;}if((account.resources[from]||0)<amount){$('landmarkMsg').textContent=`Not enough ${from}.`;return;}account.resources[from]-=amount;account.resources[to]=(account.resources[to]||0)+received;await saveAccount();updateUI();$('landmarkMsg').textContent=`Traded ${amount} ${from} for ${received} ${to}.`;
 }
 async function activateShrine(kind){
-  const l=hoveredTile&&landmarkAtChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y).key),n=now();if(!l||l.type!=='ancientShrine'||l.ownerId!==playerKey){$('landmarkMsg').textContent='Control this Ancient Shrine first.';return;}if((l.blessingReadyAt||0)>n){$('landmarkMsg').textContent=`Shrine ready in ${fmt(l.blessingReadyAt-n)}.`;return;}account.globalBuffs=account.globalBuffs||{};const duration=kind==='harvest'?3600000:1800000;account.globalBuffs[`${kind}Until`]=n+duration;l.blessingReadyAt=n+l.cooldownMs;l.lastBlessing=kind;l.lastBlessingBy=playerKey;if(Math.random()<.3)account.relicFragments=(account.relicFragments||0)+1;if(Math.random()<.05)log(`Ancient Shrine revealed ${awardRandomRelic()}!`);progressQuest('shrine');await Promise.all([saveAccount(),saveLandmark(l)]);$('landmarkMsg').textContent=`${kind[0].toUpperCase()+kind.slice(1)} Blessing active for ${fmt(duration)}.`;
+  const l=hoveredTile&&landmarkAtChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y).key),n=now();if(!l||l.type!=='ancientShrine'||l.ownerId!==playerKey){$('landmarkMsg').textContent='Control this Ancient Shrine first.';return;}if((l.blessingReadyAt||0)>n){$('landmarkMsg').textContent=`Shrine ready in ${fmt(l.blessingReadyAt-n)}.`;return;}account.globalBuffs=account.globalBuffs||{};const duration=(kind==='harvest'?3600000:1800000)*(hasTech('shrineLore')?1.5:1);account.researchPoints=Math.min(researchPointCap(),(account.researchPoints||0)+1);account.globalBuffs[`${kind}Until`]=n+duration;l.blessingReadyAt=n+l.cooldownMs;l.lastBlessing=kind;l.lastBlessingBy=playerKey;if(Math.random()<.3)account.relicFragments=(account.relicFragments||0)+1;if(Math.random()<.05)log(`Ancient Shrine revealed ${awardRandomRelic()}!`);progressQuest('shrine');await Promise.all([saveAccount(),saveLandmark(l)]);$('landmarkMsg').textContent=`${kind[0].toUpperCase()+kind.slice(1)} Blessing active for ${fmt(duration)}.`;
 }
 function renderLandmarkPanel(l){
   const info=$('landmarkInfo'),actions=$('landmarkActions');actions.innerHTML='';if(!l){info.textContent='Hover a discovered landmark.';return;}const d=LANDMARK[l.type],n=now(),status=isBossLandmark(l)?(l.bossAlive?'Boss available':`Boss respawns in: ${fmt((l.respawnAt||n)-n)}`):(l.ownerId?'Controlled':'Neutral guards active');info.innerHTML=`<b style="color:${d.color}">${d.icon} ${d.name}</b><br>Owner: ${l.ownerId||'Neutral'}<br>Status: ${status}<br>HP: ${Math.ceil(l.hp)}/${l.maxHp}<br>Guard strength: ${l.guardStrength||d.guards}<br>${landmarkRewardText(l)}${l.type==='ancientShrine'?`<br>Blessing cooldown: ${(l.blessingReadyAt||0)>n?fmt(l.blessingReadyAt-n):'Ready'}`:''}`;
@@ -1144,7 +1204,7 @@ async function checkGoblinPortalBattle(){
       const spot=portal?formationTargets(portal.x,portal.y,1,{ownerId:playerKey},claimed)[0]:{x:account.home.x,y:account.home.y};
       u.x=spot.x; u.y=spot.y; u.inArena=false; u.portalId=null; u.order='idle'; u.path=[]; troops.set(u.id,u); scheduleSaveTroops([u]);
     }
-    const extras=[];account.portalCooldowns=account.portalCooldowns||{};account.portalCooldowns[g.missionId||'goblinHorde']=now()+mission.cooldownMs;
+    const extras=[];account.portalCooldowns=account.portalCooldowns||{};account.portalCooldowns[g.missionId||'goblinHorde']=now()+mission.cooldownMs*(hasTech('portalStabilization')?.85:1);
     if(mission.fragments){const found=mission.fragments+Math.floor(Math.random()*3);account.relicFragments=(account.relicFragments||0)+found;extras.push(`${found} relic fragments`)}
     if(mission.relicChance&&Math.random()<mission.relicChance)extras.push(awardRandomRelic());
     if(mission.rescue){if(Math.random()<.55){account.bonusSupply=(account.bonusSupply||0)+5;extras.push("+5 permanent supply")}else extras.push("free rescued troops")}
@@ -1229,8 +1289,10 @@ function getIcon(kind,type,ownerKind){
     if(type==='fortress') body=`<rect x="11" y="25" width="42" height="29" fill="${stone}" stroke="${dark}" stroke-width="4"/><path d="M9 27 H55 V13 H47 V22 H39 V13 H31 V22 H23 V13 H15 V22 H9 Z" fill="${stone}" stroke="${dark}" stroke-width="3"/><path d="M27 54 V39 Q32 34 37 39 V54" fill="${dark}"/>`;
     else if(type==='barbarianCamp') body=`<path d="M7 53 L21 17 L32 31 L44 14 L58 53 Z" fill="${secondary}" stroke="${dark}" stroke-width="4"/><path d="M32 31 V53" stroke="${dark}" stroke-width="4"/><path d="M43 14 V5 L58 11 L43 18" fill="#b51f2e" stroke="${dark}" stroke-width="2"/>`;
     else if(type==='goldMine') body=`<path d="M8 51 L18 22 L46 14 L56 51 Z" fill="#5b4a36" stroke="${dark}" stroke-width="4"/><circle cx="34" cy="35" r="10" fill="${gold}" stroke="${dark}" stroke-width="3"/>`;
-    else if(['lumberWall','stoneWall','barricade'].includes(type)) body=wall;
-    else if(['arrowTower','guardTower','oilTower','mobileTower'].includes(type)) body=tower+`<path d="M24 36 H40" stroke="${dark}" stroke-width="5"/>`;
+    else if(['lumberWall','stoneWall','fortifiedWall','gate','barricade'].includes(type)) body=type==='gate'?wall+`<path d="M21 51 V31 Q32 20 43 31 V51" fill="${dark}" stroke="${gold}" stroke-width="3"/>`:wall;
+    else if(['arrowTower','guardTower','oilTower','flameTower','ballistaTower','watchtower','mobileTower'].includes(type)) body=tower+`<path d="M24 36 H40" stroke="${dark}" stroke-width="5"/>`;
+    else if(type==='spikeTrap') body=`<path d="M8 52 L18 23 L27 52 L37 18 L46 52 L55 25 L60 52 Z" fill="${stone}" stroke="${dark}" stroke-width="3"/>`;
+    else if(type==='repairStation') body=baseRect+roof+`<path d="M19 45 L45 19 M18 22 L42 48" stroke="${gold}" stroke-width="6"/>`;
     else if(type==='portal') body=`<circle cx="32" cy="32" r="24" fill="${oil}" stroke="${dark}" stroke-width="4"/><circle cx="32" cy="32" r="13" fill="#101722" stroke="#7df9ff" stroke-width="4"/><path d="M18 32 C26 16 42 48 50 28" fill="none" stroke="#ffffff" stroke-width="3" opacity=".75"/>`;
     else if(type==='workshop') body=baseRect+roof+`<circle cx="32" cy="38" r="10" fill="${stone}" stroke="${dark}" stroke-width="3"/><path d="M32 25 V51 M19 38 H45 M23 29 L41 47 M41 29 L23 47" stroke="${dark}" stroke-width="2"/>`;
     else body=baseRect+roof;
@@ -1275,7 +1337,7 @@ function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPla
   }
   // buildings
   for(const b of buildings.values()){
-    if(b.hp<=0||b.type==='road'||!isTileVisible(b.x,b.y))continue;
+    if(b.hp<=0||b.type==='road'||!isTileVisible(b.x,b.y)||(b.type==='spikeTrap'&&!trapIsDetected(b)))continue;
     const s=tileToScreen(b.x,b.y);
     if(s.x<-size||s.y<-size||s.x>canvas.width+size||s.y>canvas.height+size)continue;
     drawSvgIcon('building',b.type,b.ownerId,s.x+size*.04,s.y+size*.04,size*.92);
