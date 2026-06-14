@@ -112,8 +112,13 @@ const UNIT = {
   plagueSlinger:{name:"Plague Slinger", hp:16, dmg:2, range:3, attackMs:2300, moveMs:820, cost:{gold:40,lumber:20,oil:90}, building:"alchemistHall"},
   champion:{name:"Champion", hp:50, dmg:8, range:1, attackMs:1200, moveMs:820, cost:{gold:180,lumber:0,oil:40}, building:"championsHall"},
   bannerKnight:{name:"Banner Knight", hp:38, dmg:5, range:1, attackMs:1200, moveMs:760, cost:{gold:150,lumber:60,oil:60}, building:"championsHall"},
+  oathguard:{name:"Oathguard", hp:55, dmg:4, range:1, attackMs:1350, moveMs:900, cost:{gold:120,lumber:90,oil:35}, building:"championsHall", role:"Elite defensive infantry"},
   engineer:{name:"Engineer", hp:16, dmg:1, range:1, attackMs:1400, moveMs:760, cost:{gold:20,lumber:30,oil:0}, building:"engineerShop", ability:"build"},
   runeMason:{name:"Rune Mason", hp:20, dmg:1, range:1, attackMs:1500, moveMs:850, cost:{gold:55,lumber:80,oil:20}, building:"engineerShop"},
+  sapper:{name:"Sapper", hp:18, dmg:1, range:1, attackMs:1600, moveMs:720, cost:{gold:35,lumber:60,oil:25}, building:"engineerShop", role:"Anti-wall / demolition specialist"},
+  falconer:{name:"Falconer", hp:20, dmg:2, range:3, attackMs:1250, moveMs:520, cost:{gold:65,lumber:55,oil:10}, building:"stable", role:"Scout / anti-siege support · Wide Sight"},
+  frostAdept:{name:"Frost Adept", hp:18, dmg:3, range:3, attackMs:1800, moveMs:760, cost:{gold:55,lumber:0,oil:100}, building:"alchemistHall", role:"Control mage / anti-rush unit"},
+  supplyWagon:{name:"Supply Wagon", hp:35, dmg:0, range:0, attackMs:9999, moveMs:1050, cost:{gold:80,lumber:120,oil:0}, building:"stable", role:"Army logistics / mobile support"},
   goblin:{name:"Goblin", hp:12, dmg:2, range:1, attackMs:1150, moveMs:650, cost:{gold:0,lumber:0,oil:0}, supply:0, trainMs:0}
 };
 const UNIT_BALANCE = {
@@ -127,6 +132,10 @@ const UNIT_BALANCE = {
   shieldbearer:{supply:2,trainMs:45*60000},
   rangerCaptain:{supply:2,trainMs:80*60000},
   runeMason:{supply:2,trainMs:90*60000},
+  sapper:{supply:2,trainMs:75*60000},
+  falconer:{supply:2,trainMs:70*60000},
+  supplyWagon:{supply:3,trainMs:120*60000},
+  frostAdept:{supply:3,trainMs:150*60000},
   centurion:{supply:2,trainMs:75*60000},
   ballista:{supply:3,trainMs:90*60000},
   pyromancer:{supply:3,trainMs:105*60000},
@@ -136,6 +145,7 @@ const UNIT_BALANCE = {
   cataphract:{supply:4,trainMs:180*60000},
   mage:{supply:5,trainMs:240*60000},
   bannerKnight:{supply:5,trainMs:240*60000},
+  oathguard:{supply:4,trainMs:180*60000},
   trebuchet:{supply:6,trainMs:300*60000},
   champion:{supply:8,trainMs:360*60000}
 };
@@ -358,7 +368,7 @@ function issueMove(ids,tx,ty,attackMove=false){
   log(`${attackMove?'Attack-move':'Move'} order: ${units.length} troop(s). They will keep closing on the target until stopped.`);
   scheduleSaveTroops(units);
 }
-function issueAttack(ids,target){ const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey); units.forEach(u=>{u.order='attack';u.targetId=target.id;u.path=[];u.moveGoal=null;u.assignedGoal=null;u.buildTask=null; troops.set(u.id,u);}); log(`Focus attack order on ${target.data.type||target.data.ownerId}.`); scheduleSaveTroops(units); }
+function issueAttack(ids,target){ const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey&&UNIT[u.type]?.dmg>0); units.forEach(u=>{u.order='attack';u.targetId=target.id;u.path=[];u.moveGoal=null;u.assignedGoal=null;u.buildTask=null; troops.set(u.id,u);}); if(units.length)log(`Focus attack order on ${target.data.type||target.data.ownerId}.`); else log('No selected combat troop can attack that target.'); scheduleSaveTroops(units); }
 
 let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>saveQueue.add(u.id));}
 async function flushTroopSaves(){ if(!saveQueue.size)return; const batch=writeBatch(db); const ids=[...saveQueue].slice(0,80); ids.forEach(id=>{const u=troops.get(id); if(u)batch.set(ref('troops',id),u,{merge:true}); saveQueue.delete(id);}); await batch.commit().catch(e=>log('Save troop error: '+e.message)); }
@@ -374,9 +384,11 @@ function tick(dt){
     }
   }
   for(const u of troops.values()){
+    if(u.ownerId===playerKey && u.type==='sapper' && u.plantedCharge?.explodesAt<=n) detonateCharge(u,n);
     if(u.hp<=0) continue;
     const def=UNIT[u.type]; if(!def)continue;
     const mine = u.ownerId===playerKey;
+    if(mine && u.type==='supplyWagon' && n>=(u.nextSupplyHealAt||0)) processFieldSupplies(u,n);
     if(mine) handleLocalTroopAI(u,def,n,reservations);
     else if(!isOwnerOnline(u.ownerId) && shouldSimOfflineEnemy(u)) handleLocalTroopAI(u,def,n,reservations,true);
   }
@@ -394,9 +406,10 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   // build task overrides aggro/attack.
   if(u.buildTask){ if(dist(u,u.buildTask)>0){moveOneStep(u,def,n,reservations,u.buildTask.x,u.buildTask.y);return;} if(!u.buildTask.startedAt)u.buildTask.startedAt=n; const need=u.buildTask.kind==='mobileTower'?600000:300000; if(n-u.buildTask.startedAt>=need){completeEngineerBuild(u); } scheduleSaveTroops([u]); return; }
   if(def.ability==='heal' && u.order==='idle'){ const ally=[...troops.values()].find(a=>a.ownerId===u.ownerId&&a.hp<a.maxHp&&dist(a,u)<=def.range); if(ally && n>=(u.nextAttackAt||0)){ally.hp=Math.min(ally.maxHp,ally.hp+2); u.nextAttackAt=n+1500; scheduleSaveTroops([u,ally]);}}
+  if(u.type==='supplyWagon'){ if(u.order==='attack')u.order='idle'; u.targetId=null; }
   let target=null;
   if(u.targetId){target=troops.get(u.targetId)||buildings.get(u.targetId); if(!target||target.hp<=0){u.targetId=null;u.order='idle';target=null;}}
-  if(!target && (u.order==='idle'||u.order==='attackMove')) target = enemiesNear(u,def.range+5)[0] || enemyBuildingsNear(u,def.range+5)[0];
+  if(def.dmg>0&&!target && (u.order==='idle'||u.order==='attackMove')) target = enemiesNear(u,def.range+5)[0] || enemyBuildingsNear(u,def.range+5)[0];
   if(target){ if(dist(u,target)<=def.range){ if(n>=(u.nextAttackAt||0)){performAttack(u,target); u.nextAttackAt=n+attackDelay(u,def); scheduleSaveTroops([u,target]);} return; } else { moveOneStep(u,def,n,reservations,target.x,target.y); return; } }
   if((u.order==='move'||u.order==='attackMove')){
     if(u.path && u.path.length){ moveAlongPath(u,def,n,reservations); return; }
@@ -419,14 +432,17 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   else if(u.order!=='idle' && (!u.path || !u.path.length)) {u.order='idle'; scheduleSaveTroops([u]);}
 }
 function moveOneStep(u,def,n,res,tx,ty){ if(!u.path||!u.path.length||hash2(n%999,u.x+u.y)>.88) u.path=findPath(u,tx,ty,1200); moveAlongPath(u,def,n,res); }
-function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(slowed?1.5:1); scheduleSaveTroops([u]); }
+function moveAlongPath(u,def,n,res){ if(u.rootedUntil>n||u.guardPositionUntil>n||n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(slowed?1.5:1); scheduleSaveTroops([u]); }
 function hasBannerAura(u){return [...troops.values()].some(ally=>ally.hp>0&&ally.ownerId===u.ownerId&&ally.type==='bannerKnight'&&dist(ally,u)<=3)}
-function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)?0.9:1))}
+function hasLastStand(u){return u.type==='oathguard'&&u.hp>0&&u.hp<=effectiveMaxHp(u)*.35}
+function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)?0.9:1)*(hasLastStand(u)?.85:1))}
 function effectiveMaxHp(e,n=now()){return (e.maxHp||e.hp||1)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
-function applyDamage(target,amount,n=now()){const defended=target.buffs?.shieldWallUntil>n||target.buffs?.holdLineUntil>n; const dealt=Math.max(1,amount-(defended?1:0)); target.hp=Math.max(0,(target.hp||1)-dealt); return dealt}
+function guardAuraProtects(target,n){return UNIT[target.type]?.range>1&&[...troops.values()].some(ally=>ally.hp>0&&ally.ownerId===target.ownerId&&ally.type==='oathguard'&&ally.guardPositionUntil>n&&dist(ally,target)<=2)}
+function applyDamage(target,amount,n=now()){let reduction=0; if(target.buffs?.shieldWallUntil>n||target.buffs?.holdLineUntil>n)reduction++; if(hasLastStand(target))reduction++; if(target.guardPositionUntil>n)reduction+=2; if(guardAuraProtects(target,n))reduction++; const dealt=Math.max(1,amount-reduction); target.hp=Math.max(0,(target.hp||1)-dealt); target.lastCombatAt=n; return dealt}
 function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const n=now(); const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>n)?1:0; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
   if(def.splash){ for(const e of [...troops.values(),...buildings.values()].filter(e=>e.hp>0&&e.ownerId!==u.ownerId&&Math.abs(e.x-target.x)<def.splash&&Math.abs(e.y-target.y)<def.splash)) if(!targets.includes(e))targets.push(e); }
-  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0; applyDamage(t,def.dmg+rally+marked,n); if(t.hp<=0 && troops.has(t.id)) selected.delete(t.id);}); }
+  u.lastCombatAt=n;
+  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0; applyDamage(t,def.dmg+rally+marked,n); if(u.type==='frostAdept'&&troops.has(t.id)&&Math.random()<.25){t.buffs=t.buffs||{};if(!(t.buffs.holdLineUntil>n))t.buffs.slowedUntil=Math.max(t.buffs.slowedUntil||0,n+8000);} if(t.hp<=0 && troops.has(t.id)) selected.delete(t.id);}); }
 function buildingAggro(b,n){ const bd=BUILDING[b.type]; if(n<(b.nextAttackAt||0))return; const target=[...troops.values()].find(u=>u.hp>0&&u.ownerId!==b.ownerId&&dist(u,b)<=bd.range&&canFightHere({ownerId:b.ownerId},u)); if(target){applyDamage(target,bd.dmg,n); b.nextAttackAt=n+bd.attackMs; scheduleSaveTroops([target]); saveBuilding(b);}}
 async function completeEngineerBuild(u){ const task=u.buildTask; if(!task)return; const type=task.kind; const id=`${playerKey}_${type}_${u.id}_${now()}`; const bdef=BUILDING[type]; const b={id,ownerId:playerKey,type,x:u.x,y:u.y,hp:bdef.hp,maxHp:bdef.hp,chunkKey:getChunkOfTile(u.x,u.y).key,createdAt:now()}; if(type==='mobileTower'){ // one mobile tower per engineer; remove old
     for(const old of buildings.values()) if(old.type==='mobileTower'&&old.engineerId===u.id) await deleteDoc(ref('buildings',old.id)); b.engineerId=u.id; b.expiresAt=now()+bdef.temporaryMs;
@@ -567,6 +583,11 @@ const ABILITY_REGISTRY=[
   {id:'repairPulse',types:['runeMason'],label:'Repair Pulse',description:()=>`Repair friendly buildings within 3 tiles by 20 · 4 min cooldown`,canUse:sels=>sels.some(e=>e.type==='runeMason'&&e.ownerId===playerKey&&(!e.repairPulseCdUntil||e.repairPulseCdUntil<=now())),action:()=>useRepairPulse()},
   {id:'poisonCloud',types:['plagueSlinger'],label:'Poison Cloud',description:()=>`Hovered tile: enemies within 2 take 4 damage and are slowed 20s · 5 min cooldown`,canUse:sels=>sels.some(e=>e.type==='plagueSlinger'&&e.ownerId===playerKey&&(!e.poisonCloudCdUntil||e.poisonCloudCdUntil<=now())),action:()=>usePoisonCloud()},
   {id:'holdLine',types:['bannerKnight'],label:'Hold the Line',description:()=>`Allies within 3 take 1 less damage and ignore slows for 30s · War Banner passive · 5 min cooldown`,canUse:sels=>sels.some(e=>e.type==='bannerKnight'&&e.ownerId===playerKey&&(!e.holdLineCdUntil||e.holdLineCdUntil<=now())),action:()=>useAreaBuff('bannerKnight','holdLineCdUntil','holdLineUntil',30000,300000,'Hold the Line',true)},
+  {id:'plantCharges',types:['sapper'],label:'Plant Charges',description:()=>`Hovered enemy structure within 1 · explodes after 10s · 4 min cooldown`,canUse:sels=>sels.some(e=>e.type==='sapper'&&e.ownerId===playerKey&&(!e.plantChargesCdUntil||e.plantChargesCdUntil<=now())),action:()=>usePlantCharges()},
+  {id:'guardPosition',types:['oathguard'],label:'Guard Position',description:()=>`Root for 45s, gain major defense, and protect nearby ranged allies · 5 min cooldown`,canUse:sels=>sels.some(e=>e.type==='oathguard'&&e.ownerId===playerKey&&(!e.guardPositionCdUntil||e.guardPositionCdUntil<=now())),action:()=>useGuardPosition()},
+  {id:'falconDive',types:['falconer'],label:'Falcon Dive',description:()=>`Strike hovered enemy within 7 for 10 damage (25 vs siege) · 3 min cooldown`,canUse:sels=>sels.some(e=>e.type==='falconer'&&e.ownerId===playerKey&&(!e.falconDiveCdUntil||e.falconDiveCdUntil<=now())),action:()=>useFalconDive()},
+  {id:'frostNova',types:['frostAdept'],label:'Frost Nova',description:()=>`Enemies within 3 take 4 damage and are slowed for 20s · 4 min cooldown`,canUse:sels=>sels.some(e=>e.type==='frostAdept'&&e.ownerId===playerKey&&(!e.frostNovaCdUntil||e.frostNovaCdUntil<=now())),action:()=>useFrostNova()},
+  {id:'resupply',types:['supplyWagon'],label:'Resupply',description:()=>`Heal friendly troops within 3 by 8 · 6 min cooldown`,canUse:sels=>sels.some(e=>e.type==='supplyWagon'&&e.ownerId===playerKey&&(!e.resupplyCdUntil||e.resupplyCdUntil<=now())),action:()=>useResupply()},
   {id:'siege',types:['trebuchet'],label:'Siege',description:()=>`Target hovered enemy territory within 5 tiles · fires every 3h`,canUse:sels=>sels.some(e=>e.type==='trebuchet'),action:()=>useSiege()},
   {id:'upgradeFortress',types:['fortress'],label:'Upgrade Fortress',description:()=>{const lvl=(account.fortressLevel||1)+1,cost=FORT_UPGRADE_COST[lvl];return cost?`Level ${lvl} · ${costText(cost)}`:'Maximum level';},canUse:()=>!!FORT_UPGRADE_COST[(account.fortressLevel||1)+1],action:()=>upgradeFortress()},
   {id:'upgradeWorkshop',types:['workshop'],label:'Upgrade Workshop',description:sels=>{const w=sels.find(e=>e.type==='workshop'),lvl=(w?.level||1)+1;return `Level ${lvl} · ${costText({gold:100*lvl,lumber:120*lvl,oil:10*Math.max(0,lvl-2)})}`;},canUse:sels=>sels.some(e=>e.type==='workshop'),action:sels=>upgradeWorkshop(sels.find(e=>e.type==='workshop'))},
@@ -582,6 +603,58 @@ function startEngineerBuild(type){
 }
 function readySelectedTroops(type,cdField){
   return [...selected].map(id=>troops.get(id)).filter(u=>u?.ownerId===playerKey&&u.type===type&&(!u[cdField]||u[cdField]<=now()));
+}
+function usePlantCharges(){
+  const casters=readySelectedTroops('sapper','plantChargesCdUntil'), target=hoveredEntity?.kind==='building'?hoveredEntity.data:null;
+  if(!casters.length){log('Plant Charges is on cooldown or no eligible Sapper is selected.');return;}
+  if(!target||target.hp<=0||target.ownerId===playerKey){log('Plant Charges requires a hovered enemy building or wall.');return;}
+  const inRange=casters.filter(u=>dist(u,target)<=1);
+  if(!inRange.length){log('The hovered structure is too far away; a Sapper must be within 1 tile.');return;}
+  const n=now(); inRange.forEach(caster=>{caster.plantChargesCdUntil=n+240000;caster.plantedCharge={ownerId:caster.ownerId,sapperId:caster.id,targetId:target.id,x:target.x,y:target.y,explodesAt:n+10000};});
+  scheduleSaveTroops(inRange); updateUI(); log(`${inRange.length} charge(s) planted on ${BUILDING[target.type]?.name||'enemy structure'}; detonation in 10 seconds.`);
+}
+function detonateCharge(sapper,n){
+  const charge=sapper.plantedCharge; if(!charge)return;
+  const target=buildings.get(charge.targetId), changedBuildings=new Map(), changedTroops=[];
+  if(target&&target.hp>0&&target.ownerId!==charge.ownerId){applyDamage(target,60,n);changedBuildings.set(target.id,target);}
+  for(const b of buildings.values())if(b.hp>0&&b.ownerId!==charge.ownerId&&b.id!==charge.targetId&&dist(b,charge)<=1){applyDamage(b,25,n);changedBuildings.set(b.id,b);}
+  for(const u of troops.values())if(u.hp>0&&u.ownerId!==charge.ownerId&&dist(u,charge)<=1){applyDamage(u,8,n);changedTroops.push(u);}
+  delete sapper.plantedCharge; scheduleSaveTroops([sapper,...changedTroops]); changedBuildings.forEach(saveBuilding);
+  log(`Sapper charge detonated, damaging ${changedBuildings.size} structure(s) and ${changedTroops.length} troop(s).`);
+}
+function useGuardPosition(){
+  const casters=readySelectedTroops('oathguard','guardPositionCdUntil');
+  if(!casters.length){log('Guard Position is on cooldown or no eligible Oathguard is selected.');return;}
+  const n=now(); casters.forEach(u=>{u.guardPositionCdUntil=n+300000;u.guardPositionUntil=n+45000;u.rootedUntil=n+45000;u.path=[];u.moveGoal=null;}); scheduleSaveTroops(casters); updateUI();
+  log(`${casters.length} Oathguard(s) are guarding position for 45 seconds.`);
+}
+function useFalconDive(){
+  const casters=readySelectedTroops('falconer','falconDiveCdUntil'), target=hoveredEntity?.data;
+  if(!casters.length){log('Falcon Dive is on cooldown or no eligible Falconer is selected.');return;}
+  if(!target||target.hp<=0||target.ownerId===playerKey){log('Falcon Dive requires a hovered enemy troop or building.');return;}
+  const caster=casters.find(u=>dist(u,target)<=7);
+  if(!caster){log('The hovered target is too far away; Falcon Dive has a 7-tile range.');return;}
+  const n=now(), siege=['ballista','catapult','trebuchet'].includes(target.type); applyDamage(target,siege?25:10,n); caster.falconDiveCdUntil=n+180000;
+  scheduleSaveTroops([caster]); if(hoveredEntity.kind==='troop')scheduleSaveTroops([target]);else saveBuilding(target); updateUI();
+  log(`Falcon Dive dealt ${siege?25:10} damage to ${UNIT[target.type]?.name||BUILDING[target.type]?.name||'the target'}.`);
+}
+function useFrostNova(){
+  const casters=readySelectedTroops('frostAdept','frostNovaCdUntil');
+  if(!casters.length){log('Frost Nova is on cooldown or no eligible Frost Adept is selected.');return;}
+  const n=now(), affected=new Map();
+  casters.forEach(caster=>{caster.frostNovaCdUntil=n+240000;affected.set(caster.id,caster);for(const enemy of troops.values())if(enemy.hp>0&&enemy.ownerId!==caster.ownerId&&dist(caster,enemy)<=3&&canFightHere(caster,enemy)){applyDamage(enemy,4,n);enemy.buffs=enemy.buffs||{};if(!(enemy.buffs.holdLineUntil>n))enemy.buffs.slowedUntil=Math.max(enemy.buffs.slowedUntil||0,n+20000);affected.set(enemy.id,enemy);}});
+  scheduleSaveTroops([...affected.values()]); updateUI(); log(`Frost Nova struck ${affected.size-casters.length} enemy troop(s).`);
+}
+function useResupply(){
+  const casters=readySelectedTroops('supplyWagon','resupplyCdUntil');
+  if(!casters.length){log('Resupply is on cooldown or no eligible Supply Wagon is selected.');return;}
+  const n=now(), healed=new Map(); casters.forEach(wagon=>{wagon.resupplyCdUntil=n+360000;healed.set(wagon.id,wagon);for(const ally of troops.values())if(ally.hp>0&&ally.ownerId===wagon.ownerId&&dist(wagon,ally)<=3&&ally.hp<effectiveMaxHp(ally,n)){ally.hp=Math.min(effectiveMaxHp(ally,n),ally.hp+8);healed.set(ally.id,ally);}});
+  scheduleSaveTroops([...healed.values()]); updateUI(); log(`Resupply healed ${Math.max(0,healed.size-casters.length)} nearby friendly troop(s).`);
+}
+function processFieldSupplies(wagon,n){
+  wagon.nextSupplyHealAt=n+5000; const healed=[];
+  for(const ally of troops.values())if(ally.hp>0&&ally.ownerId===wagon.ownerId&&ally.id!==wagon.id&&dist(wagon,ally)<=3&&ally.hp<effectiveMaxHp(ally,n)&&n-(ally.lastCombatAt||0)>=5000&&(ally.supplyHealedAt||0)<n-1000){ally.hp=Math.min(effectiveMaxHp(ally,n),ally.hp+1);ally.supplyHealedAt=n;healed.push(ally);}
+  scheduleSaveTroops([wagon,...healed]);
 }
 function useAreaBuff(type,cdField,buffField,duration,cooldown,label,clearSlow=false){
   const casters=readySelectedTroops(type,cdField);
@@ -794,8 +867,13 @@ function getIcon(kind,type,ownerKind){
     else if(type==='plagueSlinger') body=base+`<circle cx="42" cy="38" r="11" fill="#7b3fa1" stroke="${dark}" stroke-width="3"/><circle cx="39" cy="34" r="3" fill="#8cff67"/><path d="M17 48 Q27 32 39 44" fill="none" stroke="#85d65d" stroke-width="5"/>`;
     else if(type==='champion') body=base+crown+sword;
     else if(type==='bannerKnight') body=base+sword+`<path d="M17 7 V53" stroke="${wood}" stroke-width="4"/><path d="M19 9 H45 L38 20 H19 Z" fill="${gold}" stroke="${dark}" stroke-width="2"/>`;
+    else if(type==='oathguard') body=base+`<path d="M14 25 Q32 10 50 25 L46 53 Q32 62 18 53 Z" fill="#374f70" stroke="${gold}" stroke-width="4"/><path d="M32 18 V55 M18 35 H46" stroke="${white}" stroke-width="3"/>`;
     else if(type==='engineer') body=base+gear;
     else if(type==='runeMason') body=base+gear+`<path d="M15 48 L24 27 L33 48 Z" fill="#7df9ff" stroke="${dark}" stroke-width="2"/>`;
+    else if(type==='sapper') body=base+gear+`<circle cx="19" cy="45" r="9" fill="#171717" stroke="#ff8c2f" stroke-width="4"/><path d="M19 34 Q26 24 33 30" fill="none" stroke="#ffcf5e" stroke-width="3"/>`;
+    else if(type==='falconer') body=base+bow+`<path d="M11 14 Q20 5 30 13 Q21 12 17 21 Q15 15 11 14 Z" fill="${gold}" stroke="${dark}" stroke-width="2"/>`;
+    else if(type==='frostAdept') body=base+`<path d="M32 8 V55 M13 19 L51 45 M51 19 L13 45 M19 8 L32 19 L45 8 M19 56 L32 45 L45 56" stroke="#dffaff" stroke-width="4"/><circle cx="32" cy="32" r="8" fill="#83dcff" stroke="${dark}" stroke-width="2"/>`;
+    else if(type==='supplyWagon') body=`<rect x="10" y="27" width="44" height="23" rx="5" fill="${wood}" stroke="${dark}" stroke-width="4"/><path d="M14 27 Q32 8 50 27" fill="#d6b36a" stroke="${dark}" stroke-width="4"/><circle cx="19" cy="53" r="7" fill="${stone}" stroke="${dark}" stroke-width="3"/><circle cx="46" cy="53" r="7" fill="${stone}" stroke="${dark}" stroke-width="3"/><path d="M27 30 H37 V38 H45 V46 H37 V54 H27 V46 H19 V38 H27 Z" fill="${white}" stroke="${dark}" stroke-width="2"/>`;
     else if(type==='goblin') body=`<path d="M11 38 L20 16 L29 31 L38 16 L53 42 Q42 58 24 54 Z" fill="${primary}" stroke="${dark}" stroke-width="4"/><circle cx="25" cy="37" r="4" fill="${dark}"/><circle cx="40" cy="37" r="4" fill="${dark}"/><path d="M26 47 Q33 52 42 46" fill="none" stroke="${dark}" stroke-width="3"/>`;
     else body=base;
   } else {
