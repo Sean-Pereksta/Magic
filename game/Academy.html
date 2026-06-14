@@ -54,6 +54,7 @@
       <div class="section"><h3>Build Structures</h3><div class="muted">Buildings may only be placed in controlled territory. Select an Engineer for mobile towers/barricades.</div><div id="buildBtns" class="gridBtns"></div></div>
       <div class="section"><h3>Portal</h3><div id="portalInfo" class="muted">Build and select a Portal to fight goblin hordes for prizes.</div></div>
       <div class="section"><h3>Territory & War</h3><div id="tileInfo" class="muted">Hover a chunk.</div><div class="hr"></div><button id="declareBtn" class="danger">Declare Battle on Hovered Enemy Territory</button><div class="row" style="margin-top:6px"><input id="battleTime" type="datetime-local" style="width:100%"></div><div id="warMsg" class="msg"></div></div>
+      <div class="section"><h3>Landmark</h3><div id="landmarkInfo" class="muted">Hover a discovered landmark.</div><div id="landmarkActions" class="gridBtns" style="margin-top:8px"></div><div id="landmarkMsg" class="msg"></div></div>
       <div class="section"><h3>Active Battles / Siege</h3><div id="battleList" class="muted">None.</div></div>
       <div class="section"><h3>Income</h3><div id="incomeInfo" class="muted">Loading...</div></div>
       <div class="section"><h3>Log</h3><div id="log" class="muted" style="max-height:160px;overflow:auto"></div></div>
@@ -104,6 +105,18 @@ const BARBARIAN_LEVEL_MS = 12 * 3600000;
 const BARBARIAN_RAID_MIN_MS = 30 * 60000;
 const BARBARIAN_RAID_MAX_MS = 60 * 60000;
 const BARBARIAN_FORCE_EXPIRE_MS = 2 * 3600000;
+const LANDMARK_GENERATION_VERSION = 1;
+const LANDMARK_LOCK_MS = 60000;
+const LANDMARK_COUNTS = {tradePost:70,ancientShrine:24,dragonNest:14,giantCave:16,undeadCrypt:18,warlordFortress:14,ancientTitanRuins:8};
+const LANDMARK = {
+  tradePost:{name:"Trade Post",icon:"⚖",color:"#f4c542",hp:260,guards:"Medium neutral guards",income:{gold:15,lumber:15,oil:3},rewardText:"+15 gold, +15 lumber, +3 oil per hour",cooldownMs:0},
+  ancientShrine:{name:"Ancient Shrine",icon:"✦",color:"#ba8cff",hp:360,guards:"Strong shrine guardians",rewardText:"Blessings and a chance for relic fragments",cooldownMs:6*3600000},
+  dragonNest:{name:"Dragon Nest",icon:"♨",color:"#ff684f",hp:900,guards:"Dragon and elite hatchlings",reward:{gold:900,lumber:400,oil:180},relic:"Dragon Scale Relic",relicChance:.25,buff:"Fire damage",buffMs:3600000,cooldownMs:8*3600000},
+  giantCave:{name:"Giant Cave",icon:"◆",color:"#d4a66a",hp:780,guards:"Giant and stone guards",reward:{gold:600,lumber:900,oil:80},relic:"Giant Hammer Relic",relicChance:.25,buff:"Wall/building HP",buffMs:3600000,cooldownMs:6*3600000},
+  undeadCrypt:{name:"Undead Crypt",icon:"☠",color:"#9ed8c2",hp:720,guards:"Lich and undead host",reward:{gold:500,lumber:500,oil:250},relic:"Bone Crown Relic",relicChance:.25,buff:"Mage/priest power",buffMs:3600000,cooldownMs:5*3600000},
+  warlordFortress:{name:"Warlord Fortress",icon:"⚔",color:"#ff9e57",hp:850,guards:"Warlord and veteran guards",reward:{gold:1000,lumber:700,oil:120},relic:"War Banner Relic",relicChance:.30,buff:"Infantry/cavalry power",buffMs:3600000,cooldownMs:7*3600000},
+  ancientTitanRuins:{name:"Ancient Titan Ruins",icon:"Ω",color:"#7de7ff",hp:1300,guards:"Titan and ancient sentinels",reward:{gold:1500,lumber:1000,oil:300},relic:"Titan Core Relic",relicChance:.40,buff:"Global army power",buffMs:2*3600000,cooldownMs:12*3600000}
+};
 const BARBARIAN_CAMP_LEVELS = {
   1:{hp:220,raiders:5,throwers:1,brutes:0,drummers:0,chieftains:0,raidMs:90*60000},
   2:{hp:320,raiders:8,throwers:2,brutes:1,drummers:0,chieftains:0,raidMs:75*60000},
@@ -195,13 +208,13 @@ const FORT_CAP = [0,12,20,32,48,70,95,125,160,210,275];
 const FORT_UPGRADE_COST = {2:{gold:200,lumber:180,oil:0},3:{gold:380,lumber:300,oil:20},4:{gold:700,lumber:520,oil:40},5:{gold:1200,lumber:850,oil:85},6:{gold:1900,lumber:1300,oil:150},7:{gold:2900,lumber:2000,oil:250},8:{gold:4300,lumber:3100,oil:400},9:{gold:6200,lumber:4500,oil:650},10:{gold:9000,lumber:6500,oil:1000}};
 
 let uid=null, player=null, playerKey=null;
-let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), playerAccounts=new Map();
+let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), landmarks=new Map(), playerAccounts=new Map();
 let unsub=[]; let selected=new Set(); let hoveredTile=null; let hoveredEntity=null; let attackMode=false; let buildMode=null;
 let visibleChunks=new Set();
 let currentAbilityHotkeys=new Map();
 let camera={x:0,y:0,zoom:1}; let mouse={x:0,y:0,down:false,startX:0,startY:0};
 let lastSave=0, lastTick=0, lastCaptureCheck=0, lastProductionCheck=0, lastBarbarianPoll=0, lastBarbarianThink=0;
-let barbarianWorldState={nextBarbarianSpawnCheckAt:0}; let barbarianSpawnCheckRunning=false, barbarianThinkRunning=false;
+let barbarianWorldState={nextBarbarianSpawnCheckAt:0}; let barbarianSpawnCheckRunning=false, barbarianThinkRunning=false, landmarkGenerationRunning=false;
 
 function pruneSelection(){
   // Firestore snapshots arrive separately for troops and buildings.
@@ -228,6 +241,9 @@ function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function canPay(cost){return (account.resources.gold>=cost.gold && account.resources.lumber>=cost.lumber && account.resources.oil>=cost.oil)}
 function pay(cost){account.resources.gold-=cost.gold; account.resources.lumber-=cost.lumber; account.resources.oil-=cost.oil;}
 function addRes(r){account.resources.gold+=r.gold||0;account.resources.lumber+=r.lumber||0;account.resources.oil+=r.oil||0;}
+function landmarkAtChunk(key){return [...landmarks.values()].find(l=>l.chunkKey===key);}
+function isBossLandmark(l){return !!l&&!!LANDMARK[l.type]?.reward;}
+function landmarkRewardText(l){const d=LANDMARK[l.type];if(!d)return '';if(d.reward){const r=d.reward;return `Reward: +${r.gold} gold, +${r.lumber} lumber, +${r.oil} oil · ${Math.round(d.relicChance*100)}% ${d.relic} · ${d.buff} buff`;}return d.rewardText;}
 
 function isAllied(playerId,otherPlayerId){
   if(!playerId||!otherPlayerId)return false;
@@ -284,7 +300,7 @@ function resourceIncomeText(t){
   const inc=resourceIncomeForTerritory(t);
   return [`+${inc.gold} gold/hr`,`+${inc.lumber} lumber/hr`,inc.oil?`+${inc.oil} oil/hr`:null].filter(Boolean).join(', ');
 }
-function totalHourlyIncome(){let r={gold:0,lumber:0,oil:0}; for(const t of territories.values()){if(t.ownerId===playerKey){const inc=resourceIncomeForTerritory(t); r.gold+=inc.gold;r.lumber+=inc.lumber;r.oil+=inc.oil;}} return r;}
+function totalHourlyIncome(){let r={gold:0,lumber:0,oil:0}; for(const t of territories.values()){if(t.ownerId===playerKey){const inc=resourceIncomeForTerritory(t); r.gold+=inc.gold;r.lumber+=inc.lumber;r.oil+=inc.oil;}} for(const l of landmarks.values())if(l.ownerId===playerKey&&l.type==='tradePost'){r.gold+=15;r.lumber+=15;r.oil+=3;} const harvest=account.globalBuffs?.harvestUntil>now()?1.2:1;return {gold:Math.floor(r.gold*harvest),lumber:Math.floor(r.lumber*harvest),oil:Math.floor(r.oil*harvest)};}
 
 async function authReady(){return new Promise(res=>onAuthStateChanged(auth,u=>{if(u){uid=u.uid;res(u)}}));}
 signInAnonymously(auth).catch(e=>{$('loginMsg').textContent=e.message});
@@ -337,10 +353,12 @@ async function startGame(){
   unsub.push(onSnapshot(col('troops'),s=>{troops.clear();s.forEach(d=>troops.set(d.id,{id:d.id,...d.data()})); pruneSelection(); updateUI();}));
   unsub.push(onSnapshot(col('buildings'),s=>{buildings.clear();s.forEach(d=>buildings.set(d.id,{id:d.id,...d.data()})); pruneSelection(); updateUI();}));
   unsub.push(onSnapshot(col('battles'),s=>{battles.clear();s.forEach(d=>battles.set(d.id,{id:d.id,...d.data()})); updateUI();}));
+  unsub.push(onSnapshot(col('landmarks'),s=>{landmarks.clear();s.forEach(d=>landmarks.set(d.id,{id:d.id,...d.data()})); updateUI();}));
   unsub.push(onSnapshot(col('accounts'),s=>{playerAccounts.clear();s.forEach(d=>playerAccounts.set(d.id,{id:d.id,...d.data()}));}));
   unsub.push(onSnapshot(ref('worldState','barbarians'),s=>{barbarianWorldState=s.exists()?s.data():{nextBarbarianSpawnCheckAt:0};}));
   await collectOfflineResources(); buildButtons(); requestAnimationFrame(loop); log('Entered world at your fortress.');
   setTimeout(()=>maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message)),1200);
+  setTimeout(()=>ensureLandmarksGenerated().catch(e=>log('Landmark generation error: '+e.message)),1800);
 }
 async function collectOfflineResources(){
   await new Promise(r=>setTimeout(r,700));
@@ -363,6 +381,7 @@ function areHostile(a,b){const ab=isBarbarianOwner(a?.ownerId),bb=isBarbarianOwn
 function isEnemyOwnedBlocked(unit,x,y){const o=ownerOfTile(x,y); if(isBarbarianUnit(unit))return false; return o && o!==unit.ownerId && !activeBattleAllows(unit.ownerId,x,y);}
 function entityAtTile(x,y){for(const u of troops.values()) if(u.hp>0&&u.x===x&&u.y===y) return {kind:'troop',id:u.id,data:u}; for(const b of buildings.values()) if(b.hp>0&&b.x===x&&b.y===y) return {kind:'building',id:b.id,data:b}; return null;}
 function visibleEntityAtTile(x,y){return isTileVisible(x,y)?entityAtTile(x,y):null;}
+function visibleLandmarkAtTile(x,y){if(!isTileVisible(x,y))return null;const c=getChunkOfTile(x,y),l=landmarkAtChunk(c.key);if(!l)return null;return {kind:'landmark',id:l.id,data:l};}
 function isBlocked(x,y,unit=null,targetKey=null){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)return true; const e=entityAtTile(x,y); if(unit?.inArena){ if(e && e.id!==targetKey && e.id!==unit.id && e.kind==='troop') return true; return false; } const terr=terrainAt(x,y); if(terr==='water'||terr==='mountain')return true; if(e && e.id!==targetKey && e.data.ownerId!==unit?.ownerId) return true; if(e && e.id!==unit?.id && e.kind==='troop') return true; if(e && e.kind==='building' && BUILDING[e.data.type]?.wall && e.data.ownerId!==unit?.ownerId) return true; if(unit && isEnemyOwnedBlocked(unit,x,y)) return true; return false; }
 
 const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
@@ -434,11 +453,46 @@ function issueMove(ids,tx,ty,attackMove=false){
   log(`${attackMove?'Attack-move':'Move'} order: ${units.length} troop(s). They will keep closing on the target until stopped.`);
   scheduleSaveTroops(units);
 }
-function issueAttack(ids,target){ const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey); units.forEach(u=>{u.order='attack';u.targetId=target.id;u.path=[];u.moveGoal=null;u.assignedGoal=null;u.buildTask=null; troops.set(u.id,u);}); log(`Focus attack order on ${target.data.type||target.data.ownerId}.`); scheduleSaveTroops(units); }
+function issueAttack(ids,target){ const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey); units.forEach(u=>{u.order='attack';u.targetId=target.id;u.path=[];u.moveGoal=null;u.assignedGoal=null;u.buildTask=null; troops.set(u.id,u);}); log(`Focus attack order on ${LANDMARK[target.data.type]?.name||target.data.type||target.data.ownerId}.`); scheduleSaveTroops(units); }
 
 let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>saveQueue.add(u.id));}
 async function flushTroopSaves(){ if(!saveQueue.size)return; const batch=writeBatch(db); const ids=[...saveQueue].slice(0,80); ids.forEach(id=>{const u=troops.get(id); if(u)batch.set(ref('troops',id),u,{merge:true}); saveQueue.delete(id);}); await batch.commit().catch(e=>log('Save troop error: '+e.message)); }
 async function saveBuilding(b){await setDoc(ref('buildings',b.id),b,{merge:true});}
+async function saveLandmark(l){await setDoc(ref('landmarks',l.id),l,{merge:true});}
+
+function landmarkCandidate(type,index,used,forts){
+  for(let attempt=0;attempt<600;attempt++){
+    const cx=Math.floor(hash2(index,attempt,8100+Object.keys(LANDMARK).indexOf(type))*WORLD_CHUNKS);
+    const cy=Math.floor(hash2(attempt,index,9100+Object.keys(LANDMARK).indexOf(type))*WORLD_CHUNKS);
+    const key=chunkKey(cx,cy),resource=chunkResource(cx,cy),center={x:cx*CHUNK_SIZE+8,y:cy*CHUNK_SIZE+8};
+    if(used.has(key)||forts.some(f=>Math.max(Math.abs(parseChunkKey(f.chunkKey).cx-cx),Math.abs(parseChunkKey(f.chunkKey).cy-cy))<4))continue;
+    if(type==='tradePost'&&resource!=='plain'&&hash2(cx,cy,333)<.65)continue;
+    if(terrainAt(center.x,center.y)!=='plain'&&terrainAt(center.x+1,center.y)!=='plain')continue;
+    if([...used].some(k=>{const p=parseChunkKey(k);return Math.max(Math.abs(p.cx-cx),Math.abs(p.cy-cy))<2;}))continue;
+    return {cx,cy,key,x:center.x,y:center.y};
+  }
+  return null;
+}
+async function ensureLandmarksGenerated(){
+  if(landmarkGenerationRunning||landmarks.size)return;landmarkGenerationRunning=true;
+  try{
+    const stateRef=ref('worldState','landmarks'),n=now(),locked=await runTransaction(db,async tx=>{const snap=await tx.get(stateRef),state=snap.exists()?snap.data():{};if((state.version||0)>=LANDMARK_GENERATION_VERSION)return false;if((state.lockUntil||0)>n&&state.lockUid!==uid)return false;tx.set(stateRef,{...state,lockUid:uid,lockUntil:n+LANDMARK_LOCK_MS},{merge:true});return true;});
+    if(!locked)return;
+    const existing=await getDocs(col('landmarks'));if(!existing.empty){await setDoc(stateRef,{version:LANDMARK_GENERATION_VERSION,generatedAt:n,lockUid:null,lockUntil:0},{merge:true});return;}
+    const used=new Set(),forts=[...buildings.values()].filter(b=>b.type==='fortress'),batch=writeBatch(db);let made=0;
+    for(const [type,count] of Object.entries(LANDMARK_COUNTS))for(let i=0;i<count;i++){const spot=landmarkCandidate(type,i,used,forts);if(!spot)continue;used.add(spot.key);const d=LANDMARK[type],id=`landmark_${type}_${spot.key}`;batch.set(ref('landmarks',id),{id,type,x:spot.x,y:spot.y,chunkKey:spot.key,ownerId:null,hp:d.hp,maxHp:d.hp,bossAlive:isBossLandmark({type}),respawnAt:null,lastDefeatedAt:null,lastDefeatedBy:null,cooldownMs:d.cooldownMs,guardStrength:d.guards,createdAt:n});made++;}
+    batch.set(stateRef,{version:LANDMARK_GENERATION_VERSION,generatedAt:n,count:made,lockUid:null,lockUntil:0},{merge:true});await batch.commit();log(`${made} strategic landmarks generated across the world.`);
+  }finally{landmarkGenerationRunning=false;}
+}
+async function respawnLandmark(l){
+  const d=LANDMARK[l.type];l.hp=d.hp;l.maxHp=d.hp;l.bossAlive=true;l.respawnAt=null;l.rewardClaimedAt=null;l.lastDamagedBy=null;await saveLandmark(l);
+}
+async function defeatLandmark(l,killerId){
+  const d=LANDMARK[l.type],n=now(),claimed=await runTransaction(db,async tx=>{const r=ref('landmarks',l.id),snap=await tx.get(r);if(!snap.exists()||snap.data().rewardClaimedAt||snap.data().hp>0)return false;tx.update(r,{rewardClaimedAt:n,lastDefeatedAt:n,lastDefeatedBy:killerId||null,ownerId:isBossLandmark(l)?null:killerId||null,bossAlive:false,respawnAt:isBossLandmark(l)?n+d.cooldownMs:null});return true;});
+  if(!claimed)return;l.rewardClaimedAt=n;l.lastDefeatedAt=n;l.lastDefeatedBy=killerId;l.ownerId=isBossLandmark(l)?null:killerId;l.bossAlive=false;l.respawnAt=isBossLandmark(l)?n+d.cooldownMs:null;
+  if(killerId===playerKey&&d.reward){addRes(d.reward);account.globalBuffs=account.globalBuffs||{};account.globalBuffs[`${l.type}Until`]=n+d.buffMs;account.veterancyXp=(account.veterancyXp||0)+100;account.relicFragments=(account.relicFragments||0)+1;if(Math.random()<d.relicChance){account.relics=account.relics||[];if(!account.relics.includes(d.relic))account.relics.push(d.relic);log(`${d.relic} discovered!`);}if(Math.random()<.08){account.rareTroopUnlocks=account.rareTroopUnlocks||[];if(!account.rareTroopUnlocks.includes(l.type))account.rareTroopUnlocks.push(l.type);}await saveAccount();log(`${d.name} conquered: +${d.reward.gold}g +${d.reward.lumber}l +${d.reward.oil}o and ${d.buff} for ${fmt(d.buffMs)}.`);}
+  else if(killerId===playerKey)log(`${d.name} captured. Its strategic benefits are now yours.`);
+}
 
 function barbarianCampCount(){return [...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0).length;}
 function wanderingBarbarianOwners(){return new Set([...troops.values()].filter(u=>isBarbarianUnit(u)&&!u.campId&&u.hp>0).map(u=>u.ownerId));}
@@ -542,6 +596,7 @@ function tick(dt){
     else if(!isOwnerOnline(u.ownerId) && shouldSimOfflineEnemy(u)) handleLocalTroopAI(u,def,n,reservations,true);
   }
   for(const b of buildings.values()) if(b.hp>0 && BUILDING[b.type]?.defense && (b.ownerId===playerKey || !isOwnerOnline(b.ownerId))) buildingAggro(b,n);
+  for(const l of landmarks.values())if(isBossLandmark(l)&&!l.bossAlive&&l.respawnAt&&l.respawnAt<=n)respawnLandmark(l).catch(e=>log('Landmark respawn error: '+e.message));
   if(n-lastProductionCheck>TRAINING_POLL_MS){lastProductionCheck=n; completeTrainingQueues().catch(e=>log('Production error: '+e.message)); checkGoblinPortalBattle().catch(e=>log('Portal error: '+e.message));}
   if(n-lastCaptureCheck>30000){lastCaptureCheck=n; resolveCapturePressure().catch(e=>log('Capture check error: '+e.message));}
   if(n-lastBarbarianPoll>60000){lastBarbarianPoll=n;maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message));}
@@ -558,7 +613,7 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   if(u.buildTask){ if(dist(u,u.buildTask)>0){moveOneStep(u,def,n,reservations,u.buildTask.x,u.buildTask.y);return;} if(!u.buildTask.startedAt)u.buildTask.startedAt=n; const need=u.buildTask.kind==='mobileTower'?600000:300000; if(n-u.buildTask.startedAt>=need){completeEngineerBuild(u); } scheduleSaveTroops([u]); return; }
   if(def.ability==='heal' && u.order==='idle'){ const ally=[...troops.values()].find(a=>a.ownerId===u.ownerId&&a.hp<a.maxHp&&dist(a,u)<=def.range); if(ally && n>=(u.nextAttackAt||0)){ally.hp=Math.min(ally.maxHp,ally.hp+2); u.nextAttackAt=n+1500; scheduleSaveTroops([u,ally]);}}
   let target=null;
-  if(u.targetId){target=troops.get(u.targetId)||buildings.get(u.targetId); if(!target||target.hp<=0){u.targetId=null;u.order='idle';target=null;}}
+  if(u.targetId){target=troops.get(u.targetId)||buildings.get(u.targetId)||landmarks.get(u.targetId); if(!target||target.hp<=0){u.targetId=null;u.order='idle';target=null;}}
   if(!target && (u.order==='idle'||u.order==='attackMove'||u.order==='guardCamp'||u.order==='wander')) target = enemiesNear(u,def.range+5)[0] || enemyBuildingsNear(u,def.range+5)[0];
   if(target){ if(dist(u,target)<=def.range){ if(n>=(u.nextAttackAt||0)){performAttack(u,target); u.nextAttackAt=n+attackDelay(u,def); scheduleSaveTroops([u,target]);} return; } else { moveOneStep(u,def,n,reservations,target.x,target.y); return; } }
   if((u.order==='move'||u.order==='attackMove'||u.order==='wander')){
@@ -588,9 +643,9 @@ function hasBarbarianDrummerAura(u){return isBarbarianUnit(u)&&[...troops.values
 function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)||hasBarbarianDrummerAura(u)?0.9:1))}
 function effectiveMaxHp(e,n=now()){return (e.maxHp||e.hp||1)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
 function applyDamage(target,amount,n=now()){const defended=target.buffs?.shieldWallUntil>n||target.buffs?.holdLineUntil>n; const dealt=Math.max(1,amount-(defended?1:0)); target.hp=Math.max(0,(target.hp||1)-dealt); return dealt}
-function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const n=now(); const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>n)?1:0; const battleCry=(u.buffs?.battleCryUntil&&u.buffs.battleCryUntil>n)?1:0; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
+function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const n=now(); const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>n)?1:0; const battleCry=(u.buffs?.battleCryUntil&&u.buffs.battleCryUntil>n)?1:0; const globalDamage=Object.entries(account.globalBuffs||{}).some(([k,v])=>k.endsWith('Until')&&v>n)?Math.max(1,Math.floor(def.dmg*.1)):0; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
   if(def.splash){ for(const e of [...troops.values(),...buildings.values()].filter(e=>e.hp>0&&areHostile(u,e)&&Math.abs(e.x-target.x)<def.splash&&Math.abs(e.y-target.y)<def.splash)) if(!targets.includes(e))targets.push(e); }
-  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0,structure=buildings.has(t.id)?(def.structureBonus||0):0; applyDamage(t,def.dmg+rally+battleCry+marked+structure,n); if(buildings.has(t.id)&&!isBarbarianUnit(u))t.lastDamagedBy=u.ownerId;if(t.hp<=0&&troops.has(t.id))selected.delete(t.id);if(buildings.has(t.id)){if(t.hp<=0&&isBarbarianCamp(t))destroyBarbarianCamp(t,t.lastDamagedBy||u.ownerId).catch(e=>log('Camp reward error: '+e.message));else saveBuilding(t);}}); if(def.ability==='battleCry'&&(!u.lastBattleCryAt||n-u.lastBattleCryAt>=60000)){u.lastBattleCryAt=n;for(const ally of troops.values())if(isBarbarianUnit(ally)&&ally.ownerId===u.ownerId&&dist(u,ally)<=3){ally.buffs=ally.buffs||{};ally.buffs.battleCryUntil=n+30000;scheduleSaveTroops([ally]);}} }
+  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0,structure=buildings.has(t.id)?(def.structureBonus||0):0; applyDamage(t,def.dmg+rally+battleCry+marked+structure+(u.ownerId===playerKey?globalDamage:0),n); if((buildings.has(t.id)||landmarks.has(t.id))&&!isBarbarianUnit(u))t.lastDamagedBy=u.ownerId;if(t.hp<=0&&troops.has(t.id))selected.delete(t.id);if(landmarks.has(t.id)){saveLandmark(t).then(()=>{if(t.hp<=0)defeatLandmark(t,t.lastDamagedBy||u.ownerId);});}else if(buildings.has(t.id)){if(t.hp<=0&&isBarbarianCamp(t))destroyBarbarianCamp(t,t.lastDamagedBy||u.ownerId).catch(e=>log('Camp reward error: '+e.message));else saveBuilding(t);}}); if(def.ability==='battleCry'&&(!u.lastBattleCryAt||n-u.lastBattleCryAt>=60000)){u.lastBattleCryAt=n;for(const ally of troops.values())if(isBarbarianUnit(ally)&&ally.ownerId===u.ownerId&&dist(u,ally)<=3){ally.buffs=ally.buffs||{};ally.buffs.battleCryUntil=n+30000;scheduleSaveTroops([ally]);}} }
 function buildingAggro(b,n){ const bd=BUILDING[b.type]; if(n<(b.nextAttackAt||0))return; const target=[...troops.values()].find(u=>u.hp>0&&areHostile(b,u)&&dist(u,b)<=bd.range&&canFightHere({ownerId:b.ownerId},u)); if(target){applyDamage(target,bd.dmg,n); b.nextAttackAt=n+bd.attackMs; scheduleSaveTroops([target]); saveBuilding(b);}}
 async function completeEngineerBuild(u){ const task=u.buildTask; if(!task)return; const type=task.kind; const id=`${playerKey}_${type}_${u.id}_${now()}`; const bdef=BUILDING[type]; const b={id,ownerId:playerKey,type,x:u.x,y:u.y,hp:bdef.hp,maxHp:bdef.hp,chunkKey:getChunkOfTile(u.x,u.y).key,createdAt:now()}; if(type==='mobileTower'){ // one mobile tower per engineer; remove old
     for(const old of buildings.values()) if(old.type==='mobileTower'&&old.engineerId===u.id) await deleteDoc(ref('buildings',old.id)); b.engineerId=u.id; b.expiresAt=now()+bdef.temporaryMs;
@@ -601,7 +656,8 @@ async function completeEngineerBuild(u){ const task=u.buildTask; if(!task)return
 async function resolveCapturePressure(){
   const counts=new Map(); const enemyPresence=new Map();
   for(const u of troops.values()){if(u.hp<=0||isBarbarianUnit(u))continue; const k=getChunkOfTile(u.x,u.y).key; if(!counts.has(k))counts.set(k,new Map()); const m=counts.get(k); m.set(u.ownerId,(m.get(u.ownerId)||0)+1);}
-  for(const [k,m] of counts){ const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]); if(!arr.length)continue; const [leader,leadCount]=arr[0]; const second=arr[1]?.[1]||0; const t=territories.get(k); if(!t || t.ownerId===leader)continue; const canContest = !t.ownerId || activeBattleAllows(leader,parseChunkKey(k).cx*CHUNK_SIZE+1,parseChunkKey(k).cy*CHUNK_SIZE+1);
+  for(const [k,m] of counts){ const arr=[...m.entries()].sort((a,b)=>b[1]-a[1]); if(!arr.length)continue; const [leader,leadCount]=arr[0]; const second=arr[1]?.[1]||0; const landmark=landmarkAtChunk(k);if(landmark&&!isBossLandmark(landmark)&&landmark.ownerId!==leader&&leadCount>second&&(landmark.hp<=0||leadCount>=5)){landmark.hp=0;landmark.bossAlive=false;landmark.ownerId=leader;landmark.lastDefeatedBy=leader;landmark.lastDefeatedAt=now();await saveLandmark(landmark);log(`${leader} occupied and captured ${LANDMARK[landmark.type].name}.`);}
+    const t=territories.get(k); if(!t || t.ownerId===leader)continue; const canContest = !t.ownerId || activeBattleAllows(leader,parseChunkKey(k).cx*CHUNK_SIZE+1,parseChunkKey(k).cy*CHUNK_SIZE+1);
     if(!canContest)continue; if(leadCount-second<5)continue;
     const n=now(); const cap=t.capture&&t.capture.playerId===leader?t.capture:{playerId:leader,startedAt:n,enemyMs:0,lastAt:n}; if(second>0)cap.enemyMs+=(n-(cap.lastAt||n)); cap.lastAt=n; t.capture=cap; await setDoc(ref('territories',k),t,{merge:true});
     if(n-cap.startedAt>=CAPTURE_REQUIRED_MS && cap.enemyMs<=ENEMY_ALLOWED_MS){ const old=t.ownerId; t.ownerId=leader; t.claimedAt=n; t.capture=null; await setDoc(ref('territories',k),t,{merge:true}); log(`${leader} conquered territory ${k} from ${old||'neutral'}.`); }
@@ -721,6 +777,18 @@ async function placeBuilding(type,x,y){
 function updateUI(){ if(!playerKey)return; $('goldVal').textContent=Math.floor(account.resources?.gold||0);$('lumberVal').textContent=Math.floor(account.resources?.lumber||0);$('oilVal').textContent=Math.floor(account.resources?.oil||0);$('fortLv').textContent=account.fortressLevel||1; $('troopCount').textContent=supplyUsed()+queuedSupply(); $('troopCap').textContent=supplyCap(); const income=totalHourlyIncome(); $('incomeInfo').innerHTML=`Hourly income from held territories:<br><span class="gold">+${income.gold} gold</span>, <span class="lumber">+${income.lumber} lumber</span>, <span class="oil">+${income.oil} oil</span>`;
   const si=$('selectedInfo'); const sels=[...selected].map(id=>troops.get(id)||buildings.get(id)).filter(Boolean); if(!sels.length) si.textContent='Nothing selected.'; else si.innerHTML=sels.slice(0,40).map(e=>`${UNIT[e.type]?.name||BUILDING[e.type]?.name||e.type}: ${e.hp}/${effectiveMaxHp(e)} @ ${e.x},${e.y}`).join('<br>')+(sels.length>40?`<br>+${sels.length-40} more`:``);
   renderAbilities(sels); renderProductionPanel(); renderPortalInfo(sels); renderBattles();
+}
+async function tradeAtPost(from,to,amount,received){
+  const l=hoveredTile&&landmarkAtChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y).key);if(!l||l.type!=='tradePost'||l.ownerId!==playerKey){$('landmarkMsg').textContent='Control this Trade Post first.';return;}if((account.resources[from]||0)<amount){$('landmarkMsg').textContent=`Not enough ${from}.`;return;}account.resources[from]-=amount;account.resources[to]=(account.resources[to]||0)+received;await saveAccount();updateUI();$('landmarkMsg').textContent=`Traded ${amount} ${from} for ${received} ${to}.`;
+}
+async function activateShrine(kind){
+  const l=hoveredTile&&landmarkAtChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y).key),n=now();if(!l||l.type!=='ancientShrine'||l.ownerId!==playerKey){$('landmarkMsg').textContent='Control this Ancient Shrine first.';return;}if((l.blessingReadyAt||0)>n){$('landmarkMsg').textContent=`Shrine ready in ${fmt(l.blessingReadyAt-n)}.`;return;}account.globalBuffs=account.globalBuffs||{};const duration=kind==='harvest'?3600000:1800000;account.globalBuffs[`${kind}Until`]=n+duration;l.blessingReadyAt=n+l.cooldownMs;l.lastBlessing=kind;l.lastBlessingBy=playerKey;if(Math.random()<.3)account.relicFragments=(account.relicFragments||0)+1;if(Math.random()<.05){account.relics=account.relics||[];if(!account.relics.includes('Shrine Relic'))account.relics.push('Shrine Relic');}await Promise.all([saveAccount(),saveLandmark(l)]);$('landmarkMsg').textContent=`${kind[0].toUpperCase()+kind.slice(1)} Blessing active for ${fmt(duration)}.`;
+}
+function renderLandmarkPanel(l){
+  const info=$('landmarkInfo'),actions=$('landmarkActions');actions.innerHTML='';if(!l){info.textContent='Hover a discovered landmark.';return;}const d=LANDMARK[l.type],n=now(),status=isBossLandmark(l)?(l.bossAlive?'Boss available':`Boss respawns in: ${fmt((l.respawnAt||n)-n)}`):(l.ownerId?'Controlled':'Neutral guards active');info.innerHTML=`<b style="color:${d.color}">${d.icon} ${d.name}</b><br>Owner: ${l.ownerId||'Neutral'}<br>Status: ${status}<br>HP: ${Math.ceil(l.hp)}/${l.maxHp}<br>Guard strength: ${l.guardStrength||d.guards}<br>${landmarkRewardText(l)}${l.type==='ancientShrine'?`<br>Blessing cooldown: ${(l.blessingReadyAt||0)>n?fmt(l.blessingReadyAt-n):'Ready'}`:''}`;
+  const add=(label,fn)=>{const b=document.createElement('button');b.className='small';b.textContent=label;b.onclick=fn;actions.appendChild(b);};
+  if(l.type==='tradePost'&&l.ownerId===playerKey){add('100g → 70l',()=>tradeAtPost('gold','lumber',100,70));add('100l → 70g',()=>tradeAtPost('lumber','gold',100,70));add('50o → 150g',()=>tradeAtPost('oil','gold',50,150));}
+  if(l.type==='ancientShrine'&&l.ownerId===playerKey){add('Army Blessing',()=>activateShrine('army'));add('Builder Blessing',()=>activateShrine('builder'));add('Harvest Blessing',()=>activateShrine('harvest'));}
 }
 const ABILITY_HOTKEYS=['1','2','3','4','5','6','7','8','9'];
 const ABILITY_REGISTRY=[
@@ -914,9 +982,9 @@ $('homeBtn').onclick=()=>{camera.x=account.home.x*32*camera.zoom-canvas.width/2;
 
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('mousedown',e=>{ if(e.button===0){mouse.down=true;mouse.startX=e.clientX;mouse.startY=e.clientY; selBox.style.display='block'; selBox.style.left=e.clientX+'px';selBox.style.top=e.clientY+'px';selBox.style.width='0px';selBox.style.height='0px';}});
-window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y),visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${terr.ownerId||'Neutral'}<br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${camp?`<br><b style="color:#ff9b45">Barbarian Camp (Level ${camp.campLevel||1})</b>`:''}${hoverName?`<br>Hovered: ${hoverName}`:''}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
+window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y),visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y)||visibleLandmarkAtTile(hoveredTile.x,hoveredTile.y); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; renderLandmarkPanel(visible?landmarkAtChunk(c.key):null);if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||LANDMARK[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${terr.ownerId||'Neutral'}<br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${camp?`<br><b style="color:#ff9b45">Barbarian Camp (Level ${camp.campLevel||1})</b>`:''}${hoverName?`<br>Hovered: ${hoverName}`:''}${terr.capture?`<br>Capture: ${terr.capture.playerId} ${fmt(CAPTURE_REQUIRED_MS-(now()-terr.capture.startedAt))} left, enemy ${fmt(terr.capture.enemyMs)}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
 window.addEventListener('mouseup',e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=visibleEntityAtTile(t.x,t.y); if(ent){ if(!e.shiftKey)selected.clear(); selected.add(ent.id);} else if(!e.shiftKey) selected.clear(); } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
-canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; $('modeReadout').textContent='Move'; return;} const ent=visibleEntityAtTile(t.x,t.y); if(ent&&ent.data.ownerId!==playerKey) issueAttack(selected,ent); else issueMove(selected,t.x,t.y,attackMode); attackMode=false; $('modeReadout').textContent='Move'; }});
+canvas.addEventListener('mouseup',e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){placeBuilding(buildMode,t.x,t.y); buildMode=null; $('modeReadout').textContent='Move'; return;} const ent=visibleEntityAtTile(t.x,t.y)||visibleLandmarkAtTile(t.x,t.y); if(ent&&ent.data.ownerId!==playerKey&&(ent.kind!=='landmark'||ent.data.hp>0)) issueAttack(selected,ent); else issueMove(selected,t.x,t.y,attackMode); attackMode=false; $('modeReadout').textContent='Move'; }});
 canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; camera.zoom=clamp(camera.zoom*(e.deltaY<0?1.1:.9),.45,2.2); const mx=e.offsetX,my=e.offsetY; camera.x=(camera.x+mx)*(camera.zoom/old)-mx; camera.y=(camera.y+my)*(camera.zoom/old)-my;},{passive:false});
 window.addEventListener('keydown',e=>{ if(e.key.toLowerCase()==='a'){attackMode=true;$('modeReadout').textContent='Attack-move';} const ability=currentAbilityHotkeys.get(e.key); if(ability&&!e.repeat){e.preventDefault();ability.trigger();}});
 
@@ -1001,6 +1069,12 @@ function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPla
   }
   // battle overlays
   for(const b of battles.values()){const n=now(); if(n>b.endAt)continue; const {cx,cy}=parseChunkKey(b.chunkKey); if(!isChunkVisible(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE); ctx.strokeStyle=n>=b.startAt?'#ff2d45':'#ffb547'; ctx.lineWidth=4; ctx.strokeRect(s.x+3,s.y+3,CHUNK_SIZE*size-6,CHUNK_SIZE*size-6);}
+  // Strategic landmarks are only rendered in chunks currently revealed by fog of war.
+  for(const l of landmarks.values()){
+    const c=parseChunkKey(l.chunkKey);if(!isChunkVisible(c.cx,c.cy))continue;const d=LANDMARK[l.type],s=tileToScreen(l.x,l.y),iconSize=clamp(size*1.35,18,54);
+    ctx.save();ctx.shadowColor=d.color;ctx.shadowBlur=10;ctx.fillStyle='rgba(9,13,19,.9)';ctx.strokeStyle=l.ownerId===playerKey?'#48ff8f':d.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,iconSize*.48,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle=d.color;ctx.font=`700 ${Math.floor(iconSize*.62)}px Segoe UI Symbol`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(d.icon,s.x+size/2,s.y+size/2+1);ctx.restore();
+    if(l.hp>0)drawHp(l,{x:s.x+(size-iconSize)/2,y:s.y+(size-iconSize)/2},iconSize);
+  }
   // buildings
   for(const b of buildings.values()){
     if(b.hp<=0||!isTileVisible(b.x,b.y))continue;
