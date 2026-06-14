@@ -388,11 +388,8 @@ let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), ba
 let unsub=[]; let selected=new Set(); let hoveredTile=null; let hoveredEntity=null; let attackMode=false; let buildMode=null;
 const SIDE_TABS=[['overview','Overview'],['build','Build'],['training','Troop Training'],['hero','Hero'],['quests','Quests'],['diplomacy','Diplomacy'],['research','Research'],['pve','PvE / Landmarks'],['log','Log']];
 const TRAINING_BUILDING_TYPES=new Set(['barracks','stable','siegeShop','alchemistHall','championsHall','engineerShop']);
-let activeSideTab='overview',lastSelectionSignature='';
-
-// DOM helper must be initialized before renderSideTabs() runs.
 const $ = id => document.getElementById(id);
-
+let activeSideTab='overview',lastSelectionSignature='';
 function setSideTab(tabName){
   if(!SIDE_TABS.some(([name])=>name===tabName))return;
   activeSideTab=tabName;
@@ -432,6 +429,8 @@ function pruneSelection(){
     selected.delete(id);
   }
 }
+
+const $ = id => document.getElementById(id);
 const canvas=$('map'), ctx=canvas.getContext('2d'), wrap=$('canvasWrap'), selBox=$('selectionBox');
 
 function log(s){ const el=$('log'); const t=new Date().toLocaleTimeString(); el.innerHTML = `<div>[${t}] ${s}</div>` + el.innerHTML; }
