@@ -95,9 +95,13 @@ const db = getFirestore(app);
 const GAME_ID = "massive_grid_rts_v1";
 const basePath = `lobbies/${GAME_ID}`;
 
-const WORLD_CHUNKS = 200;
+const INITIAL_WORLD_CHUNKS = 200;
 const CHUNK_SIZE = 16;
-const WORLD_TILES = WORLD_CHUNKS * CHUNK_SIZE;
+const EXPANSION_RING_CHUNKS = 50;
+const SPAWN_DENSITY_CHUNKS_PER_PLAYER = 500;
+const MIN_SAFE_SPAWN_CANDIDATES = 20;
+const WORLD_SETTINGS_DEFAULT = {minChunkX:0,minChunkY:0,maxChunkX:INITIAL_WORLD_CHUNKS-1,maxChunkY:INITIAL_WORLD_CHUNKS-1,expansionVersion:1,lastExpandedAt:0,expanding:false};
+let worldSettings = {...WORLD_SETTINGS_DEFAULT};
 const NEW_PLAYER_MIN_SPAWN_DISTANCE_CHUNKS = 12;
 const NEW_PLAYER_FALLBACK_DISTANCES = [NEW_PLAYER_MIN_SPAWN_DISTANCE_CHUNKS,10,8,6,4,2,0];
 const SAVE_EVERY_MS = 1200;
@@ -411,6 +415,14 @@ const REQUEST_MIN_SPAWN_MS = 6 * 3600000;
 const REQUEST_TYPE_DEFS = {well:{title:"Villagers Request a Well",reward:"+5 district stability",ignored:"increased fire risk and unrest"},road:{title:"District Requests a Road Connection",reward:"+4 kingdom stability",ignored:"slower income and construction"},tavern:{title:"Residents Ask for a Tavern",reward:"+120 gold and local morale",ignored:"unrest among crowded homes"},watchtower:{title:"Citizens Request Watchtower Protection",reward:"+2 stability and safer borders",ignored:"barbarian interest and fear"},clearCamp:{title:"District Pleads to Clear Nearby Camp",reward:"+250 gold and +2 stability",ignored:"raids, unrest, and danger"},repair:{title:"Workers Request Repairs",reward:"+150 lumber and workshop morale",ignored:"construction delays and fire risk"},troops:{title:"Garrison Requests Defensive Troops",reward:"+75 hero XP and morale",ignored:"training disruption and fear"},residential:{title:"Sacred District Requests Housing Support",reward:"+3 district stability",ignored:"pilgrim shortages and unrest"},organization:{title:"Mixed District Requests Better Organization",reward:"+1 research and +2 stability",ignored:"income confusion and unrest"}};
 
 let uid=null, player=null, playerKey=null;
+function normalizeWorldSettings(data={}){return {minChunkX:Number.isFinite(data.minChunkX)?data.minChunkX:0,minChunkY:Number.isFinite(data.minChunkY)?data.minChunkY:0,maxChunkX:Number.isFinite(data.maxChunkX)?data.maxChunkX:INITIAL_WORLD_CHUNKS-1,maxChunkY:Number.isFinite(data.maxChunkY)?data.maxChunkY:INITIAL_WORLD_CHUNKS-1,expansionVersion:Number(data.expansionVersion)||1,lastExpandedAt:Number(data.lastExpandedAt)||0,expanding:!!data.expanding};}
+function worldMinTileX(){return worldSettings.minChunkX*CHUNK_SIZE}function worldMinTileY(){return worldSettings.minChunkY*CHUNK_SIZE}function worldMaxTileX(){return (worldSettings.maxChunkX+1)*CHUNK_SIZE-1}function worldMaxTileY(){return (worldSettings.maxChunkY+1)*CHUNK_SIZE-1}
+function worldWidthChunks(){return worldSettings.maxChunkX-worldSettings.minChunkX+1}function worldHeightChunks(){return worldSettings.maxChunkY-worldSettings.minChunkY+1}function worldAreaChunks(){return worldWidthChunks()*worldHeightChunks()}
+function isChunkInWorld(cx,cy){return cx>=worldSettings.minChunkX&&cy>=worldSettings.minChunkY&&cx<=worldSettings.maxChunkX&&cy<=worldSettings.maxChunkY}function isTileInWorld(x,y){const c=getChunkOfTile(x,y);return isChunkInWorld(c.cx,c.cy)}
+function randomWorldChunk(){return {cx:worldSettings.minChunkX+Math.floor(Math.random()*worldWidthChunks()),cy:worldSettings.minChunkY+Math.floor(Math.random()*worldHeightChunks())};}
+function deterministicWorldChunk(a,b,seed){return {cx:worldSettings.minChunkX+Math.floor(hash2(a,b,seed)*worldWidthChunks()),cy:worldSettings.minChunkY+Math.floor(hash2(b,a,seed+97)*worldHeightChunks())};}
+function isFrontierChunk(cx,cy,ring=EXPANSION_RING_CHUNKS){return cx<worldSettings.minChunkX+ring||cy<worldSettings.minChunkY+ring||cx>worldSettings.maxChunkX-ring||cy>worldSettings.maxChunkY-ring}
+function clampCamera(){const size=32*camera.zoom,minX=worldMinTileX()*size,minY=worldMinTileY()*size,maxX=(worldMaxTileX()+1)*size-canvas.width,maxY=(worldMaxTileY()+1)*size-canvas.height;camera.x=clamp(camera.x,Math.min(minX,maxX),Math.max(minX,maxX));camera.y=clamp(camera.y,Math.min(minY,maxY),Math.max(minY,maxY));}
 let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), landmarks=new Map(), onlineRaids=new Map(), playerAccounts=new Map(), alliances=new Map();
 let unsub=[]; let selected=new Set(); let hoveredTile=null; let hoveredEntity=null; let attackMode=false; let buildMode=null; let commandFeedback=null;
 const SIDE_TABS=[['overview','Overview'],['build','Build'],['training','Troop Training'],['requests','Inbox'],['hero','Hero'],['quests','Quests'],['diplomacy','Diplomacy'],['research','Research'],['pve','PvE / Landmarks'],['log','Log']];
@@ -557,7 +569,7 @@ function getSuppliedChunks(playerId){
     const {cx,cy}=parseChunkKey(queue.shift());
     for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
       const nx=cx+dx,ny=cy+dy;
-      if(nx<0||ny<0||nx>=WORLD_CHUNKS||ny>=WORLD_CHUNKS)continue;
+      if(!isChunkInWorld(nx,ny))continue;
       const key=chunkKey(nx,ny),territory=territories.get(key);
       if(supplied.has(key)||!territory?.ownerId||!allianceAllowsSupply(playerId,territory.ownerId))continue;
       supplied.add(key);queue.push(key);
@@ -568,7 +580,7 @@ function getSuppliedChunks(playerId){
 function addChunkAndAdjacent(set,cx,cy){
   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
     const nx=cx+dx,ny=cy+dy;
-    if(nx>=0&&ny>=0&&nx<WORLD_CHUNKS&&ny<WORLD_CHUNKS)set.add(chunkKey(nx,ny));
+    if(isChunkInWorld(nx,ny))set.add(chunkKey(nx,ny));
   }
 }
 function getVisibleChunksForPlayer(playerId){
@@ -576,12 +588,12 @@ function getVisibleChunksForPlayer(playerId){
   const sharedVision=allianceSettingFor(playerId,'sharedVision',true);
   for(const t of territories.values())if(t.ownerId===playerId||(sharedVision&&isAllied(playerId,t.ownerId)))addChunkAndAdjacent(visible,t.cx,t.cy);
   for(const u of troops.values())if(u.hp>0&&(u.ownerId===playerId||(sharedVision&&isAllied(playerId,u.ownerId)))){
-    const c=getChunkOfTile(u.x,u.y),radius=(u.type==='scout'&&hasTech('ancientMaps',playerId))?2:1;for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(c.cx+dx>=0&&c.cy+dy>=0&&c.cx+dx<WORLD_CHUNKS&&c.cy+dy<WORLD_CHUNKS)visible.add(chunkKey(c.cx+dx,c.cy+dy));
+    const c=getChunkOfTile(u.x,u.y),radius=(u.type==='scout'&&hasTech('ancientMaps',playerId))?2:1;for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(isChunkInWorld(c.cx+dx,c.cy+dy))visible.add(chunkKey(c.cx+dx,c.cy+dy));
   }
-  for(const b of buildings.values())if(isBuildingComplete(b)&&b.type==='watchtower'&&(b.ownerId===playerId||(sharedVision&&isAllied(playerId,b.ownerId)))){const c=getChunkOfTile(b.x,b.y),radius=BUILDING.watchtower.vision+(hasTech('ancientMaps',playerId)?1:0);for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(c.cx+dx>=0&&c.cy+dy>=0&&c.cx+dx<WORLD_CHUNKS&&c.cy+dy<WORLD_CHUNKS)visible.add(chunkKey(c.cx+dx,c.cy+dy));}
+  for(const b of buildings.values())if(isBuildingComplete(b)&&b.type==='watchtower'&&(b.ownerId===playerId||(sharedVision&&isAllied(playerId,b.ownerId)))){const c=getChunkOfTile(b.x,b.y),radius=BUILDING.watchtower.vision+(hasTech('ancientMaps',playerId)?1:0);for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(isChunkInWorld(c.cx+dx,c.cy+dy))visible.add(chunkKey(c.cx+dx,c.cy+dy));}
   // Permanent discoveries and one-hour vision earned by clearing barbarian camps.
   for(const key of account.revealedChunks||[]){const c=parseChunkKey(key);addChunkAndAdjacent(visible,c.cx,c.cy);}
-  for(const vision of account.temporaryVision||[])if(vision.until>n){const c=parseChunkKey(vision.chunkKey);for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)if(c.cx+dx>=0&&c.cy+dy>=0&&c.cx+dx<WORLD_CHUNKS&&c.cy+dy<WORLD_CHUNKS)visible.add(chunkKey(c.cx+dx,c.cy+dy));}
+  for(const vision of account.temporaryVision||[])if(vision.until>n){const c=parseChunkKey(vision.chunkKey);for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)if(isChunkInWorld(c.cx+dx,c.cy+dy))visible.add(chunkKey(c.cx+dx,c.cy+dy));}
   return visible;
 }
 function isChunkVisible(cx,cy){return visibleChunks.has(chunkKey(cx,cy));}
@@ -623,9 +635,9 @@ function getProvinceId(cx,cy){return `${Math.floor(cx/PROVINCE_SIZE)}_${Math.flo
 function romanNumeral(value){const pairs=[[1000,"M"],[900,"CM"],[500,"D"],[400,"CD"],[100,"C"],[90,"XC"],[50,"L"],[40,"XL"],[10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"]];let out="";for(const [n,s] of pairs)while(value>=n){out+=s;value-=n;}return out;}
 function provinceMetadataFor(id){
   if(provinceMetadata.has(id))return provinceMetadata.get(id);
-  const {cx:px,cy:py}=parseChunkKey(id),columns=Math.ceil(WORLD_CHUNKS/PROVINCE_SIZE),index=py*columns+px,pairCount=PROVINCE_NAME_PREFIXES.length*PROVINCE_NAME_SUFFIXES.length,pairIndex=index%pairCount;
-  const prefix=PROVINCE_NAME_PREFIXES[pairIndex%PROVINCE_NAME_PREFIXES.length],suffix=PROVINCE_NAME_SUFFIXES[Math.floor(pairIndex/PROVINCE_NAME_PREFIXES.length)%PROVINCE_NAME_SUFFIXES.length],cycle=Math.floor(index/pairCount),safety=1+Math.floor(hash2(px,py,407)*5),tagCount=2+Math.floor(hash2(px,py,408)*3),tags=[],preferred=[],bonusId=getProvinceBonus(id);
-  if(bonusId==='gold')preferred.push("Gold-Rich");if(bonusId==='lumber')preferred.push("Rich Timber","Dense Forest");if(bonusId==='oil')preferred.push("Oil-Seeped");if(bonusId==='trade')preferred.push("Trade Route","Strategic Crossroads");if(bonusId==='ancient')preferred.push("Ancient Ground","Shrine Land");if(bonusId==='borderland')preferred.push("Border Tension","Fortified Region");if(bonusId==='wild')preferred.push("Wild Frontier","Monster Lair");
+  const {cx:px,cy:py}=parseChunkKey(id),columns=Math.ceil(worldWidthChunks()/PROVINCE_SIZE),index=(py-Math.floor(worldSettings.minChunkY/PROVINCE_SIZE))*columns+(px-Math.floor(worldSettings.minChunkX/PROVINCE_SIZE)),pairCount=PROVINCE_NAME_PREFIXES.length*PROVINCE_NAME_SUFFIXES.length,pairIndex=index%pairCount;
+  const prefix=PROVINCE_NAME_PREFIXES[pairIndex%PROVINCE_NAME_PREFIXES.length],suffix=PROVINCE_NAME_SUFFIXES[Math.floor(pairIndex/PROVINCE_NAME_PREFIXES.length)%PROVINCE_NAME_SUFFIXES.length],cycle=Math.floor(index/pairCount),edgeProvince=isFrontierChunk(px*PROVINCE_SIZE,py*PROVINCE_SIZE,EXPANSION_RING_CHUNKS),safety=clamp(1+Math.floor(hash2(px,py,407)*5)+(edgeProvince&&hash2(px,py,410)>.45?1:0),1,5),tagCount=2+Math.floor(hash2(px,py,408)*3),tags=[],preferred=[],bonusId=getProvinceBonus(id);
+  if(bonusId==='gold')preferred.push("Gold-Rich");if(bonusId==='lumber')preferred.push("Rich Timber","Dense Forest");if(bonusId==='oil')preferred.push("Oil-Seeped");if(bonusId==='trade')preferred.push("Trade Route","Strategic Crossroads");if(bonusId==='ancient')preferred.push("Ancient Ground","Shrine Land");if(bonusId==='borderland')preferred.push("Border Tension","Fortified Region");if(bonusId==='wild'||edgeProvince)preferred.push("Wild Frontier","Monster Lair");
   preferred.push(safety<=2?"Safe Roads":safety>=4?"Raider Country":"Uncooperative");for(const tag of preferred)if(!tags.includes(tag)&&tags.length<tagCount)tags.push(tag);
   for(let i=0;tags.length<tagCount;i++){const tag=PROVINCE_TAGS[Math.floor(hash2(px+i*7,py-i*11,409+i)*PROVINCE_TAGS.length)];if(!tags.includes(tag))tags.push(tag);}
   const data={name:`${prefix} of ${suffix}${cycle?` ${romanNumeral(cycle+1)}`:""}`,tags,safety,safetyLabel:PROVINCE_SAFETY_LABELS[safety],barbarianTendency:PROVINCE_TENDENCIES[safety],scoutingNeeded:1+Math.floor((safety-1)/2)};
@@ -702,8 +714,55 @@ async function createOrLogin(create){
 function chunkDistance(a,b){return Math.max(Math.abs(a.cx-b.cx),Math.abs(a.cy-b.cy));}
 function isFarEnoughFromPlayers(cx,cy,ownedChunks,minDistance){return ownedChunks.every(o=>chunkDistance({cx,cy},o)>=minDistance);}
 function spawnAtChunk(cx,cy){return {cx,cy,x:cx*CHUNK_SIZE+8,y:cy*CHUNK_SIZE+8};}
+async function ensureWorldSettings(){
+  const settingsRef=ref('world','settings'),snap=await getDoc(settingsRef);
+  if(snap.exists()){worldSettings=normalizeWorldSettings(snap.data());return worldSettings;}
+  const initialized={...WORLD_SETTINGS_DEFAULT,lastExpandedAt:now()};
+  await setDoc(settingsRef,initialized,{merge:true});worldSettings=normalizeWorldSettings(initialized);return worldSettings;
+}
+function analyzeSpawnPressure(occupied,ownedChunks){
+  let valid=0,blockedByPlayers=0,spawnable=0;
+  for(let i=0;i<1200;i++){
+    const cx=worldSettings.minChunkX+Math.floor(hash2(i,23,931)*worldWidthChunks()),cy=worldSettings.minChunkY+Math.floor(hash2(23,i,932)*worldHeightChunks()),key=chunkKey(cx,cy);
+    if(occupied.has(key)||terrainAt(cx*CHUNK_SIZE+8,cy*CHUNK_SIZE+8)!=='plain')continue;
+    spawnable++;
+    if(!isFarEnoughFromPlayers(cx,cy,ownedChunks,NEW_PLAYER_MIN_SPAWN_DISTANCE_CHUNKS)){blockedByPlayers++;continue;}
+    valid++;
+  }
+  return {valid,spawnable,blockedRatio:spawnable?blockedByPlayers/spawnable:1,capacityPlayers:Math.floor(worldAreaChunks()/SPAWN_DENSITY_CHUNKS_PER_PLAYER)};
+}
+function shouldExpandForSpawnPressure(analysis,playerCount){
+  return playerCount>analysis.capacityPlayers||analysis.valid<MIN_SAFE_SPAWN_CANDIDATES||analysis.blockedRatio>.8;
+}
+async function expandWorldIfNeeded(){
+  const settingsRef=ref('world','settings'),n=now();
+  const expanded=await runTransaction(db,async tx=>{
+    const snap=await tx.get(settingsRef),current=normalizeWorldSettings(snap.exists()?snap.data():WORLD_SETTINGS_DEFAULT);
+    if(current.expanding&&n-current.lastExpandedAt<30000)return null;
+    const next={minChunkX:current.minChunkX-EXPANSION_RING_CHUNKS,minChunkY:current.minChunkY-EXPANSION_RING_CHUNKS,maxChunkX:current.maxChunkX+EXPANSION_RING_CHUNKS,maxChunkY:current.maxChunkY+EXPANSION_RING_CHUNKS,expansionVersion:(current.expansionVersion||1)+1,expanding:false,lastExpandedAt:n,previousBounds:{minChunkX:current.minChunkX,minChunkY:current.minChunkY,maxChunkX:current.maxChunkX,maxChunkY:current.maxChunkY}};
+    tx.set(settingsRef,next,{merge:true});return next;
+  });
+  if(expanded){worldSettings=normalizeWorldSettings(expanded);provinceMetadata.clear();await generateFrontierLandmarks(expanded.previousBounds,expanded.expansionVersion);log('The frontier has expanded. New lands have appeared beyond the old borders.');}
+  return !!expanded;
+}
+async function generateFrontierLandmarks(oldBounds,version){
+  if(!oldBounds)return;
+  const used=new Set([...landmarks.values()].map(l=>l.chunkKey)),forts=[...buildings.values()].filter(b=>b.type==='fortress'),batch=writeBatch(db);let made=0;
+  const frontierTypes=['tradePost','ancientShrine','dragonNest','giantCave','relicRuin','warlordFortress'];
+  for(let i=0;i<18;i++){
+    const side=Math.floor(hash2(version,i,711)*4),spanX=worldWidthChunks(),spanY=worldHeightChunks();
+    const cx=side===0?worldSettings.minChunkX+Math.floor(hash2(i,side,712)*EXPANSION_RING_CHUNKS):side===1?oldBounds.maxChunkX+1+Math.floor(hash2(i,side,713)*EXPANSION_RING_CHUNKS):worldSettings.minChunkX+Math.floor(hash2(i,side,714)*spanX);
+    const cy=side===2?worldSettings.minChunkY+Math.floor(hash2(i,side,715)*EXPANSION_RING_CHUNKS):side===3?oldBounds.maxChunkY+1+Math.floor(hash2(i,side,716)*EXPANSION_RING_CHUNKS):worldSettings.minChunkY+Math.floor(hash2(i,side,717)*spanY);
+    if(!isChunkInWorld(cx,cy)||!isFrontierChunk(cx,cy)||used.has(chunkKey(cx,cy))||forts.some(f=>chunkDistance(parseChunkKey(f.chunkKey),{cx,cy})<5))continue;
+    const resource=chunkResource(cx,cy),special=specialLandmarkTypeForResource(resource,cx,cy),type=special||frontierTypes[Math.floor(hash2(cx,cy,718)*frontierTypes.length)],d=LANDMARK[type];if(!d)continue;
+    const center={x:cx*CHUNK_SIZE+8,y:cy*CHUNK_SIZE+8};if(terrainAt(center.x,center.y)!=='plain')continue;
+    const key=chunkKey(cx,cy),id=`landmark_frontier_v${version}_${type}_${key}`;used.add(key);batch.set(ref('landmarks',id),{id,type,x:center.x,y:center.y,chunkKey:key,ownerId:null,hp:d.hp,maxHp:d.hp,bossAlive:isBossLandmark({type}),respawnAt:null,lastDefeatedAt:null,lastDefeatedBy:null,cooldownMs:d.cooldownMs,guardStrength:d.guards,frontierVersion:version,createdAt:now()});made++;
+  }
+  if(made){await batch.commit();log(`${made} frontier landmarks appeared in the expanded wilds.`);}
+}
 async function findFreeSpawn(){
   const occupied=new Set(),ownedChunks=[],ownedChunkKeys=new Set();
+  await ensureWorldSettings();
   const [territorySnap,buildingSnap]=await Promise.all([getDocs(col('territories')),getDocs(col('buildings'))]);
   territorySnap.forEach(d=>{
     occupied.add(d.id);
@@ -723,15 +782,21 @@ async function findFreeSpawn(){
       ownedChunks.push({cx:position.cx,cy:position.cy});
     }
   });
-  for(const minDistance of NEW_PLAYER_FALLBACK_DISTANCES){
-    for(let i=0;i<8000;i++){
-      const cx=Math.floor(hash2(i,17,321)*WORLD_CHUNKS),cy=Math.floor(hash2(i,41,654)*WORLD_CHUNKS);
+  const analysis=analyzeSpawnPressure(occupied,ownedChunks);
+  if(shouldExpandForSpawnPressure(analysis,ownedChunks.length))await expandWorldIfNeeded();
+  const worlds=[worldSettings];
+  for(const bounds of worlds)for(const minDistance of NEW_PLAYER_FALLBACK_DISTANCES){
+    const frontier=minDistance===NEW_PLAYER_MIN_SPAWN_DISTANCE_CHUNKS;
+    for(let i=0;i<10000;i++){
+      const width=bounds.maxChunkX-bounds.minChunkX+1,height=bounds.maxChunkY-bounds.minChunkY+1;
+      const cx=bounds.minChunkX+Math.floor(hash2(i,minDistance,321)*width),cy=bounds.minChunkY+Math.floor(hash2(minDistance,i,654)*height);
+      if(frontier&&!isFrontierChunk(cx,cy))continue;
       if(occupied.has(chunkKey(cx,cy))||chunkResource(cx,cy)!=='gold'||!isFarEnoughFromPlayers(cx,cy,ownedChunks,minDistance))continue;
       return spawnAtChunk(cx,cy);
     }
   }
   for(const minDistance of NEW_PLAYER_FALLBACK_DISTANCES){
-    for(let cy=0;cy<WORLD_CHUNKS;cy++)for(let cx=0;cx<WORLD_CHUNKS;cx++){
+    for(let cy=worldSettings.minChunkY;cy<=worldSettings.maxChunkY;cy++)for(let cx=worldSettings.minChunkX;cx<=worldSettings.maxChunkX;cx++){
       if(occupied.has(chunkKey(cx,cy))||!isFarEnoughFromPlayers(cx,cy,ownedChunks,minDistance))continue;
       return spawnAtChunk(cx,cy);
     }
@@ -774,7 +839,7 @@ async function maybeRunTerrainRebalance(){
 async function startGame(){
   ensureSurvivalState();if(!account.survival.nextOnlineRaidAt)account.survival.nextOnlineRaidAt=now()+randomOnlineRaidDelay();
   $('login').style.display='none'; $('game').style.display='block'; $('playerTitle').textContent=account.displayName||playerKey;
-  resize(); camera.x=account.home.x*32 - canvas.width/2; camera.y=account.home.y*32 - canvas.height/2;
+  resize(); camera.x=account.home.x*32 - canvas.width/2; camera.y=account.home.y*32 - canvas.height/2;clampCamera();
   unsub.forEach(u=>u()); unsub=[];
   unsub.push(onSnapshot(col('territories'),s=>{territories.clear();s.forEach(d=>territories.set(d.id,{id:d.id,...d.data()})); updateUI();}));
   unsub.push(onSnapshot(col('troops'),s=>{const prior=previousBarbarianChunks;troops.clear();s.forEach(d=>troops.set(d.id,normalizeTroop({id:d.id,...d.data()})));if(barbarianSnapshotReady)detectBarbarianTerritoryEntries(prior);previousBarbarianChunks=new Map([...troops.values()].filter(isBarbarianUnit).map(u=>[u.id,getChunkOfTile(u.x,u.y).key]));barbarianSnapshotReady=true;pruneSelection();updateUI();}));
@@ -785,7 +850,8 @@ async function startGame(){
   unsub.push(onSnapshot(col('accounts'),s=>{playerAccounts.clear();s.forEach(d=>playerAccounts.set(d.id,{id:d.id,...d.data()}));}));
   unsub.push(onSnapshot(col('alliances'),s=>{alliances.clear();s.forEach(d=>alliances.set(d.id,{id:d.id,...d.data()}));updateUI();}));
   unsub.push(onSnapshot(ref('worldState','barbarians'),s=>{barbarianWorldState=s.exists()?s.data():{nextBarbarianSpawnCheckAt:0};}));
-  await saveAccount();await collectOfflineResources(); buildButtons(); requestAnimationFrame(loop); log('Entered world at your fortress.');
+  unsub.push(onSnapshot(ref('world','settings'),s=>{worldSettings=normalizeWorldSettings(s.exists()?s.data():WORLD_SETTINGS_DEFAULT);provinceMetadata.clear();updateUI();}));
+  await saveAccount();await collectOfflineResources(); buildButtons(); requestAnimationFrame(loop); log(`Entered world at your fortress. World size: ${worldWidthChunks()}×${worldHeightChunks()} chunks.`);
   setTimeout(()=>maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message)),1200);
   setTimeout(()=>ensureLandmarksGenerated().catch(e=>log('Landmark generation error: '+e.message)),1800);
   setTimeout(()=>maybeRunTerrainRebalance().catch(e=>log('Terrain rebalance error: '+e.message)),2400);
@@ -970,7 +1036,7 @@ function entityAtTile(x,y){for(const u of troops.values()) if(u.hp>0&&u.x===x&&u
 function blockingEntityAtTile(x,y){for(const u of troops.values())if(u.hp>0&&u.x===x&&u.y===y)return {kind:'troop',id:u.id,data:u};for(const b of buildings.values())if(b.hp>0&&b.type!=='road'&&b.x===x&&b.y===y)return {kind:'building',id:b.id,data:b};return null;}
 function visibleEntityAtTile(x,y){return isTileVisible(x,y)?entityAtTile(x,y):null;}
 function visibleLandmarkAtTile(x,y){if(!isTileVisible(x,y))return null;const c=getChunkOfTile(x,y),l=landmarkAtChunk(c.key);if(!l)return null;return {kind:'landmark',id:l.id,data:l};}
-function isBlocked(x,y,unit=null,targetKey=null){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)return true; const e=blockingEntityAtTile(x,y); if(unit?.inArena){ if(e && e.id!==targetKey && e.id!==unit.id && e.kind==='troop') return true; return false; } const terr=terrainAt(x,y); if(terr==='water'||terr==='mountain')return true; if(e && e.id!==targetKey && e.data.ownerId!==unit?.ownerId) return true; if(e && e.id!==unit?.id && e.kind==='troop') return true; if(e&&e.kind==='building'&&BUILDING[e.data.type]?.gate&&(e.data.ownerId===unit?.ownerId||isAllied(e.data.ownerId,unit?.ownerId)))return false; if(e && e.kind==='building' && BUILDING[e.data.type]?.wall && e.data.ownerId!==unit?.ownerId) return true; if(unit && isEnemyOwnedBlocked(unit,x,y)) return true; return false; }
+function isBlocked(x,y,unit=null,targetKey=null){ if(!isTileInWorld(x,y))return true; const e=blockingEntityAtTile(x,y); if(unit?.inArena){ if(e && e.id!==targetKey && e.id!==unit.id && e.kind==='troop') return true; return false; } const terr=terrainAt(x,y); if(terr==='water'||terr==='mountain')return true; if(e && e.id!==targetKey && e.data.ownerId!==unit?.ownerId) return true; if(e && e.id!==unit?.id && e.kind==='troop') return true; if(e&&e.kind==='building'&&BUILDING[e.data.type]?.gate&&(e.data.ownerId===unit?.ownerId||isAllied(e.data.ownerId,unit?.ownerId)))return false; if(e && e.kind==='building' && BUILDING[e.data.type]?.wall && e.data.ownerId!==unit?.ownerId) return true; if(unit && isEnemyOwnedBlocked(unit,x,y)) return true; return false; }
 
 const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
 function findPath(unit,tx,ty,maxNodes=800){
@@ -1100,8 +1166,8 @@ function awardNearbyTroopXp(ownerId,point,radius,amount,reason,filter=()=>true){
 
 function landmarkCandidate(type,index,used,forts){
   for(let attempt=0;attempt<600;attempt++){
-    const cx=Math.floor(hash2(index,attempt,8100+Object.keys(LANDMARK).indexOf(type))*WORLD_CHUNKS);
-    const cy=Math.floor(hash2(attempt,index,9100+Object.keys(LANDMARK).indexOf(type))*WORLD_CHUNKS);
+    const cx=worldSettings.minChunkX+Math.floor(hash2(index,attempt,8100+Object.keys(LANDMARK).indexOf(type))*worldWidthChunks());
+    const cy=worldSettings.minChunkY+Math.floor(hash2(attempt,index,9100+Object.keys(LANDMARK).indexOf(type))*worldHeightChunks());
     const key=chunkKey(cx,cy),resource=chunkResource(cx,cy),center={x:cx*CHUNK_SIZE+8,y:cy*CHUNK_SIZE+8};
     if(used.has(key)||forts.some(f=>Math.max(Math.abs(parseChunkKey(f.chunkKey).cx-cx),Math.abs(parseChunkKey(f.chunkKey).cy-cy))<4))continue;
     if(type==='tradePost'&&resource!=='plain'&&hash2(cx,cy,333)<.65)continue;
@@ -1143,7 +1209,7 @@ function randomOpenTileInChunk(cx,cy,unit={ownerId:`${BARBARIAN_OWNER_PREFIX}_sp
 function findFreeBarbarianCampSpot(){
   const camps=[...buildings.values()].filter(isBarbarianCamp), forts=[...buildings.values()].filter(b=>b.type==='fortress'&&b.hp>0);
   for(let attempt=0;attempt<BARBARIAN_CAMP_RESPAWN_ATTEMPTS;attempt++){
-    const cx=Math.floor(Math.random()*WORLD_CHUNKS),cy=Math.floor(Math.random()*WORLD_CHUNKS),key=chunkKey(cx,cy),res=chunkResource(cx,cy);
+    const rc=randomWorldChunk(),cx=rc.cx,cy=rc.cy,key=chunkKey(cx,cy),res=chunkResource(cx,cy);
     if(territories.get(key)?.ownerId||[...buildings.values()].some(b=>b.hp>0&&b.chunkKey===key))continue;
     if(forts.some(f=>{const c=parseChunkKey(f.chunkKey);return Math.max(Math.abs(c.cx-cx),Math.abs(c.cy-cy))<3;}))continue;
     if(camps.some(c=>{const cc=parseChunkKey(c.chunkKey);return Math.max(Math.abs(cc.cx-cx),Math.abs(cc.cy-cy))<4;}))continue;
@@ -1157,9 +1223,9 @@ function ownedChunksForPlayer(id){return [...territories.values()].filter(t=>t.o
 function playerAgeMs(id){const a=id===playerKey?account:playerAccounts.get(id);return Math.max(0,now()-Number(a?.createdAt||a?.joinedAt||now()));}
 function playerAbsenceHours(id){const a=id===playerKey?account:playerAccounts.get(id);return Math.max(0,(now()-Number(a?.lastSeenAt||a?.lastLoginAt||now()))/3600000);}
 function absenceDangerMultiplier(id){const h=playerAbsenceHours(id);return h<12?1:h<24?1.12:h<48?1.28:1.45;}
-function territoryEdgeDistance(cx,cy,ownerId){for(let r=0;r<=4;r++)for(let y=cy-r;y<=cy+r;y++)for(let x=cx-r;x<=cx+r;x++)if(x<0||y<0||x>=WORLD_CHUNKS||y>=WORLD_CHUNKS||territories.get(chunkKey(x,y))?.ownerId!==ownerId)return r;return 5;}
+function territoryEdgeDistance(cx,cy,ownerId){for(let r=0;r<=4;r++)for(let y=cy-r;y<=cy+r;y++)for(let x=cx-r;x<=cx+r;x++)if(!isChunkInWorld(x,y)||territories.get(chunkKey(x,y))?.ownerId!==ownerId)return r;return 5;}
 function barbarianTagBonus(tags){return tags.reduce((n,t)=>n+({["Raider Country"]:1.4,["Wild Frontier"]:1.25,["Barbarian Trail"]:1.35,Hostile:1.35,Uncooperative:1.12}[t]||0),0);}
-function findBarbarianSpawnNearPlayer(id){const owned=ownedChunksForPlayer(id),camps=[...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0),grace=playerAgeMs(id)<BARBARIAN_NEW_PLAYER_GRACE_MS,out=[];for(const o of owned)for(let dy=-6;dy<=6;dy++)for(let dx=-6;dx<=6;dx++){const d=Math.max(Math.abs(dx),Math.abs(dy)),cx=o.cx+dx,cy=o.cy+dy,key=chunkKey(cx,cy);if(d<1||d>6||cx<0||cy<0||cx>=WORLD_CHUNKS||cy>=WORLD_CHUNKS||territories.get(key)?.ownerId||(grace&&d<4))continue;if([...buildings.values()].some(b=>b.hp>0&&b.chunkKey===key)||camps.some(c=>chunkDistance({cx,cy},parseChunkKey(c.chunkKey))<3))continue;const tile=randomOpenTileInChunk(cx,cy),meta=provinceMetadataFor(getProvinceId(cx,cy)),nearCamps=camps.filter(c=>chunkDistance({cx,cy},parseChunkKey(c.chunkKey))<=6).length,edge=territoryEdgeDistance(o.cx,o.cy,id);if(tile)out.push({...tile,cx,cy,chunkKey:key,resource:chunkResource(cx,cy),spawnCategory:d<=2?'border':'frontier',targetPlayerKey:id,score:(7-d)*2+(6-meta.safety)*-1+meta.safety*2.4+barbarianTagBonus(meta.tags)+absenceDangerMultiplier(id)*3+(4-edge)*1.4-nearCamps*2+Math.random()*3});}return out.sort((a,b)=>b.score-a.score)[0]||null;}
+function findBarbarianSpawnNearPlayer(id){const owned=ownedChunksForPlayer(id),camps=[...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0),grace=playerAgeMs(id)<BARBARIAN_NEW_PLAYER_GRACE_MS,out=[];for(const o of owned)for(let dy=-6;dy<=6;dy++)for(let dx=-6;dx<=6;dx++){const d=Math.max(Math.abs(dx),Math.abs(dy)),cx=o.cx+dx,cy=o.cy+dy,key=chunkKey(cx,cy);if(d<1||d>6||!isChunkInWorld(cx,cy)||territories.get(key)?.ownerId||(grace&&d<4))continue;if([...buildings.values()].some(b=>b.hp>0&&b.chunkKey===key)||camps.some(c=>chunkDistance({cx,cy},parseChunkKey(c.chunkKey))<3))continue;const tile=randomOpenTileInChunk(cx,cy),meta=provinceMetadataFor(getProvinceId(cx,cy)),nearCamps=camps.filter(c=>chunkDistance({cx,cy},parseChunkKey(c.chunkKey))<=6).length,edge=territoryEdgeDistance(o.cx,o.cy,id);if(tile)out.push({...tile,cx,cy,chunkKey:key,resource:chunkResource(cx,cy),spawnCategory:d<=2?'border':'frontier',targetPlayerKey:id,score:(7-d)*2+(6-meta.safety)*-1+meta.safety*2.4+barbarianTagBonus(meta.tags)+absenceDangerMultiplier(id)*3+(4-edge)*1.4-nearCamps*2+Math.random()*3});}return out.sort((a,b)=>b.score-a.score)[0]||null;}
 function getBarbarianThreatLevel(camp,id){const a=id===playerKey?account:playerAccounts.get(id),age=playerAgeMs(id),fort=Number(a?.fortressLevel||1),count=[...troops.values()].filter(u=>u.ownerId===id&&u.hp>0).length;if(age<24*3600000)return 1;return clamp(Math.round(1+fort/3+count/28),1,5);}
 function scaleBarbarianCampForNearbyPlayer(camp,id){const c=parseChunkKey(camp.chunkKey),safety=provinceMetadataFor(getProvinceId(c.cx,c.cy)).safety,level=clamp(getBarbarianThreatLevel(camp,id)+Math.floor((safety-2)/2),1,5),cfg=BARBARIAN_CAMP_LEVELS[level],type=campTypeDef(camp);camp.campLevel=level;camp.maxHp=Math.round(cfg.hp*type.defense);camp.hp=camp.maxHp;camp.scaledFor=id;return camp;}
 async function ensureBarbarianPresenceNearPlayers(){const candidates=[...playerAccounts.keys()];if(playerKey&&!candidates.includes(playerKey))candidates.push(playerKey);candidates.sort((a,b)=>absenceDangerMultiplier(b)-absenceDangerMultiplier(a));let made=0;for(const id of candidates){if(barbarianCampCount()>=MAX_BARBARIAN_CAMPS||made>=2)break;const owned=ownedChunksForPlayer(id);if(!owned.length||playerAgeMs(id)<BARBARIAN_NEW_PLAYER_GRACE_MS)continue;const near=[...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0&&owned.some(t=>chunkDistance(parseChunkKey(b.chunkKey),t)<=BARBARIAN_PRESENCE_RADIUS)),desired=Math.min(3,Math.ceil(BARBARIAN_MIN_NEAR_PLAYER*absenceDangerMultiplier(id)));if(near.length>=desired||Math.random()>Math.min(.85,.42*absenceDangerMultiplier(id)))continue;const spot=findBarbarianSpawnNearPlayer(id);if(spot){await spawnBarbarianCamp(spot);made++;}}return made;}
@@ -1185,7 +1251,7 @@ function findOnlineRaidSpawnChunkForPlayer(id){
   if(!origins.length)return null;const candidates=[];
   for(const maxRadius of [ONLINE_RAID_SPAWN_RADIUS_MAX_CHUNKS,6])for(const origin of origins)for(let dy=-maxRadius;dy<=maxRadius;dy++)for(let dx=-maxRadius;dx<=maxRadius;dx++){
     const d=Math.max(Math.abs(dx),Math.abs(dy)),cx=origin.cx+dx,cy=origin.cy+dy,key=chunkKey(cx,cy);
-    if(d<ONLINE_RAID_SPAWN_RADIUS_MIN_CHUNKS||d>maxRadius||cx<0||cy<0||cx>=WORLD_CHUNKS||cy>=WORLD_CHUNKS)continue;
+    if(d<ONLINE_RAID_SPAWN_RADIUS_MIN_CHUNKS||d>maxRadius||!isChunkInWorld(cx,cy))continue;
     if(territories.get(key)?.ownerId||importantBuildingInChunk(key))continue;
     if(ONLINE_RAID_PLAYER_LAND_BUFFER_CHUNKS&&[...territories.values()].some(t=>t.ownerId&&chunkDistance(t,{cx,cy})<=ONLINE_RAID_PLAYER_LAND_BUFFER_CHUNKS))continue;
     const tile=randomOpenTileInChunk(cx,cy,{ownerId:`${BARBARIAN_OWNER_PREFIX}_online`,barbarian:true});if(!tile)continue;
@@ -1249,9 +1315,9 @@ async function spawnBarbarianCamp(spot){
 }
 async function spawnWanderingBarbarianForce(){
   if(wanderingBarbarianOwners().size>=MAX_BARBARIAN_FORCE_COUNT)return false;
-  for(let tries=0;tries<200;tries++){const cx=Math.floor(Math.random()*WORLD_CHUNKS),cy=Math.floor(Math.random()*WORLD_CHUNKS),key=chunkKey(cx,cy),fort=[...buildings.values()].some(b=>b.type==='fortress'&&b.chunkKey===key);if(fort)continue;const spot=randomOpenTileInChunk(cx,cy);if(!spot)continue;
+  for(let tries=0;tries<200;tries++){const rc=randomWorldChunk(),cx=rc.cx,cy=rc.cy,key=chunkKey(cx,cy),fort=[...buildings.values()].some(b=>b.type==='fortress'&&b.chunkKey===key);if(fort)continue;const spot=randomOpenTileInChunk(cx,cy);if(!spot)continue;
     const n=now(),ownerId=`${BARBARIAN_OWNER_PREFIX}_force_${n}_${Math.floor(Math.random()*1e6)}`,count=5+Math.floor(Math.random()*8),claimed=new Set(),batch=writeBatch(db),target=chooseWanderingTarget(spot);
-    for(let i=0;i<count;i++){const pos=formationTargets(spot.x,spot.y,1,{ownerId,barbarian:true},claimed)[0]||spot,type=i===count-1&&count>9?'barbarianBrute':i%4===0?'barbarianThrower':'barbarianRaider';const u=makeBarbarianUnit(type,ownerId,pos,{order:target?'attackMove':'wander',moveGoal:target||{x:clamp(pos.x+Math.floor(Math.random()*25)-12,0,WORLD_TILES-1),y:clamp(pos.y+Math.floor(Math.random()*25)-12,0,WORLD_TILES-1)},expiresAt:n+BARBARIAN_FORCE_EXPIRE_MS});batch.set(ref('troops',u.id),u);}
+    for(let i=0;i<count;i++){const pos=formationTargets(spot.x,spot.y,1,{ownerId,barbarian:true},claimed)[0]||spot,type=i===count-1&&count>9?'barbarianBrute':i%4===0?'barbarianThrower':'barbarianRaider';const u=makeBarbarianUnit(type,ownerId,pos,{order:target?'attackMove':'wander',moveGoal:target||{x:clamp(pos.x+Math.floor(Math.random()*25)-12,worldMinTileX(),worldMaxTileX()),y:clamp(pos.y+Math.floor(Math.random()*25)-12,worldMinTileY(),worldMaxTileY())},expiresAt:n+BARBARIAN_FORCE_EXPIRE_MS});batch.set(ref('troops',u.id),u);}
     await batch.commit();log(`Wandering barbarian force spawned in chunk ${key}.`);return true;
   } return false;
 }
@@ -1303,7 +1369,7 @@ async function startBarbarianRaid(camp,target){
   const n=now(),type=campTypeDef(camp),units=[...troops.values()].filter(u=>u.campId===camp.id&&u.hp>0&&!u.raidUntil),age=playerAgeMs(target.ownerId),fort=Number((target.ownerId===playerKey?account:playerAccounts.get(target.ownerId))?.fortressLevel||1),cap=clamp(3+Math.floor(age/(12*3600000))+fort*2,3,18),send=units.slice(0,Math.min(cap,Math.max(3,Math.ceil(units.length*type.raidShare)))),goal={x:target.cx*CHUNK_SIZE+8,y:target.cy*CHUNK_SIZE+8},raidUntil=n+BARBARIAN_RAID_MIN_MS+Math.random()*(BARBARIAN_RAID_MAX_MS-BARBARIAN_RAID_MIN_MS);
   send.forEach(u=>{u.order='attackMove';u.moveGoal=goal;u.assignedGoal=null;u.path=findPath(u,goal.x,goal.y,1400);u.raidTargetChunk=target.id;u.raidUntil=raidUntil;u.raidStartHp=u.hp;u.retreatAtHp=.45;u.territoryWarningSent=false;scheduleSaveTroops([u]);});camp.state='raiding';camp.raidTargetChunk=target.id;camp.lastRaidAt=n;camp.nextRaidAt=n+BARBARIAN_CAMP_LEVELS[camp.campLevel||1].raidMs*type.raidRate;await saveBuilding(camp);const district=getDistrictForChunk(target.cx,target.cy,target.ownerId);if(target.ownerId===playerKey)log(district?`Smoke rises near the roads to ${district.name}.`:`Barbarian raiders are gathering near chunk ${camp.chunkKey.replace('_',',')}.`);else log(`${type.name} raid started from ${camp.chunkKey} toward ${district?.name||target.id}.`);
 }
-async function moveNomadCamp(camp){const cc=parseChunkKey(camp.chunkKey),spots=[];for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){if(!dx&&!dy)continue;const cx=cc.cx+dx,cy=cc.cy+dy;if(cx<0||cy<0||cx>=WORLD_CHUNKS||cy>=WORLD_CHUNKS||territories.get(chunkKey(cx,cy))?.ownerId)continue;const spot=randomOpenTileInChunk(cx,cy,{ownerId:camp.ownerId,barbarian:true});if(spot)spots.push({...spot,cx,cy,chunkKey:chunkKey(cx,cy)});}if(!spots.length)return;const spot=spots[Math.floor(Math.random()*spots.length)],dx=spot.x-camp.x,dy=spot.y-camp.y;camp.x=spot.x;camp.y=spot.y;camp.chunkKey=spot.chunkKey;camp.nextMoveAt=now()+BARBARIAN_NOMAD_MOVE_MS;for(const u of troops.values())if(u.campId===camp.id&&!u.raidUntil){u.x=clamp(u.x+dx,0,WORLD_TILES-1);u.y=clamp(u.y+dy,0,WORLD_TILES-1);u.homeX=camp.x;u.homeY=camp.y;u.homeChunkKey=camp.chunkKey;scheduleSaveTroops([u]);}log(`Nomad Camp moved to chunk ${camp.chunkKey}.`);}
+async function moveNomadCamp(camp){const cc=parseChunkKey(camp.chunkKey),spots=[];for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){if(!dx&&!dy)continue;const cx=cc.cx+dx,cy=cc.cy+dy;if(!isChunkInWorld(cx,cy)||territories.get(chunkKey(cx,cy))?.ownerId)continue;const spot=randomOpenTileInChunk(cx,cy,{ownerId:camp.ownerId,barbarian:true});if(spot)spots.push({...spot,cx,cy,chunkKey:chunkKey(cx,cy)});}if(!spots.length)return;const spot=spots[Math.floor(Math.random()*spots.length)],dx=spot.x-camp.x,dy=spot.y-camp.y;camp.x=spot.x;camp.y=spot.y;camp.chunkKey=spot.chunkKey;camp.nextMoveAt=now()+BARBARIAN_NOMAD_MOVE_MS;for(const u of troops.values())if(u.campId===camp.id&&!u.raidUntil){u.x=clamp(u.x+dx,worldMinTileX(),worldMaxTileX());u.y=clamp(u.y+dy,worldMinTileY(),worldMaxTileY());u.homeX=camp.x;u.homeY=camp.y;u.homeChunkKey=camp.chunkKey;scheduleSaveTroops([u]);}log(`Nomad Camp moved to chunk ${camp.chunkKey}.`);}
 async function maybeCreateBarbarianHorde(camp){const n=now();if((barbarianWorldState.nextHordeAt||0)>n)return;const cc=parseChunkKey(camp.chunkKey),near=[...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0&&Math.max(Math.abs(parseChunkKey(b.chunkKey).cx-cc.cx),Math.abs(parseChunkKey(b.chunkKey).cy-cc.cy))<=5);if(near.length<3||Math.random()>.08)return;const target=chooseBarbarianRaidTarget(camp);if(!target)return;for(const ally of near.slice(0,4))await startBarbarianRaid(ally,target);barbarianWorldState.nextHordeAt=n+BARBARIAN_HORDE_COOLDOWN_MS;await setDoc(ref('worldState','barbarians'),{nextHordeAt:barbarianWorldState.nextHordeAt,lastHordeAt:n,lastHordeTarget:target.id},{merge:true});log(`BARBARIAN HORDE: ${near.length} nearby camps are marching on ${target.id}!`);}
 async function thinkBarbarianCamp(camp){
   const n=now(),elapsed=n-(camp.lastThinkAt||camp.createdAt||n),level=camp.campLevel||1,type=campTypeDef(camp);camp.campType=camp.campType||'raider';
@@ -1753,7 +1819,7 @@ async function placeBuilding(type,x,y){
   return true;
 }
 function isValidBuildPlacement(type,x,y){
-  if(!BUILDING[type]||x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES||territoryOfTile(x,y).ownerId!==playerKey)return false;
+  if(!BUILDING[type]||!isTileInWorld(x,y)||territoryOfTile(x,y).ownerId!==playerKey)return false;
   if(terrainAt(x,y)==='water'||terrainAt(x,y)==='mountain')return false;
   const existing=[...buildings.values()].find(b=>b.hp>0&&b.x===x&&b.y===y);
   if(type==='gate')return !!existing&&existing.ownerId===playerKey&&BUILDING[existing.type]?.wall&&!BUILDING[existing.type]?.gate;
@@ -1905,7 +1971,7 @@ function renderPortalInfo(sels){
 }
 function arenaOrigin(){
   const h=Math.floor(hash2(playerKey.length, playerKey.charCodeAt(0)||1, 4242)*1200);
-  return {x:WORLD_TILES-96, y:40+h};
+  return {x:worldMaxTileX()-96, y:worldMinTileY()+40+h};
 }
 async function enterGoblinPortal(portal,missionId='goblinHorde'){
   if(!portal||portal.ownerId!==playerKey||portal.type!=='portal'){log('Select one of your Portals.');return;}
@@ -1977,16 +2043,16 @@ function localDateTimeValue(ms){const source=new Date(ms),local=new Date(ms-sour
 function updateBattleTimeMinimum(){const input=$('battleTime'),minimum=now()+MIN_INVASION_NOTICE_MS;input.min=localDateTimeValue(minimum);if(!input.value||new Date(input.value).getTime()<minimum)input.value=localDateTimeValue(minimum+5*60000);}
 function getIncomingInvasionsForPlayer(id){const n=now();return [...battles.values()].filter(b=>b.defenderId===id&&b.status!=='ended'&&n<Number(b.startAt)&&Number(b.endAt)>n).sort((a,c)=>a.startAt-c.startAt)}
 function getActiveInvasionsForPlayer(id){const n=now();return [...battles.values()].filter(b=>b.defenderId===id&&b.status!=='ended'&&n>=Number(b.startAt)&&n<Number(b.endAt)).sort((a,c)=>a.endAt-c.endAt)}
-function centerCameraOnChunk(cx,cy){const size=32*camera.zoom;camera.x=clamp((cx*CHUNK_SIZE+CHUNK_SIZE/2)*size-canvas.width/2,0,WORLD_TILES*size-canvas.width);camera.y=clamp((cy*CHUNK_SIZE+CHUNK_SIZE/2)*size-canvas.height/2,0,WORLD_TILES*size-canvas.height)}
+function centerCameraOnChunk(cx,cy){const size=32*camera.zoom;camera.x=(cx*CHUNK_SIZE+CHUNK_SIZE/2)*size-canvas.width/2;camera.y=(cy*CHUNK_SIZE+CHUNK_SIZE/2)*size-canvas.height/2;clampCamera()}
 function renderInvasionBanner(){const el=$('invasionBanner'),active=getActiveInvasionsForPlayer(playerKey),incoming=getIncomingInvasionsForPlayer(playerKey),list=active.length?active:incoming,b=list[0];if(!b){el.className='';el.textContent='';$('game').classList.remove('hasInvasionBanner');el.onclick=null;return;}const isActive=active.length>0,contested=b.status==='contested',{cx,cy}=parseChunkKey(b.chunkKey),enemy=playerAccounts.get(b.attackerId)?.displayName||playerAccounts.get(b.attackerId)?.username||b.attackerId,more=list.length>1?` · +${list.length-1} more`:'';el.className=`visible${isActive?' active':''}${contested?' contested':''}`;el.textContent=contested?`⚔ CONTESTED — WAR EXTENDED BY 1H · Next resolution check: ${fmt(Math.max(0,b.endAt-now()))}${more}`:isActive?`🚨 INVASION ACTIVE: Hold Province ${cx},${cy} — resolution in ${fmt(b.endAt-now())}${more}`:`⚠️ INCOMING INVASION: ${enemy} attacks Province ${cx},${cy} in ${fmt(b.startAt-now())}${more}`;$('game').classList.add('hasInvasionBanner');el.onclick=()=>centerCameraOnChunk(cx,cy)}
 function drawInvasionHighlights(size){const n=now(),pulse=.45+.25*Math.sin(n/260);for(const b of [...getIncomingInvasionsForPlayer(playerKey),...getActiveInvasionsForPlayer(playerKey)]){const active=n>=b.startAt,{cx,cy}=parseChunkKey(b.chunkKey),s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE),w=CHUNK_SIZE*size;ctx.save();ctx.fillStyle=active?`rgba(255,112,20,${pulse*.42})`:`rgba(255,220,35,${pulse*.18})`;ctx.fillRect(s.x,s.y,w,w);ctx.strokeStyle=active?'#ff8a1f':'#ffe34d';ctx.lineWidth=active?8:5;ctx.setLineDash([14,8]);ctx.strokeRect(s.x+4,s.y+4,w-8,w-8);ctx.setLineDash([]);ctx.font=`700 ${clamp(size*.8,18,38)}px Segoe UI Symbol`;ctx.textAlign='center';ctx.fillStyle=active?'#ff7a18':'#ffe34d';ctx.strokeStyle='#1b1200';ctx.lineWidth=4;ctx.strokeText(active?'🚨':'⚠',s.x+w/2,s.y+clamp(size*1.2,28,54));ctx.fillText(active?'🚨':'⚠',s.x+w/2,s.y+clamp(size*1.2,28,54));ctx.restore();}}
 updateBattleTimeMinimum();
 $('battleTime').addEventListener('focus',updateBattleTimeMinimum);
 $('declareBtn').onclick=async()=>{if(!hoveredTile){$('warMsg').textContent='Hover an enemy territory first.';return;}const terr=territoryOfTile(hoveredTile.x,hoveredTile.y);if(!terr.ownerId||terr.ownerId===playerKey||isAllied(playerKey,terr.ownerId)){$('warMsg').textContent=isAllied(playerKey,terr.ownerId)?'You cannot declare battle on alliance territory.':'That is not enemy controlled territory.';return;}const startAt=new Date($('battleTime').value).getTime();if(!startAt||startAt<now()+MIN_INVASION_NOTICE_MS){$('warMsg').textContent='Invasions must be declared at least 8 hours in advance.';return;}const duplicate=[...battles.values()].some(b=>b.chunkKey===terr.id&&b.status!=='ended');if(duplicate){$('warMsg').textContent='This territory already has a scheduled or active invasion.';return;}const declaredAt=now(),id=`battle_${playerKey}_${terr.id}_${declaredAt}`,b={id,attackerId:playerKey,defenderId:terr.ownerId,chunkKey:terr.id,status:'scheduled',declaredAt,startAt,endAt:startAt+INVASION_ACTIVE_MS,extensionCount:0,resolvedAt:null,winnerId:null,result:null};await setDoc(ref('battles',id),b);$('warMsg').textContent=`Invasion declared on ${terr.id}; troop presence will decide control.`;log(`Declared invasion on ${terr.id}. It begins in ${fmt(startAt-declaredAt)} and resolves by troop presence after 2 hours.`);};
-$('homeBtn').onclick=()=>{camera.x=account.home.x*32*camera.zoom-canvas.width/2;camera.y=account.home.y*32*camera.zoom-canvas.height/2;}; $('saveBtn').onclick=async()=>{await flushTroopSaves();await saveAccount();log('Saved.')};
+$('homeBtn').onclick=()=>{camera.x=account.home.x*32*camera.zoom-canvas.width/2;camera.y=account.home.y*32*camera.zoom-canvas.height/2;clampCamera();}; $('saveBtn').onclick=async()=>{await flushTroopSaves();await saveAccount();log('Saved.')};
 
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
-canvas.addEventListener('mousemove',e=>{const tile=screenToTile(e.offsetX,e.offsetY),c=getChunkOfTile(tile.x,tile.y),visible=c.cx>=0&&c.cy>=0&&c.cx<WORLD_CHUNKS&&c.cy<WORLD_CHUNKS&&isChunkVisible(c.cx,c.cy);renderProvinceHover(visible?getProvinceForChunk(c.cx,c.cy):null);});
+canvas.addEventListener('mousemove',e=>{const tile=screenToTile(e.offsetX,e.offsetY),c=getChunkOfTile(tile.x,tile.y),visible=isChunkInWorld(c.cx,c.cy)&&isChunkVisible(c.cx,c.cy);renderProvinceHover(visible?getProvinceForChunk(c.cx,c.cy):null);});
 canvas.addEventListener('mouseleave',()=>renderProvinceHover(null));
 canvas.addEventListener('mousedown',e=>{ if(e.button===0){mouse.down=true;mouse.startX=e.clientX;mouse.startY=e.clientY; selBox.style.display='block'; selBox.style.left=e.clientX+'px';selBox.style.top=e.clientY+'px';selBox.style.width='0px';selBox.style.height='0px';}});
 window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y),visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y)||visibleLandmarkAtTile(hoveredTile.x,hoveredTile.y);renderProvinceInfoPanel(visible?getProvinceForChunk(c.cx,c.cy):null); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; renderLandmarkPanel(visible?landmarkAtChunk(c.key):null);if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const supplied=terr.ownerId?getSuppliedChunks(terr.ownerId).has(terr.id):false,supplyText=!terr.ownerId?'None':supplied?'Connected':`Cut off - income reduced to ${Math.round(UNSUPPLIED_INCOME_MULTIPLIER*100)}%`,ownerAlliance=terr.ownerId?allianceForPlayer(terr.ownerId):null; const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||LANDMARK[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null,hoverDistrict=hoveredEntity?.kind==='building'?getDistrictForBuilding(hoveredEntity.id):null,battle=[...battles.values()].find(b=>b.chunkKey===terr.id&&b.status!=='ended')||[...battles.values()].filter(b=>b.chunkKey===terr.id).sort((a,b)=>(b.resolvedAt||0)-(a.resolvedAt||0))[0],base=battle&&battleBase(battle),state=battle&&battleState(battle),battleInfo=battle?`<br><b>Invasion: ${escapeHtml(state.replace('_',' '))}</b><br>Starts: ${new Date(battle.startAt).toLocaleString()}<br>Ends: ${new Date(battle.endAt).toLocaleString()}<br>Required target: ${escapeHtml(BUILDING[battle.baseType||base?.type]?.name||battle.baseType||'Defender base')} — ${base&&base.hp>0?`standing (${Math.ceil(base.hp)} HP)`:'destroyed'}`:''; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${escapeHtml(terr.ownerId||'Neutral')}${ownerAlliance?`<br>Alliance: <span class="allianceBadge">${escapeHtml(ownerAlliance.name)}</span>`:''}<br>Supply: <b class="${supplied?'okText':'dangerText'}">${supplyText}</b><br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${battleInfo}${camp?(()=>{const d=campTypeDef(camp),raid=camp.state==='raiding'?`Raiding ${camp.raidTargetChunk||'nearby territory'}`:`${fmt(Math.max(0,(camp.nextRaidAt||now())-now()))} until raid ready`;return `<br><b style="color:${d.color}">${d.icon} ${d.name} · Level ${camp.campLevel||1}</b><br><i>${d.flavor}</i><br>Raid status: ${raid}<br>Reward preview: ${barbarianRewardPreview(camp)}`;})():''}${hoverName?`<br>Hovered: ${hoverName}`:''}${hoverDistrict?`<br>${districtDetailsHtml(hoverDistrict)}${hoveredEntity.data.type==='market'?`<br>Market income x${marketIncomeMultiplier(hoveredEntity.data).toFixed(2)}`:''}${hoverDistrict.type==='trade'&&hoverDistrict.score.military>.2?'<br><span class="dangerText">Warning: military buildings nearby reduce trade efficiency.</span>':''}`:''}${terr.capture?`<br><b>Capturing player: ${escapeHtml(terr.capture.ownerId||'Unknown')}</b><br>${Math.floor(clamp(Number(terr.capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS,0,1)*100)}% · ${fmt(UNCLAIMED_CAPTURE_REQUIRED_MS-Number(terr.capture.progressMs||0))} remaining<div class="progress"><span style="width:${clamp(Number(terr.capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS*100,0,100)}%;background:${terr.capture.contested?'#ff9f43':'#54d6ff'}"></span></div>${terr.capture.contested?'<b class="dangerText">Contested — capture paused</b>':''}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
@@ -1996,7 +2062,7 @@ canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; c
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&buildMode){buildMode=null;$('modeReadout').textContent='Move';log('Build mode cancelled.');return;} const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||'');if(e.key.toLowerCase()==='a'&&!e.repeat&&!typing&&hoveredTile){buildMode=null;attackMode=true;$('modeReadout').textContent='Attack-move';} const ability=currentAbilityHotkeys.get(e.key); if(ability&&!e.repeat){buildMode=null;e.preventDefault();ability.trigger();}});
 
 function loop(ts){ const dt=ts-lastTick; lastTick=ts; handleCamera(); tick(dt); draw(); renderInvasionBanner(); requestAnimationFrame(loop); }
-function handleCamera(){ const speed=18; if(keys['ArrowLeft']||keys.a&&!attackMode)camera.x-=speed;if(keys['ArrowRight']||keys.d)camera.x+=speed;if(keys['ArrowUp']||keys.w)camera.y-=speed;if(keys['ArrowDown']||keys.s)camera.y+=speed; camera.x=clamp(camera.x,0,WORLD_TILES*32*camera.zoom-canvas.width); camera.y=clamp(camera.y,0,WORLD_TILES*32*camera.zoom-canvas.height); }
+function handleCamera(){ const speed=18; if(keys['ArrowLeft']||keys.a&&!attackMode)camera.x-=speed;if(keys['ArrowRight']||keys.d)camera.x+=speed;if(keys['ArrowUp']||keys.w)camera.y-=speed;if(keys['ArrowDown']||keys.s)camera.y+=speed; clampCamera(); }
 const keys={}; window.addEventListener('keydown',e=>{keys[e.key]=true}); window.addEventListener('keyup',e=>{keys[e.key]=false;if(e.key.toLowerCase()==='a'){attackMode=false;$('modeReadout').textContent='Move';}});
 
 const iconCache=new Map();
@@ -2209,7 +2275,7 @@ function drawConstructionOverlay(ctx,b,x,y,size){
 }
 function drawUpgradeProgress(b,x,y,size){const pct=upgradeProgress(b);ctx.save();ctx.strokeStyle='#79d8ff';ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,size-2,size-2);ctx.fillStyle='rgba(0,0,0,.85)';ctx.fillRect(x+2,y-8,size-4,7);ctx.fillStyle='#64dcff';ctx.fillRect(x+3,y-7,(size-6)*pct,5);ctx.fillStyle='#d8f8ff';ctx.font=`700 ${Math.max(8,size*.24)}px Segoe UI`;ctx.textAlign='center';ctx.fillText(`L${getBuildingLevel(b)+1}`,x+size/2,y+size*.2);ctx.restore()}
 function drawBarbarianRumorPings(size){const owned=ownedChunksForPlayer(playerKey);for(const camp of buildings.values()){if(!isBarbarianCamp(camp)||camp.hp<=0)continue;const c=parseChunkKey(camp.chunkKey),near=owned.some(t=>chunkDistance(t,c)<=BARBARIAN_RUMOR_RANGE);if(!near||isChunkVisible(c.cx,c.cy))continue;const s=tileToScreen(c.cx*CHUNK_SIZE+CHUNK_SIZE/2,c.cy*CHUNK_SIZE+CHUNK_SIZE/2);ctx.save();ctx.globalAlpha=.45+.2*Math.sin(now()/500);ctx.fillStyle='#dc593b';ctx.strokeStyle='#40160f';ctx.lineWidth=4;ctx.font=`800 ${clamp(size*1.5,18,42)}px Segoe UI`;ctx.textAlign='center';ctx.strokeText('?',s.x,s.y);ctx.fillText('?',s.x,s.y);ctx.restore();}}
-function drawProvinceBorders(size,scx,scy,ecx,ecy){const pixels=PROVINCE_SIZE*CHUNK_SIZE*size;for(let py=Math.max(0,Math.floor(scy/5));py<=Math.min(39,Math.floor(ecy/5));py++)for(let px=Math.max(0,Math.floor(scx/5));px<=Math.min(39,Math.floor(ecx/5));px++){const p=getProvinceForChunk(px*5,py*5),s=tileToScreen(px*5*CHUNK_SIZE,py*5*CHUNK_SIZE),warning=mapOverlay==='threat'&&provinceHasBarbarianWarning(p.id),color=warning?'#ff5a3d':!p.controller?'#738092':p.controller===playerKey?'#31e981':isAllied(playerKey,p.controller)?'#4bd9ff':'#ff6262';ctx.save();ctx.globalAlpha=warning?(.65+.35*Math.sin(now()/180)):1;ctx.strokeStyle=color;ctx.lineWidth=warning?10:mapOverlay==='province'?9:5;ctx.shadowColor=warning?'#ff3b22':'#000';ctx.shadowBlur=warning?20:mapOverlay==='province'?5:2;ctx.strokeRect(s.x+3,s.y+3,pixels-6,pixels-6);ctx.shadowBlur=0;if(mapOverlay==='province'){ctx.fillStyle=color+'20';ctx.fillRect(s.x+6,s.y+6,pixels-12,pixels-12);}if(camera.zoom<=.75||mapOverlay==='province'){const alpha=mapOverlay==='province'?1:clamp((.82-camera.zoom)/.25,0,1),fontSize=clamp(12+camera.zoom*8,12,20),x=s.x+pixels/2,y=s.y+pixels/2;ctx.globalAlpha=alpha;ctx.font=`800 ${fontSize}px Segoe UI`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff';ctx.strokeStyle='#05070a';ctx.lineWidth=5;ctx.strokeText(p.name,x,y);ctx.fillText(p.name,x,y);ctx.font=`700 ${Math.max(10,fontSize-4)}px Segoe UI`;ctx.fillStyle=['','#82efad','#a9e58e','#ffd36b','#ff9b63','#ff6868'][p.safety];const identity=`${p.safetyLabel} · ${p.tags.slice(0,2).join(' · ')}`;ctx.strokeText(identity,x,y+fontSize+5);ctx.fillText(identity,x,y+fontSize+5);}ctx.restore();}}
+function drawProvinceBorders(size,scx,scy,ecx,ecy){const pixels=PROVINCE_SIZE*CHUNK_SIZE*size,minPx=Math.floor(worldSettings.minChunkX/PROVINCE_SIZE),minPy=Math.floor(worldSettings.minChunkY/PROVINCE_SIZE),maxPx=Math.floor(worldSettings.maxChunkX/PROVINCE_SIZE),maxPy=Math.floor(worldSettings.maxChunkY/PROVINCE_SIZE);for(let py=Math.max(minPy,Math.floor(scy/5));py<=Math.min(maxPy,Math.floor(ecy/5));py++)for(let px=Math.max(minPx,Math.floor(scx/5));px<=Math.min(maxPx,Math.floor(ecx/5));px++){const p=getProvinceForChunk(px*5,py*5),s=tileToScreen(px*5*CHUNK_SIZE,py*5*CHUNK_SIZE),warning=mapOverlay==='threat'&&provinceHasBarbarianWarning(p.id),color=warning?'#ff5a3d':!p.controller?'#738092':p.controller===playerKey?'#31e981':isAllied(playerKey,p.controller)?'#4bd9ff':'#ff6262';ctx.save();ctx.globalAlpha=warning?(.65+.35*Math.sin(now()/180)):1;ctx.strokeStyle=color;ctx.lineWidth=warning?10:mapOverlay==='province'?9:5;ctx.shadowColor=warning?'#ff3b22':'#000';ctx.shadowBlur=warning?20:mapOverlay==='province'?5:2;ctx.strokeRect(s.x+3,s.y+3,pixels-6,pixels-6);ctx.shadowBlur=0;if(mapOverlay==='province'){ctx.fillStyle=color+'20';ctx.fillRect(s.x+6,s.y+6,pixels-12,pixels-12);}if(camera.zoom<=.75||mapOverlay==='province'){const alpha=mapOverlay==='province'?1:clamp((.82-camera.zoom)/.25,0,1),fontSize=clamp(12+camera.zoom*8,12,20),x=s.x+pixels/2,y=s.y+pixels/2;ctx.globalAlpha=alpha;ctx.font=`800 ${fontSize}px Segoe UI`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff';ctx.strokeStyle='#05070a';ctx.lineWidth=5;ctx.strokeText(p.name,x,y);ctx.fillText(p.name,x,y);ctx.font=`700 ${Math.max(10,fontSize-4)}px Segoe UI`;ctx.fillStyle=['','#82efad','#a9e58e','#ffd36b','#ff9b63','#ff6868'][p.safety];const identity=`${p.safetyLabel} · ${p.tags.slice(0,2).join(' · ')}`;ctx.strokeText(identity,x,y+fontSize+5);ctx.fillText(identity,x,y+fontSize+5);}ctx.restore();}}
 function drawPveLandmarkIdentity(l,s,size){const d=LANDMARK[l.type],ready=!l.respawnAt||l.respawnAt<=now(),r=clamp(size*.75,13,31);ctx.save();ctx.globalAlpha=ready?1:.42;ctx.shadowColor=d.color;ctx.shadowBlur=ready?18:0;ctx.fillStyle=l.type==='dragonNest'?'#41160e':l.type==='undeadCrypt'?'#123629':l.type==='ancientTitanRuins'?'#102f4a':'#090d13';ctx.strokeStyle=l.ownerId===playerKey?'#48ff8f':d.color;ctx.lineWidth=ready?4:2;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.shadowBlur=0;ctx.fillStyle=d.color;ctx.font=`800 ${Math.floor(r*1.05)}px Segoe UI Symbol`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(d.icon,s.x+size/2,s.y+size/2);if(mapOverlay==='pve'||camera.zoom>=.8){ctx.font=`700 ${clamp(size*.2,8,12)}px Segoe UI`;ctx.fillStyle='#ffcb55';ctx.fillText('★'.repeat(getLandmarkDangerLevel(l)),s.x+size/2,s.y+size/2+r+8);}ctx.restore();}
 const DISTRICT_COLORS={residential:'#ffc98a',trade:'#f4c542',military:'#c76b70',industrial:'#7395ad',sacred:'#c6a5ff',mixed:'#9aa7b4'};
 function drawTownOverlays(size){
@@ -2218,11 +2284,11 @@ function drawTownOverlays(size){
 }
 function drawLivingTown(size){if(camera.zoom<CIVILIAN_DRAW_MIN_ZOOM)return;for(const d of getDistricts(playerKey)){if(!d.connected||!['residential','trade','mixed'].includes(d.type))continue;const c=getChunkOfTile(d.x,d.y);if(!isChunkVisible(c.cx,c.cy))continue;const count=Math.min(MAX_CIVILIAN_DOTS_PER_VISIBLE_CHUNK,d.type==='trade'?10:d.type==='residential'?8:4),phase=now()/5000;for(let i=0;i<count;i++){const a=hash2(c.cx*31+i,c.cy*17+i,51)*Math.PI*2,r=(.8+hash2(i,c.cx,52)*Math.min(4,d.radius-1)),p=tileToScreen(d.x+Math.cos(a+phase*(i%2?1:-1))*.35*r,d.y+Math.sin(a+phase*(i%2?1:-1))*.35*r);ctx.fillStyle=i%5===0?'#d8aa62':'#f0d4b0';ctx.beginPath();ctx.arc(p.x+size/2,p.y+size/2,Math.max(1,size*.055),0,Math.PI*2);ctx.fill()}}}
 function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPlayer(playerKey); ctx.clearRect(0,0,canvas.width,canvas.height); const startX=Math.floor(camera.x/size), startY=Math.floor(camera.y/size), endX=Math.ceil((camera.x+canvas.width)/size), endY=Math.ceil((camera.y+canvas.height)/size);
-  for(let y=startY;y<=endY;y++) for(let x=startX;x<=endX;x++){ if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES)continue; const s=tileToScreen(x,y),c=getChunkOfTile(x,y); if(!isChunkVisible(c.cx,c.cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,size+1,size+1);continue;} const terr=terrainAt(x,y); ctx.fillStyle=terr==='water'?'#12304a':terr==='mountain'?'#40434a':terr==='forest'?'#153b25':'#1c2a1f'; ctx.fillRect(s.x,s.y,size+1,size+1); const owner=ownerOfTile(x,y); if(owner){ctx.fillStyle=owner===playerKey||isAllied(playerKey,owner)?'rgba(24,201,100,.22)':'rgba(255,77,77,.22)'; ctx.fillRect(s.x,s.y,size,size);} }
-  if(buildMode)for(let y=startY;y<=endY;y++)for(let x=startX;x<=endX;x++){if(x<0||y<0||x>=WORLD_TILES||y>=WORLD_TILES||!isTileVisible(x,y))continue;const s=tileToScreen(x,y),valid=isValidBuildPlacement(buildMode,x,y),hovered=hoveredTile?.x===x&&hoveredTile?.y===y;if(valid||hovered){ctx.fillStyle=valid?'rgba(55,205,150,.3)':'rgba(255,70,70,.42)';ctx.fillRect(s.x+1,s.y+1,size-2,size-2);ctx.strokeStyle=valid?'rgba(110,245,220,.7)':'#ff5555';ctx.lineWidth=1;ctx.strokeRect(s.x+1,s.y+1,size-2,size-2);}}
+  for(let y=startY;y<=endY;y++) for(let x=startX;x<=endX;x++){ if(!isTileInWorld(x,y))continue; const s=tileToScreen(x,y),c=getChunkOfTile(x,y); if(!isChunkVisible(c.cx,c.cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,size+1,size+1);continue;} const terr=terrainAt(x,y); ctx.fillStyle=terr==='water'?'#12304a':terr==='mountain'?'#40434a':terr==='forest'?'#153b25':'#1c2a1f'; ctx.fillRect(s.x,s.y,size+1,size+1); const owner=ownerOfTile(x,y); if(owner){ctx.fillStyle=owner===playerKey||isAllied(playerKey,owner)?'rgba(24,201,100,.22)':'rgba(255,77,77,.22)'; ctx.fillRect(s.x,s.y,size,size);} }
+  if(buildMode)for(let y=startY;y<=endY;y++)for(let x=startX;x<=endX;x++){if(!isTileInWorld(x,y)||!isTileVisible(x,y))continue;const s=tileToScreen(x,y),valid=isValidBuildPlacement(buildMode,x,y),hovered=hoveredTile?.x===x&&hoveredTile?.y===y;if(valid||hovered){ctx.fillStyle=valid?'rgba(55,205,150,.3)':'rgba(255,70,70,.42)';ctx.fillRect(s.x+1,s.y+1,size-2,size-2);ctx.strokeStyle=valid?'rgba(110,245,220,.7)':'#ff5555';ctx.lineWidth=1;ctx.strokeRect(s.x+1,s.y+1,size-2,size-2);}}
   // chunk boundaries and resource icons
   const scx=Math.floor(startX/CHUNK_SIZE), ecx=Math.floor(endX/CHUNK_SIZE), scy=Math.floor(startY/CHUNK_SIZE), ecy=Math.floor(endY/CHUNK_SIZE);
-  for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++){ if(cx<0||cy<0||cx>=WORLD_CHUNKS||cy>=WORLD_CHUNKS)continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE), chunkPixels=CHUNK_SIZE*size; if(!isChunkVisible(cx,cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);ctx.strokeStyle='#111722';ctx.lineWidth=2;ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);continue;} const res=resourceForChunk(cx,cy), color=resourceColor(res);if(mapOverlay==='resource'){ctx.fillStyle=color+'35';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);}if(mapOverlay==='threat'){const danger=getProvinceForChunk(cx,cy).danger;ctx.fillStyle=`rgba(210,45,25,${danger*.09})`;ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);}if(mapOverlay==='fire'){const local=[...buildings.values()].filter(b=>b.ownerId===playerKey&&b.hp>0&&b.chunkKey===chunkKey(cx,cy));const risk=local.length?local.reduce((n,b)=>n+buildingFireRisk(b),0)/local.length:0;ctx.fillStyle=`rgba(255,95,25,${clamp(risk/140,0,.55)})`;ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);} ctx.strokeStyle='#536070'; ctx.lineWidth=2; ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);
+  for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++){ if(!isChunkInWorld(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE), chunkPixels=CHUNK_SIZE*size; if(!isChunkVisible(cx,cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);ctx.strokeStyle='#111722';ctx.lineWidth=2;ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);continue;} const res=resourceForChunk(cx,cy), color=resourceColor(res);if(mapOverlay==='resource'){ctx.fillStyle=color+'35';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);}if(mapOverlay==='threat'){const danger=getProvinceForChunk(cx,cy).danger;ctx.fillStyle=`rgba(210,45,25,${danger*.09})`;ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);}if(mapOverlay==='fire'){const local=[...buildings.values()].filter(b=>b.ownerId===playerKey&&b.hp>0&&b.chunkKey===chunkKey(cx,cy));const risk=local.length?local.reduce((n,b)=>n+buildingFireRisk(b),0)/local.length:0;ctx.fillStyle=`rgba(255,95,25,${clamp(risk/140,0,.55)})`;ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);} ctx.strokeStyle='#536070'; ctx.lineWidth=2; ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);
     const owner=territories.get(chunkKey(cx,cy))?.ownerId,allied=owner&&owner!==playerKey&&isAllied(playerKey,owner);ctx.strokeStyle=owner===playerKey?'#18c964':allied?'#42cfff':owner?'#ff4d4d':'#536070';ctx.lineWidth=allied?4:2;ctx.strokeRect(s.x+1,s.y+1,chunkPixels-2,chunkPixels-2);
     const compact=camera.zoom<.7, label=compact?resourceIcon(res):resourceDisplayName(res), fontSize=compact?11:Math.min(18,11+camera.zoom*3), padX=compact?6:9, badgeH=compact?22:fontSize+12;
     ctx.save(); ctx.font=`700 ${fontSize}px Segoe UI`; const badgeW=compact?22:Math.ceil(ctx.measureText(label).width+padX*2); const bx=s.x+chunkPixels/2-badgeW/2, by=s.y+chunkPixels/2-badgeH/2;
@@ -2297,7 +2363,7 @@ function draw(){ const size=32*camera.zoom; visibleChunks=getVisibleChunksForPla
 function drawCaptureProgressOverlays(size,startX,startY,endX,endY){
   const scx=Math.floor(startX/CHUNK_SIZE), ecx=Math.floor(endX/CHUNK_SIZE), scy=Math.floor(startY/CHUNK_SIZE), ecy=Math.floor(endY/CHUNK_SIZE);
   for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++){
-    if(cx<0||cy<0||cx>=WORLD_CHUNKS||cy>=WORLD_CHUNKS||!isChunkVisible(cx,cy))continue;
+    if(!isChunkInWorld(cx,cy)||!isChunkVisible(cx,cy))continue;
     const territory=territories.get(chunkKey(cx,cy)),capture=territory?.capture;
     if(territory?.ownerId||!capture)continue;
     const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE),chunkPixels=CHUNK_SIZE*size;
