@@ -507,12 +507,28 @@ let visibleChunks=new Set();
 let currentAbilityHotkeys=new Map();
 let camera={x:0,y:0,zoom:1}; let mouse={x:0,y:0,down:false,startX:0,startY:0};
 let lastSave=0, lastTick=0, lastCaptureCheck=0, lastConstructionCheck=0, lastInvasionCheck=0, lastProductionCheck=0, lastBarbarianPoll=0, lastBarbarianThink=0, lastOnlineRaidDirector=0, lastRequestCheck=0, lastFireCheck=0, lastProvinceTroubleCheck=0;
+let gameLoopStarted=false, startupHeavySystemsBlockedUntil=0;
 let barbarianWorldState={nextBarbarianSpawnCheckAt:0}; let barbarianSpawnCheckRunning=false, barbarianThinkRunning=false, landmarkGenerationRunning=false;
 let onlineRaidDirectorRunning=false, fireRiskRunning=false, provinceTroubleRunning=false;
 const resolvingInvasions=new Set();
 const barbarianWarningCooldowns=new Map(),barbarianWarningMarkers=new Map();
 let previousBarbarianChunks=new Map(),barbarianSnapshotReady=false;
 const kingdomConnectionCache=new Map(),districtCache=new Map();let lastKingdomConnectionCheck=0,lastDistrictCheck=0,lastCarpenterCheck=0;
+
+
+function resetStartupPollTimers(delayMs=10000){
+  const n=now();
+  startupHeavySystemsBlockedUntil=n+delayMs;
+  lastFireCheck=n;
+  lastProvinceTroubleCheck=n;
+  lastProductionCheck=n;
+  lastConstructionCheck=n;
+  lastCaptureCheck=n;
+  lastInvasionCheck=n;
+  lastBarbarianPoll=n;
+  lastBarbarianThink=n;
+  lastOnlineRaidDirector=n;
+}
 
 function pruneSelection(){
   // Firestore snapshots arrive separately for troops and buildings.
@@ -949,7 +965,7 @@ async function startGame(){
   unsub.push(onSnapshot(col('alliances'),s=>{alliances.clear();s.forEach(d=>alliances.set(d.id,{id:d.id,...d.data()}));markUIDirty('alliances');}));
   unsub.push(onSnapshot(ref('worldState','barbarians'),s=>{barbarianWorldState=s.exists()?s.data():{nextBarbarianSpawnCheckAt:0};}));
   unsub.push(onSnapshot(ref('world','settings'),s=>{worldSettings=normalizeWorldSettings(s.exists()?s.data():WORLD_SETTINGS_DEFAULT);provinceMetadata.clear();markUIDirty('world');}));
-  await saveAccount();await collectOfflineResources(); buildButtons(); requestAnimationFrame(loop); log(`Entered world at your fortress. World size: ${worldWidthChunks()}×${worldHeightChunks()} chunks.`);
+  await saveAccount();await collectOfflineResources(); resetStartupPollTimers(10000); buildButtons(); if(!gameLoopStarted){gameLoopStarted=true;requestAnimationFrame(loop);} log(`Entered world at your fortress. World size: ${worldWidthChunks()}×${worldHeightChunks()} chunks.`);
   setTimeout(()=>maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message)),1200);
   setTimeout(()=>ensureLandmarksGenerated().catch(e=>log('Landmark generation error: '+e.message)),1800);
   setTimeout(()=>maybeRunTerrainRebalance().catch(e=>log('Terrain rebalance error: '+e.message)),2400);
@@ -1445,7 +1461,7 @@ async function resolveOnlineRaid(raid,expired=false){
   onlineRaids.set(raid.id,{...raid,status:expired?'expired':'defeated',resolvedAt:n});
 }
 async function runOnlineRaidDirector(){
-  if(!ONLINE_SURVIVAL_ENABLED||onlineRaidDirectorRunning||!playerKey||document.hidden)return;onlineRaidDirectorRunning=true;
+  if(now()<startupHeavySystemsBlockedUntil||!ONLINE_SURVIVAL_ENABLED||onlineRaidDirectorRunning||!playerKey||document.hidden)return;onlineRaidDirectorRunning=true;
   try{const s=ensureSurvivalState(),n=now(),active=[...onlineRaids.values()].filter(r=>r.intendedPlayerKey===playerKey&&r.status==='active');
     for(const raid of active){const living=[...troops.values()].some(u=>u.onlineRaidId===raid.id&&u.hp>0);if(!living)await resolveOnlineRaid(raid,false);else if(raid.expiresAt<=n){for(const u of troops.values())if(u.onlineRaidId===raid.id&&u.hp>0)await deleteDoc(ref('troops',u.id));await resolveOnlineRaid(raid,true);}}
     s.activeOnlineRaidIds=[...onlineRaids.values()].filter(r=>r.intendedPlayerKey===playerKey&&r.status==='active').map(r=>r.id);if(!s.nextOnlineRaidAt)s.nextOnlineRaidAt=n+randomOnlineRaidDelay();if(n<s.nextOnlineRaidAt)return;if(n-s.lastOnlineRaidAt<ONLINE_RAID_RECENT_GRACE_MS){s.nextOnlineRaidAt=n+ONLINE_RAID_RECENT_GRACE_MS;await saveAccount();return;}if(s.activeOnlineRaidIds.length>=ONLINE_RAID_MAX_ACTIVE_PER_PLAYER){s.nextOnlineRaidAt=n+ONLINE_RAID_RECENT_GRACE_MS;await saveAccount();return;}if(!await spawnOnlineSurvivalRaid(playerKey)){s.nextOnlineRaidAt=n+60000;await saveAccount();}
@@ -1453,7 +1469,7 @@ async function runOnlineRaidDirector(){
 }
 function chooseWanderingTarget(spot){const candidates=[...territories.values()].filter(t=>t.ownerId).map(t=>({x:t.cx*CHUNK_SIZE+8,y:t.cy*CHUNK_SIZE+8,d:dist(spot,{x:t.cx*CHUNK_SIZE+8,y:t.cy*CHUNK_SIZE+8})})).sort((a,b)=>a.d-b.d);return candidates[0]?{x:candidates[0].x,y:candidates[0].y}:null;}
 async function maybeRunBarbarianSpawnCheck(){
-  if(barbarianSpawnCheckRunning||!playerKey)return;const n=now();if((barbarianWorldState.nextBarbarianSpawnCheckAt||0)>n)return;barbarianSpawnCheckRunning=true;
+  if(now()<startupHeavySystemsBlockedUntil||barbarianSpawnCheckRunning||!playerKey)return;const n=now();if((barbarianWorldState.nextBarbarianSpawnCheckAt||0)>n)return;barbarianSpawnCheckRunning=true;
   try{if(!await claimBarbarianSpawnLock()){log('Barbarian spawn check skipped because another player holds the lock.');return;}const verify=await getDoc(ref('worldState','barbarians'));if(!verify.exists()||verify.data().barbarianSpawnLockUid!==uid||verify.data().barbarianSpawnLockUntil<n)return;
     const ensured=await ensureBarbarianPresenceNearPlayers();if(!ensured){if(barbarianCampCount()<MAX_BARBARIAN_CAMPS){const spot=findFreeBarbarianCampSpot();if(spot)await spawnBarbarianCamp(spot);else await spawnRoadsideRaiders();}else await spawnRoadsideRaiders();}
     const next=n+BARBARIAN_SPAWN_CHECK_MS;await setDoc(ref('worldState','barbarians'),{lastBarbarianSpawnCheckAt:n,nextBarbarianSpawnCheckAt:next,barbarianSpawnLockUid:null,barbarianSpawnLockUntil:0},{merge:true});barbarianWorldState.nextBarbarianSpawnCheckAt=next;
@@ -1482,7 +1498,7 @@ async function thinkBarbarianCamp(camp){
   if(camp.state==='regroup'&&elapsed>BARBARIAN_THINK_MS)await spawnBarbarianDefenders(camp,Math.min(4,1+Math.floor(elapsed/BARBARIAN_THINK_MS)));await maybeCreateBarbarianHorde(camp);camp.lastThinkAt=n;camp.lastSpawnAt=camp.state==='regroup'?n:(camp.lastSpawnAt||n);await saveBuilding(camp);
 }
 async function maybeSimulateNearbyBarbarianCamps(){
-  if(barbarianThinkRunning||!playerKey)return;barbarianThinkRunning=true;try{const n=now();updateSimulationChunkSets();const camps=indexedBuildings(warmChunks).filter(b=>isBarbarianCamp(b)&&b.hp>0);for(const camp of camps)if(await claimBarbarianCampSimLock(camp)){if(activeChunks.has(camp.chunkKey))await spawnBarbarianDefenders(camp,4);await thinkBarbarianCamp(camp);}for(const camp of buildings.values())if(isBarbarianCamp(camp)&&camp.hp>0&&!warmChunks.has(camp.chunkKey)&&n>=Number(camp.nextRaidAt||Infinity)){camp.threat=(camp.threat||barbarianRosterStrength(barbarianRoster(camp.campLevel||1,camp.campType)))+1;camp.lastSimulatedAt=n;camp.nextRaidAt=n+BARBARIAN_CAMP_LEVELS[camp.campLevel||1].raidMs*campTypeDef(camp).raidRate;await saveBuilding(camp);}
+  if(now()<startupHeavySystemsBlockedUntil||barbarianThinkRunning||!playerKey)return;barbarianThinkRunning=true;try{const n=now();updateSimulationChunkSets();const camps=indexedBuildings(warmChunks).filter(b=>isBarbarianCamp(b)&&b.hp>0);for(const camp of camps)if(await claimBarbarianCampSimLock(camp)){if(activeChunks.has(camp.chunkKey))await spawnBarbarianDefenders(camp,4);await thinkBarbarianCamp(camp);}for(const camp of buildings.values())if(isBarbarianCamp(camp)&&camp.hp>0&&!warmChunks.has(camp.chunkKey)&&n>=Number(camp.nextRaidAt||Infinity)){camp.threat=(camp.threat||barbarianRosterStrength(barbarianRoster(camp.campLevel||1,camp.campType)))+1;camp.lastSimulatedAt=n;camp.nextRaidAt=n+BARBARIAN_CAMP_LEVELS[camp.campLevel||1].raidMs*campTypeDef(camp).raidRate;await saveBuilding(camp);}
     for(const u of troops.values())if(isBarbarianUnit(u)){if(!u.campId&&u.expiresAt&&u.expiresAt<n)await deleteDoc(ref('troops',u.id));const territory=territoryOfTile(u.x,u.y);if(u.raidUntil&&territory.ownerId===playerKey&&!u.territoryWarningSent){u.territoryWarningSent=true;scheduleSaveTroops([u]);log('Your territory is under barbarian attack!');}}
   }finally{barbarianThinkRunning=false;}
 }
@@ -1503,11 +1519,11 @@ async function destroyBarbarianCamp(camp,killerId){
 }
 
 function tick(dt){
-  const tickStart=performance.now();const n=now(); const reservations=new Set();updateSimulationChunkSets();perfStats.activeChunks=activeChunks.size;perfStats.simTroops=0;perfStats.simBuildings=0;perfStats.skippedTroops=0;perfStats.skippedBuildings=0;
+  const tickStart=performance.now();const n=now(); const startupBlocked=n<startupHeavySystemsBlockedUntil; const reservations=new Set();updateSimulationChunkSets();perfStats.activeChunks=activeChunks.size;perfStats.simTroops=0;perfStats.simBuildings=0;perfStats.skippedTroops=0;perfStats.skippedBuildings=0;
   const warmDue=n-lastWarmSimAt>WARM_SIM_INTERVAL_MS;if(warmDue)lastWarmSimAt=n;const strategicDue=n-lastStrategicSimAt>STRATEGIC_SIM_INTERVAL_MS;if(strategicDue){lastStrategicSimAt=n;processDistrictRequests(activeSideTab==='requests');}
   if(activeSideTab==='requests')processDistrictRequests(true);
-  if(n-lastFireCheck>=FIRE_CHECK_MS&&!fireRiskRunning){fireRiskRunning=true;const start=performance.now();processFireRisk().catch(e=>log('Fire risk error: '+e.message)).finally(()=>{const ms=performance.now()-start;if(ms>100)console.warn('fire risk system slow',{ms});fireRiskRunning=false;});}
-  if(n-lastProvinceTroubleCheck>=PROVINCE_TROUBLE_CHECK_MS&&!provinceTroubleRunning){provinceTroubleRunning=true;const start=performance.now();processProvinceTrouble().catch(e=>log('Province trouble error: '+e.message)).finally(()=>{const ms=performance.now()-start;if(ms>100)console.warn('province trouble system slow',{ms});provinceTroubleRunning=false;});}
+  if(!startupBlocked&&n-lastFireCheck>=FIRE_CHECK_MS&&!fireRiskRunning){fireRiskRunning=true;const start=performance.now();processFireRisk().catch(e=>log('Fire risk error: '+e.message)).finally(()=>{const ms=performance.now()-start;if(ms>100)console.warn('fire risk system slow',{ms});fireRiskRunning=false;});}
+  if(!startupBlocked&&n-lastProvinceTroubleCheck>=PROVINCE_TROUBLE_CHECK_MS&&!provinceTroubleRunning){provinceTroubleRunning=true;const start=performance.now();processProvinceTrouble().catch(e=>log('Province trouble error: '+e.message)).finally(()=>{const ms=performance.now()-start;if(ms>100)console.warn('province trouble system slow',{ms});provinceTroubleRunning=false;});}
   if(account.hero?.classId){const hu=heroUnit();if(hu&&hu.hp<=0&&!(account.hero.reviveAt>n)){account.hero.reviveAt=n+heroReviveMs(account.hero.level||1);selected.delete(hu.id);deleteDoc(ref('troops',hu.id));deleteTroopIndexed(hu.id);saveAccount();log(`${HERO_CLASSES[account.hero.classId].name} was defeated and will revive in ${fmt(heroReviveMs(account.hero.level||1))}.`);}else if(!hu&&account.hero.reviveAt&&account.hero.reviveAt<=n){const c=HERO_CLASSES[account.hero.classId],u={id:account.hero.id||`hero_${playerKey}`,ownerId:playerKey,type:`hero_${account.hero.classId}`,isHero:true,heroClass:account.hero.classId,heroLevel:account.hero.level,x:account.home.x+1,y:account.home.y,hp:c.stats.hp,maxHp:c.stats.hp,xp:0,veterancy:0,order:'idle',path:[],createdAt:n};UNIT[u.type]={name:c.name,...c.stats,cost:{gold:0,lumber:0,oil:0},supply:0};account.hero.reviveAt=0;setTroopIndexed(u.id,u);setDoc(ref('troops',u.id),firestoreEntity(u));saveAccount();log(`${c.name} has revived at the Fortress.`);}}
   // remove expired mobile towers
   for(const b of indexedBuildings(warmChunks)){perfStats.simBuildings++;
@@ -1516,7 +1532,7 @@ function tick(dt){
       b.reinforcedUntil=0; b.reinforceBonusHp=0; b.hp=Math.min(b.hp,b.maxHp||b.hp); saveBuilding(b);
     }
   }
-  for(const u of troops.values()){const ck=entityChunkKey(u);if(!isChunkWarmKey(ck)){perfStats.skippedTroops++;freezeFarTravel(u,n);continue;}catchUpTroopTravel(u,n);if(!isChunkActiveKey(entityChunkKey(u))&&!warmDue){perfStats.skippedTroops++;continue;}perfStats.simTroops++;
+  for(const u of indexedTroops(warmChunks)){const ck=entityChunkKey(u);if(!isChunkWarmKey(ck)){perfStats.skippedTroops++;freezeFarTravel(u,n);continue;}catchUpTroopTravel(u,n);if(!isChunkActiveKey(entityChunkKey(u))&&!warmDue){perfStats.skippedTroops++;continue;}perfStats.simTroops++;
     if(u.hp<=0) continue;
     const def=UNIT[u.type]; if(!def)continue;
     const mine = u.ownerId===playerKey;
@@ -1530,13 +1546,13 @@ function tick(dt){
   if(n-lastKingdomConnectionCheck>KINGDOM_CONNECTION_RECHECK_MS){lastKingdomConnectionCheck=n;recalcKingdomConnections(playerKey)}
   if(n-lastDistrictCheck>DISTRICT_RECHECK_MS&&(activeSideTab==='requests'||activeSideTab==='overview'||warmDue)){lastDistrictCheck=n;recalcDistricts(playerKey)}
   if(n-lastCarpenterCheck>60000){lastCarpenterCheck=n;processCarpenterHalls().catch(e=>log('Carpenter Hall error: '+e.message))}
-  if(n-lastProductionCheck>TRAINING_POLL_MS){lastProductionCheck=n; completeTrainingQueues().catch(e=>log('Production error: '+e.message)); checkGoblinPortalBattle().catch(e=>log('Portal error: '+e.message));}
-  if(n-lastConstructionCheck>CONSTRUCTION_POLL_MS){lastConstructionCheck=n;processConstruction().catch(e=>log('Construction error: '+e.message));finishBuildingUpgrades().catch(e=>log('Upgrade error: '+e.message));}
-  if(n-lastCaptureCheck>CAPTURE_POLL_MS){lastCaptureCheck=n; resolveCapturePressure().catch(e=>log('Capture check error: '+e.message));}
-  if(n-lastInvasionCheck>15000){lastInvasionCheck=n;resolveExpiredInvasions().catch(e=>log('Invasion resolution error: '+e.message));}
-  if(n-lastBarbarianPoll>60000){lastBarbarianPoll=n;maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message));}
-  if(n-lastBarbarianThink>BARBARIAN_THINK_MS){lastBarbarianThink=n;maybeSimulateNearbyBarbarianCamps().catch(e=>log('Barbarian AI error: '+e.message));}
-  if(n-lastOnlineRaidDirector>ONLINE_RAID_DIRECTOR_TICK_MS){lastOnlineRaidDirector=n;runOnlineRaidDirector().catch(e=>log('Online survival director error: '+e.message));}
+  if(!startupBlocked&&n-lastProductionCheck>TRAINING_POLL_MS){lastProductionCheck=n; completeTrainingQueues().catch(e=>log('Production error: '+e.message)); checkGoblinPortalBattle().catch(e=>log('Portal error: '+e.message));}
+  if(!startupBlocked&&n-lastConstructionCheck>CONSTRUCTION_POLL_MS){lastConstructionCheck=n;processConstruction().catch(e=>log('Construction error: '+e.message));finishBuildingUpgrades().catch(e=>log('Upgrade error: '+e.message));}
+  if(!startupBlocked&&n-lastCaptureCheck>CAPTURE_POLL_MS){lastCaptureCheck=n; resolveCapturePressure().catch(e=>log('Capture check error: '+e.message));}
+  if(!startupBlocked&&n-lastInvasionCheck>15000){lastInvasionCheck=n;resolveExpiredInvasions().catch(e=>log('Invasion resolution error: '+e.message));}
+  if(!startupBlocked&&n-lastBarbarianPoll>60000){lastBarbarianPoll=n;maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message));}
+  if(!startupBlocked&&n-lastBarbarianThink>BARBARIAN_THINK_MS){lastBarbarianThink=n;maybeSimulateNearbyBarbarianCamps().catch(e=>log('Barbarian AI error: '+e.message));}
+  if(!startupBlocked&&n-lastOnlineRaidDirector>ONLINE_RAID_DIRECTOR_TICK_MS){lastOnlineRaidDirector=n;runOnlineRaidDirector().catch(e=>log('Online survival director error: '+e.message));}
   if(n-lastSave>SAVE_EVERY_MS){lastSave=n; flushTroopSaves();}
   perfStats.tickMs=performance.now()-tickStart;
 }
