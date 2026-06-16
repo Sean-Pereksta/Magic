@@ -78,7 +78,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, serverTimestamp, writeBatch, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, serverTimestamp, writeBatch, deleteDoc, runTransaction, query, where } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -427,6 +427,9 @@ function deterministicWorldChunk(a,b,seed){return {cx:worldSettings.minChunkX+Ma
 function isFrontierChunk(cx,cy,ring=EXPANSION_RING_CHUNKS){return cx<worldSettings.minChunkX+ring||cy<worldSettings.minChunkY+ring||cx>worldSettings.maxChunkX-ring||cy>worldSettings.maxChunkY-ring}
 function clampCamera(){const size=32*camera.zoom,minX=worldMinTileX()*size,minY=worldMinTileY()*size,maxX=(worldMaxTileX()+1)*size-canvas.width,maxY=(worldMaxTileY()+1)*size-canvas.height;camera.x=clamp(camera.x,Math.min(minX,maxX),Math.max(minX,maxX));camera.y=clamp(camera.y,Math.min(minY,maxY),Math.max(minY,maxY));}
 let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), landmarks=new Map(), onlineRaids=new Map(), playerAccounts=new Map(), alliances=new Map();
+const VIEW_CHUNK_PADDING=1, PRELOAD_CHUNK_PADDING=2, MAX_ACTIVE_CHUNK_SUBSCRIPTIONS=64, CHUNK_SUBSCRIBE_DEBOUNCE_MS=150, CHUNK_CACHE_TTL_MS=5*60*1000;
+const chunkDataCache=new Map();
+let lastStreamedChunkSignature='', chunkStreamTimer=null;
 const troopsByChunk=new Map(), buildingsByChunk=new Map(), roadsByChunk=new Map(), landmarksByChunk=new Map(), battlesByChunk=new Map(), warningsByChunk=new Map();
 const buildingsByOwner=new Map(), troopsByOwner=new Map(), troopTileIndex=new Map(), buildingTileIndex=new Map();
 let activeChunks=new Set(), warmChunks=new Set(), visibleDrawChunks=new Set(), lastWarmSimAt=0, lastStrategicSimAt=0;
@@ -572,6 +575,38 @@ function rebuildChunkIndexes(){troopsByChunk.clear();buildingsByChunk.clear();ro
 function reindexEntity(index,entity,newKey){const old=entity.chunkKey;if(old!==newKey){if(old&&index.has(old))index.get(old).delete(entity.id);entity.chunkKey=newKey;indexAdd(index,newKey,entity.id);return true;}if(newKey&&!index.get(newKey)?.has(entity.id))indexAdd(index,newKey,entity.id);return false}
 function reindexTroop(u){ownerIndexAdd(troopsByOwner,u);tileIndexDelete(troopTileIndex,u);tileIndexAdd(troopTileIndex,u);return reindexEntity(troopsByChunk,u,entityChunkKey(u))}
 function reindexBuilding(b){ownerIndexAdd(buildingsByOwner,b);tileIndexDelete(buildingTileIndex,b);if(b.type!=='road')tileIndexAdd(buildingTileIndex,b);return reindexEntity(b.type==='road'?roadsByChunk:buildingsByChunk,b,entityChunkKey(b))}
+
+function createChunkCacheEntry(key){const {cx,cy}=parseChunkKey(key);return {key,cx,cy,territory:null,troops:new Map(),buildings:new Map(),roads:new Map(),landmarks:new Map(),battles:new Map(),loaded:false,loading:false,lastTouched:0,unsubscribers:[]};}
+function getChunkCacheEntry(key){let entry=chunkDataCache.get(key);if(!entry){entry=createChunkCacheEntry(key);chunkDataCache.set(key,entry);}entry.lastTouched=now();return entry;}
+function clearChunkCacheEntryFromGlobal(entry){if(entry.territory)territories.delete(entry.key);for(const id of entry.troops.keys())deleteTroopIndexed(id);for(const id of entry.buildings.keys())deleteBuildingIndexed(id);for(const id of entry.roads.keys())deleteBuildingIndexed(id);for(const id of entry.landmarks.keys()){const old=landmarks.get(id);if(old)indexDelete(landmarksByChunk,old.chunkKey||entityChunkKey(old),id);landmarks.delete(id);}for(const id of entry.battles.keys()){const old=battles.get(id);if(old)indexDelete(battlesByChunk,old.chunkKey,id);battles.delete(id);}clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty('chunk evicted');}
+function stopChunkSubscription(entry,{evict=false}={}){for(const unsub of entry.unsubscribers.splice(0)){try{unsub();}catch(e){console.warn('chunk unsubscribe failed',entry.key,e);}}entry.loading=false;if(evict){clearChunkCacheEntryFromGlobal(entry);chunkDataCache.delete(entry.key);}}
+function applyChunkCollectionSnapshot(entry,kind,s){entry.lastTouched=now();const target=entry[kind];for(const change of s.docChanges()){const id=change.doc.id;if(change.type==='removed'){target.delete(id);if(kind==='troops')deleteTroopIndexed(id);else if(kind==='buildings'||kind==='roads')deleteBuildingIndexed(id);else if(kind==='landmarks'){const old=landmarks.get(id);if(old)indexDelete(landmarksByChunk,old.chunkKey||entityChunkKey(old),id);landmarks.delete(id);}else if(kind==='battles'){const old=battles.get(id);if(old)indexDelete(battlesByChunk,old.chunkKey,id);battles.delete(id);}continue;}const value={id,...change.doc.data()};target.set(id,value);if(kind==='troops')setTroopIndexed(id,normalizeTroop(value));else if(kind==='buildings'||kind==='roads'){if(!value.level)value.level=1;setBuildingIndexed(id,value);}else if(kind==='landmarks'){const old=landmarks.get(id);if(old)indexDelete(landmarksByChunk,old.chunkKey||entityChunkKey(old),id);landmarks.set(id,value);indexAdd(landmarksByChunk,value.chunkKey||entityChunkKey(value),id);}else if(kind==='battles'){const old=battles.get(id);if(old)indexDelete(battlesByChunk,old.chunkKey,id);battles.set(id,value);indexAdd(battlesByChunk,value.chunkKey,id);}}
+clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty(kind+' chunk snapshot');}
+function subscribeChunk(entry){
+  if(entry.loading||entry.unsubscribers.length)return;
+  entry.loading=true;entry.lastTouched=now();
+  entry.unsubscribers.push(onSnapshot(ref('territories',entry.key),s=>{
+    if(s.exists()){entry.territory={id:s.id,...s.data()};territories.set(s.id,entry.territory);}else{entry.territory=null;territories.delete(entry.key);}
+    entry.loaded=true;entry.loading=false;clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty('territory chunk');
+  }));
+  entry.unsubscribers.push(onSnapshot(query(col('troops'),where('chunkKey','==',entry.key)),s=>applyChunkCollectionSnapshot(entry,'troops',s)));
+  entry.unsubscribers.push(onSnapshot(query(col('buildings'),where('chunkKey','==',entry.key)),s=>{
+    for(const change of s.docChanges()){
+      const id=change.doc.id;
+      if(change.type==='removed'){entry.buildings.delete(id);entry.roads.delete(id);deleteBuildingIndexed(id);continue;}
+      const b={id,...change.doc.data()};if(!b.level)b.level=1;
+      if(b.type==='road'){entry.buildings.delete(id);entry.roads.set(id,b);}else{entry.roads.delete(id);entry.buildings.set(id,b);}
+      setBuildingIndexed(id,b);
+    }
+    clearProvinceDerivedCache();markVisibleChunksDirty();kingdomConnectionCache.clear();districtCache.clear();pruneSelection();markUIDirty('buildings chunk');
+  }));
+  entry.unsubscribers.push(onSnapshot(query(col('landmarks'),where('chunkKey','==',entry.key)),s=>applyChunkCollectionSnapshot(entry,'landmarks',s)));
+  entry.unsubscribers.push(onSnapshot(query(col('battles'),where('chunkKey','==',entry.key)),s=>applyChunkCollectionSnapshot(entry,'battles',s)));
+}
+function chunkKeysForViewport(padding=0){const size=32*camera.zoom,startX=Math.floor(camera.x/size),startY=Math.floor(camera.y/size),endX=Math.ceil((camera.x+canvas.width)/size),endY=Math.ceil((camera.y+canvas.height)/size),keys=[];for(let cy=Math.floor(startY/CHUNK_SIZE)-padding;cy<=Math.floor(endY/CHUNK_SIZE)+padding;cy++)for(let cx=Math.floor(startX/CHUNK_SIZE)-padding;cx<=Math.floor(endX/CHUNK_SIZE)+padding;cx++)if(isChunkInWorld(cx,cy))keys.push(chunkKey(cx,cy));return keys;}
+function scheduleChunkStreaming(){if(!playerKey)return;const center=cameraChunk(),visible=new Set(chunkKeysForViewport(VIEW_CHUNK_PADDING)),wanted=[...new Set(chunkKeysForViewport(PRELOAD_CHUNK_PADDING))].sort((a,b)=>{const ac=parseChunkKey(a),bc=parseChunkKey(b);return Math.max(Math.abs(ac.cx-center.cx),Math.abs(ac.cy-center.cy))-Math.max(Math.abs(bc.cx-center.cx),Math.abs(bc.cy-center.cy));}).slice(0,MAX_ACTIVE_CHUNK_SUBSCRIPTIONS);for(const key of visible)if(!wanted.includes(key))wanted.push(key);const signature=wanted.join('|');if(signature===lastStreamedChunkSignature)return;lastStreamedChunkSignature=signature;if(chunkStreamTimer)clearTimeout(chunkStreamTimer);chunkStreamTimer=setTimeout(()=>updateChunkSubscriptions(wanted),CHUNK_SUBSCRIBE_DEBOUNCE_MS);}
+function updateChunkSubscriptions(wantedKeys){const wanted=new Set(wantedKeys),n=now();for(const key of wanted)subscribeChunk(getChunkCacheEntry(key));for(const [key,entry] of chunkDataCache){if(wanted.has(key))continue;if(entry.unsubscribers.length)stopChunkSubscription(entry);if(n-entry.lastTouched>CHUNK_CACHE_TTL_MS)stopChunkSubscription(entry,{evict:true});}const inactive=[...chunkDataCache.values()].filter(e=>!e.unsubscribers.length).sort((a,b)=>a.lastTouched-b.lastTouched);while(chunkDataCache.size>MAX_ACTIVE_CHUNK_SUBSCRIPTIONS&&inactive.length)stopChunkSubscription(inactive.shift(),{evict:true});}
+
 function cameraChunk(){return getChunkOfTile(Math.floor((camera.x+canvas.width/2)/(32*camera.zoom)),Math.floor((camera.y+canvas.height/2)/(32*camera.zoom)))}
 function chunkKeysAround(center,radius){const out=new Set();for(let cy=center.cy-radius;cy<=center.cy+radius;cy++)for(let cx=center.cx-radius;cx<=center.cx+radius;cx++)if(isChunkInWorld(cx,cy))out.add(chunkKey(cx,cy));return out}
 function activeChunkKeys(){return activeChunks}function warmChunkKeys(){return warmChunks}function visibleChunkKeys(){return visibleDrawChunks}
@@ -959,15 +994,12 @@ async function startGame(){
   ensureSurvivalState();if(!account.survival.nextOnlineRaidAt)account.survival.nextOnlineRaidAt=now()+randomOnlineRaidDelay();
   $('login').style.display='none'; $('game').style.display='block'; $('playerTitle').textContent=account.displayName||playerKey;
   resize(); camera.x=account.home.x*32 - canvas.width/2; camera.y=account.home.y*32 - canvas.height/2;clampCamera();
-  unsub.forEach(u=>u()); unsub=[];
-  unsub.push(onSnapshot(col('territories'),applyTerritorySnapshot));
-  unsub.push(onSnapshot(col('troops'),applyTroopSnapshot));
-  unsub.push(onSnapshot(col('buildings'),applyBuildingSnapshot));
-  unsub.push(onSnapshot(col('battles'),applyBattleSnapshot));
-  unsub.push(onSnapshot(col('landmarks'),applyLandmarkSnapshot));
-  unsub.push(onSnapshot(col('onlineRaids'),s=>{onlineRaids.clear();s.forEach(d=>onlineRaids.set(d.id,{id:d.id,...d.data()}));markUIDirty('raids');}));
-  unsub.push(onSnapshot(col('accounts'),s=>{playerAccounts.clear();s.forEach(d=>playerAccounts.set(d.id,{id:d.id,...d.data()}));}));
-  unsub.push(onSnapshot(col('alliances'),s=>{alliances.clear();s.forEach(d=>alliances.set(d.id,{id:d.id,...d.data()}));markUIDirty('alliances');}));
+  unsub.forEach(u=>u()); unsub=[]; for(const entry of chunkDataCache.values())stopChunkSubscription(entry,{evict:true}); chunkDataCache.clear(); lastStreamedChunkSignature='';
+  scheduleChunkStreaming();
+  unsub.push(onSnapshot(query(col('onlineRaids'),where('intendedPlayerKey','==',playerKey)),s=>{onlineRaids.clear();s.forEach(d=>onlineRaids.set(d.id,{id:d.id,...d.data()}));markUIDirty('raids');}));
+  unsub.push(onSnapshot(ref('accounts',playerKey),s=>{if(s.exists()){const data={id:s.id,...s.data()};playerAccounts.set(s.id,data);account={...account,...data};markUIDirty('account');}}));
+  if(account.allianceId)unsub.push(onSnapshot(ref('alliances',account.allianceId),s=>{if(s.exists())alliances.set(s.id,{id:s.id,...s.data()});else alliances.delete(account.allianceId);markUIDirty('alliances');}));
+  unsub.push(onSnapshot(query(col('alliances'),where('invites','array-contains',playerKey)),s=>{for(const change of s.docChanges()){if(change.type==='removed')alliances.delete(change.doc.id);else alliances.set(change.doc.id,{id:change.doc.id,...change.doc.data()});}markUIDirty('alliances');}));
   unsub.push(onSnapshot(ref('worldState','barbarians'),s=>{barbarianWorldState=s.exists()?s.data():{nextBarbarianSpawnCheckAt:0};}));
   unsub.push(onSnapshot(ref('world','settings'),s=>{worldSettings=normalizeWorldSettings(s.exists()?s.data():WORLD_SETTINGS_DEFAULT);provinceMetadata.clear();clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty('world');}));
   await saveAccount();await collectOfflineResources(); resetStartupPollTimers(10000); buildButtons(); if(!gameLoopStarted){gameLoopStarted=true;requestAnimationFrame(loop);} log(`Entered world at your fortress. World size: ${worldWidthChunks()}×${worldHeightChunks()} chunks.`);
@@ -2411,7 +2443,7 @@ function draw(){ const drawStart=performance.now(); const size=32*camera.zoom; v
   for(let y=startY;y<=endY;y++) for(let x=startX;x<=endX;x++){ if(!isTileInWorld(x,y))continue; const s=tileToScreen(x,y),c=getChunkOfTile(x,y); if(!isChunkVisible(c.cx,c.cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,size+1,size+1);continue;} const terr=terrainAt(x,y); ctx.fillStyle=terr==='water'?'#12304a':terr==='mountain'?'#40434a':terr==='forest'?'#153b25':'#1c2a1f'; ctx.fillRect(s.x,s.y,size+1,size+1); const owner=ownerOfTile(x,y); if(owner){ctx.fillStyle=owner===playerKey||isAllied(playerKey,owner)?'rgba(24,201,100,.22)':'rgba(255,77,77,.22)'; ctx.fillRect(s.x,s.y,size,size);} }
   if(buildMode)for(let y=startY;y<=endY;y++)for(let x=startX;x<=endX;x++){if(!isTileInWorld(x,y)||!isTileVisible(x,y))continue;const s=tileToScreen(x,y),valid=isValidBuildPlacement(buildMode,x,y),hovered=hoveredTile?.x===x&&hoveredTile?.y===y;if(valid||hovered){ctx.fillStyle=valid?'rgba(55,205,150,.3)':'rgba(255,70,70,.42)';ctx.fillRect(s.x+1,s.y+1,size-2,size-2);ctx.strokeStyle=valid?'rgba(110,245,220,.7)':'#ff5555';ctx.lineWidth=1;ctx.strokeRect(s.x+1,s.y+1,size-2,size-2);}}
   // chunk boundaries and resource icons
-  const {keys:drawChunkKeys,scx,scy,ecx,ecy}=computeVisibleDrawChunks(startX,startY,endX,endY);perfStats.visible=drawChunkKeys.size;
+  const {keys:drawChunkKeys,scx,scy,ecx,ecy}=computeVisibleDrawChunks(startX,startY,endX,endY);perfStats.visible=drawChunkKeys.size;scheduleChunkStreaming();
   for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++){ if(!isChunkInWorld(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE), chunkPixels=CHUNK_SIZE*size; if(!isChunkVisible(cx,cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);ctx.strokeStyle='#111722';ctx.lineWidth=2;ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);continue;} const res=resourceForChunk(cx,cy), color=resourceColor(res);if(mapOverlay==='resource'){ctx.fillStyle=color+'35';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);}if(mapOverlay==='threat'){const danger=getProvinceForChunk(cx,cy).danger;ctx.fillStyle=`rgba(210,45,25,${danger*.09})`;ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);}if(mapOverlay==='fire'){const local=[...buildings.values()].filter(b=>b.ownerId===playerKey&&b.hp>0&&b.chunkKey===chunkKey(cx,cy));const risk=local.length?local.reduce((n,b)=>n+buildingFireRisk(b),0)/local.length:0;ctx.fillStyle=`rgba(255,95,25,${clamp(risk/140,0,.55)})`;ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);} ctx.strokeStyle='#536070'; ctx.lineWidth=2; ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);
     const owner=territories.get(chunkKey(cx,cy))?.ownerId,allied=owner&&owner!==playerKey&&isAllied(playerKey,owner);ctx.strokeStyle=owner===playerKey?'#18c964':allied?'#42cfff':owner?'#ff4d4d':'#536070';ctx.lineWidth=allied?4:2;ctx.strokeRect(s.x+1,s.y+1,chunkPixels-2,chunkPixels-2);
     const compact=camera.zoom<.7, label=compact?resourceIcon(res):resourceDisplayName(res), fontSize=compact?11:Math.min(18,11+camera.zoom*3), padX=compact?6:9, badgeH=compact?22:fontSize+12;
