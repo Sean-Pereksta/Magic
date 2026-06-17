@@ -190,7 +190,7 @@ const SIEGE_TYPES=new Set(['ballista','catapult','trebuchet']);
 function hasTech(id,ownerId=playerKey){const a=ownerId===playerKey?account:playerAccounts.get(ownerId);return !!a?.research?.[id];}
 function researchPointCap(){return 99;}
 const BARBARIAN_OWNER_PREFIX = "barbarian";
-const BARBARIAN_SPAWN_CHECK_MS = 3600000;
+const BARBARIAN_SPAWN_CHECK_MS = 60000;
 const BARBARIAN_SPAWN_LOCK_MS = 30000;
 const BARBARIAN_THINK_MS = 10000;
 const BARBARIAN_AI_TICK_MS = 3000;
@@ -214,13 +214,18 @@ const BARBARIAN_RAID_MAX_MS = 60 * 60000;
 const BARBARIAN_FORCE_EXPIRE_MS = 2 * 3600000;
 const BARBARIAN_HORDE_COOLDOWN_MS = 6 * 3600000;
 const BARBARIAN_NOMAD_MOVE_MS = 3 * 3600000;
-const MAX_NORMAL_BARBARIAN_SQUAD_SIZE = 18;
+const MAX_NORMAL_BARBARIAN_SQUAD_SIZE = 16;
+const BARBARIAN_CAMP_TRICKLE_MS = 4 * 60 * 1000;
+const BARBARIAN_PRESSURE_RECHECK_MS = 30000;
+const BARBARIAN_NO_SPAWN_RADIUS_FROM_FORTRESS = 20;
+const BARBARIAN_NO_SPAWN_RADIUS_FROM_CAPITAL = 16;
+const BARBARIAN_NO_SPAWN_RADIUS_FROM_DISTRICT_CENTER = 8;
 const BARBARIAN_PRESENCE_RADIUS = 10, BARBARIAN_MIN_NEAR_PLAYER = 2, BARBARIAN_RUMOR_RANGE = 12, BARBARIAN_MAX_RAID_TRAVEL_CHUNKS = 10;
 const ONLINE_SURVIVAL_ENABLED = true;
 const ONLINE_RAID_MIN_MS = 60 * 1000, ONLINE_RAID_MAX_MS = 5 * 60 * 1000, ONLINE_RAID_DIRECTOR_TICK_MS = 20 * 1000;
 const ONLINE_RAID_SPAWN_RADIUS_MIN_CHUNKS = 1, ONLINE_RAID_SPAWN_RADIUS_MAX_CHUNKS = 4, ONLINE_RAID_PLAYER_LAND_BUFFER_CHUNKS = 0;
 const ONLINE_RAID_RECENT_GRACE_MS = 90 * 1000, ONLINE_RAID_MAX_ACTIVE_PER_PLAYER = 2;
-const ONLINE_RAID_MAX_UNITS_EARLY = 8, ONLINE_RAID_MAX_UNITS_MID = 18, ONLINE_RAID_MAX_UNITS_LATE = 35;
+const ONLINE_RAID_MAX_UNITS_EARLY = 4, ONLINE_RAID_MAX_UNITS_MID = 12, ONLINE_RAID_MAX_UNITS_LATE = 16;
 const ONLINE_RAID_REWARD_RADIUS_TILES = 12, ONLINE_RAID_DESPAWN_MS = 20 * 60 * 1000;
 const ONLINE_RAID_TYPES = {
   scoutProbe:{name:"Scout Probe",warning:"Barbarian scouts spotted near your border!",minLevel:1,size:.65,target:"border"},
@@ -1545,6 +1550,28 @@ function randomOpenTileInChunk(cx,cy,unit={ownerId:`${BARBARIAN_OWNER_PREFIX}_sp
   for(let i=0;i<40;i++){const x=cx*CHUNK_SIZE+1+Math.floor(Math.random()*(CHUNK_SIZE-2)),y=cy*CHUNK_SIZE+1+Math.floor(Math.random()*(CHUNK_SIZE-2)); if(!isBlocked(x,y,unit))candidates.push({x,y});}
   return candidates[0]||null;
 }
+function isInsidePlayerTerritoryTile(tile,targetPlayerId){return !!tile&&territoryOfTile(tile.x,tile.y).ownerId===targetPlayerId;}
+function isInsideAnyPlayerDistrict(tile){if(!tile)return false;const c=getChunkOfTile(tile.x,tile.y);return [...playerAccounts.keys(),playerKey].filter(Boolean).some(id=>getDistrictForChunk(c.cx,c.cy,id));}
+function isInsideAnyPlayerBuildingFootprint(tile){const e=tile&&blockingEntityAtTile(tile.x,tile.y);return !!(e?.kind==='building'&&e.data.ownerId&&!isBarbarianOwner(e.data.ownerId));}
+function isTooCloseToPlayerFortress(tile,targetPlayerId){if(!tile)return true;return [...buildings.values()].some(b=>b.ownerId===targetPlayerId&&b.hp>0&&b.type==='fortress'&&dist(tile,b)<=BARBARIAN_NO_SPAWN_RADIUS_FROM_FORTRESS);}
+function isTooCloseToPlayerCore(tile,targetPlayerId){if(!tile)return true;const home=accountForPlayer(targetPlayerId)?.home;if(home&&dist(tile,home)<=BARBARIAN_NO_SPAWN_RADIUS_FROM_CAPITAL)return true;for(const d of getDistricts(targetPlayerId))for(const m of d.members||[]){const center={x:m.cx*CHUNK_SIZE+CHUNK_SIZE/2,y:m.cy*CHUNK_SIZE+CHUNK_SIZE/2};if(dist(tile,center)<=BARBARIAN_NO_SPAWN_RADIUS_FROM_DISTRICT_CENTER)return true;}return false;}
+function isWalkableTile(tile,unit={ownerId:`${BARBARIAN_OWNER_PREFIX}_spawn`,barbarian:true}){return !!tile&&!isBlocked(tile.x,tile.y,unit);}
+function isValidBarbarianSpawnTile(tile,targetPlayerId){
+  if(!tile||!targetPlayerId)return false;const c=getChunkOfTile(tile.x,tile.y),terr=territories.get(c.key);
+  if(terr?.ownerId===targetPlayerId||isInsidePlayerTerritoryTile(tile,targetPlayerId))return false;
+  if(terr?.ownerId&&!isBarbarianOwner(terr.ownerId))return false;
+  if(isInsideAnyPlayerDistrict(tile)||isInsideAnyPlayerBuildingFootprint(tile)||isTooCloseToPlayerFortress(tile,targetPlayerId)||isTooCloseToPlayerCore(tile,targetPlayerId))return false;
+  return isWalkableTile(tile);
+}
+function isValidBarbarianCampLocation(tile,targetPlayerId){return isValidBarbarianSpawnTile(tile,targetPlayerId)&&!indexedBuildings(chunkKeysAround(getChunkOfTile(tile.x,tile.y),2)).some(b=>isBarbarianCamp(b)&&b.hp>0);}
+function findValidBarbarianSpawnTileInChunk(cx,cy,targetPlayerId){for(let i=0;i<60;i++){const tile=randomOpenTileInChunk(cx,cy);if(isValidBarbarianSpawnTile(tile,targetPlayerId))return tile;}return null;}
+function createBarbarianUnitSafe(type,spawnTile,options={}){
+  if(!isValidBarbarianSpawnTile(spawnTile,options.targetPlayerId)){if(window.DEBUG_BARBARIAN_AI)console.warn('[BarbarianSpawnBlocked]',type,spawnTile,options);return null;}
+  return makeBarbarianUnit(type,options.ownerId||`${BARBARIAN_OWNER_PREFIX}_safe`,spawnTile,{order:'attackMove',aiState:'invade',intendedPlayerKey:options.targetPlayerId,targetPlayerId:options.targetPlayerId,groupId:options.groupId,...(options.extra||{})});
+}
+async function despawnBarbarian(unit,reason){if(window.DEBUG_BARBARIAN_AI)console.log('[BarbarianDespawn]',unit?.id,reason);if(unit?.id){await deleteDoc(ref('troops',unit.id));deleteTroopIndexed(unit.id);}}
+function findNearestValidOutsideTerritoryChunk(origin,targetPlayerId,maxRadius=8){const base=origin.cx!==undefined?origin:parseChunkKey(origin.key||origin.id||origin.chunkKey);for(let r=1;r<=maxRadius;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;const cx=base.cx+dx,cy=base.cy+dy,key=chunkKey(cx,cy);if(!isChunkInWorld(cx,cy)||territories.get(key)?.ownerId===targetPlayerId)continue;const tile=findValidBarbarianSpawnTileInChunk(cx,cy,targetPlayerId);if(tile)return {...tile,cx,cy,chunkKey:key};}return null;}
+function orderBarbarianUnitRetreat(u,reason='raid_complete'){const target=findNearestValidOutsideTerritoryChunk(getChunkOfTile(u.x,u.y),u.intendedPlayerKey||u.targetPlayerId||playerKey,10);if(!target)return false;u.order='move';u.aiState='retreat';u.retreatReason=reason;u.retreatTargetChunkId=target.chunkKey;u.moveGoal={x:target.x,y:target.y};u.targetId=null;u.raidUntil=0;u.expiresAt=now()+30*60000;requestPath(u,target.x,target.y,1200);scheduleSaveTroops([u]);return true;}
 function findFreeBarbarianCampSpot(){
   const camps=[...buildings.values()].filter(isBarbarianCamp), forts=[...buildings.values()].filter(b=>b.type==='fortress'&&b.hp>0);
   for(let attempt=0;attempt<BARBARIAN_CAMP_RESPAWN_ATTEMPTS;attempt++){
@@ -1567,18 +1594,25 @@ function barbarianTagBonus(tags){return tags.reduce((n,t)=>n+({["Raider Country"
 function randomInt(min,max){return min+Math.floor(Math.random()*(max-min+1));}
 function accountForPlayer(id){return id===playerKey?account:playerAccounts.get(id)||{};}
 function getPlayerBarbarianLevel(id){const a=accountForPlayer(id);return Math.max(1,Number(a.level||a.fortressLevel||1));}
-function getBarbarianSquadSizeForPlayer(id){
+function getMaxBarbarianBandSizeForPlayer(id){
   const level=getPlayerBarbarianLevel(id);
-  if(level<=2)return randomInt(1,3);
-  if(level<=4)return randomInt(2,5);
-  if(level<=6)return randomInt(3,7);
-  if(level<=9)return randomInt(5,10);
-  if(level<=12)return randomInt(7,14);
-  return randomInt(10,MAX_NORMAL_BARBARIAN_SQUAD_SIZE);
+  if(level<=3)return 4;
+  if(level<=5)return 6;
+  if(level<=8)return 9;
+  if(level<=12)return 12;
+  return 16;
+}
+function getBarbarianSquadSizeForPlayer(id){
+  const level=getPlayerBarbarianLevel(id),max=getMaxBarbarianBandSizeForPlayer(id);
+  if(level<=3)return randomInt(1,max);
+  if(level<=5)return randomInt(3,max);
+  if(level<=8)return randomInt(4,max);
+  if(level<=12)return randomInt(6,max);
+  return randomInt(8,max);
 }
 function getMaxNearbyBarbariansForPlayer(id){
   const level=getPlayerBarbarianLevel(id);
-  if(level<=3)return 10;
+  if(level<=3)return 8;
   if(level<=4)return 10;
   if(level<=6)return 16;
   if(level<=9)return 24;
@@ -1613,7 +1647,7 @@ function localDefenseScoreNearChunk(chunk,id,radius=1){
 }
 function getBarbarianSpawnBudgetForPlayer(id,targetChunk=null){
   const level=getPlayerBarbarianLevel(id),districts=countPlayerDistrictChunks(id),frontier=countFrontierChunksForPlayer(id),a=accountForPlayer(id),unrest=Math.max(0,100-townStability())/20,missed=(a.requests?.active||[]).filter(r=>r.status==='ignored'||r.missed).length,defense=targetChunk?localDefenseScoreNearChunk(targetChunk,id,2):0;
-  return Math.max(4,Math.round(4+level*2+districts*2+frontier+unrest*.5+missed*.5-defense*.75));
+  let budget=Math.round(4+level*2+Math.min(frontier,4)+Math.min(Math.floor(unrest),4)+Math.min(missed,2)-defense*.75);if(level<=3)budget=Math.min(budget,8);if(level<=5)budget=Math.min(budget,12);return Math.max(4,budget);
 }
 function nearbyBarbarianUnitsForPlayer(id,radius=2){
   const owned=ownedChunksForPlayer(id),keys=new Set();owned.forEach(t=>chunkKeysAround(t,radius).forEach(k=>keys.add(k)));
@@ -1642,7 +1676,7 @@ function barbarianRaidLabelFor(id,count,rareHorde=false){
   if(level<=10)return count<=10?'Supply raid':'Warband';
   return count<=18?'Large warband':'Clan raid';
 }
-function findBarbarianSpawnNearPlayer(id){const owned=ownedChunksForPlayer(id),camps=[...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0),grace=playerAgeMs(id)<BARBARIAN_NEW_PLAYER_GRACE_MS,out=[];for(const o of owned)for(let dy=-6;dy<=6;dy++)for(let dx=-6;dx<=6;dx++){const d=Math.max(Math.abs(dx),Math.abs(dy)),cx=o.cx+dx,cy=o.cy+dy,key=chunkKey(cx,cy);if(d<1||d>6||!isChunkInWorld(cx,cy)||territories.get(key)?.ownerId||(grace&&d<4))continue;if([...buildings.values()].some(b=>b.hp>0&&b.chunkKey===key)||camps.some(c=>chunkDistance({cx,cy},parseChunkKey(c.chunkKey))<3))continue;const tile=randomOpenTileInChunk(cx,cy),meta=provinceMetadataFor(getProvinceId(cx,cy)),nearCamps=camps.filter(c=>chunkDistance({cx,cy},parseChunkKey(c.chunkKey))<=6).length,edge=territoryEdgeDistance(o.cx,o.cy,id);if(tile)out.push({...tile,cx,cy,chunkKey:key,resource:chunkResource(cx,cy),spawnCategory:d<=2?'border':'frontier',targetPlayerKey:id,score:(7-d)*2+(6-meta.safety)*-1+meta.safety*2.4+barbarianTagBonus(meta.tags)+absenceDangerMultiplier(id)*3+(4-edge)*1.4-nearCamps*2+Math.random()*3});}return out.sort((a,b)=>b.score-a.score)[0]||null;}
+function findBarbarianSpawnNearPlayer(id){const owned=ownedChunksForPlayer(id),camps=[...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0),grace=playerAgeMs(id)<BARBARIAN_NEW_PLAYER_GRACE_MS,out=[];for(const o of owned)for(let dy=-6;dy<=6;dy++)for(let dx=-6;dx<=6;dx++){const d=Math.max(Math.abs(dx),Math.abs(dy)),cx=o.cx+dx,cy=o.cy+dy,key=chunkKey(cx,cy);if(d<1||d>6||!isChunkInWorld(cx,cy)||territories.get(key)?.ownerId===id||(grace&&d<4))continue;if(camps.some(c=>chunkDistance({cx,cy},parseChunkKey(c.chunkKey))<3))continue;const tile=findValidBarbarianSpawnTileInChunk(cx,cy,id),meta=provinceMetadataFor(getProvinceId(cx,cy)),nearCamps=camps.filter(c=>chunkDistance({cx,cy},parseChunkKey(c.chunkKey))<=6).length,edge=territoryEdgeDistance(o.cx,o.cy,id);if(tile)out.push({...tile,cx,cy,chunkKey:key,resource:chunkResource(cx,cy),spawnCategory:d<=2?'border':'frontier',targetPlayerKey:id,score:(7-d)*2+meta.safety*2.4+barbarianTagBonus(meta.tags)+absenceDangerMultiplier(id)*3+(4-edge)*1.4-nearCamps*2+Math.random()*3});}return out.sort((a,b)=>b.score-a.score)[0]||null;}
 function getBarbarianThreatLevel(camp,id){const a=id===playerKey?account:playerAccounts.get(id),age=playerAgeMs(id),fort=Number(a?.fortressLevel||1),count=[...troops.values()].filter(u=>u.ownerId===id&&u.hp>0).length;if(age<24*3600000)return 1;return clamp(Math.round(1+fort/3+count/28),1,5);}
 function scaleBarbarianCampForNearbyPlayer(camp,id){const c=parseChunkKey(camp.chunkKey),safety=provinceMetadataFor(getProvinceId(c.cx,c.cy)).safety,level=clamp(getBarbarianThreatLevel(camp,id)+Math.floor((safety-2)/2),1,5),cfg=BARBARIAN_CAMP_LEVELS[level],type=campTypeDef(camp);camp.campLevel=level;camp.maxHp=Math.round(cfg.hp*type.defense);camp.hp=camp.maxHp;camp.scaledFor=id;return camp;}
 async function ensureBarbarianPresenceNearPlayers(){const candidates=[...playerAccounts.keys()];if(playerKey&&!candidates.includes(playerKey))candidates.push(playerKey);candidates.sort((a,b)=>absenceDangerMultiplier(b)-absenceDangerMultiplier(a));let made=0;for(const id of candidates){if(barbarianCampCount()>=MAX_BARBARIAN_CAMPS||made>=2)break;const owned=ownedChunksForPlayer(id);if(!owned.length||playerAgeMs(id)<BARBARIAN_NEW_PLAYER_GRACE_MS)continue;const near=[...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0&&owned.some(t=>chunkDistance(parseChunkKey(b.chunkKey),t)<=BARBARIAN_PRESENCE_RADIUS)),desired=Math.min(getMaxSimultaneousBarbarianGroupsNearPlayer(id),Math.ceil(BARBARIAN_MIN_NEAR_PLAYER*absenceDangerMultiplier(id)));if(near.length>=desired||countBarbariansNearPlayerBorder(id,2)>=getMaxNearbyBarbariansForPlayer(id)||Math.random()>Math.min(.85,.42*absenceDangerMultiplier(id)))continue;const spot=findBarbarianSpawnNearPlayer(id);if(spot&&canSpawnBarbariansNearPlayer(id,spot.chunkKey)){await spawnBarbarianCamp(spot);await markBarbarianBorderSpawnForPlayer(id);made++;}}return made;}
@@ -1718,7 +1752,7 @@ async function spawnOnlineSurvivalRaid(id){
   let plannedRoster=onlineRaidRoster(scale.raidLevel,clamp(baseCount,1,maxCount)),spent=0;plannedRoster=plannedRoster.filter(unitType=>{const cost=getBarbarianUnitBudgetCost(unitType);if(spent+cost>budget)return false;spent+=cost;return true;}).slice(0,maxCount);if(!plannedRoster.length)return false;
   const count=plannedRoster.length,ownerId=`${BARBARIAN_OWNER_PREFIX}_online_${raidId}`,rewardPool={gold:50+scale.raidLevel*25,lumber:40+scale.raidLevel*20,oil:Math.floor(scale.raidLevel*4),heroXp:10+scale.raidLevel*6,fragments:scale.raidLevel>=8?1:0},targetDistrict=getDistrictForChunk(targetChunk.cx,targetChunk.cy,id);
   const raid={id:raidId,type:"onlineRaid",raidType,intendedPlayerKey:id,spawnedAt:n,expiresAt:n+ONLINE_RAID_DESPAWN_MS,spawnChunk:spawn.chunkKey,targetChunk:targetChunk.key,targetDistrictId:targetDistrict?.id||null,targetDistrictName:targetDistrict?.name||null,targetDistrictType:targetDistrict?.type||null,raidLevel:scale.raidLevel,raidPower:scale.raidPower,rewardPool,contributors:{},unitCount:count,status:"active"};
-  const batch=writeBatch(db),claimed=new Set();plannedRoster.forEach((unitType,index)=>{const spot=formationTargets(spawn.x,spawn.y,count,{ownerId,barbarian:true},claimed)[0]||{x:spawn.x,y:spawn.y};const u=makeBarbarianUnit(unitType,ownerId,spot,{onlineRaidId:raidId,intendedPlayerKey:id,expiresAt:raid.expiresAt,order:'attackMove',moveGoal:{x:target.x,y:target.y},raidTargetChunk:raid.targetChunk,raidUntil:raid.expiresAt,raidIndex:index,retreatAtHp:getPlayerBarbarianLevel(id)<=5?.5:.45});u.path=[];batch.set(ref('troops',u.id),u);});
+  const batch=writeBatch(db),claimed=new Set();plannedRoster.forEach((unitType,index)=>{const spot=formationTargets(spawn.x,spawn.y,count,{ownerId,barbarian:true},claimed)[0]||{x:spawn.x,y:spawn.y};const u=createBarbarianUnitSafe(unitType,spot,{targetPlayerId:id,ownerId,groupId:raidId,extra:{onlineRaidId:raidId,expiresAt:raid.expiresAt,order:'attackMove',moveGoal:{x:target.x,y:target.y},raidTargetChunk:raid.targetChunk,raidUntil:raid.expiresAt,raidIndex:index,retreatAtHp:getPlayerBarbarianLevel(id)<=5?.5:.45}});if(u){u.path=[];batch.set(ref('troops',u.id),u);}});
   batch.set(ref('onlineRaids',raidId),raid);batch.set(ref('accounts',id),{survival:{...ensureSurvivalState(),lastOnlineRaidAt:n,nextOnlineRaidAt:n+randomOnlineRaidDelay(),pressure:clamp(ensureSurvivalState().pressure+1,0,100),activeOnlineRaidIds:[...ensureSurvivalState().activeOnlineRaidIds,raidId]}},{merge:true});await batch.commit();
   await markBarbarianBorderSpawnForPlayer(id);account.survival={...account.survival,lastOnlineRaidAt:n,nextOnlineRaidAt:n+randomOnlineRaidDelay(),pressure:clamp(account.survival.pressure+1,0,100),activeOnlineRaidIds:[...account.survival.activeOnlineRaidIds,raidId]};showOnlineRaidWarning(raid,isChunkVisible(spawn.cx,spawn.cy));setBarbarianWarningMarker(raid.spawnChunk,n+BARBARIAN_WARNING_MARKER_MS);return true;
 }
@@ -1726,24 +1760,25 @@ function barbarianRosterStrength(roster){return Object.entries(roster||{}).reduc
 async function spawnBarbarianDefenders(camp,limit=Infinity){
   const roster=barbarianRoster(camp.campLevel||1,camp.campType),existing=[...troops.values()].filter(u=>u.campId===camp.id&&u.hp>0),counts={};existing.forEach(u=>counts[u.type]=(counts[u.type]||0)+1);
   const batch=writeBatch(db),claimed=new Set(existing.map(u=>tileKey(u.x,u.y)));let made=0;
-  for(const [type,wanted] of Object.entries(roster))for(let i=counts[type]||0;i<wanted&&made<limit;i++){const spot=formationTargets(camp.x,camp.y,wanted,{ownerId:camp.ownerId,barbarian:true},claimed)[0];if(!spot)continue;const u=makeBarbarianUnit(type,camp.ownerId,spot,{campId:camp.id,homeX:camp.x,homeY:camp.y,homeChunkKey:camp.chunkKey,campType:camp.campType});batch.set(ref('troops',u.id),u);made++;}
+  for(const [type,wanted] of Object.entries(roster))for(let i=counts[type]||0;i<wanted&&made<limit;i++){const spot=formationTargets(camp.x,camp.y,wanted,{ownerId:camp.ownerId,barbarian:true},claimed)[0];if(!spot)continue;const targetPlayerId=camp.scaledFor||camp.targetPlayerKey||playerKey,u=createBarbarianUnitSafe(type,spot,{targetPlayerId,ownerId:camp.ownerId,groupId:camp.id,extra:{campId:camp.id,homeX:camp.x,homeY:camp.y,homeChunkKey:camp.chunkKey,campType:camp.campType,order:'guardCamp'}});if(u){batch.set(ref('troops',u.id),u);made++;}}
   if(made)await batch.commit(); return made;
 }
 async function spawnBarbarianCamp(spot){
   const n=now(),id=`barbCamp_${n}_${Math.floor(Math.random()*1e7)}`,ownerId=`${BARBARIAN_OWNER_PREFIX}_${id}`,campType=chooseBarbarianCampType(),type=BARBARIAN_CAMP_TYPES[campType],cfg=BARBARIAN_CAMP_LEVELS[1],hp=Math.round(cfg.hp*type.defense),safety=provinceMetadataFor(getProvinceId(spot.cx,spot.cy)).safety,raidSafetyRate=[0,1.7,1.3,1,.78,.6][safety];
-  const camp={id,ownerId,type:'barbarianCamp',campType,x:spot.x,y:spot.y,hp,maxHp:hp,chunkKey:spot.chunkKey,campLevel:1,provinceSafety:safety,spawnCategory:spot.spawnCategory||'deepWild',createdAt:n,lastLevelAt:n,lastSpawnAt:n,lastRaidAt:0,nextRaidAt:n+cfg.raidMs*type.raidRate*raidSafetyRate,nextMoveAt:campType==='nomad'?n+BARBARIAN_NOMAD_MOVE_MS:null,lastThinkAt:n,simOwnerUid:null,simLockedUntil:0,state:'guard',barbarian:true};
+  if(spot.targetPlayerKey&&!isValidBarbarianCampLocation(spot,spot.targetPlayerKey))return null;
+  const camp={id,ownerId,type:'barbarianCamp',campType,x:spot.x,y:spot.y,hp,maxHp:hp,chunkKey:spot.chunkKey,campLevel:1,provinceSafety:safety,spawnCategory:spot.spawnCategory||'deepWild',targetPlayerKey:spot.targetPlayerKey||null,spawnedPressure:0,createdAt:n,lastLevelAt:n,lastSpawnAt:n,lastRaidAt:0,lastTrickleAt:0,nextTrickleAt:n+BARBARIAN_CAMP_TRICKLE_MS,nextRaidAt:n+cfg.raidMs*type.raidRate*raidSafetyRate,nextMoveAt:campType==='nomad'?n+BARBARIAN_NOMAD_MOVE_MS:null,lastThinkAt:n,simOwnerUid:null,simLockedUntil:0,state:'guard',barbarian:true};
   if(spot.targetPlayerKey)scaleBarbarianCampForNearbyPlayer(camp,spot.targetPlayerKey);
-  await setDoc(ref('buildings',id),camp);setBuildingIndexed(id,camp);if(warmChunks.has(camp.chunkKey))await spawnBarbarianDefenders(camp);else{camp.threat=camp.threat||barbarianRosterStrength(barbarianRoster(camp.campLevel||1,camp.campType));camp.lastSimulatedAt=n;await saveBuilding(camp);}log(`${type.name} spawned in chunk ${spot.chunkKey}.`);return camp;
+  await setDoc(ref('buildings',id),camp);setBuildingIndexed(id,camp);if(warmChunks.has(camp.chunkKey))await spawnBarbarianDefenders(camp,getPlayerBarbarianLevel(spot.targetPlayerKey||playerKey)<=3?1:2);else{camp.threat=camp.threat||1;camp.lastSimulatedAt=n;await saveBuilding(camp);}log(`${type.name} spawned in chunk ${spot.chunkKey}.`);return camp;
 }
 async function spawnWanderingBarbarianForce(){
   if(wanderingBarbarianOwners().size>=MAX_BARBARIAN_FORCE_COUNT)return false;
   for(let tries=0;tries<200;tries++){const rc=randomWorldChunk(),cx=rc.cx,cy=rc.cy,key=chunkKey(cx,cy),fort=[...buildings.values()].some(b=>b.type==='fortress'&&b.chunkKey===key);if(fort)continue;const spot=randomOpenTileInChunk(cx,cy);if(!spot)continue;
-    const n=now(),ownerId=`${BARBARIAN_OWNER_PREFIX}_force_${n}_${Math.floor(Math.random()*1e6)}`,count=5+Math.floor(Math.random()*8),claimed=new Set(),batch=writeBatch(db),target=chooseWanderingTarget(spot);
-    for(let i=0;i<count;i++){const pos=formationTargets(spot.x,spot.y,1,{ownerId,barbarian:true},claimed)[0]||spot,type=i===count-1&&count>9?'barbarianBrute':i%4===0?'barbarianThrower':'barbarianRaider';const u=makeBarbarianUnit(type,ownerId,pos,{order:target?'attackMove':'wander',moveGoal:target||{x:clamp(pos.x+Math.floor(Math.random()*25)-12,worldMinTileX(),worldMaxTileX()),y:clamp(pos.y+Math.floor(Math.random()*25)-12,worldMinTileY(),worldMaxTileY())},expiresAt:n+BARBARIAN_FORCE_EXPIRE_MS});batch.set(ref('troops',u.id),u);}
+    const n=now(),ownerId=`${BARBARIAN_OWNER_PREFIX}_force_${n}_${Math.floor(Math.random()*1e6)}`,claimed=new Set(),batch=writeBatch(db),target=chooseWanderingTarget(spot),targetPlayerId=target?.ownerId||playerKey;if(targetPlayerId&&!isValidBarbarianSpawnTile(spot,targetPlayerId))continue;const count=Math.min(getBarbarianSquadSizeForPlayer(targetPlayerId),getMaxNearbyBarbariansForPlayer(targetPlayerId)-countBarbariansNearPlayerBorder(targetPlayerId,2),MAX_NORMAL_BARBARIAN_SQUAD_SIZE);if(count<1)continue;
+    for(let i=0;i<count;i++){const pos=formationTargets(spot.x,spot.y,1,{ownerId,barbarian:true},claimed)[0]||spot,type=i===count-1&&count>4?'barbarianBrute':i%4===0?'barbarianThrower':'barbarianRaider';const u=createBarbarianUnitSafe(type,pos,{targetPlayerId,ownerId,groupId:ownerId,extra:{order:target?'attackMove':'wander',moveGoal:target||{x:clamp(pos.x+Math.floor(Math.random()*25)-12,worldMinTileX(),worldMaxTileX()),y:clamp(pos.y+Math.floor(Math.random()*25)-12,worldMinTileY(),worldMaxTileY())},expiresAt:n+BARBARIAN_FORCE_EXPIRE_MS}});if(u)batch.set(ref('troops',u.id),u);}
     await batch.commit();log(`Wandering barbarian force spawned in chunk ${key}.`);return true;
   } return false;
 }
-async function spawnRoadsideRaiders(id=playerKey){if(wanderingBarbarianOwners().size>=MAX_BARBARIAN_FORCE_COUNT)return false;const roads=[...buildings.values()].filter(b=>b.type==='road'&&b.hp>0&&b.ownerId===id),owned=ownedChunksForPlayer(id);const anchor=roads[Math.floor(Math.random()*roads.length)]||owned[0]&&{x:owned[0].cx*CHUNK_SIZE+8,y:owned[0].cy*CHUNK_SIZE+8};if(!anchor)return false;const spot=findBarbarianSpawnNearPlayer(id);if(!spot||!canSpawnBarbariansNearPlayer(id,spot.chunkKey))return false;const n=now(),ownerId=`${BARBARIAN_OWNER_PREFIX}_roadside_${n}`,batch=writeBatch(db),pressureRoom=Math.max(0,getMaxNearbyBarbariansForPlayer(id)-countBarbariansNearPlayerBorder(id,2)),budgetRoom=Math.max(1,Math.floor(getBarbarianSpawnBudgetForPlayer(id,getChunkOfTile(anchor.x,anchor.y))/2)),count=Math.min(getBarbarianSquadSizeForPlayer(id),pressureRoom,budgetRoom,MAX_NORMAL_BARBARIAN_SQUAD_SIZE);if(count<1)return false;for(let i=0;i<count;i++){const pos=randomOpenTileInChunk(spot.cx,spot.cy)||spot,u=makeBarbarianUnit(i===count-1&&count>2?'barbarianThrower':'barbarianRaider',ownerId,pos,{order:'attackMove',moveGoal:{x:anchor.x,y:anchor.y},roadside:true,retreatAtHp:getPlayerBarbarianLevel(id)<=5?.5:.45,expiresAt:n+45*60000});batch.set(ref('troops',u.id),u);}await batch.commit();await markBarbarianBorderSpawnForPlayer(id);log(`${barbarianRaidLabelFor(id,count)} spotted: raiders are probing the frontier.`);return true;}
+async function spawnRoadsideRaiders(id=playerKey){if(wanderingBarbarianOwners().size>=MAX_BARBARIAN_FORCE_COUNT)return false;const roads=[...buildings.values()].filter(b=>b.type==='road'&&b.hp>0&&b.ownerId===id),owned=ownedChunksForPlayer(id);const anchor=roads[Math.floor(Math.random()*roads.length)]||owned[0]&&{x:owned[0].cx*CHUNK_SIZE+8,y:owned[0].cy*CHUNK_SIZE+8};if(!anchor)return false;const spot=findBarbarianSpawnNearPlayer(id);if(!spot||!canSpawnBarbariansNearPlayer(id,spot.chunkKey))return false;const n=now(),ownerId=`${BARBARIAN_OWNER_PREFIX}_roadside_${n}`,batch=writeBatch(db),pressureRoom=Math.max(0,getMaxNearbyBarbariansForPlayer(id)-countBarbariansNearPlayerBorder(id,2)),budgetRoom=Math.max(1,Math.floor(getBarbarianSpawnBudgetForPlayer(id,getChunkOfTile(anchor.x,anchor.y))/2)),count=Math.min(getBarbarianSquadSizeForPlayer(id),pressureRoom,budgetRoom,MAX_NORMAL_BARBARIAN_SQUAD_SIZE);if(count<1)return false;for(let i=0;i<count;i++){const pos=findValidBarbarianSpawnTileInChunk(spot.cx,spot.cy,id)||spot,u=createBarbarianUnitSafe(i===count-1&&count>2?'barbarianThrower':'barbarianRaider',pos,{targetPlayerId:id,ownerId,groupId:ownerId,extra:{order:'attackMove',moveGoal:{x:anchor.x,y:anchor.y},roadside:true,retreatAtHp:getPlayerBarbarianLevel(id)<=5?.5:.45,expiresAt:n+45*60000}});if(u)batch.set(ref('troops',u.id),u);}await batch.commit();await markBarbarianBorderSpawnForPlayer(id);log(`${barbarianRaidLabelFor(id,count)} spotted: raiders are probing the frontier.`);return true;}
 function directionFromPlayer(camp,id=playerKey){const owned=ownedChunksForPlayer(id),cc=parseChunkKey(camp.chunkKey);if(!owned.length)return 'in the wilds';const home=owned.sort((a,b)=>chunkDistance(a,cc)-chunkDistance(b,cc))[0],dx=cc.cx-home.cx,dy=cc.cy-home.cy,ns=dy<0?'north':dy>0?'south':'',ew=dx<0?'west':dx>0?'east':'';return `${ns}${ns&&ew?'-':''}${ew}`||'nearby';}
 function createBarbarianRumor(id,camp){const owned=ownedChunksForPlayer(id),cc=parseChunkKey(camp.chunkKey),distance=Math.min(...owned.map(t=>chunkDistance(t,cc)),99),dir=directionFromPlayer(camp,id),type=campTypeDef(camp);let text=camp.campType==='warlord'?`A warlord is gathering forces ${dir} in the deep wilds.`:camp.state==='raiding'?`Scouts report raiders ${dir} of your border.`:`Smoke rises from a ${type.name.toLowerCase()} about ${distance} chunks ${dir}.`;return {camp,distance,text,suspected:!isChunkVisible(cc.cx,cc.cy)};}
 function renderBarbarianActivityPanel(){
@@ -1769,11 +1804,11 @@ async function resolveOnlineRaid(raid,expired=false){
 async function runOnlineRaidDirector(){
   if(now()<startupHeavySystemsBlockedUntil||!ONLINE_SURVIVAL_ENABLED||onlineRaidDirectorRunning||!playerKey||document.hidden)return;onlineRaidDirectorRunning=true;
   try{const s=ensureSurvivalState(),n=now(),active=[...onlineRaids.values()].filter(r=>r.intendedPlayerKey===playerKey&&r.status==='active');
-    for(const raid of active){const living=[...troops.values()].some(u=>u.onlineRaidId===raid.id&&u.hp>0);if(!living)await resolveOnlineRaid(raid,false);else if(raid.expiresAt<=n){for(const u of troops.values())if(u.onlineRaidId===raid.id&&u.hp>0)await deleteDoc(ref('troops',u.id));await resolveOnlineRaid(raid,true);}}
+    for(const raid of active){const living=[...troops.values()].some(u=>u.onlineRaidId===raid.id&&u.hp>0);if(!living)await resolveOnlineRaid(raid,false);else if(raid.expiresAt<=n){for(const u of troops.values())if(u.onlineRaidId===raid.id&&u.hp>0){if(!orderBarbarianUnitRetreat(u,'raid_expired'))await despawnBarbarian(u,'far_from_players_cleanup');}await resolveOnlineRaid(raid,true);}}
     s.activeOnlineRaidIds=[...onlineRaids.values()].filter(r=>r.intendedPlayerKey===playerKey&&r.status==='active').map(r=>r.id);if(!s.nextOnlineRaidAt)s.nextOnlineRaidAt=n+randomOnlineRaidDelay();if(n<s.nextOnlineRaidAt)return;if(n-s.lastOnlineRaidAt<ONLINE_RAID_RECENT_GRACE_MS){s.nextOnlineRaidAt=n+ONLINE_RAID_RECENT_GRACE_MS;await saveAccount();return;}if(s.activeOnlineRaidIds.length>=ONLINE_RAID_MAX_ACTIVE_PER_PLAYER){s.nextOnlineRaidAt=n+ONLINE_RAID_RECENT_GRACE_MS;await saveAccount();return;}if(!await spawnOnlineSurvivalRaid(playerKey)){s.nextOnlineRaidAt=n+60000;await saveAccount();}
   }finally{onlineRaidDirectorRunning=false;}
 }
-function chooseWanderingTarget(spot){const candidates=[...territories.values()].filter(t=>t.ownerId).map(t=>({x:t.cx*CHUNK_SIZE+8,y:t.cy*CHUNK_SIZE+8,d:dist(spot,{x:t.cx*CHUNK_SIZE+8,y:t.cy*CHUNK_SIZE+8})})).sort((a,b)=>a.d-b.d);return candidates[0]?{x:candidates[0].x,y:candidates[0].y}:null;}
+function chooseWanderingTarget(spot){const candidates=[...territories.values()].filter(t=>t.ownerId).map(t=>({ownerId:t.ownerId,x:t.cx*CHUNK_SIZE+8,y:t.cy*CHUNK_SIZE+8,d:dist(spot,{x:t.cx*CHUNK_SIZE+8,y:t.cy*CHUNK_SIZE+8})})).sort((a,b)=>a.d-b.d);return candidates[0]?{ownerId:candidates[0].ownerId,x:candidates[0].x,y:candidates[0].y}:null;}
 async function maybeRunBarbarianSpawnCheck(){
   if(now()<startupHeavySystemsBlockedUntil||barbarianSpawnCheckRunning||!playerKey)return;const n=now();if((barbarianWorldState.nextBarbarianSpawnCheckAt||0)>n)return;barbarianSpawnCheckRunning=true;
   try{if(!await claimBarbarianSpawnLock()){log('Barbarian spawn check skipped because another player holds the lock.');return;}const verify=await getDoc(ref('worldState','barbarians'));if(!verify.exists()||verify.data().barbarianSpawnLockUid!==uid||verify.data().barbarianSpawnLockUntil<n)return;
@@ -1803,11 +1838,11 @@ async function thinkBarbarianCamp(camp){
   else if(camp.campType==='nomad'&&n>=(camp.nextMoveAt||0)&&n-(camp.lastAttackedAt||0)>30*60000){await moveNomadCamp(camp);}
   else if(n>=(camp.nextRaidAt||0)){camp.state='raidReady';const target=chooseBarbarianRaidTarget(camp);if(target)await startBarbarianRaid(camp,target);}
   else{camp.state=defenders.length<Math.max(2,Object.values(barbarianRoster(camp.campLevel||1,camp.campType)).reduce((a,b)=>a+b,0)*.6)?'regroup':'guard';for(const u of defenders){if(u.raidUntil&&u.raidUntil<n){u.order='move';u.moveGoal={x:camp.x,y:camp.y};u.targetId=null;u.raidUntil=0;scheduleSaveTroops([u]);}else if(!u.raidUntil&&dist(u,camp)>9){u.order='move';u.moveGoal={x:camp.x,y:camp.y};u.targetId=null;scheduleSaveTroops([u]);}}}
-  if(camp.state==='regroup'&&elapsed>BARBARIAN_THINK_MS)await spawnBarbarianDefenders(camp,Math.min(4,1+Math.floor(elapsed/BARBARIAN_THINK_MS)));await maybeCreateBarbarianHorde(camp);camp.lastThinkAt=n;camp.lastSpawnAt=camp.state==='regroup'?n:(camp.lastSpawnAt||n);await saveBuilding(camp);
+  if(camp.state==='regroup'&&n>=(camp.nextTrickleAt||0)){const low=getPlayerBarbarianLevel(camp.scaledFor||camp.targetPlayerKey||playerKey)<=3;await spawnBarbarianDefenders(camp,low?1:Math.min(2,1+Math.floor(elapsed/BARBARIAN_CAMP_TRICKLE_MS)));camp.lastTrickleAt=n;camp.nextTrickleAt=n+BARBARIAN_CAMP_TRICKLE_MS;}await maybeCreateBarbarianHorde(camp);camp.lastThinkAt=n;camp.lastSpawnAt=camp.state==='regroup'?n:(camp.lastSpawnAt||n);await saveBuilding(camp);
 }
 async function maybeSimulateNearbyBarbarianCamps(){
-  if(now()<startupHeavySystemsBlockedUntil||barbarianThinkRunning||!playerKey)return;barbarianThinkRunning=true;try{const n=now();updateSimulationChunkSets();const camps=indexedBuildings(warmChunks).filter(b=>isBarbarianCamp(b)&&b.hp>0);for(const camp of camps)if(await claimBarbarianCampSimLock(camp)){if(activeChunks.has(camp.chunkKey))await spawnBarbarianDefenders(camp,4);await thinkBarbarianCamp(camp);}for(const camp of buildings.values())if(isBarbarianCamp(camp)&&camp.hp>0&&!warmChunks.has(camp.chunkKey)&&n>=Number(camp.nextRaidAt||Infinity)){camp.threat=(camp.threat||barbarianRosterStrength(barbarianRoster(camp.campLevel||1,camp.campType)))+1;camp.lastSimulatedAt=n;camp.nextRaidAt=n+BARBARIAN_CAMP_LEVELS[camp.campLevel||1].raidMs*campTypeDef(camp).raidRate;await saveBuilding(camp);}
-    for(const u of troops.values())if(isBarbarianUnit(u)){if(!u.campId&&u.expiresAt&&u.expiresAt<n)await deleteDoc(ref('troops',u.id));const territory=territoryOfTile(u.x,u.y);if(u.raidUntil&&territory.ownerId===playerKey&&!u.territoryWarningSent){u.territoryWarningSent=true;scheduleSaveTroops([u]);log('Your territory is under barbarian attack!');}}
+  if(now()<startupHeavySystemsBlockedUntil||barbarianThinkRunning||!playerKey)return;barbarianThinkRunning=true;try{const n=now();updateSimulationChunkSets();const camps=indexedBuildings(warmChunks).filter(b=>isBarbarianCamp(b)&&b.hp>0);for(const camp of camps)if(await claimBarbarianCampSimLock(camp)){if(activeChunks.has(camp.chunkKey)&&now()>=(camp.nextTrickleAt||0))await spawnBarbarianDefenders(camp,getPlayerBarbarianLevel(camp.scaledFor||camp.targetPlayerKey||playerKey)<=3?1:2);await thinkBarbarianCamp(camp);}for(const camp of buildings.values())if(isBarbarianCamp(camp)&&camp.hp>0&&!warmChunks.has(camp.chunkKey)&&n>=Number(camp.nextRaidAt||Infinity)){camp.threat=(camp.threat||barbarianRosterStrength(barbarianRoster(camp.campLevel||1,camp.campType)))+1;camp.lastSimulatedAt=n;camp.nextRaidAt=n+BARBARIAN_CAMP_LEVELS[camp.campLevel||1].raidMs*campTypeDef(camp).raidRate;await saveBuilding(camp);}
+    for(const u of troops.values())if(isBarbarianUnit(u)){if(!u.campId&&u.expiresAt&&u.expiresAt<n){if(u.aiState==='retreat'&&!isChunkNearPlayerBorder(entityChunkKey(u),playerKey,2))await despawnBarbarian(u,'retreated_off_map');else if(!orderBarbarianUnitRetreat(u,'expired'))u.expiresAt=n+10*60000;}const territory=territoryOfTile(u.x,u.y);if(u.raidUntil&&territory.ownerId===playerKey&&!u.territoryWarningSent){u.territoryWarningSent=true;scheduleSaveTroops([u]);log('Your territory is under barbarian attack!');}}
   }finally{barbarianThinkRunning=false;}
 }
 function showBarbarianTerritoryWarning(chunkKeyValue){
@@ -1823,7 +1858,7 @@ async function destroyBarbarianCamp(camp,killerId){
   const campRef=ref('buildings',camp.id),reward=barbarianReward(camp),n=now(),claimed=await runTransaction(db,async tx=>{const snap=await tx.get(campRef);if(!snap.exists()||snap.data().rewardedAt)return false;tx.update(campRef,{hp:0,rewardedAt:n,rewardedBy:killerId||null,defeated:true});return true;});
   if(!claimed)return;camp.rewardedAt=n;awardNearbyTroopXp(killerId,camp,8,VETERANCY.campXp,'destroying a barbarian camp');
   if(killerId===playerKey){addRes(reward);account.barbarianMilestones=account.barbarianMilestones||{};const m=account.barbarianMilestones,bonuses=[];if(!m.firstClear){addRes({gold:200,lumber:150,oil:25});m.firstClear=n;bonuses.push('first-clear supplies');}if((camp.campLevel||1)>=3&&!m.firstLevel3){account.relicFragments=(account.relicFragments||0)+1;m.firstLevel3=n;bonuses.push('level 3 relic fragment');}if(camp.campType==='warlord'&&!m.firstWarlord){account.relicFragments=(account.relicFragments||0)+2;addRes({gold:500,lumber:300,oil:100});m.firstWarlord=n;bonuses.push('rare warlord bounty');}account.globalBuffs=account.globalBuffs||{};account.globalBuffs.antiBarbarianUntil=n+reward.buffMs;account.temporaryVision=(account.temporaryVision||[]).filter(v=>v.until>n);account.temporaryVision.push({chunkKey:camp.chunkKey,until:n+3600000});const extras=[];if(Math.random()<reward.relicChance){account.relicFragments=(account.relicFragments||0)+1;extras.push('1 relic fragment');}if(Math.random()<reward.mercenaryChance){const spot=formationTargets(camp.x,camp.y,1,{ownerId:playerKey})[0];if(spot){const merc=makeBarbarianUnit('barbarianMercenary',playerKey,spot,{barbarian:false,mercenary:true,order:'idle'});await setDoc(ref('troops',merc.id),merc);extras.push('a barbarian mercenary');}}await saveAccount();log(`${reward.type.name} destroyed! +${reward.gold} gold, +${reward.lumber} lumber, +${reward.oil} oil; anti-barbarian buff and camp vision active${extras.length?`; found ${extras.join(' and ')}`:''}${bonuses.length?`; bonus: ${bonuses.join(', ')}`:''}.`);}else log(`${campTypeDef(camp).name} ${camp.chunkKey} was destroyed by ${killerId||'an unknown army'}.`);
-  const batch=writeBatch(db);for(const u of troops.values())if(u.campId===camp.id)batch.delete(ref('troops',u.id));await batch.commit();selected.delete(camp.id);updateUI();
+  for(const u of troops.values())if(u.campId===camp.id&&u.hp>0){if(!orderBarbarianUnitRetreat(u,'camp_destroyed'))await despawnBarbarian(u,'camp_destroyed_retreat_complete');}selected.delete(camp.id);updateUI();
 }
 
 function tick(dt){
