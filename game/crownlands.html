@@ -427,14 +427,14 @@ function deterministicWorldChunk(a,b,seed){return {cx:worldSettings.minChunkX+Ma
 function isFrontierChunk(cx,cy,ring=EXPANSION_RING_CHUNKS){return cx<worldSettings.minChunkX+ring||cy<worldSettings.minChunkY+ring||cx>worldSettings.maxChunkX-ring||cy>worldSettings.maxChunkY-ring}
 function clampCamera(){const size=32*camera.zoom,minX=worldMinTileX()*size,minY=worldMinTileY()*size,maxX=(worldMaxTileX()+1)*size-canvas.width,maxY=(worldMaxTileY()+1)*size-canvas.height;camera.x=clamp(camera.x,Math.min(minX,maxX),Math.max(minX,maxX));camera.y=clamp(camera.y,Math.min(minY,maxY),Math.max(minY,maxY));}
 let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), landmarks=new Map(), onlineRaids=new Map(), playerAccounts=new Map(), alliances=new Map();
-const VIEW_CHUNK_PADDING=1, PRELOAD_CHUNK_PADDING=2, MAX_ACTIVE_CHUNK_SUBSCRIPTIONS=64, CHUNK_SUBSCRIBE_DEBOUNCE_MS=150, CHUNK_CACHE_TTL_MS=5*60*1000;
-const MIN_PLAYABLE_ZOOM = 0.45, DETAIL_RENDER_ZOOM = 0.55, MAX_DRAW_CHUNKS = 90;
+const VIEW_CHUNK_PADDING=1, PRELOAD_CHUNK_PADDING=2, MAX_LIVE_CHUNK_SUBSCRIPTIONS=25, MAX_ACTIVE_CHUNK_SUBSCRIPTIONS=MAX_LIVE_CHUNK_SUBSCRIPTIONS, MAX_WARM_CHUNK_CACHE=100, MAX_DRAW_CHUNKS_ZOOMED_OUT=80, MAX_TILE_DRAW_CHUNKS=36, MAX_PATHFIND_JOBS_PER_FRAME=4, MAX_AI_UNITS_PER_FRAME=150, MAX_FIRESTORE_WRITES_PER_FLUSH=60, CHUNK_SUBSCRIBE_DEBOUNCE_MS=220, CHUNK_CACHE_TTL_MS=5*60*1000;
+const MIN_PLAYABLE_ZOOM = 0.45, DETAIL_RENDER_ZOOM = 0.55, STRATEGIC_RENDER_ZOOM = 0.52, DETAIL_TIER_ZOOM = 0.85, MAX_DRAW_CHUNKS = MAX_TILE_DRAW_CHUNKS;
 const chunkDataCache=new Map();
-let lastStreamedChunkSignature='', chunkStreamTimer=null;
+let lastStreamedChunkSignature='', chunkStreamTimer=null, cameraStreamDirty=true, lastCameraChunkKey='', lastZoomTier='', presenceInterval=null, runtimeTimeouts=new Set(), lastPerfOverBudgetFrames=0, stabilityMode=false;
 const troopsByChunk=new Map(), buildingsByChunk=new Map(), roadsByChunk=new Map(), landmarksByChunk=new Map(), battlesByChunk=new Map(), warningsByChunk=new Map();
 const buildingsByOwner=new Map(), troopsByOwner=new Map(), troopTileIndex=new Map(), buildingTileIndex=new Map();
 let activeChunks=new Set(), warmChunks=new Set(), visibleDrawChunks=new Set(), lastWarmSimAt=0, lastStrategicSimAt=0;
-let perfStats={fps:0,frames:0,lastFpsAt:0,visible:0,activeChunks:0,simTroops:0,simBuildings:0,skippedTroops:0,skippedBuildings:0,drawMs:0,tickMs:0,lastStall:null,lowDetail:false};
+let perfStats={fps:0,frames:0,lastFpsAt:0,visible:0,activeChunks:0,simTroops:0,simBuildings:0,skippedTroops:0,skippedBuildings:0,drawMs:0,tickMs:0,lastStall:null,lowDetail:false,tileCellsDrawn:0,entitiesDrawn:0,pathJobs:0,writesQueued:0,liveListeners:0,stabilityMode:false};
 let unsub=[]; let selected=new Set(); let hoveredTile=null; let hoveredEntity=null; let attackMode=false; let buildMode=null; let commandFeedback=null;
 const DOUBLE_CLICK_SELECT_MS=320;
 let lastClickedUnitId=null,lastClickedUnitAt=0;
@@ -578,6 +578,13 @@ function reindexEntity(index,entity,newKey){const old=entity.chunkKey;if(old!==n
 function reindexTroop(u){ownerIndexAdd(troopsByOwner,u);tileIndexDelete(troopTileIndex,u);tileIndexAdd(troopTileIndex,u);return reindexEntity(troopsByChunk,u,entityChunkKey(u))}
 function reindexBuilding(b){ownerIndexAdd(buildingsByOwner,b);tileIndexDelete(buildingTileIndex,b);if(b.type!=='road')tileIndexAdd(buildingTileIndex,b);return reindexEntity(b.type==='road'?roadsByChunk:buildingsByChunk,b,entityChunkKey(b))}
 
+
+function markCameraStreamDirty(){cameraStreamDirty=true;}
+function checkCameraStreamWatcher(){const c=cameraChunk(),ck=chunkKey(c.cx,c.cy),zt=zoomTier();if(ck!==lastCameraChunkKey||zt!==lastZoomTier){lastCameraChunkKey=ck;lastZoomTier=zt;markCameraStreamDirty();}if(cameraStreamDirty)scheduleChunkStreaming();}
+function setRuntimeTimeout(fn,ms){const id=setTimeout(()=>{runtimeTimeouts.delete(id);fn();},ms);runtimeTimeouts.add(id);return id;}
+function liveChunkListenerCount(){let n=unsub.length;for(const e of chunkDataCache.values())n+=e.unsubscribers.length;return n;}
+function updateStabilityMode(frameMs){if(frameMs>50)lastPerfOverBudgetFrames++;else lastPerfOverBudgetFrames=Math.max(0,lastPerfOverBudgetFrames-1);stabilityMode=lastPerfOverBudgetFrames>=6;perfStats.stabilityMode=stabilityMode;}
+function chunkSummary(key){const {cx,cy}=parseChunkKey(key),terr=territories.get(key)||{},p=getProvinceForChunk(cx,cy),res=terr.resource||resourceForChunk(cx,cy),troopIds=troopsByChunk.get(key)||new Set(),buildingIds=buildingsByChunk.get(key)||new Set(),landmarkIds=landmarksByChunk.get(key)||new Set(),battleIds=battlesByChunk.get(key)||new Set();let pt=0,st=0,pb=0,eb=0;for(const id of troopIds){const u=troops.get(id);if(!u||u.hp<=0)continue;if(selected.has(id))st++;if(u.ownerId===playerKey||isAllied(playerKey,u.ownerId))pt++;}for(const id of buildingIds){const b=buildings.get(id);if(!b||b.hp<=0)continue;if(b.ownerId===playerKey||isAllied(playerKey,b.ownerId))pb++;else eb++;}return {ownerId:terr.ownerId,resource:res,provinceId:p.id,danger:p.danger,landmarkType:[...landmarkIds].map(id=>landmarks.get(id)?.type).find(Boolean),battleState:[...battleIds].map(id=>battles.get(id)?.status).find(s=>s&&s!=='ended'),playerBuildingCount:pb,enemyBuildingCount:eb,visibleTroopCount:pt,selectedTroopCount:st};}
 function createChunkCacheEntry(key){const {cx,cy}=parseChunkKey(key);return {key,cx,cy,territory:null,troops:new Map(),buildings:new Map(),roads:new Map(),landmarks:new Map(),battles:new Map(),loaded:false,loading:false,lastTouched:0,unsubscribers:[]};}
 function getChunkCacheEntry(key){let entry=chunkDataCache.get(key);if(!entry){entry=createChunkCacheEntry(key);chunkDataCache.set(key,entry);}entry.lastTouched=now();return entry;}
 function clearChunkCacheEntryFromGlobal(entry){if(entry.territory)territories.delete(entry.key);for(const id of entry.troops.keys()){const u=troops.get(id);if(u?.ownerId!==playerKey)deleteTroopIndexed(id);}for(const id of entry.buildings.keys())deleteBuildingIndexed(id);for(const id of entry.roads.keys())deleteBuildingIndexed(id);for(const id of entry.landmarks.keys()){const old=landmarks.get(id);if(old)indexDelete(landmarksByChunk,old.chunkKey||entityChunkKey(old),id);landmarks.delete(id);}for(const id of entry.battles.keys()){const old=battles.get(id);if(old)indexDelete(battlesByChunk,old.chunkKey,id);battles.delete(id);}clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty('chunk evicted');}
@@ -606,21 +613,22 @@ function subscribeChunk(entry){
   entry.unsubscribers.push(onSnapshot(query(col('battles'),where('chunkKey','==',entry.key)),s=>applyChunkCollectionSnapshot(entry,'battles',s)));
 }
 function chunkKeysForViewport(padding=0){const size=32*camera.zoom,startX=Math.floor(camera.x/size),startY=Math.floor(camera.y/size),endX=Math.ceil((camera.x+canvas.width)/size),endY=Math.ceil((camera.y+canvas.height)/size),keys=[];for(let cy=Math.floor(startY/CHUNK_SIZE)-padding;cy<=Math.floor(endY/CHUNK_SIZE)+padding;cy++)for(let cx=Math.floor(startX/CHUNK_SIZE)-padding;cx<=Math.floor(endX/CHUNK_SIZE)+padding;cx++)if(isChunkInWorld(cx,cy))keys.push(chunkKey(cx,cy));return keys;}
-function scheduleChunkStreaming(){if(!playerKey)return;const center=cameraChunk();const preload=[...new Set(chunkKeysForViewport(PRELOAD_CHUNK_PADDING))];const ranked=preload.sort((a,b)=>{const ac=parseChunkKey(a),bc=parseChunkKey(b);const ad=Math.max(Math.abs(ac.cx-center.cx),Math.abs(ac.cy-center.cy));const bd=Math.max(Math.abs(bc.cx-center.cx),Math.abs(bc.cy-center.cy));return ad-bd;});const wanted=[];for(const key of ranked){if(wanted.length>=MAX_ACTIVE_CHUNK_SUBSCRIPTIONS)break;wanted.push(key);}const signature=wanted.join('|');if(signature===lastStreamedChunkSignature)return;lastStreamedChunkSignature=signature;if(chunkStreamTimer)clearTimeout(chunkStreamTimer);chunkStreamTimer=setTimeout(()=>updateChunkSubscriptions(wanted),CHUNK_SUBSCRIBE_DEBOUNCE_MS);}
-function updateChunkSubscriptions(wantedKeys){const wanted=new Set(wantedKeys),n=now();for(const key of wanted)subscribeChunk(getChunkCacheEntry(key));for(const [key,entry] of chunkDataCache){if(wanted.has(key))continue;if(entry.unsubscribers.length)stopChunkSubscription(entry);if(n-entry.lastTouched>CHUNK_CACHE_TTL_MS)stopChunkSubscription(entry,{evict:true});}const inactive=[...chunkDataCache.values()].filter(e=>!e.unsubscribers.length).sort((a,b)=>a.lastTouched-b.lastTouched);while(chunkDataCache.size>MAX_ACTIVE_CHUNK_SUBSCRIPTIONS&&inactive.length)stopChunkSubscription(inactive.shift(),{evict:true});}
-
+function scheduleChunkStreaming(){if(!playerKey)return;cameraStreamDirty=false;const center=cameraChunk(),tier=zoomTier(),radius=tier==='detail'?2:tier==='normal'?1:1;const wanted=[];for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){const cx=center.cx+dx,cy=center.cy+dy;if(isChunkInWorld(cx,cy))wanted.push(chunkKey(cx,cy));}for(const id of selected){const u=troops.get(id);if(u){const c=getChunkOfTile(u.x,u.y);if(isChunkInWorld(c.cx,c.cy))wanted.push(c.key);}}if(account.home){const c=getChunkOfTile(account.home.x,account.home.y);wanted.push(c.key);}const ranked=[...new Set(wanted)].sort((a,b)=>{const ac=parseChunkKey(a),bc=parseChunkKey(b);return Math.max(Math.abs(ac.cx-center.cx),Math.abs(ac.cy-center.cy))-Math.max(Math.abs(bc.cx-center.cx),Math.abs(bc.cy-center.cy));}).slice(0,MAX_LIVE_CHUNK_SUBSCRIPTIONS);const signature=ranked.join('|');if(signature===lastStreamedChunkSignature)return;lastStreamedChunkSignature=signature;if(chunkStreamTimer)clearTimeout(chunkStreamTimer);chunkStreamTimer=setTimeout(()=>updateChunkSubscriptionsForCamera(ranked),CHUNK_SUBSCRIBE_DEBOUNCE_MS);}
+function updateChunkSubscriptionsForCamera(wantedKeys){updateChunkSubscriptions(wantedKeys);}
+function updateChunkSubscriptions(wantedKeys){const wanted=new Set(wantedKeys),n=now();for(const key of wanted)subscribeChunk(getChunkCacheEntry(key));for(const [key,entry] of chunkDataCache){if(wanted.has(key))continue;if(entry.unsubscribers.length)stopChunkSubscription(entry);if(n-entry.lastTouched>CHUNK_CACHE_TTL_MS)stopChunkSubscription(entry,{evict:true});}const inactive=[...chunkDataCache.values()].filter(e=>!e.unsubscribers.length).sort((a,b)=>a.lastTouched-b.lastTouched);while(chunkDataCache.size>MAX_WARM_CHUNK_CACHE&&inactive.length)stopChunkSubscription(inactive.shift(),{evict:true});}
 function cameraChunk(){return getChunkOfTile(Math.floor((camera.x+canvas.width/2)/(32*camera.zoom)),Math.floor((camera.y+canvas.height/2)/(32*camera.zoom)))}
 function chunkKeysAround(center,radius){const out=new Set();for(let cy=center.cy-radius;cy<=center.cy+radius;cy++)for(let cx=center.cx-radius;cx<=center.cx+radius;cx++)if(isChunkInWorld(cx,cy))out.add(chunkKey(cx,cy));return out}
 function activeChunkKeys(){return activeChunks}function warmChunkKeys(){return warmChunks}function visibleChunkKeys(){return visibleDrawChunks}
 function updateSimulationChunkSets(){const c=cameraChunk();activeChunks=chunkKeysAround(c,ACTIVE_CHUNK_RADIUS);warmChunks=chunkKeysAround(c,WARM_CHUNK_RADIUS);for(const id of selected){const e=troops.get(id)||buildings.get(id);if(e){const cc=getChunkOfTile(e.x,e.y);for(const k of chunkKeysAround(cc,ACTIVE_CHUNK_RADIUS))activeChunks.add(k);for(const k of chunkKeysAround(cc,WARM_CHUNK_RADIUS))warmChunks.add(k);}}}
 function chunkSetValues(index,keys,source){const out=[];for(const k of keys){const set=index.get(k);if(!set)continue;for(const id of set){const v=source.get(id);if(v)out.push(v);}}return out}
 function indexedTroops(keys){return chunkSetValues(troopsByChunk,keys,troops)}function indexedBuildings(keys,{roads=false}={}){return chunkSetValues(roads?roadsByChunk:buildingsByChunk,keys,buildings)}function indexedLandmarks(keys){return chunkSetValues(landmarksByChunk,keys,landmarks)}function indexedBattles(keys){return chunkSetValues(battlesByChunk,keys,battles)}
-function computeVisibleDrawChunks(startX,startY,endX,endY){const all=[],scx=Math.floor(startX/CHUNK_SIZE),ecx=Math.floor(endX/CHUNK_SIZE),scy=Math.floor(startY/CHUNK_SIZE),ecy=Math.floor(endY/CHUNK_SIZE),center=cameraChunk();for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++)if(isChunkInWorld(cx,cy)){const d=Math.max(Math.abs(cx-center.cx),Math.abs(cy-center.cy));all.push({key:chunkKey(cx,cy),cx,cy,d});}all.sort((a,b)=>a.d-b.d);const limited=all.slice(0,MAX_DRAW_CHUNKS),keys=new Set(limited.map(c=>c.key));visibleDrawChunks=keys;const xs=limited.map(c=>c.cx),ys=limited.map(c=>c.cy);return {keys,scx:xs.length?Math.min(...xs):scx,ecx:xs.length?Math.max(...xs):ecx,scy:ys.length?Math.min(...ys):scy,ecy:ys.length?Math.max(...ys):ecy}}
+function zoomTier(){return camera.zoom<STRATEGIC_RENDER_ZOOM?'strategic':camera.zoom<DETAIL_TIER_ZOOM?'normal':'detail'}
+function computeVisibleDrawChunks(startX,startY,endX,endY,{strategic=false}={}){const all=[],scx=Math.floor(startX/CHUNK_SIZE),ecx=Math.floor(endX/CHUNK_SIZE),scy=Math.floor(startY/CHUNK_SIZE),ecy=Math.floor(endY/CHUNK_SIZE),center=cameraChunk();for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++)if(isChunkInWorld(cx,cy)){const d=Math.max(Math.abs(cx-center.cx),Math.abs(cy-center.cy));all.push({key:chunkKey(cx,cy),cx,cy,d});}all.sort((a,b)=>a.d-b.d);const cap=strategic?MAX_DRAW_CHUNKS_ZOOMED_OUT:MAX_TILE_DRAW_CHUNKS,limited=all.slice(0,cap),keys=new Set(limited.map(c=>c.key));visibleDrawChunks=keys;const xs=limited.map(c=>c.cx),ys=limited.map(c=>c.cy);return {keys,scx:xs.length?Math.min(...xs):scx,ecx:xs.length?Math.max(...xs):ecx,scy:ys.length?Math.min(...ys):scy,ecy:ys.length?Math.max(...ys):ecy}}
 function catchUpTroopTravel(u,n=now()){if(!u.travel)return;const tr=u.travel;if(n>=Number(tr.arriveAt||0)){u.x=tr.to.x;u.y=tr.to.y;u.travel=null;u.path=[];u.nextMoveAt=n;reindexTroop(u);scheduleSaveTroops([u]);return;}const p=clamp((n-Number(tr.startedAt||n))/(Number(tr.arriveAt||n)-Number(tr.startedAt||n)||1),0,1);u.x=Math.round(tr.from.x+(tr.to.x-tr.from.x)*p);u.y=Math.round(tr.from.y+(tr.to.y-tr.from.y)*p);reindexTroop(u)}
 function freezeFarTravel(u,n=now()){if(u.travel||!u.moveGoal||!['move','attackMove','wander'].includes(u.order))return;const def=UNIT[u.type];if(!def)return;const d=dist(u,u.moveGoal),duration=Math.max(1000,d*def.moveMs*(roadAt(u.x,u.y)?ROAD_SPEED_MULTIPLIER:1));u.travel={from:{x:u.x,y:u.y},to:{x:u.moveGoal.x,y:u.moveGoal.y},startedAt:n,arriveAt:n+duration};u.path=[];scheduleSaveTroops([u])}
 function isChunkActiveKey(k){return activeChunks.has(k)}function isChunkWarmKey(k){return warmChunks.has(k)}
 function setBarbarianWarningMarker(key,until){barbarianWarningMarkers.set(key,until);indexAdd(warningsByChunk,key,key)}
-function updatePerfOverlay(ts){perfStats.frames++;if(!perfStats.lastFpsAt)perfStats.lastFpsAt=ts;if(ts-perfStats.lastFpsAt>=500){perfStats.fps=Math.round(perfStats.frames*1000/(ts-perfStats.lastFpsAt));perfStats.frames=0;perfStats.lastFpsAt=ts}const el=$('perfOverlay');if(el)el.textContent=`FPS ${perfStats.fps}\nZoom ${camera.zoom.toFixed(2)}\nChunk cache ${chunkDataCache.size}\nSubscribed chunks ${[...chunkDataCache.values()].filter(e=>e.unsubscribers.length).length}\nVisible draw chunks ${perfStats.visible}\nLow detail ${perfStats.lowDetail?'yes':'no'}\nActive chunks ${perfStats.activeChunks}\nSim troops/buildings ${perfStats.simTroops}/${perfStats.simBuildings}\nSkipped troops/buildings ${perfStats.skippedTroops}/${perfStats.skippedBuildings}\nDraw ${perfStats.drawMs.toFixed(1)}ms · Tick ${perfStats.tickMs.toFixed(1)}ms${perfStats.lastStall?`\nLast stall ${perfStats.lastStall.dt.toFixed(1)}ms (${perfStats.lastStall.at})`:''}`;}
+function updatePerfOverlay(ts){perfStats.frames++;if(!perfStats.lastFpsAt)perfStats.lastFpsAt=ts;if(ts-perfStats.lastFpsAt>=500){perfStats.fps=Math.round(perfStats.frames*1000/(ts-perfStats.lastFpsAt));perfStats.frames=0;perfStats.lastFpsAt=ts}const el=$('perfOverlay');if(el){perfStats.liveListeners=liveChunkListenerCount();perfStats.writesQueued=saveQueue?.size||0;el.textContent=`FPS ${perfStats.fps}\nFrame ${Math.max(perfStats.drawMs+perfStats.tickMs,0).toFixed(1)}ms · Draw ${perfStats.drawMs.toFixed(1)}ms · Tick ${perfStats.tickMs.toFixed(1)}ms\nZoom ${camera.zoom.toFixed(2)} (${zoomTier()})\nLive listeners ${perfStats.liveListeners}\nChunk cache ${chunkDataCache.size}/${MAX_WARM_CHUNK_CACHE}\nDraw chunks ${perfStats.visible} · Tile cells ${perfStats.tileCellsDrawn}\nEntities drawn ${perfStats.entitiesDrawn}\nActive chunks ${perfStats.activeChunks}\nSim troops/buildings ${perfStats.simTroops}/${perfStats.simBuildings}\nAI units ${perfStats.simTroops}/${MAX_AI_UNITS_PER_FRAME} · Path jobs ${perfStats.pathJobs}/${MAX_PATHFIND_JOBS_PER_FRAME}\nFirestore writes queued ${perfStats.writesQueued}\nStability mode ${stabilityMode?'ON':'off'}${perfStats.lastStall?`\nLast stall ${perfStats.lastStall.dt.toFixed(1)}ms (${perfStats.lastStall.at})`:''}`;}}
 function tileKey(x,y){return `${x},${y}`} function now(){return Date.now()}
 function dist(a,b){return Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y))}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
@@ -988,7 +996,7 @@ function applyDocChangesToMap(s,map,make,afterChange){
 }
 
 async function backfillMissingTroopChunkKeys(){if(!playerKey)return;const snap=await getDocs(query(col('troops'),where('ownerId','==',playerKey)));const batch=writeBatch(db);let writes=0;snap.forEach(d=>{const u={id:d.id,...d.data()};if(!u.chunkKey&&Number.isFinite(Number(u.x))&&Number.isFinite(Number(u.y))){batch.set(ref('troops',d.id),{chunkKey:getChunkOfTile(Number(u.x),Number(u.y)).key},{merge:true});writes++;}});if(writes)await batch.commit();if(writes)log(`Repaired ${writes} troop chunk keys.`);}
-function subscribeOwnTroops(){return onSnapshot(query(col('troops'),where('ownerId','==',playerKey)),s=>{for(const change of s.docChanges()){const id=change.doc.id;if(change.type==='removed'){deleteTroopIndexed(id);continue;}const data=change.doc.data(),u=normalizeTroop({id,...data});setTroopIndexed(id,u);if(!data.chunkKey){setDoc(ref('troops',id),{chunkKey:u.chunkKey},{merge:true}).catch(()=>{});}}pruneSelection();markVisibleChunksDirty();markUIDirty('own troops');});}
+function subscribeOwnTroops(){return onSnapshot(query(col('troops'),where('ownerId','==',playerKey)),s=>{for(const change of s.docChanges()){const id=change.doc.id;if(change.type==='removed'){deleteTroopIndexed(id);continue;}const data=change.doc.data(),u=normalizeTroop({id,...data});const old=troops.get(id);if(old&&JSON.stringify(firestoreEntity(old))===JSON.stringify(firestoreEntity(u)))continue;setTroopIndexed(id,u);if(!data.chunkKey){setDoc(ref('troops',id),{chunkKey:u.chunkKey},{merge:true}).catch(()=>{});}}pruneSelection();markVisibleChunksDirty();markUIDirty('own troops');});}
 function applyTroopSnapshot(s){const start=performance.now(),prior=previousBarbarianChunks;markVisibleChunksDirty();for(const change of s.docChanges()){const id=change.doc.id;if(change.type==='removed')deleteTroopIndexed(id);else setTroopIndexed(id,normalizeTroop({id,...change.doc.data()}));}if(barbarianSnapshotReady)detectBarbarianTerritoryEntries(prior);previousBarbarianChunks=new Map([...troops.values()].filter(isBarbarianUnit).map(u=>[u.id,getChunkOfTile(u.x,u.y).key]));barbarianSnapshotReady=true;pruneSelection();markUIDirty('troops snapshot');logSnapshotPerf('troops',start,s);}
 function applyBuildingSnapshot(s){const start=performance.now();clearProvinceDerivedCache();markVisibleChunksDirty();for(const change of s.docChanges()){const id=change.doc.id;if(change.type==='removed')deleteBuildingIndexed(id);else{const b={id,...change.doc.data()};if(!b.level)b.level=1;setBuildingIndexed(id,b);}}kingdomConnectionCache.clear();districtCache.clear();pruneSelection();markUIDirty('buildings snapshot');logSnapshotPerf('buildings',start,s);}
 function applyTerritorySnapshot(s){const start=performance.now();clearProvinceDerivedCache();markVisibleChunksDirty();applyDocChangesToMap(s,territories,d=>({id:d.id,...d.data()}));markUIDirty('territories snapshot');logSnapshotPerf('territories',start,s);}
@@ -999,7 +1007,7 @@ async function startGame(){
   ensureSurvivalState();if(!account.survival.nextOnlineRaidAt)account.survival.nextOnlineRaidAt=now()+randomOnlineRaidDelay();
   $('login').style.display='none'; $('game').style.display='block'; $('playerTitle').textContent=account.displayName||playerKey;
   resize(); camera.x=account.home.x*32 - canvas.width/2; camera.y=account.home.y*32 - canvas.height/2;clampCamera();
-  unsub.forEach(u=>u()); unsub=[]; for(const entry of chunkDataCache.values())stopChunkSubscription(entry,{evict:true}); chunkDataCache.clear(); lastStreamedChunkSignature='';
+  unsubscribeAllRuntime();
   await backfillMissingTroopChunkKeys();
   scheduleChunkStreaming();
   unsub.push(onSnapshot(query(col('onlineRaids'),where('intendedPlayerKey','==',playerKey)),s=>{onlineRaids.clear();s.forEach(d=>onlineRaids.set(d.id,{id:d.id,...d.data()}));markUIDirty('raids');}));
@@ -1010,11 +1018,13 @@ async function startGame(){
   unsub.push(onSnapshot(ref('world','settings'),s=>{worldSettings=normalizeWorldSettings(s.exists()?s.data():WORLD_SETTINGS_DEFAULT);provinceMetadata.clear();clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty('world');}));
   unsub.push(subscribeOwnTroops());
   await saveAccount();await collectOfflineResources(); resetStartupPollTimers(10000); buildButtons(); if(!gameLoopStarted){gameLoopStarted=true;requestAnimationFrame(loop);} log(`Entered world at your fortress. World size: ${worldWidthChunks()}×${worldHeightChunks()} chunks.`);
-  setTimeout(()=>maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message)),1200);
-  setTimeout(()=>ensureLandmarksGenerated().catch(e=>log('Landmark generation error: '+e.message)),1800);
-  setTimeout(()=>maybeRunTerrainRebalance().catch(e=>log('Terrain rebalance error: '+e.message)),2400);
-  updatePresence();setInterval(updatePresence,30000);
+  setRuntimeTimeout(()=>maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message)),1200);
+  setRuntimeTimeout(()=>ensureLandmarksGenerated().catch(e=>log('Landmark generation error: '+e.message)),1800);
+  setRuntimeTimeout(()=>maybeRunTerrainRebalance().catch(e=>log('Terrain rebalance error: '+e.message)),2400);
+  updatePresence();presenceInterval=setInterval(updatePresence,30000);
 }
+function unsubscribeAllRuntime(){for(const u of unsub.splice(0)){try{u();}catch(e){console.warn('unsubscribe failed',e);}}for(const entry of [...chunkDataCache.values()])stopChunkSubscription(entry,{evict:true});chunkDataCache.clear();lastStreamedChunkSignature='';if(chunkStreamTimer){clearTimeout(chunkStreamTimer);chunkStreamTimer=null;}if(presenceInterval){clearInterval(presenceInterval);presenceInterval=null;}for(const id of runtimeTimeouts){clearTimeout(id);}runtimeTimeouts.clear();pathfindQueue.length=0;cameraStreamDirty=true;}
+
 async function collectOfflineResources(){
   await new Promise(r=>setTimeout(r,700));
   const elapsed=Math.floor((now()-(account.lastResourceAt||now()))/RESOURCE_HOUR_MS);
@@ -1189,7 +1199,7 @@ function renderFireInbox(){const events=Object.values(ensureFireState()).filter(
 function renderProvinceTroubleInbox(){const active=Object.values(ensureProvinceTroubleState()).filter(t=>t.active!==false);if(!active.length)return '';return `<br><b>Province Trouble (${active.length}/${PROVINCE_TROUBLE_MAX_ACTIVE} per province cap)</b>`+active.map(t=>`<div class="requestCard crisis"><b>⚠ ${escapeHtml(PROVINCE_TROUBLE_DEFS[t.type]?.name||t.type)}</b><br>${escapeHtml(t.provinceName)} · Effect: ${escapeHtml(PROVINCE_TROUBLE_DEFS[t.type]?.effect||'local trouble')}<br>Severe consequences warned before ${fmt(Math.max(0,Number(t.severeAt||now())-now()))}.</div>`).join('')}
 function focusBuilding(id){const b=buildings.get(id);if(!b)return;const c=getChunkOfTile(b.x,b.y);centerCameraOnChunk(c.cx,c.cy)}
 
-function trapIsDetected(b,viewer=playerKey){return b.ownerId===viewer||b.revealed||[...troops.values()].some(u=>u.hp>0&&(u.ownerId===viewer||isAllied(viewer,u.ownerId))&&['scout','rangerCaptain'].includes(u.type)&&dist(u,b)<=3);}
+function trapIsDetected(b,viewer=playerKey){return b.ownerId===viewer||b.revealed||nearbyTroops(b,1).some(u=>u.hp>0&&(u.ownerId===viewer||isAllied(viewer,u.ownerId))&&['scout','rangerCaptain'].includes(u.type)&&dist(u,b)<=3);}
 function entityAtTile(x,y){for(const u of troops.values()) if(u.hp>0&&u.x===x&&u.y===y) return {kind:'troop',id:u.id,data:u}; for(const b of buildings.values()) if(b.hp>0&&b.x===x&&b.y===y&&(b.type!=='spikeTrap'||trapIsDetected(b))) return {kind:'building',id:b.id,data:b}; return null;}
 function blockingEntityAtTile(x,y){const key=tileKey(x,y);for(const id of troopTileIndex.get(key)||[]){const u=troops.get(id);if(u?.hp>0&&u.x===x&&u.y===y)return {kind:'troop',id:u.id,data:u};}for(const id of buildingTileIndex.get(key)||[]){const b=buildings.get(id);if(b?.hp>0&&b.type!=='road'&&b.x===x&&b.y===y)return {kind:'building',id:b.id,data:b};}return null;}
 function visibleEntityAtTile(x,y){return isTileVisible(x,y)?entityAtTile(x,y):null;}
@@ -1203,6 +1213,9 @@ function findPath(unit,tx,ty,maxNodes=800){
     for(const [dx,dy] of dirs){const nx=cur.x+dx,ny=cur.y+dy,nk=tileKey(nx,ny); if(closed.has(nk)||isBlocked(nx,ny,unit,tileKey(tx,ty)))continue; const roadCost=roadAt(nx,ny)?ROAD_MOVEMENT_COST:1,ng=(g.get(ck)||0)+((dx&&dy)?1.4:1)*roadCost; if(ng<(g.get(nk)||999999)){came.set(nk,ck);g.set(nk,ng);f.set(nk,ng+dist({x:nx,y:ny},goal)); if(!open.some(p=>p.x===nx&&p.y===ny))open.push({x:nx,y:ny});}}
   } return [];
 }
+const pathfindQueue=[];
+function requestPath(unit,tx,ty,maxNodes=800){if(!unit)return [];const existing=pathfindQueue.find(j=>j.unitId===unit.id);if(existing){existing.tx=tx;existing.ty=ty;existing.maxNodes=maxNodes;}else pathfindQueue.push({unitId:unit.id,tx,ty,maxNodes});unit.pathPending=true;return unit.path||[];}
+function processPathfindQueue(){perfStats.pathJobs=0;for(let i=0;i<MAX_PATHFIND_JOBS_PER_FRAME&&pathfindQueue.length;i++){const job=pathfindQueue.shift(),u=troops.get(job.unitId);if(!u||u.hp<=0)continue;u.path=findPath(u,job.tx,job.ty,job.maxNodes);u.pathPending=false;perfStats.pathJobs++;}}
 function formationTargets(cx,cy,count,unit,claimed=new Set()){
   const out=[];
   for(let r=0;out.length<count && r<45;r++){
@@ -1225,9 +1238,7 @@ function closestOpenGoalTile(unit,cx,cy,claimed=new Set()){
   return targets[0] || {x:unit.x,y:unit.y};
 }
 function pathTowardMoveGoal(u){
-  if(!u.moveGoal) return [];
-  // Try a growing set of nearby legal destination tiles. This lets every troop keep pressing toward
-  // the clicked point even when the exact tile is occupied by another selected troop.
+  if(!u.moveGoal||u.pathPending) return u.path||[];
   for(let r=0;r<=18;r++){
     const candidates=[];
     for(let y=u.moveGoal.y-r;y<=u.moveGoal.y+r;y++)for(let x=u.moveGoal.x-r;x<=u.moveGoal.x+r;x++){
@@ -1235,10 +1246,8 @@ function pathTowardMoveGoal(u){
       if(!isBlocked(x,y,u)) candidates.push({x,y,score:dist({x,y},u)+hash2(x,y,812)*.2});
     }
     candidates.sort((a,b)=>a.score-b.score);
-    for(const c of candidates){
-      const path=findPath(u,c.x,c.y,1200);
-      if(path.length || (u.x===c.x&&u.y===c.y)) return path;
-    }
+    const c=candidates[0];
+    if(c){requestPath(u,c.x,c.y,1200);return u.path||[];}
   }
   return [];
 }
@@ -1254,8 +1263,8 @@ function issueMove(ids,tx,ty,attackMove=false){
     u.moveGroupId=groupId;
     u.assignedGoal=t;
     u.goalRank=i;
-    u.path=findPath(u,t.x,t.y,1200);
-    if(!u.path.length) u.path=pathTowardMoveGoal(u);
+    requestPath(u,t.x,t.y,1200);
+    if(!u.path?.length) u.path=[];
     u.order=attackMove?'attackMove':'move';
     u.targetId=null;
     u.commandId=groupId;
@@ -1310,7 +1319,8 @@ function issueAttackArea(ids,tx,ty){
 
 let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>{if(!u)return;reindexTroop(u);saveQueue.add(u.id);markUIDirty('troops');});}
 function firestoreEntity(e){const {_tileKey,...clean}=e;if(Number.isFinite(Number(clean.x))&&Number.isFinite(Number(clean.y))){clean.chunkKey=getChunkOfTile(Number(clean.x),Number(clean.y)).key;}return clean}
-async function flushTroopSaves(){ if(!saveQueue.size)return; const batch=writeBatch(db); const ids=[...saveQueue].slice(0,80); ids.forEach(id=>{const u=troops.get(id); if(u)batch.set(ref('troops',id),firestoreEntity(u),{merge:true}); saveQueue.delete(id);}); await batch.commit().catch(e=>log('Save troop error: '+e.message)); }
+const lastSavedTroopSignature=new Map();
+async function flushTroopSaves(){ if(!saveQueue.size)return; const batch=writeBatch(db); let writes=0; const ids=[...saveQueue].slice(0,MAX_FIRESTORE_WRITES_PER_FLUSH); ids.forEach(id=>{const u=troops.get(id); saveQueue.delete(id); if(!u)return; const data=firestoreEntity(u),sig=JSON.stringify(data); if(lastSavedTroopSignature.get(id)===sig)return; lastSavedTroopSignature.set(id,sig); batch.set(ref('troops',id),data,{merge:true}); writes++;}); perfStats.writesQueued=saveQueue.size; if(!writes)return; await batch.commit().catch(e=>log('Save troop error: '+e.message)); }
 async function saveBuilding(b){reindexBuilding(b);await setDoc(ref('buildings',b.id),firestoreEntity(b),{merge:true});markUIDirty('building');}
 async function saveLandmark(l){indexAdd(landmarksByChunk,l.chunkKey||entityChunkKey(l),l.id);await setDoc(ref('landmarks',l.id),l,{merge:true});}
 function veterancyForXp(xp){let level=0;for(let i=1;i<VETERANCY.thresholds.length;i++)if(xp>=VETERANCY.thresholds[i])level=i;return level;}
@@ -1456,7 +1466,7 @@ async function spawnOnlineSurvivalRaid(id){
   const raidType=chooseOnlineRaidType(scale),type=ONLINE_RAID_TYPES[raidType],target=chooseOnlineRaidTarget(id,raidType,spawn);if(!target)return false;
   const n=now(),raidId=`online_${id}_${n}`,baseCount=clamp(Math.round(2+scale.raidLevel*1.25),3,scale.unitCap),count=clamp(Math.round(baseCount*type.size),3,scale.unitCap),ownerId=`${BARBARIAN_OWNER_PREFIX}_online_${raidId}`,rewardPool={gold:50+scale.raidLevel*25,lumber:40+scale.raidLevel*20,oil:Math.floor(scale.raidLevel*4),heroXp:10+scale.raidLevel*6,fragments:scale.raidLevel>=8?1:0},targetChunk=getChunkOfTile(target.x,target.y),targetDistrict=getDistrictForChunk(targetChunk.cx,targetChunk.cy,id);
   const raid={id:raidId,type:"onlineRaid",raidType,intendedPlayerKey:id,spawnedAt:n,expiresAt:n+ONLINE_RAID_DESPAWN_MS,spawnChunk:spawn.chunkKey,targetChunk:targetChunk.key,targetDistrictId:targetDistrict?.id||null,targetDistrictName:targetDistrict?.name||null,targetDistrictType:targetDistrict?.type||null,raidLevel:scale.raidLevel,raidPower:scale.raidPower,rewardPool,contributors:{},unitCount:count,status:"active"};
-  const batch=writeBatch(db),claimed=new Set();onlineRaidRoster(scale.raidLevel,count).forEach((unitType,index)=>{const spot=formationTargets(spawn.x,spawn.y,count,{ownerId,barbarian:true},claimed)[0]||{x:spawn.x,y:spawn.y};const u=makeBarbarianUnit(unitType,ownerId,spot,{onlineRaidId:raidId,intendedPlayerKey:id,expiresAt:raid.expiresAt,order:'attackMove',moveGoal:{x:target.x,y:target.y},raidTargetChunk:raid.targetChunk,raidUntil:raid.expiresAt,raidIndex:index});u.path=findPath(u,target.x,target.y,1400);batch.set(ref('troops',u.id),u);});
+  const batch=writeBatch(db),claimed=new Set();onlineRaidRoster(scale.raidLevel,count).forEach((unitType,index)=>{const spot=formationTargets(spawn.x,spawn.y,count,{ownerId,barbarian:true},claimed)[0]||{x:spawn.x,y:spawn.y};const u=makeBarbarianUnit(unitType,ownerId,spot,{onlineRaidId:raidId,intendedPlayerKey:id,expiresAt:raid.expiresAt,order:'attackMove',moveGoal:{x:target.x,y:target.y},raidTargetChunk:raid.targetChunk,raidUntil:raid.expiresAt,raidIndex:index});u.path=[];batch.set(ref('troops',u.id),u);});
   batch.set(ref('onlineRaids',raidId),raid);batch.set(ref('accounts',id),{survival:{...ensureSurvivalState(),lastOnlineRaidAt:n,nextOnlineRaidAt:n+randomOnlineRaidDelay(),pressure:clamp(ensureSurvivalState().pressure+1,0,100),activeOnlineRaidIds:[...ensureSurvivalState().activeOnlineRaidIds,raidId]}},{merge:true});await batch.commit();
   account.survival={...account.survival,lastOnlineRaidAt:n,nextOnlineRaidAt:n+randomOnlineRaidDelay(),pressure:clamp(account.survival.pressure+1,0,100),activeOnlineRaidIds:[...account.survival.activeOnlineRaidIds,raidId]};showOnlineRaidWarning(raid,isChunkVisible(spawn.cx,spawn.cy));setBarbarianWarningMarker(raid.spawnChunk,n+BARBARIAN_WARNING_MARKER_MS);return true;
 }
@@ -1527,7 +1537,7 @@ function chooseBarbarianRaidTarget(camp){
 }
 async function startBarbarianRaid(camp,target){
   const n=now(),type=campTypeDef(camp),units=[...troops.values()].filter(u=>u.campId===camp.id&&u.hp>0&&!u.raidUntil),age=playerAgeMs(target.ownerId),fort=Number((target.ownerId===playerKey?account:playerAccounts.get(target.ownerId))?.fortressLevel||1),cap=clamp(3+Math.floor(age/(12*3600000))+fort*2,3,18),send=units.slice(0,Math.min(cap,Math.max(3,Math.ceil(units.length*type.raidShare)))),goal={x:target.cx*CHUNK_SIZE+8,y:target.cy*CHUNK_SIZE+8},raidUntil=n+BARBARIAN_RAID_MIN_MS+Math.random()*(BARBARIAN_RAID_MAX_MS-BARBARIAN_RAID_MIN_MS);
-  send.forEach(u=>{u.order='attackMove';u.moveGoal=goal;u.assignedGoal=null;u.path=findPath(u,goal.x,goal.y,1400);u.raidTargetChunk=target.id;u.raidUntil=raidUntil;u.raidStartHp=u.hp;u.retreatAtHp=.45;u.territoryWarningSent=false;scheduleSaveTroops([u]);});camp.state='raiding';camp.raidTargetChunk=target.id;camp.lastRaidAt=n;camp.nextRaidAt=n+BARBARIAN_CAMP_LEVELS[camp.campLevel||1].raidMs*type.raidRate;await saveBuilding(camp);const district=getDistrictForChunk(target.cx,target.cy,target.ownerId);if(target.ownerId===playerKey)log(district?`Smoke rises near the roads to ${district.name}.`:`Barbarian raiders are gathering near chunk ${camp.chunkKey.replace('_',',')}.`);else log(`${type.name} raid started from ${camp.chunkKey} toward ${district?.name||target.id}.`);
+  send.forEach(u=>{u.order='attackMove';u.moveGoal=goal;u.assignedGoal=null;requestPath(u,goal.x,goal.y,1400);u.raidTargetChunk=target.id;u.raidUntil=raidUntil;u.raidStartHp=u.hp;u.retreatAtHp=.45;u.territoryWarningSent=false;scheduleSaveTroops([u]);});camp.state='raiding';camp.raidTargetChunk=target.id;camp.lastRaidAt=n;camp.nextRaidAt=n+BARBARIAN_CAMP_LEVELS[camp.campLevel||1].raidMs*type.raidRate;await saveBuilding(camp);const district=getDistrictForChunk(target.cx,target.cy,target.ownerId);if(target.ownerId===playerKey)log(district?`Smoke rises near the roads to ${district.name}.`:`Barbarian raiders are gathering near chunk ${camp.chunkKey.replace('_',',')}.`);else log(`${type.name} raid started from ${camp.chunkKey} toward ${district?.name||target.id}.`);
 }
 async function moveNomadCamp(camp){const cc=parseChunkKey(camp.chunkKey),spots=[];for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){if(!dx&&!dy)continue;const cx=cc.cx+dx,cy=cc.cy+dy;if(!isChunkInWorld(cx,cy)||territories.get(chunkKey(cx,cy))?.ownerId)continue;const spot=randomOpenTileInChunk(cx,cy,{ownerId:camp.ownerId,barbarian:true});if(spot)spots.push({...spot,cx,cy,chunkKey:chunkKey(cx,cy)});}if(!spots.length)return;const spot=spots[Math.floor(Math.random()*spots.length)],dx=spot.x-camp.x,dy=spot.y-camp.y;camp.x=spot.x;camp.y=spot.y;camp.chunkKey=spot.chunkKey;camp.nextMoveAt=now()+BARBARIAN_NOMAD_MOVE_MS;for(const u of troops.values())if(u.campId===camp.id&&!u.raidUntil){u.x=clamp(u.x+dx,worldMinTileX(),worldMaxTileX());u.y=clamp(u.y+dy,worldMinTileY(),worldMaxTileY());u.homeX=camp.x;u.homeY=camp.y;u.homeChunkKey=camp.chunkKey;scheduleSaveTroops([u]);}log(`Nomad Camp moved to chunk ${camp.chunkKey}.`);}
 async function maybeCreateBarbarianHorde(camp){const n=now();if((barbarianWorldState.nextHordeAt||0)>n)return;const cc=parseChunkKey(camp.chunkKey),near=[...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0&&Math.max(Math.abs(parseChunkKey(b.chunkKey).cx-cc.cx),Math.abs(parseChunkKey(b.chunkKey).cy-cc.cy))<=5);if(near.length<3||Math.random()>.08)return;const target=chooseBarbarianRaidTarget(camp);if(!target)return;for(const ally of near.slice(0,4))await startBarbarianRaid(ally,target);barbarianWorldState.nextHordeAt=n+BARBARIAN_HORDE_COOLDOWN_MS;await setDoc(ref('worldState','barbarians'),{nextHordeAt:barbarianWorldState.nextHordeAt,lastHordeAt:n,lastHordeTarget:target.id},{merge:true});log(`BARBARIAN HORDE: ${near.length} nearby camps are marching on ${target.id}!`);}
@@ -1563,7 +1573,7 @@ async function destroyBarbarianCamp(camp,killerId){
 }
 
 function tick(dt){
-  const tickStart=performance.now();const n=now(); const startupBlocked=n<startupHeavySystemsBlockedUntil; const reservations=new Set();updateSimulationChunkSets();perfStats.activeChunks=activeChunks.size;perfStats.simTroops=0;perfStats.simBuildings=0;perfStats.skippedTroops=0;perfStats.skippedBuildings=0;
+  const tickStart=performance.now();const n=now(); const startupBlocked=n<startupHeavySystemsBlockedUntil; const reservations=new Set();processPathfindQueue();updateSimulationChunkSets();perfStats.activeChunks=activeChunks.size;perfStats.simTroops=0;perfStats.simBuildings=0;perfStats.skippedTroops=0;perfStats.skippedBuildings=0;
   const warmDue=n-lastWarmSimAt>WARM_SIM_INTERVAL_MS;if(warmDue)lastWarmSimAt=n;const strategicDue=n-lastStrategicSimAt>STRATEGIC_SIM_INTERVAL_MS;if(strategicDue){lastStrategicSimAt=n;processDistrictRequests(activeSideTab==='requests');}
   if(activeSideTab==='requests')processDistrictRequests(true);
   if(!startupBlocked&&n-lastFireCheck>=FIRE_CHECK_MS&&!fireRiskRunning){fireRiskRunning=true;const start=performance.now();processFireRisk().catch(e=>log('Fire risk error: '+e.message)).finally(()=>{const ms=performance.now()-start;if(ms>100)console.warn('fire risk system slow',{ms});fireRiskRunning=false;});}
@@ -1576,7 +1586,7 @@ function tick(dt){
       b.reinforcedUntil=0; b.reinforceBonusHp=0; b.hp=Math.min(b.hp,b.maxHp||b.hp); saveBuilding(b);
     }
   }
-  for(const u of indexedTroops(warmChunks)){const ck=entityChunkKey(u);if(!isChunkWarmKey(ck)){perfStats.skippedTroops++;freezeFarTravel(u,n);continue;}catchUpTroopTravel(u,n);if(!isChunkActiveKey(entityChunkKey(u))&&!warmDue){perfStats.skippedTroops++;continue;}perfStats.simTroops++;
+  let aiBudget=MAX_AI_UNITS_PER_FRAME;for(const u of indexedTroops(warmChunks)){if(aiBudget--<=0){perfStats.skippedTroops++;continue;}const ck=entityChunkKey(u);if(!isChunkWarmKey(ck)){perfStats.skippedTroops++;freezeFarTravel(u,n);continue;}catchUpTroopTravel(u,n);if(!isChunkActiveKey(entityChunkKey(u))&&!warmDue){perfStats.skippedTroops++;continue;}perfStats.simTroops++;
     if(u.hp<=0) continue;
     const def=UNIT[u.type]; if(!def)continue;
     const mine = u.ownerId===playerKey;
@@ -1702,10 +1712,11 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
   }
   else if(u.order!=='idle' && (!u.path || !u.path.length)) {u.order='idle'; scheduleSaveTroops([u]);}
 }
-function moveOneStep(u,def,n,res,tx,ty){ if(!u.path||!u.path.length||hash2(n%999,u.x+u.y)>.88) u.path=findPath(u,tx,ty,1200); moveAlongPath(u,def,n,res); }
-function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; reindexTroop(u); u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(u.ownerId===playerKey&&CAVALRY_TYPES.has(u.type)&&hasTech('cavalryTraining')?.95:1)*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=3?.95:1)*(roadAt(u.x,u.y)?ROAD_SPEED_MULTIPLIER:1); scheduleSaveTroops([u]); }
-function hasBannerAura(u){return [...troops.values()].some(ally=>ally.hp>0&&ally.ownerId===u.ownerId&&ally.type==='bannerKnight'&&dist(ally,u)<=3)}
-function hasBarbarianDrummerAura(u){return isBarbarianUnit(u)&&[...troops.values()].some(a=>a.hp>0&&a.ownerId===u.ownerId&&a.type==='barbarianDrummer'&&dist(a,u)<=3)}
+function moveOneStep(u,def,n,res,tx,ty){ if((!u.path||!u.path.length||hash2(n%999,u.x+u.y)>.88)&&!u.pathPending) requestPath(u,tx,ty,1200); moveAlongPath(u,def,n,res); }
+function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){if(!u.pathPending)u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} return;} res.add(k); u.x=next.x; u.y=next.y; reindexTroop(u); u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(u.ownerId===playerKey&&CAVALRY_TYPES.has(u.type)&&hasTech('cavalryTraining')?.95:1)*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=3?.95:1)*(roadAt(u.x,u.y)?ROAD_SPEED_MULTIPLIER:1); scheduleSaveTroops([u]); }
+function nearbyTroops(e,r=1){return indexedTroops(chunkKeysAround(getChunkOfTile(e.x,e.y),r));}
+function hasBannerAura(u){return nearbyTroops(u,1).some(ally=>ally.hp>0&&ally.ownerId===u.ownerId&&ally.type==='bannerKnight'&&dist(ally,u)<=3)}
+function hasBarbarianDrummerAura(u){return isBarbarianUnit(u)&&nearbyTroops(u,1).some(a=>a.hp>0&&a.ownerId===u.ownerId&&a.type==='barbarianDrummer'&&dist(a,u)<=3)}
 function attackDelay(u,def){return Math.round(def.attackMs*(hasBannerAura(u)||hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=4?.9:1))}
 function effectiveMaxHp(e,n=now()){let relic=1;if(e.ownerId===playerKey&&troops.has(e.id)&&INFANTRY_TYPES.has(e.type)&&hasTech('infantryDrills'))relic*=1.05;if(e.ownerId===playerKey&&buildings.has(e.id)&&BUILDING[e.type]?.wall&&hasTech('masonry'))relic*=1.2;if(e.ownerId===playerKey&&e.type==='gate'&&hasTech('gateMechanisms'))relic*=1.3;if(e.ownerId===playerKey&&troops.has(e.id)){if(activeRelic('titanCore'))relic*=1.05;if(activeRelic('bannerOfIron')&&['footman','shieldbearer','centurion','champion'].includes(e.type))relic*=1.08}const veteranBase=troops.has(e.id)&&UNIT[e.type]?(UNIT[e.type].hp*((e.veterancy||0)>=1?1.05:1)*relic):(e.maxHp||e.hp||1);return Math.round(veteranBase)+((e.reinforcedUntil||0)>n?(e.reinforceBonusHp||0):0)}
 function applyDamage(target,amount,n=now(),attacker=null){const defended=target.buffs?.shieldWallUntil>n||target.buffs?.holdLineUntil>n;const mythicBlock=attacker&&troops.has(target.id)&&(target.veterancy||0)>=5&&['footman','shieldbearer'].includes(target.type)&&Math.random()<.08; const dealt=mythicBlock?0:Math.max(1,amount-(defended?1:0)); target.hp=Math.max(0,(target.hp||1)-dealt); return dealt}
@@ -1732,7 +1743,7 @@ function updateDefensiveBuildings(n=now()){
 }
 function buildingAggro(b,n){const target=acquireTowerTarget(b,n);if(target)applyTowerDamage(b,target,n)}
 function processDefensiveUtilities(n){
-  for(const trap of indexedBuildings(activeChunks))if(isBuildingComplete(trap)&&trap.type==='spikeTrap'&&!trap.triggered){const victim=[...troops.values()].find(u=>u.hp>0&&areHostile(trap,u)&&u.x===trap.x&&u.y===trap.y);if(victim){let damage=BUILDING.spikeTrap.damage*(trap.ownerId===playerKey&&hasTech('trapEngineering')?1.5:1);if(CAVALRY_TYPES.has(victim.type)||victim.type==='scout')damage*=1.5;applyDamage(victim,damage,n,trap);trap.triggered=true;trap.revealed=true;trap.hp=0;scheduleSaveTroops([victim]);saveBuilding(trap);log(`Spike Trap triggered for ${Math.round(damage)} damage.`);}}
+  for(const trap of indexedBuildings(activeChunks))if(isBuildingComplete(trap)&&trap.type==='spikeTrap'&&!trap.triggered){const victim=[...(troopTileIndex.get(tileKey(trap.x,trap.y))||[])].map(id=>troops.get(id)).find(u=>u&&u.hp>0&&areHostile(trap,u)&&u.x===trap.x&&u.y===trap.y);if(victim){let damage=BUILDING.spikeTrap.damage*(trap.ownerId===playerKey&&hasTech('trapEngineering')?1.5:1);if(CAVALRY_TYPES.has(victim.type)||victim.type==='scout')damage*=1.5;applyDamage(victim,damage,n,trap);trap.triggered=true;trap.revealed=true;trap.hp=0;scheduleSaveTroops([victim]);saveBuilding(trap);log(`Spike Trap triggered for ${Math.round(damage)} damage.`);}}
   for(const station of indexedBuildings(warmChunks))if(isBuildingComplete(station)&&station.type==='repairStation'&&n>=(station.nextRepairAt||0)){const targets=[...buildings.values()].filter(b=>b.id!==station.id&&b.ownerId===station.ownerId&&b.hp>0&&b.hp<effectiveMaxHp(b,n)&&dist(b,station)<=BUILDING.repairStation.repairRange);for(const b of targets.slice(0,3)){b.hp=Math.min(effectiveMaxHp(b,n),b.hp+BUILDING.repairStation.repairAmount);saveBuilding(b);}station.nextRepairAt=n+BUILDING.repairStation.repairMs;saveBuilding(station);}
 }
 function constructionFields(def,n=now(),type=null,x=0,y=0,ownerId=playerKey){const mult=type?constructionDistrictSpeedMultiplier(type,x,y,ownerId):1;return {constructing:true,buildStartedAt:n,buildCompleteAt:n+def.buildMs*mult,completedAt:null,hp:Math.max(1,Math.floor(def.hp*.25)),maxHp:def.hp}}
@@ -1966,7 +1977,7 @@ async function placeBuilding(type,x,y){
     if(!eng){log(`Select an Engineer to build ${def.name}. Build mode stays active.`);return false;}
     pay(def.cost);
     if(replacedWall)await deleteDoc(ref('buildings',replacedWall.id));
-    eng.order='build'; eng.buildTask={kind:type,x,y,startedAt:null}; eng.path=findPath(eng,x,y);
+    eng.order='build'; eng.buildTask={kind:type,x,y,startedAt:null}; requestPath(eng,x,y);
     troops.set(eng.id,eng); scheduleSaveTroops([eng]); await saveAccount(); updateUI();
     log(`Engineer assigned to build ${def.name}.`); return true;
   }
@@ -2224,7 +2235,8 @@ canvas.addEventListener('mouseup',async e=>{ if(e.button===2){ const rect=canvas
 canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; camera.zoom=clamp(camera.zoom*(e.deltaY>0?.9:1.1),MIN_PLAYABLE_ZOOM,2.2); const mx=e.offsetX,my=e.offsetY; camera.x=(camera.x+mx)*(camera.zoom/old)-mx; camera.y=(camera.y+my)*(camera.zoom/old)-my;},{passive:false});
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&buildMode){buildMode=null;$('modeReadout').textContent='Move';log('Build mode cancelled.');return;} const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||'');if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'&&!e.repeat&&!typing){e.preventDefault();selectArmy();return;}if(e.key.toLowerCase()==='a'&&!e.repeat&&!typing&&hoveredTile){buildMode=null;attackMode=true;$('modeReadout').textContent='Attack-move';} const ability=currentAbilityHotkeys.get(e.key); if(ability&&!e.repeat){buildMode=null;e.preventDefault();ability.trigger();}});
 
-function loop(ts){ const dt=lastTick?ts-lastTick:0; lastTick=ts;if(dt>250){perfStats.lastStall={dt,at:new Date().toLocaleTimeString()};console.warn('Frame stall',{dt,lastTickMs:perfStats.tickMs,lastDrawMs:perfStats.drawMs,troops:troops.size,buildings:buildings.size});} handleCamera(dt); tick(dt); draw(); renderInvasionBanner(); if(uiDirty&&ts-lastUIUpdateAt>=500){lastUIUpdateAt=ts;updateUI();} updatePerfOverlay(ts); requestAnimationFrame(loop); }
+function showFatalOverlay(e){log('Runtime recovered: '+(e?.message||e));}
+function loop(ts){ const frameStart=performance.now();try{ const dt=lastTick?ts-lastTick:0; lastTick=ts;if(dt>250){perfStats.lastStall={dt,at:new Date().toLocaleTimeString()};console.warn('Frame stall',{dt,lastTickMs:perfStats.tickMs,lastDrawMs:perfStats.drawMs,troops:troops.size,buildings:buildings.size});} handleCamera(dt); checkCameraStreamWatcher(); tick(dt); draw(); renderInvasionBanner(); if(uiDirty&&ts-lastUIUpdateAt>=500){lastUIUpdateAt=ts;updateUI();} updatePerfOverlay(ts); updateStabilityMode(performance.now()-frameStart);}catch(e){showFatalOverlay(e);console.error(e);} requestAnimationFrame(loop); }
 function handleCamera(dt){ const safeDt=Math.min(dt||16,33),speed=.9*safeDt; if(keys['ArrowLeft']||keys.a&&!attackMode)camera.x-=speed;if(keys['ArrowRight']||keys.d)camera.x+=speed;if(keys['ArrowUp']||keys.w)camera.y-=speed;if(keys['ArrowDown']||keys.s)camera.y+=speed; clampCamera(); }
 const keys={}; window.addEventListener('keydown',e=>{keys[e.key]=true}); window.addEventListener('keyup',e=>{keys[e.key]=false;if(e.key.toLowerCase()==='a'){attackMode=false;$('modeReadout').textContent='Move';}});
 
@@ -2446,82 +2458,27 @@ function drawTownOverlays(size){
   for(const d of getDistricts(playerKey)){const c=getChunkOfTile(d.x,d.y);if(!isChunkVisible(c.cx,c.cy))continue;ctx.save();ctx.fillStyle=DISTRICT_COLORS[d.type];ctx.strokeStyle=DISTRICT_COLORS[d.type];ctx.lineWidth=2;for(const b of d.members){const p=tileToScreen(b.x,b.y);ctx.globalAlpha=.10;ctx.fillRect(p.x+2,p.y+2,size-4,size-4);ctx.globalAlpha=.32;ctx.strokeRect(p.x+2,p.y+2,size-4,size-4)}ctx.restore()}
 }
 function drawLivingTown(size){if(camera.zoom<CIVILIAN_DRAW_MIN_ZOOM)return;for(const d of getDistricts(playerKey)){if(!d.connected||!['residential','trade','mixed'].includes(d.type))continue;const c=getChunkOfTile(d.x,d.y);if(!isChunkVisible(c.cx,c.cy))continue;const count=Math.min(MAX_CIVILIAN_DOTS_PER_VISIBLE_CHUNK,d.type==='trade'?10:d.type==='residential'?8:4),phase=now()/5000;for(let i=0;i<count;i++){const a=hash2(c.cx*31+i,c.cy*17+i,51)*Math.PI*2,r=(.8+hash2(i,c.cx,52)*Math.min(4,d.radius-1)),p=tileToScreen(d.x+Math.cos(a+phase*(i%2?1:-1))*.35*r,d.y+Math.sin(a+phase*(i%2?1:-1))*.35*r);ctx.fillStyle=i%5===0?'#d8aa62':'#f0d4b0';ctx.beginPath();ctx.arc(p.x+size/2,p.y+size/2,Math.max(1,size*.055),0,Math.PI*2);ctx.fill()}}}
-function draw(){ const drawStart=performance.now(); const size=32*camera.zoom,lowDetail=camera.zoom<DETAIL_RENDER_ZOOM;perfStats.lowDetail=lowDetail; visibleChunks=getCachedVisibleChunks(); ctx.clearRect(0,0,canvas.width,canvas.height); const startX=Math.floor(camera.x/size), startY=Math.floor(camera.y/size), endX=Math.ceil((camera.x+canvas.width)/size), endY=Math.ceil((camera.y+canvas.height)/size);
-  for(let y=startY;y<=endY;y++) for(let x=startX;x<=endX;x++){ if(!isTileInWorld(x,y))continue; const s=tileToScreen(x,y),c=getChunkOfTile(x,y); if(!isChunkVisible(c.cx,c.cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,size+1,size+1);continue;} const terr=terrainAt(x,y); ctx.fillStyle=terr==='water'?'#12304a':terr==='mountain'?'#40434a':terr==='forest'?'#153b25':'#1c2a1f'; ctx.fillRect(s.x,s.y,size+1,size+1); const owner=ownerOfTile(x,y); if(owner){ctx.fillStyle=owner===playerKey||isAllied(playerKey,owner)?'rgba(24,201,100,.22)':'rgba(255,77,77,.22)'; ctx.fillRect(s.x,s.y,size,size);} }
-  if(buildMode)for(let y=startY;y<=endY;y++)for(let x=startX;x<=endX;x++){if(!isTileInWorld(x,y)||!isTileVisible(x,y))continue;const s=tileToScreen(x,y),valid=isValidBuildPlacement(buildMode,x,y),hovered=hoveredTile?.x===x&&hoveredTile?.y===y;if(valid||hovered){ctx.fillStyle=valid?'rgba(55,205,150,.3)':'rgba(255,70,70,.42)';ctx.fillRect(s.x+1,s.y+1,size-2,size-2);ctx.strokeStyle=valid?'rgba(110,245,220,.7)':'#ff5555';ctx.lineWidth=1;ctx.strokeRect(s.x+1,s.y+1,size-2,size-2);}}
-  // chunk boundaries and resource icons
-  const {keys:drawChunkKeys,scx,scy,ecx,ecy}=computeVisibleDrawChunks(startX,startY,endX,endY);perfStats.visible=drawChunkKeys.size;scheduleChunkStreaming();
-  for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++){ if(!isChunkInWorld(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE), chunkPixels=CHUNK_SIZE*size; if(!isChunkVisible(cx,cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);ctx.strokeStyle='#111722';ctx.lineWidth=2;ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);continue;} const res=resourceForChunk(cx,cy), color=resourceColor(res);if(mapOverlay==='resource'){ctx.fillStyle=color+'35';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);}if(!lowDetail&&mapOverlay==='threat'){const danger=getProvinceForChunk(cx,cy).danger;ctx.fillStyle=`rgba(210,45,25,${danger*.09})`;ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);}if(!lowDetail&&mapOverlay==='fire'){const local=indexedBuildings(new Set([chunkKey(cx,cy)])).filter(b=>b.ownerId===playerKey&&b.hp>0);const risk=local.length?local.reduce((n,b)=>n+buildingFireRisk(b),0)/local.length:0;ctx.fillStyle=`rgba(255,95,25,${clamp(risk/140,0,.55)})`;ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);} ctx.strokeStyle='#536070'; ctx.lineWidth=2; ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);
-    const owner=territories.get(chunkKey(cx,cy))?.ownerId,allied=owner&&owner!==playerKey&&isAllied(playerKey,owner);ctx.strokeStyle=owner===playerKey?'#18c964':allied?'#42cfff':owner?'#ff4d4d':'#536070';ctx.lineWidth=allied?4:2;ctx.strokeRect(s.x+1,s.y+1,chunkPixels-2,chunkPixels-2);
-    const compact=camera.zoom<.7, label=compact?resourceIcon(res):resourceDisplayName(res), fontSize=compact?11:Math.min(18,11+camera.zoom*3), padX=compact?6:9, badgeH=compact?22:fontSize+12;
-    ctx.save(); ctx.font=`700 ${fontSize}px Segoe UI`; const badgeW=compact?22:Math.ceil(ctx.measureText(label).width+padX*2); const bx=s.x+chunkPixels/2-badgeW/2, by=s.y+chunkPixels/2-badgeH/2;
-    ctx.fillStyle='rgba(9,13,19,.82)'; ctx.strokeStyle=color; ctx.lineWidth=compact?2:2.5; ctx.beginPath(); ctx.roundRect(bx,by,badgeW,badgeH,compact?11:7); ctx.fill(); ctx.stroke(); ctx.fillStyle=color; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(label,s.x+chunkPixels/2,s.y+chunkPixels/2+(compact?0:1)); ctx.restore();
+function draw(){ const drawStart=performance.now(); const size=32*camera.zoom,tier=zoomTier(),strategic=tier==='strategic',lowDetail=tier!=='detail'||stabilityMode;perfStats.lowDetail=lowDetail;perfStats.tileCellsDrawn=0;perfStats.entitiesDrawn=0;visibleChunks=getCachedVisibleChunks(); ctx.clearRect(0,0,canvas.width,canvas.height); const startX=Math.floor(camera.x/size), startY=Math.floor(camera.y/size), endX=Math.ceil((camera.x+canvas.width)/size), endY=Math.ceil((camera.y+canvas.height)/size);
+  const {keys:drawChunkKeys,scx,scy,ecx,ecy}=computeVisibleDrawChunks(startX,startY,endX,endY,{strategic});perfStats.visible=drawChunkKeys.size;
+  if(!strategic){
+    for(const key of drawChunkKeys){const {cx,cy}=parseChunkKey(key);const tx0=Math.max(startX,cx*CHUNK_SIZE),ty0=Math.max(startY,cy*CHUNK_SIZE),tx1=Math.min(endX,(cx+1)*CHUNK_SIZE-1),ty1=Math.min(endY,(cy+1)*CHUNK_SIZE-1);for(let y=ty0;y<=ty1;y++) for(let x=tx0;x<=tx1;x++){ if(!isTileInWorld(x,y))continue; const s=tileToScreen(x,y); if(!isChunkVisible(cx,cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,size+1,size+1);continue;} const terr=terrainAt(x,y); ctx.fillStyle=terr==='water'?'#12304a':terr==='mountain'?'#40434a':terr==='forest'?'#153b25':'#1c2a1f'; ctx.fillRect(s.x,s.y,size+1,size+1); const owner=ownerOfTile(x,y); if(owner){ctx.fillStyle=owner===playerKey||isAllied(playerKey,owner)?'rgba(24,201,100,.22)':'rgba(255,77,77,.22)'; ctx.fillRect(s.x,s.y,size,size);} perfStats.tileCellsDrawn++;}}
+    if(buildMode)for(const key of drawChunkKeys){const {cx,cy}=parseChunkKey(key);for(let y=Math.max(startY,cy*CHUNK_SIZE);y<=Math.min(endY,(cy+1)*CHUNK_SIZE-1);y++)for(let x=Math.max(startX,cx*CHUNK_SIZE);x<=Math.min(endX,(cx+1)*CHUNK_SIZE-1);x++){if(!isTileInWorld(x,y)||!isTileVisible(x,y))continue;const s=tileToScreen(x,y),valid=isValidBuildPlacement(buildMode,x,y),hovered=hoveredTile?.x===x&&hoveredTile?.y===y;if(valid||hovered){ctx.fillStyle=valid?'rgba(55,205,150,.3)':'rgba(255,70,70,.42)';ctx.fillRect(s.x+1,s.y+1,size-2,size-2);ctx.strokeStyle=valid?'rgba(110,245,220,.7)':'#ff5555';ctx.lineWidth=1;ctx.strokeRect(s.x+1,s.y+1,size-2,size-2);}}}
+  }
+  for(const key of drawChunkKeys){const {cx,cy}=parseChunkKey(key); if(!isChunkInWorld(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE), chunkPixels=CHUNK_SIZE*size; if(!isChunkVisible(cx,cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);ctx.strokeStyle='#111722';ctx.lineWidth=2;ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);continue;} const sum=chunkSummary(key),res=sum.resource,color=resourceColor(res);if(strategic||mapOverlay==='resource'){ctx.fillStyle=color+(strategic?'22':'35');ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);}if(mapOverlay==='threat'){ctx.fillStyle=`rgba(210,45,25,${sum.danger*.09})`;ctx.fillRect(s.x,s.y,chunkPixels,chunkPixels);} ctx.strokeStyle='#536070'; ctx.lineWidth=2; ctx.strokeRect(s.x,s.y,chunkPixels,chunkPixels);
+    const owner=sum.ownerId,allied=owner&&owner!==playerKey&&isAllied(playerKey,owner);ctx.strokeStyle=owner===playerKey?'#18c964':allied?'#42cfff':owner?'#ff4d4d':'#536070';ctx.lineWidth=allied?4:2;ctx.strokeRect(s.x+1,s.y+1,chunkPixels-2,chunkPixels-2);
+    const compact=camera.zoom<.7, label=strategic?`${resourceIcon(res)} ${sum.visibleTroopCount||''}${sum.battleState?' ⚔':''}${sum.landmarkType?' ★':''}`:(compact?resourceIcon(res):resourceDisplayName(res)), fontSize=compact?11:Math.min(18,11+camera.zoom*3), padX=compact?6:9, badgeH=compact?22:fontSize+12;
+    ctx.save(); ctx.font=`700 ${fontSize}px Segoe UI`; const badgeW=compact?Math.max(22,ctx.measureText(label).width+10):Math.ceil(ctx.measureText(label).width+padX*2); const bx=s.x+chunkPixels/2-badgeW/2, by=s.y+chunkPixels/2-badgeH/2;ctx.fillStyle='rgba(9,13,19,.82)'; ctx.strokeStyle=color; ctx.lineWidth=compact?2:2.5; ctx.beginPath(); ctx.roundRect(bx,by,badgeW,badgeH,compact?11:7); ctx.fill(); ctx.stroke(); ctx.fillStyle=color; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(label,s.x+chunkPixels/2,s.y+chunkPixels/2+(compact?0:1)); ctx.restore();
   }
   drawProvinceBorders(size,scx,scy,ecx,ecy);
+  for(const b of indexedBattles(drawChunkKeys)){const n=now(); if(b.status==='ended')continue; const {cx,cy}=parseChunkKey(b.chunkKey); if(!isChunkVisible(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE);ctx.save();ctx.strokeStyle=b.status==='contested'?'#ff61d0':n>=b.startAt?'#ff2d45':'#ffb547';ctx.globalAlpha=b.status==='contested'?.6+.4*Math.sin(n/180):1;ctx.lineWidth=b.status==='contested'?8:4;ctx.strokeRect(s.x+3,s.y+3,CHUNK_SIZE*size-6,CHUNK_SIZE*size-6);ctx.restore();perfStats.entitiesDrawn++;}
+  if(strategic){for(const id of selected){const u=troops.get(id);if(!u||!isTileVisible(u.x,u.y))continue;const ss=tileToScreen(u.x,u.y);ctx.strokeStyle='#8ee8ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(ss.x+size/2,ss.y+size/2,Math.max(4,size*.5),0,Math.PI*2);ctx.stroke();perfStats.entitiesDrawn++;}perfStats.drawMs=performance.now()-drawStart;return;}
   if(!lowDetail)drawTownOverlays(size);
-  // battle overlays
-  for(const b of indexedBattles(drawChunkKeys)){const n=now(); if(b.status==='ended')continue; const {cx,cy}=parseChunkKey(b.chunkKey); if(!isChunkVisible(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE);ctx.save();ctx.strokeStyle=b.status==='contested'?'#ff61d0':n>=b.startAt?'#ff2d45':'#ffb547';ctx.globalAlpha=b.status==='contested'?.6+.4*Math.sin(n/180):1;ctx.lineWidth=b.status==='contested'?8:4;ctx.strokeRect(s.x+3,s.y+3,CHUNK_SIZE*size-6,CHUNK_SIZE*size-6);ctx.restore();}
-  for(const key of [...drawChunkKeys].flatMap(k=>[...(warningsByChunk.get(k)||[])])){const until=barbarianWarningMarkers.get(key)||0;if(until<=now()){barbarianWarningMarkers.delete(key);indexDelete(warningsByChunk,key,key);continue;}const {cx,cy}=parseChunkKey(key);if(!isChunkVisible(cx,cy))continue;const s=tileToScreen((cx+.5)*CHUNK_SIZE,(cy+.5)*CHUNK_SIZE),pulse=.75+.25*Math.sin(now()/120);ctx.save();ctx.globalAlpha=(until-now())/BARBARIAN_WARNING_MARKER_MS;ctx.strokeStyle='#ff5538';ctx.fillStyle='rgba(255,55,30,.22)';ctx.lineWidth=5;ctx.beginPath();ctx.arc(s.x,s.y,Math.max(15,size*2.2)*pulse,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();}
-  if(!lowDetail&&(mapOverlay==='normal'||mapOverlay==='invasion'))drawInvasionHighlights(size);
-  if(!lowDetail)drawBarbarianRumorPings(size);
-  // Strategic landmarks are only rendered in chunks currently revealed by fog of war.
-  for(const l of indexedLandmarks(drawChunkKeys)){
-    const c=parseChunkKey(l.chunkKey);if(!isChunkVisible(c.cx,c.cy))continue;const d=LANDMARK[l.type],s=tileToScreen(l.x,l.y),iconSize=clamp(size*1.35,18,54);
-    drawPveLandmarkIdentity(l,s,size);
-    if(l.hp>0)drawHp(l,{x:s.x+(size-iconSize)/2,y:s.y+(size-iconSize)/2},iconSize);
-  }
-  // Roads are non-blocking infrastructure, drawn below buildings and troops with joined edges.
-  for(const road of indexedBuildings(drawChunkKeys,{roads:true})){
-    if(road.type!=='road'||road.hp<=0||!isTileVisible(road.x,road.y))continue;
-    const s=tileToScreen(road.x,road.y),cx=s.x+size/2,cy=s.y+size/2;
-    ctx.save();ctx.strokeStyle='#a8875f';ctx.lineWidth=Math.max(3,size*.28);ctx.lineCap='square';ctx.beginPath();
-    ctx.moveTo(cx,cy);ctx.lineTo(cx,cy);
-    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(roadAt(road.x+dx,road.y+dy)){ctx.moveTo(cx,cy);ctx.lineTo(cx+dx*size/2,cy+dy*size/2);}
-    ctx.stroke();ctx.fillStyle='#c7a878';ctx.beginPath();ctx.arc(cx,cy,Math.max(2,size*.13),0,Math.PI*2);ctx.fill();ctx.restore();
-    if(road.constructing){const pct=constructionProgress(road);ctx.strokeStyle='#ffb547';ctx.lineWidth=2;ctx.strokeRect(s.x+2,s.y+2,size-4,size-4);ctx.fillStyle='rgba(0,0,0,.82)';ctx.fillRect(s.x+2,s.y-6,size-4,5);ctx.fillStyle='#ffc35c';ctx.fillRect(s.x+3,s.y-5,(size-6)*pct,3);}
-    if(selected.has(road.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=2;ctx.strokeRect(s.x+2,s.y+2,size-4,size-4);}
-    drawHp(road,s,size);
-  }
-  // buildings
-  for(const b of indexedBuildings(drawChunkKeys)){
-    if(b.hp<=0||b.type==='road'||!isTileVisible(b.x,b.y)||(b.type==='spikeTrap'&&!trapIsDetected(b)))continue;
-    const s=tileToScreen(b.x,b.y);
-    if(s.x<-size||s.y<-size||s.x>canvas.width+size||s.y>canvas.height+size)continue;
-    const visual=getBuildingVisual(b.type);ctx.save();if(b.constructing)ctx.globalAlpha=.62;drawBuildingGlow(ctx,visual,s.x,s.y,size);drawBuildingShape(ctx,b,visual,s.x+size*.04,s.y+size*.04,size*.92);ctx.restore();
-    if(b.constructing)drawConstructionOverlay(ctx,b,s.x,s.y,size);
-    if(b.upgrading)drawUpgradeProgress(b,s.x,s.y,size);
-    if(isBarbarianCamp(b)){const d=campTypeDef(b);ctx.save();ctx.strokeStyle=d.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,size*.48,0,Math.PI*2);ctx.stroke();ctx.fillStyle=d.color;ctx.font=`700 ${Math.max(10,size*.32)}px Segoe UI Symbol`;ctx.textAlign='center';ctx.fillText(d.icon,s.x+size*.78,s.y+size*.3);ctx.restore();}
-    if(b.productionQueue?.length){
-      const item=b.productionQueue[0], left=Math.max(0,item.finishAt-now()), pct=100-clamp(left/(UNIT[item.type]?.trainMs||1)*100,0,100);
-      ctx.fillStyle='rgba(0,0,0,.7)'; ctx.fillRect(s.x+3,s.y+3,size-6,5); ctx.fillStyle='#8ee8ff'; ctx.fillRect(s.x+3,s.y+3,(size-6)*pct/100,5);
-    }
-    const fireEvent=ensureFireState()[b.id];if(fireEvent?.stage>=0){ctx.save();ctx.strokeStyle=fireEvent.stage>=2?'#ff3d1f':'#ffad33';ctx.lineWidth=3;ctx.strokeRect(s.x+1,s.y+1,size-2,size-2);ctx.fillStyle=fireEvent.stage>=2?'#ff3d1f':'#ffad33';ctx.font=`700 ${Math.max(12,size*.36)}px Segoe UI Symbol`;ctx.fillText('🔥',s.x+size*.62,s.y+size*.36);ctx.restore()}
-    if(b.ownerId===playerKey&&['market','tavern','workshop','carpenterHall'].includes(b.type)&&!isBuildingKingdomConnected(b,playerKey)){ctx.save();ctx.strokeStyle='#ff9f43';ctx.lineWidth=2;ctx.strokeRect(s.x+1,s.y+1,size-2,size-2);ctx.fillStyle='#ffb04d';ctx.font=`700 ${Math.max(10,size*.32)}px Segoe UI`;ctx.fillText('!',s.x+size*.72,s.y+size*.3);ctx.restore()}else if(b.ownerId===playerKey&&b.type==='carpenterHall'&&!isRoadLinkedToBuildingType(b,playerKey,'workshop')){ctx.strokeStyle='#e7b64f';ctx.lineWidth=2;ctx.strokeRect(s.x+2,s.y+2,size-4,size-4);}
-    if(selected.has(b.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=2;ctx.strokeRect(s.x+2,s.y+2,size-4,size-4);}
-    drawHp(b,s,size);
-  }
-  if(!lowDetail)drawLivingTown(size);
-  // troops
-  for(const u of indexedTroops(drawChunkKeys)){
-    catchUpTroopTravel(u);if(u.hp<=0||!isTileVisible(u.x,u.y))continue;
-    const s=tileToScreen(u.x,u.y);
-    if(s.x<-size||s.y<-size||s.x>canvas.width+size||s.y>canvas.height+size)continue;
-    drawSvgIcon('troop',u.type,u.ownerId,s.x+size*.02,s.y+size*.02,size*.96);
-    if(u.moveGoal && (u.order==='move'||u.order==='attackMove')){ctx.strokeStyle=u.order==='attackMove'?'#ffcf5e':'#8ee8ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,size*.47,0,Math.PI*2);ctx.stroke();}
-    if(selected.has(u.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,size*.48,0,Math.PI*2);ctx.stroke();}
-    drawHp(u,s,size);
-    drawVeterancyStars(u,s,size);
-  }
-  if(commandFeedback&&commandFeedback.until>now()){
-    const goal=commandFeedback.targetId?targetForId(commandFeedback.targetId):commandFeedback;
-    if(goal){
-      const gs=tileToScreen(goal.x,goal.y),color=commandFeedback.kind==='attack'?'#ff5252':commandFeedback.kind==='attackMove'?'#ffbd3f':'#65cfff';
-      ctx.save();ctx.strokeStyle=color;ctx.lineWidth=3;ctx.globalAlpha=.85;ctx.beginPath();ctx.arc(gs.x+size/2,gs.y+size/2,size*(.45+.12*Math.sin(now()/80)),0,Math.PI*2);ctx.stroke();
-      for(const id of commandFeedback.unitIds||[]){const u=troops.get(id);if(!u)continue;const s=tileToScreen(u.x,u.y);ctx.beginPath();ctx.moveTo(s.x+size/2,s.y+size/2);ctx.lineTo(gs.x+size/2,gs.y+size/2);ctx.stroke();}
-      ctx.restore();
-    }
-  }else if(commandFeedback)commandFeedback=null;
-  if(!lowDetail)drawCaptureProgressOverlays(size,startX,startY,endX,endY);
+  for(const l of indexedLandmarks(drawChunkKeys)){const c=parseChunkKey(l.chunkKey);if(!isChunkVisible(c.cx,c.cy))continue;const ss=tileToScreen(l.x,l.y),iconSize=clamp(size*1.35,18,54);drawPveLandmarkIdentity(l,ss,size);if(l.hp>0&&!stabilityMode)drawHp(l,{x:ss.x+(size-iconSize)/2,y:ss.y+(size-iconSize)/2},iconSize);perfStats.entitiesDrawn++;}
+  if(!stabilityMode)for(const road of indexedBuildings(drawChunkKeys,{roads:true})){if(road.type!=='road'||road.hp<=0||!isTileVisible(road.x,road.y))continue;const ss=tileToScreen(road.x,road.y),cx=ss.x+size/2,cy=ss.y+size/2;ctx.save();ctx.strokeStyle='#a8875f';ctx.lineWidth=Math.max(3,size*.28);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx,cy);if(!lowDetail)for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(roadAt(road.x+dx,road.y+dy)){ctx.moveTo(cx,cy);ctx.lineTo(cx+dx*size/2,cy+dy*size/2);}ctx.stroke();ctx.restore();perfStats.entitiesDrawn++;}
+  for(const b of indexedBuildings(drawChunkKeys)){if(b.hp<=0||b.type==='road'||!isTileVisible(b.x,b.y)||(b.type==='spikeTrap'&&!trapIsDetected(b)))continue;const ss=tileToScreen(b.x,b.y);if(ss.x<-size||ss.y<-size||ss.x>canvas.width+size||ss.y>canvas.height+size)continue;const visual=getBuildingVisual(b.type);ctx.save();if(b.constructing)ctx.globalAlpha=.62;drawBuildingGlow(ctx,visual,ss.x,ss.y,size);drawBuildingShape(ctx,b,visual,ss.x+size*.04,ss.y+size*.04,size*.92);ctx.restore();if(!lowDetail&&b.constructing)drawConstructionOverlay(ctx,b,ss.x,ss.y,size);if(selected.has(b.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=2;ctx.strokeRect(ss.x+2,ss.y+2,size-4,size-4);}if(!lowDetail&&!stabilityMode)drawHp(b,ss,size);perfStats.entitiesDrawn++;}
+  if(!lowDetail&&!stabilityMode)drawLivingTown(size);
+  for(const u of indexedTroops(drawChunkKeys)){catchUpTroopTravel(u);if(u.hp<=0||!isTileVisible(u.x,u.y))continue;const ss=tileToScreen(u.x,u.y);if(ss.x<-size||ss.y<-size||ss.x>canvas.width+size||ss.y>canvas.height+size)continue;drawSvgIcon('troop',u.type,u.ownerId,ss.x+size*.02,ss.y+size*.02,size*.96);if(selected.has(u.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(ss.x+size/2,ss.y+size/2,size*.48,0,Math.PI*2);ctx.stroke();}if(!lowDetail&&!stabilityMode){drawHp(u,ss,size);drawVeterancyStars(u,ss,size);}perfStats.entitiesDrawn++;}
+  if(!lowDetail&&!stabilityMode)drawCaptureProgressOverlays(size,startX,startY,endX,endY);
   perfStats.drawMs=performance.now()-drawStart;
 }
 function drawCaptureProgressOverlays(size,startX,startY,endX,endY){
