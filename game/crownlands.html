@@ -192,6 +192,16 @@ const BARBARIAN_OWNER_PREFIX = "barbarian";
 const BARBARIAN_SPAWN_CHECK_MS = 3600000;
 const BARBARIAN_SPAWN_LOCK_MS = 30000;
 const BARBARIAN_THINK_MS = 10000;
+const BARBARIAN_AI_TICK_MS = 3000;
+const BARBARIAN_BACKGROUND_AI_TICK_MS = 30000;
+const MAX_BARBARIAN_AI_PER_TICK = 25;
+const BARBARIAN_AGGRO_RANGE = 8;
+const BARBARIAN_RAID_SCAN_RANGE = 16;
+const BARBARIAN_HOME_LEASH_RANGE = 30;
+const BARBARIAN_RAID_TARGET_REFRESH_MS = 45000;
+const BARBARIAN_STUCK_MS = 25000;
+const MAX_BARBARIANS_PER_SMALL_TARGET = 3;
+const MAX_BARBARIANS_PER_DISTRICT_RAID = 12;
 const BARBARIAN_SIM_LOCK_MS = 25000;
 const MAX_BARBARIAN_CAMPS = 80;
 const MAX_BARBARIAN_FORCE_COUNT = 40;
@@ -514,7 +524,9 @@ function markVisibleChunksDirty(){visibleChunksDirty=true;}
 function getCachedVisibleChunks(){const n=now();if(visibleChunksDirty||n-lastVisibleChunksBuildAt>=750){cachedVisibleChunks=getVisibleChunksForPlayer(playerKey);visibleChunksDirty=false;lastVisibleChunksBuildAt=n;}return cachedVisibleChunks;}
 let currentAbilityHotkeys=new Map();
 let camera={x:0,y:0,zoom:1}; let mouse={x:0,y:0,down:false,startX:0,startY:0};
-let lastSave=0, lastTick=0, lastCaptureCheck=0, lastConstructionCheck=0, lastInvasionCheck=0, lastProductionCheck=0, lastBarbarianPoll=0, lastBarbarianThink=0, lastOnlineRaidDirector=0, lastRequestCheck=0, lastFireCheck=0, lastProvinceTroubleCheck=0;
+let lastSave=0, lastTick=0, lastCaptureCheck=0, lastConstructionCheck=0, lastInvasionCheck=0, lastProductionCheck=0, lastBarbarianPoll=0, lastBarbarianThink=0, lastBarbarianAITick=0, lastBarbarianBackgroundAITick=0, lastBarbarianRaidTargetRefresh=0, barbarianAIRoundRobin=0, lastOnlineRaidDirector=0, lastRequestCheck=0, lastFireCheck=0, lastProvinceTroubleCheck=0;
+window.DEBUG_BARBARIAN_AI = window.DEBUG_BARBARIAN_AI || false;
+let barbarianRaidTargetCache={at:0,targets:[]};
 let gameLoopStarted=false, startupHeavySystemsBlockedUntil=0;
 let barbarianWorldState={nextBarbarianSpawnCheckAt:0}; let barbarianSpawnCheckRunning=false, barbarianThinkRunning=false, landmarkGenerationRunning=false;
 let onlineRaidDirectorRunning=false, fireRiskRunning=false, provinceTroubleRunning=false;
@@ -535,6 +547,8 @@ function resetStartupPollTimers(delayMs=10000){
   lastInvasionCheck=n;
   lastBarbarianPoll=n;
   lastBarbarianThink=n;
+  lastBarbarianAITick=n;
+  lastBarbarianBackgroundAITick=n;
   lastOnlineRaidDirector=n;
 }
 
@@ -618,9 +632,9 @@ function updateChunkSubscriptions(wantedKeys){const wanted=new Set(wantedKeys),n
 function cameraChunk(){return getChunkOfTile(Math.floor((camera.x+canvas.width/2)/(32*camera.zoom)),Math.floor((camera.y+canvas.height/2)/(32*camera.zoom)))}
 function chunkKeysAround(center,radius){const out=new Set();for(let cy=center.cy-radius;cy<=center.cy+radius;cy++)for(let cx=center.cx-radius;cx<=center.cx+radius;cx++)if(isChunkInWorld(cx,cy))out.add(chunkKey(cx,cy));return out}
 function activeChunkKeys(){return activeChunks}function warmChunkKeys(){return warmChunks}function visibleChunkKeys(){return visibleDrawChunks}
-function hasActiveCommand(u){return !!u&&u.hp>0&&['move','attackMove','attack'].includes(u.order)&&!u.commandComplete;}
+function hasActiveCommand(u){return !!u&&u.hp>0&&['move','attackMove','attack','wander','guardCamp'].includes(u.order)&&!u.commandComplete;}
 function addCommandBubbleForUnit(u){const cc=getChunkOfTile(u.x,u.y);for(const k of chunkKeysAround(cc,ACTIVE_CHUNK_RADIUS))activeChunks.add(k);for(const k of chunkKeysAround(cc,WARM_CHUNK_RADIUS))warmChunks.add(k);const tx=u.commandTargetX??u.moveGoal?.x,ty=u.commandTargetY??u.moveGoal?.y;if(Number.isFinite(tx)&&Number.isFinite(ty)){const tc=getChunkOfTile(tx,ty);for(const k of chunkKeysAround(tc,1))warmChunks.add(k);activeChunks.add(tc.key);}}
-function updateSimulationChunkSets(){const c=cameraChunk();activeChunks=chunkKeysAround(c,ACTIVE_CHUNK_RADIUS);warmChunks=chunkKeysAround(c,WARM_CHUNK_RADIUS);for(const u of troops.values())if(u.ownerId===playerKey&&hasActiveCommand(u))addCommandBubbleForUnit(u);for(const id of selected){const e=troops.get(id)||buildings.get(id);if(e){const cc=getChunkOfTile(e.x,e.y);for(const k of chunkKeysAround(cc,ACTIVE_CHUNK_RADIUS))activeChunks.add(k);for(const k of chunkKeysAround(cc,WARM_CHUNK_RADIUS))warmChunks.add(k);}}if(account.home){const hc=getChunkOfTile(account.home.x,account.home.y);for(const k of chunkKeysAround(hc,ACTIVE_CHUNK_RADIUS))activeChunks.add(k);for(const k of chunkKeysAround(hc,WARM_CHUNK_RADIUS))warmChunks.add(k);}for(const u of indexedTroops(warmChunks)){if(!isBarbarianUnit(u)||u.hp<=0)continue;const key=entityChunkKey(u),t=territories.get(key);if(t?.barbarianPressure||isChunkNearPlayerBorder(key,playerKey,2)){for(const k of chunkKeysAround(parseChunkKey(key),2)){activeChunks.add(k);warmChunks.add(k);}}}}
+function updateSimulationChunkSets(){const c=cameraChunk();activeChunks=chunkKeysAround(c,ACTIVE_CHUNK_RADIUS);warmChunks=chunkKeysAround(c,WARM_CHUNK_RADIUS);for(const u of troops.values())if(u.ownerId===playerKey&&hasActiveCommand(u))addCommandBubbleForUnit(u);for(const u of troops.values())if(isBarbarianUnit(u)&&hasActiveCommand(u)&&(u.raidUntil||u.targetId||u.aiState==='raid'||u.aiState==='attack'||isChunkNearPlayerBorder(entityChunkKey(u),playerKey,2)))addCommandBubbleForUnit(u);for(const id of selected){const e=troops.get(id)||buildings.get(id);if(e){const cc=getChunkOfTile(e.x,e.y);for(const k of chunkKeysAround(cc,ACTIVE_CHUNK_RADIUS))activeChunks.add(k);for(const k of chunkKeysAround(cc,WARM_CHUNK_RADIUS))warmChunks.add(k);}}if(account.home){const hc=getChunkOfTile(account.home.x,account.home.y);for(const k of chunkKeysAround(hc,ACTIVE_CHUNK_RADIUS))activeChunks.add(k);for(const k of chunkKeysAround(hc,WARM_CHUNK_RADIUS))warmChunks.add(k);}for(const u of indexedTroops(warmChunks)){if(!isBarbarianUnit(u)||u.hp<=0)continue;const key=entityChunkKey(u),t=territories.get(key);if(t?.barbarianPressure||isChunkNearPlayerBorder(key,playerKey,2)){for(const k of chunkKeysAround(parseChunkKey(key),2)){activeChunks.add(k);warmChunks.add(k);}}}}
 function chunkSetValues(index,keys,source){const out=[];for(const k of keys){const set=index.get(k);if(!set)continue;for(const id of set){const v=source.get(id);if(v)out.push(v);}}return out}
 function indexedTroops(keys){return chunkSetValues(troopsByChunk,keys,troops)}function indexedBuildings(keys,{roads=false}={}){return chunkSetValues(roads?roadsByChunk:buildingsByChunk,keys,buildings)}function indexedLandmarks(keys){return chunkSetValues(landmarksByChunk,keys,landmarks)}function indexedBattles(keys){return chunkSetValues(battlesByChunk,keys,battles)}
 function getNearbyTroops(chunkKeyValue,radiusChunks=1){return indexedTroops(chunkKeysAround(parseChunkKey(chunkKeyValue),radiusChunks))}
@@ -1283,6 +1297,73 @@ function pathTowardMoveGoal(u){
   }
   return [];
 }
+
+function ensureBarbarianBrain(u,n=now()){
+  if(!u||!isBarbarianUnit(u))return u;
+  u.aiState=u.aiState||((u.order==='attack'||u.targetId)?'attack':u.raidUntil?'raid':u.order==='wander'?'wander':'idle');
+  u.aiNextThinkAt=Number(u.aiNextThinkAt||0);
+  u.aiHomeChunk=u.aiHomeChunk||u.homeChunkKey||u.chunkKey||entityChunkKey(u);
+  u.aiTargetId=u.aiTargetId||u.targetId||null;
+  u.aiGoal=u.aiGoal||u.moveGoal||null;
+  if(u.lastX===undefined){u.lastX=u.x;u.lastY=u.y;u.lastMovedAt=n;u.stuckSince=0;}
+  return u;
+}
+function shouldProcessBarbarianAI(u,background=false){
+  if(!u||u.hp<=0)return false;
+  if(u.aiState==='raid'||u.aiState==='attack'||u.raidUntil||u.targetId)return true;
+  const key=entityChunkKey(u);
+  if(activeChunks.has(key)||warmChunks.has(key))return true;
+  if(isChunkNearPlayerBorder(key,playerKey,background?2:1))return true;
+  if(getDistrictForChunk(parseChunkKey(key).cx,parseChunkKey(key).cy,playerKey))return true;
+  return background;
+}
+function clearBarbarianCommand(u){u.order='idle';u.targetId=null;u.moveGoal=null;u.assignedGoal=null;u.path=[];u.pathPending=false;u.commandComplete=true;u.waitTicks=0;u.leashOrigin=null;u.leashRadius=0;}
+function noteBarbarianAI(u){if(window.DEBUG_BARBARIAN_AI)console.log('[BarbarianAI]',u.id,u.aiState,u.order,u.aiTargetId);}
+function pickBarbarianOpenTileNear(u,origin,radius=6){
+  const claimed=new Set([...troops.values()].filter(o=>isBarbarianUnit(o)&&o.id!==u.id&&dist(o,origin)<=radius+2).map(o=>tileKey(o.x,o.y)));
+  for(let tries=0;tries<24;tries++){const a=Math.random()*Math.PI*2,r=2+Math.floor(Math.random()*radius),x=clamp(Math.round(origin.x+Math.cos(a)*r),worldMinTileX(),worldMaxTileX()),y=clamp(Math.round(origin.y+Math.sin(a)*r),worldMinTileY(),worldMaxTileY()),k=tileKey(x,y);if(!claimed.has(k)&&!isBlocked(x,y,u))return {x,y};}
+  return closestOpenGoalTile(u,origin.x,origin.y,claimed);
+}
+function assignBarbarianMove(u,goal,state='wander',attackMove=true){
+  u.aiState=state;u.aiGoal={x:goal.x,y:goal.y};u.order=attackMove?'attackMove':'wander';u.moveGoal={x:goal.x,y:goal.y};u.targetId=null;u.aiTargetId=null;u.commandComplete=false;u.manualCommandUntil=0;u.path=[];u.waitTicks=0;u.leashOrigin={x:u.x,y:u.y};u.leashRadius=state==='return'?BARBARIAN_HOME_LEASH_RANGE:ATTACK_MOVE_LEASH_RADIUS;requestPath(u,goal.x,goal.y,900);noteBarbarianAI(u);scheduleSaveTroops([u]);
+}
+function getAttackPositionAroundTarget(target,u){const claimed=new Set([...troops.values()].filter(o=>isBarbarianUnit(o)&&o.id!==u.id&&dist(o,target)<=3).map(o=>tileKey(o.x,o.y)));return closestOpenGoalTile(u,target.x,target.y,claimed);}
+function assignBarbarianAttack(u,target,state='attack'){
+  if(!target)return;target.barbariansAssigned=Number(target.barbariansAssigned||0)+1;const pos=getAttackPositionAroundTarget(target,u);u.aiState=state;u.aiTargetId=target.id;u.aiGoal={x:pos.x,y:pos.y};u.order='attack';u.targetId=target.id;u.moveGoal={x:pos.x,y:pos.y};u.path=[];u.commandComplete=false;u.leashOrigin={x:u.x,y:u.y};u.leashRadius=state==='raid'?BARBARIAN_RAID_SCAN_RANGE*CHUNK_SIZE:ATTACK_MOVE_LEASH_RADIUS;requestPath(u,pos.x,pos.y,1100);noteBarbarianAI(u);scheduleSaveTroops([u]);
+}
+function assignBarbarianRetreat(u){
+  const home=u.aiHomeChunk?parseChunkKey(u.aiHomeChunk):getChunkOfTile(u.homeX||u.x,u.homeY||u.y),away=getNearestPlayerAssetForBarbarian(u,1),dx=away?Math.sign(u.x-away.x):0,dy=away?Math.sign(u.y-away.y):0,goal=pickBarbarianOpenTileNear(u,{x:u.homeX||home.cx*CHUNK_SIZE+8||u.x+dx*8,y:u.homeY||home.cy*CHUNK_SIZE+8||u.y+dy*8},8);assignBarbarianMove(u,goal,'retreat',false);
+}
+function refreshBarbarianRaidTargets(n=now()){
+  if(n-lastBarbarianRaidTargetRefresh<BARBARIAN_RAID_TARGET_REFRESH_MS&&barbarianRaidTargetCache.targets.length)return barbarianRaidTargetCache.targets;
+  lastBarbarianRaidTargetRefresh=n;const candidates=[];
+  for(const t of territories.values()){if(!t.ownerId||isBarbarianOwner(t.ownerId))continue;const district=getDistrictForChunk(t.cx,t.cy,t.ownerId),town=[...getNearbyBuildings(t.id,0)].filter(b=>b.ownerId===t.ownerId&&b.hp>0&&!isBarbarianCamp(b));if(!district&&!town.length)continue;let score=town.length*2+town.filter(b=>['tradePost','market','road','well','lumberMill','oilWell','goldMine'].includes(b.type)).length*7;if(district){const requests=activeDistrictRequests(district).length,stability=100-districtStability(district),income=district.members.reduce((sum,b)=>sum+(BUILDING[b.type]?.income?.gold||0)+(BUILDING[b.type]?.income?.lumber||0)+(BUILDING[b.type]?.income?.oil||0),0);score+=district.members.length*.2+income*.4+requests*8+stability*.12+25;}candidates.push({chunkKey:t.id,cx:t.cx,cy:t.cy,ownerId:t.ownerId,districtId:district?.id||null,x:district?.x||t.cx*CHUNK_SIZE+8,y:district?.y||t.cy*CHUNK_SIZE+8,score,cap:district?MAX_BARBARIANS_PER_DISTRICT_RAID:MAX_BARBARIANS_PER_SMALL_TARGET,barbariansAssigned:0});}
+  barbarianRaidTargetCache={at:n,targets:candidates.sort((a,b)=>b.score-a.score).slice(0,60)};return barbarianRaidTargetCache.targets;
+}
+function findNearbyRaidTarget(u){
+  const uc=getChunkOfTile(u.x,u.y);let best=null,bestScore=-Infinity;for(const t of refreshBarbarianRaidTargets()){const d=Math.max(Math.abs(t.cx-uc.cx),Math.abs(t.cy-uc.cy));if(d>Math.ceil(BARBARIAN_RAID_SCAN_RANGE/CHUNK_SIZE)+2&&dist(u,t)>BARBARIAN_RAID_SCAN_RANGE)continue;if((t.barbariansAssigned||0)>=t.cap)continue;const score=t.score-d*3-Number(t.barbariansAssigned||0)*10+Math.random()*4;if(score>bestScore){best=t;bestScore=score;}}
+  if(!best)return null;const building=[...getNearbyBuildings(best.chunkKey,0)].filter(b=>b.ownerId===best.ownerId&&b.hp>0&&b.type!=='fortress').sort((a,b)=>dist(a,u)-dist(b,u))[0];return building||best;
+}
+function updateBarbarianStuckState(u,n){
+  if(u.x!==u.lastX||u.y!==u.lastY){u.lastX=u.x;u.lastY=u.y;u.lastMovedAt=n;u.stuckSince=0;return false;}
+  if(hasActiveCommand(u)||u.pathPending||u.moveGoal){u.stuckSince=u.stuckSince||n;if(n-u.stuckSince>BARBARIAN_STUCK_MS){clearBarbarianCommand(u);u.aiState='stuck';return true;}}
+  return false;
+}
+function thinkBarbarian(u,n=now()){
+  ensureBarbarianBrain(u,n);if(!u||u.hp<=0)return;catchUpTroopTravel(u,n);if(updateBarbarianStuckState(u,n)){assignBarbarianMove(u,pickBarbarianOpenTileNear(u,{x:u.x,y:u.y},7),'wander');return;}
+  if(n<u.aiNextThinkAt&&hasActiveCommand(u))return;u.aiNextThinkAt=n+BARBARIAN_AI_TICK_MS+Math.random()*1800;
+  if(u.hp<=effectiveMaxHp(u)*Number(u.retreatAtHp||.25)){assignBarbarianRetreat(u);return;}
+  const home=u.aiHomeChunk?parseChunkKey(u.aiHomeChunk):null;if(home&&chunkDistance(getChunkOfTile(u.x,u.y),home)>BARBARIAN_HOME_LEASH_RANGE/CHUNK_SIZE&&!u.raidUntil){assignBarbarianMove(u,pickBarbarianOpenTileNear(u,{x:(u.homeX||home.cx*CHUNK_SIZE+8),y:(u.homeY||home.cy*CHUNK_SIZE+8)},5),'return');return;}
+  const enemy=getNearestPlayerAssetForBarbarian(u,Math.ceil(BARBARIAN_AGGRO_RANGE/CHUNK_SIZE));if(enemy&&dist(u,enemy)<=BARBARIAN_AGGRO_RANGE){assignBarbarianAttack(u,enemy,'attack');return;}
+  const raid=findNearbyRaidTarget(u);if(raid){assignBarbarianAttack(u,raid,'raid');return;}
+  const origin=u.homeX&&u.homeY?{x:u.homeX,y:u.homeY}:u.aiHomeChunk?{x:parseChunkKey(u.aiHomeChunk).cx*CHUNK_SIZE+8,y:parseChunkKey(u.aiHomeChunk).cy*CHUNK_SIZE+8}:{x:u.x,y:u.y};assignBarbarianMove(u,pickBarbarianOpenTileNear(u,Math.random()<.6?origin:{x:u.x,y:u.y},7),u.campId?'patrol':'scout');
+}
+function tickBarbarianAI(n=now(),background=false){
+  const all=[...troops.values()].filter(u=>isBarbarianUnit(u)&&u.hp>0);if(!all.length)return;const ordered=all.slice(barbarianAIRoundRobin).concat(all.slice(0,barbarianAIRoundRobin));let processed=0;
+  for(const u of ordered){if(processed>=MAX_BARBARIAN_AI_PER_TICK)break;ensureBarbarianBrain(u,n);if(!shouldProcessBarbarianAI(u,background))continue;if(!background&&n<u.aiNextThinkAt&&hasActiveCommand(u))continue;if(background&&n<u.aiNextThinkAt&&hasActiveCommand(u)){freezeFarTravel(u,n);continue;}thinkBarbarian(u,n);processed++;}
+  barbarianAIRoundRobin=(barbarianAIRoundRobin+Math.max(1,processed))%Math.max(1,all.length);
+}
+
 function issueMove(ids,tx,ty,attackMove=false){
   const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey&&u.hp>0);
   if(!units.length)return;
@@ -1620,7 +1701,7 @@ function tick(dt){
       b.reinforcedUntil=0; b.reinforceBonusHp=0; b.hp=Math.min(b.hp,b.maxHp||b.hp); saveBuilding(b);
     }
   }
-  let aiBudget=MAX_AI_UNITS_PER_FRAME;for(const u of indexedTroops(warmChunks)){if(aiBudget--<=0){perfStats.skippedTroops++;continue;}const ck=entityChunkKey(u);if(!isChunkWarmKey(ck)){perfStats.skippedTroops++;freezeFarTravel(u,n);continue;}catchUpTroopTravel(u,n);if(!isChunkActiveKey(entityChunkKey(u))&&!warmDue){perfStats.skippedTroops++;continue;}perfStats.simTroops++;
+  let aiBudget=MAX_AI_UNITS_PER_FRAME;for(const u of indexedTroops(warmChunks)){if(aiBudget--<=0){perfStats.skippedTroops++;continue;}const ck=entityChunkKey(u);if(!isChunkWarmKey(ck)){perfStats.skippedTroops++;freezeFarTravel(u,n);continue;}catchUpTroopTravel(u,n);if(!isChunkActiveKey(entityChunkKey(u))&&!warmDue&&!(isBarbarianUnit(u)&&hasActiveCommand(u))){perfStats.skippedTroops++;continue;}perfStats.simTroops++;
     if(u.hp<=0) continue;
     const def=UNIT[u.type]; if(!def)continue;
     const mine = u.ownerId===playerKey;
@@ -1639,6 +1720,8 @@ function tick(dt){
   if(!startupBlocked&&n-lastCaptureCheck>CAPTURE_POLL_MS){lastCaptureCheck=n; resolveCapturePressure().catch(e=>log('Capture check error: '+e.message));}
   if(!startupBlocked&&n-lastInvasionCheck>15000){lastInvasionCheck=n;resolveExpiredInvasions().catch(e=>log('Invasion resolution error: '+e.message));}
   if(!startupBlocked&&n-lastBarbarianPoll>60000){lastBarbarianPoll=n;maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message));}
+  if(!startupBlocked&&n-lastBarbarianAITick>BARBARIAN_AI_TICK_MS){lastBarbarianAITick=n;tickBarbarianAI(n,false);}
+  if(!startupBlocked&&n-lastBarbarianBackgroundAITick>BARBARIAN_BACKGROUND_AI_TICK_MS){lastBarbarianBackgroundAITick=n;tickBarbarianAI(n,true);}
   if(!startupBlocked&&n-lastBarbarianThink>BARBARIAN_THINK_MS){lastBarbarianThink=n;maybeSimulateNearbyBarbarianCamps().catch(e=>log('Barbarian AI error: '+e.message));}
   if(!startupBlocked&&n-lastOnlineRaidDirector>ONLINE_RAID_DIRECTOR_TICK_MS){lastOnlineRaidDirector=n;runOnlineRaidDirector().catch(e=>log('Online survival director error: '+e.message));}
   if(n-lastSave>SAVE_EVERY_MS){lastSave=n; flushTroopSaves();}
@@ -2550,7 +2633,7 @@ function draw(){ const drawStart=performance.now(); const size=32*camera.zoom,ti
   if(!stabilityMode)for(const road of indexedBuildings(drawChunkKeys,{roads:true})){if(road.type!=='road'||road.hp<=0||!isTileVisible(road.x,road.y))continue;const ss=tileToScreen(road.x,road.y),cx=ss.x+size/2,cy=ss.y+size/2;ctx.save();ctx.strokeStyle=road.constructing?'#d7b06c':'#a8875f';ctx.lineWidth=Math.max(3,size*.28);if(road.constructing)ctx.setLineDash([Math.max(2,size*.18),Math.max(2,size*.14)]);ctx.beginPath();ctx.moveTo(cx-size*.32,cy);ctx.lineTo(cx+size*.32,cy);if(!lowDetail)for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(roadAt(road.x+dx,road.y+dy)){ctx.moveTo(cx,cy);ctx.lineTo(cx+dx*size/2,cy+dy*size/2);}ctx.stroke();ctx.setLineDash([]);ctx.restore();if(road.constructing&&!lowDetail)drawConstructionOverlay(ctx,road,ss.x,ss.y,size);perfStats.entitiesDrawn++;}
   for(const b of indexedBuildings(drawChunkKeys)){if(b.hp<=0||b.type==='road'||!isTileVisible(b.x,b.y)||(b.type==='spikeTrap'&&!trapIsDetected(b)))continue;const ss=tileToScreen(b.x,b.y);if(ss.x<-size||ss.y<-size||ss.x>canvas.width+size||ss.y>canvas.height+size)continue;const visual=getBuildingVisual(b.type);ctx.save();if(b.constructing)ctx.globalAlpha=.62;drawBuildingGlow(ctx,visual,ss.x,ss.y,size);drawBuildingShape(ctx,b,visual,ss.x+size*.04,ss.y+size*.04,size*.92);ctx.restore();if(b.productionQueue?.length)drawProductionRingForBuilding(b,ss,size);if(!lowDetail&&b.constructing)drawConstructionOverlay(ctx,b,ss.x,ss.y,size);if(selected.has(b.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=2;ctx.strokeRect(ss.x+2,ss.y+2,size-4,size-4);}if(!lowDetail&&!stabilityMode)drawHp(b,ss,size);perfStats.entitiesDrawn++;}
   if(!lowDetail&&!stabilityMode)drawLivingTown(size);
-  for(const u of indexedTroops(drawChunkKeys)){catchUpTroopTravel(u);if(u.hp<=0||!isTileVisible(u.x,u.y))continue;const ss=tileToScreen(u.x,u.y);if(ss.x<-size||ss.y<-size||ss.x>canvas.width+size||ss.y>canvas.height+size)continue;drawSvgIcon('troop',u.type,u.ownerId,ss.x+size*.02,ss.y+size*.02,size*.96);if(selected.has(u.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(ss.x+size/2,ss.y+size/2,size*.48,0,Math.PI*2);ctx.stroke();}if(!lowDetail&&!stabilityMode){drawHp(u,ss,size);drawVeterancyStars(u,ss,size);}perfStats.entitiesDrawn++;}
+  for(const u of indexedTroops(drawChunkKeys)){catchUpTroopTravel(u);if(u.hp<=0||!isTileVisible(u.x,u.y))continue;const ss=tileToScreen(u.x,u.y);if(ss.x<-size||ss.y<-size||ss.x>canvas.width+size||ss.y>canvas.height+size)continue;drawSvgIcon('troop',u.type,u.ownerId,ss.x+size*.02,ss.y+size*.02,size*.96);if(selected.has(u.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(ss.x+size/2,ss.y+size/2,size*.48,0,Math.PI*2);ctx.stroke();}if(!lowDetail&&!stabilityMode){drawHp(u,ss,size);drawVeterancyStars(u,ss,size);}if(window.DEBUG_BARBARIAN_AI&&isBarbarianUnit(u)){ctx.save();ctx.font=`700 ${Math.max(9,size*.32)}px Segoe UI`;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillStyle='#ffdb8b';ctx.strokeStyle='#110804';ctx.lineWidth=3;const label=u.aiState||u.order||'idle';ctx.strokeText(label,ss.x+size/2,ss.y-2);ctx.fillText(label,ss.x+size/2,ss.y-2);ctx.restore();}perfStats.entitiesDrawn++;}
   if(!lowDetail&&!stabilityMode)drawCaptureProgressOverlays(size,startX,startY,endX,endY);
   perfStats.drawMs=performance.now()-drawStart;
 }
