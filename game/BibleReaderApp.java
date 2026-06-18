@@ -162,8 +162,13 @@ public class BibleReaderApp extends JFrame {
 
     private DefaultListModel<String> questionModel;
     private JList<String> questionList;
-    private JPanel discussionQuestionsPanel;
-    private JPanel personalQuestionsPanel;
+    private JPanel unifiedQuestionsPanel;
+    private JPanel questionDetailPanel;
+    private JComboBox<String> questionSortBox;
+    private JComboBox<String> questionCategoryFilterBox;
+    private JComboBox<String> questionBookFilterBox;
+    private JComboBox<String> questionAnswerFilterBox;
+    private final List<StudyQuestion> visibleQuestions = new ArrayList<>();
     private StudyQuestion selectedQuestion;
 
     private DefaultListModel<TopicPage> topicPageModel;
@@ -3061,6 +3066,10 @@ public class BibleReaderApp extends JFrame {
     }
 
     private JPanel buildQuestionsPage() {
+        return buildUnifiedQuestionsPage();
+    }
+
+    private JPanel buildUnifiedQuestionsPage() {
         JPanel page = new JPanel(new BorderLayout(10, 10));
         page.setBorder(new EmptyBorder(16, 16, 16, 16));
         page.setBackground(panelBg);
@@ -3079,37 +3088,53 @@ public class BibleReaderApp extends JFrame {
         add.addActionListener(e -> addQuestionForSelection());
         addTopic.addActionListener(e -> addSelectedQuestionToTopicPage());
 
-        questionSearchField = new JTextField(22);
-        questionSearchField.setToolTipText("Filter questions...");
+        questionSearchField = new JTextField(18);
+        questionSearchField.setToolTipText("Search question text, answers, references, categories, and type...");
         questionSearchField.getDocument().addDocumentListener(new SimpleDocumentListener(this::refreshQuestions));
-        top.add(toggle);
-        top.add(add);
-        top.add(addTopic);
-        top.add(new JLabel("Filter:"));
-        top.add(questionSearchField);
+        questionSortBox = new JComboBox<>(new String[]{"Bible order", "Number of answers: high to low", "Number of answers: low to high", "Recently updated", "Recently created", "Alphabetical"});
+        questionSortBox.addActionListener(e -> refreshQuestions());
+        questionCategoryFilterBox = new JComboBox<>();
+        questionCategoryFilterBox.addActionListener(e -> refreshQuestions());
+        questionBookFilterBox = new JComboBox<>();
+        questionBookFilterBox.addActionListener(e -> refreshQuestions());
+        questionAnswerFilterBox = new JComboBox<>(new String[]{"All", "No answers", "Has answers"});
+        questionAnswerFilterBox.addActionListener(e -> refreshQuestions());
+        top.add(toggle); top.add(add); top.add(addTopic);
+        top.add(new JLabel("Search:")); top.add(questionSearchField);
+        top.add(new JLabel("Category:")); top.add(questionCategoryFilterBox);
+        top.add(new JLabel("Book:")); top.add(questionBookFilterBox);
+        top.add(new JLabel("Answers:")); top.add(questionAnswerFilterBox);
+        top.add(new JLabel("Sort:")); top.add(questionSortBox);
 
         questionModel = new DefaultListModel<>();
         questionList = new JList<>(questionModel);
-        questionList.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        questionList.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        questionList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        questionList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                int idx = questionList.getSelectedIndex();
+                if (idx >= 0 && idx < visibleQuestions.size()) showSelectedQuestionDetails(visibleQuestions.get(idx));
+            }
+        });
+        questionList.addMouseListener(new MouseAdapter() { public void mouseClicked(MouseEvent e) {
+            if (e.getClickCount() == 2) { int idx = questionList.locationToIndex(e.getPoint()); if (idx >= 0 && idx < visibleQuestions.size()) jumpToQuestion(visibleQuestions.get(idx)); }
+        }});
+
+        questionDetailPanel = new JPanel();
+        questionDetailPanel.setLayout(new BoxLayout(questionDetailPanel, BoxLayout.Y_AXIS));
+        questionDetailPanel.setBackground(modernSurface);
+        JScrollPane details = new JScrollPane(questionDetailPanel);
+        details.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(0, 0, 0, 0)));
+        JScrollPane listScroll = new JScrollPane(questionList);
+        listScroll.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(0, 0, 0, 0)));
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, listScroll, details);
+        split.setResizeWeight(0.48);
+        split.setBorder(null);
 
         JPanel north = new JPanel(new BorderLayout(8, 8));
         north.setOpaque(false);
         north.add(h, BorderLayout.NORTH);
         north.add(top, BorderLayout.SOUTH);
-
-        discussionQuestionsPanel = new JPanel();
-        discussionQuestionsPanel.setLayout(new BoxLayout(discussionQuestionsPanel, BoxLayout.Y_AXIS));
-        discussionQuestionsPanel.setBackground(modernSurface);
-        personalQuestionsPanel = new JPanel();
-        personalQuestionsPanel.setLayout(new BoxLayout(personalQuestionsPanel, BoxLayout.Y_AXIS));
-        personalQuestionsPanel.setBackground(modernSurface);
-
-        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
-                labeledQuestionSection("Discussion Questions", discussionQuestionsPanel),
-                labeledQuestionSection("Personal Questions", personalQuestionsPanel));
-        split.setResizeWeight(0.5);
-        split.setBorder(null);
-
         page.add(north, BorderLayout.NORTH);
         page.add(split, BorderLayout.CENTER);
         return page;
@@ -5790,8 +5815,13 @@ public class BibleReaderApp extends JFrame {
                 if (!currentProfile.annotations.contains(annotation)) currentProfile.annotations.add(annotation);
                 StudyQuestion q = questionForAnnotation(annotation.id);
                 if ("Question".equals(annotation.type)) {
-                    if (q == null) currentProfile.questions.add(new StudyQuestion(annotation.id, annotation.sourceTitle, annotation.selectedText, annotation.note, normalizeQuestionType(annotation.category), annotation.sourceKey, annotation.sourceTitle, annotation.book, annotation.chapter, annotation.wholeChapter));
-                    else { q.question = annotation.note; q.questionType = normalizeQuestionType(annotation.category); }
+                    if (q == null) {
+                        q = new StudyQuestion(annotation.id, annotation.sourceTitle, annotation.selectedText, annotation.note, "discussion", annotation.sourceKey, annotation.sourceTitle, annotation.book, annotation.chapter, annotation.wholeChapter);
+                        currentProfile.questions.add(q);
+                    } else { q.question = annotation.note; }
+                    repairQuestion(q);
+                    q.categories.clear();
+                    if (!safe(annotation.category).isEmpty()) q.categories.add(annotation.category);
                 }
                 touchAnnotation(annotation);
                 saved = true;
@@ -6041,8 +6071,13 @@ public class BibleReaderApp extends JFrame {
         if (!currentProfile.annotations.contains(annotation)) currentProfile.annotations.add(annotation);
         StudyQuestion q = questionForAnnotation(annotation.id);
         if ("Question".equals(annotation.type)) {
-            if (q == null) currentProfile.questions.add(new StudyQuestion(annotation.id, annotation.sourceTitle, annotation.selectedText, annotation.note, normalizeQuestionType(annotation.category), annotation.sourceKey, annotation.sourceTitle, annotation.book, annotation.chapter, annotation.wholeChapter));
-            else { q.question = annotation.note; q.questionType = normalizeQuestionType(annotation.category); }
+            if (q == null) {
+                q = new StudyQuestion(annotation.id, annotation.sourceTitle, annotation.selectedText, annotation.note, "discussion", annotation.sourceKey, annotation.sourceTitle, annotation.book, annotation.chapter, annotation.wholeChapter);
+                currentProfile.questions.add(q);
+            } else { q.question = annotation.note; }
+            repairQuestion(q);
+            q.categories.clear();
+            if (!safe(annotation.category).isEmpty()) q.categories.add(annotation.category);
         }
         touchAnnotation(annotation);
         saveData();
@@ -7124,9 +7159,12 @@ public class BibleReaderApp extends JFrame {
     private void addWholeChapterQuestion(String questionType) {
         String body = promptMultiline("Add " + questionTypeDisplay(questionType), "Question for " + currentSourceTitle + ":", "");
         if (body == null || body.trim().isEmpty()) return;
-        TextAnnotation a = chapterAnnotation("Question", normalizeQuestionType(questionType), body.trim());
+        String category = chooseCategoryWithSearch("Question Category (Cancel for none)", "");
+        TextAnnotation a = chapterAnnotation("Question", safe(category), body.trim());
         currentProfile.annotations.add(a);
-        currentProfile.questions.add(new StudyQuestion(a.id, currentSourceTitle, currentSourceTitle, body.trim(), normalizeQuestionType(questionType), currentSourceKey, currentSourceTitle, selectedBook, selectedChapter, true));
+        StudyQuestion q = new StudyQuestion(a.id, currentSourceTitle, currentSourceTitle, body.trim(), normalizeQuestionType(questionType), currentSourceKey, currentSourceTitle, selectedBook, selectedChapter, true);
+        if (!safe(category).isEmpty()) q.categories.add(category);
+        currentProfile.questions.add(q);
         saveData();
         refreshQuestions();
         refreshRecentNotes();
@@ -12105,28 +12143,128 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
 
     private void refreshQuestions() {
+        refreshUnifiedQuestionsPage();
+    }
+
+    private void refreshUnifiedQuestionsPage() {
         if (questionModel == null) return;
+        StudyQuestion previous = selectedQuestion;
+        updateQuestionFilterChoices();
         questionModel.clear();
-        if (discussionQuestionsPanel != null) discussionQuestionsPanel.removeAll();
-        if (personalQuestionsPanel != null) personalQuestionsPanel.removeAll();
-        String questionQuery = questionSearchField == null ? "" : questionSearchField.getText().trim().toLowerCase(Locale.ROOT);
-        int discussionCount = 0;
-        int personalCount = 0;
-        for (int i = 0; i < currentProfile.questions.size(); i++) {
-            StudyQuestion q = currentProfile.questions.get(i);
+        visibleQuestions.clear();
+        for (StudyQuestion q : allQuestionsForCurrentProfile()) {
             repairQuestion(q);
-            String line = i + " | " + (q.answered ? "✓" : "❗") + " | " + questionTypeDisplay(q.questionType) + " | " + questionLocation(q) + " | " + shorten(q.question, 140);
-            if (!questionQuery.isEmpty() && !questionSearchText(q).contains(questionQuery)) continue;
-            questionModel.addElement(line);
-            JPanel target = "personal".equals(normalizeQuestionType(q.questionType)) ? personalQuestionsPanel : discussionQuestionsPanel;
-            if (target != null) target.add(buildQuestionCard(q, i));
-            if ("personal".equals(normalizeQuestionType(q.questionType))) personalCount++; else discussionCount++;
+            if (!questionMatchesFilters(q)) continue;
+            visibleQuestions.add(q);
         }
-        if (discussionQuestionsPanel != null && discussionCount == 0) discussionQuestionsPanel.add(emptySectionLabel("No discussion questions match this filter."));
-        if (personalQuestionsPanel != null && personalCount == 0) personalQuestionsPanel.add(emptySectionLabel("No personal questions match this filter."));
-        if (discussionQuestionsPanel != null) { discussionQuestionsPanel.revalidate(); discussionQuestionsPanel.repaint(); }
-        if (personalQuestionsPanel != null) { personalQuestionsPanel.revalidate(); personalQuestionsPanel.repaint(); }
+        visibleQuestions.sort(questionComparatorForCurrentSort());
+        int selectedIndex = -1;
+        for (StudyQuestion q : visibleQuestions) {
+            questionModel.addElement(questionListRowText(q));
+            if (q == previous) selectedIndex = questionModel.size() - 1;
+        }
+        if (selectedIndex >= 0) questionList.setSelectedIndex(selectedIndex);
+        else if (!visibleQuestions.isEmpty()) questionList.setSelectedIndex(0);
+        else showSelectedQuestionDetails(null);
         updateHeader();
+    }
+
+    private void updateQuestionFilterChoices() {
+        if (currentProfile == null) return;
+        updateComboItems(questionCategoryFilterBox, questionCategoryChoices(), "All Categories");
+        updateComboItems(questionBookFilterBox, questionBookChoices(), "All Books");
+    }
+
+    private void updateComboItems(JComboBox<String> combo, List<String> choices, String defaultChoice) {
+        if (combo == null) return;
+        String selected = Objects.toString(combo.getSelectedItem(), defaultChoice);
+        ActionListener[] listeners = combo.getActionListeners();
+        for (ActionListener l : listeners) combo.removeActionListener(l);
+        combo.removeAllItems();
+        for (String choice : choices) combo.addItem(choice);
+        combo.setSelectedItem(choices.contains(selected) ? selected : defaultChoice);
+        for (ActionListener l : listeners) combo.addActionListener(l);
+    }
+
+    private List<String> questionCategoryChoices() {
+        LinkedHashSet<String> choices = new LinkedHashSet<>();
+        choices.add("All Categories");
+        choices.add("Uncategorized");
+        if (currentProfile != null) {
+            repairProfile(currentProfile);
+            choices.addAll(currentProfile.categories.keySet());
+            for (StudyQuestion q : currentProfile.questions) { repairQuestion(q); choices.addAll(q.categories); }
+        }
+        return new ArrayList<>(choices);
+    }
+
+    private List<String> questionBookChoices() {
+        LinkedHashSet<String> choices = new LinkedHashSet<>();
+        choices.add("All Books");
+        for (String book : bibleBookOrderNames()) {
+            boolean has = false;
+            if (currentProfile != null) for (StudyQuestion q : currentProfile.questions) if (book.equals(q.book)) { has = true; break; }
+            if (has) choices.add(book);
+        }
+        return new ArrayList<>(choices);
+    }
+
+    private List<StudyQuestion> allQuestionsForCurrentProfile() {
+        if (currentProfile == null || currentProfile.questions == null) return Collections.emptyList();
+        return currentProfile.questions;
+    }
+
+    private int answerCount(StudyQuestion q) { repairQuestion(q); return q == null || q.answers == null ? 0 : q.answers.size(); }
+
+    private String questionCategoryText(StudyQuestion q) {
+        repairQuestion(q);
+        return q == null || q.categories == null || q.categories.isEmpty() ? "Uncategorized" : String.join(", ", q.categories);
+    }
+
+    private String questionListRowText(StudyQuestion q) {
+        String ref = questionLocation(q);
+        String bookRef = safe(q.book).isEmpty() ? "" : q.book + (q.chapter > 0 ? " " + q.chapter : "");
+        return shorten(safe(q.question), 95) + " | " + firstNonEmpty(ref, bookRef, "No reference") + " | " + questionCategoryText(q) + " | " + answerCount(q) + " answer(s) | " + questionTypeDisplay(q.questionType);
+    }
+
+    private Comparator<StudyQuestion> questionComparatorForCurrentSort() {
+        String sort = questionSortBox == null ? "Bible order" : Objects.toString(questionSortBox.getSelectedItem(), "Bible order");
+        if (sort.startsWith("Number of answers: high")) return Comparator.comparingInt((StudyQuestion q) -> answerCount(q)).reversed().thenComparing(q -> safe(q.question), String.CASE_INSENSITIVE_ORDER);
+        if (sort.startsWith("Number of answers: low")) return Comparator.comparingInt((StudyQuestion q) -> answerCount(q)).thenComparing(q -> safe(q.question), String.CASE_INSENSITIVE_ORDER);
+        if (sort.equals("Recently updated")) return Comparator.comparingLong((StudyQuestion q) -> questionUpdatedAt(q)).reversed();
+        if (sort.equals("Recently created")) return Comparator.comparingLong((StudyQuestion q) -> q.created == null ? 0L : q.created.getTime()).reversed();
+        if (sort.equals("Alphabetical")) return Comparator.comparing(q -> safe(q.question), String.CASE_INSENSITIVE_ORDER);
+        return questionBibleOrderComparator();
+    }
+
+    private long questionUpdatedAt(StudyQuestion q) {
+        repairQuestion(q);
+        long t = q.created == null ? 0L : q.created.getTime();
+        for (QuestionAnswer a : q.answers) t = Math.max(t, Math.max(a.createdAt, a.updatedAt));
+        return t;
+    }
+
+    private Comparator<StudyQuestion> questionBibleOrderComparator() {
+        Map<String, Integer> order = bibleBookOrder();
+        return Comparator.comparingInt((StudyQuestion q) -> order.getOrDefault(safe(q.book).toLowerCase(Locale.ROOT), 999))
+                .thenComparingInt(q -> q.chapter <= 0 ? 999 : q.chapter)
+                .thenComparing(q -> safe(q.sourceLocation), String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(q -> safe(q.question), String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private boolean questionMatchesFilters(StudyQuestion q) {
+        repairQuestion(q);
+        String query = questionSearchField == null ? "" : questionSearchField.getText().trim().toLowerCase(Locale.ROOT);
+        if (!query.isEmpty() && !questionSearchText(q).contains(query)) return false;
+        String cat = questionCategoryFilterBox == null ? "All Categories" : Objects.toString(questionCategoryFilterBox.getSelectedItem(), "All Categories");
+        if ("Uncategorized".equals(cat) && !q.categories.isEmpty()) return false;
+        if (!"All Categories".equals(cat) && !"Uncategorized".equals(cat) && !q.categories.contains(cat)) return false;
+        String book = questionBookFilterBox == null ? "All Books" : Objects.toString(questionBookFilterBox.getSelectedItem(), "All Books");
+        if (!"All Books".equals(book) && !book.equals(q.book)) return false;
+        String answers = questionAnswerFilterBox == null ? "All" : Objects.toString(questionAnswerFilterBox.getSelectedItem(), "All");
+        if ("No answers".equals(answers) && answerCount(q) > 0) return false;
+        if ("Has answers".equals(answers) && answerCount(q) == 0) return false;
+        return true;
     }
 
     private JLabel emptySectionLabel(String text) {
@@ -12173,6 +12311,120 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         return card;
     }
 
+
+    private void showSelectedQuestionDetails(StudyQuestion q) {
+        selectedQuestion = q;
+        if (questionDetailPanel == null) return;
+        questionDetailPanel.removeAll();
+        if (q == null) {
+            questionDetailPanel.add(emptySectionLabel("No questions match the current filters."));
+            questionDetailPanel.revalidate(); questionDetailPanel.repaint();
+            return;
+        }
+        repairQuestion(q);
+        JLabel title = new JLabel("<html><b>" + esc(shorten(q.question, 220)) + "</b></html>");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        questionDetailPanel.add(wrapDetailComponent(title));
+        JTextArea meta = readonlyArea();
+        meta.setBackground(modernSurface);
+        meta.setText("Reference: " + questionLocation(q)
+                + "\nBook/Chapter: " + (safe(q.book).isEmpty() ? "None" : q.book + (q.chapter > 0 ? " " + q.chapter : ""))
+                + "\nCategory: " + questionCategoryText(q)
+                + "\nType: " + questionTypeDisplay(q.questionType)
+                + "\nAnswers: " + answerCount(q));
+        questionDetailPanel.add(wrapDetailComponent(meta));
+        if (!safe(q.selectedText).isEmpty()) {
+            JTextArea passage = readonlyArea();
+            passage.setBackground(new Color(255, 252, 247));
+            passage.setText("Attached passage:\n" + q.selectedText);
+            questionDetailPanel.add(wrapDetailComponent(passage));
+        }
+        JLabel answersLabel = new JLabel("Answers");
+        answersLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        questionDetailPanel.add(wrapDetailComponent(answersLabel));
+        if (q.answers.isEmpty()) questionDetailPanel.add(emptySectionLabel("No answers yet."));
+        for (QuestionAnswer a : q.answers) questionDetailPanel.add(buildAnswerCard(q, a));
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        actions.setOpaque(false);
+        JButton addAnswer = blackButton("Add Answer"); addAnswer.addActionListener(e -> addAnswerToSelectedQuestion());
+        JButton edit = blackButton("Edit Question"); edit.addActionListener(e -> editQuestion(q));
+        JButton category = blackButton("Edit Category"); category.addActionListener(e -> editQuestionCategory(q));
+        JButton jump = blackButton("Jump To"); jump.addActionListener(e -> jumpToQuestion(q));
+        JButton delete = blackButton("Delete Question"); delete.addActionListener(e -> deleteQuestion(q));
+        for (JButton b : new JButton[]{addAnswer, edit, category, jump, delete}) actions.add(b);
+        questionDetailPanel.add(wrapDetailComponent(actions));
+        questionDetailPanel.revalidate(); questionDetailPanel.repaint();
+    }
+
+    private JComponent wrapDetailComponent(JComponent child) {
+        JPanel p = new JPanel(new BorderLayout());
+        p.setOpaque(false);
+        p.setBorder(new EmptyBorder(8, 10, 4, 10));
+        p.add(child, BorderLayout.CENTER);
+        p.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return p;
+    }
+
+    private JPanel buildAnswerCard(StudyQuestion q, QuestionAnswer a) {
+        repairQuestionAnswer(a);
+        JPanel card = new JPanel(new BorderLayout(6, 6));
+        card.setBackground(new Color(255, 252, 247));
+        card.setBorder(new CompoundBorder(new LineBorder(modernBorder), new EmptyBorder(8, 8, 8, 8)));
+        JTextArea text = readonlyArea();
+        text.setBackground(card.getBackground());
+        text.setText(safe(a.text) + "\n\nCreated: " + displayDate(a.createdAt) + (a.updatedAt > 0 && a.updatedAt != a.createdAt ? " • Updated: " + displayDate(a.updatedAt) : ""));
+        card.add(text, BorderLayout.CENTER);
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        actions.setOpaque(false);
+        JButton edit = blackButton("Edit");
+        edit.addActionListener(e -> editQuestionAnswer(q, a));
+        JButton delete = blackButton("Delete");
+        delete.addActionListener(e -> deleteQuestionAnswer(q, a));
+        actions.add(edit); actions.add(delete);
+        card.add(actions, BorderLayout.SOUTH);
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return card;
+    }
+
+    private void addAnswerToSelectedQuestion() { promptAddAnswer(selectedQuestion); }
+
+    private void editQuestionAnswer(StudyQuestion q, QuestionAnswer a) {
+        if (q == null || a == null) return;
+        String edited = promptMultiline("Edit Answer", "Answer:", safe(a.text));
+        if (edited == null || edited.trim().isEmpty()) return;
+        a.text = edited.trim();
+        a.updatedAt = System.currentTimeMillis();
+        q.answered = !q.answers.isEmpty();
+        saveData();
+        refreshAfterQuestionChange(true);
+    }
+
+    private void deleteQuestionAnswer(StudyQuestion q, QuestionAnswer a) {
+        if (q == null || a == null) return;
+        int r = JOptionPane.showConfirmDialog(this, "Delete this answer?", "Delete Answer", JOptionPane.OK_CANCEL_OPTION);
+        if (r != JOptionPane.OK_OPTION) return;
+        q.answers.remove(a);
+        q.answered = !q.answers.isEmpty();
+        saveData();
+        refreshAfterQuestionChange(true);
+    }
+
+    private void editQuestionCategory(StudyQuestion q) {
+        if (q == null) return;
+        repairQuestion(q);
+        JComboBox<String> category = inlineCategoryCombo(q.categories.isEmpty() ? "" : q.categories.iterator().next());
+        category.setEditable(true);
+        int r = JOptionPane.showConfirmDialog(this, category, "Question Category (blank clears; type new to create)", JOptionPane.OK_CANCEL_OPTION);
+        if (r != JOptionPane.OK_OPTION) return;
+        String chosen = resolveQuestionCategoryEditor(category);
+        q.categories.clear();
+        if (!chosen.trim().isEmpty()) q.categories.add(chosen.trim());
+        saveData();
+        refreshCategories();
+        refreshAfterQuestionChange(true);
+    }
+
     private String answersSummary(StudyQuestion q) {
         if (q.answers.isEmpty()) return "";
         StringBuilder sb = new StringBuilder("\n\nAnswers:");
@@ -12181,7 +12433,9 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
     }
 
     private String questionSearchText(StudyQuestion q) {
-        return (safe(q.sourceTitle) + " " + safe(q.selectedText) + " " + safe(q.question) + " " + questionLocation(q) + " " + questionTypeDisplay(q.questionType)).toLowerCase(Locale.ROOT);
+        StringBuilder answers = new StringBuilder();
+        if (q != null && q.answers != null) for (QuestionAnswer a : q.answers) answers.append(' ').append(safe(a.text));
+        return (safe(q.sourceTitle) + " " + safe(q.selectedText) + " " + safe(q.question) + " " + questionLocation(q) + " " + questionCategoryText(q) + " " + answers + " " + questionTypeDisplay(q.questionType)).toLowerCase(Locale.ROOT);
     }
 
     private String questionLocation(StudyQuestion q) {
@@ -12274,13 +12528,49 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
 
     private void editQuestion(StudyQuestion q) {
         if (q == null) return;
-        String edited = promptMultiline("Edit Question", "Question:", q.question);
-        if (edited == null || edited.trim().isEmpty()) return;
-        q.question = edited.trim();
+        repairQuestion(q);
+        JTextArea text = new JTextArea(q.question, 6, 40);
+        text.setLineWrap(true); text.setWrapStyleWord(true);
+        JComboBox<String> category = inlineCategoryCombo(q.categories.isEmpty() ? "" : q.categories.iterator().next());
+        category.setEditable(true);
+        JComboBox<String> type = new JComboBox<>(new String[]{"Discussion", "Personal"});
+        type.setSelectedItem(questionTypeDisplay(q.questionType));
+        JPanel panel = new JPanel(new BorderLayout(6, 6));
+        panel.add(new JLabel("Question text:"), BorderLayout.NORTH);
+        panel.add(new JScrollPane(text), BorderLayout.CENTER);
+        JPanel fields = new JPanel(new GridLayout(0, 2, 6, 6));
+        fields.add(new JLabel("Category (blank clears; type new to create):")); fields.add(category);
+        fields.add(new JLabel("Internal type:")); fields.add(type);
+        fields.add(new JLabel("Reference:")); fields.add(new JLabel(questionLocation(q)));
+        panel.add(fields, BorderLayout.SOUTH);
+        int r = JOptionPane.showConfirmDialog(this, panel, "Edit Question", JOptionPane.OK_CANCEL_OPTION);
+        if (r != JOptionPane.OK_OPTION || text.getText().trim().isEmpty()) return;
+        q.question = text.getText().trim();
+        String cat = resolveQuestionCategoryEditor(category);
+        q.categories.clear();
+        if (!cat.isEmpty()) q.categories.add(cat);
+        q.questionType = normalizeQuestionType(String.valueOf(type.getSelectedItem()));
         TextAnnotation a = annotationById(q.annotationId);
         if (a != null) { a.note = q.question; touchAnnotation(a); }
         saveData();
+        refreshCategories();
         refreshAfterQuestionChange(true);
+    }
+
+    private String resolveQuestionCategoryEditor(JComboBox<String> category) {
+        String raw = Objects.toString(category == null ? null : category.getEditor().getItem(), "").trim();
+        if (raw.isEmpty() || "(No Category)".equals(raw)) return "";
+        if ("Search / Add Category…".equals(raw)) {
+            String chosen = chooseCategoryWithSearch("Question Category", "");
+            return chosen == null ? "" : chosen;
+        }
+        if (currentProfile != null) {
+            repairProfile(currentProfile);
+            currentProfile.categories.putIfAbsent(raw, "");
+            ensureCategoryColors();
+            currentProfile.categoryColors.putIfAbsent(raw, categoryBlue.getRGB());
+        }
+        return raw;
     }
 
     private void deleteQuestion(StudyQuestion q) {
@@ -15187,6 +15477,8 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         q.questionType = normalizeQuestionType(q.questionType);
         if (q.answers == null) q.answers = new ArrayList<>();
         q.answers.removeIf(Objects::isNull);
+        if (q.categories == null) q.categories = new LinkedHashSet<>();
+        q.categories.removeIf(c -> c == null || c.trim().isEmpty());
         for (QuestionAnswer a : q.answers) repairQuestionAnswer(a);
         if (q.sourceKey == null) q.sourceKey = "";
         if (q.sourceKey.isEmpty()) {
@@ -16328,6 +16620,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         int chapter;
         boolean wholeChapter;
         Date created = new Date();
+        Set<String> categories = new LinkedHashSet<>();
 
         StudyQuestion(String annotationId, String sourceTitle, String selectedText, String question) {
             this(annotationId, sourceTitle, selectedText, question, "discussion", "", sourceTitle, "", 0, false);
