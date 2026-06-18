@@ -961,6 +961,11 @@ function upgradeText(it){
     {key:"goldFind", name:"Gold Find", chance:1.00, power:0.25, duration:0, desc:"Enemies drop more gold"},
     {key:"dashNova", name:"Dash Nova", chance:1.00, power:16, duration:0, desc:"Dodging releases a short-range pulse"},
     {key:"magnet", name:"Loot Magnet", chance:1.00, power:80, duration:0, desc:"Increases pickup range"},
+    {key:"shock", name:"Arc Shock", chance:0.18, power:8, duration:2.4, desc:"Electrifies enemies and sparks to nearby foes"},
+    {key:"doom", name:"Doom Brand", chance:0.14, power:7, duration:4.0, desc:"Brands enemies for dark damage over time"},
+    {key:"radiant", name:"Radiant Burst", chance:0.16, power:0.32, duration:0, desc:"Creates a holy splash and small heal on hit"},
+    {key:"gravity", name:"Gravity Well", chance:0.15, power:150, duration:0, desc:"Pulls nearby enemies into the impact"},
+    {key:"shatter", name:"Shatter", chance:1.00, power:0.45, duration:0, desc:"Frozen enemies burst for bonus damage"},
   ];
 
   function cloneEffect(effect, depth=1, rarity="common"){
@@ -1198,10 +1203,12 @@ function upgradeText(it){
     // Rarity scaling
     const m = rarMult[it.rarity] * (1 + clamp(depth/120,0,1)*0.25);
     if(it.slot==="spellbook"){
-      it.mods.power *= m;
-      it.mods.cooldown *= Math.max(0.72, 1 - (m-1)*0.10);
-      if(it.mods.rangePx) it.mods.rangePx *= (1 + (m-1)*0.12);
-      if(it.mods.radiusPx) it.mods.radiusPx *= (1 + (m-1)*0.10);
+      // Spell books now scale much harder at high rarity/depth so rare, epic, and legendary books feel build-defining.
+      const spellTierBoost = 1 + Math.pow(rarRank[it.rarity] || 0, 1.45) * 0.18 + clamp(depth/80,0,1.25)*0.22;
+      it.mods.power *= m * spellTierBoost;
+      it.mods.cooldown *= Math.max(0.58, 1 - (m-1)*0.16 - (spellTierBoost-1)*0.08);
+      if(it.mods.rangePx) it.mods.rangePx *= (1 + (m-1)*0.18 + (spellTierBoost-1)*0.10);
+      if(it.mods.radiusPx) it.mods.radiusPx *= (1 + (m-1)*0.16 + (spellTierBoost-1)*0.14);
     } else if(it.slot==="weapon"){
       it.mods.dmgFlat *= m;
       it.mods.fireRate *= (1 + (m-1)*0.20);
@@ -1828,7 +1835,11 @@ function spawnBoss(depth){
       bomb: !!opts.bomb,
       explodeR: opts.explodeR ?? 0,
       explodeDmg: opts.explodeDmg ?? 0,
-      slow: opts.slow ?? 0
+      slow: opts.slow ?? 0,
+      style: opts.style || (team==="player" ? "arcane" : "enemy"),
+      trail: opts.trail || [],
+      spin: rand(0, Math.PI*2),
+      glow: opts.glow ?? (team==="player" ? 1.0 : 0.75)
     });
   }
 
@@ -1922,6 +1933,11 @@ function spawnBoss(depth){
       if(key==="burn") dealStatusDamage(e, st.p*dt, "rgba(251,113,133,.95)");
       if(key==="poison") dealStatusDamage(e, st.p*dt, "rgba(34,197,94,.95)");
       if(key==="bleed") dealStatusDamage(e, st.p*dt, "rgba(248,113,113,.95)");
+      if(key==="shock"){
+        dealStatusDamage(e, st.p*dt, "rgba(56,189,248,.95)");
+        if(chance(0.08)) G.fx.push({type:"line", x1:e.x+rand(-8,8), y1:e.y+rand(-8,8), x2:e.x+rand(-24,24), y2:e.y+rand(-24,24), t:0.09, color:"rgba(125,211,252,.78)"});
+      }
+      if(key==="doom") dealStatusDamage(e, (st.p + Math.max(0, e.hpMax-e.hp)*0.012)*dt, "rgba(167,139,250,.95)");
       if(st.t<=0) delete e.status[key];
     }
   }
@@ -1976,6 +1992,46 @@ function spawnBoss(depth){
           if(a===e || a.hp<=0) continue;
           if(dist(e.x,e.y,a.x,a.y)<rr+a.r) hitEnemy(a, dealt*(ef.power||0.30), {trueDamage:true, pColor:"rgba(251,146,60,.95)"});
         }
+      } else if(ef.key==="shock"){
+        addStatus(e,"shock",ef.duration||2.4,ef.power||7);
+        let jumps=0;
+        for(const a of G.enemies){
+          if(a===e || a.hp<=0) continue;
+          if(dist(e.x,e.y,a.x,a.y)<160 && jumps<2){
+            jumps++;
+            hitEnemy(a, dealt*0.18 + (ef.power||7), {trueDamage:true, pColor:"rgba(125,211,252,.95)"});
+            G.fx.push({type:"line", x1:e.x,y1:e.y,x2:a.x,y2:a.y,t:0.13,color:"rgba(125,211,252,.86)"});
+          }
+        }
+      } else if(ef.key==="doom"){
+        addStatus(e,"doom",ef.duration||4.0,ef.power||7);
+        G.fx.push({type:"ring", x:e.x,y:e.y,r:34,t:0.22,color:"rgba(167,139,250,.45)"});
+      } else if(ef.key==="radiant"){
+        const rr=62;
+        G.fx.push({type:"burst", x:e.x,y:e.y,r:rr,t:0.22,color:"rgba(253,224,71,.62)", rays:10});
+        G.player.hp = clamp(G.player.hp + Math.max(1, dealt*(ef.power||0.22)*0.12), 0, G.player.hpMax);
+        for(const a of G.enemies){
+          if(a===e || a.hp<=0) continue;
+          if(dist(e.x,e.y,a.x,a.y)<rr+a.r) hitEnemy(a, dealt*(ef.power||0.25), {trueDamage:true, pColor:"rgba(253,224,71,.95)"});
+        }
+      } else if(ef.key==="gravity"){
+        const rr=160;
+        G.fx.push({type:"vortex", x:e.x,y:e.y,r:rr,t:0.32,color:"rgba(216,180,254,.55)"});
+        for(const a of G.enemies){
+          if(a.hp<=0 || a===e) continue;
+          const d=dist(e.x,e.y,a.x,a.y);
+          if(d<rr){ const dx=e.x-a.x, dy=e.y-a.y, dd=hypot(dx,dy)||1; a.vx += dx/dd*(ef.power||130); a.vy += dy/dd*(ef.power||130); }
+        }
+      } else if(ef.key==="shatter"){
+        if(e.status?.freeze?.t>0){
+          const rr=72;
+          hitEnemy(e, dealt*(ef.power||0.35), {trueDamage:true, pColor:"rgba(186,230,253,.95)"});
+          G.fx.push({type:"burst", x:e.x,y:e.y,r:rr,t:0.20,color:"rgba(186,230,253,.70)", rays:8});
+          for(const a of G.enemies){
+            if(a===e || a.hp<=0) continue;
+            if(dist(e.x,e.y,a.x,a.y)<rr+a.r) hitEnemy(a, dealt*0.16, {trueDamage:true, pColor:"rgba(186,230,253,.95)"});
+          }
+        }
       }
     }
   }
@@ -1988,6 +2044,8 @@ function spawnBoss(depth){
   // numeric + non-negative
   let dmg = Number(amount);
   if(!Number.isFinite(dmg) || dmg <= 0) return;
+
+  if(e.status?.armorBreak?.t>0 && !opts.trueDamage) dmg *= (1 + (e.status.armorBreak.p || 0.20));
 
   // Phantom immunity while phased (keeps your original behavior, but safer)
   const isPhantom =
@@ -2239,7 +2297,9 @@ it.gstar = 0;
         {
           life: range,
           homing: !!wpn.meta.homing,
-          turn: 7.5
+          turn: 7.5,
+          style: wpn.meta.homing ? "homingArc" : (wpn.base?.toLowerCase().includes("fire") ? "fire" : (wpn.base?.toLowerCase().includes("bow") ? "arrow" : "arcane")),
+          glow: critMul > 1 ? 1.65 : 1.0
         }
       );
     }
@@ -3325,6 +3385,7 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
       if(!target){ toast("No enemy in spell range", 0.9); return; }
       G.hazards.push({kind:"meteor", x:target.x, y:target.y, r:radius, tele:0.72, exploded:false, dmg:power*1.45, burnR:radius*0.78, burnT:2.2, burnDps:power*0.16, t:0});
       G.fx.push({type:"ring", x:target.x, y:target.y, r:radius, t:0.72, color:"rgba(251,191,36,.38)"});
+      G.fx.push({type:"beam", x1:p.x, y1:p.y, x2:target.x, y2:target.y, t:0.22, color:"rgba(251,191,36,.72)", width:5});
       toast("Meteor marked!", 0.9);
       cast = true;
     } else if(key==="frostNova"){
@@ -3337,6 +3398,7 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
         }
       }
       G.fx.push({type:"ring", x:p.x, y:p.y, r:radius, t:0.28, color:"rgba(125,211,252,.58)"});
+      G.fx.push({type:"burst", x:p.x, y:p.y, r:radius, t:0.30, color:"rgba(186,230,253,.58)", rays:18});
       toast("Frost nova!", 0.9);
       cast = true;
     } else if(key==="stormChain"){
@@ -3378,6 +3440,7 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
       const target = nearestEnemyInRange(range, false) || {x:p.x, y:p.y};
       G.hazards.push({kind:"spellRift", x:target.x, y:target.y, r:radius, t:4.2, dmg:power*0.34});
       G.fx.push({type:"ring", x:target.x, y:target.y, r:radius, t:0.32, color:"rgba(167,139,250,.62)"});
+      G.fx.push({type:"vortex", x:target.x, y:target.y, r:radius*1.1, t:0.50, color:"rgba(216,180,254,.70)"});
       toast("Void rift opened!", 0.9);
       cast = true;
     } else if(key==="aegis"){
@@ -4014,6 +4077,11 @@ it.gstar = 0;
     pr.ttl -= dt;
     pr.x += pr.vx*dt;
     pr.y += pr.vy*dt;
+    pr.spin = (pr.spin || 0) + dt * 10;
+    if(pr.trail){
+      pr.trail.push({x:pr.x, y:pr.y, t:0.18});
+      if(pr.trail.length>9) pr.trail.shift();
+    }
 
     if(pr.life != null){
       const sp = hypot(pr.vx, pr.vy);
@@ -5206,6 +5274,70 @@ function drawDiamond(x,y,r, fill, stroke=null){
   }
 }
 
+function drawPlayerHPBar(ctx, p, sx, sy){
+  if(!p) return;
+  const pct = clamp(p.hp / Math.max(1, p.hpMax), 0, 1);
+  const x = p.x + sx;
+  const y = p.y + sy - p.r - 22;
+  const w = 64, h = 8;
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,.58)";
+  ctx.strokeStyle = "rgba(255,255,255,.30)";
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(x-w/2, y, w, h, 5); ctx.fill(); ctx.stroke();
+  const g = ctx.createLinearGradient(x-w/2, y, x+w/2, y);
+  g.addColorStop(0, "rgba(34,197,94,.95)");
+  g.addColorStop(.58, "rgba(250,204,21,.95)");
+  g.addColorStop(1, "rgba(239,68,68,.95)");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.roundRect(x-w/2+1, y+1, Math.max(0,(w-2)*pct), h-2, 4); ctx.fill();
+  if((p.shield||0)>0){
+    ctx.strokeStyle = "rgba(125,211,252,.95)";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(x-w/2-2, y-2, w+4, h+4, 7); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawProjectileSprite(ctx, prj, sx, sy){
+  const x = prj.x + sx, y = prj.y + sy;
+  const a = Math.atan2(prj.vy, prj.vx);
+  const style = prj.style || "arcane";
+  ctx.save();
+  if(prj.trail && prj.trail.length){
+    for(let i=0;i<prj.trail.length;i++){
+      const tr = prj.trail[i];
+      const alpha = (i+1)/prj.trail.length * .30;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath(); ctx.arc(tr.x+sx, tr.y+sy, prj.rad*(0.45+i/prj.trail.length*.45), 0, Math.PI*2);
+      ctx.fillStyle = prj.color; ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.translate(x,y); ctx.rotate(a);
+  ctx.shadowColor = prj.color; ctx.shadowBlur = 10*(prj.glow||1);
+  if(style==="arrow"){
+    ctx.fillStyle = prj.color;
+    ctx.beginPath(); ctx.moveTo(12,0); ctx.lineTo(-9,-3.5); ctx.lineTo(-5,0); ctx.lineTo(-9,3.5); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.55)"; ctx.stroke();
+  } else if(style==="fire"){
+    const grad = ctx.createRadialGradient(0,0,2,0,0,16);
+    grad.addColorStop(0,"rgba(255,255,255,.95)"); grad.addColorStop(.35,"rgba(251,191,36,.95)"); grad.addColorStop(1,"rgba(239,68,68,.05)");
+    ctx.fillStyle=grad; ctx.beginPath(); ctx.ellipse(0,0,18,7,0,0,Math.PI*2); ctx.fill();
+  } else if(style==="homingArc"){
+    ctx.strokeStyle=prj.color; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(-12,0); ctx.quadraticCurveTo(-3,-10,6,0); ctx.quadraticCurveTo(-3,10,-12,0); ctx.stroke();
+    ctx.fillStyle="rgba(255,255,255,.85)"; ctx.beginPath(); ctx.arc(8,0,prj.rad*.55,0,Math.PI*2); ctx.fill();
+  } else if(style==="enemy"){
+    ctx.fillStyle=prj.color; ctx.beginPath(); ctx.arc(0,0,prj.rad,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="rgba(255,255,255,.25)"; ctx.stroke();
+  } else {
+    ctx.rotate(prj.spin||0);
+    drawDiamond(0,0,prj.rad*1.8,"rgba(143,227,255,.35)",prj.color);
+    ctx.fillStyle="rgba(255,255,255,.80)"; ctx.beginPath(); ctx.arc(0,0,prj.rad*.55,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
 // ---------- DRAW LOOP (KEY UPDATE: enemies now use drawEnemy + camera offset) ----------
 function draw(){
   const w = canvas.clientWidth;
@@ -5460,6 +5592,9 @@ function draw(){
   drawAngelPlayerFront(ctx, pr, G.t);
   ctx.restore();
 
+  // Always draw the player health bar above the character, including on mobile/fullscreen.
+  drawPlayerHPBar(ctx, p, sx, sy);
+
   // aim reticle
   const {wx,wy} = screenToWorld(mouse.x, mouse.y);
   ctx.beginPath();
@@ -5467,12 +5602,9 @@ function draw(){
   ctx.fillStyle="rgba(255,255,255,.65)";
   ctx.fill();
 
-  // projectiles
+  // projectiles — upgraded glowing sprites with trails
   for(const prj of G.projs){
-    ctx.beginPath();
-    ctx.arc(prj.x+sx, prj.y+sy, prj.rad, 0, Math.PI*2);
-    ctx.fillStyle = prj.color;
-    ctx.fill();
+    drawProjectileSprite(ctx, prj, sx, sy);
   }
 
   // FX
@@ -5510,6 +5642,25 @@ function draw(){
       ctx.stroke();
       ctx.lineWidth = 1;
       ctx.globalAlpha = 1;
+    } else if(fx.type==="beam"){
+      const a = clamp(fx.t/0.22, 0, 1);
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = fx.color;
+      ctx.lineWidth = fx.width || 4;
+      ctx.shadowColor = fx.color; ctx.shadowBlur = 16;
+      ctx.beginPath(); ctx.moveTo(fx.x1+sx, fx.y1+sy); ctx.lineTo(fx.x2+sx, fx.y2+sy); ctx.stroke();
+      ctx.shadowBlur = 0; ctx.lineWidth = 1; ctx.globalAlpha = 1;
+    } else if(fx.type==="burst"){
+      const a = clamp(fx.t/0.30, 0, 1);
+      const rays = fx.rays || 10;
+      ctx.save(); ctx.translate(fx.x+sx, fx.y+sy); ctx.globalAlpha = a; ctx.strokeStyle = fx.color; ctx.lineWidth = 2;
+      for(let i=0;i<rays;i++){ const ang=i/rays*Math.PI*2 + G.t*0.8; ctx.beginPath(); ctx.moveTo(Math.cos(ang)*fx.r*.18, Math.sin(ang)*fx.r*.18); ctx.lineTo(Math.cos(ang)*fx.r*(1.05-a*.25), Math.sin(ang)*fx.r*(1.05-a*.25)); ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(0,0,fx.r*(1.05-a*.25),0,Math.PI*2); ctx.stroke(); ctx.restore(); ctx.globalAlpha=1;
+    } else if(fx.type==="vortex"){
+      const a = clamp(fx.t/0.45, 0, 1);
+      ctx.save(); ctx.translate(fx.x+sx, fx.y+sy); ctx.globalAlpha = a; ctx.strokeStyle = fx.color; ctx.lineWidth=2; ctx.shadowColor=fx.color; ctx.shadowBlur=14;
+      for(let i=0;i<3;i++){ ctx.beginPath(); ctx.arc(0,0,fx.r*(.25+i*.22)*(1.15-a*.2), G.t*3+i, G.t*3+i+Math.PI*1.25); ctx.stroke(); }
+      ctx.restore(); ctx.globalAlpha=1;
     }
   }
 
