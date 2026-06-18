@@ -234,6 +234,8 @@ public class BibleReaderApp extends JFrame {
     private JScrollPane readerScrollPane;
     private boolean marginNotesMode = false;
     private String rightSidebarMode = "margin";
+    private JButton marginNotesDisplayToggleButton;
+    private final Set<String> expandedInlineQuestionIds = new HashSet<>();
     private CardLayout rightSidebarCards;
     private JPanel rightSidebarCardPanel;
     private final Map<String, JButton> rightSidebarToggleButtons = new HashMap<>();
@@ -822,12 +824,17 @@ public class BibleReaderApp extends JFrame {
         readerLocationControls.add(backButton);
         readerLocationControls.add(forwardButton);
 
+        marginNotesDisplayToggleButton = blackButton(marginNotesDisplayModeLabel());
+        marginNotesDisplayToggleButton.setToolTipText("Switch margin notes between the right sidebar and inline reader bullets.");
+        marginNotesDisplayToggleButton.addActionListener(e -> toggleMarginNotesDisplayMode());
+
         readerActionControls.add(readingModeButton);
         readerActionControls.add(previousChapter);
         readerActionControls.add(nextChapter);
         readerActionControls.add(bookmarkButton);
         readerActionControls.add(bookmarksButton);
         readerActionControls.add(bibleBookmarkButton);
+        readerActionControls.add(marginNotesDisplayToggleButton);
         readerActionControls.add(sourceLabel);
 
         nav.add(readerLocationControls);
@@ -1016,12 +1023,13 @@ public class BibleReaderApp extends JFrame {
         String normalized = safe(mode).isEmpty() ? "margin" : mode;
         if (!"margin".equals(normalized) && !"search".equals(normalized) && !"pinned".equals(normalized)) normalized = "margin";
         rightSidebarMode = normalized;
-        marginNotesMode = "margin".equals(rightSidebarMode);
+        marginNotesMode = "margin".equals(rightSidebarMode) && !isInlineNotesMode();
         if (rightSidebarCards != null && rightSidebarCardPanel != null) {
             rightSidebarCards.show(rightSidebarCardPanel, rightSidebarMode);
         }
         updateRightSidebarToggleButtons();
         if (marginNotesMode) refreshMarginNotesPanel();
+        applyMarginNotesDisplayMode();
         if ("pinned".equals(rightSidebarMode)) refreshPinnedItems();
         if (rightSidebarCardPanel != null) {
             rightSidebarCardPanel.revalidate();
@@ -4000,6 +4008,7 @@ public class BibleReaderApp extends JFrame {
             repairProfile(currentProfile);
             recordProfileLogin(currentProfile);
             refreshEverything();
+            applyMarginNotesDisplayMode();
             SwingUtilities.invokeLater(this::restoreProfileLastPlace);
             updateStudyTimerTooltip();
         }
@@ -5352,6 +5361,42 @@ public class BibleReaderApp extends JFrame {
         }
     }
 
+    private boolean isInlineNotesMode() {
+        return currentProfile != null && currentProfile.marginNotesInline;
+    }
+
+    private String marginNotesDisplayModeLabel() {
+        return isInlineNotesMode() ? "Margin Notes: Inline" : "Margin Notes: Sidebar";
+    }
+
+    private void toggleMarginNotesDisplayMode() {
+        if (currentProfile == null) return;
+        int viewport = readerScrollPane == null ? 0 : readerScrollPane.getVerticalScrollBar().getValue();
+        currentProfile.marginNotesInline = !currentProfile.marginNotesInline;
+        saveData();
+        applyMarginNotesDisplayMode();
+        reloadCurrentSourcePreservingScroll();
+        SwingUtilities.invokeLater(() -> {
+            if (readerScrollPane != null) readerScrollPane.getVerticalScrollBar().setValue(Math.max(0, viewport));
+        });
+    }
+
+    private void applyMarginNotesDisplayMode() {
+        if (marginNotesDisplayToggleButton != null) marginNotesDisplayToggleButton.setText(marginNotesDisplayModeLabel());
+        marginNotesMode = "margin".equals(rightSidebarMode) && !isInlineNotesMode();
+        if (centerRightSplit != null && !readingMode) {
+            if (centerRightSplit.getRightComponent() == null && normalRightSidebar != null) centerRightSplit.setRightComponent(normalRightSidebar);
+            Component right = centerRightSplit.getRightComponent();
+            if (right != null) right.setVisible(!isInlineNotesMode());
+            centerRightSplit.setDividerSize(isInlineNotesMode() ? 0 : 7);
+            if (isInlineNotesMode()) centerRightSplit.setDividerLocation(1.0);
+            else clampCenterRightDivider(false);
+            centerRightSplit.revalidate();
+            centerRightSplit.repaint();
+        }
+        if (!isInlineNotesMode() && marginNotesMode) refreshMarginNotesPanel();
+    }
+
     private JPanel buildMarginNotesPanel() {
         marginNotesPanel = new JPanel(new BorderLayout(6, 6));
         marginNotesPanel.setMinimumSize(new Dimension(0, 0));
@@ -6327,8 +6372,9 @@ public class BibleReaderApp extends JFrame {
             visibleAnnotationBubbles.clear();
             doc.insertString(0, text, normal);
             applyBaseHeadingStyle();
-            renderAnnotationBubbles(sourceKey);
+            if (!isInlineNotesMode()) renderAnnotationBubbles(sourceKey);
             applyAnnotationsForSource(sourceKey);
+            appendInlineStudyItemsToReaderDocument(sourceKey);
             readerPane.setCaretPosition(0);
             showSourceSummary(sourceKey, sourceTitle);
             if (!restoringHistory && ("Bible".equals(breadcrumbContext) || "Library".equals(breadcrumbContext))) {
@@ -6355,6 +6401,145 @@ public class BibleReaderApp extends JFrame {
         StyleConstants.setForeground(st, fg);
         if (bg != null) StyleConstants.setBackground(st, bg);
         return st;
+    }
+
+    private Map<String, java.util.List<TextAnnotation>> annotationsByVerseForCurrentChapter() {
+        Map<String, java.util.List<TextAnnotation>> byVerse = new TreeMap<>((a, b) -> Integer.compare(parseIntSafe(a, 0), parseIntSafe(b, 0)));
+        if (currentProfile == null || !safe(currentSourceKey).startsWith("BIBLE:")) return byVerse;
+        Map<Integer, Integer> verseEnds = currentReaderVerseEndOffsets();
+        if (verseEnds.isEmpty()) return byVerse;
+        for (TextAnnotation a : currentProfile.annotations) {
+            if (a == null || !safe(currentSourceKey).equals(a.sourceKey) || a.wholeChapter) continue;
+            int targetVerse = verseEnds.keySet().iterator().next();
+            for (Map.Entry<Integer, Integer> entry : verseEnds.entrySet()) {
+                targetVerse = entry.getKey();
+                if (Math.max(0, a.end) <= entry.getValue()) break;
+            }
+            byVerse.computeIfAbsent(String.valueOf(targetVerse), k -> new ArrayList<>()).add(a);
+        }
+        for (java.util.List<TextAnnotation> list : byVerse.values()) {
+            list.sort(Comparator.comparingInt((TextAnnotation a) -> annotationPriority(a)).thenComparing(a -> safe(a.id)));
+        }
+        return byVerse;
+    }
+
+    private int parseIntSafe(String s, int fallback) {
+        try { return Integer.parseInt(s); } catch (Exception ignored) { return fallback; }
+    }
+
+    private Map<Integer, Integer> currentReaderVerseEndOffsets() {
+        Map<Integer, Integer> ends = new TreeMap<>();
+        try {
+            String txt = readerPane.getDocument().getText(0, readerOriginalLength());
+            Matcher m = Pattern.compile("(?m)^(\\d+)\\s+").matcher(txt);
+            while (m.find()) {
+                int verse = parseIntSafe(m.group(1), -1);
+                if (verse < 0) continue;
+                int nextBreak = txt.indexOf("\n\n", m.end());
+                ends.put(verse, nextBreak < 0 ? txt.length() : nextBreak);
+            }
+        } catch (Exception ignored) {}
+        return ends;
+    }
+
+    private java.util.List<InlineStudyItem> inlineStudyItemsForVerse(int verse, java.util.List<TextAnnotation> annotations) {
+        java.util.List<InlineStudyItem> items = new ArrayList<>();
+        if (annotations != null) {
+            for (TextAnnotation a : annotations) {
+                if (a == null || isCategoryOnlyAnnotation(a)) continue;
+                if ("Question".equals(safe(a.type))) {
+                    StudyQuestion q = questionForAnnotation(a.id);
+                    items.add(new InlineStudyItem(a.id, q == null ? a : null, q, inlineQuestionLabel(q, a), inlineQuestionText(q, a), true));
+                } else {
+                    String label = "Note";
+                    String text = annotationSummaryText(a);
+                    if (!safe(a.category).isEmpty()) text = "Category: " + a.category + " • " + text;
+                    if (!text.trim().isEmpty()) items.add(new InlineStudyItem(a.id, a, null, label, text, false));
+                }
+            }
+        }
+        if (verse == 1) {
+            for (ChapterNote note : currentChapterNotesForReader()) {
+                items.add(new InlineStudyItem(note.id, null, null, "Chapter Note", safe(note.noteText), false));
+            }
+        }
+        return items;
+    }
+
+    private boolean isCategoryOnlyAnnotation(TextAnnotation a) {
+        return a != null && "Category".equals(safe(a.type)) && safe(a.note).trim().isEmpty() && safe(a.target).trim().isEmpty();
+    }
+
+    private String inlineQuestionLabel(StudyQuestion q, TextAnnotation a) {
+        return "personal".equals(normalizeQuestionType(q == null ? questionTypeForAnnotation(a) : q.questionType)) ? "Personal" : "Discussion";
+    }
+
+    private String inlineQuestionText(StudyQuestion q, TextAnnotation a) {
+        return q == null ? annotationSummaryText(a) : safe(q.question);
+    }
+
+    private void appendInlineStudyItemsToReaderDocument(String sourceKey) throws BadLocationException {
+        if (!isInlineNotesMode() || !safe(sourceKey).startsWith("BIBLE:")) return;
+        StyledDocument doc = readerPane.getStyledDocument();
+        Map<Integer, Integer> verseEnds = currentReaderVerseEndOffsets();
+        Map<String, java.util.List<TextAnnotation>> byVerse = annotationsByVerseForCurrentChapter();
+        int inserted = 0;
+        for (Map.Entry<Integer, Integer> entry : verseEnds.entrySet()) {
+            java.util.List<InlineStudyItem> items = inlineStudyItemsForVerse(entry.getKey(), byVerse.get(String.valueOf(entry.getKey())));
+            if (items.isEmpty()) continue;
+            int pos = Math.min(doc.getLength(), entry.getValue() + inserted);
+            inserted += appendInlineStudyItemsToReaderDocument(doc, pos, items);
+        }
+    }
+
+    private int appendInlineStudyItemsToReaderDocument(StyledDocument doc, int pos, java.util.List<InlineStudyItem> items) throws BadLocationException {
+        int before = doc.getLength();
+        SimpleAttributeSet box = new SimpleAttributeSet();
+        StyleConstants.setFontFamily(box, "Segoe UI");
+        StyleConstants.setFontSize(box, Math.max(11, currentReaderBodyFontSize() - 4));
+        StyleConstants.setForeground(box, modernMutedText);
+        StyleConstants.setBackground(box, new Color(255, 250, 232));
+        StyleConstants.setLeftIndent(box, 24f);
+        StyleConstants.setRightIndent(box, 10f);
+        StyleConstants.setSpaceAbove(box, 2f);
+        StyleConstants.setSpaceBelow(box, 2f);
+        SimpleAttributeSet answer = new SimpleAttributeSet(box);
+        StyleConstants.setLeftIndent(answer, 42f);
+        for (InlineStudyItem item : items) {
+            SimpleAttributeSet line = new SimpleAttributeSet(box);
+            if (item.question != null) line.addAttribute("inlineQuestionId", safe(item.id));
+            String lineText = "\n• " + item.label + ": " + item.text + (item.question != null ? "   " : "");
+            doc.insertString(pos, lineText, line);
+            pos += lineText.length();
+            if (item.question != null) {
+                JButton add = new JButton("+");
+                add.setMargin(new Insets(0, 5, 0, 5));
+                add.setToolTipText("Add answer");
+                add.addActionListener(e -> addInlineQuestionAnswer(item.question));
+                readerPane.setCaretPosition(pos);
+                readerPane.insertComponent(add);
+                pos++;
+                if (expandedInlineQuestionIds.contains(safe(item.id))) {
+                    for (QuestionAnswer ans : item.question.answers) {
+                        String answerText = "\n  - Answer: " + safe(ans.text);
+                        doc.insertString(pos, answerText, answer);
+                        pos += answerText.length();
+                    }
+                }
+            }
+        }
+        doc.insertString(pos, "\n", box);
+        return doc.getLength() - before;
+    }
+
+    private void toggleInlineQuestionExpanded(String id) {
+        if (safe(id).isEmpty()) return;
+        if (!expandedInlineQuestionIds.add(id)) expandedInlineQuestionIds.remove(id);
+        reloadCurrentSourcePreservingScroll();
+    }
+
+    private void addInlineQuestionAnswer(StudyQuestion question) {
+        promptAddAnswer(question);
     }
 
     private void applyBaseHeadingStyle() throws BadLocationException {
@@ -7461,6 +7646,11 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         }
         if (isChapterTitleOffset(pos)) {
             showChapterTitleMenu(e.getX(), e.getY());
+            return true;
+        }
+        Object inlineQuestionId = readerPane.getStyledDocument().getCharacterElement(pos).getAttributes().getAttribute("inlineQuestionId");
+        if (inlineQuestionId instanceof String && !safe((String) inlineQuestionId).isEmpty()) {
+            toggleInlineQuestionExpanded((String) inlineQuestionId);
             return true;
         }
         java.util.List<TextAnnotation> annotations = getAnnotationsAtOffset(pos);
@@ -15670,6 +15860,7 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
         String lastStudyDate = "";
         int totalStudyMinutes = 0;
         Boolean studySoundEnabled = Boolean.TRUE;
+        boolean marginNotesInline = false;
         Profile(String n) { name = n; }
     }
 
@@ -16061,6 +16252,24 @@ private void saveOrMoveReadingSpotBookmark(int position, int viewportY) {
             this.book = book == null ? "" : book;
             this.chapter = chapter;
             this.wholeChapter = wholeChapter;
+        }
+    }
+
+    private static class InlineStudyItem {
+        final String id;
+        final TextAnnotation annotation;
+        final StudyQuestion question;
+        final String label;
+        final String text;
+        final boolean expandable;
+
+        InlineStudyItem(String id, TextAnnotation annotation, StudyQuestion question, String label, String text, boolean expandable) {
+            this.id = id == null ? "" : id;
+            this.annotation = annotation;
+            this.question = question;
+            this.label = label == null ? "" : label;
+            this.text = text == null ? "" : text;
+            this.expandable = expandable;
         }
     }
 
