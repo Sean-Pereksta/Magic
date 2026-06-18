@@ -248,6 +248,13 @@ public class BibleReaderApp extends JFrame {
     private String selectedMarginItemId = "";
     private TextAnnotation activeInlineNoteEditorAnnotation;
     private ChapterNote activeInlineChapterNoteEditorNote;
+    private JTextComponent activeInlineNoteEditorBody;
+    private JComboBox<String> activeInlineNoteEditorCategoryBox;
+    private JTextField activeInlineNoteEditorTypeField;
+    private JTextField activeInlineNoteEditorTargetField;
+    private JTextComponent activeInlineChapterNoteEditorBody;
+    private JComboBox<String> activeInlineChapterNoteEditorCategoryBox;
+    private boolean committingActiveNoteEditors;
     private final Set<String> expandedMarginNoteIds = new HashSet<>();
     private DefaultListModel<RecentLocation> recentlyOpenedModel;
     private JList<RecentLocation> recentlyOpenedList;
@@ -343,6 +350,7 @@ public class BibleReaderApp extends JFrame {
         addWindowListener(new WindowAdapter() {
             public void windowClosing(WindowEvent e) {
                 if (!startupDataLoaded) return;
+                commitActiveNoteEditorsBeforeNavigation();
                 saveCurrentWritingDocument(false);
                 persistCurrentProfileLocation(true);
             }
@@ -801,6 +809,7 @@ public class BibleReaderApp extends JFrame {
             if (refreshingUi) return;
             Object o = bookCombo.getSelectedItem();
             if (o != null) {
+                commitActiveNoteEditorsBeforeNavigation();
                 selectedBook = bookKeyFromComboItem(o);
                 refreshChapterCombo();
                 showSelectedChapter(true);
@@ -811,6 +820,7 @@ public class BibleReaderApp extends JFrame {
             if (refreshingUi) return;
             Object o = chapterCombo.getSelectedItem();
             if (o instanceof Integer) {
+                commitActiveNoteEditorsBeforeNavigation();
                 selectedChapter = (Integer) o;
                 showSelectedChapter(true);
             }
@@ -1020,6 +1030,11 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void showRightSidebarMode(String mode) {
+        showRightSidebarMode(mode, true);
+    }
+
+    private void showRightSidebarMode(String mode, boolean commitOpenEditors) {
+        if (commitOpenEditors) commitActiveNoteEditorsBeforeNavigation();
         String normalized = safe(mode).isEmpty() ? "margin" : mode;
         if (!"margin".equals(normalized) && !"search".equals(normalized) && !"pinned".equals(normalized)) normalized = "margin";
         rightSidebarMode = normalized;
@@ -3889,6 +3904,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void showCard(String name) {
+        commitActiveNoteEditorsBeforeNavigation();
         activeCardName = name;
         cards.show(cardPanel, name);
         updateActiveNavButton();
@@ -4530,6 +4546,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void previousChapter() {
+        commitActiveNoteEditorsBeforeNavigation();
         if (data == null || data.bible == null || data.bible.isEmpty() || selectedBook == null || selectedBook.isEmpty()) return;
         List<String> books = orderedBooks();
         int bookIndex = books.indexOf(selectedBook);
@@ -4551,6 +4568,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void nextChapter() {
+        commitActiveNoteEditorsBeforeNavigation();
         if (data == null || data.bible == null || data.bible.isEmpty() || selectedBook == null || selectedBook.isEmpty()) return;
         List<String> books = orderedBooks();
         int bookIndex = books.indexOf(selectedBook);
@@ -4574,6 +4592,7 @@ public class BibleReaderApp extends JFrame {
 
 
     private void toggleReadingMode() {
+        commitActiveNoteEditorsBeforeNavigation();
         if (readingMode) exitReadingMode(); else enterReadingMode();
     }
 
@@ -4943,6 +4962,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void goToReferenceFromBox() {
+        commitActiveNoteEditorsBeforeNavigation();
         String raw = goToReferenceField == null ? "" : goToReferenceField.getText().trim();
         if (raw.isEmpty()) return;
         openReference(raw, true);
@@ -5302,6 +5322,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void enterReadingMode() {
+        commitActiveNoteEditorsBeforeNavigation();
         if (readingMode) return;
         readingMode = true;
         if (mainStudySplit != null) normalMainDividerLocation = mainStudySplit.getDividerLocation();
@@ -5327,6 +5348,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void exitReadingMode() {
+        commitActiveNoteEditorsBeforeNavigation();
         if (!readingMode) return;
         readingMode = false;
         if (exitReadingModeButton != null) exitReadingModeButton.setVisible(false);
@@ -5370,6 +5392,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void toggleMarginNotesDisplayMode() {
+        commitActiveNoteEditorsBeforeNavigation();
         if (currentProfile == null) return;
         int viewport = readerScrollPane == null ? 0 : readerScrollPane.getVerticalScrollBar().getValue();
         currentProfile.marginNotesInline = !currentProfile.marginNotesInline;
@@ -5740,6 +5763,60 @@ public class BibleReaderApp extends JFrame {
     private void clearInlineMarginEditor() {
         activeInlineNoteEditorAnnotation = null;
         activeInlineChapterNoteEditorNote = null;
+        activeInlineNoteEditorBody = null;
+        activeInlineNoteEditorCategoryBox = null;
+        activeInlineNoteEditorTypeField = null;
+        activeInlineNoteEditorTargetField = null;
+        activeInlineChapterNoteEditorBody = null;
+        activeInlineChapterNoteEditorCategoryBox = null;
+    }
+
+    private void commitActiveNoteEditorsBeforeNavigation() {
+        if (committingActiveNoteEditors || currentProfile == null) return;
+        boolean saved = false;
+        committingActiveNoteEditors = true;
+        try {
+            if (activeInlineNoteEditorAnnotation != null && activeInlineNoteEditorBody != null) {
+                TextAnnotation annotation = activeInlineNoteEditorAnnotation;
+                annotation.type = activeInlineNoteEditorTypeField == null || safe(activeInlineNoteEditorTypeField.getText()).trim().isEmpty() ? "Note" : activeInlineNoteEditorTypeField.getText().trim();
+                annotation.category = activeInlineNoteEditorCategoryBox == null ? safe(annotation.category) : resolveInlineCategorySelectionForAutosave(activeInlineNoteEditorCategoryBox, annotation.category);
+                annotation.target = activeInlineNoteEditorTargetField == null ? safe(annotation.target) : activeInlineNoteEditorTargetField.getText().trim();
+                annotation.note = activeInlineNoteEditorBody.getText() == null ? "" : activeInlineNoteEditorBody.getText().trim();
+                if (annotation.wholeChapter) {
+                    annotation.book = safe(annotation.book).isEmpty() ? selectedBook : annotation.book;
+                    annotation.chapter = annotation.chapter <= 0 ? selectedChapter : annotation.chapter;
+                    if (!annotation.category.isEmpty()) linkInlineCategoryToChapterNote(annotation);
+                }
+                if (!currentProfile.annotations.contains(annotation)) currentProfile.annotations.add(annotation);
+                StudyQuestion q = questionForAnnotation(annotation.id);
+                if ("Question".equals(annotation.type)) {
+                    if (q == null) currentProfile.questions.add(new StudyQuestion(annotation.id, annotation.sourceTitle, annotation.selectedText, annotation.note, normalizeQuestionType(annotation.category), annotation.sourceKey, annotation.sourceTitle, annotation.book, annotation.chapter, annotation.wholeChapter));
+                    else { q.question = annotation.note; q.questionType = normalizeQuestionType(annotation.category); }
+                }
+                touchAnnotation(annotation);
+                saved = true;
+            }
+            if (activeInlineChapterNoteEditorNote != null && activeInlineChapterNoteEditorBody != null) {
+                ChapterNote note = activeInlineChapterNoteEditorNote;
+                String text = activeInlineChapterNoteEditorBody.getText() == null ? "" : activeInlineChapterNoteEditorBody.getText();
+                if (!text.trim().isEmpty()) {
+                    note.noteText = text;
+                    String category = activeInlineChapterNoteEditorCategoryBox == null ? "" : resolveInlineCategorySelectionForAutosave(activeInlineChapterNoteEditorCategoryBox, "");
+                    if (!category.isEmpty() && !note.linkedCategoryNames.contains(category)) note.linkedCategoryNames.add(category);
+                    note.updatedAt = System.currentTimeMillis();
+                    if (note.createdAt <= 0L) note.createdAt = note.updatedAt;
+                    currentProfile.chapterNotes.put(chapterNoteKey(note.sourceKey, note.book, note.chapter), note);
+                    syncChapterNoteAnnotation(note);
+                    saved = true;
+                }
+            }
+            if (saved) saveData();
+        } catch (RuntimeException ex) {
+            JOptionPane.showMessageDialog(this, "Could not autosave the open note editor: " + ex.getMessage(), "Autosave Failed", JOptionPane.ERROR_MESSAGE);
+        } finally {
+            clearInlineMarginEditor();
+            committingActiveNoteEditors = false;
+        }
     }
 
     private void showInlineNoteEditor(TextAnnotation annotation) {
@@ -5747,7 +5824,7 @@ public class BibleReaderApp extends JFrame {
         repairAnnotation(annotation, System.currentTimeMillis());
         activeInlineChapterNoteEditorNote = null;
         activeInlineNoteEditorAnnotation = annotation;
-        showRightSidebarMode("margin");
+        showRightSidebarMode("margin", false);
         refreshMarginNotesPanel();
         SwingUtilities.invokeLater(() -> focusInlineEditorTextArea(marginNotesBody));
     }
@@ -5757,7 +5834,7 @@ public class BibleReaderApp extends JFrame {
         repairChapterNote(note);
         activeInlineNoteEditorAnnotation = null;
         activeInlineChapterNoteEditorNote = note;
-        showRightSidebarMode("margin");
+        showRightSidebarMode("margin", false);
         refreshMarginNotesPanel();
         SwingUtilities.invokeLater(() -> focusInlineEditorTextArea(marginNotesBody));
     }
@@ -5804,6 +5881,10 @@ public class BibleReaderApp extends JFrame {
         JButton delete = smallSidebarActionButton("Delete");
         delete.addActionListener(e -> deleteAnnotation(annotation));
         panel.add(inlineEditorActions(status, save, full, cancel, delete), BorderLayout.SOUTH);
+        activeInlineNoteEditorBody = body;
+        activeInlineNoteEditorCategoryBox = categoryBox;
+        activeInlineNoteEditorTypeField = type;
+        activeInlineNoteEditorTargetField = target;
         installCtrlSSave(body, () -> save.doClick());
         return panel;
     }
@@ -5842,6 +5923,8 @@ public class BibleReaderApp extends JFrame {
         delete.setEnabled(hasPersistedChapterNote(note));
         delete.addActionListener(e -> deleteChapterNote(note));
         panel.add(inlineEditorActions(status, save, full, close, delete), BorderLayout.SOUTH);
+        activeInlineChapterNoteEditorBody = body;
+        activeInlineChapterNoteEditorCategoryBox = categoryBox;
         installCtrlSSave(body, () -> save.doClick());
         return panel;
     }
@@ -5934,6 +6017,13 @@ public class BibleReaderApp extends JFrame {
             String chosen = chooseCategoryWithSearch("Choose Category", "");
             return chosen == null ? "" : chosen;
         }
+        return selected;
+    }
+
+    private String resolveInlineCategorySelectionForAutosave(JComboBox<String> combo, String fallback) {
+        String selected = Objects.toString(combo == null ? null : combo.getSelectedItem(), "").trim();
+        if (selected.isEmpty() || "(No Category)".equals(selected)) return "";
+        if ("Search / Add Category…".equals(selected)) return safe(fallback);
         return selected;
     }
 
@@ -6317,6 +6407,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void showSelectedChapter(boolean countVisit) {
+        commitActiveNoteEditorsBeforeNavigation();
         if (readerPane == null || selectedBook == null || selectedBook.isEmpty() || !data.bible.containsKey(selectedBook)) {
             showBlankReader();
             return;
@@ -6348,6 +6439,7 @@ public class BibleReaderApp extends JFrame {
     }
 
     private void showLibraryDoc(String title) {
+        commitActiveNoteEditorsBeforeNavigation();
         LibraryDoc d = data.findLibraryDoc(title);
         if (d == null) return;
         String nextSourceKey = "LIBRARY:" + d.title;
