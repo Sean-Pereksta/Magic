@@ -281,6 +281,33 @@
     box-shadow:0 24px 60px rgba(0,0,0,.55);
     display:flex; flex-direction:column;
   }
+  .modalTitleStack{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:4px;
+    min-width:0;
+  }
+  .modalGoldCorner{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    padding:5px 9px;
+    border-radius:999px;
+    border:1px solid rgba(251,191,36,.28);
+    background:rgba(251,191,36,.10);
+    color:rgba(253,230,138,.96);
+    font-size:11px;
+    font-weight:1000;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    box-shadow:0 0 18px rgba(251,191,36,.08);
+  }
+  .modalGoldCorner b{
+    color:#fff7c2;
+    font-size:13px;
+    font-variant-numeric:tabular-nums;
+  }
   .modalHead{
     padding:12px 14px;
     display:flex; justify-content:space-between; align-items:center; gap:10px;
@@ -488,7 +515,10 @@
       <div class="overlay" id="ovStore">
         <div class="modal">
           <div class="modalHead">
-            <b>Store — Spend Gold</b>
+            <div class="modalTitleStack">
+              <span class="modalGoldCorner">Gold <b id="storeGoldCount">0</b></span>
+              <b>Store — Spend Gold</b>
+            </div>
             <button class="btn small" id="btnCloseStore">Close</button>
           </div>
           <div class="modalBody">
@@ -508,7 +538,10 @@
       <div class="overlay" id="ovForge">
         <div class="modal">
           <div class="modalHead">
-            <b>Forge — Reforge, Stars, Craft</b>
+            <div class="modalTitleStack">
+              <span class="modalGoldCorner">Gold <b id="forgeGoldCount">0</b></span>
+              <b>Forge — Reforge, Stars, Craft</b>
+            </div>
             <button class="btn small" id="btnCloseForge">Close</button>
           </div>
           <div class="modalBody">
@@ -739,6 +772,8 @@ const VIEW_SCALE = 0.78; // zoomed-out mobile view: smaller scale shows more are
   const elDepth = document.getElementById("depth");
   const elFloorTypeTag = document.getElementById("floorTypeTag");
   const elGold = document.getElementById("gold");
+  const elStoreGoldCount = document.getElementById("storeGoldCount");
+  const elForgeGoldCount = document.getElementById("forgeGoldCount");
   const elHP = document.getElementById("hp");
   const elHPMax = document.getElementById("hpMax");
   const elDodgeCd = document.getElementById("dodgeCd");
@@ -3597,7 +3632,10 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
     } else {
       bossBanner.classList.remove("show");
     }
-    elGold.textContent = Math.floor(G.gold);
+    const currentGold = Math.floor(G.gold);
+    elGold.textContent = currentGold;
+    if(elStoreGoldCount) elStoreGoldCount.textContent = currentGold;
+    if(elForgeGoldCount) elForgeGoldCount.textContent = currentGold;
     elHP.textContent = Math.round(p.hp) + ((p.shield||0)>0 ? ` (+${Math.ceil(p.shield)})` : "");
     elHPMax.textContent = Math.round(p.hpMax);
     elDodgeCd.textContent = (p.dodgeCD).toFixed(1);
@@ -3844,6 +3882,7 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
 
   function renderShop(){
     shopGrid.innerHTML = "";
+    if(elStoreGoldCount) elStoreGoldCount.textContent = Math.floor(G.gold);
     elShopRefreshCost.textContent = G.shop.refreshCost;
 
     for(const entry of G.shop.items){
@@ -4011,6 +4050,7 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
   }
 
   function renderForge(){
+    if(elForgeGoldCount) elForgeGoldCount.textContent = Math.floor(G.gold);
     // mats
     matGrid.innerHTML = "";
     const mats = [
