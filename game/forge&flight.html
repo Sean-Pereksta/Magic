@@ -1016,6 +1016,11 @@ function upgradeText(it){
     {key:"firestaff", name:"Fire Staff", mode:"skill", dmg:[20,28], rate:[1.15,1.65], range:[380,520], proj:[520,700], spread:[0.04,0.14], shots:[1,1], note:"Explosive fire bolts"},
     {key:"stormwand", name:"Storm Wand", mode:"auto", dmg:[9,13], rate:[3.4,4.4], range:[360,500], proj:[720,980], homing:true, note:"Fast homing lightning"},
     {key:"scatterbow", name:"Scatterbow", mode:"skill", dmg:[9,13], rate:[1.45,1.95], range:[300,430], proj:[560,740], spread:[0.18,0.32], shots:[3,5], note:"Cone of arrows"},
+    {key:"crystalbow", name:"Crystal Bow", mode:"skill", dmg:[18,25], rate:[1.65,2.25], range:[520,720], proj:[760,980], spread:[0.00,0.05], shots:[1,2], note:"Long piercing-feel crystal shots"},
+    {key:"sunhammer", name:"Sun Hammer", mode:"melee", dmg:[46,62], rate:[0.95,1.35], range:[110,135], note:"Massive radiant melee arcs"},
+    {key:"venomfang", name:"Venomfang Claws", mode:"melee", dmg:[14,22], rate:[3.0,3.9], range:[76,92], note:"Rapid poison-friendly claws"},
+    {key:"runecannon", name:"Rune Cannon", mode:"auto", dmg:[28,38], rate:[0.9,1.25], range:[480,650], proj:[620,820], homing:true, note:"Slow auto-aiming explosive bolts"},
+    {key:"moonblade", name:"Moonblade", mode:"melee", dmg:[26,36], rate:[1.9,2.5], range:[128,158], note:"Elegant wide lunar slashes"},
   ];
 
 
@@ -1026,6 +1031,12 @@ function upgradeText(it){
     {key:"sunPrayer", name:"Sun Prayer Book", icon:"☀️", cooldown:20, power:[42,68], radius:[210,280], note:"Heals you and burns nearby enemies"},
     {key:"voidRift", name:"Void Rift Manual", icon:"🌀", cooldown:16, power:[32,46], radius:[120,160], note:"Opens a rift that repeatedly damages and slows enemies"},
     {key:"aegis", name:"Aegis Scripture", icon:"🛡️", cooldown:22, power:[70,110], radius:[180,240], note:"Grants a strong shield and knocks enemies away"},
+    {key:"flameWave", name:"Dragonfire Psalter", icon:"🔥", cooldown:11, power:[48,74], range:[360,520], radius:[95,125], note:"Auto-aims a fan of burning fire waves"},
+    {key:"shadowLance", name:"Night Lance Codex", icon:"🌑", cooldown:9, power:[72,108], range:[620,820], radius:[55,85], note:"Pierces toward the strongest visible enemy and dooms targets"},
+    {key:"poisonBloom", name:"Viridian Plaguebook", icon:"☣️", cooldown:15, power:[38,58], range:[500,650], radius:[155,210], note:"Blooms a toxic cloud on a clustered enemy"},
+    {key:"gravityCrush", name:"Singularity Atlas", icon:"🕳️", cooldown:17, power:[58,86], range:[560,740], radius:[185,250], note:"Pulls enemies together, then detonates"},
+    {key:"bladeStorm", name:"Razor Psalm", icon:"🌪️", cooldown:13, power:[42,62], radius:[175,225], note:"Summons orbiting blades that carve nearby enemies"},
+    {key:"starfall", name:"Celestial Litany", icon:"✨", cooldown:19, power:[70,100], range:[560,720], radius:[120,160], note:"Drops a chain of radiant stars on auto-aimed enemies"},
   ];
 
   const armorBases = {
@@ -1035,6 +1046,8 @@ function upgradeText(it){
       {name:"Hood", armor:[1,4], hp:[8,18], speed:[0.02,0.06]},
       {name:"Crown", armor:[3,7], hp:[10,28], crit:[0.03,0.08]},
       {name:"Visor", armor:[6,12], hp:[12,30], range:[0.03,0.08]},
+      {name:"Dragon Crown", armor:[7,14], hp:[18,38], dmg:[0.05,0.12]},
+      {name:"Oracle Veil", armor:[2,6], hp:[10,24], rate:[0.08,0.16], crit:[0.04,0.09]},
     ],
     body: [
       {name:"Tunic", armor:[4,10], hp:[18,42]},
@@ -1042,12 +1055,17 @@ function upgradeText(it){
       {name:"Robe", armor:[3,7], hp:[14,34], rate:[0.05,0.12]},
       {name:"Plate", armor:[14,26], hp:[38,74], speed:[-0.08,-0.02]},
       {name:"Scale Vest", armor:[8,16], hp:[24,52], dodge:[0.02,0.06]},
+      {name:"Phoenix Plate", armor:[16,30], hp:[42,82], dmg:[0.04,0.10]},
+      {name:"Void Robe", armor:[5,11], hp:[20,46], rate:[0.08,0.18], range:[0.06,0.14]},
+      {name:"Briar Carapace", armor:[12,24], hp:[34,68], dodge:[0.01,0.05]},
     ],
     legs: [
       {name:"Greaves", armor:[4,10], hp:[10,26]},
       {name:"Legwraps", armor:[2,6], hp:[12,28], speed:[0.03,0.08]},
       {name:"Wind Boots", armor:[2,6], hp:[8,18], speed:[0.08,0.16]},
       {name:"Stone Sabatons", armor:[8,15], hp:[20,42], speed:[-0.04,0.02]},
+      {name:"Storm Treads", armor:[4,9], hp:[14,30], speed:[0.12,0.22], dodge:[0.03,0.08]},
+      {name:"Knight Spurs", armor:[7,14], hp:[18,38], speed:[0.02,0.08]},
     ],
     trinket: [
       {name:"Charm", dmg:[0.04,0.10], crit:[0.02,0.06]},
@@ -1061,6 +1079,10 @@ function upgradeText(it){
       {name:"Moon Lens", crit:[0.06,0.12], range:[0.05,0.12]},
       {name:"Clockwork Core", rate:[0.08,0.18], armor:[4,10]},
       {name:"Lion Sigil", dmg:[0.06,0.14], armor:[8,18]},
+      {name:"Phoenix Ember", dmg:[0.08,0.16], hp:[16,38]},
+      {name:"Gravity Pearl", range:[0.08,0.18], crit:[0.03,0.08]},
+      {name:"Thorn Idol", armor:[10,20], hp:[20,46]},
+      {name:"Spell Prism", rate:[0.10,0.20], range:[0.06,0.16]},
     ]
   };
 
@@ -1640,6 +1662,11 @@ function itemValue(it, purpose="buy"){
   BROODMOTHER:"broodmother",
   MIRROR:"mirror",
   KNIGHT:"knight",
+  WRAITH:"wraith",
+  ALCHEMIST:"alchemist",
+  TOTEM:"totem",
+  WARLOCK:"warlock",
+  RAZORBAT:"razorbat",
   BOSS_WARLORD:"boss_warlord",
   BOSS_GOLEM:"boss_golem",
   BOSS_LICH:"boss_lich",
@@ -1670,6 +1697,11 @@ function itemValue(it, purpose="buy"){
   if(depth>=25) list.push(ENEMY_TYPES.KNIGHT);
   if(depth>=28) list.push(ENEMY_TYPES.MIRROR);
   if(depth>=32) list.push(ENEMY_TYPES.BROODMOTHER);
+  if(depth>=6) list.push(ENEMY_TYPES.RAZORBAT);
+  if(depth>=12) list.push(ENEMY_TYPES.ALCHEMIST);
+  if(depth>=20) list.push(ENEMY_TYPES.WRAITH);
+  if(depth>=24) list.push(ENEMY_TYPES.TOTEM);
+  if(depth>=30) list.push(ENEMY_TYPES.WARLOCK);
 
   if(depth>=8) list.push(ENEMY_TYPES.ORBITER);
   if(depth>=10) list.push(ENEMY_TYPES.TURRET);
@@ -1705,6 +1737,11 @@ const ENEMY_STATS = {
   broodmother:{ hp: 72, dmg: 16, speed: 105, aggro: 620, r: 22 },
   mirror:   { hp: 40, dmg: 14, speed: 170, aggro: 540, r: 15 },
   knight:   { hp: 68, dmg: 18, speed: 130, aggro: 460, r: 19, armor:0.28 },
+  wraith:   { hp: 36, dmg: 18, speed: 175, aggro: 620, r: 15 },
+  alchemist:{ hp: 34, dmg: 12, speed: 122, aggro: 650, r: 15 },
+  totem:    { hp: 70, dmg:  8, speed:   0, aggro: 720, r: 18, armor:0.18 },
+  warlock:  { hp: 54, dmg: 17, speed: 105, aggro: 760, r: 17 },
+  razorbat: { hp: 20, dmg: 12, speed: 245, aggro: 520, r: 12 },
   boss_warlord: { hp: 380, dmg: 22, speed: 132, aggro: 950, r: 30, boss:true, title:"The Iron Warlord" },
   boss_golem:   { hp: 520, dmg: 26, speed:  82, aggro: 950, r: 34, boss:true, title:"The Stone Tyrant" },
   boss_lich:    { hp: 340, dmg: 20, speed: 112, aggro: 980, r: 28, boss:true, title:"The Bone Lich" },
@@ -2863,6 +2900,115 @@ function spawnMeteorStrike(x, y, dmg, radius=74, tele=0.85){
     }
 
 
+    if(e.type===ENEMY_TYPES.RAZORBAT){
+      // Fast zig-zag swarm unit that darts in, slashes, and retreats.
+      const side = Math.sin(e.t*9 + e.id.length) * 0.75;
+      e.vx = (nx*0.82 - ny*side) * e.speed;
+      e.vy = (ny*0.82 + nx*side) * e.speed;
+      if(e.atkT<=0 && d<150){
+        e.atkT = rand(0.55,0.82);
+        const a = Math.atan2(dy,dx);
+        G.fx.push({type:"arc", x:e.x, y:e.y, ang:a, arc:Math.PI*.95, rad:70, t:.14, color:"rgba(45,212,191,.26)"});
+        if(!p.dodging && d < 88+p.r) hurtPlayer(e.dmg*.55, e.x, e.y, false);
+      }
+      return;
+    }
+
+    if(e.type===ENEMY_TYPES.ALCHEMIST){
+      // Keeps distance and lobs poison bombs that leave a lingering cloud.
+      const desired = 430;
+      const away = (d < desired) ? -1 : 1;
+      e.vx = (nx*away*0.48 - ny*e.strafeDir*0.62) * e.speed;
+      e.vy = (ny*away*0.48 + nx*e.strafeDir*0.62) * e.speed;
+      if(e.atkT<=0 && d<680){
+        e.atkT = rand(1.05,1.45);
+        const a = Math.atan2(dy,dx) + rand(-0.10,0.10);
+        spawnProj("enemy", e.x, e.y, Math.cos(a)*430, Math.sin(a)*430, 0, 6.5, 2.4, "rgba(132,204,22,.95)", {life:620, bomb:true, explodeR:74, explodeDmg:e.dmg*.55});
+        G.hazards.push({kind:"poisonCloud", x:p.x+rand(-45,45), y:p.y+rand(-45,45), r:72, t:2.8, dmg:e.dmg*.28});
+        G.fx.push({type:"ring", x:p.x, y:p.y, r:72, t:.25, color:"rgba(132,204,22,.45)"});
+      }
+      if(chance(0.01)) e.strafeDir *= -1;
+      return;
+    }
+
+    if(e.type===ENEMY_TYPES.WRAITH){
+      // Phases out, then reappears behind/near the player with a draining slash.
+      if(e.phase<=0 && e.dashCD<=0 && d<560){
+        e.phase = 0.9;
+        e.dashCD = rand(2.2,3.0);
+        G.fx.push({type:"vortex", x:e.x, y:e.y, r:46, t:.35, color:"rgba(216,180,254,.55)"});
+      }
+      if(e.phase>0.42){
+        e.vx = nx*e.speed*1.55;
+        e.vy = ny*e.speed*1.55;
+        return;
+      } else if(e.phase>0.26){
+        const spot = pickSafeSpotNear(p.x, p.y, 130, e.r);
+        e.x = spot.x; e.y = spot.y; e.phase = 0.24;
+        G.fx.push({type:"vortex", x:e.x, y:e.y, r:54, t:.30, color:"rgba(216,180,254,.62)"});
+      }
+      e.vx = nx*e.speed*0.9;
+      e.vy = ny*e.speed*0.9;
+      if(e.atkT<=0 && d<112){
+        e.atkT = rand(0.95,1.25);
+        G.fx.push({type:"arc", x:e.x, y:e.y, ang:Math.atan2(dy,dx), arc:Math.PI*.85, rad:86, t:.16, color:"rgba(216,180,254,.30)"});
+        if(!p.dodging) hurtPlayer(e.dmg*.72, e.x, e.y, false);
+      }
+      return;
+    }
+
+    if(e.type===ENEMY_TYPES.TOTEM){
+      // Stationary support unit: buffs allies and fires slow curse pulses.
+      e.vx = 0; e.vy = 0;
+      if(e.atkT<=0){
+        e.atkT = rand(1.2,1.7);
+        let buffed = 0;
+        for(const a of G.enemies){
+          if(a===e || a.hp<=0) continue;
+          if(dist(e.x,e.y,a.x,a.y)<280){
+            a.shield = Math.min((a.shield||0)+10+G.depth*.7, a.hpMax*.45);
+            buffed++;
+            if(buffed>4) break;
+          }
+        }
+        G.fx.push({type:"ring", x:e.x, y:e.y, r:280, t:.30, color:"rgba(251,191,36,.32)"});
+        if(d<720){
+          const a = Math.atan2(dy,dx);
+          spawnProj("enemy", e.x, e.y, Math.cos(a)*360, Math.sin(a)*360, e.dmg*1.05, 8, 2.8, "rgba(251,191,36,.92)", {life:720, slow:true});
+        }
+      }
+      return;
+    }
+
+    if(e.type===ENEMY_TYPES.WARLOCK){
+      // Late-game caster: summons, curses, and draws a dangerous sigil under the player.
+      const desired = 520;
+      const away = (d < desired) ? -1 : 1;
+      e.vx = (nx*away*0.35 - ny*e.strafeDir*0.45) * e.speed;
+      e.vy = (ny*away*0.35 + nx*e.strafeDir*0.45) * e.speed;
+      if(e.atkT<=0 && d<780){
+        e.atkT = rand(1.55,2.1);
+        const mode = randi(0,2);
+        if(mode===0){
+          G.hazards.push({kind:"curseSigil", x:p.x, y:p.y, r:92, t:2.4, dmg:e.dmg*.46});
+          G.fx.push({type:"vortex", x:p.x, y:p.y, r:92, t:.45, color:"rgba(244,114,182,.55)"});
+        } else if(mode===1){
+          for(let i=0;i<3;i++){
+            const a = Math.atan2(dy,dx) + (i-1)*0.18;
+            spawnProj("enemy", e.x, e.y, Math.cos(a)*520, Math.sin(a)*520, e.dmg*.82, 5.2, 2.0, "rgba(244,114,182,.95)", {life:650, slow:true});
+          }
+        } else if(G.enemies.filter(x=>x.type===ENEMY_TYPES.MINION && x.hp>0).length < 14){
+          for(let i=0;i<2;i++){
+            const pt=pickSafeSpotNear(e.x,e.y,130,14);
+            G.enemies.push(makeEnemy(ENEMY_TYPES.MINION, pt.x, pt.y, G.depth+1));
+            G.fx.push({type:"ring", x:pt.x, y:pt.y, r:18, t:.22, color:"rgba(244,114,182,.32)"});
+          }
+        }
+      }
+      return;
+    }
+
+
     if(e.type===ENEMY_TYPES.BOMBER){
       const desired = 360;
       const away = (d < desired) ? -1 : 1;
@@ -3442,6 +3588,68 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
       G.fx.push({type:"ring", x:target.x, y:target.y, r:radius, t:0.32, color:"rgba(167,139,250,.62)"});
       G.fx.push({type:"vortex", x:target.x, y:target.y, r:radius*1.1, t:0.50, color:"rgba(216,180,254,.70)"});
       toast("Void rift opened!", 0.9);
+      cast = true;
+    } else if(key==="flameWave"){
+      const target = nearestEnemyInRange(range, true) || nearestEnemyInRange(range, false);
+      if(!target){ toast("No enemy in spell range", 0.9); return; }
+      const baseA = Math.atan2(target.y-p.y, target.x-p.x);
+      for(let i=-2;i<=2;i++){
+        const a = baseA + i*0.18;
+        G.fx.push({type:"beam", x1:p.x, y1:p.y, x2:p.x+Math.cos(a)*range, y2:p.y+Math.sin(a)*range, t:.18, color:"rgba(251,113,133,.48)", width:3});
+        for(const e of G.enemies){
+          if(e.hp<=0) continue;
+          const ex=e.x-p.x, ey=e.y-p.y, ed=hypot(ex,ey)||1;
+          const da=Math.abs(Math.atan2(Math.sin(Math.atan2(ey,ex)-a), Math.cos(Math.atan2(ey,ex)-a)));
+          if(ed<range+e.r && da<0.13){ hitEnemy(e, power*.58, {trueDamage:true, pColor:"rgba(251,113,133,.95)"}); addStatus(e,"burn",3.6,power*.055); }
+        }
+      }
+      G.fx.push({type:"burst", x:p.x, y:p.y, r:radius*1.35, t:.28, color:"rgba(251,113,133,.62)", rays:14});
+      toast("Dragonfire wave!", 0.9);
+      cast = true;
+    } else if(key==="shadowLance"){
+      let target=null, best=-1;
+      for(const e of G.enemies){ if(e.hp>0 && dist(p.x,p.y,e.x,e.y)<range && e.hp>best){ best=e.hp; target=e; } }
+      if(!target){ toast("No enemy in spell range", 0.9); return; }
+      const a = Math.atan2(target.y-p.y, target.x-p.x);
+      G.fx.push({type:"beam", x1:p.x, y1:p.y, x2:p.x+Math.cos(a)*range, y2:p.y+Math.sin(a)*range, t:.25, color:"rgba(167,139,250,.88)", width:7});
+      let hits=0;
+      for(const e of G.enemies){
+        if(e.hp<=0) continue;
+        const ex=e.x-p.x, ey=e.y-p.y, ed=hypot(ex,ey)||1;
+        const along = ex*Math.cos(a)+ey*Math.sin(a);
+        const perp = Math.abs(-Math.sin(a)*ex + Math.cos(a)*ey);
+        if(along>0 && along<range && perp<radius+e.r){ hits++; hitEnemy(e, power*(hits===1?1.45:.78), {trueDamage:true, pColor:"rgba(167,139,250,.95)"}); addStatus(e,"doom",4.4,power*.07); }
+      }
+      toast("Shadow lance!", 0.9);
+      cast = true;
+    } else if(key==="poisonBloom"){
+      const target = nearestEnemyInRange(range, false);
+      if(!target){ toast("No enemy in spell range", 0.9); return; }
+      G.hazards.push({kind:"spellPoison", x:target.x, y:target.y, r:radius, t:4.4, dmg:power*.30});
+      G.fx.push({type:"ring", x:target.x, y:target.y, r:radius, t:.35, color:"rgba(132,204,22,.58)"});
+      G.fx.push({type:"burst", x:target.x, y:target.y, r:radius*.75, t:.35, color:"rgba(132,204,22,.60)", rays:16});
+      toast("Poison bloom!", 0.9);
+      cast = true;
+    } else if(key==="gravityCrush"){
+      const target = nearestEnemyInRange(range, false);
+      if(!target){ toast("No enemy in spell range", 0.9); return; }
+      G.hazards.push({kind:"gravityCrush", x:target.x, y:target.y, r:radius, t:2.2, dmg:power*.75, pulse:0});
+      G.fx.push({type:"vortex", x:target.x, y:target.y, r:radius, t:.70, color:"rgba(216,180,254,.70)"});
+      toast("Singularity forming!", 0.9);
+      cast = true;
+    } else if(key==="bladeStorm"){
+      G.hazards.push({kind:"bladeStorm", x:p.x, y:p.y, r:radius, t:3.3, dmg:power*.42, follow:true});
+      G.fx.push({type:"ring", x:p.x, y:p.y, r:radius, t:.35, color:"rgba(226,232,240,.55)"});
+      toast("Blade storm!", 0.9);
+      cast = true;
+    } else if(key==="starfall"){
+      const targets = G.enemies.filter(e=>e.hp>0 && dist(p.x,p.y,e.x,e.y)<range).sort((a,b)=>dist(p.x,p.y,a.x,a.y)-dist(p.x,p.y,b.x,b.y)).slice(0,5);
+      if(!targets.length){ toast("No enemy in spell range", 0.9); return; }
+      targets.forEach((e,i)=>{
+        G.hazards.push({kind:"meteor", x:e.x+rand(-24,24), y:e.y+rand(-24,24), r:radius*.72, tele:0.35+i*.16, exploded:false, dmg:power*(1.0-i*.08), burnR:radius*.35, burnT:0.8, burnDps:power*.06, t:0});
+        G.fx.push({type:"beam", x1:p.x, y1:p.y, x2:e.x, y2:e.y, t:.16, color:"rgba(253,224,71,.48)", width:3});
+      });
+      toast("Starfall!", 0.9);
       cast = true;
     } else if(key==="aegis"){
       gainShield(power);
@@ -4060,7 +4268,10 @@ it.gstar = 0;
     e.type!==ENEMY_TYPES.BOMBER &&
     // NEW
     e.type!==ENEMY_TYPES.SPREADER &&
-    e.type!==ENEMY_TYPES.METEOR
+    e.type!==ENEMY_TYPES.METEOR &&
+    e.type!==ENEMY_TYPES.ALCHEMIST &&
+    e.type!==ENEMY_TYPES.TOTEM &&
+    e.type!==ENEMY_TYPES.WARLOCK
   ){
     if(!p.dodging){
       const th = playerEffectStat("thorns");
@@ -4212,6 +4423,68 @@ for(const hz of G.hazards){
         addStatus(e,"freeze",0.35,0.42);
       }
     }
+    continue;
+  }
+
+
+  if(hz.kind === "spellPoison"){
+    hz.t -= dt;
+    if(hz.t<=0) continue;
+    if(chance(0.62)) G.particles.push({x:hz.x+rand(-hz.r,hz.r), y:hz.y+rand(-hz.r,hz.r), vx:rand(-24,24), vy:rand(-24,24), t:rand(.14,.30), c:"rgba(132,204,22,.92)"});
+    for(const e of G.enemies){
+      if(e.hp<=0) continue;
+      if(dist(hz.x,hz.y,e.x,e.y) < hz.r + e.r){
+        hitEnemy(e, hz.dmg*dt, {trueDamage:true, pColor:"rgba(132,204,22,.95)"});
+        addStatus(e,"poison",1.0,hz.dmg*.22);
+      }
+    }
+    continue;
+  }
+
+  if(hz.kind === "poisonCloud"){
+    hz.t -= dt;
+    if(hz.t<=0) continue;
+    if(chance(0.55)) G.particles.push({x:hz.x+rand(-hz.r,hz.r), y:hz.y+rand(-hz.r,hz.r), vx:rand(-20,20), vy:rand(-20,20), t:rand(.12,.24), c:"rgba(132,204,22,.85)"});
+    if(dist(hz.x,hz.y,p.x,p.y) < hz.r + p.r){ if(!p.dodging) hurtPlayer(hz.dmg*dt, hz.x, hz.y, true); }
+    continue;
+  }
+
+  if(hz.kind === "curseSigil"){
+    hz.t -= dt;
+    if(hz.t<=0) continue;
+    if(chance(0.45)) G.particles.push({x:hz.x+rand(-hz.r*.7,hz.r*.7), y:hz.y+rand(-hz.r*.7,hz.r*.7), vx:rand(-18,18), vy:rand(-18,18), t:rand(.12,.22), c:"rgba(244,114,182,.9)"});
+    if(dist(hz.x,hz.y,p.x,p.y) < hz.r + p.r){ if(!p.dodging){ hurtPlayer(hz.dmg*dt, hz.x, hz.y, true); p.dodgeCD = Math.max(p.dodgeCD, 0.25); } }
+    continue;
+  }
+
+  if(hz.kind === "gravityCrush"){
+    hz.t -= dt;
+    if(hz.t<=0){
+      G.fx.push({type:"burst", x:hz.x, y:hz.y, r:hz.r, t:.30, color:"rgba(216,180,254,.70)", rays:18});
+      for(const e of G.enemies){ if(e.hp>0 && dist(hz.x,hz.y,e.x,e.y)<hz.r+e.r) hitEnemy(e, hz.dmg, {trueDamage:true, pColor:"rgba(216,180,254,.95)"}); }
+      continue;
+    }
+    for(const e of G.enemies){
+      if(e.hp<=0) continue;
+      const d=dist(hz.x,hz.y,e.x,e.y);
+      if(d<hz.r+e.r){ const dx=hz.x-e.x, dy=hz.y-e.y, dd=hypot(dx,dy)||1; e.vx += dx/dd*520*dt; e.vy += dy/dd*520*dt; hitEnemy(e, hz.dmg*.18*dt, {trueDamage:true, pColor:"rgba(216,180,254,.75)"}); }
+    }
+    if(chance(.35)) G.particles.push({x:hz.x+rand(-hz.r,hz.r), y:hz.y+rand(-hz.r,hz.r), vx:rand(-16,16), vy:rand(-16,16), t:rand(.10,.20), c:"rgba(216,180,254,.95)"});
+    continue;
+  }
+
+  if(hz.kind === "bladeStorm"){
+    hz.t -= dt;
+    if(hz.follow){ hz.x=p.x; hz.y=p.y; }
+    if(hz.t<=0) continue;
+    const spin = G.t*7;
+    for(let i=0;i<6;i++){
+      const a = spin + i*Math.PI*2/6;
+      const bx = hz.x + Math.cos(a)*hz.r*.72;
+      const by = hz.y + Math.sin(a)*hz.r*.72;
+      if(chance(.35)) G.particles.push({x:bx,y:by,vx:Math.cos(a+Math.PI/2)*90,vy:Math.sin(a+Math.PI/2)*90,t:.12,c:"rgba(226,232,240,.9)"});
+    }
+    for(const e of G.enemies){ if(e.hp>0 && dist(hz.x,hz.y,e.x,e.y)<hz.r+e.r) hitEnemy(e, hz.dmg*dt, {trueDamage:true, pColor:"rgba(226,232,240,.95)"}); }
     continue;
   }
 
@@ -4674,6 +4947,16 @@ function enemySkin(type){
       return {...base, kind:"demon", body:"#7dd3fc", armor:"#0f172a", horn:"#e0f2fe", glow:"rgba(186,230,253,.95)"};
     case "knight":
       return {...base, kind:"juggernaut", body:"#334155", armor:"#020617", horn:"#cbd5e1", glow:"rgba(226,232,240,.7)"};
+    case "wraith":
+      return {...base, kind:"demon", body:"#581c87", armor:"#0f172a", horn:"#ddd6fe", glow:"rgba(216,180,254,.95)"};
+    case "alchemist":
+      return {...base, kind:"necro_book", cloak:"#14532d", book:"#84cc16", glow:"rgba(132,204,22,.95)"};
+    case "totem":
+      return {...base, kind:"necro_staff", cloak:"#422006", glow:"rgba(251,191,36,.95)", metal:"#facc15"};
+    case "warlock":
+      return {...base, kind:"necro_staff", cloak:"#4c0519", glow:"rgba(244,114,182,.95)", metal:"#f9a8d4"};
+    case "razorbat":
+      return {...base, kind:"imp", body:"#0f766e", armor:"#042f2e", glow:"rgba(45,212,191,.95)", eye:"#ccfbf1"};
     case "boss_warlord":
       return {...base, kind:"demon_lord", body:"#991b1b", armor:"#111827", horn:"#fde68a", accent:"#f59e0b", glow:"rgba(239,68,68,.95)"};
     case "boss_golem":
@@ -5495,6 +5778,28 @@ function draw(){
       ctx.arc(hz.x+sx, hz.y+sy, rr*0.45*(0.85+Math.sin(G.t*7)*0.08), 0, Math.PI*2);
       ctx.strokeStyle = `rgba(56,189,248,${0.32*a})`;
       ctx.stroke();
+    } else if(hz.kind==="spellPoison" || hz.kind==="poisonCloud"){
+      ctx.fillStyle = `rgba(132,204,22,${0.10*a})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(132,204,22,${0.35*a})`;
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(hz.x+sx, hz.y+sy, rr*.55*(.9+Math.sin(G.t*5)*.06), 0, Math.PI*2); ctx.stroke();
+    } else if(hz.kind==="curseSigil"){
+      ctx.fillStyle = `rgba(244,114,182,${0.08*a})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(244,114,182,${0.42*a})`;
+      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(hz.x+sx-rr*.55,hz.y+sy); ctx.lineTo(hz.x+sx+rr*.55,hz.y+sy); ctx.moveTo(hz.x+sx,hz.y+sy-rr*.55); ctx.lineTo(hz.x+sx,hz.y+sy+rr*.55); ctx.stroke();
+    } else if(hz.kind==="gravityCrush"){
+      ctx.fillStyle = `rgba(167,139,250,${0.10*a})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(216,180,254,${0.50*a})`;
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(hz.x+sx, hz.y+sy, rr*.38*(1.1-a*.2), 0, Math.PI*2); ctx.stroke();
+    } else if(hz.kind==="bladeStorm"){
+      ctx.strokeStyle = `rgba(226,232,240,${0.42*a})`;
+      ctx.stroke();
+      for(let i=0;i<6;i++){ const ba=G.t*7+i*Math.PI*2/6; const bx=hz.x+sx+Math.cos(ba)*rr*.72; const by=hz.y+sy+Math.sin(ba)*rr*.72; ctx.save(); ctx.translate(bx,by); ctx.rotate(ba+Math.PI/2); ctx.fillStyle=`rgba(226,232,240,${0.72*a})`; ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(-8,-3); ctx.lineTo(-4,0); ctx.lineTo(-8,3); ctx.closePath(); ctx.fill(); ctx.restore(); }
     } else {
       ctx.fillStyle = `rgba(251,113,133,${0.10*a})`;
       ctx.fill();
