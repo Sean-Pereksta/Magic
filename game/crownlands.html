@@ -417,7 +417,7 @@ const IDLE_AGGRO_RANGE = 5;
 const ATTACK_MOVE_AGGRO_RANGE = 8;
 const ATTACK_MOVE_LEASH_RADIUS = 12;
 const IDLE_AGGRO_LEASH_RADIUS = 6;
-const MANUAL_MOVE_AGGRO_SUPPRESS_MS = 3500;
+const MANUAL_MOVE_AGGRO_SUPPRESS_MS = 15000;
 const POST_MOVE_AGGRO_GRACE_MS = 1200;
 const TARGET_RECHECK_MS = 500;
 const ATTACK_AREA_SEARCH_RANGE = 14;
@@ -442,7 +442,7 @@ function deterministicWorldChunk(a,b,seed){return {cx:worldSettings.minChunkX+Ma
 function isFrontierChunk(cx,cy,ring=EXPANSION_RING_CHUNKS){return cx<worldSettings.minChunkX+ring||cy<worldSettings.minChunkY+ring||cx>worldSettings.maxChunkX-ring||cy>worldSettings.maxChunkY-ring}
 function clampCamera(){const size=32*camera.zoom,minX=worldMinTileX()*size,minY=worldMinTileY()*size,maxX=(worldMaxTileX()+1)*size-canvas.width,maxY=(worldMaxTileY()+1)*size-canvas.height;camera.x=clamp(camera.x,Math.min(minX,maxX),Math.max(minX,maxX));camera.y=clamp(camera.y,Math.min(minY,maxY),Math.max(minY,maxY));}
 let account={}, territories=new Map(), troops=new Map(), buildings=new Map(), battles=new Map(), landmarks=new Map(), onlineRaids=new Map(), playerAccounts=new Map(), alliances=new Map();
-const VIEW_CHUNK_PADDING=1, PRELOAD_CHUNK_PADDING=2, MAX_LIVE_CHUNK_SUBSCRIPTIONS=25, MAX_ACTIVE_CHUNK_SUBSCRIPTIONS=MAX_LIVE_CHUNK_SUBSCRIPTIONS, MAX_WARM_CHUNK_CACHE=100, MAX_DRAW_CHUNKS_ZOOMED_OUT=80, MAX_TILE_DRAW_CHUNKS=36, MAX_PATHFIND_JOBS_PER_FRAME=4, MAX_AI_UNITS_PER_FRAME=150, MAX_BARBARIAN_TARGET_CHECKS_PER_TICK=260, MAX_FIRESTORE_WRITES_PER_FLUSH=60, CHUNK_SUBSCRIBE_DEBOUNCE_MS=220, CHUNK_CACHE_TTL_MS=5*60*1000;
+const VIEW_CHUNK_PADDING=1, PRELOAD_CHUNK_PADDING=2, PLAYER_SIGHT_RADIUS_CHUNKS=2, MAX_LIVE_CHUNK_SUBSCRIPTIONS=160, MAX_ACTIVE_CHUNK_SUBSCRIPTIONS=MAX_LIVE_CHUNK_SUBSCRIPTIONS, MAX_WARM_CHUNK_CACHE=320, MAX_DRAW_CHUNKS_ZOOMED_OUT=80, MAX_TILE_DRAW_CHUNKS=36, MAX_PATHFIND_JOBS_PER_FRAME=4, MAX_AI_UNITS_PER_FRAME=150, MAX_BARBARIAN_TARGET_CHECKS_PER_TICK=260, MAX_FIRESTORE_WRITES_PER_FLUSH=60, CHUNK_SUBSCRIBE_DEBOUNCE_MS=220, CHUNK_CACHE_TTL_MS=5*60*1000;
 const MIN_PLAYABLE_ZOOM = 0.45, DETAIL_RENDER_ZOOM = 0.55, STRATEGIC_RENDER_ZOOM = 0.52, DETAIL_TIER_ZOOM = 0.85, MAX_DRAW_CHUNKS = MAX_TILE_DRAW_CHUNKS;
 const chunkDataCache=new Map();
 let lastStreamedChunkSignature='', chunkStreamTimer=null, cameraStreamDirty=true, lastCameraChunkKey='', lastZoomTier='', presenceInterval=null, runtimeTimeouts=new Set(), lastPerfOverBudgetFrames=0, stabilityMode=false;
@@ -597,7 +597,7 @@ function ownedTroops(playerId){return [...(troopsByOwner.get(playerId)||[])].map
 function ownedBuildings(playerId){return [...(buildingsByOwner.get(playerId)||[])].map(id=>buildings.get(id)).filter(Boolean)}
 function rebuildChunkIndexes(){troopsByChunk.clear();buildingsByChunk.clear();roadsByChunk.clear();landmarksByChunk.clear();battlesByChunk.clear();warningsByChunk.clear();buildingsByOwner.clear();troopsByOwner.clear();troopTileIndex.clear();buildingTileIndex.clear();for(const u of troops.values()){u.chunkKey=entityChunkKey(u);indexAdd(troopsByChunk,u.chunkKey,u.id);ownerIndexAdd(troopsByOwner,u);tileIndexAdd(troopTileIndex,u)}for(const b of buildings.values()){b.chunkKey=entityChunkKey(b);indexAdd(b.type==='road'?roadsByChunk:buildingsByChunk,b.chunkKey,b.id);ownerIndexAdd(buildingsByOwner,b);if(b.type!=='road')tileIndexAdd(buildingTileIndex,b)}for(const l of landmarks.values())indexAdd(landmarksByChunk,l.chunkKey||entityChunkKey(l),l.id);for(const b of battles.values())indexAdd(battlesByChunk,b.chunkKey,b.id);for(const [k,until] of barbarianWarningMarkers)if(until>now())indexAdd(warningsByChunk,k,k)}
 function reindexEntity(index,entity,newKey){const old=entity.chunkKey;if(old!==newKey){if(old&&index.has(old))index.get(old).delete(entity.id);entity.chunkKey=newKey;indexAdd(index,newKey,entity.id);return true;}if(newKey&&!index.get(newKey)?.has(entity.id))indexAdd(index,newKey,entity.id);return false}
-function reindexTroop(u){ownerIndexAdd(troopsByOwner,u);tileIndexDelete(troopTileIndex,u);tileIndexAdd(troopTileIndex,u);return reindexEntity(troopsByChunk,u,entityChunkKey(u))}
+function reindexTroop(u){ownerIndexAdd(troopsByOwner,u);tileIndexDelete(troopTileIndex,u);tileIndexAdd(troopTileIndex,u);const changed=reindexEntity(troopsByChunk,u,entityChunkKey(u));if(changed){markVisibleChunksDirty();cameraStreamDirty=true;}return changed}
 function reindexBuilding(b){ownerIndexAdd(buildingsByOwner,b);tileIndexDelete(buildingTileIndex,b);if(b.type!=='road')tileIndexAdd(buildingTileIndex,b);return reindexEntity(b.type==='road'?roadsByChunk:buildingsByChunk,b,entityChunkKey(b))}
 
 
@@ -611,8 +611,51 @@ function createChunkCacheEntry(key){const {cx,cy}=parseChunkKey(key);return {key
 function getChunkCacheEntry(key){let entry=chunkDataCache.get(key);if(!entry){entry=createChunkCacheEntry(key);chunkDataCache.set(key,entry);}entry.lastTouched=now();return entry;}
 function clearChunkCacheEntryFromGlobal(entry){if(entry.territory)territories.delete(entry.key);for(const id of entry.troops.keys()){const u=troops.get(id);if(u?.ownerId!==playerKey&&!isBarbarianUnit(u))deleteTroopIndexed(id);}for(const id of entry.buildings.keys()){const b=buildings.get(id);if(b?.ownerId!==playerKey&&!isBarbarianCamp(b))deleteBuildingIndexed(id);}for(const id of entry.roads.keys()){const b=buildings.get(id);if(b?.ownerId!==playerKey)deleteBuildingIndexed(id);}for(const id of entry.landmarks.keys()){const old=landmarks.get(id);if(old)indexDelete(landmarksByChunk,old.chunkKey||entityChunkKey(old),id);landmarks.delete(id);}for(const id of entry.battles.keys()){const old=battles.get(id);if(old)indexDelete(battlesByChunk,old.chunkKey,id);battles.delete(id);}clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty('chunk evicted');}
 function stopChunkSubscription(entry,{evict=false}={}){for(const unsub of entry.unsubscribers.splice(0)){try{unsub();}catch(e){console.warn('chunk unsubscribe failed',entry.key,e);}}entry.loading=false;if(evict){clearChunkCacheEntryFromGlobal(entry);chunkDataCache.delete(entry.key);}}
-function applyChunkCollectionSnapshot(entry,kind,s){entry.lastTouched=now();const target=entry[kind];for(const change of s.docChanges()){const id=change.doc.id;if(change.type==='removed'){target.delete(id);if(kind==='troops'){const old=troops.get(id);if(old?.ownerId!==playerKey)deleteTroopIndexed(id);}else if(kind==='buildings'||kind==='roads')deleteBuildingIndexed(id);else if(kind==='landmarks'){const old=landmarks.get(id);if(old)indexDelete(landmarksByChunk,old.chunkKey||entityChunkKey(old),id);landmarks.delete(id);}else if(kind==='battles'){const old=battles.get(id);if(old)indexDelete(battlesByChunk,old.chunkKey,id);battles.delete(id);}continue;}const value={id,...change.doc.data()};target.set(id,value);if(kind==='troops')setTroopIndexed(id,normalizeTroop(value));else if(kind==='buildings'||kind==='roads'){if(!value.level)value.level=1;setBuildingIndexed(id,value);}else if(kind==='landmarks'){const old=landmarks.get(id);if(old)indexDelete(landmarksByChunk,old.chunkKey||entityChunkKey(old),id);landmarks.set(id,value);indexAdd(landmarksByChunk,value.chunkKey||entityChunkKey(value),id);}else if(kind==='battles'){const old=battles.get(id);if(old)indexDelete(battlesByChunk,old.chunkKey,id);battles.set(id,value);indexAdd(battlesByChunk,value.chunkKey,id);}}
-clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty(kind+' chunk snapshot');}
+function applyChunkCollectionSnapshot(entry,kind,s){
+  entry.lastTouched=now();
+  const target=entry[kind];
+  for(const change of s.docChanges()){
+    const id=change.doc.id;
+    if(change.type==='removed'){
+      target.delete(id);
+      if(kind==='troops'){
+        const snapshotValue=change.doc.exists()?normalizeTroop({id,...change.doc.data()}):null;
+        const snapshotKey=snapshotValue?entityChunkKey(snapshotValue):null;
+        // Query listeners emit "removed" both when a unit is deleted and when its chunkKey changes.
+        // If a barbarian simply crossed into a neighboring chunk that is not subscribed yet, preserve
+        // that unit locally at its new chunk instead of making it blink out of existence.
+        if(snapshotValue&&snapshotKey&&snapshotKey!==entry.key){
+          setTroopIndexed(id,snapshotValue);
+          if(isBarbarianUnit(snapshotValue)||snapshotValue.ownerId===playerKey||isAllied(playerKey,snapshotValue.ownerId)){
+            getChunkCacheEntry(snapshotKey).lastTouched=now();
+            cameraStreamDirty=true;
+            markVisibleChunksDirty();
+          }
+          continue;
+        }
+        const old=troops.get(id);
+        if(old?.ownerId!==playerKey)deleteTroopIndexed(id);
+      }else if(kind==='buildings'||kind==='roads')deleteBuildingIndexed(id);
+      else if(kind==='landmarks'){
+        const old=landmarks.get(id);if(old)indexDelete(landmarksByChunk,old.chunkKey||entityChunkKey(old),id);landmarks.delete(id);
+      }else if(kind==='battles'){
+        const old=battles.get(id);if(old)indexDelete(battlesByChunk,old.chunkKey,id);battles.delete(id);
+      }
+      continue;
+    }
+    const value={id,...change.doc.data()};
+    target.set(id,value);
+    if(kind==='troops')setTroopIndexed(id,normalizeTroop(value));
+    else if(kind==='buildings'||kind==='roads'){
+      if(!value.level)value.level=1;setBuildingIndexed(id,value);
+    }else if(kind==='landmarks'){
+      const old=landmarks.get(id);if(old)indexDelete(landmarksByChunk,old.chunkKey||entityChunkKey(old),id);landmarks.set(id,value);indexAdd(landmarksByChunk,value.chunkKey||entityChunkKey(value),id);
+    }else if(kind==='battles'){
+      const old=battles.get(id);if(old)indexDelete(battlesByChunk,old.chunkKey,id);battles.set(id,value);indexAdd(battlesByChunk,value.chunkKey,id);
+    }
+  }
+  clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty(kind+' chunk snapshot');
+}
 function subscribeChunk(entry){
   if(entry.loading||entry.unsubscribers.length)return;
   entry.loading=true;entry.lastTouched=now();
@@ -635,7 +678,56 @@ function subscribeChunk(entry){
   entry.unsubscribers.push(onSnapshot(query(col('battles'),where('chunkKey','==',entry.key)),s=>applyChunkCollectionSnapshot(entry,'battles',s)));
 }
 function chunkKeysForViewport(padding=0){const size=32*camera.zoom,startX=Math.floor(camera.x/size),startY=Math.floor(camera.y/size),endX=Math.ceil((camera.x+canvas.width)/size),endY=Math.ceil((camera.y+canvas.height)/size),keys=[];for(let cy=Math.floor(startY/CHUNK_SIZE)-padding;cy<=Math.floor(endY/CHUNK_SIZE)+padding;cy++)for(let cx=Math.floor(startX/CHUNK_SIZE)-padding;cx<=Math.floor(endX/CHUNK_SIZE)+padding;cx++)if(isChunkInWorld(cx,cy))keys.push(chunkKey(cx,cy));return keys;}
-function scheduleChunkStreaming(){if(!playerKey)return;cameraStreamDirty=false;const center=cameraChunk(),tier=zoomTier(),radius=tier==='detail'?2:tier==='normal'?1:1;const wanted=[];for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){const cx=center.cx+dx,cy=center.cy+dy;if(isChunkInWorld(cx,cy))wanted.push(chunkKey(cx,cy));}for(const id of selected){const u=troops.get(id);if(u){const c=getChunkOfTile(u.x,u.y);if(isChunkInWorld(c.cx,c.cy))wanted.push(c.key);}}for(const u of troops.values())if(u.ownerId===playerKey&&hasActiveCommand(u)){const c=getChunkOfTile(u.x,u.y);wanted.push(c.key);const tx=u.commandTargetX??u.moveGoal?.x,ty=u.commandTargetY??u.moveGoal?.y;if(Number.isFinite(tx)&&Number.isFinite(ty))wanted.push(getChunkOfTile(tx,ty).key);}if(account.home){const c=getChunkOfTile(account.home.x,account.home.y);wanted.push(c.key);}const ranked=[...new Set(wanted)].sort((a,b)=>{const ac=parseChunkKey(a),bc=parseChunkKey(b);return Math.max(Math.abs(ac.cx-center.cx),Math.abs(ac.cy-center.cy))-Math.max(Math.abs(bc.cx-center.cx),Math.abs(bc.cy-center.cy));}).slice(0,MAX_LIVE_CHUNK_SUBSCRIPTIONS);const signature=ranked.join('|');if(signature===lastStreamedChunkSignature)return;lastStreamedChunkSignature=signature;if(chunkStreamTimer)clearTimeout(chunkStreamTimer);chunkStreamTimer=setTimeout(()=>updateChunkSubscriptionsForCamera(ranked),CHUNK_SUBSCRIBE_DEBOUNCE_MS);}
+function scheduleChunkStreaming(){
+  if(!playerKey)return;
+  cameraStreamDirty=false;
+  const center=cameraChunk(),tier=zoomTier(),radius=tier==='detail'?2:tier==='normal'?1:1;
+  const wanted=new Map();
+  const addKey=(key,priority=0)=>{if(!key)return;const c=parseChunkKey(key);if(!isChunkInWorld(c.cx,c.cy))return;wanted.set(key,Math.max(wanted.get(key)||0,priority));};
+  const addChunkRadius=(cc,r=1,priority=0)=>{if(!cc)return;for(const k of chunkKeysAround(cc,r)){const pc=parseChunkKey(k);addKey(k,priority-(Math.max(Math.abs(pc.cx-cc.cx),Math.abs(pc.cy-cc.cy))*.1));}};
+  const pushAround=(tile,r=1,priority=0)=>{if(!tile)return;addChunkRadius(getChunkOfTile(tile.x,tile.y),r,priority);};
+
+  // Camera chunks are display-critical, but never allowed to evict troop/combat/sight chunks.
+  for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){const cx=center.cx+dx,cy=center.cy+dy;if(isChunkInWorld(cx,cy))addKey(chunkKey(cx,cy),40-Math.max(Math.abs(dx),Math.abs(dy)));}
+  if(hoveredTile)pushAround(hoveredTile,1,118);
+
+  const sharedVision=allianceSettingFor(playerKey,'sharedVision',true);
+  const canUseAnchor=ownerId=>ownerId===playerKey||(sharedVision&&isAllied(playerKey,ownerId));
+
+  // Stream the same 2-chunk sight bubble that the renderer uses. This is what prevents
+  // barbarians from blinking when they step from one visible frontier chunk into the next.
+  for(const t of territories.values())if(canUseAnchor(t.ownerId))addChunkRadius({cx:t.cx,cy:t.cy},PLAYER_SIGHT_RADIUS_CHUNKS,76);
+  for(const b of buildings.values())if(b&&b.hp>0&&isBuildingComplete(b)&&canUseAnchor(b.ownerId))pushAround(b,PLAYER_SIGHT_RADIUS_CHUNKS,82);
+
+  // Simulation-critical chunks: every chunk containing one of your living troops, selected units,
+  // their command destination, and nearby tiles. This keeps combat/pathing alive outside the base.
+  for(const id of selected){const e=troops.get(id)||buildings.get(id);if(e)pushAround(e,2,130);}
+  for(const u of troops.values())if(u.ownerId===playerKey&&u.hp>0){
+    pushAround(u,PLAYER_SIGHT_RADIUS_CHUNKS,145);
+    if(hasActiveCommand(u)||selected.has(u.id)){addCommandBubbleForUnit(u);pushAround(u,3,150);}
+    if(u.targetId){const t=targetForId(u.targetId);if(t)pushAround(t,2,142);}
+    const tx=u.commandTargetX??u.moveGoal?.x,ty=u.commandTargetY??u.moveGoal?.y;
+    if(Number.isFinite(tx)&&Number.isFinite(ty))pushAround({x:tx,y:ty},2,138);
+  }
+
+  // Active hostile pressure near your frontier must stay subscribed even if the camera is elsewhere.
+  for(const u of troops.values())if(isBarbarianUnit(u)&&u.hp>0){
+    const key=entityChunkKey(u),nearFriendly=[...troops.values()].some(f=>f.ownerId===playerKey&&f.hp>0&&dist(f,u)<=BARBARIAN_AGGRO_RANGE+CHUNK_SIZE);
+    if(nearFriendly||shouldRevealEntityToPlayer(u,playerKey)||u.targetId||u.order==='attack'||u.order==='attackMove'||u.raidUntil||isChunkNearPlayerBorder(key,playerKey,PLAYER_SIGHT_RADIUS_CHUNKS)||territories.get(key)?.barbarianPressure){
+      pushAround(u,2,136);
+      if(u.targetId){const t=targetForId(u.targetId);if(t)pushAround(t,2,138);}
+    }
+  }
+
+  if(account.home)pushAround(account.home,2,90);
+
+  const ranked=[...wanted.entries()].sort((a,b)=>b[1]-a[1]||(()=>{const ac=parseChunkKey(a[0]),bc=parseChunkKey(b[0]);return Math.max(Math.abs(ac.cx-center.cx),Math.abs(ac.cy-center.cy))-Math.max(Math.abs(bc.cx-center.cx),Math.abs(bc.cy-center.cy));})()).slice(0,MAX_LIVE_CHUNK_SUBSCRIPTIONS).map(([key])=>key);
+  const signature=ranked.join('|');
+  if(signature===lastStreamedChunkSignature)return;
+  lastStreamedChunkSignature=signature;
+  if(chunkStreamTimer)clearTimeout(chunkStreamTimer);
+  chunkStreamTimer=setTimeout(()=>updateChunkSubscriptionsForCamera(ranked),CHUNK_SUBSCRIBE_DEBOUNCE_MS);
+}
 function updateChunkSubscriptionsForCamera(wantedKeys){updateChunkSubscriptions(wantedKeys);}
 function updateChunkSubscriptions(wantedKeys){const wanted=new Set(wantedKeys),n=now();for(const key of wanted)subscribeChunk(getChunkCacheEntry(key));for(const [key,entry] of chunkDataCache){if(wanted.has(key))continue;if(entry.unsubscribers.length)stopChunkSubscription(entry);if(n-entry.lastTouched>CHUNK_CACHE_TTL_MS)stopChunkSubscription(entry,{evict:true});}const inactive=[...chunkDataCache.values()].filter(e=>!e.unsubscribers.length).sort((a,b)=>a.lastTouched-b.lastTouched);while(chunkDataCache.size>MAX_WARM_CHUNK_CACHE&&inactive.length)stopChunkSubscription(inactive.shift(),{evict:true});}
 function cameraChunk(){return getChunkOfTile(Math.floor((camera.x+canvas.width/2)/(32*camera.zoom)),Math.floor((camera.y+canvas.height/2)/(32*camera.zoom)))}
@@ -643,16 +735,79 @@ function chunkKeysAround(center,radius){const out=new Set();for(let cy=center.cy
 function activeChunkKeys(){return activeChunks}function warmChunkKeys(){return warmChunks}function visibleChunkKeys(){return visibleDrawChunks}
 function hasActiveCommand(u){return !!u&&u.hp>0&&['move','attackMove','attack','wander','guardCamp'].includes(u.order)&&!u.commandComplete;}
 function addCommandBubbleForUnit(u){const cc=getChunkOfTile(u.x,u.y);for(const k of chunkKeysAround(cc,ACTIVE_CHUNK_RADIUS))activeChunks.add(k);for(const k of chunkKeysAround(cc,WARM_CHUNK_RADIUS))warmChunks.add(k);const tx=u.commandTargetX??u.moveGoal?.x,ty=u.commandTargetY??u.moveGoal?.y;if(Number.isFinite(tx)&&Number.isFinite(ty)){const tc=getChunkOfTile(tx,ty);for(const k of chunkKeysAround(tc,1))warmChunks.add(k);activeChunks.add(tc.key);}}
-function updateSimulationChunkSets(){const c=cameraChunk();activeChunks=chunkKeysAround(c,ACTIVE_CHUNK_RADIUS);warmChunks=chunkKeysAround(c,WARM_CHUNK_RADIUS);for(const u of troops.values())if(u.ownerId===playerKey&&hasActiveCommand(u))addCommandBubbleForUnit(u);for(const u of troops.values())if(isBarbarianUnit(u)&&hasActiveCommand(u)&&(u.raidUntil||u.targetId||u.aiState==='raid'||u.aiState==='attack'||isChunkNearPlayerBorder(entityChunkKey(u),playerKey,2)))addCommandBubbleForUnit(u);for(const id of selected){const e=troops.get(id)||buildings.get(id);if(e){const cc=getChunkOfTile(e.x,e.y);for(const k of chunkKeysAround(cc,ACTIVE_CHUNK_RADIUS))activeChunks.add(k);for(const k of chunkKeysAround(cc,WARM_CHUNK_RADIUS))warmChunks.add(k);}}if(account.home){const hc=getChunkOfTile(account.home.x,account.home.y);for(const k of chunkKeysAround(hc,ACTIVE_CHUNK_RADIUS))activeChunks.add(k);for(const k of chunkKeysAround(hc,WARM_CHUNK_RADIUS))warmChunks.add(k);}for(const u of indexedTroops(warmChunks)){if(!isBarbarianUnit(u)||u.hp<=0)continue;const key=entityChunkKey(u),t=territories.get(key);if(t?.barbarianPressure||isChunkNearPlayerBorder(key,playerKey,2)){for(const k of chunkKeysAround(parseChunkKey(key),2)){activeChunks.add(k);warmChunks.add(k);}}}}
+function updateSimulationChunkSets(){
+  const c=cameraChunk();
+  activeChunks=chunkKeysAround(c,ACTIVE_CHUNK_RADIUS);
+  warmChunks=chunkKeysAround(c,WARM_CHUNK_RADIUS);
+  const addAroundChunk=(cc,activeRadius=1,warmRadius=2)=>{for(const k of chunkKeysAround(cc,activeRadius))activeChunks.add(k);for(const k of chunkKeysAround(cc,warmRadius))warmChunks.add(k);};
+  if(hoveredTile)addAroundChunk(getChunkOfTile(hoveredTile.x,hoveredTile.y),1,2);
+
+  // Your troops are authoritative simulation anchors. Combat, aggro, capture pressure, and movement
+  // must continue wherever your people are, regardless of base borders or visible grid state.
+  for(const u of troops.values())if(u.ownerId===playerKey&&u.hp>0){
+    const cc=getChunkOfTile(u.x,u.y);
+    addAroundChunk(cc,2,3);
+    if(hasActiveCommand(u))addCommandBubbleForUnit(u);
+    const tx=u.commandTargetX??u.moveGoal?.x,ty=u.commandTargetY??u.moveGoal?.y;
+    if(Number.isFinite(tx)&&Number.isFinite(ty))addAroundChunk(getChunkOfTile(tx,ty),1,2);
+  }
+
+  // Loaded hostiles near troop-anchored chunks stay active so both sides keep fighting.
+  for(const u of troops.values())if(isBarbarianUnit(u)&&u.hp>0){
+    const key=entityChunkKey(u),nearFriendly=[...troops.values()].some(f=>f.ownerId===playerKey&&f.hp>0&&dist(f,u)<=BARBARIAN_AGGRO_RANGE+3),nearPlayer=activeChunks.has(key)||nearFriendly||isChunkNearPlayerBorder(key,playerKey,3)||territories.get(key)?.barbarianPressure;
+    if(nearPlayer||hasActiveCommand(u)||u.targetId||u.raidUntil){
+      addAroundChunk(parseChunkKey(key),2,3);
+      if(u.targetId){const t=targetForId(u.targetId);if(t)addAroundChunk(getChunkOfTile(t.x,t.y),1,2);}
+    }
+  }
+
+  for(const id of selected){const e=troops.get(id)||buildings.get(id);if(e)addAroundChunk(getChunkOfTile(e.x,e.y),ACTIVE_CHUNK_RADIUS,WARM_CHUNK_RADIUS);}
+  if(account.home)addAroundChunk(getChunkOfTile(account.home.x,account.home.y),ACTIVE_CHUNK_RADIUS,WARM_CHUNK_RADIUS);
+}
 function chunkSetValues(index,keys,source){const out=[];for(const k of keys){const set=index.get(k);if(!set)continue;for(const id of set){const v=source.get(id);if(v)out.push(v);}}return out}
 function indexedTroops(keys){return chunkSetValues(troopsByChunk,keys,troops)}function indexedBuildings(keys,{roads=false}={}){return chunkSetValues(roads?roadsByChunk:buildingsByChunk,keys,buildings)}function indexedLandmarks(keys){return chunkSetValues(landmarksByChunk,keys,landmarks)}function indexedBattles(keys){return chunkSetValues(battlesByChunk,keys,battles)}
+function uniqueEntities(list){const seen=new Set(),out=[];for(const e of list){if(!e||seen.has(e.id))continue;seen.add(e.id);out.push(e);}return out;}
+function isOperationalFriendlyTroop(u){return !!u&&u.ownerId===playerKey&&u.hp>0&&!isBarbarianUnit(u);}
+function shouldKeepBarbarianOperational(u){if(!u||!isBarbarianUnit(u)||u.hp<=0)return false;const key=entityChunkKey(u);if(activeChunks.has(key)||warmChunks.has(key)||u.targetId||u.order==='attack'||u.order==='attackMove'||u.raidUntil||territories.get(key)?.barbarianPressure||isChunkNearPlayerBorder(key,playerKey,3))return true;for(const f of troops.values())if(isOperationalFriendlyTroop(f)&&dist(f,u)<=BARBARIAN_AGGRO_RANGE+CHUNK_SIZE)return true;return false;}
+function operationalTroopsForSimulation(){return uniqueEntities([...indexedTroops(warmChunks),...troops.values()].filter(u=>isOperationalFriendlyTroop(u)||shouldKeepBarbarianOperational(u)||selected.has(u.id)||hasActiveCommand(u)));}
 function getNearbyTroops(chunkKeyValue,radiusChunks=1){return indexedTroops(chunkKeysAround(parseChunkKey(chunkKeyValue),radiusChunks))}
 function getNearbyBuildings(chunkKeyValue,radiusChunks=1){return [...indexedBuildings(chunkKeysAround(parseChunkKey(chunkKeyValue),radiusChunks)),...indexedBuildings(chunkKeysAround(parseChunkKey(chunkKeyValue),radiusChunks),{roads:true})]}
 function isChunkNearPlayerBorder(chunkKeyValue,playerId,radiusChunks=2){const c=parseChunkKey(chunkKeyValue);for(let dy=-radiusChunks;dy<=radiusChunks;dy++)for(let dx=-radiusChunks;dx<=radiusChunks;dx++){const key=chunkKey(c.cx+dx,c.cy+dy),t=territories.get(key);if(t?.ownerId===playerId)return true;}return false}
 function getNearestHostileTarget(unit,radiusChunks=1){let best=null,bestScore=Infinity,checked=0;const key=entityChunkKey(unit);for(const e of [...getNearbyTroops(key,radiusChunks),...getNearbyBuildings(key,radiusChunks)]){if(++checked>MAX_BARBARIAN_TARGET_CHECKS_PER_TICK)break;if(e.id===unit.id||e.hp<=0||!targetIsLegal(unit,e))continue;const d=dist(unit,e),score=d+(troops.has(e.id)?-0.35:0);if(score<bestScore){best=e;bestScore=score;}}perfStats.barbarianTargetChecks+=checked;return best}
-function getNearestPlayerAssetForBarbarian(unit,radiusChunks=1){let best=null,bestScore=Infinity,checked=0;const isPlayerOwned=e=>e?.ownerId===playerKey,key=entityChunkKey(unit),troopFirst=getNearbyTroops(key,radiusChunks).filter(e=>e.hp>0&&!isBarbarianUnit(e)&&isPlayerOwned(e)),structs=getNearbyBuildings(key,radiusChunks).filter(e=>e.hp>0&&!isBarbarianCamp(e)&&isPlayerOwned(e));for(const e of [...troopFirst,...structs]){if(++checked>MAX_BARBARIAN_TARGET_CHECKS_PER_TICK)break;const d=dist(unit,e),isRoad=e.type==='road',score=d+(troops.has(e.id)?-0.5:isRoad?1.5:0);if(score<bestScore&&targetIsLegal(unit,e)){best=e;bestScore=score;}}perfStats.barbarianTargetChecks+=checked;return best}
+function getNearestPlayerAssetForBarbarian(unit,radiusChunks=1,targetPlayerId=null){
+  let best=null,bestScore=Infinity,checked=0;
+  const playerId=targetPlayerId||unit?.intendedPlayerKey||unit?.targetPlayerId||playerKey;
+  const key=entityChunkKey(unit),keys=chunkKeysAround(parseChunkKey(key),radiusChunks);
+  const keySet=new Set(keys);
+  const troopFirst=uniqueEntities([...indexedTroops(keys),...troops.values()]).filter(e=>e.hp>0&&!isBarbarianUnit(e)&&e.ownerId===playerId&&keySet.has(entityChunkKey(e)));
+  const structs=uniqueEntities([...indexedBuildings(keys),...indexedBuildings(keys,{roads:true}),...buildings.values()]).filter(e=>e.hp>0&&!isBarbarianCamp(e)&&e.ownerId===playerId&&keySet.has(entityChunkKey(e)));
+  for(const e of [...troopFirst,...structs]){
+    if(++checked>MAX_BARBARIAN_TARGET_CHECKS_PER_TICK)break;
+    const d=dist(unit,e),isRoad=e.type==='road',score=d+(troops.has(e.id)?-0.75:isRoad?1.5:0);
+    if(score<bestScore&&targetIsLegal(unit,e)){best=e;bestScore=score;}
+  }
+  perfStats.barbarianTargetChecks+=checked;
+  return best;
+}
 function zoomTier(){return camera.zoom<STRATEGIC_RENDER_ZOOM?'strategic':camera.zoom<DETAIL_TIER_ZOOM?'normal':'detail'}
-function computeVisibleDrawChunks(startX,startY,endX,endY,{strategic=false}={}){const all=[],scx=Math.floor(startX/CHUNK_SIZE),ecx=Math.floor(endX/CHUNK_SIZE),scy=Math.floor(startY/CHUNK_SIZE),ecy=Math.floor(endY/CHUNK_SIZE),center=cameraChunk();for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++)if(isChunkInWorld(cx,cy)){const d=Math.max(Math.abs(cx-center.cx),Math.abs(cy-center.cy));all.push({key:chunkKey(cx,cy),cx,cy,d});}all.sort((a,b)=>a.d-b.d);const cap=strategic?MAX_DRAW_CHUNKS_ZOOMED_OUT:MAX_TILE_DRAW_CHUNKS,limited=all.slice(0,cap),keys=new Set(limited.map(c=>c.key));visibleDrawChunks=keys;const xs=limited.map(c=>c.cx),ys=limited.map(c=>c.cy);return {keys,scx:xs.length?Math.min(...xs):scx,ecx:xs.length?Math.max(...xs):ecx,scy:ys.length?Math.min(...ys):scy,ecy:ys.length?Math.max(...ys):ecy}}
+function computeVisibleDrawChunks(startX,startY,endX,endY,{strategic=false}={}){
+  const all=[],scx=Math.floor(startX/CHUNK_SIZE),ecx=Math.floor(endX/CHUNK_SIZE),scy=Math.floor(startY/CHUNK_SIZE),ecy=Math.floor(endY/CHUNK_SIZE),center=cameraChunk();
+  for(let cy=scy;cy<=ecy;cy++)for(let cx=scx;cx<=ecx;cx++)if(isChunkInWorld(cx,cy)){
+    const d=Math.max(Math.abs(cx-center.cx),Math.abs(cy-center.cy));all.push({key:chunkKey(cx,cy),cx,cy,d});
+  }
+  all.sort((a,b)=>a.d-b.d);
+  const cap=strategic?MAX_DRAW_CHUNKS_ZOOMED_OUT:MAX_TILE_DRAW_CHUNKS,limited=all.slice(0,cap),keys=new Set(limited.map(c=>c.key));
+  const forceKey=(key)=>{if(!key)return;const c=parseChunkKey(key);if(c.cx>=scx&&c.cx<=ecx&&c.cy>=scy&&c.cy<=ecy&&isChunkInWorld(c.cx,c.cy))keys.add(key);};
+  const forceAroundEntity=(e,r=0)=>{if(!e)return;const c=getChunkOfTile(e.x,e.y);for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++)forceKey(chunkKey(c.cx+dx,c.cy+dy));};
+  if(hoveredTile)forceKey(getChunkOfTile(hoveredTile.x,hoveredTile.y).key);
+  // Friendly troop chunks are never allowed to be dropped by the draw cap while on screen.
+  for(const u of troops.values())if(u.hp>0&&(u.ownerId===playerKey||isAllied(playerKey,u.ownerId)||selected.has(u.id)))forceAroundEntity(u,1);
+  // Hostiles inside the sight bubble are also forced so they do not flicker at chunk edges.
+  for(const e of [...troops.values(),...buildings.values()])if(entityIsHostileOrBarbarian(e,playerKey)&&shouldRevealEntityToPlayer(e,playerKey))forceAroundEntity(e,0);
+  visibleDrawChunks=keys;
+  const coords=[...keys].map(parseChunkKey),xs=coords.map(c=>c.cx),ys=coords.map(c=>c.cy);
+  return {keys,scx:xs.length?Math.min(...xs):scx,ecx:xs.length?Math.max(...xs):ecx,scy:ys.length?Math.min(...ys):scy,ecy:ys.length?Math.max(...ys):ecy};
+}
 function catchUpTroopTravel(u,n=now()){if(!u.travel)return;const tr=u.travel;if(n>=Number(tr.arriveAt||0)){u.x=tr.to.x;u.y=tr.to.y;u.travel=null;u.path=[];u.nextMoveAt=n;reindexTroop(u);scheduleSaveTroops([u]);return;}const p=clamp((n-Number(tr.startedAt||n))/(Number(tr.arriveAt||n)-Number(tr.startedAt||n)||1),0,1);u.x=Math.round(tr.from.x+(tr.to.x-tr.from.x)*p);u.y=Math.round(tr.from.y+(tr.to.y-tr.from.y)*p);reindexTroop(u)}
 function freezeFarTravel(u,n=now()){if(u.travel||!u.moveGoal||!['move','attackMove','wander'].includes(u.order))return;const def=UNIT[u.type];if(!def)return;const d=dist(u,u.moveGoal),duration=Math.max(1000,d*def.moveMs*(roadAt(u.x,u.y)?ROAD_SPEED_MULTIPLIER:1));u.travel={from:{x:u.x,y:u.y},to:{x:u.moveGoal.x,y:u.moveGoal.y},startedAt:n,arriveAt:n+duration};u.path=[];scheduleSaveTroops([u])}
 function isChunkActiveKey(k){return activeChunks.has(k)}function isChunkWarmKey(k){return warmChunks.has(k)}
@@ -754,26 +909,107 @@ function getSuppliedChunks(playerId){
   }
   return supplied;
 }
-function addChunkAndAdjacent(set,cx,cy){
-  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+function addChunksInRadius(set,cx,cy,radius=PLAYER_SIGHT_RADIUS_CHUNKS){
+  for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){
     const nx=cx+dx,ny=cy+dy;
     if(isChunkInWorld(nx,ny))set.add(chunkKey(nx,ny));
   }
 }
+function addChunkAndAdjacent(set,cx,cy){addChunksInRadius(set,cx,cy,1);}
 function getVisibleChunksForPlayer(playerId){
   const visible=new Set(),n=now();
   const sharedVision=allianceSettingFor(playerId,'sharedVision',true);
-  for(const t of territories.values())if(t.ownerId===playerId||(sharedVision&&isAllied(playerId,t.ownerId)))addChunkAndAdjacent(visible,t.cx,t.cy);
-  for(const u of troops.values())if(u.hp>0&&(u.ownerId===playerId||(sharedVision&&isAllied(playerId,u.ownerId)))){
-    const c=getChunkOfTile(u.x,u.y),radius=(u.type==='scout'&&hasTech('ancientMaps',playerId))?2:1;for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(isChunkInWorld(c.cx+dx,c.cy+dy))visible.add(chunkKey(c.cx+dx,c.cy+dy));
+  const canSeeOwner=ownerId=>ownerId===playerId||(sharedVision&&isAllied(playerId,ownerId));
+
+  // Sight rule: you keep visibility within 2 chunks of your land, structures, and troops.
+  // Anything beyond that can go dark, but units should never blink while still inside this sight bubble.
+  for(const t of territories.values())if(canSeeOwner(t.ownerId))addChunksInRadius(visible,t.cx,t.cy,PLAYER_SIGHT_RADIUS_CHUNKS);
+
+  for(const b of buildings.values())if(b&&b.hp>0&&isBuildingComplete(b)&&canSeeOwner(b.ownerId)){
+    const c=getChunkOfTile(b.x,b.y);
+    const watchRadius=b.type==='watchtower'?(BUILDING.watchtower.vision+(hasTech('ancientMaps',playerId)?1:0)):PLAYER_SIGHT_RADIUS_CHUNKS;
+    addChunksInRadius(visible,c.cx,c.cy,Math.max(PLAYER_SIGHT_RADIUS_CHUNKS,watchRadius));
   }
-  for(const b of buildings.values())if(isBuildingComplete(b)&&b.type==='watchtower'&&(b.ownerId===playerId||(sharedVision&&isAllied(playerId,b.ownerId)))){const c=getChunkOfTile(b.x,b.y),radius=BUILDING.watchtower.vision+(hasTech('ancientMaps',playerId)?1:0);for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++)if(isChunkInWorld(c.cx+dx,c.cy+dy))visible.add(chunkKey(c.cx+dx,c.cy+dy));}
+
+  for(const u of troops.values())if(u.hp>0&&canSeeOwner(u.ownerId)){
+    const c=getChunkOfTile(u.x,u.y);
+    // Troops are mobile sight anchors: the occupied frontier chunk and surrounding sight bubble render fully.
+    const scoutRadius=(u.type==='scout'&&hasTech('ancientMaps',playerId))?PLAYER_SIGHT_RADIUS_CHUNKS+1:PLAYER_SIGHT_RADIUS_CHUNKS;
+    addChunksInRadius(visible,c.cx,c.cy,scoutRadius);
+  }
+
   // Permanent discoveries and one-hour vision earned by clearing barbarian camps.
-  for(const key of account.revealedChunks||[]){const c=parseChunkKey(key);addChunkAndAdjacent(visible,c.cx,c.cy);}
-  for(const vision of account.temporaryVision||[])if(vision.until>n){const c=parseChunkKey(vision.chunkKey);for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)if(isChunkInWorld(c.cx+dx,c.cy+dy))visible.add(chunkKey(c.cx+dx,c.cy+dy));}
+  for(const key of account.revealedChunks||[]){const c=parseChunkKey(key);addChunksInRadius(visible,c.cx,c.cy,1);}
+  for(const vision of account.temporaryVision||[])if(vision.until>n){const c=parseChunkKey(vision.chunkKey);addChunksInRadius(visible,c.cx,c.cy,PLAYER_SIGHT_RADIUS_CHUNKS);}
   return visible;
 }
-function isChunkVisible(cx,cy){return visibleChunks.has(chunkKey(cx,cy));}
+function hasDirectFriendlyVisionInChunk(cx,cy,viewer=playerKey){
+  if(!viewer||!isChunkInWorld(cx,cy))return false;
+  const key=chunkKey(cx,cy),keys=chunkKeysAround({cx,cy},0);
+  // Use both the chunk index and the authoritative entity maps. The index can briefly lag behind
+  // Firestore/movement updates, and that was enough to make frontier troop chunks draw as black.
+  for(const u of indexedTroops(keys)){
+    if(u&&u.hp>0&&(u.ownerId===viewer||isAllied(viewer,u.ownerId)))return true;
+  }
+  for(const u of troops.values()){
+    if(u&&u.hp>0&&entityChunkKey(u)===key&&(u.ownerId===viewer||isAllied(viewer,u.ownerId)))return true;
+  }
+  for(const b of indexedBuildings(keys)){
+    if(!b||b.hp<=0||!isBuildingComplete(b))continue;
+    if(b.ownerId===viewer||isAllied(viewer,b.ownerId))return true;
+  }
+  return false;
+}
+
+function isFriendlyVisionAnchor(e,viewer=playerKey){
+  return !!(e&&e.hp>0&&viewer&&(e.ownerId===viewer||isAllied(viewer,e.ownerId)));
+}
+function hasFriendlyTroopVisionInChunk(cx,cy,viewer=playerKey){
+  if(!viewer||!isChunkInWorld(cx,cy))return false;
+  const key=chunkKey(cx,cy);
+  for(const u of troops.values()){
+    if(u&&u.hp>0&&troops.has(u.id)&&entityChunkKey(u)===key&&(u.ownerId===viewer||isAllied(viewer,u.ownerId)))return true;
+  }
+  return false;
+}
+function hasFriendlyTroopVisionNearEntity(e,viewer=playerKey,radiusTiles=CHUNK_SIZE+4){
+  if(!e||!viewer)return false;
+  for(const u of troops.values()){
+    if(!u||u.hp<=0||!troops.has(u.id))continue;
+    if(u.ownerId!==viewer&&!isAllied(viewer,u.ownerId))continue;
+    if(dist(u,e)<=radiusTiles)return true;
+  }
+  return false;
+}
+function entityIsHostileOrBarbarian(e,viewer=playerKey){
+  if(!e||!viewer)return false;
+  if(isBarbarianUnit(e)||isBarbarianCamp(e)||isBarbarianOwner(e.ownerId))return true;
+  return e.ownerId&&e.ownerId!==viewer&&!isAllied(viewer,e.ownerId);
+}
+function shouldRevealEntityToPlayer(e,viewer=playerKey){
+  if(!e||e.hp<=0)return false;
+  const c=getChunkOfTile(e.x,e.y);
+  if(isFriendlyVisionAnchor(e,viewer))return true;
+  if(isChunkVisible(c.cx,c.cy))return true;
+  if(entityIsHostileOrBarbarian(e,viewer)){
+    if(hasFriendlyTroopVisionNearEntity(e,viewer,CHUNK_SIZE+6))return true;
+    if(troops.has(e.id)&&(e.targetId&&isFriendlyVisionAnchor(targetForId(e.targetId),viewer)))return true;
+    if(Number(e.inCombatUntil||0)>now()&&hasFriendlyTroopVisionNearEntity(e,viewer,CHUNK_SIZE*2))return true;
+  }
+  return false;
+}
+function isHoveredChunk(cx,cy){
+  if(!hoveredTile)return false;
+  const h=getChunkOfTile(hoveredTile.x,hoveredTile.y);
+  return h.cx===cx&&h.cy===cy;
+}
+function isChunkVisible(cx,cy){
+  if(!isChunkInWorld(cx,cy))return false;
+  const key=chunkKey(cx,cy);
+  // Ownership is NOT required for visibility. Any friendly troop inside a frontier chunk reveals
+  // that entire chunk as a fully playable grid, so exploration/combat never happens on black tiles.
+  return visibleChunks.has(key)||cachedVisibleChunks.has(key)||hasFriendlyTroopVisionInChunk(cx,cy,playerKey)||hasDirectFriendlyVisionInChunk(cx,cy,playerKey)||isHoveredChunk(cx,cy);
+}
 function isTileVisible(x,y){const c=getChunkOfTile(x,y);return isChunkVisible(c.cx,c.cy);}
 
 function hash2(x,y,seed=12345){let n=(x*374761393+y*668265263+seed*1442695041)>>>0;n=(n^(n>>13))*1274126177;return ((n^(n>>16))>>>0)/4294967295;}
@@ -1310,8 +1546,17 @@ function focusBuilding(id){const b=buildings.get(id);if(!b)return;const c=getChu
 function trapIsDetected(b,viewer=playerKey){return b.ownerId===viewer||b.revealed||nearbyTroops(b,1).some(u=>u.hp>0&&(u.ownerId===viewer||isAllied(viewer,u.ownerId))&&['scout','rangerCaptain'].includes(u.type)&&dist(u,b)<=3);}
 function entityAtTile(x,y){for(const u of troops.values()) if(u.hp>0&&u.x===x&&u.y===y) return {kind:'troop',id:u.id,data:u}; for(const b of buildings.values()) if(b.hp>0&&b.x===x&&b.y===y&&(b.type!=='spikeTrap'||trapIsDetected(b))) return {kind:'building',id:b.id,data:b}; return null;}
 function blockingEntityAtTile(x,y){const key=tileKey(x,y);for(const id of troopTileIndex.get(key)||[]){const u=troops.get(id);if(u?.hp>0&&u.x===x&&u.y===y)return {kind:'troop',id:u.id,data:u};}for(const id of buildingTileIndex.get(key)||[]){const b=buildings.get(id);if(b?.hp>0&&b.type!=='road'&&b.x===x&&b.y===y)return {kind:'building',id:b.id,data:b};}return null;}
-function visibleEntityAtTile(x,y){return isTileVisible(x,y)?entityAtTile(x,y):null;}
+function visibleEntityAtTile(x,y){const ent=entityAtTile(x,y);if(!ent)return null;if(ent?.kind==='troop'&&ent.data?.ownerId===playerKey&&ent.data?.hp>0)return ent;return shouldRevealEntityToPlayer(ent.data,playerKey)?ent:null;}
 function visibleLandmarkAtTile(x,y){if(!isTileVisible(x,y))return null;const c=getChunkOfTile(x,y),l=landmarkAtChunk(c.key);if(!l)return null;return {kind:'landmark',id:l.id,data:l};}
+function commandEntityAtTile(x,y){
+  const visible=visibleEntityAtTile(x,y)||visibleLandmarkAtTile(x,y);
+  if(visible)return visible;
+  // If the grid cache is stale but an enemy icon is actually loaded under the cursor, allow the command anyway.
+  // This prevents right-click attack from failing just because fog/visibility did not refresh fast enough.
+  const ent=entityAtTile(x,y);
+  if(ent&&isAttackableEntity(ent))return ent;
+  return null;
+}
 function isBlocked(x,y,unit=null,targetKey=null,opts={}){ if(!isTileInWorld(x,y))return true; const e=blockingEntityAtTile(x,y); if(unit?.inArena){ if(e && e.id!==targetKey && e.id!==unit.id && e.kind==='troop') return true; return false; } const terr=terrainAt(x,y); if(terr==='water'||terr==='mountain')return true; if(e && e.id!==targetKey && e.data.ownerId!==unit?.ownerId) return true; if(e && e.id!==unit?.id && e.kind==='troop'){ if(opts.softFriendlies&&(e.data.ownerId===unit?.ownerId||isAllied(e.data.ownerId,unit?.ownerId)))return false; return true; } if(e&&e.kind==='building'&&BUILDING[e.data.type]?.gate&&(e.data.ownerId===unit?.ownerId||isAllied(e.data.ownerId,unit?.ownerId)))return false; if(e && e.kind==='building' && BUILDING[e.data.type]?.wall && e.data.ownerId!==unit?.ownerId) return true; if(unit && isEnemyOwnedBlocked(unit,x,y)) return true; return false; }
 
 const dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
@@ -1323,6 +1568,14 @@ function findPath(unit,tx,ty,maxNodes=800,opts={}){
 }
 const pathfindQueue=[];
 function requestPath(unit,tx,ty,maxNodes=800,opts={}){if(!unit)return [];const existing=pathfindQueue.find(j=>j.unitId===unit.id);if(existing){existing.tx=tx;existing.ty=ty;existing.maxNodes=maxNodes;existing.opts=opts;}else pathfindQueue.push({unitId:unit.id,tx,ty,maxNodes,opts});unit.pathPending=true;return unit.path||[];}
+function commandPathNow(unit,tx,ty,maxNodes=1600,opts={softFriendlies:true,allowPartial:true}){
+  if(!unit||unit.hp<=0)return [];
+  // Player-issued commands need to feel instant; compute the first path synchronously, then let the queue repair it later if needed.
+  const path=findPath(unit,tx,ty,maxNodes,opts);
+  unit.path=path||[];unit.pathPending=false;
+  for(let i=pathfindQueue.length-1;i>=0;i--)if(pathfindQueue[i].unitId===unit.id)pathfindQueue.splice(i,1);
+  return unit.path;
+}
 function processPathfindQueue(){perfStats.pathJobs=0;for(let i=0;i<MAX_PATHFIND_JOBS_PER_FRAME&&pathfindQueue.length;i++){const job=pathfindQueue.shift(),u=troops.get(job.unitId);if(!u||u.hp<=0)continue;u.path=findPath(u,job.tx,job.ty,job.maxNodes,job.opts||{});u.pathPending=false;perfStats.pathJobs++;}}
 function formationTargets(cx,cy,count,unit,claimed=new Set()){
   const out=[];
@@ -1351,15 +1604,16 @@ async function setBuildingRallyPoint(b,x,y){if(!b)return; if(b.rallyPoint&&b.ral
 async function clearBuildingRallyPoint(b){if(!b?.rallyPoint)return;b.rallyPoint=null;await saveBuilding(b);log(`${BUILDING[b.type]?.name||'Building'} rally point cleared.`);}
 function pathTowardMoveGoal(u){
   if(!u.moveGoal||u.pathPending) return u.path||[];
-  for(let r=0;r<=18;r++){
+  const base=u.assignedGoal||u.moveGoal;
+  for(let r=0;r<=24;r++){
     const candidates=[];
-    for(let y=u.moveGoal.y-r;y<=u.moveGoal.y+r;y++)for(let x=u.moveGoal.x-r;x<=u.moveGoal.x+r;x++){
-      if(Math.max(Math.abs(x-u.moveGoal.x),Math.abs(y-u.moveGoal.y))!==r)continue;
-      if(!isBlocked(x,y,u)) candidates.push({x,y,score:dist({x,y},u)+hash2(x,y,812)*.2});
+    for(let y=base.y-r;y<=base.y+r;y++)for(let x=base.x-r;x<=base.x+r;x++){
+      if(Math.max(Math.abs(x-base.x),Math.abs(y-base.y))!==r)continue;
+      if(!isBlocked(x,y,u,null,{softFriendlies:true})) candidates.push({x,y,score:dist({x,y},u)+dist({x,y},u.moveGoal)*.2+hash2(x,y,812)*.2});
     }
     candidates.sort((a,b)=>a.score-b.score);
     const c=candidates[0];
-    if(c){requestPath(u,c.x,c.y,1200,{softFriendlies:true,allowPartial:true});return u.path||[];}
+    if(c){u.assignedGoal=c;requestPath(u,c.x,c.y,1400,{softFriendlies:true,allowPartial:true});return u.path||[];}
   }
   return [];
 }
@@ -1415,16 +1669,27 @@ function updateBarbarianStuckState(u,n){
   return false;
 }
 function thinkBarbarian(u,n=now()){
-  ensureBarbarianBrain(u,n);if(!u||u.hp<=0)return;catchUpTroopTravel(u,n);if(updateBarbarianStuckState(u,n)){assignBarbarianMove(u,pickBarbarianOpenTileNear(u,{x:u.x,y:u.y},7),'wander');return;}
+  ensureBarbarianBrain(u,n);if(!u||u.hp<=0)return;catchUpTroopTravel(u,n);
+  if(u.aiNextThinkAt&&n<u.aiNextThinkAt&&u.targetId&&targetIsLegal(u,targetForId(u.targetId)))return;
+  if(updateBarbarianStuckState(u,n)){assignBarbarianMove(u,pickBarbarianOpenTileNear(u,{x:u.x,y:u.y},7),'wander');return;}
   u.aiNextThinkAt=n+BARBARIAN_AI_TICK_MS+Math.random()*1800;
-  const enemy=getNearestPlayerAssetForBarbarian(u,2);if(enemy){assignBarbarianAttack(u,enemy,'attack');return;}
+  const targetPlayer=u.intendedPlayerKey||u.targetPlayerId||playerKey;
+  const pressure=isChunkNearPlayerBorder(entityChunkKey(u),targetPlayer,2)||territories.get(entityChunkKey(u))?.ownerId===targetPlayer;
+  const enemy=getNearestPlayerAssetForBarbarian(u,pressure?2:1,targetPlayer);
+  if(enemy){assignBarbarianAttack(u,enemy,pressure?'borderPressure':'attack');return;}
+  if(pressure){
+    const owned=ownedChunksForPlayer(targetPlayer).sort((a,b)=>chunkDistance(parseChunkKey(entityChunkKey(u)),a)-chunkDistance(parseChunkKey(entityChunkKey(u)),b))[0];
+    if(owned){assignBarbarianMove(u,{x:owned.cx*CHUNK_SIZE+8,y:owned.cy*CHUNK_SIZE+8},'borderAdvance',true);return;}
+  }
   const origin=u.homeX&&u.homeY?{x:u.homeX,y:u.homeY}:u.aiHomeChunk?{x:parseChunkKey(u.aiHomeChunk).cx*CHUNK_SIZE+8,y:parseChunkKey(u.aiHomeChunk).cy*CHUNK_SIZE+8}:{x:u.x,y:u.y};assignBarbarianMove(u,pickBarbarianOpenTileNear(u,Math.random()<.6?origin:{x:u.x,y:u.y},7),u.campId?'patrol':'scout');
 }
 function tickBarbarianAI(n=now(),background=false){
   if(!playerKey||background)return;
   const focusKeys=new Set(activeChunks);
-  ownedChunksForPlayer(playerKey).forEach(t=>chunkKeysAround(t,2).forEach(k=>focusKeys.add(k)));
-  const all=indexedTroops(focusKeys).filter(u=>isBarbarianUnit(u)&&u.hp>0);if(!all.length)return;
+  ownedChunksForPlayer(playerKey).forEach(t=>chunkKeysAround(t,3).forEach(k=>focusKeys.add(k)));
+  for(const f of troops.values())if(isOperationalFriendlyTroop(f))chunkKeysAround(getChunkOfTile(f.x,f.y),3).forEach(k=>focusKeys.add(k));
+  for(const u of troops.values())if(shouldKeepBarbarianOperational(u))focusKeys.add(entityChunkKey(u));
+  const all=uniqueEntities([...indexedTroops(focusKeys),...troops.values()]).filter(u=>shouldKeepBarbarianOperational(u));if(!all.length)return;
   const ordered=all.slice(barbarianAIRoundRobin).concat(all.slice(0,barbarianAIRoundRobin));let processed=0;
   for(const u of ordered){if(processed>=MAX_BARBARIAN_AI_PER_TICK)break;ensureBarbarianBrain(u,n);thinkBarbarian(u,n);processed++;}
   barbarianAIRoundRobin=(barbarianAIRoundRobin+Math.max(1,processed))%Math.max(1,all.length);
@@ -1433,35 +1698,40 @@ function tickBarbarianAI(n=now(),background=false){
 
 function issueMove(ids,tx,ty,attackMove=false){
   const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey&&u.hp>0);
-  if(!units.length)return;
+  if(!units.length){log('No movable troops selected.');return;}
   const issuedAt=now(),groupId=`move_${playerKey}_${issuedAt}`;
   const claimed=new Set();
   units.sort((a,b)=>dist(a,{x:tx,y:ty})-dist(b,{x:tx,y:ty}));
   units.forEach((u,i)=>{
     const t=closestOpenGoalTile(u,tx,ty,claimed);
+    if(t)claimed.add(tileKey(t.x,t.y));
     u.moveGoal={x:tx,y:ty};
     u.moveGroupId=groupId;
-    u.assignedGoal=t;
+    u.assignedGoal=t||{x:tx,y:ty};
     u.goalRank=i;
-    requestPath(u,t.x,t.y,1200,{softFriendlies:true,allowPartial:true});
-    if(!u.path?.length) u.path=[];
+    commandPathNow(u,u.assignedGoal.x,u.assignedGoal.y,1800,{softFriendlies:true,allowPartial:true});
     u.order=attackMove?'attackMove':'move';
     u.targetId=null;
     u.commandId=groupId;
     u.commandType=attackMove?'attackMove':'move';
     u.commandTargetX=tx;u.commandTargetY=ty;u.commandTargetId=null;
     u.commandIssuedAt=issuedAt;u.commandOwnerId=playerKey;u.commandComplete=false;
-    u.manualCommandUntil=attackMove?0:issuedAt+MANUAL_MOVE_AGGRO_SUPPRESS_MS;
-    u.aggroCooldownUntil=attackMove?0:issuedAt+MANUAL_MOVE_AGGRO_SUPPRESS_MS;
+    u.manualCommandUntil=attackMove?0:issuedAt+Math.max(MANUAL_MOVE_AGGRO_SUPPRESS_MS,12000);
+    u.aggroCooldownUntil=attackMove?0:issuedAt+Math.max(MANUAL_MOVE_AGGRO_SUPPRESS_MS,12000);
     u.leashOrigin=attackMove?{x:u.x,y:u.y}:null;
     u.leashRadius=attackMove?ATTACK_MOVE_LEASH_RADIUS:0;
     u.lastTargetRecheckAt=0;
     u.buildTask=null;
     u.waitTicks=0;
+    u.pathFailCount=0;
     troops.set(u.id,u);
   });
   commandFeedback={kind:attackMove?'attackMove':'move',x:tx,y:ty,unitIds:units.map(u=>u.id),issuedAt,until:issuedAt+2200};
   log(`${attackMove?'Attack-move':'Move'} order: ${units.length} troop(s).`);
+  markVisibleChunksDirty();
+  updateSimulationChunkSets();
+  cameraStreamDirty=true;
+  scheduleChunkStreaming();
   scheduleSaveTroops(units);
 }
 function isAttackableEntity(ent){
@@ -1489,8 +1759,15 @@ function issueAttack(ids,target){
   if(target?.data?.ownerId&&isAllied(playerKey,target.data.ownerId)){log('Allied troops and buildings cannot be attacked.');return;}
   const units=[...ids].map(id=>troops.get(id)).filter(u=>u&&u.ownerId===playerKey&&u.hp>0);
   if(!units.length)return;
-  const issuedAt=now(),commandId=`attack_${playerKey}_${issuedAt}`;
-  units.forEach(u=>{u.order='attack';u.targetId=target.id;u.path=[];u.moveGoal=null;u.assignedGoal=null;u.commandId=commandId;u.commandType='attack';u.commandTargetX=target.data.x;u.commandTargetY=target.data.y;u.commandTargetId=target.id;u.commandIssuedAt=issuedAt;u.commandOwnerId=playerKey;u.commandComplete=false;u.manualCommandUntil=0;u.aggroCooldownUntil=0;u.leashOrigin=null;u.leashRadius=0;u.lastTargetRecheckAt=0;u.buildTask=null; troops.set(u.id,u);});
+  const issuedAt=now(),commandId=`attack_${playerKey}_${issuedAt}`,claimed=new Set();
+  units.sort((a,b)=>dist(a,target.data)-dist(b,target.data)).forEach((u,i)=>{
+    const def=UNIT[u.type]||{},goal=attackApproachGoal(u,target.data,def)||closestOpenGoalTile(u,target.data.x,target.data.y,claimed);
+    if(goal)claimed.add(tileKey(goal.x,goal.y));
+    u.order='attack';u.targetId=target.id;u.path=[];u.moveGoal=goal?{x:goal.x,y:goal.y}:null;u.assignedGoal=goal||null;
+    u.moveGroupId=commandId;u.goalRank=i;u.commandId=commandId;u.commandType='attack';u.commandTargetX=target.data.x;u.commandTargetY=target.data.y;u.commandTargetId=target.id;u.commandIssuedAt=issuedAt;u.commandOwnerId=playerKey;u.commandComplete=false;u.manualCommandUntil=0;u.aggroCooldownUntil=0;u.leashOrigin=null;u.leashRadius=0;u.lastTargetRecheckAt=0;u.buildTask=null;
+    if(goal&&dist(u,target.data)>(def.range||1))commandPathNow(u,goal.x,goal.y,1800,{softFriendlies:true,allowPartial:true});
+    troops.set(u.id,u);
+  });
   commandFeedback={kind:'attack',x:target.data.x,y:target.data.y,targetId:target.id,unitIds:units.map(u=>u.id),issuedAt,until:issuedAt+1600};
   log(`Focus attack order on ${LANDMARK[target.data.type]?.name||UNIT[target.data.type]?.name||BUILDING[target.data.type]?.name||target.data.type||target.data.ownerId}.`);
   scheduleSaveTroops(units);
@@ -1512,7 +1789,7 @@ function issueQuickAttackNearest(){
   return true;
 }
 
-let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>{if(!u)return;reindexTroop(u);saveQueue.add(u.id);markUIDirty('troops');});}
+let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>{if(!u)return;reindexTroop(u);saveQueue.add(u.id);markUIDirty('troops');});markVisibleChunksDirty();markCameraStreamDirty();}
 function firestoreEntity(e){const {_tileKey,...clean}=e;if(Number.isFinite(Number(clean.x))&&Number.isFinite(Number(clean.y))){clean.chunkKey=getChunkOfTile(Number(clean.x),Number(clean.y)).key;}return clean}
 const lastSavedTroopSignature=new Map();
 async function flushTroopSaves(){ if(!saveQueue.size)return; const batch=writeBatch(db); let writes=0; const ids=[...saveQueue].slice(0,MAX_FIRESTORE_WRITES_PER_FLUSH); ids.forEach(id=>{const u=troops.get(id); saveQueue.delete(id); if(!u)return; const data=firestoreEntity(u),sig=JSON.stringify(data); if(lastSavedTroopSignature.get(id)===sig)return; lastSavedTroopSignature.set(id,sig); batch.set(ref('troops',id),data,{merge:true}); writes++;}); perfStats.writesQueued=saveQueue.size; if(!writes)return; await batch.commit().catch(e=>log('Save troop error: '+e.message)); }
@@ -1904,12 +2181,20 @@ async function thinkBarbarianCamp(camp){
   const n=now(),elapsed=n-(camp.lastThinkAt||camp.createdAt||n),level=camp.campLevel||1,type=campTypeDef(camp);camp.campType=camp.campType||'raider';
   camp.campLevel=1;camp.nextRaidAt=Number.MAX_SAFE_INTEGER;camp.nextMoveAt=null;
   const nearbyCampTroops=indexedTroops(chunkKeysAround(parseChunkKey(camp.chunkKey),1)),defenders=nearbyCampTroops.filter(u=>u.campId===camp.id&&u.hp>0),nearEnemies=nearbyCampTroops.filter(u=>u.hp>0&&!isBarbarianUnit(u)&&dist(u,camp)<=10+(camp.campType==='fortified'?4:0));
-  if(nearEnemies.length){camp.state='defend';camp.lastAttackedAt=n;for(const u of defenders){const target=nearEnemies.sort((a,b)=>dist(u,a)-dist(u,b))[0];if(target){assignBarbarianAttack(u,target,'defend');}}}
+  if(nearEnemies.length){
+    camp.state='defend';camp.lastAttackedAt=n;
+    if(defenders.length<Math.min(2,MAX_NORMAL_BARBARIAN_SQUAD_SIZE)&&n>=Number(camp.lastEmergencyDefenderSpawnAt||0)+8000){
+      camp.lastEmergencyDefenderSpawnAt=n;
+      await spawnBarbarianDefenders(camp,Math.min(3,MAX_NORMAL_BARBARIAN_SQUAD_SIZE));
+    }
+    const refreshed=[...troops.values()].filter(u=>u.campId===camp.id&&u.hp>0&&!u.raidUntil);
+    for(const u of refreshed){const target=nearEnemies.sort((a,b)=>dist(u,a)-dist(u,b))[0];if(target){assignBarbarianAttack(u,target,'defend');}}
+  }
   else{camp.state=defenders.length<Math.max(2,Object.values(barbarianRoster(camp.campLevel||1,camp.campType)).reduce((a,b)=>a+b,0)*.6)?'regroup':'guard';for(const u of defenders){if(u.raidUntil&&u.raidUntil<n){u.order='move';u.aiState='returningToCamp';u.moveGoal={x:camp.x,y:camp.y};u.targetId=null;u.raidUntil=0;scheduleSaveTroops([u]);}else if(!u.raidUntil&&dist(u,camp)>9){u.order='move';u.moveGoal={x:camp.x,y:camp.y};u.targetId=null;scheduleSaveTroops([u]);}}}
   if(camp.state==='regroup'&&n>=(camp.nextTrickleAt||0)){await spawnBarbarianDefenders(camp,randomInt(3,MAX_NORMAL_BARBARIAN_SQUAD_SIZE));camp.lastTrickleAt=n;camp.nextTrickleAt=n+BARBARIAN_CAMP_TRICKLE_MS;}camp.lastThinkAt=n;camp.lastSpawnAt=camp.state==='regroup'?n:(camp.lastSpawnAt||n);await saveBuilding(camp);
 }
 async function maybeSimulateNearbyBarbarianCamps(){
-  if(now()<startupHeavySystemsBlockedUntil||barbarianThinkRunning||!playerKey)return;barbarianThinkRunning=true;try{const n=now();updateSimulationChunkSets();const camps=indexedBuildings(warmChunks).filter(b=>isBarbarianCamp(b)&&b.hp>0);for(const camp of camps)if(await claimBarbarianCampSimLock(camp)){await thinkBarbarianCamp(camp);}for(const camp of buildings.values())if(isBarbarianCamp(camp)&&camp.hp>0&&!warmChunks.has(camp.chunkKey)&&n>=Number(camp.nextTrickleAt||Infinity)){camp.threat=(camp.threat||0)+1;camp.lastSimulatedAt=n;camp.nextTrickleAt=n+BARBARIAN_CAMP_TRICKLE_MS;await saveBuilding(camp);}
+  if(now()<startupHeavySystemsBlockedUntil||barbarianThinkRunning||!playerKey)return;barbarianThinkRunning=true;try{const n=now();updateSimulationChunkSets();const camps=uniqueEntities([...indexedBuildings(warmChunks),...buildings.values()]).filter(b=>isBarbarianCamp(b)&&b.hp>0&&(warmChunks.has(b.chunkKey)||hasFriendlyTroopVisionNearEntity(b,playerKey,CHUNK_SIZE*2+8)));for(const camp of camps)if(await claimBarbarianCampSimLock(camp)){await thinkBarbarianCamp(camp);}for(const camp of buildings.values())if(isBarbarianCamp(camp)&&camp.hp>0&&!warmChunks.has(camp.chunkKey)&&n>=Number(camp.nextTrickleAt||Infinity)){camp.threat=(camp.threat||0)+1;camp.lastSimulatedAt=n;camp.nextTrickleAt=n+BARBARIAN_CAMP_TRICKLE_MS;await saveBuilding(camp);}
     for(const u of troops.values())if(isBarbarianUnit(u)){if(!u.campId&&u.expiresAt&&u.expiresAt<n){if(u.aiState==='retreating'&&!isChunkNearPlayerBorder(entityChunkKey(u),playerKey,BARBARIAN_SAFE_CLEANUP_RADIUS_CHUNKS))await despawnBarbarian(u,'retreated_off_map');else if(!orderBarbarianUnitRetreat(u,'expired'))u.expiresAt=n+10*60000;}const territory=territoryOfTile(u.x,u.y);if(u.raidUntil&&territory.ownerId===playerKey&&!u.territoryWarningSent){u.territoryWarningSent=true;scheduleSaveTroops([u]);log('Your territory is under barbarian attack!');}}
   }finally{barbarianThinkRunning=false;}
 }
@@ -1943,10 +2228,18 @@ function tick(dt){
       b.reinforcedUntil=0; b.reinforceBonusHp=0; b.hp=Math.min(b.hp,b.maxHp||b.hp); saveBuilding(b);
     }
   }
-  let aiBudget=MAX_AI_UNITS_PER_FRAME;for(const u of indexedTroops(warmChunks)){if(aiBudget--<=0){perfStats.skippedTroops++;continue;}const ck=entityChunkKey(u);if(!isChunkWarmKey(ck)){perfStats.skippedTroops++;freezeFarTravel(u,n);continue;}catchUpTroopTravel(u,n);if(!isChunkActiveKey(entityChunkKey(u))&&!warmDue&&!(isBarbarianUnit(u)&&hasActiveCommand(u))){perfStats.skippedTroops++;continue;}perfStats.simTroops++;
+  let aiBudget=MAX_AI_UNITS_PER_FRAME;
+  const simTroops=operationalTroopsForSimulation();
+  for(const u of simTroops){
+    if(aiBudget--<=0){perfStats.skippedTroops++;continue;}
+    catchUpTroopTravel(u,n);
+    const ck=entityChunkKey(u),mine=u.ownerId===playerKey;
+    const forceOperational=mine||selected.has(u.id)||hasActiveCommand(u)||shouldKeepBarbarianOperational(u);
+    if(!forceOperational&&!isChunkWarmKey(ck)){perfStats.skippedTroops++;freezeFarTravel(u,n);continue;}
+    if(!forceOperational&&!isChunkActiveKey(entityChunkKey(u))&&!warmDue){perfStats.skippedTroops++;continue;}
+    perfStats.simTroops++;
     if(u.hp<=0) continue;
     const def=UNIT[u.type]; if(!def)continue;
-    const mine = u.ownerId===playerKey;
     if(mine) handleLocalTroopAI(u,def,n,reservations);
     else if(isBarbarianUnit(u) && shouldSimOfflineEnemy(u)) handleLocalTroopAI(u,def,n,reservations,true);
     else if(!isOwnerOnline(u.ownerId) && shouldSimOfflineEnemy(u)) handleLocalTroopAI(u,def,n,reservations,true);
@@ -1971,18 +2264,35 @@ function tick(dt){
   perfStats.tickMs=performance.now()-tickStart;
 }
 function isOwnerOnline(owner){ if(owner===playerKey)return true; return false; } // prototype: current browser simulates visible/offline enemy actions if needed
-function shouldSimOfflineEnemy(u){ if(isBarbarianUnit(u)){const key=entityChunkKey(u);return activeChunks.has(key)||u.targetId||u.order==='attack'||u.order==='attackMove'||territories.get(key)?.barbarianPressure||isChunkNearPlayerBorder(key,playerKey,2);} if(String(u.ownerId).startsWith(`goblin_${playerKey}`)) return true; const c=getChunkOfTile(u.x,u.y); const hc=getChunkOfTile(Math.floor((camera.x+canvas.width/2)/(32*camera.zoom)),Math.floor((camera.y+canvas.height/2)/(32*camera.zoom))); return Math.abs(c.cx-hc.cx)<=2 && Math.abs(c.cy-hc.cy)<=2; }
+function shouldSimOfflineEnemy(u){ if(isBarbarianUnit(u)){const key=entityChunkKey(u);return activeChunks.has(key)||warmChunks.has(key)||u.targetId||u.order==='attack'||u.order==='attackMove'||territories.get(key)?.barbarianPressure||isChunkNearPlayerBorder(key,playerKey,2);} if(String(u.ownerId).startsWith(`goblin_${playerKey}`)) return true; const c=getChunkOfTile(u.x,u.y); const hc=getChunkOfTile(Math.floor((camera.x+canvas.width/2)/(32*camera.zoom)),Math.floor((camera.y+canvas.height/2)/(32*camera.zoom))); return Math.abs(c.cx-hc.cx)<=2 && Math.abs(c.cy-hc.cy)<=2; }
 function targetForId(id){return id&&(troops.get(id)||buildings.get(id)||landmarks.get(id))||null;}
-function targetIsLegal(u,target){return !!(target&&target.hp>0&&(landmarks.has(target.id)||areHostile(u,target))&&canFightHere(u,target));}
+function targetIsLegal(u,target){
+  if(!(target&&target.hp>0&&(landmarks.has(target.id)||areHostile(u,target))&&canFightHere(u,target)))return false;
+  // Safety valve: no invisible frontier damage. If a barbarian can attack the player's troop/building,
+  // the attacker or its camp must be revealable by friendly troop vision first.
+  if(playerKey&&target.ownerId===playerKey&&(isBarbarianUnit(u)||isBarbarianCamp(u)||isBarbarianOwner(u.ownerId))){
+    if(!shouldRevealEntityToPlayer(u,playerKey))return false;
+  }
+  return true;
+}
 function targetInsideLeash(u,target){return !u.leashOrigin||!u.leashRadius||dist(u.leashOrigin,target)<=u.leashRadius;}
 function acquireTargetForUnit(u,mode,n){
   if(n-(u.lastAggroScanAt||0)<AGGRO_SCAN_MS)return null;
   u.lastAggroScanAt=n;
   if(isBarbarianUnit(u)){
+    // Barbarians must fight back anywhere a player has pushed troops, even in neutral/frontier chunks.
+    // First look for nearby hostile troops directly, then fall back to raid/player-asset logic.
+    let direct=null,directScore=Infinity;
+    for(const enemy of indexedTroops(chunkKeysAround(getChunkOfTile(u.x,u.y),2))){
+      if(!enemy||enemy.id===u.id||enemy.hp<=0||!targetIsLegal(u,enemy))continue;
+      const d=dist(u,enemy);
+      if(d<=BARBARIAN_AGGRO_RANGE&&d<directScore){direct=enemy;directScore=d;}
+    }
+    if(direct)return direct;
     if(n<(u.nextBarbarianSearchAt||0))return null;
-    const pressure=isChunkNearPlayerBorder(entityChunkKey(u),playerKey,2),target=getNearestPlayerAssetForBarbarian(u,pressure?2:1);
+    const pressure=isChunkNearPlayerBorder(entityChunkKey(u),playerKey,2)||territories.get(entityChunkKey(u))?.barbarianPressure,target=getNearestPlayerAssetForBarbarian(u,pressure?2:1,u.targetPlayerId||playerKey);
     if(target)return target;
-    u.nextBarbarianSearchAt=n+10000+Math.random()*50000;u.order='wander';u.moveGoal=u.moveGoal||{x:clamp(u.x+Math.floor(Math.random()*7)-3,worldMinTileX(),worldMaxTileX()),y:clamp(u.y+Math.floor(Math.random()*7)-3,worldMinTileY(),worldMaxTileY())};scheduleSaveTroops([u]);return null;
+    u.nextBarbarianSearchAt=n+10000+Math.random()*20000;u.order='wander';u.moveGoal=u.moveGoal||{x:clamp(u.x+Math.floor(Math.random()*7)-3,worldMinTileX(),worldMaxTileX()),y:clamp(u.y+Math.floor(Math.random()*7)-3,worldMinTileY(),worldMaxTileY())};scheduleSaveTroops([u]);return null;
   }
   const range=mode==='attackMove'?ATTACK_MOVE_AGGRO_RANGE:IDLE_AGGRO_RANGE;
   let best=null,bestScore=Infinity,checked=0;
@@ -2012,18 +2322,42 @@ function clearCombatTarget(u,nextOrder=u.order){
   u.targetId=null;u.path=[];u.lastTargetRecheckAt=0;u.order=nextOrder;if(nextOrder==='idle')u.commandComplete=true;
   if(changed)scheduleSaveTroops([u]);
 }
+function attackApproachGoal(u,target,def){
+  if(!target)return null;
+  const range=Math.max(1,Number(def?.range)||1);
+  const claimed=new Set([...troops.values()].filter(o=>o.id!==u.id&&o.hp>0&&o.ownerId===u.ownerId&&dist(o,target)<=range+2).map(o=>tileKey(o.x,o.y)));
+  const candidates=[];
+  for(let r=1;r<=Math.max(range,1)+2;r++){
+    for(let y=target.y-r;y<=target.y+r;y++)for(let x=target.x-r;x<=target.x+r;x++){
+      if(Math.max(Math.abs(x-target.x),Math.abs(y-target.y))!==r)continue;
+      const k=tileKey(x,y);
+      if(claimed.has(k)||isBlocked(x,y,u,null,{softFriendlies:true}))continue;
+      candidates.push({x,y,score:Math.abs(dist({x,y},target)-range)*3+dist(u,{x,y})+hash2(x,y,991)*.2});
+    }
+    if(candidates.length)break;
+  }
+  candidates.sort((a,b)=>a.score-b.score);
+  return candidates[0]||closestOpenGoalTile(u,target.x,target.y,claimed);
+}
 function runCombatOrder(u,def,n,reservations,target){
-  if(dist(u,target)<=def.range){if(n>=(u.nextAttackAt||0)){performAttack(u,target);u.nextAttackAt=n+attackDelay(u,def);scheduleSaveTroops([u,target]);}return;}
-  moveOneStep(u,def,n,reservations,target.x,target.y);
+  if(!targetIsLegal(u,target)){clearCombatTarget(u,u.order==='attack'?'idle':u.order);return;}
+  if(dist(u,target)<=def.range){
+    u.path=[];u.moveGoal=null;u.assignedGoal=null;
+    if(n>=(u.nextAttackAt||0)){performAttack(u,target);u.nextAttackAt=n+attackDelay(u,def);scheduleSaveTroops([u,target]);}
+    return;
+  }
+  const goal=attackApproachGoal(u,target,def);
+  if(goal){u.assignedGoal=goal;u.moveGoal={x:target.x,y:target.y};moveOneStep(u,def,n,reservations,goal.x,goal.y);}
 }
 function handleLocalTroopAI(u,def,n,reservations,offline=false){
   // build task overrides aggro/attack.
   if(u.buildTask){ if(dist(u,u.buildTask)>0){moveOneStep(u,def,n,reservations,u.buildTask.x,u.buildTask.y);return;} if(!u.buildTask.startedAt)u.buildTask.startedAt=n; const need=(u.buildTask.kind==='mobileTower'?600000:300000)*((u.veterancy||0)>=5?.9:1); if(n-u.buildTask.startedAt>=need){completeEngineerBuild(u); } scheduleSaveTroops([u]); return; }
   if(def.ability==='heal' && u.order==='idle'){ const ally=[...troops.values()].find(a=>a.ownerId===u.ownerId&&a.hp<effectiveMaxHp(a)&&dist(a,u)<=def.range); if(ally && n>=(u.nextAttackAt||0)){ally.hp=Math.min(effectiveMaxHp(ally),ally.hp+Math.round(((u.veterancy||0)>=5?3:2)*(u.ownerId===playerKey&&hasTech('fieldMedicine')?1.5:1))); u.nextAttackAt=n+1500; scheduleSaveTroops([u,ally]);}}
   // A direct move is processed before every combat branch so retreat orders cannot be stolen by aggro.
-  if(u.order==='move'&&u.manualCommandUntil>n){
+  // It remains authoritative until the troop reaches the ordered area; the cooldown only suppresses auto-aggro.
+  if(u.order==='move'&&u.moveGoal){
     if(u.path?.length){moveAlongPath(u,def,n,reservations);return;}
-    if(u.moveGoal&&dist(u,u.moveGoal)>1){u.path=pathTowardMoveGoal(u);if(u.path.length){moveAlongPath(u,def,n,reservations);return;}}
+    if(dist(u,u.moveGoal)>1){u.path=pathTowardMoveGoal(u);if(u.path.length){moveAlongPath(u,def,n,reservations);return;}}
   }
   let target=targetForId(u.targetId);
   if(u.order==='attack'){
@@ -2044,28 +2378,21 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
       if(!closeEnough){
         u.path=pathTowardMoveGoal(u);
         if(u.path.length){ moveAlongPath(u,def,n,reservations); return; }
-      }
-      // End normal move as soon as the troop reaches the closest reachable point.
-      // This returns it to neutral/idle status so normal aggro immediately works again.
-      if(u.order==='move'){
-        u.order='idle';
-        u.commandComplete=true;
-        u.moveGoal=null;
-        u.assignedGoal=null;
-        u.moveGroupId=null;
-        u.waitTicks=0;
-        u.manualCommandUntil=0;
-        u.aggroCooldownUntil=Math.max(u.aggroCooldownUntil||0,n+POST_MOVE_AGGRO_GRACE_MS);
+        u.waitTicks=(u.waitTicks||0)+1;
+        if(u.waitTicks>4&&!u.pathPending){
+          const fallback=closestOpenGoalTile(u,u.moveGoal.x,u.moveGoal.y,new Set());
+          u.assignedGoal=fallback;requestPath(u,fallback.x,fallback.y,1600,{softFriendlies:true,allowPartial:true});u.waitTicks=0;
+        }
         scheduleSaveTroops([u]);
         return;
       }
-      if(u.order==='attackMove'){
-        u.order='idle';u.commandComplete=true;u.moveGoal=null;u.assignedGoal=null;u.moveGroupId=null;u.leashOrigin=null;u.leashRadius=0;u.waitTicks=0;
-        scheduleSaveTroops([u]);return;
+      // End only after the troop reached the target area or its assigned formation tile.
+      if(u.order==='move'){
+        u.order='idle';u.commandComplete=true;u.moveGoal=null;u.assignedGoal=null;u.moveGroupId=null;u.waitTicks=0;u.manualCommandUntil=0;u.aggroCooldownUntil=Math.max(u.aggroCooldownUntil||0,n+POST_MOVE_AGGRO_GRACE_MS);scheduleSaveTroops([u]);return;
       }
-      u.waitTicks=(u.waitTicks||0)+1;
-      if(u.waitTicks>5){u.path=pathTowardMoveGoal(u);u.waitTicks=0;}
-      scheduleSaveTroops([u]);
+      if(u.order==='attackMove'){
+        u.order='idle';u.commandComplete=true;u.moveGoal=null;u.assignedGoal=null;u.moveGroupId=null;u.leashOrigin=null;u.leashRadius=0;u.waitTicks=0;scheduleSaveTroops([u]);return;
+      }
       return;
     }
   }
@@ -2077,10 +2404,33 @@ function handleLocalTroopAI(u,def,n,reservations,offline=false){
     target=acquireTargetForUnit(u,'idle',n);
     if(target){u.targetId=target.id;u.leashOrigin={x:u.x,y:u.y};u.leashRadius=IDLE_AGGRO_LEASH_RADIUS;scheduleSaveTroops([u]);runCombatOrder(u,def,n,reservations,target);return;}
   }
-  else if(u.order!=='idle' && (!u.path || !u.path.length)) {if(hasActiveCommand(u)&&u.moveGoal){freezeFarTravel(u,n);return;}u.order='idle';u.commandComplete=true; scheduleSaveTroops([u]);}
+  else if(u.order!=='idle' && (!u.path || !u.path.length)) {if(hasActiveCommand(u)&&u.moveGoal){pathTowardMoveGoal(u);scheduleSaveTroops([u]);return;}u.order='idle';u.commandComplete=true; scheduleSaveTroops([u]);}
 }
 function moveOneStep(u,def,n,res,tx,ty){ if((!u.path||!u.path.length||hash2(n%999,u.x+u.y)>.88)&&!u.pathPending) requestPath(u,tx,ty,1200); moveAlongPath(u,def,n,res); }
-function moveAlongPath(u,def,n,res){ if(n<(u.nextMoveAt||0)||!u.path?.length)return; const next=u.path[0]; const k=tileKey(next.x,next.y); if(res.has(k)||isBlocked(next.x,next.y,u)){u.waitTicks=(u.waitTicks||0)+1; if(u.waitTicks>2){if(!u.pathPending)u.path=u.moveGoal?pathTowardMoveGoal(u):[];u.waitTicks=0;} if(u.moveGoal&&u.waitTicks===2&&!u.pathPending)requestPath(u,u.assignedGoal?.x??u.moveGoal.x,u.assignedGoal?.y??u.moveGoal.y,900,{softFriendlies:true,allowPartial:true}); return;} res.add(k); u.x=next.x; u.y=next.y; reindexTroop(u); u.path.shift(); const protectedFromSlow=u.buffs?.holdLineUntil>n; const slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n; if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;} u.nextMoveAt=n+def.moveMs*(u.ownerId===playerKey&&CAVALRY_TYPES.has(u.type)&&hasTech('cavalryTraining')?.95:1)*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=3?.95:1)*(roadAt(u.x,u.y)?ROAD_SPEED_MULTIPLIER:1); scheduleSaveTroops([u]); }
+function moveAlongPath(u,def,n,res){
+  if(n<(u.nextMoveAt||0)||!u.path?.length)return;
+  const next=u.path[0],k=tileKey(next.x,next.y),blocker=blockingEntityAtTile(next.x,next.y),friendlyBlocker=blocker&&blocker.kind==='troop'&&(blocker.data.ownerId===u.ownerId||isAllied(blocker.data.ownerId,u.ownerId));
+  if(res.has(k)||isBlocked(next.x,next.y,u,null,{softFriendlies:true})||(friendlyBlocker&&res.has(k))){
+    u.waitTicks=(u.waitTicks||0)+1;
+    const goal=u.assignedGoal||u.moveGoal;
+    if(goal){
+      const avoid=new Set([k]);
+      if(friendlyBlocker)avoid.add(tileKey(friendlyBlocker.data.x,friendlyBlocker.data.y));
+      const alt=closestOpenGoalTile(u,goal.x,goal.y,avoid);
+      if(alt&&(alt.x!==u.assignedGoal?.x||alt.y!==u.assignedGoal?.y)){u.assignedGoal=alt;commandPathNow(u,alt.x,alt.y,1800,{softFriendlies:true,allowPartial:true});}
+      else if(u.waitTicks>=2&&!u.pathPending)commandPathNow(u,goal.x,goal.y,1800,{softFriendlies:true,allowPartial:true});
+    }
+    // Do not complete or cancel the command just because a friendly unit was momentarily in the way.
+    // The troop keeps the order and will retry/repath on the next movement tick.
+    if(u.waitTicks>5)u.waitTicks=0;
+    scheduleSaveTroops([u]);
+    return;
+  }
+  res.add(k);u.x=next.x;u.y=next.y;reindexTroop(u);u.path.shift();u.waitTicks=0;
+  const protectedFromSlow=u.buffs?.holdLineUntil>n,slowed=!protectedFromSlow&&u.buffs?.slowedUntil>n;if(protectedFromSlow&&u.buffs?.slowedUntil){delete u.buffs.slowedUntil;}
+  u.nextMoveAt=n+def.moveMs*(u.ownerId===playerKey&&CAVALRY_TYPES.has(u.type)&&hasTech('cavalryTraining')?.95:1)*(slowed?1.5:1)*(hasBarbarianDrummerAura(u)?0.9:1)*((u.veterancy||0)>=3?.95:1)*(roadAt(u.x,u.y)?ROAD_SPEED_MULTIPLIER:1);
+  scheduleSaveTroops([u]);
+}
 function nearbyTroops(e,r=1){return indexedTroops(chunkKeysAround(getChunkOfTile(e.x,e.y),r));}
 function hasBannerAura(u){return nearbyTroops(u,1).some(ally=>ally.hp>0&&ally.ownerId===u.ownerId&&ally.type==='bannerKnight'&&dist(ally,u)<=3)}
 function hasBarbarianDrummerAura(u){return isBarbarianUnit(u)&&nearbyTroops(u,1).some(a=>a.hp>0&&a.ownerId===u.ownerId&&a.type==='barbarianDrummer'&&dist(a,u)<=3)}
@@ -2094,7 +2444,7 @@ function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; 
 function isBorderTower(b){const c=getChunkOfTile(b.x,b.y);return [[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>territories.get(chunkKey(c.cx+dx,c.cy+dy))?.ownerId!==b.ownerId);}
 function canTowerAttackTarget(building,target){
   const def=BUILDING[building.type];if(!isBuildingComplete(building)||!def?.dmg||!target||target.hp<=0||!areHostile(building,target)||!troops.has(target.id))return false;
-  const range=def.range+(building.ownerId===playerKey&&hasTech('fortifiedBorder')&&isBorderTower(building)?1:0),chunk=getChunkOfTile(target.x,target.y);return dist(building,target)<=range&&canFightHere({ownerId:building.ownerId},target)&&(building.ownerId!==playerKey||isChunkVisible(chunk.cx,chunk.cy));
+  const range=def.range+(building.ownerId===playerKey&&hasTech('fortifiedBorder')&&isBorderTower(building)?1:0),chunk=getChunkOfTile(target.x,target.y);return dist(building,target)<=range&&canFightHere({ownerId:building.ownerId},target)&&(building.ownerId!==playerKey||isChunkVisible(chunk.cx,chunk.cy)||hasDirectFriendlyVisionInChunk(chunk.cx,chunk.cy,playerKey));
 }
 function acquireTowerTarget(building,n=now()){
   const def=BUILDING[building.type],candidates=indexedTroops(chunkKeysAround(getChunkOfTile(building.x,building.y),1)).filter(t=>canTowerAttackTarget(building,t));if(!candidates.length)return null;
@@ -2106,7 +2456,7 @@ function applyTowerDamage(building,target,n=now()){
   victims.forEach(u=>{const alive=u.hp>0,dealt=applyDamage(u,damage,n,building);recordOnlineRaidContribution(u,building,dealt,alive&&u.hp<=0)});scheduleSaveTroops(victims);if(def.shotOil&&building.ownerId===playerKey){account.resources.oil=Math.max(0,account.resources.oil-def.shotOil);saveAccount()}const d=districtForBuilding(building),towerDistrictMult=d?.type==='military'?.88:!d&&building.ownerId===playerKey?1.08:1;building.nextAttackAt=n+def.attackMs*(building.ownerId===playerKey&&hasTech('towerCrews')?.9:1)*towerDistrictMult;building.towerTargetId=target.id;saveBuilding(building);return true;
 }
 function updateDefensiveBuildings(n=now()){
-  for(const b of indexedBuildings(activeChunks)){const def=BUILDING[b.type];perfStats.simBuildings++;if(!isBuildingComplete(b)||!def?.defense||!def.dmg||n<(b.nextAttackAt||0)||n<(b.nextTargetCheckAt||0)||(b.ownerId!==playerKey&&isOwnerOnline(b.ownerId)))continue;const c=getChunkOfTile(b.x,b.y);if(b.ownerId===playerKey&&!isChunkVisible(c.cx,c.cy))continue;b.nextTargetCheckAt=n+TOWER_TARGET_RECHECK_MS;const target=acquireTowerTarget(b,n);if(target)applyTowerDamage(b,target,n)}
+  for(const b of indexedBuildings(activeChunks)){const def=BUILDING[b.type];perfStats.simBuildings++;if(!isBuildingComplete(b)||!def?.defense||!def.dmg||n<(b.nextAttackAt||0)||n<(b.nextTargetCheckAt||0)||(b.ownerId!==playerKey&&isOwnerOnline(b.ownerId)))continue;const c=getChunkOfTile(b.x,b.y);if(b.ownerId===playerKey)visibleChunks.add(c.key);b.nextTargetCheckAt=n+TOWER_TARGET_RECHECK_MS;const target=acquireTowerTarget(b,n);if(target)applyTowerDamage(b,target,n)}
 }
 function buildingAggro(b,n){const target=acquireTowerTarget(b,n);if(target)applyTowerDamage(b,target,n)}
 function processDefensiveUtilities(n){
@@ -2123,7 +2473,12 @@ async function completeEngineerBuild(u){ const task=u.buildTask; if(!task)return
 async function resolveCapturePressure(){
   const n=now();
   const counts=new Map();
-  for(const u of indexedTroops(warmChunks)){
+  const captureTroops=new Map();
+  for(const u of indexedTroops(warmChunks))captureTroops.set(u.id,u);
+  // Always include the current player's troops, even when they are outside the camera/base.
+  // These units are what should reverse frontier capture and keep remote fights/capture pressure alive.
+  for(const u of troops.values())if(u.ownerId===playerKey&&u.hp>0)captureTroops.set(u.id,u);
+  for(const u of captureTroops.values()){
     catchUpTroopTravel(u);if(u.hp<=0||isBarbarianUnit(u))continue;
     const k=getChunkOfTile(u.x,u.y).key;
     if(!counts.has(k))counts.set(k,new Map());
@@ -2178,13 +2533,21 @@ async function resolveCapturePressure(){
 }
 async function resolveBarbarianTerritoryPressure(n=now()){
   const touched=new Set();
-  for(const u of indexedTroops(warmChunks)){
+  const pressureTroops=new Map();
+  for(const u of indexedTroops(warmChunks))pressureTroops.set(u.id,u);
+  // If your troop is in a chunk, include any loaded barbarians in that same chunk even when the camera is elsewhere.
+  const playerChunkKeys=new Set([...troops.values()].filter(u=>u.ownerId===playerKey&&u.hp>0).map(u=>getChunkOfTile(u.x,u.y).key));
+  for(const [key,ids] of troopsByChunk)if(playerChunkKeys.has(key))for(const id of ids){const u=troops.get(id);if(u)pressureTroops.set(id,u);}
+  for(const u of pressureTroops.values()){
     if(!isBarbarianUnit(u)||u.hp<=0)continue;
     const key=getChunkOfTile(u.x,u.y).key,t=territories.get(key);
     if(!t?.ownerId||isBarbarianOwner(t.ownerId))continue;
-    const playerPresent=getNearbyTroops(key,0).some(p=>p.hp>0&&!isBarbarianUnit(p)&&p.ownerId===t.ownerId);
+    const playerPresent=[...(troopsByChunk.get(key)||[])].map(id=>troops.get(id)).some(p=>p&&p.hp>0&&!isBarbarianUnit(p)&&p.ownerId===t.ownerId);
     touched.add(key);
-    const old=t.barbarianPressure||{},startedAt=old.forceId===u.ownerId&&old.targetOwnerId===t.ownerId?Number(old.startedAt||n):n,elapsed=Math.max(0,n-Number(old.lastUpdatedAt||n)),progressMs=Math.max(0,Number(old.progressMs||0)+(playerPresent?-elapsed*UNCLAIMED_CAPTURE_DECAY_MULTIPLIER:elapsed));
+    const old=t.barbarianPressure||{},startedAt=old.forceId===u.ownerId&&old.targetOwnerId===t.ownerId?Number(old.startedAt||n):n,elapsed=Math.max(0,n-Number(old.lastUpdatedAt||n));
+    // Friendly troops should rapidly roll back barbarian capture instead of barely slowing it.
+    const reverseMult=playerPresent?6:1;
+    const progressMs=Math.max(0,Number(old.progressMs||0)+(playerPresent?-elapsed*UNCLAIMED_CAPTURE_DECAY_MULTIPLIER*reverseMult:elapsed));
     const pressure={startedAt,lastUpdatedAt:n,progressMs,forceId:u.ownerId,targetOwnerId:t.ownerId,contested:playerPresent};
     if(progressMs>=UNCLAIMED_CAPTURE_REQUIRED_MS){
       await setDoc(ref('territories',key),{id:key,cx:t.cx,cy:t.cy,ownerId:null,claimedAt:null,capture:null,barbarianPressure:null,resource:t.resource||balancedResourceForChunk(t.cx,t.cy)},{merge:true});
@@ -2196,8 +2559,10 @@ async function resolveBarbarianTerritoryPressure(n=now()){
   }
   for(const [key,t] of territories){
     if(!t.barbarianPressure||touched.has(key))continue;
-    const p=t.barbarianPressure,progressMs=Math.max(0,Number(p.progressMs||0)-(n-Number(p.lastUpdatedAt||n))*UNCLAIMED_CAPTURE_DECAY_MULTIPLIER);
-    await setDoc(ref('territories',key),{barbarianPressure:progressMs?{...p,progressMs,lastUpdatedAt:n,contested:false}:null},{merge:true});
+    const p=t.barbarianPressure,ownerPresent=[...(troopsByChunk.get(key)||[])].map(id=>troops.get(id)).some(u=>u&&u.hp>0&&!isBarbarianUnit(u)&&u.ownerId===t.ownerId);
+    const decay=UNCLAIMED_CAPTURE_DECAY_MULTIPLIER*(ownerPresent?6:1);
+    const progressMs=Math.max(0,Number(p.progressMs||0)-(n-Number(p.lastUpdatedAt||n))*decay);
+    await setDoc(ref('territories',key),{barbarianPressure:progressMs?{...p,progressMs,lastUpdatedAt:n,contested:ownerPresent}:null},{merge:true});
   }
 }
 function townStability(playerId=playerKey){const bs=townBuildings(playerId),districts=getDistricts(playerId),districtIds=new Set(districts.flatMap(d=>d.members.map(b=>b.id))),connected=bs.filter(b=>isBuildingKingdomConnected(b,playerId)).length,outside=bs.filter(b=>!districtIds.has(b.id)&&b.type!=='road').length,damaged=bs.filter(b=>b.hp<effectiveMaxHp(b)*.75).length,wells=bs.filter(b=>b.type==='well').length,sacred=bs.filter(b=>(BUILDING[b.type]?.category==='sacred')).length,defense=bs.filter(b=>BUILDING[b.type]?.defense||b.type==='watchtower').length,camps=[...buildings.values()].filter(b=>isBarbarianCamp(b)&&b.hp>0&&bs.some(t=>dist(t,b)<=CHUNK_SIZE*2)).length,connectedProv=[...new Set([...territories.values()].filter(t=>t.ownerId===playerId&&getSuppliedChunks(playerId).has(t.id)).map(t=>getProvinceId(t.cx,t.cy)))].length,over=Math.max(0,supplyUsed()-supplyCap()),districtAvg=districts.length?districts.reduce((a,d)=>a+districtStability(d),0)/districts.length:50;return Math.round(clamp(45+districts.length*4+(districtAvg-50)*.35+connected*.8+wells*2.5+sacred*4+defense*1.5+connectedProv*1.5-outside*2.2-damaged*4-camps*7-over,0,100))}
@@ -2625,9 +2990,9 @@ canvas.addEventListener('contextmenu',e=>e.preventDefault());
 canvas.addEventListener('mousemove',e=>{const tile=screenToTile(e.offsetX,e.offsetY),c=getChunkOfTile(tile.x,tile.y),visible=isChunkInWorld(c.cx,c.cy)&&isChunkVisible(c.cx,c.cy);renderProvinceHover(visible?getProvinceForChunk(c.cx,c.cy):null);});
 canvas.addEventListener('mouseleave',()=>renderProvinceHover(null));
 canvas.addEventListener('mousedown',e=>{ if(e.button===0){mouse.down=true;mouse.startX=e.clientX;mouse.startY=e.clientY; selBox.style.display='block'; selBox.style.left=e.clientX+'px';selBox.style.top=e.clientY+'px';selBox.style.width='0px';selBox.style.height='0px';}});
-window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y),visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y)||visibleLandmarkAtTile(hoveredTile.x,hoveredTile.y);if(selectedInspectionChunkKey){const ic=parseChunkKey(selectedInspectionChunkKey);renderChunkInspection(ic.cx,ic.cy);}else renderProvinceInfoPanel(visible?getProvinceForChunk(c.cx,c.cy):null); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; renderLandmarkPanel(visible?landmarkAtChunk(c.key):null);if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const supplied=terr.ownerId?getSuppliedChunks(terr.ownerId).has(terr.id):false,supplyText=!terr.ownerId?'None':supplied?'Connected':`Cut off - income reduced to ${Math.round(UNSUPPLIED_INCOME_MULTIPLIER*100)}%`,ownerAlliance=terr.ownerId?allianceForPlayer(terr.ownerId):null; const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||LANDMARK[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null,hoverDistrict=hoveredEntity?.kind==='building'?getDistrictForBuilding(hoveredEntity.id):null,battle=[...battles.values()].find(b=>b.chunkKey===terr.id&&b.status!=='ended')||[...battles.values()].filter(b=>b.chunkKey===terr.id).sort((a,b)=>(b.resolvedAt||0)-(a.resolvedAt||0))[0],base=battle&&battleBase(battle),state=battle&&battleState(battle),battleInfo=battle?`<br><b>Invasion: ${escapeHtml(state.replace('_',' '))}</b><br>Starts: ${new Date(battle.startAt).toLocaleString()}<br>Ends: ${new Date(battle.endAt).toLocaleString()}<br>Required target: ${escapeHtml(BUILDING[battle.baseType||base?.type]?.name||battle.baseType||'Defender base')} — ${base&&base.hp>0?`standing (${Math.ceil(base.hp)} HP)`:'destroyed'}`:''; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${escapeHtml(terr.ownerId||'Neutral')}${ownerAlliance?`<br>Alliance: <span class="allianceBadge">${escapeHtml(ownerAlliance.name)}</span>`:''}<br>Supply: <b class="${supplied?'okText':'dangerText'}">${supplyText}</b><br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${battleInfo}${camp?(()=>{const d=campTypeDef(camp),raid=camp.state==='raiding'?`Raiding ${camp.raidTargetChunk||'nearby territory'}`:`${fmt(Math.max(0,(camp.nextRaidAt||now())-now()))} until raid ready`;return `<br><b style="color:${d.color}">${d.icon} ${d.name} · Level ${camp.campLevel||1}</b><br><i>${d.flavor}</i><br>Raid status: ${raid}<br>Reward preview: ${barbarianRewardPreview(camp)}`;})():''}${hoverName?`<br>Hovered: ${hoverName}`:''}${hoverDistrict?`<br>${districtDetailsHtml(hoverDistrict)}${hoveredEntity.data.type==='market'?`<br>Market income x${marketIncomeMultiplier(hoveredEntity.data).toFixed(2)}`:''}${hoverDistrict.type==='market'&&hoverDistrict.score.military>.2?'<br><span class="dangerText">Warning: military buildings nearby reduce trade efficiency.</span>':''}`:''}${terr.capture?`<br><b>Capturing player: ${escapeHtml(terr.capture.ownerId||'Unknown')}</b><br>${Math.floor(clamp(Number(terr.capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS,0,1)*100)}% · ${fmt(UNCLAIMED_CAPTURE_REQUIRED_MS-Number(terr.capture.progressMs||0))} remaining<div class="progress"><span style="width:${clamp(Number(terr.capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS*100,0,100)}%;background:${terr.capture.contested?'#ff9f43':'#54d6ff'}"></span></div>${terr.capture.contested?'<b class="dangerText">Contested — capture paused</b>':''}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
+window.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect(); const sx=e.clientX-r.left, sy=e.clientY-r.top; const prevHover=hoveredTile?getChunkOfTile(hoveredTile.x,hoveredTile.y).key:null; hoveredTile=screenToTile(sx,sy); const c=getChunkOfTile(hoveredTile.x,hoveredTile.y); if(prevHover!==c.key){markVisibleChunksDirty();cameraStreamDirty=true;scheduleChunkStreaming();} const visible=isChunkVisible(c.cx,c.cy); hoveredEntity=visibleEntityAtTile(hoveredTile.x,hoveredTile.y)||visibleLandmarkAtTile(hoveredTile.x,hoveredTile.y);if(selectedInspectionChunkKey){const ic=parseChunkKey(selectedInspectionChunkKey);renderChunkInspection(ic.cx,ic.cy);}else renderProvinceInfoPanel(visible?getProvinceForChunk(c.cx,c.cy):null); $('chunkReadout').textContent=visible?`${c.cx},${c.cy}`:'Unknown'; renderLandmarkPanel(visible?landmarkAtChunk(c.key):null);if(!visible){$('tileInfo').innerHTML='<b>Unknown Region</b><br>Scout this area to reveal details.';}else{const terr=territoryOfTile(hoveredTile.x,hoveredTile.y); terr.resource=terr.resource||chunkResource(terr.cx,terr.cy); const supplied=terr.ownerId?getSuppliedChunks(terr.ownerId).has(terr.id):false,supplyText=!terr.ownerId?'None':supplied?'Connected':`Cut off - income reduced to ${Math.round(UNSUPPLIED_INCOME_MULTIPLIER*100)}%`,ownerAlliance=terr.ownerId?allianceForPlayer(terr.ownerId):null; const camp=[...buildings.values()].find(b=>isBarbarianCamp(b)&&b.chunkKey===terr.id&&b.hp>0); const hoverName=hoveredEntity?(UNIT[hoveredEntity.data.type]?.name||BUILDING[hoveredEntity.data.type]?.name||LANDMARK[hoveredEntity.data.type]?.name||hoveredEntity.data.type):null,hoverDistrict=hoveredEntity?.kind==='building'?getDistrictForBuilding(hoveredEntity.id):null,battle=[...battles.values()].find(b=>b.chunkKey===terr.id&&b.status!=='ended')||[...battles.values()].filter(b=>b.chunkKey===terr.id).sort((a,b)=>(b.resolvedAt||0)-(a.resolvedAt||0))[0],base=battle&&battleBase(battle),state=battle&&battleState(battle),battleInfo=battle?`<br><b>Invasion: ${escapeHtml(state.replace('_',' '))}</b><br>Starts: ${new Date(battle.startAt).toLocaleString()}<br>Ends: ${new Date(battle.endAt).toLocaleString()}<br>Required target: ${escapeHtml(BUILDING[battle.baseType||base?.type]?.name||battle.baseType||'Defender base')} — ${base&&base.hp>0?`standing (${Math.ceil(base.hp)} HP)`:'destroyed'}`:''; $('tileInfo').innerHTML=`Tile ${hoveredTile.x},${hoveredTile.y}<br>Terrain: ${terrainAt(hoveredTile.x,hoveredTile.y)}<br><b>Chunk ${terr.cx},${terr.cy}</b><br>Owner: ${escapeHtml(terr.ownerId||'Neutral')}${ownerAlliance?`<br>Alliance: <span class="allianceBadge">${escapeHtml(ownerAlliance.name)}</span>`:''}<br>Supply: <b class="${supplied?'okText':'dangerText'}">${supplyText}</b><br><span style="color:${resourceColor(terr.resource)}">Resource: <b>${resourceDisplayName(terr.resource)}</b></span><br>Income: ${resourceIncomeText(terr)}${battleInfo}${camp?(()=>{const d=campTypeDef(camp),raid=camp.state==='raiding'?`Raiding ${camp.raidTargetChunk||'nearby territory'}`:`${fmt(Math.max(0,(camp.nextRaidAt||now())-now()))} until raid ready`;return `<br><b style="color:${d.color}">${d.icon} ${d.name} · Level ${camp.campLevel||1}</b><br><i>${d.flavor}</i><br>Raid status: ${raid}<br>Reward preview: ${barbarianRewardPreview(camp)}`;})():''}${hoverName?`<br>Hovered: ${hoverName}`:''}${hoverDistrict?`<br>${districtDetailsHtml(hoverDistrict)}${hoveredEntity.data.type==='market'?`<br>Market income x${marketIncomeMultiplier(hoveredEntity.data).toFixed(2)}`:''}${hoverDistrict.type==='market'&&hoverDistrict.score.military>.2?'<br><span class="dangerText">Warning: military buildings nearby reduce trade efficiency.</span>':''}`:''}${terr.capture?`<br><b>Capturing player: ${escapeHtml(terr.capture.ownerId||'Unknown')}</b><br>${Math.floor(clamp(Number(terr.capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS,0,1)*100)}% · ${fmt(UNCLAIMED_CAPTURE_REQUIRED_MS-Number(terr.capture.progressMs||0))} remaining<div class="progress"><span style="width:${clamp(Number(terr.capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS*100,0,100)}%;background:${terr.capture.contested?'#ff9f43':'#54d6ff'}"></span></div>${terr.capture.contested?'<b class="dangerText">Contested — capture paused</b>':''}`:''}`;} if(mouse.down){const x=Math.min(mouse.startX,e.clientX),y=Math.min(mouse.startY,e.clientY),w=Math.abs(mouse.startX-e.clientX),h=Math.abs(mouse.startY-e.clientY); Object.assign(selBox.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'});} });
 window.addEventListener('mouseup',async e=>{ if(mouse.down&&e.button===0){ mouse.down=false; selBox.style.display='none'; const rect=canvas.getBoundingClientRect(); const x1=Math.min(mouse.startX,e.clientX)-rect.left,y1=Math.min(mouse.startY,e.clientY)-rect.top,x2=Math.max(mouse.startX,e.clientX)-rect.left,y2=Math.max(mouse.startY,e.clientY)-rect.top; if(buildMode&&Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top),type=buildMode;const placed=await placeBuilding(type,t.x,t.y);if(placed){buildMode=null;$('modeReadout').textContent='Move';}return;} if(Math.abs(x2-x1)<4&&Math.abs(y2-y1)<4){ const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); const ent=visibleEntityAtTile(t.x,t.y)||visibleLandmarkAtTile(t.x,t.y); if(attackMode){issueAttackArea(selected,t.x,t.y);attackMode=false;$('modeReadout').textContent='Move';} else { const selectable=ent&&ent.kind!=='landmark'?ent:null; if(selectable){ selectedInspectionChunkKey=null; if(selectable.kind==='troop')handleTroopClickSelection(selectable,e); else { lastClickedUnitId=null;lastClickedUnitAt=0; if(!e.shiftKey)selected.clear(); selected.add(selectable.id);} } else { lastClickedUnitId=null;lastClickedUnitAt=0; const hadTroops=[...selected].some(id=>troops.has(id)); if(!e.shiftKey) selected.clear(); if(!hadTroops){const c=getChunkOfTile(t.x,t.y); selectedInspectionChunkKey=c.key; renderChunkInspection(c.cx,c.cy); setSideTab('overview');} } } } else { if(!e.shiftKey)selected.clear(); for(const u of troops.values()){ if(u.ownerId!==playerKey||u.hp<=0)continue; const s=tileToScreen(u.x,u.y); if(s.x>=x1&&s.x<=x2&&s.y>=y1&&s.y<=y2)selected.add(u.id);} } updateUI(); }});
-canvas.addEventListener('mouseup',async e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){const type=buildMode;const placed=await placeBuilding(type,t.x,t.y); if(placed){buildMode=null; $('modeReadout').textContent='Move';} return;} const ent=visibleEntityAtTile(t.x,t.y)||visibleLandmarkAtTile(t.x,t.y); const rallyBuildings=selectedRallyBuildings(); if(!attackMode&&!ent&&rallyBuildings.length){if(e.altKey||e.shiftKey){for(const b of rallyBuildings)await clearBuildingRallyPoint(b);}else{for(const b of rallyBuildings)await setBuildingRallyPoint(b,t.x,t.y);}} else if(attackMode)issueAttackArea(selected,t.x,t.y);else if(ent&&isAttackableEntity(ent))issueAttack(selected,ent);else issueMove(selected,t.x,t.y,false);attackMode=false;$('modeReadout').textContent='Move'; }});
+canvas.addEventListener('mouseup',async e=>{ if(e.button===2){ const rect=canvas.getBoundingClientRect(); const t=screenToTile(e.clientX-rect.left,e.clientY-rect.top); if(buildMode){const type=buildMode;const placed=await placeBuilding(type,t.x,t.y); if(placed){buildMode=null; $('modeReadout').textContent='Move';} return;} const ent=commandEntityAtTile(t.x,t.y); const rallyBuildings=selectedRallyBuildings(); if(!attackMode&&!ent&&rallyBuildings.length){if(e.altKey||e.shiftKey){for(const b of rallyBuildings)await clearBuildingRallyPoint(b);}else{for(const b of rallyBuildings)await setBuildingRallyPoint(b,t.x,t.y);}} else if(attackMode)issueAttackArea(selected,t.x,t.y);else if(ent&&isAttackableEntity(ent))issueAttack(selected,ent);else issueMove(selected,t.x,t.y,false);attackMode=false;$('modeReadout').textContent='Move'; }});
 canvas.addEventListener('wheel',e=>{e.preventDefault(); const old=camera.zoom; camera.zoom=clamp(camera.zoom*(e.deltaY>0?.9:1.1),MIN_PLAYABLE_ZOOM,2.2); const mx=e.offsetX,my=e.offsetY; camera.x=(camera.x+mx)*(camera.zoom/old)-mx; camera.y=(camera.y+my)*(camera.zoom/old)-my;},{passive:false});
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&buildMode){buildMode=null;$('modeReadout').textContent='Move';log('Build mode cancelled.');return;} const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||'');if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'&&!e.repeat&&!typing){e.preventDefault();selectArmy();return;}if(e.key.toLowerCase()==='a'&&!e.repeat&&!typing){e.preventDefault();buildMode=null;if(!issueQuickAttackNearest()){attackMode=true;$('modeReadout').textContent='Attack-move';}} const ability=currentAbilityHotkeys.get(e.key); if(ability&&!e.repeat){buildMode=null;e.preventDefault();ability.trigger();}});
 
@@ -2886,7 +3251,7 @@ function drawCommandFeedback(size){
 }
 function drawSelectedRallyPoints(size){const selectedBuildings=[...selected].map(id=>buildings.get(id)).filter(b=>b&&b.rallyPoint&&troopCanTrainBuilding(b));if(!selectedBuildings.length)return;ctx.save();for(const b of selectedBuildings){const rp=b.rallyPoint;if(!isTileVisible(rp.x,rp.y))continue;const from=tileToScreen(b.x,b.y),to=tileToScreen(rp.x,rp.y),cx=to.x+size/2,cy=to.y+size/2;ctx.strokeStyle='rgba(121,216,255,.7)';ctx.lineWidth=Math.max(1,size*.08);ctx.setLineDash([Math.max(4,size*.25),Math.max(3,size*.18)]);ctx.beginPath();ctx.moveTo(from.x+size/2,from.y+size/2);ctx.lineTo(cx,cy);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#ffd45a';ctx.strokeStyle='rgba(0,0,0,.85)';ctx.lineWidth=Math.max(2,size*.08);ctx.beginPath();ctx.moveTo(cx,cy-size*.45);ctx.lineTo(cx,cy+size*.38);ctx.stroke();ctx.beginPath();ctx.moveTo(cx,cy-size*.42);ctx.lineTo(cx+size*.45,cy-size*.25);ctx.lineTo(cx,cy-size*.05);ctx.closePath();ctx.fill();ctx.stroke();}ctx.restore();}
 function drawStrategicAssetMarkers(size,drawChunkKeys){const markerChunks=new Set(drawChunkKeys);const drawDot=(e,color,r=4)=>{if(!e||e.hp<=0||!markerChunks.has(entityChunkKey(e))||!isTileVisible(e.x,e.y))return;const s=tileToScreen(e.x,e.y);ctx.fillStyle=color;ctx.beginPath();ctx.arc(s.x+size/2,s.y+size/2,r,0,Math.PI*2);ctx.fill();perfStats.entitiesDrawn++;};for(const u of ownedTroops(playerKey))drawDot(u,selected.has(u.id)?'#8ee8ff':'#43ff8f',selected.has(u.id)?6:4);for(const b of ownedBuildings(playerKey)){if(b.type==='road')continue;drawDot(b,b.constructing?'#ffd36b':b.productionQueue?.length?'#79d8ff':'#d9f7ff',b.productionQueue?.length?5:4);if(b.productionQueue?.length&&markerChunks.has(entityChunkKey(b))){const s=tileToScreen(b.x,b.y);drawProductionRingForBuilding(b,s,size,{compact:true});}}for(const road of indexedBuildings(drawChunkKeys,{roads:true})){if(road.ownerId===playerKey&&road.constructing){const s=tileToScreen(road.x,road.y);ctx.save();ctx.strokeStyle='#ffd36b';ctx.setLineDash([3,3]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(s.x+size*.25,s.y+size*.5);ctx.lineTo(s.x+size*.75,s.y+size*.5);ctx.stroke();ctx.restore();perfStats.entitiesDrawn++;}}for(const [key,t] of territories){if(!markerChunks.has(key))continue;if(t.capture||t.barbarianPressure){const {cx,cy}=parseChunkKey(key),s=tileToScreen(cx*CHUNK_SIZE+CHUNK_SIZE/2,cy*CHUNK_SIZE+CHUNK_SIZE/2),pct=t.barbarianPressure?clamp(Number(t.barbarianPressure.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS,0,1):clamp(Number(t.capture.progressMs||0)/UNCLAIMED_CAPTURE_REQUIRED_MS,0,1);drawRadialMarker(s.x,s.y,6,pct,t.barbarianPressure?'#ff663d':'#54d6ff',t.barbarianPressure?'!':'');}}for(const u of indexedTroops(drawChunkKeys))if(isBarbarianUnit(u)&&u.hp>0)drawDot(u,'#ff663d',5);}
-function draw(){ const drawStart=performance.now(); const size=32*camera.zoom,tier=zoomTier(),strategic=tier==='strategic',lowDetail=tier!=='detail'||stabilityMode,healthBarQueue=[];perfStats.lowDetail=lowDetail;perfStats.tileCellsDrawn=0;perfStats.entitiesDrawn=0;visibleChunks=getCachedVisibleChunks(); ctx.clearRect(0,0,canvas.width,canvas.height); const startX=Math.floor(camera.x/size), startY=Math.floor(camera.y/size), endX=Math.ceil((camera.x+canvas.width)/size), endY=Math.ceil((camera.y+canvas.height)/size);
+function draw(){ const drawStart=performance.now(); const size=32*camera.zoom,tier=zoomTier(),strategic=tier==='strategic',lowDetail=tier!=='detail'||stabilityMode,healthBarQueue=[];perfStats.lowDetail=lowDetail;perfStats.tileCellsDrawn=0;perfStats.entitiesDrawn=0;visibleChunks=new Set(getCachedVisibleChunks());for(const u of troops.values())if(u.hp>0&&(u.ownerId===playerKey||isAllied(playerKey,u.ownerId))){const cc=getChunkOfTile(u.x,u.y);for(const k of chunkKeysAround(cc,1))visibleChunks.add(k);}for(const e of [...troops.values(),...buildings.values()])if(entityIsHostileOrBarbarian(e,playerKey)&&hasFriendlyTroopVisionNearEntity(e,playerKey,CHUNK_SIZE+6)){const cc=getChunkOfTile(e.x,e.y);visibleChunks.add(cc.key);} ctx.clearRect(0,0,canvas.width,canvas.height); const startX=Math.floor(camera.x/size), startY=Math.floor(camera.y/size), endX=Math.ceil((camera.x+canvas.width)/size), endY=Math.ceil((camera.y+canvas.height)/size);
   const {keys:drawChunkKeys,scx,scy,ecx,ecy}=computeVisibleDrawChunks(startX,startY,endX,endY,{strategic});perfStats.visible=drawChunkKeys.size;
   if(!strategic){
     for(const key of drawChunkKeys){const {cx,cy}=parseChunkKey(key);const tx0=Math.max(startX,cx*CHUNK_SIZE),ty0=Math.max(startY,cy*CHUNK_SIZE),tx1=Math.min(endX,(cx+1)*CHUNK_SIZE-1),ty1=Math.min(endY,(cy+1)*CHUNK_SIZE-1);for(let y=ty0;y<=ty1;y++) for(let x=tx0;x<=tx1;x++){ if(!isTileInWorld(x,y))continue; const s=tileToScreen(x,y); if(!isChunkVisible(cx,cy)){ctx.fillStyle='#020305';ctx.fillRect(s.x,s.y,size+1,size+1);continue;} const terr=terrainAt(x,y); ctx.fillStyle=terr==='water'?'#12304a':terr==='mountain'?'#40434a':terr==='forest'?'#153b25':'#1c2a1f'; ctx.fillRect(s.x,s.y,size+1,size+1); const owner=ownerOfTile(x,y); if(owner){ctx.fillStyle=owner===playerKey||isAllied(playerKey,owner)?'rgba(24,201,100,.22)':'rgba(255,77,77,.22)'; ctx.fillRect(s.x,s.y,size,size);} perfStats.tileCellsDrawn++;}}
@@ -2901,12 +3266,12 @@ function draw(){ const drawStart=performance.now(); const size=32*camera.zoom,ti
   for(const b of indexedBattles(drawChunkKeys)){const n=now(); if(b.status==='ended')continue; const {cx,cy}=parseChunkKey(b.chunkKey); if(!isChunkVisible(cx,cy))continue; const s=tileToScreen(cx*CHUNK_SIZE,cy*CHUNK_SIZE);ctx.save();ctx.strokeStyle=b.status==='contested'?'#ff61d0':n>=b.startAt?'#ff2d45':'#ffb547';ctx.globalAlpha=b.status==='contested'?.6+.4*Math.sin(n/180):1;ctx.lineWidth=b.status==='contested'?8:4;ctx.strokeRect(s.x+3,s.y+3,CHUNK_SIZE*size-6,CHUNK_SIZE*size-6);ctx.restore();perfStats.entitiesDrawn++;}
   if(strategic){drawStrategicAssetMarkers(size,drawChunkKeys);drawSelectedRallyPoints(size);drawCommandFeedback(size);perfStats.drawMs=performance.now()-drawStart;return;}
   drawTownOverlays(size);
-  for(const road of indexedBuildings(drawChunkKeys,{roads:true})){if(road.type!=='road'||road.hp<=0||!isTileVisible(road.x,road.y))continue;const ss=tileToScreen(road.x,road.y),cx=ss.x+size/2,cy=ss.y+size/2;ctx.save();ctx.strokeStyle=road.constructing?'#d7b06c':'#a8875f';ctx.lineWidth=Math.max(3,size*.28);if(road.constructing)ctx.setLineDash([Math.max(2,size*.18),Math.max(2,size*.14)]);ctx.beginPath();ctx.moveTo(cx-size*.32,cy);ctx.lineTo(cx+size*.32,cy);if(!lowDetail)for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(roadAt(road.x+dx,road.y+dy)){ctx.moveTo(cx,cy);ctx.lineTo(cx+dx*size/2,cy+dy*size/2);}ctx.stroke();ctx.setLineDash([]);ctx.restore();perfStats.entitiesDrawn++;}
+  for(const road of indexedBuildings(drawChunkKeys,{roads:true})){if(road.type!=='road'||road.hp<=0||!shouldRevealEntityToPlayer(road,playerKey))continue;const ss=tileToScreen(road.x,road.y),cx=ss.x+size/2,cy=ss.y+size/2;ctx.save();ctx.strokeStyle=road.constructing?'#d7b06c':'#a8875f';ctx.lineWidth=Math.max(3,size*.28);if(road.constructing)ctx.setLineDash([Math.max(2,size*.18),Math.max(2,size*.14)]);ctx.beginPath();ctx.moveTo(cx-size*.32,cy);ctx.lineTo(cx+size*.32,cy);if(!lowDetail)for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(roadAt(road.x+dx,road.y+dy)){ctx.moveTo(cx,cy);ctx.lineTo(cx+dx*size/2,cy+dy*size/2);}ctx.stroke();ctx.setLineDash([]);ctx.restore();perfStats.entitiesDrawn++;}
   for(const l of indexedLandmarks(drawChunkKeys)){const c=parseChunkKey(l.chunkKey);if(!isChunkVisible(c.cx,c.cy))continue;const ss=tileToScreen(l.x,l.y),iconSize=clamp(size*1.35,18,54);drawPveLandmarkIdentity(l,ss,size);if(l.hp>0&&!stabilityMode)queueHealthBar(healthBarQueue,l,{x:ss.x+size/2,y:ss.y-size*.18},'building');perfStats.entitiesDrawn++;}
   drawDistrictWalls(size);drawCaravans(size);
-  for(const b of indexedBuildings(drawChunkKeys)){if(b.hp<=0||b.type==='road'||!isTileVisible(b.x,b.y)||(b.type==='spikeTrap'&&!trapIsDetected(b)))continue;const ss=tileToScreen(b.x,b.y);if(ss.x<-size||ss.y<-size||ss.x>canvas.width+size||ss.y>canvas.height+size)continue;const visual=getBuildingVisual(b.type);ctx.save();if(b.constructing)ctx.globalAlpha=.62;drawBuildingGlow(ctx,visual,ss.x,ss.y,size);drawBuildingShape(ctx,b,visual,ss.x+size*.04,ss.y+size*.04,size*.92);ctx.restore();if(b.productionQueue?.length)drawProductionRingForBuilding(b,ss,size);if(!lowDetail&&b.constructing)drawConstructionOverlay(ctx,b,ss.x,ss.y,size);if(selected.has(b.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=2;ctx.strokeRect(ss.x+2,ss.y+2,size-4,size-4);}if(!stabilityMode)queueHealthBar(healthBarQueue,b,{x:ss.x+size/2,y:ss.y-size*.15},'building');perfStats.entitiesDrawn++;}
+  for(const b of indexedBuildings(drawChunkKeys)){if(b.hp<=0||b.type==='road'||!shouldRevealEntityToPlayer(b,playerKey)||(b.type==='spikeTrap'&&!trapIsDetected(b)))continue;const ss=tileToScreen(b.x,b.y);if(ss.x<-size||ss.y<-size||ss.x>canvas.width+size||ss.y>canvas.height+size)continue;const visual=getBuildingVisual(b.type);ctx.save();if(b.constructing)ctx.globalAlpha=.62;drawBuildingGlow(ctx,visual,ss.x,ss.y,size);drawBuildingShape(ctx,b,visual,ss.x+size*.04,ss.y+size*.04,size*.92);ctx.restore();if(b.productionQueue?.length)drawProductionRingForBuilding(b,ss,size);if(!lowDetail&&b.constructing)drawConstructionOverlay(ctx,b,ss.x,ss.y,size);if(selected.has(b.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=2;ctx.strokeRect(ss.x+2,ss.y+2,size-4,size-4);}if(!stabilityMode)queueHealthBar(healthBarQueue,b,{x:ss.x+size/2,y:ss.y-size*.15},'building');perfStats.entitiesDrawn++;}
   if(!stabilityMode){if(!lowDetail)drawLivingTown(size);drawDistrictLabels(size);}
-  for(const u of indexedTroops(drawChunkKeys)){catchUpTroopTravel(u);if(u.hp<=0||!isTileVisible(u.x,u.y))continue;const ss=tileToScreen(u.x,u.y);if(ss.x<-size||ss.y<-size||ss.x>canvas.width+size||ss.y>canvas.height+size)continue;drawSvgIcon('troop',u.type,u.ownerId,ss.x+size*.02,ss.y+size*.02,size*.96);if(selected.has(u.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(ss.x+size/2,ss.y+size/2,size*.48,0,Math.PI*2);ctx.stroke();}if(!stabilityMode)queueHealthBar(healthBarQueue,u,{x:ss.x+size/2,y:ss.y-size*.2},'unit');if(!lowDetail&&!stabilityMode)drawVeterancyStars(u,ss,size);if(window.DEBUG_BARBARIAN_AI&&isBarbarianUnit(u)){ctx.save();ctx.font=`700 ${Math.max(9,size*.32)}px Segoe UI`;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillStyle='#ffdb8b';ctx.strokeStyle='#110804';ctx.lineWidth=3;const label=u.aiState||u.order||'idle';ctx.strokeText(label,ss.x+size/2,ss.y-2);ctx.fillText(label,ss.x+size/2,ss.y-2);ctx.restore();}perfStats.entitiesDrawn++;}
+  for(const u of indexedTroops(drawChunkKeys)){catchUpTroopTravel(u);if(u.hp<=0||!shouldRevealEntityToPlayer(u,playerKey))continue;const ss=tileToScreen(u.x,u.y);if(ss.x<-size||ss.y<-size||ss.x>canvas.width+size||ss.y>canvas.height+size)continue;drawSvgIcon('troop',u.type,u.ownerId,ss.x+size*.02,ss.y+size*.02,size*.96);if(selected.has(u.id)){ctx.strokeStyle='#8ee8ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(ss.x+size/2,ss.y+size/2,size*.48,0,Math.PI*2);ctx.stroke();}if(!stabilityMode)queueHealthBar(healthBarQueue,u,{x:ss.x+size/2,y:ss.y-size*.2},'unit');if(!lowDetail&&!stabilityMode)drawVeterancyStars(u,ss,size);if(window.DEBUG_BARBARIAN_AI&&isBarbarianUnit(u)){ctx.save();ctx.font=`700 ${Math.max(9,size*.32)}px Segoe UI`;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillStyle='#ffdb8b';ctx.strokeStyle='#110804';ctx.lineWidth=3;const label=u.aiState||u.order||'idle';ctx.strokeText(label,ss.x+size/2,ss.y-2);ctx.fillText(label,ss.x+size/2,ss.y-2);ctx.restore();}perfStats.entitiesDrawn++;}
   drawSelectedRallyPoints(size);
   drawCommandFeedback(size);
   if(!stabilityMode)drawHealthBars(healthBarQueue);
