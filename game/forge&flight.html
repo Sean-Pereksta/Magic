@@ -360,6 +360,34 @@
   .shopGrid{grid-template-columns:1fr;}
   @media (min-width:760px){body.inv-open .side{inset:10px 10px 10px auto;width:min(430px, calc(100vw - 20px));height:calc(100dvh - 20px);border:1px solid var(--line);border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.60);} .slots{grid-template-columns:1fr 1fr;} .shopGrid{grid-template-columns:1fr 1fr;}}
 
+
+  /* Persistent main menu / cloud save */
+  .mainMenuOverlay{position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:18px;background:radial-gradient(900px 520px at 50% 25%, rgba(56,189,248,.18), rgba(0,0,0,.72) 58%, rgba(2,6,23,.94));backdrop-filter:blur(8px);}
+  .mainMenuOverlay.hidden{display:none}
+  .menuCard{width:min(720px, calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;border-radius:24px;border:1px solid rgba(255,255,255,.16);background:linear-gradient(180deg, rgba(15,23,42,.96), rgba(3,7,18,.98));box-shadow:0 28px 90px rgba(0,0,0,.62);padding:18px;display:grid;gap:14px;}
+  .menuTitle{text-align:center;display:grid;gap:6px;padding:8px 4px 2px;}
+  .menuTitle h1{margin:0;font-size:clamp(30px, 8vw, 56px);line-height:.95;letter-spacing:.02em;background:linear-gradient(90deg,#fbbf24,#38bdf8,#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 18px 42px rgba(56,189,248,.16);}
+  .menuTitle p{margin:0;color:rgba(229,231,235,.72);font-size:13px;}
+  .menuTabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .menuTabs .btn{font-size:14px;padding:12px;border-radius:14px;}
+  .menuPane{display:none;gap:10px;}
+  .menuPane.show{display:grid;}
+  .menuField{display:grid;gap:6px;}
+  .menuField label{font-size:11px;color:rgba(229,231,235,.72);text-transform:uppercase;letter-spacing:.06em;font-weight:900;}
+  .menuInput{width:100%;padding:13px 14px;border-radius:15px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.35);color:#fff;font-weight:800;outline:none;}
+  .menuInput:focus{border-color:rgba(56,189,248,.55);box-shadow:0 0 0 3px rgba(56,189,248,.12);}
+  .menuActions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .menuActions .btn{flex:1;min-width:150px;padding:12px 14px;font-size:13px;}
+  .menuStatus{min-height:18px;font-size:12px;color:rgba(229,231,235,.74);text-align:center;}
+  .scoreList{display:grid;gap:7px;}
+  .scoreRow{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:center;padding:8px 10px;border-radius:14px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);font-size:12px;}
+  .scoreRank{font-weight:1000;color:#fbbf24;text-align:center;}
+  .scoreName{font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .scoreDepth{font-variant-numeric:tabular-nums;color:rgba(229,231,235,.78);font-weight:900;}
+  .menuTiny{font-size:11px;color:rgba(229,231,235,.55);text-align:center;line-height:1.35;}
+  .btnExitMenu{background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.26);}
+  @media (max-width:560px){.menuCard{padding:14px;border-radius:20px}.menuTabs{grid-template-columns:1fr}.scoreRow{grid-template-columns:28px 1fr auto}.menuActions{flex-direction:column}.menuActions .btn{width:100%;min-width:0}.bossBanner{top:138px;width:min(430px, calc(100% - 24px));}}
+
 </style>
 </head>
 <body>
@@ -381,6 +409,38 @@
 
     <div class="canvasWrap" id="canvasWrap">
       <canvas id="c"></canvas>
+      <div class="mainMenuOverlay" id="mainMenu">
+        <div class="menuCard">
+          <div class="menuTitle">
+            <h1>Forge & Flight</h1>
+            <p>Mobile roguelike save profiles • deepest-run leaderboard</p>
+          </div>
+
+          <div class="menuTabs">
+            <button class="btn good" id="tabNewGame">New Game</button>
+            <button class="btn alt" id="tabLoadGame">Load Game</button>
+          </div>
+
+          <div class="menuPane show" id="paneNewGame">
+            <div class="menuField"><label>Player name</label><input class="menuInput" id="newPlayerName" maxlength="24" autocomplete="username" placeholder="Enter a hero name"></div>
+            <div class="menuField"><label>Password</label><input class="menuInput" id="newPlayerPass" maxlength="48" type="password" autocomplete="new-password" placeholder="Create a password"></div>
+            <div class="menuActions"><button class="btn good" id="btnCreateProfile">Create New Run</button></div>
+          </div>
+
+          <div class="menuPane" id="paneLoadGame">
+            <div class="menuField"><label>Player name</label><input class="menuInput" id="loadPlayerName" maxlength="24" autocomplete="username" placeholder="Your saved hero name"></div>
+            <div class="menuField"><label>Password</label><input class="menuInput" id="loadPlayerPass" maxlength="48" type="password" autocomplete="current-password" placeholder="Password"></div>
+            <div class="menuActions"><button class="btn alt" id="btnLoadProfile">Load Saved Run</button></div>
+          </div>
+
+          <div class="panel">
+            <h3>Deepest Runs — Top 10</h3>
+            <div class="scoreList" id="highscoreList"><div class="smallNote">Loading highscores...</div></div>
+          </div>
+          <div class="menuStatus" id="menuStatus"></div>
+          <div class="menuTiny">Profiles save level, health, gold, materials, inventory, equipment, and core run stats. When a hero dies, the profile is removed; only a top-10 deepest run remains on the board.</div>
+        </div>
+      </div>
       <button class="mobileBtn" id="btnFullscreen" aria-label="Fullscreen">⛶</button>
       <button class="mobileBtn" id="btnMobileInv" aria-label="Inventory">🎒</button>
       <button class="mobileBtn ready" id="btnSpell" aria-label="Cast spell"><span class="spellIcon">📖</span><span class="spellCd" id="spellCdText"></span></button>
@@ -419,6 +479,7 @@
           </div>
           <div class="modalFoot">
             <span class="smallNote">Every 3rd depth is a Store or Forge.</span>
+            <button class="btn btnExitMenu" id="btnExitPause">Save & Main Menu</button>
             <button class="btn danger" id="btnRestart1">Restart Run</button>
           </div>
         </div>
@@ -437,6 +498,7 @@
             <span class="smallNote">Gold is common; items are rare. Buy when your build is weak.</span>
             <div style="display:flex; gap:8px; flex-wrap:wrap">
               <button class="btn small alt" id="btnShopRefresh">Refresh (cost <span id="shopRefreshCost">25</span>g)</button>
+              <button class="btn small btnExitMenu" id="btnExitStore">Save & Main Menu</button>
               <button class="btn small" id="btnShopNext">Enter Portal</button>
             </div>
           </div>
@@ -513,6 +575,7 @@
           </div>
           <div class="modalFoot">
             <span class="smallNote">Forge floors have no enemies. Upgrade stars to scale long runs.</span>
+            <button class="btn small btnExitMenu" id="btnExitForge">Save & Main Menu</button>
             <button class="btn small" id="btnForgeNext">Enter Portal</button>
           </div>
         </div>
@@ -532,6 +595,7 @@
           </div>
           <div class="modalFoot">
             <span class="smallNote">Try different weapons (auto vs skillshot vs melee).</span>
+            <button class="btn btnExitMenu" id="btnDeathMenu">Main Menu</button>
             <button class="btn danger" id="btnRestart3">Restart Run</button>
           </div>
         </div>
@@ -546,6 +610,7 @@
         <b>Inventory & Gear</b>
         <span>Drag items → slots. Click items to see details.</span>
       </div>
+      <button class="btn small btnExitMenu" id="btnExitInventory">Save & Menu</button>
       <button class="btn small danger" id="btnRestartSide">Restart</button>
     </div>
 
@@ -586,6 +651,10 @@
   </aside>
 </div>
 
+
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script>
 (() => {
   // =========================
@@ -737,6 +806,26 @@ const VIEW_SCALE = 0.78; // zoomed-out mobile view: smaller scale shows more are
 
   // Death
   const deathSummary = document.getElementById("deathSummary");
+
+  // Persistent menu / Firebase elements
+  const mainMenu = document.getElementById("mainMenu");
+  const tabNewGame = document.getElementById("tabNewGame");
+  const tabLoadGame = document.getElementById("tabLoadGame");
+  const paneNewGame = document.getElementById("paneNewGame");
+  const paneLoadGame = document.getElementById("paneLoadGame");
+  const newPlayerName = document.getElementById("newPlayerName");
+  const newPlayerPass = document.getElementById("newPlayerPass");
+  const loadPlayerName = document.getElementById("loadPlayerName");
+  const loadPlayerPass = document.getElementById("loadPlayerPass");
+  const btnCreateProfile = document.getElementById("btnCreateProfile");
+  const btnLoadProfile = document.getElementById("btnLoadProfile");
+  const highscoreList = document.getElementById("highscoreList");
+  const menuStatus = document.getElementById("menuStatus");
+  const btnExitPause = document.getElementById("btnExitPause");
+  const btnExitStore = document.getElementById("btnExitStore");
+  const btnExitForge = document.getElementById("btnExitForge");
+  const btnDeathMenu = document.getElementById("btnDeathMenu");
+  const btnExitInventory = document.getElementById("btnExitInventory");
 
   // =========================
   // Toast
@@ -1419,7 +1508,12 @@ function itemValue(it, purpose="buy"){
     paused:false,
     ended:false,
     kills:0,
-    totalGold:0
+    totalGold:0,
+    profileName:null,
+    profileKey:null,
+    passwordHash:null,
+    cloudReady:false,
+    lastSaveAt:0
   };
 
   function newPlayer(){
@@ -2515,6 +2609,47 @@ function spawnMeteorStrike(x, y, dmg, radius=74, tele=0.85){
   // =========================
   // Enemy AI
   // =========================
+
+
+function bossSummonMinions(e, count=2){
+  for(let i=0;i<count;i++){
+    if(G.enemies.filter(x=>x.type===ENEMY_TYPES.MINION && x.hp>0).length > 16) break;
+    const pt = findSafeSpawnNear(e.x, e.y, 14, 130, 260, 70);
+    const m = makeEnemy(pick([ENEMY_TYPES.MINION, ENEMY_TYPES.SLASHER, ENEMY_TYPES.DASHER]), pt.x, pt.y, G.depth+2);
+    m.hpMax = Math.round(m.hpMax*1.15); m.hp = m.hpMax;
+    G.enemies.push(m);
+    G.fx.push({type:"ring", x:pt.x, y:pt.y, r:22, t:.30, color:"rgba(239,68,68,.32)"});
+  }
+}
+function bossArenaPattern(e, p, dx, dy, d){
+  e.majorT = Math.max(0, (e.majorT||0) - (G.dt||0));
+  if(e.majorT>0) return;
+  e.majorT = e.enrage ? rand(3.0,4.2) : rand(4.2,5.8);
+  const a0 = Math.atan2(dy,dx);
+  const mode = randi(0,3);
+  if(mode===0){
+    for(let i=0;i<12;i++){
+      const a = a0 + (Math.PI*2*i/12);
+      spawnProj("enemy", e.x, e.y, Math.cos(a)*430, Math.sin(a)*430, e.dmg*.56, 5.5, 2.4, "rgba(248,113,113,.92)", {life:720, slow:true});
+    }
+    G.fx.push({type:"ring", x:e.x, y:e.y, r:140, t:.38, color:"rgba(248,113,113,.42)"});
+  } else if(mode===1){
+    for(let i=0;i<4;i++){
+      const spot = pickSafeSpotNear(p.x + (p.vx||0)*0.18, p.y + (p.vy||0)*0.18, 210, 72);
+      spawnMeteorStrike(spot.x, spot.y, e.dmg*(.86+i*.08), 70+i*8, .72+i*.08);
+    }
+  } else if(mode===2){
+    const rr = e.enrage ? 185 : 150;
+    G.hazards.push({kind:"curseSigil", x:p.x, y:p.y, r:rr, t:2.2, dmg:e.dmg*.42});
+    G.fx.push({type:"vortex", x:p.x, y:p.y, r:rr, t:.52, color:"rgba(167,139,250,.58)"});
+    for(const pr of G.projs){ if(pr.owner==="enemy" && dist(pr.x,pr.y,p.x,p.y)<260){ pr.homing=true; pr.turn=4.2; }}
+  } else {
+    bossSummonMinions(e, e.enrage ? 4 : 3);
+    e.shield = Math.min((e.shield||0) + e.hpMax*.08, e.hpMax*.22);
+    G.fx.push({type:"burst", x:e.x, y:e.y, r:120, t:.42, color:"rgba(251,191,36,.45)", rays:14});
+  }
+}
+
   function enemyThink(e, dt){
     const p = G.player;
     e.t += dt;
@@ -2703,6 +2838,7 @@ function spawnMeteorStrike(x, y, dmg, radius=74, tele=0.85){
         toast(`${e.title || 'Boss'} is enraged!`, 1.2);
         G.fx.push({type:"ring", x:e.x, y:e.y, r:e.r+40, t:0.55, color:"rgba(239,68,68,.55)"});
       }
+      bossArenaPattern(e, p, dx, dy, d);
       if(e.type===ENEMY_TYPES.BOSS_GOLEM){
         e.vx = nx*e.speed*0.65; e.vy = ny*e.speed*0.65;
         if(e.specialT<=0){
@@ -4064,6 +4200,204 @@ it.gstar = 0;
     renderAllUI();
   }
 
+
+
+  // =========================
+  // Persistent Profiles + Top 10 Highscores
+  // =========================
+  const firebaseConfig = {
+    apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+    authDomain: "bible-game-246c0.firebaseapp.com",
+    databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+    projectId: "bible-game-246c0",
+    storageBucket: "bible-game-246c0.firebasestorage.app",
+    messagingSenderId: "959619818996",
+    appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+    measurementId: "G-8PR6LVKSH3"
+  };
+  let db = null;
+  let fbReadyPromise = null;
+
+  function setMenuStatus(msg){ if(menuStatus) menuStatus.textContent = msg || ""; }
+  function profileKeyFromName(name){ return String(name||"").trim().toLowerCase().replace(/[^a-z0-9_-]+/g,"_").replace(/^_+|_+$/g,"").slice(0,32); }
+  function cleanDisplayName(name){ return String(name||"").trim().replace(/\s+/g," ").slice(0,24); }
+  async function sha256Text(text){
+    const data = new TextEncoder().encode(String(text||""));
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  }
+  async function ensureFirebase(){
+    if(fbReadyPromise) return fbReadyPromise;
+    fbReadyPromise = (async()=>{
+      if(!window.firebase) throw new Error("Firebase scripts did not load");
+      if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      if(!firebase.auth().currentUser) await firebase.auth().signInAnonymously();
+      G.cloudReady = true;
+      return db;
+    })().catch(err=>{
+      console.warn("Cloud save unavailable; local fallback active", err);
+      setMenuStatus("Cloud save unavailable here. Local fallback is active on this device.");
+      return null;
+    });
+    return fbReadyPromise;
+  }
+  const rootRef = () => db?.collection("lobbies").doc("forgeFlightPersistent");
+  const profileRef = (key) => rootRef()?.collection("profiles").doc(key);
+  const scoresRef = () => rootRef()?.collection("highscores").doc("deepestRuns").collection("entries");
+
+  function serializeRun(){
+    if(!G.player || !G.profileKey) return null;
+    return {
+      version: 2,
+      name: G.profileName, key: G.profileKey, passwordHash: G.passwordHash,
+      savedAt: Date.now(), depth: G.depth, gold: G.gold, totalGold: G.totalGold, kills: G.kills,
+      mats: {...G.mats},
+      player: JSON.parse(JSON.stringify({
+        hp: G.player.hp, hpMax: G.player.hpMax, shield: G.player.shield||0,
+        inv: G.player.inv||[], equip: G.player.equip||{}, spellCD: G.player.spellCD||0, dodgeCD: G.player.dodgeCD||0
+      }))
+    };
+  }
+  async function saveRunNow(reason="auto"){
+    if(!G.profileKey || G.ended) return;
+    const data = serializeRun();
+    if(!data) return;
+    try{ localStorage.setItem(`forgeFlightProfile_${G.profileKey}`, JSON.stringify(data)); }catch{}
+    G.lastSaveAt = performance.now();
+    const dbi = await ensureFirebase();
+    if(dbi){
+      try{ await profileRef(G.profileKey).set({...data, reason}, {merge:false}); }
+      catch(err){ console.warn("Cloud save failed", err); }
+    }
+  }
+  function restoreRun(data){
+    if(!data || !data.player) throw new Error("Save data is incomplete");
+    G.profileName = data.name || G.profileName;
+    G.profileKey = data.key || G.profileKey;
+    G.passwordHash = data.passwordHash || G.passwordHash;
+    G.gold = Number(data.gold||0);
+    G.totalGold = Number(data.totalGold||0);
+    G.kills = Number(data.kills||0);
+    G.mats = {...{iron:0, leather:0, arcane:0}, ...(data.mats||{})};
+    G.shop={items:[], refreshCost:25};
+    G.paused=false; G.ended=false;
+    ovPause.classList.remove("show"); ovStore.classList.remove("show"); ovForge.classList.remove("show"); ovDeath.classList.remove("show");
+    startFloor(Math.max(1, Number(data.depth||1)));
+    G.player = newPlayer();
+    Object.assign(G.player, data.player);
+    G.player.x = G.world.w/2; G.player.y = G.world.h/2;
+    G.player.inv = Array.isArray(data.player.inv) ? data.player.inv : [];
+    G.player.equip = {...newPlayer().equip, ...(data.player.equip||{})};
+    recalcStats(); buildSlotsUI(); renderAllUI();
+    hideMainMenu();
+    toast(`Loaded ${G.profileName}`, 1.1);
+  }
+  async function createNewProfile(){
+    const name = cleanDisplayName(newPlayerName.value);
+    const key = profileKeyFromName(name);
+    const pass = newPlayerPass.value || "";
+    if(!key || name.length<2){ setMenuStatus("Enter a player name with at least 2 characters."); return; }
+    if(pass.length<3){ setMenuStatus("Enter a password with at least 3 characters."); return; }
+    setMenuStatus("Creating profile...");
+    const hash = await sha256Text(pass);
+    const dbi = await ensureFirebase();
+    if(dbi){
+      const snap = await profileRef(key).get();
+      if(snap.exists){ setMenuStatus("That profile is still alive. Use Load Game, or wait until that run dies."); return; }
+    } else if(localStorage.getItem(`forgeFlightProfile_${key}`)){
+      setMenuStatus("That local profile already exists on this device. Use Load Game."); return;
+    }
+    G.profileName=name; G.profileKey=key; G.passwordHash=hash;
+    restartRun();
+    hideMainMenu();
+    await saveRunNow("new");
+    setMenuStatus("");
+  }
+  async function loadProfile(){
+    const name = cleanDisplayName(loadPlayerName.value);
+    const key = profileKeyFromName(name);
+    const pass = loadPlayerPass.value || "";
+    if(!key){ setMenuStatus("Enter the player name for the saved run."); return; }
+    setMenuStatus("Loading profile...");
+    const hash = await sha256Text(pass);
+    let data = null;
+    const dbi = await ensureFirebase();
+    if(dbi){
+      const snap = await profileRef(key).get();
+      if(snap.exists) data = snap.data();
+    }
+    if(!data){
+      try{ data = JSON.parse(localStorage.getItem(`forgeFlightProfile_${key}`)||"null"); }catch{}
+    }
+    if(!data){ setMenuStatus("No living run found for that name. Create a new game."); return; }
+    if(data.passwordHash !== hash){ setMenuStatus("Password does not match that profile."); return; }
+    G.profileName = data.name || name; G.profileKey = key; G.passwordHash = hash;
+    restoreRun(data);
+    setMenuStatus("");
+  }
+  async function renderHighscores(){
+    await ensureFirebase();
+    let rows=[];
+    if(db){
+      try{
+        const snap = await scoresRef().orderBy("depth","desc").orderBy("savedAt","asc").limit(10).get();
+        snap.forEach(doc=>rows.push(doc.data()));
+      } catch(err){
+        const snap = await scoresRef().orderBy("depth","desc").limit(10).get();
+        snap.forEach(doc=>rows.push(doc.data()));
+      }
+    }
+    if(!rows.length){
+      try{ rows = JSON.parse(localStorage.getItem("forgeFlightHighscores")||"[]").slice(0,10); }catch{}
+    }
+    if(!rows.length){ highscoreList.innerHTML = '<div class="smallNote">No completed top runs yet.</div>'; return; }
+    rows.sort((a,b)=>(b.depth||0)-(a.depth||0) || (a.savedAt||0)-(b.savedAt||0));
+    highscoreList.innerHTML = rows.slice(0,10).map((r,i)=>`<div class="scoreRow"><div class="scoreRank">#${i+1}</div><div class="scoreName"></div><div class="scoreDepth">Depth ${Number(r.depth||0)}</div></div>`).join("");
+    [...highscoreList.querySelectorAll(".scoreName")].forEach((el,i)=>{ el.textContent = rows[i].name || "Hero"; });
+  }
+  async function recordDeathHighscore(){
+    const name = G.profileName || "Hero";
+    const key = G.profileKey;
+    const entry = {name, key, depth:G.depth, kills:G.kills, totalGold:G.totalGold, savedAt:Date.now()};
+    try{
+      let local = JSON.parse(localStorage.getItem("forgeFlightHighscores")||"[]");
+      local.push(entry); local.sort((a,b)=>(b.depth||0)-(a.depth||0) || (a.savedAt||0)-(b.savedAt||0));
+      local = local.slice(0,10);
+      localStorage.setItem("forgeFlightHighscores", JSON.stringify(local));
+      if(key) localStorage.removeItem(`forgeFlightProfile_${key}`);
+    }catch{}
+    const dbi = await ensureFirebase();
+    if(dbi){
+      try{
+        const coll = scoresRef();
+        const before = await coll.orderBy("depth","desc").limit(10).get();
+        const cutoff = before.docs.length<10 ? -Infinity : Number(before.docs[before.docs.length-1].data().depth||0);
+        if(entry.depth >= cutoff){ await coll.add(entry); }
+        const all = await coll.orderBy("depth","desc").get();
+        const deletes=[];
+        all.docs.forEach((doc,i)=>{ if(i>=10) deletes.push(doc.ref.delete()); });
+        if(deletes.length) await Promise.all(deletes);
+        if(key) await profileRef(key).delete().catch(()=>{});
+      } catch(err){ console.warn("Highscore/profile cleanup failed", err); }
+    }
+    renderHighscores();
+  }
+  function showMainMenu(){
+    G.paused = true;
+    document.body.classList.remove("inv-open");
+    ovPause.classList.remove("show"); ovStore.classList.remove("show"); ovForge.classList.remove("show"); ovDeath.classList.remove("show");
+    mainMenu?.classList.remove("hidden");
+    renderHighscores();
+  }
+  function hideMainMenu(){ mainMenu?.classList.add("hidden"); G.paused = ovStore.classList.contains("show") || ovForge.classList.contains("show") || ovPause.classList.contains("show") || ovDeath.classList.contains("show"); }
+  function switchMenuPane(which){
+    paneNewGame.classList.toggle("show", which==="new");
+    paneLoadGame.classList.toggle("show", which==="load");
+    setMenuStatus("");
+  }
+  async function saveAndMainMenu(){ await saveRunNow("exit-menu"); showMainMenu(); }
+
   // =========================
   // Pause / Restart / Death
   // =========================
@@ -4075,11 +4409,15 @@ it.gstar = 0;
   }
 
   function endRun(){
+    if(G.ended) return;
     G.ended = true;
     G.paused = true;
     ovDeath.classList.add("show");
-    const msg = `You reached <b>Depth ${G.depth}</b> with <b>${G.kills}</b> kills and earned <b>${G.totalGold}</b> gold.`;
+    const msg = `You reached <b>Depth ${G.depth}</b> with <b>${G.kills}</b> kills and earned <b>${G.totalGold}</b> gold.<br><br>Checking Top 10 deepest runs...`;
     deathSummary.innerHTML = msg;
+    recordDeathHighscore().then(()=>{
+      deathSummary.innerHTML = `You reached <b>Depth ${G.depth}</b> with <b>${G.kills}</b> kills and earned <b>${G.totalGold}</b> gold.<br><br>Your run profile has been cleared. If this was a Top 10 depth, the score remains on the leaderboard.`;
+    });
   }
 
   function restartRun(){
@@ -4172,6 +4510,7 @@ it.gstar = 0;
   function enterPortal(){
     if(!G.portal) return;
     startFloor(G.depth+1);
+    saveRunNow("portal");
   }
 
   // =========================
@@ -4185,6 +4524,10 @@ it.gstar = 0;
 
   const p = G.player;
   if(p.hp<=0) return;
+
+  if(G.profileKey && !G.ended && performance.now() - (G.lastSaveAt||0) > 8000){
+    saveRunNow("autosave");
+  }
 
   if(toastT>0){
     toastT -= dt;
@@ -6027,10 +6370,10 @@ if(!CanvasRenderingContext2D.prototype.roundRect){
   btnResume.addEventListener("click", togglePause);
   btnHelp.addEventListener("click", ()=>{ toast("WASD move • Auto-attack • Space dodge • Spell button casts equipped spell book • Drag items to equip", 1.8); });
 
-  btnRestart1.addEventListener("click", restartRun);
-  btnRestart2.addEventListener("click", restartRun);
-  btnRestart3.addEventListener("click", restartRun);
-  btnRestartSide.addEventListener("click", restartRun);
+  btnRestart1.addEventListener("click", ()=>{ restartRun(); saveRunNow("restart"); });
+  btnRestart2.addEventListener("click", showMainMenu);
+  btnRestart3.addEventListener("click", showMainMenu);
+  btnRestartSide.addEventListener("click", ()=>{ restartRun(); saveRunNow("restart"); });
 
   btnSortInv.addEventListener("click", ()=>{
     const order = {weapon:0, spellbook:1, head:2, body:3, legs:4, trinket:5};
@@ -6088,6 +6431,23 @@ if(!CanvasRenderingContext2D.prototype.roundRect){
   btnCraftNew.addEventListener("click", craftNewItem);
   btnCraftUpgrade.addEventListener("click", rarityUpgradeAttempt);
 
+
+
+  // Persistent menu events
+  tabNewGame?.addEventListener("click", ()=>switchMenuPane("new"));
+  tabLoadGame?.addEventListener("click", ()=>switchMenuPane("load"));
+  btnCreateProfile?.addEventListener("click", createNewProfile);
+  btnLoadProfile?.addEventListener("click", loadProfile);
+  [newPlayerName,newPlayerPass].forEach(el=>el?.addEventListener("keydown", e=>{ if(e.key==="Enter") createNewProfile(); }));
+  [loadPlayerName,loadPlayerPass].forEach(el=>el?.addEventListener("keydown", e=>{ if(e.key==="Enter") loadProfile(); }));
+  btnExitPause?.addEventListener("click", saveAndMainMenu);
+  btnExitStore?.addEventListener("click", saveAndMainMenu);
+  btnExitForge?.addEventListener("click", saveAndMainMenu);
+  btnExitInventory?.addEventListener("click", saveAndMainMenu);
+  btnDeathMenu?.addEventListener("click", showMainMenu);
+  document.addEventListener("visibilitychange", ()=>{ if(document.hidden) saveRunNow("hidden"); });
+  window.addEventListener("beforeunload", ()=>{ const d=serializeRun(); if(d){ try{ localStorage.setItem(`forgeFlightProfile_${G.profileKey}`, JSON.stringify(d)); }catch{} } });
+
   // =========================
   // Main Loop
   // =========================
@@ -6107,8 +6467,12 @@ if(!CanvasRenderingContext2D.prototype.roundRect){
   // Init
   // =========================
   resize();
+  G.player = newPlayer();
   buildSlotsUI();
-  restartRun();
+  recalcStats();
+  renderAllUI();
+  showMainMenu();
+  ensureFirebase().then(renderHighscores);
   requestAnimationFrame(loop);
 
 })();
