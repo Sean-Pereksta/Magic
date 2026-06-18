@@ -447,6 +447,70 @@
       box-shadow:0 16px 32px rgba(124,58,237,.28);
     }
 
+
+
+    .game-picker-wrap{ min-width:min(100%, 280px); }
+    .game-picker-panel {
+      display: none;
+      margin-top: 12px;
+      border: 1px solid var(--br);
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      max-height: min(520px, 70vh);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 12px;
+    }
+    .game-picker-panel.open { display: block; }
+    .multiplayer-catalog {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .multiplayer-game-card {
+      cursor: pointer;
+      border: 1px solid var(--br);
+      border-radius: 14px;
+      padding: 14px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15,23,42,.08);
+      transition: transform .12s, box-shadow .18s, border-color .18s;
+      text-align:left;
+      color:inherit;
+    }
+    .multiplayer-game-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 28px rgba(15,23,42,.14);
+      border-color: #fecaca;
+    }
+    .multiplayer-game-card.selected {
+      border-color: var(--accent);
+      background: #fff1f2;
+    }
+    .selected-game-square {
+      cursor: pointer;
+      width:100%;
+      min-height: 120px;
+      border: 1px solid #fecaca;
+      border-radius: 18px;
+      padding: 16px;
+      background: linear-gradient(135deg, #fff, #fff1f2);
+      box-shadow: 0 12px 30px rgba(185,28,28,.14);
+      text-align:left;
+      color:inherit;
+    }
+    .selected-game-square:hover{ border-color:var(--accent); }
+    .game-picker-title{ font-weight:900; display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+    .game-picker-desc{ color:var(--muted); font-size:.88rem; line-height:1.35; margin-bottom:8px; }
+    .play-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: 900;
+      color: #7f1d1d;
+    }
+
     /* Start/Leave buttons row */
     .controls{
       display:flex;
@@ -475,6 +539,9 @@
       .featured-game-card::before{ top:10px; right:10px; font-size:.62rem; padding:3px 8px; }
       .featured-game-card .game-title{ padding-right:74px; font-size:.98rem; }
       .featured-play-btn{ width:100%; }
+      .game-picker-panel { max-height: 62vh; }
+      .multiplayer-catalog { grid-template-columns: 1fr; }
+      .selected-game-square { min-height: 112px; }
     }
   </style>
 </head>
@@ -556,36 +623,12 @@
                 <label class="subtle">Lobby Name</label>
                 <input type="text" id="lobbyName" class="input" placeholder="e.g., Friday Night Squad" />
               </div>
-              <div style="flex:1 1 220px">
+              <div class="game-picker-wrap" style="flex:1 1 280px">
                 <label class="subtle">Game</label>
-                <select id="gameType" class="select">
-                  <option value="cat">🐭 Cat & Mouse</option>
-                  <option value="catmobile">🐭📱 Cat vs Mouse Mobile (8P)</option>
-                  <option value="grass">🌿 Grass Realms</option>
-                  <option value="estate">🏡 Estate Defense</option>
-                  <option value="mountain">🗻 Mountain Blade Skirmish (4P)</option>
-                  <option value="mountonline">🗻🌐 Mountain Blade Online</option>
-                  <option value="crownlands">👑🌐 Crownlands Online</option>
-                  <option value="rock">✊📄✂️ Rock Paper Scissors MMO</option>
-                  <option value="stockkings">📈 Stock Kings</option>
-                  <option value="dutchblitz">🃏 Dutch Blitz Arena (4P)</option>
-                  <option value="splinters">🪄 Splinters (4P)</option>
-                  <option value="spelltower">🗼 Spell Tower (8P)</option>
-                  <option value="zombiezone">🧟‍♂️ Zombie Zone (4P)</option>
-                  <option value="biblegame">📖 Bible Game (12P)</option>
-                  <option value="historyrush">🏛️ History Rush (4P)</option>
-                  <option value="crowncouncil">👑 Faction Forge (2P)</option>
-                  <option value="forgeroyale">⚔️ Forge Royale (2P)</option>
-                  <option value="rogueduel">🂡 Rogue Duel (2P)</option>
-                  <option value="cardrealmsmulti">🃏⚔️ Card Realms Multiplayer (2P)</option>
-                  <option value="thegame">🃏 The Game (5P)</option>
-                  <option value="castledefense">🏰 Castle Defense (4P)</option>
-                  <!-- NEW MULTIPLAYER -->
-                  <option value="trumprev">🏰 Base Defense: Revenge (4P)</option>
-                  <option value="warspan">⚔️🃏 Warspan Online (4P)</option>
-                  <option value="stoneyrelic">🗿 Stoney's Relic (2–8P)</option>
-                  <option value="balatle">⚔️ Balatle (8P)</option>
-                </select>
+                <button id="selectedGameSquare" class="selected-game-square" type="button" aria-expanded="false" aria-controls="gamePickerPanel"></button>
+                <div id="gamePickerPanel" class="game-picker-panel">
+                  <div id="multiplayerCatalog" class="multiplayer-catalog"></div>
+                </div>
               </div>
               <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
             </div>
@@ -703,7 +746,8 @@
       goofywizard: "/game/Goofy Wizard.html",
       basketball2: "/game/Basketball 2.html",
       chrisrunner: "/game/chrisrunner.html",
-      forgeflight: "/game/forge&flight.html"
+      forgeflight: "/game/forge&flight.html",
+      onehitknight: "/game/onehitknight.html"
     };
 
     const AUTO_REDIRECT_GAMES = new Set([
@@ -754,6 +798,14 @@
         route: ROUTES.forgeflight,
         featured: true
       },
+      {
+        key: "onehitknight",
+        title: "One Hit Knight",
+        emoji: "🛡️⚔️",
+        desc: "Dash, slash, and survive in a fast one-hit arcade knight challenge.",
+        route: ROUTES.onehitknight,
+        featured: true
+      },
       { key: "village",    title: "Village",        emoji: "🏘️",     desc: "Build and manage your village.", route: ROUTES.village, requiresUser:true, autoUsername:true },
       { key: "microwars2", title: "Monster Quest", emoji: "🦎", desc: "Catch Monsters, Train Them, Battle", route: ROUTES.microwars2 },
       { key: "swarm",      title: "swarm wars", emoji: "⚔️",          desc: "Vast armies colide", route: ROUTES.swarm },
@@ -773,6 +825,89 @@
       { key: "goofywizard", title: "Goofy Wizard",   emoji: "🧙✨",   desc: "Cast quirky spells in a whimsical wizard adventure.", route: ROUTES.goofywizard },
       { key: "basketball2", title: "Basketball 2",   emoji: "🏀",      desc: "Hit the court in Basketball 2.", route: ROUTES.basketball2 }
     ];
+
+
+
+    const MULTIPLAYER_GAMES = [
+      { key: "cat", title: "Cat & Mouse", emoji: "🐭", desc: "Classic multiplayer chase.", maxPlayers: null },
+      { key: "catmobile", title: "Cat vs Mouse Mobile", emoji: "🐭📱", desc: "Mobile-friendly 8-player chase.", maxPlayers: 8 },
+      { key: "grass", title: "Grass Realms", emoji: "🌿", desc: "Multiplayer realm battle.", maxPlayers: null },
+      { key: "estate", title: "Estate Defense", emoji: "🏡", desc: "Defend the estate together.", maxPlayers: null },
+      { key: "mountain", title: "Mountain Blade Skirmish", emoji: "🗻", desc: "4-player skirmish combat.", maxPlayers: 4 },
+      { key: "mountonline", title: "Mountain Blade Online", emoji: "🗻🌐", desc: "Quick-play online mode.", quickPlay: true },
+      { key: "crownlands", title: "Crownlands Online", emoji: "👑🌐", desc: "Persistent online strategy.", quickPlay: true },
+      { key: "rock", title: "Rock Paper Scissors MMO", emoji: "✊📄✂️", desc: "Quick-play RPS MMO.", quickPlay: true },
+      { key: "stockkings", title: "Stock Kings", emoji: "📈", desc: "Market battle game.", maxPlayers: 8 },
+      { key: "dutchblitz", title: "Dutch Blitz Arena", emoji: "🃏", desc: "Fast 4-player card action.", maxPlayers: 4 },
+      { key: "splinters", title: "Splinters", emoji: "🪄", desc: "4-player magic battle.", maxPlayers: 4 },
+      { key: "spelltower", title: "Spell Tower", emoji: "🗼", desc: "8-player spell challenge.", maxPlayers: 8 },
+      { key: "zombiezone", title: "Zombie Zone", emoji: "🧟‍♂️", desc: "4-player survival.", maxPlayers: 4 },
+      { key: "biblegame", title: "Bible Game", emoji: "📖", desc: "20-player Bible challenge.", maxPlayers: 20 },
+      { key: "historyrush", title: "History Rush", emoji: "🏛️", desc: "4-player history race.", maxPlayers: 4 },
+      { key: "crowncouncil", title: "Faction Forge", emoji: "👑", desc: "2-player faction duel.", maxPlayers: 2 },
+      { key: "forgeroyale", title: "Forge Royale", emoji: "⚔️", desc: "2-player forge battle.", maxPlayers: 2 },
+      { key: "rogueduel", title: "Rogue Duel", emoji: "🂡", desc: "2-player roguelike duel.", maxPlayers: 2 },
+      { key: "cardrealmsmulti", title: "Card Realms Multiplayer", emoji: "🃏⚔️", desc: "2-player card battle.", maxPlayers: 2 },
+      { key: "thegame", title: "The Game", emoji: "🃏", desc: "5-player card challenge.", maxPlayers: 5 },
+      { key: "castledefense", title: "Castle Defense", emoji: "🏰", desc: "4-player castle defense.", maxPlayers: 4 },
+      { key: "trumprev", title: "Base Defense: Revenge", emoji: "🏰", desc: "4-player base defense.", maxPlayers: 4 },
+      { key: "warspan", title: "Warspan Online", emoji: "⚔️🃏", desc: "4-player Warspan battle.", maxPlayers: 4 },
+      { key: "stoneyrelic", title: "Stoney's Relic", emoji: "🗿", desc: "2–8 player relic adventure.", maxPlayers: 8 },
+      { key: "balatle", title: "Balatle", emoji: "⚔️", desc: "8-player battle mode.", maxPlayers: 8 }
+    ];
+
+    let selectedMultiplayerGame = "cat";
+    let gamePlayCounts = {};
+    let gameStatsLoaded = false;
+
+    function getGameByKey(key){
+      return MULTIPLAYER_GAMES.find(g => g.key === key) || SINGLEPLAYER_GAMES.find(g => g.key === key) || { key, title: gameLabel(key), emoji: "🎮" };
+    }
+    function getPlayCount(key) { return gamePlayCounts[key] || 0; }
+    function sortByMostPlayed(games) {
+      return [...games].sort((a, b) => {
+        const diff = getPlayCount(b.key) - getPlayCount(a.key);
+        if (diff !== 0) return diff;
+        return (a.title || "").localeCompare(b.title || "");
+      });
+    }
+    async function logGamePlay(g) {
+      try {
+        if (!db || !g || !g.key) return;
+        const ref = doc(db, "gameStats", g.key);
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(ref);
+          const current = snap.exists() ? (snap.data().plays || 0) : 0;
+          tx.set(ref, {
+            key: g.key,
+            title: g.title || g.key,
+            plays: current + 1,
+            lastPlayedAt: serverTimestamp()
+          }, { merge: true });
+        });
+      } catch (e) {
+        console.warn("Play logging skipped:", e);
+      }
+    }
+    async function loadGameStats() {
+      try {
+        if (!db) return;
+        const snap = await getDocs(collection(db, "gameStats"));
+        const counts = {};
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          counts[docSnap.id] = d.plays || 0;
+        });
+        gamePlayCounts = counts;
+        gameStatsLoaded = true;
+      } catch (e) {
+        console.warn("Game stats unavailable:", e);
+        gamePlayCounts = {};
+        gameStatsLoaded = false;
+      }
+      renderSingleplayer();
+      renderMultiplayerCatalog();
+    }
 
     // ---------- FIREBASE ----------
     const firebaseConfig = {
@@ -879,28 +1014,76 @@
       if (g.autoUsername && username){
         url += (url.includes('?') ? '&' : '?') + `username=${encodeURIComponent(username)}`;
       }
-      window.location.href = url;
+      logGamePlay(g);
+      setTimeout(() => { window.location.href = url; }, 60);
     }
 
     function renderSingleplayer(){
       const el = document.getElementById('catalog');
       el.innerHTML = '';
-      for(const g of SINGLEPLAYER_GAMES){
+      const games = gameStatsLoaded ? sortByMostPlayed(SINGLEPLAYER_GAMES) : SINGLEPLAYER_GAMES;
+      for(const g of games){
         const card = document.createElement('div');
         card.className = `game-card${g.featured ? ' featured-game-card' : ''}`;
         const t = document.createElement('div'); t.className = 'game-title'; t.textContent = `${g.emoji} ${g.title}`;
         const d = document.createElement('div'); d.className = 'game-desc'; d.textContent = g.desc;
+        const count = document.createElement('div'); count.className = 'play-count'; count.textContent = `🎮 ${getPlayCount(g.key)}`;
         const pr = document.createElement('div'); pr.className = 'play-row';
         const btn = document.createElement('button');
         btn.className = `btn btn-lg${g.featured ? ' featured-play-btn' : ''}`;
         btn.textContent = 'Play';
         btn.addEventListener('click', ()=> playSingle(g));
         pr.appendChild(btn);
-        card.appendChild(t); card.appendChild(d); card.appendChild(pr);
+        card.appendChild(t); card.appendChild(d); card.appendChild(count); card.appendChild(pr);
         el.appendChild(card);
       }
     }
+    function renderSelectedMultiplayerGame(){
+      const btn = document.getElementById('selectedGameSquare');
+      if (!btn) return;
+      const g = getGameByKey(selectedMultiplayerGame);
+      const detail = g.quickPlay ? 'Quick play' : (g.maxPlayers ? `${g.maxPlayers} players max` : 'Lobby game');
+      btn.innerHTML = `<div class="game-picker-title"><span>${g.emoji || '🎮'}</span><span>${g.title || g.key}</span></div><div class="game-picker-desc">${g.desc || detail} • ${detail}</div><div class="play-count">🎮 ${getPlayCount(g.key)}</div>`;
+    }
+
+    function renderMultiplayerCatalog(){
+      renderSelectedMultiplayerGame();
+      const el = document.getElementById('multiplayerCatalog');
+      if (!el) return;
+      el.innerHTML = '';
+      for (const g of sortByMostPlayed(MULTIPLAYER_GAMES)){
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = `multiplayer-game-card${g.key === selectedMultiplayerGame ? ' selected' : ''}`;
+        const detail = g.quickPlay ? 'Quick play' : (g.maxPlayers ? `${g.maxPlayers} players max` : 'Lobby game');
+        card.innerHTML = `<div class="game-picker-title"><span>${g.emoji}</span><span>${g.title}</span></div><div class="game-picker-desc">${g.desc} • ${detail}</div><div class="play-count">🎮 ${getPlayCount(g.key)}</div>`;
+        card.addEventListener('click', () => {
+          selectedMultiplayerGame = g.key;
+          const panel = document.getElementById('gamePickerPanel');
+          const square = document.getElementById('selectedGameSquare');
+          if (panel) panel.classList.remove('open');
+          if (square) square.setAttribute('aria-expanded', 'false');
+          renderMultiplayerCatalog();
+          updateStartUI();
+        });
+        el.appendChild(card);
+      }
+    }
+
+    function initMultiplayerPicker(){
+      const square = document.getElementById('selectedGameSquare');
+      const panel = document.getElementById('gamePickerPanel');
+      if (!square || !panel) return;
+      square.addEventListener('click', () => {
+        const open = !panel.classList.contains('open');
+        panel.classList.toggle('open', open);
+        square.setAttribute('aria-expanded', String(open));
+      });
+      renderMultiplayerCatalog();
+    }
+
     renderSingleplayer();
+    initMultiplayerPicker();
 
     // ---------- LOBBY LOGIC ----------
     const urlParams = new URLSearchParams(window.location.search);
@@ -928,7 +1111,8 @@
       if (g.autoUsername && username){
         url += (url.includes('?') ? '&' : '?') + `username=${encodeURIComponent(username)}`;
       }
-      window.location.href = url;
+      logGamePlay(g);
+      setTimeout(() => { window.location.href = url; }, 60);
     }
 
     async function login() {
@@ -984,7 +1168,6 @@
         window.__lobbyPoll = setInterval(loadLobbies, 5000);
       }
       document.getElementById("startBtn").addEventListener("click", startGame);
-      document.getElementById("gameType").addEventListener("change", updateStartUI);
       updateStartUI();
     }
 
@@ -1023,7 +1206,7 @@
     }
 
     function updateStartUI(){
-      const gt = document.getElementById("gameType").value;
+      const gt = selectedMultiplayerGame;
       const title = document.getElementById("lobbyHeaderTitle");
       const nameWrap = document.getElementById("lobbyNameWrap");
       const createBtn = document.getElementById("createBtn");
@@ -1040,7 +1223,7 @@
     }
 
     async function startLobby() {
-      const gameType = document.getElementById("gameType").value;
+      const gameType = selectedMultiplayerGame;
 
       if (!authUser) {
         return showError("⏳ Connecting to server, please try again in a moment.");
@@ -1050,7 +1233,8 @@
         if (!username) return showError("❌ You must be logged in.");
         const route = ROUTES[gameType];
         save(SK.lastGame, gameType);
-        window.location.href = `${route}?username=${encodeURIComponent(username)}`;
+        logGamePlay(getGameByKey(gameType));
+        setTimeout(() => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; }, 60);
         return;
       }
 
@@ -1061,7 +1245,8 @@
         const route = ROUTES.cardrealmsmulti;
         save(SK.lastGame, "cardrealmsmulti");
         save(SK.lastLobby, "");
-        window.location.href = `${route}?username=${encodeURIComponent(username)}`;
+        logGamePlay(getGameByKey("cardrealmsmulti"));
+        setTimeout(() => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; }, 60);
         return;
       }
 
@@ -1234,13 +1419,15 @@
             const isDM = (dm && dm === username);
             const route = isDM ? ROUTES.dungeonmaster : ROUTES.stoneyrelic;
             const role = isDM ? "dm" : "player";
-            window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}&role=${role}`;
+            logGamePlay(getGameByKey(data.gameType));
+            setTimeout(() => { window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}&role=${role}`; }, 60);
             return;
           }
 
           // default redirect
           const route = ROUTES[data.gameType] || ROUTES.cat;
-          window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}`;
+          logGamePlay(getGameByKey(data.gameType));
+          setTimeout(() => { window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}`; }, 60);
         }
       });
     }
@@ -1282,13 +1469,14 @@
       const ref = doc(db, "lobbies", currentLobbyId);
       const snap = await getDoc(ref); if (!snap.exists()) return;
       const data = snap.data();
+      logGamePlay(getGameByKey(data.gameType));
 
 
       if (data.gameType === "cardrealmsmulti") {
         const route = ROUTES.cardrealmsmulti;
         save(SK.lastGame, "cardrealmsmulti");
         save(SK.lastLobby, "");
-        window.location.href = `${route}?username=${encodeURIComponent(username)}`;
+        setTimeout(() => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; }, 60);
         return;
       }
 
@@ -1299,7 +1487,7 @@
         const route = ROUTES.estate;
         save(SK.lastGame, "estate");
         save(SK.lastLobby, activeId);
-        window.location.href = `${route}?gameId=${activeId}&username=${encodeURIComponent(username)}`;
+        setTimeout(() => { window.location.href = `${route}?gameId=${activeId}&username=${encodeURIComponent(username)}`; }, 60);
         return;
       }
 
@@ -1455,7 +1643,8 @@
               const isDM = (dm && dm === username);
               const route = isDM ? ROUTES.dungeonmaster : ROUTES.stoneyrelic;
               const role = isDM ? "dm" : "player";
-              window.location.href = `${route}?gameId=${gid}&username=${encodeURIComponent(username)}&role=${role}`;
+              logGamePlay(getGameByKey(lastGame));
+              setTimeout(() => { window.location.href = `${route}?gameId=${gid}&username=${encodeURIComponent(username)}&role=${role}`; }, 60);
               return;
             }catch(e){
               // fall through to default
@@ -1465,7 +1654,8 @@
           // Default resume behavior
           const route = ROUTES[lastGame];
           const glue = gid ? `?gameId=${gid}&username=${encodeURIComponent(username)}` : `?username=${encodeURIComponent(username)}`;
-          window.location.href = route + glue;
+          logGamePlay(getGameByKey(lastGame));
+          setTimeout(() => { window.location.href = route + glue; }, 60);
         };
       }
 
@@ -1502,6 +1692,7 @@
 
       // We have request.auth != null now → rules pass
       showDailyUsersPill();
+      loadGameStats();
 
       if (username) {
         autoLogin(username);
