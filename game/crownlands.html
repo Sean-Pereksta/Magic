@@ -597,6 +597,38 @@ function tileIndexAdd(index,entity){if(entity?.hp>0){const key=tileKey(entity.x,
 function tileIndexDelete(index,entity){if(entity)indexDelete(index,entity._tileKey||tileKey(entity.x,entity.y),entity.id)}
 function setTroopIndexed(id,u){const old=troops.get(id);if(old){ownerIndexDelete(troopsByOwner,old);tileIndexDelete(troopTileIndex,old);indexDelete(troopsByChunk,old.chunkKey||entityChunkKey(old),id)}troops.set(id,u);u.chunkKey=entityChunkKey(u);ownerIndexAdd(troopsByOwner,u);tileIndexAdd(troopTileIndex,u);indexAdd(troopsByChunk,u.chunkKey,id)}
 function deleteTroopIndexed(id){const old=troops.get(id);if(old){ownerIndexDelete(troopsByOwner,old);tileIndexDelete(troopTileIndex,old);indexDelete(troopsByChunk,old.chunkKey||entityChunkKey(old),id);troops.delete(id)}}
+function clearTroopReferences(troopId){
+  selected.delete(troopId);
+  if(hoveredEntity?.id===troopId)hoveredEntity=null;
+  for(const other of troops.values()){
+    if(other.targetId===troopId)other.targetId=null;
+    if(other.focusTargetId===troopId)other.focusTargetId=null;
+    if(other.attackTargetId===troopId)other.attackTargetId=null;
+    if(other.commandTargetId===troopId)other.commandTargetId=null;
+    if(other.towerTargetId===troopId)other.towerTargetId=null;
+  }
+}
+async function removeDeadTroop(troopId,reason='dead'){
+  const troop=troops.get(troopId);
+  if(!troop)return;
+  clearTroopReferences(troopId);
+  saveQueue.delete(troopId);
+  lastSavedTroopSignature.delete(troopId);
+  deleteTroopIndexed(troopId);
+  markVisibleChunksDirty();markCameraStreamDirty();markUIDirty('dead troop removed');
+  try{
+    await deleteDoc(ref('troops',troopId));
+    console.log('Deleted dead troop document:',troopId,reason);
+  }catch(e){
+    console.error('FAILED TO DELETE DEAD TROOP DOCUMENT',troopId,e);
+    log('FAILED TO DELETE DEAD TROOP DOCUMENT: '+troopId+' - '+(e?.message||e));
+  }
+}
+async function cleanupDeadTroops(){
+  const removals=[];
+  for(const [id,troop] of troops.entries())if((troop.hp??1)<=0||troop.dead===true)removals.push(removeDeadTroop(id,'dead troop cleanup'));
+  if(removals.length)await Promise.all(removals);
+}
 function setBuildingIndexed(id,b){const old=buildings.get(id);if(old){ownerIndexDelete(buildingsByOwner,old);tileIndexDelete(buildingTileIndex,old);indexDelete(old.type==='road'?roadsByChunk:buildingsByChunk,old.chunkKey||entityChunkKey(old),id)}buildings.set(id,b);b.chunkKey=entityChunkKey(b);ownerIndexAdd(buildingsByOwner,b);if(b.type!=='road')tileIndexAdd(buildingTileIndex,b);indexAdd(b.type==='road'?roadsByChunk:buildingsByChunk,b.chunkKey,id)}
 function deleteBuildingIndexed(id){const old=buildings.get(id);if(old){ownerIndexDelete(buildingsByOwner,old);tileIndexDelete(buildingTileIndex,old);indexDelete(old.type==='road'?roadsByChunk:buildingsByChunk,old.chunkKey||entityChunkKey(old),id);buildings.delete(id)}}
 function ownedTroops(playerId){return [...(troopsByOwner.get(playerId)||[])].map(id=>troops.get(id)).filter(Boolean)}
@@ -663,7 +695,17 @@ function applyChunkCollectionSnapshot(entry,kind,s){
     }
     const value={id,...change.doc.data()};
     target.set(id,value);
-    if(kind==='troops')setTroopIndexed(id,normalizeTroop(value));
+    if(kind==='troops'){
+      const troopValue=normalizeTroop(value);
+      if((troopValue.hp??1)<=0||troopValue.dead===true){
+        target.delete(id);
+        clearTroopReferences(id);
+        deleteTroopIndexed(id);
+        deleteDoc(ref('troops',id)).catch(e=>{console.error('FAILED TO DELETE DEAD TROOP DOCUMENT',id,e);log('FAILED TO DELETE DEAD TROOP DOCUMENT: '+id+' - '+(e?.message||e));});
+        continue;
+      }
+      setTroopIndexed(id,troopValue);
+    }
     else if(kind==='buildings'||kind==='roads'){
       if(!value.level)value.level=1;setBuildingIndexed(id,value);
     }else if(kind==='landmarks'){
@@ -672,6 +714,7 @@ function applyChunkCollectionSnapshot(entry,kind,s){
       const old=battles.get(id);if(old)indexDelete(battlesByChunk,old.chunkKey,id);battles.set(id,value);indexAdd(battlesByChunk,value.chunkKey,id);
     }
   }
+  if(kind==='troops')cleanupDeadTroops().catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));
   clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty(kind+' chunk snapshot');
 }
 function subscribeChunk(entry){
@@ -1290,8 +1333,8 @@ function applyDocChangesToMap(s,map,make,afterChange){
 }
 
 async function backfillMissingTroopChunkKeys(){if(!playerKey)return;const snap=await getDocs(query(col('troops'),where('ownerId','==',playerKey)));const batch=writeBatch(db);let writes=0;snap.forEach(d=>{const u={id:d.id,...d.data()};if(!u.chunkKey&&Number.isFinite(Number(u.x))&&Number.isFinite(Number(u.y))){batch.set(ref('troops',d.id),{chunkKey:getChunkOfTile(Number(u.x),Number(u.y)).key},{merge:true});writes++;}});if(writes)await batch.commit();if(writes)log(`Repaired ${writes} troop chunk keys.`);}
-function subscribeOwnTroops(){return onSnapshot(query(col('troops'),where('ownerId','==',playerKey)),s=>{for(const change of s.docChanges()){const id=change.doc.id;if(change.type==='removed'){deleteTroopIndexed(id);continue;}const data=change.doc.data(),u=normalizeTroop({id,...data});const old=troops.get(id);if(old&&JSON.stringify(firestoreEntity(old))===JSON.stringify(firestoreEntity(u)))continue;setTroopIndexed(id,u);if(!data.chunkKey){setDoc(ref('troops',id),{chunkKey:u.chunkKey},{merge:true}).catch(()=>{});}}pruneSelection();markVisibleChunksDirty();markUIDirty('own troops');});}
-function applyTroopSnapshot(s){const start=performance.now(),prior=previousBarbarianChunks;markVisibleChunksDirty();for(const change of s.docChanges()){const id=change.doc.id;if(change.type==='removed')deleteTroopIndexed(id);else setTroopIndexed(id,normalizeTroop({id,...change.doc.data()}));}if(barbarianSnapshotReady)detectBarbarianTerritoryEntries(prior);previousBarbarianChunks=new Map([...troops.values()].filter(isBarbarianUnit).map(u=>[u.id,getChunkOfTile(u.x,u.y).key]));barbarianSnapshotReady=true;pruneSelection();markUIDirty('troops snapshot');logSnapshotPerf('troops',start,s);}
+function subscribeOwnTroops(){return onSnapshot(query(col('troops'),where('ownerId','==',playerKey)),s=>{for(const change of s.docChanges()){const id=change.doc.id;if(change.type==='removed'){deleteTroopIndexed(id);continue;}const data=change.doc.data(),u=normalizeTroop({id,...data});if((u.hp??1)<=0||u.dead===true){clearTroopReferences(id);deleteTroopIndexed(id);deleteDoc(ref('troops',id)).catch(e=>{console.error('FAILED TO DELETE DEAD TROOP DOCUMENT',id,e);log('FAILED TO DELETE DEAD TROOP DOCUMENT: '+id+' - '+(e?.message||e));});continue;}const old=troops.get(id);if(old&&JSON.stringify(firestoreEntity(old))===JSON.stringify(firestoreEntity(u)))continue;setTroopIndexed(id,u);if(!data.chunkKey){setDoc(ref('troops',id),{chunkKey:u.chunkKey},{merge:true}).catch(()=>{});}}cleanupDeadTroops().catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));pruneSelection();markVisibleChunksDirty();markUIDirty('own troops');});}
+function applyTroopSnapshot(s){const start=performance.now(),prior=previousBarbarianChunks;markVisibleChunksDirty();for(const change of s.docChanges()){const id=change.doc.id;if(change.type==='removed')deleteTroopIndexed(id);else{const u=normalizeTroop({id,...change.doc.data()});if((u.hp??1)<=0||u.dead===true){clearTroopReferences(id);deleteTroopIndexed(id);deleteDoc(ref('troops',id)).catch(e=>{console.error('FAILED TO DELETE DEAD TROOP DOCUMENT',id,e);log('FAILED TO DELETE DEAD TROOP DOCUMENT: '+id+' - '+(e?.message||e));});continue;}setTroopIndexed(id,u);}}cleanupDeadTroops().catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));if(barbarianSnapshotReady)detectBarbarianTerritoryEntries(prior);previousBarbarianChunks=new Map([...troops.values()].filter(isBarbarianUnit).map(u=>[u.id,getChunkOfTile(u.x,u.y).key]));barbarianSnapshotReady=true;pruneSelection();markUIDirty('troops snapshot');logSnapshotPerf('troops',start,s);}
 function applyAssignedBarbarianSnapshot(s,label='assigned barbarians'){
   const start=performance.now();
   for(const change of s.docChanges()){
@@ -1846,7 +1889,7 @@ function issueQuickAttackNearest(){
   return true;
 }
 
-let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>{if(!u)return;reindexTroop(u);saveQueue.add(u.id);markUIDirty('troops');});markVisibleChunksDirty();markCameraStreamDirty();}
+let saveQueue=new Set(); function scheduleSaveTroops(units){units.forEach(u=>{if(!u)return;if((u.hp??1)<=0||u.dead===true){removeDeadTroop(u.id,'scheduled dead troop').catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));return;}reindexTroop(u);saveQueue.add(u.id);markUIDirty('troops');});markVisibleChunksDirty();markCameraStreamDirty();}
 function firestoreEntity(e){const {_tileKey,...clean}=e;if(Number.isFinite(Number(clean.x))&&Number.isFinite(Number(clean.y))){clean.chunkKey=getChunkOfTile(Number(clean.x),Number(clean.y)).key;}return clean}
 const lastSavedTroopSignature=new Map();
 async function flushTroopSaves(){ if(!saveQueue.size)return; const batch=writeBatch(db); let writes=0; const ids=[...saveQueue].slice(0,MAX_FIRESTORE_WRITES_PER_FLUSH); ids.forEach(id=>{const u=troops.get(id); saveQueue.delete(id); if(!u)return; const data=firestoreEntity(u),sig=JSON.stringify(data); if(lastSavedTroopSignature.get(id)===sig)return; lastSavedTroopSignature.set(id,sig); batch.set(ref('troops',id),data,{merge:true}); writes++;}); perfStats.writesQueued=saveQueue.size; if(!writes)return; await batch.commit().catch(e=>log('Save troop error: '+e.message)); }
@@ -2317,7 +2360,7 @@ function tick(dt){
   if(activeSideTab==='quests')processDistrictRequests(true);
   if(!startupBlocked&&n-lastFireCheck>=FIRE_CHECK_MS&&!fireRiskRunning){fireRiskRunning=true;const start=performance.now();processFireRisk().catch(e=>log('Fire risk error: '+e.message)).finally(()=>{const ms=performance.now()-start;if(ms>100)console.warn('fire risk system slow',{ms});fireRiskRunning=false;});}
   if(!startupBlocked&&n-lastProvinceTroubleCheck>=PROVINCE_TROUBLE_CHECK_MS&&!provinceTroubleRunning){provinceTroubleRunning=true;const start=performance.now();processProvinceTrouble().catch(e=>log('Province trouble error: '+e.message)).finally(()=>{const ms=performance.now()-start;if(ms>100)console.warn('province trouble system slow',{ms});provinceTroubleRunning=false;});}
-  if(account.hero?.classId){const hu=heroUnit();if(hu&&hu.hp<=0&&!(account.hero.reviveAt>n)){account.hero.reviveAt=n+heroReviveMs(account.hero.level||1);selected.delete(hu.id);deleteDoc(ref('troops',hu.id));deleteTroopIndexed(hu.id);saveAccount();log(`${HERO_CLASSES[account.hero.classId].name} was defeated and will revive in ${fmt(heroReviveMs(account.hero.level||1))}.`);}else if(!hu&&account.hero.reviveAt&&account.hero.reviveAt<=n){const c=HERO_CLASSES[account.hero.classId],u={id:account.hero.id||`hero_${playerKey}`,ownerId:playerKey,type:`hero_${account.hero.classId}`,isHero:true,heroClass:account.hero.classId,heroLevel:account.hero.level,x:account.home.x+1,y:account.home.y,hp:c.stats.hp,maxHp:c.stats.hp,xp:0,veterancy:0,order:'idle',path:[],createdAt:n,chunkKey:getChunkOfTile(account.home.x+1,account.home.y).key};UNIT[u.type]={name:c.name,...c.stats,cost:{gold:0,lumber:0,oil:0},supply:0};account.hero.reviveAt=0;setTroopIndexed(u.id,u);setDoc(ref('troops',u.id),firestoreEntity(u));saveAccount();log(`${c.name} has revived at the Fortress.`);}}
+  if(account.hero?.classId){const hu=heroUnit();if(hu&&hu.hp<=0&&!(account.hero.reviveAt>n)){account.hero.reviveAt=n+heroReviveMs(account.hero.level||1);removeDeadTroop(hu.id,'hero death').catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));saveAccount();log(`${HERO_CLASSES[account.hero.classId].name} was defeated and will revive in ${fmt(heroReviveMs(account.hero.level||1))}.`);}else if(!hu&&account.hero.reviveAt&&account.hero.reviveAt<=n){const c=HERO_CLASSES[account.hero.classId],u={id:account.hero.id||`hero_${playerKey}`,ownerId:playerKey,type:`hero_${account.hero.classId}`,isHero:true,heroClass:account.hero.classId,heroLevel:account.hero.level,x:account.home.x+1,y:account.home.y,hp:c.stats.hp,maxHp:c.stats.hp,xp:0,veterancy:0,order:'idle',path:[],createdAt:n,chunkKey:getChunkOfTile(account.home.x+1,account.home.y).key};UNIT[u.type]={name:c.name,...c.stats,cost:{gold:0,lumber:0,oil:0},supply:0};account.hero.reviveAt=0;setTroopIndexed(u.id,u);setDoc(ref('troops',u.id),firestoreEntity(u));saveAccount();log(`${c.name} has revived at the Fortress.`);}}
   // remove expired mobile towers
   for(const b of indexedBuildings(warmChunks)){perfStats.simBuildings++;
     if(b.type==='mobileTower' && b.expiresAt && n>b.expiresAt && b.ownerId===playerKey) deleteDoc(ref('buildings',b.id));
@@ -2335,7 +2378,7 @@ function tick(dt){
     if(!forceOperational&&!isChunkWarmKey(ck)){perfStats.skippedTroops++;freezeFarTravel(u,n);continue;}
     if(!forceOperational&&!isChunkActiveKey(entityChunkKey(u))&&!warmDue){perfStats.skippedTroops++;continue;}
     perfStats.simTroops++;
-    if(u.hp<=0) continue;
+    if(u.hp<=0){removeDeadTroop(u.id,'combat tick dead troop').catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));continue;}
     const def=UNIT[u.type]; if(!def)continue;
     if(mine) handleLocalTroopAI(u,def,n,reservations);
     else if(isBarbarianUnit(u) && shouldSimOfflineEnemy(u)) handleLocalTroopAI(u,def,n,reservations,true);
@@ -2358,6 +2401,7 @@ function tick(dt){
   if(!startupBlocked&&n-lastBarbarianThink>BARBARIAN_THINK_MS){lastBarbarianThink=n;maybeSimulateNearbyBarbarianCamps().catch(e=>log('Barbarian AI error: '+e.message));}
   // Online raid director is disabled; simple 30-second barbarian AI and 10-minute camp trickle handle all barbarian pressure.
   if(n-lastSave>SAVE_EVERY_MS){lastSave=n; flushTroopSaves();}
+  cleanupDeadTroops().catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));
   perfStats.tickMs=performance.now()-tickStart;
 }
 function isOwnerOnline(owner){ if(owner===playerKey)return true; return false; } // prototype: current browser simulates visible/offline enemy actions if needed
@@ -2529,7 +2573,7 @@ function applyDamage(target,amount,n=now(),attacker=null){const defended=target.
 function performAttack(u,target){ const def=UNIT[u.type]; if(def.dmg<=0)return; const n=now(); const rally=(u.buffs?.rallyUntil&&u.buffs.rallyUntil>n)?1:0; const battleCry=(u.buffs?.battleCryUntil&&u.buffs.battleCryUntil>n)?1:0; const globalDamage=Object.entries(account.globalBuffs||{}).some(([k,v])=>k.endsWith('Until')&&v>n)?Math.max(1,Math.floor(def.dmg*.1)):0; const targets=[target]; if(def.chain){ for(const e of enemiesNear(target,3).filter(e=>e.id!==target.id).slice(0,def.chain-1)) targets.push(e); }
   if((u.veterancy||0)>=5&&['mage','pyromancer','electricPriest'].includes(u.type)){const extra=enemiesNear(target,2).find(e=>e.id!==target.id&&!targets.includes(e));if(extra)targets.push(extra);}
   if(def.splash){ for(const e of [...troops.values(),...buildings.values()].filter(e=>e.hp>0&&areHostile(u,e)&&Math.abs(e.x-target.x)<def.splash&&Math.abs(e.y-target.y)<def.splash)) if(!targets.includes(e))targets.push(e); }
-  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0,structure=buildings.has(t.id)?(def.structureBonus||0):0,wasAlive=t.hp>0;let damage=def.dmg*((u.veterancy||0)>=2?1.05:1)+rally+battleCry+marked+structure+(u.ownerId===playerKey?globalDamage+(account.globalBuffs?.antiBarbarianUntil>n&&(isBarbarianUnit(t)||isBarbarianCamp(t))?2:0):0);if(buildings.has(t.id)&&u.ownerId===playerKey&&SIEGE_TYPES.has(u.type)&&hasTech('siegeEngineering'))damage*=1.1;if((u.veterancy||0)>=5&&buildings.has(t.id)&&['ballista','catapult','trebuchet'].includes(u.type))damage+=2;const dealt=applyDamage(t,damage,n,u);recordOnlineRaidContribution(t,u,dealt,wasAlive&&t.hp<=0);addTroopXp(u,dealt*VETERANCY.damageXp,'dealing damage');if(isBossLandmark(t)){u.bossParticipations=u.bossParticipations||{};if(!u.bossParticipations[t.id]){u.bossParticipations[t.id]=n;addTroopXp(u,VETERANCY.bossParticipationXp,'participating in a boss fight');}}if(wasAlive&&t.hp<=0){addTroopXp(u,VETERANCY.killXp,'defeating an enemy');if(u.isHero&&u.ownerId===playerKey){addHeroXp(isBarbarianUnit(t)?18:12,'combat');progressQuest('hero_blood');}} if((buildings.has(t.id)||landmarks.has(t.id))&&!isBarbarianUnit(u))t.lastDamagedBy=u.ownerId;if(t.hp<=0&&troops.has(t.id))selected.delete(t.id);if(landmarks.has(t.id)){saveLandmark(t).then(()=>{if(t.hp<=0)defeatLandmark(t,t.lastDamagedBy||u.ownerId);});}else if(buildings.has(t.id)){if(t.hp<=0&&isBarbarianCamp(t))destroyBarbarianCamp(t,t.lastDamagedBy||u.ownerId).catch(e=>log('Camp reward error: '+e.message));else saveBuilding(t);}}); if(def.ability==='battleCry'&&(!u.lastBattleCryAt||n-u.lastBattleCryAt>=60000)){u.lastBattleCryAt=n;for(const ally of troops.values())if(isBarbarianUnit(ally)&&ally.ownerId===u.ownerId&&dist(u,ally)<=3){ally.buffs=ally.buffs||{};ally.buffs.battleCryUntil=n+30000;scheduleSaveTroops([ally]);}} }
+  targets.forEach(t=>{const marked=t.markedBy===u.ownerId&&t.markedUntil>n?1:0,structure=buildings.has(t.id)?(def.structureBonus||0):0,wasAlive=t.hp>0;let damage=def.dmg*((u.veterancy||0)>=2?1.05:1)+rally+battleCry+marked+structure+(u.ownerId===playerKey?globalDamage+(account.globalBuffs?.antiBarbarianUntil>n&&(isBarbarianUnit(t)||isBarbarianCamp(t))?2:0):0);if(buildings.has(t.id)&&u.ownerId===playerKey&&SIEGE_TYPES.has(u.type)&&hasTech('siegeEngineering'))damage*=1.1;if((u.veterancy||0)>=5&&buildings.has(t.id)&&['ballista','catapult','trebuchet'].includes(u.type))damage+=2;const dealt=applyDamage(t,damage,n,u);recordOnlineRaidContribution(t,u,dealt,wasAlive&&t.hp<=0);addTroopXp(u,dealt*VETERANCY.damageXp,'dealing damage');if(isBossLandmark(t)){u.bossParticipations=u.bossParticipations||{};if(!u.bossParticipations[t.id]){u.bossParticipations[t.id]=n;addTroopXp(u,VETERANCY.bossParticipationXp,'participating in a boss fight');}}if(wasAlive&&t.hp<=0){addTroopXp(u,VETERANCY.killXp,'defeating an enemy');if(u.isHero&&u.ownerId===playerKey){addHeroXp(isBarbarianUnit(t)?18:12,'combat');progressQuest('hero_blood');}} if((buildings.has(t.id)||landmarks.has(t.id))&&!isBarbarianUnit(u))t.lastDamagedBy=u.ownerId;if(t.hp<=0&&troops.has(t.id))removeDeadTroop(t.id,'combat death').catch(e=>log('Dead troop cleanup error: '+(e?.message||e))); if(landmarks.has(t.id)){saveLandmark(t).then(()=>{if(t.hp<=0)defeatLandmark(t,t.lastDamagedBy||u.ownerId);});}else if(buildings.has(t.id)){if(t.hp<=0&&isBarbarianCamp(t))destroyBarbarianCamp(t,t.lastDamagedBy||u.ownerId).catch(e=>log('Camp reward error: '+e.message));else saveBuilding(t);}}); if(def.ability==='battleCry'&&(!u.lastBattleCryAt||n-u.lastBattleCryAt>=60000)){u.lastBattleCryAt=n;for(const ally of troops.values())if(isBarbarianUnit(ally)&&ally.ownerId===u.ownerId&&dist(u,ally)<=3){ally.buffs=ally.buffs||{};ally.buffs.battleCryUntil=n+30000;scheduleSaveTroops([ally]);}} }
 function isBorderTower(b){const c=getChunkOfTile(b.x,b.y);return [[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>territories.get(chunkKey(c.cx+dx,c.cy+dy))?.ownerId!==b.ownerId);}
 function canTowerAttackTarget(building,target){
   const def=BUILDING[building.type];if(!isBuildingComplete(building)||!def?.dmg||!target||target.hp<=0||!areHostile(building,target)||!troops.has(target.id))return false;
@@ -2542,14 +2586,14 @@ function acquireTowerTarget(building,n=now()){
 function applyTowerDamage(building,target,n=now()){
   const def=BUILDING[building.type];if(!canTowerAttackTarget(building,target))return false;if(def.shotOil&&building.ownerId===playerKey&&(account.resources.oil||0)<def.shotOil)return false;
   let damage=def.dmg*(districtForBuilding(building)?.type==='military'?1.12:1);if(def.antiSiege&&(SIEGE_TYPES.has(target.type)||target.type==='barbarianBrute'))damage*=1.75;if(def.flame&&building.ownerId===playerKey&&hasTech('oilInfusion'))damage*=1.25;const victims=[target];if(def.splash)for(const u of troops.values())if(u.id!==target.id&&u.hp>0&&areHostile(building,u)&&dist(u,target)<=def.splash&&!victims.includes(u))victims.push(u);
-  victims.forEach(u=>{const alive=u.hp>0,dealt=applyDamage(u,damage,n,building);recordOnlineRaidContribution(u,building,dealt,alive&&u.hp<=0)});scheduleSaveTroops(victims);if(def.shotOil&&building.ownerId===playerKey){account.resources.oil=Math.max(0,account.resources.oil-def.shotOil);saveAccount()}const d=districtForBuilding(building),towerDistrictMult=d?.type==='military'?.88:!d&&building.ownerId===playerKey?1.08:1;building.nextAttackAt=n+def.attackMs*(building.ownerId===playerKey&&hasTech('towerCrews')?.9:1)*towerDistrictMult;building.towerTargetId=target.id;saveBuilding(building);return true;
+  victims.forEach(u=>{const alive=u.hp>0,dealt=applyDamage(u,damage,n,building);recordOnlineRaidContribution(u,building,dealt,alive&&u.hp<=0);if(alive&&u.hp<=0)removeDeadTroop(u.id,'tower death').catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));});scheduleSaveTroops(victims.filter(u=>u.hp>0));if(def.shotOil&&building.ownerId===playerKey){account.resources.oil=Math.max(0,account.resources.oil-def.shotOil);saveAccount()}const d=districtForBuilding(building),towerDistrictMult=d?.type==='military'?.88:!d&&building.ownerId===playerKey?1.08:1;building.nextAttackAt=n+def.attackMs*(building.ownerId===playerKey&&hasTech('towerCrews')?.9:1)*towerDistrictMult;building.towerTargetId=target.id;saveBuilding(building);return true;
 }
 function updateDefensiveBuildings(n=now()){
   for(const b of indexedBuildings(activeChunks)){const def=BUILDING[b.type];perfStats.simBuildings++;if(!isBuildingComplete(b)||!def?.defense||!def.dmg||n<(b.nextAttackAt||0)||n<(b.nextTargetCheckAt||0)||(b.ownerId!==playerKey&&isOwnerOnline(b.ownerId)))continue;const c=getChunkOfTile(b.x,b.y);if(b.ownerId===playerKey)visibleChunks.add(c.key);b.nextTargetCheckAt=n+TOWER_TARGET_RECHECK_MS;const target=acquireTowerTarget(b,n);if(target)applyTowerDamage(b,target,n)}
 }
 function buildingAggro(b,n){const target=acquireTowerTarget(b,n);if(target)applyTowerDamage(b,target,n)}
 function processDefensiveUtilities(n){
-  for(const trap of indexedBuildings(activeChunks))if(isBuildingComplete(trap)&&trap.type==='spikeTrap'&&!trap.triggered){const victim=[...(troopTileIndex.get(tileKey(trap.x,trap.y))||[])].map(id=>troops.get(id)).find(u=>u&&u.hp>0&&areHostile(trap,u)&&u.x===trap.x&&u.y===trap.y);if(victim){let damage=BUILDING.spikeTrap.damage*(trap.ownerId===playerKey&&hasTech('trapEngineering')?1.5:1);if(CAVALRY_TYPES.has(victim.type)||victim.type==='scout')damage*=1.5;applyDamage(victim,damage,n,trap);trap.triggered=true;trap.revealed=true;trap.hp=0;scheduleSaveTroops([victim]);saveBuilding(trap);log(`Spike Trap triggered for ${Math.round(damage)} damage.`);}}
+  for(const trap of indexedBuildings(activeChunks))if(isBuildingComplete(trap)&&trap.type==='spikeTrap'&&!trap.triggered){const victim=[...(troopTileIndex.get(tileKey(trap.x,trap.y))||[])].map(id=>troops.get(id)).find(u=>u&&u.hp>0&&areHostile(trap,u)&&u.x===trap.x&&u.y===trap.y);if(victim){let damage=BUILDING.spikeTrap.damage*(trap.ownerId===playerKey&&hasTech('trapEngineering')?1.5:1);if(CAVALRY_TYPES.has(victim.type)||victim.type==='scout')damage*=1.5;applyDamage(victim,damage,n,trap);trap.triggered=true;trap.revealed=true;trap.hp=0;if(victim.hp<=0)removeDeadTroop(victim.id,'trap death').catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));else scheduleSaveTroops([victim]);saveBuilding(trap);log(`Spike Trap triggered for ${Math.round(damage)} damage.`);}}
   for(const station of indexedBuildings(warmChunks))if(isBuildingComplete(station)&&station.type==='repairStation'&&n>=(station.nextRepairAt||0)){const targets=[...buildings.values()].filter(b=>b.id!==station.id&&b.ownerId===station.ownerId&&b.hp>0&&b.hp<effectiveMaxHp(b,n)&&dist(b,station)<=BUILDING.repairStation.repairRange);for(const b of targets.slice(0,3)){b.hp=Math.min(effectiveMaxHp(b,n),b.hp+BUILDING.repairStation.repairAmount);saveBuilding(b);}station.nextRepairAt=n+BUILDING.repairStation.repairMs;saveBuilding(station);}
 }
 function constructionFields(def,n=now(),type=null,x=0,y=0,ownerId=playerKey){const mult=type?constructionDistrictSpeedMultiplier(type,x,y,ownerId):1;return {constructing:true,buildStartedAt:n,buildCompleteAt:n+def.buildMs*mult,completedAt:null,hp:Math.max(1,Math.floor(def.hp*.25)),maxHp:def.hp}}
@@ -2954,10 +2998,10 @@ function usePoisonCloud(){
     affected.push(enemy);
   }
   casters.forEach(u=>u.poisonCloudCdUntil=n+300000);
-  scheduleSaveTroops([...casters,...affected]); updateUI();
+  cleanupDeadTroops().catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));scheduleSaveTroops([...casters,...affected.filter(e=>e.hp>0)]); updateUI();
   log(`Poison Cloud struck ${affected.length} enemy troop(s) and slowed unprotected survivors.`);
 }
-function useHeroAbility(skillId){const h=account.hero,u=heroUnit(),c=h&&HERO_CLASSES[h.classId],node=c?.nodes.find(n=>n[0]===skillId);if(!u||!node||!h.unlocked.includes(skillId))return;h.cooldowns=h.cooldowns||{};if((h.cooldowns[skillId]||0)>now())return log(`${node[1]} ready in ${fmt(h.cooldowns[skillId]-now())}.`);const n=now(),enemies=[...troops.values()].filter(e=>e.hp>0&&areHostile(u,e)&&dist(u,e)<=4),allies=[...troops.values()].filter(e=>e.hp>0&&e.ownerId===playerKey&&dist(u,e)<=4);if(['massHeal','divineIntervention'].includes(skillId))for(const a of allies)a.hp=Math.min(effectiveMaxHp(a),a.hp+(skillId==='divineIntervention'?35:18));else if(['battleCry','warBanner','blessing','arcaneWard','ironCitadel'].includes(skillId))for(const a of allies){a.buffs=a.buffs||{};a.buffs.battleCryUntil=n+30000;a.buffs.shieldWallUntil=n+30000;}else if(['execute','assassinate','sabotage'].includes(skillId)){const target=hoveredEntity?.data||enemies[0];if(target&&areHostile(u,target))applyDamage(target,skillId==='sabotage'?24:35,n,u);}else if(['eagleEye','huntersMoon'].includes(skillId)){account.temporaryVision=account.temporaryVision||[];const ch=getChunkOfTile(u.x,u.y);for(let y=-2;y<=2;y++)for(let x=-2;x<=2;x++)account.temporaryVision.push({chunkKey:chunkKey(ch.cx+x,ch.cy+y),until:n+120000});progressQuest('hero_ranger');}else for(const e of enemies.slice(0,skillId==='timeRift'?8:5))applyDamage(e,['firestorm','chainLightning','volley','timeRift'].includes(skillId)?18:6,n,u);if(skillId==='fieldRepair')for(const b of buildings.values())if(b.ownerId===playerKey&&dist(u,b)<=3)b.hp=Math.min(effectiveMaxHp(b),b.hp+25);h.cooldowns[skillId]=n+(node[2]==='ultimate'?10:5)*60000;scheduleSaveTroops([...allies,...enemies,u]);saveAccount();updateUI();log(`${c.name} used ${node[1]}.`);}
+function useHeroAbility(skillId){const h=account.hero,u=heroUnit(),c=h&&HERO_CLASSES[h.classId],node=c?.nodes.find(n=>n[0]===skillId);if(!u||!node||!h.unlocked.includes(skillId))return;h.cooldowns=h.cooldowns||{};if((h.cooldowns[skillId]||0)>now())return log(`${node[1]} ready in ${fmt(h.cooldowns[skillId]-now())}.`);const n=now(),enemies=[...troops.values()].filter(e=>e.hp>0&&areHostile(u,e)&&dist(u,e)<=4),allies=[...troops.values()].filter(e=>e.hp>0&&e.ownerId===playerKey&&dist(u,e)<=4);if(['massHeal','divineIntervention'].includes(skillId))for(const a of allies)a.hp=Math.min(effectiveMaxHp(a),a.hp+(skillId==='divineIntervention'?35:18));else if(['battleCry','warBanner','blessing','arcaneWard','ironCitadel'].includes(skillId))for(const a of allies){a.buffs=a.buffs||{};a.buffs.battleCryUntil=n+30000;a.buffs.shieldWallUntil=n+30000;}else if(['execute','assassinate','sabotage'].includes(skillId)){const target=hoveredEntity?.data||enemies[0];if(target&&areHostile(u,target))applyDamage(target,skillId==='sabotage'?24:35,n,u);}else if(['eagleEye','huntersMoon'].includes(skillId)){account.temporaryVision=account.temporaryVision||[];const ch=getChunkOfTile(u.x,u.y);for(let y=-2;y<=2;y++)for(let x=-2;x<=2;x++)account.temporaryVision.push({chunkKey:chunkKey(ch.cx+x,ch.cy+y),until:n+120000});progressQuest('hero_ranger');}else for(const e of enemies.slice(0,skillId==='timeRift'?8:5))applyDamage(e,['firestorm','chainLightning','volley','timeRift'].includes(skillId)?18:6,n,u);if(skillId==='fieldRepair')for(const b of buildings.values())if(b.ownerId===playerKey&&dist(u,b)<=3)b.hp=Math.min(effectiveMaxHp(b),b.hp+25);h.cooldowns[skillId]=n+(node[2]==='ultimate'?10:5)*60000;cleanupDeadTroops().catch(e=>log('Dead troop cleanup error: '+(e?.message||e)));scheduleSaveTroops([...allies,...enemies.filter(e=>e.hp>0),u]);saveAccount();updateUI();log(`${c.name} used ${node[1]}.`);}
 function getVisibleAbilities(sels){const visible=ABILITY_REGISTRY.filter(ability=>ability.types.some(type=>sels.some(entity=>entity.type===type)));const hero=sels.find(e=>e.isHero&&e.ownerId===playerKey),h=account.hero;if(hero&&h){for(const [id,name,type,,desc] of HERO_CLASSES[h.classId].nodes)if((type==='active'||type==='ultimate')&&h.unlocked.includes(id))visible.push({id:`hero_${id}`,types:[hero.type],label:name,description:()=>`${desc} · ${(h.cooldowns?.[id]||0)>now()?`Cooldown ${fmt(h.cooldowns[id]-now())}`:'Ready'}`,canUse:()=>!(h.cooldowns?.[id]>now()),action:()=>useHeroAbility(id)});}return visible.map((ability,index)=>({...ability,hotkey:ABILITY_HOTKEYS[index]}));}
 
 function renderAbilities(sels){
@@ -3034,7 +3078,7 @@ async function checkGoblinPortalBattle(){
     await saveAccount(); log(`Your ${mission.name} force was defeated. Its reduced failure cooldown has begun.`); return;
   }
   if(!goblins.length){
-    for(const dead of [...troops.values()].filter(u=>u.ownerId===`goblin_${playerKey}`&&u.inArena)) await deleteDoc(ref('troops',dead.id));
+    for(const dead of [...troops.values()].filter(u=>u.ownerId===`goblin_${playerKey}`&&u.inArena)) await removeDeadTroop(dead.id,'portal arena cleanup');
     const mission=PORTAL_MISSIONS[g.missionId]||PORTAL_MISSIONS.goblinHorde,rank=1+(g.level||1)*.18,reward=Object.fromEntries(Object.entries(mission.rewardBase).map(([k,v])=>[k,Math.floor(v*rank)]));
     addRes(reward);
     const claimed=new Set();
