@@ -361,18 +361,22 @@
   }
   .mobileAction {
     position: absolute;
-    right: 24px;
-    width: 76px;
-    height: 76px;
+    right: 22px;
+    width: 96px;
+    height: 96px;
     border-radius: 50%;
     margin: 0;
     pointer-events: auto;
-    font-size: 13px;
+    font-size: 16px;
     border: 2px solid rgba(255,255,255,.35);
-    background: rgba(35,166,255,.78);
+    background: rgba(35,166,255,.82);
+    box-shadow: 0 0 18px rgba(0,0,0,.35);
   }
-  #mobileSprint { bottom: 34px; }
-  #mobileDodge { bottom: 122px; background: rgba(250,204,21,.82); color: #111827; }
+  #mobileSprint {
+    bottom: 34px;
+    font-weight: 900;
+  }
+  #mobileDodge { display: none; }
 
   @media (max-width: 760px), (pointer: coarse) {
     #hud {
@@ -458,7 +462,6 @@
 
 <div id="mobileControls">
   <div id="stickBase"><div id="stickKnob"></div></div>
-  <button id="mobileDodge" class="mobileAction" type="button">Dodge</button>
   <button id="mobileSprint" class="mobileAction" type="button">Sprint</button>
 </div>
 
@@ -711,7 +714,8 @@ function setupMobileControls() {
     const len = Math.hypot(dx, dy);
     if (len > max) { dx = dx / len * max; dy = dy / len * max; }
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    mobileMoveVector.x = dx / max;
+    // Invert only the horizontal analog axis so pushing right moves right in world controls.
+    mobileMoveVector.x = -dx / max;
     mobileMoveVector.z = -dy / max;
     mobileMoveVector.active = Math.hypot(mobileMoveVector.x, mobileMoveVector.z) > 0.12;
   }
@@ -750,8 +754,8 @@ function setupMobileControls() {
     btn.addEventListener("pointerup", e => { if (e.pointerType !== "touch" && onUp) onUp(); });
     btn.addEventListener("pointerleave", e => { if (e.pointerType !== "touch" && onUp) onUp(); });
   };
-  press(sprintBtn, () => mobileSprintDown = true, () => mobileSprintDown = false);
-  press(dodgeBtn, () => mobileDodgeQueued = true, () => {});
+  if (sprintBtn) press(sprintBtn, () => mobileSprintDown = true, () => mobileSprintDown = false);
+  if (dodgeBtn) press(dodgeBtn, () => mobileDodgeQueued = true, () => {});
 }
 
 function toggleFullScreen() {
