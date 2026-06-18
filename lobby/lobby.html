@@ -390,6 +390,36 @@
       gap:10px;
       box-shadow:0 10px 28px rgba(15,23,42,.08);
     }
+    .featured-game-card{
+      position:relative;
+      overflow:hidden;
+      border:1px solid rgba(251,146,60,.72);
+      background:
+        linear-gradient(135deg, rgba(255,247,237,.98), rgba(254,226,226,.96) 45%, rgba(238,242,255,.98)),
+        #fff;
+      box-shadow:0 20px 46px rgba(185,28,28,.18), 0 10px 24px rgba(234,88,12,.16);
+      transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    }
+    .featured-game-card::before{
+      content:"Featured";
+      position:absolute;
+      top:12px;
+      right:12px;
+      padding:4px 9px;
+      border-radius:999px;
+      background:linear-gradient(135deg,#f97316,#e11d48,#7c3aed);
+      color:#fff;
+      font-size:.68rem;
+      font-weight:900;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      box-shadow:0 8px 18px rgba(124,58,237,.25);
+    }
+    .featured-game-card:hover{
+      transform:translateY(-3px);
+      border-color:rgba(249,115,22,.95);
+      box-shadow:0 24px 54px rgba(185,28,28,.22), 0 14px 30px rgba(124,58,237,.16);
+    }
     .game-title{
       font-weight:800;
       display:flex;
@@ -397,8 +427,25 @@
       gap:8px;
       font-size:.98rem;
     }
+    .featured-game-card .game-title{
+      padding-right:86px;
+      color:#7f1d1d;
+      font-size:1.04rem;
+    }
     .game-desc{ color:var(--muted); line-height:1.45; font-size:.9rem; }
+    .featured-game-card .game-desc{ color:#4b5563; font-weight:600; }
     .play-row{ display:flex; justify-content:flex-end }
+    .featured-play-btn{
+      border:none;
+      background:linear-gradient(135deg,#f97316 0%,#e11d48 52%,#7c3aed 100%);
+      color:#fff;
+      box-shadow:0 12px 26px rgba(225,29,72,.32);
+      letter-spacing:.02em;
+    }
+    .featured-play-btn:hover{
+      background:linear-gradient(135deg,#fb923c 0%,#f43f5e 52%,#8b5cf6 100%);
+      box-shadow:0 16px 32px rgba(124,58,237,.28);
+    }
 
     /* Start/Leave buttons row */
     .controls{
@@ -423,6 +470,11 @@
       .card{ border-radius:18px }
       body{ padding-bottom: calc(env(safe-area-inset-bottom) + 8px) }
       .member-panel{ right:auto; left:0; }
+      .catalog{ grid-template-columns:1fr; }
+      .featured-game-card{ padding:13px; }
+      .featured-game-card::before{ top:10px; right:10px; font-size:.62rem; padding:3px 8px; }
+      .featured-game-card .game-title{ padding-right:74px; font-size:.98rem; }
+      .featured-play-btn{ width:100%; }
     }
   </style>
 </head>
@@ -649,7 +701,9 @@
       starcraft2:   "/game/starcraft2.html",
       knightwarfare: "/game/Knight.html",
       goofywizard: "/game/Goofy Wizard.html",
-      basketball2: "/game/Basketball 2.html"
+      basketball2: "/game/Basketball 2.html",
+      chrisrunner: "/game/chrisrunner.html",
+      forgeflight: "/game/forge&flight.html"
     };
 
     const AUTO_REDIRECT_GAMES = new Set([
@@ -684,6 +738,22 @@
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
 
     const SINGLEPLAYER_GAMES = [
+      {
+        key: "chrisrunner",
+        title: "Chris Runner",
+        emoji: "🏃‍♂️⚡",
+        desc: "Sprint, dodge, and chase a high score in Chris Runner.",
+        route: ROUTES.chrisrunner,
+        featured: true
+      },
+      {
+        key: "forgeflight",
+        title: "Forge & Flight",
+        emoji: "🔥🪽",
+        desc: "Enter Forge & Flight for a fast solo adventure.",
+        route: ROUTES.forgeflight,
+        featured: true
+      },
       { key: "village",    title: "Village",        emoji: "🏘️",     desc: "Build and manage your village.", route: ROUTES.village, requiresUser:true, autoUsername:true },
       { key: "microwars2", title: "Monster Quest", emoji: "🦎", desc: "Catch Monsters, Train Them, Battle", route: ROUTES.microwars2 },
       { key: "swarm",      title: "swarm wars", emoji: "⚔️",          desc: "Vast armies colide", route: ROUTES.swarm },
@@ -816,11 +886,14 @@
       const el = document.getElementById('catalog');
       el.innerHTML = '';
       for(const g of SINGLEPLAYER_GAMES){
-        const card = document.createElement('div'); card.className = 'game-card';
+        const card = document.createElement('div');
+        card.className = `game-card${g.featured ? ' featured-game-card' : ''}`;
         const t = document.createElement('div'); t.className = 'game-title'; t.textContent = `${g.emoji} ${g.title}`;
         const d = document.createElement('div'); d.className = 'game-desc'; d.textContent = g.desc;
         const pr = document.createElement('div'); pr.className = 'play-row';
-        const btn = document.createElement('button'); btn.className = 'btn btn-lg'; btn.textContent = 'Play';
+        const btn = document.createElement('button');
+        btn.className = `btn btn-lg${g.featured ? ' featured-play-btn' : ''}`;
+        btn.textContent = 'Play';
         btn.addEventListener('click', ()=> playSingle(g));
         pr.appendChild(btn);
         card.appendChild(t); card.appendChild(d); card.appendChild(pr);
