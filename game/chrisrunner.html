@@ -1,0 +1,4558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Chris Runner - Endless 3D Chase</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #05070d;
+    font-family: Arial, sans-serif;
+  }
+
+  #hud {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+    color: white;
+    background: rgba(0,0,0,0.58);
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 12px 16px;
+    border-radius: 12px;
+    width: 330px;
+    box-shadow: 0 0 18px rgba(0,0,0,0.5);
+  }
+
+  #hud h1 {
+    margin: 0 0 8px;
+    font-size: 20px;
+  }
+
+  .barWrap {
+    width: 100%;
+    height: 18px;
+    background: #222;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 6px 0 10px;
+    border: 1px solid #555;
+  }
+
+  #energyBar {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #11d17f, #b6ff2d);
+  }
+
+  #message {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.72);
+    color: white;
+    z-index: 20;
+    text-align: center;
+  }
+
+  #messageBox {
+    background: #121827;
+    padding: 30px 42px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.2);
+    max-width: 600px;
+  }
+
+  button {
+    margin-top: 15px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    background: #23a6ff;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  #crosshair {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin-left: -3px;
+    margin-top: -3px;
+    background: rgba(255,255,255,0.6);
+    border-radius: 50%;
+    z-index: 5;
+  }
+  #menuOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 5, 12, 0.85);
+    color: #fff;
+  }
+  #menuCard { text-align:center; background:#111827; padding:32px 40px; border-radius:16px; border:1px solid rgba(255,255,255,.22); }
+  #menuCard h1 { margin:0; font-size:52px; }
+  #menuCard h2 { margin:8px 0 18px; font-size:24px; opacity:.9; font-weight:600; }
+  #menuControls { margin-top:14px; font-size:12px; opacity:.85; line-height:1.5; text-align:left; }
+
+
+  #twoPlayerScoreboard {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 12;
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    color: white;
+    font-family: Arial, sans-serif;
+    pointer-events: none;
+    max-width: 760px;
+    width: min(760px, calc(100vw - 24px));
+  }
+
+  .tpSide {
+    flex: 1;
+    border-radius: 12px;
+    padding: 7px 10px;
+    box-shadow: 0 0 16px rgba(0,0,0,.45);
+    border: 1px solid rgba(255,255,255,.22);
+    text-shadow: 0 1px 2px rgba(0,0,0,.6);
+  }
+
+  .tpP1 {
+    background: linear-gradient(135deg, rgba(29,78,216,.92), rgba(37,99,235,.72));
+  }
+
+  .tpP2 {
+    background: linear-gradient(135deg, rgba(234,88,12,.92), rgba(249,115,22,.72));
+  }
+
+  .tpCenter {
+    width: 190px;
+    border-radius: 12px;
+    padding: 7px 10px;
+    text-align: center;
+    background: rgba(15,23,42,.88);
+    border: 1px solid rgba(255,255,255,.22);
+    box-shadow: 0 0 16px rgba(0,0,0,.45);
+  }
+
+  .tpName {
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: .5px;
+  }
+
+  .tpTotal {
+    font-size: 18px;
+    font-weight: 900;
+  }
+
+  .tpRound {
+    font-size: 13px;
+    opacity: .95;
+  }
+
+  .tpStatus {
+    margin-top: 2px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    opacity: .9;
+  }
+
+  #tpRoundText {
+    font-size: 18px;
+    font-weight: 900;
+  }
+
+  .tpSub {
+    font-size: 10px;
+    opacity: .78;
+  }
+
+  #roundToast {
+    position: fixed;
+    top: 92px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 13;
+    color: white;
+    background: rgba(15,23,42,.86);
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-weight: 900;
+    display: none;
+    pointer-events: none;
+    box-shadow: 0 0 18px rgba(0,0,0,.4);
+  }
+
+  .blueWin {
+    color: #60a5fa;
+    text-shadow: 0 0 18px rgba(96,165,250,.9);
+  }
+
+  .orangeWin {
+    color: #fb923c;
+    text-shadow: 0 0 18px rgba(251,146,60,.9);
+  }
+
+  #replayHud {
+    position: fixed;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 15;
+    color: white;
+    background: rgba(15,23,42,.88);
+    border: 1px solid rgba(255,255,255,.22);
+    border-radius: 12px;
+    padding: 8px 12px;
+    box-shadow: 0 0 16px rgba(0,0,0,.45);
+    font-family: Arial, sans-serif;
+  }
+
+  #replayHud button {
+    margin: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  #replayTimeline {
+    width: min(70vw, 480px);
+    vertical-align: middle;
+  }
+
+  #replayTimeLabel {
+    font-size: 12px;
+    opacity: 0.9;
+    min-width: 86px;
+    display: inline-block;
+    text-align: right;
+  }
+
+
+
+  #fullScreenBtn {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 45;
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(15,23,42,.78);
+    border: 1px solid rgba(255,255,255,.28);
+    box-shadow: 0 0 16px rgba(0,0,0,.35);
+  }
+
+  #leaderboardPanel {
+    display: none;
+  }
+  #leaderboardPanel h3 { margin: 0 0 6px; font-size: 15px; }
+  .scoreList { margin: 0 0 8px 18px; padding: 0; line-height: 1.35; }
+  .scoreList li.you { color: #facc15; font-weight: 900; }
+  .leaderboardMuted { opacity: .75; font-size: 11px; }
+  #nameEntryPanel { display:none; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.2); }
+  #nameEntryPanel input { width: 150px; border-radius: 8px; border: 1px solid rgba(255,255,255,.35); padding: 7px 8px; }
+  #nameEntryPanel button { margin-top: 0; padding: 7px 9px; }
+
+  #messageBox.gameOverDashboard {
+    width: min(760px, calc(100vw - 28px));
+    max-width: 760px;
+    max-height: calc(100vh - 36px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 22px;
+    text-align: center;
+  }
+  .gameOverDashboard h2 { margin: 0 0 6px; font-size: 34px; }
+  .gameOverScoreBig { font-size: 42px; font-weight: 950; color: #facc15; line-height: 1; margin: 6px 0 10px; }
+  .gameOverSub { opacity: .9; margin-bottom: 14px; }
+  .gameOverNameCard {
+    margin: 14px auto;
+    padding: 16px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(250,204,21,.18), rgba(35,166,255,.14));
+    border: 1px solid rgba(250,204,21,.48);
+    box-shadow: 0 0 22px rgba(250,204,21,.12);
+  }
+  .gameOverNameCard input {
+    width: min(280px, 78vw);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.45);
+    padding: 12px 14px;
+    font-size: 16px;
+    text-align: center;
+    margin-top: 8px;
+  }
+  .gameOverBoards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+    text-align: left;
+  }
+  .gameOverBoard {
+    background: rgba(15,23,42,.78);
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 14px;
+    padding: 12px;
+  }
+  .gameOverBoard h3 { margin: 0 0 8px; text-align: center; color: #facc15; }
+  .gameOverBoard ol { margin: 0 0 0 24px; padding: 0; line-height: 1.55; }
+  .gameOverBoard li.you { color: #facc15; font-weight: 950; }
+  .gameOverActions {
+    position: sticky;
+    bottom: -22px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 18px -22px -22px;
+    padding: 14px 10px 16px;
+    background: linear-gradient(180deg, rgba(18,24,39,.86), rgba(18,24,39,1));
+    border-top: 1px solid rgba(255,255,255,.15);
+  }
+  .gameOverActions button { margin-top: 0; }
+
+  #mobileControls {
+    position: fixed;
+    inset: 0;
+    display: none;
+    z-index: 40;
+    pointer-events: none;
+    touch-action: none;
+  }
+  #stickBase {
+    position: absolute;
+    left: 22px;
+    bottom: 28px;
+    width: 132px;
+    height: 132px;
+    border-radius: 50%;
+    background: rgba(15,23,42,.42);
+    border: 2px solid rgba(255,255,255,.32);
+    box-shadow: inset 0 0 22px rgba(255,255,255,.08), 0 0 18px rgba(0,0,0,.45);
+    pointer-events: auto;
+  }
+  #stickKnob {
+    position: absolute;
+    left: 41px;
+    top: 41px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.75);
+    border: 2px solid rgba(15,23,42,.65);
+    box-shadow: 0 4px 12px rgba(0,0,0,.35);
+  }
+  .mobileAction {
+    position: absolute;
+    right: 24px;
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    margin: 0;
+    pointer-events: auto;
+    font-size: 13px;
+    border: 2px solid rgba(255,255,255,.35);
+    background: rgba(35,166,255,.78);
+  }
+  #mobileSprint { bottom: 34px; }
+  #mobileDodge { bottom: 122px; background: rgba(250,204,21,.82); color: #111827; }
+
+  @media (max-width: 760px), (pointer: coarse) {
+    #hud {
+      top: 8px;
+      left: 8px;
+      width: auto;
+      max-width: calc(100vw - 84px);
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    #hud h1 { font-size: 15px; margin-bottom: 4px; }
+    .barWrap { height: 12px; margin-bottom: 5px; }
+    #scoreText { font-size: 14px !important; }
+    #hud div { line-height: 1.2; }
+    #crosshair { display: none; }
+    #leaderboardPanel {
+      top: auto;
+      right: 8px;
+      bottom: 210px;
+      width: min(260px, calc(100vw - 180px));
+      max-height: 32vh;
+      font-size: 11px;
+      padding: 8px;
+    }
+    #messageBox.gameOverDashboard {
+      width: calc(100vw - 18px);
+      max-height: calc(100vh - 18px);
+      padding: 14px;
+    }
+    .gameOverDashboard h2 { font-size: 25px; }
+    .gameOverScoreBig { font-size: 34px; }
+    .gameOverBoards { grid-template-columns: 1fr; }
+    .gameOverActions { margin: 14px -14px -14px; bottom: -14px; }
+    #mobileControls.mobile-visible { display: block; }
+    #menuCard { width: min(92vw, 420px); padding: 22px 18px; }
+    #menuCard h1 { font-size: 34px; }
+    #twoPlayerScoreboard { transform: translateX(-50%) scale(.85); transform-origin: top center; }
+  }
+
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <h1>Chris Runner</h1>
+
+  <div>Energy</div>
+  <div class="barWrap"><div id="energyBar"></div></div>
+
+  <div id="scoreText" style="font-size:18px;font-weight:bold;">Yards: 0</div>
+  <div id="highScoreText" style="font-size:15px;color:#facc15;">High Score: 0</div>
+  <div id="speedTierText">Speed Level: 0</div>
+  <div id="pickupText">Pickups: 0</div>
+  <div id="enemyText">Chasers: 0</div>
+  <div id="dogText">Dogs: Locked until 1000 yards</div>
+  <div id="desertStalkerText">Desert Stalkers: Locked until 2000 yards</div>
+  <div id="policeText">Police: Locked until 3000 yards</div>
+  <div id="torchText">Torches: Locked until 500 yards</div>
+  <div id="hideText">Visibility: Seen</div>
+
+  <div style="font-size:12px;opacity:.8;margin-top:8px;">
+    Move: WASD / Arrows · Sprint: Shift · Dodge: Space
+  </div>
+</div>
+
+<div id="crosshair"></div>
+
+<button id="fullScreenBtn" type="button" onclick="toggleFullScreen()">⛶</button>
+
+<div id="leaderboardPanel">
+  <h3>High Scores</h3>
+  <div class="leaderboardMuted" id="firebaseStatus">Connecting…</div>
+  <div style="font-weight:900;margin-top:6px;">Today</div>
+  <ol class="scoreList" id="dailyHighScores"><li>Loading…</li></ol>
+  <div style="font-weight:900;">This Year</div>
+  <ol class="scoreList" id="yearlyHighScores"><li>Loading…</li></ol>
+  <div id="nameEntryPanel">
+    <div style="font-weight:900;color:#facc15;">You made the Top 10!</div>
+    <input id="scoreNameInput" maxlength="18" placeholder="Enter name">
+    <button type="button" onclick="saveHighScoreName()">OK</button>
+  </div>
+</div>
+
+<div id="mobileControls">
+  <div id="stickBase"><div id="stickKnob"></div></div>
+  <button id="mobileDodge" class="mobileAction" type="button">Dodge</button>
+  <button id="mobileSprint" class="mobileAction" type="button">Sprint</button>
+</div>
+
+
+<div id="twoPlayerScoreboard" style="display:none;">
+  <div class="tpSide tpP1">
+    <div class="tpName">BLUE CHRIS</div>
+    <div class="tpTotal">Total: <span id="p1TotalYards">0</span></div>
+    <div class="tpRound">Round: <span id="p1RoundYards">0</span></div>
+    <div class="tpStatus" id="p1Status">Runner</div>
+  </div>
+
+  <div class="tpCenter">
+    <div id="tpRoundText">Round 1 / 3</div>
+    <div class="tpSub">Best of 3 · Highest total yards wins</div>
+  </div>
+
+  <div class="tpSide tpP2">
+    <div class="tpName">ORANGE CHRIS</div>
+    <div class="tpTotal">Total: <span id="p2TotalYards">0</span></div>
+    <div class="tpRound">Round: <span id="p2RoundYards">0</span></div>
+    <div class="tpStatus" id="p2Status">Runner</div>
+  </div>
+</div>
+<div id="roundToast"></div>
+
+<div id="replayHud" style="display:none;">
+  <strong>REPLAY</strong>
+  <button onclick="toggleReplayPause()">Pause</button>
+  <button onclick="rewindReplay(5)">⏪ 5s</button>
+  <button onclick="setReplaySpeed(0.5)">0.5x</button>
+  <button onclick="setReplaySpeed(1)">1x</button>
+  <button onclick="setReplaySpeed(2)">2x</button>
+  <br>
+  <input id="replayTimeline" type="range" min="0" max="1000" value="0" oninput="seekReplayFromTimeline(this.value)">
+  <span id="replayTimeLabel">0:00 / 0:00</span>
+</div>
+
+<div id="menuOverlay">
+  <div id="menuCard">
+    <h1>Chris Runner</h1>
+    <h2>Endless 3D Chase</h2>
+    <button onclick="startGame(1)">1 Player</button>
+    <button onclick="startGame(2)">2 Player</button>
+    <button onclick="openReplayLoadPicker()">Load Replay</button>
+    <input id="replayFileInput" type="file" accept=".json,.chrisreplay.json" style="display:none">
+    <div id="menuControls">
+      <div>Player 1: WASD or Arrow Keys, Shift sprint, Space dodge</div>
+      <div>Player 2: IJKL movement, U sprint, O dodge</div>
+    </div>
+  </div>
+</div>
+
+<div id="message">
+  <div id="messageBox">
+    <h2>Chris got caught!</h2>
+    <p id="finalScore"></p>
+    <button onclick="location.reload()">Restart</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+
+
+<script>
+/* ============================================================
+   OPTIMIZED CHRIS RUNNER
+   Features:
+   - Endless generated track
+   - Energy, sprint, dodge
+   - Local saved high score
+   - Starry white sky background with bright guiding star
+   - Tall grass hiding
+   - Chasers with pathfinding
+   - Torch enemies after 500 yards
+   - Animated fire patches
+   - Dogs after 1000 yards
+   - Grid-based obstacles with at least two open lanes
+   - Taller brown tree-like obstacles
+   - Cleanup behind player to reduce lag
+============================================================ */
+
+let scene, camera, renderer, clock;
+let player, playerRig;
+let keys = {};
+let isMobileDevice = false;
+let mobileMoveVector = { x: 0, z: 0, active: false };
+let mobileSprintDown = false;
+let mobileDodgeQueued = false;
+let firebaseReady = false;
+let firebaseUser = null;
+let db = null;
+let pendingHighScoreNameSave = [];
+let lastGameOverSummary = null;
+let gameOverNeedsNameEntry = false;
+let lastSubmittedScore = 0;
+let cachedDailyScores = [];
+let cachedOverallScores = [];
+let lastPlayedMode = 1;
+
+let worldChunks = [];
+let walls = [];
+let pickups = [];
+let blackGlobeProjectiles = [];
+let enemies = [];
+let dogs = [];
+let desertStalkers = [];
+let policeOfficers = [];
+let policeBullets = [];
+let grassPatches = [];
+let torches = [];
+let fireZones = [];
+
+let gameOver = false;
+let gameStarted = false;
+let gameMode = 1;
+let players = [];
+let activeRunnerPlayers = [];
+let distance = 0;
+let pickupCount = 0;
+let energy = 100;
+
+let highScore = Number(localStorage.getItem("chrisRunnerHighScore") || 0);
+
+let currentSpeedTier = 0;
+let playerBaseSpeed = 13;
+let playerBaseSprintSpeed = 20;
+let enemyBaseSpeedBonus = 0;
+let playerHiddenInGrass = false;
+
+let frameCount = 0;
+
+let twoPlayerRound = 1;
+const TWO_PLAYER_MAX_ROUNDS = 3;
+let twoPlayerScores = {
+  1: { totalYards: 0, roundYards: 0, lastCountedZ: 0 },
+  2: { totalYards: 0, roundYards: 0, lastCountedZ: 0 }
+};
+let roundActive = false;
+let roundEnding = false;
+let roundToastTimer = null;
+
+const CHRIS_REPLAY_VERSION = 1;
+const GAME_BUILD_VERSION = "chris-runner-basic-replay-v1";
+
+let replayRecorder = null;
+let replayPlayback = null;
+let replayMode = false;
+let replayPaused = false;
+let replaySpeed = 1;
+let replaySeed = null;
+let seededRandomState = 1;
+
+const WORLD_WIDTH = 44;
+const COLLISION_FOOTPRINT_COLOR = 0xff3b30;
+const CHUNK_LENGTH = 42;
+const CHUNK_COUNT_AHEAD = 9;
+const WALL_GRID_SIZE = 4;
+const PLAYER_RADIUS = 1.0;
+const PLAYER_FALL_BEHIND_DISTANCE = 42;
+const PLAYER_SAFE_RESPAWN_AHEAD = 28;
+const TWO_PLAYER_CAMERA_MIN_DISTANCE = 30;
+const TWO_PLAYER_CAMERA_MAX_DISTANCE = 80;
+const CHASER_PLAYER_RESPAWN_AHEAD = 100;
+const CONTROLLED_CHASER_FALL_BEHIND_DISTANCE = 10;
+
+const START_Z = 0;
+let furthestChunkZ = 0;
+
+const CLEANUP_BEHIND_DISTANCE = 70;
+const HARD_BACK_LIMIT = 34;
+const PATHFIND_DISTANCE = 90;
+const MAX_ENEMIES = 12;
+const MAX_DOGS = 5;
+const MAX_DESERT_STALKERS = 4;
+const MAX_POLICE = 5;
+const POLICE_SPAWN_START = 3000;
+const POLICE_RANGE = 46;
+const POLICE_CHASE_TIME = 2.2;
+const POLICE_AIM_TIME = 2.4;
+const POLICE_BULLET_SPEED = 72;
+
+const BIOMES = {
+  forest: {
+    groundColor: 0x2f7d32,
+    fogColor: 0xf2f8ff,
+    treeType: "forest",
+    rockType: "forest",
+    grassType: "forest",
+    enemyTypeModifier: "normal",
+    decorationDensity: 1
+  },
+  snow: {
+    groundColor: 0xddeeff,
+    fogColor: 0xeaf4ff,
+    treeType: "pine",
+    rockType: "snow",
+    grassType: "snow",
+    enemyTypeModifier: "normal",
+    decorationDensity: 0.85
+  },
+  desert: {
+    groundColor: 0xd9b46f,
+    fogColor: 0xf6e9c8,
+    treeType: "palm",
+    rockType: "desert",
+    grassType: "desert",
+    enemyTypeModifier: "desertStalker",
+    decorationDensity: 0.7
+  },
+  city: {
+    groundColor: 0x1f2937,
+    fogColor: 0xdbeafe,
+    treeType: "city",
+    rockType: "city",
+    grassType: "city",
+    enemyTypeModifier: "police",
+    decorationDensity: 0.9
+  }
+};
+
+
+function detectMobileDevice() {
+  return window.matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+}
+
+function setupMobileControls() {
+  isMobileDevice = detectMobileDevice();
+  const controls = document.getElementById("mobileControls");
+  if (!controls) return;
+  controls.classList.toggle("mobile-visible", isMobileDevice);
+
+  const base = document.getElementById("stickBase");
+  const knob = document.getElementById("stickKnob");
+  const sprintBtn = document.getElementById("mobileSprint");
+  const dodgeBtn = document.getElementById("mobileDodge");
+  let activeTouchId = null;
+  const max = 46;
+
+  function setStickFromPoint(clientX, clientY) {
+    const rect = base.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let dx = clientX - cx;
+    let dy = clientY - cy;
+    const len = Math.hypot(dx, dy);
+    if (len > max) { dx = dx / len * max; dy = dy / len * max; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    mobileMoveVector.x = dx / max;
+    mobileMoveVector.z = -dy / max;
+    mobileMoveVector.active = Math.hypot(mobileMoveVector.x, mobileMoveVector.z) > 0.12;
+  }
+  function resetStick() {
+    activeTouchId = null;
+    knob.style.transform = "translate(0px, 0px)";
+    mobileMoveVector.x = 0; mobileMoveVector.z = 0; mobileMoveVector.active = false;
+  }
+  function matchingTouch(e) {
+    for (const t of e.changedTouches) if (t.identifier === activeTouchId) return t;
+    return null;
+  }
+  base.addEventListener("touchstart", e => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    activeTouchId = t.identifier;
+    setStickFromPoint(t.clientX, t.clientY);
+  }, { passive: false });
+  base.addEventListener("touchmove", e => {
+    const t = matchingTouch(e);
+    if (!t) return;
+    e.preventDefault();
+    setStickFromPoint(t.clientX, t.clientY);
+  }, { passive: false });
+  base.addEventListener("touchend", e => { if (matchingTouch(e)) resetStick(); }, { passive: false });
+  base.addEventListener("touchcancel", e => { if (matchingTouch(e)) resetStick(); }, { passive: false });
+  base.addEventListener("pointerdown", e => { if (e.pointerType === "touch") return; base.setPointerCapture(e.pointerId); setStickFromPoint(e.clientX, e.clientY); });
+  base.addEventListener("pointermove", e => { if (e.pointerType === "touch" || !base.hasPointerCapture(e.pointerId)) return; setStickFromPoint(e.clientX, e.clientY); });
+  base.addEventListener("pointerup", e => { if (e.pointerType !== "touch") resetStick(); });
+  base.addEventListener("pointercancel", resetStick);
+
+  const press = (btn, onDown, onUp) => {
+    btn.addEventListener("touchstart", e => { e.preventDefault(); onDown(); }, { passive: false });
+    btn.addEventListener("touchend", e => { e.preventDefault(); onUp && onUp(); }, { passive: false });
+    btn.addEventListener("pointerdown", e => { if (e.pointerType !== "touch") onDown(); });
+    btn.addEventListener("pointerup", e => { if (e.pointerType !== "touch" && onUp) onUp(); });
+    btn.addEventListener("pointerleave", e => { if (e.pointerType !== "touch" && onUp) onUp(); });
+  };
+  press(sprintBtn, () => mobileSprintDown = true, () => mobileSprintDown = false);
+  press(dodgeBtn, () => mobileDodgeQueued = true, () => {});
+}
+
+function toggleFullScreen() {
+  const el = document.documentElement;
+  if (!document.fullscreenElement) {
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if (req) req.call(el);
+  } else {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if (exit) exit.call(document);
+  }
+}
+
+function todayKey() { return new Date().toISOString().slice(0, 10); }
+function overallKey() { return "all"; }
+function cleanScoreName(name) { return String(name || "").replace(/[^a-zA-Z0-9 _.-]/g, "").trim().slice(0, 18) || "Anonymous Runner"; }
+function scoreCollection(period, key) {
+  return db.collection("lobbies").doc("chrisRunner").collection("highscores").doc(period + "_" + key).collection("scores");
+}
+
+async function initFirebaseHighScores() {
+  const status = document.getElementById("firebaseStatus");
+  try {
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.firebasestorage.app",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+      measurementId: "G-8PR6LVKSH3"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    const cred = await firebase.auth().signInAnonymously();
+    firebaseUser = cred.user;
+    firebaseReady = true;
+    if (status) status.textContent = "Online leaderboard ready";
+    await refreshLeaderboards();
+  } catch (err) {
+    firebaseReady = false;
+    if (status) status.textContent = "Leaderboard offline: " + (err && err.code ? err.code : "check Firebase rules/auth");
+    console.warn("Firebase leaderboard unavailable", err);
+  }
+}
+
+async function refreshLeaderboards() {
+  if (!firebaseReady || !firebaseUser) return;
+  cachedDailyScores = await loadLeaderboard("daily", todayKey());
+  cachedOverallScores = await loadLeaderboard("overall", overallKey());
+  renderLeaderboardList("dailyHighScores", cachedDailyScores);
+  renderLeaderboardList("yearlyHighScores", cachedOverallScores);
+}
+
+async function loadLeaderboard(period, key) {
+  const snap = await scoreCollection(period, key).orderBy("score", "desc").limit(10).get();
+  const rows = [];
+  snap.forEach(doc => rows.push({ id: doc.id, refPath: doc.ref.path, ...doc.data() }));
+  return rows;
+}
+
+function renderLeaderboardList(id, rows) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!rows || !rows.length) { el.innerHTML = "<li>No scores yet</li>"; return; }
+  el.innerHTML = rows.map(r => {
+    const you = pendingHighScoreNameSave && pendingHighScoreNameSave.some(x => x.id === r.id);
+    return `<li class="${you ? "you" : ""}">${escapeHtml(r.name || "Anonymous Runner")} — ${Math.floor(r.score || 0)}</li>`;
+  }).join("");
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[c]));
+}
+
+function qualifiesForTopTen(rows, score) {
+  if (!score || score <= 0) return false;
+  if (!rows || rows.length < 10) return true;
+  return score > Math.min(...rows.map(r => Number(r.score || 0)));
+}
+
+function leaderboardRowsHtml(rows) {
+  if (!rows || !rows.length) return "<li>No scores yet</li>";
+  return rows.map(r => {
+    const you = pendingHighScoreNameSave && pendingHighScoreNameSave.some(x => x.id === r.id);
+    return `<li class="${you ? "you" : ""}">${escapeHtml(r.name || "Anonymous Runner")} — ${Math.floor(r.score || 0)}</li>`;
+  }).join("");
+}
+
+function restartSameMode() {
+  const mode = Number(lastGameOverSummary?.gameMode || lastPlayedMode || gameMode || 1);
+  sessionStorage.setItem("chrisRunnerAutoStartMode", String(mode === 2 ? 2 : 1));
+  location.reload();
+}
+
+function returnToMenu() {
+  sessionStorage.removeItem("chrisRunnerAutoStartMode");
+  location.reload();
+}
+
+function renderGameOverDashboard(extraStatus = "") {
+  if (!lastGameOverSummary) return;
+  const box = document.getElementById("messageBox");
+  const message = document.getElementById("message");
+  if (!box || !message) return;
+
+  const s = lastGameOverSummary;
+  box.className = "gameOverDashboard";
+  message.style.display = "flex";
+
+  const nameCard = gameOverNeedsNameEntry ? `
+    <div class="gameOverNameCard" id="gameOverNameEntryPanel">
+      <div style="font-size:18px;font-weight:950;color:#facc15;">You made a Top 10 leaderboard!</div>
+      <div class="leaderboardMuted">Enter your name for this run first, then check the dashboard.</div>
+      <input id="gameOverScoreNameInput" maxlength="18" placeholder="Enter name" value="${escapeHtml(localStorage.getItem("chrisRunnerScoreName") || "")}">
+      <br><button type="button" onclick="saveHighScoreName()">OK</button>
+    </div>` : "";
+
+  const statusHtml = extraStatus ? `<div class="leaderboardMuted">${escapeHtml(extraStatus)}</div>` : "";
+  const modeLabel = s.gameMode === 2 ? "2 Player" : "1 Player";
+  box.innerHTML = `
+    <h2>${escapeHtml(s.reason || "Chris got caught!")}</h2>
+    <div class="gameOverScoreBig">${Math.floor(s.finalDistance)} yards</div>
+    <div class="gameOverSub">${modeLabel} · Local High Score: ${Math.floor(s.highScore)}${s.highScoreMessage ? " · " + escapeHtml(s.highScoreMessage.trim()) : ""} · Pickups: ${Math.floor(s.pickupCount || 0)} · Speed Level: ${Math.floor(s.currentSpeedTier || 0)}</div>
+    ${statusHtml}
+    ${nameCard}
+    <div class="gameOverBoards">
+      <div class="gameOverBoard">
+        <h3>Today’s Top 10</h3>
+        <ol>${leaderboardRowsHtml(cachedDailyScores)}</ol>
+      </div>
+      <div class="gameOverBoard">
+        <h3>Overall Top 10</h3>
+        <ol>${leaderboardRowsHtml(cachedOverallScores)}</ol>
+      </div>
+    </div>
+    <div class="gameOverActions">
+      <button onclick="restartSameMode()">Restart ${modeLabel}</button>
+      <button onclick="returnToMenu()">Return to Menu</button>
+    </div>`;
+
+  const input = document.getElementById("gameOverScoreNameInput");
+  if (input) setTimeout(() => input.focus(), 50);
+}
+
+async function submitHighScore(finalDistance) {
+  if (!firebaseReady || !firebaseUser || replayMode) {
+    return { madeDaily: false, madeOverall: false, skipped: true };
+  }
+  lastSubmittedScore = Math.floor(finalDistance || 0);
+  if (lastSubmittedScore <= 0) return { madeDaily: false, madeOverall: false, skipped: true };
+
+  const uid = firebaseUser.uid;
+  const genericName = "Anonymous Runner";
+  const currentName = localStorage.getItem("chrisRunnerScoreName") || genericName;
+  const runId = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const basePayload = {
+    uid,
+    runId,
+    name: currentName,
+    score: lastSubmittedScore,
+    mode: gameMode,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  const madeDailyCandidate = qualifiesForTopTen(cachedDailyScores, lastSubmittedScore);
+  const madeOverallCandidate = qualifiesForTopTen(cachedOverallScores, lastSubmittedScore);
+
+  const dailyRef = await scoreCollection("daily", todayKey()).add({ ...basePayload, period: "daily", key: todayKey() });
+  const overallRef = await scoreCollection("overall", overallKey()).add({ ...basePayload, period: "overall", key: overallKey() });
+  pendingHighScoreNameSave = [
+    { period: "daily", key: todayKey(), id: dailyRef.id },
+    { period: "overall", key: overallKey(), id: overallRef.id }
+  ];
+
+  await refreshLeaderboards();
+  const madeDaily = cachedDailyScores.some(r => r.id === dailyRef.id) || madeDailyCandidate;
+  const madeOverall = cachedOverallScores.some(r => r.id === overallRef.id) || madeOverallCandidate;
+  return { madeDaily, madeOverall, madeYearly: madeOverall, topTenCandidate: madeDaily || madeOverall };
+}
+
+function showNameEntryPanel() {
+  // Name entry is only shown on the post-caught dashboard now.
+}
+
+async function saveHighScoreName() {
+  if (!firebaseReady || !firebaseUser || !pendingHighScoreNameSave || !pendingHighScoreNameSave.length) return;
+  const input = document.getElementById("gameOverScoreNameInput") || document.getElementById("scoreNameInput");
+  const name = cleanScoreName(input ? input.value : "");
+  localStorage.setItem("chrisRunnerScoreName", name);
+  await Promise.all(pendingHighScoreNameSave.map(item =>
+    scoreCollection(item.period, item.key).doc(item.id).set({ name }, { merge: true })
+  ));
+  gameOverNeedsNameEntry = false;
+  await refreshLeaderboards();
+  if (lastGameOverSummary && document.getElementById("message")?.style.display === "flex") {
+    renderGameOverDashboard("Name saved — leaderboard updated.");
+  }
+}
+
+
+init();
+animate();
+
+/* ============================================================
+   SETUP
+============================================================ */
+
+function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf8fbff);
+  scene.fog = new THREE.Fog(0xf8fbff, 70, 210);
+
+  camera = new THREE.PerspectiveCamera(
+    70,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    650
+  );
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  document.body.appendChild(renderer.domElement);
+
+  clock = new THREE.Clock();
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x9ec58b, 1.45);
+  scene.add(hemi);
+
+  const sun = new THREE.DirectionalLight(0xffffff, 2.1);
+  sun.position.set(30, 55, -30);
+  sun.castShadow = true;
+  sun.shadow.mapSize.width = 1024;
+  sun.shadow.mapSize.height = 1024;
+  sun.shadow.camera.left = -90;
+  sun.shadow.camera.right = 90;
+  sun.shadow.camera.top = 90;
+  sun.shadow.camera.bottom = -90;
+  scene.add(sun);
+
+  createStarryBackground();
+
+  for (let i = 0; i < CHUNK_COUNT_AHEAD; i++) {
+    generateChunk(i * CHUNK_LENGTH);
+  }
+
+  furthestChunkZ = (CHUNK_COUNT_AHEAD - 1) * CHUNK_LENGTH;
+
+  window.addEventListener("keydown", e => {
+    const key = e.key.toLowerCase();
+
+    if (replayMode) return;
+
+    if (keys[key]) return;
+    keys[key] = true;
+
+    if (replayRecorder && gameStarted && !gameOver) {
+      recordReplayInput("keydown", key);
+    }
+  });
+
+  window.addEventListener("keyup", e => {
+    const key = e.key.toLowerCase();
+
+    if (replayMode) return;
+
+    keys[key] = false;
+
+    if (replayRecorder && gameStarted && !gameOver) {
+      recordReplayInput("keyup", key);
+    }
+  });
+
+  window.addEventListener("resize", () => { onResize(); setupMobileControls(); });
+
+  const replayInput = document.getElementById("replayFileInput");
+  if (replayInput) {
+    replayInput.addEventListener("change", handleReplayFileSelected);
+  }
+
+  setupMobileControls();
+  initFirebaseHighScores();
+
+  const autoMode = Number(sessionStorage.getItem("chrisRunnerAutoStartMode") || 0);
+  if (autoMode === 1 || autoMode === 2) {
+    sessionStorage.removeItem("chrisRunnerAutoStartMode");
+    setTimeout(() => startGame(autoMode), 0);
+  }
+}
+
+/* ============================================================
+   STARRY BACKGROUND
+============================================================ */
+
+function createStarryBackground() {
+  const starGroup = new THREE.Group();
+  starGroup.name = "starryBackground";
+
+  const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const goldStarMat = new THREE.MeshBasicMaterial({ color: 0xfff3b0 });
+  const blueStarMat = new THREE.MeshBasicMaterial({ color: 0xd9ecff });
+
+  for (let i = 0; i < 190; i++) {
+    const size = rand(0.035, 0.13);
+
+    const matRoll = Math.random();
+    let mat = starMat;
+    if (matRoll > 0.86) mat = goldStarMat;
+    if (matRoll < 0.12) mat = blueStarMat;
+
+    const star = new THREE.Mesh(
+      new THREE.SphereGeometry(size, 6, 6),
+      mat
+    );
+
+    star.position.set(
+      rand(-105, 105),
+      rand(26, 88),
+      rand(20, 245)
+    );
+
+    star.userData = {
+      baseScale: rand(0.85, 1.55),
+      twinkleSpeed: rand(0.7, 2.2),
+      phase: gameRandom() * Math.PI * 2
+    };
+
+    starGroup.add(star);
+  }
+
+  const brightStar = new THREE.Group();
+  brightStar.name = "brightGuidingStar";
+
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(1.15, 18, 18),
+    new THREE.MeshBasicMaterial({ color: 0xffffff })
+  );
+  brightStar.add(core);
+
+  const glow1 = new THREE.Mesh(
+    new THREE.SphereGeometry(2.7, 18, 18),
+    new THREE.MeshBasicMaterial({
+      color: 0xfff7c2,
+      transparent: true,
+      opacity: 0.38
+    })
+  );
+  brightStar.add(glow1);
+
+  const glow2 = new THREE.Mesh(
+    new THREE.SphereGeometry(5.0, 18, 18),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.16
+    })
+  );
+  brightStar.add(glow2);
+
+  const rayMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide
+  });
+
+  const verticalRay = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.35, 10.5),
+    rayMat
+  );
+  brightStar.add(verticalRay);
+
+  const horizontalRay = new THREE.Mesh(
+    new THREE.PlaneGeometry(10.5, 0.35),
+    rayMat
+  );
+  brightStar.add(horizontalRay);
+
+  const diagonalRay1 = new THREE.Mesh(
+    new THREE.PlaneGeometry(7.5, 0.22),
+    rayMat
+  );
+  diagonalRay1.rotation.z = Math.PI / 4;
+  brightStar.add(diagonalRay1);
+
+  const diagonalRay2 = new THREE.Mesh(
+    new THREE.PlaneGeometry(7.5, 0.22),
+    rayMat
+  );
+  diagonalRay2.rotation.z = -Math.PI / 4;
+  brightStar.add(diagonalRay2);
+
+  brightStar.position.set(0, 58, 110);
+  brightStar.userData = {
+    phase: 0
+  };
+
+  starGroup.add(brightStar);
+  scene.add(starGroup);
+}
+
+function updateStarryBackground(dt) {
+  const starGroup = scene.getObjectByName("starryBackground");
+  if (!starGroup) return;
+
+  starGroup.position.z = player.rig.position.z - 18;
+
+  for (const obj of starGroup.children) {
+    if (obj.name === "brightGuidingStar") {
+      obj.userData.phase += dt;
+
+      const pulse = 1 + Math.sin(obj.userData.phase * 2.8) * 0.09;
+      obj.scale.setScalar(pulse);
+      obj.rotation.z += dt * 0.11;
+      continue;
+    }
+
+    if (!obj.userData || obj.userData.baseScale === undefined) continue;
+
+    if (frameCount % 2 === 0) {
+      const twinkle =
+        obj.userData.baseScale +
+        Math.sin(performance.now() * 0.001 * obj.userData.twinkleSpeed + obj.userData.phase) * 0.25;
+
+      obj.scale.setScalar(Math.max(0.45, twinkle));
+    }
+  }
+}
+
+/* ============================================================
+   PLAYER
+============================================================ */
+
+function createPlayer(index = 1, x = 0, z = START_Z) {
+  playerRig = new THREE.Group();
+  playerRig.position.set(x, 0, z);
+
+  const skin = new THREE.MeshStandardMaterial({ color: 0x8a4c2a, roughness: 0.65 });
+  const jersey = new THREE.MeshStandardMaterial({ color: index === 1 ? 0x1d4ed8 : 0xea580c, roughness: 0.4 });
+  const shorts = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.45 });
+  const shoeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+  const beardMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+
+  const created = {
+    id: index,
+    rig: playerRig,
+    velocity: new THREE.Vector3(),
+    speed: playerBaseSpeed,
+    sprintSpeed: playerBaseSprintSpeed,
+    dodgeCooldown: 0,
+    animTime: 0,
+    burnCooldown: 0,
+    parts: {},
+    eliminated: false,
+    isChaser: false,
+    controlledChaser: null,
+    arrow: null,
+    energy: 100,
+    shieldActive: false,
+    shieldCharges: 0,
+    shieldMesh: null
+  };
+  player = created;
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.2, 0.75), jersey);
+  torso.position.y = 3.05;
+  torso.castShadow = true;
+  playerRig.add(torso);
+  player.parts.torso = torso;
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 20, 20), skin);
+  head.position.y = 4.58;
+  head.scale.set(0.92, 1.04, 0.9);
+  head.castShadow = true;
+  playerRig.add(head);
+  player.parts.head = head;
+
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.6, 18, 8), beardMat);
+  hair.position.set(0, 4.82, -0.03);
+  hair.scale.set(0.92, 0.38, 0.85);
+  hair.castShadow = true;
+  playerRig.add(hair);
+
+  const beard = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.18, 0.08), beardMat);
+  beard.position.set(0, 4.28, 0.49);
+  playerRig.add(beard);
+
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+  const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), eyeMat);
+  leftEye.position.set(-0.18, 4.62, 0.51);
+  playerRig.add(leftEye);
+
+  const rightEye = leftEye.clone();
+  rightEye.position.x = 0.18;
+  playerRig.add(rightEye);
+
+  makeLimb("leftArm", -0.95, 3.45, 0, skin, 0.34, 1.35);
+  makeLimb("rightArm", 0.95, 3.45, 0, skin, 0.34, 1.35);
+  makeLimb("leftLeg", -0.38, 1.85, 0, shorts, 0.42, 1.55);
+  makeLimb("rightLeg", 0.38, 1.85, 0, shorts, 0.42, 1.55);
+
+  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.25, 0.82), shoeMat);
+  leftShoe.position.set(-0.38, 0.45, 0.17);
+  leftShoe.castShadow = true;
+  playerRig.add(leftShoe);
+  player.parts.leftShoe = leftShoe;
+
+  const rightShoe = leftShoe.clone();
+  rightShoe.position.x = 0.38;
+  playerRig.add(rightShoe);
+  player.parts.rightShoe = rightShoe;
+
+  scene.add(playerRig);
+  created.arrow = createPlayerArrow(index === 1 ? 0x3b82f6 : 0xf97316);
+  scene.add(created.arrow);
+  return created;
+}
+
+function createPlayerArrow(color) {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.2, 10), new THREE.MeshBasicMaterial({ color }));
+  m.rotation.x = Math.PI;
+  g.add(m);
+  return g;
+}
+
+function makeLimb(name, x, y, z, mat, width, height) {
+  const limb = new THREE.Group();
+  limb.position.set(x, y, z);
+
+  const mesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(width / 2, height, 6, 10),
+    mat
+  );
+
+  mesh.castShadow = true;
+  limb.add(mesh);
+
+  playerRig.add(limb);
+  player.parts[name] = limb;
+}
+
+/* ============================================================
+   ENEMIES
+============================================================ */
+
+function createEnemy(x, z) {
+  const rig = new THREE.Group();
+  rig.position.set(x, 0, z);
+
+  const skin = new THREE.MeshStandardMaterial({ color: 0xf0c9a2, roughness: 0.65 });
+  const hoodie = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.5 });
+  const pants = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.7 });
+  const hair = new THREE.MeshStandardMaterial({ color: 0x6b3e1f, roughness: 0.8 });
+  const fireMat = new THREE.MeshStandardMaterial({
+    color: 0xff7a18,
+    emissive: 0xff3c00,
+    emissiveIntensity: 1.1
+  });
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(1.55, 2.35, 0.9), hoodie);
+  torso.position.y = 3.05;
+  torso.castShadow = true;
+  rig.add(torso);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 18, 18), skin);
+  head.position.y = 4.55;
+  head.castShadow = true;
+  rig.add(head);
+
+  const beard = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.22, 0.1), hair);
+  beard.position.set(0, 4.22, 0.5);
+  rig.add(beard);
+
+  const hairTop = new THREE.Mesh(new THREE.SphereGeometry(0.58, 16, 8), hair);
+  hairTop.position.y = 4.85;
+  hairTop.scale.set(0.95, 0.38, 0.85);
+  rig.add(hairTop);
+
+  const leftArm = new THREE.Group();
+  leftArm.position.set(-1.0, 3.4, 0);
+
+  const leftArmMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.18, 1.45, 6, 10),
+    hoodie
+  );
+  leftArmMesh.castShadow = true;
+  leftArm.add(leftArmMesh);
+  rig.add(leftArm);
+
+  const rightArm = leftArm.clone();
+  rightArm.position.x = 1.0;
+  rig.add(rightArm);
+
+  const leftLeg = new THREE.Group();
+  leftLeg.position.set(-0.42, 1.8, 0);
+
+  const leftLegMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.22, 1.6, 6, 10),
+    pants
+  );
+  leftLegMesh.castShadow = true;
+  leftLeg.add(leftLegMesh);
+  rig.add(leftLeg);
+
+  const rightLeg = leftLeg.clone();
+  rightLeg.position.x = 0.42;
+  rig.add(rightLeg);
+
+  const canHaveTorch = distance >= 500 && gameRandom() < 0.38;
+  let handTorch = null;
+
+  if (canHaveTorch) {
+    handTorch = new THREE.Group();
+
+    const stick = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.07, 0.9, 6),
+      new THREE.MeshStandardMaterial({ color: 0x5b3211, roughness: 0.75 })
+    );
+    stick.rotation.z = 0.2;
+    handTorch.add(stick);
+
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.18, 0.45, 8),
+      fireMat
+    );
+    flame.position.y = 0.55;
+    handTorch.add(flame);
+
+    handTorch.position.set(1.18, 3.25, 0.15);
+    rig.add(handTorch);
+  }
+
+  scene.add(rig);
+
+  return {
+    type: "enemy",
+    rig,
+    velocity: new THREE.Vector3(),
+    speed: 8 + enemyBaseSpeedBonus + gameRandom() * 2.5,
+    animTime: gameRandom() * 10,
+    pathTimer: rand(0.4, 1.2),
+    path: [],
+    wanderDir: null,
+    wanderTimer: 0,
+    hasTorch: canHaveTorch,
+    torchCooldown: rand(2.5, 5.0),
+    handTorch,
+    parts: {
+      leftArm,
+      rightArm,
+      leftLeg,
+      rightLeg
+    }
+  };
+}
+
+function createPoliceOfficer(x, z) {
+  const rig = new THREE.Group(); rig.position.set(x, 0, z);
+  const skin = new THREE.MeshStandardMaterial({ color: 0xf1c27d, roughness: 0.65 }); const uniform = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.45 }); const blue = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.4 }); const black = new THREE.MeshStandardMaterial({ color: 0x020617, roughness: 0.6 }); const gold = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35, metalness: 0.2 });
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(1.45, 2.2, 0.75), uniform); torso.position.y = 3.05; torso.castShadow = true; rig.add(torso);
+  const badge = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.38, 0.04), gold); badge.position.set(0.38, 3.45, 0.4); rig.add(badge);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 18, 18), skin); head.position.y = 4.55; head.castShadow = true; rig.add(head);
+  const hatBase = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.18, 18), blue); hatBase.position.y = 5.05; rig.add(hatBase);
+  const hatTop = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.58, 0.35, 18), blue); hatTop.position.y = 5.28; rig.add(hatTop);
+  const leftArm = new THREE.Group(); leftArm.position.set(-0.95, 3.45, 0); const leftArmMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 1.35, 6, 10), uniform); leftArmMesh.castShadow = true; leftArm.add(leftArmMesh); rig.add(leftArm);
+  const rightArm = leftArm.clone(); rightArm.position.x = 0.95; rig.add(rightArm);
+  const leftLeg = new THREE.Group(); leftLeg.position.set(-0.4, 1.8, 0); const leftLegMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.55, 6, 10), black); leftLegMesh.castShadow = true; leftLeg.add(leftLegMesh); rig.add(leftLeg);
+  const rightLeg = leftLeg.clone(); rightLeg.position.x = 0.4; rig.add(rightLeg);
+  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.75), black); gun.position.set(1.15, 3.35, 0.55); gun.castShadow = true; rig.add(gun);
+  const laser = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1), new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.0, depthWrite: false })); laser.position.y = 3.4; laser.visible = false; scene.add(laser); scene.add(rig);
+  return { type: "police", rig, speed: 10.5 + enemyBaseSpeedBonus, state: "chase", stateTimer: POLICE_CHASE_TIME, aimTimer: 0, target: null, laser, pathTimer: rand(0.3, 0.9), path: [], animTime: gameRandom() * 5, wanderDir: null, wanderTimer: 0, parts: { leftArm, rightArm, leftLeg, rightLeg } };
+}
+
+function createDog(x, z) {
+  const rig = new THREE.Group();
+  rig.position.set(x, 0, z);
+
+  const furMat = new THREE.MeshStandardMaterial({ color: 0x3b2f2f, roughness: 0.9 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1f1717, roughness: 0.9 });
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffe08a });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.8, 2.7), furMat);
+  body.position.y = 1.15;
+  body.castShadow = true;
+  rig.add(body);
+
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.7, 0.8), darkMat);
+  chest.position.set(0, 1.18, 1.25);
+  chest.castShadow = true;
+  rig.add(chest);
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.85, 1.1), furMat);
+  head.position.set(0, 1.5, 1.95);
+  head.castShadow = true;
+  rig.add(head);
+
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.38, 0.55), darkMat);
+  snout.position.set(0, 1.37, 2.58);
+  snout.castShadow = true;
+  rig.add(snout);
+
+  const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), eyeMat);
+  leftEye.position.set(-0.25, 1.63, 2.53);
+  rig.add(leftEye);
+
+  const rightEye = leftEye.clone();
+  rightEye.position.x = 0.25;
+  rig.add(rightEye);
+
+  const earMat = new THREE.MeshStandardMaterial({ color: 0x221818, roughness: 0.9 });
+
+  const leftEar = new THREE.Mesh(new THREE.ConeGeometry(0.23, 0.7, 6), earMat);
+  leftEar.position.set(-0.42, 2.03, 1.82);
+  leftEar.rotation.z = 0.25;
+  leftEar.castShadow = true;
+  rig.add(leftEar);
+
+  const rightEar = leftEar.clone();
+  rightEar.position.x = 0.42;
+  rightEar.rotation.z = -0.25;
+  rig.add(rightEar);
+
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.1, 6), darkMat);
+  tail.position.set(0, 1.45, -1.75);
+  tail.rotation.x = -0.9;
+  tail.castShadow = true;
+  rig.add(tail);
+
+  const legs = [];
+  const legPositions = [
+    [-0.62, 0.55, 0.85],
+    [0.62, 0.55, 0.85],
+    [-0.62, 0.55, -0.85],
+    [0.62, 0.55, -0.85]
+  ];
+
+  for (const lp of legPositions) {
+    const leg = new THREE.Group();
+    leg.position.set(lp[0], lp[1], lp[2]);
+
+    const mesh = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.13, 0.75, 5, 8),
+      darkMat
+    );
+    mesh.castShadow = true;
+    leg.add(mesh);
+    rig.add(leg);
+    legs.push(leg);
+  }
+
+  scene.add(rig);
+
+  return {
+    type: "dog",
+    rig,
+    speed: 14 + enemyBaseSpeedBonus + gameRandom() * 2.2,
+    turnRate: 2.1,
+    heading: gameRandom() * Math.PI * 2,
+    animTime: gameRandom() * 5,
+    wanderDir: null,
+    wanderTimer: 0,
+    legs
+  };
+}
+
+/* ============================================================
+   WORLD GENERATION
+============================================================ */
+
+function getBiomeForZ(z) {
+  const tier = Math.floor(z / 1000);
+
+  if (tier === 0) return "forest";
+  if (tier === 1) return "snow";
+  if (tier === 2) return "desert";
+  if (tier === 3) return "city";
+
+  const cycle = tier % 4;
+  if (cycle === 0) return "forest";
+  if (cycle === 1) return "snow";
+  if (cycle === 2) return "desert";
+  return "city";
+}
+
+function getBiomeConfig(biome) {
+  return BIOMES[biome] || BIOMES.forest;
+}
+
+function createBiomeGround(width, length, biome) {
+  const cfg = getBiomeConfig(biome);
+  return new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.45, length),
+    new THREE.MeshStandardMaterial({ color: cfg.groundColor, roughness: 0.9 })
+  );
+}
+
+function createForestTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 6.5, 7), new THREE.MeshStandardMaterial({color:0x6b3f1d, roughness:0.9})); t.position.y=3.25; g.add(t); const c = new THREE.Mesh(new THREE.SphereGeometry(1.9,10,8), new THREE.MeshStandardMaterial({color:0x1f7a35, roughness:0.85})); c.position.y=7.3; g.add(c); return g; }
+function createPineTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.35,8.3,7), new THREE.MeshStandardMaterial({color:0x5a341a, roughness:0.95})); t.position.y=4.15; g.add(t); for (let i=0;i<3;i++){ const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5-i*0.3,3.1,8), new THREE.MeshStandardMaterial({color:0x1d4d2f,roughness:0.86})); cone.position.y=5.6+i*1.5; g.add(cone); const snow = new THREE.Mesh(new THREE.ConeGeometry(0.6-i*0.15,0.9,8), new THREE.MeshStandardMaterial({color:0xf7fbff,roughness:0.95})); snow.position.y=6.6+i*1.5; g.add(snow);} return g; }
+function createPalmTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.45,6.8,7), new THREE.MeshStandardMaterial({color:0x9a6b3e, roughness:0.9})); t.position.set(0.3,3.4,0); t.rotation.z=-0.15; g.add(t); for (let i=0;i<6;i++){const leaf=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.08,2.2),new THREE.MeshStandardMaterial({color:0x2f8a4f,roughness:0.8})); leaf.position.set(0.55,6.8,0); leaf.rotation.y=(Math.PI*2/6)*i; leaf.rotation.x=-0.25; g.add(leaf);} return g; }
+function createCactus() { const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({color:0x3f8f4a,roughness:0.88}); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.45,4.4,8), mat); b.position.y=2.2; g.add(b); const a = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.24,2.0,8), mat); a.position.set(0.52,2.8,0); a.rotation.z=-1.2; g.add(a); return g; }
+function createForestRock(){ const r=new THREE.Mesh(new THREE.SphereGeometry(1.2,9,8),new THREE.MeshStandardMaterial({color:0x64748b,roughness:0.92})); r.scale.y=0.6; return r; }
+function createSnowRock(){ const g=new THREE.Group(); const b=createForestRock(); b.material=new THREE.MeshStandardMaterial({color:0x4b5563,roughness:0.95}); g.add(b); const cap=new THREE.Mesh(new THREE.SphereGeometry(0.95,8,7),new THREE.MeshStandardMaterial({color:0xf8fcff,roughness:0.98})); cap.position.y=0.55; cap.scale.y=0.5; g.add(cap); return g; }
+function createDesertRock(){ const g=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:0xc98d54,roughness:0.93}); for(let i=0;i<2;i++){const r=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.8,1.1),m); r.position.set(i*0.7-0.35,0.35+i*0.1,0); g.add(r);} return g; }
+function createParkedCar(color = 0x2563eb) {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.15 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.55 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.75 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.05, 5.2), bodyMat); body.position.y = 0.75; body.castShadow = true; body.receiveShadow = true; g.add(body);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.9, 2.4), glassMat); cabin.position.set(0, 1.55, -0.25); cabin.castShadow = true; g.add(cabin);
+  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.35, 14);
+  const wheelPositions = [[-1.85, 0.45, 1.65],[1.85, 0.45, 1.65],[-1.85, 0.45, -1.65],[1.85, 0.45, -1.65]];
+  for (const wp of wheelPositions) { const wheel = new THREE.Mesh(wheelGeo, darkMat); wheel.position.set(wp[0], wp[1], wp[2]); wheel.rotation.z = Math.PI / 2; wheel.castShadow = true; g.add(wheel); }
+  const headlightMat = new THREE.MeshStandardMaterial({ color: 0xfff7aa, emissive: 0xfff7aa, emissiveIntensity: 0.6 });
+  const lightL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.2, 0.08), headlightMat); lightL.position.set(-0.75, 0.95, 2.65); g.add(lightL);
+  const lightR = lightL.clone(); lightR.position.x = 0.75; g.add(lightR);
+  g.userData = { type: "wall", radiusX: 2.1, radiusZ: 2.9 };
+  return g;
+}
+function createCrashedCar() { const colors = [0xef4444, 0xf97316, 0x22c55e, 0x3b82f6, 0xeab308, 0x64748b]; const car = createParkedCar(colors[Math.floor(gameRandom() * colors.length)]); car.rotation.y = rand(-0.55, 0.55); car.scale.set(rand(0.9, 1.08), rand(0.8, 1.0), rand(0.9, 1.08)); const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.7, 8, 6), new THREE.MeshStandardMaterial({ color: 0x374151, transparent: true, opacity: 0.5, roughness: 1 })); smoke.position.set(rand(-0.7, 0.7), 2.5, rand(-1.2, 1.2)); car.add(smoke); return car; }
+function createTrafficBarrier() { const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.55 }); const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }); const base = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.2, 0.7), mat); base.position.y = 0.65; base.castShadow = true; base.receiveShadow = true; g.add(base); for (let i = -1; i <= 1; i += 2) { const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.25, 0.75), white); stripe.position.set(i * 1.1, 0.66, 0.03); stripe.rotation.z = 0.35; g.add(stripe); } g.userData = { type: "wall", radiusX: 2.4, radiusZ: 0.7 }; return g; }
+function createStreetLight() {
+  const g = new THREE.Group();
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.45, metalness: 0.3 });
+  const lampMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfacc15, emissiveIntensity: 0.9 });
+  const hazardMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.5 });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.9, 0.55, 16), hazardMat);
+  base.position.y = 0.28; base.castShadow = true; base.receiveShadow = true; g.add(base);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 6, 10), poleMat);
+  pole.position.y = 3.25; pole.castShadow = true; g.add(pole);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.16, 0.16), poleMat);
+  arm.position.set(0.85, 6.05, 0); g.add(arm);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), lampMat);
+  lamp.position.set(1.75, 6.0, 0); g.add(lamp);
+  g.userData = { type: "wall", radiusX: 1.25, radiusZ: 1.25 };
+  return g;
+}
+function createCitySign() {
+  const g = new THREE.Group();
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 });
+  const signMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.4 });
+  const warningMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.45 });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.42, 1.65), warningMat);
+  base.position.y = 0.22; base.castShadow = true; base.receiveShadow = true; g.add(base);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 3.7, 10), poleMat);
+  pole.position.y = 2.05; pole.castShadow = true; g.add(pole);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.25, 0.28), signMat);
+  sign.position.y = 3.65; sign.castShadow = true; g.add(sign);
+  const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+  for (let i = -1; i <= 1; i += 2) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 1.7), stripeMat);
+    stripe.position.set(i * 0.72, 0.47, 0.03); stripe.rotation.z = 0.35; g.add(stripe);
+  }
+  g.userData = { type: "wall", radiusX: 1.65, radiusZ: 1.05 };
+  return g;
+}
+function createBiomeTree(biome) { if (biome === "snow") return createPineTree(); if (biome === "desert") return createPalmTree(); if (biome === "city") { const roll = gameRandom(); if (roll < 0.35) return createStreetLight(); if (roll < 0.65) return createCitySign(); return createParkedCar(); } return createForestTree(); }
+function createBiomeRock(biome) { if (biome === "snow") return createSnowRock(); if (biome === "desert") return createDesertRock(); if (biome === "city") { const roll = gameRandom(); if (roll < 0.5) return createTrafficBarrier(); return createCrashedCar(); } return createForestRock(); }
+
+
+
+function addCollisionFootprint(obstacle) {
+  if (!obstacle || !obstacle.userData || obstacle.userData.collisionFootprintAdded) return;
+  const rx = obstacle.userData.radiusX || 1.1;
+  const rz = obstacle.userData.radiusZ || 1.1;
+  const mat = new THREE.MeshBasicMaterial({
+    color: COLLISION_FOOTPRINT_COLOR,
+    transparent: true,
+    opacity: 0.26,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  const footprint = new THREE.Mesh(new THREE.PlaneGeometry(rx * 2.08, rz * 2.08), mat);
+  footprint.rotation.x = -Math.PI / 2;
+  footprint.position.y = 0.075;
+  footprint.userData.isCollisionFootprint = true;
+  obstacle.add(footprint);
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(Math.max(rx, rz) * 1.06, 0.045, 8, 40),
+    new THREE.MeshBasicMaterial({ color: 0xfff59d, transparent: true, opacity: 0.72, depthWrite: false })
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.13;
+  ring.scale.x = rx / Math.max(rx, rz);
+  ring.scale.y = rz / Math.max(rx, rz);
+  ring.userData.isCollisionFootprint = true;
+  obstacle.add(ring);
+  obstacle.userData.collisionFootprintAdded = true;
+}
+
+function registerObstacle(obstacle) {
+  if (!obstacle) return;
+  if (!obstacle.userData) obstacle.userData = {};
+  if (obstacle.userData.type !== "wall") obstacle.userData.type = "wall";
+  if (!obstacle.userData.radiusX) obstacle.userData.radiusX = 1.6;
+  if (!obstacle.userData.radiusZ) obstacle.userData.radiusZ = 1.6;
+  addCollisionFootprint(obstacle);
+  walls.push(obstacle);
+}
+
+function generateChunk(zStart) {
+  const chunk = new THREE.Group();
+  chunk.userData.zStart = zStart;
+  const biome = getBiomeForZ(zStart);
+  const biomeConfig = getBiomeConfig(biome);
+  chunk.userData.biome = biome;
+
+  const ground = createBiomeGround(WORLD_WIDTH, CHUNK_LENGTH, biome);
+
+  ground.position.set(0, -0.23, zStart + CHUNK_LENGTH / 2);
+  ground.receiveShadow = true;
+  chunk.add(ground);
+
+  addRoadLines(chunk, zStart, biome);
+  addGridWallsWithGuaranteedPaths(chunk, zStart, biome);
+  addPickups(chunk, zStart);
+  addGrassPatches(chunk, zStart, biome);
+
+  if (zStart > 20 && enemies.length < MAX_ENEMIES) {
+    const desiredEnemyCount = 1 + Math.floor(distance / 230);
+    const availableSlots = MAX_ENEMIES - enemies.length;
+    const spawnCount = Math.min(desiredEnemyCount, 4, availableSlots);
+
+    for (let i = 0; i < spawnCount; i++) {
+      const ex = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+      const ez = zStart + rand(5, CHUNK_LENGTH - 8);
+      enemies.push(createEnemy(ex, ez));
+    }
+  }
+
+  if (distance >= 1000 && zStart > 1000 && dogs.length < MAX_DOGS) {
+    const desiredDogCount = 1 + Math.floor((distance - 1000) / 500);
+    const availableDogSlots = MAX_DOGS - dogs.length;
+    const spawnDogCount = Math.min(desiredDogCount, 2, availableDogSlots);
+
+    for (let i = 0; i < spawnDogCount; i++) {
+      const dx = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+      const dz = zStart + rand(8, CHUNK_LENGTH - 8);
+      dogs.push(createDog(dx, dz));
+    }
+  }
+
+  if (zStart >= 2000 && biome === "desert" && desertStalkers.length < MAX_DESERT_STALKERS) {
+    const chance = zStart >= 3000 ? 0.6 : 0.45;
+    if (gameRandom() < chance) {
+      const sx = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+      const sz = zStart + rand(8, CHUNK_LENGTH - 8);
+      if (!collidesWithWall(new THREE.Vector3(sx, 0, sz), 1.3)) {
+        desertStalkers.push(spawnDesertStalker(sx, sz));
+      }
+    }
+  }
+
+
+  if (zStart >= POLICE_SPAWN_START && biome === "city" && policeOfficers.length < MAX_POLICE) {
+    const desiredPoliceCount = 1 + Math.floor((distance - POLICE_SPAWN_START) / 600);
+    const availablePoliceSlots = MAX_POLICE - policeOfficers.length;
+    const spawnPoliceCount = Math.min(desiredPoliceCount, 2, availablePoliceSlots);
+    for (let i = 0; i < spawnPoliceCount; i++) {
+      const px = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+      const pz = zStart + rand(8, CHUNK_LENGTH - 8);
+      if (!collidesWithWall(new THREE.Vector3(px, 0, pz), 1.3)) policeOfficers.push(createPoliceOfficer(px, pz));
+    }
+  }
+  scene.add(chunk);
+  worldChunks.push(chunk);
+}
+
+function addRoadLines(chunk, zStart, biome) {
+  if (biome === "city") { addCityRoadLines(chunk, zStart); return; }
+  const lineMat = new THREE.MeshStandardMaterial({
+    color: 0xe8f0ff,
+    emissive: 0x111827,
+    roughness: 0.35
+  });
+
+  for (let z = zStart + 5; z < zStart + CHUNK_LENGTH; z += 10) {
+    const line = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.04, 4.5), lineMat);
+    line.position.set(0, 0.05, z);
+    chunk.add(line);
+  }
+
+  const edgeMat = new THREE.MeshStandardMaterial({
+    color: 0x334155,
+    roughness: 0.8
+  });
+
+  const left = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.08, CHUNK_LENGTH), edgeMat);
+  left.position.set(-WORLD_WIDTH / 2 + 1.5, 0.04, zStart + CHUNK_LENGTH / 2);
+  chunk.add(left);
+
+  const right = left.clone();
+  right.position.x = WORLD_WIDTH / 2 - 1.5;
+  chunk.add(right);
+}
+
+function addCityRoadLines(chunk, zStart) { const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0x5a3b00, emissiveIntensity: 0.15, roughness: 0.4 }); const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 }); for (let z = zStart + 4; z < zStart + CHUNK_LENGTH; z += 9) { const dashA = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 4.4), yellowMat); dashA.position.set(-0.35, 0.06, z); chunk.add(dashA); const dashB = dashA.clone(); dashB.position.x = 0.35; chunk.add(dashB); } const leftShoulder = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.05, CHUNK_LENGTH), whiteMat); leftShoulder.position.set(-WORLD_WIDTH / 2 + 4.5, 0.065, zStart + CHUNK_LENGTH / 2); chunk.add(leftShoulder); const rightShoulder = leftShoulder.clone(); rightShoulder.position.x = WORLD_WIDTH / 2 - 4.5; chunk.add(rightShoulder); const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.8 }); const leftSidewalk = new THREE.Mesh(new THREE.BoxGeometry(4, 0.12, CHUNK_LENGTH), sidewalkMat); leftSidewalk.position.set(-WORLD_WIDTH / 2 + 2, 0.03, zStart + CHUNK_LENGTH / 2); leftSidewalk.receiveShadow = true; chunk.add(leftSidewalk); const rightSidewalk = leftSidewalk.clone(); rightSidewalk.position.x = WORLD_WIDTH / 2 - 2; chunk.add(rightSidewalk); }
+
+function addGridWallsWithGuaranteedPaths(chunk, zStart, biome) {
+  const wallMats = [
+    new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 }),
+    new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 }),
+    new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85 })
+  ];
+
+  const laneXs = [-18, -12, -6, 0, 6, 12, 18];
+  const rowZs = [];
+
+  for (let z = zStart + 7; z < zStart + CHUNK_LENGTH - 5; z += 7) {
+    rowZs.push(z);
+  }
+
+  const openLaneA = Math.floor(gameRandom() * laneXs.length);
+  let openLaneB = Math.floor(gameRandom() * laneXs.length);
+
+  while (openLaneB === openLaneA) {
+    openLaneB = Math.floor(gameRandom() * laneXs.length);
+  }
+
+  for (let r = 0; r < rowZs.length; r++) {
+    for (let c = 0; c < laneXs.length; c++) {
+      if (c === openLaneA || c === openLaneB) continue;
+
+      const blockChance = distance > 600 ? 0.46 : 0.36;
+      if (gameRandom() > blockChance) continue;
+
+      const w = 4.4;
+      const d = 3.5;
+      const h = rand(2.3, 5.7);
+
+      let wall;
+
+      if (biome === "city") {
+        const roll = gameRandom();
+        if (roll < 0.55) wall = createParkedCar([0xef4444, 0x2563eb, 0xfacc15, 0x22c55e, 0x64748b][Math.floor(gameRandom() * 5)]);
+        else if (roll < 0.8) wall = createCrashedCar();
+        else wall = createTrafficBarrier();
+        wall.position.set(laneXs[c], 0, rowZs[r]);
+        wall.rotation.y += gameRandom() < 0.5 ? Math.PI / 2 : 0;
+      } else {
+        wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMats[Math.floor(gameRandom() * wallMats.length)]);
+        wall.position.set(laneXs[c], h / 2, rowZs[r]);
+        wall.castShadow = h > 4.2;
+        wall.receiveShadow = true;
+        wall.userData = { type: "wall", radiusX: w / 2, radiusZ: d / 2 };
+      }
+
+      chunk.add(wall);
+      registerObstacle(wall);
+    }
+  }
+
+  addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs, biome);
+}
+
+/* Taller brown blocks, now tree-like obstacles */
+function addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs, biome) {
+  for (let i = 0; i < 4; i++) {
+    const c = Math.floor(gameRandom() * laneXs.length);
+    if (c === openLaneA || c === openLaneB) continue;
+
+    const tree = biome === "desert" && gameRandom() < 0.35 ? createCactus() : createBiomeTree(biome);
+    const trunkRadius = biome === "desert" ? 0.6 : 0.7;
+
+    tree.position.set(
+      laneXs[c] + rand(-1.0, 1.0),
+      0,
+      zStart + rand(4, CHUNK_LENGTH - 4)
+    );
+
+    tree.userData = {
+      type: "wall",
+      radiusX: trunkRadius + 0.75,
+      radiusZ: trunkRadius + 0.75
+    };
+
+    chunk.add(tree);
+    registerObstacle(tree);
+  }
+}
+
+function addPickups(chunk, zStart) {
+  const amount = 3 + Math.floor(gameRandom() * 3);
+
+  for (let i = 0; i < amount; i++) {
+    const group = new THREE.Group();
+    const roll = gameRandom();
+    let pickupType = "green";
+    if (roll > 0.985) pickupType = "black";
+    else if (roll > 0.955) pickupType = "blue";
+    else if (roll > 0.925) pickupType = "gold";
+    else if (roll > 0.895) pickupType = "red";
+
+    const style = {
+      green: { orb: 0x22ff99, emissive: 0x0c9d5c, ringA: 0xfacc15, ringB: 0xd97706 },
+      blue: { orb: 0x38bdf8, emissive: 0x2563eb, ringA: 0xfacc15, ringB: 0x60a5fa },
+      gold: { orb: 0xfacc15, emissive: 0xf59e0b, ringA: 0xf59e0b, ringB: 0xfde68a },
+      red: { orb: 0xef4444, emissive: 0x991b1b, ringA: 0xfb923c, ringB: 0xdc2626 },
+      black: { orb: 0x020617, emissive: 0x581c87, ringA: 0x7e22ce, ringB: 0x0a0a0a }
+    }[pickupType];
+
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 14, 14),
+      new THREE.MeshStandardMaterial({
+        color: style.orb,
+        emissive: style.emissive,
+        emissiveIntensity: 1.2,
+        roughness: 0.2
+      })
+    );
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.82, 0.07, 8, 20),
+      new THREE.MeshStandardMaterial({
+        color: style.ringA,
+        emissive: style.ringB,
+        emissiveIntensity: 0.9
+      })
+    );
+
+    group.add(orb);
+    group.add(ring);
+    if (pickupType !== "green") {
+      const ringB = new THREE.Mesh(
+        new THREE.TorusGeometry(0.98, pickupType === "black" ? 0.06 : 0.04, 8, 28),
+        new THREE.MeshStandardMaterial({ color: style.ringB, emissive: style.ringA, emissiveIntensity: 0.8, transparent: true, opacity: pickupType === "black" ? 0.8 : 0.95 })
+      );
+      ringB.rotation.x = Math.PI / 2;
+      group.add(ringB);
+    }
+
+    const x = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+    const z = zStart + rand(5, CHUNK_LENGTH - 5);
+
+    group.position.set(x, 1.2, z);
+    group.userData = {
+      type: "pickup",
+      pickupType,
+      pulse: gameRandom() * 10
+    };
+
+    chunk.add(group);
+    pickups.push(group);
+  }
+}
+
+function createShieldBubble() {
+  const group = new THREE.Group();
+  const bubble = new THREE.Mesh(new THREE.SphereGeometry(1.65, 24, 16), new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.22, depthWrite: false }));
+  const ringA = new THREE.Mesh(new THREE.TorusGeometry(1.8, 0.045, 8, 48), new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.9 }));
+  const ringB = ringA.clone();
+  ringB.material = ringA.material.clone();
+  ringB.material.color.setHex(0x60a5fa);
+  ringB.rotation.x = Math.PI / 2;
+  group.add(bubble); group.add(ringA); group.add(ringB); group.visible = false;
+  return group;
+}
+function givePlayerShield(p) { if (!p) return; p.shieldActive = true; p.shieldCharges = 1; if (!p.shieldMesh) { p.shieldMesh = createShieldBubble(); scene.add(p.shieldMesh); } p.shieldMesh.visible = true; }
+function removeEnemyActor(enemy, list) {
+  if (!enemy) return;
+
+  enemy.dead = true;
+  enemy.removed = true;
+  enemy.disabled = true;
+  enemy.canDamage = false;
+  enemy.speed = 0;
+  enemy.velocity = enemy.velocity || new THREE.Vector3();
+  if (enemy.velocity) enemy.velocity.set(0, 0, 0);
+
+  if (enemy.rig) {
+    enemy.rig.visible = false;
+    enemy.rig.userData.dead = true;
+    enemy.rig.userData.removed = true;
+    enemy.rig.userData.canDamage = false;
+    enemy.rig.position.set(999999, -999999, 999999);
+
+    if (enemy.rig.parent) enemy.rig.parent.remove(enemy.rig);
+    else scene.remove(enemy.rig);
+  }
+
+  if (enemy.laser) {
+    enemy.laser.visible = false;
+    if (enemy.laser.parent) enemy.laser.parent.remove(enemy.laser);
+    else scene.remove(enemy.laser);
+  }
+
+  if (enemy.warningMesh) {
+    enemy.warningMesh.visible = false;
+    if (enemy.warningMesh.parent) enemy.warningMesh.parent.remove(enemy.warningMesh);
+    else scene.remove(enemy.warningMesh);
+  }
+
+  if (enemy.handTorch) enemy.handTorch.visible = false;
+
+  recordReplayEvent("enemy_removed", { type: enemy?.type || "enemy", x: enemy?.rig ? Number(enemy.rig.position.x.toFixed(2)) : null, z: enemy?.rig ? Number(enemy.rig.position.z.toFixed(2)) : null });
+
+  if (Array.isArray(list)) {
+    const idx = list.indexOf(enemy);
+    if (idx >= 0) list.splice(idx, 1);
+  }
+}
+function createBurstEffect(pos, colorA, colorB, count = 18) { const group = new THREE.Group(); group.position.copy(pos); group.position.y += 1.5; const matA = new THREE.MeshBasicMaterial({ color: colorA }); const matB = new THREE.MeshBasicMaterial({ color: colorB }); for (let i = 0; i < count; i++) { const particle = new THREE.Mesh(new THREE.SphereGeometry(rand(0.08, 0.18), 6, 6), Math.random() > 0.5 ? matA : matB); particle.userData.velocity = new THREE.Vector3(rand(-8, 8), rand(2, 10), rand(-8, 8)); group.add(particle); } group.userData.life = 0.45; scene.add(group); if (!window.burstEffects) window.burstEffects = []; window.burstEffects.push(group); }
+function createRedImpactBurst(pos) { createBurstEffect(pos, 0xef4444, 0x7f1d1d, 24); }
+function createShieldBreakEffect(p) { const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p; if (!actor || !actor.rig) return; createBurstEffect(actor.rig.position, 0x38bdf8, 0xfacc15, 18); }
+function tryShieldBlock(targetPlayer, attacker) { if (!targetPlayer || !targetPlayer.shieldActive || targetPlayer.shieldCharges <= 0) return false; recordReplayEvent("shield_block", { playerId: targetPlayer?.id || 1, attackerType: attacker?.type || "unknown" }); targetPlayer.shieldCharges--; targetPlayer.shieldActive = false; if (targetPlayer.shieldMesh) targetPlayer.shieldMesh.visible = false; createShieldBreakEffect(targetPlayer); if (attacker) { if (attacker.type === "enemy") removeEnemyActor(attacker, enemies); else if (attacker.type === "dog") removeEnemyActor(attacker, dogs); else if (attacker.type === "desertStalker") removeEnemyActor(attacker, desertStalkers); else if (attacker.type === "police") removeEnemyActor(attacker, policeOfficers); } return true; }
+function handleShieldBlockControlledChaser(targetPlayer, chaserOwner) { if (!targetPlayer || !chaserOwner || !chaserOwner.controlledChaser) return false; if (!targetPlayer.shieldActive || targetPlayer.shieldCharges <= 0) return false; targetPlayer.shieldCharges = 0; targetPlayer.shieldActive = false; if (targetPlayer.shieldMesh) targetPlayer.shieldMesh.visible = false; createShieldBreakEffect(targetPlayer); const runnerActor = targetPlayer; const chaserActor = chaserOwner.controlledChaser; chaserActor.rig.position.z = runnerActor.rig.position.z + 100; chaserActor.rig.position.x = clamp(runnerActor.rig.position.x + rand(-8, 8), -WORLD_WIDTH / 2 + 3, WORLD_WIDTH / 2 - 3); chaserActor.velocity.set(0, 0, 0); showRoundToast("Shield blocked the chaser! Chaser warped ahead!"); return true; }
+function spawnDangerBehindPlayer(owner) { const actor = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!actor || !actor.rig) return; const spawnZ = Math.max(START_Z + 8, actor.rig.position.z - 28); const spawnX = clamp(actor.rig.position.x + rand(-10, 10), -WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4); if (enemies.length < MAX_ENEMIES) enemies.push(createEnemy(spawnX, spawnZ)); }
+function getBlackGlobeTargets(owner, maxTargets = 5) { const actor = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!actor || !actor.rig) return []; const all = []; function addTarget(e, list) { if (!e || e.dead || e.removed || e.disabled) return; if (!e.rig || e.rig.visible === false) return; all.push({ actor: e, list }); } for (const e of enemies) addTarget(e, enemies); for (const d of dogs) addTarget(d, dogs); for (const s of desertStalkers) addTarget(s, desertStalkers); for (const p of policeOfficers) addTarget(p, policeOfficers); all.sort((a, b) => flatDistance(actor.rig.position, a.actor.rig.position) - flatDistance(actor.rig.position, b.actor.rig.position)); return all.slice(0, maxTargets); }
+
+function canEnemyDamage(enemy) { return !!(enemy && !enemy.dead && !enemy.removed && !enemy.disabled && enemy.canDamage !== false && enemy.rig && enemy.rig.visible !== false && enemy.rig.parent); }
+function createBlackGlobeProjectile(fromPos, toPos, onHit) { const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), new THREE.MeshBasicMaterial({ color: 0x111827 })); mesh.position.copy(fromPos); mesh.position.y += 2.2; const target = toPos.clone(); target.y += 1.8; scene.add(mesh); blackGlobeProjectiles.push({ mesh, target, speed: 85, onHit }); }
+function fireBlackGlobeAttack(owner) { const source = owner.isChaser && owner.controlledChaser ? owner.controlledChaser : owner; if (!source || !source.rig) return; const targets = getBlackGlobeTargets(owner, 5); for (const target of targets) { if (!target || !target.actor || target.actor.dead || target.actor.removed) continue; target.actor.dead = true; target.actor.disabled = true; target.actor.canDamage = false; target.actor.speed = 0; if (target.actor.velocity) target.actor.velocity.set(0, 0, 0); if (target.actor.rig) { target.actor.rig.userData.dead = true; target.actor.rig.userData.canDamage = false; } const targetPos = target.actor.rig && target.actor.rig.position ? target.actor.rig.position.clone() : source.rig.position.clone(); createBlackGlobeProjectile(source.rig.position, targetPos, () => { createRedImpactBurst(targetPos); removeEnemyActor(target.actor, target.list); }); } }
+function updateBlackGlobeProjectiles(dt) { for (let i = blackGlobeProjectiles.length - 1; i >= 0; i--) { const p = blackGlobeProjectiles[i]; const dir = p.target.clone().sub(p.mesh.position); const dist = dir.length(); if (dist < 1.2) { scene.remove(p.mesh); if (typeof p.onHit === "function") p.onHit(); blackGlobeProjectiles.splice(i, 1); continue; } dir.normalize(); p.mesh.position.addScaledVector(dir, p.speed * dt); } }
+function updateBurstEffects(dt) { if (!window.burstEffects) return; for (let i = window.burstEffects.length - 1; i >= 0; i--) { const group = window.burstEffects[i]; group.userData.life -= dt; for (const particle of group.children) { particle.position.addScaledVector(particle.userData.velocity, dt); particle.userData.velocity.y -= 22 * dt; particle.scale.multiplyScalar(0.96); } if (group.userData.life <= 0) { scene.remove(group); window.burstEffects.splice(i, 1); } } }
+function updatePlayerShieldVisuals(dt) { const playerList = gameMode === 2 ? players : [player]; for (const p of playerList) { if (!p || !p.shieldMesh) continue; const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p; if (!actor || !actor.rig) { p.shieldMesh.visible = false; continue; } p.shieldMesh.visible = !!p.shieldActive; if (p.shieldActive) { p.shieldMesh.position.copy(actor.rig.position); p.shieldMesh.position.y += 2.5; p.shieldMesh.rotation.y += dt * 1.7; p.shieldMesh.rotation.x += dt * 0.8; } } }
+function showRoundToast(text, duration = 1400) {
+  const toast = document.getElementById("roundToast");
+  if (!toast) {
+    console.log(text);
+    return;
+  }
+
+  toast.textContent = text;
+  toast.style.display = "block";
+
+  if (roundToastTimer) {
+    clearTimeout(roundToastTimer);
+  }
+
+  roundToastTimer = setTimeout(() => {
+    toast.style.display = "none";
+  }, duration);
+}
+function applyPickupEffect(owner, actor, pickup) { const type = pickup.userData.pickupType || "green"; if (type === "green") { owner.energy = clamp((owner.energy || 0) + 35, 0, 100); pickupCount++; return; } if (type === "blue") { givePlayerShield(owner); owner.energy = clamp((owner.energy || 0) + 15, 0, 100); pickupCount++; showRoundToast("Shield Globe!"); return; } if (type === "gold") { owner.energy = clamp((owner.energy || 0) + 15, 0, 100); if (gameMode === 2 && twoPlayerScores[owner.id]) { twoPlayerScores[owner.id].roundYards += 25; twoPlayerScores[owner.id].totalYards += 25; } else distance += 25; pickupCount++; showRoundToast("Gold Globe! +25 yards!"); return; } if (type === "red") { owner.energy = clamp((owner.energy || 0) + 60, 0, 100); spawnDangerBehindPlayer(owner); pickupCount++; showRoundToast("Red Globe! Big energy, new danger!"); return; } if (type === "black") { fireBlackGlobeAttack(owner); pickupCount++; showRoundToast("Black Globe! Enemy wipeout!"); } }
+
+function addGrassPatches(chunk, zStart, biome) {
+  const skipChance = biome === "desert" ? 0.5 : biome === "snow" ? 0.35 : 0.28;
+  if (gameRandom() > skipChance) return;
+
+  const patch = new THREE.Group();
+
+  const width = biome === "desert" ? rand(10, 15) : rand(8, 13);
+  const depth = biome === "desert" ? rand(10, 15) : rand(8, 14);
+
+  const baseMat = new THREE.MeshStandardMaterial({
+    color: biome === "snow" ? 0xc7dff3 : biome === "desert" ? 0x8a6a3f : 0x14532d,
+    roughness: 0.95,
+    transparent: true,
+    opacity: 0.68
+  });
+
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.25, depth),
+    baseMat
+  );
+
+  base.position.y = 0.08;
+  base.receiveShadow = true;
+  patch.add(base);
+
+  const bladeMat = new THREE.MeshStandardMaterial({
+    color: biome === "snow" ? 0xe8f6ff : biome === "desert" ? 0x9ab06a : 0x22c55e,
+    roughness: 0.9,
+    transparent: true,
+    opacity: 0.92
+  });
+
+  const darkBladeMat = new THREE.MeshStandardMaterial({
+    color: biome === "snow" ? 0xb5d4e8 : biome === "desert" ? 0x6e8a4f : 0x166534,
+    roughness: 0.9,
+    transparent: true,
+    opacity: 0.95
+  });
+
+  const bladeCount = biome === "desert" ? 10 : 18;
+
+  for (let i = 0; i < bladeCount; i++) {
+    const bladeHeight = rand(3.0, 4.8);
+
+    const blade = new THREE.Mesh(
+      new THREE.ConeGeometry(rand(0.25, 0.45), bladeHeight, 5),
+      Math.random() > 0.45 ? bladeMat : darkBladeMat
+    );
+
+    blade.position.set(
+      rand(-width / 2, width / 2),
+      bladeHeight / 2,
+      rand(-depth / 2, depth / 2)
+    );
+
+    blade.rotation.x = rand(-0.35, 0.35);
+    blade.rotation.z = rand(-0.35, 0.35);
+    blade.castShadow = false;
+    blade.receiveShadow = false;
+
+    patch.add(blade);
+  }
+
+  const x = rand(
+    -WORLD_WIDTH / 2 + width / 2 + 2,
+    WORLD_WIDTH / 2 - width / 2 - 2
+  );
+
+  const z = zStart + rand(8, CHUNK_LENGTH - 8);
+
+  patch.position.set(x, 0, z);
+
+  patch.userData = {
+    type: "grass",
+    width,
+    depth,
+    pulse: gameRandom() * 10
+  };
+
+  chunk.add(patch);
+  grassPatches.push(patch);
+}
+
+/* ============================================================
+   PLAYER MOVEMENT
+============================================================ */
+
+function updatePlayerActor(p, dt, controlSet) {
+  if (p.eliminated) return;
+  const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p;
+  const move = new THREE.Vector3();
+
+  if (keys[controlSet.forwardA] || (controlSet.forwardB && keys[controlSet.forwardB])) move.z += 1;
+  if (keys[controlSet.backA] || (controlSet.backB && keys[controlSet.backB])) move.z -= 1;
+  if (keys[controlSet.leftA] || (controlSet.leftB && keys[controlSet.leftB])) move.x -= 1;
+  if (keys[controlSet.rightA] || (controlSet.rightB && keys[controlSet.rightB])) move.x += 1;
+
+  if (p.id === 1 && mobileMoveVector.active) {
+    move.x += mobileMoveVector.x;
+    move.z += mobileMoveVector.z;
+  }
+
+  const sprinting = (keys[controlSet.sprint] || (p.id === 1 && mobileSprintDown)) && p.energy > 0;
+  let speed = sprinting ? actor.sprintSpeed : actor.speed;
+
+  if (sprinting && move.lengthSq() > 0) {
+    p.energy -= dt * 22;
+  } else {
+    p.energy += dt * 13;
+  }
+
+  p.energy = clamp(p.energy, 0, 100);
+
+  const dodgePressed = keys[controlSet.dodge] || (p.id === 1 && mobileDodgeQueued);
+  if (dodgePressed && actor.dodgeCooldown <= 0 && p.energy >= 18) {
+    actor.dodgeCooldown = 0.65;
+    mobileDodgeQueued = false;
+    p.energy -= 18;
+
+    if (move.lengthSq() === 0) move.z = 1;
+    move.normalize();
+
+    actor.rig.position.x += move.x * 6;
+    actor.rig.position.z += move.z * 6;
+  }
+
+  actor.dodgeCooldown -= dt;
+  actor.burnCooldown -= dt;
+
+  if (move.lengthSq() > 0) {
+    move.normalize();
+    actor.velocity.x = move.x * speed;
+    actor.velocity.z = move.z * speed;
+
+    const angle = Math.atan2(move.x, move.z);
+    actor.rig.rotation.y = angle;
+  } else {
+    actor.velocity.multiplyScalar(0.82);
+  }
+
+  const oldPos = actor.rig.position.clone();
+  actor.rig.position.addScaledVector(actor.velocity, dt);
+
+  actor.rig.position.x = clamp(
+    actor.rig.position.x,
+    -WORLD_WIDTH / 2 + 2,
+    WORLD_WIDTH / 2 - 2
+  );
+
+  const minimumAllowedZ = Math.max(START_Z - 4, distance - HARD_BACK_LIMIT);
+
+  if (actor.rig.position.z < minimumAllowedZ) {
+    actor.rig.position.z = minimumAllowedZ;
+    actor.velocity.z = Math.max(0, actor.velocity.z);
+  }
+
+  if (collidesWithWall(actor.rig.position, PLAYER_RADIUS)) {
+    actor.rig.position.copy(oldPos);
+    actor.velocity.multiplyScalar(0.2);
+  }
+
+  if (!p.isChaser) distance = Math.max(distance, actor.rig.position.z);
+
+  checkFireDamage(dt);
+
+  animateRunner(
+    actor,
+    dt,
+    move.lengthSq() > 0 || player.velocity.length() > 1,
+    false
+  );
+}
+
+function checkFireDamage(dt) {
+  const targets = gameMode === 2 ? getActiveRunners() : [player];
+  for (const p of targets) for (const fire of fireZones) {
+    const d = flatDistance(p.rig.position, fire.group.position);
+    if (d < fire.radius) { p.energy -= 34 * dt; if (p.energy <= 0) { if (tryShieldBlock(p, null)) { p.energy = 18; continue; } handlePlayerCaught(p, "Player " + p.id + " ran out of energy in the fire!"); } }
+  }
+}
+
+/* ============================================================
+   ANIMATION
+============================================================ */
+
+function animateRunner(actor, dt, isMoving, allowFarSkip) {
+  if (allowFarSkip) {
+    const dist = Math.abs(actor.rig.position.z - player.rig.position.z);
+    if (dist > 85 && frameCount % 2 !== 0) return;
+  }
+
+  actor.animTime += dt * (isMoving ? 9 : 2.5);
+
+  const t = actor.animTime;
+  const swing = Math.sin(t) * (isMoving ? 0.85 : 0.12);
+  const oppositeSwing = Math.sin(t + Math.PI) * (isMoving ? 0.85 : 0.12);
+  const bounce = Math.abs(Math.sin(t * 2)) * (isMoving ? 0.16 : 0.03);
+
+  const parts = actor.parts;
+
+  if (parts.leftArm) parts.leftArm.rotation.x = oppositeSwing;
+  if (parts.rightArm) parts.rightArm.rotation.x = swing;
+  if (parts.leftLeg) parts.leftLeg.rotation.x = swing;
+  if (parts.rightLeg) parts.rightLeg.rotation.x = oppositeSwing;
+
+  if (parts.torso) {
+    parts.torso.rotation.z = Math.sin(t) * 0.04;
+  }
+
+  if (parts.head) {
+    parts.head.position.y = 4.58 + bounce * 0.25;
+  }
+
+  actor.rig.position.y = bounce;
+
+  if (parts.leftShoe) {
+    parts.leftShoe.position.z = 0.17 + Math.sin(t) * 0.28;
+    parts.leftShoe.position.y = 0.45 + Math.max(0, Math.sin(t)) * 0.18;
+  }
+
+  if (parts.rightShoe) {
+    parts.rightShoe.position.z = 0.17 + Math.sin(t + Math.PI) * 0.28;
+    parts.rightShoe.position.y = 0.45 + Math.max(0, Math.sin(t + Math.PI)) * 0.18;
+  }
+}
+
+function animateDog(dog, dt, moving) {
+  const dist = Math.abs(dog.rig.position.z - player.rig.position.z);
+  if (dist > 85 && frameCount % 2 !== 0) return;
+
+  dog.animTime += dt * (moving ? 13 : 3);
+
+  const t = dog.animTime;
+
+  if (dog.legs) {
+    for (let i = 0; i < dog.legs.length; i++) {
+      dog.legs[i].rotation.x = Math.sin(t + i * Math.PI / 2) * 0.75;
+    }
+  }
+
+  dog.rig.position.y = Math.abs(Math.sin(t * 2)) * 0.08;
+}
+
+/* ============================================================
+   ENEMY AI, DOGS, HIDING, TORCHES
+============================================================ */
+
+function createDesertStalkerRig() { const rig = new THREE.Group(); const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.7, 5, 8), new THREE.MeshStandardMaterial({ color: 0xcaa46e, roughness: 0.82 })); body.position.y = 1.7; rig.add(body); const hood = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 8), new THREE.MeshStandardMaterial({ color: 0x2f2418, roughness: 0.9 })); hood.position.set(0, 2.9, 0.1); rig.add(hood); const warn = new THREE.Mesh(new THREE.ConeGeometry(0.45, 4.8, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff6a00, transparent: true, opacity: 0.0, side: THREE.DoubleSide })); warn.rotation.x = -Math.PI / 2; warn.position.y = 0.08; warn.scale.set(0.35, 1, 1); rig.add(warn); scene.add(rig); return { rig, warn }; }
+function spawnDesertStalker(x, z) { const made = createDesertStalkerRig(); made.rig.position.set(x, 0, z); return { type: "desertStalker", rig: made.rig, speed: (12 + enemyBaseSpeedBonus) * 0.85, dashSpeed: (12 + enemyBaseSpeedBonus) * 2.1, dashCooldown: rand(3.5, 6), dashWindup: 0, dashTime: 0, dashDir: new THREE.Vector3(0, 0, 1), pathTimer: 0, path: [], animTime: 0, parts: {}, warningMesh: made.warn, wanderDir: null, wanderTimer: 0 }; }
+function updateDesertStalkerDash(s, dt) { s.dashCooldown -= dt; if (s.dashWindup > 0) { s.dashWindup -= dt; s.warningMesh.material.opacity = 0.75; s.rig.rotation.y = Math.atan2(s.dashDir.x, s.dashDir.z); if (s.dashWindup <= 0) { s.dashTime = 0.45; s.warningMesh.material.opacity = 0; } return; } if (s.dashTime > 0) { s.dashTime -= dt; const old = s.rig.position.clone(); s.rig.position.addScaledVector(s.dashDir, s.dashSpeed * dt); s.rig.position.x = clamp(s.rig.position.x, -WORLD_WIDTH / 2 + 2, WORLD_WIDTH / 2 - 2); if (collidesWithWall(s.rig.position, 0.9)) { s.rig.position.copy(old); s.dashTime = 0; s.pathTimer = 0; } return; } if (s.dashCooldown <= 0 && flatDistance(s.rig.position, player.rig.position) < 18) { s.dashDir = new THREE.Vector3().subVectors(player.rig.position, s.rig.position); s.dashDir.y = 0; s.dashDir.normalize(); s.dashWindup = 0.55; s.dashCooldown = rand(3.5, 6); } }
+function updateEnemies(dt) {
+  playerHiddenInGrass = isPlayerInGrass();
+
+  for (const enemy of enemies) {
+    if (!canEnemyDamage(enemy)) continue;
+    const target = getNearestActiveRunner(enemy.rig.position);
+    if (!target) continue;
+
+    const distToTarget = enemy.rig.position.distanceTo(target.rig.position);
+
+    if (playerHiddenInGrass) {
+      updateEnemyWander(enemy, dt);
+    } else {
+      const prevPlayer = player;
+      player = target;
+      chaseWithPathfinding(enemy, dt, enemy.speed, 0.95);
+      player = prevPlayer;
+      updateEnemyTorch(enemy, dt);
+    }
+
+    if (canEnemyDamage(enemy) && !playerHiddenInGrass && distToTarget < 1.8) {
+      if (tryShieldBlock(target, enemy)) continue;
+      handlePlayerCaught(target, "Player " + target.id + " got caught by a chaser!");
+    }
+  }
+
+  const cleanupLeader = getLeaderRunner() || player;
+  enemies = enemies.filter(e => {
+    if (!canEnemyDamage(e)) return false;
+    const keep = e.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    if (!keep) scene.remove(e.rig);
+    return keep;
+  });
+}
+function updateDesertStalkers(dt) {
+  for (const s of desertStalkers) {
+    if (!canEnemyDamage(s)) continue;
+    const target = getNearestActiveRunner(s.rig.position);
+    if (!target) continue;
+
+    const dist = s.rig.position.distanceTo(target.rig.position);
+    const prevPlayer = player;
+    player = target;
+
+    if (playerHiddenInGrass) {
+      updateEnemyWander(s, dt);
+      s.warningMesh.material.opacity = 0;
+    } else {
+      updateDesertStalkerDash(s, dt);
+      if (s.dashWindup <= 0 && s.dashTime <= 0) chaseWithPathfinding(s, dt, s.speed, 0.9);
+    }
+
+    player = prevPlayer;
+
+    if (canEnemyDamage(s) && !playerHiddenInGrass && dist < 1.7) {
+      if (tryShieldBlock(target, s)) continue;
+      handlePlayerCaught(target, "Player " + target.id + " got caught by a Desert Stalker!");
+    }
+  }
+
+  const cleanupLeader = getLeaderRunner() || player;
+  desertStalkers = desertStalkers.filter(s => {
+    if (!canEnemyDamage(s)) return false;
+    const keep = s.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    if (!keep) scene.remove(s.rig);
+    return keep;
+  });
+}
+
+function updateDogs(dt) {
+  for (const dog of dogs) {
+    if (!canEnemyDamage(dog)) continue;
+    const target = getNearestActiveRunner(dog.rig.position);
+    if (!target) continue;
+
+    const distToTarget = dog.rig.position.distanceTo(target.rig.position);
+
+    const prevPlayer = player;
+    player = target;
+
+    if (playerHiddenInGrass) {
+      updateDogWander(dog, dt);
+    } else {
+      updateDogChase(dog, dt);
+    }
+
+    player = prevPlayer;
+
+    if (canEnemyDamage(dog) && !playerHiddenInGrass && distToTarget < 1.55) {
+      if (tryShieldBlock(target, dog)) continue;
+      handlePlayerCaught(target, "Player " + target.id + " got caught by a dog!");
+    }
+  }
+
+  const cleanupLeader = getLeaderRunner() || player;
+  dogs = dogs.filter(d => {
+    if (!canEnemyDamage(d)) return false;
+    const keep = d.rig.position.z > cleanupLeader.rig.position.z - CLEANUP_BEHIND_DISTANCE;
+    if (!keep) scene.remove(d.rig);
+    return keep;
+  });
+}
+
+function chaseWithPathfinding(enemy, dt, speed, radius) {
+  const playerDist = flatDistance(enemy.rig.position, player.rig.position);
+
+  if (playerDist > PATHFIND_DISTANCE) {
+    directChase(enemy, dt, speed * 0.82, radius);
+    return;
+  }
+
+  enemy.pathTimer -= dt;
+
+  if (enemy.pathTimer <= 0) {
+    enemy.path = findPath(enemy.rig.position, player.rig.position);
+    enemy.pathTimer = rand(0.9, 1.25);
+  }
+
+  let target = player.rig.position;
+
+  if (enemy.path && enemy.path.length > 0) {
+    target = enemy.path[0];
+
+    if (enemy.rig.position.distanceTo(target) < 1.4) {
+      enemy.path.shift();
+    }
+  }
+
+  const dir = new THREE.Vector3().subVectors(target, enemy.rig.position);
+  dir.y = 0;
+
+  if (dir.lengthSq() > 0.01) {
+    dir.normalize();
+
+    const old = enemy.rig.position.clone();
+    enemy.rig.position.addScaledVector(dir, speed * dt);
+
+    enemy.rig.position.x = clamp(
+      enemy.rig.position.x,
+      -WORLD_WIDTH / 2 + 2,
+      WORLD_WIDTH / 2 - 2
+    );
+
+    if (collidesWithWall(enemy.rig.position, radius)) {
+      enemy.rig.position.copy(old);
+      enemy.pathTimer = 0;
+    }
+
+    enemy.rig.rotation.y = Math.atan2(dir.x, dir.z);
+    animateRunner(enemy, dt, true, true);
+  } else {
+    animateRunner(enemy, dt, false, true);
+  }
+}
+
+function directChase(enemy, dt, speed, radius) {
+  const dir = new THREE.Vector3().subVectors(player.rig.position, enemy.rig.position);
+  dir.y = 0;
+
+  if (dir.lengthSq() < 0.01) return;
+
+  dir.normalize();
+
+  const old = enemy.rig.position.clone();
+  enemy.rig.position.addScaledVector(dir, speed * dt);
+
+  enemy.rig.position.x = clamp(
+    enemy.rig.position.x,
+    -WORLD_WIDTH / 2 + 2,
+    WORLD_WIDTH / 2 - 2
+  );
+
+  if (collidesWithWall(enemy.rig.position, radius)) {
+    enemy.rig.position.copy(old);
+    enemy.rig.position.x += rand(-1.8, 1.8);
+  }
+
+  enemy.rig.rotation.y = Math.atan2(dir.x, dir.z);
+  animateRunner(enemy, dt, true, true);
+}
+
+function updateEnemyWander(enemy, dt) {
+  if (!enemy.wanderDir || enemy.wanderTimer <= 0) {
+    const angle = gameRandom() * Math.PI * 2;
+
+    enemy.wanderDir = new THREE.Vector3(
+      Math.sin(angle),
+      0,
+      Math.cos(angle)
+    );
+
+    enemy.wanderTimer = rand(0.6, 1.7);
+  }
+
+  enemy.wanderTimer -= dt;
+
+  const old = enemy.rig.position.clone();
+  const wanderSpeed = enemy.speed * 0.45;
+
+  enemy.rig.position.addScaledVector(enemy.wanderDir, wanderSpeed * dt);
+
+  enemy.rig.position.x = clamp(
+    enemy.rig.position.x,
+    -WORLD_WIDTH / 2 + 2,
+    WORLD_WIDTH / 2 - 2
+  );
+
+  if (collidesWithWall(enemy.rig.position, 0.95)) {
+    enemy.rig.position.copy(old);
+    enemy.wanderTimer = 0;
+  }
+
+  enemy.rig.rotation.y = Math.atan2(enemy.wanderDir.x, enemy.wanderDir.z);
+  animateRunner(enemy, dt, true, true);
+}
+
+function updateDogChase(dog, dt) {
+  const targetDir = new THREE.Vector3().subVectors(player.rig.position, dog.rig.position);
+  targetDir.y = 0;
+
+  if (targetDir.lengthSq() < 0.01) {
+    animateDog(dog, dt, false);
+    return;
+  }
+
+  targetDir.normalize();
+
+  const targetAngle = Math.atan2(targetDir.x, targetDir.z);
+  dog.heading = rotateAngleToward(dog.heading, targetAngle, dog.turnRate * dt);
+
+  const moveDir = new THREE.Vector3(
+    Math.sin(dog.heading),
+    0,
+    Math.cos(dog.heading)
+  );
+
+  const old = dog.rig.position.clone();
+  dog.rig.position.addScaledVector(moveDir, dog.speed * dt);
+
+  dog.rig.position.x = clamp(
+    dog.rig.position.x,
+    -WORLD_WIDTH / 2 + 2,
+    WORLD_WIDTH / 2 - 2
+  );
+
+  if (collidesWithWall(dog.rig.position, 0.8)) {
+    dog.rig.position.copy(old);
+    dog.heading += rand(-1.8, 1.8);
+  }
+
+  dog.rig.rotation.y = dog.heading;
+  animateDog(dog, dt, true);
+}
+
+function updateDogWander(dog, dt) {
+  if (!dog.wanderDir || dog.wanderTimer <= 0) {
+    const angle = gameRandom() * Math.PI * 2;
+    dog.wanderDir = angle;
+    dog.wanderTimer = rand(0.7, 1.5);
+  }
+
+  dog.wanderTimer -= dt;
+  dog.heading = rotateAngleToward(dog.heading, dog.wanderDir, dog.turnRate * 0.8 * dt);
+
+  const moveDir = new THREE.Vector3(
+    Math.sin(dog.heading),
+    0,
+    Math.cos(dog.heading)
+  );
+
+  const old = dog.rig.position.clone();
+  dog.rig.position.addScaledVector(moveDir, dog.speed * 0.38 * dt);
+
+  dog.rig.position.x = clamp(
+    dog.rig.position.x,
+    -WORLD_WIDTH / 2 + 2,
+    WORLD_WIDTH / 2 - 2
+  );
+
+  if (collidesWithWall(dog.rig.position, 0.8)) {
+    dog.rig.position.copy(old);
+    dog.wanderTimer = 0;
+  }
+
+  dog.rig.rotation.y = dog.heading;
+  animateDog(dog, dt, true);
+}
+
+function updateEnemyTorch(enemy, dt) {
+  if (!enemy.hasTorch || distance < 500) return;
+
+  enemy.torchCooldown -= dt;
+
+  if (enemy.torchCooldown <= 0) {
+    throwTorch(enemy);
+    enemy.torchCooldown = rand(4.5, 7.5);
+  }
+
+  if (enemy.handTorch && frameCount % 2 === 0) {
+    const flame = enemy.handTorch.children[1];
+    flame.scale.setScalar(0.85 + Math.sin(performance.now() * 0.015) * 0.18);
+  }
+}
+
+function throwTorch(enemy) {
+  const start = enemy.rig.position.clone();
+  start.y = 3.4;
+
+  const target = player.rig.position.clone();
+
+  target.x += rand(-5, 5);
+  target.z += rand(4, 12);
+  target.x = clamp(target.x, -WORLD_WIDTH / 2 + 3, WORLD_WIDTH / 2 - 3);
+  target.y = 0.2;
+
+  const group = new THREE.Group();
+
+  const stick = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.07, 0.08, 1.05, 6),
+    new THREE.MeshStandardMaterial({ color: 0x5b3211, roughness: 0.75 })
+  );
+  stick.rotation.z = Math.PI / 2;
+  group.add(stick);
+
+  const flame = new THREE.Mesh(
+    new THREE.ConeGeometry(0.24, 0.65, 8),
+    new THREE.MeshStandardMaterial({
+      color: 0xff9a1f,
+      emissive: 0xff3300,
+      emissiveIntensity: 1.4
+    })
+  );
+  flame.position.x = 0.58;
+  group.add(flame);
+
+  group.position.copy(start);
+  scene.add(group);
+
+  torches.push({
+    group,
+    start,
+    target,
+    life: 0,
+    duration: rand(0.75, 1.05),
+    spin: rand(7, 11)
+  });
+}
+
+function updateTorches(dt) {
+  for (let i = torches.length - 1; i >= 0; i--) {
+    const t = torches[i];
+
+    t.life += dt;
+    const p = clamp(t.life / t.duration, 0, 1);
+
+    t.group.position.lerpVectors(t.start, t.target, p);
+    t.group.position.y += Math.sin(p * Math.PI) * 8.5;
+
+    t.group.rotation.x += dt * t.spin;
+    t.group.rotation.z += dt * t.spin * 0.65;
+
+    if (frameCount % 2 === 0) {
+      const flame = t.group.children[1];
+      flame.scale.setScalar(0.85 + Math.sin(performance.now() * 0.018) * 0.22);
+    }
+
+    if (p >= 1) {
+      createFireZone(t.target);
+      scene.remove(t.group);
+      torches.splice(i, 1);
+    }
+  }
+}
+
+function createFireZone(pos) {
+  const group = new THREE.Group();
+  group.position.set(pos.x, 0.05, pos.z);
+
+  const scorch = new THREE.Mesh(
+    new THREE.CircleGeometry(2.2, 18),
+    new THREE.MeshStandardMaterial({
+      color: 0x27110a,
+      transparent: true,
+      opacity: 0.8,
+      roughness: 1
+    })
+  );
+  scorch.rotation.x = -Math.PI / 2;
+  group.add(scorch);
+
+  const flameMats = [
+    new THREE.MeshStandardMaterial({
+      color: 0xffd166,
+      emissive: 0xffa000,
+      emissiveIntensity: 1.4,
+      transparent: true,
+      opacity: 0.92
+    }),
+    new THREE.MeshStandardMaterial({
+      color: 0xff6b00,
+      emissive: 0xff2a00,
+      emissiveIntensity: 1.3,
+      transparent: true,
+      opacity: 0.9
+    }),
+    new THREE.MeshStandardMaterial({
+      color: 0xff2200,
+      emissive: 0xff1000,
+      emissiveIntensity: 1.0,
+      transparent: true,
+      opacity: 0.82
+    })
+  ];
+
+  const flames = [];
+  const flameCount = 6;
+
+  for (let i = 0; i < flameCount; i++) {
+    const h = rand(0.9, 1.8);
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(rand(0.22, 0.46), h, 8),
+      flameMats[i % flameMats.length]
+    );
+
+    const angle = gameRandom() * Math.PI * 2;
+    const radius = rand(0, 1.35);
+
+    flame.position.set(
+      Math.cos(angle) * radius,
+      h / 2,
+      Math.sin(angle) * radius
+    );
+
+    flame.rotation.z = rand(-0.25, 0.25);
+    flame.rotation.x = rand(-0.25, 0.25);
+    flame.castShadow = false;
+    flame.receiveShadow = false;
+
+    group.add(flame);
+    flames.push({
+      mesh: flame,
+      baseHeight: h,
+      phase: gameRandom() * Math.PI * 2
+    });
+  }
+
+  scene.add(group);
+
+  fireZones.push({
+    group,
+    flames,
+    life: 3.0,
+    maxLife: 3.0,
+    radius: 2.5
+  });
+}
+
+function updateFireZones(dt) {
+  for (let i = fireZones.length - 1; i >= 0; i--) {
+    const fire = fireZones[i];
+
+    fire.life -= dt;
+    const lifePct = clamp(fire.life / fire.maxLife, 0, 1);
+
+    for (const f of fire.flames) {
+      const flicker = 0.75 + Math.sin(performance.now() * 0.012 + f.phase) * 0.25;
+      f.mesh.scale.set(
+        0.8 + flicker * 0.22,
+        lifePct * flicker,
+        0.8 + flicker * 0.22
+      );
+      f.mesh.material.opacity = lifePct * 0.92;
+      f.mesh.rotation.y += dt * 3.5;
+    }
+
+    fire.group.children[0].material.opacity = lifePct * 0.8;
+
+    if (fire.life <= 0) {
+      scene.remove(fire.group);
+      fireZones.splice(i, 1);
+    }
+  }
+}
+
+/* ============================================================
+   PATHFINDING
+============================================================ */
+
+function findPath(start, goal) {
+  const minX = -WORLD_WIDTH / 2;
+  const maxX = WORLD_WIDTH / 2;
+
+  const zMin = Math.min(start.z, goal.z) - 20;
+  const zMax = Math.max(start.z, goal.z) + 25;
+
+  const cell = WALL_GRID_SIZE;
+
+  function key(ix, iz) {
+    return ix + "," + iz;
+  }
+
+  function worldToGrid(pos) {
+    return {
+      ix: Math.round((pos.x - minX) / cell),
+      iz: Math.round((pos.z - zMin) / cell)
+    };
+  }
+
+  function gridToWorld(node) {
+    return new THREE.Vector3(
+      minX + node.ix * cell,
+      0,
+      zMin + node.iz * cell
+    );
+  }
+
+  const cols = Math.floor((maxX - minX) / cell);
+  const rows = Math.floor((zMax - zMin) / cell);
+
+  const startNode = worldToGrid(start);
+  const goalNode = worldToGrid(goal);
+
+  const open = [startNode];
+  const came = {};
+  const gScore = {};
+  const fScore = {};
+
+  gScore[key(startNode.ix, startNode.iz)] = 0;
+  fScore[key(startNode.ix, startNode.iz)] = heuristic(startNode, goalNode);
+
+  let safety = 0;
+
+  while (open.length > 0 && safety++ < 450) {
+    open.sort((a, b) => {
+      return (
+        (fScore[key(a.ix, a.iz)] ?? Infinity) -
+        (fScore[key(b.ix, b.iz)] ?? Infinity)
+      );
+    });
+
+    const current = open.shift();
+
+    if (
+      Math.abs(current.ix - goalNode.ix) <= 1 &&
+      Math.abs(current.iz - goalNode.iz) <= 1
+    ) {
+      return reconstructPath(came, current, gridToWorld).slice(0, 7);
+    }
+
+    const neighbors = [
+      { ix: current.ix + 1, iz: current.iz },
+      { ix: current.ix - 1, iz: current.iz },
+      { ix: current.ix, iz: current.iz + 1 },
+      { ix: current.ix, iz: current.iz - 1 },
+      { ix: current.ix + 1, iz: current.iz + 1 },
+      { ix: current.ix - 1, iz: current.iz + 1 },
+      { ix: current.ix + 1, iz: current.iz - 1 },
+      { ix: current.ix - 1, iz: current.iz - 1 }
+    ];
+
+    for (const n of neighbors) {
+      if (n.ix < 1 || n.ix > cols - 1 || n.iz < 0 || n.iz > rows) continue;
+
+      const world = gridToWorld(n);
+      if (collidesWithWall(world, 1.8)) continue;
+
+      const nk = key(n.ix, n.iz);
+      const ck = key(current.ix, current.iz);
+      const tentative = (gScore[ck] ?? Infinity) + heuristic(current, n);
+
+      if (tentative < (gScore[nk] ?? Infinity)) {
+        came[nk] = current;
+        gScore[nk] = tentative;
+        fScore[nk] = tentative + heuristic(n, goalNode);
+
+        if (!open.some(o => o.ix === n.ix && o.iz === n.iz)) {
+          open.push(n);
+        }
+      }
+    }
+  }
+
+  return [goal.clone()];
+}
+
+function heuristic(a, b) {
+  return Math.hypot(a.ix - b.ix, a.iz - b.iz);
+}
+
+function reconstructPath(came, current, gridToWorld) {
+  const path = [gridToWorld(current)];
+  let ck = current.ix + "," + current.iz;
+
+  while (came[ck]) {
+    current = came[ck];
+    ck = current.ix + "," + current.iz;
+    path.unshift(gridToWorld(current));
+
+    if (path.length > 18) break;
+  }
+
+  return path;
+}
+
+/* ============================================================
+   PICKUPS, GRASS, COLLISION, SPEED, CAMERA, CLEANUP
+============================================================ */
+
+function updatePickups(dt) {
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    const pickup = pickups[i];
+    if (!pickup || !pickup.userData) continue;
+    if (pickup.userData.collected) continue;
+
+    pickup.userData.pulse += dt;
+
+    if (frameCount % 2 === 0) {
+      pickup.rotation.y += dt * 4.8;
+      if (pickup.children[1]) pickup.children[1].rotation.x += dt * 4.4;
+      if (pickup.children[2]) pickup.children[2].rotation.z -= dt * 3.6;
+      if (pickup.userData.pickupType === "red") pickup.scale.setScalar(0.94 + Math.sin(pickup.userData.pulse * 8) * 0.08);
+      pickup.position.y = 1.25 + Math.sin(pickup.userData.pulse * 4) * 0.22;
+    }
+
+    const pickupActors = getPickupActors();
+
+    for (const { owner, actor } of pickupActors) {
+      if (!owner || !actor || !actor.rig) continue;
+
+      const pickupType = pickup.userData.pickupType || "green";
+      const collectRadius = pickupType === "green" ? 2.35 : 3.1;
+
+      if (flatDistance(actor.rig.position, pickup.position) < collectRadius) {
+        const pickupPos = pickup.position.clone();
+        pickup.userData.collected = true;
+        removePickupObject(pickup);
+
+        try {
+          recordReplayEvent("pickup_collected", { pickupType, playerId: owner?.id || 1, x: Number(pickup.position.x.toFixed(2)), z: Number(pickup.position.z.toFixed(2)) });
+          applyPickupEffect(owner, actor, pickup);
+        } catch (err) {
+          console.error("Pickup effect failed for", pickupType, err);
+        }
+
+        try {
+          spawnPickupBurst(pickupPos, pickupType);
+        } catch (err) {
+          console.error("Pickup burst failed for", pickupType, err);
+        }
+
+        break;
+      }
+    }
+  }
+}
+
+function removePickupObject(pickup) {
+  if (!pickup) return;
+
+  const index = pickups.indexOf(pickup);
+  if (index >= 0) pickups.splice(index, 1);
+
+  if (pickup.parent) {
+    pickup.parent.remove(pickup);
+  } else {
+    scene.remove(pickup);
+  }
+
+  pickup.traverse(obj => {
+    if (obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
+
+    if (obj.material) {
+      if (Array.isArray(obj.material)) {
+        obj.material.forEach(mat => mat.dispose && mat.dispose());
+      } else if (obj.material.dispose) {
+        obj.material.dispose();
+      }
+    }
+  });
+}
+
+function removePickupAtIndex(index) {
+  const pickup = pickups[index];
+  if (!pickup) return;
+  removePickupObject(pickup);
+}
+
+function getPickupActors() {
+  if (gameMode !== 2) return [{ owner: player, actor: player }];
+
+  const actors = [];
+  for (const p of players) {
+    if (!p || p.eliminated) continue;
+    const actor = p.isChaser && p.controlledChaser ? p.controlledChaser : p;
+    if (actor && actor.rig && actor.rig.visible !== false) {
+      actors.push({ owner: p, actor });
+    }
+  }
+  return actors;
+}
+
+function spawnPickupBurst(pos, pickupType = "green") {
+  const burst = new THREE.Group();
+
+  const burstColors = {
+    green: { color: 0x22ff99, emissive: 0x22ff99 },
+    blue: { color: 0x38bdf8, emissive: 0x2563eb },
+    gold: { color: 0xfacc15, emissive: 0xf59e0b },
+    red: { color: 0xef4444, emissive: 0x991b1b },
+    black: { color: 0x7e22ce, emissive: 0x111827 }
+  };
+  const selected = burstColors[pickupType] || burstColors.green;
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: selected.color,
+    emissive: selected.emissive,
+    emissiveIntensity: 1
+  });
+
+  for (let i = 0; i < 7; i++) {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), mat);
+    const angle = gameRandom() * Math.PI * 2;
+
+    s.position.copy(pos);
+    s.userData.vel = new THREE.Vector3(
+      Math.cos(angle) * rand(1, 4),
+      rand(2, 5),
+      Math.sin(angle) * rand(1, 4)
+    );
+
+    burst.add(s);
+  }
+
+  burst.userData.life = 0.42;
+  scene.add(burst);
+
+  const interval = setInterval(() => {
+    const step = 0.02;
+    burst.userData.life -= step;
+
+    burst.children.forEach(s => {
+      s.userData.vel.y -= 8 * step;
+      s.position.addScaledVector(s.userData.vel, step);
+    });
+
+    if (burst.userData.life <= 0) {
+      clearInterval(interval);
+      scene.remove(burst);
+    }
+  }, 20);
+}
+
+function isPlayerInGrass() {
+  for (const grass of grassPatches) {
+    const halfW = grass.userData.width / 2;
+    const halfD = grass.userData.depth / 2;
+
+    if (
+      Math.abs(player.rig.position.x - grass.position.x) < halfW &&
+      Math.abs(player.rig.position.z - grass.position.z) < halfD
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function collidesWithWall(pos, radius) {
+  for (const wall of walls) {
+    if (Math.abs(wall.position.z - pos.z) > 12) continue;
+
+    const rx = wall.userData.radiusX + radius;
+    const rz = wall.userData.radiusZ + radius;
+
+    if (
+      Math.abs(pos.x - wall.position.x) < rx &&
+      Math.abs(pos.z - wall.position.z) < rz
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function updateSpeedScaling() {
+  const newTier = Math.floor(distance / 200);
+
+  if (newTier === currentSpeedTier) return;
+
+  currentSpeedTier = newTier;
+
+  const speedBoost = currentSpeedTier * 1.25;
+
+  player.speed = playerBaseSpeed + speedBoost;
+  player.sprintSpeed = playerBaseSprintSpeed + speedBoost * 1.35;
+
+  enemyBaseSpeedBonus = currentSpeedTier * 0.85;
+
+  enemies.forEach(enemy => {
+    enemy.speed += 0.85;
+  });
+
+  dogs.forEach(dog => {
+    dog.speed += 0.9;
+  });
+  desertStalkers.forEach(s => {
+    s.speed += 0.7;
+    s.dashSpeed += 1.2;
+  });
+}
+
+function updateCamera(dt) {
+  if (gameMode === 2 && players.length > 1) {
+    const runners = getActiveRunners();
+    if (runners.length > 1) {
+      const a = runners[0].rig.position;
+      const b = runners[1].rig.position;
+      const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+      const spread = clamp(flatDistance(a, b) * 0.7, TWO_PLAYER_CAMERA_MIN_DISTANCE, TWO_PLAYER_CAMERA_MAX_DISTANCE);
+      const desired = new THREE.Vector3(mid.x * 0.5, 14 + spread * 0.08, mid.z - spread);
+      camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
+      camera.lookAt(mid.x, mid.y + 3, mid.z + 10);
+      return;
+    }
+
+    const anchor = getWorldAnchorRig();
+    if (anchor) {
+      const desired = new THREE.Vector3(anchor.position.x * 0.45, 14, anchor.position.z - 20);
+      camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
+      camera.lookAt(anchor.position.x, anchor.position.y + 3, anchor.position.z + 8);
+      return;
+    }
+  }
+  const desired = new THREE.Vector3(
+    player.rig.position.x * 0.45,
+    14,
+    player.rig.position.z - 20
+  );
+
+  camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
+
+  camera.lookAt(
+    player.rig.position.x,
+    player.rig.position.y + 3,
+    player.rig.position.z + 8
+  );
+}
+
+function manageWorld() {
+  const worldAnchor = getWorldAnchorRig();
+  if (!worldAnchor) return;
+
+  while (worldAnchor.position.z + CHUNK_COUNT_AHEAD * CHUNK_LENGTH > furthestChunkZ) {
+    furthestChunkZ += CHUNK_LENGTH;
+    generateChunk(furthestChunkZ);
+  }
+
+  for (let i = worldChunks.length - 1; i >= 0; i--) {
+    const chunk = worldChunks[i];
+
+    if (chunk.userData.zStart + CHUNK_LENGTH < worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE) {
+      scene.remove(chunk);
+      worldChunks.splice(i, 1);
+    }
+  }
+
+  walls = walls.filter(w => w.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE);
+  pickups = pickups.filter(p => p.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE);
+  grassPatches = grassPatches.filter(g => g.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE);
+
+  torches = torches.filter(t => {
+    const keep = t.group.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE;
+    if (!keep) scene.remove(t.group);
+    return keep;
+  });
+
+  fireZones = fireZones.filter(f => {
+    const keep = f.group.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE;
+    if (!keep) scene.remove(f.group);
+    return keep;
+  });
+  desertStalkers = desertStalkers.filter(s => {
+    const keep = s.rig.position.z > worldAnchor.position.z - CLEANUP_BEHIND_DISTANCE;
+    if (!keep) scene.remove(s.rig);
+    return keep;
+  });
+}
+
+/* ============================================================
+   HUD AND GAME OVER
+============================================================ */
+
+function updateHUD() {
+  document.getElementById("energyBar").style.width = energy + "%";
+
+  if (energy > 55) {
+    document.getElementById("energyBar").style.background =
+      "linear-gradient(90deg,#11d17f,#b6ff2d)";
+  } else if (energy > 25) {
+    document.getElementById("energyBar").style.background =
+      "linear-gradient(90deg,#facc15,#fb923c)";
+  } else {
+    document.getElementById("energyBar").style.background =
+      "linear-gradient(90deg,#ef4444,#f97316)";
+  }
+
+  document.getElementById("scoreText").textContent =
+    "Yards: " + Math.floor(distance);
+
+  document.getElementById("highScoreText").textContent =
+    "Local High Score: " + Math.floor(highScore);
+
+  document.getElementById("speedTierText").textContent =
+    "Speed Level: " + currentSpeedTier;
+
+  document.getElementById("pickupText").textContent =
+    "Pickups: " + pickupCount;
+
+  document.getElementById("enemyText").textContent =
+    "Chasers: " + enemies.length;
+
+  document.getElementById("dogText").textContent =
+    distance >= 1000 ? "Dogs: " + dogs.length : "Dogs: Locked until 1000 yards";
+  document.getElementById("desertStalkerText").textContent =
+    distance >= 2000 ? "Desert Stalkers: " + desertStalkers.length : "Desert Stalkers: Locked until 2000 yards";
+
+  const policeText = document.getElementById("policeText");
+  if (policeText) policeText.textContent = distance < 3000 ? "Police: Locked until 3000 yards" : "Police: " + policeOfficers.length + " active";
+
+  document.getElementById("torchText").textContent =
+    distance >= 500
+      ? "Torches: Active"
+      : "Torches: Locked until 500 yards";
+
+  document.getElementById("hideText").textContent =
+    playerHiddenInGrass ? "Visibility: Hidden in tall grass" : "Visibility: Seen";
+
+  document.getElementById("hideText").style.color =
+    playerHiddenInGrass ? "#22ff99" : "#ffffff";
+  let modeText = document.getElementById("modeText");
+  if (!modeText) {
+    modeText = document.createElement("div");
+    modeText.id = "modeText";
+    document.getElementById("hud").appendChild(modeText);
+  }
+  modeText.textContent = "Mode: " + (gameMode === 2 ? "2 Player" : "1 Player");
+  if (gameMode === 2 && players[1]) {
+    let p2 = document.getElementById("p2Text");
+    if (!p2) {
+      p2 = document.createElement("div");
+      p2.id = "p2Text";
+      document.getElementById("hud").appendChild(p2);
+    }
+    const s = p => p.isChaser ? "Chaser" : (p.eliminated ? "Caught" : "Running");
+    p2.textContent = `P1: ${s(players[0])} | P2: ${s(players[1])} | Blue Energy: ${Math.floor(players[0].energy)}% | Orange Energy: ${Math.floor(players[1].energy)}%`;
+  }
+}
+
+function syncGlobalEnergyForHUD() {
+  if (gameMode === 2 && players[0]) {
+    energy = players[0].energy;
+  } else if (player) {
+    energy = player.energy;
+  }
+}
+
+function endGame(reason) {
+  if (gameOver) return;
+
+  gameOver = true;
+
+  const finalDistance = Math.floor(distance);
+  let highScoreMessage = "";
+
+  if (!replayMode && finalDistance > highScore) {
+    highScore = finalDistance;
+    localStorage.setItem("chrisRunnerHighScore", String(highScore));
+    highScoreMessage = " NEW HIGH SCORE!";
+  }
+
+  lastGameOverSummary = {
+    reason: reason || "Chris got caught!",
+    finalDistance,
+    highScore,
+    highScoreMessage,
+    pickupCount,
+    currentSpeedTier,
+    gameMode
+  };
+  gameOverNeedsNameEntry = false;
+  renderGameOverDashboard(firebaseReady ? "Checking online high scores…" : "Online leaderboard is offline or still connecting.");
+
+  finalizeReplay(reason);
+
+  submitHighScore(finalDistance).then(result => {
+    gameOverNeedsNameEntry = !!(result && (result.madeDaily || result.madeOverall || result.madeYearly || result.topTenCandidate));
+    renderGameOverDashboard(gameOverNeedsNameEntry ? "Top 10 score confirmed." : "Leaderboard updated.");
+  }).catch(err => {
+    console.warn("High score submit failed", err);
+    renderGameOverDashboard("Could not update online leaderboard. You can still restart or return to menu.");
+  });
+}
+
+function hasLineOfSightClear(fromPos, toPos, maxRange = Infinity) {
+  if (!fromPos || !toPos) return false;
+
+  const dx = toPos.x - fromPos.x;
+  const dz = toPos.z - fromPos.z;
+  const distSq = dx * dx + dz * dz;
+
+  if (distSq < 0.0001) return true;
+
+  if (Number.isFinite(maxRange) && distSq > maxRange * maxRange) {
+    return false;
+  }
+
+  const segLen = Math.sqrt(distSq);
+
+  // Check whether the line from cop to player crosses any obstacle rectangle.
+  for (const wall of walls) {
+    if (!wall || !wall.position) continue;
+
+    const data = wall.userData || {};
+    const radiusX = (data.radiusX || 1.6) + 0.25;
+    const radiusZ = (data.radiusZ || 1.6) + 0.25;
+
+    // Skip far-away obstacles quickly.
+    const wallMinZ = wall.position.z - radiusZ;
+    const wallMaxZ = wall.position.z + radiusZ;
+    const losMinZ = Math.min(fromPos.z, toPos.z) - 2;
+    const losMaxZ = Math.max(fromPos.z, toPos.z) + 2;
+
+    if (wallMaxZ < losMinZ || wallMinZ > losMaxZ) continue;
+
+    const wallMinX = wall.position.x - radiusX;
+    const wallMaxX = wall.position.x + radiusX;
+    const losMinX = Math.min(fromPos.x, toPos.x) - 2;
+    const losMaxX = Math.max(fromPos.x, toPos.x) + 2;
+
+    if (wallMaxX < losMinX || wallMinX > losMaxX) continue;
+
+    if (segmentIntersectsAABB2D(
+      fromPos.x,
+      fromPos.z,
+      toPos.x,
+      toPos.z,
+      wallMinX,
+      wallMinZ,
+      wallMaxX,
+      wallMaxZ
+    )) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function segmentIntersectsAABB2D(x1, z1, x2, z2, minX, minZ, maxX, maxZ) {
+  let tMin = 0;
+  let tMax = 1;
+
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+
+  function clip(p, q) {
+    if (Math.abs(p) < 0.000001) {
+      return q >= 0;
+    }
+
+    const r = q / p;
+
+    if (p < 0) {
+      if (r > tMax) return false;
+      if (r > tMin) tMin = r;
+    } else {
+      if (r < tMin) return false;
+      if (r < tMax) tMax = r;
+    }
+
+    return true;
+  }
+
+  if (!clip(-dx, x1 - minX)) return false;
+  if (!clip(dx, maxX - x1)) return false;
+  if (!clip(-dz, z1 - minZ)) return false;
+  if (!clip(dz, maxZ - z1)) return false;
+
+  // Avoid counting the cop/player's own immediate position as blocked.
+  return tMax > 0.04 && tMin < 0.96;
+}
+/* ============================================================
+   POLICE AI + BULLETS FIX
+============================================================ */
+function updatePoliceLaserVisual(cop, target, aimProgress = 0) {
+  if (!cop || !cop.laser) return;
+
+  if (!target || !target.rig || !cop.rig || cop.dead || cop.removed || cop.disabled) {
+    cop.laser.visible = false;
+    return;
+  }
+
+  const start = cop.rig.position.clone();
+  start.y = 3.45;
+
+  const end = target.rig.position.clone();
+  end.y = 3.05;
+
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const dy = end.y - start.y;
+
+  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+  if (distance <= 0.1) {
+    cop.laser.visible = false;
+    return;
+  }
+
+  const clear = typeof hasLineOfSightClear === "function"
+    ? hasLineOfSightClear(start, end, POLICE_RANGE)
+    : true;
+
+  if (!clear) {
+    cop.laser.visible = false;
+    return;
+  }
+
+  cop.laser.visible = true;
+
+  // Put the laser halfway between the cop and the target.
+  cop.laser.position.set(
+    (start.x + end.x) / 2,
+    (start.y + end.y) / 2,
+    (start.z + end.z) / 2
+  );
+
+  // The laser mesh was created as a 1-unit box on the Z axis.
+  cop.laser.scale.set(
+    1,
+    1,
+    distance
+  );
+
+  // Point the laser from cop to player.
+  const direction = new THREE.Vector3(dx, dy, dz).normalize();
+  cop.laser.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0, 0, 1),
+    direction
+  );
+
+  // Blink faster as the officer gets closer to firing.
+  const pulseSpeed = 7 + aimProgress * 20;
+  const pulse = 0.35 + Math.abs(Math.sin(performance.now() * 0.001 * pulseSpeed)) * 0.65;
+
+  if (cop.laser.material) {
+    cop.laser.material.opacity = pulse;
+  }
+
+  // Make the beam thicker/brighter near the end of aiming.
+  const thickness = 0.07 + aimProgress * 0.08;
+  cop.laser.geometry.dispose();
+  cop.laser.geometry = new THREE.BoxGeometry(thickness, thickness, 1);
+}
+function updatePoliceOfficers(dt) {
+  if (!Array.isArray(policeOfficers)) policeOfficers = [];
+  if (!dt || dt < 0) dt = 0;
+
+  const safeCanEnemyDamage = typeof canEnemyDamage === "function";
+  const safeFlatDistance = typeof flatDistance === "function";
+  const safeLOS = typeof hasLineOfSightClear === "function";
+  const safeNearestRunner = typeof getNearestActiveRunner === "function";
+  const safeLeaderRunner = typeof getLeaderRunner === "function";
+  const safeChase = typeof chaseWithPathfinding === "function";
+  const safeLaser = typeof updatePoliceLaserVisual === "function";
+  const safeFire = typeof firePoliceBullet === "function";
+  const safeShield = typeof tryShieldBlock === "function";
+  const safeCaught = typeof handlePlayerCaught === "function";
+  const safeRemove = typeof removeEnemyActor === "function";
+
+  for (const cop of policeOfficers) {
+    if (!cop || !cop.rig) continue;
+
+    if (safeCanEnemyDamage && !canEnemyDamage(cop)) {
+      if (cop.laser) cop.laser.visible = false;
+      continue;
+    }
+
+    const target = safeNearestRunner
+      ? getNearestActiveRunner(cop.rig.position)
+      : player;
+
+    if (!target || !target.rig || target.eliminated) {
+      cop.target = null;
+      cop.state = "chase";
+      cop.aimTimer = 0;
+      cop.stateTimer = POLICE_CHASE_TIME;
+
+      if (cop.laser) cop.laser.visible = false;
+      continue;
+    }
+
+    const dist = safeFlatDistance
+      ? flatDistance(cop.rig.position, target.rig.position)
+      : cop.rig.position.distanceTo(target.rig.position);
+
+    const inRange = dist <= POLICE_RANGE;
+
+    const canSee = safeLOS
+      ? hasLineOfSightClear(cop.rig.position, target.rig.position, POLICE_RANGE)
+      : inRange;
+
+    cop.stateTimer = Math.max(0, (cop.stateTimer || 0) - dt);
+    cop.animTime = (cop.animTime || 0) + dt;
+
+    if (!cop.state) cop.state = "chase";
+    if (typeof cop.aimTimer !== "number") cop.aimTimer = 0;
+
+    // If blocked or out of range, chase and reset aiming.
+    if (!inRange || !canSee) {
+      cop.state = "chase";
+      cop.stateTimer = POLICE_CHASE_TIME;
+      cop.aimTimer = 0;
+      cop.target = null;
+
+      if (cop.laser) cop.laser.visible = false;
+
+      if (safeChase) {
+        const prevPlayer = player;
+        player = target;
+        chaseWithPathfinding(cop, dt, cop.speed || 10.5, 0.9);
+        player = prevPlayer;
+      } else {
+        movePoliceDirectlyTowardTarget(cop, target, dt);
+      }
+
+      animatePoliceOfficer(cop, dt);
+      continue;
+    }
+
+    cop.target = target;
+
+    // CHASE PHASE: officer moves until close enough or timer expires.
+    if (cop.state === "chase") {
+      if (cop.laser) cop.laser.visible = false;
+
+      if (safeChase) {
+        const prevPlayer = player;
+        player = target;
+        chaseWithPathfinding(cop, dt, cop.speed || 10.5, 0.9);
+        player = prevPlayer;
+      } else {
+        movePoliceDirectlyTowardTarget(cop, target, dt);
+      }
+
+      if (cop.stateTimer <= 0 || dist < POLICE_RANGE * 0.75) {
+        cop.state = "aim";
+        cop.aimTimer = POLICE_AIM_TIME;
+        cop.stateTimer = POLICE_AIM_TIME;
+      }
+    }
+
+    // AIM PHASE: officer stops, faces target, shows red laser, then fires.
+    else if (cop.state === "aim") {
+      cop.aimTimer = Math.max(0, cop.aimTimer - dt);
+
+      facePoliceTowardTarget(cop, target);
+
+      const aimProgress = 1 - clamp01(cop.aimTimer / POLICE_AIM_TIME);
+
+      if (safeLaser) {
+        updatePoliceLaserVisual(cop, target, aimProgress);
+      } else if (cop.laser) {
+        cop.laser.visible = false;
+      }
+
+      if (cop.aimTimer <= 0) {
+        const stillCanDamage = !safeCanEnemyDamage || canEnemyDamage(cop);
+        const stillCanSee = !safeLOS || hasLineOfSightClear(cop.rig.position, target.rig.position, POLICE_RANGE);
+
+        if (stillCanDamage && stillCanSee && safeFire) {
+          firePoliceBullet(cop, target);
+        }
+
+        cop.state = "chase";
+        cop.stateTimer = POLICE_CHASE_TIME;
+        cop.aimTimer = 0;
+        cop.target = null;
+
+        if (cop.laser) cop.laser.visible = false;
+      }
+    }
+
+    // Unknown state fallback.
+    else {
+      cop.state = "chase";
+      cop.stateTimer = POLICE_CHASE_TIME;
+      cop.aimTimer = 0;
+      if (cop.laser) cop.laser.visible = false;
+    }
+
+    animatePoliceOfficer(cop, dt);
+
+    // Touch collision.
+    const updatedDist = safeFlatDistance
+      ? flatDistance(cop.rig.position, target.rig.position)
+      : cop.rig.position.distanceTo(target.rig.position);
+
+    if (updatedDist < 1.7) {
+      if (safeShield && tryShieldBlock(target, cop)) continue;
+
+      if (safeCaught) {
+        handlePlayerCaught(target, "Player " + target.id + " got caught by a police officer!");
+      }
+    }
+  }
+
+  const cleanupLeader = safeLeaderRunner
+    ? (getLeaderRunner() || player)
+    : player;
+
+  policeOfficers = policeOfficers.filter(cop => {
+    if (!cop || !cop.rig) return false;
+
+    const alive = !safeCanEnemyDamage || canEnemyDamage(cop);
+
+    if (!alive) {
+      if (cop.laser) cop.laser.visible = false;
+      return false;
+    }
+
+    const leaderZ = cleanupLeader && cleanupLeader.rig
+      ? cleanupLeader.rig.position.z
+      : distance || 0;
+
+    const keep = cop.rig.position.z > leaderZ - CLEANUP_BEHIND_DISTANCE;
+
+    if (!keep) {
+      if (safeRemove) {
+        removeEnemyActor(cop, policeOfficers);
+      } else {
+        if (cop.laser) {
+          cop.laser.visible = false;
+          scene.remove(cop.laser);
+        }
+        scene.remove(cop.rig);
+      }
+
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function movePoliceDirectlyTowardTarget(cop, target, dt) {
+  if (!cop || !cop.rig || !target || !target.rig) return;
+
+  const dir = new THREE.Vector3().subVectors(target.rig.position, cop.rig.position);
+  dir.y = 0;
+
+  if (dir.lengthSq() <= 0.001) return;
+
+  dir.normalize();
+
+  const speed = cop.speed || 10.5;
+  cop.rig.position.x += dir.x * speed * dt;
+  cop.rig.position.z += dir.z * speed * dt;
+
+  cop.rig.position.x = clamp(
+    cop.rig.position.x,
+    -WORLD_WIDTH / 2 + 2,
+    WORLD_WIDTH / 2 - 2
+  );
+
+  cop.rig.rotation.y = Math.atan2(dir.x, dir.z);
+}
+
+function facePoliceTowardTarget(cop, target) {
+  if (!cop || !cop.rig || !target || !target.rig) return;
+
+  const dir = new THREE.Vector3().subVectors(target.rig.position, cop.rig.position);
+  dir.y = 0;
+
+  if (dir.lengthSq() > 0.01) {
+    dir.normalize();
+    cop.rig.rotation.y = Math.atan2(dir.x, dir.z);
+  }
+}
+
+function animatePoliceOfficer(cop, dt) {
+  if (!cop || !cop.parts) return;
+
+  const t = cop.animTime || 0;
+  const moving = cop.state === "chase";
+  const swing = moving ? Math.sin(t * 9) * 0.55 : 0.08;
+
+  if (cop.parts.leftArm) cop.parts.leftArm.rotation.x = swing;
+  if (cop.parts.rightArm) cop.parts.rightArm.rotation.x = -swing;
+  if (cop.parts.leftLeg) cop.parts.leftLeg.rotation.x = -swing;
+  if (cop.parts.rightLeg) cop.parts.rightLeg.rotation.x = swing;
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function firePoliceBullet(cop, target) {
+  if (!cop || !target || !canEnemyDamage(cop)) return;
+  if (!hasLineOfSightClear(cop.rig.position, target.rig.position, POLICE_RANGE)) return;
+
+  const start = cop.rig.position.clone();
+  start.y = 3.35;
+
+  const end = target.rig.position.clone();
+  end.y = 3.0;
+
+  const dir = new THREE.Vector3().subVectors(end, start);
+  if (dir.lengthSq() < 0.01) return;
+  dir.normalize();
+
+  const bullet = new THREE.Mesh(
+    new THREE.SphereGeometry(0.18, 10, 10),
+    new THREE.MeshBasicMaterial({ color: 0xffe066 })
+  );
+
+  bullet.position.copy(start);
+  scene.add(bullet);
+
+  policeBullets.push({
+    mesh: bullet,
+    velocity: dir.multiplyScalar(POLICE_BULLET_SPEED),
+    life: 1.35,
+    owner: cop
+  });
+}
+
+function updatePoliceBullets(dt) {
+  if (!Array.isArray(policeBullets)) policeBullets = [];
+
+  for (const bullet of policeBullets) {
+    if (!bullet || !bullet.mesh) continue;
+    if (bullet.owner && (bullet.owner.dead || bullet.owner.removed || bullet.owner.disabled)) { bullet.life = 0; continue; }
+    const oldPos = bullet.mesh.position.clone();
+
+    bullet.mesh.position.addScaledVector(bullet.velocity, dt);
+    bullet.life -= dt;
+
+    if (collidesWithWall(bullet.mesh.position, 0.22)) {
+      bullet.life = 0;
+      continue;
+    }
+
+    const runners = getActiveRunners();
+
+    for (const p of runners) {
+      const d = flatDistance(bullet.mesh.position, p.rig.position);
+      const heightOk = Math.abs(bullet.mesh.position.y - 3.0) < 2.2;
+
+      if (d < 1.15 && heightOk) {
+        if (bullet.owner && (bullet.owner.dead || bullet.owner.removed || bullet.owner.disabled)) { bullet.life = 0; continue; }
+        bullet.life = 0;
+        if (tryShieldBlock(p, bullet.owner)) break;
+        handlePlayerCaught(p, "Player " + p.id + " got shot by a police officer!");
+        break;
+      }
+    }
+
+    const travelStep = new THREE.Vector3().subVectors(bullet.mesh.position, oldPos);
+    if (travelStep.lengthSq() > 0.01) {
+      bullet.mesh.rotation.x += dt * 12;
+    }
+  }
+
+  policeBullets = policeBullets.filter(bullet => {
+    const keep = bullet.life > 0;
+
+    if (!keep) {
+      scene.remove(bullet.mesh);
+    }
+
+    return keep;
+  });
+}
+/* ============================================================
+   TEMP VISUAL EFFECTS FIX
+   Prevents animate() crash when temporary effects are referenced.
+============================================================ */
+
+let tempEffects = Array.isArray(window.tempEffects) ? window.tempEffects : [];
+
+function addTempEffect(obj, life = 1, updateFn = null) {
+  if (!obj) return;
+
+  tempEffects.push({
+    obj,
+    life,
+    maxLife: life,
+    updateFn
+  });
+}
+
+function updateTempEffects(dt) {
+  if (!Array.isArray(tempEffects)) tempEffects = [];
+
+  for (const effect of tempEffects) {
+    effect.life -= dt;
+
+    if (typeof effect.updateFn === "function") {
+      effect.updateFn(effect, dt);
+    } else if (effect.obj) {
+      const fade = clamp(effect.life / effect.maxLife, 0, 1);
+
+      effect.obj.scale.multiplyScalar(1 + dt * 0.8);
+
+      if (effect.obj.material) {
+        effect.obj.material.transparent = true;
+        effect.obj.material.opacity = fade;
+      }
+
+      if (effect.obj.children) {
+        effect.obj.children.forEach(child => {
+          if (child.material) {
+            child.material.transparent = true;
+            child.material.opacity = fade;
+          }
+        });
+      }
+    }
+  }
+
+  tempEffects = tempEffects.filter(effect => {
+    const keep = effect.life > 0;
+
+    if (!keep && effect.obj) {
+      scene.remove(effect.obj);
+    }
+
+    return keep;
+  });
+}
+/* ============================================================
+   MAIN LOOP
+============================================================ */
+
+function animate() {
+  requestAnimationFrame(animate);
+  frameCount++;
+
+  const replayHud = document.getElementById("replayHud");
+  if (replayHud) replayHud.style.display = replayMode ? "block" : "none";
+
+  if (gameOver || !gameStarted) {
+    renderer.render(scene, camera);
+    return;
+  }
+
+  const dt = Math.min(clock.getDelta(), 0.04);
+
+  if (replayMode && replayPaused) {
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+    return;
+  }
+
+  updateReplayPlayback();
+
+  updatePlayerActor(players[0], dt, { forwardA: "w", forwardB: "arrowup", backA: "s", backB: "arrowdown", leftA: "d", leftB: "arrowleft", rightA: "a", rightB: "arrowright", sprint: "shift", dodge: " " });
+  if (gameMode === 2 && players[1]) {
+    updatePlayerActor(players[1], dt, { forwardA: "i", backA: "k", leftA: "l", rightA: "j", sprint: "enter", dodge: "o" });
+  }
+  updateControlledChaserRespawns();
+  updatePlayerChaserTags();
+  updatePlayerArrows();
+
+  activeRunnerPlayers = getActiveRunners();
+  syncGlobalEnergyForHUD();
+  updateSpeedScaling();
+  updateEnemies(dt);
+  updateDogs(dt);
+  updateDesertStalkers(dt);
+  updatePoliceOfficers(dt);
+  updateTorches(dt);
+  updatePoliceBullets(dt);
+  updateFireZones(dt);
+  updatePickups(dt);
+  updateBlackGlobeProjectiles(dt);
+  updateBurstEffects(dt);
+  updatePlayerShieldVisuals(dt);
+  updateTempEffects(dt);
+  updateCamera(dt);
+  updateStarryBackground(dt);
+  manageWorld();
+  updateTwoPlayerYards();
+  updateTwoPlayerScoreboard();
+  updateHUD();
+  captureReplaySnapshot();
+
+  renderer.render(scene, camera);
+}
+
+/* ============================================================
+   HELPERS
+============================================================ */
+
+function setReplaySeed(seed) { seededRandomState = seed >>> 0; }
+function gameRandom() { seededRandomState = (seededRandomState * 1664525 + 1013904223) >>> 0; return seededRandomState / 4294967296; }
+function makeReplaySeed() { return (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0; }
+
+function rand(min, max) {
+  return min + gameRandom() * (max - min);
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function flatDistance(a, b) {
+  return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
+function removeObjectFromParentOrScene(obj) {
+  if (obj.parent) obj.parent.remove(obj);
+  else scene.remove(obj);
+}
+
+function rotateAngleToward(current, target, maxStep) {
+  let diff = target - current;
+
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+
+  diff = clamp(diff, -maxStep, maxStep);
+
+  return current + diff;
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function getPlayerDisplayRig(p) {
+  return p && p.isChaser && p.controlledChaser ? p.controlledChaser.rig : p.rig;
+}
+function updatePlayer(dt) { updatePlayerActor(player, dt, { forwardA: "w", forwardB: "arrowup", backA: "s", backB: "arrowdown", leftA: "d", leftB: "arrowleft", rightA: "a", rightB: "arrowright", sprint: "shift", dodge: " " }); }
+function getActiveRunners() { return players.filter(p => !p.eliminated && !p.isChaser); }
+function getLeaderRunner() {
+  const runners = getActiveRunners();
+  if (!runners.length) return null;
+  return runners.reduce((best, p) => p.rig.position.z > best.rig.position.z ? p : best, runners[0]);
+}
+function getLeadRunner() { return getLeaderRunner() || player; }
+function getWorldAnchorRig() {
+  const leader = getLeaderRunner();
+  if (leader && leader.rig) return leader.rig;
+  if (player && player.rig) return player.rig;
+  return null;
+}
+function getNearestActiveRunner(pos) { const runners = getActiveRunners(); let best = null; let bestDist = Infinity; for (const r of runners) { const d = flatDistance(pos, r.rig.position); if (d < bestDist) { best = r; bestDist = d; } } return best || player; }
+function findSafeSpawnNearZ(targetZ, preferredX = 0) {
+  for (let tries = 0; tries < 40; tries++) {
+    const x = clamp(preferredX + rand(-14, 14), -WORLD_WIDTH / 2 + 3, WORLD_WIDTH / 2 - 3);
+    const z = targetZ + rand(-8, 12);
+    const pos = new THREE.Vector3(x, 0, z);
+    if (!collidesWithWall(pos, PLAYER_RADIUS + 0.4)) return pos;
+  }
+
+  for (let tries = 0; tries < 40; tries++) {
+    const x = rand(-WORLD_WIDTH / 2 + 4, WORLD_WIDTH / 2 - 4);
+    const z = targetZ + rand(-12, 16);
+    const pos = new THREE.Vector3(x, 0, z);
+    if (!collidesWithWall(pos, PLAYER_RADIUS + 0.4)) return pos;
+  }
+
+  return new THREE.Vector3(0, 0, targetZ);
+}
+function convertPlayerToControlledChaser(p, reason) {
+  if (!p || p.isChaser) return;
+
+  const oldPos = p.rig.position.clone();
+  const leader = getLeaderRunner();
+  const respawnTarget = leader ? leader.rig.position.z + CHASER_PLAYER_RESPAWN_AHEAD : oldPos.z;
+  const safeSpawn = findSafeSpawnNearZ(respawnTarget, leader ? leader.rig.position.x : oldPos.x);
+
+  p.isChaser = true;
+  p.eliminated = false;
+  p.energy = Math.min(p.energy ?? 100, 85);
+
+  if (p.rig) p.rig.visible = false;
+
+  const chaser = createEnemy(safeSpawn.x, safeSpawn.z);
+  chaser.speed = 8 + enemyBaseSpeedBonus + 1.5;
+  chaser.sprintSpeed = chaser.speed;
+  chaser.dodgeCooldown = 0;
+  chaser.burnCooldown = 0;
+  chaser.velocity = new THREE.Vector3();
+  chaser.isControlledChaser = true;
+  chaser.ownerPlayerId = p.id;
+  chaser.baseControlledSpeed = playerBaseSpeed;
+  chaser.baseControlledSprintSpeed = playerBaseSprintSpeed;
+  chaser.speed = chaser.baseControlledSpeed * 0.92;
+  chaser.sprintSpeed = chaser.baseControlledSprintSpeed * 0.92;
+  chaser.energy = p.energy;
+  chaser.dodgeCooldown = 0;
+  chaser.burnCooldown = 0;
+  chaser.isPlayerControlledChaser = true;
+
+  p.controlledChaser = chaser;
+
+  if (gameMode === 2 && twoPlayerScores[p.id]) {
+    twoPlayerScores[p.id].lastCountedZ = chaser.rig.position.z;
+  }
+
+  if (p.arrow) {
+    p.arrow.visible = true;
+    p.arrow.position.set(chaser.rig.position.x, 6.6, chaser.rig.position.z);
+  }
+}
+function restorePlayerFromControlledChaser(p) {
+  if (!p) return;
+
+  if (p.controlledChaser && p.controlledChaser.rig) {
+    const chaserPos = p.controlledChaser.rig.position.clone();
+    scene.remove(p.controlledChaser.rig);
+    if (p.controlledChaser.arrow) scene.remove(p.controlledChaser.arrow);
+    p.rig.position.copy(chaserPos);
+  }
+
+  p.rig.visible = true;
+  p.isChaser = false;
+  p.eliminated = false;
+  p.controlledChaser = null;
+  const restoredEnergy = Math.max(p.energy || 0, 65);
+  resetPlayerMovementStats(p);
+  p.energy = restoredEnergy;
+  activeRunnerPlayers = players.filter(x => x && !x.isChaser && !x.eliminated);
+}
+function resetPlayerMovementStats(p) {
+  if (!p) return;
+  p.speed = playerBaseSpeed;
+  p.sprintSpeed = playerBaseSprintSpeed;
+  p.energy = 100;
+  p.velocity.set(0, 0, 0);
+  p.dodgeCooldown = 0;
+  p.burnCooldown = 0;
+}
+function swapChaserAndRunner(chaserOwner, caughtRunner) {
+  if (!chaserOwner || !caughtRunner || roundEnding) return;
+
+  restorePlayerFromControlledChaser(chaserOwner);
+  convertPlayerToControlledChaser(caughtRunner, "Player " + chaserOwner.id + " tagged Player " + caughtRunner.id + "!");
+
+  if (caughtRunner.controlledChaser) {
+    const safe = findSafeSpawnNearZ(chaserOwner.rig.position.z + CHASER_PLAYER_RESPAWN_AHEAD, chaserOwner.rig.position.x);
+    caughtRunner.controlledChaser.rig.position.copy(safe);
+    if (caughtRunner.controlledChaser.velocity) caughtRunner.controlledChaser.velocity.set(0, 0, 0);
+  }
+
+  if (twoPlayerScores[chaserOwner.id]) twoPlayerScores[chaserOwner.id].lastCountedZ = chaserOwner.rig.position.z;
+  if (twoPlayerScores[caughtRunner.id]) twoPlayerScores[caughtRunner.id].lastCountedZ = caughtRunner.controlledChaser ? caughtRunner.controlledChaser.rig.position.z : caughtRunner.rig.position.z;
+
+  recordReplayEvent("role_swap", { chaserPlayerId: chaserOwner?.id, caughtPlayerId: caughtRunner?.id });
+  flashRoundMessage("Player " + chaserOwner.id + " tagged Player " + caughtRunner.id + "! Roles swapped!");
+  updateTwoPlayerScoreboard();
+}
+function updatePlayerChaserTags() {
+  if (gameMode !== 2 || !roundActive || roundEnding) return;
+
+  const runners = getActiveRunners();
+  for (const chaserOwner of players) {
+    if (!chaserOwner || !chaserOwner.isChaser || !chaserOwner.controlledChaser) continue;
+    const chaserRig = chaserOwner.controlledChaser.rig;
+
+    for (const runner of runners) {
+      if (!runner || runner.id === chaserOwner.id || runner.isChaser) continue;
+      if (flatDistance(chaserRig.position, runner.rig.position) < 1.9) {
+        if (handleShieldBlockControlledChaser(runner, chaserOwner)) return;
+        swapChaserAndRunner(chaserOwner, runner);
+        return;
+      }
+    }
+  }
+}
+function handlePlayerCaught(p, reason) {
+  if (!p || p.isChaser || p.eliminated || gameOver || roundEnding) return;
+  recordReplayEvent("player_caught", { playerId: p?.id || 1, reason: reason || "caught", x: Number(p.rig.position.x.toFixed(2)), z: Number(p.rig.position.z.toFixed(2)) });
+
+  if (gameMode !== 2) {
+    endGame(reason || "Chris got caught!");
+    return;
+  }
+
+  convertPlayerToControlledChaser(p, reason);
+
+  if (getActiveRunners().length <= 0) {
+    endTwoPlayerRound(reason || "Both players were caught!");
+    return;
+  }
+
+  updateTwoPlayerScoreboard();
+}
+function updateControlledChaserRespawns() {
+  if (gameMode !== 2) return;
+
+  const leader = getLeaderRunner();
+  if (!leader) return;
+
+  for (const p of players) {
+    if (!p || !p.isChaser || !p.controlledChaser) continue;
+
+    const chaserRig = p.controlledChaser.rig;
+    const tooFarBehind = leader.rig.position.z - chaserRig.position.z > CONTROLLED_CHASER_FALL_BEHIND_DISTANCE;
+
+    if (tooFarBehind) {
+      const safe = findSafeSpawnNearZ(
+        leader.rig.position.z + CHASER_PLAYER_RESPAWN_AHEAD,
+        leader.rig.position.x
+      );
+
+      chaserRig.position.copy(safe);
+      if (p.controlledChaser.velocity) p.controlledChaser.velocity.set(0, 0, 0);
+    }
+  }
+}
+function updatePlayerArrows() {
+  for (const p of players) {
+    if (!p || !p.arrow) continue;
+
+    const rig = getPlayerDisplayRig(p);
+    if (!rig) {
+      p.arrow.visible = false;
+      continue;
+    }
+
+    p.arrow.visible = true;
+    p.arrow.position.set(rig.position.x, 6.8, rig.position.z);
+    p.arrow.rotation.y += 0.06;
+  }
+}
+function updateTwoPlayerYards() {
+  if (gameMode !== 2 || !roundActive || roundEnding) return;
+  for (const p of players) {
+    if (!p || p.eliminated || p.isChaser) continue;
+    const score = twoPlayerScores[p.id];
+    if (!score) continue;
+    const currentZ = p.rig.position.z;
+    const gained = Math.max(0, currentZ - score.lastCountedZ);
+    if (gained > 0) {
+      score.roundYards += gained;
+      score.totalYards += gained;
+      score.lastCountedZ = currentZ;
+    }
+  }
+}
+function updateTwoPlayerScoreboard() {
+  if (gameMode !== 2) return;
+  const board = document.getElementById("twoPlayerScoreboard");
+  if (board) board.style.display = "flex";
+  const p1 = players.find(p => p && p.id === 1);
+  const p2 = players.find(p => p && p.id === 2);
+  document.getElementById("p1TotalYards").textContent = Math.floor(twoPlayerScores[1].totalYards);
+  document.getElementById("p1RoundYards").textContent = Math.floor(twoPlayerScores[1].roundYards);
+  document.getElementById("p2TotalYards").textContent = Math.floor(twoPlayerScores[2].totalYards);
+  document.getElementById("p2RoundYards").textContent = Math.floor(twoPlayerScores[2].roundYards);
+  document.getElementById("p1Status").textContent = p1 && p1.isChaser ? "Chaser - yards paused" : "Runner";
+  document.getElementById("p2Status").textContent = p2 && p2.isChaser ? "Chaser - yards paused" : "Runner";
+  document.getElementById("tpRoundText").textContent = "Round " + twoPlayerRound + " / " + TWO_PLAYER_MAX_ROUNDS;
+}
+function flashRoundMessage(text) {
+  const toast = document.getElementById("roundToast");
+  if (!toast) return;
+  toast.textContent = text;
+  toast.style.display = "block";
+  clearTimeout(roundToastTimer);
+  roundToastTimer = setTimeout(() => { toast.style.display = "none"; }, 1600);
+}
+function clearObjectArray(arr, objectKey, removeExtraPoliceLaser = false) {
+  if (!Array.isArray(arr)) return;
+  for (const item of arr) {
+    if (!item) continue;
+    if (removeExtraPoliceLaser && item.laser) scene.remove(item.laser);
+    if (objectKey && item[objectKey]) scene.remove(item[objectKey]);
+    else if (!objectKey && item.isObject3D) scene.remove(item);
+    else if (!objectKey && item.group) scene.remove(item.group);
+  }
+}
+function resetTwoPlayerMatch() {
+  twoPlayerRound = 1; roundActive = true; roundEnding = false;
+  twoPlayerScores = { 1: { totalYards: 0, roundYards: 0, lastCountedZ: START_Z }, 2: { totalYards: 0, roundYards: 0, lastCountedZ: START_Z } };
+  for (const p of players) { if (!p) continue; p.isChaser = false; p.eliminated = false; p.roundCaughtByEnemy = false; p.roundWasRunner = true; resetPlayerMovementStats(p); p.rig.visible = true; twoPlayerScores[p.id].lastCountedZ = p.rig.position.z; }
+  updateTwoPlayerScoreboard();
+}
+function resetWorldForNewTwoPlayerRound() {
+  clearObjectArray(enemies, "rig"); clearObjectArray(dogs, "rig"); clearObjectArray(desertStalkers, "rig"); clearObjectArray(policeOfficers, "rig", true); clearObjectArray(policeBullets, "mesh"); clearObjectArray(pickups, null); clearObjectArray(grassPatches, null); clearObjectArray(fireZones, "group");
+  for (const chunk of worldChunks) scene.remove(chunk);
+  enemies = []; dogs = []; desertStalkers = []; policeOfficers = []; policeBullets = []; pickups = []; grassPatches = []; torches = []; fireZones = []; walls = []; worldChunks = [];
+  distance = 0; furthestChunkZ = 0; pickupCount = 0; currentSpeedTier = 0; enemyBaseSpeedBonus = 0;
+  for (let i = 0; i < CHUNK_COUNT_AHEAD; i++) generateChunk(i * CHUNK_LENGTH);
+  furthestChunkZ = (CHUNK_COUNT_AHEAD - 1) * CHUNK_LENGTH;
+  for (const p of players) { if (!p) continue; if (p.controlledChaser && p.controlledChaser.rig) scene.remove(p.controlledChaser.rig); p.isChaser = false; p.eliminated = false; p.controlledChaser = null; resetPlayerMovementStats(p); p.rig.visible = true; p.rig.position.set(p.id === 1 ? -2.8 : 2.8, 0, START_Z); twoPlayerScores[p.id].roundYards = 0; twoPlayerScores[p.id].lastCountedZ = START_Z; }
+  for (const p of players) { p.shieldActive = false; p.shieldCharges = 0; if (p.shieldMesh) p.shieldMesh.visible = false; }
+  for (const projectile of blackGlobeProjectiles) scene.remove(projectile.mesh);
+  blackGlobeProjectiles = [];
+  if (window.burstEffects) { for (const effect of window.burstEffects) scene.remove(effect); window.burstEffects = []; }
+  activeRunnerPlayers = players.slice(); player = players[0];
+}
+function showRoundTransition(reason) {
+  const message = document.getElementById("message"); const box = document.getElementById("messageBox");
+  message.style.display = "flex";
+  box.className = "";
+  box.innerHTML = `<h2>Round ${twoPlayerRound} Complete!</h2><p>${reason || "Both players were caught!"}</p><p><strong>Blue Chris:</strong> ${Math.floor(twoPlayerScores[1].roundYards)} round yards · ${Math.floor(twoPlayerScores[1].totalYards)} total<br><strong>Orange Chris:</strong> ${Math.floor(twoPlayerScores[2].roundYards)} round yards · ${Math.floor(twoPlayerScores[2].totalYards)} total</p><button onclick="startNextTwoPlayerRound()">Start Round ${twoPlayerRound + 1}</button>`;
+}
+function startNextTwoPlayerRound() { twoPlayerRound++; roundActive = true; roundEnding = false; gameOver = false; document.getElementById("message").style.display = "none"; resetWorldForNewTwoPlayerRound(); updateTwoPlayerScoreboard(); }
+function endTwoPlayerMatch(reason) {
+  recordReplayEvent("match_end", { reason, p1Total: Math.floor(twoPlayerScores[1]?.totalYards || 0), p2Total: Math.floor(twoPlayerScores[2]?.totalYards || 0) });
+  roundActive = false; roundEnding = true; gameOver = true; updateTwoPlayerScoreboard();
+  const p1 = Math.floor(twoPlayerScores[1].totalYards); const p2 = Math.floor(twoPlayerScores[2].totalYards);
+  let winnerText = "It’s a tie!";
+  if (p1 > p2) winnerText = "BLUE CHRIS WINS!"; else if (p2 > p1) winnerText = "ORANGE CHRIS WINS!";
+  const finalDistance = Math.max(p1, p2);
+  let highScoreMessage = "";
+  if (!replayMode && finalDistance > highScore) {
+    highScore = finalDistance;
+    localStorage.setItem("chrisRunnerHighScore", String(highScore));
+    highScoreMessage = " NEW HIGH SCORE!";
+  }
+  lastGameOverSummary = {
+    reason: winnerText + " " + (reason || "Best of 3 complete!"),
+    finalDistance,
+    highScore,
+    highScoreMessage,
+    pickupCount,
+    currentSpeedTier,
+    gameMode: 2
+  };
+  gameOverNeedsNameEntry = false;
+  renderGameOverDashboard(firebaseReady ? "Checking online high scores…" : "Online leaderboard is offline or still connecting.");
+  finalizeReplay(reason);
+  submitHighScore(finalDistance).then(result => {
+    gameOverNeedsNameEntry = !!(result && (result.madeDaily || result.madeOverall || result.madeYearly || result.topTenCandidate));
+    renderGameOverDashboard(gameOverNeedsNameEntry ? "Top 10 score confirmed." : "Leaderboard updated.");
+  }).catch(err => {
+    console.warn("High score submit failed", err);
+    renderGameOverDashboard("Could not update online leaderboard. You can still restart or return to menu.");
+  });
+}
+function endTwoPlayerRound(reason) {
+  recordReplayEvent("round_end", { round: twoPlayerRound, p1RoundYards: Math.floor(twoPlayerScores[1]?.roundYards || 0), p2RoundYards: Math.floor(twoPlayerScores[2]?.roundYards || 0), reason });
+  if (roundEnding) return;
+  roundEnding = true; roundActive = false;
+  updateTwoPlayerYards(); updateTwoPlayerScoreboard();
+  if (twoPlayerRound >= TWO_PLAYER_MAX_ROUNDS) { endTwoPlayerMatch(reason); return; }
+  showRoundTransition(reason);
+}
+function startGame(mode) {
+  gameMode = mode; lastPlayedMode = mode; gameStarted = true; gameOver = false; document.getElementById("menuOverlay").style.display = "none"; setupMobileControls();
+
+  if (!replayMode) {
+    replayRecorder = createReplayRecorder(mode);
+  }
+  const p1 = createPlayer(1, mode === 2 ? -2.8 : 0, START_Z); const p2 = mode === 2 ? createPlayer(2, 2.8, START_Z) : null;
+  player = p1; players = mode === 2 ? [p1, p2] : [p1]; activeRunnerPlayers = players.slice();
+  if (mode === 2) { resetTwoPlayerMatch(); document.getElementById("twoPlayerScoreboard").style.display = "flex"; }
+  else { roundActive = false; roundEnding = false; document.getElementById("twoPlayerScoreboard").style.display = "none"; }
+}
+
+function createReplayRecorder(mode) {
+  const seed = makeReplaySeed();
+  replaySeed = seed;
+  setReplaySeed(seed);
+
+  return {
+    version: CHRIS_REPLAY_VERSION,
+    gameBuild: GAME_BUILD_VERSION,
+    createdAt: new Date().toISOString(),
+    mode,
+    seed,
+    startedAtPerf: performance.now(),
+    duration: 0,
+    final: null,
+    inputs: [],
+    events: [],
+    snapshots: [],
+    lastSnapshotTime: 0
+  };
+}
+
+function getReplayTime() {
+  if (!replayRecorder) return 0;
+  return (performance.now() - replayRecorder.startedAtPerf) / 1000;
+}
+
+function recordReplayInput(type, key) {
+  replayRecorder.inputs.push({
+    t: Number(getReplayTime().toFixed(4)),
+    type,
+    key
+  });
+}
+
+function recordReplayEvent(type, data = {}) {
+  if (!replayRecorder || replayMode) return;
+  replayRecorder.events.push({
+    t: Number(getReplayTime().toFixed(4)),
+    type,
+    data
+  });
+}
+
+function captureReplaySnapshot() {
+  if (!replayRecorder || replayMode || !gameStarted || gameOver) return;
+  const t = getReplayTime();
+  if (t - replayRecorder.lastSnapshotTime < 1) return;
+  replayRecorder.lastSnapshotTime = t;
+  replayRecorder.snapshots.push({
+    t: Number(t.toFixed(4)),
+    distance: Math.floor(distance || 0),
+    pickupCount: pickupCount || 0,
+    gameMode,
+    twoPlayerRound,
+    players: players.map(p => ({ id: p.id, x: Number(p.rig.position.x.toFixed(2)), z: Number(p.rig.position.z.toFixed(2)), isChaser: !!p.isChaser, eliminated: !!p.eliminated, energy: Math.floor(p.energy || 0), shieldActive: !!p.shieldActive })),
+    twoPlayerScores: JSON.parse(JSON.stringify(twoPlayerScores || {})),
+    enemies: enemies.filter(canEnemyDamage).slice(0, 30).map(e => ({ type: e.type || "enemy", x: Number(e.rig.position.x.toFixed(2)), z: Number(e.rig.position.z.toFixed(2)) })),
+    dogs: dogs.filter(canEnemyDamage).slice(0, 20).map(d => ({ type: "dog", x: Number(d.rig.position.x.toFixed(2)), z: Number(d.rig.position.z.toFixed(2)) })),
+    desertStalkers: desertStalkers.filter(canEnemyDamage).slice(0, 20).map(s => ({ type: "desertStalker", x: Number(s.rig.position.x.toFixed(2)), z: Number(s.rig.position.z.toFixed(2)) })),
+    police: policeOfficers.filter(canEnemyDamage).slice(0, 20).map(p => ({ type: "police", x: Number(p.rig.position.x.toFixed(2)), z: Number(p.rig.position.z.toFixed(2)), state: p.state }))
+  });
+}
+
+function finalizeReplay(reason) {
+  if (!replayRecorder || replayMode) return;
+
+  replayRecorder.duration = Number(getReplayTime().toFixed(3));
+  replayRecorder.final = {
+    reason: reason || "ended",
+    distance: Math.floor(distance || 0),
+    pickupCount: pickupCount || 0,
+    gameMode,
+    twoPlayerRound,
+    twoPlayerScores: JSON.parse(JSON.stringify(twoPlayerScores || {})),
+    eventCount: replayRecorder.events.length,
+    snapshotCount: replayRecorder.snapshots.length
+  };
+
+  window.lastChrisReplay = replayRecorder;
+}
+
+function downloadLastReplay() {
+  const replay = window.lastChrisReplay || replayRecorder;
+
+  if (!replay || !replay.final) {
+    alert("No completed replay is available yet.");
+    return;
+  }
+
+  const json = JSON.stringify(replay, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const score = replay.final?.distance || 0;
+  const mode = replay.mode === 2 ? "2P" : "1P";
+  const safeDate = new Date().toISOString().replace(/[:.]/g, "-");
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ChrisRunner_${mode}_${score}yds_${safeDate}.chrisreplay.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  URL.revokeObjectURL(url);
+}
+
+function openReplayLoadPicker() {
+  const input = document.getElementById("replayFileInput");
+  if (!input) {
+    alert("Replay file input missing.");
+    return;
+  }
+
+  input.value = "";
+  input.click();
+}
+
+function handleReplayFileSelected(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    try {
+      const replay = JSON.parse(reader.result);
+      validateAndStartReplay(replay);
+    } catch (err) {
+      console.error(err);
+      alert("Could not load replay file. It may be corrupted or the wrong format.");
+    }
+  };
+
+  reader.readAsText(file);
+}
+
+function validateAndStartReplay(replay) {
+  if (
+    !replay ||
+    replay.version !== CHRIS_REPLAY_VERSION ||
+    !Array.isArray(replay.inputs) ||
+    !replay.mode
+  ) {
+    alert("This is not a valid Chris Runner replay file.");
+    return;
+  }
+  if (!replay.seed) {
+    alert("Replay file is missing its random seed.");
+    return;
+  }
+
+  startReplayMode(replay);
+}
+
+function startReplayMode(replay) {
+  replayMode = true;
+  replayPaused = false;
+  replaySpeed = 1;
+  replayRecorder = null;
+  replayPlayback = {
+    replay,
+    startedAtPerf: performance.now(),
+    playheadTime: 0,
+    inputIndex: 0,
+    snapshotIndex: 0,
+    done: false
+  };
+  refreshReplayTimeline();
+  setReplaySeed(replay.seed);
+
+  keys = {};
+
+  const menu = document.getElementById("menuOverlay");
+  if (menu) menu.style.display = "none";
+
+  const message = document.getElementById("message");
+  if (message) message.style.display = "none";
+
+  startGame(replay.mode || 1);
+
+  replayMode = true;
+  replayRecorder = null;
+
+  showRoundToast("Replay loaded");
+}
+
+function toggleReplayPause() {
+  if (!replayPlayback) return;
+  const t = getReplayPlaybackTime();
+  replayPlayback.playheadTime = t;
+  replayPlayback.startedAtPerf = performance.now();
+  replayPaused = !replayPaused;
+  const btns = document.querySelectorAll("#replayHud button");
+  if (btns && btns[0]) btns[0].textContent = replayPaused ? "Resume" : "Pause";
+}
+
+function setReplaySpeed(speed) {
+  if (!replayPlayback) { replaySpeed = speed; return; }
+  replayPlayback.playheadTime = getReplayPlaybackTime();
+  replayPlayback.startedAtPerf = performance.now();
+  replaySpeed = speed;
+}
+
+function getReplayPlaybackTime() {
+  if (!replayPlayback) return 0;
+  const base = replayPlayback.playheadTime || 0;
+  if (replayPaused) return base;
+  return base + ((performance.now() - replayPlayback.startedAtPerf) / 1000) * replaySpeed;
+}
+
+function formatReplayTime(seconds) {
+  const t = Math.max(0, Math.floor(seconds || 0));
+  const m = Math.floor(t / 60);
+  const s = String(t % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function refreshReplayTimeline() {
+  if (!replayPlayback || !replayPlayback.replay) return;
+  const timeline = document.getElementById("replayTimeline");
+  const label = document.getElementById("replayTimeLabel");
+  const duration = replayPlayback.replay.duration || 0;
+  const now = Math.min(getReplayPlaybackTime(), duration);
+  if (timeline) timeline.value = duration > 0 ? Math.floor((now / duration) * 1000) : 0;
+  if (label) label.textContent = `${formatReplayTime(now)} / ${formatReplayTime(duration)}`;
+}
+
+function seekReplay(targetTime) {
+  if (!replayPlayback || !replayPlayback.replay) return;
+  const replay = replayPlayback.replay;
+  const duration = replay.duration || 0;
+  const t = Math.max(0, Math.min(targetTime || 0, duration));
+  replayPlayback.playheadTime = t;
+  replayPlayback.startedAtPerf = performance.now();
+  replayPlayback.done = false;
+
+  keys = {};
+  replayPlayback.inputIndex = 0;
+  while (replayPlayback.inputIndex < replay.inputs.length && replay.inputs[replayPlayback.inputIndex].t <= t) {
+    const input = replay.inputs[replayPlayback.inputIndex];
+    keys[input.key] = input.type === "keydown";
+    replayPlayback.inputIndex++;
+  }
+
+  replayPlayback.snapshotIndex = 0;
+  if (Array.isArray(replay.snapshots) && replay.snapshots.length) {
+    for (let i = replay.snapshots.length - 1; i >= 0; i--) {
+      if (replay.snapshots[i].t <= t) {
+        applyReplaySnapshot(replay.snapshots[i]);
+        replayPlayback.snapshotIndex = i + 1;
+        break;
+      }
+    }
+  }
+  refreshReplayTimeline();
+}
+
+function seekReplayFromTimeline(rawValue) {
+  if (!replayPlayback || !replayPlayback.replay) return;
+  const duration = replayPlayback.replay.duration || 0;
+  const target = (Number(rawValue) / 1000) * duration;
+  seekReplay(target);
+}
+
+function rewindReplay(seconds) {
+  seekReplay(getReplayPlaybackTime() - (seconds || 5));
+}
+
+function updateReplayPlayback() {
+  if (!replayMode || !replayPlayback || replayPlayback.done) return;
+
+  const replay = replayPlayback.replay;
+  const t = getReplayPlaybackTime();
+  if (replayPaused) { refreshReplayTimeline(); return; }
+
+  while (
+    replayPlayback.inputIndex < replay.inputs.length &&
+    replay.inputs[replayPlayback.inputIndex].t <= t
+  ) {
+    const input = replay.inputs[replayPlayback.inputIndex];
+    keys[input.key] = input.type === "keydown";
+    replayPlayback.inputIndex++;
+  }
+
+  while (replay.snapshots && replayPlayback.snapshotIndex < replay.snapshots.length && replay.snapshots[replayPlayback.snapshotIndex].t <= t) {
+    const snap = replay.snapshots[replayPlayback.snapshotIndex];
+    if (replayPlayback.snapshotIndex % 3 === 0) applyReplaySnapshot(snap);
+    replayPlayback.snapshotIndex++;
+  }
+
+  refreshReplayTimeline();
+
+  if (replay.duration && t >= replay.duration + 1) {
+    replayPlayback.done = true;
+    showReplayCompleteScreen(replay);
+  }
+}
+
+function applyReplaySnapshot(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.players)) return;
+  for (const savedPlayer of snapshot.players) {
+    const p = players.find(x => x.id === savedPlayer.id);
+    if (!p || !p.rig) continue;
+    p.rig.position.x = savedPlayer.x;
+    p.rig.position.z = savedPlayer.z;
+    p.isChaser = !!savedPlayer.isChaser;
+    p.eliminated = !!savedPlayer.eliminated;
+    p.energy = savedPlayer.energy;
+    p.shieldActive = !!savedPlayer.shieldActive;
+  }
+  if (typeof snapshot.distance === "number") distance = snapshot.distance;
+  if (snapshot.twoPlayerScores) twoPlayerScores = JSON.parse(JSON.stringify(snapshot.twoPlayerScores));
+}
+
+function showReplayCompleteScreen(replay) {
+  gameOver = true;
+
+  const message = document.getElementById("message");
+  const box = document.getElementById("messageBox");
+
+  if (!message || !box) return;
+
+  message.style.display = "flex";
+
+  box.className = "";
+  box.innerHTML = `
+    <h2>Replay Complete</h2>
+    <p>Mode: ${replay.mode === 2 ? "2 Player" : "1 Player"}</p>
+    <p>Distance: ${replay.final?.distance || 0} yards</p>
+    <p>Duration: ${Math.floor(replay.duration || 0)} seconds</p>
+    <button onclick="location.reload()">Back to Menu</button>
+  `;
+}
+
+</script>
+
+</body>
+</html>
