@@ -109,7 +109,7 @@ const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y), fmt=n=>Math.floor(Number(n)||0).t
 let player, stats, upgrades;
 const DIR_ANGLE=[0,Math.PI/2,Math.PI,-Math.PI/2];
 const BG_PALETTES=[['#09132e','#101b47','#0c1538','#ffd34d','#ff2f63'],['#16102d','#271a50','#1d153f','#9d7cff','#ff4fa3'],['#05251c','#0c4433','#083529','#68ff70','#ffd34d'],['#2b1307','#51220b','#3c1a08','#ff914d','#ffd34d'],['#061f2b','#0d4056','#0a3043','#41c7ff','#9cf3ff'],['#2c0713','#520d22','#3d0a1a','#ff2f63','#ffd34d'],['#171717','#2b2b2b','#202020','#ffffff','#ff4545'],['#071b12','#123c28','#0d2d1e','#7dff9e','#d2ff68'],['#1d1330','#37245e','#291a49','#d084ff','#41c7ff'],['#302007','#5f3e0b','#442d08','#ffd34d','#ff7b2f'],['#06162c','#0c2a54','#091f3f','#4da3ff','#fff7d6'],['#23062b','#410d50','#300a3c','#ff70ff','#ffd34d'],['#10220a','#1e4012','#17320e','#a7ff59','#fff7d6'],['#300c0c','#581616','#411010','#ff5f5f','#ffd34d'],['#071f30','#0c3d5d','#092e46','#7de1ff','#ff2f63'],['#232009','#484112','#36310d','#f6ff6a','#68ff70'],['#180a22','#341549','#271038','#c467ff','#ff914d'],['#091f1f','#123f3f','#0d3030','#56ffe8','#ffd34d'],['#2b1005','#52200a','#3c1808','#ff6b35','#fff7d6'],['#090912','#18182b','#111120','#fff7d6','#ff2f63']];
-const ENEMY_PROGRESSION=['goblin','slime','spear','bat','bomb','archer','ghost','knight','wizard','rogue','ram','monk','eye','fire','ice','thorn','wolf','reaper','paladin','dragonling','mimic','storm','worm','crown'];
+const ENEMY_PROGRESSION=['goblin','slime','spear','bat','bomb','archer','ghost','knight','wizard','rogue','ram','monk','eye','fire','ice','thorn','wolf','reaper','paladin','dragonling','mimic','storm','worm','crown','jester','harpooner','shaman','shieldbearer','spark','burrower','bellringer','puppeteer','frostbat','knightmare'];
 const choices=[
   ['LONG SWORD','Bigger slash arc',()=>upgrades.slash+=.18],['QUICK BOOTS','Move faster',()=>upgrades.speed+=.12],['FAST DASH','Dash returns faster',()=>upgrades.dash+=.18],['LOUD COMBO','Combo lasts longer',()=>upgrades.combo+=.25],['CHICKEN SHIELD','Block one mistake',()=>upgrades.shield++],['ROYAL SCORE','More points forever',()=>upgrades.score+=.12],['BOOM SLASH','Next slash explodes',()=>upgrades.boom+=2],['MAGNET CROWN','Pull powerups closer',()=>upgrades.magnet+=1],
   ['ICE BRAND','Slashes briefly stun survivors',()=>upgrades.freezeSlash=(upgrades.freezeSlash||0)+1],['GOLDEN SPURS','Dash farther and scores more',()=>{upgrades.dash+=.1;upgrades.score+=.08;}],['GIANT PLUME','Wider royal swing',()=>{upgrades.slash+=.1;player.r+=.4;}],['PANIC HORN','Start each wave with a shock ring',()=>upgrades.horn=(upgrades.horn||0)+1],['VAMPIRE GEM','Every 20 kills grants shield',()=>upgrades.vamp=(upgrades.vamp||0)+1],['TIME SAND','More time in Mayhem',()=>{stats.minuteLeft+=8;upgrades.combo+=.08;}]
@@ -170,14 +170,26 @@ function baseEnemy(type){
     mimic:{r:9,spd:26,c:'#c77a2e',trigger:28,windup:.46,attack:.18,recover:.25,tele:'cone'},
     storm:{r:8,spd:44,c:'#72d5ff',trigger:60,windup:.5,attack:.12,recover:.24,tele:'dashline'},
     worm:{r:12,spd:25,c:'#cf8c5d',trigger:44,windup:.7,attack:.2,recover:.36,tele:'circle'},
-    crown:{r:10,spd:36,c:'#ffd34d',trigger:48,windup:.62,attack:.18,recover:.32,tele:'slam'}
+    crown:{r:10,spd:36,c:'#ffd34d',trigger:48,windup:.62,attack:.18,recover:.32,tele:'slam'},
+    jester:{r:7,spd:58,c:'#ff70ff',trigger:52,windup:.36,attack:.16,recover:.16,tele:'dashline'},
+    harpooner:{r:8,spd:26,c:'#70d6ff',trigger:76,windup:.74,attack:.24,recover:.42,tele:'line'},
+    shaman:{r:8,spd:23,c:'#7dff9e',trigger:66,windup:.82,attack:.03,recover:.5,tele:'circle'},
+    shieldbearer:{r:12,spd:21,c:'#ccd2df',trigger:34,windup:.9,attack:.22,recover:.55,tele:'slam'},
+    spark:{r:6,spd:76,c:'#fff46b',trigger:46,windup:.28,attack:.12,recover:.16,tele:'dashline'},
+    burrower:{r:10,spd:34,c:'#b8794f',trigger:58,windup:.78,attack:.18,recover:.36,tele:'circle'},
+    bellringer:{r:9,spd:25,c:'#f4c16e',trigger:52,windup:.86,attack:.08,recover:.62,tele:'circle'},
+    puppeteer:{r:8,spd:30,c:'#dd77aa',trigger:74,windup:.68,attack:.05,recover:.45,tele:'line'},
+    frostbat:{r:7,spd:66,c:'#91eaff',trigger:54,windup:.4,attack:.14,recover:.2,tele:'dashline'},
+    knightmare:{r:11,spd:38,c:'#32144d',trigger:58,windup:.72,attack:.32,recover:.44,tele:'dashline'}
   }[type]||{r:8,spd:32,c:'#fff',trigger:32,windup:.55,attack:.18,recover:.25,tele:'cone'};
   const depth=Math.min(2.1,1+Math.max(0,stats.wave-1)*.012);
   return {...cfg,type,hp:1,dead:false,boss:false,ang:rnd(0,6.28),stun:0,state:'move',stateTimer:rnd(.2,.5),cooldown:rnd(.25,.65),walk:rnd(0,6.28),teleAim:0,attackVx:0,attackVy:0,windScale:0,dir:Math.random()<.5?-1:1,spd:cfg.spd*depth};
 }
 function unlockedEnemyTypes(){ const count=clamp(3+Math.floor(stats.wave/5),3,ENEMY_PROGRESSION.length); return ENEMY_PROGRESSION.slice(0,count); }
 function spawnEnemy(type){ const p=spawnEdge(); const list=unlockedEnemyTypes(); type=type||list[irnd(0,list.length-1)]; enemies.push({...p,...baseEnemy(type)}); }
-function spawnBoss(){ const p=spawnEdge(), bosses=['ogre','warlock','behemoth','wyrm','king']; const b=bosses[Math.floor((stats.wave/10)%bosses.length)]; const colors={ogre:'#ff4545',warlock:'#8b5cff',behemoth:'#ff914d',wyrm:'#47e06e',king:'#ffd34d'}; enemies.push({...p,type:b,r:b==='behemoth'?21:18,spd:(b==='wyrm'?31:22)*(1+Math.min(1,stats.wave/80)),c:colors[b],hp:1,boss:true,dead:false,stun:0,state:'move',stateTimer:0,cooldown:1.2,walk:0,teleAim:0,attackVx:0,attackVy:0,windScale:0,dizzy:0,trigger:b==='warlock'?70:52,windup:b==='wyrm'?.58:.8,attack:b==='warlock'?.04:.18,recover:.6,tele:b==='warlock'?'circle':'slam',dir:1}); toast((b==='ogre'?'OGRE':b.toUpperCase())+'!',W/2,96,'#ff2f63',26); }
+function spawnEnemyNear(type,x,y,spread=18){ const e=baseEnemy(type); enemies.push({...e,x:clamp(x+rnd(-spread,spread),18,W-18),y:clamp(y+rnd(-spread,spread),22,H-20),cooldown:rnd(.35,.9)}); }
+function badSpot(x,y,r=16,c='#ff2f63',life=.24){ hazards.push({x:clamp(x,12,W-12),y:clamp(y,18,H-14),r,life,bad:true,cosmetic:false,c}); }
+function spawnBoss(){ const p=spawnEdge(), bosses=['ogre','warlock','behemoth','wyrm','king','necroking','titan']; const b=bosses[Math.floor((stats.wave/10)%bosses.length)]; const colors={ogre:'#ff4545',warlock:'#8b5cff',behemoth:'#ff914d',wyrm:'#47e06e',king:'#ffd34d',necroking:'#70ff9a',titan:'#b9b1a1'}; const isTitan=b==='titan', isNecro=b==='necroking'; enemies.push({...p,type:b,r:isTitan?24:b==='behemoth'?21:18,spd:(b==='wyrm'?31:isTitan?16:isNecro?20:22)*(1+Math.min(1,stats.wave/80)),c:colors[b],hp:1,boss:true,dead:false,stun:0,state:'move',stateTimer:0,cooldown:1.2,walk:0,teleAim:0,attackVx:0,attackVy:0,windScale:0,dizzy:0,trigger:isNecro?78:isTitan?60:b==='warlock'?70:52,windup:isTitan?1.05:b==='wyrm'?.58:isNecro?.86:.8,attack:b==='warlock'||isNecro?.04:isTitan?.26:.18,recover:isTitan?.72:.6,tele:isNecro?'circle':b==='warlock'?'circle':'slam',dir:1}); toast((b==='ogre'?'OGRE':b.toUpperCase())+'!',W/2,96,isNecro?'#70ff9a':isTitan?'#e2d4bd':'#ff2f63',26); }
 function spawnPower(){ if(Math.random()<.54){ const kinds=['shield','big','freeze','boom','gold','haste','nuke','crown','sand','ghost']; powerups.push({x:rnd(35,W-35),y:rnd(35,H-35),kind:kinds[irnd(0,kinds.length-1)],r:6,life:10,float:rnd(0,TAU)}); } }
 function controls(dt){
   let ax=0,ay=0; if(keys.KeyW||keys.ArrowUp) ay--; if(keys.KeyS||keys.ArrowDown) ay++; if(keys.KeyA||keys.ArrowLeft) ax--; if(keys.KeyD||keys.ArrowRight) ax++; ax+=touchVec.x; ay+=touchVec.y;
@@ -219,17 +231,23 @@ function updateEnemies(dt){
       else if(e.type==='spear'){ e.x+=nx*e.spd*.9*dt; e.y+=ny*e.spd*.9*dt; }
       else if(e.boss){ e.x+=nx*e.spd*dt; e.y+=ny*e.spd*dt; }
       else { e.x+=nx*e.spd*dt; e.y+=ny*e.spd*dt; }
+      if(e.type==='jester'){ e.x+=Math.cos(e.ang*3)*44*dt; e.y+=Math.sin(e.ang*2.2)*28*dt; }
+      if(e.type==='bellringer'){ for(const a of enemies){ if(a!==e&&!a.dead&&dist(a,e)<46){ const aa=Math.atan2(player.y-a.y,player.x-a.x); a.x+=Math.cos(aa)*10*dt; a.y+=Math.sin(aa)*10*dt; } } }
+      if(e.type==='burrower' && e.cooldown<.25){ e.x+=Math.cos(e.ang*5)*22*dt; e.y+=Math.sin(e.ang*4)*22*dt; }
       if((d<e.trigger && e.cooldown<=0) || (e.type==='bomb' && d<e.trigger+8)) beginEnemyAttack(e,player);
     } else if(e.state==='windup'){
       e.stateTimer-=dt; e.windScale=1-(e.stateTimer/e.windup); e.dir=Math.cos(e.teleAim)>=0?1:-1;
       if(e.type==='goblin'){ e.x-=Math.cos(e.teleAim)*14*dt; e.y-=Math.sin(e.teleAim)*14*dt; }
       if(e.type==='slime'){ e.x-=Math.cos(e.teleAim)*6*dt; e.y-=Math.sin(e.teleAim)*6*dt; }
+      if(e.type==='jester' && e.windScale>.55 && !e.juked){ e.juked=true; const side=e.teleAim+Math.PI/2*(Math.random()<.5?-1:1); e.x=clamp(e.x+Math.cos(side)*24,16,W-16); e.y=clamp(e.y+Math.sin(side)*24,18,H-18); e.teleAim=Math.atan2(player.y-e.y,player.x-e.x); starBurst(e.x,e.y,e.c,5); }
+      if(e.type==='burrower'){ e.x+=Math.cos(e.ang*7)*8*dt; e.y+=Math.sin(e.ang*7)*8*dt; }
       if(e.stateTimer<=0) launchEnemyAttack(e);
     } else if(e.state==='attack'){
       e.stateTimer-=dt;
       if(e.type==='goblin' || e.type==='spear' || e.type==='bat' || e.type==='slime' || e.boss){ e.x+=e.attackVx*dt; e.y+=e.attackVy*dt; }
       if(e.type==='slime') e.y+=Math.sin(e.stateTimer*18)*3;
       if(e.type==='bomb'){ explode(e.x,e.y,true); e.dead=true; stats.waveKills++; if(stats.waveKills>=stats.waveTarget && !stats.transitioning) nextWave(); }
+      if(e.type==='frostbat' && dist(player,e)<player.r+e.r+14 && player.inv<=0){ upgrades.speed=Math.max(.75,upgrades.speed-.18); setTimeout(()=>{ upgrades.speed+=.18; },1800); toast('CHILL',player.x,player.y-18,'#91eaff',11); }
       if(dist(player,e)<player.r+e.r+2 && player.inv<=0) die();
       if(e.stateTimer<=0){ e.state='recover'; e.stateTimer=e.recover; }
     } else if(e.state==='recover'){
@@ -240,14 +258,26 @@ function updateEnemies(dt){
   }
   enemies=enemies.filter(e=>!e.dead || Math.random()>.25);
 }
-function beginEnemyAttack(e,target){ e.state='windup'; e.stateTimer=e.windup; e.cooldown=999; e.teleAim=Math.atan2(target.y-e.y,target.x-e.x); e.windScale=0; e.dir=Math.cos(e.teleAim)>=0?1:-1; if(e.boss) toast('SLAM!',e.x,e.y-24,'#ff9d4d',10); }
+function beginEnemyAttack(e,target){ e.state='windup'; e.stateTimer=e.windup; e.cooldown=999; e.teleAim=Math.atan2(target.y-e.y,target.x-e.x); e.windScale=0; e.juked=false; e.dir=Math.cos(e.teleAim)>=0?1:-1; if(e.boss) toast(e.type==='necroking'?'RAISE!':e.type==='titan'?'QUAKE!':'SLAM!',e.x,e.y-24,e.type==='necroking'?'#70ff9a':'#ff9d4d',10); }
 function launchEnemyAttack(e){ const a=e.teleAim, cs=Math.cos(a), sn=Math.sin(a); e.state='attack'; e.stateTimer=e.attack;
   let speed=150;
-  if(e.type==='goblin') speed=165; else if(e.type==='spear'||e.type==='archer'||e.type==='eye'||e.type==='dragonling') speed=190; else if(e.type==='bat'||e.type==='rogue'||e.type==='wolf'||e.type==='storm') speed=240; else if(e.type==='ram') speed=210; else if(e.boss) speed=135; else if(e.tele==='dashline') speed=220; else if(e.tele==='line') speed=185; else if(e.tele==='circle') speed=135;
+  if(e.type==='goblin') speed=165; else if(e.type==='spear'||e.type==='archer'||e.type==='eye'||e.type==='dragonling'||e.type==='harpooner'||e.type==='puppeteer') speed=190; else if(e.type==='bat'||e.type==='rogue'||e.type==='wolf'||e.type==='storm'||e.type==='jester'||e.type==='spark'||e.type==='frostbat'||e.type==='knightmare') speed=e.type==='spark'?280:e.type==='knightmare'?245:240; else if(e.type==='ram') speed=210; else if(e.boss) speed=e.type==='titan'?90:135; else if(e.tele==='dashline') speed=220; else if(e.tele==='line') speed=185; else if(e.tele==='circle') speed=135;
   e.attackVx=cs*speed; e.attackVy=sn*speed;
-  if(e.type==='slime'||e.type==='ice'||e.type==='monk'||e.type==='worm'||e.type==='wizard'||e.type==='warlock'){ ring(e.x,e.y,e.c,16,true,.24); if(e.type==='wizard'||e.type==='warlock') explode(player.x+rnd(-10,10),player.y+rnd(-10,10),true); }
+  if(e.type==='slime'||e.type==='ice'||e.type==='monk'||e.type==='worm'||e.type==='wizard'||e.type==='warlock'||e.type==='shaman'||e.type==='bellringer'||e.type==='burrower'||e.type==='necroking'){
+    ring(e.x,e.y,e.c,16,true,.24);
+    if(e.type==='wizard'||e.type==='warlock') explode(player.x+rnd(-10,10),player.y+rnd(-10,10),true);
+    if(e.type==='shaman'){ spawnEnemyNear('slime',e.x,e.y,20); spawnEnemyNear('goblin',e.x,e.y,22); toast('SUMMON',e.x,e.y-16,e.c,10); }
+    if(e.type==='bellringer'){ for(const a of enemies){ if(a!==e&&!a.dead&&dist(a,e)<80){ a.stun=Math.max(0,a.stun-.3); a.spd*=1.06; } } ring(e.x,e.y,'#f4c16e',26,false,.35); }
+    if(e.type==='burrower'){ badSpot(player.x,player.y,18,'#b8794f',.28); e.x=clamp(player.x+rnd(-34,34),18,W-18); e.y=clamp(player.y+rnd(-28,28),20,H-20); }
+    if(e.type==='necroking'){ for(let i=0;i<3;i++) spawnEnemyNear(i%2?'ghost':'goblin',e.x,e.y,34); for(let i=0;i<3;i++) badSpot(player.x+rnd(-34,34),player.y+rnd(-24,24),13,'#70ff9a',.28); }
+  }
+  if(e.type==='harpooner'){ for(let i=1;i<=4;i++) badSpot(e.x+cs*i*18,e.y+sn*i*18,7,'#70d6ff',.18); }
+  if(e.type==='puppeteer'){ for(let i=0;i<4;i++){ const a=i*TAU/4+rnd(-.25,.25); badSpot(player.x+Math.cos(a)*24,player.y+Math.sin(a)*18,9,'#dd77aa',.22); } }
+  if(e.type==='spark'){ badSpot(e.x,e.y,10,'#fff46b',.16); }
+  if(e.type==='shieldbearer'){ e.attackVx*=.55; e.attackVy*=.55; explode(e.x+cs*12,e.y+sn*12,true); }
+  if(e.type==='frostbat'){ badSpot(player.x,player.y,12,'#91eaff',.20); }
   if(e.type==='bomb'||e.type==='fire'){ e.attackVx=0; e.attackVy=0; explode(e.x,e.y,true); }
-  if(e.boss && e.tele==='slam'){ explode(e.x,e.y,true); }
+  if(e.boss && e.tele==='slam'){ explode(e.x,e.y,true); if(e.type==='titan'){ setTimeout(()=>badSpot(player.x,player.y,20,'#b9b1a1',.25),120); setTimeout(()=>badSpot(player.x+rnd(-40,40),player.y+rnd(-30,30),18,'#b9b1a1',.25),260); } }
   e.dir=cs>=0?1:-1;
 }
 function updatePowerups(dt){ for(const p of powerups){ p.life-=dt; p.float+=dt*4; if(upgrades.magnet&&dist(player,p)<70+upgrades.magnet*35){ const a=Math.atan2(player.y-p.y,player.x-p.x); p.x+=Math.cos(a)*80*dt; p.y+=Math.sin(a)*80*dt; } if(dist(player,p)<player.r+p.r){ collectPower(p); p.life=0; } } powerups=powerups.filter(p=>p.life>0); }
@@ -351,16 +381,17 @@ function drawSlime(e){ const squish=e.state==='windup'?1-e.windScale*.32:e.state
 function drawSpear(e){ const walk=Math.sin(e.walk)*1.4, walk2=Math.sin(e.walk+Math.PI)*1.4, raise=e.state==='windup'?e.windScale:0, thrust=e.state==='attack'?1-e.stateTimer/e.attack:0; drawShadow(e.x,e.y,8); withFlip(e.x,e.y,e.dir,()=>{ limb(-1,2,-2,8+walk,'#8e8e8e',2); limb(1,2,2,8+walk2,'#8e8e8e',2); limb(-4,-2,-5,3+walk2,'#c9c9c9',2); limb(4,-2,5,3+walk,'#c9c9c9',2); rectOutline(-4,-2,8,7,'#bcbcbc','#6a6a6a'); rectOutline(-4,-9,8,7,'#f1f1f1','#6a6a6a'); ctx.fillStyle='#111'; ctx.fillRect(-2,-6,1,1); ctx.fillRect(1,-6,1,1); const sx=5+thrust*10-raise*3, sy=-1-raise*3; rectOutline(sx,sy,16,2,'#946a48','#5a3b24'); ctx.fillStyle='#fff4a8'; ctx.beginPath(); ctx.moveTo(sx+16,sy+1); ctx.lineTo(sx+22,sy-2); ctx.lineTo(sx+22,sy+4); ctx.closePath(); ctx.fill(); }); }
 function drawBat(e){ drawShadow(e.x,e.y,7); const flap=Math.sin(e.walk*2.8)*4, tuck=e.state==='windup'?e.windScale*3:0; withFlip(e.x,e.y,e.dir,()=>{ rectOutline(-4,-4,8,8,'#c94cff','#591673'); rectOutline(-12,-2-flap+tuck,8,4,'#9f33d6','#4b1765'); rectOutline(4,-2+flap+tuck,8,4,'#9f33d6','#4b1765'); ctx.fillStyle='#2c1036'; ctx.fillRect(-2,-1,1,1); ctx.fillRect(1,-1,1,1); }); }
 function drawBomb(e){ const walk=Math.sin(e.walk)*1.3, lift=e.state==='windup'?e.windScale*3:0; drawShadow(e.x,e.y,8); withFlip(e.x,e.y,e.dir,()=>{ limb(-1,4,-2,8+walk,'#6a4732',2); limb(1,4,2,8-walk,'#6a4732',2); ctx.fillStyle='#ff7b2f'; ctx.beginPath(); ctx.arc(0,0,7,0,TAU); ctx.fill(); ctx.strokeStyle='#7a3806'; ctx.stroke(); ctx.fillStyle=(Math.floor(performance.now()/100)%2===0 || e.state==='windup')?'#ffd34d':'#ff2f63'; ctx.fillRect(-2,-11-lift,4,5); ctx.fillStyle='#43220c'; ctx.fillRect(-2,-3,1,1); ctx.fillRect(1,-3,1,1); }); }
-function drawOgre(e){ const walk=Math.sin(e.walk)*1.7, walk2=Math.sin(e.walk+Math.PI)*1.7, raise=e.state==='windup'?e.windScale:0; drawShadow(e.x,e.y,15); withFlip(e.x,e.y,e.dir,()=>{ limb(-5,7,-6,14+walk,'#842f2f',3); limb(5,7,6,14+walk2,'#842f2f',3); limb(-9,-2,-13,-1-raise*8,'#a34343',3); limb(9,-2,13,-1-raise*8,'#a34343',3); rectOutline(-11,-1,22,15,e.state==='windup'?'#ff8a55':'#ff4545','#7c1f1f'); rectOutline(-10,-13,20,12,'#ff7f7f','#7c1f1f'); ctx.fillStyle='#201014'; ctx.fillRect(-5,-8,2,2); ctx.fillRect(3,-8,2,2); ctx.fillStyle='#fff4a8'; ctx.fillRect(-4,-1,8,2); }); }
+function drawOgre(e){ const walk=Math.sin(e.walk)*1.7, walk2=Math.sin(e.walk+Math.PI)*1.7, raise=e.state==='windup'?e.windScale:0; drawShadow(e.x,e.y,15); withFlip(e.x,e.y,e.dir,()=>{ limb(-5,7,-6,14+walk,'#842f2f',3); limb(5,7,6,14+walk2,'#842f2f',3); limb(-9,-2,-13,-1-raise*8,'#a34343',3); limb(9,-2,13,-1-raise*8,'#a34343',3); rectOutline(-11,-1,22,15,e.state==='windup'?'#ff8a55':'#ff4545','#7c1f1f'); rectOutline(-10,-13,20,12,'#ff7f7f','#7c1f1f'); ctx.fillStyle='#201014'; ctx.fillRect(-5,-8,2,2); ctx.fillRect(3,-8,2,2); ctx.fillStyle='#fff4a8'; ctx.fillRect(-4,-1,8,2); if(e.type==='necroking'){ ctx.fillStyle='#70ff9a'; ctx.fillRect(-7,-17,14,3); ctx.fillRect(-2,-22,4,7); } if(e.type==='titan'){ ctx.fillStyle='#d6cec0'; ctx.fillRect(-13,-15,26,4); ctx.fillRect(-14,2,28,4); } }); }
 function drawSpecialEnemy(e){
   const walk=Math.sin(e.walk)*1.5, walk2=Math.sin(e.walk+Math.PI)*1.5, raise=e.state==='windup'?e.windScale:0, pulse=1+Math.sin(e.walk*2)*.08; drawShadow(e.x,e.y,e.r+1);
   withFlip(e.x,e.y,e.dir,()=>{
     if(e.type==='ghost'){ ctx.globalAlpha=.66; ctx.fillStyle=e.c; ctx.beginPath(); ctx.arc(0,-3,7*pulse,Math.PI,0); ctx.lineTo(7,6); ctx.lineTo(3,3); ctx.lineTo(0,6); ctx.lineTo(-3,3); ctx.lineTo(-7,6); ctx.closePath(); ctx.fill(); ctx.globalAlpha=1; }
-    else if(e.type==='archer'||e.type==='eye'||e.type==='dragonling'){ rectOutline(-5,-7,10,12,e.c,'#402818'); limb(-6,-1,-10,4+walk,'#9a6a3a',2); limb(6,-1,10,4+walk2,'#9a6a3a',2); rectOutline(4,-2,17,2,'#8b5b35','#39220f'); if(e.type==='eye'){ ctx.fillStyle='#fff'; ctx.fillRect(-4,-5,8,5); ctx.fillStyle='#111'; ctx.fillRect(-1,-4,2,3); } if(e.type==='dragonling'){ ctx.fillStyle='#ffef8a'; ctx.fillRect(3,-10,5,3); ctx.fillRect(-8,-10,5,3); } }
-    else if(e.type==='knight'||e.type==='paladin'){ limb(-3,3,-4,9+walk,'#777',2); limb(3,3,4,9+walk2,'#777',2); rectOutline(-6,-4,12,10,e.c,'#555'); rectOutline(-5,-12,10,8,e.type==='paladin'?'#fff0a8':'#dce3f0','#555'); rectOutline(5,-5,5,10,'#fff7d6','#7f6f3a'); rectOutline(-13,-1,13,3,'#e6edf6','#777'); }
-    else if(e.type==='wizard'||e.type==='monk'||e.type==='reaper'||e.type==='storm'){ rectOutline(-6,-3,12,11,e.c,'#301030'); rectOutline(-5,-12,10,9,e.type==='reaper'?'#1b0820':e.c,'#301030'); ctx.fillStyle='#fff7d6'; ctx.fillRect(-2,-8,1,1); ctx.fillRect(2,-8,1,1); limb(7,-2,12,-8-raise*6,e.c,2); ctx.fillStyle=e.type==='storm'?'#72d5ff':'#ffd34d'; ctx.fillRect(11,-11-raise*6,4,4); }
-    else if(e.type==='ram'||e.type==='wolf'){ rectOutline(-8,-5,16,10,e.c,'#4a2a18'); limb(-5,4,-7,10+walk,'#4a2a18',2); limb(5,4,7,10+walk2,'#4a2a18',2); ctx.fillStyle='#fff7d6'; ctx.fillRect(5,-8,4,3); ctx.fillRect(-9,-8,4,3); }
-    else if(e.type==='ice'||e.type==='fire'||e.type==='thorn'||e.type==='worm'){ ctx.fillStyle=e.c; ctx.beginPath(); ctx.arc(0,0,e.r*pulse,0,TAU); ctx.fill(); ctx.strokeStyle='#111'; ctx.stroke(); ctx.fillStyle='#fff7d6'; if(e.type==='thorn'){ for(let i=0;i<6;i++){ const a=i*TAU/6; ctx.fillRect(Math.cos(a)*8-1,Math.sin(a)*8-1,2,4); } } else if(e.type==='worm'){ ctx.fillRect(-9,1,18,3); } else { ctx.fillRect(-2,-12,4,5); } }
+    else if(e.type==='archer'||e.type==='eye'||e.type==='dragonling'||e.type==='harpooner'||e.type==='puppeteer'){ rectOutline(-5,-7,10,12,e.c,'#402818'); limb(-6,-1,-10,4+walk,'#9a6a3a',2); limb(6,-1,10,4+walk2,'#9a6a3a',2); rectOutline(4,-2,17,2,'#8b5b35','#39220f'); if(e.type==='eye'){ ctx.fillStyle='#fff'; ctx.fillRect(-4,-5,8,5); ctx.fillStyle='#111'; ctx.fillRect(-1,-4,2,3); } if(e.type==='dragonling'){ ctx.fillStyle='#ffef8a'; ctx.fillRect(3,-10,5,3); ctx.fillRect(-8,-10,5,3); } if(e.type==='harpooner'){ ctx.fillStyle='#70d6ff'; ctx.fillRect(15,-5,4,8); } if(e.type==='puppeteer'){ ctx.strokeStyle='#ffd4e8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,-7); ctx.lineTo(17,-2); ctx.stroke(); } }
+    else if(e.type==='knight'||e.type==='paladin'||e.type==='shieldbearer'||e.type==='knightmare'){ limb(-3,3,-4,9+walk,'#777',2); limb(3,3,4,9+walk2,'#777',2); rectOutline(-6,-4,12,10,e.c,'#555'); rectOutline(-5,-12,10,8,e.type==='paladin'?'#fff0a8':'#dce3f0','#555'); rectOutline(5,-5,e.type==='shieldbearer'?8:5,e.type==='shieldbearer'?13:10,'#fff7d6','#7f6f3a'); rectOutline(-13,-1,e.type==='knightmare'?18:13,3,e.type==='knightmare'?'#c467ff':'#e6edf6','#777'); }
+    else if(e.type==='wizard'||e.type==='monk'||e.type==='reaper'||e.type==='storm'||e.type==='shaman'||e.type==='bellringer'){ rectOutline(-6,-3,12,11,e.c,'#301030'); rectOutline(-5,-12,10,9,e.type==='reaper'?'#1b0820':e.c,'#301030'); ctx.fillStyle='#fff7d6'; ctx.fillRect(-2,-8,1,1); ctx.fillRect(2,-8,1,1); limb(7,-2,12,-8-raise*6,e.c,2); ctx.fillStyle=e.type==='storm'?'#72d5ff':e.type==='shaman'?'#7dff9e':e.type==='bellringer'?'#f4c16e':'#ffd34d'; ctx.fillRect(11,-11-raise*6,4,4); if(e.type==='bellringer'){ ctx.strokeStyle='#fff7d6'; ctx.strokeRect(-3,-16,6,5); } }
+    else if(e.type==='ram'||e.type==='wolf'||e.type==='frostbat'){ rectOutline(-8,-5,16,10,e.c,'#4a2a18'); limb(-5,4,-7,10+walk,'#4a2a18',2); limb(5,4,7,10+walk2,'#4a2a18',2); ctx.fillStyle='#fff7d6'; ctx.fillRect(5,-8,4,3); ctx.fillRect(-9,-8,4,3); }
+    else if(e.type==='ice'||e.type==='fire'||e.type==='thorn'||e.type==='worm'||e.type==='spark'||e.type==='burrower'){ ctx.fillStyle=e.c; ctx.beginPath(); ctx.arc(0,0,e.r*pulse,0,TAU); ctx.fill(); ctx.strokeStyle='#111'; ctx.stroke(); ctx.fillStyle='#fff7d6'; if(e.type==='thorn'){ for(let i=0;i<6;i++){ const a=i*TAU/6; ctx.fillRect(Math.cos(a)*8-1,Math.sin(a)*8-1,2,4); } } else if(e.type==='worm'){ ctx.fillRect(-9,1,18,3); } else { ctx.fillRect(-2,-12,4,5); } }
+    else if(e.type==='jester'){ rectOutline(-5,-5,10,11,e.c,'#4b1855'); ctx.fillStyle='#ffd34d'; ctx.fillRect(-6,-12,4,5); ctx.fillRect(2,-12,4,5); ctx.fillStyle='#111'; ctx.fillRect(-2,-2,1,1); ctx.fillRect(2,-2,1,1); }
     else if(e.type==='mimic'){ rectOutline(-8,-5,16,12,'#8b4b22','#2b160a'); ctx.fillStyle='#ffd34d'; ctx.fillRect(-6,-8,12,4); ctx.fillStyle='#fff'; ctx.fillRect(-5,-1,10,2); }
     else if(e.type==='crown'){ rectOutline(-7,-4,14,12,e.c,'#6d5412'); ctx.fillStyle='#ff2f63'; ctx.fillRect(-6,-12,3,5); ctx.fillRect(-1,-14,3,7); ctx.fillRect(4,-12,3,5); }
     else { rectOutline(-5,-5,10,12,e.c,'#111'); }
