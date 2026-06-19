@@ -364,9 +364,9 @@
   .mobileBtn{position:absolute;z-index:7;width:48px;height:48px;border-radius:16px;border:1px solid rgba(255,255,255,.20);background:rgba(0,0,0,.46);color:#fff;box-shadow:0 10px 28px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;-webkit-tap-highlight-color:transparent;touch-action:none;}
   .mobileBtn:active{transform:translateY(1px) scale(.98);}
   #btnMobileInv{top:12px;right:12px;}
-  #btnSpell{right:12px;top:72px;width:58px;height:58px;border-radius:18px;font-size:24px;background:linear-gradient(135deg, rgba(167,139,250,.56), rgba(56,189,248,.28));}
-  #btnSpell.ready{box-shadow:0 0 24px rgba(167,139,250,.55), 0 12px 30px rgba(0,0,0,.35);}
-  #btnSpell.cooling{filter:grayscale(.35);opacity:.76;}
+  #btnSpell{right:12px;top:72px;width:58px;height:58px;border-radius:18px;font-size:24px;background:linear-gradient(135deg, rgba(75,85,99,.86), rgba(31,41,55,.78));border-color:rgba(255,255,255,.16);color:rgba(255,255,255,.76);}
+  #btnSpell.ready{background:linear-gradient(135deg, rgba(167,139,250,.78), rgba(56,189,248,.48));border-color:rgba(216,180,254,.44);color:#fff;box-shadow:0 0 28px rgba(167,139,250,.72), 0 0 48px rgba(56,189,248,.22), 0 12px 30px rgba(0,0,0,.35);}
+  #btnSpell.cooling,#btnSpell.unavailable{background:linear-gradient(135deg, rgba(75,85,99,.88), rgba(17,24,39,.82));border-color:rgba(148,163,184,.22);filter:grayscale(.70);opacity:.72;box-shadow:0 10px 28px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08);}
   #btnSpell .spellIcon{line-height:1;}
   #btnSpell .spellCd{position:absolute;left:50%;bottom:4px;transform:translateX(-50%);font-size:11px;font-weight:1000;text-shadow:0 1px 4px #000;}
   #btnFullscreen{top:12px;left:12px;}
@@ -389,12 +389,40 @@
 
 
   /* Persistent main menu / cloud save */
-  .mainMenuOverlay{position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:18px;background:radial-gradient(900px 520px at 50% 25%, rgba(56,189,248,.18), rgba(0,0,0,.72) 58%, rgba(2,6,23,.94));backdrop-filter:blur(8px);}
+  .mainMenuOverlay{position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:18px;background:radial-gradient(960px 560px at 50% 18%, rgba(125,211,252,.22), rgba(56,189,248,.10) 24%, rgba(0,0,0,.72) 58%, rgba(2,6,23,.95));backdrop-filter:blur(8px);overflow:hidden;}
+  .mainMenuOverlay::before,.mainMenuOverlay::after{content:"";position:absolute;inset:auto;pointer-events:none;filter:blur(1px);opacity:.55;animation:menuNebulaDrift 12s ease-in-out infinite alternate;}
+  .mainMenuOverlay::before{width:480px;height:480px;left:-80px;top:-110px;border-radius:999px;background:radial-gradient(circle, rgba(56,189,248,.22) 0%, rgba(56,189,248,.08) 34%, rgba(56,189,248,0) 70%);}
+  .mainMenuOverlay::after{width:540px;height:540px;right:-120px;bottom:-140px;border-radius:999px;background:radial-gradient(circle, rgba(167,139,250,.24) 0%, rgba(167,139,250,.08) 36%, rgba(167,139,250,0) 72%);animation-duration:16s;animation-direction:alternate-reverse;}
   .mainMenuOverlay.hidden{display:none}
-  .menuCard{width:min(720px, calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;border-radius:24px;border:1px solid rgba(255,255,255,.16);background:linear-gradient(180deg, rgba(15,23,42,.96), rgba(3,7,18,.98));box-shadow:0 28px 90px rgba(0,0,0,.62);padding:18px;display:grid;gap:14px;}
-  .menuTitle{text-align:center;display:grid;gap:6px;padding:8px 4px 2px;}
-  .menuTitle h1{margin:0;font-size:clamp(30px, 8vw, 56px);line-height:.95;letter-spacing:.02em;background:linear-gradient(90deg,#fbbf24,#38bdf8,#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 18px 42px rgba(56,189,248,.16);}
-  .menuTitle p{margin:0;color:rgba(229,231,235,.72);font-size:13px;}
+  .menuCard{position:relative;width:min(720px, calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;border-radius:24px;border:1px solid rgba(255,255,255,.16);background:linear-gradient(180deg, rgba(15,23,42,.96), rgba(3,7,18,.98));box-shadow:0 28px 90px rgba(0,0,0,.62);padding:18px;display:grid;gap:14px;isolation:isolate;}
+  .menuCard::before{content:"";position:absolute;inset:0;border-radius:24px;pointer-events:none;background:linear-gradient(120deg, rgba(255,255,255,.06), rgba(255,255,255,0) 22%, rgba(56,189,248,.03) 48%, rgba(255,255,255,0) 78%);opacity:.9;}
+  .menuCard::after{content:"";position:absolute;inset:12px;border-radius:20px;pointer-events:none;border:1px solid rgba(255,255,255,.04);box-shadow:inset 0 0 80px rgba(56,189,248,.03);}
+  .menuTitle{position:relative;text-align:center;display:grid;gap:6px;padding:18px 4px 10px;overflow:visible;isolation:isolate;}
+  .menuTitle::before,.menuTitle::after{content:"";position:absolute;top:-12px;width:220px;height:132px;pointer-events:none;opacity:.95;z-index:0;filter:drop-shadow(0 10px 22px rgba(0,0,0,.32));background:
+      radial-gradient(60px 16px at 78% 18%, rgba(255,255,255,.92) 0 46%, rgba(255,255,255,0) 50%),
+      radial-gradient(68px 18px at 74% 36%, rgba(226,232,240,.88) 0 46%, rgba(255,255,255,0) 50%),
+      radial-gradient(76px 20px at 72% 54%, rgba(191,219,254,.82) 0 46%, rgba(255,255,255,0) 50%),
+      radial-gradient(82px 20px at 68% 72%, rgba(167,243,208,.78) 0 44%, rgba(255,255,255,0) 50%),
+      radial-gradient(86px 20px at 63% 88%, rgba(253,224,71,.70) 0 42%, rgba(255,255,255,0) 50%),
+      radial-gradient(95px 38px at 86% 50%, rgba(255,255,255,.12) 0 50%, rgba(255,255,255,0) 64%);
+  }
+  .menuTitle::before{left:calc(50% - 302px);transform-origin:100% 56%;animation:wingFlapLeft 4.8s ease-in-out infinite;}
+  .menuTitle::after{right:calc(50% - 302px);transform:scaleX(-1);transform-origin:0% 56%;animation:wingFlapRight 4.8s ease-in-out infinite;}
+  .menuTitle h1{position:relative;z-index:2;margin:0;font-size:clamp(30px, 8vw, 56px);line-height:.95;letter-spacing:.02em;background:linear-gradient(90deg,#fde68a 0%,#fbbf24 16%,#67e8f9 50%,#c4b5fd 84%,#fbbf24 100%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 20px 44px rgba(56,189,248,.18);animation:titleShift 6.5s linear infinite;}
+  .menuTitle h1::after{content:"Forge & Flight";position:absolute;left:0;right:0;top:0;z-index:-1;color:rgba(125,211,252,.24);filter:blur(12px);transform:translateY(5px) scale(1.03);}
+  .menuTitle p{position:relative;z-index:2;margin:0;color:rgba(229,231,235,.76);font-size:13px;letter-spacing:.03em;}
+  .menuSparkles{position:absolute;inset:0;pointer-events:none;z-index:1;}
+  .menuSparkles span{position:absolute;width:7px;height:7px;border-radius:999px;background:radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(125,211,252,.78) 45%, rgba(125,211,252,0) 72%);box-shadow:0 0 18px rgba(125,211,252,.28);animation:menuSpark 3.6s ease-in-out infinite;}
+  .menuSparkles span:nth-child(1){left:18%;top:36%;animation-delay:0s;}
+  .menuSparkles span:nth-child(2){left:28%;top:12%;animation-delay:.8s;}
+  .menuSparkles span:nth-child(3){right:24%;top:18%;animation-delay:1.5s;}
+  .menuSparkles span:nth-child(4){right:15%;top:42%;animation-delay:2.2s;}
+  .menuSparkles span:nth-child(5){left:49%;top:2%;animation-delay:2.8s;}
+  @keyframes menuNebulaDrift{0%{transform:translate3d(0,0,0) scale(1)}100%{transform:translate3d(18px,-12px,0) scale(1.08)}}
+  @keyframes wingFlapLeft{0%,100%{transform:rotate(-4deg) scale(1)}50%{transform:rotate(2deg) translateY(-4px) scale(1.03)}}
+  @keyframes wingFlapRight{0%,100%{transform:scaleX(-1) rotate(-4deg) scale(1)}50%{transform:scaleX(-1) rotate(2deg) translateY(-4px) scale(1.03)}}
+  @keyframes titleShift{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+  @keyframes menuSpark{0%,100%{opacity:.18;transform:translateY(0) scale(.75)}45%{opacity:1;transform:translateY(-6px) scale(1.15)}70%{opacity:.45;transform:translateY(-12px) scale(.9)}}
   .menuTabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
   .menuTabs .btn{font-size:14px;padding:12px;border-radius:14px;}
   .menuPane{display:none;gap:10px;}
@@ -453,6 +481,7 @@
       <div class="mainMenuOverlay" id="mainMenu">
         <div class="menuCard">
           <div class="menuTitle">
+            <div class="menuSparkles" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
             <h1>Forge & Flight</h1>
             <p>Mobile roguelike save profiles • deepest-run leaderboard</p>
           </div>
@@ -577,7 +606,7 @@
 
             <div class="panel">
               <h3>Star Upgrade (1★ → 5★)</h3>
-              <div class="smallNote">Each star increases that item’s power by <b>+15%</b> (multiplicative). Costs rise sharply.</div>
+              <div class="smallNote">Each star increases gear power by <b>+15%</b>. Spell books also gain larger impact, wider visuals, and faster recovery. Costs rise sharply.</div>
               <div class="rowFlex">
                 <button class="btn good" id="btnStarUp">Upgrade Star</button>
                 <span class="smallNote" id="starCostText"></span>
@@ -1231,18 +1260,18 @@ function upgradeText(it){
 
 
   const spellbookBases = [
-    {key:"meteor", name:"Meteor Codex", icon:"☄️", cooldown:18, power:[95,135], range:[520,680], radius:[130,170], note:"Calls a delayed meteor on the closest enemy"},
-    {key:"frostNova", name:"Frostbound Grimoire", icon:"❄️", cooldown:14, power:[42,62], radius:[230,300], note:"Freezes and damages enemies around you"},
-    {key:"stormChain", name:"Stormcall Tome", icon:"⚡", cooldown:12, power:[48,70], range:[460,620], jumps:[5,8], note:"Chains lightning through nearby enemies"},
-    {key:"sunPrayer", name:"Sun Prayer Book", icon:"☀️", cooldown:20, power:[42,68], radius:[210,280], note:"Heals you and burns nearby enemies"},
-    {key:"voidRift", name:"Void Rift Manual", icon:"🌀", cooldown:16, power:[32,46], radius:[120,160], note:"Opens a rift that repeatedly damages and slows enemies"},
-    {key:"aegis", name:"Aegis Scripture", icon:"🛡️", cooldown:22, power:[70,110], radius:[180,240], note:"Grants a strong shield and knocks enemies away"},
-    {key:"flameWave", name:"Dragonfire Psalter", icon:"🔥", cooldown:11, power:[48,74], range:[360,520], radius:[95,125], note:"Auto-aims a fan of burning fire waves"},
-    {key:"shadowLance", name:"Night Lance Codex", icon:"🌑", cooldown:9, power:[72,108], range:[620,820], radius:[55,85], note:"Pierces toward the strongest visible enemy and dooms targets"},
-    {key:"poisonBloom", name:"Viridian Plaguebook", icon:"☣️", cooldown:15, power:[38,58], range:[500,650], radius:[155,210], note:"Blooms a toxic cloud on a clustered enemy"},
-    {key:"gravityCrush", name:"Singularity Atlas", icon:"🕳️", cooldown:17, power:[58,86], range:[560,740], radius:[185,250], note:"Pulls enemies together, then detonates"},
-    {key:"bladeStorm", name:"Razor Psalm", icon:"🌪️", cooldown:13, power:[42,62], radius:[175,225], note:"Summons orbiting blades that carve nearby enemies"},
-    {key:"starfall", name:"Celestial Litany", icon:"✨", cooldown:19, power:[70,100], range:[560,720], radius:[120,160], note:"Drops a chain of radiant stars on auto-aimed enemies"},
+    {key:"meteor", name:"Meteor Codex", icon:"☄️", cooldown:15.5, power:[170,235], range:[590,800], radius:[185,250], note:"Calls a heavy delayed meteor that leaves a burning crater"},
+    {key:"frostNova", name:"Frostbound Grimoire", icon:"❄️", cooldown:11, power:[80,115], radius:[300,390], note:"Freezes, shatters, and damages enemies around you"},
+    {key:"stormChain", name:"Stormcall Tome", icon:"⚡", cooldown:9.5, power:[86,124], range:[560,760], jumps:[8,12], note:"Chains heavy lightning through packs and stuns survivors"},
+    {key:"sunPrayer", name:"Sun Prayer Book", icon:"☀️", cooldown:16, power:[88,132], radius:[270,360], note:"Heals you, shields you, and burns nearby enemies"},
+    {key:"voidRift", name:"Void Rift Manual", icon:"🌀", cooldown:12.8, power:[66,96], radius:[175,240], note:"Opens a larger rift that repeatedly damages and slows enemies"},
+    {key:"aegis", name:"Aegis Scripture", icon:"🛡️", cooldown:16.5, power:[135,190], radius:[240,330], note:"Grants a huge shield, blasts enemies back, and stuns them"},
+    {key:"flameWave", name:"Dragonfire Psalter", icon:"🔥", cooldown:8.4, power:[92,132], range:[470,660], radius:[135,178], note:"Auto-aims a wide fan of burning fire waves"},
+    {key:"shadowLance", name:"Night Lance Codex", icon:"🌑", cooldown:7.2, power:[132,185], range:[740,980], radius:[82,118], note:"Pierces toward the strongest visible enemy and dooms targets"},
+    {key:"poisonBloom", name:"Viridian Plaguebook", icon:"☣️", cooldown:11.7, power:[78,112], range:[590,760], radius:[220,300], note:"Blooms a huge toxic cloud that cripples clustered enemies"},
+    {key:"gravityCrush", name:"Singularity Atlas", icon:"🕳️", cooldown:13.4, power:[112,164], range:[650,860], radius:[250,340], note:"Pulls enemies together, crushes them, then detonates"},
+    {key:"bladeStorm", name:"Razor Psalm", icon:"🌪️", cooldown:9.8, power:[88,128], radius:[230,310], note:"Summons orbiting blades that carve and bleed nearby enemies"},
+    {key:"starfall", name:"Celestial Litany", icon:"✨", cooldown:14.8, power:[128,178], range:[680,860], radius:[160,220], note:"Drops a chain of radiant stars on auto-aimed enemies"},
   ];
 
   const armorBases = {
@@ -1303,15 +1332,30 @@ function upgradeText(it){
 
   function scaleItem(it, factor){
     if(!it) return;
-    for(const k of Object.keys(it.mods||{})){
-      if(typeof it.mods[k] === "number") it.mods[k] *= factor;
+    const f = Math.max(0.05, factor || 1);
+
+    // Spell books upgrade differently from normal gear:
+    // power goes up hard, area/range grow, jumps increase, and cooldown gets SHORTER.
+    if(it.slot === "spellbook"){
+      for(const k of Object.keys(it.mods||{})){
+        if(typeof it.mods[k] !== "number") continue;
+        if(k === "cooldown") it.mods[k] *= Math.max(0.34, 1 / Math.pow(f, 0.70));
+        else if(k === "rangePx" || k === "radiusPx") it.mods[k] *= Math.pow(f, 0.82);
+        else if(k === "jumps") it.mods[k] = Math.max(1, it.mods[k] * Math.pow(f, 0.58));
+        else it.mods[k] *= Math.pow(f, 1.06);
+      }
+    } else {
+      for(const k of Object.keys(it.mods||{})){
+        if(typeof it.mods[k] === "number") it.mods[k] *= f;
+      }
     }
+
     if(it.meta){
       for(const k of ["speedAura","armorAura","hpAura"]){
-        if(typeof it.meta[k] === "number") it.meta[k] *= factor;
+        if(typeof it.meta[k] === "number") it.meta[k] *= f;
       }
       if(Array.isArray(it.meta.effects)){
-        for(const ef of it.meta.effects){ if(typeof ef.power === "number") ef.power *= factor; }
+        for(const ef of it.meta.effects){ if(typeof ef.power === "number") ef.power *= f; }
       }
     }
   }
@@ -1431,12 +1475,13 @@ function upgradeText(it){
     // Rarity scaling
     const m = rarMult[it.rarity] * (1 + clamp(depth/120,0,1)*0.25);
     if(it.slot==="spellbook"){
-      // Spell books now scale much harder at high rarity/depth so rare, epic, and legendary books feel build-defining.
-      const spellTierBoost = 1 + Math.pow(rarRank[it.rarity] || 0, 1.45) * 0.18 + clamp(depth/80,0,1.25)*0.22;
+      // Spell books scale extra hard so later books feel like true build spikes.
+      const spellTierBoost = 1 + Math.pow(rarRank[it.rarity] || 0, 1.65) * 0.38 + clamp(depth/65,0,1.55)*0.34;
       it.mods.power *= m * spellTierBoost;
-      it.mods.cooldown *= Math.max(0.58, 1 - (m-1)*0.16 - (spellTierBoost-1)*0.08);
-      if(it.mods.rangePx) it.mods.rangePx *= (1 + (m-1)*0.18 + (spellTierBoost-1)*0.10);
-      if(it.mods.radiusPx) it.mods.radiusPx *= (1 + (m-1)*0.16 + (spellTierBoost-1)*0.14);
+      it.mods.cooldown *= Math.max(0.38, 1 - (m-1)*0.28 - (spellTierBoost-1)*0.15);
+      if(it.mods.rangePx) it.mods.rangePx *= (1 + (m-1)*0.28 + (spellTierBoost-1)*0.18);
+      if(it.mods.radiusPx) it.mods.radiusPx *= (1 + (m-1)*0.30 + (spellTierBoost-1)*0.24);
+      if(it.mods.jumps) it.mods.jumps *= (1 + (spellTierBoost-1)*0.26);
     } else if(it.slot==="weapon"){
       it.mods.dmgFlat *= m;
       it.mods.fireRate *= (1 + (m-1)*0.20);
@@ -1710,7 +1755,7 @@ function itemValue(it, purpose="buy"){
     const cur = book.meta.evo || 0;
     if(cur >= 5) return null;
     const names = ["Awakened", "Empowered", "Overcharged", "Ascended", "Mythic"];
-    return {type:"spellEvolution", icon:book.meta.icon||"📖", name:`${book.base || book.name} Evolution`, level:cur+1, tag:"Spellbook Evolution", desc:`Evolve the equipped spellbook to ${names[cur] || "Evolved"} Lv.${cur+1}: more power, radius, range, and faster cooldowns.`};
+    return {type:"spellEvolution", icon:book.meta.icon||"📖", name:`${book.base || book.name} Evolution`, level:cur+1, tag:"Spellbook Evolution", desc:`Evolve the equipped spellbook to ${names[cur] || "Evolved"} Lv.${cur+1}: big power jump, larger visual impact, stronger crowd-control, and faster cooldowns.`};
   }
   function buildBossRewards(){
     const cards=[];
@@ -4087,12 +4132,16 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
     if(!btnSpell || !G.player) return;
     const book = equippedSpellBook();
     const cd = Math.max(0, G.player.spellCD || 0);
+    const ready = !!book && cd<=0 && !G.paused && !G.ended;
     const iconEl = btnSpell.querySelector(".spellIcon");
     if(iconEl) iconEl.textContent = book?.meta?.icon || "📖";
     btnSpell.title = book ? `${book.name}: ${book.meta.note || "Cast spell"}` : "Equip a spell book";
-    btnSpell.classList.toggle("ready", !!book && cd<=0 && !G.paused && !G.ended);
+    btnSpell.classList.toggle("ready", ready);
     btnSpell.classList.toggle("cooling", !!book && cd>0);
-    if(spellCdText) spellCdText.textContent = !book ? "" : (cd>0 ? cd.toFixed(cd>9?0:1) : "CAST");
+    btnSpell.classList.toggle("unavailable", !ready && (!book || cd<=0 || G.paused || G.ended));
+    btnSpell.setAttribute("aria-disabled", ready ? "false" : "true");
+    btnSpell.disabled = !ready;
+    if(spellCdText) spellCdText.textContent = !book ? "—" : (cd>0 ? cd.toFixed(cd>9?0:1) : (ready ? "CAST" : "WAIT"));
   }
 
   function nearestEnemyInRange(range=9999, requireLos=false){
@@ -4113,6 +4162,33 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
     return G.player.dmgMul * crit;
   }
 
+  function spellEvolutionStats(book){
+    const evo = clamp(book?.meta?.evo || 0, 0, 5);
+    const g = clamp(book?.gstar || 0, 0, 5);
+    const s = clamp(book?.star || 1, 1, MAX_STARS);
+    return {
+      evo,
+      visual: 1 + evo*0.22 + g*0.24 + (s-1)*0.050,
+      power: 1 + evo*0.58 + evo*evo*0.10 + g*0.08 + (s-1)*0.03,
+      radius: 1 + evo*0.18 + evo*evo*0.024 + g*0.05,
+      range: 1 + evo*0.09 + evo*evo*0.014 + g*0.035,
+      cd: Math.max(0.38, 1 - evo*0.10 - g*0.045 - (s-1)*0.01),
+      cc: 1 + evo*0.22 + g*0.12 + (s-1)*0.025
+    };
+  }
+
+  function spellImpactFx(x,y,r,color,intensity=1){
+    const outer = r*intensity;
+    G.fx.push({type:"ring", x, y, r:outer, t:0.42, color});
+    G.fx.push({type:"ring", x, y, r:outer*0.70, t:0.28, color});
+    G.fx.push({type:"burst", x, y, r:r*0.72*intensity, t:0.34, color, rays:Math.round(18 + 10*intensity)});
+    G.fx.push({type:"vortex", x, y, r:r*0.40*intensity, t:0.24, color});
+    for(let i=0;i<Math.round(18+14*intensity);i++){
+      const a = rand(0, Math.PI*2);
+      G.particles.push({x:x+Math.cos(a)*rand(0,r*.38), y:y+Math.sin(a)*rand(0,r*.38), vx:Math.cos(a)*rand(90,300)*intensity, vy:Math.sin(a)*rand(90,300)*intensity, t:rand(.22,.52), c:color});
+    }
+  }
+
   function castEquippedSpell(){
     const p = G.player;
     const book = equippedSpellBook();
@@ -4121,18 +4197,20 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
     if((p.spellCD||0)>0){ toast(`Spell ready in ${p.spellCD.toFixed(1)}s`, 0.8); return; }
 
     const key = book.meta.spellKey;
-    const evo = clamp(book.meta?.evo || 0, 0, 5);
-    const power = (book.mods.power||50) * spellDamageMult(book) * (1 + evo*0.22 + relicStat("spellPower")*0.10);
-    const radius = (book.mods.radiusPx || 180) * (1 + evo*0.08);
-    const range = (book.mods.rangePx || 520) * (1 + evo*0.05);
-    const cd = Math.max(3.0, (book.mods.cooldown || 12) * (1 - evo*0.07) / (1 + relicStat("spellCd")*0.08));
+    const st = spellEvolutionStats(book);
+    const evo = st.evo;
+    const visual = st.visual;
+    const power = (book.mods.power||50) * spellDamageMult(book) * st.power * (1 + relicStat("spellPower")*0.13);
+    const radius = (book.mods.radiusPx || 180) * st.radius;
+    const range = (book.mods.rangePx || 520) * st.range;
+    const cd = Math.max(2.25, (book.mods.cooldown || 12) * st.cd / (1 + relicStat("spellCd")*0.10));
     let cast = false;
 
     if(key==="meteor"){
       const target = nearestEnemyInRange(range, true) || nearestEnemyInRange(range, false);
       if(!target){ toast("No enemy in spell range", 0.9); return; }
-      G.hazards.push({kind:"meteor", x:target.x, y:target.y, r:radius, tele:0.72, exploded:false, dmg:power*1.45, burnR:radius*0.78, burnT:2.2, burnDps:power*0.16, t:0});
-      G.fx.push({type:"ring", x:target.x, y:target.y, r:radius, t:0.72, color:"rgba(251,191,36,.38)"});
+      G.hazards.push({kind:"meteor", x:target.x, y:target.y, r:radius, tele:Math.max(0.42,0.72-0.035*evo), exploded:false, dmg:power*2.15, burnR:radius*1.05, burnT:3.2+evo*0.30, burnDps:power*0.28, t:0});
+      spellImpactFx(target.x, target.y, radius, "rgba(251,191,36,.70)", visual);
       G.fx.push({type:"beam", x1:p.x, y1:p.y, x2:target.x, y2:target.y, t:0.22, color:"rgba(251,191,36,.72)", width:5});
       toast("Meteor marked!", 0.9);
       cast = true;
@@ -4141,12 +4219,12 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
         if(e.hp<=0) continue;
         const d = dist(p.x,p.y,e.x,e.y);
         if(d < radius + e.r){
-          hitEnemy(e, power * (1 - d/(radius*1.65)), {trueDamage:true, pColor:"rgba(125,211,252,.95)"});
-          addStatus(e,"freeze",3.1,0.68);
+          hitEnemy(e, power * Math.max(0.45, 1 - d/(radius*1.95)), {trueDamage:true, pColor:"rgba(125,211,252,.95)"});
+          addStatus(e,"freeze",3.7*st.cc,0.78);
+          if(e.hp>0 && evo>=2) addStatus(e,"stun",0.28+evo*0.04,1);
         }
       }
-      G.fx.push({type:"ring", x:p.x, y:p.y, r:radius, t:0.28, color:"rgba(125,211,252,.58)"});
-      G.fx.push({type:"burst", x:p.x, y:p.y, r:radius, t:0.30, color:"rgba(186,230,253,.58)", rays:18});
+      spellImpactFx(p.x, p.y, radius, "rgba(186,230,253,.70)", visual);
       toast("Frost nova!", 0.9);
       cast = true;
     } else if(key==="stormChain"){
@@ -4154,41 +4232,42 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
       if(!cur){ toast("No enemy in spell range", 0.9); return; }
       const hit = new Set();
       let lastX=p.x, lastY=p.y;
-      const jumps = Math.round((book.mods.jumps||6) + evo);
+      const jumps = Math.round((book.mods.jumps||6) + evo*2 + (book.gstar||0));
       for(let i=0;i<jumps && cur;i++){
         hit.add(cur);
-        hitEnemy(cur, power * Math.pow(0.82,i), {trueDamage:true, pColor:"rgba(56,189,248,.95)"});
+        hitEnemy(cur, power * Math.pow(0.87,i), {trueDamage:true, pColor:"rgba(56,189,248,.95)"});
+        addStatus(cur,"stun",0.18+evo*0.035,1);
         G.fx.push({type:"line", x1:lastX, y1:lastY, x2:cur.x, y2:cur.y, t:0.20, color:"rgba(56,189,248,.86)"});
         lastX=cur.x; lastY=cur.y;
         let next=null, bd=1e9;
         for(const e of G.enemies){
           if(e.hp<=0 || hit.has(e)) continue;
           const d=dist(cur.x,cur.y,e.x,e.y);
-          if(d<230 && d<bd){bd=d;next=e;}
+          if(d<260+evo*28 && d<bd){bd=d;next=e;}
         }
         cur=next;
       }
       toast("Storm chain!", 0.9);
       cast = true;
     } else if(key==="sunPrayer"){
-      const heal = Math.min(p.hpMax-p.hp, power*0.62);
+      const heal = Math.min(p.hpMax-p.hp, power*(0.95+evo*0.06));
       p.hp = clamp(p.hp + heal, 0, p.hpMax);
-      gainShield(power*0.28);
+      gainShield(power*(0.52+evo*0.05));
       for(const e of G.enemies){
         if(e.hp<=0) continue;
         if(dist(p.x,p.y,e.x,e.y)<radius+e.r){
-          hitEnemy(e, power*0.55, {trueDamage:true, pColor:"rgba(251,191,36,.95)"});
-          addStatus(e,"burn",3.4,power*0.045);
+          hitEnemy(e, power*0.82, {trueDamage:true, pColor:"rgba(251,191,36,.95)"});
+          addStatus(e,"burn",4.2*st.cc,power*0.065);
         }
       }
-      G.fx.push({type:"ring", x:p.x, y:p.y, r:radius, t:0.32, color:"rgba(251,191,36,.52)"});
+      spellImpactFx(p.x, p.y, radius, "rgba(251,191,36,.70)", visual);
       toast(`Sun prayer +${Math.round(heal)} HP`, 1.0);
       cast = true;
     } else if(key==="voidRift"){
       const target = nearestEnemyInRange(range, false) || {x:p.x, y:p.y};
-      G.hazards.push({kind:"spellRift", x:target.x, y:target.y, r:radius, t:4.2, dmg:power*0.34});
-      G.fx.push({type:"ring", x:target.x, y:target.y, r:radius, t:0.32, color:"rgba(167,139,250,.62)"});
-      G.fx.push({type:"vortex", x:target.x, y:target.y, r:radius*1.1, t:0.50, color:"rgba(216,180,254,.70)"});
+      G.hazards.push({kind:"spellRift", x:target.x, y:target.y, r:radius, t:5.8+evo*0.42, dmg:power*0.62, pull:200+evo*40});
+      spellImpactFx(target.x, target.y, radius, "rgba(216,180,254,.70)", visual);
+      G.fx.push({type:"vortex", x:target.x, y:target.y, r:radius*1.25, t:0.60, color:"rgba(216,180,254,.78)"});
       toast("Void rift opened!", 0.9);
       cast = true;
     } else if(key==="flameWave"){
@@ -4202,10 +4281,10 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
           if(e.hp<=0) continue;
           const ex=e.x-p.x, ey=e.y-p.y, ed=hypot(ex,ey)||1;
           const da=Math.abs(Math.atan2(Math.sin(Math.atan2(ey,ex)-a), Math.cos(Math.atan2(ey,ex)-a)));
-          if(ed<range+e.r && da<0.13){ hitEnemy(e, power*.58, {trueDamage:true, pColor:"rgba(251,113,133,.95)"}); addStatus(e,"burn",3.6,power*.055); }
+          if(ed<range+e.r && da<0.16+evo*0.012){ hitEnemy(e, power*.90, {trueDamage:true, pColor:"rgba(251,113,133,.95)"}); addStatus(e,"burn",5.0*st.cc,power*.090); if(evo>=3) addStatus(e,"stagger",0.5,1); }
         }
       }
-      G.fx.push({type:"burst", x:p.x, y:p.y, r:radius*1.35, t:.28, color:"rgba(251,113,133,.62)", rays:14});
+      G.fx.push({type:"burst", x:p.x, y:p.y, r:radius*1.55*visual, t:.34, color:"rgba(251,113,133,.74)", rays:20});
       toast("Dragonfire wave!", 0.9);
       cast = true;
     } else if(key==="shadowLance"){
@@ -4220,58 +4299,59 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
         const ex=e.x-p.x, ey=e.y-p.y, ed=hypot(ex,ey)||1;
         const along = ex*Math.cos(a)+ey*Math.sin(a);
         const perp = Math.abs(-Math.sin(a)*ex + Math.cos(a)*ey);
-        if(along>0 && along<range && perp<radius+e.r){ hits++; hitEnemy(e, power*(hits===1?1.45:.78), {trueDamage:true, pColor:"rgba(167,139,250,.95)"}); addStatus(e,"doom",4.4,power*.07); }
+        if(along>0 && along<range && perp<radius+e.r){ hits++; hitEnemy(e, power*(hits===1?2.10:1.08), {trueDamage:true, pColor:"rgba(167,139,250,.95)"}); addStatus(e,"doom",5.2*st.cc,power*.095); if(evo>=2) addStatus(e,"armorBreak",3.2,0.28); }
       }
       toast("Shadow lance!", 0.9);
       cast = true;
     } else if(key==="poisonBloom"){
       const target = nearestEnemyInRange(range, false);
       if(!target){ toast("No enemy in spell range", 0.9); return; }
-      G.hazards.push({kind:"spellPoison", x:target.x, y:target.y, r:radius, t:4.4, dmg:power*.30});
-      G.fx.push({type:"ring", x:target.x, y:target.y, r:radius, t:.35, color:"rgba(132,204,22,.58)"});
-      G.fx.push({type:"burst", x:target.x, y:target.y, r:radius*.75, t:.35, color:"rgba(132,204,22,.60)", rays:16});
+      G.hazards.push({kind:"spellPoison", x:target.x, y:target.y, r:radius, t:6.0+evo*0.45, dmg:power*.58, cripple:0.40+evo*0.035});
+      spellImpactFx(target.x, target.y, radius, "rgba(132,204,22,.70)", visual);
       toast("Poison bloom!", 0.9);
       cast = true;
     } else if(key==="gravityCrush"){
       const target = nearestEnemyInRange(range, false);
       if(!target){ toast("No enemy in spell range", 0.9); return; }
-      G.hazards.push({kind:"gravityCrush", x:target.x, y:target.y, r:radius, t:2.2, dmg:power*.75, pulse:0});
+      G.hazards.push({kind:"gravityCrush", x:target.x, y:target.y, r:radius, t:2.70+evo*0.20, dmg:power*1.24, pulse:0, pull:820+evo*82});
       G.fx.push({type:"vortex", x:target.x, y:target.y, r:radius, t:.70, color:"rgba(216,180,254,.70)"});
       toast("Singularity forming!", 0.9);
       cast = true;
     } else if(key==="bladeStorm"){
-      G.hazards.push({kind:"bladeStorm", x:p.x, y:p.y, r:radius, t:3.3, dmg:power*.42, follow:true});
-      G.fx.push({type:"ring", x:p.x, y:p.y, r:radius, t:.35, color:"rgba(226,232,240,.55)"});
+      G.hazards.push({kind:"bladeStorm", x:p.x, y:p.y, r:radius, t:4.8+evo*0.42, dmg:power*.78, follow:true, blades:7+evo});
+      spellImpactFx(p.x, p.y, radius, "rgba(226,232,240,.70)", visual);
       toast("Blade storm!", 0.9);
       cast = true;
     } else if(key==="starfall"){
-      const targets = G.enemies.filter(e=>e.hp>0 && dist(p.x,p.y,e.x,e.y)<range).sort((a,b)=>dist(p.x,p.y,a.x,a.y)-dist(p.x,p.y,b.x,b.y)).slice(0,5);
+      const targets = G.enemies.filter(e=>e.hp>0 && dist(p.x,p.y,e.x,e.y)<range).sort((a,b)=>dist(p.x,p.y,a.x,a.y)-dist(p.x,p.y,b.x,b.y)).slice(0,6+evo);
       if(!targets.length){ toast("No enemy in spell range", 0.9); return; }
       targets.forEach((e,i)=>{
-        G.hazards.push({kind:"meteor", x:e.x+rand(-24,24), y:e.y+rand(-24,24), r:radius*.72, tele:0.35+i*.16, exploded:false, dmg:power*(1.0-i*.08), burnR:radius*.35, burnT:0.8, burnDps:power*.06, t:0});
+        G.hazards.push({kind:"meteor", x:e.x+rand(-24,24), y:e.y+rand(-24,24), r:radius*.82, tele:0.28+i*.11, exploded:false, dmg:power*(1.24-i*.055), burnR:radius*.48, burnT:1.1+evo*.10, burnDps:power*.085, t:0});
         G.fx.push({type:"beam", x1:p.x, y1:p.y, x2:e.x, y2:e.y, t:.16, color:"rgba(253,224,71,.48)", width:3});
       });
       toast("Starfall!", 0.9);
       cast = true;
     } else if(key==="aegis"){
-      gainShield(power);
+      gainShield(power*(1.45+evo*0.10));
       for(const e of G.enemies){
         if(e.hp<=0) continue;
         const d = dist(p.x,p.y,e.x,e.y);
         if(d < radius + e.r){
           const dx=e.x-p.x, dy=e.y-p.y, dd=hypot(dx,dy)||1;
-          e.vx += dx/dd*420; e.vy += dy/dd*420;
-          hitEnemy(e, power*0.32, {trueDamage:true, pColor:"rgba(167,139,250,.95)"});
+          e.vx += dx/dd*(760+evo*90); e.vy += dy/dd*(760+evo*90);
+          hitEnemy(e, power*0.58, {trueDamage:true, pColor:"rgba(167,139,250,.95)"});
+          addStatus(e,"stun",0.55+evo*0.07,1);
         }
       }
-      G.fx.push({type:"ring", x:p.x, y:p.y, r:radius, t:0.35, color:"rgba(167,139,250,.55)"});
+      spellImpactFx(p.x, p.y, radius, "rgba(167,139,250,.70)", visual);
       toast("Aegis shield!", 0.9);
       cast = true;
     }
 
     if(cast){
       p.spellCD = cd;
-      G.cam.shake = Math.min(0.30, G.cam.shake + 0.10);
+      spellImpactFx(p.x, p.y, Math.max(40, radius*0.22), "rgba(255,255,255,.34)", Math.min(1.7, 0.90 + visual*0.20));
+      G.cam.shake = Math.min(0.58, G.cam.shake + 0.20 + visual*0.04);
       renderSpellButton();
     }
   }
@@ -5235,8 +5315,10 @@ for(const hz of G.hazards){
     for(const e of G.enemies){
       if(e.hp<=0) continue;
       if(dist(hz.x,hz.y,e.x,e.y) < hz.r + e.r){
+        const dx=hz.x-e.x, dy=hz.y-e.y, dd=hypot(dx,dy)||1;
+        e.vx += dx/dd*(hz.pull||140)*dt; e.vy += dy/dd*(hz.pull||140)*dt;
         hitEnemy(e, hz.dmg*dt, {trueDamage:true, pColor:"rgba(167,139,250,.95)"});
-        addStatus(e,"freeze",0.35,0.42);
+        addStatus(e,"freeze",0.55,0.50);
       }
     }
     continue;
@@ -5251,7 +5333,8 @@ for(const hz of G.hazards){
       if(e.hp<=0) continue;
       if(dist(hz.x,hz.y,e.x,e.y) < hz.r + e.r){
         hitEnemy(e, hz.dmg*dt, {trueDamage:true, pColor:"rgba(132,204,22,.95)"});
-        addStatus(e,"poison",1.0,hz.dmg*.22);
+        addStatus(e,"poison",1.25,hz.dmg*.30);
+        addStatus(e,"cripple",0.65,hz.cripple||0.36);
       }
     }
     continue;
@@ -5283,7 +5366,7 @@ for(const hz of G.hazards){
     for(const e of G.enemies){
       if(e.hp<=0) continue;
       const d=dist(hz.x,hz.y,e.x,e.y);
-      if(d<hz.r+e.r){ const dx=hz.x-e.x, dy=hz.y-e.y, dd=hypot(dx,dy)||1; e.vx += dx/dd*520*dt; e.vy += dy/dd*520*dt; hitEnemy(e, hz.dmg*.18*dt, {trueDamage:true, pColor:"rgba(216,180,254,.75)"}); }
+      if(d<hz.r+e.r){ const dx=hz.x-e.x, dy=hz.y-e.y, dd=hypot(dx,dy)||1; e.vx += dx/dd*(hz.pull||650)*dt; e.vy += dy/dd*(hz.pull||650)*dt; hitEnemy(e, hz.dmg*.24*dt, {trueDamage:true, pColor:"rgba(216,180,254,.75)"}); addStatus(e,"cripple",0.35,0.40); }
     }
     if(chance(.35)) G.particles.push({x:hz.x+rand(-hz.r,hz.r), y:hz.y+rand(-hz.r,hz.r), vx:rand(-16,16), vy:rand(-16,16), t:rand(.10,.20), c:"rgba(216,180,254,.95)"});
     continue;
@@ -5294,13 +5377,14 @@ for(const hz of G.hazards){
     if(hz.follow){ hz.x=p.x; hz.y=p.y; }
     if(hz.t<=0) continue;
     const spin = G.t*7;
-    for(let i=0;i<6;i++){
-      const a = spin + i*Math.PI*2/6;
+    const bladeCount = Math.round(hz.blades || 6);
+    for(let i=0;i<bladeCount;i++){
+      const a = spin + i*Math.PI*2/bladeCount;
       const bx = hz.x + Math.cos(a)*hz.r*.72;
       const by = hz.y + Math.sin(a)*hz.r*.72;
       if(chance(.35)) G.particles.push({x:bx,y:by,vx:Math.cos(a+Math.PI/2)*90,vy:Math.sin(a+Math.PI/2)*90,t:.12,c:"rgba(226,232,240,.9)"});
     }
-    for(const e of G.enemies){ if(e.hp>0 && dist(hz.x,hz.y,e.x,e.y)<hz.r+e.r) hitEnemy(e, hz.dmg*dt, {trueDamage:true, pColor:"rgba(226,232,240,.95)"}); }
+    for(const e of G.enemies){ if(e.hp>0 && dist(hz.x,hz.y,e.x,e.y)<hz.r+e.r){ hitEnemy(e, hz.dmg*dt, {trueDamage:true, pColor:"rgba(226,232,240,.95)"}); addStatus(e,"bleed",0.9,hz.dmg*.18); } }
     continue;
   }
 
@@ -6664,7 +6748,8 @@ function draw(){
     } else if(hz.kind==="bladeStorm"){
       ctx.strokeStyle = `rgba(226,232,240,${0.42*a})`;
       ctx.stroke();
-      for(let i=0;i<6;i++){ const ba=G.t*7+i*Math.PI*2/6; const bx=hz.x+sx+Math.cos(ba)*rr*.72; const by=hz.y+sy+Math.sin(ba)*rr*.72; ctx.save(); ctx.translate(bx,by); ctx.rotate(ba+Math.PI/2); ctx.fillStyle=`rgba(226,232,240,${0.72*a})`; ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(-8,-3); ctx.lineTo(-4,0); ctx.lineTo(-8,3); ctx.closePath(); ctx.fill(); ctx.restore(); }
+      const bladeCount = Math.round(hz.blades || 6);
+      for(let i=0;i<bladeCount;i++){ const ba=G.t*7+i*Math.PI*2/bladeCount; const bx=hz.x+sx+Math.cos(ba)*rr*.72; const by=hz.y+sy+Math.sin(ba)*rr*.72; ctx.save(); ctx.translate(bx,by); ctx.rotate(ba+Math.PI/2); ctx.fillStyle=`rgba(226,232,240,${0.72*a})`; ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(-8,-3); ctx.lineTo(-4,0); ctx.lineTo(-8,3); ctx.closePath(); ctx.fill(); ctx.restore(); }
     } else {
       ctx.fillStyle = `rgba(251,113,133,${0.10*a})`;
       ctx.fill();
