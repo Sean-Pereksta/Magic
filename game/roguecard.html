@@ -36,6 +36,32 @@
 /* Lightweight relics, richer region art, and formation combo highlights */
 #app{position:relative;overflow:hidden}#app>*{position:relative;z-index:1}#app:before{position:absolute;inset:68px 0 72px 0;z-index:0;pointer-events:none;opacity:.18;font-size:34px;line-height:1.8;letter-spacing:16px;white-space:pre-wrap;text-align:center;filter:saturate(1.2);animation:sceneryFloat 9s ease-in-out infinite}.rg-meadow:before{content:"🌼  🌾  🦋  🍄  🌱\A  🌻  🐝  🌿  🌸  🐇"}.rg-bog:before{content:"🪷  🐸  💧  🌿  🦟\A  ☠️  🪱  🍃  🟢  🌧️"}.rg-ember:before{content:"🌋  🔥  🪨  🐉  ✨\A  🧡  💥  🌶️  🐕‍🔥  🔥"}.rg-frost:before{content:"❄️  🧊  ☃️  🐧  🏔️\A  🌨️  🦉  💎  ❄️  🧊"}.rg-crypt:before{content:"🪦  👻  🕯️  💀  🌘\A  🦇  ⚰️  🕸️  🧟  🕯️"}.rg-factory:before{content:"⚙️  🏭  🔩  🛸  ⚡\A  🤖  🔧  🧲  🦾  ⚙️"}.rg-jungle:before{content:"🌴  🦖  🍃  🐍  🌱\A  🦜  🌺  🐗  🐒  🌿"}.rg-storm:before{content:"⛈️  ⚡  🦅  🌪️  🌩️\A  ✨  🌀  ☁️  ⚡  🦅"}@keyframes sceneryFloat{50%{transform:translateY(-8px) scale(1.02)}}
 .trait.combo{background:#fff7ed;border-color:#fdba74;color:#9a3412;box-shadow:0 2px 8px #fb923c22}.trait.combo.hot{background:#fef2f2;border-color:#fca5a5;color:#991b1b;animation:comboGlow 1.2s infinite}.trait.combo.square{background:#f0fdf4;border-color:#86efac;color:#166534}.cell.comboCell{border-style:solid!important;box-shadow:0 0 0 3px #facc1555,0 0 16px #f59e0b33}.comboBadge{position:absolute;top:18px;left:3px;background:#fff7ed;color:#9a3412;border:1px solid #fdba74;border-radius:999px;font-size:8px;font-weight:950;padding:0 3px;box-shadow:0 1px 5px #0001}.relicBadge{display:inline-block;background:#f5f3ff;border:1px solid #c4b5fd;color:#5b21b6;border-radius:999px;padding:2px 7px;margin:2px;font-size:11px;font-weight:950}@keyframes comboGlow{50%{transform:scale(1.05);box-shadow:0 0 0 3px #fb923c22}}
+
+
+/* Fixed-size scrollable enemy wave strip: prevents mobile sideways page push */
+html,body{width:100%;max-width:100%;overflow:hidden;overflow-x:hidden}
+#app,.main,header,footer{width:100%;max-width:100%;min-width:0;overflow-x:hidden}
+.enemyBox{width:100%;max-width:100%;min-width:0;overflow:hidden}
+.enemyTitle{min-width:0;gap:8px}.enemyTitle span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.enemyRow{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  height:62px;
+  max-height:62px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  flex-wrap:nowrap;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:contain;
+  scrollbar-width:thin;
+  touch-action:pan-x;
+}
+.enemyRow::-webkit-scrollbar{height:6px}.enemyRow::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}.enemyRow::-webkit-scrollbar-track{background:#f8fafc;border-radius:999px}
+.enemy{flex:0 0 54px;min-width:54px;max-width:54px}
+@media(max-width:430px){.enemyRow{height:54px;max-height:54px}.enemy{flex-basis:47px;min-width:47px;max-width:47px}}
+@media(max-height:690px){.enemyRow{height:54px;max-height:54px}.enemy{min-width:48px;max-width:48px}}
+
 </style></head><body><div id="app"><header><div class="top"><div><div class="title">Emoji Squad: Tiny Tactics</div><div id="phase" class="phase">Tap a recruit, then tap your 4×4 squad grid.</div></div><button id="help" class="secondary tiny">?</button></div><div class="stats"><div class="pill">Round<b id="round">1</b></div><div class="pill">Kills<b id="kills">0</b></div><div class="pill">Points<b id="points">0</b></div><div class="pill">Coins<b id="coins">0</b></div></div></header><main class="main"><div class="traits" id="traits"></div><section class="enemyBox"><div class="enemyTitle"><span id="enemyTitle">Enemy Wave</span><span id="threat">Threat 1.0×</span></div><div class="enemyRow" id="enemyRow"></div></section><section class="arena"><div class="gridWrap"><div id="pick" class="pick">Tap a square. Right column is your front line.</div><div id="enemyOrbit" class="enemyOrbit"></div><div id="grid" class="grid"></div><div class="front">Front line ➜ right column takes melee hits first</div></div></section><div id="shopBanner" class="shopBanner">✨ Special Store open after this boss!</div></main><footer><div id="msg" class="msg"></div><div class="actions"><button id="recruit">Recruit</button><button id="shop" class="gold">Store</button><button id="restart" class="danger">Restart</button></div></footer></div><div id="shade" class="shade"></div><section id="drawer" class="drawer"><div class="dh"><div><h2 id="dt">Choose</h2><div id="dhint" class="hint"></div></div><button id="close" class="secondary tiny">Close</button></div><div id="body"></div></section><script>
 'use strict';
 const N=16,W=4,$=id=>document.getElementById(id),TE={Guard:'🛡️',Blade:'⚔️',Beast:'🐾',Mage:'✨',Nature:'🌿',Fire:'🔥',Shadow:'🌘',Machine:'⚙️',Healer:'💚',Royal:'👑',Frost:'❄️',Poison:'☠️',Storm:'⚡',Spirit:'👻',Stone:'🪨',Money:'🪙',Holy:'🌟',Blood:'🩸'},FO={near:'Near',weak:'Weak',strong:'Strong',back:'Back',burn:'Burn',poison:'Poison',support:'Support',ranged:'Ranged',boss:'Boss',random:'Random',line:'Line',armor:'Armor'};
