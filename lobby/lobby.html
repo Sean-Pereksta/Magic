@@ -683,7 +683,7 @@
     import {
       getFirestore, collection, addDoc, doc, setDoc, updateDoc, onSnapshot,
       query, where, getDoc, getDocs, deleteDoc, limit, runTransaction,
-      serverTimestamp, getCountFromServer, orderBy
+      serverTimestamp, getCountFromServer, orderBy, increment
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     // ✅ NEW: Auth imports
@@ -811,7 +811,14 @@
       { key: "swarm",      title: "swarm wars", emoji: "⚔️",          desc: "Vast armies colide", route: ROUTES.swarm },
       { key: "mobamania",  title: "MOBA Mania",      emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler.", route: ROUTES.mobamania },
       { key: "trials",     title: "Trials",          emoji: "⚔️",     desc: "Survive.", route: ROUTES.border },
-      { key: "roguecards", title: "Rogue Cards",     emoji: "🂠",     desc: "Solo deckbuilder run.", route: ROUTES.roguecards },
+      {
+        key: "roguecards",
+        title: "Tiny Troops Emoji Battle",
+        emoji: "🧙‍♂️⚔️✨",
+        desc: "Build a tiny emoji squad, stack synergies, and battle wave after wave.",
+        route: ROUTES.roguecards,
+        featured: true
+      },
       { key: "cardrealms", title: "Card Realms",     emoji: "🃏⚔️",  desc: "Deckbuilder battle game.", route: ROUTES.cardrealms },
       { key: "rogueworld", title: "Rogue World",     emoji: "🌍🗡️",   desc: "Explore Rogue World in a solo adventure.", route: ROUTES.rogueworld },
       { key: "trials2",    title: "Trials Rogue-like", emoji: "⚔️📱", desc: "Survive. 2.0", route: ROUTES.trials },
@@ -875,18 +882,24 @@
       try {
         if (!db || !g || !g.key) return;
         const ref = doc(db, "gameStats", g.key);
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(ref);
-          const current = snap.exists() ? (snap.data().plays || 0) : 0;
-          tx.set(ref, {
-            key: g.key,
-            title: g.title || g.key,
-            plays: current + 1,
-            lastPlayedAt: serverTimestamp()
-          }, { merge: true });
-        });
+        await setDoc(ref, {
+          key: g.key,
+          title: g.title || g.key,
+          plays: increment(1),
+          lastPlayedAt: serverTimestamp()
+        }, { merge: true });
       } catch (e) {
         console.warn("Play logging skipped:", e);
+      }
+    }
+
+    async function logGamePlayAndLaunch(g, launch) {
+      try {
+        await logGamePlay(g);
+      } catch (e) {
+        console.warn("Play logging skipped:", e);
+      } finally {
+        launch();
       }
     }
     async function loadGameStats() {
@@ -1001,7 +1014,7 @@
       save(SK.lastTab, which);
     };
 
-    function playSingle(g){
+    async function playSingle(g){
       if (g.requiresUser && !username){
         save(SK.nextRoute, g.key);
         showTab('multi');
@@ -1014,8 +1027,7 @@
       if (g.autoUsername && username){
         url += (url.includes('?') ? '&' : '?') + `username=${encodeURIComponent(username)}`;
       }
-      logGamePlay(g);
-      setTimeout(() => { window.location.href = url; }, 60);
+      logGamePlayAndLaunch(g, () => { window.location.href = url; });
     }
 
     function renderSingleplayer(){
@@ -1111,8 +1123,7 @@
       if (g.autoUsername && username){
         url += (url.includes('?') ? '&' : '?') + `username=${encodeURIComponent(username)}`;
       }
-      logGamePlay(g);
-      setTimeout(() => { window.location.href = url; }, 60);
+      logGamePlayAndLaunch(g, () => { window.location.href = url; });
     }
 
     async function login() {
@@ -1233,8 +1244,7 @@
         if (!username) return showError("❌ You must be logged in.");
         const route = ROUTES[gameType];
         save(SK.lastGame, gameType);
-        logGamePlay(getGameByKey(gameType));
-        setTimeout(() => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; }, 60);
+        logGamePlayAndLaunch(getGameByKey(gameType), () => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; });
         return;
       }
 
@@ -1245,8 +1255,7 @@
         const route = ROUTES.cardrealmsmulti;
         save(SK.lastGame, "cardrealmsmulti");
         save(SK.lastLobby, "");
-        logGamePlay(getGameByKey("cardrealmsmulti"));
-        setTimeout(() => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; }, 60);
+        logGamePlayAndLaunch(getGameByKey("cardrealmsmulti"), () => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; });
         return;
       }
 
@@ -1419,15 +1428,13 @@
             const isDM = (dm && dm === username);
             const route = isDM ? ROUTES.dungeonmaster : ROUTES.stoneyrelic;
             const role = isDM ? "dm" : "player";
-            logGamePlay(getGameByKey(data.gameType));
-            setTimeout(() => { window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}&role=${role}`; }, 60);
+            window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}&role=${role}`;
             return;
           }
 
           // default redirect
           const route = ROUTES[data.gameType] || ROUTES.cat;
-          logGamePlay(getGameByKey(data.gameType));
-          setTimeout(() => { window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}`; }, 60);
+          window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}`;
         }
       });
     }
@@ -1469,14 +1476,13 @@
       const ref = doc(db, "lobbies", currentLobbyId);
       const snap = await getDoc(ref); if (!snap.exists()) return;
       const data = snap.data();
-      logGamePlay(getGameByKey(data.gameType));
-
+      if (data.status === "started") return;
 
       if (data.gameType === "cardrealmsmulti") {
         const route = ROUTES.cardrealmsmulti;
         save(SK.lastGame, "cardrealmsmulti");
         save(SK.lastLobby, "");
-        setTimeout(() => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; }, 60);
+        logGamePlayAndLaunch(getGameByKey("cardrealmsmulti"), () => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; });
         return;
       }
 
@@ -1487,7 +1493,7 @@
         const route = ROUTES.estate;
         save(SK.lastGame, "estate");
         save(SK.lastLobby, activeId);
-        setTimeout(() => { window.location.href = `${route}?gameId=${activeId}&username=${encodeURIComponent(username)}`; }, 60);
+        logGamePlayAndLaunch(getGameByKey("estate"), () => { window.location.href = `${route}?gameId=${activeId}&username=${encodeURIComponent(username)}`; });
         return;
       }
 
@@ -1501,11 +1507,27 @@
           dm = players[Math.floor(Math.random() * players.length)];
         }
 
-        await updateDoc(ref, { status: "started", dm });
+        let startedNow = false;
+        await runTransaction(db, async (tx) => {
+          const cur = await tx.get(ref);
+          if (!cur.exists()) throw new Error("gone");
+          if (cur.data().status === "started") return;
+          tx.update(ref, { status: "started", dm });
+          startedNow = true;
+        });
+        if (startedNow) await logGamePlay(getGameByKey(data.gameType));
         return;
       }
 
-      await updateDoc(ref, { status: "started" });
+      let startedNow = false;
+      await runTransaction(db, async (tx) => {
+        const cur = await tx.get(ref);
+        if (!cur.exists()) throw new Error("gone");
+        if (cur.data().status === "started") return;
+        tx.update(ref, { status: "started" });
+        startedNow = true;
+      });
+      if (startedNow) await logGamePlay(getGameByKey(data.gameType));
     }
 
     async function leaveLobby() {
@@ -1643,8 +1665,7 @@
               const isDM = (dm && dm === username);
               const route = isDM ? ROUTES.dungeonmaster : ROUTES.stoneyrelic;
               const role = isDM ? "dm" : "player";
-              logGamePlay(getGameByKey(lastGame));
-              setTimeout(() => { window.location.href = `${route}?gameId=${gid}&username=${encodeURIComponent(username)}&role=${role}`; }, 60);
+              window.location.href = `${route}?gameId=${gid}&username=${encodeURIComponent(username)}&role=${role}`;
               return;
             }catch(e){
               // fall through to default
@@ -1654,8 +1675,7 @@
           // Default resume behavior
           const route = ROUTES[lastGame];
           const glue = gid ? `?gameId=${gid}&username=${encodeURIComponent(username)}` : `?username=${encodeURIComponent(username)}`;
-          logGamePlay(getGameByKey(lastGame));
-          setTimeout(() => { window.location.href = route + glue; }, 60);
+          window.location.href = route + glue;
         };
       }
 
@@ -1678,7 +1698,7 @@
 
     // ✅ NEW: Auth flow – everything waits until we have request.auth
     signInAnonymously(auth).catch(err => {
-      console.error("Anon sign-in failed", err);
+      console.warn("Anon sign-in failed", err);
     });
 
     onAuthStateChanged(auth, (user) => {
