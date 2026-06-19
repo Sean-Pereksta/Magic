@@ -28,6 +28,10 @@ service cloud.firestore {
       }
     }
 
+    match /gameStats/{gameId} {
+      allow read, write: if isAuthed();
+    }
+
     match /metrics_dailyUsers/{dateKey} {
       match /users/{uid} {
         allow read, write: if isAuthed();
