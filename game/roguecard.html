@@ -1,832 +1,213 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Red Rising: Rogue Deck Grid</title>
-<style>
-  :root{
-    --bg:#07090f;
-    --panel:#0f172a;
-    --card:#111827;
-    --muted:#94a3b8;
-    --ink:#e2e8f0;
-    --line:#1f2937;
-    --accent:#38bdf8;
-    --danger:#f97316;
-    --heal:#22c55e;
-    --poison:#a855f7;
-    --stun:#facc15;
-    --rar-common:#94a3b8;
-    --rar-rare:#60a5fa;
-    --rar-epic:#c084fc;
-    --rar-legend:#fbbf24;
-    --low:#f87171;
-    --gold:#f59e0b;
-    --silver:#94a3b8;
-    --obsidian:#64748b;
-    --violet:#a78bfa;
-    --yellow:#fde047;
-    --red:#ef4444;
-    --gray:#9ca3af;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
-  header{padding:12px 18px;border-bottom:1px solid var(--line);background:#0b1020;position:sticky;top:0;z-index:10}
-  header h1{margin:0;font-size:18px;letter-spacing:.6px}
-  #root{max-width:1280px;margin:0 auto;padding:16px;display:grid;gap:16px}
-  .stats{display:flex;flex-wrap:wrap;gap:8px}
-  .pill{padding:6px 10px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-weight:700;font-size:12px;color:var(--muted)}
-  .arena{display:grid;gap:16px;grid-template-columns:1fr 1fr}
-  .boardWrap{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;gap:10px}
-  .boardTitle{font-weight:800;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
-  .grid{display:grid;grid-template-columns:repeat(5, 1fr);gap:8px;min-height:420px}
-  .tileSlot{background:#0b132a;border:1px dashed #1f2a44;border-radius:12px;min-height:76px;position:relative}
-  .tile{
-    background:var(--card);
-    border:1px solid #1e293b;
-    border-radius:12px;
-    padding:8px;
-    display:grid;
-    gap:4px;
-    cursor:grab;
-    position:relative;
-    box-shadow:0 12px 24px rgba(0,0,0,.28);
-    transition:transform .15s ease;
-  }
-  .tile:active{cursor:grabbing;transform:scale(.98)}
-  .tileHeader{display:flex;justify-content:space-between;align-items:center}
-  .tileName{font-weight:800;font-size:12px}
-  .tileFaction{font-size:10px;padding:2px 6px;border-radius:999px;border:1px solid #1f2937}
-  .tileBody{font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px}
-  .tileStats{display:flex;gap:8px;font-size:11px;color:#cbd5f5}
-  .rarity{font-size:10px;font-weight:800;padding:2px 6px;border-radius:999px}
-  .rarity.common{background:var(--rar-common);color:#0f172a}
-  .rarity.rare{background:var(--rar-rare);color:#0f172a}
-  .rarity.epic{background:var(--rar-epic);color:#0f172a}
-  .rarity.legend{background:var(--rar-legend);color:#0f172a}
-  .tileAura{position:absolute;inset:-4px;border-radius:14px;pointer-events:none;opacity:.35;filter:blur(1px)}
-  .aura-boost{background:radial-gradient(circle, rgba(59,130,246,.8), rgba(0,0,0,0))}
-  .aura-heal{background:radial-gradient(circle, rgba(34,197,94,.8), rgba(0,0,0,0))}
-  .aura-red{background:radial-gradient(circle, rgba(239,68,68,.7), rgba(0,0,0,0))}
-  .aura-violet{background:radial-gradient(circle, rgba(167,139,250,.7), rgba(0,0,0,0))}
-  .tileStatus{position:absolute;right:6px;top:6px;display:flex;gap:4px}
-  .statusPill{font-size:10px;font-weight:800;padding:2px 4px;border-radius:999px;color:#0f172a}
-  .status-poison{background:var(--poison);color:white}
-  .status-stun{background:var(--stun);color:#0f172a}
-  .status-buff{background:#38bdf8;color:#0f172a}
-  .reserve{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;gap:10px}
-  .reserveSlots{display:flex;flex-wrap:wrap;gap:10px;min-height:96px}
-  .trash{border:2px dashed #f97316;border-radius:16px;padding:12px;text-align:center;color:#fca5a5;font-weight:700}
-  .controls{display:flex;flex-wrap:wrap;gap:8px}
-  button{background:linear-gradient(180deg,#38bdf8,#0284c7);border:1px solid #0369a1;color:#0b1020;font-weight:800;padding:10px 14px;border-radius:12px;cursor:pointer}
-  button.secondary{background:linear-gradient(180deg,#94a3b8,#475569);border-color:#334155;color:#0f172a}
-  button:disabled{opacity:.5;cursor:not-allowed}
-  .log{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;max-height:190px;overflow:auto;font-size:12px;color:#cbd5f5}
-  .modal{position:fixed;inset:0;background:rgba(3,7,18,.7);display:none;align-items:center;justify-content:center;z-index:20}
-  .modal.active{display:flex}
-  .sheet{background:#0b1020;border:1px solid var(--line);border-radius:16px;padding:16px;max-width:980px;width:90%;display:grid;gap:12px}
-  .choiceGrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
-  .choiceCard{border:1px solid #1f2937;border-radius:14px;background:#0f172a;padding:12px;display:grid;gap:6px;cursor:pointer}
-  .choiceCard:hover{border-color:#38bdf8;box-shadow:0 0 18px rgba(56,189,248,.35)}
-  .hint{font-size:12px;color:var(--muted)}
-  .fxLayer{position:fixed;inset:0;pointer-events:none;z-index:30}
-  .beam{position:absolute;height:3px;border-radius:999px;transform-origin:left center;animation:beam .5s ease-out forwards}
-  .beam.fire{background:linear-gradient(90deg,#f97316,#facc15)}
-  .beam.rail{background:linear-gradient(90deg,#38bdf8,#f0f9ff)}
-  .beam.heal{background:linear-gradient(90deg,#22c55e,#bbf7d0)}
-  .beam.poison{background:linear-gradient(90deg,#a855f7,#f5d0fe)}
-  .beam.stun{background:linear-gradient(90deg,#facc15,#fef08a)}
-  @keyframes beam{to{opacity:0;transform:scaleX(1.1)}}
-  .pulse{position:absolute;inset:-2px;border-radius:14px;border:2px solid rgba(56,189,248,.7);animation:pulse 1s ease-out}
-  @keyframes pulse{to{opacity:0;transform:scale(1.1)}}
-  .regionTag{font-weight:800;color:#38bdf8}
-  @media (max-width: 980px){
-    .arena{grid-template-columns:1fr}
-    .grid{min-height:320px}
-  }
-</style>
-</head>
-<body>
-<header>
-  <h1>Red Rising: Rogue Deck Grid</h1>
-  <div class="stats">
-    <div class="pill">Round: <span id="round">1</span></div>
-    <div class="pill">Region: <span id="region">Mars Lowlands</span></div>
-    <div class="pill">Threat: <span id="threat">1.0x</span></div>
-    <div class="pill">Boss In: <span id="bossCounter">5</span></div>
-    <div class="pill">Deck: <span id="deckCount">0</span>/25</div>
-  </div>
-</header>
-<div id="root">
-  <div class="controls">
-    <button id="btnStart">Start Run</button>
-    <button id="btnNext" disabled>Resolve Round</button>
-    <button id="btnReset" class="secondary">Restart</button>
-  </div>
-  <div class="arena">
-    <div class="boardWrap">
-      <div class="boardTitle">Your Grid 5x5</div>
-      <div id="playerGrid" class="grid"></div>
-    </div>
-    <div class="boardWrap">
-      <div class="boardTitle">Enemy Grid</div>
-      <div id="enemyGrid" class="grid"></div>
-    </div>
-  </div>
-  <div class="reserve">
-    <div class="boardTitle">New Tiles (drag onto grid)</div>
-    <div id="reserveSlots" class="reserveSlots"></div>
-    <div id="trash" class="trash">Trash — drag a tile here to delete</div>
-  </div>
-  <div class="boardWrap">
-    <div class="boardTitle">Battle Log</div>
-    <div id="log" class="log"></div>
-  </div>
-</div>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Emoji Squad Tiny Tactics</title><style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{height:100%;margin:0;overflow:hidden;background:#fff;color:#111827;font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif}button{font:inherit;font-weight:900;border:0;border-radius:14px;padding:10px;background:#111827;color:white;box-shadow:0 3px 9px #0002}.secondary{background:#eef2ff;color:#1e293b}.gold{background:#f59e0b;color:#111827}.danger{background:#fee2e2;color:#991b1b}.tiny{font-size:12px;padding:6px 9px}#app{height:100dvh;display:grid;grid-template-rows:auto 1fr auto;background:linear-gradient(#fff,#f8fafc)}header{padding:8px 10px;border-bottom:1px solid #dbe4ef;background:#fff}.top{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}.title{font-weight:950;font-size:17px;letter-spacing:-.4px}.phase{font-size:12px;color:#64748b;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:7px}.pill{background:#f8fafc;border:1px solid #dbe4ef;border-radius:12px;padding:5px 3px;text-align:center;font-size:10.5px;font-weight:900}.pill b{display:block;font-size:14px}.main{min-height:0;display:grid;grid-template-rows:auto auto 1fr auto;gap:7px;padding:7px}.traits{display:flex;gap:4px;overflow-x:auto}.trait{border:1px solid #dbe4ef;background:#fff;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:900;white-space:nowrap}.trait.on{background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}.trait.big{background:#fffbeb;border-color:#facc15;color:#92400e}.enemyBox{border:1px solid #dbe4ef;border-radius:16px;background:white;padding:7px}.enemyTitle{display:flex;justify-content:space-between;color:#334155;font-size:12px;font-weight:950;margin-bottom:5px}.enemyRow{display:flex;gap:5px;overflow-x:auto;min-height:60px}.enemy{flex:0 0 54px;height:58px;border:1px solid #fecdd3;background:#fff1f2;border-radius:13px;display:grid;place-items:center;grid-template-rows:1fr auto;position:relative;padding:2px}.enemy.boss{background:#fdf2f8;border-color:#f9a8d4}.enemy.dead{opacity:.25;filter:grayscale(1)}.ee{font-size:25px}.en{font-size:8px;font-weight:950;max-width:50px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ehp{position:absolute;left:5px;right:5px;bottom:4px;height:4px;border-radius:999px;background:#fee2e2;overflow:hidden}.ehp i{display:block;height:100%;background:#ef4444}.arena{display:grid;place-items:center;min-height:0}.gridWrap{display:grid;gap:5px;justify-items:center;position:relative}.enemyOrbit{position:absolute;inset:-22px;pointer-events:none;z-index:3}.orbitEnemy{position:absolute;width:26px;height:26px;border:1px solid #fecdd3;background:#fff1f2;border-radius:9px;display:grid;place-items:center;font-size:17px;box-shadow:0 2px 6px #0001}.orbitEnemy.boss{background:#fdf2f8;border-color:#f9a8d4;transform:scale(1.18)}.pick{display:none;color:#1d4ed8;font-weight:950;font-size:12px}.pick.show{display:block}.front{font-size:11px;font-weight:950;color:#64748b}.grid{width:min(86vw,42dvh,360px);aspect-ratio:1;display:grid;grid-template-columns:repeat(4,1fr);gap:5px}.cell{position:relative;border:2px dashed #d7dee9;background:#fff;border-radius:15px;overflow:hidden;display:grid;place-items:center}.cell.fxBurn{background:linear-gradient(135deg,#fff7ed,#fed7aa)!important;border-color:#fb923c}.cell.fxPoison{background:linear-gradient(135deg,#f0fdf4,#bbf7d0)!important;border-color:#22c55e}.cell.fxHeal{background:linear-gradient(135deg,#ecfdf5,#a7f3d0)!important;border-color:#10b981}.cell.fxStrength{background:linear-gradient(135deg,#eff6ff,#bfdbfe)!important;border-color:#3b82f6}.cell.fxFrost{background:linear-gradient(135deg,#f0f9ff,#bae6fd)!important;border-color:#0ea5e9}.cell.fxStorm{background:linear-gradient(135deg,#fefce8,#fde68a)!important;border-color:#eab308}.cell.fxThorn{background:linear-gradient(135deg,#f7fee7,#bef264)!important;border-color:#65a30d}.cell.fxVamp{background:linear-gradient(135deg,#fff1f2,#fecdd3)!important;border-color:#e11d48}.cell.fxShield{background:linear-gradient(135deg,#eef2ff,#c7d2fe)!important;border-color:#6366f1}.cell.fxCoin{background:linear-gradient(135deg,#fffbeb,#fde68a)!important;border-color:#f59e0b}.cell.fxHaste{background:linear-gradient(135deg,#faf5ff,#e9d5ff)!important;border-color:#a855f7}.cell.fxMark{background:linear-gradient(135deg,#fdf2f8,#fbcfe8)!important;border-color:#ec4899}.cell.f{background:#fffbeb;border-color:#fcd34d}.cell.place{background:#eff6ff;border-color:#93c5fd;animation:pulse 1s infinite}.cell.mark{box-shadow:inset 0 0 0 3px #fb7185}.unit{width:100%;height:100%;border:2px solid #dbe4ef;background:#f8fafc;border-radius:13px;display:grid;grid-template-rows:1fr auto auto;place-items:center;padding:2px;position:relative}.unit.s2{background:linear-gradient(135deg,#eff6ff,#dbeafe);border-color:#60a5fa}.unit.s3{background:linear-gradient(135deg,#f5f3ff,#ddd6fe);border-color:#a78bfa}.unit.s4{background:linear-gradient(135deg,#fffbeb,#fde68a);border-color:#f59e0b}.unit.s5{background:linear-gradient(135deg,#fff1f2,#fecdd3,#fef3c7);border-color:#fb7185}.fxBadge{position:absolute;bottom:2px;right:3px;background:#fff;color:#111827;border:1px solid #dbe4ef;border-radius:999px;font-size:9px;font-weight:950;padding:0 3px;box-shadow:0 1px 4px #0001}.statusBadge{position:absolute;bottom:2px;left:3px;background:#fff7ed;color:#7c2d12;border:1px solid #fed7aa;border-radius:999px;font-size:9px;font-weight:950;padding:0 3px;box-shadow:0 1px 4px #0001}.enemy .statusBadge{bottom:auto;top:2px;left:3px;font-size:8px}.weakHint{position:absolute;top:2px;right:3px;background:#ecfeff;color:#155e75;border:1px solid #a5f3fc;border-radius:999px;font-size:8px;font-weight:950;padding:0 3px}.unit.hit{animation:hit .18s}.unit.atk{animation:bump .2s}.emo{font-size:clamp(20px,8vw,38px);line-height:1}.nm{font-size:8px;font-weight:950;line-height:1;max-width:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.star{position:absolute;top:2px;left:3px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:99px;font-size:9px;font-weight:950;padding:0 4px}.foc{position:absolute;top:2px;right:3px;background:#eef2ff;color:#3730a3;border-radius:99px;font-size:8px;font-weight:950;padding:1px 4px}.bars{width:88%;display:grid;gap:2px}.hp{height:5px;border-radius:999px;background:#e5e7eb;overflow:hidden}.hp i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#facc15,#ef4444)}.sh{height:3px;border-radius:999px;background:#dbeafe;overflow:hidden}.sh i{display:block;height:100%;background:#60a5fa}.float{position:fixed;z-index:60;font-weight:950;font-size:16px;animation:float .72s forwards;pointer-events:none;text-shadow:0 1px 4px #fff}.slash{position:absolute;width:48%;height:5px;border-radius:99px;background:#ef4444;transform:rotate(-25deg);animation:slash .3s forwards;z-index:10}.spark{position:absolute;width:10px;height:10px;border-radius:50%;background:#fde047;animation:spark .5s forwards;z-index:10}.beam{position:absolute;height:4px;border-radius:99px;background:#60a5fa;animation:beam .38s forwards;z-index:10;transform-origin:left center}.shopBanner{display:none;background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:7px;text-align:center;font-weight:950;color:#92400e}.shopBanner.show{display:block}footer{border-top:1px solid #dbe4ef;background:#fff;padding:8px;display:grid;gap:7px}.msg{text-align:center;min-height:18px;color:#334155;font-size:13px;font-weight:800}.actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}.shade{position:fixed;inset:0;background:#0f172a66;z-index:25;display:none}.shade.open{display:block}.drawer{position:fixed;inset:auto 0 0 0;background:white;border:1px solid #cbd5e1;border-radius:22px 22px 0 0;box-shadow:0 -16px 38px #0f172a2e;z-index:30;max-height:86dvh;overflow:auto;padding:14px;transform:translateY(110%);transition:.2s}.drawer.open{transform:translateY(0)}.dh{display:flex;justify-content:space-between;gap:10px;margin-bottom:10px}.drawer h2{margin:0;font-size:18px}.hint{font-size:12px;color:#64748b;font-weight:750}.choices{display:grid;gap:8px}.choice{border:1px solid #dbe4ef;background:white;border-radius:17px;padding:10px;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;text-align:left;width:100%;color:#111827}.be{font-size:32px}.choice strong{font-size:14px}.choice p{font-size:12px;line-height:1.22;margin:3px 0;color:#475569;font-weight:680}.price{font-weight:950;color:#b45309}.owned{font-size:11px;color:#15803d;font-weight:950}.detail{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center}.de{font-size:52px}.detailStats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}.stat{background:#f8fafc;border:1px solid #dbe4ef;border-radius:12px;text-align:center;padding:8px 3px;font-size:11px;font-weight:850}.help{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.help div{background:#f8fafc;border:1px solid #dbe4ef;border-radius:12px;padding:8px;font-size:12px}@keyframes pulse{50%{transform:scale(1.03)}}@keyframes hit{50%{transform:scale(.92)}}@keyframes bump{50%{transform:scale(1.06)}}@keyframes float{to{opacity:0;transform:translateY(-28px)}}@keyframes slash{to{opacity:0;transform:rotate(-25deg) scaleX(1.6)}}@keyframes spark{to{opacity:0;transform:scale(5)}}@keyframes beam{to{opacity:0;transform:scaleX(1.15)}}@media(min-width:760px){#app{max-width:520px;margin:0 auto;border-inline:1px solid #dbe4ef}.drawer{left:calc(50% - 260px);right:calc(50% - 260px)}}@media(max-height:690px){.grid{width:min(82vw,36dvh,315px)}.enemyRow{min-height:52px}.enemy{height:50px;flex-basis:48px}.ee{font-size:21px}footer{padding:6px}.actions button{padding:8px 5px;font-size:13px}.msg{font-size:12px}}
 
-<div id="draftModal" class="modal">
-  <div class="sheet">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <strong>Draft: Choose 1</strong>
-      <span id="draftHint" class="hint"></span>
-    </div>
-    <div id="draftChoices" class="choiceGrid"></div>
-  </div>
-</div>
+/* Region backdrops + tighter mobile cards */
+#app{transition:background .35s ease}.rg-meadow{background:radial-gradient(circle at 15% 12%,#dcfce7 0 13%,transparent 14%),linear-gradient(180deg,#f0fdf4,#ecfeff 58%,#f8fafc)}.rg-bog{background:radial-gradient(circle at 85% 16%,#bbf7d0 0 10%,transparent 11%),linear-gradient(180deg,#ecfdf5,#d9f99d 48%,#f0fdf4)}.rg-ember{background:radial-gradient(circle at 50% 5%,#fed7aa 0 16%,transparent 17%),linear-gradient(180deg,#fff7ed,#fee2e2 52%,#fffbeb)}.rg-frost{background:radial-gradient(circle at 18% 15%,#e0f2fe 0 15%,transparent 16%),linear-gradient(180deg,#f0f9ff,#e0f2fe 50%,#f8fafc)}.rg-crypt{background:radial-gradient(circle at 82% 10%,#ddd6fe 0 11%,transparent 12%),linear-gradient(180deg,#f5f3ff,#f1f5f9 52%,#e2e8f0)}.rg-factory{background:radial-gradient(circle at 20% 12%,#e5e7eb 0 13%,transparent 14%),repeating-linear-gradient(135deg,#f8fafc 0 18px,#eef2ff 18px 34px)}.rg-jungle{background:radial-gradient(circle at 10% 10%,#86efac 0 13%,transparent 14%),linear-gradient(180deg,#f0fdf4,#bbf7d0 44%,#f7fee7)}.rg-storm{background:radial-gradient(circle at 80% 9%,#fde68a 0 12%,transparent 13%),linear-gradient(180deg,#fefce8,#dbeafe 55%,#eef2ff)}
+.regionDust{position:absolute;inset:0;pointer-events:none;opacity:.28;background-image:radial-gradient(circle,#fff 0 2px,transparent 3px);background-size:36px 36px;animation:drift 5s linear infinite}.bossPulse{position:absolute;inset:-6px;border:3px solid #f43f5e;border-radius:18px;animation:bossPulse .7s forwards;z-index:12;pointer-events:none}.nova{position:fixed;width:22px;height:22px;border-radius:999px;border:4px solid #f59e0b;box-shadow:0 0 0 10px #fef3c799;z-index:80;animation:nova .65s forwards;pointer-events:none}.iceBurst{position:fixed;width:26px;height:26px;border-radius:8px;background:#bae6fd;box-shadow:0 0 0 8px #e0f2fe99;z-index:80;animation:nova .65s forwards;pointer-events:none}.poisonCloud{position:fixed;width:34px;height:24px;border-radius:999px;background:#86efac;box-shadow:18px 2px 0 #bbf7d0,-14px 3px 0 #dcfce7;z-index:80;animation:cloud .8s forwards;pointer-events:none}.shadowRip{position:fixed;width:30px;height:30px;border-radius:999px;background:#7c3aed;box-shadow:0 0 0 8px #ddd6fe99;z-index:80;animation:nova .65s forwards;pointer-events:none}.gearBurst{position:fixed;width:30px;height:30px;border-radius:4px;border:5px dashed #64748b;z-index:80;animation:spinpop .7s forwards;pointer-events:none}.holyFlash{position:fixed;width:28px;height:28px;border-radius:999px;background:#fde047;box-shadow:0 0 0 12px #fef9c399;z-index:80;animation:nova .65s forwards;pointer-events:none}.quake{animation:quake .18s linear 3}.choice{padding:8px;gap:8px;border-radius:14px}.be{font-size:27px}.choice strong{font-size:13px}.choice p{font-size:11px;line-height:1.16;margin:2px 0}.price{font-size:11px}.drawer{padding:11px}.choices{gap:6px}@media(max-width:430px){.choice{grid-template-columns:34px 1fr auto;padding:7px 8px}.be{font-size:24px}.choice strong{font-size:12.5px}.choice p{font-size:10.7px}.drawer h2{font-size:16px}.hint{font-size:11px}.grid{width:min(84vw,38dvh,320px);gap:4px}.cell{border-radius:12px}.actions button{font-size:12px;padding:8px 3px}.stats{gap:4px}.pill{font-size:9.5px;padding:4px 2px}.pill b{font-size:13px}.enemyBox{padding:5px}.enemy{flex-basis:47px;height:50px}.ee{font-size:21px}.en{font-size:7.5px}.emo{font-size:clamp(18px,7vw,32px)}.nm{font-size:7px}}
+@keyframes drift{to{background-position:36px 72px}}@keyframes bossPulse{to{opacity:0;transform:scale(1.45)}}@keyframes nova{to{opacity:0;transform:scale(4)}}@keyframes cloud{to{opacity:0;transform:translateY(-20px) scale(1.9)}}@keyframes spinpop{to{opacity:0;transform:rotate(210deg) scale(3)}}@keyframes quake{33%{transform:translateX(-3px)}66%{transform:translateX(3px)}}
 
-<div id="detailModal" class="modal">
-  <div class="sheet">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <strong>Tile Breakdown</strong>
-      <button class="secondary" onclick="toggleDetail(false)">Close</button>
-    </div>
-    <div id="detailBody" class="hint"></div>
-  </div>
-</div>
 
-<div id="fxLayer" class="fxLayer"></div>
+/* Distinct attack visuals */
+.atkFx{position:fixed;z-index:90;pointer-events:none;font-weight:950;filter:drop-shadow(0 2px 4px #0002)}
+.atkTrail{height:7px;border-radius:999px;transform-origin:left center;animation:atkTrail .42s forwards}
+.atkSlash{width:36px;height:8px;border-radius:999px;background:#ef4444;transform:rotate(-25deg);animation:atkPop .34s forwards}
+.atkClaw{width:38px;height:26px;border-top:5px solid #ef4444;border-bottom:5px solid #ef4444;transform:rotate(-20deg);animation:atkPop .36s forwards}
+.atkFire{width:30px;height:30px;border-radius:60% 40% 60% 40%;background:linear-gradient(135deg,#f97316,#fde047);box-shadow:0 0 0 8px #fed7aa88;animation:atkBurst .56s forwards}
+.atkPoison{width:36px;height:26px;border-radius:999px;background:#22c55e;box-shadow:16px 3px 0 #86efac,-12px 5px 0 #bbf7d0;animation:atkCloud .7s forwards}
+.atkFrost{width:32px;height:32px;border-radius:8px;background:#bae6fd;box-shadow:0 0 0 9px #e0f2fe99;transform:rotate(45deg);animation:atkIce .58s forwards}
+.atkStorm{width:44px;height:10px;background:#fde047;clip-path:polygon(0 42%,42% 42%,28% 0,100% 52%,55% 52%,70% 100%);animation:atkZap .42s forwards}
+.atkShadow{width:32px;height:32px;border-radius:999px;background:#6d28d9;box-shadow:0 0 0 10px #c4b5fd88;animation:atkShadow .55s forwards}
+.atkHoly{width:34px;height:34px;border-radius:999px;background:#fef08a;box-shadow:0 0 0 12px #fef9c388;animation:atkHoly .55s forwards}
+.atkThorn{width:34px;height:34px;background:#65a30d;clip-path:polygon(50% 0,62% 35%,100% 35%,69% 56%,82% 100%,50% 72%,18% 100%,31% 56%,0 35%,38% 35%);animation:atkBurst .55s forwards}
+.atkGear{width:32px;height:32px;border:5px dashed #64748b;border-radius:8px;animation:atkGear .62s forwards}
+.atkMark{width:34px;height:34px;border:4px solid #ec4899;border-radius:999px;box-shadow:inset 0 0 0 4px #fff;animation:atkPop .45s forwards}
+@keyframes atkTrail{to{opacity:0;transform:scaleX(1.12)}}
+@keyframes atkPop{to{opacity:0;transform:rotate(-25deg) scale(1.9)}}
+@keyframes atkBurst{to{opacity:0;transform:translateY(-12px) scale(2.5)}}
+@keyframes atkCloud{to{opacity:0;transform:translateY(-18px) scale(1.7)}}
+@keyframes atkIce{to{opacity:0;transform:rotate(90deg) scale(2.4)}}
+@keyframes atkZap{to{opacity:0;transform:scale(2.1)}}
+@keyframes atkShadow{to{opacity:0;transform:scale(2.6) rotate(90deg)}}
+@keyframes atkHoly{to{opacity:0;transform:scale(2.7)}}
+@keyframes atkGear{to{opacity:0;transform:rotate(260deg) scale(2.2)}}
 
-<script>
-const GRID_SIZE = 25;
-const ROWS = 5;
-const COLS = 5;
-const RARITIES = ["common","rare","epic","legend"];
-const FACTIONS = ["Low Colors","Golds","Silvers","Obsidians"];
-const REGION_TABLE = [
-  {name:"Mars Lowlands", favored:["Low Colors"]},
-  {name:"Luna Vaults", favored:["Golds","Silvers"]},
-  {name:"Polar Siege", favored:["Obsidians","Low Colors"]},
-  {name:"Core Conclave", favored:["Golds"]},
-  {name:"Rim Battlefront", favored:["Obsidians","Silvers"]}
+</style></head><body><div id="app"><header><div class="top"><div><div class="title">Emoji Squad: Tiny Tactics</div><div id="phase" class="phase">Tap a recruit, then tap your 4×4 squad grid.</div></div><button id="help" class="secondary tiny">?</button></div><div class="stats"><div class="pill">Round<b id="round">1</b></div><div class="pill">Kills<b id="kills">0</b></div><div class="pill">Points<b id="points">0</b></div><div class="pill">Coins<b id="coins">0</b></div></div></header><main class="main"><div class="traits" id="traits"></div><section class="enemyBox"><div class="enemyTitle"><span id="enemyTitle">Enemy Wave</span><span id="threat">Threat 1.0×</span></div><div class="enemyRow" id="enemyRow"></div></section><section class="arena"><div class="gridWrap"><div id="pick" class="pick">Tap a square. Right column is your front line.</div><div id="enemyOrbit" class="enemyOrbit"></div><div id="grid" class="grid"></div><div class="front">Front line ➜ right column takes melee hits first</div></div></section><div id="shopBanner" class="shopBanner">✨ Special Store open after this boss!</div></main><footer><div id="msg" class="msg"></div><div class="actions"><button id="recruit">Recruit</button><button id="shop" class="gold">Store</button><button id="restart" class="danger">Restart</button></div></footer></div><div id="shade" class="shade"></div><section id="drawer" class="drawer"><div class="dh"><div><h2 id="dt">Choose</h2><div id="dhint" class="hint"></div></div><button id="close" class="secondary tiny">Close</button></div><div id="body"></div></section><script>
+'use strict';
+const N=16,W=4,$=id=>document.getElementById(id),TE={Guard:'🛡️',Blade:'⚔️',Beast:'🐾',Mage:'✨',Nature:'🌿',Fire:'🔥',Shadow:'🌘',Machine:'⚙️',Healer:'💚',Royal:'👑',Frost:'❄️',Poison:'☠️',Storm:'⚡',Spirit:'👻',Stone:'🪨',Money:'🪙',Holy:'🌟',Blood:'🩸'},FO={near:'Near',weak:'Weak',strong:'Strong',back:'Back',burn:'Burn',poison:'Poison',support:'Support',ranged:'Ranged',boss:'Boss',random:'Random',line:'Line',armor:'Armor'};
+const rawHeroes=`Squire|🛡️|Guard|68|8|1|near|Sturdy front holder. Gains extra shield from Guard stacks.
+Archer|🏹|Blade|38|14|1.18|weak|Picks off the weakest enemy.
+Wolf|🐺|Beast|47|12|1.48|near|Fast melee. Speeds up after kills.
+Wizard|🧙|Mage|35|18|.78|strong|Magic splash damages nearby enemies.
+Medic|💚|Healer,Nature|44|5|1|support|Heals the weakest ally whenever acting.
+Pyro|🔥|Fire,Mage|36|13|1|burn|Applies burn. Tap Pyro onto Pyro to make a 2★ Pyro.
+Rogue|🥷|Shadow,Blade|35|17|1.36|back|Jumps toward back enemies first.
+Drone|🤖|Machine|42|9|1.65|random|Fast machine shots. Machine stacks add extra hits.
+Knight|🤺|Guard,Royal|78|12|.88|near|Protects allies and gains armor.
+Frog|🐸|Poison,Nature|48|8|1.12|poison|Spits poison and prefers poisoned enemies.
+Ghost|👻|Spirit,Shadow|30|19|1.18|back|Hard to hit and targets the back.
+Bomb|💣|Machine,Fire|42|20|.62|line|Explodes splash damage around target.
+Priest|🙏|Healer,Holy|48|7|.95|support|Heals and adds small shields.
+Samurai|🥷|Blade,Royal|46|21|1.05|weak|Executes wounded enemies.
+Treant|🌳|Nature,Stone|92|8|.65|near|Huge health and regeneration.
+Dragon|🐉|Fire,Royal|70|24|.82|strong|Heavy fire splash and stronger burn.
+Ninja|🥷|Shadow,Blade|34|18|1.55|ranged|Prioritizes ranged enemies and dodges.
+Valkyrie|🪽|Holy,Blade|58|16|1.1|boss|Bonus damage to bosses and elites.
+Gunner|🔫|Machine,Blade|44|12|1.35|weak|Shoots twice with Machine synergy.
+Bard|🎵|Royal,Healer|42|6|1.05|support|Buffs ally attack while healing.
+Monk|🥋|Holy,Guard|62|13|1.05|near|Gains shield after each hit.
+Witch|🧙‍♀️|Poison,Mage|35|15|.95|strong|Curses strong enemies with poison.
+Golem|🗿|Stone,Guard|110|10|.52|near|Massive front wall with thorns.
+Bee|🐝|Beast,Poison|28|9|1.9|poison|Very fast poison stinger.
+Sniper|🎯|Blade,Machine|32|30|.55|back|Slow but hits backline extremely hard.
+Alchemist|⚗️|Poison,Fire|40|10|1.05|burn|Turns burn and poison into extra damage.
+Paladin|🛡️|Holy,Royal,Guard|85|14|.8|near|Shields the right column front line.
+Necro|💀|Shadow,Mage|38|16|.85|weak|Summons tiny skulls as damage.
+Mermaid|🧜|Healer,Frost|45|8|1|support|Heals and chills attackers.
+Yeti|☃️|Frost,Beast|80|15|.7|near|Slows enemies it hits.
+Stormcaller|⛈️|Storm,Mage|36|17|.9|strong|Chains lightning to another enemy.
+Pirate|🏴‍☠️|Blade,Money|50|15|1.1|weak|Earns bonus coins on kills.
+Banker|🤑|Money,Royal|42|5|.8|support|More coins each victory while alive.
+Oracle|🔮|Mage,Holy|34|11|1|strong|Marks strong targets so allies hit harder.
+Lancer|🐎|Beast,Royal|60|18|1.18|line|Pierces a row of enemies.
+Spiderling|🕷️|Poison,Shadow|36|11|1.35|support|Webs support enemies and poisons them.
+Cactus|🌵|Nature,Stone|76|9|.75|near|Reflects damage back to attackers.
+Angel|😇|Holy,Healer|52|9|.95|support|Big heal. Revives one ally once at 3★.
+Vampire|🧛|Blood,Shadow|48|16|1.08|weak|Life steals from weak targets.
+Berserker|😡|Blood,Blade|62|19|.98|near|Gets stronger when hurt.
+Penguin|🐧|Frost,Beast|46|10|1.22|weak|Chills the weakest enemy repeatedly.
+Engineer|🧰|Machine,Guard|54|8|.95|support|Repairs machine allies and shields them.
+Harpy|🦅|Beast,Storm|39|15|1.42|ranged|Dives on enemy ranged attackers.
+Mushroom|🍄|Nature,Poison|50|7|.9|poison|Spreads poison after poisoned enemy dies.
+Lion|🦁|Royal,Beast|72|17|.95|strong|Royal roar boosts nearby allies.
+Crystal|💎|Stone,Mage|58|13|.8|armor|Ignores armor and shields itself.
+Chef|👨‍🍳|Healer,Fire|46|8|1.1|support|Cooks healing soup and warms nearby allies.
+Druid|🦌|Nature,Healer|54|9|.9|support|Grows regeneration around itself.
+Minotaur|🐂|Beast,Stone|95|18|.68|near|Charges the nearest enemy and shrugs off hits.
+Plague Doctor|🥼|Poison,Holy|42|12|1|poison|Poisons enemies while cleansing allies.
+Spark Sprite|🧚|Storm,Spirit|30|14|1.55|random|Fast zaps that chain often.
+Captain|🫡|Royal,Guard|66|12|1|support|Commands adjacent allies to hit harder.
+Phoenix|🐦‍🔥|Fire,Spirit|58|20|.86|burn|Burns rows and revives itself once.
+Turtle|🐢|Stone,Guard|120|7|.48|near|Slow shield tank with huge armor.
+Djinn|🧞|Mage,Storm|40|19|.88|strong|Magic lightning blasts the strongest enemy.
+Cupid|🏹|Holy,Blade|36|13|1.35|weak|Charms weakened enemies and boosts healing.
+Miner|⛏️|Stone,Money|62|11|.9|armor|Cracks armored enemies and earns extra coins.
+Jester|🤹|Shadow,Royal|38|16|1.28|random|Random tricks: dodge, extra hits, or buffs.
+Totem|🗿|Spirit,Healer,Stone|70|5|.7|support|Auras boost and heal neighbors.
+Kraken|🐙|Frost,Poison|82|14|.72|line|Tentacles poison and slow a row.
+Boomerang|🪃|Blade,Storm|42|15|1.25|back|Hits back targets and bounces to another.
+Firefly|🪲|Fire,Beast|24|10|2.05|burn|Tiny fast burner.
+Mender Bot|🦾|Machine,Healer|50|7|1.08|support|Repairs machines and patches weak allies.
+Sentinel|🗿|Guard,Holy|98|10|.58|near|Holy wall that shields every round.
+Shaman|🥁|Nature,Storm|44|10|1.02|support|Rhythm aura speeds nearby allies.
+Reaper|🪦|Shadow,Blood|46|24|.7|weak|Executes weak enemies and lifesteals.
+Rune Knight|🪬|Holy,Mage,Guard|74|15|.82|armor|Carves glowing runes, shields allies, and hits armored foes.
+Flame Dancer|💃|Fire,Blade|42|18|1.32|burn|Fast burner that creates bigger flame visuals on bosses.
+Frost Archer|🏹|Frost,Blade|40|14|1.28|weak|Freezes weak targets and slows enemy bosses.
+Toxic Slug|🐌|Poison,Nature,Stone|86|8|.55|poison|Slow poison tank with heavy regeneration.
+Thunder Ram|🐏|Storm,Beast|66|17|1.1|line|Charges through a line and chains lightning.
+Sun Cleric|🌞|Holy,Healer|50|10|1.02|support|Bright healing flashes and cleans poison/burn faster.
+Gear Mage|🧙‍♂️|Machine,Mage|46|16|.92|armor|Cracks shields and fires gear bolts.
+Shadow Cat|🐈‍⬛|Shadow,Beast|34|17|1.8|back|Leaps to backline and dodges often.
+`;
+const heroes=rawHeroes.trim().split('\n').map(s=>{let [n,e,t,hp,atk,spd,focus,a]=s.split('|');return{n,e,t:t.split(','),hp:+hp,atk:+atk,spd:+spd,focus,a,team:'ally'}});
+const enemyDefs=[
+['Rat','🐀',24,3,1.18,'melee','','hit'],['Goblin','👺',34,5,1.02,'melee','','hit'],['Slime','🟢',45,4,.76,'melee','','poison'],['Bat','🦇',28,5,1.35,'ranged','weak','shadow'],['Imp','😈',32,7,1,'ranged','strong','fire',2],['Orc','🧌',62,9,.72,'melee','','hit'],['Skeleton','☠️',42,8,.9,'ranged','back','shadow'],['Spider','🕷️',38,6,1.1,'melee','','poison',0,3],['Troll','👹',92,11,.55,'melee','','hit'],['Demon','👿',76,13,.75,'ranged','strong','fire',4],
+['Bog Toad','🐸',44,6,.88,'ranged','poison','poison',0,4],['Mosquito','🦟',24,5,1.7,'ranged','weak','poison'],['Vine Snapper','🌿',58,7,.72,'melee','','thorn'],['Flame Wisp','🔥',36,8,1.2,'ranged','weak','fire',3],['Lava Imp','🌋',52,10,.85,'melee','strong','fire',4],['Ice Sprite','❄️',34,6,1.18,'ranged','weak','frost'],['Snow Brute','☃️',82,10,.62,'melee','','frost'],['Clock Drone','🛸',46,8,1.25,'ranged','back','storm'],['Gear Golem','⚙️',95,12,.55,'melee','armor','hit'],['Cursed Skull','💀',40,9,.95,'ranged','weak','shadow'],['Wraith','👻',54,11,1.05,'ranged','back','shadow'],
+['Boar','🐗',48,8,1.05,'melee','','hit'],['Crow','🐦‍⬛',30,7,1.45,'ranged','weak','shadow'],['Mole','🦫',58,9,.78,'melee','armor','hit'],['Spriggan','🌱',52,8,.9,'ranged','support','thorn'],['Leech','🪱',42,7,1.05,'melee','weak','poison',0,4],['Mire Crab','🦀',72,8,.68,'melee','armor','hit'],['Fire Beetle','🪲',44,9,1.12,'melee','burn','fire',4],['Cinder Bat','🦇',34,8,1.45,'ranged','back','fire',3],['Ash Hound','🐕‍🔥',64,11,1.05,'melee','weak','fire',5],['Ice Wolf','🐺',50,9,1.22,'melee','weak','frost'],['Snow Owl','🦉',34,8,1.35,'ranged','back','frost'],['Crystal Crab','🦀',76,10,.62,'melee','armor','frost'],['Haunt','🕯️',38,10,1.12,'ranged','weak','shadow'],['Bone Archer','🏹',46,11,.98,'ranged','back','shadow'],['Grave Knight','🪦',86,13,.6,'melee','armor','shadow'],['Spark Rat','🐀',30,7,1.55,'ranged','weak','storm'],['Copper Spider','🕷️',52,9,1.05,'melee','support','storm'],['Steam Tank','🚂',110,15,.45,'melee','armor','hit'],['Jungle Raptor','🦖',62,12,1.18,'melee','strong','poison',0,3],['Storm Eagle','🦅',45,11,1.42,'ranged','back','storm'],
+['Dragon Boss','🐲',210,20,.65,'ranged','strong','fire',5,0,1],['Ogre Boss','👹',250,22,.5,'melee','','hit',0,0,1],['Lich Boss','🧟',205,18,.78,'ranged','weak','shadow',0,5,1],['Bog Queen','🪷',220,18,.7,'ranged','poison','poison',0,7,1],['Frost King','👑',235,19,.62,'melee','','frost',0,0,1],['Clock Titan','🤖',245,21,.58,'melee','armor','storm',0,0,1],['Thunder Roc','🦅',225,19,.85,'ranged','back','storm',0,0,1],['Vine Tyrant','🌳',260,18,.55,'melee','support','thorn',0,0,1],['Sun Seraph','🌟',235,20,.7,'ranged','strong','holy',0,0,1],['Volcano Turtle','🐢',285,23,.42,'melee','armor','fire',6,0,1]
+].map(x=>({n:x[0],e:x[1],hp:x[2],atk:x[3],spd:x[4],kind:x[5],focus:x[6],attack:x[7]||'hit',burn:x[8]||0,poison:x[9]||0,boss:!!x[10],team:'enemy'}));
+const store=[
+['Guard Bastion','🛡️',28,'Guard/Stone units become real front liners: +32 HP, +18 start shield, and stronger thorns.',()=>{tb('Guard','hp',32);tb('Guard','shield',18);tb('Guard','thorns',.08);tb('Stone','hp',28);tb('Stone','shield',14);tb('Stone','thorns',.06)}],
+['Blade Dojo','⚔️',30,'Blade units get a big damage identity: +9 attack and execute wounded enemies harder.',()=>{tb('Blade','atk',9);tb('Blade','execute',.18)}],
+['Beast Pack Bond','🐾',27,'Beast units snowball faster: +0.28 speed, +10 HP, and small lifesteal.',()=>{tb('Beast','spd',.28);tb('Beast','hp',10);tb('Beast','leech',.05)}],
+['Mage Amplifier','✨',31,'Mage units become spell nukers: +10 attack and more chain/splash power.',()=>{tb('Mage','atk',10);tb('Mage','chain',.14)}],
+['Inferno Banner','🔥',29,'Fire units apply serious burn: +7 attack and much stronger burn ticks.',()=>{tb('Fire','atk',7);tb('Fire','burn',3.5)}],
+['Venom Lab','☠️',29,'Poison/Nature units specialize hard: +3 poison per hit and poison heals your squad slightly on kills.',()=>{tb('Poison','poison',3);tb('Nature','poison',1.5);tb('Poison','regen',1.2)}],
+['Frost Citadel','❄️',27,'Frost units become control pieces: +14 shield and stronger slows.',()=>{tb('Frost','shield',14);tb('Frost','slow',.13);tb('Frost','hp',12)}],
+['Storm Battery','⚡',31,'Storm/Machine units chain lightning more often and fire faster.',()=>{tb('Storm','chain',.22);tb('Storm','spd',.14);tb('Machine','extra',.16)}],
+['Machine Overclock','⚙️',30,'Machine units gain multi-hit identity: +0.18 speed, +7 attack, and extra-shot chance.',()=>{tb('Machine','spd',.18);tb('Machine','atk',7);tb('Machine','extra',.18)}],
+['Holy Sanctuary','🌟',30,'Holy/Healer units protect the team: +18 shield, +8 healing, and better anti-shadow power.',()=>{tb('Holy','shield',18);tb('Healer','heal',8);tb('Holy','atk',5)}],
+['Shadow Veil','🌘',28,'Shadow/Spirit units become slippery assassins: +8 attack and +12% dodge.',()=>{tb('Shadow','atk',8);tb('Shadow','dodge',.12);tb('Spirit','dodge',.10)}],
+['Royal Command','👑',32,'Royal units make the whole lineup stronger: +8 attack, +18 HP, and command shields.',()=>{tb('Royal','atk',8);tb('Royal','hp',18);tb('Royal','shield',10)}],
+['Blood Pact','🩸',29,'Blood units thrive when hurt: +8 attack, +10 HP, and stronger lifesteal.',()=>{tb('Blood','atk',8);tb('Blood','hp',10);tb('Blood','leech',.12)}],
+['Golden Guild','🪙',34,'Money units become economy engines: +2 coins per victory and +1 extra coin on kills.',()=>{S.boost.coins+=1;tb('Money','coin',2);tb('Money','atk',5)}],
+['Opening Formation','📐',26,'Every battle starts cleaner: +18 shield to the front column and +8 shield to everyone.',()=>{S.boost.shield+=8;S.boost.frontShield+=18}],
+['Phoenix Contract','🐦‍🔥',38,'First ally death each battle revives with 45% HP and a burst shield.',()=>{S.boost.revive=true;S.boost.revivePower=.45}]
+].map(x=>({n:x[0],e:x[1],cost:x[2],desc:x[3],buy:x[4]}));
+
+const effects=[
+{id:'burn',n:'Flame Burn',e:'🔥',cls:'fxBurn',desc:'Chosen unit adds burn on every hit and gets +2 attack.'},
+{id:'poison',n:'Venom Edge',e:'☠️',cls:'fxPoison',desc:'Chosen unit poisons enemies on hit and focuses poisoned targets.'},
+{id:'heal',n:'Healing Aura',e:'💚',cls:'fxHeal',desc:'Chosen unit heals itself and adjacent allies over time.'},
+{id:'strength',n:'Command Aura',e:'📣',cls:'fxStrength',desc:'Adjacent allies gain attack and shields at battle start.'},
+{id:'frost',n:'Frost Touch',e:'❄️',cls:'fxFrost',desc:'Hits slow enemies and add a small shield.'},
+{id:'storm',n:'Storm Chain',e:'⚡',cls:'fxStorm',desc:'Hits have a chance to chain lightning to another enemy.'},
+{id:'thorn',n:'Thorn Mail',e:'🌵',cls:'fxThorn',desc:'Reflects damage and gains extra health.'},
+{id:'vamp',n:'Blood Charm',e:'🩸',cls:'fxVamp',desc:'Steals health when attacking wounded enemies.'},
+{id:'shield',n:'Shield Sigil',e:'🛡️',cls:'fxShield',desc:'Starts fights with a large shield and protects the front line.'},
+{id:'coin',n:'Coin Rune',e:'🪙',cls:'fxCoin',desc:'Earn bonus coins when this unit helps kill enemies.'},
+{id:'haste',n:'Haste Rune',e:'💨',cls:'fxHaste',desc:'Chosen unit acts much faster.'},
+{id:'mark',n:'Hunter Mark',e:'🎯',cls:'fxMark',desc:'Chosen unit marks targets so allies hit them harder.'},
+{id:'quake',n:'Quake Stomp',e:'🪨',cls:'fxThorn',desc:'Occasionally shakes the screen and damages a whole enemy row.'},
+{id:'holy',n:'Holy Flare',e:'🌟',cls:'fxShield',desc:'Hits undead harder and flashes healing light after attacking.'},
+{id:'shadow',n:'Shadow Blink',e:'🌘',cls:'fxVamp',desc:'More dodge, backline focus, and dark burst visuals.'},
+{id:'cleanse',n:'Cleanse Aura',e:'🫧',cls:'fxHeal',desc:'Reduces poison/burn on adjacent allies while healing.'},
+{id:'rage',n:'Rage Spark',e:'💢',cls:'fxBurn',desc:'Attack rises when hurt and creates bigger impact sparks.'},
+{id:'gear',n:'Gear Storm',e:'⚙️',cls:'fxStorm',desc:'Bolts shred shielded/armored enemies and trigger gear bursts.'},
+{id:'root',n:'Root Snare',e:'🌱',cls:'fxThorn',desc:'Slows melee enemies and grows thorny visual effects.'},
+{id:'meteor',n:'Meteor Rune',e:'☄️',cls:'fxBurn',desc:'Rare huge fire splash against bosses and packed waves.'}
 ];
-
-const TILES = [
-  {name:"Darrow", faction:"Golds", rarity:"legend", hp:220, dmg:36, fireRate:1.1, priority:"highest", type:"unit", tags:["leader","cleave"], ability:"Inspire adjacent allies +20% dmg." , aura:"boost"},
-  {name:"Sevro", faction:"Golds", rarity:"epic", hp:170, dmg:28, fireRate:1.5, priority:"snipers", type:"unit", tags:["howler"], ability:"Double-fire every 3 rounds."},
-  {name:"Mustang", faction:"Golds", rarity:"epic", hp:160, dmg:12, fireRate:1.0, priority:"healers", type:"unit", tags:["strategist"], ability:"Start: shields diagonal allies (+30% max hp).", aura:"boost"},
-  {name:"Lysander", faction:"Golds", rarity:"rare", hp:120, dmg:20, fireRate:1.1, priority:"highest", type:"unit", tags:["duelist"], ability:"Rail slug at start for bonus damage."},
-  {name:"Cassius", faction:"Golds", rarity:"rare", hp:130, dmg:22, fireRate:1.2, priority:"highest", type:"unit", tags:["blade"], ability:"Adjacent Golds gain +15% fire rate.", aura:"boost"},
-
-  {name:"Eo", faction:"Low Colors", rarity:"rare", hp:140, dmg:10, fireRate:1.0, priority:"lowest", type:"unit", tags:["song"], ability:"Heal adjacent allies 18 each round.", aura:"heal"},
-  {name:"Dancer", faction:"Low Colors", rarity:"rare", hp:130, dmg:16, fireRate:1.0, priority:"highest", type:"unit", tags:["red"], ability:"Adjacent Reds gain +25% dmg.", aura:"red"},
-  {name:"Harmony", faction:"Low Colors", rarity:"epic", hp:150, dmg:18, fireRate:0.9, priority:"highest", type:"unit", tags:["red"], ability:"Adjacent Reds +30% dmg, non-Reds -10% dmg.", aura:"red"},
-  {name:"Gray Shock Troop", faction:"Low Colors", rarity:"common", hp:110, dmg:14, fireRate:1.2, priority:"snipers", type:"unit", tags:["gray"], ability:"Targets Golds first."},
-  {name:"Gray Lurcher", faction:"Low Colors", rarity:"rare", hp:120, dmg:18, fireRate:1.1, priority:"golds", type:"unit", tags:["gray"], ability:"+35% damage vs Golds."},
-  {name:"Yellow Medica", faction:"Low Colors", rarity:"rare", hp:140, dmg:6, fireRate:1.0, priority:"lowest", type:"unit", tags:["yellow"], ability:"Heal adjacent allies 24 each round.", aura:"heal"},
-  {name:"Violet Muse", faction:"Low Colors", rarity:"epic", hp:120, dmg:8, fireRate:1.0, priority:"lowest", type:"unit", tags:["violet"], ability:"Adjacent allies gain +15% dmg & +10% fire rate.", aura:"violet"},
-
-  {name:"Quicksilver", faction:"Silvers", rarity:"legend", hp:180, dmg:6, fireRate:0.8, priority:"lowest", type:"unit", tags:["wealth"], ability:"Raise rare+ draft odds by 8%."},
-  {name:"Silver Broker", faction:"Silvers", rarity:"rare", hp:120, dmg:8, fireRate:1.0, priority:"lowest", type:"unit", tags:["support"], ability:"Adjacent allies +12% fire rate.", aura:"boost"},
-  {name:"Silver Booster", faction:"Silvers", rarity:"epic", hp:140, dmg:12, fireRate:1.0, priority:"highest", type:"unit", tags:["support"], ability:"Adjacent allies +18% ability potency.", aura:"boost"},
-
-  {name:"Ragnar", faction:"Obsidians", rarity:"legend", hp:260, dmg:30, fireRate:1.0, priority:"highest", type:"unit", tags:["berserker"], ability:"Adjacent allies +10% dmg, self heals 12 per round.", aura:"boost"},
-  {name:"Faa", faction:"Obsidians", rarity:"epic", hp:240, dmg:26, fireRate:0.9, priority:"highest", type:"unit", tags:["tyrant"], ability:"Adjacent non-Golds -12% dmg, Golds +10% dmg."},
-  {name:"Obsidian Raider", faction:"Obsidians", rarity:"rare", hp:200, dmg:24, fireRate:1.0, priority:"highest", type:"unit", tags:["raider"], ability:"Rail volley at start of round."},
-  {name:"Obsidian Shield", faction:"Obsidians", rarity:"rare", hp:260, dmg:12, fireRate:0.8, priority:"highest", type:"unit", tags:["tank"], ability:"Adjacent allies gain +15% max HP.", aura:"boost"},
-
-  {name:"Railgun Battery", faction:"Low Colors", rarity:"epic", hp:140, dmg:0, fireRate:0, priority:"highest", type:"ability", tags:["ability"], ability:"Start: fires a rail slug (60 dmg) at highest HP."},
-  {name:"Grim Snare", faction:"Low Colors", rarity:"rare", hp:120, dmg:0, fireRate:0, priority:"highest", type:"ability", tags:["ability"], ability:"Start: stun 2 enemies for 1 turn."},
-  {name:"Poison Dart Rig", faction:"Low Colors", rarity:"rare", hp:120, dmg:0, fireRate:0, priority:"highest", type:"ability", tags:["ability"], ability:"Start: apply poison (12 dmg x 2) to 3 enemies."}
+function hasFx(u,id){return u&&u.fx&&u.fx.some(f=>f.id===id)}function fxClass(u){return u&&u.fx&&u.fx[0]?u.fx[0].cls:''}function fxEmoji(u){return u&&u.fx&&u.fx.length?u.fx.map(f=>f.e).join(''):''}function statusEmoji(u){let out='';if(u.burn>1)out+='🔥';if(u.poison>1)out+='☠️';if((u.slow||0)>0.05)out+='❄️';if((u.marked||0)>0)out+='🎯';return out}function shortWeak(w){return ({hit:'⚔️',fire:'🔥',burn:'🔥',poison:'☠️',storm:'⚡',frost:'❄️',holy:'🌟',shadow:'🌘',mark:'🎯',thorn:'🌵'})[w]||'•'}
+const regions=[
+{id:'meadow',e:'🌾',n:'Meadow Swarm',tip:'Soft opening region. Swarm beasts hate poison and burn.',main:['Rat','Goblin','Bat','Slime','Boar','Crow','Mole'],boss:['Ogre Boss'],weak:['poison','fire'],res:['frost'],enemyType:'hit'},
+{id:'bog',e:'🪷',n:'Bramble Bog',tip:'Poison creatures resist poison but hate fire, frost, and holy attacks.',main:['Slime','Spider','Bog Toad','Mosquito','Vine Snapper','Spriggan','Leech','Mire Crab'],boss:['Bog Queen','Vine Tyrant'],weak:['fire','frost','holy'],res:['poison','thorn'],enemyType:'poison'},
+{id:'ember',e:'🌋',n:'Ember Wastes',tip:'Fire enemies resist burn but crack under frost and storm.',main:['Imp','Flame Wisp','Lava Imp','Demon','Orc','Fire Beetle','Cinder Bat','Ash Hound'],boss:['Dragon Boss','Volcano Turtle'],weak:['frost','storm'],res:['fire','burn','poison'],enemyType:'fire'},
+{id:'frost',e:'❄️',n:'Frost Peaks',tip:'Frozen enemies resist frost and poison but melt to fire and mark damage.',main:['Ice Sprite','Snow Brute','Troll','Bat','Ice Wolf','Snow Owl','Crystal Crab'],boss:['Frost King'],weak:['fire','mark','storm'],res:['frost','poison'],enemyType:'frost'},
+{id:'crypt',e:'🪦',n:'Shadow Crypt',tip:'Undead resist poison and shadow, but holy, fire, and thorn punish them.',main:['Skeleton','Cursed Skull','Wraith','Spider','Haunt','Bone Archer','Grave Knight'],boss:['Lich Boss','Sun Seraph'],weak:['holy','fire','thorn'],res:['poison','shadow'],enemyType:'shadow'},
+{id:'factory',e:'🏭',n:'Clockwork Factory',tip:'Machines resist poison and basic hits, but storm, frost, and mark break them.',main:['Clock Drone','Gear Golem','Imp','Orc','Spark Rat','Copper Spider','Steam Tank'],boss:['Clock Titan'],weak:['storm','frost','mark'],res:['poison','hit','fire'],enemyType:'storm'},
+{id:'jungle',e:'🌴',n:'Verdant Jungle',tip:'Fast beasts and plants pressure your front line. Fire and frost control them best.',main:['Jungle Raptor','Boar','Spriggan','Vine Snapper','Mosquito','Leech','Mire Crab'],boss:['Vine Tyrant'],weak:['fire','frost','thorn'],res:['poison','hit'],enemyType:'poison'},
+{id:'storm',e:'⛈️',n:'Thunder Sky',tip:'Storm enemies move quickly and punish tanks. Mark and frost help slow them down.',main:['Storm Eagle','Spark Rat','Clock Drone','Copper Spider','Cinder Bat','Crow'],boss:['Thunder Roc','Clock Titan'],weak:['mark','frost','holy'],res:['storm','hit'],enemyType:'storm'}
 ];
+function region(){return regions[Math.floor((Math.max(1,S.round)-1)/5)%regions.length]}
+function effectLabel(type){if(type==='burn')return 'fire';if(type==='hit')return 'hit';return type||'hit'}
+function enemyMods(def){let rg=region(),w=[...(rg.weak||[])],r=[...(rg.res||[])];if(def.attack==='fire'){r.push('fire');w.push('frost')}if(def.attack==='poison'){r.push('poison');w.push('fire')}if(def.attack==='frost'){r.push('frost');w.push('fire')}if(def.attack==='storm'){r.push('storm');w.push('mark')}if(def.attack==='shadow'){r.push('shadow');w.push('holy')}return {weak:[...new Set(w)],res:[...new Set(r)]}}
+function allyProfile(u){let str=[],weak=[];(u.t||[]).forEach(t=>{if(t==='Fire'){str.push('fire');weak.push('frost')}if(t==='Frost'){str.push('frost');weak.push('fire')}if(t==='Nature'){str.push('poison','thorn');weak.push('fire')}if(t==='Poison'){str.push('poison');weak.push('holy')}if(t==='Machine'){str.push('poison','hit');weak.push('storm')}if(t==='Guard'||t==='Stone'){str.push('hit','thorn');weak.push('storm','mark')}if(t==='Holy'){str.push('holy','shadow');weak.push('poison')}if(t==='Shadow'||t==='Spirit'){str.push('shadow');weak.push('holy')}if(t==='Beast'){str.push('frost');weak.push('poison')}if(t==='Storm'){str.push('storm');weak.push('stone')}if(t==='Blood'){str.push('poison');weak.push('holy')}if(t==='Healer'){str.push('holy');weak.push('shadow')}});if(hasFx(u,'burn'))str.push('fire');if(hasFx(u,'poison'))str.push('poison');if(hasFx(u,'frost'))str.push('frost');if(hasFx(u,'storm'))str.push('storm');if(hasFx(u,'thorn'))str.push('thorn','hit');if(hasFx(u,'shield'))str.push('hit');if(hasFx(u,'mark'))weak=weak.filter(x=>x!=='mark');return {str:[...new Set(str)],weak:[...new Set(weak.filter(x=>x!=='stone'))]}}
+function attackType(src,type){return effectLabel((src&&src.attack)||type||'hit')}
+const S={round:1,points:0,coins:0,kills:0,phase:'recruit',squad:Array(N).fill(null),enemies:[],placing:null,placingEffect:null,placingUpgrade:false,choices:[],items:[],shopOpen:false,battle:null,log:[],boost:{hp:0,atk:0,spd:0,shield:0,coins:0,poison:0,thorns:0,revive:false,revivePower:.35,frontShield:0,tb:{}}};
+function rand(a){return a[Math.floor(Math.random()*a.length)]}function chance(p){return Math.random()<p}function clamp(v,a,b){return Math.max(a,Math.min(b,v))}function tb(t,k,v){S.boost.tb[t]=S.boost.tb[t]||{};S.boost.tb[t][k]=(S.boost.tb[t][k]||0)+v}function liveA(){return S.squad.filter(u=>u&&!u.dead&&u.hp>0)}function liveE(){return S.enemies.filter(e=>e&&!e.dead&&e.hp>0)}function ix(u){return S.squad.indexOf(u)}
+function clone(h){let u=JSON.parse(JSON.stringify(h));u.star=1;u.starProg=0;u.maxHp=u.hp+S.boost.hp;u.hp=u.maxHp;u.atk+=S.boost.atk;u.spd+=S.boost.spd;u.shield=0;u.cd=0;u.burn=0;u.poison=0;u.slow=0;u.marked=0;return u}function mkEnemy(d,scale,boss){let e=JSON.parse(JSON.stringify(d)),m=enemyMods(d);e.boss=!!(boss||d.boss);e.maxHp=Math.max(7,Math.round(e.hp*scale*(e.boss?1.55:1)));e.hp=e.maxHp;e.atk=Math.max(1,Math.round(e.atk*scale*(e.boss?1.18:1)));e.spd=e.spd*(e.boss?.85:1);e.shield=e.boss?24:0;e.cd=0;e.burn=0;e.poison=0;e.slow=0;e.marked=0;e.weak=m.weak;e.res=m.res;e.region=region().n;return e}
+function counts(){let o={};S.squad.forEach(u=>u&&u.t.forEach(t=>o[t]=(o[t]||0)+u.star));return o}function bonus(u){let c=counts(),b={hp:0,atk:0,spd:0,shield:0,dodge:0,heal:0,burn:0,poison:0,regen:0,extra:0};u.t.forEach(t=>{let n=c[t]||0;if(n>=2){if(t==='Guard'){b.hp+=8+n*4;b.shield+=5+n*2}if(t==='Blade')b.atk+=2+n;if(t==='Beast')b.spd+=.08+n*.025;if(t==='Mage')b.atk+=3+n;if(t==='Nature')b.regen+=1+n*.25;if(t==='Fire')b.burn+=1+n*.45;if(t==='Shadow')b.dodge+=.05+n*.01;if(t==='Machine')b.extra+=.12+n*.02;if(t==='Healer')b.heal+=3+n;if(t==='Royal'){b.atk+=2;b.hp+=4}if(t==='Frost')b.slow=.08+n*.015;if(t==='Poison')b.poison+=1+n*.3;if(t==='Storm')b.chain=.12+n*.03;if(t==='Spirit')b.dodge+=.04+n*.01;if(t==='Stone'){b.hp+=10+n*3;b.thorns=.06+n*.01}if(t==='Money')b.coin=.5;if(t==='Holy')b.shield+=3+n;if(t==='Blood')b.leech=.08+n*.01}let q=S.boost.tb[t];if(q){b.hp+=q.hp||0;b.atk+=q.atk||0;b.spd+=q.spd||0;b.shield+=q.shield||0;b.dodge+=q.dodge||0;b.heal+=q.heal||0;b.burn+=q.burn||0;b.poison+=q.poison||0;b.regen+=q.regen||0;b.extra+=q.extra||0;b.thorns=(b.thorns||0)+(q.thorns||0);b.chain=(b.chain||0)+(q.chain||0);b.coin=(b.coin||0)+(q.coin||0);b.slow=(b.slow||0)+(q.slow||0);b.leech=(b.leech||0)+(q.leech||0);b.execute=(b.execute||0)+(q.execute||0)}});return b}
+function render(){hdr();traits();grid();enemies();$('shopBanner').classList.toggle('show',S.shopOpen);$('pick').classList.toggle('show',!!(S.placing||S.placingEffect||S.placingUpgrade));$('recruit').disabled=!(S.phase==='recruit'||S.phase==='dead');$('shop').disabled=!S.shopOpen;$('phase').textContent=S.placing?`Placing ${S.placing.e} ${S.placing.n}. Tap a slot; same unit upgrades.`:S.placingEffect?`Choose one of your guys for ${S.placingEffect.e} ${S.placingEffect.n}.`:S.placingUpgrade?'Choose one of your guys for star training. 3→4 needs 2, 4→5 needs 3.':phaseText()}function phaseText(){return S.phase==='battle'?'Battle running. Melee enemies hit the right column first.':S.phase==='shop'?'Special store: buy upgrades, then continue.':S.phase==='dead'?'Run over. Restart and try new synergies.':'Tap a recruit, then tap your squad grid.'}function hdr(){$('round').textContent=S.round;$('kills').textContent=S.kills;$('points').textContent=S.points;$('coins').textContent=S.coins;let rg=region(),app=$('app');app.className=(app.className||'').replace(/rg-\w+/g,'').trim();app.classList.add('rg-'+rg.id);$('threat').textContent=`${rg.e} ${rg.n}`}function traits(){let c=counts(),el=$('traits');el.innerHTML='';Object.keys(TE).forEach(t=>{let n=c[t]||0,d=document.createElement('div');d.className='trait '+(n>=2?'on ':'')+(n>=5?'big':'');d.textContent=`${TE[t]} ${t} ${n}`;el.appendChild(d)})}
+function grid(){let g=$('grid');g.innerHTML='';for(let i=0;i<N;i++){let c=document.createElement('div'),u=S.squad[i];c.className='cell '+(i%W===3?'f ':'')+(S.placing||S.placingEffect||S.placingUpgrade?'place ':'')+(fxClass(u)||'');c.dataset.i=i;c.onclick=()=>tapCell(i);if(u)c.appendChild(unitEl(u));g.appendChild(c)}orbit()}function unitEl(u){let d=document.createElement('div'),b=bonus(u),hp=clamp(u.hp/u.maxHp*100,0,100),sh=clamp((u.shield||0)/(u.maxHp*.7)*100,0,100),fx=fxEmoji(u);d.className=`unit s${Math.min(5,u.star)}`;d.innerHTML=`<span class="star">★${u.star}${u.star<5&&u.starProg?` ${u.starProg}/${starNeed(u)}`:''}</span><span class="foc">${FO[u.focus]||u.focus}</span>${fx?`<span class="fxBadge">${fx}</span>`:''}${statusEmoji(u)?`<span class="statusBadge">${statusEmoji(u)}</span>`:''}<div class="emo">${u.e}</div><div class="nm">${u.n}</div><div class="bars"><div class="hp"><i style="width:${hp}%"></i></div><div class="sh"><i style="width:${sh}%"></i></div></div>`;d.onclick=e=>{e.stopPropagation();tapCell(S.squad.indexOf(u))};return d}function orbit(){let o=$('enemyOrbit');if(!o)return;o.innerHTML='';let es=liveE().length?liveE():S.enemies.filter(x=>!x.dead);if(!es.length)return;let wrap=$('grid'),r=wrap.getBoundingClientRect(),n=es.length,show=Math.min(n,S.round<4?0:20);for(let k=0;k<show;k++){let e=es[k],ang=-Math.PI/2+(Math.PI*2*k/show),rad=52;let d=document.createElement('div');d.className='orbitEnemy '+(e.boss?'boss':'');d.textContent=e.e;d.style.left=`calc(50% + ${Math.cos(ang)*rad}% - 13px)`;d.style.top=`calc(50% + ${Math.sin(ang)*rad}% - 13px)`;o.appendChild(d)}}function enemies(){let r=$('enemyRow');r.innerHTML='';let rg=region();$('enemyTitle').textContent=`${rg.e} ${rg.n} ${S.round%5===0?'Boss':'Wave'}`;S.enemies.forEach((e,i)=>{let d=document.createElement('div'),hp=clamp(e.hp/e.maxHp*100,0,100);d.className='enemy '+(e.boss?'boss ':'')+(e.dead?'dead':'');d.innerHTML=`${statusEmoji(e)?`<span class="statusBadge">${statusEmoji(e)}</span>`:''}${(e.weak&&e.weak[0])?`<span class="weakHint">弱 ${shortWeak(e.weak[0])}</span>`:''}<div class="ee">${e.e}</div><div class="en">${e.n}</div><div class="ehp"><i style="width:${hp}%"></i></div>`;d.onclick=()=>detail(e);r.appendChild(d)})}
+function openRecruit(){if(S.phase==='dead')return reset();if(S.phase!=='recruit')return;S.choices=[];let pool=heroes.slice(0,30+Math.min(36,Math.floor(S.round/2))),occupied=liveA();while(S.choices.length<3){let roll=Math.random(),card;if(occupied.length&&roll<.34)card={type:'upgrade',e:'⭐',n:'Star Training',desc:'Select one of your guys for star training. 1→2 and 2→3 need 1 upgrade; 3→4 needs 2; 4→5 needs 3. Actual star-ups give huge % stat jumps.',pick:'UPGRADE'};else if(occupied.length&&roll<.68){let ef=rand(effects);card={type:'effect',effect:ef,e:ef.e,n:ef.n,desc:ef.desc,pick:'EFFECT'}}else{let h=rand(pool);card={type:'recruit',unit:clone(h),e:h.e,n:h.n,desc:h.a,pick:FO[h.focus]||h.focus}}if(!S.choices.find(x=>x.type===card.type&&x.n===card.n))S.choices.push(card)}show('Choose 1 Card','Cards can be recruits, star upgrades, or tile-colored unit effects. Apply one and the fight starts.','<div class="choices">'+S.choices.map((u,i)=>choice(u,i)).join('')+'</div><br><button class="secondary" style="width:100%" onclick="reroll()">Reroll choices - 4 🪙</button>')}function choice(c,i){if(c.type==='recruit'){let u=c.unit,owned=S.squad.filter(x=>x&&x.n===u.n).length,tr=u.t.map(t=>(TE[t]||'')+t).join(' ');return `<button class="choice" onclick="choose(${i})"><span class="be">${u.e}</span><span><strong>Recruit: ${u.n}</strong> <span class="owned">${owned?'owned '+owned:''}</span><p>${tr}<br>${u.a}</p></span><span class="price">${FO[u.focus]||u.focus}</span></button>`}return `<button class="choice" onclick="choose(${i})"><span class="be">${c.e}</span><span><strong>${c.type==='upgrade'?'Upgrade':'Effect'}: ${c.n}</strong><p>${c.desc}</p></span><span class="price">${c.pick}</span></button>`}function choose(i){let c=S.choices[i];S.placing=null;S.placingEffect=null;S.placingUpgrade=false;if(c.type==='recruit'){S.placing=c.unit;msg(`Place ${S.placing.e} ${S.placing.n}. Replacing is allowed; matching unit upgrades.`)}else if(c.type==='upgrade'){S.placingUpgrade=true;msg('Tap one of your existing guys for star training. Later stars need multiple trainings but jump much harder.')}else{S.placingEffect=c.effect;msg(`Tap one of your guys to add ${c.effect.e} ${c.effect.n} and color their square.`)}close();render()}function reroll(){if(S.coins<4)return msg('Need 4 coins to reroll.');S.coins-=4;openRecruit();render()}
+function tapCell(i){let u=S.squad[i];if(S.placingUpgrade){if(!u)return msg('Pick a filled square to upgrade.');let leveled=up(u);S.placingUpgrade=false;msg(leveled?`${u.e} ${u.n} reached ${u.star}★ with a huge stat jump!`:`${u.e} ${u.n} gained star training (${u.starProg}/${starNeed(u)} toward ${u.star+1}★).`);return fight()}if(S.placingEffect){if(!u)return msg('Pick one of your existing guys for this effect.');u.fx=u.fx||[];if(!hasFx(u,S.placingEffect.id))u.fx.push(S.placingEffect);u.maxHp+=S.placingEffect.id==='thorn'?10:0;u.atk+=S.placingEffect.id==='burn'?2:0;u.spd+=S.placingEffect.id==='haste'?.22:0;u.shield+=S.placingEffect.id==='shield'?20:0;msg(`${u.e} ${u.n} gained ${S.placingEffect.e} ${S.placingEffect.n}!`);S.placingEffect=null;return fight()}if(!S.placing){if(u)detail(u);return}let p=S.placing;if(u&&u.n===p.n){let leveled=up(u);msg(leveled?`${p.e} ${p.n} reached ${u.star}★ with a huge stat jump!`:`${p.e} ${p.n} gained star progress (${u.starProg}/${starNeed(u)} toward ${u.star+1}★).`)}else{S.squad[i]=p;msg(u?`${p.e} ${p.n} replaced ${u.e} ${u.n}.`:`${p.e} ${p.n} joined the squad.`)}S.placing=null;close();fight()}function starNeed(u){return u.star>=4?3:u.star>=3?2:1}function nextStarPct(star){return ({2:.35,3:.45,4:.60,5:.80})[star]||.25}function up(u){if(u.star>=5){u.hp=u.maxHp;u.shield+=18;floatAlly(ix(u),'MAX★','#f59e0b');return true}u.starProg=(u.starProg||0)+1;let need=starNeed(u);if(u.starProg<need){u.hp=Math.min(u.maxHp,u.hp+Math.round(u.maxHp*.28));u.shield+=12+u.star*4;floatAlly(ix(u),`${u.starProg}/${need}⭐`,'#f59e0b');return false}u.starProg=0;u.star=Math.min(5,u.star+1);let pct=nextStarPct(u.star);u.maxHp=Math.round(u.maxHp*(1+pct));u.hp=u.maxHp;u.atk=Math.round(u.atk*(1+pct));u.spd+=.06+u.star*.018;u.shield+=Math.round(u.maxHp*(.12+u.star*.025));if(u.n==='Angel'&&u.star>=3)u.reviveAura=true;floatAlly(ix(u),`★${u.star} +${Math.round(pct*100)}%`,'#f59e0b');return true}
+function spawn(){let rg=region(),scale=.48+S.round*.058+Math.max(0,S.round-10)*.026+Math.floor((S.round-1)/5)*.045,boss=S.round%5===0,count=boss?1+Math.floor(S.round/12):Math.min(22,2+Math.floor(S.round/2.6)+Math.floor(Math.max(0,S.round-6)/2.7));S.enemies=[];let main=enemyDefs.filter(e=>rg.main.includes(e.n)),bosses=enemyDefs.filter(e=>rg.boss.includes(e.n));for(let i=0;i<count;i++){let pool=boss&&i===0?(bosses.length?bosses:main):main,def=rand(pool);S.enemies.push(mkEnemy(def,scale,boss&&i===0))}}function fight(){if(!liveA().length)return msg('Place at least one fighter.');spawn();S.phase='battle';S.battle={tick:0,revive:false};startBuffs();render();let rg=region();msg(`${rg.e} ${rg.n}: ${rg.tip}`);setTimeout(loop,240)}function startBuffs(){S.squad.forEach((u,i)=>{if(!u)return;let b=bonus(u);u.maxHp+=b.hp;u.hp=Math.min(u.maxHp,u.hp+b.hp);u.shield=(u.shield||0)+S.boost.shield+b.shield+(u.n==='Crystal'?8:0);if(i%W===3)u.shield+=(S.boost.frontShield||0);if(i%W===3&&u.t.includes('Guard'))u.shield+=8;if(u.n==='Paladin')S.squad.forEach((a,j)=>{if(a&&j%W===3)a.shield+=12});if(hasFx(u,'shield'))u.shield+=24;if(hasFx(u,'frost'))u.shield+=10;if(hasFx(u,'thorn'))u.maxHp+=8;if(hasFx(u,'strength'))adj(i).forEach(a=>{a.atk+=4+u.star;a.shield+=8});if(hasFx(u,'heal'))adj(i).forEach(a=>heal(u,a,5));})}
+function adj(i){let r=Math.floor(i/W),c=i%W;return S.squad.filter((u,j)=>u&&!u.dead&&Math.abs(Math.floor(j/W)-r)+Math.abs(j%W-c)===1)}function pickAlly(e){let a=liveA();if(!a.length)return null;if(e.kind==='melee'){for(let col=3;col>=0;col--){let line=S.squad.map((u,i)=>({u,i})).filter(x=>x.u&&!x.u.dead&&x.u.hp>0&&x.i%W===col);if(line.length)return line.sort((x,y)=>x.u.hp-y.u.hp)[0].u}}if(e.focus==='weak')return a.sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0];if(e.focus==='strong')return a.sort((x,y)=>y.atk-x.atk)[0];if(e.focus==='back'){for(let col=0;col<4;col++){let line=S.squad.filter((u,i)=>u&&!u.dead&&u.hp>0&&i%W===col);if(line.length)return line[0]}}return a[0]}function pickEnemy(u){let e=liveE();if(!e.length)return null;if(u.focus==='weak')return e.sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0];if(u.focus==='strong')return e.sort((x,y)=>y.atk-x.atk)[0];if(u.focus==='back')return e[e.length-1];if(u.focus==='burn')return e.find(x=>x.burn>0)||e.sort((x,y)=>y.hp-x.hp)[0];if(u.focus==='poison')return e.find(x=>x.poison>0)||e[0];if(u.focus==='ranged')return e.find(x=>x.kind==='ranged')||e[0];if(u.focus==='support')return e.find(x=>x.kind==='ranged'||x.focus)||e[0];if(u.focus==='boss')return e.find(x=>x.boss)||e.sort((x,y)=>y.maxHp-x.maxHp)[0];if(u.focus==='armor')return e.sort((x,y)=>(y.shield||0)-(x.shield||0))[0];if(u.focus==='random')return rand(e);return e[0]}
 
-const ENEMY_POOL = TILES.map(tile => ({...tile}));
-
-const state = {
-  round: 1,
-  threat: 1,
-  bossCounter: 5,
-  deck: Array(GRID_SIZE).fill(null),
-  enemy: Array(GRID_SIZE).fill(null),
-  reserve: [],
-  drafting: false,
-  picksThisPhase: 0,
-  regionIndex: 0,
-  goldDraftBoost: 0,
-  gameOn: false
-};
-
-const playerGrid = document.getElementById("playerGrid");
-const enemyGrid = document.getElementById("enemyGrid");
-const reserveSlots = document.getElementById("reserveSlots");
-const logEl = document.getElementById("log");
-const draftModal = document.getElementById("draftModal");
-const draftChoices = document.getElementById("draftChoices");
-const draftHint = document.getElementById("draftHint");
-const fxLayer = document.getElementById("fxLayer");
-
-function log(msg){
-  const entry = document.createElement("div");
-  entry.textContent = msg;
-  logEl.appendChild(entry);
-  logEl.scrollTop = logEl.scrollHeight;
+function elForUnit(u){if(!u)return null;if(u.team==='ally')return document.querySelector(`.cell[data-i="${ix(u)}"] .unit`)||document.querySelector(`.cell[data-i="${ix(u)}"]`);return document.querySelectorAll('.enemy')[S.enemies.indexOf(u)]}
+function attackVisual(src,tgt,type='hit',label=''){let targetEl=elForUnit(tgt),sourceEl=elForUnit(src),at=effectLabel(type);if(!targetEl)return;let tp=centerOf(targetEl),sp=centerOf(sourceEl||targetEl),dx=tp.x-sp.x,dy=tp.y-sp.y,ang=Math.atan2(dy,dx)||0,dist=Math.max(24,Math.hypot(dx,dy));
+  function add(cls,x=tp.x,y=tp.y){let d=document.createElement('div');d.className='atkFx '+cls;d.style.left=(x-16)+'px';d.style.top=(y-16)+'px';document.body.appendChild(d);setTimeout(()=>d.remove(),760);return d}
+  if(sourceEl&&dist>45){let trail=add('atkTrail',sp.x,sp.y);trail.style.width=Math.min(dist,220)+'px';trail.style.transform=`rotate(${ang}rad)`;trail.style.background= at==='fire'?'#fb923c':at==='poison'?'#22c55e':at==='frost'?'#38bdf8':at==='storm'?'#facc15':at==='shadow'?'#7c3aed':at==='holy'?'#fde047':at==='thorn'?'#65a30d':'#ef4444'}
+  let cls={fire:'atkFire',burn:'atkFire',poison:'atkPoison',frost:'atkFrost',storm:'atkStorm',shadow:'atkShadow',holy:'atkHoly',thorn:'atkThorn',mark:'atkMark',gear:'atkGear',hit:'atkSlash'}[at]||'atkSlash';
+  let impact=add(cls,tp.x,tp.y);if(cls==='atkSlash'||cls==='atkClaw')impact.style.transform=`rotate(${ang+.55}rad)`;if(label&&Math.random()<.18)placeFloat(targetEl,label,'#334155')
 }
-
-function rarityWeights(){
-  const progress = Math.floor((state.round - 1) / 5);
-  const base = {common:60, rare:26, epic:11, legend:3};
-  base.common = Math.max(20, base.common - progress * 4);
-  base.rare += progress * 2;
-  base.epic += progress * 1.2;
-  base.legend += progress * 0.8;
-  const silverBoost = state.goldDraftBoost || 0;
-  base.rare += silverBoost;
-  base.epic += silverBoost * 0.6;
-  return base;
-}
-
-function weightedPick(weights){
-  const entries = Object.entries(weights);
-  const total = entries.reduce((s,[,v])=>s+v,0);
-  let r = Math.random() * total;
-  for(const [k,v] of entries){
-    if((r -= v) <= 0) return k;
-  }
-  return entries[0][0];
-}
-
-function makeTile(def, isEnemy = false){
-  const rarityMult = {common:1, rare:1.1, epic:1.2, legend:1.35};
-  const threat = isEnemy ? state.threat : 1;
-  const baseHp = def.hp * (isEnemy ? 0.18 * threat : 1);
-  const baseDmg = def.dmg * (isEnemy ? 0.5 * threat : 1);
-  const hpBoost = isEnemy ? 1 : (5 + Math.random() * 3);
-  const maxHp = Math.round(baseHp * rarityMult[def.rarity] * (isEnemy ? 1 : hpBoost));
-  return {
-    id: Math.random().toString(36).slice(2),
-    name: def.name,
-    faction: def.faction,
-    rarity: def.rarity,
-    hp: maxHp,
-    maxHp: maxHp,
-    baseMaxHp: maxHp,
-    dmg: Math.round(baseDmg),
-    fireRate: def.fireRate || 1,
-    priority: def.priority,
-    type: def.type,
-    tags: def.tags || [],
-    ability: def.ability,
-    aura: def.aura || null,
-    poison: 0,
-    stun: 0,
-    buffs: {dmg:1, fire:1, ability:1, hp:1},
-    lastShot: 0,
-    enemy: isEnemy
-  };
-}
-
-function renderGrid(){
-  playerGrid.innerHTML = "";
-  enemyGrid.innerHTML = "";
-  state.deck.forEach((tile, idx) => {
-    const slot = document.createElement("div");
-    slot.className = "tileSlot";
-    slot.dataset.index = idx;
-    slot.addEventListener("dragover", e => e.preventDefault());
-    slot.addEventListener("drop", e => handleDrop(e, idx, false));
-    if(tile){
-      slot.appendChild(renderTile(tile));
-    }
-    playerGrid.appendChild(slot);
-  });
-  state.enemy.forEach((tile, idx) => {
-    const slot = document.createElement("div");
-    slot.className = "tileSlot";
-    if(tile){
-      slot.appendChild(renderTile(tile, true));
-    }
-    enemyGrid.appendChild(slot);
-  });
-  updateHeader();
-}
-
-function renderTile(tile, locked = false){
-  const div = document.createElement("div");
-  div.className = "tile";
-  div.dataset.id = tile.id;
-  if(!locked){
-    div.draggable = true;
-    div.addEventListener("dragstart", e => handleDrag(e, tile.id));
-  }
-  div.addEventListener("click", () => showDetail(tile));
-  const factionColor = factionStyle(tile.faction);
-  const aura = tile.aura ? `<div class="tileAura aura-${tile.aura}"></div>` : "";
-  div.innerHTML = `
-    ${aura}
-    <div class="tileHeader">
-      <div class="tileName">${tile.name}</div>
-      <span class="rarity ${tile.rarity}">${tile.rarity.toUpperCase()}</span>
-    </div>
-    <div class="tileHeader">
-      <span class="tileFaction" style="color:${factionColor};border-color:${factionColor}">${tile.faction}</span>
-      <span class="tileStats">HP ${tile.hp}/${tile.maxHp}</span>
-    </div>
-    <div class="tileStats">
-      <span>DMG ${Math.round(tile.dmg * tile.buffs.dmg)}</span>
-      <span>FR ${tile.fireRate.toFixed(1)}</span>
-      <span>PRI ${tile.priority}</span>
-    </div>
-    <div class="tileBody">${tile.tags.map(tag => `<span>${tag}</span>`).join(" • ")}</div>
-    <div class="tileStatus">${renderStatus(tile)}</div>
-  `;
-  return div;
-}
-
-function renderStatus(tile){
-  let html = "";
-  if(tile.poison > 0) html += `<span class="statusPill status-poison">POISON ${tile.poison}</span>`;
-  if(tile.stun > 0) html += `<span class="statusPill status-stun">STUN</span>`;
-  if(tile.buffs.dmg > 1 || tile.buffs.fire > 1 || tile.buffs.ability > 1){
-    html += `<span class="statusPill status-buff">BUFF</span>`;
-  }
-  return html;
-}
-
-function factionStyle(faction){
-  if(faction === "Low Colors") return "var(--low)";
-  if(faction === "Golds") return "var(--gold)";
-  if(faction === "Silvers") return "var(--silver)";
-  if(faction === "Obsidians") return "var(--obsidian)";
-  return "var(--muted)";
-}
-
-function updateHeader(){
-  document.getElementById("round").textContent = state.round;
-  document.getElementById("region").innerHTML = `<span class="regionTag">${REGION_TABLE[state.regionIndex].name}</span>`;
-  document.getElementById("threat").textContent = `${state.threat.toFixed(2)}x`;
-  document.getElementById("bossCounter").textContent = state.bossCounter;
-  document.getElementById("deckCount").textContent = state.deck.filter(Boolean).length;
-}
-
-function handleDrag(e, id){
-  e.dataTransfer.setData("text/plain", id);
-}
-
-function handleDrop(e, targetIdx, fromReserve){
-  e.preventDefault();
-  const id = e.dataTransfer.getData("text/plain");
-  if(!id) return;
-  const tileIndex = state.deck.findIndex(t => t && t.id === id);
-  const reserveIndex = state.reserve.findIndex(t => t.id === id);
-  const targetTile = state.deck[targetIdx];
-  if(tileIndex >= 0){
-    state.deck[targetIdx] = state.deck[tileIndex];
-    state.deck[tileIndex] = targetTile;
-  } else if(reserveIndex >= 0){
-    if(state.deck[targetIdx]){
-      const swapped = state.deck[targetIdx];
-      state.deck[targetIdx] = state.reserve[reserveIndex];
-      state.reserve[reserveIndex] = swapped;
-    } else {
-      state.deck[targetIdx] = state.reserve.splice(reserveIndex, 1)[0];
-    }
-  }
-  renderGrid();
-  renderReserve();
-}
-
-function renderReserve(){
-  reserveSlots.innerHTML = "";
-  state.reserve.forEach(tile => {
-    const div = renderTile(tile);
-    div.draggable = true;
-    div.addEventListener("dragstart", e => handleDrag(e, tile.id));
-    reserveSlots.appendChild(div);
-  });
-}
-
-function setupTrash(){
-  const trash = document.getElementById("trash");
-  trash.addEventListener("dragover", e => e.preventDefault());
-  trash.addEventListener("drop", e => {
-    e.preventDefault();
-    const id = e.dataTransfer.getData("text/plain");
-    if(!id) return;
-    const deckIndex = state.deck.findIndex(t => t && t.id === id);
-    const reserveIndex = state.reserve.findIndex(t => t.id === id);
-    if(deckIndex >= 0) state.deck[deckIndex] = null;
-    if(reserveIndex >= 0) state.reserve.splice(reserveIndex, 1);
-    renderGrid();
-    renderReserve();
-  });
-}
-
-function showDraft(){
-  state.drafting = true;
-  draftChoices.innerHTML = "";
-  const regionFavored = REGION_TABLE[state.regionIndex].favored;
-  const weights = rarityWeights();
-  const picks = Array.from({length:3}, () => {
-    const rarity = weightedPick(weights);
-    const pool = TILES.filter(tile => tile.rarity === rarity);
-    const favoredPool = pool.filter(tile => regionFavored.includes(tile.faction));
-    const choicePool = favoredPool.length ? favoredPool : pool;
-    return choicePool[Math.floor(Math.random() * choicePool.length)];
-  });
-  picks.forEach(def => {
-    const card = document.createElement("div");
-    card.className = "choiceCard";
-    card.innerHTML = `
-      <strong>${def.name}</strong>
-      <div class="hint">${def.faction} • ${def.rarity.toUpperCase()}</div>
-      <div class="hint">HP ${def.hp} • DMG ${def.dmg || 0} • FR ${def.fireRate || 0}</div>
-      <div class="hint">${def.ability}</div>
-    `;
-    card.addEventListener("click", () => selectDraft(def));
-    draftChoices.appendChild(card);
-  });
-  draftHint.textContent = `Pick ${state.picksThisPhase + 1} of 3`;
-  draftModal.classList.add("active");
-}
-
-function selectDraft(def){
-  const tile = makeTile(def, false);
-  state.reserve.push(tile);
-  if(def.name === "Quicksilver"){
-    state.goldDraftBoost += 4;
-    log("Quicksilver increases your rare draft odds.");
-  }
-  draftModal.classList.remove("active");
-  state.drafting = false;
-  state.picksThisPhase += 1;
-  renderReserve();
-  if(state.picksThisPhase < 3){
-    setTimeout(showDraft, 350);
-  } else {
-    state.picksThisPhase = 0;
-    spawnEnemyWave();
-  }
-}
-
-function spawnEnemyWave(){
-  state.enemy = Array(GRID_SIZE).fill(null);
-  const isBoss = state.bossCounter === 1;
-  const enemyCount = 10 + Math.floor(state.round / 2);
-  const favored = REGION_TABLE[state.regionIndex].favored;
-  const pool = ENEMY_POOL.filter(tile => tile.type !== "ability");
-  for(let i = 0; i < enemyCount; i++){
-    const rarity = weightedPick(isBoss ? {common:35, rare:35, epic:20, legend:10} : rarityWeights());
-    const candidates = pool.filter(tile => tile.rarity === rarity);
-    const favoredPool = candidates.filter(tile => favored.includes(tile.faction));
-    const pickPool = favoredPool.length ? favoredPool : candidates;
-    const def = pickPool[Math.floor(Math.random() * pickPool.length)];
-    const tile = makeTile(def, true);
-    const emptyIndices = state.enemy.map((t, idx) => t ? null : idx).filter(v => v !== null);
-    if(!emptyIndices.length) break;
-    const idx = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
-    state.enemy[idx] = tile;
-  }
-  log(isBoss ? "Boss wave approaches!" : "Enemy wave approaches.");
-  document.getElementById("btnNext").disabled = false;
-  renderGrid();
-}
-
-function getAdjacents(index){
-  const row = Math.floor(index / COLS);
-  const col = index % COLS;
-  const indices = [];
-  for(let r = row - 1; r <= row + 1; r++){
-    for(let c = col - 1; c <= col + 1; c++){
-      if(r === row && c === col) continue;
-      if(r >= 0 && r < ROWS && c >= 0 && c < COLS){
-        indices.push(r * COLS + c);
-      }
-    }
-  }
-  return indices;
-}
-
-function applyAuras(){
-  state.deck.forEach(tile => {
-    if(tile){
-      tile.buffs = {dmg:1, fire:1, ability:1, hp:1};
-    }
-  });
-  state.deck.forEach((tile, idx) => {
-    if(!tile) return;
-    const adj = getAdjacents(idx).map(i => state.deck[i]).filter(Boolean);
-    if(tile.name === "Darrow"){
-      adj.forEach(t => t.buffs.dmg += 0.2);
-    }
-    if(tile.name === "Cassius"){
-      adj.filter(t => t.faction === "Golds").forEach(t => t.buffs.fire += 0.15);
-    }
-    if(tile.name === "Yellow Medica" || tile.name === "Eo"){
-      adj.forEach(t => t.buffs.ability += 0.2);
-    }
-    if(tile.name === "Violet Muse"){
-      adj.forEach(t => {t.buffs.dmg += 0.15; t.buffs.fire += 0.1;});
-    }
-    if(tile.name === "Dancer"){
-      adj.filter(t => t.tags.includes("red")).forEach(t => t.buffs.dmg += 0.25);
-    }
-    if(tile.name === "Harmony"){
-      adj.forEach(t => {
-        if(t.tags.includes("red")) t.buffs.dmg += 0.3;
-        else t.buffs.dmg -= 0.1;
-      });
-    }
-    if(tile.name === "Ragnar"){
-      adj.forEach(t => t.buffs.dmg += 0.1);
-    }
-    if(tile.name === "Faa"){
-      adj.forEach(t => {
-        if(t.faction === "Golds") t.buffs.dmg += 0.1;
-        else t.buffs.dmg -= 0.12;
-      });
-    }
-    if(tile.name === "Silver Broker"){
-      adj.forEach(t => t.buffs.fire += 0.12);
-    }
-    if(tile.name === "Silver Booster"){
-      adj.forEach(t => t.buffs.ability += 0.18);
-    }
-    if(tile.name === "Obsidian Shield"){
-      adj.forEach(t => t.buffs.hp += 0.15);
-    }
-  });
-  state.deck.forEach(tile => {
-    if(tile){
-      tile.maxHp = Math.round(tile.baseMaxHp * tile.buffs.hp);
-      tile.hp = Math.min(tile.hp, tile.maxHp);
-    }
-  });
-}
-
-function resolveAbilities(){
-  state.deck.forEach((tile, idx) => {
-    if(!tile || tile.type === "unit") return;
-    if(tile.name === "Railgun Battery"){
-      const target = pickTarget(state.enemy, "highest");
-      if(target){
-        fireBeam(tile, target, "rail");
-        target.hp -= Math.round(60 * tile.buffs.ability);
-      }
-    }
-    if(tile.name === "Grim Snare"){
-      const targets = pickTargets(state.enemy, 2);
-      targets.forEach(t => { t.stun = Math.max(t.stun, 1); fireBeam(tile, t, "stun");});
-    }
-    if(tile.name === "Poison Dart Rig"){
-      const targets = pickTargets(state.enemy, 3);
-      targets.forEach(t => { t.poison += 12; fireBeam(tile, t, "poison");});
-    }
-  });
-  state.deck.forEach((tile, idx) => {
-    if(!tile || tile.type !== "unit") return;
-    const adj = getAdjacents(idx).map(i => state.deck[i]).filter(Boolean);
-    if(tile.name === "Eo" || tile.name === "Yellow Medica"){
-      adj.forEach(t => {
-        const heal = Math.round((tile.name === "Eo" ? 18 : 24) * tile.buffs.ability);
-        t.hp = Math.min(t.maxHp, t.hp + heal);
-        fireBeam(tile, t, "heal");
-      });
-    }
-    if(tile.name === "Ragnar"){
-      tile.hp = Math.min(tile.maxHp, tile.hp + 12);
-    }
-    if(tile.name === "Obsidian Raider"){
-      const target = pickTarget(state.enemy, "highest");
-      if(target){
-        fireBeam(tile, target, "rail");
-        target.hp -= Math.round(48 * tile.buffs.ability);
-      }
-    }
-    if(tile.name === "Lysander"){
-      const target = pickTarget(state.enemy, "highest");
-      if(target){
-        fireBeam(tile, target, "rail");
-        target.hp -= Math.round(45 * tile.buffs.ability);
-      }
-    }
-    if(tile.name === "Sevro" && state.round % 3 === 0){
-      const target = pickTarget(state.enemy, "snipers");
-      if(target){
-        fireBeam(tile, target, "fire");
-        target.hp -= Math.round(tile.dmg * 1.5);
-      }
-    }
-  });
-}
-
-function resolvePoisons(){
-  state.deck.forEach(tile => {
-    if(tile && tile.poison > 0){
-      tile.hp -= Math.round(tile.poison * 0.6);
-      tile.poison = Math.max(0, tile.poison - 4);
-    }
-  });
-  state.enemy.forEach(tile => {
-    if(tile && tile.poison > 0){
-      tile.hp -= Math.round(tile.poison * 0.6);
-      tile.poison = Math.max(0, tile.poison - 4);
-    }
-  });
-}
-
-function resolveAttacks(){
-  const attackerPairs = [];
-  state.deck.forEach(tile => {
-    if(tile && tile.type === "unit" && tile.hp > 0){
-      attackerPairs.push({attacker: tile, defenders: state.enemy});
-    }
-  });
-  state.enemy.forEach(tile => {
-    if(tile && tile.type === "unit" && tile.hp > 0){
-      attackerPairs.push({attacker: tile, defenders: state.deck});
-    }
-  });
-  attackerPairs.forEach(pair => {
-    const {attacker, defenders} = pair;
-    if(attacker.stun > 0){
-      attacker.stun -= 1;
-      return;
-    }
-    const target = pickTarget(defenders, attacker.priority);
-    if(!target) return;
-    const base = Math.round(attacker.dmg * attacker.buffs.dmg);
-    const dmg = attacker.faction === "Low Colors" && attacker.name === "Gray Lurcher" && target.faction === "Golds"
-      ? Math.round(base * 1.35)
-      : base;
-    fireBeam(attacker, target, "fire");
-    target.hp -= dmg;
-  });
-}
-
-function pickTarget(list, priority){
-  const living = list.filter(tile => tile && tile.hp > 0);
-  if(!living.length) return null;
-  if(priority === "highest"){
-    return living.sort((a,b) => b.hp - a.hp)[0];
-  }
-  if(priority === "lowest"){
-    return living.sort((a,b) => a.hp - b.hp)[0];
-  }
-  if(priority === "golds"){
-    const golds = living.filter(t => t.faction === "Golds");
-    if(golds.length) return golds[0];
-  }
-  if(priority === "snipers"){
-    const ranged = living.filter(t => t.fireRate >= 1.2);
-    if(ranged.length) return ranged[0];
-  }
-  if(priority === "healers"){
-    const healers = living.filter(t => t.ability && t.ability.toLowerCase().includes("heal"));
-    if(healers.length) return healers[0];
-  }
-  return living[Math.floor(Math.random() * living.length)];
-}
-
-function pickTargets(list, count){
-  return list.filter(t => t && t.hp > 0).slice(0, count);
-}
-
-function cleanup(){
-  state.deck.forEach((tile, idx) => {
-    if(tile && tile.hp <= 0) state.deck[idx] = null;
-  });
-  state.enemy.forEach((tile, idx) => {
-    if(tile && tile.hp <= 0) state.enemy[idx] = null;
-  });
-}
-
-function resolveRound(){
-  if(state.drafting || !state.gameOn) return;
-  applyAuras();
-  resolveAbilities();
-  resolveAttacks();
-  resolvePoisons();
-  cleanup();
-  renderGrid();
-  const enemiesLeft = state.enemy.filter(Boolean).length;
-  const alliesLeft = state.deck.filter(tile => tile && tile.type === "unit").length;
-  if(enemiesLeft === 0){
-    log("Enemy wave defeated! Draft new reinforcement.");
-    advanceRound();
-  } else if(alliesLeft === 0){
-    log("Your forces fell. The run restarts.");
-    resetGame();
-  } else {
-    log("Both sides trade fire.");
-  }
-}
-
-function advanceRound(){
-  state.round += 1;
-  state.threat *= 1.06;
-  state.bossCounter -= 1;
-  if(state.bossCounter === 0){
-    state.bossCounter = 5;
-    log("Boss battle won, the threat escalates.");
-  }
-  if(state.round % 3 === 0){
-    state.regionIndex = (state.regionIndex + 1) % REGION_TABLE.length;
-    log(`Entering ${REGION_TABLE[state.regionIndex].name}.`);
-  }
-  document.getElementById("btnNext").disabled = true;
-  showDraft();
-}
-
-function fireBeam(attacker, target, kind){
-  const attackerEl = document.querySelector(`[data-id="${attacker.id}"]`);
-  const targetEl = document.querySelector(`[data-id="${target.id}"]`);
-  if(!attackerEl || !targetEl) return;
-  const rectA = attackerEl.getBoundingClientRect();
-  const rectB = targetEl.getBoundingClientRect();
-  const ax = rectA.left + rectA.width / 2;
-  const ay = rectA.top + rectA.height / 2;
-  const bx = rectB.left + rectB.width / 2;
-  const by = rectB.top + rectB.height / 2;
-  const dx = bx - ax;
-  const dy = by - ay;
-  const length = Math.hypot(dx, dy);
-  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-  const beam = document.createElement("div");
-  beam.className = `beam ${kind}`;
-  beam.style.width = `${length}px`;
-  beam.style.left = `${ax}px`;
-  beam.style.top = `${ay}px`;
-  beam.style.transform = `rotate(${angle}deg)`;
-  fxLayer.appendChild(beam);
-  setTimeout(() => beam.remove(), 520);
-  const pulse = document.createElement("div");
-  pulse.className = "pulse";
-  targetEl.appendChild(pulse);
-  setTimeout(() => pulse.remove(), 700);
-}
-
-function resetGame(){
-  state.round = 1;
-  state.threat = 1;
-  state.bossCounter = 5;
-  state.regionIndex = 0;
-  state.deck = Array(GRID_SIZE).fill(null);
-  state.enemy = Array(GRID_SIZE).fill(null);
-  state.reserve = [];
-  state.picksThisPhase = 0;
-  state.goldDraftBoost = 0;
-  state.gameOn = true;
-  logEl.innerHTML = "";
-  renderGrid();
-  renderReserve();
-  showDraft();
-}
-
-function showDetail(tile){
-  const detailModal = document.getElementById("detailModal");
-  const detailBody = document.getElementById("detailBody");
-  detailBody.innerHTML = `
-    <strong>${tile.name}</strong><br/>
-    Faction: ${tile.faction}<br/>
-    Rarity: ${tile.rarity.toUpperCase()}<br/>
-    Type: ${tile.type}<br/>
-    HP: ${tile.hp}/${tile.maxHp}<br/>
-    DMG: ${tile.dmg}<br/>
-    Fire Rate: ${tile.fireRate}<br/>
-    Priority: ${tile.priority}<br/>
-    Ability: ${tile.ability || "None"}<br/>
-    Status: ${tile.poison ? "Poisoned" : "Clear"}${tile.stun ? " / Stunned" : ""}
-  `;
-  detailModal.classList.add("active");
-}
-
-function toggleDetail(show){
-  const detailModal = document.getElementById("detailModal");
-  if(!show) detailModal.classList.remove("active");
-}
-
-document.getElementById("btnStart").addEventListener("click", () => {
-  state.gameOn = true;
-  resetGame();
-});
-
-document.getElementById("btnNext").addEventListener("click", resolveRound);
-
-document.getElementById("btnReset").addEventListener("click", resetGame);
-
-setupTrash();
-renderGrid();
-renderReserve();
-</script>
-</body>
-</html>
+function heroAttackType(u,t){if(!u)return 'hit';if(hasFx(u,'meteor'))return 'fire';if(hasFx(u,'gear'))return 'gear';if(hasFx(u,'holy')||u.t?.includes('Holy'))return 'holy';if(hasFx(u,'shadow')||u.t?.includes('Shadow')||u.t?.includes('Spirit'))return 'shadow';if(hasFx(u,'storm')||u.t?.includes('Storm'))return 'storm';if(hasFx(u,'frost')||u.t?.includes('Frost'))return 'frost';if(hasFx(u,'poison')||u.t?.includes('Poison'))return 'poison';if(hasFx(u,'burn')||u.t?.includes('Fire'))return 'fire';if(hasFx(u,'thorn')||u.t?.includes('Stone')||u.t?.includes('Nature'))return 'thorn';if(hasFx(u,'mark')||u.focus==='weak'||u.focus==='back')return 'mark';return 'hit'}
+function dmg(src,tgt,amt,type='hit'){if(!tgt||tgt.dead)return;let raw=amt,etype=effectLabel(type);if(tgt.team==='enemy'){let mult=1;if(tgt.weak&&tgt.weak.includes(etype))mult*=1.45;if(tgt.weak&&type==='burn'&&tgt.weak.includes('fire'))mult*=1.45;if(tgt.res&&tgt.res.includes(etype))mult*=.62;if(tgt.res&&type==='burn'&&tgt.res.includes('fire'))mult*=.62;if(tgt.marked)mult*=1.08;raw*=mult;if(mult>1.01)floatEnemy(S.enemies.indexOf(tgt),'WEAK!','#0ea5e9');if(mult<.99)floatEnemy(S.enemies.indexOf(tgt),'resist','#64748b')}if(tgt.team==='ally'){let b=bonus(tgt),dodge=b.dodge+(tgt.n==='Ghost'?.15:0)+(tgt.n==='Ninja'?.08:0);if(chance(dodge)){floatAlly(ix(tgt),'MISS','#7c3aed');return}let ap=allyProfile(tgt),at=attackType(src,type),mult=1;if(ap.weak.includes(at))mult*=1.35;if(ap.str.includes(at))mult*=.68;raw*=mult;if(mult>1.01)floatAlly(ix(tgt),'WEAK! '+shortWeak(at),'#ef4444');if(mult<.99)floatAlly(ix(tgt),'resist '+shortWeak(at),'#64748b');if((tgt.n==='Golem'||tgt.n==='Cactus'||b.thorns)&&src)dmg(tgt,src,Math.max(1,amt*(S.boost.thorns+(b.thorns||0)+(tgt.n==='Cactus'?.18:0))),'thorn')}if(tgt.shield>0){let s=Math.min(tgt.shield,raw);tgt.shield-=s;raw-=s}tgt.hp-=raw;let i=tgt.team==='ally'?ix(tgt):S.enemies.indexOf(tgt);float(tgt,i,`-${Math.round(raw)}`,type==='poison'?'#16a34a':type==='burn'?'#ea580c':type==='frost'?'#0284c7':type==='storm'?'#ca8a04':'#dc2626');flash(tgt,i,'hit');if(tgt.hp<=0)kill(src,tgt)}function heal(src,t,amt){if(!t||t.dead)return;t.hp=Math.min(t.maxHp,t.hp+amt);if(src&&src.n==='Priest')t.shield+=6;floatAlly(ix(t),`+${Math.round(amt)}`,'#16a34a')}function kill(src,t){t.dead=true;t.hp=0;if(t.team==='enemy'){S.kills++;let coin=2+S.boost.coins+(src&&src.n==='Pirate'?2:0)+(t.boss?10:0)+(liveA().some(u=>u.n==='Banker')?1:0);S.coins+=coin;S.points+=10+S.round*2+(t.boss?70:0);if(src){if(['Wolf','Rogue','Bee','Ninja'].includes(src.n))src.spd+=.03;if(src.n==='Vampire')heal(src,src,src.maxHp*.16)}floatEnemy(S.enemies.indexOf(t),`+${coin}🪙`,'#f59e0b');if(liveA().some(u=>u.n==='Mushroom')&&t.poison>0)liveE().forEach(e=>e.poison+=2)}else{if((S.boost.revive||liveA().some(u=>u.reviveAura))&&!S.battle.revive&&!t.revived){S.battle.revive=true;t.dead=false;t.revived=true;t.hp=Math.round(t.maxHp*(S.boost.revivePower||.35));t.shield+=26;floatAlly(ix(t),'REVIVE','#7c3aed');return}if(t.n==='Bomb')liveE().forEach(e=>dmg(t,e,t.atk*1.4,'burn'))}setTimeout(render,120)}
+function allyAtk(u){let t=pickEnemy(u);if(!t)return;let b=bonus(u),a=(u.atk+b.atk)*(1+(u.star-1)*.22);if(u.n==='Berserker')a*=1+(1-u.hp/u.maxHp)*.7;if(u.n==='Valkyrie'&&t.boss)a*=1.75;if(u.n==='Samurai'&&t.hp/t.maxHp<.35)a*=2;if(b.execute&&t.hp/t.maxHp<.38)a*=1+b.execute;if(u.n==='Crystal')a+=Math.min(10,t.shield||0);flash(u,ix(u),'atk');attackVisual(u,t,heroAttackType(u,t),`${u.e} ${u.n}`);if(hasFx(u,'mark'))t.marked=(t.marked||0)+1;dmg(u,t,a*(t.marked?1.12:1),u.t.includes('Fire')||hasFx(u,'burn')?'burn':'hit');if(['Wizard','Dragon','Bomb'].includes(u.n))splash(u,t,a*.42);if(u.n==='Stormcaller'||(b.chain&&chance(b.chain)))chain(u,t,a*.45);if(u.n==='Lancer')line(u,t,a*.35);if(hasFx(u,'vamp')&&t.hp/t.maxHp<.5)heal(u,u,a*.18);if(hasFx(u,'coin')&&chance(.25)){S.coins++;floatAlly(ix(u),'+1🪙','#f59e0b')}if(hasFx(u,'storm')&&chance(.28)){bossVfx('nova',document.querySelectorAll('.enemy')[S.enemies.indexOf(t)]);chain(u,t,a*.38)}if(hasFx(u,'quake')&&chance(.22)){document.querySelector('.gridWrap')?.classList.add('quake');setTimeout(()=>document.querySelector('.gridWrap')?.classList.remove('quake'),520);line(u,t,a*.45)}if(hasFx(u,'holy')){if(t.attack==='shadow'||(t.res||[]).includes('shadow'))dmg(u,t,a*.35,'holy');if(chance(.35))heal(u,liveA().sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0],a*.18)}if(hasFx(u,'shadow')){u.focus='back';if(chance(.22))dmg(u,pickEnemy(u)||t,a*.55,'shadow')}if(hasFx(u,'gear')){bossVfx('gearBurst',document.querySelectorAll('.enemy')[S.enemies.indexOf(t)]);if((t.shield||0)>0||u.focus==='armor')dmg(u,t,a*.5,'storm')}if(hasFx(u,'root')){t.slow=(t.slow||0)+.18;t.poison+=1.5}if(hasFx(u,'meteor')&&t.boss&&chance(.35)){bossVfx('nova',document.querySelectorAll('.enemy')[S.enemies.indexOf(t)]);splash(u,t,a*.8);dmg(u,t,a*.65,'burn')}if(hasFx(u,'storm')&&chance(.28))chain(u,t,a*.38);if(hasFx(u,'frost')){t.slow=(t.slow||0)+.12;dmg(u,t,Math.max(1,a*.18),'frost')}if(['Pyro','Dragon'].includes(u.n)||b.burn||S.boost.poison||hasFx(u,'burn')){t.burn+=(u.n==='Dragon'?8:3)+(b.burn||0);t.poison+=S.boost.poison||0}if(['Frog','Bee','Witch','Spiderling','Mushroom'].includes(u.n)||b.poison||hasFx(u,'poison'))t.poison+=3+(b.poison||0)+(hasFx(u,'poison')?2:0);if(['Yeti','Penguin','Mermaid'].includes(u.n)||b.slow)t.slow=(t.slow||0)+.08+(b.slow||0);if(['Medic','Priest','Angel','Mermaid','Bard'].includes(u.n))heal(u,liveA().sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0],9+(b.heal||0)+u.star*4);if(u.n==='Treant'||b.regen)heal(u,u,3+(b.regen||0));if(u.n==='Monk')u.shield+=5;if(u.n==='Engineer'){let m=liveA().filter(a=>a.t.includes('Machine')).sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0];if(m){heal(u,m,6);m.shield+=5}}if((u.n==='Drone'||u.n==='Gunner')&&chance(b.extra||.2)){let e=pickEnemy(u);if(e)dmg(u,e,a*.45,'hit')}}
+function centerOf(el){if(!el)return{x:innerWidth/2,y:innerHeight/2};let r=el.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}}
+function bossVfx(kind,el){let p=centerOf(el),d=document.createElement('div');d.className=kind;d.style.left=(p.x-13)+'px';d.style.top=(p.y-13)+'px';document.body.appendChild(d);if(kind==='gearBurst')d.style.left=(p.x-15)+'px';if(kind==='poisonCloud')d.style.left=(p.x-17)+'px';setTimeout(()=>d.remove(),850)}
+function bossSkill(e){if(!e.boss||!chance(.32))return;let idx=S.enemies.indexOf(e),el=document.querySelectorAll('.enemy')[idx]||document.body,la=liveA();if(!la.length)return;let name=e.n,front=S.squad.filter((u,i)=>u&&!u.dead&&i%W===3),all=la.slice();if(name.includes('Dragon')||name.includes('Volcano')){bossVfx('nova',el);all.forEach(a=>{a.burn+=5;dmg(e,a,Math.max(2,e.atk*.18),'fire')});msg('🔥 Boss ability: Inferno Wave!')}
+else if(name.includes('Ogre')){document.querySelector('.gridWrap')?.classList.add('quake');setTimeout(()=>document.querySelector('.gridWrap')?.classList.remove('quake'),650);(front.length?front:all).forEach(a=>dmg(e,a,Math.max(3,e.atk*.34),'hit'));msg('💥 Boss ability: Ground Slam!')}
+else if(name.includes('Lich')){bossVfx('shadowRip',el);let t=all.sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0];dmg(e,t,e.atk*.55,'shadow');e.hp=Math.min(e.maxHp,e.hp+e.atk*.75);floatEnemy(idx,'DRAIN','#7c3aed');msg('🌘 Boss ability: Soul Drain!')}
+else if(name.includes('Bog')||name.includes('Vine')){bossVfx('poisonCloud',el);all.forEach(a=>{a.poison+=5;a.slow=(a.slow||0)+.08});msg('☠️ Boss ability: Poison Bloom!')}
+else if(name.includes('Frost')){bossVfx('iceBurst',el);all.forEach(a=>{a.slow=(a.slow||0)+.16;dmg(e,a,Math.max(2,e.atk*.16),'frost')});msg('❄️ Boss ability: Blizzard Crown!')}
+else if(name.includes('Clock')){bossVfx('gearBurst',el);S.enemies.filter(x=>!x.dead).forEach(x=>{x.shield=(x.shield||0)+12;x.cd=Math.min(x.cd||0,.2)});msg('⚙️ Boss ability: Overclock Shields!')}
+else if(name.includes('Roc')||name.includes('Thunder')){bossVfx('nova',el);for(let k=0;k<Math.min(3,all.length);k++){let t=rand(all);dmg(e,t,e.atk*.38,'storm');t.slow=(t.slow||0)+.05}msg('⚡ Boss ability: Thunderstorm!')}
+else if(name.includes('Seraph')){bossVfx('holyFlash',el);e.shield+=22;all.forEach(a=>dmg(e,a,e.atk*.2,'holy'));msg('🌟 Boss ability: Radiant Blast!')}}
+function enemyAtk(e){let t=pickAlly(e);if(!t)return;let i=ix(t);document.querySelectorAll('.cell').forEach(c=>c.classList.remove('mark'));let cell=document.querySelector(`.cell[data-i="${i}"]`);if(cell)cell.classList.add('mark');attackVisual(e,t,e.attack||region().enemyType||'hit',`${e.e} ${e.n}`);dmg(e,t,e.atk*(e.boss?1.08:1),e.attack||region().enemyType||'hit');if(e.poison)t.poison+=e.poison;if(e.burn)t.burn+=e.burn;if(e.boss)S.squad.forEach((a,j)=>{if(a&&j%W===3&&a!==t)dmg(e,a,e.atk*.22,e.attack||'hit')});bossSkill(e)}
+function splash(src,t,amt){let i=S.enemies.indexOf(t);[i-1,i+1].forEach(j=>S.enemies[j]&&!S.enemies[j].dead&&dmg(src,S.enemies[j],amt,'hit'))}function chain(src,t,amt){let e=liveE().filter(x=>x!==t)[0];if(e){beam(S.enemies.indexOf(t),S.enemies.indexOf(e));dmg(src,e,amt,'storm')}}function line(src,t,amt){let i=S.enemies.indexOf(t);[i+1,i+2].forEach(j=>S.enemies[j]&&!S.enemies[j].dead&&dmg(src,S.enemies[j],amt,'hit'))}function statuses(){[...liveA(),...liveE()].forEach(u=>{if(u.poison>0){dmg(null,u,Math.max(1,u.poison*.45),'poison');u.poison*=.86}if(u.burn>0){dmg(null,u,Math.max(1,u.burn*.55),'burn');u.burn*=.80}if(u.team==='ally'){let b=bonus(u);if(b.regen)heal(null,u,b.regen*.22);if(hasFx(u,'heal')){heal(null,u,1.4);let id=ix(u);adj(id).forEach(a=>heal(null,a,.7))}if(hasFx(u,'cleanse')){let id=ix(u);[u,...adj(id)].forEach(a=>{a.burn*=.72;a.poison*=.72;heal(null,a,.45)})}if(hasFx(u,'rage'))u.atk+=Math.max(0,.015*(1-u.hp/u.maxHp))}})}function loop(){if(S.phase!=='battle')return;let a=liveA(),e=liveE();if(!a.length)return end(false);if(!e.length)return end(true);S.battle.tick++;if(S.battle.tick%3===0)statuses();a.forEach(u=>{let b=bonus(u);u.cd=(u.cd||0)-.25;let sp=Math.max(.35,u.spd+(b.spd||0));if(u.cd<=0){allyAtk(u);u.cd=Math.max(.38,1.75/sp)}});e.forEach(u=>{u.cd=(u.cd||0)-.25;let sp=Math.max(.35,u.spd-(u.slow||0));if(u.cd<=0){enemyAtk(u);u.cd=Math.max(.45,1.9/sp)}});render();setTimeout(loop,260)}function healBetweenRounds(){S.squad.forEach(u=>{if(u&&!u.dead){let missing=u.maxHp-u.hp,amt=Math.max(8,Math.round(u.maxHp*.35));heal(null,u,Math.min(missing,amt));u.burn=0;u.poison=0;u.slow=0;u.marked=0;u.shield=Math.max(u.shield||0,Math.round(u.maxHp*.08))}})}function end(win){document.querySelectorAll('.cell').forEach(c=>c.classList.remove('mark'));if(win){healBetweenRounds();let b=8+S.round*3,eco=Math.round(liveA().reduce((n,u)=>n+(bonus(u).coin||0),0));S.points+=b;if(eco){S.coins+=eco;msg(`Victory! +${b} points and +${eco}🪙 from economy.`)}else msg(`Victory! +${b} points.`);if(S.round%5===0){S.shopOpen=true;S.phase='shop';render();setTimeout(openShop,350)}else{S.round++;S.phase='recruit';render();setTimeout(openRecruit,350)}}else{S.phase='dead';msg(`Defeated on round ${S.round}. Final score ${S.points}.`);render()}}
+function openShop(){if(!S.shopOpen)return msg('Store opens after every 5th round boss.');S.phase='shop';S.items=[];while(S.items.length<5){let it=rand(store);if(!S.items.includes(it))S.items.push(it)}show('Special Store','Every 5 rounds after a boss. Kill coins buy permanent upgrades.','<div class="choices">'+S.items.map((it,i)=>`<button class="choice" onclick="buy(${i})"><span class="be">${it.e}</span><span><strong>${it.n}</strong><p>${it.desc}</p></span><span class="price">${it.cost} 🪙</span></button>`).join('')+`</div><br><button class="secondary" style="width:100%" onclick="doneShop()">Done — choose next recruit</button>`);render()}function buy(i){let it=S.items[i];if(S.coins<it.cost)return msg(`Need ${it.cost} coins.`);S.coins-=it.cost;it.buy();msg(`Bought ${it.e} ${it.n}.`);openShop();render()}function doneShop(){S.shopOpen=false;S.phase='recruit';S.round++;close();render();openRecruit()}
+function detail(u){let allied=u.team==='ally',b=allied?bonus(u):{},tr=(u.t||[u.kind==='melee'?'Melee':'Ranged']).map(t=>`<span class="trait on">${TE[t]||'👾'} ${t}</span>`).join(''),hint=allied?u.a:(u.kind==='melee'?'Melee enemy: attacks your right column front line first.':'Ranged enemy: uses its focus target.');show(`${u.e} ${u.n}`,hint,`<div class="detail"><div class="de">${u.e}</div><div><b>${u.n}</b><br>${tr}</div></div><div class="detailStats"><div class="stat">HP<br><b>${Math.round(u.hp)}/${Math.round(u.maxHp)}</b></div><div class="stat">ATK<br><b>${Math.round(u.atk+(b.atk||0))}</b></div><div class="stat">SPD<br><b>${(u.spd+(b.spd||0)).toFixed(2)}</b></div></div><p class="hint">Focus: <b>${FO[u.focus]||u.focus||u.kind}</b>${allied?`. Star training: ${u.star>=5?'MAX':((u.starProg||0)+'/'+starNeed(u)+' toward '+(u.star+1)+'★')}. Same unit onto same unit gives star training.`:''}</p>${allied&&u.fx&&u.fx.length?`<p class="hint"><b>Effects:</b> ${u.fx.map(f=>f.e+' '+f.n).join(', ')}</p>`:''}${allied?`<p class="hint"><b>Strengths:</b> ${allyProfile(u).str.map(shortWeak).join(' ')} ${allyProfile(u).str.join(', ')||'none'}<br><b>Weaknesses:</b> ${allyProfile(u).weak.map(shortWeak).join(' ')} ${allyProfile(u).weak.join(', ')||'none'}</p>`:''}${!allied?`<p class="hint"><b>Region:</b> ${region().e} ${u.region||region().n}<br><b>Attack:</b> ${shortWeak(u.attack)} ${u.attack}<br><b>Weak:</b> ${(u.weak||[]).map(shortWeak).join(' ')} ${(u.weak||[]).join(', ')}<br><b>Resists:</b> ${(u.res||[]).map(shortWeak).join(' ')} ${(u.res||[]).join(', ')}</p>`:''}`)}function help(){let syn='<div class="help">'+Object.entries(TE).map(([k,e])=>`<div><b>${e} ${k}</b><br>2+ trait stars activate. Higher star units count more.</div>`).join('')+'</div>';show('How to Play','Tiny 4×4 emoji auto-battler.',`<p><b>Flow:</b> tap Recruit → tap a creature → menu closes → tap your 4×4 grid. Fight starts immediately.</p><p><b>Front line:</b> the right column is your front line. Melee enemies hit that column first before moving left.</p><p><b>Upgrade cards:</b> star-ups give major percentage stat jumps: 2★ +35%, 3★ +45%, 4★ +60%, 5★ +80%. 3→4 requires 2 star trainings and 4→5 requires 3.</p><p><b>Effect cards:</b> flame, poison, healing aura, command aura, frost, storm, thorn, vamp, shield, coin, haste, mark, quake, holy, shadow, cleanse, rage, gear, root, and meteor color the square and change that unit.</p><p><b>Between rounds:</b> surviving allies heal 35% of max HP, clear poison/burn/slow, and keep a tiny shield.</p><p><b>Regions:</b> every 5 rounds moves to a new enemy region. Each region has main enemy types with weaknesses/resistances like fire, poison, frost, storm, holy, mark, and thorn.</p><p><b>Your guys have matchups too:</b> Fire units resist fire but hate frost, Nature resists poison but hates fire, Machines resist poison/basic hits but hate storm, Holy resists shadow but hates poison, Shadow resists shadow but hates holy, and tanks resist basic hits but dislike storm/mark.</p><p><b>Enemy growth:</b> enemies begin weak, then grow steadily. Bramble Bog unlocks heavier enemies gradually instead of spiking all at once.</p><p><b>Attack tells:</b> troops and enemies now pop forward, flash their target, and fire a small projectile/label whenever they attack.</p><p><b>Store:</b> every 5th round is a boss. Store items are now stronger class/type upgrades like Guard Bastion, Storm Battery, Venom Lab, and Royal Command.</p>${syn}`)}
+function show(t,h,html){$('dt').textContent=t;$('dhint').textContent=h;$('body').innerHTML=html;$('shade').classList.add('open');$('drawer').classList.add('open')}function close(){$('shade').classList.remove('open');$('drawer').classList.remove('open')}function msg(t){$('msg').textContent=t;S.log.unshift(t);S.log=S.log.slice(0,90)}function flash(u,i,cls){let el=u.team==='ally'?document.querySelector(`.cell[data-i="${i}"] .unit`):document.querySelectorAll('.enemy')[i];if(el){el.classList.add(cls);setTimeout(()=>el.classList.remove(cls),200)}}function float(u,i,text,color){u.team==='ally'?floatAlly(i,text,color):floatEnemy(i,text,color)}function placeFloat(el,text,color){if(!el)return;let r=el.getBoundingClientRect(),f=document.createElement('div');f.className='float';f.style.color=color;f.textContent=text;f.style.left=(r.left+r.width*.35)+'px';f.style.top=(r.top+r.height*.18)+'px';document.body.appendChild(f);setTimeout(()=>f.remove(),760)}function floatAlly(i,text,color){placeFloat(document.querySelector(`.cell[data-i="${i}"]`),text,color)}function floatEnemy(i,text,color){placeFloat(document.querySelectorAll('.enemy')[i],text,color)}function slashAlly(i){let c=document.querySelector(`.cell[data-i="${i}"]`);if(!c)return;let s=document.createElement('div');s.className='slash';s.style.left='26%';s.style.top='45%';c.appendChild(s);setTimeout(()=>s.remove(),420)}function slashEnemy(i){let c=document.querySelectorAll('.enemy')[i];if(!c)return;let s=document.createElement('div');s.className=Math.random()<.45?'spark':'slash';s.style.left='25%';s.style.top='42%';c.appendChild(s);setTimeout(()=>s.remove(),420)}function beam(a,b){let A=document.querySelectorAll('.enemy')[a],B=document.querySelectorAll('.enemy')[b];if(!A||!B)return;let ar=A.getBoundingClientRect(),br=B.getBoundingClientRect(),x=ar.left+ar.width/2,y=ar.top+ar.height/2,x2=br.left+br.width/2,y2=br.top+br.height/2,d=document.createElement('div');d.className='beam';d.style.left=x+'px';d.style.top=y+'px';d.style.width=Math.hypot(x2-x,y2-y)+'px';d.style.transform=`rotate(${Math.atan2(y2-y,x2-x)}rad)`;document.body.appendChild(d);setTimeout(()=>d.remove(),400)}
+function reset(){Object.assign(S,{round:1,points:0,coins:0,kills:0,phase:'recruit',squad:Array(N).fill(null),enemies:[],placing:null,placingEffect:null,placingUpgrade:false,choices:[],items:[],shopOpen:false,battle:null,log:[],boost:{hp:0,atk:0,spd:0,shield:0,coins:0,poison:0,thorns:0,revive:false,revivePower:.35,frontShield:0,tb:{}}});msg('Pick your first emoji fighter.');render();openRecruit()}$('recruit').onclick=()=>S.phase==='dead'?reset():openRecruit();$('shop').onclick=openShop;$('restart').onclick=reset;$('close').onclick=close;$('shade').onclick=()=>{if(!S.placing)close()};$('help').onclick=help;window.choose=choose;window.reroll=reroll;window.buy=buy;window.doneShop=doneShop;render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and the fight starts.');
+</script></body></html>
