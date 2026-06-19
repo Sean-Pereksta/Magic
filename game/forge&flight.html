@@ -494,7 +494,7 @@
       </div>
 
       <div class="hint" id="hint">
-        <b>WASD</b> move • <b>Mouse</b> aim • <b>LMB</b> attack • <b>Space</b> dodge (projectile immune) •
+        <b>WASD</b> move • <b>Mouse</b> aim • <b>LMB</b> attack • <b>Space</b> dodge / <b>double-tap mobile</b> dodge (projectile immune) •
         Clear rooms, grab loot, step into the <b>portal</b>.
       </div>
 
@@ -510,7 +510,7 @@
               <div><span class="kbd">WASD</span> move</div>
               <div><span class="kbd">Mouse</span> aim</div>
               <div><span class="kbd">LMB</span> attack</div>
-              <div><span class="kbd">Space</span> dodge (immune to projectiles while dodging)</div>
+              <div><span class="kbd">Space</span> dodge / double-tap mobile screen (immune to projectiles while dodging)</div>
               <div><span class="kbd">Drag</span> items from Inventory → Equipment slots</div>
             </div>
             <div class="panel">
@@ -941,6 +941,33 @@ const VIEW_SCALE = 0.78; // zoomed-out mobile view: smaller scale shows more are
     try { canvas.releasePointerCapture(e.pointerId); } catch {}
   });
 
+  // Mobile double-tap anywhere on the arena to dodge. Buttons/joystick/inventory do not trigger it.
+  let lastArenaTap = {t:0, x:0, y:0};
+  const DOUBLE_TAP_MS = 320;
+  const DOUBLE_TAP_DIST = 42;
+  function isTouchLikeTap(e){
+    return e.pointerType === "touch" || (navigator.maxTouchPoints||0) > 0;
+  }
+  function arenaDoubleTapDodge(e){
+    if(!isTouchLikeTap(e)) return;
+    if(e.target.closest?.("button,.mobileBtn,#mobileJoystick,.side,.overlay,.mainMenuOverlay")) return;
+    const now = performance.now();
+    const dx = e.clientX - lastArenaTap.x;
+    const dy = e.clientY - lastArenaTap.y;
+    if(now - lastArenaTap.t < DOUBLE_TAP_MS && Math.hypot(dx,dy) < DOUBLE_TAP_DIST){
+      e.preventDefault();
+      e.stopPropagation();
+      const r = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - r.left;
+      mouse.y = e.clientY - r.top;
+      tryDodge();
+      lastArenaTap.t = 0;
+    } else {
+      lastArenaTap = {t:now, x:e.clientX, y:e.clientY};
+    }
+  }
+  canvas.addEventListener("pointerup", arenaDoubleTapDodge, {passive:false});
+
 
   // =========================
   // Mobile controls
@@ -1080,6 +1107,10 @@ function upgradeText(it){
     {name:"Explosive", mods:{dmg:0.08, rate:-0.03}, effect:{key:"explode", name:"Explode", chance:0.18, power:0.42, duration:0}},
     {name:"Leeching", mods:{dmg:0.04, hp:10}, effect:{key:"lifesteal", name:"Lifesteal", chance:1.00, power:0.055, duration:0}},
     {name:"Colossal", mods:{dmg:0.12, speed:-0.02}, effect:{key:"knockback", name:"Knockback", chance:0.34, power:230, duration:0}},
+    {name:"Concussive", mods:{dmg:0.08, rate:-0.02}, effect:{key:"stun", name:"Stun", chance:0.18, power:0.55, duration:0.75}},
+    {name:"Staggering", mods:{dmg:0.06}, effect:{key:"stagger", name:"Stagger", chance:0.32, power:120, duration:0.45}},
+    {name:"Crippling", mods:{crit:0.04}, effect:{key:"cripple", name:"Cripple", chance:0.22, power:0.38, duration:2.2}},
+    {name:"Sundering", mods:{dmg:0.10}, effect:{key:"armorBreak", name:"Armor Break", chance:0.24, power:0.22, duration:3.0}},
     {name:"Reaping", mods:{crit:0.05}, effect:{key:"execute", name:"Execute", chance:1.00, power:0.16, duration:0}},
     {name:"Aegis", mods:{armor:9, hp:18}, effect:{key:"shieldKill", name:"Shield on Kill", chance:1.00, power:12, duration:0}},
   ];
@@ -1109,6 +1140,11 @@ function upgradeText(it){
     {name:"of Bounty", mods:{range:0.05}, effect:{key:"goldFind", name:"Gold Find", chance:1.00, power:0.28, duration:0}},
     {name:"of the Nova", mods:{dodge:0.05}, effect:{key:"dashNova", name:"Dash Nova", chance:1.00, power:18, duration:0}},
     {name:"of the Lodestone", mods:{hp:18}, effect:{key:"magnet", name:"Loot Magnet", chance:1.00, power:90, duration:0}},
+    {name:"of Impact", mods:{dmg:0.08}, effect:{key:"knockback", name:"Knockback", chance:0.30, power:210, duration:0}},
+    {name:"of the Hammer", mods:{dmg:0.11, rate:-0.03}, effect:{key:"stun", name:"Stun", chance:0.16, power:0.50, duration:0.70}},
+    {name:"of Dazing", mods:{range:0.05}, effect:{key:"stagger", name:"Stagger", chance:0.34, power:115, duration:0.45}},
+    {name:"of Shackles", mods:{armor:5}, effect:{key:"cripple", name:"Cripple", chance:0.25, power:0.42, duration:2.4}},
+    {name:"of Fracture", mods:{crit:0.04}, effect:{key:"armorBreak", name:"Armor Break", chance:0.22, power:0.24, duration:3.0}},
   ];
 
 
@@ -1121,6 +1157,10 @@ function upgradeText(it){
     {key:"explode", name:"Explode", chance:0.14, power:0.38, duration:0, desc:"Creates a small hit burst"},
     {key:"lifesteal", name:"Lifesteal", chance:1.00, power:0.045, duration:0, desc:"Heals for a portion of damage dealt"},
     {key:"knockback", name:"Knockback", chance:0.26, power:200, duration:0, desc:"Pushes enemies back on hit"},
+    {key:"stun", name:"Stun", chance:0.14, power:0.50, duration:0.70, desc:"Briefly stops enemies from moving or attacking"},
+    {key:"stagger", name:"Stagger", chance:0.28, power:115, duration:0.42, desc:"Interrupts and bumps enemies back"},
+    {key:"cripple", name:"Cripple", chance:0.20, power:0.35, duration:2.2, desc:"Heavily slows enemy movement"},
+    {key:"armorBreak", name:"Armor Break", chance:0.22, power:0.22, duration:3.0, desc:"Makes enemies take more weapon damage"},
     {key:"execute", name:"Execute", chance:1.00, power:0.14, duration:0, desc:"Deals bonus damage to wounded enemies"},
     {key:"shieldKill", name:"Shield on Kill", chance:1.00, power:10, duration:0, desc:"Gains temporary shield when you kill"},
     {key:"thorns", name:"Thorns", chance:1.00, power:0.16, duration:0, desc:"Reflects some contact damage"},
@@ -2364,9 +2404,12 @@ function spawnBoss(depth){
   }
 
   function addStatus(e, key, duration, power){
+    if(!e || e.hp<=0) return;
     if(!e.status) e.status={};
+    const control = ["freeze","stun","stagger","cripple"].includes(key);
+    const bossScale = e.boss && control ? 0.45 : 1;
     const cur = e.status[key] || {t:0, p:0};
-    cur.t = Math.max(cur.t, duration||0);
+    cur.t = Math.max(cur.t, (duration||0) * bossScale);
     cur.p = Math.max(cur.p, power||0);
     e.status[key] = cur;
   }
@@ -2398,8 +2441,15 @@ function spawnBoss(depth){
   }
 
   function statusSpeedMult(e){
+    if(e.status?.stun?.t>0) return 0;
     const fr=e.status?.freeze;
-    return fr && fr.t>0 ? clamp(1-(fr.p||0), 0.25, 1) : 1;
+    const cr=e.status?.cripple;
+    const st=e.status?.stagger;
+    let m = 1;
+    if(fr && fr.t>0) m *= clamp(1-(fr.p||0), 0.25, 1);
+    if(cr && cr.t>0) m *= clamp(1-(cr.p||0), 0.18, 1);
+    if(st && st.t>0) m *= 0.35;
+    return clamp(m, 0, 1);
   }
 
   function gainShield(amt){
@@ -2422,14 +2472,36 @@ function spawnBoss(depth){
       else if(ef.key==="poison") addStatus(e,"poison",ef.duration||4,ef.power||4);
       else if(ef.key==="bleed") addStatus(e,"bleed",ef.duration||3,ef.power||4);
       else if(ef.key==="freeze") addStatus(e,"freeze",ef.duration||1.1,ef.power||0.45);
+      else if(ef.key==="stun"){
+        addStatus(e,"stun",ef.duration||0.65,ef.power||0.5);
+        e.vx *= 0.15; e.vy *= 0.15;
+        G.fx.push({type:"burst", x:e.x,y:e.y,r:38,t:0.18,color:"rgba(250,204,21,.65)", rays:7});
+      }
+      else if(ef.key==="stagger"){
+        addStatus(e,"stagger",ef.duration||0.4,ef.power||100);
+        const sx=opts.srcX ?? G.player.x, sy=opts.srcY ?? G.player.y;
+        const dx=e.x-sx, dy=e.y-sy, d=hypot(dx,dy)||1;
+        e.vx += dx/d*(ef.power||105);
+        e.vy += dy/d*(ef.power||105);
+        e.atkT = Math.max(e.atkT||0, 0.20);
+        G.fx.push({type:"ring", x:e.x,y:e.y,r:28,t:0.16,color:"rgba(251,191,36,.42)"});
+      }
+      else if(ef.key==="cripple") addStatus(e,"cripple",ef.duration||2.1,ef.power||0.35);
+      else if(ef.key==="armorBreak"){
+        addStatus(e,"armorBreak",ef.duration||3,ef.power||0.22);
+        G.fx.push({type:"ring", x:e.x,y:e.y,r:e.r+18,t:0.18,color:"rgba(248,113,113,.38)"});
+      }
       else if(ef.key==="lifesteal"){
         const heal = dealt*(ef.power||0.04);
         G.player.hp = clamp(G.player.hp + heal, 0, G.player.hpMax);
       } else if(ef.key==="knockback"){
         const sx=opts.srcX ?? G.player.x, sy=opts.srcY ?? G.player.y;
         const dx=e.x-sx, dy=e.y-sy, d=hypot(dx,dy)||1;
-        e.vx += dx/d*(ef.power||160);
-        e.vy += dy/d*(ef.power||160);
+        const k = (ef.power||160) * (e.boss ? 0.45 : 1);
+        e.vx += dx/d*k;
+        e.vy += dy/d*k;
+        e.atkT = Math.max(e.atkT||0, 0.12);
+        G.fx.push({type:"line", x1:sx,y1:sy,x2:e.x,y2:e.y,t:0.10,color:"rgba(251,191,36,.70)"});
       } else if(ef.key==="chain"){
         let jumps=0;
         for(const a of G.enemies){
@@ -3038,6 +3110,15 @@ function bossArenaPattern(e, p, dx, dy, d){
     e.wind = Math.max(0, e.wind - dt);
     e.phase = Math.max(0, e.phase - dt);
     e.shotTele = Math.max(0, e.shotTele - dt);
+
+    if(e.status?.stun?.t>0){
+      e.vx *= 0.08;
+      e.vy *= 0.08;
+      e.wind = 0;
+      e.shotTele = 0;
+      if(chance(0.18)) G.particles.push({x:e.x+rand(-8,8),y:e.y-e.r-rand(8,18),vx:rand(-20,20),vy:rand(-45,-12),t:rand(.18,.32),c:"rgba(250,204,21,.95)"});
+      return;
+    }
 
     const dx = p.x - e.x;
     const dy = p.y - e.y;
@@ -4996,6 +5077,7 @@ it.gstar = 0;
     // contact damage
     if(dist(p.x,p.y,e.x,e.y) < p.r + e.r){
   if(
+    !(e.status?.stun?.t>0) &&
     e.type!==ENEMY_TYPES.SHOOTER &&
     e.type!==ENEMY_TYPES.SNIPER &&
     e.type!==ENEMY_TYPES.TURRET &&
@@ -5974,6 +6056,10 @@ function drawEnemy(ctx, e){
     if(e.status.burn){ ctx.strokeStyle="rgba(251,113,133,.65)"; ctx.beginPath(); ctx.arc(0, 0, 16*S, 0, Math.PI*2); ctx.stroke(); }
     if(e.status.poison){ ctx.strokeStyle="rgba(34,197,94,.62)"; ctx.beginPath(); ctx.arc(0, 0, 19*S, 0, Math.PI*2); ctx.stroke(); }
     if(e.status.freeze){ ctx.strokeStyle="rgba(125,211,252,.72)"; ctx.beginPath(); ctx.arc(0, 0, 22*S, 0, Math.PI*2); ctx.stroke(); }
+    if(e.status.stun){ ctx.strokeStyle="rgba(250,204,21,.82)"; ctx.beginPath(); ctx.arc(0, -6*S, 25*S, 0, Math.PI*2); ctx.stroke(); ctx.fillStyle="rgba(250,204,21,.95)"; ctx.font=`${14*S}px system-ui`; ctx.textAlign="center"; ctx.fillText("✦", 0, -30*S); }
+    if(e.status.cripple){ ctx.strokeStyle="rgba(251,191,36,.58)"; ctx.beginPath(); ctx.arc(0, 0, 25*S, Math.PI*.15, Math.PI*1.85); ctx.stroke(); }
+    if(e.status.armorBreak){ ctx.strokeStyle="rgba(248,113,113,.72)"; ctx.beginPath(); ctx.arc(0, 0, 28*S, Math.PI*.25, Math.PI*1.75); ctx.stroke(); }
+    if(e.status.bleed){ ctx.strokeStyle="rgba(248,113,113,.54)"; ctx.beginPath(); ctx.arc(0, 0, 13*S, 0, Math.PI*2); ctx.stroke(); }
     ctx.restore();
   }
   if((e.shield||0)>0){
