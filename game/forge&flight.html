@@ -415,6 +415,20 @@
   .btnExitMenu{background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.26);}
   @media (max-width:560px){.menuCard{padding:14px;border-radius:20px}.menuTabs{grid-template-columns:1fr}.scoreRow{grid-template-columns:28px 1fr auto}.menuActions{flex-direction:column}.menuActions .btn{width:100%;min-width:0}.bossBanner{top:138px;width:min(430px, calc(100% - 24px));}}
 
+
+  /* Boss reward cards / relics */
+  .rewardGrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  .rewardCard{position:relative;overflow:hidden;border-radius:16px;border:1px solid rgba(255,255,255,.14);background:linear-gradient(160deg, rgba(15,23,42,.94), rgba(0,0,0,.34));padding:12px;display:flex;flex-direction:column;gap:8px;min-height:178px;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 12px 28px rgba(0,0,0,.20);}
+  .rewardCard:before{content:"";position:absolute;inset:-40px -40px auto auto;width:120px;height:120px;border-radius:999px;background:rgba(251,191,36,.10);filter:blur(2px);}
+  .rewardCard:hover{border-color:rgba(251,191,36,.42);transform:translateY(-1px);}
+  .rewardIcon{font-size:30px;line-height:1;filter:drop-shadow(0 6px 12px rgba(0,0,0,.35));}
+  .rewardName{font-size:14px;font-weight:1000;line-height:1.1;}
+  .rewardDesc{font-size:12px;color:rgba(229,231,235,.78);line-height:1.32;}
+  .rewardTags{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;}
+  .relicShelf{display:flex;gap:7px;flex-wrap:wrap;}
+  .relicPill{font-size:11px;font-weight:900;padding:5px 8px;border-radius:999px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.20);color:#fde68a;}
+  @media (max-width:760px){.rewardGrid{grid-template-columns:1fr}.rewardCard{min-height:132px}}
+
 </style>
 </head>
 <body>
@@ -634,6 +648,28 @@
         </div>
       </div>
 
+      <div class="overlay" id="ovBossReward">
+        <div class="modal">
+          <div class="modalHead">
+            <div class="modalTitleStack">
+              <span class="modalGoldCorner">Boss Reward <b id="rewardDepthLabel">Depth</b></span>
+              <b>Choose a Relic or Evolution</b>
+            </div>
+          </div>
+          <div class="modalBody">
+            <div class="panel">
+              <h3>Current Relics</h3>
+              <div class="relicShelf" id="relicShelf"><span class="smallNote">No relics yet.</span></div>
+            </div>
+            <div class="rewardGrid" id="bossRewardGrid"></div>
+          </div>
+          <div class="modalFoot">
+            <span class="smallNote">Relics can return as upgrade cards. Spell books evolve only when equipped.</span>
+          </div>
+        </div>
+      </div>
+
+
     </div>
   </div>
 
@@ -841,6 +877,12 @@ const VIEW_SCALE = 0.78; // zoomed-out mobile view: smaller scale shows more are
 
   // Death
   const deathSummary = document.getElementById("deathSummary");
+
+  // Boss rewards / relics
+  const ovBossReward = document.getElementById("ovBossReward");
+  const bossRewardGrid = document.getElementById("bossRewardGrid");
+  const relicShelf = document.getElementById("relicShelf");
+  const rewardDepthLabel = document.getElementById("rewardDepthLabel");
 
   // Persistent menu / Firebase elements
   const mainMenu = document.getElementById("mainMenu");
@@ -1403,6 +1445,7 @@ function upgradeText(it){
       if(it.mods.radiusPx) parts.push(`Radius ${Math.round(it.mods.radiusPx)}`);
       if(it.mods.rangePx) parts.push(`Range ${Math.round(it.mods.rangePx)}`);
       if(it.mods.jumps) parts.push(`Jumps ${Math.round(it.mods.jumps)}`);
+      if(it.meta.evo) parts.push(`Evolution Lv.${it.meta.evo}`);
       parts.push(`CD ${Math.max(3, it.mods.cooldown||12).toFixed(1)}s`);
       if(it.meta.note) parts.push(it.meta.note);
     } else if(it.slot==="weapon"){
@@ -1540,6 +1583,8 @@ function itemValue(it, purpose="buy"){
     hazards:[],
     fx:[],
     particles:[],
+    relics:[],
+    pendingRewards:[],
     paused:false,
     ended:false,
     kills:0,
@@ -1550,6 +1595,123 @@ function itemValue(it, purpose="buy"){
     cloudReady:false,
     lastSaveAt:0
   };
+
+
+
+  // =========================
+  // Relics & Boss Reward Cards
+  // =========================
+  const RELICS = [
+    {id:"bladeSigil", icon:"🗡️", name:"Blade Sigil", stat:"dmg", max:8, desc:l=>`+${l*7}% all weapon and spell damage.`},
+    {id:"ironHalo", icon:"🛡️", name:"Iron Halo", stat:"armor", max:7, desc:l=>`+${l*10} armor and a sturdier shield cap.`},
+    {id:"phoenixAsh", icon:"🔥", name:"Phoenix Ash", stat:"hp", max:6, desc:l=>`+${l*18} max HP. At level 4+, gain a boss-kill heal burst.`},
+    {id:"stormNeedle", icon:"⚡", name:"Storm Needle", stat:"rate", max:6, desc:l=>`+${l*6}% attack speed and spell recovery.`},
+    {id:"windSoles", icon:"👟", name:"Wind Soles", stat:"speed", max:6, desc:l=>`+${l*5}% move speed and +${l*2}% dodge recovery.`},
+    {id:"hawkLens", icon:"🎯", name:"Hawk Lens", stat:"crit", max:6, desc:l=>`+${l*4}% critical chance and sharper auto-aim range.`},
+    {id:"greedCrown", icon:"👑", name:"Greed Crown", stat:"gold", max:8, desc:l=>`+${l*18}% gold from enemies and boss treasure.`},
+    {id:"magnetMoon", icon:"🌙", name:"Magnet Moon", stat:"magnet", max:5, desc:l=>`+${l*70}px loot magnet range.`},
+    {id:"vampireFang", icon:"🩸", name:"Vampire Fang", stat:"lifesteal", max:5, desc:l=>`Heal for ${Math.round(l*1.4)}% of weapon damage dealt.`},
+    {id:"glassComet", icon:"☄️", name:"Glass Comet", stat:"spellPower", max:7, desc:l=>`+${l*10}% spell power, but each level lowers armor by 2.`},
+    {id:"runeBattery", icon:"🔮", name:"Rune Battery", stat:"spellCd", max:6, desc:l=>`Spell cooldowns recover ${l*8}% faster.`},
+    {id:"bossBane", icon:"💀", name:"Boss Bane", stat:"bossDmg", max:6, desc:l=>`+${l*12}% damage against bosses.`},
+    {id:"thunderHeart", icon:"💙", name:"Thunder Heart", stat:"shock", max:5, desc:l=>`${12+l*4}% chance to shock enemies on hit.`},
+    {id:"emberPouch", icon:"💰", name:"Ember Pouch", stat:"loot", max:5, desc:l=>`+${l*2}% item-drop chance and better boss loot bursts.`},
+    {id:"aegisSeed", icon:"✨", name:"Aegis Seed", stat:"shieldKill", max:5, desc:l=>`Gain ${l*4} shield on kill and ${l*16} shield after bosses.`},
+    {id:"frostCharm", icon:"❄️", name:"Frost Charm", stat:"freeze", max:5, desc:l=>`${10+l*3}% chance to slow enemies on hit.`}
+  ];
+  const RELIC_BY_ID = Object.fromEntries(RELICS.map(r=>[r.id,r]));
+
+  function relicLevel(id){ return (G.relics||[]).find(r=>r.id===id)?.level || 0; }
+  function relicStat(stat){
+    let v=0;
+    for(const r of (G.relics||[])) if(RELIC_BY_ID[r.id]?.stat===stat) v += r.level||0;
+    return v;
+  }
+  function relicName(id){ const r=RELIC_BY_ID[id]; const l=relicLevel(id); return r ? `${r.icon} ${r.name} Lv.${l}` : id; }
+  function addOrUpgradeRelic(id){
+    const def = RELIC_BY_ID[id]; if(!def) return;
+    G.relics = G.relics || [];
+    let r = G.relics.find(x=>x.id===id);
+    if(!r){ r = {id, level:0}; G.relics.push(r); }
+    r.level = clamp((r.level||0)+1, 1, def.max||5);
+    toast(`${def.name} is now Lv.${r.level}`, 1.2);
+    recalcStats(); renderAllUI(); saveRunNow("relic");
+  }
+  function renderRelicShelf(){
+    if(!relicShelf) return;
+    relicShelf.innerHTML = "";
+    if(!G.relics || !G.relics.length){ relicShelf.innerHTML = '<span class="smallNote">No relics yet.</span>'; return; }
+    for(const rr of G.relics){
+      const def = RELIC_BY_ID[rr.id]; if(!def) continue;
+      const pill = document.createElement("span");
+      pill.className = "relicPill";
+      pill.textContent = `${def.icon} ${def.name} Lv.${rr.level}`;
+      pill.title = def.desc(rr.level);
+      relicShelf.appendChild(pill);
+    }
+  }
+  function makeRelicReward(existingBias=true){
+    const owned = (G.relics||[]).map(r=>r.id).filter(id=>(relicLevel(id) < (RELIC_BY_ID[id]?.max||5)));
+    let id = null, upgrade = false;
+    if(existingBias && owned.length && chance(0.46)){ id = pick(owned); upgrade = true; }
+    else {
+      const choices = RELICS.filter(r=>relicLevel(r.id) < (r.max||5));
+      id = pick(choices).id;
+      upgrade = relicLevel(id)>0;
+    }
+    const def = RELIC_BY_ID[id];
+    const next = relicLevel(id)+1;
+    return {type:"relic", id, icon:def.icon, name:def.name, level:next, tag:upgrade?"Upgrade Relic":"New Relic", desc:def.desc(next)};
+  }
+  function makeSpellEvolutionReward(){
+    const book = equippedSpellBook?.();
+    if(!book) return null;
+    if(!book.meta) book.meta = {};
+    const cur = book.meta.evo || 0;
+    if(cur >= 5) return null;
+    const names = ["Awakened", "Empowered", "Overcharged", "Ascended", "Mythic"];
+    return {type:"spellEvolution", icon:book.meta.icon||"📖", name:`${book.base || book.name} Evolution`, level:cur+1, tag:"Spellbook Evolution", desc:`Evolve the equipped spellbook to ${names[cur] || "Evolved"} Lv.${cur+1}: more power, radius, range, and faster cooldowns.`};
+  }
+  function buildBossRewards(){
+    const cards=[];
+    const spellCard = makeSpellEvolutionReward();
+    if(spellCard && chance(0.62)) cards.push(spellCard);
+    while(cards.length<3){
+      const c = makeRelicReward(true);
+      if(!cards.some(x=>x.type===c.type && x.id===c.id)) cards.push(c);
+    }
+    return cards.slice(0,3);
+  }
+  function openBossRewards(){
+    G.pendingRewards = buildBossRewards();
+    if(rewardDepthLabel) rewardDepthLabel.textContent = String(G.depth);
+    renderRelicShelf();
+    bossRewardGrid.innerHTML = "";
+    for(const card of G.pendingRewards){
+      const div = document.createElement("div");
+      div.className = "rewardCard";
+      div.innerHTML = `<div class="rewardIcon">${card.icon}</div><div class="rewardName">${card.name}</div><div class="rewardDesc">${card.desc}</div><div class="rewardTags"><span class="tag star">${card.tag}</span><span class="tag gold">Lv.${card.level}</span></div>`;
+      div.addEventListener("click", ()=>chooseBossReward(card));
+      bossRewardGrid.appendChild(div);
+    }
+    ovBossReward.classList.add("show");
+    G.paused = true;
+  }
+  function chooseBossReward(card){
+    if(card.type==="relic") addOrUpgradeRelic(card.id);
+    if(card.type==="spellEvolution"){
+      const book = equippedSpellBook();
+      if(book){
+        if(!book.meta) book.meta={};
+        book.meta.evo = clamp((book.meta.evo||0)+1, 1, 5);
+        toast(`${book.name} evolved to Lv.${book.meta.evo}!`, 1.25);
+      }
+    }
+    ovBossReward.classList.remove("show");
+    G.pendingRewards=[];
+    G.paused = false;
+    recalcStats(); renderAllUI(); saveRunNow("bossReward");
+  }
 
   function newPlayer(){
     return {
@@ -1624,6 +1786,23 @@ function itemValue(it, purpose="buy"){
 
     for(const s of Object.keys(p.equip)) apply(p.equip[s]);
 
+    // Relic bonuses stack outside gear so boss choices become a real build path.
+    const rDmg = relicStat("dmg");
+    const rRate = relicStat("rate");
+    const rSpeed = relicStat("speed");
+    const rArmor = relicStat("armor");
+    const rHp = relicStat("hp");
+    const rCrit = relicStat("crit");
+    const rGlass = relicStat("spellPower");
+    if(rDmg) p.dmgMul *= (1 + rDmg*0.07);
+    if(rRate) p.rateMul *= (1 + rRate*0.06);
+    if(rSpeed) p.speedMul *= (1 + rSpeed*0.05);
+    if(rArmor) p.armor += rArmor*10;
+    if(rHp) hpBonus += rHp*18;
+    if(rCrit) p.crit += rCrit*0.04;
+    if(rGlass) p.armor -= rGlass*2;
+    if(relicStat("spellCd")) p.rateMul *= (1 + relicStat("spellCd")*0.015);
+
     const oldMax = p.hpMax;
     p.hpMax = Math.round(100 + hpBonus);
     if(p.hpMax !== oldMax){
@@ -1651,30 +1830,106 @@ function itemValue(it, purpose="buy"){
 
   function floorThemeForDepth(depth){
     const themes = [
-      {name:"Frost Crypt", bg:"rgba(56,189,248,.06)", grid:"rgba(125,211,252,.07)", wall:"rgba(125,211,252,.08)", wallStroke:"rgba(186,230,253,.16)", decor:"ice", fog:"rgba(56,189,248,.05)"},
-      {name:"Ember Vault", bg:"rgba(239,68,68,.06)", grid:"rgba(251,146,60,.07)", wall:"rgba(127,29,29,.18)", wallStroke:"rgba(251,146,60,.18)", decor:"ember", fog:"rgba(239,68,68,.05)"},
-      {name:"Moss Ruins", bg:"rgba(34,197,94,.055)", grid:"rgba(134,239,172,.06)", wall:"rgba(20,83,45,.16)", wallStroke:"rgba(134,239,172,.16)", decor:"moss", fog:"rgba(34,197,94,.05)"},
-      {name:"Arcane Library", bg:"rgba(167,139,250,.06)", grid:"rgba(216,180,254,.065)", wall:"rgba(76,29,149,.16)", wallStroke:"rgba(216,180,254,.16)", decor:"rune", fog:"rgba(167,139,250,.05)"},
-      {name:"Royal Ossuary", bg:"rgba(251,191,36,.045)", grid:"rgba(253,224,71,.055)", wall:"rgba(120,53,15,.14)", wallStroke:"rgba(253,224,71,.14)", decor:"bones", fog:"rgba(251,191,36,.04)"},
+      {
+        key:"frost", name:"Frost Crypt", subtitle:"glass ice, buried kings, blue flame",
+        bg:"rgba(56,189,248,.08)", grid:"rgba(125,211,252,.09)", wall:"rgba(8,47,73,.26)", wallStroke:"rgba(186,230,253,.22)", fog:"rgba(56,189,248,.075)",
+        palette:{a:"#67e8f9", b:"#bae6fd", c:"#164e63", d:"#0e7490"},
+        enemyTint:{body:"#67e8f9", glow:"rgba(125,211,252,.95)", cloak:"#164e63"},
+        decor:"ice", decorKinds:["iceSpire","frozenRib","blueTorch","snowDrift","crystalCluster","frostRune"],
+        enemies:[ENEMY_TYPES.FROSTMAGE,ENEMY_TYPES.WRAITH,ENEMY_TYPES.SHIELDER,ENEMY_TYPES.SNIPER,ENEMY_TYPES.MIRROR,ENEMY_TYPES.KNIGHT],
+        bossTypes:[ENEMY_TYPES.BOSS_LICH,ENEMY_TYPES.BOSS_GOLEM], bossTitle:"The Frostbound King", bossColor:"rgba(125,211,252,.95)", bossAdds:[ENEMY_TYPES.FROSTMAGE,ENEMY_TYPES.WRAITH,ENEMY_TYPES.SHIELDER]
+      },
+      {
+        key:"ember", name:"Ember Vault", subtitle:"lava seams, falling ash, furnace beasts",
+        bg:"rgba(239,68,68,.09)", grid:"rgba(251,146,60,.09)", wall:"rgba(127,29,29,.25)", wallStroke:"rgba(251,146,60,.24)", fog:"rgba(239,68,68,.075)",
+        palette:{a:"#ef4444", b:"#fb923c", c:"#7f1d1d", d:"#fbbf24"},
+        enemyTint:{body:"#ef4444", glow:"rgba(251,113,133,.95)", cloak:"#7f1d1d"},
+        decor:"ember", decorKinds:["lavaCrack","emberVent","charredPillar","fireBrazier","ashBone","magmaPool"],
+        enemies:[ENEMY_TYPES.SLASHER,ENEMY_TYPES.BOMBER,ENEMY_TYPES.BEAST,ENEMY_TYPES.SAPPER,ENEMY_TYPES.METEOR,ENEMY_TYPES.WARLOCK],
+        bossTypes:[ENEMY_TYPES.BOSS_WYRM,ENEMY_TYPES.BOSS_WARLORD], bossTitle:"The Cinder Wyrm", bossColor:"rgba(251,113,133,.96)", bossAdds:[ENEMY_TYPES.BOMBER,ENEMY_TYPES.SAPPER,ENEMY_TYPES.METEOR]
+      },
+      {
+        key:"moss", name:"Moss Ruins", subtitle:"overgrown temples, vines, living roots",
+        bg:"rgba(34,197,94,.075)", grid:"rgba(134,239,172,.08)", wall:"rgba(20,83,45,.20)", wallStroke:"rgba(134,239,172,.21)", fog:"rgba(34,197,94,.065)",
+        palette:{a:"#22c55e", b:"#86efac", c:"#064e3b", d:"#a3e635"},
+        enemyTint:{body:"#22c55e", glow:"rgba(134,239,172,.92)", cloak:"#064e3b"},
+        decor:"moss", decorKinds:["vinePatch","rootArch","flowerGlow","mossStone","fallenColumn","leafSwirl"],
+        enemies:[ENEMY_TYPES.GRUNT,ENEMY_TYPES.BEAST,ENEMY_TYPES.HEALER,ENEMY_TYPES.BROODMOTHER,ENEMY_TYPES.LEAPER,ENEMY_TYPES.ALCHEMIST],
+        bossTypes:[ENEMY_TYPES.BOSS_GOLEM,ENEMY_TYPES.BOSS_WARLORD], bossTitle:"The Root-Crowned Behemoth", bossColor:"rgba(134,239,172,.95)", bossAdds:[ENEMY_TYPES.HEALER,ENEMY_TYPES.LEAPER,ENEMY_TYPES.BROODMOTHER]
+      },
+      {
+        key:"arcane", name:"Arcane Library", subtitle:"floating books, violet wards, mirror magic",
+        bg:"rgba(167,139,250,.09)", grid:"rgba(216,180,254,.085)", wall:"rgba(76,29,149,.21)", wallStroke:"rgba(216,180,254,.22)", fog:"rgba(167,139,250,.075)",
+        palette:{a:"#a78bfa", b:"#d8b4fe", c:"#3b0764", d:"#38bdf8"},
+        enemyTint:{body:"#a78bfa", glow:"rgba(216,180,254,.96)", cloak:"#3b0764"},
+        decor:"rune", decorKinds:["bookPile","runeCircle","floatingGlyph","manaCrystal","brokenShelf","starSigil"],
+        enemies:[ENEMY_TYPES.SHOOTER,ENEMY_TYPES.ORBITER,ENEMY_TYPES.SUMMONER,ENEMY_TYPES.CURSEEYE,ENEMY_TYPES.MIRROR,ENEMY_TYPES.PHANTOM],
+        bossTypes:[ENEMY_TYPES.BOSS_LICH,ENEMY_TYPES.BOSS_WYRM], bossTitle:"The Astral Archivist", bossColor:"rgba(216,180,254,.96)", bossAdds:[ENEMY_TYPES.SUMMONER,ENEMY_TYPES.CURSEEYE,ENEMY_TYPES.MIRROR]
+      },
+      {
+        key:"ossuary", name:"Royal Ossuary", subtitle:"gold tombs, bone gates, ancient soldiers",
+        bg:"rgba(251,191,36,.065)", grid:"rgba(253,224,71,.075)", wall:"rgba(120,53,15,.19)", wallStroke:"rgba(253,224,71,.19)", fog:"rgba(251,191,36,.055)",
+        palette:{a:"#fbbf24", b:"#fde68a", c:"#422006", d:"#cbd5e1"},
+        enemyTint:{body:"#cbd5e1", glow:"rgba(253,224,71,.85)", cloak:"#422006"},
+        decor:"bones", decorKinds:["bonePile","royalBanner","goldCasket","skullTotem","sarcophagus","crownRelic"],
+        enemies:[ENEMY_TYPES.KNIGHT,ENEMY_TYPES.TOTEM,ENEMY_TYPES.JUGGERNAUT,ENEMY_TYPES.SPLITTER,ENEMY_TYPES.SPREADER,ENEMY_TYPES.TURRET],
+        bossTypes:[ENEMY_TYPES.BOSS_WARLORD,ENEMY_TYPES.BOSS_LICH], bossTitle:"The Gilded Warlord", bossColor:"rgba(253,224,71,.95)", bossAdds:[ENEMY_TYPES.KNIGHT,ENEMY_TYPES.TOTEM,ENEMY_TYPES.JUGGERNAUT]
+      },
+      {
+        key:"plague", name:"Plague Warrens", subtitle:"spore fog, acid pools, nests",
+        bg:"rgba(132,204,22,.08)", grid:"rgba(190,242,100,.08)", wall:"rgba(54,83,20,.23)", wallStroke:"rgba(190,242,100,.21)", fog:"rgba(132,204,22,.07)",
+        palette:{a:"#84cc16", b:"#bef264", c:"#365314", d:"#22c55e"},
+        enemyTint:{body:"#84cc16", glow:"rgba(190,242,100,.95)", cloak:"#365314"},
+        decor:"plague", decorKinds:["sporePod","acidPuddle","fungalTower","ribNest","toxicVent","eggCluster"],
+        enemies:[ENEMY_TYPES.ALCHEMIST,ENEMY_TYPES.BROODMOTHER,ENEMY_TYPES.RAZORBAT,ENEMY_TYPES.SPREADER,ENEMY_TYPES.HEALER,ENEMY_TYPES.CURSEEYE],
+        bossTypes:[ENEMY_TYPES.BOSS_GOLEM,ENEMY_TYPES.BOSS_WYRM], bossTitle:"The Plague Matriarch", bossColor:"rgba(190,242,100,.95)", bossAdds:[ENEMY_TYPES.ALCHEMIST,ENEMY_TYPES.BROODMOTHER,ENEMY_TYPES.RAZORBAT]
+      },
+      {
+        key:"storm", name:"Storm Foundry", subtitle:"conductors, turbines, blue lightning",
+        bg:"rgba(14,165,233,.075)", grid:"rgba(56,189,248,.085)", wall:"rgba(12,74,110,.23)", wallStroke:"rgba(125,211,252,.22)", fog:"rgba(14,165,233,.065)",
+        palette:{a:"#38bdf8", b:"#7dd3fc", c:"#0c4a6e", d:"#e0f2fe"},
+        enemyTint:{body:"#38bdf8", glow:"rgba(56,189,248,.96)", cloak:"#0c4a6e"},
+        decor:"storm", decorKinds:["coilTower","gearHeap","sparkNode","brokenPipe","powerConduit","steamVent"],
+        enemies:[ENEMY_TYPES.TURRET,ENEMY_TYPES.DASHER,ENEMY_TYPES.DODGER,ENEMY_TYPES.RAZORBAT,ENEMY_TYPES.SNIPER,ENEMY_TYPES.METEOR],
+        bossTypes:[ENEMY_TYPES.BOSS_WARLORD,ENEMY_TYPES.BOSS_GOLEM], bossTitle:"The Stormforged Sentinel", bossColor:"rgba(125,211,252,.96)", bossAdds:[ENEMY_TYPES.TURRET,ENEMY_TYPES.SNIPER,ENEMY_TYPES.DASHER]
+      },
+      {
+        key:"void", name:"Void Chapel", subtitle:"black stars, warped altars, phantoms",
+        bg:"rgba(99,102,241,.075)", grid:"rgba(129,140,248,.08)", wall:"rgba(30,27,75,.25)", wallStroke:"rgba(199,210,254,.18)", fog:"rgba(99,102,241,.065)",
+        palette:{a:"#818cf8", b:"#c4b5fd", c:"#1e1b4b", d:"#f0abfc"},
+        enemyTint:{body:"#818cf8", glow:"rgba(199,210,254,.94)", cloak:"#1e1b4b"},
+        decor:"void", decorKinds:["voidObelisk","blackStar","warpedAltar","gravityWell","phaseShard","brokenHalo"],
+        enemies:[ENEMY_TYPES.PHANTOM,ENEMY_TYPES.WRAITH,ENEMY_TYPES.MIRROR,ENEMY_TYPES.CURSEEYE,ENEMY_TYPES.SUMMONER,ENEMY_TYPES.STALKER],
+        bossTypes:[ENEMY_TYPES.BOSS_LICH,ENEMY_TYPES.BOSS_WYRM], bossTitle:"The Null Saint", bossColor:"rgba(199,210,254,.96)", bossAdds:[ENEMY_TYPES.PHANTOM,ENEMY_TYPES.WRAITH,ENEMY_TYPES.MIRROR]
+      }
     ];
-    return themes[(depth-1) % themes.length];
+    return themes[(Math.floor((depth-1)/2)) % themes.length];
   }
 
   function genDecor(depth){
     const out = [];
     const theme = G.theme || floorThemeForDepth(depth);
-    const count = 26 + Math.floor(depth*0.55);
+    const kinds = theme.decorKinds || [theme.decor || "moss"];
+    const count = 42 + Math.floor(depth*0.75);
     for(let i=0;i<count;i++){
-      const x = rand(70, G.world.w-70), y = rand(70, G.world.h-70);
-      const r = rand(5, 18);
-      let ok = dist(x,y,G.world.w/2,G.world.h/2) > 190;
+      const x = rand(55, G.world.w-55), y = rand(55, G.world.h-55);
+      const r = rand(6, 24);
+      let ok = dist(x,y,G.world.w/2,G.world.h/2) > 150;
       if(ok){
-        for(const w of G.walls){ if(circleIntersectsRect(x,y,r,w, 10)){ ok=false; break; } }
+        for(const w of G.walls){ if(circleIntersectsRect(x,y,r,w, 8)){ ok=false; break; } }
       }
-      if(ok) out.push({x,y,r,kind:theme.decor, a:rand(0,Math.PI*2), s:rand(.75,1.45), tw:rand(0,10)});
+      if(ok) out.push({x,y,r,kind:pick(kinds), a:rand(0,Math.PI*2), s:rand(.7,1.55), tw:rand(0,10), alpha:rand(.72,1)});
+    }
+    // Add a few bigger set pieces so every biome has memorable silhouettes.
+    const setPieces = Math.min(7, 3 + Math.floor(depth/8));
+    for(let i=0;i<setPieces;i++){
+      const x = rand(120, G.world.w-120), y = rand(120, G.world.h-120);
+      if(dist(x,y,G.world.w/2,G.world.h/2) < 230) continue;
+      out.push({x,y,r:rand(28,44),kind:pick(kinds), a:rand(0,Math.PI*2), s:rand(1.4,2.1), tw:rand(0,10), alpha:.95, big:true});
     }
     return out;
   }
+
 
   function genWalls(depth){
     const walls = [];
@@ -1898,6 +2153,8 @@ function makeEnemy(type, x, y, depth = 0){
     hpMax: hpMax,
     boss: !!s.boss,
     title: s.title || "",
+    biome: G.theme?.key || "neutral",
+    tint: G.theme?.enemyTint || null,
     armorReduction: s.armor || 0,
 
     dmg: s.dmg * base,
@@ -1928,11 +2185,14 @@ function makeEnemy(type, x, y, depth = 0){
   function spawnEnemies(depth){
   G.enemies.length = 0;
 
-  const types = unlockedTypes(depth);
+  const unlocked = unlockedTypes(depth);
+  const biomePool = (G.theme?.enemies || []).filter(t=>unlocked.includes(t));
+  const wildPool = unlocked.filter(t=>!biomePool.includes(t));
+  const types = biomePool.length ? biomePool : unlocked;
   const n = 6 + Math.floor(depth*1.05) + Math.floor(Math.max(0, depth-18)/9);
 
   for(let i=0;i<n;i++){
-    const type = pick(types);
+    const type = (wildPool.length && chance(0.18)) ? pick(wildPool) : pick(types);
     const r = (ENEMY_STATS[type]?.r ?? ENEMY_STATS._default.r);
 
     const pt = findSafeSpawnPoint(r, ENEMY_SPAWN.minDistFromPlayer, 260);
@@ -1953,31 +2213,56 @@ function makeEnemy(type, x, y, depth = 0){
 
 
 function bossTypeForDepth(depth){
+  const profile = biomeBossProfile();
+  if(profile?.types?.length) return profile.types[(Math.floor(depth/5)-1) % profile.types.length];
   const cycle = [ENEMY_TYPES.BOSS_WARLORD, ENEMY_TYPES.BOSS_GOLEM, ENEMY_TYPES.BOSS_LICH, ENEMY_TYPES.BOSS_WYRM];
   return cycle[(Math.floor(depth/5)-1) % cycle.length];
 }
 
+function biomeBossProfile(){
+  const theme = G.theme || floorThemeForDepth(G.depth || 1);
+  return {
+    key: theme.key,
+    title: theme.bossTitle || "The Depth Lord",
+    color: theme.bossColor || "rgba(248,113,113,.95)",
+    types: theme.bossTypes || null,
+    adds: theme.bossAdds || theme.enemies || [ENEMY_TYPES.GRUNT, ENEMY_TYPES.SLASHER],
+    palette: theme.palette || {a:"#ef4444", b:"#fbbf24", c:"#111827", d:"#38bdf8"}
+  };
+}
+
+
 function spawnBoss(depth){
   G.enemies.length = 0;
+  const profile = biomeBossProfile();
   const type = bossTypeForDepth(depth);
   const r = (ENEMY_STATS[type]?.r ?? 32);
   const pt = findSafeSpawnPoint(r, 420, 360);
   const boss = makeEnemy(type, pt.x, pt.y, depth + 4);
-  boss.hpMax = Math.round(boss.hpMax * (1.25 + depth*0.035));
+  boss.hpMax = Math.round(boss.hpMax * (1.34 + depth*0.04));
   boss.hp = boss.hpMax;
-  boss.dmg *= 1.10;
+  boss.dmg *= 1.16;
+  boss.title = profile.title;
+  boss.bossBiome = profile.key;
+  boss.bossColor = profile.color;
+  boss.tint = G.theme?.enemyTint || boss.tint;
+  boss.majorT = 1.6;
   G.enemies.push(boss);
 
-  const adds = 2 + Math.floor(depth/10);
-  const addPool = [ENEMY_TYPES.GRUNT, ENEMY_TYPES.SLASHER, ENEMY_TYPES.SHOOTER, ENEMY_TYPES.BEAST];
+  const adds = 3 + Math.floor(depth/9);
+  const addPool = (profile.adds?.length ? profile.adds : (G.theme?.enemies?.length ? G.theme.enemies : [ENEMY_TYPES.GRUNT, ENEMY_TYPES.SLASHER, ENEMY_TYPES.SHOOTER, ENEMY_TYPES.BEAST]));
   for(let i=0;i<adds;i++){
     const type2 = pick(addPool);
     const r2 = ENEMY_STATS[type2]?.r ?? 14;
-    const pt2 = findSafeSpawnNear(boss.x, boss.y, r2, 180, 240, 80);
-    G.enemies.push(makeEnemy(type2, pt2.x, pt2.y, depth));
+    const pt2 = findSafeSpawnNear(boss.x, boss.y, r2, 185, 260, 86);
+    const add = makeEnemy(type2, pt2.x, pt2.y, depth);
+    add.tint = G.theme?.enemyTint || add.tint;
+    G.enemies.push(add);
   }
-  toast(`${boss.title || 'Boss'} approaches!`, 1.6);
+  G.fx.push({type:"burst", x:boss.x, y:boss.y, r:170, t:.58, color:profile.color, rays:18});
+  toast(`${boss.title || 'Boss'} rises from ${G.theme?.name || 'the depths'}!`, 1.8);
 }
+
 
   function los(a, b){
     for(const w of G.walls){
@@ -2067,6 +2352,10 @@ function spawnBoss(depth){
     for(const it of Object.values(p.equip||{})){
       if(Array.isArray(it?.meta?.effects)) effects.push(...it.meta.effects);
     }
+    const fang = relicStat("lifesteal"); if(fang) effects.push({key:"lifesteal", chance:1, power:fang*0.014});
+    const shock = relicStat("shock"); if(shock) effects.push({key:"shock", chance:0.12+shock*0.04, power:5+shock*2, duration:2.2});
+    const freeze = relicStat("freeze"); if(freeze) effects.push({key:"freeze", chance:0.10+freeze*0.03, power:0.25+freeze*0.04, duration:0.9+freeze*0.12});
+    const aegis = relicStat("shieldKill"); if(aegis) effects.push({key:"shieldKill", chance:1, power:aegis*4});
     return effects;
   }
 
@@ -2212,6 +2501,7 @@ function spawnBoss(depth){
   if(!Number.isFinite(dmg) || dmg <= 0) return;
 
   if(e.status?.armorBreak?.t>0 && !opts.trueDamage) dmg *= (1 + (e.status.armorBreak.p || 0.20));
+  if(e.boss) dmg *= (1 + relicStat("bossDmg")*0.12);
 
   // Phantom immunity while phased (keeps your original behavior, but safer)
   const isPhantom =
@@ -2282,7 +2572,7 @@ function spawnBoss(depth){
 
     // boss reward burst
     if(e.boss){
-      const bossGold = 120 + G.depth*18;
+      const bossGold = Math.round((120 + G.depth*18) * (1 + relicStat("gold")*0.18));
       G.gold += bossGold;
       G.totalGold += bossGold;
       spawnGold(e.x, e.y, bossGold);
@@ -2296,12 +2586,15 @@ function spawnBoss(depth){
       trophy.name = (e.title ? e.title.replace(/^The /, "") + "'s " : "Boss ") + trophy.base;
       scaleItem(trophy, 1.28);
       spawnItemDrop(e.x + rand(-18,18), e.y + rand(-18,18), trophy);
-      toast("Boss defeated — treasure burst!", 1.6);
+      if(relicStat("shieldKill")) gainShield(relicStat("shieldKill")*16);
+      if(relicStat("hp")>=4){ G.player.hp = clamp(G.player.hp + G.player.hpMax*0.18, 0, G.player.hpMax); }
+      toast("Boss defeated — choose a reward!", 1.6);
+      setTimeout(()=>{ if(!G.ended && ovBossReward) openBossRewards(); }, 120);
     }
 
     // gold
     const baseGold = 4 + Math.floor(G.depth*0.55);
-    const amt = Math.round(rand(baseGold, baseGold*2.1) * (1 + playerEffectStat("goldFind")));
+    const amt = Math.round(rand(baseGold, baseGold*2.1) * (1 + playerEffectStat("goldFind") + relicStat("gold")*0.18));
     G.gold += amt;
     G.totalGold += amt;
     spawnGold(e.x, e.y, amt);
@@ -2324,7 +2617,7 @@ function spawnBoss(depth){
     }
 
     // items rare
-    if(chance(0.06)){
+    if(chance(0.06 + relicStat("loot")*0.02)){
       const slot = pick(["weapon","head","body","legs","trinket"]);
       const it = makeItem(slot, G.depth);
       // ensure 1★
@@ -2646,42 +2939,94 @@ function spawnMeteorStrike(x, y, dmg, radius=74, tele=0.85){
   // =========================
 
 
-function bossSummonMinions(e, count=2){
+function bossSummonMinions(e, count=2, pool=null){
+  const types = (pool && pool.length) ? pool : [ENEMY_TYPES.MINION, ENEMY_TYPES.SLASHER, ENEMY_TYPES.DASHER];
   for(let i=0;i<count;i++){
-    if(G.enemies.filter(x=>x.type===ENEMY_TYPES.MINION && x.hp>0).length > 16) break;
-    const pt = findSafeSpawnNear(e.x, e.y, 14, 130, 260, 70);
-    const m = makeEnemy(pick([ENEMY_TYPES.MINION, ENEMY_TYPES.SLASHER, ENEMY_TYPES.DASHER]), pt.x, pt.y, G.depth+2);
+    if(G.enemies.filter(x=>x.type===ENEMY_TYPES.MINION && x.hp>0).length > 18) break;
+    const pt = findSafeSpawnNear(e.x, e.y, 14, 130, 270, 70);
+    const m = makeEnemy(pick(types), pt.x, pt.y, G.depth+2);
     m.hpMax = Math.round(m.hpMax*1.15); m.hp = m.hpMax;
+    m.tint = G.theme?.enemyTint || m.tint;
     G.enemies.push(m);
-    G.fx.push({type:"ring", x:pt.x, y:pt.y, r:22, t:.30, color:"rgba(239,68,68,.32)"});
+    G.fx.push({type:"ring", x:pt.x, y:pt.y, r:22, t:.30, color:e.bossColor || "rgba(239,68,68,.32)"});
   }
 }
 function bossArenaPattern(e, p, dx, dy, d){
   e.majorT = Math.max(0, (e.majorT||0) - (G.dt||0));
   if(e.majorT>0) return;
-  e.majorT = e.enrage ? rand(3.0,4.2) : rand(4.2,5.8);
+  const biome = e.bossBiome || e.biome || G.theme?.key || "neutral";
+  const profile = biomeBossProfile();
+  const color = e.bossColor || profile.color || "rgba(248,113,113,.92)";
+  e.majorT = e.enrage ? rand(2.6,3.6) : rand(3.4,4.8);
   const a0 = Math.atan2(dy,dx);
   const mode = randi(0,3);
+
+  if(biome==="frost"){
+    if(mode===0){
+      for(let i=-2;i<=2;i++){ const a=a0+i*.22; spawnProj("enemy",e.x,e.y,Math.cos(a)*470,Math.sin(a)*470,e.dmg*.62,6,2.5,"rgba(125,211,252,.96)",{life:680, slow:.55}); }
+      G.hazards.push({kind:"iceField", x:p.x, y:p.y, r:130, t:2.8, dmg:e.dmg*.18, slow:.55});
+    } else if(mode===1){
+      for(let i=0;i<5;i++){ const spot=pickSafeSpotNear(p.x,p.y,230,80); spawnMeteorStrike(spot.x,spot.y,e.dmg*.72,64,.82); G.fx.push({type:"ring",x:spot.x,y:spot.y,r:64,t:.5,color:"rgba(125,211,252,.34)"}); }
+    } else bossSummonMinions(e, e.enrage?4:3, profile.adds);
+    G.fx.push({type:"burst", x:e.x, y:e.y, r:135, t:.42, color:"rgba(125,211,252,.48)", rays:16});
+    return;
+  }
+  if(biome==="ember"){
+    if(mode===0){ for(let i=0;i<10;i++){ const a=a0+lerp(-.75,.75,i/9); spawnProj("enemy",e.x,e.y,Math.cos(a)*560,Math.sin(a)*560,e.dmg*.55,5.8,2.4,"rgba(251,113,133,.95)",{life:700,burn:true}); } }
+    else if(mode===1){ for(let i=0;i<7;i++){ const spot=pickSafeSpotNear(p.x+(p.vx||0)*.22,p.y+(p.vy||0)*.22,280,70); spawnMeteorStrike(spot.x,spot.y,e.dmg*(.85+i*.03),76+i*4,.58+i*.05); } }
+    else { G.hazards.push({x:e.x,y:e.y,r:150,t:.62,dmg:e.dmg*.78}); bossSummonMinions(e, e.enrage?5:3, profile.adds); }
+    G.fx.push({type:"ring", x:e.x, y:e.y, r:155, t:.44, color:"rgba(251,113,133,.58)"});
+    return;
+  }
+  if(biome==="moss"){
+    if(mode===0){ G.hazards.push({kind:"rootSnare", x:p.x, y:p.y, r:160, t:2.6, dmg:e.dmg*.25, slow:.65}); }
+    else if(mode===1){ e.shield=Math.min((e.shield||0)+e.hpMax*.11,e.hpMax*.25); for(const ally of G.enemies){ if(ally!==e && ally.hp>0 && dist(ally.x,ally.y,e.x,e.y)<440) ally.hp=Math.min(ally.hpMax, ally.hp+22+G.depth); } }
+    else bossSummonMinions(e, e.enrage?5:4, profile.adds);
+    G.fx.push({type:"vortex", x:p.x, y:p.y, r:155, t:.45, color:"rgba(134,239,172,.45)"});
+    return;
+  }
+  if(biome==="arcane" || biome==="void"){
+    if(mode===0){
+      for(let i=0;i<14;i++){ const a=a0 + (Math.PI*2*i/14) + G.t*.2; spawnProj("enemy",e.x,e.y,Math.cos(a)*430,Math.sin(a)*430,e.dmg*.48,5.2,2.5, biome==="void"?"rgba(199,210,254,.96)":"rgba(216,180,254,.96)",{life:760, homing: i%3===0, turn:2.8}); }
+    } else if(mode===1){
+      const rr=biome==="void"?205:170; G.hazards.push({kind:biome==="void"?"gravityCrush":"spellRift", x:p.x, y:p.y, r:rr, t:2.5, dmg:e.dmg*.38});
+      for(const pr of G.projs){ if(pr.owner==="enemy" && dist(pr.x,pr.y,p.x,p.y)<300){ pr.homing=true; pr.turn=5.0; }}
+    } else bossSummonMinions(e, e.enrage?4:3, profile.adds);
+    G.fx.push({type:"vortex", x:e.x, y:e.y, r:170, t:.52, color:biome==="void"?"rgba(129,140,248,.55)":"rgba(216,180,254,.55)"});
+    return;
+  }
+  if(biome==="ossuary"){
+    if(mode===0){ for(let i=-1;i<=1;i++){ const a=a0+i*.38; spawnProj("enemy",e.x,e.y,Math.cos(a)*520,Math.sin(a)*520,e.dmg*.82,8.5,2.8,"rgba(253,224,71,.92)",{life:640}); } }
+    else if(mode===1){ e.shield=Math.min((e.shield||0)+e.hpMax*.14,e.hpMax*.30); G.hazards.push({kind:"bladeStorm", x:e.x, y:e.y, r:180, t:3.2, dmg:e.dmg*.30}); }
+    else bossSummonMinions(e, e.enrage?5:3, profile.adds);
+    G.fx.push({type:"burst", x:e.x, y:e.y, r:160, t:.45, color:"rgba(253,224,71,.45)", rays:18});
+    return;
+  }
+  if(biome==="plague"){
+    if(mode===0){ for(let i=0;i<4;i++){ const spot=pickSafeSpotNear(p.x,p.y,220,70); G.hazards.push({kind:"poisonCloud", x:spot.x, y:spot.y, r:100, t:4.0, dmg:e.dmg*.24}); } }
+    else if(mode===1){ for(let i=0;i<8;i++){ const a=a0+lerp(-.9,.9,i/7); spawnProj("enemy",e.x,e.y,Math.cos(a)*410,Math.sin(a)*410,e.dmg*.46,6.5,2.6,"rgba(190,242,100,.94)",{life:720, poison:true}); } }
+    else bossSummonMinions(e, e.enrage?6:4, profile.adds);
+    G.fx.push({type:"ring", x:e.x, y:e.y, r:165, t:.5, color:"rgba(190,242,100,.46)"});
+    return;
+  }
+  if(biome==="storm"){
+    if(mode===0){ for(let i=0;i<3;i++){ const a=a0+(i-1)*.45; spawnProj("enemy",e.x,e.y,Math.cos(a)*720,Math.sin(a)*720,e.dmg*.74,4.8,2.2,"rgba(125,211,252,.96)",{life:760, chain:true}); } }
+    else if(mode===1){ for(let i=0;i<6;i++){ const spot=pickSafeSpotNear(p.x,p.y,260,72); G.fx.push({type:"line",x1:e.x,y1:e.y,x2:spot.x,y2:spot.y,t:.22,color:"rgba(125,211,252,.72)"}); G.hazards.push({kind:"shockField",x:spot.x,y:spot.y,r:70,t:1.4,dmg:e.dmg*.42}); } }
+    else bossSummonMinions(e, e.enrage?4:3, profile.adds);
+    G.fx.push({type:"burst", x:e.x, y:e.y, r:150, t:.38, color:"rgba(125,211,252,.56)", rays:20});
+    return;
+  }
+
+  // fallback generic boss pattern
   if(mode===0){
-    for(let i=0;i<12;i++){
-      const a = a0 + (Math.PI*2*i/12);
-      spawnProj("enemy", e.x, e.y, Math.cos(a)*430, Math.sin(a)*430, e.dmg*.56, 5.5, 2.4, "rgba(248,113,113,.92)", {life:720, slow:true});
-    }
-    G.fx.push({type:"ring", x:e.x, y:e.y, r:140, t:.38, color:"rgba(248,113,113,.42)"});
+    for(let i=0;i<12;i++){ const a = a0 + (Math.PI*2*i/12); spawnProj("enemy", e.x, e.y, Math.cos(a)*430, Math.sin(a)*430, e.dmg*.56, 5.5, 2.4, color, {life:720, slow:true}); }
+    G.fx.push({type:"ring", x:e.x, y:e.y, r:140, t:.38, color});
   } else if(mode===1){
-    for(let i=0;i<4;i++){
-      const spot = pickSafeSpotNear(p.x + (p.vx||0)*0.18, p.y + (p.vy||0)*0.18, 210, 72);
-      spawnMeteorStrike(spot.x, spot.y, e.dmg*(.86+i*.08), 70+i*8, .72+i*.08);
-    }
+    for(let i=0;i<4;i++){ const spot = pickSafeSpotNear(p.x + (p.vx||0)*0.18, p.y + (p.vy||0)*0.18, 210, 72); spawnMeteorStrike(spot.x, spot.y, e.dmg*(.86+i*.08), 70+i*8, .72+i*.08); }
   } else if(mode===2){
-    const rr = e.enrage ? 185 : 150;
-    G.hazards.push({kind:"curseSigil", x:p.x, y:p.y, r:rr, t:2.2, dmg:e.dmg*.42});
-    G.fx.push({type:"vortex", x:p.x, y:p.y, r:rr, t:.52, color:"rgba(167,139,250,.58)"});
-    for(const pr of G.projs){ if(pr.owner==="enemy" && dist(pr.x,pr.y,p.x,p.y)<260){ pr.homing=true; pr.turn=4.2; }}
+    const rr = e.enrage ? 185 : 150; G.hazards.push({kind:"curseSigil", x:p.x, y:p.y, r:rr, t:2.2, dmg:e.dmg*.42}); G.fx.push({type:"vortex", x:p.x, y:p.y, r:rr, t:.52, color});
   } else {
-    bossSummonMinions(e, e.enrage ? 4 : 3);
-    e.shield = Math.min((e.shield||0) + e.hpMax*.08, e.hpMax*.22);
-    G.fx.push({type:"burst", x:e.x, y:e.y, r:120, t:.42, color:"rgba(251,191,36,.45)", rays:14});
+    bossSummonMinions(e, e.enrage ? 4 : 3, profile.adds); e.shield = Math.min((e.shield||0) + e.hpMax*.08, e.hpMax*.22); G.fx.push({type:"burst", x:e.x, y:e.y, r:120, t:.42, color, rays:14});
   }
 }
 
@@ -3621,7 +3966,7 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
   function renderTopHUD(){
     const p = G.player;
     elDepth.textContent = G.depth;
-    elFloorTypeTag.textContent = (G.floorType===FLOOR.COMBAT) ? ` • ${G.theme?.name || "Combat"}` : (G.floorType===FLOOR.BOSS ? " • Boss" : (G.floorType===FLOOR.STORE ? " • Store" : " • Forge"));
+    elFloorTypeTag.textContent = (G.floorType===FLOOR.COMBAT) ? ` • ${G.theme?.name || "Combat"}` : (G.floorType===FLOOR.BOSS ? ` • ${G.theme?.name || "Boss"} Boss` : (G.floorType===FLOOR.STORE ? ` • ${G.theme?.name || "Store"} Store` : ` • ${G.theme?.name || "Forge"} Forge`));
     const boss = G.enemies.find(e=>e.boss && e.hp>0);
     if(boss){
       const pct = clamp(boss.hp / Math.max(1,boss.hpMax), 0, 1);
@@ -3640,6 +3985,7 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
     elHPMax.textContent = Math.round(p.hpMax);
     elDodgeCd.textContent = (p.dodgeCD).toFixed(1);
     renderSpellButton();
+    renderRelicShelf();
   }
 
   function renderAllUI(){
@@ -3694,10 +4040,11 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
     if((p.spellCD||0)>0){ toast(`Spell ready in ${p.spellCD.toFixed(1)}s`, 0.8); return; }
 
     const key = book.meta.spellKey;
-    const power = (book.mods.power||50) * spellDamageMult(book);
-    const radius = book.mods.radiusPx || 180;
-    const range = book.mods.rangePx || 520;
-    const cd = Math.max(3.5, book.mods.cooldown || 12);
+    const evo = clamp(book.meta?.evo || 0, 0, 5);
+    const power = (book.mods.power||50) * spellDamageMult(book) * (1 + evo*0.22 + relicStat("spellPower")*0.10);
+    const radius = (book.mods.radiusPx || 180) * (1 + evo*0.08);
+    const range = (book.mods.rangePx || 520) * (1 + evo*0.05);
+    const cd = Math.max(3.0, (book.mods.cooldown || 12) * (1 - evo*0.07) / (1 + relicStat("spellCd")*0.08));
     let cast = false;
 
     if(key==="meteor"){
@@ -3726,7 +4073,7 @@ G.fx.push({type:"ring", x:pt.x, y:pt.y, r:12, t:0.22, color:"rgba(34,197,94,.28)
       if(!cur){ toast("No enemy in spell range", 0.9); return; }
       const hit = new Set();
       let lastX=p.x, lastY=p.y;
-      const jumps = Math.round(book.mods.jumps||6);
+      const jumps = Math.round((book.mods.jumps||6) + evo);
       for(let i=0;i<jumps && cur;i++){
         hit.add(cur);
         hitEnemy(cur, power * Math.pow(0.82,i), {trueDamage:true, pColor:"rgba(56,189,248,.95)"});
@@ -4292,7 +4639,7 @@ it.gstar = 0;
       version: 2,
       name: G.profileName, key: G.profileKey, passwordHash: G.passwordHash,
       savedAt: Date.now(), depth: G.depth, gold: G.gold, totalGold: G.totalGold, kills: G.kills,
-      mats: {...G.mats},
+      mats: {...G.mats}, relics: JSON.parse(JSON.stringify(G.relics||[])),
       player: JSON.parse(JSON.stringify({
         hp: G.player.hp, hpMax: G.player.hpMax, shield: G.player.shield||0,
         inv: G.player.inv||[], equip: G.player.equip||{}, spellCD: G.player.spellCD||0, dodgeCD: G.player.dodgeCD||0
@@ -4320,9 +4667,10 @@ it.gstar = 0;
     G.totalGold = Number(data.totalGold||0);
     G.kills = Number(data.kills||0);
     G.mats = {...{iron:0, leather:0, arcane:0}, ...(data.mats||{})};
+    G.relics = Array.isArray(data.relics) ? data.relics : [];
     G.shop={items:[], refreshCost:25};
     G.paused=false; G.ended=false;
-    ovPause.classList.remove("show"); ovStore.classList.remove("show"); ovForge.classList.remove("show"); ovDeath.classList.remove("show");
+    ovPause.classList.remove("show"); ovStore.classList.remove("show"); ovForge.classList.remove("show"); ovDeath.classList.remove("show"); ovBossReward?.classList.remove("show");
     startFloor(Math.max(1, Number(data.depth||1)));
     G.player = newPlayer();
     Object.assign(G.player, data.player);
@@ -4468,6 +4816,8 @@ it.gstar = 0;
     G.totalGold=0;
     G.kills=0;
     G.mats={iron:0, leather:0, arcane:0};
+    G.relics=[];
+    G.pendingRewards=[];
     G.shop={items:[], refreshCost:25};
     G.portal=null;
     G.enemies=[];
@@ -4482,6 +4832,7 @@ it.gstar = 0;
     ovStore.classList.remove("show");
     ovForge.classList.remove("show");
     ovDeath.classList.remove("show");
+    ovBossReward?.classList.remove("show");
 
     G.player = newPlayer();
 
@@ -5359,6 +5710,11 @@ function drawEnemy(ctx, e){
 
   const type = enemyTypeKey(e);              // KEY UPDATE: normalized
   const skin = enemySkin(type);
+  if(e.tint){
+    if(e.tint.body) skin.body = e.tint.body;
+    if(e.tint.glow) skin.glow = e.tint.glow;
+    if(e.tint.cloak) skin.cloak = e.tint.cloak;
+  }
 
   const S = (e.r || 14) / 16;
 
@@ -6083,28 +6439,68 @@ function draw(){
 
   // floor details / props
   ctx.save();
-  for(const d of (G.decor||[])){
-    const dx=d.x+sx, dy=d.y+sy;
-    const pulse = 0.65 + Math.sin(G.t*2+d.tw)*0.15;
-    ctx.save(); ctx.translate(dx,dy); ctx.rotate(d.a);
-    if(d.kind==="ember"){
-      ctx.beginPath(); ctx.arc(0,0,d.r*pulse,0,Math.PI*2);
-      ctx.fillStyle="rgba(251,113,133,.10)"; ctx.fill();
-      ctx.fillStyle="rgba(251,146,60,.65)"; ctx.fillRect(-2,-d.r*0.45,4,d.r*0.9);
-    } else if(d.kind==="ice"){
-      drawDiamond(0,0,d.r*0.65,"rgba(125,211,252,.16)","rgba(186,230,253,.35)");
-    } else if(d.kind==="rune"){
-      ctx.strokeStyle="rgba(216,180,254,.28)"; ctx.lineWidth=1.5;
-      ctx.beginPath(); ctx.arc(0,0,d.r*0.65,0,Math.PI*2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(-d.r*.45,0); ctx.lineTo(d.r*.45,0); ctx.moveTo(0,-d.r*.45); ctx.lineTo(0,d.r*.45); ctx.stroke();
-    } else if(d.kind==="bones"){
-      ctx.strokeStyle="rgba(226,232,240,.18)"; ctx.lineWidth=3; ctx.lineCap="round";
-      ctx.beginPath(); ctx.moveTo(-d.r*.6,0); ctx.lineTo(d.r*.6,0); ctx.stroke();
-      ctx.beginPath(); ctx.arc(-d.r*.65,0,2.5,0,Math.PI*2); ctx.arc(d.r*.65,0,2.5,0,Math.PI*2); ctx.fillStyle="rgba(226,232,240,.16)"; ctx.fill();
+  const pal = theme.palette || {a:"#38bdf8", b:"#a78bfa", c:"#0f172a", d:"#fbbf24"};
+  function drawProp(kind, d){
+    const pulse = 0.72 + Math.sin(G.t*2+d.tw)*0.14;
+    const r = d.r * (d.s||1);
+    const a1 = d.alpha ?? 1;
+    ctx.save();
+    ctx.rotate(d.a || 0);
+    ctx.globalAlpha *= a1;
+    if(kind==="lavaCrack" || kind==="powerConduit"){
+      ctx.strokeStyle = kind==="lavaCrack" ? "rgba(251,113,133,.62)" : "rgba(125,211,252,.58)"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(-r*.9,0); ctx.lineTo(-r*.35,r*.15); ctx.lineTo(0,-r*.08); ctx.lineTo(r*.45,r*.12); ctx.lineTo(r*.95,-r*.05); ctx.stroke();
+      ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur=14; ctx.stroke();
+    } else if(kind==="emberVent" || kind==="fireBrazier" || kind==="blueTorch" || kind==="toxicVent" || kind==="steamVent"){
+      ctx.fillStyle = kind==="blueTorch" ? "rgba(125,211,252,.18)" : kind==="toxicVent" ? "rgba(190,242,100,.15)" : "rgba(251,113,133,.14)";
+      ctx.beginPath(); ctx.ellipse(0,0,r*.65,r*.38,0,0,Math.PI*2); ctx.fill();
+      for(let i=0;i<3;i++){ ctx.beginPath(); ctx.ellipse((i-1)*r*.18,-r*.18-r*.16*pulse,r*.10,r*.35*pulse,0,0,Math.PI*2); ctx.fillStyle = kind==="blueTorch" ? "rgba(125,211,252,.55)" : kind==="toxicVent" ? "rgba(190,242,100,.42)" : "rgba(251,146,60,.52)"; ctx.fill(); }
+    } else if(kind==="iceSpire" || kind==="crystalCluster" || kind==="manaCrystal" || kind==="phaseShard"){
+      for(let i=0;i<3;i++){ ctx.save(); ctx.translate((i-1)*r*.28, i===1?-r*.10:0); drawDiamond(0,0,r*(.34+i*.08), kind==="iceSpire"?"rgba(125,211,252,.18)":"rgba(216,180,254,.18)", kind==="iceSpire"?"rgba(186,230,253,.42)":"rgba(216,180,254,.42)"); ctx.restore(); }
+    } else if(kind==="frostRune" || kind==="runeCircle" || kind==="starSigil" || kind==="blackStar"){
+      ctx.strokeStyle = kind==="blackStar" ? "rgba(199,210,254,.34)" : "rgba(216,180,254,.32)"; ctx.lineWidth=1.7;
+      ctx.beginPath(); ctx.arc(0,0,r*.58,0,Math.PI*2); ctx.stroke();
+      for(let i=0;i<6;i++){ const a=i*Math.PI*2/6+G.t*.15; ctx.beginPath(); ctx.moveTo(Math.cos(a)*r*.18,Math.sin(a)*r*.18); ctx.lineTo(Math.cos(a)*r*.62,Math.sin(a)*r*.62); ctx.stroke(); }
+    } else if(kind==="vinePatch" || kind==="rootArch" || kind==="leafSwirl"){
+      ctx.strokeStyle="rgba(134,239,172,.25)"; ctx.lineWidth=3; ctx.lineCap="round";
+      for(let i=0;i<4;i++){ ctx.beginPath(); const off=(i-1.5)*r*.18; ctx.moveTo(-r*.7,off); ctx.bezierCurveTo(-r*.2,off-r*.35,r*.15,off+r*.35,r*.72,off-r*.05); ctx.stroke(); }
+      ctx.fillStyle="rgba(34,197,94,.16)"; ctx.beginPath(); ctx.ellipse(0,0,r*.8,r*.35,0,0,Math.PI*2); ctx.fill();
+    } else if(kind==="flowerGlow"){
+      ctx.fillStyle="rgba(134,239,172,.18)"; ctx.beginPath(); ctx.arc(0,0,r*.42,0,Math.PI*2); ctx.fill();
+      for(let i=0;i<6;i++){ const a=i*Math.PI*2/6; ctx.beginPath(); ctx.ellipse(Math.cos(a)*r*.34,Math.sin(a)*r*.34,r*.16,r*.30,a,0,Math.PI*2); ctx.fillStyle="rgba(190,242,100,.32)"; ctx.fill(); }
+    } else if(kind==="bookPile" || kind==="brokenShelf"){
+      for(let i=0;i<4;i++){ ctx.fillStyle=i%2?"rgba(167,139,250,.18)":"rgba(56,189,248,.14)"; ctx.fillRect(-r*.5+i*r*.16,-r*.18+i*2,r*.58,r*.12); ctx.strokeStyle="rgba(255,255,255,.12)"; ctx.strokeRect(-r*.5+i*r*.16,-r*.18+i*2,r*.58,r*.12); }
+    } else if(kind==="floatingGlyph"){
+      ctx.strokeStyle="rgba(216,180,254,.38)"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,Math.sin(G.t*2+d.tw)*4,r*.30,0,Math.PI*2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-r*.25,0); ctx.lineTo(r*.25,0); ctx.moveTo(0,-r*.25); ctx.lineTo(0,r*.25); ctx.stroke();
+    } else if(kind==="bonePile" || kind==="frozenRib" || kind==="ashBone"){
+      ctx.strokeStyle=kind==="frozenRib"?"rgba(186,230,253,.22)":"rgba(226,232,240,.20)"; ctx.lineWidth=3; ctx.lineCap="round";
+      for(let i=0;i<3;i++){ ctx.beginPath(); ctx.moveTo(-r*.55, (i-1)*r*.16); ctx.lineTo(r*.55, (i-1)*r*.16); ctx.stroke(); }
+      ctx.fillStyle="rgba(226,232,240,.16)"; ctx.beginPath(); ctx.arc(-r*.62,0,3,0,Math.PI*2); ctx.arc(r*.62,0,3,0,Math.PI*2); ctx.fill();
+    } else if(kind==="royalBanner"){
+      ctx.fillStyle="rgba(120,53,15,.35)"; ctx.fillRect(-3,-r*.75,6,r*1.3); ctx.fillStyle="rgba(251,191,36,.22)"; ctx.beginPath(); ctx.moveTo(4,-r*.7); ctx.lineTo(r*.5,-r*.55); ctx.lineTo(4,-r*.25); ctx.closePath(); ctx.fill();
+    } else if(kind==="goldCasket" || kind==="sarcophagus" || kind==="crownRelic"){
+      ctx.fillStyle="rgba(251,191,36,.13)"; ctx.strokeStyle="rgba(253,224,71,.28)"; ctx.lineWidth=2; ctx.fillRect(-r*.55,-r*.28,r*1.1,r*.56); ctx.strokeRect(-r*.55,-r*.28,r*1.1,r*.56);
+      ctx.beginPath(); ctx.moveTo(-r*.25,-r*.05); ctx.lineTo(0,-r*.25); ctx.lineTo(r*.25,-r*.05); ctx.stroke();
+    } else if(kind==="sporePod" || kind==="fungalTower" || kind==="eggCluster"){
+      ctx.fillStyle="rgba(132,204,22,.16)"; ctx.beginPath(); ctx.ellipse(0,0,r*.55,r*.72,0,0,Math.PI*2); ctx.fill(); ctx.strokeStyle="rgba(190,242,100,.24)"; ctx.stroke();
+      for(let i=0;i<5;i++){ ctx.beginPath(); ctx.arc(rand(-r*.28,r*.28),rand(-r*.28,r*.28),2.2,0,Math.PI*2); ctx.fillStyle="rgba(190,242,100,.35)"; ctx.fill(); }
+    } else if(kind==="acidPuddle" || kind==="magmaPool" || kind==="gravityWell"){
+      ctx.fillStyle = kind==="magmaPool"?"rgba(251,113,133,.15)":kind==="gravityWell"?"rgba(129,140,248,.14)":"rgba(132,204,22,.14)";
+      ctx.beginPath(); ctx.ellipse(0,0,r*.85,r*.42,0,0,Math.PI*2); ctx.fill(); ctx.strokeStyle = ctx.fillStyle.replace('.14','.35').replace('.15','.38'); ctx.stroke();
+    } else if(kind==="coilTower" || kind==="sparkNode"){
+      ctx.strokeStyle="rgba(125,211,252,.36)"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(-r*.35,r*.45); ctx.lineTo(0,-r*.45); ctx.lineTo(r*.35,r*.45); ctx.stroke(); ctx.beginPath(); ctx.arc(0,-r*.48,r*.18*pulse,0,Math.PI*2); ctx.stroke();
+    } else if(kind==="gearHeap" || kind==="brokenPipe"){
+      ctx.strokeStyle="rgba(148,163,184,.24)"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,r*.4,0,Math.PI*2); ctx.stroke(); for(let i=0;i<8;i++){ const a=i*Math.PI*2/8; ctx.beginPath(); ctx.moveTo(Math.cos(a)*r*.43,Math.sin(a)*r*.43); ctx.lineTo(Math.cos(a)*r*.62,Math.sin(a)*r*.62); ctx.stroke(); }
+    } else if(kind==="voidObelisk" || kind==="warpedAltar" || kind==="brokenHalo"){
+      ctx.fillStyle="rgba(129,140,248,.13)"; ctx.strokeStyle="rgba(199,210,254,.25)"; ctx.lineWidth=2; drawDiamond(0,0,r*.55,"rgba(129,140,248,.13)","rgba(199,210,254,.30)"); ctx.beginPath(); ctx.arc(0,0,r*.72,0,Math.PI*2); ctx.stroke();
     } else {
-      ctx.beginPath(); ctx.ellipse(0,0,d.r*.75,d.r*.35,0,0,Math.PI*2); ctx.fillStyle="rgba(34,197,94,.12)"; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0,0,r*.75,r*.35,0,0,Math.PI*2); ctx.fillStyle="rgba(255,255,255,.08)"; ctx.fill();
     }
     ctx.restore();
+  }
+  for(const d of (G.decor||[])){
+    const dx=d.x+sx, dy=d.y+sy;
+    ctx.save(); ctx.translate(dx,dy); drawProp(d.kind, d); ctx.restore();
   }
   ctx.restore();
 
@@ -6161,8 +6557,8 @@ function draw(){
       ctx.arc(hz.x+sx, hz.y+sy, rr*0.45*(0.85+Math.sin(G.t*7)*0.08), 0, Math.PI*2);
       ctx.strokeStyle = `rgba(56,189,248,${0.32*a})`;
       ctx.stroke();
-    } else if(hz.kind==="spellPoison" || hz.kind==="poisonCloud"){
-      ctx.fillStyle = `rgba(132,204,22,${0.10*a})`;
+    } else if(hz.kind==="spellPoison" || hz.kind==="poisonCloud" || hz.kind==="rootSnare"){
+      ctx.fillStyle = hz.kind==="rootSnare" ? `rgba(34,197,94,${0.09*a})` : `rgba(132,204,22,${0.10*a})`;
       ctx.fill();
       ctx.strokeStyle = `rgba(132,204,22,${0.35*a})`;
       ctx.stroke();
@@ -6173,8 +6569,8 @@ function draw(){
       ctx.strokeStyle = `rgba(244,114,182,${0.42*a})`;
       ctx.stroke();
       ctx.beginPath(); ctx.moveTo(hz.x+sx-rr*.55,hz.y+sy); ctx.lineTo(hz.x+sx+rr*.55,hz.y+sy); ctx.moveTo(hz.x+sx,hz.y+sy-rr*.55); ctx.lineTo(hz.x+sx,hz.y+sy+rr*.55); ctx.stroke();
-    } else if(hz.kind==="gravityCrush"){
-      ctx.fillStyle = `rgba(167,139,250,${0.10*a})`;
+    } else if(hz.kind==="gravityCrush" || hz.kind==="shockField" || hz.kind==="iceField"){
+      ctx.fillStyle = hz.kind==="shockField" ? `rgba(56,189,248,${0.10*a})` : (hz.kind==="iceField" ? `rgba(125,211,252,${0.09*a})` : `rgba(167,139,250,${0.10*a})`);
       ctx.fill();
       ctx.strokeStyle = `rgba(216,180,254,${0.50*a})`;
       ctx.stroke();
