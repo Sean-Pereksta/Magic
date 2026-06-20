@@ -833,165 +833,42 @@ Moon Dueler|🌙|Shadow,Holy,Blade|44|25|1.08|duel|Hybrid single-target fighter.
   render();
 })();
 
-
-/* === Empty-wave recovery + fullscreen button + safer round continuation === */
+/* === SURGICAL ROUND TRANSITION FIX: one simple battle-start path === */
 (function(){
-  const style=document.createElement('style');
-  style.textContent=`
-    .topControls{display:flex;gap:6px;align-items:center;justify-content:flex-end}
-    #fullscreenBtn{background:#eef2ff;color:#1e293b;min-width:34px;padding:6px 9px;border-radius:12px;font-size:14px}
-    #fullscreenBtn.on{background:#111827;color:white}
-  `;
-  document.head.appendChild(style);
 
-  const helpBtn=$('help');
-  if(helpBtn && !document.getElementById('fullscreenBtn')){
-    const wrap=document.createElement('div');
-    wrap.className='topControls';
-    helpBtn.parentNode.insertBefore(wrap,helpBtn);
-    const fs=document.createElement('button');
-    fs.id='fullscreenBtn';
-    fs.className='tiny secondary';
-    fs.title='Fullscreen';
-    fs.textContent='⛶';
-    wrap.appendChild(fs);
-    wrap.appendChild(helpBtn);
-    fs.onclick=()=>{
-      const root=document.documentElement;
-      if(!document.fullscreenElement){
-        (root.requestFullscreen||root.webkitRequestFullscreen||root.msRequestFullscreen)?.call(root);
-      }else{
-        (document.exitFullscreen||document.webkitExitFullscreen||document.msExitFullscreen)?.call(document);
-      }
-    };
-    document.addEventListener('fullscreenchange',()=>fs.classList.toggle('on',!!document.fullscreenElement));
+  // Re-add the top-right fullscreen button without touching gameplay state.
+  if(!document.getElementById('fullscreenBtn')){
+    const helpBtn=$('help');
+    if(helpBtn){
+      const wrap=document.createElement('div');
+      wrap.style.display='flex';
+      wrap.style.gap='6px';
+      wrap.style.alignItems='center';
+      helpBtn.parentNode.insertBefore(wrap,helpBtn);
+      const fs=document.createElement('button');
+      fs.id='fullscreenBtn';
+      fs.className='tiny secondary';
+      fs.title='Fullscreen';
+      fs.textContent='⛶';
+      wrap.appendChild(fs);
+      wrap.appendChild(helpBtn);
+      fs.onclick=function(){
+        const root=document.documentElement;
+        if(!document.fullscreenElement){(root.requestFullscreen||root.webkitRequestFullscreen||root.msRequestFullscreen||function(){}).call(root);}
+        else{(document.exitFullscreen||document.webkitExitFullscreen||document.msExitFullscreen||function(){}).call(document);}
+      };
+    }
   }
 
-  let fightSeq=0;
-  const oldSpawnRecovery=spawn;
-  spawn=function(){
-    oldSpawnRecovery();
-    if(!Array.isArray(S.enemies))S.enemies=[];
-    const rg=region(), scale=enemyScale(), boss=S.round%5===0;
-    let main=(rg&&rg.main?enemyDefs.filter(e=>rg.main.includes(e.n)):[]);
-    let bosses=(rg&&rg.boss?enemyDefs.filter(e=>rg.boss.includes(e.n)):[]);
-    if(!main.length)main=enemyDefs.filter(e=>!e.boss);
-    if(!bosses.length)bosses=enemyDefs.filter(e=>e.boss);
-    let minCount=boss?1:Math.max(2,Math.min(8,2+Math.floor(S.round/3)));
-    let guard=0;
-    while(S.enemies.length<minCount && guard++<20){
-      let def=(boss&&S.enemies.length===0&&bosses.length)?rand(bosses):rand(main);
-      if(!def)break;
-      S.enemies.push(mkEnemy(def,scale,boss&&S.enemies.length===0));
-    }
-  };
-
-  const oldFightRecovery=fight;
-  fight=function(){
-    if(!liveA().length)return msg('Place at least one fighter.');
-    fightSeq++;
-    oldFightRecovery();
-    const seq=fightSeq;
-    setTimeout(()=>{
-      if(seq!==fightSeq||S.phase!=='battle')return;
-      if(!Array.isArray(S.enemies)||!S.enemies.length||!liveE().length){
-        msg('Wave safety: rebuilding the enemy wave so the round can continue.');
-        spawn();
-        S.phase='battle';
-        S.battle=S.battle||{tick:0,revive:false};
-        if(!liveE().length){
-          S.phase='recruit';
-          render();
-          setTimeout(openRecruit,150);
-          return;
-        }
-        startBuffs();
-        applyRegionStart();
-        render();
-        setTimeout(loop,160);
-      }
-    },90);
-  };
-  window.fight=fight;
-
-  const oldLoopRecovery=loop;
-  loop=function(){
-    if(S.phase==='battle'&&(!Array.isArray(S.enemies)||!S.enemies.length)){
-      msg('Wave safety: enemy wave was empty, starting the next round cleanly.');
-      S.phase='recruit';
-      S.battle=null;
-      S.enemies=[];
-      render();
-      setTimeout(openRecruit,180);
-      return;
-    }
-    return oldLoopRecovery();
-  };
-  window.loop=loop;
-
-  const oldStartNextFightRecovery=window.startNextFight;
-  window.startNextFight=function(){
-    if(S.phase==='battle'&&(!Array.isArray(S.enemies)||!S.enemies.length||!liveE().length)){
-      msg('Recovered an empty battle — starting the next wave now.');
-      S.phase='recruit';
-      S.battle=null;
-      S.enemies=[];
-      render();
-      return fight();
-    }
-    return oldStartNextFightRecovery?oldStartNextFightRecovery():fight();
-  };
-  const btn=document.getElementById('playNext');
-  if(btn)btn.onclick=window.startNextFight;
-
-  const oldResumeAfterChoiceRecovery=typeof resumeAfterChoice==='function'?resumeAfterChoice:null;
-  window.forceNextRoundAfterChoice=function(label){
-    S.placing=null;S.placingEffect=null;S.placingUpgrade=false;S.evoTarget=null;S.evoChoices=[];S.ascTarget=null;S.ascChoices=[];
-    if(S.phase!=='dead'&&S.phase!=='shop'&&S.phase!=='relic')S.phase='recruit';
-    if(typeof hardClose==='function')hardClose(); else {S.inspect=null;$('shade').classList.remove('open');$('drawer').classList.remove('open')}
-    render();
-    setTimeout(()=>{if(S.phase==='recruit'&&liveA().length){msg((label||'Choice complete')+' — starting the next fight.');fight()}},100);
-    setTimeout(()=>{if(S.phase==='battle'&&(!S.enemies||!S.enemies.length)){msg('Flow safety: rebuilding the empty enemy wave.');spawn();render();setTimeout(loop,120)}},420);
-  };
-
-  const oldPickEvolutionRecovery=pickEvolution;
-  pickEvolution=function(i){
-    let u=S.evoTarget,e=(S.evoChoices||[])[i];
-    if(!u||!e)return window.forceNextRoundAfterChoice('Evolution');
-    e.apply(u);u.hp=u.maxHp;u.shield=(u.shield||0)+35;
-    let pos=ix(u);if(pos>=0)floatAlly(pos,`${e.e} EVO!`,'#f59e0b');
-    msg(`${u.e} ${u.n} became ${e.e} ${e.n}.`);
-    window.forceNextRoundAfterChoice('Evolution complete');
-  };
-  window.pickEvolution=pickEvolution;
-
-  if(typeof pickAscension==='function'){
-    const oldPickAscensionRecovery=pickAscension;
-    pickAscension=function(i){
-      let u=S.ascTarget,a=(S.ascChoices||[])[i];
-      if(!u||!a)return window.forceNextRoundAfterChoice('6★ mastery');
-      a.apply(u);u.star=6;u.starProg=0;u.hp=u.maxHp;u.shield=(u.shield||0)+70;
-      let pos=ix(u);if(pos>=0)floatAlly(pos,`${a.e} 6★!`,'#f59e0b');
-      msg(`${u.e} ${u.n} mastered 6★ as ${a.e} ${a.n}.`);
-      window.forceNextRoundAfterChoice('6★ mastery complete');
-    };
-    window.pickAscension=pickAscension;
-  }
-
-  render();
-})();
-
-
-/* === FINAL HARD FIX: direct 5★/6★ choice -> guaranteed enemy wave -> battle === */
-(function(){
-  let directBattleToken=0;
-  function closeAllPanels(){
+  // This block intentionally does NOT replace the combat loop or fight() engine.
+  // It only clears stuck choice states, calls the original fight(), and repairs a missing wave if needed.
+  function panelClose(){
     S.inspect=null;
     const sh=$('shade'), dr=$('drawer');
     if(sh)sh.classList.remove('open');
     if(dr)dr.classList.remove('open');
   }
-  function choiceStateOff(){
+  function clearChoiceState(){
     S.placing=null;
     S.placingEffect=null;
     S.placingUpgrade=false;
@@ -1000,301 +877,74 @@ Moon Dueler|🌙|Shadow,Holy,Blade|44|25|1.08|duel|Hybrid single-target fighter.
     S.ascTarget=null;
     S.ascChoices=[];
   }
-  function regionEnemyPool(bossRound){
-    const rg=region();
-    let main=(rg&&rg.main?enemyDefs.filter(d=>rg.main.includes(d.n)&&!d.boss):[]);
-    let bosses=(rg&&rg.boss?enemyDefs.filter(d=>rg.boss.includes(d.n)||d.boss):[]);
-    if(!main.length)main=enemyDefs.filter(d=>!d.boss);
-    if(!bosses.length)bosses=enemyDefs.filter(d=>d.boss);
-    if(!bosses.length)bosses=main;
-    return {main,bosses};
-  }
-  function guaranteedSpawn(){
-    const rg=region();
-    const scale=enemyScale();
-    const bossRound=S.round%5===0;
-    const pressure=typeof squadPressure==='function'?squadPressure():0;
-    const baseCount=bossRound?1+Math.floor(S.round/10):2+Math.floor(S.round/2.5)+Math.floor(Math.max(0,S.round-7)/3)+Math.floor(pressure/.55);
-    const count=Math.max(bossRound?1:2,Math.min(30,baseCount));
-    const pools=regionEnemyPool(bossRound);
-    S.lastThreat=scale;
-    S.enemies=[];
-    for(let i=0;i<count;i++){
-      const useBoss=bossRound&&i===0;
-      const pool=useBoss?pools.bosses:pools.main;
-      const def=rand(pool)||enemyDefs.find(d=>!d.boss)||enemyDefs[0];
-      if(!def)continue;
-      const en=mkEnemy(def,scale,useBoss);
-      if(!en.boss&&S.round>=9&&chance(Math.min(.30,.06+S.round*.005+pressure*.03))){
-        en.elite=true; en.n='Elite '+en.n; en.maxHp=Math.round(en.maxHp*1.25); en.hp=en.maxHp; en.atk=Math.round(en.atk*1.15); en.shield=(en.shield||0)+Math.round(8+S.round*.7);
-      }
-      S.enemies.push(en);
-    }
-    // Absolute fallback: even if a region/pool lookup failed, never allow a battle with zero enemies.
-    if(!S.enemies.length){
-      const def=enemyDefs.find(d=>!d.boss)||enemyDefs[0];
-      if(def)S.enemies.push(mkEnemy(def,Math.max(1,scale||1),false));
-    }
-  }
-  function beginGuaranteedBattle(label){
-    if(!liveA().length){S.phase='recruit';render();return msg('Place at least one fighter.');}
-    directBattleToken++;
-    choiceStateOff();
-    closeAllPanels();
-    S.phase='battle';
-    S.battle={tick:0,revive:false,token:directBattleToken};
-    guaranteedSpawn();
-    updateCombos();
-    startBuffs();
-    applyRegionStart();
-    render();
-    const rg=region();
-    msg((label?label+' — ':'')+`${rg.e} ${rg.n}: enemies spawned. Round ${S.round} is running.`);
-    setTimeout(()=>{
-      if(S.phase==='battle'&&S.battle&&S.battle.token===directBattleToken){
-        if(!S.enemies||!S.enemies.length){guaranteedSpawn();render();}
-        loop();
-      }
-    },180);
-  }
-
-  // Replace fight itself with a direct battle starter. This avoids older wrapped fight() versions that could leave phase=battle before a wave exists.
-  fight=function(){ return beginGuaranteedBattle('Fight start'); };
-  window.fight=fight;
-
-  const oldLoopFinal=loop;
-  loop=function(){
-    if(S.phase==='battle'&&(!Array.isArray(S.enemies)||S.enemies.length===0)){
-      return beginGuaranteedBattle('Recovered empty battle');
-    }
-    return oldLoopFinal();
-  };
-  window.loop=loop;
-
-  pickEvolution=function(i){
-    const u=S.evoTarget, e=(S.evoChoices||[])[i];
-    if(u&&e){
-      e.apply(u);
-      u.hp=u.maxHp;
-      u.shield=(u.shield||0)+35;
-      const pos=ix(u); if(pos>=0)floatAlly(pos,`${e.e} EVO!`,'#f59e0b');
-      msg(`${u.e} ${u.n} became ${e.e} ${e.n}.`);
-    }
-    beginGuaranteedBattle('5★ evolution complete');
-  };
-  window.pickEvolution=pickEvolution;
-
-  window.pickAscension=function(i){
-    const u=S.ascTarget, a=(S.ascChoices||[])[i];
-    if(u&&a){
-      a.apply(u);
-      u.star=6; u.starProg=0; u.hp=u.maxHp; u.shield=(u.shield||0)+70;
-      const pos=ix(u); if(pos>=0)floatAlly(pos,`${a.e} 6★!`,'#f59e0b');
-      msg(`${u.e} ${u.n} mastered 6★ as ${a.e} ${a.n}.`);
-    }
-    beginGuaranteedBattle('6★ mastery complete');
-  };
-
-  window.startNextFight=function(){
-    if(S.phase==='battle'&&(!S.enemies||!S.enemies.length||!liveE().length))return beginGuaranteedBattle('Recovered and restarted wave');
-    if(S.phase!=='recruit')return msg(S.phase==='battle'?'Battle is already running.':'Finish your current choice first.');
-    return beginGuaranteedBattle('▶ Play');
-  };
-  const play=document.getElementById('playNext');
-  if(play)play.onclick=window.startNextFight;
-
-  const oldRenderFinal=render;
-  render=function(){
-    oldRenderFinal();
-    const play=document.getElementById('playNext');
-    if(play){
-      const emptyBattle=S.phase==='battle'&&(!S.enemies||!S.enemies.length||!liveE().length);
-      const normalBetween=S.phase==='recruit'&&liveA().length&&!S.placing&&!S.placingEffect&&!S.placingUpgrade&&!S.evoTarget&&!S.ascTarget;
-      play.style.display=(emptyBattle||normalBetween)?'inline-block':'none';
-      if(emptyBattle)play.title='Recover empty battle and spawn enemies';
-    }
-  };
-  window.__beginGuaranteedBattle=beginGuaranteedBattle;
-})();
-
-
-/* === PLAY BUTTON SPAWNS WAVE + SECOND-LINE EMPTY-BATTLE WATCHDOG === */
-(function(){
-  function safeClosePanels(){
-    const sh=$('shade'), dr=$('drawer');
-    if(sh)sh.classList.remove('open');
-    if(dr)dr.classList.remove('open');
-  }
-  function clearChoiceLocks(){
-    S.placing=null;
-    S.placingEffect=null;
-    S.placingUpgrade=false;
-    S.inspect=null;
-    S.evoTarget=null;
-    S.evoChoices=[];
-    S.ascTarget=null;
-    S.ascChoices=[];
-  }
-  function hasLivingWave(){
-    return Array.isArray(S.enemies)&&S.enemies.some(e=>e&&!e.dead&&e.hp>0);
-  }
-  function forceSpawnWaveOnly(){
-    if(typeof window.__beginGuaranteedBattle==='function'){
-      // __beginGuaranteedBattle owns the safest spawn logic, so use it whenever battle start is intended.
-      return false;
-    }
+  function livingAllies(){return typeof liveA==='function'?liveA():(S.squad||[]).filter(u=>u&&!u.dead&&u.hp>0)}
+  function livingEnemies(){return typeof liveE==='function'?liveE():(Array.isArray(S.enemies)?S.enemies.filter(e=>e&&!e.dead&&e.hp>0):[])}
+  function emergencySpawn(){
+    if(livingEnemies().length)return true;
     if(typeof spawn==='function')spawn();
+    if(livingEnemies().length)return true;
     if(!Array.isArray(S.enemies))S.enemies=[];
-    if(!S.enemies.length&&Array.isArray(enemyDefs)&&enemyDefs.length){
-      const def=enemyDefs.find(e=>!e.boss)||enemyDefs[0];
-      if(def&&typeof mkEnemy==='function')S.enemies.push(mkEnemy(def,Math.max(1,typeof enemyScale==='function'?enemyScale():1),false));
-    }
-    return hasLivingWave();
-  }
-  function playButtonSpawnAndFight(label){
-    if(!liveA().length){S.phase='recruit';render();return msg('Place at least one fighter first.');}
-    clearChoiceLocks();
-    safeClosePanels();
-    // Main fix: the between-round play button no longer merely asks fight() to do work.
-    // It starts the guaranteed battle path, which creates the enemy wave before the battle loop can run.
-    if(typeof window.__beginGuaranteedBattle==='function'){
-      return window.__beginGuaranteedBattle(label||'▶ Play spawned enemies');
-    }
-    S.phase='battle';
-    S.battle={tick:0,revive:false,playSpawn:true};
-    forceSpawnWaveOnly();
-    if(!hasLivingWave()){
-      S.phase='recruit';
-      render();
-      return msg('Could not create an enemy wave. Try Recruit or Restart.');
-    }
-    updateCombos();
-    startBuffs();
-    applyRegionStart();
-    render();
-    msg((label||'▶ Play')+' — enemies spawned.');
-    setTimeout(loop,140);
-  }
-  window.startNextFight=function(){
-    // Between rounds: always spawn the wave directly.
-    if(S.phase==='recruit')return playButtonSpawnAndFight('▶ Play spawned enemies');
-    // Empty battle state: recover by spawning a fresh wave instead of saying battle is already running.
-    if(S.phase==='battle'&&!hasLivingWave())return playButtonSpawnAndFight('Second-line recovery spawned enemies');
-    return msg(S.phase==='battle'?'Battle is already running.':'Finish your current choice first.');
-  };
-  const play=document.getElementById('playNext');
-  if(play)play.onclick=window.startNextFight;
-
-  // Second-line fix: even if an older wrapper or 5★/6★ handoff accidentally gets phase=battle with no wave,
-  // this watchdog repairs it without requiring another tap.
-  let repairing=false;
-  function secondLineWaveWatch(){
-    if(repairing)return;
-    if(S.phase==='battle'&&!hasLivingWave()&&liveA().length){
-      repairing=true;
-      msg('Second-line safety: spawning the missing enemy wave.');
-      playButtonSpawnAndFight('Second-line safety');
-      setTimeout(()=>{repairing=false},400);
-    }
-  }
-  const oldRenderPlaySpawn=render;
-  render=function(){
-    oldRenderPlaySpawn();
-    const btn=document.getElementById('playNext');
-    if(btn){
-      const emptyBattle=S.phase==='battle'&&!hasLivingWave()&&liveA().length;
-      const between=S.phase==='recruit'&&liveA().length&&!S.placing&&!S.placingEffect&&!S.placingUpgrade&&!S.evoTarget&&!S.ascTarget;
-      btn.style.display=(between||emptyBattle)?'inline-block':'none';
-      btn.textContent=emptyBattle?'▶ Fix':'▶';
-      btn.title=emptyBattle?'Spawn the missing enemy wave':'Spawn enemies and start the next round';
-    }
-    setTimeout(secondLineWaveWatch,0);
-  };
-  if(!window.__enemyWaveSecondLineWatch){
-    window.__enemyWaveSecondLineWatch=setInterval(secondLineWaveWatch,900);
-  }
-  render();
-})();
-
-
-
-/* === SIMPLE FINAL ROUND-START OVERRIDE: Play / 5★ / 6★ always starts a real wave === */
-(function(){
-  function livingAllies(){ return (typeof liveA==='function') ? liveA() : (S.squad||[]).filter(u=>u&&!u.dead&&u.hp>0); }
-  function livingEnemies(){ return Array.isArray(S.enemies) ? S.enemies.filter(e=>e&&!e.dead&&e.hp>0) : []; }
-  function closePanels(){
-    S.inspect=null;
-    const sh=$('shade'), dr=$('drawer');
-    if(sh)sh.classList.remove('open');
-    if(dr)dr.classList.remove('open');
-  }
-  function clearSelections(){
-    S.placing=null;
-    S.placingEffect=null;
-    S.placingUpgrade=false;
-    S.evoTarget=null;
-    S.evoChoices=[];
-    S.ascTarget=null;
-    S.ascChoices=[];
-  }
-  function fallbackEnemy(){
-    if(livingEnemies().length) return;
-    if(!Array.isArray(S.enemies)) S.enemies=[];
     const scale=Math.max(1,typeof enemyScale==='function'?enemyScale():1);
+    const bossRound=S.round%5===0;
     let def=null;
     try{
       const rg=typeof region==='function'?region():null;
-      const boss=S.round%5===0;
-      if(boss&&rg&&rg.boss) def=enemyDefs.find(e=>rg.boss.includes(e.n))||enemyDefs.find(e=>e.boss);
-      if(!def&&rg&&rg.main) def=enemyDefs.find(e=>rg.main.includes(e.n)&&!e.boss);
+      if(bossRound&&rg&&Array.isArray(rg.boss))def=enemyDefs.find(e=>rg.boss.includes(e.n));
+      if(!def&&rg&&Array.isArray(rg.main))def=enemyDefs.find(e=>rg.main.includes(e.n)&&!e.boss);
     }catch(err){}
-    def=def||enemyDefs.find(e=>!e.boss)||enemyDefs[0];
-    if(def&&typeof mkEnemy==='function') S.enemies.push(mkEnemy(def,scale,!!(S.round%5===0&&def.boss)));
+    def=def||(bossRound?enemyDefs.find(e=>e.boss):null)||enemyDefs.find(e=>!e.boss)||enemyDefs[0];
+    if(def&&typeof mkEnemy==='function')S.enemies.push(mkEnemy(def,scale,bossRound&&!!def.boss));
+    return livingEnemies().length>0;
   }
-  function startRoundNow(label){
-    if(!livingAllies().length){ S.phase='recruit'; render(); return msg('Place at least one fighter first.'); }
-    clearSelections();
-    closePanels();
-    S.phase='battle';
-    S.battle={tick:0,revive:false,override:true,startedAt:Date.now()};
+  function startRoundSimple(label){
+    if(!livingAllies().length){S.phase='recruit';render();return msg('Place at least one fighter first.');}
+    // If a real battle is already running, do not wipe it. The button is hidden there anyway.
+    if(S.phase==='battle'&&livingEnemies().length)return msg('Battle is already running.');
+    clearChoiceState();
+    panelClose();
     S.enemies=[];
-    if(typeof spawn==='function') spawn();
-    fallbackEnemy();
-    if(!livingEnemies().length){
-      S.phase='recruit';
-      S.battle=null;
-      render();
-      return msg('Enemy wave could not be created, but the round was safely reset.');
-    }
-    if(typeof updateCombos==='function') updateCombos();
-    if(typeof startBuffs==='function') startBuffs();
-    if(typeof applyRegionStart==='function') applyRegionStart();
-    render();
-    const rg=typeof region==='function'?region():null;
-    msg((label?label+' — ':'')+`${rg&&rg.e?rg.e+' ':''}${rg&&rg.n?rg.n+': ':''}enemy wave spawned. Round ${S.round} is running.`);
-    setTimeout(()=>{ if(S.phase==='battle') loop(); },120);
+    S.battle=null;
+    S.phase='recruit';
+    msg((label||'Starting round')+'...');
+    fight();
+    // Immediate second line: if the original fight path somehow produced no enemies, create one now.
+    setTimeout(()=>{
+      if(S.phase==='battle'&&!livingEnemies().length){
+        if(emergencySpawn()){
+          if(typeof updateCombos==='function')updateCombos();
+          if(typeof applyRegionStart==='function')applyRegionStart();
+          render();
+          msg((label||'Round')+' — enemy wave repaired and running.');
+        }else{
+          S.phase='recruit';S.battle=null;render();msg('Could not create enemies; safely reset between rounds.');
+        }
+      }
+    },60);
   }
 
-  // The play button is now a true override: it does not care if stale placing/evolution flags are stuck.
-  window.startNextFight=function(){ return startRoundNow('▶ Play override'); };
+  // Play is now a complete override for stuck between-choice states.
+  window.startNextFight=function(){return startRoundSimple('▶ Play override')};
   const play=document.getElementById('playNext');
-  if(play) play.onclick=window.startNextFight;
+  if(play){
+    play.onclick=window.startNextFight;
+    play.title='Force start the next enemy wave';
+  }
 
-  // 5★ identity choice: apply the selected identity, then immediately start the next round from the same direct path.
+  // 5★: apply the chosen identity, then start the next battle using the exact same simple path.
   pickEvolution=function(i){
     const u=S.evoTarget, e=(S.evoChoices||[])[i];
     if(u&&e){
       e.apply(u);
       u.hp=u.maxHp;
       u.shield=(u.shield||0)+35;
-      const pos=ix(u); if(pos>=0) floatAlly(pos,`${e.e} EVO!`,'#f59e0b');
+      const pos=ix(u);if(pos>=0)floatAlly(pos,`${e.e} EVO!`,'#f59e0b');
       msg(`${u.e} ${u.n} became ${e.e} ${e.n}.`);
     }
-    startRoundNow('5★ evolution complete');
+    return startRoundSimple('5★ evolution complete');
   };
   window.pickEvolution=pickEvolution;
 
-  // 6★ mastery choice: apply the selected mastery, then immediately start the next round from the same direct path.
+  // 6★: apply the chosen mastery, then start the next battle using the exact same simple path.
   window.pickAscension=function(i){
     const u=S.ascTarget, a=(S.ascChoices||[])[i];
     if(u&&a){
@@ -1303,33 +953,24 @@ Moon Dueler|🌙|Shadow,Holy,Blade|44|25|1.08|duel|Hybrid single-target fighter.
       u.starProg=0;
       u.hp=u.maxHp;
       u.shield=(u.shield||0)+70;
-      const pos=ix(u); if(pos>=0) floatAlly(pos,`${a.e} 6★!`,'#f59e0b');
+      const pos=ix(u);if(pos>=0)floatAlly(pos,`${a.e} 6★!`,'#f59e0b');
       msg(`${u.e} ${u.n} mastered 6★ as ${a.e} ${a.n}.`);
     }
-    startRoundNow('6★ mastery complete');
+    return startRoundSimple('6★ mastery complete');
   };
 
-  // Show Play whenever the squad exists and the game is not actively in a healthy battle/dead end.
-  const oldRenderOverride=render;
+  // Render only controls button visibility/text. It does not start loops or spawn anything by itself.
+  const oldRenderSimple=render;
   render=function(){
-    oldRenderOverride();
+    oldRenderSimple();
     const btn=document.getElementById('playNext');
     if(btn){
       const allies=livingAllies().length>0;
-      const battleHealthy=S.phase==='battle'&&livingEnemies().length>0;
-      const show=allies && S.phase!=='dead' && !battleHealthy;
-      btn.style.display=show?'inline-block':'none';
+      const healthyBattle=S.phase==='battle'&&livingEnemies().length>0;
+      btn.style.display=(allies&&!healthyBattle&&S.phase!=='dead')?'inline-block':'none';
       btn.textContent='▶';
-      btn.title='Override: spawn the enemy wave and start the round now';
     }
   };
-
-  // One more safety line: if any path leaves battle running with no enemies, repair it automatically.
-  if(!window.__simpleRoundStartOverrideWatch){
-    window.__simpleRoundStartOverrideWatch=setInterval(()=>{
-      if(S.phase==='battle'&&livingAllies().length&&!livingEnemies().length) startRoundNow('Auto-recovered empty wave');
-    },650);
-  }
 })();
 
 render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and the fight starts.');
