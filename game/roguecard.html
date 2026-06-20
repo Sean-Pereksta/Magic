@@ -259,6 +259,33 @@ const evolutions=[
 {id:'inferno',e:'🔥',n:'Inferno Heart',desc:'Burn identity: stronger burn, bigger splash visuals, and boss-melting fire bursts.',fits:u=>u.t.includes('Fire')||hasFx(u,'burn')||hasFx(u,'meteor'),apply:u=>{u.evo='inferno';u.evoTitle='Inferno Heart';u.evoEmoji='🔥';u.atk+=13;u.baseAtk+=13;u.shield+=16;}},
 {id:'sniper',e:'🎯',n:'Tactical Sniper',desc:'Precision identity: backline focus, high crit marks, and bonus damage to elites/bosses.',fits:u=>u.focus==='back'||u.focus==='weak'||u.t.includes('Blade')||hasFx(u,'mark'),apply:u=>{u.evo='sniper';u.evoTitle='Tactical Sniper';u.evoEmoji='🎯';u.atk+=16;u.baseAtk+=16;u.focus='back';}}
 ];
+
+/* Compatibility helpers used by evolution/start-buff code. Some later support patches had these scoped inside an IIFE, so the global 5★/6★ evolution code could crash on giveShield. Keep these global and tiny. */
+function giveShield(u,v){
+  if(!u||u.dead)return;
+  v=Number(v)||0;
+  u.shield=(Number(u.shield)||0)+v;
+}
+function buffAtk(u,v){
+  if(!u||u.dead)return;
+  v=Number(v)||0;
+  u.atk=(Number(u.atk)||0)+v;
+}
+function buffSpd(u,v){
+  if(!u||u.dead)return;
+  v=Number(v)||0;
+  u.spd=(Number(u.spd)||0)+v;
+}
+function cleanse(u,rate=.55){
+  if(!u)return;
+  if(rate>1)rate=1/rate; // older calls sometimes passed intensity instead of multiplier
+  rate=Math.max(0,Math.min(1,Number(rate)||.55));
+  u.burn=(Number(u.burn)||0)*rate;
+  u.poison=(Number(u.poison)||0)*rate;
+  u.slow=(Number(u.slow)||0)*rate;
+  u.marked=(Number(u.marked)||0)*rate;
+}
+
 function heroTitle(u){return u&&u.evoTitle?`${u.n} · ${u.evoTitle}`:u.n}
 function evoPool(u){let pool=evolutions.filter(e=>e.fits(u));if(pool.length<3)pool=[...pool,...evolutions.filter(e=>!pool.includes(e))];return pool.slice(0,3)}
 function maybeEvolution(u){return u&&u.team==='ally'&&u.star>=5&&!u.evo}
@@ -973,6 +1000,142 @@ Moon Dueler|🌙|Shadow,Holy,Blade|44|25|1.08|duel|Hybrid single-target fighter.
       const healthyBattle=S.phase==='battle'&&livingEnemies().length>0;
       btn.style.display=(allies&&!healthyBattle&&S.phase!=='dead')?'inline-block':'none';
       btn.textContent='▶';
+    }
+  };
+})();
+
+
+/* === FINAL HARD PLAY OVERRIDE: play, 5★, 6★, and fight() all use one unstoppable start route === */
+(function(){
+  const nativeFight=fight;
+  function safeClosePanels(){
+    S.inspect=null;
+    const sh=$('shade'),dr=$('drawer');
+    if(sh)sh.classList.remove('open');
+    if(dr)dr.classList.remove('open');
+  }
+  function clearAllPendingChoices(){
+    S.placing=null;
+    S.placingEffect=null;
+    S.placingUpgrade=false;
+    S.evoTarget=null;
+    S.evoChoices=[];
+    S.ascTarget=null;
+    S.ascChoices=[];
+  }
+  function livingAlliesFinal(){return typeof liveA==='function'?liveA():(S.squad||[]).filter(u=>u&&!u.dead&&u.hp>0)}
+  function livingEnemiesFinal(){return typeof liveE==='function'?liveE():(Array.isArray(S.enemies)?S.enemies.filter(e=>e&&!e.dead&&e.hp>0):[])}
+  function forceEnemyWave(){
+    if(!Array.isArray(S.enemies))S.enemies=[];
+    if(livingEnemiesFinal().length)return true;
+    try{ if(typeof spawn==='function')spawn(); }catch(err){ console.warn('spawn failed, using manual wave repair',err); }
+    if(livingEnemiesFinal().length)return true;
+    S.enemies=[];
+    const scale=Math.max(1,typeof enemyScale==='function'?enemyScale():1);
+    const bossRound=(S.round||1)%5===0;
+    let candidates=[];
+    try{
+      const rg=typeof region==='function'?region():null;
+      if(rg&&bossRound&&Array.isArray(rg.boss))candidates=enemyDefs.filter(e=>rg.boss.includes(e.n));
+      if(rg&&!candidates.length&&Array.isArray(rg.main))candidates=enemyDefs.filter(e=>rg.main.includes(e.n)&&!e.boss);
+    }catch(err){}
+    if(!candidates.length)candidates=enemyDefs.filter(e=>bossRound?e.boss:!e.boss);
+    if(!candidates.length)candidates=enemyDefs;
+    const count=bossRound?1:Math.max(2,Math.min(8,2+Math.floor((S.round||1)/2)));
+    for(let i=0;i<count;i++){
+      const def=candidates[i%candidates.length];
+      if(def&&typeof mkEnemy==='function')S.enemies.push(mkEnemy(def,scale,bossRound&&i===0&&!!def.boss));
+    }
+    return livingEnemiesFinal().length>0;
+  }
+  function runBattleSetupOnce(){
+    try{ if(typeof updateCombos==='function')updateCombos(); }catch(err){ console.warn('override updateCombos skipped',err); }
+    try{ if(typeof startBuffs==='function')startBuffs(); }catch(err){ console.warn('override startBuffs skipped',err); }
+    try{ if(typeof applyRegionStart==='function')applyRegionStart(); }catch(err){ console.warn('override region start skipped',err); }
+  }
+  function beginLoopForCurrentBattle(id){
+    // Schedule exactly one combat loop for this forced battle. No repeated restarts.
+    setTimeout(()=>{
+      if(S.phase==='battle'&&S.battle&&S.battle.id===id&&typeof loop==='function'){
+        try{ loop(id); }
+        catch(err){
+          console.error('battle loop crashed once; holding battle instead of restarting',err);
+          msg('Battle loop hit an error. The round is held instead of restarting.');
+        }
+      }
+    },240);
+  }
+  function forceStartRound(label){
+    if(!livingAlliesFinal().length){S.phase='recruit';render();msg('Place at least one fighter first.');return false;}
+
+    // HARD START: do not call the old native fight. It could throw after drawing enemies but before scheduling loop.
+    const id=(S._battleSeq=(S._battleSeq||0)+1);
+    clearAllPendingChoices();
+    safeClosePanels();
+    S.enemies=[];
+    S.phase='battle';
+    S.battle={tick:0,revive:false,id};
+
+    if(!forceEnemyWave()){
+      S.phase='recruit';S.battle=null;render();msg('Play override reset the stale state, but no enemies could be created.');return false;
+    }
+
+    runBattleSetupOnce();
+    render();
+    msg((label||'Play override')+' — enemies spawned and combat loop started.');
+    beginLoopForCurrentBattle(id);
+
+    // One quiet verification only. It does not restart the battle; it only starts the loop if something blocked the first timer.
+    setTimeout(()=>{
+      if(S.phase==='battle'&&S.battle&&S.battle.id===id&&livingEnemiesFinal().length&&livingAlliesFinal().length&&(S.battle.tick||0)===0){
+        beginLoopForCurrentBattle(id);
+      }
+    },520);
+    return true;
+  }
+
+  // Make even direct calls to fight() behave like the hard start. This catches old stale paths after upgrades/effects.
+  fight=function(){return forceStartRound('Fight override')};
+
+  window.startNextFight=function(){return forceStartRound('▶ Play override')};
+  const play=document.getElementById('playNext');
+  if(play){
+    play.onclick=window.startNextFight;
+    play.title='Hard override: clear stale battle state, spawn enemies, and start the proper round';
+    play.textContent='▶';
+  }
+
+  // Re-pin 5★ and 6★ choices to the same hard route after applying the selected upgrade.
+  pickEvolution=function(i){
+    const u=S.evoTarget,e=(S.evoChoices||[])[i];
+    if(u&&e){
+      e.apply(u);u.hp=u.maxHp;u.shield=(u.shield||0)+35;
+      const pos=ix(u);if(pos>=0)floatAlly(pos,`${e.e} EVO!`,'#f59e0b');
+      msg(`${u.e} ${u.n} became ${e.e} ${e.n}.`);
+    }
+    return forceStartRound('5★ evolution complete');
+  };
+  window.pickEvolution=pickEvolution;
+
+  window.pickAscension=function(i){
+    const u=S.ascTarget,a=(S.ascChoices||[])[i];
+    if(u&&a){
+      a.apply(u);u.star=6;u.starProg=0;u.hp=u.maxHp;u.shield=(u.shield||0)+70;
+      const pos=ix(u);if(pos>=0)floatAlly(pos,`${a.e} 6★!`,'#f59e0b');
+      msg(`${u.e} ${u.n} mastered 6★ as ${a.e} ${a.n}.`);
+    }
+    return forceStartRound('6★ mastery complete');
+  };
+
+  const priorRender=render;
+  render=function(){
+    priorRender();
+    const btn=document.getElementById('playNext');
+    if(btn){
+      const allies=livingAlliesFinal().length>0;
+      const trulyRunning=S.phase==='battle'&&livingEnemiesFinal().length>0;
+      btn.style.display=(allies&&!trulyRunning&&S.phase!=='dead')?'inline-block':'none';
+      btn.disabled=false;
     }
   };
 })();
