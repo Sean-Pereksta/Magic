@@ -536,10 +536,89 @@ Thunder Idol|🗿|Storm,Stone,Spirit|78|10|.72|support|Stationary storm support.
     });
     if(S.boost.monsterManual)liveE().forEach((e,idx)=>{e.marked=(e.marked||0)+(idx<3?1:.4)});
   };
-  function cleanStatusPatch(u,rate=.72){if(!u)return;u.burn=(u.burn||0)*rate;u.poison=(u.poison||0)*rate;u.slow=(u.slow||0)*rate;u.marked=(u.marked||0)*rate}
   const oldStatuses2=statuses;
-  statuses=function(){oldStatuses2(); if(!S.battle||S.phase!=='battle')return; if((S.battle.tick||0)%5===0){S.squad.forEach((u,i)=>{if(!u||u.dead)return;let st=u.star||1;if(u.n==='Banner Mage')filled(rowIds(rowOf(i))).forEach(a=>{a.shield=(a.shield||0)+3+st;let e=pickEnemy({focus:'strong'});if(e)e.marked=(e.marked||0)+.5});if(u.n==='Wolf Tamer')crossIds(i).map(unitAt).filter(Boolean).forEach(a=>{if(a.t.includes('Beast')){a.spd+=.015;heal(u,a,.8+st*.2)}});if(u.n==='Shield Pixie')diagIds(i).map(unitAt).filter(Boolean).forEach(a=>{a.shield=(a.shield||0)+3+st;cleanStatusPatch(a,.72)});if(u.n==='Thunder Idol')crossIds(i).map(unitAt).filter(Boolean).forEach(a=>{if(a.t.includes('Storm')||a.t.includes('Machine'))a.batteryChain=(a.batteryChain||0)+.025});})}}
+  statuses=function(){oldStatuses2(); if(!S.battle||S.phase!=='battle')return; if((S.battle.tick||0)%5===0){S.squad.forEach((u,i)=>{if(!u||u.dead)return;let st=u.star||1;if(u.n==='Banner Mage')filled(rowIds(rowOf(i))).forEach(a=>{a.shield=(a.shield||0)+3+st;let e=pickEnemy({focus:'strong'});if(e)e.marked=(e.marked||0)+.5});if(u.n==='Wolf Tamer')crossIds(i).map(unitAt).filter(Boolean).forEach(a=>{if(a.t.includes('Beast')){a.spd+=.015;heal(u,a,.8+st*.2)}});if(u.n==='Shield Pixie')diagIds(i).map(unitAt).filter(Boolean).forEach(a=>{a.shield=(a.shield||0)+3+st;cleanse(a,.72)});if(u.n==='Thunder Idol')crossIds(i).map(unitAt).filter(Boolean).forEach(a=>{if(a.t.includes('Storm')||a.t.includes('Machine'))a.batteryChain=(a.batteryChain||0)+.025});})}}
   const oldHelp2=help;help=function(){oldHelp2();setTimeout(()=>{if(!$('drawer').classList.contains('open'))return;$('body').innerHTML+=`<p><b>Balance patch:</b> enemy scaling is smoother now: fewer sudden elites, slower shields, softer boss-count growth, and threat responds less aggressively to your stars/effects.</p><p><b>New identities:</b> added Banner Mage, Wolf Tamer, Shield Pixie, Poison Juggler, Cannon Tortoise, Star Harpist, Feral Medic, Rune Bomber, Sand Guardian, and Thunder Idol, plus new enemy types like Banner Goblin, Potion Imp, Armor Beetle, Glass Cannon, Storm Jelly, Rust Knight, and Grave Drummer.</p><p><b>Store fix:</b> boss-store entries are normalized before display, so undefined item names/descriptions are replaced with valid impactful upgrades.</p>`},0)};
+})();
+
+
+/* Sean follow-up patch: guaranteed evolution resume + single-target specialists */
+(function(){
+  // New focus labels for clearer single-target roles.
+  FO.elite='Elite'; FO.wounded='Wounded'; FO.healthy='Healthy'; FO.caster='Caster'; FO.duel='Duel'; FO.sniper='Sniper';
+
+  const singleTargetHeroes=`
+Duelist|🤺|Blade,Royal|48|24|1.18|duel|Pure single-target striker. Challenges elites, bosses, and the highest-attack enemy for heavy duel damage.
+Giant Slayer|🪓|Blade,Stone|58|28|.78|boss|Slow boss killer. Deals much more damage to bosses, elites, and high-max-HP enemies.
+Needle Rogue|🪡|Shadow,Blade|32|21|1.72|wounded|Finisher assassin. Hunts wounded enemies and overkills less, making kills faster and cleaner.
+Glass Archer|🏹|Blade|26|34|.68|healthy|Opening sniper. Targets the healthiest enemy and hits one target extremely hard.
+Hex Marksman|🎯|Mage,Shadow|35|23|.95|caster|Kills dangerous ranged/support enemies first and marks them for the squad.
+Lightning Fencer|⚡|Storm,Blade|42|20|1.42|elite|Fast precision attacker. Prioritizes elites/bosses and zaps one target with bonus single-hit damage.
+Relic Hunter|🗡️|Money,Blade|46|19|1.25|elite|Elite hunter that earns extra coins when landing the final blow on elites or bosses.
+Spear Ace|🪶|Beast,Blade|52|22|1.12|duel|Frontline duelist. Pierces one priority target and gains speed after each kill.
+Crossbow Captain|🏹|Royal,Machine|50|18|1.05|sniper|Backline single-target captain. Marks the farthest enemy and helps precision units focus fire.
+Moon Dueler|🌙|Shadow,Holy,Blade|44|25|1.08|duel|Hybrid single-target fighter. Strong against shadow/holy-vulnerable targets and safer than most assassins.
+`;
+  function parseHeroLine2(s){let [n,e,t,hp,atk,spd,focus,a]=s.split('|');return{n,e,t:t.split(','),hp:+hp,atk:+atk,spd:+spd,focus,a,team:'ally'}}
+  singleTargetHeroes.trim().split('\n').map(parseHeroLine2).reverse().forEach(h=>{if(!heroes.some(x=>x.n===h.n))heroes.splice(6,0,h)});
+
+  // More precise targeting so single-target damage dealers are not just higher-stat copies.
+  const oldPickEnemyST=pickEnemy;
+  pickEnemy=function(u){
+    let e=liveE(); if(!e.length)return null;
+    if(u.focus==='elite')return e.find(x=>x.boss||x.elite)||e.sort((a,b)=>b.maxHp-a.maxHp)[0];
+    if(u.focus==='wounded')return e.sort((a,b)=>(a.hp/a.maxHp)-(b.hp/b.maxHp)||a.hp-b.hp)[0];
+    if(u.focus==='healthy')return e.sort((a,b)=>(b.hp/b.maxHp)-(a.hp/a.maxHp)||b.hp-a.hp)[0];
+    if(u.focus==='caster')return e.find(x=>x.kind==='ranged'&&(x.focus==='support'||['fire','poison','shadow','storm','frost','holy','mark'].includes(x.attack)))||e.find(x=>x.kind==='ranged')||e[0];
+    if(u.focus==='duel')return e.find(x=>x.boss||x.elite)||e.sort((a,b)=>b.atk-a.atk||b.maxHp-a.maxHp)[0];
+    if(u.focus==='sniper')return e[e.length-1]||e[0];
+    return oldPickEnemyST(u);
+  };
+
+  // Single-target damage identity: fewer splash effects, bigger priority-target hits.
+  const oldAllyAtkST=allyAtk;
+  allyAtk=function(u){
+    let targetBefore=pickEnemy(u), hpBefore=targetBefore?targetBefore.hp:0, wasElite=!!(targetBefore&&(targetBefore.elite||targetBefore.boss));
+    oldAllyAtkST(u);
+    if(!targetBefore||targetBefore.dead)return;
+    let st=u.star||1, b=bonus(u), base=(u.atk+(b.atk||0))*(1+(st-1)*.18), extra=0, dtype='hit';
+    if(u.focus==='duel')extra=base*((targetBefore.elite||targetBefore.boss)?.58:.34);
+    if(u.focus==='elite')extra=base*((targetBefore.elite||targetBefore.boss)?.68:.28);
+    if(u.focus==='wounded'&&targetBefore.hp/targetBefore.maxHp<.52)extra=base*.52;
+    if(u.focus==='healthy'&&hpBefore/targetBefore.maxHp>.72)extra=base*.46;
+    if(u.focus==='caster'&&(targetBefore.kind==='ranged'||targetBefore.focus==='support')){extra=base*.44;targetBefore.marked=(targetBefore.marked||0)+1;dtype='mark'}
+    if(u.focus==='sniper'){extra=base*.38;targetBefore.marked=(targetBefore.marked||0)+.8;}
+    if(['Duelist','Giant Slayer','Needle Rogue','Glass Archer','Hex Marksman','Lightning Fencer','Relic Hunter','Spear Ace','Crossbow Captain','Moon Dueler'].includes(u.n)){
+      extra+=base*.18;
+      if(targetBefore.elite||targetBefore.boss)extra+=base*.18;
+      attackVisual(u,targetBefore,u.focus==='caster'?'mark':u.focus==='elite'?'storm':'slash',`${u.e} single target`);
+      floatEnemy(S.enemies.indexOf(targetBefore),'FOCUS!','#be123c');
+    }
+    if(extra>0)dmg(u,targetBefore,extra,dtype);
+    if(targetBefore.dead&&u.n==='Relic Hunter'&&wasElite){S.coins+=2+(targetBefore.boss?4:0);floatAlly(ix(u),targetBefore.boss?'+6🪙':'+2🪙','#f59e0b')}
+  };
+
+  // Guaranteed phase handoff after 5★ evolution choices. This prevents the game from getting stuck in `evolve`.
+  function resumeAfterOption(label){
+    S.placing=null; S.placingEffect=null; S.placingUpgrade=false; S.evoTarget=null; S.evoChoices=[];
+    if(S.phase!=='dead'&&S.phase!=='shop'&&S.phase!=='relic')S.phase='recruit';
+    close(); render();
+    setTimeout(()=>{ if(S.phase==='recruit' && liveA().length) fight(); },120);
+    setTimeout(()=>{ if(S.phase!=='battle'&&S.phase!=='dead'&&S.phase!=='shop'&&S.phase!=='relic'&&liveA().length){ msg((label||'Option complete')+' — starting the next fight.'); fight(); } },760);
+  }
+  const oldPickEvolutionST=pickEvolution;
+  pickEvolution=function(i){
+    let u=S.evoTarget, e=(S.evoChoices||[])[i];
+    if(!u||!e){ msg('Evolution option finished. Continuing the round.'); return resumeAfterOption('Evolution'); }
+    e.apply(u); u.hp=u.maxHp; u.shield=(u.shield||0)+35;
+    let pos=ix(u); if(pos>=0)floatAlly(pos,`${e.e} EVO!`,'#f59e0b');
+    msg(`${u.e} ${u.n} became ${e.e} ${e.n}.`);
+    resumeAfterOption('Evolution complete');
+  };
+  window.pickEvolution=pickEvolution;
+
+  const oldHelpST=help;
+  help=function(){oldHelpST();setTimeout(()=>{if(!$('drawer').classList.contains('open'))return;$('body').innerHTML+=`<p><b>Single-target patch:</b> added Duelist, Giant Slayer, Needle Rogue, Glass Archer, Hex Marksman, Lightning Fencer, Relic Hunter, Spear Ace, Crossbow Captain, and Moon Dueler. New targeting roles include Elite, Wounded, Healthy, Caster, Duel, and Sniper, so precision units pick different enemies instead of all feeling like generic damage.</p><p><b>Evolution flow fix:</b> after a 5★ identity is selected, the game now force-clears the evolution phase and starts the fight. A fallback also kicks in if the UI somehow remains between phases.</p>`},0)};
 })();
 
 render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and the fight starts.');
