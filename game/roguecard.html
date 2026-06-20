@@ -833,5 +833,153 @@ Moon Dueler|🌙|Shadow,Holy,Blade|44|25|1.08|duel|Hybrid single-target fighter.
   render();
 })();
 
+
+/* === Empty-wave recovery + fullscreen button + safer round continuation === */
+(function(){
+  const style=document.createElement('style');
+  style.textContent=`
+    .topControls{display:flex;gap:6px;align-items:center;justify-content:flex-end}
+    #fullscreenBtn{background:#eef2ff;color:#1e293b;min-width:34px;padding:6px 9px;border-radius:12px;font-size:14px}
+    #fullscreenBtn.on{background:#111827;color:white}
+  `;
+  document.head.appendChild(style);
+
+  const helpBtn=$('help');
+  if(helpBtn && !document.getElementById('fullscreenBtn')){
+    const wrap=document.createElement('div');
+    wrap.className='topControls';
+    helpBtn.parentNode.insertBefore(wrap,helpBtn);
+    const fs=document.createElement('button');
+    fs.id='fullscreenBtn';
+    fs.className='tiny secondary';
+    fs.title='Fullscreen';
+    fs.textContent='⛶';
+    wrap.appendChild(fs);
+    wrap.appendChild(helpBtn);
+    fs.onclick=()=>{
+      const root=document.documentElement;
+      if(!document.fullscreenElement){
+        (root.requestFullscreen||root.webkitRequestFullscreen||root.msRequestFullscreen)?.call(root);
+      }else{
+        (document.exitFullscreen||document.webkitExitFullscreen||document.msExitFullscreen)?.call(document);
+      }
+    };
+    document.addEventListener('fullscreenchange',()=>fs.classList.toggle('on',!!document.fullscreenElement));
+  }
+
+  let fightSeq=0;
+  const oldSpawnRecovery=spawn;
+  spawn=function(){
+    oldSpawnRecovery();
+    if(!Array.isArray(S.enemies))S.enemies=[];
+    const rg=region(), scale=enemyScale(), boss=S.round%5===0;
+    let main=(rg&&rg.main?enemyDefs.filter(e=>rg.main.includes(e.n)):[]);
+    let bosses=(rg&&rg.boss?enemyDefs.filter(e=>rg.boss.includes(e.n)):[]);
+    if(!main.length)main=enemyDefs.filter(e=>!e.boss);
+    if(!bosses.length)bosses=enemyDefs.filter(e=>e.boss);
+    let minCount=boss?1:Math.max(2,Math.min(8,2+Math.floor(S.round/3)));
+    let guard=0;
+    while(S.enemies.length<minCount && guard++<20){
+      let def=(boss&&S.enemies.length===0&&bosses.length)?rand(bosses):rand(main);
+      if(!def)break;
+      S.enemies.push(mkEnemy(def,scale,boss&&S.enemies.length===0));
+    }
+  };
+
+  const oldFightRecovery=fight;
+  fight=function(){
+    if(!liveA().length)return msg('Place at least one fighter.');
+    fightSeq++;
+    oldFightRecovery();
+    const seq=fightSeq;
+    setTimeout(()=>{
+      if(seq!==fightSeq||S.phase!=='battle')return;
+      if(!Array.isArray(S.enemies)||!S.enemies.length||!liveE().length){
+        msg('Wave safety: rebuilding the enemy wave so the round can continue.');
+        spawn();
+        S.phase='battle';
+        S.battle=S.battle||{tick:0,revive:false};
+        if(!liveE().length){
+          S.phase='recruit';
+          render();
+          setTimeout(openRecruit,150);
+          return;
+        }
+        startBuffs();
+        applyRegionStart();
+        render();
+        setTimeout(loop,160);
+      }
+    },90);
+  };
+  window.fight=fight;
+
+  const oldLoopRecovery=loop;
+  loop=function(){
+    if(S.phase==='battle'&&(!Array.isArray(S.enemies)||!S.enemies.length)){
+      msg('Wave safety: enemy wave was empty, starting the next round cleanly.');
+      S.phase='recruit';
+      S.battle=null;
+      S.enemies=[];
+      render();
+      setTimeout(openRecruit,180);
+      return;
+    }
+    return oldLoopRecovery();
+  };
+  window.loop=loop;
+
+  const oldStartNextFightRecovery=window.startNextFight;
+  window.startNextFight=function(){
+    if(S.phase==='battle'&&(!Array.isArray(S.enemies)||!S.enemies.length||!liveE().length)){
+      msg('Recovered an empty battle — starting the next wave now.');
+      S.phase='recruit';
+      S.battle=null;
+      S.enemies=[];
+      render();
+      return fight();
+    }
+    return oldStartNextFightRecovery?oldStartNextFightRecovery():fight();
+  };
+  const btn=document.getElementById('playNext');
+  if(btn)btn.onclick=window.startNextFight;
+
+  const oldResumeAfterChoiceRecovery=typeof resumeAfterChoice==='function'?resumeAfterChoice:null;
+  window.forceNextRoundAfterChoice=function(label){
+    S.placing=null;S.placingEffect=null;S.placingUpgrade=false;S.evoTarget=null;S.evoChoices=[];S.ascTarget=null;S.ascChoices=[];
+    if(S.phase!=='dead'&&S.phase!=='shop'&&S.phase!=='relic')S.phase='recruit';
+    if(typeof hardClose==='function')hardClose(); else {S.inspect=null;$('shade').classList.remove('open');$('drawer').classList.remove('open')}
+    render();
+    setTimeout(()=>{if(S.phase==='recruit'&&liveA().length){msg((label||'Choice complete')+' — starting the next fight.');fight()}},100);
+    setTimeout(()=>{if(S.phase==='battle'&&(!S.enemies||!S.enemies.length)){msg('Flow safety: rebuilding the empty enemy wave.');spawn();render();setTimeout(loop,120)}},420);
+  };
+
+  const oldPickEvolutionRecovery=pickEvolution;
+  pickEvolution=function(i){
+    let u=S.evoTarget,e=(S.evoChoices||[])[i];
+    if(!u||!e)return window.forceNextRoundAfterChoice('Evolution');
+    e.apply(u);u.hp=u.maxHp;u.shield=(u.shield||0)+35;
+    let pos=ix(u);if(pos>=0)floatAlly(pos,`${e.e} EVO!`,'#f59e0b');
+    msg(`${u.e} ${u.n} became ${e.e} ${e.n}.`);
+    window.forceNextRoundAfterChoice('Evolution complete');
+  };
+  window.pickEvolution=pickEvolution;
+
+  if(typeof pickAscension==='function'){
+    const oldPickAscensionRecovery=pickAscension;
+    pickAscension=function(i){
+      let u=S.ascTarget,a=(S.ascChoices||[])[i];
+      if(!u||!a)return window.forceNextRoundAfterChoice('6★ mastery');
+      a.apply(u);u.star=6;u.starProg=0;u.hp=u.maxHp;u.shield=(u.shield||0)+70;
+      let pos=ix(u);if(pos>=0)floatAlly(pos,`${a.e} 6★!`,'#f59e0b');
+      msg(`${u.e} ${u.n} mastered 6★ as ${a.e} ${a.n}.`);
+      window.forceNextRoundAfterChoice('6★ mastery complete');
+    };
+    window.pickAscension=pickAscension;
+  }
+
+  render();
+})();
+
 render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and the fight starts.');
 </script></body></html>
