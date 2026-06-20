@@ -621,5 +621,217 @@ Moon Dueler|🌙|Shadow,Holy,Blade|44|25|1.08|duel|Hybrid single-target fighter.
   help=function(){oldHelpST();setTimeout(()=>{if(!$('drawer').classList.contains('open'))return;$('body').innerHTML+=`<p><b>Single-target patch:</b> added Duelist, Giant Slayer, Needle Rogue, Glass Archer, Hex Marksman, Lightning Fencer, Relic Hunter, Spear Ace, Crossbow Captain, and Moon Dueler. New targeting roles include Elite, Wounded, Healthy, Caster, Duel, and Sniper, so precision units pick different enemies instead of all feeling like generic damage.</p><p><b>Evolution flow fix:</b> after a 5★ identity is selected, the game now force-clears the evolution phase and starts the fight. A fallback also kicks in if the UI somehow remains between phases.</p>`},0)};
 })();
 
+
+/* === 6-star mastery + between-round play button + hardened evolution flow === */
+(function(){
+  const style=document.createElement('style');
+  style.textContent=`
+    #playNext{background:#16a34a;color:white;display:none;min-width:46px;padding:10px 8px;border-radius:999px;font-size:15px;box-shadow:0 4px 12px #16a34a33}
+    .actions.hasPlay{grid-template-columns:1fr .55fr 1fr 1fr}
+    .unit.s6{background:linear-gradient(135deg,#fef3c7,#fde68a,#e0f2fe,#ddd6fe);border-color:#f59e0b;box-shadow:inset 0 0 0 2px #fff9,0 0 24px #f59e0b99!important;animation:evoGlow 1s ease-in-out infinite}
+    .sixBadge{position:absolute;top:31px;right:3px;background:#f59e0b;color:#111827;border:1px solid #fff7ed;border-radius:999px;font-size:8px;font-weight:950;padding:0 4px;box-shadow:0 1px 5px #0003}
+    .ascensionChoice .price{color:#7c2d12;background:#fffbeb;border-radius:999px;padding:2px 6px}
+  `;
+  document.head.appendChild(style);
+
+  const actions=document.querySelector('.actions');
+  const playBtn=document.createElement('button');
+  playBtn.id='playNext';
+  playBtn.title='Start next round without choosing a card';
+  playBtn.textContent='▶';
+  actions.insertBefore(playBtn,$('shop'));
+  actions.classList.add('hasPlay');
+
+  function drawerOpen(){return $('drawer').classList.contains('open')}
+  function hardClose(){S.inspect=null;$('shade').classList.remove('open');$('drawer').classList.remove('open')}
+  function canPlayNow(){return S.phase==='recruit'&&liveA().length&&!S.placing&&!S.placingEffect&&!S.placingUpgrade&&!S.evoTarget&&!S.ascTarget}
+  function startNextFight(){
+    if(!canPlayNow())return msg(S.phase==='battle'?'Battle is already running.':'Finish your current choice first.');
+    hardClose();
+    msg('▶ Starting the next round with your current squad.');
+    fight();
+  }
+  playBtn.onclick=startNextFight;
+  window.startNextFight=startNextFight;
+
+  const oldClose6=close;
+  close=function(){
+    if(S.phase==='ascend'&&S.ascTarget){msg('Choose a 6★ mastery to continue.');return}
+    return oldClose6();
+  };
+
+  const oldRender6=render;
+  render=function(){
+    oldRender6();
+    let showPlay=canPlayNow();
+    playBtn.style.display=showPlay?'inline-block':'none';
+    actions.classList.toggle('hasPlay',showPlay);
+    document.querySelectorAll('.unit').forEach(el=>{
+      const cell=el.closest('.cell'), idx=cell?+cell.dataset.i:-1, u=idx>=0?S.squad[idx]:null;
+      if(u&&u.star>=6){el.classList.add('s6'); if(!el.querySelector('.sixBadge')){let b=document.createElement('div');b.className='sixBadge';b.textContent='6★';el.appendChild(b)}}
+    });
+  };
+  const oldPhaseText6=phaseText;
+  phaseText=function(){
+    if(S.phase==='recruit'&&liveA().length)return 'Between rounds: choose Recruit for a card, or press ▶ to fight with your current squad.';
+    return oldPhaseText6();
+  };
+
+  const oldOpenRecruit6=openRecruit;
+  openRecruit=function(){
+    oldOpenRecruit6();
+    if(S.phase==='recruit'&&liveA().length&&drawerOpen()){
+      $('dhint').textContent='Pick a card, or skip choices and start the next fight with ▶.';
+      if(!$('skipFightBtn')){
+        $('body').insertAdjacentHTML('beforeend','<br><button id="skipFightBtn" class="secondary" style="width:100%;font-size:18px">▶ Fight now — skip this card choice</button>');
+        $('skipFightBtn').onclick=startNextFight;
+      }
+    }
+    render();
+  };
+
+  const ascensions=[
+    {id:'titan',e:'🏰',n:'Titan Bulwark',desc:'6★ tank mastery: gigantic HP, permanent shields, stronger saves, and row-wide protection every battle.',fits:u=>u.t.some(t=>['Guard','Stone','Royal'].includes(t))||u.evo==='guardian'||u.maxHp>140,apply:u=>{u.ascension='titan';u.ascTitle='Titan Bulwark';u.ascEmoji='🏰';u.maxHp=Math.round(u.maxHp*1.55);u.baseMaxHp=u.maxHp;u.shield=(u.shield||0)+Math.round(u.maxHp*.35);u.guardSave=true;u.titanGuard=true;}},
+    {id:'warlord',e:'👑',n:'Crown Warlord',desc:'6★ command mastery: nearby allies attack harder, marked enemies melt, and the whole row starts faster.',fits:u=>u.t.some(t=>['Royal','Blade','Beast'].includes(t))||u.evo==='commander',apply:u=>{u.ascension='warlord';u.ascTitle='Crown Warlord';u.ascEmoji='👑';u.atk=Math.round(u.atk*1.38);u.baseAtk=u.atk;u.commandAura=true;u.warlord=true;}},
+    {id:'seraph',e:'🌟',n:'Seraphic Lifespring',desc:'6★ support mastery: huge healing pulses, cleanse waves, emergency save, and holy shields for the squad.',fits:u=>u.t.some(t=>['Healer','Holy','Spirit','Nature'].includes(t))||u.focus==='support'||u.evo==='lifebinder',apply:u=>{u.ascension='seraph';u.ascTitle='Seraphic Lifespring';u.ascEmoji='🌟';u.maxHp=Math.round(u.maxHp*1.28);u.baseMaxHp=u.maxHp;u.lifeSave=true;u.seraphHeal=true;u.shield=(u.shield||0)+45;}},
+    {id:'singularity',e:'🌀',n:'Arcane Singularity',desc:'6★ spell mastery: spells splash harder, chain more, and open each fight with a visible magic blast.',fits:u=>u.t.some(t=>['Mage','Storm','Frost','Fire'].includes(t))||u.evo==='archon'||u.evo==='engine',apply:u=>{u.ascension='singularity';u.ascTitle='Arcane Singularity';u.ascEmoji='🌀';u.atk=Math.round(u.atk*1.45);u.baseAtk=u.atk;u.spd+=.16;u.baseSpd=u.spd;u.singularity=true;}},
+    {id:'reaper',e:'🗡️',n:'Reaper Duelist',desc:'6★ single-target mastery: backline/elite/boss targets take brutal precision hits and kills refund cooldown.',fits:u=>u.t.some(t=>['Shadow','Blade','Blood'].includes(t))||['back','weak','duel','elite','sniper'].includes(u.focus)||u.evo==='assassin'||u.evo==='sniper',apply:u=>{u.ascension='reaper';u.ascTitle='Reaper Duelist';u.ascEmoji='🗡️';u.atk=Math.round(u.atk*1.5);u.baseAtk=u.atk;u.spd+=.22;u.baseSpd=u.spd;u.focus=u.focus==='support'?'weak':u.focus;u.reaper=true;}},
+    {id:'worldroot',e:'🌳',n:'Worldroot Plague',desc:'6★ control mastery: poison, roots, thorns, and death spreads become massive against packed waves.',fits:u=>u.t.some(t=>['Poison','Nature'].includes(t))||u.evo==='plague'||hasFx(u,'poison')||hasFx(u,'root'),apply:u=>{u.ascension='worldroot';u.ascTitle='Worldroot Plague';u.ascEmoji='🌳';u.maxHp=Math.round(u.maxHp*1.34);u.baseMaxHp=u.maxHp;u.atk=Math.round(u.atk*1.25);u.baseAtk=u.atk;u.worldroot=true;}},
+    {id:'infernal',e:'☄️',n:'Infernal Comet',desc:'6★ fire mastery: boss-melting meteors, wider burn splash, and enormous opening flame visuals.',fits:u=>u.t.includes('Fire')||u.evo==='inferno'||hasFx(u,'burn')||hasFx(u,'meteor'),apply:u=>{u.ascension='infernal';u.ascTitle='Infernal Comet';u.ascEmoji='☄️';u.atk=Math.round(u.atk*1.5);u.baseAtk=u.atk;u.infernal=true;u.shield=(u.shield||0)+35;}},
+    {id:'factory',e:'⚙️',n:'Omega Engine',desc:'6★ machine mastery: extra shots, battery chains, armor cracking, and fast support zaps.',fits:u=>u.t.some(t=>['Machine','Storm','Money'].includes(t))||u.evo==='engine'||hasFx(u,'gear'),apply:u=>{u.ascension='factory';u.ascTitle='Omega Engine';u.ascEmoji='⚙️';u.atk=Math.round(u.atk*1.34);u.baseAtk=u.atk;u.spd+=.28;u.baseSpd=u.spd;u.shield=(u.shield||0)+55;u.omegaEngine=true;}}
+  ];
+  function ascPool(u){let p=ascensions.filter(a=>a.fits(u)); if(p.length<3)p=[...p,...ascensions.filter(a=>!p.includes(a))]; return p.slice(0,3)}
+  function openAscension(u){
+    S.phase='ascend'; S.ascTarget=u; S.ascChoices=ascPool(u);
+    show(`6★ Mastery: ${u.e} ${u.n}`,'Choose its final specialization. 6★ takes 5 star trainings after 5★ and gives a huge identity upgrade.','<div class="choices">'+S.ascChoices.map((a,i)=>`<button class="choice ascensionChoice" onclick="pickAscension(${i})"><span class="be">${a.e}</span><span><strong>${a.n}</strong><p>${a.desc}</p></span><span class="price">6★</span></button>`).join('')+'</div>');
+    render();
+  }
+  function resumeAfterChoice(label){
+    S.placing=null; S.placingEffect=null; S.placingUpgrade=false; S.evoTarget=null; S.evoChoices=[]; S.ascTarget=null; S.ascChoices=[];
+    if(S.phase!=='dead'&&S.phase!=='shop'&&S.phase!=='relic')S.phase='recruit';
+    hardClose(); render();
+    setTimeout(()=>{ if(canPlayNow()){ msg((label||'Specialization complete')+' — starting the next fight.'); fight(); } },120);
+    setTimeout(()=>{ if(S.phase!=='battle'&&S.phase!=='dead'&&S.phase!=='shop'&&S.phase!=='relic'&&liveA().length){ msg('Flow safety: starting the next round.'); fight(); } },850);
+  }
+  window.pickAscension=function(i){
+    let u=S.ascTarget,a=(S.ascChoices||[])[i];
+    if(!u||!a)return resumeAfterChoice('6★ mastery');
+    a.apply(u); u.star=6; u.starProg=0; u.hp=u.maxHp; u.shield=(u.shield||0)+70;
+    let pos=ix(u); if(pos>=0)floatAlly(pos,`${a.e} 6★!`,'#f59e0b');
+    msg(`${u.e} ${u.n} mastered 6★ as ${a.e} ${a.n}.`);
+    resumeAfterChoice('6★ mastery complete');
+  };
+
+  const oldMaybeEvolution6=maybeEvolution;
+  maybeEvolution=function(u){return !!(u&&u.team==='ally'&&((u.star>=5&&!u.evo)||(u.star>=6&&!u.ascension)))};
+  const oldOpenEvolution6=openEvolution;
+  openEvolution=function(u){
+    if(u&&u.star>=6&&!u.ascension){
+      if(!u.evo)return oldOpenEvolution6(u);
+      return openAscension(u);
+    }
+    return oldOpenEvolution6(u);
+  };
+
+  starNeed=function(u){
+    if(!u)return 1;
+    if((u.star||1)>=6)return 999;
+    if((u.star||1)>=5)return 5;
+    if((u.star||1)>=4)return 3;
+    if((u.star||1)>=3)return 2;
+    return 1;
+  };
+  nextStarPct=function(star){return ({2:.35,3:.45,4:.60,5:.80,6:1.25})[star]||.25};
+  up=function(u){
+    if(!u)return false;
+    if((u.star||1)>=6){u.hp=u.maxHp;u.shield=(u.shield||0)+26;floatAlly(ix(u),'6★ MAX','#f59e0b');return true}
+    u.starProg=(u.starProg||0)+1;
+    let need=starNeed(u);
+    if(u.starProg<need){
+      u.hp=Math.min(u.maxHp,u.hp+Math.round(u.maxHp*((u.star||1)>=5?.38:.28)));
+      u.shield=(u.shield||0)+12+(u.star||1)*5+(S.boost.trainingShield?10:0);
+      floatAlly(ix(u),`${u.starProg}/${need}⭐`,'#f59e0b');
+      return false;
+    }
+    u.starProg=0; u.star=Math.min(6,(u.star||1)+1);
+    let pct=nextStarPct(u.star);
+    u.maxHp=Math.round(u.maxHp*(1+pct)); u.hp=u.maxHp;
+    u.atk=Math.round(u.atk*(1+pct)); u.spd+=.06+u.star*.02;
+    u.baseMaxHp=u.maxHp; u.baseAtk=u.atk; u.baseSpd=u.spd;
+    u.shield=(u.shield||0)+Math.round(u.maxHp*(u.star>=6?.24:.12+u.star*.025));
+    if(u.n==='Angel'&&u.star>=3)u.reviveAura=true;
+    floatAlly(ix(u),u.star>=6?'★6 ASCEND!':`★${u.star} +${Math.round(pct*100)}%`,'#f59e0b');
+    return true;
+  };
+
+  const oldPickEvolution6=pickEvolution;
+  pickEvolution=function(i){
+    let u=S.evoTarget,e=(S.evoChoices||[])[i];
+    if(!u||!e)return resumeAfterChoice('Evolution');
+    e.apply(u); u.hp=u.maxHp; u.shield=(u.shield||0)+35;
+    let pos=ix(u); if(pos>=0)floatAlly(pos,`${e.e} EVO!`,'#f59e0b');
+    msg(`${u.e} ${u.n} became ${e.e} ${e.n}.`);
+    resumeAfterChoice('Evolution complete');
+  };
+  window.pickEvolution=pickEvolution;
+
+  const oldEvoBonus6=evoBonus;
+  evoBonus=function(u,b){
+    b=oldEvoBonus6(u,b);
+    if(!u||!u.ascension)return b;
+    if(u.ascension==='titan'){b.hp+=60;b.shield+=42;b.thorns=(b.thorns||0)+.16}
+    if(u.ascension==='warlord'){b.atk+=18;b.shield+=18;b.execute=(b.execute||0)+.16}
+    if(u.ascension==='seraph'){b.heal+=24;b.regen+=4;b.shield+=24}
+    if(u.ascension==='singularity'){b.atk+=26;b.chain=(b.chain||0)+.28;b.burn+=3;b.slow=(b.slow||0)+.08}
+    if(u.ascension==='reaper'){b.atk+=30;b.dodge+=.14;b.execute=(b.execute||0)+.34;b.leech=(b.leech||0)+.18}
+    if(u.ascension==='worldroot'){b.poison+=9;b.regen+=4;b.thorns=(b.thorns||0)+.12;b.slow=(b.slow||0)+.12}
+    if(u.ascension==='infernal'){b.atk+=28;b.burn+=10;b.chain=(b.chain||0)+.08}
+    if(u.ascension==='factory'){b.extra=(b.extra||0)+.42;b.chain=(b.chain||0)+.25;b.spd+=.25;b.shield+=30}
+    return b;
+  };
+  const oldStartBuffs6=startBuffs;
+  startBuffs=function(){
+    oldStartBuffs6();
+    S.squad.forEach((u,i)=>{
+      if(!u||!u.ascension)return;
+      let st=u.star||6;
+      if(u.ascension==='titan')filled(rowIds(rowOf(i))).forEach(a=>giveShield(a,24+st*5));
+      if(u.ascension==='warlord')filled(rowIds(rowOf(i))).forEach(a=>{buffAtk(a,9+st);a.cd=(a.cd||0)-.45;giveShield(a,10+st)});
+      if(u.ascension==='seraph')liveA().forEach(a=>{heal(u,a,14+st*3);cleanse(a,2);giveShield(a,12+st)});
+      if(u.ascension==='singularity'){let t=liveE()[0]; if(t){bossVfx('nova',document.querySelectorAll('.enemy')[S.enemies.indexOf(t)]); splash(u,t,22+st*5); chain(u,t,16+st*3)}}
+      if(u.ascension==='worldroot')liveE().slice(0,5).forEach(e=>{e.poison+=10+st;e.slow=(e.slow||0)+.16});
+      if(u.ascension==='infernal')liveE().slice(0,4).forEach(e=>{e.burn+=14+st; if(e.boss)e.marked=(e.marked||0)+1});
+      if(u.ascension==='factory')crossIds(i).map(unitAt).filter(Boolean).forEach(a=>{a.cd=(a.cd||0)-.55;giveShield(a,16+st)});
+    });
+  };
+  const oldEvoAttack6=evoAttack;
+  evoAttack=function(u,t,a){
+    let did=oldEvoAttack6(u,t,a);
+    if(!u||!u.ascension||!t)return did;
+    if(u.ascension==='reaper'){t.marked=(t.marked||0)+1.5;dmg(u,t,a*((t.boss||t.elite)?.85:.46),'mark');if(t.dead)u.cd=-.35;return 1}
+    if(u.ascension==='singularity'){splash(u,t,a*.72);chain(u,t,a*.55);return 1}
+    if(u.ascension==='infernal'){t.burn+=13;splash(u,t,a*(t.boss?.8:.55));return 1}
+    if(u.ascension==='worldroot'){t.poison+=10;liveE().filter(e=>e!==t).slice(0,3).forEach(e=>{e.poison+=4;e.slow=(e.slow||0)+.06});return 1}
+    if(u.ascension==='factory'){if(chance(.75))chain(u,t,a*.45);let e=pickEnemy(u);if(e)dmg(u,e,a*.35,'storm');return 1}
+    if(u.ascension==='seraph'){let w=liveA().sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0]; if(w)heal(u,w,a*.35);return 1}
+    return did;
+  };
+
+  const oldDetailHtml6=detailHtml;
+  detailHtml=function(u){
+    let html=oldDetailHtml6(u);
+    if(u&&u.team==='ally'){
+      html=html.replace('Star training: '+(u.star>=5?'MAX':((u.starProg||0)+'/'+starNeed(u)+' toward '+(u.star+1)+'★')), 'Star training: '+(u.star>=6?'6★ MAX':((u.starProg||0)+'/'+starNeed(u)+' toward '+(u.star+1)+'★')));
+      if(u.ascension)html=html.replace('</div></div><div class="detailStats">', `<br><span class="relicBadge">${u.ascEmoji||'6★'} ${u.ascTitle||'6★ Mastery'}</span></div></div><div class="detailStats">`);
+    }
+    return html;
+  };
+
+  const oldHelp6=help;
+  help=function(){oldHelp6();setTimeout(()=>{if(!drawerOpen())return;$('body').innerHTML+=`<p><b>Between-round ▶ button:</b> the little play button appears only between rounds. Use it to start the next fight without taking a card. It is hidden during battle and while a required choice is active.</p><p><b>6★ mastery:</b> after 5★, a unit needs five more star trainings to reach 6★. At 6★ it gets another stronger specialization choice such as Titan Bulwark, Crown Warlord, Seraphic Lifespring, Arcane Singularity, Reaper Duelist, Worldroot Plague, Infernal Comet, or Omega Engine.</p>`},0)};
+
+  render();
+})();
+
 render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and the fight starts.');
 </script></body></html>
