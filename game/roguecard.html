@@ -981,5 +981,141 @@ Moon Dueler|🌙|Shadow,Holy,Blade|44|25|1.08|duel|Hybrid single-target fighter.
   render();
 })();
 
+
+/* === FINAL HARD FIX: direct 5★/6★ choice -> guaranteed enemy wave -> battle === */
+(function(){
+  let directBattleToken=0;
+  function closeAllPanels(){
+    S.inspect=null;
+    const sh=$('shade'), dr=$('drawer');
+    if(sh)sh.classList.remove('open');
+    if(dr)dr.classList.remove('open');
+  }
+  function choiceStateOff(){
+    S.placing=null;
+    S.placingEffect=null;
+    S.placingUpgrade=false;
+    S.evoTarget=null;
+    S.evoChoices=[];
+    S.ascTarget=null;
+    S.ascChoices=[];
+  }
+  function regionEnemyPool(bossRound){
+    const rg=region();
+    let main=(rg&&rg.main?enemyDefs.filter(d=>rg.main.includes(d.n)&&!d.boss):[]);
+    let bosses=(rg&&rg.boss?enemyDefs.filter(d=>rg.boss.includes(d.n)||d.boss):[]);
+    if(!main.length)main=enemyDefs.filter(d=>!d.boss);
+    if(!bosses.length)bosses=enemyDefs.filter(d=>d.boss);
+    if(!bosses.length)bosses=main;
+    return {main,bosses};
+  }
+  function guaranteedSpawn(){
+    const rg=region();
+    const scale=enemyScale();
+    const bossRound=S.round%5===0;
+    const pressure=typeof squadPressure==='function'?squadPressure():0;
+    const baseCount=bossRound?1+Math.floor(S.round/10):2+Math.floor(S.round/2.5)+Math.floor(Math.max(0,S.round-7)/3)+Math.floor(pressure/.55);
+    const count=Math.max(bossRound?1:2,Math.min(30,baseCount));
+    const pools=regionEnemyPool(bossRound);
+    S.lastThreat=scale;
+    S.enemies=[];
+    for(let i=0;i<count;i++){
+      const useBoss=bossRound&&i===0;
+      const pool=useBoss?pools.bosses:pools.main;
+      const def=rand(pool)||enemyDefs.find(d=>!d.boss)||enemyDefs[0];
+      if(!def)continue;
+      const en=mkEnemy(def,scale,useBoss);
+      if(!en.boss&&S.round>=9&&chance(Math.min(.30,.06+S.round*.005+pressure*.03))){
+        en.elite=true; en.n='Elite '+en.n; en.maxHp=Math.round(en.maxHp*1.25); en.hp=en.maxHp; en.atk=Math.round(en.atk*1.15); en.shield=(en.shield||0)+Math.round(8+S.round*.7);
+      }
+      S.enemies.push(en);
+    }
+    // Absolute fallback: even if a region/pool lookup failed, never allow a battle with zero enemies.
+    if(!S.enemies.length){
+      const def=enemyDefs.find(d=>!d.boss)||enemyDefs[0];
+      if(def)S.enemies.push(mkEnemy(def,Math.max(1,scale||1),false));
+    }
+  }
+  function beginGuaranteedBattle(label){
+    if(!liveA().length){S.phase='recruit';render();return msg('Place at least one fighter.');}
+    directBattleToken++;
+    choiceStateOff();
+    closeAllPanels();
+    S.phase='battle';
+    S.battle={tick:0,revive:false,token:directBattleToken};
+    guaranteedSpawn();
+    updateCombos();
+    startBuffs();
+    applyRegionStart();
+    render();
+    const rg=region();
+    msg((label?label+' — ':'')+`${rg.e} ${rg.n}: enemies spawned. Round ${S.round} is running.`);
+    setTimeout(()=>{
+      if(S.phase==='battle'&&S.battle&&S.battle.token===directBattleToken){
+        if(!S.enemies||!S.enemies.length){guaranteedSpawn();render();}
+        loop();
+      }
+    },180);
+  }
+
+  // Replace fight itself with a direct battle starter. This avoids older wrapped fight() versions that could leave phase=battle before a wave exists.
+  fight=function(){ return beginGuaranteedBattle('Fight start'); };
+  window.fight=fight;
+
+  const oldLoopFinal=loop;
+  loop=function(){
+    if(S.phase==='battle'&&(!Array.isArray(S.enemies)||S.enemies.length===0)){
+      return beginGuaranteedBattle('Recovered empty battle');
+    }
+    return oldLoopFinal();
+  };
+  window.loop=loop;
+
+  pickEvolution=function(i){
+    const u=S.evoTarget, e=(S.evoChoices||[])[i];
+    if(u&&e){
+      e.apply(u);
+      u.hp=u.maxHp;
+      u.shield=(u.shield||0)+35;
+      const pos=ix(u); if(pos>=0)floatAlly(pos,`${e.e} EVO!`,'#f59e0b');
+      msg(`${u.e} ${u.n} became ${e.e} ${e.n}.`);
+    }
+    beginGuaranteedBattle('5★ evolution complete');
+  };
+  window.pickEvolution=pickEvolution;
+
+  window.pickAscension=function(i){
+    const u=S.ascTarget, a=(S.ascChoices||[])[i];
+    if(u&&a){
+      a.apply(u);
+      u.star=6; u.starProg=0; u.hp=u.maxHp; u.shield=(u.shield||0)+70;
+      const pos=ix(u); if(pos>=0)floatAlly(pos,`${a.e} 6★!`,'#f59e0b');
+      msg(`${u.e} ${u.n} mastered 6★ as ${a.e} ${a.n}.`);
+    }
+    beginGuaranteedBattle('6★ mastery complete');
+  };
+
+  window.startNextFight=function(){
+    if(S.phase==='battle'&&(!S.enemies||!S.enemies.length||!liveE().length))return beginGuaranteedBattle('Recovered and restarted wave');
+    if(S.phase!=='recruit')return msg(S.phase==='battle'?'Battle is already running.':'Finish your current choice first.');
+    return beginGuaranteedBattle('▶ Play');
+  };
+  const play=document.getElementById('playNext');
+  if(play)play.onclick=window.startNextFight;
+
+  const oldRenderFinal=render;
+  render=function(){
+    oldRenderFinal();
+    const play=document.getElementById('playNext');
+    if(play){
+      const emptyBattle=S.phase==='battle'&&(!S.enemies||!S.enemies.length||!liveE().length);
+      const normalBetween=S.phase==='recruit'&&liveA().length&&!S.placing&&!S.placingEffect&&!S.placingUpgrade&&!S.evoTarget&&!S.ascTarget;
+      play.style.display=(emptyBattle||normalBetween)?'inline-block':'none';
+      if(emptyBattle)play.title='Recover empty battle and spawn enemies';
+    }
+  };
+  window.__beginGuaranteedBattle=beginGuaranteedBattle;
+})();
+
 render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and the fight starts.');
 </script></body></html>
