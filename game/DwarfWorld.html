@@ -433,6 +433,113 @@ display:none !important;
 	  .panel.left{ left: 10px; }
 	  .panel.right{ right: 10px; }
 	}
+  
+
+/* ============================================================
+   Mobile command UI + touch-first sheets
+   ============================================================ */
+#mobileBar{
+  position:fixed; left:8px; right:8px; bottom:8px; z-index:70;
+  display:none; gap:6px; align-items:center; justify-content:space-between;
+  padding:6px; border-radius:14px;
+  border:1px solid rgba(255,255,255,.14);
+  background:linear-gradient(180deg, rgba(12,16,22,.90), rgba(6,8,12,.86));
+  backdrop-filter: blur(12px);
+  box-shadow:0 12px 30px rgba(0,0,0,.38);
+  user-select:none;
+}
+.mbtn{
+  flex:1 1 0; min-width:0; height:42px; padding:0 4px;
+  border-radius:12px; font-size:11px; line-height:1.05;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+}
+.mbtn b{ font-size:16px; line-height:1; }
+.mbtn.primary{ background:rgba(120,220,255,.16); border-color:rgba(120,220,255,.34); }
+.mobile-only{ display:none; }
+.mobile-quick-grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.mobile-equip-row{ display:grid; grid-template-columns:1fr auto; gap:6px; align-items:center; margin-top:6px; }
+.mobile-equip-row select{ min-width:0; width:100%; height:34px; font-size:12px; }
+#mobileBuildSelect{ width:100%; margin-top:8px; }
+#tileTip{
+  position:fixed; left:50%; bottom:64px; transform:translateX(-50%);
+  z-index:65; max-width:calc(100vw - 24px);
+  padding:7px 10px; border-radius:999px;
+  border:1px solid rgba(255,255,255,.12); background:rgba(10,12,16,.76);
+  color:rgba(235,244,255,.88); font-size:11px; font-weight:900;
+  pointer-events:none; opacity:0; transition:opacity .16s ease;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#tileTip.show{ opacity:1; }
+
+@media (max-width: 820px), (pointer: coarse){
+  :root{ --hudH:44px; --btnH:32px; --pad:7px; --gap:6px; }
+  html,body{ touch-action:none; }
+  #game{ cursor:default; touch-action:none; }
+  #mobileBar{ display:flex; }
+  .mobile-only{ display:block; }
+  #hud{
+    left:6px; right:6px; top:6px; height:auto; min-height:38px;
+    padding:5px 6px; gap:4px; border-radius:12px;
+  }
+  .hud-left{ flex:1 1 auto; min-width:0; }
+  .statbar{ gap:4px; flex-wrap:nowrap; overflow:hidden; }
+  .stat{ padding:3px 5px; font-size:10px; gap:3px; }
+  .hud-right{ gap:4px; flex:0 0 auto; }
+  .hud-right .btn{ display:none; }
+  .hud-right #btnPause, .hud-right #btnFullscreen{ display:inline-grid; width:34px; padding:0; font-size:0; place-items:center; }
+  .hud-right #btnPause::before{ content:'⏸'; font-size:16px; }
+  .hud-right #btnFullscreen::before{ content:'⛶'; font-size:16px; }
+  .panel{
+    top:auto; left:6px !important; right:6px !important; bottom:60px;
+    width:auto; max-height:min(72vh, 560px);
+    border-radius:16px; transform:translateY(calc(100% + 76px)); opacity:0; pointer-events:none;
+  }
+  .panel.open{ transform:translateY(0); opacity:1; pointer-events:auto; }
+  .panel.collapsed.left, .panel.collapsed.right{ transform:translateY(calc(100% + 76px)); }
+  .panel-head{ padding:7px; }
+  .panel-body{ padding:7px; gap:7px; }
+  .panel-foot{ display:none; }
+  .tabs{ flex:1; }
+  .tab{ flex:1; height:30px; padding:0 5px; font-size:11px; }
+  .card{ padding:8px; border-radius:11px; }
+  .dwarfBtn{ min-height:44px; padding:7px 8px; }
+  .dwarfBtn .sub{ font-size:10px; }
+  .slots{ gap:6px; }
+  .slot{ padding:7px; }
+  .filters{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .filters #invSearch{ grid-column:1 / -1; }
+  .filters button, .filters select, .filters input{ width:100%; height:34px; font-size:12px; }
+  #invScroll{ min-height:230px; max-height:42vh; }
+  .itemRow{ height:48px; padding:6px 8px; }
+  .itemName{ max-width:42vw; font-size:11px; }
+  .itemSub{ max-width:44vw; font-size:10px; }
+  .actions{ gap:4px; }
+  .actions .rar{ display:none; }
+  .actions button{ height:28px !important; padding:0 7px !important; font-size:11px; }
+  #toast{ top:52px; font-size:12px; max-width:calc(100vw - 20px); }
+}
+
+
+
+/* Depth identity HUD + recommendation/effect polish */
+.depthBadge{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:3px 8px; border-radius:999px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.055);
+  font-size:11px; font-weight:1000; white-space:nowrap;
+  box-shadow:0 0 18px rgba(120,220,255,.06) inset;
+}
+.depthDot{ width:9px; height:9px; border-radius:999px; box-shadow:0 0 12px currentColor; background:currentColor; }
+.recommendRow{ display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; }
+.recommendRow button{ height:32px; font-size:11px; padding:0 7px; }
+.itemEffect{ color:rgba(255,226,146,.94); font-weight:950; }
+.perkGlow{ color:#ffd66f; text-shadow:0 0 10px rgba(255,214,111,.35); }
+@media (max-width:820px), (pointer:coarse){
+  .depthBadge{ font-size:10px; padding:2px 6px; }
+  .recommendRow{ grid-template-columns:1fr; }
+}
+
   </style>
 </head>
 <body>
@@ -451,6 +558,7 @@ display:none !important;
 		<div class="stat"><span class="lbl">👷</span><b id="hudDw">0</b></div>
 		<div class="stat"><span class="lbl">🧟</span><b id="hudEn">0</b></div>
 		<div class="stat"><span class="lbl">🕳️</span><b id="hudSp">0</b></div>
+        <div id="hudDepthLayer" class="depthBadge"><span class="depthDot"></span><span>Stonebelt</span></div>
 	  </div>
 	</div>
 
@@ -525,6 +633,19 @@ display:none !important;
 			  <div class="val" id="slotPick">—</div>
 			</div>
 		  </div>
+          <div class="recommendRow">
+            <button id="recommendAll" class="btn primary" type="button">⭐ Best Equip All</button>
+            <button id="recommendWeapon" type="button">Best Weapon</button>
+            <button id="recommendArmor" type="button">Best Armor</button>
+            <button id="recommendPick" type="button">Best Pickaxe</button>
+          </div>
+
+          <div class="mobile-only" style="margin-top:8px;">
+            <div class="tiny">Fast equip from dropdowns. Old gear returns to inventory.</div>
+            <div class="mobile-equip-row"><select id="quickArmor"><option value="">Armor…</option></select><button id="quickEquipArmor" type="button">Equip</button></div>
+            <div class="mobile-equip-row"><select id="quickWeapon"><option value="">Weapon…</option></select><button id="quickEquipWeapon" type="button">Equip</button></div>
+            <div class="mobile-equip-row"><select id="quickPick"><option value="">Pickaxe…</option></select><button id="quickEquipPick" type="button">Equip</button></div>
+          </div>
 		</div>
 	  </section>
 
@@ -544,6 +665,18 @@ display:none !important;
 			<button id="buildHeal" type="button">Heal</button>
 			<button id="buildCancel" class="btn danger" type="button">Cancel</button>
 		  </div>
+          <div class="mobile-only">
+            <select id="mobileBuildSelect">
+              <option value="0">Build menu…</option>
+              <option value="1">Depot</option>
+              <option value="2">Arrow tower</option>
+              <option value="3">Cannon tower</option>
+              <option value="4">Frost tower</option>
+              <option value="6">Haste tower</option>
+              <option value="7">Guard post</option>
+              <option value="5">Healing tower</option>
+            </select>
+          </div>
 		</div>
 
 		<div class="card">
@@ -614,6 +747,18 @@ display:none !important;
 	</div>
   </aside>
 
+
+
+  <div id="tileTip"></div>
+  <nav id="mobileBar" aria-label="Mobile shortcuts">
+    <button id="mBuyDwarf" class="mbtn primary" type="button"><b>👷</b><span>Buy Dwarf</span></button>
+    <button id="mBuild" class="mbtn" type="button"><b>🏗️</b><span>Build</span></button>
+    <button id="mDwarves" class="mbtn" type="button"><b>📋</b><span>Dwarves</span></button>
+    <button id="mInventory" class="mbtn" type="button"><b>🎒</b><span>Inventory</span></button>
+    <button id="mForge" class="mbtn" type="button"><b>⚒️</b><span>Forge</span></button>
+    <button id="mFocus" class="mbtn" type="button"><b>🎯</b><span>Focus</span></button>
+  </nav>
+
   <div id="toast"></div>
 
   <div id="perkModal" style="display:none; position:fixed; inset:0; z-index:90; background:rgba(3,6,10,.72); align-items:center; justify-content:center;">
@@ -679,6 +824,90 @@ display:none !important;
 	if (r==="epic") return 2.2;
 	return 3.0; // legendary
   };
+
+
+  // ============================================================
+  // Depth identities: each band changes the cave palette, warning
+  // glow, enemy feel, and loot naming. Kept deterministic by depth.
+  // ============================================================
+  const DEPTH_LAYERS = [
+    { id:"stonebelt", name:"Stonebelt", emoji:"🪨", min:0,   color:"#94a3b8", bg1:"#07090c", bg2:"#111827", rock:[116,108,98], floor:[16,18,23], oreBias:"steady", note:"Basic stone, weak nests." },
+    { id:"goldvein", name:"Goldvein Hollow", emoji:"💰", min:120, color:"#fbbf24", bg1:"#100d07", bg2:"#2a1e08", rock:[134,105,54], floor:[24,20,12], oreBias:"greed", note:"Richer veins and greedier monsters." },
+    { id:"mushdeep", name:"Mushroom Deep", emoji:"🍄", min:260, color:"#a78bfa", bg1:"#090815", bg2:"#1f1735", rock:[72,63,104], floor:[18,15,28], oreBias:"spores", note:"Violet haze, poisonous caverns." },
+    { id:"crystal", name:"Crystal Abyss", emoji:"💎", min:420, color:"#7dd3fc", bg1:"#061018", bg2:"#06263a", rock:[54,83,112], floor:[11,24,35], oreBias:"crystal", note:"Bright crystals and ranged horrors." },
+    { id:"lava", name:"Lava Root", emoji:"🔥", min:620, color:"#fb7185", bg1:"#160606", bg2:"#35100a", rock:[95,42,42], floor:[29,12,10], oreBias:"ember", note:"Ash glow, brutal late-game pressure." },
+    { id:"void", name:"Void Gate", emoji:"🌌", min:860, color:"#c084fc", bg1:"#05020b", bg2:"#180b2e", rock:[45,27,75], floor:[9,7,18], oreBias:"void", note:"Reality cracks around ancient nests." },
+  ];
+  function depthLayerAt(depth){
+    let out = DEPTH_LAYERS[0];
+    for(const L of DEPTH_LAYERS){ if(depth >= L.min) out = L; else break; }
+    return out;
+  }
+  function currentDepthLayer(){ return depthLayerAt(depthAt(Math.round(cam.x), Math.round(cam.y))); }
+  function hexToRgb(hex){
+    const h=String(hex).replace('#','');
+    return {r:parseInt(h.slice(0,2),16)||0,g:parseInt(h.slice(2,4),16)||0,b:parseInt(h.slice(4,6),16)||0};
+  }
+  function mixRGB(a,b,t){ return { r:lerp(a.r,b.r,t), g:lerp(a.g,b.g,t), b:lerp(a.b,b.b,t) }; }
+  function layerForItemDepth(depth){ return depthLayerAt(depth || depthAt(Math.round(cam.x),Math.round(cam.y))); }
+
+  const LOOT_PREFIXES = {
+    common:["Rugged","Plain","Sturdy","Weathered"],
+    uncommon:["Keen","Stout","Brisk","Runed"],
+    rare:["Deepforged","Glinting","Warden's","Stormcut"],
+    epic:["Mythril","Soulbound","Elder","Starforged"],
+    legendary:["Kingmaker","Dragonsealed","Worldroot","Doom-Anvil"]
+  };
+  const LOOT_SUFFIXES = {
+    stonebelt:["of Stone","of the First Tunnel","of Steady Hands"],
+    goldvein:["of Greed","of Rich Veins","of the Golden Maw"],
+    mushdeep:["of Spores","of the Violet Cap","of Mending Moss"],
+    crystal:["of Shards","of Prismatic Sight","of the Blue Abyss"],
+    lava:["of Embers","of the Furnace","of Ashen Fury"],
+    void:["of the Void Gate","of Starless Night","of Deep Echoes"]
+  };
+  const LOOT_EFFECTS = [
+    {id:"burn", name:"Burn", slot:"weapon", desc:"Ignites enemies", score:18},
+    {id:"stun", name:"Stun", slot:"weapon", desc:"Briefly stuns on heavy hits", score:16},
+    {id:"lifesteal", name:"Lifesteal", slot:"weapon", desc:"Heals the wielder on kills", score:20},
+    {id:"cleave", name:"Cleave", slot:"weapon", desc:"Adds splash threat", score:17},
+    {id:"thorns", name:"Thorns", slot:"armor", desc:"Reflects a little melee damage", score:15},
+    {id:"regen", name:"Regen", slot:"armor", desc:"Slowly restores HP", score:17},
+    {id:"haste", name:"Haste", slot:"armor", desc:"Moves faster", score:14},
+    {id:"fortune", name:"Fortune", slot:"pickaxe", desc:"Better currency finds", score:19},
+    {id:"quake", name:"Quake", slot:"pickaxe", desc:"Extra chip damage to rock", score:15},
+    {id:"spark", name:"Spark", slot:"pickaxe", desc:"Occasionally bursts nearby ore", score:14},
+  ];
+  function decorateItem(item, sourceDepth=0){
+    if(!item || item.identityDone) return item;
+    const layer = layerForItemDepth(sourceDepth);
+    const pref = pickRand(LOOT_PREFIXES[item.rarity] || LOOT_PREFIXES.common);
+    const suff = pickRand(LOOT_SUFFIXES[layer.id] || LOOT_SUFFIXES.stonebelt);
+    const candidates = LOOT_EFFECTS.filter(e=>e.slot===item.category);
+    const rr = rarRank(item.rarity);
+    const effectChance = [0.10,0.28,0.55,0.82,1.0][Math.max(0,rr)] ?? 0.1;
+    if(candidates.length && Math.random() < effectChance){
+      const eff = { ...pickRand(candidates) };
+      item.effect = eff.id;
+      item.effectName = eff.name;
+      item.effectDesc = eff.desc;
+      item.sell = Math.round((item.sell||8) * (1.12 + rr*0.06));
+    }
+    item.depthLayer = layer.id;
+    item.depthName = layer.name;
+    item.name = `${pref} ${item.name} ${suff}`;
+    item.identityDone = true;
+    return item;
+  }
+  function itemScore(it){
+    if(!it) return -1;
+    let score = rarRank(it.rarity)*55 + (it.sell||0)*0.08;
+    if(it.category==="armor") score += (it.bonusHp||0)*0.55 + (it.defense||0)*160;
+    if(it.category==="weapon") score += (it.dmg||0)*3.2 + (it.ranged?10:0) + (it.range||0)*2 + (it.rate||1)*8;
+    if(it.category==="pickaxe") score += (it.miningPower||0)*4 + (it.miningRate||1)*22;
+    if(it.effect){ const e = LOOT_EFFECTS.find(x=>x.id===it.effect); score += e?.score || 12; }
+    return score;
+  }
 
 
   // Base64 helpers (safe for big buffers)
@@ -830,6 +1059,7 @@ eqWrap.remove();
 	hudDw: document.getElementById("hudDw"),
 	hudEn: document.getElementById("hudEn"),
 	hudSp: document.getElementById("hudSp"),
+    hudDepthLayer: document.getElementById("hudDepthLayer"),
 
 	btnRecruit: document.getElementById("btnRecruit"),
 	btnFullscreen: document.getElementById("btnFullscreen"),
@@ -887,6 +1117,25 @@ eqWrap.remove();
 	invContent: document.getElementById("invContent"),
 
 	toast: document.getElementById("toast"),
+	tileTip: document.getElementById("tileTip"),
+	mobileBar: document.getElementById("mobileBar"),
+	mBuyDwarf: document.getElementById("mBuyDwarf"),
+	mBuild: document.getElementById("mBuild"),
+	mDwarves: document.getElementById("mDwarves"),
+	mInventory: document.getElementById("mInventory"),
+	mForge: document.getElementById("mForge"),
+	mFocus: document.getElementById("mFocus"),
+	mobileBuildSelect: document.getElementById("mobileBuildSelect"),
+	quickArmor: document.getElementById("quickArmor"),
+	quickWeapon: document.getElementById("quickWeapon"),
+	quickPick: document.getElementById("quickPick"),
+	quickEquipArmor: document.getElementById("quickEquipArmor"),
+	quickEquipWeapon: document.getElementById("quickEquipWeapon"),
+	quickEquipPick: document.getElementById("quickEquipPick"),
+    recommendAll: document.getElementById("recommendAll"),
+    recommendWeapon: document.getElementById("recommendWeapon"),
+    recommendArmor: document.getElementById("recommendArmor"),
+    recommendPick: document.getElementById("recommendPick"),
 	perkModal: document.getElementById("perkModal"),
 	perkTitle: document.getElementById("perkTitle"),
 	perkChoices: document.getElementById("perkChoices"),
@@ -901,6 +1150,36 @@ eqWrap.remove();
 	UI.toast.classList.add("show");
 	UI.toast.classList.remove("hide");
 	toastTimer = 1.7;
+  }
+
+  function isMobileLayout(){
+    return window.matchMedia("(max-width: 820px), (pointer: coarse)").matches;
+  }
+
+  function openMobileSheet(which){
+    if(!isMobileLayout()) return;
+    UI.panelLeft.classList.remove("open");
+    UI.panelInv.classList.remove("open");
+    UI.panelLeft.classList.remove("collapsed");
+    UI.panelInv.classList.remove("collapsed");
+    if(which === "inventory") UI.panelInv.classList.add("open");
+    if(which === "dwarves" || which === "build" || which === "forge"){
+      setLeftTab(which);
+      UI.panelLeft.classList.add("open");
+    }
+  }
+
+  function closeMobileSheets(){
+    UI.panelLeft.classList.remove("open");
+    UI.panelInv.classList.remove("open");
+  }
+
+  function showTileTip(msg){
+    if(!UI.tileTip) return;
+    UI.tileTip.textContent = msg;
+    UI.tileTip.classList.add("show");
+    clearTimeout(UI._tileTipTimer);
+    UI._tileTipTimer = setTimeout(()=>UI.tileTip.classList.remove("show"), 1300);
   }
 
   // ============================================================
@@ -1144,6 +1423,62 @@ eqWrap.remove();
 	cam.y = clamp(cam.y + (before.y-after.y), 0, H-1);
   }, {passive:false});
 
+  // Touch controls: one-finger pan/tap, two-finger pinch zoom.
+  // Taps dispatch the existing world click handler, keeping desktop + mobile logic unified.
+  let touchState = { mode:null, sx:0, sy:0, lx:0, ly:0, moved:false, dist:0, zoom:1 };
+  function touchDist(t0,t1){ return Math.hypot(t0.clientX-t1.clientX, t0.clientY-t1.clientY); }
+  canvas.addEventListener("touchstart", e=>{
+    if(e.target !== canvas) return;
+    e.preventDefault();
+    closeMobileSheets();
+    if(e.touches.length===1){
+      const t=e.touches[0];
+      touchState = { mode:"pan", sx:t.clientX, sy:t.clientY, lx:t.clientX, ly:t.clientY, moved:false, dist:0, zoom:cam.zoom };
+    }else if(e.touches.length>=2){
+      touchState.mode="pinch";
+      touchState.dist=touchDist(e.touches[0], e.touches[1]);
+      touchState.zoom=cam.zoom;
+      touchState.moved=true;
+    }
+  }, {passive:false});
+
+  canvas.addEventListener("touchmove", e=>{
+    if(e.target !== canvas) return;
+    e.preventDefault();
+    if(touchState.mode==="pinch" && e.touches.length>=2){
+      const d=touchDist(e.touches[0], e.touches[1]) || 1;
+      const old=cam.zoom;
+      cam.zoom = clamp(touchState.zoom * (d / Math.max(1,touchState.dist)), 0.30, 2.9);
+      const mx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      const my=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      const rect=canvas.getBoundingClientRect();
+      const before=screenToWorld(mx-rect.left,my-rect.top,old);
+      const after=screenToWorld(mx-rect.left,my-rect.top,cam.zoom);
+      cam.x=clamp(cam.x+(before.x-after.x),0,W-1);
+      cam.y=clamp(cam.y+(before.y-after.y),0,H-1);
+      return;
+    }
+    if(touchState.mode==="pan" && e.touches.length===1){
+      const t=e.touches[0];
+      const dx=t.clientX-touchState.lx, dy=t.clientY-touchState.ly;
+      if(Math.hypot(t.clientX-touchState.sx, t.clientY-touchState.sy)>9) touchState.moved=true;
+      touchState.lx=t.clientX; touchState.ly=t.clientY;
+      const sc=BASE_TILE_PX*cam.zoom;
+      cam.x=clamp(cam.x-dx/sc,0,W-1);
+      cam.y=clamp(cam.y-dy/sc,0,H-1);
+    }
+  }, {passive:false});
+
+  canvas.addEventListener("touchend", e=>{
+    if(e.target !== canvas) return;
+    e.preventDefault();
+    if(touchState.mode==="pan" && !touchState.moved){
+      const ev = new MouseEvent("mousedown", { bubbles:true, cancelable:true, clientX:touchState.sx, clientY:touchState.sy, button:0 });
+      canvas.dispatchEvent(ev);
+    }
+    if(e.touches.length===0) touchState.mode=null;
+  }, {passive:false});
+
   // ============================================================
   // Pathfinding (BFS)
   // ============================================================
@@ -1372,6 +1707,7 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
   }
 
   function addLootItem(item){
+    if(item && !item.identityDone) decorateItem(item, depthAt(Math.round(cam.x), Math.round(cam.y)));
 	if(loot.length >= LOOT_LIMIT){
 	  loot.sort(sortLoot);
 	  loot.pop();
@@ -1520,6 +1856,7 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
 	if(roll < 0.38) item = mkItemArmor(rarity);
 	else if(roll < 0.73) item = mkItemWeapon(rarity);
 	else item = mkItemPickaxe(rarity);
+    decorateItem(item, depthAt(Math.round(cam.x), Math.round(cam.y)));
 	addLootItem(item);
 	toast(`Forged: ${item.name}`);
 	markUI("forge","hud","inv");
@@ -1554,10 +1891,14 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
     tough_skin:{ id:"tough_skin", role:"general", name:"Tough Skin", desc:"+8% HP." },
     steady_hands:{ id:"steady_hands", role:"general", name:"Steady Hands", desc:"+6% damage and +6% mining power." },
     pathfinder:{ id:"pathfinder", role:"general", name:"Pathfinder", desc:"+8% speed." },
+    battle_rhythm:{ id:"battle_rhythm", role:"fighter", name:"Battle Rhythm", desc:"After attacking, briefly gains +10% speed." },
+    vampire_oath:{ id:"vampire_oath", role:"fighter", name:"Vampire Oath", desc:"Killing enemies restores 8 HP." },
+    gem_lore:{ id:"gem_lore", role:"miner", name:"Gem Lore", desc:"+12% deposit value and better gem luck." },
+    quake_miner:{ id:"quake_miner", role:"miner", name:"Quake Miner", desc:"Mining sometimes damages adjacent rock." },
   };
   const PERK_POOLS = {
-    fighter:["cleave","bulwark","sharpshooter","executioner","tough_skin","steady_hands","pathfinder"],
-    miner:["tunnel_runner","ore_sense","efficient_strikes","pack_mule","tough_skin","steady_hands","pathfinder"],
+    fighter:["cleave","bulwark","sharpshooter","executioner","battle_rhythm","vampire_oath","tough_skin","steady_hands","pathfinder"],
+    miner:["tunnel_runner","ore_sense","efficient_strikes","pack_mule","gem_lore","quake_miner","tough_skin","steady_hands","pathfinder"],
     general:["tough_skin","steady_hands","pathfinder"],
   };
   let pendingPerkDwarfId = null;
@@ -1657,6 +1998,7 @@ function findPathableOreTargetAndPath(sx, sy, rangeTiles, oreFilter=null){
     if(hasPerk(d, "efficient_strikes")) d.miningRate *= 1.18;
     if(d.trait?.id === "quickfoot") d.speed *= 1.10;
     if(hasPerk(d, "pathfinder")) d.speed *= 1.08;
+    if(d.armor?.effect === "haste") d.speed *= 1.08;
 
 	d.defense = clamp(defense, 0, 0.75);
   }
@@ -1916,9 +2258,11 @@ function countMinionsOwnedBy(ownerId){
 
 // If you want armor/phasing to actually matter, use this instead of "e.hp -= dmg"
 function applyEnemyDamage(e, raw){
-  if(e.phasedLeft > 0) return 0;
+  if(e.phasedLeft > 0){ fxText(e.x,e.y,"PHASE","rgba(190,160,255,.95)"); return 0; }
   const dmg = Math.max(0, Math.round(raw * (1 - (e.armorPct||0))));
   e.hp -= dmg;
+  fxText(e.x,e.y,`-${dmg}`,"rgba(255,120,130,.95)");
+  fxBurst(e.x,e.y, e.armorPct ? "rgba(190,210,255,.8)" : "rgba(255,150,120,.85)", 0.55);
   return dmg;
 }
 
@@ -2034,6 +2378,11 @@ function handleEnemyDeath(e){
   }else if(e.lastHit?.kind === "dwarf"){
     const killer = dwarves.find(d=>d.id===e.lastHit.id);
     if(killer?.trait?.id === "lucky") luckyBonus = 0.10;
+    if(killer && (hasPerk(killer,"vampire_oath") || killer.weapon?.effect === "lifesteal")){
+      const heal = killer.weapon?.effect === "lifesteal" ? 12 : 8;
+      killer.hp = Math.min(killer.maxHp, killer.hp + heal);
+      fxText(killer.x,killer.y,`+${heal}`,"rgba(120,255,170,.95)");
+    }
   }
   const cur = rollCurrencyDrop(e.sourceDepth);
   if(cur){
@@ -2064,9 +2413,11 @@ function handleEnemyDeath(e){
 	for(const k of RARITY){ r-=w[k]; if(r<=0){ rarity=k; break; } }
 
 	const rr = Math.random();
-	if(rr < 0.34) return mkItemArmor(rarity);
-	if(rr < 0.70) return mkItemWeapon(rarity);
-	return mkItemPickaxe(rarity);
+    let item;
+	if(rr < 0.34) item = mkItemArmor(rarity);
+	else if(rr < 0.70) item = mkItemWeapon(rarity);
+	else item = mkItemPickaxe(rarity);
+    return decorateItem(item, depth);
   }
 
   function rollCurrencyDrop(depth){
@@ -2117,7 +2468,8 @@ const COST = { depot: 140, arrow: 95, cannon: 170, frost: 150, heal: 165, haste:
 	UI.buildGuard.classList.toggle("primary", m===BUILD_GUARD);
 	 UI.buildHeal.classList.toggle("primary", m===BUILD_HEAL);
 
-	UI.buildHint.textContent = (m===BUILD_NONE) ? "Build mode off." : "Left-click a walkable tile to place.";
+	UI.buildHint.textContent = (m===BUILD_NONE) ? "Build mode off." : (isMobileLayout() ? "Tap a clear tunnel tile to place." : "Left-click a walkable tile to place.");
+    if(UI.mobileBuildSelect && String(m)!==UI.mobileBuildSelect.value) UI.mobileBuildSelect.value = String(m);
   }
 
   function addDepot(x,y){ depots.push({id:uuid(), x,y, hp:240, maxHp:240}); }
@@ -2490,8 +2842,12 @@ function guardWanderNearPost(d, post){
 function dealDwarfEnemyDamage(d, e, baseDmg){
   let out = baseDmg;
   if(hasPerk(d,"executioner") && e.hp <= e.maxHp*0.3) out = Math.round(out*1.2);
-  applyEnemyDamage(e, out);
+  const dealt = applyEnemyDamage(e, out);
   e.lastHit = { kind:"dwarf", id:d.id };
+  fxSlash(d.x,d.y,e.x,e.y,d.weapon?.ranged ? "rgba(127,215,255,.95)" : "rgba(255,230,160,.95)");
+  if(d.weapon?.effect === "stun" && Math.random()<0.22){ e.stunLeft = Math.max(e.stunLeft||0, 0.75); fxText(e.x,e.y,"STUN","rgba(255,230,130,.95)"); }
+  if(d.weapon?.effect === "burn"){ e.burnLeft = Math.max(e.burnLeft||0, 2.4); fxText(e.x,e.y,"BURN","rgba(255,140,70,.95)"); }
+  if(d.weapon?.effect === "cleave" && !(d.weapon?.ranged)) fxBurst(e.x,e.y,"rgba(255,220,120,.9)",1.05);
   if(hasPerk(d,"cleave") && !(d.weapon?.ranged)){
     for(const o of enemies){
       if(o===e) continue;
@@ -2510,9 +2866,12 @@ function updateDwarf(d, dt){
   // timers
   d.think    -= dt;
   d.atkTimer -= dt;
+  if(d.armor?.effect === "regen" && d.hp < d.maxHp){ d.hp = Math.min(d.maxHp, d.hp + dt*1.4); }
+  if(d._speedBoostLeft > 0){ d._speedBoostLeft -= dt; }
 
   // move
-  stepAlongPathScaled(d, dt, getHasteMultAt(d.x, d.y));
+  const personalHaste = d._speedBoostLeft > 0 ? 1.10 : 1;
+  stepAlongPathScaled(d, dt, getHasteMultAt(d.x, d.y) * personalHaste);
 
   const gx = Math.round(d.x), gy = Math.round(d.y);
   if(!inBounds(gx,gy) || !isWalkable(tType[idx(gx,gy)])) return;
@@ -2610,6 +2969,8 @@ function updateDwarf(d, dt){
         let depMul = 1;
         if(d.trait?.id === "greedy") depMul *= 1.2;
         if(hasPerk(d, "pack_mule")) depMul *= 1.25;
+        if(hasPerk(d, "gem_lore")) depMul *= 1.12;
+        if(d.pickaxe?.effect === "fortune") depMul *= 1.15;
         gold += Math.max(1, Math.round((d.carrying.value||0) * depMul));
         markUI("hud");
       }else if(d.carrying.kind === "item"){
@@ -2818,6 +3179,7 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
       if(dd <= weaponRange + 0.01){
         d.atkTimer = 1 / weaponRate;
         dealDwarfEnemyDamage(d, e, dmg);
+        if(hasPerk(d,"battle_rhythm")) d._speedBoostLeft = 1.8;
         acted = true;
 
         if(e.hp <= 0){
@@ -2850,6 +3212,7 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
       if(dd <= weaponRange + 0.01){
         d.atkTimer = 1 / weaponRate;
         s.hp -= dmg;
+        fxSlash(d.x,d.y,s.x,s.y,"rgba(210,160,255,.95)"); fxText(s.x,s.y,`-${dmg}`,"rgba(210,160,255,.95)");
         acted = true;
 
         if(s.hp <= 0){
@@ -2910,6 +3273,7 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
         if(dd <= weaponRange + 0.01){
           d.atkTimer = 1 / weaponRate;
           s2.hp -= dmg;
+          fxSlash(d.x,d.y,s2.x,s2.y,"rgba(210,160,255,.95)"); fxText(s2.x,s2.y,`-${dmg}`,"rgba(210,160,255,.95)");
 
           if(s2.hp <= 0){
             s2.hp = 0;
@@ -2968,8 +3332,10 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
     while(d.miningTimer >= interval){
       d.miningTimer -= interval;
 
-      const res = mineTile(t.x, t.y, d.miningPower);
-      if(res.ok) grantXp(d, 1);
+      const power = d.miningPower + (d.pickaxe?.effect === "quake" ? 2 : 0);
+      const res = mineTile(t.x, t.y, power);
+      if(res.ok){ grantXp(d, 1); fxText(t.x,t.y,`-${power}`,"rgba(180,220,255,.85)",0.45); }
+      if((d.pickaxe?.effect === "spark" || hasPerk(d,"quake_miner")) && Math.random()<0.10){ fxBurst(t.x,t.y,"rgba(120,220,255,.85)",0.9); }
 
       if(res.destroyed){
         if(res.currency){
@@ -3010,8 +3376,10 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
       while(d.miningTimer >= interval){
         d.miningTimer -= interval;
 
-        const res = mineTile(dig.x, dig.y, d.miningPower);
-        if(res.ok) grantXp(d, 1);
+        const power = d.miningPower + (d.pickaxe?.effect === "quake" ? 2 : 0);
+        const res = mineTile(dig.x, dig.y, power);
+        if(res.ok){ grantXp(d, 1); fxText(dig.x,dig.y,`-${power}`,"rgba(180,220,255,.85)",0.45); }
+        if((d.pickaxe?.effect === "spark" || hasPerk(d,"quake_miner")) && Math.random()<0.10){ fxBurst(dig.x,dig.y,"rgba(120,220,255,.85)",0.9); }
 
         if(res.destroyed && res.currency){
           d.carrying = res.currency;
@@ -3054,6 +3422,8 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
 
   e.think    = (e.think    ?? 0) - dt;
   e.atkTimer = (e.atkTimer ?? 0) - dt;
+  if(e.stunLeft > 0){ e.stunLeft -= dt; fxText(e.x,e.y,"✦","rgba(255,230,130,.75)",0.18); return; }
+  if(e.burnLeft > 0){ e.burnLeft -= dt; e._burnTick=(e._burnTick||0)-dt; if(e._burnTick<=0){ e._burnTick=0.45; applyEnemyDamage(e, Math.max(1, Math.round(e.maxHp*0.018))); } }
 
   // --- Specials (phaser / shaman aura / necromancer summons, etc.) ---
   if(typeof tickEnemySpecials === "function") tickEnemySpecials(e, dt);
@@ -3123,6 +3493,9 @@ if(d.state === "fight" && d.weapon && d.atkTimer <= 0){
 	  if(manhattan(gx,gy, Math.round(d.x),Math.round(d.y))<=1){
 		const dealt = Math.max(1, Math.round(e.dmg * (1 - (d.defense||0))));
 		d.hp -= dealt;
+        fxSlash(e.x,e.y,d.x,d.y,"rgba(255,95,110,.9)");
+        fxText(d.x,d.y,`-${dealt}`,"rgba(255,95,110,.95)");
+        if(d.armor?.effect === "thorns"){ const th=Math.max(1,Math.round(dealt*0.22)); applyEnemyDamage(e, th); fxText(e.x,e.y,"THORNS","rgba(180,220,255,.9)"); }
 		markUI("dwarves","selected","hud");
 		return;
 	  }
@@ -3414,10 +3787,12 @@ function bfsPathClosestApproach(sx, sy, tx, ty, limit){
     if(t.type==="frost"){
       best.speed *= (1 - t.slow);
       applyEnemyDamage(best, t.dmg);
+      fxBeam(t.x,t.y,best.x,best.y,"rgba(150,220,255,.92)");
       best.lastHit = { kind:"tower", id:t.id };
 
     }else if(t.type==="cannon"){
       applyEnemyDamage(best, t.dmg);
+      fxBeam(t.x,t.y,best.x,best.y,"rgba(255,170,90,.92)"); fxBurst(best.x,best.y,"rgba(255,170,90,.9)",1.4);
       best.lastHit = { kind:"tower", id:t.id };
       const splash2 = t.splash*t.splash;
       for(const e of enemies){
@@ -3496,6 +3871,19 @@ function bfsPathClosestApproach(sx, sy, tx, ty, limit){
 	}
   }
 
+  function tileDescribe(x,y){
+    const tt = tType[idx(x,y)];
+    const d = depthAt(x,y);
+    if(tt===TILE_EMPTY) return `Open tunnel • depth ${d}`;
+    if(tt===TILE_FORTRESS) return `Fortress heart • ${Math.round(fortress.hp)}/${fortress.maxHp} HP`;
+    if(tt===TILE_GOLD) return `Gold vein • ${tHp[idx(x,y)]} rock HP`;
+    if(tt===TILE_SAPPHIRE) return `Sapphire vein • ${tHp[idx(x,y)]} rock HP`;
+    if(tt===TILE_EMERALD) return `Emerald vein • ${tHp[idx(x,y)]} rock HP`;
+    if(tt===TILE_DIAMOND) return `Diamond vein • ${tHp[idx(x,y)]} rock HP`;
+    if(tt===TILE_SPAWNER_SEALED) return `Sealed monster nest • dig carefully`;
+    return `Rock wall • ${tHp[idx(x,y)]} HP • depth ${d}`;
+  }
+
   // ============================================================
   // Selection / Build placement
   // ============================================================
@@ -3522,6 +3910,7 @@ if(isGameOver) return;
 	const w = screenToWorld(e.clientX-rect.left, e.clientY-rect.top);
 	const tx=Math.round(w.x), ty=Math.round(w.y);
 	if(!inBounds(tx,ty)) return;
+    showTileTip(tileDescribe(tx,ty));
 
     if(focusPlacing){
       const now = nowSec();
@@ -3635,6 +4024,42 @@ if(isGameOver) return;
 	markUI("selected","dwarves","inv","hud");
   }
 
+  function fillEquipSelect(sel, category, currentId){
+    if(!sel) return;
+    const label = category === "armor" ? "Armor…" : category === "weapon" ? "Weapon…" : "Pickaxe…";
+    const previous = currentId ?? sel.value;
+    sel.innerHTML = `<option value="">${label}</option>`;
+    const items = loot.filter(it=>it.category===category).slice().sort(sortLoot);
+    for(const it of items){
+      const opt=document.createElement("option");
+      opt.value=it.id;
+      const bits = [it.rarity.toUpperCase(), it.name];
+      if(category==="armor") bits.push(`DEF ${Math.round(it.defense*100)}%`, `+${it.bonusHp}HP`);
+      if(category==="weapon") bits.push(`DMG ${it.dmg}`, it.ranged ? `RNG ${it.range}` : "melee");
+      if(category==="pickaxe") bits.push(`PWR ${it.miningPower}`, `x${it.miningRate.toFixed(2)}`);
+      if(it.effectName) bits.push(`✨ ${it.effectName}`);
+      opt.textContent = bits.join(" • ");
+      sel.appendChild(opt);
+    }
+    if(previous && items.some(it=>it.id===previous)) sel.value=previous;
+  }
+
+  function refreshQuickEquipSelects(){
+    const hasDwarf = !!getSelectedDwarf();
+    fillEquipSelect(UI.quickArmor, "armor");
+    fillEquipSelect(UI.quickWeapon, "weapon");
+    fillEquipSelect(UI.quickPick, "pickaxe");
+    for(const el of [UI.quickArmor, UI.quickWeapon, UI.quickPick, UI.quickEquipArmor, UI.quickEquipWeapon, UI.quickEquipPick]){
+      if(el) el.disabled = !hasDwarf;
+    }
+  }
+
+  function equipFromSelect(sel){
+    if(!sel || !sel.value){ toast("Choose an item first."); return; }
+    equipSelected(sel.value);
+    sel.value = "";
+  }
+
   function unequipSlot(slot){
 	const d = getSelectedDwarf();
 	if(!d) return;
@@ -3646,9 +4071,42 @@ if(isGameOver) return;
 	markUI("selected","dwarves","inv","hud");
   }
 
+
+
+  function slotForCategory(cat){ return cat==="armor" ? "armor" : cat==="weapon" ? "weapon" : "pickaxe"; }
+  function recommendEquip(category){
+    const d = getSelectedDwarf();
+    if(!d){ toast("Select a dwarf first."); return false; }
+    const slot = slotForCategory(category);
+    let best=null, bestScore=itemScore(d[slot]);
+    for(const it of loot){
+      if(it.category !== category) continue;
+      const sc = itemScore(it);
+      if(sc > bestScore){ best=it; bestScore=sc; }
+    }
+    if(!best){ toast(`No better ${category} found.`); return false; }
+    equipSelected(best.id);
+    toast(`Recommended ${category}: ${best.name}`);
+    return true;
+  }
+  function recommendAllEquip(){
+    let n=0;
+    if(recommendEquip("armor")) n++;
+    if(recommendEquip("weapon")) n++;
+    if(recommendEquip("pickaxe")) n++;
+    if(n===0) toast("Already using the best available gear.");
+  }
+
   UI.unequipArmor.addEventListener("click", ()=>unequipSlot("armor"));
   UI.unequipWeapon.addEventListener("click", ()=>unequipSlot("weapon"));
   UI.unequipPick.addEventListener("click", ()=>unequipSlot("pickaxe"));
+  UI.quickEquipArmor?.addEventListener("click", ()=>equipFromSelect(UI.quickArmor));
+  UI.quickEquipWeapon?.addEventListener("click", ()=>equipFromSelect(UI.quickWeapon));
+  UI.quickEquipPick?.addEventListener("click", ()=>equipFromSelect(UI.quickPick));
+  UI.recommendAll?.addEventListener("click", recommendAllEquip);
+  UI.recommendWeapon?.addEventListener("click", ()=>recommendEquip("weapon"));
+  UI.recommendArmor?.addEventListener("click", ()=>recommendEquip("armor"));
+  UI.recommendPick?.addEventListener("click", ()=>recommendEquip("pickaxe"));
 
   // ============================================================
   // Save / Load (localStorage)
@@ -3845,6 +4303,7 @@ async function loadGameAsync(){
     for(const L of (save.groundLoot||[])) groundLoot.push({ ...L });
 
     for(const it of (save.loot||[])) loot.push({ ...it });
+    for(const it of loot){ if(!it.identityDone) decorateItem(it, 0); }
     loot.sort(sortLoot);
 
     for(const d of (save.dwarves||[])){
@@ -3959,6 +4418,19 @@ if(isGameOver) return;
   UI.btnSave.addEventListener("click", ()=>{ if(isGameOver) return; saveGame(); });
   UI.btnLoad.addEventListener("click", ()=>{ loadGame(); });
 
+  function recruitDwarfFromButton(){ UI.btnRecruit.click(); }
+  UI.mBuyDwarf?.addEventListener("click", recruitDwarfFromButton);
+  UI.mDwarves?.addEventListener("click", ()=>openMobileSheet("dwarves"));
+  UI.mInventory?.addEventListener("click", ()=>openMobileSheet("inventory"));
+  UI.mForge?.addEventListener("click", ()=>openMobileSheet("forge"));
+  UI.mBuild?.addEventListener("click", ()=>openMobileSheet("build"));
+  UI.mFocus?.addEventListener("click", ()=>UI.btnFocus.click());
+  UI.mobileBuildSelect?.addEventListener("change", ()=>{
+    const m = Number(UI.mobileBuildSelect.value || 0);
+    setBuildMode(m);
+    if(m!==BUILD_NONE){ toast("Tap a clear tunnel tile to place."); closeMobileSheets(); }
+  });
+
   // Build buttons
   UI.buildDepot.addEventListener("click", ()=>setBuildMode(buildMode===BUILD_DEPOT?BUILD_NONE:BUILD_DEPOT));
   UI.buildArrow.addEventListener("click", ()=>setBuildMode(buildMode===BUILD_ARROW?BUILD_NONE:BUILD_ARROW));
@@ -4046,7 +4518,7 @@ if(isGameOver) return;
 	  if(cat !== "all" && it.category !== cat) return false;
 	  if(rar !== "all" && it.rarity !== rar) return false;
 	  if(q){
-		const hay = (it.name + " " + it.category + " " + it.rarity + " " + (it.weaponType||"") + " " + (it.armorTier||"")).toLowerCase();
+		const hay = (it.name + " " + it.category + " " + it.rarity + " " + (it.weaponType||"") + " " + (it.armorTier||"") + " " + (it.effectName||"") + " " + (it.depthName||"")).toLowerCase();
 		if(!hay.includes(q)) return false;
 	  }
 	  return true;
@@ -4146,6 +4618,8 @@ if(isGameOver) return;
 	  } else {
 		sub = `Pickaxe • PWR ${it.miningPower} • SPD x${it.miningRate.toFixed(2)} • Sell ${it.sell}g`;
 	  }
+      if(it.effectName) sub += ` • ✨ ${it.effectName}`;
+      if(it.depthName) sub += ` • ${it.depthName}`;
 	  row._sub.textContent = sub;
 
 	  row._rar.className = `rar ${it.rarity}`;
@@ -4200,6 +4674,7 @@ if(isGameOver) return;
 
 
 	UI.recruitNote.innerHTML = `Recruit cost: <b>${recruitCost()}g</b> (scales up)`;
+    if(UI.mBuyDwarf) UI.mBuyDwarf.querySelector("span").textContent = `Dwarf ${recruitCost()}g`;
 	UI.dwCount.textContent = `${dwarves.length}`;
     const now = nowSec();
     if(focusPlacing){
@@ -4211,6 +4686,11 @@ if(isGameOver) return;
     }else{
       UI.btnFocus.textContent = "Focus";
       UI.btnFocus.disabled = false;
+    }
+    if(UI.mFocus){
+      const sp = UI.mFocus.querySelector("span");
+      if(sp) sp.textContent = focusPlacing ? "Place" : (now < focusOrder.cdUntil ? `${Math.ceil(focusOrder.cdUntil-now)}s` : "Focus");
+      UI.mFocus.disabled = UI.btnFocus.disabled && !focusPlacing;
     }
   }
 
@@ -4306,6 +4786,7 @@ UI.dwarfList.appendChild(btn);
 
   function updateSelectedUI(){
 	const d = getSelectedDwarf();
+    refreshQuickEquipSelects();
 	if(!d){
 	  UI.selPill.textContent = "None";
 	  UI.selInfo.textContent = "Select a dwarf to view stats + equipment.";
@@ -4317,9 +4798,10 @@ UI.dwarfList.appendChild(btn);
 
 	UI.selPill.textContent = d.name;
 
-	const weaponTxt = d.weapon ? `${d.weapon.name} (DMG ${d.weapon.dmg}${d.weapon.ranged?`, RNG ${d.weapon.range}`:""})` : "—";
-	const pickTxt   = d.pickaxe ? `${d.pickaxe.name} (PWR ${d.pickaxe.miningPower}, SPD x${d.pickaxe.miningRate.toFixed(2)})` : "—";
-	const armTxt    = d.armor ? `${d.armor.name} (DEF ${Math.round(d.armor.defense*100)}%, +HP ${d.armor.bonusHp})` : "—";
+	const effLine = it => it?.effectName ? ` • ✨ ${it.effectName}: ${it.effectDesc||"special effect"}` : "";
+	const weaponTxt = d.weapon ? `${d.weapon.name} (DMG ${d.weapon.dmg}${d.weapon.ranged?`, RNG ${d.weapon.range}`:""})${effLine(d.weapon)}` : "—";
+	const pickTxt   = d.pickaxe ? `${d.pickaxe.name} (PWR ${d.pickaxe.miningPower}, SPD x${d.pickaxe.miningRate.toFixed(2)})${effLine(d.pickaxe)}` : "—";
+	const armTxt    = d.armor ? `${d.armor.name} (DEF ${Math.round(d.armor.defense*100)}%, +HP ${d.armor.bonusHp})${effLine(d.armor)}` : "—";
 
 	UI.slotArmor.textContent = armTxt;
 	UI.slotWeapon.textContent = weaponTxt;
@@ -4331,7 +4813,7 @@ UI.dwarfList.appendChild(btn);
 	UI.selInfo.innerHTML =
 	  `<span class="pill">Lv ${d.level}</span> XP <b>${d.xp}</b>/<b>${d.nextXp}</b> • ` +
 	  `HP <b>${Math.round(d.hp)}</b>/<b>${d.maxHp}</b> • DEF <b>${Math.round((d.defense||0)*100)}%</b><br>` +
-      `Trait: <b>${d.trait?.name||"—"}</b> • Perks: <b>${(d.perks||[]).map(id=>PERKS[id]?.name||id).join(", ") || "—"}</b><br>` +
+      `Trait: <b>${d.trait?.name||"—"}</b> • Perks: <b class="perkGlow">${(d.perks||[]).map(id=>PERKS[id]?.name||id).join(", ") || "—"}</b><br>` +
 	  `DMG <b>${d.dmg}</b> • Mining <b>${d.miningPower}</b> • ${held} • ${carry}`;
   }
 
@@ -4371,6 +4853,7 @@ UI.dwarfList.appendChild(btn);
 
 	if(DIRTY.inv){
 	  recomputeInvFiltered();
+      refreshQuickEquipSelects();
 	  DIRTY.inv=false;
 	  invNeedRender = false;
 	  renderInv();
@@ -4403,9 +4886,10 @@ UI.dwarfList.appendChild(btn);
 	const t = clamp(depth/640, 0, 1);
 	const lerp=(a,b,x)=>a+(b-a)*x;
 
-	const c1={r:130,g:112,b:95};
-	const c2={r:85,g:92,b:112};
-	const c3={r:42,g:30,b:68};
+	const L = depthLayerAt(depth);
+	const c1={r:L.rock[0]+20,g:L.rock[1]+20,b:L.rock[2]+20};
+	const c2={r:L.rock[0],g:L.rock[1],b:L.rock[2]};
+	const c3={r:Math.max(20,L.rock[0]-35),g:Math.max(18,L.rock[1]-35),b:Math.max(24,L.rock[2]-25)};
 
 	let c;
 	if(t<0.55){
@@ -4438,19 +4922,81 @@ UI.dwarfList.appendChild(btn);
 	ctx.restore();
   }
 
+
+  // Lightweight combat/mining effects. Arrays are capped to avoid mobile slowdown.
+  const combatFx = [];
+  function pushFx(fx){
+    combatFx.push(fx);
+    if(combatFx.length > 180) combatFx.splice(0, combatFx.length-180);
+  }
+  function fxText(x,y,text,color="rgba(255,255,255,.95)",life=0.75){ pushFx({kind:"text",x,y,text,color,life,max:life,vy:-0.85}); }
+  function fxSlash(x1,y1,x2,y2,color="rgba(255,235,180,.95)"){ pushFx({kind:"slash",x1,y1,x2,y2,color,life:0.22,max:0.22}); }
+  function fxBeam(x1,y1,x2,y2,color="rgba(127,215,255,.9)"){ pushFx({kind:"beam",x1,y1,x2,y2,color,life:0.16,max:0.16}); }
+  function fxBurst(x,y,color="rgba(255,190,120,.9)",r=1.2){ pushFx({kind:"burst",x,y,color,r,life:0.42,max:0.42}); }
+  function updateFx(dt){
+    for(let i=combatFx.length-1;i>=0;i--){
+      const f=combatFx[i];
+      f.life -= dt;
+      if(f.life<=0) combatFx.splice(i,1);
+    }
+  }
+  function drawCombatFx(){
+    ctx.save();
+    for(const f of combatFx){
+      const a = clamp(f.life / f.max, 0, 1);
+      ctx.globalAlpha = a;
+      if(f.kind==="text"){
+        const p=worldToScreen(f.x, f.y - (1-a)*0.8);
+        ctx.fillStyle=f.color;
+        ctx.font=`900 ${Math.max(10,p.s*0.28)}px system-ui`;
+        ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillText(f.text, p.x+p.s*0.5, p.y+p.s*0.1);
+      }else if(f.kind==="slash"){
+        const a1=worldToScreen(f.x1,f.y1), a2=worldToScreen(f.x2,f.y2);
+        ctx.strokeStyle=f.color; ctx.lineWidth=Math.max(2,a1.s*0.12); ctx.lineCap="round";
+        ctx.shadowColor=f.color; ctx.shadowBlur=a1.s*0.35;
+        ctx.beginPath(); ctx.moveTo(a1.x+a1.s*0.5,a1.y+a1.s*0.5); ctx.lineTo(a2.x+a2.s*0.5,a2.y+a2.s*0.5); ctx.stroke();
+        ctx.shadowBlur=0;
+      }else if(f.kind==="beam"){
+        const a1=worldToScreen(f.x1,f.y1), a2=worldToScreen(f.x2,f.y2);
+        ctx.strokeStyle=f.color; ctx.lineWidth=Math.max(1.5,a1.s*0.08); ctx.lineCap="round";
+        ctx.shadowColor=f.color; ctx.shadowBlur=a1.s*0.4;
+        ctx.beginPath(); ctx.moveTo(a1.x+a1.s*0.5,a1.y+a1.s*0.5); ctx.lineTo(a2.x+a2.s*0.5,a2.y+a2.s*0.5); ctx.stroke();
+        ctx.shadowBlur=0;
+      }else if(f.kind==="burst"){
+        const p=worldToScreen(f.x,f.y); const rr=(f.r||1)*p.s*(1-a+0.2);
+        ctx.strokeStyle=f.color; ctx.lineWidth=Math.max(1,p.s*0.06); ctx.shadowColor=f.color; ctx.shadowBlur=p.s*0.3;
+        ctx.beginPath(); ctx.arc(p.x+p.s*0.5,p.y+p.s*0.5,rr,0,Math.PI*2); ctx.stroke(); ctx.shadowBlur=0;
+      }
+    }
+    ctx.restore();
+  }
+
   function drawTile(px,py,ts, tt, x,y, ii){
 	// subtle tile border when zoomed in
 	const border = cam.zoom > 0.7;
 
 	if(tt===TILE_EMPTY){
 	  const n = hash01(x,y);
-	  const base = 14 + (n*8)|0;
-	  ctx.fillStyle = rgb(base, base+2, base+6);
+      const L = depthLayerAt(depthAt(x,y));
+      const base = L.floor;
+      const wig = (n*10)|0;
+	  ctx.fillStyle = rgb(base[0]+wig, base[1]+wig, base[2]+wig);
 	  ctx.fillRect(px,py,ts,ts);
 	  if(border){
 		ctx.strokeStyle = "rgba(255,255,255,.04)";
 		ctx.strokeRect(px+0.5,py+0.5,ts-1,ts-1);
 	  }
+      const L2 = depthLayerAt(depthAt(x,y));
+      if(cam.zoom>0.75 && (L2.id==="mushdeep" || L2.id==="crystal" || L2.id==="lava" || L2.id==="void")){
+        const sparkle = hash01(x+99,y-31);
+        if(sparkle > 0.965){
+          ctx.fillStyle = L2.color;
+          ctx.globalAlpha = 0.25 + 0.25*Math.sin(performance.now()*0.002 + sparkle*20);
+          ctx.beginPath(); ctx.arc(px+ts*(0.25+sparkle*0.5%0.5), py+ts*(0.25+sparkle*0.37%0.5), ts*0.08, 0, Math.PI*2); ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
 	  return;
 	}
 
@@ -4521,6 +5067,7 @@ UI.dwarfList.appendChild(btn);
 
 	// Rock
 	const depth = depthAt(x,y);
+    const L = depthLayerAt(depth);
 	const c = rockBase(depth);
 	const n = hash01(x,y);
 	const hp = tHp[ii] || 1;
@@ -5234,8 +5781,12 @@ function drawDwarfSprite(d, p, ts){
 // Rebuilt draw() (drop-in replacement)
 // ============================================================
 function draw(){
-  // background
-  ctx.fillStyle="#07090c";
+  // background responds to depth identity
+  const activeLayer = currentDepthLayer();
+  const bg = ctx.createRadialGradient(window.innerWidth/2, window.innerHeight/2, 80, window.innerWidth/2, window.innerHeight/2, Math.max(window.innerWidth,window.innerHeight)*0.75);
+  bg.addColorStop(0, activeLayer.bg2);
+  bg.addColorStop(1, activeLayer.bg1);
+  ctx.fillStyle=bg;
   ctx.fillRect(0,0,window.innerWidth, window.innerHeight);
 
   const s = BASE_TILE_PX * cam.zoom;
@@ -5444,6 +5995,19 @@ for(const e of enemies){
     ctx.fillStyle = "rgba(210,240,255,.95)";
     ctx.font = `bold ${Math.max(12,p.s)}px system-ui`;
     ctx.fillText(`${left}s`, p.x + p.s*0.8, p.y - p.s*0.4);
+    ctx.restore();
+  }
+
+  drawCombatFx();
+
+  // depth identity label when zoomed into a new band
+  if(activeLayer){
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = activeLayer.color;
+    ctx.font = `900 ${Math.max(24, Math.min(54, window.innerWidth*0.045))}px system-ui`;
+    ctx.textAlign = "center";
+    ctx.fillText(`${activeLayer.emoji} ${activeLayer.name}`, window.innerWidth/2, Math.max(92, window.innerHeight*0.14));
     ctx.restore();
   }
 
