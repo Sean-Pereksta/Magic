@@ -1140,5 +1140,150 @@ Moon Dueler|🌙|Shadow,Holy,Blade|44|25|1.08|duel|Hybrid single-target fighter.
   };
 })();
 
+
+/* === SUPPORT EXPANSION + LIGHTNING LOOP SAFETY PATCH === */
+(function(){
+  // Some Storm/Idol builds were able to stack lightning chain chance forever during long fights.
+  // Keep storm support useful, but cap repeated chain/recharge growth so it cannot create runaway loops.
+  function capStormRunaways(){
+    (S.squad||[]).forEach(u=>{
+      if(!u)return;
+      u.batteryChain=Math.min(Number(u.batteryChain)||0,.72);
+      u.spd=Math.min(Number(u.spd)||1,(u.baseSpd||u.spd||1)+1.15);
+      u.cd=Math.max(-1.1,Number(u.cd)||0);
+    });
+  }
+
+  const supportPack=`
+Life Lantern|🏮|Healer,Holy,Spirit|52|4|1.05|support|Pure healer. Heals the weakest ally; at 5★ splashes to its row, and at 6★ reaches the whole squad.
+Shield Matriarch|🛡️|Guard,Healer,Royal|82|3|.82|support|Pure shielder. Shields one adjacent ally at a time; at 5★ adds all adjacent, and at 6★ also shields diagonals.
+Fury Imp|💢|Fire,Beast|38|5|1.35|support|Fury support. Multiplies attack speed for a random ally; at 5★ affects adjacent allies, and at 6★ affects the whole row.
+Power Totem|🪬|Stone,Royal,Spirit|76|4|.72|support|Power support. Multiplies damage for diagonal allies; at 5★ also buffs cross allies, and at 6★ marks enemies for the buffed group.
+Battle Chef|🍲|Healer,Fire,Royal|60|4|.95|support|Random support. Tosses soup to a random hurt ally for healing plus power; higher stars add more targets.
+Haste Harp|🎶|Holy,Spirit|44|3|1.22|support|Tempo support. Gives fury to every adjacent ally; at 5★ also gives small shields, and at 6★ adds row-wide tempo.
+Ward Beacon|🔷|Machine,Holy,Guard|68|3|.86|support|Beacon support. Shields diagonals and cleanses statuses; at 5★ affects all diagonals harder, at 6★ pulses to everyone once.
+War Standard|🚩|Royal,Blade,Guard|64|5|.92|support|Power banner. Boosts one adjacent attacker each pulse; at 5★ boosts the whole row, and at 6★ adds fury too.
+Moon Nurse|🌙|Healer,Shadow|48|4|1.12|support|Single-target rescue. Heals and shields the lowest-health ally; at 5★ can save them from lethal damage once.
+Storm Conductor|🧲|Storm,Machine|56|4|1.05|support|Controlled lightning support. Adds capped chain power to one adjacent Storm/Machine ally at a time without runaway loops.
+`;
+  function parseSupportHero(line){let [n,e,t,hp,atk,spd,focus,a]=line.split('|');return{n,e,t:t.split(','),hp:+hp,atk:+atk,spd:+spd,focus,a,team:'ally'}}
+  supportPack.trim().split('\n').map(parseSupportHero).reverse().forEach(h=>{if(!heroes.some(x=>x.n===h.n))heroes.splice(4,0,h)});
+
+  function rowOfId(i){return Math.floor(i/W)}
+  function colOfId(i){return i%W}
+  function allyAtId(i){return (S.squad||[])[i]&&!S.squad[i].dead?S.squad[i]:null}
+  function livingSupportAllies(){return typeof liveA==='function'?liveA():(S.squad||[]).filter(u=>u&&!u.dead&&u.hp>0)}
+  function idsToAllies(ids){return ids.map(allyAtId).filter(Boolean)}
+  function rowAllies(i){return idsToAllies(rowIds(rowOfId(i)))}
+  function crossAllies(i){return idsToAllies(crossIds(i))}
+  function diagonalAllies(i){return idsToAllies(diagIds(i))}
+  function weakestAlly(){let a=livingSupportAllies();return a.sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0]||null}
+  function randomAlly(){let a=livingSupportAllies();return a.length?rand(a):null}
+  function oneAdjacent(i,tick){let a=crossAllies(i);return a.length?[a[tick%a.length]]:[]}
+  function supportTargets(u,i,tick){
+    let st=u.star||1, five=!!u.evo||st>=5, six=!!u.ascension||st>=6;
+    if(u.n==='Life Lantern')return six?livingSupportAllies():(five?rowAllies(i):[weakestAlly()].filter(Boolean));
+    if(u.n==='Shield Matriarch')return six?[...new Set([...crossAllies(i),...diagonalAllies(i)])]:(five?crossAllies(i):oneAdjacent(i,tick));
+    if(u.n==='Fury Imp')return six?rowAllies(i):(five?crossAllies(i):[randomAlly()].filter(Boolean));
+    if(u.n==='Power Totem')return six?[...new Set([...diagonalAllies(i),...crossAllies(i)])]:(five?[...new Set([...diagonalAllies(i),...crossAllies(i)])]:diagonalAllies(i));
+    if(u.n==='Battle Chef'){let pool=livingSupportAllies().sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp);return pool.slice(0,six?4:five?3:1)}
+    if(u.n==='Haste Harp')return six?[...new Set([...crossAllies(i),...rowAllies(i)])]:crossAllies(i);
+    if(u.n==='Ward Beacon')return six?livingSupportAllies():diagonalAllies(i);
+    if(u.n==='War Standard')return six?rowAllies(i):(five?rowAllies(i):oneAdjacent(i,tick));
+    if(u.n==='Moon Nurse')return [weakestAlly()].filter(Boolean);
+    if(u.n==='Storm Conductor'){
+      let a=crossAllies(i).filter(x=>x.t.includes('Storm')||x.t.includes('Machine'));
+      return a.length?[a[tick%a.length]]:oneAdjacent(i,tick);
+    }
+    return [];
+  }
+  function pulseSupportVisual(src,target,kind){
+    if(src&&target&&src!==target&&typeof supportLine==='function')supportLine(src,target);
+    const pos=target?ix(target):-1;
+    if(pos>=0)floatAlly(pos,kind,'#16a34a');
+  }
+  function applySupportPulse(u,i,opening=false){
+    if(!u||u.dead||u.focus!=='support')return;
+    let tick=(S.battle&&S.battle.tick)||0, st=u.star||1, five=!!u.evo||st>=5, six=!!u.ascension||st>=6;
+    const amp=(S.boost.supportAmp||1)*(opening?1.25:1);
+    const targets=supportTargets(u,i,tick).filter(Boolean);
+    if(!targets.length)return;
+    targets.forEach(t=>{
+      if(u.n==='Life Lantern'){heal(u,t,(5+st*2.2+(five?5:0)+(six?8:0))*amp); if(five)cleanse(t,.55); pulseSupportVisual(u,t,'💚')}
+      else if(u.n==='Shield Matriarch'){giveShield(t,(8+st*3+(five?9:0)+(six?14:0))*amp); pulseSupportVisual(u,t,'🛡️')}
+      else if(u.n==='Fury Imp'){t.furyMult=Math.max(t.furyMult||1,1+.10+st*.025+(five?.10:0)+(six?.12:0)); t.cd=(t.cd||0)-(.16+st*.035+(six?.12:0)); pulseSupportVisual(u,t,'💢')}
+      else if(u.n==='Power Totem'){t.powerMult=Math.max(t.powerMult||1,1+.12+st*.035+(five?.12:0)+(six?.18:0)); giveShield(t,3+st+(six?6:0)); pulseSupportVisual(u,t,'🪬')}
+      else if(u.n==='Battle Chef'){heal(u,t,(3+st*1.5)*amp); t.powerMult=Math.max(t.powerMult||1,1+.06+st*.015+(five?.06:0)); pulseSupportVisual(u,t,'🍲')}
+      else if(u.n==='Haste Harp'){t.furyMult=Math.max(t.furyMult||1,1+.08+st*.025+(five?.06:0)+(six?.10:0)); if(five)giveShield(t,4+st*2); pulseSupportVisual(u,t,'🎶')}
+      else if(u.n==='Ward Beacon'){giveShield(t,(6+st*2+(five?8:0)+(six?10:0))*amp); cleanse(t,six?.38:.55); pulseSupportVisual(u,t,'🔷')}
+      else if(u.n==='War Standard'){buffAtk(t,(2+st+(five?4:0)+(six?5:0))*amp); t.powerMult=Math.max(t.powerMult||1,1+.05+st*.015+(six?.10:0)); if(six)t.furyMult=Math.max(t.furyMult||1,1.18); pulseSupportVisual(u,t,'🚩')}
+      else if(u.n==='Moon Nurse'){heal(u,t,(7+st*2.5+(five?8:0)+(six?10:0))*amp); giveShield(t,(6+st*2+(six?12:0))*amp); if(five)t.lifeSave=true; pulseSupportVisual(u,t,'🌙')}
+      else if(u.n==='Storm Conductor'){t.batteryChain=Math.min((t.batteryChain||0)+(.08+st*.018+(five?.06:0)+(six?.08:0)),.72); t.cd=(t.cd||0)-(.08+st*.02); giveShield(t,4+st); pulseSupportVisual(u,t,'⚡')}
+    });
+    if(six&&u.n==='Power Totem')liveE().slice(0,2).forEach(e=>e.marked=(e.marked||0)+.7);
+    if(opening&&targets.length&&typeof pulseAtUnit==='function')pulseAtUnit(u,u.t.includes('Storm')?'blue':u.t.includes('Royal')?'gold':'purple');
+  }
+
+  const oldStartBuffsSupport=startBuffs;
+  startBuffs=function(){
+    oldStartBuffsSupport();
+    capStormRunaways();
+    (S.squad||[]).forEach((u,i)=>applySupportPulse(u,i,true));
+    capStormRunaways();
+  };
+
+  const oldStatusesSupport=statuses;
+  statuses=function(){
+    oldStatusesSupport();
+    if(!S.battle||S.phase!=='battle')return;
+    capStormRunaways();
+    if((S.battle.tick||0)%4===0){
+      (S.squad||[]).forEach((u,i)=>applySupportPulse(u,i,false));
+    }
+    capStormRunaways();
+  };
+
+  const oldBonusSupport=bonus;
+  bonus=function(u){
+    let b=oldBonusSupport(u);
+    if(u&&u.focus==='support'){
+      b.shield=(b.shield||0)+(u.star||1)*2;
+      if(u.star>=5||u.evo){b.heal=(b.heal||0)+6;b.spd=(b.spd||0)+.05}
+      if(u.star>=6||u.ascension){b.heal=(b.heal||0)+10;b.shield=(b.shield||0)+12;b.spd=(b.spd||0)+.08}
+    }
+    return b;
+  };
+
+  const oldAllyAtkSupport=allyAtk;
+  allyAtk=function(u){
+    if(u){
+      capStormRunaways();
+      if(u.furyMult){u.cd=(u.cd||0)-Math.min(.38,(u.furyMult-1)*.24)}
+      if(u.powerMult){u.atk=(u.atk||0)*Math.min(1.035,u.powerMult);u.powerMult=1+(u.powerMult-1)*.88}
+    }
+    oldAllyAtkSupport(u);
+    capStormRunaways();
+  };
+
+  // Final loop guard: if an old lightning/support path accidentally schedules two loop chains,
+  // ignore duplicate same-frame calls and fail closed instead of restarting the battle forever.
+  const oldLoopSupport=loop;
+  loop=function(battleId){
+    if(!S.battle||S.phase!=='battle')return;
+    const now=Date.now();
+    if(S.battle._loopGuardAt&&now-S.battle._loopGuardAt<90)return;
+    S.battle._loopGuardAt=now;
+    try{ oldLoopSupport(battleId); }
+    catch(err){
+      console.error('combat loop stopped safely instead of restarting',err);
+      S.phase='recruit';S.battle=null;render();msg('A combat effect glitched, so the battle was safely reset instead of looping. Press ▶ to continue.');
+    }
+  };
+
+  // Ensure Thunder Idol remains a support identity, but cannot permanently ramp chain chance past the cap.
+  const oldHelpSupport=help;
+  help=function(){oldHelpSupport();setTimeout(()=>{if(!$('drawer').classList.contains('open'))return;$('body').innerHTML+=`<p><b>Support expansion:</b> added Life Lantern, Shield Matriarch, Fury Imp, Power Totem, Battle Chef, Haste Harp, Ward Beacon, War Standard, Moon Nurse, and Storm Conductor. They heal, shield, give fury attack-speed, give power damage multipliers, cleanse, or charge allies in varied patterns: single target, adjacent, diagonal, row, random, and rotating one-adjacent pulses.</p><p><b>Lightning loop safety:</b> Thunder Idol, Spark Bottle, Battery Pylon, Storm Conductor, and other lightning chain effects are now capped and guarded so they cannot stack into runaway battle loops.</p>`},0)};
+})();
+
 render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and the fight starts.');
 </script></body></html>
