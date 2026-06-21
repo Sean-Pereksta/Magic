@@ -1320,6 +1320,78 @@ Storm Conductor|🧲|Storm,Machine|56|4|1.05|support|Controlled lightning suppor
   help=function(){oldHelpSupport();setTimeout(()=>{if(!$('drawer').classList.contains('open'))return;$('body').innerHTML+=`<p><b>Support expansion:</b> added Life Lantern, Shield Matriarch, Fury Imp, Power Totem, Battle Chef, Haste Harp, Ward Beacon, War Standard, Moon Nurse, and Storm Conductor. They heal, shield, give fury attack-speed, give power damage multipliers, cleanse, or charge allies in varied patterns: single target, adjacent, diagonal, row, random, and rotating one-adjacent pulses.</p><p><b>Lightning loop safety:</b> Thunder Idol, Spark Bottle, Battery Pylon, Storm Conductor, and other lightning chain effects are now capped and guarded so they cannot stack into runaway battle loops.</p>`},0)};
 })();
 
+
+/* === 7-star totem progression expansion === */
+(function(){
+  const css=document.createElement('style');
+  css.textContent=`.unit.s7{background:linear-gradient(135deg,#fef08a,#f0abfc,#93c5fd,#86efac)!important;border-color:#facc15!important;box-shadow:0 0 26px #facc15aa,inset 0 0 0 2px #fff9!important;animation:legendPulse 1.05s ease-in-out infinite}.sevenBadge{position:absolute;top:18px;right:3px;background:linear-gradient(90deg,#facc15,#f0abfc,#93c5fd,#86efac);color:#111827;border:1px solid #fff;border-radius:999px;font-size:8px;font-weight:950;padding:0 4px;box-shadow:0 0 10px #facc15aa}.unit.s7 .star{background:#111827;color:#fef08a;box-shadow:0 0 8px #facc15aa}@keyframes legendPulse{50%{transform:scale(1.035);filter:saturate(1.25)}}`;
+  document.head.appendChild(css);
+
+  const TOTEMS=[
+    {n:'Star Totem',e:'🗿⭐',t:['Spirit','Holy','Stone'],hp:72,atk:4,spd:.68,focus:'support',a:'Gives random small boosts during battle. After certain rounds, grants upgrade-star progress to a random ally. Higher star level makes this happen more often.',team:'ally'},
+    {n:'Forge Totem',e:'🗿🔨',t:['Machine','Stone','Royal'],hp:84,atk:5,spd:.58,focus:'support',a:'Randomly improves ally damage, shields, armor cracking, or Machine effects. Periodically grants upgrade-star progress to tanks or attackers.',team:'ally'},
+    {n:'Spirit Totem',e:'🗿👻',t:['Spirit','Healer','Shadow'],hp:66,atk:4,spd:.82,focus:'support',a:'Echoes random support effects, cleanses allies, improves dodge, and periodically grants upgrade-star progress to support or magic allies.',team:'ally'}
+  ];
+  TOTEMS.slice().reverse().forEach(h=>{if(!heroes.some(x=>x.n===h.n))heroes.splice(18,0,h)});
+
+  window.starCostForNext=function(currentStar){if(currentStar<3)return 1;if(currentStar===3)return 2;if(currentStar===4)return 3;if(currentStar===5)return 4;if(currentStar===6)return 4;return Infinity};
+  window.totemStarInterval=function(u){const s=u?.star||1;if(s>=7)return 1;if(s>=6)return 2;if(s>=5)return 3;if(s>=4)return 4;return 5};
+  window.sevenStarAmp=function(u){return u?.star>=7?1.75:1};
+  window.starAmp=function(u){const s=u?.star||1;return 1+(s-1)*.28+(s>=5?.35:0)+(s>=6?.55:0)+(s>=7?1.0:0)};
+  const isTotem=u=>u&&['Star Totem','Forge Totem','Spirit Totem'].includes(u.n);
+  const hasTag=(u,...ts)=>u&&ts.some(t=>(u.t||[]).includes(t));
+  const pof=u=>S.squad.indexOf(u);
+  function validStarTargets(){return S.squad.filter(u=>u&&!u.dead&&(u.star||1)<7)}
+  function preferTargets(tags,focusSupport=false){let all=validStarTargets(), pref=all.filter(u=>hasTag(u,...tags)||(focusSupport&&u.focus==='support'));return pref.length?pref:all}
+  function totemFloat(u,txt,color='#facc15'){let i=pof(u);if(i>=0)floatAlly(i,txt,color)}
+  function giveFallback(t){if(t.n==='Forge Totem'){S.coins+=8;msg('🗿🔨 Forge Totem found no star target, so it minted +8 coins.')}else if(t.n==='Spirit Totem'){S.boost.shield=(S.boost.shield||0)+10;msg('🗿👻 Spirit Totem found no star target, so it prepared team shield next battle.')}else{S.points+=10;msg('🗿 Star Totem found no star target, so it granted +10 points.')}}
+
+  window.applyLegendaryDefault=function(u,source=''){
+    if(!u||u.legendary)return;
+    u.legendary=true; u.legendTitle=isTotem(u)?`${u.n} Legendary`:'Legendary Vanguard'; u.legendEmoji='🌈';
+    u.maxHp=Math.round((u.maxHp||u.hp)*1.70); u.baseMaxHp=u.maxHp; u.hp=u.maxHp;
+    u.atk=Math.round((u.atk||1)*1.55); u.baseAtk=u.atk; u.spd=(u.spd||1)*1.35; u.baseSpd=u.spd;
+    u.shield=(u.shield||0)+Math.round(u.maxHp*.5);
+    if(u.fxRanks)Object.keys(u.fxRanks).forEach(k=>u.fxRanks[k]=Math.min(5,(u.fxRanks[k]||1)+1));
+    if(hasTag(u,'Healer','Holy','Spirit')||u.focus==='support')u.legendSupport=true;
+    if(hasTag(u,'Storm','Machine'))u.legendEngine=true;
+    if(hasTag(u,'Poison','Fire','Nature','Shadow'))u.legendPlague=true;
+    totemFloat(u,'7★ LEGEND!','#facc15'); msg(`${u.e} ${u.n} reached 7★${source?' from '+source:''} — legendary power awakened!`);
+  };
+
+  window.starNeed=function(u){return starCostForNext(u?.star||1)};
+  window.nextStarPct=function(star){return ({2:.35,3:.45,4:.60,5:.80,6:1.25,7:1.70})[star]||.25};
+  window.up=function(u){return grantUpgradeStarProgress(u,1,'star training')};
+  window.grantUpgradeStarProgress=function(u,amount=1,source=''){
+    if(!u||u.dead)return false; if((u.star||1)>=7)return false;
+    u.starProg=(u.starProg||0)+amount;
+    while((u.star||1)<7 && u.starProg>=starCostForNext(u.star||1)){
+      u.starProg-=starCostForNext(u.star||1); u.star=Math.min(7,(u.star||1)+1);
+      let pct=nextStarPct(u.star); u.maxHp=Math.round((u.maxHp||u.hp)*(1+pct)); u.hp=u.maxHp; u.atk=Math.round((u.atk||1)*(1+pct)); u.spd=(u.spd||1)+.06+u.star*.02;
+      u.baseMaxHp=u.maxHp; u.baseAtk=u.atk; u.baseSpd=u.spd; u.shield=(u.shield||0)+Math.round(u.maxHp*(u.star>=7?.5:u.star>=6?.24:.12+u.star*.025));
+      if(u.star>=7)applyLegendaryDefault(u,source); else totemFloat(u,u.star>=6?'★6 ASCEND!':`★${u.star} +${Math.round(pct*100)}%`,'#f59e0b');
+      if(u.star===5&&!u.evo){setTimeout(()=>openEvolution(u),80);break}
+      if(u.star===6&&u.evo&&!u.ascension){setTimeout(()=>openEvolution(u),80);break}
+    }
+    if((u.star||1)<7)totemFloat(u,`+★ ${u.starProg}/${starCostForNext(u.star||1)}`,'#f59e0b');
+    return true;
+  };
+
+  const oldMaybe=maybeEvolution; maybeEvolution=function(u){return !!(u&&u.team==='ally'&&((u.star>=5&&!u.evo)||(u.star>=6&&!u.ascension)))};
+  const oldDetail=detailHtml; detailHtml=function(u){let html=oldDetail(u);if(u&&u.team==='ally'){html=html.replace(/Star training: [^<]*/,`Star training: ${(u.star||1)>=7?'7★ MAX':((u.starProg||0)+'/'+starCostForNext(u.star||1)+' toward '+((u.star||1)+1)+'★')}`);if(u.legendary)html=html.replace('</div></div><div class="detailStats">',`<br><span class="relicBadge">🌈 ${u.legendTitle||'7★ Legendary'}</span></div></div><div class="detailStats">`)}return html};
+
+  const oldRender=render; render=function(){oldRender();document.querySelectorAll('.unit').forEach(el=>{const cell=el.closest('.cell'),i=cell?+cell.dataset.i:-1,u=i>=0?S.squad[i]:null;if(!u)return;el.classList.remove('s5','s6');el.classList.add('s'+Math.min(7,u.star||1));let st=el.querySelector('.star');if(st)st.textContent=`★${u.star||1}${(u.star||1)<7&&(u.starProg||0)?' '+u.starProg+'/'+starCostForNext(u.star||1):''}`;if((u.star||1)>=7&&!el.querySelector('.sevenBadge')){let b=document.createElement('div');b.className='sevenBadge';b.textContent='7★';el.appendChild(b)}})};
+
+  function applyTotemBoost(src,target,kind,scale=1){let st=starAmp(src)*scale*sevenStarAmp(src);if(!target)return; if(kind==='shield'){giveShield(target,10*st);totemFloat(target,'Shield+','#6366f1')} if(kind==='heal'){heal(src,target,8*st);totemFloat(target,'Heal+','#16a34a')} if(kind==='fury'){buffSpd(target,.06*st);totemFloat(target,'Fury+','#dc2626')} if(kind==='power'){buffAtk(target,2.2*st);totemFloat(target,'Power+','#2563eb')} if(kind==='cleanse'){cleanse(target,1);totemFloat(target,'Cleanse','#22c55e')} if(kind==='rank'){addUnitEffect(target,'strength',1);totemFloat(target,'Rank+','#a855f7')} if(kind==='dodge'){target.dodgeAura=(target.dodgeAura||0)+.05*st;totemFloat(target,'Dodge+','#7c3aed')} if(kind==='thorn'){target.thorns=(target.thorns||0)+.05*st;totemFloat(target,'Thorns+','#65a30d')} if(kind==='gear'){addUnitEffect(target,'gear',1);totemFloat(target,'Gear+','#64748b')} }
+  const oldAtk=allyAtk; allyAtk=function(u){if(!u||u.dead)return;if(isTotem(u)){let st=u.star||1, allies=liveA(), targets=[];let pool=allies;if(u.n==='Forge Totem')pool=preferTargets(['Guard','Stone','Machine','Blade','Fire','Beast']);if(u.n==='Spirit Totem')pool=preferTargets(['Healer','Spirit','Mage','Holy','Shadow','Nature'],true);let first=rand(pool.length?pool:allies);if(first)targets.push(first);if(st>=5&&first&&u.n==='Forge Totem')targets=targets.concat(adj(pof(first)).slice(0,2));else if(st>=5)targets.push(rand(allies));if(st>=7)targets.push(rand(allies));targets=[...new Set(targets.filter(Boolean))].slice(0,st>=7?3:st>=5?2:1);let opts=u.n==='Forge Totem'?['power','shield','thorn','gear','power']:u.n==='Spirit Totem'?['heal','cleanse','shield','dodge','rank','power']:['shield','heal','fury','power','cleanse','rank'];targets.forEach(t=>{applyTotemBoost(u,t,rand(opts));if(st>=6)applyTotemBoost(u,t,'shield',.35);if(st>=7&&chance(.45)){applyTotemBoost(u,t,'power',.5);applyTotemBoost(u,t,'fury',.5)}});if(u.n==='Spirit Totem'){let e=pickEnemy(u);if(e){e.marked=(e.marked||0)+1;floatEnemy(S.enemies.indexOf(e),'MARK','#ec4899');if(st>=5)dmg(u,e,(u.atk||4)*starAmp(u),'shadow')}}u.cd=Math.max(u.cd||0,.7);return}return oldAtk(u)};
+
+  window.runPostRoundTotemRewards=function(){if(!S?.squad)return;let key=`${S.round}-${S.kills}`;if(S.postRoundRewardKey===key)return;S.postRoundRewardKey=key;S.squad.filter(isTotem).forEach(t=>{let last=t._totemRound||0;if(last===S.round)return;if(S.round%totemStarInterval(t)!==0)return;t._totemRound=S.round;let pool=t.n==='Forge Totem'?preferTargets(['Guard','Stone','Machine','Blade','Fire','Beast']):t.n==='Spirit Totem'?preferTargets(['Healer','Spirit','Mage','Holy','Shadow','Nature'],true):validStarTargets();let target=rand(pool);if(!target)return giveFallback(t);let ok=grantUpgradeStarProgress(target,1,t.n);if(!ok)return giveFallback(t);let verb=t.n==='Forge Totem'?'hammered +1 upgrade star into':t.n==='Spirit Totem'?'awakened +1 upgrade star in':'blessed';let text=t.n==='Star Totem'?`🗿 Star Totem blessed ${target.n} with +1 upgrade star!`:`${t.e} ${t.n} ${verb} ${target.n}!`;totemFloat(t,t.n==='Forge Totem'?'Forged':t.n==='Spirit Totem'?'Awakened':'Blessed','#facc15');totemFloat(target,'+★','#facc15');msg(text)});};
+  const oldEnd=end; end=function(win){if(win)runPostRoundTotemRewards();return oldEnd(win)};
+  const oldFight=fight; fight=function(){S.postRoundRewardKey=null;return oldFight()};
+  const oldHelp=help; help=function(){oldHelp();setTimeout(()=>{if(!$('drawer').classList.contains('open'))return;$('body').innerHTML+=`<p><b>7★ legends:</b> star costs are 1, 1, 2, 3, 4, 4 and cap at 7★. A 7★ unit gains huge HP, attack, speed, shield, support scaling, and a rainbow badge.</p><p><b>Totems:</b> Star Totem, Forge Totem, and Spirit Totem give safe battle boosts and only grant upgrade-star progress after a victorious round. Their interval improves from every 5 rounds to every round at 7★.</p>`},0)};
+  console.log('Loaded 7-star totem progression expansion');
+})();
+
 render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and the fight starts.');
 </script>
 <script>
