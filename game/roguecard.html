@@ -182,6 +182,31 @@ Grave Piper|🪈|Shadow,Spirit|36|15|1.3|back|Haunting backline attacker with da
 Iron Chef|🍳|Machine,Healer|60|10|.95|support|Feeds allies shield-soup, repairing hurt machines after every exchange.
 Meteor Imp|☄️|Fire,Mage|34|21|.78|burn|Small but explosive. Meteor Rune turns it into a boss melter.
 Thorn Knight|🌹|Guard,Nature,Blade|82|13|.82|near|Frontline defender with rose-thorn counter hits and great Root Snare synergy.
+Amber Warden|🟠|Guard,Stone,Holy|96|9|.62|near|Tank/support hybrid. Starts shielded, reduces damage to adjacent allies, and later shares shield with the weakest ally.
+Thunder Medic|⚡|Storm,Healer|46|7|1.12|support|Heals the weakest ally, then lightly zaps a random enemy. 5★ grants speed; 6★ chains once.
+Mirror Duelist|🪞|Blade,Spirit|42|16|1.34|weak|Copies a small adjacent buff, focuses weak enemies, and gains dodge after 5★ copies.
+Honey Queen|🐝|Beast,Nature,Healer|54|8|1.02|support|Heals adjacent allies over time and makes honey shields from kills. 6★ hastes Beasts.
+Cannon Turtle|🐢|Stone,Machine,Guard|128|16|.42|armor|Very slow cannon tank. Targets armor or strong enemies and splashes at 5★.
+Moon Prophet|🌙|Spirit,Mage,Holy|38|11|.98|strong|Marks the strongest enemy and empowers a random ally. 5★ cleanses; 6★ marks two.
+Oil Goblin|🛢️|Fire,Money,Machine|44|10|1.18|burn|Oils enemies so burn hits harder and earns coins when burned enemies die.
+Rose Archer|🌹|Nature,Blade,Poison|40|14|1.24|weak|Shoots weak enemies with thorn poison. 5★ makes poisoned targets vulnerable to Nature allies.
+Choir Sprite|🎶|Holy,Spirit,Healer|36|3|1.05|support|Non-attacking singer that rotates heal, shield, and fury buffs on adjacent allies.
+Forge Captain|🔨|Machine,Royal,Guard|74|12|.82|support|Powers adjacent Machine and Guard troops and shields the front column at 5★.
+Frost Salamander|🦎|Frost,Fire,Beast|58|13|1.05|near|Alternates burn and chill. 5★ bursts enemies suffering both.
+Debt Collector|📜|Money,Shadow,Blade|42|15|1.18|back|Targets backline. Assists on kills for coins and enemy marks; 6★ marks two.
+Root Mother|🌲|Nature,Stone,Healer|86|6|.58|support|Roots melee enemies and grants regeneration to adjacent allies, diagonals at 5★.
+Comet Knight|☄️|Fire,Holy,Guard|82|15|.78|near|Frontline bruiser that shields when burn is present and meteors bosses at 5★.
+Static Moth|🦋|Storm,Beast,Spirit|30|11|1.85|random|Fast random zaps with a capped chance to grant ally fury. 6★ zaps once extra.
+Banner Bearer|🚩|Royal,Guard|64|4|.82|support|Pure support. Buffs allies in the same row, then column at 5★, and shields them at 6★.
+Glass Witch|🔮|Mage,Frost,Shadow|34|17|.92|strong|Applies fragile marks so the next hit hurts more. 5★ spreads fragile on death.
+Boar Shaman|🐗|Beast,Nature,Storm|56|9|1.02|support|Gives adjacent Beast fury and occasional capped storm chains. 5★ also heals Beasts.
+Sun Baker|🥐|Holy,Healer,Fire|48|7|1.08|support|Heals a random ally and adds damage. 5★ clears poison/burn; 6★ splashes healing nearby.
+Iron Mosquito|🦟|Machine,Poison,Beast|26|5|2.08|poison|Very fast low damage attacker with stacking poison, tiny lifesteal, and 5★ poison shields.
+Grave Standard|🏴|Shadow,Spirit,Royal|52|6|.9|support|Debuffs enemy attack, buffs Shadow allies, and gives backline dodge at 5★.
+Bubble Mage|🫧|Mage,Healer,Frost|44|6|1.02|support|Shields the weakest ally and chills their last attacker. 5★ heals; 6★ shields two.
+Ram Rider|🐏|Beast,Stone,Blade|66|18|1.02|near|Charges nearest enemies and briefly stuns. 5★ pierces to one extra enemy in line.
+Lucky Kobold|🍀|Money,Spirit|34|7|1.32|random|Weak attacker with random utility: shield, speed, power, or coins. 6★ rolls twice.
+Star Paladin|🌠|Holy,Guard,Royal|112|17|.66|boss|Late-game tank support. Shields nearby allies, hurts bosses, and can emergency-save allies at 5★.
 `;
 const heroes=rawHeroes.trim().split('\n').map(s=>{let [n,e,t,hp,atk,spd,focus,a]=s.split('|');return{n,e,t:t.split(','),hp:+hp,atk:+atk,spd:+spd,focus,a,team:'ally'}});
 const enemyDefs=[
@@ -1286,4 +1311,87 @@ Storm Conductor|🧲|Storm,Machine|56|4|1.05|support|Controlled lightning suppor
 })();
 
 render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and the fight starts.');
-</script></body></html>
+</script>
+<script>
+/* Tiny Tactics recruit expansion: 25 distinct troops with capped support/storm hooks. */
+(function(){
+  const NEW25=['Amber Warden','Thunder Medic','Mirror Duelist','Honey Queen','Cannon Turtle','Moon Prophet','Oil Goblin','Rose Archer','Choir Sprite','Forge Captain','Frost Salamander','Debt Collector','Root Mother','Comet Knight','Static Moth','Banner Bearer','Glass Witch','Boar Shaman','Sun Baker','Iron Mosquito','Grave Standard','Bubble Mage','Ram Rider','Lucky Kobold','Star Paladin'];
+  // Keep the enlarged roster discoverable early despite openRecruit's lightweight sliced pool.
+  NEW25.slice().reverse().forEach(n=>{let k=heroes.findIndex(h=>h.n===n);if(k>18){let h=heroes.splice(k,1)[0];heroes.splice(18,0,h)}});
+  const W2=4;
+  const idx=u=>S.squad.indexOf(u), row=i=>Math.floor(i/W2), col=i=>i%W2, unit=i=>S.squad[i];
+  const ids=(i,diag=false)=>{let r=row(i),c=col(i),out=[];[[1,0],[-1,0],[0,1],[0,-1],...(diag?[[1,1],[1,-1],[-1,1],[-1,-1]]:[])].forEach(([dr,dc])=>{let rr=r+dr,cc=c+dc;if(rr>=0&&rr<4&&cc>=0&&cc<4)out.push(rr*4+cc)});return out};
+  const allies=(list)=>list.map(unit).filter(u=>u&&!u.dead), rowAll=i=>allies([row(i)*4,row(i)*4+1,row(i)*4+2,row(i)*4+3]), colAll=i=>allies([col(i),col(i)+4,col(i)+8,col(i)+12]);
+  const weakAlly=()=>liveA().sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0], randAlly=()=>rand(liveA()), pow=n=>Math.max(1,Number(n)||1);
+  function showUnit(u,txt,color='#2563eb'){let i=idx(u);if(i>=0)floatAlly(i,txt,color)}
+  function flashEnemy(e,txt,color='#7c3aed'){let i=S.enemies.indexOf(e);if(i>=0)floatEnemy(i,txt,color)}
+  function smallShield(u,v){giveShield(u,v);showUnit(u,'🛡',' #6366f1')}
+  function scaled(u,a,b=0){return a+(u.star||1)*b}
+  function mark(e,v=1){if(e){e.marked=(e.marked||0)+v;flashEnemy(e,'MARK','#ec4899')}}
+  function buffPower(src,t,v){buffAtk(t,v);if(src&&t&&src!==t)supportLine(src,t);showUnit(t,'POWER','#2563eb')}
+  function buffSpeed(src,t,v){buffSpd(t,v);if(src&&t&&src!==t)supportLine(src,t);showUnit(t,'SPEED','#9333ea')}
+  function stormOnce(src,from,amt,max=1){let chainTargets=liveE().filter(e=>e!==from).slice(0,max);chainTargets.forEach(e=>{beam(S.enemies.indexOf(from||e),S.enemies.indexOf(e));dmg(src,e,amt,'storm')})}
+
+  const oldStart=startBuffs;
+  startBuffs=function(){oldStart();S.squad.forEach((u,i)=>{if(!u||u.dead)return;let st=u.star||1, near=allies(ids(i,st>=5));
+    if(u.n==='Amber Warden'){smallShield(u,24+st*8);near.forEach(a=>a.amberWard=(a.amberWard||0)+Math.min(.24,.08+st*.02));if(st>=3){let w=weakAlly();if(w&&w!==u){let share=Math.min(u.shield||0,10+st*5);u.shield-=share;smallShield(w,share)}}}
+    if(u.n==='Honey Queen'){near.forEach(a=>{a.honeyRegen=(a.honeyRegen||0)+.8+st*.35});if(st>=6)liveA().filter(a=>a.t.includes('Beast')).forEach(a=>buffSpeed(u,a,.06))}
+    if(u.n==='Forge Captain'){near.filter(a=>a.t.includes('Machine')||a.t.includes('Guard')).forEach(a=>{buffPower(u,a,1.5+st);smallShield(a,5+st*2)});if(st>=5)S.squad.filter((a,j)=>a&&j%4===3).forEach(a=>smallShield(a,10+st*3))}
+    if(u.n==='Banner Bearer'){rowAll(i).forEach(a=>{buffPower(u,a,1.2+st*.8);if(st>=6)smallShield(a,10+st*3)});if(st>=5)colAll(i).forEach(a=>{buffPower(u,a,.8+st*.5);if(st>=6)smallShield(a,8+st*2)})}
+    if(u.n==='Grave Standard'){liveE().slice(0,4).forEach(e=>{e.atk=Math.max(1,e.atk-(1+st*.4));flashEnemy(e,'WEAK','#475569')});liveA().filter(a=>a.t.includes('Shadow')).forEach(a=>buffPower(u,a,1+st));if(st>=5)S.squad.forEach((a,j)=>{if(a&&j%4===0)a.dodgeAura=(a.dodgeAura||0)+.1})}
+    if(u.n==='Star Paladin'){allies(ids(i,st>=6)).forEach(a=>smallShield(a,12+st*4));if(st>=5)u.starSave=true;smallShield(u,18+st*6)}
+    if(u.n==='Choir Sprite'||u.n==='Root Mother'||u.n==='Bubble Mage'||u.n==='Sun Baker')showUnit(u,'READY','#16a34a');
+  })};
+
+  const oldStatuses=statuses;
+  statuses=function(){oldStatuses();if(!S.battle||S.phase!=='battle')return;let tick=S.battle.tick||0;S.squad.forEach((u,i)=>{if(!u||u.dead)return;let st=u.star||1, near=allies(ids(i,st>=5));
+    if(tick%3===0&&u.n==='Honey Queen')near.forEach(a=>heal(u,a,.9+st*.45));
+    if(tick%3===0&&u.n==='Root Mother'){near.forEach(a=>heal(u,a,1.1+st*.55));liveE().filter(e=>e.kind==='melee').slice(0,1+(st>=5?1:0)).forEach(e=>{e.slow=(e.slow||0)+.12;e.poison+=.4;flashEnemy(e,'ROOT','#166534')})}
+    if(tick%4===0&&u.n==='Choir Sprite'){let list=allies(ids(i,false)).slice(0,st>=6?2:1);list.forEach((a,k)=>{let mode=(tick/4+k)%3;if(mode===0)heal(u,a,5+st*2);else if(mode===1)smallShield(a,8+st*3);else buffPower(u,a,2+st)})}
+    if(tick%4===0&&u.n==='Boar Shaman'){near.filter(a=>a.t.includes('Beast')).forEach(a=>{buffSpeed(u,a,.05+st*.01);if(st>=5)heal(u,a,2+st)});let e=liveE()[0];if(e&&chance(.22+st*.02)){dmg(u,e,4+st*2,'storm');stormOnce(u,e,3+st,1)}}
+    if(tick%4===0&&u.n==='Bubble Mage'){liveA().sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp).slice(0,st>=6?2:1).forEach(a=>{smallShield(a,10+st*4);if(st>=5)heal(u,a,3+st);let e=a.lastAttacker;if(e&&!e.dead){e.slow=(e.slow||0)+.16;dmg(u,e,2+st,'frost')}})}
+    if(tick%5===0&&u.n==='Thunder Medic'){let w=weakAlly();if(w){heal(u,w,7+st*3);if(st>=5)buffSpeed(u,w,.08)}let e=pickEnemy({focus:'random'});if(e){dmg(u,e,3+st*1.5,'storm');if(st>=6)stormOnce(u,e,2+st,1)}}
+    if(tick%5===0&&u.n==='Sun Baker'){let a=randAlly();if(a){heal(u,a,6+st*2);buffPower(u,a,1+st*.5);if(st>=5)cleanse(a,.25);if(st>=6)allies(ids(idx(a))).forEach(n=>heal(u,n,2+st))}}
+    if(tick%6===0&&u.n==='Moon Prophet'){liveE().sort((a,b)=>b.atk-a.atk).slice(0,st>=6?2:1).forEach(e=>mark(e,1));let a=randAlly();if(a){buffPower(u,a,2+st);if(st>=5)cleanse(a,.2)}}
+  })};
+
+  const oldDmg=dmg;
+  dmg=function(src,tgt,amt,type='hit'){
+    if(tgt&&tgt.team==='ally'&&amt>0){tgt.lastAttacker=src;let sav=liveA().find(a=>a.starSave&&a!==tgt&&(ids(idx(a),true).includes(idx(tgt))));if(sav&&tgt.hp>0&&tgt.hp-amt<=0){sav.starSave=false;amt*=.25;smallShield(tgt,34+(sav.star||1)*8);showUnit(tgt,'SAVED!','#16a34a')}let ward=liveA().find(a=>a.n==='Amber Warden'&&ids(idx(a),true).includes(idx(tgt))&&(a.shield||0)>2);if(ward){let take=Math.min(ward.shield,amt*Math.min(.28,.1+(ward.star||1)*.025));ward.shield-=take;amt-=take;showUnit(ward,'WARD','#6366f1')}}
+    if(tgt&&tgt.team==='enemy'&&type==='burn'&&tgt.oiled){amt*=1.25+Math.min(.25,tgt.oiled*.05)}
+    if(tgt&&tgt.team==='enemy'&&tgt.fragile){amt*=1.35+.04*tgt.fragile;tgt.fragile=0;flashEnemy(tgt,'SHATTER','#9333ea')}
+    if(tgt&&tgt.team==='enemy'&&tgt.natureVuln&&src&&src.t&&src.t.includes('Nature'))amt*=1.25;
+    oldDmg(src,tgt,amt,type);
+  };
+
+  const oldKill=kill;
+  kill=function(src,t){let burned=!!(t&&t.team==='enemy'&&t.burn>0), poisoned=!!(t&&t.poison>0), fragile=!!(t&&t.fragile), before=t&&!t.dead;oldKill(src,t);if(!t||t.team!=='enemy'||!t.dead||!before)return;liveA().forEach(u=>{let st=u.star||1;if(u.n==='Oil Goblin'&&burned){S.coins+=1;showUnit(u,'+1🪙','#f59e0b')}if(u.n==='Honey Queen'&&src===u){allies(ids(idx(u),st>=5)).forEach(a=>smallShield(a,7+st*3))}if(u.n==='Debt Collector'&&(src===u||t.lastHit===u)){S.coins+=1+Math.floor(st/3);showUnit(u,'COLLECT','#f59e0b');liveE().slice(- (st>=6?2:1)).forEach(e=>mark(e,1))}if(u.n==='Glass Witch'&&fragile&&st>=5){liveE().slice(0,2).forEach(e=>{e.fragile=(e.fragile||0)+1;flashEnemy(e,'FRAGILE','#9333ea')})}})};
+
+  const oldPick=pickEnemy;
+  pickEnemy=function(u){let e=liveE();if(!e.length)return null;if(u&&u.n==='Cannon Turtle')return e.sort((a,b)=>(b.shield||0)-(a.shield||0)||b.atk-a.atk)[0];return oldPick(u)};
+
+  const oldAtk=allyAtk;
+  allyAtk=function(u){if(!u||u.dead)return;let st=u.star||1;
+    if(u.n==='Choir Sprite'){u.cd=Math.max(u.cd||0,.7);return}
+    let pre=pickEnemy(u);oldAtk(u);let t=pre&&!pre.dead?pre:pickEnemy(u);if(!t)return;let base=(u.atk+(bonus(u).atk||0))*(1+(st-1)*.18);
+    if(u.n==='Mirror Duelist'){let n=allies(ids(idx(u))).find(a=>a!==u&&((a.shield||0)>0||a.dodgeAura||a.honeyRegen));if(n){smallShield(u,Math.min(14+st*3,(n.shield||0)*.25+4));if(st>=5){u.dodgeAura=(u.dodgeAura||0)+.06;showUnit(u,'COPY','#7c3aed')}}}
+    if(u.n==='Cannon Turtle'&&st>=5)splash(u,t,base*.34);
+    if(u.n==='Oil Goblin'){t.oiled=(t.oiled||0)+1;t.burn=(t.burn||0)+1.4+st*.5;flashEnemy(t,'OIL','#92400e')}
+    if(u.n==='Rose Archer'){t.poison+=2+st*.7;if(st>=5){t.natureVuln=1;flashEnemy(t,'THORNS','#65a30d')}}
+    if(u.n==='Frost Salamander'){u.flipBurn=!u.flipBurn;if(u.flipBurn){t.burn+=3+st}else{t.slow=(t.slow||0)+.16;dmg(u,t,base*.2,'frost')}if(st>=5&&t.burn>1&&(t.slow||0)>0)dmg(u,t,base*.55,'burn')}
+    if(u.n==='Comet Knight'){if(liveE().some(e=>e.burn>0))smallShield(u,6+st*3);if(st>=5&&(t.boss||t.elite))dmg(u,t,base*.75,'burn')}
+    if(u.n==='Static Moth'){if(chance(.12+st*.02)){let a=randAlly();if(a)buffSpeed(u,a,.08)}if(st>=6&&chance(.35))stormOnce(u,t,base*.22,1)}
+    if(u.n==='Glass Witch'){t.fragile=(t.fragile||0)+1;flashEnemy(t,'FRAGILE','#9333ea');if(st>=5)t.slow=(t.slow||0)+.05}
+    if(u.n==='Iron Mosquito'){t.poison+=1+st*.35;heal(u,u,Math.max(1,base*.12));if(st>=5&&t.poison>2)smallShield(u,1+st)}
+    if(u.n==='Ram Rider'){t.slow=(t.slow||0)+.2;flashEnemy(t,'STUN','#78716c');if(st>=5)line(u,t,base*.32)}
+    if(u.n==='Lucky Kobold'){let rolls=st>=6?2:1, done=[];for(let r=0;r<rolls;r++){let a=randAlly(), opts=['shield','speed','power','coins'].filter(x=>!done.includes(x)), o=rand(opts);done.push(o);if(o==='coins'){S.coins+=st>=5?2:1;showUnit(u,'🍀🪙','#f59e0b')}else if(a&&o==='shield')smallShield(a,(st>=5?10:6)+st*2);else if(a&&o==='speed')buffSpeed(u,a,(st>=5?.09:.05));else if(a&&o==='power')buffPower(u,a,(st>=5?3:1)+st*.5)}}
+    if(u.n==='Star Paladin'&&(t.boss||t.elite))dmg(u,t,base*.48,'holy');
+  };
+
+  const oldHelp=help;
+  help=function(){oldHelp();setTimeout(()=>{if(!$('drawer').classList.contains('open'))return;$('body').innerHTML+=`<p><b>Recruit expansion:</b> 25 new troops are in the roster, including 🟠 Amber Warden, ⚡ Thunder Medic, 🎶 Choir Sprite, 🍀 Lucky Kobold, and 🌠 Star Paladin. Their hooks use capped one-step chains and pulse-based support actions so Storm effects cannot recurse or restart battles.</p>`},0)};
+  console.log('Loaded recruit expansion',NEW25.length,'troops');
+})();
+</script>
+
+</body></html>
