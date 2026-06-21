@@ -206,6 +206,16 @@ Grave Standard|🏴|Shadow,Spirit,Royal|52|6|.9|support|Debuffs enemy attack, bu
 Bubble Mage|🫧|Mage,Healer,Frost|44|6|1.02|support|Shields the weakest ally and chills their last attacker. 5★ heals; 6★ shields two.
 Ram Rider|🐏|Beast,Stone,Blade|66|18|1.02|near|Charges nearest enemies and briefly stuns. 5★ pierces to one extra enemy in line.
 Lucky Kobold|🍀|Money,Spirit|34|7|1.32|random|Weak attacker with random utility: shield, speed, power, or coins. 6★ rolls twice.
+Aura Smith|🛠️|Machine,Royal,Healer|54|6|.92|support|Amplifies nearby support effects. At higher stars expands from adjacent to diagonal and row supports.
+Flame Adder|🐍|Fire,Poison,Beast|46|13|1.28|burn|Makes burn and poison feed each other. Burning enemies burn harder and poisoned enemies take hotter hits.
+Lightning Rod|🧲|Storm,Stone,Guard|86|8|.72|support|Pulls storm chains safely through itself and shields when lightning jumps.
+Choir Bell|🔔|Holy,Spirit,Healer|58|5|.82|support|Echoes nearby healing and shielding effects at reduced strength.
+Royal Tactician|♟️|Royal,Mage|42|10|1.02|support|Improves row and column buffs, marks priority targets, and empowers command formations.
+Poison Gardener|🧑‍🌾|Nature,Poison,Healer|56|7|.9|support|Links poison ticks to healing and strengthens Garden Square formations.
+Frost Mason|🧱|Frost,Stone,Guard|94|7|.58|armor|Builds defensive frost walls, strengthens shield columns, and weakens chilled attackers.
+Shadow Conductor|🎻|Shadow,Spirit,Royal|44|11|1.18|support|Improves marks, backline pressure, dodge, and Shadow combo buffs.
+Blood Drummer|🪘|Blood,Beast,Royal|62|8|1.05|support|Gives fury to injured allies and makes Blood/Beast allies snowball harder.
+Gear Saint|⚙️🌟|Machine,Holy,Guard|76|9|.75|support|Turns shields into stored holy zaps and strengthens Machine/Holy defensive combos.
 Star Paladin|🌠|Holy,Guard,Royal|112|17|.66|boss|Late-game tank support. Shields nearby allies, hurts bosses, and can emergency-save allies at 5★.
 `;
 const heroes=rawHeroes.trim().split('\n').map(s=>{let [n,e,t,hp,atk,spd,focus,a]=s.split('|');return{n,e,t:t.split(','),hp:+hp,atk:+atk,spd:+spd,focus,a,team:'ally'}});
@@ -1392,6 +1402,61 @@ render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and 
   help=function(){oldHelp();setTimeout(()=>{if(!$('drawer').classList.contains('open'))return;$('body').innerHTML+=`<p><b>Recruit expansion:</b> 25 new troops are in the roster, including 🟠 Amber Warden, ⚡ Thunder Medic, 🎶 Choir Sprite, 🍀 Lucky Kobold, and 🌠 Star Paladin. Their hooks use capped one-step chains and pulse-based support actions so Storm effects cannot recurse or restart battles.</p>`},0)};
   console.log('Loaded recruit expansion',NEW25.length,'troops');
 })();
+
+/* === Combo/effect stacking synergy builder expansion === */
+(function(){
+  const EMO={burn:'🔥',poison:'☠️',heal:'💚',shield:'🛡️',strength:'📣',haste:'💨',storm:'⚡',mark:'🎯',thorn:'🌵',frost:'❄️',holy:'🌟',shadow:'🌘',gear:'⚙️',root:'🌱',meteor:'☄️',rage:'💢'};
+  const NEW10=['Aura Smith','Flame Adder','Lightning Rod','Choir Bell','Royal Tactician','Poison Gardener','Frost Mason','Shadow Conductor','Blood Drummer','Gear Saint'];
+  NEW10.slice().reverse().forEach(n=>{let k=heroes.findIndex(h=>h.n===n);if(k>18){let h=heroes.splice(k,1)[0];heroes.splice(18,0,h)}});
+  window.addUnitEffect=function(u,effectId,amount=1){if(!u)return;if(!u.fx)u.fx=[];if(!u.fxRanks)u.fxRanks={};let ef=effects.find(f=>f.id===effectId)||{id:effectId,n:effectId,e:EMO[effectId]||'✦',cls:'fxStrength'};if(!u.fx.some(f=>f.id===effectId))u.fx.push(ef);u.fxRanks[effectId]=Math.min(5,(u.fxRanks[effectId]||0)+amount);return u.fxRanks[effectId]};
+  window.effectRank=function(u,id){return Math.max(0,(u&&u.fxRanks&&u.fxRanks[id])||(hasFx(u,id)?1:0))};
+  window.starAmp=function(u){const s=u?.star||1;return 1+(s-1)*.28+(s>=5?.35:0)+(s>=6?.55:0)};
+  const pos=u=>S.squad.indexOf(u), rc=i=>[Math.floor(i/4),i%4], tags=(u,...ts)=>u&&ts.some(t=>(u.t||[]).includes(t)), alive=()=>S.squad.map((u,i)=>({u,i})).filter(x=>x.u&&!x.u.dead);
+  function nearIds(i,diag=true){let [r,c]=rc(i),out=[];for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){if(!dr&&!dc)continue;if(!diag&&Math.abs(dr)+Math.abs(dc)>1)continue;let rr=r+dr,cc=c+dc;if(rr>=0&&rr<4&&cc>=0&&cc<4)out.push(rr*4+cc)}return out}
+  window.nearbyAuraBonus=function(u,type='aura'){let i=pos(u);if(i<0)return 1;let add=0,cap=1.75;nearIds(i,true).forEach(j=>{let a=S.squad[j];if(!a||a.dead)return;let st=a.star||1, hit=false;if(['Aura Smith','Choir Bell','Royal Tactician'].includes(a.n))hit=type!=='storm'&&type!=='burn'&&type!=='poison';if(a.n==='Lightning Rod'&&type==='storm')hit=true;if(a.n==='Flame Adder'&&type==='burn')hit=true;if(a.n==='Poison Gardener'&&type==='poison')hit=true;if(a.n==='Gear Saint'&&(type==='shield'||type==='holy'))hit=true;if(hit){add+=.12*starAmp(a);cap=Math.max(cap,st>=6?2.5:st>=5?2.1:1.75)}});return Math.min(cap,1+add)};
+  function hasPair(a,b){let A=alive();return A.some(x=>tags(x.u,a))&&A.some(x=>tags(x.u,b))}
+  function adjPair(a,b){return alive().some(x=>tags(x.u,a)&&nearIds(x.i,true).some(j=>tags(S.squad[j],b)))}
+  function sameColCount(ts){for(let c=0;c<4;c++){let n=[c,c+4,c+8,c+12].filter(i=>tags(S.squad[i],...ts)).length;if(n>=2)return true}return false}
+  function sameRowCount(ts){for(let r=0;r<4;r++){let n=[r*4,r*4+1,r*4+2,r*4+3].filter(i=>tags(S.squad[i],...ts)).length;if(n>=2)return true}return false}
+  function square(ts){for(let r=0;r<3;r++)for(let c=0;c<3;c++){let ids=[r*4+c,r*4+c+1,(r+1)*4+c,(r+1)*4+c+1];if(ids.filter(i=>tags(S.squad[i],...ts)).length>=3)return ids}return null}
+  const oldUpdate=updateCombos;
+  updateCombos=function(){oldUpdate();let cb=S.combo||{},list=S.combos||[];function add(e,n,k){if(!list.some(x=>x.n===n))list.push({e,n,type:'combo'});cb[k]=true}
+    if(hasPair('Fire','Machine')||adjPair('Fire','Machine'))add('🔥','Flame Engine','flameEngine');
+    if(alive().filter(x=>tags(x.u,'Storm')).length>=2||adjPair('Storm','Machine')||adjPair('Storm','Spirit'))add('⚡','Storm Grid','stormGrid');
+    if(hasPair('Nature','Poison'))add('🌿','Venom Garden','venomGarden');
+    if(hasPair('Holy','Guard')||hasPair('Holy','Healer'))add('🌟','Holy Ward','holyWard');
+    if(hasPair('Shadow','Blade')||hasPair('Shadow','Mage'))add('🌘','Shadow Mark','shadowMark');
+    if(hasPair('Frost','Guard')||hasPair('Frost','Mage'))add('❄️','Frost Lock','frostLock');
+    if(alive().filter(x=>tags(x.u,'Royal')).length>=2||adjPair('Royal','Healer')||adjPair('Royal','Guard'))add('👑','Royal Command','royalCommand');
+    if(hasPair('Blood','Blade')||hasPair('Blood','Beast'))add('🩸','Blood Frenzy','bloodFrenzy');
+    if(hasPair('Machine','Storm')||hasPair('Machine','Holy'))add('⚙️','Gear Battery','gearBattery');
+    if(hasPair('Spirit','Healer')||hasPair('Spirit','Mage'))add('👻','Spirit Echo','spiritEcho');
+    if(adjPair('Fire','Healer')||adjPair('Fire','Nature'))add('🔥','Bonfire Circle','bonfireCircle');
+    if(sameColCount(['Guard','Stone']))add('🛡️','Shield Wall','shieldWall');
+    if(sameRowCount(['Healer','Holy','Spirit']))add('🔔','Choir Line','choirLine');
+    if(adjPair('Storm','Stone')||adjPair('Storm','Guard')||adjPair('Storm','Machine'))add('🧲','Lightning Rod','lightningRod');
+    if(square(['Nature','Poison','Healer'])){add('🌿','Garden Square','gardenSquare');square(['Nature','Poison','Healer']).forEach(i=>S.comboCells.add(i))}
+    if(adjPair('Royal','Guard')&&adjPair('Royal','Healer'))add('♟️','Command Post','commandPost');
+    S.combo=cb;S.combos=list.slice(0,40)};
+  const oldFxEmoji=fxEmoji;fxEmoji=function(u){if(!u||!u.fx||!u.fx.length)return '';return u.fx.map(f=>`${f.e}${effectRank(u,f.id)>1?effectRank(u,f.id):''}`).join('')};
+  const oldTap=tapCell;tapCell=function(i){let ef=S.placingEffect,u=S.squad[i],r=0;if(ef&&u)r=addUnitEffect(u,ef.id,1);oldTap(i);if(ef&&u){floatAlly(i,`${ef.e}${r}`,'#2563eb');render()}};
+  const oldChain=chain;chain=function(src,t,amt){if(!src||!t||t.dead)return;let b=S.battle||(S.battle={});b.chainCount=(b.chainCount||0);let rank=effectRank(src,'storm'),max=2+(S.combo.stormGrid?1:0)+(S.combo.lightningRod?1:0)+(rank>=2?1:0)+((src.star||1)>=6&&tags(src,'Storm')?1:0);max=Math.min((src.star||1)>=6&&tags(src,'Storm')?5:4,max);let rod=liveA().find(a=>a.n==='Lightning Rod'&&nearIds(pos(a),true).includes(pos(src)));if(rod){max=Math.min(5,max+((rod.star||1)>=6?2:1));giveShield(rod,4+starAmp(rod)*3);floatAlly(pos(rod),'Chain+1','#ca8a04')}let last=t,targets=liveE().filter(e=>e!==t).slice(0,max);for(let e of targets){if(b.chainCount>=5)break;b.chainCount++;beam(S.enemies.indexOf(last),S.enemies.indexOf(e));dmg(src,e,amt*(1+.18*rank),'storm');last=e}};
+  const oldHeal=heal;heal=function(src,t,amt){if(src&&src.team==='ally')amt*=starAmp(src)*nearbyAuraBonus(src,'heal')*(S.combo.holyWard?1.18:1)*(S.combo.royalCommand?1.16:1)*(S.combo.commandPost?1.2:1);oldHeal(src,t,amt);if(src&&t&&src.team==='ally'&&t.team==='ally'){if(S.combo.holyWard)giveShield(t,Math.max(1,amt*.16));if(S.combo.bonfireCircle)addUnitEffect(t,'burn',0);let b=S.battle||(S.battle={}),cap=S.combo.spiritEcho?(src.star>=6?2:1):0;b.echoCount=b.echoCount||0;if(cap&&b.echoCount<cap){let e=liveA().find(a=>a!==t&&a!==src&&!a.dead);if(e){b.echoCount++;oldHeal(src,e,amt*(src.star>=5?.45:.3));floatAlly(pos(e),'Echo','#16a34a')}}}};
+  const oldDmg2=dmg;dmg=function(src,tgt,amt,type='hit'){if(src&&src.team==='ally'&&tgt&&tgt.team==='enemy'){let r=effectRank(src,type==='burn'?'burn':type);if(r)amt*=1+r*.16;if(type==='burn')amt*=nearbyAuraBonus(src,'burn')*(S.combo.flameEngine?1.22:1);if(type==='poison')amt*=nearbyAuraBonus(src,'poison')*(S.combo.venomGarden?1.18:1);if(type==='frost'&&S.combo.frostLock)tgt.slow=(tgt.slow||0)+.04;if(tgt.marked&&(tags(src,'Blade','Mage')||S.combo.shadowMark))amt*=1+.12*Math.max(1,tgt.marked)}oldDmg2(src,tgt,amt,type)};
+  const oldAtk2=allyAtk;allyAtk=function(u){if(!u||u.dead)return;let t=pickEnemy(u),pre=t;oldAtk2(u);t=pre&&!pre.dead?pre:pickEnemy(u);if(!t)return;let st=starAmp(u),base=(u.atk+(bonus(u).atk||0))*st;
+    if(u.n==='Flame Adder'){let e=liveE().find(x=>x.burn>0||x.poison>0)||t;e.burn+=1.5*st*nearbyAuraBonus(u,'burn');e.poison+=1.2*st;floatEnemy(S.enemies.indexOf(e),'Burn+','#ea580c');if((u.star||1)>=6){addUnitEffect(u,'burn',0);addUnitEffect(u,'poison',0)}}
+    if(u.n==='Royal Tactician'){let e=liveE().sort((a,b)=>(b.marked||0)-(a.marked||0)||b.hp-a.hp)[0];if(e){e.marked=(e.marked||0)+1;floatEnemy(S.enemies.indexOf(e),'MARK','#ec4899')}}
+    if(u.n==='Shadow Conductor'&&S.combo.shadowMark)nearIds(pos(u),true).map(i=>S.squad[i]).filter(a=>tags(a,'Shadow','Blade')).forEach(a=>{a.dodgeAura=(a.dodgeAura||0)+.04;buffAtk(a,.6)});
+    if(u.n==='Blood Drummer')liveA().filter(a=>a.hp/a.maxHp<.5||tags(a,'Blood','Beast')).forEach(a=>{buffSpd(a,.04*st);if((u.star||1)>=5)a.leechAura=(a.leechAura||0)+.05;floatAlly(pos(a),'Fury+','#dc2626')});
+    if(u.n==='Gear Saint'&&S.combo.gearBattery){liveA().filter(a=>tags(a,'Machine')&&(a.shield||0)>0).slice(0,2).forEach(a=>{let e=pickEnemy(a);if(e)dmg(u,e,3+u.star*2,'storm');if(u.star>=5)heal(u,a,1+u.star)})}
+    if(u.n==='Dragon'){t.burn+=4*st*nearbyAuraBonus(u,'burn');if((hasFx(u,'burn')||hasFx(u,'meteor'))&&t.boss)splash(u,t,base*.35);if(u.star>=5&&t.boss)dmg(u,t,base*.35,'burn');if(u.star>=6&&(t.boss||t.elite)){let e=liveE().find(x=>x!==t);if(e){e.burn+=5;floatEnemy(S.enemies.indexOf(e),'🔥 spread','#ea580c')}}}
+  };
+  const oldStatuses2=statuses;statuses=function(){oldStatuses2();if(!S.battle||S.phase!=='battle')return;liveE().forEach(e=>{if(e.burn>0&&S.combo.flameEngine)e.burn*=.92;if(e.poison>0&&S.combo.venomGarden&&chance(.08+Math.min(.18,e.poison*.01))){let a=liveA().filter(x=>tags(x,'Nature','Healer')).sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0];if(a)heal(null,a,1+e.poison*.08)}});liveA().forEach(u=>{let st=starAmp(u);if(u.n==='Aura Smith')nearIds(pos(u),u.star>=5).forEach(i=>{let a=S.squad[i];if(a&&a.focus==='support'){a.supportAmp=(a.supportAmp||1)+.02*st;floatAlly(i,'Aura+','#2563eb')}});if(u.n==='Poison Gardener'&&S.combo.gardenSquare&&S.battle.tick%4===0)heal(u,liveA().sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0],2*st);if(u.n==='Frost Mason'&&S.combo.shieldWall&&S.battle.tick%5===0)[pos(u)%4,pos(u)%4+4,pos(u)%4+8,pos(u)%4+12].forEach(i=>{let a=S.squad[i];if(a)giveShield(a,3*st)});if(u.n==='Choir Bell'&&S.combo.choirLine&&S.battle.tick%4===0){let a=liveA().sort((x,y)=>x.hp/x.maxHp-y.hp/y.maxHp)[0];if(a){heal(u,a,3*st);floatAlly(pos(a),'Echo','#16a34a')}}})};
+  const oldStart2=startBuffs;startBuffs=function(){oldStart2();if(!S.battle.openingComboDone){S.battle.openingComboDone=true;S.battle.openingCount=0}liveA().forEach(u=>{let st=starAmp(u),i=pos(u);if(hasFx(u,'shield'))giveShield(u,10*effectRank(u,'shield')*st);if(u.n==='Lightning Rod')giveShield(u,12*st);if(u.n==='Frost Mason'&&u.star>=5)[i%4,i%4+4,i%4+8,i%4+12].forEach(j=>S.squad[j]&&giveShield(S.squad[j],5*st));if(u.n==='Gear Saint'&&u.star>=6)[3,7,11,15].forEach(j=>S.squad[j]&&(S.squad[j].shieldZap=(S.squad[j].shieldZap||0)+1,giveShield(S.squad[j],8)))});};
+  const oldKill2=kill;kill=function(src,t){let poisoned=t&&t.poison>0,burned=t&&t.burn>0;oldKill2(src,t);if(!t||t.team!=='enemy'||!t.dead)return;if(poisoned&&S.combo.venomGarden){let e=liveE()[0];if(e){e.poison+=2+(src?effectRank(src,'poison'):0);floatEnemy(S.enemies.indexOf(e),'Spread','#16a34a')}}if(burned&&liveA().some(u=>u.n==='Flame Adder'&&u.star>=5)){let e=liveE()[0];if(e){e.burn+=4;floatEnemy(S.enemies.indexOf(e),'Burn+','#ea580c')}}};
+  console.log('Loaded combo/effect stacking expansion with',NEW10.length,'new troops');
+})();
+
 </script>
 
 </body></html>
