@@ -1882,7 +1882,47 @@ render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and 
   async function initFirebase(){try{if(!window.firebase)throw new Error('Firebase SDK did not load');if(!firebase.apps.length)firebase.initializeApp(firebaseConfig);Save.db=firebase.firestore();let cred=await firebase.auth().signInAnonymously();Save.uid=cred.user.uid;Save.ready=true;Save.firebaseMessage='Firebase connected.';menuStatus('Firebase connected.');await refreshTop10();return true}catch(err){Save.ready=false;Save.firebaseMessage='Firebase unavailable: '+(err.message||err);menuStatus(Save.firebaseMessage);refreshTop10();return false}}
   function getProfileRef(username){if(!Save.ready)throw new Error('Firebase unavailable');return Save.db.collection('users').doc(Save.uid).collection('tiny_troops_profiles').doc(cleanUsername(username||Save.clean));}
   function topRef(){if(!Save.ready)throw new Error('Firebase unavailable');return Save.db.collection('users').doc('global_tiny_troops_leaderboard')}
-  function plain(x){return JSON.parse(JSON.stringify(x,(k,v)=>{if(k==='inspect'||k==='placing'||k==='placingEffect'||k==='evoTarget'||k==='starChoiceTarget'||k==='ultimate10Target')return null;if(v instanceof Set)return [...v];if(typeof v==='function')return undefined;return v}))}
+  function plain(x){
+  const seen = new WeakSet();
+
+  const skip = new Set([
+    'inspect',
+    'placing',
+    'placingEffect',
+    'evoTarget',
+    'starChoiceTarget',
+    'ultimate10Target',
+
+    // Combat-only references that can point back to each other
+    'lastAttacker',
+    'lastHit',
+    'target',
+    'attacker',
+    'victim',
+    'source',
+    'owner',
+    'parent',
+    'linked',
+    'link',
+    'from',
+    'to',
+    '_el',
+    'el'
+  ]);
+
+  return JSON.parse(JSON.stringify(x, (k, v) => {
+    if (skip.has(k)) return null;
+    if (v instanceof Set) return Array.from(v);
+    if (typeof v === 'function') return undefined;
+
+    if (v && typeof v === 'object') {
+      if (seen.has(v)) return null;
+      seen.add(v);
+    }
+
+    return v;
+  }));
+}
   function stableSnapshot(){let snap=plain(S);snap.saveVersion=SAVE_VERSION;snap.phase=(snap.phase==='battle'||snap.phase==='dead')?'recruit':(snap.phase==='relic'?'shop':snap.phase);snap.battle=null;snap.enemies=[];snap.placing=null;snap.placingEffect=null;snap.placingUpgrade=false;snap.inspect=null;snap.comboCells=[];if(snap.phase==='shop'){snap.shopOpen=true;snap.items=[]}return snap}
   function restoreSnapshot(snapshot){if(!snapshot||snapshot.saveVersion!==SAVE_VERSION)throw new Error('Saved run is missing or from an incompatible version.');S._battleSeq=(S._battleSeq||0)+1;Object.assign(S,snapshot);S.battle=null;S.enemies=[];S.comboCells=new Set(snapshot.comboCells||[]);S.inspect=null;close();render();if(S.phase==='shop'&&S.shopOpen)setTimeout(openShop,80);else if(S.phase==='recruit')setTimeout(openRecruit,80);menuStatus('Loaded saved run.');}
   async function saveProfile(reason='manual'){if(!Save.ready)return menuStatus('Firebase unavailable — run continues offline, but cloud save is disabled.');if(!Save.clean||!Save.password)return menuStatus('Enter username and password before saving.');try{await getProfileRef(Save.clean).set({username:Save.username,cleanUsername:Save.clean,password:Save.password,saveVersion:SAVE_VERSION,updatedAt:firebase.firestore.FieldValue.serverTimestamp(),reason,state:stableSnapshot()},{merge:true});menuStatus('Saved '+reason+'.');}catch(err){menuStatus('Firebase unavailable: '+(err.message||err));}}
