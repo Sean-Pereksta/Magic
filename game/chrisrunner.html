@@ -380,17 +380,33 @@
 
   @media (max-width: 760px), (pointer: coarse) {
     #hud {
-      top: 8px;
-      left: 8px;
+      top: max(6px, env(safe-area-inset-top));
+      left: max(6px, env(safe-area-inset-left));
       width: auto;
-      max-width: calc(100vw - 84px);
-      padding: 8px 10px;
-      font-size: 12px;
+      max-width: min(190px, calc(100vw - 76px));
+      padding: 5px 7px;
+      font-size: 9px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.35);
     }
-    #hud h1 { font-size: 15px; margin-bottom: 4px; }
-    .barWrap { height: 12px; margin-bottom: 5px; }
-    #scoreText { font-size: 14px !important; }
-    #hud div { line-height: 1.2; }
+    #hud h1 { display: none; }
+    #hud .hudLabel { display: none; }
+    .barWrap { height: 7px; margin: 3px 0 4px; border-radius: 6px; }
+    #scoreText { font-size: 12px !important; line-height: 1.05; }
+    #highScoreText { font-size: 9px !important; line-height: 1.05; }
+    #speedTierText { font-size: 8px; opacity: .78; line-height: 1.05; }
+    #pickupText,
+    #enemyText,
+    #dogText,
+    #desertStalkerText,
+    #policeText,
+    #torchText,
+    #hideText,
+    #modeText,
+    #p2Text,
+    .desktopControlsHint { display: none !important; }
+    #hud div { line-height: 1.05; }
+    #fullScreenBtn { top: max(6px, env(safe-area-inset-top)); right: max(6px, env(safe-area-inset-right)); padding: 6px 8px; border-radius: 8px; font-size: 13px; }
     #crosshair { display: none; }
     #leaderboardPanel {
       top: auto;
@@ -423,7 +439,7 @@
 <div id="hud">
   <h1>Chris Runner</h1>
 
-  <div>Energy</div>
+  <div class="hudLabel">Energy</div>
   <div class="barWrap"><div id="energyBar"></div></div>
 
   <div id="scoreText" style="font-size:18px;font-weight:bold;">Yards: 0</div>
@@ -437,7 +453,7 @@
   <div id="torchText">Torches: Locked until 500 yards</div>
   <div id="hideText">Visibility: Seen</div>
 
-  <div style="font-size:12px;opacity:.8;margin-top:8px;">
+  <div class="desktopControlsHint" style="font-size:12px;opacity:.8;margin-top:8px;">
     Move: WASD / Arrows · Sprint: Shift · Dodge: Space
   </div>
 </div>
@@ -692,6 +708,29 @@ function detectMobileDevice() {
   return window.matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
 }
 
+function snapMobileVectorToEightDirections(rawX, rawZ) {
+  const deadzone = 0.16;
+  const magnitude = Math.hypot(rawX, rawZ);
+  if (magnitude < deadzone) return { x: 0, z: 0, active: false };
+
+  const angle = Math.atan2(rawZ, rawX);
+  const segmentSize = Math.PI / 4;
+  const snappedAngle = Math.round(angle / segmentSize) * segmentSize;
+  let x = Math.cos(snappedAngle);
+  let z = Math.sin(snappedAngle);
+
+  if (Math.abs(x) < 0.000001) x = 0;
+  if (Math.abs(z) < 0.000001) z = 0;
+
+  const snappedMagnitude = Math.hypot(x, z);
+  if (snappedMagnitude > 0) {
+    x /= snappedMagnitude;
+    z /= snappedMagnitude;
+  }
+
+  return { x, z, active: true };
+}
+
 function setupMobileControls() {
   isMobileDevice = detectMobileDevice();
   const controls = document.getElementById("mobileControls");
@@ -714,10 +753,11 @@ function setupMobileControls() {
     const len = Math.hypot(dx, dy);
     if (len > max) { dx = dx / len * max; dy = dy / len * max; }
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    // Invert only the horizontal analog axis so pushing right moves right in world controls.
-    mobileMoveVector.x = -dx / max;
-    mobileMoveVector.z = -dy / max;
-    mobileMoveVector.active = Math.hypot(mobileMoveVector.x, mobileMoveVector.z) > 0.12;
+    // Keep the existing mobile axes, then quantize movement to eight possible directions.
+    const snapped = snapMobileVectorToEightDirections(-dx / max, -dy / max);
+    mobileMoveVector.x = snapped.x;
+    mobileMoveVector.z = snapped.z;
+    mobileMoveVector.active = snapped.active;
   }
   function resetStick() {
     activeTouchId = null;
