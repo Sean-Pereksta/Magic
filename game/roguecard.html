@@ -1927,7 +1927,8 @@ render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and 
     return 1+(oldPressure-1)*scalingLift;
   };
   window.enemyHpScale=function(round=S.round||1){return enemyPressureScale(round)};
-  window.enemyDamageScale=function(round=S.round||1){const pressure=enemyPressureScale(round);return ENEMY_BASE_ATK_MULT*(1+(pressure-1)*.58)};
+  // Enemy damage uses the existing multiplier, but its post-round-5 growth rate is increased by about 20% so pressure ramps faster without making the opening rounds harder.
+  window.enemyDamageScale=function(round=S.round||1){round=Math.max(1,Number(round)||1);const pressure=enemyPressureScale(round),postGrace=smoothStep(EARLY_ROUND_GRACE,15,round),damageGrowthRate=.58*(1+.2*postGrace);return ENEMY_BASE_ATK_MULT*(1+(pressure-1)*damageGrowthRate)};
   window.enemySpeedScale=function(round=S.round||1){const pressure=enemyPressureScale(round);return 1+Math.min(.22,(pressure-1)*.045)};
   window.eliteScale=function(round=S.round||1){round=Math.max(1,Number(round)||1);return 1.18+smoothStep(20,90,round)*.55};
   window.bossScale=function(round=S.round||1){round=Math.max(1,Number(round)||1);return 1.28+smoothStep(15,100,round)*.85};
