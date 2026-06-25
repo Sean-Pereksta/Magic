@@ -458,6 +458,7 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
         <div class="field"><label>End Date</label><input id="runEndDate" type="date"></div>
         <div class="field"><label>View</label><select id="runViewSelect"><option value="both">Both</option><option value="team">Teams</option><option value="rep">Representatives</option></select></div>
         <div id="qaDateField" class="field hidden"><label>QA Date Source</label><select id="runQADateSelect"><option value="interaction">Interaction Start Time</option><option value="assigned">Assigned Date</option></select></div>
+        <div class="field"><label><input id="hideNoScoreReps" type="checkbox"> Hide representatives with no score</label><select id="hideNoScoreThreshold" class="hidden"><option value="all">All categories</option><option value="1">1 category</option><option value="2">2 categories</option><option value="3">3 categories</option><option value="4">4 categories</option><option value="5">5 categories</option></select></div>
       </div>
       <div class="runTeamPanel">
         <div class="runPanelTitle"><span>Teams to Include</span><span id="teamCountBadge" class="teamCount">0 selected</span></div>
@@ -513,14 +514,14 @@ const els = {
   troubleSourceSelect: el('troubleSourceSelect'), troubleSheetSelect: el('troubleSheetSelect'), troubleHeaderRowInput: el('troubleHeaderRowInput'), troublePreviewBtn: el('troublePreviewBtn'), troubleApplyBtn: el('troubleApplyBtn'), troubleApplyFootBtn: el('troubleApplyFootBtn'), troubleStatus: el('troubleStatus'), troubleSheetPreview: el('troubleSheetPreview'), troubleHeaderSummary: el('troubleHeaderSummary'), troubleHeaderPreview: el('troubleHeaderPreview'), troubleSelectedCell: el('troubleSelectedCell'), troubleManualHeaderName: el('troubleManualHeaderName'), troubleDeclareHeaderBtn: el('troubleDeclareHeaderBtn'), troubleManualHeaders: el('troubleManualHeaders'), troubleNameMode: el('troubleNameMode'), troubleFullNameColumn: el('troubleFullNameColumn'), troubleFirstNameColumn: el('troubleFirstNameColumn'), troubleLastNameColumn: el('troubleLastNameColumn'), troubleConvertLastFirst: el('troubleConvertLastFirst'),
   teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamMoveSelect: el('teamMoveSelect'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'),
   modelList: el('modelList'), createModelBtn: el('createModelBtn'), exportModelsBtn: el('exportModelsBtn'), importModelsFile: el('importModelsFile'), massHeaderList: el('massHeaderList'), massHeaderSummary: el('massHeaderSummary'), refreshMassHeaderBtn: el('refreshMassHeaderBtn'), applyMassHeaderBtn: el('applyMassHeaderBtn'), massShowAllHeaders: el('massShowAllHeaders'), editModelTitle: el('editModelTitle'), modelNameInput: el('modelNameInput'), modelTypeInput: el('modelTypeInput'), modelTiebreakerInput: el('modelTiebreakerInput'), sourceSettingsPanel: el('sourceSettingsPanel'), columnCheckResults: el('columnCheckResults'), criteriaList: el('criteriaList'), addCriterionBtn: el('addCriterionBtn'), cancelModelTopBtn: el('cancelModelTopBtn'), cancelModelBtn: el('cancelModelBtn'), saveModelBtn: el('saveModelBtn'), saveExitModelBtn: el('saveExitModelBtn'),
-  runModelSelect: el('runModelSelect'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn')
+  runModelSelect: el('runModelSelect'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), hideNoScoreReps: el('hideNoScoreReps'), hideNoScoreThreshold: el('hideNoScoreThreshold'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn')
 };
 function esc(v){return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function id(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
 const HEADER_FIELDS = ['column','leftColumn','rightColumn','checkDateColumn','checkColumn'];
 const SOURCE_LABELS = {retail_sv2:'Retail SV2',retail_wiper:'Retail SV2 Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral SV2 Wipers',qa:'QA',checklist:'Checklist'};
 const SOURCE_TO_BOOK = {retail_sv2:'retail',retail_wiper:'retail',referral_sv2:'referral',referral_wiper:'referral',qa:'qa',checklist:'checklist'};
-const SOURCE_SHEET_HINTS = {retail_sv2:['sv2'],retail_wiper:['sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],referral_sv2:['sv2'],referral_wiper:['sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],qa:['qa','evaluation','evaluations','quality','sheet1'],checklist:['checklist','items','sheet1']};
+const SOURCE_SHEET_HINTS = {retail_sv2:['sv2'],retail_wiper:['sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],referral_sv2:['sv2'],referral_wiper:['sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],qa:['Genesys Evaluation Score','genesys evaluation score','qa','evaluation','evaluations','quality','sheet1'],checklist:['checklist','items','sheet1']};
 const SOURCE_SETTING_DEFAULTS = {
   retail_sv2:{headerRow:4,startCol:3},
   retail_wiper:{headerRow:1,startCol:1},
@@ -600,6 +601,12 @@ function nameKey(s){
   const parts=s.split(' ').filter(Boolean);
   if(parts.length>=2) return `${parts[0]} ${parts[parts.length-1]}`;
   return parts[0]||'';
+}
+function mergeRepDisplay(existing, incoming){
+  if(!existing) return incoming;
+  if(!incoming) return existing;
+  if(!existing.team && incoming.team) return {...incoming,name:cleanName(incoming.name||existing.name)};
+  return {...existing,name:cleanName(existing.name||incoming.name),team:existing.team||incoming.team||''};
 }
 function lastFirstToFirstLast(v){
   const s=String(v??'').trim().replace(/\s+/g,' ');
@@ -1659,9 +1666,9 @@ function rebuildDataIndexSync(reason='data changed'){
       pushMapArray(idx.byRep,key,r);
       pushMapArray(idx.byTeam,team,r);
       if(key && r._rep){
-        const rep={kind:'rep',key,name:r._rep,team};
-        idx.reps.set(key,rep);
-        if(!globalReps.has(key) || team) globalReps.set(key,rep);
+        const rep={kind:'rep',key,name:cleanName(r._rep),team};
+        idx.reps.set(key,mergeRepDisplay(idx.reps.get(key),rep));
+        globalReps.set(key,mergeRepDisplay(globalReps.get(key),rep));
       }
     });
     index.sources[source]=idx;
@@ -1697,9 +1704,9 @@ async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
       pushMapArray(idx.byRep,key,r);
       pushMapArray(idx.byTeam,team,r);
       if(key && r._rep){
-        const rep={kind:'rep',key,name:r._rep,team};
-        idx.reps.set(key,rep);
-        if(!globalReps.has(key) || team) globalReps.set(key,rep);
+        const rep={kind:'rep',key,name:cleanName(r._rep),team};
+        idx.reps.set(key,mergeRepDisplay(idx.reps.get(key),rep));
+        globalReps.set(key,mergeRepDisplay(globalReps.get(key),rep));
       }
       done++;
       if(done%chunkSize===0){
@@ -2132,11 +2139,24 @@ function allRepEntries(model, teams){
     return (state.dataIndex.reps||[]).filter(r=>!teamSet.size || teamSet.has(r.team||'')).sort((a,b)=>(a.team||'').localeCompare(b.team||'')||a.name.localeCompare(b.name));
   }
   const reps=new Map();
-  const add=(key,name,team)=>{ if(!key||!name) return; const t=team||state.repTeams.get(key)||''; if(teamSet.size && !teamSet.has(t)) return; reps.set(key,{kind:'rep',key,name,team:t}); };
+  const add=(key,name,team)=>{ if(!key||!name) return; const t=team||state.repTeams.get(key)||''; if(teamSet.size && !teamSet.has(t)) return; reps.set(key,mergeRepDisplay(reps.get(key),{kind:'rep',key,name:cleanName(name),team:t})); };
   allSourceKeys().flatMap(getRowsRaw).forEach(r=>add(r._repKey,r._rep,r._team));
   return Array.from(reps.values()).sort((a,b)=>(a.team||'').localeCompare(b.team||'')||a.name.localeCompare(b.name));
 }
 function teamEntries(teams){ return teams.map(t=>({kind:'team',name:t,key:t,team:t})); }
+function applyHideNoScoreRepOption(repPack){
+  if(!els.hideNoScoreReps || !els.hideNoScoreReps.checked || !repPack) return repPack;
+  const criteria=repPack.criteria||[];
+  if(!criteria.length) return repPack;
+  const thresholdValue=els.hideNoScoreThreshold ? els.hideNoScoreThreshold.value : 'all';
+  const threshold=thresholdValue==='all' ? criteria.length : Math.max(1,Number(thresholdValue)||1);
+  const rows=(repPack.rows||[]).filter(r=>{
+    const missingCount=criteria.reduce((n,c)=>n+(Number.isFinite(r.values?.[c.id])?0:1),0);
+    return missingCount < threshold;
+  });
+  assignOverallRanks(rows,'rep');
+  return {...repPack,rows};
+}
 function criterionUsesQA(c){ return c && (c.source==='qa' || c.calcType==='qaScore' || c.leftSource==='qa' || c.rightSource==='qa' || c.customSource==='qa'); }
 function modelUsesQA(model){ return !!(model && (model.criteria||[]).some(criterionUsesQA)); }
 function updateRunQADateField(){
@@ -2162,7 +2182,8 @@ async function buildRun(){
     const teamEntryList=teamEntries(teams);
     const repEntryList=allRepEntries(model, teams);
     const teamRows=await computeEntriesAsync(model, teamEntryList, 'team', opts, {start:22,end:48,label:'Scoring teams'});
-    const repRows=await computeEntriesAsync(model, repEntryList, 'rep', opts, {start:48,end:92,label:'Scoring representatives'});
+    let repRows=await computeEntriesAsync(model, repEntryList, 'rep', opts, {start:48,end:92,label:'Scoring representatives'});
+    repRows=applyHideNoScoreRepOption(repRows);
     updateProgress('Rendering report...',96);
     await yieldToBrowser();
     renderResults(model, teamRows, repRows, els.runViewSelect.value, start, end, qaDateMode);
@@ -2543,6 +2564,7 @@ function wire(){
   els.modelTypeInput.onchange=()=>{ if(state.editModel) state.editModel.type=els.modelTypeInput.value; };
   els.modelTiebreakerInput.onchange=()=>{ if(state.editModel) state.editModel.tiebreaker=els.modelTiebreakerInput.value; };
   if(els.runModelSelect) els.runModelSelect.onchange=()=>{ updateRunQADateField(); setDefaultRunDates(); renderTeamSelect(); };
+  if(els.hideNoScoreReps) els.hideNoScoreReps.onchange=()=>{ if(els.hideNoScoreThreshold) els.hideNoScoreThreshold.classList.toggle('hidden', !els.hideNoScoreReps.checked); };
   if(els.runQADateSelect) els.runQADateSelect.onchange=()=>setDefaultRunDates();
   els.teamSearchInput.oninput=()=>{ syncTeamSelectionsFromDom(); state.teamSearch=els.teamSearchInput.value; renderTeamSelect(); };
   els.addVisibleTeamsBtn.onclick=()=>setVisibleTeamsChecked(true);
