@@ -317,6 +317,7 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
         <div class="panel"><div class="panelTitle">Referral Stats</div><input id="referralFile" type="file" accept=".xlsx,.xls,.csv"><div id="referralFileName" class="fileName"></div></div>
         <div class="panel"><div class="panelTitle">QA Stats</div><input id="qaFile" type="file" accept=".xlsx,.xls,.csv"><div id="qaFileName" class="fileName"></div></div>
         <div class="panel"><div class="panelTitle">Checklist Items</div><input id="checklistFile" type="file" accept=".xlsx,.xls,.csv"><div id="checklistFileName" class="fileName"></div></div>
+        <div class="panel"><div class="panelTitle">Documented Coaching</div><input id="documentedCoachingFile" type="file" accept=".xlsx,.xls,.csv"><div id="documentedCoachingFileName" class="fileName"></div></div>
         <div class="panel"><div class="panelTitle">Packaged All Star Data</div><input id="packagedFile" type="file" accept=".xlsx,.xls"><div id="packagedFileName" class="fileName"></div></div>
       </div>
     </div>
@@ -534,13 +535,15 @@ const state = {
     retail: { fileName:'', sv2:[], wiper:[], sv2Aoa:[], wiperAoa:[], headers:{sv2:[],wiper:[]} },
     referral: { fileName:'', sv2:[], wiper:[], sv2Aoa:[], wiperAoa:[], headers:{sv2:[],wiper:[]} },
     qa: { fileName:'', rows:[], headers:[], aoa:[] },
-    checklist: { fileName:'', rows:[], headers:[], aoa:[] }
+    checklist: { fileName:'', rows:[], headers:[], aoa:[] },
+    documented_coaching: { fileName:'', rows:[], headers:[], aoa:[] }
   },
   books: {
     retail:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
     referral:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
     qa:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
     checklist:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
+    documented_coaching:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
     packaged:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}}
   },
   troubleshoot:{source:'qa',sheetName:'',headerRow:1,selectedCell:null,manualHeaders:[]},
@@ -551,14 +554,14 @@ const state = {
   teamSelectionInitialized: false,
   activeTeam: '',
   massHeaderRefs: [],
-  dataIndex: { dirty:true, reason:'initial', version:0, sources:{}, reps:[], teamCounts:[], repsByTeam:new Map(), dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map()}, lastBuiltAt:0 },
+  dataIndex: { dirty:true, reason:'initial', version:0, sources:{}, reps:[], teamCounts:[], repsByTeam:new Map(), dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map(),documented_coaching:new Map()}, lastBuiltAt:0 },
   chartSettings: {}
 };
 const el = id => document.getElementById(id);
 const els = {
   topStatus: el('topStatus'), workArea: el('workArea'), loadingOverlay: el('loadingOverlay'), loadingText: el('loadingText'), loadingBarFill: el('loadingBarFill'), loadingPct: el('loadingPct'), categoriesDrop: el('categoriesDrop'), importDrop: el('importDrop'), runBtn: el('runBtn'), exportPdfBtn: el('exportPdfBtn'), clearOutputBtn: el('clearOutputBtn'),
   importModal: el('importModal'), troubleshootModal: el('troubleshootModal'), teamsModal: el('teamsModal'), modelsModal: el('modelsModal'), massHeaderModal: el('massHeaderModal'), editModelModal: el('editModelModal'), runModal: el('runModal'),
-  retailFile: el('retailFile'), referralFile: el('referralFile'), qaFile: el('qaFile'), checklistFile: el('checklistFile'), packagedFile: el('packagedFile'), retailFileName: el('retailFileName'), referralFileName: el('referralFileName'), qaFileName: el('qaFileName'), checklistFileName: el('checklistFileName'), packagedFileName: el('packagedFileName'), openTroubleshootBtn: el('openTroubleshootBtn'), packageDataBtn: el('packageDataBtn'),
+  retailFile: el('retailFile'), referralFile: el('referralFile'), qaFile: el('qaFile'), checklistFile: el('checklistFile'), documentedCoachingFile: el('documentedCoachingFile'), packagedFile: el('packagedFile'), retailFileName: el('retailFileName'), referralFileName: el('referralFileName'), qaFileName: el('qaFileName'), checklistFileName: el('checklistFileName'), documentedCoachingFileName: el('documentedCoachingFileName'), packagedFileName: el('packagedFileName'), openTroubleshootBtn: el('openTroubleshootBtn'), packageDataBtn: el('packageDataBtn'),
   troubleSourceSelect: el('troubleSourceSelect'), troubleSheetSelect: el('troubleSheetSelect'), troubleHeaderRowInput: el('troubleHeaderRowInput'), troublePreviewBtn: el('troublePreviewBtn'), troubleApplyBtn: el('troubleApplyBtn'), troubleApplyFootBtn: el('troubleApplyFootBtn'), troubleStatus: el('troubleStatus'), troubleSheetPreview: el('troubleSheetPreview'), troubleHeaderSummary: el('troubleHeaderSummary'), troubleHeaderPreview: el('troubleHeaderPreview'), troubleSelectedCell: el('troubleSelectedCell'), troubleManualHeaderName: el('troubleManualHeaderName'), troubleDeclareHeaderBtn: el('troubleDeclareHeaderBtn'), troubleManualHeaders: el('troubleManualHeaders'), troubleNameMode: el('troubleNameMode'), troubleFullNameColumn: el('troubleFullNameColumn'), troubleFirstNameColumn: el('troubleFirstNameColumn'), troubleLastNameColumn: el('troubleLastNameColumn'), troubleConvertLastFirst: el('troubleConvertLastFirst'),
   teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamRepSearch: el('teamRepSearch'), teamMoveSelect: el('teamMoveSelect'), selectAllTeamRepsBtn: el('selectAllTeamRepsBtn'), unselectAllTeamRepsBtn: el('unselectAllTeamRepsBtn'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'),
   modelList: el('modelList'), createModelBtn: el('createModelBtn'), exportModelsBtn: el('exportModelsBtn'), importModelsFile: el('importModelsFile'), massHeaderList: el('massHeaderList'), massHeaderSummary: el('massHeaderSummary'), refreshMassHeaderBtn: el('refreshMassHeaderBtn'), applyMassHeaderBtn: el('applyMassHeaderBtn'), massShowAllHeaders: el('massShowAllHeaders'), editModelTitle: el('editModelTitle'), modelNameInput: el('modelNameInput'), modelTypeInput: el('modelTypeInput'), modelTiebreakerInput: el('modelTiebreakerInput'), sourceSettingsPanel: el('sourceSettingsPanel'), columnCheckResults: el('columnCheckResults'), criteriaList: el('criteriaList'), addCriterionBtn: el('addCriterionBtn'), cancelModelTopBtn: el('cancelModelTopBtn'), cancelModelBtn: el('cancelModelBtn'), saveModelBtn: el('saveModelBtn'), saveExitModelBtn: el('saveExitModelBtn'),
@@ -567,18 +570,22 @@ const els = {
 function esc(v){return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function id(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
 const HEADER_FIELDS = ['column','leftColumn','rightColumn','checkDateColumn','checkColumn'];
-const SOURCE_LABELS = {retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',qa:'QA Genesys Evaluation Score',checklist:'Checklist'};
-const PACKAGE_SHEETS = {retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',qa:'QA Genesys Evaluation Score',checklist:'Checklist'};
-const SOURCE_TO_BOOK = {retail_sv2:'retail',retail_wiper:'retail',referral_sv2:'referral',referral_wiper:'referral',qa:'qa',checklist:'checklist'};
-const SOURCE_SHEET_HINTS = {retail_sv2:['Retail SV2','sv2'],retail_wiper:['Retail Wipers','Retail SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],referral_sv2:['Referral SV2','sv2'],referral_wiper:['Referral Wipers','Referral SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],qa:['QA Genesys Evaluation Score','Genesys Evaluation Score','genesys evaluation score','qa','evaluation','evaluations','quality','sheet1'],checklist:['Checklist','checklist','items','sheet1']};
+const SOURCE_LABELS = {retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',qa:'QA Genesys Evaluation Score',checklist:'Checklist',documented_coaching:'Documented Coaching'};
+const PACKAGE_SHEETS = {retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',qa:'QA Genesys Evaluation Score',checklist:'Checklist',documented_coaching:'Documented Coaching'};
+const SOURCE_TO_BOOK = {retail_sv2:'retail',retail_wiper:'retail',referral_sv2:'referral',referral_wiper:'referral',qa:'qa',checklist:'checklist',documented_coaching:'documented_coaching'};
+const SOURCE_SHEET_HINTS = {retail_sv2:['Retail SV2','sv2'],retail_wiper:['Retail Wipers','Retail SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],referral_sv2:['Referral SV2','sv2'],referral_wiper:['Referral Wipers','Referral SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],qa:['QA Genesys Evaluation Score','Genesys Evaluation Score','genesys evaluation score','qa','evaluation','evaluations','quality','sheet1'],checklist:['Checklist','checklist','items','sheet1'],documented_coaching:['Documented Coaching','documented coaching','documented_coaching','coaching','sheet1']};
 const SOURCE_SETTING_DEFAULTS = {
   retail_sv2:{headerRow:4,startCol:3},
   retail_wiper:{headerRow:1,startCol:1},
   referral_sv2:{headerRow:1,startCol:3},
   referral_wiper:{headerRow:1,startCol:1},
   qa:{headerRow:1,startCol:1,sheetName:'',manualHeaders:[],columns:{agent:'Agent Name',team:'Team',score:'Score %',interactionDate:'Interaction Start Time',assignedDate:'Assigned Date',nameMode:'full',fullName:'Agent Name',firstName:'',lastName:'',convertLastFirst:false}},
-  checklist:{headerRow:1,startCol:1,sheetName:'',manualHeaders:[],columns:{rep:'Associate Name',team:'Coach Assigned',nameMode:'full',fullName:'Associate Name',firstName:'',lastName:'',convertLastFirst:false}}
+  checklist:{headerRow:1,startCol:1,sheetName:'',manualHeaders:[],columns:{rep:'Associate Name',team:'Coach Assigned',nameMode:'full',fullName:'Associate Name',firstName:'',lastName:'',convertLastFirst:false}},
+  documented_coaching:{headerRow:1,startCol:1,sheetName:'',manualHeaders:[],columns:{rep:'Associate name',team:'Job Coach',nameMode:'full',fullName:'Associate name',firstName:'',lastName:'',convertLastFirst:false}}
 };
+function isChecklistLikeSource(source){ return source==='checklist' || source==='documented_coaching'; }
+function checklistLikeDefaultDateHeaders(source){ return source==='documented_coaching' ? ['Date','Coaching Date','Created Date','Documented Date','Incident Date'] : ['Incident Date','Date','Date Served','Corrective Date','Created Date']; }
+function checklistLikeRowsState(source){ return source==='documented_coaching' ? state.data.documented_coaching : state.data.checklist; }
 function clonePlain(obj){return JSON.parse(JSON.stringify(obj||{}));}
 function sourceDefaults(source){return clonePlain(SOURCE_SETTING_DEFAULTS[source]||{headerRow:1,startCol:1});}
 function normalizeSourceSettings(settings){
@@ -733,14 +740,14 @@ function rowPullConditionPass(row, cond){
 function rowPullWarnings(c){
   return ensureRowPullConditions(c).map(cond=>parseQuotedPhrases(cond.phrasesText).warning);
 }
-function checklistRowsForSeparateCondition(entry, opts, cond){
-  return rowsForEntry('checklist', entry, {...opts,dateColumn:cond.dateColumn||opts.dateColumn}).filter(r=>rowPullConditionPass(r,cond));
+function checklistRowsForSeparateCondition(source, entry, opts, cond){
+  return rowsForEntry(source, entry, {...opts,dateColumn:cond.dateColumn||opts.dateColumn}).filter(r=>rowPullConditionPass(r,cond));
 }
-function checklistRowPassesConditions(row, entry, opts, conditions){
+function checklistRowPassesConditions(source, row, entry, opts, conditions){
   let result=true;
   conditions.forEach((cond,idx)=>{
     if(idx===0){ result=rowPullConditionPass(row,cond); return; }
-    const pass=cond.connector==='andSeparate' ? checklistRowsForSeparateCondition(entry,opts,cond).length>0 : rowPullConditionPass(row,cond);
+    const pass=cond.connector==='andSeparate' ? checklistRowsForSeparateCondition(source,entry,opts,cond).length>0 : rowPullConditionPass(row,cond);
     result = cond.connector==='or' ? (result || pass) : (result && pass);
   });
   return result;
@@ -960,9 +967,10 @@ function getHeaders(source){
   if(source==='referral_wiper') return state.data.referral.headers.wiper;
   if(source==='qa') return state.data.qa.headers;
   if(source==='checklist') return state.data.checklist.headers;
+  if(source==='documented_coaching') return state.data.documented_coaching.headers;
   return [];
 }
-function allSourceKeys(){ return ['retail_sv2','retail_wiper','referral_sv2','referral_wiper','qa','checklist']; }
+function allSourceKeys(){ return ['retail_sv2','retail_wiper','referral_sv2','referral_wiper','qa','checklist','documented_coaching']; }
 function getRowsRaw(source){
   if(source==='retail_sv2') return state.data.retail.sv2 || [];
   if(source==='retail_wiper') return state.data.retail.wiper || [];
@@ -970,12 +978,13 @@ function getRowsRaw(source){
   if(source==='referral_wiper') return state.data.referral.wiper || [];
   if(source==='qa') return state.data.qa.rows || [];
   if(source==='checklist') return state.data.checklist.rows || [];
+  if(source==='documented_coaching') return state.data.documented_coaching.rows || [];
   return [];
 }
 function filterRowsForSource(source, rows, opts={}){
   rows=rows||[];
   if(source==='qa') return filterQARowsByDate(rows, opts.start, opts.end, opts.qaDateMode);
-  if(source==='checklist') return filterChecklistRowsByDate(rows, opts.start, opts.end, opts.dateColumn);
+  if(isChecklistLikeSource(source)) return filterChecklistRowsByDate(source, rows, opts.start, opts.end, opts.dateColumn);
   return rows;
 }
 function getRows(source, opts={}){
@@ -986,7 +995,7 @@ function rowsCacheKey(source, opts={}){
 }
 function dataIndexReady(){ return !!(state.dataIndex && !state.dataIndex.dirty && state.dataIndex.sources); }
 function markDataIndexDirty(reason='data changed'){
-  if(!state.dataIndex) state.dataIndex={dirty:true,reason,sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map()},version:0,lastBuiltAt:0};
+  if(!state.dataIndex) state.dataIndex={dirty:true,reason,sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map(),documented_coaching:new Map()},version:0,lastBuiltAt:0};
   state.dataIndex.dirty=true;
   state.dataIndex.reason=reason;
 }
@@ -1023,7 +1032,7 @@ function cachedRowsForEntry(source, entry, opts={}){
   return rows;
 }
 function sourceOptions(selected){
-  return ['retail_sv2','retail_wiper','referral_sv2','referral_wiper','qa','checklist'].map(v=>`<option value="${v}" ${v===selected?'selected':''}>${labelSource(v)}</option>`).join('');
+  return allSourceKeys().map(v=>`<option value="${v}" ${v===selected?'selected':''}>${labelSource(v)}</option>`).join('');
 }
 function labelSource(v){return SOURCE_LABELS[v]||v;}
 function headerOptions(source, selected, blank=true){
@@ -1090,10 +1099,10 @@ function sourceSettingCard(source, cfg){
       <div class="field"><label>Interaction Date Column</label>${sourceHeaderSelectHtml('qa', cols.interactionDate||'Interaction Start Time', 'data-qacol-source="qa" data-qacol-field="interactionDate"')}</div>
       <div class="field"><label>Assigned Date Column</label>${sourceHeaderSelectHtml('qa', cols.assignedDate||'Assigned Date', 'data-qacol-source="qa" data-qacol-field="assignedDate"')}</div>
     </div>`;
-  }else if(source==='checklist'){
+  }else if(isChecklistLikeSource(source)){
     extra = `<div class="qaGrid">
-      <div class="field"><label>Representative Column</label>${sourceHeaderSelectHtml('checklist', cols.rep||'Associate Name', 'data-qacol-source="checklist" data-qacol-field="rep"')}</div>
-      <div class="field"><label>Coach Assigned Column</label>${sourceHeaderSelectHtml('checklist', cols.team||'Coach Assigned', 'data-qacol-source="checklist" data-qacol-field="team"')}</div>
+      <div class="field"><label>Representative Column</label>${sourceHeaderSelectHtml(source, cols.rep||(source==='documented_coaching'?'Associate name':'Associate Name'), `data-qacol-source="${source}" data-qacol-field="rep"`)}</div>
+      <div class="field"><label>Coach Assigned Column</label>${sourceHeaderSelectHtml(source, cols.team||(source==='documented_coaching'?'Job Coach':'Coach Assigned'), `data-qacol-source="${source}" data-qacol-field="team"`)}</div>
     </div>`;
   }
   return `<div class="sourceCard"><div class="sourceCardTitle"><span>${esc(labelSource(source))}</span><span class="badge">${sheetBadge}</span></div>${layoutHtml}${extra}<div class="checkResultMeta">${sourceHeaders.length?`${sourceHeaders.length} headers loaded`:'No headers loaded yet'}</div></div>`;
@@ -1166,9 +1175,10 @@ function requiredColumnsForModel(model){
       addRequired(req,c.rightSource,`${c.name} right column`,c.rightColumn);
     }
     if(c.calcType==='custom') expressionRefsForSource(c.expression,c.customSource||c.source).forEach(ref=>addRequired(req,ref.source||ref.sourceLabel,`${c.name} expression`,ref.column));
-    if(c.calcType==='checklistCount'||c.source==='checklist'){
-      addRequired(req,'checklist',`${c.name} checklist date`,c.checkDateColumn);
-      addRequired(req,'checklist',`${c.name} checklist column`,c.checkColumn);
+    if(c.calcType==='checklistCount'||isChecklistLikeSource(c.source)){
+      const checkSrc=isChecklistLikeSource(c.source)?c.source:'checklist';
+      addRequired(req,checkSrc,`${c.name} ${labelSource(checkSrc)} date`,c.checkDateColumn);
+      addRequired(req,checkSrc,`${c.name} ${labelSource(checkSrc)} column`,c.checkColumn);
     }
     (c.filters||[]).forEach(f=>{
       if(f.dynamicColumn && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.columnExpression,f.source||c.source).forEach(ref=>addRequired(req,ref.source||ref.sourceLabel,`${c.name} dynamic filter column`,ref.column));
@@ -1189,21 +1199,22 @@ function requiredColumnsForModel(model){
     addRequired(req,'qa','QA interaction date',q.interactionDate||'Interaction Start Time');
     addRequired(req,'qa','QA assigned date',q.assignedDate||'Assigned Date');
   }
-  if(used.has('checklist')){
-    const c=getSourceSetting(model,'checklist').columns||{};
+  ['checklist','documented_coaching'].forEach(src=>{ if(!used.has(src)) return;
+    const c=getSourceSetting(model,src).columns||{};
     if(c.nameMode==='firstLast'){
-      addRequired(req,'checklist','Checklist representative first name',c.firstName||'First Name');
-      addRequired(req,'checklist','Checklist representative last name',c.lastName||'Last Name');
+      addRequired(req,src,`${labelSource(src)} representative first name`,c.firstName||'First Name');
+      addRequired(req,src,`${labelSource(src)} representative last name`,c.lastName||'Last Name');
     }else{
-      addRequired(req,'checklist','Checklist representative',c.fullName||c.rep||'Associate Name');
+      addRequired(req,src,`${labelSource(src)} representative`,c.fullName||c.rep||(src==='documented_coaching'?'Associate name':'Associate Name'));
     }
-    addRequired(req,'checklist','Checklist coach assigned',c.team||'Coach Assigned');
-  }
+    addRequired(req,src,`${labelSource(src)} coach/team`,c.team||(src==='documented_coaching'?'Job Coach':'Coach Assigned'));
+  });
   return req;
 }
 const BASE_EXPECTED_HEADERS = {
   qa:['Conversationid','Genesys Evaluation ID','Agent Name','Hire Date','Team','Calibration Status','Agent Has Read','Interaction Start Time','Interaction End Time','Evaluation Status','Evaluator','Evaluation Form','Queue','VDN','Assigned Date','Changed Date','Days Hired','Score %','Interaction Duration'],
   checklist:['Associate Name','Coach Assigned','Incident Date','Date','Category','Item','Result'],
+  documented_coaching:['Associate name','Job Coach','Date','Coaching Date','Category','Item','Result','Notes'],
   retail_sv2:['Agent Name','Name','First Name','Last Name','Team Name','Team','Coach'],
   retail_wiper:['Agent Name','Name','First Name','Last Name','Team Name','Team','Coach'],
   referral_sv2:['Agent Name','Name','First Name','Last Name','Team Name','Team','Coach'],
@@ -1230,8 +1241,8 @@ function layoutLooksGoodForSource(source, headers, expectedNames, model){
   if(source==='qa'){
     return !!(findHeader(headers,[q.agent||'Agent Name','AgentName']) && findHeader(headers,[q.team||'Team']) && findHeader(headers,[q.score||'Score %','Score Percent','Evaluation Score']));
   }
-  if(source==='checklist'){
-    return !!(findHeader(headers,[q.rep||'Associate Name','Associate','Agent Name','Rep']) && findHeader(headers,[q.team||'Coach Assigned','Coach','Team']));
+  if(isChecklistLikeSource(source)){
+    return !!(findHeader(headers,[q.rep||(source==='documented_coaching'?'Associate name':'Associate Name'),'Associate','Agent Name','Rep']) && findHeader(headers,[q.team||(source==='documented_coaching'?'Job Coach':'Coach Assigned'),'Coach Assigned','Job Coach','Coach','Team']));
   }
   const count=headersMatchCount(headers, expectedNames);
   return count>=Math.min(2, uniquePlain(expectedNames).length || 2);
@@ -1247,6 +1258,7 @@ function sourceHasImportedData(source){
   if(source==='referral_wiper') return !!(state.data.referral.wiperAoa&&state.data.referral.wiperAoa.length);
   if(source==='qa') return !!(state.data.qa.aoa&&state.data.qa.aoa.length);
   if(source==='checklist') return !!(state.data.checklist.aoa&&state.data.checklist.aoa.length);
+  if(source==='documented_coaching') return !!(state.data.documented_coaching.aoa&&state.data.documented_coaching.aoa.length);
   return false;
 }
 function headerWords(s){
@@ -1310,7 +1322,7 @@ function runModelColumnCheck(){
 }
 function criterionHtml(c,i){
   const src=c.source||'retail_sv2';
-  const isCheck=src==='checklist';
+  const isCheck=src==='checklist'; const showRowPull=isChecklistLikeSource(src); const checkSource=showRowPull?src:'checklist';
   const isQa=src==='qa';
   const weightOptions=['1','2','3','4','5','autofail'].map(w=>`<option value="${w}" ${String(c.weight)===w?'selected':''}>${w==='autofail'?'Autofail':w}</option>`).join('');
   const isAutofailItem = String(c.weight)==='autofail';
@@ -1354,8 +1366,8 @@ function criterionHtml(c,i){
       <div class="field"><label>Custom Source</label><select data-cfield="customSource" disabled title="Auto-matches the top Source">${sourceOptions(c.customSource||src)}</select></div>
       <div class="field"><label>Expression</label><input data-cfield="expression" data-expression-input="1" autocomplete="off" value="${esc(c.expression||'')}" placeholder="([Appointments]+[Jobs])/[Opportunities]"></div>
     </div></div>
-    <div class="${c.calcType==='checklistCount'||isCheck?'':'hidden'}" data-block="checklist">
-      <div class="grid4"><div class="field"><label>Date Column</label><select data-cfield="checkDateColumn">${headerOptions('checklist',c.checkDateColumn)}</select></div><div></div><div></div><div></div></div>
+    <div class="${c.calcType==='checklistCount'||showRowPull?'':'hidden'}" data-block="checklist">
+      <div class="grid4"><div class="field"><label>Date Column</label><select data-cfield="checkDateColumn">${headerOptions(checkSource,c.checkDateColumn)}</select></div><div></div><div></div><div></div></div>
       <div class="row" style="margin:6px 0"><strong>Date row pull conditions</strong><button class="smallBtn" type="button" data-add-row-pull="${c.id}">Add condition</button></div>
       <div data-row-pull-for="${c.id}">${ensureRowPullConditions(c).map((cond,i,arr)=>rowPullConditionHtml(c.id,cond,i,arr.length)).join('')}</div>
     </div>
@@ -1376,8 +1388,8 @@ function rowPullConditionHtml(cid,cond,idx,total){
   return `<div class="rowPullCondition" data-row-pull-condition="${cond.id}">
     <div class="grid5">
       <div class="field">${idx?`<label>Connector</label><select data-rpfield="connector">${connOpts}</select>`:'<label>Connector</label><span class="badge">Base condition</span>'}</div>
-      <div class="field"><label>${separate?'Separate-row Date Column':'Date Column'}</label><select data-rpfield="dateColumn" ${separate?'':'disabled'}>${headerOptions('checklist',cond.dateColumn)}</select><div class="hint">${separate?'Checks another row for the same representative in the run date range.':'Uses the criteria Date Column above.'}</div></div>
-      <div class="field"><label>Column</label><select data-rpfield="column">${headerOptions('checklist',cond.column)}</select></div>
+      <div class="field"><label>${separate?'Separate-row Date Column':'Date Column'}</label><select data-rpfield="dateColumn" ${separate?'':'disabled'}>${headerOptions(getEditCriterion(cid)?.source||'checklist',cond.dateColumn)}</select><div class="hint">${separate?'Checks another row for the same representative in the run date range.':'Uses the criteria Date Column above.'}</div></div>
+      <div class="field"><label>Column</label><select data-rpfield="column">${headerOptions(getEditCriterion(cid)?.source||'checklist',cond.column)}</select></div>
       <div class="field"><label>Operator</label><select data-rpfield="operator">${opOpts}</select></div>
       <div class="field"><label>Quoted phrases</label><input data-rpfield="phrasesText" value="${esc(cond.phrasesText||'')}" placeholder='"Final", "Written", "Verbal"'>${warn?`<div class="rowPullWarn">${esc(warn)}</div>`:''}</div>
       <div class="field"><label>Preview / Remove</label><button class="smallBtn" type="button" data-preview-row-pull="${cid}|${cond.id}">Preview</button> <button class="smallBtn red" type="button" data-remove-row-pull="${cid}|${cond.id}" ${total<=1?'disabled':''}>Remove</button></div>
@@ -1439,7 +1451,7 @@ function bindCriteriaEditors(){
   els.criteriaList.querySelectorAll('[data-remove-filter]').forEach(b=>b.onclick=()=>{const [cid,fid]=b.dataset.removeFilter.split('|'); const c=getEditCriterion(cid); c.filters=(c.filters||[]).filter(f=>f.id!==fid); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-add-row-pull]').forEach(b=>b.onclick=()=>{ const c=getEditCriterion(b.dataset.addRowPull); ensureRowPullConditions(c); c.rowPullConditions.push({id:id(),connector:'and',column:'',dateColumn:c.checkDateColumn||'',operator:'contains',phrasesText:''}); renderEditModel(); });
   els.criteriaList.querySelectorAll('[data-remove-row-pull]').forEach(b=>b.onclick=()=>{ const [cid,rid]=b.dataset.removeRowPull.split('|'); const c=getEditCriterion(cid); c.rowPullConditions=ensureRowPullConditions(c).filter(x=>x.id!==rid); if(!c.rowPullConditions.length) c.rowPullConditions.push({id:id(),connector:'and',column:'',dateColumn:c.checkDateColumn||'',operator:'contains',phrasesText:''}); renderEditModel(); });
-  els.criteriaList.querySelectorAll('[data-preview-row-pull]').forEach(b=>b.onclick=()=>{ const [cid,rid]=b.dataset.previewRowPull.split('|'); const c=getEditCriterion(cid); const cond=ensureRowPullConditions(c).find(x=>x.id===rid); showColumnPreview('checklist',cond?.column||''); });
+  els.criteriaList.querySelectorAll('[data-preview-row-pull]').forEach(b=>b.onclick=()=>{ const [cid,rid]=b.dataset.previewRowPull.split('|'); const c=getEditCriterion(cid); const cond=ensureRowPullConditions(c).find(x=>x.id===rid); showColumnPreview(c.source||'checklist',cond?.column||''); });
   els.criteriaList.querySelectorAll('[data-rpfield]').forEach(input=>{
     input.onchange=input.oninput=()=>{
       const critBox=input.closest('[data-crit]'); const rowBox=input.closest('[data-row-pull-condition]'); const c=getEditCriterion(critBox.dataset.crit); const cond=ensureRowPullConditions(c).find(x=>x.id===rowBox.dataset.rowPullCondition); if(!cond) return;
@@ -1549,9 +1561,10 @@ function collectHeaderRefsForModel(model){
       addHeaderRef(refs,{...base,kind:'criterion',source:c.rightSource,field:'rightColumn',label:'Right column',expected:c.rightColumn});
     }
     if(c.calcType==='custom') expressionRefsForSource(c.expression,c.customSource||c.source).forEach(ref=>addHeaderRef(refs,{...base,kind:'expression',source:ref.source||ref.sourceLabel,field:'expression',label:'Custom expression',expected:ref.column}));
-    if(c.calcType==='checklistCount'||c.source==='checklist'){
-      addHeaderRef(refs,{...base,kind:'criterion',source:'checklist',field:'checkDateColumn',label:'Checklist date column',expected:c.checkDateColumn});
-      addHeaderRef(refs,{...base,kind:'criterion',source:'checklist',field:'checkColumn',label:'Checklist match column',expected:c.checkColumn});
+    if(c.calcType==='checklistCount'||isChecklistLikeSource(c.source)){
+      const checkSrc=isChecklistLikeSource(c.source)?c.source:'checklist';
+      addHeaderRef(refs,{...base,kind:'criterion',source:checkSrc,field:'checkDateColumn',label:`${labelSource(checkSrc)} date column`,expected:c.checkDateColumn});
+      addHeaderRef(refs,{...base,kind:'criterion',source:checkSrc,field:'checkColumn',label:`${labelSource(checkSrc)} match column`,expected:c.checkColumn});
     }
     (c.filters||[]).forEach(f=>{
       if(f.dynamicColumn && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.columnExpression,f.source||c.source).forEach(ref=>addHeaderRef(refs,{...base,kind:'filterExpression',filterId:f.id,source:ref.source||ref.sourceLabel,field:'columnExpression',label:'Dynamic filter column expression',expected:ref.column}));
@@ -1572,16 +1585,16 @@ function collectHeaderRefsForModel(model){
     addHeaderRef(refs,{modelId:model.id,modelName:model.name,kind:'sourceSetting',source:'qa',fieldKey:'interactionDate',label:'QA interaction date column',expected:q.interactionDate||'Interaction Start Time'});
     addHeaderRef(refs,{modelId:model.id,modelName:model.name,kind:'sourceSetting',source:'qa',fieldKey:'assignedDate',label:'QA assigned date column',expected:q.assignedDate||'Assigned Date'});
   }
-  if((model.criteria||[]).some(c=>c.source==='checklist'||c.calcType==='checklistCount')){
-    const cs=getSourceSetting(model,'checklist').columns||{};
+  ['checklist','documented_coaching'].forEach(src=>{ if(!(model.criteria||[]).some(c=>c.source===src || (src==='checklist'&&c.calcType==='checklistCount'))) return;
+    const cs=getSourceSetting(model,src).columns||{}; const label=labelSource(src);
     if(cs.nameMode==='firstLast'){
-      addHeaderRef(refs,{modelId:model.id,modelName:model.name,kind:'sourceSetting',source:'checklist',fieldKey:'firstName',label:'Checklist representative first name column',expected:cs.firstName||'First Name'});
-      addHeaderRef(refs,{modelId:model.id,modelName:model.name,kind:'sourceSetting',source:'checklist',fieldKey:'lastName',label:'Checklist representative last name column',expected:cs.lastName||'Last Name'});
+      addHeaderRef(refs,{modelId:model.id,modelName:model.name,kind:'sourceSetting',source:src,fieldKey:'firstName',label:`${label} representative first name column`,expected:cs.firstName||'First Name'});
+      addHeaderRef(refs,{modelId:model.id,modelName:model.name,kind:'sourceSetting',source:src,fieldKey:'lastName',label:`${label} representative last name column`,expected:cs.lastName||'Last Name'});
     }else{
-      addHeaderRef(refs,{modelId:model.id,modelName:model.name,kind:'sourceSetting',source:'checklist',fieldKey:'rep',label:'Checklist representative column',expected:cs.fullName||cs.rep||'Associate Name'});
+      addHeaderRef(refs,{modelId:model.id,modelName:model.name,kind:'sourceSetting',source:src,fieldKey:'rep',label:`${label} representative column`,expected:cs.fullName||cs.rep||(src==='documented_coaching'?'Associate name':'Associate Name')});
     }
-    addHeaderRef(refs,{modelId:model.id,modelName:model.name,kind:'sourceSetting',source:'checklist',fieldKey:'team',label:'Checklist team column',expected:cs.team||'Coach Assigned'});
-  }
+    addHeaderRef(refs,{modelId:model.id,modelName:model.name,kind:'sourceSetting',source:src,fieldKey:'team',label:`${label} team column`,expected:cs.team||(src==='documented_coaching'?'Job Coach':'Coach Assigned')});
+  });
   return refs;
 }
 function massHeaderChoiceOptions(headers, expected){
@@ -1845,6 +1858,7 @@ function getSourceAoa(source){
   if(source==='referral_wiper') return state.data.referral.wiperAoa||[];
   if(source==='qa') return state.data.qa.aoa||[];
   if(source==='checklist') return state.data.checklist.aoa||[];
+  if(source==='documented_coaching') return state.data.documented_coaching.aoa||[];
   return [];
 }
 function setSourceAoa(source, aoa, sheetName=''){
@@ -1856,6 +1870,7 @@ function setSourceAoa(source, aoa, sheetName=''){
   if(source==='referral_wiper') state.data.referral.wiperAoa=aoa||[];
   if(source==='qa') state.data.qa.aoa=aoa||[];
   if(source==='checklist') state.data.checklist.aoa=aoa||[];
+  if(source==='documented_coaching') state.data.documented_coaching.aoa=aoa||[];
 }
 function setSourceRowsAndHeaders(source, headers, rows, model){
   if(source==='retail_sv2'){ state.data.retail.headers.sv2=headers; state.data.retail.sv2=rows.map(r=>normalizeStatRow(r,'retail','sv2',getSourceSetting(model,source).columns,headers)); }
@@ -1863,7 +1878,8 @@ function setSourceRowsAndHeaders(source, headers, rows, model){
   if(source==='referral_sv2'){ state.data.referral.headers.sv2=headers; state.data.referral.sv2=rows.map(r=>normalizeStatRow(r,'referral','sv2',getSourceSetting(model,source).columns,headers)); }
   if(source==='referral_wiper'){ state.data.referral.headers.wiper=headers; state.data.referral.wiper=rows.map(r=>normalizeStatRow(r,'referral','wiper',getSourceSetting(model,source).columns,headers)); }
   if(source==='qa'){ const q=getSourceSetting(model,'qa').columns||{}; state.data.qa.headers=headers; state.data.qa.rows=rows.map(r=>normalizeQARow(r,headers,q)).filter(r=>r._repKey||r._team||Number.isFinite(r._score)); }
-  if(source==='checklist'){ const c=getSourceSetting(model,'checklist').columns||{}; state.data.checklist.headers=headers; state.data.checklist.rows=rows.map(r=>normalizeChecklistRow(r,headers,c)).filter(r=>r._repKey||r._team); }
+  if(source==='checklist'){ const c=getSourceSetting(model,'checklist').columns||{}; state.data.checklist.headers=headers; state.data.checklist.rows=rows.map(r=>normalizeChecklistRow(r,headers,c,'checklist')).filter(r=>r._repKey||r._team); }
+  if(source==='documented_coaching'){ const c=getSourceSetting(model,'documented_coaching').columns||{}; state.data.documented_coaching.headers=headers; state.data.documented_coaching.rows=rows.map(r=>normalizeChecklistRow(r,headers,c,'documented_coaching')).filter(r=>r._repKey||r._team); }
   markDataIndexDirty(`${labelSource(source)} rows updated`);
 }
 
@@ -1877,6 +1893,7 @@ function packageSheetToSource(sheetName){
   if(hasRetail && !hasReferral){ if(hasWiper) return 'retail_wiper'; if(hasSv2) return 'retail_sv2'; }
   if(hasReferral && !hasRetail){ if(hasWiper) return 'referral_wiper'; if(hasSv2) return 'referral_sv2'; }
   if((/genesys/.test(n) && /evaluation/.test(n)) || n==='qa' || /quality/.test(n)) return 'qa';
+  if(/documentedcoaching|coaching/.test(n)) return 'documented_coaching';
   if(/checklist|checkitems|items/.test(n)) return 'checklist';
   return '';
 }
@@ -1891,6 +1908,7 @@ function sourcePackageAoa(source){
   if(source==='referral_wiper') return packageRowsToAoa(state.data.referral.headers.wiper,state.data.referral.wiper);
   if(source==='qa') return packageRowsToAoa(state.data.qa.headers,state.data.qa.rows);
   if(source==='checklist') return packageRowsToAoa(state.data.checklist.headers,state.data.checklist.rows);
+  if(source==='documented_coaching') return packageRowsToAoa(state.data.documented_coaching.headers,state.data.documented_coaching.rows);
   return [[]];
 }
 function packageImportedData(){
@@ -1917,7 +1935,7 @@ async function loadPackagedFile(file){
     const wb=await readFileWorkbook(file);
     updateProgress('Assigning packaged sheets...',18); await yieldToBrowser();
     storeWorkbook('packaged',file,wb);
-    ['retail','referral','qa','checklist'].forEach(key=>{ state.books[key]={...state.books.packaged,selectedSheets:{}}; });
+    ['retail','referral','qa','checklist','documented_coaching'].forEach(key=>{ state.books[key]={...state.books.packaged,selectedSheets:{}}; });
     const m=activeModelForImport(); ensureSourceSettings(m);
     const assigned={};
     (wb.SheetNames||[]).forEach(sn=>{ const src=packageSheetToSource(sn); if(src && !assigned[src]) assigned[src]=sn; });
@@ -1929,9 +1947,9 @@ async function loadPackagedFile(file){
       await rebuildSourceFromPackage(src,assigned[src],m);
       await yieldToBrowser();
     }
-    state.data.retail.fileName=file.name; state.data.referral.fileName=file.name; state.data.qa.fileName=file.name; state.data.checklist.fileName=file.name;
+    state.data.retail.fileName=file.name; state.data.referral.fileName=file.name; state.data.qa.fileName=file.name; state.data.checklist.fileName=file.name; state.data.documented_coaching.fileName=file.name;
     els.packagedFileName.textContent=`${file.name} · ${Object.keys(assigned).length} sheets assigned`;
-    els.retailFileName.textContent=`${file.name} · packaged`; els.referralFileName.textContent=`${file.name} · packaged`; els.qaFileName.textContent=`${file.name} · packaged`; els.checklistFileName.textContent=`${file.name} · packaged`;
+    els.retailFileName.textContent=`${file.name} · packaged`; els.referralFileName.textContent=`${file.name} · packaged`; els.qaFileName.textContent=`${file.name} · packaged`; els.checklistFileName.textContent=`${file.name} · packaged`; if(els.documentedCoachingFileName) els.documentedCoachingFileName.textContent=`${file.name} · packaged`;
     await finishDataChanged('packaged data import',55);
   }catch(err){ console.error(err); alert('Packaged data import failed. Check the console for details.'); }
   finally{ hideProgress(); }
@@ -1941,6 +1959,7 @@ function sourceFileName(source){
   if(source.startsWith('referral')) return state.data.referral.fileName || state.books.referral.fileName;
   if(source==='qa') return state.data.qa.fileName || state.books.qa.fileName;
   if(source==='checklist') return state.data.checklist.fileName || state.books.checklist.fileName;
+  if(source==='documented_coaching') return state.data.documented_coaching.fileName || state.books.documented_coaching.fileName;
   return '';
 }
 function pickBestSheetForSource(wb, source, model, variants=[]){
@@ -2029,6 +2048,7 @@ function rebuildTeams(){
   [...state.data.retail.sv2,...state.data.referral.sv2,...state.data.retail.wiper,...state.data.referral.wiper].forEach(r=>{if(r._team)teams.add(r._team);});
   state.data.qa.rows.forEach(r=>{if(r._team)teams.add(r._team); if(r._repKey&&r._team)state.repTeams.set(r._repKey,r._team);});
   state.data.checklist.rows.forEach(r=>{if(r._team)teams.add(r._team); if(r._repKey&&r._team)state.repTeams.set(r._repKey,r._team);});
+  state.data.documented_coaching.rows.forEach(r=>{if(r._team)teams.add(r._team); if(r._repKey&&r._team)state.repTeams.set(r._repKey,r._team);});
   state.teams=Array.from(teams).sort((a,b)=>a.localeCompare(b));
   if(!state.teamSelectionInitialized){
     state.selectedTeams=new Set(state.teams);
@@ -2051,7 +2071,7 @@ function addDateToRange(range,d){
 function pushMapArray(map,key,row){ if(!key) return; if(!map.has(key)) map.set(key,[]); map.get(key).push(row); }
 function rowTeam(row){ return (row && (row._team || state.repTeams.get(row._repKey) || '')) || ''; }
 function rebuildDataIndexSync(reason='data changed'){
-  const index={dirty:false,reason,version:(state.dataIndex?.version||0)+1,sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map()},lastBuiltAt:Date.now()};
+  const index={dirty:false,reason,version:(state.dataIndex?.version||0)+1,sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map(),documented_coaching:new Map()},lastBuiltAt:Date.now()};
   const globalReps=new Map();
   allSourceKeys().forEach(source=>{
     const rows=getRowsRaw(source);
@@ -2063,6 +2083,9 @@ function rebuildDataIndexSync(reason='data changed'){
       if(source==='qa'){
         index.dateRanges.qa.interaction=addDateToRange(index.dateRanges.qa.interaction,r._interactionDate);
         index.dateRanges.qa.assigned=addDateToRange(index.dateRanges.qa.assigned,r._assignedDate);
+      }
+      if(isChecklistLikeSource(source)){
+        (getHeaders(source)||[]).forEach(h=>{ if(/date|time/i.test(h)){ const cur=index.dateRanges[source].get(h)||null; index.dateRanges[source].set(h,addDateToRange(cur,r[h])); } });
       }
       pushMapArray(idx.byRep,key,r);
       pushMapArray(idx.byTeam,team,r);
@@ -2087,7 +2110,7 @@ async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
   const start=Number(progress.start ?? 0), end=Number(progress.end ?? 100), span=end-start;
   const totalRows=Math.max(1,allSourceKeys().reduce((n,src)=>n+getRowsRaw(src).length,0));
   let done=0;
-  const index={dirty:false,reason,version:(state.dataIndex?.version||0)+1,sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map()},lastBuiltAt:Date.now()};
+  const index={dirty:false,reason,version:(state.dataIndex?.version||0)+1,sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map(),documented_coaching:new Map()},lastBuiltAt:Date.now()};
   const globalReps=new Map();
   const chunkSize=Number(progress.chunkSize)||1200;
   for(const source of allSourceKeys()){
@@ -2101,6 +2124,9 @@ async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
       if(source==='qa'){
         index.dateRanges.qa.interaction=addDateToRange(index.dateRanges.qa.interaction,r._interactionDate);
         index.dateRanges.qa.assigned=addDateToRange(index.dateRanges.qa.assigned,r._assignedDate);
+      }
+      if(isChecklistLikeSource(source)){
+        (getHeaders(source)||[]).forEach(h=>{ if(/date|time/i.test(h)){ const cur=index.dateRanges[source].get(h)||null; index.dateRanges[source].set(h,addDateToRange(cur,r[h])); } });
       }
       pushMapArray(idx.byRep,key,r);
       pushMapArray(idx.byTeam,team,r);
@@ -2146,6 +2172,7 @@ function sourceRowsFromStoredAoa(source, model, strict=true){
   if(source==='referral_wiper') aoa=state.data.referral.wiperAoa;
   if(source==='qa') aoa=state.data.qa.aoa;
   if(source==='checklist') aoa=state.data.checklist.aoa;
+  if(source==='documented_coaching') aoa=state.data.documented_coaching.aoa;
   const pack=sheetRowsFromAoa(aoa||[],hr,sc,strict,expectedHeadersForSource(source,model),source,model,cfg.manualHeaders||[]);
   if((pack.detected || pack.fullRow) && model && model.sourceSettings && model.sourceSettings[source]){
     model.sourceSettings[source].headerRow=pack.headerRow+1;
@@ -2161,7 +2188,8 @@ function applyModelSourceSettings(model){
   if(state.data.referral.sv2Aoa?.length){ const p=sourceRowsFromStoredAoa('referral_sv2',model,true); state.data.referral.headers.sv2=p.headers; state.data.referral.sv2=p.rows.map(r=>normalizeStatRow(r,'referral','sv2',getSourceSetting(model,'referral_sv2').columns,p.headers)); }
   if(state.data.referral.wiperAoa?.length){ const p=sourceRowsFromStoredAoa('referral_wiper',model,true); state.data.referral.headers.wiper=p.headers; state.data.referral.wiper=p.rows.map(r=>normalizeStatRow(r,'referral','wiper',getSourceSetting(model,'referral_wiper').columns,p.headers)); }
   if(state.data.qa.aoa?.length){ const p=sourceRowsFromStoredAoa('qa',model,true); const q=getSourceSetting(model,'qa').columns||{}; state.data.qa.headers=p.headers; state.data.qa.rows=p.rows.map(r=>normalizeQARow(r,p.headers,q)).filter(r=>r._repKey||r._team||Number.isFinite(r._score)); }
-  if(state.data.checklist.aoa?.length){ const p=sourceRowsFromStoredAoa('checklist',model,true); const c=getSourceSetting(model,'checklist').columns||{}; state.data.checklist.headers=p.headers; state.data.checklist.rows=p.rows.map(r=>normalizeChecklistRow(r,p.headers,c)).filter(r=>r._repKey||r._team); }
+  if(state.data.checklist.aoa?.length){ const p=sourceRowsFromStoredAoa('checklist',model,true); const c=getSourceSetting(model,'checklist').columns||{}; state.data.checklist.headers=p.headers; state.data.checklist.rows=p.rows.map(r=>normalizeChecklistRow(r,p.headers,c,'checklist')).filter(r=>r._repKey||r._team); }
+  if(state.data.documented_coaching.aoa?.length){ const p=sourceRowsFromStoredAoa('documented_coaching',model,true); const c=getSourceSetting(model,'documented_coaching').columns||{}; state.data.documented_coaching.headers=p.headers; state.data.documented_coaching.rows=p.rows.map(r=>normalizeChecklistRow(r,p.headers,c,'documented_coaching')).filter(r=>r._repKey||r._team); }
   rebuildTeams();
   markDataIndexDirty('source settings applied');
 }
@@ -2253,39 +2281,44 @@ async function loadQAFile(file){
   }catch(err){ console.error(err); alert('QA import failed. Check the console for details.'); }
   finally{ hideProgress(); }
 }
-function normalizeChecklistRow(row, headers, columns){
-  const c={...(SOURCE_SETTING_DEFAULTS.checklist.columns||{}),...(columns||{})};
-  const assocH=findHeaderFromExpected(headers,c.rep,['Associate Name','Associate','Agent Name','Rep']);
-  const coachH=findHeaderFromExpected(headers,c.team,['Coach Assigned','Coach','Team']);
-  const rep=repNameFromColumns(row,headers,{...c,nameMode:c.nameMode||'full',fullName:c.fullName||c.rep,convertLastFirst:!!c.convertLastFirst},['Associate Name','Associate','Agent Name','Rep']);
+function normalizeChecklistRow(row, headers, columns, source='checklist'){
+  const defaults=SOURCE_SETTING_DEFAULTS[source]?.columns||SOURCE_SETTING_DEFAULTS.checklist.columns||{};
+  const c={...defaults,...(columns||{})};
+  const repFallbacks=source==='documented_coaching' ? ['Associate name','Associate Name','Associate','Agent Name','Rep'] : ['Associate Name','Associate','Agent Name','Rep'];
+  const teamFallbacks=source==='documented_coaching' ? ['Job Coach','Coach Assigned','Coach','Team'] : ['Coach Assigned','Coach','Team','Job Coach'];
+  const coachH=findHeaderFromExpected(headers,c.team,teamFallbacks);
+  const rep=repNameFromColumns(row,headers,{...c,nameMode:c.nameMode||'full',fullName:c.fullName||c.rep,convertLastFirst:!!c.convertLastFirst},repFallbacks);
   return {...row,_rep:rep,_repKey:nameKey(rep),_team:String(row[coachH]??'').trim()};
 }
-async function loadChecklistFile(file){
-  showProgress('Reading checklist file...',3);
+async function loadChecklistLikeFile(file, source){
+  const label=labelSource(source);
+  showProgress(`Reading ${label} file...`,3);
   try{
     await yieldToBrowser();
     const wb=await readFileWorkbook(file);
-    updateProgress('Preparing checklist workbook...',18); await yieldToBrowser();
-    storeWorkbook('checklist',file,wb);
+    updateProgress(`Preparing ${label} workbook...`,18); await yieldToBrowser();
+    storeWorkbook(source,file,wb);
     const m=activeModelForImport(); ensureSourceSettings(m);
-    const sn=pickBestSheetForSource(wb,'checklist',m,SOURCE_SHEET_HINTS.checklist);
-    m.sourceSettings.checklist.sheetName=sn;
-    state.books.checklist.selectedSheets.checklist=sn;
-    const cfg=getSourceSetting(m,'checklist');
-    const aoa=sheetAoa(wb,sn); state.data.checklist.aoa=aoa;
-    updateProgress('Normalizing checklist rows...',38); await yieldToBrowser();
-    const pack=sourceRowsFromStoredAoa('checklist',m,true);
-    const checklistRows=await mapRowsChunked(pack.rows,r=>normalizeChecklistRow(r,pack.headers,cfg.columns),r=>r._repKey||r._team,'Normalizing checklist rows',42,54);
-    state.data.checklist={...state.data.checklist,fileName:file.name,headers:pack.headers,rows:checklistRows};
-    els.checklistFileName.textContent=`${file.name} · ${sn}`;
-    await finishDataChanged('checklist import',55);
-  }catch(err){ console.error(err); alert('Checklist import failed. Check the console for details.'); }
+    const sn=pickBestSheetForSource(wb,source,m,SOURCE_SHEET_HINTS[source]);
+    m.sourceSettings[source].sheetName=sn;
+    state.books[source].selectedSheets[source]=sn;
+    const cfg=getSourceSetting(m,source);
+    const aoa=sheetAoa(wb,sn); state.data[source].aoa=aoa;
+    updateProgress(`Normalizing ${label} rows...`,38); await yieldToBrowser();
+    const pack=sourceRowsFromStoredAoa(source,m,true);
+    const rows=await mapRowsChunked(pack.rows,r=>normalizeChecklistRow(r,pack.headers,cfg.columns,source),r=>r._repKey||r._team,`Normalizing ${label} rows`,42,54);
+    state.data[source]={...state.data[source],fileName:file.name,headers:pack.headers,rows};
+    const nameEl=source==='documented_coaching'?els.documentedCoachingFileName:els.checklistFileName;
+    if(nameEl) nameEl.textContent=`${file.name} · ${sn}`;
+    await finishDataChanged(`${label} import`,55);
+  }catch(err){ console.error(err); alert(`${label} import failed. Check the console for details.`); }
   finally{ hideProgress(); }
 }
+async function loadChecklistFile(file){ return loadChecklistLikeFile(file,'checklist'); }
 
 
 
-function availableTroubleSources(){ return ['retail_sv2','retail_wiper','referral_sv2','referral_wiper','qa','checklist']; }
+function availableTroubleSources(){ return allSourceKeys(); }
 function openTroubleshoot(source='qa'){
   const src = sourceHasImportedData(source) ? source : (availableTroubleSources().find(sourceHasImportedData) || source);
   state.troubleshoot.source=src;
@@ -2427,8 +2460,8 @@ async function applyTroubleshootSelection(){
       if(src==='qa'){
         cfg.columns.agent=els.troubleFullNameColumn.value || cfg.columns.agent || 'Agent Name';
       }
-      if(src==='checklist'){
-        cfg.columns.rep=els.troubleFullNameColumn.value || cfg.columns.rep || 'Associate Name';
+      if(isChecklistLikeSource(src)){
+        cfg.columns.rep=els.troubleFullNameColumn.value || cfg.columns.rep || (src==='documented_coaching'?'Associate name':'Associate Name');
       }
     });
     const model=activeModelForImport(); ensureSourceSettings(model);
@@ -2447,9 +2480,10 @@ function qaDateFromRow(row, mode){
   return mode==='assigned' ? row._assignedDate : row._interactionDate;
 }
 function filterQARowsByDate(rows,start,end,mode){ return (rows||[]).filter(r=>inRange(qaDateFromRow(r,mode),start,end)); }
-function filterChecklistRowsByDate(rows,start,end,dateCol){
+function filterChecklistRowsByDate(source, rows,start,end,dateCol){
   if(!start&&!end) return rows||[];
-  const col=resolveColumn('checklist', dateCol || findHeader(state.data.checklist.headers,['Incident Date','Date','Date Served','Corrective Date','Created Date']));
+  const data=checklistLikeRowsState(source);
+  const col=resolveColumn(source, dateCol || findHeader(data.headers,checklistLikeDefaultDateHeaders(source)));
   return (rows||[]).filter(r=>inRange(r[col],start,end));
 }
 function resolveColumn(source, expected){
@@ -2578,9 +2612,10 @@ function valueQA(c, entry, opts){
   return nums.reduce((a,b)=>a+b,0)/nums.length;
 }
 function valueChecklist(c, entry, opts){
-  let rows=rowsForEntry('checklist', entry, {...opts,dateColumn:c.checkDateColumn}); rows=applyFilters(rows,c.filters,'checklist',opts);
-  const conditions=ensureRowPullConditions(c).map(cond=>({...cond,column:resolveColumn('checklist',cond.column),dateColumn:resolveColumn('checklist',cond.dateColumn||c.checkDateColumn)})).filter(cond=>cond.column && String(cond.phrasesText||'').trim());
-  if(conditions.length) rows=rows.filter(r=>checklistRowPassesConditions(r,entry,{...opts,dateColumn:c.checkDateColumn},conditions));
+  const source=isChecklistLikeSource(c.source)?c.source:'checklist';
+  let rows=rowsForEntry(source, entry, {...opts,dateColumn:c.checkDateColumn}); rows=applyFilters(rows,c.filters,source,opts);
+  const conditions=ensureRowPullConditions(c).map(cond=>({...cond,column:resolveColumn(source,cond.column),dateColumn:resolveColumn(source,cond.dateColumn||c.checkDateColumn)})).filter(cond=>cond.column && String(cond.phrasesText||'').trim());
+  if(conditions.length) rows=rows.filter(r=>checklistRowPassesConditions(source,r,entry,{...opts,dateColumn:c.checkDateColumn},conditions));
   return rows.length;
 }
 function criterionValue(c, entry, opts){
@@ -2997,6 +3032,7 @@ async function moveSelectedRepsToTeam(){
     updateRowsToTeam(state.data.referral.wiper,state.data.referral.headers.wiper,keySet,newTeam,['Team_Name','Team Name','Team','Coach']);
     updateRowsToTeam(state.data.qa.rows,state.data.qa.headers,keySet,newTeam,['Team']);
     updateRowsToTeam(state.data.checklist.rows,state.data.checklist.headers,keySet,newTeam,['Coach Assigned','Coach','Team']);
+    updateRowsToTeam(state.data.documented_coaching.rows,state.data.documented_coaching.headers,keySet,newTeam,['Job Coach','Coach Assigned','Coach','Team']);
     selected.forEach(k=>state.repTeams.set(k,newTeam));
     await finishDataChanged('team assignment update',45);
     state.activeTeam=newTeam;
@@ -3026,24 +3062,27 @@ function openTeamsImported(){
   openModal('teamsModal');
 }
 function checklistDateColumnsForModel(model){
-  const cols=[]; const seen=new Set();
+  const items=[]; const seen=new Set();
   (model?.criteria||[]).forEach(c=>{
-    if(c.source==='checklist' || c.calcType==='checklistCount'){
-      const col=plainHeaderName(c.checkDateColumn) || findHeader(state.data.checklist.headers,['Incident Date','Date','Date Served','Corrective Date','Created Date']);
-      if(col && !seen.has(col)){ seen.add(col); cols.push(col); }
+    if(isChecklistLikeSource(c.source) || c.calcType==='checklistCount'){
+      const source=isChecklistLikeSource(c.source)?c.source:'checklist';
+      const data=checklistLikeRowsState(source);
+      const col=plainHeaderName(c.checkDateColumn) || findHeader(data.headers,checklistLikeDefaultDateHeaders(source));
+      const key=source+'|'+col;
+      if(col && !seen.has(key)){ seen.add(key); items.push({source,col}); }
     }
   });
-  return cols;
+  return items;
 }
 function rangeToDates(range){ return range&&range.min&&range.max ? [range.min,range.max] : []; }
-function checklistDateRangeForColumn(col){
+function checklistDateRangeForColumn(source,col){
   if(!col) return null;
   const idx=state.dataIndex;
-  if(dataIndexReady() && idx.dateRanges && idx.dateRanges.checklist instanceof Map && idx.dateRanges.checklist.has(col)) return idx.dateRanges.checklist.get(col);
-  const actual=resolveColumn('checklist',col);
+  if(dataIndexReady() && idx.dateRanges && idx.dateRanges[source] instanceof Map && idx.dateRanges[source].has(col)) return idx.dateRanges[source].get(col);
+  const actual=resolveColumn(source,col);
   let range=null;
-  (state.data.checklist.rows||[]).forEach(r=>{ range=addDateToRange(range,r[actual]); });
-  if(dataIndexReady() && idx.dateRanges && idx.dateRanges.checklist instanceof Map) idx.dateRanges.checklist.set(col,range);
+  (checklistLikeRowsState(source).rows||[]).forEach(r=>{ range=addDateToRange(range,r[actual]); });
+  if(dataIndexReady() && idx.dateRanges && idx.dateRanges[source] instanceof Map) idx.dateRanges[source].set(col,range);
   return range;
 }
 function setDefaultRunDates(){
@@ -3052,11 +3091,11 @@ function setDefaultRunDates(){
   let dates=[];
   if(dataIndexReady()){
     if(modelUsesQA(model)) dates=dates.concat(rangeToDates(state.dataIndex.dateRanges?.qa?.[qaMode]));
-    checklistDateColumnsForModel(model).forEach(col=>{ dates=dates.concat(rangeToDates(checklistDateRangeForColumn(col))); });
+    checklistDateColumnsForModel(model).forEach(({source,col})=>{ dates=dates.concat(rangeToDates(checklistDateRangeForColumn(source,col))); });
   }else{
     const qaDates=(modelUsesQA(model) && state.data.qa.rows.length) ? state.data.qa.rows.map(r=>qaDateFromRow(r,qaMode)) : [];
     const checklistCols=checklistDateColumnsForModel(model);
-    const checklistDates=checklistCols.flatMap(col=>state.data.checklist.rows.map(r=>parseDateOnly(r[col])));
+    const checklistDates=checklistCols.flatMap(({source,col})=>checklistLikeRowsState(source).rows.map(r=>parseDateOnly(r[col])));
     dates=[...qaDates,...checklistDates];
   }
   dates=dates.filter(d=>d instanceof Date&&!isNaN(d));
@@ -3103,6 +3142,7 @@ function wire(){
   els.referralFile.onchange=e=>{const f=e.target.files[0]; if(f) loadReferralFile(f);};
   els.qaFile.onchange=e=>{const f=e.target.files[0]; if(f) loadQAFile(f);};
   els.checklistFile.onchange=e=>{const f=e.target.files[0]; if(f) loadChecklistFile(f);};
+  if(els.documentedCoachingFile) els.documentedCoachingFile.onchange=e=>{const f=e.target.files[0]; if(f) loadChecklistLikeFile(f,'documented_coaching');};
   if(els.packagedFile) els.packagedFile.onchange=e=>{const f=e.target.files[0]; if(f) loadPackagedFile(f);};
   els.createModelBtn.onclick=()=>openEditModel(null);
   els.exportModelsBtn.onclick=()=>downloadText('all_star_models.txt', serializeModelsForExport(state.models||[]));
