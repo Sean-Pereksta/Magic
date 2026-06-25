@@ -96,7 +96,14 @@ input[type="file"]{background:#fff}
 #editModelModal .criterionRow{border:1px solid #cbd5e1;border-left:5px solid #111827;border-radius:10px;background:#fff;padding:8px;gap:6px;box-shadow:0 1px 4px rgba(15,23,42,.06)}
 #editModelModal .criterionRow>.row:first-child{background:#f3f4f6;margin:-8px -8px 2px -8px;padding:6px 8px;border-radius:9px 9px 0 0;border-bottom:1px solid #cbd5e1}
 #editModelModal .panel{border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;padding:7px;gap:6px}
-#editModelModal .filterRow{border:1px solid #d1d5db;border-radius:8px;padding:6px;background:#fff}
+#editModelModal .filterRow,#editModelModal .rowPullCondition{border:1px solid #d1d5db;border-radius:8px;padding:6px;background:#fff}
+#editModelModal .rowPullWarn{color:#b91c1c;font-size:12px;font-weight:700;margin-top:3px}
+#columnPreviewModal{z-index:2600}
+#columnPreviewModal .modal{width:min(720px,94vw);border-radius:10px}
+.previewValues{max-height:55vh;overflow:auto;border:1px solid #d1d5db;border-radius:8px;background:#fff}
+.previewValueRow{display:flex;justify-content:space-between;gap:10px;padding:6px 8px;border-bottom:1px solid #f1f5f9}
+.previewValueRow:last-child{border-bottom:0}
+.previewCount{font-weight:800;color:#475569}
 #editModelModal [data-block]{border:1px dashed #cbd5e1;border-radius:8px;padding:7px;background:#fcfcfd}
 #editModelModal select[multiple]{min-height:72px}
 #modelsModal .modelRow{border:1px solid #d1d5db;border-left:5px solid #111827;border-radius:8px;padding:8px;background:#fff}
@@ -453,6 +460,18 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
   </div>
 </div>
 
+<div id="columnPreviewModal" class="modalBackdrop">
+  <div class="modal">
+    <div class="modalHead"><div class="modalTitle" id="columnPreviewTitle">Column Preview</div><button class="dark" id="columnPreviewCloseBtn" type="button">Close</button></div>
+    <div class="modalBody">
+      <div class="field"><label>Search preview values</label><input id="columnPreviewSearch" placeholder="Type to filter preview values"></div>
+      <div id="columnPreviewNote" class="hint"></div>
+      <div id="columnPreviewValues" class="previewValues"></div>
+    </div>
+    <div class="modalFoot"><button class="dark" id="columnPreviewDoneBtn" type="button">Close Preview</button></div>
+  </div>
+</div>
+
 <div id="runModal" class="modalBackdrop">
   <div class="modal">
     <div class="modalHead"><div class="modalTitle">Run</div><button class="dark" data-close="runModal">Close</button></div>
@@ -586,7 +605,7 @@ function normalizeCriterionForStorage(c){
   c.calcType=['single','multi','custom','qaScore','checklistCount'].includes(c.calcType)?c.calcType:'single';
   c.aggregate=['sum','avg','count'].includes(c.aggregate)?c.aggregate:'sum';
   c.operator=['divide','multiply','plus','minus','greaterThan','lessThan'].includes(c.operator)?c.operator:'divide';
-  c.checkOperator=['contains','equals'].includes(c.checkOperator)?c.checkOperator:'contains';
+  c.checkOperator=normalizeRowPullOperator(c.checkOperator);
   if(c.missingRank===undefined || c.missingRank===null || c.missingRank==='') c.missingRank=999;
   if(c.missingPoints===undefined || c.missingPoints===null || c.missingPoints==='') c.missingPoints=0;
   if(c.minimumMonitors===undefined || c.minimumMonitors===null || c.minimumMonitors==='') c.minimumMonitors=0;
@@ -602,6 +621,7 @@ function normalizeCriterionForStorage(c){
   HEADER_FIELDS.forEach(f=>{ c[f]=plainHeaderName(c[f]); });
   c.expression=String(c.expression||'');
   c.checkText=String(c.checkText||'');
+  ensureRowPullConditions(c);
   c.filters=(c.filters||[]).map(f=>normalizeFilterForStorage(f,c.source));
   return c;
 }
@@ -627,6 +647,66 @@ function normalizeFilterForStorage(f, fallbackSource){
 }
 function isNumericFilterOperator(op){ return ['greaterThan','greaterEqual','lessThan','lessEqual'].includes(op); }
 function filterOperatorLabel(op){ return ({is:'Is',isNot:'Is not',greaterThan:'Greater than',greaterEqual:'Greater than or equal to',lessThan:'Less than',lessEqual:'Less than or equal to'})[op]||'Is'; }
+
+function rowPullOperatorLabel(op){ return ({contains:'Contains',equals:'Equals',notContains:'Does not contain',notEquals:'Does not equal'})[op]||'Contains'; }
+function normalizeRowPullOperator(op){ return ['contains','equals','notContains','notEquals'].includes(op)?op:'contains'; }
+function parseQuotedPhrases(text){
+  const raw=String(text??'');
+  const phrases=[]; let i=0;
+  while(i<raw.length){
+    while(i<raw.length && /[\s,]/.test(raw[i])) i++;
+    if(i>=raw.length) break;
+    if(raw[i]!=='"') return {ok:false,phrases:[],warning:'Put each word or phrase in quotes, like "Final", "Written", "Verbal".'};
+    i++; let buf='', closed=false;
+    while(i<raw.length){
+      const ch=raw[i++];
+      if(ch==='\\' && i<raw.length){ buf+=raw[i++]; continue; }
+      if(ch==='"'){ closed=true; break; }
+      buf+=ch;
+    }
+    if(!closed) return {ok:false,phrases:[],warning:'Finish the quoted phrase or put each word or phrase in quotes, like "Final", "Written", "Verbal".'};
+    const phrase=buf.trim();
+    if(phrase) phrases.push(phrase);
+    while(i<raw.length && /\s/.test(raw[i])) i++;
+    if(i<raw.length && raw[i]===',') i++;
+    else if(i<raw.length) return {ok:false,phrases:[],warning:'Separate quoted words or phrases with commas, like "Final", "Written", "Verbal".'};
+  }
+  if(!phrases.length && raw.trim()) return {ok:false,phrases:[],warning:'Put each word or phrase in quotes, like "Final", "Written", "Verbal".'};
+  return {ok:true,phrases,warning:''};
+}
+function normalizeRowPullCondition(cond, fallback){
+  cond={...(cond||{})};
+  return {id:cond.id||id(),column:plainHeaderName(cond.column??fallback?.column??''),operator:normalizeRowPullOperator(cond.operator??fallback?.operator),phrasesText:String(cond.phrasesText??fallback?.phrasesText??'')};
+}
+function quotePhraseForMigration(text){
+  const raw=String(text??'').trim();
+  if(!raw || parseQuotedPhrases(raw).ok) return raw;
+  return `"${raw.replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"`;
+}
+function ensureRowPullConditions(c){
+  let list=Array.isArray(c.rowPullConditions)?c.rowPullConditions:[];
+  if(!list.length && (c.checkColumn || c.checkText)) list=[{column:c.checkColumn,operator:c.checkOperator,phrasesText:quotePhraseForMigration(c.checkText)}];
+  if(!list.length) list=[{column:'',operator:'contains',phrasesText:''}];
+  c.rowPullConditions=list.map(x=>normalizeRowPullCondition(x));
+  const first=c.rowPullConditions[0]||{};
+  c.checkColumn=plainHeaderName(c.checkColumn||first.column||'');
+  c.checkOperator=normalizeRowPullOperator(c.checkOperator||first.operator);
+  c.checkText=String(c.checkText||first.phrasesText||'');
+  return c.rowPullConditions;
+}
+function rowPullConditionPass(row, cond){
+  const parsed=parseQuotedPhrases(cond.phrasesText);
+  if(!parsed.ok || !parsed.phrases.length) return false;
+  const val=String(row[cond.column]??'').trim().toLowerCase();
+  const phrases=parsed.phrases.map(p=>String(p).trim().toLowerCase());
+  if(cond.operator==='equals') return phrases.some(p=>val===p);
+  if(cond.operator==='notContains') return !phrases.some(p=>val.includes(p));
+  if(cond.operator==='notEquals') return !phrases.some(p=>val===p);
+  return phrases.some(p=>val.includes(p));
+}
+function rowPullWarnings(c){
+  return ensureRowPullConditions(c).map(cond=>parseQuotedPhrases(cond.phrasesText).warning);
+}
 function numericComparisonPass(left, op, right){
   if(!Number.isFinite(left)||!Number.isFinite(right)) return false;
   if(op==='greaterThan') return left>right;
@@ -758,6 +838,29 @@ function fmt(v, type){
 }
 function openModal(id){el(id).classList.add('open');}
 function closeModal(id){el(id).classList.remove('open');}
+
+let currentColumnPreview={source:'',column:'',items:[]};
+function showColumnPreview(source,column){
+  const modal=el('columnPreviewModal'), title=el('columnPreviewTitle'), note=el('columnPreviewNote'), search=el('columnPreviewSearch');
+  if(!modal||!column){ alert('Select a column before previewing values.'); return; }
+  const rows=getRows(source,{}), counts=new Map();
+  rows.forEach(r=>{ const raw=String(r[column]??'').trim(); const key=raw || '(blank)'; counts.set(key,(counts.get(key)||0)+1); });
+  const items=Array.from(counts.entries()).map(([value,count])=>({value,count})).sort((a,b)=>b.count-a.count||a.value.localeCompare(b.value));
+  currentColumnPreview={source,column,items};
+  title.textContent=`Column Preview: ${column}`;
+  note.textContent=`Showing up to 200 unique/sample values${items.length>200?` out of ${items.length}. Use search to narrow the list.`:` (${items.length} total).`}`;
+  search.value='';
+  renderColumnPreviewValues();
+  modal.classList.add('open');
+  setTimeout(()=>search.focus(),0);
+}
+function renderColumnPreviewValues(){
+  const box=el('columnPreviewValues'), search=el('columnPreviewSearch'); if(!box) return;
+  const q=String(search?.value||'').toLowerCase().trim();
+  const shown=currentColumnPreview.items.filter(x=>!q || x.value.toLowerCase().includes(q)).slice(0,200);
+  box.innerHTML=shown.length ? shown.map(x=>`<div class="previewValueRow"><span>${esc(x.value)}</span><span class="previewCount">${x.count}</span></div>`).join('') : '<div class="previewValueRow"><em>No matching values.</em></div>';
+}
+function closeColumnPreview(){ closeModal('columnPreviewModal'); }
 function setStatus(){
   els.topStatus.textContent = 'Allstar Report';
 }
@@ -1212,12 +1315,11 @@ function criterionHtml(c,i){
       <div class="field"><label>Custom Source</label><select data-cfield="customSource" disabled title="Auto-matches the top Source">${sourceOptions(c.customSource||src)}</select></div>
       <div class="field"><label>Expression</label><input data-cfield="expression" data-expression-input="1" autocomplete="off" value="${esc(c.expression||'')}" placeholder="([Appointments]+[Jobs])/[Opportunities]"></div>
     </div></div>
-    <div class="${c.calcType==='checklistCount'||isCheck?'':'hidden'}" data-block="checklist"><div class="grid4">
-      <div class="field"><label>Date Column</label><select data-cfield="checkDateColumn">${headerOptions('checklist',c.checkDateColumn)}</select></div>
-      <div class="field"><label>Column</label><select data-cfield="checkColumn">${headerOptions('checklist',c.checkColumn)}</select></div>
-      <div class="field"><label>Match</label><select data-cfield="checkOperator"><option value="contains" ${c.checkOperator==='contains'?'selected':''}>Contains</option><option value="equals" ${c.checkOperator==='equals'?'selected':''}>Equals</option></select></div>
-      <div class="field"><label>Text</label><input data-cfield="checkText" value="${esc(c.checkText||'')}"></div>
-    </div></div>
+    <div class="${c.calcType==='checklistCount'||isCheck?'':'hidden'}" data-block="checklist">
+      <div class="grid4"><div class="field"><label>Date Column</label><select data-cfield="checkDateColumn">${headerOptions('checklist',c.checkDateColumn)}</select></div><div></div><div></div><div></div></div>
+      <div class="row" style="margin:6px 0"><strong>Date row pull conditions</strong><button class="smallBtn" type="button" data-add-row-pull="${c.id}">Add AND condition</button></div>
+      <div data-row-pull-for="${c.id}">${ensureRowPullConditions(c).map((cond,i,arr)=>rowPullConditionHtml(c.id,cond,i,arr.length)).join('')}</div>
+    </div>
     <div class="${isAutofailItem?'grid4':'grid4 hidden'}" data-block="autofailSettings">
       <div class="field"><label>Required Minimum</label><select data-cfield="minimumEnabled"><option value="false" ${!c.minimumEnabled?'selected':''}>No</option><option value="true" ${c.minimumEnabled?'selected':''}>Yes</option></select></div>
       <div class="field"><label>Minimum</label><input data-cfield="minimum" type="number" step="0.01" value="${esc(c.minimum??0)}"></div>
@@ -1225,6 +1327,19 @@ function criterionHtml(c,i){
       <div class="field"><label>Autofail Check</label><select data-cfield="autofailOperator"><option value="greaterEqual" ${c.autofailOperator==='greaterEqual'?'selected':''}>>=</option><option value="greaterThan" ${c.autofailOperator==='greaterThan'?'selected':''}>&gt;</option><option value="equals" ${c.autofailOperator==='equals'?'selected':''}>=</option></select></div>
     </div>
     <div class="panel"><div class="row"><strong>Filters</strong><button class="smallBtn" data-add-filter="${c.id}">Add Filter</button></div><div data-filters-for="${c.id}">${(c.filters||[]).map(f=>filterHtml(c.id,f)).join('')}</div></div>
+  </div>`;
+}
+function rowPullConditionHtml(cid,cond,idx,total){
+  const warn=parseQuotedPhrases(cond.phrasesText).warning;
+  const opOpts=['contains','equals','notContains','notEquals'].map(op=>`<option value="${op}" ${cond.operator===op?'selected':''}>${rowPullOperatorLabel(op)}</option>`).join('');
+  return `<div class="rowPullCondition" data-row-pull-condition="${cond.id}">
+    <div class="grid5">
+      <div class="field"><label>${idx?'AND Column':'Column'}</label><select data-rpfield="column">${headerOptions('checklist',cond.column)}</select></div>
+      <div class="field"><label>Preview</label><button class="smallBtn" type="button" data-preview-row-pull="${cid}|${cond.id}">Preview</button></div>
+      <div class="field"><label>Operator</label><select data-rpfield="operator">${opOpts}</select></div>
+      <div class="field"><label>Quoted phrases</label><input data-rpfield="phrasesText" value="${esc(cond.phrasesText||'')}" placeholder='"Final", "Written", "Verbal"'>${warn?`<div class="rowPullWarn">${esc(warn)}</div>`:''}</div>
+      <div class="field"><label>Remove</label><button class="smallBtn red" type="button" data-remove-row-pull="${cid}|${cond.id}" ${total<=1?'disabled':''}>Remove</button></div>
+    </div>
   </div>`;
 }
 function filterHtml(cid,f){
@@ -1280,6 +1395,23 @@ function bindCriteriaEditors(){
   els.criteriaList.querySelectorAll('[data-copy-crit]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.copyCrit); if(c){const n=JSON.parse(JSON.stringify(c)); n.id=id(); n.name=n.name+' Copy'; state.editModel.criteria.push(n); renderEditModel();}});
   els.criteriaList.querySelectorAll('[data-add-filter]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.addFilter); c.filters=c.filters||[]; c.filters.push({id:id(),action:'include',mode:'include',operator:'is',source:c.source||'retail_sv2',column:'',values:[],value:''}); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-remove-filter]').forEach(b=>b.onclick=()=>{const [cid,fid]=b.dataset.removeFilter.split('|'); const c=getEditCriterion(cid); c.filters=(c.filters||[]).filter(f=>f.id!==fid); renderEditModel();});
+  els.criteriaList.querySelectorAll('[data-add-row-pull]').forEach(b=>b.onclick=()=>{ const c=getEditCriterion(b.dataset.addRowPull); ensureRowPullConditions(c); c.rowPullConditions.push({id:id(),column:'',operator:'contains',phrasesText:''}); renderEditModel(); });
+  els.criteriaList.querySelectorAll('[data-remove-row-pull]').forEach(b=>b.onclick=()=>{ const [cid,rid]=b.dataset.removeRowPull.split('|'); const c=getEditCriterion(cid); c.rowPullConditions=ensureRowPullConditions(c).filter(x=>x.id!==rid); if(!c.rowPullConditions.length) c.rowPullConditions.push({id:id(),column:'',operator:'contains',phrasesText:''}); renderEditModel(); });
+  els.criteriaList.querySelectorAll('[data-preview-row-pull]').forEach(b=>b.onclick=()=>{ const [cid,rid]=b.dataset.previewRowPull.split('|'); const c=getEditCriterion(cid); const cond=ensureRowPullConditions(c).find(x=>x.id===rid); showColumnPreview('checklist',cond?.column||''); });
+  els.criteriaList.querySelectorAll('[data-rpfield]').forEach(input=>{
+    input.onchange=input.oninput=()=>{
+      const critBox=input.closest('[data-crit]'); const rowBox=input.closest('[data-row-pull-condition]'); const c=getEditCriterion(critBox.dataset.crit); const cond=ensureRowPullConditions(c).find(x=>x.id===rowBox.dataset.rowPullCondition); if(!cond) return;
+      cond[input.dataset.rpfield]=input.value;
+      const first=c.rowPullConditions[0]; if(first){ c.checkColumn=first.column; c.checkOperator=first.operator; c.checkText=first.phrasesText; }
+      if(['column','operator'].includes(input.dataset.rpfield)) renderEditModel();
+      else {
+        const warn=input.parentElement.querySelector('.rowPullWarn');
+        const msg=parseQuotedPhrases(input.value).warning;
+        if(msg && !warn) input.insertAdjacentHTML('afterend',`<div class="rowPullWarn">${esc(msg)}</div>`);
+        else if(warn) warn.textContent=msg;
+      }
+    };
+  });
   els.criteriaList.querySelectorAll('[data-ff]').forEach(input=>{
     input.onchange=input.oninput=()=>{
       const critBox=input.closest('[data-crit]'); const filterBox=input.closest('[data-filter]'); const c=getEditCriterion(critBox.dataset.crit); const f=(c.filters||[]).find(x=>x.id===filterBox.dataset.filter); if(!f) return;
@@ -2405,11 +2537,8 @@ function valueQA(c, entry, opts){
 }
 function valueChecklist(c, entry, opts){
   let rows=rowsForEntry('checklist', entry, {...opts,dateColumn:c.checkDateColumn}); rows=applyFilters(rows,c.filters,'checklist',opts);
-  if(c.checkColumn && String(c.checkText||'').trim()){
-    const needle=String(c.checkText).toLowerCase().trim();
-    const checkCol=resolveColumn('checklist',c.checkColumn);
-    rows=rows.filter(r=>{ const val=String(r[checkCol]??'').toLowerCase().trim(); return c.checkOperator==='equals'?val===needle:val.includes(needle); });
-  }
+  const conditions=ensureRowPullConditions(c).map(cond=>({...cond,column:resolveColumn('checklist',cond.column)})).filter(cond=>cond.column && String(cond.phrasesText||'').trim());
+  if(conditions.length) rows=rows.filter(r=>conditions.every(cond=>rowPullConditionPass(r,cond)));
   return rows.length;
 }
 function criterionValue(c, entry, opts){
@@ -2828,6 +2957,8 @@ function exportPDF(){
   else window.print();
 }
 function wire(){
+  const previewSearch=el('columnPreviewSearch'); if(previewSearch) previewSearch.oninput=renderColumnPreviewValues;
+  ['columnPreviewCloseBtn','columnPreviewDoneBtn'].forEach(pid=>{ const b=el(pid); if(b) b.onclick=closeColumnPreview; });
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closeModal(b.dataset.close));
   if(els.openTroubleshootBtn) els.openTroubleshootBtn.onclick=()=>openTroubleshoot('qa');
   if(els.packageDataBtn) els.packageDataBtn.onclick=packageImportedData;
