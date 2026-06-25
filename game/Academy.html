@@ -572,8 +572,34 @@ function normalizeCriterionForStorage(c){
   c.minimumMonitors=Math.max(0,Math.floor(Number(c.minimumMonitors)||0));
   c.zeroCanWin=!!c.zeroCanWin;
   HEADER_FIELDS.forEach(f=>{ c[f]=plainHeaderName(c[f]); });
-  c.filters=(c.filters||[]).map(f=>({...(f||{}), source:c.source, column:plainHeaderName(f?.column), values:(f?.values||[]).map(plainHeaderName).filter(Boolean)}));
+  c.filters=(c.filters||[]).map(f=>normalizeFilterForStorage(f,c.source));
   return c;
+}
+function normalizeFilterForStorage(f, fallbackSource){
+  f={...(f||{})};
+  const action=f.action || f.mode || 'exclude';
+  const operator=f.operator || 'is';
+  return {
+    ...f,
+    id:f.id||id(),
+    action:action==='include'?'include':'exclude',
+    mode:action==='include'?'include':'exclude',
+    operator:['is','isNot','greaterThan','greaterEqual','lessThan','lessEqual'].includes(operator)?operator:'is',
+    source:f.source || fallbackSource || 'retail_sv2',
+    column:plainHeaderName(f.column),
+    values:(f.values||[]).map(v=>String(v??'').trim()).filter(Boolean),
+    value:String(f.value??'').trim()
+  };
+}
+function isNumericFilterOperator(op){ return ['greaterThan','greaterEqual','lessThan','lessEqual'].includes(op); }
+function filterOperatorLabel(op){ return ({is:'Is',isNot:'Is not',greaterThan:'Greater than',greaterEqual:'Greater than or equal to',lessThan:'Less than',lessEqual:'Less than or equal to'})[op]||'Is'; }
+function numericComparisonPass(left, op, right){
+  if(!Number.isFinite(left)||!Number.isFinite(right)) return false;
+  if(op==='greaterThan') return left>right;
+  if(op==='greaterEqual') return left>=right;
+  if(op==='lessThan') return left<right;
+  if(op==='lessEqual') return left<=right;
+  return false;
 }
 function normalizeModelForStorage(m){
   m = {...(m||{})};
@@ -1115,13 +1141,20 @@ function criterionHtml(c,i){
   </div>`;
 }
 function filterHtml(cid,f){
+  f=normalizeFilterForStorage(f,'retail_sv2');
   const vals=uniqueValues(f.source,f.column);
   const selected=new Set(f.values||[]);
+  const numeric=isNumericFilterOperator(f.operator);
+  const operatorOptions=['is','isNot','greaterThan','greaterEqual','lessThan','lessEqual'].map(op=>`<option value="${op}" ${f.operator===op?'selected':''}>${filterOperatorLabel(op)}</option>`).join('');
+  const valueControl=numeric
+    ? `<input data-ff="value" type="text" inputmode="decimal" value="${esc(f.value||'')}" placeholder="Enter a number">`
+    : `<select multiple data-ff="values" size="4">${vals.map(v=>`<option value="${esc(v)}" ${selected.has(v)?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
   return `<div class="filterRow" data-filter="${f.id}"><div class="grid5">
-    <div class="field"><label>Mode</label><select data-ff="mode"><option value="exclude" ${f.mode==='exclude'?'selected':''}>Exclude</option><option value="include" ${f.mode==='include'?'selected':''}>Only Include</option></select></div>
+    <div class="field"><label>Filter Action</label><select data-ff="action"><option value="include" ${f.action==='include'?'selected':''}>Only include</option><option value="exclude" ${f.action==='exclude'?'selected':''}>Exclude</option></select></div>
     <div class="field"><label>Source</label><select data-ff="source">${sourceOptions(f.source||'retail_sv2')}</select></div>
     <div class="field"><label>Column</label><select data-ff="column">${headerOptions(f.source||'retail_sv2',f.column)}</select></div>
-    <div class="field"><label>Values</label><select multiple data-ff="values" size="4">${vals.map(v=>`<option value="${esc(v)}" ${selected.has(v)?'selected':''}>${esc(v)}</option>`).join('')}</select></div>
+    <div class="field"><label>Operator</label><select data-ff="operator">${operatorOptions}</select></div>
+    <div class="field"><label>${numeric?'Value':'Values'}</label>${valueControl}</div>
     <div class="field"><label>Remove</label><button class="smallBtn red" data-remove-filter="${cid}|${f.id}">Delete</button></div>
   </div></div>`;
 }
@@ -1155,14 +1188,15 @@ function bindCriteriaEditors(){
   });
   els.criteriaList.querySelectorAll('[data-remove-crit]').forEach(b=>b.onclick=()=>{state.editModel.criteria=state.editModel.criteria.filter(c=>c.id!==b.dataset.removeCrit); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-copy-crit]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.copyCrit); if(c){const n=JSON.parse(JSON.stringify(c)); n.id=id(); n.name=n.name+' Copy'; state.editModel.criteria.push(n); renderEditModel();}});
-  els.criteriaList.querySelectorAll('[data-add-filter]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.addFilter); c.filters=c.filters||[]; c.filters.push({id:id(),mode:'exclude',source:c.source||'retail_sv2',column:'',values:[]}); renderEditModel();});
+  els.criteriaList.querySelectorAll('[data-add-filter]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.addFilter); c.filters=c.filters||[]; c.filters.push({id:id(),action:'include',mode:'include',operator:'is',source:c.source||'retail_sv2',column:'',values:[],value:''}); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-remove-filter]').forEach(b=>b.onclick=()=>{const [cid,fid]=b.dataset.removeFilter.split('|'); const c=getEditCriterion(cid); c.filters=(c.filters||[]).filter(f=>f.id!==fid); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-ff]').forEach(input=>{
     input.onchange=()=>{
       const critBox=input.closest('[data-crit]'); const filterBox=input.closest('[data-filter]'); const c=getEditCriterion(critBox.dataset.crit); const f=(c.filters||[]).find(x=>x.id===filterBox.dataset.filter); if(!f) return;
       const field=input.dataset.ff;
-      if(field==='values') f.values=Array.from(input.selectedOptions).map(o=>o.value); else f[field]=input.value;
-      if(['source','column'].includes(field)) renderEditModel();
+      if(field==='values') f.values=Array.from(input.selectedOptions).map(o=>o.value);
+      else { f[field]=input.value; if(field==='action') f.mode=input.value; }
+      if(['source','column','operator'].includes(field)) renderEditModel();
     };
   });
 }
@@ -2059,13 +2093,28 @@ function resolveColumn(source, expected){
 }
 function applyFilters(rows, filters, rowSource){
   let out=rows||[];
-  (filters||[]).forEach(f=>{
-    if(!f.column || !f.values || !f.values.length) return;
-    const col=resolveColumn(f.source||rowSource,rowSource?f.column:f.column);
+  (filters||[]).forEach(raw=>{
+    const f=normalizeFilterForStorage(raw,rowSource);
+    if(!f.column) return;
+    const col=resolveColumn(f.source||rowSource,f.column);
+    const action=f.action||f.mode||'exclude';
+    const numeric=isNumericFilterOperator(f.operator);
+    if(numeric){
+      const target=toNum(f.value);
+      if(!Number.isFinite(target)) return;
+      out=out.filter(r=>{
+        const hit=numericComparisonPass(toNum(r[col]),f.operator,target);
+        return action==='include'?hit:!hit;
+      });
+      return;
+    }
+    if(!f.values || !f.values.length) return;
     const set=new Set(f.values.map(String));
     out=out.filter(r=>{
-      const val=String(r[col]??'').trim(); const hit=set.has(val);
-      return f.mode==='include'?hit:!hit;
+      const val=String(r[col]??'').trim();
+      const isHit=set.has(val);
+      const hit=f.operator==='isNot' ? !isHit : isHit;
+      return action==='include'?hit:!hit;
     });
   });
   return out;
