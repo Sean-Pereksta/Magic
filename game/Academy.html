@@ -652,6 +652,7 @@ const state = {
   activeTeam: '',
   massHeaderRefs: [],
   dataIndex: { dirty:true, reason:'initial', version:0, sources:{}, reps:[], teamCounts:[], repsByTeam:new Map(), dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map(),documented_coaching:new Map()}, lastBuiltAt:0 },
+  indexes: null,
   researchItems: [],
   metrics: [],
   editingMetricRules: [],
@@ -1137,6 +1138,7 @@ function markDataIndexDirty(reason='data changed'){
   state.dataIndex.dirty=true;
   state.dataIndex.reason=reason;
   state.researchResultCache=new Map();
+  state.indexes=null;
 }
 function researchTokenizeText(v){ return Array.from(new Set(normalizeResearchText(v).match(/[a-z0-9]+/g)||[])); }
 function researchMonthBucket(ms){ if(!Number.isFinite(ms)) return ''; const d=new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
@@ -1149,18 +1151,21 @@ function rowDateMillisForSource(source,row){
 }
 function makeResearchSourceIndex(source, rows){
   const headers=getHeaders(source)||[], descHeaders=source==='documented_coaching'?sourceDescriptionHeaders(source):headers;
-  return {rows,headers,descriptionHeaders:descHeaders,byRep:new Map(),byTeam:new Map(),byCoach:new Map(),byDate:new Map(),byDateBucket:new Map(),byWord:new Map(),byRepWord:new Map(),byRepSortedDate:new Map(),searchText:new WeakMap(),tokens:new WeakMap(),rowMeta:new WeakMap(),reps:new Map(),perf:{rowsIndexed:0}};
+  return {rows,headers,descriptionHeaders:descHeaders,byRep:new Map(),byTeam:new Map(),byCoach:new Map(),byDate:new Map(),byDateBucket:new Map(),byMonth:new Map(),byColumnValue:new Map(),byWord:new Map(),byRepWord:new Map(),byRepSortedDate:new Map(),byTeamSortedDate:new Map(),byRowId:new Map(),searchText:new WeakMap(),tokens:new WeakMap(),rowMeta:new WeakMap(),reps:new Map(),perf:{rowsIndexed:0}};
 }
 function addResearchIndexedRow(idx,source,row,rowId){
   const key=row._repKey||'', team=rowTeam(row), coach=team, ms=rowDateMillisForSource(source,row), day=researchDayBucket(ms), month=researchMonthBucket(ms);
   if(team && !row._team) row._team=team;
   pushMapArray(idx.byRep,key,row); pushMapArray(idx.byTeam,team,row); pushMapArray(idx.byCoach,coach,row);
-  if(day) pushMapArray(idx.byDate,day,row); if(day) pushMapArray(idx.byDateBucket,day,row); if(month) pushMapArray(idx.byDateBucket,month,row);
+  if(day) pushMapArray(idx.byDate,day,row); if(day) pushMapArray(idx.byDateBucket,day,row); if(month){ pushMapArray(idx.byDateBucket,month,row); pushMapArray(idx.byMonth,month,row); }
+  idx.byRowId.set(rowId,row);
+  (idx.headers||[]).forEach(h=>pushMapArray(idx.byColumnValue,h+'\u0000'+normalizeResearchText(row[h]),row));
   const fullText=(idx.headers||[]).map(h=>row[h]).join(' '), searchable=(source==='documented_coaching'?idx.descriptionHeaders:idx.headers).map(h=>row[h]).join(' ');
   const lower=normalizeResearchText(fullText), tokens=researchTokenizeText(searchable+' '+fullText);
   idx.searchText.set(row,lower); idx.tokens.set(row,tokens); idx.rowMeta.set(row,{rowId,source,repKey:key,coachKey:nameKey(coach)||normalizeResearchText(coach),teamKey:normalizeResearchText(team),dateMs:ms,searchText:lower,tokens});
   tokens.forEach(w=>{ pushMapArray(idx.byWord,w,row); if(key) pushMapArray(idx.byRepWord,key+'|'+w,row); });
   if(key && Number.isFinite(ms)) pushMapArray(idx.byRepSortedDate,key,row);
+  if(team && Number.isFinite(ms)) pushMapArray(idx.byTeamSortedDate,team,row);
   if(key && row._rep){ const rep={kind:'rep',key,name:cleanName(row._rep),team}; idx.reps.set(key,mergeRepDisplay(idx.reps.get(key),rep)); }
   idx.perf.rowsIndexed++;
 }
@@ -2376,6 +2381,7 @@ function rebuildDataIndexSync(reason='data changed'){
       }
     });
     idx.byRepSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)));
+    idx.byTeamSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)));
     index.sources[source]=idx;
   });
   const reps=Array.from(globalReps.values()).sort((a,b)=>(a.team||'').localeCompare(b.team||'')||a.name.localeCompare(b.name));
@@ -2383,7 +2389,7 @@ function rebuildDataIndexSync(reason='data changed'){
   reps.forEach(r=>{ const t=r.team||'No Team'; if(!repsByTeam.has(t)) repsByTeam.set(t,[]); repsByTeam.get(t).push(r); });
   const teamCounts=Array.from(repsByTeam.entries()).filter(([team])=>team&&team!=='No Team').map(([team,list])=>({team,count:list.length})).sort((a,b)=>a.team.localeCompare(b.team));
   index.reps=reps; index.repsByTeam=repsByTeam; index.teamCounts=teamCounts;
-  state.dataIndex=index;
+  state.dataIndex=index; state.indexes=index.sources;
   return index;
 }
 async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
@@ -2421,6 +2427,7 @@ async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
       }
     }
     idx.byRepSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)));
+    idx.byTeamSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)));
     index.sources[source]=idx;
     updateProgress(`${reason} · ${labelSource(source)} indexed`, start + span*Math.min(.95,done/totalRows));
     await yieldToBrowser();
@@ -2430,7 +2437,7 @@ async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
   reps.forEach(r=>{ const t=r.team||'No Team'; if(!repsByTeam.has(t)) repsByTeam.set(t,[]); repsByTeam.get(t).push(r); });
   const teamCounts=Array.from(repsByTeam.entries()).filter(([team])=>team&&team!=='No Team').map(([team,list])=>({team,count:list.length})).sort((a,b)=>a.team.localeCompare(b.team));
   index.reps=reps; index.repsByTeam=repsByTeam; index.teamCounts=teamCounts;
-  state.dataIndex=index;
+  state.dataIndex=index; state.indexes=index.sources;
   updateProgress(`${reason} complete`, end);
   await yieldToBrowser();
   return index;
@@ -3365,6 +3372,60 @@ function dateAwareResearchMatch(row,item,f){
   return candidates.some(tr=>{ if(seen.has(tr)) return false; seen.add(tr); const personOk=rep&&personKeyFromRow(tr)&&rep===personKeyFromRow(tr); const teamOk=team&&researchRowTeam(tr)&&team===researchRowTeam(tr); if(!personOk&&!teamOk) return false; if(!dateWindowPass(anchor, tr[dateCol], f)) return false; return compareFilter(researchFieldValue(tr,col,src), f.targetOp||'contains', f.targetValue||''); });
 }
 function dateWithinRowPass(row,item,f){ const left=researchFieldValue(row,f.field,item.source), right=researchFieldValue(row,f.withinRightField||f.value,item.source); return dateWindowPass(left,right,{dayWindow:f.dayWindow||f.value2||f.withinDays}); }
+function intersectRowsFast(a,b){ const set=new Set(b||[]); return (a||[]).filter(r=>set.has(r)); }
+function dateRangeRowsFromIndex(idx,start,end){
+  if(!idx?.byDate || (!start&&!end)) return null;
+  const s=start?parseDateOnly(start):null, e=end?parseDateOnly(end):null, out=[];
+  idx.byDate.forEach((list,day)=>{ const d=parseDateOnly(day); if(d&&(!s||d>=s)&&(!e||d<=e)) out.push(...list); });
+  return out;
+}
+function queryPlanNote(plan){ if(!plan) return ''; return `Query optimized: ${(plan.initialRows||0).toLocaleString()} rows → ${(plan.candidateRows??plan.finalRows??0).toLocaleString()} candidate rows.`; }
+function queryPlanBadge(plan){ const note=queryPlanNote(plan); return note?`<div class="researchPreviewSummary"><span class="badge">${esc(note)}</span></div>`:''; }
+function isPersonTeamField(field){ const f=normalizeResearchText(field); return /(^| )(rep|representative|associate|agent|person|name|team|coach|job coach|coach assigned)( |$)/.test(f); }
+function buildQueryPlan(source, opts={}){
+  const idx=sourceIndex(source), all=getRowsRaw(source).slice(), plan={source,usedIndex:!!idx,initialRows:all.length,candidateRows:all.length,finalRows:all.length,steps:[],fallbacks:[],filters:[],indexesUsed:[],rowsScanned:0};
+  let rows=all;
+  const step=(name,before,candidates,after,used)=>plan.steps.push({name,before,candidates,after,usedIndex:!!used});
+  const filters=(opts.filters||[]).filter(Boolean);
+  if(idx && opts.dateColumn && (opts.startDate||opts.endDate)){
+    const actual=resolveColumn(source,opts.dateColumn)||opts.dateColumn;
+    let candidates=null;
+    if(actual===researchDefaultDateColumn({source}) || actual==='_date') candidates=dateRangeRowsFromIndex(idx,opts.startDate,opts.endDate);
+    const before=rows.length;
+    if(candidates){ rows=intersectRowsFast(rows,candidates).filter(r=>inRange(researchFieldValue(r,actual,source),opts.startDate,opts.endDate)); step('date filter',before,candidates.length,rows.length,true); }
+    else { rows=rows.filter(r=>inRange(researchFieldValue(r,actual,source),opts.startDate,opts.endDate)); step('date filter',before,before,rows.length,false); plan.fallbacks.push('dateColumn'); }
+  }else if(opts.dateColumn && (opts.startDate||opts.endDate)){ const before=rows.length; rows=rows.filter(r=>inRange(researchFieldValue(r,opts.dateColumn,source),opts.startDate,opts.endDate)); step('date filter',before,before,rows.length,false); }
+  const remaining=[];
+  const applyGroup=(label,predicate,indexRows)=>{ const before=rows.length; const candidates=indexRows?intersectRowsFast(rows,indexRows):rows; rows=candidates.filter(predicate); step(label,before,candidates.length,rows.length,!!indexRows); };
+  filters.forEach(f=>{
+    const op=f.op||'contains', include=f.include||'include';
+    if(f.expression || include==='includeWithin' || include==='excludeWithin' || parseModelRef(f.field||'') || parseModelRef(f.value||'')){ remaining.push(f); return; }
+    const field=resolveColumn(source,f.field)||f.field, val=f.value;
+    if(include==='include' && op==='is' && isPersonTeamField(field)){
+      const nval=normalizeResearchText(val), key=nameKey(val); let ix=null;
+      if(/team|coach/.test(normalizeResearchText(field))) ix=(idx?.byTeam?.get(val)||idx?.byCoach?.get(val)||[]); else ix=(idx?.byRep?.get(key)||[]);
+      applyGroup('representative/person/team/coach filter', r=>compareFilter(researchFieldValue(r,field,source),op,val,f.value2), ix&&ix.length?ix:null); return;
+    }
+    remaining.push(f);
+  });
+  const next=[];
+  remaining.forEach(f=>{
+    const op=f.op||'contains', include=f.include||'include', field=resolveColumn(source,f.field)||f.field;
+    if(include==='include' && op==='is' && field && idx?.byColumnValue){ const before=rows.length, ix=idx.byColumnValue.get(field+'\u0000'+normalizeResearchText(f.value)); if(ix){ const cand=intersectRowsFast(rows,ix); rows=cand.filter(r=>compareFilter(researchFieldValue(r,field,source),op,f.value,f.value2)); step('exact column/value filter',before,cand.length,rows.length,true); return; } }
+    next.push(f);
+  });
+  const last=[];
+  next.forEach(f=>{
+    const word=researchFilterWord(f), include=f.include||'include';
+    if(include==='include' && word && idx?.byWord?.has(word)){ const before=rows.length, cand=intersectRowsFast(rows,idx.byWord.get(word)); rows=cand.filter(r=>compareFilter(researchFieldValue(r,f.field,source),f.op||'contains',f.value,f.value2)); step('word/text search filter',before,cand.length,rows.length,true); return; }
+    last.push(f);
+  });
+  const modelRefs=[], custom=[];
+  last.forEach(f=>(parseModelRef(f.field||'')||parseModelRef(f.value||''))?modelRefs.push(f):custom.push(f));
+  [modelRefs,custom].forEach((list,li)=>list.forEach(f=>{ const before=rows.length; rows=applyResearchFilters(rows,[f],opts.item||{source},plan); step(li===0?'model criteria reference':'custom expression/filter',before,before,rows.length,false); }));
+  plan.candidateRows=rows.length; plan.finalRows=rows.length;
+  return {rows,plan};
+}
 function compileResearchExpression(expression){ if(!expression) return null; const fn=Function('row','toNumber','return ('+expression+');'); return row=>fn(row,toNum); }
 function applyResearchFilters(rows, filters, item, perf){
   const source=typeof item==='string'?item:(item?.source||''), idx=sourceIndex(source); let out=rows||[]; const stat=perf||{filters:[],indexesUsed:[],rowsScanned:0};
@@ -3416,12 +3477,12 @@ function researchSortDateValue(item, rows){ const col=item.dateColumn||researchD
 function researchGroupLabel(item,r){ const gcfg=researchGearGetForItem(item,'groupField'); if(gcfg.valueLevel==='level1' && item.groupField) return item.groupExpression||item.groupField; return researchGroupKey(item,r); }
 function researchGearGetForItem(item,key){ return {...researchGearDefault(),...((item.gearFilters||{})[key]||{})}; }
 function researchColumnLabel(item,c){ const m=c?.mode||item.valueMode||'count'; if(m==='unique') return 'Unique Individual'; if(m==='percent_total') return '% of total'; if(m==='percent_parent') return '% of parent'; return c?.label||m||'Value'; }
-function evaluateResearchRawRows(item){ const cacheKey=researchItemCacheKey(item,'raw'), cached=researchCacheGet(cacheKey); if(cached) return cached; const t0=performance.now(), perf={rowsScanned:0,indexesUsed:[],filters:[],cacheUsed:false}; const warnings=[]; let rows=getResearchSourceRows(item.source); if(!rows.length) warnings.push('No imported rows for selected source.'); const hs=getResearchHeaders(item.source); if(item.dateColumn && !hs.includes(item.dateColumn)) warnings.push('Missing header: '+item.dateColumn); const start=parseDateOnly(item.startDate), end=parseDateOnly(item.endDate); if(item.dateColumn) rows=rows.filter(r=>inRange(r[item.dateColumn],start,end)); rows=applyResearchFilters(rows,item.filters||[],item,perf); rows=applyResearchGearRowFilters(rows,item,warnings); const cols=(item.columns||[]).filter(c=>c.field).map(c=>({label:c.label||c.field,field:c.field})); const displayCols=cols.length?cols:hs.slice(0,8).map(h=>({label:h,field:h})); const sort=item.sort||'default'; if(sort==='xAsc') rows.sort((a,b)=>String(a[displayCols[0]?.field]??'').localeCompare(String(b[displayCols[0]?.field]??''))); if(sort==='xDesc') rows.sort((a,b)=>String(b[displayCols[0]?.field]??'').localeCompare(String(a[displayCols[0]?.field]??''))); if(sort==='dateAsc'||sort==='dateDesc'){ const col=item.dateColumn||researchDefaultDateColumn(item); rows.sort((a,b)=>((parseDateOnly(researchFieldValue(a,col,item.source))?.getTime()||0)-(parseDateOnly(researchFieldValue(b,col,item.source))?.getTime()||0))*(sort==='dateDesc'?-1:1)); } if(item.rowLimit) rows=rows.slice(0,item.rowLimit); perf.totalComputeMs=Math.round(performance.now()-t0); console.info('[Research Builder]',perf); return researchCacheSet(cacheKey,{rows,warnings,columns:displayCols},perf); }
+function evaluateResearchRawRows(item){ const cacheKey=researchItemCacheKey(item,'raw'), cached=researchCacheGet(cacheKey); if(cached) return cached; const t0=performance.now(), perf={rowsScanned:0,indexesUsed:[],filters:[],cacheUsed:false}; const warnings=[]; let planned=buildQueryPlan(item.source,{dateColumn:item.dateColumn,startDate:item.startDate,endDate:item.endDate,filters:item.filters||[],groupFields:[item.groupField,item.secondaryGroupField],valueFields:(item.columns||[]).map(c=>c.field),customExpressions:[item.groupExpression,item.valueField]}); let rows=planned.rows; perf.queryPlan=planned.plan; perf.indexesUsed.push(...(planned.plan.steps||[]).filter(s=>s.usedIndex).map(s=>s.name)); if(!rows.length && !getRowsRaw(item.source).length) warnings.push('No imported rows for selected source.'); const hs=getResearchHeaders(item.source); if(item.dateColumn && !hs.includes(item.dateColumn)) warnings.push('Missing header: '+item.dateColumn); rows=applyResearchGearRowFilters(rows,item,warnings); const cols=(item.columns||[]).filter(c=>c.field).map(c=>({label:c.label||c.field,field:c.field})); const displayCols=cols.length?cols:hs.slice(0,8).map(h=>({label:h,field:h})); const sort=item.sort||'default'; if(sort==='xAsc') rows.sort((a,b)=>String(a[displayCols[0]?.field]??'').localeCompare(String(b[displayCols[0]?.field]??''))); if(sort==='xDesc') rows.sort((a,b)=>String(b[displayCols[0]?.field]??'').localeCompare(String(a[displayCols[0]?.field]??''))); if(sort==='dateAsc'||sort==='dateDesc'){ const col=item.dateColumn||researchDefaultDateColumn(item); rows.sort((a,b)=>((parseDateOnly(researchFieldValue(a,col,item.source))?.getTime()||0)-(parseDateOnly(researchFieldValue(b,col,item.source))?.getTime()||0))*(sort==='dateDesc'?-1:1)); } if(item.rowLimit) rows=rows.slice(0,item.rowLimit); perf.totalComputeMs=Math.round(performance.now()-t0); console.info('[Research Builder]',perf); return researchCacheSet(cacheKey,{rows,warnings,columns:displayCols},perf); }
 function evaluateResearchItem(item){
   const cacheKey=researchItemCacheKey(item,'agg'), cached=researchCacheGet(cacheKey); if(cached) return cached; const t0=performance.now(), perf={rowsScanned:0,indexesUsed:[],filters:[],cacheUsed:false};
-  const warnings=[]; let rows=getResearchSourceRows(item.source); if(!rows.length) warnings.push('No imported rows for selected source.'); const hs=getResearchHeaders(item.source);
+  const warnings=[]; let planned=buildQueryPlan(item.source,{dateColumn:item.dateColumn,startDate:item.startDate,endDate:item.endDate,filters:item.filters||[],groupFields:[item.groupField,item.secondaryGroupField],valueFields:[item.valueField,...(item.columns||[]).map(c=>c.field)],customExpressions:[item.groupExpression,item.numeratorExpression,item.denominatorExpression]}); let rows=planned.rows; perf.queryPlan=planned.plan; perf.indexesUsed.push(...(planned.plan.steps||[]).filter(s=>s.usedIndex).map(s=>s.name)); if(!rows.length && !getRowsRaw(item.source).length) warnings.push('No imported rows for selected source.'); const hs=getResearchHeaders(item.source);
   [item.dateColumn,item.groupField,item.secondaryGroupField].filter(Boolean).forEach(h=>{ if(!hs.includes(h) && !/[!\[\]'"().+\-*/]/.test(String(h))) warnings.push('Missing header: '+h); });
-  const start=parseDateOnly(item.startDate), end=parseDateOnly(item.endDate); if(item.dateColumn) rows=rows.filter(r=>inRange(researchFieldValue(r,item.dateColumn,item.source),start,end)); rows=applyResearchFilters(rows,item.filters||[],item,perf); const universeRows=rows.slice(); rows=applyResearchGearRowFilters(rows,item,warnings);
+  const universeRows=rows.slice(); rows=applyResearchGearRowFilters(rows,item,warnings);
   const mode=item.valueMode||'count'; if(['total_within','percent_within'].includes(mode) && !researchFieldLooksDate(item,item.valueField,rows)) warnings.push('This within mode requires a date field.'); (item.columns||[]).forEach(c=>{ if(['total_within','percent_within'].includes(c.mode) && !researchFieldLooksDate(item,c.field,rows) && !warnings.includes('This within mode requires a date field.')) warnings.push('This within mode requires a date field.'); }); if(['sum','avg','min','max'].includes(mode)){ const val=researchNumericValidation(item,item.valueField,rows); if(!val.ok) warnings.push(val.message); }
   const hasSecondary=!!(item.useSecondaryGroup&&item.secondaryGroupField);
   const groups=new Map(), parentTotals=new Map();
@@ -3464,28 +3525,13 @@ async function renderResearchFoundPreview(){
     showProgress(dataIndexReady() ? 'Preview Found: preparing rows...' : 'Preview Found: refreshing data index...', 2);
     if(!dataIndexReady() && !cancelToken.cancelled) await rebuildDataIndexAsync('Preview Found: refreshing data index', {start:2,end:28,chunkSize});
     const raw=getResearchSourceRows(item.source); const hs=getResearchHeaders(item.source);
-    const start=parseDateOnly(item.startDate), end=parseDateOnly(item.endDate);
-    let rows=[];
-    for(let i=0;i<raw.length;i+=chunkSize){
+    const planned=buildQueryPlan(item.source,{dateColumn:item.dateColumn,startDate:item.startDate,endDate:item.endDate,filters:item.filters||[],groupFields:[item.groupField,item.secondaryGroupField],valueFields:[item.valueField,...(item.columns||[]).map(c=>c.field)],customExpressions:[item.groupExpression,item.numeratorExpression,item.denominatorExpression]});
+    let rows=[]; const plannedRows=planned.rows||[]; cancelToken.scanned=planned.plan?.initialRows||raw.length;
+    for(let i=0;i<plannedRows.length;i+=chunkSize){
       if(cancelToken.cancelled) break;
-      const chunk=raw.slice(i,i+chunkSize);
-      rows.push(...(item.dateColumn?chunk.filter(r=>inRange(r[item.dateColumn],start,end)):chunk));
-      cancelToken.scanned=Math.min(i+chunkSize,raw.length);
-      updateProgress(`Preview Found: checking date range (${Math.min(i+chunkSize,raw.length).toLocaleString()}/${raw.length.toLocaleString()})`, 30 + 20*Math.min(1,(i+chunkSize)/Math.max(1,raw.length)));
+      rows.push(...plannedRows.slice(i,i+chunkSize));
+      updateProgress(`Preview Found: preparing optimized candidates (${Math.min(i+chunkSize,plannedRows.length).toLocaleString()}/${plannedRows.length.toLocaleString()})`, 35 + 55*Math.min(1,(i+chunkSize)/Math.max(1,plannedRows.length)));
       await yieldToBrowser();
-    }
-    const filters=item.filters||[];
-    for(let fi=0;fi<filters.length;fi++){
-      if(cancelToken.cancelled) break;
-      const next=[];
-      for(let i=0;i<rows.length;i+=chunkSize){
-        if(cancelToken.cancelled) break;
-        const chunk=rows.slice(i,i+chunkSize);
-        next.push(...applyResearchFilters(chunk,[filters[fi]],item));
-        updateProgress(`Preview Found: applying filter ${fi+1}/${filters.length} (${Math.min(i+chunkSize,rows.length).toLocaleString()}/${rows.length.toLocaleString()})`, 50 + 38*((fi + Math.min(1,(i+chunkSize)/Math.max(1,rows.length)))/Math.max(1,filters.length)));
-        await yieldToBrowser();
-      }
-      rows=next;
     }
     if(!cancelToken.cancelled) rows=applyResearchGearRowFilters(rows,item,[]);
     updateProgress('Preview Found: preparing preview table', 96);
@@ -3500,7 +3546,7 @@ async function renderResearchFoundPreview(){
     const teamVals=[...new Set(rows.map(researchRowTeam).filter(Boolean))].slice(0,25);
     const rowHtml=shown.map(r=>`<tr>${cols.map(c=>{ let v=''; if(c==='Source') v=labelSource(item.source); else if(c==='Matched / filter column') v=filterCols.join(', '); else if(c==='Matched value') v=filterCols.map(fc=>researchFieldValue(r,fc,item.source)).filter(x=>String(x).trim()).join(' | '); else v=researchFieldValue(r,c,item.source); return `<td><div class="cellScroll">${esc(v??'')}</div></td>`; }).join('')}</tr>`).join('');
     els.researchFoundPreview.classList.remove('hidden');
-    els.researchFoundPreview.innerHTML=`${cancelToken.cancelled?'<div class="researchWarn">Preview stopped early. Showing partial results found so far.</div>':''}<div class="researchPreviewSummary"><span class="badge">Rows scanned: ${(cancelToken.scanned||raw.length).toLocaleString()}</span><span class="badge">Total found: ${rows.length}</span><span class="badge">Showing first ${shown.length}${rows.length>100?' of 100':''}</span><span class="badge">Source: ${esc(labelSource(item.source))}</span><span class="badge">Active filters: ${active}</span></div><div class="hint"><strong>Coach/team preview:</strong> ${esc(teamVals.join(', ')||'none')}<br><strong>Representative preview:</strong> ${esc(repVals.join(', ')||'none')}</div><div class="researchTableWrap"><table class="researchConversationTable compact wrapText"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rowHtml||`<tr><td colspan="${cols.length||1}">No rows matched.</td></tr>`}</tbody></table></div>`;
+    els.researchFoundPreview.innerHTML=`${cancelToken.cancelled?'<div class="researchWarn">Preview stopped early. Showing partial results found so far.</div>':''}${queryPlanBadge(planned.plan)}<div class="researchPreviewSummary"><span class="badge">Rows scanned: ${(cancelToken.scanned||raw.length).toLocaleString()}</span><span class="badge">Total found: ${rows.length}</span><span class="badge">Showing first ${shown.length}${rows.length>100?' of 100':''}</span><span class="badge">Source: ${esc(labelSource(item.source))}</span><span class="badge">Active filters: ${active}</span></div><div class="hint"><strong>Coach/team preview:</strong> ${esc(teamVals.join(', ')||'none')}<br><strong>Representative preview:</strong> ${esc(repVals.join(', ')||'none')}</div><div class="researchTableWrap"><table class="researchConversationTable compact wrapText"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rowHtml||`<tr><td colspan="${cols.length||1}">No rows matched.</td></tr>`}</tbody></table></div>`;
     updateProgress('Preview Found complete',100);
     await yieldToBrowser();
   }catch(e){
@@ -3548,7 +3594,7 @@ function renderResearchCanvasShell(message){
   return items;
 }
 function renderResearchItemBody(item){
-  try{ const computeStart=performance.now(); const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); const renderStart=performance.now(); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); const html=warns+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res)); console.info('[Research Builder]',{item:item.title,cacheUsed:!!res.perf?.cacheUsed,totalComputeTime:res.perf?.totalComputeMs ?? Math.round(renderStart-computeStart),renderTime:Math.round(performance.now()-renderStart),rowsScanned:res.perf?.rowsScanned,indexesUsed:res.perf?.indexesUsed}); return html; }
+  try{ const computeStart=performance.now(); const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); const renderStart=performance.now(); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); const html=warns+queryPlanBadge(res.perf?.queryPlan)+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res)); console.info('[Research Builder]',{item:item.title,cacheUsed:!!res.perf?.cacheUsed,totalComputeTime:res.perf?.totalComputeMs ?? Math.round(renderStart-computeStart),renderTime:Math.round(performance.now()-renderStart),rowsScanned:res.perf?.rowsScanned,indexesUsed:res.perf?.indexesUsed}); return html; }
   catch(e){ return researchFailedBody(e); }
 }
 function bindResearchCanvasActions(){
