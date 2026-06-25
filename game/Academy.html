@@ -558,6 +558,8 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
       <div class="researchToolbar">
         <button id="addResearchItemBtn" class="green" type="button">Add New Item</button>
         <button id="exportResearchBtn" class="dark" type="button">Export Research TXT</button>
+        <button id="renderAllResearchBtn" class="green" type="button">Render All</button>
+        <button id="stopResearchRenderBtn" class="red hidden" type="button">Stop Rendering</button>
         <label class="gray" style="font-weight:800;cursor:pointer">Import Research TXT <input id="importResearchFile" type="file" accept=".txt,.json" class="hidden"></label>
         <button id="clearResearchBtn" class="red" type="button">Clear Research</button>
         <span class="hint">Build tables and charts from imported Retail, Referral, QA, Checklist, Documented Coaching, and model criteria results.</span>
@@ -656,7 +658,8 @@ const state = {
   editingResearchColumns: [],
   researchPreviewCancel: null,
   researchRenderToken: null,
-  renderedLargeResearchCards: new Set()
+  renderedLargeResearchCards: new Set(),
+  researchRenderAllToken: null
 };
 const el = id => document.getElementById(id);
 const els = {
@@ -666,7 +669,7 @@ const els = {
   troubleSourceSelect: el('troubleSourceSelect'), troubleSheetSelect: el('troubleSheetSelect'), troubleHeaderRowInput: el('troubleHeaderRowInput'), troublePreviewBtn: el('troublePreviewBtn'), troubleApplyBtn: el('troubleApplyBtn'), troubleApplyFootBtn: el('troubleApplyFootBtn'), troubleStatus: el('troubleStatus'), troubleSheetPreview: el('troubleSheetPreview'), troubleHeaderSummary: el('troubleHeaderSummary'), troubleHeaderPreview: el('troubleHeaderPreview'), troubleSelectedCell: el('troubleSelectedCell'), troubleManualHeaderName: el('troubleManualHeaderName'), troubleDeclareHeaderBtn: el('troubleDeclareHeaderBtn'), troubleManualHeaders: el('troubleManualHeaders'), troubleNameMode: el('troubleNameMode'), troubleFullNameColumn: el('troubleFullNameColumn'), troubleFirstNameColumn: el('troubleFirstNameColumn'), troubleLastNameColumn: el('troubleLastNameColumn'), troubleConvertLastFirst: el('troubleConvertLastFirst'),
   teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamRepSearch: el('teamRepSearch'), teamMoveSelect: el('teamMoveSelect'), selectAllTeamRepsBtn: el('selectAllTeamRepsBtn'), unselectAllTeamRepsBtn: el('unselectAllTeamRepsBtn'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'),
   modelList: el('modelList'), createModelBtn: el('createModelBtn'), exportModelsBtn: el('exportModelsBtn'), importModelsFile: el('importModelsFile'), massHeaderList: el('massHeaderList'), massHeaderSummary: el('massHeaderSummary'), refreshMassHeaderBtn: el('refreshMassHeaderBtn'), applyMassHeaderBtn: el('applyMassHeaderBtn'), massShowAllHeaders: el('massShowAllHeaders'), editModelTitle: el('editModelTitle'), modelNameInput: el('modelNameInput'), modelTypeInput: el('modelTypeInput'), modelTiebreakerInput: el('modelTiebreakerInput'), sourceSettingsPanel: el('sourceSettingsPanel'), columnCheckResults: el('columnCheckResults'), criteriaList: el('criteriaList'), addCriterionBtn: el('addCriterionBtn'), cancelModelTopBtn: el('cancelModelTopBtn'), cancelModelBtn: el('cancelModelBtn'), saveModelBtn: el('saveModelBtn'), saveExitModelBtn: el('saveExitModelBtn'),
-  runModelSelect: el('runModelSelect'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), hideNoScoreReps: el('hideNoScoreReps'), hideNoScoreThreshold: el('hideNoScoreThreshold'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn'), allstarRunPanel: el('allstarRunPanel'), researchCanvas: el('researchCanvas'), metricsList: el('metricsList'), newMetricBtn: el('newMetricBtn'), exportMetricsBtn: el('exportMetricsBtn'), importMetricsFile: el('importMetricsFile'), metricEditId: el('metricEditId'), metricNameInput: el('metricNameInput'), metricSourceSelect: el('metricSourceSelect'), metricModeSelect: el('metricModeSelect'), metricFieldInput: el('metricFieldInput'), metricFieldGearBtn: el('metricFieldGearBtn'), metricNumericWarn: el('metricNumericWarn'), metricNotesInput: el('metricNotesInput'), addMetricAndBtn: el('addMetricAndBtn'), addMetricOrBtn: el('addMetricOrBtn'), metricRulesList: el('metricRulesList'), deleteMetricBtn: el('deleteMetricBtn'), saveMetricBtn: el('saveMetricBtn'), saveExitMetricBtn: el('saveExitMetricBtn'), researchCanvas: el('researchCanvas'), addResearchItemBtn: el('addResearchItemBtn'), exportResearchBtn: el('exportResearchBtn'), importResearchFile: el('importResearchFile'), clearResearchBtn: el('clearResearchBtn'), researchEditId: el('researchEditId'), researchTitleInput: el('researchTitleInput'), researchOutputType: el('researchOutputType'), researchMode: el('researchMode'), researchSource: el('researchSource'), researchDateColumn: el('researchDateColumn'), researchStartDate: el('researchStartDate'), researchEndDate: el('researchEndDate'), researchGroupField: el('researchGroupField'), researchGroupExpression: el('researchGroupExpression'), researchValueMode: el('researchValueMode'), researchValueField: el('researchValueField'), researchWithinCompareField: el('researchWithinCompareField'), researchWithinDays: el('researchWithinDays'), researchValueFieldError: el('researchValueFieldError'), researchUseSecondaryGroup: el('researchUseSecondaryGroup'), researchSecondaryGroupField: el('researchSecondaryGroupField'), researchDateGrouping: el('researchDateGrouping'), researchModelSelect: el('researchModelSelect'), researchCriteriaSelect: el('researchCriteriaSelect'), researchModelResult: el('researchModelResult'), researchPopulation: el('researchPopulation'), researchNumeratorExpression: el('researchNumeratorExpression'), researchNumeratorCount: el('researchNumeratorCount'), researchDenominator: el('researchDenominator'), researchDenominatorExpression: el('researchDenominatorExpression'), researchZeroDenominator: el('researchZeroDenominator'), researchSort: el('researchSort'), researchAxisMin: el('researchAxisMin'), researchAxisMax: el('researchAxisMax'), researchDecimals: el('researchDecimals'), researchShowValues: el('researchShowValues'), researchShowPercent: el('researchShowPercent'), researchRowLimit: el('researchRowLimit'), researchTotals: el('researchTotals'), researchTextWrap: el('researchTextWrap'), researchRowDensity: el('researchRowDensity'), addResearchFilterBtn: el('addResearchFilterBtn'), researchFilters: el('researchFilters'), addResearchColumnBtn: el('addResearchColumnBtn'), researchColumns: el('researchColumns'), saveResearchItemBtn: el('saveResearchItemBtn'), previewResearchFoundBtn: el('previewResearchFoundBtn'), researchFoundPreview: el('researchFoundPreview')
+  runModelSelect: el('runModelSelect'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), hideNoScoreReps: el('hideNoScoreReps'), hideNoScoreThreshold: el('hideNoScoreThreshold'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn'), allstarRunPanel: el('allstarRunPanel'), researchCanvas: el('researchCanvas'), metricsList: el('metricsList'), newMetricBtn: el('newMetricBtn'), exportMetricsBtn: el('exportMetricsBtn'), importMetricsFile: el('importMetricsFile'), metricEditId: el('metricEditId'), metricNameInput: el('metricNameInput'), metricSourceSelect: el('metricSourceSelect'), metricModeSelect: el('metricModeSelect'), metricFieldInput: el('metricFieldInput'), metricFieldGearBtn: el('metricFieldGearBtn'), metricNumericWarn: el('metricNumericWarn'), metricNotesInput: el('metricNotesInput'), addMetricAndBtn: el('addMetricAndBtn'), addMetricOrBtn: el('addMetricOrBtn'), metricRulesList: el('metricRulesList'), deleteMetricBtn: el('deleteMetricBtn'), saveMetricBtn: el('saveMetricBtn'), saveExitMetricBtn: el('saveExitMetricBtn'), researchCanvas: el('researchCanvas'), addResearchItemBtn: el('addResearchItemBtn'), exportResearchBtn: el('exportResearchBtn'), importResearchFile: el('importResearchFile'), renderAllResearchBtn: el('renderAllResearchBtn'), stopResearchRenderBtn: el('stopResearchRenderBtn'), clearResearchBtn: el('clearResearchBtn'), researchEditId: el('researchEditId'), researchTitleInput: el('researchTitleInput'), researchOutputType: el('researchOutputType'), researchMode: el('researchMode'), researchSource: el('researchSource'), researchDateColumn: el('researchDateColumn'), researchStartDate: el('researchStartDate'), researchEndDate: el('researchEndDate'), researchGroupField: el('researchGroupField'), researchGroupExpression: el('researchGroupExpression'), researchValueMode: el('researchValueMode'), researchValueField: el('researchValueField'), researchWithinCompareField: el('researchWithinCompareField'), researchWithinDays: el('researchWithinDays'), researchValueFieldError: el('researchValueFieldError'), researchUseSecondaryGroup: el('researchUseSecondaryGroup'), researchSecondaryGroupField: el('researchSecondaryGroupField'), researchDateGrouping: el('researchDateGrouping'), researchModelSelect: el('researchModelSelect'), researchCriteriaSelect: el('researchCriteriaSelect'), researchModelResult: el('researchModelResult'), researchPopulation: el('researchPopulation'), researchNumeratorExpression: el('researchNumeratorExpression'), researchNumeratorCount: el('researchNumeratorCount'), researchDenominator: el('researchDenominator'), researchDenominatorExpression: el('researchDenominatorExpression'), researchZeroDenominator: el('researchZeroDenominator'), researchSort: el('researchSort'), researchAxisMin: el('researchAxisMin'), researchAxisMax: el('researchAxisMax'), researchDecimals: el('researchDecimals'), researchShowValues: el('researchShowValues'), researchShowPercent: el('researchShowPercent'), researchRowLimit: el('researchRowLimit'), researchTotals: el('researchTotals'), researchTextWrap: el('researchTextWrap'), researchRowDensity: el('researchRowDensity'), addResearchFilterBtn: el('addResearchFilterBtn'), researchFilters: el('researchFilters'), addResearchColumnBtn: el('addResearchColumnBtn'), researchColumns: el('researchColumns'), saveResearchItemBtn: el('saveResearchItemBtn'), previewResearchFoundBtn: el('previewResearchFoundBtn'), researchFoundPreview: el('researchFoundPreview')
 };
 function esc(v){return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function id(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
@@ -1012,7 +1015,7 @@ function fmt(v, type){
 }
 function openModal(id){el(id).classList.add('open');}
 function closeModal(id){
-  if(id==='researchModal' && state.researchRenderToken) state.researchRenderToken.cancelled=true;
+  if(id==='researchModal'){ if(state.researchRenderToken) state.researchRenderToken.cancelled=true; cancelResearchRenderAll(); }
   el(id).classList.remove('open');
 }
 
@@ -3289,9 +3292,14 @@ function researchCardShell(item,body){
   return `<div class="researchCard ${item.collapsed?'collapsed':''}" data-size="${esc(size)}" data-research-card="${item.id}"><div class="researchCardHead"><div><div class="researchCardTitle">${esc(item.title)}</div><div class="researchBadges"><span class="badge">${esc(item.outputType)}</span><span class="badge">${esc(labelSource(item.source)||item.source)}</span><span class="badge">${esc(item.mode||'direct')}</span><span class="badge">${esc(size)}</span></div></div><div class="researchActions"><button class="smallBtn" data-research-size="${item.id}" data-size="large">Expand</button><button class="smallBtn" data-research-size="${item.id}" data-size="small">Shrink</button><button class="smallBtn" data-research-size="${item.id}" data-size="full">Full Width</button><button class="smallBtn" data-research-collapse="${item.id}">${item.collapsed?'Show Body':'Collapse Body'}</button><button class="smallBtn" data-research-move="${item.id}" data-dir="up">↑</button><button class="smallBtn" data-research-move="${item.id}" data-dir="down">↓</button><button class="smallBtn" data-research-move="${item.id}" data-dir="left">←</button><button class="smallBtn" data-research-move="${item.id}" data-dir="right">→</button><button class="smallBtn" data-research-edit="${item.id}">Edit</button><button class="smallBtn" data-research-data="${item.id}">Export Data</button>${(item.outputType==='line'||item.outputType==='bar')?`<button class="smallBtn" data-research-image="${item.id}">Export Image</button>`:''}<button class="smallBtn red" data-research-delete="${item.id}">Delete</button></div></div><div class="researchCardBody">${body}</div></div>`;
 }
 function researchLargePlaceholder(item){ return `<div class="researchEmpty"><strong>Large research item — click Render to calculate.</strong><div class="hint">This card uses ${getResearchSourceRows(item.source).length.toLocaleString()} source rows and multiple processing steps, so it will not auto-render when Research opens.</div><button class="smallBtn green" data-research-render="${esc(item.id)}">Render</button></div>`; }
+function researchQueuedPlaceholder(item){ return `<div class="researchEmpty"><strong>Research item not rendered.</strong><div class="hint">Render All was stopped before this card finished. Click Render to calculate this card only.</div><button class="smallBtn green" data-research-render="${esc(item.id)}">Render</button></div>`; }
 function researchLoadingBody(){ return '<div class="researchPreviewSummary"><span class="badge">Queued for safe render...</span></div>'; }
 function researchCanvasStatus(message){ return `<div class="researchPreviewSummary" data-research-status><span class="badge">${esc(message)}</span></div>`; }
-function setResearchCanvasStatus(message){ const box=els.researchCanvas?.querySelector('[data-research-status]'); if(box) box.innerHTML=`<span class="badge">${esc(message)}</span>`; }
+function setResearchCanvasStatus(message){ const box=els.researchCanvas?.querySelector('[data-research-status]'); if(box) box.innerHTML=`<span class="badge">${esc(message)}</span>`; else if(els.researchCanvas) els.researchCanvas.insertAdjacentHTML('afterbegin', researchCanvasStatus(message)); }
+function setResearchRenderAllRunning(running){ if(els.renderAllResearchBtn){ els.renderAllResearchBtn.classList.toggle('hidden', !!running); els.renderAllResearchBtn.disabled=!!running; } if(els.stopResearchRenderBtn) els.stopResearchRenderBtn.classList.toggle('hidden', !running); }
+function cancelResearchRenderAll(message){ if(state.researchRenderAllToken) state.researchRenderAllToken.cancelled=true; setResearchRenderAllRunning(false); if(message) setResearchCanvasStatus(message); }
+async function waitResearchRenderCheckpoints(item,token,idx,total){ const rowCount=getResearchSourceRows(item.source).length, chunkSize=1000, chunks=Math.max(1,Math.ceil(rowCount/chunkSize)); if(rowCount<=1000){ setResearchCanvasStatus(`Rendering ${idx+1} of ${total}...`); await yieldToBrowser(); return; } for(let c=0;c<chunks;c++){ if(token.cancelled) return; setResearchCanvasStatus(`Rendering ${idx+1} of ${total}… chunk ${c+1} of ${chunks}`); await yieldToBrowser(); } }
+function researchFailedBody(err){ return `<div class="researchPreviewSummary"><span class="badge red">Render failed</span></div><div class="researchWarn">${esc(err?.message||err)}</div>`; }
 function newResearchRenderToken(reason){ if(state.researchRenderToken) state.researchRenderToken.cancelled=true; const token={cancelled:false,id:Date.now()+Math.random(),reason:reason||'render'}; state.researchRenderToken=token; return token; }
 function currentResearchItemsNormalized(){ const items=(state.researchItems||[]).map(normalizeResearchItem); state.researchItems=items; return items; }
 function renderResearchCanvasShell(message){
@@ -3305,7 +3313,7 @@ function renderResearchCanvasShell(message){
 }
 function renderResearchItemBody(item){
   try{ const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); return warns+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res)); }
-  catch(e){ return `<div class="researchWarn">${esc(e.message||e)}</div>`; }
+  catch(e){ return researchFailedBody(e); }
 }
 function bindResearchCanvasActions(){
   els.researchCanvas.querySelectorAll('[data-research-edit]').forEach(b=>b.onclick=()=>openResearchItemEditor(b.dataset.researchEdit)); els.researchCanvas.querySelectorAll('[data-research-delete]').forEach(b=>b.onclick=()=>deleteResearchItem(b.dataset.researchDelete)); els.researchCanvas.querySelectorAll('[data-research-data]').forEach(b=>b.onclick=()=>exportResearchItemData(b.dataset.researchData)); els.researchCanvas.querySelectorAll('[data-research-image]').forEach(b=>b.onclick=()=>exportResearchItemImage(b.dataset.researchImage)); els.researchCanvas.querySelectorAll('[data-research-size]').forEach(b=>b.onclick=()=>setResearchItemProp(b.dataset.researchSize,{cardSize:b.dataset.size})); els.researchCanvas.querySelectorAll('[data-research-collapse]').forEach(b=>b.onclick=()=>{ const item=state.researchItems.find(x=>x.id===b.dataset.researchCollapse); setResearchItemProp(b.dataset.researchCollapse,{collapsed:!item.collapsed}); }); els.researchCanvas.querySelectorAll('[data-research-move]').forEach(b=>b.onclick=()=>moveResearchItem(b.dataset.researchMove,b.dataset.dir));
@@ -3334,6 +3342,53 @@ async function renderResearchCanvasAsync(opts={}){
     await yieldToBrowser();
   }
   if(!token.cancelled) setResearchCanvasStatus(paused ? `Large items paused until you click Render. ${paused} paused.` : 'Research items loaded.');
+  bindResearchCanvasActions();
+}
+
+async function renderAllResearchItems(){
+  if(!els.researchCanvas) return;
+  const items=currentResearchItemsNormalized();
+  if(!items.length){ setResearchCanvasStatus('No research items to render.'); return; }
+  if(!researchHasAnyData()){ setResearchCanvasStatus('No data is imported yet.'); return; }
+  if(state.researchRenderToken) state.researchRenderToken.cancelled=true;
+  if(state.researchRenderAllToken) state.researchRenderAllToken.cancelled=true;
+  const token={cancelled:false,id:Date.now()+Math.random(),reason:'render-all'};
+  state.researchRenderAllToken=token;
+  setResearchRenderAllRunning(true);
+  renderResearchCanvasShell('Preparing Render All...');
+  await yieldToBrowser();
+  let rendered=0, failed=0;
+  const renderedThisRun=new Set();
+  for(let idx=0;idx<items.length;idx++){
+    if(token.cancelled) break;
+    const item=items[idx];
+    const card=els.researchCanvas.querySelector(`[data-research-card="${CSS.escape(item.id)}"] .researchCardBody`);
+    if(card) card.innerHTML=`<div class="researchPreviewSummary"><span class="badge">Rendering ${idx+1} of ${items.length}...</span></div>`;
+    await waitResearchRenderCheckpoints(item,token,idx,items.length);
+    if(token.cancelled) break;
+    try{
+      if(card) card.innerHTML=renderResearchItemBody(item);
+      state.renderedLargeResearchCards.add(item.id);
+      renderedThisRun.add(item.id);
+      rendered++;
+    }catch(e){
+      if(card) card.innerHTML=researchFailedBody(e);
+      failed++;
+    }
+    bindResearchCanvasActions();
+    await yieldToBrowser();
+  }
+  if(token.cancelled){
+    items.forEach(item=>{
+      if(renderedThisRun.has(item.id)) return;
+      const card=els.researchCanvas.querySelector(`[data-research-card="${CSS.escape(item.id)}"] .researchCardBody`);
+      if(card) card.innerHTML=researchQueuedPlaceholder(item);
+    });
+  }
+  setResearchRenderAllRunning(false);
+  if(state.researchRenderAllToken===token) state.researchRenderAllToken=null;
+  if(token.cancelled) setResearchCanvasStatus(`Rendering stopped. ${rendered} of ${items.length} rendered${failed?`, ${failed} failed`:''}.`);
+  else setResearchCanvasStatus(`Render All complete. ${rendered} of ${items.length} rendered${failed?`, ${failed} failed`:''}.`);
   bindResearchCanvasActions();
 }
 function deleteResearchItem(itemId){ if(!confirm('Delete this research item?')) return; state.researchItems=state.researchItems.filter(x=>x.id!==itemId); saveResearchItems(); renderResearchCanvasAsync({reason:'delete'}); }
@@ -3760,6 +3815,8 @@ function wire(){
   if(els.researchBtn) els.researchBtn.onchange=async()=>{ const v=els.researchBtn.value; if(v==='open') await openResearchWorkspace(); if(v==='clear') clearResearchItemsWithConfirm(); els.researchBtn.value=''; };
   if(els.addResearchItemBtn) els.addResearchItemBtn.onclick=()=>openResearchItemEditor(null);
   if(els.exportResearchBtn) els.exportResearchBtn.onclick=exportResearchConfig;
+  if(els.renderAllResearchBtn) els.renderAllResearchBtn.onclick=renderAllResearchItems;
+  if(els.stopResearchRenderBtn) els.stopResearchRenderBtn.onclick=()=>cancelResearchRenderAll('Stopping after the current safe checkpoint...');
   if(els.newMetricBtn) els.newMetricBtn.onclick=()=>renderMetricsPage('');
   if(els.metricFieldGearBtn) els.metricFieldGearBtn.onclick=openMetricValuePicker;
   if(els.metricModeSelect) els.metricModeSelect.onchange=validateMetricNumeric;
