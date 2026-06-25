@@ -518,9 +518,9 @@ const els = {
 function esc(v){return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function id(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
 const HEADER_FIELDS = ['column','leftColumn','rightColumn','checkDateColumn','checkColumn'];
-const SOURCE_LABELS = {retail_sv2:'Retail SV2',retail_wiper:'Retail SV2 Wiper',referral_sv2:'Referral SV2',referral_wiper:'Referral SV2 Wiper',qa:'QA',checklist:'Checklist'};
+const SOURCE_LABELS = {retail_sv2:'Retail SV2',retail_wiper:'Retail SV2 Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral SV2 Wipers',qa:'QA',checklist:'Checklist'};
 const SOURCE_TO_BOOK = {retail_sv2:'retail',retail_wiper:'retail',referral_sv2:'referral',referral_wiper:'referral',qa:'qa',checklist:'checklist'};
-const SOURCE_SHEET_HINTS = {retail_sv2:['sv2'],retail_wiper:['sv2 wiper','sv2wiper','wiper'],referral_sv2:['sv2'],referral_wiper:['sv2 wiper','sv2wiper','wiper'],qa:['qa','evaluation','evaluations','quality','sheet1'],checklist:['checklist','items','sheet1']};
+const SOURCE_SHEET_HINTS = {retail_sv2:['sv2'],retail_wiper:['sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],referral_sv2:['sv2'],referral_wiper:['sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],qa:['qa','evaluation','evaluations','quality','sheet1'],checklist:['checklist','items','sheet1']};
 const SOURCE_SETTING_DEFAULTS = {
   retail_sv2:{headerRow:4,startCol:3},
   retail_wiper:{headerRow:1,startCol:1},
@@ -1538,8 +1538,10 @@ function sourceFileName(source){
 function pickBestSheetForSource(wb, source, model, variants=[]){
   const cfg=getSourceSetting(model,source);
   const names=wb.SheetNames||[];
+  const strictHint=strictSheetMatchForSource(names,source,variants.length?variants:(SOURCE_SHEET_HINTS[source]||[]));
+  if(strictHint) return strictHint;
   if(cfg.sheetName && names.includes(cfg.sheetName)) return cfg.sheetName;
-  const hinted=findSheet(wb, variants.length?variants:(SOURCE_SHEET_HINTS[source]||[]));
+  const hinted=findSheet(wb, variants.length?variants:(SOURCE_SHEET_HINTS[source]||[]), isStrictStatSource(source));
   const expected=expectedHeadersForSource(source,model);
   let best=null;
   names.forEach(sn=>{
@@ -1552,15 +1554,22 @@ function pickBestSheetForSource(wb, source, model, variants=[]){
   });
   return best?.sheetName || hinted || names[0];
 }
+function isStrictStatSource(source){ return ['retail_sv2','retail_wiper','referral_sv2','referral_wiper'].includes(source); }
+function strictSheetMatchForSource(names, source, variants=[]){
+  const wants=(variants.length?variants:(SOURCE_SHEET_HINTS[source]||[])).map(norm);
+  if(!wants.length) return '';
+  return (names||[]).find(n=>wants.includes(norm(n))) || '';
+}
 function applySourceSheetChoice(source, sheetName){
   const book=bookForSource(source);
   const aoa=(book.aoaBySheet||{})[sheetName] || getSourceAoa(source) || [];
   setSourceAoa(source,aoa,sheetName);
   return aoa;
 }
-function findSheet(wb, variants){
+function findSheet(wb, variants, exactOnly=false){
   const names=wb.SheetNames||[];
   for(const want of variants){ const hit=names.find(n=>norm(n)===norm(want)); if(hit) return hit; }
+  if(exactOnly) return names[0];
   for(const want of variants){ const hit=names.find(n=>norm(n).includes(norm(want))); if(hit) return hit; }
   return names[0];
 }
@@ -1756,8 +1765,8 @@ async function loadRetailFile(file){
     const wb=await readFileWorkbook(file);
     updateProgress('Preparing retail workbook...',18); await yieldToBrowser();
     storeWorkbook('retail',file,wb);
-    const sv2Name=pickBestSheetForSource(wb,'retail_sv2',activeModelForImport(),['sv2']);
-    const wiperName=pickBestSheetForSource(wb,'retail_wiper',activeModelForImport(),['sv2 wiper','sv2wiper','wiper']);
+    const sv2Name=pickBestSheetForSource(wb,'retail_sv2',activeModelForImport(),SOURCE_SHEET_HINTS.retail_sv2);
+    const wiperName=pickBestSheetForSource(wb,'retail_wiper',activeModelForImport(),SOURCE_SHEET_HINTS.retail_wiper);
     const m=activeModelForImport(); ensureSourceSettings(m); m.sourceSettings.retail_sv2.sheetName=sv2Name; m.sourceSettings.retail_wiper.sheetName=wiperName;
     const sv2Aoa=sheetAoa(wb,sv2Name), wiperAoa=sheetAoa(wb,wiperName);
     state.data.retail.sv2Aoa=sv2Aoa; state.data.retail.wiperAoa=wiperAoa; state.books.retail.selectedSheets.retail_sv2=sv2Name; state.books.retail.selectedSheets.retail_wiper=wiperName;
@@ -1779,8 +1788,8 @@ async function loadReferralFile(file){
     const wb=await readFileWorkbook(file);
     updateProgress('Preparing referral workbook...',18); await yieldToBrowser();
     storeWorkbook('referral',file,wb);
-    const sv2Name=pickBestSheetForSource(wb,'referral_sv2',activeModelForImport(),['sv2']);
-    const wiperName=pickBestSheetForSource(wb,'referral_wiper',activeModelForImport(),['sv2 wiper','sv2wiper','wiper']);
+    const sv2Name=pickBestSheetForSource(wb,'referral_sv2',activeModelForImport(),SOURCE_SHEET_HINTS.referral_sv2);
+    const wiperName=pickBestSheetForSource(wb,'referral_wiper',activeModelForImport(),SOURCE_SHEET_HINTS.referral_wiper);
     const m=activeModelForImport(); ensureSourceSettings(m); m.sourceSettings.referral_sv2.sheetName=sv2Name; m.sourceSettings.referral_wiper.sheetName=wiperName;
     const sv2Aoa=sheetAoa(wb,sv2Name), wiperAoa=sheetAoa(wb,wiperName);
     state.data.referral.sv2Aoa=sv2Aoa; state.data.referral.wiperAoa=wiperAoa; state.books.referral.selectedSheets.referral_sv2=sv2Name; state.books.referral.selectedSheets.referral_wiper=wiperName;
