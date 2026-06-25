@@ -639,6 +639,30 @@ function normalizeModelForStorage(m){
   if(m.tiebreaker!=='overallScore' && !m.criteria.some(c=>c.id===m.tiebreaker)) m.tiebreaker='overallScore';
   return m;
 }
+function normalizeModelName(name){
+  return String(name||'').toLowerCase().trim().replace(/\s+/g,' ');
+}
+function upsertModel(model){
+  const incoming=normalizeModelForStorage(model);
+  const incomingName=normalizeModelName(incoming.name);
+  const byId=(state.models||[]).findIndex(m=>m.id===incoming.id);
+  const byName=(state.models||[]).findIndex(m=>normalizeModelName(m.name)===incomingName);
+  const targetIndex=byId>=0 ? byId : byName;
+  if(targetIndex>=0){
+    const existing=normalizeModelForStorage(state.models[targetIndex]);
+    incoming.id=existing.id;
+  }
+  const targetId=targetIndex>=0 ? incoming.id : null;
+  state.models=(state.models||[]).filter((m,i)=>{
+    const sameId=targetId && m.id===targetId;
+    const sameName=normalizeModelName(m.name)===incomingName;
+    if(targetIndex>=0) return !(sameId || sameName);
+    return !sameName;
+  });
+  const insertAt=targetIndex>=0 ? Math.min(targetIndex,state.models.length) : state.models.length;
+  state.models.splice(insertAt,0,incoming);
+  return incoming;
+}
 function serializeModelsForExport(models){
   return JSON.stringify({version:2,exportedAt:new Date().toISOString(),models:(models||[]).map(normalizeModelForStorage)}, null, 2);
 }
@@ -1424,8 +1448,9 @@ function syncEditModelFields(){
 function saveEditModel(exit){
   syncEditModelFields();
   const m=normalizeModelForStorage(JSON.parse(JSON.stringify(state.editModel)));
-  if(state.editOriginalId){ const idx=state.models.findIndex(x=>x.id===state.editOriginalId); if(idx>=0) state.models[idx]=m; else state.models.push(m); }
-  else state.models.push(m);
+  const saved=upsertModel(m);
+  state.editModel=JSON.parse(JSON.stringify(saved));
+  state.editOriginalId=saved.id;
   saveModels();
   if(exit) closeModal('editModelModal');
 }
@@ -2713,7 +2738,7 @@ function wire(){
   if(els.packagedFile) els.packagedFile.onchange=e=>{const f=e.target.files[0]; if(f) loadPackagedFile(f);};
   els.createModelBtn.onclick=()=>openEditModel(null);
   els.exportModelsBtn.onclick=()=>downloadText('all_star_models.txt', serializeModelsForExport(state.models||[]));
-  els.importModelsFile.onchange=async e=>{const f=e.target.files[0]; if(!f) return; const text=await f.text(); try{state.models=parseModelsImportText(text); saveModels(); renderEditModelSafe(); renderMassHeaderCheck();}catch(err){console.error(err); alert('Import failed. Make sure this is a model TXT/JSON export.');} e.target.value='';};
+  els.importModelsFile.onchange=async e=>{const f=e.target.files[0]; if(!f) return; const text=await f.text(); try{parseModelsImportText(text).forEach(upsertModel); saveModels(); renderEditModelSafe(); renderMassHeaderCheck();}catch(err){console.error(err); alert('Import failed. Make sure this is a model TXT/JSON export.');} e.target.value='';};
   els.addCriterionBtn.onclick=()=>{syncEditModelFields(); state.editModel.criteria.push(emptyCriterion()); renderEditModel();};
   els.cancelModelBtn.onclick=els.cancelModelTopBtn.onclick=()=>closeModal('editModelModal');
   els.saveModelBtn.onclick=()=>saveEditModel(false);
