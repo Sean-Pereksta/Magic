@@ -726,36 +726,61 @@ function normalizeCriterionForStorage(c){
 }
 function normalizeFilterForStorage(f, fallbackSource){
   f={...(f||{})};
-  const action=f.action || f.mode || 'exclude';
-  const operator=f.operator || 'is';
+  const rawAction=f.action || f.mode || 'exclude';
+  const action=['include','exclude','includeWithin','excludeWithin'].includes(rawAction)?rawAction:(rawAction==='include'?'include':'exclude');
+  const rawOperator=f.operator || 'is';
+  const operator=['is','isNot','contains','notContains','greaterThan','greaterEqual','lessThan','lessEqual','between'].includes(rawOperator)?rawOperator:'is';
   return {
     ...f,
     id:f.id||id(),
-    action:action==='include'?'include':'exclude',
-    mode:action==='include'?'include':'exclude',
-    operator:['is','isNot','greaterThan','greaterEqual','lessThan','lessEqual'].includes(operator)?operator:'is',
-    source:f.source || fallbackSource || 'retail_sv2',
+    action,
+    mode:action,
+    operator,
+    source:validSourceKey(f.source || fallbackSource || 'retail_sv2','retail_sv2'),
     column:plainHeaderName(f.column),
     values:(f.values||[]).map(v=>String(v??'').trim()).filter(Boolean),
     value:String(f.value??'').trim(),
+    value2:String(f.value2??'').trim(),
     dynamic:!!f.dynamic,
     expression:String(f.expression??'').trim(),
     dynamicColumn:!!(f.dynamicColumn||f.columnDynamic),
-    columnExpression:String(f.columnExpression??f.expressionColumn??'').trim()
+    columnExpression:String(f.columnExpression??f.expressionColumn??'').trim(),
+    targetSource:validSourceKey(f.targetSource||'qa','qa'),
+    targetDateColumn:plainHeaderName(f.targetDateColumn),
+    targetValueColumn:plainHeaderName(f.targetValueColumn),
+    targetOp:['contains','is','does not contain','notContains'].includes(f.targetOp)?(f.targetOp==='notContains'?'does not contain':f.targetOp):(f.targetOp||'contains'),
+    targetValue:String(f.targetValue??'').trim(),
+    windowMode:f.windowMode==='range'?'range':'days',
+    dayWindow:String(f.dayWindow??'0').trim(),
+    rangeStart:String(f.rangeStart??'').trim(),
+    rangeEnd:String(f.rangeEnd??'').trim()
   };
 }
-function isNumericFilterOperator(op){ return ['greaterThan','greaterEqual','lessThan','lessEqual'].includes(op); }
-function filterOperatorLabel(op){ return ({is:'Is',isNot:'Is not',greaterThan:'Greater than',greaterEqual:'Greater than or equal to',lessThan:'Less than',lessEqual:'Less than or equal to'})[op]||'Is'; }
+function isNumericFilterOperator(op){ return ['greaterThan','greaterEqual','lessThan','lessEqual','between'].includes(op); }
+function isFreeTextFilterOperator(op){ return ['contains','notContains'].includes(op); }
+function filterOperatorLabel(op){ return ({is:'Is',isNot:'Is not',contains:'Contains text',notContains:'Does not contain text',greaterThan:'Greater than',greaterEqual:'Greater than or equal to',lessThan:'Less than',lessEqual:'Less than or equal to',between:'Between'})[op]||'Is'; }
 
 function rowPullOperatorLabel(op){ return ({contains:'Contains',equals:'Equals',notContains:'Does not contain',notEquals:'Does not equal'})[op]||'Contains'; }
 function normalizeRowPullOperator(op){ return ['contains','equals','notContains','notEquals'].includes(op)?op:'contains'; }
 function parseQuotedPhrases(text){
-  const raw=String(text??'');
+  const raw=String(text??'').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").trim();
+  if(!raw) return {ok:true,phrases:[],warning:''};
+  if(!raw.includes('"')){
+    const phrases=raw.split(',').map(x=>x.trim().replace(/^['"]|['"]$/g,'')).filter(Boolean);
+    return {ok:true,phrases,warning:''};
+  }
   const phrases=[]; let i=0;
   while(i<raw.length){
     while(i<raw.length && /[\s,]/.test(raw[i])) i++;
     if(i>=raw.length) break;
-    if(raw[i]!=='"') return {ok:false,phrases:[],warning:'Put each word or phrase in quotes, like "Final", "Written", "Verbal".'};
+    if(raw[i]!=='"'){
+      let buf='';
+      while(i<raw.length && raw[i]!==',') buf+=raw[i++];
+      const phrase=buf.trim().replace(/^['"]|['"]$/g,'');
+      if(phrase) phrases.push(phrase);
+      if(raw[i]===',') i++;
+      continue;
+    }
     i++; let buf='', closed=false;
     while(i<raw.length){
       const ch=raw[i++];
@@ -763,14 +788,13 @@ function parseQuotedPhrases(text){
       if(ch==='"'){ closed=true; break; }
       buf+=ch;
     }
-    if(!closed) return {ok:false,phrases:[],warning:'Finish the quoted phrase or put each word or phrase in quotes, like "Final", "Written", "Verbal".'};
+    if(!closed) return {ok:false,phrases:[],warning:'Finish the quoted phrase or use plain text, like Final, Written, or Verbal.'};
     const phrase=buf.trim();
     if(phrase) phrases.push(phrase);
     while(i<raw.length && /\s/.test(raw[i])) i++;
     if(i<raw.length && raw[i]===',') i++;
-    else if(i<raw.length) return {ok:false,phrases:[],warning:'Separate quoted words or phrases with commas, like "Final", "Written", "Verbal".'};
+    else if(i<raw.length) return {ok:false,phrases,warning:'Separate multiple phrases with commas.'};
   }
-  if(!phrases.length && raw.trim()) return {ok:false,phrases:[],warning:'Put each word or phrase in quotes, like "Final", "Written", "Verbal".'};
   return {ok:true,phrases,warning:''};
 }
 function normalizeRowPullConnector(conn, idx){ return idx===0 ? 'base' : (['and','or','andSeparate'].includes(conn)?conn:'and'); }
@@ -799,8 +823,8 @@ function ensureRowPullConditions(c){
 function rowPullConditionPass(row, cond){
   const parsed=parseQuotedPhrases(cond.phrasesText);
   if(!parsed.ok || !parsed.phrases.length) return false;
-  const val=String(row[cond.column]??'').trim().toLowerCase();
-  const phrases=parsed.phrases.map(p=>String(p).trim().toLowerCase());
+  const val=normalizeResearchText(row[cond.column]);
+  const phrases=parsed.phrases.map(p=>normalizeResearchText(p)).filter(Boolean);
   if(cond.operator==='equals') return phrases.some(p=>val===p);
   if(cond.operator==='notContains') return !phrases.some(p=>val.includes(p));
   if(cond.operator==='notEquals') return !phrases.some(p=>val===p);
@@ -821,8 +845,12 @@ function checklistRowPassesConditions(source, row, entry, opts, conditions){
   });
   return result;
 }
-function numericComparisonPass(left, op, right){
+function numericComparisonPass(left, op, right, right2){
   if(!Number.isFinite(left)||!Number.isFinite(right)) return false;
+  if(op==='between'){
+    if(!Number.isFinite(right2)) return false;
+    return left>=Math.min(right,right2) && left<=Math.max(right,right2);
+  }
   if(op==='greaterThan') return left>right;
   if(op==='greaterEqual') return left>=right;
   if(op==='lessThan') return left<right;
@@ -1252,6 +1280,10 @@ function requiredColumnsForModel(model){
       if(f.dynamicColumn && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.columnExpression,f.source||c.source).forEach(ref=>addRequired(req,ref.source||ref.sourceLabel,`${c.name} dynamic filter column`,ref.column));
       else addRequired(req,f.source||c.source,`${c.name} filter`,f.column);
       if(f.dynamic && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.expression,f.source||c.source).forEach(ref=>addRequired(req,ref.source||ref.sourceLabel,`${c.name} dynamic filter value`,ref.column));
+      if(['includeWithin','excludeWithin'].includes(f.action||f.mode)){
+        addRequired(req,f.targetSource||'qa',`${c.name} target date-aware filter date`,f.targetDateColumn);
+        addRequired(req,f.targetSource||'qa',`${c.name} target date-aware filter value`,f.targetValueColumn);
+      }
     });
   });
   if(used.has('qa') || modelUsesQA(model)){
@@ -1390,12 +1422,12 @@ function runModelColumnCheck(){
 }
 function criterionHtml(c,i){
   const src=c.source||'retail_sv2';
-  const isCheck=src==='checklist'; const showRowPull=isChecklistLikeSource(src); const checkSource=showRowPull?src:'checklist';
+  const isCheck=isChecklistLikeSource(src); const showRowPull=isChecklistLikeSource(src); const checkSource=showRowPull?src:'checklist';
   const isQa=src==='qa';
   const weightOptions=['1','2','3','4','5','autofail'].map(w=>`<option value="${w}" ${String(c.weight)===w?'selected':''}>${w==='autofail'?'Autofail':w}</option>`).join('');
   const isAutofailItem = String(c.weight)==='autofail';
   return `<div class="criterionRow" data-crit="${c.id}">
-    <div class="row"><strong>${i+1}</strong><button class="smallBtn red" data-remove-crit="${c.id}">Delete</button><button class="smallBtn" data-copy-crit="${c.id}">Copy</button></div>
+    <div class="row"><strong>${i+1}</strong><button class="smallBtn red" data-remove-crit="${c.id}">Delete</button><button class="smallBtn" data-copy-crit="${c.id}">Copy</button><button class="smallBtn dark" type="button" data-preview-crit="${c.id}">Preview Found</button></div>
     <div class="grid5">
       <div class="field"><label>Name</label><input data-cfield="name" value="${esc(c.name)}"></div>
       <div class="field"><label>Source</label><select data-cfield="source">${sourceOptions(src)}</select></div>
@@ -1446,6 +1478,7 @@ function criterionHtml(c,i){
       <div class="field"><label>Autofail Check</label><select data-cfield="autofailOperator"><option value="greaterEqual" ${c.autofailOperator==='greaterEqual'?'selected':''}>>=</option><option value="greaterThan" ${c.autofailOperator==='greaterThan'?'selected':''}>&gt;</option><option value="equals" ${c.autofailOperator==='equals'?'selected':''}>=</option></select></div>
     </div>
     <div class="panel"><div class="row"><strong>Filters</strong><button class="smallBtn" data-add-filter="${c.id}">Add Filter</button></div><div data-filters-for="${c.id}">${(c.filters||[]).map(f=>filterHtml(c.id,f)).join('')}</div></div>
+    <div data-model-found-preview-for="${c.id}" class="researchPreviewBox hidden"></div>
   </div>`;
 }
 function rowPullConditionHtml(cid,cond,idx,total){
@@ -1465,26 +1498,133 @@ function rowPullConditionHtml(cid,cond,idx,total){
   </div>`;
 }
 function filterHtml(cid,f){
-  f=normalizeFilterForStorage(f,'retail_sv2');
+  const c=getEditCriterion(cid)||{};
+  f=normalizeFilterForStorage(f,c.source||'retail_sv2');
   const vals=uniqueValues(f.source,f.column);
   const selected=new Set(f.values||[]);
   const numeric=isNumericFilterOperator(f.operator);
-  const operatorOptions=['is','isNot','greaterThan','greaterEqual','lessThan','lessEqual'].map(op=>`<option value="${op}" ${f.operator===op?'selected':''}>${filterOperatorLabel(op)}</option>`).join('');
+  const freeText=isFreeTextFilterOperator(f.operator);
+  const dateAware=f.action==='includeWithin'||f.action==='excludeWithin';
+  const operatorOptions=['is','isNot','contains','notContains','greaterThan','greaterEqual','lessThan','lessEqual','between'].map(op=>`<option value="${op}" ${f.operator===op?'selected':''}>${filterOperatorLabel(op)}</option>`).join('');
+  const actionOptions=[['include','Only include'],['exclude','Exclude'],['includeWithin','Only include if within'],['excludeWithin','Only exclude if within']].map(([v,l])=>`<option value="${v}" ${f.action===v?'selected':''}>${l}</option>`).join('');
   const columnControl=numeric && f.dynamicColumn
-    ? `<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamicColumn" type="checkbox" checked> Dynamic column</label><input data-ff="columnExpression" data-filter-expression-input="1" autocomplete="off" value="${esc(f.columnExpression||'')}" placeholder="e.g. [Accepted] + [Declined]">`
-    : `<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamicColumn" type="checkbox" ${f.dynamicColumn?'checked':''}> Dynamic column</label><select data-ff="column">${headerOptions(f.source||'retail_sv2',f.column)}</select>`;
-  const valueControl=numeric
-    ? `<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamic" type="checkbox" ${f.dynamic?'checked':''}> Dynamic value</label><input data-ff="${f.dynamic?'expression':'value'}" ${f.dynamic?'data-filter-expression-input="1" autocomplete="off"':'type="text" inputmode="decimal"'} value="${esc(f.dynamic ? (f.expression||'') : (f.value||''))}" placeholder="${f.dynamic?'e.g. [Cash Opps] + ![Retail Wipers].[Cash Opps]':'Enter a number'}">`
-    : `<select multiple data-ff="values" size="4">${vals.map(v=>`<option value="${esc(v)}" ${selected.has(v)?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
+    ? `<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamicColumn" type="checkbox" checked> Dynamic column/expression</label><input data-ff="columnExpression" data-filter-expression-input="1" autocomplete="off" value="${esc(f.columnExpression||'')}" placeholder="e.g. [Cash Apps] / [Cash Opps]">`
+    : `<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamicColumn" type="checkbox" ${f.dynamicColumn?'checked':''}> Dynamic column/expression</label><select data-ff="column">${headerOptions(f.source||'retail_sv2',f.column)}</select>`;
+  let valueControl='';
+  if(f.operator==='between'){
+    valueControl=`<div class="grid2"><input data-ff="value" type="text" inputmode="decimal" value="${esc(f.value||'')}" placeholder="Low"><input data-ff="value2" type="text" inputmode="decimal" value="${esc(f.value2||'')}" placeholder="High"></div>`;
+  }else if(numeric){
+    valueControl=`<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamic" type="checkbox" ${f.dynamic?'checked':''}> Dynamic value</label><input data-ff="${f.dynamic?'expression':'value'}" ${f.dynamic?'data-filter-expression-input="1" autocomplete="off"':'type="text" inputmode="decimal"'} value="${esc(f.dynamic ? (f.expression||'') : (f.value||''))}" placeholder="${f.dynamic?'e.g. [Cash Opps] + ![Retail Wipers].[Cash Opps]':'Enter a number'}">`;
+  }else if(freeText){
+    valueControl=`<input data-ff="value" value="${esc(f.value||'')}" placeholder="Text or quoted phrase to match">`;
+  }else{
+    valueControl=`<select multiple data-ff="values" size="4">${vals.map(v=>`<option value="${esc(v)}" ${selected.has(v)?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
+  }
+  const dateExtra=dateAware?`<div class="panel" style="grid-column:1/-1;background:#f8fafc"><div class="row"><strong>Date-aware match</strong><span class="hint">Checks QA, Checklist, or Documented Coaching rows for the same representative/coach within the selected date window.</span></div><div class="grid4">
+      <div class="field"><label>Target source</label><select data-ff="targetSource">${['qa','checklist','documented_coaching'].map(src=>`<option value="${src}" ${(f.targetSource||'qa')===src?'selected':''}>${esc(labelSource(src))}</option>`).join('')}</select></div>
+      <div class="field"><label>Target date column</label><select data-ff="targetDateColumn">${targetDateColumnOptions(f.targetSource||'qa',f.targetDateColumn||'')}</select></div>
+      <div class="field"><label>Target value column</label><select data-ff="targetValueColumn">${headerOptions(f.targetSource||'qa',f.targetValueColumn||'',true)}</select></div>
+      <div class="field"><label>Target match mode</label><select data-ff="targetOp">${['contains','is','does not contain'].map(o=>`<option value="${o}" ${(f.targetOp||'contains')===o?'selected':''}>${o==='is'?'is exactly':o}</option>`).join('')}</select></div>
+      <div class="field"><label>Target phrase/value</label><input data-ff="targetValue" value="${esc(f.targetValue||'')}" placeholder='"Final" or Final'></div>
+      <div class="field"><label>Date window mode</label><select data-ff="windowMode"><option value="days" ${(f.windowMode||'days')==='days'?'selected':''}>Within X days</option><option value="range" ${f.windowMode==='range'?'selected':''}>Within range</option></select></div>
+      ${f.windowMode==='range'?`<div class="field"><label>Range start</label><input type="date" data-ff="rangeStart" value="${esc(f.rangeStart||'')}"></div><div class="field"><label>Range end</label><input type="date" data-ff="rangeEnd" value="${esc(f.rangeEnd||'')}"></div>`:`<div class="field"><label>Day window</label><input data-ff="dayWindow" value="${esc(f.dayWindow||'0')}" placeholder="0, 1, -1, A15"></div>`}
+    </div></div>`:'';
+  if(dateAware){
+    return `<div class="filterRow" data-filter="${f.id}"><div class="grid5">
+      <div class="field"><label>Filter Action</label><select data-ff="action">${actionOptions}</select></div>
+      <div class="field"><label>Remove</label><button class="smallBtn red" data-remove-filter="${cid}|${f.id}">Delete</button></div>
+      ${dateExtra}
+    </div></div>`;
+  }
   return `<div class="filterRow" data-filter="${f.id}"><div class="grid5">
-    <div class="field"><label>Filter Action</label><select data-ff="action"><option value="include" ${f.action==='include'?'selected':''}>Only include</option><option value="exclude" ${f.action==='exclude'?'selected':''}>Exclude</option></select></div>
-    <div class="field"><label>Source</label><select data-ff="source">${sourceOptions(f.source||'retail_sv2')}</select></div>
-    <div class="field"><label>Column</label>${columnControl}</div>
+    <div class="field"><label>Filter Action</label><select data-ff="action">${actionOptions}</select></div>
+    <div class="field"><label>Source</label><select data-ff="source">${sourceOptions(f.source||c.source||'retail_sv2')}</select></div>
+    <div class="field"><label>Column / Expression</label>${columnControl}</div>
     <div class="field"><label>Operator</label><select data-ff="operator">${operatorOptions}</select></div>
-    <div class="field"><label>${numeric?'Value':'Values'}</label>${valueControl}</div>
+    <div class="field"><label>${f.operator==='between'?'Low / High':numeric?'Value':freeText?'Text':'Values'}</label>${valueControl}</div>
     <div class="field"><label>Remove</label><button class="smallBtn red" data-remove-filter="${cid}|${f.id}">Delete</button></div>
   </div></div>`;
 }
+async function modelCriterionPreviewRows(c, opts={}){
+  if(!c) return [];
+  const source=isChecklistLikeSource(c.source)?c.source:(c.source||'retail_sv2');
+  const baseOpts={...opts,dateColumn:c.checkDateColumn};
+  const raw=getRowsRaw(source)||[];
+  const chunkSize=Number(opts.chunkSize)||900;
+  let rows=[];
+  for(let i=0;i<raw.length;i+=chunkSize){
+    const chunk=raw.slice(i,i+chunkSize);
+    rows.push(...filterRowsForSource(source,chunk,baseOpts));
+    updateProgress(`Preview Found: checking date range (${Math.min(i+chunkSize,raw.length).toLocaleString()}/${raw.length.toLocaleString()})`, 30 + 18*Math.min(1,(i+chunkSize)/Math.max(1,raw.length)));
+    await yieldToBrowser();
+  }
+  const filters=c.filters||[];
+  for(let fi=0;fi<filters.length;fi++){
+    const next=[];
+    for(let i=0;i<rows.length;i+=chunkSize){
+      const chunk=rows.slice(i,i+chunkSize);
+      next.push(...applyFilters(chunk,[filters[fi]],source,baseOpts));
+      updateProgress(`Preview Found: applying filter ${fi+1}/${filters.length} (${Math.min(i+chunkSize,rows.length).toLocaleString()}/${rows.length.toLocaleString()})`, 48 + 28*((fi + Math.min(1,(i+chunkSize)/Math.max(1,rows.length)))/Math.max(1,filters.length)));
+      await yieldToBrowser();
+    }
+    rows=next;
+  }
+  if(c.calcType==='checklistCount'||isChecklistLikeSource(c.source)){
+    const conditions=ensureRowPullConditions(c).map(cond=>({...cond,column:resolveColumn(source,cond.column),dateColumn:resolveColumn(source,cond.dateColumn||c.checkDateColumn)})).filter(cond=>cond.column && String(cond.phrasesText||'').trim());
+    if(conditions.length){
+      const next=[];
+      for(let i=0;i<rows.length;i+=chunkSize){
+        const chunk=rows.slice(i,i+chunkSize);
+        chunk.forEach(r=>{ if(checklistRowPassesConditions(source,r,{kind:'rep',key:r._repKey,name:r._rep,team:r._team},{...baseOpts},conditions)) next.push(r); });
+        updateProgress(`Preview Found: matching quoted phrasing (${Math.min(i+chunkSize,rows.length).toLocaleString()}/${rows.length.toLocaleString()})`, 78 + 17*Math.min(1,(i+chunkSize)/Math.max(1,rows.length)));
+        await yieldToBrowser();
+      }
+      rows=next;
+    }
+  }
+  updateProgress('Preview Found: preparing preview table', 98);
+  await yieldToBrowser();
+  return rows;
+}
+function likelyPreviewDate(row,source,c){
+  if(source==='qa') return ymd(row._interactionDate||row._assignedDate||row._date)||'';
+  const h=resolveColumn(source,c?.checkDateColumn) || findHeader(getHeaders(source),checklistLikeDefaultDateHeaders(source)) || findHeader(getHeaders(source),['Date','Created Date','Completed Date','Interaction Start Time']);
+  return h ? String(row[h]??'') : '';
+}
+function renderModelCriterionPreview(c, rows){
+  const source=isChecklistLikeSource(c.source)?c.source:(c.source||'retail_sv2');
+  const reps=[]; const coaches=[]; const seenR=new Set(), seenC=new Set();
+  (rows||[]).forEach(r=>{ const rn=r._rep||''; const cn=rowTeam(r)||r._team||''; if(rn&&!seenR.has(rn)&&reps.length<25){seenR.add(rn); reps.push(rn);} if(cn&&!seenC.has(cn)&&coaches.length<25){seenC.add(cn); coaches.push(cn);} });
+  const important=[c.column,c.leftColumn,c.rightColumn,c.checkDateColumn,c.checkColumn].map(plainHeaderName).filter(Boolean);
+  (c.filters||[]).forEach(f=>{ if(f.column) important.push(plainHeaderName(f.column)); if(f.targetValueColumn) important.push(plainHeaderName(f.targetValueColumn)); });
+  const headers=[]; const seen=new Set();
+  ['_rep','_team'].concat(important).concat(getHeaders(source)||[]).forEach(h=>{ const x=plainHeaderName(h); if(x&&!seen.has(x)&&headers.length<10){seen.add(x); headers.push(x);} });
+  const shown=(rows||[]).slice(0,50);
+  const summary=`<div class="researchPreviewSummary"><span class="badge">${(rows||[]).length.toLocaleString()} found</span><span class="badge">Showing first ${shown.length}</span><span class="badge">${esc(labelSource(source))}</span><span class="badge">${(c.filters||[]).length} filters</span></div>
+    <div class="grid2"><div><strong>Coaches/Teams preview</strong><div class="hint">${coaches.length?esc(coaches.join(' | ')):'None found'}</div></div><div><strong>Representatives preview</strong><div class="hint">${reps.length?esc(reps.join(' | ')):'None found'}</div></div></div>`;
+  const table=`<div class="researchTableWrap" style="margin-top:8px"><table><thead><tr><th>#</th><th>Source</th><th>Date</th>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${shown.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(labelSource(source))}</td><td>${esc(likelyPreviewDate(r,source,c))}</td>${headers.map(h=>`<td>${esc(h==='_rep'?r._rep:h==='_team'?rowTeam(r):r[resolveColumn(source,h)||h])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  return summary+table;
+}
+async function showModelCriterionPreview(cid){
+  const c=getEditCriterion(cid); if(!c) return;
+  syncEditModelFields();
+  const box=els.criteriaList?.querySelector(`[data-model-found-preview-for="${cid}"]`);
+  const opts={qaDateMode:els.runQADateSelect?.value||'interaction',_sourceRowsCache:new Map(),_entryRowsCache:new Map(),chunkSize:900};
+  if(box){ box.classList.remove('hidden'); box.innerHTML='<div class="researchPreviewSummary"><span class="badge">Preview Found is scanning in chunks...</span></div>'; }
+  try{
+    showProgress(dataIndexReady() ? 'Preview Found: preparing rows...' : 'Preview Found: refreshing data index...', 2);
+    await rebuildDataIndexAsync('Preview Found: refreshing data index', {start:2,end:28,chunkSize:900});
+    const rows=await modelCriterionPreviewRows(c,opts);
+    if(box){ box.classList.remove('hidden'); box.innerHTML=renderModelCriterionPreview(c,rows); }
+    updateProgress('Preview Found complete',100);
+    await yieldToBrowser();
+  }catch(e){
+    if(box){ box.classList.remove('hidden'); box.innerHTML=`<div class="researchWarn">${esc(e.message||e)}</div>`; }
+  }finally{
+    hideProgress();
+  }
+}
+
 function bindCriteriaEditors(){
   els.criteriaList.querySelectorAll('[data-cfield]').forEach(input=>{
     input.onchange=input.oninput=()=>{
@@ -1499,7 +1639,7 @@ function bindCriteriaEditors(){
       if(field==='source'){
         setCriterionPrimarySource(c,val);
         if(val==='qa'){ c.calcType='qaScore'; c.format='pct'; }
-        else if(val==='checklist'){ c.calcType='checklistCount'; }
+        else if(isChecklistLikeSource(val)){ c.calcType='checklistCount'; }
         else if(c.calcType==='qaScore' || c.calcType==='checklistCount'){ c.calcType='single'; }
       }else{
         c[field]=val;
@@ -1515,7 +1655,8 @@ function bindCriteriaEditors(){
   });
   els.criteriaList.querySelectorAll('[data-remove-crit]').forEach(b=>b.onclick=()=>{state.editModel.criteria=state.editModel.criteria.filter(c=>c.id!==b.dataset.removeCrit); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-copy-crit]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.copyCrit); if(c){const n=JSON.parse(JSON.stringify(c)); n.id=id(); n.name=n.name+' Copy'; state.editModel.criteria.push(n); renderEditModel();}});
-  els.criteriaList.querySelectorAll('[data-add-filter]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.addFilter); c.filters=c.filters||[]; c.filters.push({id:id(),action:'include',mode:'include',operator:'is',source:c.source||'retail_sv2',column:'',values:[],value:''}); renderEditModel();});
+  els.criteriaList.querySelectorAll('[data-preview-crit]').forEach(b=>b.onclick=()=>showModelCriterionPreview(b.dataset.previewCrit));
+  els.criteriaList.querySelectorAll('[data-add-filter]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.addFilter); c.filters=c.filters||[]; c.filters.push({id:id(),action:'include',mode:'include',operator:'is',source:c.source||'retail_sv2',column:'',values:[],value:'',value2:'',targetSource:'qa',targetDateColumn:'',targetValueColumn:'',targetOp:'contains',targetValue:'',windowMode:'days',dayWindow:'0'}); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-remove-filter]').forEach(b=>b.onclick=()=>{const [cid,fid]=b.dataset.removeFilter.split('|'); const c=getEditCriterion(cid); c.filters=(c.filters||[]).filter(f=>f.id!==fid); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-add-row-pull]').forEach(b=>b.onclick=()=>{ const c=getEditCriterion(b.dataset.addRowPull); ensureRowPullConditions(c); c.rowPullConditions.push({id:id(),connector:'and',column:'',dateColumn:c.checkDateColumn||'',operator:'contains',phrasesText:''}); renderEditModel(); });
   els.criteriaList.querySelectorAll('[data-remove-row-pull]').forEach(b=>b.onclick=()=>{ const [cid,rid]=b.dataset.removeRowPull.split('|'); const c=getEditCriterion(cid); c.rowPullConditions=ensureRowPullConditions(c).filter(x=>x.id!==rid); if(!c.rowPullConditions.length) c.rowPullConditions.push({id:id(),connector:'and',column:'',dateColumn:c.checkDateColumn||'',operator:'contains',phrasesText:''}); renderEditModel(); });
@@ -1543,7 +1684,7 @@ function bindCriteriaEditors(){
       else if(field==='dynamicColumn') f.dynamicColumn=!!input.checked;
       else { f[field]=input.value; if(field==='action') f.mode=input.value; }
       if(field==='expression' || field==='columnExpression') showHeaderSuggestions(input,{source:f.source||c.source,customSource:f.source||c.source});
-      if(['source','column','operator','dynamic','dynamicColumn'].includes(field)) renderEditModel();
+      if(['source','column','operator','dynamic','dynamicColumn','action','targetSource','windowMode'].includes(field)) renderEditModel();
     };
   });
   els.criteriaList.querySelectorAll('[data-filter-expression-input]').forEach(input=>{
@@ -1638,6 +1779,10 @@ function collectHeaderRefsForModel(model){
       if(f.dynamicColumn && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.columnExpression,f.source||c.source).forEach(ref=>addHeaderRef(refs,{...base,kind:'filterExpression',filterId:f.id,source:ref.source||ref.sourceLabel,field:'columnExpression',label:'Dynamic filter column expression',expected:ref.column}));
       else addHeaderRef(refs,{...base,kind:'filter',filterId:f.id,source:f.source||c.source,field:'column',label:'Filter column',expected:f.column});
       if(f.dynamic && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.expression,f.source||c.source).forEach(ref=>addHeaderRef(refs,{...base,kind:'filterExpression',filterId:f.id,source:ref.source||ref.sourceLabel,field:'expression',label:'Dynamic filter value expression',expected:ref.column}));
+      if(['includeWithin','excludeWithin'].includes(f.action||f.mode)){
+        addHeaderRef(refs,{...base,kind:'filter',filterId:f.id,source:f.targetSource||'qa',field:'targetDateColumn',label:'Date-aware filter target date column',expected:f.targetDateColumn});
+        addHeaderRef(refs,{...base,kind:'filter',filterId:f.id,source:f.targetSource||'qa',field:'targetValueColumn',label:'Date-aware filter target value column',expected:f.targetValueColumn});
+      }
     });
   });
   if(modelUsesQA(model)){
@@ -1686,7 +1831,7 @@ function setHeaderReference(ref, newHeader){
     if(ref.kind==='criterion') c[ref.field]=newHeader;
     if(ref.kind==='filter'){
       const f=(c.filters||[]).find(x=>x.id===ref.filterId); if(!f) return false;
-      f.column=newHeader;
+      f[ref.field||'column']=newHeader;
     }
     if(ref.kind==='filterExpression'){
       const f=(c.filters||[]).find(x=>x.id===ref.filterId); if(!f) return false;
@@ -2604,32 +2749,106 @@ function evaluateRowExpression(expr, row, source, opts={}){
   try{ const v=Function(`return (${out})`)(); return Number.isFinite(v)?v:NaN; }catch(e){ return NaN; }
 }
 
+function filterRowsForSamePerson(source, row, rowSource, opts={}){
+  const key=row?._repKey||nameKey(row?._rep||'');
+  if(!key) return [];
+  const idx=sourceIndex(source);
+  const raw=idx ? (idx.byRep.get(key)||[]) : getRowsRaw(source).filter(r=>r._repKey===key);
+  const filterOpts = source!==rowSource ? {...opts,start:null,end:null} : opts;
+  return filterRowsForSource(source, raw, filterOpts);
+}
+function evaluateAggregateExpressionForPerson(expr, row, source, rowSource, opts={}){
+  expr=String(expr||'').trim(); if(!expr) return NaN;
+  const rowsFor=(src)=>filterRowsForSamePerson(src,row,rowSource,opts);
+  let out=expr.replace(/!\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]/g,(m,sourceLabel,col)=>{ const src=sourceKeyFromExpressionLabel(sourceLabel); if(!src) return 'NaN'; const n=sumRowsColumn(src,col,rowsFor(src)); return Number.isFinite(n)?String(n):'NaN'; });
+  out=out.replace(/(^|[^!])\[([^\]]+)\](?!\s*\.\s*\[)/g,(m,prefix,col)=>{ const n=sumRowsColumn(source,col,rowsFor(source)); return prefix+(Number.isFinite(n)?String(n):'NaN'); });
+  const headers=(getHeaders(source)||[]).map(plainHeaderName).filter(Boolean).sort((a,b)=>b.length-a.length);
+  headers.forEach(h=>{ const n=sumRowsColumn(source,h,rowsFor(source)); const re=new RegExp(`(^|[^A-Za-z0-9_!\]])${escapeRegExp(h)}(?=$|[^A-Za-z0-9_])`,'gi'); out=out.replace(re,(m,prefix)=>prefix+(Number.isFinite(n)?String(n):'NaN')); });
+  if(!/^[0-9+\-*/().\sNa]+$/.test(out)) return NaN;
+  try{ const v=Function(`return (${out})`)(); return Number.isFinite(v)?v:NaN; }catch(e){ return NaN; }
+}
+function evaluateFilterNumericExpression(expr, row, source, rowSource, opts={}){
+  if(source!==rowSource) return evaluateAggregateExpressionForPerson(expr,row,source,rowSource,opts);
+  return evaluateRowExpression(expr,row,source,opts);
+}
+function filterColumnValueForRow(f, row, rowSource, opts={}){
+  const source=f.source||rowSource;
+  if(f.dynamicColumn) return evaluateFilterNumericExpression(f.columnExpression,row,source,rowSource,opts);
+  const col=resolveColumn(source,f.column);
+  if(source!==rowSource){
+    const rows=filterRowsForSamePerson(source,row,rowSource,opts);
+    const n=sumRowsColumn(source,col,rows);
+    return Number.isFinite(n)?n:'';
+  }
+  return row[col];
+}
+function textFilterPass(value, f){
+  if(f.operator==='contains') return compareFilter(value,'contains',f.value||'');
+  if(f.operator==='notContains') return compareFilter(value,'does not contain',f.value||'');
+  const val=String(value??'').trim();
+  const set=new Set((f.values||[]).map(String));
+  if(set.size){ const isHit=set.has(val); return f.operator==='isNot' ? !isHit : isHit; }
+  return compareFilter(value,f.operator==='isNot'?'is not':'is',f.value||'');
+}
+function modelAnchorDate(row, source, opts={}){
+  if(!row) return '';
+  if(source==='qa') return opts.qaDateMode==='assigned' ? row._assignedDate : (row._interactionDate||row._date);
+  if(isChecklistLikeSource(source)){
+    const h=resolveColumn(source, opts.dateColumn || findHeader(getHeaders(source),checklistLikeDefaultDateHeaders(source)) || '');
+    return h ? row[h] : row._date || '';
+  }
+  const h=findHeader(getHeaders(source),['Date','Interaction Start Time','Assigned Date','Created Date','Completed Date']);
+  return h ? row[h] : row._date || '';
+}
+function dateAwareModelFilterMatch(row,rowSource,f,opts={}){
+  const src=f.targetSource||'qa', idx=sourceIndex(src);
+  const byRep=personKeyFromRow(row), byTeam=researchRowTeam(row)||rowTeam(row);
+  const candidates=idx ? [...(idx.byRep.get(byRep)||[]),...(idx.byTeam.get(byTeam)||[])] : getRowsRaw(src);
+  const seen=new Set();
+  const anchor=modelAnchorDate(row,rowSource,opts);
+  const targetDateCol=resolveColumn(src,f.targetDateColumn)||f.targetDateColumn;
+  const targetValueCol=resolveColumn(src,f.targetValueColumn)||f.targetValueColumn;
+  return candidates.some(tr=>{
+    if(seen.has(tr)) return false; seen.add(tr);
+    const personOk=byRep&&personKeyFromRow(tr)&&byRep===personKeyFromRow(tr);
+    const teamOk=byTeam&&researchRowTeam(tr)&&byTeam===researchRowTeam(tr);
+    if(!personOk&&!teamOk) return false;
+    if(!dateWindowPass(anchor, tr[targetDateCol], f)) return false;
+    return compareFilter(researchFieldValue(tr,targetValueCol,src), f.targetOp||'contains', f.targetValue||'');
+  });
+}
 function applyFilters(rows, filters, rowSource, opts={}){
   let out=rows||[];
   (filters||[]).forEach(raw=>{
     const f=normalizeFilterForStorage(raw,rowSource);
-    if(!f.dynamicColumn && !f.column) return;
-    if(f.dynamicColumn && !String(f.columnExpression||'').trim()) return;
-    const col=resolveColumn(f.source||rowSource,f.column);
     const action=f.action||f.mode||'exclude';
+    if(action==='includeWithin'||action==='excludeWithin'){
+      out=out.filter(r=>{
+        const hit=dateAwareModelFilterMatch(r,rowSource,f,opts);
+        return action==='includeWithin'?hit:!hit;
+      });
+      return;
+    }
+    if(!f.dynamicColumn && !f.column && !isFreeTextFilterOperator(f.operator)) return;
+    if(f.dynamicColumn && !String(f.columnExpression||'').trim()) return;
     const numeric=isNumericFilterOperator(f.operator);
     if(numeric){
-      const fixedTarget=toNum(f.value);
+      const fixedTarget=toNum(f.value), fixedTarget2=toNum(f.value2);
       if(!f.dynamic && !Number.isFinite(fixedTarget)) return;
+      if(f.operator==='between' && !Number.isFinite(fixedTarget2)) return;
       out=out.filter(r=>{
-        const target=f.dynamic ? evaluateRowExpression(f.expression,r,f.source||rowSource,opts) : fixedTarget;
-        const left=f.dynamicColumn ? evaluateRowExpression(f.columnExpression,r,f.source||rowSource,opts) : toNum(r[col]);
-        const hit=numericComparisonPass(left,f.operator,target);
+        const target=f.dynamic ? evaluateFilterNumericExpression(f.expression,r,f.source||rowSource,rowSource,opts) : fixedTarget;
+        const target2=f.operator==='between' ? fixedTarget2 : undefined;
+        const leftRaw=filterColumnValueForRow(f,r,rowSource,opts);
+        const left=typeof leftRaw==='number'?leftRaw:toNum(leftRaw);
+        const hit=numericComparisonPass(left,f.operator,target,target2);
         return action==='include'?hit:!hit;
       });
       return;
     }
-    if(!f.values || !f.values.length) return;
-    const set=new Set(f.values.map(String));
     out=out.filter(r=>{
-      const val=String(r[col]??'').trim();
-      const isHit=set.has(val);
-      const hit=f.operator==='isNot' ? !isHit : isHit;
+      const left=filterColumnValueForRow(f,r,rowSource,opts);
+      const hit=textFilterPass(left,f);
       return action==='include'?hit:!hit;
     });
   });
@@ -2685,14 +2904,14 @@ function valueQA(c, entry, opts){
 }
 function valueChecklist(c, entry, opts){
   const source=isChecklistLikeSource(c.source)?c.source:'checklist';
-  let rows=rowsForEntry(source, entry, {...opts,dateColumn:c.checkDateColumn}); rows=applyFilters(rows,c.filters,source,opts);
+  let rows=rowsForEntry(source, entry, {...opts,dateColumn:c.checkDateColumn}); rows=applyFilters(rows,c.filters,source,{...opts,dateColumn:c.checkDateColumn});
   const conditions=ensureRowPullConditions(c).map(cond=>({...cond,column:resolveColumn(source,cond.column),dateColumn:resolveColumn(source,cond.dateColumn||c.checkDateColumn)})).filter(cond=>cond.column && String(cond.phrasesText||'').trim());
   if(conditions.length) rows=rows.filter(r=>checklistRowPassesConditions(source,r,entry,{...opts,dateColumn:c.checkDateColumn},conditions));
   return rows.length;
 }
 function criterionValue(c, entry, opts){
   if(c.calcType==='qaScore' || c.source==='qa') return valueQA(c,entry,opts);
-  if(c.calcType==='checklistCount' || c.source==='checklist') return valueChecklist(c,entry,opts);
+  if(c.calcType==='checklistCount' || isChecklistLikeSource(c.source)) return valueChecklist(c,entry,opts);
   if(c.calcType==='multi') return valueMulti(c,entry,opts);
   if(c.calcType==='custom') return valueCustom(c,entry,opts);
   return valueSingle(c,entry,opts);
@@ -2767,7 +2986,8 @@ function renderResearchFiltersEditor(){
     const op=f.op||'contains';
     const normal=`${action}<div class="field"><label>Column or expression</label><input data-rf="field" data-i="${i}" value="${esc(f.field||'')}"></div><div class="field"><label>Operator</label><select data-rf="op" data-i="${i}">${['is','is not','contains','does not contain','greater than','greater/equal','less than','less/equal','between'].map(o=>`<option ${op===o?'selected':''}>${o}</option>`).join('')}</select></div><div class="field"><label>${op==='between'?'Low value':'Value'}</label><input data-rf="value" data-i="${i}" value="${esc(f.value||'')}"></div>${op==='between'?`<div class="field"><label>High value</label><input data-rf="value2" data-i="${i}" value="${esc(f.value2||'')}"></div>`:''}`;
     const dateExtra=dateAware?`<div class="field"><label>Target source</label><select data-rf="targetSource" data-i="${i}">${['qa','checklist','documented_coaching'].map(src=>`<option value="${src}" ${(f.targetSource||'qa')===src?'selected':''}>${esc(labelSource(src))}</option>`).join('')}</select></div><div class="field"><label>Target date column</label><select data-rf="targetDateColumn" data-i="${i}">${targetDateColumnOptions(f.targetSource||'qa',f.targetDateColumn||'')}</select></div><div class="field"><label>Target value column</label><select data-rf="targetValueColumn" data-i="${i}">${headerOptions(f.targetSource||'qa',f.targetValueColumn||'',true)}</select></div><div class="field"><label>Target match mode</label><select data-rf="targetOp" data-i="${i}">${['contains','is','does not contain'].map(o=>`<option ${ (f.targetOp||'contains')===o?'selected':''}>${o}</option>`).join('')}</select></div><div class="field"><label>Target phrase/value</label><input data-rf="targetValue" data-i="${i}" value="${esc(f.targetValue||'')}"></div><div class="field"><label>Date window mode</label><select data-rf="windowMode" data-i="${i}"><option value="days" ${(f.windowMode||'days')==='days'?'selected':''}>Within X days</option><option value="range" ${f.windowMode==='range'?'selected':''}>Within range</option></select></div>${f.windowMode==='range'?`<div class="field"><label>Range start</label><input type="date" data-rf="rangeStart" data-i="${i}" value="${esc(f.rangeStart||'')}"></div><div class="field"><label>Range end</label><input type="date" data-rf="rangeEnd" data-i="${i}" value="${esc(f.rangeEnd||'')}"></div>`:`<div class="field"><label>Day window</label><input data-rf="dayWindow" data-i="${i}" value="${esc(f.dayWindow??'0')}" placeholder="0, 1, -1, A15"></div>`}`:'';
-    return `<div class="researchFilterRow ${dateAware?'dateAware':''}">${normal}${dateExtra}<button class="smallBtn" data-rf-advanced="${i}" type="button">Advanced expression</button><button class="smallBtn red" data-rf-remove="${i}" type="button">Remove</button></div>`;
+    if(dateAware) return `<div class="researchFilterRow dateAware">${action}${dateExtra}<button class="smallBtn red" data-rf-remove="${i}" type="button">Remove</button></div>`;
+    return `<div class="researchFilterRow">${normal}<button class="smallBtn" data-rf-advanced="${i}" type="button">Advanced expression</button><button class="smallBtn red" data-rf-remove="${i}" type="button">Remove</button></div>`;
   }).join('');
   els.researchFilters.querySelectorAll('[data-rf]').forEach(x=>x.onchange=x.oninput=()=>{ state.editingResearchFilters[x.dataset.i][x.dataset.rf]=x.value; if(['include','op','targetSource','windowMode'].includes(x.dataset.rf)) renderResearchFiltersEditor(); });
   els.researchFilters.querySelectorAll('[data-rf-advanced]').forEach(b=>b.onclick=()=>{ const f=state.editingResearchFilters[+b.dataset.rfAdvanced]; f.expression=f.expression||''; renderResearchFiltersEditor(); });
@@ -2802,24 +3022,56 @@ function renderResearchConversationViewer(item,result){ const cls=`researchConve
 function renderResearchBarChart(item,result){ const w=900,h=330,p=42, vals=result.data.map(d=>+d.values[0]||0), min=item.axisMin!==''?+item.axisMin:Math.min(0,...vals), max=item.axisMax!==''?+item.axisMax:Math.max(1,...vals), bw=Math.max(8,(w-p*2)/Math.max(1,result.data.length)-6); return `<div class="researchChartWrap"><svg class="researchChart" viewBox="0 0 ${w} ${h}" data-research-svg="${item.id}"><line x1="${p}" y1="${h-p}" x2="${w-p}" y2="${h-p}" stroke="#111827"/><line x1="${p}" y1="${p}" x2="${p}" y2="${h-p}" stroke="#111827"/>${result.data.map((d,i)=>{const v=+d.values[0]||0,bh=((v-min)/(max-min||1))*(h-p*2),x=p+i*(bw+6)+6,y=h-p-bh;return `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(0,bh)}" fill="#b91c1c"/><text x="${x+bw/2}" y="${h-10}" text-anchor="middle" font-size="10">${esc(d.label).slice(0,12)}</text>${item.showValues?`<text x="${x+bw/2}" y="${Math.max(14,y-4)}" text-anchor="middle" font-size="11" font-weight="700">${formatResearchValue(v,item)}</text>`:''}`;}).join('')}</svg></div>`; }
 function renderResearchLineChart(item,result){ const w=900,h=330,p=42, vals=result.data.map(d=>+d.values[0]||0), max=item.axisMax!==''?+item.axisMax:Math.max(1,...vals), min=item.axisMin!==''?+item.axisMin:Math.min(0,...vals), pts=result.data.map((d,i)=>[p+(i*(w-p*2)/Math.max(1,result.data.length-1)), h-p-(((+d.values[0]||0)-min)/(max-min||1))*(h-p*2), d]); return `<div class="researchChartWrap"><svg class="researchChart" viewBox="0 0 ${w} ${h}" data-research-svg="${item.id}"><line x1="${p}" y1="${h-p}" x2="${w-p}" y2="${h-p}" stroke="#111827"/><line x1="${p}" y1="${p}" x2="${p}" y2="${h-p}" stroke="#111827"/><polyline fill="none" stroke="#b91c1c" stroke-width="3" points="${pts.map(p=>p[0]+','+p[1]).join(' ')}"/>${pts.map(([x,y,d])=>`<circle cx="${x}" cy="${y}" r="4" fill="#7f1d1d"><title>${esc(d.label)}: ${formatResearchValue(d.values[0],item)}</title></circle><text x="${x}" y="${h-10}" text-anchor="middle" font-size="10">${esc(d.label).slice(0,10)}</text>`).join('')}</svg></div>`; }
 
-function renderResearchFoundPreview(){
+async function renderResearchFoundPreview(){
   if(!els.researchFoundPreview) return;
   const item=currentResearchItemFromEditor();
-  let rows=getResearchSourceRows(item.source); const hs=getResearchHeaders(item.source);
-  const start=parseDateOnly(item.startDate), end=parseDateOnly(item.endDate);
-  if(item.dateColumn) rows=rows.filter(r=>inRange(r[item.dateColumn],start,end));
-  rows=applyResearchFilters(rows,item.filters||[],item);
-  const active=(item.filters||[]).filter(f=>f.expression||f.field||f.targetValue||f.include==='includeWithin'||f.include==='excludeWithin').length;
-  const outCols=(item.columns||[]).filter(c=>c.field).map(c=>c.field);
-  const base=[item.source==='documented_coaching'?'Associate name':'Associate Name','Agent Name','Representative','Job Coach','Coach Assigned','Team',item.dateColumn,'Date','Interaction Start Time','Assigned Date'].filter(Boolean);
-  const filterCols=(item.filters||[]).map(f=>f.field||f.targetValueColumn).filter(Boolean);
-  const cols=[]; [...base,'Source','Matched / filter column','Matched value',...filterCols,...outCols].forEach(c=>{ if(c&&!cols.includes(c)) cols.push(c); });
-  const shown=rows.slice(0,50);
-  const repVals=[...new Set(rows.map(r=>r._rep||r['Agent Name']||r['Associate Name']||r['Associate name']).filter(Boolean))].slice(0,25);
-  const teamVals=[...new Set(rows.map(researchRowTeam).filter(Boolean))].slice(0,25);
-  const rowHtml=shown.map(r=>`<tr>${cols.map(c=>{ let v=''; if(c==='Source') v=labelSource(item.source); else if(c==='Matched / filter column') v=filterCols.join(', '); else if(c==='Matched value') v=filterCols.map(fc=>researchFieldValue(r,fc,item.source)).filter(x=>String(x).trim()).join(' | '); else v=researchFieldValue(r,c,item.source); return `<td><div class="cellScroll">${esc(v??'')}</div></td>`; }).join('')}</tr>`).join('');
+  const chunkSize=900;
   els.researchFoundPreview.classList.remove('hidden');
-  els.researchFoundPreview.innerHTML=`<div class="researchPreviewSummary"><span class="badge">Total found: ${rows.length}</span><span class="badge">Showing first ${shown.length}${rows.length>50?' of 50':''}</span><span class="badge">Source: ${esc(labelSource(item.source))}</span><span class="badge">Active filters: ${active}</span></div><div class="hint"><strong>Coach/team preview:</strong> ${esc(teamVals.join(', ')||'none')}<br><strong>Representative preview:</strong> ${esc(repVals.join(', ')||'none')}</div><div class="researchTableWrap"><table class="researchConversationTable compact wrapText"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rowHtml||`<tr><td colspan="${cols.length||1}">No rows matched.</td></tr>`}</tbody></table></div>`;
+  els.researchFoundPreview.innerHTML='<div class="researchPreviewSummary"><span class="badge">Preview Found is scanning in chunks...</span></div>';
+  try{
+    showProgress(dataIndexReady() ? 'Preview Found: preparing rows...' : 'Preview Found: refreshing data index...', 2);
+    await rebuildDataIndexAsync('Preview Found: refreshing data index', {start:2,end:28,chunkSize});
+    const raw=getResearchSourceRows(item.source); const hs=getResearchHeaders(item.source);
+    const start=parseDateOnly(item.startDate), end=parseDateOnly(item.endDate);
+    let rows=[];
+    for(let i=0;i<raw.length;i+=chunkSize){
+      const chunk=raw.slice(i,i+chunkSize);
+      rows.push(...(item.dateColumn?chunk.filter(r=>inRange(r[item.dateColumn],start,end)):chunk));
+      updateProgress(`Preview Found: checking date range (${Math.min(i+chunkSize,raw.length).toLocaleString()}/${raw.length.toLocaleString()})`, 30 + 20*Math.min(1,(i+chunkSize)/Math.max(1,raw.length)));
+      await yieldToBrowser();
+    }
+    const filters=item.filters||[];
+    for(let fi=0;fi<filters.length;fi++){
+      const next=[];
+      for(let i=0;i<rows.length;i+=chunkSize){
+        const chunk=rows.slice(i,i+chunkSize);
+        next.push(...applyResearchFilters(chunk,[filters[fi]],item));
+        updateProgress(`Preview Found: applying filter ${fi+1}/${filters.length} (${Math.min(i+chunkSize,rows.length).toLocaleString()}/${rows.length.toLocaleString()})`, 50 + 38*((fi + Math.min(1,(i+chunkSize)/Math.max(1,rows.length)))/Math.max(1,filters.length)));
+        await yieldToBrowser();
+      }
+      rows=next;
+    }
+    updateProgress('Preview Found: preparing preview table', 96);
+    await yieldToBrowser();
+    const active=(item.filters||[]).filter(f=>f.expression||f.field||f.targetValue||f.include==='includeWithin'||f.include==='excludeWithin').length;
+    const outCols=(item.columns||[]).filter(c=>c.field).map(c=>c.field);
+    const base=[item.source==='documented_coaching'?'Associate name':'Associate Name','Agent Name','Representative','Job Coach','Coach Assigned','Team',item.dateColumn,'Date','Interaction Start Time','Assigned Date'].filter(Boolean);
+    const filterCols=(item.filters||[]).map(f=>f.field||f.targetValueColumn).filter(Boolean);
+    const cols=[]; [...base,'Source','Matched / filter column','Matched value',...filterCols,...outCols].forEach(c=>{ if(c&&!cols.includes(c)) cols.push(c); });
+    const shown=rows.slice(0,50);
+    const repVals=[...new Set(rows.map(r=>r._rep||r['Agent Name']||r['Associate Name']||r['Associate name']).filter(Boolean))].slice(0,25);
+    const teamVals=[...new Set(rows.map(researchRowTeam).filter(Boolean))].slice(0,25);
+    const rowHtml=shown.map(r=>`<tr>${cols.map(c=>{ let v=''; if(c==='Source') v=labelSource(item.source); else if(c==='Matched / filter column') v=filterCols.join(', '); else if(c==='Matched value') v=filterCols.map(fc=>researchFieldValue(r,fc,item.source)).filter(x=>String(x).trim()).join(' | '); else v=researchFieldValue(r,c,item.source); return `<td><div class="cellScroll">${esc(v??'')}</div></td>`; }).join('')}</tr>`).join('');
+    els.researchFoundPreview.classList.remove('hidden');
+    els.researchFoundPreview.innerHTML=`<div class="researchPreviewSummary"><span class="badge">Total found: ${rows.length}</span><span class="badge">Showing first ${shown.length}${rows.length>50?' of 50':''}</span><span class="badge">Source: ${esc(labelSource(item.source))}</span><span class="badge">Active filters: ${active}</span></div><div class="hint"><strong>Coach/team preview:</strong> ${esc(teamVals.join(', ')||'none')}<br><strong>Representative preview:</strong> ${esc(repVals.join(', ')||'none')}</div><div class="researchTableWrap"><table class="researchConversationTable compact wrapText"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rowHtml||`<tr><td colspan="${cols.length||1}">No rows matched.</td></tr>`}</tbody></table></div>`;
+    updateProgress('Preview Found complete',100);
+    await yieldToBrowser();
+  }catch(e){
+    els.researchFoundPreview.classList.remove('hidden');
+    els.researchFoundPreview.innerHTML=`<div class="researchWarn">${esc(e.message||e)}</div>`;
+  }finally{
+    hideProgress();
+  }
 }
 
 function setResearchItemProp(itemId,patch){ const item=state.researchItems.find(x=>x.id===itemId); if(!item) return; Object.assign(item,patch); saveResearchItems(); renderResearchCanvas(); }
