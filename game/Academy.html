@@ -3126,6 +3126,22 @@ function evaluateModelReferenceValue(ref,rows,item,mode='direct',warnings=[]){
 }
 function researchExpressionAddWarning(warnings,message){ if(warnings && message && !warnings.includes(message)) warnings.push(message); }
 function researchExpressionHasMath(expression){ return /(^|[^A-Za-z0-9_])[-+*/](?![A-Za-z0-9_])/.test(String(expression||'')); }
+function findMetricByNameOrId(name){
+  const raw=String(name||'').trim(), norm=normalizeResearchText(raw);
+  if(!raw) return null;
+  return (state.metrics||[]).find(m=>m.id===raw||m.name===raw)||
+    (state.metrics||[]).find(m=>normalizeResearchText(m.name)===norm||normalizeResearchText(m.id)===norm)||
+    (state.metrics||[]).find(m=>researchExpressionAlias(m.name)===researchExpressionAlias(raw)||researchExpressionAlias(m.id)===researchExpressionAlias(raw))||null;
+}
+function findModelCriterionReferenceByName(name){
+  const raw=String(name||'').trim(), norm=normalizeResearchText(raw); if(!raw) return null;
+  for(const m of (state.models||[])){
+    const crit=(m.criteria||[]).find(c=>c.id===raw||c.name===raw)||
+      (m.criteria||[]).find(c=>normalizeResearchText(c.name)===norm||normalizeResearchText(c.id)===norm);
+    if(crit) return {model:m.name||m.id,criteria:crit.name||crit.id};
+  }
+  return null;
+}
 function researchAggregateColumnValue(rows,item,field,fn='sum',warnings=[]){
   const vals=(rows||[]).map(r=>researchFieldValue(r,field,item.source)).filter(v=>String(v??'').trim()!=='');
   if(fn==='count') return vals.length;
@@ -3138,39 +3154,68 @@ function researchAggregateColumnValue(rows,item,field,fn='sum',warnings=[]){
   if(fn==='max') return Math.max(...nums);
   return nums.reduce((a,b)=>a+b,0);
 }
+function researchExpressionAlias(v){ return normalizeResearchText(v).replace(/[^a-z0-9]/g,''); }
 function resolveResearchExpressionField(token,item){
   const raw=String(token||'').trim(); if(!raw) return '';
-  const direct=resolveColumn(item.source,raw); if(direct) return direct;
   const hs=getResearchHeaders(item.source);
-  return hs.find(h=>h===raw)||hs.find(h=>normalizeResearchText(h)===normalizeResearchText(raw))||'';
+  const direct=resolveColumn(item.source,raw); if(direct) return direct;
+  const norm=normalizeResearchText(raw), alias=researchExpressionAlias(raw);
+  return hs.find(h=>h===raw)||hs.find(h=>normalizeResearchText(h)===norm)||hs.find(h=>researchExpressionAlias(h)===alias)||'';
 }
+function resolveResearchAggregateReference(name,item,rows,warnings=[],fn='sum'){
+  const raw=String(name||'').trim(); if(!raw) return {found:false,value:0};
+  const metric=findMetricByNameOrId(raw) || findMetricByRef(raw);
+  if(metric) return {found:true,value:evaluateMetric(metric,rows,item.source,warnings)??0,kind:'metric'};
+  const modelRef=parseModelRef(raw) || findModelCriterionReferenceByName(raw);
+  if(modelRef) return {found:true,value:evaluateModelReferenceValue(modelRef,rows,item,fn,warnings)||0,kind:'model'};
+  const field=resolveResearchExpressionField(raw,item);
+  if(field) return {found:true,value:researchAggregateColumnValue(rows,item,field,fn,warnings),kind:'column'};
+  researchExpressionAddWarning(warnings,`Unknown expression reference: ${raw}`);
+  return {found:false,value:0,kind:'missing'};
+}
+function escapeResearchRegex(s){ return String(s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
 function replaceResearchAggregateReferences(expr,item,rows,warnings=[]){
-  const hold=[]; const keep=v=>`__research_ref_${hold.push(v)-1}__`;
-  expr=expr.replace(/model\(\s*["']([^"']+)["']\s*(?:,\s*["']([^"']+)["']\s*)?\)/gi,(_,m,c)=>keep(evaluateModelReferenceValue({model:m,criteria:c||''},rows,item,'sum',warnings)||0));
-  expr=expr.replace(/;([A-Za-z0-9 _-]+)\.([A-Za-z0-9 _.-]+)/g,(_,m,c)=>keep(evaluateModelReferenceValue({model:m.trim(),criteria:c.trim()},rows,item,'sum',warnings)||0));
-  expr=expr.replace(/@([A-Za-z0-9 _.-]+)/g,(_,n)=>keep(evaluateMetric((state.metrics||[]).find(m=>m.name===n.trim()||m.id===n.trim())||{},rows,item.source,warnings)||0));
-  expr=expr.replace(/\b(sum|avg|count|unique|min|max)\s*\(\s*\[([^\]]+)\]\s*\)/gi,(_,fn,f)=>keep(researchAggregateColumnValue(rows,item,resolveResearchExpressionField(f,item)||f,fn.toLowerCase(),warnings)));
-  expr=expr.replace(/\b(sum|avg|count|unique|min|max)\s*\(\s*([A-Za-z_][A-Za-z0-9_ ]*?)\s*\)/gi,(_,fn,f)=>keep(researchAggregateColumnValue(rows,item,resolveResearchExpressionField(f,item)||f,fn.toLowerCase(),warnings)));
-  expr=expr.replace(/\brow\s*\[\s*["']([^"']+)["']\s*\]/gi,(_,f)=>keep(researchAggregateColumnValue(rows,item,resolveResearchExpressionField(f,item)||f,'sum',warnings)));
-  expr=expr.replace(/\[([^\]]+)\]/g,(_,f)=>keep(researchAggregateColumnValue(rows,item,resolveResearchExpressionField(f,item)||f,'sum',warnings)));
-  getResearchHeaders(item.source).sort((a,b)=>b.length-a.length).forEach(h=>{
-    const rx=new RegExp(`(^|[^A-Za-z0-9_\\]'"])(${h.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})(?=$|[^A-Za-z0-9_\\['"])`,'gi');
-    expr=expr.replace(rx,(m,p)=>p+keep(researchAggregateColumnValue(rows,item,h,'sum',warnings)));
+  const hold=[]; const keep=(v,raw)=>`__research_ref_${hold.push({value:v,raw})-1}__`;
+  const valueFor=(name,fn='sum')=>{ const res=resolveResearchAggregateReference(name,item,rows,warnings,fn); return keep(res.value,name); };
+  expr=expr.replace(/model\(\s*["']([^"']+)["']\s*(?:,\s*["']([^"']+)["']\s*)?\)/gi,(_,m,c)=>keep(evaluateModelReferenceValue({model:m,criteria:c||''},rows,item,'sum',warnings)||0, c?`${m} / ${c}`:m));
+  expr=expr.replace(/;([A-Za-z0-9 _-]+)\.([A-Za-z0-9 _.-]+)/g,(_,m,c)=>keep(evaluateModelReferenceValue({model:m.trim(),criteria:c.trim()},rows,item,'sum',warnings)||0, `${m.trim()} / ${c.trim()}`));
+  expr=expr.replace(/@([A-Za-z0-9 _.-]+)/g,(_,n)=>valueFor(n,'sum'));
+  expr=expr.replace(/\b(sum|avg|count|unique|min|max)\s*\(\s*\[([^\]]+)\]\s*\)/gi,(_,fn,f)=>valueFor(f,fn.toLowerCase()));
+  expr=expr.replace(/\b(sum|avg|count|unique|min|max)\s*\(\s*([A-Za-z_][A-Za-z0-9_ ]*?)\s*\)/gi,(_,fn,f)=>valueFor(f,fn.toLowerCase()));
+  expr=expr.replace(/\brow\s*\[\s*["']([^"']+)["']\s*\]/gi,(_,f)=>valueFor(f,'sum'));
+  expr=expr.replace(/\[([^\]]+)\]/g,(_,f)=>valueFor(f,'sum'));
+  const names=[...(state.metrics||[]).map(m=>m.name).filter(Boolean),...getResearchHeaders(item.source)].sort((a,b)=>b.length-a.length);
+  names.forEach(n=>{
+    const rx=new RegExp(`(^|[^A-Za-z0-9_\\]'"@])(${escapeResearchRegex(n)})(?=$|[^A-Za-z0-9_\\['"])`,'gi');
+    expr=expr.replace(rx,(m,p,found)=>p+valueFor(found,'sum'));
   });
-  hold.forEach((v,i)=>{ expr=expr.replaceAll(`__research_ref_${i}__`,String(Number.isFinite(toNum(v))?toNum(v):0)); });
+  expr=expr.replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g,(token,offset,whole)=>{
+    if(token==='Math' || token==='NaN' || token==='Infinity' || token.startsWith('__research_ref_')) return token;
+    const before=whole.slice(Math.max(0,offset-2),offset), after=whole.slice(offset+token.length,offset+token.length+1);
+    if(before.endsWith('__') || after==='(' || /^research_ref_\d+$/.test(token)) return token;
+    const res=resolveResearchAggregateReference(token,item,rows,warnings,'sum');
+    return res.found ? valueFor(token,'sum') : '0';
+  });
+  hold.forEach((entry,i)=>{ expr=expr.replaceAll(`__research_ref_${i}__`,String(Number.isFinite(toNum(entry.value))?toNum(entry.value):0)); });
   return expr;
+}
+function researchExpressionDivisionWarning(raw,warnings){
+  const m=String(raw||'').match(/\/\s*(?:\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_ ]*))/);
+  researchExpressionAddWarning(warnings,`Expression denominator is zero or missing${m?': '+(m[1]||m[2]).trim():'.'}`);
 }
 function evaluateResearchAggregateExpression(item, rows, expression, ctx={}){
   const warnings=ctx.warnings||[], raw=String(expression||'').trim();
   if(!raw) return '';
   if(!researchExpressionHasMath(raw) && !/\b(sum|avg|count|unique|min|max)\s*\(/i.test(raw)){
+    const resolved=resolveResearchAggregateReference(raw,item,rows,warnings,'sum');
+    if(resolved.found && (findMetricByNameOrId(raw)||findMetricByRef(raw)||findModelCriterionReferenceByName(raw))) return resolved.value;
     const f=resolveResearchExpressionField(raw,item);
     if(f) return (rows||[]).map(r=>researchFieldValue(r,f,item.source)).filter(v=>String(v??'').trim()).join(', ');
   }
   const expr=replaceResearchAggregateReferences(raw,item,rows,warnings);
   try{
     const out=Function('Math','return ('+expr+');')(Math);
-    if(typeof out==='number' && !Number.isFinite(out)){ researchExpressionAddWarning(warnings,'Expression denominator is zero or blank.'); return item.zeroDenominator==='blank'?null:0; }
+    if(typeof out==='number' && !Number.isFinite(out)){ researchExpressionDivisionWarning(raw,warnings); return item.zeroDenominator==='blank'?null:0; }
     return out;
   }catch(e){ researchExpressionAddWarning(warnings,'Expression error: '+e.message); return ''; }
 }
@@ -3303,10 +3348,10 @@ function evaluateResearchItem(item){
   let groupList=[...groups.values()].filter(g=>Object.keys(item.gearFilters||{}).every(key=>{ const cfg={...researchGearDefault(),...(item.gearFilters||{})[key]}; if(key.startsWith('columnField:') && cfg.valueLevel==='level2') return true; if(!cfg.customValueEnabled||cfg.customValueMetric==='each') return true; const field=researchGearFieldForKey(item,key,+(key.split(':')[1]||0)); if(!field) return true; const bad=researchGearNumericInvalid(cfg,item,field,g.rows); if(bad){ if(!warnings.includes(bad)) warnings.push(bad); return true; } return researchGearGroupPass(g.rows,cfg,item,field); }));
   const outputColumns=expandedResearchColumns(item); let data=groupList.map(g=>{ const ctx={total,parentTotal:(parentTotals.get(g.primary)||g.rows.length||1),warnings}; let vals; if(item.outputType==='table') vals=outputColumns.map(c=>aggregateResearchValue(item,g.rows,c,ctx)); else vals=[aggregateResearchValue(item,g.rows,null,ctx)]; return {label:g.primary,secondary:g.secondary,values:vals,rows:g.rows.length,dateValue:Number.isFinite(g.dateValue)?g.dateValue:researchSortDateValue(item,g.rows)}; });
   if(hasSecondary && (!item.sort || item.sort==='default')) data.sort((a,b)=>String(a.label).localeCompare(String(b.label))||String(a.secondary).localeCompare(String(b.secondary))); const sort=item.sort||'default'; if(sort==='xAsc') data.sort((a,b)=>(a.label+a.secondary).localeCompare(b.label+b.secondary)); if(sort==='xDesc') data.sort((a,b)=>(b.label+b.secondary).localeCompare(a.label+a.secondary)); if(sort==='yAsc') data.sort((a,b)=>(+a.values[0]||0)-(+b.values[0]||0)); if(sort==='yDesc') data.sort((a,b)=>(+b.values[0]||0)-(+a.values[0]||0)); if(sort==='dateAsc') data.sort((a,b)=>(a.dateValue||0)-(b.dateValue||0)); if(sort==='dateDesc') data.sort((a,b)=>(b.dateValue||0)-(a.dateValue||0)); if(item.rowLimit) data=data.slice(0,item.rowLimit);
-  return {data,warnings,columns:outputColumns,hasSecondary};
+  return {data,warnings,columns:outputColumns,hasSecondary,totalRows:universeRows};
 }
 function formatResearchValue(v,item,col){ if(v==null) return ''; if(typeof v==='number'){ const pct=!!(col&&col.showAsPercent); const n=pct && Math.abs(v)<=1 ? v*100 : v; return n.toFixed(item.decimals??1)+((item.showPercent||pct)?'%':''); } return esc(v); }
-function renderResearchTable(item,result){ const sec=!!result.hasSecondary; let rows=result.data.map(r=>`<tr><td>${esc(r.label)}</td>${sec?`<td>${esc(r.secondary||'')}</td>`:''}${r.values.map((v,i)=>`<td class="right">${formatResearchValue(v,item,result.columns[i])}</td>`).join('')}</tr>`).join(''); if(item.totals&&result.data.length){ rows+=`<tr><td><strong>Total</strong></td>${sec?'<td></td>':''}${result.columns.map((c,i)=>`<td class="right"><strong>${formatResearchValue(result.data.reduce((a,r)=>a+(+r.values[i]||0),0),item,c)}</strong></td>`).join('')}</tr>`; } return `<div class="researchTableWrap"><table><thead><tr><th>${esc(item.groupField||'Group')}</th>${sec?`<th>${esc(item.secondaryGroupField||'Secondary')}</th>`:''}${result.columns.map(c=>`<th>${esc(c.label||c.mode||'Value')}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`; }
+function renderResearchTable(item,result){ const sec=!!result.hasSecondary; let rows=result.data.map(r=>`<tr><td>${esc(r.label)}</td>${sec?`<td>${esc(r.secondary||'')}</td>`:''}${r.values.map((v,i)=>`<td class="right">${formatResearchValue(v,item,result.columns[i])}</td>`).join('')}</tr>`).join(''); if(item.totals&&result.data.length){ const totalRows=result.totalRows||[]; rows+=`<tr><td><strong>Total</strong></td>${sec?'<td></td>':''}${result.columns.map((c,i)=>`<td class="right"><strong>${formatResearchValue(aggregateResearchValue(item,totalRows,c,{total:totalRows.length||1,parentTotal:totalRows.length||1,warnings:result.warnings||[]}),item,c)}</strong></td>`).join('')}</tr>`; } return `<div class="researchTableWrap"><table><thead><tr><th>${esc(item.groupField||'Group')}</th>${sec?`<th>${esc(item.secondaryGroupField||'Secondary')}</th>`:''}${result.columns.map(c=>`<th>${esc(c.label||c.mode||'Value')}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`; }
 function renderResearchConversationViewer(item,result){ const cls=`researchConversationTable ${item.textWrap===false?'noWrap':'wrapText'} ${item.rowDensity==='compact'?'compact':'comfortable'}`; const rows=result.rows.map(r=>`<tr>${result.columns.map(c=>`<td><div class="cellScroll">${esc(r[c.field]??'')}</div></td>`).join('')}</tr>`).join(''); return `<div class="researchConversationBadge">Showing ${result.rows.length} rows.</div><div class="researchTableWrap"><table class="${cls}"><thead><tr>${result.columns.map(c=>`<th>${esc(c.label||c.field)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`; }
 function renderResearchBarChart(item,result){
   const w=900,h=330,p=42, legendW=result.hasSecondary?170:0, plotW=w-legendW, vals=result.data.map(d=>+d.values[0]||0), min=item.axisMin!==''?+item.axisMin:Math.min(0,...vals), max=item.axisMax!==''?+item.axisMax:Math.max(1,...vals), colors=['#b91c1c','#2563eb','#059669','#d97706','#7c3aed','#0891b2','#db2777','#65a30d'], series=[...new Set(result.data.map(d=>d.secondary||''))];
