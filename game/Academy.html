@@ -477,6 +477,10 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
     <div class="modalHead"><div class="modalTitle">Run</div><button class="dark" data-close="runModal">Close</button></div>
     <div class="modalBody">
       <div class="grid4">
+        <div class="field"><label>Run Type</label><select id="runTypeSelect"><option value="allstar">Base Allstar Report</option><option value="chart">Chart / Table</option></select></div>
+      </div>
+      <div id="allstarRunPanel">
+      <div class="grid4">
         <div class="field"><label>Model</label><select id="runModelSelect"></select></div>
         <div class="field"><label>Start Date</label><input id="runStartDate" type="date"></div>
         <div class="field"><label>End Date</label><input id="runEndDate" type="date"></div>
@@ -495,6 +499,23 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
         </div>
         <div id="teamSelectGrid" class="checkGrid teamGrid"></div>
       </div>
+      </div>
+      <div id="chartRunPanel" class="hidden">
+        <div class="hint">Chart / Table runs are separate from Allstar scoring. They do not award medals or hide no-score representatives.</div>
+        <div class="grid4">
+          <div class="field"><label>Model / Source</label><select id="chartSourceSelect"></select></div>
+          <div class="field"><label>Date Column</label><select id="chartDateColumnSelect"></select></div>
+          <div class="field"><label>Start Date</label><input id="chartStartDate" type="date"></div>
+          <div class="field"><label>End Date</label><input id="chartEndDate" type="date"></div>
+          <div class="field"><label>Output Type</label><select id="chartOutputType"><option value="table">Table</option><option value="line">Line graph</option><option value="bar">Bar graph</option><option value="multi">Multi table</option></select></div>
+          <div class="field"><label>Rows / Label</label><select id="chartGroupField"></select></div>
+          <div class="field"><label>Value / Data Point</label><select id="chartValueField"></select></div>
+          <div class="field"><label>Aggregation</label><select id="chartAggregation"><option value="count">Count</option><option value="sum">Sum</option><option value="avg">Average</option><option value="min">Min</option><option value="max">Max</option></select></div>
+          <div class="field" id="chartPeriodField"><label>Time Grouping</label><select id="chartPeriod"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+        </div>
+        <div class="row" style="margin:6px 0"><strong>Data points</strong><button class="smallBtn" type="button" id="addChartPointBtn">Add data point</button></div>
+        <div id="chartPointList"></div>
+      </div>
     </div>
     <div class="modalFoot"><button id="executeRunBtn" class="green">Run</button></div>
   </div>
@@ -504,6 +525,7 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
 (() => {
 'use strict';
 const MODEL_KEY = 'allStarStandaloneModels.v1';
+const CHART_SETTINGS_KEY = 'allStarChartSettings.v1';
 const state = {
   models: [],
   editModel: null,
@@ -529,7 +551,8 @@ const state = {
   teamSelectionInitialized: false,
   activeTeam: '',
   massHeaderRefs: [],
-  dataIndex: { dirty:true, reason:'initial', version:0, sources:{}, reps:[], teamCounts:[], repsByTeam:new Map(), dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map()}, lastBuiltAt:0 }
+  dataIndex: { dirty:true, reason:'initial', version:0, sources:{}, reps:[], teamCounts:[], repsByTeam:new Map(), dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map()}, lastBuiltAt:0 },
+  chartSettings: {}
 };
 const el = id => document.getElementById(id);
 const els = {
@@ -539,7 +562,7 @@ const els = {
   troubleSourceSelect: el('troubleSourceSelect'), troubleSheetSelect: el('troubleSheetSelect'), troubleHeaderRowInput: el('troubleHeaderRowInput'), troublePreviewBtn: el('troublePreviewBtn'), troubleApplyBtn: el('troubleApplyBtn'), troubleApplyFootBtn: el('troubleApplyFootBtn'), troubleStatus: el('troubleStatus'), troubleSheetPreview: el('troubleSheetPreview'), troubleHeaderSummary: el('troubleHeaderSummary'), troubleHeaderPreview: el('troubleHeaderPreview'), troubleSelectedCell: el('troubleSelectedCell'), troubleManualHeaderName: el('troubleManualHeaderName'), troubleDeclareHeaderBtn: el('troubleDeclareHeaderBtn'), troubleManualHeaders: el('troubleManualHeaders'), troubleNameMode: el('troubleNameMode'), troubleFullNameColumn: el('troubleFullNameColumn'), troubleFirstNameColumn: el('troubleFirstNameColumn'), troubleLastNameColumn: el('troubleLastNameColumn'), troubleConvertLastFirst: el('troubleConvertLastFirst'),
   teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamRepSearch: el('teamRepSearch'), teamMoveSelect: el('teamMoveSelect'), selectAllTeamRepsBtn: el('selectAllTeamRepsBtn'), unselectAllTeamRepsBtn: el('unselectAllTeamRepsBtn'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'),
   modelList: el('modelList'), createModelBtn: el('createModelBtn'), exportModelsBtn: el('exportModelsBtn'), importModelsFile: el('importModelsFile'), massHeaderList: el('massHeaderList'), massHeaderSummary: el('massHeaderSummary'), refreshMassHeaderBtn: el('refreshMassHeaderBtn'), applyMassHeaderBtn: el('applyMassHeaderBtn'), massShowAllHeaders: el('massShowAllHeaders'), editModelTitle: el('editModelTitle'), modelNameInput: el('modelNameInput'), modelTypeInput: el('modelTypeInput'), modelTiebreakerInput: el('modelTiebreakerInput'), sourceSettingsPanel: el('sourceSettingsPanel'), columnCheckResults: el('columnCheckResults'), criteriaList: el('criteriaList'), addCriterionBtn: el('addCriterionBtn'), cancelModelTopBtn: el('cancelModelTopBtn'), cancelModelBtn: el('cancelModelBtn'), saveModelBtn: el('saveModelBtn'), saveExitModelBtn: el('saveExitModelBtn'),
-  runModelSelect: el('runModelSelect'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), hideNoScoreReps: el('hideNoScoreReps'), hideNoScoreThreshold: el('hideNoScoreThreshold'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn')
+  runModelSelect: el('runModelSelect'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), hideNoScoreReps: el('hideNoScoreReps'), hideNoScoreThreshold: el('hideNoScoreThreshold'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn'), runTypeSelect: el('runTypeSelect'), allstarRunPanel: el('allstarRunPanel'), chartRunPanel: el('chartRunPanel'), chartSourceSelect: el('chartSourceSelect'), chartDateColumnSelect: el('chartDateColumnSelect'), chartStartDate: el('chartStartDate'), chartEndDate: el('chartEndDate'), chartOutputType: el('chartOutputType'), chartGroupField: el('chartGroupField'), chartValueField: el('chartValueField'), chartAggregation: el('chartAggregation'), chartPeriod: el('chartPeriod'), chartPeriodField: el('chartPeriodField'), addChartPointBtn: el('addChartPointBtn'), chartPointList: el('chartPointList')
 };
 function esc(v){return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function id(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
@@ -674,9 +697,12 @@ function parseQuotedPhrases(text){
   if(!phrases.length && raw.trim()) return {ok:false,phrases:[],warning:'Put each word or phrase in quotes, like "Final", "Written", "Verbal".'};
   return {ok:true,phrases,warning:''};
 }
-function normalizeRowPullCondition(cond, fallback){
+function normalizeRowPullConnector(conn, idx){ return idx===0 ? 'base' : (['and','or','andSeparate'].includes(conn)?conn:'and'); }
+function rowPullConnectorLabel(conn){ return ({and:'AND',or:'OR',andSeparate:'AND separate row (same representative)'})[conn]||'AND'; }
+function normalizeRowPullCondition(cond, fallback, idx=0){
   cond={...(cond||{})};
-  return {id:cond.id||id(),column:plainHeaderName(cond.column??fallback?.column??''),operator:normalizeRowPullOperator(cond.operator??fallback?.operator),phrasesText:String(cond.phrasesText??fallback?.phrasesText??'')};
+  const connector=normalizeRowPullConnector(cond.connector, idx);
+  return {id:cond.id||id(),connector,column:plainHeaderName(cond.column??fallback?.column??''),dateColumn:plainHeaderName(cond.dateColumn??fallback?.dateColumn??''),operator:normalizeRowPullOperator(cond.operator??fallback?.operator),phrasesText:String(cond.phrasesText??fallback?.phrasesText??'')};
 }
 function quotePhraseForMigration(text){
   const raw=String(text??'').trim();
@@ -687,7 +713,7 @@ function ensureRowPullConditions(c){
   let list=Array.isArray(c.rowPullConditions)?c.rowPullConditions:[];
   if(!list.length && (c.checkColumn || c.checkText)) list=[{column:c.checkColumn,operator:c.checkOperator,phrasesText:quotePhraseForMigration(c.checkText)}];
   if(!list.length) list=[{column:'',operator:'contains',phrasesText:''}];
-  c.rowPullConditions=list.map(x=>normalizeRowPullCondition(x));
+  c.rowPullConditions=list.map((x,i)=>normalizeRowPullCondition(x,null,i));
   const first=c.rowPullConditions[0]||{};
   c.checkColumn=plainHeaderName(c.checkColumn||first.column||'');
   c.checkOperator=normalizeRowPullOperator(c.checkOperator||first.operator);
@@ -706,6 +732,18 @@ function rowPullConditionPass(row, cond){
 }
 function rowPullWarnings(c){
   return ensureRowPullConditions(c).map(cond=>parseQuotedPhrases(cond.phrasesText).warning);
+}
+function checklistRowsForSeparateCondition(entry, opts, cond){
+  return rowsForEntry('checklist', entry, {...opts,dateColumn:cond.dateColumn||opts.dateColumn}).filter(r=>rowPullConditionPass(r,cond));
+}
+function checklistRowPassesConditions(row, entry, opts, conditions){
+  let result=true;
+  conditions.forEach((cond,idx)=>{
+    if(idx===0){ result=rowPullConditionPass(row,cond); return; }
+    const pass=cond.connector==='andSeparate' ? checklistRowsForSeparateCondition(entry,opts,cond).length>0 : rowPullConditionPass(row,cond);
+    result = cond.connector==='or' ? (result || pass) : (result && pass);
+  });
+  return result;
 }
 function numericComparisonPass(left, op, right){
   if(!Number.isFinite(left)||!Number.isFinite(right)) return false;
@@ -751,10 +789,11 @@ function upsertModel(model){
   return incoming;
 }
 function serializeModelsForExport(models){
-  return JSON.stringify({version:2,exportedAt:new Date().toISOString(),models:(models||[]).map(normalizeModelForStorage)}, null, 2);
+  return JSON.stringify({version:3,exportedAt:new Date().toISOString(),models:(models||[]).map(normalizeModelForStorage),chartSettings:state.chartSettings||{}}, null, 2);
 }
 function parseModelsImportText(text){
   const obj=JSON.parse(String(text||''));
+  if(obj && obj.chartSettings){ state.chartSettings=obj.chartSettings; localStorage.setItem(CHART_SETTINGS_KEY, JSON.stringify(state.chartSettings)); }
   const incoming=Array.isArray(obj)?obj:(Array.isArray(obj.models)?obj.models:[obj]);
   if(!Array.isArray(incoming)) throw new Error('Imported file did not contain models.');
   return incoming.map(normalizeModelForStorage);
@@ -1317,7 +1356,7 @@ function criterionHtml(c,i){
     </div></div>
     <div class="${c.calcType==='checklistCount'||isCheck?'':'hidden'}" data-block="checklist">
       <div class="grid4"><div class="field"><label>Date Column</label><select data-cfield="checkDateColumn">${headerOptions('checklist',c.checkDateColumn)}</select></div><div></div><div></div><div></div></div>
-      <div class="row" style="margin:6px 0"><strong>Date row pull conditions</strong><button class="smallBtn" type="button" data-add-row-pull="${c.id}">Add AND condition</button></div>
+      <div class="row" style="margin:6px 0"><strong>Date row pull conditions</strong><button class="smallBtn" type="button" data-add-row-pull="${c.id}">Add condition</button></div>
       <div data-row-pull-for="${c.id}">${ensureRowPullConditions(c).map((cond,i,arr)=>rowPullConditionHtml(c.id,cond,i,arr.length)).join('')}</div>
     </div>
     <div class="${isAutofailItem?'grid4':'grid4 hidden'}" data-block="autofailSettings">
@@ -1332,13 +1371,16 @@ function criterionHtml(c,i){
 function rowPullConditionHtml(cid,cond,idx,total){
   const warn=parseQuotedPhrases(cond.phrasesText).warning;
   const opOpts=['contains','equals','notContains','notEquals'].map(op=>`<option value="${op}" ${cond.operator===op?'selected':''}>${rowPullOperatorLabel(op)}</option>`).join('');
+  const connOpts=['and','or','andSeparate'].map(op=>`<option value="${op}" ${cond.connector===op?'selected':''}>${rowPullConnectorLabel(op)}</option>`).join('');
+  const separate=cond.connector==='andSeparate';
   return `<div class="rowPullCondition" data-row-pull-condition="${cond.id}">
     <div class="grid5">
-      <div class="field"><label>${idx?'AND Column':'Column'}</label><select data-rpfield="column">${headerOptions('checklist',cond.column)}</select></div>
-      <div class="field"><label>Preview</label><button class="smallBtn" type="button" data-preview-row-pull="${cid}|${cond.id}">Preview</button></div>
+      <div class="field">${idx?`<label>Connector</label><select data-rpfield="connector">${connOpts}</select>`:'<label>Connector</label><span class="badge">Base condition</span>'}</div>
+      <div class="field"><label>${separate?'Separate-row Date Column':'Date Column'}</label><select data-rpfield="dateColumn" ${separate?'':'disabled'}>${headerOptions('checklist',cond.dateColumn)}</select><div class="hint">${separate?'Checks another row for the same representative in the run date range.':'Uses the criteria Date Column above.'}</div></div>
+      <div class="field"><label>Column</label><select data-rpfield="column">${headerOptions('checklist',cond.column)}</select></div>
       <div class="field"><label>Operator</label><select data-rpfield="operator">${opOpts}</select></div>
       <div class="field"><label>Quoted phrases</label><input data-rpfield="phrasesText" value="${esc(cond.phrasesText||'')}" placeholder='"Final", "Written", "Verbal"'>${warn?`<div class="rowPullWarn">${esc(warn)}</div>`:''}</div>
-      <div class="field"><label>Remove</label><button class="smallBtn red" type="button" data-remove-row-pull="${cid}|${cond.id}" ${total<=1?'disabled':''}>Remove</button></div>
+      <div class="field"><label>Preview / Remove</label><button class="smallBtn" type="button" data-preview-row-pull="${cid}|${cond.id}">Preview</button> <button class="smallBtn red" type="button" data-remove-row-pull="${cid}|${cond.id}" ${total<=1?'disabled':''}>Remove</button></div>
     </div>
   </div>`;
 }
@@ -1395,15 +1437,15 @@ function bindCriteriaEditors(){
   els.criteriaList.querySelectorAll('[data-copy-crit]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.copyCrit); if(c){const n=JSON.parse(JSON.stringify(c)); n.id=id(); n.name=n.name+' Copy'; state.editModel.criteria.push(n); renderEditModel();}});
   els.criteriaList.querySelectorAll('[data-add-filter]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.addFilter); c.filters=c.filters||[]; c.filters.push({id:id(),action:'include',mode:'include',operator:'is',source:c.source||'retail_sv2',column:'',values:[],value:''}); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-remove-filter]').forEach(b=>b.onclick=()=>{const [cid,fid]=b.dataset.removeFilter.split('|'); const c=getEditCriterion(cid); c.filters=(c.filters||[]).filter(f=>f.id!==fid); renderEditModel();});
-  els.criteriaList.querySelectorAll('[data-add-row-pull]').forEach(b=>b.onclick=()=>{ const c=getEditCriterion(b.dataset.addRowPull); ensureRowPullConditions(c); c.rowPullConditions.push({id:id(),column:'',operator:'contains',phrasesText:''}); renderEditModel(); });
-  els.criteriaList.querySelectorAll('[data-remove-row-pull]').forEach(b=>b.onclick=()=>{ const [cid,rid]=b.dataset.removeRowPull.split('|'); const c=getEditCriterion(cid); c.rowPullConditions=ensureRowPullConditions(c).filter(x=>x.id!==rid); if(!c.rowPullConditions.length) c.rowPullConditions.push({id:id(),column:'',operator:'contains',phrasesText:''}); renderEditModel(); });
+  els.criteriaList.querySelectorAll('[data-add-row-pull]').forEach(b=>b.onclick=()=>{ const c=getEditCriterion(b.dataset.addRowPull); ensureRowPullConditions(c); c.rowPullConditions.push({id:id(),connector:'and',column:'',dateColumn:c.checkDateColumn||'',operator:'contains',phrasesText:''}); renderEditModel(); });
+  els.criteriaList.querySelectorAll('[data-remove-row-pull]').forEach(b=>b.onclick=()=>{ const [cid,rid]=b.dataset.removeRowPull.split('|'); const c=getEditCriterion(cid); c.rowPullConditions=ensureRowPullConditions(c).filter(x=>x.id!==rid); if(!c.rowPullConditions.length) c.rowPullConditions.push({id:id(),connector:'and',column:'',dateColumn:c.checkDateColumn||'',operator:'contains',phrasesText:''}); renderEditModel(); });
   els.criteriaList.querySelectorAll('[data-preview-row-pull]').forEach(b=>b.onclick=()=>{ const [cid,rid]=b.dataset.previewRowPull.split('|'); const c=getEditCriterion(cid); const cond=ensureRowPullConditions(c).find(x=>x.id===rid); showColumnPreview('checklist',cond?.column||''); });
   els.criteriaList.querySelectorAll('[data-rpfield]').forEach(input=>{
     input.onchange=input.oninput=()=>{
       const critBox=input.closest('[data-crit]'); const rowBox=input.closest('[data-row-pull-condition]'); const c=getEditCriterion(critBox.dataset.crit); const cond=ensureRowPullConditions(c).find(x=>x.id===rowBox.dataset.rowPullCondition); if(!cond) return;
       cond[input.dataset.rpfield]=input.value;
       const first=c.rowPullConditions[0]; if(first){ c.checkColumn=first.column; c.checkOperator=first.operator; c.checkText=first.phrasesText; }
-      if(['column','operator'].includes(input.dataset.rpfield)) renderEditModel();
+      if(['column','operator','connector','dateColumn'].includes(input.dataset.rpfield)) renderEditModel();
       else {
         const warn=input.parentElement.querySelector('.rowPullWarn');
         const msg=parseQuotedPhrases(input.value).warning;
@@ -2537,8 +2579,8 @@ function valueQA(c, entry, opts){
 }
 function valueChecklist(c, entry, opts){
   let rows=rowsForEntry('checklist', entry, {...opts,dateColumn:c.checkDateColumn}); rows=applyFilters(rows,c.filters,'checklist',opts);
-  const conditions=ensureRowPullConditions(c).map(cond=>({...cond,column:resolveColumn('checklist',cond.column)})).filter(cond=>cond.column && String(cond.phrasesText||'').trim());
-  if(conditions.length) rows=rows.filter(r=>conditions.every(cond=>rowPullConditionPass(r,cond)));
+  const conditions=ensureRowPullConditions(c).map(cond=>({...cond,column:resolveColumn('checklist',cond.column),dateColumn:resolveColumn('checklist',cond.dateColumn||c.checkDateColumn)})).filter(cond=>cond.column && String(cond.phrasesText||'').trim());
+  if(conditions.length) rows=rows.filter(r=>checklistRowPassesConditions(r,entry,{...opts,dateColumn:c.checkDateColumn},conditions));
   return rows.length;
 }
 function criterionValue(c, entry, opts){
@@ -2575,12 +2617,82 @@ function applyHideNoScoreRepOption(repPack){
 }
 function criterionUsesQA(c){ return c && (c.source==='qa' || c.calcType==='qaScore' || c.leftSource==='qa' || c.rightSource==='qa' || c.customSource==='qa'); }
 function modelUsesQA(model){ return !!(model && (model.criteria||[]).some(criterionUsesQA)); }
+
+function dateLikeHeaders(source){
+  const hs=getHeaders(source)||[];
+  return hs.filter(h=>/date|time/i.test(h));
+}
+function populateChartRunControls(){
+  if(!els.chartSourceSelect) return;
+  state.chartSettings=state.chartSettings&&Object.keys(state.chartSettings).length?state.chartSettings:(JSON.parse(localStorage.getItem(CHART_SETTINGS_KEY)||'{}')||{});
+  const prev=els.chartSourceSelect.value;
+  const opts=[...allSourceKeys().map(s=>({value:s,label:labelSource(s)})),...state.models.map(m=>({value:'model:'+m.id,label:'Model: '+m.name}))];
+  els.chartSourceSelect.innerHTML=opts.map(o=>`<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
+  if(state.chartSettings.source && opts.some(o=>o.value===state.chartSettings.source)) els.chartSourceSelect.value=state.chartSettings.source;
+  else if(prev && opts.some(o=>o.value===prev)) els.chartSourceSelect.value=prev;
+  updateChartFieldOptions();
+  ['chartStartDate','chartEndDate','chartOutputType','chartAggregation','chartPeriod'].forEach(k=>{ const el=els[k]; const key=k.replace('chart','').replace(/^./,m=>m.toLowerCase()); if(el && state.chartSettings[key]) el.value=state.chartSettings[key]; });
+}
+function chartSelectedSource(){ const v=els.chartSourceSelect?.value||'checklist'; return v.startsWith('model:') ? 'model' : v; }
+function chartRowsAndFields(opts={}){
+  const selected=els.chartSourceSelect?.value||'checklist';
+  if(selected.startsWith('model:')){
+    const model=findModel(selected.slice(6));
+    const criteria=(model?.criteria||[]).filter(c=>c.audience==='both'||c.audience==='rep');
+    const rows=allRepEntries(model, state.teams||[]).map(e=>{ const row={Agent:e.name,Team:e.team||''}; criteria.forEach(c=>{ row[c.name]=criterionValue(c,e,opts); }); return row; });
+    return {rows, fields:['Agent','Team',...criteria.map(c=>c.name)]};
+  }
+  const rows=getRowsRaw(selected)||[];
+  return {rows, fields:getHeaders(selected)||[]};
+}
+function updateChartFieldOptions(){
+  if(!els.chartDateColumnSelect) return;
+  const {fields}=chartRowsAndFields();
+  const dateFields=dateLikeHeaders(els.chartSourceSelect.value).filter(Boolean);
+  const opts=(dateFields.length?dateFields:fields).map(h=>`<option value="${esc(h)}">${esc(h)}</option>`).join('');
+  els.chartDateColumnSelect.innerHTML=opts; if(state.chartSettings.dateColumn) els.chartDateColumnSelect.value=state.chartSettings.dateColumn;
+  const fieldOpts=['Agent','Agent Name','Representative','Team',...fields].filter((v,i,a)=>v&&a.indexOf(v)===i).map(h=>`<option value="${esc(h)}">${esc(h)}</option>`).join('');
+  els.chartGroupField.innerHTML=fieldOpts; if(state.chartSettings.groupField) els.chartGroupField.value=state.chartSettings.groupField;
+  els.chartValueField.innerHTML=`<option value="__count">Count rows</option>`+fields.map(h=>`<option value="${esc(h)}">${esc(h)}</option>`).join(''); if(state.chartSettings.valueField) els.chartValueField.value=state.chartSettings.valueField;
+  renderChartPointList();
+}
+function renderChartPointList(){
+  if(!els.chartPointList) return;
+  state.chartPoints=state.chartPoints||state.chartSettings.points||[];
+  if(!state.chartPoints.length) state.chartPoints=[{field:els.chartValueField?.value||'__count',agg:els.chartAggregation?.value||'count'}];
+  els.chartPointList.innerHTML=state.chartPoints.map((p,i)=>`<div class="row"><select data-chart-point-field="${i}">${els.chartValueField.innerHTML.replace(`value="${esc(p.field)}"`,`value="${esc(p.field)}" selected`)}</select><select data-chart-point-agg="${i}">${['count','sum','avg','min','max'].map(a=>`<option value="${a}" ${p.agg===a?'selected':''}>${a}</option>`).join('')}</select><button class="smallBtn red" data-remove-chart-point="${i}" type="button">Remove</button></div>`).join('');
+  els.chartPointList.querySelectorAll('[data-chart-point-field]').forEach(x=>x.onchange=()=>{state.chartPoints[x.dataset.chartPointField].field=x.value;});
+  els.chartPointList.querySelectorAll('[data-chart-point-agg]').forEach(x=>x.onchange=()=>{state.chartPoints[x.dataset.chartPointAgg].agg=x.value;});
+  els.chartPointList.querySelectorAll('[data-remove-chart-point]').forEach(b=>b.onclick=()=>{state.chartPoints.splice(Number(b.dataset.removeChartPoint),1); renderChartPointList();});
+}
+function aggValues(vals,agg){ vals=vals.map(toNumber).filter(Number.isFinite); if(agg==='count') return vals.length; if(!vals.length) return 0; if(agg==='avg') return vals.reduce((a,b)=>a+b,0)/vals.length; if(agg==='min') return Math.min(...vals); if(agg==='max') return Math.max(...vals); return vals.reduce((a,b)=>a+b,0); }
+function chartBucketDate(d,period){ const x=parseDateOnly(d); if(!x) return ''; if(period==='monthly') return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}`; if(period==='weekly'){ const t=new Date(x); t.setDate(t.getDate()-t.getDay()); return ymd(t); } return ymd(x); }
+function runChartTable(){
+  state.chartSettings={source:els.chartSourceSelect.value,dateColumn:els.chartDateColumnSelect.value,start:els.chartStartDate.value,end:els.chartEndDate.value,outputType:els.chartOutputType.value,groupField:els.chartGroupField.value,valueField:els.chartValueField.value,aggregation:els.chartAggregation.value,period:els.chartPeriod.value,points:state.chartPoints||[]};
+  localStorage.setItem(CHART_SETTINGS_KEY, JSON.stringify(state.chartSettings));
+  const start=parseDateOnly(els.chartStartDate.value), end=parseDateOnly(els.chartEndDate.value), out=els.chartOutputType.value;
+  const group=els.chartGroupField.value, dateCol=els.chartDateColumnSelect.value, val=els.chartValueField.value, agg=els.chartAggregation.value;
+  let {rows}=chartRowsAndFields({start,end,dateColumn:dateCol,qaDateMode:els.runQADateSelect?.value||'interaction',_sourceRowsCache:new Map(),_entryRowsCache:new Map()}); rows=rows.filter(r=>!dateCol || inRange(r[dateCol],start,end));
+  const keyFor=r=>out==='line'?chartBucketDate(r[dateCol],els.chartPeriod.value):(String(r[group]??'')||'(blank)');
+  const map=new Map(); rows.forEach(r=>{ const k=keyFor(r); if(!k) return; if(!map.has(k)) map.set(k,[]); map.get(k).push(r); });
+  const points=(out==='multi'?state.chartPoints:[{field:val,agg}])||[];
+  let html=`<div id="pdfContent"><div class="reportHeader"><h1 class="resultTitle">Chart / Table</h1><div class="reportMeta"><span class="badge">${esc(els.chartSourceSelect.selectedOptions[0]?.textContent||'')}</span><span class="badge">${esc(out)}</span></div></div>`;
+  const rowsHtml=[...map.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([k,rs])=>`<tr><td>${esc(k)}</td>${points.map(p=>`<td class="right">${fmt(p.field==='__count'?rs.length:aggValues(rs.map(r=>r[p.field]),p.agg),'number')}</td>`).join('')}</tr>`).join('');
+  html+=`<div class="tableWrap"><table><thead><tr><th>${out==='line'?'Date':esc(group)}</th>${points.map(p=>`<th>${esc(p.agg)} ${esc(p.field==='__count'?'Rows':p.field)}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+  if(out==='bar'||out==='line'){
+    const labels=[...map.keys()].sort(); const max=Math.max(1,...labels.map(k=>points[0].field==='__count'?map.get(k).length:aggValues(map.get(k).map(r=>r[points[0].field]),points[0].agg)));
+    html+=`<div class="panel">${labels.map(k=>{const v=points[0].field==='__count'?map.get(k).length:aggValues(map.get(k).map(r=>r[points[0].field]),points[0].agg); return `<div class="row"><span style="width:160px">${esc(k)}</span><div style="height:18px;background:#b91c1c;width:${Math.max(2,(v/max)*60)}%"></div><strong>${fmt(v,'number')}</strong></div>`;}).join('')}</div>`;
+  }
+  els.workArea.innerHTML=html+'</div>'; closeModal('runModal'); setStatus('Chart / Table');
+}
+
 function updateRunQADateField(){
   const model=findModel(els.runModelSelect?.value);
   const show=modelUsesQA(model);
   if(els.qaDateField) els.qaDateField.classList.toggle('hidden', !show);
 }
 async function buildRun(){
+  if(els.runTypeSelect?.value==='chart'){ runChartTable(); return; }
   const model=findModel(els.runModelSelect.value); if(!model) return;
   const start=parseDateOnly(els.runStartDate.value), end=parseDateOnly(els.runEndDate.value);
   syncTeamSelectionsFromDom();
@@ -2808,6 +2920,7 @@ function populateRunModels(){
   if(prev && state.models.some(m=>m.id===prev)) els.runModelSelect.value=prev;
   renderTeamSelect();
   updateRunQADateField();
+  populateChartRunControls();
 }
 function syncTeamSelectionsFromDom(){
   if(!els.teamSelectGrid) return;
@@ -3002,6 +3115,12 @@ function wire(){
   els.modelTypeInput.onchange=()=>{ if(state.editModel) state.editModel.type=els.modelTypeInput.value; };
   els.modelTiebreakerInput.onchange=()=>{ if(state.editModel) state.editModel.tiebreaker=els.modelTiebreakerInput.value; };
   if(els.runModelSelect) els.runModelSelect.onchange=()=>{ updateRunQADateField(); setDefaultRunDates(); renderTeamSelect(); };
+  if(els.runTypeSelect) els.runTypeSelect.onchange=()=>{ const chart=els.runTypeSelect.value==='chart'; els.allstarRunPanel.classList.toggle('hidden', chart); els.chartRunPanel.classList.toggle('hidden', !chart); if(chart){ populateChartRunControls(); els.chartStartDate.value=els.runStartDate.value; els.chartEndDate.value=els.runEndDate.value; } };
+  if(els.chartSourceSelect) els.chartSourceSelect.onchange=updateChartFieldOptions;
+  if(els.chartOutputType) els.chartOutputType.onchange=()=>{ els.chartPeriodField.classList.toggle('hidden', els.chartOutputType.value!=='line'); };
+  if(els.chartValueField) els.chartValueField.onchange=renderChartPointList;
+  if(els.chartAggregation) els.chartAggregation.onchange=renderChartPointList;
+  if(els.addChartPointBtn) els.addChartPointBtn.onclick=()=>{ state.chartPoints=state.chartPoints||[]; state.chartPoints.push({field:els.chartValueField.value,agg:els.chartAggregation.value}); renderChartPointList(); };
   if(els.hideNoScoreReps) els.hideNoScoreReps.onchange=()=>{ if(els.hideNoScoreThreshold) els.hideNoScoreThreshold.classList.toggle('hidden', !els.hideNoScoreReps.checked); };
   if(els.runQADateSelect) els.runQADateSelect.onchange=()=>setDefaultRunDates();
   els.teamSearchInput.oninput=()=>{ syncTeamSelectionsFromDom(); state.teamSearch=els.teamSearchInput.value; renderTeamSelect(); };
