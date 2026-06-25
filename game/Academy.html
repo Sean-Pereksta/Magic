@@ -301,6 +301,7 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
         <div class="panelTitle">Troubleshoot / Update Imports</div>
         <div class="row">
           <button id="openTroubleshootBtn" class="dark" type="button">Troubleshoot / Update Sheet + Headers</button>
+          <button id="packageDataBtn" class="green" type="button">Package Imported Data</button>
           <span class="checkResultMeta">Preview every workbook sheet, select the sheet/header row, manually declare missing headers, and map representative names.</span>
         </div>
       </div>
@@ -309,6 +310,7 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
         <div class="panel"><div class="panelTitle">Referral Stats</div><input id="referralFile" type="file" accept=".xlsx,.xls,.csv"><div id="referralFileName" class="fileName"></div></div>
         <div class="panel"><div class="panelTitle">QA Stats</div><input id="qaFile" type="file" accept=".xlsx,.xls,.csv"><div id="qaFileName" class="fileName"></div></div>
         <div class="panel"><div class="panelTitle">Checklist Items</div><input id="checklistFile" type="file" accept=".xlsx,.xls,.csv"><div id="checklistFileName" class="fileName"></div></div>
+        <div class="panel"><div class="panelTitle">Packaged All Star Data</div><input id="packagedFile" type="file" accept=".xlsx,.xls"><div id="packagedFileName" class="fileName"></div></div>
       </div>
     </div>
     <div class="modalFoot"><button class="dark" data-close="importModal">Done</button></div>
@@ -494,7 +496,8 @@ const state = {
     retail:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
     referral:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
     qa:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
-    checklist:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}}
+    checklist:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
+    packaged:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}}
   },
   troubleshoot:{source:'qa',sheetName:'',headerRow:1,selectedCell:null,manualHeaders:[]},
   repTeams: new Map(),
@@ -510,7 +513,7 @@ const el = id => document.getElementById(id);
 const els = {
   topStatus: el('topStatus'), workArea: el('workArea'), loadingOverlay: el('loadingOverlay'), loadingText: el('loadingText'), loadingBarFill: el('loadingBarFill'), loadingPct: el('loadingPct'), categoriesDrop: el('categoriesDrop'), importDrop: el('importDrop'), runBtn: el('runBtn'), exportPdfBtn: el('exportPdfBtn'), clearOutputBtn: el('clearOutputBtn'),
   importModal: el('importModal'), troubleshootModal: el('troubleshootModal'), teamsModal: el('teamsModal'), modelsModal: el('modelsModal'), massHeaderModal: el('massHeaderModal'), editModelModal: el('editModelModal'), runModal: el('runModal'),
-  retailFile: el('retailFile'), referralFile: el('referralFile'), qaFile: el('qaFile'), checklistFile: el('checklistFile'), retailFileName: el('retailFileName'), referralFileName: el('referralFileName'), qaFileName: el('qaFileName'), checklistFileName: el('checklistFileName'), openTroubleshootBtn: el('openTroubleshootBtn'),
+  retailFile: el('retailFile'), referralFile: el('referralFile'), qaFile: el('qaFile'), checklistFile: el('checklistFile'), packagedFile: el('packagedFile'), retailFileName: el('retailFileName'), referralFileName: el('referralFileName'), qaFileName: el('qaFileName'), checklistFileName: el('checklistFileName'), packagedFileName: el('packagedFileName'), openTroubleshootBtn: el('openTroubleshootBtn'), packageDataBtn: el('packageDataBtn'),
   troubleSourceSelect: el('troubleSourceSelect'), troubleSheetSelect: el('troubleSheetSelect'), troubleHeaderRowInput: el('troubleHeaderRowInput'), troublePreviewBtn: el('troublePreviewBtn'), troubleApplyBtn: el('troubleApplyBtn'), troubleApplyFootBtn: el('troubleApplyFootBtn'), troubleStatus: el('troubleStatus'), troubleSheetPreview: el('troubleSheetPreview'), troubleHeaderSummary: el('troubleHeaderSummary'), troubleHeaderPreview: el('troubleHeaderPreview'), troubleSelectedCell: el('troubleSelectedCell'), troubleManualHeaderName: el('troubleManualHeaderName'), troubleDeclareHeaderBtn: el('troubleDeclareHeaderBtn'), troubleManualHeaders: el('troubleManualHeaders'), troubleNameMode: el('troubleNameMode'), troubleFullNameColumn: el('troubleFullNameColumn'), troubleFirstNameColumn: el('troubleFirstNameColumn'), troubleLastNameColumn: el('troubleLastNameColumn'), troubleConvertLastFirst: el('troubleConvertLastFirst'),
   teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamMoveSelect: el('teamMoveSelect'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'),
   modelList: el('modelList'), createModelBtn: el('createModelBtn'), exportModelsBtn: el('exportModelsBtn'), importModelsFile: el('importModelsFile'), massHeaderList: el('massHeaderList'), massHeaderSummary: el('massHeaderSummary'), refreshMassHeaderBtn: el('refreshMassHeaderBtn'), applyMassHeaderBtn: el('applyMassHeaderBtn'), massShowAllHeaders: el('massShowAllHeaders'), editModelTitle: el('editModelTitle'), modelNameInput: el('modelNameInput'), modelTypeInput: el('modelTypeInput'), modelTiebreakerInput: el('modelTiebreakerInput'), sourceSettingsPanel: el('sourceSettingsPanel'), columnCheckResults: el('columnCheckResults'), criteriaList: el('criteriaList'), addCriterionBtn: el('addCriterionBtn'), cancelModelTopBtn: el('cancelModelTopBtn'), cancelModelBtn: el('cancelModelBtn'), saveModelBtn: el('saveModelBtn'), saveExitModelBtn: el('saveExitModelBtn'),
@@ -519,9 +522,10 @@ const els = {
 function esc(v){return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function id(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
 const HEADER_FIELDS = ['column','leftColumn','rightColumn','checkDateColumn','checkColumn'];
-const SOURCE_LABELS = {retail_sv2:'Retail SV2',retail_wiper:'Retail SV2 Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral SV2 Wipers',qa:'QA',checklist:'Checklist'};
+const SOURCE_LABELS = {retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',qa:'QA Genesys Evaluation Score',checklist:'Checklist'};
+const PACKAGE_SHEETS = {retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',qa:'QA Genesys Evaluation Score',checklist:'Checklist'};
 const SOURCE_TO_BOOK = {retail_sv2:'retail',retail_wiper:'retail',referral_sv2:'referral',referral_wiper:'referral',qa:'qa',checklist:'checklist'};
-const SOURCE_SHEET_HINTS = {retail_sv2:['sv2'],retail_wiper:['sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],referral_sv2:['sv2'],referral_wiper:['sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],qa:['Genesys Evaluation Score','genesys evaluation score','qa','evaluation','evaluations','quality','sheet1'],checklist:['checklist','items','sheet1']};
+const SOURCE_SHEET_HINTS = {retail_sv2:['Retail SV2','sv2'],retail_wiper:['Retail Wipers','Retail SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],referral_sv2:['Referral SV2','sv2'],referral_wiper:['Referral Wipers','Referral SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],qa:['QA Genesys Evaluation Score','Genesys Evaluation Score','genesys evaluation score','qa','evaluation','evaluations','quality','sheet1'],checklist:['Checklist','checklist','items','sheet1']};
 const SOURCE_SETTING_DEFAULTS = {
   retail_sv2:{headerRow:4,startCol:3},
   retail_wiper:{headerRow:1,startCol:1},
@@ -1602,6 +1606,76 @@ function setSourceRowsAndHeaders(source, headers, rows, model){
   if(source==='checklist'){ const c=getSourceSetting(model,'checklist').columns||{}; state.data.checklist.headers=headers; state.data.checklist.rows=rows.map(r=>normalizeChecklistRow(r,headers,c)).filter(r=>r._repKey||r._team); }
   markDataIndexDirty(`${labelSource(source)} rows updated`);
 }
+
+function packageSheetToSource(sheetName){
+  const n=norm(sheetName);
+  if(!n) return '';
+  const exact=Object.entries(PACKAGE_SHEETS).find(([,label])=>norm(label)===n);
+  if(exact) return exact[0];
+  const hasRetail=/retail/.test(n), hasReferral=/referral/.test(n);
+  const hasWiper=/wipers?/.test(n), hasSv2=/sv2/.test(n);
+  if(hasRetail && !hasReferral){ if(hasWiper) return 'retail_wiper'; if(hasSv2) return 'retail_sv2'; }
+  if(hasReferral && !hasRetail){ if(hasWiper) return 'referral_wiper'; if(hasSv2) return 'referral_sv2'; }
+  if((/genesys/.test(n) && /evaluation/.test(n)) || n==='qa' || /quality/.test(n)) return 'qa';
+  if(/checklist|checkitems|items/.test(n)) return 'checklist';
+  return '';
+}
+function packageRowsToAoa(headers, rows){
+  const cleanHeaders=(headers||[]).map(h=>String(h??'').trim()).filter(Boolean);
+  return [cleanHeaders, ...(rows||[]).map(row=>cleanHeaders.map(h=>row?.[h] ?? ''))];
+}
+function sourcePackageAoa(source){
+  if(source==='retail_sv2') return packageRowsToAoa(state.data.retail.headers.sv2,state.data.retail.sv2);
+  if(source==='retail_wiper') return packageRowsToAoa(state.data.retail.headers.wiper,state.data.retail.wiper);
+  if(source==='referral_sv2') return packageRowsToAoa(state.data.referral.headers.sv2,state.data.referral.sv2);
+  if(source==='referral_wiper') return packageRowsToAoa(state.data.referral.headers.wiper,state.data.referral.wiper);
+  if(source==='qa') return packageRowsToAoa(state.data.qa.headers,state.data.qa.rows);
+  if(source==='checklist') return packageRowsToAoa(state.data.checklist.headers,state.data.checklist.rows);
+  return [[]];
+}
+function packageImportedData(){
+  if(!window.XLSX){ alert('Excel export library is not available.'); return; }
+  const wb=XLSX.utils.book_new();
+  availableTroubleSources().forEach(src=>{
+    const aoa=sourcePackageAoa(src);
+    const ws=XLSX.utils.aoa_to_sheet(aoa.length && aoa[0].length ? aoa : [[]]);
+    XLSX.utils.book_append_sheet(wb,ws,PACKAGE_SHEETS[src]);
+  });
+  XLSX.writeFile(wb,'All_Star_Packaged_Data.xlsx');
+}
+async function rebuildSourceFromPackage(source, sheetName, model){
+  const aoa=applySourceSheetChoice(source,sheetName);
+  const cfg=getSourceSetting(model,source);
+  cfg.sheetName=sheetName; cfg.headerRow=1; cfg.startCol=1; cfg.manualHeaders=[];
+  const pack=sheetRowsFromAoa(aoa,0,0,true,expectedHeadersForSource(source,model),source,model,[]);
+  setSourceRowsAndHeaders(source,pack.headers,pack.rows,model);
+}
+async function loadPackagedFile(file){
+  showProgress('Reading packaged data...',3);
+  try{
+    await yieldToBrowser();
+    const wb=await readFileWorkbook(file);
+    updateProgress('Assigning packaged sheets...',18); await yieldToBrowser();
+    storeWorkbook('packaged',file,wb);
+    ['retail','referral','qa','checklist'].forEach(key=>{ state.books[key]={...state.books.packaged,selectedSheets:{}}; });
+    const m=activeModelForImport(); ensureSourceSettings(m);
+    const assigned={};
+    (wb.SheetNames||[]).forEach(sn=>{ const src=packageSheetToSource(sn); if(src && !assigned[src]) assigned[src]=sn; });
+    availableTroubleSources().forEach(src=>{ if(!assigned[src]) assigned[src]=pickBestSheetForSource(wb,src,m,SOURCE_SHEET_HINTS[src]); });
+    for(const src of availableTroubleSources()){
+      if(!assigned[src]) continue;
+      state.books[sourceBookKey(src)].selectedSheets[src]=assigned[src];
+      setSourceAoa(src,sheetAoa(wb,assigned[src]),assigned[src]);
+      await rebuildSourceFromPackage(src,assigned[src],m);
+      await yieldToBrowser();
+    }
+    state.data.retail.fileName=file.name; state.data.referral.fileName=file.name; state.data.qa.fileName=file.name; state.data.checklist.fileName=file.name;
+    els.packagedFileName.textContent=`${file.name} · ${Object.keys(assigned).length} sheets assigned`;
+    els.retailFileName.textContent=`${file.name} · packaged`; els.referralFileName.textContent=`${file.name} · packaged`; els.qaFileName.textContent=`${file.name} · packaged`; els.checklistFileName.textContent=`${file.name} · packaged`;
+    await finishDataChanged('packaged data import',55);
+  }catch(err){ console.error(err); alert('Packaged data import failed. Check the console for details.'); }
+  finally{ hideProgress(); }
+}
 function sourceFileName(source){
   if(source.startsWith('retail')) return state.data.retail.fileName || state.books.retail.fileName;
   if(source.startsWith('referral')) return state.data.referral.fileName || state.books.referral.fileName;
@@ -2607,8 +2681,9 @@ function exportPDF(){
 function wire(){
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closeModal(b.dataset.close));
   if(els.openTroubleshootBtn) els.openTroubleshootBtn.onclick=()=>openTroubleshoot('qa');
+  if(els.packageDataBtn) els.packageDataBtn.onclick=packageImportedData;
   if(els.troubleSourceSelect) els.troubleSourceSelect.onchange=()=>{ state.troubleshoot.source=els.troubleSourceSelect.value; const cfg=getSourceSetting(activeModelForImport(),state.troubleshoot.source); const book=bookForSource(state.troubleshoot.source); state.troubleshoot.sheetName=cfg.sheetName||book.selectedSheets[state.troubleshoot.source]||book.sheetNames?.[0]||''; state.troubleshoot.headerRow=Math.max(1,Number(cfg.headerRow)||1); state.troubleshoot.manualHeaders=JSON.parse(JSON.stringify(cfg.manualHeaders||[])); renderTroubleshootControls(); renderTroubleshootPreview(); };
-  if(els.troubleSheetSelect) els.troubleSheetSelect.onchange=()=>{ state.troubleshoot.sheetName=els.troubleSheetSelect.value; renderTroubleshootPreview(); };
+  if(els.troubleSheetSelect) els.troubleSheetSelect.onchange=()=>{ const suggested=packageSheetToSource(els.troubleSheetSelect.value); if(suggested && sourceHasImportedData(suggested) && suggested!==state.troubleshoot.source){ state.troubleshoot.source=suggested; state.troubleshoot.sheetName=els.troubleSheetSelect.value; const cfg=getSourceSetting(activeModelForImport(),suggested); state.troubleshoot.headerRow=Math.max(1,Number(cfg.headerRow)||1); state.troubleshoot.manualHeaders=JSON.parse(JSON.stringify(cfg.manualHeaders||[])); renderTroubleshootControls(); } else state.troubleshoot.sheetName=els.troubleSheetSelect.value; renderTroubleshootPreview(); };
   if(els.troubleHeaderRowInput) els.troubleHeaderRowInput.onchange=()=>{ state.troubleshoot.headerRow=Math.max(1,Number(els.troubleHeaderRowInput.value)||1); renderTroubleshootPreview(false); };
   if(els.troublePreviewBtn) els.troublePreviewBtn.onclick=()=>renderTroubleshootPreview();
   if(els.troubleApplyBtn) els.troubleApplyBtn.onclick=applyTroubleshootSelection;
@@ -2635,6 +2710,7 @@ function wire(){
   els.referralFile.onchange=e=>{const f=e.target.files[0]; if(f) loadReferralFile(f);};
   els.qaFile.onchange=e=>{const f=e.target.files[0]; if(f) loadQAFile(f);};
   els.checklistFile.onchange=e=>{const f=e.target.files[0]; if(f) loadChecklistFile(f);};
+  if(els.packagedFile) els.packagedFile.onchange=e=>{const f=e.target.files[0]; if(f) loadPackagedFile(f);};
   els.createModelBtn.onclick=()=>openEditModel(null);
   els.exportModelsBtn.onclick=()=>downloadText('all_star_models.txt', serializeModelsForExport(state.models||[]));
   els.importModelsFile.onchange=async e=>{const f=e.target.files[0]; if(!f) return; const text=await f.text(); try{state.models=parseModelsImportText(text); saveModels(); renderEditModelSafe(); renderMassHeaderCheck();}catch(err){console.error(err); alert('Import failed. Make sure this is a model TXT/JSON export.');} e.target.value='';};
