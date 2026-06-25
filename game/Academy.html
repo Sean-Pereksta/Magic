@@ -380,8 +380,11 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
         </div>
         <div class="panel">
           <div class="panelTitle" id="teamManagerTitle">Representatives</div>
+          <input id="teamRepSearch" placeholder="Search representatives...">
           <div class="row">
             <select id="teamMoveSelect"></select>
+            <button id="selectAllTeamRepsBtn" class="dark" type="button">Select All</button>
+            <button id="unselectAllTeamRepsBtn" class="dark" type="button">Unselect All</button>
             <button id="moveTeamBtn" class="green">Move Selected Representatives</button>
           </div>
           <div id="teamMoveStatus" class="badge"></div>
@@ -515,7 +518,7 @@ const els = {
   importModal: el('importModal'), troubleshootModal: el('troubleshootModal'), teamsModal: el('teamsModal'), modelsModal: el('modelsModal'), massHeaderModal: el('massHeaderModal'), editModelModal: el('editModelModal'), runModal: el('runModal'),
   retailFile: el('retailFile'), referralFile: el('referralFile'), qaFile: el('qaFile'), checklistFile: el('checklistFile'), packagedFile: el('packagedFile'), retailFileName: el('retailFileName'), referralFileName: el('referralFileName'), qaFileName: el('qaFileName'), checklistFileName: el('checklistFileName'), packagedFileName: el('packagedFileName'), openTroubleshootBtn: el('openTroubleshootBtn'), packageDataBtn: el('packageDataBtn'),
   troubleSourceSelect: el('troubleSourceSelect'), troubleSheetSelect: el('troubleSheetSelect'), troubleHeaderRowInput: el('troubleHeaderRowInput'), troublePreviewBtn: el('troublePreviewBtn'), troubleApplyBtn: el('troubleApplyBtn'), troubleApplyFootBtn: el('troubleApplyFootBtn'), troubleStatus: el('troubleStatus'), troubleSheetPreview: el('troubleSheetPreview'), troubleHeaderSummary: el('troubleHeaderSummary'), troubleHeaderPreview: el('troubleHeaderPreview'), troubleSelectedCell: el('troubleSelectedCell'), troubleManualHeaderName: el('troubleManualHeaderName'), troubleDeclareHeaderBtn: el('troubleDeclareHeaderBtn'), troubleManualHeaders: el('troubleManualHeaders'), troubleNameMode: el('troubleNameMode'), troubleFullNameColumn: el('troubleFullNameColumn'), troubleFirstNameColumn: el('troubleFirstNameColumn'), troubleLastNameColumn: el('troubleLastNameColumn'), troubleConvertLastFirst: el('troubleConvertLastFirst'),
-  teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamMoveSelect: el('teamMoveSelect'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'),
+  teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamRepSearch: el('teamRepSearch'), teamMoveSelect: el('teamMoveSelect'), selectAllTeamRepsBtn: el('selectAllTeamRepsBtn'), unselectAllTeamRepsBtn: el('unselectAllTeamRepsBtn'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'),
   modelList: el('modelList'), createModelBtn: el('createModelBtn'), exportModelsBtn: el('exportModelsBtn'), importModelsFile: el('importModelsFile'), massHeaderList: el('massHeaderList'), massHeaderSummary: el('massHeaderSummary'), refreshMassHeaderBtn: el('refreshMassHeaderBtn'), applyMassHeaderBtn: el('applyMassHeaderBtn'), massShowAllHeaders: el('massShowAllHeaders'), editModelTitle: el('editModelTitle'), modelNameInput: el('modelNameInput'), modelTypeInput: el('modelTypeInput'), modelTiebreakerInput: el('modelTiebreakerInput'), sourceSettingsPanel: el('sourceSettingsPanel'), columnCheckResults: el('columnCheckResults'), criteriaList: el('criteriaList'), addCriterionBtn: el('addCriterionBtn'), cancelModelTopBtn: el('cancelModelTopBtn'), cancelModelBtn: el('cancelModelBtn'), saveModelBtn: el('saveModelBtn'), saveExitModelBtn: el('saveExitModelBtn'),
   runModelSelect: el('runModelSelect'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), hideNoScoreReps: el('hideNoScoreReps'), hideNoScoreThreshold: el('hideNoScoreThreshold'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn')
 };
@@ -615,7 +618,9 @@ function normalizeFilterForStorage(f, fallbackSource){
     source:f.source || fallbackSource || 'retail_sv2',
     column:plainHeaderName(f.column),
     values:(f.values||[]).map(v=>String(v??'').trim()).filter(Boolean),
-    value:String(f.value??'').trim()
+    value:String(f.value??'').trim(),
+    dynamic:!!f.dynamic,
+    expression:String(f.expression??'').trim()
   };
 }
 function isNumericFilterOperator(op){ return ['greaterThan','greaterEqual','lessThan','lessEqual'].includes(op); }
@@ -1006,7 +1011,10 @@ function requiredColumnsForModel(model){
       addRequired(req,'checklist',`${c.name} checklist date`,c.checkDateColumn);
       addRequired(req,'checklist',`${c.name} checklist column`,c.checkColumn);
     }
-    (c.filters||[]).forEach(f=>addRequired(req,f.source||c.source,`${c.name} filter`,f.column));
+    (c.filters||[]).forEach(f=>{
+      addRequired(req,f.source||c.source,`${c.name} filter`,f.column);
+      if(f.dynamic && isNumericFilterOperator(f.operator)) expressionColumnsForSource(f.expression,f.source||c.source).forEach(col=>addRequired(req,f.source||c.source,`${c.name} dynamic filter`,col));
+    });
   });
   if(used.has('qa') || modelUsesQA(model)){
     const q=getSourceSetting(model,'qa').columns||{};
@@ -1208,7 +1216,7 @@ function filterHtml(cid,f){
   const numeric=isNumericFilterOperator(f.operator);
   const operatorOptions=['is','isNot','greaterThan','greaterEqual','lessThan','lessEqual'].map(op=>`<option value="${op}" ${f.operator===op?'selected':''}>${filterOperatorLabel(op)}</option>`).join('');
   const valueControl=numeric
-    ? `<input data-ff="value" type="text" inputmode="decimal" value="${esc(f.value||'')}" placeholder="Enter a number">`
+    ? `<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamic" type="checkbox" ${f.dynamic?'checked':''}> Dynamic</label><input data-ff="${f.dynamic?'expression':'value'}" ${f.dynamic?'data-filter-expression-input="1" autocomplete="off"':'type="text" inputmode="decimal"'} value="${esc(f.dynamic ? (f.expression||'') : (f.value||''))}" placeholder="${f.dynamic?'e.g. [Cash Opps] + [Wiper Opps]':'Enter a number'}">`
     : `<select multiple data-ff="values" size="4">${vals.map(v=>`<option value="${esc(v)}" ${selected.has(v)?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
   return `<div class="filterRow" data-filter="${f.id}"><div class="grid5">
     <div class="field"><label>Filter Action</label><select data-ff="action"><option value="include" ${f.action==='include'?'selected':''}>Only include</option><option value="exclude" ${f.action==='exclude'?'selected':''}>Exclude</option></select></div>
@@ -1252,13 +1260,20 @@ function bindCriteriaEditors(){
   els.criteriaList.querySelectorAll('[data-add-filter]').forEach(b=>b.onclick=()=>{const c=getEditCriterion(b.dataset.addFilter); c.filters=c.filters||[]; c.filters.push({id:id(),action:'include',mode:'include',operator:'is',source:c.source||'retail_sv2',column:'',values:[],value:''}); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-remove-filter]').forEach(b=>b.onclick=()=>{const [cid,fid]=b.dataset.removeFilter.split('|'); const c=getEditCriterion(cid); c.filters=(c.filters||[]).filter(f=>f.id!==fid); renderEditModel();});
   els.criteriaList.querySelectorAll('[data-ff]').forEach(input=>{
-    input.onchange=()=>{
+    input.onchange=input.oninput=()=>{
       const critBox=input.closest('[data-crit]'); const filterBox=input.closest('[data-filter]'); const c=getEditCriterion(critBox.dataset.crit); const f=(c.filters||[]).find(x=>x.id===filterBox.dataset.filter); if(!f) return;
       const field=input.dataset.ff;
       if(field==='values') f.values=Array.from(input.selectedOptions).map(o=>o.value);
+      else if(field==='dynamic') f.dynamic=!!input.checked;
       else { f[field]=input.value; if(field==='action') f.mode=input.value; }
-      if(['source','column','operator'].includes(field)) renderEditModel();
+      if(field==='expression') showHeaderSuggestions(input,{source:f.source||c.source,customSource:f.source||c.source});
+      if(['source','column','operator','dynamic'].includes(field)) renderEditModel();
     };
+  });
+  els.criteriaList.querySelectorAll('[data-filter-expression-input]').forEach(input=>{
+    input.onfocus=()=>{ const critBox=input.closest('[data-crit]'); const filterBox=input.closest('[data-filter]'); const c=getEditCriterion(critBox?.dataset.crit); const f=(c?.filters||[]).find(x=>x.id===filterBox?.dataset.filter); if(f) showHeaderSuggestions(input,{source:f.source||c.source,customSource:f.source||c.source}); };
+    input.onkeyup=()=>input.onfocus();
+    input.onblur=()=>setTimeout(hideHeaderSuggestions,160);
   });
 }
 function ensureHeaderSuggestMenu(){
@@ -1328,7 +1343,10 @@ function collectHeaderRefsForModel(model){
       addHeaderRef(refs,{...base,kind:'criterion',source:'checklist',field:'checkDateColumn',label:'Checklist date column',expected:c.checkDateColumn});
       addHeaderRef(refs,{...base,kind:'criterion',source:'checklist',field:'checkColumn',label:'Checklist match column',expected:c.checkColumn});
     }
-    (c.filters||[]).forEach(f=>addHeaderRef(refs,{...base,kind:'filter',filterId:f.id,source:f.source||c.source,field:'column',label:'Filter column',expected:f.column}));
+    (c.filters||[]).forEach(f=>{
+      addHeaderRef(refs,{...base,kind:'filter',filterId:f.id,source:f.source||c.source,field:'column',label:'Filter column',expected:f.column});
+      if(f.dynamic && isNumericFilterOperator(f.operator)) expressionColumnsForSource(f.expression,f.source||c.source).forEach(col=>addHeaderRef(refs,{...base,kind:'filterExpression',filterId:f.id,source:f.source||c.source,field:'expression',label:'Dynamic filter expression',expected:col}));
+    });
   });
   if(modelUsesQA(model)){
     const q=getSourceSetting(model,'qa').columns||{};
@@ -1377,6 +1395,11 @@ function setHeaderReference(ref, newHeader){
     if(ref.kind==='filter'){
       const f=(c.filters||[]).find(x=>x.id===ref.filterId); if(!f) return false;
       f.column=newHeader;
+    }
+    if(ref.kind==='filterExpression'){
+      const f=(c.filters||[]).find(x=>x.id===ref.filterId); if(!f) return false;
+      const old=String(ref.expected).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      f.expression=String(f.expression||'').replace(new RegExp(`\\[${old}\\]`,'g'),`[${newHeader}]`);
     }
     if(ref.kind==='expression'){
       const old=String(ref.expected).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -2223,6 +2246,32 @@ function resolveColumn(source, expected){
   const headers=getHeaders(source)||[];
   return findHeader(headers,[expected]) || expected;
 }
+
+function escapeRegExp(s){ return String(s||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+function expressionColumnsForSource(expr, source){
+  const headers=(getHeaders(source)||[]).map(plainHeaderName).filter(Boolean);
+  const found=[]; const seen=new Set();
+  splitExpressionColumns(expr).forEach(col=>{ const hit=resolveColumn(source,col); if(hit&&!seen.has(hit)){seen.add(hit); found.push(hit);} });
+  let probe=String(expr||'').replace(/\[[^\]]+\]/g,' ');
+  headers.slice().sort((a,b)=>b.length-a.length).forEach(h=>{
+    const re=new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(h)}(?=$|[^A-Za-z0-9_])`,'gi');
+    if(re.test(probe) && !seen.has(h)){ seen.add(h); found.push(h); }
+  });
+  return found;
+}
+function evaluateRowExpression(expr, row, source){
+  expr=String(expr||'').trim(); if(!expr) return NaN;
+  let out=expr.replace(/\[([^\]]+)\]/g,(m,col)=>{ const actual=resolveColumn(source,col); const n=toNum(row[actual]); return Number.isFinite(n)?String(n):'NaN'; });
+  const headers=(getHeaders(source)||[]).map(plainHeaderName).filter(Boolean).sort((a,b)=>b.length-a.length);
+  headers.forEach(h=>{
+    const actual=resolveColumn(source,h); const n=toNum(row[actual]);
+    const re=new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(h)}(?=$|[^A-Za-z0-9_])`,'gi');
+    out=out.replace(re,(m,prefix)=>prefix+(Number.isFinite(n)?String(n):'NaN'));
+  });
+  if(!/^[0-9+\-*/().\sNa]+$/.test(out)) return NaN;
+  try{ const v=Function(`return (${out})`)(); return Number.isFinite(v)?v:NaN; }catch(e){ return NaN; }
+}
+
 function applyFilters(rows, filters, rowSource){
   let out=rows||[];
   (filters||[]).forEach(raw=>{
@@ -2232,9 +2281,10 @@ function applyFilters(rows, filters, rowSource){
     const action=f.action||f.mode||'exclude';
     const numeric=isNumericFilterOperator(f.operator);
     if(numeric){
-      const target=toNum(f.value);
-      if(!Number.isFinite(target)) return;
+      const fixedTarget=toNum(f.value);
+      if(!f.dynamic && !Number.isFinite(fixedTarget)) return;
       out=out.filter(r=>{
+        const target=f.dynamic ? evaluateRowExpression(f.expression,r,f.source||rowSource) : fixedTarget;
         const hit=numericComparisonPass(toNum(r[col]),f.operator,target);
         return action==='include'?hit:!hit;
       });
@@ -2336,6 +2386,7 @@ function applyHideNoScoreRepOption(repPack){
     return missingCount < threshold;
   });
   assignOverallRanks(rows,'rep');
+  assignVisibleRepMedalRanks(rows);
   return {...repPack,rows};
 }
 function criterionUsesQA(c){ return c && (c.source==='qa' || c.calcType==='qaScore' || c.leftSource==='qa' || c.rightSource==='qa' || c.customSource==='qa'); }
@@ -2401,14 +2452,26 @@ function assignOverallRanks(rows,kind){
     r.overallRank=rank;
   });
 }
+function visibleMedalRankForRow(r,kind){ return kind==='rep' ? r.visibleMedalRank : r.overallRank; }
 function medalForRow(r,kind){
-  if(kind!=='rep' || rowZeroBottom(r,kind)) return '';
-  if(r.overallRank===1) return '<span class="medalBadge gold" title="Gold">🥇</span>';
-  if(r.overallRank===2) return '<span class="medalBadge silver" title="Silver">🥈</span>';
-  if(r.overallRank===3) return '<span class="medalBadge bronze" title="Bronze">🥉</span>';
+  const medalRank=visibleMedalRankForRow(r,kind);
+  if(kind!=='rep' || !r.eligible || rowZeroBottom(r,kind)) return '';
+  if(medalRank===1) return '<span class="medalBadge gold" title="Gold">🥇</span>';
+  if(medalRank===2) return '<span class="medalBadge silver" title="Silver">🥈</span>';
+  if(medalRank===3) return '<span class="medalBadge bronze" title="Bronze">🥉</span>';
   return '';
 }
-function topRowClass(r,kind){ return kind==='rep' && r.overallRank<=3 && !rowZeroBottom(r,kind) ? 'topRank' : ''; }
+function topRowClass(r,kind){ const medalRank=visibleMedalRankForRow(r,kind); return kind==='rep' && medalRank<=3 && r.eligible && !rowZeroBottom(r,kind) ? 'topRank' : ''; }
+function assignVisibleRepMedalRanks(rows){
+  let lastKey=null, rank=0;
+  (rows||[]).forEach(r=>{
+    delete r.visibleMedalRank;
+    if(!r.eligible || rowZeroBottom(r,'rep')) return;
+    const key=rowSortScore(r);
+    if(key!==lastKey){ rank+=1; lastKey=key; }
+    r.visibleMedalRank=rank;
+  });
+}
 function applyNoScoreForRank(rows,c,weight){
   const assigned=missingRankForCriterion(c);
   rows.forEach(r=>{
@@ -2470,6 +2533,7 @@ async function computeEntriesAsync(model, entries, kind, opts, progress={}){
   });
   rows.sort((a,b)=>compareScoredRows(a,b,kind));
   assignOverallRanks(rows,kind);
+  if(kind==='rep') assignVisibleRepMedalRanks(rows);
   update(`${progress.label||'Scoring'} complete`,1);
   await yieldToBrowser();
   return {criteria, rows};
@@ -2503,6 +2567,7 @@ function computeEntries(model, entries, kind, opts){
   });
   rows.sort((a,b)=>compareScoredRows(a,b,kind));
   assignOverallRanks(rows,kind);
+  if(kind==='rep') assignVisibleRepMedalRanks(rows);
   return {criteria, rows};
 }
 function autofailHit(v,c){
@@ -2643,15 +2708,19 @@ async function moveSelectedRepsToTeam(){
   }catch(err){ console.error(err); alert('Team move failed. Check the console for details.'); }
   finally{ hideProgress(); }
 }
+function visibleTeamRepRows(){ return Array.from(els.teamRepList?.querySelectorAll('input[type="checkbox"]')||[]); }
+function setVisibleTeamRepsChecked(checked){ visibleTeamRepRows().forEach(x=>{ x.checked=checked; }); }
 function renderTeamsImportedModal(){
   const counts=importedTeamCounts();
   const q=String(els.teamManagerSearch?.value||'').toLowerCase().trim();
   const shown=counts.filter(x=>!q || x.team.toLowerCase().includes(q));
   if(!state.activeTeam || !counts.some(x=>x.team===state.activeTeam)) state.activeTeam=counts[0]?.team||'';
   els.teamManagerList.innerHTML=shown.length ? shown.map(x=>`<button class="teamCard ${x.team===state.activeTeam?'active':''}" data-team-pick="${esc(x.team)}"><span>${esc(x.team)}</span><span class="badge">${x.count} reps</span></button>`).join('') : '<div class="checkItem">No imported teams found.</div>';
-  els.teamManagerList.querySelectorAll('[data-team-pick]').forEach(b=>b.onclick=()=>{ state.activeTeam=b.dataset.teamPick; renderTeamsImportedModal(); });
-  const reps=state.activeTeam ? repsForTeam(state.activeTeam) : [];
-  els.teamManagerTitle.textContent=state.activeTeam ? `${state.activeTeam} Representatives (${reps.length})` : 'Representatives';
+  els.teamManagerList.querySelectorAll('[data-team-pick]').forEach(b=>b.onclick=()=>{ state.activeTeam=b.dataset.teamPick; if(els.teamRepSearch) els.teamRepSearch.value=''; renderTeamsImportedModal(); });
+  const repsAll=state.activeTeam ? repsForTeam(state.activeTeam) : [];
+  const repQ=String(els.teamRepSearch?.value||'').toLowerCase().trim();
+  const reps=repsAll.filter(r=>!repQ || String(r.name||'').toLowerCase().includes(repQ));
+  els.teamManagerTitle.textContent=state.activeTeam ? `${state.activeTeam} Representatives (${reps.length}/${repsAll.length})` : 'Representatives';
   els.teamMoveSelect.innerHTML=counts.map(x=>`<option value="${esc(x.team)}" ${x.team===state.activeTeam?'selected':''}>${esc(x.team)}</option>`).join('');
   els.teamRepList.innerHTML=reps.length ? reps.map(r=>`<label class="repMoveRow"><input type="checkbox" value="${esc(r.key)}"><span>${esc(r.name)}</span><span class="badge">${esc(r.team)}</span></label>`).join('') : '<div class="checkItem">Select a team to see representatives.</div>';
 }
@@ -2755,6 +2824,9 @@ function wire(){
   els.selectAllTeamsBtn.onclick=()=>{ state.teamSelectionInitialized=true; state.selectedTeams=new Set(state.teams||[]); renderTeamSelect(); };
   els.clearTeamsBtn.onclick=()=>{ state.teamSelectionInitialized=true; state.selectedTeams.clear(); renderTeamSelect(); };
   if(els.teamManagerSearch) els.teamManagerSearch.oninput=()=>renderTeamsImportedModal();
+  if(els.teamRepSearch) els.teamRepSearch.oninput=()=>renderTeamsImportedModal();
+  if(els.selectAllTeamRepsBtn) els.selectAllTeamRepsBtn.onclick=()=>setVisibleTeamRepsChecked(true);
+  if(els.unselectAllTeamRepsBtn) els.unselectAllTeamRepsBtn.onclick=()=>setVisibleTeamRepsChecked(false);
   if(els.moveTeamBtn) els.moveTeamBtn.onclick=moveSelectedRepsToTeam;
   els.executeRunBtn.onclick=buildRun;
 }
