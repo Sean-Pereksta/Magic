@@ -310,7 +310,7 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
   <select id="categoriesDrop" class="toolbarSelect"><option value="">Categories</option><option value="models">Create/Modify</option><option value="massHeaders">Mass Header Check</option></select>
   <select id="importDrop" class="toolbarSelect"><option value="">Import</option><option value="data">Import Data</option><option value="teams">Teams Imported</option></select>
   <button id="runBtn" class="toolbarBtn">Run</button>
-  <button id="researchBtn" class="toolbarBtn">Research</button>
+  <select id="researchBtn" class="toolbarSelect"><option value="">Research</option><option value="open">Open Research</option><option value="clear">Clear Research</option></select>
   <button id="exportPdfBtn" class="toolbarBtn">Export PDF</button>
   <button id="clearOutputBtn" class="toolbarBtn">Clear</button>
   <div class="toolbarSpacer"></div>
@@ -626,7 +626,9 @@ const state = {
   dataIndex: { dirty:true, reason:'initial', version:0, sources:{}, reps:[], teamCounts:[], repsByTeam:new Map(), dateRanges:{qa:{interaction:null,assigned:null},checklist:new Map(),documented_coaching:new Map()}, lastBuiltAt:0 },
   researchItems: [],
   editingResearchFilters: [],
-  editingResearchColumns: []
+  editingResearchColumns: [],
+  researchPreviewCancel: null,
+  renderedLargeResearchCards: new Set()
 };
 const el = id => document.getElementById(id);
 const els = {
@@ -2960,7 +2962,7 @@ function getResearchSourceRows(sourceKey){ return (getRowsRaw(sourceKey)||[]).sl
 function getResearchHeaders(sourceKey){ return (getHeaders(sourceKey)||[]).slice(); }
 function personKeyFromRow(r){ return r._repKey || norm(r._rep||r['Agent Name']||r['Associate Name']||r['Associate name']||r.Agent||r.Representative||''); }
 function researchRowTeam(r){ return r._team || r['Job Coach'] || r['Coach Assigned'] || r.Coach || r.Team || ''; }
-function openResearchWorkspace(){ loadResearchItems(); renderResearchCanvas(); openModal('researchModal'); }
+async function openResearchWorkspace(){ loadResearchItems(); openModal('researchModal'); await renderResearchCanvas(); }
 function researchHasAnyData(){ return allSourceKeys().some(s=>(getResearchSourceRows(s)||[]).length); }
 function openResearchItemEditor(itemId){
   const item=normalizeResearchItem(state.researchItems.find(x=>x.id===itemId)||{});
@@ -3153,24 +3155,30 @@ async function renderResearchFoundPreview(){
   if(!els.researchFoundPreview) return;
   const item=currentResearchItemFromEditor();
   const chunkSize=900;
+  const cancelToken=state.researchPreviewCancel={cancelled:false,scanned:0};
   els.researchFoundPreview.classList.remove('hidden');
-  els.researchFoundPreview.innerHTML='<div class="researchPreviewSummary"><span class="badge">Preview Found is scanning in chunks...</span></div>';
+  els.researchFoundPreview.innerHTML='<div class="researchPreviewSummary"><span class="badge">Preview Found is scanning in chunks...</span><button class="smallBtn red" type="button" data-research-preview-stop>End Here</button></div>';
+  els.researchFoundPreview.querySelector('[data-research-preview-stop]').onclick=()=>{ cancelToken.cancelled=true; };
   try{
     showProgress(dataIndexReady() ? 'Preview Found: preparing rows...' : 'Preview Found: refreshing data index...', 2);
-    await rebuildDataIndexAsync('Preview Found: refreshing data index', {start:2,end:28,chunkSize});
+    if(!dataIndexReady() && !cancelToken.cancelled) await rebuildDataIndexAsync('Preview Found: refreshing data index', {start:2,end:28,chunkSize});
     const raw=getResearchSourceRows(item.source); const hs=getResearchHeaders(item.source);
     const start=parseDateOnly(item.startDate), end=parseDateOnly(item.endDate);
     let rows=[];
     for(let i=0;i<raw.length;i+=chunkSize){
+      if(cancelToken.cancelled) break;
       const chunk=raw.slice(i,i+chunkSize);
       rows.push(...(item.dateColumn?chunk.filter(r=>inRange(r[item.dateColumn],start,end)):chunk));
+      cancelToken.scanned=Math.min(i+chunkSize,raw.length);
       updateProgress(`Preview Found: checking date range (${Math.min(i+chunkSize,raw.length).toLocaleString()}/${raw.length.toLocaleString()})`, 30 + 20*Math.min(1,(i+chunkSize)/Math.max(1,raw.length)));
       await yieldToBrowser();
     }
     const filters=item.filters||[];
     for(let fi=0;fi<filters.length;fi++){
+      if(cancelToken.cancelled) break;
       const next=[];
       for(let i=0;i<rows.length;i+=chunkSize){
+        if(cancelToken.cancelled) break;
         const chunk=rows.slice(i,i+chunkSize);
         next.push(...applyResearchFilters(chunk,[filters[fi]],item));
         updateProgress(`Preview Found: applying filter ${fi+1}/${filters.length} (${Math.min(i+chunkSize,rows.length).toLocaleString()}/${rows.length.toLocaleString()})`, 50 + 38*((fi + Math.min(1,(i+chunkSize)/Math.max(1,rows.length)))/Math.max(1,filters.length)));
@@ -3178,7 +3186,7 @@ async function renderResearchFoundPreview(){
       }
       rows=next;
     }
-    rows=applyResearchGearRowFilters(rows,item,[]);
+    if(!cancelToken.cancelled) rows=applyResearchGearRowFilters(rows,item,[]);
     updateProgress('Preview Found: preparing preview table', 96);
     await yieldToBrowser();
     const active=(item.filters||[]).filter(f=>f.expression||f.field||f.targetValue||f.include==='includeWithin'||f.include==='excludeWithin').length;
@@ -3191,7 +3199,7 @@ async function renderResearchFoundPreview(){
     const teamVals=[...new Set(rows.map(researchRowTeam).filter(Boolean))].slice(0,25);
     const rowHtml=shown.map(r=>`<tr>${cols.map(c=>{ let v=''; if(c==='Source') v=labelSource(item.source); else if(c==='Matched / filter column') v=filterCols.join(', '); else if(c==='Matched value') v=filterCols.map(fc=>researchFieldValue(r,fc,item.source)).filter(x=>String(x).trim()).join(' | '); else v=researchFieldValue(r,c,item.source); return `<td><div class="cellScroll">${esc(v??'')}</div></td>`; }).join('')}</tr>`).join('');
     els.researchFoundPreview.classList.remove('hidden');
-    els.researchFoundPreview.innerHTML=`<div class="researchPreviewSummary"><span class="badge">Total found: ${rows.length}</span><span class="badge">Showing first ${shown.length}${rows.length>50?' of 50':''}</span><span class="badge">Source: ${esc(labelSource(item.source))}</span><span class="badge">Active filters: ${active}</span></div><div class="hint"><strong>Coach/team preview:</strong> ${esc(teamVals.join(', ')||'none')}<br><strong>Representative preview:</strong> ${esc(repVals.join(', ')||'none')}</div><div class="researchTableWrap"><table class="researchConversationTable compact wrapText"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rowHtml||`<tr><td colspan="${cols.length||1}">No rows matched.</td></tr>`}</tbody></table></div>`;
+    els.researchFoundPreview.innerHTML=`${cancelToken.cancelled?'<div class="researchWarn">Preview stopped early. Showing partial results found so far.</div>':''}<div class="researchPreviewSummary"><span class="badge">Rows scanned: ${(cancelToken.scanned||raw.length).toLocaleString()}</span><span class="badge">Total found: ${rows.length}</span><span class="badge">Showing first ${shown.length}${rows.length>50?' of 50':''}</span><span class="badge">Source: ${esc(labelSource(item.source))}</span><span class="badge">Active filters: ${active}</span></div><div class="hint"><strong>Coach/team preview:</strong> ${esc(teamVals.join(', ')||'none')}<br><strong>Representative preview:</strong> ${esc(repVals.join(', ')||'none')}</div><div class="researchTableWrap"><table class="researchConversationTable compact wrapText"><thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rowHtml||`<tr><td colspan="${cols.length||1}">No rows matched.</td></tr>`}</tbody></table></div>`;
     updateProgress('Preview Found complete',100);
     await yieldToBrowser();
   }catch(e){
@@ -3202,9 +3210,35 @@ async function renderResearchFoundPreview(){
   }
 }
 
+function researchProcessingStepCount(item){
+  let n=0;
+  if(item.dateColumn&&(item.startDate||item.endDate)) n++;
+  n+=(item.filters||[]).filter(f=>f.expression||f.field||f.targetValue||f.include==='includeWithin'||f.include==='excludeWithin').length;
+  if(Object.keys(item.gearFilters||{}).length) n++;
+  if(item.useSecondaryGroup&&item.secondaryGroupField) n++;
+  if((item.columns||[]).length>1 || (item.columns||[]).some(c=>['percent_total','percent_parent','total_within','percent_within','percent','sum','avg','min','max','model','expression'].includes(c.mode))) n++;
+  if(['percent_total','percent_parent','total_within','percent_within','percent','model'].includes(item.valueMode)) n++;
+  if(item.outputType==='bar'||item.outputType==='line') n++;
+  return n;
+}
+function shouldChunkResearchQuery(item,rowCount){ return Number(rowCount)>1000 && researchProcessingStepCount(item)>1; }
+function researchCardShell(item,body){
+  const size=item.cardSize||'medium';
+  return `<div class="researchCard ${item.collapsed?'collapsed':''}" data-size="${esc(size)}" data-research-card="${item.id}"><div class="researchCardHead"><div><div class="researchCardTitle">${esc(item.title)}</div><div class="researchBadges"><span class="badge">${esc(item.outputType)}</span><span class="badge">${esc(labelSource(item.source)||item.source)}</span><span class="badge">${esc(item.mode||'direct')}</span><span class="badge">${esc(size)}</span></div></div><div class="researchActions"><button class="smallBtn" data-research-size="${item.id}" data-size="large">Expand</button><button class="smallBtn" data-research-size="${item.id}" data-size="small">Shrink</button><button class="smallBtn" data-research-size="${item.id}" data-size="full">Full Width</button><button class="smallBtn" data-research-collapse="${item.id}">${item.collapsed?'Show Body':'Collapse Body'}</button><button class="smallBtn" data-research-move="${item.id}" data-dir="up">↑</button><button class="smallBtn" data-research-move="${item.id}" data-dir="down">↓</button><button class="smallBtn" data-research-move="${item.id}" data-dir="left">←</button><button class="smallBtn" data-research-move="${item.id}" data-dir="right">→</button><button class="smallBtn" data-research-edit="${item.id}">Edit</button><button class="smallBtn" data-research-data="${item.id}">Export Data</button>${(item.outputType==='line'||item.outputType==='bar')?`<button class="smallBtn" data-research-image="${item.id}">Export Image</button>`:''}<button class="smallBtn red" data-research-delete="${item.id}">Delete</button></div></div><div class="researchCardBody">${body}</div></div>`;
+}
+function researchLargePlaceholder(item){ return `<div class="researchEmpty"><strong>Large research item — click Render to calculate.</strong><div class="hint">This card uses ${getResearchSourceRows(item.source).length.toLocaleString()} source rows and multiple processing steps, so it will not auto-render when Research opens.</div><button class="smallBtn green" data-research-render="${esc(item.id)}">Render</button></div>`; }
+function renderResearchItemBody(item){
+  try{ const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); return warns+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res)); }
+  catch(e){ return `<div class="researchWarn">${esc(e.message||e)}</div>`; }
+}
+function bindResearchCanvasActions(){
+  els.researchCanvas.querySelectorAll('[data-research-edit]').forEach(b=>b.onclick=()=>openResearchItemEditor(b.dataset.researchEdit)); els.researchCanvas.querySelectorAll('[data-research-delete]').forEach(b=>b.onclick=()=>deleteResearchItem(b.dataset.researchDelete)); els.researchCanvas.querySelectorAll('[data-research-data]').forEach(b=>b.onclick=()=>exportResearchItemData(b.dataset.researchData)); els.researchCanvas.querySelectorAll('[data-research-image]').forEach(b=>b.onclick=()=>exportResearchItemImage(b.dataset.researchImage)); els.researchCanvas.querySelectorAll('[data-research-size]').forEach(b=>b.onclick=()=>setResearchItemProp(b.dataset.researchSize,{cardSize:b.dataset.size})); els.researchCanvas.querySelectorAll('[data-research-collapse]').forEach(b=>b.onclick=()=>{ const item=state.researchItems.find(x=>x.id===b.dataset.researchCollapse); setResearchItemProp(b.dataset.researchCollapse,{collapsed:!item.collapsed}); }); els.researchCanvas.querySelectorAll('[data-research-move]').forEach(b=>b.onclick=()=>moveResearchItem(b.dataset.researchMove,b.dataset.dir));
+  els.researchCanvas.querySelectorAll('[data-research-render]').forEach(b=>b.onclick=async()=>{ const item=state.researchItems.find(x=>x.id===b.dataset.researchRender); if(!item) return; state.renderedLargeResearchCards.add(item.id); const card=els.researchCanvas.querySelector(`[data-research-card="${CSS.escape(item.id)}"] .researchCardBody`); if(card) card.innerHTML='<div class="researchPreviewSummary"><span class="badge">Rendering in chunks...</span></div>'; showProgress('Rendering research card...',5); await yieldToBrowser(); if(card) card.innerHTML=renderResearchItemBody(item); updateProgress('Research card rendered',100); hideProgress(); bindResearchCanvasActions(); });
+}
+function clearResearchItemsWithConfirm(){ if(!confirm('Clear all saved research items? This cannot be undone.')) return false; state.researchItems=[]; saveResearchItems(); if(els.researchCanvas) els.researchCanvas.innerHTML='<div class="researchEmpty">No saved research items yet. Click <strong>Add New Item</strong> to create a table, conversation viewer, line graph, or bar graph.</div>'; if(els.topStatus) els.topStatus.textContent='Research was cleared'; return true; }
 function setResearchItemProp(itemId,patch){ const item=state.researchItems.find(x=>x.id===itemId); if(!item) return; Object.assign(item,patch); saveResearchItems(); renderResearchCanvas(); }
 function moveResearchItem(itemId,dir){ const a=state.researchItems||[], i=a.findIndex(x=>x.id===itemId); if(i<0) return; const cols=4; let j=i; if(dir==='left') j=i-1; if(dir==='right') j=i+1; if(dir==='up') j=i-cols; if(dir==='down') j=i+cols; if(j<0||j>=a.length) return; [a[i],a[j]]=[a[j],a[i]]; saveResearchItems(); renderResearchCanvas(); }
-function renderResearchCanvas(){ if(!els.researchCanvas) return; if(!researchHasAnyData()) els.researchCanvas.innerHTML='<div class="researchEmpty">No data is imported yet. Import Retail, Referral, QA, Checklist Items, or Documented Coaching data, then add research items here.</div>'; const items=(state.researchItems||[]).map(normalizeResearchItem); state.researchItems=items; if(!items.length){ els.researchCanvas.innerHTML='<div class="researchEmpty">No saved research items yet. Click <strong>Add New Item</strong> to create a table, conversation viewer, line graph, or bar graph.</div>'; return; } els.researchCanvas.innerHTML=items.map(item=>{ let body=''; try{ const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); body=warns+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res)); }catch(e){ body=`<div class="researchWarn">${esc(e.message||e)}</div>`; } const size=item.cardSize||'medium'; return `<div class="researchCard ${item.collapsed?'collapsed':''}" data-size="${esc(size)}" data-research-card="${item.id}"><div class="researchCardHead"><div><div class="researchCardTitle">${esc(item.title)}</div><div class="researchBadges"><span class="badge">${esc(item.outputType)}</span><span class="badge">${esc(labelSource(item.source)||item.source)}</span><span class="badge">${esc(item.mode||'direct')}</span><span class="badge">${esc(size)}</span></div></div><div class="researchActions"><button class="smallBtn" data-research-size="${item.id}" data-size="large">Expand</button><button class="smallBtn" data-research-size="${item.id}" data-size="small">Shrink</button><button class="smallBtn" data-research-size="${item.id}" data-size="full">Full Width</button><button class="smallBtn" data-research-collapse="${item.id}">${item.collapsed?'Show Body':'Collapse Body'}</button><button class="smallBtn" data-research-move="${item.id}" data-dir="up">↑</button><button class="smallBtn" data-research-move="${item.id}" data-dir="down">↓</button><button class="smallBtn" data-research-move="${item.id}" data-dir="left">←</button><button class="smallBtn" data-research-move="${item.id}" data-dir="right">→</button><button class="smallBtn" data-research-edit="${item.id}">Edit</button><button class="smallBtn" data-research-data="${item.id}">Export Data</button>${(item.outputType==='line'||item.outputType==='bar')?`<button class="smallBtn" data-research-image="${item.id}">Export Image</button>`:''}<button class="smallBtn red" data-research-delete="${item.id}">Delete</button></div></div><div class="researchCardBody">${body}</div></div>`; }).join(''); els.researchCanvas.querySelectorAll('[data-research-edit]').forEach(b=>b.onclick=()=>openResearchItemEditor(b.dataset.researchEdit)); els.researchCanvas.querySelectorAll('[data-research-delete]').forEach(b=>b.onclick=()=>deleteResearchItem(b.dataset.researchDelete)); els.researchCanvas.querySelectorAll('[data-research-data]').forEach(b=>b.onclick=()=>exportResearchItemData(b.dataset.researchData)); els.researchCanvas.querySelectorAll('[data-research-image]').forEach(b=>b.onclick=()=>exportResearchItemImage(b.dataset.researchImage)); els.researchCanvas.querySelectorAll('[data-research-size]').forEach(b=>b.onclick=()=>setResearchItemProp(b.dataset.researchSize,{cardSize:b.dataset.size})); els.researchCanvas.querySelectorAll('[data-research-collapse]').forEach(b=>b.onclick=()=>{ const item=state.researchItems.find(x=>x.id===b.dataset.researchCollapse); setResearchItemProp(b.dataset.researchCollapse,{collapsed:!item.collapsed}); }); els.researchCanvas.querySelectorAll('[data-research-move]').forEach(b=>b.onclick=()=>moveResearchItem(b.dataset.researchMove,b.dataset.dir)); }
+async function renderResearchCanvas(){ if(!els.researchCanvas) return; if(!researchHasAnyData()) els.researchCanvas.innerHTML='<div class="researchEmpty">No data is imported yet. Import Retail, Referral, QA, Checklist Items, or Documented Coaching data, then add research items here.</div>'; const items=(state.researchItems||[]).map(normalizeResearchItem); state.researchItems=items; if(!items.length){ els.researchCanvas.innerHTML='<div class="researchEmpty">No saved research items yet. Click <strong>Add New Item</strong> to create a table, conversation viewer, line graph, or bar graph.</div>'; return; } els.researchCanvas.innerHTML=''; for(let idx=0;idx<items.length;idx++){ const item=items[idx], rowCount=getResearchSourceRows(item.source).length, heavy=shouldChunkResearchQuery(item,rowCount)&&!state.renderedLargeResearchCards.has(item.id); const body=heavy?researchLargePlaceholder(item):renderResearchItemBody(item); els.researchCanvas.insertAdjacentHTML('beforeend',researchCardShell(item,body)); bindResearchCanvasActions(); if(idx%2===0){ updateProgress(`Opening Research: rendered ${idx+1}/${items.length} cards`, 10+80*((idx+1)/items.length)); await yieldToBrowser(); } } bindResearchCanvasActions(); }
 function deleteResearchItem(itemId){ if(!confirm('Delete this research item?')) return; state.researchItems=state.researchItems.filter(x=>x.id!==itemId); saveResearchItems(); renderResearchCanvas(); }
 function exportResearchItemData(itemId){ const item=state.researchItems.find(x=>x.id===itemId); if(!item) return; const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); const aoa=item.outputType==='conversation'?[res.columns.map(c=>c.label||c.field),...res.rows.map(r=>res.columns.map(c=>r[c.field]??''))]:[[item.groupField||'Group',...res.columns.map(c=>c.label||c.mode||'Value')],...res.data.map(r=>[r.label,...r.values])]; const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Research'); XLSX.writeFile(wb,(item.title||'research')+'.xlsx'); }
 function exportResearchItemImage(itemId){ const svg=els.researchCanvas.querySelector(`[data-research-svg="${CSS.escape(itemId)}"]`); if(!svg) return; const data=new XMLSerializer().serializeToString(svg), img=new Image(), canvas=document.createElement('canvas'); canvas.width=1200; canvas.height=440; img.onload=()=>{ const ctx=canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0,canvas.width,canvas.height); const a=document.createElement('a'); a.download='research-chart.png'; a.href=canvas.toDataURL('image/png'); a.click(); }; img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(data); }
@@ -3626,11 +3660,11 @@ function wire(){
   };
   els.exportPdfBtn.onclick=exportPDF;
   els.clearOutputBtn.onclick=()=>{els.workArea.innerHTML='<div class="empty"></div>';};
-  if(els.researchBtn) els.researchBtn.onclick=openResearchWorkspace;
+  if(els.researchBtn) els.researchBtn.onchange=async()=>{ const v=els.researchBtn.value; if(v==='open') await openResearchWorkspace(); if(v==='clear') clearResearchItemsWithConfirm(); els.researchBtn.value=''; };
   if(els.addResearchItemBtn) els.addResearchItemBtn.onclick=()=>openResearchItemEditor(null);
   if(els.exportResearchBtn) els.exportResearchBtn.onclick=exportResearchConfig;
   if(els.importResearchFile) els.importResearchFile.onchange=async e=>{ const f=e.target.files[0]; if(!f) return; try{ importResearchConfig(await f.text()); }catch(err){ console.error(err); alert('Research import failed. Choose a valid TXT/JSON export.'); } e.target.value=''; };
-  if(els.clearResearchBtn) els.clearResearchBtn.onclick=()=>{ if(confirm('Clear all saved research items?')){ state.researchItems=[]; saveResearchItems(); renderResearchCanvas(); } };
+  if(els.clearResearchBtn) els.clearResearchBtn.onclick=clearResearchItemsWithConfirm;
   if(els.researchSource) els.researchSource.onchange=()=>{ populateResearchFieldSelectors({}); renderResearchColumnsEditor(); };
   if(els.researchOutputType) els.researchOutputType.onchange=updateResearchBuilderVisibility;
   if(els.researchValueMode) els.researchValueMode.onchange=updateResearchBuilderVisibility; if(els.researchUseSecondaryGroup) els.researchUseSecondaryGroup.onchange=updateResearchBuilderVisibility; if(els.researchValueField) els.researchValueField.oninput=validateResearchEditor;
