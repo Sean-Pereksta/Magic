@@ -1515,6 +1515,7 @@ render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and 
 })();
 
 
+
 </script>
 <script>
 /* Tiny Tactics recruit expansion: 25 distinct troops with capped support/storm hooks. */
@@ -2381,6 +2382,7 @@ Page Novice|📖✨|Mage,Holy|32|6|1.02|support|Progression mage support. Each t
 })();
 
 
+
 </script>
 
 <script>
@@ -2430,6 +2432,7 @@ Corner Idol|🗿|Spirit,Stone,Healer|76|5|.7|support|Corner specialist. Stronger
   const oldDetail=detailHtml;detailHtml=function(u){let html=oldDetail(u);if(u?.team==='ally'&&names.has(u.n)){let cur=five(u)?(six(u)?'6★+ mastery active.':'5★ specialization active.'):'Base role active.';let nxt=!five(u)?'Next: 5★ unlocks role specialization.':(!six(u)?'Next: 6★+ unlocks mastery behavior.':'Max role kit online with capped scaling.');html+=`<p class="hint"><b>Role scaling:</b> ${cur}<br><b>Next-star effect:</b> ${nxt}</p>`}return html};
   const oldHelp=help;help=function(){oldHelp();setTimeout(()=>{if($('body'))$('body').innerHTML+=`<p><b>Request 2 heroes:</b> Hex Bishop, Rust Prophet, Wall Builder, Root Binder, Oath Hunter, Siege Oracle, Rain Saint, Lantern Nurse, Tax Imp, Golden Knight, Column Captain, Diagonal Witch, and Corner Idol fill missing strategic roles and interact with Fragile, Armor Break, Root, Barrier, Taunt, Silence, Stagger, Vulnerable, marked kills, economy, rows, columns, diagonals, and corners.</p>`},0)};
 })();
+
 </script>
 
 
@@ -2677,6 +2680,72 @@ Corner Idol|🗿|Spirit,Stone,Healer|76|5|.7|support|Corner specialist. Stronger
   const oldHelpLate=help;help=function(){oldHelpLate();setTimeout(()=>{if($('body'))$('body').innerHTML+=`<p><b>11★–13★ late game:</b> max star is ${MAX_STAR}. 11★ requires level 120 and 7 training upgrades, 12★ requires level 150 and 8, and 13★ requires level 180 and 9. Each unlock grants Mastery, Ascension, or Mythic Form with capped procs.</p><p><b>5th row:</b> at level 250 your squad grid expands from 4×4 to 5×4. The right column remains the front line; the added row behaves as another backrow-style formation row.</p>`},0)};
   const css=document.createElement('style');css.textContent=`.grid.expanded5{width:min(86vw,40dvh,340px);aspect-ratio:4/5}.cell.newBackrow{background:linear-gradient(135deg,#f8fafc,#eef2ff);border-color:#a5b4fc}.unit.s11{background:linear-gradient(135deg,#ecfeff,#dbeafe,#ede9fe)!important;border-color:#06b6d4!important;box-shadow:0 0 22px #06b6d488!important}.unit.s12{background:linear-gradient(135deg,#1e1b4b,#7c3aed,#22d3ee)!important;color:white!important;border-color:#67e8f9!important;box-shadow:0 0 28px #7c3aedaa!important}.unit.s13{background:conic-gradient(from 120deg,#111827,#facc15,#f0abfc,#67e8f9,#111827)!important;color:white!important;border-color:#fef08a!important;box-shadow:0 0 36px #facc15cc,0 0 22px #67e8f9aa!important}.unit.s11 .star,.unit.s12 .star,.unit.s13 .star{font-size:8px;padding:0 3px;max-width:30px;overflow:hidden}.unit.s12 .nm,.unit.s12 .foc,.unit.s13 .nm,.unit.s13 .foc{color:white}.unit.s11 .lateBadge{background:#0891b2}.unit.s12 .lateBadge{background:#7c3aed}.unit.s13 .lateBadge{background:linear-gradient(90deg,#facc15,#f0abfc,#67e8f9);color:#111827}`;document.head.appendChild(css);
   syncBoard('init');if(typeof render==='function')setTimeout(render,0);
+})();
+
+
+/* === Stability patch: safe lightning chains + restored board inspection === */
+(function(){
+  const LIGHTNING_NO_PROC={type:'lightning',noProc:true,procLocked:true};
+  function livingEnemies(){return (typeof liveE==='function'?liveE():(S.enemies||[]).filter(e=>e&&!e.dead));}
+  function livingAllies(){return (typeof liveA==='function'?liveA():(S.squad||[]).filter(u=>u&&!u.dead));}
+  function lightningWarn(source){console.warn('Lightning cap reached',{source:source&&source.n,castsThisTick:S.battle&&S.battle.lightningCastsThisTick,depth:S.battle&&S.battle.lightningDepth});}
+  window.getLightningChainCap=function(source){
+    if(!source)return 2;
+    let st=source.star||1,cap=(source.t||[]).includes('Storm')?2:1;
+    if(st>=5)cap++; if(st>=8)cap++; if(st>=12)cap++;
+    if(source.n==='Stormcaller'||source.n==='Spark Sprite'||source.n==='Static Moth'||source.n==='Thunder Ram'||source.n==='Thunder Javelin')cap++;
+    if(source.ultimateChainBonus)cap+=source.ultimateChainBonus;
+    if(source.mythicChainBonus)cap+=source.mythicChainBonus;
+    if(source.safeChainBonus)cap+=source.safeChainBonus;
+    let nearSupport=livingAllies().some(a=>a!==source&&!a.dead&&['Lightning Rod','Battery Pylon','Storm Conductor'].includes(a.n));
+    if(nearSupport)cap++;
+    return Math.max(1,Math.min(6,cap));
+  };
+  function directLightningDamage(source,target,amount){
+    if(!target||target.dead)return;
+    let raw=Math.max(0,Number(amount)||0),etype='storm';
+    if(target.team==='enemy'){
+      if(source&&source.team==='ally')target.lastHit=source;
+      let mult=1;if(target.weak&&target.weak.includes(etype))mult*=1.45;if(target.res&&target.res.includes(etype))mult*=.62;if(target.marked)mult*=1.08;raw*=mult;
+    }
+    if(target.shield>0){let s=Math.min(target.shield,raw);target.shield-=s;raw-=s;}
+    target.hp-=raw;
+    let i=target.team==='ally'?ix(target):S.enemies.indexOf(target);
+    if(typeof float==='function')float(target,i,`-${Math.round(raw)}`,'#ca8a04');
+    if(typeof flash==='function')flash(target,i,'hit');
+    if(target.hp<=0&&typeof kill==='function')kill(source,target);
+  }
+  window.safeLightningChain=function(source,firstTarget,opts={}){
+    if(!S||!S.battle)return;
+    if(!source||source.dead)return;
+    if(!firstTarget||firstTarget.dead)return;
+    if(source._lightningLock)return;
+    S.battle.lightningDepth=S.battle.lightningDepth||0;
+    S.battle.lightningCastsThisTick=S.battle.lightningCastsThisTick||0;
+    const maxDepth=opts.maxDepth??1,maxCastsPerTick=opts.maxCastsPerTick??12,maxChains=Math.min(opts.maxChains??2,getLightningChainCap(source));
+    if(S.battle.lightningDepth>=maxDepth||S.battle.lightningCastsThisTick>=maxCastsPerTick){lightningWarn(source);return;}
+    S.battle.lightningDepth++;S.battle.lightningCastsThisTick++;source._lightningLock=true;
+    try{
+      let amt=Number(opts.damage??opts.amt??source.atk*.35)||1,hit=new Set(),cur=null,targets=[];
+      if(firstTarget&&!firstTarget.dead)targets.push(firstTarget);
+      livingEnemies().filter(e=>e!==firstTarget&&!e.dead).forEach(e=>targets.push(e));
+      targets=targets.slice(0,Math.max(1,maxChains+1));
+      targets.forEach((e,n)=>{if(!e||e.dead||hit.has(e))return;if(S.battle.lightningCastsThisTick>maxCastsPerTick){lightningWarn(source);return;}hit.add(e);if(cur&&typeof beam==='function')beam(S.enemies.indexOf(cur),S.enemies.indexOf(e));directLightningDamage(source,e,Math.min(opts.maxDamage??60,amt*Math.max(.45,1-n*.1)));cur=e;});
+    }catch(e){console.warn('safeLightningChain failed',source&&source.n,e)}
+    finally{source._lightningLock=false;S.battle.lightningDepth=Math.max(0,(S.battle.lightningDepth||1)-1);}
+  };
+  const oldDmgSafe=dmg;dmg=function(src,tgt,amt,type='hit'){
+    if(type&&typeof type==='object'&&(type.noProc||type.procLocked||type.type==='lightning'))return directLightningDamage(src,tgt,amt);
+    if(type==='storm'||type==='stormchain')return directLightningDamage(src,tgt,amt);
+    return oldDmgSafe(src,tgt,amt,type);
+  };
+  const oldChainSafe=chain;chain=function(src,t,amt){return safeLightningChain(src,t,{damage:amt,maxChains:getLightningChainCap(src),maxDepth:1,maxCastsPerTick:12});};
+  const oldLoopSafe=loop;loop=function(battleId){if(S&&S.battle)S.battle.lightningCastsThisTick=0;return oldLoopSafe(battleId);};
+  const oldTrigger=window.triggerBattleAbility;if(oldTrigger)window.triggerBattleAbility=function(id,level){if(id!=='lightningChain')return oldTrigger(id,level);let d=abilityDefs[id],p=abilityPower(d,level),t=abilityTargets(d);(typeof pickEnemies==='function'?pickEnemies(t):livingEnemies().slice(0,t)).forEach(e=>safeLightningChain(livingAllies()[0]||{n:'Lightning Chain',team:'ally'},e,{damage:e.maxHp*p,maxChains:1,maxDepth:1,maxCastsPerTick:12,maxDamage:90}));};
+  window.openUnitDetails=function(unit,index){if(!unit)return;S.inspect=unit;if(typeof detail==='function')return detail(unit);};
+  const oldTapCellSafe=tapCell;tapCell=function(i){let unit=S.squad[i];if(S.placing){if(unit){if(unit.n===S.placing.n)return oldTapCellSafe(i);return openUnitDetails(unit,i);}return oldTapCellSafe(i);}if(S.placingEffect||S.placingUpgrade)return unit?oldTapCellSafe(i):msg(S.placingEffect?'Pick one of your existing guys for this effect.':'Pick a filled square to upgrade.');if(unit)return openUnitDetails(unit,i);S.inspect=null;return msg('Empty squad slot. Pick a recruit to place here.');};
+  const oldDetailPatch=detailHtml;detailHtml=function(u){let h=oldDetailPatch(u);if(u&&u.team==='ally'){let statuses=['burn','poison','slow','marked','cursed','silenced','rooted'].filter(k=>u[k]).map(k=>`${k}: ${Math.round(u[k]*10)/10}`).join(' • ')||'None';let growth=u.growth?Object.entries(u.growth).map(([k,v])=>`${k}: ${Math.round(v*100)/100}`).join(' • '):'None';let syn=(S.inspect===u&&typeof getPlacementSynergies==='function')?getPlacementSynergies(u,ix(u)).map(x=>x.label).join(' • '):'';h+=`<p class="hint"><b>Current status:</b> ${u.dead?'Dead / inspectable':statuses}<br><b>Training:</b> ${u.star||1}★, ${u.starProg||0}/${typeof starNeed==='function'?starNeed(u):'?'} progress<br><b>Growth bonuses:</b> ${growth}<br><b>Effect power:</b> ${typeof getEffectPower==='function'?Math.round(getEffectPower(u,'storm')*100)+'% storm / '+Math.round(getEffectPower(u,'frost')*100)+'% frost':'standard'}<br><b>Gold shield:</b> ${Math.round(u.goldShield||0)}<br><b>Upgrades / evolutions:</b> ${(u.lateUpgrades||[]).join(', ')||u.evoTitle||'None'}${syn?`<br><b>Placement notes:</b> ${syn}`:''}</p>`;}return h;};
+  const css=document.createElement('style');css.textContent='.cell .synTip,.cell .comboBadge,.cell .mixedBadge,.cell .auraBadge,.cell .fxBadge,.cell .killBadge,.cell .statusBadge{pointer-events:none}.cell,.unit{touch-action:manipulation}';document.head.appendChild(css);
 })();
 
 </script>
