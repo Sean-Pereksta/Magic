@@ -620,7 +620,9 @@ function normalizeFilterForStorage(f, fallbackSource){
     values:(f.values||[]).map(v=>String(v??'').trim()).filter(Boolean),
     value:String(f.value??'').trim(),
     dynamic:!!f.dynamic,
-    expression:String(f.expression??'').trim()
+    expression:String(f.expression??'').trim(),
+    dynamicColumn:!!(f.dynamicColumn||f.columnDynamic),
+    columnExpression:String(f.columnExpression??f.expressionColumn??'').trim()
   };
 }
 function isNumericFilterOperator(op){ return ['greaterThan','greaterEqual','lessThan','lessEqual'].includes(op); }
@@ -981,7 +983,22 @@ function bindModelSourceSettings(){
   if(btn) btn.onclick=()=>runModelColumnCheck();
 }
 function splitExpressionColumns(expr){
-  const out=[]; String(expr||'').replace(/\[([^\]]+)\]/g,(m,col)=>{out.push(col); return m;}); return out;
+  const out=[]; String(expr||'').replace(/(^|[^!])\[([^\]]+)\](?!\s*\.\s*\[)/g,(m,prefix,col)=>{out.push(col); return m;}); return out;
+}
+function sourceKeyFromExpressionLabel(label){
+  const wanted=norm(label);
+  return allSourceKeys().find(src=>norm(labelSource(src))===wanted || norm(src)===wanted) || '';
+}
+function splitCrossExpressionRefs(expr){
+  const out=[];
+  String(expr||'').replace(/!\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]/g,(m,sourceLabel,col)=>{ const source=sourceKeyFromExpressionLabel(sourceLabel); out.push({sourceLabel,source,column:col}); return m; });
+  return out;
+}
+function expressionRefsForSource(expr, defaultSource){
+  const refs=[];
+  splitExpressionColumns(expr).forEach(col=>refs.push({source:defaultSource,column:col,cross:false}));
+  splitCrossExpressionRefs(expr).forEach(ref=>refs.push({...ref,cross:true}));
+  return refs;
 }
 function addRequired(map, source, label, expected){
   expected=plainHeaderName(expected); if(!source||!expected) return;
@@ -1006,14 +1023,15 @@ function requiredColumnsForModel(model){
       addRequired(req,c.leftSource,`${c.name} left column`,c.leftColumn);
       addRequired(req,c.rightSource,`${c.name} right column`,c.rightColumn);
     }
-    if(c.calcType==='custom') splitExpressionColumns(c.expression).forEach(col=>addRequired(req,c.customSource||c.source,`${c.name} expression`,col));
+    if(c.calcType==='custom') expressionRefsForSource(c.expression,c.customSource||c.source).forEach(ref=>addRequired(req,ref.source||ref.sourceLabel,`${c.name} expression`,ref.column));
     if(c.calcType==='checklistCount'||c.source==='checklist'){
       addRequired(req,'checklist',`${c.name} checklist date`,c.checkDateColumn);
       addRequired(req,'checklist',`${c.name} checklist column`,c.checkColumn);
     }
     (c.filters||[]).forEach(f=>{
-      addRequired(req,f.source||c.source,`${c.name} filter`,f.column);
-      if(f.dynamic && isNumericFilterOperator(f.operator)) expressionColumnsForSource(f.expression,f.source||c.source).forEach(col=>addRequired(req,f.source||c.source,`${c.name} dynamic filter`,col));
+      if(f.dynamicColumn && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.columnExpression,f.source||c.source).forEach(ref=>addRequired(req,ref.source||ref.sourceLabel,`${c.name} dynamic filter column`,ref.column));
+      else addRequired(req,f.source||c.source,`${c.name} filter`,f.column);
+      if(f.dynamic && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.expression,f.source||c.source).forEach(ref=>addRequired(req,ref.source||ref.sourceLabel,`${c.name} dynamic filter value`,ref.column));
     });
   });
   if(used.has('qa') || modelUsesQA(model)){
@@ -1215,13 +1233,16 @@ function filterHtml(cid,f){
   const selected=new Set(f.values||[]);
   const numeric=isNumericFilterOperator(f.operator);
   const operatorOptions=['is','isNot','greaterThan','greaterEqual','lessThan','lessEqual'].map(op=>`<option value="${op}" ${f.operator===op?'selected':''}>${filterOperatorLabel(op)}</option>`).join('');
+  const columnControl=numeric && f.dynamicColumn
+    ? `<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamicColumn" type="checkbox" checked> Dynamic column</label><input data-ff="columnExpression" data-filter-expression-input="1" autocomplete="off" value="${esc(f.columnExpression||'')}" placeholder="e.g. [Accepted] + [Declined]">`
+    : `<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamicColumn" type="checkbox" ${f.dynamicColumn?'checked':''}> Dynamic column</label><select data-ff="column">${headerOptions(f.source||'retail_sv2',f.column)}</select>`;
   const valueControl=numeric
-    ? `<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamic" type="checkbox" ${f.dynamic?'checked':''}> Dynamic</label><input data-ff="${f.dynamic?'expression':'value'}" ${f.dynamic?'data-filter-expression-input="1" autocomplete="off"':'type="text" inputmode="decimal"'} value="${esc(f.dynamic ? (f.expression||'') : (f.value||''))}" placeholder="${f.dynamic?'e.g. [Cash Opps] + [Wiper Opps]':'Enter a number'}">`
+    ? `<label class="checkItem" style="margin-bottom:6px"><input data-ff="dynamic" type="checkbox" ${f.dynamic?'checked':''}> Dynamic value</label><input data-ff="${f.dynamic?'expression':'value'}" ${f.dynamic?'data-filter-expression-input="1" autocomplete="off"':'type="text" inputmode="decimal"'} value="${esc(f.dynamic ? (f.expression||'') : (f.value||''))}" placeholder="${f.dynamic?'e.g. [Cash Opps] + ![Retail Wipers].[Cash Opps]':'Enter a number'}">`
     : `<select multiple data-ff="values" size="4">${vals.map(v=>`<option value="${esc(v)}" ${selected.has(v)?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
   return `<div class="filterRow" data-filter="${f.id}"><div class="grid5">
     <div class="field"><label>Filter Action</label><select data-ff="action"><option value="include" ${f.action==='include'?'selected':''}>Only include</option><option value="exclude" ${f.action==='exclude'?'selected':''}>Exclude</option></select></div>
     <div class="field"><label>Source</label><select data-ff="source">${sourceOptions(f.source||'retail_sv2')}</select></div>
-    <div class="field"><label>Column</label><select data-ff="column">${headerOptions(f.source||'retail_sv2',f.column)}</select></div>
+    <div class="field"><label>Column</label>${columnControl}</div>
     <div class="field"><label>Operator</label><select data-ff="operator">${operatorOptions}</select></div>
     <div class="field"><label>${numeric?'Value':'Values'}</label>${valueControl}</div>
     <div class="field"><label>Remove</label><button class="smallBtn red" data-remove-filter="${cid}|${f.id}">Delete</button></div>
@@ -1265,9 +1286,10 @@ function bindCriteriaEditors(){
       const field=input.dataset.ff;
       if(field==='values') f.values=Array.from(input.selectedOptions).map(o=>o.value);
       else if(field==='dynamic') f.dynamic=!!input.checked;
+      else if(field==='dynamicColumn') f.dynamicColumn=!!input.checked;
       else { f[field]=input.value; if(field==='action') f.mode=input.value; }
-      if(field==='expression') showHeaderSuggestions(input,{source:f.source||c.source,customSource:f.source||c.source});
-      if(['source','column','operator','dynamic'].includes(field)) renderEditModel();
+      if(field==='expression' || field==='columnExpression') showHeaderSuggestions(input,{source:f.source||c.source,customSource:f.source||c.source});
+      if(['source','column','operator','dynamic','dynamicColumn'].includes(field)) renderEditModel();
     };
   });
   els.criteriaList.querySelectorAll('[data-filter-expression-input]').forEach(input=>{
@@ -1283,16 +1305,22 @@ function ensureHeaderSuggestMenu(){
 }
 function expressionTokenInfo(input){
   const value=input.value||'', pos=input.selectionStart??value.length, before=value.slice(0,pos);
+  const cross=before.match(/!\[([^\]]*)$/);
+  if(cross) return {mode:'source',start:pos-cross[1].length-2,end:pos,text:cross[1],bracketed:true};
+  const crossHeader=before.match(/!\[([^\]]+)\]\s*\.\s*\[([^\]]*)$/);
+  if(crossHeader){ const source=sourceKeyFromExpressionLabel(crossHeader[1]); return {mode:'crossHeader',source,start:pos-crossHeader[2].length-1,end:pos,text:crossHeader[2],bracketed:true}; }
+  const bang=before.lastIndexOf('!');
+  if(bang>=0 && before.slice(bang).indexOf(']')<0){ return {mode:'source',start:bang,end:pos,text:before.slice(bang+1).replace(/^\[/,''),bracketed:false}; }
   const open=before.lastIndexOf('['), close=before.lastIndexOf(']');
-  if(open>close) return {start:open,end:pos,text:before.slice(open+1),bracketed:true};
+  if(open>close) return {mode:'header',start:open,end:pos,text:before.slice(open+1),bracketed:true};
   const m=before.match(/[A-Za-z0-9_%][A-Za-z0-9_%\s-]*$/);
-  if(!m) return {start:pos,end:pos,text:'',bracketed:false};
-  return {start:pos-m[0].length,end:pos,text:m[0].trim(),bracketed:false};
+  if(!m) return {mode:'header',start:pos,end:pos,text:'',bracketed:false};
+  return {mode:'header',start:pos-m[0].length,end:pos,text:m[0].trim(),bracketed:false};
 }
 function hideHeaderSuggestions(){ const menu=document.getElementById('headerSuggestMenu'); if(menu) menu.classList.remove('open'); }
 function insertHeaderIntoExpression(input, info, header){
   const value=input.value||'';
-  const insertion=`[${header}]`;
+  const insertion=info.mode==='crossHeader' ? `[${header}]` : `[${header}]`;
   input.value=value.slice(0,info.start)+insertion+value.slice(info.end);
   const pos=info.start+insertion.length;
   input.focus(); input.setSelectionRange(pos,pos);
@@ -1301,13 +1329,21 @@ function insertHeaderIntoExpression(input, info, header){
 }
 function showHeaderSuggestions(input,c){
   if(!input || !c) return;
-  const source=c.customSource||c.source;
-  const headers=(getHeaders(source)||[]).map(plainHeaderName).filter(Boolean);
   const info=expressionTokenInfo(input);
   const tokenNorm=norm(info.text);
   const menu=ensureHeaderSuggestMenu();
-  if(!headers.length || tokenNorm.length<1){ hideHeaderSuggestions(); return; }
-  const matches=headers.filter(h=>norm(h).includes(tokenNorm)).sort((a,b)=>{
+  if(info.mode==='source'){
+    const matches=allSourceKeys().map(src=>({src,label:labelSource(src)})).filter(x=>!tokenNorm || norm(x.label).includes(tokenNorm)).slice(0,10);
+    if(!matches.length){ hideHeaderSuggestions(); return; }
+    menu.innerHTML=`<div class="headerSuggestHelp">Choose a source/page, then choose a header.</div>`+matches.map(x=>`<button type="button" class="headerSuggestItem" data-source-suggest="${x.src}">${esc(x.label)}</button>`).join('');
+    const rect=input.getBoundingClientRect(); menu.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-290))+'px'; menu.style.top=Math.min(rect.bottom+4,window.innerHeight-245)+'px'; menu.classList.add('open');
+    menu.querySelectorAll('[data-source-suggest]').forEach(btn=>btn.onmousedown=e=>{ e.preventDefault(); const label=labelSource(btn.dataset.sourceSuggest); const v=input.value||''; const insertion=`![${label}].[`; input.value=v.slice(0,info.start)+insertion+v.slice(info.end); const pos=info.start+insertion.length; input.focus(); input.setSelectionRange(pos,pos); input.dispatchEvent(new Event('input',{bubbles:true})); showHeaderSuggestions(input,c); });
+    return;
+  }
+  const source=info.mode==='crossHeader' ? info.source : (c.customSource||c.source);
+  const headers=(getHeaders(source)||[]).map(plainHeaderName).filter(Boolean);
+  if(!headers.length || (tokenNorm.length<1 && info.mode!=='crossHeader')){ hideHeaderSuggestions(); return; }
+  const matches=headers.filter(h=>!tokenNorm || norm(h).includes(tokenNorm)).sort((a,b)=>{
     const as=norm(a).startsWith(tokenNorm)?0:1, bs=norm(b).startsWith(tokenNorm)?0:1;
     return as-bs || a.localeCompare(b);
   }).slice(0,10);
@@ -1338,14 +1374,15 @@ function collectHeaderRefsForModel(model){
       addHeaderRef(refs,{...base,kind:'criterion',source:c.leftSource,field:'leftColumn',label:'Left column',expected:c.leftColumn});
       addHeaderRef(refs,{...base,kind:'criterion',source:c.rightSource,field:'rightColumn',label:'Right column',expected:c.rightColumn});
     }
-    if(c.calcType==='custom') splitExpressionColumns(c.expression).forEach(col=>addHeaderRef(refs,{...base,kind:'expression',source:c.customSource||c.source,field:'expression',label:'Custom expression',expected:col}));
+    if(c.calcType==='custom') expressionRefsForSource(c.expression,c.customSource||c.source).forEach(ref=>addHeaderRef(refs,{...base,kind:'expression',source:ref.source||ref.sourceLabel,field:'expression',label:'Custom expression',expected:ref.column}));
     if(c.calcType==='checklistCount'||c.source==='checklist'){
       addHeaderRef(refs,{...base,kind:'criterion',source:'checklist',field:'checkDateColumn',label:'Checklist date column',expected:c.checkDateColumn});
       addHeaderRef(refs,{...base,kind:'criterion',source:'checklist',field:'checkColumn',label:'Checklist match column',expected:c.checkColumn});
     }
     (c.filters||[]).forEach(f=>{
-      addHeaderRef(refs,{...base,kind:'filter',filterId:f.id,source:f.source||c.source,field:'column',label:'Filter column',expected:f.column});
-      if(f.dynamic && isNumericFilterOperator(f.operator)) expressionColumnsForSource(f.expression,f.source||c.source).forEach(col=>addHeaderRef(refs,{...base,kind:'filterExpression',filterId:f.id,source:f.source||c.source,field:'expression',label:'Dynamic filter expression',expected:col}));
+      if(f.dynamicColumn && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.columnExpression,f.source||c.source).forEach(ref=>addHeaderRef(refs,{...base,kind:'filterExpression',filterId:f.id,source:ref.source||ref.sourceLabel,field:'columnExpression',label:'Dynamic filter column expression',expected:ref.column}));
+      else addHeaderRef(refs,{...base,kind:'filter',filterId:f.id,source:f.source||c.source,field:'column',label:'Filter column',expected:f.column});
+      if(f.dynamic && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.expression,f.source||c.source).forEach(ref=>addHeaderRef(refs,{...base,kind:'filterExpression',filterId:f.id,source:ref.source||ref.sourceLabel,field:'expression',label:'Dynamic filter value expression',expected:ref.column}));
     });
   });
   if(modelUsesQA(model)){
@@ -1399,7 +1436,8 @@ function setHeaderReference(ref, newHeader){
     if(ref.kind==='filterExpression'){
       const f=(c.filters||[]).find(x=>x.id===ref.filterId); if(!f) return false;
       const old=String(ref.expected).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-      f.expression=String(f.expression||'').replace(new RegExp(`\\[${old}\\]`,'g'),`[${newHeader}]`);
+      const exprField=ref.field==='columnExpression'?'columnExpression':'expression';
+      f[exprField]=String(f[exprField]||'').replace(new RegExp(`\\[${old}\\]`,'g'),`[${newHeader}]`);
     }
     if(ref.kind==='expression'){
       const old=String(ref.expected).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -2252,31 +2290,46 @@ function expressionColumnsForSource(expr, source){
   const headers=(getHeaders(source)||[]).map(plainHeaderName).filter(Boolean);
   const found=[]; const seen=new Set();
   splitExpressionColumns(expr).forEach(col=>{ const hit=resolveColumn(source,col); if(hit&&!seen.has(hit)){seen.add(hit); found.push(hit);} });
-  let probe=String(expr||'').replace(/\[[^\]]+\]/g,' ');
+  let probe=String(expr||'').replace(/!\[[^\]]+\]\s*\.\s*\[[^\]]+\]/g,' ').replace(/\[[^\]]+\]/g,' ');
   headers.slice().sort((a,b)=>b.length-a.length).forEach(h=>{
     const re=new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(h)}(?=$|[^A-Za-z0-9_])`,'gi');
     if(re.test(probe) && !seen.has(h)){ seen.add(h); found.push(h); }
   });
   return found;
 }
-function evaluateRowExpression(expr, row, source){
+function sumRowsColumn(source, col, rows){
+  const actual=resolveColumn(source,col);
+  let total=0, found=false;
+  (rows||[]).forEach(r=>{ const n=toNum(r[actual]); if(Number.isFinite(n)){ total+=n; found=true; } });
+  return found ? total : NaN;
+}
+function crossRowsForRow(source, row, opts={}){
+  const key=row?._repKey||nameKey(row?._rep||'');
+  if(!key) return [];
+  const idx=sourceIndex(source);
+  const raw=idx ? (idx.byRep.get(key)||[]) : getRowsRaw(source).filter(r=>r._repKey===key);
+  return filterRowsForSource(source, raw, opts);
+}
+function evaluateRowExpression(expr, row, source, opts={}){
   expr=String(expr||'').trim(); if(!expr) return NaN;
-  let out=expr.replace(/\[([^\]]+)\]/g,(m,col)=>{ const actual=resolveColumn(source,col); const n=toNum(row[actual]); return Number.isFinite(n)?String(n):'NaN'; });
+  let out=expr.replace(/!\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]/g,(m,sourceLabel,col)=>{ const src=sourceKeyFromExpressionLabel(sourceLabel); if(!src) return 'NaN'; const n=sumRowsColumn(src,col,crossRowsForRow(src,row,opts)); return Number.isFinite(n)?String(n):'NaN'; });
+  out=out.replace(/(^|[^!])\[([^\]]+)\](?!\s*\.\s*\[)/g,(m,prefix,col)=>{ const actual=resolveColumn(source,col); const n=toNum(row[actual]); return prefix+(Number.isFinite(n)?String(n):'NaN'); });
   const headers=(getHeaders(source)||[]).map(plainHeaderName).filter(Boolean).sort((a,b)=>b.length-a.length);
   headers.forEach(h=>{
     const actual=resolveColumn(source,h); const n=toNum(row[actual]);
-    const re=new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(h)}(?=$|[^A-Za-z0-9_])`,'gi');
+    const re=new RegExp(`(^|[^A-Za-z0-9_!\]])${escapeRegExp(h)}(?=$|[^A-Za-z0-9_])`,'gi');
     out=out.replace(re,(m,prefix)=>prefix+(Number.isFinite(n)?String(n):'NaN'));
   });
   if(!/^[0-9+\-*/().\sNa]+$/.test(out)) return NaN;
   try{ const v=Function(`return (${out})`)(); return Number.isFinite(v)?v:NaN; }catch(e){ return NaN; }
 }
 
-function applyFilters(rows, filters, rowSource){
+function applyFilters(rows, filters, rowSource, opts={}){
   let out=rows||[];
   (filters||[]).forEach(raw=>{
     const f=normalizeFilterForStorage(raw,rowSource);
-    if(!f.column) return;
+    if(!f.dynamicColumn && !f.column) return;
+    if(f.dynamicColumn && !String(f.columnExpression||'').trim()) return;
     const col=resolveColumn(f.source||rowSource,f.column);
     const action=f.action||f.mode||'exclude';
     const numeric=isNumericFilterOperator(f.operator);
@@ -2284,8 +2337,9 @@ function applyFilters(rows, filters, rowSource){
       const fixedTarget=toNum(f.value);
       if(!f.dynamic && !Number.isFinite(fixedTarget)) return;
       out=out.filter(r=>{
-        const target=f.dynamic ? evaluateRowExpression(f.expression,r,f.source||rowSource) : fixedTarget;
-        const hit=numericComparisonPass(toNum(r[col]),f.operator,target);
+        const target=f.dynamic ? evaluateRowExpression(f.expression,r,f.source||rowSource,opts) : fixedTarget;
+        const left=f.dynamicColumn ? evaluateRowExpression(f.columnExpression,r,f.source||rowSource,opts) : toNum(r[col]);
+        const hit=numericComparisonPass(left,f.operator,target);
         return action==='include'?hit:!hit;
       });
       return;
@@ -2311,7 +2365,7 @@ function rowsForEntry(source, entry, opts={}){
 }
 function valueSingle(c, entry, opts){
   let rows=rowsForEntry(c.source, entry, opts);
-  rows=applyFilters(rows,c.filters,c.source);
+  rows=applyFilters(rows,c.filters,c.source,opts);
   const col=resolveColumn(c.source,c.column);
   if(c.aggregate==='count') return rows.filter(r=>String(r[col]??'').trim()!=='').length;
   const nums=rows.map(r=>toNum(r[col])).filter(Number.isFinite);
@@ -2320,7 +2374,7 @@ function valueSingle(c, entry, opts){
   return nums.reduce((a,b)=>a+b,0);
 }
 function sumColumn(source, col, entry, opts, filters){
-  let rows=rowsForEntry(source, entry, opts); rows=applyFilters(rows,filters,source);
+  let rows=rowsForEntry(source, entry, opts); rows=applyFilters(rows,filters,source,opts);
   const actualCol=resolveColumn(source,col);
   return rows.reduce((s,r)=>{const n=toNum(r[actualCol]); return s+(Number.isFinite(n)?n:0);},0);
 }
@@ -2337,19 +2391,20 @@ function valueMulti(c, entry, opts){
 }
 function valueCustom(c, entry, opts){
   const src=c.customSource||c.source; const expr=String(c.expression||''); if(!expr.trim()) return NaN;
-  const replaced=expr.replace(/\[([^\]]+)\]/g,(m,col)=>String(sumColumn(src,col,entry,opts,c.filters)));
-  if(!/^[0-9+\-*/().\s]+$/.test(replaced)) return NaN;
+  let replaced=expr.replace(/!\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]/g,(m,sourceLabel,col)=>{ const refSrc=sourceKeyFromExpressionLabel(sourceLabel); return refSrc ? String(sumColumn(refSrc,col,entry,opts,[])) : 'NaN'; });
+  replaced=replaced.replace(/(^|[^!])\[([^\]]+)\](?!\s*\.\s*\[)/g,(m,prefix,col)=>prefix+String(sumColumn(src,col,entry,opts,c.filters)));
+  if(!/^[0-9+\-*/().\sNa]+$/.test(replaced)) return NaN;
   try{ const v=Function(`return (${replaced})`)(); return Number.isFinite(v)?v*(c.format==='pct'?100:1):NaN; }catch(e){return NaN;}
 }
 function valueQA(c, entry, opts){
-  let rows=rowsForEntry('qa', entry, opts); rows=applyFilters(rows,c.filters,'qa');
+  let rows=rowsForEntry('qa', entry, opts); rows=applyFilters(rows,c.filters,'qa',opts);
   const minMonitors=Math.max(0,Math.floor(Number(c.minimumMonitors)||0));
   if(minMonitors && rows.length<minMonitors) return NaN;
   const nums=rows.map(r=>r._score).filter(Number.isFinite); if(!nums.length) return NaN;
   return nums.reduce((a,b)=>a+b,0)/nums.length;
 }
 function valueChecklist(c, entry, opts){
-  let rows=rowsForEntry('checklist', entry, {...opts,dateColumn:c.checkDateColumn}); rows=applyFilters(rows,c.filters,'checklist');
+  let rows=rowsForEntry('checklist', entry, {...opts,dateColumn:c.checkDateColumn}); rows=applyFilters(rows,c.filters,'checklist',opts);
   if(c.checkColumn && String(c.checkText||'').trim()){
     const needle=String(c.checkText).toLowerCase().trim();
     const checkCol=resolveColumn('checklist',c.checkColumn);
