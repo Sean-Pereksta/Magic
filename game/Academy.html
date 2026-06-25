@@ -557,13 +557,29 @@ function plainHeaderName(v){
   if(typeof v==='object') return String(v.name ?? v.header ?? v.value ?? v.label ?? '').trim();
   return String(v).trim();
 }
+function validSourceKey(source, fallback='retail_sv2'){
+  return allSourceKeys().includes(source) ? source : fallback;
+}
 function normalizeCriterionForStorage(c){
   c = {...(c||{})};
-  c.source=c.source||'retail_sv2';
-  // Keep every criteria's secondary source selectors tied to the top Source selector.
-  c.leftSource=c.source;
-  c.rightSource=c.source;
-  c.customSource=c.source;
+  c.id=c.id||id();
+  c.name=String(c.name||'New Criteria').trim();
+  c.source=validSourceKey(c.source,'retail_sv2');
+  // Preserve imported secondary/custom source selections when present, but safely
+  // default old model exports to the primary Source. The editor still auto-links
+  // these selectors when the primary source changes via setCriterionPrimarySource().
+  c.leftSource=validSourceKey(c.leftSource,c.source);
+  c.rightSource=validSourceKey(c.rightSource,c.source);
+  c.customSource=validSourceKey(c.customSource,c.source);
+  c.audience=['both','team','rep'].includes(c.audience)?c.audience:'both';
+  c.scoreType=['rank','points','display'].includes(c.scoreType)?c.scoreType:'rank';
+  c.direction=['higher','lower'].includes(c.direction)?c.direction:'higher';
+  c.weight=String(c.weight||'1')==='autofail'?'autofail':String(Number(c.weight)||1);
+  c.format=['number','pct'].includes(c.format)?c.format:'number';
+  c.calcType=['single','multi','custom','qaScore','checklistCount'].includes(c.calcType)?c.calcType:'single';
+  c.aggregate=['sum','avg','count'].includes(c.aggregate)?c.aggregate:'sum';
+  c.operator=['divide','multiply','plus','minus','greaterThan','lessThan'].includes(c.operator)?c.operator:'divide';
+  c.checkOperator=['contains','equals'].includes(c.checkOperator)?c.checkOperator:'contains';
   if(c.missingRank===undefined || c.missingRank===null || c.missingRank==='') c.missingRank=999;
   if(c.missingPoints===undefined || c.missingPoints===null || c.missingPoints==='') c.missingPoints=0;
   if(c.minimumMonitors===undefined || c.minimumMonitors===null || c.minimumMonitors==='') c.minimumMonitors=0;
@@ -571,7 +587,14 @@ function normalizeCriterionForStorage(c){
   c.missingPoints=Number(c.missingPoints)||0;
   c.minimumMonitors=Math.max(0,Math.floor(Number(c.minimumMonitors)||0));
   c.zeroCanWin=!!c.zeroCanWin;
+  c.minimumEnabled=!!c.minimumEnabled;
+  c.minimum=Number(c.minimum)||0;
+  c.points=Number(c.points)||1;
+  c.autofailThreshold=Number(c.autofailThreshold)||1;
+  c.autofailOperator=['greaterEqual','greaterThan','equals'].includes(c.autofailOperator)?c.autofailOperator:'greaterEqual';
   HEADER_FIELDS.forEach(f=>{ c[f]=plainHeaderName(c[f]); });
+  c.expression=String(c.expression||'');
+  c.checkText=String(c.checkText||'');
   c.filters=(c.filters||[]).map(f=>normalizeFilterForStorage(f,c.source));
   return c;
 }
@@ -605,11 +628,21 @@ function normalizeModelForStorage(m){
   m = {...(m||{})};
   m.id=m.id||id();
   m.name=String(m.name||'Untitled Model').trim();
-  m.type=m.type||'both';
+  m.type=['both','team','rep'].includes(m.type)?m.type:'both';
   m.tiebreaker=m.tiebreaker||'overallScore';
   m.sourceSettings=normalizeSourceSettings(m.sourceSettings);
-  m.criteria=(m.criteria||[]).map(c=>{c=normalizeCriterionForStorage(c); c.id=c.id||id(); return c;});
+  m.criteria=(m.criteria||[]).map(c=>normalizeCriterionForStorage(c));
+  if(m.tiebreaker!=='overallScore' && !m.criteria.some(c=>c.id===m.tiebreaker)) m.tiebreaker='overallScore';
   return m;
+}
+function serializeModelsForExport(models){
+  return JSON.stringify({version:2,exportedAt:new Date().toISOString(),models:(models||[]).map(normalizeModelForStorage)}, null, 2);
+}
+function parseModelsImportText(text){
+  const obj=JSON.parse(String(text||''));
+  const incoming=Array.isArray(obj)?obj:(Array.isArray(obj.models)?obj.models:[obj]);
+  if(!Array.isArray(incoming)) throw new Error('Imported file did not contain models.');
+  return incoming.map(normalizeModelForStorage);
 }
 function norm(s){return String(s ?? '').toLowerCase().replace(/%/g,' percent ').replace(/&/g,' and ').trim().replace(/[^a-z0-9]+/g,'');}
 function cleanName(s){
@@ -837,7 +870,7 @@ function renderModelList(){
   els.modelList.innerHTML = state.models.map(m=>`<div class="modelRow"><div class="row"><strong>${esc(m.name)}</strong><span class="badge">${esc(m.type||'both')}</span><span class="badge">${(m.criteria||[]).length}</span><span style="flex:1"></span><button class="smallBtn dark" data-export-model="${m.id}">Export</button><button class="smallBtn" data-modify-model="${m.id}">Modify</button><button class="smallBtn red" data-delete-model="${m.id}">Delete</button></div></div>`).join('');
   els.modelList.querySelectorAll('[data-modify-model]').forEach(b=>b.onclick=()=>openEditModel(b.dataset.modifyModel));
   els.modelList.querySelectorAll('[data-delete-model]').forEach(b=>b.onclick=()=>deleteModel(b.dataset.deleteModel));
-  els.modelList.querySelectorAll('[data-export-model]').forEach(b=>b.onclick=()=>{const m=normalizeModelForStorage(findModel(b.dataset.exportModel)); downloadText(`${m.name.replace(/[^a-z0-9]+/gi,'_')}.txt`, JSON.stringify(m, null, 2));});
+  els.modelList.querySelectorAll('[data-export-model]').forEach(b=>b.onclick=()=>{const m=normalizeModelForStorage(findModel(b.dataset.exportModel)); downloadText(`${m.name.replace(/[^a-z0-9]+/gi,'_')}.txt`, serializeModelsForExport([m]));});
 }
 function findModel(mid){return state.models.find(m=>m.id===mid);}
 function deleteModel(mid){
@@ -2603,8 +2636,8 @@ function wire(){
   els.qaFile.onchange=e=>{const f=e.target.files[0]; if(f) loadQAFile(f);};
   els.checklistFile.onchange=e=>{const f=e.target.files[0]; if(f) loadChecklistFile(f);};
   els.createModelBtn.onclick=()=>openEditModel(null);
-  els.exportModelsBtn.onclick=()=>downloadText('all_star_models.txt', JSON.stringify({version:1,models:(state.models||[]).map(normalizeModelForStorage)}, null, 2));
-  els.importModelsFile.onchange=async e=>{const f=e.target.files[0]; if(!f) return; const text=await f.text(); try{const obj=JSON.parse(text); const incoming=Array.isArray(obj)?obj:(obj.models?obj.models:[obj]); if(!Array.isArray(incoming)) throw new Error('bad'); state.models=incoming.map(normalizeModelForStorage); saveModels();}catch(err){alert('Import failed.');} e.target.value='';};
+  els.exportModelsBtn.onclick=()=>downloadText('all_star_models.txt', serializeModelsForExport(state.models||[]));
+  els.importModelsFile.onchange=async e=>{const f=e.target.files[0]; if(!f) return; const text=await f.text(); try{state.models=parseModelsImportText(text); saveModels(); renderEditModelSafe(); renderMassHeaderCheck();}catch(err){console.error(err); alert('Import failed. Make sure this is a model TXT/JSON export.');} e.target.value='';};
   els.addCriterionBtn.onclick=()=>{syncEditModelFields(); state.editModel.criteria.push(emptyCriterion()); renderEditModel();};
   els.cancelModelBtn.onclick=els.cancelModelTopBtn.onclick=()=>closeModal('editModelModal');
   els.saveModelBtn.onclick=()=>saveEditModel(false);
