@@ -1501,9 +1501,49 @@ function sourceKeyFromExpressionLabel(label){
   const wanted=norm(label);
   return allSourceKeys().find(src=>norm(labelSource(src))===wanted || norm(src)===wanted) || '';
 }
+function stripResearchRefBrackets(v){ return String(v||'').trim().replace(/^\[|\]$/g,'').trim(); }
+function sourceQualifiedRefWarning(ref){
+  if(!ref) return '';
+  if(ref.missingSource) return `Missing source: ${ref.rawSource}`;
+  if(ref.missingField) return `Missing header in ${labelSource(ref.source)||ref.rawSource}: ${ref.rawField}`;
+  return '';
+}
+function addSourceQualifiedRefWarning(warnings,ref){
+  const msg=sourceQualifiedRefWarning(ref);
+  if(msg) researchExpressionAddWarning ? researchExpressionAddWarning(warnings||[],msg) : (warnings && !warnings.includes(msg) && warnings.push(msg));
+  return msg;
+}
+function parseResearchSourceFieldRef(raw){
+  const text=String(raw||'').trim();
+  if(!text.startsWith('!')) return null;
+  let m=text.match(/^!\s*\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]\s*$/);
+  if(!m) m=text.match(/^!\s*([^:.]+?)\s*[:.]\s*(.+?)\s*$/);
+  if(!m) return null;
+  const rawSource=stripResearchRefBrackets(m[1]), rawField=stripResearchRefBrackets(m[2]);
+  const source=sourceKeyFromExpressionLabel(rawSource);
+  if(!source) return {source:'',field:'',rawSource,rawField,missingSource:true,missingField:false};
+  const field=resolveColumn(source,rawField);
+  const found=field && (getHeaders(source)||[]).some(h=>h===field || norm(h)===norm(field));
+  return {source,field:found?field:'',rawSource,rawField,missingSource:false,missingField:!found};
+}
+function replaceResearchSourceFieldRefs(expr, replacer){
+  let out=String(expr||'');
+  out=out.replace(/!\s*\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]/g,(m)=>replacer(m,parseResearchSourceFieldRef(m)));
+  out=out.replace(/!\s*([^!()[\]+\-*/,\n\r]+?)\s*[:.]\s*([^!()[\]+\-*/,\n\r]+?)(?=$|[\s()[\]+\-*/,])/g,(m)=>replacer(m,parseResearchSourceFieldRef(m)));
+  return out;
+}
+function researchSourceFieldRefRegressionCases(){
+  return [
+    'A: Documented Coaching metric "Save the Sale" with Description contains "save the sale"; research value sum(![Retail SV2].[Cash Apps]) / sum(![Retail SV2].[Cash Opps]) should resolve to a numeric percent.',
+    'B: Dynamic/@Save the Sale group with Retail SV2 Cash Apps/Opps aggregate expression should cohort-match reps/teams across the metric source and Retail SV2.',
+    'C: Checklist Description contains "save the sale" with column expression ![Retail SV2].[Cash Apps] should resolve and pull/display matched Retail SV2 values.',
+    'D: ![Retail SV3].[Cash Apps] should warn "Missing source: Retail SV3".',
+    'E: ![Retail SV2].[Cash Applicationz] should warn "Missing header in Retail SV2: Cash Applicationz".'
+  ];
+}
 function splitCrossExpressionRefs(expr){
   const out=[];
-  String(expr||'').replace(/!\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]/g,(m,sourceLabel,col)=>{ const source=sourceKeyFromExpressionLabel(sourceLabel); out.push({sourceLabel,source,column:col}); return m; });
+  replaceResearchSourceFieldRefs(expr,(m,ref)=>{ out.push({sourceLabel:ref?.rawSource||'',source:ref?.source||'',column:ref?.rawField||'',field:ref?.field||'',missingSource:!!ref?.missingSource,missingField:!!ref?.missingField,cross:true}); return m; });
   return out;
 }
 function expressionRefsForSource(expr, defaultSource){
@@ -3049,7 +3089,7 @@ function expressionReferences(expr,source){ const refs=[]; expressionRefsForSour
 function expressionDiagnostics(expr,source,mode='display'){
   const raw=String(expr||'').trim(), headers=getHeaders(source)||[], used=[], missing=[];
   if(!raw) return {used,missing,html:''};
-  expressionReferences(raw,source).forEach(ref=>{ const src=ref.source||source, actual=resolveColumn(src,ref.column); const label=ref.cross?`${labelSource(src)||src}.${ref.column}`:ref.column; if(actual && (getHeaders(src)||[]).includes(actual)){ if(!used.includes(label)) used.push(label); } else { missing.push(label); expressionRunStats().missingHeaders.add(label); } });
+  expressionReferences(raw,source).forEach(ref=>{ if(ref.missingSource){ const label=`Missing source: ${ref.sourceLabel}`; missing.push(label); expressionRunStats().missingHeaders.add(label); return; } const src=ref.source||source, actual=ref.field||resolveColumn(src,ref.column); const label=ref.cross?`${labelSource(src)||src}.${ref.column}`:ref.column; if(actual && (getHeaders(src)||[]).includes(actual)){ if(!used.includes(label)) used.push(label); } else { const miss=ref.cross?`Missing header in ${labelSource(src)||src}: ${ref.column}`:label; missing.push(miss); expressionRunStats().missingHeaders.add(miss); } });
   const note=used.length?`Uses: ${used.slice(0,8).join(', ')}${used.length>8?'…':''}`:'Uses: no column headers detected';
   const warn=missing.length?`Missing header${missing.length>1?'s':''}: ${missing.join(', ')}`:'';
   return {used,missing,html:`<div class="exprNote ${warn?'bad':''}">${esc(note)}${warn?`<br>${esc(warn)}`:''}</div>`};
@@ -3076,7 +3116,7 @@ function expressionColumnsForSource(expr, source){
   const headers=[...(getHeaders(source)||[]).map(plainHeaderName).filter(Boolean),...(state.metrics||[]).map(m=>m.name).filter(Boolean),...(state.models||[]).flatMap(m=>(m.criteria||[]).map(c=>`${m.name||m.id}.${c.name||c.id}`))];
   const found=[]; const seen=new Set();
   splitExpressionColumns(expr).forEach(col=>{ const hit=resolveColumn(source,col); if(hit&&!seen.has(hit)){seen.add(hit); found.push(hit);} });
-  let probe=String(expr||'').replace(/!\[[^\]]+\]\s*\.\s*\[[^\]]+\]/g,' ').replace(/\[[^\]]+\]/g,' ');
+  let probe=replaceResearchSourceFieldRefs(expr,()=> ' ').replace(/\[[^\]]+\]/g,' ');
   headers.slice().sort((a,b)=>b.length-a.length).forEach(h=>{
     const re=new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(h)}(?=$|[^A-Za-z0-9_])`,'gi');
     if(re.test(probe) && !seen.has(h)){ seen.add(h); found.push(h); }
@@ -3098,7 +3138,7 @@ function crossRowsForRow(source, row, opts={}){
 }
 function evaluateRowExpression(expr, row, source, opts={}){
   expr=String(expr||'').trim(); if(!expr) return NaN;
-  let out=expr.replace(/!\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]/g,(m,sourceLabel,col)=>{ const src=sourceKeyFromExpressionLabel(sourceLabel); if(!src) return 'NaN'; const n=sumRowsColumn(src,col,crossRowsForRow(src,row,opts)); return Number.isFinite(n)?String(n):'NaN'; });
+  let out=replaceResearchSourceFieldRefs(expr,(m,ref)=>{ if(!ref || ref.missingSource || ref.missingField) return 'NaN'; const n=sumRowsColumn(ref.source,ref.field,crossRowsForRow(ref.source,row,opts)); return Number.isFinite(n)?String(n):'NaN'; });
   out=out.replace(/(^|[^!])\[([^\]]+)\](?!\s*\.\s*\[)/g,(m,prefix,col)=>{ const actual=resolveColumn(source,col); const n=toNum(row[actual]); return prefix+(Number.isFinite(n)?String(n):'NaN'); });
   const headers=(getHeaders(source)||[]).map(plainHeaderName).filter(Boolean).sort((a,b)=>b.length-a.length);
   headers.forEach(h=>{
@@ -3121,7 +3161,7 @@ function filterRowsForSamePerson(source, row, rowSource, opts={}){
 function evaluateAggregateExpressionForPerson(expr, row, source, rowSource, opts={}){
   expr=String(expr||'').trim(); if(!expr) return NaN;
   const rowsFor=(src)=>filterRowsForSamePerson(src,row,rowSource,opts);
-  let out=expr.replace(/!\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]/g,(m,sourceLabel,col)=>{ const src=sourceKeyFromExpressionLabel(sourceLabel); if(!src) return 'NaN'; const n=sumRowsColumn(src,col,rowsFor(src)); return Number.isFinite(n)?String(n):'NaN'; });
+  let out=replaceResearchSourceFieldRefs(expr,(m,ref)=>{ if(!ref || ref.missingSource || ref.missingField) return 'NaN'; const n=sumRowsColumn(ref.source,ref.field,rowsFor(ref.source)); return Number.isFinite(n)?String(n):'NaN'; });
   out=out.replace(/(^|[^!])\[([^\]]+)\](?!\s*\.\s*\[)/g,(m,prefix,col)=>{ const n=sumRowsColumn(source,col,rowsFor(source)); return prefix+(Number.isFinite(n)?String(n):'NaN'); });
   const headers=(getHeaders(source)||[]).map(plainHeaderName).filter(Boolean).sort((a,b)=>b.length-a.length);
   headers.forEach(h=>{ const n=sumRowsColumn(source,h,rowsFor(source)); const re=new RegExp(`(^|[^A-Za-z0-9_!\]])${escapeRegExp(h)}(?=$|[^A-Za-z0-9_])`,'gi'); out=out.replace(re,(m,prefix)=>prefix+(Number.isFinite(n)?String(n):'NaN')); });
@@ -3272,7 +3312,7 @@ function valueCustom(c, entry, opts){
   const src=c.customSource||c.source; const expr=String(c.expression||''); if(!expr.trim()) return NaN;
   const ctx={source:src,context:`Model criteria: ${c.name||'Custom expression'}`,rowLabel:entry?.name||entry?.team||''};
   const rowObj=entry; const rk=expressionRowKey(rowObj,src,expr,ctx.context); if(rk.m.has(rk.k)){ expressionRunStats().cacheHits++; return rk.m.get(rk.k); }
-  let replaced=expr.replace(/!\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]/g,(m,sourceLabel,col)=>{ const refSrc=sourceKeyFromExpressionLabel(sourceLabel); return refSrc ? String(sumColumn(refSrc,col,entry,opts,[])) : 'NaN'; });
+  let replaced=replaceResearchSourceFieldRefs(expr,(m,ref)=>ref && !ref.missingSource && !ref.missingField ? String(sumColumn(ref.source,ref.field,entry,opts,[])) : 'NaN');
   replaced=replaced.replace(/(^|[^!])\[([^\]]+)\](?!\s*\.\s*\[)/g,(m,prefix,col)=>prefix+String(sumColumn(src,col,entry,opts,c.filters)));
   if(!/^[0-9+\-*/().\sNa]+$/.test(replaced)){ expressionLogError(ctx,'Expression could not be calculated. Check headers and operators.'); rk.m.set(rk.k,NaN); return NaN; }
   const fn=compileCachedExpression(src,replaced,getHeaders(src),raw=>Function(`return (${raw})`),ctx);
@@ -3378,7 +3418,8 @@ function metricRulePass(row,rule,source){ const gear={...researchGearDefault(),.
 function metricRows(metric,rows,source,warnings=[]){ metric=normalizeMetric(metric); let base=rows||[]; if(metric.field) base=applyMetricGear(base,source,metric.field,metric.gear||{selected:metric.selectedValues},warnings); const andRules=(metric.rules||[]).filter(r=>(r.join||'AND')!=='OR'), orRules=(metric.rules||[]).filter(r=>(r.join||'AND')==='OR'); const passAnd=r=>andRules.every(rule=>metricRulePass(r,rule,source)); if(!orRules.length) return base.filter(passAnd); const set=new Set(); const out=[]; const add=r=>{ if(passAnd(r)&&!set.has(r)){ set.add(r); out.push(r); } }; base.forEach(add); rows.forEach(r=>{ if(orRules.some(rule=>metricRulePass(r,rule,source))) add(r); }); return out; }
 function evaluateMetric(metric,rows,source,warnings=[]){ metric=normalizeMetric(metric); const actualSource=metric.source||source; if(metricRefName(metric.field)){ warnings.push('Metric fields cannot reference another metric in this version; circular metric references are blocked.'); return null; } const hit=metricRows(metric,rows,actualSource,warnings); if(metric.mode==='percent'){ const denBase=metric.field?applyMetricGear(rows||[],actualSource,metric.field,metric.gear||{selected:metric.selectedValues},warnings).filter(r=>String(researchFieldValue(r,metric.field,actualSource)??'').trim()!==''):(rows||[]); const den=denBase.length; if(!den && warnings && !warnings.includes(`${metric.name}: denominator is zero or missing.`)) warnings.push(`${metric.name}: denominator is zero or missing.`); return den?hit.length/den*100:0; } if(metric.mode==='count') return hit.length; const vals=hit.map(r=>toNum(researchFieldValue(r,metric.field,actualSource))).filter(Number.isFinite); if(!vals.length){ warnings.push(`${metric.name}: ${metric.mode==='sum'?'Sum':'Average'} requires numeric values.`); return 0; } return metric.mode==='avg'?vals.reduce((a,b)=>a+b,0)/vals.length:vals.reduce((a,b)=>a+b,0); }
 function openMetricsPage(){ loadMetrics(); refreshMetricDatalist(); renderMetricList(); openModal('metricsModal'); }
-function refreshMetricDatalist(){ const srcs=metricSources(); if(els.metricSourceSelect) els.metricSourceSelect.innerHTML=srcs.map(o=>`<option value="${esc(o.value)}">${esc(o.label)}</option>`).join(''); const opts=[...new Set(srcs.flatMap(src=>getResearchHeaders(src.value).flatMap(h=>[h,'!'+src.label+'.'+h])),...metricSuggestions(),...orgTokenNames())].map(h=>`<option value="${esc(h)}"></option>`).join(''); const dl=el('metricHeaderSuggestions'); if(dl) dl.innerHTML=opts; }
+function sourceQualifiedFieldSuggestion(src,h){ return `![${labelSource(src)}].[${plainHeaderName(h)}]`; }
+function refreshMetricDatalist(){ const srcs=metricSources(); if(els.metricSourceSelect) els.metricSourceSelect.innerHTML=srcs.map(o=>`<option value="${esc(o.value)}">${esc(o.label)}</option>`).join(''); const opts=[...new Set(srcs.flatMap(src=>getResearchHeaders(src.value).flatMap(h=>[h,sourceQualifiedFieldSuggestion(src.value,h),'!'+src.label+'.'+h])),...metricSuggestions(),...orgTokenNames())].map(h=>`<option value="${esc(h)}"></option>`).join(''); const dl=el('metricHeaderSuggestions'); if(dl) dl.innerHTML=opts; }
 function metricFromEditor(){ return normalizeMetric({id:els.metricEditId?.value||id(),name:els.metricNameInput?.value||'New Metric',source:els.metricSourceSelect?.value||'qa',mode:els.metricModeSelect?.value||'count',field:els.metricFieldInput?.value||'',selectedValues:state.editingMetricGear?.selected||[],gear:state.editingMetricGear||{},rules:state.editingMetricRules||[],notes:els.metricNotesInput?.value||''}); }
 function openMetricEditor(metricId){ refreshMetricDatalist(); const m=(state.metrics||[]).find(x=>x.id===metricId)||normalizeMetric({}); state.editingMetricRules=clonePlain(m.rules||[]); state.editingMetricGear={...researchGearDefault(),...clonePlain(m.gear||{}),selected:clonePlain(m.selectedValues||m.gear?.selected||[])}; els.metricEditId.value=m.id; els.metricNameInput.value=m.name; els.metricSourceSelect.value=m.source; els.metricModeSelect.value=m.mode; els.metricFieldInput.value=m.field; els.metricNotesInput.value=m.notes||''; renderMetricRules(); validateMetricNumeric(); openModal('metricEditorModal'); attachModelReferencePicker(els.metricEditorModal); }
 function renderMetricsPage(activeId){ refreshMetricDatalist(); renderMetricList(activeId); }
@@ -3533,7 +3574,7 @@ function openResearchItemEditor(itemId){
   els.researchSort.value=item.sort||'default'; els.researchAxisMin.value=item.axisMin??''; els.researchAxisMax.value=item.axisMax??''; if(els.researchTableDecimals) els.researchTableDecimals.value=item.decimals??1; if(els.researchTableShowPercent) els.researchTableShowPercent.checked=!!item.showPercent; els.researchDecimals.value=item.decimals??1; els.researchShowValues.checked=item.showValues!==false; if(els.researchShowDateLabels) els.researchShowDateLabels.checked=!!item.showDateLabels; els.researchShowPercent.checked=!!item.showPercent; if(els.researchGraphSort) els.researchGraphSort.value=item.graphSort||'inherit'; if(els.researchTopN) els.researchTopN.value=item.topN||''; if(els.researchShowSummaryLine) els.researchShowSummaryLine.checked=!!item.showSummaryLine; if(els.researchGoalValue) els.researchGoalValue.value=item.goalValue??''; if(els.researchRotateLabels) els.researchRotateLabels.checked=!!item.rotateLabels; if(els.researchWrapLabels) els.researchWrapLabels.checked=item.wrapLabels!==false; if(els.researchShowLegend) els.researchShowLegend.checked=!!item.showLegend; if(els.researchShowGridlines) els.researchShowGridlines.checked=item.showGridlines!==false; if(els.researchSmoothLine) els.researchSmoothLine.checked=!!item.smoothLine; if(els.researchUseDots) els.researchUseDots.checked=item.useDots!==false; if(els.researchBarOrientation) els.researchBarOrientation.value=item.barOrientation||'vertical'; if(els.researchStackedBars) els.researchStackedBars.checked=!!item.stackedBars; if(els.researchGroupedBars) els.researchGroupedBars.checked=item.groupedBars!==false; if(els.researchHideZeroGroups) els.researchHideZeroGroups.checked=!!item.hideZeroGroups; if(els.researchHighlightBest) els.researchHighlightBest.checked=!!item.highlightBest; if(els.researchHighlightWorst) els.researchHighlightWorst.checked=!!item.highlightWorst; els.researchRowLimit.value=item.rowLimit||''; els.researchTotals.checked=!!item.totals; if(els.researchTextWrap) els.researchTextWrap.checked=item.textWrap!==false; if(els.researchRowDensity) els.researchRowDensity.value=item.rowDensity||'comfortable';
   renderResearchFiltersEditor(); renderResearchColumnsEditor(); updateResearchBuilderVisibility(); if(els.researchFoundPreview) els.researchFoundPreview.classList.add('hidden'); openModal('researchEditorModal'); attachResearchGearButtons(els.researchEditorModal);
 }
-function populateResearchFieldSelectors(item={}){ const hs=getResearchHeaders(els.researchSource.value); const all=[]; concreteResearchSources().forEach(src=>getResearchHeaders(src.value).forEach(h=>{ all.push(h); all.push('!'+src.label+'.'+h); })); const opts=[...new Set([...hs,...all,...metricSuggestions(),...orgTokenNames()])].map(h=>`<option value="${esc(h)}"></option>`).join(''); const dl=el('researchHeaderSuggestions'); if(dl) dl.innerHTML=opts; els.researchDateColumn.value=item.dateColumn||''; els.researchGroupField.value=item.groupField||''; if(els.researchSecondaryGroupField) els.researchSecondaryGroupField.value=item.secondaryGroupField||''; }
+function populateResearchFieldSelectors(item={}){ const hs=getResearchHeaders(els.researchSource.value); const all=[]; concreteResearchSources().forEach(src=>getResearchHeaders(src.value).forEach(h=>{ all.push(h); all.push(sourceQualifiedFieldSuggestion(src.value,h)); all.push('!'+src.label+'.'+h); })); const opts=[...new Set([...hs,...all,...metricSuggestions(),...orgTokenNames()])].map(h=>`<option value="${esc(h)}"></option>`).join(''); const dl=el('researchHeaderSuggestions'); if(dl) dl.innerHTML=opts; els.researchDateColumn.value=item.dateColumn||''; els.researchGroupField.value=item.groupField||''; if(els.researchSecondaryGroupField) els.researchSecondaryGroupField.value=item.secondaryGroupField||''; }
 function populateResearchCriteria(sel){ const m=findModel(els.researchModelSelect.value); els.researchCriteriaSelect.innerHTML=(m?.criteria||[]).map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join(''); if(sel) els.researchCriteriaSelect.value=sel; }
 function targetDateColumnOptions(source, selected){ return headerOptions(source, selected, true); }
 function researchGearDefault(){ return {valuesEnabled:true,selected:null,valueLevel:'level2',customValueEnabled:false,customValueMetric:'count',customValueOp:'greater/equal',customValue1:'',customValue2:'',customTextEnabled:false,customTextOp:'contains',customText:''}; }
@@ -3661,6 +3702,14 @@ function resolveResearchExpressionField(token,item){
 }
 function resolveResearchAggregateReference(name,item,rows,warnings=[],fn='sum'){
   const raw=String(name||'').trim(); if(!raw) return {found:false,value:0};
+  const sourceRef=parseResearchSourceFieldRef(raw);
+  if(sourceRef){
+    if(sourceRef.missingSource || sourceRef.missingField){ addSourceQualifiedRefWarning(warnings,sourceRef); return {found:false,value:0,kind:'missingCrossColumn'}; }
+    const crossRows=researchRowsForCohort(sourceRef.source,rows,item.source,item);
+    if(!crossRows.length && sourceRef.source!==item.source && (rows||[]).length) researchExpressionAddWarning(warnings,`No matching reps/coaches found between ${labelSource(item.source)} and ${labelSource(sourceRef.source)}`);
+    const crossItem={...item,source:sourceRef.source};
+    return {found:true,value:researchAggregateColumnValue(crossRows,crossItem,sourceRef.field,fn,warnings),kind:'crossColumn'};
+  }
   const metric=findMetricByNameOrId(raw) || findMetricByRef(raw);
   if(metric){ const metricSource=metric.source||item.source; const metricRows=researchRowsForCohort(metricSource,rows,item.source,item); return {found:true,value:evaluateMetric(metric,metricRows,metricSource,warnings)??0,kind:'metric'}; }
   const modelRef=parseModelRef(raw) || findModelCriterionReferenceByName(raw);
@@ -3680,6 +3729,8 @@ function escapeResearchRegex(s){ return String(s||'').replace(/[.*+?^${}()|[\]\\
 function replaceResearchAggregateReferences(expr,item,rows,warnings=[]){
   const hold=[]; const keep=(v,raw)=>`__research_ref_${hold.push({value:v,raw})-1}__`;
   const valueFor=(name,fn='sum')=>{ const res=resolveResearchAggregateReference(name,item,rows,warnings,fn); return keep(res.value,name); };
+  expr=expr.replace(/\b(sum|avg|count|unique|min|max)\s*\(\s*(!\s*\[[^\]]+\]\s*\.\s*\[[^\]]+\]|!\s*[^!()[\]+\-*/,\n\r]+?\s*[:.]\s*[^!()[\]+\-*/,\n\r]+?)\s*\)/gi,(_,fn,ref)=>keep(resolveResearchAggregateReference(ref,item,rows,warnings,fn.toLowerCase()).value,ref));
+  expr=replaceResearchSourceFieldRefs(expr,(m,ref)=>keep(resolveResearchAggregateReference(m,item,rows,warnings,'sum').value,m));
   expr=expr.replace(/model\(\s*["']([^"']+)["']\s*(?:,\s*["']([^"']+)["']\s*)?\)/gi,(_,m,c)=>keep(evaluateModelReferenceValue({model:m,criteria:c||''},rows,item,'sum',warnings)||0, c?`${m} / ${c}`:m));
   expr=expr.replace(/;([A-Za-z0-9 _-]+)\.([A-Za-z0-9 _.-]+)/g,(_,m,c)=>keep(evaluateModelReferenceValue({model:m.trim(),criteria:c.trim()},rows,item,'sum',warnings)||0, `${m.trim()} / ${c.trim()}`));
   expr=expr.replace(/@([A-Za-z0-9 _.-]+)/g,(_,n)=>valueFor(n,'sum'));
@@ -3703,6 +3754,9 @@ function replaceResearchAggregateReferences(expr,item,rows,warnings=[]){
   return expr;
 }
 function researchExpressionDivisionWarning(raw,warnings){
+  const refMatch=String(raw||'').match(/\/\s*(!\s*\[[^\]]+\]\s*\.\s*\[[^\]]+\]|!\s*[^!()[\]+\-*/,\n\r]+?\s*[:.]\s*[^!()[\]+\-*/,\n\r]+?)(?=$|[\s()[\]+\-*/,])/i);
+  const ref=refMatch?parseResearchSourceFieldRef(refMatch[1]):null;
+  if(ref && !ref.missingSource && !ref.missingField){ researchExpressionAddWarning(warnings,`Denominator is zero for ${ref.rawField} in ${labelSource(ref.source)}`); return; }
   const m=String(raw||'').match(/\/\s*(?:\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_ ]*))/);
   researchExpressionAddWarning(warnings,`Expression denominator is zero or missing${m?': '+(m[1]||m[2]).trim():'.'}`);
 }
@@ -3793,14 +3847,19 @@ function researchFieldValue(row, field, source){
   const metric=findMetricByRef(field); if(metric){ const metricSource=metric.source||source; const metricRows=metricSource===source?[row]:crossRowsForRow(metricSource,row,{}); return evaluateMetric(metric,metricRows,metricSource,[]); }
   const raw=String(field).trim();
   const mref=parseModelRef(raw); if(mref) return evaluateModelReferenceValue(mref,[row],{source},'direct',[]);
-  const bang=raw.match(/^!([^\.]+)\.(.+)$/);
-  if(bang){ const src=sourceKeyFromExpressionLabel(bang[1])||bang[1]; const rows=crossRowsForRow(src,row,{}); return rows.length?researchFieldValue(rows[0],bang[2],src):''; }
+  const bang=parseResearchSourceFieldRef(raw);
+  if(bang){
+    if(bang.missingSource || bang.missingField) return '';
+    if(bang.source===source){ const actual=bang.field; return Object.prototype.hasOwnProperty.call(row,actual)?row[actual]:''; }
+    const rows=crossRowsForRow(bang.source,row,{});
+    return rows.length?researchFieldValue(rows[0],bang.field,bang.source):'';
+  }
   const actual=resolveColumn(source,raw);
   if(actual && Object.prototype.hasOwnProperty.call(row,actual)) return row[actual];
   if(Object.prototype.hasOwnProperty.call(row,raw)) return row[raw];
   try{ return evaluateRowExpression(raw,row,source,{}); }catch(_){ try{ return evaluateResearchExpression(row,raw); }catch(__){ return ''; } }
 }
-function evaluateResearchNumericField(row, field, source){ const v=researchFieldValue(row,field,source); const n=toNum(v); return Number.isFinite(n)?n:NaN; }
+function evaluateResearchNumericField(row, field, source){ const ref=parseResearchSourceFieldRef(field); if(ref && !ref.missingSource && !ref.missingField && ref.source!==source){ const n=sumRowsColumn(ref.source,ref.field,crossRowsForRow(ref.source,row,{})); return Number.isFinite(n)?n:NaN; } const v=researchFieldValue(row,field,source); const n=toNum(v); return Number.isFinite(n)?n:NaN; }
 function researchNumericValidation(item, field, rows){
   item=effectiveResearchItem(item||{});
   if(!field) return {ok:false,message:'Value column/expression is required for this numeric value mode.'};
@@ -3923,12 +3982,9 @@ function applyResearchFilters(rows, filters, item, perf){
 }
 function researchBucketDate(d,period,weekStart='sunday'){ const x=(period==='weekly'?parseWeekLabel(d,weekStart):parseDateOnly(d)); if(!x) return ''; if(period==='monthly') return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}`; if(period==='weekly') return ymd(startOfWeekDate(x,weekStart)); return ymd(x); }
 function parseResearchBangField(field){
-  const raw=String(field||'').trim();
-  let m=raw.match(/^!([^:.]+)[:.](.+)$/);
-  if(!m) m=raw.match(/^!\[([^\]]+)\]\s*\.\s*\[([^\]]+)\]$/);
-  if(!m) return null;
-  const src=sourceKeyFromExpressionLabel(m[1].trim())||m[1].trim();
-  return {source:src,field:m[2].trim()};
+  const ref=parseResearchSourceFieldRef(field);
+  if(!ref) return null;
+  return ref.missingSource||ref.missingField ? {source:ref.source,field:ref.rawField,rawSource:ref.rawSource,rawField:ref.rawField,missingSource:ref.missingSource,missingField:ref.missingField} : {source:ref.source,field:ref.field,rawSource:ref.rawSource,rawField:ref.rawField};
 }
 function researchUniqueSourceForHeader(field,defaultSource){
   const raw=String(field||'').trim(); if(!raw) return null;
@@ -3992,7 +4048,7 @@ function researchMultiAddRowMatches(row,source,token,field=''){
   return full.includes(q);
 }
 function parseResearchMultiAddTerms(text){
-  return splitResearchMultiAddText(text).map(raw=>{ const bang=raw.match(/^!([^:.]+)[:.](.+)$/); if(bang){ const src=sourceKeyFromExpressionLabel(bang[1].trim())||bang[1].trim(); return {raw,label:bang[2].trim(),source:src,token:bang[2].trim()}; } const metric=findMetricByRef(raw) || findMetricByNameOrId(raw.replace(/^@/,'')); if(metric) return {raw,label:metric.name||raw.replace(/^@/,''),source:metric.source||'',token:'@'+(metric.name||metric.id)}; return {raw,label:raw.replace(/^;/,'').replace(/^@/,'').trim(),source:'',token:raw}; });
+  return splitResearchMultiAddText(text).map(raw=>{ const bang=parseResearchSourceFieldRef(raw); if(bang && !bang.missingSource){ return {raw,label:bang.rawField,source:bang.source,token:bang.rawField}; } const metric=findMetricByRef(raw) || findMetricByNameOrId(raw.replace(/^@/,'')); if(metric) return {raw,label:metric.name||raw.replace(/^@/,''),source:metric.source||'',token:'@'+(metric.name||metric.id)}; return {raw,label:raw.replace(/^;/,'').replace(/^@/,'').trim(),source:'',token:raw}; });
 }
 function buildResearchMultiAddGroups(item,rows,universeRows,warnings=[]){
   const terms=parseResearchMultiAddTerms(item.groupField); const groups=new Map(), parentTotals=new Map();
@@ -4046,7 +4102,7 @@ function researchSourceCacheSignature(){
 }
 function researchItemCacheKey(item,kind){
   const normItem=normalizeResearchItem(item); const src=resolveDynamicResearchSource(normItem); const keyItem=src&&src!==normItem.source?{...normItem,source:src,_dynamicSource:normItem.source}:normItem;
-  return [kind,researchSourceCacheSignature(),JSON.stringify(keyItem),keyItem.startDate||'',keyItem.endDate||'',keyItem.dateColumn||''].join('|');
+  return ['crossSourceRefsV2',kind,researchSourceCacheSignature(),JSON.stringify(keyItem),keyItem.startDate||'',keyItem.endDate||'',keyItem.dateColumn||''].join('|');
 }
 function loadResearchResultCache(){
   try{ state.researchPersistentCache=JSON.parse(localStorage.getItem(RESEARCH_CACHE_KEY)||'{}')||{}; }catch(_){ state.researchPersistentCache={}; }
