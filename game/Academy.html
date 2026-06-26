@@ -347,6 +347,15 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
         <div class="panel"><div class="panelTitle">Documented Coaching</div><input id="documentedCoachingFile" type="file" accept=".xlsx,.xls,.csv"><div id="documentedCoachingFileName" class="fileName"></div></div>
         <div class="panel"><div class="panelTitle">Packaged All Star Data</div><input id="packagedFile" type="file" accept=".xlsx,.xls"><div id="packagedFileName" class="fileName"></div></div>
       </div>
+      <div class="panel">
+        <div class="panelTitle">Custom Sources</div>
+        <div class="row">
+          <button id="addCustomSourceBtn" class="green" type="button">Add Custom Source</button>
+          <input id="customSourceFile" type="file" accept=".xlsx,.xls,.csv" style="display:none">
+          <span class="checkResultMeta">Import extra CSV/Excel sources, then use Troubleshoot / Update Sheet + Headers to choose sheet, header row, start column, preview, and declare missing headers.</span>
+        </div>
+        <div id="customSourcesList" class="checkResultList"></div>
+      </div>
     </div>
     <div class="modalFoot"><button class="dark" data-close="importModal">Done</button></div>
   </div>
@@ -363,6 +372,7 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
             <div class="field"><label>Source</label><select id="troubleSourceSelect"></select></div>
             <div class="field"><label>Sheet Pulling From</label><select id="troubleSheetSelect"></select></div>
             <div class="field"><label>Header Row</label><input id="troubleHeaderRowInput" type="number" min="1" step="1"></div>
+            <div class="field"><label>Start Column</label><input id="troubleStartColInput" type="number" min="1" step="1"></div>
           </div>
           <div class="row">
             <button id="troublePreviewBtn" class="dark" type="button">Preview Sheet</button>
@@ -657,6 +667,7 @@ const state = {
     checklist: { fileName:'', rows:[], headers:[], aoa:[] },
     documented_coaching: { fileName:'', rows:[], headers:[], aoa:[] }
   },
+  customSources: [],
   books: {
     retail:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
     referral:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
@@ -665,7 +676,7 @@ const state = {
     documented_coaching:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}},
     packaged:{fileName:'',sheetNames:[],aoaBySheet:{},selectedSheets:{}}
   },
-  troubleshoot:{source:'qa',sheetName:'',headerRow:1,selectedCell:null,manualHeaders:[]},
+  troubleshoot:{source:'qa',sheetName:'',headerRow:1,startCol:1,selectedCell:null,manualHeaders:[]},
   repTeams: new Map(),
   teams: [],
   selectedTeams: new Set(),
@@ -695,8 +706,8 @@ const el = id => document.getElementById(id);
 const els = {
   topStatus: el('topStatus'), workArea: el('workArea'), researchBtn: el('researchBtn'), loadingOverlay: el('loadingOverlay'), loadingText: el('loadingText'), loadingBarFill: el('loadingBarFill'), loadingPct: el('loadingPct'), categoriesDrop: el('categoriesDrop'), importDrop: el('importDrop'), runBtn: el('runBtn'), exportPdfBtn: el('exportPdfBtn'), clearOutputBtn: el('clearOutputBtn'),
   importModal: el('importModal'), troubleshootModal: el('troubleshootModal'), teamsModal: el('teamsModal'), modelsModal: el('modelsModal'), massHeaderModal: el('massHeaderModal'), editModelModal: el('editModelModal'), runModal: el('runModal'), researchModal: el('researchModal'), researchEditorModal: el('researchEditorModal'),
-  retailFile: el('retailFile'), referralFile: el('referralFile'), qaFile: el('qaFile'), checklistFile: el('checklistFile'), documentedCoachingFile: el('documentedCoachingFile'), packagedFile: el('packagedFile'), retailFileName: el('retailFileName'), referralFileName: el('referralFileName'), qaFileName: el('qaFileName'), checklistFileName: el('checklistFileName'), documentedCoachingFileName: el('documentedCoachingFileName'), packagedFileName: el('packagedFileName'), openTroubleshootBtn: el('openTroubleshootBtn'), packageDataBtn: el('packageDataBtn'),
-  troubleSourceSelect: el('troubleSourceSelect'), troubleSheetSelect: el('troubleSheetSelect'), troubleHeaderRowInput: el('troubleHeaderRowInput'), troublePreviewBtn: el('troublePreviewBtn'), troubleApplyBtn: el('troubleApplyBtn'), troubleApplyFootBtn: el('troubleApplyFootBtn'), troubleStatus: el('troubleStatus'), troubleSheetPreview: el('troubleSheetPreview'), troubleHeaderSummary: el('troubleHeaderSummary'), troubleHeaderPreview: el('troubleHeaderPreview'), troubleSelectedCell: el('troubleSelectedCell'), troubleManualHeaderName: el('troubleManualHeaderName'), troubleDeclareHeaderBtn: el('troubleDeclareHeaderBtn'), troubleManualHeaders: el('troubleManualHeaders'), troubleNameMode: el('troubleNameMode'), troubleFullNameColumn: el('troubleFullNameColumn'), troubleFirstNameColumn: el('troubleFirstNameColumn'), troubleLastNameColumn: el('troubleLastNameColumn'), troubleConvertLastFirst: el('troubleConvertLastFirst'),
+  retailFile: el('retailFile'), referralFile: el('referralFile'), qaFile: el('qaFile'), checklistFile: el('checklistFile'), documentedCoachingFile: el('documentedCoachingFile'), packagedFile: el('packagedFile'), retailFileName: el('retailFileName'), referralFileName: el('referralFileName'), qaFileName: el('qaFileName'), checklistFileName: el('checklistFileName'), documentedCoachingFileName: el('documentedCoachingFileName'), packagedFileName: el('packagedFileName'), openTroubleshootBtn: el('openTroubleshootBtn'), packageDataBtn: el('packageDataBtn'), addCustomSourceBtn: el('addCustomSourceBtn'), customSourceFile: el('customSourceFile'), customSourcesList: el('customSourcesList'),
+  troubleSourceSelect: el('troubleSourceSelect'), troubleSheetSelect: el('troubleSheetSelect'), troubleHeaderRowInput: el('troubleHeaderRowInput'), troubleStartColInput: el('troubleStartColInput'), troublePreviewBtn: el('troublePreviewBtn'), troubleApplyBtn: el('troubleApplyBtn'), troubleApplyFootBtn: el('troubleApplyFootBtn'), troubleStatus: el('troubleStatus'), troubleSheetPreview: el('troubleSheetPreview'), troubleHeaderSummary: el('troubleHeaderSummary'), troubleHeaderPreview: el('troubleHeaderPreview'), troubleSelectedCell: el('troubleSelectedCell'), troubleManualHeaderName: el('troubleManualHeaderName'), troubleDeclareHeaderBtn: el('troubleDeclareHeaderBtn'), troubleManualHeaders: el('troubleManualHeaders'), troubleNameMode: el('troubleNameMode'), troubleFullNameColumn: el('troubleFullNameColumn'), troubleFirstNameColumn: el('troubleFirstNameColumn'), troubleLastNameColumn: el('troubleLastNameColumn'), troubleConvertLastFirst: el('troubleConvertLastFirst'),
   teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamRepSearch: el('teamRepSearch'), teamMoveSelect: el('teamMoveSelect'), selectAllTeamRepsBtn: el('selectAllTeamRepsBtn'), unselectAllTeamRepsBtn: el('unselectAllTeamRepsBtn'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'),
   modelList: el('modelList'), createModelBtn: el('createModelBtn'), exportModelsBtn: el('exportModelsBtn'), importModelsFile: el('importModelsFile'), massHeaderList: el('massHeaderList'), massHeaderSummary: el('massHeaderSummary'), refreshMassHeaderBtn: el('refreshMassHeaderBtn'), applyMassHeaderBtn: el('applyMassHeaderBtn'), massShowAllHeaders: el('massShowAllHeaders'), editModelTitle: el('editModelTitle'), modelNameInput: el('modelNameInput'), modelTypeInput: el('modelTypeInput'), modelTiebreakerInput: el('modelTiebreakerInput'), sourceSettingsPanel: el('sourceSettingsPanel'), columnCheckResults: el('columnCheckResults'), criteriaList: el('criteriaList'), addCriterionBtn: el('addCriterionBtn'), cancelModelTopBtn: el('cancelModelTopBtn'), cancelModelBtn: el('cancelModelBtn'), saveModelBtn: el('saveModelBtn'), saveExitModelBtn: el('saveExitModelBtn'),
   runModelSelect: el('runModelSelect'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), hideNoScoreReps: el('hideNoScoreReps'), hideNoScoreThreshold: el('hideNoScoreThreshold'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn'), allstarRunPanel: el('allstarRunPanel'), researchCanvas: el('researchCanvas'), metricsList: el('metricsList'), metricSearchInput: el('metricSearchInput'), metricEditorModal: el('metricEditorModal'), newMetricBtn: el('newMetricBtn'), exportMetricsBtn: el('exportMetricsBtn'), importMetricsFile: el('importMetricsFile'), metricEditId: el('metricEditId'), metricNameInput: el('metricNameInput'), metricSourceSelect: el('metricSourceSelect'), metricModeSelect: el('metricModeSelect'), metricFieldInput: el('metricFieldInput'), metricFieldGearBtn: el('metricFieldGearBtn'), metricNumericWarn: el('metricNumericWarn'), metricNotesInput: el('metricNotesInput'), addMetricAndBtn: el('addMetricAndBtn'), addMetricOrBtn: el('addMetricOrBtn'), metricRulesList: el('metricRulesList'), deleteMetricBtn: el('deleteMetricBtn'), saveMetricBtn: el('saveMetricBtn'), saveExitMetricBtn: el('saveExitMetricBtn'), researchCanvas: el('researchCanvas'), addResearchItemBtn: el('addResearchItemBtn'), exportResearchBtn: el('exportResearchBtn'), importResearchFile: el('importResearchFile'), renderAllResearchBtn: el('renderAllResearchBtn'), stopResearchRenderBtn: el('stopResearchRenderBtn'), clearResearchBtn: el('clearResearchBtn'), researchEditId: el('researchEditId'), researchTitleInput: el('researchTitleInput'), researchOutputType: el('researchOutputType'), researchMode: el('researchMode'), researchSource: el('researchSource'), researchDateColumn: el('researchDateColumn'), researchStartDate: el('researchStartDate'), researchEndDate: el('researchEndDate'), researchGroupField: el('researchGroupField'), researchGroupExpression: el('researchGroupExpression'), researchValueMode: el('researchValueMode'), researchValueField: el('researchValueField'), researchWithinCompareField: el('researchWithinCompareField'), researchWithinDays: el('researchWithinDays'), researchValueFieldError: el('researchValueFieldError'), researchUseSecondaryGroup: el('researchUseSecondaryGroup'), researchSecondaryGroupField: el('researchSecondaryGroupField'), researchDateGrouping: el('researchDateGrouping'), researchModelSelect: el('researchModelSelect'), researchCriteriaSelect: el('researchCriteriaSelect'), researchModelResult: el('researchModelResult'), researchPopulation: el('researchPopulation'), researchNumeratorExpression: el('researchNumeratorExpression'), researchNumeratorCount: el('researchNumeratorCount'), researchDenominator: el('researchDenominator'), researchDenominatorExpression: el('researchDenominatorExpression'), researchZeroDenominator: el('researchZeroDenominator'), researchSort: el('researchSort'), researchTableDecimals: el('researchTableDecimals'), researchTableShowPercent: el('researchTableShowPercent'), researchAxisMin: el('researchAxisMin'), researchAxisMax: el('researchAxisMax'), researchDecimals: el('researchDecimals'), researchShowValues: el('researchShowValues'), researchShowDateLabels: el('researchShowDateLabels'), researchShowPercent: el('researchShowPercent'), researchGraphSort: el('researchGraphSort'), researchTopN: el('researchTopN'), researchShowSummaryLine: el('researchShowSummaryLine'), researchGoalValue: el('researchGoalValue'), researchRotateLabels: el('researchRotateLabels'), researchWrapLabels: el('researchWrapLabels'), researchShowLegend: el('researchShowLegend'), researchShowGridlines: el('researchShowGridlines'), researchSmoothLine: el('researchSmoothLine'), researchUseDots: el('researchUseDots'), researchBarOrientation: el('researchBarOrientation'), researchStackedBars: el('researchStackedBars'), researchGroupedBars: el('researchGroupedBars'), researchHideZeroGroups: el('researchHideZeroGroups'), researchHighlightBest: el('researchHighlightBest'), researchHighlightWorst: el('researchHighlightWorst'), researchRowLimit: el('researchRowLimit'), researchTotals: el('researchTotals'), researchTextWrap: el('researchTextWrap'), researchRowDensity: el('researchRowDensity'), addResearchFilterBtn: el('addResearchFilterBtn'), researchFilters: el('researchFilters'), addResearchColumnBtn: el('addResearchColumnBtn'), researchColumns: el('researchColumns'), saveResearchItemBtn: el('saveResearchItemBtn'), previewResearchFoundBtn: el('previewResearchFoundBtn'), researchFoundPreview: el('researchFoundPreview')
@@ -717,6 +728,10 @@ const SOURCE_SETTING_DEFAULTS = {
   checklist:{headerRow:1,startCol:1,sheetName:'',manualHeaders:[],columns:{rep:'Associate Name',team:'Coach Assigned',nameMode:'full',fullName:'Associate Name',firstName:'',lastName:'',convertLastFirst:false}},
   documented_coaching:{headerRow:1,startCol:1,sheetName:'',manualHeaders:[],columns:{rep:'Associate name',team:'Job Coach',nameMode:'full',fullName:'Associate name',firstName:'',lastName:'',convertLastFirst:false}}
 };
+function isCustomSource(source){ return String(source||'').startsWith('custom_'); }
+function customSource(source){ return (state.customSources||[]).find(c=>c.sourceKey===source); }
+function customSourceKeys(){ return (state.customSources||[]).map(c=>c.sourceKey).filter(Boolean); }
+function customSourceDefaultSettings(src){ const c=customSource(src)||{}; return {headerRow:c.headerRow||1,startCol:c.startCol||1,sheetName:c.sheetName||'',manualHeaders:c.manualHeaders||[],columns:c.columns||{nameMode:'auto',fullName:'',firstName:'',lastName:'',convertLastFirst:false}}; }
 function isChecklistLikeSource(source){ return source==='checklist' || source==='documented_coaching'; }
 function checklistLikeDefaultDateHeaders(source){ return source==='documented_coaching' ? ['Date','Coaching Date','Created Date','Documented Date','Incident Date'] : ['Incident Date','Date','Date Served','Corrective Date','Created Date']; }
 function checklistLikeRowsState(source){ return source==='documented_coaching' ? state.data.documented_coaching : state.data.checklist; }
@@ -724,8 +739,8 @@ function clonePlain(obj){return JSON.parse(JSON.stringify(obj||{}));}
 function sourceDefaults(source){return clonePlain(SOURCE_SETTING_DEFAULTS[source]||{headerRow:1,startCol:1});}
 function normalizeSourceSettings(settings){
   const out={};
-  Object.keys(SOURCE_SETTING_DEFAULTS).forEach(src=>{
-    const base=sourceDefaults(src), cur=(settings&&settings[src])||{};
+  [...Object.keys(SOURCE_SETTING_DEFAULTS), ...customSourceKeys()].forEach(src=>{
+    const base=isCustomSource(src)?customSourceDefaultSettings(src):sourceDefaults(src), cur=(settings&&settings[src])||{};
     out[src]={...base,...cur,columns:{...(base.columns||{}),...(cur.columns||{})}};
     out[src].headerRow=Math.max(1,Number(out[src].headerRow)||base.headerRow||1);
     out[src].startCol=Math.max(1,Number(out[src].startCol)||base.startCol||1);
@@ -958,10 +973,11 @@ function upsertModel(model){
   return incoming;
 }
 function serializeModelsForExport(models){
-  return JSON.stringify({version:3,exportedAt:new Date().toISOString(),models:(models||[]).map(normalizeModelForStorage)}, null, 2);
+  return JSON.stringify({version:4,exportedAt:new Date().toISOString(),models:(models||[]).map(normalizeModelForStorage),customSources:(state.customSources||[]).map(c=>({...clonePlain(c),rows:[],aoaBySheet:{}}))}, null, 2);
 }
 function parseModelsImportText(text){
   const obj=JSON.parse(String(text||''));
+  if(obj && Array.isArray(obj.customSources)){ obj.customSources.forEach(def=>{ if(def.sourceKey && !customSource(def.sourceKey)){ state.customSources.push({...def,rows:def.rows||[],headers:def.headers||[],aoa:def.aoa||[],aoaBySheet:def.aoaBySheet||{}}); } }); renderCustomSourcesList(); }
   const incoming=Array.isArray(obj)?obj:(Array.isArray(obj.models)?obj.models:[obj]);
   if(!Array.isArray(incoming)) throw new Error('Imported file did not contain models.');
   return incoming.map(normalizeModelForStorage);
@@ -1125,6 +1141,7 @@ function emptyCriterion(){
   return {id:id(),name:'New Criteria',source:'retail_sv2',calcType:'single',audience:'both',scoreType:'rank',direction:'higher',weight:'1',format:'number',missingRank:999,missingPoints:0,zeroCanWin:false,minimumMonitors:0,column:'',aggregate:'sum',leftSource:'retail_sv2',leftColumn:'',operator:'divide',rightSource:'retail_sv2',rightColumn:'',customSource:'retail_sv2',expression:'',checkDateColumn:'',checkColumn:'',checkOperator:'contains',checkText:'',filters:[],minimumEnabled:false,minimum:0,points:1,autofailThreshold:1,autofailOperator:'greaterEqual'};
 }
 function getHeaders(source){
+  if(isCustomSource(source)) return customSource(source)?.headers||[];
   if(source==='retail_sv2') return state.data.retail.headers.sv2;
   if(source==='retail_wiper') return state.data.retail.headers.wiper;
   if(source==='referral_sv2') return state.data.referral.headers.sv2;
@@ -1134,8 +1151,9 @@ function getHeaders(source){
   if(source==='documented_coaching') return state.data.documented_coaching.headers;
   return [];
 }
-function allSourceKeys(){ return ['retail_sv2','retail_wiper','referral_sv2','referral_wiper','qa','checklist','documented_coaching']; }
+function allSourceKeys(){ return ['retail_sv2','retail_wiper','referral_sv2','referral_wiper','qa','checklist','documented_coaching',...customSourceKeys()]; }
 function getRowsRaw(source){
+  if(isCustomSource(source)) return customSource(source)?.rows||[];
   if(source==='retail_sv2') return state.data.retail.sv2 || [];
   if(source==='retail_wiper') return state.data.retail.wiper || [];
   if(source==='referral_sv2') return state.data.referral.sv2 || [];
@@ -1229,7 +1247,7 @@ function cachedRowsForEntry(source, entry, opts={}){
 function sourceOptions(selected){
   return allSourceKeys().map(v=>`<option value="${v}" ${v===selected?'selected':''}>${labelSource(v)}</option>`).join('');
 }
-function labelSource(v){return SOURCE_LABELS[v]||v;}
+function labelSource(v){return customSource(v)?.name || SOURCE_LABELS[v]||v;}
 function headerOptions(source, selected, blank=true){
   const selectedName=plainHeaderName(selected);
   const names=[]; const seen=new Set();
@@ -1458,6 +1476,7 @@ function sourceHasImportedData(source){
   if(source==='qa') return !!(state.data.qa.aoa&&state.data.qa.aoa.length);
   if(source==='checklist') return !!(state.data.checklist.aoa&&state.data.checklist.aoa.length);
   if(source==='documented_coaching') return !!(state.data.documented_coaching.aoa&&state.data.documented_coaching.aoa.length);
+  if(isCustomSource(source)) return !!(customSource(source)?.aoa?.length || customSource(source)?.rows?.length);
   return false;
 }
 function headerWords(s){
@@ -2157,13 +2176,14 @@ function sheetRows(wb, sheetName, headerRow, startCol, strict=false){
 
 
 function sourceBookKey(source){ return SOURCE_TO_BOOK[source] || source; }
-function bookForSource(source){ return state.books[sourceBookKey(source)] || {sheetNames:[],aoaBySheet:{},selectedSheets:{}}; }
+function bookForSource(source){ if(isCustomSource(source)){ const c=customSource(source)||{}; return state.books[source] || {fileName:c.fileName||'',sheetNames:c.sheetNames||[],aoaBySheet:c.aoaBySheet||{},selectedSheets:{[source]:c.sheetName||''}}; } return state.books[sourceBookKey(source)] || {sheetNames:[],aoaBySheet:{},selectedSheets:{}}; }
 function storeWorkbook(bookKey, file, wb){
   const aoaBySheet={};
   (wb.SheetNames||[]).forEach(sn=>{ aoaBySheet[sn]=sheetAoa(wb,sn); });
   state.books[bookKey]={fileName:file.name,sheetNames:wb.SheetNames||[],aoaBySheet,selectedSheets:{...(state.books[bookKey]?.selectedSheets||{})}};
 }
 function getSourceAoa(source){
+  if(isCustomSource(source)) return customSource(source)?.aoa||[];
   if(source==='retail_sv2') return state.data.retail.sv2Aoa||[];
   if(source==='retail_wiper') return state.data.retail.wiperAoa||[];
   if(source==='referral_sv2') return state.data.referral.sv2Aoa||[];
@@ -2176,6 +2196,7 @@ function getSourceAoa(source){
 function setSourceAoa(source, aoa, sheetName=''){
   const book=bookForSource(source);
   if(sheetName) book.selectedSheets[source]=sheetName;
+  if(isCustomSource(source)){ const c=customSource(source); if(c){ c.aoa=aoa||[]; c.sheetName=sheetName||c.sheetName||''; c.sheetNames=book.sheetNames||c.sheetNames||[]; c.aoaBySheet=book.aoaBySheet||c.aoaBySheet||{}; } }
   if(source==='retail_sv2') state.data.retail.sv2Aoa=aoa||[];
   if(source==='retail_wiper') state.data.retail.wiperAoa=aoa||[];
   if(source==='referral_sv2') state.data.referral.sv2Aoa=aoa||[];
@@ -2184,7 +2205,9 @@ function setSourceAoa(source, aoa, sheetName=''){
   if(source==='checklist') state.data.checklist.aoa=aoa||[];
   if(source==='documented_coaching') state.data.documented_coaching.aoa=aoa||[];
 }
+function normalizeCustomRow(row,headers,columns={}){ const rep=repNameFromColumns(row,headers,columns,['Agent Name','Associate Name','Name','Representative','Rep']); const teamH=findHeader(headers,[columns.team,'Team','Coach','Coach Assigned','Job Coach','Team Name'].filter(Boolean)); return {...row,_rep:rep,_repKey:nameKey(rep),_team:String(row[teamH]??'').trim()}; }
 function setSourceRowsAndHeaders(source, headers, rows, model){
+  if(isCustomSource(source)){ const c=customSource(source); if(c){ const cfg=getSourceSetting(model,source); c.headers=headers||[]; c.rows=(rows||[]).map(r=>normalizeCustomRow(r,headers||[],cfg.columns||{})); c.headerRow=cfg.headerRow; c.startCol=cfg.startCol; c.sheetName=cfg.sheetName||c.sheetName; c.manualHeaders=cfg.manualHeaders||[]; } }
   if(source==='retail_sv2'){ state.data.retail.headers.sv2=headers; state.data.retail.sv2=rows.map(r=>normalizeStatRow(r,'retail','sv2',getSourceSetting(model,source).columns,headers)); }
   if(source==='retail_wiper'){ state.data.retail.headers.wiper=headers; state.data.retail.wiper=rows.map(r=>normalizeStatRow(r,'retail','wiper',getSourceSetting(model,source).columns,headers)); }
   if(source==='referral_sv2'){ state.data.referral.headers.sv2=headers; state.data.referral.sv2=rows.map(r=>normalizeStatRow(r,'referral','sv2',getSourceSetting(model,source).columns,headers)); }
@@ -2197,6 +2220,7 @@ function setSourceRowsAndHeaders(source, headers, rows, model){
 
 function packageSheetToSource(sheetName){
   const n=norm(sheetName);
+  const customHit=(state.customSources||[]).find(c=>norm(c.name)===n || norm(c.sourceKey)===n || norm('Custom '+c.name)===n); if(customHit) return customHit.sourceKey;
   if(!n) return '';
   const exact=Object.entries(PACKAGE_SHEETS).find(([,label])=>norm(label)===n);
   if(exact) return exact[0];
@@ -2214,6 +2238,7 @@ function packageRowsToAoa(headers, rows){
   return [cleanHeaders, ...(rows||[]).map(row=>cleanHeaders.map(h=>row?.[h] ?? ''))];
 }
 function sourcePackageAoa(source){
+  if(isCustomSource(source)){ const c=customSource(source)||{}; return packageRowsToAoa(c.headers,c.rows); }
   if(source==='retail_sv2') return packageRowsToAoa(state.data.retail.headers.sv2,state.data.retail.sv2);
   if(source==='retail_wiper') return packageRowsToAoa(state.data.retail.headers.wiper,state.data.retail.wiper);
   if(source==='referral_sv2') return packageRowsToAoa(state.data.referral.headers.sv2,state.data.referral.sv2);
@@ -2229,8 +2254,10 @@ function packageImportedData(){
   availableTroubleSources().forEach(src=>{
     const aoa=sourcePackageAoa(src);
     const ws=XLSX.utils.aoa_to_sheet(aoa.length && aoa[0].length ? aoa : [[]]);
-    XLSX.utils.book_append_sheet(wb,ws,PACKAGE_SHEETS[src]);
+    XLSX.utils.book_append_sheet(wb,ws,(PACKAGE_SHEETS[src]||labelSource(src)).slice(0,31));
   });
+  const meta={version:1,customSources:(state.customSources||[]).map(c=>({id:c.id,name:c.name,sourceKey:c.sourceKey,sourceType:c.sourceType||'custom',fileName:c.fileName,sheetName:(PACKAGE_SHEETS[c.sourceKey]||c.name),headerRow:1,startCol:1,manualHeaders:[],columns:c.columns||{},aggregation:c.aggregation||{}}))};
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['All Star Package Metadata'],[JSON.stringify(meta)]]),'All Star Metadata');
   XLSX.writeFile(wb,'All_Star_Packaged_Data.xlsx');
 }
 async function rebuildSourceFromPackage(source, sheetName, model){
@@ -2247,10 +2274,13 @@ async function loadPackagedFile(file){
     const wb=await readFileWorkbook(file);
     updateProgress('Assigning packaged sheets...',18); await yieldToBrowser();
     storeWorkbook('packaged',file,wb);
+    const metaSheet=(wb.SheetNames||[]).find(sn=>norm(sn)===norm('All Star Metadata'));
+    if(metaSheet){ try{ const metaAoa=sheetAoa(wb,metaSheet); const meta=JSON.parse(metaAoa?.[1]?.[0]||'{}'); (meta.customSources||[]).forEach(def=>{ if(!def.sourceKey || customSource(def.sourceKey)) return; const c={...def,id:def.id||id(),sourceType:'custom',rows:[],headers:[],aoa:[],sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,sheetName:def.sheetName||def.name,headerRow:def.headerRow||1,startCol:def.startCol||1,manualHeaders:def.manualHeaders||[]}; state.customSources.push(c); state.books[c.sourceKey]={fileName:file.name,sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,selectedSheets:{[c.sourceKey]:c.sheetName||c.name}}; }); }catch(e){ console.warn('Package metadata could not be read',e); } }
     ['retail','referral','qa','checklist','documented_coaching'].forEach(key=>{ state.books[key]={...state.books.packaged,selectedSheets:{}}; });
+    (state.customSources||[]).forEach(c=>{ state.books[c.sourceKey]={fileName:file.name,sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,selectedSheets:{[c.sourceKey]:c.sheetName||c.name}}; });
     const m=activeModelForImport(); ensureSourceSettings(m);
     const assigned={};
-    (wb.SheetNames||[]).forEach(sn=>{ const src=packageSheetToSource(sn); if(src && !assigned[src]) assigned[src]=sn; });
+    (wb.SheetNames||[]).forEach(sn=>{ if(norm(sn)===norm('All Star Metadata')) return; const src=packageSheetToSource(sn); if(src && !assigned[src]) assigned[src]=sn; });
     availableTroubleSources().forEach(src=>{ if(!assigned[src]) assigned[src]=pickBestSheetForSource(wb,src,m,SOURCE_SHEET_HINTS[src]); });
     for(const src of availableTroubleSources()){
       if(!assigned[src]) continue;
@@ -2260,6 +2290,7 @@ async function loadPackagedFile(file){
       await yieldToBrowser();
     }
     state.data.retail.fileName=file.name; state.data.referral.fileName=file.name; state.data.qa.fileName=file.name; state.data.checklist.fileName=file.name; state.data.documented_coaching.fileName=file.name;
+    renderCustomSourcesList();
     els.packagedFileName.textContent=`${file.name} · ${Object.keys(assigned).length} sheets assigned`;
     els.retailFileName.textContent=`${file.name} · packaged`; els.referralFileName.textContent=`${file.name} · packaged`; els.qaFileName.textContent=`${file.name} · packaged`; els.checklistFileName.textContent=`${file.name} · packaged`; if(els.documentedCoachingFileName) els.documentedCoachingFileName.textContent=`${file.name} · packaged`;
     await finishDataChanged('packaged data import',55);
@@ -2267,6 +2298,7 @@ async function loadPackagedFile(file){
   finally{ hideProgress(); }
 }
 function sourceFileName(source){
+  if(isCustomSource(source)) return customSource(source)?.fileName || state.books[source]?.fileName || '';
   if(source.startsWith('retail')) return state.data.retail.fileName || state.books.retail.fileName;
   if(source.startsWith('referral')) return state.data.referral.fileName || state.books.referral.fileName;
   if(source==='qa') return state.data.qa.fileName || state.books.qa.fileName;
@@ -2361,6 +2393,7 @@ function rebuildTeams(){
   state.data.qa.rows.forEach(r=>{if(r._team)teams.add(r._team); if(r._repKey&&r._team)state.repTeams.set(r._repKey,r._team);});
   state.data.checklist.rows.forEach(r=>{if(r._team)teams.add(r._team); if(r._repKey&&r._team)state.repTeams.set(r._repKey,r._team);});
   state.data.documented_coaching.rows.forEach(r=>{if(r._team)teams.add(r._team); if(r._repKey&&r._team)state.repTeams.set(r._repKey,r._team);});
+  (state.customSources||[]).forEach(c=>(c.rows||[]).forEach(r=>{if(r._team)teams.add(r._team); if(r._repKey&&r._team)state.repTeams.set(r._repKey,r._team);}));
   state.teams=Array.from(teams).sort((a,b)=>a.localeCompare(b));
   if(!state.teamSelectionInitialized){
     state.selectedTeams=new Set(state.teams);
@@ -2485,6 +2518,7 @@ function sourceRowsFromStoredAoa(source, model, strict=true){
   if(source==='qa') aoa=state.data.qa.aoa;
   if(source==='checklist') aoa=state.data.checklist.aoa;
   if(source==='documented_coaching') aoa=state.data.documented_coaching.aoa;
+  if(isCustomSource(source)) aoa=customSource(source)?.aoa||[];
   const pack=sheetRowsFromAoa(aoa||[],hr,sc,strict,expectedHeadersForSource(source,model),source,model,cfg.manualHeaders||[]);
   if((pack.detected || pack.fullRow) && model && model.sourceSettings && model.sourceSettings[source]){
     model.sourceSettings[source].headerRow=pack.headerRow+1;
@@ -2630,6 +2664,33 @@ async function loadChecklistFile(file){ return loadChecklistLikeFile(file,'check
 
 
 
+
+function slugSourceName(name){ return String(name||'custom').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,40)||'custom'; }
+function uniqueCustomSourceKey(name){ let base='custom_'+slugSourceName(name), key=base+'_'+Date.now().toString(36).slice(-5), i=1; while(allSourceKeys().includes(key)) key=base+'_'+(i++); return key; }
+function renderCustomSourcesList(){
+  if(!els.customSourcesList) return;
+  els.customSourcesList.innerHTML=(state.customSources||[]).map(c=>`<div class="checkResultRow"><strong>${esc(c.name)}</strong><div class="checkResultMeta">${esc(c.fileName||'No file')} · ${esc(c.sheetName||'No sheet')} · ${(c.rows||[]).length.toLocaleString()} rows · ${(c.headers||[]).length} headers · key ${esc(c.sourceKey)}</div><div class="row"><button class="smallBtn" data-custom-trouble="${esc(c.sourceKey)}" type="button">Preview / Headers</button><button class="smallBtn" data-custom-rename="${esc(c.sourceKey)}" type="button">Rename</button><button class="smallBtn" data-custom-duplicate="${esc(c.sourceKey)}" type="button">Duplicate Config</button><button class="smallBtn red" data-custom-delete="${esc(c.sourceKey)}" type="button">Delete</button></div></div>`).join('') || '<div class="checkResultMeta">No custom sources imported yet.</div>';
+  els.customSourcesList.querySelectorAll('[data-custom-trouble]').forEach(b=>b.onclick=()=>openTroubleshoot(b.dataset.customTrouble));
+  els.customSourcesList.querySelectorAll('[data-custom-rename]').forEach(b=>b.onclick=()=>{ const c=customSource(b.dataset.customRename); if(!c) return; const name=(prompt('Rename custom source',c.name)||'').trim(); if(name){ c.name=name; renderCustomSourcesList(); renderEditModelSafe(); }});
+  els.customSourcesList.querySelectorAll('[data-custom-duplicate]').forEach(b=>b.onclick=()=>{ const c=customSource(b.dataset.customDuplicate); if(!c) return; const cp=clonePlain(c); cp.id=id(); cp.name=c.name+' Copy'; cp.sourceKey=uniqueCustomSourceKey(cp.name); state.customSources.push(cp); state.books[cp.sourceKey]={fileName:cp.fileName,sheetNames:cp.sheetNames||[],aoaBySheet:cp.aoaBySheet||{},selectedSheets:{[cp.sourceKey]:cp.sheetName||''}}; renderCustomSourcesList(); renderEditModelSafe(); });
+  els.customSourcesList.querySelectorAll('[data-custom-delete]').forEach(b=>b.onclick=()=>{ const c=customSource(b.dataset.customDelete); if(c&&confirm(`Delete custom source "${c.name}"?`)){ state.customSources=state.customSources.filter(x=>x.sourceKey!==c.sourceKey); delete state.books[c.sourceKey]; (state.models||[]).forEach(m=>{ if(m.sourceSettings) delete m.sourceSettings[c.sourceKey]; }); markDataIndexDirty('custom source deleted'); renderCustomSourcesList(); renderEditModelSafe(); }});
+}
+async function loadCustomSourceFile(file,name){
+  showProgress(`Reading ${name}...`,3);
+  try{
+    const wb=await readFileWorkbook(file); await yieldToBrowser();
+    const sourceKey=uniqueCustomSourceKey(name);
+    const aoaBySheet={}; (wb.SheetNames||[]).forEach(sn=>{aoaBySheet[sn]=sheetAoa(wb,sn);});
+    const sn=(wb.SheetNames||[])[0]||'';
+    const custom={id:id(),name,sourceKey,sourceType:'custom',fileName:file.name,rows:[],headers:[],aoa:aoaBySheet[sn]||[],sheetNames:wb.SheetNames||[],aoaBySheet,sheetName:sn,headerRow:1,startCol:1,manualHeaders:[],columns:{nameMode:'auto',fullName:'',firstName:'',lastName:'',convertLastFirst:false},aggregation:{}};
+    state.customSources.push(custom); state.books[sourceKey]={fileName:file.name,sheetNames:custom.sheetNames,aoaBySheet,selectedSheets:{[sourceKey]:sn}};
+    const m=activeModelForImport(); ensureSourceSettings(m); m.sourceSettings[sourceKey]=customSourceDefaultSettings(sourceKey);
+    const pack=sourceRowsFromStoredAoa(sourceKey,m,false); setSourceRowsAndHeaders(sourceKey,pack.headers,pack.rows,m);
+    renderCustomSourcesList(); await finishDataChanged(`${name} import`,55);
+  }catch(err){ console.error(err); alert('Custom source import failed. Check the console for details.'); }
+  finally{ hideProgress(); }
+}
+
 function availableTroubleSources(){ return allSourceKeys(); }
 function openTroubleshoot(source='qa'){
   const src = sourceHasImportedData(source) ? source : (availableTroubleSources().find(sourceHasImportedData) || source);
@@ -2639,6 +2700,7 @@ function openTroubleshoot(source='qa'){
   const book=bookForSource(src);
   state.troubleshoot.sheetName=cfg.sheetName || book.selectedSheets[src] || book.sheetNames?.[0] || '';
   state.troubleshoot.headerRow=Math.max(1,Number(cfg.headerRow)||1);
+  state.troubleshoot.startCol=Math.max(1,Number(cfg.startCol)||1);
   state.troubleshoot.manualHeaders=JSON.parse(JSON.stringify(cfg.manualHeaders||[]));
   state.troubleshoot.selectedCell=null;
   renderTroubleshootControls();
@@ -2657,6 +2719,7 @@ function renderTroubleshootControls(){
   if(!state.troubleshoot.sheetName || !sheets.includes(state.troubleshoot.sheetName)) state.troubleshoot.sheetName=sheets[0]||'';
   els.troubleSheetSelect.innerHTML=sheets.map(sn=>`<option value="${esc(sn)}" ${sn===state.troubleshoot.sheetName?'selected':''}>${esc(sn)}</option>`).join('');
   els.troubleHeaderRowInput.value=state.troubleshoot.headerRow||1;
+  if(els.troubleStartColInput) els.troubleStartColInput.value=state.troubleshoot.startCol||1;
   const cfg=getSourceSetting(activeModelForImport(),src);
   const cols=cfg.columns||{};
   els.troubleNameMode.value=cols.nameMode||'auto';
@@ -2673,7 +2736,8 @@ function selectedTroublePack(){
   const src=state.troubleshoot.source;
   const model=activeModelForImport(); ensureSourceSettings(model);
   const hr=Math.max(0,(Number(state.troubleshoot.headerRow)||1)-1);
-  return buildRowsFromLayout(troubleshootAoa(),hr,0,true,state.troubleshoot.manualHeaders||[]);
+  const sc=Math.max(0,(Number(state.troubleshoot.startCol)||1)-1);
+  return buildRowsFromLayout(troubleshootAoa(),hr,sc,false,state.troubleshoot.manualHeaders||[]);
 }
 function renderTroublesheetNameOptions(headers){
   const selected=(val)=>headers.some(h=>h===val)?val:'';
@@ -2760,14 +2824,15 @@ async function applyTroubleshootSelection(){
   const src=state.troubleshoot.source;
   const sn=els.troubleSheetSelect.value || state.troubleshoot.sheetName;
   const hr=Math.max(1,Number(els.troubleHeaderRowInput.value)||state.troubleshoot.headerRow||1);
+  const sc=Math.max(1,Number(els.troubleStartColInput?.value)||state.troubleshoot.startCol||1);
   showProgress(`Updating ${labelSource(src)} headers...`,8);
   try{
     await yieldToBrowser();
-    state.troubleshoot.sheetName=sn; state.troubleshoot.headerRow=hr;
+    state.troubleshoot.sheetName=sn; state.troubleshoot.headerRow=hr; state.troubleshoot.startCol=sc;
     const aoa=applySourceSheetChoice(src,sn);
     const nameCols=currentTroubleNameSettings();
     updateAllModelsForSource(src,cfg=>{
-      cfg.sheetName=sn; cfg.headerRow=hr; cfg.startCol=1; cfg.manualHeaders=JSON.parse(JSON.stringify(state.troubleshoot.manualHeaders||[]));
+      cfg.sheetName=sn; cfg.headerRow=hr; cfg.startCol=sc; cfg.manualHeaders=JSON.parse(JSON.stringify(state.troubleshoot.manualHeaders||[]));
       cfg.columns={...(cfg.columns||{}),...nameCols};
       if(src==='qa'){
         cfg.columns.agent=els.troubleFullNameColumn.value || cfg.columns.agent || 'Agent Name';
@@ -2779,11 +2844,11 @@ async function applyTroubleshootSelection(){
     const model=activeModelForImport(); ensureSourceSettings(model);
     const cfg=getSourceSetting(model,src);
     updateProgress(`Rebuilding ${labelSource(src)} rows...`,36); await yieldToBrowser();
-    const pack=sheetRowsFromAoa(aoa,hr-1,0,true,expectedHeadersForSource(src,model),src,model,cfg.manualHeaders||[]);
+    const pack=sheetRowsFromAoa(aoa,hr-1,sc-1,true,expectedHeadersForSource(src,model),src,model,cfg.manualHeaders||[]);
     setSourceRowsAndHeaders(src,pack.headers,pack.rows,model);
     saveModels();
     await finishDataChanged(`${labelSource(src)} troubleshoot update`,58);
-    els.troubleStatus.textContent=`Updated ${labelSource(src)} from sheet “${sn}”, row ${hr}.`;
+    els.troubleStatus.textContent=`Updated ${labelSource(src)} from sheet “${sn}”, row ${hr}, column ${sc}.`;
   }catch(err){ console.error(err); alert('Troubleshoot update failed. Check the console for details.'); }
   finally{ hideProgress(); }
 }
@@ -4246,9 +4311,12 @@ function wire(){
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closeModal(b.dataset.close));
   if(els.openTroubleshootBtn) els.openTroubleshootBtn.onclick=()=>openTroubleshoot('qa');
   if(els.packageDataBtn) els.packageDataBtn.onclick=packageImportedData;
-  if(els.troubleSourceSelect) els.troubleSourceSelect.onchange=()=>{ state.troubleshoot.source=els.troubleSourceSelect.value; const cfg=getSourceSetting(activeModelForImport(),state.troubleshoot.source); const book=bookForSource(state.troubleshoot.source); state.troubleshoot.sheetName=cfg.sheetName||book.selectedSheets[state.troubleshoot.source]||book.sheetNames?.[0]||''; state.troubleshoot.headerRow=Math.max(1,Number(cfg.headerRow)||1); state.troubleshoot.manualHeaders=JSON.parse(JSON.stringify(cfg.manualHeaders||[])); renderTroubleshootControls(); renderTroubleshootPreview(); };
-  if(els.troubleSheetSelect) els.troubleSheetSelect.onchange=()=>{ const suggested=packageSheetToSource(els.troubleSheetSelect.value); if(suggested && sourceHasImportedData(suggested) && suggested!==state.troubleshoot.source){ state.troubleshoot.source=suggested; state.troubleshoot.sheetName=els.troubleSheetSelect.value; const cfg=getSourceSetting(activeModelForImport(),suggested); state.troubleshoot.headerRow=Math.max(1,Number(cfg.headerRow)||1); state.troubleshoot.manualHeaders=JSON.parse(JSON.stringify(cfg.manualHeaders||[])); renderTroubleshootControls(); } else state.troubleshoot.sheetName=els.troubleSheetSelect.value; renderTroubleshootPreview(); };
+  if(els.addCustomSourceBtn) els.addCustomSourceBtn.onclick=()=>{ state.pendingCustomName=(prompt('Name this custom source','Weekly Stats')||'').trim(); if(state.pendingCustomName) els.customSourceFile.click(); };
+  if(els.customSourceFile) els.customSourceFile.onchange=e=>{const f=e.target.files[0]; if(f) loadCustomSourceFile(f,state.pendingCustomName||'Custom Source'); e.target.value=''; state.pendingCustomName='';};
+  if(els.troubleSourceSelect) els.troubleSourceSelect.onchange=()=>{ state.troubleshoot.source=els.troubleSourceSelect.value; const cfg=getSourceSetting(activeModelForImport(),state.troubleshoot.source); const book=bookForSource(state.troubleshoot.source); state.troubleshoot.sheetName=cfg.sheetName||book.selectedSheets[state.troubleshoot.source]||book.sheetNames?.[0]||''; state.troubleshoot.headerRow=Math.max(1,Number(cfg.headerRow)||1); state.troubleshoot.startCol=Math.max(1,Number(cfg.startCol)||1); state.troubleshoot.manualHeaders=JSON.parse(JSON.stringify(cfg.manualHeaders||[])); renderTroubleshootControls(); renderTroubleshootPreview(); };
+  if(els.troubleSheetSelect) els.troubleSheetSelect.onchange=()=>{ const suggested=packageSheetToSource(els.troubleSheetSelect.value); if(suggested && sourceHasImportedData(suggested) && suggested!==state.troubleshoot.source){ state.troubleshoot.source=suggested; state.troubleshoot.sheetName=els.troubleSheetSelect.value; const cfg=getSourceSetting(activeModelForImport(),suggested); state.troubleshoot.headerRow=Math.max(1,Number(cfg.headerRow)||1); state.troubleshoot.startCol=Math.max(1,Number(cfg.startCol)||1); state.troubleshoot.manualHeaders=JSON.parse(JSON.stringify(cfg.manualHeaders||[])); renderTroubleshootControls(); } else state.troubleshoot.sheetName=els.troubleSheetSelect.value; renderTroubleshootPreview(); };
   if(els.troubleHeaderRowInput) els.troubleHeaderRowInput.onchange=()=>{ state.troubleshoot.headerRow=Math.max(1,Number(els.troubleHeaderRowInput.value)||1); renderTroubleshootPreview(false); };
+  if(els.troubleStartColInput) els.troubleStartColInput.onchange=()=>{ state.troubleshoot.startCol=Math.max(1,Number(els.troubleStartColInput.value)||1); renderTroubleshootPreview(false); };
   if(els.troublePreviewBtn) els.troublePreviewBtn.onclick=()=>renderTroubleshootPreview();
   if(els.troubleApplyBtn) els.troubleApplyBtn.onclick=applyTroubleshootSelection;
   if(els.troubleApplyFootBtn) els.troubleApplyFootBtn.onclick=applyTroubleshootSelection;
@@ -4328,7 +4396,7 @@ function wire(){
   if(els.moveTeamBtn) els.moveTeamBtn.onclick=moveSelectedRepsToTeam;
   els.executeRunBtn.onclick=buildRun;
 }
-loadModels(); loadResearchItems(); loadMetrics(); wire(); renderModelList(); populateRunModels(); setStatus();
+loadModels(); loadResearchItems(); loadMetrics(); wire(); renderCustomSourcesList(); renderModelList(); populateRunModels(); setStatus();
 })();
 </script>
 </body>
