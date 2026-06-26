@@ -723,7 +723,7 @@ const SOURCE_SHEET_HINTS = {retail_sv2:['Retail SV2','sv2'],retail_wiper:['Retai
 const SOURCE_FRAMEWORKS = {
   generic_table:{label:'Generic Table',mappings:['rep','team','coach','date','week','month','score','numerator','denominator','text','category','uniqueId'],help:'Usable in Research and Metrics. User chooses all fields manually; only header/date parsing is assumed.'},
   stat_file:{label:'Stat File',mappings:['rep','team','coach','date','score','numerator','denominator','category','uniqueId'],help:'One row may contain stats for one rep/team. Supports sum, average, min, max, percent, numerator/denominator, count, and unique count.'},
-  weekly_stat_file:{label:'Weekly Stat File',mappings:['rep','team','coach','week','date','score','numerator','denominator','category','uniqueId'],help:'Supports date range filtering by date or week, weekly grouping in Research, and totals across weeks.'},
+  weekly_stat_file:{label:'Weekly Stat File',mappings:['rep','team','coach','week','date','score','numerator','denominator','category','uniqueId'],help:'Aggregates repeated representative/team rows across selected date or week ranges, supports weekly trend grouping, and defaults mapped numerator/denominator percentages to weighted totals.'},
   qa_style_file:{label:'QA-Style File',mappings:['rep','team','coach','score','date','assignedDate','category','uniqueId'],help:'Another QA export. Defaults to average score by representative and supports minimum monitor/count rules.'},
   event_coaching_checklist_file:{label:'Event / Coaching / Checklist File',mappings:['rep','team','coach','date','week','month','text','category','uniqueId'],help:'Rows represent events, coaching, checklist records, or notes. Supports phrase counts, contains/not contains, date-aware matching, and text preview.'},
   text_search_conversation_file:{label:'Text Search / Conversation File',mappings:['rep','team','coach','date','text','category','uniqueId'],help:'Large text fields with phrase search, Conversation Viewer, highlighting, preview/export, and row pagination.'}
@@ -734,6 +734,7 @@ function sourceFramework(source){ return isCustomSource(source) ? (customSource(
 function sourceIsFramework(source, keys){ return isCustomSource(source) && keys.includes(sourceFramework(source)); }
 function isCustomQAStyleSource(source){ return sourceIsFramework(source,['qa_style_file']); }
 function isCustomEventLikeSource(source){ return sourceIsFramework(source,['event_coaching_checklist_file','text_search_conversation_file']); }
+function isCustomWeeklyStatSource(source){ return sourceIsFramework(source,['weekly_stat_file']); }
 function customDateColumn(source){ const c=customSource(source); const cols=c?.columns||{}; return cols.date||cols.week||''; }
 function sourceFrameworkOptions(selected){ return Object.entries(SOURCE_FRAMEWORKS).map(([k,f])=>`<option value="${k}" ${k===selected?'selected':''}>${esc(f.label)}</option>`).join(''); }
 function relevantMappingKeys(source, framework){ return isCustomSource(source) ? frameworkDef(framework||sourceFramework(source)).mappings : []; }
@@ -749,7 +750,7 @@ const SOURCE_SETTING_DEFAULTS = {
 function isCustomSource(source){ return String(source||'').startsWith('custom_'); }
 function customSource(source){ return (state.customSources||[]).find(c=>c.sourceKey===source); }
 function customSourceKeys(){ return (state.customSources||[]).map(c=>c.sourceKey).filter(Boolean); }
-function customSourceDefaultSettings(src){ const c=customSource(src)||{}; return {headerRow:c.headerRow||1,startCol:c.startCol||1,sheetName:c.sheetName||'',manualHeaders:c.manualHeaders||[],framework:c.framework||'generic_table',columns:{nameMode:'auto',fullName:'',firstName:'',lastName:'',convertLastFirst:false,...(c.columns||{})}}; }
+function customSourceDefaultSettings(src){ const c=customSource(src)||{}; return {headerRow:c.headerRow||1,startCol:c.startCol||1,sheetName:c.sheetName||'',manualHeaders:c.manualHeaders||[],framework:c.framework||'generic_table',columns:{nameMode:'auto',fullName:'',firstName:'',lastName:'',convertLastFirst:false,statPeriod:'week',weekStart:'sunday',dateBasis:'date',...(c.columns||{})}}; }
 function isChecklistLikeSource(source){ return source==='checklist' || source==='documented_coaching'; }
 function checklistLikeDefaultDateHeaders(source){ return source==='documented_coaching' ? ['Date','Coaching Date','Created Date','Documented Date','Incident Date'] : ['Incident Date','Date','Date Served','Corrective Date','Created Date']; }
 function checklistLikeRowsState(source){ return source==='documented_coaching' ? state.data.documented_coaching : state.data.checklist; }
@@ -800,7 +801,7 @@ function normalizeCriterionForStorage(c){
   c.weight=String(c.weight||'1')==='autofail'?'autofail':String(Number(c.weight)||1);
   c.format=['number','pct'].includes(c.format)?c.format:'number';
   c.calcType=['single','multi','custom','qaScore','checklistCount'].includes(c.calcType)?c.calcType:'single';
-  c.aggregate=['sum','avg','count'].includes(c.aggregate)?c.aggregate:'sum';
+  c.aggregate=['sum','avg','count','latest','first','max','min','uniqueWeeks','uniqueReps','percent','avgWeeklyPercent','weightedPercent'].includes(c.aggregate)?c.aggregate:'sum';
   c.operator=['divide','multiply','plus','minus','greaterThan','lessThan'].includes(c.operator)?c.operator:'divide';
   c.checkOperator=normalizeRowPullOperator(c.checkOperator);
   if(c.missingRank===undefined || c.missingRank===null || c.missingRank==='') c.missingRank=999;
@@ -1071,6 +1072,47 @@ function inRange(d, start, end){
   const s=start?parseDateOnly(start):null, e=end?parseDateOnly(end):null;
   return (!s || x>=s) && (!e || x<=e);
 }
+function weekStartOffset(day){ return String(day||'sunday').toLowerCase()==='monday' ? 1 : 0; }
+function startOfWeekDate(d, weekStart='sunday'){
+  const x=parseDateOnly(d); if(!x) return null;
+  const offset=weekStartOffset(weekStart), diff=(x.getDay()-offset+7)%7;
+  x.setDate(x.getDate()-diff); return x;
+}
+function parseWeekLabel(v, weekStart='sunday'){
+  if(v===null||v===undefined||String(v).trim()==='') return null;
+  const s=String(v).trim();
+  const isoWeek=s.match(/^(\d{4})-W(\d{1,2})$/i);
+  if(isoWeek){
+    const y=+isoWeek[1], w=+isoWeek[2], jan4=new Date(y,0,4), mon=startOfWeekDate(jan4,'monday');
+    mon.setDate(mon.getDate()+(w-1)*7);
+    return startOfWeekDate(mon,weekStart);
+  }
+  const cleaned=s.replace(/^\s*week\s+of\s+/i,'');
+  const d=parseDateOnly(cleaned)||parseDateOnly(s);
+  return d ? startOfWeekDate(d,weekStart) : null;
+}
+function weekRangeForLabel(v, weekStart='sunday'){
+  const start=parseWeekLabel(v,weekStart); if(!start) return null;
+  const end=new Date(start); end.setDate(end.getDate()+6); return {start,end};
+}
+function weeklyRowDateBasis(source, opts={}){
+  const cols=customSource(source)?.columns||{};
+  if(opts.dateBasis==='week' || opts.dateColumn===cols.week) return 'week';
+  if(opts.dateBasis==='date' || opts.dateColumn===cols.date) return 'date';
+  return cols.date ? 'date' : 'week';
+}
+function weeklyRowInRange(source,row,opts={}){
+  if(!opts.start&&!opts.end) return true;
+  const cols=customSource(source)?.columns||{}, basis=weeklyRowDateBasis(source,opts), weekStart=opts.weekStart||cols.weekStart||'sunday';
+  if(basis==='date' && cols.date) return inRange(row[cols.date]||row._date,opts.start,opts.end);
+  const wr=weekRangeForLabel((cols.week&&row[cols.week])||row._week||row._date,weekStart); if(!wr) return false;
+  const s=opts.start?parseDateOnly(opts.start):null, e=opts.end?parseDateOnly(opts.end):null;
+  return (!s || wr.end>=s) && (!e || wr.start<=e);
+}
+function weeklyRowWeekKey(source,row,opts={}){
+  const cols=customSource(source)?.columns||{}, weekStart=opts.weekStart||cols.weekStart||'sunday';
+  return ymd(parseWeekLabel((cols.week&&row[cols.week])||row._week||(cols.date&&row[cols.date])||row._date,weekStart));
+}
 function fmt(v, type){
   if(v===null||v===undefined||!Number.isFinite(v)) return '—';
   if(type==='pct') return `${v.toFixed(2)}%`;
@@ -1185,6 +1227,7 @@ function filterRowsForSource(source, rows, opts={}){
   rows=rows||[];
   if(source==='qa') return filterQARowsByDate(rows, opts.start, opts.end, opts.qaDateMode);
   if(isChecklistLikeSource(source)) return filterChecklistRowsByDate(source, rows, opts.start, opts.end, opts.dateColumn);
+  if(isCustomWeeklyStatSource(source)) return rows.filter(r=>weeklyRowInRange(source,r,opts));
   if(isCustomSource(source)){ const col=opts.dateColumn||customDateColumn(source); return col ? rows.filter(r=>inRange(r[col]||r._date||r._week, opts.start, opts.end)) : rows; }
   return rows;
 }
@@ -1192,7 +1235,7 @@ function getRows(source, opts={}){
   return filterRowsForSource(source, getRowsRaw(source), opts);
 }
 function rowsCacheKey(source, opts={}){
-  return [source, ymd(opts.start), ymd(opts.end), opts.qaDateMode||'', opts.dateColumn||''].join('|');
+  return [source, ymd(opts.start), ymd(opts.end), opts.qaDateMode||'', opts.dateColumn||'', opts.dateBasis||'', opts.weekStart||''].join('|');
 }
 function dataIndexReady(){ return !!(state.dataIndex && !state.dataIndex.dirty && state.dataIndex.sources); }
 function markDataIndexDirty(reason='data changed'){
@@ -1208,6 +1251,7 @@ function researchDayBucket(ms){ return Number.isFinite(ms) ? ymd(new Date(ms)) :
 function sourceDescriptionHeaders(source){ const hs=getHeaders(source)||[]; return hs.filter(h=>/description|desc|note|comment|detail|summary|item|category|result/i.test(h)); }
 function rowDateMillisForSource(source,row){
   if(source==='qa') return parseDateOnly(row._interactionDate||row._assignedDate||row._date)?.getTime()||NaN;
+  if(isCustomWeeklyStatSource(source)){ const d=parseDateOnly((customSource(source)?.columns?.date&&row[customSource(source).columns.date])||row._date) || parseWeekLabel((customSource(source)?.columns?.week&&row[customSource(source).columns.week])||row._week, customSource(source)?.columns?.weekStart); return d?.getTime()||NaN; }
   const h=findHeader(getHeaders(source), source==='documented_coaching'?['Date','Coaching Date','Created Date','Completed Date','Documented Date']:checklistLikeDefaultDateHeaders(source));
   return h ? (parseDateOnly(row[h])?.getTime()||NaN) : (parseDateOnly(row._date)?.getTime()||NaN);
 }
@@ -1331,7 +1375,7 @@ function renderTroubleCustomFrameworkPanel(headers=[]){
   if(!isCustomSource(src)){ box.classList.add('hidden'); box.innerHTML=''; return; }
   const cfg=getSourceSetting(activeModelForImport(),src), cols=cfg.columns||{}, fw=cfg.framework||sourceFramework(src)||'generic_table';
   box.classList.remove('hidden');
-  box.innerHTML=`<div class="panelTitle">Source Framework + Standard Column Mapping</div><div class="field"><label>Source Framework</label><select id="troubleSourceFramework">${sourceFrameworkOptions(fw)}</select><div class="checkResultMeta">${esc(frameworkDef(fw).help)}</div></div><div class="qaGrid">${customMappingFieldsHtml(src, cols, fw, headers)}</div>`;
+  box.innerHTML=`<div class="panelTitle">Source Framework + Standard Column Mapping</div><div class="field"><label>Source Framework</label><select id="troubleSourceFramework">${sourceFrameworkOptions(fw)}</select><div class="checkResultMeta">${esc(frameworkDef(fw).help)}</div></div><div class="qaGrid">${customMappingFieldsHtml(src, cols, fw, headers)}${fw==='weekly_stat_file'?`<div class="field"><label>File row grain</label><select data-qacol-source="${src}" data-qacol-field="statPeriod"><option value="week" ${cols.statPeriod==='week'?'selected':''}>one row per rep per week</option><option value="day" ${cols.statPeriod==='day'?'selected':''}>one row per rep per day</option><option value="month" ${cols.statPeriod==='month'?'selected':''}>one row per rep per month</option><option value="period" ${cols.statPeriod==='period'?'selected':''}>one row per rep per stat period</option></select></div><div class="field"><label>Week start day</label><select data-qacol-source="${src}" data-qacol-field="weekStart"><option value="sunday" ${cols.weekStart!=='monday'?'selected':''}>Sunday</option><option value="monday" ${cols.weekStart==='monday'?'selected':''}>Monday</option></select></div><div class="field"><label>Date basis</label><select data-qacol-source="${src}" data-qacol-field="dateBasis"><option value="date" ${cols.dateBasis!=='week'?'selected':''}>Prefer mapped date column</option><option value="week" ${cols.dateBasis==='week'?'selected':''}>Use mapped week column</option></select></div>`:''}</div>`;
   const sel=box.querySelector('#troubleSourceFramework'); if(sel) sel.onchange=()=>{ updateAllModelsForSource(src,cfg=>{ cfg.framework=sel.value; }); const c=customSource(src); if(c) c.framework=sel.value; renderTroubleCustomFrameworkPanel(headers); };
   box.querySelectorAll('[data-qacol-source]').forEach(input=>input.onchange=()=>{ updateAllModelsForSource(src,cfg=>{ cfg.columns=cfg.columns||{}; cfg.columns[input.dataset.qacolField]=input.value.trim(); }); });
 }
@@ -1357,6 +1401,7 @@ function sourceSettingCard(source, cfg){
     extra = `<div class="qaGrid">
       <div class="field"><label>Source Framework</label><select data-framework-source="${source}">${sourceFrameworkOptions(fw)}</select><div class="hint">${esc(frameworkDef(fw).help)}</div></div>
       ${customMappingFieldsHtml(source, cols, fw)}
+      ${fw==='weekly_stat_file'?`<div class="field"><label>File row grain</label><select data-qacol-source="${source}" data-qacol-field="statPeriod"><option value="week" ${cols.statPeriod==='week'?'selected':''}>one row per rep per week</option><option value="day" ${cols.statPeriod==='day'?'selected':''}>one row per rep per day</option><option value="month" ${cols.statPeriod==='month'?'selected':''}>one row per rep per month</option><option value="period" ${cols.statPeriod==='period'?'selected':''}>one row per rep per stat period</option></select></div><div class="field"><label>Week start day</label><select data-qacol-source="${source}" data-qacol-field="weekStart"><option value="sunday" ${cols.weekStart!=='monday'?'selected':''}>Sunday</option><option value="monday" ${cols.weekStart==='monday'?'selected':''}>Monday</option></select></div><div class="field"><label>Date basis</label><select data-qacol-source="${source}" data-qacol-field="dateBasis"><option value="date" ${cols.dateBasis!=='week'?'selected':''}>Prefer mapped date column</option><option value="week" ${cols.dateBasis==='week'?'selected':''}>Use mapped week column</option></select></div>`:''}
     </div>`;
   }else if(isChecklistLikeSource(source)){
     extra = `<div class="qaGrid">
@@ -1590,7 +1635,7 @@ function runModelColumnCheck(){
 function criterionHtml(c,i){
   const src=c.source||'retail_sv2';
   const isCheck=isChecklistLikeSource(src)||isCustomEventLikeSource(src); const showRowPull=isCheck; const checkSource=showRowPull?src:'checklist';
-  const isQa=src==='qa'||isCustomQAStyleSource(src);
+  const isQa=src==='qa'||isCustomQAStyleSource(src); const isWeekly=isCustomWeeklyStatSource(src);
   const weightOptions=['1','2','3','4','5','autofail'].map(w=>`<option value="${w}" ${String(c.weight)===w?'selected':''}>${w==='autofail'?'Autofail':w}</option>`).join('');
   const isAutofailItem = String(c.weight)==='autofail';
   return `<div class="criterionRow" data-crit="${c.id}">
@@ -1619,7 +1664,7 @@ function criterionHtml(c,i){
     </div>
     <div class="${(c.calcType==='single'&&!isQa&&!isCheck)?'':'hidden'}" data-block="single"><div class="grid3">
       <div class="field"><label>Column</label><select data-cfield="column">${headerOptions(src,c.column)}</select></div>
-      <div class="field"><label>Rep Aggregate</label><select data-cfield="aggregate"><option value="sum" ${c.aggregate==='sum'?'selected':''}>Sum</option><option value="avg" ${c.aggregate==='avg'?'selected':''}>Average</option><option value="count" ${c.aggregate==='count'?'selected':''}>Count</option></select></div>
+      <div class="field"><label>Rep Aggregate</label><select data-cfield="aggregate"><option value="sum" ${c.aggregate==='sum'?'selected':''}>Sum</option><option value="avg" ${c.aggregate==='avg'?'selected':''}>Average</option><option value="count" ${c.aggregate==='count'?'selected':''}>Count rows</option><option value="uniqueWeeks" ${c.aggregate==='uniqueWeeks'?'selected':''}>Count unique weeks</option><option value="uniqueReps" ${c.aggregate==='uniqueReps'?'selected':''}>Count unique reps</option><option value="latest" ${c.aggregate==='latest'?'selected':''}>Latest row only</option><option value="first" ${c.aggregate==='first'?'selected':''}>First row only</option><option value="max" ${c.aggregate==='max'?'selected':''}>Max</option><option value="min" ${c.aggregate==='min'?'selected':''}>Min</option><option value="percent" ${c.aggregate==='percent'?'selected':''}>Numerator / Denominator percentage</option><option value="avgWeeklyPercent" ${c.aggregate==='avgWeeklyPercent'?'selected':''}>Average of weekly percentages</option><option value="weightedPercent" ${c.aggregate==='weightedPercent'?'selected':''}>Weighted percentage across all weeks</option></select><div class="hint ${isWeekly?'':'hidden'}">Weekly Stat File groups repeated representative rows before scoring; percentages default to weighted numerator ÷ denominator when mapped.</div></div>
       <div></div>
     </div></div>
     <div class="${c.calcType==='multi'?'':'hidden'}" data-block="multi"><div class="grid5">
@@ -2738,7 +2783,7 @@ async function loadCustomSourceFile(file,name){
     const sourceKey=uniqueCustomSourceKey(name);
     const aoaBySheet={}; (wb.SheetNames||[]).forEach(sn=>{aoaBySheet[sn]=sheetAoa(wb,sn);});
     const sn=(wb.SheetNames||[])[0]||'';
-    const custom={id:id(),name,sourceKey,sourceType:'custom',fileName:file.name,rows:[],headers:[],aoa:aoaBySheet[sn]||[],sheetNames:wb.SheetNames||[],aoaBySheet,sheetName:sn,headerRow:1,startCol:1,manualHeaders:[],framework:'generic_table',columns:{nameMode:'auto',fullName:'',firstName:'',lastName:'',convertLastFirst:false,rep:'',team:'',coach:'',date:'',week:'',month:'',score:'',numerator:'',denominator:'',text:'',category:'',uniqueId:''},aggregation:{}};
+    const custom={id:id(),name,sourceKey,sourceType:'custom',fileName:file.name,rows:[],headers:[],aoa:aoaBySheet[sn]||[],sheetNames:wb.SheetNames||[],aoaBySheet,sheetName:sn,headerRow:1,startCol:1,manualHeaders:[],framework:'generic_table',columns:{nameMode:'auto',fullName:'',firstName:'',lastName:'',convertLastFirst:false,rep:'',team:'',coach:'',date:'',week:'',month:'',score:'',numerator:'',denominator:'',text:'',category:'',uniqueId:'',statPeriod:'week',weekStart:'sunday',dateBasis:'date'},aggregation:{}};
     state.customSources.push(custom); state.books[sourceKey]={fileName:file.name,sheetNames:custom.sheetNames,aoaBySheet,selectedSheets:{[sourceKey]:sn}};
     const m=activeModelForImport(); ensureSourceSettings(m); m.sourceSettings[sourceKey]=customSourceDefaultSettings(sourceKey);
     const pack=sourceRowsFromStoredAoa(sourceKey,m,false); setSourceRowsAndHeaders(sourceKey,pack.headers,pack.rows,m);
@@ -3116,14 +3161,33 @@ function rowsForEntry(source, entry, opts={}){
   return rows;
 }
 function valueSingle(c, entry, opts){
-  let rows=rowsForEntry(c.source, entry, opts);
-  rows=applyFilters(rows,c.filters,c.source,opts);
-  const col=resolveColumn(c.source,c.column);
-  if(c.aggregate==='count') return rows.filter(r=>String(r[col]??'').trim()!=='').length;
-  const nums=rows.map(r=>toNum(r[col])).filter(Number.isFinite);
-  if(!nums.length) return NaN;
-  if(c.aggregate==='avg') return nums.reduce((a,b)=>a+b,0)/nums.length;
-  return nums.reduce((a,b)=>a+b,0);
+  const extra=isCustomWeeklyStatSource(c.source)?(customSource(c.source)?.columns||{}):{};
+  let rows=rowsForEntry(c.source, entry, {...opts,dateBasis:extra.dateBasis,weekStart:extra.weekStart});
+  rows=applyFilters(rows,c.filters,c.source,{...opts,dateBasis:extra.dateBasis,weekStart:extra.weekStart});
+  const col=resolveColumn(c.source,c.column), mode=c.aggregate||'sum';
+  if(mode==='count') return rows.filter(r=>!col || String(r[col]??'').trim()!=='').length;
+  if(mode==='uniqueReps') return new Set(rows.map(r=>r._repKey).filter(Boolean)).size;
+  if(mode==='uniqueWeeks') return new Set(rows.map(r=>weeklyRowWeekKey(c.source,r,{weekStart:extra.weekStart})).filter(Boolean)).size;
+  if(['percent','weightedPercent','avgWeeklyPercent'].includes(mode)){
+    const ncol=resolveColumn(c.source,extra.numerator||''), dcol=resolveColumn(c.source,extra.denominator||'');
+    if(ncol&&dcol){
+      if(mode==='avgWeeklyPercent'){
+        const vals=[]; rows.forEach(r=>{ const den=toNum(r[dcol]); if(den){ const num=toNum(r[ncol]); vals.push((Number.isFinite(num)?num:0)/den*(c.format==='pct'?100:1)); } });
+        return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:NaN;
+      }
+      const num=rows.reduce((s,r)=>s+(Number.isFinite(toNum(r[ncol]))?toNum(r[ncol]):0),0), den=rows.reduce((s,r)=>s+(Number.isFinite(toNum(r[dcol]))?toNum(r[dcol]):0),0);
+      return den?num/den*(c.format==='pct'?100:1):NaN;
+    }
+  }
+  if(isCustomWeeklyStatSource(c.source) && c.format==='pct' && extra.numerator && extra.denominator){ c={...c,aggregate:'weightedPercent'}; return valueSingle(c,entry,opts); }
+  let pairs=rows.map((r,i)=>({r,i,n:toNum(r[col]),t:rowDateMillisForSource(c.source,r)})).filter(x=>Number.isFinite(x.n));
+  if(!pairs.length) return NaN;
+  if(mode==='latest') return pairs.sort((a,b)=>(b.t||0)-(a.t||0)||b.i-a.i)[0].n;
+  if(mode==='first') return pairs.sort((a,b)=>(a.t||0)-(b.t||0)||a.i-b.i)[0].n;
+  if(mode==='avg') return pairs.reduce((a,b)=>a+b.n,0)/pairs.length;
+  if(mode==='max') return Math.max(...pairs.map(x=>x.n));
+  if(mode==='min') return Math.min(...pairs.map(x=>x.n));
+  return pairs.reduce((a,b)=>a+b.n,0);
 }
 function sumColumn(source, col, entry, opts, filters){
   let rows=rowsForEntry(source, entry, opts); rows=applyFilters(rows,filters,source,opts);
@@ -3581,7 +3645,8 @@ function buildQueryPlan(source, opts={}){
   let rows=all;
   const step=(name,before,candidates,after,used)=>plan.steps.push({name,before,candidates,after,usedIndex:!!used});
   const filters=(opts.filters||[]).filter(Boolean);
-  if(idx && opts.dateColumn && (opts.startDate||opts.endDate)){
+  if(isCustomWeeklyStatSource(source) && (opts.startDate||opts.endDate)){ const before=rows.length; rows=rows.filter(r=>weeklyRowInRange(source,r,{...opts,start:opts.startDate,end:opts.endDate})); step('weekly date/week range filter',before,before,rows.length,false); }
+  else if(idx && opts.dateColumn && (opts.startDate||opts.endDate)){
     const actual=resolveColumn(source,opts.dateColumn)||opts.dateColumn;
     let candidates=null;
     if(actual===researchDefaultDateColumn({source}) || actual==='_date') candidates=dateRangeRowsFromIndex(idx,opts.startDate,opts.endDate);
@@ -3635,8 +3700,8 @@ function applyResearchFilters(rows, filters, item, perf){
   });
   return out;
 }
-function researchBucketDate(d,period){ const x=parseDateOnly(d); if(!x) return ''; if(period==='monthly') return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}`; if(period==='weekly'){ const t=new Date(x); t.setDate(t.getDate()-t.getDay()); return ymd(t); } return ymd(x); }
-function researchGroupKey(item,r){ if(item.outputType==='line' && item.dateColumn) return researchBucketDate(researchFieldValue(r,item.dateColumn,item.source),item.dateGrouping||'daily'); if(item.groupExpression) return String(evaluateResearchExpression(r,item.groupExpression,{source:item.source,context:'Research group expression',row:r})??'(blank)'); return String(researchFieldValue(r,item.groupField,item.source)||'(blank)')||'(blank)'; }
+function researchBucketDate(d,period,weekStart='sunday'){ const x=(period==='weekly'?parseWeekLabel(d,weekStart):parseDateOnly(d)); if(!x) return ''; if(period==='monthly') return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}`; if(period==='weekly') return ymd(startOfWeekDate(x,weekStart)); return ymd(x); }
+function researchGroupKey(item,r){ if(item.outputType==='line' && item.dateColumn) return researchBucketDate(researchFieldValue(r,item.dateColumn,item.source),item.dateGrouping||'daily',customSource(item.source)?.columns?.weekStart||'sunday'); if(item.groupExpression) return String(evaluateResearchExpression(r,item.groupExpression,{source:item.source,context:'Research group expression',row:r})??'(blank)'); return String(researchFieldValue(r,item.groupField,item.source)||'(blank)')||'(blank)'; }
 function researchSecondaryKey(item,r){ return item.useSecondaryGroup&&item.secondaryGroupField ? String(researchFieldValue(r,item.secondaryGroupField,item.source)||'(blank)') : ''; }
 function uniqueCount(rows, field, source){ return new Set(rows.map(r=>field?researchFieldValue(r,field,source):personKeyFromRow(r)).map(v=>String(v??'').trim()).filter(Boolean)).size; }
 function evaluatePercentOf(item, rows){ const numRows=item.numeratorExpression?rows.filter(r=>!!evaluateResearchExpression(r,item.numeratorExpression,{source:item.source,context:'Numerator expression',row:r})):rows; let num=item.numeratorCount==='unique'?uniqueCount(numRows):numRows.length; let den=rows.length; if(item.denominator==='unique') den=uniqueCount(rows); if(item.denominator==='teamReps'){ const team=rows[0]?researchGroupKey(item,rows[0]):''; den=(state.dataIndex.repsByTeam?.get(team)||[]).length||uniqueCount(rows); } if(item.denominator==='custom'&&item.denominatorExpression) den=rows.filter(r=>!!evaluateResearchExpression(r,item.denominatorExpression,{source:item.source,context:'Denominator expression',row:r})).length; return den?num/den*100:(item.zeroDenominator==='blank'?null:0); }
