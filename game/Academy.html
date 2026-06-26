@@ -735,7 +735,7 @@ function sourceIsFramework(source, keys){ return isCustomSource(source) && keys.
 function isCustomQAStyleSource(source){ return sourceIsFramework(source,['qa_style_file']); }
 function isCustomEventLikeSource(source){ return sourceIsFramework(source,['event_coaching_checklist_file','text_search_conversation_file']); }
 function isCustomWeeklyStatSource(source){ return sourceIsFramework(source,['weekly_stat_file']); }
-function customDateColumn(source){ const c=customSource(source); const cols=c?.columns||{}; return cols.date||cols.week||''; }
+function customDateColumn(source){ const c=customSource(source); const cols=c?.columns||{}; return cols.date||cols.week||cols.month||''; }
 function sourceFrameworkOptions(selected){ return Object.entries(SOURCE_FRAMEWORKS).map(([k,f])=>`<option value="${k}" ${k===selected?'selected':''}>${esc(f.label)}</option>`).join(''); }
 function relevantMappingKeys(source, framework){ return isCustomSource(source) ? frameworkDef(framework||sourceFramework(source)).mappings : []; }
 const SOURCE_SETTING_DEFAULTS = {
@@ -753,7 +753,7 @@ function customSourceKeys(){ return (state.customSources||[]).map(c=>c.sourceKey
 function customSourceDefaultSettings(src){ const c=customSource(src)||{}; return {headerRow:c.headerRow||1,startCol:c.startCol||1,sheetName:c.sheetName||'',manualHeaders:c.manualHeaders||[],framework:c.framework||'generic_table',columns:{nameMode:'auto',fullName:'',firstName:'',lastName:'',convertLastFirst:false,statPeriod:'week',weekStart:'sunday',dateBasis:'date',...(c.columns||{})}}; }
 function isChecklistLikeSource(source){ return source==='checklist' || source==='documented_coaching'; }
 function checklistLikeDefaultDateHeaders(source){ return source==='documented_coaching' ? ['Date','Coaching Date','Created Date','Documented Date','Incident Date'] : ['Incident Date','Date','Date Served','Corrective Date','Created Date']; }
-function checklistLikeRowsState(source){ return source==='documented_coaching' ? state.data.documented_coaching : state.data.checklist; }
+function checklistLikeRowsState(source){ if(source==='documented_coaching') return state.data.documented_coaching; if(isCustomSource(source)){ const c=customSource(source)||{}; return {headers:c.headers||[],rows:c.rows||[]}; } return state.data.checklist; }
 function clonePlain(obj){return JSON.parse(JSON.stringify(obj||{}));}
 function sourceDefaults(source){return clonePlain(SOURCE_SETTING_DEFAULTS[source]||{headerRow:1,startCol:1});}
 function normalizeSourceSettings(settings){
@@ -1234,6 +1234,8 @@ function filterRowsForSource(source, rows, opts={}){
 function getRows(source, opts={}){
   return filterRowsForSource(source, getRowsRaw(source), opts);
 }
+function sourceRows(source, opts={}){ return getRows(source, opts); }
+function sourceHeaders(source){ return getHeaders(source); }
 function rowsCacheKey(source, opts={}){
   return [source, ymd(opts.start), ymd(opts.end), opts.qaDateMode||'', opts.dateColumn||'', opts.dateBasis||'', opts.weekStart||''].join('|');
 }
@@ -1251,19 +1253,19 @@ function researchDayBucket(ms){ return Number.isFinite(ms) ? ymd(new Date(ms)) :
 function sourceDescriptionHeaders(source){ const hs=getHeaders(source)||[]; return hs.filter(h=>/description|desc|note|comment|detail|summary|item|category|result/i.test(h)); }
 function rowDateMillisForSource(source,row){
   if(source==='qa') return parseDateOnly(row._interactionDate||row._assignedDate||row._date)?.getTime()||NaN;
-  if(isCustomWeeklyStatSource(source)){ const d=parseDateOnly((customSource(source)?.columns?.date&&row[customSource(source).columns.date])||row._date) || parseWeekLabel((customSource(source)?.columns?.week&&row[customSource(source).columns.week])||row._week, customSource(source)?.columns?.weekStart); return d?.getTime()||NaN; }
+  if(isCustomSource(source)){ const c=customSource(source)||{}, cols=c.columns||{}; const d=parseDateOnly((cols.date&&row[cols.date])||row._date) || parseWeekLabel((cols.week&&row[cols.week])||row._week, cols.weekStart) || parseDateOnly(cols.month&&row[cols.month]); return d?.getTime()||NaN; }
   const h=findHeader(getHeaders(source), source==='documented_coaching'?['Date','Coaching Date','Created Date','Completed Date','Documented Date']:checklistLikeDefaultDateHeaders(source));
   return h ? (parseDateOnly(row[h])?.getTime()||NaN) : (parseDateOnly(row._date)?.getTime()||NaN);
 }
 function makeResearchSourceIndex(source, rows){
   const headers=getHeaders(source)||[], descHeaders=source==='documented_coaching'?sourceDescriptionHeaders(source):headers;
-  return {rows,headers,descriptionHeaders:descHeaders,byRep:new Map(),byTeam:new Map(),byCoach:new Map(),byDate:new Map(),byDateBucket:new Map(),byMonth:new Map(),byColumnValue:new Map(),byWord:new Map(),byRepWord:new Map(),byRepSortedDate:new Map(),byTeamSortedDate:new Map(),byRowId:new Map(),searchText:new WeakMap(),tokens:new WeakMap(),rowMeta:new WeakMap(),reps:new Map(),perf:{rowsIndexed:0}};
+  return {rows,headers,descriptionHeaders:descHeaders,byRep:new Map(),byTeam:new Map(),byCoach:new Map(),byDate:new Map(),byDateBucket:new Map(),byWeek:new Map(),byMonth:new Map(),byColumnValue:new Map(),byWord:new Map(),byRepWord:new Map(),byRepSortedDate:new Map(),byTeamSortedDate:new Map(),byRowId:new Map(),searchText:new WeakMap(),tokens:new WeakMap(),rowMeta:new WeakMap(),reps:new Map(),perf:{rowsIndexed:0}};
 }
 function addResearchIndexedRow(idx,source,row,rowId){
-  const key=row._repKey||'', team=rowTeam(row), coach=team, ms=rowDateMillisForSource(source,row), day=researchDayBucket(ms), month=researchMonthBucket(ms);
+  const key=row._repKey||'', team=rowTeam(row), coach=team, ms=rowDateMillisForSource(source,row), day=researchDayBucket(ms), month=researchMonthBucket(ms), week=Number.isFinite(ms)?ymd(startOfWeekDate(new Date(ms),'sunday')):'';
   if(team && !row._team) row._team=team;
   pushMapArray(idx.byRep,key,row); pushMapArray(idx.byTeam,team,row); pushMapArray(idx.byCoach,coach,row);
-  if(day) pushMapArray(idx.byDate,day,row); if(day) pushMapArray(idx.byDateBucket,day,row); if(month){ pushMapArray(idx.byDateBucket,month,row); pushMapArray(idx.byMonth,month,row); }
+  if(day) pushMapArray(idx.byDate,day,row); if(day) pushMapArray(idx.byDateBucket,day,row); if(week){ pushMapArray(idx.byDateBucket,week,row); pushMapArray(idx.byWeek,week,row); } if(month){ pushMapArray(idx.byDateBucket,month,row); pushMapArray(idx.byMonth,month,row); }
   idx.byRowId.set(rowId,row);
   (idx.headers||[]).forEach(h=>pushMapArray(idx.byColumnValue,h+'\u0000'+normalizeResearchText(row[h]),row));
   const fullText=(idx.headers||[]).map(h=>row[h]).join(' '), searchable=(source==='documented_coaching'?idx.descriptionHeaders:idx.headers).map(h=>row[h]).join(' ');
@@ -2637,6 +2639,7 @@ function applyModelSourceSettings(model){
   if(state.data.qa.aoa?.length){ const p=sourceRowsFromStoredAoa('qa',model,true); const q=getSourceSetting(model,'qa').columns||{}; state.data.qa.headers=p.headers; state.data.qa.rows=p.rows.map(r=>normalizeQARow(r,p.headers,q)).filter(r=>r._repKey||r._team||Number.isFinite(r._score)); }
   if(state.data.checklist.aoa?.length){ const p=sourceRowsFromStoredAoa('checklist',model,true); const c=getSourceSetting(model,'checklist').columns||{}; state.data.checklist.headers=p.headers; state.data.checklist.rows=p.rows.map(r=>normalizeChecklistRow(r,p.headers,c,'checklist')).filter(r=>r._repKey||r._team); }
   if(state.data.documented_coaching.aoa?.length){ const p=sourceRowsFromStoredAoa('documented_coaching',model,true); const c=getSourceSetting(model,'documented_coaching').columns||{}; state.data.documented_coaching.headers=p.headers; state.data.documented_coaching.rows=p.rows.map(r=>normalizeChecklistRow(r,p.headers,c,'documented_coaching')).filter(r=>r._repKey||r._team); }
+  customSourceKeys().forEach(src=>{ if(customSource(src)?.aoa?.length){ const p=sourceRowsFromStoredAoa(src,model,false); setSourceRowsAndHeaders(src,p.headers,p.rows,model); } });
   rebuildTeams();
   markDataIndexDirty('source settings applied');
 }
@@ -2768,6 +2771,14 @@ async function loadChecklistFile(file){ return loadChecklistLikeFile(file,'check
 
 function slugSourceName(name){ return String(name||'custom').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,40)||'custom'; }
 function uniqueCustomSourceKey(name){ let base='custom_'+slugSourceName(name), key=base+'_'+Date.now().toString(36).slice(-5), i=1; while(allSourceKeys().includes(key)) key=base+'_'+(i++); return key; }
+function customSourceWarnings(source){
+  const c=customSource(source)||{}, cfg=getSourceSetting(activeModelForImport(),source), cols=cfg.columns||c.columns||{}, headers=c.headers||[], warnings=[];
+  relevantMappingKeys(source,cfg.framework||c.framework||'generic_table').forEach(k=>{ if(cols[k] && !findHeader(headers,[cols[k]])) warnings.push(`Missing mapped ${SOURCE_MAPPING_LABELS[k]||k}: ${cols[k]}`); });
+  if(!(c.rows||[]).length) warnings.push('No rows imported. Check sheet/header layout.');
+  if(!headers.length) warnings.push('No headers detected. Use Preview / Headers to set the header row or manual headers.');
+  if(isCustomWeeklyStatSource(source) && !cols.week && !cols.date) warnings.push('Weekly source needs a mapped Week or Date column for weekly grouping.');
+  return warnings;
+}
 function renderCustomSourcesList(){
   if(!els.customSourcesList) return;
   els.customSourcesList.innerHTML=(state.customSources||[]).map(c=>`<div class="checkResultRow"><strong>${esc(c.name)}</strong><div class="checkResultMeta">${esc(c.fileName||'No file')} · ${esc(c.sheetName||'No sheet')} · ${(c.rows||[]).length.toLocaleString()} rows · ${(c.headers||[]).length} headers · ${esc(frameworkDef(c.framework||'generic_table').label)} · key ${esc(c.sourceKey)}</div><div class="row"><button class="smallBtn" data-custom-trouble="${esc(c.sourceKey)}" type="button">Preview / Headers</button><button class="smallBtn" data-custom-rename="${esc(c.sourceKey)}" type="button">Rename</button><button class="smallBtn" data-custom-duplicate="${esc(c.sourceKey)}" type="button">Duplicate Config</button><button class="smallBtn red" data-custom-delete="${esc(c.sourceKey)}" type="button">Delete</button></div></div>`).join('') || '<div class="checkResultMeta">No custom sources imported yet.</div>';
@@ -3288,8 +3299,8 @@ function openMetricRuleValuePicker(i){ const r=state.editingMetricRules[i]; if(!
 function openMetricValuePicker(){ const field=els.metricFieldInput.value; if(!field) return alert('Choose a Field/Expression first.'); const vals=metricDistinctValues(field,els.metricSourceSelect.value), sel=new Set(state.editingMetricGear?.selected||vals); const wrap=document.createElement('div'); wrap.className='researchGearModal'; wrap.innerHTML=`<div class="researchGearBox"><strong>Select values</strong><div class="researchGearValues">${vals.map(v=>`<label class="researchGearValue"><input type="checkbox" data-mv="${esc(v)}" ${sel.has(v)?'checked':''}> ${esc(v)}</label>`).join('')}</div><div class="row"><button class="green" data-ok type="button">Apply</button><button class="dark" data-cancel type="button">Cancel</button></div></div>`; document.body.appendChild(wrap); wrap.querySelector('[data-cancel]').onclick=()=>wrap.remove(); wrap.querySelector('[data-ok]').onclick=()=>{ state.editingMetricGear.selected=[...wrap.querySelectorAll('[data-mv]:checked')].map(x=>x.dataset.mv); wrap.remove(); }; }
 function validateMetricNumeric(){ const need=['sum','avg'].includes(els.metricModeSelect?.value); const m=metricFromEditor(); const res=need?researchNumericValidation({source:m.source},m.field):{ok:true}; if(els.metricNumericWarn){ els.metricNumericWarn.textContent=res.ok?'':res.message; els.metricNumericWarn.classList.toggle('hidden',res.ok); } els.metricFieldInput?.classList.toggle('researchInvalid',!res.ok); return res.ok; }
 function saveMetricFromEditor(exit=false){ const m=metricFromEditor(); if(!m.name.trim()) return alert('Metric Name is required.'); if(metricRefName(m.field)) return alert('Metrics cannot reference other metrics in this version.'); const i=state.metrics.findIndex(x=>x.id===m.id); if(i>=0) state.metrics[i]=m; else state.metrics.push(m); saveMetrics(); renderMetricsPage(m.id); populateResearchFieldSelectors(currentResearchItemFromEditor?.()||{}); renderMetricList(m.id); if(exit) closeModal('metricEditorModal'); }
-function exportMetricsConfig(){ downloadText('all_star_research_metrics.txt',JSON.stringify({version:1,metrics:state.metrics||[]},null,2)); }
-function importMetricsConfig(text){ const obj=JSON.parse(text); state.metrics=(Array.isArray(obj)?obj:(obj.metrics||[])).map(normalizeMetric); saveMetrics(); renderMetricsPage(state.metrics[0]?.id); }
+function exportMetricsConfig(){ downloadText('all_star_research_metrics.txt',JSON.stringify({version:2,metrics:state.metrics||[],customSources:(state.customSources||[]).map(c=>({...clonePlain(c),rows:[],aoaBySheet:{}}))},null,2)); }
+function importMetricsConfig(text){ const obj=JSON.parse(text); if(obj&&Array.isArray(obj.customSources)){ obj.customSources.forEach(def=>{ if(def.sourceKey&&!customSource(def.sourceKey)) state.customSources.push({...def,rows:def.rows||[],headers:def.headers||[],aoa:def.aoa||[],aoaBySheet:def.aoaBySheet||{}}); }); renderCustomSourcesList(); } state.metrics=(Array.isArray(obj)?obj:(obj.metrics||[])).map(normalizeMetric); saveMetrics(); renderMetricsPage(state.metrics[0]?.id); }
 
 function normalizeResearchItem(item={}){
   const normalized={...item,outputType:item.outputType||'table',cardSize:item.cardSize||'medium',collapsed:!!item.collapsed,textWrap:item.textWrap!==false,rowDensity:item.rowDensity||'comfortable',filters:Array.isArray(item.filters)?item.filters:[],columns:Array.isArray(item.columns)?item.columns:[],gearFilters:item.gearFilters&&typeof item.gearFilters==='object'?item.gearFilters:{}};
@@ -3307,8 +3318,8 @@ function normalizeResearchItem(item={}){
 function loadResearchItems(){ try{ state.researchItems=(JSON.parse(localStorage.getItem(RESEARCH_KEY)||'[]')||[]).map(normalizeResearchItem); }catch(_){ state.researchItems=[]; } }
 function saveResearchItems(){ state.researchResultCache=new Map(); localStorage.setItem(RESEARCH_KEY, JSON.stringify(state.researchItems||[])); }
 function researchSources(){ return allSourceKeys().map(k=>({value:k,label:labelSource(k)})); }
-function getResearchSourceRows(sourceKey){ return (getRowsRaw(sourceKey)||[]).slice(); }
-function getResearchHeaders(sourceKey){ return (getHeaders(sourceKey)||[]).slice(); }
+function getResearchSourceRows(sourceKey){ return (sourceRows(sourceKey)||[]).slice(); }
+function getResearchHeaders(sourceKey){ return (sourceHeaders(sourceKey)||[]).slice(); }
 function personKeyFromRow(r){ return r._repKey || norm(r._rep||r['Agent Name']||r['Associate Name']||r['Associate name']||r.Agent||r.Representative||''); }
 function researchRowTeam(r){ return r._team || r['Job Coach'] || r['Coach Assigned'] || r.Coach || r.Team || ''; }
 async function openResearchWorkspace(){
@@ -3731,7 +3742,7 @@ function researchItemCacheKey(item,kind){
 function researchCacheGet(key){ const v=state.researchResultCache?.get(key); if(v){ console.info('[Research Builder]',{cacheUsed:true,key}); const out=clonePlain(v); out.perf={...(out.perf||{}),cacheUsed:true}; return out; } return null; }
 function researchCacheSet(key,value,perf){ if(!state.researchResultCache) state.researchResultCache=new Map(); const out={...value,perf:{...(value.perf||{}),...(perf||{}),cacheUsed:false}}; state.researchResultCache.set(key,clonePlain(out)); return out; }
 
-function researchDefaultDateColumn(item){ const hs=getResearchHeaders(item.source); const opts=item.source==='qa'?['Interaction Start Time','Assigned Date','Date']:checklistLikeDefaultDateHeaders(item.source); return findHeader(hs,opts)||''; }
+function researchDefaultDateColumn(item){ const hs=getResearchHeaders(item.source); if(isCustomSource(item.source)){ const c=customSource(item.source)||{}, cols=c.columns||{}; return findHeader(hs,[cols.date,cols.week,cols.month,'Date','Week','Month','Interaction Start Time','Assigned Date','Created Date'].filter(Boolean))||''; } const opts=item.source==='qa'?['Interaction Start Time','Assigned Date','Date']:checklistLikeDefaultDateHeaders(item.source); return findHeader(hs,opts)||''; }
 function researchSortDateValue(item, rows){ const col=item.dateColumn||researchDefaultDateColumn(item); const vals=(rows||[]).map(r=>parseDateOnly(researchFieldValue(r,col,item.source))).filter(Boolean).map(d=>d.getTime()); return vals.length?Math.min(...vals):0; }
 function researchGroupLabel(item,r){ const gcfg=researchGearGetForItem(item,'groupField'); if(gcfg.valueLevel==='level1' && item.groupField) return item.groupExpression||item.groupField; return researchGroupKey(item,r); }
 function researchGearGetForItem(item,key){ return {...researchGearDefault(),...((item.gearFilters||{})[key]||{})}; }
@@ -4039,8 +4050,8 @@ async function renderAllResearchItems(){
 function deleteResearchItem(itemId){ if(!confirm('Delete this research item?')) return; state.researchItems=state.researchItems.filter(x=>x.id!==itemId); saveResearchItems(); renderResearchCanvasAsync({reason:'delete'}); }
 function exportResearchItemData(itemId){ const item=state.researchItems.find(x=>x.id===itemId); if(!item) return; const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); const aoa=item.outputType==='conversation'?[res.columns.map(c=>c.label||c.field),...res.rows.map(r=>res.columns.map(c=>r[c.field]??''))]:[[item.groupField||'Group',...res.columns.map(c=>c.label||c.mode||'Value')],...res.data.map(r=>[r.label,...r.values])]; const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Research'); XLSX.writeFile(wb,(item.title||'research')+'.xlsx'); }
 function exportResearchItemImage(itemId){ const svg=els.researchCanvas.querySelector(`[data-research-svg="${CSS.escape(itemId)}"]`); if(!svg) return; const data=new XMLSerializer().serializeToString(svg), img=new Image(), canvas=document.createElement('canvas'); canvas.width=1200; canvas.height=440; img.onload=()=>{ const ctx=canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0,canvas.width,canvas.height); const a=document.createElement('a'); a.download='research-chart.png'; a.href=canvas.toDataURL('image/png'); a.click(); }; img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(data); }
-function exportResearchConfig(){ downloadText('all_star_research.txt', JSON.stringify({version:1,items:state.researchItems||[],metrics:state.metrics||[]},null,2)); }
-function importResearchConfig(text){ const obj=JSON.parse(text); state.researchItems=(Array.isArray(obj)?obj:(obj.items||[])).map(normalizeResearchItem); if(obj.metrics){ state.metrics=(obj.metrics||[]).map(normalizeMetric); saveMetrics(); } const txt=JSON.stringify(state.researchItems); const refs=txt.match(/@[^\"']+/g)||[]; let missing=''; refs.forEach(r=>{ if(!findMetricByRef(r)) missing=r.slice(1); }); const modelRefs=[...txt.matchAll(/model\(\s*[\"']([^\"']+)[\"']\s*(?:,\s*[\"']([^\"']+)[\"']\s*)?\)/g)]; for(const mr of modelRefs){ const mm=findModelByNameOrId(mr[1]); if(!mm){ missing='model: '+mr[1]; break; } if(mr[2]&&!findCriterionByNameOrId(mm,mr[2])){ missing='model criteria: '+mr[1]+' / '+mr[2]; break; } } if(missing && els.topStatus) els.topStatus.textContent='This Research item references a missing '+missing; saveResearchItems(); if(els.researchModal?.classList.contains('open')) renderResearchCanvasAsync({reason:'import'}); else if(els.topStatus && !missing) els.topStatus.textContent='Research config imported. Open Research to safely render saved items.'; }
+function exportResearchConfig(){ downloadText('all_star_research.txt', JSON.stringify({version:2,items:state.researchItems||[],metrics:state.metrics||[],customSources:(state.customSources||[]).map(c=>({...clonePlain(c),rows:[],aoaBySheet:{}}))},null,2)); }
+function importResearchConfig(text){ const obj=JSON.parse(text); if(obj&&Array.isArray(obj.customSources)){ obj.customSources.forEach(def=>{ if(def.sourceKey&&!customSource(def.sourceKey)) state.customSources.push({...def,rows:def.rows||[],headers:def.headers||[],aoa:def.aoa||[],aoaBySheet:def.aoaBySheet||{}}); }); renderCustomSourcesList(); } state.researchItems=(Array.isArray(obj)?obj:(obj.items||[])).map(normalizeResearchItem); if(obj.metrics){ state.metrics=(obj.metrics||[]).map(normalizeMetric); saveMetrics(); } const txt=JSON.stringify(state.researchItems); const refs=txt.match(/@[^\"']+/g)||[]; let missing=''; refs.forEach(r=>{ if(!findMetricByRef(r)) missing=r.slice(1); }); const modelRefs=[...txt.matchAll(/model\(\s*[\"']([^\"']+)[\"']\s*(?:,\s*[\"']([^\"']+)[\"']\s*)?\)/g)]; for(const mr of modelRefs){ const mm=findModelByNameOrId(mr[1]); if(!mm){ missing='model: '+mr[1]; break; } if(mr[2]&&!findCriterionByNameOrId(mm,mr[2])){ missing='model criteria: '+mr[1]+' / '+mr[2]; break; } } if(missing && els.topStatus) els.topStatus.textContent='This Research item references a missing '+missing; saveResearchItems(); if(els.researchModal?.classList.contains('open')) renderResearchCanvasAsync({reason:'import'}); else if(els.topStatus && !missing) els.topStatus.textContent='Research config imported. Open Research to safely render saved items.'; }
 
 function updateRunQADateField(){
   const model=findModel(els.runModelSelect?.value);
@@ -4231,8 +4242,10 @@ function autofailHit(v,c){
   return v>=t;
 }
 
+function sourceDateRangeText(src,rows){ const vals=(rows||[]).map(r=>rowDateMillisForSource(src,r)).filter(Number.isFinite); return vals.length ? `${ymd(new Date(Math.min(...vals)))} – ${ymd(new Date(Math.max(...vals)))}` : 'No mapped dates'; }
 function dataHealthPanelHtml(){
-  const rows=allSourceKeys().map(src=>{ const headers=getHeaders(src)||[], rows=getRowsRaw(src)||[], cfg=getSourceSetting(activeModelForImport(),src); const imported=sourceHasImportedData(src); const fw=isCustomSource(src)?` · ${frameworkDef(sourceFramework(src)).label}`:''; const mapped=isCustomSource(src)?relevantMappingKeys(src,cfg.framework||sourceFramework(src)).filter(k=>cfg.columns?.[k]).length:0; const mapText=isCustomSource(src)?` · ${mapped}/${relevantMappingKeys(src,cfg.framework||sourceFramework(src)).length} mappings set`:''; return `<div class="checkResultRow ${imported?'okRow':'warnRow'}"><strong>${esc(labelSource(src))}${esc(fw)}</strong><div class="checkResultMeta">${rows.length.toLocaleString()} rows · ${headers.length} headers · header row ${esc(cfg.headerRow||1)} · start column ${esc(cfg.startCol||1)}${mapText}</div></div>`; }).join('');
+  const indexCurrent=dataIndexReady();
+  const rows=allSourceKeys().map(src=>{ const headers=sourceHeaders(src)||[], rows=sourceRows(src)||[], cfg=getSourceSetting(activeModelForImport(),src); const imported=sourceHasImportedData(src); const fw=isCustomSource(src)?` · ${frameworkDef(sourceFramework(src)).label}`:''; const keys=isCustomSource(src)?relevantMappingKeys(src,cfg.framework||sourceFramework(src)):[]; const mapped=keys.filter(k=>cfg.columns?.[k]).length; const mapText=isCustomSource(src)?` · ${mapped}/${keys.length} mappings set`:''; const warn=isCustomSource(src)?customSourceWarnings(src):[]; const cols=cfg.columns||{}; const mappedText=isCustomSource(src)?`<div class="checkResultMeta">Rep: <b>${esc(cols.rep||cols.fullName||'')}</b> · Team: <b>${esc(cols.team||cols.coach||'')}</b> · Date/Week: <b>${esc(cols.date||cols.week||cols.month||'')}</b></div>`:''; const warnText=warn.length?`<div class="checkResultMeta"><span class="badge warn">${warn.map(esc).join('</span> <span class="badge warn">')}</span></div>`:''; return `<div class="checkResultRow ${(imported&&!warn.length)?'okRow':'warnRow'}"><strong>${esc(labelSource(src))}${esc(fw)}</strong><div class="checkResultMeta">${rows.length.toLocaleString()} rows · ${headers.length} headers · ${esc(sourceDateRangeText(src,rows))} · indexes ${indexCurrent&&sourceIndex(src)?'current':'need rebuild'} · header row ${esc(cfg.headerRow||1)} · start column ${esc(cfg.startCol||1)}${mapText}</div>${mappedText}${warnText}</div>`; }).join('');
   return `<details class="panel" open><summary><strong>Data Health</strong> <span class="badge">${allSourceKeys().length} sources checked</span></summary><div class="checkResultList">${rows}</div></details>`;
 }
 function renderResults(model, teamPack, repPack, view, start, end, qaDateMode){
