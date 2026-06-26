@@ -3646,15 +3646,34 @@ function getMetricEntityCounts(metric,context={},options={}){
   state.metricCache=state.metricCache||new Map(); state.metricCache.set(cacheKey,out); return out;
 }
 
-function buildMetricBucketOptions(metricRef,researchContext={},metricOptions={}){
-  const metric=typeof metricRef==='object'?metricRef:findMetricByRef(metricRef);
-  if(!metric) return {level:metricOptions.metricLevel||metricOptions.valueLevel||'level2',buckets:[],entitiesByBucket:new Map()};
-  const item=researchContext.item||researchContext||currentResearchItemFromEditor?.()||{};
-  const cfg={...researchGearDefault(),...(metricOptions||{})};
-  const counts=getMetricEntityCounts(metric,{item,warnings:researchContext.warnings||[]},cfg);
-  const buckets=[...counts.entitiesByBucket.entries()].map(([key,entities])=>({key:String(key),label:String(key),countEntities:(entities||[]).length}));
-  buckets.sort((a,b)=>{ const na=Number(a.key), nb=Number(b.key); return Number.isFinite(na)&&Number.isFinite(nb)?na-nb:String(a.label).localeCompare(String(b.label)); });
-  return {level:cfg.metricLevel||cfg.valueLevel||'level2',buckets,entitiesByBucket:counts.entitiesByBucket,counts};
+function buildMetricBucketOptions(metricRefOrMetric,researchContext={},metricOptions={}){
+  const warnings=researchContext.warnings||[];
+  const metric=typeof metricRefOrMetric==='object'?normalizeMetric(metricRefOrMetric):findMetricByRef(metricRefOrMetric);
+  const cfg={...researchGearDefault(),...(metricOptions||{})}, level=cfg.metricLevel||cfg.valueLevel||'level2';
+  const empty=(reason)=>({ok:false,level,buckets:[],level1:[],level2:[],entitiesByBucket:new Map(),warnings:[reason].filter(Boolean),reason});
+  if(!metric) return empty('Missing metric source.');
+  const item=researchContext.item||currentResearchItemFromEditor?.()||{};
+  const metricSource=metric.source||researchContext.source||item.source;
+  if(!metricSource) return empty('Missing metric source.');
+  const rawMetricRows=getRowsRaw(metricSource)||[];
+  if(!rawMetricRows.length) return empty(`Metric source ${labelSource(metricSource)||metricSource} has no imported rows.`);
+  const hs=getResearchHeaders(metricSource)||[];
+  const ruleFields=[metric.field,...(metric.rules||[]).map(r=>r.field)].filter(Boolean).filter(f=>!metricRefName(f) && !parseResearchSourceFieldRef(f) && !parseResearchBangField(f));
+  const missing=ruleFields.find(f=>!hs.includes(f));
+  if(missing) warnings.push(`Metric rule field ${missing} was not found in ${labelSource(metricSource)||metricSource}.`);
+  const counts=getMetricEntityCounts(metric,{item,warnings},cfg);
+  if(!counts.countsByEntity.size) return {...empty('No representative or coach/team mapping was found for this metric context.'),counts};
+  const level2Counts=level==='level2'?counts:getMetricEntityCounts(metric,{item,warnings},{...cfg,metricLevel:'level2',valueLevel:'level2'});
+  const mk=(key,entities,label=String(key))=>({key:String(key),label,countEntities:(entities||[]).length,entityCount:(entities||[]).length});
+  const exact=[...level2Counts.entitiesByBucket.entries()].map(([key,entities])=>mk(key,entities));
+  exact.sort((a,b)=>{ const na=Number(a.key), nb=Number(b.key); return Number.isFinite(na)&&Number.isFinite(nb)?na-nb:String(a.label).localeCompare(String(b.label)); });
+  const captured=[], notCaptured=[];
+  counts.countsByEntity.forEach((count,entity)=>(Number(count)>0?captured:notCaptured).push(entity));
+  const level1=[mk('Not Captured',notCaptured,'Not Captured'),mk('Captured',captured,'Captured')];
+  const active=level==='level1'?level1:exact;
+  const activeMap=new Map(active.map(b=>[b.key,(level==='level2'?level2Counts:counts).entitiesByBucket.get(b.key)||(b.key==='Captured'?captured:b.key==='Not Captured'?notCaptured:[])]));
+  const reason=active.length?'':`No ${level==='level1'?'Level 1':'Level 2'} buckets found. The metric evaluated ${counts.countsByEntity.size||0} entities.`;
+  return {ok:!!active.length,level,buckets:active,level1,level2:exact,entitiesByBucket:activeMap,counts,warnings:[...warnings],reason};
 }
 function selectedMetricBucketSet(cfg,buckets){
   const sel=Array.isArray(cfg.selectedBuckets)?cfg.selectedBuckets:(Array.isArray(cfg.selected)?cfg.selected:null);
@@ -3896,7 +3915,7 @@ function evaluateResearchExpressionInContext(expression,rows,item,warnings=[]){
 }
 function openResearchGearPopup(key){
   const item=effectiveResearchItem(currentResearchItemFromEditor()), cfg=researchGearGet(key), field=researchGearFieldForKey(item,key,+(key.split(':')[1]||0)); if(!field){ alert('Choose a column or expression before filtering this field.'); return; }
-  const metricRef=findMetricByRef(field); if(metricRef){ openResearchMetricGearPopup(key,field,metricRef,cfg); return; }
+  const metricRef=findMetricByRef(field); if(metricRef){ openResearchMetricGearPopup({item,key,source:item.source,field,metric:metricRef,cfg}); return; }
   const modelRef=parseModelRef(field); if(modelRef){ openResearchModelGearPopup(key,field,modelRef,cfg); return; }
   if(key.startsWith('columnField:') && ((item.columns||[])[Number(key.split(':')[1])]?.mode)==='expression' && !resolveResearchExpressionField(field,item)){
     alert('Gear selection works on a single field. Expressions can be calculated directly.');
@@ -3911,14 +3930,29 @@ function openResearchGearPopup(key){
 }
 
 
-function openResearchMetricGearPopup(key,field,metric,cfg){
+function openResearchMetricGearPopup(args,legacyField,legacyMetric,legacyCfg){
+  if(typeof args!=='object' || Array.isArray(args)) args={key:args,field:legacyField,metric:legacyMetric,cfg:legacyCfg};
+  const researchItem=args.item||currentResearchItemFromEditor?.()||{}, key=args.key||'', field=args.field||'', metric=args.metric||findMetricByRef(field), cfg={...researchGearDefault(),...(args.cfg||{})}, source=args.source||researchItem.source;
   const wrap=document.createElement('div'); wrap.className='researchGearModal';
-  wrap.innerHTML=`<div class="researchGearBox"><h3>Metric bucket options for ${esc(metric.name||field)}</h3><div class="hint">Use metrics as cohorts. Level 1 makes captured/not captured groups; Level 2 preserves exact count or numeric buckets and restricts downstream calculations to only entities in that bucket.</div><div class="researchStepGrid"><div class="field"><label>Metric level</label><select data-mg="metricLevel"><option value="level1">Level 1: Captured / Not Captured</option><option value="level2">Level 2: Exact Count Buckets</option></select></div><div class="field"><label>Metric entity mode</label><select data-mg="metricEntityMode"><option value="representative">By Representative</option><option value="coach">By Coach / Team</option></select></div><div class="field"><label>Condition result</label><select data-mg="conditionResult"><option value="true">True / Matches criteria</option><option value="false">False / Does not match criteria</option></select></div><div class="field" data-coach-method><label>Coach/team counting method</label><select data-mg="metricCoachMethod"><option value="direct">Direct coach/team column</option><option value="roster">Team roster / rep membership</option></select></div><div class="field" data-decimal-bucket><label>Decimal bucket option</label><select data-mg="metricDecimalBucket"><option value="exact">Exact decimal</option><option value="rounded">Rounded whole number</option><option value="size">Custom bucket size</option></select></div><div class="field" data-bucket-size><label>Custom bucket size</label><input data-mg="metricBucketSize" type="number" min="0" step="any" placeholder="5"></div></div><div class="researchGearFilters"><button class="smallBtn" data-mg-buckets="all" type="button">Select all buckets</button> <button class="smallBtn" data-mg-buckets="none" type="button">Clear all buckets</button><input data-mg-bucket-search placeholder="Search buckets"></div><div class="researchGearValues" data-mg-bucket-list></div><div class="modalFoot"><button class="dark" data-mg-cancel>Cancel</button><button class="green" data-mg-apply>Save / Apply</button></div></div>`;
+  wrap.innerHTML=`<div class="researchGearBox"><h3>Metric bucket options for ${esc(metric?.name||field)}</h3><div class="hint">Use metrics as cohorts. Level 1 makes captured/not captured groups; Level 2 preserves exact count or numeric buckets and restricts downstream calculations to only entities in that bucket.</div><div class="researchStepGrid"><div class="field"><label>Metric level</label><select data-mg="metricLevel"><option value="level1">Level 1: Captured / Not Captured</option><option value="level2">Level 2: Exact Count Buckets</option></select></div><div class="field"><label>Metric entity mode</label><select data-mg="metricEntityMode"><option value="representative">By Representative</option><option value="coach">By Coach / Team</option></select></div><div class="field"><label>Condition result</label><select data-mg="conditionResult"><option value="true">True / Matches criteria</option><option value="false">False / Does not match criteria</option></select></div><div class="field" data-coach-method><label>Coach/team counting method</label><select data-mg="metricCoachMethod"><option value="direct">Direct coach/team column</option><option value="roster">Team roster / rep membership</option></select></div><div class="field" data-decimal-bucket><label>Decimal bucket option</label><select data-mg="metricDecimalBucket"><option value="exact">Exact decimal</option><option value="rounded">Rounded whole number</option><option value="size">Custom bucket size</option></select></div><div class="field" data-bucket-size><label>Custom bucket size</label><input data-mg="metricBucketSize" type="number" min="0" step="any" placeholder="5"></div></div><div class="researchGearFilters"><button class="smallBtn" data-mg-buckets="all" type="button">Select all buckets</button> <button class="smallBtn" data-mg-buckets="none" type="button">Clear all buckets</button><input data-mg-bucket-search placeholder="Search buckets"></div><div class="researchGearValues" data-mg-bucket-list></div><div class="researchGearWarn" data-mg-warning></div><div class="modalFoot"><button class="dark" data-mg-cancel>Cancel</button><button class="green" data-mg-apply>Save / Apply</button></div></div>`;
   document.body.appendChild(wrap); ['metricLevel','metricEntityMode','metricCoachMethod','metricDecimalBucket','metricBucketSize','conditionResult'].forEach(k=>{ const x=wrap.querySelector(`[data-mg="${k}"]`); if(x) x.value=cfg[k]||researchGearDefault()[k]||''; });
-  const renderBuckets=()=>{ const live={...cfg}; wrap.querySelectorAll('[data-mg]').forEach(x=>live[x.dataset.mg]=x.value); live.valueLevel=live.metricLevel; const opts=buildMetricBucketOptions(metric,{item},live), selected=selectedMetricBucketSet({...cfg,...live},opts.buckets), q=(wrap.querySelector('[data-mg-bucket-search]')?.value||'').toLowerCase(); wrap.querySelector('[data-mg-bucket-list]').innerHTML=opts.buckets.filter(b=>String(b.label).toLowerCase().includes(q)).map(b=>`<label class="researchGearValue"><input type="checkbox" data-mg-bucket="${esc(b.key)}" ${selected.has(String(b.key))?'checked':''}> <span>${esc(b.label)} <span class="hint">${b.countEntities} entities</span></span></label>`).join('')||'<div class="hint">No buckets found for current data/filter/date context.</div>'; };
-  const refresh=()=>{ const isCoach=wrap.querySelector('[data-mg="metricEntityMode"]').value==='coach'; wrap.querySelector('[data-coach-method]').classList.toggle('hidden',!isCoach); const isExpr=metric.mode!=='count'; wrap.querySelector('[data-decimal-bucket]').classList.toggle('hidden',!isExpr); wrap.querySelector('[data-bucket-size]').classList.toggle('hidden',!isExpr||wrap.querySelector('[data-mg="metricDecimalBucket"]').value!=='size'); renderBuckets(); };
-  wrap.querySelectorAll('[data-mg]').forEach(x=>x.onchange=refresh); wrap.querySelector('[data-mg-bucket-search]').oninput=renderBuckets; wrap.querySelector('[data-mg-buckets="all"]').onclick=()=>wrap.querySelectorAll('[data-mg-bucket]').forEach(x=>x.checked=true); wrap.querySelector('[data-mg-buckets="none"]').onclick=()=>wrap.querySelectorAll('[data-mg-bucket]').forEach(x=>x.checked=false); refresh(); wrap.querySelector('[data-mg-cancel]').onclick=()=>wrap.remove();
-  wrap.querySelector('[data-mg-apply]').onclick=()=>{ const next={...researchGearDefault(),...cfg}; wrap.querySelectorAll('[data-mg]').forEach(x=>next[x.dataset.mg]=x.value); next.valueLevel=next.metricLevel; next.selectedBuckets=[...wrap.querySelectorAll('[data-mg-bucket]:checked')].map(x=>x.dataset.mgBucket); state.editingResearchGear[key]=next; wrap.remove(); };
+  let selectedBuckets=Array.isArray(cfg.selectedBuckets)?new Set(cfg.selectedBuckets.map(String)):null;
+  const liveCfg=()=>{ const live={...cfg}; wrap.querySelectorAll('[data-mg]').forEach(x=>live[x.dataset.mg]=x.value); live.valueLevel=live.metricLevel; return live; };
+  const freshItem=()=>currentResearchItemFromEditor?.()||researchItem||{};
+  const renderBuckets=()=>{
+    const live=liveCfg(), box=wrap.querySelector('[data-mg-bucket-list]'), warn=wrap.querySelector('[data-mg-warning]');
+    const currently=[...wrap.querySelectorAll('[data-mg-bucket]')]; if(currently.length) selectedBuckets=new Set(currently.filter(x=>x.checked).map(x=>String(x.dataset.mgBucket)));
+    const opts=buildMetricBucketOptions(metric||field,{item:freshItem(),source,warnings:[]},live), q=(wrap.querySelector('[data-mg-bucket-search]')?.value||'').toLowerCase();
+    if(!selectedBuckets) selectedBuckets=selectedMetricBucketSet({...cfg,...live},opts.buckets);
+    const available=new Set((opts.buckets||[]).map(b=>String(b.key))), dropped=[...selectedBuckets].filter(v=>!available.has(v)); dropped.forEach(v=>selectedBuckets.delete(v));
+    const list=(opts.buckets||[]).filter(b=>String(b.label).toLowerCase().includes(q));
+    box.innerHTML=list.map(b=>`<label class="researchGearValue"><input type="checkbox" data-mg-bucket="${esc(b.key)}" ${selectedBuckets.has(String(b.key))?'checked':''}> <span>${esc(b.label)} <span class="hint">${b.countEntities ?? b.entityCount} ${Number(b.countEntities ?? b.entityCount)===1?'entity':'entities'}</span></span></label>`).join('')||`<div class="hint">${esc(opts.reason||'No Level 2 buckets found. The metric evaluated 0 entities.')}</div>`;
+    warn.textContent=[...(opts.warnings||[]),...(dropped.length?[`Some saved bucket selections no longer exist and were cleared: ${dropped.join(', ')}`]:[])].filter(Boolean).join(' ');
+  };
+  const safeRenderBuckets=()=>{ try{ renderBuckets(); }catch(err){ const box=wrap.querySelector('[data-mg-bucket-list]'); if(box) box.innerHTML=`<div class="researchWarn">${esc(err.message||err)}</div>`; console.error('[Research Metric Gear] bucket render failed',err); } };
+  const refresh=()=>{ const isCoach=wrap.querySelector('[data-mg="metricEntityMode"]').value==='coach'; wrap.querySelector('[data-coach-method]').classList.toggle('hidden',!isCoach); const isExpr=metric?.mode!=='count'; wrap.querySelector('[data-decimal-bucket]').classList.toggle('hidden',!isExpr); wrap.querySelector('[data-bucket-size]').classList.toggle('hidden',!isExpr||wrap.querySelector('[data-mg="metricDecimalBucket"]').value!=='size'); safeRenderBuckets(); };
+  wrap.querySelectorAll('[data-mg]').forEach(x=>x.onchange=refresh); wrap.querySelector('[data-mg-bucket-search]').oninput=safeRenderBuckets; wrap.querySelector('[data-mg-buckets="all"]').onclick=()=>{ wrap.querySelectorAll('[data-mg-bucket]').forEach(x=>x.checked=true); selectedBuckets=new Set([...wrap.querySelectorAll('[data-mg-bucket]')].map(x=>String(x.dataset.mgBucket))); }; wrap.querySelector('[data-mg-buckets="none"]').onclick=()=>{ wrap.querySelectorAll('[data-mg-bucket]').forEach(x=>x.checked=false); selectedBuckets=new Set(); }; refresh(); wrap.querySelector('[data-mg-cancel]').onclick=()=>wrap.remove();
+  wrap.querySelector('[data-mg-apply]').onclick=()=>{ const next={...researchGearDefault(),...cfg}; wrap.querySelectorAll('[data-mg]').forEach(x=>next[x.dataset.mg]=x.value); next.valueLevel=next.metricLevel; next.selectedBuckets=[...wrap.querySelectorAll('[data-mg-bucket]:checked')].map(x=>x.dataset.mgBucket); if(args.axisItemId) next.axisItemId=args.axisItemId; if(args.axisItemExpression) next.axisItemExpression=args.axisItemExpression; state.editingResearchGear[key]=next; if(typeof args.onApply==='function') args.onApply(next); wrap.remove(); };
 }
 
 function openResearchModelGearPopup(key,field,ref,cfg){
@@ -3975,7 +4009,7 @@ function renderResearchGroupAxisItemsEditor(){
 }
 function openResearchGroupAxisItemGear(i){
   const list=state.editingResearchGroupAxisItems||(state.editingResearchGroupAxisItems=[]), it=list[i]; if(!it) return; const field=it.expression||''; const metric=findMetricByRef(field);
-  if(metric){ const key='groupAxisItem:'+it.id; state.editingResearchGear[key]={...researchGearDefault(),...it}; openResearchMetricGearPopup(key,field,metric,state.editingResearchGear[key]); const t=setInterval(()=>{ if(!document.querySelector('.researchGearModal')){ Object.assign(it,state.editingResearchGear[key]||{}); clearInterval(t); renderResearchGroupAxisItemsEditor(); } },250); return; }
+  if(metric){ const key='groupAxisItem:'+it.id; state.editingResearchGear[key]={...researchGearDefault(),...it}; openResearchMetricGearPopup({item:currentResearchItemFromEditor(),key,source:currentResearchItemFromEditor().source,field,metric,cfg:state.editingResearchGear[key],axisItemId:it.id,axisItemExpression:field,onApply:next=>{ state.editingResearchGear[key]=next; Object.assign(it,next); }}); const t=setInterval(()=>{ if(!document.querySelector('.researchGearModal')){ Object.assign(it,state.editingResearchGear[key]||{}); clearInterval(t); renderResearchGroupAxisItemsEditor(); } },250); return; }
   const wrap=document.createElement('div'); wrap.className='researchGearModal'; wrap.innerHTML=`<div class="researchGearBox"><h3>Group item settings</h3><div class="researchStepGrid"><div class="field"><label>Custom label/header</label><input data-gs="label" value="${esc(it.label||'')}"></div><div class="field"><label>Condition result</label><select data-gs="conditionResult"><option value="true">True / Matches criteria</option><option value="false">False / Does not match criteria</option></select></div><div class="field"><label>Entity mode</label><select data-gs="entityMode"><option value="representative">Representative</option><option value="coach">Coach-Team</option></select></div></div><div class="modalFoot"><button class="dark" data-gs-cancel>Cancel</button><button class="green" data-gs-apply>Save / Apply</button></div></div>`; document.body.appendChild(wrap); wrap.querySelector('[data-gs="conditionResult"]').value=it.conditionResult||'true'; wrap.querySelector('[data-gs="entityMode"]').value=it.entityMode||'representative'; wrap.querySelector('[data-gs-cancel]').onclick=()=>wrap.remove(); wrap.querySelector('[data-gs-apply]').onclick=()=>{ wrap.querySelectorAll('[data-gs]').forEach(x=>it[x.dataset.gs]=x.value); wrap.remove(); renderResearchGroupAxisItemsEditor(); };
 }
 
