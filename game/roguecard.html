@@ -1517,6 +1517,9 @@ render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and 
 
 
 
+
+
+
 </script>
 <script>
 /* Tiny Tactics recruit expansion: 25 distinct troops with capped support/storm hooks. */
@@ -2399,6 +2402,10 @@ Page Novice|📖✨|Mage,Holy|32|6|1.02|support|Progression mage support. Each t
 
 
 
+
+
+
+
 </script>
 
 <script>
@@ -2448,6 +2455,10 @@ Corner Idol|🗿|Spirit,Stone,Healer|76|5|.7|support|Corner specialist. Stronger
   const oldDetail=detailHtml;detailHtml=function(u){let html=oldDetail(u);if(u?.team==='ally'&&names.has(u.n)){let cur=five(u)?(six(u)?'6★+ mastery active.':'5★ specialization active.'):'Base role active.';let nxt=!five(u)?'Next: 5★ unlocks role specialization.':(!six(u)?'Next: 6★+ unlocks mastery behavior.':'Max role kit online with capped scaling.');html+=`<p class="hint"><b>Role scaling:</b> ${cur}<br><b>Next-star effect:</b> ${nxt}</p>`}return html};
   const oldHelp=help;help=function(){oldHelp();setTimeout(()=>{if($('body'))$('body').innerHTML+=`<p><b>Request 2 heroes:</b> Hex Bishop, Rust Prophet, Wall Builder, Root Binder, Oath Hunter, Siege Oracle, Rain Saint, Lantern Nurse, Tax Imp, Golden Knight, Column Captain, Diagonal Witch, and Corner Idol fill missing strategic roles and interact with Fragile, Armor Break, Root, Barrier, Taunt, Silence, Stagger, Vulnerable, marked kills, economy, rows, columns, diagonals, and corners.</p>`},0)};
 })();
+
+
+
+
 
 
 </script>
@@ -2912,6 +2923,77 @@ Corner Idol|🗿|Spirit,Stone,Healer|76|5|.7|support|Corner specialist. Stronger
   const oldTraitsGold=traits;traits=function(){oldTraitsGold();let mt=moneyTier(),el=$('traits');if(el){let d=document.createElement('div');d.className='trait synergyTag '+(mt?'on big':'nearNext');d.textContent=`🪙 Fortune Engine ${mt?('T'+mt):'0'} (${(S.squad||[]).filter(u=>u&&(u.t||[]).includes('Money')).length}/2/4/6)`;d.onclick=()=>show('🪙 Fortune Engine',`Gold held: ${S.coins||0} • Total collected: ${S.totalGoldCollected||0}`,`<p><b>Tier 1 (2 Money):</b> victory gold increases; Money heroes gain tiny total-gold bonuses.</p><p><b>Tier 2 (4 Money):</b> held gold improves capped effects and breakpoints. Marked/armored kills can mint small capped gold.</p><p><b>Tier 3 (6 Money):</b> Money caps improve and a random Money hero gains a small held-gold shield each round.</p>`);el.appendChild(d)}};
   const oldDetailGold=detailHtml;detailHtml=function(u){let h=oldDetailGold(u);if(u&&u.team==='ally'){ensureUnitProgress(u);let lines=[];if(MONEY_NAMES.has(u.n)||(u.t||[]).includes('Money')){['damage','healing','shield','markBonus','coinBonus'].forEach(m=>{let g=getGoldScale(u,m),label={damage:'Current Gold Edge',healing:'Golden Care',shield:'Vault Shield',markBonus:u.n==='Miner'?"Miner's Claim":"Banker's Fortune",coinBonus:'Coin Engine'}[m];if((m==='damage'&&u.n!=='Coinblade')||(m==='healing'&&u.n!=='Golden Medic')||(m==='shield'&&!['Lucky Kobold','Golden Knight'].includes(u.n))||(m==='markBonus'&&!['Banker','Miner','Debt Collector','Oil Goblin'].includes(u.n)))return;lines.push(`${label}: +${Math.round(g.value)} from ${m==='damage'||m==='healing'?g.held:g.total} gold. Next +1 at ${g.next}. Rate 1/${g.per}, cap +${Math.round(g.cap)}.`)})}if(u.selfUpgradeType)lines.push(`Self-upgrade: ${u.selfUpgradeType}, progress ${u.selfUpgradeProgress||0}; kills ${u.kills||0}, survived ${u.roundsSurvived||0} rounds.`);if(lines.length)h+=`<p class="hint"><b>Gold & Growth:</b><br>${lines.join('<br>')}</p>`}return h};
   ensureRunEconomy();console.log('Loaded Fortune Engine gold scaling, Golden Medic, run economy tracking, and self-upgrading heroes.');
+})();
+
+
+
+
+
+
+
+
+
+
+/* === World phase, run-growth bonds, timed heroes, and faster spell pulses === */
+(function(){
+  const SPELL_INTERVAL_MS=5000, STRONG_SPELL_INTERVAL_MS=6000, BOSS_SPELL_INTERVAL_MS=7000;
+  window.SPELL_INTERVAL_MS=SPELL_INTERVAL_MS;
+  const PHASES=[
+    {min:130,id:'chaos',e:'🌌',n:'Final Chaos',banner:'Final Chaos: endless reality fractures',chip:'Chaos 130+',scene:'🌌🌀⚡🔥',wave:'Chaos'},
+    {min:110,id:'endless',e:'🕳️',n:'Endless Rift',banner:'Endless Rift: extreme mode awakens',chip:'Endless 110+',scene:'🕳️👁️🌑',wave:'Endless'},
+    {min:90,id:'inferno',e:'🏆',n:'Gold Inferno',banner:'Gold Inferno: greed and danger surge',chip:'Danger 90+',scene:'🏆🔥💰',wave:'Inferno'},
+    {min:75,id:'eclipse',e:'🌑',n:'Frozen Eclipse',banner:'Frozen Eclipse: late-game chill falls',chip:'Late 75+',scene:'🌑❄️🪨',wave:'Eclipse'},
+    {min:65,id:'stormfall',e:'⛈️',n:'Stormfall',banner:'Stormfall: corrupted elites gather',chip:'Elite 65+',scene:'⛈️👻⚡',wave:'Stormfall'},
+    {min:60,id:'crimson',e:'🔴',n:'Crimson Rift',banner:'Crimson Rift: endgame pressure begins',chip:'Rift 60+',scene:'🔴🩸🗡️',wave:'Rift'},
+    {min:40,id:'iron',e:'⚙️',n:'Iron Midgame',banner:'Iron Midgame: enemies adapt',chip:'Mid 40+',scene:'⚙️🛡️🏭',wave:'Iron'},
+    {min:20,id:'dawn',e:'🌤️',n:'Meadow Dawn',banner:'Meadow Dawn: the battlefield brightens',chip:'Dawn 20+',scene:'🌤️🌼🦋',wave:'Dawn'},
+    {min:1,id:'meadowphase',e:'🌿',n:'Quiet Meadow',banner:'Quiet Meadow: build your opening squad',chip:'Opening',scene:'🌿🍄✨',wave:'Meadow'}
+  ];
+  window.getWorldPhase=function(round){round=Math.max(1,Number(round)||1);return PHASES.find(p=>round>=p.min)||PHASES[PHASES.length-1]};
+  const TIMED_HEROES=[
+    ['Battle Standard','🚩✨','Royal,Guard,Spirit',62,3,.8,'support','Timed Hero: lasts 4 rounds. Nearby allies gain attack/shield; nearby kills can grant safe star progress.'],
+    ['Gold Idol','🪙🗿','Money,Spirit',52,2,.7,'support','Timed Hero: lasts 3 rounds. Nearby kills mint capped gold and can reward Money allies.'],
+    ['War Totem','🐾🗿','Beast,Royal,Spirit',72,5,.75,'support','Timed Hero: lasts 5 rounds. Nearby Beast/Blood/Royal allies gain fury and speed.'],
+    ['Healing Lantern','🏮','Holy,Healer,Spirit',50,2,.85,'support','Timed Hero: lasts 4 rounds. Pulses healing and shields, then releases a final capped heal.'],
+    ['Arcane Battery','🔋⚡','Mage,Machine,Storm',46,6,.75,'support','Timed Hero: lasts 3 rounds. Fires 5-second lightning and empowers spell allies.'],
+    ['Thorn Shrine','🌿🪨','Nature,Poison,Stone',64,3,.65,'support','Timed Hero: lasts 4 rounds. Roots/poisons enemies and rewards poison kills safely.']
+  ];
+  const TIMED_NAMES=new Set(TIMED_HEROES.map(x=>x[0]));
+  TIMED_HEROES.forEach(x=>{if(!heroes.some(h=>h.n===x[0]))heroes.push({n:x[0],e:x[1],t:x[2].split(','),hp:x[3],atk:x[4],spd:x[5],focus:x[6],a:x[7],team:'ally',timed:true,baseLifetime:{'Gold Idol':3,'Arcane Battery':3,'War Totem':5}[x[0]]||4})});
+  function isTimed(u){return !!(u&&(u.timed||TIMED_NAMES.has(u.n)))}
+  function timedBase(u){return ({'Gold Idol':3,'Arcane Battery':3,'War Totem':5}[u.n]||4)+((u.star||1)>=10?2:(u.star||1)>=5?1:0)}
+  window.getTimedHeroKillRequirement=function(round,star){let base=round>=110?11:round>=80?8:round>=50?6:4;return Math.max(3,base-((star||1)>=10?2:(star||1)>=5?1:0))};
+  window.getKillGrowthThreshold=function(unit,round){let base=round>=110?11:round>=80?9:round>=50?7:5;return Math.max(3,base-Math.floor(((unit&&unit.star)||1)/5))};
+  const KILL_SET=new Set('Wolf Samurai Vampire Berserker Reaper Shadow Cat Rift Blader Ember Ronin Blood Pike Pirate Debt Collector Coinblade'.split(/ (?=[A-Z])/).flatMap(x=>[x]));
+  ['Wolf','Samurai','Vampire','Berserker','Reaper','Shadow Cat','Rift Blader','Ember Ronin','Blood Pike','Pirate','Debt Collector','Coinblade'].forEach(n=>KILL_SET.add(n));
+  const SURVIVE_SET=new Set(['Squire','Knight','Golem','Turtle','Sentinel','Amber Warden','Star Paladin','Root Mother','Toxic Slug','Frost Mason','Lightning Rod','Banner Bearer']);
+  const BOND_RULES=[['Guard','Royal','Command Bond'],['Fire','Machine','Overheat Engine'],['Frost','Storm','Charged Core'],['Nature','Poison','Toxic Garden'],['Holy','Shadow','Eclipse Bond'],['Healer','Guard','Care Wall'],['Money','Money','Fortune Care'],['Beast','Beast','Pack Bond'],['Mage','Blade','Spellblade Order']];
+  function ensureGrowth(u){if(!u)return u;u.kills=Number(u.kills||0);u.roundsSurvived=Number(u.roundsSurvived||0);u.levelsSurvived=Number(u.levelsSurvived||u.roundsSurvived||0);u.adjacencyBondProgress=u.adjacencyBondProgress&&typeof u.adjacencyBondProgress==='object'?u.adjacencyBondProgress:{};u.personalGoldGenerated=Number(u.personalGoldGenerated||u.lifetimeGoldValueGenerated||0);u.personalGrowthStacks=u.personalGrowthStacks&&typeof u.personalGrowthStacks==='object'?u.personalGrowthStacks:{};u.personalEvolutionStage=Number(u.personalEvolutionStage||0);if(isTimed(u)&&!u.temporaryLifetimeRemaining)u.temporaryLifetimeRemaining=timedBase(u);u.timedRewardProgress=Number(u.timedRewardProgress||0);u.spellGrowth=Number(u.spellGrowth||0);return u}
+  function allies(){return (S.squad||[]).filter(u=>u&&!u.dead)}
+  function nearIds(i,u){return (u&&u.star>=6)?[...adj(i),...diagIds(i)]:adj(i)}
+  function hasT(u,t){return !!(u&&(u.t||[]).includes(t))}
+  function compatibleBond(u,v){if(!u||!v)return null;for(const [a,b,name] of BOND_RULES){if((hasT(u,a)&&hasT(v,b))||(hasT(u,b)&&hasT(v,a)))return {a,b,name}}return null}
+  const oldClone=clone;clone=function(h){let u=oldClone(h);if(h&&h.timed){u.timed=true;u.temporaryLifetimeRemaining=timedBase(u);u.timedRewardProgress=0}return ensureGrowth(u)};
+  const oldHdr=hdr;hdr=function(){oldHdr();let ph=getWorldPhase(S.round),app=$('app');app.className=(app.className||'').replace(/wp-\w+/g,'').trim();app.classList.add('wp-'+ph.id);$('threat').textContent+=` • ${ph.e} ${ph.n}`};
+  const oldTraits=traits;traits=function(){oldTraits();let el=$('traits'),ph=getWorldPhase(S.round);if(el){let d=document.createElement('div');d.className='trait regionChip pulse';d.textContent=`${ph.e} ${ph.chip}`;el.appendChild(d)}let bonds=allies().map(u=>u.activeBondHint).filter(Boolean).slice(0,2);bonds.forEach(b=>{let d=document.createElement('div');d.className='trait nearNext';d.textContent=b;el.appendChild(d)})};
+  const oldEnemies=enemies;enemies=function(){oldEnemies();let ph=getWorldPhase(S.round);$('enemyTitle').textContent=`${ph.e} ${ph.wave} ${region().e} ${region().n} ${S.round%5===0?'Boss':'Wave'} • ${ph.scene}`};
+  function worldBanner(){let ph=getWorldPhase(S.round);if(S._lastWorldPhase===ph.id)return;S._lastWorldPhase=ph.id;let d=document.createElement('div');d.className='regionBanner worldPhaseBanner';d.innerHTML=`<b>${ph.e} ${ph.n}</b>${ph.banner} <span>${ph.scene}</span>`;document.body.appendChild(d);setTimeout(()=>d.remove(),3900)}
+  const oldFight=fight;fight=function(){(S.squad||[]).forEach(ensureGrowth);worldBanner();return oldFight()};
+  const oldStart=startBuffs;startBuffs=function(){oldStart();(S.squad||[]).forEach((u,i)=>{if(!u)return;ensureGrowth(u);u.activeBondHint='';let match=nearIds(i,u).map(j=>S.squad[j]).filter(Boolean).map(v=>compatibleBond(u,v)).find(Boolean);if(match){let key=match.name,need=Math.max(2,5-Math.floor((u.star||1)/4));u.adjacencyBondProgress[key]=(u.adjacencyBondProgress[key]||0)+1;u.activeBondHint=`Bond growing: ${match.a} + ${match.b}`;floatAlly(i,`${need-(u.adjacencyBondProgress[key]%need)||need}R Bond`,'#7c3aed');if(u.adjacencyBondProgress[key]%need===0){u.personalGrowthStacks.bond=Math.min(10+(u.star||1),Number(u.personalGrowthStacks.bond||0)+1);u.atk+=1;u.baseAtk=(u.baseAtk||u.atk)+1;u.shield=(u.shield||0)+6+(u.star||1);msg(`${u.e} ${u.n} unlocked ${key}: permanent run growth.`)}}})};
+  function applyKillGrowth(killer){if(!killer||!KILL_SET.has(killer.n))return;ensureGrowth(killer);let need=getKillGrowthThreshold(killer,S.round),s=killer.personalGrowthStacks.kill||0;if((killer.kills||0)>=need*(s+1)&&s<18+(killer.star||1)*2){killer.personalGrowthStacks.kill=s+1;let atk=1+((killer.star||1)>=6?1:0);killer.atk+=atk;killer.baseAtk=(killer.baseAtk||killer.atk)+atk;if(['Wolf','Shadow Cat'].includes(killer.n))killer.spd=Math.min(3.1,(killer.spd||1)+.02);if(killer.n==='Vampire')killer.growthLeech=Math.min(.18,(killer.growthLeech||0)+.01);if(killer.n==='Reaper')killer.executeBoost=Math.min(.18,(killer.executeBoost||0)+.015);floatAlly(ix(killer),`Evolve +${atk} ATK`,'#dc2626')}}
+  function nearbyTimedKillRewards(killer,dead){allies().filter(isTimed).forEach(t=>{let ti=ix(t),ki=ix(killer);if(ti<0||ki<0||!nearIds(ti,t).includes(ki))return;let need=getTimedHeroKillRequirement(S.round,t.star||1);t.timedRewardProgress=(t.timedRewardProgress||0)+1;floatAlly(ti,`Pulse ${t.timedRewardProgress}/${need}`,'#f59e0b');if(t.n==='Gold Idol'){let add=Math.min(6,1+Math.floor((S.coins||0)/75)+Math.floor((t.star||1)/5));S.coins+=add;t.personalGoldGenerated=(t.personalGoldGenerated||0)+add;floatAlly(ti,`+${add} Gold`,'#f59e0b')}if(t.timedRewardProgress>=need){t.timedRewardProgress=0;let pool=nearIds(ti,t).map(j=>S.squad[j]).filter(u=>u&&!isTimed(u)&&(typeof validStarGrantTarget!=='function'||validStarGrantTarget(u)));let target=pool.find(u=>t.n==='Gold Idol'&&hasT(u,'Money'))||pool[0];if(target&&typeof grantUpgradeStarProgress==='function'&&t._starRewards!==(S.round+'-'+S.kills)){t._starRewards=S.round+'-'+S.kills;grantUpgradeStarProgress(target,1,t.n);floatAlly(ix(target),'Star +','#facc15');msg(`${t.e} ${t.n} granted safe Star + to ${target.n}.`)}else if(target){target.atk+=1;target.baseAtk=(target.baseAtk||target.atk)+1;floatAlly(ix(target),'Perm +1','#dc2626')}}})}
+  const oldKill=kill;kill=function(src,t){let killer=src&&src.team==='ally'?src:t&&t.lastHit;let before=S.coins||0;oldKill(src,t);if(t&&t.team==='enemy'&&t.dead&&killer){ensureGrowth(killer);killer.personalGoldGenerated+=(S.coins||0)-before;applyKillGrowth(killer);nearbyTimedKillRewards(killer,t)}};
+  function survivalGrowth(){(S.squad||[]).forEach((u,i)=>{if(!u||u.dead||isTimed(u))return;ensureGrowth(u);u.roundsSurvived++;u.levelsSurvived++;if(!SURVIVE_SET.has(u.n))return;let need=Math.max(2,4-Math.floor((u.star||1)/5)),st=u.personalGrowthStacks.survive||0,cap=8+(u.star||1)*5;if(u.roundsSurvived>=need*(st+1)&&st<cap){u.personalGrowthStacks.survive=st+1;let hp=3+Math.floor((u.star||1)/2);u.maxHp+=hp;u.baseMaxHp=(u.baseMaxHp||u.maxHp)+hp;u.hp+=hp;u.shield=(u.shield||0)+Math.min(30,4+(u.star||1));floatAlly(i,`Survive +${hp}HP`,'#16a34a')}})}
+  function expireTimed(win){for(let i=0;i<S.squad.length;i++){let u=S.squad[i];if(!u||!isTimed(u))continue;ensureGrowth(u);u.temporaryLifetimeRemaining=Math.max(0,(u.temporaryLifetimeRemaining||timedBase(u))-1);if(u.temporaryLifetimeRemaining<=0){if(win&&u.n==='Healing Lantern')nearIds(i,u).map(j=>S.squad[j]).filter(Boolean).forEach(a=>heal(u,a,Math.min(45,8+(u.timedRewardProgress||0)*3+(u.star||1)*2)));if(win&&u.n==='Arcane Battery'){let e=liveE()[0];if(e)dmg(u,e,Math.min(90,15+(u.spellStored||0)),'storm')}floatAlly(i,'Expired','#7c3aed');S.squad[i]=null;msg(`${u.e} ${u.n} expired cleanly after lending its power.`)}}}
+  const oldEnd=end;end=function(win){if(win){survivalGrowth();expireTimed(true)}return oldEnd(win)};
+  function spellPulse(){if(!S.battle||S.phase!=='battle')return;let now=Date.now();if(now-(S.battle.lastSpellPulse||0)<SPELL_INTERVAL_MS)return;S.battle.lastSpellPulse=now;allies().forEach((u,i)=>{ensureGrowth(u);let st=u.star||1,ids=nearIds(i,u),near=ids.map(j=>S.squad[j]).filter(Boolean);if(isTimed(u)){let txt='Pulse',color='#7c3aed';if(u.n==='Battle Standard'){near.forEach(a=>{a.atk+=.35+st*.08;giveShield(a,6+st*2)});txt='Banner';color='#f59e0b'}if(u.n==='War Totem'){near.filter(a=>hasT(a,'Beast')||hasT(a,'Blood')||hasT(a,'Royal')).forEach(a=>{a.cd=(a.cd||0)-.35;buffSpd(a,.025)});txt='Fury';color='#dc2626'}if(u.n==='Healing Lantern'){near.forEach(a=>{heal(u,a,5+st*2);giveShield(a,4+st)});u.timedRewardProgress=(u.timedRewardProgress||0)+1;txt='Heal';color='#16a34a'}if(u.n==='Arcane Battery'){let e=liveE()[0];if(e){dmg(u,e,10+st*3,'storm');u.spellStored=Math.min(70,(u.spellStored||0)+6+st)}near.filter(a=>hasT(a,'Mage')||hasT(a,'Machine')||hasT(a,'Storm')).forEach(a=>a.spellGrowth=Math.min(12,(a.spellGrowth||0)+1));txt='Zap';color='#ca8a04'}if(u.n==='Thorn Shrine'){liveE().slice(0,3).forEach(e=>{e.poison=(e.poison||0)+2+st*.4;e.slow=Math.min(.45,(e.slow||0)+.1)});near.filter(a=>hasT(a,'Nature')||hasT(a,'Poison')).forEach(a=>heal(u,a,3+st));txt='Root';color='#16a34a'}if(u.n==='Gold Idol'){txt='+Gold';color='#f59e0b'}pulseAtUnit(u,u.n==='Arcane Battery'?'blue':u.n==='Healing Lantern'?'gold':u.n==='Thorn Shrine'?'green':'purple');floatAlly(i,txt,color)}
+      else if(hasT(u,'Mage')||hasT(u,'Storm')||hasT(u,'Frost')||u.focus==='support'||['Totem','Shaman','Banner Bearer','Lightning Rod','Root Mother','Frost Mason'].includes(u.n)){let e=liveE()[0];if(e&&(hasT(u,'Mage')||hasT(u,'Storm'))){dmg(u,e,Math.min(45,5+st*2+(u.spellGrowth||0)),'storm');floatAlly(i,'Zap','#ca8a04');pulseAtUnit(u,'blue')}if(hasT(u,'Frost')&&e){e.slow=Math.min(.5,(e.slow||0)+.12);dmg(u,e,Math.min(22,3+st),'frost');floatAlly(i,'Ice','#0284c7')}if(u.focus==='support'){near.slice(0,3).forEach(a=>giveShield(a,3+st));floatAlly(i,'Shield','#2563eb')}}
+    })}
+  const oldRegionTick=regionTick;regionTick=function(){oldRegionTick();spellPulse()};
+  const oldUnitEl=unitEl;unitEl=function(u){let d=oldUnitEl(u);if(isTimed(u)){ensureGrowth(u);d.classList.add('timedHero');d.insertAdjacentHTML('afterbegin',`<span class="timerBadge">${u.temporaryLifetimeRemaining||timedBase(u)}R</span><span class="auraBadge">${u.n==='Gold Idol'?'🪙':u.n==='Arcane Battery'?'⚡':u.n==='Healing Lantern'?'💚':'✨'}</span>`)}else if(u&&u.activeBondHint)d.insertAdjacentHTML('beforeend','<span class="bondBadge">Bond+</span>');return d};
+  const oldDetail=detailHtml;detailHtml=function(u){let h=oldDetail(u);if(u&&u.team==='ally'){ensureGrowth(u);let grow=`Kills ${u.kills||0}; survived ${u.roundsSurvived||0} rounds / ${u.levelsSurvived||0} levels; growth stacks K${(u.personalGrowthStacks||{}).kill||0} S${(u.personalGrowthStacks||{}).survive||0} B${(u.personalGrowthStacks||{}).bond||0}; gold generated ${Math.max(0,Math.round(u.personalGoldGenerated||0))}.`;h+=`<p class="hint"><b>Run Growth:</b><br>${grow}<br>${u.activeBondHint||'Placement bonds grow when adjacent tags match.'}</p>`;if(isTimed(u)){let need=getTimedHeroKillRequirement(S.round,u.star||1),near=nearIds(ix(u),u).map(j=>S.squad[j]).filter(Boolean).map(a=>a.n).slice(0,3).join(', ')||'none';h+=`<p class="hint"><b>Timed Hero:</b><br>Lifetime remaining: ${u.temporaryLifetimeRemaining||timedBase(u)} rounds. Aura: nearby ${u.n==='Gold Idol'?'Money/gold rewards':u.n==='Arcane Battery'?'Mage/Machine/Storm spell damage':u.n==='Healing Lantern'?'healing and shield pulses':u.n==='War Totem'?'Beast/Blood/Royal fury':'attack, shield, roots, or star support'}. Progress: ${u.timedRewardProgress||0}/${need}. Reward target: ${near}. Expiration: ${u.n==='Healing Lantern'?'final capped heal':u.n==='Arcane Battery'?'final capped lightning burst':'clean disappearance with buffs removed'}.</p>`}}return h};
+  const css=document.createElement('style');css.textContent=`#app.wp-dawn{background:radial-gradient(circle at 15% 10%,#fef9c3 0 14%,transparent 15%),linear-gradient(180deg,#ecfccb,#dcfce7 55%,#f8fafc)}#app.wp-iron{background:radial-gradient(circle at 80% 8%,#fecaca 0 12%,transparent 13%),linear-gradient(180deg,#f1f5f9,#e2e8f0 50%,#fff7ed)}#app.wp-crimson{background:radial-gradient(circle at 50% 5%,#fecaca 0 18%,transparent 19%),linear-gradient(180deg,#fee2e2,#fef3c7 58%,#f8fafc)}#app.wp-stormfall{background:radial-gradient(circle at 80% 9%,#fde68a 0 13%,transparent 14%),linear-gradient(180deg,#ddd6fe,#dbeafe 55%,#f1f5f9)}#app.wp-eclipse{background:radial-gradient(circle at 22% 12%,#e0f2fe 0 16%,transparent 17%),linear-gradient(180deg,#e0e7ff,#f0f9ff 48%,#e2e8f0)}#app.wp-inferno{background:radial-gradient(circle at 70% 8%,#fde68a 0 15%,transparent 16%),linear-gradient(180deg,#ffedd5,#fee2e2 52%,#fef3c7)}#app.wp-endless{background:radial-gradient(circle at 50% 6%,#a78bfa 0 13%,transparent 14%),linear-gradient(180deg,#312e81,#111827 58%,#020617);color:#111827}#app.wp-chaos{background:radial-gradient(circle at 12% 10%,#f0abfc 0 11%,transparent 12%),radial-gradient(circle at 86% 12%,#67e8f9 0 10%,transparent 11%),linear-gradient(180deg,#4c1d95,#7f1d1d 55%,#020617)}.worldPhaseBanner span{display:block;letter-spacing:4px}.timerBadge{position:absolute;top:18px;left:3px;background:#111827;color:#fff;border:1px solid #facc15;border-radius:999px;font-size:8px;font-weight:950;padding:0 4px;z-index:4}.timedHero{box-shadow:inset 0 0 0 2px #fff9,0 0 18px #a855f777!important}.bondBadge{position:absolute;bottom:15px;left:3px;background:#f5f3ff;color:#5b21b6;border:1px solid #c4b5fd;border-radius:999px;font-size:8px;font-weight:950;padding:0 3px}.spellRipple{position:fixed;width:32px;height:32px;border-radius:999px;border:4px solid #a855f7;box-shadow:0 0 0 10px #ddd6fe99;z-index:84;pointer-events:none;animation:nova .62s forwards}`;document.head.appendChild(css);
+  console.log('Loaded world phases, growth bonds, timed heroes, and 5-second spell cadence.');
 })();
 
 </script>
