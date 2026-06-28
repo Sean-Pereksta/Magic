@@ -3388,6 +3388,82 @@ Battle Enchanter|🎇🧙|Mage,Royal,Healer|44|6|1|support|Turns spell casts int
   const oldDetail=detailHtml; detailHtml=function(u){let h=oldDetail(normalizeUnitName(u));if(u?.n===MORTAR)h+=`<p class="hint"><b>Mortar shells:</b> ${mortarCount(u)} target(s). Breakpoints: 5★=2, 8★=3, 11★=4, 13★=5. Very slow artillery cadence.</p>`;if(u?.n==='Flame Chaplain')h+=`<p class="hint"><b>Fire support:</b> Buffs nearby Fire allies, increases burn/fire damage, expands to diagonals at 5★, row/column at 8★, and broad Fire aura at 11★+. Current targets: ${u._chaplainTargets||0}.</p>`;return h};
   normalizeAllUnits();console.log('Loaded Codex patch: Mortar Tortoise, Flame Chaplain, enhanced storm visuals, and 5 final 10-round stages starting round',FINAL5_START);
 })();
+
+/* === Codex fix: authoritative dynamic star cap runtime guard === */
+(function(){
+  const LEVEL_STAR_REQ={11:120,12:150,13:180};
+  const BASE_STAR_COST={1:1,2:1,3:2,4:3,5:4,6:4,7:5,8:5,9:6,10:7,11:8,12:9};
+  function displayedRunLevel(round){
+    const r=Number(round)||Number(S.round)||1;
+    const candidates=[S.level,S.playerLevel,S.runLevel,S.floor,S.stageLevel,S.round,r].map(Number).filter(Number.isFinite);
+    return Math.max(1,...candidates);
+  }
+  function migrateStarLevel(){
+    const level=displayedRunLevel(S.round||1);
+    S.level=Math.max(Number(S.level||1),level,Number(S.round||1));
+    return S.level;
+  }
+  function currentStarCap(round){
+    const r=Number(round)||Number(S.round)||1;
+    const levelOrRound=Math.max(displayedRunLevel(r),r);
+    if(levelOrRound>=180)return Math.min(13,window.MAX_STAR||MAX_STAR||13);
+    if(levelOrRound>=150)return Math.min(12,window.MAX_STAR||MAX_STAR||13);
+    if(levelOrRound>=120)return Math.min(11,window.MAX_STAR||MAX_STAR||13);
+    if(r>=85)return 10;
+    if(r>=70)return 9;
+    if(r>=55)return 8;
+    if(r>=40)return 7;
+    if(r>=25)return 6;
+    return 5;
+  }
+  function nextUnlock(round){
+    const r=Number(round)||Number(S.round)||1, lvl=displayedRunLevel(r), cap=currentStarCap(r);
+    const candidates=[];
+    [{star:6,round:25},{star:7,round:40},{star:8,round:55},{star:9,round:70},{star:10,round:85}].forEach(g=>{if(g.star>cap&&r<g.round)candidates.push(g)});
+    [11,12,13].forEach(star=>{const level=LEVEL_STAR_REQ[star];if(star>cap&&lvl<level)candidates.push({star,level})});
+    return candidates.sort((a,b)=>a.star-b.star)[0]||null;
+  }
+  function unlockText(g){return !g?'Final tier unlocked.':g.level?`${g.star}★ unlocks at level ${g.level}.`:`${g.star}★ unlocks at round ${g.round}.`}
+  function logStarCap(reason='check'){
+    console.log('[StarCap]',{reason,level:S.level,playerLevel:S.playerLevel,runLevel:S.runLevel,round:S.round,cap:currentStarCap(S.round||1),maxStar:window.MAX_STAR||MAX_STAR});
+  }
+  function logBlocked(u,reason){
+    console.log('[StarUpgradeBlocked]',{reason,unit:u&&u.n,star:u&&u.star,cap:currentStarCap(S.round||1),level:S.level,playerLevel:S.playerLevel,runLevel:S.runLevel,round:S.round});
+  }
+  migrateStarLevel();
+  window.MAX_STAR=MAX_STAR;
+  window.currentStarCap=currentStarCap;
+  starCapForRound=window.starCapForRound=currentStarCap;
+  window.nextStarUnlockInfo=function(round){return nextUnlock(round||S.round||1)};
+  window.starCapLabel=function(){const cap=currentStarCap(S.round||1);return `Max tier available: ${cap}★. ${unlockText(nextUnlock(S.round||1))}`};
+  window.starCapShort=function(){const cap=currentStarCap(S.round||1);return `Current cap: ${cap}★. ${unlockText(nextUnlock(S.round||1))}`};
+  window.starCapTiny=function(){const cap=currentStarCap(S.round||1),n=nextUnlock(S.round||1);return `Star Cap: ${cap}★${n?' · '+unlockText(n):' · Final tier unlocked.'}`};
+  starCostForNext=window.starCostForNext=function(currentStar){currentStar=Number(currentStar)||1;return currentStar>=MAX_STAR?Infinity:(BASE_STAR_COST[currentStar]||Infinity)};
+  starNeed=window.starNeed=function(u){return u?(u.star||1)>=MAX_STAR?Infinity:starCostForNext(u.star||1):1};
+  function canGainStarNow(u){return !!u&&!u.dead&&(u.star||1)<MAX_STAR&&(u.star||1)<currentStarCap(S.round||1)}
+  canGainStar=window.canGainStar=canGainStarNow;
+  validStarGrantTarget=window.validStarGrantTarget=canGainStarNow;
+  const oldGrant=window.grantUpgradeStarProgress||grantUpgradeStarProgress;
+  grantUpgradeStarProgress=window.grantUpgradeStarProgress=function(u,amount=1,source='training'){
+    migrateStarLevel();
+    const cap=currentStarCap(S.round||1),star=u&&Number(u.star||1);
+    logStarCap(source||'grant');
+    if(!u||u.dead)return false;
+    if(star>=MAX_STAR){logBlocked(u,'absolute-max');if(typeof floatAlly==='function')floatAlly(ix(u),`${MAX_STAR}★ MAX`,'#f59e0b');return false}
+    if(star>=cap){logBlocked(u,'dynamic-cap');if(typeof floatAlly==='function')floatAlly(ix(u),`${cap}★ CAP`,'#f59e0b');msg(`${u.n||'Hero'} is capped at ${cap}★. ${unlockText(nextUnlock(S.round||1))}`);return false}
+    const beforeStar=u.star||1,beforeProg=u.starProg||0;
+    const ok=oldGrant?oldGrant(u,amount,source):false;
+    if((u.star||1)>currentStarCap(S.round||1)){u.star=currentStarCap(S.round||1);u.starProg=0;logBlocked(u,'post-grant-clamp')}
+    return ok||u.star!==beforeStar||(u.starProg||0)!==beforeProg;
+  };
+  up=window.up=function(u){return grantUpgradeStarProgress(u,1,'star training')};
+  const oldRender=render;render=function(){migrateStarLevel();oldRender();logStarCap('render');const capText=`Star Cap: ${currentStarCap(S.round||1)}★`;let threat=$('threat');if(threat&&!threat.textContent.includes('Star Cap:'))threat.textContent+=` • ${capText}`;else if(threat)threat.textContent=threat.textContent.replace(/Star Cap: \d+★/,capText)};
+  const oldDetail=detailHtml;detailHtml=function(u){let h=oldDetail(u);if(u&&u.team==='ally'){const cap=currentStarCap(S.round||1),txt=(u.star||1)>=MAX_STAR?`${MAX_STAR}★ MAX`:canGainStarNow(u)?`${u.starProg||0}/${starNeed(u)} toward ${(u.star||1)+1}★`:`Locked at ${cap}★. ${unlockText(nextUnlock(S.round||1))}`;h=h.replace(/Star training: [^<]*/g,`Star training: ${txt}`);h+=`<p class="hint"><b>Star Cap:</b> ${cap}★<br><b>Next star unlock:</b> ${unlockText(nextUnlock(S.round||1))}</p>`}return h};
+  const oldRestore=window.restoreSnapshot||restoreSnapshot;if(oldRestore)restoreSnapshot=window.restoreSnapshot=function(snapshot){const r=oldRestore(snapshot);migrateStarLevel();logStarCap('restore');return r};
+  const oldReset=reset;reset=function(){oldReset();migrateStarLevel();logStarCap('reset')};
+  logStarCap('loaded');
+})();
+
 </script>
 
 </body></html>
