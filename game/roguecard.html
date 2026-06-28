@@ -1521,6 +1521,7 @@ render();setTimeout(openRecruit,300);msg('Pick one recruit. Then tap a slot and 
 
 
 
+
 </script>
 <script>
 /* Tiny Tactics recruit expansion: 25 distinct troops with capped support/storm hooks. */
@@ -2441,6 +2442,8 @@ Forge Instructor|🔨📘|Machine,Guard,Royal|68|4|.76|support|Improves Machine 
 
 
 
+
+
 </script>
 
 <script>
@@ -2490,6 +2493,8 @@ Corner Idol|🗿|Spirit,Stone,Healer|76|5|.7|support|Corner specialist. Stronger
   const oldDetail=detailHtml;detailHtml=function(u){let html=oldDetail(u);if(u?.team==='ally'&&names.has(u.n)){let cur=five(u)?(six(u)?'6★+ mastery active.':'5★ specialization active.'):'Base role active.';let nxt=!five(u)?'Next: 5★ unlocks role specialization.':(!six(u)?'Next: 6★+ unlocks mastery behavior.':'Max role kit online with capped scaling.');html+=`<p class="hint"><b>Role scaling:</b> ${cur}<br><b>Next-star effect:</b> ${nxt}</p>`}return html};
   const oldHelp=help;help=function(){oldHelp();setTimeout(()=>{if($('body'))$('body').innerHTML+=`<p><b>Request 2 heroes:</b> Hex Bishop, Rust Prophet, Wall Builder, Root Binder, Oath Hunter, Siege Oracle, Rain Saint, Lantern Nurse, Tax Imp, Golden Knight, Column Captain, Diagonal Witch, and Corner Idol fill missing strategic roles and interact with Fragile, Armor Break, Root, Barrier, Taunt, Silence, Stagger, Vulnerable, marked kills, economy, rows, columns, diagonals, and corners.</p>`},0)};
 })();
+
+
 
 
 
@@ -3139,6 +3144,85 @@ Battle Enchanter|🎇🧙|Mage,Royal,Healer|44|6|1|support|Turns spell casts int
   console.log('Loaded same-card duplicate merge progression: exact duplicate placements grant +2 star progress.');
 })();
 
+
+
+
+/* === Codex fix: level-aware 11★-13★ star training cap === */
+(function(){
+  const LEVEL_STAR_REQ={11:120,12:150,13:180};
+  const BASE_STAR_COST={1:1,2:1,3:2,4:3,5:4,6:4,7:5,8:5,9:6,10:7,11:8,12:9};
+  function runLevelForStars(round){
+    const r=Number(round)||Number(S.round)||1;
+    return Math.max(Number(S.level)||0,r);
+  }
+  function currentStarCap(round){
+    const r=Number(round)||Number(S.round)||1;
+    const lvl=runLevelForStars(r);
+    let cap=5;
+    if(r>=25)cap=6;
+    if(r>=40)cap=7;
+    if(r>=55)cap=8;
+    if(r>=70)cap=9;
+    if(r>=85)cap=10;
+    if(lvl>=120)cap=Math.max(cap,11);
+    if(lvl>=150)cap=Math.max(cap,12);
+    if(lvl>=180)cap=Math.max(cap,13);
+    return Math.min(cap,window.MAX_STAR||MAX_STAR||13);
+  }
+  function nextLevelUnlock(round){
+    const lvl=runLevelForStars(round);
+    return [11,12,13].map(star=>({star,level:LEVEL_STAR_REQ[star]})).find(g=>lvl<g.level)||null;
+  }
+  function nextRoundUnlock(round){
+    const r=Number(round)||Number(S.round)||1;
+    return [{star:6,round:25},{star:7,round:40},{star:8,round:55},{star:9,round:70},{star:10,round:85}].find(g=>r<g.round)||null;
+  }
+  function nextUnlock(round){
+    const cap=currentStarCap(round),r=nextRoundUnlock(round),l=nextLevelUnlock(round),candidates=[];
+    if(r&&r.star===cap+1)candidates.push(r);
+    if(l&&l.star===cap+1)candidates.push(l);
+    return candidates[0]||r||l||null;
+  }
+  function unlockText(g){return !g?'Final tier unlocked.':g.level?`${g.star}★ unlocks at level ${g.level}.`:`${g.star}★ unlocks at round ${g.round}.`}
+  starCapForRound=window.starCapForRound=currentStarCap;
+  nextStarUnlockInfo=window.nextStarUnlockInfo=function(round){return nextUnlock(round||S.round||1)};
+  window.starCapLabel=function(){const cap=currentStarCap(S.round||1);return `Max tier available: ${cap}★. ${unlockText(nextUnlock(S.round||1))}`};
+  window.starCapShort=function(){const cap=currentStarCap(S.round||1);return `Current cap: ${cap}★. ${unlockText(nextUnlock(S.round||1))}`};
+  window.starCapTiny=function(){const cap=currentStarCap(S.round||1),n=nextUnlock(S.round||1);return `Max tier: ${cap}★${n?' · '+unlockText(n):' · Final tier unlocked.'}`};
+  window.lockedStarText=function(){return unlockText(nextUnlock(S.round||1))};
+  starCostForNext=window.starCostForNext=function(currentStar){currentStar=Number(currentStar)||1;return currentStar>=MAX_STAR?Infinity:(BASE_STAR_COST[currentStar]||Infinity)};
+  starNeed=window.starNeed=function(u){return u?(u.star||1)>=MAX_STAR?Infinity:starCostForNext(u.star||1):1};
+  function canGainStarNow(u){return !!u&&!u.dead&&(u.star||1)<MAX_STAR&&(u.star||1)<currentStarCap(S.round||1)}
+  canGainStar=window.canGainStar=canGainStarNow;
+  validStarGrantTarget=window.validStarGrantTarget=canGainStarNow;
+  const previousGrant=window.grantUpgradeStarProgress||grantUpgradeStarProgress;
+  grantUpgradeStarProgress=window.grantUpgradeStarProgress=function(u,amount=1,source='training'){
+    if(!u||u.dead)return false;
+    const cap=currentStarCap(S.round||1),star=u.star||1;
+    if(star>=MAX_STAR){if(typeof floatAlly==='function')floatAlly(ix(u),`${MAX_STAR}★ MAX`,'#f59e0b');return false}
+    if(star>=cap){if(typeof floatAlly==='function')floatAlly(ix(u),`${cap}★ CAP`,'#f59e0b');msg(`${u.n||'Hero'} is capped at ${cap}★. ${unlockText(nextUnlock(S.round||1))}`);return false}
+    const beforeStar=star,beforeProg=u.starProg||0;
+    const ok=previousGrant?previousGrant(u,amount,source):false;
+    if((u.star||1)>cap){u.star=cap;u.starProg=0;msg(`${u.n||'Hero'} reached the current cap: ${cap}★.`)}
+    if(ok||u.star!==beforeStar||(u.starProg||0)!==beforeProg)msg(`Star Training: current cap is ${cap}★. ${unlockText(nextUnlock(S.round||1))}`);
+    return ok;
+  };
+  up=window.up=function(u){return grantUpgradeStarProgress(u,1,'star training')};
+  const previousChoice=choice;
+  choice=function(c,i){
+    let html=previousChoice(c,i);
+    if(c&&c.type==='upgrade'){
+      const msg=`Star Training: tap a unit to gain progress toward the next star. Current cap: ${currentStarCap(S.round||1)}★. ${unlockText(nextUnlock(S.round||1))}`;
+      html=html.replace(/<p>[\s\S]*?<\/p>/,`<p>${msg}</p>`);
+    }
+    return html;
+  };
+  const previousOpenRecruit=openRecruit;
+  openRecruit=function(){const r=previousOpenRecruit();if($('drawer')&&$('drawer').classList.contains('open')&&(S.choices||[]).some(c=>c.type==='upgrade'))$('dhint').innerHTML=`<div class="capNotice">Star Training: tap a unit to gain progress toward the next star. Current cap: ${currentStarCap(S.round||1)}★. ${unlockText(nextUnlock(S.round||1))}</div>`;return r};
+  const previousDetail=detailHtml;
+  detailHtml=function(u){let h=previousDetail(u);if(u&&u.team==='ally'){const cap=currentStarCap(S.round||1),txt=(u.star||1)>=MAX_STAR?`${MAX_STAR}★ MAX`:canGainStarNow(u)?`${u.starProg||0}/${starNeed(u)} toward ${(u.star||1)+1}★`:`Locked at ${cap}★. ${unlockText(nextUnlock(S.round||1))}`;h=h.replace(/Star training: [^<]*/,`Star training: ${txt}`);h+=`<p class="hint"><b>Current max tier:</b> ${cap}★<br><b>Next star unlock:</b> ${unlockText(nextUnlock(S.round||1))}</p>`}return h};
+  console.log('Loaded level-aware star cap: 11★ at level 120, 12★ at level 150, 13★ at level 180.');
+})();
 
 </script>
 
