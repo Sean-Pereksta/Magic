@@ -3081,6 +3081,65 @@ Battle Enchanter|🎇🧙|Mage,Royal,Healer|44|6|1|support|Turns spell casts int
   console.log('Loaded strategic spell store: Meteor Volley, Chain Rift, Rallying Anthem, and spell-support heroes.');
 })();
 
+
+/* === Same-card duplicate merge progression === */
+(function(){
+  const MERGE_SOURCE='sameCardMerge';
+  const oldGrantSameCard=window.grantUpgradeStarProgress||grantUpgradeStarProgress;
+  grantUpgradeStarProgress=window.grantUpgradeStarProgress=function(u,amount=1,source='generic'){
+    if(!u||u.dead)return false;
+    if((u.star||1)>=MAX_STAR){
+      if(typeof floatAlly==='function')floatAlly(ix(u),`${MAX_STAR}★ MAX`,'#f59e0b');
+      return false;
+    }
+    amount=Math.max(0,Math.floor(Number(amount)||0));
+    if(amount<=1)return oldGrantSameCard?oldGrantSameCard(u,amount||1,source):false;
+    let ok=false;
+    for(let step=0;step<amount;step++){
+      if((u.star||1)>=MAX_STAR)break;
+      let beforeStar=u.star||1,beforeProg=u.starProg||0;
+      let did=oldGrantSameCard?oldGrantSameCard(u,1,source):false;
+      ok=ok||did||((u.star||1)!==beforeStar)||((u.starProg||0)!==beforeProg);
+      if((u.star||1)===beforeStar&&(u.starProg||0)===beforeProg&&!did)break;
+    }
+    return ok;
+  };
+  up=window.up=function(u){return grantUpgradeStarProgress(u,1,'generic')};
+
+  const oldTapSameCard=tapCell;
+  tapCell=function(i){
+    let existing=S.squad&&S.squad[i], incoming=S.placing;
+    if(incoming&&existing&&existing.n===incoming.n){
+      S.placing=null;
+      if(typeof close==='function')close();
+      grantUpgradeStarProgress(existing,2,MERGE_SOURCE);
+      if(typeof floatAlly==='function')floatAlly(i,'Merge +2★','#f59e0b');
+      if(typeof spark==='function')spark(i);
+      else if(typeof pulseAtUnit==='function')pulseAtUnit(existing);
+      msg(`Same-card merge! ${existing.n} gained +2 star progress.`);
+      render();
+      if(typeof maybeEvolution==='function'&&maybeEvolution(existing))setTimeout(()=>openEvolution(existing),80);
+      return fight();
+    }
+    return oldTapSameCard(i);
+  };
+
+  const oldDetailSameCard=detailHtml;
+  detailHtml=function(u){
+    let h=oldDetailSameCard(u);
+    if(u&&u.team==='ally')h+=`<p class="hint"><b>Duplicate merges:</b> Placing an exact duplicate hero onto that hero grants +2 star progress. Support, timed, gold, kill, round-survival, and other generic star progress usually grant +1 unless the effect says otherwise.</p>`;
+    return h;
+  };
+
+  const oldHelpSameCard=help;
+  help=function(){
+    oldHelpSameCard();
+    setTimeout(()=>{if(!$('body'))return;$('body').innerHTML+=`<p><b>Same-card merge:</b> Placing an exact duplicate hero onto that hero grants <b>+2 star progress</b>. Generic star-progress effects from support, timed heroes, gold, kills, or round survival still usually grant +1 unless stated.</p>`},0);
+  };
+  console.log('Loaded same-card duplicate merge progression: exact duplicate placements grant +2 star progress.');
+})();
+
+
 </script>
 
 </body></html>
