@@ -4504,22 +4504,45 @@ function openResearchColumnSettings(i){
 }
 function researchTableHasColumnRules(item){ return (item.columns||[]).some(c=>(c.formatRules||[]).length||(c.displayRules||[]).length||String(c.elseDisplay||'').trim()); }
 function researchExcelHtmlEscape(v){ return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function researchTableExportRowHtml(item,res,r,sec){
+  const tds=[`<td>${researchExcelHtmlEscape(r.label)}</td>`]; if(sec) tds.push(`<td>${researchExcelHtmlEscape(r.secondary||'')}</td>`);
+  (r.values||[]).forEach((v,i)=>{ const col=(res.columns||[])[i]||{}, refs=r.traces?.[i]?.rowRefs||[], rowObjs=refs.map(researchRowByRef).filter(Boolean), pres=researchColumnCellPresentation(v,item,col,rowObjs,r.traces?.[i]?.ctx||{},res.warnings||[]); tds.push(`<td style="${researchExcelHtmlEscape(pres.style)}">${researchExcelHtmlEscape(pres.text)}</td>`); });
+  return `<tr>${tds.join('')}</tr>`;
+}
+function researchTableExportTotalRowHtml(item,res,sec){
+  const totalRows=getResearchSourceRows(item.source), vals=Array.isArray(res.totalValues)?res.totalValues:[];
+  const tds=[`<td><strong>Total</strong></td>`]; if(sec) tds.push('<td></td>');
+  (res.columns||[]).forEach((col,i)=>{ const pres=researchColumnCellPresentation(vals[i],item,col,totalRows,{total:res.totalRowCount||0,parentTotal:res.totalRowCount||0},res.warnings||[]); tds.push(`<td style="${researchExcelHtmlEscape(pres.style)}"><strong>${researchExcelHtmlEscape(pres.text)}</strong></td>`); });
+  return `<tr>${tds.join('')}</tr>`;
+}
+function researchTableExportShell(header,body){
+  return `<!doctype html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse}th,td{border:1px solid #999;padding:6px 8px}th{background:#111827;color:#fff}</style></head><body><table><thead><tr>${header.map(h=>`<th>${researchExcelHtmlEscape(h)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></body></html>`;
+}
+function researchTableExportHeader(item,res,sec=!!res.hasSecondary){
+  return [item.groupMultiAdd?'Multi-add group':(findMetricByRef(item.groupField)?.name||researchDisplayFieldLabel(item.groupField,'Group')),...(sec?[item.secondaryGroupField||'Secondary']:[]),...(res.columns||[]).map(c=>c.label||c.mode||'Value')];
+}
 function researchTableExportHtml(item,res){
-  const sec=!!res.hasSecondary;
-  const header=[item.groupMultiAdd?'Multi-add group':(findMetricByRef(item.groupField)?.name||researchDisplayFieldLabel(item.groupField,'Group')),...(sec?[item.secondaryGroupField||'Secondary']:[]),...(res.columns||[]).map(c=>c.label||c.mode||'Value')];
-  const rows=[];
-  (res.data||[]).forEach(r=>{
-    const tds=[`<td>${researchExcelHtmlEscape(r.label)}</td>`]; if(sec) tds.push(`<td>${researchExcelHtmlEscape(r.secondary||'')}</td>`);
-    (r.values||[]).forEach((v,i)=>{ const col=(res.columns||[])[i]||{}, refs=r.traces?.[i]?.rowRefs||[], rowObjs=refs.map(researchRowByRef).filter(Boolean), pres=researchColumnCellPresentation(v,item,col,rowObjs,r.traces?.[i]?.ctx||{},res.warnings||[]); tds.push(`<td style="${researchExcelHtmlEscape(pres.style)}">${researchExcelHtmlEscape(pres.text)}</td>`); });
-    rows.push(`<tr>${tds.join('')}</tr>`);
-  });
-  if(item.totals && (res.data||[]).length){
-    const totalRows=getResearchSourceRows(item.source), vals=Array.isArray(res.totalValues)?res.totalValues:[];
-    const tds=[`<td><strong>Total</strong></td>`]; if(sec) tds.push('<td></td>');
-    (res.columns||[]).forEach((col,i)=>{ const pres=researchColumnCellPresentation(vals[i],item,col,totalRows,{total:res.totalRowCount||0,parentTotal:res.totalRowCount||0},res.warnings||[]); tds.push(`<td style="${researchExcelHtmlEscape(pres.style)}"><strong>${researchExcelHtmlEscape(pres.text)}</strong></td>`); });
-    rows.push(`<tr>${tds.join('')}</tr>`);
+  const sec=!!res.hasSecondary, header=researchTableExportHeader(item,res,sec), rows=[];
+  (res.data||[]).forEach(r=>rows.push(researchTableExportRowHtml(item,res,r,sec)));
+  if(item.totals && (res.data||[]).length) rows.push(researchTableExportTotalRowHtml(item,res,sec));
+  return researchTableExportShell(header,rows.join('')||`<tr><td colspan="${header.length}">No rows matched.</td></tr>`);
+}
+async function researchTableExportHtmlAsync(item,res,progress={}){
+  const sec=!!res.hasSecondary, header=researchTableExportHeader(item,res,sec), data=res.data||[], rows=[], total=data.length+(item.totals&&data.length?1:0), chunkSize=Math.max(100,progress.chunkSize||RESEARCH_BATCH_SIZE), start=progress.start??45, end=progress.end??95, span=end-start;
+  if(!total) return researchTableExportShell(header,`<tr><td colspan="${header.length}">No rows matched.</td></tr>`);
+  for(let i=0;i<data.length;i+=chunkSize){
+    const part=data.slice(i,i+chunkSize);
+    part.forEach(r=>rows.push(researchTableExportRowHtml(item,res,r,sec)));
+    const done=Math.min(i+part.length,total), pct=start+span*(done/total);
+    updateProgress(`Preparing export rows... ${done.toLocaleString()} / ${total.toLocaleString()}`,pct);
+    await yieldToBrowser();
   }
-  return `<!doctype html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse}th,td{border:1px solid #999;padding:6px 8px}th{background:#111827;color:#fff}</style></head><body><table><thead><tr>${header.map(h=>`<th>${researchExcelHtmlEscape(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan="${header.length}">No rows matched.</td></tr>`}</tbody></table></body></html>`;
+  if(item.totals && data.length){
+    rows.push(researchTableExportTotalRowHtml(item,res,sec));
+    updateProgress(`Preparing export rows... ${total.toLocaleString()} / ${total.toLocaleString()}`,end);
+    await yieldToBrowser();
+  }
+  return researchTableExportShell(header,rows.join(''));
 }
 
 function normalizeResearchItem(item={}){
@@ -6105,7 +6128,30 @@ async function renderAllResearchItems(){
   bindResearchCanvasActions();
 }
 function deleteResearchItem(itemId){ if(!confirm('Delete this research item?')) return; state.researchItems=state.researchItems.filter(x=>x.id!==itemId); saveResearchItems(); renderResearchCanvasAsync({reason:'delete'}); }
-function exportResearchItemData(itemId){ const item=normalizeResearchItem(state.researchItems.find(x=>x.id===itemId)||{}); if(!item.id) return; const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); if(item.outputType==='table'){ const html=researchTableExportHtml(item,res); downloadText(String((item.title||'research')+'.xls').replace(/[\\/:*?"<>|]+/g,'-'), html); return; } const aoa=[res.columns.map(c=>c.label||c.field),...res.rows.map(r=>res.columns.map(c=>r[c.field]??''))]; const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Research'); XLSX.writeFile(wb,(item.title||'research')+'.xlsx'); }
+async function exportResearchItemData(itemId){
+  const item=normalizeResearchItem(state.researchItems.find(x=>x.id===itemId)||{}); if(!item.id) return;
+  try{
+    showProgress(item.outputType==='table'?'Preparing research table export...':'Preparing research export...',2);
+    await ensureResearchDataIndexReady({background:false,reason:'Preparing Research export'});
+    await yieldToBrowser();
+    const res=item.outputType==='conversation'?evaluateResearchRawRows(item):await evaluateResearchItemAsync(item,{start:8,end:item.outputType==='table'?42:78,status:true});
+    if(item.outputType==='table'){
+      updateProgress('Preparing export rows...',45); await yieldToBrowser();
+      const html=await researchTableExportHtmlAsync(item,res,{start:45,end:96});
+      updateProgress('Downloading research table export...',98); await yieldToBrowser();
+      downloadText(String((item.title||'research')+'.xls').replace(/[\\/:*?"<>|]+/g,'-'), html);
+      updateProgress('Research table export complete',100); await yieldToBrowser();
+      return;
+    }
+    const aoa=[res.columns.map(c=>c.label||c.field),...res.rows.map(r=>res.columns.map(c=>r[c.field]??''))];
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Research'); XLSX.writeFile(wb,(item.title||'research')+'.xlsx');
+    updateProgress('Research export complete',100); await yieldToBrowser();
+  }catch(err){
+    console.error(err); alert('Research export failed. Check the console for details.');
+  }finally{
+    hideProgress();
+  }
+}
 function exportResearchItemImage(itemId){ const svg=els.researchCanvas.querySelector(`[data-research-svg="${CSS.escape(itemId)}"]`); if(!svg) return; const data=new XMLSerializer().serializeToString(svg), img=new Image(), canvas=document.createElement('canvas'); canvas.width=1200; canvas.height=440; img.onload=()=>{ const ctx=canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0,canvas.width,canvas.height); const a=document.createElement('a'); a.download='research-chart.png'; a.href=canvas.toDataURL('image/png'); a.click(); }; img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(data); }
 function exportResearchConfig(){ downloadText('all_star_research.txt', JSON.stringify({version:2,items:state.researchItems||[],metrics:state.metrics||[],customSources:(state.customSources||[]).map(c=>({...clonePlain(c),rows:[],aoaBySheet:{}}))},null,2)); }
 function importResearchConfig(text){ const obj=JSON.parse(text); if(obj&&Array.isArray(obj.customSources)){ obj.customSources.forEach(def=>{ if(def.sourceKey&&!customSource(def.sourceKey)) state.customSources.push({...def,rows:def.rows||[],headers:def.headers||[],aoa:def.aoa||[],aoaBySheet:def.aoaBySheet||{}}); }); renderCustomSourcesList(); } state.researchItems=(Array.isArray(obj)?obj:(obj.items||[])).map(normalizeResearchItem); if(obj.metrics){ state.metrics=(obj.metrics||[]).map(normalizeMetric); saveMetrics(); } const txt=JSON.stringify(state.researchItems); const refs=txt.match(/@[^\"']+/g)||[]; let missing=''; refs.forEach(r=>{ if(!findMetricByRef(r)) missing=r.slice(1); }); const modelRefs=[...txt.matchAll(/model\(\s*[\"']([^\"']+)[\"']\s*(?:,\s*[\"']([^\"']+)[\"']\s*)?\)/g)]; for(const mr of modelRefs){ const mm=findModelByNameOrId(mr[1]); if(!mm){ missing='model: '+mr[1]; break; } if(mr[2]&&!findCriterionByNameOrId(mm,mr[2])){ missing='model criteria: '+mr[1]+' / '+mr[2]; break; } } if(missing && els.topStatus) els.topStatus.textContent='This Research item references a missing '+missing; saveResearchItems(); if(els.researchModal?.classList.contains('open')){ renderResearchCanvasAsync({reason:'import'}); scheduleResearchCacheWarm('import'); } else if(els.topStatus && !missing) els.topStatus.textContent='Research config imported. Open Research to safely render saved items.'; }
