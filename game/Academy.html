@@ -1408,15 +1408,20 @@ function rowDateMillisForSource(source,row){
 }
 function makeResearchSourceIndex(source, rows){
   const headers=getHeaders(source)||[], descHeaders=source==='documented_coaching'?sourceDescriptionHeaders(source):headers;
-  return {rows,headers,descriptionHeaders:descHeaders,byRep:new Map(),byTeam:new Map(),byCoach:new Map(),byDate:new Map(),byDateBucket:new Map(),byWeek:new Map(),byMonth:new Map(),byColumnValue:new Map(),byWord:new Map(),byRepWord:new Map(),byRepSortedDate:new Map(),byTeamSortedDate:new Map(),byRowId:new Map(),searchText:new WeakMap(),tokens:new WeakMap(),rowMeta:new WeakMap(),reps:new Map(),perf:{rowsIndexed:0}};
+  return {rows,headers,descriptionHeaders:descHeaders,byRep:new Map(),byTeam:new Map(),byTeamKey:new Map(),byCoach:new Map(),byCoachKey:new Map(),bySourceName:new Map(),byCategory:new Map(),byDate:new Map(),byDateBucket:new Map(),byWeek:new Map(),byMonth:new Map(),byHeader:new Map(),byHeaderName:new Map(),byColumnValue:new Map(),byWord:new Map(),byRepWord:new Map(),byRepSortedDate:new Map(),byTeamSortedDate:new Map(),byRowId:new Map(),searchText:new WeakMap(),tokens:new WeakMap(),rowMeta:new WeakMap(),reps:new Map(),perf:{rowsIndexed:0}};
 }
 function addResearchIndexedRow(idx,source,row,rowId){
   const key=row._repKey||'', team=rowTeam(row), coach=team, ms=rowDateMillisForSource(source,row), day=researchDayBucket(ms), month=researchMonthBucket(ms), week=Number.isFinite(ms)?ymd(startOfWeekDate(new Date(ms),'sunday')):'';
   if(team && !row._team) row._team=team;
   pushMapArray(idx.byRep,key,row); pushMapArray(idx.byTeam,team,row); pushMapArray(idx.byCoach,coach,row);
+  if(team) pushMapArray(idx.byTeamKey,normalizeIdentityName(team),row);
+  if(coach) pushMapArray(idx.byCoachKey,normalizeIdentityName(coach),row);
+  const sourceName=String(row.Source||row.source||row._source||source||'').trim(), categoryName=String(row.Category||row.category||row._category||row.Type||row.type||'').trim();
+  if(sourceName) pushMapArray(idx.bySourceName,normalizeResearchText(sourceName),row);
+  if(categoryName) pushMapArray(idx.byCategory,normalizeResearchText(categoryName),row);
   if(day) pushMapArray(idx.byDate,day,row); if(day) pushMapArray(idx.byDateBucket,day,row); if(week){ pushMapArray(idx.byDateBucket,week,row); pushMapArray(idx.byWeek,week,row); } if(month){ pushMapArray(idx.byDateBucket,month,row); pushMapArray(idx.byMonth,month,row); }
   idx.byRowId.set(rowId,row);
-  (idx.headers||[]).forEach(h=>pushMapArray(idx.byColumnValue,h+'\u0000'+normalizeResearchText(row[h]),row));
+  (idx.headers||[]).forEach(h=>{ pushMapArray(idx.byHeader,h,row); pushMapArray(idx.byHeaderName,plainHeaderName(h),row); pushMapArray(idx.byColumnValue,h+'\u0000'+normalizeResearchText(row[h]),row); });
   const fullText=(idx.headers||[]).map(h=>row[h]).join(' '), searchable=(source==='documented_coaching'?idx.descriptionHeaders:idx.headers).map(h=>row[h]).join(' ');
   const lower=normalizeResearchText(fullText), tokens=researchTokenizeText(searchable+' '+fullText);
   idx.searchText.set(row,lower); idx.tokens.set(row,tokens); idx.rowMeta.set(row,{rowId,source,repKey:key,coachKey:nameKey(coach)||normalizeResearchText(coach),teamKey:normalizeResearchText(team),dateMs:ms,searchText:lower,tokens});
@@ -5084,6 +5089,13 @@ function dateWindowPass(anchor,target,f){ if(f.windowMode==='range'){ const d=pa
 function researchAnchorDate(item,row){ item=effectiveResearchItem(item||{}); if(item.dateColumn) return row[item.dateColumn]; const hs=getResearchHeaders(item.source); const h=findHeader(hs, item.source==='qa'?['Interaction Start Time','Assigned Date','Date']:checklistLikeDefaultDateHeaders(item.source)); return h?row[h]:''; }
 function researchRowsIntersect(a,b){ const set=new Set(a||[]); return (b||[]).filter(r=>set.has(r)); }
 function researchFilterWord(f){ if((f.op||'')!=='contains') return ''; const toks=researchTokenizeText(f.value||''); return toks.length===1 ? toks[0] : ''; }
+function indexRowsForExactFieldValue(idx,field,value){
+  if(!idx || !field) return null;
+  const val=normalizeResearchText(value), normalizedField=plainHeaderName(field);
+  if(normalizedField==='source') return idx.bySourceName?.get(val)||null;
+  if(normalizedField==='category' || normalizedField==='type') return idx.byCategory?.get(val)||null;
+  return idx.byColumnValue?.get(field+'\u0000'+val)||idx.byColumnValue?.get((idx.headers||[]).find(h=>plainHeaderName(h)===normalizedField)+'\u0000'+val)||null;
+}
 function lowerBoundDateRows(list,idx,target){ let lo=0, hi=(list||[]).length; while(lo<hi){ const mid=(lo+hi)>>1, ms=idx.rowMeta.get(list[mid])?.dateMs||0; if(ms<target) lo=mid+1; else hi=mid; } return lo; }
 function researchDateCandidatesForRep(idx,rep,anchor,f){
   const list=idx?.byRepSortedDate?.get(rep)||[], ad=parseDateOnly(anchor); if(!list.length||!ad) return null;
@@ -5150,7 +5162,7 @@ function buildQueryPlan(source, opts={}){
   const next=[];
   remaining.forEach(f=>{
     const op=f.op||'contains', include=f.include||'include', field=resolveColumn(source,f.field)||f.field;
-    if(include==='include' && op==='is' && field && idx?.byColumnValue){ const before=rows.length, ix=idx.byColumnValue.get(field+'\u0000'+normalizeResearchText(f.value)); if(ix){ const cand=intersectRowsFast(rows,ix); rows=cand.filter(r=>compareFilter(researchFieldValue(r,field,source),op,f.value,f.value2)); step('exact column/value filter',before,cand.length,rows.length,true); return; } }
+    if(include==='include' && op==='is' && field && idx){ const before=rows.length, ix=indexRowsForExactFieldValue(idx,field,f.value); if(ix){ const cand=intersectRowsFast(rows,ix); rows=cand.filter(r=>compareFilter(researchFieldValue(r,field,source),op,f.value,f.value2)); step('exact column/value filter',before,cand.length,rows.length,true); return; } }
     next.push(f);
   });
   const last=[];
@@ -5267,7 +5279,13 @@ function resolveRowsForCohort(sourceKey, cohortContext, options = {}){
   const targetSource=resolveDynamicResearchSource({...item,source:sourceKey});
   const {reps,teams}=researchCohortKeys(baseRows,baseSource), matchedRepIdentities=new Set(), matchedCoachIdentities=new Set();
   const repCol=detectIdentityColumn((getRowsRaw(targetSource)||[])[0]||{},targetSource,'rep').column, coachCol=detectIdentityColumn((getRowsRaw(targetSource)||[])[0]||{},targetSource,'coach').column;
-  const rows=(getRowsRaw(targetSource)||[]).filter(r=>{ const rep=getRepIdentity(r,targetSource), coach=getCoachIdentity(r,targetSource); const hitRep=rep.normalizedName&&reps.has(rep.normalizedName), hitCoach=coach.normalizedName&&teams.has(coach.normalizedName); if(hitRep) matchedRepIdentities.add(rep.normalizedName); if(hitCoach) matchedCoachIdentities.add(coach.normalizedName); return hitRep||hitCoach; });
+  const idx=sourceIndex(targetSource), indexedCandidates=[];
+  if(idx){
+    reps.forEach(rep=>{ (idx.byRep?.get(rep)||[]).forEach(r=>indexedCandidates.push(r)); });
+    teams.forEach(team=>{ [...(idx.byTeamKey?.get(team)||[]),...(idx.byCoachKey?.get(team)||[]),...(idx.byTeam?.get(team)||[]),...(idx.byCoach?.get(team)||[])].forEach(r=>indexedCandidates.push(r)); });
+  }
+  const candidates=idx ? [...new Set(indexedCandidates)] : (getRowsRaw(targetSource)||[]);
+  const rows=candidates.filter(r=>{ const rep=getRepIdentity(r,targetSource), coach=getCoachIdentity(r,targetSource); const hitRep=rep.normalizedName&&reps.has(rep.normalizedName), hitCoach=coach.normalizedName&&teams.has(coach.normalizedName); if(hitRep) matchedRepIdentities.add(rep.normalizedName); if(hitCoach) matchedCoachIdentities.add(coach.normalizedName); return hitRep||hitCoach; });
   const missingRepIdentities=[...reps].filter(x=>!matchedRepIdentities.has(x)), missingCoachIdentities=[...teams].filter(x=>!matchedCoachIdentities.has(x));
   const warnings=[]; if(reps.size && missingRepIdentities.length) warnings.push(`Bucket/cohort had ${reps.size} reps, but ${missingRepIdentities.length} had no ${labelSource(targetSource)||targetSource} match.`); if(repCol) warnings.push(`${labelSource(targetSource)||targetSource} representative column was resolved as ${repCol}.`); if(coachCol) warnings.push(`${labelSource(targetSource)||targetSource} coach column was resolved as ${coachCol}.`);
   return {rows,matchedRepIdentities:[...matchedRepIdentities],matchedCoachIdentities:[...matchedCoachIdentities],missingRepIdentities,missingCoachIdentities,warnings};
