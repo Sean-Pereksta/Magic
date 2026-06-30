@@ -4597,6 +4597,7 @@ async function researchTableExportHtmlAsync(item,res,progress={}){
 
 function normalizeResearchItem(item={}){
   const normalized={...item,outputType:item.outputType||'table',cardSize:item.cardSize||'medium',collapsed:!!item.collapsed,filterDuplicateReps:!!item.filterDuplicateReps,textWrap:item.textWrap!==false,rowDensity:item.rowDensity||'comfortable',filters:Array.isArray(item.filters)?item.filters:[],columns:Array.isArray(item.columns)?item.columns:[],gearFilters:item.gearFilters&&typeof item.gearFilters==='object'?item.gearFilters:{}};
+  normalized.renderedResult=item.renderedResult&&typeof item.renderedResult==='object'?item.renderedResult:null;
   normalized.filters=normalized.filters.map(f=>{ const nf={...f}; if(nf.type==='team_is'||nf.fieldType==='team_is'||String(nf.field||'').trim().toLowerCase()==='team is'){ nf.type='team_is'; nf.teamInput=nf.teamInput??nf.rawTeamInput??nf.value??''; nf.conditionResult=nf.conditionResult??'true'; } return nf; });
   if(!normalized.valueMode) normalized.valueMode='count'; if(normalized.valueMode==='checklistCount'||normalized.valueMode==='Checklist Count') normalized.valueMode='count'; if(normalized.valueMode==='people') normalized.valueMode='unique'; if(normalized.valueMode==='total_within') normalized.valueMode='date_within'; if(normalized.valueMode==='percent_within') normalized.valueMode='date_percent_within'; normalized.useSecondaryGroup=!!normalized.useSecondaryGroup; normalized.secondaryGroupField=normalized.secondaryGroupField||'';
   normalized.percentOfField=normalized.percentOfField||normalized.denominatorField||''; normalized.withinUseRange=!!normalized.withinUseRange; normalized.withinDays=normalized.withinDays||normalized.days||''; normalized.withinRangeMin=normalized.withinRangeMin||''; normalized.withinRangeMax=normalized.withinRangeMax||'';
@@ -5709,25 +5710,10 @@ function scheduleResearchCacheWarm(reason='background'){
   setTimeout(()=>warmResearchCacheInBackground(token),60);
 }
 async function warmResearchCacheInBackground(token){
-  const items=currentResearchItemsNormalized().filter(i=>i.outputType!=='conversation');
-  if(!items.length || !researchHasAnyData()) return;
+  if(!researchHasAnyData()) return;
   try{
     await ensureResearchDataIndexReady({background:true,reason:'Background Research index'});
-    for(let i=0;i<items.length;i++){
-      if(token.cancelled) break;
-      const item=items[i], key=researchItemCacheKey(item,'agg');
-      if(researchHasCache(key)) continue;
-      setResearchCanvasStatus(`Pre-indexing saved research ${i+1} of ${items.length}: ${item.title||'Research item'}...`);
-      await researchIdle();
-      if(token.cancelled) break;
-      evaluateResearchItem(item);
-      state.researchCacheStats.warmed++;
-      const card=els.researchCanvas?.querySelector(`[data-research-card="${CSS.escape(item.id)}"] .researchCardBody`);
-      if(card && shouldChunkResearchQuery(item,researchSourceRowsForItem(item).length)) card.innerHTML=researchCachedPlaceholder(item);
-      bindResearchCanvasActions();
-      await yieldToBrowser();
-    }
-    if(!token.cancelled) setResearchCanvasStatus('Research index/cache ready. Large cards can now open faster.');
+    if(!token.cancelled) setResearchCanvasStatus('Research index ready. Saved outputs still load only from rendered results until you click Refresh or Render All.');
   }catch(e){ console.warn('[Research Builder] background cache failed', e); if(!token.cancelled) setResearchCanvasStatus('Research background cache stopped. You can still render cards one at a time.'); }
   updateResearchCacheBadge();
 }
@@ -6004,9 +5990,37 @@ function researchProcessingStepCount(item){
   return n;
 }
 function shouldChunkResearchQuery(item,rowCount){ return Number(rowCount)>1000 && researchProcessingStepCount(item)>1; }
+function researchStoredResultValid(item){ return !!(item&&item.renderedResult&&item.renderedResult.version===1&&item.renderedResult.outputType===item.outputType&&item.renderedResult.result); }
+function researchNoStoredResultBody(item){ return `<div class="researchEmpty"><strong>No rendered results saved yet.</strong><div class="hint">Click Render All or Refresh to generate this output. Research formulas will not run automatically while opening, switching tabs, or selecting this saved item.</div><button class="smallBtn green" data-research-refresh="${esc(item.id)}">Refresh / Re-run</button></div>`; }
+function researchLoadingStoredBody(label='Rendering output...', detail=''){ return `<div class="researchEmpty"><div class="loadingTitle">${esc(label)}</div><div class="hint">${esc(detail)}</div></div>`; }
+function researchSerializableResult(result){
+  const duplicateMap=result?.duplicateMap, excludedCount=duplicateMap?.excludedRepKeys?.size ?? duplicateMap?.excludedRepKeys?.length ?? duplicateMap?.excludedCount ?? 0;
+  const copy=clonePlain(result||{});
+  if(copy.duplicateMap){
+    copy.duplicateMap={enabled:!!duplicateMap?.enabled, excludedCount:Number(excludedCount||0)};
+  }
+  if(copy.perf) copy.perf={totalComputeMs:copy.perf.totalComputeMs,cacheUsed:!!copy.perf.cacheUsed,queryPlan:copy.perf.queryPlan,warnings:copy.perf.warnings||[]};
+  return copy;
+}
+function researchSaveRenderedResult(item,result){
+  const idx=(state.researchItems||[]).findIndex(x=>x.id===item.id);
+  if(idx<0) return;
+  state.researchItems[idx].renderedResult={version:1,outputType:item.outputType,renderedAt:new Date().toISOString(),result:researchSerializableResult(result)};
+  localStorage.setItem(RESEARCH_KEY, JSON.stringify(state.researchItems||[]));
+}
+function researchStoredResultBody(item){
+  if(!researchStoredResultValid(item)) return researchNoStoredResultBody(item);
+  try{
+    resetExpressionRunStats();
+    const stored=item.renderedResult.result||{}, warns=(stored.warnings||[]).map(w=>`<div class="researchWarn">${esc(w)}</div>`).join('');
+    const dup=stored.duplicateMap, dupBadge=(dup?.enabled&&(dup.excludedCount||dup.excludedRepKeys?.length))?`<div class="researchDiag">Duplicate rep filter applied: ${Number(dup.excludedCount||dup.excludedRepKeys?.length||0).toLocaleString()} duplicate records excluded</div>`:'';
+    const stamp=item.renderedResult.renderedAt?`<div class="hint">Loaded from saved rendered results (${new Date(item.renderedResult.renderedAt).toLocaleString()}).</div>`:'';
+    return stamp+warns+dupBadge+(item.outputType==='conversation'?renderResearchConversationViewer(item,stored):item.outputType==='table'?renderResearchTable(item,stored):item.outputType==='line'?renderResearchLineChart(item,stored):renderResearchBarChart(item,stored));
+  }catch(e){ return researchFailedBody(e); }
+}
 function researchCardShell(item,body){
   const size=item.cardSize||'medium';
-  return `<div class="researchCard ${item.collapsed?'collapsed':''}" data-size="${esc(size)}" data-research-card="${item.id}"><div class="researchCardHead"><div><div class="researchCardTitle">${esc(item.title)}</div><div class="researchBadges"><span class="badge">${esc(item.outputType)}</span><span class="badge">${esc(labelSource(item.source)||item.source)}</span><span class="badge">${esc(item.mode||'direct')}</span><span class="badge">${esc(size)}</span></div></div><div class="researchActions"><button class="smallBtn" data-research-size="${item.id}" data-size="large">Expand</button><button class="smallBtn" data-research-size="${item.id}" data-size="small">Shrink</button><button class="smallBtn" data-research-size="${item.id}" data-size="full">Full Width</button><button class="smallBtn" data-research-collapse="${item.id}">${item.collapsed?'Show Body':'Collapse Body'}</button><button class="smallBtn" data-research-move="${item.id}" data-dir="up">↑</button><button class="smallBtn" data-research-move="${item.id}" data-dir="down">↓</button><button class="smallBtn" data-research-move="${item.id}" data-dir="left">←</button><button class="smallBtn" data-research-move="${item.id}" data-dir="right">→</button><button class="smallBtn" data-research-edit="${item.id}">Edit</button><button class="smallBtn" data-research-data="${item.id}">Export Data</button>${(item.outputType==='line'||item.outputType==='bar')?`<button class="smallBtn" data-research-image="${item.id}">Export Image</button>`:''}<button class="smallBtn red" data-research-delete="${item.id}">Delete</button></div></div><div class="researchCardBody">${body}</div></div>`;
+  return `<div class="researchCard ${item.collapsed?'collapsed':''}" data-size="${esc(size)}" data-research-card="${item.id}"><div class="researchCardHead"><div><div class="researchCardTitle">${esc(item.title)}</div><div class="researchBadges"><span class="badge">${esc(item.outputType)}</span><span class="badge">${esc(labelSource(item.source)||item.source)}</span><span class="badge">${esc(item.mode||'direct')}</span><span class="badge">${esc(size)}</span></div></div><div class="researchActions"><button class="smallBtn green" data-research-refresh="${item.id}">Refresh / Re-run</button><button class="smallBtn" data-research-size="${item.id}" data-size="large">Expand</button><button class="smallBtn" data-research-size="${item.id}" data-size="small">Shrink</button><button class="smallBtn" data-research-size="${item.id}" data-size="full">Full Width</button><button class="smallBtn" data-research-collapse="${item.id}">${item.collapsed?'Show Body':'Collapse Body'}</button><button class="smallBtn" data-research-move="${item.id}" data-dir="up">↑</button><button class="smallBtn" data-research-move="${item.id}" data-dir="down">↓</button><button class="smallBtn" data-research-move="${item.id}" data-dir="left">←</button><button class="smallBtn" data-research-move="${item.id}" data-dir="right">→</button><button class="smallBtn" data-research-edit="${item.id}">Edit</button><button class="smallBtn" data-research-data="${item.id}">Export Data</button>${(item.outputType==='line'||item.outputType==='bar')?`<button class="smallBtn" data-research-image="${item.id}">Export Image</button>`:''}<button class="smallBtn red" data-research-delete="${item.id}">Delete</button></div></div><div class="researchCardBody">${body}</div></div>`;
 }
 function researchLargePlaceholder(item){ return `<div class="researchEmpty"><strong>Large research item — click Render to calculate.</strong><div class="hint">This card uses ${researchSourceRowsForItem(item).length.toLocaleString()} source rows and multiple processing steps, so it will not auto-render when Research opens. The background indexer will precompute it when the browser is idle.</div><button class="smallBtn green" data-research-render="${esc(item.id)}">Render</button></div>`; }
 function researchCachedPlaceholder(item){ return `<div class="researchEmpty"><strong>Pre-indexed and ready.</strong><div class="hint">This large research item was calculated in the background. Click Render to display it from cache without re-scanning the source data.</div><button class="smallBtn green" data-research-render="${esc(item.id)}">Render from Cache</button></div>`; }
@@ -6030,7 +6044,7 @@ function renderResearchCanvasShell(message){
   return items;
 }
 function renderResearchItemBody(item){
-  try{ resetExpressionRunStats(); const computeStart=performance.now(); const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); const renderStart=performance.now(); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); const dupBadge=(res.duplicateMap?.enabled&&res.duplicateMap.excludedRepKeys?.size)?`<div class="researchDiag" title="Click calculated cells for duplicate details.">Duplicate rep filter applied: ${res.duplicateMap.excludedRepKeys.size.toLocaleString()} duplicate records excluded</div>`:''; const html=warns+dupBadge+queryPlanBadge(res.perf?.queryPlan)+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res))+expressionSummaryPanel('Research expression diagnostics'); console.info('[Research Builder]',{item:item.title,cacheUsed:!!res.perf?.cacheUsed,totalComputeTime:res.perf?.totalComputeMs ?? Math.round(renderStart-computeStart),renderTime:Math.round(performance.now()-renderStart),rowsScanned:res.perf?.rowsScanned,indexesUsed:res.perf?.indexesUsed}); return html; }
+  try{ resetExpressionRunStats(); const computeStart=performance.now(); const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); researchSaveRenderedResult(item,res); const renderStart=performance.now(); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); const dupBadge=(res.duplicateMap?.enabled&&res.duplicateMap.excludedRepKeys?.size)?`<div class="researchDiag" title="Click calculated cells for duplicate details.">Duplicate rep filter applied: ${res.duplicateMap.excludedRepKeys.size.toLocaleString()} duplicate records excluded</div>`:''; const html=warns+dupBadge+queryPlanBadge(res.perf?.queryPlan)+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res))+expressionSummaryPanel('Research expression diagnostics'); console.info('[Research Builder]',{item:item.title,cacheUsed:!!res.perf?.cacheUsed,totalComputeTime:res.perf?.totalComputeMs ?? Math.round(renderStart-computeStart),renderTime:Math.round(performance.now()-renderStart),rowsScanned:res.perf?.rowsScanned,indexesUsed:res.perf?.indexesUsed}); return html; }
   catch(e){ return researchFailedBody(e); }
 }
 
@@ -6091,7 +6105,7 @@ async function evaluateResearchItemAsync(item, progress={}){
   perf.totalComputeMs=Math.round(performance.now()-t0); console.info('[Research Builder]',perf); report(rows.length,rows.length); return researchCacheSet(cacheKey,{data,warnings,columns:outputColumns,hasSecondary:effectiveHasSecondary,totalValues,totalRowCount:universeRows.length,duplicateMap},perf);
 }
 async function renderResearchItemBodyAsync(item, progress={}){
-  try{ resetExpressionRunStats(); const computeStart=performance.now(); const res=item.outputType==='conversation'?evaluateResearchRawRows(item):await evaluateResearchItemAsync(item,progress); const renderStart=performance.now(); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); const dupBadge=(res.duplicateMap?.enabled&&res.duplicateMap.excludedRepKeys?.size)?`<div class="researchDiag" title="Click calculated cells for duplicate details.">Duplicate rep filter applied: ${res.duplicateMap.excludedRepKeys.size.toLocaleString()} duplicate records excluded</div>`:''; const html=warns+dupBadge+queryPlanBadge(res.perf?.queryPlan)+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res))+expressionSummaryPanel('Research expression diagnostics'); console.info('[Research Builder]',{item:item.title,cacheUsed:!!res.perf?.cacheUsed,totalComputeTime:res.perf?.totalComputeMs ?? Math.round(renderStart-computeStart),renderTime:Math.round(performance.now()-renderStart),rowsScanned:res.perf?.rowsScanned,indexesUsed:res.perf?.indexesUsed}); return html; }
+  try{ resetExpressionRunStats(); const computeStart=performance.now(); const res=item.outputType==='conversation'?evaluateResearchRawRows(item):await evaluateResearchItemAsync(item,progress); researchSaveRenderedResult(item,res); const renderStart=performance.now(); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); const dupBadge=(res.duplicateMap?.enabled&&res.duplicateMap.excludedRepKeys?.size)?`<div class="researchDiag" title="Click calculated cells for duplicate details.">Duplicate rep filter applied: ${res.duplicateMap.excludedRepKeys.size.toLocaleString()} duplicate records excluded</div>`:''; const html=warns+dupBadge+queryPlanBadge(res.perf?.queryPlan)+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res))+expressionSummaryPanel('Research expression diagnostics'); console.info('[Research Builder]',{item:item.title,cacheUsed:!!res.perf?.cacheUsed,totalComputeTime:res.perf?.totalComputeMs ?? Math.round(renderStart-computeStart),renderTime:Math.round(performance.now()-renderStart),rowsScanned:res.perf?.rowsScanned,indexesUsed:res.perf?.indexesUsed}); return html; }
   catch(e){ return researchFailedBody(e); }
 }
 
@@ -6100,7 +6114,28 @@ function bindResearchCanvasActions(){
   bindResearchConversationViewerActions(els.researchCanvas);
   bindResearchVirtualTables(els.researchCanvas);
   els.researchCanvas.querySelectorAll('[data-trace-id]').forEach(c=>c.onclick=e=>{ e.stopPropagation(); openResearchCellFeedback(c.dataset.traceId); });
+  els.researchCanvas.querySelectorAll('[data-research-refresh]').forEach(b=>b.onclick=async()=>{ const item=state.researchItems.find(x=>x.id===b.dataset.researchRefresh); if(!item) return; await refreshResearchItem(item.id,b); });
   els.researchCanvas.querySelectorAll('[data-research-render]').forEach(b=>b.onclick=async()=>{ const item=state.researchItems.find(x=>x.id===b.dataset.researchRender); if(!item) return; state.renderedLargeResearchCards.add(item.id); const token={cancelled:false,id:Date.now()+Math.random(),reason:'card-render'}; const card=els.researchCanvas.querySelector(`[data-research-card="${CSS.escape(item.id)}"] .researchCardBody`); const key=researchItemCacheKey(item,item.outputType==='conversation'?'raw':'agg'), cached=researchHasCache(key); if(card) card.innerHTML=`<div class="researchPreviewSummary"><span class="badge">${cached?'Opening cached result...':'Preparing data index...'}</span></div>`; showProgress(cached?'Opening cached research card...':'Preparing Research card...',5); await ensureResearchDataIndexReady({background:false,reason:'Preparing Research card'}); await yieldToBrowser(); updateProgress(cached?'Opening cached result...':'Calculating Research card...',35); await yieldToBrowser(); if(!token.cancelled && card){ const html=await renderResearchItemBodyAsync(item,{start:35,end:85,status:true}); updateProgress('Rendering visible table/chart...',85); await yieldToBrowser(); card.innerHTML=html; } updateProgress('Research card rendered',100); hideProgress(); bindResearchCanvasActions(); updateResearchCacheBadge(); });
+}
+async function refreshResearchItem(itemId,button){
+  const item=state.researchItems.find(x=>x.id===itemId); if(!item) return;
+  const card=els.researchCanvas?.querySelector(`[data-research-card="${CSS.escape(item.id)}"] .researchCardBody`);
+  if(button){ button.disabled=true; button.dataset.originalText=button.textContent; button.textContent='⟳ Rendering...'; }
+  if(card) card.innerHTML=researchLoadingStoredBody(`Rendering ${item.outputType}...`,'0 / 0 rows');
+  try{
+    showProgress(`Rendering ${item.outputType}...`,2);
+    await ensureResearchDataIndexReady({background:false,reason:'Refreshing Research output'});
+    await yieldToBrowser();
+    const html=await renderResearchItemBodyAsync(item,{start:8,end:92,status:true});
+    if(card) card.innerHTML=html;
+    setResearchCanvasStatus(`Refreshed ${item.title||'Research item'} from newly saved results.`);
+  }catch(e){
+    if(card) card.innerHTML=researchFailedBody(e);
+  }finally{
+    hideProgress();
+    if(button){ button.disabled=false; button.textContent=button.dataset.originalText||'Refresh / Re-run'; }
+    bindResearchCanvasActions();
+  }
 }
 function clearResearchItemsWithConfirm(){ if(!confirm('Clear all saved research items? This cannot be undone.')) return false; if(state.researchRenderToken) state.researchRenderToken.cancelled=true; state.researchItems=[]; saveResearchItems(); clearResearchComputedCaches('research cleared'); if(els.researchCanvas && els.researchModal?.classList.contains('open')) els.researchCanvas.innerHTML='<div class="researchEmpty">No saved research items yet. Click <strong>Add New Item</strong> to create a table, conversation viewer, line graph, or bar graph.</div>'; if(els.topStatus) els.topStatus.textContent='Research was cleared'; return true; }
 function setResearchItemProp(itemId,patch){ const item=state.researchItems.find(x=>x.id===itemId); if(!item) return; Object.assign(item,patch); saveResearchItems(); renderResearchCanvasAsync({reason:'update'}); }
@@ -6112,19 +6147,16 @@ async function renderResearchCanvasAsync(opts={}){
   const items=renderResearchCanvasShell('Loading research items...');
   if(!items.length) return;
   await yieldToBrowser();
-  let paused=0;
   for(let idx=0;idx<items.length;idx++){
     if(token.cancelled) break;
-    const forcePauseHeavy=['open','import','save'].includes(opts.reason||'');
-    const item=items[idx], rowCount=researchSourceRowsForItem(item).length, heavy=shouldChunkResearchQuery(item,rowCount)&&(forcePauseHeavy || !state.renderedLargeResearchCards.has(item.id));
+    const item=items[idx];
     setResearchCanvasStatus(`Rendering ${idx+1} of ${items.length}...`);
     const card=els.researchCanvas.querySelector(`[data-research-card="${CSS.escape(item.id)}"] .researchCardBody`);
-    if(card){ const key=researchItemCacheKey(item,item.outputType==='conversation'?'raw':'agg'); card.innerHTML=heavy ? (researchHasCache(key)?researchCachedPlaceholder(item):researchLargePlaceholder(item)) : (rowCount>RESEARCH_BATCH_SIZE ? await renderResearchItemBodyAsync(item,{start:0,end:100,status:true}) : renderResearchItemBody(item)); }
-    if(heavy) paused++;
+    if(card) card.innerHTML=researchStoredResultValid(item) ? researchStoredResultBody(item) : researchNoStoredResultBody(item);
     bindResearchCanvasActions();
     await yieldToBrowser();
   }
-  if(!token.cancelled) setResearchCanvasStatus(paused ? `Large items paused until you click Render. ${paused} paused.` : 'Research items loaded.');
+  if(!token.cancelled) setResearchCanvasStatus('Research items loaded from saved rendered results. Use Refresh or Render All to regenerate.');
   bindResearchCanvasActions();
 }
 
