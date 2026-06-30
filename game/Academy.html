@@ -265,7 +265,9 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
 .loadingOverlay{display:none;position:fixed;inset:0;background:rgba(17,24,39,.58);z-index:5000;align-items:center;justify-content:center;padding:18px}
 .loadingOverlay.open{display:flex}
 .loadingCard{width:min(520px,94vw);background:#fff;border:3px solid #111827;border-radius:14px;box-shadow:0 18px 60px rgba(0,0,0,.35);padding:16px;display:grid;gap:10px}
-.loadingTitle{font-weight:900;font-size:18px;color:#111827}
+.loadingTitle{font-weight:900;font-size:18px;color:#111827;display:flex;align-items:center;gap:10px}
+.loadingTitle::before{content:"";width:22px;height:22px;border:3px solid #e5e7eb;border-top-color:#991b1b;border-radius:50%;animation:researchSpin .8s linear infinite;flex:0 0 auto}
+@keyframes researchSpin{to{transform:rotate(360deg)}}
 .loadingText{font-size:13px;font-weight:800;color:#374151;min-height:18px}
 .loadingBarTrack{height:18px;border:2px solid #111827;border-radius:999px;background:#f3f4f6;overflow:hidden}
 .loadingBarFill{height:100%;width:0%;background:#991b1b;transition:width .12s linear}
@@ -1298,6 +1300,7 @@ function hideProgress(){
   els.loadingOverlay.classList.remove('open');
   els.loadingOverlay.setAttribute('aria-hidden','true');
 }
+const RESEARCH_BATCH_SIZE=1000;
 function yieldToBrowser(){ return new Promise(resolve=>setTimeout(resolve,0)); }
 async function mapRowsChunked(rows, mapper, keep, label='Processing rows', start=0, end=100, chunkSize=1000){
   rows=rows||[];
@@ -5734,11 +5737,73 @@ function renderResearchItemBody(item){
   try{ resetExpressionRunStats(); const computeStart=performance.now(); const res=item.outputType==='conversation'?evaluateResearchRawRows(item):evaluateResearchItem(item); const renderStart=performance.now(); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); const dupBadge=(res.duplicateMap?.enabled&&res.duplicateMap.excludedRepKeys?.size)?`<div class="researchDiag" title="Click calculated cells for duplicate details.">Duplicate rep filter applied: ${res.duplicateMap.excludedRepKeys.size.toLocaleString()} duplicate records excluded</div>`:''; const html=warns+dupBadge+queryPlanBadge(res.perf?.queryPlan)+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res))+expressionSummaryPanel('Research expression diagnostics'); console.info('[Research Builder]',{item:item.title,cacheUsed:!!res.perf?.cacheUsed,totalComputeTime:res.perf?.totalComputeMs ?? Math.round(renderStart-computeStart),renderTime:Math.round(performance.now()-renderStart),rowsScanned:res.perf?.rowsScanned,indexesUsed:res.perf?.indexesUsed}); return html; }
   catch(e){ return researchFailedBody(e); }
 }
+
+async function evaluateResearchItemAsync(item, progress={}){
+  progress={start:0,end:100,status:false,...progress};
+  item=effectiveResearchItem(normalizeResearchItem(item));
+  const cacheKey=researchItemCacheKey(item,'agg'), cached=researchCacheGet(cacheKey); if(cached) return cached;
+  const t0=performance.now(), perf={rowsScanned:0,indexesUsed:[],filters:[],cacheUsed:false};
+  const warnings=[]; perf.warnings=warnings;
+  const report=(done,total,stage='Processing research table')=>{
+    const safeTotal=Math.max(1,total||0), pct=progress.start+(progress.end-progress.start)*(done/safeTotal);
+    updateProgress(`${stage}... ${done.toLocaleString()} / ${(total||0).toLocaleString()} rows`, pct);
+    if(progress.status) setResearchCanvasStatus(`${stage}... ${done.toLocaleString()} / ${(total||0).toLocaleString()} rows`);
+  };
+  let planned=buildQueryPlan(item.source,{dateColumn:item.dateColumn,startDate:item.startDate,endDate:item.endDate,filters:item.filters||[],groupFields:[item.groupField,item.secondaryGroupField],valueFields:[item.valueField,item.percentOfField,item.withinCompareField,...(item.columns||[]).flatMap(c=>[c.field,c.percentOfField,c.withinCompareField])].filter(Boolean),customExpressions:[item.groupExpression,item.numeratorExpression,item.denominatorExpression,item.percentOfField]});
+  let rows=planned.rows; perf.queryPlan=planned.plan; perf.indexesUsed.push(...(planned.plan.steps||[]).filter(s=>s.usedIndex).map(s=>s.name)); if(!rows.length && !getRowsRaw(item.source).length) warnings.push('No imported rows for selected source.'); addTeamFilterWarningsForItem(item,warnings); const hs=getResearchHeaders(item.source);
+  [item.dateColumn,item.groupField,item.secondaryGroupField].filter(Boolean).forEach(h=>{ if(researchFieldNeedsHeaderWarning(item,h)) warnings.push('Missing header: '+h); });
+  let universeRows=rows.slice(); rows=applyResearchGearRowFilters(rows,item,warnings); const duplicateMap=buildResearchDuplicateRepMap(researchDuplicateRowsBySource(item,rows),item,{warnings}); rows=applyDuplicateRepFilterToRows(rows,item.source,duplicateMap,{item}); universeRows=applyDuplicateRepFilterToRows(universeRows,item.source,duplicateMap,{item}); const dupWarn=researchDuplicateWarning(duplicateMap); if(dupWarn) warnings.push(dupWarn);
+  const mode=item.valueMode||'count'; if(['date_within','date_percent_within'].includes(mode) && !researchFieldLooksDate(item,item.valueField,rows)) warnings.push('This dates-within mode requires a date field.'); (item.columns||[]).forEach(c=>{ if(['date_within','date_percent_within'].includes(c.mode) && !researchFieldLooksDate(item,c.field,rows) && !warnings.includes('This dates-within mode requires a date field.')) warnings.push('This dates-within mode requires a date field.'); }); if(['sum','avg','min','max','value_within','value_percent_within'].includes(mode)){ const val=researchNumericValidation(item,item.valueField,rows); if(!val.ok) warnings.push(val.message); }
+  const hasSecondary=!!(item.useSecondaryGroup&&item.secondaryGroupField);
+  let groups=new Map(), parentTotals=new Map();
+  const groupMetric=!item.groupMultiAdd ? findMetricByRef(item.groupField) : null;
+  if(item.groupMultiAdd){
+    report(0,rows.length);
+    const built=buildResearchMultiAddGroups(item,rows,universeRows,warnings); groups=built.groups; parentTotals=built.parentTotals;
+    report(rows.length,rows.length); await yieldToBrowser();
+  }else if(groupMetric){
+    const cfg=researchGearGetForItem(item,'groupField');
+    const counts=getMetricEntityCounts(groupMetric,{item,warnings},cfg);
+    const bucketOpts=buildMetricBucketOptions(groupMetric,{item,warnings},cfg), selectedBuckets=selectedMetricBucketSet(cfg,bucketOpts.buckets);
+    const rowSet=new Set(rows), universeSet=new Set(universeRows);
+    let processed=0, totalBuckets=counts.entitiesByBucket.size;
+    for(const [bucketEntities,bucket] of [...counts.entitiesByBucket.entries()].map(([bucket,entities])=>[entities,bucket])){
+      const bucketSelected=selectedBuckets.has(String(bucket)); if(!conditionResultIsTrue(cfg.conditionResult) ? bucketSelected : !bucketSelected){ processed++; continue; }
+      const bucketRows=metricEntityRowsForBucket(item.source,bucketEntities,counts.entityMode,counts.coachMethod,item).filter(r=>rowSet.has(r));
+      const bucketUniverse=metricEntityRowsForBucket(item.source,bucketEntities,counts.entityMode,counts.coachMethod,item).filter(r=>universeSet.has(r));
+      parentTotals.set(bucket,bucketUniverse.length||bucketRows.length||0);
+      for(let i=0;i<bucketRows.length;i++){
+        const r=bucketRows[i], sec=hasSecondary?researchSecondaryKey(item,r):'', key=hasSecondary?bucket+'\u0000'+sec:bucket; if(!groups.has(key)) groups.set(key,{primary:bucket,secondary:sec,rows:[],dateValue:researchSortDateValue(item,[r])}); groups.get(key).rows.push(r); groups.get(key).dateValue=Math.min(groups.get(key).dateValue||Infinity,researchSortDateValue(item,[r])||Infinity);
+        if((i+1)%RESEARCH_BATCH_SIZE===0){ report(i+1,bucketRows.length,`Processing research bucket ${processed+1} of ${totalBuckets}`); await yieldToBrowser(); }
+      }
+      processed++; report(processed,totalBuckets,'Processing research buckets'); await yieldToBrowser();
+    }
+  }else{
+    for(let i=0;i<universeRows.length;i++){ const r=universeRows[i], p=researchGroupLabel(item,r); parentTotals.set(p,(parentTotals.get(p)||0)+1); if((i+1)%RESEARCH_BATCH_SIZE===0){ report(i+1,universeRows.length); await yieldToBrowser(); } }
+    for(let i=0;i<rows.length;i++){ const r=rows[i], p=researchGroupLabel(item,r), sec=hasSecondary?researchSecondaryKey(item,r):'', key=hasSecondary?p+'\u0000'+sec:p; if(!groups.has(key)) groups.set(key,{primary:p,secondary:sec,rows:[],dateValue:researchSortDateValue(item,[r])}); groups.get(key).rows.push(r); groups.get(key).dateValue=Math.min(groups.get(key).dateValue||Infinity,researchSortDateValue(item,[r])||Infinity); if((i+1)%RESEARCH_BATCH_SIZE===0){ report(i+1,rows.length); await yieldToBrowser(); } }
+  }
+  const total=universeRows.length||1;
+  let groupList=[...groups.values()].filter(g=>Object.keys(item.gearFilters||{}).every(key=>{ const cfg={...researchGearDefault(),...(item.gearFilters||{})[key]}; if(key.startsWith('columnField:') && cfg.valueLevel==='level2') return true; if(!cfg.customValueEnabled||cfg.customValueMetric==='each') return true; const field=researchGearFieldForKey(item,key,+(key.split(':')[1]||0)); if(!field) return true; const bad=researchGearNumericInvalid(cfg,item,field,g.rows); if(bad){ if(!warnings.includes(bad)) warnings.push(bad); return true; } return researchGearGroupPass(g.rows,cfg,item,field); }));
+  const outputColumns=expandedResearchColumns(item); let data=[];
+  for(let i=0;i<groupList.length;i++){
+    const g=groupList[i], ctx={total,parentTotal:(parentTotals.get(g.primary)||g.rows.length||1),warnings}; let vals, traces=[]; if(item.outputType==='table'){ vals=outputColumns.map(c=>aggregateResearchValue(item,g.rows,c,ctx)); traces=outputColumns.map((c,j)=>({rowRefs:researchTraceRowRefs(item.source,g.rows),rowLabel:g.primary,secondaryLabel:g.secondary,columnLabel:c.label||c.mode||'Value',valueMode:c.mode||item.valueMode,field:c.field||item.valueField,displayValueRaw:vals[j],ctx:{total:ctx.total,parentTotal:ctx.parentTotal}})); } else vals=[aggregateResearchValue(item,g.rows,null,ctx)]; data.push({label:g.primary,secondary:g.secondary,values:vals,traces,rows:g.rows.length,dateValue:Number.isFinite(g.dateValue)?g.dateValue:researchSortDateValue(item,g.rows)});
+    if((i+1)%RESEARCH_BATCH_SIZE===0){ report(i+1,groupList.length,'Calculating research table groups'); await yieldToBrowser(); }
+  }
+  if(hasSecondary && (!item.sort || item.sort==='default')) data.sort((a,b)=>String(a.label).localeCompare(String(b.label))||String(a.secondary).localeCompare(String(b.secondary))); const sort=item.sort||'default'; if(sort==='xAsc') data.sort((a,b)=>(a.label+a.secondary).localeCompare(b.label+b.secondary)); if(sort==='xDesc') data.sort((a,b)=>(b.label+b.secondary).localeCompare(a.label+a.secondary)); if(sort==='yAsc') data.sort((a,b)=>(+a.values[0]||0)-(+b.values[0]||0)); if(sort==='yDesc') data.sort((a,b)=>(+b.values[0]||0)-(+a.values[0]||0)); if(sort==='dateAsc') data.sort((a,b)=>(a.dateValue||0)-(b.dateValue||0)); if(sort==='dateDesc') data.sort((a,b)=>(b.dateValue||0)-(a.dateValue||0)); if(item.rowLimit) data=data.slice(0,item.rowLimit);
+  const totalValues=(item.outputType==='table'&&item.totals)?outputColumns.map(c=>aggregateResearchValue(item,universeRows,c,{total:universeRows.length||1,parentTotal:universeRows.length||1,warnings})):[];
+  const effectiveHasSecondary=hasSecondary || (item.outputType==='line' && item.groupMultiAdd);
+  perf.totalComputeMs=Math.round(performance.now()-t0); console.info('[Research Builder]',perf); report(rows.length,rows.length); return researchCacheSet(cacheKey,{data,warnings,columns:outputColumns,hasSecondary:effectiveHasSecondary,totalValues,totalRowCount:universeRows.length,duplicateMap},perf);
+}
+async function renderResearchItemBodyAsync(item, progress={}){
+  try{ resetExpressionRunStats(); const computeStart=performance.now(); const res=item.outputType==='conversation'?evaluateResearchRawRows(item):await evaluateResearchItemAsync(item,progress); const renderStart=performance.now(); const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); const dupBadge=(res.duplicateMap?.enabled&&res.duplicateMap.excludedRepKeys?.size)?`<div class="researchDiag" title="Click calculated cells for duplicate details.">Duplicate rep filter applied: ${res.duplicateMap.excludedRepKeys.size.toLocaleString()} duplicate records excluded</div>`:''; const html=warns+dupBadge+queryPlanBadge(res.perf?.queryPlan)+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res))+expressionSummaryPanel('Research expression diagnostics'); console.info('[Research Builder]',{item:item.title,cacheUsed:!!res.perf?.cacheUsed,totalComputeTime:res.perf?.totalComputeMs ?? Math.round(renderStart-computeStart),renderTime:Math.round(performance.now()-renderStart),rowsScanned:res.perf?.rowsScanned,indexesUsed:res.perf?.indexesUsed}); return html; }
+  catch(e){ return researchFailedBody(e); }
+}
+
 function bindResearchCanvasActions(){
   els.researchCanvas.querySelectorAll('[data-research-edit]').forEach(b=>b.onclick=()=>openResearchItemEditor(b.dataset.researchEdit)); els.researchCanvas.querySelectorAll('[data-research-delete]').forEach(b=>b.onclick=()=>deleteResearchItem(b.dataset.researchDelete)); els.researchCanvas.querySelectorAll('[data-research-data]').forEach(b=>b.onclick=()=>exportResearchItemData(b.dataset.researchData)); els.researchCanvas.querySelectorAll('[data-research-image]').forEach(b=>b.onclick=()=>exportResearchItemImage(b.dataset.researchImage)); els.researchCanvas.querySelectorAll('[data-research-size]').forEach(b=>b.onclick=()=>setResearchItemProp(b.dataset.researchSize,{cardSize:b.dataset.size})); els.researchCanvas.querySelectorAll('[data-research-collapse]').forEach(b=>b.onclick=()=>{ const item=state.researchItems.find(x=>x.id===b.dataset.researchCollapse); setResearchItemProp(b.dataset.researchCollapse,{collapsed:!item.collapsed}); }); els.researchCanvas.querySelectorAll('[data-research-move]').forEach(b=>b.onclick=()=>moveResearchItem(b.dataset.researchMove,b.dataset.dir));
   bindResearchConversationViewerActions(els.researchCanvas);
   els.researchCanvas.querySelectorAll('[data-trace-id]').forEach(c=>c.onclick=e=>{ e.stopPropagation(); openResearchCellFeedback(c.dataset.traceId); });
-  els.researchCanvas.querySelectorAll('[data-research-render]').forEach(b=>b.onclick=async()=>{ const item=state.researchItems.find(x=>x.id===b.dataset.researchRender); if(!item) return; state.renderedLargeResearchCards.add(item.id); const token={cancelled:false,id:Date.now()+Math.random(),reason:'card-render'}; const card=els.researchCanvas.querySelector(`[data-research-card="${CSS.escape(item.id)}"] .researchCardBody`); const key=researchItemCacheKey(item,item.outputType==='conversation'?'raw':'agg'), cached=researchHasCache(key); if(card) card.innerHTML=`<div class="researchPreviewSummary"><span class="badge">${cached?'Opening cached result...':'Preparing data index...'}</span></div>`; showProgress(cached?'Opening cached research card...':'Preparing Research card...',5); await ensureResearchDataIndexReady({background:false,reason:'Preparing Research card'}); await yieldToBrowser(); updateProgress(cached?'Opening cached result...':'Calculating Research card...',35); await yieldToBrowser(); if(!token.cancelled && card){ const html=renderResearchItemBody(item); updateProgress('Rendering visible table/chart...',85); await yieldToBrowser(); card.innerHTML=html; } updateProgress('Research card rendered',100); hideProgress(); bindResearchCanvasActions(); updateResearchCacheBadge(); });
+  els.researchCanvas.querySelectorAll('[data-research-render]').forEach(b=>b.onclick=async()=>{ const item=state.researchItems.find(x=>x.id===b.dataset.researchRender); if(!item) return; state.renderedLargeResearchCards.add(item.id); const token={cancelled:false,id:Date.now()+Math.random(),reason:'card-render'}; const card=els.researchCanvas.querySelector(`[data-research-card="${CSS.escape(item.id)}"] .researchCardBody`); const key=researchItemCacheKey(item,item.outputType==='conversation'?'raw':'agg'), cached=researchHasCache(key); if(card) card.innerHTML=`<div class="researchPreviewSummary"><span class="badge">${cached?'Opening cached result...':'Preparing data index...'}</span></div>`; showProgress(cached?'Opening cached research card...':'Preparing Research card...',5); await ensureResearchDataIndexReady({background:false,reason:'Preparing Research card'}); await yieldToBrowser(); updateProgress(cached?'Opening cached result...':'Calculating Research card...',35); await yieldToBrowser(); if(!token.cancelled && card){ const html=await renderResearchItemBodyAsync(item,{start:35,end:85,status:true}); updateProgress('Rendering visible table/chart...',85); await yieldToBrowser(); card.innerHTML=html; } updateProgress('Research card rendered',100); hideProgress(); bindResearchCanvasActions(); updateResearchCacheBadge(); });
 }
 function clearResearchItemsWithConfirm(){ if(!confirm('Clear all saved research items? This cannot be undone.')) return false; if(state.researchRenderToken) state.researchRenderToken.cancelled=true; state.researchItems=[]; saveResearchItems(); clearResearchComputedCaches('research cleared'); if(els.researchCanvas && els.researchModal?.classList.contains('open')) els.researchCanvas.innerHTML='<div class="researchEmpty">No saved research items yet. Click <strong>Add New Item</strong> to create a table, conversation viewer, line graph, or bar graph.</div>'; if(els.topStatus) els.topStatus.textContent='Research was cleared'; return true; }
 function setResearchItemProp(itemId,patch){ const item=state.researchItems.find(x=>x.id===itemId); if(!item) return; Object.assign(item,patch); saveResearchItems(); renderResearchCanvasAsync({reason:'update'}); }
@@ -5757,7 +5822,7 @@ async function renderResearchCanvasAsync(opts={}){
     const item=items[idx], rowCount=researchSourceRowsForItem(item).length, heavy=shouldChunkResearchQuery(item,rowCount)&&(forcePauseHeavy || !state.renderedLargeResearchCards.has(item.id));
     setResearchCanvasStatus(`Rendering ${idx+1} of ${items.length}...`);
     const card=els.researchCanvas.querySelector(`[data-research-card="${CSS.escape(item.id)}"] .researchCardBody`);
-    if(card){ const key=researchItemCacheKey(item,item.outputType==='conversation'?'raw':'agg'); card.innerHTML=heavy ? (researchHasCache(key)?researchCachedPlaceholder(item):researchLargePlaceholder(item)) : renderResearchItemBody(item); }
+    if(card){ const key=researchItemCacheKey(item,item.outputType==='conversation'?'raw':'agg'); card.innerHTML=heavy ? (researchHasCache(key)?researchCachedPlaceholder(item):researchLargePlaceholder(item)) : (rowCount>RESEARCH_BATCH_SIZE ? await renderResearchItemBodyAsync(item,{start:0,end:100,status:true}) : renderResearchItemBody(item)); }
     if(heavy) paused++;
     bindResearchCanvasActions();
     await yieldToBrowser();
@@ -5778,6 +5843,7 @@ async function renderAllResearchItems(){
   setResearchRenderAllRunning(true);
   renderResearchCanvasShell('Preparing Render All...');
   await ensureResearchDataIndexReady({background:true,reason:'Preparing Render All'});
+  showProgress('Processing research table... 0 / 0 rows', 0);
   await yieldToBrowser();
   let rendered=0, failed=0;
   const renderedThisRun=new Set();
@@ -5789,7 +5855,7 @@ async function renderAllResearchItems(){
     await waitResearchRenderCheckpoints(item,token,idx,items.length);
     if(token.cancelled) break;
     try{
-      if(card) card.innerHTML=renderResearchItemBody(item);
+      if(card) card.innerHTML=await renderResearchItemBodyAsync(item,{start:0,end:90,status:true});
       state.renderedLargeResearchCards.add(item.id);
       renderedThisRun.add(item.id);
       rendered++;
@@ -5808,6 +5874,7 @@ async function renderAllResearchItems(){
     });
   }
   setResearchRenderAllRunning(false);
+  hideProgress();
   if(state.researchRenderAllToken===token) state.researchRenderAllToken=null;
   if(token.cancelled) setResearchCanvasStatus(`Rendering stopped. ${rendered} of ${items.length} rendered${failed?`, ${failed} failed`:''}.`);
   else setResearchCanvasStatus(`Render All complete. ${rendered} of ${items.length} rendered${failed?`, ${failed} failed`:''}.`);
