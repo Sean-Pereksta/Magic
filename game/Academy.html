@@ -1292,10 +1292,15 @@ function showProgress(text='Working...', pct=0){
   if(!els.loadingOverlay) return;
   els.loadingOverlay.classList.add('open');
   els.loadingOverlay.setAttribute('aria-hidden','false');
-  updateProgress(text,pct);
+  updateProgress(text,pct,{force:true});
 }
-function updateProgress(text,pct){
+let lastProgressUpdateAt=0, lastProgressText='', lastProgressPct=-1;
+function updateProgress(text,pct, opts={}){
   const p=clampPct(pct);
+  const now=performance.now();
+  const force=!!opts.force || p>=100 || p<=0;
+  if(!force && text===lastProgressText && Math.abs(p-lastProgressPct)<2 && now-lastProgressUpdateAt<160) return;
+  lastProgressUpdateAt=now; lastProgressText=text; lastProgressPct=p;
   if(els.loadingText) els.loadingText.textContent=text||'Working...';
   if(els.loadingBarFill) els.loadingBarFill.style.width=p+'%';
   if(els.loadingPct) els.loadingPct.textContent=p+'%';
@@ -1308,6 +1313,13 @@ function hideProgress(){
 const RESEARCH_BATCH_SIZE=1000;
 function yieldToBrowser(){ return new Promise(resolve=>setTimeout(resolve,0)); }
 const IMPORT_CHUNK_SIZE=1000;
+function importTiming(label){
+  const t0=performance.now(), marks=[];
+  return {
+    mark(phase, detail=''){ const now=performance.now(); marks.push({phase, ms:Math.round(now-t0), deltaMs:Math.round(now-(marks.at(-1)?._now||t0)), detail, _now:now}); console.info('[Import Timing]', label, phase, marks.at(-1)); },
+    end(detail=''){ const totalMs=Math.round(performance.now()-t0); console.info('[Import Timing]', label, {totalMs, detail, phases:marks.map(({_now,...m})=>m)}); return totalMs; }
+  };
+}
 async function mapRowsChunked(rows, mapper, keep, label='Processing rows', start=0, end=100, chunkSize=1000){
   rows=rows||[];
   const out=[];
@@ -1399,6 +1411,13 @@ function rowsCacheKey(source, opts={}){
   return [source, ymd(opts.start), ymd(opts.end), opts.qaDateMode||'', opts.dateColumn||'', opts.dateBasis||'', opts.weekStart||''].join('|');
 }
 function dataIndexReady(){ return !!(state.dataIndex && !state.dataIndex.dirty && state.dataIndex.sources); }
+function dataIndexSignature(){
+  return allSourceKeys().map(src=>{
+    const rows=getRowsRaw(src)||[], headers=getHeaders(src)||[], cs=isCustomSource(src)?customSource(src):null;
+    const fn=cs?.fileName || (src.startsWith('retail')?state.data.retail.fileName:src.startsWith('referral')?state.data.referral.fileName:(state.data[src]?.fileName||''));
+    return [src,rows.length,headers.length,headers.join('\u001f'),fn].join('\u001e');
+  }).join('\u001d');
+}
 function markDataIndexDirty(reason='data changed'){
   if(!state.dataIndex) state.dataIndex={dirty:true,reason,sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},date:new Map(),checklist:new Map(),documented_coaching:new Map()},version:0,lastBuiltAt:0};
   state.dataIndex.dirty=true;
@@ -2576,12 +2595,16 @@ function downloadText(filename, text){
   const blob=new Blob([text],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},0);
 }
 async function readFileWorkbook(file){
+  const timing=importTiming('file parsing/loading');
   updateProgress(`Loading file... ${file?.name||''}`,5);
   await yieldToBrowser();
   const buf=await file.arrayBuffer();
+  timing.mark('file parsing/loading', `${file?.name||''} buffer ${Number(buf.byteLength||0).toLocaleString()} bytes`);
   updateProgress('Loading file... parsing workbook',10);
   await yieldToBrowser();
-  return XLSX.read(buf,{type:'array',cellDates:true,raw:false});
+  const wb=XLSX.read(buf,{type:'array',cellDates:true,raw:false});
+  timing.end(`${(wb.SheetNames||[]).length} sheets`);
+  return wb;
 }
 function sheetAoa(wb, sheetName){
   const ws=wb.Sheets[sheetName]; if(!ws) return [];
@@ -2868,6 +2891,9 @@ function normalizeCategorizedRowsFromObjects(source, headers, rows){
   const repH=categorizedIdentityColumn(headers,'rep');
   const coachH=categorizedIdentityColumn(headers,'coach');
   const dateH=findHeader(headers,['Date','Interaction Date','Interaction Start Time','Assigned Date','Created Date','Week','Week Start','Week Ending','Month']) || headers.find(headerLooksLikeDateColumn) || '';
+  return normalizeCategorizedRowsWithResolvedHeaders(source,headers,rows,repH,coachH,dateH);
+}
+function normalizeCategorizedRowsWithResolvedHeaders(source, headers, rows, repH, coachH, dateH){
   return (rows||[]).map(row=>{
     const out={...(row||{})};
     const rep=cleanName(out._rep || (repH?out[repH]:'') || out.Representative || out['Agent Name'] || out['Associate Name'] || out['Associate name'] || out.Name || '');
@@ -2891,13 +2917,15 @@ function categorizedHeadersFromAoa(aoa){
 }
 async function categorizedHeadersFromAoaAsync(aoa, label='Importing categorized rows', start=25, end=50){
   const headers=(aoa?.[0]||[]).map(h=>String(h??'').trim()).filter(Boolean);
+  const repH=categorizedIdentityColumn(headers,'rep'), coachH=categorizedIdentityColumn(headers,'coach');
+  const dateH=findHeader(headers,['Date','Interaction Date','Interaction Start Time','Assigned Date','Created Date','Week','Week Start','Week Ending','Month']) || headers.find(headerLooksLikeDateColumn) || '';
   const rawRows=[];
   await forEachChunked((aoa||[]).slice(1), arr=>{
     const row={}; let any=false;
     headers.forEach((h,i)=>{ const v=arr?.[i]??''; if(String(v).trim()!=='') any=true; row[h]=v; });
     if(any) rawRows.push(row);
   }, label, start, Math.min(end,start+(end-start)*.55));
-  const rows=await mapRowsChunked(rawRows,r=>normalizeCategorizedRowsFromObjects('',headers,[r])[0],null,`${label} · normalizing`,Math.min(end,start+(end-start)*.55),end);
+  const rows=await mapRowsChunked(rawRows,r=>normalizeCategorizedRowsWithResolvedHeaders('',headers,[r],repH,coachH,dateH)[0],null,`${label} · normalizing`,Math.min(end,start+(end-start)*.55),end);
   return {headers,rows};
 }
 function setCategorizedRowsFromAoa(source, aoa){
@@ -2908,7 +2936,9 @@ function setCategorizedRowsFromAoa(source, aoa){
 }
 async function setCategorizedRowsFromAoaAsync(source, aoa){
   const pack=await categorizedHeadersFromAoaAsync(aoa||[],`Importing packaged ${labelSource(source)} rows`,25,52);
-  const rows=await mapRowsChunked(pack.rows,r=>normalizeCategorizedRowsFromObjects(source,pack.headers,[r])[0],null,`Indexing packaged ${labelSource(source)} rows`,52,58);
+  const repH=categorizedIdentityColumn(pack.headers,'rep'), coachH=categorizedIdentityColumn(pack.headers,'coach');
+  const dateH=findHeader(pack.headers,['Date','Interaction Date','Interaction Start Time','Assigned Date','Created Date','Week','Week Start','Week Ending','Month']) || pack.headers.find(headerLooksLikeDateColumn) || '';
+  const rows=await mapRowsChunked(pack.rows,r=>normalizeCategorizedRowsWithResolvedHeaders(source,pack.headers,[r],repH,coachH,dateH)[0],null,`Indexing packaged ${labelSource(source)} rows`,52,58);
   if(source===DATED_SOURCE) state.categorized.dated={...state.categorized.dated,headers:pack.headers.length?pack.headers:['Representative','Coach','Date'],rows,builtAt:new Date().toISOString()};
   if(source===NONDATED_SOURCE) state.categorized.nondated={...state.categorized.nondated,headers:pack.headers.length?pack.headers:['Representative','Coach'],rows,builtAt:new Date().toISOString()};
 }
@@ -3031,13 +3061,16 @@ function renderSpreadsheetDataPreview(){
 async function categorizeImportedData(){
   const packs=categorizedSourceRowsForBuild().filter(p=>(p.rows||[]).length);
   if(!packs.length){ alert('Import data before categorizing.'); return; }
+  const timing=importTiming('categorization');
   showProgress('Preparing categorized databases...',4);
   try{
     await yieldToBrowser();
     updateProgress('Building date and non-date datasets...',6);
     await yieldToBrowser();
     const teamInfo=categorizedKnownTeamByRep();
+    timing.mark('categorization', 'known team lookup prepared');
     const headerMaps=buildCategorizedHeaderMaps(packs);
+    timing.mark('preparing headers/dropdowns', `${packs.length} source header maps`);
     const nondateByRep=new Map(), datedRows=[], missingCoachRows=[];
     const nondateHeaders=['Representative','Coach'], datedHeaders=['Representative','Coach','Date','Source'];
     headerMaps.forEach(map=>{ map.nondate.forEach(h=>{ if(!nondateHeaders.includes(h)) nondateHeaders.push(h); }); map.dated.forEach(h=>{ if(!datedHeaders.includes(h)) datedHeaders.push(h); }); });
@@ -3078,9 +3111,12 @@ async function categorizeImportedData(){
     state.categorized.nondated={headers:nondateHeaders,rows:nonRows,builtAt:new Date().toISOString(),sourceStats:nondateStats};
     state.categorized.dated={headers:datedHeaders,rows:datedRows,builtAt:new Date().toISOString(),sourceStats:datedStats};
     state.categorized.warnings=warnings;
-    updateProgress('Indexing imported data...',86); await yieldToBrowser();
+    timing.mark('building date/non-date datasets', `${nonRows.length.toLocaleString()} non-date, ${datedRows.length.toLocaleString()} dated`);
+    updateProgress('Finalizing categorized import...',86); await yieldToBrowser();
     await finishDataChanged('categorized database build',88);
     renderCategorizedSummary();
+    timing.mark('rendering previews', 'summary only; full preview deferred until opened');
+    timing.end('categorize complete');
   }catch(err){ console.error(err); alert('Categorize failed. Check the console for details.'); }
   finally{ hideProgress(); }
 }
@@ -3147,12 +3183,15 @@ async function rebuildSourceFromPackage(source, sheetName, model){
   await setSourceRowsAndHeadersAsync(source,pack.headers,pack.rows,model,`Importing ${labelSource(source)} rows`,45,55);
 }
 async function loadPackagedFile(file){
+  const timing=importTiming('package load hydration');
   showProgress('Reading packaged data...',3);
   try{
     await yieldToBrowser();
     const wb=await readFileWorkbook(file);
+    timing.mark('file parsing/loading', `${(wb.SheetNames||[]).length} sheets`);
     updateProgress('Assigning packaged sheets...',18); await yieldToBrowser();
     await storeWorkbookAsync('packaged',file,wb,'Preparing packaged workbook',12,18);
+    timing.mark('package load hydration', 'workbook sheets cached');
     const metaSheet=(wb.SheetNames||[]).find(sn=>norm(sn)===norm('All Star Metadata'));
     let packageMeta={};
     if(metaSheet){ try{ const metaAoa=sheetAoa(wb,metaSheet); packageMeta=JSON.parse(metaAoa?.[1]?.[0]||'{}')||{}; (packageMeta.customSources||[]).forEach(def=>{ if(!def.sourceKey || customSource(def.sourceKey)) return; const c={...def,id:def.id||id(),sourceType:'custom',rows:[],headers:[],aoa:[],sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,sheetName:def.sheetName||def.name,headerRow:def.headerRow||1,startCol:def.startCol||1,manualHeaders:def.manualHeaders||[]}; state.customSources.push(c); state.books[c.sourceKey]={fileName:file.name,sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,selectedSheets:{[c.sourceKey]:c.sheetName||c.name}}; }); if(Array.isArray(packageMeta.orgs)){ const prev=state.orgs||[]; packageMeta.orgs.map(normalizeOrg).forEach(o=>{ const i=prev.findIndex(x=>x.id===o.id); if(i>=0) prev[i]=o; else prev.push(o); }); state.orgs=prev; saveOrgs(); } }catch(e){ console.warn('Package metadata could not be read',e); } }
@@ -3169,6 +3208,7 @@ async function loadPackagedFile(file){
       state.books[sourceBookKey(src)].selectedSheets[src]=assigned[src];
       setSourceAoa(src,sheetAoa(wb,assigned[src]),assigned[src]);
       await rebuildSourceFromPackage(src,assigned[src],m);
+      timing.mark('building date/non-date datasets', `${labelSource(src)} hydrated`);
       await yieldToBrowser();
     }
     state.data.retail.fileName=file.name; state.data.referral.fileName=file.name; state.data.qa.fileName=file.name; state.data.checklist.fileName=file.name; state.data.documented_coaching.fileName=file.name;
@@ -3178,6 +3218,8 @@ async function loadPackagedFile(file){
     els.packagedFileName.textContent=`${file.name} · ${Object.keys(assigned).length} sheets assigned`;
     els.retailFileName.textContent=`${file.name} · packaged`; els.referralFileName.textContent=`${file.name} · packaged`; els.qaFileName.textContent=`${file.name} · packaged`; els.checklistFileName.textContent=`${file.name} · packaged`; if(els.documentedCoachingFileName) els.documentedCoachingFileName.textContent=`${file.name} · packaged`;
     await finishDataChanged('packaged data import',55);
+    timing.mark('rendering previews', 'summary only; full preview deferred until opened');
+    timing.end(`${Object.keys(assigned).length} sheets assigned`);
   }catch(err){ console.error(err); alert('Packaged data import failed. Check the console for details.'); }
   finally{ hideProgress(); }
 }
@@ -3387,11 +3429,14 @@ function rebuildDataIndexSync(reason='data changed'){
   return index;
 }
 async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
-  if(dataIndexReady()) return state.dataIndex;
+  const signature=dataIndexSignature();
+  if(dataIndexReady() && state.dataIndex.signature===signature) return state.dataIndex;
+  if(dataIndexReady() && state.dataIndex.signature!==signature) state.dataIndex.dirty=true;
+  const timing=importTiming('building indexes/maps');
   const start=Number(progress.start ?? 0), end=Number(progress.end ?? 100), span=end-start;
   const totalRows=Math.max(1,allSourceKeys().reduce((n,src)=>n+getRowsRaw(src).length,0));
   let done=0;
-  const index={dirty:false,reason,version:(state.dataIndex?.version||0)+1,sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},date:new Map(),checklist:new Map(),documented_coaching:new Map()},lastBuiltAt:Date.now()};
+  const index={dirty:false,reason,signature,version:(state.dataIndex?.version||0)+1,sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},date:new Map(),checklist:new Map(),documented_coaching:new Map()},lastBuiltAt:Date.now()};
   const globalReps=new Map();
   const chunkSize=Number(progress.chunkSize)||1200;
   for(const source of allSourceKeys()){
@@ -3423,6 +3468,7 @@ async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
     idx.byRepSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)));
     idx.byTeamSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)));
     index.sources[source]=idx;
+    timing.mark(`indexed ${labelSource(source)}`, `${rows.length.toLocaleString()} rows`);
     updateProgress(`${reason} · ${labelSource(source)} indexed`, start + span*Math.min(.95,done/totalRows));
     await yieldToBrowser();
   }
@@ -3434,17 +3480,21 @@ async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
   state.dataIndex=index; state.indexes=index.sources;
   updateProgress(`${reason} complete`, end);
   await yieldToBrowser();
+  timing.end(`${totalRows.toLocaleString()} rows`);
   return index;
 }
 async function finishDataChanged(reason='Data updated', progressStart=55){
+  const timing=importTiming(reason);
   markDataIndexDirty(reason);
   rebuildTeams();
-  await rebuildDataIndexAsync('Indexing imported data...', {start:progressStart,end:92});
-  updateProgress('Preparing headers...',94);
+  timing.mark('building date/non-date datasets', 'source rows normalized; research indexes deferred');
+  updateProgress('Preparing headers...',94,{force:true});
   await yieldToBrowser();
   setStatus(); renderEditModelSafe(); renderTeamSelect(); updateResearchCacheBadge(); if(els.researchModal?.classList.contains('open')) scheduleResearchCacheWarm('data updated');
-  updateProgress('Preparing headers complete',100);
+  timing.mark('preparing headers/dropdowns', 'visible controls refreshed');
+  updateProgress('Preparing headers complete',100,{force:true});
   await yieldToBrowser();
+  timing.end('essential import flow complete; indexes build on first research/model need');
 }
 function activeModelForImport(){ return state.editModel || findModel(els.runModelSelect?.value) || state.models[0] || normalizeModelForStorage({criteria:[]}); }
 function sourceRowsFromStoredAoa(source, model, strict=true){
