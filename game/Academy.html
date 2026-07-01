@@ -2702,9 +2702,10 @@ function insertHeaderIntoExpression(input, info, item, defaultSource=''){
   const candidate=typeof item==='string' ? {kind:'header',label:item,source:defaultSource} : (item||{kind:'header',label:''});
   const useBrackets=headerInsertNeedsBrackets(input,info);
   let insertion='';
+  const forceSourceQualified=!!input.closest?.('.percentBuilderSentence') && input.matches?.('[data-pb="customExpression"]') && candidate.source;
   if(candidate.kind==='metric') insertion=candidate.insert || candidate.label;
-  else if(info.mode==='crossHeader' || (candidate.source && defaultSource && candidate.source!==defaultSource)){
-    insertion=(info.mode==='crossHeader' && info.bracketed && !info.loose)
+  else if(forceSourceQualified || info.mode==='crossHeader' || (candidate.source && defaultSource && candidate.source!==defaultSource)){
+    insertion=(info.mode==='crossHeader' && info.bracketed && !info.loose && !forceSourceQualified)
       ? `[${plainHeaderName(candidate.label)}]`
       : sourceQualifiedFieldSuggestion(candidate.source||defaultSource,candidate.label);
   }else{
@@ -2719,6 +2720,11 @@ function insertHeaderIntoExpression(input, info, item, defaultSource=''){
 }
 function headerAutocompleteContext(input){
   let source='';
+  const pbBox=input?.closest?.('.percentBuilderSentence');
+  if(pbBox){
+    const sel=pbBox.querySelector('[data-pb="qualifierSource"]');
+    if(sel && sel.value && sel.value!=='custom_expression') source=sel.value;
+  }
   if(input?.getAttribute?.('list')==='metricHeaderSuggestions') source=els.metricSourceSelect?.value || firstImportedResearchSource?.() || 'qa';
   if(!source && els.researchEditorModal?.contains(input)) source=els.researchSource?.value || DYNAMIC_RESEARCH_SOURCE;
   if(!source && els.editModelModal?.contains(input)){
@@ -5722,10 +5728,19 @@ function saveResearchItemFromEditor(){
     alert('Research item save failed. Check the console for details.');
   }
 }
-function renderGraphPercentBuilderEditor(){ const box=el('researchPercentBuilderGraph'); if(!box) return; box.innerHTML=percentBuilderEditorHtml(state.editingResearchPercentBuilder||{},'item'); box.querySelectorAll('[data-pb]').forEach(x=>x.onchange=x.oninput=()=>{ state.editingResearchPercentBuilder=normalizePercentBuilder(state.editingResearchPercentBuilder||{}); state.editingResearchPercentBuilder[x.dataset.pb]=x.value; }); box.querySelectorAll('[data-pbr]').forEach(x=>x.onchange=x.oninput=()=>{ state.editingResearchPercentBuilder=normalizePercentBuilder(state.editingResearchPercentBuilder||{}); state.editingResearchPercentBuilder.rules[0]=state.editingResearchPercentBuilder.rules[0]||{}; state.editingResearchPercentBuilder.rules[0][x.dataset.pbr]=x.value; }); }
+function renderGraphPercentBuilderEditor(){ const box=el('researchPercentBuilderGraph'); if(!box) return; box.innerHTML=percentBuilderEditorHtml(state.editingResearchPercentBuilder||{},'item'); box.querySelectorAll('[data-pb]').forEach(x=>x.onchange=x.oninput=()=>{ state.editingResearchPercentBuilder=normalizePercentBuilder(state.editingResearchPercentBuilder||{}); state.editingResearchPercentBuilder[x.dataset.pb]=x.value; if(['qualifierSource','matchBehavior'].includes(x.dataset.pb)) renderGraphPercentBuilderEditor(); }); box.querySelectorAll('[data-pbr]').forEach(x=>x.onchange=x.oninput=()=>{ state.editingResearchPercentBuilder=normalizePercentBuilder(state.editingResearchPercentBuilder||{}); state.editingResearchPercentBuilder.rules[0]=state.editingResearchPercentBuilder.rules[0]||{}; state.editingResearchPercentBuilder.rules[0][x.dataset.pbr]=x.value; if(x.dataset.pbr==='operator') renderGraphPercentBuilderEditor(); }); }
 function updateResearchBuilderVisibility(){ const type=els.researchOutputType?.value||'table'; document.querySelectorAll('#researchEditorModal [data-show]').forEach(el=>{ const v=(el.dataset.show||'').split(/\s+/); const show=v.includes('all')||v.includes(type)||(v.includes('graph')&&(type==='line'||type==='bar'))||(v.includes('table')&&type==='table')||(v.includes('line')&&type==='line')||(v.includes('bar')&&type==='bar')||(v.includes('conversation')&&type==='conversation'); el.classList.toggle('hidden', !show); }); const mode=els.researchValueMode?.value||'count', within=['date_within','date_percent_within','value_within','value_percent_within'].includes(mode), experimentalPercent=mode==='experimental_percent_group', percentBuilder=mode==='percent_builder', withinGraph=within&&(type==='line'||type==='bar'), useRange=!!els.researchWithinUseRange?.checked; const valueWrap=els.researchValueField?.closest('.field'); if(valueWrap) valueWrap.classList.toggle('hidden', !(type==='line'||type==='bar') || ['count','percent_total','percent_parent','model'].includes(mode)); document.querySelectorAll('[data-secondary-group-field]').forEach(el=>el.classList.toggle('hidden', els.researchUseSecondaryGroup?.value!=='yes')); document.querySelectorAll('[data-percent-item-mode]').forEach(el=>el.classList.toggle('hidden', mode!=='percent_item')); document.querySelectorAll('[data-experimental-percent-group]').forEach(el=>el.classList.toggle('hidden', !experimentalPercent || !(type==='line'||type==='bar'))); const pbBox=el('researchPercentBuilderGraph'); if(pbBox){ pbBox.classList.toggle('hidden', !percentBuilder || !(type==='line'||type==='bar')); if(percentBuilder) renderGraphPercentBuilderEditor(); } document.querySelectorAll('[data-within-mode]').forEach(el=>el.classList.toggle('hidden', !withinGraph)); document.querySelectorAll('[data-within-days]').forEach(el=>el.classList.toggle('hidden', !withinGraph || useRange)); document.querySelectorAll('[data-within-range]').forEach(el=>el.classList.toggle('hidden', !withinGraph || !useRange)); validateResearchEditor(); renderResearchColumnsEditor(); attachResearchGearButtons(els.researchEditorModal); attachModelReferencePicker(els.researchEditorModal); }
 function normalizeOrgExpression(raw){ return String(raw||'').replace(/\borg\s*\(\s*(['"])([^'"]+)\1\s*\)/gi,'inOrg(row["Team"]||row["Job Coach"]||row["Coach"]||row._team,$1$2$1)').replace(/\b(Coach|Team)\s+in\s+\$([A-Za-z0-9 _.-]+)/gi,(m,f,n)=>`inOrg(row[${JSON.stringify(f)}]||row._team,${JSON.stringify(n.trim())})`); }
-function evaluateResearchExpression(row, expression, ctx={}){ if(!expression) return ''; expression=normalizeOrgExpression(expression); const source=ctx.source||''; const rk=expressionRowKey(row,source,expression,ctx.context||'research row expression'); if(rk.m.has(rk.k)){ expressionRunStats().cacheHits++; return rk.m.get(rk.k); } const fn=compileCachedExpression(source,expression,getHeaders(source),raw=>Function('row','toNumber','inOrg','return ('+raw+');'),ctx); const out=evaluateCompiledExpression(fn,[row,toNum,inOrg],ctx); rk.m.set(rk.k,out); return out; }
+function researchRowExpressionJs(expression,source,warnings=[]){
+  let out=String(expression||'');
+  out=replaceResearchSourceFieldRefs(out,(m,ref)=>{
+    if(!ref || ref.missingSource || ref.missingField){ addSourceQualifiedRefWarning(warnings,ref); return 'NaN'; }
+    return `__rf(row,${JSON.stringify(ref.source)},${JSON.stringify(ref.field)})`;
+  });
+  out=out.replace(/(^|[^!])\[([^\]]+)\](?!\s*\.\s*\[)/g,(m,prefix,col)=>prefix+`__rf(row,${JSON.stringify(source)},${JSON.stringify(col)})`);
+  return out;
+}
+function evaluateResearchExpression(row, expression, ctx={}){ if(!expression) return ''; expression=normalizeOrgExpression(expression); const source=ctx.source||''; const warnings=ctx.warnings||[]; const js=researchRowExpressionJs(expression,source,warnings); const rk=expressionRowKey(row,source,js,ctx.context||'research row expression'); if(rk.m.has(rk.k)){ expressionRunStats().cacheHits++; return rk.m.get(rk.k); } const fn=compileCachedExpression(source,js,getHeaders(source),raw=>Function('row','toNumber','inOrg','__rf','return ('+raw+');'),ctx); const rf=(r,src,field)=>{ const v=src===source ? researchFieldValue(r,field,src) : (()=>{ const xs=crossRowsForRow(src,r,{}); if(!xs.length) return 0; const nums=xs.map(x=>toNum(researchFieldValue(x,field,src))).filter(Number.isFinite); return nums.length ? nums.reduce((a,b)=>a+b,0) : researchFieldValue(xs[0],field,src); })(); const n=toNum(v); return Number.isFinite(n)?n:(String(v??'').trim()?v:0); }; const out=evaluateCompiledExpression(fn,[row,toNum,inOrg,rf],ctx); rk.m.set(rk.k,out); return out; }
 function normalizeResearchText(v){ return String(v??'').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").trim().replace(/^['"]|['"]$/g,'').replace(/\s+/g,' ').toLowerCase(); }
 function researchFieldValue(row, field, source){
   if(!field) return '';
@@ -6173,7 +6188,7 @@ function percentBuilderStats(item,rows,col=null,ctx={}){
   const ruleSource=pb.qualifierSource==='custom_expression'?item.source:(pb.qualifierSource||item.source);
   const baseQRows=percentBuilderSourceRows(pb,item,rows);
   const qRows=pb.qualifierSource==='custom_expression'
-    ? baseQRows.filter(r=>pb.customExpression ? !!evaluateResearchExpression(r,pb.customExpression,{source:item.source,context:'Percent Builder custom expression',row:r,item}) : false)
+    ? baseQRows.filter(r=>{ const out=pb.customExpression ? evaluateResearchExpression(r,pb.customExpression,{source:item.source,context:'Percent Builder custom expression',row:r,item,warnings}) : false; return typeof out==='number' ? out!==0 && Number.isFinite(out) : !!out; })
     : baseQRows.filter(r=>percentBuilderRulesPass(r,ruleSource,pb.rules));
   if(pb.qualifierSource==='custom_expression' && !String(pb.customExpression||'').trim()) warnings.push('Percent Builder custom expression is blank.');
   let numerator=0, denominator=0, evidenceRows=qRows;
