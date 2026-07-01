@@ -1596,7 +1596,8 @@ function researchProgressReporter(token,start=0,end=100,status=false){
   }};
 }
 function estimateResearchItemWork(item){
-  const rows=researchSourceRowsForItem(item).length||1, cols=Math.max(1,(expandedResearchColumns(item)||item.columns||[]).length||1);
+  const sourcePlan=buildResearchReferencedSourcePlan(item);
+  const rows=sourcePlan.totalWork||researchSourceRowsForItem(item).length||1, cols=Math.max(1,(expandedResearchColumns(item)||item.columns||[]).length||1);
   const filters=(item.filters||[]).length+Object.keys(item.gearFilters||{}).length;
   const type=item.outputType==='conversation'?0.4:(item.outputType==='table'?1.2:0.9);
   const complex=1+filters*.25+cols*.35+(researchProcessingStepCount(item)||0)*.2;
@@ -5026,10 +5027,49 @@ function researchFieldReferencedSources(field, defaultSource=''){
 function researchReferencedSources(item={}){
   const refs=[]; const add=src=>{ if(src && !isDynamicResearchSource(src) && !refs.includes(src)) refs.push(src); };
   [item.groupField,item.groupExpression,item.dateColumn,item.secondaryGroupField,item.valueField,item.percentOfField,item.numeratorExpression,item.denominatorExpression,item.withinCompareField].forEach(f=>researchFieldReferencedSources(f,item.source).forEach(add));
-  (item.columns||[]).forEach(c=>{ researchFieldReferencedSources(c.field,item.source).forEach(add); researchFieldReferencedSources(c.percentOfField,item.source).forEach(add); researchFieldReferencedSources(c.withinCompareField,item.source).forEach(add); });
+  (item.columns||[]).forEach(c=>{ researchFieldReferencedSources(c.field,item.source).forEach(add); researchFieldReferencedSources(c.percentOfField,item.source).forEach(add); researchFieldReferencedSources(c.withinCompareField,item.source).forEach(add); if(typeof researchPercentBuilderReferencedSources==='function') researchPercentBuilderReferencedSources(c.percentBuilder,item).forEach(add); });
   (item.filters||[]).forEach(f=>{ researchFieldReferencedSources(f.field,item.source).forEach(add); researchFieldReferencedSources(f.withinRightField,item.source).forEach(add); researchFieldReferencedSources(f.value,item.source).forEach(add); if(f.targetSource) add(f.targetSource); });
+  if(typeof researchPercentBuilderReferencedSources==='function') researchPercentBuilderReferencedSources(item.percentBuilder,item).forEach(add);
   return refs;
 }
+
+function researchPercentBuilderReferencedSources(pb={}, item={}){
+  const refs=[]; const add=src=>{ if(src && !isDynamicResearchSource(src) && !refs.includes(src)) refs.push(src); };
+  pb=normalizePercentBuilder(pb||{},item||{});
+  if(pb.qualifierSource && pb.qualifierSource!=='custom_expression') add(pb.qualifierSource);
+  if(pb.denominator==='custom' && pb.denominatorSource) add(pb.denominatorSource);
+  if(pb.denominator==='all_documented_coaching') add('documented_coaching');
+  if(pb.denominator==='all_checklist') add('checklist');
+  (pb.rules||[]).forEach(r=>researchFieldReferencedSources(r.field,pb.qualifierSource==='custom_expression'?(item.source||''):(pb.qualifierSource||item.source||'')).forEach(add));
+  (pb.denominatorRules||[]).forEach(r=>researchFieldReferencedSources(r.field,pb.denominatorSource||item.source||'').forEach(add));
+  researchFieldReferencedSources(pb.customExpression,item.source||'').forEach(add);
+  return refs;
+}
+function buildResearchReferencedSourcePlan(item={}){
+  item=effectiveResearchItem(normalizeResearchItem(item));
+  const sources=new Map();
+  const add=(src,reason,kind='scan')=>{
+    if(!src || isDynamicResearchSource(src)) return;
+    const key=src, rows=getResearchSourceRows(src).length, existing=sources.get(key)||{source:key,label:labelSource(key)||key,rows,workUnits:0,reasons:new Set(),kind};
+    existing.rows=Math.max(existing.rows,rows);
+    existing.kind=existing.kind==='scan'||kind==='scan'?'scan':kind;
+    if(reason) existing.reasons.add(reason);
+    sources.set(key,existing);
+  };
+  add(item.source,'main selected source','scan');
+  const addField=(field,reason,defaultSource=item.source)=>researchFieldReferencedSources(field,defaultSource).forEach(src=>add(src,reason,src===item.source?'scan':'link'));
+  addField(item.groupField,'Group / X axis field'); addField(item.groupExpression,'Group expression'); addField(item.secondaryGroupField,'Secondary group field'); addField(item.valueField,'Y axis field/expression'); addField(item.percentOfField,'Percent denominator field'); addField(item.withinCompareField,'Within comparison field'); addField(item.dateColumn,'Date column'); addField(item.numeratorExpression,'Numerator expression'); addField(item.denominatorExpression,'Denominator expression');
+  (item.groupAxisItems||[]).forEach((g,i)=>addField(g.expression||g.raw,`Multi-add group item ${i+1}`));
+  (item.columns||[]).forEach((c,i)=>{ addField(c.field,`Table column ${i+1}`); addField(c.percentOfField,`Table column ${i+1} percent denominator`); addField(c.withinCompareField,`Table column ${i+1} comparison field`); researchPercentBuilderReferencedSources(c.percentBuilder,item).forEach(src=>add(src,`Table column ${i+1} Percent Builder`,src===item.source?'scan':'link')); });
+  (item.filters||[]).forEach((f,i)=>{ addField(f.field,`Filter ${i+1}`); addField(f.withinRightField,`Filter ${i+1} comparison field`); addField(f.value,`Filter ${i+1} value/expression`); add(f.targetSource,`Filter ${i+1} target source`,'link'); });
+  researchPercentBuilderReferencedSources(item.percentBuilder,item).forEach(src=>add(src,'Percent Builder',src===item.source?'scan':'link'));
+  researchReferencedSources(item).forEach(src=>add(src,'Referenced expression source',src===item.source?'scan':'link'));
+  const stages=[...sources.values()].map(s=>{ const indexed=s.source!==item.source && s.kind!=='scan'; const workUnits=Math.max(1, indexed?Math.ceil((s.rows||1)*0.35):(s.rows||1)); return {...s,reasons:[...s.reasons],workUnits,indexed}; });
+  const groupWork=Math.max(1,Math.ceil((getResearchSourceRows(item.source).length||1)*0.1));
+  stages.push({source:'__groups__',label:'groups',rows:groupWork,workUnits:groupWork,reasons:['Group calculation'],kind:'compute',indexed:false});
+  return {item,sources:stages.filter(s=>s.source!=='__groups__'),stages,totalWork:stages.reduce((n,s)=>n+s.workUnits,0)||1};
+}
+
 function resolveDynamicResearchSource(item={}){
   if(!isDynamicResearchSource(item.source)) return item.source || firstImportedResearchSource();
   const refs=researchReferencedSources(item);
@@ -6767,12 +6807,22 @@ async function evaluateResearchItemAsync(item, progress={}){
   const cacheKey=researchItemCacheKey(item,'agg'), cached=researchCacheGet(cacheKey); if(cached) return cached;
   const t0=performance.now(), perf={rowsScanned:0,indexesUsed:[],filters:[],cacheUsed:false};
   const warnings=[]; perf.warnings=warnings;
-  const report=(done,total,stage='Processing research table')=>{
-    const safeTotal=Math.max(1,total||0), pct=progress.start+(progress.end-progress.start)*(done/safeTotal);
-    if(progress.token) updateResearchProgress(progress.token,`${stage}... ${done.toLocaleString()} / ${(total||0).toLocaleString()} rows`, pct);
-    else updateProgress(`${stage}... ${done.toLocaleString()} / ${(total||0).toLocaleString()} rows`, pct);
-    if(progress.status) setResearchCanvasStatus(`${stage}... ${done.toLocaleString()} / ${(total||0).toLocaleString()} rows`);
+  const sourcePlan=buildResearchReferencedSourcePlan(item); perf.referencedSourcePlan=sourcePlan.stages.map(s=>({source:s.source,label:s.label,rows:s.rows,workUnits:s.workUnits,indexed:s.indexed,reasons:s.reasons}));
+  const sourceOffsets=new Map(); let offset=0; sourcePlan.stages.forEach(s=>{ sourceOffsets.set(s.source,offset); offset+=s.workUnits; });
+  const reportWork=(stageKey,done,total,stage,unit='rows')=>{
+    const st=sourcePlan.stages.find(x=>x.source===stageKey)||sourcePlan.stages[0]||{workUnits:1};
+    const stageOffset=sourceOffsets.get(st.source)||0, safeTotal=Math.max(1,total||0), stageDone=Math.min(st.workUnits, st.workUnits*Math.max(0,Math.min(1,(done||0)/safeTotal)));
+    const pct=progress.start+(progress.end-progress.start)*((stageOffset+stageDone)/Math.max(1,sourcePlan.totalWork));
+    const label=`${stage}... ${(done||0).toLocaleString()} / ${(total||0).toLocaleString()} ${unit}`;
+    if(progress.token) updateResearchProgress(progress.token,label,pct); else updateProgress(label,pct);
+    if(progress.status) setResearchCanvasStatus(label);
   };
+  const report=(done,total,stage='Processing research table',unit='rows')=>reportWork(item.source,done,total,stage,unit);
+  for(const st of sourcePlan.sources){
+    const stage=st.source===item.source?`Scanning ${st.label}`:`${st.indexed?'Linking':'Scanning'} ${st.label} rows`;
+    reportWork(st.source,0,st.rows,stage); await yieldToBrowser();
+    if(st.source!==item.source){ reportWork(st.source,st.rows,st.rows,stage); await yieldToBrowser(); }
+  }
   let planned=buildQueryPlan(item.source,{dateColumn:item.dateColumn,startDate:item.startDate,endDate:item.endDate,filters:item.filters||[],groupFields:[item.groupField,item.secondaryGroupField],valueFields:[item.valueField,item.percentOfField,item.withinCompareField,...(item.columns||[]).flatMap(c=>[c.field,c.percentOfField,c.withinCompareField])].filter(Boolean),customExpressions:[item.groupExpression,item.numeratorExpression,item.denominatorExpression,item.percentOfField]});
   let rows=planned.rows; perf.queryPlan=planned.plan; perf.indexesUsed.push(...(planned.plan.steps||[]).filter(s=>s.usedIndex).map(s=>s.name)); if(!rows.length && !getRowsRaw(item.source).length) warnings.push('No imported rows for selected source.'); addTeamFilterWarningsForItem(item,warnings); const hs=getResearchHeaders(item.source);
   [item.dateColumn,item.groupField,item.secondaryGroupField].filter(Boolean).forEach(h=>{ if(researchFieldNeedsHeaderWarning(item,h)) warnings.push('Missing header: '+h); });
@@ -6798,9 +6848,9 @@ async function evaluateResearchItemAsync(item, progress={}){
       parentTotals.set(bucket,bucketUniverse.length||bucketRows.length||0);
       for(let i=0;i<bucketRows.length;i++){
         const r=bucketRows[i], sec=hasSecondary?researchSecondaryKey(item,r):'', key=hasSecondary?bucket+'\u0000'+sec:bucket; if(!groups.has(key)) groups.set(key,{primary:bucket,secondary:sec,rows:[],dateValue:researchSortDateValue(item,[r])}); groups.get(key).rows.push(r); groups.get(key).dateValue=Math.min(groups.get(key).dateValue||Infinity,researchSortDateValue(item,[r])||Infinity);
-        if((i+1)%RESEARCH_BATCH_SIZE===0){ report(i+1,bucketRows.length,`Processing research bucket ${processed+1} of ${totalBuckets}`); await yieldToBrowser(); }
+        if((i+1)%RESEARCH_BATCH_SIZE===0){ reportWork('__groups__',i+1,bucketRows.length,`Processing research bucket ${processed+1} of ${totalBuckets}`); await yieldToBrowser(); }
       }
-      processed++; report(processed,totalBuckets,'Processing research buckets'); await yieldToBrowser();
+      processed++; reportWork('__groups__',processed,totalBuckets,'Processing research buckets','buckets'); await yieldToBrowser();
     }
   }else{
     for(let i=0;i<universeRows.length;i++){ const r=universeRows[i], p=researchGroupLabel(item,r); parentTotals.set(p,(parentTotals.get(p)||0)+1); if((i+1)%RESEARCH_BATCH_SIZE===0){ report(i+1,universeRows.length); await yieldToBrowser(); } }
@@ -6812,12 +6862,12 @@ async function evaluateResearchItemAsync(item, progress={}){
   const outputColumns=expandedResearchColumns(item); let data=[];
   for(let i=0;i<groupList.length;i++){
     const g=groupList[i], ctx={total,parentTotal:(parentTotals.get(g.primary)||g.rows.length||1),warnings}; let vals, traces=[]; if(item.outputType==='table'){ vals=outputColumns.map(c=>aggregateResearchValue(item,g.rows,c,ctx)); traces=outputColumns.map((c,j)=>({rowRefs:researchTraceRowRefs(item.source,g.rows,2000,researchEvidenceFieldsForTrace(item,c,item.source)),rowLabel:g.primary,secondaryLabel:g.secondary,columnLabel:researchColumnDisplayTitle(item,c)||c.label||c.mode||'Value',valueMode:c.mode||item.valueMode,field:c.field||item.valueField,displayValueRaw:vals[j],ctx:{total:ctx.total,parentTotal:ctx.parentTotal,universeRows:ctx.universeRows,parentRows:ctx.parentRows}})); } else { vals=[aggregateResearchValue(item,g.rows,null,ctx)]; traces=[{rowRefs:researchTraceRowRefs(item.source,g.rows,2000,researchEvidenceFieldsForTrace(item,null,item.source)),rowLabel:g.primary,secondaryLabel:g.secondary,columnLabel:researchColumnLabel(item,{}),valueMode:item.valueMode,field:item.valueField,displayValueRaw:vals[0],ctx:{total:ctx.total,parentTotal:ctx.parentTotal,universeRows:ctx.universeRows,parentRows:ctx.parentRows}}]; } data.push({label:g.primary,secondary:g.secondary,values:vals,traces,rows:g.rows.length,dateValue:Number.isFinite(g.dateValue)?g.dateValue:researchSortDateValue(item,g.rows)});
-    if((i+1)%RESEARCH_BATCH_SIZE===0){ report(i+1,groupList.length,'Calculating research table groups'); await yieldToBrowser(); }
+    if((i+1)%RESEARCH_BATCH_SIZE===0){ reportWork('__groups__',i+1,groupList.length,'Calculating research table groups','groups'); await yieldToBrowser(); }
   }
   if(hasSecondary && (!item.sort || item.sort==='default')) data.sort((a,b)=>String(a.label).localeCompare(String(b.label))||String(a.secondary).localeCompare(String(b.secondary))); const sort=item.sort||'default'; if(sort==='xAsc') data.sort((a,b)=>(a.label+a.secondary).localeCompare(b.label+b.secondary)); if(sort==='xDesc') data.sort((a,b)=>(b.label+b.secondary).localeCompare(a.label+a.secondary)); if(sort==='yAsc') data.sort((a,b)=>(+a.values[0]||0)-(+b.values[0]||0)); if(sort==='yDesc') data.sort((a,b)=>(+b.values[0]||0)-(+a.values[0]||0)); if(sort==='dateAsc') data.sort((a,b)=>(a.dateValue||0)-(b.dateValue||0)); if(sort==='dateDesc') data.sort((a,b)=>(b.dateValue||0)-(a.dateValue||0)); if(item.rowLimit) data=data.slice(0,item.rowLimit);
   const totalValues=(item.outputType==='table'&&item.totals)?outputColumns.map(c=>aggregateResearchValue(item,universeRows,c,{total:universeRows.length||1,parentTotal:universeRows.length||1,warnings})):[];
   const effectiveHasSecondary=hasSecondary || (item.outputType==='line' && item.groupMultiAdd);
-  perf.totalComputeMs=Math.round(performance.now()-t0); console.info('[Research Builder]',perf); report(rows.length,rows.length); return researchCacheSet(cacheKey,{data,warnings,columns:outputColumns,hasSecondary:effectiveHasSecondary,totalValues,totalRowCount:universeRows.length,totalRowRefs:researchTraceRowRefs(item.source,universeRows,2000,[]),duplicateMap},perf);
+  perf.totalComputeMs=Math.round(performance.now()-t0); console.info('[Research Builder]',perf); reportWork('__groups__',sourcePlan.stages.find(s=>s.source==='__groups__')?.rows||1,sourcePlan.stages.find(s=>s.source==='__groups__')?.rows||1,'Research render complete'); return researchCacheSet(cacheKey,{data,warnings,columns:outputColumns,hasSecondary:effectiveHasSecondary,totalValues,totalRowCount:universeRows.length,totalRowRefs:researchTraceRowRefs(item.source,universeRows,2000,[]),duplicateMap},perf);
 }
 async function renderResearchItemBodyAsync(item, progress={}){
   try{ resetExpressionRunStats(); const computeStart=performance.now(); const res=item.outputType==='conversation'?evaluateResearchRawRows(item):await evaluateResearchItemAsync(item,progress); const savePromise=researchSaveRenderedResult(item,res); const renderStart=performance.now(); const saveWarn='<div class="researchDiag" data-research-save-status>Saving rendered values in the background…</div>'; const warns=res.warnings.map(w=>`<div class="researchWarn">${esc(w)}</div>`).join(''); const dupBadge=(res.duplicateMap?.enabled&&res.duplicateMap.excludedRepKeys?.size)?`<div class="researchDiag" title="Click calculated cells for duplicate details.">Duplicate rep filter applied: ${res.duplicateMap.excludedRepKeys.size.toLocaleString()} duplicate records excluded</div>`:''; const html=saveWarn+warns+dupBadge+queryPlanBadge(res.perf?.queryPlan)+(item.outputType==='conversation'?renderResearchConversationViewer(item,res):item.outputType==='table'?renderResearchTable(item,res):item.outputType==='line'?renderResearchLineChart(item,res):renderResearchBarChart(item,res))+expressionSummaryPanel('Research expression diagnostics'); savePromise.then(ok=>{ document.querySelectorAll(`[data-research-card=\"${CSS.escape(item.id)}\"] [data-research-save-status]`).forEach(n=>n.textContent=ok?'Rendered values saved.':'Displayed, but saving rendered values failed.'); }); console.info('[Research Builder]',{item:item.title,cacheUsed:!!res.perf?.cacheUsed,totalComputeTime:res.perf?.totalComputeMs ?? Math.round(renderStart-computeStart),renderTime:Math.round(performance.now()-renderStart),rowsScanned:res.perf?.rowsScanned,indexesUsed:res.perf?.indexesUsed}); return html; }
