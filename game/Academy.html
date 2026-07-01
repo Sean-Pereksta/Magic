@@ -6149,18 +6149,22 @@ function percentBuilderRulePass(row,source,rule){
   const op=rule.operator||'contains', v=researchFieldValue(row,rule.field,source);
   if(op==='is blank') return String(v??'').trim()==='';
   if(op==='is not blank') return String(v??'').trim()!=='';
-  if(op==='starts with') return normalizeResearchText(v).startsWith(normalizeResearchText(rule.value));
-  if(op==='ends with') return normalizeResearchText(v).endsWith(normalizeResearchText(rule.value));
-  if(op==='equals'||op==='on') return normalizeResearchText(v)===normalizeResearchText(rule.value);
-  if(op==='does not equal') return normalizeResearchText(v)!==normalizeResearchText(rule.value);
+  const textPhrases=parseMultiPhraseValueInput(rule.value);
+  const text=normalizeResearchText(v);
+  const phraseText=textPhrases.map(p=>normalizeResearchText(p)).filter(Boolean);
+  const anyPhrase=(matcher)=>phraseText.some(matcher);
+  if(op==='starts with') return phraseText.length ? anyPhrase(p=>text.startsWith(p)) : text.startsWith(normalizeResearchText(rule.value));
+  if(op==='ends with') return phraseText.length ? anyPhrase(p=>text.endsWith(p)) : text.endsWith(normalizeResearchText(rule.value));
+  if(op==='equals'||op==='on') return phraseText.length ? anyPhrase(p=>text===p) : text===normalizeResearchText(rule.value);
+  if(op==='does not equal') return phraseText.length ? !anyPhrase(p=>text===p) : text!==normalizeResearchText(rule.value);
   if(op==='before'||op==='after') { const a=parseDateOnly(v), b=parseDateOnly(rule.value); if(!a||!b) return false; return op==='before'?a<b:a>b; }
   if(op==='between') { const da=parseDateOnly(v), d1=parseDateOnly(rule.value), d2=parseDateOnly(rule.value2); if(da&&d1&&d2) return da>=new Date(Math.min(d1,d2))&&da<=new Date(Math.max(d1,d2)); return compareFilter(v,'between',rule.value,rule.value2); }
   if(op==='greater than') return compareFilter(v,'greater than',rule.value);
   if(op==='greater than or equal'||op==='greater/equal') return compareFilter(v,'greater/equal',rule.value);
   if(op==='less than') return compareFilter(v,'less than',rule.value);
   if(op==='less than or equal'||op==='less/equal') return compareFilter(v,'less/equal',rule.value);
-  if(op==='does not contain') return compareFilter(v,'does not contain',rule.value);
-  return compareFilter(v,'contains',rule.value);
+  if(op==='does not contain') return phraseText.length ? !anyPhrase(p=>text.includes(p)) : compareFilter(v,'does not contain',rule.value);
+  return phraseText.length ? anyPhrase(p=>text.includes(p)) : compareFilter(v,'contains',rule.value);
 }
 function percentBuilderRulesPass(row,source,rules){ return !(rules||[]).length || rules.every(r=>!r.field || percentBuilderRulePass(row,source,r)); }
 function percentBuilderSourceRows(pb,item,groupRows){ const src=pb.qualifierSource==='custom_expression'?item.source:(pb.qualifierSource||item.source); return src===item.source?(groupRows||[]):researchRowsForCohort(src,groupRows||[],item.source,item); }
