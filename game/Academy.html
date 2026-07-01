@@ -5126,6 +5126,7 @@ function sourceConfiguredIdentityColumn(sourceKey,type){ const cs=customSource?.
 function detectIdentityColumn(row,sourceKey,type){ const headers=getHeaders(sourceKey)||Object.keys(row||{}); const configured=sourceConfiguredIdentityColumn(sourceKey,type); if(configured && headers.includes(configured)) return {column:configured,confidence:1}; const aliases=type==='rep'?REP_IDENTITY_COLUMNS:COACH_IDENTITY_COLUMNS; const normAliases=new Set(aliases.map(a=>normalizeIdentityName(a))); let best='', score=0; headers.forEach(h=>{ const nh=normalizeIdentityName(h); if(normAliases.has(nh)){ best=h; score=Math.max(score,.95); } else if(aliases.some(a=>nh.includes(normalizeIdentityName(a))||normalizeIdentityName(a).includes(nh))){ if(score<.75){ best=h; score=.75; } } }); return {column:best,confidence:score}; }
 function getRepIdentity(row,sourceKey,options={}){ const found=detectIdentityColumn(row,sourceKey,'rep'), rawName=found.column?row?.[found.column]:(row?._rep||row?._repKey||''); let normalizedName=normalizeIdentityName(rawName,{lastFirst:options.lastFirst}); const mapped=(state.repAliases?.get?.(normalizedName)||state.masterRepMap?.get?.(normalizedName)||''); if(mapped) normalizedName=normalizeIdentityName(mapped); return {rawName,normalizedName,displayName:displayIdentityName(mapped||rawName)||normalizedName,sourceKey,sourceRowIndex:researchRowSourceIndex?.(sourceKey,row),confidence:found.confidence,matchedColumn:found.column||'_rep'}; }
 function getCoachIdentity(row,sourceKey,options={}){ const found=detectIdentityColumn(row,sourceKey,'coach'); let rawName=found.column?row?.[found.column]:(row?._team||''); if(!rawName){ const rep=getRepIdentity(row,sourceKey,options); rawName=state.repTeams?.get?.(rep.normalizedName)||''; } const normalizedName=normalizeIdentityName(rawName); return {rawName,normalizedName,displayName:displayIdentityName(rawName)||normalizedName,sourceKey,sourceRowIndex:researchRowSourceIndex?.(sourceKey,row),confidence:found.confidence||(rawName?.length?.valueOf?.()?0.55:0),matchedColumn:found.column||(rawName?'rep-to-team mapping':'')}; }
+function researchRowRepName(r,sourceKey=''){ const rep=getRepIdentity(r,sourceKey); return rep.displayName || displayIdentityName(r?._rep || r?.['Agent Name'] || r?.['Associate Name'] || r?.['Associate name'] || r?.Representative || r?.Associate || r?.Rep || r?.Name || ''); }
 function personKeyFromRow(r,sourceKey=''){ return getRepIdentity(r,sourceKey).normalizedName || r?._repKey || norm(r?._rep||r?.['Agent Name']||r?.['Associate Name']||r?.['Associate name']||r?.Agent||r?.Representative||''); }
 function researchRowTeam(r,sourceKey=''){ return getCoachIdentity(r,sourceKey).displayName || r?._team || r?.['Job Coach'] || r?.['Coach Assigned'] || r?.Coach || r?.Team || ''; }
 async function openResearchWorkspace(){
@@ -5746,7 +5747,11 @@ function renderPercentBuilderEditor(item={}){
   els.researchPercentBuilder.querySelector('[data-pb="unit"]').value=pb.unit;
   els.researchPercentBuilder.querySelector('[data-pb="matchBehavior"]').value=pb.unit==='rows'? 'item_matches' : pb.matchBehavior;
   els.researchPercentBuilder.querySelector('[data-pb="denominator"]').value=pb.denominator;
-  els.researchPercentBuilder.querySelectorAll('[data-pb],[data-pb-rule]').forEach(x=>x.oninput=x.onchange=()=>{ readPercentBuilderEditor(); renderPercentBuilderEditor(currentResearchItemFromEditor()); });
+  els.researchPercentBuilder.querySelectorAll('input[data-pb],textarea[data-pb],input[data-pb-rule]').forEach(x=>{
+    x.oninput=()=>{ readPercentBuilderEditor(); };
+    x.onchange=()=>{ readPercentBuilderEditor(); };
+  });
+  els.researchPercentBuilder.querySelectorAll('select[data-pb]').forEach(x=>x.onchange=()=>{ readPercentBuilderEditor(); renderPercentBuilderEditor(currentResearchItemFromEditor()); });
   els.researchPercentBuilder.querySelector('[data-pb-source]').onchange=e=>{ readPercentBuilderEditor(); if(e.target.value===PERCENT_BUILDER_CUSTOM){ state.editingPercentBuilder.fromMode='custom_expression'; } else { state.editingPercentBuilder.fromMode='source'; state.editingPercentBuilder.qualifierSource=e.target.value; } populateResearchFieldSelectors(currentResearchItemFromEditor()); renderPercentBuilderEditor(currentResearchItemFromEditor()); };
   els.researchPercentBuilder.querySelector('[data-pb-op]').onchange=e=>{ readPercentBuilderEditor(); state.editingPercentBuilder.operator=e.target.value; state.editingPercentBuilder.rules[0].operator=e.target.value; renderPercentBuilderEditor(currentResearchItemFromEditor()); };
 }
@@ -6134,10 +6139,10 @@ function comparePercentBuilderRuleValue(left,op,value,value2){
   return false;
 }
 function percentBuilderRepEntries(rows,source){
-  const m=new Map(); (rows||[]).forEach(r=>{ const key=personKeyFromRow(r)||normalizeIdentityName(researchRowRepName(r)); if(!key) return; if(!m.has(key)) m.set(key,{key,name:researchRowRepName(r)||key,team:researchRowTeam(r)||'',rows:[]}); const e=m.get(key); e.rows.push(r); if(!e.team) e.team=researchRowTeam(r)||''; });
+  const m=new Map(); (rows||[]).forEach(r=>{ const key=personKeyFromRow(r,source)||normalizeIdentityName(researchRowRepName(r,source)); if(!key) return; if(!m.has(key)) m.set(key,{key,name:researchRowRepName(r,source)||key,team:researchRowTeam(r,source)||'',rows:[]}); const e=m.get(key); e.rows.push(r); if(!e.team) e.team=researchRowTeam(r,source)||''; });
   return [...m.values()];
 }
-function percentBuilderRelatedRows(entry,source){ return (getResearchSourceRows(source)||[]).filter(r=>{ const k=personKeyFromRow(r)||normalizeIdentityName(researchRowRepName(r)); return k&&k===entry.key; }); }
+function percentBuilderRelatedRows(entry,source){ return (getResearchSourceRows(source)||[]).filter(r=>{ const k=personKeyFromRow(r,source)||normalizeIdentityName(researchRowRepName(r,source)); return k&&k===entry.key; }); }
 function percentBuilderRuleMatchesRow(row,source,pb,item,warnings=[]){
   if(pb.fromMode==='custom_expression'){ const n=evaluateResearchExpression(row,pb.expression,{source,context:'Percent Builder custom expression',row}); return comparePercentBuilderRuleValue(n,pb.operator,pb.value,pb.value2); }
   const rule=pb.rules?.[0]||{}, field=rule.field||'', ref=parseResearchSourceFieldRef(field), actualSource=ref&&!ref.missingSource?ref.source:source, actualField=ref&&!ref.missingField?ref.field:field;
@@ -7518,3 +7523,5 @@ loadModels(); loadResearchItems(); loadOrgs(); wire(); loadMetrics().then(()=>{ 
 </script>
 </body>
 </html>
+
+
