@@ -722,6 +722,9 @@ const IMPORT_CACHE_BOOK_STORE = 'books';
 const IMPORT_CACHE_MISC_STORE = 'misc';
 const IMPORT_CACHE_SCHEMA_VERSION = 1;
 const METRICS_KEY = 'allStarResearchMetrics.v1';
+const METRICS_DB = 'allStarResearchMetricsDb.v1';
+const METRICS_STORE = 'researchMetrics';
+const METRICS_RECORD_ID = 'current';
 const RESEARCH_CACHE_KEY = 'allStarResearchResultCache.v2';
 const DYNAMIC_RESEARCH_SOURCE = 'dynamic';
 const NONDATED_SOURCE = 'nondate';
@@ -4610,8 +4613,85 @@ function normalizeMetric(m={}){
   const modeMap={total_within:'date_within',percent_within:'date_percent_within'};
   return {id:m.id||id(),name:String(m.name||'New Metric'),source:m.source||allSourceKeys()[0]||'qa',mode:modeMap[m.mode]||m.mode||'count',field:m.field||'',percentOfField:m.percentOfField||m.denominatorField||'',withinCompareField:m.withinCompareField||m.compareField||'',withinUseRange:!!m.withinUseRange,withinDays:m.withinDays||m.days||'',withinRangeMin:m.withinRangeMin||'',withinRangeMax:m.withinRangeMax||'',selectedValues:Array.isArray(mainGear.selected)?mainGear.selected:[],gear:mainGear,rules:normRules,notes:m.notes||''};
 }
-function loadMetrics(){ try{ state.metrics=(JSON.parse(localStorage.getItem(METRICS_KEY)||'[]')||[]).map(normalizeMetric); }catch(_){ state.metrics=[]; } }
-function saveMetrics(){ state.metrics=(state.metrics||[]).map(normalizeMetric); localStorage.setItem(METRICS_KEY,JSON.stringify(state.metrics)); state.metricCache=new Map(); state.researchMetricCache=new Map(); clearResearchComputedCaches('metric definitions changed'); }
+function isQuotaExceededError(err){ return err && (err.name==='QuotaExceededError' || err.name==='NS_ERROR_DOM_QUOTA_REACHED' || err.code===22 || err.code===1014); }
+function safeSetLocalStorage(key,value){
+  try{ localStorage.setItem(key,value); return true; }
+  catch(err){
+    if(isQuotaExceededError(err)) console.warn('[Research Metrics] localStorage quota exceeded for',key);
+    else console.warn('[Research Metrics] localStorage write failed for',key,err);
+    return false;
+  }
+}
+function openAllStarAppDb(){
+  if(!('indexedDB' in window)) return Promise.reject(new Error('IndexedDB is not available in this browser.'));
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(METRICS_DB,1);
+    req.onupgradeneeded=()=>{ const db=req.result; if(!db.objectStoreNames.contains(METRICS_STORE)) db.createObjectStore(METRICS_STORE,{keyPath:'id'}); };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error||new Error('Could not open metrics database.'));
+  });
+}
+async function saveMetricsToIndexedDB(metrics){
+  const db=await openAllStarAppDb();
+  try{
+    const record={id:METRICS_RECORD_ID,metrics:(metrics||[]).map(normalizeMetric),savedAt:new Date().toISOString(),version:1};
+    const tx=db.transaction(METRICS_STORE,'readwrite');
+    tx.objectStore(METRICS_STORE).put(record);
+    await idbTxDone(tx);
+    return record;
+  }finally{ db.close(); }
+}
+async function loadMetricsFromIndexedDB(){
+  const db=await openAllStarAppDb();
+  try{
+    const record=await idbReq(db.transaction(METRICS_STORE,'readonly').objectStore(METRICS_STORE).get(METRICS_RECORD_ID));
+    return Array.isArray(record?.metrics) ? record.metrics.map(normalizeMetric) : null;
+  }finally{ db.close(); }
+}
+async function migrateMetricsLocalStorageToIndexedDB(){
+  let raw='';
+  try{ raw=localStorage.getItem(METRICS_KEY)||''; }catch(err){ console.warn('[Research Metrics] Could not read localStorage metrics',err); return false; }
+  if(!raw) return false;
+  try{
+    const parsed=JSON.parse(raw);
+    const metrics=(Array.isArray(parsed)?parsed:(parsed?.metrics||[])).map(normalizeMetric);
+    if(!metrics.length) return false;
+    const meta=await saveMetricsToIndexedDB(metrics);
+    safeSetLocalStorage(METRICS_KEY,JSON.stringify({savedAt:meta.savedAt,count:metrics.length,storage:'indexeddb'}));
+    state.metrics=metrics;
+    if(els.topStatus) els.topStatus.textContent='Metrics saved locally.';
+    return true;
+  }catch(err){ console.error('[Research Metrics] Migration failed',err); if(els.topStatus) els.topStatus.textContent='Metric migration failed: '+String(err?.message||err); return false; }
+}
+async function loadMetrics(){
+  try{
+    const idbMetrics=await loadMetricsFromIndexedDB();
+    if(idbMetrics){ state.metrics=idbMetrics; return true; }
+  }catch(err){ console.warn('[Research Metrics] IndexedDB load failed; trying localStorage fallback.',err); }
+  try{
+    const raw=localStorage.getItem(METRICS_KEY)||'[]';
+    const parsed=JSON.parse(raw)||[];
+    state.metrics=(Array.isArray(parsed)?parsed:(parsed.metrics||[])).map(normalizeMetric);
+    if(state.metrics.length) migrateMetricsLocalStorageToIndexedDB();
+    return true;
+  }catch(err){ console.warn('[Research Metrics] localStorage load failed',err); state.metrics=[]; return false; }
+}
+async function saveMetrics(){
+  state.metrics=(state.metrics||[]).map(normalizeMetric);
+  try{
+    const meta=await saveMetricsToIndexedDB(state.metrics);
+    safeSetLocalStorage(METRICS_KEY,JSON.stringify({savedAt:meta.savedAt,count:state.metrics.length,storage:'indexeddb'}));
+    state.metricCache=new Map(); state.researchMetricCache=new Map(); clearResearchComputedCaches('metric definitions changed');
+    if(els.topStatus) els.topStatus.textContent='Metrics saved locally.';
+    return true;
+  }catch(err){
+    console.error('[Research Metrics] Save failed',err);
+    const msg='Metrics could not be saved locally. IndexedDB may be blocked or browser storage may be full. Your editor remains open so you can retry or export your metrics.';
+    if(els.topStatus) els.topStatus.textContent=msg;
+    alert(msg);
+    return false;
+  }
+}
 function metricRefName(s){ const m=String(s||'').trim().match(/^@(.+)$/)||String(s||'').trim().match(/^metric:(.+)$/i); return m?m[1].trim():''; }
 function findMetricByRef(s){ const n=metricRefName(s); if(!n) return null; return (state.metrics||[]).find(m=>m.name===n||m.id===n)||null; }
 function metricSuggestions(){ return (state.metrics||[]).map(m=>'@'+m.name); }
@@ -4720,7 +4800,7 @@ function evaluateMetric(metric,rows,source,warnings=[]){
   if(!vals.length){ warnings.push(`${metric.name}: ${metric.mode==='sum'?'Sum':'Average'} requires numeric values.`); return 0; }
   return metric.mode==='avg'?vals.reduce((a,b)=>a+b,0)/vals.length:vals.reduce((a,b)=>a+b,0);
 }
-function openMetricsPage(){ loadMetrics(); refreshMetricDatalist(); renderMetricList(); openModal('metricsModal'); }
+async function openMetricsPage(){ await loadMetrics(); refreshMetricDatalist(); renderMetricList(); openModal('metricsModal'); }
 function sourceQualifiedFieldSuggestion(src,h){ return `![${labelSource(src)}].[${plainHeaderName(h)}]`; }
 function refreshMetricDatalist(){ const srcs=metricSources(); if(els.metricSourceSelect) els.metricSourceSelect.innerHTML=srcs.map(o=>`<option value="${esc(o.value)}">${esc(o.label)}</option>`).join(''); const opts=[...new Set(srcs.flatMap(src=>getResearchHeaders(src.value).flatMap(h=>[bracketedHeaderSuggestion(h),sourceQualifiedFieldSuggestion(src.value,h)])),...metricSuggestions(),...orgTokenNames())].filter(Boolean).map(h=>`<option value="${esc(h)}"></option>`).join(''); const dl=el('metricHeaderSuggestions'); if(dl) dl.innerHTML=opts; }
 function metricFromEditor(){ return normalizeMetric({id:els.metricEditId?.value||id(),name:els.metricNameInput?.value||'New Metric',source:els.metricSourceSelect?.value||'qa',mode:els.metricModeSelect?.value||'count',field:els.metricFieldInput?.value||'',percentOfField:els.metricPercentOfField?.value||'',withinCompareField:els.metricWithinCompareField?.value||'',withinUseRange:!!els.metricWithinUseRange?.checked,withinDays:els.metricWithinDays?.value||'',withinRangeMin:els.metricWithinRangeMin?.value||'',withinRangeMax:els.metricWithinRangeMax?.value||'',selectedValues:state.editingMetricGear?.selected||[],gear:state.editingMetricGear||{},rules:state.editingMetricRules||[],notes:els.metricNotesInput?.value||''}); }
@@ -4745,7 +4825,7 @@ function handleMetricModeOrRangeChange(){
   validateMetricNumeric();
 }
 function renderMetricsPage(activeId){ refreshMetricDatalist(); renderMetricList(activeId); }
-function renderMetricList(active){ const q=normalizeResearchText(els.metricSearchInput?.value||''); const rows=(state.metrics||[]).filter(m=>!q || [m.name,m.source,m.mode,m.field].some(v=>normalizeResearchText(v).includes(q))); els.metricsList.innerHTML=rows.map(m=>`<div class="metricListItem ${m.id===active?'active':''}" data-mid="${esc(m.id)}"><strong>${esc(m.name)}</strong><span>${esc(labelSource(m.source)||m.source)}</span><span>${esc(m.mode)}</span><span class="metricListActions"><button class="smallBtn" data-medit="${esc(m.id)}" type="button">Edit</button><button class="smallBtn" data-mdup="${esc(m.id)}" type="button">Duplicate</button><button class="smallBtn red" data-mdel="${esc(m.id)}" type="button">Delete</button></span></div>`).join('')||'<div class="metricListItem"><span>No metrics yet.</span></div>'; els.metricsList.querySelectorAll('[data-medit]').forEach(b=>b.onclick=e=>{e.stopPropagation();openMetricEditor(b.dataset.medit);}); els.metricsList.querySelectorAll('[data-mdup]').forEach(b=>b.onclick=e=>{e.stopPropagation(); const m=(state.metrics||[]).find(x=>x.id===b.dataset.mdup); if(!m) return; const cp=normalizeMetric({...clonePlain(m),id:id(),name:(m.name||'Metric')+' Copy'}); state.metrics.push(cp); saveMetrics(); renderMetricList(cp.id);}); els.metricsList.querySelectorAll('[data-mdel]').forEach(b=>b.onclick=e=>{e.stopPropagation(); const m=(state.metrics||[]).find(x=>x.id===b.dataset.mdel); if(m&&confirm(`Delete metric "${m.name}"?`)){ state.metrics=state.metrics.filter(x=>x.id!==m.id); saveMetrics(); renderMetricList(); }}); els.metricsList.querySelectorAll('[data-mid]').forEach(x=>x.onclick=()=>openMetricEditor(x.dataset.mid)); }
+function renderMetricList(active){ const q=normalizeResearchText(els.metricSearchInput?.value||''); const rows=(state.metrics||[]).filter(m=>!q || [m.name,m.source,m.mode,m.field].some(v=>normalizeResearchText(v).includes(q))); els.metricsList.innerHTML=rows.map(m=>`<div class="metricListItem ${m.id===active?'active':''}" data-mid="${esc(m.id)}"><strong>${esc(m.name)}</strong><span>${esc(labelSource(m.source)||m.source)}</span><span>${esc(m.mode)}</span><span class="metricListActions"><button class="smallBtn" data-medit="${esc(m.id)}" type="button">Edit</button><button class="smallBtn" data-mdup="${esc(m.id)}" type="button">Duplicate</button><button class="smallBtn red" data-mdel="${esc(m.id)}" type="button">Delete</button></span></div>`).join('')||'<div class="metricListItem"><span>No metrics yet.</span></div>'; els.metricsList.querySelectorAll('[data-medit]').forEach(b=>b.onclick=e=>{e.stopPropagation();openMetricEditor(b.dataset.medit);}); els.metricsList.querySelectorAll('[data-mdup]').forEach(b=>b.onclick=e=>{e.stopPropagation(); const m=(state.metrics||[]).find(x=>x.id===b.dataset.mdup); if(!m) return; const cp=normalizeMetric({...clonePlain(m),id:id(),name:(m.name||'Metric')+' Copy'}); state.metrics.push(cp); saveMetrics().then(ok=>{ if(ok) renderMetricList(cp.id); });}); els.metricsList.querySelectorAll('[data-mdel]').forEach(b=>b.onclick=e=>{e.stopPropagation(); const m=(state.metrics||[]).find(x=>x.id===b.dataset.mdel); if(m&&confirm(`Delete metric "${m.name}"?`)){ const prev=state.metrics; state.metrics=state.metrics.filter(x=>x.id!==m.id); saveMetrics().then(ok=>{ if(ok) renderMetricList(); else state.metrics=prev; }); }}); els.metricsList.querySelectorAll('[data-mid]').forEach(x=>x.onclick=()=>openMetricEditor(x.dataset.mid)); }
 function renderMetricRules(){
   const ops=['is','is not','contains','does not contain','is in org','is not in org','includes org','excludes org','blank','not blank','greater than','less than','greater or equal','less or equal','within days of'];
   els.metricRulesList.innerHTML=(state.editingMetricRules||[]).map((r,i)=>`<div class="metricRuleRow"><div class="field"><label>Join type</label><select data-mr="join" data-i="${i}"><option ${r.join!=='OR'?'selected':''}>AND</option><option ${r.join==='OR'?'selected':''}>OR</option></select></div><div class="field"><label>Field/Expression</label><div class="researchInputGear"><input data-mr="field" data-i="${i}" list="metricHeaderSuggestions" value="${esc(r.field||'')}"><button class="smallBtn researchGearBtn" data-mr-field-gear="${i}" type="button">⚙</button></div></div><div class="field"><label>Operator</label><select data-mr="op" data-i="${i}">${ops.map(o=>`<option value="${o}" ${r.op===o?'selected':''}>${o}</option>`).join('')}</select></div><div class="field"><label>Value</label><div class="researchInputGear"><input data-mr="value" data-i="${i}" value="${esc(r.value||'')}"><button class="smallBtn researchGearBtn" data-mr-gear="${i}" type="button">⚙</button></div></div><button class="smallBtn red" data-mr-remove="${i}" type="button">Remove Item</button></div>`).join('');
@@ -4775,7 +4855,7 @@ function openMetricRuleFieldGear(i){ const r=state.editingMetricRules[i]; if(!r|
 function openMetricRuleValuePicker(i){ return openMetricRuleFieldGear(i); }
 function openMetricValuePicker(){ const field=els.metricFieldInput.value; if(!field) return alert('Choose a Field/Expression first.'); metricGearPopup({title:'Metric field options for '+field,source:els.metricSourceSelect.value,field,cfg:state.editingMetricGear,onApply:gear=>{ state.editingMetricGear=gear; }}); }
 function validateMetricNumeric(){ const mode=els.metricModeSelect?.value, need=['sum','avg','percent_item','value_within','value_percent_within'].includes(mode), needDate=['date_within','date_percent_within'].includes(mode), m=metricFromEditor(); let res=need?researchNumericValidation({source:m.source},m.field):(needDate?(researchFieldLooksDate({source:m.source},m.field)?{ok:true}:{ok:false,message:'This dates-within metric requires a date field.'}):{ok:true}); if(res.ok && mode==='percent_item'){ if(!String(m.percentOfField||'').trim()) res={ok:false,message:'% of item requires a denominator item.'}; else res=researchNumericValidation({source:m.source},m.percentOfField); } if(res.ok && (needDate||mode==='value_within'||mode==='value_percent_within') && !String(m.withinCompareField||'').trim()) res={ok:false,message:'Within metrics require a comparison field.'}; if(res.ok && ['value_within','value_percent_within'].includes(mode)) res=researchNumericValidation({source:m.source},m.withinCompareField); if(els.metricNumericWarn){ els.metricNumericWarn.textContent=res.ok?'':res.message; els.metricNumericWarn.classList.toggle('hidden',res.ok); } els.metricFieldInput?.classList.toggle('researchInvalid',!res.ok); return res.ok; }
-function saveMetricFromEditor(exit=false){ const m=metricFromEditor(); if(!m.name.trim()) return alert('Metric Name is required.'); if(metricRefName(m.field)) return alert('Metrics cannot reference other metrics in this version.'); if(!validateMetricNumeric()) return alert(els.metricNumericWarn?.textContent||'Metric needs a valid field selection.'); const i=state.metrics.findIndex(x=>x.id===m.id); if(i>=0) state.metrics[i]=m; else state.metrics.push(m); saveMetrics(); renderMetricsPage(m.id); populateResearchFieldSelectors(currentResearchItemFromEditor?.()||{}); renderMetricList(m.id); if(exit) closeModal('metricEditorModal'); }
+async function saveMetricFromEditor(exit=false){ const m=metricFromEditor(); if(!m.name.trim()) return alert('Metric Name is required.'); if(metricRefName(m.field)) return alert('Metrics cannot reference other metrics in this version.'); if(!validateMetricNumeric()) return alert(els.metricNumericWarn?.textContent||'Metric needs a valid field selection.'); const prev=clonePlain(state.metrics||[]); const i=state.metrics.findIndex(x=>x.id===m.id); if(i>=0) state.metrics[i]=m; else state.metrics.push(m); const ok=await saveMetrics(); if(!ok){ state.metrics=prev; return false; } renderMetricsPage(m.id); populateResearchFieldSelectors(currentResearchItemFromEditor?.()||{}); renderMetricList(m.id); if(exit) closeModal('metricEditorModal'); return true; }
 
 function renderMetricFoundPreview(){
   const box=el('metricFoundPreview'), badge=el('metricPreviewSummary'); if(!box) return;
@@ -4799,7 +4879,7 @@ function renderMetricFoundPreview(){
 }
 
 function exportMetricsConfig(){ downloadText('all_star_research_metrics.txt',JSON.stringify({version:2,metrics:state.metrics||[],customSources:(state.customSources||[]).map(c=>({...clonePlain(c),rows:[],aoaBySheet:{}}))},null,2)); }
-function importMetricsConfig(text){ const obj=JSON.parse(text); if(obj&&Array.isArray(obj.customSources)){ obj.customSources.forEach(def=>{ if(def.sourceKey&&!customSource(def.sourceKey)) state.customSources.push({...def,rows:def.rows||[],headers:def.headers||[],aoa:def.aoa||[],aoaBySheet:def.aoaBySheet||{}}); }); renderCustomSourcesList(); } state.metrics=(Array.isArray(obj)?obj:(obj.metrics||[])).map(normalizeMetric); saveMetrics(); renderMetricsPage(state.metrics[0]?.id); }
+async function importMetricsConfig(text){ const obj=JSON.parse(text); if(obj&&Array.isArray(obj.customSources)){ obj.customSources.forEach(def=>{ if(def.sourceKey&&!customSource(def.sourceKey)) state.customSources.push({...def,rows:def.rows||[],headers:def.headers||[],aoa:def.aoa||[],aoaBySheet:def.aoaBySheet||{}}); }); renderCustomSourcesList(); } state.metrics=(Array.isArray(obj)?obj:(obj.metrics||[])).map(normalizeMetric); const ok=await saveMetrics(); if(ok) renderMetricsPage(state.metrics[0]?.id); return ok; }
 
 
 function normalizeResearchColumnRule(rule={},type='format'){
@@ -6895,7 +6975,7 @@ async function exportResearchItemData(itemId){
 }
 function exportResearchItemImage(itemId){ const svg=els.researchCanvas.querySelector(`[data-research-svg="${CSS.escape(itemId)}"]`); if(!svg) return; const data=new XMLSerializer().serializeToString(svg), img=new Image(), canvas=document.createElement('canvas'); canvas.width=1200; canvas.height=440; img.onload=()=>{ const ctx=canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0,canvas.width,canvas.height); const a=document.createElement('a'); a.download='research-chart.png'; a.href=canvas.toDataURL('image/png'); a.click(); }; img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(data); }
 function exportResearchConfig(){ downloadText('all_star_research.txt', JSON.stringify({version:2,items:state.researchItems||[],metrics:state.metrics||[],customSources:(state.customSources||[]).map(c=>({...clonePlain(c),rows:[],aoaBySheet:{}}))},null,2)); }
-function importResearchConfig(text){ const obj=JSON.parse(text); if(obj&&Array.isArray(obj.customSources)){ obj.customSources.forEach(def=>{ if(def.sourceKey&&!customSource(def.sourceKey)) state.customSources.push({...def,rows:def.rows||[],headers:def.headers||[],aoa:def.aoa||[],aoaBySheet:def.aoaBySheet||{}}); }); renderCustomSourcesList(); } state.researchItems=(Array.isArray(obj)?obj:(obj.items||[])).map(normalizeResearchItem); if(obj.metrics){ state.metrics=(obj.metrics||[]).map(normalizeMetric); saveMetrics(); } const txt=JSON.stringify(state.researchItems); const refs=txt.match(/@[^\"']+/g)||[]; let missing=''; refs.forEach(r=>{ if(!findMetricByRef(r)) missing=r.slice(1); }); const modelRefs=[...txt.matchAll(/model\(\s*[\"']([^\"']+)[\"']\s*(?:,\s*[\"']([^\"']+)[\"']\s*)?\)/g)]; for(const mr of modelRefs){ const mm=findModelByNameOrId(mr[1]); if(!mm){ missing='model: '+mr[1]; break; } if(mr[2]&&!findCriterionByNameOrId(mm,mr[2])){ missing='model criteria: '+mr[1]+' / '+mr[2]; break; } } if(missing && els.topStatus) els.topStatus.textContent='This Research item references a missing '+missing; saveResearchItems(); if(els.researchModal?.classList.contains('open')){ renderResearchCanvasAsync({reason:'import'}); scheduleResearchCacheWarm('import'); } else if(els.topStatus && !missing) els.topStatus.textContent='Research config imported. Open Research to safely render saved items.'; }
+async function importResearchConfig(text){ const obj=JSON.parse(text); if(obj&&Array.isArray(obj.customSources)){ obj.customSources.forEach(def=>{ if(def.sourceKey&&!customSource(def.sourceKey)) state.customSources.push({...def,rows:def.rows||[],headers:def.headers||[],aoa:def.aoa||[],aoaBySheet:def.aoaBySheet||{}}); }); renderCustomSourcesList(); } state.researchItems=(Array.isArray(obj)?obj:(obj.items||[])).map(normalizeResearchItem); if(obj.metrics){ state.metrics=(obj.metrics||[]).map(normalizeMetric); await saveMetrics(); } const txt=JSON.stringify(state.researchItems); const refs=txt.match(/@[^\"']+/g)||[]; let missing=''; refs.forEach(r=>{ if(!findMetricByRef(r)) missing=r.slice(1); }); const modelRefs=[...txt.matchAll(/model\(\s*[\"']([^\"']+)[\"']\s*(?:,\s*[\"']([^\"']+)[\"']\s*)?\)/g)]; for(const mr of modelRefs){ const mm=findModelByNameOrId(mr[1]); if(!mm){ missing='model: '+mr[1]; break; } if(mr[2]&&!findCriterionByNameOrId(mm,mr[2])){ missing='model criteria: '+mr[1]+' / '+mr[2]; break; } } if(missing && els.topStatus) els.topStatus.textContent='This Research item references a missing '+missing; saveResearchItems(); if(els.researchModal?.classList.contains('open')){ renderResearchCanvasAsync({reason:'import'}); scheduleResearchCacheWarm('import'); } else if(els.topStatus && !missing) els.topStatus.textContent='Research config imported. Open Research to safely render saved items.'; }
 
 function normalizeOrgName(v){ return normalizeResearchText(v); }
 function normalizeOrg(o={}){ const now=new Date().toISOString(); return {id:o.id||id(),name:String(o.name||'New Org').trim()||'New Org',coachNames:[...new Set((o.coachNames||[]).map(x=>String(x||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),createdAt:o.createdAt||now,updatedAt:o.updatedAt||now}; }
@@ -7377,10 +7457,10 @@ function wire(){
   if(els.addMetricOrBtn) els.addMetricOrBtn.onclick=()=>{state.editingMetricRules.push({join:'OR',op:'is'});renderMetricRules();};
   if(els.saveMetricBtn) els.saveMetricBtn.onclick=()=>saveMetricFromEditor(false);
   if(els.saveExitMetricBtn) els.saveExitMetricBtn.onclick=()=>saveMetricFromEditor(true);
-  if(els.deleteMetricBtn) els.deleteMetricBtn.onclick=()=>{ const idv=els.metricEditId.value; if(idv&&confirm('Delete this metric?')){ state.metrics=state.metrics.filter(m=>m.id!==idv); saveMetrics(); renderMetricList(); closeModal('metricEditorModal'); }};
+  if(els.deleteMetricBtn) els.deleteMetricBtn.onclick=async ()=>{ const idv=els.metricEditId.value; if(idv&&confirm('Delete this metric?')){ const prev=state.metrics; state.metrics=state.metrics.filter(m=>m.id!==idv); const ok=await saveMetrics(); if(ok){ renderMetricList(); closeModal('metricEditorModal'); } else state.metrics=prev; }};
   if(els.exportMetricsBtn) els.exportMetricsBtn.onclick=exportMetricsConfig;
-  if(els.importMetricsFile) els.importMetricsFile.onchange=async e=>{ const f=e.target.files[0]; if(!f) return; try{ importMetricsConfig(await f.text()); }catch(err){ alert('Metric import failed.'); } e.target.value=''; };
-  if(els.importResearchFile) els.importResearchFile.onchange=async e=>{ const f=e.target.files[0]; if(!f) return; try{ importResearchConfig(await f.text()); }catch(err){ console.error(err); alert('Research import failed. Choose a valid TXT/JSON export.'); } e.target.value=''; };
+  if(els.importMetricsFile) els.importMetricsFile.onchange=async e=>{ const f=e.target.files[0]; if(!f) return; try{ await importMetricsConfig(await f.text()); }catch(err){ alert('Metric import failed.'); } e.target.value=''; };
+  if(els.importResearchFile) els.importResearchFile.onchange=async e=>{ const f=e.target.files[0]; if(!f) return; try{ await importResearchConfig(await f.text()); }catch(err){ console.error(err); alert('Research import failed. Choose a valid TXT/JSON export.'); } e.target.value=''; };
   if(els.createOrgBtn) els.createOrgBtn.onclick=createOrg;
   if(els.saveOrgBtn) els.saveOrgBtn.onclick=()=>{ const o=activeOrg(); if(!o) return createOrg(); o.name=(els.orgNameInput.value||'New Org').trim(); o.updatedAt=new Date().toISOString(); saveOrgs(); renderOrgBuilder(); };
   if(els.duplicateOrgBtn) els.duplicateOrgBtn.onclick=()=>{ const o=activeOrg(); if(!o) return; const cp=normalizeOrg({...clonePlain(o),id:id(),name:o.name+' copy',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}); state.orgs.push(cp); state.activeOrgId=cp.id; saveOrgs(); renderOrgBuilder(); };
@@ -7433,7 +7513,7 @@ function wire(){
   if(els.moveTeamBtn) els.moveTeamBtn.onclick=moveSelectedRepsToTeam;
   els.executeRunBtn.onclick=buildRun;
 }
-loadModels(); loadResearchItems(); loadMetrics(); loadOrgs(); wire(); renderCustomSourcesList(); renderCategorizedSummary(); renderModelList(); populateRunModels(); setStatus(); loadImportCacheOnStartup();
+loadModels(); loadResearchItems(); loadOrgs(); wire(); loadMetrics().then(()=>{ refreshMetricDatalist(); }).catch(err=>console.warn('[Research Metrics] Startup load failed',err)); renderCustomSourcesList(); renderCategorizedSummary(); renderModelList(); populateRunModels(); setStatus(); loadImportCacheOnStartup();
 })();
 </script>
 </body>
