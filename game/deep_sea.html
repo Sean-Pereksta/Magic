@@ -1,0 +1,2293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>Deep Sea 3D Swim</title>
+<style>
+  :root{
+    --ink:#eaf6ff;
+    --muted:rgba(234,246,255,.72);
+    --panel:rgba(3,12,25,.48);
+    --line:rgba(255,255,255,.11);
+    --good:#63f7a3;
+    --warn:#ffd166;
+    --bad:#ff6f91;
+  }
+  html,body{height:100%;margin:0;overflow:hidden;background:#03101e;color:var(--ink);font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;}
+  canvas{display:block;width:100vw;height:100vh;cursor:crosshair;touch-action:none;}
+  #hud{
+    position:fixed;left:12px;top:12px;z-index:5;
+    min-width:230px;max-width:280px;padding:9px 10px 10px;border-radius:14px;
+    background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);
+    box-shadow:0 16px 46px rgba(0,0,0,.25);font-size:12px;line-height:1.18;display:none;
+  }
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0;}
+  .title{font-weight:950;letter-spacing:.3px;font-size:13px;}
+  .pill{font-weight:900;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);}
+  .pill.danger{border-color:rgba(255,111,145,.48);background:rgba(255,111,145,.12);}
+  .label{color:var(--muted);font-weight:650;}
+  .value{font-weight:950;font-variant-numeric:tabular-nums;}
+  .bar{height:7px;border-radius:999px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.08);overflow:hidden;margin-top:5px;}
+  .fill{height:100%;width:50%;background:rgba(99,247,163,.86);box-shadow:0 0 18px rgba(99,247,163,.18);}
+  #depthFill{background:rgba(96,165,250,.9)}
+  #sprintFill{background:linear-gradient(90deg,rgba(255,209,102,.95),rgba(94,228,255,.90));box-shadow:0 0 18px rgba(255,209,102,.22)}
+  #healthFill{background:rgba(255,111,145,.9)}
+  #centerDot{position:fixed;left:50%;top:50%;width:7px;height:7px;margin-left:-3.5px;margin-top:-3.5px;border-radius:50%;z-index:4;background:rgba(255,255,255,.65);box-shadow:0 0 14px rgba(255,255,255,.35);pointer-events:none;}
+  #menu,#dead{
+    position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(900px 600px at 50% 20%,rgba(64,188,255,.20),transparent 60%),rgba(0,0,0,.46);
+    backdrop-filter:blur(12px);
+  }
+  #dead{display:none;}
+  .card{
+    width:min(720px,92vw);border-radius:22px;padding:22px;background:rgba(4,14,29,.82);
+    border:1px solid rgba(255,255,255,.13);box-shadow:0 28px 100px rgba(0,0,0,.48);text-align:center;
+  }
+  h1{font-size:28px;line-height:1;margin:0 0 9px;letter-spacing:.4px;}
+  p{margin:7px auto;color:var(--muted);max-width:560px;font-size:13px;}
+  button{appearance:none;border:0;border-radius:14px;padding:11px 16px;font-weight:950;color:#061324;background:linear-gradient(180deg,#b8f3ff,#5ee4ff);cursor:pointer;box-shadow:0 16px 40px rgba(94,228,255,.20);margin-top:14px;}
+  button.secondary{color:var(--ink);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.13);box-shadow:none;margin-left:8px;}
+  #lockHint{position:fixed;right:12px;bottom:12px;z-index:6;padding:8px 10px;border-radius:999px;background:rgba(3,12,25,.48);border:1px solid rgba(255,255,255,.11);color:var(--muted);font-size:12px;backdrop-filter:blur(10px);opacity:.92;}
+  #abilityBar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:6;display:none;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;max-width:min(760px,94vw);padding:8px 10px;border-radius:18px;background:rgba(3,12,25,.50);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(10px);box-shadow:0 16px 46px rgba(0,0,0,.25);font-size:11px;}
+  .ability{min-width:76px;border-radius:13px;padding:7px 9px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);text-align:left;position:relative;overflow:hidden;}
+  .ability.locked{opacity:.42;filter:saturate(.6)}
+  .ability.ready{border-color:rgba(99,247,163,.45);box-shadow:0 0 16px rgba(99,247,163,.10) inset;}
+  .ability .hotkey{font-weight:950;color:#eaf6ff;margin-right:4px;}
+  .ability .name{font-weight:900;color:#eaf6ff;}
+  .ability .cd{display:block;color:rgba(234,246,255,.65);font-size:10px;margin-top:2px;}
+  .miniMeter{height:4px;margin-top:4px;border-radius:999px;background:rgba(255,255,255,.13);overflow:hidden;border:1px solid rgba(255,255,255,.07)}
+  .miniMeter span{display:block;height:100%;width:100%;border-radius:999px;background:linear-gradient(90deg,rgba(255,209,102,.92),rgba(94,228,255,.86));}
+  #upgradePanel{position:fixed;inset:0;z-index:12;display:none;align-items:center;justify-content:center;background:radial-gradient(900px 600px at 50% 22%,rgba(94,228,255,.18),transparent 60%),rgba(0,0,0,.55);backdrop-filter:blur(14px);}
+  .upgradeGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px;}
+  .upgradeCard{border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:13px;text-align:left;background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.045));color:var(--ink);box-shadow:0 18px 54px rgba(0,0,0,.22);cursor:pointer;min-height:126px;}
+  .upgradeCard:hover{border-color:rgba(94,228,255,.54);transform:translateY(-1px)}
+  .upgradeName{font-size:14px;font-weight:950;margin-bottom:5px;}
+  .upgradeDesc{font-size:12px;line-height:1.25;color:var(--muted);}
+  .upgradeTag{display:inline-block;margin-top:9px;font-size:10px;font-weight:900;padding:3px 7px;border-radius:999px;background:rgba(94,228,255,.12);border:1px solid rgba(94,228,255,.25);}
+
+  #mobileControls{position:fixed;inset:0;z-index:8;display:none;pointer-events:none;touch-action:none;user-select:none;-webkit-user-select:none;}
+  .mobileStick{position:absolute;width:112px;height:112px;margin-left:-56px;margin-top:-56px;border-radius:50%;border:1px solid rgba(255,255,255,.20);background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.08),rgba(255,255,255,.025) 56%,rgba(3,12,25,.10));box-shadow:0 0 26px rgba(94,228,255,.08) inset,0 12px 34px rgba(0,0,0,.15);opacity:.34;pointer-events:none;transform:translate3d(0,0,0);}
+  .mobileStick .knob{position:absolute;left:50%;top:50%;width:48px;height:48px;margin-left:-24px;margin-top:-24px;border-radius:50%;background:radial-gradient(circle at 36% 28%,rgba(255,255,255,.40),rgba(94,228,255,.24) 52%,rgba(3,12,25,.20));border:1px solid rgba(255,255,255,.22);box-shadow:0 0 18px rgba(94,228,255,.10);transform:translate3d(0,0,0);}
+  #moveStick{left:82px;bottom:82px;top:auto;}
+  #lookStick{right:82px;bottom:82px;left:auto;top:auto;}
+  #moveStick.sprinting{opacity:.56;border-color:rgba(255,209,102,.42);box-shadow:0 0 30px rgba(255,209,102,.20),0 0 26px rgba(94,228,255,.10) inset;}
+  body.mobile-play #mobileControls{display:block;}
+  body.mobile-nohud #hud,body.mobile-nohud #abilityBar,body.mobile-nohud #depthGauge,body.mobile-nohud #centerDot,body.mobile-nohud #lockHint{display:none!important;}
+  body.mobile-play canvas{cursor:none;}
+  button,.upgradeCard{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+
+  @media(max-width:700px){.upgradeGrid{grid-template-columns:1fr}.upgradeCard{min-height:auto}.card{padding:17px;max-height:86vh;overflow:auto}#abilityBar{bottom:8px}.ability{min-width:64px}#upgradePanel{align-items:flex-start;padding-top:4vh;box-sizing:border-box}.mobileStick{width:104px;height:104px;margin-left:-52px;margin-top:-52px}.mobileStick .knob{width:44px;height:44px;margin-left:-22px;margin-top:-22px}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="mobileControls" aria-hidden="true"><div class="mobileStick" id="moveStick"><div class="knob" id="moveKnob"></div></div><div class="mobileStick" id="lookStick"><div class="knob" id="lookKnob"></div></div></div>
+<div id="centerDot"></div>
+<div id="hud">
+  <div class="row"><div class="title">DEEP SEA 3D</div><div class="pill" id="zoneTxt">Surface</div></div>
+  <div class="row"><span class="label">Size</span><span class="value" id="sizeTxt">1.00</span></div>
+  <div class="bar"><div class="fill" id="sizeFill"></div></div>
+  <div class="row"><span class="label">Depth</span><span class="value" id="depthTxt">0 m</span></div>
+  <div class="bar"><div class="fill" id="depthFill"></div></div>
+  <div class="row"><span class="label">Sprint</span><span class="value" id="sprintTxt">100%</span></div>
+  <div class="bar"><div class="fill" id="sprintFill"></div></div>
+  <div class="row"><span class="label">Eaten</span><span class="value" id="eatenTxt">0</span></div>
+  <div class="row"><span class="label">Next upgrade</span><span class="value" id="nextUpgradeTxt">10 fish</span></div>
+  <div class="row"><span class="label">Rule</span><span class="value">bigger fish eat smaller fish</span></div>
+</div>
+<div id="abilityBar"></div>
+<div id="depthGauge"><div class="track"></div><div class="tick" style="top:0%"></div><div class="tick" style="top:25%"></div><div class="tick" style="top:50%"></div><div class="tick" style="top:75%"></div><div class="tick" style="top:100%"></div><div class="marker" id="depthMarker"></div><div class="label" id="depthGaugeLabel">0 m</div></div>
+<div id="upgradePanel"><div class="card">
+  <h1>Choose an Evolution</h1>
+  <p id="upgradeText">Your next mutation changes how you hunt, flee, and look.</p>
+  <div class="upgradeGrid" id="upgradeCards"></div>
+</div></div>
+<div id="lockHint">click the water to steer with mouse</div>
+<div id="menu"><div class="card">
+  <h1>Deep Sea 3D Swim</h1>
+  <p>Pick a random starting body part, hunt small surface fish, and dive deeper as predators get faster and meaner.</p>
+  <button id="startBtn">Start Dive</button>
+</div></div>
+<div id="dead"><div class="card">
+  <h1 id="deadTitle">You were eaten.</h1>
+  <p id="deadText">The abyss keeps what it catches.</p>
+  <button id="restartBtn">Restart</button><button class="secondary" id="menuBtn">Menu</button>
+</div></div>
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d', { alpha:false });
+  const ui = {
+    hud: document.getElementById('hud'),
+    menu: document.getElementById('menu'),
+    dead: document.getElementById('dead'),
+    lockHint: document.getElementById('lockHint'),
+    startBtn: document.getElementById('startBtn'),
+    restartBtn: document.getElementById('restartBtn'),
+    menuBtn: document.getElementById('menuBtn'),
+    zoneTxt: document.getElementById('zoneTxt'),
+    sizeTxt: document.getElementById('sizeTxt'),
+    sizeFill: document.getElementById('sizeFill'),
+    depthTxt: document.getElementById('depthTxt'),
+    depthFill: document.getElementById('depthFill'),
+    sprintTxt: document.getElementById('sprintTxt'),
+    sprintFill: document.getElementById('sprintFill'),
+    eatenTxt: document.getElementById('eatenTxt'),
+    nextUpgradeTxt: document.getElementById('nextUpgradeTxt'),
+    abilityBar: document.getElementById('abilityBar'),
+    depthGauge: document.getElementById('depthGauge'),
+    depthMarker: document.getElementById('depthMarker'),
+    depthGaugeLabel: document.getElementById('depthGaugeLabel'),
+    upgradePanel: document.getElementById('upgradePanel'),
+    upgradeCards: document.getElementById('upgradeCards'),
+    upgradeText: document.getElementById('upgradeText'),
+    deadTitle: document.getElementById('deadTitle'),
+    deadText: document.getElementById('deadText'),
+    mobileControls: document.getElementById('mobileControls'),
+    moveStick: document.getElementById('moveStick'),
+    moveKnob: document.getElementById('moveKnob'),
+    lookStick: document.getElementById('lookStick'),
+    lookKnob: document.getElementById('lookKnob'),
+  };
+
+  let W = 1, H = 1, DPR = 1, focal = 900;
+  function resize(){
+    DPR = Math.max(1, Math.min(1.45, window.devicePixelRatio || 1));
+    W = innerWidth; H = innerHeight;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    focal = Math.max(520, Math.min(1150, W * .82));
+  }
+  addEventListener('resize', resize, { passive:true });
+  resize();
+
+  const IS_TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+  document.body.classList.toggle('mobile-device', IS_TOUCH);
+  const mobile = {
+    moveId:null, lookId:null,
+    move:{x:0,y:0,mag:0,active:false,sprint:false},
+    look:{x:0,y:0,mag:0,active:false},
+    moveBase:{x:0,y:0}, lookBase:{x:0,y:0},
+    lookStart:{x:0,y:0,t:0,moved:false}
+  };
+  function syncMobileUI(){
+    const mode = state.mode;
+    document.body.classList.toggle('mobile-play', !!(IS_TOUCH && mode === 'play'));
+    document.body.classList.toggle('mobile-nohud', !!(IS_TOUCH && (mode === 'play' || mode === 'starter' || mode === 'upgrade')));
+  }
+  function resetMobileStick(kind){
+    const data = mobile[kind];
+    data.x = 0; data.y = 0; data.mag = 0; data.active = false;
+    if(kind === 'move') data.sprint = false;
+    const knob = kind === 'move' ? ui.moveKnob : ui.lookKnob;
+    const stick = kind === 'move' ? ui.moveStick : ui.lookStick;
+    if(knob) knob.style.transform = 'translate3d(0,0,0)';
+    if(stick) stick.classList.remove('sprinting');
+  }
+  function setStickBase(kind, x, y){
+    const base = kind === 'move' ? mobile.moveBase : mobile.lookBase;
+    const stick = kind === 'move' ? ui.moveStick : ui.lookStick;
+    base.x = x; base.y = y;
+    if(stick){ stick.style.left = x + 'px'; stick.style.top = y + 'px'; stick.style.right = 'auto'; stick.style.bottom = 'auto'; }
+  }
+  function updateStick(kind, x, y){
+    const base = kind === 'move' ? mobile.moveBase : mobile.lookBase;
+    const data = mobile[kind];
+    const knob = kind === 'move' ? ui.moveKnob : ui.lookKnob;
+    const stick = kind === 'move' ? ui.moveStick : ui.lookStick;
+    const maxR = Math.max(42, Math.min(58, Math.min(W,H) * .105));
+    const dx = x - base.x;
+    const dy = y - base.y;
+    const raw = Math.hypot(dx,dy);
+    const k = raw > maxR ? maxR / raw : 1;
+    const nx = dx * k;
+    const ny = dy * k;
+    data.x = nx / maxR;
+    data.y = ny / maxR;
+    data.mag = clamp(raw / maxR, 0, 1);
+    data.active = true;
+    if(kind === 'move'){
+      data.sprint = data.mag > .82;
+      if(stick) stick.classList.toggle('sprinting', data.sprint);
+    } else if(raw > 8){
+      mobile.lookStart.moved = true;
+    }
+    if(knob) knob.style.transform = `translate3d(${nx}px,${ny}px,0)`;
+  }
+  function handleMobilePointerDown(e){
+    if(!IS_TOUCH || state.mode !== 'play' || e.pointerType === 'mouse') return;
+    if(e.target.closest && e.target.closest('#menu,#dead,#upgradePanel,button,.upgradeCard')) return;
+    e.preventDefault();
+    const kind = e.clientX < W * .5 ? 'move' : 'look';
+    if(kind === 'move'){
+      mobile.moveId = e.pointerId;
+      setStickBase('move', e.clientX, e.clientY);
+      updateStick('move', e.clientX, e.clientY);
+    } else {
+      mobile.lookId = e.pointerId;
+      mobile.lookStart = {x:e.clientX,y:e.clientY,t:performance.now(),moved:false};
+      setStickBase('look', e.clientX, e.clientY);
+      updateStick('look', e.clientX, e.clientY);
+    }
+    try{ e.target.setPointerCapture?.(e.pointerId); }catch(_){ }
+  }
+  function handleMobilePointerMove(e){
+    if(!IS_TOUCH || e.pointerType === 'mouse') return;
+    if(e.pointerId === mobile.moveId){ e.preventDefault(); updateStick('move', e.clientX, e.clientY); }
+    if(e.pointerId === mobile.lookId){ e.preventDefault(); updateStick('look', e.clientX, e.clientY); }
+  }
+  function handleMobilePointerUp(e){
+    if(!IS_TOUCH || e.pointerType === 'mouse') return;
+    if(e.pointerId === mobile.moveId){
+      e.preventDefault(); mobile.moveId = null; resetMobileStick('move');
+    }
+    if(e.pointerId === mobile.lookId){
+      e.preventDefault();
+      const elapsed = performance.now() - mobile.lookStart.t;
+      const moved = Math.hypot(e.clientX-mobile.lookStart.x, e.clientY-mobile.lookStart.y);
+      if(state.mode === 'play' && elapsed < 240 && moved < 12) biteLunge();
+      mobile.lookId = null; resetMobileStick('look');
+    }
+  }
+  addEventListener('pointerdown', handleMobilePointerDown, {passive:false});
+  addEventListener('pointermove', handleMobilePointerMove, {passive:false});
+  addEventListener('pointerup', handleMobilePointerUp, {passive:false});
+  addEventListener('pointercancel', handleMobilePointerUp, {passive:false});
+
+  const TAU = Math.PI * 2;
+  const SURFACE_Y = -3.0;
+  const BOTTOM_Y = -1120;
+  const WORLD_RADIUS = 2350;
+  const NEAR = .8;
+  const MAX_FISH = 128;
+  const MAX_PLANTS = 74;
+  const MAX_BUBBLES = 125;
+  const MAX_OBSTACLES = 126;
+
+  const rnd = (a=1,b=0) => b + Math.random()*(a-b);
+  const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+  const lerp = (a,b,t) => a + (b-a)*t;
+  const dist3 = (a,b) => Math.hypot(a.x-b.x, a.y-b.y, a.z-b.z);
+  const norm = (v) => { const l = Math.hypot(v.x,v.y,v.z) || 1; return {x:v.x/l,y:v.y/l,z:v.z/l}; };
+  const add = (a,b) => ({x:a.x+b.x,y:a.y+b.y,z:a.z+b.z});
+  const sub = (a,b) => ({x:a.x-b.x,y:a.y-b.y,z:a.z-b.z});
+  const mul = (v,s) => ({x:v.x*s,y:v.y*s,z:v.z*s});
+  const dot = (a,b) => a.x*b.x + a.y*b.y + a.z*b.z;
+  const cross = (a,b) => ({x:a.y*b.z-a.z*b.y, y:a.z*b.x-a.x*b.z, z:a.x*b.y-a.y*b.x});
+  const wrap = a => { while(a < -Math.PI) a += TAU; while(a > Math.PI) a -= TAU; return a; };
+  const SUN_WORLD_DIR = norm({x:0.36, y:0.91, z:0.20});
+
+  function forwardFromAngles(yaw, pitch){
+    const cp = Math.cos(pitch);
+    return norm({ x:Math.sin(yaw)*cp, y:Math.sin(pitch), z:Math.cos(yaw)*cp });
+  }
+  function depth01(y){ return clamp((Math.abs(y) - Math.abs(SURFACE_Y)) / (Math.abs(BOTTOM_Y) - Math.abs(SURFACE_Y)), 0, 1); }
+  function zoneForDepth(d){
+    if(d < .16) return 'Surface';
+    if(d < .36) return 'Blue Shelf';
+    if(d < .58) return 'Open Water';
+    if(d < .78) return 'Deep';
+    return 'Abyss';
+  }
+  function waveHeight(x,z,t){ return Math.sin(x*.018 + t*1.3)*1.2 + Math.cos(z*.015 - t*1.05)*1.0 + Math.sin((x+z)*.010 + t*.65)*.55; }
+  function floorHeight(x,z){
+    return BOTTOM_Y + 18 + Math.sin(x*.017)*11 + Math.cos(z*.015)*9 + Math.sin((x+z)*.010)*16 + Math.cos((x-z)*.007)*8;
+  }
+
+  const fishTypes = [
+    // Gentle, tiny starter prey near the surface. These are intentionally slower and easier to catch.
+    {name:'Sand Fleck Fry', color:'#fef3c7', color2:'#fff7ed', min:0, max:.12, size:.26, sizeMin:.18, sizeMax:.34, speed:9.6, cruiseSpeed:9.6, aggro:.00, danger:.01, detect:18, turn:2.1, turnSpeed:2.1, strategy:'drift', easyPrey:true, starter:true},
+    {name:'Bubble Guppy', color:'#b7f5ff', color2:'#ffffff', min:0, max:.15, size:.31, sizeMin:.22, sizeMax:.42, speed:10.8, cruiseSpeed:10.8, aggro:.00, danger:.01, detect:20, turn:2.4, turnSpeed:2.4, strategy:'bubbleDrift', easyPrey:true, starter:true},
+    {name:'Pea Darter', color:'#bbf7d0', color2:'#ecfeff', min:0, max:.18, size:.36, sizeMin:.26, sizeMax:.48, speed:12.2, cruiseSpeed:12.2, aggro:.01, danger:.01, detect:24, turn:2.8, turnSpeed:2.8, strategy:'shortHop', easyPrey:true, starter:true},
+    {name:'Lazy Kelp Shiner', color:'#86efac', color2:'#fef9c3', min:0, max:.24, size:.46, sizeMin:.34, sizeMax:.58, speed:10.9, cruiseSpeed:10.9, aggro:.01, danger:.02, detect:25, turn:1.9, turnSpeed:1.9, strategy:'grazer', easyPrey:true, starter:true},
+    {name:'Soft Reef Smelt', color:'#f9a8d4', color2:'#cffafe', min:.02, max:.26, size:.52, sizeMin:.40, sizeMax:.67, speed:12.6, cruiseSpeed:12.6, aggro:.02, danger:.02, detect:28, turn:2.2, turnSpeed:2.2, strategy:'slowSchool', easyPrey:true, starter:true},
+    {name:'Kelp Snapper Pup', color:'#fb923c', color2:'#fed7aa', min:.04, max:.30, size:.88, sizeMin:.72, sizeMax:1.14, speed:17.4, cruiseSpeed:17.4, aggro:.52, danger:.26, detect:62, turn:2.25, turnSpeed:2.25, strategy:'snap', predator:true, earlyPredator:true},
+    {name:'Reef Needleling', color:'#e0f2fe', color2:'#fef08a', min:.05, max:.34, size:1.02, sizeMin:.78, sizeMax:1.32, speed:22.8, cruiseSpeed:22.8, aggro:.58, danger:.32, detect:72, turn:1.65, turnSpeed:1.65, strategy:'charge', predator:true, earlyPredator:true, dorsal:true},
+    {name:'Baby Barracuda', color:'#cbd5e1', color2:'#f8fafc', min:.08, max:.38, size:1.18, sizeMin:.92, sizeMax:1.52, speed:25.4, cruiseSpeed:25.4, aggro:.68, danger:.40, detect:84, turn:1.18, turnSpeed:1.18, strategy:'charge', predator:true, earlyPredator:true, dorsal:true},
+    {name:'Shallow Fanglet', color:'#64748b', color2:'#bae6fd', min:.10, max:.42, size:1.28, sizeMin:1.00, sizeMax:1.68, speed:18.8, cruiseSpeed:18.8, aggro:.72, danger:.46, detect:90, turn:1.10, turnSpeed:1.10, strategy:'lowSurge', predator:true, earlyPredator:true, shark:true, dorsal:true},
+    {name:'Glass Minnow', color:'#96ecff', color2:'#f4ffff', min:0, max:.16, size:.42, speed:15.2, aggro:.01, danger:.02, detect:30, turn:4.6, strategy:'panic', starter:true},
+    {name:'Sunny Sprat', color:'#ffe066', color2:'#7dd3fc', min:0, max:.22, size:.58, speed:15.0, aggro:.03, danger:.03, detect:34, turn:4.2, strategy:'school', starter:true},
+    {name:'Flash Dart', color:'#9ef7ff', color2:'#fde68a', min:.02, max:.30, size:.54, speed:21.5, aggro:.02, danger:.03, detect:40, turn:5.7, strategy:'panic'},
+    {name:'Kelp Nibbler', color:'#7ddf64', color2:'#e7ffe5', min:0, max:.34, size:.72, speed:14.2, aggro:.04, danger:.04, detect:38, turn:4.0, strategy:'grazer'},
+    {name:'Reef Ribbon', color:'#fb7185', color2:'#67e8f9', min:.02, max:.36, size:.82, speed:16.2, aggro:.08, danger:.05, detect:43, turn:4.4, strategy:'zigzag'},
+    {name:'Blue Glider', color:'#60a5fa', color2:'#a7f3d0', min:.10, max:.45, size:1.02, speed:18.6, aggro:.10, danger:.11, detect:52, turn:3.7, strategy:'arc'},
+    {name:'Silver Needle', color:'#c4b5fd', color2:'#e0f2fe', min:.18, max:.58, size:1.02, speed:25.5, aggro:.18, danger:.15, detect:66, turn:2.6, strategy:'charge'},
+    {name:'Amber Snapper', color:'#f59e0b', color2:'#fde68a', min:.22, max:.62, size:1.38, speed:16.7, aggro:.35, danger:.30, detect:68, turn:2.4, strategy:'snap', predator:true},
+    {name:'Spotted Grouper', color:'#b7791f', color2:'#fed7aa', min:.26, max:.62, size:1.72, speed:14.2, aggro:.44, danger:.38, detect:72, turn:1.7, strategy:'ambush', predator:true},
+    {name:'Needle Pike', color:'#d8f3ff', color2:'#fef08a', min:.28, max:.66, size:1.52, sizeMin:1.18, sizeMax:1.95, speed:29.0, cruiseSpeed:29.0, aggro:.55, danger:.46, detect:86, turn:1.9, turnSpeed:1.9, strategy:'charge', predator:true, dorsal:true},
+    {name:'Brine Jackal', color:'#a16207', color2:'#fde68a', min:.32, max:.72, size:1.82, sizeMin:1.38, sizeMax:2.28, speed:20.8, cruiseSpeed:20.8, aggro:.64, danger:.54, detect:92, turn:2.35, turnSpeed:2.35, strategy:'sideStrike', predator:true, dorsal:true},
+    {name:'Stonejaw Ambusher', color:'#57534e', color2:'#d6d3d1', min:.34, max:.76, size:2.05, sizeMin:1.55, sizeMax:2.62, speed:12.8, cruiseSpeed:12.8, aggro:.70, danger:.64, detect:106, turn:1.35, turnSpeed:1.35, strategy:'ambush', predator:true, monster:true},
+    {name:'Sailfish', color:'#2563eb', color2:'#dbeafe', min:.18, max:.66, size:1.72, sizeMin:1.18, sizeMax:2.34, speed:37.5, cruiseSpeed:37.5, aggro:.66, danger:.50, detect:106, turn:.46, turnSpeed:.46, strategy:'charge', predator:true, sail:true, dorsal:true},
+    {name:'Moray Eel', color:'#3f6212', color2:'#bef264', min:.28, max:.78, size:2.35, sizeMin:1.90, sizeMax:3.15, speed:15.6, cruiseSpeed:15.6, aggro:.96, danger:.86, detect:118, turn:2.75, turnSpeed:2.75, monster:true, eel:true, glow:true, strategy:'wreckAmbush', wreckHunter:true, predator:true},
+    {name:'Viper Eel', color:'#41526b', color2:'#b5f7ff', min:.34, max:.75, size:1.55, speed:22.0, aggro:.58, danger:.49, detect:82, turn:3.1, strategy:'sideStrike', glow:true, predator:true},
+    {name:'Bone Barracuda', color:'#d1d5db', color2:'#f8fafc', min:.38, max:.72, size:1.88, speed:27.0, aggro:.62, danger:.55, detect:92, turn:1.6, strategy:'charge', predator:true},
+    {name:'Shadow Tuna', color:'#1e293b', color2:'#93c5fd', min:.42, max:.80, size:2.18, sizeMin:1.72, sizeMax:2.70, speed:26.5, cruiseSpeed:26.5, aggro:.60, danger:.56, detect:100, turn:1.42, turnSpeed:1.42, strategy:'lowSurge', predator:true, dorsal:true},
+    {name:'Reef Shark', color:'#9ca3af', color2:'#dbeafe', min:.36, max:.76, size:2.05, speed:19.4, aggro:.74, danger:.62, detect:100, turn:1.45, shark:true, dorsal:true, strategy:'lowSurge', predator:true},
+    {name:'Hammerhead Pup', color:'#7f8ea3', color2:'#dbeafe', min:.44, max:.82, size:2.34, speed:20.8, aggro:.79, danger:.67, detect:112, turn:1.2, shark:true, dorsal:true, strategy:'wideCircle', predator:true},
+    {name:'Tiger Shark', color:'#4b5563', color2:'#d1d5db', min:.50, max:.90, size:2.85, speed:22.2, aggro:.86, danger:.76, detect:126, turn:1.05, shark:true, dorsal:true, stripes:true, strategy:'lowSurge', predator:true},
+    {name:'Glass Reaper', color:'#0f172a', color2:'#a5f3fc', min:.52, max:.94, size:2.72, sizeMin:2.10, sizeMax:3.42, speed:27.8, cruiseSpeed:27.8, aggro:.90, danger:.82, detect:138, turn:1.35, turnSpeed:1.35, monster:true, glow:true, dorsal:true, strategy:'sideStrike', predator:true},
+    {name:'Deep Shark', color:'#334155', color2:'#94a3b8', min:.54, max:.94, size:3.08, speed:21.4, aggro:.88, danger:.80, detect:134, turn:.95, shark:true, dorsal:true, strategy:'lowSurge', predator:true},
+    {name:'Sawjaw Hunter', color:'#1f2937', color2:'#a7f3d0', min:.58, max:.96, size:3.25, speed:18.8, aggro:.91, danger:.84, detect:126, turn:1.0, shark:true, dorsal:true, strategy:'snap', predator:true},
+    {name:'Fangtooth Packlord', color:'#312e81', color2:'#ddd6fe', min:.60, max:.98, size:3.38, sizeMin:2.62, sizeMax:4.20, speed:20.6, cruiseSpeed:20.6, aggro:.94, danger:.87, detect:150, turn:1.18, turnSpeed:1.18, monster:true, glow:true, strategy:'wideCircle', predator:true},
+    {name:'Blackfin Hunter', color:'#111827', color2:'#38bdf8', min:.62, max:1, size:3.78, speed:23.6, aggro:.93, danger:.88, detect:145, turn:.92, shark:true, dorsal:true, glow:true, strategy:'lowSurge', predator:true},
+    {name:'Lantern Stalker', color:'#0f172a', color2:'#fde047', min:.66, max:1, size:2.65, speed:16.8, aggro:.86, danger:.78, detect:132, turn:2.0, monster:true, glow:true, strategy:'lure', predator:true},
+    {name:'Rift Stalker', color:'#09090b', color2:'#f0abfc', min:.68, max:1, size:3.95, sizeMin:3.05, sizeMax:5.10, speed:25.0, cruiseSpeed:25.0, aggro:.96, danger:.91, detect:162, turn:1.02, turnSpeed:1.02, monster:true, glow:true, dorsal:true, strategy:'sideStrike', predator:true},
+    {name:'Doom Ray', color:'#1f2937', color2:'#67e8f9', min:.68, max:1, size:4.35, sizeMin:3.40, sizeMax:5.50, speed:18.4, cruiseSpeed:18.4, aggro:.92, danger:.88, detect:156, turn:.86, turnSpeed:.86, monster:true, glow:true, strategy:'wideCircle', predator:true},
+    {name:'Gulper', color:'#581c87', color2:'#f0abfc', min:.70, max:1, size:4.65, speed:14.0, aggro:.94, danger:.90, detect:150, turn:.78, monster:true, glow:true, strategy:'ambush', predator:true},
+    {name:'Abyss Serpent', color:'#0c0a1a', color2:'#67e8f9', min:.76, max:1, size:4.10, speed:24.2, aggro:.95, danger:.91, detect:154, turn:1.55, monster:true, dorsal:true, glow:true, strategy:'sideStrike', predator:true},
+    {name:'Trench Ogre', color:'#1c1917', color2:'#fb7185', min:.78, max:1, size:5.25, sizeMin:4.10, sizeMax:6.65, speed:15.2, cruiseSpeed:15.2, aggro:.97, danger:.94, detect:172, turn:.64, turnSpeed:.64, monster:true, glow:true, strategy:'ambush', predator:true},
+    {name:'Sleeper Maw', color:'#18181b', color2:'#fda4af', min:.80, max:1, size:5.6, speed:12.0, aggro:.98, danger:.95, detect:164, turn:.56, monster:true, glow:true, strategy:'ambush', predator:true},
+    {name:'Abyss Leviathan', color:'#020617', color2:'#22d3ee', min:.86, max:1, size:7.1, speed:14.8, aggro:.99, danger:.98, detect:185, turn:.46, monster:true, dorsal:true, glow:true, strategy:'cruise', predator:true, apex:true},
+    {name:'Crowned Leviathan', color:'#02010a', color2:'#facc15', min:.90, max:1, size:8.2, sizeMin:6.7, sizeMax:9.8, speed:16.2, cruiseSpeed:16.2, aggro:1.0, danger:1.0, detect:210, turn:.42, turnSpeed:.42, monster:true, dorsal:true, glow:true, strategy:'cruise', predator:true, apex:true},
+  ];
+
+  const UPGRADE_DEFS = [
+    {id:'streamline', name:'Streamlined Body', tag:'speed + shape', max:3, desc:'Raises top speed and lengthens your body so you can run down fast prey.', apply:p=>{p.mods.speed+=2.7;p.visual.length+=.08;}},
+    {id:'crescentTail', name:'Crescent Tail', tag:'sprint', max:3, desc:'Improves sprint speed and lunge power; your tail becomes sharper and wider.', apply:p=>{p.mods.sprint+=3.2;p.mods.lunge+=2.5;p.visual.tail+=.16;}},
+    {id:'wideTail', name:'Wide Paddle Tail', tag:'acceleration', max:3, desc:'Improves acceleration from a stop so prey cannot immediately slip away.', apply:p=>{p.mods.accel+=3.0;p.visual.tail+=.12;}},
+    {id:'turnFins', name:'Knife Turning Fins', tag:'turning', max:4, desc:'Raises mouse turning response and fish-body maneuvering.', apply:p=>{p.mods.turn+=.18;p.visual.sideFins+=.16;}},
+    {id:'sideFins', name:'Side-Slip Fins', tag:'control', max:2, desc:'Makes left/right movement stronger and reduces drift after hard turns.', apply:p=>{p.mods.strafe+=.18;p.mods.drag+=.10;p.visual.sideFins+=.18;}},
+    {id:'topFin', name:'Tall Top Fin', tag:'predator look', max:2, desc:'Adds a dorsal fin and makes smaller hunters hesitate before attacking.', apply:p=>{p.mods.intimidate+=.13;p.visual.dorsal+=.38;}},
+    {id:'sailFin', name:'Sail Fin', tag:'major speed', max:2, desc:'Adds a huge sail fin that dramatically raises cruise speed and sprint power, but does not improve turning.', apply:p=>{p.mods.speed+=5.8;p.mods.sprint+=3.4;p.mods.accel+=1.2;p.visual.sail=(p.visual.sail||0)+1;p.visual.dorsal+=.70;p.visual.length+=.05;}},
+    {id:'stripes', name:'Broken Shadow Stripes', tag:'stealth visual', max:3, desc:'Adds striping that makes predators need to be closer before they spot you.', apply:p=>{p.mods.stealth+=.10;p.visual.stripes+=1;}},
+    {id:'countershade', name:'Countershaded Back', tag:'stealth', max:2, desc:'Blends you against surface light and deep water, lowering detection range.', apply:p=>{p.mods.stealth+=.12;p.visual.countershade=true;}},
+    {id:'glassScales', name:'Glass Scales', tag:'stealth', max:2, desc:'Softens your outline, especially in blue water.', apply:p=>{p.mods.stealth+=.10;p.visual.glass+=.18;}},
+    {id:'bigJaw', name:'Expanding Jaw Hinge', tag:'mouth reach', max:3, desc:'Opens your mouth wider and increases bite reach.', apply:p=>{p.mods.biteReach+=1.15;p.visual.jaw+=.22;}},
+    {id:'crushBite', name:'Crushing Bite', tag:'eat bigger', max:3, desc:'Lets you safely eat fish closer to your own size.', apply:p=>{p.mods.bitePower+=.035;p.visual.teeth+=1;}},
+    {id:'needleTeeth', name:'Needle Teeth', tag:'damage visual', max:2, desc:'Adds visible teeth and makes bites close faster.', apply:p=>{p.mods.bitePower+=.025;p.mods.lunge+=1.3;p.visual.teeth+=2;}},
+    {id:'suction', name:'Suction Mouth', tag:'catch prey', max:2, desc:'Pulls tiny prey slightly toward your bite when your mouth opens.', apply:p=>{p.mods.suction+=.20;p.visual.jaw+=.12;}},
+    {id:'burst', name:'Burst Muscles', tag:'Q ability', max:3, desc:'Unlocks/boosts Q Burst Dash for short explosive chases.', apply:p=>{p.mods.burst+=1;p.mods.dashCd=Math.max(1.2,p.mods.dashCd-.35);p.visual.muscle+=.08;}},
+    {id:'oilSkin', name:'Oil-Slick Skin', tag:'less drag', max:2, desc:'Carries momentum more smoothly and keeps speed through turns.', apply:p=>{p.mods.drag+=.14;p.visual.gloss+=.16;}},
+    {id:'pressureBody', name:'Pressure Body', tag:'deep speed', max:3, desc:'You move better in dark deep water instead of bogging down.', apply:p=>{p.mods.deepSpeed+=2.2;p.visual.bodyDepth+=.08;}},
+    {id:'deepEyes', name:'Deep-Vision Eyes', tag:'visibility', max:3, desc:'Extends sight in the abyss and reveals threats a little earlier.', apply:p=>{p.mods.visibility+=14;p.visual.eyeGlow+=.35;}},
+    {id:'electricOrgan', name:'Electric Organ', tag:'E ability', max:3, desc:'Unlocks/boosts E Shock Pulse, stunning small nearby enemies.', apply:p=>{p.mods.shock+=1;p.mods.shockRadius+=12;p.visual.electric+=.35;}},
+    {id:'voltaicFins', name:'Voltaic Fin Tips', tag:'shock range', max:2, desc:'Electric arcs reach farther and look brighter around your fins.', apply:p=>{p.mods.shockRadius+=18;p.mods.shockPower+=.08;p.visual.electric+=.30;}},
+    {id:'shockBattery', name:'Shock Battery', tag:'cooldown', max:2, desc:'Shortens E Shock Pulse cooldown.', apply:p=>{p.mods.shockCd=Math.max(2.6,p.mods.shockCd-1.0);p.visual.electric+=.18;}},
+    {id:'inkGland', name:'Ink Gland', tag:'R ability', max:2, desc:'Unlocks/boosts R Ink Cloud to break predator targeting.', apply:p=>{p.mods.ink+=1;p.mods.inkCd=Math.max(3.8,p.mods.inkCd-.6);p.visual.ink+=.25;}},
+    {id:'armorPlates', name:'Armor Plates', tag:'survival', max:3, desc:'Lets you bounce off slightly larger fish instead of instantly dying.', apply:p=>{p.mods.armor+=.055;p.visual.armor+=1;}},
+    {id:'barbedSpines', name:'Barbed Spines', tag:'defense visual', max:2, desc:'Predators that bump you get knocked back and briefly hesitate.', apply:p=>{p.mods.thorns+=.14;p.visual.spines+=1;}},
+    {id:'lateralLine', name:'Lateral Line Sense', tag:'tracking', max:2, desc:'Helps your mouth open sooner when a smaller fish crosses your heading.', apply:p=>{p.mods.preySense+=12;p.visual.line+=1;}},
+    {id:'sharkSmell', name:'Blood-Scent Sense', tag:'hunter', max:2, desc:'Eating creates momentum: brief speed boost after each fish kill.', apply:p=>{p.mods.killBoost+=1.1;p.visual.snout+=.10;}},
+    {id:'reefCamouflage', name:'Reef Camouflage', tag:'stealth visual', max:2, desc:'Speckles your body; shallow predators have a harder time locking on.', apply:p=>{p.mods.stealth+=.08;p.visual.speckles+=1;}},
+    {id:'abyssGlow', name:'Abyss Glow Lures', tag:'visual lure', max:2, desc:'Adds glowing spots and slightly slows tiny prey that stare too close.', apply:p=>{p.mods.lure+=.14;p.visual.glowSpots+=1;}},
+    {id:'gillBoost', name:'High-Flow Gills', tag:'accel + depth', max:3, desc:'Raises acceleration and gives extra power while diving or climbing.', apply:p=>{p.mods.accel+=1.8;p.mods.vertical+=.12;p.visual.gills+=1;}},
+    {id:'ramSkull', name:'Ram Skull', tag:'charge', max:2, desc:'Makes Q dash and bite-lunges hit harder, with a larger head profile.', apply:p=>{p.mods.lunge+=2.2;p.mods.bitePower+=.02;p.visual.head+=.10;}},
+    {id:'ghostPattern', name:'Ghost Pattern', tag:'late stealth', max:2, desc:'Darkens your outline in the abyss and reduces shark detection heavily.', apply:p=>{p.mods.stealth+=.14;p.visual.ghost+=1;}},
+    {id:'sprintBladder', name:'Sprint Bladder', tag:'sprint bar', max:3, desc:'Adds more sprint reserve so Shift lasts longer before emptying.', apply:p=>{p.mods.sprintMax+=22;p.visual.bodyDepth+=.04;p.visual.gloss+=.08;}},
+    {id:'oxygenCache', name:'Oxygen Cache Gills', tag:'regen sprint', max:3, desc:'Sprint starts recovering sooner and refills faster after a chase.', apply:p=>{p.mods.sprintRegen+=6;p.mods.sprintDrain+=3;p.visual.gills+=1;}},
+    {id:'rocketTail', name:'Rocket Tail Fork', tag:'hard sprint', max:2, desc:'Shift acceleration hits much harder, with a wider forked tail.', apply:p=>{p.mods.sprint+=4.6;p.mods.sprintDrain-=2;p.visual.tail+=.28;}},
+    {id:'afterburnFins', name:'Afterburn Fins', tag:'sprint trail', max:2, desc:'Sprint leaves brighter trails and gives more control while boosting.', apply:p=>{p.mods.sprint+=2.4;p.mods.turn+=.10;p.mods.strafe+=.08;p.visual.sideFins+=.22;p.visual.electric+=.08;}},
+    {id:'hardShellNose', name:'Hard-Shell Nose', tag:'collision', max:2, desc:'Bumping wreckage and rocks bleeds off less speed.', apply:p=>{p.mods.collisionGlide+=.18;p.mods.armor+=.025;p.visual.head+=.13;p.visual.armor+=1;}},
+    {id:'reefScraperScales', name:'Reef-Scraper Scales', tag:'armor visual', max:2, desc:'Adds jagged plates and reduces predator contact punishment.', apply:p=>{p.mods.armor+=.045;p.visual.armor+=2;p.visual.spines+=1;}},
+    {id:'longPectorals', name:'Long Pectoral Wings', tag:'control visual', max:3, desc:'Large winglike fins make climbing, diving, and turning smoother.', apply:p=>{p.mods.turn+=.13;p.mods.vertical+=.10;p.visual.sideFins+=.32;}},
+    {id:'rudderFin', name:'Rudder Fin', tag:'turn speed', max:3, desc:'Your tail acts like a rudder, letting the mouse pull the fish around faster.', apply:p=>{p.mods.turn+=.16;p.mods.drag+=.05;p.visual.tail+=.12;}},
+    {id:'sawTeeth', name:'Saw Teeth', tag:'bite visual', max:2, desc:'Adds a sawline bite that can eat slightly larger prey.', apply:p=>{p.mods.bitePower+=.035;p.mods.biteReach+=.65;p.visual.teeth+=3;}},
+    {id:'gulpThroat', name:'Gulp Throat', tag:'mouth size', max:2, desc:'The jaw balloons open farther when prey crosses your face.', apply:p=>{p.mods.biteReach+=1.4;p.mods.suction+=.12;p.visual.jaw+=.32;}},
+    {id:'sonarLine', name:'Blue Sonar Line', tag:'tracking visual', max:2, desc:'A bright lateral line improves prey sensing and threat awareness.', apply:p=>{p.mods.preySense+=16;p.mods.visibility+=8;p.visual.line+=2;p.visual.eyeGlow+=.18;}},
+    {id:'blackwaterSkin', name:'Blackwater Skin', tag:'abyss stealth', max:2, desc:'Darkens your upper body and makes abyss hunters lose lock sooner.', apply:p=>{p.mods.stealth+=.13;p.visual.ghost+=1;p.visual.countershade=true;}},
+    {id:'goldFlashScales', name:'Gold Flash Scales', tag:'lure visual', max:2, desc:'Bright flashes slow tiny prey nearby and make you look evolved.', apply:p=>{p.mods.lure+=.18;p.visual.glowSpots+=1;p.visual.speckles+=1;}},
+    {id:'shockSpines', name:'Shock Spines', tag:'defense shock', max:2, desc:'Spines crackle with electricity and improve the shock pulse.', apply:p=>{p.mods.shockRadius+=14;p.mods.thorns+=.08;p.visual.electric+=.25;p.visual.spines+=1;}},
+    {id:'inkVeins', name:'Ink Veins', tag:'escape visual', max:2, desc:'Ink clouds last longer and your body gains dark vein markings.', apply:p=>{p.mods.ink+=1;p.mods.inkCd=Math.max(3.2,p.mods.inkCd-.45);p.visual.ink+=.30;p.visual.ghost+=1;}},
+    {id:'pressureRibs', name:'Pressure Ribs', tag:'deep body', max:2, desc:'Ribbed sides make deep water movement stronger.', apply:p=>{p.mods.deepSpeed+=2.8;p.mods.accel+=1.0;p.visual.bodyDepth+=.10;p.visual.line+=1;}},
+    {id:'battleScars', name:'Battle Scars', tag:'intimidate visual', max:2, desc:'Scars and chipped fins make smaller predators hesitate longer.', apply:p=>{p.mods.intimidate+=.15;p.visual.stripes+=1;p.visual.speckles+=1;}},
+    {id:'keelBelly', name:'Keel Belly', tag:'drift control', max:2, desc:'A sharp belly keel cuts drift during turns and while sprinting.', apply:p=>{p.mods.drag+=.12;p.mods.turn+=.10;p.visual.dorsal+=.18;p.visual.bodyDepth+=.04;}},
+    {id:'abyssLantern', name:'Abyss Lantern Crown', tag:'glow crown', max:2, desc:'A crown of glowing lures improves deep visibility and prey slowdown.', apply:p=>{p.mods.visibility+=12;p.mods.lure+=.12;p.visual.eyeGlow+=.28;p.visual.glowSpots+=2;}},
+    {id:'serpentSpine', name:'Serpent Spine', tag:'speed shape', max:2, desc:'Lengthens the whole body, raising cruise speed and making turns snake-like.', apply:p=>{p.mods.speed+=2.1;p.mods.turn+=.09;p.visual.length+=.13;p.visual.spines+=1;}},
+  ];
+
+  function baseMods(){
+    return {speed:0, sprint:0, sprintMax:0, sprintDrain:0, sprintRegen:0, accel:0, turn:0, strafe:0, drag:0, collisionGlide:0, lunge:0, stealth:0, intimidate:0, biteReach:0, bitePower:0, suction:0, burst:0, dashCd:5.2, deepSpeed:0, visibility:0, shock:0, shockRadius:38, shockPower:0, shockCd:7.2, ink:0, inkCd:7.6, armor:0, thorns:0, preySense:0, killBoost:0, lure:0, vertical:0};
+  }
+  function baseVisual(){
+    return {length:1, tail:1, sideFins:1, dorsal:0, stripes:0, countershade:false, glass:0, jaw:1, teeth:0, muscle:0, gloss:0, bodyDepth:1, eyeGlow:0, electric:0, ink:0, armor:0, spines:0, line:0, snout:1, speckles:0, glowSpots:0, gills:0, head:1, ghost:0, sail:0};
+  }
+
+  const state = {
+    mode:'menu', t:0, last:0, fish:[], plants:[], bubbles:[], bites:[], obstacles:[], flash:0,
+    camera:{pos:{x:0,y:-8,z:0}, right:{x:1,y:0,z:0}, up:{x:0,y:1,z:0}, forward:{x:0,y:0,z:1}},
+    player:{
+      pos:{x:0,y:-16,z:0}, vel:{x:0,y:0,z:0}, yaw:0, pitch:-.02, size:1.0, mass:1, eaten:0, fishEaten:0,
+      upgradeCount:0, upgradeCost:10, nextUpgradeAt:10, upgrades:Object.create(null), mods:baseMods(), visual:baseVisual(),
+      tailPhase:0, finPhase:0, biteCooldown:0, dashCd:0, shockCd:0, inkCd:0, chompT:0, mouthOpen:0, killBoostT:0, sprintEnergy:100, sprintRegenDelay:0, sprinting:false, alive:true
+    }
+  };
+
+const keys = Object.create(null);
+  addEventListener('keydown', e => { const k=e.key.toLowerCase(); keys[k] = true; if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) e.preventDefault(); if(state.mode==='play' && ['q','e','r'].includes(k)) useAbility(k); });
+  addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+  canvas.addEventListener('click', () => { if(!IS_TOUCH && state.mode === 'play' && document.pointerLockElement !== canvas) canvas.requestPointerLock?.(); });
+  addEventListener('mousemove', e => {
+    if(state.mode !== 'play') return;
+    if(document.pointerLockElement === canvas){
+      const turn = 0.00165 * (1 + (state.player.mods?.turn || 0));
+      state.player.yaw = wrap(state.player.yaw + e.movementX * turn);
+      state.player.pitch = clamp(state.player.pitch - e.movementY * turn*.92, -1.05, .82);
+    }
+  }, { passive:true });
+  canvas.addEventListener('mousedown', e => { if(e.button === 0 && state.mode === 'play') biteLunge(); });
+  addEventListener('pointerlockchange', () => { if(ui.lockHint) ui.lockHint.style.opacity = document.pointerLockElement === canvas ? .18 : .92; });
+
+  function reset(){
+    const p = state.player;
+    p.pos = {x:0,y:-16,z:0}; p.vel = {x:0,y:0,z:0}; p.yaw = 0; p.pitch = -.03; p.size = 1; p.mass = 1; p.eaten = 0; p.fishEaten = 0;
+    p.upgradeCount = 0; p.upgradeCost = 10; p.nextUpgradeAt = 10; p.upgrades = Object.create(null); p.mods = baseMods(); p.visual = baseVisual();
+    p.tailPhase = 0; p.finPhase = 0; p.biteCooldown = 0; p.dashCd = 0; p.shockCd = 0; p.inkCd = 0; p.chompT = 0; p.mouthOpen = 0; p.killBoostT = 0; p.sprintEnergy = sprintMax(p); p.sprintRegenDelay = 0; p.sprinting = false; p.alive = true;
+    state.fish.length = 0; state.plants.length = 0; state.bubbles.length = 0; state.bites.length = 0; state.obstacles.length = 0; state.flash = 0;
+    ui.upgradePanel.style.display = 'none'; ui.abilityBar.style.display = 'flex'; if(ui.depthGauge) ui.depthGauge.style.display = 'block'; resetMobileStick('move'); resetMobileStick('look'); syncMobileUI();
+    for(let i=0;i<MAX_OBSTACLES;i++) spawnObstacle(true);
+    for(let i=0;i<MAX_PLANTS;i++) spawnPlant(true);
+    for(let i=0;i<MAX_FISH;i++) spawnFish(true);
+    for(let i=0;i<MAX_BUBBLES;i++) spawnBubble(true);
+    updateCamera(0.016);
+  }
+
+  function start(){
+    reset();
+    ui.menu.style.display='none';
+    ui.dead.style.display='none';
+    ui.hud.style.display='block';
+    ui.abilityBar.style.display='flex';
+    showStarterChoice();
+    syncMobileUI();
+  }
+  ui.startBtn.onclick = start;
+  ui.restartBtn.onclick = start;
+  ui.menuBtn.onclick = () => { state.mode='menu'; ui.menu.style.display='flex'; ui.dead.style.display='none'; ui.hud.style.display='none'; ui.abilityBar.style.display='none'; resetMobileStick('move'); resetMobileStick('look'); syncMobileUI(); document.exitPointerLock?.(); };
+
+  function chooseFishType(atDepth){
+    const valid = fishTypes.filter(f => atDepth >= f.min && atDepth <= f.max);
+    if(!valid.length) return fishTypes[0];
+    const dangerBoost = atDepth*atDepth;
+    const shallowBoost = Math.max(0, 1 - atDepth*2.6);
+    let total = 0;
+    const weights = valid.map(f => {
+      let w = 1 + f.size*.18;
+      if(f.easyPrey) w *= 2.4 + shallowBoost*3.1;
+      if(f.starter && atDepth < .22) w *= 1.65;
+      if((f.predator || f.danger > .5) && atDepth < .36) w *= f.earlyPredator ? (.86 + atDepth*1.45) : (.24 + atDepth*1.15);
+      if(f.earlyPredator && atDepth < .34) w *= 1.45 + shallowBoost*.85;
+      if(f.sail && atDepth > .16 && atDepth < .62) w *= 1.16;
+      if((f.predator || f.monster || f.shark) && atDepth > .55) w *= 1.35 + dangerBoost*1.9;
+      if(f.apex) w *= atDepth > .82 ? .34 + dangerBoost*.85 : .035;
+      if(f.danger < .12 && atDepth < .28) w *= 1.28;
+      if(f.speed > 23 && atDepth < .25 && !f.easyPrey) w *= .62;
+      if(f.min < .1 && atDepth > .45) w *= .10;
+      total += w;
+      return w;
+    });
+    let r = Math.random()*total;
+    for(let i=0;i<valid.length;i++){ r -= weights[i]; if(r <= 0) return valid[i]; }
+    return valid[valid.length-1];
+  }
+
+
+  function initFishTypeStats(){
+    for(const ft of fishTypes){
+      ft.cruiseSpeed = ft.cruiseSpeed ?? ft.speed;
+      ft.turnSpeed = ft.turnSpeed ?? ft.turn;
+      ft.sizeMin = ft.sizeMin ?? Math.max(.18, +(ft.size * .78).toFixed(2));
+      ft.sizeMax = ft.sizeMax ?? +(ft.size * 1.22).toFixed(2);
+    }
+  }
+  initFishTypeStats();
+
+  function obstacleTop(o){ return o.pos.y + o.height; }
+  function obstacleCenter(o){ return {x:o.pos.x, y:o.pos.y + o.height*.5, z:o.pos.z}; }
+  function obstacleCollisionRadius(o){ return o.collisionRadius ?? o.radius; }
+  function obstacleHullRadius(o){ return o.hullRadius ?? obstacleCollisionRadius(o); }
+  function yRangesOverlap(a0,a1,b0,b1){ return a0 <= b1 && a1 >= b0; }
+  function nearestWreck(pos, range=150){
+    let best = null, bestD = range;
+    for(const o of state.obstacles){
+      if(!o.wreck) continue;
+      const c = obstacleCenter(o);
+      const d = Math.hypot(pos.x-c.x, pos.y-c.y, pos.z-c.z);
+      if(d < bestD){ bestD = d; best = o; }
+    }
+    return best;
+  }
+  function obstacleTurnSlow(pos, personal=0){
+    let slow = 1;
+    for(const o of state.obstacles){
+      if(!o.slowTurn) continue;
+      const topY = obstacleTop(o);
+      if(pos.y < o.pos.y - 22 - personal || pos.y > topY + 22 + personal) continue;
+      const d = Math.hypot(pos.x-o.pos.x, pos.z-o.pos.z);
+      const influence = o.radius + 36 + personal;
+      if(d < influence){
+        const t = clamp(1 - d / influence, 0, 1);
+        slow = Math.min(slow, lerp(1, o.slowTurn, t));
+      }
+    }
+    return slow;
+  }
+
+  function spawnAroundPlayer(rangeMin, rangeMax){
+    const p = state.player.pos;
+    const yaw = Math.random()*TAU;
+    const r = rnd(rangeMax, rangeMin);
+    const y = clamp(p.y + rnd(130,-130), BOTTOM_Y + 18, SURFACE_Y - 4);
+    return {x:p.x + Math.sin(yaw)*r, y, z:p.z + Math.cos(yaw)*r};
+  }
+
+  function spawnObstacle(initial=false){
+    const p = state.player.pos;
+    for(let tries=0; tries<60; tries++){
+      const s = initial ? {x:rnd(760,-760), y:rnd(-25,-470), z:rnd(760,-760)} : spawnAroundPlayer(82, 450);
+      const spot = {x:s.x, y:s.y, z:s.z};
+      const rr = Math.hypot(spot.x, spot.z);
+      if(rr > WORLD_RADIUS - 70) continue;
+      const baseY = floorHeight(spot.x, spot.z);
+      const localD = depth01(spot.y);
+      let roll = Math.random();
+      let kind = 'pillar';
+      if(localD > .22 && roll < .30) kind = 'wreck';
+      else if(roll < .43) kind = 'algaeMass';
+      else if(localD > .18 && roll < .54) kind = 'floatingRock';
+      else if(localD > .18 && roll < .80) kind = 'deepPillar';
+      else if(roll < .90) kind = 'pillar';
+      else if(roll < .97) kind = 'arch';
+      else kind = 'coralSpire';
+
+      let radius = 12, height = 60, posY = baseY, color = '#7c8ca6', slowTurn = 0, wreck = false, solid = true;
+      if(kind === 'algaeMass'){
+        radius = rnd(58,30);
+        height = rnd(70,40);
+        const centerY = clamp(spot.y + rnd(36,-36), baseY + 34, SURFACE_Y - 18);
+        posY = centerY - height*.5;
+        color = '#3f8f5d'; slowTurn = .46;
+      } else if(kind === 'floatingRock'){
+        radius = rnd(44,22);
+        height = rnd(54,28);
+        const centerY = clamp(spot.y + rnd(50,-44), baseY + 44, SURFACE_Y - 24);
+        posY = centerY - height*.5;
+        color = '#64748b'; slowTurn = .76;
+      } else if(kind === 'wreck'){
+        radius = rnd(112,62);
+        height = rnd(64,34);
+        posY = baseY + 4;
+        color = '#475569'; slowTurn = .62; wreck = true;
+      } else if(kind === 'deepPillar'){
+        radius = rnd(46,22);
+        height = Math.min(rnd(540,210), Math.max(92, SURFACE_Y - 18 - baseY));
+        posY = baseY;
+        color = '#5f6d82'; slowTurn = .82;
+      } else if(kind === 'pillar'){
+        radius = rnd(32,13);
+        height = Math.min(rnd(230,85), Math.max(52, SURFACE_Y - 16 - baseY));
+        posY = baseY;
+        color = '#7c8ca6'; slowTurn = .86;
+      } else if(kind === 'arch'){
+        radius = rnd(30,14); height = rnd(92,38); posY = baseY; color = '#6b7280'; slowTurn = .78;
+      } else if(kind === 'coralSpire'){
+        radius = rnd(16,7); height = rnd(72,26); posY = baseY; color = '#ec8ea0'; slowTurn = .90;
+      } else {
+        radius = rnd(18,8); height = rnd(108,42); posY = baseY; color = '#54d692'; solid = true; slowTurn = .70;
+      }
+      let collisionRadius = radius;
+      let hullRadius = radius;
+      if(kind === 'algaeMass'){
+        // visual algae blobs are broad and lumpy, but contact should match the solid core
+        // instead of stopping the player at the edge of the painted silhouette.
+        collisionRadius = radius * .50;
+        hullRadius = collisionRadius;
+      } else if(kind === 'floatingRock'){
+        collisionRadius = radius * .66;
+        hullRadius = collisionRadius;
+      } else if(kind === 'wreck'){
+        collisionRadius = radius * .92;
+        hullRadius = radius * .38;
+      } else if(kind === 'pillar' || kind === 'deepPillar' || kind === 'coralSpire'){
+        collisionRadius = radius * .84;
+        hullRadius = collisionRadius;
+      }
+      if(posY + height > SURFACE_Y - 5){ height = Math.max(16, SURFACE_Y - 5 - posY); }
+      if(height <= 12) continue;
+      if(Math.hypot(spot.x-p.x, spot.z-p.z) < radius + 52 && yRangesOverlap(posY, posY+height, p.y-30, p.y+30)) continue;
+      let overlap = false;
+      for(const other of state.obstacles){
+        const od = Math.hypot(spot.x-other.pos.x, spot.z-other.pos.z);
+        const vertical = yRangesOverlap(posY, posY+height, other.pos.y-10, obstacleTop(other)+10);
+        if(vertical && od < radius + other.radius + (wreck || other.wreck ? 28 : 12)){ overlap = true; break; }
+      }
+      if(overlap) continue;
+      state.obstacles.push({
+        id:Math.random().toString(36).slice(2), pos:{x:spot.x,y:posY,z:spot.z}, radius, collisionRadius, hullRadius, height, kind,
+        phase:Math.random()*TAU, seed:Math.random()*1000, color, slowTurn, wreck, solid:true,
+        yaw:Math.random()*TAU, ribs:Math.floor(rnd(9,5)), moss:Math.random()
+      });
+      return;
+    }
+  }
+
+  function spawnFish(initial=false){
+    let pos = initial ? {x:rnd(260,-260), y:rnd(-8,-230), z:rnd(280,-280)} : spawnAroundPlayer(76, 270);
+    let forcedType = null;
+    if(!initial && state.obstacles.length && Math.random() < .16){
+      const wrecks = state.obstacles.filter(o => o.wreck && dist3(obstacleCenter(o), state.player.pos) < 330);
+      if(wrecks.length){
+        const w = wrecks[Math.floor(Math.random()*wrecks.length)];
+        const c = obstacleCenter(w);
+        const a = Math.random()*TAU;
+        pos = {x:c.x + Math.sin(a)*rnd(w.radius*.92,w.radius*.30), y:clamp(c.y + rnd(22,-8), floorHeight(c.x,c.z)+12, SURFACE_Y-14), z:c.z + Math.cos(a)*rnd(w.radius*.92,w.radius*.30)};
+        forcedType = fishTypes.find(ft => ft.name === 'Moray Eel') || null;
+      }
+    }
+    const d = depth01(pos.y);
+    const pDepth = depth01(state.player.pos.y);
+    let type = forcedType || chooseFishType(d);
+    // Keep the first minutes full of bite-sized targets instead of mostly fast sprinters.
+    if(!forcedType && d < .24 && pDepth < .30 && state.player.size < 1.75 && Math.random() < .42){
+      const starters = fishTypes.filter(ft => ft.easyPrey && d >= ft.min && d <= ft.max);
+      if(starters.length) type = starters[Math.floor(Math.random()*starters.length)];
+    }
+    const deepScale = type.easyPrey ? (1 + d*.18) : (1 + d*d*1.48);
+    const baseSize = rnd(type.sizeMax ?? type.size*1.22, type.sizeMin ?? type.size*.78);
+    const size = baseSize * deepScale;
+    const yaw = Math.random()*TAU;
+    const pitch = rnd(.18,-.18);
+    const fwd = forwardFromAngles(yaw,pitch);
+    const home = forcedType ? nearestWreck(pos, 180) : null;
+    state.fish.push({
+      id:Math.random().toString(36).slice(2), type, pos, vel:mul(fwd, rnd(4.2, .7)), dir:fwd, yaw, pitch,
+      size, minSize:type.sizeMin, maxSize:type.sizeMax, cruiseSpeed:type.cruiseSpeed, turnSpeed:type.turnSpeed,
+      phase:Math.random()*TAU, turnT:rnd(2,.2), biteCd:0, fleeT:0, surgeT:0, stunT:0, inkBlindT:0,
+      mouthOpen:0, chompT:0, alpha:1, bubbleT:rnd(.9,.25), homeWreckId:home?.id || null
+    });
+  }
+
+  function spawnPlant(initial=false){
+    const base = initial ? {x:rnd(230,-230), z:rnd(230,-230)} : (()=>{ const s = spawnAroundPlayer(42, 145); return {x:s.x,z:s.z}; })();
+    const d = depth01(clamp(state.player.pos.y + rnd(110,-110), BOTTOM_Y + 15, SURFACE_Y - 8));
+    const baseY = floorHeight(base.x, base.z);
+    const height = rnd(d>.6 ? 56 : 42, d>.6 ? 18 : 12);
+    const tipY = clamp(baseY + height, BOTTOM_Y + 10, SURFACE_Y - 6);
+    state.plants.push({
+      base:{x:base.x,y:baseY,z:base.z}, pos:{x:base.x + rnd(4,-4), y:tipY, z:base.z + rnd(4,-4)},
+      size:rnd(1.45,.72) * (1 + d*.5), phase:Math.random()*TAU,
+      kind: d > .62 ? 'glowkelp' : (Math.random()<.58 ? 'leaf' : 'floatkelp'), glow:d>.62, height
+    });
+  }
+
+  function spawnBubble(initial=false){
+    const pos = initial ? {x:rnd(260,-260), y:rnd(-8,-210), z:rnd(260,-260)} : spawnAroundPlayer(5, 135);
+    state.bubbles.push({pos, r:rnd(1.25,.20), speed:rnd(8,1.6), phase:Math.random()*TAU, wobble:rnd(1.0,.16), life:rnd(7,3.2), trail:false});
+  }
+
+  function emitTrailBubble(source, count=1){
+    const dir = source.dir || forwardFromAngles(source.yaw||0, source.pitch||0);
+    const tail = add(source.pos, mul(dir, -(4 + source.size*2.2)));
+    for(let i=0;i<count;i++){
+      state.bubbles.push({
+        pos:{x:tail.x + rnd(1.5,-1.5), y:tail.y + rnd(1.2,-1.2), z:tail.z + rnd(1.5,-1.5)},
+        r:rnd(.65,.14), speed:rnd(6,2.2), phase:Math.random()*TAU, wobble:rnd(1.2,.16), life:rnd(2.5,1.0), trail:true
+      });
+    }
+  }
+
+  function biteLunge(){
+    const p = state.player;
+    if(p.biteCooldown > 0) return;
+    const f = forwardFromAngles(p.yaw,p.pitch);
+    const power = 11.5 + p.size*1.45 + p.mods.lunge;
+    p.vel.x += f.x * power;
+    p.vel.y += f.y * power;
+    p.vel.z += f.z * power;
+    p.biteCooldown = Math.max(.34, .58 - p.mods.bitePower*1.4);
+    p.chompT = .20;
+    p.mouthOpen = 0;
+    state.bites.push({pos:add(p.pos, mul(f, p.size*4.2 + 6 + p.mods.biteReach)), t:0, life:.20, r:4 + p.size*2.4 + p.mods.biteReach});
+  }
+
+  function updateCamera(dt){
+    const p = state.player;
+    const f = forwardFromAngles(p.yaw,p.pitch);
+    const camBack = 22 + p.size * 6.2;
+    const camLift = 7.5 + p.size * 1.45;
+    const lookAhead = 22 + p.size * .95;
+    const desired = add(add(p.pos, mul(f, -camBack)), {x:0,y:camLift,z:0});
+    const target = add(add(p.pos, mul(f, lookAhead)), {x:0,y:1.2 + p.size*.12,z:0});
+    const cam = state.camera;
+    cam.pos.x = lerp(cam.pos.x, desired.x, 1-Math.exp(-9*dt));
+    cam.pos.y = lerp(cam.pos.y, desired.y, 1-Math.exp(-9*dt));
+    cam.pos.z = lerp(cam.pos.z, desired.z, 1-Math.exp(-9*dt));
+    cam.pos.y = Math.min(cam.pos.y, SURFACE_Y - 1.0);
+    cam.forward = norm(sub(target, cam.pos));
+    const worldUp = {x:0,y:1,z:0};
+
+    // Correct handedness: this is the real screen-right vector.
+    // The previous build used cross(forward, up), which mirrors horizontal steering.
+    cam.right = norm(cross(worldUp, cam.forward));
+    if(Math.hypot(cam.right.x,cam.right.y,cam.right.z) < .01) cam.right = {x:1,y:0,z:0};
+    cam.up = norm(cross(cam.forward, cam.right));
+  }
+
+  function project(pos){
+    const cam = state.camera;
+    const rel = sub(pos, cam.pos);
+    const x = dot(rel, cam.right);
+    const y = dot(rel, cam.up);
+    const z = dot(rel, cam.forward);
+    if(z <= NEAR) return null;
+    const s = focal / z;
+    return {x:W*.5 + x*s, y:H*.5 - y*s, z, s};
+  }
+
+  function avoidObstacles(pos, dir, lookAhead=22, personal=4){
+    let steer = {x:0,y:0,z:0};
+    const flatDir = norm({x:dir.x,y:0,z:dir.z});
+    for(const o of state.obstacles){
+      const topY = obstacleTop(o);
+      const verticalPad = 7 + personal*.22;
+      if(pos.y < o.pos.y - verticalPad || pos.y > topY + verticalPad) continue;
+      const cr = obstacleCollisionRadius(o);
+      const to = {x:o.pos.x-pos.x, y:0, z:o.pos.z-pos.z};
+      const dist = Math.hypot(to.x,to.z);
+      const min = cr + personal*.62;
+      const influencePad = o.kind === 'algaeMass' ? 8 : 18;
+      if(dist > lookAhead + cr + influencePad) continue;
+      const ahead = dot(flatDir, norm({x:to.x,y:0,z:to.z}));
+      if(ahead < -0.35 && dist > min) continue;
+      const force = clamp(1 - (dist - min) / Math.max(1, lookAhead + cr), 0, 1);
+      if(force > 0){
+        const slowBoost = o.slowTurn ? 1.08 : 1;
+        steer.x += (pos.x - o.pos.x) / (dist || 1) * force * 1.45 * slowBoost;
+        steer.z += (pos.z - o.pos.z) / (dist || 1) * force * 1.45 * slowBoost;
+        if(pos.y < topY + 6) steer.y += force * .08;
+      }
+    }
+    return steer;
+  }
+
+  function collideWithObstacles(ent, rad){
+    for(const o of state.obstacles){
+      if(o.solid === false) continue;
+      const topY = obstacleTop(o);
+      const verticalPad = Math.max(3, rad*.72);
+      if(ent.pos.y < o.pos.y - verticalPad || ent.pos.y > topY + verticalPad) continue;
+
+      let dx = ent.pos.x - o.pos.x, dz = ent.pos.z - o.pos.z;
+      let d = Math.hypot(dx,dz) || .0001;
+      let nx = dx/d, nz = dz/d;
+      let min = obstacleCollisionRadius(o) + rad;
+      let anchorX = o.pos.x, anchorZ = o.pos.z;
+
+      if(o.wreck){
+        const yaw = o.yaw || 0;
+        const dir = {x:Math.sin(yaw), y:0, z:Math.cos(yaw)};
+        const rel = {x:ent.pos.x - o.pos.x, z:ent.pos.z - o.pos.z};
+        const along = clamp(rel.x*dir.x + rel.z*dir.z, -obstacleCollisionRadius(o)*.96, obstacleCollisionRadius(o)*.96);
+        anchorX = o.pos.x + dir.x*along;
+        anchorZ = o.pos.z + dir.z*along;
+        dx = ent.pos.x - anchorX; dz = ent.pos.z - anchorZ;
+        d = Math.hypot(dx,dz) || .0001;
+        nx = dx/d; nz = dz/d;
+        min = obstacleHullRadius(o) + rad;
+      }
+
+      if(d < min){
+        const yCenter = o.pos.y + o.height*.5;
+        const yHalf = o.height*.5 + verticalPad;
+        const yPush = yHalf - Math.abs(ent.pos.y - yCenter);
+        const sidePush = min - d;
+        if(yPush > 0 && yPush < sidePush*.55){
+          const ny = ent.pos.y >= yCenter ? 1 : -1;
+          ent.pos.y += ny * yPush;
+          if(ent.vel.y * ny < 0) ent.vel.y *= -.16;
+        } else {
+          ent.pos.x = anchorX + nx*min;
+          ent.pos.z = anchorZ + nz*min;
+          const flatPush = ent.vel.x*nx + ent.vel.z*nz;
+          if(flatPush < 0){ ent.vel.x -= nx*flatPush*1.10; ent.vel.z -= nz*flatPush*1.10; }
+          const glide = ent === state.player || ent.pos === state.player.pos ? (state.player.mods.collisionGlide || 0) : 0;
+          if(o.kind === 'algaeMass'){
+            const damp = clamp(.70 + glide, .70, .92);
+            ent.vel.x *= damp; ent.vel.y *= .92; ent.vel.z *= damp;
+          } else if(o.wreck || o.kind === 'floatingRock'){
+            const damp = clamp(.80 + glide, .80, .96);
+            ent.vel.x *= damp; ent.vel.z *= damp;
+          }
+        }
+      }
+    }
+  }
+
+  const STARTER_UPGRADE_IDS = ['sailFin','streamline','crescentTail','wideTail','turnFins','sideFins','topFin','bigJaw','gillBoost','longPectorals','rudderFin'];
+
+  function randomBodyPartOptions(){
+    const starter = UPGRADE_DEFS.filter(u => STARTER_UPGRADE_IDS.includes(u.id));
+    for(let i=starter.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [starter[i],starter[j]]=[starter[j],starter[i]]; }
+    return starter.slice(0,3);
+  }
+
+  function bindUpgradeCard(card, fn){
+    let selected = false;
+    const select = (e) => { e.preventDefault(); e.stopPropagation(); if(selected) return; selected = true; fn(); };
+    card.addEventListener('pointerup', select, {passive:false});
+    card.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ select(e); } });
+    card.onclick = select;
+    card.tabIndex = 0;
+    card.setAttribute('role','button');
+  }
+
+  function showStarterChoice(){
+    state.mode = 'starter';
+    resetMobileStick('move'); resetMobileStick('look'); syncMobileUI();
+    document.exitPointerLock?.();
+    const options = randomBodyPartOptions();
+    ui.upgradeText.textContent = 'Pick one starting body part before you enter the food chain.';
+    const title = ui.upgradePanel.querySelector('h1');
+    if(title) title.textContent = 'Choose Your Starting Body Part';
+    ui.upgradeCards.innerHTML = '';
+    for(const up of options){
+      const card = document.createElement('div');
+      card.className = 'upgradeCard';
+      card.innerHTML = `<div class="upgradeName">${up.name}</div><div class="upgradeDesc">${up.desc}</div><div class="upgradeTag">starter body part</div>`;
+      bindUpgradeCard(card, () => applyStarterUpgrade(up));
+      ui.upgradeCards.appendChild(card);
+    }
+    ui.upgradePanel.style.display = 'flex';
+  }
+
+  function applyStarterUpgrade(up){
+    const p = state.player;
+    p.upgrades[up.id] = (p.upgrades[up.id] || 0) + 1;
+    up.apply(p);
+    p.startingPart = up.id;
+    ui.upgradePanel.style.display = 'none';
+    const title = ui.upgradePanel.querySelector('h1');
+    if(title) title.textContent = 'Choose an Evolution';
+    state.mode = 'play';
+    syncMobileUI();
+    updateAbilityBar();
+    if(!IS_TOUCH) canvas.requestPointerLock?.();
+  }
+
+  function currentUpgradeOptions(){
+    const p = state.player;
+    const available = UPGRADE_DEFS.filter(u => (p.upgrades[u.id] || 0) < u.max);
+    for(let i=available.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [available[i],available[j]]=[available[j],available[i]]; }
+    return available.slice(0,3);
+  }
+  function showUpgrade(){
+    state.mode = 'upgrade';
+    resetMobileStick('move'); resetMobileStick('look'); syncMobileUI();
+    document.exitPointerLock?.();
+    const title = ui.upgradePanel.querySelector('h1');
+    if(title) title.textContent = 'Choose an Evolution';
+    const p = state.player;
+    const options = currentUpgradeOptions();
+    ui.upgradeText.textContent = `Fish eaten: ${p.fishEaten}. Next evolution after ${p.upgradeCost + 2} more fish.`;
+    ui.upgradeCards.innerHTML = '';
+    for(const up of options){
+      const card = document.createElement('div');
+      card.className = 'upgradeCard';
+      card.innerHTML = `<div class="upgradeName">${up.name}</div><div class="upgradeDesc">${up.desc}</div><div class="upgradeTag">${up.tag} · ${((p.upgrades[up.id]||0)+1)}/${up.max}</div>`;
+      bindUpgradeCard(card, () => applyUpgrade(up));
+      ui.upgradeCards.appendChild(card);
+    }
+    ui.upgradePanel.style.display = 'flex';
+  }
+  function applyUpgrade(up){
+    const p = state.player;
+    p.upgrades[up.id] = (p.upgrades[up.id] || 0) + 1;
+    up.apply(p);
+    p.upgradeCount++;
+    p.upgradeCost += 2;
+    p.nextUpgradeAt += p.upgradeCost;
+    ui.upgradePanel.style.display = 'none';
+    state.mode = 'play';
+    syncMobileUI();
+    if(!IS_TOUCH) canvas.requestPointerLock?.();
+    updateAbilityBar();
+  }
+  function maybeTriggerUpgrade(){
+    const p = state.player;
+    if(state.mode === 'play' && p.fishEaten >= p.nextUpgradeAt) showUpgrade();
+  }
+  function cooldownLabel(v){ return v <= 0 ? 'ready' : `${v.toFixed(1)}s`; }
+  function sprintMax(p=state.player){ return 100 + (p.mods?.sprintMax || 0); }
+  function sprintPercent(p=state.player){ return clamp(((p.sprintEnergy ?? sprintMax(p)) / sprintMax(p)) * 100, 0, 100); }
+  function abilityHtml(hotkey, name, cd, unlocked=true){
+    const cls = unlocked ? (cd<=0 ? 'ability ready' : 'ability') : 'ability locked';
+    return `<div class="${cls}"><span class="hotkey">${hotkey}</span><span class="name">${name}</span><span class="cd">${unlocked ? cooldownLabel(cd) : 'locked'}</span></div>`;
+  }
+  function updateAbilityBar(){
+    const p = state.player;
+    const pct = Math.round(sprintPercent(p));
+    const sprintReady = pct > 5;
+    const sprintCard = `<div class="ability ${sprintReady ? 'ready' : 'locked'}"><span class="hotkey">Shift</span><span class="name">Sprint</span><span class="cd">${pct}%</span><div class="miniMeter"><span style="width:${pct}%"></span></div></div>`;
+    ui.abilityBar.innerHTML = abilityHtml('Space','Chomp',p.biteCooldown,true)
+      + sprintCard
+      + abilityHtml('Q','Burst',p.dashCd,p.mods.burst>0)
+      + abilityHtml('E','Shock',p.shockCd,p.mods.shock>0)
+      + abilityHtml('R','Ink',p.inkCd,p.mods.ink>0);
+  }
+  function useAbility(key){
+    const p = state.player;
+    const f = forwardFromAngles(p.yaw,p.pitch);
+    if(key === 'q' && p.mods.burst > 0 && p.dashCd <= 0){
+      const power = 24 + p.mods.burst*10 + p.mods.lunge;
+      p.vel.x += f.x*power; p.vel.y += f.y*power; p.vel.z += f.z*power;
+      p.dashCd = p.mods.dashCd;
+      emitTrailBubble({pos:p.pos,dir:f,size:p.size+2}, 6);
+      state.bites.push({pos:add(p.pos,mul(f,10+p.size*2)), t:0, life:.32, r:9+p.size*3, dash:true});
+    }
+    if(key === 'e' && p.mods.shock > 0 && p.shockCd <= 0){
+      p.shockCd = p.mods.shockCd;
+      const radius = p.mods.shockRadius + p.size*3;
+      for(const fish of state.fish){
+        const d = dist3(fish.pos,p.pos);
+        if(d < radius && fish.size < p.size*(1.18+p.mods.shockPower)){
+          fish.stunT = Math.max(fish.stunT||0, 1.0 + p.mods.shock*.28);
+          const away = norm(sub(fish.pos,p.pos));
+          fish.vel.x += away.x*18; fish.vel.y += away.y*10; fish.vel.z += away.z*18;
+          fish.mouthOpen = 0;
+        }
+      }
+      state.bites.push({pos:{...p.pos}, t:0, life:.48, r:radius*.33, shock:true});
+      state.flash = Math.max(state.flash,.10);
+    }
+    if(key === 'r' && p.mods.ink > 0 && p.inkCd <= 0){
+      p.inkCd = p.mods.inkCd;
+      for(const fish of state.fish){ if(dist3(fish.pos,p.pos) < 78 + p.mods.ink*22) fish.inkBlindT = Math.max(fish.inkBlindT||0, 2.3 + p.mods.ink*.7); }
+      for(let i=0;i<34;i++) state.bites.push({pos:add(p.pos,{x:rnd(14,-14),y:rnd(10,-10),z:rnd(14,-14)}), t:0, life:rnd(1.4,.8), r:rnd(8,3), ink:true});
+    }
+    updateAbilityBar();
+  }
+
+  function updatePlayer(dt){
+    const p = state.player;
+    if(IS_TOUCH && mobile.look.active){
+      const lookTurn = 2.35 * (1 + Math.min(.55, p.mods.turn*.18));
+      p.yaw = wrap(p.yaw + mobile.look.x * lookTurn * dt);
+      p.pitch = clamp(p.pitch - mobile.look.y * lookTurn * .82 * dt, -1.05, .82);
+    }
+    const f = forwardFromAngles(p.yaw,p.pitch);
+    const right = {x:Math.cos(p.yaw), y:0, z:-Math.sin(p.yaw)};
+    const deep = depth01(p.pos.y);
+    const accel = 18.8 + p.size*.45 + p.mods.accel + deep*p.mods.deepSpeed;
+    const maxSprint = sprintMax(p);
+    if(p.sprintEnergy == null) p.sprintEnergy = maxSprint;
+    p.sprintEnergy = clamp(p.sprintEnergy, 0, maxSprint);
+    const mobileMove = IS_TOUCH && mobile.move.active ? mobile.move : {x:0,y:0,mag:0,active:false,sprint:false};
+    const forwardInput = (keys.w || keys.arrowup ? 1 : 0) + clamp(-mobileMove.y, 0, 1);
+    const backInput = (keys.s || keys.arrowdown ? 1 : 0) + clamp(mobileMove.y, 0, 1);
+    const leftInput = (keys.a || keys.arrowleft ? 1 : 0) + clamp(-mobileMove.x, 0, 1);
+    const rightInput = (keys.d || keys.arrowright ? 1 : 0) + clamp(mobileMove.x, 0, 1);
+    const movingInput = !!(keys.w || keys.arrowup || keys.a || keys.arrowleft || keys.d || keys.arrowright || keys.s || keys.arrowdown || mobileMove.mag > .08);
+    const sprintActive = !!((keys.shift || (mobileMove.sprint && mobileMove.mag > .82)) && p.sprintEnergy > 1.2 && movingInput);
+    p.sprinting = sprintActive;
+    if(sprintActive){
+      const drain = Math.max(24, 45 - (p.mods.sprintDrain || 0));
+      p.sprintEnergy = Math.max(0, p.sprintEnergy - drain*dt);
+      p.sprintRegenDelay = .70;
+    } else {
+      p.sprintRegenDelay = Math.max(0, (p.sprintRegenDelay || 0) - dt);
+      if(p.sprintRegenDelay <= 0){
+        const regen = 18 + (p.mods.sprintRegen || 0);
+        p.sprintEnergy = Math.min(maxSprint, p.sprintEnergy + regen*dt);
+      }
+    }
+    const sprintAccel = sprintActive ? (1.22 + p.mods.sprint*.046) : 0;
+    if(forwardInput > 0){ p.vel.x += f.x*accel*(1+sprintAccel)*forwardInput*dt; p.vel.y += f.y*accel*(1+p.mods.vertical+sprintAccel*.70)*forwardInput*dt; p.vel.z += f.z*accel*(1+sprintAccel)*forwardInput*dt; }
+    if(backInput > 0){ p.vel.x -= f.x*accel*.38*backInput*dt; p.vel.y -= f.y*accel*.38*backInput*dt; p.vel.z -= f.z*accel*.38*backInput*dt; }
+    const strafe = .22 + p.mods.strafe + (sprintActive ? .10 : 0);
+    if(leftInput > 0){ p.vel.x -= right.x*accel*strafe*(sprintActive?1.18:1)*leftInput*dt; p.vel.z -= right.z*accel*strafe*(sprintActive?1.18:1)*leftInput*dt; }
+    if(rightInput > 0){ p.vel.x += right.x*accel*strafe*(sprintActive?1.18:1)*rightInput*dt; p.vel.z += right.z*accel*strafe*(sprintActive?1.18:1)*rightInput*dt; }
+    if(sprintActive){ emitTrailBubble({pos:p.pos,dir:f,size:p.size}, Math.random()<.34?1:0); }
+    if(keys[' ']) biteLunge();
+
+    let mouth = 0;
+    const sense = 42 + p.size*8 + p.mods.preySense;
+    for(const prey of state.fish){
+      if(prey.size > p.size*(.94+p.mods.bitePower)) continue;
+      const to = sub(prey.pos,p.pos); const d = Math.hypot(to.x,to.y,to.z)||1;
+      const facing = dot(norm(to), f);
+      if(d < sense && facing > .55) mouth = Math.max(mouth, clamp((facing-.55)*2.2 * (1-d/sense),0,1));
+      if(p.mods.suction>0 && mouth>.12 && d < sense*.7){
+        const pull = p.mods.suction * mouth * dt * 5;
+        prey.vel.x -= to.x/d * pull; prey.vel.y -= to.y/d * pull; prey.vel.z -= to.z/d * pull;
+      }
+    }
+    p.mouthOpen = p.chompT > 0 ? Math.max(0, p.mouthOpen - dt*12) : lerp(p.mouthOpen, mouth, 1-Math.exp(-8*dt));
+
+    p.tailPhase += dt * (4.2 + Math.hypot(p.vel.x,p.vel.y,p.vel.z)*.52);
+    p.finPhase += dt * 8.5;
+    p.biteCooldown = Math.max(0, p.biteCooldown - dt);
+    p.dashCd = Math.max(0, p.dashCd - dt);
+    p.shockCd = Math.max(0, p.shockCd - dt);
+    p.inkCd = Math.max(0, p.inkCd - dt);
+    p.chompT = Math.max(0, p.chompT - dt);
+    p.killBoostT = Math.max(0, p.killBoostT - dt);
+
+    const drag = Math.exp(-(1.92 + p.size*.045 - p.mods.drag) * dt);
+    p.vel.x *= drag; p.vel.y *= drag; p.vel.z *= drag;
+    const killBoost = p.killBoostT > 0 ? p.mods.killBoost*4 : 0;
+    const max = 21.0 + Math.sqrt(p.size)*2.25 + p.mods.speed + deep*p.mods.deepSpeed + killBoost + (p.sprinting ? 16 + p.mods.sprint*1.25 : 0);
+    const sp = Math.hypot(p.vel.x,p.vel.y,p.vel.z);
+    if(sp > max){ const k = max / sp; p.vel.x*=k; p.vel.y*=k; p.vel.z*=k; }
+
+    p.pos.x += p.vel.x*dt; p.pos.y += p.vel.y*dt; p.pos.z += p.vel.z*dt;
+    if(p.pos.y > SURFACE_Y){ p.pos.y = SURFACE_Y; p.vel.y = Math.min(0, p.vel.y)*.25; }
+    const floorY = floorHeight(p.pos.x, p.pos.z) + 7;
+    if(p.pos.y < floorY){ p.pos.y = floorY; p.vel.y = Math.max(0, p.vel.y)*.35; }
+    collideWithObstacles({pos:p.pos, vel:p.vel}, 3.8 + p.size*1.15);
+
+    const rr = Math.hypot(p.pos.x,p.pos.z);
+    if(rr > WORLD_RADIUS){
+      const k = WORLD_RADIUS / rr;
+      p.pos.x *= k; p.pos.z *= k;
+      p.vel.x -= (p.pos.x/rr) * Math.abs(dot(p.vel,{x:p.pos.x/rr,y:0,z:p.pos.z/rr}));
+      p.vel.z -= (p.pos.z/rr) * Math.abs(dot(p.vel,{x:p.pos.x/rr,y:0,z:p.pos.z/rr}));
+    }
+  }
+
+  function fishPredatorIntent(f){
+    return !!(f?.type && (f.type.predator || f.type.aggro > .24 || f.type.danger > .22 || f.type.monster || f.type.shark || f.size > 1.75));
+  }
+
+  function fishCanEatFish(hunter, prey){
+    if(!hunter || !prey || hunter === prey || hunter.stunT > 0 || hunter.inkBlindT > 0) return false;
+    if(!fishPredatorIntent(hunter)) return false;
+    const biteMargin = 1.13 - clamp((hunter.type.aggro || 0)*.06 + (hunter.type.danger || 0)*.04, 0, .10);
+    return hunter.size >= prey.size * biteMargin;
+  }
+
+  function fishCanThreatenFish(hunter, prey){
+    if(!hunter || !prey || hunter === prey || hunter.stunT > 0) return false;
+    if(!fishPredatorIntent(hunter)) return false;
+    return hunter.size >= prey.size * 1.08;
+  }
+
+  function resolveFishPredation(){
+    const eaten = new Set();
+    const gains = [];
+    for(let i=0;i<state.fish.length;i++){
+      const hunter = state.fish[i];
+      if(eaten.has(i) || !fishPredatorIntent(hunter) || hunter.stunT > 0 || hunter.inkBlindT > 0) continue;
+      let best = -1, bestD = Infinity;
+      for(let j=0;j<state.fish.length;j++){
+        if(i === j || eaten.has(j)) continue;
+        const prey = state.fish[j];
+        if(!fishCanEatFish(hunter, prey)) continue;
+        const d = dist3(hunter.pos, prey.pos);
+        const eatDist = 4.2 + hunter.size*2.35 + prey.size*.85;
+        if(d > eatDist || d >= bestD) continue;
+        const facing = dot(hunter.dir, norm(sub(prey.pos, hunter.pos)));
+        if(facing < .15 && d > eatDist*.58) continue;
+        best = j; bestD = d;
+      }
+      if(best >= 0){
+        eaten.add(best);
+        gains.push({hunter, prey:state.fish[best]});
+      }
+    }
+    if(!eaten.size) return;
+    for(const g of gains){
+      g.hunter.chompT = Math.max(g.hunter.chompT || 0, .22);
+      g.hunter.mouthOpen = 1;
+      g.hunter.surgeT = Math.max(g.hunter.surgeT || 0, .30);
+      g.hunter.size = Math.min(g.hunter.size + g.prey.size*.035, 9.5);
+      state.bites.push({pos:{...g.prey.pos}, t:0, life:.34, r:4+g.prey.size*1.4, eat:true, blood:true});
+      emitBloodMist(g.prey.pos, g.prey.size);
+    }
+    [...eaten].sort((a,b)=>b-a).forEach(idx => state.fish.splice(idx,1));
+  }
+
+  function updateFish(dt){
+    const p = state.player;
+    for(let i=state.fish.length-1;i>=0;i--){
+      const f = state.fish[i];
+      let dToPlayer = dist3(f.pos, p.pos);
+      if(dToPlayer > 340){ state.fish.splice(i,1); continue; }
+      f.biteCd = Math.max(0, f.biteCd - dt);
+      f.turnT -= dt;
+      f.bubbleT -= dt;
+      f.stunT = Math.max(0, (f.stunT||0) - dt);
+      f.inkBlindT = Math.max(0, (f.inkBlindT||0) - dt);
+      f.chompT = Math.max(0, (f.chompT||0) - dt);
+      f.surgeT = Math.max(0, (f.surgeT||0) - dt);
+
+      if(f.stunT > 0){
+        f.vel.x *= Math.exp(-1.4*dt); f.vel.y *= Math.exp(-1.4*dt); f.vel.z *= Math.exp(-1.4*dt);
+        f.pos.x += f.vel.x*dt; f.pos.y += f.vel.y*dt; f.pos.z += f.vel.z*dt;
+        f.phase += dt*2; f.mouthOpen = 0;
+        continue;
+      }
+
+      let desired = f.dir;
+      let mode = 'wander';
+      f.huntTargetDist = null;
+
+      let biggestThreat = null, threatDist = 1e9;
+      let preyTarget = null, preyDist = 1e9;
+      const predatorIntent = fishPredatorIntent(f);
+      for(const other of state.fish){
+        if(other === f) continue;
+        const od = dist3(other.pos, f.pos);
+        const threatRange = 74 + other.size*10 + f.size*3;
+        if(od < threatRange && fishCanThreatenFish(other, f) && od < threatDist){ biggestThreat = other; threatDist = od; }
+        const preyRange = (f.type.detect || 60) * (.62 + (f.type.aggro || 0)*.42) + f.size*12;
+        if(predatorIntent && od < preyRange && fishCanEatFish(f, other) && od < preyDist){ preyTarget = other; preyDist = od; }
+      }
+
+      const stealthMul = clamp(1 - p.mods.stealth - (p.visual.ghost?0.05:0) - (f.inkBlindT>0?.55:0), .34, 1.08);
+      const intimidation = p.mods.intimidate;
+      const playerCanEat = p.size >= f.size*(.94 - p.mods.bitePower);
+      const fishCanEatPlayer = f.size >= p.size*(1.08 + p.mods.armor + intimidation*.12);
+      const detectRange = f.type.detect * (0.80 + f.type.aggro*.32) * stealthMul;
+
+      if(biggestThreat){
+        desired = norm(add(norm(sub(f.pos, biggestThreat.pos)), mul(avoidObstacles(f.pos, f.dir, 30, 5 + f.size*1.5), 1.15)));
+        mode = 'flee';
+      } else if(playerCanEat && dToPlayer < (72 + p.size*7 + p.mods.preySense) * (f.type.easyPrey ? .58 : 1)){
+        let flee = norm(sub(f.pos, p.pos));
+        if(f.type.strategy === 'zigzag') flee = norm(add(flee, mul(cross({x:0,y:1,z:0}, flee), Math.sin(state.t*5+f.phase)*.9)));
+        if(f.type.strategy === 'bubbleDrift' || f.type.strategy === 'drift') flee = norm(add(flee, {x:Math.sin(state.t*1.9+f.phase)*.22, y:.08, z:Math.cos(state.t*1.7+f.phase)*.22}));
+        if(f.type.strategy === 'shortHop' && Math.sin(state.t*3.4+f.phase) > .25) flee = norm(add(flee, mul(f.dir, .45)));
+        desired = norm(add(flee, mul(avoidObstacles(f.pos, f.dir, 30, 5 + f.size*1.5), f.type.easyPrey ? .78 : 1.45)));
+        mode = 'flee';
+      } else if(preyTarget && (!fishCanEatPlayer || dToPlayer >= detectRange || preyDist < dToPlayer*1.20)){
+        const toPrey = norm(sub(preyTarget.pos, f.pos));
+        if(f.type.strategy === 'lowSurge'){
+          const belowPrey = {x:preyTarget.pos.x, y:clamp(preyTarget.pos.y - 26 - f.size*2.4, BOTTOM_Y+26, SURFACE_Y-18), z:preyTarget.pos.z};
+          const horiz = Math.hypot(f.pos.x-preyTarget.pos.x, f.pos.z-preyTarget.pos.z);
+          if(f.pos.y > preyTarget.pos.y - 18 && horiz > 14){ desired = norm(sub(belowPrey, f.pos)); mode = 'stalk'; }
+          else { desired = norm(add(toPrey,{x:0,y:.36,z:0})); mode = 'surge'; f.surgeT = Math.max(f.surgeT,.38); }
+        } else if(f.type.strategy === 'wideCircle' || f.type.strategy === 'sideStrike'){
+          const side = norm(cross({x:0,y:1,z:0}, toPrey));
+          desired = norm(add(toPrey, mul(side, Math.sin(state.t*1.2+f.phase)*.55)));
+          mode = 'hunt';
+        } else if(f.type.strategy === 'ambush' && preyDist > (f.type.detect || 60)*.42){
+          desired = norm(add(toPrey, {x:0,y:-.10,z:0})); mode = 'stalk';
+        } else {
+          desired = norm(add(toPrey, mul(avoidObstacles(f.pos, f.dir, 22, 5 + f.size*1.4), .90)));
+          mode = preyDist < 34 + f.size*8 ? 'surge' : 'hunt';
+          if(mode === 'surge') f.surgeT = Math.max(f.surgeT,.32);
+        }
+        f.huntTargetDist = preyDist;
+      } else if(fishCanEatPlayer && dToPlayer < detectRange){
+        const toPlayer = norm(sub(p.pos, f.pos));
+        if(f.type.strategy === 'wreckAmbush'){
+          const home = state.obstacles.find(o => o.id === f.homeWreckId) || nearestWreck(f.pos, 170);
+          if(home && dToPlayer > 34 + f.size*7){
+            const c = obstacleCenter(home);
+            desired = norm(add(toPlayer, mul(norm(sub(c, f.pos)), .65)));
+            mode = 'stalk';
+          } else { desired = norm(add(toPlayer, {x:0,y:.15,z:0})); mode = 'surge'; f.surgeT = Math.max(f.surgeT,.40); }
+        } else if(f.type.strategy === 'lowSurge'){
+          const belowPlayer = {x:p.pos.x, y:clamp(p.pos.y - 45 - f.size*3, BOTTOM_Y+28, SURFACE_Y-20), z:p.pos.z};
+          const horiz = Math.hypot(f.pos.x-p.pos.x, f.pos.z-p.pos.z);
+          if(f.pos.y > p.pos.y - 28 && horiz > 18){ desired = norm(sub(belowPlayer, f.pos)); mode = 'stalk'; }
+          else { desired = norm(add(toPlayer,{x:0,y:.55,z:0})); mode = 'surge'; f.surgeT = Math.max(f.surgeT,.45); }
+        } else if(f.type.strategy === 'wideCircle'){
+          const side = norm(cross({x:0,y:1,z:0}, toPlayer));
+          desired = norm(add(toPlayer, mul(side, Math.sin(state.t*.9+f.phase)*.82)));
+          mode = 'hunt';
+        } else if(f.type.strategy === 'sideStrike'){
+          const side = norm(cross({x:0,y:1,z:0}, toPlayer));
+          desired = norm(add(toPlayer, mul(side, .55*Math.sign(Math.sin(f.phase)))));
+          mode = 'hunt';
+        } else if(f.type.strategy === 'ambush' && dToPlayer > detectRange*.52){
+          desired = norm(add(toPlayer, {x:0,y:-.14,z:0})); mode = 'stalk';
+        } else {
+          desired = norm(add(toPlayer, mul(avoidObstacles(f.pos, f.dir, 22, 6 + f.size*1.8), 1.05)));
+          mode = 'hunt';
+        }
+      } else if(f.type.strategy === 'wreckAmbush' && (state.obstacles.find(o => o.id === f.homeWreckId) || nearestWreck(f.pos, 135))){
+        const home = state.obstacles.find(o => o.id === f.homeWreckId) || nearestWreck(f.pos, 135);
+        const c = obstacleCenter(home);
+        const around = norm(add(norm(sub(c, f.pos)), mul(cross({x:0,y:1,z:0}, norm(sub(c, f.pos))), Math.sin(state.t*.8+f.phase)*.75)));
+        desired = around;
+        mode = 'stalk';
+      } else if(f.turnT <= 0){
+        f.turnT = rnd(3.1,.55) * ((f.type.turnSpeed || f.type.turn || 2.4) < 1 ? 1.35 : 1);
+        const yaw = Math.atan2(f.dir.x, f.dir.z) + rnd(1.1,-1.1);
+        const preferDepth = clamp((f.type.min + f.type.max)*.5, .03, .96);
+        const targetY = lerp(SURFACE_Y-9, floorHeight(f.pos.x,f.pos.z)+42, 1-preferDepth) + rnd(90,-90);
+        const pitch = clamp((targetY - f.pos.y)*.007 + rnd(.24,-.24), -.60, .60);
+        desired = forwardFromAngles(yaw,pitch);
+      }
+
+      const avoid = avoidObstacles(f.pos, desired, mode==='hunt'||mode==='surge'?24:32, 4 + f.size*1.5);
+      desired = norm(add(desired, mul(avoid, mode==='hunt'||mode==='surge'?1.05:1.45)));
+
+      if(f.pos.y > SURFACE_Y - 6) desired.y -= .95;
+      const floorNear = floorHeight(f.pos.x, f.pos.z) + 9;
+      if(f.pos.y < floorNear) desired.y += .95;
+
+      const envTurnSlow = obstacleTurnSlow(f.pos, f.size*1.2);
+      const turnRate = (f.type.turnSpeed || f.type.turn || 2.4) * envTurnSlow * (mode==='surge' ? .82 : mode==='flee' ? 1.28 : 1);
+      f.dir = norm({x:lerp(f.dir.x, desired.x, 1-Math.exp(-turnRate*dt)), y:lerp(f.dir.y, desired.y, 1-Math.exp(-turnRate*dt)), z:lerp(f.dir.z, desired.z, 1-Math.exp(-turnRate*dt))});
+      f.yaw = Math.atan2(f.dir.x, f.dir.z);
+      f.pitch = Math.asin(clamp(f.dir.y,-1,1));
+      const deep = depth01(f.pos.y);
+      const modeMul = mode==='surge' ? 1.55 + f.type.aggro*.32 : mode==='hunt' ? 1.16 + f.type.aggro*.25 : mode==='stalk' ? .78 : mode==='flee' ? 1.24 + ((f.type.cruiseSpeed || f.type.speed)/24)*.18 : .74;
+      const easyMul = f.type.easyPrey ? (mode==='flee' ? .78 : .86) : 1;
+      const speed = ((f.type.cruiseSpeed || f.type.speed) + deep*5) * modeMul * easyMul;
+      f.vel.x = lerp(f.vel.x, f.dir.x*speed, 1-Math.exp(-2.35*dt));
+      f.vel.y = lerp(f.vel.y, f.dir.y*speed, 1-Math.exp(-2.35*dt));
+      f.vel.z = lerp(f.vel.z, f.dir.z*speed, 1-Math.exp(-2.35*dt));
+      if(f.inkBlindT > 0){ f.vel.x*=.82; f.vel.y*=.82; f.vel.z*=.82; }
+      f.pos.x += f.vel.x*dt; f.pos.y += f.vel.y*dt; f.pos.z += f.vel.z*dt;
+      f.pos.y = clamp(f.pos.y, floorHeight(f.pos.x,f.pos.z)+7, SURFACE_Y-4);
+      collideWithObstacles(f, 3.3 + f.size*1.05);
+      const rr = Math.hypot(f.pos.x,f.pos.z);
+      if(rr > WORLD_RADIUS + 90){ f.pos.x *= (WORLD_RADIUS+90)/rr; f.pos.z *= (WORLD_RADIUS+90)/rr; f.dir.x *= -1; f.dir.z *= -1; }
+      f.phase += dt * (4 + Math.hypot(f.vel.x,f.vel.y,f.vel.z)*.55);
+
+      const toPlayerNow = norm(sub(p.pos,f.pos));
+      const facingPlayer = dot(f.dir,toPlayerNow);
+      const wantsPlayerBite = fishCanEatPlayer && dToPlayer < 35 + f.size*8 && facingPlayer > .52 && f.inkBlindT <= 0;
+      const wantsFishBite = f.huntTargetDist != null && f.huntTargetDist < 30 + f.size*8 && f.inkBlindT <= 0;
+      const biteDist = wantsFishBite ? f.huntTargetDist : dToPlayer;
+      const wantsBite = wantsPlayerBite || wantsFishBite;
+      f.mouthOpen = f.chompT > 0 ? Math.max(0, f.mouthOpen - dt*12) : lerp(f.mouthOpen, wantsBite ? clamp((1-biteDist/(45+f.size*10))*1.2,0,1) : 0, 1-Math.exp(-8*dt));
+
+      if((mode==='flee' || mode==='hunt' || mode==='surge') && f.bubbleT <= 0){
+        f.bubbleT = rnd(mode==='flee' ? .42 : .58, .18);
+        emitTrailBubble(f, Math.random() < (mode==='surge' ? .52 : .35) ? 1 : 0);
+      }
+
+      dToPlayer = dist3(f.pos, p.pos);
+      const eatR = 3.0 + p.size*2.0 + f.size*1.0 + p.mods.biteReach;
+      if(dToPlayer < eatR){
+        if(p.size >= f.size*(.92 - p.mods.bitePower)){
+          eatFish(i, f);
+          continue;
+        } else if(f.size >= p.size*(1.08 + p.mods.armor)){
+          if(p.mods.thorns > 0){
+            const away = norm(sub(f.pos,p.pos));
+            f.vel.x += away.x * 18 * p.mods.thorns; f.vel.y += away.y * 8 * p.mods.thorns; f.vel.z += away.z * 18 * p.mods.thorns;
+            f.stunT = Math.max(f.stunT,.35+p.mods.thorns);
+          }
+          die('You were eaten.', `${f.type.name} was bigger.`);
+          return;
+        } else {
+          const away = norm(sub(f.pos, p.pos));
+          p.vel.x -= away.x * 6; p.vel.y -= away.y * 4; p.vel.z -= away.z * 6;
+          f.vel.x += away.x * 6; f.vel.y += away.y * 4; f.vel.z += away.z * 6;
+        }
+      }
+    }
+    resolveFishPredation();
+    while(state.fish.length < MAX_FISH) spawnFish(false);
+  }
+
+  function emitBloodMist(pos, size){
+    const count = clamp(Math.round(8 + size*5), 8, 38);
+    for(let i=0;i<count;i++){
+      state.bites.push({pos:add(pos,{x:rnd(size*4,-size*4),y:rnd(size*2,-size*2),z:rnd(size*4,-size*4)}), t:0, life:rnd(.75,.28), r:rnd(4+size*2,1.4), blood:true});
+    }
+  }
+  function eatFish(index, fish){
+    const p = state.player;
+    state.bites.push({pos:fish.pos, t:0, life:.36, r:5+fish.size*1.5, eat:true, blood:true});
+    emitBloodMist(fish.pos, fish.size);
+    state.fish.splice(index,1);
+    p.eaten++;
+    p.fishEaten++;
+    p.killBoostT = Math.max(p.killBoostT, .9);
+    p.mass += 0.024 + fish.size * .036;
+    p.size = Math.min(28, Math.sqrt(p.mass));
+    maybeTriggerUpgrade();
+  }
+
+  function updatePlants(dt){
+    const p = state.player;
+    const f = forwardFromAngles(p.yaw,p.pitch);
+    const mouth = add(p.pos, mul(f, 4 + p.size*2.3));
+    for(let i=state.plants.length-1;i>=0;i--){
+      const plant = state.plants[i];
+      plant.phase += dt;
+      plant.pos.x = plant.base.x + Math.sin(state.t*.9 + plant.phase)*Math.min(5, plant.size*1.6);
+      plant.pos.z = plant.base.z + Math.cos(state.t*1.1 + plant.phase)*Math.min(5, plant.size*1.6);
+      plant.pos.y = clamp(plant.base.y + plant.height + Math.sin(state.t*.9 + plant.phase)*1.4, plant.base.y+8, SURFACE_Y-6);
+      if(dist3(plant.pos, p.pos) > 220){ state.plants.splice(i,1); continue; }
+      if(dist3(plant.pos, mouth) < 5 + p.size*1.8 + plant.size*2.4){
+        p.mass += .016 * plant.size;
+        p.size = Math.min(24, Math.sqrt(p.mass));
+        p.eaten++;
+        state.bites.push({pos:plant.pos, t:0, life:.30, r:4+plant.size*3, plant:true});
+        state.plants.splice(i,1);
+      }
+    }
+    while(state.plants.length < MAX_PLANTS) spawnPlant(false);
+  }
+
+  function updateObstacles(dt){
+    for(let i=state.obstacles.length-1;i>=0;i--){
+      const o = state.obstacles[i];
+      if(o.kind !== 'algaeMass' && o.kind !== 'floatingRock' && !o.wreck) o.phase += dt;
+      if(Math.hypot(o.pos.x-state.player.pos.x, o.pos.z-state.player.pos.z) > 510) state.obstacles.splice(i,1);
+    }
+    while(state.obstacles.length < MAX_OBSTACLES) spawnObstacle(false);
+  }
+
+  function updateBubbles(dt){
+    for(let i=state.bubbles.length-1;i>=0;i--){
+      const b = state.bubbles[i];
+      b.phase += dt;
+      b.life -= dt;
+      b.pos.y += b.speed*dt;
+      b.pos.x += Math.sin(b.phase*1.3)*b.wobble*dt;
+      b.pos.z += Math.cos(b.phase*.9)*b.wobble*dt;
+      if(b.pos.y > SURFACE_Y + 2 || dist3(b.pos, state.player.pos) > 215 || b.life <= 0) state.bubbles.splice(i,1);
+    }
+    while(state.bubbles.length < MAX_BUBBLES) spawnBubble(false);
+  }
+
+  function updateBites(dt){
+    state.flash = Math.max(0, state.flash - dt);
+    for(let i=state.bites.length-1;i>=0;i--){
+      state.bites[i].t += dt;
+      if(state.bites[i].t >= state.bites[i].life) state.bites.splice(i,1);
+    }
+  }
+
+  function currentScore(){
+    const p = state.player;
+    return Math.max(0, Math.round(p.fishEaten*100 + p.eaten*18 + Math.max(0,p.size-1)*260 + Math.abs(p.pos.y)*.22));
+  }
+
+  function die(title, text){
+    if(state.mode !== 'play') return;
+    const p = state.player;
+    state.mode = 'dead';
+    resetMobileStick('move'); resetMobileStick('look'); syncMobileUI();
+    ui.hud.style.display= IS_TOUCH ? 'none' : 'block';
+    ui.deadTitle.textContent = title;
+    ui.deadText.textContent = `${text} Score: ${currentScore().toLocaleString()} • Fish eaten: ${p.fishEaten} • Total eaten: ${p.eaten} • Size: ${p.size.toFixed(2)} • Depth: ${Math.round(Math.abs(p.pos.y))} m.`;
+    ui.dead.style.display='flex';
+    ui.abilityBar.style.display='none';
+    if(ui.depthGauge) ui.depthGauge.style.display='none';
+    document.exitPointerLock?.();
+  }
+
+  function updateUI(){
+    const p = state.player;
+    const d = depth01(p.pos.y);
+    ui.zoneTxt.textContent = zoneForDepth(d);
+    ui.zoneTxt.classList.toggle('danger', d>.58);
+    ui.sizeTxt.textContent = p.size.toFixed(2);
+    ui.sizeFill.style.width = clamp((p.size/10)*100, 3, 100) + '%';
+    const meters = Math.round(Math.abs(p.pos.y));
+    ui.depthTxt.textContent = meters + ' m';
+    ui.depthFill.style.width = (d*100).toFixed(1) + '%';
+    const spct = Math.round(sprintPercent(p));
+    if(ui.sprintTxt) ui.sprintTxt.textContent = spct + '%';
+    if(ui.sprintFill) ui.sprintFill.style.width = spct + '%';
+    if(ui.depthMarker){ ui.depthMarker.style.top = (d*100).toFixed(1) + '%'; ui.depthGaugeLabel.textContent = meters + ' m'; }
+    ui.eatenTxt.textContent = `${p.eaten} (${p.fishEaten} fish)`;
+    if(ui.nextUpgradeTxt) ui.nextUpgradeTxt.textContent = `${Math.max(0,p.nextUpgradeAt-p.fishEaten)} fish`;
+    updateAbilityBar();
+  }
+
+  function fogDistance(){
+    const d = depth01(state.player.pos.y);
+    return lerp(205 + state.player.mods.visibility, 92 + state.player.mods.visibility*.45, Math.pow(d,.82));
+  }
+  function fogAlphaForDistance(distance){
+    const fd = fogDistance();
+    return clamp(1 - Math.pow(distance/fd, 1.7), 0, 1);
+  }
+
+  function drawBackground(){
+    const d = depth01(state.player.pos.y);
+    const top = lerpColor([22,144,196], [1,12,31], d);
+    const bottom = lerpColor([2,54,100], [0,2,12], d);
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0, `rgb(${top[0]},${top[1]},${top[2]})`);
+    grad.addColorStop(1, `rgb(${bottom[0]},${bottom[1]},${bottom[2]})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,W,H);
+
+    // soft underwater shafts
+    ctx.save();
+    ctx.globalAlpha = clamp(.30 - d*.26, .03, .30);
+    ctx.strokeStyle = 'rgba(190,245,255,.42)';
+    ctx.lineWidth = 2;
+    for(let i=0;i<11;i++){
+      const x = ((i*173 + state.t*18) % (W+240)) - 120;
+      ctx.beginPath();
+      ctx.moveTo(x, -40);
+      ctx.bezierCurveTo(x+50, H*.22, x-25, H*.62, x+65, H+80);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function lerpColor(a,b,t){ return [Math.round(lerp(a[0],b[0],t)), Math.round(lerp(a[1],b[1],t)), Math.round(lerp(a[2],b[2],t))]; }
+
+  function getSunPosition(){
+    const camPos = state.camera?.pos || state.player.pos;
+    const sunPlaneY = SURFACE_Y + 34;
+    const t = Math.max(260, (sunPlaneY - camPos.y) / Math.max(.12, SUN_WORLD_DIR.y));
+    return add(camPos, mul(SUN_WORLD_DIR, t));
+  }
+
+  function surfaceLightFactor(pos){
+    return clamp(1 - ((SURFACE_Y - pos.y) / 260), .14, 1);
+  }
+
+  function sunViewAlignment(){
+    return clamp(dot(state.camera.forward, SUN_WORLD_DIR), 0, 1);
+  }
+
+  function drawSunLighting(overlay=false){
+    const d = depth01(state.player.pos.y);
+    const nearSurface = clamp(1 - ((SURFACE_Y - state.player.pos.y) / 180), 0, 1);
+    const sunAlign = Math.pow(sunViewAlignment(), 1.18);
+    const sunWorld = getSunPosition();
+    const sun = project(sunWorld);
+    if(!sun) return;
+    const intensity = clamp(.18 + nearSurface*.72 + (1-d)*.20, .08, 1.0);
+    const glow = overlay ? intensity*(.18 + sunAlign*.40) : intensity*(.42 + sunAlign*.74);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    if(!overlay){
+      const bg = ctx.createLinearGradient(0,0,0,H*.72);
+      bg.addColorStop(0, `rgba(216,243,255,${(.07 + glow*.13).toFixed(3)})`);
+      bg.addColorStop(.45, `rgba(120,214,255,${(.03 + glow*.07).toFixed(3)})`);
+      bg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0,0,W,H);
+
+      const halo = ctx.createRadialGradient(sun.x, sun.y, 0, sun.x, sun.y, Math.max(W,H)*.82);
+      halo.addColorStop(0, `rgba(255,252,230,${(.16 + glow*.34).toFixed(3)})`);
+      halo.addColorStop(.08, `rgba(255,239,185,${(.12 + glow*.26).toFixed(3)})`);
+      halo.addColorStop(.22, `rgba(150,220,255,${(.08 + glow*.16).toFixed(3)})`);
+      halo.addColorStop(.60, `rgba(55,156,220,${(.03 + glow*.06).toFixed(3)})`);
+      halo.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(0,0,W,H);
+
+      ctx.lineCap = 'round';
+      for(let i=0;i<9;i++){
+        const spread = (i - 4) / 4;
+        const x2 = sun.x + spread * W * (.24 + sunAlign*.12);
+        const x3 = sun.x + spread * W * (.46 + sunAlign*.18);
+        const y2 = H * (.40 + Math.abs(spread)*.12);
+        const y3 = H + 120;
+        const g = ctx.createLinearGradient(sun.x, sun.y, x3, y3);
+        const alpha = (.012 + glow*.040) * (1 - Math.abs(spread)*.09);
+        g.addColorStop(0, `rgba(255,249,218,${alpha.toFixed(3)})`);
+        g.addColorStop(.25, `rgba(176,231,255,${(alpha*.58).toFixed(3)})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(sun.x, sun.y);
+        ctx.lineTo(x2 - 34, y2);
+        ctx.lineTo(x3 + 34, y3);
+        ctx.lineTo(x2 + 34, y2);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    const core = ctx.createRadialGradient(sun.x, sun.y, 0, sun.x, sun.y, Math.max(36, Math.min(W,H)*.12));
+    core.addColorStop(0, `rgba(255,254,245,${(.18 + glow*.42).toFixed(3)})`);
+    core.addColorStop(.25, `rgba(255,236,164,${(.12 + glow*.24).toFixed(3)})`);
+    core.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = core;
+    ctx.fillRect(0,0,W,H);
+
+    if(overlay){
+      const cx = W*.5, cy = H*.5;
+      const flareVecX = cx - sun.x, flareVecY = cy - sun.y;
+      const flareCount = 5;
+      for(let i=0;i<flareCount;i++){
+        const t = .18 + i * .18;
+        const fx = sun.x + flareVecX*t;
+        const fy = sun.y + flareVecY*t;
+        const r = Math.max(10, Math.min(W,H) * (.012 + (flareCount-i)*.008));
+        const fg = ctx.createRadialGradient(fx, fy, 0, fx, fy, r);
+        const alpha = (.020 + sunAlign*.060) * (1 - i/(flareCount+1));
+        fg.addColorStop(0, `rgba(${i%2 ? '178,236,255' : '255,232,176'},${alpha.toFixed(3)})`);
+        fg.addColorStop(.55, `rgba(${i%2 ? '86,194,255' : '255,208,122'},${(alpha*.45).toFixed(3)})`);
+        fg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = fg;
+        ctx.beginPath();
+        ctx.arc(fx, fy, r, 0, TAU);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawSurface(){
+    const d = depth01(state.player.pos.y);
+    const nearSurfaceBoost = clamp(1 - Math.abs(state.player.pos.y - SURFACE_Y) / 95, 0, 1);
+    const alphaBase = clamp(.44 - d*.30 + nearSurfaceBoost*.28, .05, .72);
+    if(alphaBase <= .025) return;
+    const p = state.player.pos;
+    const step = 34;
+    const span = 8;
+    ctx.save();
+    ctx.lineWidth = 1;
+    for(let axis=0; axis<2; axis++){
+      for(let k=-span;k<=span;k++){
+        ctx.beginPath();
+        let moved=false;
+        for(let i=-span;i<=span;i++){
+          const x = axis===0 ? p.x + i*step : p.x + k*step;
+          const z = axis===0 ? p.z + k*step : p.z + i*step;
+          const y = waveHeight(x,z,state.t);
+          const pr = project({x,y,z});
+          if(!pr) continue;
+          const a = fogAlphaForDistance(Math.hypot(x-p.x,z-p.z, y-p.y));
+          if(a <= .02) continue;
+          if(!moved){ ctx.moveTo(pr.x,pr.y); moved=true; } else ctx.lineTo(pr.x,pr.y);
+        }
+        ctx.globalAlpha = alphaBase * (axis ? .55 : .75);
+        ctx.strokeStyle = axis ? 'rgba(168,236,255,.42)' : 'rgba(229,252,255,.62)';
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = alphaBase*.38;
+    ctx.fillStyle = 'rgba(116,218,255,.18)';
+    const corners = [
+      {x:p.x-step*span,y:0,z:p.z-step*span}, {x:p.x+step*span,y:0,z:p.z-step*span},
+      {x:p.x+step*span,y:0,z:p.z+step*span}, {x:p.x-step*span,y:0,z:p.z+step*span}
+    ].map(q => ({...q, y:waveHeight(q.x,q.z,state.t)})).map(project).filter(Boolean);
+    if(corners.length===4){ ctx.beginPath(); corners.forEach((q,i)=> i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)); ctx.closePath(); ctx.fill(); }
+    if(nearSurfaceBoost > .05){
+      ctx.globalAlpha = nearSurfaceBoost*.22;
+      ctx.fillStyle = 'rgba(230,252,255,.52)';
+      for(let i=0;i<8;i++){
+        const y = H*(.10 + i*.055) + Math.sin(state.t*1.2+i)*3;
+        ctx.beginPath();
+        ctx.ellipse(W*.5 + Math.sin(state.t+i)*W*.18, y, W*(.34-i*.018), 4+i*.28, Math.sin(i)*.05, 0, TAU);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawWorldBounds(){
+    const p = state.player.pos;
+    const step = 42;
+    const span = 6;
+    ctx.save();
+    ctx.globalAlpha = .23;
+    ctx.strokeStyle = 'rgba(148,115,79,.28)';
+    ctx.lineWidth = 1.2;
+    for(let k=-span;k<=span;k++){
+      ctx.beginPath(); let moved=false;
+      for(let i=-span;i<=span;i++){
+        const x = p.x + i*step;
+        const z = p.z + k*step;
+        const y = floorHeight(x,z);
+        const pr = project({x,y,z});
+        if(!pr) continue;
+        const a = fogAlphaForDistance(dist3({x,y,z}, p)); if(a <= .02) continue;
+        if(!moved){ctx.moveTo(pr.x,pr.y);moved=true;} else ctx.lineTo(pr.x,pr.y);
+      }
+      ctx.stroke();
+    }
+    for(let k=-span;k<=span;k++){
+      ctx.beginPath(); let moved=false;
+      for(let i=-span;i<=span;i++){
+        const x = p.x + k*step;
+        const z = p.z + i*step;
+        const y = floorHeight(x,z);
+        const pr = project({x,y,z});
+        if(!pr) continue;
+        const a = fogAlphaForDistance(dist3({x,y,z}, p)); if(a <= .02) continue;
+        if(!moved){ctx.moveTo(pr.x,pr.y);moved=true;} else ctx.lineTo(pr.x,pr.y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBubble(b){
+    const pr = project(b.pos); if(!pr) return;
+    const a = fogAlphaForDistance(dist3(b.pos,state.player.pos)); if(a <= .015) return;
+    const r = clamp(b.r*pr.s*1.8, .8, 18);
+    ctx.save();
+    ctx.globalAlpha = a*(b.trail ? .28 : .42);
+    ctx.strokeStyle = b.trail ? 'rgba(201,248,255,.82)' : 'rgba(231,252,255,.86)';
+    ctx.lineWidth = Math.max(1, r*.09);
+    ctx.beginPath(); ctx.arc(pr.x,pr.y,r,0,TAU); ctx.stroke();
+    ctx.globalAlpha = a*(b.trail ? .20 : .32);
+    ctx.fillStyle = 'rgba(255,255,255,.65)';
+    ctx.beginPath(); ctx.arc(pr.x-r*.28,pr.y-r*.25,Math.max(.7,r*.18),0,TAU); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawObstacle(o){
+    const centerPos = obstacleCenter(o);
+    const dist = dist3(centerPos, state.player.pos);
+    const a = fogAlphaForDistance(dist);
+    if(a <= .02) return;
+    const y0 = o.pos.y, y1 = obstacleTop(o);
+
+    if(o.kind === 'algaeMass'){
+      const yaw = o.yaw || 0;
+      const dir = {x:Math.sin(yaw), y:0, z:Math.cos(yaw)};
+      const right = {x:Math.cos(yaw), y:0, z:-Math.sin(yaw)};
+      const lightBoost = surfaceLightFactor(centerPos);
+      const seed = o.seed || o.phase*10;
+      const clusters = [
+        {off:{x:0,y:0,z:0}, r:o.radius*.54, col:'#2f7c46'},
+        {off:add(mul(right, -o.radius*.18), add(mul(dir, o.radius*.06), {x:0,y:o.height*.03,z:0})), r:o.radius*.39, col:'#3d9154'},
+        {off:add(mul(right, o.radius*.24), add(mul(dir, -o.radius*.12), {x:0,y:o.height*.07,z:0})), r:o.radius*.35, col:'#4aa865'},
+        {off:add(mul(right, .02), add(mul(dir, o.radius*.20), {x:0,y:-o.height*.08,z:0})), r:o.radius*.31, col:'#367d49'}
+      ];
+      ctx.save();
+      ctx.globalAlpha = a*.99;
+      for(let i=0;i<clusters.length;i++){
+        const cl = clusters[i];
+        drawVolumeBlob(add(centerPos, cl.off), cl.r, cl.r*(.92 + i*.025), cl.r*.93, cl.col, {latCount:8, segs:14, lightBoost, roughness:.16, seed:seed + i*13, right, up:{x:0,y:1,z:0}, depthAxis:dir});
+      }
+      const outline = project(centerPos);
+      if(outline){
+        ctx.globalAlpha = a*.20;
+        ctx.strokeStyle = 'rgba(9,42,22,.85)';
+        ctx.lineWidth = Math.max(1.2, outline.s*o.radius*.13);
+        ctx.beginPath();
+        ctx.ellipse(outline.x, outline.y, Math.max(3, outline.s*o.radius*.56), Math.max(3, outline.s*o.radius*.46), 0, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.restore();
+      return;
+    }
+
+    if(o.kind === 'floatingRock'){
+      const yaw = o.yaw || 0;
+      const dir = norm({x:Math.sin(yaw), y:0.18, z:Math.cos(yaw)});
+      const right = norm({x:Math.cos(yaw), y:0, z:-Math.sin(yaw)});
+      const up = norm(cross(dir, right));
+      const lightBoost = surfaceLightFactor(centerPos);
+      ctx.save();
+      ctx.globalAlpha = a*.96;
+      drawVolumeBlob(centerPos, o.radius*.54, o.height*.36, o.radius*.50, '#64748b', {latCount:8, segs:13, right, up, depthAxis:dir, lightBoost, roughness:.15, seed:o.seed || o.phase*20});
+      drawVolumeBlob(add(centerPos, add(mul(right, o.radius*.18), mul(up, o.height*.08))), o.radius*.22, o.height*.16, o.radius*.20, '#778495', {latCount:5, segs:10, right, up, depthAxis:dir, lightBoost:lightBoost*.94, roughness:.13, seed:(o.seed || o.phase*23)+1, highlight:false});
+      drawVolumeBlob(add(centerPos, add(mul(right, -o.radius*.20), mul(up, -o.height*.04))), o.radius*.18, o.height*.13, o.radius*.17, '#535f6d', {latCount:5, segs:10, right, up, depthAxis:dir, lightBoost:lightBoost*.84, roughness:.11, seed:(o.seed || o.phase*23)+2, highlight:false});
+      const crackA = add(centerPos, add(mul(right, -o.radius*.16), mul(up, -o.height*.02)));
+      const crackB = add(centerPos, add(mul(right, o.radius*.06), mul(up, o.height*.06)));
+      const crackC = add(centerPos, add(mul(right, o.radius*.22), mul(up, -o.height*.08)));
+      drawProjectedLine([crackA, crackB, crackC], 'rgba(18,24,32,.44)', a*.78, Math.max(1, project(centerPos)?.s ? project(centerPos).s*.90 : 1));
+      ctx.restore();
+      return;
+    }
+
+    if(o.kind === 'wreck'){
+      ctx.save();
+      ctx.globalAlpha = a*.96;
+      drawBoatWreck(centerPos, o, a);
+      ctx.restore();
+      return;
+    }
+
+    if(o.kind === 'kelpTower'){
+      const base = project(o.pos), tip = project({x:o.pos.x,y:y1,z:o.pos.z});
+      if(!base || !tip) return;
+      const sway = Math.sin(state.t*1.8 + o.phase) * Math.max(5, tip.s*5);
+      ctx.save();
+      ctx.globalAlpha = a*.78;
+      ctx.strokeStyle = 'rgba(84,214,146,.62)';
+      ctx.lineWidth = Math.max(2, base.s*o.radius*.11);
+      for(let i=0;i<5;i++){
+        const off = (i-2) * o.radius * .24;
+        ctx.beginPath();
+        ctx.moveTo(base.x + off, base.y);
+        ctx.quadraticCurveTo(base.x + off + sway*.35, lerp(base.y, tip.y, .45), tip.x + off + sway, tip.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+      return;
+    }
+    const base = project(o.pos), top = project({x:o.pos.x,y:y1,z:o.pos.z});
+    if(!base || !top) return;
+    const w0 = Math.max(4, base.s*o.radius);
+    const w1 = Math.max(2, top.s*o.radius*.82);
+    ctx.save();
+    ctx.globalAlpha = a*.9;
+    const fill = o.kind==='coralSpire' ? 'rgba(236,142,160,.72)' : o.kind==='deepPillar' ? 'rgba(80,94,114,.88)' : 'rgba(112,126,151,.82)';
+    const side = o.kind==='arch' ? 'rgba(82,92,112,.88)' : 'rgba(73,84,105,.88)';
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.moveTo(base.x-w0, base.y); ctx.lineTo(base.x+w0, base.y); ctx.lineTo(top.x+w1, top.y); ctx.lineTo(top.x-w1, top.y); ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = a*.72;
+    ctx.fillStyle = side;
+    ctx.beginPath();
+    ctx.moveTo(base.x+w0*.15, base.y); ctx.lineTo(base.x+w0, base.y); ctx.lineTo(top.x+w1, top.y); ctx.lineTo(top.x+w1*.1, top.y); ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = a*.86;
+    ctx.fillStyle = 'rgba(184,197,214,.28)';
+    ctx.beginPath(); ctx.ellipse(top.x, top.y, w1, Math.max(2,w1*.36), 0, 0, TAU); ctx.fill();
+    if(o.kind==='deepPillar'){
+      ctx.globalAlpha = a*.32; ctx.strokeStyle = 'rgba(226,232,240,.26)'; ctx.lineWidth = Math.max(1,w0*.035);
+      for(let i=-2;i<=2;i++){ ctx.beginPath(); ctx.moveTo(base.x+i*w0*.22, base.y); ctx.lineTo(top.x+i*w1*.18, top.y); ctx.stroke(); }
+    }
+    if(o.kind==='arch'){
+      ctx.globalAlpha = a*.8;
+      ctx.strokeStyle = 'rgba(210,219,230,.28)';
+      ctx.lineWidth = Math.max(2, w1*.18);
+      ctx.beginPath();
+      ctx.moveTo(base.x-w0*.28, lerp(base.y, top.y, .58));
+      ctx.quadraticCurveTo(base.x, lerp(base.y, top.y, .42), base.x+w0*.28, lerp(base.y, top.y, .58));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawPlant(plant){
+    const pr = project(plant.pos); if(!pr) return;
+    const base = project(plant.base); if(!base) return;
+    const a = fogAlphaForDistance(dist3(plant.pos,state.player.pos)); if(a <= .02) return;
+    const s = plant.size * pr.s * 3.9;
+    const sway = Math.sin(state.t*2.2 + plant.phase) * s*.8;
+    ctx.save();
+    ctx.globalAlpha = a * (plant.glow ? .92 : .75);
+    ctx.lineCap = 'round';
+    if(plant.glow){
+      ctx.shadowColor = 'rgba(52,211,153,.85)'; ctx.shadowBlur = 14;
+      ctx.strokeStyle = 'rgba(52,211,153,.78)'; ctx.fillStyle = 'rgba(167,243,208,.72)';
+    } else {
+      ctx.strokeStyle = 'rgba(84,214,146,.75)'; ctx.fillStyle = 'rgba(148,239,168,.72)';
+    }
+    ctx.lineWidth = Math.max(1.2, s*.10);
+    const stems = plant.kind==='leaf' ? 5 : 8;
+    for(let i=0;i<stems;i++){
+      const ang = (i/(stems-1)-.5) * 1.1;
+      const tipX = pr.x + Math.sin(ang)*s*1.2 + sway;
+      const tipY = pr.y - s*(0.15 + (i%3)*0.08);
+      ctx.beginPath();
+      ctx.moveTo(base.x, base.y);
+      ctx.quadraticCurveTo(base.x + Math.sin(ang)*s*.9 + sway*.35, lerp(base.y, tipY, .45), tipX, tipY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(tipX, tipY, s*.22, s*.08, ang, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function basisFromDir(dir){
+    let upHint = {x:0,y:1,z:0};
+    let right = cross(upHint, dir);
+    if(Math.hypot(right.x,right.y,right.z) < .001){ upHint = {x:1,y:0,z:0}; right = cross(upHint, dir); }
+    right = norm(right);
+    const up = mul(norm(cross(dir, right)), -1);
+    return {right, up};
+  }
+
+  function shadeHex(hex, amt){
+    hex = (hex || '#7dd3fc').replace('#','');
+    if(hex.length === 3) hex = hex.split('').map(c=>c+c).join('');
+    const n = parseInt(hex,16);
+    let r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+    if(amt >= 0){ r += (255-r)*amt; g += (255-g)*amt; b += (255-b)*amt; }
+    else { r *= (1+amt); g *= (1+amt); b *= (1+amt); }
+    return `rgb(${Math.round(clamp(r,0,255))},${Math.round(clamp(g,0,255))},${Math.round(clamp(b,0,255))})`;
+  }
+
+  function pointOnFish(center, dir, right, up, forwardUnits, sideUnits, upUnits, bodyLen, bodyRad){
+    return add(center, add(mul(dir, forwardUnits*bodyLen), add(mul(right, sideUnits*bodyRad), mul(up, upUnits*bodyRad))));
+  }
+
+  function drawProjectedPoly(points, fill, stroke, alpha=1, lineWidth=1){
+    const pts = points.map(project);
+    if(pts.some(p=>!p)) return false;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.beginPath();
+    pts.forEach((p,i)=> i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));
+    ctx.closePath();
+    if(fill){ ctx.fillStyle = fill; ctx.fill(); }
+    if(stroke){ ctx.strokeStyle = stroke; ctx.lineWidth = lineWidth; ctx.stroke(); }
+    ctx.restore();
+    return true;
+  }
+
+  function drawProjectedLine(points, stroke, alpha=1, lineWidth=1){
+    const pts = points.map(project).filter(Boolean);
+    if(pts.length < 2) return false;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    pts.forEach((p,i)=> i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));
+    ctx.stroke();
+    ctx.restore();
+    return true;
+  }
+
+  function orthonormalBasis(right, up, forward){
+    let r = norm(right || {x:1,y:0,z:0});
+    let u = up ? norm(sub(up, mul(r, dot(up, r)))) : {x:0,y:1,z:0};
+    if(Math.hypot(u.x,u.y,u.z) < .001) u = {x:0,y:1,z:0};
+    let f = forward ? norm(forward) : norm(cross(r, u));
+    if(Math.hypot(f.x,f.y,f.z) < .001) f = {x:0,y:0,z:1};
+    u = norm(cross(f, r));
+    return {right:r, up:u, forward:f};
+  }
+
+  function roughNoise(seedA, seedB, seedC=0){
+    return Math.sin(seedA*1.73 + seedB*2.91 + seedC*1.37) * .5 + Math.cos(seedA*2.41 - seedB*1.17 + seedC*.83) * .5;
+  }
+
+  function drawVolumeBlob(centerPos, rx, ry, rz, baseHex, options={}){
+    const rings = [];
+    const polys = [];
+    const latCount = options.latCount || 7;
+    const segs = options.segs || 12;
+    const basis = orthonormalBasis(options.right || {x:1,y:0,z:0}, options.up || {x:0,y:1,z:0}, options.depthAxis || {x:0,y:0,z:1});
+    const right = basis.right, up = basis.up, depthAxis = basis.forward;
+    const squash = options.squash || 1;
+    const lightBoost = options.lightBoost ?? surfaceLightFactor(centerPos);
+    const rough = options.roughness ?? .12;
+    for(let i=0;i<=latCount;i++){
+      const phi = -Math.PI/2 + (i/latCount) * Math.PI;
+      const radiusScale = Math.cos(phi);
+      const depthOff = Math.sin(phi) * rz;
+      const center = add(centerPos, mul(depthAxis, depthOff));
+      const ring = [];
+      for(let j=0;j<segs;j++){
+        const ang = (j/segs) * TAU;
+        const n = roughNoise(i+1, j+1, options.seed || 0);
+        const roughMul = 1 + n * rough * (radiusScale > .08 ? 1 : .35);
+        const px = Math.cos(ang) * rx * radiusScale * roughMul;
+        const py = Math.sin(ang) * ry * radiusScale * squash * roughMul;
+        ring.push(add(center, add(mul(right, px), mul(up, py))));
+      }
+      rings.push(ring);
+    }
+    for(let i=0;i<rings.length-1;i++){
+      for(let j=0;j<segs;j++){
+        const a0 = rings[i][j], a1 = rings[i][(j+1)%segs], b1 = rings[i+1][(j+1)%segs], b0 = rings[i+1][j];
+        const mid = {x:(a0.x+a1.x+b0.x+b1.x)/4, y:(a0.y+a1.y+b0.y+b1.y)/4, z:(a0.z+a1.z+b0.z+b1.z)/4};
+        const n = norm(sub(mid, centerPos));
+        const sunLight = clamp(dot(n, SUN_WORLD_DIR)*.60 + .40 + lightBoost*.18, .08, 1.18);
+        const rim = clamp(dot(n, norm(sub(state.camera.pos, mid)))*.14 + .10, 0, .24);
+        const pp = project(mid);
+        polys.push({
+          z: dist3(mid, state.camera.pos),
+          pts:[a0,a1,b1,b0],
+          fill: shadeHex(baseHex, sunLight*.36 - .22 + rim),
+          stroke: 'rgba(255,255,255,.08)',
+          lw: Math.max(.7, pp ? pp.s*.95 : 1),
+          alpha: .96
+        });
+      }
+    }
+    polys.sort((A,B)=>B.z-A.z);
+    for(const poly of polys) drawProjectedPoly(poly.pts, poly.fill, poly.stroke, poly.alpha, poly.lw);
+    if(options.highlight !== false){
+      const hpt = add(centerPos, add(mul(right, -rx*.24), add(mul(up, -ry*.28), mul(depthAxis, rz*.46))));
+      const front = project(hpt);
+      if(front){
+        ctx.save();
+        ctx.globalAlpha = .12 + lightBoost*.12;
+        ctx.fillStyle = 'rgba(255,255,255,.20)';
+        ctx.beginPath();
+        ctx.ellipse(front.x, front.y, Math.max(2, rx*front.s*.20), Math.max(1.2, ry*front.s*.09), -.35, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawBoatWreck(centerPos, o, alpha){
+    const yaw = o.yaw || 0;
+    const dir = {x:Math.sin(yaw), y:0, z:Math.cos(yaw)};
+    const right = {x:Math.cos(yaw), y:0, z:-Math.sin(yaw)};
+    const up = {x:0,y:1,z:0};
+    const lightBoost = surfaceLightFactor(centerPos);
+    const halfLen = o.radius * .96;
+    const beam = o.radius * .52;
+    const keelDrop = o.height * .42;
+    const deckLift = o.height * .18;
+    const sections = [
+      {t:-1.00,w:.04,h:.10},
+      {t:-.78,w:.56,h:.42},
+      {t:-.38,w:.96,h:.70},
+      {t:.12,w:1.00,h:.76},
+      {t:.56,w:.76,h:.54},
+      {t:.92,w:.14,h:.18}
+    ];
+    const rings = [];
+    for(const s of sections){
+      const c = add(centerPos, add(mul(dir, s.t*halfLen), mul(up, -o.height*.04 + s.h*deckLift*.25)));
+      const halfW = beam*s.w;
+      const deckY = s.h*deckLift;
+      const chineY = -o.height*.08;
+      const keelY = -keelDrop * (.45 + s.w*.55);
+      rings.push({
+        c,
+        pts:[
+          add(c, add(mul(right, -halfW), mul(up, deckY))),
+          add(c, add(mul(right, halfW), mul(up, deckY))),
+          add(c, add(mul(right, halfW*.92), mul(up, chineY))),
+          add(c, mul(up, keelY)),
+          add(c, add(mul(right, -halfW*.92), mul(up, chineY)))
+        ],
+        deckY, halfW
+      });
+    }
+    const polys = [];
+    const pushPoly = (pts, col, stroke, a=.95)=>{
+      const mid = pts.reduce((m,p)=>({x:m.x+p.x/pts.length,y:m.y+p.y/pts.length,z:m.z+p.z/pts.length}),{x:0,y:0,z:0});
+      const n = norm(cross(sub(pts[1], pts[0]), sub(pts[pts.length-1], pts[0])));
+      const sunLight = clamp(dot(n, SUN_WORLD_DIR)*.62 + .42 + lightBoost*.18, .08, 1.18);
+      const rim = clamp(dot(n, norm(sub(state.camera.pos, mid)))*.18 + .08, 0, .22);
+      const pp = project(mid);
+      polys.push({z:dist3(mid,state.camera.pos), pts, fill:shadeHex(col, sunLight*.34 - .22 + rim), stroke, lw:Math.max(.8, pp ? pp.s*1.05 : 1), alpha:a});
+    };
+    for(let i=0;i<rings.length-1;i++){
+      const a = rings[i].pts, b = rings[i+1].pts;
+      for(let j=0;j<a.length;j++){
+        const j2 = (j+1)%a.length;
+        pushPoly([a[j], a[j2], b[j2], b[j]], j < 2 ? '#56606e' : j===3 ? '#2f3945' : '#434c58', 'rgba(213,225,238,.10)', .95);
+      }
+      pushPoly([a[0], a[1], b[1], b[0]], '#677180', 'rgba(220,233,245,.15)', .96);
+    }
+    pushPoly(rings[0].pts, '#3a4351', 'rgba(210,220,230,.10)', .92);
+    pushPoly(rings[rings.length-1].pts, '#737f8d', 'rgba(210,220,230,.12)', .92);
+    polys.sort((A,B)=>B.z-A.z);
+    for(const poly of polys) drawProjectedPoly(poly.pts, poly.fill, poly.stroke, alpha*poly.alpha, poly.lw);
+
+    const mastBase = add(centerPos, add(mul(dir, -halfLen*.16), mul(up, deckLift*.55)));
+    const mastTop = add(mastBase, {x:0,y:o.height*1.18,z:0});
+    drawProjectedLine([mastBase, mastTop], 'rgba(126,96,70,.60)', alpha*.84, Math.max(1.2, project(mastBase)?.s ? project(mastBase).s*1.4 : 1.2));
+    drawProjectedLine([add(mastBase,{x:0,y:o.height*.68,z:0}), add(add(mastBase,{x:0,y:o.height*.50,z:0}), mul(right, beam*.86))], 'rgba(176,187,201,.38)', alpha*.74, Math.max(1, project(mastBase)?.s ? project(mastBase).s*1.1 : 1));
+    for(let i=1;i<rings.length-1;i++){
+      const s = rings[i];
+      const leftRail = add(s.c, add(mul(right, -s.halfW*.80), mul(up, s.deckY*.88)));
+      const rightRail = add(s.c, add(mul(right, s.halfW*.80), mul(up, s.deckY*.88)));
+      const ribTop = add(s.c, add(mul(up, s.deckY*.92), mul(right, 0)));
+      drawProjectedLine([leftRail, ribTop, rightRail], 'rgba(200,212,226,.30)', alpha*.64, Math.max(1, project(s.c)?.s ? project(s.c).s*.95 : 1));
+    }
+  }
+
+  function drawFish(f, isPlayer=false){
+    const center = project(f.pos); if(!center) return;
+    const viewDist = dist3(f.pos, state.player.pos);
+    let a = isPlayer ? 1 : fogAlphaForDistance(viewDist);
+    if(a <= .015) return;
+
+    const dir = isPlayer ? forwardFromAngles(state.player.yaw,state.player.pitch) : f.dir;
+    const basis = basisFromDir(dir);
+    const right = basis.right, up = basis.up;
+    const camLight = SUN_WORLD_DIR;
+    const phase = isPlayer ? state.player.tailPhase : f.phase;
+    const finPhase = isPlayer ? state.player.finPhase : f.phase*.9;
+    const pv = state.player.visual || baseVisual();
+    const color = isPlayer ? (pv.ghost ? '#1fb6d6' : '#44d4ff') : f.type.color;
+    const color2 = isPlayer ? (pv.countershade ? '#efffff' : '#d8fbff') : f.type.color2;
+    const shark = isPlayer ? false : f.type.shark;
+    const monster = isPlayer ? false : f.type.monster;
+    const sail = isPlayer ? (pv.sail || 0) : !!f.type.sail;
+    const dorsal = isPlayer ? (pv.dorsal > 0 || sail) : (f.type.dorsal || sail);
+
+    const bodyLen = f.size * (shark ? 13.6 : monster ? 15.8 : 11.9) * (isPlayer ? pv.length : 1);
+    const bodyRad = f.size * (shark ? 2.15 : monster ? 3.15 : 2.45) * (isPlayer ? pv.bodyDepth : 1);
+    const tailSway = Math.sin(phase) * bodyRad * (shark ? .48 : .72);
+    const finFlap = Math.sin(finPhase) * bodyRad * .42;
+    const relCam = norm(sub(state.camera.pos, f.pos));
+    const frontView = dot(relCam, dir) > -0.05;
+    const sideView = dot(relCam, right);
+
+    ctx.save();
+    ctx.globalAlpha = a;
+
+    const shadowCenter = add({x:f.pos.x,y:floorHeight(f.pos.x,f.pos.z)+2,z:f.pos.z}, mul(up, 0));
+    const sh = project(shadowCenter);
+    if(sh){
+      ctx.save();
+      ctx.globalAlpha = a * .18;
+      ctx.fillStyle = 'rgba(0,5,15,.65)';
+      ctx.beginPath();
+      ctx.ellipse(sh.x, sh.y + bodyRad*sh.s*.7, bodyLen*sh.s*.24, bodyRad*sh.s*1.1, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const xs = [-.58,-.44,-.30,-.16,0,.16,.30,.45,.58];
+    const profile = [.18,.46,.78,.98,1,.92,.74,.44,.14];
+    const segs = 10;
+    const rings = [];
+    const centers = [];
+    for(let i=0;i<xs.length;i++){
+      const cx = xs[i], r = profile[i];
+      const wobble = i < 3 ? tailSway*(1-(i/3))*0.28 : 0;
+      const c = add(pointOnFish(f.pos,dir,right,up,cx,0,0,bodyLen,bodyRad), mul(right, wobble));
+      centers.push(c);
+      const ring = [];
+      for(let j=0;j<segs;j++){
+        const ang = (j/segs) * TAU;
+        const cos = Math.cos(ang), sin = Math.sin(ang);
+        const pinch = shark ? 0.82 : 1;
+        ring.push(add(c, add(mul(right, cos*bodyRad*r), mul(up, sin*bodyRad*r*pinch))));
+      }
+      rings.push(ring);
+    }
+
+    const polys = [];
+    for(let i=0;i<rings.length-1;i++){
+      for(let j=0;j<segs;j++){
+        const a0 = rings[i][j], a1 = rings[i][(j+1)%segs], b1 = rings[i+1][(j+1)%segs], b0 = rings[i+1][j];
+        const mid = {x:(a0.x+a1.x+b0.x+b1.x)/4, y:(a0.y+a1.y+b0.y+b1.y)/4, z:(a0.z+a1.z+b0.z+b1.z)/4};
+        const c = centers[i];
+        const n = norm(sub(mid, c));
+        const light = clamp(dot(n, camLight)*.62 + .50 + surfaceLightFactor(mid)*.12, .12, 1.14);
+        const facing = dot(n, relCam);
+        const baseCol = j < segs/2 ? color2 : color;
+        polys.push({
+          z: dist3(mid, state.camera.pos),
+          pts:[a0,a1,b1,b0],
+          fill: shadeHex(baseCol, light*.28 - .22 - i*.01),
+          stroke: facing > 0 ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.06)',
+          lw: Math.max(.7, center.s*bodyRad*.022),
+          alpha: facing > -0.3 ? .96 : .72
+        });
+      }
+    }
+    // head cap and tail cap
+    polys.push({z:dist3(centers[rings.length-1],state.camera.pos), pts:rings[rings.length-1], fill:shadeHex(color2,.18), stroke:'rgba(255,255,255,.14)', lw:Math.max(.7,center.s*.9), alpha:.95});
+    polys.push({z:dist3(centers[0],state.camera.pos), pts:rings[0], fill:shadeHex(color,-.28), stroke:'rgba(255,255,255,.08)', lw:Math.max(.6,center.s*.75), alpha:.9});
+    polys.sort((A,B)=>B.z-A.z);
+    for(const poly of polys) drawProjectedPoly(poly.pts, poly.fill, poly.stroke, poly.alpha, poly.lw);
+
+    // tail fin
+    const tailBase = centers[0];
+    const tailTip = add(pointOnFish(f.pos,dir,right,up,-.84,0,0,bodyLen,bodyRad), mul(right, tailSway));
+    const tailTop = add(tailTip, add(mul(up,-bodyRad*1.15*(isPlayer?pv.tail:1)), mul(right, tailSway*.24)));
+    const tailBot = add(tailTip, add(mul(up, bodyRad*1.15*(isPlayer?pv.tail:1)), mul(right, tailSway*.24)));
+    const tailFar = add(tailTip, mul(dir, -bodyLen*.11));
+    drawProjectedPoly([tailBase, tailTop, tailFar, tailBot], shadeHex(color, .06), 'rgba(255,255,255,.16)', .9, Math.max(1, center.s*bodyRad*.05));
+
+    // fins
+    for(const side of [-1,1]){
+      const root = pointOnFish(f.pos,dir,right,up,.04,side*.72,.12,bodyLen,bodyRad);
+      const out = add(pointOnFish(f.pos,dir,right,up,-.08,side*(1.52*(isPlayer?pv.sideFins:1)),.55,bodyLen,bodyRad), mul(up, finFlap*side*.12));
+      const back = pointOnFish(f.pos,dir,right,up,.24,side*.80,.26 + finFlap/bodyRad*.18,bodyLen,bodyRad);
+      drawProjectedPoly([root,out,back], shadeHex(color2,.12), 'rgba(255,255,255,.16)', .7, Math.max(1, center.s*bodyRad*.04));
+    }
+
+    if(dorsal || shark){
+      const isSail = !!sail;
+      const rootA = pointOnFish(f.pos,dir,right,up,isSail?-.30:-.08,0,-.90,bodyLen,bodyRad);
+      const rootMid = pointOnFish(f.pos,dir,right,up,isSail?-.08:-.18,0,-(isSail?(2.75 + (isPlayer ? sail*.42 : .35)):(shark?2.08:(isPlayer?1.15+pv.dorsal:1.7))),bodyLen,bodyRad);
+      const rootB = pointOnFish(f.pos,dir,right,up,isSail?.30:.18,0,-.85,bodyLen,bodyRad);
+      const sailColor = isSail ? shadeHex(color2,.06) : shadeHex(color,-.08);
+      drawProjectedPoly([rootA, rootMid, rootB], sailColor, 'rgba(255,255,255,.18)', .96, Math.max(1, center.s*bodyRad*.05));
+      if(isSail){
+        const rib1 = pointOnFish(f.pos,dir,right,up,-.18,0,-1.55,bodyLen,bodyRad);
+        const rib2 = pointOnFish(f.pos,dir,right,up,.10,0,-1.70,bodyLen,bodyRad);
+        drawProjectedLine([rootA,rib1,rootMid], 'rgba(255,255,255,.20)', .62, Math.max(1, center.s*bodyRad*.025));
+        drawProjectedLine([rootB,rib2,rootMid], 'rgba(255,255,255,.18)', .56, Math.max(1, center.s*bodyRad*.025));
+      }
+    }
+
+    const head = pointOnFish(f.pos,dir,right,up,.59,0,0,bodyLen,bodyRad);
+    if(frontView){
+      const nearEyeSide = sideView >= 0 ? 1 : -1;
+      const eyeMain = project(pointOnFish(f.pos,dir,right,up,.38,nearEyeSide*.58,-.26,bodyLen,bodyRad));
+      const eyeFar = Math.abs(sideView) < .18 ? project(pointOnFish(f.pos,dir,right,up,.38,-nearEyeSide*.45,-.22,bodyLen,bodyRad)) : null;
+      ctx.fillStyle = 'rgba(1,7,16,.96)';
+      for(const eye of [eyeMain, eyeFar]) if(eye){
+        const er = Math.max(1.5, bodyRad*eye.s*.16);
+        ctx.beginPath(); ctx.arc(eye.x, eye.y, er, 0, TAU); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.88)'; ctx.beginPath(); ctx.arc(eye.x+er*.25, eye.y-er*.25, er*.28,0,TAU); ctx.fill(); ctx.fillStyle = 'rgba(1,7,16,.96)';
+      }
+      const openAmt = clamp((isPlayer ? state.player.mouthOpen : (f.mouthOpen||0)) + ((monster || shark) ? .08 : 0), 0, 1);
+      if(openAmt > .035 || monster || shark || (isPlayer && pv.teeth>0)){
+        const jawSpread = .24 + openAmt*.58 + (isPlayer ? (pv.jaw-1)*.22 : 0);
+        const jawDrop = .26 + openAmt*.70;
+        const jawL = pointOnFish(f.pos,dir,right,up,.53,-jawSpread,.30,bodyLen,bodyRad);
+        const jawTip = pointOnFish(f.pos,dir,right,up,.70,0,jawDrop,bodyLen,bodyRad);
+        const jawR = pointOnFish(f.pos,dir,right,up,.53,jawSpread,.30,bodyLen,bodyRad);
+        drawProjectedPoly([jawL,jawTip,jawR], 'rgba(2,6,12,.72)', null, .72 + openAmt*.2, 1);
+        drawProjectedLine([jawL,jawTip,jawR], 'rgba(255,255,255,.66)', .84, Math.max(1, center.s*bodyRad*.055));
+        const toothCount = monster || shark ? 5 : clamp(2 + (isPlayer?pv.teeth:0), 2, 8);
+        for(let ti=0;ti<toothCount;ti++){
+          const x = toothCount===1 ? 0 : (ti/(toothCount-1)-.5);
+          const base = pointOnFish(f.pos,dir,right,up,.58,x*jawSpread*.8,.34,bodyLen,bodyRad);
+          const tip = pointOnFish(f.pos,dir,right,up,.63,x*jawSpread*.65,.45 + openAmt*.18,bodyLen,bodyRad);
+          drawProjectedLine([base,tip], 'rgba(255,255,255,.88)', .92, Math.max(1, center.s*bodyRad*.040));
+        }
+      }
+    }
+
+    if((f.type?.glow || monster) && !isPlayer){
+      ctx.save(); ctx.globalAlpha = a*.68; ctx.shadowColor = color2; ctx.shadowBlur = 18;
+      ctx.fillStyle = color2;
+      for(let i=0;i<4;i++){
+        const spot = project(pointOnFish(f.pos,dir,right,up,-.22+i*.16,.74,-.05,bodyLen,bodyRad));
+        if(spot){ ctx.beginPath(); ctx.arc(spot.x,spot.y,Math.max(1.2,bodyRad*spot.s*.12),0,TAU); ctx.fill(); }
+      }
+      ctx.restore();
+    } else if(!isPlayer){
+      for(let i=-1;i<=1;i++){
+        const a1 = pointOnFish(f.pos,dir,right,up,-.16+i*.15,-.78,-.18,bodyLen,bodyRad);
+        const a2 = pointOnFish(f.pos,dir,right,up,-.20+i*.15,.78,.18,bodyLen,bodyRad);
+        drawProjectedLine([a1,a2], 'rgba(255,255,255,.18)', .55, Math.max(1, center.s*bodyRad*.035));
+      }
+    }
+    if(isPlayer){
+      if(pv.stripes || pv.ghost){
+        const count = Math.min(8, 2 + pv.stripes + pv.ghost);
+        for(let i=0;i<count;i++){
+          const x = -.32 + i*(.72/Math.max(1,count-1));
+          const a1 = pointOnFish(f.pos,dir,right,up,x,-.82,-.08,bodyLen,bodyRad);
+          const a2 = pointOnFish(f.pos,dir,right,up,x+.035,.82,.16,bodyLen,bodyRad);
+          drawProjectedLine([a1,a2], pv.ghost ? 'rgba(0,8,18,.38)' : 'rgba(3,30,52,.30)', .72, Math.max(1, center.s*bodyRad*.050));
+        }
+      }
+      if(pv.speckles){
+        ctx.save(); ctx.globalAlpha = a*.5; ctx.fillStyle='rgba(255,255,255,.38)';
+        for(let i=0;i<8+pv.speckles*6;i++){
+          const spot = project(pointOnFish(f.pos,dir,right,up,rnd(.42,-.35),rnd(.72,-.72),rnd(.45,-.36),bodyLen,bodyRad));
+          if(spot){ ctx.beginPath(); ctx.arc(spot.x,spot.y,Math.max(.8,bodyRad*spot.s*.055),0,TAU); ctx.fill(); }
+        }
+        ctx.restore();
+      }
+
+      if(pv.line){
+        for(let i=0;i<Math.min(4,pv.line);i++){
+          const a1 = pointOnFish(f.pos,dir,right,up,-.42+i*.08,-.84,-.02,bodyLen,bodyRad);
+          const a2 = pointOnFish(f.pos,dir,right,up,.42-i*.04,-.72,.06,bodyLen,bodyRad);
+          drawProjectedLine([a1,a2], 'rgba(96,239,255,.42)', .72, Math.max(1, center.s*bodyRad*.038));
+        }
+      }
+      if(pv.armor){
+        for(let i=0;i<pv.armor;i++){
+          const a1 = pointOnFish(f.pos,dir,right,up,-.30+i*.22,-.72,-.30,bodyLen,bodyRad);
+          const a2 = pointOnFish(f.pos,dir,right,up,-.25+i*.22,.72,-.18,bodyLen,bodyRad);
+          drawProjectedLine([a1,a2], 'rgba(226,232,240,.34)', .75, Math.max(1, center.s*bodyRad*.065));
+        }
+      }
+      if(pv.spines){
+        for(let i=0;i<4+pv.spines*2;i++){
+          const x = -.36 + i*.15;
+          const root = pointOnFish(f.pos,dir,right,up,x,0,-.92,bodyLen,bodyRad);
+          const tip = pointOnFish(f.pos,dir,right,up,x-.04,0,-1.28,bodyLen,bodyRad);
+          drawProjectedLine([root,tip], 'rgba(225,245,255,.65)', .86, Math.max(1, center.s*bodyRad*.045));
+        }
+      }
+
+      if(state.player.sprinting){
+        ctx.save(); ctx.globalAlpha = a*.48; ctx.shadowColor='rgba(94,228,255,.88)'; ctx.shadowBlur=18;
+        for(let i=0;i<4;i++){
+          const tailGlow = pointOnFish(f.pos,dir,right,up,-.62-i*.08,Math.sin(state.t*8+i)*.22,0,bodyLen,bodyRad);
+          drawProjectedLine([tailGlow, add(tailGlow, mul(dir, -bodyLen*.10))], 'rgba(94,228,255,.70)', .8, Math.max(1, center.s*bodyRad*.075));
+        }
+        ctx.restore();
+      }
+      if(pv.electric){
+        for(let i=0;i<3;i++){
+          const z1 = pointOnFish(f.pos,dir,right,up,-.34+i*.26,-.92,-.12,bodyLen,bodyRad);
+          const z2 = pointOnFish(f.pos,dir,right,up,-.24+i*.26,.88,.10,bodyLen,bodyRad);
+          drawProjectedLine([z1,add(z1,mul(up,bodyRad*.18)),z2], 'rgba(125,249,255,.80)', .85, Math.max(1,center.s*bodyRad*.04));
+        }
+      }
+      if(pv.glowSpots || pv.eyeGlow){
+        ctx.save(); ctx.globalAlpha = a*.70; ctx.shadowColor='rgba(52,211,153,.95)'; ctx.shadowBlur=16; ctx.fillStyle='rgba(110,231,183,.86)';
+        for(let i=0;i<2+pv.glowSpots*3;i++){
+          const spot = project(pointOnFish(f.pos,dir,right,up,-.22+i*.13,.70,-.06,bodyLen,bodyRad));
+          if(spot){ ctx.beginPath(); ctx.arc(spot.x,spot.y,Math.max(1.1,bodyRad*spot.s*.10),0,TAU); ctx.fill(); }
+        }
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawBiteFX(fx){
+    const pr = project(fx.pos); if(!pr) return;
+    const t = fx.t/fx.life;
+    const r = fx.r * pr.s * (1 + t*1.4);
+    ctx.save();
+    ctx.globalAlpha = (1-t) * (fx.hurt ? .82 : .52);
+    ctx.strokeStyle = fx.blood ? 'rgba(255,38,74,.78)' : fx.shock ? 'rgba(125,249,255,.96)' : fx.ink ? 'rgba(5,7,18,.72)' : fx.hurt ? 'rgba(255,111,145,.95)' : fx.plant ? 'rgba(125,255,166,.9)' : 'rgba(255,255,255,.85)';
+    ctx.lineWidth = Math.max(1, r*.05);
+    ctx.beginPath(); ctx.arc(pr.x, pr.y, Math.max(2,r), 0, TAU); ctx.stroke();
+    if(fx.eat || fx.plant || fx.blood || fx.shock || fx.ink){
+      ctx.fillStyle = fx.blood ? 'rgba(188,16,48,.32)' : fx.shock ? 'rgba(125,249,255,.20)' : fx.ink ? 'rgba(2,6,23,.36)' : fx.plant ? 'rgba(134,239,172,.60)' : 'rgba(255,240,180,.42)';
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, Math.max(1,r*.35),0,TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawFarMist(){
+    const d = depth01(state.player.pos.y);
+    ctx.save();
+    const g = ctx.createRadialGradient(W*.5,H*.48,Math.min(W,H)*.10,W*.5,H*.5,Math.max(W,H)*.66);
+    g.addColorStop(0, `rgba(4,24,45,${.05 + d*.04})`);
+    g.addColorStop(.62, `rgba(2,18,40,${.23 + d*.20})`);
+    g.addColorStop(1, `rgba(0,4,14,${.68 + d*.21})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+    if(state.flash > 0){
+      ctx.globalAlpha = state.flash*1.9;
+      ctx.fillStyle = 'rgba(255,48,82,.22)';
+      ctx.fillRect(0,0,W,H);
+    }
+    ctx.restore();
+  }
+
+  function render(){
+    drawBackground();
+    drawSunLighting(false);
+    drawSurface();
+    drawWorldBounds();
+    const renderables = [];
+    const p = state.player.pos;
+    const fd = fogDistance() * 1.12;
+    for(const b of state.bubbles){ const d=dist3(b.pos,p); if(d<fd) { const pr=project(b.pos); if(pr) renderables.push({z:pr.z, draw:()=>drawBubble(b)}); } }
+    for(const o of state.obstacles){ const mid={x:o.pos.x,y:o.pos.y+o.height*.5,z:o.pos.z}; const d=dist3(mid,p); if(d<fd*1.65){ const pr=project(mid); if(pr) renderables.push({z:pr.z, draw:()=>drawObstacle(o)}); } }
+    for(const plant of state.plants){ const d=dist3(plant.pos,p); if(d<fd) { const pr=project(plant.pos); if(pr) renderables.push({z:pr.z, draw:()=>drawPlant(plant)}); } }
+    for(const f of state.fish){ const d=dist3(f.pos,p); if(d<fd*1.05) { const pr=project(f.pos); if(pr) renderables.push({z:pr.z, draw:()=>drawFish(f,false)}); } }
+    for(const fx of state.bites){ const pr=project(fx.pos); if(pr) renderables.push({z:pr.z, draw:()=>drawBiteFX(fx)}); }
+    const pp = project(state.player.pos); if(pp) renderables.push({z:pp.z, draw:()=>drawFish({pos:state.player.pos, size:state.player.size, type:{}, dir:forwardFromAngles(state.player.yaw,state.player.pitch), phase:state.player.tailPhase}, true)});
+    renderables.sort((a,b)=>b.z-a.z);
+    for(const r of renderables) r.draw();
+    drawFarMist();
+    drawSunLighting(true);
+  }
+
+  function tick(ms){
+    const now = ms*.001;
+    const dt = Math.min(.033, Math.max(.001, now - (state.last || now)));
+    state.last = now;
+    state.t += dt;
+    if(state.mode === 'play'){
+      updatePlayer(dt);
+      updateCamera(dt);
+      updateObstacles(dt);
+      updateFish(dt);
+      updatePlants(dt);
+      updateBubbles(dt);
+      updateBites(dt);
+      updateUI();
+    } else {
+      updateCamera(dt);
+      updateBites(dt);
+    }
+    syncMobileUI();
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
