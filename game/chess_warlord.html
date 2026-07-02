@@ -236,10 +236,11 @@ let localWritePendingUntil = 0;
 let pendingPlayerActions = [];
 let clientActionSeq = 1;
 let clientPieceSeq = 1;
-const PENDING_ACTION_TTL_SECONDS = 2.2;
-const PENDING_ACTION_GRACE_SECONDS = .9;
-const COMMAND_MAX_AGE_MS = 2600;
+const PENDING_ACTION_TTL_SECONDS = .85;
+const PENDING_ACTION_GRACE_SECONDS = .7;
+const COMMAND_MAX_AGE_MS = 1200;
 const CONTROLLER_STATE_WRITE_SECONDS = .72;
+const FULL_SNAPSHOT_SECONDS = 7;
 const COMMAND_FLUSH_DELAY_MS = 95;
 
 const firebaseConfig = {
@@ -277,6 +278,11 @@ const processedCommandIds = new Set();
 let localStateVersion = 0;
 let stateDirty = false;
 let lastStateWrite = 0;
+let lastFullSnapshotWrite = 0;
+let lastAuthoritativeData = null;
+let lastAuthoritativePieces = new Map();
+let lastAuthoritativeOwners = '';
+let lastAuthoritativeKinds = '';
 let writingState = false;
 let applyingRemote = false;
 let isController = false;
@@ -339,35 +345,111 @@ function applyCaptureKinds(str){
     board[i].captureKind = CHAR_TO_CAPTURE_KIND[str[i]] || null;
   }
 }
-function serializeState(reason='sync'){
-  recalcOwnerCounts();
+function serializePiece(p){
   return {
+    i:p.id,f:p.faction,t:p.type,x:p.x,y:p.y,hp:p.hp,mh:p.maxHp,c:p.captures||0,lv:p.level||1,
+    aid:p.clientActionId || '', aby:p.clientActionBy || '', ms:p.moveStartMs || 0, me:p.moveEndMs || 0
+  };
+}
+function diffLandString(prev,next){
+  const patches = [];
+  if(!prev || prev.length !== next.length){
+    patches.push({start:0, text:next});
+    return patches;
+  }
+  let i = 0;
+  while(i < next.length){
+    if(prev[i] === next[i]){ i++; continue; }
+    const start = i;
+    let text = '';
+    while(i < next.length && prev[i] !== next[i]) text += next[i++];
+    patches.push({start, text});
+  }
+  return patches;
+}
+function applyStringPatches(base, patches){
+  if(!Array.isArray(patches) || !patches.length) return base;
+  let chars = String(base || '').split('');
+  for(const patch of patches){
+    const start = Number(patch.start || 0);
+    const text = String(patch.text || '');
+    for(let i=0;i<text.length;i++) chars[start+i] = text[i];
+  }
+  return chars.join('');
+}
+function buildFullPieces(){ return pieces.filter(p=>p.alive).map(serializePiece); }
+function serializeState(reason='sync', forceFull=false){
+  recalcOwnerCounts();
+  const owners = compressOwners();
+  const kinds = compressCaptureKinds();
+  const livePieces = buildFullPieces();
+  const liveMap = new Map(livePieces.map(pp=>[pp.i,pp]));
+  const pieceDeltas = [];
+  const removedPieceIds = [];
+  const fullSnapshot = forceFull || !lastAuthoritativeOwners || (now() - lastFullSnapshotWrite) >= FULL_SNAPSHOT_SECONDS;
+  if(!fullSnapshot){
+    for(const pp of livePieces){
+      const old = lastAuthoritativePieces.get(pp.i);
+      if(!old || JSON.stringify(old) !== JSON.stringify(pp)) pieceDeltas.push(pp);
+    }
+    for(const id of lastAuthoritativePieces.keys()) if(!liveMap.has(id)) removedPieceIds.push(id);
+  }
+  const payload = {
     gameKey: GAME_KEY,
     version: (localStateVersion || 0) + 1,
     updatedAt: serverTimestamp(),
+    updatedAtMs: Date.now(),
     updatedBy: username || 'unknown',
     reason,
+    fullSnapshot,
     humanPlayers: slotHumans,
     playerNames: slotNames,
     playerFactionIds: slotFactionIds,
     controller: controllerName || username || '',
-    // Multiplayer sync is intentionally lean: land control, piece positions/types/HP/captures, and alive kings/factions.
-    boardOwners: compressOwners(),
-    boardKinds: compressCaptureKinds(),
     stats: {captures:gameStats.captures||0,kingsTaken:gameStats.kingsTaken||0,startedAt:gameStats.startedAt||now()},
     factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
-    pieces: pieces.filter(p=>p.alive).map(p => ({
-      i:p.id,f:p.faction,t:p.type,x:p.x,y:p.y,hp:p.hp,mh:p.maxHp,c:p.captures||0,lv:p.level||1,
-      aid:p.clientActionId || '', aby:p.clientActionBy || ''
-    })),
     winner: winnerName() || ''
   };
+  if(fullSnapshot){
+    payload.boardOwners = owners;
+    payload.boardKinds = kinds;
+    payload.pieces = livePieces;
+  } else {
+    payload.ownerPatches = diffLandString(lastAuthoritativeOwners, owners);
+    payload.kindPatches = diffLandString(lastAuthoritativeKinds, kinds);
+    payload.pieceDeltas = pieceDeltas;
+    payload.removedPieceIds = removedPieceIds;
+  }
+  return payload;
+}
+function authoritativePiecesFromRemote(data){
+  let remotePieces = [];
+  if(Array.isArray(data.pieces)){
+    remotePieces = data.pieces.slice();
+  } else if(lastAuthoritativeData && Array.isArray(lastAuthoritativeData.pieces)){
+    const map = new Map(lastAuthoritativeData.pieces.map(pp=>[pp.i,{...pp}]));
+    for(const id of (data.removedPieceIds || [])) map.delete(id);
+    for(const pp of (data.pieceDeltas || [])) map.set(pp.i,{...pp});
+    remotePieces = Array.from(map.values());
+  }
+  return remotePieces;
 }
 function applyRemoteState(data){
-  if(!data || !data.pieces) return;
+  if(!data) return;
+  const remotePieces = authoritativePiecesFromRemote(data);
+  if(!remotePieces.length && !Array.isArray(data.pieces) && !Array.isArray(data.pieceDeltas) && !Array.isArray(data.removedPieceIds)) return;
   const incomingVersion = Number(data.version || 0);
-  if(incomingVersion && incomingVersion < localStateVersion && data.updatedBy !== username && !pendingPlayerActions.length) return;
-  pruneConfirmedPendingActions(data);
+  if(incomingVersion && incomingVersion < localStateVersion && data.updatedBy !== username) return;
+  const baseOwners = data.boardOwners || (lastAuthoritativeData && lastAuthoritativeData.boardOwners) || lastAuthoritativeOwners;
+  const baseKinds = data.boardKinds || (lastAuthoritativeData && lastAuthoritativeData.boardKinds) || lastAuthoritativeKinds;
+  const mergedOwners = data.boardOwners ? data.boardOwners : applyStringPatches(baseOwners, data.ownerPatches);
+  const mergedKinds = data.boardKinds ? data.boardKinds : applyStringPatches(baseKinds, data.kindPatches);
+  const mergedData = {...data, pieces:remotePieces, boardOwners:mergedOwners, boardKinds:mergedKinds};
+  lastAuthoritativeData = mergedData;
+  lastAuthoritativeOwners = mergedOwners || '';
+  lastAuthoritativeKinds = mergedKinds || '';
+  lastAuthoritativePieces = new Map(remotePieces.map(pp=>[pp.i,{...pp}]));
+  pruneConfirmedPendingActions(mergedData);
   applyingRemote = true;
   const wasAlive = factions[PLAYER]?.alive !== false;
   localStateVersion = Math.max(Number(data.version || 0), localStateVersion || 0);
@@ -380,37 +462,30 @@ function applyRemoteState(data){
   }
   if(!board.length) generateBoard();
   if(!factions.length) setupFactions();
-  applyOwners(data.boardOwners);
-  applyCaptureKinds(data.boardKinds);
-  const remotePieceIds = new Set((data.pieces || []).map(pp=>pp.i));
+  applyOwners(mergedOwners);
+  applyCaptureKinds(mergedKinds);
   const oldMap = new Map(pieces.map(p=>[p.id,p]));
   const tNow = now();
-  pieces = data.pieces.map(pp => {
+  pieces = remotePieces.map(pp => {
     const old = oldMap.get(pp.i);
-    const pendingMove = pendingPlayerActions.find(a => a.kind==='move' && a.pieceId===pp.i && tNow < a.expiresAt && pp.x===a.fromX && pp.y===a.fromY && old && old.x===a.toX && old.y===a.toY);
+    const pendingMove = pendingPlayerActions.find(a => a.kind==='move' && a.pieceId===pp.i && tNow < a.visualUntil && pp.x===a.fromX && pp.y===a.fromY && old && old.x===a.toX && old.y===a.toY);
     const useX = pendingMove ? old.x : pp.x;
     const useY = pendingMove ? old.y : pp.y;
+    const moved = old && (old.x !== useX || old.y !== useY);
     return {
       id:pp.i, faction:pp.f, type:pp.t, x:useX, y:useY,
-      px: old ? old.px : useX, py: old ? old.py : useY,
+      px: moved ? old.x : (old ? old.px : useX), py: moved ? old.y : (old ? old.py : useY),
       targetX:useX, targetY:useY,
       lastMove: old && old.x===useX && old.y===useY ? old.lastMove : now(), hp:pp.hp || 1, maxHp:pp.mh || pp.hp || 1,
       captures:pp.c || 0, level:pp.lv || 1, alive:true, born:old ? old.born : now(),
       stationarySince: old && old.x===useX && old.y===useY ? (old.stationarySince || now()) : now(),
       lastStationX: useX, lastStationY: useY,
       wobble: old ? old.wobble : Math.random()*Math.PI*2,
-      flash: old && (old.x !== useX || old.y !== useY) ? 1 : (old ? old.flash : 0),
+      flash: moved ? 1 : (old ? old.flash : 0),
       promoted:false,
-      clientActionId:pp.aid || '', clientActionBy:pp.aby || ''
+      clientActionId:pp.aid || '', clientActionBy:pp.aby || '', moveStartMs:pp.ms || 0, moveEndMs:pp.me || 0
     };
   });
-  for(const action of pendingPlayerActions){
-    if(action.kind!=='spawn' || tNow >= action.expiresAt || remotePieceIds.has(action.pieceId)) continue;
-    const old = oldMap.get(action.pieceId);
-    if(old && old.alive){
-      pieces.push({...old});
-    }
-  }
   idCounter = pieces.reduce((m,p)=>Math.max(m,Number(p.id)||0),0)+1;
   const fData = Array.isArray(data.factions) ? data.factions : [];
   for(const fd of fData){
@@ -433,7 +508,7 @@ function applyRemoteState(data){
     legalMoves = selectedPiece && selectedPiece.faction===PLAYER && !playerDefeated && ownFactionAlive() ? getLegalMoves(selectedPiece,false) : [];
   }
   applyingRemote = false;
-  pendingPlayerActions = pendingPlayerActions.filter(a => now() < a.expiresAt);
+  expirePendingPlayerActions();
   if(!pendingPlayerActions.length){
     localWritePendingUntil = 0;
     if(!isController) stateDirty = false;
@@ -454,7 +529,7 @@ function allocateClientPieceId(){
 }
 function rememberPendingPlayerAction(action){
   const created = now();
-  const item = {...action, createdAt:created, expiresAt:created + PENDING_ACTION_TTL_SECONDS};
+  const item = {...action, createdAt:created, visualUntil:created + PENDING_ACTION_GRACE_SECONDS, expiresAt:created + PENDING_ACTION_TTL_SECONDS};
   if(item.kind === 'move') pendingPlayerActions = pendingPlayerActions.filter(a => !(a.kind === 'move' && a.pieceId === item.pieceId));
   pendingPlayerActions.push(item);
   localWritePendingUntil = now() + PENDING_ACTION_GRACE_SECONDS;
@@ -480,42 +555,29 @@ function pruneConfirmedPendingActions(remoteData){
     return false;
   });
 }
-function reapplyPendingPlayerActions(){
-  if(!pendingPlayerActions.length) return false;
-  let changed = false;
-  const stillPending = [];
-  for(const action of pendingPlayerActions){
-    if(now() > action.expiresAt) continue;
-    if(action.kind === 'move'){
-      const live = getPiece(action.pieceId);
-      if(!live || !live.alive || live.faction !== PLAYER) continue;
-      if(live.x === action.toX && live.y === action.toY){ stillPending.push(action); continue; }
-      const target = findPieceAt(action.toX, action.toY);
-      if(target && target.faction === PLAYER){ stillPending.push(action); continue; }
-      if(!passableFor(live, action.toX, action.toY)){ stillPending.push(action); continue; }
-      const legal = getLegalMoves(live,false).some(m=>m.x===action.toX && m.y===action.toY);
-      if(!legal){ stillPending.push(action); continue; }
-      if(movePiece(live, action.toX, action.toY, 'replay')) changed = true;
-      stillPending.push(action);
-      continue;
-    }
-    if(action.kind === 'spawn'){
-      const existing = getPiece(action.pieceId) || pieces.find(p=>p.alive && p.clientActionId === action.actionId);
-      if(existing){ stillPending.push(action); continue; }
-      if(!ownFactionAlive()) continue;
-      const occupying = findPieceAt(action.x, action.y);
-      if(occupying){ stillPending.push(action); continue; }
-      const legalSpawn = inBounds(action.x, action.y) && eligibleSpawnTiles(PLAYER, action.type).some(t=>t.x===action.x && t.y===action.y);
-      if(!legalSpawn){ stillPending.push(action); continue; }
-      newPiece(PLAYER, action.type, action.x, action.y, {ready:false, id:action.pieceId, clientActionId:action.actionId, clientActionBy:username || ''});
-      burst(action.x, action.y, factions[PLAYER].color, 10);
-      changed = true;
-      stillPending.push(action);
-      continue;
-    }
+function rollbackToAuthoritative(message='Command was not accepted — refreshed from host state.'){
+  pendingPlayerActions = [];
+  if(lastAuthoritativeData){
+    toast(message, 2200);
+    const restore = lastAuthoritativeData;
+    lastAuthoritativeData = null;
+    applyRemoteState(restore);
   }
-  pendingPlayerActions = stillPending;
-  return changed;
+}
+function expirePendingPlayerActions(){
+  if(!pendingPlayerActions.length) return;
+  const t = now();
+  const expired = pendingPlayerActions.filter(action => t > action.expiresAt);
+  if(!expired.length) return;
+  pendingPlayerActions = pendingPlayerActions.filter(action => t <= action.expiresAt);
+  if(!isController && lastAuthoritativeData){
+    toast('Sync delayed — refreshing from authoritative state.', 2200);
+    const restore = lastAuthoritativeData;
+    lastAuthoritativeData = null;
+    applyRemoteState(restore);
+  } else {
+    toast('Sync delayed — command was not confirmed.', 2200);
+  }
 }
 function findWinnerIndexAgainst(loser){
   const alive = factions.find(f=>f.alive && f.idx !== loser);
@@ -527,13 +589,18 @@ async function writeStateNow(reason='sync'){
   if(lobbyId && !isController) return; // Non-host clients send tiny command docs; only the controller writes the authoritative game state.
   writingState = true;
   try{
-    const payload = serializeState(reason);
+    const payload = serializeState(reason, reason === 'initialCreate');
     payload.version = Math.max((localStateVersion || 0) + 1, Number(payload.version || 0));
     await setDoc(stateRef, payload, {merge:false});
     localStateVersion = Math.max(localStateVersion || 0, payload.version);
     stateDirty = false;
     localWritePendingUntil = 0;
     lastStateWrite = now();
+    lastAuthoritativeData = {...payload, pieces:buildFullPieces(), boardOwners:compressOwners(), boardKinds:compressCaptureKinds()};
+    lastAuthoritativePieces = new Map(lastAuthoritativeData.pieces.map(pp=>[pp.i,{...pp}]));
+    lastAuthoritativeOwners = lastAuthoritativeData.boardOwners;
+    lastAuthoritativeKinds = lastAuthoritativeData.boardKinds;
+    if(payload.fullSnapshot) lastFullSnapshotWrite = lastStateWrite;
   }catch(e){
     console.warn('state write failed', e);
     setNetwork('Sync delayed — retrying');
@@ -550,12 +617,16 @@ function scheduleControllerStateWrite(reason='controllerCommand', delayMs=COMMAN
   }, delayMs);
 }
 function queueReliableStateWrite(reason='playerAction'){
+  // Legacy entry point kept for local preview/controller actions only. Normal multiplayer clients never write state.
+  if(lobbyId && !isController) return;
   stateDirty = true;
   reliableWriteReason = reason;
   if(isController){ scheduleControllerStateWrite(reason, COMMAND_FLUSH_DELAY_MS); }
 }
 function maybeWriteControllerState(){
-  if(!isController || !stateDirty || writingState) return;
+  if(!isController || writingState) return;
+  if((now() - lastFullSnapshotWrite) >= FULL_SNAPSHOT_SECONDS) stateDirty = true;
+  if(!stateDirty) return;
   if(now() - lastStateWrite < CONTROLLER_STATE_WRITE_SECONDS) return;
   writeStateNow('controllerTick');
 }
@@ -675,13 +746,15 @@ async function requestPlayerMove(piece,x,y){
   const legal = getLegalMoves(live,false);
   if(!legal.some(m=>m.x===x && m.y===y)){ toast('That piece cannot move there.'); return false; }
   const fromX = live.x, fromY = live.y;
-  const action = {kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, type:live.type, fromX, fromY, toX:x, toY:y};
+  const moveStartMs = Date.now();
+  const moveEndMs = moveStartMs + Math.round(cooldownFor(live) * 220);
+  const action = {kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, type:live.type, fromX, fromY, toX:x, toY:y, moveStartMs, moveEndMs};
   const ok = movePiece(live,x,y,'player');
   if(ok){
     rememberPendingPlayerAction({...action, faction:PLAYER});
     selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
     if(isController || !lobbyId){ queueReliableStateWrite('playerMove'); }
-    else { submitPlayerCommand(action); }
+    else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
   }
   return ok;
 }
@@ -705,7 +778,7 @@ async function requestPlayerSpawn(x,y){
   renderSpawnCards(); updateHUD();
   burst(x,y,f.color,24); toast(`${pieceDefs[type].name} deployed.`);
   if(isController || !lobbyId){ queueReliableStateWrite('playerSpawn'); }
-  else { submitPlayerCommand(action); }
+  else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
 }
 async function refreshPresenceAndController(){
   if(!lobbyId || !username) return;
@@ -906,7 +979,7 @@ async function bootMultiplayer(){
         const sharedEnd = pre && pre.exists() ? Number(pre.data().endsAtMs || 0) : pregameEndsAt;
         if(sharedEnd && Date.now() < sharedEnd) return;
         createGame();
-        tx.set(stateRef, serializeState('initialCreate'));
+        tx.set(stateRef, serializeState('initialCreate', true));
       });
     }
   }catch(e){
@@ -1713,6 +1786,7 @@ function movePiece(piece,x,y,source='player'){
     if(!defeated) return true;
   }
   piece.x=x; piece.y=y; piece.targetX=x; piece.targetY=y; piece.lastMove=now(); piece.flash=1;
+  piece.moveStartMs = Date.now(); piece.moveEndMs = piece.moveStartMs + Math.round(cooldownFor(piece) * 220);
   piece.stationarySince=now(); piece.lastStationX=x; piece.lastStationY=y;
   const swept = applyFactionCapture(piece,fromX,fromY,x,y,'move',target);
   applyAuraTerritory(piece);
@@ -1929,6 +2003,7 @@ function gameTick(dt){
   }
   if(isController){ updateSpawns(dt); aiTick(dt); updateSpecialLandRules(dt); maybeWriteControllerState(); }
   else { updateLocalPlayerSpawn(dt); }
+  expirePendingPlayerActions();
   updateHUD();
   maybeAnnounceWorldWinner();
   if(tickTime>.5){ tickTime=0; updatePiecePanel(); }
