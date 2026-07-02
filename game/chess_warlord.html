@@ -22,6 +22,8 @@
   canvas.dragging{cursor:grabbing;}
   #topbar{position:fixed;left:0;right:0;top:0;height:92px;display:flex;align-items:stretch;justify-content:center;gap:10px;padding:10px 12px;pointer-events:none;z-index:4;}
   #quickControls{width:150px;min-width:132px;padding:9px 10px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;pointer-events:auto;}
+  #fullscreenBtn{position:fixed;left:12px;top:12px;z-index:7;appearance:none;border:1px solid rgba(255,255,255,.2);background:linear-gradient(180deg,rgba(18,28,48,.9),rgba(8,12,21,.82));color:#fff;border-radius:13px;padding:10px 12px;font-size:12px;font-weight:1000;cursor:pointer;box-shadow:0 14px 38px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.08);backdrop-filter:blur(10px);pointer-events:auto;}
+  #fullscreenBtn:hover{background:rgba(255,212,107,.22);border-color:rgba(255,212,107,.72)}
   #centerBtn{appearance:none;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.09);color:#fff;border-radius:13px;padding:9px 10px;font-size:12px;font-weight:1000;cursor:pointer;width:100%;}
   #centerBtn:hover{background:rgba(255,212,107,.22);border-color:rgba(255,212,107,.72)}
   #quickPct{font-size:12px;font-weight:900;color:#dbeafe;text-align:center;}
@@ -79,6 +81,7 @@
   @media(max-width:760px){
     #topbar{height:98px;padding:8px;gap:6px;}
     #quickControls{width:104px;min-width:104px;padding:7px 6px;border-radius:14px;}
+    #fullscreenBtn{left:8px;top:8px;padding:8px 9px;border-radius:11px;font-size:10px;}
     #centerBtn{font-size:10px;padding:8px 6px;border-radius:11px;}
     #quickPct{font-size:10px;}
     #status{display:none;}
@@ -97,6 +100,7 @@
 <body>
 <canvas id="game"></canvas>
 <canvas id="minimap"></canvas>
+<button id="fullscreenBtn" title="Toggle fullscreen">⛶ Fullscreen</button>
 <div id="topbar">
   <div id="quickControls" class="glass"><button id="centerBtn">Center King</button><div id="quickPct">Spawn 0%</div></div>
   <div id="status" class="glass"></div>
@@ -120,7 +124,7 @@
   <div id="startCard">
     <h1>Faction Chess Warlords Online</h1>
     <p class="lead">A giant real-time chess war: factions now capture land in different ways, from Ember kill-zones to Verdant living ground and Shadow assassinations.</p>
-    <div id="pregameCountdown" style="display:none">Faction selection begins when the lobby connects.</div>
+    <div id="pregameCountdown" style="display:none">Faction selection opens for 10 seconds when the lobby connects.</div>
     <div class="pickLabel">Choose your faction</div>
     <div id="factionPick"></div>
     <div class="pickLabel">Enemy difficulty</div>
@@ -168,6 +172,7 @@ const spectateBtn = document.getElementById('spectateBtn');
 const quickPct = document.getElementById('quickPct');
 const startBtn = document.getElementById('startBtn');
 const centerBtn = document.getElementById('centerBtn');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
 const networkText = document.getElementById('networkText');
 const exitLobbyBtn = document.getElementById('exitLobbyBtn');
 const territoryBtn = document.getElementById('territoryBtn');
@@ -219,6 +224,9 @@ let factionSelections = {};
 let slotFactionIds = [];
 let factionSelectionUnsub = null;
 let pregameTimer = null;
+let pregameEndsAt = 0;
+let pregameRef = null;
+let pregameUnsub = null;
 let reliableWriteTimer = null;
 let reliableWriteReason = 'queued';
 let localWritePendingUntil = 0;
@@ -284,6 +292,7 @@ function ownFactionAlive(){ return factions[PLAYER] && factions[PLAYER].alive; }
 function myKing(){ const f = factions[PLAYER]; return f ? getPiece(f.kingId) : null; }
 function isMyPiece(p){ return p && p.alive && p.faction === PLAYER && isHumanSlot(PLAYER) && ownFactionAlive(); }
 function stateDocRef(){ return doc(db,'lobbies',lobbyId,'chess_warlord','state'); }
+function pregameDocRef(){ return doc(db,'lobbies',lobbyId,'chess_warlord','pregame'); }
 function presenceCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_presence'); }
 function compressOwners(){ return board.map(t => t.owner == null ? '-' : String(t.owner)).join(''); }
 const CAPTURE_KIND_TO_CHAR = {
@@ -491,7 +500,14 @@ function exitToLobby(){
 
 async function publishFactionSelection(){
   if(!presenceRef || !username) return;
-  try{ await setDoc(presenceRef,{username,slot:PLAYER,lastSeen:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId},{merge:true}); }catch(e){ console.warn('selection save failed', e); }
+  try{
+    const payload = {username,slot:PLAYER,lastSeen:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId};
+    await setDoc(presenceRef,payload,{merge:true});
+    if(pregameRef){
+      const playerKey = safeDocId(username);
+      await setDoc(pregameRef,{gameKey:GAME_KEY,updatedAt:serverTimestamp(),selections:{[playerKey]:{username,selectedFaction:chosenFactionId,updatedAtMs:Date.now()}}},{merge:true});
+    }
+  }catch(e){ console.warn('selection save failed', e); }
 }
 function applyFactionSelectionsFromPresence(snap){
   const map = {};
@@ -507,24 +523,81 @@ function beginFactionSelectionWatch(){
     factionSelectionUnsub = onSnapshot(presenceCollection(), snap=>applyFactionSelectionsFromPresence(snap));
   }catch(e){ console.warn('selection watch failed', e); }
 }
+async function ensureSharedPregameWindow(){
+  if(!pregameRef) return Date.now() + MULTIPLAYER_FACTION_PICK_SECONDS * 1000;
+  const playerKey = safeDocId(username);
+  const minEnd = Date.now() + MULTIPLAYER_FACTION_PICK_SECONDS * 1000;
+  try{
+    await runTransaction(db, async tx => {
+      const cur = await tx.get(pregameRef);
+      const data = cur.exists() ? cur.data() : {};
+      const currentEnd = Number(data.endsAtMs || 0);
+      const nextEnd = Math.max(currentEnd, minEnd);
+      tx.set(pregameRef, {
+        gameKey: GAME_KEY,
+        endsAtMs: nextEnd,
+        updatedAt: serverTimestamp(),
+        arrivals: {[playerKey]: {username,joinedAtMs:Date.now()}},
+        selections: {[playerKey]: {username,selectedFaction:chosenFactionId,updatedAtMs:Date.now()}}
+      }, {merge:true});
+      pregameEndsAt = nextEnd;
+    });
+  }catch(e){
+    console.warn('pregame window failed; using local countdown', e);
+    pregameEndsAt = Math.max(pregameEndsAt || 0, minEnd);
+  }
+  return pregameEndsAt;
+}
+function stopPregameCountdownWatch(){
+  if(pregameTimer){ clearInterval(pregameTimer); pregameTimer=null; }
+  if(pregameUnsub){ pregameUnsub(); pregameUnsub=null; }
+}
+function selectedHumanCount(){
+  let count = 0;
+  for(const name of slotHumans){ if(factionSelections[name]) count++; }
+  if(isHumanSlot(PLAYER) && chosenFactionId && !factionSelections[username]) count++;
+  return Math.min(count, Math.max(1, slotHumans.length));
+}
 function runMultiplayerFactionCountdown(){
   return new Promise(resolve=>{
     const countdownEl = document.getElementById('pregameCountdown');
     if(countdownEl) countdownEl.style.display='block';
     overlay.style.display='flex';
     startBtn.textContent = 'Lock In Faction';
-    pregameEndsAt = Date.now() + MULTIPLAYER_FACTION_PICK_SECONDS * 1000;
-    const tick = ()=>{
-      const left = Math.max(0, Math.ceil((pregameEndsAt - Date.now())/1000));
-      if(countdownEl) countdownEl.textContent = `Multiplayer faction pick: ${left}s. Duplicate factions are allowed; duplicated armies get colored outlines.`;
-      if(left<=0){
-        clearInterval(pregameTimer); pregameTimer=null;
-        if(countdownEl) countdownEl.textContent = 'Starting war…';
-        resolve();
-      }
+    startBtn.disabled = false;
+    pregameEndsAt = Math.max(pregameEndsAt || 0, Date.now() + MULTIPLAYER_FACTION_PICK_SECONDS * 1000);
+    let resolved = false;
+    const finish = () => {
+      if(resolved) return;
+      resolved = true;
+      stopPregameCountdownWatch();
+      if(countdownEl) countdownEl.textContent = 'Starting war…';
+      startBtn.disabled = true;
+      resolve();
     };
+    const tick = ()=>{
+      const leftMs = Math.max(0, pregameEndsAt - Date.now());
+      const left = Math.ceil(leftMs/1000);
+      const picked = selectedHumanCount();
+      if(countdownEl){
+        countdownEl.textContent = `Faction selection: ${left}s left · ${picked}/${Math.max(1,slotHumans.length)} players picked. Duplicate factions are allowed; duplicated armies get colored outlines.`;
+      }
+      if(leftMs<=0) finish();
+    };
+    if(pregameRef){
+      try{
+        pregameUnsub = onSnapshot(pregameRef, snap=>{
+          if(snap.exists()){
+            const data = snap.data();
+            const sharedEnd = Number(data.endsAtMs || 0);
+            if(sharedEnd > pregameEndsAt) pregameEndsAt = sharedEnd;
+          }
+          tick();
+        });
+      }catch(e){ console.warn('pregame countdown watch failed', e); }
+    }
     tick();
-    clearInterval(pregameTimer);
+    if(pregameTimer) clearInterval(pregameTimer);
     pregameTimer = setInterval(tick, 250);
   });
 }
@@ -544,6 +617,7 @@ async function bootMultiplayer(){
     }
     lobbyRef = doc(db,'lobbies',lobbyId);
     stateRef = stateDocRef();
+    pregameRef = pregameDocRef();
     presenceRef = doc(db,'lobbies',lobbyId,'chess_warlord_presence',safeDocId(username));
     const lsnap = await getDoc(lobbyRef);
     if(!lsnap.exists()) throw new Error('Lobby not found');
@@ -569,11 +643,13 @@ async function bootMultiplayer(){
     });
     const existingState = await getDoc(stateRef);
     if(existingState.exists()){
+      stopPregameCountdownWatch();
       overlay.style.display='none';
       applyRemoteState(existingState.data());
       return;
     }
     beginFactionSelectionWatch();
+    await ensureSharedPregameWindow();
     await runMultiplayerFactionCountdown();
     overlay.style.display='none';
     await refreshPresenceAndController();
@@ -581,6 +657,9 @@ async function bootMultiplayer(){
       await runTransaction(db, async tx => {
         const cur = await tx.get(stateRef);
         if(cur.exists()) return;
+        const pre = pregameRef ? await tx.get(pregameRef) : null;
+        const sharedEnd = pre && pre.exists() ? Number(pre.data().endsAtMs || 0) : pregameEndsAt;
+        if(sharedEnd && Date.now() < sharedEnd) return;
         createGame();
         tx.set(stateRef, serializeState('initialCreate'));
       });
@@ -2162,6 +2241,30 @@ mini.addEventListener('pointerdown', e=>{
   centerOn(x,y);
 });
 if(exitLobbyBtn) exitLobbyBtn.onclick=()=>exitToLobby();
+function isFullscreen(){ return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement; }
+async function toggleFullscreen(){
+  try{
+    if(isFullscreen()){
+      const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+      if(exit) await exit.call(document);
+    } else {
+      const el = document.documentElement;
+      const enter = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+      if(enter) await enter.call(el);
+      else toast('Fullscreen is not supported in this browser.', 1600);
+    }
+  }catch(e){
+    console.warn('fullscreen toggle failed', e);
+    toast('Fullscreen could not be changed by this browser.', 1800);
+  }
+  updateFullscreenButton();
+}
+function updateFullscreenButton(){
+  if(fullscreenBtn) fullscreenBtn.textContent = isFullscreen() ? '⛶ Window' : '⛶ Fullscreen';
+}
+if(fullscreenBtn) fullscreenBtn.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); toggleFullscreen(); };
+document.addEventListener('fullscreenchange', updateFullscreenButton);
+document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
 centerBtn.onclick=(e)=>{
   e.preventDefault();
   e.stopPropagation();
