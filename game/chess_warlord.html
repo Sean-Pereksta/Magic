@@ -59,6 +59,8 @@
   #factionPick{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:14px 0;}
   .factionCard{padding:12px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);cursor:pointer;transition:.12s;min-height:120px;}
   .factionCard:hover,.factionCard.chosen{transform:translateY(-2px);border-color:rgba(255,215,112,.9);background:rgba(255,215,112,.1)}
+  .factionCard.samePick{box-shadow:0 0 0 3px var(--pickOutline, rgba(255,255,255,.7));}
+  #pregameCountdown{margin:10px 0 4px;padding:10px 12px;border-radius:15px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);font-size:13px;font-weight:1000;color:#fff3b0;}
   .factionCard b{display:block;margin-bottom:4px;font-size:14px;}
   .factionCard small{display:block;color:var(--muted);line-height:1.35;font-size:12px;}
   .pickLabel{margin:12px 0 7px;font-size:12px;font-weight:1000;color:#e5edf8;text-transform:uppercase;letter-spacing:.08em;}
@@ -117,7 +119,8 @@
 <div id="overlay">
   <div id="startCard">
     <h1>Faction Chess Warlords Online</h1>
-    <p class="lead">A giant real-time chess war: every piece has a cooldown, every moved-on square becomes yours, generals and towers project territory, and enemies expand across a huge terrain board. Capture a king to absorb a faction and seed your weakest pieces in the conquered region.</p>
+    <p class="lead">A giant real-time chess war: factions now capture land in different ways, from Ember kill-zones to Verdant living ground and Shadow assassinations.</p>
+    <div id="pregameCountdown" style="display:none">Faction selection begins when the lobby connects.</div>
     <div class="pickLabel">Choose your faction</div>
     <div id="factionPick"></div>
     <div class="pickLabel">Enemy difficulty</div>
@@ -174,6 +177,14 @@ const BOARD_W = 86;
 const BOARD_H = 86;
 const BASE_CELL = 46;
 const MAX_AI_PER_FRAME = 22;
+const DEFAULT_FACTION_IDS = ['crownward','ember','iron','verdant','shadow','tide','sunspire','frost'];
+const SLOT_OUTLINE_COLORS = ['#fff3a3','#7dd3fc','#fb7185','#86efac','#c4b5fd','#67e8f9','#fdba74','#e5e7eb'];
+const MULTIPLAYER_FACTION_PICK_SECONDS = 10;
+const VERDANT_SPREAD_RADIUS = 4;
+const VERDANT_FADE_SECONDS = 8.5;
+const IRON_LOCKDOWN_SECONDS = 2.8;
+const FROST_FREEZE_SECONDS = 2.6;
+const FROST_BISHOP_RAY = 4;
 let PLAYER = 0;
 const SPAWN_SLOWEST_SECONDS = 105;
 const SPAWN_FASTEST_SECONDS = 8.8;
@@ -204,6 +215,13 @@ let gameStarted = false;
 let playerDefeated = false;
 let spectating = false;
 let moveModeHint = '';
+let factionSelections = {};
+let slotFactionIds = [];
+let factionSelectionUnsub = null;
+let pregameTimer = null;
+let reliableWriteTimer = null;
+let reliableWriteReason = 'queued';
+let localWritePendingUntil = 0;
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -259,6 +277,7 @@ function buildSlots(players){
   slotNames = slots;
   const mine = humans.indexOf(username);
   PLAYER = mine >= 0 ? mine : 0;
+  slotFactionIds = slots.map((name,idx) => factionSelections[name] || (idx===PLAYER && !isAIName(name) ? chosenFactionId : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]));
   lastLoadedLobbyPlayers = humans;
 }
 function ownFactionAlive(){ return factions[PLAYER] && factions[PLAYER].alive; }
@@ -267,14 +286,33 @@ function isMyPiece(p){ return p && p.alive && p.faction === PLAYER && isHumanSlo
 function stateDocRef(){ return doc(db,'lobbies',lobbyId,'chess_warlord','state'); }
 function presenceCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_presence'); }
 function compressOwners(){ return board.map(t => t.owner == null ? '-' : String(t.owner)).join(''); }
+const CAPTURE_KIND_TO_CHAR = {
+  normal:'.', starting_land:'s', command:'c', conquered:'x', battle_march:'b', march:'m', spawned_piece:'p',
+  ember_kill:'e', iron_fortified:'i', verdant_root:'v', verdant_seed:'V',
+  shadow_hidden:'h', shadow_diagonal:'d', shadow_kill:'k', tide_flow:'t', tide_coast:'T', tide_surge:'w',
+  sunspire_sanctified:'u', sunspire_foothold:'U', sunspire_ray:'r', frost_frozen:'f'
+};
+const CHAR_TO_CAPTURE_KIND = Object.fromEntries(Object.entries(CAPTURE_KIND_TO_CHAR).map(([k,v])=>[v,k]));
+function captureKindChar(kind){ return CAPTURE_KIND_TO_CHAR[kind || 'normal'] || '.'; }
+function compressCaptureKinds(){ return board.map(t => captureKindChar(t.captureKind)).join(''); }
 function applyOwners(str){
   if(!str || str.length < board.length) return;
   for(let i=0;i<board.length;i++){
     const ch = str[i];
-    board[i].owner = ch === '-' ? null : Number(ch);
-    board[i].glow = board[i].glow || 0;
+    const nextOwner = ch === '-' ? null : Number(ch);
+    if(board[i].owner !== nextOwner){
+      board[i].owner = nextOwner;
+      board[i].verdantFade = 0;
+      board[i].glow = 0;
+    }
   }
   recalcOwnerCounts();
+}
+function applyCaptureKinds(str){
+  if(!str || str.length < board.length) return;
+  for(let i=0;i<board.length;i++){
+    board[i].captureKind = CHAR_TO_CAPTURE_KIND[str[i]] || null;
+  }
 }
 function serializeState(reason='sync'){
   recalcOwnerCounts();
@@ -284,37 +322,38 @@ function serializeState(reason='sync'){
     updatedAt: serverTimestamp(),
     updatedBy: username || 'unknown',
     reason,
-    playerNames: slotNames,
     humanPlayers: slotHumans,
+    playerNames: slotNames,
+    playerFactionIds: slotFactionIds,
     controller: controllerName || username || '',
+    // Multiplayer sync is intentionally lean: land control, piece positions/types/HP/captures, and alive kings/factions.
     boardOwners: compressOwners(),
-    stats: gameStats,
-    factions: factions.map(f => ({
-      idx:f.idx,id:f.id,name:f.name,short:f.short,alive:f.alive,kingId:f.kingId,
-      spawnMeter:f.spawnMeter || 0,spawnChoices:f.spawnChoices || [],piecesTaken:f.piecesTaken || 0,
-      territoryTaken:f.territoryTaken || 0,nextThink:f.nextThink || now(),difficulty:f.difficulty || 1
-    })),
+    boardKinds: compressCaptureKinds(),
+    stats: {captures:gameStats.captures||0,kingsTaken:gameStats.kingsTaken||0,startedAt:gameStats.startedAt||now()},
+    factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now()})),
     pieces: pieces.filter(p=>p.alive).map(p => ({
-      i:p.id,f:p.faction,t:p.type,x:p.x,y:p.y,lm:p.lastMove || now(),hp:p.hp,mh:p.maxHp,
-      c:p.captures || 0,lv:p.level || 1,b:p.born || now(),readyAt:(p.lastMove || now()) + cooldownFor(p)
+      i:p.id,f:p.faction,t:p.type,x:p.x,y:p.y,hp:p.hp,mh:p.maxHp,c:p.captures||0,lv:p.level||1
     })),
     winner: winnerName() || ''
   };
 }
 function applyRemoteState(data){
   if(!data || !data.pieces) return;
+  if(stateDirty && data.updatedBy !== username && now() < localWritePendingUntil) return;
   applyingRemote = true;
   const wasAlive = factions[PLAYER]?.alive !== false;
   localStateVersion = Number(data.version || localStateVersion || 0);
   if(Array.isArray(data.playerNames) && data.playerNames.length){
     slotNames = data.playerNames.slice(0,MAX_ONLINE_PLAYERS);
     slotHumans = (data.humanPlayers || slotNames.filter(n=>!isAIName(n))).slice(0,MAX_ONLINE_PLAYERS);
+    slotFactionIds = (data.playerFactionIds || slotFactionIds || []).slice(0,MAX_ONLINE_PLAYERS);
     const mine = slotHumans.indexOf(username);
     if(mine >= 0) PLAYER = mine;
   }
   if(!board.length) generateBoard();
   if(!factions.length) setupFactions();
   applyOwners(data.boardOwners);
+  applyCaptureKinds(data.boardKinds);
   const oldMap = new Map(pieces.map(p=>[p.id,p]));
   pieces = data.pieces.map(pp => {
     const old = oldMap.get(pp.i);
@@ -322,8 +361,10 @@ function applyRemoteState(data){
       id:pp.i, faction:pp.f, type:pp.t, x:pp.x, y:pp.y,
       px: old ? old.px : pp.x, py: old ? old.py : pp.y,
       targetX:pp.x, targetY:pp.y,
-      lastMove:pp.lm || now(), hp:pp.hp || 1, maxHp:pp.mh || pp.hp || 1,
-      captures:pp.c || 0, level:pp.lv || 1, alive:true, born:pp.b || now(),
+      lastMove: old && old.x===pp.x && old.y===pp.y ? old.lastMove : now(), hp:pp.hp || 1, maxHp:pp.mh || pp.hp || 1,
+      captures:pp.c || 0, level:pp.lv || 1, alive:true, born:old ? old.born : now(),
+      stationarySince: old && old.x===pp.x && old.y===pp.y ? (old.stationarySince || now()) : now(),
+      lastStationX: pp.x, lastStationY: pp.y,
       wobble: old ? old.wobble : Math.random()*Math.PI*2,
       flash: old && (old.x !== pp.x || old.y !== pp.y) ? 1 : (old ? old.flash : 0),
       promoted:false
@@ -335,8 +376,6 @@ function applyRemoteState(data){
     const f = factions[fd.idx]; if(!f) continue;
     f.alive = fd.alive !== false;
     f.kingId = fd.kingId;
-    f.spawnMeter = fd.spawnMeter || 0;
-    f.spawnChoices = fd.spawnChoices || f.spawnChoices || [];
     f.piecesTaken = fd.piecesTaken || 0;
     f.territoryTaken = fd.territoryTaken || 0;
     f.nextThink = fd.nextThink || f.nextThink || now()+1;
@@ -366,9 +405,22 @@ async function writeStateNow(reason='sync'){
     localStateVersion = payload.version;
     await setDoc(stateRef, payload, {merge:false});
     stateDirty = false;
+    localWritePendingUntil = 0;
     lastStateWrite = now();
-  }catch(e){ console.warn('state write failed', e); setNetwork('Sync delayed'); }
+  }catch(e){ console.warn('state write failed', e); setNetwork('Sync delayed — retrying'); }
   finally{ writingState = false; }
+}
+function queueReliableStateWrite(reason='playerAction'){
+  stateDirty = true;
+  reliableWriteReason = reason;
+  localWritePendingUntil = now() + 8;
+  if(!reliableWriteTimer){
+    reliableWriteTimer = setInterval(()=>{
+      if(!stateDirty){ clearInterval(reliableWriteTimer); reliableWriteTimer=null; return; }
+      writeStateNow(reliableWriteReason);
+    }, 650);
+  }
+  writeStateNow(reason);
 }
 function maybeWriteControllerState(){
   if(!isController || !stateDirty || writingState) return;
@@ -382,7 +434,7 @@ async function requestPlayerMove(piece,x,y){
   const legal = getLegalMoves(live,false);
   if(!legal.some(m=>m.x===x && m.y===y)){ toast('That piece cannot move there.'); return false; }
   const ok = movePiece(live,x,y,'player');
-  if(ok){ selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards(); await writeStateNow('playerMove'); }
+  if(ok){ selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards(); queueReliableStateWrite('playerMove'); }
   return ok;
 }
 async function requestPlayerSpawn(x,y){
@@ -391,20 +443,21 @@ async function requestPlayerSpawn(x,y){
   const type=f.spawnChoices[spawnSelection];
   if(!type) return;
   if(f.spawnMeter<100){ spawnSelection=null; renderSpawnCards(); return; }
-  if(!inBounds(x,y) || tile(x,y).owner!==PLAYER || findPieceAt(x,y) || !passableFor({type},x,y)){
-    toast('That is not an eligible controlled spawn tile.'); return;
+  const legalSpawn = eligibleSpawnTiles(PLAYER,type).some(t=>t.x===x && t.y===y);
+  if(!inBounds(x,y) || !legalSpawn){
+    toast('That is not an eligible controlled spawn tile for this faction or piece.'); return;
   }
   newPiece(PLAYER,type,x,y,{ready:false});
   f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER);
   spawnSelection=null;
   renderSpawnCards(); updateHUD();
   burst(x,y,f.color,24); toast(`${pieceDefs[type].name} deployed.`);
-  await writeStateNow('playerSpawn');
+  queueReliableStateWrite('playerSpawn');
 }
 async function refreshPresenceAndController(){
   if(!lobbyId || !username) return;
   try{
-    if(presenceRef){ await setDoc(presenceRef,{username,slot:PLAYER,lastSeen:Date.now(),authUid:auth.currentUser?.uid || '',gameKey:GAME_KEY},{merge:true}); }
+    if(presenceRef){ await setDoc(presenceRef,{username,slot:PLAYER,lastSeen:Date.now(),authUid:auth.currentUser?.uid || '',gameKey:GAME_KEY,selectedFaction:chosenFactionId},{merge:true}); }
     const snap = await getDocs(presenceCollection());
     const active = [];
     const cutoff = Date.now() - 12000;
@@ -435,6 +488,46 @@ function exitToLobby(){
   const glue = returnTo.includes('?') ? '&' : '?';
   location.href = `${returnTo}${glue}username=${encodeURIComponent(username || '')}`;
 }
+
+async function publishFactionSelection(){
+  if(!presenceRef || !username) return;
+  try{ await setDoc(presenceRef,{username,slot:PLAYER,lastSeen:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId},{merge:true}); }catch(e){ console.warn('selection save failed', e); }
+}
+function applyFactionSelectionsFromPresence(snap){
+  const map = {};
+  snap.forEach(d=>{ const v=d.data(); if(v && v.username && v.selectedFaction) map[v.username] = v.selectedFaction; });
+  factionSelections = map;
+  slotFactionIds = slotNames.map((name,idx)=> map[name] || (idx===PLAYER && !isAIName(name) ? chosenFactionId : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]));
+  initFactionPicker();
+}
+function beginFactionSelectionWatch(){
+  if(!lobbyId || !presenceRef) return;
+  try{
+    if(factionSelectionUnsub) factionSelectionUnsub();
+    factionSelectionUnsub = onSnapshot(presenceCollection(), snap=>applyFactionSelectionsFromPresence(snap));
+  }catch(e){ console.warn('selection watch failed', e); }
+}
+function runMultiplayerFactionCountdown(){
+  return new Promise(resolve=>{
+    const countdownEl = document.getElementById('pregameCountdown');
+    if(countdownEl) countdownEl.style.display='block';
+    overlay.style.display='flex';
+    startBtn.textContent = 'Lock In Faction';
+    pregameEndsAt = Date.now() + MULTIPLAYER_FACTION_PICK_SECONDS * 1000;
+    const tick = ()=>{
+      const left = Math.max(0, Math.ceil((pregameEndsAt - Date.now())/1000));
+      if(countdownEl) countdownEl.textContent = `Multiplayer faction pick: ${left}s. Duplicate factions are allowed; duplicated armies get colored outlines.`;
+      if(left<=0){
+        clearInterval(pregameTimer); pregameTimer=null;
+        if(countdownEl) countdownEl.textContent = 'Starting war…';
+        resolve();
+      }
+    };
+    tick();
+    clearInterval(pregameTimer);
+    pregameTimer = setInterval(tick, 250);
+  });
+}
 async function bootMultiplayer(){
   try{
     if(!username){ username = prompt('Enter your lobby username') || `Player${Math.floor(Math.random()*9999)}`; }
@@ -457,7 +550,9 @@ async function bootMultiplayer(){
     lobbyData = lsnap.data();
     buildSlots(lobbyData.players || [username]);
     chosenDifficultyId = 'normal';
-    overlay.style.display='none';
+    chosenFactionId = localStorage.getItem('cw.lastFaction') || chosenFactionId;
+    slotFactionIds[PLAYER] = chosenFactionId;
+    await publishFactionSelection();
     await refreshPresenceAndController();
     heartbeatTimer = setInterval(refreshPresenceAndController, 4000);
     lobbyUnsub = onSnapshot(lobbyRef, snap=>{
@@ -465,20 +560,31 @@ async function bootMultiplayer(){
       lobbyData = snap.data();
       const nextPlayers = Array.isArray(lobbyData.players) ? lobbyData.players : [];
       if(JSON.stringify(nextPlayers) !== JSON.stringify(lastLoadedLobbyPlayers)){
-        // Keep original slot order once a game exists, but update human roster for controller election.
         slotHumans = nextPlayers.slice(0,MAX_ONLINE_PLAYERS);
       }
-    });
-    await runTransaction(db, async tx => {
-      const cur = await tx.get(stateRef);
-      if(cur.exists()) return;
-      createGame();
-      tx.set(stateRef, serializeState('initialCreate'));
     });
     stateUnsub = onSnapshot(stateRef, snap=>{
       if(!snap.exists()) return;
       applyRemoteState(snap.data());
     });
+    const existingState = await getDoc(stateRef);
+    if(existingState.exists()){
+      overlay.style.display='none';
+      applyRemoteState(existingState.data());
+      return;
+    }
+    beginFactionSelectionWatch();
+    await runMultiplayerFactionCountdown();
+    overlay.style.display='none';
+    await refreshPresenceAndController();
+    if(isController){
+      await runTransaction(db, async tx => {
+        const cur = await tx.get(stateRef);
+        if(cur.exists()) return;
+        createGame();
+        tx.set(stateRef, serializeState('initialCreate'));
+      });
+    }
   }catch(e){
     console.error(e);
     setNetwork('Lobby connection failed');
@@ -512,13 +618,13 @@ const factionCatalog = {
   },
   ember: {
     id:'ember', name:'Ember Legion', short:'Ember', icon:'🔥', color:'#ff6b43', dark:'#9c2815', aura:'#ff8a57', aiStyle:'aggressive', spawnRate:.92,
-    description:'Fast attackers with brutal knights and flame pieces. Expands violently but defends poorly.',
+    description:'Fast attackers that only capture land by kills. Every capture cuts 2 seconds off their next spawn.',
     pieces:['sparkpawn','emberknight','rook','bishop','flamequeen','general','pyretower','lancer']
   },
   iron: {
     id:'iron', name:'Iron Bastion', short:'Iron', icon:'🛡️', color:'#aeb7c2', dark:'#53606b', aura:'#cfd8e3', aiStyle:'defensive', spawnRate:1.12,
     description:'Slow, tough, defensive faction with towers and rooks everywhere.',
-    pieces:['shieldpawn','rook','bulwark','bishop','knight','general','tower','warden']
+    pieces:['shieldpawn','rook','bulwark','bishop','knight','general','tower','warden','citadelwalker']
   },
   verdant: {
     id:'verdant', name:'Verdant Swarm', short:'Verdant', icon:'🌿', color:'#6ee985', dark:'#217a3b', aura:'#83f795', aiStyle:'expansion', spawnRate:.78,
@@ -527,8 +633,8 @@ const factionCatalog = {
   },
   shadow: {
     id:'shadow', name:'Shadow Court', short:'Shadow', icon:'☾', color:'#b388ff', dark:'#4b258d', aura:'#c8a7ff', aiStyle:'assassin', spawnRate:1.05,
-    description:'Sneaky diagonal pressure and assassins that threaten kings from strange angles.',
-    pieces:['pawn','assassin','bishop','nightknight','rook','general','tower','queen']
+    description:'Fast assassins and void walkers. Higher-value kills cut 5 seconds off the next spawn.',
+    pieces:['pawn','assassin','voidstrider','bishop','nightknight','rook','general','tower','queen']
   },
   tide: {
     id:'tide', name:'Tide Covenant', short:'Tide', icon:'🌊', color:'#5fcdf5', dark:'#16698c', aura:'#8fe6ff', aiStyle:'fluid', spawnRate:.96,
@@ -538,7 +644,7 @@ const factionCatalog = {
   sunspire: {
     id:'sunspire', name:'Sunspire Order', short:'Sunspire', icon:'☀', color:'#ffd2a1', dark:'#a6611d', aura:'#ffe7bc', aiStyle:'honor', spawnRate:1.02,
     description:'Elite pieces with strong queens and bishops, but fewer disposable bodies.',
-    pieces:['pawn','rook','sunbishop','knight','queen','general','tower','paladin']
+    pieces:['pawn','rook','sunbishop','knight','queen','general','tower','paladin','dawnarchon']
   },
   frost: {
     id:'frost', name:'Frostbound Clans', short:'Frostbound', icon:'❄', color:'#a7f3ff', dark:'#1e5f78', aura:'#d4fbff', aiStyle:'defensive', spawnRate:1.04,
@@ -582,7 +688,10 @@ const pieceDefs = {
   wavequeen:{name:'Wave Queen', icon:'♛', pattern:'queen', cooldown:5.0, value:9, hp:1, amphibious:true, desc:'Queen that can cross water.'},
   reefspire:{name:'Reef Spire', icon:'♖', pattern:'tower', cooldown:5.8, value:6, aura:3, hp:1, amphibious:true, desc:'Water-friendly territory tower.'},
   sunbishop:{name:'Sun Bishop', icon:'♝', pattern:'bishopLong', cooldown:3.8, value:5, hp:1, desc:'Longer bishop lines.'},
-  paladin:{name:'Paladin', icon:'♞', pattern:'paladin', cooldown:4.1, value:6, hp:2, aura:1, desc:'Knight plus one-step king move, very sturdy.'}
+  paladin:{name:'Paladin', icon:'♞', pattern:'paladin', cooldown:4.1, value:6, hp:2, aura:1, desc:'Knight plus one-step king move, very sturdy.'},
+  citadelwalker:{name:'Citadel Walker', icon:'▦', pattern:'citadel', cooldown:5.7, value:8, hp:3, aura:2, desc:'Iron elite. Moves one orthogonal or exactly three orthogonal, anchoring fortified land.'},
+  dawnarchon:{name:'Dawn Archon', icon:'✹', pattern:'archon', cooldown:5.4, value:8, hp:2, aura:2, desc:'Sunspire elite. Moves like a short bishop or knight and sanctifies nearby land.'},
+  voidstrider:{name:'Void Strider', icon:'✷', pattern:'voidstrider', cooldown:3.6, value:7, hp:1, desc:'Shadow elite. Moves one diagonal or exactly ten spaces in any straight or diagonal direction.'}
 };
 
 let board = [];
@@ -629,15 +738,22 @@ window.addEventListener('resize', resize);
 resize();
 
 function initFactionPicker(){
-  const choices = ['crownward','iron','ember','verdant','shadow','tide'];
+  const choices = DEFAULT_FACTION_IDS;
   factionPick.innerHTML = '';
+  const pickedCounts = Object.values(factionSelections || {}).reduce((m,id)=>{m[id]=(m[id]||0)+1; return m;},{});
   choices.forEach(id=>{
     const f = factionCatalog[id];
     const card = document.createElement('div');
-    card.className = 'factionCard' + (id===chosenFactionId?' chosen':'');
-    card.innerHTML = `<b>${f.icon} ${f.name}</b><small>${f.description}</small>`;
+    const samePick = pickedCounts[id] > 1;
+    card.className = 'factionCard' + (id===chosenFactionId?' chosen':'') + (samePick ? ' samePick' : '');
+    if(samePick) card.style.setProperty('--pickOutline', SLOT_OUTLINE_COLORS[PLAYER % SLOT_OUTLINE_COLORS.length]);
+    const duplicateNote = samePick ? '<br><span style="color:#fff3b0">Duplicate faction: colored outlines will separate armies.</span>' : '';
+    card.innerHTML = `<b>${f.icon} ${f.name}</b><small>${f.description}${duplicateNote}</small>`;
     card.onclick = () => {
       chosenFactionId = id;
+      localStorage.setItem('cw.lastFaction', id);
+      if(slotFactionIds[PLAYER] !== id){ slotFactionIds[PLAYER] = id; }
+      publishFactionSelection();
       initFactionPicker();
     };
     factionPick.appendChild(card);
@@ -681,7 +797,7 @@ function generateBoard(){
       if(seededNoise(x,y,333)>.968) type='ruins';
       if(seededNoise(x,y,1433)>.986) type='crystal';
       if(edge<2 && type==='mountain') type='plain';
-      board[y*BOARD_W+x] = {x,y,type,owner:null,lastOwner:null,markTime:0,glow:0};
+      board[y*BOARD_W+x] = {x,y,type,owner:null,lastOwner:null,markTime:0,glow:0,captureKind:null,verdantFade:0};
     }
   }
   addWaterBodies();
@@ -771,15 +887,19 @@ function getStartPositions(){
 }
 function setupFactions(){
   const diff = difficultyProfiles[chosenDifficultyId] || difficultyProfiles.normal;
-  const fixedIds = ['crownward','ember','iron','verdant','shadow','tide','sunspire','frost'];
-  factions = fixedIds.map((id,idx)=>{
+  slotFactionIds = slotNames.map((name,idx)=> slotFactionIds[idx] || factionSelections[name] || (idx===PLAYER && isHumanSlot(idx) ? chosenFactionId : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]));
+  const duplicateCounts = slotFactionIds.reduce((m,id)=>{m[id]=(m[id]||0)+1; return m;},{});
+  factions = slotFactionIds.map((id,idx)=>{
     const base = factionCatalog[id] || factionCatalog.crownward;
     const human = isHumanSlot(idx);
     return {
       ...base,
       idx,
+      baseId:id,
       playerName: displayNameForFaction(idx),
       isAI: !human,
+      outline:SLOT_OUTLINE_COLORS[idx % SLOT_OUTLINE_COLORS.length],
+      duplicateFaction: duplicateCounts[id] > 1,
       alive:true,
       difficulty: human ? 0 : clamp((.72 + idx*.08) * diff.think, .45, 2.45),
       aiSpawnScale: human ? 1 : diff.spawn,
@@ -798,6 +918,7 @@ function newPiece(faction,type,x,y,opts={}){
   const p = {
     id:idCounter++, faction, type, x, y, px:x, py:y, targetX:x, targetY:y,
     lastMove: now() - (opts.ready ? def.cooldown : def.cooldown*.35*Math.random()),
+    stationarySince: now(), lastStationX:x, lastStationY:y,
     hp:def.hp || 1, maxHp:def.hp || 1,
     captures:opts.captures||0, level:opts.level||1, alive:true,
     born:now(), wobble:Math.random()*Math.PI*2,
@@ -807,7 +928,7 @@ function newPiece(faction,type,x,y,opts={}){
   markStateDirty();
   const f = factions[faction];
   if(type==='king') f.kingId = p.id;
-  claimTile(faction,x,y,1.0);
+  claimTile(faction,x,y,0,'spawned_piece');
   applyAuraTerritory(p);
   return p;
 }
@@ -835,40 +956,77 @@ function setupPieces(){
       if(!findPieceAt(x,y) && passableFor({type},x,y)) newPiece(idx,type,x,y,{ready:i<2});
     }
     // initial claimed zone
-    for(let yy=s.y-3;yy<=s.y+3;yy++) for(let xx=s.x-3;xx<=s.x+3;xx++) if(inBounds(xx,yy) && dist2(xx,yy,s.x,s.y)<=12) claimTile(idx,xx,yy,.5);
+    for(let yy=s.y-3;yy<=s.y+3;yy++) for(let xx=s.x-3;xx<=s.x+3;xx++) if(inBounds(xx,yy) && dist2(xx,yy,s.x,s.y)<=12) claimTile(idx,xx,yy,.5,'starting_land');
   });
 }
 function recalcOwnerCounts(){
   ownerCounts = new Map();
   for(const t of board){ if(t.owner!==null) ownerCounts.set(t.owner,(ownerCounts.get(t.owner)||0)+1); }
 }
-function claimTile(faction,x,y,glow=.35){
-  if(!inBounds(x,y)) return;
+function claimTile(faction,x,y,glow=.35,captureKind='normal'){
+  if(!inBounds(x,y)) return false;
   const t=tile(x,y);
+  const nextKind = captureKind || t.captureKind || 'normal';
   if(t.owner!==faction){
     markStateDirty();
     t.lastOwner=t.owner;
     t.owner=faction;
+    t.captureKind=nextKind;
+    t.verdantFade=0;
     t.markTime=now();
-    t.glow=glow;
+    // No capture flash: the ownership color/border is the visual feedback.
+    t.glow=0;
+    return true;
   } else {
-    t.glow=Math.max(t.glow,glow*.65);
+    if(nextKind && t.captureKind!==nextKind){ t.captureKind = nextKind; markStateDirty(); }
+    t.verdantFade=0;
+    t.glow=0;
   }
+  return false;
 }
 function applyAuraTerritory(piece){
   const def = pieceDefs[piece.type];
+  const f = factions[piece.faction];
+  if(!f || f.id==='ember') return; // Ember only takes land by kills.
   const r = def.aura || 0;
   if(!r) return;
+  // Iron, Sunspire, and Frost use their more specific timed control rules in updateCommandLand.
+  if(['iron','sunspire','frost'].includes(f.id)) return;
+  const kind = f.id==='verdant' ? 'verdant_root' : f.id==='tide' ? 'tide_flow' : 'command';
   for(let yy=piece.y-r;yy<=piece.y+r;yy++) for(let xx=piece.x-r;xx<=piece.x+r;xx++){
     if(inBounds(xx,yy) && Math.max(Math.abs(xx-piece.x),Math.abs(yy-piece.y))<=r){
-      if(terrains[tile(xx,yy).type].pass || (tile(xx,yy).type==='water' && (pieceDefs[piece.type]||{}).amphibious)) claimTile(piece.faction,xx,yy,.18);
+      if(terrains[tile(xx,yy).type].pass || (tile(xx,yy).type==='water' && (pieceDefs[piece.type]||{}).amphibious)) claimTile(piece.faction,xx,yy,0,kind);
     }
   }
 }
-function eligibleSpawnTiles(factionIdx){
+// Shadow hidden court kinds remain as land metadata/spawn economy bonuses, not spawn restrictions.
+function isIronFortifiedSpawnType(type){ return ['shieldpawn','bulwark','warden','tower','citadelwalker'].includes(type); }
+function isFrostFrozenSpawnType(type){ return ['shieldpawn','warden','tower','sunbishop'].includes(type); }
+function eligibleSpawnTiles(factionIdx, type=null){
   const arr=[];
+  const f=factions[factionIdx];
+  const spawnType = type || 'pawn';
+  const def = pieceDefs[spawnType] || pieceDefs.pawn;
   for(const t of board){
-    if(t.owner===factionIdx && terrains[t.type].pass && !findPieceAt(t.x,t.y)) arr.push(t);
+    if(t.owner!==factionIdx || findPieceAt(t.x,t.y)) continue;
+    if(!passableFor({type:spawnType},t.x,t.y)) continue;
+
+    if(f?.id==='crownward' && def.value>=6 && !nearCommandPiece(t.x,t.y,factionIdx,4) && t.captureKind!=='command') continue;
+
+    if(f?.id==='iron' && isIronFortifiedSpawnType(spawnType) && t.captureKind!=='iron_fortified' && !nearCommandPiece(t.x,t.y,factionIdx,3)) continue;
+
+    if(f?.id==='verdant'){
+      if(!nearestFriendlyPieceWithin(t.x,t.y,factionIdx,VERDANT_SPREAD_RADIUS+1)) continue;
+      if(['seedpawn','scout','vinebishop','grovetower'].includes(spawnType) && !(isNaturalVerdantTerrain(t.type) || t.captureKind==='verdant_root')) continue;
+    }
+
+    // Shadow hidden-court land no longer restricts spawns; any Shadow roster piece can use owned eligible land.
+
+    if(f?.id==='sunspire' && def.value>=6 && !nearCommandPiece(t.x,t.y,factionIdx,4) && t.captureKind!=='sunspire_sanctified' && t.captureKind!=='sunspire_ray') continue;
+
+    if(f?.id==='frost' && isFrostFrozenSpawnType(spawnType) && t.captureKind!=='frost_frozen' && !nearCommandPiece(t.x,t.y,factionIdx,3)) continue;
+
+    arr.push(t);
   }
   return arr;
 }
@@ -901,6 +1059,7 @@ function cooldownFor(piece){
   if(f.aiStyle==='aggressive') style=.92;
   if(f.aiStyle==='defensive') style=1.06;
   if(f.aiStyle==='expansion') style=.95;
+  if(f.id==='shadow') style*=.78;
   return def.cooldown * levelBoost * style * (1+roughPenalty);
 }
 function cooldownReady(piece){return now() - piece.lastMove >= cooldownFor(piece);}
@@ -1001,6 +1160,20 @@ function getLegalMoves(piece, ignoreCooldown=false){
   } else if(pattern==='paladin'){
     for(const [dx,dy] of DIRS8) addStep(piece.x+dx,piece.y+dy,true,true);
     for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,true);
+  } else if(pattern==='voidstrider'){
+    for(const [dx,dy] of DIAG) addStep(piece.x+dx,piece.y+dy,true,true);
+    for(const [dx,dy] of DIRS8){
+      const x=piece.x+dx*10, y=piece.y+dy*10;
+      if(!inBounds(x,y)) continue;
+      let clear=true;
+      for(let r=1;r<10;r++){ if(!passableFor(piece,piece.x+dx*r,piece.y+dy*r) || findPieceAt(piece.x+dx*r,piece.y+dy*r)){ clear=false; break; } }
+      if(clear) addStep(x,y,true,true);
+    }
+  } else if(pattern==='citadel'){
+    for(const [dx,dy] of ORTHO){ addStep(piece.x+dx,piece.y+dy,true,true); addStep(piece.x+dx*3,piece.y+dy*3,true,true); }
+  } else if(pattern==='archon'){
+    slide(DIAG,5);
+    for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,true);
   }
   return moves;
 }
@@ -1022,7 +1195,8 @@ function travelPathCells(fromX,fromY,toX,toY){
   }
   return cells;
 }
-function claimMovePath(piece,fromX,fromY,toX,toY){
+
+function claimMovePath(piece,fromX,fromY,toX,toY,kind='march'){
   const cells = travelPathCells(fromX,fromY,toX,toY);
   let claimed = 0;
   const seen = new Set();
@@ -1031,10 +1205,172 @@ function claimMovePath(piece,fromX,fromY,toX,toY){
     if(seen.has(k) || !inBounds(c.x,c.y)) continue;
     seen.add(k);
     if(passableFor(piece,c.x,c.y)){
-      claimTile(piece.faction,c.x,c.y,.58);
-      claimed++;
+      if(claimTile(piece.faction,c.x,c.y,.58,kind)) claimed++;
     }
   }
+  return claimed;
+}
+function isNaturalVerdantTerrain(type){ return ['forest','meadow','swamp','plain'].includes(type); }
+function isCoastTile(x,y){ return ORTHO.some(([dx,dy])=>inBounds(x+dx,y+dy) && tile(x+dx,y+dy).type==='water'); }
+function nearestFriendlyPieceWithin(x,y,factionIdx,r){
+  const rr=r*r;
+  return pieces.some(p=>p.alive && p.faction===factionIdx && dist2(x,y,p.x,p.y)<=rr);
+}
+function nearCommandPiece(x,y,factionIdx,r){
+  const rr=r*r;
+  return pieces.some(p=>p.alive && p.faction===factionIdx && (p.type==='king' || pieceDefs[p.type]?.aura) && dist2(x,y,p.x,p.y)<=rr);
+}
+function enemyAdjacentTo(x,y,factionIdx){
+  return DIRS8.some(([dx,dy])=>{
+    if(!inBounds(x+dx,y+dy)) return false;
+    const p=findPieceAt(x+dx,y+dy);
+    return p && p.alive && p.faction!==factionIdx && factions[p.faction]?.alive;
+  });
+}
+function isDiagonalMove(fromX,fromY,toX,toY){
+  return Math.abs(toX-fromX)===Math.abs(toY-fromY) && fromX!==toX;
+}
+function stationarySeconds(piece){ return now() - (piece.stationarySince || now()); }
+function canFreezeOrFortify(piece, seconds){ return stationarySeconds(piece) >= seconds; }
+function claimDiagonalRays(factionIdx,cx,cy,len,kind,filter=null){
+  let claimed=0;
+  for(const [dx,dy] of DIAG){
+    for(let r=1;r<=len;r++){
+      const x=cx+dx*r, y=cy+dy*r;
+      if(!inBounds(x,y)) break;
+      const t=tile(x,y);
+      if(t.type==='mountain') break;
+      if(filter && !filter(t,x,y)) break;
+      if(claimTile(factionIdx,x,y,0,kind)) claimed++;
+      if(blocksSlideFor({type:'bishop'},x,y)) break;
+    }
+  }
+  return claimed;
+}
+function claimRadius(factionIdx,cx,cy,r,kind,glow=.55,filter=null){
+  let n=0;
+  for(let y=cy-r;y<=cy+r;y++) for(let x=cx-r;x<=cx+r;x++){
+    if(!inBounds(x,y) || Math.max(Math.abs(x-cx),Math.abs(y-cy))>r) continue;
+    const t=tile(x,y);
+    if(filter && !filter(t,x,y)) continue;
+    if(t.type==='mountain') continue;
+    if(claimTile(factionIdx,x,y,glow,kind)) n++;
+  }
+  return n;
+}
+function accelerateSpawnSeconds(factionIdx, seconds, label='SPAWN RUSH'){
+  const f=factions[factionIdx]; if(!f || !f.alive) return;
+  const territory=ownerCounts.get(factionIdx)||0;
+  const army=pieces.filter(p=>p.alive&&p.faction===factionIdx).length;
+  const gain=spawnRateForFaction(f, territory, army) * seconds;
+  const before=f.spawnMeter||0;
+  f.spawnMeter=Math.min(100,before+gain);
+  markStateDirty();
+  const k=getPiece(f.kingId) || pieces.find(p=>p.alive&&p.faction===factionIdx);
+  if(k) floating(k.x,k.y,`-${seconds}s ${label}`, f.color);
+  if(factionIdx===PLAYER && before<100 && f.spawnMeter>=100){ f.spawnChoices=chooseSpawnOptions(factionIdx); renderSpawnCards(); toast('Spawn rushed and ready.'); }
+}
+function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPiece=null){
+  if(!piece || !piece.alive) return 0;
+  const f=factions[piece.faction]; if(!f) return 0;
+  const id=f.id;
+  let claimed=0;
+  if(eventType==='kill'){
+    const targetValue = pieceDefs[targetPiece?.type]?.value || 1;
+    const selfValue = pieceDefs[piece.type]?.value || 1;
+    if(id==='ember'){
+      const radius = ['flamequeen','emberknight','pyretower'].includes(piece.type) ? 2 : 1;
+      claimed += claimRadius(piece.faction,toX,toY,radius,'ember_kill',0,(t)=>t.type!=='mountain');
+      accelerateSpawnSeconds(piece.faction,2,'EMBER CAPTURE');
+    } else if(id==='shadow'){
+      if(claimTile(piece.faction,toX,toY,0,'shadow_kill')) claimed++;
+      const diagRadius = piece.type==='assassin' ? 2 : 1;
+      for(const [dx,dy] of DIAG){
+        for(let r=1;r<=diagRadius;r++){
+          const x=toX+dx*r, y=toY+dy*r;
+          if(inBounds(x,y) && tile(x,y).type!=='mountain'){ if(claimTile(piece.faction,x,y,0,'shadow_diagonal')) claimed++; }
+        }
+      }
+      if(targetValue > selfValue || targetValue>=6) accelerateSpawnSeconds(piece.faction,5,'HIGHER KILL');
+    } else if(id==='iron'){
+      if(['king','general','tower'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.aura||2,'iron_fortified',0,(t)=>t.type!=='water'&&t.type!=='mountain');
+      else if(['bulwark','warden','citadelwalker'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,1,'iron_fortified',0,(t)=>t.type!=='water'&&t.type!=='mountain');
+    } else if(id==='verdant'){
+      if(isNaturalVerdantTerrain(tile(toX,toY).type)) claimed += claimRadius(piece.faction,toX,toY,2,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
+      else if(claimTile(piece.faction,toX,toY,0,'verdant_seed')) claimed++;
+    } else if(id==='tide'){
+      claimed += claimRadius(piece.faction,toX,toY,1,'tide_surge',0,(t,x,y)=>t.type==='water'||t.type==='swamp'||isCoastTile(x,y)||terrains[t.type].pass);
+    } else if(id==='sunspire'){
+      if(piece.type==='sunbishop') claimed += claimRadius(piece.faction,toX,toY,1,'sunspire_ray',0,(t)=>terrains[t.type].pass);
+      else claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.value>=6?2:1,'sunspire_sanctified',0,(t)=>terrains[t.type].pass);
+    } else if(id==='frost'){
+      if(['shieldpawn','warden','tower','sunbishop'].includes(piece.type) && canFreezeOrFortify(piece,FROST_FREEZE_SECONDS)) claimed += claimRadius(piece.faction,toX,toY,1,'frost_frozen',0,(t)=>terrains[t.type].pass);
+    } else {
+      claimed += claimMovePath(piece,fromX,fromY,toX,toY,'battle_march');
+    }
+    return claimed;
+  }
+
+  if(id==='ember'){
+    return 0; // Ember only captures land by kills.
+  } else if(id==='verdant'){
+    const t=tile(toX,toY);
+    if(isNaturalVerdantTerrain(t.type)) claimed += claimRadius(piece.faction,toX,toY,1,'verdant_root',0,(q)=>isNaturalVerdantTerrain(q.type));
+    return claimed;
+  } else if(id==='iron'){
+    // Iron does not paint land by marching. Its command pieces and stationary defenders lock ground in updateCommandLand.
+    return 0;
+  } else if(id==='shadow'){
+    const t=tile(toX,toY);
+    if(['ruins','crystal'].includes(t.type)){
+      if(claimTile(piece.faction,toX,toY,0,'shadow_hidden')) claimed++;
+    }
+    if(['assassin','voidstrider','nightknight'].includes(piece.type) && ['ruins','crystal','forest'].includes(t.type)){
+      if(claimTile(piece.faction,toX,toY,0,'shadow_hidden')) claimed++;
+    }
+    if(isDiagonalMove(fromX,fromY,toX,toY)){
+      const cells=travelPathCells(fromX,fromY,toX,toY);
+      for(const c of cells){
+        if(enemyAdjacentTo(c.x,c.y,piece.faction) && tile(c.x,c.y).type!=='mountain'){
+          if(claimTile(piece.faction,c.x,c.y,0,'shadow_diagonal')) claimed++;
+        }
+      }
+    }
+    return claimed;
+  } else if(id==='tide'){
+    if(pieceDefs[piece.type]?.amphibious || tile(toX,toY).type==='water' || isCoastTile(toX,toY)){
+      const cells=travelPathCells(fromX,fromY,toX,toY);
+      for(const c of cells){
+        if(!inBounds(c.x,c.y)) continue;
+        const t=tile(c.x,c.y);
+        if(t.type==='water'||t.type==='swamp'||isCoastTile(c.x,c.y)){
+          if(claimTile(piece.faction,c.x,c.y,0,'tide_flow')) claimed++;
+          for(const [dx,dy] of ORTHO){
+            const nx=c.x+dx, ny=c.y+dy;
+            if(inBounds(nx,ny)){
+              const nt=tile(nx,ny);
+              if(nt.type==='water'||nt.type==='swamp'||isCoastTile(nx,ny)){ if(claimTile(piece.faction,nx,ny,0,'tide_flow')) claimed++; }
+            }
+          }
+        }
+      }
+      if(!claimed && claimTile(piece.faction,toX,toY,0,'tide_coast')) claimed++;
+    }
+    return claimed;
+  } else if(id==='sunspire'){
+    if(piece.type==='sunbishop' && isDiagonalMove(fromX,fromY,toX,toY)){
+      if(claimTile(piece.faction,toX,toY,0,'sunspire_ray')) claimed++;
+      claimed += claimRadius(piece.faction,toX,toY,1,'sunspire_ray',0,(t)=>terrains[t.type].pass);
+      return claimed;
+    }
+    if(['king','general','tower','paladin','queen','dawnarchon'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.value>=6?1:0,'sunspire_sanctified',0,(t)=>terrains[t.type].pass);
+    else if(['pawn','rook'].includes(piece.type) && claimTile(piece.faction,toX,toY,0,'sunspire_foothold')) claimed++;
+    return claimed;
+  } else if(id==='frost'){
+    // Frost captures by holding ground, not by racing across it.
+    return 0;
+  }
+  claimed += claimMovePath(piece,fromX,fromY,toX,toY,'march');
   return claimed;
 }
 function movePiece(piece,x,y,source='player'){
@@ -1050,13 +1386,25 @@ function movePiece(piece,x,y,source='player'){
     if(!defeated) return true;
   }
   piece.x=x; piece.y=y; piece.targetX=x; piece.targetY=y; piece.lastMove=now(); piece.flash=1;
-  const swept = claimMovePath(piece,fromX,fromY,x,y);
-  if(!swept) claimTile(piece.faction,x,y,.7);
+  piece.stationarySince=now(); piece.lastStationX=x; piece.lastStationY=y;
+  const swept = applyFactionCapture(piece,fromX,fromY,x,y,'move',target);
   applyAuraTerritory(piece);
-  burst(x,y,factions[piece.faction].color,8 + Math.min(18,swept*2));
+  if(swept===0) burst(x,y,factions[piece.faction].color,4);
   markStateDirty();
-  if(source==='player') moveModeHint = swept>1 ? `${pieceDefs[piece.type].name} claimed ${swept} travelled tiles.` : 'Territory claimed.';
+  if(source==='player') moveModeHint = factionCaptureHint(piece,swept);
   return true;
+}
+function factionCaptureHint(piece,claimed){
+  const f=factions[piece.faction];
+  if(!f) return 'Move complete.';
+  if(f.id==='ember') return 'Ember only captures land from kills.';
+  if(f.id==='verdant') return claimed ? `Verdant roots claimed ${claimed} natural tiles.` : 'Verdant only spreads through living ground near troops.';
+  if(f.id==='shadow') return claimed ? 'Shadow influence seized hidden ground.' : 'Shadow mostly captures by assassinations and dark terrain.';
+  if(f.id==='iron') return claimed ? 'Iron fortified new ground.' : 'Iron captures with command pieces and stationary defenders.';
+  if(f.id==='sunspire') return claimed ? 'Sunspire sanctified elite ground.' : 'Sunspire captures with elite presence and command pieces.';
+  if(f.id==='frost') return claimed ? 'Frost froze controlled ground.' : 'Frost captures by holding position.';
+  if(f.id==='tide') return claimed ? 'Tide flowed through water and coast.' : 'Tide controls water, coast, and swamp routes.';
+  return claimed ? `${claimed} tiles claimed.` : 'Move complete.';
 }
 function capturePiece(attacker, target){
   if(!target.alive) return false;
@@ -1079,6 +1427,7 @@ function capturePiece(attacker, target){
     burst(attacker.x,attacker.y,'#fff2a6',26);
     if(attacker.faction===PLAYER) toast(`${pieceDefs[attacker.type].name} leveled up. Cooldown improved and movement may grow.`);
   }
+  applyFactionCapture(attacker,attacker.x,attacker.y,target.x,target.y,'kill',target);
   if(target.type==='king') conquerFaction(attacker.faction,target.faction,target.x,target.y);
   return true;
 }
@@ -1090,7 +1439,7 @@ function conquerFaction(winner, loser, cx, cy){
   factions[winner].territoryTaken++;
   if(winner===PLAYER) gameStats.kingsTaken++;
   let taken=0;
-  for(const t of board){ if(t.owner===loser){ t.owner=winner; t.glow=.85; taken++; } }
+  for(const t of board){ if(t.owner===loser){ t.owner=winner; t.captureKind='conquered'; t.glow=0; taken++; } }
   for(const p of pieces){
     if(p.alive && p.faction===loser){
       // surviving army fractures; most vanish, a few mercenary ghosts remain neutralized by defeat
@@ -1188,7 +1537,7 @@ function renderSpawnCards(){
   });
 }
 function patternName(p){
-  const names={pawn:'Pawn+',king:'King',general:'General',tower:'Territory Tower',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',lancer:'Lancer',scout:'Scout',assassin:'Assassin',warden:'Warden',paladin:'Paladin'};
+  const names={pawn:'Pawn+',king:'King',general:'General',tower:'Territory Tower',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',lancer:'Lancer',scout:'Scout',assassin:'Assassin',warden:'Warden',paladin:'Paladin',voidstrider:'Void Strider',citadel:'Citadel Walker',archon:'Dawn Archon'};
   return names[p]||p;
 }
 function updateHUD(){
@@ -1258,10 +1607,88 @@ function gameTick(dt){
     const f=floatingText[i]; f.life-=dt; f.y-=28*dt;
     if(f.life<=0) floatingText.splice(i,1);
   }
-  if(isController){ updateSpawns(dt); aiTick(dt); maybeWriteControllerState(); }
+  if(isController){ updateSpawns(dt); aiTick(dt); updateSpecialLandRules(dt); maybeWriteControllerState(); }
+  else { updateLocalPlayerSpawn(dt); }
   updateHUD();
   maybeAnnounceWorldWinner();
   if(tickTime>.5){ tickTime=0; updatePiecePanel(); }
+}
+
+function updateLocalPlayerSpawn(dt){
+  const f=factions[PLAYER];
+  if(!f || !f.alive || playerDefeated) return;
+  const territory=(ownerCounts.get(f.idx)||0);
+  const army=pieces.filter(p=>p.alive&&p.faction===f.idx).length;
+  const rate=spawnRateForFaction(f,territory,army);
+  const before=f.spawnMeter;
+  f.spawnMeter=Math.min(100,(f.spawnMeter||0)+dt*rate);
+  if(before<100 && f.spawnMeter>=100){ f.spawnChoices=chooseSpawnOptions(PLAYER); renderSpawnCards(); toast('Spawn ready.'); }
+}
+let specialLandTimer = 0;
+function updateSpecialLandRules(dt){
+  specialLandTimer += dt;
+  if(specialLandTimer < .65) return;
+  const step = specialLandTimer; specialLandTimer = 0;
+  for(const f of factions){
+    if(!f.alive) continue;
+    if(f.id==='verdant') updateVerdantSpreadAndFade(f, step);
+    if(f.id==='frost' || f.id==='iron' || f.id==='sunspire' || f.id==='crownward') updateCommandLand(f);
+  }
+}
+function updateVerdantSpreadAndFade(f,dt){
+  const army=pieces.filter(p=>p.alive&&p.faction===f.idx);
+  if(!army.length) return;
+  for(const p of army){
+    for(let y=p.y-VERDANT_SPREAD_RADIUS;y<=p.y+VERDANT_SPREAD_RADIUS;y++) for(let x=p.x-VERDANT_SPREAD_RADIUS;x<=p.x+VERDANT_SPREAD_RADIUS;x++){
+      if(!inBounds(x,y) || dist2(x,y,p.x,p.y)>VERDANT_SPREAD_RADIUS*VERDANT_SPREAD_RADIUS) continue;
+      const t=tile(x,y);
+      if(isNaturalVerdantTerrain(t.type) && !findPieceAt(x,y)) claimTile(f.idx,x,y,.22,'verdant_root');
+    }
+  }
+  for(const t of board){
+    if(t.owner!==f.idx) continue;
+    if(nearestFriendlyPieceWithin(t.x,t.y,f.idx,VERDANT_SPREAD_RADIUS)){ t.verdantFade=0; continue; }
+    t.verdantFade=(t.verdantFade||0)+dt;
+    t.glow=0;
+    if(t.verdantFade>=VERDANT_FADE_SECONDS){ t.owner=null; t.captureKind=null; t.verdantFade=0; t.glow=0; markStateDirty(); }
+  }
+}
+function updateCommandLand(f){
+  for(const p of pieces){
+    if(!p.alive || p.faction!==f.idx) continue;
+    const def=pieceDefs[p.type];
+
+    if(f.id==='crownward'){
+      if(['king','general','tower'].includes(p.type)) claimRadius(f.idx,p.x,p.y,def?.aura||2,'command',0,(t)=>terrains[t.type].pass);
+      continue;
+    }
+
+    if(f.id==='iron'){
+      if(['king','general','tower'].includes(p.type)){
+        claimRadius(f.idx,p.x,p.y,def?.aura||2,'iron_fortified',0,(t)=>t.type!=='water'&&t.type!=='mountain');
+      } else if(['bulwark','warden','citadelwalker'].includes(p.type) && canFreezeOrFortify(p,IRON_LOCKDOWN_SECONDS)){
+        claimRadius(f.idx,p.x,p.y,p.type==='citadelwalker'?2:1,'iron_fortified',0,(t)=>t.type!=='water'&&t.type!=='mountain');
+      }
+      continue;
+    }
+
+    if(f.id==='sunspire'){
+      if(['king','general','tower','paladin','queen','dawnarchon'].includes(p.type)){
+        claimRadius(f.idx,p.x,p.y,def?.aura||1,'sunspire_sanctified',0,(t)=>terrains[t.type].pass);
+      }
+      continue;
+    }
+
+    if(f.id==='frost'){
+      if(!canFreezeOrFortify(p,FROST_FREEZE_SECONDS)) continue;
+      if(p.type==='shieldpawn') claimTile(f.idx,p.x,p.y,0,'frost_frozen');
+      else if(p.type==='warden') claimRadius(f.idx,p.x,p.y,1,'frost_frozen',0,(t)=>terrains[t.type].pass);
+      else if(p.type==='tower') claimRadius(f.idx,p.x,p.y,def?.aura||3,'frost_frozen',0,(t)=>terrains[t.type].pass);
+      else if(p.type==='sunbishop') claimDiagonalRays(f.idx,p.x,p.y,FROST_BISHOP_RAY,'frost_frozen',(t)=>terrains[t.type].pass);
+      else if(p.type==='king' || p.type==='general') claimRadius(f.idx,p.x,p.y,def?.aura||2,'frost_frozen',0,(t)=>terrains[t.type].pass);
+      continue;
+    }
+  }
 }
 function spawnRateForFaction(f, territory, army){
   // Rate is percentage points per second. It begins slow, scales with controlled land,
@@ -1271,11 +1698,20 @@ function spawnRateForFaction(f, territory, army){
   const landBeyondStart = Math.max(0, territory - SPAWN_START_GRACE_TILES);
   const landProgress = clamp(landBeyondStart / SPAWN_LAND_RAMP_TILES, 0, 1);
   const landCurve = Math.pow(landProgress, .68);
-  const landDrivenRate = baseRate + (maxRate - baseRate) * landCurve;
+  let landDrivenRate = baseRate + (maxRate - baseRate) * landCurve;
+  let specialTiles = 0;
+  for(const t of board){
+    if(t.owner!==f.idx) continue;
+    if(f.id==='verdant' && isNaturalVerdantTerrain(t.type)) specialTiles++;
+    if(f.id==='tide' && (t.type==='water'||t.type==='swamp'||isCoastTile(t.x,t.y))) specialTiles++;
+    if(f.id==='iron' && (t.captureKind==='iron_fortified'||t.type==='hill'||t.type==='ruins')) specialTiles++;
+    if(f.id==='sunspire' && (t.captureKind==='sunspire_sanctified'||t.type==='crystal'||t.type==='hill')) specialTiles++;
+    if(f.id==='shadow' && (t.captureKind==='shadow_hidden'||t.type==='ruins'||t.type==='crystal')) specialTiles++;
+    if(f.id==='frost' && (t.captureKind==='frost_frozen'||t.type==='crystal'||t.type==='hill')) specialTiles++;
+  }
+  landDrivenRate *= 1 + Math.min(.32, specialTiles * .0035);
   const armyDrag = 1 + Math.max(0, army - 32) * .012;
 
-  // Lower faction spawnRate values mean the faction is better at producing pieces.
-  // This now matches the faction identities: Verdant/Ember are quicker, Iron is slower.
   const factionTempo = 1 / Math.max(.62, f.spawnRate || 1);
   const aiTempo = f.idx===PLAYER ? 1 : (f.aiSpawnScale || 1);
   return Math.min(maxRate, landDrivenRate * factionTempo * aiTempo / armyDrag);
@@ -1288,7 +1724,6 @@ function updateSpawns(dt){
     const rate = spawnRateForFaction(f, territory, army);
     const before=f.spawnMeter;
     f.spawnMeter = Math.min(100,f.spawnMeter+dt*rate);
-    if(f.spawnMeter !== before) markStateDirty();
     if(f.idx===PLAYER && before<100 && f.spawnMeter>=100){
       f.spawnChoices=chooseSpawnOptions(PLAYER);
       renderSpawnCards(); toast('Spawn ready. Pick one of the three pieces at the top.');
@@ -1374,13 +1809,13 @@ function aiMovePiece(f,p){
   return false;
 }
 function aiSpawn(f){
-  const tiles=eligibleSpawnTiles(f.idx);
-  if(!tiles.length) return;
   const choices=chooseSpawnOptions(f.idx);
   choices.sort((a,b)=>(pieceDefs[b].value||1)-(pieceDefs[a].value||1));
   let type=choices[0];
   if(f.aiStyle==='expansion') type=choices.sort((a,b)=>(pieceDefs[a].cooldown||3)-(pieceDefs[b].cooldown||3))[0];
   if(f.aiStyle==='defensive' && Math.random()<.55){ type=choices.find(t=>(pieceDefs[t].aura||0)>0 || pieceDefs[t].pattern==='rook' || pieceDefs[t].pattern==='tower') || type; }
+  const tiles=eligibleSpawnTiles(f.idx,type);
+  if(!tiles.length) return;
   const enemies=pieces.filter(p=>p.alive&&p.faction!==f.idx&&factions[p.faction].alive);
   let best=tiles[Math.floor(Math.random()*tiles.length)], bs=-999;
   for(let i=0;i<Math.min(80,tiles.length);i++){
@@ -1467,7 +1902,6 @@ function drawTerritoryEffects(){
       const sx=x*BASE_CELL, sy=y*BASE_CELL;
       ctx.globalAlpha = t.owner===PLAYER ? .22 : .16;
       ctx.fillStyle=f.color; ctx.fillRect(sx+2,sy+2,BASE_CELL-4,BASE_CELL-4);
-      if(t.glow>0){ctx.globalAlpha=.18+.45*t.glow; ctx.fillStyle=f.color; ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);}
       ctx.globalAlpha=.65;
       // border only at ownership edges
       ctx.strokeStyle=f.color; ctx.lineWidth=2;
@@ -1483,7 +1917,7 @@ function drawTerritoryEffects(){
 }
 function drawHighlights(){
   if(spawnSelection!==null){
-    const tiles=eligibleSpawnTiles(PLAYER);
+    const tiles=eligibleSpawnTiles(PLAYER, factions[PLAYER]?.spawnChoices?.[spawnSelection] || 'pawn');
     const time=now();
     ctx.save();
     for(const t of tiles){
@@ -1549,6 +1983,9 @@ function drawPieces(){
     ctx.strokeStyle=cd>=1?'rgba(125,255,174,.95)':'rgba(255,255,255,.34)';
     ctx.lineWidth=3;
     ctx.beginPath(); ctx.arc(0,0,r+5,-Math.PI/2,-Math.PI/2+Math.PI*2*cd); ctx.stroke();
+    if(f.duplicateFaction){
+      ctx.globalAlpha=.9; ctx.strokeStyle=f.outline || '#fff'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,r+14,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1;
+    }
     if(cooldownReady(p)){
       ctx.globalAlpha=.45+.2*Math.sin(now()*5+p.id);
       ctx.strokeStyle='#7ff0b0'; ctx.lineWidth=2;
@@ -1599,14 +2036,14 @@ function roundRect(c,x,y,w,h,r){
 function drawPieceShape(pattern,r,id){
   const wob=Math.sin(now()*2+id)*.04;
   ctx.beginPath();
-  if(pattern==='knight'||pattern==='paladin'){
+  if(pattern==='knight'||pattern==='paladin'||pattern==='archon'){
     ctx.moveTo(-r*.65,r*.65); ctx.quadraticCurveTo(-r*.95,-r*.1,-r*.22,-r*.78); ctx.quadraticCurveTo(r*.35,-r*1.0,r*.78,-r*.35); ctx.quadraticCurveTo(r*.35,-r*.2,r*.65,r*.42); ctx.quadraticCurveTo(.1,r*.72,-r*.65,r*.65);
-  } else if(pattern==='rook'||pattern==='rookShort'||pattern==='tower'){
+  } else if(pattern==='rook'||pattern==='rookShort'||pattern==='tower'||pattern==='citadel'){
     ctx.rect(-r*.72,-r*.56,r*1.44,r*1.16);
     ctx.moveTo(-r*.72,-r*.56); ctx.lineTo(-r*.72,-r*.82); ctx.lineTo(-r*.38,-r*.82); ctx.lineTo(-r*.38,-r*.56);
     ctx.moveTo(-r*.12,-r*.56); ctx.lineTo(-r*.12,-r*.82); ctx.lineTo(r*.12,-r*.82); ctx.lineTo(r*.12,-r*.56);
     ctx.moveTo(r*.38,-r*.56); ctx.lineTo(r*.38,-r*.82); ctx.lineTo(r*.72,-r*.82); ctx.lineTo(r*.72,-r*.56);
-  } else if(pattern==='bishop'||pattern==='bishopLong'||pattern==='assassin'){
+  } else if(pattern==='bishop'||pattern==='bishopLong'||pattern==='assassin'||pattern==='voidstrider'){
     ctx.moveTo(0,-r*.92); ctx.quadraticCurveTo(r*.78,-r*.28,r*.5,r*.55); ctx.quadraticCurveTo(0,r*.95,-r*.5,r*.55); ctx.quadraticCurveTo(-r*.78,-r*.28,0,-r*.92);
   } else if(pattern==='queen'||pattern==='king'||pattern==='general'){
     const points = pattern==='king'?8:7;
@@ -1739,7 +2176,7 @@ centerBtn.onclick=(e)=>{
 };
 territoryBtn.onclick=()=>{showTerritory=!showTerritory; territoryBtn.classList.toggle('active',showTerritory);};
 pauseBtn.onclick=()=>{paused=!paused; pauseBtn.textContent=paused?'Resume':'Pause';};
-startBtn.onclick=()=>{ const sel=document.getElementById('difficultySelect'); if(sel) chosenDifficultyId=sel.value; overlay.style.display='none'; createGame(); toast('Local preview started.', 2400); };
+startBtn.onclick=()=>{ const sel=document.getElementById('difficultySelect'); if(sel) chosenDifficultyId=sel.value; localStorage.setItem('cw.lastFaction', chosenFactionId); if(lobbyId){ publishFactionSelection(); toast('Faction locked for this lobby.', 1200); return; } slotFactionIds[PLAYER]=chosenFactionId; overlay.style.display='none'; createGame(); toast('Local preview started.', 2400); };
 restartBtn.onclick=()=>{ exitToLobby(); };
 spectateBtn.onclick=()=>{ spectating=true; paused=false; defeatOverlay.style.display='none'; toast('Spectating the remaining warlords. Drag or swipe to follow the battle.', 3600); };
 
