@@ -748,14 +748,15 @@
       chrisrunner: "/game/chrisrunner.html",
       forgeflight: "/game/forge&flight.html",
       onehitknight: "/game/onehitknight.html",
-      deepsea: "/game/deep_sea.html"
+      deepsea: "/game/deep_sea.html",
+      chesswarlord: "/game/chess_warlord.html"
     };
 
     const AUTO_REDIRECT_GAMES = new Set([
       "cat","grass","mountain","stockkings","dutchblitz","catmobile","splinters",
       "spelltower","thegame","zombiezone","biblegame","historyrush","crowncouncil",
       "forgeroyale","castledefense","rogueduel","trumprev","warspan",
-      "stoneyrelic","balatle"
+      "stoneyrelic","balatle","chesswarlord"
     ]);
 
     const MAX_PLAYERS = {
@@ -777,7 +778,8 @@
       trumprev: 4,
       warspan: 4,
       stoneyrelic: 8,
-      balatle: 8
+      balatle: 8,
+      chesswarlord: 8
     };
     const getMaxPlayers = (gameType, fallback = Infinity) =>
       typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
@@ -869,7 +871,16 @@
       { key: "trumprev", title: "Base Defense: Revenge", emoji: "🏰", desc: "4-player base defense.", maxPlayers: 4 },
       { key: "warspan", title: "Warspan Online", emoji: "⚔️🃏", desc: "4-player Warspan battle.", maxPlayers: 4 },
       { key: "stoneyrelic", title: "Stoney's Relic", emoji: "🗿", desc: "2–8 player relic adventure.", maxPlayers: 8 },
-      { key: "balatle", title: "Balatle", emoji: "⚔️", desc: "8-player battle mode.", maxPlayers: 8 }
+      { key: "balatle", title: "Balatle", emoji: "⚔️", desc: "8-player battle mode.", maxPlayers: 8 },
+      {
+        key: "chesswarlord",
+        title: "Chess Warlord",
+        emoji: "♛⚔️",
+        desc: "An 8-player real-time faction chess war with territory control, kings, cooldowns, AI seats, and Firebase multiplayer.",
+        route: ROUTES.chesswarlord,
+        maxPlayers: 8,
+        featured: true
+      }
     ];
 
     let selectedMultiplayerGame = "cat";
@@ -1222,6 +1233,7 @@
              type==='warspan'?'⚔️🃏 Warspan Online (4P)' :
              type==='stoneyrelic'?'🗿 Stoney\'s Relic (2–8P)' :
              type==='balatle'?'⚔️ Balatle (8P)' :
+             type==='chesswarlord'?'♛⚔️ Chess Warlord (8P)' :
              '🐭 Cat & Mouse';
     }
 
@@ -1268,7 +1280,7 @@
         return;
       }
 
-      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','forgeroyale','cardrealmsmulti','castledefense','rogueduel','trumprev','warspan','stoneyrelic','balatle'].includes(gameType)) {
+      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','forgeroyale','cardrealmsmulti','castledefense','rogueduel','trumprev','warspan','stoneyrelic','balatle','chesswarlord'].includes(gameType)) {
         return showError("Invalid game type.");
       }
       let lobby;
@@ -1437,13 +1449,13 @@
             const isDM = (dm && dm === username);
             const route = isDM ? ROUTES.dungeonmaster : ROUTES.stoneyrelic;
             const role = isDM ? "dm" : "player";
-            window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}&role=${role}`;
+            window.location.href = `${route}?gameId=${encodeURIComponent(docSnap.id)}&username=${encodeURIComponent(username)}&role=${role}`;
             return;
           }
 
           // default redirect
           const route = ROUTES[data.gameType] || ROUTES.cat;
-          window.location.href = `${route}?gameId=${docSnap.id}&username=${encodeURIComponent(username)}`;
+          window.location.href = `${route}?gameId=${encodeURIComponent(docSnap.id)}&username=${encodeURIComponent(username)}`;
         }
       });
     }
@@ -1674,7 +1686,7 @@
               const isDM = (dm && dm === username);
               const route = isDM ? ROUTES.dungeonmaster : ROUTES.stoneyrelic;
               const role = isDM ? "dm" : "player";
-              window.location.href = `${route}?gameId=${gid}&username=${encodeURIComponent(username)}&role=${role}`;
+              window.location.href = `${route}?gameId=${encodeURIComponent(gid)}&username=${encodeURIComponent(username)}&role=${role}`;
               return;
             }catch(e){
               // fall through to default
@@ -1683,7 +1695,7 @@
 
           // Default resume behavior
           const route = ROUTES[lastGame];
-          const glue = gid ? `?gameId=${gid}&username=${encodeURIComponent(username)}` : `?username=${encodeURIComponent(username)}`;
+          const glue = gid ? `?gameId=${encodeURIComponent(gid)}&username=${encodeURIComponent(username)}` : `?username=${encodeURIComponent(username)}`;
           window.location.href = route + glue;
         };
       }
