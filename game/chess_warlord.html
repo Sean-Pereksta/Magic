@@ -190,6 +190,7 @@ const VERDANT_FADE_SECONDS = 8.5;
 const IRON_LOCKDOWN_SECONDS = 2.8;
 const FROST_FREEZE_SECONDS = 2.6;
 const FROST_BISHOP_RAY = 4;
+const COOLDOWN_SLOWDOWN_MULTIPLIER = 1.5;
 let PLAYER = 0;
 const SPAWN_SLOWEST_SECONDS = 105;
 const SPAWN_FASTEST_SECONDS = 8.8;
@@ -202,6 +203,8 @@ let DPR = 1;
 let W = 0;
 let H = 0;
 let cam = {x: 0, y: 0, zoom: 1};
+const MIN_ZOOM = .34;
+const MAX_ZOOM = 1.85;
 let dragging = false;
 let dragStart = null;
 let pointerMoved = false;
@@ -230,6 +233,11 @@ let pregameUnsub = null;
 let reliableWriteTimer = null;
 let reliableWriteReason = 'queued';
 let localWritePendingUntil = 0;
+let pendingPlayerActions = [];
+let clientActionSeq = 1;
+let clientPieceSeq = 1;
+const PENDING_ACTION_TTL_SECONDS = 18;
+const PENDING_ACTION_GRACE_SECONDS = 7;
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -341,17 +349,21 @@ function serializeState(reason='sync'){
     stats: {captures:gameStats.captures||0,kingsTaken:gameStats.kingsTaken||0,startedAt:gameStats.startedAt||now()},
     factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now()})),
     pieces: pieces.filter(p=>p.alive).map(p => ({
-      i:p.id,f:p.faction,t:p.type,x:p.x,y:p.y,hp:p.hp,mh:p.maxHp,c:p.captures||0,lv:p.level||1
+      i:p.id,f:p.faction,t:p.type,x:p.x,y:p.y,hp:p.hp,mh:p.maxHp,c:p.captures||0,lv:p.level||1,
+      aid:p.clientActionId || '', aby:p.clientActionBy || ''
     })),
     winner: winnerName() || ''
   };
 }
 function applyRemoteState(data){
   if(!data || !data.pieces) return;
-  if(stateDirty && data.updatedBy !== username && now() < localWritePendingUntil) return;
+  const incomingVersion = Number(data.version || 0);
+  if(incomingVersion && incomingVersion < localStateVersion && data.updatedBy !== username && !pendingPlayerActions.length) return;
+  const hadPending = pendingPlayerActions.length > 0;
+  pruneConfirmedPendingActions(data);
   applyingRemote = true;
   const wasAlive = factions[PLAYER]?.alive !== false;
-  localStateVersion = Number(data.version || localStateVersion || 0);
+  localStateVersion = Math.max(Number(data.version || 0), localStateVersion || 0);
   if(Array.isArray(data.playerNames) && data.playerNames.length){
     slotNames = data.playerNames.slice(0,MAX_ONLINE_PLAYERS);
     slotHumans = (data.humanPlayers || slotNames.filter(n=>!isAIName(n))).slice(0,MAX_ONLINE_PLAYERS);
@@ -376,10 +388,11 @@ function applyRemoteState(data){
       lastStationX: pp.x, lastStationY: pp.y,
       wobble: old ? old.wobble : Math.random()*Math.PI*2,
       flash: old && (old.x !== pp.x || old.y !== pp.y) ? 1 : (old ? old.flash : 0),
-      promoted:false
+      promoted:false,
+      clientActionId:pp.aid || '', clientActionBy:pp.aby || ''
     };
   });
-  idCounter = pieces.reduce((m,p)=>Math.max(m,p.id),0)+1;
+  idCounter = pieces.reduce((m,p)=>Math.max(m,Number(p.id)||0),0)+1;
   const fData = Array.isArray(data.factions) ? data.factions : [];
   for(const fd of fData){
     const f = factions[fd.idx]; if(!f) continue;
@@ -394,12 +407,101 @@ function applyRemoteState(data){
   gameStarted = true;
   overlay.style.display = 'none';
   recalcOwnerCounts();
+  if(selectedPiece){
+    selectedPiece = getPiece(selectedPiece.id);
+    legalMoves = selectedPiece && selectedPiece.faction===PLAYER && !playerDefeated && ownFactionAlive() ? getLegalMoves(selectedPiece,false) : [];
+  }
+  applyingRemote = false;
+  if(hadPending && pendingPlayerActions.length){
+    const reapplied = reapplyPendingPlayerActions();
+    if(reapplied || pendingPlayerActions.length){
+      stateDirty = true;
+      localWritePendingUntil = now() + PENDING_ACTION_GRACE_SECONDS;
+      queueReliableStateWrite('pendingCommandReplay');
+      setNetwork(`${username || 'Player'} · command syncing…`);
+    }
+  } else if(hadPending && !pendingPlayerActions.length){
+    stateDirty = false;
+    localWritePendingUntil = 0;
+  }
   renderSpawnCards(); updateHUD(); updatePiecePanel();
   const mineAlive = factions[PLAYER]?.alive !== false;
   if(wasAlive && !mineAlive && !playerDefeated){ triggerDefeat(findWinnerIndexAgainst(PLAYER)); }
   const w = data.winner || winnerName();
   if(w && w !== lastRemoteWinner){ lastRemoteWinner = w; showWarEnd(w); }
-  applyingRemote = false;
+}
+function makeClientActionId(kind){
+  return `${safeDocId(username || 'player')}:${kind}:${Date.now()}:${clientActionSeq++}`;
+}
+function allocateClientPieceId(){
+  const slotBase = (PLAYER + 1) * 1000000000;
+  const stamp = Math.floor(Date.now() % 90000000) * 10;
+  return slotBase + stamp + (clientPieceSeq++ % 10);
+}
+function rememberPendingPlayerAction(action){
+  const created = now();
+  const item = {...action, createdAt:created, expiresAt:created + PENDING_ACTION_TTL_SECONDS};
+  if(item.kind === 'move') pendingPlayerActions = pendingPlayerActions.filter(a => !(a.kind === 'move' && a.pieceId === item.pieceId));
+  pendingPlayerActions.push(item);
+  localWritePendingUntil = now() + PENDING_ACTION_GRACE_SECONDS;
+}
+function pruneConfirmedPendingActions(remoteData){
+  if(!pendingPlayerActions.length || !remoteData || !Array.isArray(remoteData.pieces)) return;
+  const t = now();
+  const remotePieces = remoteData.pieces;
+  pendingPlayerActions = pendingPlayerActions.filter(action => {
+    if(t > action.expiresAt) return false;
+    if(action.kind === 'move'){
+      const rp = remotePieces.find(pp => pp.i === action.pieceId);
+      if(!rp) return false; // the troop died or was captured before the command could be confirmed.
+      return !(rp.x === action.toX && rp.y === action.toY);
+    }
+    if(action.kind === 'spawn'){
+      const confirmed = remotePieces.some(pp =>
+        pp.aid === action.actionId || pp.i === action.pieceId ||
+        (pp.f === PLAYER && pp.t === action.type && pp.x === action.x && pp.y === action.y)
+      );
+      return !confirmed;
+    }
+    return false;
+  });
+}
+function reapplyPendingPlayerActions(){
+  if(!pendingPlayerActions.length) return false;
+  let changed = false;
+  const stillPending = [];
+  for(const action of pendingPlayerActions){
+    if(now() > action.expiresAt) continue;
+    if(action.kind === 'move'){
+      const live = getPiece(action.pieceId);
+      if(!live || !live.alive || live.faction !== PLAYER) continue;
+      if(live.x === action.toX && live.y === action.toY){ stillPending.push(action); continue; }
+      const target = findPieceAt(action.toX, action.toY);
+      if(target && target.faction === PLAYER){ stillPending.push(action); continue; }
+      if(!passableFor(live, action.toX, action.toY)){ stillPending.push(action); continue; }
+      const legal = getLegalMoves(live,false).some(m=>m.x===action.toX && m.y===action.toY);
+      if(!legal){ stillPending.push(action); continue; }
+      if(movePiece(live, action.toX, action.toY, 'replay')) changed = true;
+      stillPending.push(action);
+      continue;
+    }
+    if(action.kind === 'spawn'){
+      const existing = getPiece(action.pieceId) || pieces.find(p=>p.alive && p.clientActionId === action.actionId);
+      if(existing){ stillPending.push(action); continue; }
+      if(!ownFactionAlive()) continue;
+      const occupying = findPieceAt(action.x, action.y);
+      if(occupying){ stillPending.push(action); continue; }
+      const legalSpawn = inBounds(action.x, action.y) && eligibleSpawnTiles(PLAYER, action.type).some(t=>t.x===action.x && t.y===action.y);
+      if(!legalSpawn){ stillPending.push(action); continue; }
+      newPiece(PLAYER, action.type, action.x, action.y, {ready:false, id:action.pieceId, clientActionId:action.actionId, clientActionBy:username || ''});
+      burst(action.x, action.y, factions[PLAYER].color, 10);
+      changed = true;
+      stillPending.push(action);
+      continue;
+    }
+  }
+  pendingPlayerActions = stillPending;
+  return changed;
 }
 function findWinnerIndexAgainst(loser){
   const alive = factions.find(f=>f.alive && f.idx !== loser);
@@ -410,22 +512,30 @@ async function writeStateNow(reason='sync'){
   if(!stateRef || !gameStarted || writingState) return;
   writingState = true;
   try{
-    const payload = serializeState(reason);
-    localStateVersion = payload.version;
-    await setDoc(stateRef, payload, {merge:false});
-    stateDirty = false;
-    localWritePendingUntil = 0;
+    let committedVersion = localStateVersion || 0;
+    await runTransaction(db, async tx => {
+      const cur = await tx.get(stateRef);
+      const curVersion = cur.exists() ? Number(cur.data().version || 0) : 0;
+      const payload = serializeState(reason);
+      payload.version = Math.max(curVersion + 1, (localStateVersion || 0) + 1);
+      committedVersion = payload.version;
+      tx.set(stateRef, payload, {merge:false});
+    });
+    localStateVersion = Math.max(localStateVersion || 0, committedVersion);
+    stateDirty = pendingPlayerActions.length > 0;
+    localWritePendingUntil = pendingPlayerActions.length ? now() + PENDING_ACTION_GRACE_SECONDS : 0;
     lastStateWrite = now();
-  }catch(e){ console.warn('state write failed', e); setNetwork('Sync delayed — retrying'); }
+  }catch(e){ console.warn('state write failed', e); setNetwork('Sync delayed — retrying'); stateDirty = true; }
   finally{ writingState = false; }
 }
 function queueReliableStateWrite(reason='playerAction'){
   stateDirty = true;
   reliableWriteReason = reason;
-  localWritePendingUntil = now() + 8;
+  localWritePendingUntil = now() + PENDING_ACTION_GRACE_SECONDS;
   if(!reliableWriteTimer){
     reliableWriteTimer = setInterval(()=>{
-      if(!stateDirty){ clearInterval(reliableWriteTimer); reliableWriteTimer=null; return; }
+      if(!stateDirty && !pendingPlayerActions.length){ clearInterval(reliableWriteTimer); reliableWriteTimer=null; return; }
+      if(pendingPlayerActions.length) reapplyPendingPlayerActions();
       writeStateNow(reliableWriteReason);
     }, 650);
   }
@@ -442,8 +552,13 @@ async function requestPlayerMove(piece,x,y){
   if(!live || !cooldownReady(live)){ toast('That piece is still cooling down.'); return false; }
   const legal = getLegalMoves(live,false);
   if(!legal.some(m=>m.x===x && m.y===y)){ toast('That piece cannot move there.'); return false; }
+  const fromX = live.x, fromY = live.y;
   const ok = movePiece(live,x,y,'player');
-  if(ok){ selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards(); queueReliableStateWrite('playerMove'); }
+  if(ok){
+    rememberPendingPlayerAction({kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, faction:PLAYER, type:live.type, fromX, fromY, toX:x, toY:y});
+    selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
+    queueReliableStateWrite('playerMove');
+  }
   return ok;
 }
 async function requestPlayerSpawn(x,y){
@@ -456,7 +571,10 @@ async function requestPlayerSpawn(x,y){
   if(!inBounds(x,y) || !legalSpawn){
     toast('That is not an eligible controlled spawn tile for this faction or piece.'); return;
   }
-  newPiece(PLAYER,type,x,y,{ready:false});
+  const actionId = makeClientActionId('spawn');
+  const pieceId = allocateClientPieceId();
+  newPiece(PLAYER,type,x,y,{ready:false,id:pieceId,clientActionId:actionId,clientActionBy:username || ''});
+  rememberPendingPlayerAction({kind:'spawn', actionId, pieceId, faction:PLAYER, type, x, y});
   f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER);
   spawnSelection=null;
   renderSpawnCards(); updateHUD();
@@ -994,15 +1112,18 @@ function setupFactions(){
 function newPiece(faction,type,x,y,opts={}){
   const def = pieceDefs[type];
   if(!def) throw new Error('Missing piece def '+type);
+  const assignedId = opts.id != null ? opts.id : idCounter++;
   const p = {
-    id:idCounter++, faction, type, x, y, px:x, py:y, targetX:x, targetY:y,
-    lastMove: now() - (opts.ready ? def.cooldown : def.cooldown*.35*Math.random()),
+    id:assignedId, faction, type, x, y, px:x, py:y, targetX:x, targetY:y,
+    lastMove: now() - (opts.ready ? def.cooldown * COOLDOWN_SLOWDOWN_MULTIPLIER : def.cooldown * COOLDOWN_SLOWDOWN_MULTIPLIER * .35 * Math.random()),
     stationarySince: now(), lastStationX:x, lastStationY:y,
     hp:def.hp || 1, maxHp:def.hp || 1,
     captures:opts.captures||0, level:opts.level||1, alive:true,
     born:now(), wobble:Math.random()*Math.PI*2,
-    flash:0, promoted:false
+    flash:0, promoted:false,
+    clientActionId:opts.clientActionId || '', clientActionBy:opts.clientActionBy || ''
   };
+  if(typeof assignedId === 'number') idCounter = Math.max(idCounter, assignedId + 1);
   pieces.push(p);
   markStateDirty();
   const f = factions[faction];
@@ -1139,7 +1260,7 @@ function cooldownFor(piece){
   if(f.aiStyle==='defensive') style=1.06;
   if(f.aiStyle==='expansion') style=.95;
   if(f.id==='shadow') style*=.78;
-  return def.cooldown * levelBoost * style * (1+roughPenalty);
+  return def.cooldown * COOLDOWN_SLOWDOWN_MULTIPLIER * levelBoost * style * (1+roughPenalty);
 }
 function cooldownReady(piece){return now() - piece.lastMove >= cooldownFor(piece);}
 function cooldownProgress(piece){return clamp((now()-piece.lastMove)/cooldownFor(piece),0,1);}
@@ -1519,23 +1640,15 @@ function conquerFaction(winner, loser, cx, cy){
   if(winner===PLAYER) gameStats.kingsTaken++;
   let taken=0;
   for(const t of board){ if(t.owner===loser){ t.owner=winner; t.captureKind='conquered'; t.glow=0; taken++; } }
+  let removed=0;
   for(const p of pieces){
     if(p.alive && p.faction===loser){
-      // surviving army fractures; most vanish, a few mercenary ghosts remain neutralized by defeat
-      if(Math.random()<.72) p.alive=false;
-      else { p.faction=winner; p.flash=1; }
+      p.alive=false;
+      removed++;
     }
   }
-  const weakest=weakestTypeForFaction(winner);
-  let spawned=0;
-  for(let r=1;r<8 && spawned<3;r++){
-    for(let yy=cy-r;yy<=cy+r && spawned<3;yy++) for(let xx=cx-r;xx<=cx+r && spawned<3;xx++){
-      if(inBounds(xx,yy) && passableFor({type:weakest},xx,yy) && !findPieceAt(xx,yy) && Math.random()<.23){
-        newPiece(winner,weakest,xx,yy,{ready:true}); spawned++;
-      }
-    }
-  }
-  toast(`${factions[winner].short} captured the ${lf.short} king. ${taken} tiles absorbed; 3 weak pieces seed the conquered land.`, 4200);
+  if(loser===PLAYER) pendingPlayerActions = [];
+  toast(`${factions[winner].short} captured the ${lf.short} king. ${taken} tiles absorbed; ${removed} defeated pieces removed.`, 4200);
 }
 function triggerDefeat(winner){
   playerDefeated = true;
@@ -1580,7 +1693,7 @@ function createGame(){
   const king=getPiece(factions[PLAYER].kingId) || pieces.find(p=>p.alive&&p.type==='king');
   if(king){ cam.x=(king.x+.5)*BASE_CELL-innerWidth/2; cam.y=(king.y+.5)*BASE_CELL-innerHeight/2; }
   cam.zoom=1;
-  selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[];
+  selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[]; pendingPlayerActions=[];
   playerDefeated=false; spectating=false; paused=false; defeatOverlay.style.display='none';
   if(pauseBtn) pauseBtn.textContent='Pause';
   maybeAnnounceWorldWinner.done=false;
@@ -1604,7 +1717,8 @@ function renderSpawnCards(){
     const def=pieceDefs[type];
     const card=document.createElement('div');
     card.className='spawnCard glass '+(ready?'ready':'locked')+(spawnSelection===i?' selected':'');
-    card.innerHTML=`<div><div class="spawnName">${def.icon} ${def.name}</div><div class="spawnMeta">${patternName(def.pattern)} · ${def.cooldown.toFixed(1)}s cooldown</div></div><div class="spawnIcon">${def.icon}</div>`;
+    const shownCooldown = (def.cooldown * COOLDOWN_SLOWDOWN_MULTIPLIER).toFixed(1);
+    card.innerHTML=`<div><div class="spawnName">${def.icon} ${def.name}</div><div class="spawnMeta">${patternName(def.pattern)} · ${shownCooldown}s cooldown</div></div><div class="spawnIcon">${def.icon}</div>`;
     card.onclick=()=>{
       if(!ready){ toast('Spawn bar is not full yet. Keep expanding and capturing.'); return; }
       spawnSelection = spawnSelection===i ? null : i;
@@ -2207,28 +2321,87 @@ function handleSpawnPlace(x,y){
   requestPlayerSpawn(x,y);
 }
 
+const activePointers = new Map();
+let pinchGesture = null;
+function pointerList(){ return Array.from(activePointers.values()); }
+function beginPinchGesture(){
+  const pts = pointerList();
+  if(pts.length < 2) return;
+  const a = pts[0], b = pts[1];
+  const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+  const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+  pinchGesture = {
+    distance,
+    zoom:cam.zoom,
+    centerX:cx,
+    centerY:cy,
+    worldX:(cx + cam.x) / cam.zoom,
+    worldY:(cy + cam.y) / cam.zoom
+  };
+  dragging = false;
+  pointerMoved = true;
+  canvas.classList.add('dragging');
+}
+function updatePinchGesture(){
+  if(!pinchGesture || activePointers.size < 2) return;
+  const pts = pointerList();
+  const a = pts[0], b = pts[1];
+  const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+  const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+  const nz = clamp(pinchGesture.zoom * (distance / pinchGesture.distance), MIN_ZOOM, MAX_ZOOM);
+  cam.zoom = nz;
+  cam.x = pinchGesture.worldX * nz - cx;
+  cam.y = pinchGesture.worldY * nz - cy;
+  pointerMoved = true;
+  clampCam();
+}
 canvas.addEventListener('pointerdown', e=>{
   canvas.setPointerCapture(e.pointerId);
-  dragging=true; pointerMoved=false; canvas.classList.add('dragging');
+  activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(activePointers.size >= 2){ beginPinchGesture(); return; }
+  dragging=true; pointerMoved=false; pinchGesture=null; canvas.classList.add('dragging');
   dragStart={x:e.clientX,y:e.clientY,camX:cam.x,camY:cam.y,t:performance.now()};
 });
 canvas.addEventListener('pointermove', e=>{
+  if(activePointers.has(e.pointerId)) activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinchGesture && activePointers.size >= 2){ updatePinchGesture(); return; }
   if(!dragging||!dragStart) return;
   const dx=e.clientX-dragStart.x, dy=e.clientY-dragStart.y;
   if(Math.hypot(dx,dy)>6) pointerMoved=true;
   cam.x=dragStart.camX-dx; cam.y=dragStart.camY-dy; clampCam();
 });
 canvas.addEventListener('pointerup', e=>{
+  const wasPinching = !!pinchGesture;
+  activePointers.delete(e.pointerId);
+  try{ canvas.releasePointerCapture(e.pointerId); }catch(err){}
+  if(wasPinching){
+    if(activePointers.size >= 2) beginPinchGesture();
+    else {
+      pinchGesture = null;
+      if(activePointers.size === 1){
+        const p = pointerList()[0];
+        dragging = true; pointerMoved = true;
+        dragStart = {x:p.x,y:p.y,camX:cam.x,camY:cam.y,t:performance.now()};
+      } else {
+        dragging=false; canvas.classList.remove('dragging');
+      }
+    }
+    return;
+  }
   if(!dragging) return;
   dragging=false; canvas.classList.remove('dragging');
   if(!pointerMoved) onTap(e.clientX,e.clientY);
 });
-canvas.addEventListener('pointercancel',()=>{dragging=false;canvas.classList.remove('dragging');});
+canvas.addEventListener('pointercancel',e=>{
+  activePointers.delete(e.pointerId);
+  if(activePointers.size < 2) pinchGesture = null;
+  if(!activePointers.size){ dragging=false; canvas.classList.remove('dragging'); }
+});
 canvas.addEventListener('wheel', e=>{
   e.preventDefault();
   const old=cam.zoom;
   const factor=e.deltaY<0?1.1:.9;
-  const nz=clamp(cam.zoom*factor,.55,1.75);
+  const nz=clamp(cam.zoom*factor,MIN_ZOOM,MAX_ZOOM);
   const mx=e.clientX, my=e.clientY;
   const wx=(mx+cam.x)/old, wy=(my+cam.y)/old;
   cam.zoom=nz;
