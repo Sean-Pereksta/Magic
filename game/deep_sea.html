@@ -70,8 +70,10 @@
   .mobileStick{position:absolute;width:112px;height:112px;margin-left:-56px;margin-top:-56px;border-radius:50%;border:1px solid rgba(255,255,255,.20);background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.08),rgba(255,255,255,.025) 56%,rgba(3,12,25,.10));box-shadow:0 0 26px rgba(94,228,255,.08) inset,0 12px 34px rgba(0,0,0,.15);opacity:.34;pointer-events:none;transform:translate3d(0,0,0);}
   .mobileStick .knob{position:absolute;left:50%;top:50%;width:48px;height:48px;margin-left:-24px;margin-top:-24px;border-radius:50%;background:radial-gradient(circle at 36% 28%,rgba(255,255,255,.40),rgba(94,228,255,.24) 52%,rgba(3,12,25,.20));border:1px solid rgba(255,255,255,.22);box-shadow:0 0 18px rgba(94,228,255,.10);transform:translate3d(0,0,0);}
   #moveStick{left:82px;bottom:82px;top:auto;}
-  #lookStick{right:82px;bottom:82px;left:auto;top:auto;}
-  #moveStick.sprinting{opacity:.56;border-color:rgba(255,209,102,.42);box-shadow:0 0 30px rgba(255,209,102,.20),0 0 26px rgba(94,228,255,.10) inset;}
+  #lookStick{right:82px;bottom:82px;left:auto;top:auto;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:950;letter-spacing:.9px;color:rgba(255,255,255,.78);}
+  #lookStick .knob{display:none;}
+  #lookStick::after{content:'SPRINT';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-shadow:0 0 12px rgba(255,209,102,.25);}
+  #moveStick.sprinting,#lookStick.sprinting{opacity:.62;border-color:rgba(255,209,102,.50);box-shadow:0 0 34px rgba(255,209,102,.24),0 0 26px rgba(94,228,255,.10) inset;background:radial-gradient(circle at 50% 50%,rgba(255,209,102,.16),rgba(255,255,255,.035) 58%,rgba(3,12,25,.12));}
   body.mobile-play #mobileControls{display:block;}
   body.mobile-nohud #hud,body.mobile-nohud #abilityBar,body.mobile-nohud #depthGauge,body.mobile-nohud #centerDot,body.mobile-nohud #lockHint{display:none!important;}
   body.mobile-play canvas{cursor:none;}
@@ -107,7 +109,7 @@
 <div id="menu"><div class="card">
   <h1>Deep Sea 3D Swim</h1>
   <p>Pick a random starting body part, hunt small surface fish, and dive deeper as predators get faster and meaner.</p>
-  <button id="startBtn">Start Dive</button>
+  <button id="startBtn">Start Dive</button><button class="secondary" id="fullscreenBtn">Full Screen</button>
 </div></div>
 <div id="dead"><div class="card">
   <h1 id="deadTitle">You were eaten.</h1>
@@ -126,6 +128,7 @@
     dead: document.getElementById('dead'),
     lockHint: document.getElementById('lockHint'),
     startBtn: document.getElementById('startBtn'),
+    fullscreenBtn: document.getElementById('fullscreenBtn'),
     restartBtn: document.getElementById('restartBtn'),
     menuBtn: document.getElementById('menuBtn'),
     zoneTxt: document.getElementById('zoneTxt'),
@@ -185,6 +188,7 @@
     const data = mobile[kind];
     data.x = 0; data.y = 0; data.mag = 0; data.active = false;
     if(kind === 'move') data.sprint = false;
+    if(kind === 'look') data.sprint = false;
     const knob = kind === 'move' ? ui.moveKnob : ui.lookKnob;
     const stick = kind === 'move' ? ui.moveStick : ui.lookStick;
     if(knob) knob.style.transform = 'translate3d(0,0,0)';
@@ -202,6 +206,12 @@
     const knob = kind === 'move' ? ui.moveKnob : ui.lookKnob;
     const stick = kind === 'move' ? ui.moveStick : ui.lookStick;
     const maxR = Math.max(42, Math.min(58, Math.min(W,H) * .105));
+    if(kind === 'look'){
+      data.x = 0; data.y = 0; data.mag = 1; data.active = true; data.sprint = true;
+      if(stick) stick.classList.add('sprinting');
+      if(knob) knob.style.transform = 'translate3d(0,0,0)';
+      return;
+    }
     const dx = x - base.x;
     const dy = y - base.y;
     const raw = Math.hypot(dx,dy);
@@ -212,12 +222,7 @@
     data.y = ny / maxR;
     data.mag = clamp(raw / maxR, 0, 1);
     data.active = true;
-    if(kind === 'move'){
-      data.sprint = data.mag > .82;
-      if(stick) stick.classList.toggle('sprinting', data.sprint);
-    } else if(raw > 8){
-      mobile.lookStart.moved = true;
-    }
+    data.sprint = false;
     if(knob) knob.style.transform = `translate3d(${nx}px,${ny}px,0)`;
   }
   function handleMobilePointerDown(e){
@@ -232,15 +237,16 @@
     } else {
       mobile.lookId = e.pointerId;
       mobile.lookStart = {x:e.clientX,y:e.clientY,t:performance.now(),moved:false};
-      setStickBase('look', e.clientX, e.clientY);
-      updateStick('look', e.clientX, e.clientY);
+      // Right-side control is now a fixed hold-to-sprint button, not a look stick.
+      setStickBase('look', W - 82, H - 82);
+      updateStick('look', W - 82, H - 82);
     }
     try{ e.target.setPointerCapture?.(e.pointerId); }catch(_){ }
   }
   function handleMobilePointerMove(e){
     if(!IS_TOUCH || e.pointerType === 'mouse') return;
     if(e.pointerId === mobile.moveId){ e.preventDefault(); updateStick('move', e.clientX, e.clientY); }
-    if(e.pointerId === mobile.lookId){ e.preventDefault(); updateStick('look', e.clientX, e.clientY); }
+    if(e.pointerId === mobile.lookId){ e.preventDefault(); updateStick('look', W - 82, H - 82); }
   }
   function handleMobilePointerUp(e){
     if(!IS_TOUCH || e.pointerType === 'mouse') return;
@@ -249,9 +255,6 @@
     }
     if(e.pointerId === mobile.lookId){
       e.preventDefault();
-      const elapsed = performance.now() - mobile.lookStart.t;
-      const moved = Math.hypot(e.clientX-mobile.lookStart.x, e.clientY-mobile.lookStart.y);
-      if(state.mode === 'play' && elapsed < 240 && moved < 12) biteLunge();
       mobile.lookId = null; resetMobileStick('look');
     }
   }
@@ -458,6 +461,21 @@ const keys = Object.create(null);
     syncMobileUI();
   }
   ui.startBtn.onclick = start;
+  function updateFullscreenButton(){
+    if(ui.fullscreenBtn) ui.fullscreenBtn.textContent = document.fullscreenElement ? 'Exit Full Screen' : 'Full Screen';
+  }
+  async function toggleFullscreen(){
+    try{
+      if(document.fullscreenElement){
+        await document.exitFullscreen?.();
+      } else {
+        await document.documentElement.requestFullscreen?.();
+      }
+    }catch(_){ }
+    updateFullscreenButton();
+  }
+  if(ui.fullscreenBtn) ui.fullscreenBtn.onclick = toggleFullscreen;
+  addEventListener('fullscreenchange', updateFullscreenButton, {passive:true});
   ui.restartBtn.onclick = start;
   ui.menuBtn.onclick = () => { state.mode='menu'; ui.menu.style.display='flex'; ui.dead.style.display='none'; ui.hud.style.display='none'; ui.abilityBar.style.display='none'; resetMobileStick('move'); resetMobileStick('look'); syncMobileUI(); document.exitPointerLock?.(); };
 
@@ -965,10 +983,12 @@ const keys = Object.create(null);
 
   function updatePlayer(dt){
     const p = state.player;
-    if(IS_TOUCH && mobile.look.active){
-      const lookTurn = 2.35 * (1 + Math.min(.55, p.mods.turn*.18));
-      p.yaw = wrap(p.yaw + mobile.look.x * lookTurn * dt);
-      p.pitch = clamp(p.pitch - mobile.look.y * lookTurn * .82 * dt, -1.05, .82);
+    const mobileMove = IS_TOUCH && mobile.move.active ? mobile.move : {x:0,y:0,mag:0,active:false,sprint:false};
+    if(IS_TOUCH && mobileMove.active){
+      // Mobile is now one steering stick plus a sprint button: your fish always swims forward.
+      const steerTurn = 2.55 * (1 + Math.min(.65, p.mods.turn*.20));
+      p.yaw = wrap(p.yaw + mobileMove.x * steerTurn * dt);
+      p.pitch = clamp(p.pitch - mobileMove.y * steerTurn * .72 * dt, -1.05, .82);
     }
     const f = forwardFromAngles(p.yaw,p.pitch);
     const right = {x:Math.cos(p.yaw), y:0, z:-Math.sin(p.yaw)};
@@ -977,13 +997,12 @@ const keys = Object.create(null);
     const maxSprint = sprintMax(p);
     if(p.sprintEnergy == null) p.sprintEnergy = maxSprint;
     p.sprintEnergy = clamp(p.sprintEnergy, 0, maxSprint);
-    const mobileMove = IS_TOUCH && mobile.move.active ? mobile.move : {x:0,y:0,mag:0,active:false,sprint:false};
-    const forwardInput = (keys.w || keys.arrowup ? 1 : 0) + clamp(-mobileMove.y, 0, 1);
-    const backInput = (keys.s || keys.arrowdown ? 1 : 0) + clamp(mobileMove.y, 0, 1);
-    const leftInput = (keys.a || keys.arrowleft ? 1 : 0) + clamp(-mobileMove.x, 0, 1);
-    const rightInput = (keys.d || keys.arrowright ? 1 : 0) + clamp(mobileMove.x, 0, 1);
-    const movingInput = !!(keys.w || keys.arrowup || keys.a || keys.arrowleft || keys.d || keys.arrowright || keys.s || keys.arrowdown || mobileMove.mag > .08);
-    const sprintActive = !!((keys.shift || (mobileMove.sprint && mobileMove.mag > .82)) && p.sprintEnergy > 1.2 && movingInput);
+    const forwardInput = 1 + (keys.w || keys.arrowup ? .20 : 0);
+    const backInput = 0;
+    const leftInput = (keys.a || keys.arrowleft ? 1 : 0);
+    const rightInput = (keys.d || keys.arrowright ? 1 : 0);
+    const sprintButtonHeld = !!(IS_TOUCH && mobile.look.active && mobile.look.sprint);
+    const sprintActive = !!((keys.shift || sprintButtonHeld) && p.sprintEnergy > 1.2);
     p.sprinting = sprintActive;
     if(sprintActive){
       const drain = Math.max(24, 45 - (p.mods.sprintDrain || 0));
