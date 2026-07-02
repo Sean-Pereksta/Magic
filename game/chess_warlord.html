@@ -1,0 +1,1775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Faction Chess: Warlords Online</title>
+<style>
+  :root{
+    --bg:#080b13;
+    --panel:rgba(8,12,22,.82);
+    --panel2:rgba(13,19,32,.92);
+    --text:#edf4ff;
+    --muted:#9ba9bc;
+    --good:#7ff0b0;
+    --bad:#ff7979;
+    --gold:#ffd46b;
+    --blue:#8fc7ff;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;color:var(--text);touch-action:none;}
+  canvas{display:block;width:100vw;height:100vh;background:#07101e;cursor:grab;}
+  canvas.dragging{cursor:grabbing;}
+  #topbar{position:fixed;left:0;right:0;top:0;height:92px;display:flex;align-items:stretch;justify-content:center;gap:10px;padding:10px 12px;pointer-events:none;z-index:4;}
+  #quickControls{width:150px;min-width:132px;padding:9px 10px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;pointer-events:auto;}
+  #centerBtn{appearance:none;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.09);color:#fff;border-radius:13px;padding:9px 10px;font-size:12px;font-weight:1000;cursor:pointer;width:100%;}
+  #centerBtn:hover{background:rgba(255,212,107,.22);border-color:rgba(255,212,107,.72)}
+  #quickPct{font-size:12px;font-weight:900;color:#dbeafe;text-align:center;}
+  .glass{background:linear-gradient(180deg,rgba(18,28,48,.88),rgba(8,12,21,.76));border:1px solid rgba(160,190,255,.18);box-shadow:0 16px 50px rgba(0,0,0,.32), inset 0 1px rgba(255,255,255,.09);backdrop-filter: blur(10px);border-radius:18px;}
+  #status{display:none !important;}
+  #title{font-weight:900;letter-spacing:.5px;font-size:16px;display:flex;align-items:center;gap:8px;}
+  #subtitle{font-size:12px;color:var(--muted);line-height:1.25;}
+  #spawnPanel{flex:0 1 720px;max-width:min(720px,calc(100vw - 190px));display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:10px;pointer-events:auto;}
+  .spawnCard{position:relative;overflow:hidden;padding:10px 10px 8px;display:flex;flex-direction:column;justify-content:space-between;border-radius:16px;border:1px solid rgba(255,255,255,.15);background:rgba(12,17,28,.74);min-width:0;transition:transform .12s,border-color .12s,background .12s;}
+  .spawnCard.ready:hover,.spawnCard.selected{transform:translateY(-2px);border-color:rgba(255,230,140,.8);background:rgba(45,36,15,.85);}
+  .spawnCard.locked{opacity:.54;}
+  .spawnName{font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .spawnMeta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .spawnIcon{position:absolute;right:10px;bottom:5px;font-size:28px;opacity:.76;filter:drop-shadow(0 4px 10px #000);}
+  #rightHUD{display:none !important;}
+  .bar{height:9px;border-radius:999px;background:rgba(255,255,255,.14);overflow:hidden;border:1px solid rgba(255,255,255,.1);}
+  .fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#67e8f9,#facc15,#fb7185);box-shadow:0 0 16px rgba(250,204,21,.36);}
+  #bottomHint{display:none !important;}
+  #piecePanel{position:fixed;right:12px;bottom:14px;width:min(360px,calc(100vw - 24px));padding:12px;z-index:4;pointer-events:auto;display:none;}
+  #piecePanel h3{margin:0 0 5px;font-size:16px;}
+  #piecePanel p{margin:3px 0;color:var(--muted);font-size:12px;line-height:1.35;}
+  #piecePanel button,#menu button{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;padding:8px 10px;border-radius:12px;font-weight:800;margin-top:8px;cursor:pointer;}
+  #piecePanel button:hover,#menu button:hover{background:rgba(255,255,255,.16)}
+  #menu{display:none !important;}
+  #menu button.active{background:rgba(255,212,107,.24);border-color:rgba(255,212,107,.7)}
+  #minimap{display:none !important;}
+  #networkBadge{position:fixed;right:12px;top:108px;z-index:5;display:flex;gap:8px;align-items:center;padding:9px 11px;border-radius:15px;background:rgba(6,10,18,.84);border:1px solid rgba(255,255,255,.16);box-shadow:0 16px 42px rgba(0,0,0,.32);font-size:12px;color:#dbeafe;pointer-events:auto;}
+  #exitLobbyBtn{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;border-radius:10px;padding:6px 9px;font-weight:900;cursor:pointer;}
+  #exitLobbyBtn:hover{background:rgba(255,255,255,.16)}
+  #toast{position:fixed;left:50%;top:108px;transform:translateX(-50%);padding:10px 14px;border-radius:16px;background:rgba(6,10,18,.88);border:1px solid rgba(255,255,255,.18);box-shadow:0 20px 50px rgba(0,0,0,.35);z-index:6;font-size:13px;display:none;max-width:min(720px,calc(100vw - 26px));text-align:center;}
+  #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 30%,rgba(80,140,210,.16),rgba(4,6,11,.82));z-index:10;}
+  #startCard{width:min(760px,calc(100vw - 28px));max-height:calc(100vh - 28px);overflow:auto;padding:22px;border-radius:26px;background:linear-gradient(180deg,rgba(25,36,62,.94),rgba(7,10,18,.94));border:1px solid rgba(255,255,255,.18);box-shadow:0 35px 120px rgba(0,0,0,.62);}
+  #startCard h1{margin:0 0 6px;font-size:clamp(28px,5vw,52px);line-height:.98;letter-spacing:-1.3px;}
+  #startCard .lead{color:#d4e5ff;font-size:15px;line-height:1.45;margin:0 0 14px;}
+  #factionPick{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:14px 0;}
+  .factionCard{padding:12px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);cursor:pointer;transition:.12s;min-height:120px;}
+  .factionCard:hover,.factionCard.chosen{transform:translateY(-2px);border-color:rgba(255,215,112,.9);background:rgba(255,215,112,.1)}
+  .factionCard b{display:block;margin-bottom:4px;font-size:14px;}
+  .factionCard small{display:block;color:var(--muted);line-height:1.35;font-size:12px;}
+  .pickLabel{margin:12px 0 7px;font-size:12px;font-weight:1000;color:#e5edf8;text-transform:uppercase;letter-spacing:.08em;}
+  #difficultySelect{appearance:none;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.18);background:rgba(7,11,20,.9);color:#fff;border-radius:15px;padding:12px 42px 12px 13px;font-size:14px;font-weight:900;cursor:pointer;box-shadow:inset 0 1px rgba(255,255,255,.08);}
+  #difficultyPick{position:relative;margin:0 0 14px;}
+  #difficultyPick::after{content:'▾';position:absolute;left:min(330px,calc(100% - 32px));top:50%;transform:translateY(-50%);pointer-events:none;color:#facc15;font-size:14px;}
+  #defeatOverlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 28%,rgba(255,70,70,.18),rgba(3,5,10,.86));z-index:12;padding:16px;}
+  #defeatCard{width:min(520px,calc(100vw - 30px));padding:24px;border-radius:26px;background:linear-gradient(180deg,rgba(32,13,18,.96),rgba(9,8,13,.95));border:1px solid rgba(255,255,255,.18);box-shadow:0 35px 120px rgba(0,0,0,.62);text-align:center;}
+  #defeatCard h2{margin:0 0 8px;font-size:clamp(30px,6vw,50px);letter-spacing:-.8px;}
+  #defeatCard p{margin:0 auto 16px;color:#d6deea;line-height:1.4;max-width:420px;}
+  #defeatActions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;}
+  #defeatActions button{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1);color:#fff;padding:11px 14px;border-radius:15px;font-weight:1000;cursor:pointer;}
+  #defeatActions button:first-child{background:linear-gradient(135deg,#facc15,#fb7185);color:#1c0b12;border:0;}
+  #startBtn{appearance:none;border:0;background:linear-gradient(135deg,#facc15,#fb7185);color:#1c0b12;border-radius:17px;padding:13px 18px;font-size:15px;font-weight:1000;cursor:pointer;box-shadow:0 18px 45px rgba(251,113,133,.24);}
+  #startBtn:hover{filter:brightness(1.06)}
+  @media(max-width:760px){
+    #topbar{height:98px;padding:8px;gap:6px;}
+    #quickControls{width:104px;min-width:104px;padding:7px 6px;border-radius:14px;}
+    #centerBtn{font-size:10px;padding:8px 6px;border-radius:11px;}
+    #quickPct{font-size:10px;}
+    #status{display:none;}
+    #rightHUD{display:none;}
+    #spawnPanel{max-width:calc(100vw - 122px);grid-template-columns:repeat(3,1fr);gap:6px;}
+    .spawnCard{padding:8px 7px;min-height:72px;border-radius:14px;}
+    .spawnName{font-size:11px;}
+    .spawnMeta{font-size:10px;}
+    .spawnIcon{font-size:22px;right:7px;bottom:3px;}
+    #minimap{display:none !important;}
+    #menu{display:none !important;}
+    #bottomHint{display:none !important;}
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<canvas id="minimap"></canvas>
+<div id="topbar">
+  <div id="quickControls" class="glass"><button id="centerBtn">Center King</button><div id="quickPct">Spawn 0%</div></div>
+  <div id="status" class="glass"></div>
+  <div id="spawnPanel"></div>
+  <div id="rightHUD" class="glass">
+    <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:900"><span>Spawn Bar</span><span id="spawnPct">0%</span></div>
+    <div class="bar"><div id="spawnFill" class="fill"></div></div>
+    <div id="scoreLine" style="font-size:12px;color:var(--muted)">Territory 0 · Captures 0</div>
+    <div id="factionLine" style="font-size:12px;color:var(--muted)">Faction: Crownward</div>
+  </div>
+</div>
+<div id="toast"></div>
+<div id="networkBadge"><span id="networkText">Connecting…</span><button id="exitLobbyBtn">Exit</button></div>
+<div id="bottomHint"></div>
+<div id="piecePanel" class="glass"></div>
+<div id="menu" class="glass">
+  <button id="territoryBtn" class="active">Territory</button>
+  <button id="pauseBtn">Pause</button>
+</div>
+<div id="overlay">
+  <div id="startCard">
+    <h1>Faction Chess Warlords Online</h1>
+    <p class="lead">A giant real-time chess war: every piece has a cooldown, every moved-on square becomes yours, generals and towers project territory, and enemies expand across a huge terrain board. Capture a king to absorb a faction and seed your weakest pieces in the conquered region.</p>
+    <div class="pickLabel">Choose your faction</div>
+    <div id="factionPick"></div>
+    <div class="pickLabel">Enemy difficulty</div>
+    <div id="difficultyPick"></div>
+    <button id="startBtn">Start Local Preview</button>
+  </div>
+</div>
+<div id="defeatOverlay">
+  <div id="defeatCard">
+    <h2>You were defeated</h2>
+    <p id="defeatDetails">Your king was captured and your lands were absorbed.</p>
+    <div id="defeatActions">
+      <button id="restartBtn">Exit to Lobby</button>
+      <button id="spectateBtn">Spectate</button>
+    </div>
+  </div>
+</div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction,
+  serverTimestamp, collection, getDocs, updateDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+(() => {
+'use strict';
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const mini = document.getElementById('minimap');
+const mctx = mini.getContext('2d');
+const spawnPanel = document.getElementById('spawnPanel');
+const spawnFill = document.getElementById('spawnFill');
+const spawnPct = document.getElementById('spawnPct');
+const scoreLine = document.getElementById('scoreLine');
+const factionLine = document.getElementById('factionLine');
+const piecePanel = document.getElementById('piecePanel');
+const toastEl = document.getElementById('toast');
+const overlay = document.getElementById('overlay');
+const factionPick = document.getElementById('factionPick');
+const difficultyPick = document.getElementById('difficultyPick');
+const defeatOverlay = document.getElementById('defeatOverlay');
+const defeatDetails = document.getElementById('defeatDetails');
+const restartBtn = document.getElementById('restartBtn');
+const spectateBtn = document.getElementById('spectateBtn');
+const quickPct = document.getElementById('quickPct');
+const startBtn = document.getElementById('startBtn');
+const centerBtn = document.getElementById('centerBtn');
+const networkText = document.getElementById('networkText');
+const exitLobbyBtn = document.getElementById('exitLobbyBtn');
+const territoryBtn = document.getElementById('territoryBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+
+const BOARD_W = 86;
+const BOARD_H = 86;
+const BASE_CELL = 46;
+const MAX_AI_PER_FRAME = 22;
+let PLAYER = 0;
+const SPAWN_SLOWEST_SECONDS = 105;
+const SPAWN_FASTEST_SECONDS = 8.8;
+const SPAWN_START_GRACE_TILES = 35;
+const SPAWN_LAND_RAMP_TILES = 850;
+const DIRS8 = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+const ORTHO = [[1,0],[-1,0],[0,1],[0,-1]];
+const DIAG = [[1,1],[1,-1],[-1,1],[-1,-1]];
+let DPR = 1;
+let W = 0;
+let H = 0;
+let cam = {x: 0, y: 0, zoom: 1};
+let dragging = false;
+let dragStart = null;
+let pointerMoved = false;
+let selectedPiece = null;
+let legalMoves = [];
+let spawnSelection = null;
+let showTerritory = true;
+let paused = false;
+let lastTime = performance.now();
+let tickTime = 0;
+let particles = [];
+let floatingText = [];
+let chosenFactionId = 'crownward';
+let chosenDifficultyId = 'normal';
+let gameStarted = false;
+let playerDefeated = false;
+let spectating = false;
+let moveModeHint = '';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.firebasestorage.app",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+  measurementId: "G-8PR6LVKSH3"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const params = new URLSearchParams(location.search);
+const GAME_KEY = 'chesswarlord';
+const MAX_ONLINE_PLAYERS = 8;
+let lobbyId = params.get('gameId') || params.get('lobbyId') || localStorage.getItem('gh.lastLobbyId') || '';
+let username = (params.get('username') || localStorage.getItem('gh.username') || '').trim();
+let returnTo = params.get('returnTo') || params.get('return') || localStorage.getItem('gh.returnUrl') || '/game/index.html';
+let lobbyData = null;
+let slotNames = [];
+let slotHumans = [];
+let stateRef = null;
+let lobbyRef = null;
+let presenceRef = null;
+let stateUnsub = null;
+let lobbyUnsub = null;
+let heartbeatTimer = null;
+let controllerTimer = null;
+let localStateVersion = 0;
+let stateDirty = false;
+let lastStateWrite = 0;
+let writingState = false;
+let applyingRemote = false;
+let isController = false;
+let controllerName = '';
+let onlineCount = 0;
+let lastRemoteWinner = '';
+let lastLoadedLobbyPlayers = [];
+
+function setNetwork(text){ if(networkText) networkText.textContent = text; }
+function safeDocId(v){ return String(v || 'player').replace(/[^a-zA-Z0-9_@.-]/g,'_').slice(0,120) || 'player'; }
+function isAIName(name){ return /^AI Warlord /.test(String(name || '')); }
+function isHumanSlot(idx){ return !!slotNames[idx] && !isAIName(slotNames[idx]); }
+function displayNameForFaction(idx){ return slotNames[idx] || (factions[idx]?.short) || `Player ${idx+1}`; }
+function markStateDirty(){ if(gameStarted && !applyingRemote) stateDirty = true; }
+function buildSlots(players){
+  const humans = Array.from(new Set((players || []).filter(Boolean))).slice(0,MAX_ONLINE_PLAYERS);
+  const slots = humans.slice();
+  while(slots.length < MAX_ONLINE_PLAYERS) slots.push(`AI Warlord ${slots.length - humans.length + 1}`);
+  slotHumans = humans;
+  slotNames = slots;
+  const mine = humans.indexOf(username);
+  PLAYER = mine >= 0 ? mine : 0;
+  lastLoadedLobbyPlayers = humans;
+}
+function ownFactionAlive(){ return factions[PLAYER] && factions[PLAYER].alive; }
+function myKing(){ const f = factions[PLAYER]; return f ? getPiece(f.kingId) : null; }
+function isMyPiece(p){ return p && p.alive && p.faction === PLAYER && isHumanSlot(PLAYER) && ownFactionAlive(); }
+function stateDocRef(){ return doc(db,'lobbies',lobbyId,'chess_warlord','state'); }
+function presenceCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_presence'); }
+function compressOwners(){ return board.map(t => t.owner == null ? '-' : String(t.owner)).join(''); }
+function applyOwners(str){
+  if(!str || str.length < board.length) return;
+  for(let i=0;i<board.length;i++){
+    const ch = str[i];
+    board[i].owner = ch === '-' ? null : Number(ch);
+    board[i].glow = board[i].glow || 0;
+  }
+  recalcOwnerCounts();
+}
+function serializeState(reason='sync'){
+  recalcOwnerCounts();
+  return {
+    gameKey: GAME_KEY,
+    version: (localStateVersion || 0) + 1,
+    updatedAt: serverTimestamp(),
+    updatedBy: username || 'unknown',
+    reason,
+    playerNames: slotNames,
+    humanPlayers: slotHumans,
+    controller: controllerName || username || '',
+    boardOwners: compressOwners(),
+    stats: gameStats,
+    factions: factions.map(f => ({
+      idx:f.idx,id:f.id,name:f.name,short:f.short,alive:f.alive,kingId:f.kingId,
+      spawnMeter:f.spawnMeter || 0,spawnChoices:f.spawnChoices || [],piecesTaken:f.piecesTaken || 0,
+      territoryTaken:f.territoryTaken || 0,nextThink:f.nextThink || now(),difficulty:f.difficulty || 1
+    })),
+    pieces: pieces.filter(p=>p.alive).map(p => ({
+      i:p.id,f:p.faction,t:p.type,x:p.x,y:p.y,lm:p.lastMove || now(),hp:p.hp,mh:p.maxHp,
+      c:p.captures || 0,lv:p.level || 1,b:p.born || now(),readyAt:(p.lastMove || now()) + cooldownFor(p)
+    })),
+    winner: winnerName() || ''
+  };
+}
+function applyRemoteState(data){
+  if(!data || !data.pieces) return;
+  applyingRemote = true;
+  const wasAlive = factions[PLAYER]?.alive !== false;
+  localStateVersion = Number(data.version || localStateVersion || 0);
+  if(Array.isArray(data.playerNames) && data.playerNames.length){
+    slotNames = data.playerNames.slice(0,MAX_ONLINE_PLAYERS);
+    slotHumans = (data.humanPlayers || slotNames.filter(n=>!isAIName(n))).slice(0,MAX_ONLINE_PLAYERS);
+    const mine = slotHumans.indexOf(username);
+    if(mine >= 0) PLAYER = mine;
+  }
+  if(!board.length) generateBoard();
+  if(!factions.length) setupFactions();
+  applyOwners(data.boardOwners);
+  const oldMap = new Map(pieces.map(p=>[p.id,p]));
+  pieces = data.pieces.map(pp => {
+    const old = oldMap.get(pp.i);
+    return {
+      id:pp.i, faction:pp.f, type:pp.t, x:pp.x, y:pp.y,
+      px: old ? old.px : pp.x, py: old ? old.py : pp.y,
+      targetX:pp.x, targetY:pp.y,
+      lastMove:pp.lm || now(), hp:pp.hp || 1, maxHp:pp.mh || pp.hp || 1,
+      captures:pp.c || 0, level:pp.lv || 1, alive:true, born:pp.b || now(),
+      wobble: old ? old.wobble : Math.random()*Math.PI*2,
+      flash: old && (old.x !== pp.x || old.y !== pp.y) ? 1 : (old ? old.flash : 0),
+      promoted:false
+    };
+  });
+  idCounter = pieces.reduce((m,p)=>Math.max(m,p.id),0)+1;
+  const fData = Array.isArray(data.factions) ? data.factions : [];
+  for(const fd of fData){
+    const f = factions[fd.idx]; if(!f) continue;
+    f.alive = fd.alive !== false;
+    f.kingId = fd.kingId;
+    f.spawnMeter = fd.spawnMeter || 0;
+    f.spawnChoices = fd.spawnChoices || f.spawnChoices || [];
+    f.piecesTaken = fd.piecesTaken || 0;
+    f.territoryTaken = fd.territoryTaken || 0;
+    f.nextThink = fd.nextThink || f.nextThink || now()+1;
+    f.difficulty = fd.difficulty || f.difficulty || 1;
+  }
+  gameStats = data.stats || gameStats;
+  gameStarted = true;
+  overlay.style.display = 'none';
+  recalcOwnerCounts();
+  renderSpawnCards(); updateHUD(); updatePiecePanel();
+  const mineAlive = factions[PLAYER]?.alive !== false;
+  if(wasAlive && !mineAlive && !playerDefeated){ triggerDefeat(findWinnerIndexAgainst(PLAYER)); }
+  const w = data.winner || winnerName();
+  if(w && w !== lastRemoteWinner){ lastRemoteWinner = w; showWarEnd(w); }
+  applyingRemote = false;
+}
+function findWinnerIndexAgainst(loser){
+  const alive = factions.find(f=>f.alive && f.idx !== loser);
+  return alive ? alive.idx : 0;
+}
+function winnerName(){ const alive = factions.filter(f=>f.alive); return alive.length === 1 ? displayNameForFaction(alive[0].idx) : ''; }
+async function writeStateNow(reason='sync'){
+  if(!stateRef || !gameStarted || writingState) return;
+  writingState = true;
+  try{
+    const payload = serializeState(reason);
+    localStateVersion = payload.version;
+    await setDoc(stateRef, payload, {merge:false});
+    stateDirty = false;
+    lastStateWrite = now();
+  }catch(e){ console.warn('state write failed', e); setNetwork('Sync delayed'); }
+  finally{ writingState = false; }
+}
+function maybeWriteControllerState(){
+  if(!isController || !stateDirty || writingState) return;
+  if(now() - lastStateWrite < 1.15) return;
+  writeStateNow('controllerTick');
+}
+async function requestPlayerMove(piece,x,y){
+  if(!isMyPiece(piece)) return false;
+  const live = getPiece(piece.id);
+  if(!live || !cooldownReady(live)){ toast('That piece is still cooling down.'); return false; }
+  const legal = getLegalMoves(live,false);
+  if(!legal.some(m=>m.x===x && m.y===y)){ toast('That piece cannot move there.'); return false; }
+  const ok = movePiece(live,x,y,'player');
+  if(ok){ selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards(); await writeStateNow('playerMove'); }
+  return ok;
+}
+async function requestPlayerSpawn(x,y){
+  if(playerDefeated || !ownFactionAlive()) return;
+  const f=factions[PLAYER];
+  const type=f.spawnChoices[spawnSelection];
+  if(!type) return;
+  if(f.spawnMeter<100){ spawnSelection=null; renderSpawnCards(); return; }
+  if(!inBounds(x,y) || tile(x,y).owner!==PLAYER || findPieceAt(x,y) || !passableFor({type},x,y)){
+    toast('That is not an eligible controlled spawn tile.'); return;
+  }
+  newPiece(PLAYER,type,x,y,{ready:false});
+  f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER);
+  spawnSelection=null;
+  renderSpawnCards(); updateHUD();
+  burst(x,y,f.color,24); toast(`${pieceDefs[type].name} deployed.`);
+  await writeStateNow('playerSpawn');
+}
+async function refreshPresenceAndController(){
+  if(!lobbyId || !username) return;
+  try{
+    if(presenceRef){ await setDoc(presenceRef,{username,slot:PLAYER,lastSeen:Date.now(),authUid:auth.currentUser?.uid || '',gameKey:GAME_KEY},{merge:true}); }
+    const snap = await getDocs(presenceCollection());
+    const active = [];
+    const cutoff = Date.now() - 12000;
+    snap.forEach(d=>{ const v=d.data(); if((v.lastSeen || 0) > cutoff) active.push(v.username); });
+    onlineCount = active.length;
+    const preferred = (lobbyData?.host && active.includes(lobbyData.host)) ? lobbyData.host : (slotHumans.find(p=>active.includes(p)) || active[0] || username);
+    controllerName = preferred;
+    isController = controllerName === username;
+    setNetwork(`${username || 'Player'} · ${isController ? 'hosting AI' : 'synced'} · ${onlineCount}/${slotHumans.length || 1} online`);
+  }catch(e){ console.warn('presence failed', e); }
+}
+async function completeLobbyIfNeeded(winner){
+  if(!lobbyRef || !winner) return;
+  try{ await setDoc(lobbyRef,{status:'completed', winner, completedAt:serverTimestamp()},{merge:true}); }catch(e){}
+}
+function showWarEnd(winner){
+  paused = true;
+  defeatOverlay.style.display = 'flex';
+  const h = document.querySelector('#defeatCard h2');
+  if(h) h.textContent = winner === displayNameForFaction(PLAYER) ? 'Victory' : 'War Complete';
+  defeatDetails.textContent = `${winner} controls the Vastboard.`;
+  restartBtn.textContent = 'Exit to Lobby';
+  spectateBtn.textContent = 'Spectate Map';
+  if(isController) completeLobbyIfNeeded(winner);
+}
+function exitToLobby(){
+  try{ localStorage.setItem('gh.username', username || ''); localStorage.setItem('gh.lastLobbyId',''); localStorage.setItem('gh.lastGameType',''); }catch(e){}
+  const glue = returnTo.includes('?') ? '&' : '?';
+  location.href = `${returnTo}${glue}username=${encodeURIComponent(username || '')}`;
+}
+async function bootMultiplayer(){
+  try{
+    if(!username){ username = prompt('Enter your lobby username') || `Player${Math.floor(Math.random()*9999)}`; }
+    localStorage.setItem('gh.username', username);
+    setNetwork('Signing in…');
+    await new Promise(resolve => {
+      const unsub = onAuthStateChanged(auth, user => { if(user){ unsub(); resolve(); } });
+      if(!auth.currentUser) signInAnonymously(auth).catch(e=>{ console.error(e); resolve(); });
+    });
+    if(!lobbyId){
+      buildSlots([username]);
+      PLAYER = 0; chosenDifficultyId = 'normal';
+      overlay.style.display='none'; isController=true; createGame(); setNetwork('Local preview'); return;
+    }
+    lobbyRef = doc(db,'lobbies',lobbyId);
+    stateRef = stateDocRef();
+    presenceRef = doc(db,'lobbies',lobbyId,'chess_warlord_presence',safeDocId(username));
+    const lsnap = await getDoc(lobbyRef);
+    if(!lsnap.exists()) throw new Error('Lobby not found');
+    lobbyData = lsnap.data();
+    buildSlots(lobbyData.players || [username]);
+    chosenDifficultyId = 'normal';
+    overlay.style.display='none';
+    await refreshPresenceAndController();
+    heartbeatTimer = setInterval(refreshPresenceAndController, 4000);
+    lobbyUnsub = onSnapshot(lobbyRef, snap=>{
+      if(!snap.exists()) return;
+      lobbyData = snap.data();
+      const nextPlayers = Array.isArray(lobbyData.players) ? lobbyData.players : [];
+      if(JSON.stringify(nextPlayers) !== JSON.stringify(lastLoadedLobbyPlayers)){
+        // Keep original slot order once a game exists, but update human roster for controller election.
+        slotHumans = nextPlayers.slice(0,MAX_ONLINE_PLAYERS);
+      }
+    });
+    await runTransaction(db, async tx => {
+      const cur = await tx.get(stateRef);
+      if(cur.exists()) return;
+      createGame();
+      tx.set(stateRef, serializeState('initialCreate'));
+    });
+    stateUnsub = onSnapshot(stateRef, snap=>{
+      if(!snap.exists()) return;
+      applyRemoteState(snap.data());
+    });
+  }catch(e){
+    console.error(e);
+    setNetwork('Lobby connection failed');
+    toast('Could not connect to the lobby. Starting a local preview instead.', 4200);
+    buildSlots([username || 'Player']); overlay.style.display='none'; isController=true; createGame();
+  }
+}
+
+
+const terrains = {
+  plain:   {name:'Plain', color:'#20304b', alt:'#253954', pass:true,  blockSlide:false, rough:0,  glyph:''},
+  meadow:  {name:'Meadow', color:'#254533', alt:'#2d5d3e', pass:true,  blockSlide:false, rough:0,  glyph:''},
+  forest:  {name:'Forest', color:'#183929', alt:'#245638', pass:true,  blockSlide:true,  rough:1,  glyph:'♣'},
+  ruins:   {name:'Ruins', color:'#3a3543', alt:'#514b5f', pass:true,  blockSlide:true,  rough:1,  glyph:'✦'},
+  swamp:   {name:'Swamp', color:'#24413b', alt:'#34584e', pass:true,  blockSlide:true,  rough:1,  glyph:'≈'},
+  hill:    {name:'Hill', color:'#4a3e31', alt:'#66543e', pass:true,  blockSlide:false, rough:1,  glyph:'⌂'},
+  sand:    {name:'Sandflat', color:'#5b5337', alt:'#746943', pass:true,  blockSlide:false, rough:0,  glyph:'·'},
+  canyon:  {name:'Canyon', color:'#4b2e2b', alt:'#6c3a32', pass:true,  blockSlide:true,  rough:2,  glyph:'≋'},
+  crystal: {name:'Crystal Field', color:'#2f3d62', alt:'#465d8f', pass:true,  blockSlide:true,  rough:1,  glyph:'✧'},
+  water:   {name:'Water', color:'#123653', alt:'#154c71', pass:false, blockSlide:true,  rough:2,  glyph:'~'},
+  mountain:{name:'Mountain', color:'#353746', alt:'#565b6b', pass:false, blockSlide:true,  rough:3,  glyph:'▲'},
+  road:    {name:'Road', color:'#514733', alt:'#6d5e42', pass:true,  blockSlide:false, rough:0,  glyph:''}
+};
+
+const factionCatalog = {
+  crownward: {
+    id:'crownward', name:'Crownward Compact', short:'Crownward', icon:'♛', player:true,
+    color:'#f6d36f', dark:'#9b6f12', aura:'#ffd86c', aiStyle:'balanced', spawnRate:1.0,
+    description:'Balanced royal army. Reliable generals, strong knights, good mixed movement.',
+    pieces:['pawn','rook','bishop','knight','queen','general','tower','lancer']
+  },
+  ember: {
+    id:'ember', name:'Ember Legion', short:'Ember', icon:'🔥', color:'#ff6b43', dark:'#9c2815', aura:'#ff8a57', aiStyle:'aggressive', spawnRate:.92,
+    description:'Fast attackers with brutal knights and flame pieces. Expands violently but defends poorly.',
+    pieces:['sparkpawn','emberknight','rook','bishop','flamequeen','general','pyretower','lancer']
+  },
+  iron: {
+    id:'iron', name:'Iron Bastion', short:'Iron', icon:'🛡️', color:'#aeb7c2', dark:'#53606b', aura:'#cfd8e3', aiStyle:'defensive', spawnRate:1.12,
+    description:'Slow, tough, defensive faction with towers and rooks everywhere.',
+    pieces:['shieldpawn','rook','bulwark','bishop','knight','general','tower','warden']
+  },
+  verdant: {
+    id:'verdant', name:'Verdant Swarm', short:'Verdant', icon:'🌿', color:'#6ee985', dark:'#217a3b', aura:'#83f795', aiStyle:'expansion', spawnRate:.78,
+    description:'High spawn pressure. Scouts and bishops thrive around forests.',
+    pieces:['seedpawn','scout','bishop','vinebishop','knight','general','grovetower','queen']
+  },
+  shadow: {
+    id:'shadow', name:'Shadow Court', short:'Shadow', icon:'☾', color:'#b388ff', dark:'#4b258d', aura:'#c8a7ff', aiStyle:'assassin', spawnRate:1.05,
+    description:'Sneaky diagonal pressure and assassins that threaten kings from strange angles.',
+    pieces:['pawn','assassin','bishop','nightknight','rook','general','tower','queen']
+  },
+  tide: {
+    id:'tide', name:'Tide Covenant', short:'Tide', icon:'🌊', color:'#5fcdf5', dark:'#16698c', aura:'#8fe6ff', aiStyle:'fluid', spawnRate:.96,
+    description:'Can cross water with special pieces. Flexible but less explosive on land.',
+    pieces:['tidepawn','crabrook','bishop','knight','wavequeen','general','reefspire','scout']
+  },
+  sunspire: {
+    id:'sunspire', name:'Sunspire Order', short:'Sunspire', icon:'☀', color:'#ffd2a1', dark:'#a6611d', aura:'#ffe7bc', aiStyle:'honor', spawnRate:1.02,
+    description:'Elite pieces with strong queens and bishops, but fewer disposable bodies.',
+    pieces:['pawn','rook','sunbishop','knight','queen','general','tower','paladin']
+  },
+  frost: {
+    id:'frost', name:'Frostbound Clans', short:'Frostbound', icon:'❄', color:'#a7f3ff', dark:'#1e5f78', aura:'#d4fbff', aiStyle:'defensive', spawnRate:1.04,
+    description:'Cold defensive army with sturdy pawns, wardens, and long icy lines.',
+    pieces:['shieldpawn','rook','sunbishop','knight','queen','general','tower','warden']
+  }
+};
+
+const difficultyProfiles = {
+  easy:   {name:'Easy',   icon:'🌱', think:.68, spawn:.82, desc:'Slower enemy decisions and gentler expansion. Good for learning the huge board.'},
+  normal: {name:'Normal', icon:'⚔️', think:1.00, spawn:1.00, desc:'Balanced AI timing with factions growing stronger as the war stretches on.'},
+  hard:   {name:'Hard',   icon:'🔥', think:1.32, spawn:1.14, desc:'Enemies act faster, reinforce sooner, and punish exposed kings.'},
+  brutal: {name:'Brutal', icon:'☠️', think:1.68, spawn:1.28, desc:'High-pressure warlords with faster tactics and stronger late-game tempo.'}
+};
+
+const pieceDefs = {
+  king: {name:'King', icon:'♚', pattern:'king', cooldown:4.4, value:100, aura:3, hp:1, desc:'Capture this to conquer a faction. Moves one square any direction.'},
+  pawn: {name:'Pawn', icon:'♟', pattern:'pawn', cooldown:2.4, value:1, hp:1, desc:'Moves one square any direction. Captures one diagonal square.'},
+  rook: {name:'Rook', icon:'♜', pattern:'rook', cooldown:4.0, value:5, hp:1, desc:'Slides orthogonally until pieces or rough terrain stop it.'},
+  bishop:{name:'Bishop', icon:'♝', pattern:'bishop', cooldown:3.7, value:4, hp:1, desc:'Slides diagonally until pieces or rough terrain stop it.'},
+  knight:{name:'Knight', icon:'♞', pattern:'knight', cooldown:3.2, value:3, hp:1, desc:'Leaps in L-shapes over terrain and pieces.'},
+  queen:{name:'Queen', icon:'♛', pattern:'queen', cooldown:5.2, value:9, hp:1, desc:'Rook + bishop movement, limited by terrain blockers.'},
+  general:{name:'General', icon:'⚔', pattern:'general', cooldown:4.8, value:7, aura:3, hp:1, desc:'Moves up to two squares any direction and projects territory.'},
+  tower:{name:'Tower', icon:'♖', pattern:'tower', cooldown:6.0, value:6, aura:3, hp:1, desc:'Slow one-step orthogonal anchor that projects territory.'},
+  lancer:{name:'Lancer', icon:'♘', pattern:'lancer', cooldown:3.6, value:4, hp:1, desc:'Moves up to three straight squares and attacks at the end of a lane.'},
+  sparkpawn:{name:'Spark Pawn', icon:'♟', pattern:'pawn', cooldown:2.0, value:1, hp:1, desc:'Fast pawn. Moves one any direction and captures diagonally.'},
+  emberknight:{name:'Ember Knight', icon:'♞', pattern:'knight', cooldown:2.55, value:4, hp:1, desc:'Very fast knight pressure.'},
+  flamequeen:{name:'Flame Queen', icon:'♛', pattern:'queen', cooldown:4.75, value:10, hp:1, desc:'Aggressive queen with lower cooldown.'},
+  pyretower:{name:'Pyre Tower', icon:'♖', pattern:'tower', cooldown:5.6, value:6, aura:3, hp:1, desc:'Territory tower with faster cooldown.'},
+  shieldpawn:{name:'Shield Pawn', icon:'♟', pattern:'pawn', cooldown:3.0, value:1, hp:2, desc:'Tough pawn with two lives.'},
+  bulwark:{name:'Bulwark', icon:'▣', pattern:'rookShort', cooldown:4.8, value:5, hp:2, desc:'Short rook that can survive one capture attempt.'},
+  warden:{name:'Warden', icon:'◆', pattern:'warden', cooldown:5.2, value:6, aura:2, hp:2, desc:'Defensive diagonal/orthogonal stepper with small territory aura.'},
+  seedpawn:{name:'Seed Pawn', icon:'♙', pattern:'pawn', cooldown:1.9, value:1, hp:1, desc:'Quickest pawn; helps Verdant flood territory.'},
+  scout:{name:'Scout', icon:'◇', pattern:'scout', cooldown:2.2, value:2, hp:1, desc:'Leaps two squares orthogonally or steps diagonally.'},
+  vinebishop:{name:'Vine Bishop', icon:'♝', pattern:'bishop', cooldown:3.1, value:4, hp:1, forestWalker:true, desc:'Bishop that can slide through forest, but not mountains/water.'},
+  grovetower:{name:'Grove Tower', icon:'♖', pattern:'tower', cooldown:5.8, value:6, aura:3, hp:1, forestWalker:true, desc:'Territory tower that likes forests.'},
+  assassin:{name:'Assassin', icon:'⟡', pattern:'assassin', cooldown:3.0, value:5, hp:1, desc:'Moves like a bishop up to four or a knight. Dangerous to kings.'},
+  nightknight:{name:'Night Knight', icon:'♞', pattern:'knight', cooldown:2.85, value:4, hp:1, desc:'Fast shadow knight.'},
+  tidepawn:{name:'Tide Pawn', icon:'♙', pattern:'pawn', cooldown:2.25, value:1, hp:1, amphibious:true, desc:'Pawn that can cross water.'},
+  crabrook:{name:'Crab Rook', icon:'♜', pattern:'rookShort', cooldown:3.55, value:5, hp:1, amphibious:true, desc:'Short rook that moves well through water lanes.'},
+  wavequeen:{name:'Wave Queen', icon:'♛', pattern:'queen', cooldown:5.0, value:9, hp:1, amphibious:true, desc:'Queen that can cross water.'},
+  reefspire:{name:'Reef Spire', icon:'♖', pattern:'tower', cooldown:5.8, value:6, aura:3, hp:1, amphibious:true, desc:'Water-friendly territory tower.'},
+  sunbishop:{name:'Sun Bishop', icon:'♝', pattern:'bishopLong', cooldown:3.8, value:5, hp:1, desc:'Longer bishop lines.'},
+  paladin:{name:'Paladin', icon:'♞', pattern:'paladin', cooldown:4.1, value:6, hp:2, aura:1, desc:'Knight plus one-step king move, very sturdy.'}
+};
+
+let board = [];
+let pieces = [];
+let factions = [];
+let ownerCounts = new Map();
+let idCounter = 1;
+let gameStats = {captures:0, kingsTaken:0, startedAt:0};
+
+function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+function lerp(a,b,t){return a+(b-a)*t;}
+function dist2(a,b,c,d){const x=a-c,y=b-d;return x*x+y*y;}
+function key(x,y){return x+','+y;}
+function now(){return Date.now()/1000;}
+function seededNoise(x,y,s=1337){
+  let n = x*374761393 + y*668265263 + s*1442695041;
+  n = (n ^ (n >> 13)) * 1274126177;
+  n = (n ^ (n >> 16)) >>> 0;
+  return n / 4294967295;
+}
+function smoothNoise(x,y,scale,seed){
+  const sx=x/scale, sy=y/scale;
+  const x0=Math.floor(sx), y0=Math.floor(sy);
+  const tx=sx-x0, ty=sy-y0;
+  const u=tx*tx*(3-2*tx), v=ty*ty*(3-2*ty);
+  const a=seededNoise(x0,y0,seed), b=seededNoise(x0+1,y0,seed), c=seededNoise(x0,y0+1,seed), d=seededNoise(x0+1,y0+1,seed);
+  return lerp(lerp(a,b,u),lerp(c,d,u),v);
+}
+function toast(msg, ms=2200){
+  toastEl.textContent = msg;
+  toastEl.style.display = 'block';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>toastEl.style.display='none', ms);
+}
+function resize(){
+  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  W = Math.floor(innerWidth * DPR); H = Math.floor(innerHeight * DPR);
+  canvas.width = W; canvas.height = H;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  mini.width = Math.floor(mini.clientWidth*DPR); mini.height = Math.floor(mini.clientHeight*DPR);
+  mctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function initFactionPicker(){
+  const choices = ['crownward','iron','ember','verdant','shadow','tide'];
+  factionPick.innerHTML = '';
+  choices.forEach(id=>{
+    const f = factionCatalog[id];
+    const card = document.createElement('div');
+    card.className = 'factionCard' + (id===chosenFactionId?' chosen':'');
+    card.innerHTML = `<b>${f.icon} ${f.name}</b><small>${f.description}</small>`;
+    card.onclick = () => {
+      chosenFactionId = id;
+      initFactionPicker();
+    };
+    factionPick.appendChild(card);
+  });
+}
+initFactionPicker();
+
+function initDifficultyPicker(){
+  difficultyPick.innerHTML = '';
+  const select = document.createElement('select');
+  select.id = 'difficultySelect';
+  select.setAttribute('aria-label','Enemy difficulty');
+  Object.entries(difficultyProfiles).forEach(([id,d])=>{
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = `${d.icon} ${d.name} enemy`;
+    option.selected = id === chosenDifficultyId;
+    select.appendChild(option);
+  });
+  select.onchange = () => { chosenDifficultyId = select.value; };
+  difficultyPick.appendChild(select);
+}
+initDifficultyPicker();
+
+function generateBoard(){
+  board = new Array(BOARD_W*BOARD_H);
+  for(let y=0;y<BOARD_H;y++){
+    for(let x=0;x<BOARD_W;x++){
+      const n1 = smoothNoise(x,y,11,404);
+      const n2 = smoothNoise(x+31,y-19,5.5,991);
+      const n3 = smoothNoise(x-8,y+47,18,1821);
+      const edge = Math.min(x,y,BOARD_W-1-x,BOARD_H-1-y);
+      let type = 'plain';
+      if(n1>.80 && n2>.48) type='mountain';
+      else if(n1>.66) type='forest';
+      else if(n2<.13) type='swamp';
+      else if(n1<.20 && n3<.50) type='meadow';
+      else if(n2>.82) type='hill';
+      else if(n2>.70 && n1<.43) type='sand';
+      else if(n1>.53 && n2<.25) type='canyon';
+      if(seededNoise(x,y,333)>.968) type='ruins';
+      if(seededNoise(x,y,1433)>.986) type='crystal';
+      if(edge<2 && type==='mountain') type='plain';
+      board[y*BOARD_W+x] = {x,y,type,owner:null,lastOwner:null,markTime:0,glow:0};
+    }
+  }
+  addWaterBodies();
+  // carve roads and open basins between starting zones
+  const starts = getStartPositions();
+  for(let i=0;i<starts.length;i++){
+    const a = starts[i], b = starts[(i+1)%starts.length];
+    carveRoad(a.x,a.y,b.x,b.y);
+  }
+  starts.forEach(s=>{
+    for(let yy=s.y-4;yy<=s.y+4;yy++) for(let xx=s.x-4;xx<=s.x+4;xx++){
+      if(inBounds(xx,yy) && dist2(xx,yy,s.x,s.y)<22){
+        const t = tile(xx,yy);
+        if(t.type==='water'||t.type==='mountain'||t.type==='swamp') t.type = seededNoise(xx,yy,909)>.55?'meadow':'plain';
+      }
+    }
+  });
+}
+function addWaterBodies(){
+  const starts = getStartPositions();
+  const safeFromStarts = (x,y,r=8) => starts.every(s=>dist2(x,y,s.x,s.y)>r*r);
+  const bodies = 18;
+  for(let i=0;i<bodies;i++){
+    let cx = 5 + Math.floor(seededNoise(i,2,1201)*(BOARD_W-10));
+    let cy = 5 + Math.floor(seededNoise(i,7,1202)*(BOARD_H-10));
+    if(!safeFromStarts(cx,cy,10)){
+      cx = clamp(cx + (cx<BOARD_W/2?9:-9),5,BOARD_W-6);
+      cy = clamp(cy + (cy<BOARD_H/2?8:-8),5,BOARD_H-6);
+    }
+    const rx = 2.2 + seededNoise(i,11,1203)*5.8;
+    const ry = 2.0 + seededNoise(i,17,1204)*5.3;
+    const pond = seededNoise(i,23,1205)<.45;
+    const shrink = pond ? .65 : 1;
+    for(let y=Math.floor(cy-ry*1.8); y<=Math.ceil(cy+ry*1.8); y++){
+      for(let x=Math.floor(cx-rx*1.8); x<=Math.ceil(cx+rx*1.8); x++){
+        if(!inBounds(x,y) || !safeFromStarts(x,y,5)) continue;
+        const wobble = (smoothNoise(x+i*9,y-i*5,4.5,1500+i)-.5)*.42;
+        const d = ((x-cx)*(x-cx))/(rx*rx*shrink) + ((y-cy)*(y-cy))/(ry*ry*shrink) + wobble;
+        const t = tile(x,y);
+        if(d<1){
+          t.type='water';
+        } else if(d<1.34 && t.type!=='mountain' && seededNoise(x,y,1700+i)>.32){
+          t.type = seededNoise(x,y,1710+i)>.5 ? 'swamp' : 'meadow';
+        } else if(d<1.55 && t.type==='plain' && seededNoise(x,y,1720+i)>.55){
+          t.type='sand';
+        }
+      }
+    }
+  }
+}
+function carveRoad(x0,y0,x1,y1){
+  let x=x0, y=y0, guard=0;
+  while((x!==x1 || y!==y1) && guard++<300){
+    for(let oy=-1;oy<=1;oy++) for(let ox=-1;ox<=1;ox++) if(inBounds(x+ox,y+oy) && seededNoise(x+ox,y+oy,55)>.28){
+      const t=tile(x+ox,y+oy); if(t.type==='water'||t.type==='mountain'||t.type==='swamp'||t.type==='forest') t.type = (ox===0&&oy===0)?'road':'plain';
+    }
+    if(Math.abs(x1-x)>Math.abs(y1-y)) x += Math.sign(x1-x); else y += Math.sign(y1-y);
+    if(seededNoise(x,y,88)>.6){ if(x!==x1) x += Math.sign(x1-x); if(y!==y1) y += Math.sign(y1-y); }
+    x = clamp(x,0,BOARD_W-1); y=clamp(y,0,BOARD_H-1);
+  }
+}
+function tile(x,y){return board[y*BOARD_W+x];}
+function inBounds(x,y){return x>=0 && y>=0 && x<BOARD_W && y<BOARD_H;}
+function passableFor(piece,x,y){
+  if(!inBounds(x,y)) return false;
+  const t = tile(x,y);
+  if(terrains[t.type].pass) return true;
+  const def = pieceDefs[piece.type] || {};
+  if(t.type==='water' && def.amphibious) return true;
+  return false;
+}
+function blocksSlideFor(piece,x,y){
+  if(!inBounds(x,y)) return true;
+  const t = tile(x,y);
+  const td = terrains[t.type];
+  const def = pieceDefs[piece.type] || {};
+  if(t.type==='forest' && def.forestWalker) return false;
+  if(t.type==='water' && def.amphibious) return false;
+  return td.blockSlide;
+}
+function getStartPositions(){
+  return [
+    {x:8,y:8}, {x:BOARD_W-10,y:8}, {x:8,y:BOARD_H-10}, {x:BOARD_W-10,y:BOARD_H-10},
+    {x:Math.floor(BOARD_W/2),y:7}, {x:Math.floor(BOARD_W/2),y:BOARD_H-8},
+    {x:7,y:Math.floor(BOARD_H/2)}, {x:BOARD_W-8,y:Math.floor(BOARD_H/2)}
+  ];
+}
+function setupFactions(){
+  const diff = difficultyProfiles[chosenDifficultyId] || difficultyProfiles.normal;
+  const fixedIds = ['crownward','ember','iron','verdant','shadow','tide','sunspire','frost'];
+  factions = fixedIds.map((id,idx)=>{
+    const base = factionCatalog[id] || factionCatalog.crownward;
+    const human = isHumanSlot(idx);
+    return {
+      ...base,
+      idx,
+      playerName: displayNameForFaction(idx),
+      isAI: !human,
+      alive:true,
+      difficulty: human ? 0 : clamp((.72 + idx*.08) * diff.think, .45, 2.45),
+      aiSpawnScale: human ? 1 : diff.spawn,
+      nextThink: now()+1+idx*.3,
+      spawnMeter: human ? 12 : Math.random()*55,
+      spawnChoices: [],
+      kingId:null,
+      piecesTaken:0,
+      territoryTaken:0
+    };
+  });
+}
+function newPiece(faction,type,x,y,opts={}){
+  const def = pieceDefs[type];
+  if(!def) throw new Error('Missing piece def '+type);
+  const p = {
+    id:idCounter++, faction, type, x, y, px:x, py:y, targetX:x, targetY:y,
+    lastMove: now() - (opts.ready ? def.cooldown : def.cooldown*.35*Math.random()),
+    hp:def.hp || 1, maxHp:def.hp || 1,
+    captures:opts.captures||0, level:opts.level||1, alive:true,
+    born:now(), wobble:Math.random()*Math.PI*2,
+    flash:0, promoted:false
+  };
+  pieces.push(p);
+  markStateDirty();
+  const f = factions[faction];
+  if(type==='king') f.kingId = p.id;
+  claimTile(faction,x,y,1.0);
+  applyAuraTerritory(p);
+  return p;
+}
+function findPieceAt(x,y){return pieces.find(p=>p.alive && p.x===x && p.y===y) || null;}
+function getPiece(id){return pieces.find(p=>p.id===id && p.alive) || null;}
+function weakestTypeForFaction(factionIdx){
+  const f=factions[factionIdx];
+  const order = [...f.pieces].sort((a,b)=>(pieceDefs[a].value||1)-(pieceDefs[b].value||1));
+  return order[0] || 'pawn';
+}
+function setupPieces(){
+  pieces = []; idCounter = 1; ownerCounts = new Map();
+  const starts = getStartPositions();
+  factions.forEach((f,idx)=>{
+    const s = starts[idx];
+    newPiece(idx,'king',s.x,s.y,{ready:true});
+    newPiece(idx,'general',s.x+1,s.y,{ready:true});
+    newPiece(idx,'tower',s.x,s.y+1,{ready:true});
+    const list = f.pieces.filter(t=>t!=='general'&&t!=='tower');
+    const placements = [[-1,0],[0,-1],[1,1],[-1,1],[2,0],[0,2],[-2,0],[0,-2]];
+    for(let i=0;i<Math.min(6,placements.length);i++){
+      const [dx,dy]=placements[i];
+      const type=list[i%list.length] || 'pawn';
+      const x=clamp(s.x+dx,0,BOARD_W-1), y=clamp(s.y+dy,0,BOARD_H-1);
+      if(!findPieceAt(x,y) && passableFor({type},x,y)) newPiece(idx,type,x,y,{ready:i<2});
+    }
+    // initial claimed zone
+    for(let yy=s.y-3;yy<=s.y+3;yy++) for(let xx=s.x-3;xx<=s.x+3;xx++) if(inBounds(xx,yy) && dist2(xx,yy,s.x,s.y)<=12) claimTile(idx,xx,yy,.5);
+  });
+}
+function recalcOwnerCounts(){
+  ownerCounts = new Map();
+  for(const t of board){ if(t.owner!==null) ownerCounts.set(t.owner,(ownerCounts.get(t.owner)||0)+1); }
+}
+function claimTile(faction,x,y,glow=.35){
+  if(!inBounds(x,y)) return;
+  const t=tile(x,y);
+  if(t.owner!==faction){
+    markStateDirty();
+    t.lastOwner=t.owner;
+    t.owner=faction;
+    t.markTime=now();
+    t.glow=glow;
+  } else {
+    t.glow=Math.max(t.glow,glow*.65);
+  }
+}
+function applyAuraTerritory(piece){
+  const def = pieceDefs[piece.type];
+  const r = def.aura || 0;
+  if(!r) return;
+  for(let yy=piece.y-r;yy<=piece.y+r;yy++) for(let xx=piece.x-r;xx<=piece.x+r;xx++){
+    if(inBounds(xx,yy) && Math.max(Math.abs(xx-piece.x),Math.abs(yy-piece.y))<=r){
+      if(terrains[tile(xx,yy).type].pass || (tile(xx,yy).type==='water' && (pieceDefs[piece.type]||{}).amphibious)) claimTile(piece.faction,xx,yy,.18);
+    }
+  }
+}
+function eligibleSpawnTiles(factionIdx){
+  const arr=[];
+  for(const t of board){
+    if(t.owner===factionIdx && terrains[t.type].pass && !findPieceAt(t.x,t.y)) arr.push(t);
+  }
+  return arr;
+}
+function chooseSpawnOptions(factionIdx){
+  const f=factions[factionIdx];
+  const pool = f.pieces.filter(t=>t!=='king');
+  const picks=[];
+  let guard=0;
+  while(picks.length<3 && guard++<50){
+    const type=pool[Math.floor(Math.random()*pool.length)] || 'pawn';
+    if(picks.length<2 || !picks.includes(type) || Math.random()>.5) picks.push(type);
+  }
+  while(picks.length<3) picks.push(pool[picks.length%pool.length]||'pawn');
+  return picks;
+}
+function levelForCaptures(c){
+  if(c>=9) return 5;
+  if(c>=6) return 4;
+  if(c>=3) return 3;
+  if(c>=1) return 2;
+  return 1;
+}
+function cooldownFor(piece){
+  const def=pieceDefs[piece.type];
+  const levelBoost = 1 - Math.min(.34,(piece.level-1)*.085);
+  const terrain = tile(piece.x,piece.y);
+  const roughPenalty = terrain ? terrains[terrain.type].rough*.08 : 0;
+  const f = factions[piece.faction];
+  let style = 1;
+  if(f.aiStyle==='aggressive') style=.92;
+  if(f.aiStyle==='defensive') style=1.06;
+  if(f.aiStyle==='expansion') style=.95;
+  return def.cooldown * levelBoost * style * (1+roughPenalty);
+}
+function cooldownReady(piece){return now() - piece.lastMove >= cooldownFor(piece);}
+function cooldownProgress(piece){return clamp((now()-piece.lastMove)/cooldownFor(piece),0,1);}
+function addMove(moves,x,y,capture=false,extra={}){ moves.push({x,y,capture,...extra}); }
+function getLegalMoves(piece, ignoreCooldown=false){
+  if(!piece || !piece.alive) return [];
+  if(!ignoreCooldown && !cooldownReady(piece)) return [];
+  const def = pieceDefs[piece.type];
+  const pattern = def.pattern;
+  const moves=[];
+  const own=piece.faction;
+  const lvl=piece.level || 1;
+  const maxSlider = pattern==='bishopLong' ? 11+lvl : pattern==='queen' ? 7+lvl : 8+lvl;
+  const canLand = (x,y,captureAllowed=true,emptyAllowed=true) => {
+    if(!passableFor(piece,x,y)) return false;
+    const target=findPieceAt(x,y);
+    if(target){ return captureAllowed && target.faction!==own; }
+    return emptyAllowed;
+  };
+  const addStep = (x,y,captureAllowed=true,emptyAllowed=true) => {
+    if(!inBounds(x,y) || !passableFor(piece,x,y)) return;
+    const target=findPieceAt(x,y);
+    if(target){ if(captureAllowed && target.faction!==own) addMove(moves,x,y,true); }
+    else if(emptyAllowed) addMove(moves,x,y,false);
+  };
+  const slide = (dirs,max=maxSlider) => {
+    for(const [dx,dy] of dirs){
+      for(let r=1;r<=max;r++){
+        const x=piece.x+dx*r, y=piece.y+dy*r;
+        if(!inBounds(x,y)) break;
+        const target=findPieceAt(x,y);
+        if(!passableFor(piece,x,y)) break;
+        if(target){ if(target.faction!==own) addMove(moves,x,y,true); break; }
+        addMove(moves,x,y,false);
+        if(blocksSlideFor(piece,x,y)) break;
+      }
+    }
+  };
+  if(pattern==='pawn'){
+    const stepRange = lvl>=4 ? 2 : 1;
+    for(const [dx,dy] of DIRS8){
+      const x=piece.x+dx, y=piece.y+dy;
+      const isDiag = Math.abs(dx)===1 && Math.abs(dy)===1;
+      addStep(x,y,isDiag,true);
+    }
+    if(stepRange>1){
+      for(const [dx,dy] of ORTHO){
+        const x=piece.x+dx*2, y=piece.y+dy*2;
+        if(inBounds(piece.x+dx,piece.y+dy) && passableFor(piece,piece.x+dx,piece.y+dy) && !findPieceAt(piece.x+dx,piece.y+dy)) addStep(x,y,false,true);
+      }
+    }
+  } else if(pattern==='king'){
+    for(const [dx,dy] of DIRS8) addStep(piece.x+dx,piece.y+dy,true,true);
+  } else if(pattern==='general'){
+    for(const [dx,dy] of DIRS8){
+      for(let r=1;r<=2+(lvl>=4?1:0);r++){
+        const x=piece.x+dx*r,y=piece.y+dy*r;
+        if(!inBounds(x,y) || !passableFor(piece,x,y)) break;
+        const target=findPieceAt(x,y);
+        if(target){ if(target.faction!==own) addMove(moves,x,y,true); break; }
+        addMove(moves,x,y,false);
+        if(blocksSlideFor(piece,x,y)) break;
+      }
+    }
+  } else if(pattern==='tower'){
+    for(const [dx,dy] of ORTHO) addStep(piece.x+dx,piece.y+dy,true,true);
+    if(lvl>=3){ for(const [dx,dy] of DIAG) addStep(piece.x+dx,piece.y+dy,true,false); }
+  } else if(pattern==='rook') slide(ORTHO, 9+lvl);
+  else if(pattern==='rookShort') slide(ORTHO, 4+Math.floor(lvl/2));
+  else if(pattern==='bishop' || pattern==='bishopLong') slide(DIAG, pattern==='bishopLong'?12+lvl:8+lvl);
+  else if(pattern==='queen') slide(DIRS8, 7+lvl);
+  else if(pattern==='knight'){
+    const jumps = [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
+    for(const [dx,dy] of jumps) addStep(piece.x+dx,piece.y+dy,true,true);
+    if(lvl>=5){ for(const [dx,dy] of [[2,2],[2,-2],[-2,2],[-2,-2]]) addStep(piece.x+dx,piece.y+dy,true,true); }
+  } else if(pattern==='lancer'){
+    for(const [dx,dy] of ORTHO){
+      for(let r=1;r<=3+(lvl>=3?1:0);r++){
+        const x=piece.x+dx*r,y=piece.y+dy*r;
+        if(!inBounds(x,y)||!passableFor(piece,x,y)) break;
+        const target=findPieceAt(x,y);
+        if(target){ if(target.faction!==own) addMove(moves,x,y,true); break; }
+        addMove(moves,x,y,false);
+        if(blocksSlideFor(piece,x,y)) break;
+      }
+    }
+    for(const [dx,dy] of DIAG) if(lvl>=2) addStep(piece.x+dx,piece.y+dy,true,false);
+  } else if(pattern==='scout'){
+    for(const [dx,dy] of [[2,0],[-2,0],[0,2],[0,-2]]) addStep(piece.x+dx,piece.y+dy,true,true);
+    for(const [dx,dy] of DIAG) addStep(piece.x+dx,piece.y+dy,true,true);
+  } else if(pattern==='assassin'){
+    slide(DIAG,4+(lvl>=4?2:0));
+    for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,false);
+  } else if(pattern==='warden'){
+    for(const [dx,dy] of DIRS8) addStep(piece.x+dx,piece.y+dy,true,true);
+    if(lvl>=3) for(const [dx,dy] of ORTHO) addStep(piece.x+dx*2,piece.y+dy*2,true,false);
+  } else if(pattern==='paladin'){
+    for(const [dx,dy] of DIRS8) addStep(piece.x+dx,piece.y+dy,true,true);
+    for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,true);
+  }
+  return moves;
+}
+
+function travelPathCells(fromX,fromY,toX,toY){
+  const dx = toX-fromX, dy = toY-fromY;
+  const cells=[];
+  if(dx===0 && dy===0) return cells;
+  if(dx===0 || dy===0 || Math.abs(dx)===Math.abs(dy)){
+    const sx=Math.sign(dx), sy=Math.sign(dy), steps=Math.max(Math.abs(dx),Math.abs(dy));
+    for(let i=1;i<=steps;i++) cells.push({x:fromX+sx*i,y:fromY+sy*i});
+  } else {
+    let x=fromX, y=fromY;
+    const horizontalFirst = Math.abs(dx)>=Math.abs(dy);
+    const pushX=()=>{ if(x!==toX){ x += Math.sign(dx); cells.push({x,y}); } };
+    const pushY=()=>{ if(y!==toY){ y += Math.sign(dy); cells.push({x,y}); } };
+    if(horizontalFirst){ while(x!==toX) pushX(); while(y!==toY) pushY(); }
+    else { while(y!==toY) pushY(); while(x!==toX) pushX(); }
+  }
+  return cells;
+}
+function claimMovePath(piece,fromX,fromY,toX,toY){
+  const cells = travelPathCells(fromX,fromY,toX,toY);
+  let claimed = 0;
+  const seen = new Set();
+  for(const c of cells){
+    const k=key(c.x,c.y);
+    if(seen.has(k) || !inBounds(c.x,c.y)) continue;
+    seen.add(k);
+    if(passableFor(piece,c.x,c.y)){
+      claimTile(piece.faction,c.x,c.y,.58);
+      claimed++;
+    }
+  }
+  return claimed;
+}
+function movePiece(piece,x,y,source='player'){
+  if(!piece || !piece.alive || !inBounds(x,y)) return false;
+  const fromX=piece.x, fromY=piece.y;
+  const target=findPieceAt(x,y);
+  if(target && target.faction===piece.faction) return false;
+  if(!passableFor(piece,x,y)) return false;
+  if(target){
+    const defeated = capturePiece(piece,target);
+    piece.lastMove=now();
+    piece.flash=.7;
+    if(!defeated) return true;
+  }
+  piece.x=x; piece.y=y; piece.targetX=x; piece.targetY=y; piece.lastMove=now(); piece.flash=1;
+  const swept = claimMovePath(piece,fromX,fromY,x,y);
+  if(!swept) claimTile(piece.faction,x,y,.7);
+  applyAuraTerritory(piece);
+  burst(x,y,factions[piece.faction].color,8 + Math.min(18,swept*2));
+  markStateDirty();
+  if(source==='player') moveModeHint = swept>1 ? `${pieceDefs[piece.type].name} claimed ${swept} travelled tiles.` : 'Territory claimed.';
+  return true;
+}
+function capturePiece(attacker, target){
+  if(!target.alive) return false;
+  target.hp -= 1;
+  burst(target.x,target.y,factions[target.faction].color,18);
+  floating(target.x,target.y,'CAPTURE', factions[attacker.faction].color);
+  if(target.hp>0){
+    floating(target.x,target.y,'SHIELD', '#dbeafe');
+    target.flash=1;
+    return false;
+  }
+  target.alive=false;
+  attacker.captures++;
+  factions[attacker.faction].piecesTaken++;
+  if(attacker.faction===PLAYER) gameStats.captures++;
+  const oldLevel=attacker.level;
+  attacker.level=levelForCaptures(attacker.captures);
+  if(attacker.level>oldLevel){
+    floating(attacker.x,attacker.y,'LEVEL '+attacker.level, '#fff2a6');
+    burst(attacker.x,attacker.y,'#fff2a6',26);
+    if(attacker.faction===PLAYER) toast(`${pieceDefs[attacker.type].name} leveled up. Cooldown improved and movement may grow.`);
+  }
+  if(target.type==='king') conquerFaction(attacker.faction,target.faction,target.x,target.y);
+  return true;
+}
+function conquerFaction(winner, loser, cx, cy){
+  const lf = factions[loser];
+  if(!lf.alive) return;
+  lf.alive=false;
+  if(loser===PLAYER) triggerDefeat(winner);
+  factions[winner].territoryTaken++;
+  if(winner===PLAYER) gameStats.kingsTaken++;
+  let taken=0;
+  for(const t of board){ if(t.owner===loser){ t.owner=winner; t.glow=.85; taken++; } }
+  for(const p of pieces){
+    if(p.alive && p.faction===loser){
+      // surviving army fractures; most vanish, a few mercenary ghosts remain neutralized by defeat
+      if(Math.random()<.72) p.alive=false;
+      else { p.faction=winner; p.flash=1; }
+    }
+  }
+  const weakest=weakestTypeForFaction(winner);
+  let spawned=0;
+  for(let r=1;r<8 && spawned<3;r++){
+    for(let yy=cy-r;yy<=cy+r && spawned<3;yy++) for(let xx=cx-r;xx<=cx+r && spawned<3;xx++){
+      if(inBounds(xx,yy) && passableFor({type:weakest},xx,yy) && !findPieceAt(xx,yy) && Math.random()<.23){
+        newPiece(winner,weakest,xx,yy,{ready:true}); spawned++;
+      }
+    }
+  }
+  toast(`${factions[winner].short} captured the ${lf.short} king. ${taken} tiles absorbed; 3 weak pieces seed the conquered land.`, 4200);
+}
+function triggerDefeat(winner){
+  playerDefeated = true;
+  spectating = false;
+  paused = true;
+  selectedPiece = null;
+  legalMoves = [];
+  spawnSelection = null;
+  const wf = factions[winner];
+  defeatDetails.textContent = `${displayNameForFaction(winner)} captured your king. Your territory has been absorbed, but the war can continue without you.`;
+  const h = document.querySelector('#defeatCard h2'); if(h) h.textContent = 'You were defeated';
+  restartBtn.textContent = 'Exit to Lobby';
+  spectateBtn.textContent = 'Spectate the Rest';
+  defeatOverlay.style.display = 'flex';
+  renderSpawnCards();
+  updatePiecePanel();
+}
+function maybeAnnounceWorldWinner(){
+  const alive = factions.filter(f=>f.alive);
+  if(alive.length===1 && gameStarted && !maybeAnnounceWorldWinner.done){
+    maybeAnnounceWorldWinner.done = true;
+    const winner = displayNameForFaction(alive[0].idx);
+    toast(`${winner} controls the Vastboard.`, 6000);
+    showWarEnd(winner);
+    markStateDirty();
+  }
+}
+function burst(x,y,color,count=10){
+  const wx=(x+.5)*BASE_CELL, wy=(y+.5)*BASE_CELL;
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2, s=30+Math.random()*90;
+    particles.push({x:wx,y:wy,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:.35+Math.random()*.45,max:.7,color,size:2+Math.random()*3});
+  }
+}
+function floating(x,y,text,color){
+  floatingText.push({x:(x+.5)*BASE_CELL,y:(y+.25)*BASE_CELL,text,color,life:1.2,max:1.2});
+}
+
+function createGame(){
+  if(!slotNames.length) buildSlots([username || 'Player']);
+  generateBoard(); setupFactions(); setupPieces(); recalcOwnerCounts();
+  const king=getPiece(factions[PLAYER].kingId) || pieces.find(p=>p.alive&&p.type==='king');
+  if(king){ cam.x=(king.x+.5)*BASE_CELL-innerWidth/2; cam.y=(king.y+.5)*BASE_CELL-innerHeight/2; }
+  cam.zoom=1;
+  selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[];
+  playerDefeated=false; spectating=false; paused=false; defeatOverlay.style.display='none';
+  if(pauseBtn) pauseBtn.textContent='Pause';
+  maybeAnnounceWorldWinner.done=false;
+  gameStats={captures:0,kingsTaken:0,startedAt:now()};
+  factions.forEach(f=>{ f.spawnChoices=chooseSpawnOptions(f.idx); if(typeof f.spawnMeter !== 'number') f.spawnMeter=f.isAI?Math.random()*70:12; f.alive=true; });
+  gameStarted=true;
+  stateDirty = true;
+  renderSpawnCards(); updateHUD(); updatePiecePanel();
+}
+
+function renderSpawnCards(){
+  const f=factions[PLAYER]; if(!f) return;
+  if(playerDefeated){
+    spawnPanel.innerHTML='<div class="spawnCard glass locked" style="grid-column:1/-1;justify-content:center;text-align:center"><div class="spawnName">Defeated — spectating only</div><div class="spawnMeta">Exit back to the lobby or watch the remaining factions.</div></div>';
+    return;
+  }
+  if(!f.spawnChoices.length) f.spawnChoices=chooseSpawnOptions(PLAYER);
+  const ready=f.spawnMeter>=100;
+  spawnPanel.innerHTML='';
+  f.spawnChoices.forEach((type,i)=>{
+    const def=pieceDefs[type];
+    const card=document.createElement('div');
+    card.className='spawnCard glass '+(ready?'ready':'locked')+(spawnSelection===i?' selected':'');
+    card.innerHTML=`<div><div class="spawnName">${def.icon} ${def.name}</div><div class="spawnMeta">${patternName(def.pattern)} · ${def.cooldown.toFixed(1)}s cooldown</div></div><div class="spawnIcon">${def.icon}</div>`;
+    card.onclick=()=>{
+      if(!ready){ toast('Spawn bar is not full yet. Keep expanding and capturing.'); return; }
+      spawnSelection = spawnSelection===i ? null : i;
+      selectedPiece=null; legalMoves=[];
+      renderSpawnCards();
+      toast(spawnSelection!==null ? `Place ${def.name} on any highlighted controlled tile.` : 'Spawn selection canceled.');
+    };
+    spawnPanel.appendChild(card);
+  });
+}
+function patternName(p){
+  const names={pawn:'Pawn+',king:'King',general:'General',tower:'Territory Tower',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',lancer:'Lancer',scout:'Scout',assassin:'Assassin',warden:'Warden',paladin:'Paladin'};
+  return names[p]||p;
+}
+function updateHUD(){
+  if(!factions[PLAYER]) return;
+  const f=factions[PLAYER];
+  const pct=clamp(f.spawnMeter,0,100);
+  spawnFill.style.width=pct.toFixed(0)+'%';
+  recalcOwnerCounts();
+  const territory = ownerCounts.get(PLAYER)||0;
+  const army = pieces.filter(p=>p.alive&&p.faction===PLAYER).length;
+  const spawnRate = spawnRateForFaction(f, territory, army);
+  const remaining = pct>=100 ? 0 : Math.ceil((100-pct)/Math.max(.01,spawnRate));
+  spawnPct.textContent = pct>=100 ? 'READY' : `${pct.toFixed(0)}% · ${remaining}s`;
+  if(quickPct) quickPct.textContent = playerDefeated ? 'Defeated' : (pct>=100 ? 'Spawn Ready' : `Spawn ${remaining}s`);
+  scoreLine.textContent=`Territory ${territory} · Captures ${gameStats.captures} · Kings ${gameStats.kingsTaken}`;
+  factionLine.textContent=`${displayNameForFaction(PLAYER)} · ${f.name}`;
+}
+function updatePiecePanel(){
+  if(!selectedPiece || !selectedPiece.alive){ piecePanel.style.display='none'; return; }
+  const p=selectedPiece, def=pieceDefs[p.type], f=factions[p.faction];
+  const cd=cooldownProgress(p);
+  piecePanel.style.display='block';
+  piecePanel.innerHTML=`
+    <h3 style="color:${f.color}">${def.icon} ${def.name} <span style="font-size:12px;color:#cbd5e1">Lv ${p.level}</span></h3>
+    <p><b>${f.short}</b> · Captures ${p.captures} · HP ${p.hp}/${p.maxHp}</p>
+    <div class="bar"><div class="fill" style="width:${(cd*100).toFixed(0)}%"></div></div>
+    <p>${cooldownReady(p)?'Ready to move.':'Cooldown '+Math.ceil((1-cd)*cooldownFor(p))+'s remaining.'}</p>
+    <p>${def.desc}</p>
+    <button id="panelCenter">Center on piece</button>`;
+  const btn=document.getElementById('panelCenter');
+  if(btn) btn.onclick=()=>centerOn(p.x,p.y);
+}
+function centerOn(x,y){
+  const worldX = (x + .5) * BASE_CELL;
+  const worldY = (y + .5) * BASE_CELL;
+  cam.x = worldX * cam.zoom - innerWidth / 2;
+  cam.y = worldY * cam.zoom - innerHeight / 2;
+  clampCam();
+}
+function clampCam(){
+  const bw=BOARD_W*BASE_CELL*cam.zoom, bh=BOARD_H*BASE_CELL*cam.zoom;
+  cam.x=clamp(cam.x,-innerWidth*.25,Math.max(0,bw-innerWidth*0.75));
+  cam.y=clamp(cam.y,-innerHeight*.25,Math.max(0,bh-innerHeight*0.75));
+}
+function screenToBoard(sx,sy){
+  const x=(sx+cam.x)/(BASE_CELL*cam.zoom);
+  const y=(sy+cam.y)/(BASE_CELL*cam.zoom);
+  return {x:Math.floor(x), y:Math.floor(y), fx:x, fy:y};
+}
+function boardToScreen(x,y){return {x:x*BASE_CELL*cam.zoom-cam.x,y:y*BASE_CELL*cam.zoom-cam.y};}
+
+function gameTick(dt){
+  if(!gameStarted || paused) return;
+  tickTime += dt;
+  for(const t of board){ t.glow = Math.max(0,t.glow-dt*.7); }
+  for(const p of pieces){
+    if(!p.alive) continue;
+    p.px = lerp(p.px,p.x,Math.min(1,dt*7.5));
+    p.py = lerp(p.py,p.y,Math.min(1,dt*7.5));
+    p.flash=Math.max(0,p.flash-dt*3);
+  }
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i]; p.life-=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=.94; p.vy*=.94;
+    if(p.life<=0) particles.splice(i,1);
+  }
+  for(let i=floatingText.length-1;i>=0;i--){
+    const f=floatingText[i]; f.life-=dt; f.y-=28*dt;
+    if(f.life<=0) floatingText.splice(i,1);
+  }
+  if(isController){ updateSpawns(dt); aiTick(dt); maybeWriteControllerState(); }
+  updateHUD();
+  maybeAnnounceWorldWinner();
+  if(tickTime>.5){ tickTime=0; updatePiecePanel(); }
+}
+function spawnRateForFaction(f, territory, army){
+  // Rate is percentage points per second. It begins slow, scales with controlled land,
+  // and is hard-capped so even a huge empire never receives pieces faster than ~9 seconds.
+  const baseRate = 100 / SPAWN_SLOWEST_SECONDS;
+  const maxRate = 100 / SPAWN_FASTEST_SECONDS;
+  const landBeyondStart = Math.max(0, territory - SPAWN_START_GRACE_TILES);
+  const landProgress = clamp(landBeyondStart / SPAWN_LAND_RAMP_TILES, 0, 1);
+  const landCurve = Math.pow(landProgress, .68);
+  const landDrivenRate = baseRate + (maxRate - baseRate) * landCurve;
+  const armyDrag = 1 + Math.max(0, army - 32) * .012;
+
+  // Lower faction spawnRate values mean the faction is better at producing pieces.
+  // This now matches the faction identities: Verdant/Ember are quicker, Iron is slower.
+  const factionTempo = 1 / Math.max(.62, f.spawnRate || 1);
+  const aiTempo = f.idx===PLAYER ? 1 : (f.aiSpawnScale || 1);
+  return Math.min(maxRate, landDrivenRate * factionTempo * aiTempo / armyDrag);
+}
+function updateSpawns(dt){
+  for(const f of factions){
+    if(!f.alive) continue;
+    const territory=(ownerCounts.get(f.idx)||0);
+    const army=pieces.filter(p=>p.alive&&p.faction===f.idx).length;
+    const rate = spawnRateForFaction(f, territory, army);
+    const before=f.spawnMeter;
+    f.spawnMeter = Math.min(100,f.spawnMeter+dt*rate);
+    if(f.spawnMeter !== before) markStateDirty();
+    if(f.idx===PLAYER && before<100 && f.spawnMeter>=100){
+      f.spawnChoices=chooseSpawnOptions(PLAYER);
+      renderSpawnCards(); toast('Spawn ready. Pick one of the three pieces at the top.');
+    }
+  }
+}
+function aiTick(dt){
+  let budget=MAX_AI_PER_FRAME;
+  const elapsed = now()-gameStats.startedAt;
+  for(const f of factions){
+    if(isHumanSlot(f.idx) || !f.alive || budget<=0) continue;
+    const aiSpeed = clamp(f.difficulty + elapsed/480, .55, 1.75);
+    if(now()<f.nextThink) continue;
+    f.nextThink = now() + clamp((1.45/aiSpeed) + Math.random()*.65, .38, 2.2);
+    if(f.spawnMeter>=100){ aiSpawn(f); f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(f.idx); budget--; }
+    const army=pieces.filter(p=>p.alive&&p.faction===f.idx&&cooldownReady(p));
+    army.sort((a,b)=>aiPiecePriority(f,b)-aiPiecePriority(f,a));
+    for(let i=0;i<Math.min(3,army.length)&&budget>0;i++){
+      if(aiMovePiece(f,army[i])) budget--;
+    }
+  }
+}
+function aiPiecePriority(f,p){
+  const def=pieceDefs[p.type];
+  let v=(def.value||1)+p.level*.6+p.captures*.5;
+  if(def.aura) v+=1.5;
+  const enemies=nearestEnemy(p.x,p.y,p.faction,12);
+  if(enemies) v+=12/Math.max(1,Math.sqrt(dist2(p.x,p.y,enemies.x,enemies.y)));
+  return v+Math.random()*2;
+}
+function nearestEnemy(x,y,faction,maxD=999){
+  let best=null,bd=maxD*maxD;
+  for(const p of pieces){
+    if(!p.alive||p.faction===faction||!factions[p.faction].alive) continue;
+    const d=dist2(x,y,p.x,p.y);
+    if(d<bd){bd=d;best=p;}
+  }
+  return best;
+}
+function nearestOwnedFrontier(x,y,faction){
+  let best=null,bd=999999;
+  for(const t of board){
+    if(t.owner!==faction) continue;
+    let frontier=false;
+    for(const [dx,dy] of ORTHO){ if(inBounds(t.x+dx,t.y+dy) && tile(t.x+dx,t.y+dy).owner!==faction) frontier=true; }
+    if(!frontier) continue;
+    const d=dist2(x,y,t.x,t.y); if(d<bd){bd=d;best=t;}
+  }
+  return best;
+}
+function aiMovePiece(f,p){
+  const moves=getLegalMoves(p,false);
+  if(!moves.length) return false;
+  const style=f.aiStyle;
+  let best=null,bs=-99999;
+  const kingTargets=pieces.filter(q=>q.alive&&q.type==='king'&&q.faction!==p.faction&&factions[q.faction].alive);
+  for(const m of moves){
+    let s=0;
+    const target=findPieceAt(m.x,m.y);
+    if(target){
+      s += 45 + (pieceDefs[target.type].value||1)*6;
+      if(target.type==='king') s += 1000;
+      if(style==='assassin') s += target.type==='king'?400:20;
+    }
+    const t=tile(m.x,m.y);
+    if(t.owner!==p.faction) s += style==='expansion'?17:9;
+    if(pieceDefs[p.type].aura) s += 4;
+    const nearestKing=kingTargets.sort((a,b)=>dist2(m.x,m.y,a.x,a.y)-dist2(m.x,m.y,b.x,b.y))[0];
+    if(nearestKing){
+      const d=Math.sqrt(dist2(m.x,m.y,nearestKing.x,nearestKing.y));
+      s += (style==='aggressive'||style==='assassin') ? Math.max(0,34-d*1.8) : Math.max(0,15-d);
+    }
+    if(style==='defensive'){
+      const ownKing=getPiece(f.kingId);
+      if(ownKing) s += Math.max(0,18-Math.sqrt(dist2(m.x,m.y,ownKing.x,ownKing.y)));
+    }
+    if(style==='fluid' && tile(m.x,m.y).type==='water') s+=13;
+    if(tile(m.x,m.y).type==='forest' && style==='expansion') s+=5;
+    s += Math.random()*8;
+    if(s>bs){bs=s;best=m;}
+  }
+  if(best){ return movePiece(p,best.x,best.y,'ai'); }
+  return false;
+}
+function aiSpawn(f){
+  const tiles=eligibleSpawnTiles(f.idx);
+  if(!tiles.length) return;
+  const choices=chooseSpawnOptions(f.idx);
+  choices.sort((a,b)=>(pieceDefs[b].value||1)-(pieceDefs[a].value||1));
+  let type=choices[0];
+  if(f.aiStyle==='expansion') type=choices.sort((a,b)=>(pieceDefs[a].cooldown||3)-(pieceDefs[b].cooldown||3))[0];
+  if(f.aiStyle==='defensive' && Math.random()<.55){ type=choices.find(t=>(pieceDefs[t].aura||0)>0 || pieceDefs[t].pattern==='rook' || pieceDefs[t].pattern==='tower') || type; }
+  const enemies=pieces.filter(p=>p.alive&&p.faction!==f.idx&&factions[p.faction].alive);
+  let best=tiles[Math.floor(Math.random()*tiles.length)], bs=-999;
+  for(let i=0;i<Math.min(80,tiles.length);i++){
+    const t=tiles[Math.floor(Math.random()*tiles.length)];
+    let s=Math.random()*5;
+    const e=enemies.sort((a,b)=>dist2(t.x,t.y,a.x,a.y)-dist2(t.x,t.y,b.x,b.y))[0];
+    if(e){ const d=Math.sqrt(dist2(t.x,t.y,e.x,e.y)); s += f.aiStyle==='defensive' ? -Math.abs(d-9) : Math.max(0,22-d); }
+    for(const [dx,dy] of ORTHO){ if(inBounds(t.x+dx,t.y+dy)&&tile(t.x+dx,t.y+dy).owner!==f.idx) s+=8; }
+    if(pieceDefs[type].amphibious && tile(t.x,t.y).type==='water') s+=12;
+    if(s>bs){bs=s;best=t;}
+  }
+  newPiece(f.idx,type,best.x,best.y,{ready:false});
+  burst(best.x,best.y,f.color,14);
+}
+
+function draw(){
+  ctx.clearRect(0,0,innerWidth,innerHeight);
+  drawBackground();
+  ctx.save();
+  ctx.scale(cam.zoom,cam.zoom);
+  ctx.translate(-cam.x/cam.zoom,-cam.y/cam.zoom);
+  drawBoard();
+  drawTerritoryEffects();
+  drawHighlights();
+  drawPieces();
+  drawParticlesWorld();
+  ctx.restore();
+  drawScreenEffects();
+  drawMinimap();
+}
+function drawBackground(){
+  const g=ctx.createLinearGradient(0,0,0,innerHeight);
+  g.addColorStop(0,'#091426'); g.addColorStop(.55,'#07101c'); g.addColorStop(1,'#050813');
+  ctx.fillStyle=g; ctx.fillRect(0,0,innerWidth,innerHeight);
+  ctx.globalAlpha=.2;
+  for(let i=0;i<40;i++){
+    const x=(i*193+Math.sin(now()*0.05+i)*60)%innerWidth;
+    const y=(i*97)%innerHeight;
+    ctx.fillStyle=i%3?'#79a7ff':'#fff6b8'; ctx.fillRect(x,y,1.3,1.3);
+  }
+  ctx.globalAlpha=1;
+}
+function drawBoard(){
+  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2;
+  const top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-2;
+  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+2;
+  const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
+  for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
+    for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
+      const t=tile(x,y), td=terrains[t.type];
+      const sx=x*BASE_CELL, sy=y*BASE_CELL;
+      const alt=(x+y)%2?td.alt:td.color;
+      ctx.fillStyle=alt;
+      ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);
+      // terrain texture
+      const n=seededNoise(x,y,707);
+      ctx.globalAlpha=.13;
+      ctx.fillStyle=n>.5?'#ffffff':'#000000';
+      ctx.beginPath();
+      ctx.arc(sx+BASE_CELL*(.25+seededNoise(x,y,1)*.5), sy+BASE_CELL*(.25+seededNoise(x,y,2)*.5), 5+seededNoise(x,y,3)*15, 0, Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha=1;
+      if(td.glyph){
+        ctx.globalAlpha=.35;
+        ctx.font='18px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle='#e5edf8';
+        ctx.fillText(td.glyph,sx+BASE_CELL/2,sy+BASE_CELL/2);
+        ctx.globalAlpha=1;
+      }
+      ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1;
+      ctx.strokeRect(sx+.5,sy+.5,BASE_CELL,BASE_CELL);
+    }
+  }
+}
+function drawTerritoryEffects(){
+  if(!showTerritory) return;
+  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2;
+  const top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-2;
+  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+2;
+  const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
+  for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
+    for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
+      const t=tile(x,y); if(t.owner===null) continue;
+      const f=factions[t.owner]; if(!f) continue;
+      const sx=x*BASE_CELL, sy=y*BASE_CELL;
+      ctx.globalAlpha = t.owner===PLAYER ? .22 : .16;
+      ctx.fillStyle=f.color; ctx.fillRect(sx+2,sy+2,BASE_CELL-4,BASE_CELL-4);
+      if(t.glow>0){ctx.globalAlpha=.18+.45*t.glow; ctx.fillStyle=f.color; ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);}
+      ctx.globalAlpha=.65;
+      // border only at ownership edges
+      ctx.strokeStyle=f.color; ctx.lineWidth=2;
+      ctx.beginPath();
+      if(!inBounds(x,y-1)||tile(x,y-1).owner!==t.owner){ctx.moveTo(sx,sy+1);ctx.lineTo(sx+BASE_CELL,sy+1);}
+      if(!inBounds(x+1,y)||tile(x+1,y).owner!==t.owner){ctx.moveTo(sx+BASE_CELL-1,sy);ctx.lineTo(sx+BASE_CELL-1,sy+BASE_CELL);}
+      if(!inBounds(x,y+1)||tile(x,y+1).owner!==t.owner){ctx.moveTo(sx,sy+BASE_CELL-1);ctx.lineTo(sx+BASE_CELL,sy+BASE_CELL-1);}
+      if(!inBounds(x-1,y)||tile(x-1,y).owner!==t.owner){ctx.moveTo(sx+1,sy);ctx.lineTo(sx+1,sy+BASE_CELL);}
+      ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+  }
+}
+function drawHighlights(){
+  if(spawnSelection!==null){
+    const tiles=eligibleSpawnTiles(PLAYER);
+    const time=now();
+    ctx.save();
+    for(const t of tiles){
+      const sx=t.x*BASE_CELL, sy=t.y*BASE_CELL;
+      ctx.globalAlpha=.18+.08*Math.sin(time*5+t.x+t.y);
+      ctx.fillStyle='#ffe985'; ctx.fillRect(sx+5,sy+5,BASE_CELL-10,BASE_CELL-10);
+    }
+    ctx.restore();
+  }
+  if(selectedPiece){
+    const sx=selectedPiece.x*BASE_CELL, sy=selectedPiece.y*BASE_CELL;
+    ctx.strokeStyle='#fff3a3'; ctx.lineWidth=4; ctx.strokeRect(sx+3,sy+3,BASE_CELL-6,BASE_CELL-6);
+    for(const m of legalMoves){
+      const x=m.x*BASE_CELL, y=m.y*BASE_CELL;
+      ctx.globalAlpha=m.capture?.55:.36;
+      ctx.fillStyle=m.capture?'#ff5f72':'#7dd3fc';
+      ctx.beginPath(); ctx.arc(x+BASE_CELL/2,y+BASE_CELL/2,m.capture?15:10,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+      if(m.capture){ ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(x+8,y+8,BASE_CELL-16,BASE_CELL-16); }
+    }
+  }
+}
+function drawPieces(){
+  const visible = pieces.filter(p=>p.alive).sort((a,b)=>a.y-b.y || (pieceDefs[a.type].value||1)-(pieceDefs[b.type].value||1));
+  const labelIds = computeNameLabelPieceIds(visible);
+  for(const p of visible){
+    const f=factions[p.faction]; if(!f) continue;
+    const def=pieceDefs[p.type];
+    const x=(p.px+.5)*BASE_CELL, y=(p.py+.5)*BASE_CELL;
+    const r=BASE_CELL*.36 + Math.min(7,(def.value||1)*.6);
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.globalAlpha = p.alive?1:.2;
+    // aura ring for kings/generals/towers
+    if(def.aura){
+      ctx.globalAlpha=.15;
+      ctx.fillStyle=f.color; ctx.beginPath(); ctx.arc(0,0,r+8+Math.sin(now()*3+p.id)*2,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha=1;
+    }
+    // shadow
+    ctx.globalAlpha=.45; ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(2,10,r*.9,r*.35,0,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+    const g=ctx.createRadialGradient(-r*.25,-r*.3,2,0,0,r*1.15);
+    g.addColorStop(0,'#ffffff'); g.addColorStop(.16,f.color); g.addColorStop(1,f.dark||'#333');
+    ctx.fillStyle=g;
+    ctx.strokeStyle=p.flash>0?'#fff':f.color;
+    ctx.lineWidth=p.flash>0?4:2;
+    drawPieceShape(def.pattern,r,p.id);
+    ctx.fill(); ctx.stroke();
+    // icon
+    ctx.fillStyle = '#07101c';
+    ctx.globalAlpha=.88;
+    ctx.font=`${Math.floor(r*1.02)}px serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(def.icon,0,-1);
+    ctx.globalAlpha=1;
+    // level pips
+    for(let i=0;i<p.level;i++){
+      const a=-Math.PI/2 + (i-(p.level-1)/2)*.22;
+      ctx.fillStyle='#fff6bd'; ctx.beginPath(); ctx.arc(Math.cos(a)*(r+6),Math.sin(a)*(r+6),2.4,0,Math.PI*2); ctx.fill();
+    }
+    // cooldown ring
+    const cd=cooldownProgress(p);
+    ctx.strokeStyle=cd>=1?'rgba(125,255,174,.95)':'rgba(255,255,255,.34)';
+    ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(0,0,r+5,-Math.PI/2,-Math.PI/2+Math.PI*2*cd); ctx.stroke();
+    if(cooldownReady(p)){
+      ctx.globalAlpha=.45+.2*Math.sin(now()*5+p.id);
+      ctx.strokeStyle='#7ff0b0'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(0,0,r+10,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+    if(labelIds.has(p.id)) drawNameTag(displayNameForFaction(p.faction), r);
+    // hp dots
+    if(p.maxHp>1){
+      for(let i=0;i<p.maxHp;i++){
+        ctx.fillStyle=i<p.hp?'#dbeafe':'rgba(0,0,0,.5)'; ctx.beginPath(); ctx.arc(-r+5+i*8,r+5,3,0,Math.PI*2); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+}
+
+function computeNameLabelPieceIds(visible){
+  const ids = new Set();
+  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-1;
+  const top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-1;
+  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+1;
+  const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+1;
+  for(const f of factions){
+    if(!f || !f.alive) continue;
+    const onscreen = visible.filter(p=>p.faction===f.idx && p.x>=left && p.x<=right && p.y>=top && p.y<=bottom);
+    if(!onscreen.length) continue;
+    const king = onscreen.find(p=>p.type==='king');
+    const labelPiece = king || onscreen.sort((a,b)=>(pieceDefs[b.type].value||1)-(pieceDefs[a.type].value||1))[0];
+    if(labelPiece) ids.add(labelPiece.id);
+  }
+  return ids;
+}
+function drawNameTag(name,r){
+  const text = String(name || '').slice(0,18);
+  ctx.font='900 10px Inter,system-ui,sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  const w = ctx.measureText(text).width + 12;
+  const y = -r - 17;
+  ctx.fillStyle='rgba(0,0,0,.72)';
+  roundRect(ctx,-w/2,y-8,w,16,8); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.42)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle='#fff'; ctx.fillText(text,0,y);
+}
+function roundRect(c,x,y,w,h,r){
+  c.beginPath(); c.moveTo(x+r,y); c.lineTo(x+w-r,y); c.quadraticCurveTo(x+w,y,x+w,y+r); c.lineTo(x+w,y+h-r); c.quadraticCurveTo(x+w,y+h,x+w-r,y+h); c.lineTo(x+r,y+h); c.quadraticCurveTo(x,y+h,x,y+h-r); c.lineTo(x,y+r); c.quadraticCurveTo(x,y,x+r,y); c.closePath();
+}
+function drawPieceShape(pattern,r,id){
+  const wob=Math.sin(now()*2+id)*.04;
+  ctx.beginPath();
+  if(pattern==='knight'||pattern==='paladin'){
+    ctx.moveTo(-r*.65,r*.65); ctx.quadraticCurveTo(-r*.95,-r*.1,-r*.22,-r*.78); ctx.quadraticCurveTo(r*.35,-r*1.0,r*.78,-r*.35); ctx.quadraticCurveTo(r*.35,-r*.2,r*.65,r*.42); ctx.quadraticCurveTo(.1,r*.72,-r*.65,r*.65);
+  } else if(pattern==='rook'||pattern==='rookShort'||pattern==='tower'){
+    ctx.rect(-r*.72,-r*.56,r*1.44,r*1.16);
+    ctx.moveTo(-r*.72,-r*.56); ctx.lineTo(-r*.72,-r*.82); ctx.lineTo(-r*.38,-r*.82); ctx.lineTo(-r*.38,-r*.56);
+    ctx.moveTo(-r*.12,-r*.56); ctx.lineTo(-r*.12,-r*.82); ctx.lineTo(r*.12,-r*.82); ctx.lineTo(r*.12,-r*.56);
+    ctx.moveTo(r*.38,-r*.56); ctx.lineTo(r*.38,-r*.82); ctx.lineTo(r*.72,-r*.82); ctx.lineTo(r*.72,-r*.56);
+  } else if(pattern==='bishop'||pattern==='bishopLong'||pattern==='assassin'){
+    ctx.moveTo(0,-r*.92); ctx.quadraticCurveTo(r*.78,-r*.28,r*.5,r*.55); ctx.quadraticCurveTo(0,r*.95,-r*.5,r*.55); ctx.quadraticCurveTo(-r*.78,-r*.28,0,-r*.92);
+  } else if(pattern==='queen'||pattern==='king'||pattern==='general'){
+    const points = pattern==='king'?8:7;
+    for(let i=0;i<points*2;i++){
+      const a=-Math.PI/2+i*Math.PI/points+wob;
+      const rr=i%2?r*.58:r*.95;
+      if(i===0) ctx.moveTo(Math.cos(a)*rr,Math.sin(a)*rr); else ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);
+    }
+    ctx.closePath();
+  } else if(pattern==='lancer'){
+    ctx.moveTo(0,-r); ctx.lineTo(r*.7,r*.45); ctx.lineTo(r*.18,r*.45); ctx.lineTo(r*.18,r); ctx.lineTo(-r*.18,r); ctx.lineTo(-r*.18,r*.45); ctx.lineTo(-r*.7,r*.45); ctx.closePath();
+  } else {
+    ctx.arc(0,0,r*.82,0,Math.PI*2);
+  }
+}
+function drawParticlesWorld(){
+  for(const p of particles){
+    ctx.globalAlpha=Math.max(0,p.life/p.max);
+    ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  for(const f of floatingText){
+    ctx.globalAlpha=Math.max(0,f.life/f.max);
+    ctx.font='bold 13px Inter, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.lineWidth=4; ctx.strokeStyle='rgba(0,0,0,.75)'; ctx.strokeText(f.text,f.x,f.y);
+    ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y);
+  }
+  ctx.globalAlpha=1;
+}
+function drawScreenEffects(){
+  if(paused){
+    ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(0,0,innerWidth,innerHeight);
+    ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='900 42px Inter'; ctx.fillText('PAUSED',innerWidth/2,innerHeight/2);
+  }
+}
+function drawMinimap(){
+  const mw=mini.clientWidth, mh=mini.clientHeight;
+  mctx.clearRect(0,0,mw,mh);
+  mctx.fillStyle='rgba(6,10,18,.85)'; mctx.fillRect(0,0,mw,mh);
+  const sx=mw/BOARD_W, sy=mh/BOARD_H;
+  for(const t of board){
+    if(t.owner!==null){ mctx.fillStyle=factions[t.owner]?.color || '#fff'; mctx.globalAlpha=.8; }
+    else { mctx.fillStyle=terrainMiniColor(t.type); mctx.globalAlpha=.45; }
+    mctx.fillRect(t.x*sx,t.y*sy,Math.ceil(sx),Math.ceil(sy));
+  }
+  mctx.globalAlpha=1;
+  for(const p of pieces){ if(!p.alive) continue; mctx.fillStyle=p.type==='king'?'#fff':(factions[p.faction]?.color||'#fff'); mctx.fillRect(p.x*sx-1,p.y*sy-1,3,3); }
+  const vx=(cam.x/(BASE_CELL*cam.zoom))*sx, vy=(cam.y/(BASE_CELL*cam.zoom))*sy;
+  const vw=(innerWidth/(BASE_CELL*cam.zoom))*sx, vh=(innerHeight/(BASE_CELL*cam.zoom))*sy;
+  mctx.strokeStyle='#fff'; mctx.lineWidth=1.5; mctx.strokeRect(vx,vy,vw,vh);
+}
+function terrainMiniColor(type){
+  if(type==='water') return '#287bb3'; if(type==='mountain') return '#83899a'; if(type==='forest') return '#2f9a55'; if(type==='swamp') return '#3b786c'; if(type==='road') return '#9a8051'; if(type==='ruins') return '#8b7ba7'; if(type==='sand') return '#b39a57'; if(type==='canyon') return '#9a4d3b'; if(type==='crystal') return '#7da2ff'; return '#46556c';
+}
+
+function onTap(sx,sy){
+  if(!gameStarted || (playerDefeated && !spectating)) return;
+  const b=screenToBoard(sx,sy);
+  if(!inBounds(b.x,b.y)) return;
+  if(spawnSelection!==null && !playerDefeated){
+    handleSpawnPlace(b.x,b.y); return;
+  }
+  const p=findPieceAt(b.x,b.y);
+  if(selectedPiece){
+    const m=legalMoves.find(q=>q.x===b.x && q.y===b.y);
+    if(m){
+      requestPlayerMove(selectedPiece,b.x,b.y);
+      return;
+    }
+  }
+  if(p){
+    selectedPiece=p;
+    legalMoves=(p.faction===PLAYER && !playerDefeated && ownFactionAlive())?getLegalMoves(p,false):[];
+    if(p.faction!==PLAYER) moveModeHint='Enemy piece selected for inspection.';
+    else if(!cooldownReady(p)) moveModeHint='Piece is cooling down.';
+    updatePiecePanel();
+  } else {
+    selectedPiece=null; legalMoves=[]; updatePiecePanel();
+  }
+}
+function handleSpawnPlace(x,y){
+  requestPlayerSpawn(x,y);
+}
+
+canvas.addEventListener('pointerdown', e=>{
+  canvas.setPointerCapture(e.pointerId);
+  dragging=true; pointerMoved=false; canvas.classList.add('dragging');
+  dragStart={x:e.clientX,y:e.clientY,camX:cam.x,camY:cam.y,t:performance.now()};
+});
+canvas.addEventListener('pointermove', e=>{
+  if(!dragging||!dragStart) return;
+  const dx=e.clientX-dragStart.x, dy=e.clientY-dragStart.y;
+  if(Math.hypot(dx,dy)>6) pointerMoved=true;
+  cam.x=dragStart.camX-dx; cam.y=dragStart.camY-dy; clampCam();
+});
+canvas.addEventListener('pointerup', e=>{
+  if(!dragging) return;
+  dragging=false; canvas.classList.remove('dragging');
+  if(!pointerMoved) onTap(e.clientX,e.clientY);
+});
+canvas.addEventListener('pointercancel',()=>{dragging=false;canvas.classList.remove('dragging');});
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const old=cam.zoom;
+  const factor=e.deltaY<0?1.1:.9;
+  const nz=clamp(cam.zoom*factor,.55,1.75);
+  const mx=e.clientX, my=e.clientY;
+  const wx=(mx+cam.x)/old, wy=(my+cam.y)/old;
+  cam.zoom=nz;
+  cam.x=wx*nz-mx; cam.y=wy*nz-my; clampCam();
+},{passive:false});
+mini.addEventListener('pointerdown', e=>{
+  const rect=mini.getBoundingClientRect();
+  const x=(e.clientX-rect.left)/rect.width*BOARD_W;
+  const y=(e.clientY-rect.top)/rect.height*BOARD_H;
+  centerOn(x,y);
+});
+if(exitLobbyBtn) exitLobbyBtn.onclick=()=>exitToLobby();
+centerBtn.onclick=(e)=>{
+  e.preventDefault();
+  e.stopPropagation();
+  const playerFaction = factions[PLAYER];
+  const k = playerFaction ? getPiece(playerFaction.kingId) : null;
+  if(k){
+    centerOn(k.x,k.y);
+    toast('Centered on your king.', 900);
+  } else if(playerDefeated){
+    toast('Your king has been captured. You can restart or spectate.', 1800);
+  }
+};
+territoryBtn.onclick=()=>{showTerritory=!showTerritory; territoryBtn.classList.toggle('active',showTerritory);};
+pauseBtn.onclick=()=>{paused=!paused; pauseBtn.textContent=paused?'Resume':'Pause';};
+startBtn.onclick=()=>{ const sel=document.getElementById('difficultySelect'); if(sel) chosenDifficultyId=sel.value; overlay.style.display='none'; createGame(); toast('Local preview started.', 2400); };
+restartBtn.onclick=()=>{ exitToLobby(); };
+spectateBtn.onclick=()=>{ spectating=true; paused=false; defeatOverlay.style.display='none'; toast('Spectating the remaining warlords. Drag or swipe to follow the battle.', 3600); };
+
+function keyboard(){
+  window.addEventListener('keydown',e=>{
+    const step=70;
+    if(e.key==='ArrowLeft'||e.key==='a') cam.x-=step;
+    if(e.key==='ArrowRight'||e.key==='d') cam.x+=step;
+    if(e.key==='ArrowUp'||e.key==='w') cam.y-=step;
+    if(e.key==='ArrowDown'||e.key==='s') cam.y+=step;
+    if(e.key==='Escape'){selectedPiece=null;legalMoves=[];spawnSelection=null;renderSpawnCards();updatePiecePanel();}
+    if(e.key===' '){paused=!paused; pauseBtn.textContent=paused?'Resume':'Pause';}
+    clampCam();
+  });
+}
+keyboard();
+
+function loop(t){
+  const dt=Math.min(.05,(t-lastTime)/1000 || .016); lastTime=t;
+  gameTick(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// Multiplayer boot: lobby URL should provide ?gameId=<lobbyId>&username=<lobby username>.
+generateBoard();
+cam.x=BOARD_W*BASE_CELL/2-innerWidth/2; cam.y=BOARD_H*BASE_CELL/2-innerHeight/2; cam.zoom=.75;
+bootMultiplayer();
+})();
+</script>
+</body>
+</html>
