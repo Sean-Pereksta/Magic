@@ -70,10 +70,12 @@
   .mobileStick{position:absolute;width:112px;height:112px;margin-left:-56px;margin-top:-56px;border-radius:50%;border:1px solid rgba(255,255,255,.20);background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.08),rgba(255,255,255,.025) 56%,rgba(3,12,25,.10));box-shadow:0 0 26px rgba(94,228,255,.08) inset,0 12px 34px rgba(0,0,0,.15);opacity:.34;pointer-events:none;transform:translate3d(0,0,0);}
   .mobileStick .knob{position:absolute;left:50%;top:50%;width:48px;height:48px;margin-left:-24px;margin-top:-24px;border-radius:50%;background:radial-gradient(circle at 36% 28%,rgba(255,255,255,.40),rgba(94,228,255,.24) 52%,rgba(3,12,25,.20));border:1px solid rgba(255,255,255,.22);box-shadow:0 0 18px rgba(94,228,255,.10);transform:translate3d(0,0,0);}
   #moveStick{left:82px;bottom:82px;top:auto;}
-  #lookStick{right:82px;bottom:82px;left:auto;top:auto;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:950;letter-spacing:.9px;color:rgba(255,255,255,.78);}
+  #lookStick{right:82px;bottom:82px;left:auto;top:auto;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:950;letter-spacing:.9px;color:rgba(255,255,255,.78);--sprint-pct:100%;--sprint-alpha:.78;}
   #lookStick .knob{display:none;}
-  #lookStick::after{content:'SPRINT';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-shadow:0 0 12px rgba(255,209,102,.25);}
-  #moveStick.sprinting,#lookStick.sprinting{opacity:.62;border-color:rgba(255,209,102,.50);box-shadow:0 0 34px rgba(255,209,102,.24),0 0 26px rgba(94,228,255,.10) inset;background:radial-gradient(circle at 50% 50%,rgba(255,209,102,.16),rgba(255,255,255,.035) 58%,rgba(3,12,25,.12));}
+  #lookStick::before{content:'';position:absolute;inset:-7px;border-radius:50%;background:conic-gradient(rgba(255,209,102,.95) var(--sprint-pct),rgba(255,255,255,.10) 0);opacity:var(--sprint-alpha);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 8px),#000 calc(100% - 7px));mask:radial-gradient(farthest-side,transparent calc(100% - 8px),#000 calc(100% - 7px));filter:drop-shadow(0 0 10px rgba(255,209,102,.20));}
+  #lookStick::after{content:'SPRINT';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-shadow:0 0 12px rgba(255,209,102,.25);opacity:var(--sprint-alpha);}
+  #lookStick.depleted::after{content:'EMPTY';color:rgba(255,255,255,.58);}
+  #moveStick.sprinting,#lookStick.sprinting{opacity:.70;border-color:rgba(255,209,102,.58);box-shadow:0 0 34px rgba(255,209,102,.24),0 0 26px rgba(94,228,255,.10) inset;background:radial-gradient(circle at 50% 50%,rgba(255,209,102,.18),rgba(255,255,255,.035) 58%,rgba(3,12,25,.12));}
   body.mobile-play #mobileControls{display:block;}
   body.mobile-nohud #hud,body.mobile-nohud #abilityBar,body.mobile-nohud #depthGauge,body.mobile-nohud #centerDot,body.mobile-nohud #lockHint{display:none!important;}
   body.mobile-play canvas{cursor:none;}
@@ -95,7 +97,7 @@
   <div class="row"><span class="label">Sprint</span><span class="value" id="sprintTxt">100%</span></div>
   <div class="bar"><div class="fill" id="sprintFill"></div></div>
   <div class="row"><span class="label">Eaten</span><span class="value" id="eatenTxt">0</span></div>
-  <div class="row"><span class="label">Next upgrade</span><span class="value" id="nextUpgradeTxt">10 fish</span></div>
+  <div class="row"><span class="label">Next upgrade</span><span class="value" id="nextUpgradeTxt">4 fish</span></div>
   <div class="row"><span class="label">Rule</span><span class="value">bigger fish eat smaller fish</span></div>
 </div>
 <div id="abilityBar"></div>
@@ -265,7 +267,7 @@
 
   const TAU = Math.PI * 2;
   const SURFACE_Y = -3.0;
-  const BOTTOM_Y = -1120;
+  const BOTTOM_Y = -1580;
   const WORLD_RADIUS = 2350;
   const NEAR = .8;
   const MAX_FISH = 128;
@@ -292,11 +294,13 @@
   }
   function depth01(y){ return clamp((Math.abs(y) - Math.abs(SURFACE_Y)) / (Math.abs(BOTTOM_Y) - Math.abs(SURFACE_Y)), 0, 1); }
   function zoneForDepth(d){
-    if(d < .16) return 'Surface';
-    if(d < .36) return 'Blue Shelf';
-    if(d < .58) return 'Open Water';
-    if(d < .78) return 'Deep';
-    return 'Abyss';
+    if(d < .12) return 'Surface';
+    if(d < .26) return 'Sunlit Shelf';
+    if(d < .42) return 'Reef Drop';
+    if(d < .58) return 'Twilight';
+    if(d < .74) return 'Midnight';
+    if(d < .88) return 'Abyss';
+    return 'Hadal Trench';
   }
   function waveHeight(x,z,t){ return Math.sin(x*.018 + t*1.3)*1.2 + Math.cos(z*.015 - t*1.05)*1.0 + Math.sin((x+z)*.010 + t*.65)*.55; }
   function floorHeight(x,z){
@@ -305,19 +309,19 @@
 
   const fishTypes = [
     // Gentle, tiny starter prey near the surface. These are intentionally slower and easier to catch.
-    {name:'Sand Fleck Fry', color:'#fef3c7', color2:'#fff7ed', min:0, max:.12, size:.26, sizeMin:.18, sizeMax:.34, speed:5.6, cruiseSpeed:9.6, aggro:.00, danger:.01, detect:18, turn:2.1, turnSpeed:2.1, strategy:'drift', easyPrey:true, starter:true},
-    {name:'Bubble Guppy', color:'#b7f5ff', color2:'#ffffff', min:0, max:.15, size:.31, sizeMin:.22, sizeMax:.42, speed:6.8, cruiseSpeed:10.8, aggro:.00, danger:.01, detect:20, turn:2.4, turnSpeed:2.4, strategy:'bubbleDrift', easyPrey:true, starter:true},
-    {name:'Pea Darter', color:'#bbf7d0', color2:'#ecfeff', min:0, max:.18, size:.36, sizeMin:.26, sizeMax:.48, speed:9.2, cruiseSpeed:12.2, aggro:.01, danger:.01, detect:24, turn:2.8, turnSpeed:2.8, strategy:'shortHop', easyPrey:true, starter:true},
-    {name:'Lazy Kelp Shiner', color:'#86efac', color2:'#fef9c3', min:0, max:.24, size:.46, sizeMin:.34, sizeMax:.58, speed:8.9, cruiseSpeed:10.9, aggro:.01, danger:.02, detect:25, turn:1.9, turnSpeed:1.9, strategy:'grazer', easyPrey:true, starter:true},
-    {name:'Soft Reef Smelt', color:'#f9a8d4', color2:'#cffafe', min:.02, max:.26, size:.52, sizeMin:.40, sizeMax:.67, speed:11.6, cruiseSpeed:12.6, aggro:.02, danger:.02, detect:28, turn:2.2, turnSpeed:2.2, strategy:'slowSchool', easyPrey:true, starter:true},
+    {name:'Sand Fleck Fry', color:'#fef3c7', color2:'#fff7ed', min:0, max:.12, size:.26, sizeMin:.18, sizeMax:.34, speed:3.8, cruiseSpeed:6.4, aggro:.00, danger:.01, detect:18, turn:2.1, turnSpeed:2.1, strategy:'drift', easyPrey:true, starter:true},
+    {name:'Bubble Guppy', color:'#b7f5ff', color2:'#ffffff', min:0, max:.15, size:.31, sizeMin:.22, sizeMax:.42, speed:4.4, cruiseSpeed:7.2, aggro:.00, danger:.01, detect:20, turn:2.4, turnSpeed:2.4, strategy:'bubbleDrift', easyPrey:true, starter:true},
+    {name:'Pea Darter', color:'#bbf7d0', color2:'#ecfeff', min:0, max:.18, size:.36, sizeMin:.26, sizeMax:.48, speed:6.3, cruiseSpeed:8.4, aggro:.01, danger:.01, detect:24, turn:2.8, turnSpeed:2.8, strategy:'shortHop', easyPrey:true, starter:true},
+    {name:'Lazy Kelp Shiner', color:'#86efac', color2:'#fef9c3', min:0, max:.24, size:.46, sizeMin:.34, sizeMax:.58, speed:5.8, cruiseSpeed:7.8, aggro:.01, danger:.02, detect:25, turn:1.9, turnSpeed:1.9, strategy:'grazer', easyPrey:true, starter:true},
+    {name:'Soft Reef Smelt', color:'#f9a8d4', color2:'#cffafe', min:.02, max:.26, size:.52, sizeMin:.40, sizeMax:.67, speed:7.4, cruiseSpeed:8.8, aggro:.02, danger:.02, detect:28, turn:2.2, turnSpeed:2.2, strategy:'slowSchool', easyPrey:true, starter:true},
     {name:'Kelp Snapper Pup', color:'#fb923c', color2:'#fed7aa', min:.04, max:.30, size:.88, sizeMin:.72, sizeMax:1.14, speed:15.4, cruiseSpeed:17.4, aggro:.52, danger:.26, detect:62, turn:2.25, turnSpeed:2.25, strategy:'snap', predator:true, earlyPredator:true},
     {name:'Reef Needleling', color:'#e0f2fe', color2:'#fef08a', min:.05, max:.34, size:1.02, sizeMin:.78, sizeMax:1.32, speed:18.8, cruiseSpeed:22.8, aggro:.58, danger:.32, detect:72, turn:1.65, turnSpeed:1.65, strategy:'charge', predator:true, earlyPredator:true, dorsal:true},
     {name:'Baby Barracuda', color:'#cbd5e1', color2:'#f8fafc', min:.08, max:.38, size:1.18, sizeMin:.92, sizeMax:1.52, speed:23.4, cruiseSpeed:25.4, aggro:.68, danger:.40, detect:84, turn:1.18, turnSpeed:1.18, strategy:'charge', predator:true, earlyPredator:true, dorsal:true},
     {name:'Shallow Fanglet', color:'#64748b', color2:'#bae6fd', min:.10, max:.42, size:1.28, sizeMin:1.00, sizeMax:1.68, speed:15.8, cruiseSpeed:18.8, aggro:.72, danger:.46, detect:90, turn:1.10, turnSpeed:1.10, strategy:'lowSurge', predator:true, earlyPredator:true, shark:true, dorsal:true},
-    {name:'Glass Minnow', color:'#96ecff', color2:'#f4ffff', min:0, max:.16, size:.42, speed:12.2, aggro:.01, danger:.02, detect:30, turn:4.6, strategy:'panic', starter:true},
-    {name:'Sunny Sprat', color:'#ffe066', color2:'#7dd3fc', min:0, max:.22, size:.58, speed:13.0, aggro:.03, danger:.03, detect:34, turn:4.2, strategy:'school', starter:true},
-    {name:'Flash Dart', color:'#9ef7ff', color2:'#fde68a', min:.02, max:.30, size:.54, speed:21.5, aggro:.02, danger:.03, detect:40, turn:5.7, strategy:'panic'},
-    {name:'Kelp Nibbler', color:'#7ddf64', color2:'#e7ffe5', min:0, max:.34, size:.72, speed:14.2, aggro:.04, danger:.04, detect:38, turn:4.0, strategy:'grazer'},
+    {name:'Glass Minnow', color:'#96ecff', color2:'#f4ffff', min:0, max:.16, size:.42, speed:8.2, aggro:.01, danger:.02, detect:30, turn:4.6, strategy:'panic', starter:true},
+    {name:'Sunny Sprat', color:'#ffe066', color2:'#7dd3fc', min:0, max:.22, size:.58, speed:8.8, aggro:.03, danger:.03, detect:34, turn:4.2, strategy:'school', starter:true},
+    {name:'Flash Dart', color:'#9ef7ff', color2:'#fde68a', min:.02, max:.30, size:.54, speed:15.5, aggro:.02, danger:.03, detect:40, turn:5.7, strategy:'panic'},
+    {name:'Kelp Nibbler', color:'#7ddf64', color2:'#e7ffe5', min:0, max:.34, size:.72, speed:10.2, aggro:.04, danger:.04, detect:38, turn:4.0, strategy:'grazer'},
     {name:'Reef Ribbon', color:'#fb7185', color2:'#67e8f9', min:.02, max:.36, size:.82, speed:16.2, aggro:.08, danger:.05, detect:43, turn:4.4, strategy:'zigzag'},
     {name:'Blue Glider', color:'#60a5fa', color2:'#a7f3d0', min:.10, max:.45, size:1.02, speed:18.6, aggro:.10, danger:.11, detect:52, turn:3.7, strategy:'arc'},
     {name:'Silver Needle', color:'#c4b5fd', color2:'#e0f2fe', min:.18, max:.58, size:1.02, speed:25.5, aggro:.18, danger:.15, detect:66, turn:2.6, strategy:'charge'},
@@ -348,6 +352,11 @@
     {name:'Sleeper Maw', color:'#18181b', color2:'#fda4af', min:.80, max:1, size:5.6, speed:12.0, aggro:.98, danger:.95, detect:164, turn:.56, monster:true, glow:true, strategy:'ambush', predator:true},
     {name:'Abyss Leviathan', color:'#020617', color2:'#22d3ee', min:.86, max:1, size:7.1, speed:14.8, aggro:.99, danger:.98, detect:185, turn:.46, monster:true, dorsal:true, glow:true, strategy:'cruise', predator:true, apex:true},
     {name:'Crowned Leviathan', color:'#02010a', color2:'#facc15', min:.90, max:1, size:8.2, sizeMin:6.7, sizeMax:9.8, speed:16.2, cruiseSpeed:16.2, aggro:1.0, danger:1.0, detect:210, turn:.42, turnSpeed:.42, monster:true, dorsal:true, glow:true, strategy:'cruise', predator:true, apex:true},
+    {name:'Hooklight Phantom', color:'#030712', color2:'#bef264', min:.72, max:1, size:3.85, sizeMin:3.0, sizeMax:5.0, speed:18.8, cruiseSpeed:18.8, aggro:.92, danger:.86, detect:170, turn:1.55, turnSpeed:1.55, monster:true, glow:true, strategy:'shadowWeave', predator:true},
+    {name:'Spiral Gulper', color:'#2e1065', color2:'#f0abfc', min:.78, max:1, size:5.35, sizeMin:4.0, sizeMax:6.9, speed:16.8, cruiseSpeed:16.8, aggro:.96, danger:.93, detect:178, turn:.82, turnSpeed:.82, monster:true, glow:true, strategy:'spiralDive', predator:true},
+    {name:'Trench Lanternjaw', color:'#050816', color2:'#fef08a', min:.82, max:1, size:6.15, sizeMin:4.8, sizeMax:7.8, speed:17.8, cruiseSpeed:17.8, aggro:.98, danger:.96, detect:202, turn:.72, turnSpeed:.72, monster:true, glow:true, dorsal:true, strategy:'verticalAmbush', predator:true, apex:true},
+    {name:'Hadal Crown Eel', color:'#020617', color2:'#38bdf8', min:.88, max:1, size:6.9, sizeMin:5.3, sizeMax:8.8, speed:20.4, cruiseSpeed:20.4, aggro:1.0, danger:.99, detect:220, turn:1.28, turnSpeed:1.28, monster:true, eel:true, glow:true, strategy:'abyssPulse', predator:true, apex:true},
+    {name:'Worldscar Ray', color:'#111827', color2:'#fb7185', min:.90, max:1, size:9.0, sizeMin:7.2, sizeMax:11.6, speed:13.6, cruiseSpeed:13.6, aggro:.99, danger:1.0, detect:232, turn:.38, turnSpeed:.38, monster:true, glow:true, strategy:'wideCircle', predator:true, apex:true},
   ];
 
   const UPGRADE_DEFS = [
@@ -416,7 +425,7 @@
     camera:{pos:{x:0,y:-8,z:0}, right:{x:1,y:0,z:0}, up:{x:0,y:1,z:0}, forward:{x:0,y:0,z:1}},
     player:{
       pos:{x:0,y:-16,z:0}, vel:{x:0,y:0,z:0}, yaw:0, pitch:-.02, size:1.0, mass:1, eaten:0, fishEaten:0,
-      upgradeCount:0, upgradeCost:6, nextUpgradeAt:10, upgrades:Object.create(null), mods:baseMods(), visual:baseVisual(),
+      upgradeCount:0, upgradeCost:4, nextUpgradeAt:4, upgrades:Object.create(null), mods:baseMods(), visual:baseVisual(),
       tailPhase:0, finPhase:0, biteCooldown:0, dashCd:0, shockCd:0, inkCd:0, chompT:0, mouthOpen:0, killBoostT:0, sprintEnergy:100, sprintRegenDelay:0, sprinting:false, alive:true
     }
   };
@@ -440,7 +449,7 @@ const keys = Object.create(null);
   function reset(){
     const p = state.player;
     p.pos = {x:0,y:-16,z:0}; p.vel = {x:0,y:0,z:0}; p.yaw = 0; p.pitch = -.03; p.size = 1; p.mass = 1; p.eaten = 0; p.fishEaten = 0;
-    p.upgradeCount = 0; p.upgradeCost = 10; p.nextUpgradeAt = 6; p.upgrades = Object.create(null); p.mods = baseMods(); p.visual = baseVisual();
+    p.upgradeCount = 0; p.upgradeCost = 4; p.nextUpgradeAt = 4; p.upgrades = Object.create(null); p.mods = baseMods(); p.visual = baseVisual();
     p.tailPhase = 0; p.finPhase = 0; p.biteCooldown = 0; p.dashCd = 0; p.shockCd = 0; p.inkCd = 0; p.chompT = 0; p.mouthOpen = 0; p.killBoostT = 0; p.sprintEnergy = sprintMax(p); p.sprintRegenDelay = 0; p.sprinting = false; p.alive = true;
     state.fish.length = 0; state.plants.length = 0; state.bubbles.length = 0; state.bites.length = 0; state.obstacles.length = 0; state.flash = 0;
     ui.upgradePanel.style.display = 'none'; ui.abilityBar.style.display = 'flex'; if(ui.depthGauge) ui.depthGauge.style.display = 'block'; resetMobileStick('move'); resetMobileStick('look'); syncMobileUI();
@@ -902,7 +911,7 @@ const keys = Object.create(null);
     if(title) title.textContent = 'Choose an Evolution';
     const p = state.player;
     const options = currentUpgradeOptions();
-    ui.upgradeText.textContent = `Fish eaten: ${p.fishEaten}. Next evolution after ${p.upgradeCost + 2} more fish.`;
+    ui.upgradeText.textContent = `Fish eaten: ${p.fishEaten}. Early evolutions arrive quickly; the next one will take about ${p.upgradeCost} more fish.`;
     ui.upgradeCards.innerHTML = '';
     for(const up of options){
       const card = document.createElement('div');
@@ -918,8 +927,8 @@ const keys = Object.create(null);
     p.upgrades[up.id] = (p.upgrades[up.id] || 0) + 1;
     up.apply(p);
     p.upgradeCount++;
-    p.upgradeCost += 2;
-    p.nextUpgradeAt += p.upgradeCost;
+    p.upgradeCost = p.upgradeCount < 3 ? 4 : p.upgradeCount < 6 ? 5 : 7 + Math.floor((p.upgradeCount - 6) * 1.5);
+    p.nextUpgradeAt = p.fishEaten + p.upgradeCost;
     ui.upgradePanel.style.display = 'none';
     state.mode = 'play';
     syncMobileUI();
@@ -933,6 +942,13 @@ const keys = Object.create(null);
   function cooldownLabel(v){ return v <= 0 ? 'ready' : `${v.toFixed(1)}s`; }
   function sprintMax(p=state.player){ return 100 + (p.mods?.sprintMax || 0); }
   function sprintPercent(p=state.player){ return clamp(((p.sprintEnergy ?? sprintMax(p)) / sprintMax(p)) * 100, 0, 100); }
+  function updateSprintButtonCharge(p=state.player){
+    if(!ui.lookStick) return;
+    const pct = sprintPercent(p);
+    ui.lookStick.style.setProperty('--sprint-pct', pct.toFixed(1) + '%');
+    ui.lookStick.style.setProperty('--sprint-alpha', (0.28 + pct/100*.62).toFixed(2));
+    ui.lookStick.classList.toggle('depleted', pct < 12);
+  }
   function abilityHtml(hotkey, name, cd, unlocked=true){
     const cls = unlocked ? (cd<=0 ? 'ability ready' : 'ability') : 'ability locked';
     return `<div class="${cls}"><span class="hotkey">${hotkey}</span><span class="name">${name}</span><span class="cd">${unlocked ? cooldownLabel(cd) : 'locked'}</span></div>`;
@@ -993,7 +1009,7 @@ const keys = Object.create(null);
     const f = forwardFromAngles(p.yaw,p.pitch);
     const right = {x:Math.cos(p.yaw), y:0, z:-Math.sin(p.yaw)};
     const deep = depth01(p.pos.y);
-    const accel = 18.8 + p.size*.45 + p.mods.accel + deep*p.mods.deepSpeed;
+    const accel = 22.6 + p.size*.65 + p.mods.accel + deep*p.mods.deepSpeed;
     const maxSprint = sprintMax(p);
     if(p.sprintEnergy == null) p.sprintEnergy = maxSprint;
     p.sprintEnergy = clamp(p.sprintEnergy, 0, maxSprint);
@@ -1015,7 +1031,7 @@ const keys = Object.create(null);
         p.sprintEnergy = Math.min(maxSprint, p.sprintEnergy + regen*dt);
       }
     }
-    const sprintAccel = sprintActive ? (1.22 + p.mods.sprint*.046) : 0;
+    const sprintAccel = sprintActive ? (1.34 + p.mods.sprint*.052) : 0;
     if(forwardInput > 0){ p.vel.x += f.x*accel*(1+sprintAccel)*forwardInput*dt; p.vel.y += f.y*accel*(1+p.mods.vertical+sprintAccel*.70)*forwardInput*dt; p.vel.z += f.z*accel*(1+sprintAccel)*forwardInput*dt; }
     if(backInput > 0){ p.vel.x -= f.x*accel*.38*backInput*dt; p.vel.y -= f.y*accel*.38*backInput*dt; p.vel.z -= f.z*accel*.38*backInput*dt; }
     const strafe = .22 + p.mods.strafe + (sprintActive ? .10 : 0);
@@ -1050,7 +1066,7 @@ const keys = Object.create(null);
     const drag = Math.exp(-(1.92 + p.size*.045 - p.mods.drag) * dt);
     p.vel.x *= drag; p.vel.y *= drag; p.vel.z *= drag;
     const killBoost = p.killBoostT > 0 ? p.mods.killBoost*4 : 0;
-    const max = 21.0 + Math.sqrt(p.size)*2.25 + p.mods.speed + deep*p.mods.deepSpeed + killBoost + (p.sprinting ? 16 + p.mods.sprint*1.25 : 0);
+    const max = 25.4 + Math.sqrt(p.size)*2.85 + p.mods.speed + deep*p.mods.deepSpeed + killBoost + (p.sprinting ? 18.8 + p.mods.sprint*1.35 : 0);
     const sp = Math.hypot(p.vel.x,p.vel.y,p.vel.z);
     if(sp > max){ const k = max / sp; p.vel.x*=k; p.vel.y*=k; p.vel.z*=k; }
 
@@ -1185,6 +1201,24 @@ const keys = Object.create(null);
           const side = norm(cross({x:0,y:1,z:0}, toPrey));
           desired = norm(add(toPrey, mul(side, Math.sin(state.t*1.2+f.phase)*.55)));
           mode = 'hunt';
+        } else if(f.type.strategy === 'shadowWeave'){
+          const side = norm(cross({x:0,y:1,z:0}, toPrey));
+          desired = norm(add(add(toPrey, mul(side, Math.sin(state.t*2.6+f.phase)*.90)), {x:0,y:Math.sin(state.t*1.4+f.phase)*.24,z:0}));
+          mode = 'hunt';
+        } else if(f.type.strategy === 'spiralDive'){
+          const side = norm(cross({x:0,y:1,z:0}, toPrey));
+          desired = norm(add(add(toPrey, mul(side, Math.sin(state.t*1.7+f.phase)*1.05)), {x:0,y:Math.cos(state.t*1.7+f.phase)*.48,z:0}));
+          mode = preyDist < 42 + f.size*9 ? 'surge' : 'hunt';
+        } else if(f.type.strategy === 'verticalAmbush'){
+          const belowPrey = {x:preyTarget.pos.x, y:clamp(preyTarget.pos.y - 58 - f.size*4.5, BOTTOM_Y+32, SURFACE_Y-26), z:preyTarget.pos.z};
+          if(preyDist > 44 + f.size*9 && f.pos.y > preyTarget.pos.y - 38){ desired = norm(sub(belowPrey, f.pos)); mode = 'stalk'; }
+          else { desired = norm(add(toPrey,{x:0,y:.78,z:0})); mode = 'surge'; f.surgeT = Math.max(f.surgeT,.56); }
+        } else if(f.type.strategy === 'abyssPulse'){
+          const side = norm(cross({x:0,y:1,z:0}, toPrey));
+          const pulse = Math.sin(state.t*1.65 + f.phase);
+          desired = norm(add(toPrey, add(mul(side, pulse*.42), {x:0,y:pulse > .25 ? .36 : -.12,z:0})));
+          mode = pulse > .45 || preyDist < 38 + f.size*8 ? 'surge' : 'stalk';
+          if(mode === 'surge') f.surgeT = Math.max(f.surgeT,.48);
         } else if(f.type.strategy === 'ambush' && preyDist > (f.type.detect || 60)*.42){
           desired = norm(add(toPrey, {x:0,y:-.10,z:0})); mode = 'stalk';
         } else {
@@ -1215,6 +1249,26 @@ const keys = Object.create(null);
           const side = norm(cross({x:0,y:1,z:0}, toPlayer));
           desired = norm(add(toPlayer, mul(side, .55*Math.sign(Math.sin(f.phase)))));
           mode = 'hunt';
+        } else if(f.type.strategy === 'shadowWeave'){
+          const side = norm(cross({x:0,y:1,z:0}, toPlayer));
+          desired = norm(add(add(toPlayer, mul(side, Math.sin(state.t*2.8+f.phase)*.95)), {x:0,y:Math.sin(state.t*1.35+f.phase)*.22,z:0}));
+          mode = 'hunt';
+        } else if(f.type.strategy === 'spiralDive'){
+          const side = norm(cross({x:0,y:1,z:0}, toPlayer));
+          desired = norm(add(add(toPlayer, mul(side, Math.sin(state.t*1.55+f.phase)*1.10)), {x:0,y:Math.cos(state.t*1.55+f.phase)*.52,z:0}));
+          mode = dToPlayer < 42 + f.size*9 ? 'surge' : 'hunt';
+          if(mode === 'surge') f.surgeT = Math.max(f.surgeT,.46);
+        } else if(f.type.strategy === 'verticalAmbush'){
+          const belowPlayer = {x:p.pos.x, y:clamp(p.pos.y - 68 - f.size*4.5, BOTTOM_Y+36, SURFACE_Y-30), z:p.pos.z};
+          const horiz = Math.hypot(f.pos.x-p.pos.x, f.pos.z-p.pos.z);
+          if(f.pos.y > p.pos.y - 42 && horiz > 16){ desired = norm(sub(belowPlayer, f.pos)); mode = 'stalk'; }
+          else { desired = norm(add(toPlayer,{x:0,y:.82,z:0})); mode = 'surge'; f.surgeT = Math.max(f.surgeT,.60); }
+        } else if(f.type.strategy === 'abyssPulse'){
+          const side = norm(cross({x:0,y:1,z:0}, toPlayer));
+          const pulse = Math.sin(state.t*1.7 + f.phase);
+          desired = norm(add(toPlayer, add(mul(side, pulse*.44), {x:0,y:pulse > .28 ? .42 : -.16,z:0})));
+          mode = pulse > .45 || dToPlayer < 42 + f.size*8 ? 'surge' : 'stalk';
+          if(mode === 'surge') f.surgeT = Math.max(f.surgeT,.52);
         } else if(f.type.strategy === 'ambush' && dToPlayer > detectRange*.52){
           desired = norm(add(toPlayer, {x:0,y:-.14,z:0})); mode = 'stalk';
         } else {
@@ -1250,8 +1304,9 @@ const keys = Object.create(null);
       f.pitch = Math.asin(clamp(f.dir.y,-1,1));
       const deep = depth01(f.pos.y);
       const modeMul = mode==='surge' ? 1.55 + f.type.aggro*.32 : mode==='hunt' ? 1.16 + f.type.aggro*.25 : mode==='stalk' ? .78 : mode==='flee' ? 1.24 + ((f.type.cruiseSpeed || f.type.speed)/24)*.18 : .74;
-      const easyMul = f.type.easyPrey ? (mode==='flee' ? .78 : .86) : 1;
-      const speed = ((f.type.cruiseSpeed || f.type.speed) + deep*5) * modeMul * easyMul;
+      const easyMul = f.type.easyPrey ? (mode==='flee' ? .58 : .72) : 1;
+      const patternMul = f.type.strategy === 'abyssPulse' ? (.82 + Math.max(0, Math.sin(state.t*1.65 + f.phase))*.58) : f.type.strategy === 'spiralDive' ? (1.0 + Math.sin(state.t*1.05 + f.phase)*.10) : 1;
+      const speed = ((f.type.cruiseSpeed || f.type.speed) + deep*5) * modeMul * easyMul * patternMul;
       f.vel.x = lerp(f.vel.x, f.dir.x*speed, 1-Math.exp(-2.35*dt));
       f.vel.y = lerp(f.vel.y, f.dir.y*speed, 1-Math.exp(-2.35*dt));
       f.vel.z = lerp(f.vel.z, f.dir.z*speed, 1-Math.exp(-2.35*dt));
@@ -1407,6 +1462,7 @@ const keys = Object.create(null);
     if(ui.depthMarker){ ui.depthMarker.style.top = (d*100).toFixed(1) + '%'; ui.depthGaugeLabel.textContent = meters + ' m'; }
     ui.eatenTxt.textContent = `${p.eaten} (${p.fishEaten} fish)`;
     if(ui.nextUpgradeTxt) ui.nextUpgradeTxt.textContent = `${Math.max(0,p.nextUpgradeAt-p.fishEaten)} fish`;
+    updateSprintButtonCharge(p);
     updateAbilityBar();
   }
 
@@ -2310,3 +2366,4 @@ const keys = Object.create(null);
 </script>
 </body>
 </html>
+
