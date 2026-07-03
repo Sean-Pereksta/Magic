@@ -2041,7 +2041,7 @@ function movePiece(piece,x,y,source='player'){
     const defeated = capturePiece(piece,target);
     piece.lastMove=now();
     piece.flash=.7;
-    if(!defeated) return true;
+    if(!defeated && !pushShieldedPiece(piece,target,fromX,fromY)) return true;
   }
   if(targetWall) destroyWallAt(x,y,piece);
   piece.x=x; piece.y=y; piece.targetX=x; piece.targetY=y; piece.lastMove=now(); piece.flash=1;
@@ -2052,6 +2052,50 @@ function movePiece(piece,x,y,source='player'){
   if(swept===0) burst(x,y,factions[piece.faction].color,4);
   markStateDirty();
   if(source==='player') moveModeHint = factionCaptureHint(piece,swept);
+  return true;
+}
+function openPushSquare(piece,x,y){
+  return inBounds(x,y) && passableFor(piece,x,y) && !findPieceAt(x,y);
+}
+function pushPreferenceScore(x,y,originX,originY,awayX,awayY){
+  const dx=x-originX, dy=y-originY;
+  const dot=dx*awayX + dy*awayY;
+  const straightBonus = (dx===awayX && dy===awayY) ? 20 : 0;
+  return dot*10 + straightBonus - Math.abs(dx-awayX) - Math.abs(dy-awayY);
+}
+function findShieldPushSquare(attacker,target,fromX,fromY){
+  const awayX = Math.sign(target.x - fromX);
+  const awayY = Math.sign(target.y - fromY);
+  const originX = target.x, originY = target.y;
+  for(let r=1;r<Math.max(BOARD_W,BOARD_H);r++){
+    const options=[];
+    for(let y=originY-r;y<=originY+r;y++){
+      for(let x=originX-r;x<=originX+r;x++){
+        if(Math.max(Math.abs(x-originX),Math.abs(y-originY))!==r) continue;
+        if(openPushSquare(target,x,y)) options.push({x,y,score:pushPreferenceScore(x,y,originX,originY,awayX,awayY)});
+      }
+    }
+    if(options.length){
+      options.sort((a,b)=>b.score-a.score || dist2(originX,originY,a.x,a.y)-dist2(originX,originY,b.x,b.y));
+      return options[0];
+    }
+  }
+  return null;
+}
+function pushShieldedPiece(attacker,target,fromX,fromY){
+  if(!target || !target.alive || target.hp<=0) return false;
+  const spot=findShieldPushSquare(attacker,target,fromX,fromY);
+  if(!spot){
+    floating(target.x,target.y,'BRACED', '#dbeafe');
+    return false;
+  }
+  const oldX=target.x, oldY=target.y;
+  target.x=spot.x; target.y=spot.y; target.targetX=spot.x; target.targetY=spot.y;
+  target.moveStartMs = Date.now(); target.moveEndMs = target.moveStartMs + 180;
+  target.stationarySince=now(); target.lastStationX=spot.x; target.lastStationY=spot.y;
+  target.flash=1;
+  floating(oldX,oldY,'PUSH', factions[attacker.faction]?.color || '#fff');
+  burst(spot.x,spot.y,factions[target.faction]?.color || '#dbeafe',10);
   return true;
 }
 function factionCaptureHint(piece,claimed){
