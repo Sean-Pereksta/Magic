@@ -53,7 +53,8 @@
   #networkBadge{position:fixed;right:12px;top:108px;z-index:5;display:flex;gap:8px;align-items:center;padding:9px 11px;border-radius:15px;background:rgba(6,10,18,.84);border:1px solid rgba(255,255,255,.16);box-shadow:0 16px 42px rgba(0,0,0,.32);font-size:12px;color:#dbeafe;pointer-events:auto;}
   #exitLobbyBtn{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;border-radius:10px;padding:6px 9px;font-weight:900;cursor:pointer;}
   #exitLobbyBtn:hover{background:rgba(255,255,255,.16)}
-  #toast{position:fixed;left:50%;top:108px;transform:translateX(-50%);padding:10px 14px;border-radius:16px;background:rgba(6,10,18,.88);border:1px solid rgba(255,255,255,.18);box-shadow:0 20px 50px rgba(0,0,0,.35);z-index:6;font-size:13px;display:none;max-width:min(720px,calc(100vw - 26px));text-align:center;}
+  #toast{position:fixed;left:50%;top:142px;transform:translateX(-50%);padding:10px 14px;border-radius:16px;background:rgba(6,10,18,.88);border:1px solid rgba(255,255,255,.18);box-shadow:0 20px 50px rgba(0,0,0,.35);z-index:6;font-size:13px;display:none;max-width:min(720px,calc(100vw - 26px));text-align:center;}
+  #checkBanner{position:fixed;left:50%;top:103px;transform:translateX(-50%);z-index:6;display:none;padding:8px 14px;border-radius:14px;background:rgba(90,8,19,.9);border:1px solid rgba(255,121,121,.85);box-shadow:0 16px 42px rgba(0,0,0,.36),0 0 24px rgba(255,70,90,.25);color:#ffe5e5;font-size:13px;font-weight:1000;letter-spacing:.02em;text-align:center;pointer-events:none;}
   #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 30%,rgba(80,140,210,.16),rgba(4,6,11,.82));z-index:10;}
   #startCard{width:min(760px,calc(100vw - 28px));max-height:calc(100vh - 28px);overflow:auto;padding:22px;border-radius:26px;background:linear-gradient(180deg,rgba(25,36,62,.94),rgba(7,10,18,.94));border:1px solid rgba(255,255,255,.18);box-shadow:0 35px 120px rgba(0,0,0,.62);}
   #startCard h1{margin:0 0 6px;font-size:clamp(28px,5vw,52px);line-height:.98;letter-spacing:-1.3px;}
@@ -94,6 +95,7 @@
     #minimap{display:none !important;}
     #menu{display:none !important;}
     #bottomHint{display:none !important;}
+    #checkBanner{top:104px;font-size:11px;padding:7px 10px;max-width:calc(100vw - 24px);}
   }
 </style>
 </head>
@@ -112,6 +114,7 @@
     <div id="factionLine" style="font-size:12px;color:var(--muted)">Faction: Crownward</div>
   </div>
 </div>
+<div id="checkBanner"></div>
 <div id="toast"></div>
 <div id="networkBadge"><span id="networkText">Connecting…</span><button id="exitLobbyBtn">Exit</button></div>
 <div id="bottomHint"></div>
@@ -161,6 +164,7 @@ const spawnPct = document.getElementById('spawnPct');
 const scoreLine = document.getElementById('scoreLine');
 const factionLine = document.getElementById('factionLine');
 const piecePanel = document.getElementById('piecePanel');
+const checkBanner = document.getElementById('checkBanner');
 const toastEl = document.getElementById('toast');
 const overlay = document.getElementById('overlay');
 const factionPick = document.getElementById('factionPick');
@@ -283,6 +287,7 @@ let lastAuthoritativeData = null;
 let lastAuthoritativePieces = new Map();
 let lastAuthoritativeOwners = '';
 let lastAuthoritativeKinds = '';
+let lastAuthoritativeWalls = '';
 let writingState = false;
 let applyingRemote = false;
 let isController = false;
@@ -290,6 +295,10 @@ let controllerName = '';
 let onlineCount = 0;
 let lastRemoteWinner = '';
 let lastLoadedLobbyPlayers = [];
+let mapSeed = 1;
+let shrines = [];
+let nextCheckScanAt = 0;
+let currentCheckWarning = '';
 
 function setNetwork(text){ if(networkText) networkText.textContent = text; }
 function safeDocId(v){ return String(v || 'player').replace(/[^a-zA-Z0-9_@.-]/g,'_').slice(0,120) || 'player'; }
@@ -317,6 +326,7 @@ function commandCollection(){ return collection(db,'lobbies',lobbyId,'chess_warl
 function commandDocRef(id){ return doc(db,'lobbies',lobbyId,'chess_warlord_commands',safeDocId(id)); }
 function presenceCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_presence'); }
 function compressOwners(){ return board.map(t => t.owner == null ? '-' : String(t.owner)).join(''); }
+function compressWalls(){ return board.map(t => t.wallOwner == null ? '-' : String(t.wallOwner)).join(''); }
 const CAPTURE_KIND_TO_CHAR = {
   normal:'.', starting_land:'s', command:'c', conquered:'x', battle_march:'b', march:'m', spawned_piece:'p',
   ember_kill:'e', iron_fortified:'i', verdant_root:'v', verdant_seed:'V',
@@ -326,6 +336,15 @@ const CAPTURE_KIND_TO_CHAR = {
 const CHAR_TO_CAPTURE_KIND = Object.fromEntries(Object.entries(CAPTURE_KIND_TO_CHAR).map(([k,v])=>[v,k]));
 function captureKindChar(kind){ return CAPTURE_KIND_TO_CHAR[kind || 'normal'] || '.'; }
 function compressCaptureKinds(){ return board.map(t => captureKindChar(t.captureKind)).join(''); }
+function applyWalls(str){
+  if(!str || str.length < board.length) return;
+  for(let i=0;i<board.length;i++){
+    const ch = str[i];
+    const owner = ch === '-' ? null : Number(ch);
+    board[i].wallOwner = owner;
+    board[i].wallHp = owner == null ? 0 : 1;
+  }
+}
 function applyOwners(str){
   if(!str || str.length < board.length) return;
   for(let i=0;i<board.length;i++){
@@ -382,6 +401,7 @@ function serializeState(reason='sync', forceFull=false){
   recalcOwnerCounts();
   const owners = compressOwners();
   const kinds = compressCaptureKinds();
+  const walls = compressWalls();
   const livePieces = buildFullPieces();
   const liveMap = new Map(livePieces.map(pp=>[pp.i,pp]));
   const pieceDeltas = [];
@@ -402,6 +422,7 @@ function serializeState(reason='sync', forceFull=false){
     updatedBy: username || 'unknown',
     reason,
     fullSnapshot,
+    mapSeed,
     humanPlayers: slotHumans,
     playerNames: slotNames,
     playerFactionIds: slotFactionIds,
@@ -413,10 +434,12 @@ function serializeState(reason='sync', forceFull=false){
   if(fullSnapshot){
     payload.boardOwners = owners;
     payload.boardKinds = kinds;
+    payload.boardWalls = walls;
     payload.pieces = livePieces;
   } else {
     payload.ownerPatches = diffLandString(lastAuthoritativeOwners, owners);
     payload.kindPatches = diffLandString(lastAuthoritativeKinds, kinds);
+    payload.wallPatches = diffLandString(lastAuthoritativeWalls, walls);
     payload.pieceDeltas = pieceDeltas;
     payload.removedPieceIds = removedPieceIds;
   }
@@ -442,12 +465,20 @@ function applyRemoteState(data){
   if(incomingVersion && incomingVersion < localStateVersion && data.updatedBy !== username) return;
   const baseOwners = data.boardOwners || (lastAuthoritativeData && lastAuthoritativeData.boardOwners) || lastAuthoritativeOwners;
   const baseKinds = data.boardKinds || (lastAuthoritativeData && lastAuthoritativeData.boardKinds) || lastAuthoritativeKinds;
+  const baseWalls = data.boardWalls || (lastAuthoritativeData && lastAuthoritativeData.boardWalls) || lastAuthoritativeWalls;
   const mergedOwners = data.boardOwners ? data.boardOwners : applyStringPatches(baseOwners, data.ownerPatches);
   const mergedKinds = data.boardKinds ? data.boardKinds : applyStringPatches(baseKinds, data.kindPatches);
-  const mergedData = {...data, pieces:remotePieces, boardOwners:mergedOwners, boardKinds:mergedKinds};
+  const mergedWalls = data.boardWalls ? data.boardWalls : applyStringPatches(baseWalls, data.wallPatches);
+  const mergedData = {...data, pieces:remotePieces, boardOwners:mergedOwners, boardKinds:mergedKinds, boardWalls:mergedWalls};
+  if(data.mapSeed && data.mapSeed !== mapSeed){
+    mapSeed = data.mapSeed;
+    board = [];
+    shrines = [];
+  }
   lastAuthoritativeData = mergedData;
   lastAuthoritativeOwners = mergedOwners || '';
   lastAuthoritativeKinds = mergedKinds || '';
+  lastAuthoritativeWalls = mergedWalls || '';
   lastAuthoritativePieces = new Map(remotePieces.map(pp=>[pp.i,{...pp}]));
   pruneConfirmedPendingActions(mergedData);
   applyingRemote = true;
@@ -464,6 +495,7 @@ function applyRemoteState(data){
   if(!factions.length) setupFactions();
   applyOwners(mergedOwners);
   applyCaptureKinds(mergedKinds);
+  applyWalls(mergedWalls);
   const oldMap = new Map(pieces.map(p=>[p.id,p]));
   const tNow = now();
   pieces = remotePieces.map(pp => {
@@ -596,10 +628,11 @@ async function writeStateNow(reason='sync'){
     stateDirty = false;
     localWritePendingUntil = 0;
     lastStateWrite = now();
-    lastAuthoritativeData = {...payload, pieces:buildFullPieces(), boardOwners:compressOwners(), boardKinds:compressCaptureKinds()};
+    lastAuthoritativeData = {...payload, pieces:buildFullPieces(), boardOwners:compressOwners(), boardKinds:compressCaptureKinds(), boardWalls:compressWalls()};
     lastAuthoritativePieces = new Map(lastAuthoritativeData.pieces.map(pp=>[pp.i,{...pp}]));
     lastAuthoritativeOwners = lastAuthoritativeData.boardOwners;
     lastAuthoritativeKinds = lastAuthoritativeData.boardKinds;
+    lastAuthoritativeWalls = lastAuthoritativeData.boardWalls;
     if(payload.fullSnapshot) lastFullSnapshotWrite = lastStateWrite;
   }catch(e){
     console.warn('state write failed', e);
@@ -944,6 +977,20 @@ async function bootMultiplayer(){
     chosenDifficultyId = 'normal';
     chosenFactionId = localStorage.getItem('cw.lastFaction') || chosenFactionId;
     slotFactionIds[PLAYER] = chosenFactionId;
+    if(slotHumans.length <= 1){
+      lobbyId = '';
+      stateRef = null;
+      pregameRef = null;
+      presenceRef = null;
+      isController = true;
+      controllerName = username || 'Player';
+      onlineCount = 1;
+      overlay.style.display='none';
+      createGame();
+      setNetwork(`${username || 'Player'} · local vs AI`);
+      toast('Solo lobby detected — running locally against AI for smoother play.', 3200);
+      return;
+    }
     await publishFactionSelection();
     await refreshPresenceAndController();
     heartbeatTimer = setInterval(refreshPresenceAndController, 4000);
@@ -1006,6 +1053,15 @@ const terrains = {
   road:    {name:'Road', color:'#514733', alt:'#6d5e42', pass:true,  blockSlide:false, rough:0,  glyph:''}
 };
 
+const shrineTypes = [
+  {id:'mustering', name:'Mustering Shrine', short:'Spawn', icon:'✚', color:'#ffd46b', spawnBonus:.18, cooldownBonus:0, desc:'Faster spawn while your army holds this region.'},
+  {id:'haste', name:'Haste Shrine', short:'Haste', icon:'◇', color:'#7dd3fc', spawnBonus:0, cooldownBonus:.18, desc:'Shorter cooldowns for friendly pieces fighting nearby.'},
+  {id:'command', name:'Command Shrine', short:'Command', icon:'✦', color:'#f0abfc', spawnBonus:.09, cooldownBonus:.10, desc:'A smaller spawn boost and local cooldown boost.'}
+];
+const SHRINE_RADIUS = 8;
+const SHRINE_MIN_SPACING = 15;
+const BASE_WALL_RADIUS = 5;
+
 const factionCatalog = {
   crownward: {
     id:'crownward', name:'Crownward Compact', short:'Crownward', icon:'♛', player:true,
@@ -1031,7 +1087,7 @@ const factionCatalog = {
   shadow: {
     id:'shadow', name:'Shadow Court', short:'Shadow', icon:'☾', color:'#b388ff', dark:'#4b258d', aura:'#c8a7ff', aiStyle:'assassin', spawnRate:1.05,
     description:'Fast assassins and void walkers. Higher-value kills cut 5 seconds off the next spawn.',
-    pieces:['pawn','assassin','voidstrider','bishop','nightknight','rook','general','tower','queen']
+    pieces:['shadepawn','assassin','voidstrider','bishop','nightknight','rook','general','tower','queen']
   },
   tide: {
     id:'tide', name:'Tide Covenant', short:'Tide', icon:'🌊', color:'#5fcdf5', dark:'#16698c', aura:'#8fe6ff', aiStyle:'fluid', spawnRate:.96,
@@ -1041,7 +1097,7 @@ const factionCatalog = {
   sunspire: {
     id:'sunspire', name:'Sunspire Order', short:'Sunspire', icon:'☀', color:'#ffd2a1', dark:'#a6611d', aura:'#ffe7bc', aiStyle:'honor', spawnRate:1.02,
     description:'Elite pieces with strong queens and bishops, but fewer disposable bodies.',
-    pieces:['pawn','rook','sunbishop','knight','queen','general','tower','paladin','dawnarchon']
+    pieces:['pawn','rook','sunbishop','eagleknight','queen','general','tower','paladin','dawnarchon']
   },
   frost: {
     id:'frost', name:'Frostbound Clans', short:'Frostbound', icon:'❄', color:'#a7f3ff', dark:'#1e5f78', aura:'#d4fbff', aiStyle:'defensive', spawnRate:1.04,
@@ -1078,17 +1134,19 @@ const pieceDefs = {
   scout:{name:'Scout', icon:'◇', pattern:'scout', cooldown:2.2, value:2, hp:1, desc:'Leaps two squares orthogonally or steps diagonally.'},
   vinebishop:{name:'Vine Bishop', icon:'♝', pattern:'bishop', cooldown:3.1, value:4, hp:1, forestWalker:true, desc:'Bishop that can slide through forest, but not mountains/water.'},
   grovetower:{name:'Grove Tower', icon:'♖', pattern:'tower', cooldown:5.8, value:6, aura:3, hp:1, forestWalker:true, desc:'Territory tower that likes forests.'},
-  assassin:{name:'Assassin', icon:'⟡', pattern:'assassin', cooldown:3.0, value:5, hp:1, desc:'Moves like a bishop up to four or a knight. Dangerous to kings.'},
+  shadepawn:{name:'Shade Pawn', icon:'♙', pattern:'shadepawn', cooldown:2.45, value:2, hp:1, wallVault:true, desc:'Jumps exactly two spaces in any direction, skipping the adjacent square and vaulting walls.'},
+  assassin:{name:'Assassin', icon:'⟡', pattern:'assassin', cooldown:3.0, value:5, hp:1, wallVault:true, desc:'Moves like a bishop up to four or a knight. Its jumps can vault starting walls.'},
   nightknight:{name:'Night Knight', icon:'♞', pattern:'knight', cooldown:2.85, value:4, hp:1, desc:'Fast shadow knight.'},
   tidepawn:{name:'Tide Pawn', icon:'♙', pattern:'pawn', cooldown:2.25, value:1, hp:1, amphibious:true, desc:'Pawn that can cross water.'},
   crabrook:{name:'Crab Rook', icon:'♜', pattern:'rookShort', cooldown:3.55, value:5, hp:1, amphibious:true, desc:'Short rook that moves well through water lanes.'},
   wavequeen:{name:'Wave Queen', icon:'♛', pattern:'queen', cooldown:5.0, value:9, hp:1, amphibious:true, desc:'Queen that can cross water.'},
   reefspire:{name:'Reef Spire', icon:'♖', pattern:'tower', cooldown:5.8, value:6, aura:3, hp:1, amphibious:true, desc:'Water-friendly territory tower.'},
   sunbishop:{name:'Sun Bishop', icon:'♝', pattern:'bishopLong', cooldown:3.8, value:5, hp:1, desc:'Longer bishop lines.'},
+  eagleknight:{name:'Eagle Knight', icon:'🦅', pattern:'eagle', cooldown:3.35, value:5, hp:1, wallVault:true, desc:'Sunspire jumper. Leaps 2 or 3 spaces in any direction, plus knight jumps, and can vault walls.'},
   paladin:{name:'Paladin', icon:'♞', pattern:'paladin', cooldown:4.1, value:6, hp:2, aura:1, desc:'Knight plus one-step king move, very sturdy.'},
   citadelwalker:{name:'Citadel Walker', icon:'▦', pattern:'citadel', cooldown:5.7, value:8, hp:3, aura:2, desc:'Iron elite. Moves one orthogonal or exactly three orthogonal, anchoring fortified land.'},
   dawnarchon:{name:'Dawn Archon', icon:'✹', pattern:'archon', cooldown:5.4, value:8, hp:2, aura:2, desc:'Sunspire elite. Moves like a short bishop or knight and sanctifies nearby land.'},
-  voidstrider:{name:'Void Strider', icon:'✷', pattern:'voidstrider', cooldown:3.6, value:7, hp:1, desc:'Shadow elite. Moves one diagonal or exactly ten spaces in any straight or diagonal direction.'}
+  voidstrider:{name:'Void Strider', icon:'✷', pattern:'voidstrider', cooldown:3.6, value:7, hp:1, wallVault:true, desc:'Shadow elite. Moves one diagonal or exactly ten spaces in any straight or diagonal direction.'}
 };
 
 let board = [];
@@ -1176,12 +1234,13 @@ function initDifficultyPicker(){
 initDifficultyPicker();
 
 function generateBoard(){
+  const seed = Number(mapSeed || 1);
   board = new Array(BOARD_W*BOARD_H);
   for(let y=0;y<BOARD_H;y++){
     for(let x=0;x<BOARD_W;x++){
-      const n1 = smoothNoise(x,y,11,404);
-      const n2 = smoothNoise(x+31,y-19,5.5,991);
-      const n3 = smoothNoise(x-8,y+47,18,1821);
+      const n1 = smoothNoise(x,y,11,404 + seed);
+      const n2 = smoothNoise(x+31,y-19,5.5,991 + seed);
+      const n3 = smoothNoise(x-8,y+47,18,1821 + seed);
       const edge = Math.min(x,y,BOARD_W-1-x,BOARD_H-1-y);
       let type = 'plain';
       if(n1>.80 && n2>.48) type='mountain';
@@ -1191,19 +1250,16 @@ function generateBoard(){
       else if(n2>.82) type='hill';
       else if(n2>.70 && n1<.43) type='sand';
       else if(n1>.53 && n2<.25) type='canyon';
-      if(seededNoise(x,y,333)>.968) type='ruins';
-      if(seededNoise(x,y,1433)>.986) type='crystal';
+      if(seededNoise(x,y,333 + seed)>.968) type='ruins';
+      if(seededNoise(x,y,1433 + seed)>.986) type='crystal';
       if(edge<2 && type==='mountain') type='plain';
-      board[y*BOARD_W+x] = {x,y,type,owner:null,lastOwner:null,markTime:0,glow:0,captureKind:null,verdantFade:0};
+      board[y*BOARD_W+x] = {x,y,type,owner:null,lastOwner:null,markTime:0,glow:0,captureKind:null,verdantFade:0,wallOwner:null,wallHp:0};
     }
   }
   addWaterBodies();
-  // carve roads and open basins between starting zones
   const starts = getStartPositions();
-  for(let i=0;i<starts.length;i++){
-    const a = starts[i], b = starts[(i+1)%starts.length];
-    carveRoad(a.x,a.y,b.x,b.y);
-  }
+  shrines = generateShrines(starts);
+  carveIntentionalLanes(starts);
   starts.forEach(s=>{
     for(let yy=s.y-4;yy<=s.y+4;yy++) for(let xx=s.x-4;xx<=s.x+4;xx++){
       if(inBounds(xx,yy) && dist2(xx,yy,s.x,s.y)<22){
@@ -1212,38 +1268,86 @@ function generateBoard(){
       }
     }
   });
+  shrines.forEach(clearShrineBasin);
 }
 function addWaterBodies(){
+  const seed = Number(mapSeed || 1);
   const starts = getStartPositions();
   const safeFromStarts = (x,y,r=8) => starts.every(s=>dist2(x,y,s.x,s.y)>r*r);
-  const bodies = 18;
+  const bodies = 14 + Math.floor(seededNoise(seed,29,1190)*7);
   for(let i=0;i<bodies;i++){
-    let cx = 5 + Math.floor(seededNoise(i,2,1201)*(BOARD_W-10));
-    let cy = 5 + Math.floor(seededNoise(i,7,1202)*(BOARD_H-10));
+    let cx = 5 + Math.floor(seededNoise(i,2,1201 + seed)*(BOARD_W-10));
+    let cy = 5 + Math.floor(seededNoise(i,7,1202 + seed)*(BOARD_H-10));
     if(!safeFromStarts(cx,cy,10)){
       cx = clamp(cx + (cx<BOARD_W/2?9:-9),5,BOARD_W-6);
       cy = clamp(cy + (cy<BOARD_H/2?8:-8),5,BOARD_H-6);
     }
-    const rx = 2.2 + seededNoise(i,11,1203)*5.8;
-    const ry = 2.0 + seededNoise(i,17,1204)*5.3;
-    const pond = seededNoise(i,23,1205)<.45;
+    const rx = 2.2 + seededNoise(i,11,1203 + seed)*5.8;
+    const ry = 2.0 + seededNoise(i,17,1204 + seed)*5.3;
+    const pond = seededNoise(i,23,1205 + seed)<.45;
     const shrink = pond ? .65 : 1;
     for(let y=Math.floor(cy-ry*1.8); y<=Math.ceil(cy+ry*1.8); y++){
       for(let x=Math.floor(cx-rx*1.8); x<=Math.ceil(cx+rx*1.8); x++){
         if(!inBounds(x,y) || !safeFromStarts(x,y,5)) continue;
-        const wobble = (smoothNoise(x+i*9,y-i*5,4.5,1500+i)-.5)*.42;
+        const wobble = (smoothNoise(x+i*9,y-i*5,4.5,1500+i+seed)-.5)*.42;
         const d = ((x-cx)*(x-cx))/(rx*rx*shrink) + ((y-cy)*(y-cy))/(ry*ry*shrink) + wobble;
         const t = tile(x,y);
         if(d<1){
           t.type='water';
-        } else if(d<1.34 && t.type!=='mountain' && seededNoise(x,y,1700+i)>.32){
-          t.type = seededNoise(x,y,1710+i)>.5 ? 'swamp' : 'meadow';
-        } else if(d<1.55 && t.type==='plain' && seededNoise(x,y,1720+i)>.55){
+        } else if(d<1.34 && t.type!=='mountain' && seededNoise(x,y,1700+i+seed)>.32){
+          t.type = seededNoise(x,y,1710+i+seed)>.5 ? 'swamp' : 'meadow';
+        } else if(d<1.55 && t.type==='plain' && seededNoise(x,y,1720+i+seed)>.55){
           t.type='sand';
         }
       }
     }
   }
+}
+function shrineRoll(i, salt){ return seededNoise((mapSeed || 1) + i*37, i*91 + 17, salt); }
+function generateShrines(starts){
+  const count = 1 + Math.floor(shrineRoll(0,2600) * 3);
+  const center = {x:Math.floor(BOARD_W/2), y:Math.floor(BOARD_H/2)};
+  const result = [];
+  for(let i=0;i<count;i++){
+    let best = null;
+    for(let attempt=0;attempt<28;attempt++){
+      const angle = (Math.PI*2) * ((i / count) + shrineRoll(i*7+attempt,2610)*.22);
+      const radius = count===1 ? shrineRoll(i+attempt,2620)*5 : 7 + shrineRoll(i+attempt,2630)*17;
+      const x = clamp(Math.round(center.x + Math.cos(angle)*radius + (shrineRoll(i+attempt,2640)-.5)*7), 20, BOARD_W-21);
+      const y = clamp(Math.round(center.y + Math.sin(angle)*radius + (shrineRoll(i+attempt,2650)-.5)*7), 20, BOARD_H-21);
+      const awayFromStarts = starts.every(s=>dist2(x,y,s.x,s.y)>18*18);
+      const awayFromShrines = result.every(s=>dist2(x,y,s.x,s.y)>SHRINE_MIN_SPACING*SHRINE_MIN_SPACING);
+      if(awayFromStarts && awayFromShrines){ best = {x,y}; break; }
+      if(!best) best = {x,y};
+    }
+    const type = shrineTypes[Math.floor(shrineRoll(i,2660)*shrineTypes.length)] || shrineTypes[0];
+    result.push({id:`shrine${i}`, x:best.x, y:best.y, radius:SHRINE_RADIUS, type:type.id, name:type.name, short:type.short, icon:type.icon, color:type.color, spawnBonus:type.spawnBonus, cooldownBonus:type.cooldownBonus, desc:type.desc});
+  }
+  return result;
+}
+function clearShrineBasin(shrine){
+  for(let y=shrine.y-5;y<=shrine.y+5;y++) for(let x=shrine.x-5;x<=shrine.x+5;x++){
+    if(!inBounds(x,y)) continue;
+    const d=Math.sqrt(dist2(x,y,shrine.x,shrine.y));
+    const t=tile(x,y);
+    if(d<=1.15) t.type='crystal';
+    else if(d<=2.4) t.type=seededNoise(x,y,2800+(mapSeed||1))>.5?'road':'ruins';
+    else if(d<=4.8 && (t.type==='water'||t.type==='mountain'||t.type==='swamp'||t.type==='canyon')) t.type=seededNoise(x,y,2810+(mapSeed||1))>.45?'meadow':'plain';
+  }
+}
+function carveIntentionalLanes(starts){
+  if(!shrines.length) return;
+  for(const s of starts){
+    const target = shrines.slice().sort((a,b)=>dist2(s.x,s.y,a.x,a.y)-dist2(s.x,s.y,b.x,b.y))[0];
+    carveRoad(s.x,s.y,target.x,target.y);
+  }
+  for(let i=0;i<shrines.length;i++){
+    const a=shrines[i], b=shrines[(i+1)%shrines.length];
+    if(a!==b) carveRoad(a.x,a.y,b.x,b.y);
+  }
+  const mid = {x:Math.floor(BOARD_W/2), y:Math.floor(BOARD_H/2)};
+  carveRoad(2,mid.y,BOARD_W-3,mid.y);
+  carveRoad(mid.x,2,mid.x,BOARD_H-3);
 }
 function carveRoad(x0,y0,x1,y1){
   let x=x0, y=y0, guard=0;
@@ -1258,9 +1362,32 @@ function carveRoad(x0,y0,x1,y1){
 }
 function tile(x,y){return board[y*BOARD_W+x];}
 function inBounds(x,y){return x>=0 && y>=0 && x<BOARD_W && y<BOARD_H;}
+function wallAt(x,y){ return inBounds(x,y) && tile(x,y).wallOwner != null ? tile(x,y) : null; }
+function isEnemyWallFor(piece,x,y){
+  const w=wallAt(x,y);
+  return !!(w && piece && piece.faction != null && w.wallOwner !== piece.faction);
+}
+function canVaultWalls(piece){ return !!(pieceDefs[piece?.type]?.wallVault); }
+function canAttackWall(piece,x,y){ return isEnemyWallFor(piece,x,y); }
+function destroyWallAt(x,y,attacker=null){
+  const t=wallAt(x,y);
+  if(!t || !attacker || t.wallOwner===attacker.faction) return false;
+  t.wallHp = Math.max(0,(t.wallHp || 1)-1);
+  burst(x,y,factions[t.wallOwner]?.color || '#dbeafe',12);
+  floating(x,y,'WALL BREACH', factions[attacker.faction]?.color || '#fff');
+  if(t.wallHp<=0){
+    t.wallOwner=null;
+    t.wallHp=0;
+    markStateDirty();
+    return true;
+  }
+  markStateDirty();
+  return false;
+}
 function passableFor(piece,x,y){
   if(!inBounds(x,y)) return false;
   const t = tile(x,y);
+  if(t.wallOwner != null && piece?.faction != null && t.wallOwner !== piece.faction) return false;
   if(terrains[t.type].pass) return true;
   const def = pieceDefs[piece.type] || {};
   if(t.type==='water' && def.amphibious) return true;
@@ -1269,6 +1396,7 @@ function passableFor(piece,x,y){
 function blocksSlideFor(piece,x,y){
   if(!inBounds(x,y)) return true;
   const t = tile(x,y);
+  if(t.wallOwner != null && piece?.faction != null && t.wallOwner !== piece.faction) return true;
   const td = terrains[t.type];
   const def = pieceDefs[piece.type] || {};
   if(t.type==='forest' && def.forestWalker) return false;
@@ -1353,11 +1481,26 @@ function setupPieces(){
       const [dx,dy]=placements[i];
       const type=list[i%list.length] || 'pawn';
       const x=clamp(s.x+dx,0,BOARD_W-1), y=clamp(s.y+dy,0,BOARD_H-1);
-      if(!findPieceAt(x,y) && passableFor({type},x,y)) newPiece(idx,type,x,y,{ready:i<2});
+      if(!findPieceAt(x,y) && passableFor({type,faction:idx},x,y)) newPiece(idx,type,x,y,{ready:i<2});
     }
     // initial claimed zone
     for(let yy=s.y-3;yy<=s.y+3;yy++) for(let xx=s.x-3;xx<=s.x+3;xx++) if(inBounds(xx,yy) && dist2(xx,yy,s.x,s.y)<=12) claimTile(idx,xx,yy,.5,'starting_land');
+    createBaseWall(idx,s.x,s.y);
   });
+}
+function createBaseWall(factionIdx,cx,cy){
+  for(let y=cy-BASE_WALL_RADIUS;y<=cy+BASE_WALL_RADIUS;y++){
+    for(let x=cx-BASE_WALL_RADIUS;x<=cx+BASE_WALL_RADIUS;x++){
+      if(!inBounds(x,y)) continue;
+      const dx=Math.abs(x-cx), dy=Math.abs(y-cy);
+      if(Math.max(dx,dy)!==BASE_WALL_RADIUS) continue;
+      const t=tile(x,y);
+      if(!terrains[t.type].pass || findPieceAt(x,y)) continue;
+      t.wallOwner=factionIdx;
+      t.wallHp=1;
+      t.type = t.type==='road' ? 'road' : (seededNoise(x,y,3600+(mapSeed||1))>.55 ? 'ruins' : t.type);
+    }
+  }
 }
 function recalcOwnerCounts(){
   ownerCounts = new Map();
@@ -1409,7 +1552,7 @@ function eligibleSpawnTiles(factionIdx, type=null){
   const def = pieceDefs[spawnType] || pieceDefs.pawn;
   for(const t of board){
     if(t.owner!==factionIdx || findPieceAt(t.x,t.y)) continue;
-    if(!passableFor({type:spawnType},t.x,t.y)) continue;
+    if(!passableFor({type:spawnType,faction:factionIdx},t.x,t.y)) continue;
 
     if(f?.id==='crownward' && def.value>=6 && !nearCommandPiece(t.x,t.y,factionIdx,4) && t.captureKind!=='command') continue;
 
@@ -1449,6 +1592,38 @@ function levelForCaptures(c){
   if(c>=1) return 2;
   return 1;
 }
+function shrineController(shrine){
+  if(!shrine || !inBounds(shrine.x,shrine.y) || !board.length) return null;
+  const owner = tile(shrine.x,shrine.y).owner;
+  return owner == null || !factions[owner]?.alive ? null : owner;
+}
+function shrineActiveForFaction(shrine, factionIdx){
+  if(shrineController(shrine)!==factionIdx) return false;
+  const rr=(shrine.radius||SHRINE_RADIUS)*(shrine.radius||SHRINE_RADIUS);
+  return pieces.some(p=>p.alive && p.faction===factionIdx && dist2(p.x,p.y,shrine.x,shrine.y)<=rr);
+}
+function controlledShrinesFor(factionIdx){
+  return shrines.filter(s=>shrineActiveForFaction(s,factionIdx));
+}
+function shrineSpawnMultiplier(factionIdx){
+  let bonus=0;
+  for(const s of controlledShrinesFor(factionIdx)) bonus += s.spawnBonus || 0;
+  return 1 + Math.min(.45, bonus);
+}
+function shrineCooldownMultiplier(piece){
+  if(!piece || !piece.alive || !shrines.length) return 1;
+  let mult=1;
+  for(const s of shrines){
+    if(shrineController(s)!==piece.faction || !(s.cooldownBonus>0)) continue;
+    const rr=(s.radius||SHRINE_RADIUS)*(s.radius||SHRINE_RADIUS);
+    if(dist2(piece.x,piece.y,s.x,s.y)<=rr) mult=Math.min(mult,1-s.cooldownBonus);
+  }
+  return mult;
+}
+function localShrineNamesForPiece(piece){
+  if(!piece) return [];
+  return shrines.filter(s=>shrineController(s)===piece.faction && dist2(piece.x,piece.y,s.x,s.y)<=((s.radius||SHRINE_RADIUS)*(s.radius||SHRINE_RADIUS))).map(s=>s.short);
+}
 function cooldownFor(piece){
   const def=pieceDefs[piece.type];
   const levelBoost = 1 - Math.min(.34,(piece.level-1)*.085);
@@ -1460,7 +1635,7 @@ function cooldownFor(piece){
   if(f.aiStyle==='defensive') style=1.06;
   if(f.aiStyle==='expansion') style=.95;
   if(f.id==='shadow') style*=.78;
-  return def.cooldown * COOLDOWN_SLOWDOWN_MULTIPLIER * levelBoost * style * (1+roughPenalty);
+  return def.cooldown * COOLDOWN_SLOWDOWN_MULTIPLIER * levelBoost * style * shrineCooldownMultiplier(piece) * (1+roughPenalty);
 }
 function cooldownReady(piece){return now() - piece.lastMove >= cooldownFor(piece);}
 function cooldownProgress(piece){return clamp((now()-piece.lastMove)/cooldownFor(piece),0,1);}
@@ -1481,7 +1656,12 @@ function getLegalMoves(piece, ignoreCooldown=false){
     return emptyAllowed;
   };
   const addStep = (x,y,captureAllowed=true,emptyAllowed=true) => {
-    if(!inBounds(x,y) || !passableFor(piece,x,y)) return;
+    if(!inBounds(x,y)) return;
+    if(canAttackWall(piece,x,y)){
+      if(captureAllowed) addMove(moves,x,y,true,{wall:true});
+      return;
+    }
+    if(!passableFor(piece,x,y)) return;
     const target=findPieceAt(x,y);
     if(target){ if(captureAllowed && target.faction!==own) addMove(moves,x,y,true); }
     else if(emptyAllowed) addMove(moves,x,y,false);
@@ -1491,6 +1671,7 @@ function getLegalMoves(piece, ignoreCooldown=false){
       for(let r=1;r<=max;r++){
         const x=piece.x+dx*r, y=piece.y+dy*r;
         if(!inBounds(x,y)) break;
+        if(canAttackWall(piece,x,y)){ addMove(moves,x,y,true,{wall:true}); break; }
         const target=findPieceAt(x,y);
         if(!passableFor(piece,x,y)) break;
         if(target){ if(target.faction!==own) addMove(moves,x,y,true); break; }
@@ -1511,6 +1692,11 @@ function getLegalMoves(piece, ignoreCooldown=false){
         const x=piece.x+dx*2, y=piece.y+dy*2;
         if(inBounds(piece.x+dx,piece.y+dy) && passableFor(piece,piece.x+dx,piece.y+dy) && !findPieceAt(piece.x+dx,piece.y+dy)) addStep(x,y,false,true);
       }
+    }
+  } else if(pattern==='shadepawn'){
+    for(const [dx,dy] of DIRS8) addStep(piece.x+dx*2,piece.y+dy*2,true,true);
+    if(lvl>=4){
+      for(const [dx,dy] of DIAG) addStep(piece.x+dx*3,piece.y+dy*3,true,true);
     }
   } else if(pattern==='king'){
     for(const [dx,dy] of DIRS8) addStep(piece.x+dx,piece.y+dy,true,true);
@@ -1536,6 +1722,13 @@ function getLegalMoves(piece, ignoreCooldown=false){
     const jumps = [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
     for(const [dx,dy] of jumps) addStep(piece.x+dx,piece.y+dy,true,true);
     if(lvl>=5){ for(const [dx,dy] of [[2,2],[2,-2],[-2,2],[-2,-2]]) addStep(piece.x+dx,piece.y+dy,true,true); }
+  } else if(pattern==='eagle'){
+    for(const [dx,dy] of DIRS8){
+      addStep(piece.x+dx*2,piece.y+dy*2,true,true);
+      addStep(piece.x+dx*3,piece.y+dy*3,true,true);
+    }
+    for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,true);
+    if(lvl>=4){ for(const [dx,dy] of [[1,3],[3,1],[-1,3],[-3,1],[1,-3],[3,-1],[-1,-3],[-3,-1]]) addStep(piece.x+dx,piece.y+dy,true,true); }
   } else if(pattern==='lancer'){
     for(const [dx,dy] of ORTHO){
       for(let r=1;r<=3+(lvl>=3?1:0);r++){
@@ -1566,7 +1759,12 @@ function getLegalMoves(piece, ignoreCooldown=false){
       const x=piece.x+dx*10, y=piece.y+dy*10;
       if(!inBounds(x,y)) continue;
       let clear=true;
-      for(let r=1;r<10;r++){ if(!passableFor(piece,piece.x+dx*r,piece.y+dy*r) || findPieceAt(piece.x+dx*r,piece.y+dy*r)){ clear=false; break; } }
+      for(let r=1;r<10;r++){
+        const ix=piece.x+dx*r, iy=piece.y+dy*r;
+        if(findPieceAt(ix,iy)){ clear=false; break; }
+        if(isEnemyWallFor(piece,ix,iy) && canVaultWalls(piece)) continue;
+        if(!passableFor(piece,ix,iy)){ clear=false; break; }
+      }
       if(clear) addStep(x,y,true,true);
     }
   } else if(pattern==='citadel'){
@@ -1778,13 +1976,15 @@ function movePiece(piece,x,y,source='player'){
   const fromX=piece.x, fromY=piece.y;
   const target=findPieceAt(x,y);
   if(target && target.faction===piece.faction) return false;
-  if(!passableFor(piece,x,y)) return false;
+  const targetWall = canAttackWall(piece,x,y);
+  if(!targetWall && !passableFor(piece,x,y)) return false;
   if(target){
     const defeated = capturePiece(piece,target);
     piece.lastMove=now();
     piece.flash=.7;
     if(!defeated) return true;
   }
+  if(targetWall) destroyWallAt(x,y,piece);
   piece.x=x; piece.y=y; piece.targetX=x; piece.targetY=y; piece.lastMove=now(); piece.flash=1;
   piece.moveStartMs = Date.now(); piece.moveEndMs = piece.moveStartMs + Math.round(cooldownFor(piece) * 220);
   piece.stationarySince=now(); piece.lastStationX=x; piece.lastStationY=y;
@@ -1841,6 +2041,7 @@ function conquerFaction(winner, loser, cx, cy){
   if(winner===PLAYER) gameStats.kingsTaken++;
   let taken=0;
   for(const t of board){ if(t.owner===loser){ t.owner=winner; t.captureKind='conquered'; t.glow=0; taken++; } }
+  for(const t of board){ if(t.wallOwner===loser){ t.wallOwner=winner; t.wallHp=1; } }
   let removed=0;
   for(const p of pieces){
     if(p.alive && p.faction===loser){
@@ -1890,6 +2091,7 @@ function floating(x,y,text,color){
 
 function createGame(){
   if(!slotNames.length) buildSlots([username || 'Player']);
+  mapSeed = Math.floor(Math.random()*1000000000) + Date.now();
   generateBoard(); setupFactions(); setupPieces(); recalcOwnerCounts();
   const king=getPiece(factions[PLAYER].kingId) || pieces.find(p=>p.alive&&p.type==='king');
   if(king){ cam.x=(king.x+.5)*BASE_CELL-innerWidth/2; cam.y=(king.y+.5)*BASE_CELL-innerHeight/2; }
@@ -1913,13 +2115,15 @@ function renderSpawnCards(){
   }
   if(!f.spawnChoices.length) f.spawnChoices=chooseSpawnOptions(PLAYER);
   const ready=f.spawnMeter>=100;
+  const shrineBoosts=controlledShrinesFor(PLAYER).filter(s=>s.spawnBonus>0);
+  const shrineMeta=shrineBoosts.length ? ` · ${shrineBoosts.map(s=>s.short).join('+')} shrine` : '';
   spawnPanel.innerHTML='';
   f.spawnChoices.forEach((type,i)=>{
     const def=pieceDefs[type];
     const card=document.createElement('div');
     card.className='spawnCard glass '+(ready?'ready':'locked')+(spawnSelection===i?' selected':'');
     const shownCooldown = (def.cooldown * COOLDOWN_SLOWDOWN_MULTIPLIER).toFixed(1);
-    card.innerHTML=`<div><div class="spawnName">${def.icon} ${def.name}</div><div class="spawnMeta">${patternName(def.pattern)} · ${shownCooldown}s cooldown</div></div><div class="spawnIcon">${def.icon}</div>`;
+    card.innerHTML=`<div><div class="spawnName">${def.icon} ${def.name}</div><div class="spawnMeta">${patternName(def.pattern)} · ${shownCooldown}s cooldown${shrineMeta}</div></div><div class="spawnIcon">${def.icon}</div>`;
     card.onclick=()=>{
       if(!ready){ toast('Spawn bar is not full yet. Keep expanding and capturing.'); return; }
       spawnSelection = spawnSelection===i ? null : i;
@@ -1931,7 +2135,7 @@ function renderSpawnCards(){
   });
 }
 function patternName(p){
-  const names={pawn:'Pawn+',king:'King',general:'General',tower:'Territory Tower',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',lancer:'Lancer',scout:'Scout',assassin:'Assassin',warden:'Warden',paladin:'Paladin',voidstrider:'Void Strider',citadel:'Citadel Walker',archon:'Dawn Archon'};
+  const names={pawn:'Pawn+',shadepawn:'Shade Leap',king:'King',general:'General',tower:'Territory Tower',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',eagle:'Eagle Leap',lancer:'Lancer',scout:'Scout',assassin:'Assassin',warden:'Warden',paladin:'Paladin',voidstrider:'Void Strider',citadel:'Citadel Walker',archon:'Dawn Archon'};
   return names[p]||p;
 }
 function updateHUD(){
@@ -1948,17 +2152,52 @@ function updateHUD(){
   if(quickPct) quickPct.textContent = playerDefeated ? 'Defeated' : (pct>=100 ? 'Spawn Ready' : `Spawn ${remaining}s`);
   scoreLine.textContent=`Territory ${territory} · Captures ${gameStats.captures} · Kings ${gameStats.kingsTaken}`;
   factionLine.textContent=`${displayNameForFaction(PLAYER)} · ${f.name}`;
+  updateCheckBanner();
+}
+function attackingPiecesForKing(factionIdx){
+  const f=factions[factionIdx];
+  const king=f ? getPiece(f.kingId) : null;
+  if(!king || playerDefeated) return [];
+  const attackers=[];
+  for(const p of pieces){
+    if(!p.alive || p.faction===factionIdx || !factions[p.faction]?.alive) continue;
+    if(getLegalMoves(p,true).some(m=>m.x===king.x && m.y===king.y)) attackers.push(p);
+  }
+  return attackers;
+}
+function updateCheckBanner(){
+  if(!checkBanner) return;
+  if(!gameStarted || playerDefeated || !ownFactionAlive()){
+    checkBanner.style.display='none';
+    currentCheckWarning='';
+    return;
+  }
+  if(now()>=nextCheckScanAt){
+    nextCheckScanAt=now()+.35;
+    const attackers=attackingPiecesForKing(PLAYER);
+    if(attackers.length){
+      const names=attackers.slice(0,2).map(p=>`${factions[p.faction].short} ${pieceDefs[p.type].name}`).join(', ');
+      currentCheckWarning=`CHECK: your king is threatened by ${names}${attackers.length>2 ? ` +${attackers.length-2}` : ''}`;
+    } else {
+      currentCheckWarning='';
+    }
+  }
+  checkBanner.textContent=currentCheckWarning;
+  checkBanner.style.display=currentCheckWarning ? 'block' : 'none';
 }
 function updatePiecePanel(){
   if(!selectedPiece || !selectedPiece.alive){ piecePanel.style.display='none'; return; }
   const p=selectedPiece, def=pieceDefs[p.type], f=factions[p.faction];
   const cd=cooldownProgress(p);
+  const shrineNames=localShrineNamesForPiece(p);
+  const shrineLine=shrineNames.length ? `<p style="color:#fff3b0">Local shrine: ${shrineNames.join(', ')}</p>` : '';
   piecePanel.style.display='block';
   piecePanel.innerHTML=`
     <h3 style="color:${f.color}">${def.icon} ${def.name} <span style="font-size:12px;color:#cbd5e1">Lv ${p.level}</span></h3>
     <p><b>${f.short}</b> · Captures ${p.captures} · HP ${p.hp}/${p.maxHp}</p>
     <div class="bar"><div class="fill" style="width:${(cd*100).toFixed(0)}%"></div></div>
     <p>${cooldownReady(p)?'Ready to move.':'Cooldown '+Math.ceil((1-cd)*cooldownFor(p))+'s remaining.'}</p>
+    ${shrineLine}
     <p>${def.desc}</p>
     <button id="panelCenter">Center on piece</button>`;
   const btn=document.getElementById('panelCenter');
@@ -2109,7 +2348,7 @@ function spawnRateForFaction(f, territory, army){
 
   const factionTempo = 1 / Math.max(.62, f.spawnRate || 1);
   const aiTempo = isHumanSlot(f.idx) ? 1 : (f.aiSpawnScale || 1);
-  return Math.min(maxRate, landDrivenRate * factionTempo * aiTempo / armyDrag);
+  return Math.min(maxRate, landDrivenRate * factionTempo * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag);
 }
 function updateSpawns(dt){
   for(const f of factions){
@@ -2185,6 +2424,11 @@ function aiMovePiece(f,p){
     }
     const t=tile(m.x,m.y);
     if(t.owner!==p.faction) s += style==='expansion'?17:9;
+    if(t.wallOwner != null && t.wallOwner !== p.faction){
+      s += 32;
+      const enemyKing=getPiece(factions[t.wallOwner]?.kingId);
+      if(enemyKing) s += Math.max(0,22-Math.sqrt(dist2(m.x,m.y,enemyKing.x,enemyKing.y))*1.7);
+    }
     if(pieceDefs[p.type].aura) s += 4;
     const nearestKing=kingTargets.sort((a,b)=>dist2(m.x,m.y,a.x,a.y)-dist2(m.x,m.y,b.x,b.y))[0];
     if(nearestKing){
@@ -2234,6 +2478,8 @@ function draw(){
   ctx.translate(-cam.x/cam.zoom,-cam.y/cam.zoom);
   drawBoard();
   drawTerritoryEffects();
+  drawWalls();
+  drawShrines();
   drawHighlights();
   drawPieces();
   drawParticlesWorld();
@@ -2279,6 +2525,20 @@ function drawBoard(){
         ctx.fillText(td.glyph,sx+BASE_CELL/2,sy+BASE_CELL/2);
         ctx.globalAlpha=1;
       }
+      if(t.wallOwner != null){
+        const wf=factions[t.wallOwner];
+        ctx.save();
+        ctx.globalAlpha=.92;
+        ctx.fillStyle='rgba(5,8,14,.66)';
+        roundRect(ctx,sx+7,sy+8,BASE_CELL-14,BASE_CELL-16,5); ctx.fill();
+        ctx.strokeStyle=wf?.color || '#dbeafe';
+        ctx.lineWidth=3;
+        roundRect(ctx,sx+7,sy+8,BASE_CELL-14,BASE_CELL-16,5); ctx.stroke();
+        ctx.globalAlpha=.55;
+        ctx.fillStyle=wf?.color || '#dbeafe';
+        for(let c=0;c<3;c++) ctx.fillRect(sx+10+c*10,sy+6,7,8);
+        ctx.restore();
+      }
       ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1;
       ctx.strokeRect(sx+.5,sy+.5,BASE_CELL,BASE_CELL);
     }
@@ -2310,6 +2570,71 @@ function drawTerritoryEffects(){
     }
   }
 }
+function drawWalls(){
+  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2;
+  const top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-2;
+  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+2;
+  const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
+  for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
+    for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
+      const t=tile(x,y); if(t.wallOwner==null) continue;
+      const f=factions[t.wallOwner];
+      const sx=x*BASE_CELL, sy=y*BASE_CELL;
+      ctx.save();
+      ctx.globalAlpha=.96;
+      ctx.fillStyle='rgba(5,8,14,.74)';
+      roundRect(ctx,sx+7,sy+8,BASE_CELL-14,BASE_CELL-16,5); ctx.fill();
+      ctx.strokeStyle=f?.color || '#dbeafe';
+      ctx.lineWidth=3;
+      roundRect(ctx,sx+7,sy+8,BASE_CELL-14,BASE_CELL-16,5); ctx.stroke();
+      ctx.globalAlpha=.62;
+      ctx.fillStyle=f?.color || '#dbeafe';
+      for(let c=0;c<3;c++) ctx.fillRect(sx+10+c*10,sy+6,7,8);
+      ctx.restore();
+    }
+  }
+}
+function drawShrines(){
+  if(!shrines.length) return;
+  const viewLeft=(cam.x/cam.zoom)-BASE_CELL*2;
+  const viewTop=(cam.y/cam.zoom)-BASE_CELL*2;
+  const viewRight=(cam.x/cam.zoom+innerWidth/cam.zoom)+BASE_CELL*2;
+  const viewBottom=(cam.y/cam.zoom+innerHeight/cam.zoom)+BASE_CELL*2;
+  for(const s of shrines){
+    const cx=(s.x+.5)*BASE_CELL, cy=(s.y+.5)*BASE_CELL;
+    const rr=(s.radius||SHRINE_RADIUS)*BASE_CELL;
+    if(cx+rr<viewLeft || cx-rr>viewRight || cy+rr<viewTop || cy-rr>viewBottom) continue;
+    const owner=shrineController(s);
+    const ownerFaction=owner==null ? null : factions[owner];
+    const pulse=.5+.5*Math.sin(now()*2.5+s.x);
+    ctx.save();
+    ctx.globalAlpha=.08+.05*pulse;
+    ctx.fillStyle=ownerFaction ? ownerFaction.color : s.color;
+    ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=.28+.12*pulse;
+    ctx.strokeStyle=ownerFaction ? ownerFaction.color : s.color;
+    ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=1;
+    ctx.fillStyle='rgba(6,10,18,.82)';
+    ctx.strokeStyle=s.color;
+    ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(cx,cy,BASE_CELL*.52,0,Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=s.color;
+    ctx.font='24px serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(s.icon,cx,cy-1);
+    ctx.font='10px Inter, system-ui, sans-serif';
+    ctx.fillStyle='#fff3b0';
+    ctx.fillText(s.short.toUpperCase(),cx,cy+BASE_CELL*.78);
+    if(ownerFaction){
+      ctx.font='10px Inter, system-ui, sans-serif';
+      ctx.fillStyle=ownerFaction.color;
+      ctx.fillText(ownerFaction.short,cx,cy-BASE_CELL*.72);
+    }
+    ctx.restore();
+  }
+}
 function drawHighlights(){
   if(spawnSelection!==null){
     const tiles=eligibleSpawnTiles(PLAYER, factions[PLAYER]?.spawnChoices?.[spawnSelection] || 'pawn');
@@ -2335,6 +2660,62 @@ function drawHighlights(){
     }
   }
 }
+function drawFactionFlair(f,p,r){
+  const t=now()+p.id*.17;
+  ctx.save();
+  ctx.strokeStyle=f.color;
+  ctx.fillStyle=f.color;
+  if(f.id==='crownward'){
+    ctx.globalAlpha=.45;
+    for(let i=0;i<6;i++){
+      const a=i*Math.PI/3+t*.18;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a)*(r+8),Math.sin(a)*(r+8)); ctx.lineTo(Math.cos(a)*(r+15),Math.sin(a)*(r+15)); ctx.stroke();
+    }
+  } else if(f.id==='ember'){
+    ctx.globalAlpha=.55;
+    for(let i=0;i<5;i++){
+      const a=i*1.26+t*.9;
+      ctx.beginPath(); ctx.arc(Math.cos(a)*(r+8),Math.sin(a)*(r+8),2.2+Math.sin(t+i)*1.2,0,Math.PI*2); ctx.fill();
+    }
+  } else if(f.id==='iron'){
+    ctx.globalAlpha=.5;
+    ctx.lineWidth=2;
+    ctx.strokeRect(-r-7,-r-7,(r+7)*2,(r+7)*2);
+    ctx.strokeRect(-r-2,-r-2,(r+2)*2,(r+2)*2);
+  } else if(f.id==='verdant'){
+    ctx.globalAlpha=.48;
+    ctx.lineWidth=2;
+    for(let i=0;i<4;i++){
+      const a=i*Math.PI/2+t*.25;
+      ctx.beginPath(); ctx.ellipse(Math.cos(a)*(r+9),Math.sin(a)*(r+9),5,2.6,a,0,Math.PI*2); ctx.stroke();
+    }
+  } else if(f.id==='shadow'){
+    ctx.globalAlpha=.38;
+    ctx.fillStyle=f.aura || f.color;
+    ctx.beginPath(); ctx.arc(-r*.35,-r*.18,r*.62,Math.PI*.25,Math.PI*1.75); ctx.arc(-r*.14,-r*.18,r*.54,Math.PI*1.75,Math.PI*.25,true); ctx.fill();
+  } else if(f.id==='tide'){
+    ctx.globalAlpha=.48;
+    ctx.lineWidth=2;
+    for(let i=0;i<3;i++){
+      ctx.beginPath(); ctx.arc(0,2,r+7+i*4,Math.PI*.08,Math.PI*.92); ctx.stroke();
+    }
+  } else if(f.id==='sunspire'){
+    ctx.globalAlpha=.52;
+    ctx.lineWidth=2;
+    for(let i=0;i<8;i++){
+      const a=i*Math.PI/4-t*.12;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a)*(r+4),Math.sin(a)*(r+4)); ctx.lineTo(Math.cos(a)*(r+18),Math.sin(a)*(r+18)); ctx.stroke();
+    }
+  } else if(f.id==='frost'){
+    ctx.globalAlpha=.5;
+    ctx.lineWidth=2;
+    for(let i=0;i<6;i++){
+      const a=i*Math.PI/3;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a)*(r+5),Math.sin(a)*(r+5)); ctx.lineTo(Math.cos(a)*(r+14),Math.sin(a)*(r+14)); ctx.lineTo(Math.cos(a+.22)*(r+10),Math.sin(a+.22)*(r+10)); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
 function drawPieces(){
   const visible = pieces.filter(p=>p.alive).sort((a,b)=>a.y-b.y || (pieceDefs[a.type].value||1)-(pieceDefs[b.type].value||1));
   const labelIds = computeNameLabelPieceIds(visible);
@@ -2354,6 +2735,7 @@ function drawPieces(){
     }
     // shadow
     ctx.globalAlpha=.45; ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(2,10,r*.9,r*.35,0,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+    drawFactionFlair(f,p,r);
     const g=ctx.createRadialGradient(-r*.25,-r*.3,2,0,0,r*1.15);
     g.addColorStop(0,'#ffffff'); g.addColorStop(.16,f.color); g.addColorStop(1,f.dark||'#333');
     ctx.fillStyle=g;
@@ -2431,7 +2813,7 @@ function roundRect(c,x,y,w,h,r){
 function drawPieceShape(pattern,r,id){
   const wob=Math.sin(now()*2+id)*.04;
   ctx.beginPath();
-  if(pattern==='knight'||pattern==='paladin'||pattern==='archon'){
+  if(pattern==='knight'||pattern==='paladin'||pattern==='archon'||pattern==='eagle'){
     ctx.moveTo(-r*.65,r*.65); ctx.quadraticCurveTo(-r*.95,-r*.1,-r*.22,-r*.78); ctx.quadraticCurveTo(r*.35,-r*1.0,r*.78,-r*.35); ctx.quadraticCurveTo(r*.35,-r*.2,r*.65,r*.42); ctx.quadraticCurveTo(.1,r*.72,-r*.65,r*.65);
   } else if(pattern==='rook'||pattern==='rookShort'||pattern==='tower'||pattern==='citadel'){
     ctx.rect(-r*.72,-r*.56,r*1.44,r*1.16);
@@ -2688,3 +3070,4 @@ bootMultiplayer();
 </script>
 </body>
 </html>
+
