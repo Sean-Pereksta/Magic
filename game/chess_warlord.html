@@ -130,9 +130,9 @@
     <div id="pregameCountdown" style="display:none">Faction selection opens for 10 seconds when the lobby connects.</div>
     <div class="pickLabel">Choose your faction</div>
     <div id="factionPick"></div>
-    <div class="pickLabel">Enemy difficulty</div>
+    <div class="pickLabel" id="difficultyLabel">Enemy difficulty</div>
     <div id="difficultyPick"></div>
-    <button id="startBtn">Start Local Preview</button>
+    <button id="startBtn">Start Solo War</button>
   </div>
 </div>
 <div id="defeatOverlay">
@@ -186,6 +186,9 @@ const BOARD_W = 86;
 const BOARD_H = 86;
 const BASE_CELL = 46;
 const MAX_AI_PER_FRAME = 22;
+const MULTIPLAYER_AI_SPEED_CAP = .72;
+const MULTIPLAYER_AI_SPAWN_SCALE = .72;
+const MULTIPLAYER_AI_MAX_ACTIONS_PER_TICK = 1;
 const DEFAULT_FACTION_IDS = ['crownward','ember','iron','verdant','shadow','tide','sunspire','frost'];
 const SLOT_OUTLINE_COLORS = ['#fff3a3','#7dd3fc','#fb7185','#86efac','#c4b5fd','#67e8f9','#fdba74','#e5e7eb'];
 const MULTIPLAYER_FACTION_PICK_SECONDS = 10;
@@ -963,8 +966,19 @@ async function bootMultiplayer(){
     });
     if(!lobbyId){
       buildSlots([username]);
-      PLAYER = 0; chosenDifficultyId = 'normal';
-      overlay.style.display='none'; isController=true; createGame(); setNetwork('Local preview'); return;
+      PLAYER = 0;
+      chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || chosenDifficultyId);
+      chosenFactionId = localStorage.getItem('cw.lastFaction') || chosenFactionId;
+      slotFactionIds[PLAYER] = chosenFactionId;
+      isController = true;
+      controllerName = username || 'Player';
+      onlineCount = 1;
+      initFactionPicker();
+      initDifficultyPicker();
+      updateDifficultyVisibility();
+      startBtn.textContent = 'Start Solo War';
+      setNetwork('Local solo vs AI');
+      return;
     }
     lobbyRef = doc(db,'lobbies',lobbyId);
     stateRef = stateDocRef();
@@ -974,7 +988,7 @@ async function bootMultiplayer(){
     if(!lsnap.exists()) throw new Error('Lobby not found');
     lobbyData = lsnap.data();
     buildSlots(lobbyData.players || [username]);
-    chosenDifficultyId = 'normal';
+    chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || 'normal');
     chosenFactionId = localStorage.getItem('cw.lastFaction') || chosenFactionId;
     slotFactionIds[PLAYER] = chosenFactionId;
     if(slotHumans.length <= 1){
@@ -985,12 +999,16 @@ async function bootMultiplayer(){
       isController = true;
       controllerName = username || 'Player';
       onlineCount = 1;
-      overlay.style.display='none';
-      createGame();
+      initFactionPicker();
+      initDifficultyPicker();
+      updateDifficultyVisibility();
+      startBtn.textContent = 'Start Solo War';
       setNetwork(`${username || 'Player'} · local vs AI`);
-      toast('Solo lobby detected — running locally against AI for smoother play.', 3200);
+      toast('Solo lobby detected - running locally. Choose AI difficulty, then start.', 3600);
       return;
     }
+    chosenDifficultyId = 'normal';
+    updateDifficultyVisibility();
     await publishFactionSelection();
     await refreshPresenceAndController();
     heartbeatTimer = setInterval(refreshPresenceAndController, 4000);
@@ -1032,8 +1050,24 @@ async function bootMultiplayer(){
   }catch(e){
     console.error(e);
     setNetwork('Lobby connection failed');
-    toast('Could not connect to the lobby. Starting a local preview instead.', 4200);
-    buildSlots([username || 'Player']); overlay.style.display='none'; isController=true; createGame();
+    toast('Could not connect to the lobby. Choose solo AI difficulty, then start.', 4200);
+    lobbyId = '';
+    stateRef = null;
+    pregameRef = null;
+    presenceRef = null;
+    buildSlots([username || 'Player']);
+    PLAYER = 0;
+    chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || chosenDifficultyId);
+    chosenFactionId = localStorage.getItem('cw.lastFaction') || chosenFactionId;
+    slotFactionIds[PLAYER] = chosenFactionId;
+    isController = true;
+    controllerName = username || 'Player';
+    onlineCount = 1;
+    initFactionPicker();
+    initDifficultyPicker();
+    updateDifficultyVisibility();
+    overlay.style.display='flex';
+    startBtn.textContent = 'Start Solo War';
   }
 }
 
@@ -1107,11 +1141,21 @@ const factionCatalog = {
 };
 
 const difficultyProfiles = {
-  easy:   {name:'Easy',   icon:'🌱', think:.68, spawn:.82, desc:'Slower enemy decisions and gentler expansion. Good for learning the huge board.'},
-  normal: {name:'Normal', icon:'⚔️', think:1.00, spawn:1.00, desc:'Balanced AI timing with factions growing stronger as the war stretches on.'},
-  hard:   {name:'Hard',   icon:'🔥', think:1.32, spawn:1.14, desc:'Enemies act faster, reinforce sooner, and punish exposed kings.'},
-  brutal: {name:'Brutal', icon:'☠️', think:1.68, spawn:1.28, desc:'High-pressure warlords with faster tactics and stronger late-game tempo.'}
+  easy:   {name:'Easy',   icon:'🌱', think:.4, spawn:.86, desc:'Slower enemy decisions and gentler expansion. Good for learning the huge board.'},
+  normal: {name:'Normal', icon:'⚔️', think:0.82, spawn:1.00, desc:'Balanced AI timing with factions growing stronger as the war stretches on.'},
+  hard:   {name:'Hard',   icon:'🔥', think:1.00, spawn:1.12, desc:'Enemies act faster, reinforce sooner, and punish exposed kings.'},
+  insane: {name:'Insane', icon:'☠️', think:1.32, spawn:1.24, desc:'High-pressure warlords with the fastest solo tactics and strongest late-game tempo.'}
 };
+function normalizedDifficultyId(id){
+  if(id === 'brutal') return 'insane';
+  return difficultyProfiles[id] ? id : 'normal';
+}
+function isMultiplayerGame(){
+  return !!lobbyId && slotHumans.length > 1;
+}
+function isSoloAiGame(){
+  return !isMultiplayerGame();
+}
 
 const pieceDefs = {
   king: {name:'King', icon:'♚', pattern:'king', cooldown:4.4, value:100, aura:3, hp:1, desc:'Capture this to conquer a faction. Moves one square any direction.'},
@@ -1217,6 +1261,7 @@ function initFactionPicker(){
 initFactionPicker();
 
 function initDifficultyPicker(){
+  chosenDifficultyId = normalizedDifficultyId(chosenDifficultyId);
   difficultyPick.innerHTML = '';
   const select = document.createElement('select');
   select.id = 'difficultySelect';
@@ -1228,10 +1273,21 @@ function initDifficultyPicker(){
     option.selected = id === chosenDifficultyId;
     select.appendChild(option);
   });
-  select.onchange = () => { chosenDifficultyId = select.value; };
+  select.onchange = () => {
+    chosenDifficultyId = normalizedDifficultyId(select.value);
+    localStorage.setItem('cw.lastDifficulty', chosenDifficultyId);
+  };
   difficultyPick.appendChild(select);
+  updateDifficultyVisibility();
 }
 initDifficultyPicker();
+
+function updateDifficultyVisibility(){
+  const label = document.getElementById('difficultyLabel');
+  const show = isSoloAiGame();
+  if(label) label.style.display = show ? '' : 'none';
+  if(difficultyPick) difficultyPick.style.display = show ? '' : 'none';
+}
 
 function generateBoard(){
   const seed = Number(mapSeed || 1);
@@ -1411,7 +1467,10 @@ function getStartPositions(){
   ];
 }
 function setupFactions(){
+  chosenDifficultyId = normalizedDifficultyId(chosenDifficultyId);
   const diff = difficultyProfiles[chosenDifficultyId] || difficultyProfiles.normal;
+  const multiplayerAi = isMultiplayerGame();
+  const aiSpawnScale = multiplayerAi ? MULTIPLAYER_AI_SPAWN_SCALE : diff.spawn;
   slotFactionIds = slotNames.map((name,idx)=> slotFactionIds[idx] || factionSelections[name] || (idx===PLAYER && isHumanSlot(idx) ? chosenFactionId : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]));
   const duplicateCounts = slotFactionIds.reduce((m,id)=>{m[id]=(m[id]||0)+1; return m;},{});
   factions = slotFactionIds.map((id,idx)=>{
@@ -1426,8 +1485,8 @@ function setupFactions(){
       outline:SLOT_OUTLINE_COLORS[idx % SLOT_OUTLINE_COLORS.length],
       duplicateFaction: duplicateCounts[id] > 1,
       alive:true,
-      difficulty: human ? 0 : clamp((.72 + idx*.08) * diff.think, .45, 2.45),
-      aiSpawnScale: human ? 1 : diff.spawn,
+      difficulty: human ? 0 : clamp((.72 + idx*.08) * diff.think, .45, multiplayerAi ? MULTIPLAYER_AI_SPEED_CAP : 2.45),
+      aiSpawnScale: human ? 1 : aiSpawnScale,
       nextThink: now()+1+idx*.3,
       spawnMeter: human ? 12 : Math.random()*55,
       spawnChoices: [],
@@ -2365,18 +2424,34 @@ function updateSpawns(dt){
   }
 }
 function aiTick(dt){
-  let budget=MAX_AI_PER_FRAME;
+  const multiplayerAi = isMultiplayerGame();
+  let budget = multiplayerAi ? Math.min(MAX_AI_PER_FRAME, 7) : MAX_AI_PER_FRAME;
   const elapsed = now()-gameStats.startedAt;
   for(const f of factions){
     if(isHumanSlot(f.idx) || !f.alive || budget<=0) continue;
-    const aiSpeed = clamp(f.difficulty + elapsed/480, .55, 1.75);
+    const aiSpeed = multiplayerAi
+      ? clamp(f.difficulty + elapsed/900, .45, MULTIPLAYER_AI_SPEED_CAP)
+      : clamp(f.difficulty + elapsed/480, .55, 2.05);
     if(now()<f.nextThink) continue;
-    f.nextThink = now() + clamp((1.45/aiSpeed) + Math.random()*.65, .38, 2.2);
-    if(f.spawnMeter>=100){ aiSpawn(f); f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(f.idx); budget--; }
+    f.nextThink = now() + (multiplayerAi
+      ? clamp((2.6/aiSpeed) + Math.random()*1.1, 2.15, 4.2)
+      : clamp((1.45/aiSpeed) + Math.random()*.65, .32, 2.2));
+    const maxActions = multiplayerAi ? MULTIPLAYER_AI_MAX_ACTIONS_PER_TICK : 3;
+    let actions = 0;
+    if(f.spawnMeter>=100 && actions < maxActions){
+      aiSpawn(f);
+      f.spawnMeter=0;
+      f.spawnChoices=chooseSpawnOptions(f.idx);
+      budget--;
+      actions++;
+    }
     const army=pieces.filter(p=>p.alive&&p.faction===f.idx&&cooldownReady(p));
     army.sort((a,b)=>aiPiecePriority(f,b)-aiPiecePriority(f,a));
-    for(let i=0;i<Math.min(3,army.length)&&budget>0;i++){
-      if(aiMovePiece(f,army[i])) budget--;
+    for(let i=0;i<army.length && actions<maxActions && budget>0;i++){
+      if(aiMovePiece(f,army[i])){
+        budget--;
+        actions++;
+      }
     }
   }
 }
@@ -3036,7 +3111,23 @@ centerBtn.onclick=(e)=>{
 };
 territoryBtn.onclick=()=>{showTerritory=!showTerritory; territoryBtn.classList.toggle('active',showTerritory);};
 pauseBtn.onclick=()=>{paused=!paused; pauseBtn.textContent=paused?'Resume':'Pause';};
-startBtn.onclick=()=>{ const sel=document.getElementById('difficultySelect'); if(sel) chosenDifficultyId=sel.value; localStorage.setItem('cw.lastFaction', chosenFactionId); if(lobbyId){ publishFactionSelection(); toast('Faction locked for this lobby.', 1200); return; } slotFactionIds[PLAYER]=chosenFactionId; overlay.style.display='none'; createGame(); toast('Local preview started.', 2400); };
+startBtn.onclick=()=>{
+  const sel=document.getElementById('difficultySelect');
+  if(sel && isSoloAiGame()){
+    chosenDifficultyId=normalizedDifficultyId(sel.value);
+    localStorage.setItem('cw.lastDifficulty', chosenDifficultyId);
+  }
+  localStorage.setItem('cw.lastFaction', chosenFactionId);
+  if(lobbyId){
+    publishFactionSelection();
+    toast('Faction locked for this lobby.', 1200);
+    return;
+  }
+  slotFactionIds[PLAYER]=chosenFactionId;
+  overlay.style.display='none';
+  createGame();
+  toast('Solo war started.', 2400);
+};
 restartBtn.onclick=()=>{ exitToLobby(); };
 spectateBtn.onclick=()=>{ spectating=true; paused=false; defeatOverlay.style.display='none'; toast('Spectating the remaining warlords. Drag or swipe to follow the battle.', 3600); };
 
