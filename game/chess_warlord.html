@@ -63,6 +63,13 @@
   .factionCard{padding:12px;border-radius:18px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);cursor:pointer;transition:.12s;min-height:120px;}
   .factionCard:hover,.factionCard.chosen{transform:translateY(-2px);border-color:rgba(255,215,112,.9);background:rgba(255,215,112,.1)}
   .factionCard.samePick{box-shadow:0 0 0 3px var(--pickOutline, rgba(255,255,255,.7));}
+  #aiVotePanel{display:none;margin:12px 0 14px;}
+  .voteGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .voteCard{appearance:none;text-align:left;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;border-radius:18px;padding:13px;cursor:pointer;transition:.12s;}
+  .voteCard:hover,.voteCard.chosen{transform:translateY(-2px);border-color:rgba(125,211,252,.9);background:rgba(125,211,252,.12)}
+  .voteCard b{display:block;font-size:18px;margin-bottom:4px;}
+  .voteCard small{display:block;color:var(--muted);line-height:1.35;font-size:12px;}
+  #aiVoteResult{margin-top:9px;font-size:12px;color:#dbeafe;font-weight:900;}
   #pregameCountdown{margin:10px 0 4px;padding:10px 12px;border-radius:15px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);font-size:13px;font-weight:1000;color:#fff3b0;}
   .factionCard b{display:block;margin-bottom:4px;font-size:14px;}
   .factionCard small{display:block;color:var(--muted);line-height:1.35;font-size:12px;}
@@ -128,7 +135,16 @@
     <h1>Faction Chess Warlords Online</h1>
     <p class="lead">A giant real-time chess war: factions now capture land in different ways, from Ember kill-zones to Verdant living ground and Shadow assassinations.</p>
     <div id="pregameCountdown" style="display:none">Faction selection opens for 10 seconds when the lobby connects.</div>
-    <div class="pickLabel">Choose your faction</div>
+    <div id="aiVotePanel">
+      <div class="pickLabel">Multiplayer AI vote</div>
+      <div class="voteGrid">
+        <button class="voteCard" data-ai-vote="0"><b>0 AI</b><small>Smoothest multiplayer. Human factions only.</small></button>
+        <button class="voteCard" data-ai-vote="1"><b>1 AI</b><small>One neutral warlord for pressure without much sync load.</small></button>
+        <button class="voteCard" data-ai-vote="2"><b>2 AI</b><small>Maximum multiplayer AI. More action, heavier Firebase load.</small></button>
+      </div>
+      <div id="aiVoteResult">Vote for how many AI warlords join this match.</div>
+    </div>
+    <div class="pickLabel" id="factionLabel">Choose your faction</div>
     <div id="factionPick"></div>
     <div class="pickLabel" id="difficultyLabel">Enemy difficulty</div>
     <div id="difficultyPick"></div>
@@ -181,9 +197,13 @@ const networkText = document.getElementById('networkText');
 const exitLobbyBtn = document.getElementById('exitLobbyBtn');
 const territoryBtn = document.getElementById('territoryBtn');
 const pauseBtn = document.getElementById('pauseBtn');
+const aiVotePanel = document.getElementById('aiVotePanel');
+const aiVoteResult = document.getElementById('aiVoteResult');
 
-const BOARD_W = 86;
-const BOARD_H = 86;
+const DEFAULT_BOARD_W = 86;
+const DEFAULT_BOARD_H = 86;
+let BOARD_W = DEFAULT_BOARD_W;
+let BOARD_H = DEFAULT_BOARD_H;
 const BASE_CELL = 46;
 const MAX_AI_PER_FRAME = 22;
 const MULTIPLAYER_AI_SPEED_CAP = .72;
@@ -191,6 +211,7 @@ const MULTIPLAYER_AI_SPAWN_SCALE = .72;
 const MULTIPLAYER_AI_MAX_ACTIONS_PER_TICK = 1;
 const DEFAULT_FACTION_IDS = ['crownward','ember','iron','verdant','shadow','tide','sunspire','frost'];
 const SLOT_OUTLINE_COLORS = ['#fff3a3','#7dd3fc','#fb7185','#86efac','#c4b5fd','#67e8f9','#fdba74','#e5e7eb'];
+const MULTIPLAYER_AI_VOTE_SECONDS = 10;
 const MULTIPLAYER_FACTION_PICK_SECONDS = 10;
 const VERDANT_SPREAD_RADIUS = 4;
 const VERDANT_FADE_SECONDS = 8.5;
@@ -272,6 +293,8 @@ let returnTo = params.get('returnTo') || params.get('return') || localStorage.ge
 let lobbyData = null;
 let slotNames = [];
 let slotHumans = [];
+let selectedMultiplayerAiCount = 0;
+let aiVotes = {};
 let stateRef = null;
 let fullStateRef = null;
 let lobbyRef = null;
@@ -310,12 +333,45 @@ function isAIName(name){ return /^AI Warlord /.test(String(name || '')); }
 function isHumanSlot(idx){ return !!slotNames[idx] && !isAIName(slotNames[idx]); }
 function displayNameForFaction(idx){ return slotNames[idx] || (factions[idx]?.short) || `Player ${idx+1}`; }
 function markStateDirty(){ if(gameStarted && !applyingRemote) stateDirty = true; }
-function buildSlots(players){
+function clampAiCount(v){
+  return clamp(Math.round(Number(v) || 0), 0, 2);
+}
+function multiplayerMapSizeFor(totalSlots){
+  if(totalSlots <= 4) return {w:50, h:50, label:'compact'};
+  if(totalSlots <= 6) return {w:60, h:60, label:'mid'};
+  return {w:64, h:64, label:'large'};
+}
+function configureBoardSizeForSlots(totalSlots){
+  if(lobbyId && slotHumans.length > 1){
+    const size = multiplayerMapSizeFor(totalSlots);
+    BOARD_W = size.w;
+    BOARD_H = size.h;
+  } else {
+    BOARD_W = DEFAULT_BOARD_W;
+    BOARD_H = DEFAULT_BOARD_H;
+  }
+}
+function applySharedBoardSize(data){
+  const w = Number(data?.boardW || data?.mapW || 0);
+  const h = Number(data?.boardH || data?.mapH || 0);
+  if(w >= 40 && h >= 40 && (w !== BOARD_W || h !== BOARD_H)){
+    BOARD_W = Math.round(w);
+    BOARD_H = Math.round(h);
+    board = [];
+    shrines = [];
+  }
+}
+function buildSlots(players, aiCountOverride=null){
   const humans = Array.from(new Set((players || []).filter(Boolean))).slice(0,MAX_ONLINE_PLAYERS);
   const slots = humans.slice();
-  while(slots.length < MAX_ONLINE_PLAYERS) slots.push(`AI Warlord ${slots.length - humans.length + 1}`);
+  const multiplayer = !!lobbyId && humans.length > 1;
+  const requestedAi = multiplayer ? clampAiCount(aiCountOverride ?? selectedMultiplayerAiCount) : Math.max(0, MAX_ONLINE_PLAYERS - humans.length);
+  const aiSlots = Math.min(requestedAi, Math.max(0, MAX_ONLINE_PLAYERS - slots.length));
+  for(let i=0;i<aiSlots;i++) slots.push(`AI Warlord ${i + 1}`);
   slotHumans = humans;
+  if(multiplayer) selectedMultiplayerAiCount = aiSlots;
   slotNames = slots;
+  configureBoardSizeForSlots(slots.length);
   const mine = humans.indexOf(username);
   PLAYER = mine >= 0 ? mine : 0;
   slotFactionIds = slots.map((name,idx) => factionSelections[name] || (idx===PLAYER && !isAIName(name) ? chosenFactionId : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]));
@@ -413,6 +469,9 @@ function buildSelfContainedState(reason='fullRepair'){
     reason,
     fullSnapshot: true,
     mapSeed,
+    boardW: BOARD_W,
+    boardH: BOARD_H,
+    multiplayerAiCount: selectedMultiplayerAiCount,
     humanPlayers: slotHumans,
     playerNames: slotNames,
     playerFactionIds: slotFactionIds,
@@ -452,6 +511,9 @@ function serializeState(reason='sync', forceFull=false){
     reason,
     fullSnapshot,
     mapSeed,
+    boardW: BOARD_W,
+    boardH: BOARD_H,
+    multiplayerAiCount: selectedMultiplayerAiCount,
     humanPlayers: slotHumans,
     playerNames: slotNames,
     playerFactionIds: slotFactionIds,
@@ -496,6 +558,8 @@ async function loadFullStateRepair(reason='repair'){
 }
 function applyRemoteState(data){
   if(!data) return;
+  applySharedBoardSize(data);
+  if(typeof data.multiplayerAiCount === 'number') selectedMultiplayerAiCount = clampAiCount(data.multiplayerAiCount);
   const remotePieces = authoritativePiecesFromRemote(data);
   if(!remotePieces.length && !Array.isArray(data.pieces) && !Array.isArray(data.pieceDeltas) && !Array.isArray(data.removedPieceIds)) return;
   if(!Array.isArray(data.pieces) && !lastAuthoritativeData && (!lastAuthoritativeOwners || !lastAuthoritativeKinds || !lastAuthoritativeWalls)){
@@ -529,7 +593,9 @@ function applyRemoteState(data){
   if(Array.isArray(data.playerNames) && data.playerNames.length){
     slotNames = data.playerNames.slice(0,MAX_ONLINE_PLAYERS);
     slotHumans = (data.humanPlayers || slotNames.filter(n=>!isAIName(n))).slice(0,MAX_ONLINE_PLAYERS);
+    selectedMultiplayerAiCount = slotNames.filter(isAIName).length;
     slotFactionIds = (data.playerFactionIds || slotFactionIds || []).slice(0,MAX_ONLINE_PLAYERS);
+    configureBoardSizeForSlots(slotNames.length);
     const mine = slotHumans.indexOf(username);
     if(mine >= 0) PLAYER = mine;
   }
@@ -953,6 +1019,136 @@ function applyFactionSelectionsFromPresence(snap){
   slotFactionIds = slotNames.map((name,idx)=> map[name] || (idx===PLAYER && !isAIName(name) ? chosenFactionId : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]));
   initFactionPicker();
 }
+function tallyAiVotes(votes){
+  const counts = [0,0,0];
+  Object.values(votes || {}).forEach(v=>{
+    const choice = clampAiCount(typeof v === 'object' ? v.choice : v);
+    counts[choice]++;
+  });
+  let best = 0;
+  for(let i=1;i<counts.length;i++){
+    if(counts[i] > counts[best]) best = i;
+  }
+  return {choice:best, counts};
+}
+function setPregameStage(stage){
+  const factionLabel = document.getElementById('factionLabel');
+  const showingVote = stage === 'aiVote';
+  if(aiVotePanel) aiVotePanel.style.display = showingVote ? 'block' : 'none';
+  if(factionLabel) factionLabel.style.display = showingVote ? 'none' : '';
+  if(factionPick) factionPick.style.display = showingVote ? 'none' : '';
+  if(difficultyPick) difficultyPick.style.display = showingVote ? 'none' : difficultyPick.style.display;
+  if(startBtn) startBtn.style.display = showingVote ? 'none' : '';
+}
+function renderAiVoteCards(){
+  document.querySelectorAll('[data-ai-vote]').forEach(btn=>{
+    const choice = clampAiCount(btn.getAttribute('data-ai-vote'));
+    btn.classList.toggle('chosen', choice === selectedMultiplayerAiCount);
+    btn.onclick = () => publishAiVote(choice);
+  });
+}
+function updateAiVoteDisplay(votes=aiVotes, secondsLeft=null){
+  const tally = tallyAiVotes(votes);
+  const total = Math.max(1, slotHumans.length);
+  if(aiVoteResult){
+    const left = secondsLeft == null ? '' : ` · ${secondsLeft}s left`;
+    aiVoteResult.textContent = `Current result: ${tally.choice} AI${left} · votes 0:${tally.counts[0]} 1:${tally.counts[1]} 2:${tally.counts[2]} · ${Object.keys(votes || {}).length}/${total} voted`;
+  }
+  renderAiVoteCards();
+  return tally.choice;
+}
+async function publishAiVote(choice=selectedMultiplayerAiCount){
+  selectedMultiplayerAiCount = clampAiCount(choice);
+  renderAiVoteCards();
+  if(!pregameRef || !username) return;
+  try{
+    const playerKey = safeDocId(username);
+    await setDoc(pregameRef,{
+      gameKey:GAME_KEY,
+      updatedAt:serverTimestamp(),
+      aiVotes:{[playerKey]:{username,choice:selectedMultiplayerAiCount,updatedAtMs:Date.now()}}
+    },{merge:true});
+  }catch(e){ console.warn('AI vote save failed', e); }
+}
+async function ensureSharedAiVoteWindow(){
+  if(!pregameRef) return Date.now() + MULTIPLAYER_AI_VOTE_SECONDS * 1000;
+  const minEnd = Date.now() + MULTIPLAYER_AI_VOTE_SECONDS * 1000;
+  try{
+    await runTransaction(db, async tx => {
+      const cur = await tx.get(pregameRef);
+      const data = cur.exists() ? cur.data() : {};
+      const currentEnd = Number(data.aiVoteEndsAtMs || 0);
+      tx.set(pregameRef, {
+        gameKey: GAME_KEY,
+        aiVoteEndsAtMs: Math.max(currentEnd, minEnd),
+        updatedAt: serverTimestamp()
+      }, {merge:true});
+    });
+  }catch(e){ console.warn('AI vote window failed; using local countdown', e); }
+  await publishAiVote(selectedMultiplayerAiCount);
+  return minEnd;
+}
+function runMultiplayerAiVoteCountdown(){
+  return new Promise(resolve=>{
+    const countdownEl = document.getElementById('pregameCountdown');
+    setPregameStage('aiVote');
+    if(countdownEl) countdownEl.style.display='block';
+    overlay.style.display='flex';
+    let aiVoteEndsAt = Date.now() + MULTIPLAYER_AI_VOTE_SECONDS * 1000;
+    let resolved = false;
+    const finish = () => {
+      if(resolved) return;
+      resolved = true;
+      stopPregameCountdownWatch();
+      selectedMultiplayerAiCount = updateAiVoteDisplay(aiVotes, 0);
+      buildSlots(slotHumans, selectedMultiplayerAiCount);
+      initFactionPicker();
+      setPregameStage('faction');
+      if(countdownEl) countdownEl.textContent = `AI vote complete: ${selectedMultiplayerAiCount} AI warlord${selectedMultiplayerAiCount===1?'':'s'} joining.`;
+      resolve();
+    };
+    const tick = ()=>{
+      const leftMs = Math.max(0, aiVoteEndsAt - Date.now());
+      const left = Math.ceil(leftMs/1000);
+      if(countdownEl) countdownEl.textContent = `AI vote: ${left}s left. Choose 0, 1, or 2 AI warlords for this multiplayer match.`;
+      updateAiVoteDisplay(aiVotes, left);
+      if(leftMs<=0) finish();
+    };
+    if(pregameRef){
+      try{
+        pregameUnsub = onSnapshot(pregameRef, snap=>{
+          if(snap.exists()){
+            const data = snap.data();
+            const sharedEnd = Number(data.aiVoteEndsAtMs || 0);
+            if(sharedEnd > aiVoteEndsAt) aiVoteEndsAt = sharedEnd;
+            aiVotes = data.aiVotes || {};
+            if(typeof data.aiCount === 'number') selectedMultiplayerAiCount = clampAiCount(data.aiCount);
+          }
+          tick();
+        });
+      }catch(e){ console.warn('AI vote countdown watch failed', e); }
+    }
+    tick();
+    if(pregameTimer) clearInterval(pregameTimer);
+    pregameTimer = setInterval(tick, 250);
+  });
+}
+async function finalizeSharedAiVote(){
+  if(!pregameRef) return selectedMultiplayerAiCount;
+  let choice = selectedMultiplayerAiCount;
+  try{
+    const snap = await getDoc(pregameRef);
+    const data = snap.exists() ? snap.data() : {};
+    aiVotes = data.aiVotes || aiVotes || {};
+    choice = tallyAiVotes(aiVotes).choice;
+    selectedMultiplayerAiCount = choice;
+    if(isController){
+      const size = multiplayerMapSizeFor(slotHumans.length + choice);
+      await setDoc(pregameRef,{aiCount:choice,boardW:size.w,boardH:size.h,updatedAt:serverTimestamp()},{merge:true});
+    }
+  }catch(e){ console.warn('AI vote finalize failed', e); }
+  return choice;
+}
 function beginFactionSelectionWatch(){
   if(!lobbyId || !presenceRef) return;
   try{
@@ -998,9 +1194,11 @@ function selectedHumanCount(){
 function runMultiplayerFactionCountdown(){
   return new Promise(resolve=>{
     const countdownEl = document.getElementById('pregameCountdown');
+    setPregameStage('faction');
     if(countdownEl) countdownEl.style.display='block';
     overlay.style.display='flex';
     startBtn.textContent = 'Lock In Faction';
+    startBtn.style.display = '';
     startBtn.disabled = false;
     pregameEndsAt = Math.max(pregameEndsAt || 0, Date.now() + MULTIPLAYER_FACTION_PICK_SECONDS * 1000);
     let resolved = false;
@@ -1093,8 +1291,8 @@ async function bootMultiplayer(){
       return;
     }
     chosenDifficultyId = 'normal';
+    selectedMultiplayerAiCount = 0;
     updateDifficultyVisibility();
-    await publishFactionSelection();
     await refreshPresenceAndController();
     heartbeatTimer = setInterval(refreshPresenceAndController, 4000);
     lobbyUnsub = onSnapshot(lobbyRef, snap=>{
@@ -1119,6 +1317,13 @@ async function bootMultiplayer(){
       return;
     }
     beginFactionSelectionWatch();
+    await ensureSharedAiVoteWindow();
+    await runMultiplayerAiVoteCountdown();
+    await refreshPresenceAndController();
+    const votedAiCount = await finalizeSharedAiVote();
+    buildSlots(lobbyData.players || slotHumans || [username], votedAiCount);
+    updateDifficultyVisibility();
+    await publishFactionSelection();
     await ensureSharedPregameWindow();
     await runMultiplayerFactionCountdown();
     overlay.style.display='none';
@@ -1128,8 +1333,11 @@ async function bootMultiplayer(){
         const cur = await tx.get(stateRef);
         if(cur.exists()) return;
         const pre = pregameRef ? await tx.get(pregameRef) : null;
-        const sharedEnd = pre && pre.exists() ? Number(pre.data().endsAtMs || 0) : pregameEndsAt;
+        const preData = pre && pre.exists() ? pre.data() : {};
+        const sharedEnd = Number(preData.endsAtMs || 0) || pregameEndsAt;
         if(sharedEnd && Date.now() < sharedEnd) return;
+        const aiChoice = clampAiCount(preData.aiCount ?? tallyAiVotes(preData.aiVotes || {}).choice);
+        buildSlots(lobbyData.players || slotHumans || [username], aiChoice);
         createGame();
         const initial = serializeState('initialCreate', true);
         tx.set(stateRef, initial);
@@ -1382,6 +1590,7 @@ function updateDifficultyVisibility(){
 function generateBoard(){
   const seed = Number(mapSeed || 1);
   board = new Array(BOARD_W*BOARD_H);
+  const compact = BOARD_W <= 60;
   for(let y=0;y<BOARD_H;y++){
     for(let x=0;x<BOARD_W;x++){
       const n1 = smoothNoise(x,y,11,404 + seed);
@@ -1389,9 +1598,9 @@ function generateBoard(){
       const n3 = smoothNoise(x-8,y+47,18,1821 + seed);
       const edge = Math.min(x,y,BOARD_W-1-x,BOARD_H-1-y);
       let type = 'plain';
-      if(n1>.80 && n2>.48) type='mountain';
-      else if(n1>.66) type='forest';
-      else if(n2<.13) type='swamp';
+      if(n1>(compact ? .84 : .80) && n2>.48) type='mountain';
+      else if(n1>(compact ? .70 : .66)) type='forest';
+      else if(n2<(compact ? .10 : .13)) type='swamp';
       else if(n1<.20 && n3<.50) type='meadow';
       else if(n2>.82) type='hill';
       else if(n2>.70 && n1<.43) type='sand';
@@ -1420,7 +1629,8 @@ function addWaterBodies(){
   const seed = Number(mapSeed || 1);
   const starts = getStartPositions();
   const safeFromStarts = (x,y,r=8) => starts.every(s=>dist2(x,y,s.x,s.y)>r*r);
-  const bodies = 14 + Math.floor(seededNoise(seed,29,1190)*7);
+  const areaScale = (BOARD_W * BOARD_H) / (DEFAULT_BOARD_W * DEFAULT_BOARD_H);
+  const bodies = Math.max(5, Math.round((14 + Math.floor(seededNoise(seed,29,1190)*7)) * areaScale));
   for(let i=0;i<bodies;i++){
     let cx = 5 + Math.floor(seededNoise(i,2,1201 + seed)*(BOARD_W-10));
     let cy = 5 + Math.floor(seededNoise(i,7,1202 + seed)*(BOARD_H-10));
@@ -1482,24 +1692,40 @@ function clearShrineBasin(shrine){
   }
 }
 function carveIntentionalLanes(starts){
-  if(!shrines.length) return;
+  const mid = {x:Math.floor(BOARD_W/2), y:Math.floor(BOARD_H/2)};
   for(const s of starts){
-    const target = shrines.slice().sort((a,b)=>dist2(s.x,s.y,a.x,a.y)-dist2(s.x,s.y,b.x,b.y))[0];
-    carveRoad(s.x,s.y,target.x,target.y);
+    carveRoad(s.x,s.y,mid.x,mid.y);
+    if(shrines.length){
+      const target = shrines.slice().sort((a,b)=>dist2(s.x,s.y,a.x,a.y)-dist2(s.x,s.y,b.x,b.y))[0];
+      carveRoad(s.x,s.y,target.x,target.y);
+    }
   }
   for(let i=0;i<shrines.length;i++){
     const a=shrines[i], b=shrines[(i+1)%shrines.length];
     if(a!==b) carveRoad(a.x,a.y,b.x,b.y);
   }
-  const mid = {x:Math.floor(BOARD_W/2), y:Math.floor(BOARD_H/2)};
   carveRoad(2,mid.y,BOARD_W-3,mid.y);
   carveRoad(mid.x,2,mid.x,BOARD_H-3);
+  const thirdX = Math.floor(BOARD_W/3);
+  const twoThirdX = Math.floor(BOARD_W*2/3);
+  const thirdY = Math.floor(BOARD_H/3);
+  const twoThirdY = Math.floor(BOARD_H*2/3);
+  carveRoad(4,thirdY,BOARD_W-5,thirdY);
+  carveRoad(4,twoThirdY,BOARD_W-5,twoThirdY);
+  carveRoad(thirdX,4,thirdX,BOARD_H-5);
+  carveRoad(twoThirdX,4,twoThirdX,BOARD_H-5);
+  carveRoad(4,4,BOARD_W-5,BOARD_H-5);
+  carveRoad(BOARD_W-5,4,4,BOARD_H-5);
 }
 function carveRoad(x0,y0,x1,y1){
   let x=x0, y=y0, guard=0;
-  while((x!==x1 || y!==y1) && guard++<300){
+  const maxGuard = (BOARD_W + BOARD_H) * 4;
+  while((x!==x1 || y!==y1) && guard++<maxGuard){
     for(let oy=-1;oy<=1;oy++) for(let ox=-1;ox<=1;ox++) if(inBounds(x+ox,y+oy) && seededNoise(x+ox,y+oy,55)>.28){
-      const t=tile(x+ox,y+oy); if(t.type==='water'||t.type==='mountain'||t.type==='swamp'||t.type==='forest') t.type = (ox===0&&oy===0)?'road':'plain';
+      const t=tile(x+ox,y+oy);
+      if(ox===0 && oy===0) t.type='road';
+      else if(t.type==='water'||t.type==='mountain'||t.type==='swamp'||t.type==='forest') t.type = seededNoise(x+ox,y+oy,155)>.6 ? 'road' : 'plain';
+      else if(seededNoise(x+ox,y+oy,255)>.86) t.type='road';
     }
     if(Math.abs(x1-x)>Math.abs(y1-y)) x += Math.sign(x1-x); else y += Math.sign(y1-y);
     if(seededNoise(x,y,88)>.6){ if(x!==x1) x += Math.sign(x1-x); if(y!==y1) y += Math.sign(y1-y); }
@@ -3301,4 +3527,5 @@ bootMultiplayer();
 </script>
 </body>
 </html>
+
 
