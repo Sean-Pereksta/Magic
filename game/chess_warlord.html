@@ -1414,8 +1414,8 @@ const factionCatalog = {
     pieces:['sparkpawn','cinderjack','ashhopper','flamerunner','emberknight','flamequeen','general','pyretower','lancer']
   },
   iron: {
-    id:'iron', name:'Iron Bastion', short:'Bastion', icon:'🛡️', color:'#aeb7c2', dark:'#53606b', aura:'#cfd8e3', aiStyle:'defensive', spawnRate:1.40,
-    description:'Very slow spawning shield army. Short heavy moves, pushes, and fortified contact define it.',
+    id:'iron', name:'Iron Bastion', short:'Bastion', icon:'🛡️', color:'#aeb7c2', dark:'#53606b', aura:'#cfd8e3', aiStyle:'defensive', spawnRate:1.08,
+    description:'Slow, shield-heavy defensive army. Short brace moves, pushes, and steady fortified reinforcements define it.',
     pieces:['shieldpawn','bulwark','hammerknight','gatebreaker','rook','warden','general','tower','citadelwalker']
   },
   verdant: {
@@ -1480,10 +1480,10 @@ const pieceDefs = {
   flamerunner:{name:'Flame Runner', icon:'↯', pattern:'flamerunner', cooldown:3.15, value:4, hp:1, desc:'Rushes exactly two or three tiles in a cardinal line.'},
   flamequeen:{name:'Flame Queen', icon:'♛', pattern:'queen', cooldown:4.75, value:10, hp:1, desc:'Aggressive queen with lower cooldown.'},
   pyretower:{name:'Pyre Tower', icon:'♖', pattern:'tower', cooldown:5.6, value:6, aura:3, hp:1, desc:'Territory tower with faster cooldown.'},
-  shieldpawn:{name:'Shieldbearer', icon:'♟', pattern:'shieldbearer', cooldown:3.2, value:1, hp:2, shieldPush:true, desc:'Heavy one-tile shield unit that pushes enemies on attack.'},
-  bulwark:{name:'Bulwark', icon:'▣', pattern:'rookShort', cooldown:4.8, value:5, hp:2, desc:'Short rook that can survive one capture attempt.'},
-  hammerknight:{name:'Hammer Knight', icon:'♞', pattern:'hammerknight', cooldown:4.55, value:5, hp:2, shieldPush:true, desc:'Charges exactly two cardinal tiles and pushes on impact.'},
-  gatebreaker:{name:'Gatebreaker', icon:'▰', pattern:'gatebreaker', cooldown:4.35, value:4, hp:2, shieldPush:true, desc:'Moves one straight, or strikes one more straight into an enemy or wall.'},
+  shieldpawn:{name:'Shieldbearer', icon:'♟', pattern:'shieldbearer', cooldown:2.45, value:1, hp:2, shieldPush:true, desc:'Active one-tile shield unit that repositions often and pushes enemies on attack.'},
+  bulwark:{name:'Bulwark', icon:'▣', pattern:'bulwarkBrace', cooldown:3.55, value:5, hp:2, desc:'Defensive brace rook that moves only a couple of squares and can survive one capture attempt.'},
+  hammerknight:{name:'Hammer Knight', icon:'♞', pattern:'hammerknight', cooldown:3.85, value:5, hp:2, shieldPush:true, desc:'Charges exactly two cardinal tiles and pushes on impact.'},
+  gatebreaker:{name:'Gatebreaker', icon:'▰', pattern:'gatebreaker', cooldown:3.35, value:4, hp:2, shieldPush:true, desc:'Moves one straight, or strikes one more straight into an enemy or wall.'},
   warden:{name:'Warden', icon:'◆', pattern:'warden', cooldown:5.2, value:6, aura:2, hp:2, desc:'Defensive diagonal/orthogonal stepper with small territory aura.'},
   seedpawn:{name:'Seed Pawn', icon:'♙', pattern:'pawn', cooldown:1.9, value:1, hp:1, desc:'Quickest pawn; helps Verdant flood territory.'},
   thornguard:{name:'Thorn Guard', icon:'♙', pattern:'thornguard', cooldown:2.25, value:2, hp:1, desc:'Moves cardinally and recharges best when staying connected to owned land.'},
@@ -1984,7 +1984,10 @@ function eligibleSpawnTiles(factionIdx, type=null){
 }
 function chooseSpawnOptions(factionIdx){
   const f=factions[factionIdx];
-  const pool = f.pieces.filter(t=>t!=='king');
+  const basePool = f.pieces.filter(t=>t!=='king');
+  const pool = f.id==='iron'
+    ? basePool.flatMap(t => t==='shieldpawn' ? [t,t,t,t] : t==='bulwark' ? [t,t,t] : t==='gatebreaker' ? [t,t] : [t])
+    : basePool;
   const picks=[];
   let guard=0;
   while(picks.length<3 && guard++<50){
@@ -2087,9 +2090,11 @@ function movementCooldownMultiplier(piece, fromX, fromY, toX, toY){
     return .94 * variance;
   }
   if(f.id==='iron'){
-    if(['shieldpawn','gatebreaker'].includes(piece.type) && m.adjacent) return 1.18;
-    if(piece.type==='hammerknight' && m.cardinal && m.dist===2) return 1.18;
-    return ['bulwark','citadelwalker','tower'].includes(piece.type) ? 1.36 : 1.26;
+    if(piece.type==='shieldpawn' && m.adjacent) return .72;
+    if(piece.type==='gatebreaker' && m.adjacent) return .82;
+    if(piece.type==='hammerknight' && m.cardinal && m.dist===2) return 1.02;
+    if(piece.type==='bulwark') return m.dist<=1 ? .84 : .96;
+    return ['citadelwalker','tower'].includes(piece.type) ? 1.22 : 1.08;
   }
   if(f.id==='frost'){
     if(m.straight && m.dist>=2) return .75;
@@ -2247,6 +2252,8 @@ function getLegalMoves(piece, ignoreCooldown=false){
       addStep(piece.x+dx,piece.y+dy,true,true);
       addLineExact(dx,dy,2,true,false);
     }
+  } else if(pattern==='bulwarkBrace'){
+    slide(ORTHO, lvl>=4 ? 3 : 2);
   } else if(pattern==='rook') slide(ORTHO, 9+lvl);
   else if(pattern==='rookShort') slide(ORTHO, 4+Math.floor(lvl/2));
   else if(pattern==='bishop' || pattern==='bishopLong') slide(DIAG, pattern==='bishopLong'?12+lvl:8+lvl);
@@ -2823,7 +2830,7 @@ function renderSpawnCards(){
   });
 }
 function patternName(p){
-  const names={pawn:'Pawn+',shadepawn:'Shade Blink',blinkpawn:'Blink Pawn',king:'King',general:'General',marshal:'Marshal Bend',tower:'Territory Tower',shieldbearer:'Shieldbearer',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',cinderjack:'Cinder Jump',ashhopper:'Ash Hop',flamerunner:'Flame Rush',eagle:'Eagle Leap',lancer:'Lancer',scout:'Scout',thornguard:'Thorn Guard',stagrunner:'Stag Jump',vinehook:'Vinehook',assassin:'Assassin',shadowstepper:'Shadow Step',nightblade:'Nightblade',wraith:'Wraith',umbralbishop:'Umbral Bishop',warden:'Warden',paladin:'Paladin',sunacolyte:'Sun Skip',dawnblade:'Dawnblade',lightlancer:'Light Lancer',radiantbishop:'Radiant Jump',sunherald:'Sun Herald',frostpawn:'Frost Pawn',icespear:'Ice Spear',glacierguard:'Glacier Guard',frostbishop:'Frost Bishop',sledknight:'Sled Knight',mirrorskater:'Mirror Skate',voidstrider:'Void Strider',citadel:'Citadel Walker',archon:'Dawn Archon'};
+  const names={pawn:'Pawn+',shadepawn:'Shade Blink',blinkpawn:'Blink Pawn',king:'King',general:'General',marshal:'Marshal Bend',tower:'Territory Tower',shieldbearer:'Shieldbearer',rook:'Rook',rookShort:'Short Rook',bulwarkBrace:'Brace Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',cinderjack:'Cinder Jump',ashhopper:'Ash Hop',flamerunner:'Flame Rush',eagle:'Eagle Leap',lancer:'Lancer',scout:'Scout',thornguard:'Thorn Guard',stagrunner:'Stag Jump',vinehook:'Vinehook',assassin:'Assassin',shadowstepper:'Shadow Step',nightblade:'Nightblade',wraith:'Wraith',umbralbishop:'Umbral Bishop',warden:'Warden',paladin:'Paladin',sunacolyte:'Sun Skip',dawnblade:'Dawnblade',lightlancer:'Light Lancer',radiantbishop:'Radiant Jump',sunherald:'Sun Herald',frostpawn:'Frost Pawn',icespear:'Ice Spear',glacierguard:'Glacier Guard',frostbishop:'Frost Bishop',sledknight:'Sled Knight',mirrorskater:'Mirror Skate',voidstrider:'Void Strider',citadel:'Citadel Walker',archon:'Dawn Archon'};
   return names[p]||p;
 }
 function updateHUD(){
@@ -3525,7 +3532,7 @@ function drawPieceShape(pattern,r,id){
   ctx.beginPath();
   if(pattern==='knight'||pattern==='paladin'||pattern==='archon'||pattern==='eagle'){
     ctx.moveTo(-r*.65,r*.65); ctx.quadraticCurveTo(-r*.95,-r*.1,-r*.22,-r*.78); ctx.quadraticCurveTo(r*.35,-r*1.0,r*.78,-r*.35); ctx.quadraticCurveTo(r*.35,-r*.2,r*.65,r*.42); ctx.quadraticCurveTo(.1,r*.72,-r*.65,r*.65);
-  } else if(pattern==='rook'||pattern==='rookShort'||pattern==='tower'||pattern==='citadel'){
+  } else if(pattern==='rook'||pattern==='rookShort'||pattern==='bulwarkBrace'||pattern==='tower'||pattern==='citadel'){
     ctx.rect(-r*.72,-r*.56,r*1.44,r*1.16);
     ctx.moveTo(-r*.72,-r*.56); ctx.lineTo(-r*.72,-r*.82); ctx.lineTo(-r*.38,-r*.82); ctx.lineTo(-r*.38,-r*.56);
     ctx.moveTo(-r*.12,-r*.56); ctx.lineTo(-r*.12,-r*.82); ctx.lineTo(r*.12,-r*.82); ctx.lineTo(r*.12,-r*.56);
