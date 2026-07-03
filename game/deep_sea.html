@@ -305,10 +305,10 @@
 
   const fishTypes = [
     // Gentle, tiny starter prey near the surface. These are intentionally slower and easier to catch.
-    {name:'Sand Fleck Fry', color:'#fef3c7', color2:'#fff7ed', min:0, max:.12, size:.26, sizeMin:.18, sizeMax:.34, speed:7.6, cruiseSpeed:9.6, aggro:.00, danger:.01, detect:18, turn:2.1, turnSpeed:2.1, strategy:'drift', easyPrey:true, starter:true},
-    {name:'Bubble Guppy', color:'#b7f5ff', color2:'#ffffff', min:0, max:.15, size:.31, sizeMin:.22, sizeMax:.42, speed:8.8, cruiseSpeed:10.8, aggro:.00, danger:.01, detect:20, turn:2.4, turnSpeed:2.4, strategy:'bubbleDrift', easyPrey:true, starter:true},
-    {name:'Pea Darter', color:'#bbf7d0', color2:'#ecfeff', min:0, max:.18, size:.36, sizeMin:.26, sizeMax:.48, speed:10.2, cruiseSpeed:12.2, aggro:.01, danger:.01, detect:24, turn:2.8, turnSpeed:2.8, strategy:'shortHop', easyPrey:true, starter:true},
-    {name:'Lazy Kelp Shiner', color:'#86efac', color2:'#fef9c3', min:0, max:.24, size:.46, sizeMin:.34, sizeMax:.58, speed:9.9, cruiseSpeed:10.9, aggro:.01, danger:.02, detect:25, turn:1.9, turnSpeed:1.9, strategy:'grazer', easyPrey:true, starter:true},
+    {name:'Sand Fleck Fry', color:'#fef3c7', color2:'#fff7ed', min:0, max:.12, size:.26, sizeMin:.18, sizeMax:.34, speed:5.6, cruiseSpeed:9.6, aggro:.00, danger:.01, detect:18, turn:2.1, turnSpeed:2.1, strategy:'drift', easyPrey:true, starter:true},
+    {name:'Bubble Guppy', color:'#b7f5ff', color2:'#ffffff', min:0, max:.15, size:.31, sizeMin:.22, sizeMax:.42, speed:6.8, cruiseSpeed:10.8, aggro:.00, danger:.01, detect:20, turn:2.4, turnSpeed:2.4, strategy:'bubbleDrift', easyPrey:true, starter:true},
+    {name:'Pea Darter', color:'#bbf7d0', color2:'#ecfeff', min:0, max:.18, size:.36, sizeMin:.26, sizeMax:.48, speed:9.2, cruiseSpeed:12.2, aggro:.01, danger:.01, detect:24, turn:2.8, turnSpeed:2.8, strategy:'shortHop', easyPrey:true, starter:true},
+    {name:'Lazy Kelp Shiner', color:'#86efac', color2:'#fef9c3', min:0, max:.24, size:.46, sizeMin:.34, sizeMax:.58, speed:8.9, cruiseSpeed:10.9, aggro:.01, danger:.02, detect:25, turn:1.9, turnSpeed:1.9, strategy:'grazer', easyPrey:true, starter:true},
     {name:'Soft Reef Smelt', color:'#f9a8d4', color2:'#cffafe', min:.02, max:.26, size:.52, sizeMin:.40, sizeMax:.67, speed:11.6, cruiseSpeed:12.6, aggro:.02, danger:.02, detect:28, turn:2.2, turnSpeed:2.2, strategy:'slowSchool', easyPrey:true, starter:true},
     {name:'Kelp Snapper Pup', color:'#fb923c', color2:'#fed7aa', min:.04, max:.30, size:.88, sizeMin:.72, sizeMax:1.14, speed:15.4, cruiseSpeed:17.4, aggro:.52, danger:.26, detect:62, turn:2.25, turnSpeed:2.25, strategy:'snap', predator:true, earlyPredator:true},
     {name:'Reef Needleling', color:'#e0f2fe', color2:'#fef08a', min:.05, max:.34, size:1.02, sizeMin:.78, sizeMax:1.32, speed:18.8, cruiseSpeed:22.8, aggro:.58, danger:.32, detect:72, turn:1.65, turnSpeed:1.65, strategy:'charge', predator:true, earlyPredator:true, dorsal:true},
@@ -440,7 +440,7 @@ const keys = Object.create(null);
   function reset(){
     const p = state.player;
     p.pos = {x:0,y:-16,z:0}; p.vel = {x:0,y:0,z:0}; p.yaw = 0; p.pitch = -.03; p.size = 1; p.mass = 1; p.eaten = 0; p.fishEaten = 0;
-    p.upgradeCount = 0; p.upgradeCost = 10; p.nextUpgradeAt = 10; p.upgrades = Object.create(null); p.mods = baseMods(); p.visual = baseVisual();
+    p.upgradeCount = 0; p.upgradeCost = 10; p.nextUpgradeAt = 6; p.upgrades = Object.create(null); p.mods = baseMods(); p.visual = baseVisual();
     p.tailPhase = 0; p.finPhase = 0; p.biteCooldown = 0; p.dashCd = 0; p.shockCd = 0; p.inkCd = 0; p.chompT = 0; p.mouthOpen = 0; p.killBoostT = 0; p.sprintEnergy = sprintMax(p); p.sprintRegenDelay = 0; p.sprinting = false; p.alive = true;
     state.fish.length = 0; state.plants.length = 0; state.bubbles.length = 0; state.bites.length = 0; state.obstacles.length = 0; state.flash = 0;
     ui.upgradePanel.style.display = 'none'; ui.abilityBar.style.display = 'flex'; if(ui.depthGauge) ui.depthGauge.style.display = 'block'; resetMobileStick('move'); resetMobileStick('look'); syncMobileUI();
