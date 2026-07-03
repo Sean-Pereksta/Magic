@@ -2090,11 +2090,21 @@ function movementCooldownMultiplier(piece, fromX, fromY, toX, toY){
     return .94 * variance;
   }
   if(f.id==='iron'){
-    if(piece.type==='shieldpawn' && m.adjacent) return .72;
-    if(piece.type==='gatebreaker' && m.adjacent) return .82;
-    if(piece.type==='hammerknight' && m.cardinal && m.dist===2) return 1.02;
-    if(piece.type==='bulwark') return m.dist<=1 ? .84 : .96;
-    return ['citadelwalker','tower'].includes(piece.type) ? 1.22 : 1.08;
+    const fromTile = inBounds(fromX,fromY) ? tile(fromX,fromY) : null;
+    const toTile = inBounds(toX,toY) ? tile(toX,toY) : null;
+    const fromOwned = fromTile?.owner === piece.faction;
+    const toOwner = toTile?.owner;
+    const toOwned = toOwner === piece.faction;
+    const toNeutral = toOwner === null || toOwner === undefined;
+    const heavyBreacher = ['hammerknight','gatebreaker'].includes(piece.type);
+
+    // Bulwark/Iron is intentionally slow to expand, but rotates quickly once a defensive network exists.
+    // These values affect recovery cooldown only; moveVisualDurationFor keeps animation speed unchanged.
+    if(toOwned){
+      if(fromOwned) return heavyBreacher ? .82 : .65; // owned -> owned: strongest defensive rotation bonus
+      return heavyBreacher ? .85 : .80;              // outside -> owned: reinforce back to controlled land
+    }
+    return toNeutral ? 1.15 : 1.25;                  // neutral/enemy land: costly expansion and attacks
   }
   if(f.id==='frost'){
     if(m.straight && m.dist>=2) return .75;
