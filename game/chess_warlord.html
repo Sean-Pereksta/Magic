@@ -244,7 +244,7 @@ let pendingPlayerActions = [];
 let clientActionSeq = 1;
 let clientPieceSeq = 1;
 const PENDING_ACTION_TTL_SECONDS = .85;
-const PENDING_ACTION_GRACE_SECONDS = .7;
+const PENDING_ACTION_GRACE_SECONDS = .8;
 const COMMAND_MAX_AGE_MS = 1200;
 const CONTROLLER_STATE_WRITE_SECONDS = .72;
 const FULL_SNAPSHOT_SECONDS = 7;
@@ -273,6 +273,7 @@ let lobbyData = null;
 let slotNames = [];
 let slotHumans = [];
 let stateRef = null;
+let fullStateRef = null;
 let lobbyRef = null;
 let presenceRef = null;
 let stateUnsub = null;
@@ -324,6 +325,7 @@ function ownFactionAlive(){ return factions[PLAYER] && factions[PLAYER].alive; }
 function myKing(){ const f = factions[PLAYER]; return f ? getPiece(f.kingId) : null; }
 function isMyPiece(p){ return p && p.alive && p.faction === PLAYER && isHumanSlot(PLAYER) && ownFactionAlive(); }
 function stateDocRef(){ return doc(db,'lobbies',lobbyId,'chess_warlord','state'); }
+function fullStateDocRef(){ return doc(db,'lobbies',lobbyId,'chess_warlord','full_state'); }
 function pregameDocRef(){ return doc(db,'lobbies',lobbyId,'chess_warlord','pregame'); }
 function commandCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_commands'); }
 function commandDocRef(id){ return doc(db,'lobbies',lobbyId,'chess_warlord_commands',safeDocId(id)); }
@@ -400,6 +402,30 @@ function applyStringPatches(base, patches){
   return chars.join('');
 }
 function buildFullPieces(){ return pieces.filter(p=>p.alive).map(serializePiece); }
+function buildSelfContainedState(reason='fullRepair'){
+  recalcOwnerCounts();
+  return {
+    gameKey: GAME_KEY,
+    version: localStateVersion || 0,
+    updatedAt: serverTimestamp(),
+    updatedAtMs: Date.now(),
+    updatedBy: username || 'unknown',
+    reason,
+    fullSnapshot: true,
+    mapSeed,
+    humanPlayers: slotHumans,
+    playerNames: slotNames,
+    playerFactionIds: slotFactionIds,
+    controller: controllerName || username || '',
+    stats: {captures:gameStats.captures||0,kingsTaken:gameStats.kingsTaken||0,startedAt:gameStats.startedAt||now()},
+    factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
+    winner: winnerName() || '',
+    boardOwners: compressOwners(),
+    boardKinds: compressCaptureKinds(),
+    boardWalls: compressWalls(),
+    pieces: buildFullPieces()
+  };
+}
 function serializeState(reason='sync', forceFull=false){
   recalcOwnerCounts();
   const owners = compressOwners();
@@ -460,10 +486,23 @@ function authoritativePiecesFromRemote(data){
   }
   return remotePieces;
 }
+async function loadFullStateRepair(reason='repair'){
+  if(!fullStateRef) return false;
+  try{
+    const snap = await getDoc(fullStateRef);
+    if(snap.exists()){ applyRemoteState(snap.data()); return true; }
+  }catch(e){ console.warn(`${reason} full-state load failed`, e); }
+  return false;
+}
 function applyRemoteState(data){
   if(!data) return;
   const remotePieces = authoritativePiecesFromRemote(data);
   if(!remotePieces.length && !Array.isArray(data.pieces) && !Array.isArray(data.pieceDeltas) && !Array.isArray(data.removedPieceIds)) return;
+  if(!Array.isArray(data.pieces) && !lastAuthoritativeData && (!lastAuthoritativeOwners || !lastAuthoritativeKinds || !lastAuthoritativeWalls)){
+    setNetwork('Loading full repair snapshot…');
+    loadFullStateRepair('delta-without-base');
+    return;
+  }
   const incomingVersion = Number(data.version || 0);
   if(incomingVersion && incomingVersion < localStateVersion && data.updatedBy !== username) return;
   const baseOwners = data.boardOwners || (lastAuthoritativeData && lastAuthoritativeData.boardOwners) || lastAuthoritativeOwners;
@@ -627,6 +666,10 @@ async function writeStateNow(reason='sync'){
     const payload = serializeState(reason, reason === 'initialCreate');
     payload.version = Math.max((localStateVersion || 0) + 1, Number(payload.version || 0));
     await setDoc(stateRef, payload, {merge:false});
+    if(fullStateRef && payload.fullSnapshot){
+      const fullPayload = {...buildSelfContainedState(reason), version: payload.version, updatedAtMs: payload.updatedAtMs, updatedBy: payload.updatedBy};
+      await setDoc(fullStateRef, fullPayload, {merge:false});
+    }
     localStateVersion = Math.max(localStateVersion || 0, payload.version);
     stateDirty = false;
     localWritePendingUntil = 0;
@@ -674,6 +717,9 @@ function moveCommandReady(piece){
   return cooldownReady(piece) || (now() - piece.lastMove) >= cooldownFor(piece) - .25;
 }
 function applyIncomingCommand(cmd){
+  if(cmd.actionId && processedCommandIds.has(`action:${cmd.actionId}`)) return true;
+  const baseVersion = Number(cmd.baseStateVersion || 0);
+  if(baseVersion && baseVersion > (localStateVersion || 0) + 1) return false;
   const slot = authoritativeSlotFromCommand(cmd);
   if(slot < 0 || !factions[slot] || factions[slot].alive === false) return false;
   if(cmd.kind === 'move'){
@@ -687,7 +733,17 @@ function applyIncomingCommand(cmd){
     if(!moveCommandReady(live)) return false;
     const legal = getLegalMoves(live,true).some(m=>m.x===toX && m.y===toY);
     if(!legal) return false;
-    return movePiece(live,toX,toY,'command');
+    const ok = movePiece(live,toX,toY,'command');
+    if(ok){
+      processedCommandIds.add(`action:${cmd.actionId || ''}`);
+      const start = Number(cmd.moveStartMs || 0);
+      const end = Number(cmd.moveEndMs || 0);
+      live.moveStartMs = Date.now();
+      live.moveEndMs = (end > start && end - start < 2000) ? live.moveStartMs + (end - start) : live.moveStartMs + Math.round(cooldownFor(live) * 220);
+      live.clientActionId = cmd.actionId || '';
+      live.clientActionBy = cmd.by || '';
+    }
+    return ok;
   }
   if(cmd.kind === 'spawn'){
     const f = factions[slot];
@@ -699,6 +755,7 @@ function applyIncomingCommand(cmd){
     if(!eligibleSpawnTiles(slot,type).some(t=>t.x===x && t.y===y)) return false;
     const pieceId = Number(cmd.pieceId) || allocateClientPieceId();
     if(getPiece(pieceId) || pieces.find(p=>p.alive && p.clientActionId === cmd.actionId)) return true;
+    processedCommandIds.add(`action:${cmd.actionId || ''}`);
     newPiece(slot,type,x,y,{ready:false,id:pieceId,clientActionId:cmd.actionId || '',clientActionBy:cmd.by || ''});
     f.spawnMeter = 0;
     f.spawnChoices = chooseSpawnOptions(slot);
@@ -762,7 +819,8 @@ async function submitPlayerCommand(action){
     slot:PLAYER,
     faction:PLAYER,
     createdAtMs:Date.now(),
-    createdAt:serverTimestamp()
+    createdAt:serverTimestamp(),
+    baseStateVersion: localStateVersion || 0
   };
   try{
     await setDoc(commandDocRef(action.actionId), payload, {merge:false});
@@ -775,6 +833,31 @@ async function submitPlayerCommand(action){
     return false;
   }
 }
+
+function predictLocalMove(piece,x,y,action){
+  if(!piece || !piece.alive || !inBounds(x,y)) return false;
+  if(!(lobbyId && !isController)) return movePiece(piece,x,y,'player');
+  if(findPieceAt(x,y)?.faction === piece.faction) return false;
+  if(!passableFor(piece,x,y) && !canAttackWall(piece,x,y)) return false;
+  // Client-side prediction is intentionally visual only.  It moves the local
+  // piece sprite for a short window but does not resolve captures, shield
+  // pushes, land/aura ownership, spawn meters, faction death, or removals.
+  piece.x = x;
+  piece.y = y;
+  piece.targetX = x;
+  piece.targetY = y;
+  piece.px = action.fromX;
+  piece.py = action.fromY;
+  piece.moveStartMs = action.moveStartMs || Date.now();
+  piece.moveEndMs = action.moveEndMs || (piece.moveStartMs + 180);
+  piece.flash = .65;
+  piece.clientActionId = action.actionId || '';
+  piece.clientActionBy = username || '';
+  localWritePendingUntil = now() + PENDING_ACTION_GRACE_SECONDS;
+  setNetwork('Awaiting host confirmation…');
+  return true;
+}
+
 async function requestPlayerMove(piece,x,y){
   if(!isMyPiece(piece)) return false;
   const live = getPiece(piece.id);
@@ -784,8 +867,8 @@ async function requestPlayerMove(piece,x,y){
   const fromX = live.x, fromY = live.y;
   const moveStartMs = Date.now();
   const moveEndMs = moveStartMs + Math.round(cooldownFor(live) * 220);
-  const action = {kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, type:live.type, fromX, fromY, toX:x, toY:y, moveStartMs, moveEndMs};
-  const ok = movePiece(live,x,y,'player');
+  const action = {kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, type:live.type, fromX, fromY, toX:x, toY:y, moveStartMs, moveEndMs, baseStateVersion: localStateVersion || 0};
+  const ok = (lobbyId && !isController) ? predictLocalMove(live,x,y,action) : movePiece(live,x,y,'player');
   if(ok){
     rememberPendingPlayerAction({...action, faction:PLAYER});
     selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
@@ -806,10 +889,10 @@ async function requestPlayerSpawn(x,y){
   }
   const actionId = makeClientActionId('spawn');
   const pieceId = allocateClientPieceId();
-  const action = {kind:'spawn', actionId, pieceId, type, x, y};
+  const action = {kind:'spawn', actionId, pieceId, type, x, y, baseStateVersion: localStateVersion || 0};
   newPiece(PLAYER,type,x,y,{ready:false,id:pieceId,clientActionId:actionId,clientActionBy:username || ''});
   rememberPendingPlayerAction({...action, faction:PLAYER});
-  f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER);
+  if(isController || !lobbyId){ f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER); }
   spawnSelection=null;
   renderSpawnCards(); updateHUD();
   burst(x,y,f.color,24); toast(`${pieceDefs[type].name} deployed.`);
@@ -982,6 +1065,7 @@ async function bootMultiplayer(){
     }
     lobbyRef = doc(db,'lobbies',lobbyId);
     stateRef = stateDocRef();
+    fullStateRef = fullStateDocRef();
     pregameRef = pregameDocRef();
     presenceRef = doc(db,'lobbies',lobbyId,'chess_warlord_presence',safeDocId(username));
     const lsnap = await getDoc(lobbyRef);
@@ -994,6 +1078,7 @@ async function bootMultiplayer(){
     if(slotHumans.length <= 1){
       lobbyId = '';
       stateRef = null;
+      fullStateRef = null;
       pregameRef = null;
       presenceRef = null;
       isController = true;
@@ -1028,7 +1113,9 @@ async function bootMultiplayer(){
     if(existingState.exists()){
       stopPregameCountdownWatch();
       overlay.style.display='none';
-      applyRemoteState(existingState.data());
+      const data = existingState.data();
+      if(!data.fullSnapshot && !Array.isArray(data.pieces)) await loadFullStateRepair('initial-delta');
+      else applyRemoteState(data);
       return;
     }
     beginFactionSelectionWatch();
@@ -1044,7 +1131,9 @@ async function bootMultiplayer(){
         const sharedEnd = pre && pre.exists() ? Number(pre.data().endsAtMs || 0) : pregameEndsAt;
         if(sharedEnd && Date.now() < sharedEnd) return;
         createGame();
-        tx.set(stateRef, serializeState('initialCreate', true));
+        const initial = serializeState('initialCreate', true);
+        tx.set(stateRef, initial);
+        tx.set(fullStateRef, {...buildSelfContainedState('initialCreate'), version: initial.version, updatedAtMs: initial.updatedAtMs, updatedBy: initial.updatedBy});
       });
     }
   }catch(e){
@@ -1053,6 +1142,7 @@ async function bootMultiplayer(){
     toast('Could not connect to the lobby. Choose solo AI difficulty, then start.', 4200);
     lobbyId = '';
     stateRef = null;
+    fullStateRef = null;
     pregameRef = null;
     presenceRef = null;
     buildSlots([username || 'Player']);
@@ -2331,8 +2421,14 @@ function gameTick(dt){
   for(const t of board){ t.glow = Math.max(0,t.glow-dt*.7); }
   for(const p of pieces){
     if(!p.alive) continue;
-    p.px = lerp(p.px,p.x,Math.min(1,dt*7.5));
-    p.py = lerp(p.py,p.y,Math.min(1,dt*7.5));
+    if(p.moveStartMs && p.moveEndMs && p.moveEndMs > p.moveStartMs && Date.now() < p.moveEndMs){
+      const u = clamp((Date.now() - p.moveStartMs) / (p.moveEndMs - p.moveStartMs), 0, 1);
+      p.px = lerp(p.px,p.x,Math.max(u, Math.min(1,dt*5)));
+      p.py = lerp(p.py,p.y,Math.max(u, Math.min(1,dt*5)));
+    } else {
+      p.px = lerp(p.px,p.x,Math.min(1,dt*7.5));
+      p.py = lerp(p.py,p.y,Math.min(1,dt*7.5));
+    }
     p.flash=Math.max(0,p.flash-dt*3);
   }
   for(let i=particles.length-1;i>=0;i--){
