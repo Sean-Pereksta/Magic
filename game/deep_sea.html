@@ -274,6 +274,10 @@
   const MAX_PLANTS = 74;
   const MAX_BUBBLES = 125;
   const MAX_OBSTACLES = 126;
+  const PLAYER_PACE = 1.28;
+  const FISH_PACE = 1.15;
+  const PREDATOR_PACE = 1.22;
+  const AGGRO_RANGE_BOOST = 1.26;
 
   const rnd = (a=1,b=0) => b + Math.random()*(a-b);
   const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
@@ -521,6 +525,12 @@ const keys = Object.create(null);
       ft.turnSpeed = ft.turnSpeed ?? ft.turn;
       ft.sizeMin = ft.sizeMin ?? Math.max(.18, +(ft.size * .78).toFixed(2));
       ft.sizeMax = ft.sizeMax ?? +(ft.size * 1.22).toFixed(2);
+      const hunter = !!(ft.predator || ft.monster || ft.shark || ft.aggro > .24 || ft.danger > .22);
+      const pace = ft.easyPrey ? 1.10 : (hunter ? PREDATOR_PACE : FISH_PACE);
+      ft.speed *= pace;
+      ft.cruiseSpeed *= pace;
+      ft.turnSpeed *= hunter ? 1.08 : 1.04;
+      ft.aggroRange = ((ft.detect || 60) + ft.size*8) * AGGRO_RANGE_BOOST * (hunter ? 1.18 : 1.0) * (1 + (ft.aggro || 0)*.22);
     }
   }
   initFishTypeStats();
@@ -1009,7 +1019,7 @@ const keys = Object.create(null);
     const f = forwardFromAngles(p.yaw,p.pitch);
     const right = {x:Math.cos(p.yaw), y:0, z:-Math.sin(p.yaw)};
     const deep = depth01(p.pos.y);
-    const accel = 22.6 + p.size*.65 + p.mods.accel + deep*p.mods.deepSpeed;
+    const accel = (22.6 + p.size*.75 + p.mods.accel*1.08 + deep*p.mods.deepSpeed) * PLAYER_PACE;
     const maxSprint = sprintMax(p);
     if(p.sprintEnergy == null) p.sprintEnergy = maxSprint;
     p.sprintEnergy = clamp(p.sprintEnergy, 0, maxSprint);
@@ -1031,7 +1041,7 @@ const keys = Object.create(null);
         p.sprintEnergy = Math.min(maxSprint, p.sprintEnergy + regen*dt);
       }
     }
-    const sprintAccel = sprintActive ? (1.34 + p.mods.sprint*.052) : 0;
+    const sprintAccel = sprintActive ? (1.58 + p.mods.sprint*.060) : 0;
     if(forwardInput > 0){ p.vel.x += f.x*accel*(1+sprintAccel)*forwardInput*dt; p.vel.y += f.y*accel*(1+p.mods.vertical+sprintAccel*.70)*forwardInput*dt; p.vel.z += f.z*accel*(1+sprintAccel)*forwardInput*dt; }
     if(backInput > 0){ p.vel.x -= f.x*accel*.38*backInput*dt; p.vel.y -= f.y*accel*.38*backInput*dt; p.vel.z -= f.z*accel*.38*backInput*dt; }
     const strafe = .22 + p.mods.strafe + (sprintActive ? .10 : 0);
@@ -1063,10 +1073,10 @@ const keys = Object.create(null);
     p.chompT = Math.max(0, p.chompT - dt);
     p.killBoostT = Math.max(0, p.killBoostT - dt);
 
-    const drag = Math.exp(-(1.92 + p.size*.045 - p.mods.drag) * dt);
+    const drag = Math.exp(-(1.68 + p.size*.040 - p.mods.drag) * dt);
     p.vel.x *= drag; p.vel.y *= drag; p.vel.z *= drag;
     const killBoost = p.killBoostT > 0 ? p.mods.killBoost*4 : 0;
-    const max = 25.4 + Math.sqrt(p.size)*2.85 + p.mods.speed + deep*p.mods.deepSpeed + killBoost + (p.sprinting ? 18.8 + p.mods.sprint*1.35 : 0);
+    const max = (25.4 + Math.sqrt(p.size)*3.05 + p.mods.speed + deep*p.mods.deepSpeed + killBoost) * PLAYER_PACE + (p.sprinting ? 24.5 + p.mods.sprint*1.55 : 0);
     const sp = Math.hypot(p.vel.x,p.vel.y,p.vel.z);
     if(sp > max){ const k = max / sp; p.vel.x*=k; p.vel.y*=k; p.vel.z*=k; }
 
@@ -1142,7 +1152,7 @@ const keys = Object.create(null);
     for(let i=state.fish.length-1;i>=0;i--){
       const f = state.fish[i];
       let dToPlayer = dist3(f.pos, p.pos);
-      if(dToPlayer > 340){ state.fish.splice(i,1); continue; }
+      if(dToPlayer > 410){ state.fish.splice(i,1); continue; }
       f.biteCd = Math.max(0, f.biteCd - dt);
       f.turnT -= dt;
       f.bubbleT -= dt;
@@ -1170,7 +1180,7 @@ const keys = Object.create(null);
         const od = dist3(other.pos, f.pos);
         const threatRange = 74 + other.size*10 + f.size*3;
         if(od < threatRange && fishCanThreatenFish(other, f) && od < threatDist){ biggestThreat = other; threatDist = od; }
-        const preyRange = (f.type.detect || 60) * (.62 + (f.type.aggro || 0)*.42) + f.size*12;
+        const preyRange = (f.type.aggroRange || f.type.detect || 60) * (.70 + (f.type.aggro || 0)*.34) + f.size*14;
         if(predatorIntent && od < preyRange && fishCanEatFish(f, other) && od < preyDist){ preyTarget = other; preyDist = od; }
       }
 
@@ -1178,7 +1188,11 @@ const keys = Object.create(null);
       const intimidation = p.mods.intimidate;
       const playerCanEat = p.size >= f.size*(.94 - p.mods.bitePower);
       const fishCanEatPlayer = f.size >= p.size*(1.08 + p.mods.armor + intimidation*.12);
-      const detectRange = f.type.detect * (0.80 + f.type.aggro*.32) * stealthMul;
+      const baseAggroRange = f.type.aggroRange || f.type.detect || 60;
+      const detectRange = baseAggroRange * (0.82 + f.type.aggro*.28) * stealthMul;
+      const playerPriorityRange = detectRange * (f.type.predator || f.type.shark || f.type.monster ? 1.05 : .78);
+      const prefersPlayer = predatorIntent && fishCanEatPlayer && dToPlayer < playerPriorityRange
+        && (!preyTarget || dToPlayer < preyDist*1.75 || dToPlayer < playerPriorityRange*.72 || f.type.predator || f.type.shark || f.type.monster);
 
       if(biggestThreat){
         desired = norm(add(norm(sub(f.pos, biggestThreat.pos)), mul(avoidObstacles(f.pos, f.dir, 30, 5 + f.size*1.5), 1.15)));
@@ -1190,7 +1204,7 @@ const keys = Object.create(null);
         if(f.type.strategy === 'shortHop' && Math.sin(state.t*3.4+f.phase) > .25) flee = norm(add(flee, mul(f.dir, .45)));
         desired = norm(add(flee, mul(avoidObstacles(f.pos, f.dir, 30, 5 + f.size*1.5), f.type.easyPrey ? .78 : 1.45)));
         mode = 'flee';
-      } else if(preyTarget && (!fishCanEatPlayer || dToPlayer >= detectRange || preyDist < dToPlayer*1.20)){
+      } else if(preyTarget && !prefersPlayer && (!fishCanEatPlayer || dToPlayer >= detectRange || preyDist < dToPlayer*1.20)){
         const toPrey = norm(sub(preyTarget.pos, f.pos));
         if(f.type.strategy === 'lowSurge'){
           const belowPrey = {x:preyTarget.pos.x, y:clamp(preyTarget.pos.y - 26 - f.size*2.4, BOTTOM_Y+26, SURFACE_Y-18), z:preyTarget.pos.z};
@@ -1298,18 +1312,19 @@ const keys = Object.create(null);
       if(f.pos.y < floorNear) desired.y += .95;
 
       const envTurnSlow = obstacleTurnSlow(f.pos, f.size*1.2);
-      const turnRate = (f.type.turnSpeed || f.type.turn || 2.4) * envTurnSlow * (mode==='surge' ? .82 : mode==='flee' ? 1.28 : 1);
+      const turnRate = (f.type.turnSpeed || f.type.turn || 2.4) * envTurnSlow * (mode==='surge' ? .88 : mode==='flee' ? 1.34 : 1.08);
       f.dir = norm({x:lerp(f.dir.x, desired.x, 1-Math.exp(-turnRate*dt)), y:lerp(f.dir.y, desired.y, 1-Math.exp(-turnRate*dt)), z:lerp(f.dir.z, desired.z, 1-Math.exp(-turnRate*dt))});
       f.yaw = Math.atan2(f.dir.x, f.dir.z);
       f.pitch = Math.asin(clamp(f.dir.y,-1,1));
       const deep = depth01(f.pos.y);
-      const modeMul = mode==='surge' ? 1.55 + f.type.aggro*.32 : mode==='hunt' ? 1.16 + f.type.aggro*.25 : mode==='stalk' ? .78 : mode==='flee' ? 1.24 + ((f.type.cruiseSpeed || f.type.speed)/24)*.18 : .74;
+      const modeMul = mode==='surge' ? 1.72 + f.type.aggro*.36 : mode==='hunt' ? 1.27 + f.type.aggro*.30 : mode==='stalk' ? .88 : mode==='flee' ? 1.36 + ((f.type.cruiseSpeed || f.type.speed)/24)*.20 : .86;
       const easyMul = f.type.easyPrey ? (mode==='flee' ? .58 : .72) : 1;
       const patternMul = f.type.strategy === 'abyssPulse' ? (.82 + Math.max(0, Math.sin(state.t*1.65 + f.phase))*.58) : f.type.strategy === 'spiralDive' ? (1.0 + Math.sin(state.t*1.05 + f.phase)*.10) : 1;
-      const speed = ((f.type.cruiseSpeed || f.type.speed) + deep*5) * modeMul * easyMul * patternMul;
-      f.vel.x = lerp(f.vel.x, f.dir.x*speed, 1-Math.exp(-2.35*dt));
-      f.vel.y = lerp(f.vel.y, f.dir.y*speed, 1-Math.exp(-2.35*dt));
-      f.vel.z = lerp(f.vel.z, f.dir.z*speed, 1-Math.exp(-2.35*dt));
+      const speed = ((f.type.cruiseSpeed || f.type.speed) + deep*6.5) * modeMul * easyMul * patternMul;
+      const velocitySnap = mode === 'surge' ? 3.10 : mode === 'hunt' || mode === 'flee' ? 2.75 : 2.45;
+      f.vel.x = lerp(f.vel.x, f.dir.x*speed, 1-Math.exp(-velocitySnap*dt));
+      f.vel.y = lerp(f.vel.y, f.dir.y*speed, 1-Math.exp(-velocitySnap*dt));
+      f.vel.z = lerp(f.vel.z, f.dir.z*speed, 1-Math.exp(-velocitySnap*dt));
       if(f.inkBlindT > 0){ f.vel.x*=.82; f.vel.y*=.82; f.vel.z*=.82; }
       f.pos.x += f.vel.x*dt; f.pos.y += f.vel.y*dt; f.pos.z += f.vel.z*dt;
       f.pos.y = clamp(f.pos.y, floorHeight(f.pos.x,f.pos.z)+7, SURFACE_Y-4);
@@ -2366,4 +2381,5 @@ const keys = Object.create(null);
 </script>
 </body>
 </html>
+
 
