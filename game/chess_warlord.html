@@ -402,8 +402,8 @@ function pregameDocRef(){ return doc(db,'lobbies',lobbyId,'chess_warlord','prega
 function commandCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_commands'); }
 function commandDocRef(id){ return doc(db,'lobbies',lobbyId,'chess_warlord_commands',safeDocId(id)); }
 function presenceCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_presence'); }
-function compressOwners(){ return board.map(t => t.owner == null ? '-' : String(t.owner)).join(''); }
-function compressWalls(){ return board.map(t => t.wallOwner == null ? '-' : String(t.wallOwner)).join(''); }
+function compressOwners(){ return normalizeBoard().map(t => t.owner == null ? '-' : String(t.owner)).join(''); }
+function compressWalls(){ return normalizeBoard().map(t => t.wallOwner == null ? '-' : String(t.wallOwner)).join(''); }
 const CAPTURE_KIND_TO_CHAR = {
   normal:'.', starting_land:'s', command:'c', conquered:'x', battle_march:'b', march:'m', spawned_piece:'p',
   ember_kill:'e', iron_fortified:'i', verdant_root:'v', verdant_seed:'V',
@@ -412,8 +412,9 @@ const CAPTURE_KIND_TO_CHAR = {
 };
 const CHAR_TO_CAPTURE_KIND = Object.fromEntries(Object.entries(CAPTURE_KIND_TO_CHAR).map(([k,v])=>[v,k]));
 function captureKindChar(kind){ return CAPTURE_KIND_TO_CHAR[kind || 'normal'] || '.'; }
-function compressCaptureKinds(){ return board.map(t => captureKindChar(t.captureKind)).join(''); }
+function compressCaptureKinds(){ return normalizeBoard().map(t => captureKindChar(t.captureKind)).join(''); }
 function applyWalls(str){
+  normalizeBoard();
   if(!str || str.length < board.length) return;
   for(let i=0;i<board.length;i++){
     const ch = str[i];
@@ -423,6 +424,7 @@ function applyWalls(str){
   }
 }
 function applyOwners(str){
+  normalizeBoard();
   if(!str || str.length < board.length) return;
   for(let i=0;i<board.length;i++){
     const ch = str[i];
@@ -436,6 +438,7 @@ function applyOwners(str){
   recalcOwnerCounts();
 }
 function applyCaptureKinds(str){
+  normalizeBoard();
   if(!str || str.length < board.length) return;
   for(let i=0;i<board.length;i++){
     board[i].captureKind = CHAR_TO_CAPTURE_KIND[str[i]] || null;
@@ -1711,7 +1714,7 @@ function generateBoard(){
       if(seededNoise(x,y,333 + seed)>.968) type='ruins';
       if(seededNoise(x,y,1433 + seed)>.986) type='crystal';
       if(edge<2 && type==='mountain') type='plain';
-      board[y*BOARD_W+x] = {x,y,type,owner:null,lastOwner:null,markTime:0,glow:0,captureKind:null,verdantFade:0,wallOwner:null,wallHp:0};
+      board[y*BOARD_W+x] = makeTile(x,y,type);
     }
   }
   addWaterBodies();
@@ -1878,8 +1881,41 @@ function carveRoad(x0,y0,x1,y1){
     x = clamp(x,0,BOARD_W-1); y=clamp(y,0,BOARD_H-1);
   }
 }
-function tile(x,y){return board[y*BOARD_W+x];}
 function inBounds(x,y){return x>=0 && y>=0 && x<BOARD_W && y<BOARD_H;}
+function makeTile(x,y,type='plain'){
+  return {x,y,type,owner:null,lastOwner:null,markTime:0,glow:0,captureKind:null,verdantFade:0,wallOwner:null,wallHp:0};
+}
+function terrainOf(t){ return terrains[t?.type] || terrains.plain; }
+function tile(x,y){
+  if(!inBounds(x,y)) return null;
+  const idx = y*BOARD_W+x;
+  let t = board[idx];
+  if(!t || typeof t !== 'object'){
+    t = makeTile(x,y);
+    board[idx] = t;
+  } else {
+    if(t.x == null) t.x = x;
+    if(t.y == null) t.y = y;
+    if(!terrains[t.type]) t.type = 'plain';
+    if(t.owner === undefined) t.owner = null;
+    if(t.lastOwner === undefined) t.lastOwner = null;
+    if(t.markTime === undefined) t.markTime = 0;
+    if(t.glow === undefined) t.glow = 0;
+    if(t.captureKind === undefined) t.captureKind = null;
+    if(t.verdantFade === undefined) t.verdantFade = 0;
+    if(t.wallOwner === undefined) t.wallOwner = null;
+    if(t.wallHp === undefined) t.wallHp = 0;
+  }
+  return t;
+}
+function normalizeBoard(){
+  const expected = BOARD_W * BOARD_H;
+  if(board.length !== expected) board.length = expected;
+  for(let y=0;y<BOARD_H;y++){
+    for(let x=0;x<BOARD_W;x++) tile(x,y);
+  }
+  return board;
+}
 function wallAt(x,y){ return inBounds(x,y) && tile(x,y).wallOwner != null ? tile(x,y) : null; }
 function isEnemyWallFor(piece,x,y){
   const w=wallAt(x,y);
@@ -1906,7 +1942,7 @@ function passableFor(piece,x,y){
   if(!inBounds(x,y)) return false;
   const t = tile(x,y);
   if(t.wallOwner != null && piece?.faction != null && t.wallOwner !== piece.faction) return false;
-  if(terrains[t.type].pass) return true;
+  if(terrainOf(t).pass) return true;
   const def = pieceDefs[piece.type] || {};
   if(t.type==='water' && def.amphibious) return true;
   return false;
@@ -1915,7 +1951,7 @@ function blocksSlideFor(piece,x,y){
   if(!inBounds(x,y)) return true;
   const t = tile(x,y);
   if(t.wallOwner != null && piece?.faction != null && t.wallOwner !== piece.faction) return true;
-  const td = terrains[t.type];
+  const td = terrainOf(t);
   const def = pieceDefs[piece.type] || {};
   if(t.type==='forest' && def.forestWalker) return false;
   if(t.type==='water' && def.amphibious) return false;
@@ -2056,7 +2092,7 @@ function createBaseWall(factionIdx,cx,cy){
       const dx=Math.abs(x-cx), dy=Math.abs(y-cy);
       if(Math.max(dx,dy)!==BASE_WALL_RADIUS) continue;
       const t=tile(x,y);
-      if(!terrains[t.type].pass || findPieceAt(x,y)) continue;
+      if(!terrainOf(t).pass || findPieceAt(x,y)) continue;
       t.wallOwner=factionIdx;
       t.wallHp=1;
       t.type = t.type==='road' ? 'road' : (seededNoise(x,y,3600+(mapSeed||1))>.55 ? 'ruins' : t.type);
@@ -2065,7 +2101,7 @@ function createBaseWall(factionIdx,cx,cy){
 }
 function recalcOwnerCounts(){
   ownerCounts = new Map();
-  for(const t of board){ if(t.owner!==null) ownerCounts.set(t.owner,(ownerCounts.get(t.owner)||0)+1); }
+  for(const t of normalizeBoard()){ if(t.owner!==null) ownerCounts.set(t.owner,(ownerCounts.get(t.owner)||0)+1); }
 }
 function claimTile(faction,x,y,glow=.35,captureKind='normal'){
   if(!inBounds(x,y)) return false;
@@ -2099,7 +2135,8 @@ function applyAuraTerritory(piece){
   const kind = f.id==='verdant' ? 'verdant_root' : f.id==='tide' ? 'tide_flow' : 'command';
   for(let yy=piece.y-r;yy<=piece.y+r;yy++) for(let xx=piece.x-r;xx<=piece.x+r;xx++){
     if(inBounds(xx,yy) && Math.max(Math.abs(xx-piece.x),Math.abs(yy-piece.y))<=r){
-      if(terrains[tile(xx,yy).type].pass || (tile(xx,yy).type==='water' && (pieceDefs[piece.type]||{}).amphibious)) claimTile(piece.faction,xx,yy,0,kind);
+      const t = tile(xx,yy);
+      if(terrainOf(t).pass || (t.type==='water' && (pieceDefs[piece.type]||{}).amphibious)) claimTile(piece.faction,xx,yy,0,kind);
     }
   }
 }
@@ -2111,7 +2148,7 @@ function eligibleSpawnTiles(factionIdx, type=null){
   const f=factions[factionIdx];
   const spawnType = type || 'pawn';
   const def = pieceDefs[spawnType] || pieceDefs.pawn;
-  for(const t of board){
+  for(const t of normalizeBoard()){
     if(t.owner!==factionIdx || findPieceAt(t.x,t.y)) continue;
     if(!passableFor({type:spawnType,faction:factionIdx},t.x,t.y)) continue;
 
@@ -2222,7 +2259,7 @@ function isInStartingBase(factionIdx,x,y){
 function buildOrRepairWall(x,y,factionIdx){
   if(!inBounds(x,y) || findPieceAt(x,y)) return false;
   const t=tile(x,y);
-  if(!terrains[t.type].pass && t.type!=='road' && t.type!=='ruins') return false;
+  if(!terrainOf(t).pass && t.type!=='road' && t.type!=='ruins') return false;
   if(t.wallOwner===factionIdx){ t.wallHp=1; return true; }
   if(t.wallOwner!=null) return false;
   t.wallOwner=factionIdx;
@@ -2293,7 +2330,7 @@ function baseCooldownFor(piece, x=piece.x, y=piece.y){
   if(def.building) return 999;
   const levelBoost = 1 - Math.min(.34,((piece.level||1)-1)*.085);
   const terrain = inBounds(x,y) ? tile(x,y) : null;
-  const roughPenalty = terrain ? terrains[terrain.type].rough*.08 : 0;
+  const roughPenalty = terrain ? terrainOf(terrain).rough*.08 : 0;
   const f = factions[piece.faction];
   let style = 1;
   if(f?.id==='ember') style=.9;
@@ -2776,12 +2813,12 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
       if(isNaturalVerdantTerrain(tile(toX,toY).type)) claimed += claimRadius(piece.faction,toX,toY,2,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
       else if(claimTile(piece.faction,toX,toY,0,'verdant_seed')) claimed++;
     } else if(id==='tide'){
-      claimed += claimRadius(piece.faction,toX,toY,1,'tide_surge',0,(t,x,y)=>t.type==='water'||t.type==='swamp'||isCoastTile(x,y)||terrains[t.type].pass);
+      claimed += claimRadius(piece.faction,toX,toY,1,'tide_surge',0,(t,x,y)=>t.type==='water'||t.type==='swamp'||isCoastTile(x,y)||terrainOf(t).pass);
     } else if(id==='sunspire'){
-      if(['sunbishop','radiantbishop'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,1,'sunspire_ray',0,(t)=>terrains[t.type].pass);
-      else claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.value>=6?2:1,'sunspire_sanctified',0,(t)=>terrains[t.type].pass);
+      if(['sunbishop','radiantbishop'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,1,'sunspire_ray',0,(t)=>terrainOf(t).pass);
+      else claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.value>=6?2:1,'sunspire_sanctified',0,(t)=>terrainOf(t).pass);
     } else if(id==='frost'){
-      if(['frostpawn','icespear','glacierguard','frostbishop','mirrorskater','warden','tower'].includes(piece.type) && canFreezeOrFortify(piece,FROST_FREEZE_SECONDS)) claimed += claimRadius(piece.faction,toX,toY,1,'frost_frozen',0,(t)=>terrains[t.type].pass);
+      if(['frostpawn','icespear','glacierguard','frostbishop','mirrorskater','warden','tower'].includes(piece.type) && canFreezeOrFortify(piece,FROST_FREEZE_SECONDS)) claimed += claimRadius(piece.faction,toX,toY,1,'frost_frozen',0,(t)=>terrainOf(t).pass);
     } else {
       claimed += claimMovePath(piece,fromX,fromY,toX,toY,'battle_march');
     }
@@ -2837,10 +2874,10 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
   } else if(id==='sunspire'){
     if(['sunbishop','radiantbishop'].includes(piece.type) && isDiagonalMove(fromX,fromY,toX,toY)){
       if(claimTile(piece.faction,toX,toY,0,'sunspire_ray')) claimed++;
-      claimed += claimRadius(piece.faction,toX,toY,1,'sunspire_ray',0,(t)=>terrains[t.type].pass);
+      claimed += claimRadius(piece.faction,toX,toY,1,'sunspire_ray',0,(t)=>terrainOf(t).pass);
       return claimed;
     }
-    if(['king','general','tower','paladin','queen','dawnarchon','sunherald'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.value>=6?1:0,'sunspire_sanctified',0,(t)=>terrains[t.type].pass);
+    if(['king','general','tower','paladin','queen','dawnarchon','sunherald'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.value>=6?1:0,'sunspire_sanctified',0,(t)=>terrainOf(t).pass);
     else if(['sunacolyte','dawnblade','lightlancer','eagleknight'].includes(piece.type) && claimTile(piece.faction,toX,toY,0,'sunspire_foothold')) claimed++;
     return claimed;
   } else if(id==='frost'){
@@ -3059,8 +3096,8 @@ function conquerFaction(winner, loser, cx, cy){
   factions[winner].territoryTaken++;
   if(winner===PLAYER) gameStats.kingsTaken++;
   let taken=0;
-  for(const t of board){ if(t.owner===loser){ t.owner=winner; t.captureKind='conquered'; t.glow=0; taken++; } }
-  for(const t of board){ if(t.wallOwner===loser){ t.wallOwner=winner; t.wallHp=1; } }
+  for(const t of normalizeBoard()){ if(t.owner===loser){ t.owner=winner; t.captureKind='conquered'; t.glow=0; taken++; } }
+  for(const t of normalizeBoard()){ if(t.wallOwner===loser){ t.wallOwner=winner; t.wallHp=1; } }
   let removed=0;
   for(const p of pieces){
     if(p.alive && p.faction===loser){
@@ -3247,7 +3284,7 @@ function boardToScreen(x,y){return {x:x*BASE_CELL*cam.zoom-cam.x,y:y*BASE_CELL*c
 function gameTick(dt){
   if(!gameStarted || paused) return;
   tickTime += dt;
-  for(const t of board){ t.glow = Math.max(0,t.glow-dt*.7); }
+  for(const t of normalizeBoard()){ t.glow = Math.max(0,t.glow-dt*.7); }
   for(const p of pieces){
     if(!p.alive) continue;
     if(p.moveStartMs && p.moveEndMs && p.moveEndMs > p.moveStartMs && Date.now() < p.moveEndMs){
@@ -3308,7 +3345,7 @@ function updateVerdantSpreadAndFade(f,dt){
       if(isNaturalVerdantTerrain(t.type) && !findPieceAt(x,y)) claimTile(f.idx,x,y,.22,'verdant_root');
     }
   }
-  for(const t of board){
+  for(const t of normalizeBoard()){
     if(t.owner!==f.idx) continue;
     if(nearestFriendlyPieceWithin(t.x,t.y,f.idx,VERDANT_SPREAD_RADIUS)){ t.verdantFade=0; continue; }
     t.verdantFade=(t.verdantFade||0)+dt;
@@ -3322,7 +3359,7 @@ function updateCommandLand(f){
     const def=pieceDefs[p.type];
 
     if(f.id==='crownward'){
-      if(['king','general','tower'].includes(p.type)) claimRadius(f.idx,p.x,p.y,def?.aura||2,'command',0,(t)=>terrains[t.type].pass);
+      if(['king','general','tower'].includes(p.type)) claimRadius(f.idx,p.x,p.y,def?.aura||2,'command',0,(t)=>terrainOf(t).pass);
       continue;
     }
 
@@ -3337,7 +3374,7 @@ function updateCommandLand(f){
 
     if(f.id==='sunspire'){
       if(['king','general','tower','paladin','queen','dawnarchon','sunherald'].includes(p.type)){
-        claimRadius(f.idx,p.x,p.y,def?.aura||1,'sunspire_sanctified',0,(t)=>terrains[t.type].pass);
+        claimRadius(f.idx,p.x,p.y,def?.aura||1,'sunspire_sanctified',0,(t)=>terrainOf(t).pass);
       }
       continue;
     }
@@ -3345,10 +3382,10 @@ function updateCommandLand(f){
     if(f.id==='frost'){
       if(!canFreezeOrFortify(p,FROST_FREEZE_SECONDS)) continue;
       if(p.type==='frostpawn') claimTile(f.idx,p.x,p.y,0,'frost_frozen');
-      else if(['glacierguard','warden','icespear','mirrorskater'].includes(p.type)) claimRadius(f.idx,p.x,p.y,1,'frost_frozen',0,(t)=>terrains[t.type].pass);
-      else if(p.type==='tower') claimRadius(f.idx,p.x,p.y,def?.aura||3,'frost_frozen',0,(t)=>terrains[t.type].pass);
-      else if(p.type==='frostbishop') claimDiagonalRays(f.idx,p.x,p.y,FROST_BISHOP_RAY,'frost_frozen',(t)=>terrains[t.type].pass);
-      else if(p.type==='king' || p.type==='general') claimRadius(f.idx,p.x,p.y,def?.aura||2,'frost_frozen',0,(t)=>terrains[t.type].pass);
+      else if(['glacierguard','warden','icespear','mirrorskater'].includes(p.type)) claimRadius(f.idx,p.x,p.y,1,'frost_frozen',0,(t)=>terrainOf(t).pass);
+      else if(p.type==='tower') claimRadius(f.idx,p.x,p.y,def?.aura||3,'frost_frozen',0,(t)=>terrainOf(t).pass);
+      else if(p.type==='frostbishop') claimDiagonalRays(f.idx,p.x,p.y,FROST_BISHOP_RAY,'frost_frozen',(t)=>terrainOf(t).pass);
+      else if(p.type==='king' || p.type==='general') claimRadius(f.idx,p.x,p.y,def?.aura||2,'frost_frozen',0,(t)=>terrainOf(t).pass);
       continue;
     }
   }
@@ -3368,14 +3405,14 @@ function updateBuildingRules(f,dt){
       else b.nextBuildingTick=tNow + 2 + seededNoise(b.id,7,5200)*4;
     }
     if(b.type==='royalbannerhall'){
-      claimRadius(f.idx,b.x,b.y,3,'command',0,(t)=>terrains[t.type].pass);
+      claimRadius(f.idx,b.x,b.y,3,'command',0,(t)=>terrainOf(t).pass);
       continue;
     }
     if(b.type==='cinderfurnace'){
       continue;
     }
     if(b.type==='iceobelisk'){
-      claimRadius(f.idx,b.x,b.y,1,'frost_frozen',0,(t)=>terrains[t.type].pass);
+      claimRadius(f.idx,b.x,b.y,1,'frost_frozen',0,(t)=>terrainOf(t).pass);
       continue;
     }
     if(b.type==='seedgrove'){
@@ -3492,7 +3529,7 @@ function spawnRateForFaction(f, territory, army){
   const landCurve = Math.pow(landProgress, .68);
   let landDrivenRate = baseRate + (maxRate - baseRate) * landCurve;
   let specialTiles = 0;
-  for(const t of board){
+  for(const t of normalizeBoard()){
     if(t.owner!==f.idx) continue;
     if(f.id==='verdant' && isNaturalVerdantTerrain(t.type)) specialTiles++;
     if(f.id==='tide' && (t.type==='water'||t.type==='swamp'||isCoastTile(t.x,t.y))) specialTiles++;
@@ -3573,7 +3610,7 @@ function nearestEnemy(x,y,faction,maxD=999){
 }
 function nearestOwnedFrontier(x,y,faction){
   let best=null,bd=999999;
-  for(const t of board){
+  for(const t of normalizeBoard()){
     if(t.owner!==faction) continue;
     let frontier=false;
     for(const [dx,dy] of ORTHO){ if(inBounds(t.x+dx,t.y+dy) && tile(t.x+dx,t.y+dy).owner!==faction) frontier=true; }
@@ -3680,7 +3717,7 @@ function drawBoard(){
   const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
   for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
     for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
-      const t=tile(x,y), td=terrains[t.type];
+      const t=tile(x,y), td=terrainOf(t);
       const sx=x*BASE_CELL, sy=y*BASE_CELL;
       const alt=(x+y)%2?td.alt:td.color;
       ctx.fillStyle=alt;
@@ -4040,7 +4077,7 @@ function drawMinimap(){
   mctx.clearRect(0,0,mw,mh);
   mctx.fillStyle='rgba(6,10,18,.85)'; mctx.fillRect(0,0,mw,mh);
   const sx=mw/BOARD_W, sy=mh/BOARD_H;
-  for(const t of board){
+  for(const t of normalizeBoard()){
     if(t.owner!==null){ mctx.fillStyle=factions[t.owner]?.color || '#fff'; mctx.globalAlpha=.8; }
     else { mctx.fillStyle=terrainMiniColor(t.type); mctx.globalAlpha=.45; }
     mctx.fillRect(t.x*sx,t.y*sy,Math.ceil(sx),Math.ceil(sy));
@@ -4271,4 +4308,3 @@ bootMultiplayer();
 </script>
 </body>
 </html>
-
