@@ -38,6 +38,11 @@
   .spawnName{font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .spawnMeta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .spawnIcon{position:absolute;right:10px;bottom:5px;font-size:28px;opacity:.76;filter:drop-shadow(0 4px 10px #000);}
+  .tierCard{grid-column:1/-1;position:relative;overflow:hidden;padding:10px 12px;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:rgba(12,17,28,.78);display:flex;flex-direction:column;gap:7px;min-height:72px;}
+  .tierTop{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:12px;font-weight:1000;color:#eef6ff;}
+  .tierMeta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tierTrack{height:11px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.12);overflow:hidden;}
+  .tierFill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#7dd3fc,#facc15,#fb7185);box-shadow:0 0 16px rgba(250,204,21,.32);}
   #rightHUD{display:none !important;}
   .bar{height:9px;border-radius:999px;background:rgba(255,255,255,.14);overflow:hidden;border:1px solid rgba(255,255,255,.1);}
   .fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#67e8f9,#facc15,#fb7185);box-shadow:0 0 16px rgba(250,204,21,.36);}
@@ -99,6 +104,9 @@
     .spawnName{font-size:11px;}
     .spawnMeta{font-size:10px;}
     .spawnIcon{font-size:22px;right:7px;bottom:3px;}
+    .tierCard{min-height:72px;padding:8px 9px;border-radius:14px;}
+    .tierTop{font-size:10px;}
+    .tierMeta{font-size:10px;}
     #minimap{display:none !important;}
     #menu{display:none !important;}
     #bottomHint{display:none !important;}
@@ -228,6 +236,19 @@ const SPAWN_SLOWEST_SECONDS = 105;
 const SPAWN_FASTEST_SECONDS = 8.8;
 const SPAWN_START_GRACE_TILES = 35;
 const SPAWN_LAND_RAMP_TILES = 850;
+const SPAWN_TERRITORY_TIERS = [
+  {tiles:0, seconds:105},
+  {tiles:45, seconds:94},
+  {tiles:90, seconds:82},
+  {tiles:150, seconds:70},
+  {tiles:230, seconds:58},
+  {tiles:340, seconds:46},
+  {tiles:490, seconds:34},
+  {tiles:670, seconds:24},
+  {tiles:860, seconds:16},
+  {tiles:1080, seconds:8.8}
+];
+const KILL_TIER_STEP = 5;
 const DIRS8 = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
 const ORTHO = [[1,0],[-1,0],[0,1],[0,-1]];
 const DIAG = [[1,1],[1,-1],[-1,1],[-1,-1]];
@@ -243,6 +264,7 @@ let pointerMoved = false;
 let selectedPiece = null;
 let legalMoves = [];
 let spawnSelection = null;
+let lastSpawnPanelSignature = '';
 let showTerritory = true;
 let paused = false;
 let lastTime = performance.now();
@@ -3174,6 +3196,24 @@ function renderSpawnCards(){
   const shrineBoosts=controlledShrinesFor(PLAYER).filter(s=>s.spawnBonus>0);
   const shrineMeta=shrineBoosts.length ? ` · ${shrineBoosts.map(s=>s.short).join('+')} shrine` : '';
   spawnPanel.innerHTML='';
+  if(!ready){
+    recalcOwnerCounts();
+    const territory = ownerCounts.get(PLAYER)||0;
+    const army = pieces.filter(p=>p.alive&&p.faction===PLAYER).length;
+    const tier = spawnTierInfoForFaction(f, territory);
+    const spawnRate = spawnRateForFaction(f, territory, army);
+    const remaining = Math.ceil((100-clamp(f.spawnMeter,0,100))/Math.max(.01,spawnRate));
+    const tierCard=document.createElement('div');
+    tierCard.className='tierCard glass';
+    const fill = (tier.progress*100).toFixed(0);
+    const source = tier.mode==='kills' ? 'Kill economy' : 'Land economy';
+    tierCard.innerHTML=`
+      <div class="tierTop"><span>${source}: ${tier.label}</span><span>${remaining}s to spawn</span></div>
+      <div class="tierTrack"><div class="tierFill" style="width:${fill}%"></div></div>
+      <div class="tierMeta">${tier.basis} · ${tier.bonusText}</div>`;
+    spawnPanel.appendChild(tierCard);
+    return;
+  }
   f.spawnChoices.forEach((type,i)=>{
     const def=pieceDefs[type];
     const card=document.createElement('div');
@@ -3206,23 +3246,40 @@ function updateHUD(){
   const territory = ownerCounts.get(PLAYER)||0;
   const army = pieces.filter(p=>p.alive&&p.faction===PLAYER).length;
   const spawnRate = spawnRateForFaction(f, territory, army);
+  const tier = spawnTierInfoForFaction(f, territory);
   const remaining = pct>=100 ? 0 : Math.ceil((100-pct)/Math.max(.01,spawnRate));
   spawnPct.textContent = pct>=100 ? 'READY' : `${pct.toFixed(0)}% · ${remaining}s`;
-  if(quickPct) quickPct.textContent = playerDefeated ? 'Defeated' : (pct>=100 ? 'Spawn Ready' : `Spawn ${remaining}s`);
-  scoreLine.textContent=`Territory ${territory} · Captures ${gameStats.captures} · Kings ${gameStats.kingsTaken}`;
+  if(quickPct) quickPct.textContent = playerDefeated ? 'Defeated' : (pct>=100 ? 'Spawn Ready' : `T${tier.tier} · ${remaining}s`);
+  scoreLine.textContent=`Territory ${territory} · Kills ${f.piecesTaken||0} · Tier ${tier.tier}`;
   factionLine.textContent=`${displayNameForFaction(PLAYER)} · ${f.name}`;
+  const panelSignature = `${playerDefeated}|${pct>=100}|${Math.floor(pct)}|${tier.mode}|${tier.tier}|${tier.value}|${tier.nextAt}|${Math.ceil(remaining/2)}|${spawnSelection}|${(f.spawnChoices||[]).join(',')}`;
+  if(panelSignature !== lastSpawnPanelSignature){
+    lastSpawnPanelSignature = panelSignature;
+    renderSpawnCards();
+  }
   updateCheckBanner();
 }
-function attackingPiecesForKing(factionIdx){
+function attackingPiecesForFactionKing(factionIdx){
   const f=factions[factionIdx];
   const king=f ? getPiece(f.kingId) : null;
-  if(!king || playerDefeated) return [];
+  if(!king || f.alive===false) return [];
   const attackers=[];
   for(const p of pieces){
     if(!p.alive || p.faction===factionIdx || !factions[p.faction]?.alive) continue;
     if(getLegalMoves(p,true).some(m=>m.x===king.x && m.y===king.y)) attackers.push(p);
   }
   return attackers;
+}
+function attackingPiecesForKing(factionIdx){
+  if(playerDefeated && factionIdx===PLAYER) return [];
+  return attackingPiecesForFactionKing(factionIdx);
+}
+function enemyThreatensSquare(factionIdx,x,y,ignoreId=null){
+  for(const p of pieces){
+    if(!p.alive || p.id===ignoreId || p.faction===factionIdx || !factions[p.faction]?.alive) continue;
+    if(getLegalMoves(p,true).some(m=>m.x===x && m.y===y)) return true;
+  }
+  return false;
 }
 function updateCheckBanner(){
   if(!checkBanner) return;
@@ -3519,15 +3576,67 @@ function updateTidalBeacon(beacon){
   }
   if(claimed) floating(beacon.x,beacon.y,'TIDE +'+claimed, factions[beacon.faction]?.color || '#fff');
 }
-function spawnRateForFaction(f, territory, army){
-  // Rate is percentage points per second. It begins slow, scales with controlled land,
-  // and is hard-capped so even a huge empire never receives pieces faster than ~9 seconds.
-  const baseRate = 100 / SPAWN_SLOWEST_SECONDS;
-  const maxRate = 100 / SPAWN_FASTEST_SECONDS;
-  const landBeyondStart = Math.max(0, territory - SPAWN_START_GRACE_TILES);
-  const landProgress = clamp(landBeyondStart / SPAWN_LAND_RAMP_TILES, 0, 1);
-  const landCurve = Math.pow(landProgress, .68);
-  let landDrivenRate = baseRate + (maxRate - baseRate) * landCurve;
+function scaledTerritorySpawnTiers(){
+  const boardScale = clamp((BOARD_W * BOARD_H) / (DEFAULT_BOARD_W * DEFAULT_BOARD_H), .42, 1.18);
+  return SPAWN_TERRITORY_TIERS.map((tier,idx)=>({
+    tiles:idx===0 ? 0 : Math.max(1, Math.round(tier.tiles * boardScale)),
+    seconds:tier.seconds
+  }));
+}
+function killSpawnTierInfo(f){
+  const kills = Math.max(0, f?.piecesTaken || 0);
+  const completed = Math.floor(kills / KILL_TIER_STEP);
+  const secondsBonus = completed > 0 ? completed + 1 : 0;
+  const seconds = Math.max(SPAWN_FASTEST_SECONDS, SPAWN_SLOWEST_SECONDS - secondsBonus);
+  const currentStart = completed * KILL_TIER_STEP;
+  const nextAt = (completed + 1) * KILL_TIER_STEP;
+  const progress = clamp((kills - currentStart) / KILL_TIER_STEP, 0, 1);
+  return {
+    mode:'kills',
+    tier:completed,
+    seconds,
+    secondsBonus,
+    value:kills,
+    currentAt:currentStart,
+    nextAt,
+    nextNeed:Math.max(0,nextAt-kills),
+    progress,
+    label:`Kill Tier ${completed}`,
+    basis:`${kills}/${nextAt} kills`,
+    bonusText:secondsBonus ? `-${secondsBonus}s spawn timer` : 'First boost at 5 kills'
+  };
+}
+function territorySpawnTierInfo(territory){
+  const tiers = scaledTerritorySpawnTiers();
+  let idx = 0;
+  for(let i=0;i<tiers.length;i++){
+    if(territory >= tiers[i].tiles) idx = i;
+    else break;
+  }
+  const current = tiers[idx];
+  const next = tiers[idx+1] || current;
+  const span = Math.max(1, next.tiles - current.tiles);
+  const progress = idx >= tiers.length-1 ? 1 : clamp((territory - current.tiles) / span, 0, 1);
+  return {
+    mode:'land',
+    tier:idx,
+    seconds:current.seconds,
+    value:territory,
+    currentAt:current.tiles,
+    nextAt:next.tiles,
+    nextNeed:idx >= tiers.length-1 ? 0 : Math.max(0,next.tiles-territory),
+    progress,
+    label:`Land Tier ${idx}`,
+    basis:idx >= tiers.length-1 ? `${territory} land · max tier` : `${territory}/${next.tiles} land`,
+    bonusText:idx >= tiers.length-1 ? `${current.seconds.toFixed(1)}s base spawn timer` : `${next.tiles-territory} land to next tier`
+  };
+}
+function spawnTierInfoForFaction(f, territory){
+  if(f && (f.id==='ember' || f.id==='shadow')) return killSpawnTierInfo(f);
+  return territorySpawnTierInfo(territory);
+}
+function specialSpawnTilesForFaction(f){
+  if(!f) return 0;
   let specialTiles = 0;
   for(const t of normalizeBoard()){
     if(t.owner!==f.idx) continue;
@@ -3538,12 +3647,22 @@ function spawnRateForFaction(f, territory, army){
     if(f.id==='shadow' && (t.captureKind==='shadow_hidden'||t.type==='ruins'||t.type==='crystal')) specialTiles++;
     if(f.id==='frost' && (t.captureKind==='frost_frozen'||t.type==='crystal'||t.type==='hill')) specialTiles++;
   }
-  landDrivenRate *= 1 + Math.min(.32, specialTiles * .0035);
+  return specialTiles;
+}
+function spawnRateForFaction(f, territory, army){
+  // Rate is percentage points per second. Territory now advances in clear tiers,
+  // while Ember and Shadow use faction kill-count tiers instead of land totals.
+  const baseRate = 100 / SPAWN_SLOWEST_SECONDS;
+  const maxRate = 100 / SPAWN_FASTEST_SECONDS;
+  const tier = spawnTierInfoForFaction(f, territory);
+  let tierRate = 100 / Math.max(SPAWN_FASTEST_SECONDS, tier.seconds);
+  const specialTiles = specialSpawnTilesForFaction(f);
+  tierRate *= 1 + Math.min(.32, specialTiles * .0035);
   const armyDrag = 1 + Math.max(0, army - 32) * .012;
 
   const factionTempo = 1 / Math.max(.62, f.spawnRate || 1);
   const aiTempo = isHumanSlot(f.idx) ? 1 : (f.aiSpawnScale || 1);
-  return Math.min(maxRate, landDrivenRate * factionTempo * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag);
+  return Math.min(maxRate, Math.max(baseRate*.45, tierRate * factionTempo * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag));
 }
 function updateSpawns(dt){
   for(const f of factions){
@@ -3582,7 +3701,8 @@ function aiTick(dt){
       actions++;
     }
     const army=pieces.filter(p=>p.alive&&p.faction===f.idx&&cooldownReady(p));
-    army.sort((a,b)=>aiPiecePriority(f,b)-aiPiecePriority(f,a));
+    const priorityAttackers = attackingPiecesForFactionKing(f.idx);
+    army.sort((a,b)=>aiPiecePriority(f,b,priorityAttackers)-aiPiecePriority(f,a,priorityAttackers));
     for(let i=0;i<army.length && actions<maxActions && budget>0;i++){
       if(aiMovePiece(f,army[i])){
         budget--;
@@ -3591,12 +3711,23 @@ function aiTick(dt){
     }
   }
 }
-function aiPiecePriority(f,p){
+function aiPiecePriority(f,p,attackersOverride=null){
   const def=pieceDefs[p.type];
   let v=(def.value||1)+p.level*.6+p.captures*.5;
   if(def.aura) v+=1.5;
   const enemies=nearestEnemy(p.x,p.y,p.faction,12);
   if(enemies) v+=12/Math.max(1,Math.sqrt(dist2(p.x,p.y,enemies.x,enemies.y)));
+  const ownKing=getPiece(f.kingId);
+  const attackers=attackersOverride || attackingPiecesForFactionKing(f.idx);
+  if(ownKing){
+    const kingDist=Math.sqrt(dist2(p.x,p.y,ownKing.x,ownKing.y));
+    if(kingDist<=7) v += Math.max(0,14-kingDist*1.8);
+    if(attackers.length){
+      if(p.type==='king') v += 40;
+      v += Math.max(0,22-kingDist*2.4);
+      if(attackers.some(a=>dist2(p.x,p.y,a.x,a.y)<=25)) v += 18;
+    }
+  }
   return v+Math.random()*2;
 }
 function nearestEnemy(x,y,faction,maxD=999){
@@ -3625,6 +3756,9 @@ function aiMovePiece(f,p){
   const style=f.aiStyle;
   let best=null,bs=-99999;
   const kingTargets=pieces.filter(q=>q.alive&&q.type==='king'&&q.faction!==p.faction&&factions[q.faction].alive);
+  const ownKing=getPiece(f.kingId);
+  const attackers=attackingPiecesForFactionKing(f.idx);
+  const kingInCheck=!!attackers.length;
   for(const m of moves){
     let s=0;
     const target=findPieceAt(m.x,m.y);
@@ -3632,6 +3766,8 @@ function aiMovePiece(f,p){
       s += 45 + (pieceDefs[target.type].value||1)*6;
       if(target.type==='king') s += 1000;
       if(style==='assassin') s += target.type==='king'?400:20;
+      if(ownKing && dist2(target.x,target.y,ownKing.x,ownKing.y)<=64) s += 75;
+      if(attackers.some(a=>a.id===target.id)) s += kingInCheck ? 260 : 130;
     }
     const t=tile(m.x,m.y);
     if(t.owner!==p.faction) s += style==='expansion'?17:9;
@@ -3649,6 +3785,26 @@ function aiMovePiece(f,p){
     if(style==='defensive'){
       const ownKing=getPiece(f.kingId);
       if(ownKing) s += Math.max(0,18-Math.sqrt(dist2(m.x,m.y,ownKing.x,ownKing.y)));
+    }
+    if(ownKing){
+      const fromKingDist=Math.sqrt(dist2(p.x,p.y,ownKing.x,ownKing.y));
+      const toKingDist=Math.sqrt(dist2(m.x,m.y,ownKing.x,ownKing.y));
+      const enemyNearKing=nearestEnemy(ownKing.x,ownKing.y,f.idx,9);
+      if(enemyNearKing){
+        s += Math.max(0,18-toKingDist*1.6);
+        if(target && dist2(target.x,target.y,ownKing.x,ownKing.y)<=81) s += 90;
+      }
+      if(kingInCheck && p.type!=='king'){
+        s += Math.max(0,30-toKingDist*3);
+        if(toKingDist > fromKingDist + 1) s -= 35;
+      }
+      if(p.type==='king'){
+        const threatened = enemyThreatensSquare(f.idx,m.x,m.y,p.id);
+        if(kingInCheck) s += threatened ? -900 : 420;
+        else if(threatened) s -= 260;
+        const nearestAttacker = attackers.sort((a,b)=>dist2(m.x,m.y,a.x,a.y)-dist2(m.x,m.y,b.x,b.y))[0];
+        if(nearestAttacker && !threatened) s += Math.sqrt(dist2(m.x,m.y,nearestAttacker.x,nearestAttacker.y))*9;
+      }
     }
     if(style==='fluid' && tile(m.x,m.y).type==='water') s+=13;
     if(tile(m.x,m.y).type==='forest' && style==='expansion') s+=5;
@@ -3927,6 +4083,64 @@ function drawFactionFlair(f,p,r){
   }
   ctx.restore();
 }
+function drawFactionInsignia(f,p,r){
+  ctx.save();
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  ctx.fillStyle='rgba(255,255,255,.82)';
+  const strokeThenLight = () => {
+    ctx.lineWidth=Math.max(2,r*.12);
+    ctx.strokeStyle='rgba(5,10,18,.72)';
+    ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,.78)';
+    ctx.lineWidth=Math.max(1.4,r*.07);
+    ctx.stroke();
+  };
+  if(f.id==='crownward'){
+    ctx.beginPath();
+    ctx.moveTo(-r*.48,-r*.18); ctx.lineTo(-r*.22,-r*.48); ctx.lineTo(0,-r*.16); ctx.lineTo(r*.22,-r*.48); ctx.lineTo(r*.48,-r*.18);
+    strokeThenLight();
+  } else if(f.id==='ember'){
+    ctx.fillStyle='rgba(255,238,180,.86)';
+    ctx.beginPath();
+    ctx.moveTo(0,-r*.58); ctx.quadraticCurveTo(r*.34,-r*.16,r*.12,r*.32); ctx.quadraticCurveTo(-r*.18,r*.08,-r*.06,r*.58); ctx.quadraticCurveTo(-r*.46,r*.12,0,-r*.58);
+    ctx.fill();
+  } else if(f.id==='iron'){
+    ctx.beginPath();
+    ctx.moveTo(0,-r*.54); ctx.lineTo(r*.42,-r*.28); ctx.lineTo(r*.32,r*.35); ctx.lineTo(0,r*.58); ctx.lineTo(-r*.32,r*.35); ctx.lineTo(-r*.42,-r*.28); ctx.closePath();
+    strokeThenLight();
+    ctx.beginPath(); ctx.moveTo(0,-r*.32); ctx.lineTo(0,r*.34); ctx.moveTo(-r*.2,-r*.04); ctx.lineTo(r*.2,-r*.04); strokeThenLight();
+  } else if(f.id==='verdant'){
+    ctx.beginPath();
+    ctx.moveTo(-r*.46,r*.26); ctx.quadraticCurveTo(-r*.08,-r*.28,r*.42,-r*.28);
+    ctx.moveTo(-r*.08,-r*.03); ctx.quadraticCurveTo(r*.16,r*.02,r*.34,r*.32);
+    strokeThenLight();
+  } else if(f.id==='shadow'){
+    ctx.fillStyle='rgba(238,231,255,.82)';
+    ctx.beginPath();
+    ctx.arc(-r*.08,-r*.05,r*.42,Math.PI*.18,Math.PI*1.82);
+    ctx.arc(r*.08,-r*.05,r*.34,Math.PI*1.82,Math.PI*.18,true);
+    ctx.fill();
+  } else if(f.id==='tide'){
+    for(let i=0;i<2;i++){
+      ctx.beginPath();
+      ctx.arc(-r*.18+i*r*.32,r*.08,r*.28,Math.PI*.1,Math.PI*.92);
+      strokeThenLight();
+    }
+  } else if(f.id==='sunspire'){
+    ctx.beginPath(); ctx.arc(0,0,r*.22,0,Math.PI*2); strokeThenLight();
+    for(let i=0;i<6;i++){
+      const a=i*Math.PI/3;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a)*r*.36,Math.sin(a)*r*.36); ctx.lineTo(Math.cos(a)*r*.62,Math.sin(a)*r*.62); strokeThenLight();
+    }
+  } else if(f.id==='frost'){
+    for(let i=0;i<3;i++){
+      const a=i*Math.PI/3;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a)*-r*.48,Math.sin(a)*-r*.48); ctx.lineTo(Math.cos(a)*r*.48,Math.sin(a)*r*.48); strokeThenLight();
+    }
+  }
+  ctx.restore();
+}
 function drawPieces(){
   const visible = pieces.filter(p=>p.alive).sort((a,b)=>a.y-b.y || (pieceDefs[a.type].value||1)-(pieceDefs[b.type].value||1));
   const labelIds = computeNameLabelPieceIds(visible);
@@ -3954,6 +4168,7 @@ function drawPieces(){
     ctx.lineWidth=p.flash>0?4:2;
     drawPieceShape(def.pattern,r,p.id);
     ctx.fill(); ctx.stroke();
+    drawFactionInsignia(f,p,r);
     // icon
     ctx.fillStyle = '#07101c';
     ctx.globalAlpha=.88;
@@ -4308,3 +4523,4 @@ bootMultiplayer();
 </script>
 </body>
 </html>
+
