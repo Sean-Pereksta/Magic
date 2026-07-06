@@ -34,6 +34,8 @@
   #sprintFill{background:linear-gradient(90deg,rgba(255,209,102,.95),rgba(94,228,255,.90));box-shadow:0 0 18px rgba(255,209,102,.22)}
   #healthFill{background:rgba(255,111,145,.9)}
   #centerDot{position:fixed;left:50%;top:50%;width:7px;height:7px;margin-left:-3.5px;margin-top:-3.5px;border-radius:50%;z-index:4;background:rgba(255,255,255,.65);box-shadow:0 0 14px rgba(255,255,255,.35);pointer-events:none;}
+  #sizeBadge{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:7;padding:7px 14px;border-radius:999px;background:rgba(3,12,25,.50);border:1px solid rgba(255,255,255,.13);backdrop-filter:blur(10px);box-shadow:0 14px 38px rgba(0,0,0,.22);font-size:13px;font-weight:950;letter-spacing:.3px;pointer-events:none;display:none;}
+  #sizeBadge span{color:#5ee4ff;font-variant-numeric:tabular-nums;}
   #menu,#dead{
     position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;
     background:radial-gradient(900px 600px at 50% 20%,rgba(64,188,255,.20),transparent 60%),rgba(0,0,0,.46);
@@ -75,18 +77,24 @@
   #lookStick::before{content:'';position:absolute;inset:-7px;border-radius:50%;background:conic-gradient(rgba(255,209,102,.95) var(--sprint-pct),rgba(255,255,255,.10) 0);opacity:var(--sprint-alpha);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 8px),#000 calc(100% - 7px));mask:radial-gradient(farthest-side,transparent calc(100% - 8px),#000 calc(100% - 7px));filter:drop-shadow(0 0 10px rgba(255,209,102,.20));}
   #lookStick::after{content:'SPRINT';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-shadow:0 0 12px rgba(255,209,102,.25);opacity:var(--sprint-alpha);}
   #lookStick.depleted::after{content:'EMPTY';color:rgba(255,255,255,.58);}
+  #mobileAbilityButton{position:absolute;right:92px;bottom:156px;width:82px;height:82px;margin-left:-41px;margin-top:-41px;border-radius:50%;border:1px solid rgba(94,228,255,.42);background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.24),rgba(94,228,255,.18) 48%,rgba(3,12,25,.26));box-shadow:0 0 24px rgba(94,228,255,.14),0 12px 34px rgba(0,0,0,.18);opacity:.72;pointer-events:auto;display:flex;align-items:center;justify-content:center;text-align:center;font-size:10px;font-weight:950;letter-spacing:.5px;color:rgba(255,255,255,.86);}
+  #mobileAbilityButton.locked{opacity:.30;filter:saturate(.45);}
+  #mobileAbilityButton.ready{border-color:rgba(99,247,163,.65);box-shadow:0 0 26px rgba(99,247,163,.18),0 12px 34px rgba(0,0,0,.18);}
+  #mobileAbilityButton::after{content:attr(data-label);max-width:66px;line-height:1.05;}
   #moveStick.sprinting,#lookStick.sprinting{opacity:.70;border-color:rgba(255,209,102,.58);box-shadow:0 0 34px rgba(255,209,102,.24),0 0 26px rgba(94,228,255,.10) inset;background:radial-gradient(circle at 50% 50%,rgba(255,209,102,.18),rgba(255,255,255,.035) 58%,rgba(3,12,25,.12));}
   body.mobile-play #mobileControls{display:block;}
-  body.mobile-nohud #hud,body.mobile-nohud #abilityBar,body.mobile-nohud #depthGauge,body.mobile-nohud #centerDot,body.mobile-nohud #lockHint{display:none!important;}
+  body.mobile-play #abilityBar{display:none!important;}
+  body.mobile-nohud #hud,body.mobile-nohud #depthGauge,body.mobile-nohud #centerDot,body.mobile-nohud #lockHint{display:none!important;}
   body.mobile-play canvas{cursor:none;}
   button,.upgradeCard{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 
-  @media(max-width:700px){.upgradeGrid{grid-template-columns:1fr}.upgradeCard{min-height:auto}.card{padding:17px;max-height:86vh;overflow:auto}#abilityBar{bottom:8px}.ability{min-width:64px}#upgradePanel{align-items:flex-start;padding-top:4vh;box-sizing:border-box}.mobileStick{width:104px;height:104px;margin-left:-52px;margin-top:-52px}.mobileStick .knob{width:44px;height:44px;margin-left:-22px;margin-top:-22px}}
+  @media(max-width:700px){#sizeBadge{top:8px;font-size:12px;padding:6px 12px}#mobileAbilityButton{right:88px;bottom:150px;width:76px;height:76px}.upgradeGrid{grid-template-columns:1fr}.upgradeCard{min-height:auto}.card{padding:17px;max-height:86vh;overflow:auto}#abilityBar{bottom:8px}.ability{min-width:64px}#upgradePanel{align-items:flex-start;padding-top:4vh;box-sizing:border-box}.mobileStick{width:104px;height:104px;margin-left:-52px;margin-top:-52px}.mobileStick .knob{width:44px;height:44px;margin-left:-22px;margin-top:-22px}}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="mobileControls" aria-hidden="true"><div class="mobileStick" id="moveStick"><div class="knob" id="moveKnob"></div></div><div class="mobileStick" id="lookStick"><div class="knob" id="lookKnob"></div></div></div>
+<div id="mobileControls" aria-hidden="true"><div class="mobileStick" id="moveStick"><div class="knob" id="moveKnob"></div></div><div id="mobileAbilityButton" class="locked" data-label="SPECIAL"></div><div class="mobileStick" id="lookStick"><div class="knob" id="lookKnob"></div></div></div>
+<div id="sizeBadge">Size <span id="sizeBadgeTxt">1.00</span></div>
 <div id="centerDot"></div>
 <div id="hud">
   <div class="row"><div class="title">DEEP SEA 3D</div><div class="pill" id="zoneTxt">Surface</div></div>
@@ -135,6 +143,8 @@
     menuBtn: document.getElementById('menuBtn'),
     zoneTxt: document.getElementById('zoneTxt'),
     sizeTxt: document.getElementById('sizeTxt'),
+    sizeBadge: document.getElementById('sizeBadge'),
+    sizeBadgeTxt: document.getElementById('sizeBadgeTxt'),
     sizeFill: document.getElementById('sizeFill'),
     depthTxt: document.getElementById('depthTxt'),
     depthFill: document.getElementById('depthFill'),
@@ -156,6 +166,7 @@
     moveKnob: document.getElementById('moveKnob'),
     lookStick: document.getElementById('lookStick'),
     lookKnob: document.getElementById('lookKnob'),
+    mobileAbilityButton: document.getElementById('mobileAbilityButton'),
   };
 
   let W = 1, H = 1, DPR = 1, focal = 900;
@@ -179,7 +190,8 @@
     move:{x:0,y:0,mag:0,active:false,sprint:false},
     look:{x:0,y:0,mag:0,active:false},
     moveBase:{x:0,y:0}, lookBase:{x:0,y:0},
-    lookStart:{x:0,y:0,t:0,moved:false}
+    lookStart:{x:0,y:0,t:0,moved:false},
+    abilityId:null
   };
   function syncMobileUI(){
     const mode = state.mode;
@@ -230,6 +242,7 @@
   function handleMobilePointerDown(e){
     if(!IS_TOUCH || state.mode !== 'play' || e.pointerType === 'mouse') return;
     if(e.target.closest && e.target.closest('#menu,#dead,#upgradePanel,button,.upgradeCard')) return;
+    if(e.target.closest && e.target.closest('#mobileAbilityButton')) return;
     e.preventDefault();
     const kind = e.clientX < W * .5 ? 'move' : 'look';
     if(kind === 'move'){
@@ -264,6 +277,14 @@
   addEventListener('pointermove', handleMobilePointerMove, {passive:false});
   addEventListener('pointerup', handleMobilePointerUp, {passive:false});
   addEventListener('pointercancel', handleMobilePointerUp, {passive:false});
+  if(ui.mobileAbilityButton){
+    ui.mobileAbilityButton.addEventListener('pointerdown', e => {
+      if(!IS_TOUCH || state.mode !== 'play') return;
+      e.preventDefault(); e.stopPropagation();
+      try{ e.currentTarget.setPointerCapture?.(e.pointerId); }catch(_){}
+      useSpecialAbility();
+    }, {passive:false});
+  }
 
   const TAU = Math.PI * 2;
   const SURFACE_Y = -3.0;
@@ -277,7 +298,7 @@
   const PLAYER_PACE = 1.38;
   const FISH_PACE = 1.24;
   const PREDATOR_PACE = 1.32;
-  const AGGRO_RANGE_BOOST = 1.36;
+  const AGGRO_RANGE_BOOST = 1.72;
 
   const rnd = (a=1,b=0) => b + Math.random()*(a-b);
   const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
@@ -421,12 +442,16 @@
     {id:'oilSkin', name:'Oil-Slick Skin', tag:'less drag', max:2, desc:'Carries momentum more smoothly and keeps speed through turns.', apply:p=>{p.mods.drag+=.14;p.visual.gloss+=.16;}},
     {id:'pressureBody', name:'Pressure Body', tag:'deep speed', max:3, desc:'You move better in dark deep water instead of bogging down.', apply:p=>{p.mods.deepSpeed+=2.2;p.visual.bodyDepth+=.08;}},
     {id:'deepEyes', name:'Deep-Vision Eyes', tag:'visibility', max:3, desc:'Extends sight in the abyss and reveals threats a little earlier.', apply:p=>{p.mods.visibility+=14;p.visual.eyeGlow+=.35;}},
-    {id:'electricOrgan', name:'Electric Organ', tag:'E ability', max:3, desc:'Unlocks/boosts E Shock Pulse, stunning small nearby enemies.', apply:p=>{p.mods.shock+=1;p.mods.shockRadius+=12;p.visual.electric+=.35;}},
-    {id:'voltaicFins', name:'Voltaic Fin Tips', tag:'shock range', max:2, desc:'Electric arcs reach farther and look brighter around your fins.', apply:p=>{p.mods.shockRadius+=18;p.mods.shockPower+=.08;p.visual.electric+=.30;}},
-    {id:'shockBattery', name:'Shock Battery', tag:'cooldown', max:2, desc:'Shortens E Shock Pulse cooldown.', apply:p=>{p.mods.shockCd=Math.max(2.6,p.mods.shockCd-1.0);p.visual.electric+=.18;}},
-    {id:'inkGland', name:'Ink Gland', tag:'R ability', max:2, desc:'Unlocks/boosts R Ink Cloud to break predator targeting.', apply:p=>{p.mods.ink+=1;p.mods.inkCd=Math.max(3.8,p.mods.inkCd-.6);p.visual.ink+=.25;}},
+    {id:'electricOrgan', name:'Shock Organ', tag:'special ability', max:1, special:'shock', desc:'Special ability: E / mobile button releases a stunning shock pulse around you.', apply:p=>{p.specialAbility='shock';p.mods.shock+=1;p.mods.shockRadius+=20;p.mods.shockPower+=.08;p.visual.electric+=.45;}},
+    {id:'voltaicFins', name:'Voltaic Fin Tips', tag:'shock upgrade', max:3, requiresSpecial:'shock', desc:'Your shock reaches farther and disrupts larger attackers.', apply:p=>{p.mods.shockRadius+=22;p.mods.shockPower+=.10;p.visual.electric+=.30;}},
+    {id:'shockBattery', name:'Shock Battery', tag:'shock upgrade', max:3, requiresSpecial:'shock', desc:'Shortens Shock cooldown so it is ready more often.', apply:p=>{p.mods.shockCd=Math.max(2.4,p.mods.shockCd-1.05);p.visual.electric+=.18;}},
+    {id:'inkGland', name:'Ink Gland', tag:'special ability', max:1, special:'ink', desc:'Special ability: E / mobile button drops a confusing ink cloud for escapes.', apply:p=>{p.specialAbility='ink';p.mods.ink+=1;p.mods.inkCd=Math.max(4.8,p.mods.inkCd-.9);p.visual.ink+=.35;}},
+    {id:'reefAegis', name:'Reef Aegis Flash', tag:'special ability', max:1, special:'aegis', desc:'Special ability: E / mobile button grants brief damage reduction and a strong escape burst.', apply:p=>{p.specialAbility='aegis';p.mods.damageReduce+=.24;p.mods.escapeBurst+=1;p.visual.gloss+=.18;p.visual.armor+=1;}},
     {id:'armorPlates', name:'Armor Plates', tag:'survival', max:3, desc:'Lets you bounce off slightly larger fish instead of instantly dying.', apply:p=>{p.mods.armor+=.055;p.visual.armor+=1;}},
-    {id:'barbedSpines', name:'Barbed Spines', tag:'defense visual', max:2, desc:'Predators that bump you get knocked back and briefly hesitate.', apply:p=>{p.mods.thorns+=.14;p.visual.spines+=1;}},
+    {id:'barbedSpines', name:'Barbed Spines', tag:'defense visual', max:3, desc:'Predators that bump you get knocked back and briefly hesitate.', apply:p=>{p.mods.thorns+=.16;p.mods.predatorResist+=.025;p.visual.spines+=1;}},
+    {id:'toughScales', name:'Tough Scales', tag:'defense', max:4, desc:'Raises resistance against larger fish and improves survival from close hits.', apply:p=>{p.mods.armor+=.04;p.mods.predatorResist+=.045;p.visual.armor+=1;}},
+    {id:'glancingHide', name:'Glancing Hide', tag:'defense', max:3, desc:'Gives bigger fish a chance to glance off instead of ending the run.', apply:p=>{p.mods.glancing+=.08;p.mods.armor+=.025;p.visual.gloss+=.10;}},
+    {id:'escapeBurstFins', name:'Escape Burst Fins', tag:'defense', max:3, desc:'Near-death bumps kick you away harder and briefly blunt predator damage.', apply:p=>{p.mods.escapeBurst+=.38;p.mods.damageReduce+=.05;p.mods.sprintRegen+=2;p.visual.sideFins+=.18;}},
     {id:'lateralLine', name:'Lateral Line Sense', tag:'tracking', max:2, desc:'Helps your mouth open sooner when a smaller fish crosses your heading.', apply:p=>{p.mods.preySense+=12;p.visual.line+=1;}},
     {id:'sharkSmell', name:'Blood-Scent Sense', tag:'hunter', max:2, desc:'Eating creates momentum: brief speed boost after each fish kill.', apply:p=>{p.mods.killBoost+=1.1;p.visual.snout+=.10;}},
     {id:'reefCamouflage', name:'Reef Camouflage', tag:'stealth visual', max:2, desc:'Speckles your body; shallow predators have a harder time locking on.', apply:p=>{p.mods.stealth+=.08;p.visual.speckles+=1;}},
@@ -462,7 +487,7 @@
   ];
 
   function baseMods(){
-    return {speed:0, sprint:0, sprintMax:0, sprintDrain:0, sprintRegen:0, accel:0, turn:0, strafe:0, drag:0, collisionGlide:0, lunge:0, stealth:0, intimidate:0, biteReach:0, bitePower:0, suction:0, burst:0, dashCd:5.2, deepSpeed:0, visibility:0, shock:0, shockRadius:38, shockPower:0, shockCd:7.2, ink:0, inkCd:7.6, armor:0, thorns:0, preySense:0, killBoost:0, lure:0, vertical:0};
+    return {speed:0, sprint:0, sprintMax:0, sprintDrain:0, sprintRegen:0, accel:0, turn:0, strafe:0, drag:0, collisionGlide:0, lunge:0, stealth:0, intimidate:0, biteReach:0, bitePower:0, suction:0, burst:0, dashCd:5.2, deepSpeed:0, visibility:0, shock:0, shockRadius:38, shockPower:0, shockCd:7.2, ink:0, inkCd:7.6, armor:0, thorns:0, preySense:0, killBoost:0, lure:0, vertical:0, predatorResist:0, glancing:0, damageReduce:0, escapeBurst:0};
   }
   function baseVisual(){
     return {length:1, tail:1, sideFins:1, dorsal:0, stripes:0, countershade:false, glass:0, jaw:1, teeth:0, muscle:0, gloss:0, bodyDepth:1, eyeGlow:0, electric:0, ink:0, armor:0, spines:0, line:0, snout:1, speckles:0, glowSpots:0, gills:0, head:1, ghost:0, sail:0};
@@ -479,7 +504,7 @@
   };
 
 const keys = Object.create(null);
-  addEventListener('keydown', e => { const k=e.key.toLowerCase(); keys[k] = true; if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) e.preventDefault(); if(state.mode==='play' && ['q','e','r'].includes(k)) useAbility(k); });
+  addEventListener('keydown', e => { const k=e.key.toLowerCase(); keys[k] = true; if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) e.preventDefault(); if(state.mode==='play' && ['q','e'].includes(k)) useAbility(k); });
   addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
   canvas.addEventListener('click', () => { if(!IS_TOUCH && state.mode === 'play' && document.pointerLockElement !== canvas) canvas.requestPointerLock?.(); });
@@ -498,7 +523,7 @@ const keys = Object.create(null);
     const p = state.player;
     p.pos = {x:0,y:waterColumnY(0,0,floorHeight(0,0)+32,10),z:0}; p.vel = {x:0,y:0,z:0}; p.yaw = 0; p.pitch = -.03; p.size = 1; p.mass = 1; p.eaten = 0; p.fishEaten = 0;
     p.upgradeCount = 0; p.upgradeCost = 4; p.nextUpgradeAt = 4; p.upgrades = Object.create(null); p.mods = baseMods(); p.visual = baseVisual();
-    p.tailPhase = 0; p.finPhase = 0; p.biteCooldown = 0; p.dashCd = 0; p.shockCd = 0; p.inkCd = 0; p.chompT = 0; p.mouthOpen = 0; p.killBoostT = 0; p.sprintEnergy = sprintMax(p); p.sprintRegenDelay = 0; p.sprinting = false; p.alive = true;
+    p.tailPhase = 0; p.finPhase = 0; p.biteCooldown = 0; p.dashCd = 0; p.shockCd = 0; p.inkCd = 0; p.aegisCd = 0; p.aegisT = 0; p.specialAbility = null; p.chompT = 0; p.mouthOpen = 0; p.killBoostT = 0; p.sprintEnergy = sprintMax(p); p.sprintRegenDelay = 0; p.sprinting = false; p.alive = true;
     state.fish.length = 0; state.plants.length = 0; state.bubbles.length = 0; state.bites.length = 0; state.obstacles.length = 0; state.flash = 0;
     ui.upgradePanel.style.display = 'none'; ui.abilityBar.style.display = 'flex'; if(ui.depthGauge) ui.depthGauge.style.display = 'block'; resetMobileStick('move'); resetMobileStick('look'); syncMobileUI();
     for(let i=0;i<MAX_OBSTACLES;i++) spawnObstacle(true);
@@ -585,7 +610,8 @@ const keys = Object.create(null);
       ft.speed *= pace;
       ft.cruiseSpeed *= pace;
       ft.turnSpeed *= hunter ? 1.08 : 1.04;
-      ft.aggroRange = ((ft.detect || 60) + ft.size*8) * AGGRO_RANGE_BOOST * (hunter ? 1.18 : 1.0) * (1 + (ft.aggro || 0)*.22);
+      const sizeNotice = hunter ? (1 + Math.pow(ft.size, .82)*.18) : (1 + ft.size*.035);
+      ft.aggroRange = ((ft.detect || 60) + ft.size*12) * AGGRO_RANGE_BOOST * (hunter ? 1.30 : 1.0) * (1 + (ft.aggro || 0)*.28) * sizeNotice;
     }
   }
   initFishTypeStats();
@@ -1001,8 +1027,10 @@ const keys = Object.create(null);
 
   function applyStarterUpgrade(up){
     const p = state.player;
-    p.upgrades[up.id] = (p.upgrades[up.id] || 0) + 1;
-    up.apply(p);
+    const nextLv = (p.upgrades[up.id] || 0) + 1;
+    p.upgrades[up.id] = nextLv;
+    const repeats = up.special ? 1 : Math.max(1, nextLv);
+    for(let i=0;i<repeats;i++) up.apply(p);
     p.startingPart = up.id;
     ui.upgradePanel.style.display = 'none';
     const title = ui.upgradePanel.querySelector('h1');
@@ -1015,7 +1043,7 @@ const keys = Object.create(null);
 
   function currentUpgradeOptions(){
     const p = state.player;
-    const available = UPGRADE_DEFS.filter(u => (p.upgrades[u.id] || 0) < u.max);
+    const available = UPGRADE_DEFS.filter(u => (p.upgrades[u.id] || 0) < u.max && (!u.special || !p.specialAbility) && (!u.requiresSpecial || p.specialAbility === u.requiresSpecial));
     for(let i=available.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [available[i],available[j]]=[available[j],available[i]]; }
     return available.slice(0,3);
   }
@@ -1027,12 +1055,13 @@ const keys = Object.create(null);
     if(title) title.textContent = 'Choose an Evolution';
     const p = state.player;
     const options = currentUpgradeOptions();
-    ui.upgradeText.textContent = `Fish eaten: ${p.fishEaten}. Early evolutions arrive quickly; the next one will take about ${p.upgradeCost} more fish.`;
+    ui.upgradeText.textContent = `Fish eaten: ${p.fishEaten}. Re-picking an evolution raises its level and applies a stronger total effect.`;
     ui.upgradeCards.innerHTML = '';
     for(const up of options){
       const card = document.createElement('div');
       card.className = 'upgradeCard';
-      card.innerHTML = `<div class="upgradeName">${up.name}</div><div class="upgradeDesc">${up.desc}</div><div class="upgradeTag">${up.tag} · ${((p.upgrades[up.id]||0)+1)}/${up.max}</div>`;
+      const nextLv = (p.upgrades[up.id] || 0) + 1;
+      card.innerHTML = `<div class="upgradeName">${up.name} Lv ${nextLv}</div><div class="upgradeDesc">${up.desc}</div><div class="upgradeTag">${up.tag} · Lv ${nextLv}/${up.max}</div>`;
       bindUpgradeCard(card, () => applyUpgrade(up));
       ui.upgradeCards.appendChild(card);
     }
@@ -1040,8 +1069,10 @@ const keys = Object.create(null);
   }
   function applyUpgrade(up){
     const p = state.player;
-    p.upgrades[up.id] = (p.upgrades[up.id] || 0) + 1;
-    up.apply(p);
+    const nextLv = (p.upgrades[up.id] || 0) + 1;
+    p.upgrades[up.id] = nextLv;
+    const repeats = up.special ? 1 : Math.max(1, nextLv);
+    for(let i=0;i<repeats;i++) up.apply(p);
     p.upgradeCount++;
     p.upgradeCost = p.upgradeCount < 3 ? 4 : p.upgradeCount < 6 ? 5 : 7 + Math.floor((p.upgradeCount - 6) * 1.5);
     p.nextUpgradeAt = p.fishEaten + p.upgradeCost;
@@ -1074,12 +1105,19 @@ const keys = Object.create(null);
     const pct = Math.round(sprintPercent(p));
     const sprintReady = pct > 5;
     const sprintCard = `<div class="ability ${sprintReady ? 'ready' : 'locked'}"><span class="hotkey">Shift</span><span class="name">Sprint</span><span class="cd">${pct}%</span><div class="miniMeter"><span style="width:${pct}%"></span></div></div>`;
+    const specialName = p.specialAbility === 'shock' ? 'Shock' : p.specialAbility === 'ink' ? 'Ink' : p.specialAbility === 'aegis' ? 'Aegis' : 'Special';
+    const specialCd = p.specialAbility === 'shock' ? p.shockCd : p.specialAbility === 'ink' ? p.inkCd : p.specialAbility === 'aegis' ? (p.aegisCd || 0) : 0;
     ui.abilityBar.innerHTML = abilityHtml('Space','Chomp',p.biteCooldown,true)
       + sprintCard
       + abilityHtml('Q','Burst',p.dashCd,p.mods.burst>0)
-      + abilityHtml('E','Shock',p.shockCd,p.mods.shock>0)
-      + abilityHtml('R','Ink',p.inkCd,p.mods.ink>0);
+      + abilityHtml('E',specialName,specialCd,!!p.specialAbility);
+    if(ui.mobileAbilityButton){
+      ui.mobileAbilityButton.dataset.label = p.specialAbility ? `${specialName}\n${cooldownLabel(specialCd)}` : 'SPECIAL';
+      ui.mobileAbilityButton.classList.toggle('locked', !p.specialAbility || specialCd > 0);
+      ui.mobileAbilityButton.classList.toggle('ready', !!p.specialAbility && specialCd <= 0);
+    }
   }
+  function useSpecialAbility(){ useAbility('e'); }
   function useAbility(key){
     const p = state.player;
     const f = forwardFromAngles(p.yaw,p.pitch);
@@ -1090,7 +1128,7 @@ const keys = Object.create(null);
       emitTrailBubble({pos:p.pos,dir:f,size:p.size+2}, 6);
       state.bites.push({pos:add(p.pos,mul(f,10+p.size*2)), t:0, life:.32, r:9+p.size*3, dash:true});
     }
-    if(key === 'e' && p.mods.shock > 0 && p.shockCd <= 0){
+    if(key === 'e' && p.specialAbility === 'shock' && p.mods.shock > 0 && p.shockCd <= 0){
       p.shockCd = p.mods.shockCd;
       const radius = p.mods.shockRadius + p.size*3;
       for(const fish of state.fish){
@@ -1105,10 +1143,20 @@ const keys = Object.create(null);
       state.bites.push({pos:{...p.pos}, t:0, life:.48, r:radius*.33, shock:true});
       state.flash = Math.max(state.flash,.10);
     }
-    if(key === 'r' && p.mods.ink > 0 && p.inkCd <= 0){
+    if(key === 'e' && p.specialAbility === 'ink' && p.mods.ink > 0 && p.inkCd <= 0){
       p.inkCd = p.mods.inkCd;
       for(const fish of state.fish){ if(dist3(fish.pos,p.pos) < 78 + p.mods.ink*22) fish.inkBlindT = Math.max(fish.inkBlindT||0, 2.3 + p.mods.ink*.7); }
-      for(let i=0;i<34;i++) state.bites.push({pos:add(p.pos,{x:rnd(14,-14),y:rnd(10,-10),z:rnd(14,-14)}), t:0, life:rnd(1.4,.8), r:rnd(8,3), ink:true});
+      for(let i=0;i<46;i++) state.bites.push({pos:add(p.pos,{x:rnd(14,-14),y:rnd(10,-10),z:rnd(14,-14)}), t:0, life:rnd(1.4,.8), r:rnd(8,3), ink:true});
+    }
+    if(key === 'e' && p.specialAbility === 'aegis' && (p.aegisCd || 0) <= 0){
+      p.aegisCd = 9.0; p.aegisT = 2.2 + p.mods.escapeBurst*.28;
+      const power = 22 + p.mods.escapeBurst*14;
+      p.vel.x -= f.x*power; p.vel.y += 5; p.vel.z -= f.z*power;
+      for(const fish of state.fish){
+        const d = dist3(fish.pos,p.pos);
+        if(d < 72 + p.size*5){ const away = norm(sub(fish.pos,p.pos)); fish.vel.x += away.x*18; fish.vel.z += away.z*18; fish.stunT = Math.max(fish.stunT||0,.35); }
+      }
+      state.bites.push({pos:{...p.pos}, t:0, life:.55, r:24+p.size*5, shock:true});
     }
     updateAbilityBar();
   }
@@ -1176,6 +1224,8 @@ const keys = Object.create(null);
     p.dashCd = Math.max(0, p.dashCd - dt);
     p.shockCd = Math.max(0, p.shockCd - dt);
     p.inkCd = Math.max(0, p.inkCd - dt);
+    p.aegisCd = Math.max(0, (p.aegisCd || 0) - dt);
+    p.aegisT = Math.max(0, (p.aegisT || 0) - dt);
     p.chompT = Math.max(0, p.chompT - dt);
     p.killBoostT = Math.max(0, p.killBoostT - dt);
 
@@ -1308,7 +1358,8 @@ const keys = Object.create(null);
       const stealthMul = clamp(1 - p.mods.stealth - (p.visual.ghost?0.05:0) - (f.inkBlindT>0?.55:0), .34, 1.08);
       const intimidation = p.mods.intimidate;
       const playerCanEat = p.size >= f.size*(.94 - p.mods.bitePower);
-      const fishCanEatPlayer = f.size >= p.size*(1.08 + p.mods.armor + intimidation*.12);
+      const activeGuard = (p.aegisT || 0) > 0 ? (p.mods.damageReduce || 0) + .24 : 0;
+      const fishCanEatPlayer = f.size >= p.size*(1.08 + p.mods.armor + p.mods.predatorResist + activeGuard + intimidation*.12);
       const baseAggroRange = f.type.aggroRange || f.type.detect || 60;
       const detectRange = baseAggroRange * (0.82 + f.type.aggro*.28) * stealthMul;
       const playerPriorityRange = detectRange * (f.type.predator || f.type.shark || f.type.monster ? 1.05 : .78);
@@ -1457,9 +1508,19 @@ const keys = Object.create(null);
       const avoid = avoidObstacles(f.pos, desired, mode==='hunt'||mode==='surge'?24:32, 4 + f.size*1.5);
       desired = norm(add(desired, mul(avoid, mode==='hunt'||mode==='surge'?1.05:1.45)));
 
-      if(f.pos.y > SURFACE_Y - 6) desired.y -= .95;
-      const floorNear = floorHeight(f.pos.x, f.pos.z) + 9;
-      if(f.pos.y < floorNear) desired.y += .95;
+      const shallowIdle = mode === 'wander' && depth01(f.pos.y) < .24;
+      const localFloor = floorHeight(f.pos.x, f.pos.z);
+      if(shallowIdle){
+        const surfaceGap = SURFACE_Y - f.pos.y;
+        const floorGap = f.pos.y - localFloor;
+        desired.y *= .20;
+        if(surfaceGap < 34) desired.y -= (34 - surfaceGap) * .030;
+        if(floorGap < 42) desired.y += (42 - floorGap) * .026;
+        desired = norm({x:desired.x, y:desired.y, z:desired.z});
+      }
+      if(f.pos.y > SURFACE_Y - 10) desired.y -= 1.20;
+      const floorNear = localFloor + 16;
+      if(f.pos.y < floorNear) desired.y += 1.25;
 
       const envTurnSlow = obstacleTurnSlow(f.pos, f.size*1.2);
       const turnRate = (f.type.turnSpeed || f.type.turn || 2.4) * envTurnSlow * (mode==='surge' ? .88 : mode==='flee' ? 1.34 : 1.08);
@@ -1476,6 +1537,12 @@ const keys = Object.create(null);
       f.vel.x = lerp(f.vel.x, f.dir.x*speed, 1-Math.exp(-velocitySnap*dt));
       f.vel.y = lerp(f.vel.y, f.dir.y*speed, 1-Math.exp(-velocitySnap*dt));
       f.vel.z = lerp(f.vel.z, f.dir.z*speed, 1-Math.exp(-velocitySnap*dt));
+      if(shallowIdle){
+        f.vel.y *= Math.exp(-3.0*dt);
+        const gapFloor = f.pos.y - localFloor, gapSurface = SURFACE_Y - f.pos.y;
+        if(gapFloor < 30 && f.vel.y < 0) f.vel.y *= .22;
+        if(gapSurface < 24 && f.vel.y > 0) f.vel.y *= .22;
+      }
       if(f.inkBlindT > 0){ f.vel.x*=.82; f.vel.y*=.82; f.vel.z*=.82; }
       f.pos.x += f.vel.x*dt; f.pos.y += f.vel.y*dt; f.pos.z += f.vel.z*dt;
       f.pos.y = clamp(f.pos.y, floorHeight(f.pos.x,f.pos.z)+7, SURFACE_Y-4);
@@ -1503,7 +1570,15 @@ const keys = Object.create(null);
         if(p.size >= f.size*(.92 - p.mods.bitePower)){
           eatFish(i, f);
           continue;
-        } else if(f.size >= p.size*(1.08 + p.mods.armor)){
+        } else if(f.size >= p.size*(1.08 + p.mods.armor + p.mods.predatorResist + (((p.aegisT||0)>0) ? (p.mods.damageReduce||0)+.24 : 0))){
+          const glanceChance = clamp((p.mods.glancing || 0) + ((p.aegisT||0)>0 ? .18 : 0), 0, .55);
+          if(glanceChance > 0 && Math.random() < glanceChance){
+            const away = norm(sub(p.pos, f.pos));
+            p.vel.x += away.x * (18 + (p.mods.escapeBurst||0)*12); p.vel.y += Math.abs(away.y) * 8 + 3; p.vel.z += away.z * (18 + (p.mods.escapeBurst||0)*12);
+            f.vel.x -= away.x * 10; f.vel.z -= away.z * 10; f.stunT = Math.max(f.stunT || 0, .22 + (p.mods.thorns||0));
+            state.bites.push({pos:{...p.pos}, t:0, life:.28, r:8+p.size*2, shock:true});
+            continue;
+          }
           if(p.mods.thorns > 0){
             const away = norm(sub(f.pos,p.pos));
             f.vel.x += away.x * 18 * p.mods.thorns; f.vel.y += away.y * 8 * p.mods.thorns; f.vel.z += away.z * 18 * p.mods.thorns;
@@ -1536,7 +1611,7 @@ const keys = Object.create(null);
     p.eaten++;
     p.fishEaten++;
     p.killBoostT = Math.max(p.killBoostT, .9);
-    p.mass += 0.024 + fish.size * .036;
+    p.mass += 0.038 + fish.size * .057;
     p.size = Math.min(28, Math.sqrt(p.mass));
     maybeTriggerUpgrade();
   }
@@ -1618,6 +1693,8 @@ const keys = Object.create(null);
     ui.zoneTxt.textContent = zoneForDepth(d);
     ui.zoneTxt.classList.toggle('danger', d>.58);
     ui.sizeTxt.textContent = p.size.toFixed(2);
+    if(ui.sizeBadgeTxt) ui.sizeBadgeTxt.textContent = p.size.toFixed(2);
+    if(ui.sizeBadge) ui.sizeBadge.style.display = (state.mode === 'play' || state.mode === 'upgrade' || state.mode === 'starter') ? 'block' : 'none';
     ui.sizeFill.style.width = clamp((p.size/10)*100, 3, 100) + '%';
     const meters = Math.round(Math.abs(p.pos.y));
     ui.depthTxt.textContent = meters + ' m';
