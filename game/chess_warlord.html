@@ -243,6 +243,8 @@ const CINDER_ARCHON_DEN_COOLDOWN = 120;
 const SUNSPIRE_MAX_SOLAR_BEACONS = 10;
 const SUNSPIRE_BASE_SPAWN_SECONDS = 122;
 const SUNSPIRE_SOLAR_BEACON_SECONDS = 1.5;
+const SUNSPIRE_BEACON_CHANNEL_RANGE = 5;
+const SUNSPIRE_BEACON_COOLDOWN_BOOST = 0.50;
 const COOLDOWN_SLOWDOWN_MULTIPLIER = 1.6;
 const MOVE_ANIMATION_COOLDOWN_MULTIPLIER = 1.5;
 let PLAYER = 0;
@@ -1686,7 +1688,7 @@ const pieceDefs = {
   knifechapel:{name:'Knife Chapel', icon:'†', pattern:'building', cooldown:7.0, value:6, hp:2, building:true, desc:'Kills within five spaces spawn a Shade Pawn beside the chapel, with a 10 second cooldown.'},
   reefnursery:{name:'Reef Nursery', icon:'≋', pattern:'building', cooldown:7.0, value:6, hp:3, building:true, amphibious:true, desc:'Spawns Tide reinforcements every 45 seconds near water, coast, or owned land.'},
   tidalbeacon:{name:'Tidal Beacon', icon:'◌', pattern:'building', cooldown:7.0, value:7, hp:3, building:true, amphibious:true, desc:'Every 18 seconds, extends Tide control through nearby water chains.'},
-  sunspirebeacon:{name:'Solar Beacon', icon:'☼', pattern:'building', cooldown:7.0, value:7, hp:1, building:true, desc:'Fragile Sunspire structure. Each active Solar Beacon removes 1.5 seconds from Sunspire spawn time, up to 10 beacons.'},
+  sunspirebeacon:{name:'Solar Beacon', icon:'☼', pattern:'building', cooldown:7.0, value:7, hp:1, building:true, desc:'Fragile Sunspire structure. Each active Solar Beacon removes 1.5 seconds from Sunspire spawn time and channels a local beam that speeds one nearby cooling Sunspire troop by 50%.'},
   radiantmonastery:{name:'Radiant Monastery', icon:'✺', pattern:'building', cooldown:8.0, value:8, hp:3, building:true, desc:'Every 60 seconds, turns a nearby basic Sunspire troop into an elite.'},
   iceobelisk:{name:'Ice Obelisk', icon:'❖', pattern:'building', cooldown:8.0, value:7, hp:3, building:true, desc:'Enemies within five spaces suffer 25% longer movement cooldowns.'},
   sledyard:{name:'Sled Yard', icon:'▧', pattern:'building', cooldown:8.0, value:6, hp:3, building:true, desc:'Spawns a Sled Knight every 80 seconds.'}
@@ -1698,6 +1700,8 @@ let factions = [];
 let ownerCounts = new Map();
 let idCounter = 1;
 let gameStats = {captures:0, kingsTaken:0, startedAt:0};
+let solarChannelLinks = [];
+let lastSolarChannelStateMark = 0;
 
 function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
 function lerp(a,b,t){return a+(b-a)*t;}
@@ -2383,6 +2387,68 @@ function activeSolarBeacons(factionIdx){
 }
 function canOfferSolarBeacon(factionIdx){
   return activeSolarBeacons(factionIdx) < SUNSPIRE_MAX_SOLAR_BEACONS;
+}
+function sunspireCoolingTroopEligible(p,factionIdx){
+  if(!p || !p.alive || p.faction!==factionIdx || isBuildingType(p.type)) return false;
+  return !!p.cooldownUntil && now() < p.cooldownUntil;
+}
+function nearestSolarBeaconChannelTarget(beacon, reservedTargets=new Set()){
+  if(!beacon || !beacon.alive) return null;
+  const rr=SUNSPIRE_BEACON_CHANNEL_RANGE*SUNSPIRE_BEACON_CHANNEL_RANGE;
+  let best=null, bestScore=Infinity;
+  for(const p of pieces){
+    if(!sunspireCoolingTroopEligible(p,beacon.faction)) continue;
+    if(reservedTargets.has(p.id)) continue;
+    const d=dist2(beacon.x,beacon.y,p.x,p.y);
+    if(d>rr) continue;
+    // Prioritize nearby troops, then the one with the most cooldown left.
+    const remaining=Math.max(0,(p.cooldownUntil||0)-now());
+    const score=d - Math.min(4,remaining)*.035;
+    if(score<bestScore){ best=p; bestScore=score; }
+  }
+  return best;
+}
+function updateSolarBeaconChannels(dt,applyEffect=false){
+  solarChannelLinks=[];
+  const reserved=new Set();
+  const tNow=now();
+  let changed=false;
+  for(const f of factions){
+    if(!f || !f.alive || f.id!=='sunspire') continue;
+    const beacons=liveBuildings(f.idx,'sunspirebeacon');
+    for(const b of beacons){
+      const target=nearestSolarBeaconChannelTarget(b,reserved);
+      b.solarPulse=(b.solarPulse||0)+dt;
+      if(target){
+        reserved.add(target.id);
+        b.solarTargetId=target.id;
+        b.solarTargetSince=b.solarTargetSince || tNow;
+        target.solarBoostUntil=tNow+.30;
+        target.solarBoostedBy=b.id;
+        solarChannelLinks.push({beacon:b,target,age:tNow-(b.solarTargetSince||tNow)});
+        if(applyEffect && target.cooldownUntil && target.cooldownUntil>tNow){
+          const before=target.cooldownUntil;
+          target.cooldownUntil=Math.max(tNow, target.cooldownUntil - dt*SUNSPIRE_BEACON_COOLDOWN_BOOST);
+          if(target.cooldownUntil !== before){
+            changed=true;
+            if(target.cooldownUntil<=tNow+.02){
+              target.cooldownUntil=tNow;
+              target.solarBoostUntil=tNow+.55;
+              target.flash=Math.max(target.flash||0,.75);
+              floating(target.x,target.y,'SOLAR READY', factions[target.faction]?.color || '#ffe7bc');
+            }
+          }
+        }
+      } else {
+        b.solarTargetId=0;
+        b.solarTargetSince=0;
+      }
+    }
+  }
+  if(changed && (isController || !lobbyId) && tNow-lastSolarChannelStateMark>.45){
+    lastSolarChannelStateMark=tNow;
+    markStateDirty();
+  }
 }
 function shadowMirrorTeleportTypes(){
   return new Set(['shadowstepper','nightblade','wraith','voidstrider']);
@@ -3598,6 +3664,7 @@ function updatePiecePanel(){
   const cd=cooldownProgress(p);
   const shrineNames=localShrineNamesForPiece(p);
   const shrineLine=shrineNames.length ? `<p style="color:#fff3b0">Local shrine: ${shrineNames.join(', ')}</p>` : '';
+  const solarLine=(p.solarBoostUntil && now()<p.solarBoostUntil) ? `<p style="color:#ffe7bc">Solar Beacon channel: cooldown speeding up 50%.</p>` : '';
   piecePanel.style.display='block';
   piecePanel.innerHTML=`
     <h3 style="color:${f.color}">${def.icon} ${def.name} <span style="font-size:12px;color:#cbd5e1">Lv ${p.level}</span></h3>
@@ -3605,6 +3672,7 @@ function updatePiecePanel(){
     <div class="bar"><div class="fill" style="width:${(cd*100).toFixed(0)}%"></div></div>
     <p>${cooldownReady(p)?'Ready to move.':'Cooldown '+Math.ceil((1-cd)*cooldownFor(p))+'s remaining.'}</p>
     ${shrineLine}
+    ${solarLine}
     <p>${def.desc}</p>
     <button id="panelCenter">Center on piece</button>`;
   const btn=document.getElementById('panelCenter');
@@ -3633,6 +3701,7 @@ function gameTick(dt){
   if(!gameStarted || paused) return;
   tickTime += dt;
   for(const t of normalizeBoard()){ t.glow = Math.max(0,t.glow-dt*.7); }
+  updateSolarBeaconChannels(dt, isController || !lobbyId);
   for(const p of pieces){
     if(!p.alive) continue;
     const pred = p.predictedMove;
@@ -3770,6 +3839,10 @@ function updateBuildingRules(f,dt){
       else if(b.type==='radiantmonastery') b.nextBuildingTick=tNow+60;
       else if(b.type==='sledyard') b.nextBuildingTick=tNow+80;
       else b.nextBuildingTick=tNow + 2 + seededNoise(b.id,7,5200)*4;
+    }
+    if(b.type==='sunspirebeacon'){
+      claimRadius(f.idx,b.x,b.y,1,'sunspire_sanctified',0,(t)=>terrainOf(t).pass);
+      continue;
     }
     if(b.type==='royalbannerhall'){
       claimRadius(f.idx,b.x,b.y,3,'command',0,(t)=>terrainOf(t).pass);
@@ -4167,6 +4240,7 @@ function draw(){
   drawShadowFog();
   drawHighlights();
   drawPieces();
+  drawSolarBeaconChannels();
   drawParticlesWorld();
   ctx.restore();
   drawScreenEffects();
@@ -4498,6 +4572,65 @@ function drawFactionInsignia(f,p,r){
   }
   ctx.restore();
 }
+function pieceWorldCenter(p){
+  return {x:((p.px ?? p.x)+.5)*BASE_CELL, y:((p.py ?? p.y)+.5)*BASE_CELL};
+}
+function drawSolarBeaconChannels(){
+  const t=now();
+  if(!solarChannelLinks.length) return;
+  ctx.save();
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  for(const link of solarChannelLinks){
+    const b=link.beacon, target=link.target;
+    if(!b || !target || !b.alive || !target.alive) continue;
+    if(isShadowFoggedForPlayer(b.x,b.y,PLAYER) || isShadowFoggedForPlayer(target.x,target.y,PLAYER)) continue;
+    const a=pieceWorldCenter(b);
+    const c=pieceWorldCenter(target);
+    const dx=c.x-a.x, dy=c.y-a.y;
+    const len=Math.max(1,Math.hypot(dx,dy));
+    const nx=-dy/len, ny=dx/len;
+    const phase=t*6.2 + b.id*.37;
+    const pulse=.55+.45*Math.sin(phase);
+    const grad=ctx.createLinearGradient(a.x,a.y,c.x,c.y);
+    grad.addColorStop(0,'rgba(255,242,164,.18)');
+    grad.addColorStop(.46,'rgba(255,217,99,.92)');
+    grad.addColorStop(1,'rgba(255,255,238,.24)');
+    ctx.globalAlpha=.35+.2*pulse;
+    ctx.strokeStyle='rgba(255,226,116,.42)';
+    ctx.lineWidth=14+4*pulse;
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(c.x,c.y); ctx.stroke();
+    ctx.globalAlpha=.95;
+    ctx.strokeStyle=grad;
+    ctx.lineWidth=3.2;
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(c.x,c.y); ctx.stroke();
+    for(let strand=0; strand<3; strand++){
+      ctx.beginPath();
+      const strandPhase=phase+strand*Math.PI*2/3;
+      for(let i=0;i<=30;i++){
+        const u=i/30;
+        const wob=Math.sin(u*Math.PI*8+strandPhase)*BASE_CELL*.105*(.75+.25*Math.sin(phase+u*5));
+        const twist=Math.cos(u*Math.PI*8+strandPhase)*BASE_CELL*.026;
+        const x=lerp(a.x,c.x,u)+nx*wob+dx/len*twist;
+        const y=lerp(a.y,c.y,u)+ny*wob+dy/len*twist;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.globalAlpha=.38;
+      ctx.strokeStyle=strand===1?'rgba(255,255,255,.72)':'rgba(255,191,73,.72)';
+      ctx.lineWidth=strand===1?1.5:2.1;
+      ctx.stroke();
+    }
+    ctx.globalAlpha=.68+.22*pulse;
+    ctx.strokeStyle='rgba(255,245,182,.9)';
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(c.x,c.y,BASE_CELL*(.36+.06*pulse),0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=.22;
+    ctx.fillStyle='rgba(255,215,90,.8)';
+    ctx.beginPath(); ctx.arc(c.x,c.y,BASE_CELL*(.55+.12*pulse),0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalAlpha=1;
+}
 function drawPieces(){
   const visible = pieces.filter(p=>p.alive && (p.faction===PLAYER || !isShadowFoggedForPlayer(p.x,p.y,PLAYER))).sort((a,b)=>a.y-b.y || (pieceDefs[a.type].value||1)-(pieceDefs[b.type].value||1));
   const labelIds = computeNameLabelPieceIds(visible);
@@ -4549,6 +4682,14 @@ function drawPieces(){
       ctx.lineWidth=2;
       const prog=remain>0 ? clamp(1-remain/CINDER_ARCHON_DEN_COOLDOWN,0,1) : 1;
       ctx.beginPath(); ctx.arc(0,0,r+13,-Math.PI/2,-Math.PI/2+Math.PI*2*prog); ctx.stroke();
+    }
+    if(p.solarBoostUntil && now()<p.solarBoostUntil){
+      const pulse=.55+.45*Math.sin(now()*11+p.id);
+      ctx.globalAlpha=.45+.28*pulse;
+      ctx.strokeStyle='rgba(255,232,122,.95)';
+      ctx.lineWidth=2.4;
+      ctx.beginPath(); ctx.arc(0,0,r+16+3*pulse,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=1;
     }
     if(f.duplicateFaction){
       ctx.globalAlpha=.9; ctx.strokeStyle=f.outline || '#fff'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,r+14,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1;
@@ -4887,6 +5028,3 @@ bootMultiplayer();
 </script>
 </body>
 </html>
-
-
-
