@@ -331,6 +331,8 @@ const FULL_SNAPSHOT_SECONDS = 12;
 const COMMAND_FLUSH_DELAY_MS = 160;
 const LAND_SYNC_SECONDS = 2.0;
 const LAND_PATCH_FULL_THRESHOLD = .82;
+const WATER_BODY_SIZE_MULT = .75; // Shrinks each generated water body roughly 25% in width/height.
+const REMOTE_SMOOTH_MAX_STEP = .46; // Caps visual correction per frame so remote pieces do not snap backward/forward on sync.
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -876,6 +878,28 @@ async function loadFullStateRepair(reason='repair'){
   }catch(e){ console.warn(`${reason} full-state load failed`, e); }
   return false;
 }
+function finiteCoord(value, fallback){
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+function remoteVisualStart(old, nextX, nextY, moved){
+  if(!old) return {px:nextX, py:nextY};
+  // Important for multiplayer smoothness: keep the piece's current drawn position, not the old grid square.
+  // Otherwise every authoritative update can rewind second/third/fourth player pieces before they glide forward again.
+  const currentPx = finiteCoord(old.px, old.x);
+  const currentPy = finiteCoord(old.py, old.y);
+  if(!moved) return {px:currentPx, py:currentPy};
+  const dx = Math.abs(currentPx - nextX);
+  const dy = Math.abs(currentPy - nextY);
+  if(dx > BOARD_W * .75 || dy > BOARD_H * .75) return {px:nextX, py:nextY};
+  return {px:currentPx, py:currentPy};
+}
+function remoteSmoothAmount(p, dt){
+  if(!(p.moveStartMs && p.moveEndMs && p.moveEndMs > p.moveStartMs)) return Math.min(1, dt * 7.5);
+  const remaining = Math.max(0, (p.moveEndMs - Date.now()) / 1000);
+  if(remaining <= 0) return Math.min(1, dt * 8.5);
+  return clamp(dt / Math.max(dt, remaining), .04, REMOTE_SMOOTH_MAX_STEP);
+}
 function applyRemoteState(data){
   if(!data) return;
   applySharedBoardSize(data);
@@ -935,10 +959,13 @@ function applyRemoteState(data){
     const useX = pp.x;
     const useY = pp.y;
     const moved = old && (old.x !== useX || old.y !== useY);
+    const visual = remoteVisualStart(old, useX, useY, moved);
     const keepPrediction = old && old.predictedMove && pendingPlayerActions.some(a => a.actionId === old.predictedMove.actionId);
+    const confirmedOwnPrediction = old && old.predictedMove && pp.aid && old.predictedMove.actionId === pp.aid;
     return {
       id:pp.i, faction:pp.f, type:pp.t, x:useX, y:useY,
-      px: moved ? old.x : (old ? old.px : useX), py: moved ? old.y : (old ? old.py : useY),
+      px: confirmedOwnPrediction ? finiteCoord(old.px, old.predictedMove.toX) : visual.px,
+      py: confirmedOwnPrediction ? finiteCoord(old.py, old.predictedMove.toY) : visual.py,
       targetX:useX, targetY:useY,
       predictedMove: keepPrediction ? old.predictedMove : null,
       lastMove: old && old.x===useX && old.y===useY ? old.lastMove : now(), hp:pp.hp || 1, maxHp:pp.mh || pp.hp || 1,
@@ -2130,7 +2157,7 @@ function addWaterBodies(){
   const starts = getStartPositions();
   const safeFromStarts = (x,y,r=8) => starts.every(s=>dist2(x,y,s.x,s.y)>r*r);
   const areaScale = (BOARD_W * BOARD_H) / (DEFAULT_BOARD_W * DEFAULT_BOARD_H);
-  // Fewer lakes, but each one is larger and more readable. This avoids noisy puddles while still creating real water bodies.
+  // Fewer readable lakes, now with each body pulled back about 25% so water does not dominate compact maps.
   const bodies = Math.max(3, Math.round((7 + Math.floor(seededNoise(seed,29,1190)*4)) * areaScale));
   for(let i=0;i<bodies;i++){
     let cx = 6 + Math.floor(seededNoise(i,2,1201 + seed)*(BOARD_W-12));
@@ -2140,8 +2167,8 @@ function addWaterBodies(){
       cy = clamp(cy + (cy<BOARD_H/2?9:-9),6,BOARD_H-7);
     }
     const sizeBoost = 1.62 + seededNoise(i,31,1206 + seed)*.28;
-    const rx = (2.25 + seededNoise(i,11,1203 + seed)*4.8) * sizeBoost;
-    const ry = (2.10 + seededNoise(i,17,1204 + seed)*4.4) * sizeBoost;
+    const rx = (2.25 + seededNoise(i,11,1203 + seed)*4.8) * sizeBoost * WATER_BODY_SIZE_MULT;
+    const ry = (2.10 + seededNoise(i,17,1204 + seed)*4.4) * sizeBoost * WATER_BODY_SIZE_MULT;
     const pond = seededNoise(i,23,1205 + seed)<.38;
     const shrink = pond ? .82 : 1;
     for(let y=Math.floor(cy-ry*1.65); y<=Math.ceil(cy+ry*1.65); y++){
@@ -4170,10 +4197,11 @@ function gameTick(dt){
       p.predictedMove = null;
       p.px = lerp(p.px,p.x,Math.min(1,dt*7.5));
       p.py = lerp(p.py,p.y,Math.min(1,dt*7.5));
-    } else if(p.moveStartMs && p.moveEndMs && p.moveEndMs > p.moveStartMs && Date.now() < p.moveEndMs){
-      const u = clamp((Date.now() - p.moveStartMs) / (p.moveEndMs - p.moveStartMs), 0, 1);
-      p.px = lerp(p.px,p.x,Math.max(u, Math.min(1,dt*5)));
-      p.py = lerp(p.py,p.y,Math.max(u, Math.min(1,dt*5)));
+    } else if(p.moveStartMs && p.moveEndMs && p.moveEndMs > p.moveStartMs){
+      const s = remoteSmoothAmount(p, dt);
+      p.px = lerp(p.px,p.x,s);
+      p.py = lerp(p.py,p.y,s);
+      if(Math.abs(p.px-p.x)<.015 && Math.abs(p.py-p.y)<.015){ p.px=p.x; p.py=p.y; }
     } else {
       p.px = lerp(p.px,p.x,Math.min(1,dt*7.5));
       p.py = lerp(p.py,p.y,Math.min(1,dt*7.5));
