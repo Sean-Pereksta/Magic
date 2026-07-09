@@ -291,12 +291,14 @@ let localWritePendingUntil = 0;
 let pendingPlayerActions = [];
 let clientActionSeq = 1;
 let clientPieceSeq = 1;
-const PENDING_ACTION_TTL_SECONDS = .85;
-const PENDING_ACTION_GRACE_SECONDS = .8;
-const COMMAND_MAX_AGE_MS = 1200;
-const CONTROLLER_STATE_WRITE_SECONDS = .72;
-const FULL_SNAPSHOT_SECONDS = 7;
-const COMMAND_FLUSH_DELAY_MS = 95;
+const PENDING_ACTION_TTL_SECONDS = 4.0;
+const PENDING_ACTION_GRACE_SECONDS = 2.0;
+const COMMAND_MAX_AGE_MS = 6000;
+const CONTROLLER_STATE_WRITE_SECONDS = 1.35;
+const FULL_SNAPSHOT_SECONDS = 12;
+const COMMAND_FLUSH_DELAY_MS = 160;
+const LAND_SYNC_SECONDS = 2.0;
+const LAND_PATCH_FULL_THRESHOLD = .82;
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -332,6 +334,7 @@ let heartbeatTimer = null;
 let controllerTimer = null;
 let commandUnsub = null;
 let controllerFlushTimer = null;
+let commandAckUnsubs = new Map();
 const processedCommandIds = new Set();
 let localStateVersion = 0;
 let stateDirty = false;
@@ -342,6 +345,8 @@ let lastAuthoritativePieces = new Map();
 let lastAuthoritativeOwners = '';
 let lastAuthoritativeKinds = '';
 let lastAuthoritativeWalls = '';
+let landDirty = false;
+let lastLandSync = 0;
 let writingState = false;
 let applyingRemote = false;
 let isController = false;
@@ -360,6 +365,7 @@ function isAIName(name){ return /^AI Warlord /.test(String(name || '')); }
 function isHumanSlot(idx){ return !!slotNames[idx] && !isAIName(slotNames[idx]); }
 function displayNameForFaction(idx){ return slotNames[idx] || (factions[idx]?.short) || `Player ${idx+1}`; }
 function markStateDirty(){ if(gameStarted && !applyingRemote) stateDirty = true; }
+function markLandDirty(){ if(gameStarted && !applyingRemote){ landDirty = true; stateDirty = true; } }
 function clampAiCount(v){
   return clamp(Math.round(Number(v) || 0), 0, 2);
 }
@@ -369,12 +375,13 @@ function clampSoloAiCount(v){
 selectedSoloAiCount = clampSoloAiCount(localStorage.getItem('cw.lastSoloAiCount') || selectedSoloAiCount);
 function mapSizeForSlots(totalSlots){
   const n = clamp(Math.round(Number(totalSlots) || 2), 2, MAX_ONLINE_PLAYERS);
-  if(n <= 2) return {w:56, h:36, label:'duel'};
-  if(n === 3) return {w:62, h:54, label:'triangle'};
-  if(n === 4) return {w:66, h:56, label:'four-way'};
-  if(n === 5) return {w:72, h:62, label:'five-way'};
-  if(n === 6) return {w:78, h:66, label:'wide'};
-  return {w:84, h:72, label:'grand'};
+  // About 40% smaller than the prior multiplayer maps so factions meet faster and the host tracks fewer tiles.
+  if(n <= 2) return {w:34, h:22, label:'duel'};
+  if(n === 3) return {w:37, h:32, label:'triangle'};
+  if(n === 4) return {w:40, h:34, label:'four-way'};
+  if(n === 5) return {w:43, h:37, label:'five-way'};
+  if(n === 6) return {w:47, h:40, label:'wide'};
+  return {w:50, h:43, label:'grand'};
 }
 function multiplayerMapSizeFor(totalSlots){
   return mapSizeForSlots(totalSlots);
@@ -391,7 +398,7 @@ function configureBoardSizeForSlots(totalSlots){
 function applySharedBoardSize(data){
   const w = Number(data?.boardW || data?.mapW || 0);
   const h = Number(data?.boardH || data?.mapH || 0);
-  if(w >= 32 && h >= 32 && (w !== BOARD_W || h !== BOARD_H)){
+  if(w >= 20 && h >= 20 && (w !== BOARD_W || h !== BOARD_H)){
     BOARD_W = Math.round(w);
     BOARD_H = Math.round(h);
     board = [];
@@ -531,14 +538,20 @@ function buildSelfContainedState(reason='fullRepair'){
 }
 function serializeState(reason='sync', forceFull=false){
   recalcOwnerCounts();
-  const owners = compressOwners();
-  const kinds = compressCaptureKinds();
-  const walls = compressWalls();
   const livePieces = buildFullPieces();
   const liveMap = new Map(livePieces.map(pp=>[pp.i,pp]));
   const pieceDeltas = [];
   const removedPieceIds = [];
   const fullSnapshot = forceFull || !lastAuthoritativeOwners || (now() - lastFullSnapshotWrite) >= FULL_SNAPSHOT_SECONDS;
+  const landDue = fullSnapshot || !lastAuthoritativeOwners || !lastAuthoritativeKinds || !lastAuthoritativeWalls || (landDirty && (now() - lastLandSync) >= LAND_SYNC_SECONDS);
+  let owners = lastAuthoritativeOwners;
+  let kinds = lastAuthoritativeKinds;
+  let walls = lastAuthoritativeWalls;
+  if(landDue){
+    owners = compressOwners();
+    kinds = compressCaptureKinds();
+    walls = compressWalls();
+  }
   if(!fullSnapshot){
     for(const pp of livePieces){
       const old = lastAuthoritativePieces.get(pp.i);
@@ -554,6 +567,8 @@ function serializeState(reason='sync', forceFull=false){
     updatedBy: username || 'unknown',
     reason,
     fullSnapshot,
+    landIncluded: landDue,
+    landDeferred: !!(landDirty && !landDue),
     mapSeed,
     boardW: BOARD_W,
     boardH: BOARD_H,
@@ -566,15 +581,26 @@ function serializeState(reason='sync', forceFull=false){
     factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
     winner: winnerName() || ''
   };
+  const includeLandPatch = (prev, next, patchField, fullField) => {
+    const patches = diffLandString(prev, next);
+    const patchCost = JSON.stringify(patches).length;
+    if(!prev || prev.length !== next.length || patchCost > next.length * LAND_PATCH_FULL_THRESHOLD){
+      payload[fullField] = next;
+    } else if(patches.length){
+      payload[patchField] = patches;
+    }
+  };
   if(fullSnapshot){
     payload.boardOwners = owners;
     payload.boardKinds = kinds;
     payload.boardWalls = walls;
     payload.pieces = livePieces;
   } else {
-    payload.ownerPatches = diffLandString(lastAuthoritativeOwners, owners);
-    payload.kindPatches = diffLandString(lastAuthoritativeKinds, kinds);
-    payload.wallPatches = diffLandString(lastAuthoritativeWalls, walls);
+    if(landDue){
+      includeLandPatch(lastAuthoritativeOwners, owners, 'ownerPatches', 'boardOwners');
+      includeLandPatch(lastAuthoritativeKinds, kinds, 'kindPatches', 'boardKinds');
+      includeLandPatch(lastAuthoritativeWalls, walls, 'wallPatches', 'boardWalls');
+    }
     payload.pieceDeltas = pieceDeltas;
     payload.removedPieceIds = removedPieceIds;
   }
@@ -613,12 +639,13 @@ function applyRemoteState(data){
   }
   const incomingVersion = Number(data.version || 0);
   if(incomingVersion && incomingVersion < localStateVersion && data.updatedBy !== username) return;
+  const hasLandPayload = !!(data.boardOwners || data.boardKinds || data.boardWalls || Array.isArray(data.ownerPatches) || Array.isArray(data.kindPatches) || Array.isArray(data.wallPatches));
   const baseOwners = data.boardOwners || (lastAuthoritativeData && lastAuthoritativeData.boardOwners) || lastAuthoritativeOwners;
   const baseKinds = data.boardKinds || (lastAuthoritativeData && lastAuthoritativeData.boardKinds) || lastAuthoritativeKinds;
   const baseWalls = data.boardWalls || (lastAuthoritativeData && lastAuthoritativeData.boardWalls) || lastAuthoritativeWalls;
-  const mergedOwners = data.boardOwners ? data.boardOwners : applyStringPatches(baseOwners, data.ownerPatches);
-  const mergedKinds = data.boardKinds ? data.boardKinds : applyStringPatches(baseKinds, data.kindPatches);
-  const mergedWalls = data.boardWalls ? data.boardWalls : applyStringPatches(baseWalls, data.wallPatches);
+  const mergedOwners = hasLandPayload ? (data.boardOwners ? data.boardOwners : applyStringPatches(baseOwners, data.ownerPatches)) : baseOwners;
+  const mergedKinds = hasLandPayload ? (data.boardKinds ? data.boardKinds : applyStringPatches(baseKinds, data.kindPatches)) : baseKinds;
+  const mergedWalls = hasLandPayload ? (data.boardWalls ? data.boardWalls : applyStringPatches(baseWalls, data.wallPatches)) : baseWalls;
   const mergedData = {...data, pieces:remotePieces, boardOwners:mergedOwners, boardKinds:mergedKinds, boardWalls:mergedWalls};
   if(data.mapSeed && data.mapSeed !== mapSeed){
     mapSeed = data.mapSeed;
@@ -645,21 +672,23 @@ function applyRemoteState(data){
   }
   if(!board.length) generateBoard();
   if(!factions.length) setupFactions();
-  applyOwners(mergedOwners);
-  applyCaptureKinds(mergedKinds);
-  applyWalls(mergedWalls);
+  if(hasLandPayload){
+    applyOwners(mergedOwners);
+    applyCaptureKinds(mergedKinds);
+    applyWalls(mergedWalls);
+  }
   const oldMap = new Map(pieces.map(p=>[p.id,p]));
-  const tNow = now();
   pieces = remotePieces.map(pp => {
     const old = oldMap.get(pp.i);
-    const pendingMove = pendingPlayerActions.find(a => a.kind==='move' && a.pieceId===pp.i && tNow < a.visualUntil && pp.x===a.fromX && pp.y===a.fromY && old && old.x===a.toX && old.y===a.toY);
-    const useX = pendingMove ? old.x : pp.x;
-    const useY = pendingMove ? old.y : pp.y;
+    const useX = pp.x;
+    const useY = pp.y;
     const moved = old && (old.x !== useX || old.y !== useY);
+    const keepPrediction = old && old.predictedMove && pendingPlayerActions.some(a => a.actionId === old.predictedMove.actionId);
     return {
       id:pp.i, faction:pp.f, type:pp.t, x:useX, y:useY,
       px: moved ? old.x : (old ? old.px : useX), py: moved ? old.y : (old ? old.py : useY),
       targetX:useX, targetY:useY,
+      predictedMove: keepPrediction ? old.predictedMove : null,
       lastMove: old && old.x===useX && old.y===useY ? old.lastMove : now(), hp:pp.hp || 1, maxHp:pp.mh || pp.hp || 1,
       captures:pp.c || 0, level:pp.lv || 1, alive:true, born:old ? old.born : now(),
       stationarySince: old && old.x===useX && old.y===useY ? (old.stationarySince || now()) : now(),
@@ -750,6 +779,8 @@ function pruneConfirmedPendingActions(remoteData){
   });
 }
 function rollbackToAuthoritative(message='Command was not accepted — refreshed from host state.'){
+  for(const p of pieces){ if(p.predictedMove) p.predictedMove = null; }
+  for(const [actionId] of commandAckUnsubs) stopCommandAckWatch(actionId);
   pendingPlayerActions = [];
   if(lastAuthoritativeData){
     toast(message, 2200);
@@ -764,6 +795,9 @@ function expirePendingPlayerActions(){
   const expired = pendingPlayerActions.filter(action => t > action.expiresAt);
   if(!expired.length) return;
   pendingPlayerActions = pendingPlayerActions.filter(action => t <= action.expiresAt);
+  const activeActionIds = new Set(pendingPlayerActions.map(a=>a.actionId));
+  for(const p of pieces){ if(p.predictedMove && !activeActionIds.has(p.predictedMove.actionId)) p.predictedMove = null; }
+  for(const action of expired) stopCommandAckWatch(action.actionId);
   if(!isController && lastAuthoritativeData){
     toast('Sync delayed — refreshing from authoritative state.', 2200);
     const restore = lastAuthoritativeData;
@@ -791,14 +825,19 @@ async function writeStateNow(reason='sync'){
       await setDoc(fullStateRef, fullPayload, {merge:false});
     }
     localStateVersion = Math.max(localStateVersion || 0, payload.version);
-    stateDirty = false;
     localWritePendingUntil = 0;
     lastStateWrite = now();
-    lastAuthoritativeData = {...payload, pieces:buildFullPieces(), boardOwners:compressOwners(), boardKinds:compressCaptureKinds(), boardWalls:compressWalls()};
+    const landSent = payload.fullSnapshot || payload.landIncluded || payload.boardOwners || payload.boardKinds || payload.boardWalls || payload.ownerPatches || payload.kindPatches || payload.wallPatches;
+    if(landSent){
+      lastAuthoritativeOwners = compressOwners();
+      lastAuthoritativeKinds = compressCaptureKinds();
+      lastAuthoritativeWalls = compressWalls();
+      lastLandSync = lastStateWrite;
+      landDirty = false;
+    }
+    stateDirty = !!payload.landDeferred;
+    lastAuthoritativeData = {...payload, pieces:buildFullPieces(), boardOwners:lastAuthoritativeOwners, boardKinds:lastAuthoritativeKinds, boardWalls:lastAuthoritativeWalls};
     lastAuthoritativePieces = new Map(lastAuthoritativeData.pieces.map(pp=>[pp.i,{...pp}]));
-    lastAuthoritativeOwners = lastAuthoritativeData.boardOwners;
-    lastAuthoritativeKinds = lastAuthoritativeData.boardKinds;
-    lastAuthoritativeWalls = lastAuthoritativeData.boardWalls;
     if(payload.fullSnapshot) lastFullSnapshotWrite = lastStateWrite;
   }catch(e){
     console.warn('state write failed', e);
@@ -825,6 +864,7 @@ function queueReliableStateWrite(reason='playerAction'){
 function maybeWriteControllerState(){
   if(!isController || writingState) return;
   if((now() - lastFullSnapshotWrite) >= FULL_SNAPSHOT_SECONDS) stateDirty = true;
+  if(landDirty && (now() - lastLandSync) >= LAND_SYNC_SECONDS) stateDirty = true;
   if(!stateDirty) return;
   if(now() - lastStateWrite < CONTROLLER_STATE_WRITE_SECONDS) return;
   writeStateNow('controllerTick');
@@ -834,25 +874,31 @@ function authoritativeSlotFromCommand(cmd){
   return Number.isFinite(n) ? clamp(n,0,MAX_ONLINE_PLAYERS-1) : -1;
 }
 function moveCommandReady(piece){
-  return cooldownReady(piece) || (now() - piece.lastMove) >= cooldownFor(piece) - .25;
+  if(piece.cooldownUntil) return now() + .85 >= piece.cooldownUntil;
+  return cooldownReady(piece) || (now() - piece.lastMove) >= cooldownFor(piece) - .85;
 }
+function commandAccept(reason='applied'){ return {ok:true, reason}; }
+function commandReject(reason='rejected'){ return {ok:false, reason}; }
 function applyIncomingCommand(cmd){
-  if(cmd.actionId && processedCommandIds.has(`action:${cmd.actionId}`)) return true;
+  if(cmd.actionId && processedCommandIds.has(`action:${cmd.actionId}`)) return commandAccept('duplicate_action');
   const baseVersion = Number(cmd.baseStateVersion || 0);
-  if(baseVersion && baseVersion > (localStateVersion || 0) + 1) return false;
+  if(baseVersion && baseVersion > (localStateVersion || 0) + 5) return commandReject('client_too_far_ahead');
   const slot = authoritativeSlotFromCommand(cmd);
-  if(slot < 0 || !factions[slot] || factions[slot].alive === false) return false;
+  if(slot < 0 || !factions[slot] || factions[slot].alive === false) return commandReject('faction_not_alive');
   if(cmd.kind === 'move'){
     const live = getPiece(Number(cmd.pieceId));
-    if(!live || live.faction !== slot || !live.alive) return false;
+    if(!live || live.faction !== slot || !live.alive) return commandReject('piece_missing');
     const toX = Number(cmd.toX), toY = Number(cmd.toY);
-    const fromX = Number(cmd.fromX), fromY = Number(cmd.fromY);
-    if(!inBounds(toX,toY)) return false;
-    if(live.x === toX && live.y === toY) return true;
-    if(Number.isFinite(fromX) && Number.isFinite(fromY) && (live.x !== fromX || live.y !== fromY)) return false;
-    if(!moveCommandReady(live)) return false;
+    if(!inBounds(toX,toY)) return commandReject('target_out_of_bounds');
+    if(live.x === toX && live.y === toY){
+      processedCommandIds.add(`action:${cmd.actionId || ''}`);
+      live.clientActionId = cmd.actionId || live.clientActionId || '';
+      live.clientActionBy = cmd.by || live.clientActionBy || '';
+      return commandAccept('already_at_target');
+    }
+    if(!moveCommandReady(live)) return commandReject('piece_not_ready');
     const legal = getLegalMoves(live,true).some(m=>m.x===toX && m.y===toY);
-    if(!legal) return false;
+    if(!legal) return commandReject('illegal_from_host_position');
     const ok = movePiece(live,toX,toY,'command');
     if(ok){
       processedCommandIds.add(`action:${cmd.actionId || ''}`);
@@ -862,33 +908,35 @@ function applyIncomingCommand(cmd){
       live.moveEndMs = (end > start && end - start < 2200) ? live.moveStartMs + (end - start) : live.moveStartMs + moveVisualDurationFor(live);
       live.clientActionId = cmd.actionId || '';
       live.clientActionBy = cmd.by || '';
+      return commandAccept('move_applied');
     }
-    return ok;
+    return commandReject('move_failed');
   }
   if(cmd.kind === 'spawn'){
     const f = factions[slot];
     const type = String(cmd.type || '');
     const x = Number(cmd.x), y = Number(cmd.y);
-    if(!f.pieces.includes(type) || type === 'king') return false;
-    if(!inBounds(x,y) || findPieceAt(x,y)) return false;
-    if((f.spawnMeter || 0) < 99.2) return false;
-    if(!eligibleSpawnTiles(slot,type).some(t=>t.x===x && t.y===y)) return false;
+    if(!f.pieces.includes(type) || type === 'king') return commandReject('bad_spawn_type');
+    if(!inBounds(x,y) || findPieceAt(x,y)) return commandReject('spawn_tile_blocked');
+    if((f.spawnMeter || 0) < 99.2) return commandReject('spawn_meter_not_ready');
+    if(!eligibleSpawnTiles(slot,type).some(t=>t.x===x && t.y===y)) return commandReject('spawn_tile_not_eligible');
     const pieceId = Number(cmd.pieceId) || allocateClientPieceId();
-    if(getPiece(pieceId) || pieces.find(p=>p.alive && p.clientActionId === cmd.actionId)) return true;
+    if(getPiece(pieceId) || pieces.find(p=>p.alive && p.clientActionId === cmd.actionId)) return commandAccept('spawn_already_present');
     processedCommandIds.add(`action:${cmd.actionId || ''}`);
     newPiece(slot,type,x,y,{ready:false,id:pieceId,clientActionId:cmd.actionId || '',clientActionBy:cmd.by || ''});
     f.spawnMeter = 0;
     f.spawnChoices = chooseSpawnOptions(slot);
     burst(x,y,f.color,16);
-    return true;
+    return commandAccept('spawn_applied');
   }
-  return false;
+  return commandReject('unknown_command');
 }
-async function finishCommandDoc(docId, ok){
+async function finishCommandDoc(docId, ok, reason='processed'){
   try{
-    await deleteDoc(commandDocRef(docId));
+    await updateDoc(commandDocRef(docId), {status:ok?'applied':'rejected', rejectReason:reason, processedAtMs:Date.now(), hostStateVersion:localStateVersion || 0, controller:username || ''});
+    setTimeout(()=>{ deleteDoc(commandDocRef(docId)).catch(()=>{}); }, 18000);
   }catch(e){
-    try{ await updateDoc(commandDocRef(docId), {status:ok?'applied':'rejected', processedAtMs:Date.now(), controller:username || ''}); }catch(_e){}
+    try{ await setDoc(commandDocRef(docId), {status:ok?'applied':'rejected', rejectReason:reason, processedAtMs:Date.now(), hostStateVersion:localStateVersion || 0, controller:username || ''}, {merge:true}); }catch(_e){}
   }
 }
 function processCommandDoc(docId, cmd){
@@ -898,11 +946,13 @@ function processCommandDoc(docId, cmd){
   processedCommandIds.add(docId);
   const createdAtMs = Number(cmd.createdAtMs || 0);
   if(createdAtMs && Date.now() - createdAtMs > COMMAND_MAX_AGE_MS){
-    finishCommandDoc(docId,false);
+    finishCommandDoc(docId,false,'command_too_old');
     return;
   }
-  const ok = applyIncomingCommand(cmd);
-  finishCommandDoc(docId,ok);
+  const result = applyIncomingCommand(cmd);
+  const ok = result === true || !!(result && result.ok);
+  const reason = result && result.reason ? result.reason : (ok ? 'applied' : 'rejected');
+  finishCommandDoc(docId,ok,reason);
   if(ok){
     scheduleControllerStateWrite('playerCommand', COMMAND_FLUSH_DELAY_MS);
   }
@@ -929,6 +979,36 @@ function stopCommandWatch(){
 function manageCommandWatch(){
   if(isController) startCommandWatch(); else stopCommandWatch();
 }
+function stopCommandAckWatch(actionId){
+  const unsub = commandAckUnsubs.get(actionId);
+  if(unsub){ try{ unsub(); }catch(e){} }
+  commandAckUnsubs.delete(actionId);
+}
+function startCommandAckWatch(action){
+  if(!lobbyId || isController || !action?.actionId || commandAckUnsubs.has(action.actionId)) return;
+  try{
+    const unsub = onSnapshot(commandDocRef(action.actionId), snap=>{
+      if(!snap.exists()) return;
+      const data = snap.data() || {};
+      if(data.status === 'applied'){
+        const pending = pendingPlayerActions.find(a=>a.actionId===action.actionId);
+        if(pending){
+          pending.hostAccepted = true;
+          pending.expiresAt = Math.max(pending.expiresAt, now() + 2.5);
+          pending.visualUntil = Math.max(pending.visualUntil, now() + 1.5);
+        }
+        setNetwork(`${username || 'Player'} · command confirmed`);
+        stopCommandAckWatch(action.actionId);
+      } else if(data.status === 'rejected'){
+        stopCommandAckWatch(action.actionId);
+        pendingPlayerActions = pendingPlayerActions.filter(a=>a.actionId!==action.actionId);
+        for(const p of pieces){ if(p.predictedMove?.actionId === action.actionId) p.predictedMove = null; }
+        rollbackToAuthoritative(`Command rejected: ${data.rejectReason || 'host state changed'}.`);
+      }
+    });
+    commandAckUnsubs.set(action.actionId, unsub);
+  }catch(e){ console.warn('command ack watch failed', e); }
+}
 async function submitPlayerCommand(action){
   if(!lobbyId || isController) return true;
   const payload = {
@@ -944,6 +1024,7 @@ async function submitPlayerCommand(action){
   };
   try{
     await setDoc(commandDocRef(action.actionId), payload, {merge:false});
+    startCommandAckWatch(action);
     setNetwork(`${username || 'Player'} · command sent`);
     return true;
   }catch(e){
@@ -959,18 +1040,20 @@ function predictLocalMove(piece,x,y,action){
   if(!(lobbyId && !isController)) return movePiece(piece,x,y,'player');
   if(findPieceAt(x,y)?.faction === piece.faction) return false;
   if(!passableFor(piece,x,y) && !canAttackWall(piece,x,y)) return false;
-  // Client-side prediction is intentionally visual only.  It moves the local
-  // piece sprite for a short window but does not resolve captures, shield
-  // pushes, land/aura ownership, spawn meters, faction death, or removals.
-  piece.x = x;
-  piece.y = y;
-  piece.targetX = x;
-  piece.targetY = y;
+  // Visual-only prediction: draw the piece moving, but do not mutate the authoritative tile or cooldown.
+  piece.predictedMove = {
+    actionId: action.actionId || '',
+    fromX: action.fromX,
+    fromY: action.fromY,
+    toX: x,
+    toY: y,
+    startMs: action.moveStartMs || Date.now(),
+    endMs: action.moveEndMs || ((action.moveStartMs || Date.now()) + moveVisualDurationFor(piece))
+  };
   piece.px = action.fromX;
   piece.py = action.fromY;
-  piece.moveStartMs = action.moveStartMs || Date.now();
-  piece.moveEndMs = action.moveEndMs || (piece.moveStartMs + 180);
-  setMoveCooldown(piece,action.fromX,action.fromY,x,y);
+  piece.targetX = x;
+  piece.targetY = y;
   piece.flash = .65;
   piece.clientActionId = action.actionId || '';
   piece.clientActionBy = username || '';
@@ -983,6 +1066,7 @@ async function requestPlayerMove(piece,x,y){
   if(!isMyPiece(piece)) return false;
   const live = getPiece(piece.id);
   if(!live || !cooldownReady(live)){ toast('That piece is still cooling down.'); return false; }
+  if(lobbyId && !isController && pendingPlayerActions.some(a=>a.kind==='move' && a.pieceId===live.id)){ toast('That piece is awaiting host confirmation.'); return false; }
   const legal = getLegalMoves(live,false);
   if(!legal.some(m=>m.x===x && m.y===y)){ toast('That piece cannot move there.'); return false; }
   const fromX = live.x, fromY = live.y;
@@ -1954,10 +2038,10 @@ function destroyWallAt(x,y,attacker=null){
   if(t.wallHp<=0){
     t.wallOwner=null;
     t.wallHp=0;
-    markStateDirty();
+    markLandDirty();
     return true;
   }
-  markStateDirty();
+  markLandDirty();
   return false;
 }
 function passableFor(piece,x,y){
@@ -2120,6 +2204,7 @@ function createBaseWall(factionIdx,cx,cy){
       t.type = t.type==='road' ? 'road' : (seededNoise(x,y,3600+(mapSeed||1))>.55 ? 'ruins' : t.type);
     }
   }
+  markLandDirty();
 }
 function recalcOwnerCounts(){
   ownerCounts = new Map();
@@ -2130,7 +2215,7 @@ function claimTile(faction,x,y,glow=.35,captureKind='normal'){
   const t=tile(x,y);
   const nextKind = captureKind || t.captureKind || 'normal';
   if(t.owner!==faction){
-    markStateDirty();
+    markLandDirty();
     t.lastOwner=t.owner;
     t.owner=faction;
     t.captureKind=nextKind;
@@ -2140,7 +2225,7 @@ function claimTile(faction,x,y,glow=.35,captureKind='normal'){
     t.glow=0;
     return true;
   } else {
-    if(nextKind && t.captureKind!==nextKind){ t.captureKind = nextKind; markStateDirty(); }
+    if(nextKind && t.captureKind!==nextKind){ t.captureKind = nextKind; markLandDirty(); }
     t.verdantFade=0;
     t.glow=0;
   }
@@ -2286,7 +2371,7 @@ function buildOrRepairWall(x,y,factionIdx){
   if(t.wallOwner!=null) return false;
   t.wallOwner=factionIdx;
   t.wallHp=1;
-  markStateDirty();
+  markLandDirty();
   return true;
 }
 function repairStartingWall(factionIdx){
@@ -2297,7 +2382,7 @@ function repairStartingWall(factionIdx){
     const dx=Math.abs(x-s.x), dy=Math.abs(y-s.y);
     if(Math.max(dx,dy)!==BASE_WALL_RADIUS) continue;
     const t=tile(x,y);
-    if(t.wallOwner===factionIdx && t.wallHp<1){ t.wallHp=1; markStateDirty(); return true; }
+    if(t.wallOwner===factionIdx && t.wallHp<1){ t.wallHp=1; markLandDirty(); return true; }
     if(t.wallOwner==null && buildOrRepairWall(x,y,factionIdx)) return true;
   }
   return false;
@@ -3120,6 +3205,7 @@ function conquerFaction(winner, loser, cx, cy){
   let taken=0;
   for(const t of normalizeBoard()){ if(t.owner===loser){ t.owner=winner; t.captureKind='conquered'; t.glow=0; taken++; } }
   for(const t of normalizeBoard()){ if(t.wallOwner===loser){ t.wallOwner=winner; t.wallHp=1; } }
+  if(taken) markLandDirty();
   let removed=0;
   for(const p of pieces){
     if(p.alive && p.faction===loser){
@@ -3344,7 +3430,17 @@ function gameTick(dt){
   for(const t of normalizeBoard()){ t.glow = Math.max(0,t.glow-dt*.7); }
   for(const p of pieces){
     if(!p.alive) continue;
-    if(p.moveStartMs && p.moveEndMs && p.moveEndMs > p.moveStartMs && Date.now() < p.moveEndMs){
+    const pred = p.predictedMove;
+    if(pred && pendingPlayerActions.some(a=>a.actionId===pred.actionId)){
+      const denom = Math.max(1, pred.endMs - pred.startMs);
+      const u = clamp((Date.now() - pred.startMs) / denom, 0, 1);
+      p.px = lerp(pred.fromX, pred.toX, u);
+      p.py = lerp(pred.fromY, pred.toY, u);
+    } else if(pred){
+      p.predictedMove = null;
+      p.px = lerp(p.px,p.x,Math.min(1,dt*7.5));
+      p.py = lerp(p.py,p.y,Math.min(1,dt*7.5));
+    } else if(p.moveStartMs && p.moveEndMs && p.moveEndMs > p.moveStartMs && Date.now() < p.moveEndMs){
       const u = clamp((Date.now() - p.moveStartMs) / (p.moveEndMs - p.moveStartMs), 0, 1);
       p.px = lerp(p.px,p.x,Math.max(u, Math.min(1,dt*5)));
       p.py = lerp(p.py,p.y,Math.max(u, Math.min(1,dt*5)));
@@ -3407,7 +3503,7 @@ function updateVerdantSpreadAndFade(f,dt){
     if(nearestFriendlyPieceWithin(t.x,t.y,f.idx,VERDANT_SPREAD_RADIUS)){ t.verdantFade=0; continue; }
     t.verdantFade=(t.verdantFade||0)+dt;
     t.glow=0;
-    if(t.verdantFade>=VERDANT_FADE_SECONDS){ t.owner=null; t.captureKind=null; t.verdantFade=0; t.glow=0; markStateDirty(); }
+    if(t.verdantFade>=VERDANT_FADE_SECONDS){ t.owner=null; t.captureKind=null; t.verdantFade=0; t.glow=0; markLandDirty(); }
   }
 }
 function updateCommandLand(f){
@@ -4523,4 +4619,5 @@ bootMultiplayer();
 </script>
 </body>
 </html>
+
 
