@@ -1796,9 +1796,9 @@ const terrains = {
   sand:    {name:'Sandflat', color:'#5b5337', alt:'#746943', pass:true,  blockSlide:false, rough:0,  glyph:'·'},
   canyon:  {name:'Canyon', color:'#4b2e2b', alt:'#6c3a32', pass:true,  blockSlide:true,  rough:2,  glyph:'≋'},
   crystal: {name:'Crystal Field', color:'#263a6f', alt:'#4f6fb0', pass:true,  blockSlide:true,  rough:1,  glyph:'✧'},
-  water:   {name:'Water', color:'#123653', alt:'#154c71', pass:false, blockSlide:true,  rough:2,  glyph:'~'},
+  water:   {name:'Water', color:'#123653', alt:'#154c71', pass:false, blockSlide:true,  rough:2,  glyph:''},
   mountain:{name:'Mountain', color:'#353746', alt:'#565b6b', pass:false, blockSlide:true,  rough:3,  glyph:'▲'},
-  road:    {name:'Road', color:'#5f4e34', alt:'#725f3d', pass:true,  blockSlide:false, rough:0,  glyph:''}
+  road:    {name:'Road', color:'#8a7a5b', alt:'#9b8966', pass:true,  blockSlide:false, rough:0,  glyph:''}
 };
 
 const ROAD_COOLDOWN_MULT_BY_FACTION = {
@@ -1920,7 +1920,7 @@ const pieceDefs = {
   blinkpawn:{name:'Blink Pawn', icon:'♙', pattern:'blinkpawn', cooldown:2.65, value:2, hp:1, wallVault:true, desc:'Adjacent stepper with a short two-tile diagonal blink.'},
   shadowstepper:{name:'Shadow Stepper', icon:'⟡', pattern:'shadowstepper', cooldown:3.2, value:4, hp:1, wallVault:true, desc:'Teleports one to four tiles, with recharge based on distance.'},
   assassin:{name:'Assassin', icon:'⟡', pattern:'assassin', cooldown:3.1, value:5, hp:1, wallVault:true, desc:'Moves diagonally or blinks in L-shapes for close assassinations.'},
-  nightblade:{name:'Nightblade', icon:'☾', pattern:'nightblade', cooldown:3.6, value:6, hp:1, wallVault:true, desc:'Teleports to open tiles adjacent to nearby enemies.'},
+  nightblade:{name:'Nightblade', icon:'☾', pattern:'nightblade', cooldown:3.6, value:6, hp:1, wallVault:true, desc:'Stalks to open tiles beside enemies, then can rapidly strike any adjacent or diagonal enemy. Empty local steps recover slowly.'},
   wraith:{name:'Wraith', icon:'✷', pattern:'wraith', cooldown:4.2, value:7, hp:1, wallVault:true, desc:'Long-range teleporter. Six to ten tiles costs a long recharge.'},
   umbralbishop:{name:'Umbral Bishop', icon:'♝', pattern:'umbralbishop', cooldown:3.65, value:5, hp:1, wallVault:true, desc:'Diagonal controller with short diagonal teleport options.'},
   nightknight:{name:'Night Knight', icon:'♞', pattern:'knight', cooldown:2.85, value:4, hp:1, desc:'Fast shadow knight.'},
@@ -2130,28 +2130,30 @@ function addWaterBodies(){
   const starts = getStartPositions();
   const safeFromStarts = (x,y,r=8) => starts.every(s=>dist2(x,y,s.x,s.y)>r*r);
   const areaScale = (BOARD_W * BOARD_H) / (DEFAULT_BOARD_W * DEFAULT_BOARD_H);
-  const bodies = Math.max(5, Math.round((14 + Math.floor(seededNoise(seed,29,1190)*7)) * areaScale));
+  // Fewer lakes, but each one is larger and more readable. This avoids noisy puddles while still creating real water bodies.
+  const bodies = Math.max(3, Math.round((7 + Math.floor(seededNoise(seed,29,1190)*4)) * areaScale));
   for(let i=0;i<bodies;i++){
-    let cx = 5 + Math.floor(seededNoise(i,2,1201 + seed)*(BOARD_W-10));
-    let cy = 5 + Math.floor(seededNoise(i,7,1202 + seed)*(BOARD_H-10));
-    if(!safeFromStarts(cx,cy,10)){
-      cx = clamp(cx + (cx<BOARD_W/2?9:-9),5,BOARD_W-6);
-      cy = clamp(cy + (cy<BOARD_H/2?8:-8),5,BOARD_H-6);
+    let cx = 6 + Math.floor(seededNoise(i,2,1201 + seed)*(BOARD_W-12));
+    let cy = 6 + Math.floor(seededNoise(i,7,1202 + seed)*(BOARD_H-12));
+    if(!safeFromStarts(cx,cy,11)){
+      cx = clamp(cx + (cx<BOARD_W/2?10:-10),6,BOARD_W-7);
+      cy = clamp(cy + (cy<BOARD_H/2?9:-9),6,BOARD_H-7);
     }
-    const rx = 2.2 + seededNoise(i,11,1203 + seed)*5.8;
-    const ry = 2.0 + seededNoise(i,17,1204 + seed)*5.3;
-    const pond = seededNoise(i,23,1205 + seed)<.45;
-    const shrink = pond ? .65 : 1;
-    for(let y=Math.floor(cy-ry*1.8); y<=Math.ceil(cy+ry*1.8); y++){
-      for(let x=Math.floor(cx-rx*1.8); x<=Math.ceil(cx+rx*1.8); x++){
+    const sizeBoost = 1.62 + seededNoise(i,31,1206 + seed)*.28;
+    const rx = (2.25 + seededNoise(i,11,1203 + seed)*4.8) * sizeBoost;
+    const ry = (2.10 + seededNoise(i,17,1204 + seed)*4.4) * sizeBoost;
+    const pond = seededNoise(i,23,1205 + seed)<.38;
+    const shrink = pond ? .82 : 1;
+    for(let y=Math.floor(cy-ry*1.65); y<=Math.ceil(cy+ry*1.65); y++){
+      for(let x=Math.floor(cx-rx*1.65); x<=Math.ceil(cx+rx*1.65); x++){
         if(!inBounds(x,y) || !safeFromStarts(x,y,5)) continue;
-        const wobble = (smoothNoise(x+i*9,y-i*5,4.5,1500+i+seed)-.5)*.42;
+        const wobble = (smoothNoise(x+i*9,y-i*5,4.8,1500+i+seed)-.5)*.36;
         const d = ((x-cx)*(x-cx))/(rx*rx*shrink) + ((y-cy)*(y-cy))/(ry*ry*shrink) + wobble;
         const t = tile(x,y);
         if(d<1){
           t.type='water';
-        } else if(d<1.22 && t.type!=='mountain' && seededNoise(x,y,1700+i+seed)>.28){
-          t.type = seededNoise(x,y,1710+i+seed)>.57 ? 'hill' : 'plain';
+        } else if(d<1.20 && t.type!=='mountain' && seededNoise(x,y,1700+i+seed)>.32){
+          t.type = seededNoise(x,y,1710+i+seed)>.60 ? 'hill' : 'plain';
         }
       }
     }
@@ -2234,40 +2236,69 @@ function clearShrineBasin(shrine){
 }
 function carveIntentionalLanes(starts){
   const mid = {x:Math.floor(BOARD_W/2), y:Math.floor(BOARD_H/2)};
+  const carved = new Set();
+  const laneKey = (a,b) => [key(a.x,a.y),key(b.x,b.y)].sort().join('|');
+  const carveUnique = (a,b,opts={}) => {
+    if(!a || !b) return;
+    const k=laneKey(a,b);
+    if(carved.has(k)) return;
+    carved.add(k);
+    carveRoad(a.x,a.y,b.x,b.y,opts);
+  };
+
+  // Main lanes: each army gets one clear road toward the closest objective. This prevents maps from becoming road grids.
   for(const s of starts){
-    carveRoad(s.x,s.y,mid.x,mid.y,{elbow:true});
-    if(shrines.length){
-      const target = shrines.slice().sort((a,b)=>dist2(s.x,s.y,a.x,a.y)-dist2(s.x,s.y,b.x,b.y))[0];
-      carveRoad(s.x,s.y,target.x,target.y,{elbow:true});
+    const target = shrines.length
+      ? shrines.slice().sort((a,b)=>dist2(s.x,s.y,a.x,a.y)-dist2(s.x,s.y,b.x,b.y))[0]
+      : mid;
+    carveUnique(s,target,{elbow:true});
+  }
+
+  // Objective lanes are sparse: shrine to center, then a small ring if multiple shrines exist.
+  for(const shrine of shrines) carveUnique(shrine,mid,{elbow:false});
+  if(shrines.length>1){
+    for(let i=0;i<shrines.length;i++){
+      const a=shrines[i], b=shrines[(i+1)%shrines.length];
+      if(a!==b && i%2===0) carveUnique(a,b,{elbow:false});
     }
   }
-  for(let i=0;i<shrines.length;i++){
-    const a=shrines[i], b=shrines[(i+1)%shrines.length];
-    if(a!==b) carveRoad(a.x,a.y,b.x,b.y,{elbow:false});
+
+  // One readable trunk road for larger wars; no third-line grid and no giant diagonal overlays.
+  if(starts.length>=5 || BOARD_W*BOARD_H>1800){
+    carveRoad(3,mid.y,BOARD_W-4,mid.y,{elbow:false,wide:false});
   }
-  carveRoad(2,mid.y,BOARD_W-3,mid.y,{elbow:false,wide:true});
-  carveRoad(mid.x,2,mid.x,BOARD_H-3,{elbow:false,wide:true});
-  const thirdX = Math.floor(BOARD_W/3);
-  const twoThirdX = Math.floor(BOARD_W*2/3);
-  const thirdY = Math.floor(BOARD_H/3);
-  const twoThirdY = Math.floor(BOARD_H*2/3);
-  carveRoad(4,thirdY,BOARD_W-5,thirdY,{elbow:false});
-  carveRoad(4,twoThirdY,BOARD_W-5,twoThirdY,{elbow:false});
-  carveRoad(thirdX,4,thirdX,BOARD_H-5,{elbow:false});
-  carveRoad(twoThirdX,4,twoThirdX,BOARD_H-5,{elbow:false});
-  carveRoad(4,4,BOARD_W-5,BOARD_H-5,{elbow:false});
-  carveRoad(BOARD_W-5,4,4,BOARD_H-5,{elbow:false});
+  softenRoadOverload(starts, mid);
+}
+function roadTileCount(){
+  return normalizeBoard().reduce((n,t)=>n+(t.type==='road'?1:0),0);
+}
+function softenRoadOverload(starts, mid){
+  const maxRoads = Math.max(38, Math.round(BOARD_W*BOARD_H*.105));
+  let extra = roadTileCount() - maxRoads;
+  if(extra<=0) return;
+  const protectedTiles = new Set([key(mid.x,mid.y)]);
+  for(const s of starts) for(let y=s.y-2;y<=s.y+2;y++) for(let x=s.x-2;x<=s.x+2;x++) if(inBounds(x,y)) protectedTiles.add(key(x,y));
+  for(const s of shrines) for(let y=s.y-2;y<=s.y+2;y++) for(let x=s.x-2;x<=s.x+2;x++) if(inBounds(x,y)) protectedTiles.add(key(x,y));
+  const roads = normalizeBoard()
+    .filter(t=>t.type==='road' && !protectedTiles.has(key(t.x,t.y)))
+    .map(t=>({t,score:seededNoise(t.x,t.y,4530+(mapSeed||1)) + (ORTHO.filter(([dx,dy])=>inBounds(t.x+dx,t.y+dy)&&tile(t.x+dx,t.y+dy).type==='road').length>=2?.35:0)}))
+    .sort((a,b)=>a.score-b.score);
+  for(const item of roads){
+    if(extra--<=0) break;
+    item.t.type = seededNoise(item.t.x,item.t.y,4540+(mapSeed||1))>.82 ? 'hill' : 'plain';
+  }
 }
 function paintRoadCell(x,y,wide=false){
   if(!inBounds(x,y)) return;
   const t=tile(x,y);
+  if(t.type==='water' || t.type==='mountain') return;
   t.type='road';
-  const shoulderChance = wide ? .78 : .24;
+  const shoulderChance = wide ? .38 : .10;
   for(const [ox,oy] of ORTHO){
     const sx=x+ox, sy=y+oy;
     if(!inBounds(sx,sy) || seededNoise(sx,sy,4301+(mapSeed||1))>shoulderChance) continue;
     const st=tile(sx,sy);
-    if(st.type==='water'||st.type==='mountain'||st.type==='hill'||st.type==='crystal') st.type='plain';
+    if(st.type==='hill'||st.type==='crystal') st.type='plain';
   }
 }
 function cleanLineCells(x0,y0,x1,y1){
@@ -2923,10 +2954,11 @@ function buildOrRepairWall(x,y,factionIdx){
   if(!inBounds(x,y) || findPieceAt(x,y)) return false;
   const t=tile(x,y);
   if(!terrainOf(t).pass && t.type!=='road' && t.type!=='ruins') return false;
-  if(t.wallOwner===factionIdx){ t.wallHp=1; return true; }
+  if(t.wallOwner===factionIdx){ t.wallHp=1; burst(x,y,factions[factionIdx]?.color || '#dbeafe',4); return true; }
   if(t.wallOwner!=null) return false;
   t.wallOwner=factionIdx;
   t.wallHp=1;
+  burst(x,y,factions[factionIdx]?.color || '#dbeafe',8);
   markLandDirty();
   return true;
 }
@@ -3041,7 +3073,7 @@ function verdantConnectedLanding(x,y,factionIdx){
   if(t.owner===factionIdx || t.captureKind==='verdant_root' || isNaturalVerdantTerrain(t.type)) return true;
   return nearestFriendlyPieceWithin(x,y,factionIdx,2);
 }
-function movementCooldownMultiplier(piece, fromX, fromY, toX, toY){
+function movementCooldownMultiplier(piece, fromX, fromY, toX, toY, wasAttack=false){
   const f=factions[piece.faction];
   const def=pieceDefs[piece.type] || {};
   const m=moveTraits(fromX,fromY,toX,toY);
@@ -3080,6 +3112,14 @@ function movementCooldownMultiplier(piece, fromX, fromY, toX, toY){
     return m.adjacent ? 1.05 : .95;
   }
   if(f.id==='shadow'){
+    if(piece.type==='nightblade'){
+      if(wasAttack && m.dist<=1) return .34;
+      if(wasAttack) return .54;
+      // Stalking into position is intentionally slower; the reward is a very fast follow-up strike.
+      if(m.dist<=5) return 1.32;
+      return 1.80;
+    }
+    if(wasAttack && m.dist<=1) return .46;
     if(m.dist<=1) return .60;
     if(m.dist<=3) return .78;
     if(m.dist<=5) return 1.05;
@@ -3092,11 +3132,11 @@ function movementCooldownMultiplier(piece, fromX, fromY, toX, toY){
   }
   return 1;
 }
-function moveCooldownFor(piece, fromX, fromY, toX, toY){
-  return baseCooldownFor(piece,toX,toY) * movementCooldownMultiplier(piece,fromX,fromY,toX,toY);
+function moveCooldownFor(piece, fromX, fromY, toX, toY, wasAttack=false){
+  return baseCooldownFor(piece,toX,toY) * movementCooldownMultiplier(piece,fromX,fromY,toX,toY,wasAttack);
 }
-function setMoveCooldown(piece, fromX, fromY, toX, toY){
-  const duration = moveCooldownFor(piece,fromX,fromY,toX,toY);
+function setMoveCooldown(piece, fromX, fromY, toX, toY, wasAttack=false){
+  const duration = moveCooldownFor(piece,fromX,fromY,toX,toY,wasAttack);
   piece.lastMove = now();
   piece.cooldownUntil = piece.lastMove + duration;
   piece.lastCooldownDuration = duration;
@@ -3327,11 +3367,15 @@ function getLegalMoves(piece, ignoreCooldown=false){
       for(let r=1;r<=4+(lvl>=4?1:0);r++) addStep(piece.x+dx*r,piece.y+dy*r,true,true);
     }
   } else if(pattern==='nightblade'){
+    // Adjacent/diagonal squares are attacks only. Empty local steps are not allowed.
+    for(const [dx,dy] of DIRS8) addStep(piece.x+dx,piece.y+dy,true,false);
     const enemies = pieces.filter(q=>q.alive && q.faction!==own && factions[q.faction]?.alive && dist2(piece.x,piece.y,q.x,q.y)<=25);
     for(const enemy of enemies){
       for(const [dx,dy] of DIRS8){
         const x=enemy.x+dx, y=enemy.y+dy;
-        if(inBounds(x,y) && !findPieceAt(x,y)) addStep(x,y,false,true);
+        if(!inBounds(x,y) || findPieceAt(x,y)) continue;
+        if(Math.max(Math.abs(x-piece.x),Math.abs(y-piece.y))<=1) continue;
+        if(passableFor(piece,x,y)) addMove(moves,x,y,false,{stalk:true});
       }
     }
   } else if(pattern==='wraith'){
@@ -3656,7 +3700,7 @@ function movePiece(piece,x,y,source='player'){
         if(landing){
           piece.x=landing.x; piece.y=landing.y; piece.targetX=landing.x; piece.targetY=landing.y; piece.flash=1;
           piece.moveStartMs=Date.now(); piece.moveEndMs=piece.moveStartMs+moveVisualDurationFor(piece);
-          setMoveCooldown(piece,fromX,fromY,landing.x,landing.y);
+          setMoveCooldown(piece,fromX,fromY,landing.x,landing.y,!!target);
           applyFactionCapture(piece,fromX,fromY,landing.x,landing.y,'move',target);
           applyAuraTerritory(piece);
           floating(target.x,target.y,'SHIELD WALL HIT', factions[piece.faction]?.color || '#fff');
@@ -3665,7 +3709,7 @@ function movePiece(piece,x,y,source='player'){
         }
       }
       if(!pushShieldedPiece(piece,target,fromX,fromY)){
-        setMoveCooldown(piece,fromX,fromY,x,y);
+        setMoveCooldown(piece,fromX,fromY,x,y,!!target);
         return true;
       }
       impactPushedId = target.id;
@@ -3673,7 +3717,8 @@ function movePiece(piece,x,y,source='player'){
   }
   if(targetWall) destroyWallAt(x,y,piece);
   piece.x=x; piece.y=y; piece.targetX=x; piece.targetY=y; piece.flash=1;
-  setMoveCooldown(piece,fromX,fromY,x,y);
+  setMoveCooldown(piece,fromX,fromY,x,y,!!target || !!targetWall);
+  if((!!target || !!targetWall) && factions[piece.faction]?.id==='shadow') shadowStrikeEffect(piece,x,y);
   piece.moveStartMs = Date.now(); piece.moveEndMs = piece.moveStartMs + moveVisualDurationFor(piece);
   piece.stationarySince=now(); piece.lastStationX=x; piece.lastStationY=y;
   const hammerPushes = knockBackHammerAdjacentFoes(piece, impactPushedId);
@@ -3913,6 +3958,17 @@ function burst(x,y,color,count=10){
 }
 function floating(x,y,text,color){
   floatingText.push({x:(x+.5)*BASE_CELL,y:(y+.25)*BASE_CELL,text,color,life:1.2,max:1.2});
+}
+function shadowStrikeEffect(piece,x,y){
+  const f=factions[piece?.faction];
+  const color=f?.color || '#b388ff';
+  burst(x,y,color,22);
+  for(let i=0;i<10;i++){
+    const a=-Math.PI/2 + (i/9)*Math.PI*2;
+    const wx=(x+.5)*BASE_CELL, wy=(y+.5)*BASE_CELL;
+    particles.push({x:wx,y:wy,vx:Math.cos(a)*130,vy:Math.sin(a)*130,life:.22+Math.random()*.18,max:.40,color:'rgba(200,167,255,.92)',size:1.5+Math.random()*2});
+  }
+  floating(x,y,'RAPID STRIKE',color);
 }
 
 function createGame(){
@@ -4778,20 +4834,7 @@ function drawBoard(){
         ctx.fillText(td.glyph,sx+BASE_CELL/2,sy+BASE_CELL/2);
         ctx.globalAlpha=1;
       }
-      if(t.wallOwner != null){
-        const wf=factions[t.wallOwner];
-        ctx.save();
-        ctx.globalAlpha=.92;
-        ctx.fillStyle='rgba(5,8,14,.66)';
-        roundRect(ctx,sx+7,sy+8,BASE_CELL-14,BASE_CELL-16,5); ctx.fill();
-        ctx.strokeStyle=wf?.color || '#dbeafe';
-        ctx.lineWidth=3;
-        roundRect(ctx,sx+7,sy+8,BASE_CELL-14,BASE_CELL-16,5); ctx.stroke();
-        ctx.globalAlpha=.55;
-        ctx.fillStyle=wf?.color || '#dbeafe';
-        for(let c=0;c<3;c++) ctx.fillRect(sx+10+c*10,sy+6,7,8);
-        ctx.restore();
-      }
+      // Walls are drawn in their own pass after territory so they read as hard stone structures above roads and land color.
       ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1;
       ctx.strokeRect(sx+.5,sy+.5,BASE_CELL,BASE_CELL);
     }
@@ -4831,36 +4874,27 @@ function drawWaterTile(sx,sy,x,y){
   ctx.save();
   const t=now();
   const g=ctx.createLinearGradient(sx,sy,sx+BASE_CELL,sy+BASE_CELL);
-  g.addColorStop(0,'rgba(95,188,235,.12)');
-  g.addColorStop(.5,'rgba(28,104,158,.22)');
-  g.addColorStop(1,'rgba(3,19,42,.22)');
+  g.addColorStop(0,'rgba(76,167,220,.16)');
+  g.addColorStop(.55,'rgba(22,92,150,.26)');
+  g.addColorStop(1,'rgba(4,22,48,.30)');
   ctx.fillStyle=g;
   ctx.fillRect(sx+1,sy+1,BASE_CELL-2,BASE_CELL-2);
-  ctx.lineCap='round';
-  for(let i=0;i<3;i++){
-    const phase=t*.65+x*.72+y*.41+i*1.8;
-    const yy=sy+BASE_CELL*(.28+i*.22)+Math.sin(phase)*1.8;
-    const x0=sx+BASE_CELL*(.13+seededNoise(x+i,y,8040)*.14);
-    const len=BASE_CELL*(.34+seededNoise(x,y+i,8041)*.25);
-    ctx.globalAlpha=.18+.08*Math.sin(phase+1.2);
-    ctx.strokeStyle='rgba(189,232,255,.95)';
-    ctx.lineWidth=1.2;
-    ctx.beginPath();
-    for(let s=0;s<=5;s++){
-      const u=s/5;
-      const px=x0+len*u;
-      const py=yy+Math.sin(phase+u*Math.PI*2)*1.7;
-      if(s===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
-    }
-    ctx.stroke();
+  // Pixel-speckle water: no drawn wave lines, just shifting square highlights.
+  for(let i=0;i<11;i++){
+    const px=sx+Math.floor(BASE_CELL*(.08+seededNoise(x+i*13,y,8050)*.84));
+    const py=sy+Math.floor(BASE_CELL*(.10+seededNoise(x,y+i*17,8051)*.78));
+    const pulse=.45+.55*Math.sin(t*(1.1+seededNoise(x+i,y+i,8052)*.9)+x*.37+y*.29+i*1.3);
+    const size=1+Math.floor(seededNoise(x+i,y+i,8053)*3);
+    ctx.globalAlpha=.08+.18*pulse;
+    ctx.fillStyle=i%3===0?'rgba(229,250,255,.90)':'rgba(143,211,255,.80)';
+    ctx.fillRect(px,py,size,size);
   }
+  ctx.globalAlpha=.16;
+  ctx.fillStyle='rgba(0,6,18,.7)';
   for(let i=0;i<4;i++){
-    const px=sx+BASE_CELL*(.16+seededNoise(x+i*13,y,8050)*.68);
-    const py=sy+BASE_CELL*(.18+seededNoise(x,y+i*17,8051)*.64);
-    const pulse=.5+.5*Math.sin(t*1.8+x*.37+y*.29+i*1.3);
-    ctx.globalAlpha=.10+.16*pulse;
-    ctx.fillStyle='rgba(230,250,255,.95)';
-    ctx.beginPath(); ctx.arc(px,py,1.1+pulse*.9,0,Math.PI*2); ctx.fill();
+    const px=sx+Math.floor(BASE_CELL*(.10+seededNoise(x+i*19,y,8060)*.78));
+    const py=sy+Math.floor(BASE_CELL*(.12+seededNoise(x,y+i*23,8061)*.74));
+    ctx.fillRect(px,py,2,2);
   }
   ctx.restore();
   ctx.globalAlpha=1;
@@ -4965,44 +4999,44 @@ function drawRoadTile(sx,sy,x,y){
   const links=dirs.filter(([dx,dy])=>inBounds(x+dx,y+dy) && tile(x+dx,y+dy).type==='road');
   ctx.lineCap='round';
   ctx.lineJoin='round';
-  ctx.globalAlpha=.92;
-  ctx.strokeStyle='rgba(47,31,18,.72)';
-  ctx.lineWidth=BASE_CELL*.34;
-  ctx.beginPath();
-  if(!links.length){
-    ctx.moveTo(sx+BASE_CELL*.18,cy); ctx.lineTo(sx+BASE_CELL*.82,cy);
-  } else {
-    for(const [dx,dy] of links){
-      ctx.moveTo(cx,cy);
-      ctx.lineTo(cx+dx*BASE_CELL*.55, cy+dy*BASE_CELL*.55);
-    }
-  }
-  ctx.stroke();
-  ctx.strokeStyle='rgba(202,166,98,.96)';
-  ctx.lineWidth=BASE_CELL*.22;
+  // Softer tan road with a thin darker edge; walls are drawn as dark stone, so they no longer blend together.
+  ctx.globalAlpha=.58;
+  ctx.strokeStyle='rgba(92,73,48,.42)';
+  ctx.lineWidth=BASE_CELL*.30;
   ctx.beginPath();
   if(!links.length){
     ctx.moveTo(sx+BASE_CELL*.22,cy); ctx.lineTo(sx+BASE_CELL*.78,cy);
   } else {
     for(const [dx,dy] of links){
       ctx.moveTo(cx,cy);
-      ctx.lineTo(cx+dx*BASE_CELL*.54, cy+dy*BASE_CELL*.54);
+      ctx.lineTo(cx+dx*BASE_CELL*.52, cy+dy*BASE_CELL*.52);
     }
   }
   ctx.stroke();
-  ctx.globalAlpha=.35;
-  ctx.strokeStyle='rgba(255,236,177,.95)';
-  ctx.lineWidth=1.5;
+  ctx.globalAlpha=.78;
+  ctx.strokeStyle='rgba(211,185,127,.78)';
+  ctx.lineWidth=BASE_CELL*.18;
   ctx.beginPath();
-  for(const [dx,dy] of links.filter(([dx,dy])=>dx===0 || dy===0)){
-    ctx.moveTo(cx,cy);
-    ctx.lineTo(cx+dx*BASE_CELL*.44,cy+dy*BASE_CELL*.44);
+  if(!links.length){
+    ctx.moveTo(sx+BASE_CELL*.25,cy); ctx.lineTo(sx+BASE_CELL*.75,cy);
+  } else {
+    for(const [dx,dy] of links){
+      ctx.moveTo(cx,cy);
+      ctx.lineTo(cx+dx*BASE_CELL*.50, cy+dy*BASE_CELL*.50);
+    }
   }
   ctx.stroke();
+  ctx.globalAlpha=.20;
+  ctx.fillStyle='rgba(255,238,184,.9)';
+  for(let i=0;i<5;i++){
+    const px=sx+BASE_CELL*(.18+seededNoise(x+i,y,8320)*.64);
+    const py=sy+BASE_CELL*(.25+seededNoise(x,y+i,8321)*.50);
+    ctx.fillRect(px,py,1.2,1.2);
+  }
   if(links.length>=3){
-    ctx.globalAlpha=.70;
-    ctx.fillStyle='rgba(230,190,112,.96)';
-    ctx.beginPath(); ctx.arc(cx,cy,BASE_CELL*.14,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=.42;
+    ctx.fillStyle='rgba(210,180,120,.75)';
+    ctx.beginPath(); ctx.arc(cx,cy,BASE_CELL*.10,0,Math.PI*2); ctx.fill();
   }
   ctx.restore();
   ctx.globalAlpha=1;
@@ -5084,16 +5118,38 @@ function drawWalls(){
       const t=tile(x,y); if(t.wallOwner==null) continue;
       const f=factions[t.wallOwner];
       const sx=x*BASE_CELL, sy=y*BASE_CELL;
+      const pulse=.5+.5*Math.sin(now()*2+x*.7+y*.2);
       ctx.save();
-      ctx.globalAlpha=.96;
-      ctx.fillStyle='rgba(5,8,14,.74)';
-      roundRect(ctx,sx+7,sy+8,BASE_CELL-14,BASE_CELL-16,5); ctx.fill();
+      ctx.globalAlpha=.52;
+      ctx.fillStyle='rgba(0,0,0,.48)';
+      roundRect(ctx,sx+8,sy+12,BASE_CELL-12,BASE_CELL-12,6); ctx.fill();
+      ctx.globalAlpha=.98;
+      const wallGrad=ctx.createLinearGradient(sx,sy,sx,sy+BASE_CELL);
+      wallGrad.addColorStop(0,'rgba(104,115,132,.98)');
+      wallGrad.addColorStop(.55,'rgba(43,50,64,.98)');
+      wallGrad.addColorStop(1,'rgba(15,20,31,.98)');
+      ctx.fillStyle=wallGrad;
+      roundRect(ctx,sx+6,sy+7,BASE_CELL-12,BASE_CELL-14,5); ctx.fill();
+      ctx.strokeStyle='rgba(232,238,248,.50)';
+      ctx.lineWidth=1.2;
+      roundRect(ctx,sx+6,sy+7,BASE_CELL-12,BASE_CELL-14,5); ctx.stroke();
       ctx.strokeStyle=f?.color || '#dbeafe';
-      ctx.lineWidth=3;
-      roundRect(ctx,sx+7,sy+8,BASE_CELL-14,BASE_CELL-16,5); ctx.stroke();
-      ctx.globalAlpha=.62;
-      ctx.fillStyle=f?.color || '#dbeafe';
-      for(let c=0;c<3;c++) ctx.fillRect(sx+10+c*10,sy+6,7,8);
+      ctx.globalAlpha=.72+.16*pulse;
+      ctx.lineWidth=3.2;
+      roundRect(ctx,sx+8,sy+9,BASE_CELL-16,BASE_CELL-18,4); ctx.stroke();
+      ctx.globalAlpha=.85;
+      for(let c=0;c<4;c++){
+        const bx=sx+7+c*(BASE_CELL-14)/4;
+        ctx.fillStyle=c%2?'rgba(32,39,54,.98)':'rgba(92,103,122,.98)';
+        ctx.fillRect(bx,sy+4,(BASE_CELL-18)/5,8);
+      }
+      ctx.globalAlpha=.28;
+      ctx.strokeStyle='rgba(255,255,255,.75)';
+      ctx.lineWidth=1;
+      ctx.beginPath();
+      ctx.moveTo(sx+BASE_CELL*.23,sy+BASE_CELL*.38); ctx.lineTo(sx+BASE_CELL*.77,sy+BASE_CELL*.38);
+      ctx.moveTo(sx+BASE_CELL*.30,sy+BASE_CELL*.62); ctx.lineTo(sx+BASE_CELL*.70,sy+BASE_CELL*.62);
+      ctx.stroke();
       ctx.restore();
     }
   }
@@ -5416,6 +5472,61 @@ function drawSolarBeaconChannels(){
   ctx.restore();
   ctx.globalAlpha=1;
 }
+function buildingTimerDurationFor(p){
+  if(!p || !isBuildingType(p.type)) return 1;
+  if(p.type==='commandbanner') return CROWNWARD_BANNER_LIFESPAN_SECONDS;
+  if(p.type==='seedgrove') return (p.seedGen||0)>0 ? 120 : 60;
+  if(p.type==='barrackskeep') return 55;
+  if(p.type==='sparkden') return 35;
+  if(p.type==='broodbloom') return 45;
+  if(p.type==='reefnursery') return 45;
+  if(p.type==='tidalbeacon') return 18;
+  if(p.type==='radiantmonastery') return 60;
+  if(p.type==='sledyard') return 80;
+  if(p.type==='gatehouse') return 30;
+  if(p.type==='shieldfoundry') return 35;
+  if(p.type==='knifechapel') return 10;
+  if(p.type==='cinderfurnace') return 12;
+  if(p.type==='sunspirebeacon') return 7;
+  return Math.max(8, pieceDefs[p.type]?.cooldown || 8);
+}
+function buildingTimerLabel(p){
+  if(!p || !isBuildingType(p.type)) return '';
+  const labels={
+    commandbanner:'life', barrackskeep:'spawn', sparkden:'spawn', broodbloom:'spawn', reefnursery:'spawn', sledyard:'spawn',
+    seedgrove:p.seedChildDone?'root':'seed', gatehouse:'wall', shieldfoundry:'heal', tidalbeacon:'tide', radiantmonastery:'ascend',
+    knifechapel:'shade', cinderfurnace:'blast', sunspirebeacon:'beam', royalbannerhall:'aura', obsidianmirror:'mirror'
+  };
+  return labels[p.type] || 'ready';
+}
+function drawBuildingTimerRing(p,r){
+  if(!p || !isBuildingType(p.type)) return;
+  const next = p.nextBuildingTick || 0;
+  const duration = Math.max(.1, buildingTimerDurationFor(p));
+  const remain = Math.max(0,next-now());
+  const progress = next ? clamp(1-remain/duration,0,1) : 1;
+  const f=factions[p.faction];
+  const label=buildingTimerLabel(p);
+  ctx.save();
+  ctx.globalAlpha=.82;
+  ctx.strokeStyle='rgba(0,0,0,.56)';
+  ctx.lineWidth=5;
+  ctx.beginPath(); ctx.arc(0,0,r+17,0,Math.PI*2); ctx.stroke();
+  ctx.globalAlpha=progress>=1?.98:.76;
+  ctx.strokeStyle=progress>=1?'rgba(127,240,176,.98)':(f?.color || 'rgba(255,255,255,.8)');
+  ctx.lineWidth=3.1;
+  ctx.beginPath(); ctx.arc(0,0,r+17,-Math.PI/2,-Math.PI/2+Math.PI*2*progress); ctx.stroke();
+  ctx.globalAlpha=.92;
+  ctx.font='900 8px Inter,system-ui,sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  const txt = progress>=1 ? label.toUpperCase() : `${Math.ceil(remain)}s`;
+  const w=ctx.measureText(txt).width+8;
+  ctx.fillStyle='rgba(3,7,14,.72)';
+  roundRect(ctx,-w/2,r+19,w,13,6); ctx.fill();
+  ctx.fillStyle=progress>=1?'#b7ffd2':'#eef6ff';
+  ctx.fillText(txt,0,r+25);
+  ctx.restore();
+}
 function drawPieces(){
   const visible = pieces.filter(p=>p.alive && (p.faction===PLAYER || !isShadowFoggedForPlayer(p.x,p.y,PLAYER))).sort((a,b)=>a.y-b.y || (pieceDefs[a.type].value||1)-(pieceDefs[b.type].value||1));
   const labelIds = computeNameLabelPieceIds(visible);
@@ -5463,6 +5574,7 @@ function drawPieces(){
     ctx.strokeStyle=cd>=1?readyRingColor:'rgba(255,255,255,.34)';
     ctx.lineWidth=3;
     ctx.beginPath(); ctx.arc(0,0,r+5,-Math.PI/2,-Math.PI/2+Math.PI*2*cd); ctx.stroke();
+    if(def.building) drawBuildingTimerRing(p,r);
     if(p.type==='cinderarchon'){
       const remain=(p.nextBuildingTick || 0)-now();
       ctx.strokeStyle=remain>0?'rgba(255,140,70,.55)':'rgba(255,220,120,.95)';
