@@ -323,8 +323,13 @@ let localWritePendingUntil = 0;
 let pendingPlayerActions = [];
 let clientActionSeq = 1;
 let clientPieceSeq = 1;
-const PENDING_ACTION_TTL_SECONDS = 4.0;
+const PENDING_ACTION_TTL_SECONDS = 6.0;
 const PENDING_ACTION_GRACE_SECONDS = 2.0;
+// Once the host marks a command as applied, keep the local visual result sticky until
+// the matching authoritative state arrives. This prevents the common multiplayer
+// race where an older state snapshot briefly pulls the unit back before the next
+// Firebase snapshot moves it to the correct tile.
+const HOST_ACCEPTED_PENDING_TTL_SECONDS = 18.0;
 const COMMAND_MAX_AGE_MS = 6000;
 const CONTROLLER_STATE_WRITE_SECONDS = 1.35;
 const FULL_SNAPSHOT_SECONDS = 12;
@@ -956,12 +961,14 @@ function applyRemoteState(data){
   const oldMap = new Map(pieces.map(p=>[p.id,p]));
   pieces = remotePieces.map(pp => {
     const old = oldMap.get(pp.i);
-    const useX = pp.x;
-    const useY = pp.y;
+    const pendingMove = pendingMoveForPieceId(pp.i);
+    const pendingIsStillWaitingOnState = pendingMove && remotePositionIsStillBeforePendingMove(pp, pendingMove);
+    const useX = pendingIsStillWaitingOnState ? pendingMove.toX : pp.x;
+    const useY = pendingIsStillWaitingOnState ? pendingMove.toY : pp.y;
     const moved = old && (old.x !== useX || old.y !== useY);
     const visual = remoteVisualStart(old, useX, useY, moved);
     const keepPrediction = old && old.predictedMove && pendingPlayerActions.some(a => a.actionId === old.predictedMove.actionId);
-    const confirmedOwnPrediction = old && old.predictedMove && pp.aid && old.predictedMove.actionId === pp.aid;
+    const confirmedOwnPrediction = old && old.predictedMove && (pp.aid === old.predictedMove.actionId || (pp.x === old.predictedMove.toX && pp.y === old.predictedMove.toY));
     return {
       id:pp.i, faction:pp.f, type:pp.t, x:useX, y:useY,
       px: confirmedOwnPrediction ? finiteCoord(old.px, old.predictedMove.toX) : visual.px,
@@ -1040,16 +1047,60 @@ function rememberPendingPlayerAction(action){
   pendingPlayerActions.push(item);
   localWritePendingUntil = now() + PENDING_ACTION_GRACE_SECONDS;
 }
+function pendingMoveForPieceId(pieceId){
+  return pendingPlayerActions.find(a => a.kind === 'move' && a.pieceId === pieceId) || null;
+}
+function softConfirmPendingAction(actionId){
+  const pending = pendingPlayerActions.find(a => a.actionId === actionId);
+  if(!pending) return;
+  pending.hostAccepted = true;
+  pending.hostAcceptedAt = now();
+  pending.expiresAt = Math.max(pending.expiresAt || 0, now() + HOST_ACCEPTED_PENDING_TTL_SECONDS);
+  pending.visualUntil = Math.max(pending.visualUntil || 0, now() + 2.5);
+  if(pending.kind === 'move'){
+    const p = getPiece(pending.pieceId);
+    if(p && p.alive){
+      // The command has already been accepted by the host. Locally treat the unit
+      // as being on the destination tile while we wait for the next state snapshot,
+      // but keep the animation/prediction alive so the piece does not jump.
+      p.x = pending.toX;
+      p.y = pending.toY;
+      p.targetX = pending.toX;
+      p.targetY = pending.toY;
+      p.clientActionId = pending.actionId || p.clientActionId || '';
+      p.clientActionBy = username || p.clientActionBy || '';
+      if(!p.predictedMove){
+        p.predictedMove = {
+          actionId: pending.actionId || '',
+          fromX: finiteCoord(p.px, pending.fromX),
+          fromY: finiteCoord(p.py, pending.fromY),
+          toX: pending.toX,
+          toY: pending.toY,
+          startMs: Date.now(),
+          endMs: Date.now() + Math.max(90, moveVisualDurationFor(p) * .35)
+        };
+      }
+    }
+  }
+}
+function remotePositionIsStillBeforePendingMove(pp, pending){
+  return !!(pp && pending && pp.f === PLAYER && pp.x === pending.fromX && pp.y === pending.fromY);
+}
+function remotePositionConfirmsPendingMove(pp, pending){
+  return !!(pp && pending && (pp.aid === pending.actionId || (pp.x === pending.toX && pp.y === pending.toY)));
+}
 function pruneConfirmedPendingActions(remoteData){
   if(!pendingPlayerActions.length || !remoteData || !Array.isArray(remoteData.pieces)) return;
   const t = now();
   const remotePieces = remoteData.pieces;
   pendingPlayerActions = pendingPlayerActions.filter(action => {
-    if(t > action.expiresAt) return false;
+    const expiredBeforeHostAck = t > (action.expiresAt || 0) && !action.hostAccepted;
+    const expiredAfterHostAck = action.hostAccepted && action.hostAcceptedAt && t > action.hostAcceptedAt + HOST_ACCEPTED_PENDING_TTL_SECONDS;
+    if(expiredBeforeHostAck || expiredAfterHostAck) return false;
     if(action.kind === 'move'){
       const rp = remotePieces.find(pp => pp.i === action.pieceId);
       if(!rp) return false; // the troop died or was captured before the command could be confirmed.
-      return !(rp.x === action.toX && rp.y === action.toY);
+      return !remotePositionConfirmsPendingMove(rp, action);
     }
     if(action.kind === 'spawn'){
       const confirmed = remotePieces.some(pp =>
@@ -1075,9 +1126,15 @@ function rollbackToAuthoritative(message='Command was not accepted — refreshed
 function expirePendingPlayerActions(){
   if(!pendingPlayerActions.length) return;
   const t = now();
-  const expired = pendingPlayerActions.filter(action => t > action.expiresAt);
+  const isExpired = action => {
+    if(action.hostAccepted){
+      return !!(action.hostAcceptedAt && t > action.hostAcceptedAt + HOST_ACCEPTED_PENDING_TTL_SECONDS);
+    }
+    return t > (action.expiresAt || 0);
+  };
+  const expired = pendingPlayerActions.filter(isExpired);
   if(!expired.length) return;
-  pendingPlayerActions = pendingPlayerActions.filter(action => t <= action.expiresAt);
+  pendingPlayerActions = pendingPlayerActions.filter(action => !isExpired(action));
   const activeActionIds = new Set(pendingPlayerActions.map(a=>a.actionId));
   for(const p of pieces){ if(p.predictedMove && !activeActionIds.has(p.predictedMove.actionId)) p.predictedMove = null; }
   for(const action of expired) stopCommandAckWatch(action.actionId);
@@ -1275,12 +1332,7 @@ function startCommandAckWatch(action){
       if(!snap.exists()) return;
       const data = snap.data() || {};
       if(data.status === 'applied'){
-        const pending = pendingPlayerActions.find(a=>a.actionId===action.actionId);
-        if(pending){
-          pending.hostAccepted = true;
-          pending.expiresAt = Math.max(pending.expiresAt, now() + 2.5);
-          pending.visualUntil = Math.max(pending.visualUntil, now() + 1.5);
-        }
+        softConfirmPendingAction(action.actionId);
         setNetwork(`${username || 'Player'} · command confirmed`);
         stopCommandAckWatch(action.actionId);
       } else if(data.status === 'rejected'){
