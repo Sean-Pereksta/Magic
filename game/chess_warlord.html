@@ -378,12 +378,228 @@ let mapSeed = 1;
 let shrines = [];
 let nextCheckScanAt = 0;
 let currentCheckWarning = '';
+let chessEloProfiles = {};
+let eloLoadSeq = 0;
+let eloAwarding = false;
+
+const CHESS_ELO_START = 100;
+const CHESS_ELO_FLOOR = 0;
+const CHESS_ELO_BASE_WIN_GAIN = 25;
+const CHESS_ELO_AWARD_STORAGE_KEY = 'cw.eloAwardedGames.v1';
+const CHESS_ELO_PROFILE_PREFIX = 'cw.eloProfile.';
+const CHESS_ELO_TIERS = [
+  {name:'Diamond', min:500, emoji:'💎'},
+  {name:'Emerald', min:400, emoji:'🟢'},
+  {name:'Gold', min:300, emoji:'🥇'},
+  {name:'Silver', min:200, emoji:'🥈'},
+  {name:'Bronze', min:0, emoji:'🥉'}
+];
+const SOLO_AI_ELO_BY_DIFFICULTY = {easy:80, normal:100, hard:145, insane:205};
 
 function setNetwork(text){ if(networkText) networkText.textContent = text; }
 function safeDocId(v){ return String(v || 'player').replace(/[^a-zA-Z0-9_@.-]/g,'_').slice(0,120) || 'player'; }
 function isAIName(name){ return /^AI Warlord /.test(String(name || '')); }
 function isHumanSlot(idx){ return !!slotNames[idx] && !isAIName(slotNames[idx]); }
-function displayNameForFaction(idx){ return slotNames[idx] || (factions[idx]?.short) || `Player ${idx+1}`; }
+function profileKeyForName(name){ return safeDocId(String(name || 'player').trim().toLowerCase()); }
+function finiteEloValue(value, fallback=CHESS_ELO_START){
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+function chessEloRankFor(elo){
+  const score = Math.max(CHESS_ELO_FLOOR, Math.round(finiteEloValue(elo)));
+  return CHESS_ELO_TIERS.find(t => score >= t.min) || CHESS_ELO_TIERS[CHESS_ELO_TIERS.length - 1];
+}
+function normalizeChessEloProfile(name, data={}){
+  const score = Math.max(CHESS_ELO_FLOOR, Math.round(finiteEloValue(data.elo ?? data.rating)));
+  const rank = chessEloRankFor(score);
+  return {
+    username: String(data.username || name || 'Player'),
+    elo: score,
+    rating: score,
+    rankName: rank.name,
+    rankEmoji: rank.emoji,
+    wins: Math.max(0, Math.round(Number(data.wins || 0))),
+    losses: Math.max(0, Math.round(Number(data.losses || 0))),
+    games: Math.max(0, Math.round(Number(data.games || 0))),
+    updatedAtMs: Number(data.updatedAtMs || Date.now())
+  };
+}
+function localChessEloKey(name){ return CHESS_ELO_PROFILE_PREFIX + profileKeyForName(name || username || 'player'); }
+function readLocalChessEloProfile(name=username){
+  try{
+    const raw = localStorage.getItem(localChessEloKey(name));
+    if(raw) return normalizeChessEloProfile(name, JSON.parse(raw));
+  }catch(e){}
+  return normalizeChessEloProfile(name, {username:name || 'Player', elo:CHESS_ELO_START});
+}
+function writeLocalChessEloProfile(profile){
+  try{ localStorage.setItem(localChessEloKey(profile.username), JSON.stringify(profile)); }catch(e){}
+}
+function rememberChessEloProfile(name, data){
+  if(!name || isAIName(name)) return normalizeChessEloProfile(name, {username:name, elo:CHESS_ELO_START});
+  const key = profileKeyForName(name);
+  const profile = normalizeChessEloProfile(name, data || {});
+  chessEloProfiles[key] = profile;
+  return profile;
+}
+function seedChessEloProfilesFromLocalAndLobby(){
+  const cache = lobbyData?.chessWarlordEloProfiles || lobbyData?.chessWarlordRatings || {};
+  for(const name of slotNames){
+    if(!name || isAIName(name)) continue;
+    const key = profileKeyForName(name);
+    let source = cache[key] || cache[name] || null;
+    if(profileKeyForName(name) === profileKeyForName(username)){
+      const local = readLocalChessEloProfile(name);
+      if(!source || Number(local.elo || 0) >= Number(source.elo || source.rating || 0)) source = local;
+    }
+    rememberChessEloProfile(name, source || {username:name, elo:CHESS_ELO_START});
+  }
+}
+function getChessEloProfile(name, idx=null){
+  if(!name) return normalizeChessEloProfile('Player', {elo:CHESS_ELO_START});
+  if(isAIName(name)) return normalizeChessEloProfile(name, {username:name, elo:virtualAiEloForSlot(idx)});
+  const key = profileKeyForName(name);
+  return chessEloProfiles[key] || rememberChessEloProfile(name, profileKeyForName(name) === profileKeyForName(username) ? readLocalChessEloProfile(name) : {username:name, elo:CHESS_ELO_START});
+}
+function rankedDisplayName(name, idx=null){
+  const base = String(name || `Player ${idx == null ? '' : idx + 1}`).trim();
+  if(!base || isAIName(base)) return base;
+  const profile = getChessEloProfile(base, idx);
+  return `${base} ${profile.rankEmoji}`;
+}
+function displayNameForFaction(idx){
+  const raw = slotNames[idx] || (factions[idx]?.short) || `Player ${idx+1}`;
+  return rankedDisplayName(raw, idx);
+}
+function rawNameForFaction(idx){ return slotNames[idx] || (factions[idx]?.short) || `Player ${idx+1}`; }
+function virtualAiEloForSlot(idx=null){
+  const diff = normalizedDifficultyId(typeof chosenDifficultyId === 'string' ? chosenDifficultyId : 'normal');
+  const base = isMultiplayerGame() ? CHESS_ELO_START : (SOLO_AI_ELO_BY_DIFFICULTY[diff] || CHESS_ELO_START);
+  return Math.max(CHESS_ELO_FLOOR, Math.round(base + Math.max(0, Number(idx) || 0) * 8));
+}
+function chessEloProfileDocRef(name){
+  if(!lobbyId) return null;
+  return doc(db,'lobbies',lobbyId,'chess_warlord_profiles',profileKeyForName(name));
+}
+async function refreshChessEloProfilesForSlots(reason='slots'){
+  const seq = ++eloLoadSeq;
+  seedChessEloProfilesFromLocalAndLobby();
+  if(lobbyId){
+    for(const name of slotNames){
+      if(seq !== eloLoadSeq) return;
+      if(!name || isAIName(name)) continue;
+      try{
+        const snap = await getDoc(chessEloProfileDocRef(name));
+        if(snap.exists()) rememberChessEloProfile(name, snap.data());
+      }catch(e){ /* Lobby-level cache/localStorage remain the approved fallback. */ }
+    }
+  }
+  renderEloProfileLine();
+  renderSpawnCards();
+  updateHUD();
+}
+async function saveChessEloProfile(profile){
+  const clean = normalizeChessEloProfile(profile.username, profile);
+  rememberChessEloProfile(clean.username, clean);
+  writeLocalChessEloProfile(clean);
+  const key = profileKeyForName(clean.username);
+  const payload = {
+    username: clean.username,
+    elo: clean.elo,
+    rating: clean.elo,
+    rankName: clean.rankName,
+    rankEmoji: clean.rankEmoji,
+    wins: clean.wins,
+    losses: clean.losses,
+    games: clean.games,
+    gameKey: GAME_KEY,
+    updatedAtMs: Date.now()
+  };
+  if(lobbyRef){
+    try{ await setDoc(lobbyRef,{chessWarlordEloProfiles:{[key]:payload}, updatedAt:serverTimestamp()},{merge:true}); }catch(e){ console.warn('lobby ELO profile save failed', e); }
+  }
+  if(presenceRef && profileKeyForName(clean.username) === profileKeyForName(username)){
+    try{ await setDoc(presenceRef,{elo:payload.elo,rankName:payload.rankName,rankEmoji:payload.rankEmoji,eloUpdatedAtMs:payload.updatedAtMs},{merge:true}); }catch(e){}
+  }
+  try{
+    const ref = chessEloProfileDocRef(clean.username);
+    if(ref) await setDoc(ref,payload,{merge:true});
+  }catch(e){ console.warn('profile ELO save fallback used', e); }
+  renderEloProfileLine();
+  renderSpawnCards();
+  updateHUD();
+  return payload;
+}
+function computeChessEloWinGain(playerElo, opponentElo){
+  const mine = Math.max(1, finiteEloValue(playerElo));
+  const opponent = Math.max(1, finiteEloValue(opponentElo));
+  const ratio = opponent / mine;
+  const scaled = CHESS_ELO_BASE_WIN_GAIN * ratio;
+  return Math.max(2, Math.min(125, Math.round(scaled)));
+}
+function strongestOpponentEloForWinner(winnerSlot){
+  let best = 0;
+  slotNames.forEach((name,idx)=>{
+    if(idx === winnerSlot || !name) return;
+    const elo = isAIName(name) ? virtualAiEloForSlot(idx) : getChessEloProfile(name, idx).elo;
+    if(elo > best) best = elo;
+  });
+  return best || CHESS_ELO_START;
+}
+function eloAwardGameKey(winnerSlot){
+  const name = rawNameForFaction(winnerSlot);
+  const started = Math.round(Number(gameStats?.startedAt || 0) * 1000) || mapSeed || Date.now();
+  return `${GAME_KEY}:${lobbyId || 'local'}:${mapSeed || 'map'}:${started}:${profileKeyForName(name)}`;
+}
+function hasLocalEloAward(key){
+  try{ return JSON.parse(localStorage.getItem(CHESS_ELO_AWARD_STORAGE_KEY) || '[]').includes(key); }catch(e){ return false; }
+}
+function rememberLocalEloAward(key){
+  try{
+    const list = JSON.parse(localStorage.getItem(CHESS_ELO_AWARD_STORAGE_KEY) || '[]').filter(Boolean).slice(-80);
+    if(!list.includes(key)) list.push(key);
+    localStorage.setItem(CHESS_ELO_AWARD_STORAGE_KEY, JSON.stringify(list));
+  }catch(e){}
+}
+async function awardChessEloForWinnerSlot(winnerSlot){
+  if(eloAwarding || winnerSlot == null || winnerSlot < 0 || !isHumanSlot(winnerSlot)) return;
+  const winnerRaw = rawNameForFaction(winnerSlot);
+  if(profileKeyForName(winnerRaw) !== profileKeyForName(username)) return;
+  const awardKey = eloAwardGameKey(winnerSlot);
+  if(hasLocalEloAward(awardKey)) return;
+  eloAwarding = true;
+  try{
+    const current = getChessEloProfile(winnerRaw, winnerSlot);
+    const opponentElo = strongestOpponentEloForWinner(winnerSlot);
+    const gain = computeChessEloWinGain(current.elo, opponentElo);
+    const updated = normalizeChessEloProfile(winnerRaw, {
+      ...current,
+      elo: Math.max(CHESS_ELO_FLOOR, current.elo + gain),
+      wins: (current.wins || 0) + 1,
+      games: (current.games || 0) + 1,
+      updatedAtMs: Date.now()
+    });
+    await saveChessEloProfile(updated);
+    rememberLocalEloAward(awardKey);
+    toast(`ELO +${gain}: ${updated.elo} ${updated.rankEmoji} ${updated.rankName}`, 5200);
+  }catch(e){ console.warn('ELO award failed', e); }
+  finally{ eloAwarding = false; }
+}
+function renderEloProfileLine(){
+  const card = document.getElementById('startCard');
+  if(!card) return;
+  let line = document.getElementById('eloProfileLine');
+  if(!line){
+    line = document.createElement('div');
+    line.id = 'eloProfileLine';
+    line.style.cssText = 'margin:10px 0 12px;padding:10px 12px;border-radius:15px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);font-size:13px;font-weight:900;color:#eaf2ff;';
+    const countdown = document.getElementById('pregameCountdown');
+    if(countdown && countdown.parentNode) countdown.parentNode.insertBefore(line, countdown.nextSibling);
+    else card.insertBefore(line, card.firstChild.nextSibling);
+  }
+  const profile = getChessEloProfile(username || 'Player', PLAYER);
+  line.textContent = `${username || 'Player'} ${profile.rankEmoji} · ${profile.rankName} · ${profile.elo} ELO · Wins ${profile.wins || 0}`;
+}
 function markStateDirty(){ if(gameStarted && !applyingRemote) stateDirty = true; }
 function markLandDirty(){ if(gameStarted && !applyingRemote){ landDirty = true; stateDirty = true; } }
 function clampAiCount(v){
@@ -441,6 +657,8 @@ function buildSlots(players, aiCountOverride=null){
   PLAYER = mine >= 0 ? mine : 0;
   slotFactionIds = slots.map((name,idx) => playableFactionId(factionSelections[name], (idx===PLAYER && !isAIName(name) ? playableFactionId(chosenFactionId) : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length])));
   lastLoadedLobbyPlayers = humans;
+  seedChessEloProfilesFromLocalAndLobby();
+  renderEloProfileLine();
 }
 function ownFactionAlive(){ return factions[PLAYER] && factions[PLAYER].alive; }
 function myKing(){ const f = factions[PLAYER]; return f ? getPiece(f.kingId) : null; }
@@ -689,6 +907,8 @@ function applyRemoteState(data){
     if(!(Number(data.boardW || data.mapW || 0) && Number(data.boardH || data.mapH || 0))) configureBoardSizeForSlots(slotNames.length);
     const mine = slotHumans.indexOf(username);
     if(mine >= 0) PLAYER = mine;
+    seedChessEloProfilesFromLocalAndLobby();
+    renderEloProfileLine();
   }
   if(!board.length) generateBoard();
   if(!factions.length) setupFactions();
@@ -1129,7 +1349,10 @@ async function requestPlayerSpawn(x,y){
 async function refreshPresenceAndController(){
   if(!lobbyId || !username) return;
   try{
-    if(presenceRef){ await setDoc(presenceRef,{username,slot:PLAYER,lastSeen:Date.now(),authUid:auth.currentUser?.uid || '',gameKey:GAME_KEY,selectedFaction:chosenFactionId},{merge:true}); }
+    if(presenceRef){
+      const eloProfile = getChessEloProfile(username || 'Player', PLAYER);
+      await setDoc(presenceRef,{username,slot:PLAYER,lastSeen:Date.now(),authUid:auth.currentUser?.uid || '',gameKey:GAME_KEY,selectedFaction:chosenFactionId,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji},{merge:true});
+    }
     const snap = await getDocs(presenceCollection());
     const active = [];
     const cutoff = Date.now() - 12000;
@@ -1149,8 +1372,10 @@ async function completeLobbyIfNeeded(winner){
 function showWarEnd(winner){
   paused = true;
   defeatOverlay.style.display = 'flex';
+  const winnerSlot = factions.findIndex(f => f.alive);
+  if(winnerSlot >= 0) awardChessEloForWinnerSlot(winnerSlot);
   const h = document.querySelector('#defeatCard h2');
-  if(h) h.textContent = winner === displayNameForFaction(PLAYER) ? 'Victory' : 'War Complete';
+  if(h) h.textContent = winnerSlot === PLAYER ? 'Victory' : 'War Complete';
   defeatDetails.textContent = `${winner} controls the Vastboard.`;
   restartBtn.textContent = 'Exit to Lobby';
   spectateBtn.textContent = 'Spectate Map';
@@ -1165,17 +1390,24 @@ function exitToLobby(){
 async function publishFactionSelection(){
   if(!presenceRef || !username) return;
   try{
-    const payload = {username,slot:PLAYER,lastSeen:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId};
+    const eloProfile = getChessEloProfile(username || 'Player', PLAYER);
+    const payload = {username,slot:PLAYER,lastSeen:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji};
     await setDoc(presenceRef,payload,{merge:true});
     if(pregameRef){
       const playerKey = safeDocId(username);
-      await setDoc(pregameRef,{gameKey:GAME_KEY,updatedAt:serverTimestamp(),selections:{[playerKey]:{username,selectedFaction:chosenFactionId,updatedAtMs:Date.now()}}},{merge:true});
+      await setDoc(pregameRef,{gameKey:GAME_KEY,updatedAt:serverTimestamp(),selections:{[playerKey]:{username,selectedFaction:chosenFactionId,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji,updatedAtMs:Date.now()}}},{merge:true});
     }
   }catch(e){ console.warn('selection save failed', e); }
 }
 function applyFactionSelectionsFromPresence(snap){
   const map = {};
-  snap.forEach(d=>{ const v=d.data(); if(v && v.username && v.selectedFaction) map[v.username] = v.selectedFaction; });
+  snap.forEach(d=>{
+    const v=d.data();
+    if(v && v.username){
+      if(v.selectedFaction) map[v.username] = v.selectedFaction;
+      if(typeof v.elo === 'number' || typeof v.rating === 'number') rememberChessEloProfile(v.username, v);
+    }
+  });
   factionSelections = map;
   slotFactionIds = slotNames.map((name,idx)=> playableFactionId(map[name], (idx===PLAYER && !isAIName(name) ? playableFactionId(chosenFactionId) : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length])));
   initFactionPicker();
@@ -1331,8 +1563,8 @@ async function ensureSharedPregameWindow(){
         gameKey: GAME_KEY,
         endsAtMs: nextEnd,
         updatedAt: serverTimestamp(),
-        arrivals: {[playerKey]: {username,joinedAtMs:Date.now()}},
-        selections: {[playerKey]: {username,selectedFaction:chosenFactionId,updatedAtMs:Date.now()}}
+        arrivals: {[playerKey]: {username,joinedAtMs:Date.now(),elo:getChessEloProfile(username || 'Player', PLAYER).elo}},
+        selections: {[playerKey]: {username,selectedFaction:chosenFactionId,elo:getChessEloProfile(username || 'Player', PLAYER).elo,rankName:getChessEloProfile(username || 'Player', PLAYER).rankName,rankEmoji:getChessEloProfile(username || 'Player', PLAYER).rankEmoji,updatedAtMs:Date.now()}}
       }, {merge:true});
       pregameEndsAt = nextEnd;
     });
@@ -1408,6 +1640,7 @@ async function bootMultiplayer(){
     });
     if(!lobbyId){
       buildSlots([username]);
+      refreshChessEloProfilesForSlots('soloBoot');
       PLAYER = 0;
       chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || chosenDifficultyId);
       chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
@@ -1432,6 +1665,7 @@ async function bootMultiplayer(){
     if(!lsnap.exists()) throw new Error('Lobby not found');
     lobbyData = lsnap.data();
     buildSlots(lobbyData.players || [username]);
+    refreshChessEloProfilesForSlots('lobbyBoot');
     chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || 'normal');
     chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
     slotFactionIds[PLAYER] = chosenFactionId;
@@ -1465,6 +1699,8 @@ async function bootMultiplayer(){
       if(JSON.stringify(nextPlayers) !== JSON.stringify(lastLoadedLobbyPlayers)){
         slotHumans = nextPlayers.slice(0,MAX_ONLINE_PLAYERS);
       }
+      seedChessEloProfilesFromLocalAndLobby();
+      renderEloProfileLine();
     });
     stateUnsub = onSnapshot(stateRef, snap=>{
       if(!snap.exists()) return;
@@ -1517,6 +1753,7 @@ async function bootMultiplayer(){
     pregameRef = null;
     presenceRef = null;
     buildSlots([username || 'Player']);
+    refreshChessEloProfilesForSlots('fallbackSolo');
     PLAYER = 0;
     chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || chosenDifficultyId);
     chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
@@ -3529,7 +3766,9 @@ function maybeAnnounceWorldWinner(){
   const alive = factions.filter(f=>f.alive);
   if(alive.length===1 && gameStarted && !maybeAnnounceWorldWinner.done){
     maybeAnnounceWorldWinner.done = true;
-    const winner = displayNameForFaction(alive[0].idx);
+    const winnerSlot = alive[0].idx;
+    const winner = displayNameForFaction(winnerSlot);
+    awardChessEloForWinnerSlot(winnerSlot);
     toast(`${winner} controls the Vastboard.`, 6000);
     showWarEnd(winner);
     markStateDirty();
@@ -3555,6 +3794,7 @@ function createGame(){
   cam.zoom=1;
   selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[]; pendingPlayerActions=[];
   playerDefeated=false; spectating=false; paused=false; defeatOverlay.style.display='none';
+  eloAwarding=false;
   if(pauseBtn) pauseBtn.textContent='Pause';
   maybeAnnounceWorldWinner.done=false;
   gameStats={captures:0,kingsTaken:0,startedAt:now()};
