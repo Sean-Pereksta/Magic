@@ -220,7 +220,11 @@ const MAX_AI_PER_FRAME = 22;
 const MULTIPLAYER_AI_SPEED_CAP = .72;
 const MULTIPLAYER_AI_SPAWN_SCALE = .72;
 const MULTIPLAYER_AI_MAX_ACTIONS_PER_TICK = 1;
-const DEFAULT_FACTION_IDS = ['crownward','ember','iron','verdant','shadow','tide','sunspire','frost'];
+const DEFAULT_FACTION_IDS = ['crownward','ember','iron','verdant','shadow','sunspire'];
+const REMOVED_FACTION_IDS = new Set(['tide','frost']);
+function playableFactionId(id, fallback='crownward'){
+  return DEFAULT_FACTION_IDS.includes(id) ? id : fallback;
+}
 const SLOT_OUTLINE_COLORS = ['#fff3a3','#7dd3fc','#fb7185','#86efac','#c4b5fd','#67e8f9','#fdba74','#e5e7eb'];
 const MULTIPLAYER_AI_VOTE_SECONDS = 10;
 const MULTIPLAYER_FACTION_PICK_SECONDS = 10;
@@ -229,6 +233,16 @@ const VERDANT_FADE_SECONDS = 8.5;
 const IRON_LOCKDOWN_SECONDS = 2.8;
 const FROST_FREEZE_SECONDS = 2.6;
 const FROST_BISHOP_RAY = 4;
+const SHADOW_FOG_RADIUS = 5;
+const SHADOW_KILL_RADIUS = 1;
+const SHADOW_HOME_KILL_RADIUS = 2;
+const SHADOW_BACKSTAB_RADIUS = 3;
+const EMBER_SCORCH_SECONDS = 60;
+const EMBER_KILL_HEAT_SECONDS = 10;
+const CINDER_ARCHON_DEN_COOLDOWN = 120;
+const SUNSPIRE_MAX_SOLAR_BEACONS = 10;
+const SUNSPIRE_BASE_SPAWN_SECONDS = 122;
+const SUNSPIRE_SOLAR_BEACON_SECONDS = 1.5;
 const COOLDOWN_SLOWDOWN_MULTIPLIER = 1.6;
 const MOVE_ANIMATION_COOLDOWN_MULTIPLIER = 1.5;
 let PLAYER = 0;
@@ -419,7 +433,7 @@ function buildSlots(players, aiCountOverride=null){
   configureBoardSizeForSlots(slots.length);
   const mine = humans.indexOf(username);
   PLAYER = mine >= 0 ? mine : 0;
-  slotFactionIds = slots.map((name,idx) => factionSelections[name] || (idx===PLAYER && !isAIName(name) ? chosenFactionId : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]));
+  slotFactionIds = slots.map((name,idx) => playableFactionId(factionSelections[name], (idx===PLAYER && !isAIName(name) ? playableFactionId(chosenFactionId) : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length])));
   lastLoadedLobbyPlayers = humans;
 }
 function ownFactionAlive(){ return factions[PLAYER] && factions[PLAYER].alive; }
@@ -479,7 +493,7 @@ function serializePiece(p){
     aid:p.clientActionId || '', aby:p.clientActionBy || '', ms:p.moveStartMs || 0, me:p.moveEndMs || 0,
     cu:p.cooldownUntil || 0, cd:p.lastCooldownDuration || 0,
     nb:p.nextBuildingTick || 0, sg:p.seedGen || 0, sc:p.seedChildDone ? 1 : 0,
-    sh:p.shieldBoostId || 0, sr:p.shieldReadyAt || 0, wc:p.wallCursor || 0
+    sh:p.shieldBoostId || 0, sr:p.shieldReadyAt || 0, wc:p.wallCursor || 0, rv:p.reviveUsed ? 1 : 0, hu:p.heatUntil || 0
   };
 }
 function diffLandString(prev,next){
@@ -704,7 +718,9 @@ function applyRemoteState(data){
       seedChildDone:!!pp.sc,
       shieldBoostId:pp.sh || 0,
       shieldReadyAt:pp.sr || 0,
-      wallCursor:pp.wc || 0
+      wallCursor:pp.wc || 0,
+      reviveUsed:!!pp.rv,
+      heatUntil:pp.hu || 0
     };
   });
   idCounter = pieces.reduce((m,p)=>Math.max(m,Number(p.id)||0),0)+1;
@@ -1155,7 +1171,7 @@ function applyFactionSelectionsFromPresence(snap){
   const map = {};
   snap.forEach(d=>{ const v=d.data(); if(v && v.username && v.selectedFaction) map[v.username] = v.selectedFaction; });
   factionSelections = map;
-  slotFactionIds = slotNames.map((name,idx)=> map[name] || (idx===PLAYER && !isAIName(name) ? chosenFactionId : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]));
+  slotFactionIds = slotNames.map((name,idx)=> playableFactionId(map[name], (idx===PLAYER && !isAIName(name) ? playableFactionId(chosenFactionId) : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length])));
   initFactionPicker();
 }
 function tallyAiVotes(votes){
@@ -1388,7 +1404,7 @@ async function bootMultiplayer(){
       buildSlots([username]);
       PLAYER = 0;
       chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || chosenDifficultyId);
-      chosenFactionId = localStorage.getItem('cw.lastFaction') || chosenFactionId;
+      chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
       slotFactionIds[PLAYER] = chosenFactionId;
       isController = true;
       controllerName = username || 'Player';
@@ -1411,7 +1427,7 @@ async function bootMultiplayer(){
     lobbyData = lsnap.data();
     buildSlots(lobbyData.players || [username]);
     chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || 'normal');
-    chosenFactionId = localStorage.getItem('cw.lastFaction') || chosenFactionId;
+    chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
     slotFactionIds[PLAYER] = chosenFactionId;
     if(slotHumans.length <= 1){
       lobbyId = '';
@@ -1497,7 +1513,7 @@ async function bootMultiplayer(){
     buildSlots([username || 'Player']);
     PLAYER = 0;
     chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || chosenDifficultyId);
-    chosenFactionId = localStorage.getItem('cw.lastFaction') || chosenFactionId;
+    chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
     slotFactionIds[PLAYER] = chosenFactionId;
     isController = true;
     controllerName = username || 'Player';
@@ -1540,27 +1556,27 @@ const factionCatalog = {
   crownward: {
     id:'crownward', name:'Crownward Compact', short:'Crownward', icon:'♛', player:true,
     color:'#f6d36f', dark:'#9b6f12', aura:'#ffd86c', aiStyle:'balanced', spawnRate:1.0,
-    description:'Middle-ground royal army. Marches cleanly, captures land well, and keeps the classic odd knight jump.',
-    pieces:['pawn','rook','bishop','knight','marshal','queen','general','tower','lancer','royalbannerhall','barrackskeep']
+    description:'Engineered precision faction. Aquanauts exploit water, Ballista Towers punish exact lanes, and pawns obey stricter tactics.',
+    pieces:['pawn','rook','aquanaut','knight','marshal','queen','general','ballistatower','lancer','royalbannerhall','barrackskeep']
   },
   ember: {
     id:'ember', name:'Ember Legion', short:'Ember', icon:'🔥', color:'#ff6b43', dark:'#9c2815', aura:'#ff8a57', aiStyle:'aggressive', spawnRate:.90,
-    description:'Fast pressure army with burst moves, awkward hoppers, and a little erratic recovery.',
-    pieces:['sparkpawn','cinderjack','ashhopper','flamerunner','emberknight','flamequeen','general','pyretower','lancer','cinderfurnace','sparkden']
+    description:'Kill-momentum army. Scorched tiles last one minute, Ember troops recharge faster on Ember land, and Cinder Archons plant Spark Dens after kills.',
+    pieces:['sparkpawn','cinderjack','cinderarchon','flamerunner','emberknight','flamequeen','general','pyretower','lancer','cinderfurnace','sparkden']
   },
   iron: {
     id:'iron', name:'Iron Bastion', short:'Bastion', icon:'🛡️', color:'#aeb7c2', dark:'#53606b', aura:'#cfd8e3', aiStyle:'defensive', spawnRate:1.40,
-    description:'Very slow spawning shield army. Short heavy moves, pushes, and fortified contact define it.',
+    description:'Fortress army. Slow in enemy land, faster on controlled ground, and shield-wall groups brace instead of being shoved around.',
     pieces:['shieldpawn','bulwark','hammerknight','gatebreaker','rook','warden','general','tower','citadelwalker','shieldfoundry','gatehouse']
   },
   verdant: {
     id:'verdant', name:'Verdant Swarm', short:'Verdant', icon:'🌿', color:'#6ee985', dark:'#217a3b', aura:'#83f795', aiStyle:'expansion', spawnRate:.80,
-    description:'Fast-growing local army. Short adjacent moves, connected jumps, and forest movement recharge quickly.',
+    description:'Living-terrain faction. Forest ambushes recharge quickly, roots snare enemies, and pieces look like moving groves.',
     pieces:['seedpawn','thornguard','scout','stagrunner','vinehook','vinebishop','general','grovetower','queen','seedgrove','broodbloom']
   },
   shadow: {
     id:'shadow', name:'Shadow Court', short:'Shadow', icon:'☾', color:'#b388ff', dark:'#4b258d', aura:'#c8a7ff', aiStyle:'assassin', spawnRate:1.15,
-    description:'Teleport assassins. Short blinks recharge quickly; long teleports are powerful commitments.',
+    description:'Hidden-land assassin faction. Opponents only see five spaces into Shadow-controlled land, mirrors are fragile, and kills expand the darkness.',
     pieces:['shadepawn','blinkpawn','shadowstepper','assassin','nightblade','wraith','voidstrider','umbralbishop','queen','obsidianmirror','knifechapel']
   },
   tide: {
@@ -1569,9 +1585,9 @@ const factionCatalog = {
     pieces:['tidepawn','crabrook','bishop','knight','wavequeen','general','reefspire','scout','reefnursery','tidalbeacon']
   },
   sunspire: {
-    id:'sunspire', name:'Sunspire Order', short:'Sunspire', icon:'☀', color:'#ffd2a1', dark:'#a6611d', aura:'#ffe7bc', aiStyle:'honor', spawnRate:1.20,
-    description:'Slow elite army built around skips, leaps, vaults, and swift repositioning.',
-    pieces:['sunacolyte','dawnblade','eagleknight','lightlancer','radiantbishop','sunherald','paladin','dawnarchon','queen','sunspirebeacon','radiantmonastery']
+    id:'sunspire', name:'Sunspire Order', short:'Sunspire', icon:'☀', color:'#ffd2a1', dark:'#a6611d', aura:'#ffe7bc', aiStyle:'honor', spawnRate:1.75,
+    description:'Elite solar faction. No pawn swarm; long base spawn time is reduced only by fragile Solar Beacons, while Eagle Knights and Archons dominate movement.',
+    pieces:['dawnblade','eagleknight','eagleknight','lightlancer','radiantbishop','sunherald','paladin','dawnarchon','queen','sunspirebeacon','radiantmonastery']
   },
   frost: {
     id:'frost', name:'Frostbound Clans', short:'Frostbound', icon:'❄', color:'#a7f3ff', dark:'#1e5f78', aura:'#d4fbff', aiStyle:'defensive', spawnRate:1.25,
@@ -1602,16 +1618,18 @@ const pieceDefs = {
   pawn: {name:'Pawn', icon:'♟', pattern:'pawn', cooldown:2.4, value:1, hp:1, desc:'Moves one square any direction. Captures one diagonal square.'},
   rook: {name:'Rook', icon:'♜', pattern:'rook', cooldown:4.0, value:5, hp:1, desc:'Slides orthogonally until pieces or rough terrain stop it.'},
   bishop:{name:'Bishop', icon:'♝', pattern:'bishop', cooldown:3.7, value:4, hp:1, desc:'Slides diagonally until pieces or rough terrain stop it.'},
+  aquanaut:{name:'Aquanaut', icon:'⚓', pattern:'aquanaut', cooldown:3.9, value:4, hp:1, amphibious:true, desc:'Crownward water specialist. Moves like a short bishop on land; from water, exits onto any edge of the same body within six tiles.'},
   knight:{name:'Knight', icon:'♞', pattern:'knight', cooldown:3.2, value:3, hp:1, desc:'Leaps in L-shapes over terrain and pieces.'},
   queen:{name:'Queen', icon:'♛', pattern:'queen', cooldown:5.2, value:9, hp:1, desc:'Rook + bishop movement, limited by terrain blockers.'},
   general:{name:'General', icon:'⚔', pattern:'general', cooldown:4.8, value:7, aura:3, hp:1, desc:'Moves up to two squares any direction and projects territory.'},
   tower:{name:'Tower', icon:'♖', pattern:'tower', cooldown:6.0, value:6, aura:3, hp:1, desc:'Slow one-step orthogonal anchor that projects territory.'},
+  ballistatower:{name:'Ballista Tower', icon:'▧', pattern:'ballista', cooldown:6.8, value:7, aura:3, hp:2, desc:'Crownward siege tower. Moves one cardinal tile, but attacks only by jumping onto enemies or buildings exactly four cardinal spaces away.'},
   lancer:{name:'Lancer', icon:'♘', pattern:'lancer', cooldown:3.6, value:4, hp:1, desc:'Moves up to three straight squares and attacks at the end of a lane.'},
   marshal:{name:'Marshal', icon:'✦', pattern:'marshal', cooldown:4.6, value:6, aura:2, hp:1, desc:'Moves two straight, then may bend one tile when fighting from owned land.'},
   sparkpawn:{name:'Spark Pawn', icon:'♟', pattern:'pawn', cooldown:2.0, value:1, hp:1, desc:'Fast pawn. Moves one any direction and captures diagonally.'},
   emberknight:{name:'Ember Knight', icon:'♞', pattern:'knight', cooldown:2.55, value:4, hp:1, desc:'Very fast knight pressure.'},
   cinderjack:{name:'Cinder Jack', icon:'♞', pattern:'cinderjack', cooldown:2.85, value:4, hp:1, desc:'L-jump raider that scorches ground around its landing spot.'},
-  ashhopper:{name:'Ash Hopper', icon:'◇', pattern:'ashhopper', cooldown:2.55, value:3, hp:1, desc:'Jumps exactly two tiles in any direction.'},
+  cinderarchon:{name:'Cinder Archon', icon:'◇', pattern:'cinderarchon', cooldown:2.85, value:5, hp:1, desc:'Jumps exactly two tiles. Its kills summon a Spark Den near the kill, with a two minute personal cooldown.'},
   flamerunner:{name:'Flame Runner', icon:'↯', pattern:'flamerunner', cooldown:3.15, value:4, hp:1, desc:'Rushes exactly two or three tiles in a cardinal line.'},
   flamequeen:{name:'Flame Queen', icon:'♛', pattern:'queen', cooldown:4.75, value:10, hp:1, desc:'Aggressive queen with lower cooldown.'},
   pyretower:{name:'Pyre Tower', icon:'♖', pattern:'tower', cooldown:5.6, value:6, aura:3, hp:1, desc:'Territory tower with faster cooldown.'},
@@ -1640,12 +1658,12 @@ const pieceDefs = {
   wavequeen:{name:'Wave Queen', icon:'♛', pattern:'queen', cooldown:5.0, value:9, hp:1, amphibious:true, desc:'Queen that can cross water.'},
   reefspire:{name:'Reef Spire', icon:'♖', pattern:'tower', cooldown:5.8, value:6, aura:3, hp:1, amphibious:true, desc:'Water-friendly territory tower.'},
   sunacolyte:{name:'Sun Acolyte', icon:'♙', pattern:'sunacolyte', cooldown:2.95, value:2, hp:1, wallVault:true, desc:'Skips exactly two tiles in any direction, jumping over the first tile.'},
-  dawnblade:{name:'Dawnblade', icon:'♘', pattern:'dawnblade', cooldown:3.25, value:4, hp:1, wallVault:true, desc:'Steps adjacent or jumps two tiles to attack.'},
-  lightlancer:{name:'Light Lancer', icon:'↯', pattern:'lightlancer', cooldown:3.8, value:5, hp:1, wallVault:true, desc:'Jumps exactly three cardinal tiles for clean strike lanes.'},
-  radiantbishop:{name:'Radiant Bishop', icon:'♝', pattern:'radiantbishop', cooldown:3.9, value:5, hp:1, wallVault:true, desc:'Diagonal jumper, not a slider, over two to four tiles.'},
-  sunherald:{name:'Sun Herald', icon:'✦', pattern:'sunherald', cooldown:4.0, value:6, aura:2, hp:1, wallVault:true, desc:'Hops one or two tiles and can leap through friendly formations.'},
+  dawnblade:{name:'Dawnblade', icon:'♘', pattern:'dawnblade', cooldown:3.05, value:4, hp:1, wallVault:true, desc:'Steps adjacent or jumps two to three tiles to attack.'},
+  lightlancer:{name:'Light Lancer', icon:'↯', pattern:'lightlancer', cooldown:3.5, value:5, hp:1, wallVault:true, desc:'Jumps three to four cardinal tiles for clean strike lanes.'},
+  radiantbishop:{name:'Radiant Bishop', icon:'♝', pattern:'radiantbishop', cooldown:3.55, value:5, hp:1, wallVault:true, desc:'Diagonal jumper, not a slider, over two to five tiles.'},
+  sunherald:{name:'Sun Herald', icon:'✦', pattern:'sunherald', cooldown:3.8, value:6, aura:2, hp:1, wallVault:true, desc:'Hops one to three tiles and can leap through friendly formations.'},
   sunbishop:{name:'Sun Bishop', icon:'♝', pattern:'bishopLong', cooldown:3.8, value:5, hp:1, desc:'Longer bishop lines.'},
-  eagleknight:{name:'Eagle Knight', icon:'♞', pattern:'eagle', cooldown:3.55, value:5, hp:1, wallVault:true, desc:'Sunspire jumper. Leaps two to four spaces in any direction and can vault walls.'},
+  eagleknight:{name:'Eagle Knight', icon:'♞', pattern:'eagle', cooldown:2.8, value:5, hp:1, wallVault:true, desc:'Fast Sunspire jumper. Leaps two to five spaces in any direction and can vault walls.'},
   paladin:{name:'Paladin', icon:'♞', pattern:'paladin', cooldown:4.1, value:6, hp:2, aura:1, desc:'Knight plus one-step king move, very sturdy.'},
   frostpawn:{name:'Frost Pawn', icon:'♙', pattern:'frostpawn', cooldown:2.75, value:1, hp:1, desc:'Deliberate one-tile cardinal mover.'},
   icespear:{name:'Ice Spear', icon:'♜', pattern:'icespear', cooldown:3.7, value:4, hp:1, desc:'Moves two to four cardinal tiles in a straight line.'},
@@ -1654,7 +1672,7 @@ const pieceDefs = {
   sledknight:{name:'Sled Knight', icon:'♞', pattern:'sledknight', cooldown:3.9, value:5, hp:1, desc:'Momentum jump: three straight, then one sideways.'},
   mirrorskater:{name:'Mirror Skater', icon:'◇', pattern:'mirrorskater', cooldown:3.6, value:4, hp:1, desc:'Moves exactly two, four, or six tiles in a straight line; never one.'},
   citadelwalker:{name:'Citadel Walker', icon:'▦', pattern:'citadel', cooldown:5.7, value:8, hp:3, aura:2, desc:'Iron elite. Moves one orthogonal or exactly three orthogonal, anchoring fortified land.'},
-  dawnarchon:{name:'Dawn Archon', icon:'✹', pattern:'archon', cooldown:5.4, value:8, hp:2, aura:2, desc:'Sunspire elite. Moves like a short bishop or knight and sanctifies nearby land.'},
+  dawnarchon:{name:'Dawn Archon', icon:'✹', pattern:'archon', cooldown:4.9, value:9, hp:2, aura:2, reviveOnce:true, desc:'Sunspire elite. Moves like a stronger bishop/knight hybrid; the first time it falls, it revives once beside its own king.'},
   voidstrider:{name:'Void Strider', icon:'✷', pattern:'voidstrider', cooldown:3.6, value:7, hp:1, wallVault:true, desc:'Shadow elite. Moves one diagonal or exactly ten spaces in any straight or diagonal direction.'},
   royalbannerhall:{name:'Royal Banner Hall', icon:'⚑', pattern:'building', cooldown:7.5, value:7, hp:3, building:true, aura:3, desc:'Command building. Nearby Crownward units cool down 25% faster; nearby kings move up to three spaces.'},
   barrackskeep:{name:'Barracks Keep', icon:'▥', pattern:'building', cooldown:7.5, value:6, hp:3, building:true, desc:'Spawns a Pawn every 55 seconds on nearby owned land.'},
@@ -1664,11 +1682,11 @@ const pieceDefs = {
   gatehouse:{name:'Gatehouse', icon:'▤', pattern:'building', cooldown:8.0, value:7, hp:3, building:true, desc:'Repairs starting walls or slowly builds a 5x5 wall ring around itself.'},
   seedgrove:{name:'Seed Grove', icon:'✾', pattern:'building', cooldown:6.5, value:6, hp:1, building:true, desc:'Fragile Verdant node. Spreads roots and can spawn one child node, then stops.'},
   broodbloom:{name:'Brood Bloom', icon:'❀', pattern:'building', cooldown:6.5, value:5, hp:2, building:true, desc:'Spawns a Seed Pawn every 45 seconds on Verdant land.'},
-  obsidianmirror:{name:'Obsidian Mirror', icon:'◈', pattern:'building', cooldown:7.0, value:7, hp:2, building:true, desc:'Shadow relay. Units beside one mirror can jump near another mirror.'},
+  obsidianmirror:{name:'Obsidian Mirror', icon:'◈', pattern:'building', cooldown:7.0, value:7, hp:1, building:true, desc:'Fragile Shadow relay. Shadow Stepper, Nightblade, Wraith, and Void Strider may teleport to open spaces beside a friendly mirror.'},
   knifechapel:{name:'Knife Chapel', icon:'†', pattern:'building', cooldown:7.0, value:6, hp:2, building:true, desc:'Kills within five spaces spawn a Shade Pawn beside the chapel, with a 10 second cooldown.'},
   reefnursery:{name:'Reef Nursery', icon:'≋', pattern:'building', cooldown:7.0, value:6, hp:3, building:true, amphibious:true, desc:'Spawns Tide reinforcements every 45 seconds near water, coast, or owned land.'},
   tidalbeacon:{name:'Tidal Beacon', icon:'◌', pattern:'building', cooldown:7.0, value:7, hp:3, building:true, amphibious:true, desc:'Every 18 seconds, extends Tide control through nearby water chains.'},
-  sunspirebeacon:{name:'Sunspire Beacon', icon:'☼', pattern:'building', cooldown:7.0, value:7, hp:2, building:true, desc:'Sunspire relay. Units beside one beacon jump near another, or gain 30% faster cooldown if alone.'},
+  sunspirebeacon:{name:'Solar Beacon', icon:'☼', pattern:'building', cooldown:7.0, value:7, hp:1, building:true, desc:'Fragile Sunspire structure. Each active Solar Beacon removes 1.5 seconds from Sunspire spawn time, up to 10 beacons.'},
   radiantmonastery:{name:'Radiant Monastery', icon:'✺', pattern:'building', cooldown:8.0, value:8, hp:3, building:true, desc:'Every 60 seconds, turns a nearby basic Sunspire troop into an elite.'},
   iceobelisk:{name:'Ice Obelisk', icon:'❖', pattern:'building', cooldown:8.0, value:7, hp:3, building:true, desc:'Enemies within five spaces suffer 25% longer movement cooldowns.'},
   sledyard:{name:'Sled Yard', icon:'▧', pattern:'building', cooldown:8.0, value:6, hp:3, building:true, desc:'Spawns a Sled Knight every 80 seconds.'}
@@ -2107,15 +2125,16 @@ function setupFactions(){
   const diff = difficultyProfiles[chosenDifficultyId] || difficultyProfiles.normal;
   const multiplayerAi = isMultiplayerGame();
   const aiSpawnScale = multiplayerAi ? MULTIPLAYER_AI_SPAWN_SCALE : diff.spawn;
-  slotFactionIds = slotNames.map((name,idx)=> slotFactionIds[idx] || factionSelections[name] || (idx===PLAYER && isHumanSlot(idx) ? chosenFactionId : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]));
+  slotFactionIds = slotNames.map((name,idx)=> playableFactionId(slotFactionIds[idx] || factionSelections[name], (idx===PLAYER && isHumanSlot(idx) ? playableFactionId(chosenFactionId) : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length])));
   const duplicateCounts = slotFactionIds.reduce((m,id)=>{m[id]=(m[id]||0)+1; return m;},{});
   factions = slotFactionIds.map((id,idx)=>{
-    const base = factionCatalog[id] || factionCatalog.crownward;
+    const safeId = playableFactionId(id, DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]);
+    const base = factionCatalog[safeId] || factionCatalog.crownward;
     const human = isHumanSlot(idx);
     return {
       ...base,
       idx,
-      baseId:id,
+      baseId:safeId,
       playerName: displayNameForFaction(idx),
       isAI: !human,
       outline:SLOT_OUTLINE_COLORS[idx % SLOT_OUTLINE_COLORS.length],
@@ -2152,7 +2171,9 @@ function newPiece(faction,type,x,y,opts={}){
     seedChildDone:!!opts.seedChildDone,
     shieldBoostId:0,
     shieldReadyAt:0,
-    wallCursor:0
+    wallCursor:0,
+    reviveUsed:!!opts.reviveUsed,
+    heatUntil:0
   };
   if(typeof assignedId === 'number') idCounter = Math.max(idCounter, assignedId + 1);
   pieces.push(p);
@@ -2170,6 +2191,21 @@ function weakestTypeForFaction(factionIdx){
   const order = [...f.pieces].sort((a,b)=>(pieceDefs[a].value||1)-(pieceDefs[b].value||1));
   return order[0] || 'pawn';
 }
+function startingTowerTypeForFaction(f){
+  if(f?.id==='crownward') return 'ballistatower';
+  if(f?.id==='ember') return 'pyretower';
+  if(f?.id==='verdant') return 'grovetower';
+  return 'tower';
+}
+function addFactionStartingExtras(f,s){
+  if(f.id==='sunspire'){
+    const extras=[['eagleknight',-2,1],['eagleknight',1,-2],['sunspirebeacon',2,1]];
+    for(const [type,dx,dy] of extras){
+      const x=clamp(s.x+dx,0,BOARD_W-1), y=clamp(s.y+dy,0,BOARD_H-1);
+      if(!findPieceAt(x,y) && passableFor({type,faction:f.idx},x,y)) newPiece(f.idx,type,x,y,{ready:true});
+    }
+  }
+}
 function setupPieces(){
   pieces = []; idCounter = 1; ownerCounts = new Map();
   const starts = getStartPositions();
@@ -2177,8 +2213,10 @@ function setupPieces(){
     const s = starts[idx];
     newPiece(idx,'king',s.x,s.y,{ready:true});
     newPiece(idx,'general',s.x+1,s.y,{ready:true});
-    newPiece(idx,'tower',s.x,s.y+1,{ready:true});
-    const list = f.pieces.filter(t=>t!=='general'&&t!=='tower');
+    const startTower = startingTowerTypeForFaction(f);
+    newPiece(idx,startTower,s.x,s.y+1,{ready:true});
+    addFactionStartingExtras(f,s);
+    const list = f.pieces.filter(t=>t!=='general'&&t!==startTower&&t!=='tower'&&t!=='ballistatower');
     const placements = [[-1,0],[0,-1],[1,1],[-1,1],[2,0],[0,2],[-2,0],[0,-2]];
     for(let i=0;i<Math.min(6,placements.length);i++){
       const [dx,dy]=placements[i];
@@ -2270,7 +2308,10 @@ function eligibleSpawnTiles(factionIdx, type=null){
 
     // Shadow hidden-court land no longer restricts spawns; any Shadow roster piece can use owned eligible land.
 
-    if(f?.id==='sunspire' && def.value>=6 && !nearCommandPiece(t.x,t.y,factionIdx,4) && t.captureKind!=='sunspire_sanctified' && t.captureKind!=='sunspire_ray') continue;
+    if(f?.id==='sunspire'){
+      if(spawnType==='sunspirebeacon' && !canOfferSolarBeacon(factionIdx)) continue;
+      if(def.value>=6 && spawnType!=='sunspirebeacon' && !nearCommandPiece(t.x,t.y,factionIdx,4) && t.captureKind!=='sunspire_sanctified' && t.captureKind!=='sunspire_ray') continue;
+    }
 
     if(f?.id==='frost' && isFrostFrozenSpawnType(spawnType) && t.captureKind!=='frost_frozen' && !nearCommandPiece(t.x,t.y,factionIdx,3)) continue;
 
@@ -2280,10 +2321,17 @@ function eligibleSpawnTiles(factionIdx, type=null){
 }
 function chooseSpawnOptions(factionIdx){
   const f=factions[factionIdx];
-  const pool = f.pieces.filter(t=>t!=='king');
+  let pool = f.pieces.filter(t=>t!=='king');
+  if(f.id==='sunspire'){
+    pool = pool.filter(t=>t!=='sunacolyte' && (t!=='sunspirebeacon' || canOfferSolarBeacon(factionIdx)));
+    // Bias Sunspire toward elite saturation and extra Eagle Knights.
+    pool = pool.concat(['eagleknight','eagleknight','dawnblade','lightlancer','radiantbishop']);
+  }
+  if(f.id==='ember') pool = pool.filter(t=>t!=='ashhopper');
+  if(!pool.length) pool = f.pieces.filter(t=>t!=='king' && t!=='sunspirebeacon');
   const picks=[];
   let guard=0;
-  while(picks.length<3 && guard++<50){
+  while(picks.length<3 && guard++<80){
     const type=pool[Math.floor(Math.random()*pool.length)] || 'pawn';
     if(picks.length<2 || !picks.includes(type) || Math.random()>.5) picks.push(type);
   }
@@ -2330,6 +2378,77 @@ function localShrineNamesForPiece(piece){
   return shrines.filter(s=>shrineController(s)===piece.faction && dist2(piece.x,piece.y,s.x,s.y)<=((s.radius||SHRINE_RADIUS)*(s.radius||SHRINE_RADIUS))).map(s=>s.short);
 }
 function isBuildingType(type){ return !!pieceDefs[type]?.building; }
+function activeSolarBeacons(factionIdx){
+  return liveBuildings(factionIdx,'sunspirebeacon').length;
+}
+function canOfferSolarBeacon(factionIdx){
+  return activeSolarBeacons(factionIdx) < SUNSPIRE_MAX_SOLAR_BEACONS;
+}
+function shadowMirrorTeleportTypes(){
+  return new Set(['shadowstepper','nightblade','wraith','voidstrider']);
+}
+function canUseShadowMirrorStep(piece){
+  return !!piece && factions[piece.faction]?.id==='shadow' && shadowMirrorTeleportTypes().has(piece.type);
+}
+function visibleFromPlayerTroops(x,y,viewer=PLAYER,r=SHADOW_FOG_RADIUS){
+  const rr=r*r;
+  return pieces.some(p=>p.alive && p.faction===viewer && dist2(x,y,p.x,p.y)<=rr);
+}
+function isShadowFoggedForPlayer(x,y,viewer=PLAYER){
+  if(viewer == null || !inBounds(x,y)) return false;
+  const t=tile(x,y);
+  if(t.owner==null || t.owner===viewer) return false;
+  const ownerFaction=factions[t.owner];
+  if(ownerFaction?.id!=='shadow') return false;
+  return !visibleFromPlayerTroops(x,y,viewer,SHADOW_FOG_RADIUS);
+}
+function ironAdjacentGroupCount(piece){
+  if(!piece || factions[piece.faction]?.id!=='iron') return 0;
+  let n=1;
+  for(const [dx,dy] of DIRS8){
+    const q=findPieceAt(piece.x+dx,piece.y+dy);
+    if(q && q.alive && q.faction===piece.faction && !pieceDefs[q.type]?.building) n++;
+  }
+  return n;
+}
+function isIronShieldLocked(piece){
+  return !!piece && factions[piece.faction]?.id==='iron' && tile(piece.x,piece.y)?.owner===piece.faction && ironAdjacentGroupCount(piece)>=3;
+}
+function findIronAssaultLanding(attacker,target,fromX,fromY){
+  const options=[];
+  for(const [dx,dy] of DIRS8){
+    const x=target.x+dx, y=target.y+dy;
+    if(x===target.x && y===target.y) continue;
+    if(!inBounds(x,y) || findPieceAt(x,y)) continue;
+    if(!passableFor(attacker,x,y)) continue;
+    options.push({x,y,score:dist2(x,y,fromX,fromY)});
+  }
+  options.sort((a,b)=>a.score-b.score);
+  return options[0] || null;
+}
+function aquanautWaterExits(cx,cy,limit=6){
+  const exits=[];
+  if(!inBounds(cx,cy) || tile(cx,cy).type!=='water') return exits;
+  const seen=new Set([key(cx,cy)]);
+  const q=[{x:cx,y:cy,d:0}];
+  for(let i=0;i<q.length;i++){
+    const cur=q[i];
+    if(cur.d>=limit) continue;
+    for(const [dx,dy] of ORTHO){
+      const wx=cur.x+dx, wy=cur.y+dy;
+      if(!inBounds(wx,wy)) continue;
+      const k=key(wx,wy);
+      if(tile(wx,wy).type==='water' && !seen.has(k)){
+        seen.add(k); q.push({x:wx,y:wy,d:cur.d+1});
+      }
+      const lx=cur.x+dx, ly=cur.y+dy;
+      if(inBounds(lx,ly) && tile(lx,ly).type!=='water') exits.push({x:lx,y:ly});
+    }
+  }
+  const unique=[]; const uSeen=new Set();
+  for(const e of exits){ const k=key(e.x,e.y); if(!uSeen.has(k)){uSeen.add(k); unique.push(e);} }
+  return unique;
+}
 function liveBuildings(factionIdx=null,type=null){
   return pieces.filter(p=>p.alive && isBuildingType(p.type) && (factionIdx==null || p.faction===factionIdx) && (!type || p.type===type));
 }
@@ -2442,16 +2561,23 @@ function baseCooldownFor(piece, x=piece.x, y=piece.y){
   let style = 1;
   if(f?.id==='ember') style=.9;
   else if(f?.id==='verdant') style=.92;
-  else if(f?.id==='iron') style=1.22;
+  else if(f?.id==='iron') style=1.16;
   else if(f?.id==='frost') style=1.14;
-  else if(f?.id==='sunspire') style=1.08;
+  else if(f?.id==='sunspire') style=.94;
   else if(f?.id==='shadow') style=1.04;
   else if(f?.aiStyle==='aggressive') style=.95;
   else if(f?.aiStyle==='defensive') style=1.06;
   else if(f?.aiStyle==='expansion') style=.96;
   let buildingMult = 1;
   if(f?.id==='crownward' && buildingNear(piece,'royalbannerhall',3)) buildingMult *= .75;
-  if(f?.id==='verdant' && terrain && terrain.owner===piece.faction && terrain.captureKind==='verdant_root') buildingMult *= .90;
+  if(f?.id==='ember' && terrain && terrain.owner===piece.faction) buildingMult *= (terrain.captureKind==='ember_kill' ? .62 : .76);
+  if(f?.id==='ember' && piece.heatUntil && now()<piece.heatUntil) buildingMult *= .68;
+  if(f?.id==='verdant' && terrain && (terrain.type==='forest' || (terrain.owner===piece.faction && (terrain.captureKind==='verdant_root' || isNaturalVerdantTerrain(terrain.type))))) buildingMult *= .74;
+  if(terrain && terrain.owner!=null && terrain.owner!==piece.faction && factions[terrain.owner]?.id==='verdant') buildingMult *= 1.32;
+  if(f?.id==='iron' && terrain){
+    if(terrain.owner===piece.faction) buildingMult *= .70;
+    else if(terrain.owner!=null && terrain.owner!==piece.faction) buildingMult *= 1.48;
+  }
   if(liveBuildings(null,'iceobelisk').some(b=>b.faction!==piece.faction && factions[b.faction]?.alive && dist2(x,y,b.x,b.y)<=25)) buildingMult *= 1.25;
   return def.cooldown * COOLDOWN_SLOWDOWN_MULTIPLIER * levelBoost * style * shrineCooldownMultiplier(piece) * buildingMult * (1+roughPenalty);
 }
@@ -2487,13 +2613,15 @@ function movementCooldownMultiplier(piece, fromX, fromY, toX, toY){
   if(f.id==='ember'){
     let variance = .94 + seededNoise(piece.id || 1, Math.round(now()*3), 4110) * .24;
     if(m.adjacent) return .80 * variance;
-    if(['flamerunner','ashhopper','cinderjack','emberknight'].includes(piece.type)) return (m.dist>=3 ? 1.08 : .86) * variance;
+    if(['flamerunner','cinderarchon','cinderjack','emberknight'].includes(piece.type)) return (m.dist>=3 ? 1.08 : .86) * variance;
     return .94 * variance;
   }
   if(f.id==='iron'){
-    if(['shieldpawn','gatebreaker'].includes(piece.type) && m.adjacent) return 1.18;
-    if(piece.type==='hammerknight' && m.cardinal && m.dist===2) return 1.18;
-    return ['bulwark','citadelwalker','tower'].includes(piece.type) ? 1.36 : 1.26;
+    const landing=inBounds(toX,toY) ? tile(toX,toY) : null;
+    const ground = landing?.owner===piece.faction ? .68 : (landing?.owner!=null && landing.owner!==piece.faction ? 1.42 : 1);
+    if(['shieldpawn','gatebreaker'].includes(piece.type) && m.adjacent) return 1.08 * ground;
+    if(piece.type==='hammerknight' && m.cardinal && m.dist===2) return 1.08 * ground;
+    return (['bulwark','citadelwalker','tower'].includes(piece.type) ? 1.25 : 1.16) * ground;
   }
   if(f.id==='frost'){
     if(m.straight && m.dist>=2) return .75;
@@ -2502,8 +2630,8 @@ function movementCooldownMultiplier(piece, fromX, fromY, toX, toY){
     return 1.25;
   }
   if(f.id==='sunspire'){
-    if(['sunacolyte','dawnblade','eagleknight','lightlancer','radiantbishop','sunherald','paladin','dawnarchon'].includes(piece.type) && m.dist>=2){
-      return m.dist>=4 ? .90 : .76;
+    if(['dawnblade','eagleknight','lightlancer','radiantbishop','sunherald','paladin','dawnarchon'].includes(piece.type) && m.dist>=2){
+      return m.dist>=4 ? .72 : .66;
     }
     return m.adjacent ? 1.05 : .95;
   }
@@ -2554,12 +2682,16 @@ function getLegalMoves(piece, ignoreCooldown=false){
   const pattern = def.pattern;
   const moves=[];
   const own=piece.faction;
+  const faction=factions[own];
   const lvl=piece.level || 1;
   const maxSlider = pattern==='bishopLong' ? 11+lvl : pattern==='queen' ? 7+lvl : 8+lvl;
   const canLand = (x,y,captureAllowed=true,emptyAllowed=true) => {
     if(!passableFor(piece,x,y)) return false;
     const target=findPieceAt(x,y);
-    if(target){ return captureAllowed && target.faction!==own; }
+    if(target){
+      if(target.faction!==own && own===PLAYER && isShadowFoggedForPlayer(x,y,PLAYER)) return emptyAllowed;
+      return captureAllowed && target.faction!==own;
+    }
     return emptyAllowed;
   };
   const addStep = (x,y,captureAllowed=true,emptyAllowed=true) => {
@@ -2570,7 +2702,10 @@ function getLegalMoves(piece, ignoreCooldown=false){
     }
     if(!passableFor(piece,x,y)) return;
     const target=findPieceAt(x,y);
-    if(target){ if(captureAllowed && target.faction!==own) addMove(moves,x,y,true); }
+    if(target){
+      if(target.faction!==own && own===PLAYER && isShadowFoggedForPlayer(x,y,PLAYER)){ if(emptyAllowed) addMove(moves,x,y,false,{fog:true}); }
+      else if(captureAllowed && target.faction!==own) addMove(moves,x,y,true);
+    }
     else if(emptyAllowed) addMove(moves,x,y,false);
   };
   const slide = (dirs,max=maxSlider) => {
@@ -2581,7 +2716,11 @@ function getLegalMoves(piece, ignoreCooldown=false){
         if(canAttackWall(piece,x,y)){ addMove(moves,x,y,true,{wall:true}); break; }
         const target=findPieceAt(x,y);
         if(!passableFor(piece,x,y)) break;
-        if(target){ if(target.faction!==own) addMove(moves,x,y,true); break; }
+        if(target){
+          if(target.faction!==own && own===PLAYER && isShadowFoggedForPlayer(x,y,PLAYER)){ addMove(moves,x,y,false,{fog:true}); }
+          else if(target.faction!==own) addMove(moves,x,y,true);
+          break;
+        }
         addMove(moves,x,y,false);
         if(blocksSlideFor(piece,x,y)) break;
       }
@@ -2600,15 +2739,26 @@ function getLegalMoves(piece, ignoreCooldown=false){
   };
   if(pattern==='pawn'){
     const stepRange = lvl>=4 ? 2 : 1;
-    for(const [dx,dy] of DIRS8){
-      const x=piece.x+dx, y=piece.y+dy;
-      const isDiag = Math.abs(dx)===1 && Math.abs(dy)===1;
-      addStep(x,y,isDiag,true);
-    }
-    if(stepRange>1){
-      for(const [dx,dy] of ORTHO){
-        const x=piece.x+dx*2, y=piece.y+dy*2;
-        if(inBounds(piece.x+dx,piece.y+dy) && passableFor(piece,piece.x+dx,piece.y+dy) && !findPieceAt(piece.x+dx,piece.y+dy)) addStep(x,y,false,true);
+    if(faction?.id==='crownward' && piece.type==='pawn'){
+      for(const [dx,dy] of ORTHO) addStep(piece.x+dx,piece.y+dy,false,true);
+      for(const [dx,dy] of DIAG) addStep(piece.x+dx,piece.y+dy,true,false);
+      if(stepRange>1){
+        for(const [dx,dy] of ORTHO){
+          const x=piece.x+dx*2, y=piece.y+dy*2;
+          if(inBounds(piece.x+dx,piece.y+dy) && passableFor(piece,piece.x+dx,piece.y+dy) && !findPieceAt(piece.x+dx,piece.y+dy)) addStep(x,y,false,true);
+        }
+      }
+    } else {
+      for(const [dx,dy] of DIRS8){
+        const x=piece.x+dx, y=piece.y+dy;
+        const isDiag = Math.abs(dx)===1 && Math.abs(dy)===1;
+        addStep(x,y,isDiag,true);
+      }
+      if(stepRange>1){
+        for(const [dx,dy] of ORTHO){
+          const x=piece.x+dx*2, y=piece.y+dy*2;
+          if(inBounds(piece.x+dx,piece.y+dy) && passableFor(piece,piece.x+dx,piece.y+dy) && !findPieceAt(piece.x+dx,piece.y+dy)) addStep(x,y,false,true);
+        }
       }
     }
   } else if(pattern==='shadepawn'){
@@ -2631,7 +2781,11 @@ function getLegalMoves(piece, ignoreCooldown=false){
         const x=piece.x+dx*r,y=piece.y+dy*r;
         if(!inBounds(x,y) || !passableFor(piece,x,y)) break;
         const target=findPieceAt(x,y);
-        if(target){ if(target.faction!==own) addMove(moves,x,y,true); break; }
+        if(target){
+          if(target.faction!==own && own===PLAYER && isShadowFoggedForPlayer(x,y,PLAYER)){ addMove(moves,x,y,false,{fog:true}); }
+          else if(target.faction!==own) addMove(moves,x,y,true);
+          break;
+        }
         addMove(moves,x,y,false);
         if(blocksSlideFor(piece,x,y)) break;
       }
@@ -2645,6 +2799,9 @@ function getLegalMoves(piece, ignoreCooldown=false){
   } else if(pattern==='tower'){
     for(const [dx,dy] of ORTHO) addStep(piece.x+dx,piece.y+dy,true,true);
     if(lvl>=3){ for(const [dx,dy] of DIAG) addStep(piece.x+dx,piece.y+dy,true,false); }
+  } else if(pattern==='ballista'){
+    for(const [dx,dy] of ORTHO) addStep(piece.x+dx,piece.y+dy,false,true);
+    for(const [dx,dy] of ORTHO) addStep(piece.x+dx*4,piece.y+dy*4,true,false);
   } else if(pattern==='shieldbearer'){
     for(const [dx,dy] of ORTHO) addStep(piece.x+dx,piece.y+dy,true,true);
   } else if(pattern==='hammerknight'){
@@ -2657,6 +2814,16 @@ function getLegalMoves(piece, ignoreCooldown=false){
   } else if(pattern==='rook') slide(ORTHO, 9+lvl);
   else if(pattern==='rookShort') slide(ORTHO, 4+Math.floor(lvl/2));
   else if(pattern==='bishop' || pattern==='bishopLong') slide(DIAG, pattern==='bishopLong'?12+lvl:8+lvl);
+  else if(pattern==='aquanaut'){
+    slide(DIAG, 5+lvl);
+    for(const [dx,dy] of DIRS8){
+      const x=piece.x+dx, y=piece.y+dy;
+      if(inBounds(x,y) && tile(x,y).type==='water') addStep(x,y,false,true);
+    }
+    if(inBounds(piece.x,piece.y) && tile(piece.x,piece.y).type==='water'){
+      for(const e of aquanautWaterExits(piece.x,piece.y,6)){ addStep(e.x,e.y,true,true); }
+    }
+  }
   else if(pattern==='queen') slide(DIRS8, 7+lvl);
   else if(pattern==='knight'){
     const jumps = [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
@@ -2665,8 +2832,9 @@ function getLegalMoves(piece, ignoreCooldown=false){
   } else if(pattern==='cinderjack'){
     for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,true);
     if(lvl>=4){ for(const [dx,dy] of [[2,2],[2,-2],[-2,2],[-2,-2]]) addStep(piece.x+dx,piece.y+dy,true,true); }
-  } else if(pattern==='ashhopper'){
+  } else if(pattern==='ashhopper' || pattern==='cinderarchon'){
     for(const [dx,dy] of DIRS8) addStep(piece.x+dx*2,piece.y+dy*2,true,true);
+    if(pattern==='cinderarchon' && lvl>=4){ for(const [dx,dy] of ORTHO) addStep(piece.x+dx*3,piece.y+dy*3,true,true); }
   } else if(pattern==='flamerunner'){
     for(const [dx,dy] of ORTHO){
       addLineExact(dx,dy,2,true,true);
@@ -2678,6 +2846,7 @@ function getLegalMoves(piece, ignoreCooldown=false){
       addStep(piece.x+dx*2,piece.y+dy*2,true,true);
       addStep(piece.x+dx*3,piece.y+dy*3,true,true);
       addStep(piece.x+dx*4,piece.y+dy*4,true,true);
+      addStep(piece.x+dx*5,piece.y+dy*5,true,true);
     }
     for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,true);
     if(lvl>=4){ for(const [dx,dy] of [[1,3],[3,1],[-1,3],[-3,1],[1,-3],[3,-1],[-1,-3],[-3,-1]]) addStep(piece.x+dx,piece.y+dy,true,true); }
@@ -2687,7 +2856,11 @@ function getLegalMoves(piece, ignoreCooldown=false){
         const x=piece.x+dx*r,y=piece.y+dy*r;
         if(!inBounds(x,y)||!passableFor(piece,x,y)) break;
         const target=findPieceAt(x,y);
-        if(target){ if(target.faction!==own) addMove(moves,x,y,true); break; }
+        if(target){
+          if(target.faction!==own && own===PLAYER && isShadowFoggedForPlayer(x,y,PLAYER)){ addMove(moves,x,y,false,{fog:true}); }
+          else if(target.faction!==own) addMove(moves,x,y,true);
+          break;
+        }
         addMove(moves,x,y,false);
         if(blocksSlideFor(piece,x,y)) break;
       }
@@ -2741,20 +2914,22 @@ function getLegalMoves(piece, ignoreCooldown=false){
     for(const [dx,dy] of DIRS8) addStep(piece.x+dx*2,piece.y+dy*2,true,true);
   } else if(pattern==='dawnblade'){
     for(const [dx,dy] of DIRS8) addStep(piece.x+dx,piece.y+dy,true,true);
-    for(const [dx,dy] of DIRS8) addStep(piece.x+dx*2,piece.y+dy*2,true,lvl>=3);
+    for(const [dx,dy] of DIRS8){ addStep(piece.x+dx*2,piece.y+dy*2,true,lvl>=3); addStep(piece.x+dx*3,piece.y+dy*3,true,lvl>=4); }
   } else if(pattern==='lightlancer'){
     for(const [dx,dy] of ORTHO){
       addStep(piece.x+dx*3,piece.y+dy*3,true,true);
-      if(lvl>=4) addStep(piece.x+dx*4,piece.y+dy*4,true,true);
+      addStep(piece.x+dx*4,piece.y+dy*4,true,true);
+      if(lvl>=4) addStep(piece.x+dx*5,piece.y+dy*5,true,true);
     }
   } else if(pattern==='radiantbishop'){
     for(const [dx,dy] of DIAG){
-      for(let r=2;r<=4+(lvl>=5?1:0);r++) addStep(piece.x+dx*r,piece.y+dy*r,true,true);
+      for(let r=2;r<=5+(lvl>=5?1:0);r++) addStep(piece.x+dx*r,piece.y+dy*r,true,true);
     }
   } else if(pattern==='sunherald'){
     for(const [dx,dy] of DIRS8){
       addStep(piece.x+dx,piece.y+dy,true,true);
       addStep(piece.x+dx*2,piece.y+dy*2,true,true);
+      addStep(piece.x+dx*3,piece.y+dy*3,true,true);
     }
   } else if(pattern==='frostpawn'){
     for(const [dx,dy] of ORTHO) addStep(piece.x+dx,piece.y+dy,true,true);
@@ -2793,10 +2968,21 @@ function getLegalMoves(piece, ignoreCooldown=false){
   } else if(pattern==='citadel'){
     for(const [dx,dy] of ORTHO){ addStep(piece.x+dx,piece.y+dy,true,true); addStep(piece.x+dx*3,piece.y+dy*3,true,true); }
   } else if(pattern==='archon'){
-    slide(DIAG,5);
+    slide(DIAG,6);
     for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,true);
   }
-  return moves;
+  if(canUseShadowMirrorStep(piece)){
+    for(const mirror of liveBuildings(own,'obsidianmirror')){
+      for(const [dx,dy] of DIRS8){
+        const mx=mirror.x+dx, my=mirror.y+dy;
+        if(mx===piece.x && my===piece.y) continue;
+        if(!inBounds(mx,my) || findPieceAt(mx,my)) continue;
+        if(passableFor(piece,mx,my)) addMove(moves,mx,my,false,{mirror:true});
+      }
+    }
+  }
+  const seenMoves=new Set();
+  return moves.filter(m=>{ const k=m.x+','+m.y+','+(m.capture?'c':'m'); if(seenMoves.has(k)) return false; seenMoves.add(k); return true; });
 }
 
 function travelPathCells(fromX,fromY,toX,toY){
@@ -2900,24 +3086,28 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
     const targetValue = pieceDefs[targetPiece?.type]?.value || 1;
     const selfValue = pieceDefs[piece.type]?.value || 1;
     if(id==='ember'){
-      const radius = ['flamequeen','emberknight','pyretower','cinderjack','flamerunner'].includes(piece.type) ? 2 : 1;
+      const radius = ['flamequeen','emberknight','pyretower','cinderjack','flamerunner','cinderarchon'].includes(piece.type) ? 2 : 1;
       claimed += claimRadius(piece.faction,toX,toY,radius,'ember_kill',0,(t)=>t.type!=='mountain');
       accelerateSpawnSeconds(piece.faction,2,'EMBER CAPTURE');
     } else if(id==='shadow'){
-      if(claimTile(piece.faction,toX,toY,0,'shadow_kill')) claimed++;
-      const diagRadius = piece.type==='assassin' ? 2 : 1;
+      const homeKill = tile(toX,toY)?.owner===piece.faction;
+      const majorBackstab = ['queen','general'].includes(targetPiece?.type);
+      const radius = majorBackstab ? SHADOW_BACKSTAB_RADIUS : (homeKill ? SHADOW_HOME_KILL_RADIUS : SHADOW_KILL_RADIUS);
+      claimed += claimRadius(piece.faction,toX,toY,radius,'shadow_kill',0,(t)=>t.type!=='mountain');
+      const diagRadius = majorBackstab ? 3 : (piece.type==='assassin' ? 2 : 1);
       for(const [dx,dy] of DIAG){
         for(let r=1;r<=diagRadius;r++){
           const x=toX+dx*r, y=toY+dy*r;
           if(inBounds(x,y) && tile(x,y).type!=='mountain'){ if(claimTile(piece.faction,x,y,0,'shadow_diagonal')) claimed++; }
         }
       }
+      if(majorBackstab){ burst(toX,toY,f.color,34); floating(toX,toY,'BACKSTAB CLAIM', f.color); }
       if(targetValue > selfValue || targetValue>=6) accelerateSpawnSeconds(piece.faction,5,'HIGHER KILL');
     } else if(id==='iron'){
       if(['king','general','tower'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.aura||2,'iron_fortified',0,(t)=>t.type!=='water'&&t.type!=='mountain');
       else if(['shieldpawn','bulwark','hammerknight','gatebreaker','warden','citadelwalker'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,1,'iron_fortified',0,(t)=>t.type!=='water'&&t.type!=='mountain');
     } else if(id==='verdant'){
-      if(isNaturalVerdantTerrain(tile(toX,toY).type)) claimed += claimRadius(piece.faction,toX,toY,2,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
+      if(isNaturalVerdantTerrain(tile(toX,toY).type)) claimed += claimRadius(piece.faction,toX,toY,tile(toX,toY).type==='forest'?3:2,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
       else if(claimTile(piece.faction,toX,toY,0,'verdant_seed')) claimed++;
     } else if(id==='tide'){
       claimed += claimRadius(piece.faction,toX,toY,1,'tide_surge',0,(t,x,y)=>t.type==='water'||t.type==='swamp'||isCoastTile(x,y)||terrainOf(t).pass);
@@ -2985,7 +3175,7 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
       return claimed;
     }
     if(['king','general','tower','paladin','queen','dawnarchon','sunherald'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.value>=6?1:0,'sunspire_sanctified',0,(t)=>terrainOf(t).pass);
-    else if(['sunacolyte','dawnblade','lightlancer','eagleknight'].includes(piece.type) && claimTile(piece.faction,toX,toY,0,'sunspire_foothold')) claimed++;
+    else if(['dawnblade','lightlancer','eagleknight'].includes(piece.type) && claimTile(piece.faction,toX,toY,0,'sunspire_foothold')) claimed++;
     return claimed;
   } else if(id==='frost'){
     // Frost captures by holding ground, not by racing across it.
@@ -3006,6 +3196,19 @@ function movePiece(piece,x,y,source='player'){
     const defeated = capturePiece(piece,target);
     piece.flash=.7;
     if(!defeated){
+      if(factions[piece.faction]?.id==='iron' && ironAdjacentGroupCount(piece)>=3 && target.maxHp>1){
+        const landing=findIronAssaultLanding(piece,target,fromX,fromY);
+        if(landing){
+          piece.x=landing.x; piece.y=landing.y; piece.targetX=landing.x; piece.targetY=landing.y; piece.flash=1;
+          piece.moveStartMs=Date.now(); piece.moveEndMs=piece.moveStartMs+moveVisualDurationFor(piece);
+          setMoveCooldown(piece,fromX,fromY,landing.x,landing.y);
+          applyFactionCapture(piece,fromX,fromY,landing.x,landing.y,'move',target);
+          applyAuraTerritory(piece);
+          floating(target.x,target.y,'SHIELD WALL HIT', factions[piece.faction]?.color || '#fff');
+          markStateDirty();
+          return true;
+        }
+      }
       if(!pushShieldedPiece(piece,target,fromX,fromY)){
         setMoveCooldown(piece,fromX,fromY,x,y);
         return true;
@@ -3058,6 +3261,10 @@ function findShieldPushSquare(attacker,target,fromX,fromY){
 }
 function pushShieldedPiece(attacker,target,fromX,fromY){
   if(!target || !target.alive || target.hp<=0) return false;
+  if(isIronShieldLocked(target)){
+    floating(target.x,target.y,'SHIELD LOCK', factions[target.faction]?.color || '#dbeafe');
+    return false;
+  }
   const spot=findShieldPushSquare(attacker,target,fromX,fromY);
   if(!spot){
     floating(target.x,target.y,'BRACED', '#dbeafe');
@@ -3095,7 +3302,7 @@ function factionCaptureHint(piece,claimed){
   if(!f) return 'Move complete.';
   if(f.id==='ember') return 'Ember only captures land from kills.';
   if(f.id==='verdant') return claimed ? `Verdant roots claimed ${claimed} natural tiles.` : 'Verdant only spreads through living ground near troops.';
-  if(f.id==='shadow') return claimed ? 'Shadow influence seized hidden ground.' : 'Shadow mostly captures by assassinations and dark terrain.';
+  if(f.id==='shadow') return claimed ? 'Shadow influence expanded the hidden court.' : 'Shadow land is hidden from enemies and expands mainly from kills.';
   if(f.id==='iron') return claimed ? 'Iron fortified new ground.' : 'Iron captures with command pieces and stationary defenders.';
   if(f.id==='sunspire') return claimed ? 'Sunspire sanctified elite ground.' : 'Sunspire captures with elite presence and command pieces.';
   if(f.id==='frost') return claimed ? 'Frost froze controlled ground.' : 'Frost captures by holding position.';
@@ -3105,6 +3312,19 @@ function factionCaptureHint(piece,claimed){
 function applyBuildingKillEffects(attacker,target){
   const f=factions[attacker.faction];
   if(!f || !target) return;
+  if(f.id==='ember' && attacker.type==='cinderarchon'){
+    const ready = now() >= (attacker.nextBuildingTick || 0);
+    if(ready){
+      const spot=openSpawnSpotNear(target.x,target.y,attacker.faction,'sparkden',1,false) || openSpawnSpotNear(attacker.x,attacker.y,attacker.faction,'sparkden',2,false);
+      if(spot){
+        newPiece(attacker.faction,'sparkden',spot.x,spot.y,{ready:false,nextBuildingTick:now()+35});
+        claimTile(attacker.faction,spot.x,spot.y,0,'ember_kill');
+        attacker.nextBuildingTick=now()+CINDER_ARCHON_DEN_COOLDOWN;
+        burst(spot.x,spot.y,f.color,28);
+        floating(spot.x,spot.y,'SPARK DEN', f.color);
+      }
+    }
+  }
   if(f.id==='ember'){
     for(const b of liveBuildings(attacker.faction,'cinderfurnace')){
       if(dist2(b.x,b.y,target.x,target.y)<=64){
@@ -3128,45 +3348,10 @@ function applyBuildingMoveEffects(piece,fromX,fromY){
   const f=factions[piece.faction];
   if(!f || pieceDefs[piece.type]?.building) return;
   if(f.id==='sunspire'){
-    const beacon=buildingNear(piece,'sunspirebeacon',1);
-    if(beacon && piece.lastBeaconId!==beacon.id){
-      const others=liveBuildings(piece.faction,'sunspirebeacon').filter(b=>b.id!==beacon.id);
-      if(others.length){
-        const target=others.sort((a,b)=>dist2(piece.x,piece.y,a.x,a.y)-dist2(piece.x,piece.y,b.x,b.y))[0];
-        const spot=openSpawnSpotNear(target.x,target.y,piece.faction,piece.type,1,true) || openSpawnSpotNear(target.x,target.y,piece.faction,piece.type,2,false);
-        if(spot){
-          piece.x=spot.x; piece.y=spot.y; piece.targetX=spot.x; piece.targetY=spot.y; piece.px=fromX; piece.py=fromY;
-          piece.lastBeaconId=target.id;
-          burst(beacon.x,beacon.y,f.color,16); burst(spot.x,spot.y,f.color,24);
-          floating(spot.x,spot.y,'BEACON JUMP', f.color);
-          markStateDirty();
-        }
-      } else {
-        piece.cooldownUntil=piece.lastMove + (piece.lastCooldownDuration || 1) * .70;
-        piece.lastCooldownDuration=(piece.lastCooldownDuration || 1) * .70;
-        piece.lastBeaconId=beacon.id;
-        floating(piece.x,piece.y,'-30% BEACON', f.color);
-      }
-    }
+    // Solar Beacons now affect spawn economy instead of teleporting units.
   }
-  if(f.id==='shadow'){
-    const mirror=buildingNear(piece,'obsidianmirror',1);
-    if(mirror && piece.lastMirrorId!==mirror.id){
-      const others=liveBuildings(piece.faction,'obsidianmirror').filter(b=>b.id!==mirror.id);
-      if(others.length){
-        const target=others.sort((a,b)=>dist2(piece.x,piece.y,a.x,a.y)-dist2(piece.x,piece.y,b.x,b.y))[0];
-        const spot=openSpawnSpotNear(target.x,target.y,piece.faction,piece.type,1,true) || openSpawnSpotNear(target.x,target.y,piece.faction,piece.type,2,false);
-        if(spot){
-          piece.x=spot.x; piece.y=spot.y; piece.targetX=spot.x; piece.targetY=spot.y; piece.px=fromX; piece.py=fromY;
-          piece.cooldownUntil=now()+baseCooldownFor(piece)*1.35;
-          piece.lastCooldownDuration=baseCooldownFor(piece)*1.35;
-          piece.lastMirrorId=target.id;
-          burst(mirror.x,mirror.y,f.color,14); burst(spot.x,spot.y,f.color,20);
-          floating(spot.x,spot.y,'MIRROR STEP', f.color);
-          markStateDirty();
-        }
-      }
-    }
+  if(f.id==='shadow' && canUseShadowMirrorStep(piece) && buildingNear(piece,'obsidianmirror',1)){
+    piece.lastMirrorStepAt=now();
   }
 }
 function capturePiece(attacker, target){
@@ -3179,10 +3364,10 @@ function capturePiece(attacker, target){
     target.flash=1;
     return false;
   }
-  target.alive=false;
   attacker.captures++;
   factions[attacker.faction].piecesTaken++;
   if(attacker.faction===PLAYER) gameStats.captures++;
+  if(factions[attacker.faction]?.id==='ember') attacker.heatUntil=now()+EMBER_KILL_HEAT_SECONDS;
   const oldLevel=attacker.level;
   attacker.level=levelForCaptures(attacker.captures);
   if(attacker.level>oldLevel){
@@ -3192,6 +3377,26 @@ function capturePiece(attacker, target){
   }
   applyFactionCapture(attacker,attacker.x,attacker.y,target.x,target.y,'kill',target);
   applyBuildingKillEffects(attacker,target);
+
+  if(target.type==='dawnarchon' && factions[target.faction]?.id==='sunspire' && !target.reviveUsed){
+    const king=getPiece(factions[target.faction].kingId);
+    const spot=king ? (openSpawnSpotNear(king.x,king.y,target.faction,target.type,2,true) || openSpawnSpotNear(king.x,king.y,target.faction,target.type,4,false)) : null;
+    if(spot){
+      target.reviveUsed=true;
+      target.hp=target.maxHp;
+      target.x=spot.x; target.y=spot.y; target.targetX=spot.x; target.targetY=spot.y;
+      target.px=spot.x; target.py=spot.y;
+      target.flash=1;
+      target.cooldownUntil=now()+baseCooldownFor(target)*1.2;
+      target.lastCooldownDuration=baseCooldownFor(target)*1.2;
+      burst(spot.x,spot.y,factions[target.faction]?.color || '#fff',34);
+      floating(spot.x,spot.y,'ARCHON REBORN', factions[target.faction]?.color || '#fff');
+      markStateDirty();
+      return true;
+    }
+  }
+
+  target.alive=false;
   if(target.type==='king') conquerFaction(attacker.faction,target.faction,target.x,target.y);
   return true;
 }
@@ -3320,7 +3525,7 @@ function renderSpawnCards(){
   });
 }
 function patternName(p){
-  const names={building:'Building',pawn:'Pawn+',shadepawn:'Shade Blink',blinkpawn:'Blink Pawn',king:'King',general:'General',marshal:'Marshal Bend',tower:'Territory Tower',shieldbearer:'Shieldbearer',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',cinderjack:'Cinder Jump',ashhopper:'Ash Hop',flamerunner:'Flame Rush',eagle:'Eagle Leap',lancer:'Lancer',scout:'Scout',thornguard:'Thorn Guard',stagrunner:'Stag Jump',vinehook:'Vinehook',assassin:'Assassin',shadowstepper:'Shadow Step',nightblade:'Nightblade',wraith:'Wraith',umbralbishop:'Umbral Bishop',warden:'Warden',paladin:'Paladin',sunacolyte:'Sun Skip',dawnblade:'Dawnblade',lightlancer:'Light Lancer',radiantbishop:'Radiant Jump',sunherald:'Sun Herald',frostpawn:'Frost Pawn',icespear:'Ice Spear',glacierguard:'Glacier Guard',frostbishop:'Frost Bishop',sledknight:'Sled Knight',mirrorskater:'Mirror Skate',voidstrider:'Void Strider',citadel:'Citadel Walker',archon:'Dawn Archon'};
+  const names={building:'Building',pawn:'Pawn+',shadepawn:'Shade Blink',blinkpawn:'Blink Pawn',king:'King',general:'General',marshal:'Marshal Bend',tower:'Territory Tower',ballista:'Ballista Tower',aquanaut:'Aquanaut',shieldbearer:'Shieldbearer',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',cinderjack:'Cinder Jump',cinderarchon:'Cinder Archon',flamerunner:'Flame Rush',eagle:'Eagle Leap',lancer:'Lancer',scout:'Scout',thornguard:'Thorn Guard',stagrunner:'Stag Jump',vinehook:'Vinehook',assassin:'Assassin',shadowstepper:'Shadow Step',nightblade:'Nightblade',wraith:'Wraith',umbralbishop:'Umbral Bishop',warden:'Warden',paladin:'Paladin',sunacolyte:'Sun Skip',dawnblade:'Dawnblade',lightlancer:'Light Lancer',radiantbishop:'Radiant Jump',sunherald:'Sun Herald',frostpawn:'Frost Pawn',icespear:'Ice Spear',glacierguard:'Glacier Guard',frostbishop:'Frost Bishop',sledknight:'Sled Knight',mirrorskater:'Mirror Skate',voidstrider:'Void Strider',citadel:'Citadel Walker',archon:'Dawn Archon'};
   return names[p]||p;
 }
 function updateHUD(){
@@ -3484,7 +3689,8 @@ function updateSpecialLandRules(dt){
   for(const f of factions){
     if(!f.alive) continue;
     if(f.id==='verdant') updateVerdantSpreadAndFade(f, step);
-    if(f.id==='frost' || f.id==='iron' || f.id==='sunspire' || f.id==='crownward') updateCommandLand(f);
+    if(f.id==='ember') updateEmberScorchFade(f, step);
+    if(f.id==='iron' || f.id==='sunspire' || f.id==='crownward') updateCommandLand(f);
     updateBuildingRules(f, step);
   }
 }
@@ -3506,13 +3712,21 @@ function updateVerdantSpreadAndFade(f,dt){
     if(t.verdantFade>=VERDANT_FADE_SECONDS){ t.owner=null; t.captureKind=null; t.verdantFade=0; t.glow=0; markLandDirty(); }
   }
 }
+function updateEmberScorchFade(f,dt){
+  const tNow=now();
+  for(const t of normalizeBoard()){
+    if(t.owner===f.idx && t.captureKind==='ember_kill' && tNow-(t.markTime||0)>=EMBER_SCORCH_SECONDS){
+      t.owner=null; t.captureKind=null; t.glow=0; markLandDirty();
+    }
+  }
+}
 function updateCommandLand(f){
   for(const p of pieces){
     if(!p.alive || p.faction!==f.idx) continue;
     const def=pieceDefs[p.type];
 
     if(f.id==='crownward'){
-      if(['king','general','tower'].includes(p.type)) claimRadius(f.idx,p.x,p.y,def?.aura||2,'command',0,(t)=>terrainOf(t).pass);
+      if(['king','general','tower','ballistatower'].includes(p.type)) claimRadius(f.idx,p.x,p.y,def?.aura||2,'command',0,(t)=>terrainOf(t).pass);
       continue;
     }
 
@@ -3750,6 +3964,13 @@ function spawnRateForFaction(f, territory, army){
   // while Ember and Shadow use faction kill-count tiers instead of land totals.
   const baseRate = 100 / SPAWN_SLOWEST_SECONDS;
   const maxRate = 100 / SPAWN_FASTEST_SECONDS;
+  if(f?.id==='sunspire'){
+    const beacons = Math.min(SUNSPIRE_MAX_SOLAR_BEACONS, activeSolarBeacons(f.idx));
+    const seconds = Math.max(60, SUNSPIRE_BASE_SPAWN_SECONDS - beacons * SUNSPIRE_SOLAR_BEACON_SECONDS);
+    const armyDrag = 1 + Math.max(0, army - 28) * .014;
+    const aiTempo = isHumanSlot(f.idx) ? 1 : (f.aiSpawnScale || 1);
+    return (100 / seconds) * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag;
+  }
   const tier = spawnTierInfoForFaction(f, territory);
   let tierRate = 100 / Math.max(SPAWN_FASTEST_SECONDS, tier.seconds);
   const specialTiles = specialSpawnTilesForFaction(f);
@@ -3943,6 +4164,7 @@ function draw(){
   drawTerritoryEffects();
   drawWalls();
   drawShrines();
+  drawShadowFog();
   drawHighlights();
   drawPieces();
   drawParticlesWorld();
@@ -3982,7 +4204,9 @@ function drawBoard(){
       ctx.arc(sx+BASE_CELL*(.25+seededNoise(x,y,1)*.5), sy+BASE_CELL*(.25+seededNoise(x,y,2)*.5), 5+seededNoise(x,y,3)*15, 0, Math.PI*2);
       ctx.fill();
       ctx.globalAlpha=1;
-      if(td.glyph){
+      if(t.type==='mountain'){
+        drawMountainTile(sx,sy,x,y);
+      } else if(td.glyph){
         ctx.globalAlpha=.35;
         ctx.font='18px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle='#e5edf8';
         ctx.fillText(td.glyph,sx+BASE_CELL/2,sy+BASE_CELL/2);
@@ -4006,6 +4230,23 @@ function drawBoard(){
       ctx.strokeRect(sx+.5,sy+.5,BASE_CELL,BASE_CELL);
     }
   }
+}
+function drawMountainTile(sx,sy,x,y){
+  ctx.save();
+  const peaks=[.24,.5,.74];
+  for(let i=0;i<peaks.length;i++){
+    const px=sx+BASE_CELL*peaks[i];
+    const base=sy+BASE_CELL*(.78-.08*(i%2));
+    const h=BASE_CELL*(.44+.08*seededNoise(x+i,y,7300));
+    const w=BASE_CELL*(.22+.04*seededNoise(x,y+i,7301));
+    ctx.globalAlpha=.78;
+    ctx.fillStyle=i===1?'#656b78':'#4d5360';
+    ctx.beginPath(); ctx.moveTo(px,base-h); ctx.lineTo(px-w,base); ctx.lineTo(px+w,base); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha=.68;
+    ctx.fillStyle='#d8dee9';
+    ctx.beginPath(); ctx.moveTo(px,base-h); ctx.lineTo(px-w*.36,base-h*.55); ctx.lineTo(px+w*.36,base-h*.55); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
 }
 function drawTerritoryEffects(){
   if(!showTerritory) return;
@@ -4032,6 +4273,25 @@ function drawTerritoryEffects(){
       ctx.globalAlpha=1;
     }
   }
+}
+function drawShadowFog(){
+  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2;
+  const top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-2;
+  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+2;
+  const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
+  ctx.save();
+  for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
+    for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
+      if(!isShadowFoggedForPlayer(x,y,PLAYER)) continue;
+      const sx=x*BASE_CELL, sy=y*BASE_CELL;
+      ctx.globalAlpha=.82;
+      ctx.fillStyle='rgba(4,5,12,.96)';
+      ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);
+      ctx.globalAlpha=.22;
+      ctx.strokeStyle='#b388ff'; ctx.lineWidth=1.5; ctx.strokeRect(sx+4,sy+4,BASE_CELL-8,BASE_CELL-8);
+    }
+  }
+  ctx.restore();
 }
 function drawWalls(){
   const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2;
@@ -4146,11 +4406,12 @@ function drawFactionFlair(f,p,r){
     ctx.strokeRect(-r-7,-r-7,(r+7)*2,(r+7)*2);
     ctx.strokeRect(-r-2,-r-2,(r+2)*2,(r+2)*2);
   } else if(f.id==='verdant'){
-    ctx.globalAlpha=.48;
+    ctx.globalAlpha=.55;
     ctx.lineWidth=2;
-    for(let i=0;i<4;i++){
-      const a=i*Math.PI/2+t*.25;
-      ctx.beginPath(); ctx.ellipse(Math.cos(a)*(r+9),Math.sin(a)*(r+9),5,2.6,a,0,Math.PI*2); ctx.stroke();
+    for(let i=0;i<5;i++){
+      const a=i*Math.PI*2/5+t*.22;
+      ctx.beginPath(); ctx.ellipse(Math.cos(a)*(r+9),Math.sin(a)*(r+9),6,2.7,a,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(Math.cos(a)*(r*.35),Math.sin(a)*(r*.35),Math.cos(a)*(r+8),Math.sin(a)*(r+8)); ctx.stroke();
     }
   } else if(f.id==='shadow'){
     ctx.globalAlpha=.38;
@@ -4238,7 +4499,7 @@ function drawFactionInsignia(f,p,r){
   ctx.restore();
 }
 function drawPieces(){
-  const visible = pieces.filter(p=>p.alive).sort((a,b)=>a.y-b.y || (pieceDefs[a.type].value||1)-(pieceDefs[b.type].value||1));
+  const visible = pieces.filter(p=>p.alive && (p.faction===PLAYER || !isShadowFoggedForPlayer(p.x,p.y,PLAYER))).sort((a,b)=>a.y-b.y || (pieceDefs[a.type].value||1)-(pieceDefs[b.type].value||1));
   const labelIds = computeNameLabelPieceIds(visible);
   for(const p of visible){
     const f=factions[p.faction]; if(!f) continue;
@@ -4282,6 +4543,13 @@ function drawPieces(){
     ctx.strokeStyle=cd>=1?'rgba(125,255,174,.95)':'rgba(255,255,255,.34)';
     ctx.lineWidth=3;
     ctx.beginPath(); ctx.arc(0,0,r+5,-Math.PI/2,-Math.PI/2+Math.PI*2*cd); ctx.stroke();
+    if(p.type==='cinderarchon'){
+      const remain=(p.nextBuildingTick || 0)-now();
+      ctx.strokeStyle=remain>0?'rgba(255,140,70,.55)':'rgba(255,220,120,.95)';
+      ctx.lineWidth=2;
+      const prog=remain>0 ? clamp(1-remain/CINDER_ARCHON_DEN_COOLDOWN,0,1) : 1;
+      ctx.beginPath(); ctx.arc(0,0,r+13,-Math.PI/2,-Math.PI/2+Math.PI*2*prog); ctx.stroke();
+    }
     if(f.duplicateFaction){
       ctx.globalAlpha=.9; ctx.strokeStyle=f.outline || '#fff'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,r+14,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1;
     }
@@ -4342,12 +4610,12 @@ function drawPieceShape(pattern,r,id){
     ctx.moveTo(-r*.82,-r*.68); ctx.lineTo(-r*.55,-r*.96); ctx.lineTo(-r*.28,-r*.68);
     ctx.moveTo(-r*.14,-r*.68); ctx.lineTo(0,-r*1.0); ctx.lineTo(r*.14,-r*.68);
     ctx.moveTo(r*.28,-r*.68); ctx.lineTo(r*.55,-r*.96); ctx.lineTo(r*.82,-r*.68);
-  } else if(pattern==='rook'||pattern==='rookShort'||pattern==='tower'||pattern==='citadel'){
+  } else if(pattern==='rook'||pattern==='rookShort'||pattern==='tower'||pattern==='citadel'||pattern==='ballista'){
     ctx.rect(-r*.72,-r*.56,r*1.44,r*1.16);
     ctx.moveTo(-r*.72,-r*.56); ctx.lineTo(-r*.72,-r*.82); ctx.lineTo(-r*.38,-r*.82); ctx.lineTo(-r*.38,-r*.56);
     ctx.moveTo(-r*.12,-r*.56); ctx.lineTo(-r*.12,-r*.82); ctx.lineTo(r*.12,-r*.82); ctx.lineTo(r*.12,-r*.56);
     ctx.moveTo(r*.38,-r*.56); ctx.lineTo(r*.38,-r*.82); ctx.lineTo(r*.72,-r*.82); ctx.lineTo(r*.72,-r*.56);
-  } else if(pattern==='bishop'||pattern==='bishopLong'||pattern==='assassin'||pattern==='voidstrider'){
+  } else if(pattern==='bishop'||pattern==='bishopLong'||pattern==='aquanaut'||pattern==='assassin'||pattern==='voidstrider'){
     ctx.moveTo(0,-r*.92); ctx.quadraticCurveTo(r*.78,-r*.28,r*.5,r*.55); ctx.quadraticCurveTo(0,r*.95,-r*.5,r*.55); ctx.quadraticCurveTo(-r*.78,-r*.28,0,-r*.92);
   } else if(pattern==='queen'||pattern==='king'||pattern==='general'){
     const points = pattern==='king'?8:7;
@@ -4619,5 +4887,6 @@ bootMultiplayer();
 </script>
 </body>
 </html>
+
 
 
