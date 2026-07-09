@@ -228,8 +228,12 @@ function playableFactionId(id, fallback='crownward'){
 const SLOT_OUTLINE_COLORS = ['#fff3a3','#7dd3fc','#fb7185','#86efac','#c4b5fd','#67e8f9','#fdba74','#e5e7eb'];
 const MULTIPLAYER_AI_VOTE_SECONDS = 10;
 const MULTIPLAYER_FACTION_PICK_SECONDS = 10;
-const VERDANT_SPREAD_RADIUS = 4;
+const VERDANT_SPREAD_RADIUS = 4; // Kept as a legacy value for old saves/UI text; troops no longer auto-spread land.
+const VERDANT_NODE_SPREAD_RADIUS = 2;
+const VERDANT_NODE_MAINTAIN_RADIUS = 3;
 const VERDANT_FADE_SECONDS = 8.5;
+const CROWNWARD_MARSHAL_COOLDOWN_RANGE = 3;
+const CROWNWARD_MARSHAL_COOLDOWN_MULT = .86;
 const IRON_LOCKDOWN_SECONDS = 2.8;
 const FROST_FREEZE_SECONDS = 2.6;
 const FROST_BISHOP_RAY = 4;
@@ -1573,7 +1577,7 @@ const factionCatalog = {
   },
   verdant: {
     id:'verdant', name:'Verdant Swarm', short:'Verdant', icon:'🌿', color:'#6ee985', dark:'#217a3b', aura:'#83f795', aiStyle:'expansion', spawnRate:.80,
-    description:'Living-terrain faction. Forest ambushes recharge quickly, roots snare enemies, and pieces look like moving groves.',
+    description:'Living-terrain faction. Root spread now comes from Seed Grove nodes instead of every troop; forest movement is still quick, but less explosive.',
     pieces:['seedpawn','thornguard','scout','stagrunner','vinehook','vinebishop','general','grovetower','queen','seedgrove','broodbloom']
   },
   shadow: {
@@ -1627,7 +1631,7 @@ const pieceDefs = {
   tower:{name:'Tower', icon:'♖', pattern:'tower', cooldown:6.0, value:6, aura:3, hp:1, desc:'Slow one-step orthogonal anchor that projects territory.'},
   ballistatower:{name:'Ballista Tower', icon:'▧', pattern:'ballista', cooldown:6.8, value:7, aura:3, hp:2, desc:'Crownward siege tower. Moves one cardinal tile, but attacks only by jumping onto enemies or buildings exactly four cardinal spaces away.'},
   lancer:{name:'Lancer', icon:'♘', pattern:'lancer', cooldown:3.6, value:4, hp:1, desc:'Moves up to three straight squares and attacks at the end of a lane.'},
-  marshal:{name:'Marshal', icon:'✦', pattern:'marshal', cooldown:4.6, value:6, aura:2, hp:1, desc:'Moves two straight, then may bend one tile when fighting from owned land.'},
+  marshal:{name:'Marshal', icon:'✦', pattern:'marshal', cooldown:4.6, value:6, aura:2, hp:1, desc:'Moves two straight, then may bend one tile when fighting from owned land. Crownward troops within 3 tiles cool down 14% faster.'},
   sparkpawn:{name:'Spark Pawn', icon:'♟', pattern:'pawn', cooldown:2.0, value:1, hp:1, desc:'Fast pawn. Moves one any direction and captures diagonally.'},
   emberknight:{name:'Ember Knight', icon:'♞', pattern:'knight', cooldown:2.55, value:4, hp:1, desc:'Very fast knight pressure.'},
   cinderjack:{name:'Cinder Jack', icon:'♞', pattern:'cinderjack', cooldown:2.85, value:4, hp:1, desc:'L-jump raider that scorches ground around its landing spot.'},
@@ -1682,7 +1686,7 @@ const pieceDefs = {
   sparkden:{name:'Spark Den', icon:'✸', pattern:'building', cooldown:7.5, value:5, hp:2, building:true, desc:'Spawns a Spark Pawn every 35 seconds, but only while enemies are within three spaces.'},
   shieldfoundry:{name:'Shield Foundry', icon:'▣', pattern:'building', cooldown:8.0, value:7, hp:3, building:true, desc:'Grants one nearby fragile Iron unit a temporary +1 health shield. Recharges in 35 seconds.'},
   gatehouse:{name:'Gatehouse', icon:'▤', pattern:'building', cooldown:8.0, value:7, hp:3, building:true, desc:'Repairs starting walls or slowly builds a 5x5 wall ring around itself.'},
-  seedgrove:{name:'Seed Grove', icon:'✾', pattern:'building', cooldown:6.5, value:6, hp:1, building:true, desc:'Fragile Verdant node. Spreads roots and can spawn one child node, then stops.'},
+  seedgrove:{name:'Seed Grove', icon:'✾', pattern:'building', cooldown:6.5, value:6, hp:1, building:true, desc:'Fragile Verdant node. The main source of root spread; each node spreads a small root patch and can spawn one child node, then stops.'},
   broodbloom:{name:'Brood Bloom', icon:'❀', pattern:'building', cooldown:6.5, value:5, hp:2, building:true, desc:'Spawns a Seed Pawn every 45 seconds on Verdant land.'},
   obsidianmirror:{name:'Obsidian Mirror', icon:'◈', pattern:'building', cooldown:7.0, value:7, hp:1, building:true, desc:'Fragile Shadow relay. Shadow Stepper, Nightblade, Wraith, and Void Strider may teleport to open spaces beside a friendly mirror.'},
   knifechapel:{name:'Knife Chapel', icon:'†', pattern:'building', cooldown:7.0, value:6, hp:2, building:true, desc:'Kills within five spaces spawn a Shade Pawn beside the chapel, with a 10 second cooldown.'},
@@ -2208,6 +2212,12 @@ function addFactionStartingExtras(f,s){
       const x=clamp(s.x+dx,0,BOARD_W-1), y=clamp(s.y+dy,0,BOARD_H-1);
       if(!findPieceAt(x,y) && passableFor({type,faction:f.idx},x,y)) newPiece(f.idx,type,x,y,{ready:true});
     }
+  } else if(f.id==='verdant'){
+    const extras=[['seedgrove',2,1]];
+    for(const [type,dx,dy] of extras){
+      const x=clamp(s.x+dx,0,BOARD_W-1), y=clamp(s.y+dy,0,BOARD_H-1);
+      if(!findPieceAt(x,y) && passableFor({type,faction:f.idx},x,y)) newPiece(f.idx,type,x,y,{ready:true,nextBuildingTick:now()+60});
+    }
   }
 }
 function setupPieces(){
@@ -2276,7 +2286,7 @@ function claimTile(faction,x,y,glow=.35,captureKind='normal'){
 function applyAuraTerritory(piece){
   const def = pieceDefs[piece.type];
   const f = factions[piece.faction];
-  if(!f || f.id==='ember') return; // Ember only takes land by kills.
+  if(!f || f.id==='ember' || f.id==='verdant') return; // Ember kills for land; Verdant spreads only from Seed Grove nodes.
   const r = def.aura || 0;
   if(!r) return;
   // Iron, Sunspire, and Frost use their more specific timed control rules in updateCommandLand.
@@ -2306,8 +2316,10 @@ function eligibleSpawnTiles(factionIdx, type=null){
     if(f?.id==='iron' && isIronFortifiedSpawnType(spawnType) && t.captureKind!=='iron_fortified' && !nearCommandPiece(t.x,t.y,factionIdx,3)) continue;
 
     if(f?.id==='verdant'){
-      if(!nearestFriendlyPieceWithin(t.x,t.y,factionIdx,VERDANT_SPREAD_RADIUS+1)) continue;
-      if(['seedpawn','thornguard','scout','stagrunner','vinehook','vinebishop','grovetower'].includes(spawnType) && !(isNaturalVerdantTerrain(t.type) || t.captureKind==='verdant_root')) continue;
+      const nearNode=nearestVerdantNodeWithin(t.x,t.y,factionIdx,VERDANT_NODE_MAINTAIN_RADIUS+1);
+      const homeSeed=t.captureKind==='starting_land';
+      if(!nearNode && !homeSeed) continue;
+      if(['seedpawn','thornguard','scout','stagrunner','vinehook','vinebishop','grovetower'].includes(spawnType) && !(isNaturalVerdantTerrain(t.type) || t.captureKind==='verdant_root' || homeSeed)) continue;
     }
 
     // Shadow hidden-court land no longer restricts spawns; any Shadow roster piece can use owned eligible land.
@@ -2523,6 +2535,13 @@ function buildingNear(piece,type,r){
   const rr=r*r;
   return liveBuildings(piece.faction,type).find(b=>dist2(piece.x,piece.y,b.x,b.y)<=rr) || null;
 }
+function crownMarshalNear(piece,r=CROWNWARD_MARSHAL_COOLDOWN_RANGE){
+  if(!piece || !piece.alive || piece.type==='marshal') return null;
+  const f=factions[piece.faction];
+  if(f?.id!=='crownward') return null;
+  const rr=r*r;
+  return pieces.find(p=>p.alive && p.faction===piece.faction && p.type==='marshal' && p.id!==piece.id && dist2(piece.x,piece.y,p.x,p.y)<=rr) || null;
+}
 function enemyNear(x,y,factionIdx,r){
   const rr=r*r;
   return pieces.some(p=>p.alive && p.faction!==factionIdx && factions[p.faction]?.alive && dist2(x,y,p.x,p.y)<=rr);
@@ -2626,7 +2645,7 @@ function baseCooldownFor(piece, x=piece.x, y=piece.y){
   const f = factions[piece.faction];
   let style = 1;
   if(f?.id==='ember') style=.9;
-  else if(f?.id==='verdant') style=.92;
+  else if(f?.id==='verdant') style=.97;
   else if(f?.id==='iron') style=1.16;
   else if(f?.id==='frost') style=1.14;
   else if(f?.id==='sunspire') style=.94;
@@ -2636,9 +2655,10 @@ function baseCooldownFor(piece, x=piece.x, y=piece.y){
   else if(f?.aiStyle==='expansion') style=.96;
   let buildingMult = 1;
   if(f?.id==='crownward' && buildingNear(piece,'royalbannerhall',3)) buildingMult *= .75;
+  if(f?.id==='crownward' && crownMarshalNear(piece)) buildingMult *= CROWNWARD_MARSHAL_COOLDOWN_MULT;
   if(f?.id==='ember' && terrain && terrain.owner===piece.faction) buildingMult *= (terrain.captureKind==='ember_kill' ? .62 : .76);
   if(f?.id==='ember' && piece.heatUntil && now()<piece.heatUntil) buildingMult *= .68;
-  if(f?.id==='verdant' && terrain && (terrain.type==='forest' || (terrain.owner===piece.faction && (terrain.captureKind==='verdant_root' || isNaturalVerdantTerrain(terrain.type))))) buildingMult *= .74;
+  if(f?.id==='verdant' && terrain && (terrain.type==='forest' || (terrain.owner===piece.faction && (terrain.captureKind==='verdant_root' || isNaturalVerdantTerrain(terrain.type))))) buildingMult *= .86;
   if(terrain && terrain.owner!=null && terrain.owner!==piece.faction && factions[terrain.owner]?.id==='verdant') buildingMult *= 1.32;
   if(f?.id==='iron' && terrain){
     if(terrain.owner===piece.faction) buildingMult *= .70;
@@ -2672,9 +2692,9 @@ function movementCooldownMultiplier(piece, fromX, fromY, toX, toY){
   const m=moveTraits(fromX,fromY,toX,toY);
   if(!f) return 1;
   if(f.id==='verdant'){
-    if(m.adjacent) return verdantConnectedLanding(toX,toY,piece.faction) ? .60 : .72;
-    if(m.dist<=2) return verdantConnectedLanding(toX,toY,piece.faction) ? .68 : .88;
-    return .98;
+    if(m.adjacent) return verdantConnectedLanding(toX,toY,piece.faction) ? .76 : .86;
+    if(m.dist<=2) return verdantConnectedLanding(toX,toY,piece.faction) ? .82 : .94;
+    return 1.04;
   }
   if(f.id==='ember'){
     let variance = .94 + seededNoise(piece.id || 1, Math.round(now()*3), 4110) * .24;
@@ -3089,6 +3109,10 @@ function nearestFriendlyPieceWithin(x,y,factionIdx,r){
   const rr=r*r;
   return pieces.some(p=>p.alive && p.faction===factionIdx && dist2(x,y,p.x,p.y)<=rr);
 }
+function nearestVerdantNodeWithin(x,y,factionIdx,r=VERDANT_NODE_MAINTAIN_RADIUS){
+  const rr=r*r;
+  return pieces.some(p=>p.alive && p.faction===factionIdx && p.type==='seedgrove' && dist2(x,y,p.x,p.y)<=rr);
+}
 function nearCommandPiece(x,y,factionIdx,r){
   const rr=r*r;
   return pieces.some(p=>p.alive && p.faction===factionIdx && (p.type==='king' || pieceDefs[p.type]?.aura) && dist2(x,y,p.x,p.y)<=rr);
@@ -3173,8 +3197,7 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
       if(['king','general','tower'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.aura||2,'iron_fortified',0,(t)=>t.type!=='water'&&t.type!=='mountain');
       else if(['shieldpawn','bulwark','hammerknight','gatebreaker','warden','citadelwalker'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,1,'iron_fortified',0,(t)=>t.type!=='water'&&t.type!=='mountain');
     } else if(id==='verdant'){
-      if(isNaturalVerdantTerrain(tile(toX,toY).type)) claimed += claimRadius(piece.faction,toX,toY,tile(toX,toY).type==='forest'?3:2,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
-      else if(claimTile(piece.faction,toX,toY,0,'verdant_seed')) claimed++;
+      if(claimTile(piece.faction,toX,toY,0,'verdant_seed')) claimed++;
     } else if(id==='tide'){
       claimed += claimRadius(piece.faction,toX,toY,1,'tide_surge',0,(t,x,y)=>t.type==='water'||t.type==='swamp'||isCoastTile(x,y)||terrainOf(t).pass);
     } else if(id==='sunspire'){
@@ -3191,9 +3214,8 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
   if(id==='ember'){
     return 0; // Ember only captures land by kills.
   } else if(id==='verdant'){
-    const t=tile(toX,toY);
-    if(isNaturalVerdantTerrain(t.type)) claimed += claimRadius(piece.faction,toX,toY,1,'verdant_root',0,(q)=>isNaturalVerdantTerrain(q.type));
-    return claimed;
+    // Verdant no longer spreads from ordinary troop movement; only Seed Grove nodes grow lasting roots.
+    return 0;
   } else if(id==='iron'){
     // Iron does not paint land by marching. Its command pieces and stationary defenders lock ground in updateCommandLand.
     return 0;
@@ -3367,7 +3389,7 @@ function factionCaptureHint(piece,claimed){
   const f=factions[piece.faction];
   if(!f) return 'Move complete.';
   if(f.id==='ember') return 'Ember only captures land from kills.';
-  if(f.id==='verdant') return claimed ? `Verdant roots claimed ${claimed} natural tiles.` : 'Verdant only spreads through living ground near troops.';
+  if(f.id==='verdant') return claimed ? `Verdant made a small foothold.` : 'Verdant root spread now comes from Seed Grove nodes.';
   if(f.id==='shadow') return claimed ? 'Shadow influence expanded the hidden court.' : 'Shadow land is hidden from enemies and expands mainly from kills.';
   if(f.id==='iron') return claimed ? 'Iron fortified new ground.' : 'Iron captures with command pieces and stationary defenders.';
   if(f.id==='sunspire') return claimed ? 'Sunspire sanctified elite ground.' : 'Sunspire captures with elite presence and command pieces.';
@@ -3665,6 +3687,7 @@ function updatePiecePanel(){
   const shrineNames=localShrineNamesForPiece(p);
   const shrineLine=shrineNames.length ? `<p style="color:#fff3b0">Local shrine: ${shrineNames.join(', ')}</p>` : '';
   const solarLine=(p.solarBoostUntil && now()<p.solarBoostUntil) ? `<p style="color:#ffe7bc">Solar Beacon channel: cooldown speeding up 50%.</p>` : '';
+  const marshalLine=crownMarshalNear(p) ? `<p style="color:#fff3b0">Marshal command: cooldown 14% faster nearby.</p>` : '';
   piecePanel.style.display='block';
   piecePanel.innerHTML=`
     <h3 style="color:${f.color}">${def.icon} ${def.name} <span style="font-size:12px;color:#cbd5e1">Lv ${p.level}</span></h3>
@@ -3672,7 +3695,7 @@ function updatePiecePanel(){
     <div class="bar"><div class="fill" style="width:${(cd*100).toFixed(0)}%"></div></div>
     <p>${cooldownReady(p)?'Ready to move.':'Cooldown '+Math.ceil((1-cd)*cooldownFor(p))+'s remaining.'}</p>
     ${shrineLine}
-    ${solarLine}
+    ${solarLine}${marshalLine}
     <p>${def.desc}</p>
     <button id="panelCenter">Center on piece</button>`;
   const btn=document.getElementById('panelCenter');
@@ -3764,18 +3787,15 @@ function updateSpecialLandRules(dt){
   }
 }
 function updateVerdantSpreadAndFade(f,dt){
-  const army=pieces.filter(p=>p.alive&&p.faction===f.idx);
-  if(!army.length) return;
-  for(const p of army){
-    for(let y=p.y-VERDANT_SPREAD_RADIUS;y<=p.y+VERDANT_SPREAD_RADIUS;y++) for(let x=p.x-VERDANT_SPREAD_RADIUS;x<=p.x+VERDANT_SPREAD_RADIUS;x++){
-      if(!inBounds(x,y) || dist2(x,y,p.x,p.y)>VERDANT_SPREAD_RADIUS*VERDANT_SPREAD_RADIUS) continue;
-      const t=tile(x,y);
-      if(isNaturalVerdantTerrain(t.type) && !findPieceAt(x,y)) claimTile(f.idx,x,y,.22,'verdant_root');
-    }
+  // Verdant expansion is now node-led only. Ordinary troops no longer paint a 4-tile living-ground radius.
+  const nodes=liveBuildings(f.idx,'seedgrove');
+  for(const node of nodes){
+    claimRadius(f.idx,node.x,node.y,VERDANT_NODE_SPREAD_RADIUS,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
   }
   for(const t of normalizeBoard()){
     if(t.owner!==f.idx) continue;
-    if(nearestFriendlyPieceWithin(t.x,t.y,f.idx,VERDANT_SPREAD_RADIUS)){ t.verdantFade=0; continue; }
+    if(t.captureKind!=='verdant_root' && t.captureKind!=='verdant_seed') continue;
+    if(t.captureKind==='verdant_root' && nearestVerdantNodeWithin(t.x,t.y,f.idx,VERDANT_NODE_MAINTAIN_RADIUS)){ t.verdantFade=0; continue; }
     t.verdantFade=(t.verdantFade||0)+dt;
     t.glow=0;
     if(t.verdantFade>=VERDANT_FADE_SECONDS){ t.owner=null; t.captureKind=null; t.verdantFade=0; t.glow=0; markLandDirty(); }
@@ -3795,7 +3815,7 @@ function updateCommandLand(f){
     const def=pieceDefs[p.type];
 
     if(f.id==='crownward'){
-      if(['king','general','tower','ballistatower'].includes(p.type)) claimRadius(f.idx,p.x,p.y,def?.aura||2,'command',0,(t)=>terrainOf(t).pass);
+      if(['king','general','tower','ballistatower','marshal'].includes(p.type)) claimRadius(f.idx,p.x,p.y,def?.aura||2,'command',0,(t)=>terrainOf(t).pass);
       continue;
     }
 
@@ -3863,7 +3883,7 @@ function updateBuildingRules(f,dt){
         markStateDirty();
         continue;
       }
-      claimRadius(f.idx,b.x,b.y,2,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
+      claimRadius(f.idx,b.x,b.y,VERDANT_NODE_SPREAD_RADIUS,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
       if(!b.seedChildDone && tNow>=b.nextBuildingTick){
         const spot=nearestNonVerdantTile(b.x,b.y,f.idx,3);
         if(spot){
@@ -4335,6 +4355,28 @@ function drawTerritoryEffects(){
       const sx=x*BASE_CELL, sy=y*BASE_CELL;
       ctx.globalAlpha = t.owner===PLAYER ? .22 : .16;
       ctx.fillStyle=f.color; ctx.fillRect(sx+2,sy+2,BASE_CELL-4,BASE_CELL-4);
+      if(f.id==='iron' && t.captureKind==='iron_fortified'){
+        const pulse=.5+.5*Math.sin(now()*3+x*.7+y*.3);
+        ctx.globalAlpha=.18+.08*pulse;
+        ctx.fillStyle='rgba(230,238,248,.9)';
+        ctx.fillRect(sx+8,sy+BASE_CELL*.30,BASE_CELL-16,3);
+        ctx.fillRect(sx+8,sy+BASE_CELL*.62,BASE_CELL-16,3);
+        ctx.globalAlpha=.28+.10*pulse;
+        ctx.strokeStyle='rgba(210,222,238,.95)';
+        ctx.lineWidth=1.5;
+        ctx.beginPath();
+        ctx.moveTo(sx+BASE_CELL*.22,sy+BASE_CELL*.76);
+        ctx.lineTo(sx+BASE_CELL*.50,sy+BASE_CELL*.22);
+        ctx.lineTo(sx+BASE_CELL*.78,sy+BASE_CELL*.76);
+        ctx.stroke();
+        ctx.globalAlpha=.34;
+        ctx.fillStyle='rgba(255,255,255,.95)';
+        for(let i=0;i<3;i++){
+          ctx.beginPath();
+          ctx.arc(sx+BASE_CELL*(.28+i*.22),sy+BASE_CELL*.47,2.1,0,Math.PI*2);
+          ctx.fill();
+        }
+      }
       ctx.globalAlpha=.65;
       // border only at ownership edges
       ctx.strokeStyle=f.color; ctx.lineWidth=2;
@@ -4468,6 +4510,18 @@ function drawFactionFlair(f,p,r){
       const a=i*Math.PI/3+t*.18;
       ctx.beginPath(); ctx.moveTo(Math.cos(a)*(r+8),Math.sin(a)*(r+8)); ctx.lineTo(Math.cos(a)*(r+15),Math.sin(a)*(r+15)); ctx.stroke();
     }
+    if(p.type==='marshal'){
+      const pulse=.5+.5*Math.sin(t*4.4);
+      ctx.globalAlpha=.22+.12*pulse;
+      ctx.strokeStyle='rgba(255,232,148,.95)';
+      ctx.lineWidth=2.4;
+      ctx.beginPath(); ctx.arc(0,0,r+CROWNWARD_MARSHAL_COOLDOWN_RANGE*6+3*pulse,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=.44;
+      for(let i=0;i<8;i++){
+        const a=i*Math.PI/4-t*.25;
+        ctx.beginPath(); ctx.moveTo(Math.cos(a)*(r+3),Math.sin(a)*(r+3)); ctx.lineTo(Math.cos(a)*(r+21),Math.sin(a)*(r+21)); ctx.stroke();
+      }
+    }
   } else if(f.id==='ember'){
     ctx.globalAlpha=.55;
     for(let i=0;i<5;i++){
@@ -4475,10 +4529,33 @@ function drawFactionFlair(f,p,r){
       ctx.beginPath(); ctx.arc(Math.cos(a)*(r+8),Math.sin(a)*(r+8),2.2+Math.sin(t+i)*1.2,0,Math.PI*2); ctx.fill();
     }
   } else if(f.id==='iron'){
-    ctx.globalAlpha=.5;
+    const pulse=.55+.45*Math.sin(t*2.8);
+    ctx.globalAlpha=.30+.16*pulse;
+    ctx.lineWidth=4;
+    ctx.strokeStyle='rgba(230,238,248,.92)';
+    roundRect(ctx,-r-10,-r-10,(r+10)*2,(r+10)*2,6); ctx.stroke();
+    ctx.globalAlpha=.42+.12*pulse;
+    ctx.lineWidth=2.2;
+    ctx.strokeStyle=f.color;
+    roundRect(ctx,-r-5,-r-5,(r+5)*2,(r+5)*2,5); ctx.stroke();
+    ctx.globalAlpha=.35+.15*pulse;
+    ctx.fillStyle='rgba(255,255,255,.9)';
+    for(let i=0;i<4;i++){
+      const a=i*Math.PI/2+Math.PI/4;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a)*(r+12),Math.sin(a)*(r+12),2.5,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha=.32+.12*pulse;
+    ctx.strokeStyle='rgba(205,216,229,.95)';
     ctx.lineWidth=2;
-    ctx.strokeRect(-r-7,-r-7,(r+7)*2,(r+7)*2);
-    ctx.strokeRect(-r-2,-r-2,(r+2)*2,(r+2)*2);
+    for(let i=0;i<4;i++){
+      const a=i*Math.PI/2+t*.18;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*(r+2),Math.sin(a)*(r+2));
+      ctx.lineTo(Math.cos(a)*(r+18),Math.sin(a)*(r+18));
+      ctx.stroke();
+    }
   } else if(f.id==='verdant'){
     ctx.globalAlpha=.55;
     ctx.lineWidth=2;
@@ -4689,6 +4766,26 @@ function drawPieces(){
       ctx.strokeStyle='rgba(255,232,122,.95)';
       ctx.lineWidth=2.4;
       ctx.beginPath(); ctx.arc(0,0,r+16+3*pulse,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+    if(crownMarshalNear(p)){
+      const pulse=.55+.45*Math.sin(now()*7+p.id);
+      ctx.globalAlpha=.24+.16*pulse;
+      ctx.strokeStyle='rgba(255,232,148,.92)';
+      ctx.lineWidth=2.2;
+      ctx.beginPath(); ctx.arc(0,0,r+14+2*pulse,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+    if(f.id==='iron' && isIronShieldLocked(p)){
+      const pulse=.55+.45*Math.sin(now()*6+p.id);
+      ctx.globalAlpha=.28+.20*pulse;
+      ctx.strokeStyle='rgba(226,238,250,.95)';
+      ctx.lineWidth=3.2;
+      for(let i=0;i<4;i++){
+        const a0=i*Math.PI/2+Math.PI*.08;
+        const a1=a0+Math.PI*.32;
+        ctx.beginPath(); ctx.arc(0,0,r+18+2*pulse,a0,a1); ctx.stroke();
+      }
       ctx.globalAlpha=1;
     }
     if(f.duplicateFaction){
