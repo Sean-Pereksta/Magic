@@ -331,6 +331,9 @@ const PENDING_ACTION_GRACE_SECONDS = 2.0;
 // Firebase snapshot moves it to the correct tile.
 const HOST_ACCEPTED_PENDING_TTL_SECONDS = 18.0;
 const COMMAND_MAX_AGE_MS = 6000;
+const PRESENCE_STALE_MS = 15000;
+const CONTROLLER_LEASE_MS = 14000;
+const CONTROLLER_LEASE_RENEW_MS = 3500;
 const CONTROLLER_STATE_WRITE_SECONDS = 1.35;
 const FULL_SNAPSHOT_SECONDS = 12;
 const COMMAND_FLUSH_DELAY_MS = 160;
@@ -367,6 +370,10 @@ let stateRef = null;
 let fullStateRef = null;
 let lobbyRef = null;
 let presenceRef = null;
+let controllerLease = null;
+let controllerLeaseAction = null;
+let lastControllerLeaseAttempt = 0;
+let activePresence = [];
 let stateUnsub = null;
 let lobbyUnsub = null;
 let heartbeatTimer = null;
@@ -397,6 +404,7 @@ let mapSeed = 1;
 let shrines = [];
 let nextCheckScanAt = 0;
 let currentCheckWarning = '';
+let kingInCheck = false;
 let chessEloProfiles = {};
 let eloLoadSeq = 0;
 let eloAwarding = false;
@@ -688,6 +696,106 @@ function pregameDocRef(){ return doc(db,'lobbies',lobbyId,'chess_warlord','prega
 function commandCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_commands'); }
 function commandDocRef(id){ return doc(db,'lobbies',lobbyId,'chess_warlord_commands',safeDocId(id)); }
 function presenceCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_presence'); }
+function controllerLeaseForLobby(data=lobbyData){ return data?.chessWarlordControllerLease || null; }
+function firestoreTimeMs(value, fallback=0){
+  if(value && typeof value.toMillis === 'function') return value.toMillis();
+  if(value && typeof value.seconds === 'number') return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1000000);
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+function presenceSeenAtMs(presence){
+  return firestoreTimeMs(presence?.lastSeenAt, Number(presence?.lastSeenMs ?? presence?.lastSeen ?? 0));
+}
+function commandOrderMs(command){
+  return firestoreTimeMs(command?.submittedAt || command?.createdAt, Number(command?.clientCreatedAtMs ?? command?.createdAtMs ?? 0));
+}
+function activePresenceFromSnapshot(snap){
+  const cutoff = Date.now() - PRESENCE_STALE_MS;
+  const active = [];
+  snap.forEach(d=>{
+    const data = d.data() || {};
+    const seenAtMs = presenceSeenAtMs(data);
+    if(data.username && seenAtMs > cutoff){
+      active.push({...data, uid:data.authUid || d.id, docId:d.id, seenAtMs, slot:Number.isFinite(Number(data.slot)) ? Number(data.slot) : MAX_ONLINE_PLAYERS});
+    }
+  });
+  return active.sort((a,b)=>(a.slot-b.slot) || (a.username || '').localeCompare(b.username || '') || (a.uid || '').localeCompare(b.uid || ''));
+}
+function preferredControllerPresence(active){
+  const ordered = (active || []).slice().sort((a,b)=>{
+    const ah = a.username === lobbyData?.host ? 0 : 1;
+    const bh = b.username === lobbyData?.host ? 0 : 1;
+    return (ah-bh) || (a.slot-b.slot) || (a.username || '').localeCompare(b.username || '') || (a.uid || '').localeCompare(b.uid || '');
+  });
+  return ordered[0] || null;
+}
+function leaseIsFresh(lease, atMs=Date.now()){
+  return !!lease && Number(lease.leaseExpiresAtMs || 0) > atMs;
+}
+function ownsControllerLease(){
+  const uid = auth.currentUser?.uid || '';
+  return !!(lobbyId && uid && controllerLease?.ownerUid === uid && leaseIsFresh(controllerLease));
+}
+function canAuthoritativelyWriteState(){
+  return !lobbyId || (isController && ownsControllerLease());
+}
+function currentControllerEpoch(){ return Number(controllerLease?.epoch || 0); }
+function applyControllerLease(nextLease){
+  const wasController = isController;
+  controllerLease = nextLease || null;
+  controllerName = controllerLease?.ownerName || lobbyData?.host || '';
+  isController = ownsControllerLease();
+  if(wasController !== isController && gameStarted){
+    if(isController && lastAuthoritativeData){
+      stateDirty = true;
+      scheduleControllerStateWrite('leaseTakeover', 280);
+      toast('Host lease transferred — keeping the war in sync.', 2300);
+    } else if(!isController) {
+      toast('Host changed — syncing to the new controller.', 2300);
+    }
+  }
+  manageCommandWatch();
+}
+async function maintainControllerLease(active){
+  if(!lobbyRef || !lobbyId || !username || !auth.currentUser?.uid || controllerLeaseAction) return;
+  const uid = auth.currentUser.uid;
+  const nowMs = Date.now();
+  const current = controllerLeaseForLobby();
+  const ownsCurrent = current?.ownerUid === uid;
+  const currentFresh = leaseIsFresh(current, nowMs);
+  const preferred = preferredControllerPresence(active);
+  if(currentFresh && !ownsCurrent){ applyControllerLease(current); return; }
+  if(ownsCurrent && currentFresh && nowMs - lastControllerLeaseAttempt < CONTROLLER_LEASE_RENEW_MS) return;
+  if(!ownsCurrent && preferred && preferred.uid !== uid){ applyControllerLease(current); return; }
+  lastControllerLeaseAttempt = nowMs;
+  controllerLeaseAction = runTransaction(db, async tx => {
+    const snap = await tx.get(lobbyRef);
+    const lobby = snap.exists() ? snap.data() : {};
+    const live = controllerLeaseForLobby(lobby);
+    const liveFresh = leaseIsFresh(live, nowMs);
+    const sameOwner = live?.ownerUid === uid;
+    if(liveFresh && !sameOwner) return live;
+    const renewing = sameOwner && liveFresh;
+    const lease = {
+      gameKey: GAME_KEY,
+      ownerUid: uid,
+      ownerName: username,
+      ownerSlot: PLAYER,
+      epoch: renewing ? Math.max(1, Number(live?.epoch || 1)) : Math.max(1, Number(live?.epoch || 0) + 1),
+      leaseExpiresAtMs: nowMs + CONTROLLER_LEASE_MS
+    };
+    tx.set(lobbyRef, {chessWarlordControllerLease:{...lease,heartbeatAt:serverTimestamp()},updatedAt:serverTimestamp()},{merge:true});
+    return lease;
+  });
+  try{
+    const lease = await controllerLeaseAction;
+    if(lease) applyControllerLease(lease);
+  }catch(e){
+    console.warn('controller lease refresh failed', e);
+  }finally{
+    controllerLeaseAction = null;
+  }
+}
 function compressOwners(){ return normalizeBoard().map(t => t.owner == null ? '-' : String(t.owner)).join(''); }
 function compressWalls(){ return normalizeBoard().map(t => t.wallOwner == null ? '-' : String(t.wallOwner)).join(''); }
 const CAPTURE_KIND_TO_CHAR = {
@@ -784,6 +892,7 @@ function buildSelfContainedState(reason='fullRepair'){
     playerNames: slotNames,
     playerFactionIds: slotFactionIds,
     controller: controllerName || username || '',
+    controllerEpoch: currentControllerEpoch(),
     stats: {captures:gameStats.captures||0,kingsTaken:gameStats.kingsTaken||0,startedAt:gameStats.startedAt||now()},
     factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,killPrestige:f.killPrestige||0,spawnsMade:f.spawnsMade||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
     winner: winnerName() || '',
@@ -834,6 +943,7 @@ function serializeState(reason='sync', forceFull=false){
     playerNames: slotNames,
     playerFactionIds: slotFactionIds,
     controller: controllerName || username || '',
+    controllerEpoch: currentControllerEpoch(),
     stats: {captures:gameStats.captures||0,kingsTaken:gameStats.kingsTaken||0,startedAt:gameStats.startedAt||now()},
     factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,killPrestige:f.killPrestige||0,spawnsMade:f.spawnsMade||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
     winner: winnerName() || ''
@@ -917,6 +1027,8 @@ function applyRemoteState(data){
     return;
   }
   const incomingVersion = Number(data.version || 0);
+  const incomingControllerEpoch = Number(data.controllerEpoch || 0);
+  if(incomingControllerEpoch && currentControllerEpoch() && incomingControllerEpoch < currentControllerEpoch()) return;
   if(incomingVersion && incomingVersion < localStateVersion && data.updatedBy !== username) return;
   const hasLandPayload = !!(data.boardOwners || data.boardKinds || data.boardWalls || Array.isArray(data.ownerPatches) || Array.isArray(data.kindPatches) || Array.isArray(data.wallPatches));
   const baseOwners = data.boardOwners || (lastAuthoritativeData && lastAuthoritativeData.boardOwners) || lastAuthoritativeOwners;
@@ -1024,7 +1136,7 @@ function applyRemoteState(data){
   expirePendingPlayerActions();
   if(!pendingPlayerActions.length){
     localWritePendingUntil = 0;
-    if(!isController) stateDirty = false;
+    if(!canAuthoritativelyWriteState()) stateDirty = false;
   }
   renderSpawnCards(); updateHUD(); updatePiecePanel();
   const mineAlive = factions[PLAYER]?.alive !== false;
@@ -1138,7 +1250,7 @@ function expirePendingPlayerActions(){
   const activeActionIds = new Set(pendingPlayerActions.map(a=>a.actionId));
   for(const p of pieces){ if(p.predictedMove && !activeActionIds.has(p.predictedMove.actionId)) p.predictedMove = null; }
   for(const action of expired) stopCommandAckWatch(action.actionId);
-  if(!isController && lastAuthoritativeData){
+  if(!canAuthoritativelyWriteState() && lastAuthoritativeData){
     toast('Sync delayed — refreshing from authoritative state.', 2200);
     const restore = lastAuthoritativeData;
     lastAuthoritativeData = null;
@@ -1154,7 +1266,7 @@ function findWinnerIndexAgainst(loser){
 function winnerName(){ const alive = factions.filter(f=>f.alive); return alive.length === 1 ? displayNameForFaction(alive[0].idx) : ''; }
 async function writeStateNow(reason='sync'){
   if(!stateRef || !gameStarted || writingState) return;
-  if(lobbyId && !isController) return; // Non-host clients send tiny command docs; only the controller writes the authoritative game state.
+  if(!canAuthoritativelyWriteState()) return; // Non-host clients send tiny command docs; only the lease owner writes authoritative state.
   writingState = true;
   try{
     const payload = serializeState(reason, reason === 'initialCreate');
@@ -1186,7 +1298,7 @@ async function writeStateNow(reason='sync'){
   } finally { writingState = false; }
 }
 function scheduleControllerStateWrite(reason='controllerCommand', delayMs=COMMAND_FLUSH_DELAY_MS){
-  if(!isController){ return; }
+  if(!canAuthoritativelyWriteState()) return;
   stateDirty = true;
   if(controllerFlushTimer) return;
   controllerFlushTimer = setTimeout(()=>{
@@ -1196,13 +1308,13 @@ function scheduleControllerStateWrite(reason='controllerCommand', delayMs=COMMAN
 }
 function queueReliableStateWrite(reason='playerAction'){
   // Legacy entry point kept for local preview/controller actions only. Normal multiplayer clients never write state.
-  if(lobbyId && !isController) return;
+  if(!canAuthoritativelyWriteState()) return;
   stateDirty = true;
   reliableWriteReason = reason;
-  if(isController){ scheduleControllerStateWrite(reason, COMMAND_FLUSH_DELAY_MS); }
+  scheduleControllerStateWrite(reason, COMMAND_FLUSH_DELAY_MS);
 }
 function maybeWriteControllerState(){
-  if(!isController || writingState) return;
+  if(!canAuthoritativelyWriteState() || writingState) return;
   if((now() - lastFullSnapshotWrite) >= FULL_SNAPSHOT_SECONDS) stateDirty = true;
   if(landDirty && (now() - lastLandSync) >= LAND_SYNC_SECONDS) stateDirty = true;
   if(!stateDirty) return;
@@ -1281,11 +1393,11 @@ async function finishCommandDoc(docId, ok, reason='processed'){
   }
 }
 function processCommandDoc(docId, cmd){
-  if(!isController || !gameStarted || !cmd || cmd.gameKey !== GAME_KEY) return;
+  if(!canAuthoritativelyWriteState() || !gameStarted || !cmd || cmd.gameKey !== GAME_KEY) return;
   if(cmd.status && cmd.status !== 'new') return;
   if(processedCommandIds.has(docId)) return;
   processedCommandIds.add(docId);
-  const createdAtMs = Number(cmd.createdAtMs || 0);
+  const createdAtMs = commandOrderMs(cmd);
   if(createdAtMs && Date.now() - createdAtMs > COMMAND_MAX_AGE_MS){
     finishCommandDoc(docId,false,'command_too_old');
     return;
@@ -1299,7 +1411,7 @@ function processCommandDoc(docId, cmd){
   }
 }
 function startCommandWatch(){
-  if(!lobbyId || commandUnsub || !isController) return;
+  if(!lobbyId || commandUnsub || !canAuthoritativelyWriteState()) return;
   try{
     commandUnsub = onSnapshot(commandCollection(), snap=>{
       const batch=[];
@@ -1309,7 +1421,7 @@ function startCommandWatch(){
         if(!data || (data.status && data.status !== 'new')) return;
         batch.push({id:ch.doc.id, data});
       });
-      batch.sort((a,b)=>(Number(a.data.createdAtMs||0)-Number(b.data.createdAtMs||0)) || a.id.localeCompare(b.id));
+      batch.sort((a,b)=>(commandOrderMs(a.data)-commandOrderMs(b.data)) || a.id.localeCompare(b.id));
       for(const item of batch) processCommandDoc(item.id,item.data);
     });
   }catch(e){ console.warn('command watch failed', e); }
@@ -1318,7 +1430,7 @@ function stopCommandWatch(){
   if(commandUnsub){ commandUnsub(); commandUnsub=null; }
 }
 function manageCommandWatch(){
-  if(isController) startCommandWatch(); else stopCommandWatch();
+  if(canAuthoritativelyWriteState()) startCommandWatch(); else stopCommandWatch();
 }
 function stopCommandAckWatch(actionId){
   const unsub = commandAckUnsubs.get(actionId);
@@ -1326,7 +1438,7 @@ function stopCommandAckWatch(actionId){
   commandAckUnsubs.delete(actionId);
 }
 function startCommandAckWatch(action){
-  if(!lobbyId || isController || !action?.actionId || commandAckUnsubs.has(action.actionId)) return;
+  if(!lobbyId || canAuthoritativelyWriteState() || !action?.actionId || commandAckUnsubs.has(action.actionId)) return;
   try{
     const unsub = onSnapshot(commandDocRef(action.actionId), snap=>{
       if(!snap.exists()) return;
@@ -1346,7 +1458,7 @@ function startCommandAckWatch(action){
   }catch(e){ console.warn('command ack watch failed', e); }
 }
 async function submitPlayerCommand(action){
-  if(!lobbyId || isController) return true;
+  if(!lobbyId || canAuthoritativelyWriteState()) return true;
   const payload = {
     ...action,
     gameKey:GAME_KEY,
@@ -1354,7 +1466,8 @@ async function submitPlayerCommand(action){
     by:username || 'player',
     slot:PLAYER,
     faction:PLAYER,
-    createdAtMs:Date.now(),
+    clientCreatedAtMs:Date.now(),
+    submittedAt:serverTimestamp(),
     createdAt:serverTimestamp(),
     baseStateVersion: localStateVersion || 0
   };
@@ -1373,7 +1486,7 @@ async function submitPlayerCommand(action){
 
 function predictLocalMove(piece,x,y,action){
   if(!piece || !piece.alive || !inBounds(x,y)) return false;
-  if(!(lobbyId && !isController)) return movePiece(piece,x,y,'player');
+  if(canAuthoritativelyWriteState()) return movePiece(piece,x,y,'player');
   if(findPieceAt(x,y)?.faction === piece.faction) return false;
   if(!passableFor(piece,x,y) && !canAttackWall(piece,x,y)) return false;
   // Visual-only prediction: draw the piece moving, but do not mutate the authoritative tile or cooldown.
@@ -1402,18 +1515,18 @@ async function requestPlayerMove(piece,x,y){
   if(!isMyPiece(piece)) return false;
   const live = getPiece(piece.id);
   if(!live || !cooldownReady(live)){ toast('That piece is still cooling down.'); return false; }
-  if(lobbyId && !isController && pendingPlayerActions.some(a=>a.kind==='move' && a.pieceId===live.id)){ toast('That piece is awaiting host confirmation.'); return false; }
+  if(lobbyId && !canAuthoritativelyWriteState() && pendingPlayerActions.some(a=>a.kind==='move' && a.pieceId===live.id)){ toast('That piece is awaiting host confirmation.'); return false; }
   const legal = getLegalMoves(live,false);
   if(!legal.some(m=>m.x===x && m.y===y)){ toast('That piece cannot move there.'); return false; }
   const fromX = live.x, fromY = live.y;
   const moveStartMs = Date.now();
   const moveEndMs = moveStartMs + moveVisualDurationFor(live);
   const action = {kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, type:live.type, fromX, fromY, toX:x, toY:y, moveStartMs, moveEndMs, baseStateVersion: localStateVersion || 0};
-  const ok = (lobbyId && !isController) ? predictLocalMove(live,x,y,action) : movePiece(live,x,y,'player');
+  const ok = (lobbyId && !canAuthoritativelyWriteState()) ? predictLocalMove(live,x,y,action) : movePiece(live,x,y,'player');
   if(ok){
     rememberPendingPlayerAction({...action, faction:PLAYER});
     selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
-    if(isController || !lobbyId){ queueReliableStateWrite('playerMove'); }
+    if(canAuthoritativelyWriteState()){ queueReliableStateWrite('playerMove'); }
     else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
   }
   return ok;
@@ -1433,11 +1546,11 @@ async function requestPlayerSpawn(x,y){
   const action = {kind:'spawn', actionId, pieceId, type, x, y, baseStateVersion: localStateVersion || 0};
   newPiece(PLAYER,type,x,y,{ready:false,id:pieceId,clientActionId:actionId,clientActionBy:username || ''});
   rememberPendingPlayerAction({...action, faction:PLAYER});
-  if(isController || !lobbyId){ recordFactionSpawn(f,type); f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER); }
+  if(canAuthoritativelyWriteState()){ recordFactionSpawn(f,type); f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER); }
   spawnSelection=null;
   renderSpawnCards(); updateHUD();
   burst(x,y,f.color,24); toast(`${pieceDefs[type].name} deployed.`);
-  if(isController || !lobbyId){ queueReliableStateWrite('playerSpawn'); }
+  if(canAuthoritativelyWriteState()){ queueReliableStateWrite('playerSpawn'); }
   else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
 }
 async function refreshPresenceAndController(){
@@ -1445,19 +1558,24 @@ async function refreshPresenceAndController(){
   try{
     if(presenceRef){
       const eloProfile = getChessEloProfile(username || 'Player', PLAYER);
-      await setDoc(presenceRef,{username,slot:PLAYER,lastSeen:Date.now(),authUid:auth.currentUser?.uid || '',gameKey:GAME_KEY,selectedFaction:chosenFactionId,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji},{merge:true});
+      await setDoc(presenceRef,{
+        username,slot:PLAYER,lastSeenAt:serverTimestamp(),lastSeenMs:Date.now(),
+        authUid:auth.currentUser?.uid || '',gameKey:GAME_KEY,selectedFaction:chosenFactionId,
+        elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji
+      },{merge:true});
     }
     const snap = await getDocs(presenceCollection());
-    const active = [];
-    const cutoff = Date.now() - 12000;
-    snap.forEach(d=>{ const v=d.data(); if((v.lastSeen || 0) > cutoff) active.push(v.username); });
-    onlineCount = active.length;
-    const preferred = (lobbyData?.host && active.includes(lobbyData.host)) ? lobbyData.host : (slotHumans.find(p=>active.includes(p)) || active[0] || username);
-    controllerName = preferred;
-    isController = controllerName === username;
-    setNetwork(`${username || 'Player'} · ${isController ? 'hosting AI' : 'synced'} · ${onlineCount}/${slotHumans.length || 1} online`);
+    activePresence = activePresenceFromSnapshot(snap);
+    onlineCount = activePresence.length;
+    await maintainControllerLease(activePresence);
+    const host = controllerName || 'electing host';
+    const role = isController ? 'hosting AI' : 'synced · host ' + host;
+    setNetwork((username || 'Player') + ' · ' + role + ' · ' + onlineCount + '/' + (slotHumans.length || 1) + ' online');
     manageCommandWatch();
-  }catch(e){ console.warn('presence failed', e); }
+  }catch(e){
+    console.warn('presence or controller lease failed', e);
+    setNetwork((username || 'Player') + ' · sync retrying');
+  }
 }
 async function completeLobbyIfNeeded(winner){
   if(!lobbyRef || !winner) return;
@@ -1473,7 +1591,7 @@ function showWarEnd(winner){
   defeatDetails.textContent = `${winner} controls the Vastboard.`;
   restartBtn.textContent = 'Exit to Lobby';
   spectateBtn.textContent = 'Spectate Map';
-  if(isController) completeLobbyIfNeeded(winner);
+  if(canAuthoritativelyWriteState()) completeLobbyIfNeeded(winner);
 }
 function exitToLobby(){
   try{ localStorage.setItem('gh.username', username || ''); localStorage.setItem('gh.lastLobbyId',''); localStorage.setItem('gh.lastGameType',''); }catch(e){}
@@ -1485,7 +1603,7 @@ async function publishFactionSelection(){
   if(!presenceRef || !username) return;
   try{
     const eloProfile = getChessEloProfile(username || 'Player', PLAYER);
-    const payload = {username,slot:PLAYER,lastSeen:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji};
+    const payload = {username,slot:PLAYER,lastSeenAt:serverTimestamp(),lastSeenMs:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji};
     await setDoc(presenceRef,payload,{merge:true});
     if(pregameRef){
       const playerKey = safeDocId(username);
@@ -1629,7 +1747,7 @@ async function finalizeSharedAiVote(){
     aiVotes = data.aiVotes || aiVotes || {};
     choice = tallyAiVotes(aiVotes).choice;
     selectedMultiplayerAiCount = choice;
-    if(isController){
+    if(canAuthoritativelyWriteState()){
       const size = multiplayerMapSizeFor(slotHumans.length + choice);
       await setDoc(pregameRef,{aiCount:choice,boardW:size.w,boardH:size.h,updatedAt:serverTimestamp()},{merge:true});
     }
@@ -1758,6 +1876,7 @@ async function bootMultiplayer(){
     const lsnap = await getDoc(lobbyRef);
     if(!lsnap.exists()) throw new Error('Lobby not found');
     lobbyData = lsnap.data();
+    applyControllerLease(controllerLeaseForLobby(lobbyData));
     buildSlots(lobbyData.players || [username]);
     refreshChessEloProfilesForSlots('lobbyBoot');
     chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || 'normal');
@@ -1789,6 +1908,7 @@ async function bootMultiplayer(){
     lobbyUnsub = onSnapshot(lobbyRef, snap=>{
       if(!snap.exists()) return;
       lobbyData = snap.data();
+      applyControllerLease(controllerLeaseForLobby(lobbyData));
       const nextPlayers = Array.isArray(lobbyData.players) ? lobbyData.players : [];
       if(JSON.stringify(nextPlayers) !== JSON.stringify(lastLoadedLobbyPlayers)){
         slotHumans = nextPlayers.slice(0,MAX_ONLINE_PLAYERS);
@@ -1821,7 +1941,7 @@ async function bootMultiplayer(){
     await runMultiplayerFactionCountdown();
     overlay.style.display='none';
     await refreshPresenceAndController();
-    if(isController){
+    if(canAuthoritativelyWriteState()){
       await runTransaction(db, async tx => {
         const cur = await tx.get(stateRef);
         if(cur.exists()) return;
@@ -2904,7 +3024,7 @@ function updateSolarBeaconChannels(dt,applyEffect=false){
       }
     }
   }
-  if(changed && (isController || !lobbyId) && tNow-lastSolarChannelStateMark>.45){
+  if(changed && canAuthoritativelyWriteState() && tNow-lastSolarChannelStateMark>.45){
     lastSolarChannelStateMark=tNow;
     markStateDirty();
   }
@@ -4167,23 +4287,18 @@ function enemyThreatensSquare(factionIdx,x,y,ignoreId=null){
 }
 function updateCheckBanner(){
   if(!checkBanner) return;
-  if(!gameStarted || playerDefeated || !ownFactionAlive()){
-    checkBanner.style.display='none';
-    currentCheckWarning='';
-    return;
-  }
+  if(!gameStarted || playerDefeated || !ownFactionAlive()){ checkBanner.style.display='none'; currentCheckWarning=''; kingInCheck=false; return; }
   if(now()>=nextCheckScanAt){
     nextCheckScanAt=now()+.35;
     const attackers=attackingPiecesForKing(PLAYER);
-    if(attackers.length){
-      const names=attackers.slice(0,2).map(p=>`${factions[p.faction].short} ${pieceDefs[p.type].name}`).join(', ');
-      currentCheckWarning=`CHECK: your king is threatened by ${names}${attackers.length>2 ? ` +${attackers.length-2}` : ''}`;
-    } else {
-      currentCheckWarning='';
-    }
+    kingInCheck=attackers.length>0;
+    if(kingInCheck){
+      const names=attackers.slice(0,2).map(p=>factions[p.faction].short+' '+pieceDefs[p.type].name).join(', ');
+      currentCheckWarning='CHECK: your king is threatened by '+names+(attackers.length>2?' +'+(attackers.length-2):'');
+    } else currentCheckWarning='';
   }
   checkBanner.textContent=currentCheckWarning;
-  checkBanner.style.display=currentCheckWarning ? 'block' : 'none';
+  checkBanner.style.display=currentCheckWarning?'block':'none';
 }
 function roadCooldownNotice(piece){
   const f=factions[piece?.faction];
@@ -4236,7 +4351,7 @@ function gameTick(dt){
   if(!gameStarted || paused) return;
   tickTime += dt;
   for(const t of normalizeBoard()){ t.glow = Math.max(0,t.glow-dt*.7); }
-  updateSolarBeaconChannels(dt, isController || !lobbyId);
+  updateSolarBeaconChannels(dt, canAuthoritativelyWriteState());
   for(const p of pieces){
     if(!p.alive) continue;
     const pred = p.predictedMove;
@@ -4268,7 +4383,7 @@ function gameTick(dt){
     const f=floatingText[i]; f.life-=dt; f.y-=28*dt;
     if(f.life<=0) floatingText.splice(i,1);
   }
-  if(isController){ updateSpawns(dt); aiTick(dt); updateSpecialLandRules(dt); maybeWriteControllerState(); }
+  if(canAuthoritativelyWriteState()){ updateSpawns(dt); aiTick(dt); updateSpecialLandRules(dt); maybeWriteControllerState(); }
   else { updateLocalPlayerSpawn(dt); }
   expirePendingPlayerActions();
   updateHUD();
@@ -4887,17 +5002,19 @@ function drawBoard(){
     for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
       const t=tile(x,y), td=terrainOf(t);
       const sx=x*BASE_CELL, sy=y*BASE_CELL;
-      const alt=(x+y)%2?td.alt:td.color;
+      const alt=t.type==='water' ? td.color : ((x+y)%2 ? td.alt : td.color);
       ctx.fillStyle=alt;
       ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);
-      // terrain texture
-      const n=seededNoise(x,y,707);
-      ctx.globalAlpha=.13;
-      ctx.fillStyle=n>.5?'#ffffff':'#000000';
-      ctx.beginPath();
-      ctx.arc(sx+BASE_CELL*(.25+seededNoise(x,y,1)*.5), sy+BASE_CELL*(.25+seededNoise(x,y,2)*.5), 5+seededNoise(x,y,3)*15, 0, Math.PI*2);
-      ctx.fill();
-      ctx.globalAlpha=1;
+      // Water gets its own pixel texture; land keeps the soft terrain grain.
+      if(t.type!=='water'){
+        const n=seededNoise(x,y,707);
+        ctx.globalAlpha=.13;
+        ctx.fillStyle=n>.5?'#ffffff':'#000000';
+        ctx.beginPath();
+        ctx.arc(sx+BASE_CELL*(.25+seededNoise(x,y,1)*.5), sy+BASE_CELL*(.25+seededNoise(x,y,2)*.5), 5+seededNoise(x,y,3)*15, 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha=1;
+      }
       if(t.type==='water'){
         drawWaterTile(sx,sy,x,y);
       } else if(t.type==='mountain'){
@@ -4914,9 +5031,11 @@ function drawBoard(){
         ctx.fillText(td.glyph,sx+BASE_CELL/2,sy+BASE_CELL/2);
         ctx.globalAlpha=1;
       }
-      // Walls are drawn in their own pass after territory so they read as hard stone structures above roads and land color.
-      ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1;
-      ctx.strokeRect(sx+.5,sy+.5,BASE_CELL,BASE_CELL);
+      // Do not grid water internally: shorelines are drawn only around each body's exposed edge.
+      if(t.type!=='water'){
+        ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1;
+        ctx.strokeRect(sx+.5,sy+.5,BASE_CELL,BASE_CELL);
+      }
     }
   }
 }
@@ -4952,32 +5071,54 @@ function drawMountainTile(sx,sy,x,y){
 }
 function drawWaterTile(sx,sy,x,y){
   ctx.save();
-  const t=now();
-  const g=ctx.createLinearGradient(sx,sy,sx+BASE_CELL,sy+BASE_CELL);
-  g.addColorStop(0,'rgba(76,167,220,.16)');
-  g.addColorStop(.55,'rgba(22,92,150,.26)');
-  g.addColorStop(1,'rgba(4,22,48,.30)');
-  ctx.fillStyle=g;
-  ctx.fillRect(sx+1,sy+1,BASE_CELL-2,BASE_CELL-2);
-  // Pixel-speckle water: no drawn wave lines, just shifting square highlights.
-  for(let i=0;i<11;i++){
-    const px=sx+Math.floor(BASE_CELL*(.08+seededNoise(x+i*13,y,8050)*.84));
-    const py=sy+Math.floor(BASE_CELL*(.10+seededNoise(x,y+i*17,8051)*.78));
-    const pulse=.45+.55*Math.sin(t*(1.1+seededNoise(x+i,y+i,8052)*.9)+x*.37+y*.29+i*1.3);
-    const size=1+Math.floor(seededNoise(x+i,y+i,8053)*3);
-    ctx.globalAlpha=.08+.18*pulse;
-    ctx.fillStyle=i%3===0?'rgba(229,250,255,.90)':'rgba(143,211,255,.80)';
+  const time=now();
+  const pixel=Math.max(2,Math.floor(BASE_CELL/7));
+  const cols=Math.ceil(BASE_CELL/pixel);
+  const rows=Math.ceil(BASE_CELL/pixel);
+  // A single solid field makes connected water read as one lake or sea.
+  ctx.fillStyle='#0b416d';
+  ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);
+  // Each tile is filled with a small animated pixel field instead of a placed wave icon.
+  for(let row=0;row<rows;row++){
+    for(let col=0;col<cols;col++){
+      const grain=seededNoise(x*19+col,y*23+row,8050);
+      const pulse=.5+.5*Math.sin(time*(.80+grain*.95)+x*.31+y*.27+col*1.19+row*.83);
+      ctx.globalAlpha=.13+.23*pulse;
+      ctx.fillStyle=grain>.77?'#c6f3ff':grain>.43?'#4b9ed0':'#174f81';
+      ctx.fillRect(sx+col*pixel,sy+row*pixel,pixel+1,pixel+1);
+    }
+  }
+  // Brighter speckles drift by changing phase, giving every water block a live surface.
+  for(let i=0;i<9;i++){
+    const drift=(time*(.65+seededNoise(x+i,y,8061)*.55)+i*.37)%1;
+    const px=sx+Math.floor(BASE_CELL*((seededNoise(x+i*13,y,8062)*.76)+.08));
+    const py=sy+Math.floor(BASE_CELL*((seededNoise(x,y+i*17,8063)+drift*.22)%1*.76+.10));
+    const size=1+Math.floor(seededNoise(x+i,y+i,8064)*2);
+    ctx.globalAlpha=.20+.34*(.5+.5*Math.sin(time*1.4+x*.28+y*.21+i));
+    ctx.fillStyle=i%3===0?'#e4fbff':'#83d1f3';
     ctx.fillRect(px,py,size,size);
   }
-  ctx.globalAlpha=.16;
-  ctx.fillStyle='rgba(0,6,18,.7)';
-  for(let i=0;i<4;i++){
-    const px=sx+Math.floor(BASE_CELL*(.10+seededNoise(x+i*19,y,8060)*.78));
-    const py=sy+Math.floor(BASE_CELL*(.12+seededNoise(x,y+i*23,8061)*.74));
-    ctx.fillRect(px,py,2,2);
-  }
+  drawWaterBodyOutline(sx,sy,x,y);
   ctx.restore();
   ctx.globalAlpha=1;
+}
+function drawWaterBodyOutline(sx,sy,x,y){
+  const waterAt=(xx,yy)=>inBounds(xx,yy) && tile(xx,yy).type==='water';
+  const north=!waterAt(x,y-1), east=!waterAt(x+1,y), south=!waterAt(x,y+1), west=!waterAt(x-1,y);
+  if(!(north||east||south||west)) return;
+  ctx.beginPath();
+  if(north){ ctx.moveTo(sx,sy); ctx.lineTo(sx+BASE_CELL,sy); }
+  if(east){ ctx.moveTo(sx+BASE_CELL,sy); ctx.lineTo(sx+BASE_CELL,sy+BASE_CELL); }
+  if(south){ ctx.moveTo(sx+BASE_CELL,sy+BASE_CELL); ctx.lineTo(sx,sy+BASE_CELL); }
+  if(west){ ctx.moveTo(sx,sy+BASE_CELL); ctx.lineTo(sx,sy); }
+  ctx.lineCap='square';
+  ctx.lineJoin='round';
+  ctx.strokeStyle='rgba(3,18,35,.92)';
+  ctx.lineWidth=4.4;
+  ctx.stroke();
+  ctx.strokeStyle='rgba(132,216,248,.42)';
+  ctx.lineWidth=1.25;
+  ctx.stroke();
 }
 function drawRoughTerrainTile(sx,sy,x,y,type){
   ctx.save();
@@ -5189,49 +5330,26 @@ function drawShadowFog(){
   ctx.restore();
 }
 function drawWalls(){
-  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2;
-  const top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-2;
-  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+2;
-  const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
-  for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
-    for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
-      const t=tile(x,y); if(t.wallOwner==null) continue;
-      const f=factions[t.wallOwner];
-      const sx=x*BASE_CELL, sy=y*BASE_CELL;
-      const pulse=.5+.5*Math.sin(now()*2+x*.7+y*.2);
-      ctx.save();
-      ctx.globalAlpha=.52;
-      ctx.fillStyle='rgba(0,0,0,.48)';
-      roundRect(ctx,sx+8,sy+12,BASE_CELL-12,BASE_CELL-12,6); ctx.fill();
-      ctx.globalAlpha=.98;
-      const wallGrad=ctx.createLinearGradient(sx,sy,sx,sy+BASE_CELL);
-      wallGrad.addColorStop(0,'rgba(104,115,132,.98)');
-      wallGrad.addColorStop(.55,'rgba(43,50,64,.98)');
-      wallGrad.addColorStop(1,'rgba(15,20,31,.98)');
-      ctx.fillStyle=wallGrad;
-      roundRect(ctx,sx+6,sy+7,BASE_CELL-12,BASE_CELL-14,5); ctx.fill();
-      ctx.strokeStyle='rgba(232,238,248,.50)';
-      ctx.lineWidth=1.2;
-      roundRect(ctx,sx+6,sy+7,BASE_CELL-12,BASE_CELL-14,5); ctx.stroke();
-      ctx.strokeStyle=f?.color || '#dbeafe';
-      ctx.globalAlpha=.72+.16*pulse;
-      ctx.lineWidth=3.2;
-      roundRect(ctx,sx+8,sy+9,BASE_CELL-16,BASE_CELL-18,4); ctx.stroke();
-      ctx.globalAlpha=.85;
-      for(let c=0;c<4;c++){
-        const bx=sx+7+c*(BASE_CELL-14)/4;
-        ctx.fillStyle=c%2?'rgba(32,39,54,.98)':'rgba(92,103,122,.98)';
-        ctx.fillRect(bx,sy+4,(BASE_CELL-18)/5,8);
-      }
-      ctx.globalAlpha=.28;
-      ctx.strokeStyle='rgba(255,255,255,.75)';
-      ctx.lineWidth=1;
-      ctx.beginPath();
-      ctx.moveTo(sx+BASE_CELL*.23,sy+BASE_CELL*.38); ctx.lineTo(sx+BASE_CELL*.77,sy+BASE_CELL*.38);
-      ctx.moveTo(sx+BASE_CELL*.30,sy+BASE_CELL*.62); ctx.lineTo(sx+BASE_CELL*.70,sy+BASE_CELL*.62);
-      ctx.stroke();
-      ctx.restore();
-    }
+  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2,top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-2;
+  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+2,bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
+  for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++)for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
+    const tileData=tile(x,y);if(tileData.wallOwner==null)continue;
+    const f=factions[tileData.wallOwner]||{id:'neutral',color:'#dbeafe'},r=BASE_CELL*.42,pulse=.5+.5*Math.sin(now()*2+x*.7+y*.3);
+    ctx.save();ctx.translate((x+.5)*BASE_CELL,(y+.5)*BASE_CELL);
+    ctx.globalAlpha=.45;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(2,r*.55,r*.92,r*.22,0,0,Math.PI*2);ctx.fill();
+    const g=ctx.createLinearGradient(0,-r,0,r);g.addColorStop(0,'#aebaca');g.addColorStop(.48,'#4b5668');g.addColorStop(1,'#151c29');
+    ctx.globalAlpha=1;ctx.fillStyle=g;ctx.strokeStyle='rgba(241,247,255,.58)';ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(-r*.92,r*.70);ctx.lineTo(-r*.92,-r*.48);
+    for(let i=0;i<4;i++){const bx=-r*.92+i*r*.46;ctx.lineTo(bx,-r*.48);ctx.lineTo(bx,-r*.82);ctx.lineTo(bx+r*.24,-r*.82);ctx.lineTo(bx+r*.24,-r*.48);}ctx.lineTo(r*.92,r*.70);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.globalAlpha=.72+.18*pulse;ctx.strokeStyle=f.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-r*.82,r*.56);ctx.lineTo(r*.82,r*.56);ctx.stroke();ctx.globalAlpha=.94;
+    if(f.id==='crownward'){ctx.fillStyle='#ffea9c';for(let i=-1;i<=1;i++)ctx.fillRect(i*r*.42-r*.06,-r*.68,r*.12,r*.22);ctx.strokeStyle='#fff6bf';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(0,-r*.98);ctx.lineTo(0,-r*.55);ctx.lineTo(r*.34,-r*.70);ctx.stroke();}
+    else if(f.id==='ember'){ctx.strokeStyle='#ff6b3e';ctx.lineWidth=2;for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(i*r*.38,-r*.44);ctx.lineTo((i+.18)*r*.38,-r*.03);ctx.lineTo((i-.10)*r*.38,r*.36);ctx.stroke();}ctx.globalAlpha=.18+.18*pulse;ctx.fillStyle='#ff512f';ctx.fillRect(-r*.72,r*.20,r*1.44,r*.14);}
+    else if(f.id==='iron'){ctx.fillStyle='#e5eef7';for(let row=0;row<2;row++)for(let col=0;col<3;col++){ctx.beginPath();ctx.arc(-r*.48+col*r*.48,-r*.25+row*r*.46,r*.055,0,Math.PI*2);ctx.fill();}ctx.strokeStyle='#1a2637';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-r*.76,-r*.1);ctx.lineTo(r*.76,-r*.1);ctx.stroke();}
+    else if(f.id==='verdant'){ctx.strokeStyle='#b5ff9f';ctx.lineWidth=2.1;for(let i=-2;i<=2;i++){const bx=i*r*.30;ctx.beginPath();ctx.moveTo(bx,r*.62);ctx.quadraticCurveTo(bx-r*.12,0,bx+r*.05,-r*.70);ctx.stroke();ctx.fillStyle='#8df578';ctx.beginPath();ctx.ellipse(bx+r*.08,-r*.22,r*.12,r*.055,-.5,0,Math.PI*2);ctx.fill();}}
+    else if(f.id==='shadow'){ctx.fillStyle='#160d2a';for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(i*r*.42,-r*.50);ctx.lineTo((i+.18)*r*.42,-r*.96);ctx.lineTo((i+.34)*r*.42,-r*.50);ctx.closePath();ctx.fill();}ctx.strokeStyle='#caa9ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-r*.66,r*.26);ctx.lineTo(0,-r*.04);ctx.lineTo(r*.66,r*.26);ctx.stroke();}
+    else if(f.id==='sunspire'){ctx.fillStyle='#ffedaf';ctx.beginPath();ctx.arc(0,-r*.17,r*.18,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fff4ba';ctx.lineWidth=1.4;for(let i=0;i<8;i++){const a=i*Math.PI/4;ctx.beginPath();ctx.moveTo(Math.cos(a)*r*.26,Math.sin(a)*r*.26-r*.17);ctx.lineTo(Math.cos(a)*r*.42,Math.sin(a)*r*.42-r*.17);ctx.stroke();}}
+    else if(f.id==='tide'){ctx.strokeStyle='#aff1ff';ctx.lineWidth=2;for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(0,r*.05+i*r*.18,r*(.36-i*.06),Math.PI*.08,Math.PI*.92);ctx.stroke();}}
+    else if(f.id==='frost'){ctx.strokeStyle='#dcf9ff';ctx.lineWidth=2;for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(i*r*.38,r*.62);ctx.lineTo(i*r*.38+r*.18,-r*.75);ctx.lineTo(i*r*.38+r*.34,r*.62);ctx.stroke();}}
+    ctx.restore();
   }
 }
 function drawShrines(){
@@ -5618,6 +5736,8 @@ function drawPieces(){
     ctx.save();
     ctx.translate(x,y);
     ctx.globalAlpha = p.alive?1:.2;
+    const checkedKing = p.type==='king' && p.faction===PLAYER && kingInCheck;
+    if(checkedKing){const danger=.58+.42*Math.sin(now()*9+p.id);ctx.globalCompositeOperation='screen';ctx.globalAlpha=.18+.20*danger;ctx.fillStyle='rgba(255,18,34,.96)';ctx.beginPath();ctx.arc(0,0,r+22+5*danger,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.86;ctx.shadowColor='rgba(255,12,30,.98)';ctx.shadowBlur=24+10*danger;ctx.strokeStyle='rgba(255,54,68,.98)';ctx.lineWidth=3.5;ctx.beginPath();ctx.arc(0,0,r+11+4*danger,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;}
     // aura ring for kings/generals/towers
     if(def.aura){
       ctx.globalAlpha=.15;
@@ -5630,16 +5750,17 @@ function drawPieces(){
     const g=ctx.createRadialGradient(-r*.25,-r*.3,2,0,0,r*1.15);
     g.addColorStop(0,'#ffffff'); g.addColorStop(.16,f.color); g.addColorStop(1,f.dark||'#333');
     ctx.fillStyle=g;
-    ctx.strokeStyle=p.flash>0?'#fff':f.color;
-    ctx.lineWidth=p.flash>0?4:2;
+    ctx.strokeStyle=checkedKing?'#ff3547':(p.flash>0?'#fff':f.color);
+    ctx.lineWidth=checkedKing?4.5:(p.flash>0?4:2);
     drawPieceShape(def.pattern,r,p.id,p.type,f.id);
     ctx.fill(); ctx.stroke();
+    if(!def.building) drawPieceMarkings(p.type,r,p.id,f.id);
     if(def.building) drawBuildingDetails(f,p,r);
     drawFactionInsignia(f,p,r);
-    // icon
+    // The classic glyph is now a quiet readability cue beneath the custom silhouette and sigil.
     ctx.fillStyle = '#07101c';
-    ctx.globalAlpha=.88;
-    ctx.font=`${Math.floor(r*1.02)}px serif`;
+    ctx.globalAlpha=def.building ? .52 : .20;
+    ctx.font=`${Math.floor(r*(def.building ? .86 : .74))}px serif`;
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText(def.icon,0,-1);
     ctx.globalAlpha=1;
@@ -5755,6 +5876,22 @@ function drawBuildingShapePath(type,factionId,r,wob=0){
     ctx.moveTo(-r*.14,-r*.68); ctx.lineTo(0,-r*1.0); ctx.lineTo(r*.14,-r*.68);
     ctx.moveTo(r*.28,-r*.68); ctx.lineTo(r*.55,-r*.96); ctx.lineTo(r*.82,-r*.68);
   };
+  if(type==='royalbannerhall'){ctx.rect(-r*.84,-r*.48,r*1.68,r*1.16);for(let i=0;i<5;i++)ctx.rect(-r*.80+i*r*.33,-r*.78,r*.18,r*.32);ctx.rect(-r*.20,-r*1.05,r*.40,r*.58);return;}
+  if(type==='barrackskeep'){ctx.rect(-r*.82,-r*.10,r*1.64,r*.78);ctx.moveTo(-r*.92,-r*.10);ctx.lineTo(0,-r*.92);ctx.lineTo(r*.92,-r*.10);ctx.closePath();ctx.rect(-r*.16,r*.24,r*.32,r*.44);return;}
+  if(type==='cinderfurnace'){ctx.moveTo(-r*.72,r*.68);ctx.lineTo(-r*.55,-r*.42);ctx.lineTo(r*.45,-r*.42);ctx.lineTo(r*.72,r*.68);ctx.closePath();ctx.rect(r*.24,-r*1.02,r*.28,r*.62);return;}
+  if(type==='sparkden'){ctx.moveTo(-r*.88,r*.64);ctx.quadraticCurveTo(-r*.78,-r*.72,0,-r*.74);ctx.quadraticCurveTo(r*.78,-r*.72,r*.88,r*.64);ctx.closePath();ctx.arc(0,r*.18,r*.30,Math.PI,0);return;}
+  if(type==='shieldfoundry'){ctx.rect(-r*.80,-r*.18,r*1.60,r*.86);ctx.moveTo(-r*.70,-r*.18);ctx.lineTo(-r*.38,-r*.82);ctx.lineTo(r*.36,-r*.82);ctx.lineTo(r*.70,-r*.18);ctx.closePath();return;}
+  if(type==='gatehouse'){ctx.rect(-r*.84,-r*.48,r*1.68,r*1.16);for(let i=0;i<4;i++)ctx.rect(-r*.80+i*r*.41,-r*.78,r*.22,r*.30);ctx.moveTo(-r*.34,r*.68);ctx.lineTo(-r*.34,r*.12);ctx.quadraticCurveTo(0,-r*.30,r*.34,r*.12);ctx.lineTo(r*.34,r*.68);ctx.closePath();return;}
+  if(type==='seedgrove'){ctx.rect(-r*.14,-r*.02,r*.28,r*.70);for(let i=0;i<8;i++){const a=-Math.PI/2+i*Math.PI/4+wob,rr=i%2?r*.62:r*.94;if(i===0)ctx.moveTo(Math.cos(a)*rr,Math.sin(a)*rr-r*.22);else ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr-r*.22);}ctx.closePath();return;}
+  if(type==='broodbloom'){for(let i=0;i<7;i++){const a=-Math.PI/2+i*Math.PI*2/7+wob;ctx.moveTo(0,0);ctx.ellipse(Math.cos(a)*r*.43,Math.sin(a)*r*.43,r*.30,r*.15,a,0,Math.PI*2);}ctx.arc(0,0,r*.24,0,Math.PI*2);return;}
+  if(type==='obsidianmirror'){ctx.moveTo(0,-r*1.02);ctx.lineTo(r*.72,0);ctx.lineTo(0,r*.94);ctx.lineTo(-r*.72,0);ctx.closePath();ctx.rect(-r*.10,r*.50,r*.20,r*.32);return;}
+  if(type==='knifechapel'){ctx.rect(-r*.60,-r*.12,r*1.20,r*.80);ctx.moveTo(-r*.68,-r*.12);ctx.lineTo(0,-r*1.02);ctx.lineTo(r*.68,-r*.12);ctx.closePath();ctx.rect(-r*.08,-r*1.25,r*.16,r*.36);ctx.rect(-r*.23,-r*1.12,r*.46,r*.14);return;}
+  if(type==='reefnursery'){ctx.moveTo(-r*.86,r*.64);ctx.quadraticCurveTo(-r*.68,-r*.72,0,-r*.78);ctx.quadraticCurveTo(r*.68,-r*.72,r*.86,r*.64);ctx.closePath();return;}
+  if(type==='tidalbeacon'){ctx.moveTo(-r*.36,r*.68);ctx.lineTo(-r*.22,-r*.72);ctx.lineTo(r*.22,-r*.72);ctx.lineTo(r*.36,r*.68);ctx.closePath();ctx.arc(0,-r*.88,r*.24,0,Math.PI*2);return;}
+  if(type==='sunspirebeacon'){ctx.moveTo(0,-r*1.10);ctx.lineTo(r*.34,-r*.24);ctx.lineTo(r*.74,r*.66);ctx.lineTo(-r*.74,r*.66);ctx.lineTo(-r*.34,-r*.24);ctx.closePath();return;}
+  if(type==='radiantmonastery'){ctx.rect(-r*.76,-r*.08,r*1.52,r*.76);ctx.arc(0,-r*.08,r*.52,Math.PI,0);ctx.rect(-r*.13,r*.25,r*.26,r*.43);return;}
+  if(type==='iceobelisk'){ctx.moveTo(0,-r*1.12);ctx.lineTo(r*.48,-r*.16);ctx.lineTo(r*.26,r*.70);ctx.lineTo(-r*.26,r*.70);ctx.lineTo(-r*.48,-r*.16);ctx.closePath();return;}
+  if(type==='sledyard'){ctx.rect(-r*.84,0,r*1.68,r*.68);ctx.moveTo(-r*.94,0);ctx.lineTo(-r*.48,-r*.70);ctx.lineTo(r*.48,-r*.70);ctx.lineTo(r*.94,0);ctx.closePath();ctx.rect(-r*.34,r*.24,r*.68,r*.44);return;}
   if(type==='commandbanner'){
     ctx.rect(-r*.10,-r*.86,r*.20,r*1.50);
     ctx.moveTo(r*.08,-r*.80); ctx.quadraticCurveTo(r*.58,-r*.67,r*.70,-r*.45); ctx.quadraticCurveTo(r*.42,-r*.33,r*.08,-r*.39); ctx.closePath();
@@ -5804,6 +5941,22 @@ function drawBuildingShapePath(type,factionId,r,wob=0){
     genericKeep();
   }
 }
+function drawBuildingSignature(f,type,r,t){
+  ctx.save();ctx.globalAlpha=.86;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='rgba(7,14,25,.82)';ctx.fillStyle=f.aura||f.color;ctx.lineWidth=Math.max(1.2,r*.07);
+  if(type==='royalbannerhall'){ctx.fillStyle='#ffeba0';ctx.fillRect(-r*.10,-r*.92,r*.20,r*.54);ctx.beginPath();ctx.moveTo(r*.09,-r*.85);ctx.lineTo(r*.55,-r*.69);ctx.lineTo(r*.09,-r*.50);ctx.closePath();ctx.fill();}
+  else if(type==='barrackskeep'){ctx.fillStyle='rgba(8,15,27,.8)';ctx.fillRect(-r*.13,r*.24,r*.26,r*.40);for(let i=-1;i<=1;i++){ctx.fillStyle='#ffebb0';ctx.fillRect(i*r*.36,-r*.02,r*.12,r*.16);}}
+  else if(type==='cinderfurnace'){const heat=.55+.45*Math.sin(t*5);ctx.fillStyle='rgba(255,104,42,'+(.58+.32*heat)+')';ctx.beginPath();ctx.arc(-r*.12,r*.18,r*.28,0,Math.PI*2);ctx.fill();}
+  else if(type==='sparkden'){ctx.fillStyle='rgba(7,12,22,.88)';ctx.beginPath();ctx.arc(0,r*.18,r*.28,Math.PI,0);ctx.fill();}
+  else if(type==='shieldfoundry'){ctx.strokeStyle='#e6f0fa';ctx.beginPath();ctx.arc(0,-r*.12,r*.32,0,Math.PI*2);ctx.stroke();for(let i=0;i<8;i++){const a=i*Math.PI/4;ctx.beginPath();ctx.moveTo(Math.cos(a)*r*.34,Math.sin(a)*r*.34-r*.12);ctx.lineTo(Math.cos(a)*r*.44,Math.sin(a)*r*.44-r*.12);ctx.stroke();}}
+  else if(type==='gatehouse'){ctx.fillStyle='rgba(6,12,21,.84)';ctx.beginPath();ctx.moveTo(-r*.28,r*.60);ctx.lineTo(-r*.28,r*.15);ctx.quadraticCurveTo(0,-r*.12,r*.28,r*.15);ctx.lineTo(r*.28,r*.60);ctx.closePath();ctx.fill();}
+  else if(type==='seedgrove'||type==='broodbloom'){ctx.fillStyle='#e0ffa1';ctx.beginPath();ctx.arc(0,type==='seedgrove'?-r*.25:0,r*.18,0,Math.PI*2);ctx.fill();}
+  else if(type==='obsidianmirror'){ctx.strokeStyle='#e5d4ff';ctx.beginPath();ctx.moveTo(0,-r*.68);ctx.lineTo(r*.43,0);ctx.lineTo(0,r*.58);ctx.lineTo(-r*.43,0);ctx.closePath();ctx.stroke();}
+  else if(type==='knifechapel'){ctx.strokeStyle='#f6e2ff';ctx.beginPath();ctx.moveTo(0,-r*.98);ctx.lineTo(0,-r*.46);ctx.moveTo(-r*.18,-r*.76);ctx.lineTo(r*.18,-r*.76);ctx.stroke();}
+  else if(type==='reefnursery'||type==='tidalbeacon'){ctx.strokeStyle='#c9f7ff';ctx.beginPath();ctx.arc(0,type==='tidalbeacon'?-r*.88:r*.05,r*.22,0,Math.PI*2);ctx.stroke();}
+  else if(type==='sunspirebeacon'||type==='radiantmonastery'){ctx.fillStyle='#fff5b8';ctx.beginPath();ctx.arc(0,type==='sunspirebeacon'?-r*.32:-r*.12,r*.17,0,Math.PI*2);ctx.fill();}
+  else if(type==='iceobelisk'||type==='sledyard'){ctx.strokeStyle='#e1faff';ctx.beginPath();ctx.moveTo(0,-r*.90);ctx.lineTo(0,r*.52);ctx.moveTo(-r*.30,r*.18);ctx.lineTo(r*.30,r*.18);ctx.stroke();}
+  ctx.restore();
+}
 function drawBuildingDetails(f,p,r){
   const type=p.type;
   const t=now()+p.id*.23;
@@ -5814,6 +5967,7 @@ function drawBuildingDetails(f,p,r){
   ctx.strokeStyle='rgba(6,10,18,.72)';
   ctx.fillStyle='rgba(255,255,255,.82)';
   ctx.lineWidth=Math.max(1.2,r*.08);
+  drawBuildingSignature(f,type,r,t);
   if(type==='commandbanner'){
     ctx.strokeStyle='rgba(255,250,210,.95)';
     ctx.beginPath(); ctx.moveTo(0,-r*.90); ctx.lineTo(0,r*.72); ctx.stroke();
@@ -5876,32 +6030,39 @@ function drawBuildingDetails(f,p,r){
   ctx.restore();
 }
 function drawPieceShape(pattern,r,id,type='',factionId=''){
-  const wob=Math.sin(now()*2+id)*.04;
-  ctx.beginPath();
-  if(pattern==='knight'||pattern==='paladin'||pattern==='archon'||pattern==='eagle'){
-    ctx.moveTo(-r*.65,r*.65); ctx.quadraticCurveTo(-r*.95,-r*.1,-r*.22,-r*.78); ctx.quadraticCurveTo(r*.35,-r*1.0,r*.78,-r*.35); ctx.quadraticCurveTo(r*.35,-r*.2,r*.65,r*.42); ctx.quadraticCurveTo(.1,r*.72,-r*.65,r*.65);
-  } else if(pattern==='building'){
-    drawBuildingShapePath(type,factionId,r,wob);
-  } else if(pattern==='rook'||pattern==='rookShort'||pattern==='tower'||pattern==='citadel'||pattern==='ballista'){
-    ctx.rect(-r*.72,-r*.56,r*1.44,r*1.16);
-    ctx.moveTo(-r*.72,-r*.56); ctx.lineTo(-r*.72,-r*.82); ctx.lineTo(-r*.38,-r*.82); ctx.lineTo(-r*.38,-r*.56);
-    ctx.moveTo(-r*.12,-r*.56); ctx.lineTo(-r*.12,-r*.82); ctx.lineTo(r*.12,-r*.82); ctx.lineTo(r*.12,-r*.56);
-    ctx.moveTo(r*.38,-r*.56); ctx.lineTo(r*.38,-r*.82); ctx.lineTo(r*.72,-r*.82); ctx.lineTo(r*.72,-r*.56);
-  } else if(pattern==='bishop'||pattern==='bishopLong'||pattern==='aquanaut'||pattern==='assassin'||pattern==='voidstrider'){
-    ctx.moveTo(0,-r*.92); ctx.quadraticCurveTo(r*.78,-r*.28,r*.5,r*.55); ctx.quadraticCurveTo(0,r*.95,-r*.5,r*.55); ctx.quadraticCurveTo(-r*.78,-r*.28,0,-r*.92);
-  } else if(pattern==='queen'||pattern==='king'||pattern==='general'){
-    const points = pattern==='king'?8:7;
-    for(let i=0;i<points*2;i++){
-      const a=-Math.PI/2+i*Math.PI/points+wob;
-      const rr=i%2?r*.58:r*.95;
-      if(i===0) ctx.moveTo(Math.cos(a)*rr,Math.sin(a)*rr); else ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);
-    }
-    ctx.closePath();
-  } else if(pattern==='lancer'){
-    ctx.moveTo(0,-r); ctx.lineTo(r*.7,r*.45); ctx.lineTo(r*.18,r*.45); ctx.lineTo(r*.18,r); ctx.lineTo(-r*.18,r); ctx.lineTo(-r*.18,r*.45); ctx.lineTo(-r*.7,r*.45); ctx.closePath();
-  } else {
-    ctx.arc(0,0,r*.82,0,Math.PI*2);
+  const wob=Math.sin(now()*2+id)*.04;ctx.beginPath();
+  if(pattern==='building'){drawBuildingShapePath(type,factionId,r,wob);return;}
+  if(type==='king'){ctx.moveTo(-r*.72,r*.62);ctx.lineTo(-r*.72,-r*.38);ctx.lineTo(-r*.42,-r*.05);ctx.lineTo(-r*.17,-r*.82);ctx.lineTo(0,-r*.30);ctx.lineTo(r*.17,-r*.82);ctx.lineTo(r*.42,-r*.05);ctx.lineTo(r*.72,-r*.38);ctx.lineTo(r*.72,r*.62);ctx.closePath();ctx.rect(-r*.52,r*.48,r*1.04,r*.20);return;}
+  if(type==='queen'||type==='flamequeen'||type==='wavequeen'){for(let i=0;i<6;i++){const a=-Math.PI/2+i*Math.PI/3+wob,x=Math.cos(a)*r*.68,y=Math.sin(a)*r*.68;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.closePath();ctx.arc(0,-r*.08,r*.38,0,Math.PI*2);ctx.rect(-r*.58,r*.34,r*1.16,r*.30);return;}
+  if(type==='general'||type==='marshal'||type==='sunherald'){ctx.moveTo(0,-r*.98);ctx.lineTo(r*.22,-r*.30);ctx.lineTo(r*.78,-r*.18);ctx.lineTo(r*.34,r*.18);ctx.lineTo(r*.48,r*.78);ctx.lineTo(0,r*.40);ctx.lineTo(-r*.48,r*.78);ctx.lineTo(-r*.34,r*.18);ctx.lineTo(-r*.78,-r*.18);ctx.lineTo(-r*.22,-r*.30);ctx.closePath();return;}
+  if(['pawn','sparkpawn','seedpawn','tidepawn','frostpawn','sunacolyte','shadepawn','blinkpawn'].includes(type)){
+    if(type==='sparkpawn'){ctx.moveTo(0,-r*.98);ctx.quadraticCurveTo(r*.62,-r*.22,r*.20,r*.12);ctx.quadraticCurveTo(r*.54,r*.50,0,r*.82);ctx.quadraticCurveTo(-r*.54,r*.50,-r*.20,r*.12);ctx.quadraticCurveTo(-r*.62,-r*.22,0,-r*.98);ctx.closePath();return;}
+    if(type==='seedpawn'){ctx.moveTo(0,-r*.96);ctx.quadraticCurveTo(r*.82,-r*.32,r*.48,r*.48);ctx.quadraticCurveTo(0,r*.92,-r*.48,r*.48);ctx.quadraticCurveTo(-r*.82,-r*.32,0,-r*.96);ctx.closePath();return;}
+    if(type==='tidepawn'){ctx.moveTo(0,-r*1.02);ctx.quadraticCurveTo(r*.64,-r*.10,r*.52,r*.42);ctx.quadraticCurve(r*.28,r*.90,0,r*.92);ctx.quadraticCurve(-r*.28,r*.90,-r*.52,r*.42);ctx.quadraticCurve(-r*.64,-r*.10,0,-r*1.02);ctx.closePath();return;}
+    if(type==='frostpawn'){ctx.moveTo(0,-r*.98);ctx.lineTo(r*.48,-r*.16);ctx.lineTo(r*.28,r*.74);ctx.lineTo(-r*.28,r*.74);ctx.lineTo(-r*.48,-r*.16);ctx.closePath();return;}
+    if(type==='sunacolyte'){ctx.arc(0,-r*.24,r*.42,0,Math.PI*2);ctx.rect(-r*.36,r*.10,r*.72,r*.56);return;}
+    if(type==='shadepawn'||type==='blinkpawn'){ctx.moveTo(0,-r*.94);ctx.lineTo(r*.68,-r*.14);ctx.lineTo(r*.36,r*.70);ctx.lineTo(-r*.36,r*.70);ctx.lineTo(-r*.68,-r*.14);ctx.closePath();return;}
+    ctx.arc(0,-r*.30,r*.30,0,Math.PI*2);ctx.moveTo(-r*.52,r*.70);ctx.quadraticCurveTo(0,-r*.02,r*.52,r*.70);ctx.closePath();return;
   }
+  if(['shieldpawn','thornguard','glacierguard','warden'].includes(type)){ctx.moveTo(0,-r*.96);ctx.lineTo(r*.70,-r*.62);ctx.lineTo(r*.56,r*.42);ctx.lineTo(0,r*.88);ctx.lineTo(-r*.56,r*.42);ctx.lineTo(-r*.70,-r*.62);ctx.closePath();return;}
+  if(['bulwark','gatebreaker','citadelwalker'].includes(type)){ctx.rect(-r*.78,-r*.54,r*1.56,r*1.20);ctx.rect(-r*.64,-r*.84,r*.26,r*.32);ctx.rect(r*.38,-r*.84,r*.26,r*.32);return;}
+  if(['cinderarchon','shadowstepper','mirrorskater','voidstrider'].includes(type)){ctx.moveTo(0,-r*1.02);ctx.lineTo(r*.74,0);ctx.lineTo(0,r*.90);ctx.lineTo(-r*.74,0);ctx.closePath();return;}
+  if(['flamerunner','lightlancer','icespear'].includes(type)){ctx.moveTo(0,-r*1.02);ctx.lineTo(r*.34,-r*.10);ctx.lineTo(r*.72,r*.08);ctx.lineTo(r*.16,r*.28);ctx.lineTo(r*.06,r*.94);ctx.lineTo(-r*.22,r*.30);ctx.lineTo(-r*.72,r*.08);ctx.lineTo(-r*.22,-r*.12);ctx.closePath();return;}
+  if(['vinehook','nightblade'].includes(type)){ctx.moveTo(-r*.70,-r*.62);ctx.quadraticCurveTo(r*.72,-r*.95,r*.56,-r*.06);ctx.quadraticCurveTo(r*.46,r*.72,-r*.40,r*.68);ctx.quadraticCurveTo(-r*.86,r*.34,-r*.26,0);ctx.closePath();return;}
+  if(['scout','wraith','dawnarchon'].includes(type)){for(let i=0;i<8;i++){const a=-Math.PI/2+i*Math.PI/4+wob,rr=i%2?r*.38:r*.92;if(i===0)ctx.moveTo(Math.cos(a)*rr,Math.sin(a)*rr);else ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);}ctx.closePath();return;}
+  if(['stagrunner','eagleknight','paladin','emberknight','hammerknight','cinderjack','sledknight','nightknight','knight'].includes(type)){ctx.moveTo(-r*.68,r*.66);ctx.quadraticCurveTo(-r*.92,-r*.06,-r*.28,-r*.84);ctx.quadraticCurveTo(r*.28,-r*1.02,r*.76,-r*.38);ctx.lineTo(r*.42,-r*.04);ctx.lineTo(r*.74,r*.50);ctx.quadraticCurveTo(.06,r*.80,-r*.68,r*.66);if(type==='eagleknight'){ctx.moveTo(-r*.58,-r*.12);ctx.lineTo(-r*.98,-r*.58);ctx.lineTo(-r*.62,r*.16);ctx.moveTo(r*.36,-r*.20);ctx.lineTo(r*.96,-r*.64);ctx.lineTo(r*.62,r*.20);}if(type==='stagrunner'){ctx.moveTo(-r*.34,-r*.72);ctx.lineTo(-r*.68,-r*1.10);ctx.moveTo(-r*.24,-r*.78);ctx.lineTo(-r*.10,-r*1.14);}return;}
+  if(['aquanaut','bishop','vinebishop','umbralbishop','radiantbishop','sunbishop','frostbishop'].includes(type)){ctx.moveTo(0,-r*.96);ctx.quadraticCurveTo(r*.80,-r*.34,r*.52,r*.54);ctx.quadraticCurveTo(0,r*.96,-r*.52,r*.54);ctx.quadraticCurveTo(-r*.80,-r*.34,0,-r*.96);ctx.closePath();return;}
+  if(['rook','crabrook','tower','grovetower','reefspire','pyretower','ballistatower'].includes(type)){ctx.rect(-r*.72,-r*.54,r*1.44,r*1.18);for(let i=0;i<3;i++)ctx.rect(-r*.72+i*r*.52,-r*.86,r*.26,r*.32);if(type==='ballistatower'){ctx.moveTo(-r*.94,-r*.18);ctx.lineTo(r*.94,-r*.18);ctx.lineTo(0,r*.38);ctx.closePath();}return;}
+  if(pattern==='lancer'){ctx.moveTo(0,-r);ctx.lineTo(r*.70,r*.44);ctx.lineTo(r*.18,r*.44);ctx.lineTo(r*.18,r);ctx.lineTo(-r*.18,r);ctx.lineTo(-r*.18,r*.44);ctx.lineTo(-r*.70,r*.44);ctx.closePath();return;}
+  ctx.arc(0,0,r*.80,0,Math.PI*2);
+}
+function pieceVisualSeed(type){let h=2166136261;for(let i=0;i<String(type).length;i++){h^=String(type).charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+function drawPieceMarkings(type,r,id,factionId){
+  const seed=pieceVisualSeed(type),mode=seed%8,pips=1+((seed>>>4)%4),spin=((seed>>>9)%16)/16*Math.PI*2;
+  ctx.save();ctx.globalAlpha=.82;ctx.strokeStyle=factionId==='shadow'?'rgba(241,230,255,.86)':'rgba(8,18,32,.78)';ctx.fillStyle=factionId==='sunspire'?'rgba(255,248,204,.88)':'rgba(240,249,255,.78)';ctx.lineWidth=Math.max(1.15,r*.075);
+  if(mode===0){ctx.beginPath();ctx.moveTo(0,-r*.42);ctx.lineTo(r*.28,0);ctx.lineTo(0,r*.42);ctx.lineTo(-r*.28,0);ctx.closePath();ctx.stroke();}else if(mode===1){ctx.beginPath();ctx.moveTo(-r*.30,-r*.26);ctx.lineTo(r*.30,r*.26);ctx.moveTo(r*.30,-r*.26);ctx.lineTo(-r*.30,r*.26);ctx.stroke();}else if(mode===2){ctx.beginPath();ctx.arc(0,0,r*.28,0,Math.PI*2);ctx.stroke();}else if(mode===3){ctx.beginPath();ctx.moveTo(0,-r*.38);ctx.lineTo(r*.32,r*.28);ctx.lineTo(-r*.32,r*.28);ctx.closePath();ctx.stroke();}else if(mode===4){ctx.beginPath();ctx.moveTo(-r*.34,-r*.18);ctx.lineTo(0,-r*.40);ctx.lineTo(r*.34,-r*.18);ctx.lineTo(0,r*.40);ctx.closePath();ctx.stroke();}else if(mode===5){ctx.beginPath();ctx.arc(0,0,r*.18,0,Math.PI*2);ctx.moveTo(-r*.36,0);ctx.lineTo(r*.36,0);ctx.stroke();}else if(mode===6){ctx.beginPath();ctx.moveTo(-r*.34,-r*.34);ctx.lineTo(r*.34,r*.34);ctx.moveTo(-r*.34,r*.34);ctx.lineTo(r*.34,-r*.34);ctx.stroke();}else{ctx.beginPath();ctx.moveTo(0,-r*.42);ctx.lineTo(r*.16,-r*.08);ctx.lineTo(r*.44,0);ctx.lineTo(r*.16,r*.10);ctx.lineTo(0,r*.42);ctx.lineTo(-r*.16,r*.10);ctx.lineTo(-r*.44,0);ctx.lineTo(-r*.16,-r*.08);ctx.closePath();ctx.stroke();}
+  for(let i=0;i<pips;i++){const a=spin+i*Math.PI*2/pips;ctx.beginPath();ctx.arc(Math.cos(a)*r*.48,Math.sin(a)*r*.48,r*.055+((seed>>>(i+14))%3)*r*.018,0,Math.PI*2);ctx.fill();}
+  ctx.restore();
 }
 function drawParticlesWorld(){
   for(const p of particles){
