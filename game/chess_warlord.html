@@ -1135,7 +1135,7 @@ function applyRemoteState(data){
   expirePendingPlayerActions();
   if(!pendingPlayerActions.length){
     localWritePendingUntil = 0;
-    if(!isController) stateDirty = false;
+    if(!canAuthoritativelyWriteState()) stateDirty = false;
   }
   renderSpawnCards(); updateHUD(); updatePiecePanel();
   const mineAlive = factions[PLAYER]?.alive !== false;
@@ -1249,7 +1249,7 @@ function expirePendingPlayerActions(){
   const activeActionIds = new Set(pendingPlayerActions.map(a=>a.actionId));
   for(const p of pieces){ if(p.predictedMove && !activeActionIds.has(p.predictedMove.actionId)) p.predictedMove = null; }
   for(const action of expired) stopCommandAckWatch(action.actionId);
-  if(!isController && lastAuthoritativeData){
+  if(!canAuthoritativelyWriteState() && lastAuthoritativeData){
     toast('Sync delayed — refreshing from authoritative state.', 2200);
     const restore = lastAuthoritativeData;
     lastAuthoritativeData = null;
@@ -1437,7 +1437,7 @@ function stopCommandAckWatch(actionId){
   commandAckUnsubs.delete(actionId);
 }
 function startCommandAckWatch(action){
-  if(!lobbyId || isController || !action?.actionId || commandAckUnsubs.has(action.actionId)) return;
+  if(!lobbyId || canAuthoritativelyWriteState() || !action?.actionId || commandAckUnsubs.has(action.actionId)) return;
   try{
     const unsub = onSnapshot(commandDocRef(action.actionId), snap=>{
       if(!snap.exists()) return;
@@ -1485,7 +1485,7 @@ async function submitPlayerCommand(action){
 
 function predictLocalMove(piece,x,y,action){
   if(!piece || !piece.alive || !inBounds(x,y)) return false;
-  if(!(lobbyId && !isController)) return movePiece(piece,x,y,'player');
+  if(canAuthoritativelyWriteState()) return movePiece(piece,x,y,'player');
   if(findPieceAt(x,y)?.faction === piece.faction) return false;
   if(!passableFor(piece,x,y) && !canAttackWall(piece,x,y)) return false;
   // Visual-only prediction: draw the piece moving, but do not mutate the authoritative tile or cooldown.
@@ -1514,14 +1514,14 @@ async function requestPlayerMove(piece,x,y){
   if(!isMyPiece(piece)) return false;
   const live = getPiece(piece.id);
   if(!live || !cooldownReady(live)){ toast('That piece is still cooling down.'); return false; }
-  if(lobbyId && !isController && pendingPlayerActions.some(a=>a.kind==='move' && a.pieceId===live.id)){ toast('That piece is awaiting host confirmation.'); return false; }
+  if(lobbyId && !canAuthoritativelyWriteState() && pendingPlayerActions.some(a=>a.kind==='move' && a.pieceId===live.id)){ toast('That piece is awaiting host confirmation.'); return false; }
   const legal = getLegalMoves(live,false);
   if(!legal.some(m=>m.x===x && m.y===y)){ toast('That piece cannot move there.'); return false; }
   const fromX = live.x, fromY = live.y;
   const moveStartMs = Date.now();
   const moveEndMs = moveStartMs + moveVisualDurationFor(live);
   const action = {kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, type:live.type, fromX, fromY, toX:x, toY:y, moveStartMs, moveEndMs, baseStateVersion: localStateVersion || 0};
-  const ok = (lobbyId && !isController) ? predictLocalMove(live,x,y,action) : movePiece(live,x,y,'player');
+  const ok = (lobbyId && !canAuthoritativelyWriteState()) ? predictLocalMove(live,x,y,action) : movePiece(live,x,y,'player');
   if(ok){
     rememberPendingPlayerAction({...action, faction:PLAYER});
     selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
@@ -1590,7 +1590,7 @@ function showWarEnd(winner){
   defeatDetails.textContent = `${winner} controls the Vastboard.`;
   restartBtn.textContent = 'Exit to Lobby';
   spectateBtn.textContent = 'Spectate Map';
-  if(isController) completeLobbyIfNeeded(winner);
+  if(canAuthoritativelyWriteState()) completeLobbyIfNeeded(winner);
 }
 function exitToLobby(){
   try{ localStorage.setItem('gh.username', username || ''); localStorage.setItem('gh.lastLobbyId',''); localStorage.setItem('gh.lastGameType',''); }catch(e){}
@@ -1746,7 +1746,7 @@ async function finalizeSharedAiVote(){
     aiVotes = data.aiVotes || aiVotes || {};
     choice = tallyAiVotes(aiVotes).choice;
     selectedMultiplayerAiCount = choice;
-    if(isController){
+    if(canAuthoritativelyWriteState()){
       const size = multiplayerMapSizeFor(slotHumans.length + choice);
       await setDoc(pregameRef,{aiCount:choice,boardW:size.w,boardH:size.h,updatedAt:serverTimestamp()},{merge:true});
     }
@@ -3023,7 +3023,7 @@ function updateSolarBeaconChannels(dt,applyEffect=false){
       }
     }
   }
-  if(changed && (isController || !lobbyId) && tNow-lastSolarChannelStateMark>.45){
+  if(changed && canAuthoritativelyWriteState() && tNow-lastSolarChannelStateMark>.45){
     lastSolarChannelStateMark=tNow;
     markStateDirty();
   }
@@ -4355,7 +4355,7 @@ function gameTick(dt){
   if(!gameStarted || paused) return;
   tickTime += dt;
   for(const t of normalizeBoard()){ t.glow = Math.max(0,t.glow-dt*.7); }
-  updateSolarBeaconChannels(dt, isController || !lobbyId);
+  updateSolarBeaconChannels(dt, canAuthoritativelyWriteState());
   for(const p of pieces){
     if(!p.alive) continue;
     const pred = p.predictedMove;
@@ -4387,7 +4387,7 @@ function gameTick(dt){
     const f=floatingText[i]; f.life-=dt; f.y-=28*dt;
     if(f.life<=0) floatingText.splice(i,1);
   }
-  if(isController){ updateSpawns(dt); aiTick(dt); updateSpecialLandRules(dt); maybeWriteControllerState(); }
+  if(canAuthoritativelyWriteState()){ updateSpawns(dt); aiTick(dt); updateSpecialLandRules(dt); maybeWriteControllerState(); }
   else { updateLocalPlayerSpawn(dt); }
   expirePendingPlayerActions();
   updateHUD();
