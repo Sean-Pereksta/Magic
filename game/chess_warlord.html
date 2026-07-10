@@ -112,6 +112,19 @@
     #bottomHint{display:none !important;}
     #checkBanner{top:104px;font-size:11px;padding:7px 10px;max-width:calc(100vw - 24px);}
   }
+
+  /* Faction presentation: every army now announces a distinct tactical silhouette before a match starts. */
+  .factionCard{isolation:isolate;overflow:hidden;border-color:var(--faction-line,rgba(255,255,255,.14));background:linear-gradient(135deg,var(--faction-ink,rgba(255,255,255,.08)),rgba(6,10,18,.76));}
+  .factionCard::before{content:'';position:absolute;inset:-35% -18% auto auto;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,var(--faction-glow,rgba(255,255,255,.12)),transparent 68%);opacity:.95;z-index:-1;transition:transform .22s ease;}
+  .factionCard:hover::before,.factionCard.chosen::before{transform:scale(1.25) translate(-5px,8px);}
+  .factionKicker{display:block;margin:0 0 6px;color:var(--faction-accent,#fff3b0);font-size:10px;font-weight:1000;letter-spacing:.11em;text-transform:uppercase;}
+  .factionAngle{display:block;margin-top:7px;color:#edf5ff;font-size:11px;font-weight:800;line-height:1.25;}
+  .faction-crownward{--faction-line:rgba(255,221,126,.6);--faction-ink:rgba(125,80,12,.42);--faction-glow:rgba(255,211,107,.38);--faction-accent:#ffe6a4;}
+  .faction-ember{--faction-line:rgba(255,105,67,.62);--faction-ink:rgba(112,23,12,.55);--faction-glow:rgba(255,78,38,.42);--faction-accent:#ffc0a3;}
+  .faction-iron{--faction-line:rgba(205,220,237,.5);--faction-ink:rgba(57,71,86,.62);--faction-glow:rgba(214,229,244,.28);--faction-accent:#e8f2fc;}
+  .faction-verdant{--faction-line:rgba(110,233,133,.58);--faction-ink:rgba(16,86,39,.58);--faction-glow:rgba(113,255,144,.30);--faction-accent:#b7ffc5;}
+  .faction-shadow{--faction-line:rgba(190,145,255,.62);--faction-ink:rgba(55,20,106,.62);--faction-glow:rgba(178,112,255,.34);--faction-accent:#e4ccff;}
+  .faction-sunspire{--faction-line:rgba(255,207,137,.66);--faction-ink:rgba(122,57,16,.54);--faction-glow:rgba(255,203,94,.36);--faction-accent:#fff0bf;}
 </style>
 </head>
 <body>
@@ -303,6 +316,8 @@ let lastTime = performance.now();
 let tickTime = 0;
 let particles = [];
 let floatingText = [];
+// These effects are deliberately client-local: they celebrate the current player's input without adding network traffic or altering synced state.
+let localActionFx = [];
 let chosenFactionId = 'crownward';
 let chosenDifficultyId = 'normal';
 let selectedSoloAiCount = 7;
@@ -1519,11 +1534,13 @@ async function requestPlayerMove(piece,x,y){
   const legal = getLegalMoves(live,false);
   if(!legal.some(m=>m.x===x && m.y===y)){ toast('That piece cannot move there.'); return false; }
   const fromX = live.x, fromY = live.y;
+  const visualTarget = findPieceAt(x,y);
   const moveStartMs = Date.now();
   const moveEndMs = moveStartMs + moveVisualDurationFor(live);
   const action = {kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, type:live.type, fromX, fromY, toX:x, toY:y, moveStartMs, moveEndMs, baseStateVersion: localStateVersion || 0};
   const ok = (lobbyId && !canAuthoritativelyWriteState()) ? predictLocalMove(live,x,y,action) : movePiece(live,x,y,'player');
   if(ok){
+    emitLocalActionFx(live,fromX,fromY,x,y,!!visualTarget);
     rememberPendingPlayerAction({...action, faction:PLAYER});
     selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
     if(canAuthoritativelyWriteState()){ queueReliableStateWrite('playerMove'); }
@@ -2066,6 +2083,15 @@ const factionCatalog = {
   }
 };
 
+const factionArtDirection = Object.freeze({
+  crownward:{tag:'Command & formation', angle:'Gold standards, disciplined lanes, and a crown-led advance.'},
+  ember:{tag:'Momentum & burn', angle:'Hot assault trails and scorched pressure after every takedown.'},
+  iron:{tag:'Fortress & control', angle:'Cold steel anchors, shield walls, and deliberate territorial locks.'},
+  verdant:{tag:'Growth & encirclement', angle:'Living roots, blooms, and a spreading natural front.'},
+  shadow:{tag:'Ambush & misdirection', angle:'Violet void marks, hidden land, and surgical eliminations.'},
+  sunspire:{tag:'Radiance & precision', angle:'Solar halos, beacon lanes, and elite measured strikes.'}
+});
+
 const difficultyProfiles = {
   easy:   {name:'Easy',   icon:'🌱', think:.4, spawn:.86, desc:'Slower enemy decisions and gentler expansion. Good for learning the huge board.'},
   normal: {name:'Normal', icon:'⚔️', think:0.82, spawn:1.00, desc:'Balanced AI timing with factions growing stronger as the war stretches on.'},
@@ -2217,10 +2243,11 @@ function initFactionPicker(){
     const f = factionCatalog[id];
     const card = document.createElement('div');
     const samePick = pickedCounts[id] > 1;
-    card.className = 'factionCard' + (id===chosenFactionId?' chosen':'') + (samePick ? ' samePick' : '');
+    card.className = 'factionCard faction-' + id + (id===chosenFactionId?' chosen':'') + (samePick ? ' samePick' : '');
+    const art = factionArtDirection[id] || {tag:'Warlord doctrine',angle:'A distinct approach to the Vastboard.'};
     if(samePick) card.style.setProperty('--pickOutline', SLOT_OUTLINE_COLORS[PLAYER % SLOT_OUTLINE_COLORS.length]);
     const duplicateNote = samePick ? '<br><span style="color:#fff3b0">Duplicate faction: colored outlines will separate armies.</span>' : '';
-    card.innerHTML = `<b>${f.icon} ${f.name}</b><small>${f.description}${duplicateNote}</small>`;
+    card.innerHTML = `<span class="factionKicker">${art.tag}</span><b>${f.icon} ${f.name}</b><small>${f.description}${duplicateNote}</small><span class="factionAngle">${art.angle}</span>`;
     card.onclick = () => {
       chosenFactionId = id;
       localStorage.setItem('cw.lastFaction', id);
@@ -4170,6 +4197,42 @@ function shadowStrikeEffect(piece,x,y){
   floating(x,y,'RAPID STRIKE',color);
 }
 
+function emitLocalActionFx(piece,fromX,fromY,toX,toY,isAttack){
+  if(!piece || piece.faction!==PLAYER) return;
+  const f=factions[PLAYER] || {color:'#ffffff',aura:'#ffffff'};
+  localActionFx.push({start:now(),duration:isAttack?.72:.52,fromX,fromY,toX,toY,attack:!!isAttack,color:f.color,aura:f.aura || f.color,type:piece.type});
+  // A short local-only particle spray makes input feel immediate, while state remains entirely server-safe.
+  const wx=(toX+.5)*BASE_CELL, wy=(toY+.5)*BASE_CELL;
+  const count=isAttack?15:7;
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2, speed=(isAttack?55:28)+Math.random()*(isAttack?110:46);
+    particles.push({x:wx,y:wy,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,life:isAttack?.32+Math.random()*.22:.22+Math.random()*.16,max:isAttack?.54:.38,color:i%3===0?'#fff8c9':f.color,size:isAttack?2+Math.random()*2.4:1.6+Math.random()*1.7});
+  }
+}
+function drawLocalActionEffects(){
+  const time=now();
+  for(const fx of localActionFx){
+    const u=clamp((time-fx.start)/fx.duration,0,1), fade=1-u;
+    const ax=(fx.fromX+.5)*BASE_CELL, ay=(fx.fromY+.5)*BASE_CELL, bx=(fx.toX+.5)*BASE_CELL, by=(fx.toY+.5)*BASE_CELL;
+    const dx=bx-ax,dy=by-ay,len=Math.max(1,Math.hypot(dx,dy)),nx=-dy/len,ny=dx/len;
+    ctx.save();ctx.globalCompositeOperation='screen';ctx.lineCap='round';
+    if(!fx.attack){
+      const head=clamp(u*1.26,0,1), tail=clamp(head-.48,0,1);
+      ctx.globalAlpha=.10+.55*fade;ctx.strokeStyle=fx.aura;ctx.lineWidth=4.4;
+      ctx.beginPath();ctx.moveTo(ax+dx*tail,ay+dy*tail);ctx.lineTo(ax+dx*head,ay+dy*head);ctx.stroke();
+      ctx.globalAlpha=.24*fade;ctx.fillStyle=fx.color;ctx.beginPath();ctx.arc(ax+dx*head,ay+dy*head,BASE_CELL*(.13+.08*fade),0,Math.PI*2);ctx.fill();
+    } else {
+      const reach=clamp(u*1.7,0,1);
+      ctx.globalAlpha=.18+.68*fade;ctx.strokeStyle='#fff7d0';ctx.lineWidth=3.2;
+      ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+dx*reach,ay+dy*reach);ctx.stroke();
+      ctx.globalAlpha=.18+.58*fade;ctx.strokeStyle=fx.color;ctx.lineWidth=2.2;
+      for(let i=0;i<4;i++){const a=i*Math.PI/2+u*4;ctx.beginPath();ctx.moveTo(bx+Math.cos(a)*BASE_CELL*.10,by+Math.sin(a)*BASE_CELL*.10);ctx.lineTo(bx+Math.cos(a)*BASE_CELL*(.42+.18*u),by+Math.sin(a)*BASE_CELL*(.42+.18*u));ctx.stroke();}
+      ctx.globalAlpha=.10+.32*fade;ctx.fillStyle=fx.aura;ctx.beginPath();ctx.arc(bx,by,BASE_CELL*(.30+.24*u),0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
 function createGame(){
   if(!slotNames.length) buildSlots([username || 'Player']);
   mapSeed = Math.floor(Math.random()*1000000000) + Date.now();
@@ -4383,6 +4446,7 @@ function gameTick(dt){
     const f=floatingText[i]; f.life-=dt; f.y-=28*dt;
     if(f.life<=0) floatingText.splice(i,1);
   }
+  for(let i=localActionFx.length-1;i>=0;i--){ if(now()-localActionFx[i].start>localActionFx[i].duration) localActionFx.splice(i,1); }
   if(canAuthoritativelyWriteState()){ updateSpawns(dt); aiTick(dt); updateSpecialLandRules(dt); maybeWriteControllerState(); }
   else { updateLocalPlayerSpawn(dt); }
   expirePendingPlayerActions();
@@ -4977,6 +5041,7 @@ function draw(){
   drawPieces();
   drawSolarBeaconChannels();
   drawParticlesWorld();
+  drawLocalActionEffects();
   ctx.restore();
   drawScreenEffects();
   drawMinimap();
@@ -5031,6 +5096,7 @@ function drawBoard(){
         ctx.fillText(td.glyph,sx+BASE_CELL/2,sy+BASE_CELL/2);
         ctx.globalAlpha=1;
       }
+      drawTerrainLandmarks(sx,sy,x,y,t.type);
       // Do not grid water internally: shorelines are drawn only around each body's exposed edge.
       if(t.type!=='water'){
         ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1;
@@ -5262,6 +5328,48 @@ function drawRoadTile(sx,sy,x,y){
   ctx.restore();
   ctx.globalAlpha=1;
 }
+function drawTerrainLandmarks(sx,sy,x,y,type){
+  // Deterministic terrain micro-landmarks give every tile a readable material identity without affecting collision or saves.
+  const n=(seed)=>seededNoise(x,y,seed), t=now();
+  ctx.save();
+  if(type==='plain' || type==='meadow'){
+    ctx.globalAlpha=type==='meadow'?.34:.20;
+    ctx.strokeStyle=type==='meadow'?'#a7ef8b':'#7da7cf';
+    ctx.lineWidth=1;
+    for(let i=0;i<3;i++){
+      const px=sx+BASE_CELL*(.18+n(910+i)*.65), py=sy+BASE_CELL*(.35+n(914+i)*.42);
+      ctx.beginPath();ctx.moveTo(px,py+4);ctx.quadraticCurveTo(px-2,py,px-1,py-4);ctx.moveTo(px,py+3);ctx.quadraticCurveTo(px+3,py,px+3,py-3);ctx.stroke();
+      if(type==='meadow' && i===0){ctx.fillStyle='#f7d778';ctx.globalAlpha=.58;ctx.beginPath();ctx.arc(px+2,py-4,1.7,0,Math.PI*2);ctx.fill();}
+    }
+  } else if(type==='forest'){
+    ctx.globalAlpha=.45;ctx.fillStyle='#0c2419';
+    for(let i=0;i<3;i++){const px=sx+BASE_CELL*(.20+i*.27+n(920+i)*.08),py=sy+BASE_CELL*(.26+n(924+i)*.18);ctx.beginPath();ctx.moveTo(px,py-7);ctx.lineTo(px-6,py+6);ctx.lineTo(px+6,py+6);ctx.closePath();ctx.fill();ctx.fillRect(px-1,py+5,2,5);}
+  } else if(type==='ruins'){
+    ctx.globalAlpha=.56;ctx.strokeStyle='#c3b4d5';ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.moveTo(sx+10,sy+33);ctx.lineTo(sx+14,sy+17);ctx.lineTo(sx+20,sy+23);ctx.lineTo(sx+27,sy+12);ctx.lineTo(sx+34,sy+32);ctx.stroke();
+    ctx.fillStyle='#171321';ctx.fillRect(sx+15,sy+25,7,8);ctx.fillRect(sx+28,sy+25,5,7);
+  } else if(type==='swamp'){
+    ctx.globalAlpha=.34;ctx.strokeStyle='#9bd6a3';ctx.lineWidth=1.1;
+    for(let i=0;i<2;i++){const px=sx+BASE_CELL*(.28+i*.38+n(930+i)*.12),py=sy+BASE_CELL*(.32+n(934+i)*.30);ctx.beginPath();ctx.arc(px,py,6,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(px+3,py+3);ctx.lineTo(px+7,py+7);ctx.stroke();}
+  } else if(type==='hill' || type==='canyon'){
+    ctx.globalAlpha=.34;ctx.strokeStyle=type==='canyon'?'#ff9a6d':'#e7c28a';ctx.lineWidth=1.05;
+    for(let i=0;i<2;i++){ctx.beginPath();ctx.arc(sx+BASE_CELL*(.36+i*.24),sy+BASE_CELL*.62,BASE_CELL*(.18+i*.06),Math.PI*1.08,Math.PI*1.9);ctx.stroke();}
+  } else if(type==='crystal'){
+    const pulse=.55+.45*Math.sin(t*3+x*.7+y*.4);ctx.globalAlpha=.34+.20*pulse;ctx.fillStyle='#b9c7ff';ctx.strokeStyle='#edf1ff';ctx.lineWidth=1;
+    for(let i=0;i<3;i++){const px=sx+BASE_CELL*(.24+i*.25),py=sy+BASE_CELL*(.68-n(940+i)*.22),h=7+n(944+i)*10;ctx.beginPath();ctx.moveTo(px,py-h);ctx.lineTo(px+4,py);ctx.lineTo(px-3,py);ctx.closePath();ctx.fill();ctx.stroke();}
+  } else if(type==='sand'){
+    ctx.globalAlpha=.30;ctx.strokeStyle='#f6da94';ctx.lineWidth=1;
+    for(let i=0;i<2;i++){ctx.beginPath();ctx.arc(sx+BASE_CELL*(.30+i*.28),sy+BASE_CELL*(.50+i*.10),BASE_CELL*.18,Math.PI*1.08,Math.PI*1.92);ctx.stroke();}
+  } else if(type==='road'){
+    ctx.globalAlpha=.46;ctx.fillStyle='#f7dfaa';
+    for(let i=0;i<3;i++){const px=sx+BASE_CELL*(.24+i*.26),py=sy+BASE_CELL*(.45+n(950+i)*.14);ctx.fillRect(px,py,2.2,1.5);}
+  } else if(type==='water'){
+    ctx.globalAlpha=.22;ctx.strokeStyle='#9ee6ff';ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(sx+BASE_CELL*(.32+n(960)*.28),sy+BASE_CELL*(.36+n(961)*.28),BASE_CELL*.15,0,Math.PI*2);ctx.stroke();
+  }
+  ctx.restore();ctx.globalAlpha=1;
+}
+
 function drawTerritoryEffects(){
   if(!showTerritory) return;
   const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2;
