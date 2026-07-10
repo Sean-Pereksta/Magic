@@ -331,6 +331,9 @@ const PENDING_ACTION_GRACE_SECONDS = 2.0;
 // Firebase snapshot moves it to the correct tile.
 const HOST_ACCEPTED_PENDING_TTL_SECONDS = 18.0;
 const COMMAND_MAX_AGE_MS = 6000;
+const PRESENCE_STALE_MS = 15000;
+const CONTROLLER_LEASE_MS = 14000;
+const CONTROLLER_LEASE_RENEW_MS = 3500;
 const CONTROLLER_STATE_WRITE_SECONDS = 1.35;
 const FULL_SNAPSHOT_SECONDS = 12;
 const COMMAND_FLUSH_DELAY_MS = 160;
@@ -367,6 +370,10 @@ let stateRef = null;
 let fullStateRef = null;
 let lobbyRef = null;
 let presenceRef = null;
+let controllerLease = null;
+let controllerLeaseAction = null;
+let lastControllerLeaseAttempt = 0;
+let activePresence = [];
 let stateUnsub = null;
 let lobbyUnsub = null;
 let heartbeatTimer = null;
@@ -688,6 +695,106 @@ function pregameDocRef(){ return doc(db,'lobbies',lobbyId,'chess_warlord','prega
 function commandCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_commands'); }
 function commandDocRef(id){ return doc(db,'lobbies',lobbyId,'chess_warlord_commands',safeDocId(id)); }
 function presenceCollection(){ return collection(db,'lobbies',lobbyId,'chess_warlord_presence'); }
+function controllerLeaseForLobby(data=lobbyData){ return data?.chessWarlordControllerLease || null; }
+function firestoreTimeMs(value, fallback=0){
+  if(value && typeof value.toMillis === 'function') return value.toMillis();
+  if(value && typeof value.seconds === 'number') return value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1000000);
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+function presenceSeenAtMs(presence){
+  return firestoreTimeMs(presence?.lastSeenAt, Number(presence?.lastSeenMs ?? presence?.lastSeen ?? 0));
+}
+function commandOrderMs(command){
+  return firestoreTimeMs(command?.submittedAt || command?.createdAt, Number(command?.clientCreatedAtMs ?? command?.createdAtMs ?? 0));
+}
+function activePresenceFromSnapshot(snap){
+  const cutoff = Date.now() - PRESENCE_STALE_MS;
+  const active = [];
+  snap.forEach(d=>{
+    const data = d.data() || {};
+    const seenAtMs = presenceSeenAtMs(data);
+    if(data.username && seenAtMs > cutoff){
+      active.push({...data, uid:data.authUid || d.id, docId:d.id, seenAtMs, slot:Number.isFinite(Number(data.slot)) ? Number(data.slot) : MAX_ONLINE_PLAYERS});
+    }
+  });
+  return active.sort((a,b)=>(a.slot-b.slot) || (a.username || '').localeCompare(b.username || '') || (a.uid || '').localeCompare(b.uid || ''));
+}
+function preferredControllerPresence(active){
+  const ordered = (active || []).slice().sort((a,b)=>{
+    const ah = a.username === lobbyData?.host ? 0 : 1;
+    const bh = b.username === lobbyData?.host ? 0 : 1;
+    return (ah-bh) || (a.slot-b.slot) || (a.username || '').localeCompare(b.username || '') || (a.uid || '').localeCompare(b.uid || '');
+  });
+  return ordered[0] || null;
+}
+function leaseIsFresh(lease, atMs=Date.now()){
+  return !!lease && Number(lease.leaseExpiresAtMs || 0) > atMs;
+}
+function ownsControllerLease(){
+  const uid = auth.currentUser?.uid || '';
+  return !!(lobbyId && uid && controllerLease?.ownerUid === uid && leaseIsFresh(controllerLease));
+}
+function canAuthoritativelyWriteState(){
+  return !lobbyId || (isController && ownsControllerLease());
+}
+function currentControllerEpoch(){ return Number(controllerLease?.epoch || 0); }
+function applyControllerLease(nextLease){
+  const wasController = isController;
+  controllerLease = nextLease || null;
+  controllerName = controllerLease?.ownerName || lobbyData?.host || '';
+  isController = ownsControllerLease();
+  if(wasController !== isController && gameStarted){
+    if(isController && lastAuthoritativeData){
+      stateDirty = true;
+      scheduleControllerStateWrite('leaseTakeover', 280);
+      toast('Host lease transferred — keeping the war in sync.', 2300);
+    } else if(!isController) {
+      toast('Host changed — syncing to the new controller.', 2300);
+    }
+  }
+  manageCommandWatch();
+}
+async function maintainControllerLease(active){
+  if(!lobbyRef || !lobbyId || !username || !auth.currentUser?.uid || controllerLeaseAction) return;
+  const uid = auth.currentUser.uid;
+  const nowMs = Date.now();
+  const current = controllerLeaseForLobby();
+  const ownsCurrent = current?.ownerUid === uid;
+  const currentFresh = leaseIsFresh(current, nowMs);
+  const preferred = preferredControllerPresence(active);
+  if(currentFresh && !ownsCurrent){ applyControllerLease(current); return; }
+  if(ownsCurrent && currentFresh && nowMs - lastControllerLeaseAttempt < CONTROLLER_LEASE_RENEW_MS) return;
+  if(!ownsCurrent && preferred && preferred.uid !== uid){ applyControllerLease(current); return; }
+  lastControllerLeaseAttempt = nowMs;
+  controllerLeaseAction = runTransaction(db, async tx => {
+    const snap = await tx.get(lobbyRef);
+    const lobby = snap.exists() ? snap.data() : {};
+    const live = controllerLeaseForLobby(lobby);
+    const liveFresh = leaseIsFresh(live, nowMs);
+    const sameOwner = live?.ownerUid === uid;
+    if(liveFresh && !sameOwner) return live;
+    const renewing = sameOwner && liveFresh;
+    const lease = {
+      gameKey: GAME_KEY,
+      ownerUid: uid,
+      ownerName: username,
+      ownerSlot: PLAYER,
+      epoch: renewing ? Math.max(1, Number(live?.epoch || 1)) : Math.max(1, Number(live?.epoch || 0) + 1),
+      leaseExpiresAtMs: nowMs + CONTROLLER_LEASE_MS
+    };
+    tx.set(lobbyRef, {chessWarlordControllerLease:{...lease,heartbeatAt:serverTimestamp()},updatedAt:serverTimestamp()},{merge:true});
+    return lease;
+  });
+  try{
+    const lease = await controllerLeaseAction;
+    if(lease) applyControllerLease(lease);
+  }catch(e){
+    console.warn('controller lease refresh failed', e);
+  }finally{
+    controllerLeaseAction = null;
+  }
+}
 function compressOwners(){ return normalizeBoard().map(t => t.owner == null ? '-' : String(t.owner)).join(''); }
 function compressWalls(){ return normalizeBoard().map(t => t.wallOwner == null ? '-' : String(t.wallOwner)).join(''); }
 const CAPTURE_KIND_TO_CHAR = {
@@ -784,6 +891,7 @@ function buildSelfContainedState(reason='fullRepair'){
     playerNames: slotNames,
     playerFactionIds: slotFactionIds,
     controller: controllerName || username || '',
+    controllerEpoch: currentControllerEpoch(),
     stats: {captures:gameStats.captures||0,kingsTaken:gameStats.kingsTaken||0,startedAt:gameStats.startedAt||now()},
     factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,killPrestige:f.killPrestige||0,spawnsMade:f.spawnsMade||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
     winner: winnerName() || '',
@@ -834,6 +942,7 @@ function serializeState(reason='sync', forceFull=false){
     playerNames: slotNames,
     playerFactionIds: slotFactionIds,
     controller: controllerName || username || '',
+    controllerEpoch: currentControllerEpoch(),
     stats: {captures:gameStats.captures||0,kingsTaken:gameStats.kingsTaken||0,startedAt:gameStats.startedAt||now()},
     factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,killPrestige:f.killPrestige||0,spawnsMade:f.spawnsMade||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
     winner: winnerName() || ''
@@ -917,6 +1026,8 @@ function applyRemoteState(data){
     return;
   }
   const incomingVersion = Number(data.version || 0);
+  const incomingControllerEpoch = Number(data.controllerEpoch || 0);
+  if(incomingControllerEpoch && currentControllerEpoch() && incomingControllerEpoch < currentControllerEpoch()) return;
   if(incomingVersion && incomingVersion < localStateVersion && data.updatedBy !== username) return;
   const hasLandPayload = !!(data.boardOwners || data.boardKinds || data.boardWalls || Array.isArray(data.ownerPatches) || Array.isArray(data.kindPatches) || Array.isArray(data.wallPatches));
   const baseOwners = data.boardOwners || (lastAuthoritativeData && lastAuthoritativeData.boardOwners) || lastAuthoritativeOwners;
@@ -1154,7 +1265,7 @@ function findWinnerIndexAgainst(loser){
 function winnerName(){ const alive = factions.filter(f=>f.alive); return alive.length === 1 ? displayNameForFaction(alive[0].idx) : ''; }
 async function writeStateNow(reason='sync'){
   if(!stateRef || !gameStarted || writingState) return;
-  if(lobbyId && !isController) return; // Non-host clients send tiny command docs; only the controller writes the authoritative game state.
+  if(!canAuthoritativelyWriteState()) return; // Non-host clients send tiny command docs; only the lease owner writes authoritative state.
   writingState = true;
   try{
     const payload = serializeState(reason, reason === 'initialCreate');
@@ -1186,7 +1297,7 @@ async function writeStateNow(reason='sync'){
   } finally { writingState = false; }
 }
 function scheduleControllerStateWrite(reason='controllerCommand', delayMs=COMMAND_FLUSH_DELAY_MS){
-  if(!isController){ return; }
+  if(!canAuthoritativelyWriteState()) return;
   stateDirty = true;
   if(controllerFlushTimer) return;
   controllerFlushTimer = setTimeout(()=>{
@@ -1196,13 +1307,13 @@ function scheduleControllerStateWrite(reason='controllerCommand', delayMs=COMMAN
 }
 function queueReliableStateWrite(reason='playerAction'){
   // Legacy entry point kept for local preview/controller actions only. Normal multiplayer clients never write state.
-  if(lobbyId && !isController) return;
+  if(!canAuthoritativelyWriteState()) return;
   stateDirty = true;
   reliableWriteReason = reason;
-  if(isController){ scheduleControllerStateWrite(reason, COMMAND_FLUSH_DELAY_MS); }
+  scheduleControllerStateWrite(reason, COMMAND_FLUSH_DELAY_MS);
 }
 function maybeWriteControllerState(){
-  if(!isController || writingState) return;
+  if(!canAuthoritativelyWriteState() || writingState) return;
   if((now() - lastFullSnapshotWrite) >= FULL_SNAPSHOT_SECONDS) stateDirty = true;
   if(landDirty && (now() - lastLandSync) >= LAND_SYNC_SECONDS) stateDirty = true;
   if(!stateDirty) return;
@@ -1281,11 +1392,11 @@ async function finishCommandDoc(docId, ok, reason='processed'){
   }
 }
 function processCommandDoc(docId, cmd){
-  if(!isController || !gameStarted || !cmd || cmd.gameKey !== GAME_KEY) return;
+  if(!canAuthoritativelyWriteState() || !gameStarted || !cmd || cmd.gameKey !== GAME_KEY) return;
   if(cmd.status && cmd.status !== 'new') return;
   if(processedCommandIds.has(docId)) return;
   processedCommandIds.add(docId);
-  const createdAtMs = Number(cmd.createdAtMs || 0);
+  const createdAtMs = commandOrderMs(cmd);
   if(createdAtMs && Date.now() - createdAtMs > COMMAND_MAX_AGE_MS){
     finishCommandDoc(docId,false,'command_too_old');
     return;
@@ -1299,7 +1410,7 @@ function processCommandDoc(docId, cmd){
   }
 }
 function startCommandWatch(){
-  if(!lobbyId || commandUnsub || !isController) return;
+  if(!lobbyId || commandUnsub || !canAuthoritativelyWriteState()) return;
   try{
     commandUnsub = onSnapshot(commandCollection(), snap=>{
       const batch=[];
@@ -1309,7 +1420,7 @@ function startCommandWatch(){
         if(!data || (data.status && data.status !== 'new')) return;
         batch.push({id:ch.doc.id, data});
       });
-      batch.sort((a,b)=>(Number(a.data.createdAtMs||0)-Number(b.data.createdAtMs||0)) || a.id.localeCompare(b.id));
+      batch.sort((a,b)=>(commandOrderMs(a.data)-commandOrderMs(b.data)) || a.id.localeCompare(b.id));
       for(const item of batch) processCommandDoc(item.id,item.data);
     });
   }catch(e){ console.warn('command watch failed', e); }
@@ -1318,7 +1429,7 @@ function stopCommandWatch(){
   if(commandUnsub){ commandUnsub(); commandUnsub=null; }
 }
 function manageCommandWatch(){
-  if(isController) startCommandWatch(); else stopCommandWatch();
+  if(canAuthoritativelyWriteState()) startCommandWatch(); else stopCommandWatch();
 }
 function stopCommandAckWatch(actionId){
   const unsub = commandAckUnsubs.get(actionId);
@@ -1346,7 +1457,7 @@ function startCommandAckWatch(action){
   }catch(e){ console.warn('command ack watch failed', e); }
 }
 async function submitPlayerCommand(action){
-  if(!lobbyId || isController) return true;
+  if(!lobbyId || canAuthoritativelyWriteState()) return true;
   const payload = {
     ...action,
     gameKey:GAME_KEY,
@@ -1354,7 +1465,8 @@ async function submitPlayerCommand(action){
     by:username || 'player',
     slot:PLAYER,
     faction:PLAYER,
-    createdAtMs:Date.now(),
+    clientCreatedAtMs:Date.now(),
+    submittedAt:serverTimestamp(),
     createdAt:serverTimestamp(),
     baseStateVersion: localStateVersion || 0
   };
@@ -1413,7 +1525,7 @@ async function requestPlayerMove(piece,x,y){
   if(ok){
     rememberPendingPlayerAction({...action, faction:PLAYER});
     selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
-    if(isController || !lobbyId){ queueReliableStateWrite('playerMove'); }
+    if(canAuthoritativelyWriteState()){ queueReliableStateWrite('playerMove'); }
     else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
   }
   return ok;
@@ -1433,11 +1545,11 @@ async function requestPlayerSpawn(x,y){
   const action = {kind:'spawn', actionId, pieceId, type, x, y, baseStateVersion: localStateVersion || 0};
   newPiece(PLAYER,type,x,y,{ready:false,id:pieceId,clientActionId:actionId,clientActionBy:username || ''});
   rememberPendingPlayerAction({...action, faction:PLAYER});
-  if(isController || !lobbyId){ recordFactionSpawn(f,type); f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER); }
+  if(canAuthoritativelyWriteState()){ recordFactionSpawn(f,type); f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER); }
   spawnSelection=null;
   renderSpawnCards(); updateHUD();
   burst(x,y,f.color,24); toast(`${pieceDefs[type].name} deployed.`);
-  if(isController || !lobbyId){ queueReliableStateWrite('playerSpawn'); }
+  if(canAuthoritativelyWriteState()){ queueReliableStateWrite('playerSpawn'); }
   else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
 }
 async function refreshPresenceAndController(){
@@ -1445,19 +1557,24 @@ async function refreshPresenceAndController(){
   try{
     if(presenceRef){
       const eloProfile = getChessEloProfile(username || 'Player', PLAYER);
-      await setDoc(presenceRef,{username,slot:PLAYER,lastSeen:Date.now(),authUid:auth.currentUser?.uid || '',gameKey:GAME_KEY,selectedFaction:chosenFactionId,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji},{merge:true});
+      await setDoc(presenceRef,{
+        username,slot:PLAYER,lastSeenAt:serverTimestamp(),lastSeenMs:Date.now(),
+        authUid:auth.currentUser?.uid || '',gameKey:GAME_KEY,selectedFaction:chosenFactionId,
+        elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji
+      },{merge:true});
     }
     const snap = await getDocs(presenceCollection());
-    const active = [];
-    const cutoff = Date.now() - 12000;
-    snap.forEach(d=>{ const v=d.data(); if((v.lastSeen || 0) > cutoff) active.push(v.username); });
-    onlineCount = active.length;
-    const preferred = (lobbyData?.host && active.includes(lobbyData.host)) ? lobbyData.host : (slotHumans.find(p=>active.includes(p)) || active[0] || username);
-    controllerName = preferred;
-    isController = controllerName === username;
-    setNetwork(`${username || 'Player'} · ${isController ? 'hosting AI' : 'synced'} · ${onlineCount}/${slotHumans.length || 1} online`);
+    activePresence = activePresenceFromSnapshot(snap);
+    onlineCount = activePresence.length;
+    await maintainControllerLease(activePresence);
+    const host = controllerName || 'electing host';
+    const role = isController ? 'hosting AI' : 'synced · host ' + host;
+    setNetwork((username || 'Player') + ' · ' + role + ' · ' + onlineCount + '/' + (slotHumans.length || 1) + ' online');
     manageCommandWatch();
-  }catch(e){ console.warn('presence failed', e); }
+  }catch(e){
+    console.warn('presence or controller lease failed', e);
+    setNetwork((username || 'Player') + ' · sync retrying');
+  }
 }
 async function completeLobbyIfNeeded(winner){
   if(!lobbyRef || !winner) return;
@@ -1485,7 +1602,7 @@ async function publishFactionSelection(){
   if(!presenceRef || !username) return;
   try{
     const eloProfile = getChessEloProfile(username || 'Player', PLAYER);
-    const payload = {username,slot:PLAYER,lastSeen:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji};
+    const payload = {username,slot:PLAYER,lastSeenAt:serverTimestamp(),lastSeenMs:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji};
     await setDoc(presenceRef,payload,{merge:true});
     if(pregameRef){
       const playerKey = safeDocId(username);
@@ -1758,6 +1875,7 @@ async function bootMultiplayer(){
     const lsnap = await getDoc(lobbyRef);
     if(!lsnap.exists()) throw new Error('Lobby not found');
     lobbyData = lsnap.data();
+    applyControllerLease(controllerLeaseForLobby(lobbyData));
     buildSlots(lobbyData.players || [username]);
     refreshChessEloProfilesForSlots('lobbyBoot');
     chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || 'normal');
@@ -1789,6 +1907,7 @@ async function bootMultiplayer(){
     lobbyUnsub = onSnapshot(lobbyRef, snap=>{
       if(!snap.exists()) return;
       lobbyData = snap.data();
+      applyControllerLease(controllerLeaseForLobby(lobbyData));
       const nextPlayers = Array.isArray(lobbyData.players) ? lobbyData.players : [];
       if(JSON.stringify(nextPlayers) !== JSON.stringify(lastLoadedLobbyPlayers)){
         slotHumans = nextPlayers.slice(0,MAX_ONLINE_PLAYERS);
@@ -1821,7 +1940,7 @@ async function bootMultiplayer(){
     await runMultiplayerFactionCountdown();
     overlay.style.display='none';
     await refreshPresenceAndController();
-    if(isController){
+    if(canAuthoritativelyWriteState()){
       await runTransaction(db, async tx => {
         const cur = await tx.get(stateRef);
         if(cur.exists()) return;
