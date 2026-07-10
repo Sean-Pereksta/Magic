@@ -4887,17 +4887,19 @@ function drawBoard(){
     for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
       const t=tile(x,y), td=terrainOf(t);
       const sx=x*BASE_CELL, sy=y*BASE_CELL;
-      const alt=(x+y)%2?td.alt:td.color;
+      const alt=t.type==='water' ? td.color : ((x+y)%2 ? td.alt : td.color);
       ctx.fillStyle=alt;
       ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);
-      // terrain texture
-      const n=seededNoise(x,y,707);
-      ctx.globalAlpha=.13;
-      ctx.fillStyle=n>.5?'#ffffff':'#000000';
-      ctx.beginPath();
-      ctx.arc(sx+BASE_CELL*(.25+seededNoise(x,y,1)*.5), sy+BASE_CELL*(.25+seededNoise(x,y,2)*.5), 5+seededNoise(x,y,3)*15, 0, Math.PI*2);
-      ctx.fill();
-      ctx.globalAlpha=1;
+      // Water gets its own pixel texture; land keeps the soft terrain grain.
+      if(t.type!=='water'){
+        const n=seededNoise(x,y,707);
+        ctx.globalAlpha=.13;
+        ctx.fillStyle=n>.5?'#ffffff':'#000000';
+        ctx.beginPath();
+        ctx.arc(sx+BASE_CELL*(.25+seededNoise(x,y,1)*.5), sy+BASE_CELL*(.25+seededNoise(x,y,2)*.5), 5+seededNoise(x,y,3)*15, 0, Math.PI*2);
+        ctx.fill();
+        ctx.globalAlpha=1;
+      }
       if(t.type==='water'){
         drawWaterTile(sx,sy,x,y);
       } else if(t.type==='mountain'){
@@ -4914,9 +4916,11 @@ function drawBoard(){
         ctx.fillText(td.glyph,sx+BASE_CELL/2,sy+BASE_CELL/2);
         ctx.globalAlpha=1;
       }
-      // Walls are drawn in their own pass after territory so they read as hard stone structures above roads and land color.
-      ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1;
-      ctx.strokeRect(sx+.5,sy+.5,BASE_CELL,BASE_CELL);
+      // Do not grid water internally: shorelines are drawn only around each body's exposed edge.
+      if(t.type!=='water'){
+        ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1;
+        ctx.strokeRect(sx+.5,sy+.5,BASE_CELL,BASE_CELL);
+      }
     }
   }
 }
@@ -4952,32 +4956,54 @@ function drawMountainTile(sx,sy,x,y){
 }
 function drawWaterTile(sx,sy,x,y){
   ctx.save();
-  const t=now();
-  const g=ctx.createLinearGradient(sx,sy,sx+BASE_CELL,sy+BASE_CELL);
-  g.addColorStop(0,'rgba(76,167,220,.16)');
-  g.addColorStop(.55,'rgba(22,92,150,.26)');
-  g.addColorStop(1,'rgba(4,22,48,.30)');
-  ctx.fillStyle=g;
-  ctx.fillRect(sx+1,sy+1,BASE_CELL-2,BASE_CELL-2);
-  // Pixel-speckle water: no drawn wave lines, just shifting square highlights.
-  for(let i=0;i<11;i++){
-    const px=sx+Math.floor(BASE_CELL*(.08+seededNoise(x+i*13,y,8050)*.84));
-    const py=sy+Math.floor(BASE_CELL*(.10+seededNoise(x,y+i*17,8051)*.78));
-    const pulse=.45+.55*Math.sin(t*(1.1+seededNoise(x+i,y+i,8052)*.9)+x*.37+y*.29+i*1.3);
-    const size=1+Math.floor(seededNoise(x+i,y+i,8053)*3);
-    ctx.globalAlpha=.08+.18*pulse;
-    ctx.fillStyle=i%3===0?'rgba(229,250,255,.90)':'rgba(143,211,255,.80)';
+  const time=now();
+  const pixel=Math.max(2,Math.floor(BASE_CELL/7));
+  const cols=Math.ceil(BASE_CELL/pixel);
+  const rows=Math.ceil(BASE_CELL/pixel);
+  // A single solid field makes connected water read as one lake or sea.
+  ctx.fillStyle='#0b416d';
+  ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);
+  // Each tile is filled with a small animated pixel field instead of a placed wave icon.
+  for(let row=0;row<rows;row++){
+    for(let col=0;col<cols;col++){
+      const grain=seededNoise(x*19+col,y*23+row,8050);
+      const pulse=.5+.5*Math.sin(time*(.80+grain*.95)+x*.31+y*.27+col*1.19+row*.83);
+      ctx.globalAlpha=.13+.23*pulse;
+      ctx.fillStyle=grain>.77?'#c6f3ff':grain>.43?'#4b9ed0':'#174f81';
+      ctx.fillRect(sx+col*pixel,sy+row*pixel,pixel+1,pixel+1);
+    }
+  }
+  // Brighter speckles drift by changing phase, giving every water block a live surface.
+  for(let i=0;i<9;i++){
+    const drift=(time*(.65+seededNoise(x+i,y,8061)*.55)+i*.37)%1;
+    const px=sx+Math.floor(BASE_CELL*((seededNoise(x+i*13,y,8062)*.76)+.08));
+    const py=sy+Math.floor(BASE_CELL*((seededNoise(x,y+i*17,8063)+drift*.22)%1*.76+.10));
+    const size=1+Math.floor(seededNoise(x+i,y+i,8064)*2);
+    ctx.globalAlpha=.20+.34*(.5+.5*Math.sin(time*1.4+x*.28+y*.21+i));
+    ctx.fillStyle=i%3===0?'#e4fbff':'#83d1f3';
     ctx.fillRect(px,py,size,size);
   }
-  ctx.globalAlpha=.16;
-  ctx.fillStyle='rgba(0,6,18,.7)';
-  for(let i=0;i<4;i++){
-    const px=sx+Math.floor(BASE_CELL*(.10+seededNoise(x+i*19,y,8060)*.78));
-    const py=sy+Math.floor(BASE_CELL*(.12+seededNoise(x,y+i*23,8061)*.74));
-    ctx.fillRect(px,py,2,2);
-  }
+  drawWaterBodyOutline(sx,sy,x,y);
   ctx.restore();
   ctx.globalAlpha=1;
+}
+function drawWaterBodyOutline(sx,sy,x,y){
+  const waterAt=(xx,yy)=>inBounds(xx,yy) && tile(xx,yy).type==='water';
+  const north=!waterAt(x,y-1), east=!waterAt(x+1,y), south=!waterAt(x,y+1), west=!waterAt(x-1,y);
+  if(!(north||east||south||west)) return;
+  ctx.beginPath();
+  if(north){ ctx.moveTo(sx,sy); ctx.lineTo(sx+BASE_CELL,sy); }
+  if(east){ ctx.moveTo(sx+BASE_CELL,sy); ctx.lineTo(sx+BASE_CELL,sy+BASE_CELL); }
+  if(south){ ctx.moveTo(sx+BASE_CELL,sy+BASE_CELL); ctx.lineTo(sx,sy+BASE_CELL); }
+  if(west){ ctx.moveTo(sx,sy+BASE_CELL); ctx.lineTo(sx,sy); }
+  ctx.lineCap='square';
+  ctx.lineJoin='round';
+  ctx.strokeStyle='rgba(3,18,35,.92)';
+  ctx.lineWidth=4.4;
+  ctx.stroke();
+  ctx.strokeStyle='rgba(132,216,248,.42)';
+  ctx.lineWidth=1.25;
+  ctx.stroke();
 }
 function drawRoughTerrainTile(sx,sy,x,y,type){
   ctx.save();
