@@ -2,383 +2,589 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>The Game — Vote • Classic • 2.0 (Mobile Powers Popup)</title>
+<title>The Game — Classic & 2.0</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#09111f" />
 <style>
   :root{
-    --bg:#ffffff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb;
-    --accent:#2563eb; --good:#16a34a; --bad:#ef4444; --soft:#f8fafc;
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0;
-    background:var(--bg);
-    color:var(--ink);
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
-    -webkit-tap-highlight-color:transparent;
+    --bg:#08111f;
+    --panel:#111d2f;
+    --panel-2:#17263b;
+    --ink:#f8fafc;
+    --muted:#9fb0c7;
+    --line:rgba(255,255,255,.12);
+    --accent:#60a5fa;
+    --accent-2:#2563eb;
+    --good:#34d399;
+    --bad:#fb7185;
+    --warn:#fbbf24;
+    --safe-top:env(safe-area-inset-top,0px);
+    --safe-right:env(safe-area-inset-right,0px);
+    --safe-bottom:env(safe-area-inset-bottom,0px);
+    --safe-left:env(safe-area-inset-left,0px);
   }
 
-  /* Top bar */
+  *{box-sizing:border-box}
+  html,body{width:100%;height:100%;margin:0;overflow:hidden}
+  body{
+    color:var(--ink);
+    font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:
+      radial-gradient(circle at 20% 0%,rgba(37,99,235,.24),transparent 34%),
+      radial-gradient(circle at 100% 20%,rgba(14,165,233,.13),transparent 28%),
+      linear-gradient(180deg,#09111f,#050b14 72%);
+    -webkit-tap-highlight-color:transparent;
+    overscroll-behavior:none;
+  }
+
+  button{font:inherit}
+  .app{
+    width:100%;
+    min-width:0;
+    height:100dvh;
+    min-height:100%;
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    grid-template-rows:auto minmax(0,1fr) auto;
+    overflow:hidden;
+  }
+
+  header,main,.hand-shell{width:100%;min-width:0}
+
   header{
-    position:sticky;
-    top:0;
-    z-index:30;
-    background:#fff;
+    z-index:40;
+    padding:calc(7px + var(--safe-top)) calc(9px + var(--safe-right)) 7px calc(9px + var(--safe-left));
     border-bottom:1px solid var(--line);
-    padding:6px 8px;
+    background:rgba(8,17,31,.94);
+    backdrop-filter:blur(16px);
   }
-  .row{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
-  .players{display:flex; gap:6px; flex-wrap:wrap; max-width:50vw}
-  .chip{
-    padding:6px 10px;
-    border:1px solid var(--line);
-    border-radius:999px;
-    font-size:13px;
-    background:#fff;
-    cursor:default;
-    white-space:nowrap;
+
+  .top-row,.control-row,.row{display:flex;align-items:center;gap:7px}
+  .top-row{min-width:0}
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-width:0;
   }
-  .chip.live{
-    outline:2px solid var(--accent);
-    outline-offset:1px;
-    background:#eef2ff;
+  .brand-mark{
+    width:30px;
+    height:38px;
+    border-radius:7px;
+    background:linear-gradient(145deg,#fff,#dbeafe);
+    color:#0f172a;
+    display:grid;
+    place-items:center;
+    font-size:18px;
+    box-shadow:0 5px 15px rgba(0,0,0,.25);
+    transform:rotate(-4deg);
+    flex:0 0 auto;
   }
-  .chip.me{border-color:#60a5fa}
-  .chip.clickable{cursor:pointer}
-  .chip.deck{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;font-weight:800;} /* 🔹 deck chip */
+  .brand-title{font-weight:950;font-size:15px;line-height:1}
+  .brand-sub{font-size:10px;color:var(--muted);margin-top:3px;white-space:nowrap}
   .spacer{flex:1}
+
   .btn{
     appearance:none;
-    border:1px solid #d1d5db;
-    background:#111827;
+    border:1px solid rgba(255,255,255,.16);
+    background:linear-gradient(180deg,#2563eb,#1d4ed8);
     color:#fff;
-    padding:8px 10px;
-    border-radius:10px;
-    font-weight:700;
+    min-height:38px;
+    padding:7px 10px;
+    border-radius:11px;
+    font-size:12px;
+    font-weight:850;
     cursor:pointer;
-    font-size:13px;
     touch-action:manipulation;
+    box-shadow:0 5px 14px rgba(0,0,0,.18);
   }
-  .btn[disabled]{opacity:.5; cursor:not-allowed}
-  .btn.secondary{background:#fff; color:#111827}
-  .btn.ghost{background:#f3f4f6; color:#111827; border-color:#d1d5db}
-  #playBtn{display:none} /* legacy inline play button (kept for safety) */
-  .chip.fs{
-    background:#eef2ff;
-    border-color:#c7d2fe;
-    color:#1e40af;
-  }
+  .btn.secondary{background:rgba(255,255,255,.08)}
+  .btn.good{background:linear-gradient(180deg,#10b981,#059669)}
+  .btn.bad{background:linear-gradient(180deg,#fb7185,#e11d48)}
+  .btn[disabled]{opacity:.42;cursor:not-allowed;box-shadow:none}
+  .icon-btn{width:40px;padding:0;font-size:18px;flex:0 0 auto}
 
-  /* Content */
-  .wrap{
-    max-width:860px;
-    margin:4px auto;
-    padding:4px 8px 90px; /* extra bottom space so sticky hand never covers content */
+  .turn-ribbon{
+    margin-top:7px;
+    min-height:32px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:rgba(255,255,255,.055);
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:5px 8px;
+    overflow:hidden;
+  }
+  .turn-ribbon.mine{
+    border-color:rgba(52,211,153,.65);
+    background:linear-gradient(90deg,rgba(16,185,129,.18),rgba(37,99,235,.12));
+    box-shadow:0 0 0 1px rgba(52,211,153,.12),0 0 26px rgba(16,185,129,.12);
+  }
+  .turn-dot{width:9px;height:9px;border-radius:99px;background:var(--muted);flex:0 0 auto}
+  .turn-ribbon.mine .turn-dot{background:var(--good);box-shadow:0 0 0 5px rgba(52,211,153,.13)}
+  .turn-text{font-size:12px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .turn-progress{font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap}
+
+  main{
+    min-height:0;
+    overflow:auto;
+    overscroll-behavior:contain;
+    padding:8px calc(8px + var(--safe-right)) 10px calc(8px + var(--safe-left));
+    scrollbar-width:thin;
+  }
+  .board{
+    width:min(940px,100%);
+    margin:0 auto;
     display:grid;
     gap:8px;
   }
 
-  /* Vote box */
-  .vote{
+  .status-grid{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:8px;
+    align-items:stretch;
+  }
+  .players-panel,.draw-area,.vote,.game-message,.log-box{
     border:1px solid var(--line);
-    background:#fff;
-    border-radius:12px;
-    padding:10px;
+    background:linear-gradient(180deg,rgba(23,38,59,.9),rgba(14,26,43,.92));
+    border-radius:15px;
+    box-shadow:0 10px 30px rgba(0,0,0,.14);
   }
-  .vote .title{font-weight:900; margin-bottom:6px}
-  .vote .opt{
-    display:flex;
-    gap:10px;
-    align-items:center;
+  .players-panel{padding:8px;min-width:0}
+  .section-label{
+    color:var(--muted);
+    font-size:10px;
+    font-weight:900;
+    text-transform:uppercase;
+    letter-spacing:.12em;
+    margin-bottom:6px;
+  }
+  .players{display:flex;gap:5px;overflow-x:auto;padding:1px 1px 3px;scrollbar-width:none}
+  .players::-webkit-scrollbar{display:none}
+  .player-chip{
+    flex:0 0 auto;
     border:1px solid var(--line);
-    border-radius:10px;
-    padding:10px;
-    cursor:pointer;
-    background:#fff;
-    font-weight:700;
+    border-radius:999px;
+    padding:5px 8px;
+    font-size:11px;
+    font-weight:800;
+    color:#dbeafe;
+    background:rgba(255,255,255,.045);
+    white-space:nowrap;
   }
-  .vote .opt.sel{
-    outline:2px solid var(--accent);
-    background:#eff6ff;
+  .player-chip.me{border-color:rgba(96,165,250,.7)}
+  .player-chip.live{
+    color:#052e1b;
+    border-color:#6ee7b7;
+    background:linear-gradient(180deg,#a7f3d0,#34d399);
+    box-shadow:0 0 18px rgba(52,211,153,.2);
   }
-  .timer{font-weight:800; color:#ca8a04}
+  .player-chip.clickable{cursor:pointer;animation:targetPulse 1.2s infinite}
+  @keyframes targetPulse{50%{transform:translateY(-2px);box-shadow:0 0 0 3px rgba(96,165,250,.15)}}
 
-  /* Piles */
+  .draw-area{
+    min-width:92px;
+    padding:7px 8px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+  }
+  .draw-stack{
+    position:relative;
+    width:42px;
+    height:58px;
+    flex:0 0 auto;
+  }
+  .draw-card,.draw-card::before,.draw-card::after{
+    position:absolute;
+    inset:0;
+    content:"";
+    border-radius:8px;
+    border:1px solid rgba(255,255,255,.45);
+    background:
+      repeating-linear-gradient(45deg,rgba(255,255,255,.14) 0 4px,transparent 4px 8px),
+      linear-gradient(145deg,#1d4ed8,#0f172a);
+    box-shadow:0 5px 14px rgba(0,0,0,.3);
+  }
+  .draw-card::before{transform:translate(-4px,3px);z-index:-1;opacity:.7}
+  .draw-card::after{transform:translate(-8px,6px);z-index:-2;opacity:.45}
+  .draw-count{position:absolute;inset:0;display:grid;place-items:center;font-size:15px;font-weight:950;text-shadow:0 2px 5px #000}
+  .draw-meta{font-size:10px;color:var(--muted);line-height:1.25;white-space:nowrap}
+  .draw-meta b{display:block;color:#fff;font-size:14px}
+
+  .vote{padding:11px}
+  .vote-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+  .vote-title{font-size:15px;font-weight:950}
+  .timer{font-size:12px;color:var(--warn);font-weight:900}
+  .vote-options{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .vote-option{
+    border:1px solid var(--line);
+    background:rgba(255,255,255,.05);
+    color:#fff;
+    border-radius:13px;
+    min-height:58px;
+    padding:9px;
+    text-align:left;
+    cursor:pointer;
+    font-weight:900;
+  }
+  .vote-option span{display:block;font-size:10px;color:var(--muted);font-weight:650;margin-top:4px}
+  .vote-option.selected{border-color:var(--accent);background:rgba(37,99,235,.2);box-shadow:0 0 0 2px rgba(96,165,250,.14)}
+  .vote-foot{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;margin-top:7px}
+
   .piles{
     display:grid;
-    grid-template-columns:repeat(2,1fr);
+    grid-template-columns:repeat(4,minmax(0,1fr));
     gap:8px;
   }
   .pile{
-    user-select:none;
-    padding:10px;
-    background:#fff;
-    border:1px solid var(--line);
-    border-radius:12px;
-    text-align:center;
-    min-height:84px;
+    position:relative;
+    min-height:142px;
+    border:1px solid rgba(255,255,255,.16);
+    border-radius:16px;
+    background:linear-gradient(165deg,rgba(255,255,255,.09),rgba(255,255,255,.035));
+    padding:8px;
     display:flex;
     flex-direction:column;
+    align-items:center;
     justify-content:center;
-    gap:4px;
+    cursor:pointer;
+    user-select:none;
     touch-action:manipulation;
+    transition:transform .16s ease,border-color .16s ease,opacity .16s ease,box-shadow .16s ease;
+    overflow:hidden;
   }
-  .pile .dir{
-    font-size:12px;
-    color:var(--muted);
-    font-weight:600;
+  .pile::before,.pile::after{
+    content:"";
+    position:absolute;
+    width:64%;
+    height:72%;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.11);
+    background:rgba(255,255,255,.025);
+    z-index:0;
   }
-  .pile .top{
-    font-weight:900;
-    font-size:26px;
-    margin:4px 0;
-    padding:6px 10px;
-    border:2px solid #e5e7eb;
-    border-radius:10px;
-    display:inline-block;
+  .pile::before{transform:translate(-5px,4px) rotate(-2deg)}
+  .pile::after{transform:translate(5px,4px) rotate(2deg)}
+  .pile > *{position:relative;z-index:2}
+  .pile-dir{font-size:10px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .pile-card{
+    width:min(82px,82%);
+    aspect-ratio:.72;
+    margin:6px 0 5px;
+    border-radius:12px;
+    display:grid;
+    place-items:center;
+    color:#07111f;
+    background:linear-gradient(145deg,#fff,#e2e8f0);
+    border:3px solid #cbd5e1;
+    box-shadow:0 9px 18px rgba(0,0,0,.32);
+    font-size:clamp(25px,7vw,38px);
+    font-weight:1000;
   }
-  .pile .eff{
-    font-size:12px;
-    color:#0f172a;
-    min-height:16px;
-  }
+  .pile-rule{font-size:9px;color:var(--muted);text-align:center;line-height:1.2;min-height:22px}
+  .pile-effect{font-size:10px;color:#dbeafe;min-height:14px}
   .pile.can{
-    outline:2px solid var(--good);
-    outline-offset:2px;
-    background:#ecfdf3;
+    border-color:rgba(52,211,153,.9);
+    box-shadow:0 0 0 2px rgba(52,211,153,.2),0 0 30px rgba(52,211,153,.12);
+    transform:translateY(-2px);
   }
-  .pile.cannot{
-    opacity:.55;
-    filter:grayscale(.3);
-  }
+  .pile.cannot{opacity:.43;filter:saturate(.5)}
+  .pile.flash{animation:pileFlash .44s ease-out}
+  @keyframes pileFlash{0%{transform:scale(1.045);box-shadow:0 0 0 7px rgba(52,211,153,.28)}100%{transform:scale(1)}}
 
-  /* Pile flash animation when affected */
-  .pile.flash{
-    animation:pileFlash 0.45s ease-out;
-  }
-  @keyframes pileFlash{
-    0%{ box-shadow:0 0 0 0 rgba(34,197,94,.7); transform:scale(1.02); }
-    100%{ box-shadow:none; transform:scale(1); }
-  }
+  .game-message{padding:9px 11px;font-size:12px;font-weight:800}
+  .game-message.good{border-color:rgba(52,211,153,.5);background:rgba(5,150,105,.16)}
+  .game-message.bad{border-color:rgba(251,113,133,.5);background:rgba(225,29,72,.15)}
 
-  /* Hand – mobile-friendly sticky bottom bar */
-  .hand{
-    position:sticky;
-    bottom:0;
-    left:0;
-    right:0;
-    z-index:20;
-    display:flex;
-    gap:6px;
-    flex-wrap:wrap;
-    justify-content:center;
-    padding:8px 6px 10px;
-    background:linear-gradient(to top,#f9fafb,rgba(249,250,251,.96),transparent);
+  details.log-box{overflow:hidden}
+  details.log-box summary{cursor:pointer;padding:8px 10px;font-size:11px;font-weight:850;color:#dbeafe;list-style:none}
+  details.log-box summary::-webkit-details-marker{display:none}
+  .log{max-height:120px;overflow:auto;border-top:1px solid var(--line);padding:7px 10px;font-size:10px;line-height:1.45;color:#b9c7da}
+  .log-entry + .log-entry{margin-top:3px}
+
+  .hand-shell{
+    z-index:35;
     border-top:1px solid var(--line);
+    background:rgba(7,14,25,.96);
+    backdrop-filter:blur(18px);
+    padding:7px calc(7px + var(--safe-right)) calc(7px + var(--safe-bottom)) calc(7px + var(--safe-left));
+  }
+  .hand-head{
+    width:min(940px,100%);
+    margin:0 auto 6px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .hand-title{font-size:11px;font-weight:950;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .hand-state{font-size:11px;font-weight:850;color:#dbeafe;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hand-state.mine{color:#6ee7b7}
+  .hand-actions{margin-left:auto;display:flex;gap:6px}
+  .hand-actions .btn{min-height:34px;padding:6px 9px}
+
+  .hand{
+    width:min(940px,100%);
+    margin:0 auto;
+    display:grid;
+    grid-template-columns:repeat(var(--hand-count,7),minmax(0,1fr));
+    gap:clamp(3px,1vw,7px);
+    min-height:72px;
   }
   .card{
     position:relative;
-    min-width:58px;
-    height:78px;
-    border-radius:12px;
-    border:2px solid rgba(0,0,0,.08);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-weight:900;
-    font-size:18px;
+    width:100%;
+    max-width:76px;
+    min-width:0;
+    justify-self:center;
+    height:clamp(64px,19vw,104px);
+    border-radius:clamp(8px,2.3vw,13px);
+    border:2px solid rgba(15,23,42,.18);
+    background:linear-gradient(145deg,#fff,#e8eef7);
+    color:#0f172a;
+    box-shadow:0 7px 15px rgba(0,0,0,.3);
     cursor:pointer;
-    background:#f3f4f6;
-    color:#111827;
     user-select:none;
     touch-action:manipulation;
+    overflow:hidden;
+    transition:transform .15s ease,box-shadow .15s ease,opacity .15s ease,filter .15s ease;
   }
-  .card.power{
-    background:#0ea5e9;
-    color:#fff;
-    border-color:#0284c7;
-    font-size:13px;
-    padding:0 6px;
-    text-align:center;
-  }
-  .card.selected{
-    outline:3px solid var(--accent);
-    outline-offset:2px;
-    box-shadow:0 0 0 2px rgba(37,99,235,.2);
-  }
-  .card.ghost{
-    opacity:.45;
-    filter:grayscale(.4);
-    cursor:not-allowed;
-  }
-  .band{
+  .card::after{
+    content:"";
     position:absolute;
-    left:0;
-    right:0;
-    bottom:0;
-    height:6px;
-    border-bottom-left-radius:10px;
-    border-bottom-right-radius:10px;
-    opacity:.9;
+    inset:3px;
+    border:1px solid rgba(15,23,42,.1);
+    border-radius:calc(clamp(8px,2.3vw,13px) - 3px);
+    pointer-events:none;
+  }
+  .card-center{position:absolute;inset:0;display:grid;place-items:center;font-size:clamp(18px,6vw,34px);font-weight:1000}
+  .card-corner{position:absolute;font-size:clamp(8px,2.2vw,12px);font-weight:1000;line-height:1;z-index:2}
+  .card-corner.tl{top:7px;left:7px}
+  .card-corner.br{bottom:7px;right:7px;transform:rotate(180deg)}
+  .card-stripe{position:absolute;left:0;right:0;bottom:0;height:7px}
+  .card.selected{transform:translateY(-9px);box-shadow:0 0 0 3px var(--accent),0 12px 26px rgba(37,99,235,.35)}
+  .card.playable-turn{box-shadow:0 0 0 2px rgba(52,211,153,.72),0 8px 20px rgba(16,185,129,.24)}
+  .card.blocked{opacity:.38;filter:grayscale(.55);cursor:not-allowed;box-shadow:none}
+  .card.not-turn{opacity:.62;filter:saturate(.75);cursor:not-allowed}
+  .card.power{
+    color:#fff;
+    border-color:rgba(255,255,255,.2);
+    background:linear-gradient(145deg,#7c3aed,#2563eb 55%,#0891b2);
+  }
+  .card.power .card-center{font-size:clamp(10px,2.7vw,15px);padding:14px 4px 8px;line-height:1.05;text-align:center}
+  .card-power-icon{font-size:clamp(17px,5vw,28px);display:block;margin-bottom:4px}
+  .empty-hand{margin:auto;color:var(--muted);font-size:12px;padding:20px}
+  .hand-shell.my-turn{
+    border-top-color:rgba(52,211,153,.55);
+    box-shadow:0 -10px 35px rgba(16,185,129,.08);
   }
 
-  /* Hint / Log */
-  .hint{
-    font-size:12px;
-    color:#374151;
-    background:#fff;
-    border:1px solid var(--line);
-    border-radius:10px;
-    padding:6px 8px;
-  }
-  .log{
-    font-size:12px;
-    color:#374151;
-    background:#fff;
-    border:1px solid var(--line);
-    border-radius:10px;
-    padding:8px;
-    max-height:120px;
-    overflow:auto;
-  }
-
-  @media (min-width:700px){
-    .piles{grid-template-columns:repeat(4,1fr)}
-    .hand{justify-content:flex-start}
-  }
-
-  /* Fullscreen tweaks */
-  .full header{position:fixed; top:0; left:0; right:0}
-  .full .wrap{padding-top:2px}
-
-  /* ===== Powers Bottom Sheet (mobile-friendly, fullscreen-safe) ===== */
   .sheet-backdrop{
     position:fixed;
     inset:0;
-    background:rgba(0,0,0,.35);
+    z-index:1000;
     display:none;
     align-items:flex-end;
     justify-content:center;
-    z-index:1000;
+    padding:0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+    background:rgba(0,0,0,.58);
   }
   .sheet{
-    width:100%;
-    max-width:860px;
-    background:#fff;
-    border-top-left-radius:16px;
-    border-top-right-radius:16px;
-    box-shadow:0 -10px 30px rgba(0,0,0,.2);
-    padding:10px;
-  }
-  .sheet .grab{
-    width:44px;
-    height:5px;
-    border-radius:99px;
-    background:#e5e7eb;
-    margin:0 auto 8px;
-  }
-  .sheet h3{margin:0 0 8px 0; font-size:16px}
-  .powers-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
-  .power-item{
+    width:min(760px,100%);
+    max-height:min(78dvh,620px);
+    overflow:auto;
     border:1px solid var(--line);
-    border-radius:12px;
-    padding:10px;
-    display:flex;
-    flex-direction:column;
-    gap:6px;
+    border-bottom:0;
+    border-radius:20px 20px 0 0;
+    padding:11px;
+    background:linear-gradient(180deg,#17263b,#0c1727);
+    box-shadow:0 -20px 50px rgba(0,0,0,.45);
   }
-  .power-item .label{font-weight:800}
-  .power-item .desc{font-size:12px; color:#4b5563; min-height:28px}
-  .power-actions{display:flex; gap:6px; justify-content:flex-end}
-  .inline-pill{
-    display:inline-block;
-    font-size:11px;
-    background:#eef2ff;
-    color:#1e40af;
-    padding:2px 6px;
-    border-radius:999px;
-    border:1px solid #c7d2fe;
-  }
+  .sheet-grab{width:48px;height:5px;border-radius:99px;background:rgba(255,255,255,.2);margin:0 auto 9px}
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+  .sheet-head h3{margin:0;font-size:16px}
+  .powers-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .power-item{border:1px solid var(--line);border-radius:14px;padding:10px;background:rgba(255,255,255,.045)}
+  .power-label{font-weight:950;font-size:12px}
+  .power-desc{font-size:10px;color:var(--muted);line-height:1.35;min-height:42px;margin:5px 0 8px}
 
   .toast{
     position:fixed;
     left:50%;
+    bottom:calc(116px + var(--safe-bottom));
+    z-index:1200;
     transform:translateX(-50%);
-    bottom:12px;
-    background:#111827;
-    color:#fff;
-    padding:10px 14px;
-    border-radius:12px;
-    font-size:13px;
-    z-index:1100;
     display:none;
-    max-width:90vw;
+    max-width:min(90vw,560px);
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:12px;
+    background:#020617;
+    color:#fff;
+    padding:9px 12px;
+    font-size:12px;
+    font-weight:750;
     text-align:center;
+    box-shadow:0 14px 34px rgba(0,0,0,.4);
+  }
+
+  @media (max-width:620px){
+    .brand-sub{display:none}
+    .brand-title{font-size:13px}
+    .brand-mark{width:25px;height:32px;font-size:15px}
+    header{padding-bottom:6px}
+    .turn-ribbon{margin-top:5px}
+    .status-grid{grid-template-columns:minmax(0,1fr) 86px}
+    .draw-area{min-width:86px;padding:6px}
+    .draw-stack{width:34px;height:47px}
+    .draw-meta{font-size:9px}
+    .draw-meta b{font-size:12px}
+    .piles{gap:5px}
+    .pile{min-height:116px;padding:5px;border-radius:13px}
+    .pile-card{width:min(65px,85%);border-radius:9px;margin:4px 0}
+    .pile-rule{font-size:8px;min-height:19px}
+    .pile-effect{font-size:8px}
+    .vote-options{grid-template-columns:1fr}
+    .powers-grid{grid-template-columns:1fr}
+    .btn{min-height:35px;padding:6px 8px}
+    .control-label{display:none}
+    .hand-shell{padding-top:5px}
+    .hand-head{margin-bottom:4px;min-width:0}
+    .hand-title{display:none}
+    .hand-state{flex:1;min-width:0}
+    .hand-actions{flex:0 0 auto;margin-left:0}
+    #endBtn{min-width:82px;max-width:112px;padding:6px 7px;font-size:10px;white-space:normal;line-height:1.05}
+    .hand{gap:3px;min-height:64px}
+  }
+
+  @media (max-height:660px){
+    main{padding-top:5px;padding-bottom:5px}
+    .board{gap:5px}
+    .status-grid{gap:5px}
+    .players-panel{padding:6px}
+    .section-label{margin-bottom:3px}
+    .pile{min-height:101px}
+    .pile-card{width:min(58px,76%);margin:3px 0;font-size:24px}
+    .pile-rule{display:none}
+    details.log-box{display:none}
+    .game-message{padding:6px 8px;font-size:10px}
+    .hand-head{margin-bottom:3px}
+    .card{height:68px}
+    .hand{min-height:68px}
+  }
+
+  @media (orientation:landscape) and (max-height:560px){
+    header{padding-top:calc(4px + var(--safe-top));padding-bottom:4px}
+    .turn-ribbon{position:absolute;left:180px;right:150px;top:calc(4px + var(--safe-top));margin:0}
+    main{padding-top:4px}
+    .status-grid{grid-template-columns:minmax(0,1fr) 95px}
+    .piles{grid-template-columns:repeat(4,1fr)}
+    .pile{min-height:91px}
+    .pile-card{width:49px;margin:2px 0;font-size:22px}
+    .pile-dir{font-size:8px}
+    .pile-effect{min-height:10px}
+    .hand-shell{padding-top:3px}
+    .hand-head{display:flex;justify-content:flex-end;margin-bottom:2px;min-height:28px}
+    .hand-title,.hand-state{display:none}
+    .hand-actions{margin-left:auto}
+    #endBtn{min-height:28px;min-width:86px;padding:4px 9px;font-size:10px;white-space:nowrap}
+    .card{height:58px;max-width:66px}
+    .card-center{font-size:23px}
+    .card.power .card-center{font-size:10px;padding-top:9px}
   }
 </style>
 </head>
 <body>
-<header>
-  <div class="row">
-    <div id="players" class="players"></div>
-    <!-- 🔹 Remaining cards indicator -->
-    <span id="remainChip" class="chip deck" style="display:none;">Cards: --</span>
-    <span id="fsChip" class="chip fs" style="display:none">FS ON</span>
-    <div class="spacer"></div>
-    <button id="powersBtn" class="btn secondary" type="button" title="Open powers">✨ Powers</button>
-    <button id="playBtn" class="btn" type="button">Play</button>
-    <button id="endBtn" class="btn" type="button" disabled>End Turn</button>
-    <button id="fsBtn" class="btn" type="button" title="Toggle Full Screen">⛶</button>
-  </div>
-</header>
+<div class="app" id="app">
+  <header>
+    <div class="top-row">
+      <div class="brand">
+        <div class="brand-mark">♠</div>
+        <div>
+          <div class="brand-title">THE GAME</div>
+          <div class="brand-sub" id="modeLabel">Classic / 2.0</div>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <button id="powersBtn" class="btn secondary" type="button">✨ <span class="control-label">Powers</span></button>
+      <button id="restartBtn" class="btn secondary" type="button" style="display:none">↻ New</button>
+      <button id="fsBtn" class="btn secondary icon-btn" type="button" aria-label="Toggle fullscreen">⛶</button>
+    </div>
+    <div id="turnRibbon" class="turn-ribbon">
+      <span class="turn-dot"></span>
+      <span id="turnText" class="turn-text">Connecting…</span>
+      <span id="turnProgress" class="turn-progress"></span>
+    </div>
+  </header>
 
-<div class="wrap">
-  <!-- Vote -->
-  <div id="voteBox" class="vote" style="display:none">
-    <div class="row" style="justify-content:space-between">
-      <div class="title">Vote which mode to play</div>
-      <div class="timer" id="voteTimer">⏳ 20s</div>
-    </div>
-    <div class="row">
-      <div id="optClassic" class="opt">🃏 The Game (Classic)</div>
-      <div id="optNew" class="opt">🧪 The Game 2.0</div>
-    </div>
-    <div class="row" style="justify-content:space-between; margin-top:6px">
-      <div>Votes: <b id="voteCount">0/0</b></div>
-      <div id="voteHint" class="muted" style="color:#6b7280">Starts when all vote or time runs out.</div>
-    </div>
-  </div>
+  <main>
+    <div class="board">
+      <section id="voteBox" class="vote" style="display:none">
+        <div class="vote-head">
+          <div class="vote-title">Choose the game mode</div>
+          <div id="voteTimer" class="timer">20s</div>
+        </div>
+        <div class="vote-options">
+          <button id="optClassic" class="vote-option" type="button">🃏 Classic<span>Original 2–99 deck and four shared stacks.</span></button>
+          <button id="optNew" class="vote-option" type="button">✨ Game 2.0<span>Larger deck plus Flip, Swap, Trade, Bungee, and Time Warp.</span></button>
+        </div>
+        <div class="vote-foot"><span id="voteCount">0/0 votes</span><span>Starts when everyone votes or time expires.</span></div>
+      </section>
 
-  <div id="piles" class="piles"></div>
-  <div id="hand" class="hand"></div>
-  <div id="hint" class="hint" style="display:none"></div>
-  <div id="log" class="log"></div>
+      <section id="statusGrid" class="status-grid">
+        <div class="players-panel">
+          <div class="section-label">Players</div>
+          <div id="players" class="players"></div>
+        </div>
+        <div class="draw-area" aria-label="Draw stack">
+          <div class="draw-stack"><div class="draw-card"></div><div id="drawStackCount" class="draw-count">—</div></div>
+          <div class="draw-meta">Draw stack<b id="remainingCount">—</b><span id="totalCount"></span></div>
+        </div>
+      </section>
+
+      <section id="piles" class="piles"></section>
+      <div id="message" class="game-message" style="display:none"></div>
+      <details class="log-box">
+        <summary>Game log</summary>
+        <div id="log" class="log"></div>
+      </details>
+    </div>
+  </main>
+
+  <section id="handShell" class="hand-shell">
+    <div class="hand-head">
+      <span class="hand-title">Your hand</span>
+      <span id="handState" class="hand-state">Waiting for the game…</span>
+      <div class="hand-actions">
+        <button id="endBtn" class="btn good" type="button" disabled>End Turn</button>
+      </div>
+    </div>
+    <div id="hand" class="hand"></div>
+  </section>
 </div>
 
-<!-- ===== Powers Bottom Sheet ===== -->
 <div id="sheetWrap" class="sheet-backdrop" role="dialog" aria-modal="true">
   <div class="sheet" role="document">
-    <div class="grab"></div>
-    <h3>Choose a Power <span id="powerCount" class="inline-pill">0</span></h3>
-    <div id="powersGrid" class="powers-grid"></div>
-    <div class="row" style="justify-content:flex-end; margin-top:8px">
-      <button id="closeSheet" class="btn ghost" type="button">Close</button>
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <h3>Power cards <span id="powerCount">0</span></h3>
+      <button id="closeSheet" class="btn secondary" type="button">Close</button>
     </div>
+    <div id="powersGrid" class="powers-grid"></div>
   </div>
 </div>
-
 <div id="toast" class="toast"></div>
 
 <script type="module">
-/* ---------------- Firebase setup (with anonymous auth) ---------------- */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { 
-  getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction 
+import {
+  getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
   getAuth, signInAnonymously, onAuthStateChanged
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";  // 🔹 auth import
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -388,664 +594,1031 @@ const firebaseConfig = {
   messagingSenderId: "959619818996",
   appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
 };
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
-const auth = getAuth(app);                           // 🔹 auth instance
-let currentUser = null;                              // 🔹 store user
 
-/* ---------------- Params & refs ---------------- */
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
 const qp = new URLSearchParams(location.search);
 const roomId = qp.get("gameId") || qp.get("room") || "";
 const me = (qp.get("username") || "").trim();
-if(!roomId || !me){ alert("Missing gameId or username."); }
+
+if (!roomId || !me) {
+  alert("Missing gameId or username in the page URL.");
+  throw new Error("Missing gameId or username");
+}
+
 const lobbyRef = doc(db, "lobbies", roomId);
-const gameRef  = doc(db, "thegameRooms", roomId);
+// This nested document is covered by the existing recursive /lobbies/{gameId}/{document=**} rule.
+const gameRef = doc(db, "lobbies", roomId, "thegame", "state");
 
-/* ---------------- State ---------------- */
-let LOBBY=null, G=null, mySelected=null, pending=null, myHand=[], isMyTurn=false;
-const $players = document.getElementById('players');
-const $piles   = document.getElementById('piles');
-const $hand    = document.getElementById('hand');
-const $log     = document.getElementById('log');
-const $hint    = document.getElementById('hint');
-const $end     = document.getElementById('endBtn');
-const $play    = document.getElementById('playBtn'); // legacy inline trigger
-const $fsBtn   = document.getElementById('fsBtn');
-const $fsChip  = document.getElementById('fsChip');
-const $voteBox = document.getElementById('voteBox');
-const $optClassic = document.getElementById('optClassic');
-const $optNew  = document.getElementById('optNew');
-const $voteCount = document.getElementById('voteCount');
-const $voteTimer = document.getElementById('voteTimer');
-const $powersBtn = document.getElementById('powersBtn');
-const $sheetWrap = document.getElementById('sheetWrap');
-const $powersGrid= document.getElementById('powersGrid');
-const $powerCount= document.getElementById('powerCount');
-const $closeSheet= document.getElementById('closeSheet');
-const $toast = document.getElementById('toast');
-const $remainChip = document.getElementById('remainChip'); // 🔹 deck chip
-
-/* ---------------- Constants & helpers ---------------- */
-const UP='up', DOWN='down';
-const POWERS = { FLIP:'FLIP', SWAP:'SWAP', TRADE:'TRADE', BUNGEE:'BUNGEE', TIMEWARP:'TIMEWARP' };
-const LABEL = { FLIP:'🔁 Flip', SWAP:'🔄 Swap', TRADE:'🤝 Trade', BUNGEE:'🪢 Bungee', TIMEWARP:'⏳ Time Warp' };
-const DESC  = {
-  FLIP: 'Flip the pile direction (UP ⇄ DOWN). Tap a pile after choosing.',
-  SWAP: 'Swap the top numbers of two piles. Tap two piles.',
-  TRADE:'Trade a random card with a player. Tap a player.',
-  BUNGEE:'Arm a pile with one ±20 jump. Tap a pile.',
-  TIMEWARP:'End early this turn (adds +1 required on a future turn).'
+const UP = "up";
+const DOWN = "down";
+const POWERS = { FLIP:"FLIP", SWAP:"SWAP", TRADE:"TRADE", BUNGEE:"BUNGEE", TIMEWARP:"TIMEWARP" };
+const POWER_META = {
+  FLIP:{icon:"🔁",label:"Flip",desc:"Reverse one game stack from ascending to descending, or back again."},
+  SWAP:{icon:"🔄",label:"Swap",desc:"Swap the top cards of two game stacks."},
+  TRADE:{icon:"🤝",label:"Trade",desc:"Exchange a random non-Trade card with another player."},
+  BUNGEE:{icon:"🪢",label:"Bungee",desc:"Arm one stack with a single ±20 backward jump."},
+  TIMEWARP:{icon:"⏳",label:"Time Warp",desc:"End this turn early, then owe one extra play on a future turn."}
 };
 
-const isNumber = x => typeof x === 'number';
-const isPower  = x => typeof x === 'string';
-const sortCards=(a,b)=> (isNumber(a)&&isNumber(b)) ? a-b : (isNumber(a)?-1:(isNumber(b)?1:String(a).localeCompare(String(b))));
-function handCap(n){ if(n<=1) return 7; if(n===2) return 6; return 5; }
-function minBase(deckLen){ return deckLen>0 ? 2 : 1; }
-function minRequiredFor(player, deckLen, debts){ return minBase(deckLen) + ((debts&&debts[player])||0); }
-function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+let LOBBY = null;
+let G = null;
+let mySelected = null;
+let pending = null;
+let isMyTurn = false;
+let actionBusy = false;
+let resolvingVote = false;
+let voteTick = null;
+let unsubLobby = null;
+let unsubGame = null;
 
-function hueForValue(v,max){ return Math.round((v-1)/(max-1)*300); }
-function colorForValue(v,max){
-  const h=hueForValue(v,max); const l=55+((v%10)-5)*1.2; return `hsl(${h} 75% ${l}%)`;
-}
-function bandForValue(v,max){
-  const decade=Math.ceil(v/10); const hue=Math.round((decade-1)/(max===120?12:10)*300);
-  return `linear-gradient(90deg, hsl(${hue} 80% 55%), hsl(${hue} 80% 45%))`;
+const el = id => document.getElementById(id);
+const $players = el("players");
+const $piles = el("piles");
+const $hand = el("hand");
+const $handShell = el("handShell");
+const $handState = el("handState");
+const $log = el("log");
+const $message = el("message");
+const $end = el("endBtn");
+const $fsBtn = el("fsBtn");
+const $powersBtn = el("powersBtn");
+const $restartBtn = el("restartBtn");
+const $turnRibbon = el("turnRibbon");
+const $turnText = el("turnText");
+const $turnProgress = el("turnProgress");
+const $modeLabel = el("modeLabel");
+const $voteBox = el("voteBox");
+const $optClassic = el("optClassic");
+const $optNew = el("optNew");
+const $voteCount = el("voteCount");
+const $voteTimer = el("voteTimer");
+const $drawStackCount = el("drawStackCount");
+const $remainingCount = el("remainingCount");
+const $totalCount = el("totalCount");
+const $sheetWrap = el("sheetWrap");
+const $powersGrid = el("powersGrid");
+const $powerCount = el("powerCount");
+const $closeSheet = el("closeSheet");
+const $toast = el("toast");
+
+const isNumberCard = value => typeof value === "number" && Number.isFinite(value);
+const isPowerCard = value => typeof value === "string" && Object.hasOwn(POWER_META, value);
+const sortCards = (a,b) => isNumberCard(a) && isNumberCard(b)
+  ? a-b
+  : isNumberCard(a) ? -1 : isNumberCard(b) ? 1 : String(a).localeCompare(String(b));
+
+function toast(message, duration = 1700) {
+  $toast.textContent = message;
+  $toast.style.display = "block";
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { $toast.style.display = "none"; }, duration);
 }
 
-function canPlayOnNumber(card, pile, hasBungee){
-  if(pile.dir===UP){
-    if(card>pile.top) return true;
-    if(pile.top-card===10) return true;
-    if(hasBungee && pile.top-card===20) return true;
-  }else{
-    if(card<pile.top) return true;
-    if(card-pile.top===10) return true;
-    if(hasBungee && card-pile.top===20) return true;
+function safeName(value) {
+  return String(value ?? "").trim().slice(0,40);
+}
+
+function lobbyHostName(lobby) {
+  const host = lobby?.host;
+  if (typeof host === "string") return safeName(host);
+  return safeName(host?.username || host?.name || host?.displayName || "");
+}
+
+function lobbyPlayers(lobby) {
+  const raw = Array.isArray(lobby?.players) ? lobby.players : [];
+  const names = raw.map(player => {
+    if (typeof player === "string") return safeName(player);
+    return safeName(player?.username || player?.name || player?.displayName || "");
+  }).filter(Boolean);
+  return [...new Set(names)].slice(0,5);
+}
+
+function handCap(playerCount) {
+  if (playerCount <= 1) return 7;
+  if (playerCount === 2) return 6;
+  return 5;
+}
+
+function minimumRequired(deckLength) {
+  return deckLength > 0 ? 2 : 1;
+}
+
+function requiredFor(player, deckLength, debts) {
+  return minimumRequired(deckLength) + Number(debts?.[player] || 0);
+}
+
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
   }
-  return false;
+  return array;
 }
 
-function toast(msg, ms=1400){
-  $toast.textContent = msg;
-  $toast.style.display='block';
-  clearTimeout(toast._t);
-  toast._t = setTimeout(()=>{ $toast.style.display='none'; }, ms);
+function cardHue(value, max) {
+  return Math.round(((value - 1) / Math.max(1,max - 1)) * 300);
 }
 
-/* Visual flash for piles when affected */
-function flashPile(id){
-  const el = document.querySelector(`.pile[data-id="${id}"]`);
-  if(!el) return;
-  el.classList.add('flash');
-  setTimeout(()=> el.classList.remove('flash'), 450);
+function canPlayNumber(card, pile, hasBungee) {
+  if (!isNumberCard(card) || !pile) return false;
+  if (pile.dir === UP) {
+    return card > pile.top || pile.top - card === 10 || (hasBungee && pile.top - card === 20);
+  }
+  return card < pile.top || card - pile.top === 10 || (hasBungee && card - pile.top === 20);
 }
 
-/* ---------------- Vote or resume ---------------- */
-async function ensureRoomVotingOrResume(){
-  const [lob, game] = await Promise.all([getDoc(lobbyRef), getDoc(gameRef)]);
-  if(!lob.exists()){ alert("Lobby not found."); return; }
-  LOBBY = lob.data();
-  if(game.exists()) return; // already seeded
+function pileHasBungee(pile) {
+  return Boolean((pile?.effects || []).find(effect => effect.type === "bungee" && effect.charges > 0));
+}
 
-  // Host seeds vote doc
-  if(LOBBY.host !== me) return;
-  const players = (LOBBY.players||[]).slice(0,5);
-  const startedAt = Date.now();
-  const deadline = startedAt + 20000; // 20s
-  await setDoc(gameRef, {
-    phase:'voting', host: LOBBY.host, players,
-    votes:{}, startedAt, deadline, choice:null,
-    log:[`Voting started — choose <b>Classic</b> or <b>Game 2.0</b>.`]
+function legalNumberMoves(hand, piles) {
+  return hand.some(card => isNumberCard(card) && piles.some(pile => canPlayNumber(card,pile,pileHasBungee(pile))));
+}
+
+function usablePowerMoves(hand, state, player) {
+  if (state?.phase !== "game2") return false;
+  return hand.some(card => {
+    if (!isPowerCard(card)) return false;
+    if (card !== POWERS.TRADE) return true;
+    return (state.players || []).some(other => other !== player && (state.hands?.[other] || []).length > 0) && hand.length > 1;
   });
 }
 
-/* ---------------- Build set-ups ---------------- */
-function dealToCap(hands, deck, players){
+function anyTurnActions(hand, state, player) {
+  return legalNumberMoves(hand,Object.values(state?.piles || {})) || usablePowerMoves(hand,state,player);
+}
+
+function totalRemaining(state) {
+  const deck = state?.deck?.length || 0;
+  const hands = Object.values(state?.hands || {}).reduce((sum,hand) => sum + (Array.isArray(hand) ? hand.length : 0),0);
+  return deck + hands;
+}
+
+function makeLog(message) {
+  return { message:String(message), at:Date.now() };
+}
+
+function normalizedLog(log) {
+  return (Array.isArray(log) ? log : []).slice(-120).map(item => {
+    if (typeof item === "string") return {message:item.replace(/<[^>]*>/g,""),at:0};
+    return {message:String(item?.message || ""),at:Number(item?.at || 0)};
+  });
+}
+
+function dealToCap(hands, deck, players) {
   const cap = handCap(players.length);
-  for(let r=0;r<cap;r++){ for(const p of players){ if(deck.length) hands[p].push(deck.pop()); } }
-  for(const p of players){ hands[p].sort(sortCards); }
+  for (let round = 0; round < cap; round++) {
+    for (const player of players) {
+      if (deck.length) hands[player].push(deck.pop());
+    }
+  }
+  players.forEach(player => hands[player].sort(sortCards));
 }
-function buildClassic(players, host){
-  const deck=[]; for(let v=2; v<=99; v++) deck.push(v);
+
+function buildClassic(players,host) {
+  const deck = shuffle(Array.from({length:98},(_,index) => index + 2));
+  const hands = Object.fromEntries(players.map(player => [player,[]]));
+  dealToCap(hands,deck,players);
+  const totalCards = deck.length + Object.values(hands).reduce((sum,hand) => sum + hand.length,0);
+  return {
+    phase:"game",mode:"classic",host,players,
+    piles:{
+      U1:{id:"U1",dir:UP,top:1,effects:[]},
+      U2:{id:"U2",dir:UP,top:1,effects:[]},
+      D1:{id:"D1",dir:DOWN,top:100,effects:[]},
+      D2:{id:"D2",dir:DOWN,top:100,effects:[]}
+    },
+    deck,hands,totalCards,placed:0,turnIndex:0,turnNum:1,turnPlays:0,
+    debts:{},timewarpPass:null,
+    log:[makeLog(`Classic started with ${players.length} player${players.length === 1 ? "" : "s"}.`)],
+    updatedAt:Date.now()
+  };
+}
+
+function buildGame2(players,host) {
+  const deck = Array.from({length:118},(_,index) => index + 2);
+  const powers = [POWERS.FLIP,POWERS.FLIP,POWERS.FLIP,POWERS.BUNGEE,POWERS.BUNGEE,POWERS.SWAP,POWERS.SWAP,POWERS.TIMEWARP,POWERS.TIMEWARP];
+  if (players.length >= 2) powers.push(POWERS.TRADE,POWERS.TRADE);
+  deck.push(...powers);
   shuffle(deck);
-  const hands={}; players.forEach(p=>hands[p]=[]);
-  dealToCap(hands, deck, players);
-  const totalCards = deck.length + players.reduce((s,p)=> s + (hands[p]||[]).length, 0); // 🔹 track total
-  const piles={
-    U1:{id:'U1',dir:UP,top:1,effects:[]}, U2:{id:'U2',dir:UP,top:1,effects:[]},
-    D1:{id:'D1',dir:DOWN,top:100,effects:[]}, D2:{id:'D2',dir:DOWN,top:100,effects:[]}
+  const hands = Object.fromEntries(players.map(player => [player,[]]));
+  dealToCap(hands,deck,players);
+  const totalCards = deck.length + Object.values(hands).reduce((sum,hand) => sum + hand.length,0);
+  return {
+    phase:"game2",mode:"game2",host,players,
+    piles:{
+      U1:{id:"U1",dir:UP,top:1,effects:[]},
+      U2:{id:"U2",dir:UP,top:1,effects:[]},
+      D1:{id:"D1",dir:DOWN,top:120,effects:[]},
+      D2:{id:"D2",dir:DOWN,top:120,effects:[]}
+    },
+    deck,hands,totalCards,placed:0,turnIndex:0,turnNum:1,turnPlays:0,
+    debts:{},timewarpPass:null,
+    log:[makeLog(`Game 2.0 started with ${players.length} player${players.length === 1 ? "" : "s"}.`)],
+    updatedAt:Date.now()
   };
-  return { phase:'game', host, players, piles, deck, hands,
-    placed:0, turnIndex:0, turnNum:1, turnPlays:0, debts:{}, timewarpPass:null,
-    totalCards,                                  // 🔹 stored in doc
-    log:[`Vote ended. Starting <b>Classic</b> with ${players.length} player(s).`] };
-}
-function buildGame2(players, host){
-  const deck=[]; for(let v=2; v<=119; v++) deck.push(v);
-  // powers (omit Trade if solo)
-  const addTrade = players.length>=2;
-  const powers = [
-    POWERS.FLIP, POWERS.FLIP, POWERS.FLIP,
-    POWERS.BUNGEE, POWERS.BUNGEE,
-    POWERS.SWAP, POWERS.SWAP,
-    POWERS.TIMEWARP, POWERS.TIMEWARP
-  ];
-  if(addTrade){ powers.push(POWERS.TRADE, POWERS.TRADE); }
-  deck.push(...powers); shuffle(deck);
-  const hands={}; players.forEach(p=>hands[p]=[]);
-  dealToCap(hands, deck, players);
-  const totalCards = deck.length + players.reduce((s,p)=> s + (hands[p]||[]).length, 0); // 🔹 track total
-  const piles={
-    U1:{id:'U1',dir:UP,top:1,effects:[]}, U2:{id:'U2',dir:UP,top:1,effects:[]},
-    D1:{id:'D1',dir:DOWN,top:120,effects:[]}, D2:{id:'D2',dir:DOWN,top:120,effects:[]}
-  };
-  return { phase:'game2', host, players, piles, deck, hands,
-    placed:0, turnIndex:0, turnNum:1, turnPlays:0, debts:{}, timewarpPass:null,
-    totalCards,                                  // 🔹 stored in doc
-    log:[`Vote ended. Starting <b>Game 2.0</b> with ${players.length} player(s).`] };
 }
 
-/* ---------------- Voting UI ---------------- */
-let voteTick=null;
-function renderVote(){
-  if(!G || G.phase!=='voting'){ $voteBox.style.display='none'; updateRemaining(); return; }
-  $voteBox.style.display='block';
-  const players = G.players||[]; const votes=G.votes||{};
-  $voteCount.textContent = `${Object.keys(votes).length}/${players.length}`;
-  document.getElementById('optClassic').classList.toggle('sel', votes[me]==='classic');
-  document.getElementById('optNew').classList.toggle('sel', votes[me]==='game2');
+async function ensureRoom() {
+  const lobbySnap = await getDoc(lobbyRef);
+  if (!lobbySnap.exists()) throw new Error("Lobby not found.");
+  LOBBY = lobbySnap.data();
+  const players = lobbyPlayers(LOBBY);
+  if (!players.length) throw new Error("This lobby has no players.");
+  if (!players.includes(me)) toast("Your username is not listed in this lobby.",2600);
 
-  const remain = Math.max(0,(G.deadline||0)-Date.now());
-  const secs = Math.ceil(remain/1000);
-  $voteTimer.textContent = `⏳ ${secs}s`;
+  const gameSnap = await getDoc(gameRef);
+  if (gameSnap.exists()) return;
 
-  $optClassic.onclick = ()=> castVote('classic');
-  $optNew.onclick     = ()=> castVote('game2');
-
-  if(voteTick) clearTimeout(voteTick);
-  voteTick = setTimeout(renderVote, 300);
-
-  updateRemaining(); // will hide during voting
-}
-async function castVote(choice){
-  await runTransaction(db, async tx=>{
-    const snap = await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
-    const S = snap.data(); if(S.phase!=='voting') return;
-    const votes = { ...(S.votes||{}), [me]: choice };
-    const players=S.players||[]; const allVoted = players.every(p=>votes[p]);
-    const timeUp = Date.now()>=(S.deadline||0);
-    const update={ votes };
-    if((allVoted||timeUp) && LOBBY && LOBBY.host===me){
-      const tally = { classic:0, game2:0 };
-      Object.values(votes).forEach(v=>{ if(v==='classic') tally.classic++; else if(v==='game2') tally.game2++; });
-      const win = (tally.classic>=tally.game2)?'classic':'game2';
-      Object.assign(update, win==='classic' ? buildClassic(players, LOBBY.host) : buildGame2(players, LOBBY.host));
-      update.choice = win;
-    }
-    tx.update(gameRef, update);
+  const host = lobbyHostName(LOBBY) || players[0];
+  if (host !== me) return;
+  const startedAt = Date.now();
+  await setDoc(gameRef,{
+    phase:"voting",host,players,votes:{},startedAt,deadline:startedAt + 20000,
+    choice:null,log:[makeLog("Voting opened for Classic or Game 2.0.")],updatedAt:Date.now()
   });
 }
 
-/* ---------------- Subscriptions (started after auth) ---------------- */
-function startSubscriptions(){
-  onSnapshot(lobbyRef, snap=>{ if(snap.exists()) LOBBY=snap.data(); });
-
-  onSnapshot(gameRef, snap=>{
-    if(!snap.exists()) return;
-    G=snap.data();
-    if(G.phase==='voting'){ renderVote(); updateActions(); gateEnd(); return; }
-    $voteBox.style.display='none';
-    renderPlayers(); renderPiles(); renderHand(); renderLog(); gateEnd(); updateActions(); updateRemaining();
-  });
-}
-
-/* ---------------- UI render ---------------- */
-function renderPlayers(){
-  const P = G.players||[]; const idx=G.turnIndex||0; const hands=G.hands||{};
-  $players.innerHTML='';
-  P.forEach((p,i)=>{
-    const el=document.createElement('div'); el.className='chip';
-    if(p===me) el.classList.add('me');
-    if(i===idx) el.classList.add('live');
-    el.textContent = `${p} (${(hands[p]||[]).length})`;
-    // trade target
-    if(pending && pending.type==='TRADE' && p!==me){
-      el.classList.add('clickable');
-      el.addEventListener('click', ()=> playTradeTx(p), {once:true});
-    }
-    $players.appendChild(el);
-  });
-  const cur = P[idx]||''; isMyTurn = (cur===me);
-}
-
-function renderPiles(){
-  const max = (G.phase==='game2') ? 120 : 100;
-  $piles.innerHTML='';
-  ['U1','U2','D1','D2'].forEach(id=>{
-    const p=G.piles[id]; if(!p) return;
-    const div=document.createElement('div'); div.className='pile'; div.dataset.id=id;
-    const dir=document.createElement('div'); dir.className='dir';
-    const isUp = p.dir===UP;
-    dir.textContent = isUp ? 'UP ▲' : 'DOWN ▼';
-    dir.style.color = isUp ? '#16a34a' : '#b91c1c';
-
-    const top=document.createElement('div'); top.className='top'; top.textContent = p.top;
-    top.style.borderColor=`hsl(${hueForValue(p.top,max)} 80% 55%)`;
-    top.style.background=`hsl(${hueForValue(p.top,max)} 90% 96%)`;
-    const eff=document.createElement('div'); eff.className='eff';
-    const b=(p.effects||[]).find(e=>e.type==='bungee');
-    eff.textContent = b ? `🪢 Bungee x${b.charges}` : '';
-
-    if(isMyTurn && mySelected!=null){
-      if(isNumber(mySelected)){
-        const hasB=!!(p.effects||[]).find(e=>e.type==='bungee'&&e.charges>0);
-        if(canPlayOnNumber(mySelected,p,hasB)) div.classList.add('can'); else div.classList.add('cannot');
-      }else{
-        if(mySelected===POWERS.FLIP || mySelected===POWERS.BUNGEE || mySelected===POWERS.SWAP) div.classList.add('can');
-      }
-    }
-    div.addEventListener('click', ()=> onPileTap(id));
-    div.append(dir,top,eff);
-    $piles.appendChild(div);
-  });
-}
-
-function renderHand(){
-  $hand.innerHTML='';
-  myHand = (G.hands && G.hands[me]) ? [...G.hands[me]] : [];
-  const max = (G.phase==='game2') ? 120 : 100;
-  const nums = myHand.filter(isNumber).sort((a,b)=>a-b);
-  const pows = myHand.filter(isPower);
-
-  const add=(v)=>{
-    const btn=document.createElement('button'); btn.type='button'; btn.className='card';
-    if(isNumber(v)){
-      btn.style.background=colorForValue(v,max);
-      const band=document.createElement('div'); band.className='band'; band.style.background=bandForValue(v,max); btn.appendChild(band);
-      btn.textContent=v;
-      const playable = Object.values(G.piles||{}).some(p=>{
-        const b=!!(p.effects||[]).find(e=>e.type==='bungee'&&e.charges>0);
-        return canPlayOnNumber(v,p,b);
-      });
-      if(!playable) btn.classList.add('ghost');
-    }else{
-      btn.classList.add('power'); btn.textContent = LABEL[v]||v;
-    }
-    if(mySelected===v) btn.classList.add('selected');
-
-    btn.addEventListener('click', ()=>{
-      if(!isNumber(v)){
-        // For powers, open sheet and preselect that power for guidance
-        openPowersSheet(v);
-        return;
-      }
-      mySelected=(mySelected===v?null:v); pending=null; renderPiles(); updateActions(); renderHand(); gateEnd();
+async function resolveVoteIfReady(forceTimeout = false) {
+  if (resolvingVote) return;
+  resolvingVote = true;
+  try {
+    await runTransaction(db,async transaction => {
+      const snap = await transaction.get(gameRef);
+      if (!snap.exists()) return;
+      const state = snap.data();
+      if (state.phase !== "voting") return;
+      const players = state.players || [];
+      const votes = state.votes || {};
+      const allVoted = players.length > 0 && players.every(player => votes[player]);
+      const timedOut = Date.now() >= Number(state.deadline || 0);
+      if (!allVoted && !(forceTimeout && timedOut)) return;
+      const tally = {classic:0,game2:0};
+      Object.values(votes).forEach(vote => { if (vote === "game2") tally.game2++; else if (vote === "classic") tally.classic++; });
+      const choice = tally.game2 > tally.classic ? "game2" : "classic";
+      const next = choice === "game2" ? buildGame2(players,state.host) : buildClassic(players,state.host);
+      transaction.set(gameRef,{...next,choice});
     });
-    $hand.appendChild(btn);
-  };
-
-  nums.forEach(add); pows.forEach(add);
-
-  // Update powers sheet counter
-  $powerCount.textContent = pows.length.toString();
+  } finally {
+    resolvingVote = false;
+  }
 }
 
-/* 🔹 Remaining cards chip: deck + all hands (how many to play before "goal hit") */
-function updateRemaining(){
-  if(!$remainChip) return;
-  if(!G || (G.phase === 'voting')){
-    $remainChip.style.display = 'none';
+async function castVote(choice) {
+  if (actionBusy) return;
+  actionBusy = true;
+  try {
+    await runTransaction(db,async transaction => {
+      const snap = await transaction.get(gameRef);
+      if (!snap.exists()) throw new Error("Game room is missing.");
+      const state = snap.data();
+      if (state.phase !== "voting") return;
+      if (!(state.players || []).includes(me)) throw new Error("You are not in this game.");
+      const votes = {...(state.votes || {}),[me]:choice};
+      transaction.update(gameRef,{votes,updatedAt:Date.now()});
+    });
+    await resolveVoteIfReady(false);
+  } catch (error) {
+    toast(error.message || "Could not vote.");
+  } finally {
+    actionBusy = false;
+  }
+}
+
+function startSubscriptions() {
+  unsubLobby = onSnapshot(lobbyRef,snapshot => {
+    if (snapshot.exists()) LOBBY = snapshot.data();
+  },error => toast(`Lobby connection: ${error.message}`,2600));
+
+  unsubGame = onSnapshot(gameRef,snapshot => {
+    if (!snapshot.exists()) {
+      renderConnecting("Waiting for the host to create the game…");
+      return;
+    }
+    G = snapshot.data();
+    if (G.phase !== "voting") clearTimeout(voteTick);
+    renderAll();
+  },error => toast(`Game connection: ${error.message}`,3000));
+}
+
+function renderConnecting(message) {
+  $turnText.textContent = message;
+  $turnProgress.textContent = "";
+  $hand.innerHTML = '<div class="empty-hand">Waiting…</div>';
+  $piles.innerHTML = "";
+  $end.disabled = true;
+}
+
+function renderAll() {
+  renderMode();
+  renderVote();
+  renderTurn();
+  renderPlayers();
+  renderDrawStack();
+  renderPiles();
+  renderHand();
+  renderMessage();
+  renderLog();
+  renderControls();
+}
+
+function renderMode() {
+  if (!G) return;
+  $modeLabel.textContent = G.phase === "game2" ? "Game 2.0" : G.phase === "game" ? "Classic" : "Mode vote";
+}
+
+function renderVote() {
+  const voting = G?.phase === "voting";
+  $voteBox.style.display = voting ? "block" : "none";
+  if (!voting) return;
+  const players = G.players || [];
+  const votes = G.votes || {};
+  $voteCount.textContent = `${Object.keys(votes).length}/${players.length} votes`;
+  $optClassic.classList.toggle("selected",votes[me] === "classic");
+  $optNew.classList.toggle("selected",votes[me] === "game2");
+  const remaining = Math.max(0,Number(G.deadline || 0) - Date.now());
+  $voteTimer.textContent = `${Math.ceil(remaining / 1000)}s`;
+  clearTimeout(voteTick);
+  if (remaining <= 0) {
+    resolveVoteIfReady(true)
+      .catch(error => toast(error.message || "Could not start game."))
+      .finally(() => {
+        if (G?.phase === "voting") voteTick = setTimeout(() => renderVote(),500);
+      });
+  } else {
+    voteTick = setTimeout(() => renderVote(),250);
+  }
+}
+
+function renderPlayers() {
+  $players.innerHTML = "";
+  if (!G) return;
+  const players = G.players || [];
+  const current = players[Number(G.turnIndex || 0)] || "";
+  players.forEach(player => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "player-chip";
+    if (player === me) chip.classList.add("me");
+    if (player === current && !["voting","won","lost"].includes(G.phase)) chip.classList.add("live");
+    chip.textContent = `${player} · ${(G.hands?.[player] || []).length}`;
+    if (pending?.type === "TRADE" && player !== me && isMyTurn) {
+      chip.classList.add("clickable");
+      chip.addEventListener("click",() => playTrade(player),{once:true});
+    } else {
+      chip.disabled = true;
+    }
+    $players.appendChild(chip);
+  });
+}
+
+function renderDrawStack() {
+  const deckCount = G?.deck?.length || 0;
+  const remaining = G ? totalRemaining(G) : 0;
+  $drawStackCount.textContent = deckCount;
+  $remainingCount.textContent = remaining;
+  $totalCount.textContent = G?.totalCards ? ` of ${G.totalCards}` : "";
+}
+
+function renderPiles() {
+  $piles.innerHTML = "";
+  if (!G || G.phase === "voting") return;
+  const max = G.phase === "game2" || G.mode === "game2" ? 120 : 100;
+  ["U1","U2","D1","D2"].forEach(id => {
+    const pile = G.piles?.[id];
+    if (!pile) return;
+    const container = document.createElement("button");
+    container.type = "button";
+    container.className = "pile";
+    container.dataset.id = id;
+
+    const dir = document.createElement("div");
+    dir.className = "pile-dir";
+    dir.textContent = pile.dir === UP ? "Ascending ▲" : "Descending ▼";
+    dir.style.color = pile.dir === UP ? "#6ee7b7" : "#fda4af";
+
+    const card = document.createElement("div");
+    card.className = "pile-card";
+    card.textContent = pile.top;
+    const hue = cardHue(Number(pile.top),max);
+    card.style.borderColor = `hsl(${hue} 76% 55%)`;
+    card.style.background = `linear-gradient(145deg,#ffffff,hsl(${hue} 82% 91%))`;
+
+    const rule = document.createElement("div");
+    rule.className = "pile-rule";
+    rule.textContent = pile.dir === UP ? "Play higher · jump back 10" : "Play lower · jump back 10";
+
+    const effect = document.createElement("div");
+    effect.className = "pile-effect";
+    const bungee = (pile.effects || []).find(item => item.type === "bungee" && item.charges > 0);
+    effect.textContent = bungee ? `🪢 ±20 ×${bungee.charges}` : "";
+
+    const selected = mySelected;
+    if (isMyTurn && selected != null && !actionBusy) {
+      if (isNumberCard(selected)) {
+        container.classList.add(canPlayNumber(selected,pile,pileHasBungee(pile)) ? "can" : "cannot");
+      } else if ([POWERS.FLIP,POWERS.BUNGEE,POWERS.SWAP].includes(selected)) {
+        container.classList.add("can");
+      }
+    }
+    container.addEventListener("click",() => onPileTap(id));
+    container.append(dir,card,rule,effect);
+    $piles.appendChild(container);
+  });
+}
+
+function makeNumberCard(value,max,playable) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "card";
+  const hue = cardHue(value,max);
+  button.style.background = `linear-gradient(145deg,#ffffff,hsl(${hue} 80% 91%))`;
+  button.style.borderColor = `hsl(${hue} 65% 48% / .52)`;
+  button.innerHTML = `
+    <span class="card-corner tl">${value}</span>
+    <span class="card-center">${value}</span>
+    <span class="card-corner br">${value}</span>
+    <span class="card-stripe" style="background:linear-gradient(90deg,hsl(${hue} 78% 58%),hsl(${hue} 70% 42%))"></span>`;
+  if (playable && isMyTurn) button.classList.add("playable-turn");
+  if (!playable) button.classList.add("blocked");
+  if (!isMyTurn) button.classList.add("not-turn");
+  if (mySelected === value) button.classList.add("selected");
+  button.disabled = !isMyTurn || !playable || actionBusy;
+  button.addEventListener("click",() => {
+    mySelected = mySelected === value ? null : value;
+    pending = null;
+    renderHand();
+    renderPiles();
+    renderTurn();
+  });
+  return button;
+}
+
+function makePowerCard(type) {
+  const meta = POWER_META[type] || {icon:"✨",label:type};
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "card power";
+  button.innerHTML = `<span class="card-corner tl">${meta.icon}</span><span class="card-center"><span><span class="card-power-icon">${meta.icon}</span>${meta.label}</span></span><span class="card-corner br">${meta.icon}</span>`;
+  if (isMyTurn) button.classList.add("playable-turn");
+  else button.classList.add("not-turn");
+  if (mySelected === type) button.classList.add("selected");
+  button.disabled = !isMyTurn || actionBusy;
+  button.addEventListener("click",() => openPowersSheet(type));
+  return button;
+}
+
+function renderHand() {
+  $hand.innerHTML = "";
+  if (!G || G.phase === "voting") {
+    $hand.appendChild(Object.assign(document.createElement("div"),{className:"empty-hand",textContent:"Vote to begin."}));
     return;
   }
-  const deckCount = (G.deck || []).length;
-  const hands = G.hands || {};
-  let handCount = 0;
-  Object.values(hands).forEach(h => { handCount += (h || []).length; });
-  const remaining = deckCount + handCount;
-  const total = G.totalCards || null;
-  $remainChip.style.display = 'inline-flex';
-  $remainChip.textContent = total 
-    ? `Cards: ${remaining}/${total}` 
-    : `Cards: ${remaining}`;
+  const hand = [...(G.hands?.[me] || [])].sort(sortCards);
+  $hand.style.setProperty("--hand-count",String(Math.max(1,hand.length)));
+  if (!hand.length) {
+    $hand.appendChild(Object.assign(document.createElement("div"),{className:"empty-hand",textContent:G.phase === "won" ? "All cards played!" : "Your hand is empty."}));
+    return;
+  }
+  const max = G.phase === "game2" || G.mode === "game2" ? 120 : 100;
+  const piles = Object.values(G.piles || {});
+  hand.forEach(card => {
+    if (isNumberCard(card)) {
+      const playable = piles.some(pile => canPlayNumber(card,pile,pileHasBungee(pile)));
+      $hand.appendChild(makeNumberCard(card,max,playable));
+    } else if (isPowerCard(card)) {
+      $hand.appendChild(makePowerCard(card));
+    }
+  });
+  $powerCount.textContent = hand.filter(isPowerCard).length;
 }
 
-/* ---------------- Hints & actions ---------------- */
-function targetHintFor(v){
-  if(v===POWERS.FLIP) return 'Tap a pile to flip direction.';
-  if(v===POWERS.BUNGEE) return 'Tap a pile to arm Bungee (±20 once).';
-  if(v===POWERS.SWAP) return 'Tap two piles to swap their tops.';
-  if(v===POWERS.TRADE) return 'Tap a player to trade.';
-  if(v===POWERS.TIMEWARP) return 'Time Warp played. You may end early this turn.';
-  return '';
-}
-function showHint(msg){
-  if(!msg){ $hint.style.display='none'; $hint.textContent=''; return; }
-  $hint.style.display='block'; $hint.innerHTML = msg;
+function currentPlayer() {
+  const players = G?.players || [];
+  return players[Number(G?.turnIndex || 0)] || "";
 }
 
-function updateActions(){
-  // legacy play button (hidden by default)
-  const powerSel = isPower(mySelected) && (G && G.phase==='game2');
-  $play.style.display = powerSel ? 'inline-block' : 'none';
-  $play.disabled = !powerSel || !isMyTurn;
-  if(powerSel){ $play.textContent = `Play ${LABEL[mySelected] || 'Power'}`; }
-  // FS chip
-  $fsChip.style.display = document.fullscreenElement ? 'inline-block' : 'none';
+function renderTurn() {
+  if (!G) return;
+  if (G.phase === "voting") {
+    isMyTurn = false;
+    $turnRibbon.classList.remove("mine");
+    $turnText.textContent = "Vote for a mode";
+    $turnProgress.textContent = "";
+    $handShell.classList.remove("my-turn");
+    $handState.textContent = "Voting is open";
+    $handState.classList.remove("mine");
+    return;
+  }
+  if (["won","lost"].includes(G.phase)) {
+    isMyTurn = false;
+    $turnRibbon.classList.remove("mine");
+    $turnText.textContent = G.phase === "won" ? "Victory — every card was played" : "Game over — the team is out of legal moves";
+    $turnProgress.textContent = "";
+    $handShell.classList.remove("my-turn");
+    $handState.textContent = "The game has ended";
+    $handState.classList.remove("mine");
+    return;
+  }
+
+  const current = currentPlayer();
+  isMyTurn = current === me;
+  const requirement = requiredFor(current,G.deck?.length || 0,G.debts || {});
+  const plays = Number(G.turnPlays || 0);
+  const left = Math.max(0,requirement - plays);
+  $turnRibbon.classList.toggle("mine",isMyTurn);
+  $handShell.classList.toggle("my-turn",isMyTurn);
+  $handState.classList.toggle("mine",isMyTurn);
+  $turnText.textContent = isMyTurn ? "YOUR TURN — choose a highlighted card" : `${current}'s turn`;
+  $turnProgress.textContent = `Turn ${G.turnNum || 1} · ${plays}/${requirement} required`;
+  $handState.textContent = isMyTurn
+    ? left > 0 ? `Play ${left} more required card${left === 1 ? "" : "s"}` : "Minimum met — keep playing or end your turn"
+    : `Waiting for ${current}`;
 }
 
-/* ---------------- Powers Sheet ---------------- */
-function openPowersSheet(preselect=null){
-  if(!G || G.phase!=='game2'){ toast('Powers only in Game 2.0'); return; }
-  const pows = (G.hands?.[me]||[]).filter(isPower);
-  $powersGrid.innerHTML = '';
-  if(pows.length===0){
-    const empty=document.createElement('div');
-    empty.textContent='You have no power cards.';
+function renderMessage() {
+  $message.className = "game-message";
+  if (!G || G.phase === "voting") {
+    $message.style.display = "none";
+    return;
+  }
+  if (G.phase === "won") {
+    $message.style.display = "block";
+    $message.classList.add("good");
+    $message.textContent = "🏆 Victory! Your team played every card in the deck and every hand.";
+    return;
+  }
+  if (G.phase === "lost") {
+    $message.style.display = "block";
+    $message.classList.add("bad");
+    $message.textContent = `💥 Game over. ${G.lostPlayer || "The current player"} could not complete the required plays.`;
+    return;
+  }
+  if (pending?.type === "SWAP") {
+    $message.style.display = "block";
+    $message.textContent = pending.first ? "🔄 Tap a second stack to complete the swap." : "🔄 Tap the first stack to swap.";
+    return;
+  }
+  if (pending?.type === "TRADE") {
+    $message.style.display = "block";
+    $message.textContent = "🤝 Tap another player's highlighted name to trade.";
+    return;
+  }
+  if (mySelected === POWERS.FLIP) {
+    $message.style.display = "block";
+    $message.textContent = "🔁 Tap a stack to reverse its direction.";
+    return;
+  }
+  if (mySelected === POWERS.BUNGEE) {
+    $message.style.display = "block";
+    $message.textContent = "🪢 Tap a stack to arm its one-use ±20 jump.";
+    return;
+  }
+  if (mySelected && isNumberCard(mySelected)) {
+    $message.style.display = "block";
+    $message.textContent = `Selected ${mySelected}. Green stacks are legal destinations.`;
+    return;
+  }
+  $message.style.display = "none";
+}
+
+function renderLog() {
+  $log.innerHTML = "";
+  normalizedLog(G?.log).slice(-80).forEach(item => {
+    const row = document.createElement("div");
+    row.className = "log-entry";
+    row.textContent = item.message;
+    $log.appendChild(row);
+  });
+  $log.scrollTop = $log.scrollHeight;
+}
+
+function renderControls() {
+  const ended = ["won","lost"].includes(G?.phase);
+  $restartBtn.style.display = ended && G?.host === me ? "inline-block" : "none";
+  $powersBtn.style.display = G?.phase === "game2" ? "inline-block" : "none";
+  if (!G || G.phase === "voting" || ended) {
+    $end.disabled = true;
+    $end.textContent = "End Turn";
+    return;
+  }
+  const current = currentPlayer();
+  const hand = G.hands?.[me] || [];
+  const actionsRemain = anyTurnActions(hand,G,me);
+  const requirement = requiredFor(current,G.deck?.length || 0,G.debts || {});
+  const minimumMet = Number(G.turnPlays || 0) >= requirement;
+  const early = G.timewarpPass === current;
+  $end.textContent = !actionsRemain && !minimumMet && !early ? "No Moves — End Game" : "End Turn";
+  $end.classList.toggle("bad",!actionsRemain && !minimumMet && !early);
+  $end.classList.toggle("good",actionsRemain || minimumMet || early);
+  $end.disabled = !isMyTurn || actionBusy || (actionsRemain && !minimumMet && !early);
+}
+
+function openPowersSheet(preselect = null) {
+  if (G?.phase !== "game2") return toast("Power cards are only available in Game 2.0.");
+  const powers = (G.hands?.[me] || []).filter(isPowerCard);
+  $powersGrid.innerHTML = "";
+  if (!powers.length) {
+    const empty = document.createElement("div");
+    empty.className = "power-item";
+    empty.textContent = "You have no power cards.";
     $powersGrid.appendChild(empty);
-  }else{
-    // Aggregate by type for clean UI
-    const counts = pows.reduce((m,p)=> (m[p]=(m[p]||0)+1, m), {});
-    Object.keys(counts).sort().forEach(k=>{
-      const cardType = k;
-      const item = document.createElement('div'); item.className='power-item';
-      const label = document.createElement('div'); label.className='label'; label.textContent = `${LABEL[cardType]||cardType} ×${counts[cardType]}`;
-      const desc  = document.createElement('div'); desc.className='desc'; desc.textContent = DESC[cardType] || '';
-      const actions = document.createElement('div'); actions.className='power-actions';
-      const useBtn = document.createElement('button'); useBtn.className='btn'; useBtn.type='button';
-      useBtn.textContent = isMyTurn ? `Use ${LABEL[cardType]||cardType}` : 'Not your turn';
-      useBtn.disabled = !isMyTurn;
-      useBtn.addEventListener('click', ()=>{
-        if(!isMyTurn){ toast('Not your turn.'); return; }
-        mySelected = cardType;
-        // Start targeting guidance immediately
-        if(cardType===POWERS.TIMEWARP){ playTimeWarpTx(); closeSheet(); return; }
-        if(cardType===POWERS.TRADE){ pending={type:'TRADE'}; showHint('🤝 Trade: tap a player chip to trade.'); renderPlayers(); updateActions(); closeSheet(); return; }
-        if(cardType===POWERS.SWAP){ pending={type:'SWAP'}; showHint('🔄 Swap: tap two piles to swap their tops.'); renderPiles(); updateActions(); closeSheet(); return; }
-        if(cardType===POWERS.FLIP){ showHint('🔁 Flip: tap a pile to flip its direction.'); renderPiles(); updateActions(); closeSheet(); return; }
-        if(cardType===POWERS.BUNGEE){ showHint('🪢 Bungee: tap a pile to arm ±20 once.'); renderPiles(); updateActions(); closeSheet(); return; }
+  } else {
+    const counts = powers.reduce((map,power) => ({...map,[power]:(map[power] || 0) + 1}),{});
+    Object.keys(counts).sort().forEach(type => {
+      const meta = POWER_META[type];
+      const item = document.createElement("div");
+      item.className = "power-item";
+      const label = document.createElement("div");
+      label.className = "power-label";
+      label.textContent = `${meta.icon} ${meta.label} ×${counts[type]}`;
+      const desc = document.createElement("div");
+      desc.className = "power-desc";
+      desc.textContent = meta.desc;
+      const use = document.createElement("button");
+      use.className = "btn";
+      use.type = "button";
+      use.textContent = isMyTurn ? `Use ${meta.label}` : "Not your turn";
+      use.disabled = !isMyTurn || actionBusy;
+      use.addEventListener("click",() => {
+        mySelected = type;
+        if (type === POWERS.TIMEWARP) {
+          closePowersSheet();
+          playTimeWarp();
+          return;
+        }
+        if (type === POWERS.TRADE) pending = {type:"TRADE"};
+        else if (type === POWERS.SWAP) pending = {type:"SWAP",first:null};
+        else pending = null;
+        closePowersSheet();
+        renderAll();
       });
-      actions.appendChild(useBtn);
-      item.append(label, desc, actions);
+      if (preselect === type) item.style.borderColor = "rgba(96,165,250,.8)";
+      item.append(label,desc,use);
       $powersGrid.appendChild(item);
     });
   }
-  $sheetWrap.style.display='flex';
-}
-function closeSheet(){ $sheetWrap.style.display='none'; }
-
-$powersBtn.addEventListener('click', ()=> openPowersSheet());
-$closeSheet.addEventListener('click', closeSheet);
-$sheetWrap.addEventListener('click', (e)=>{ if(e.target===$sheetWrap) closeSheet(); });
-
-/* ---------------- Interactions ---------------- */
-function onPileTap(id){
-  if(!isMyTurn || mySelected==null) return;
-  if(isNumber(mySelected)){ playNumberTx(mySelected,id); return; }
-  if(mySelected===POWERS.FLIP)   return playFlipTx(id);
-  if(mySelected===POWERS.BUNGEE) return playBungeeTx(id);
-  if(mySelected===POWERS.SWAP){
-    if(!pending || pending.type!=='SWAP' || !pending.first){ pending={type:'SWAP', first:id}; showHint('Now tap a second pile to complete swap.'); renderPiles(); return; }
-    if(pending.first===id){ pending=null; showHint(''); return; }
-    const a=pending.first; pending=null; showHint(''); return playSwapTx(a,id);
-  }
+  $sheetWrap.style.display = "flex";
 }
 
-/* Legacy inline play (kept, but Powers Sheet is primary) */
-$play.addEventListener('click', ()=>{
-  if(!isMyTurn || !G || G.phase!=='game2' || !isPower(mySelected)) return;
-  if(mySelected===POWERS.TIMEWARP){ playTimeWarpTx(); return; }
-  if(mySelected===POWERS.TRADE){ pending={type:'TRADE'}; showHint('Tap a player to trade.'); renderPlayers(); updateActions(); return; }
-  if(mySelected===POWERS.SWAP){ pending={type:'SWAP'}; showHint('Tap two piles to swap their tops.'); renderPiles(); updateActions(); return; }
-  if(mySelected===POWERS.FLIP){ showHint('Tap a pile to flip direction.'); renderPiles(); return; }
-  if(mySelected===POWERS.BUNGEE){ showHint('Tap a pile to arm Bungee (±20 once).'); renderPiles(); return; }
-});
+function closePowersSheet() {
+  $sheetWrap.style.display = "none";
+}
 
-/* End Turn gating — only NUMBER plays count as “moves remain” */
-function anyNumberMoves(hand, piles){
-  for (const c of hand){
-    if (!isNumber(c)) continue;
-    for (const p of piles){
-      const b = !!(p.effects||[]).find(e=>e.type==='bungee' && e.charges>0);
-      if (canPlayOnNumber(c, p, b)) return true;
+function clearSelection() {
+  mySelected = null;
+  pending = null;
+}
+
+function flashPile(id) {
+  const pile = document.querySelector(`.pile[data-id="${id}"]`);
+  if (!pile) return;
+  pile.classList.add("flash");
+  setTimeout(() => pile.classList.remove("flash"),450);
+}
+
+function onPileTap(id) {
+  if (!isMyTurn || mySelected == null || actionBusy) return;
+  if (isNumberCard(mySelected)) return playNumber(mySelected,id);
+  if (mySelected === POWERS.FLIP) return playFlip(id);
+  if (mySelected === POWERS.BUNGEE) return playBungee(id);
+  if (mySelected === POWERS.SWAP) {
+    if (!pending || pending.type !== "SWAP") pending = {type:"SWAP",first:null};
+    if (!pending.first) {
+      pending.first = id;
+      renderAll();
+      return;
     }
-  }
-  return false;
-}
-function gateEnd(){
-  if(!G){ $end.disabled=true; return; }
-  const players=G.players||[]; const current=players[G.turnIndex||0]||'';
-  const req=minRequiredFor(current,(G.deck||[]).length,G.debts||{});
-  const movesRemain = anyNumberMoves(myHand, Object.values(G.piles||{}));
-  const earlyPass = (G.timewarpPass && G.timewarpPass===current);
-  $end.disabled = !(isMyTurn && ((G.turnPlays||0)>=req || !movesRemain || earlyPass));
-}
-$end.addEventListener('click', ()=>{ if(isMyTurn) endTurnTx(); });
-
-/* Fullscreen toggle + chip */
-$fsBtn.addEventListener('click', ()=>{
-  if(!document.fullscreenElement){
-    document.documentElement.requestFullscreen?.();
-    document.documentElement.classList.add('full');
-  }else{
-    document.exitFullscreen?.();
-    document.documentElement.classList.remove('full');
-  }
-  setTimeout(()=>{ updateActions(); }, 50);
-});
-document.addEventListener('fullscreenchange', ()=>{ 
-  document.documentElement.classList.toggle('full', !!document.fullscreenElement);
-  updateActions();
-});
-
-/* ---------------- TX: numbers ---------------- */
-async function playNumberTx(card, pileId){
-  await runTransaction(db, async tx=>{
-    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
-    const S=snap.data(); const P=S.players||[]; const cur=P[S.turnIndex||0]||''; if(cur!==me) throw new Error('turn');
-    const piles=S.piles||{}; const p=piles[pileId]; if(!p) throw new Error('pile');
-    const my=[...(S.hands?.[me]||[])]; const idx=my.indexOf(card); if(idx<0) throw new Error('no card');
-
-    const hasB=!!(p.effects||[]).find(e=>e.type==='bungee'&&e.charges>0);
-    if(!canPlayOnNumber(card,p,hasB)) throw new Error('illegal');
-
-    const prev=p.top; p.top=card;
-    if(hasB && Math.abs(prev-card)===20){
-      const ef=p.effects.find(e=>e.type==='bungee'&&e.charges>0);
-      if(ef){ ef.charges--; if(ef.charges<=0) p.effects=p.effects.filter(e=>!(e.type==='bungee'&&e.charges<=0)); }
+    if (pending.first === id) {
+      pending.first = null;
+      renderAll();
+      return;
     }
+    return playSwap(pending.first,id);
+  }
+}
 
-    my.splice(idx,1); my.sort(sortCards);
-    const hands={...S.hands,[me]:my};
-    const log=(S.log||[]).slice(-200);
-    const backwards=(p.dir===UP && prev-card===10) || (p.dir===DOWN && card-prev===10);
-    const b20=(Math.abs(prev-card)===20);
-    log.push(`${me} played <b>${card}</b> on ${p.id} ${p.dir===UP?'▲':'▼'}${backwards?' via <b>±10</b>':''}${b20?' with <b>🪢 ±20</b>':''} (${prev}→${card}).`);
+async function performAction(callback,errorMessage) {
+  if (actionBusy) return;
+  actionBusy = true;
+  renderControls();
+  try {
+    await callback();
+  } catch (error) {
+    toast(error.message || errorMessage);
+  } finally {
+    actionBusy = false;
+    renderControls();
+  }
+}
 
-    tx.update(gameRef,{piles, hands, turnPlays:(S.turnPlays||0)+1, placed:(S.placed||0)+1, log});
-  }).then(()=>{
-    mySelected=null; pending=null; showHint('');
-    renderPiles();
+async function playNumber(card,pileId) {
+  await performAction(async () => {
+    await runTransaction(db,async transaction => {
+      const snap = await transaction.get(gameRef);
+      if (!snap.exists()) throw new Error("Game room is missing.");
+      const state = snap.data();
+      const players = state.players || [];
+      const current = players[Number(state.turnIndex || 0)] || "";
+      if (current !== me) throw new Error("It is no longer your turn.");
+      if (!["game","game2"].includes(state.phase)) throw new Error("The game is not active.");
+      const piles = structuredClone(state.piles || {});
+      const pile = piles[pileId];
+      if (!pile) throw new Error("That stack does not exist.");
+      const hand = [...(state.hands?.[me] || [])];
+      const cardIndex = hand.indexOf(card);
+      if (cardIndex < 0) throw new Error("That card is no longer in your hand.");
+      const hasBungee = pileHasBungee(pile);
+      if (!canPlayNumber(card,pile,hasBungee)) throw new Error("That card cannot be played on this stack.");
+
+      const previous = pile.top;
+      pile.top = card;
+      if (hasBungee && Math.abs(previous - card) === 20) {
+        const effect = pile.effects.find(item => item.type === "bungee" && item.charges > 0);
+        effect.charges--;
+        pile.effects = pile.effects.filter(item => item.type !== "bungee" || item.charges > 0);
+      }
+      hand.splice(cardIndex,1);
+      hand.sort(sortCards);
+      const hands = {...state.hands,[me]:hand};
+      const log = normalizedLog(state.log);
+      const backward10 = (pile.dir === UP && previous - card === 10) || (pile.dir === DOWN && card - previous === 10);
+      const backward20 = hasBungee && Math.abs(previous - card) === 20;
+      log.push(makeLog(`${me} played ${card} on ${pileId}${backward10 ? " using the ±10 jump" : ""}${backward20 ? " using Bungee ±20" : ""}.`));
+      const updated = {
+        piles,hands,turnPlays:Number(state.turnPlays || 0) + 1,
+        placed:Number(state.placed || 0) + 1,log,updatedAt:Date.now()
+      };
+      const remaining = (state.deck?.length || 0) + Object.values(hands).reduce((sum,cards) => sum + cards.length,0);
+      if (remaining === 0) {
+        updated.phase = "won";
+        log.push(makeLog("Victory — all cards were played."));
+      }
+      transaction.update(gameRef,updated);
+    });
+    clearSelection();
     flashPile(pileId);
-    updateActions(); gateEnd();
-  }).catch(e=>toast(e.message||'Error'));
+  },"Could not play that card.");
 }
 
-/* ---------------- TX: powers ---------------- */
-async function playFlipTx(pileId){
-  await runTransaction(db, async tx=>{
-    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
-    const S=snap.data(); if(S.phase!=='game2') throw new Error('only 2.0');
-    const P=S.players||[]; const cur=P[S.turnIndex||0]||''; if(cur!==me) throw new Error('turn');
-    const p=S.piles?.[pileId]; if(!p) throw new Error('pile');
-
-    const my=[...(S.hands?.[me]||[])]; const i=my.indexOf(POWERS.FLIP); if(i<0) throw new Error('no flip');
-    my.splice(i,1); p.dir=(p.dir===UP?DOWN:UP);
-
-    const hands={...S.hands,[me]:my};
-    const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🔁 Flip</b> on ${p.id} — now <b>${p.dir===UP?'UP':'DOWN'}</b>.`);
-    tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).then(()=>{
-    mySelected=null; showHint('');
-    renderPiles();
+async function playFlip(pileId) {
+  await performAction(async () => {
+    await runTransaction(db,async transaction => {
+      const snap = await transaction.get(gameRef);
+      if (!snap.exists()) throw new Error("Game room is missing.");
+      const state = snap.data();
+      if (state.phase !== "game2") throw new Error("Flip is only available in Game 2.0.");
+      if (currentPlayerFrom(state) !== me) throw new Error("It is no longer your turn.");
+      const piles = structuredClone(state.piles || {});
+      const pile = piles[pileId];
+      const hand = [...(state.hands?.[me] || [])];
+      const index = hand.indexOf(POWERS.FLIP);
+      if (!pile || index < 0) throw new Error("Flip is no longer available.");
+      hand.splice(index,1);
+      pile.dir = pile.dir === UP ? DOWN : UP;
+      const log = normalizedLog(state.log);
+      log.push(makeLog(`${me} flipped ${pileId} to ${pile.dir === UP ? "ascending" : "descending"}.`));
+      transaction.update(gameRef,{piles,hands:{...state.hands,[me]:hand},turnPlays:Number(state.turnPlays || 0)+1,log,updatedAt:Date.now()});
+    });
+    clearSelection();
     flashPile(pileId);
-    updateActions(); gateEnd();
-  }).catch(e=>toast(e.message||'Error'));
+  },"Could not use Flip.");
 }
 
-async function playBungeeTx(pileId){
-  await runTransaction(db, async tx=>{
-    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
-    const S=snap.data(); if(S.phase!=='game2') throw new Error('only 2.0');
-    const P=S.players||[]; const cur=P[S.turnIndex||0]||''; if(cur!==me) throw new Error('turn');
-    const p=S.piles?.[pileId]; if(!p) throw new Error('pile');
-
-    const my=[...(S.hands?.[me]||[])]; const i=my.indexOf(POWERS.BUNGEE); if(i<0) throw new Error('no bungee');
-    my.splice(i,1);
-    const effs=p.effects||[]; const ex=effs.find(e=>e.type==='bungee'); if(ex) ex.charges++; else effs.push({type:'bungee',charges:1});
-    p.effects=effs;
-
-    const hands={...S.hands,[me]:my};
-    const log=(S.log||[]).slice(-200); log.push(`${me} armed <b>🪢 Bungee</b> on ${p.id}.`);
-    tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).then(()=>{
-    mySelected=null; showHint('');
-    renderPiles();
+async function playBungee(pileId) {
+  await performAction(async () => {
+    await runTransaction(db,async transaction => {
+      const snap = await transaction.get(gameRef);
+      if (!snap.exists()) throw new Error("Game room is missing.");
+      const state = snap.data();
+      if (state.phase !== "game2") throw new Error("Bungee is only available in Game 2.0.");
+      if (currentPlayerFrom(state) !== me) throw new Error("It is no longer your turn.");
+      const piles = structuredClone(state.piles || {});
+      const pile = piles[pileId];
+      const hand = [...(state.hands?.[me] || [])];
+      const index = hand.indexOf(POWERS.BUNGEE);
+      if (!pile || index < 0) throw new Error("Bungee is no longer available.");
+      hand.splice(index,1);
+      const effect = (pile.effects || []).find(item => item.type === "bungee");
+      if (effect) effect.charges = Number(effect.charges || 0) + 1;
+      else pile.effects = [...(pile.effects || []),{type:"bungee",charges:1}];
+      const log = normalizedLog(state.log);
+      log.push(makeLog(`${me} armed ${pileId} with a Bungee ±20 jump.`));
+      transaction.update(gameRef,{piles,hands:{...state.hands,[me]:hand},turnPlays:Number(state.turnPlays || 0)+1,log,updatedAt:Date.now()});
+    });
+    clearSelection();
     flashPile(pileId);
-    updateActions(); gateEnd();
-  }).catch(e=>toast(e.message||'Error'));
+  },"Could not use Bungee.");
 }
 
-async function playSwapTx(aId,bId){
-  await runTransaction(db, async tx=>{
-    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
-    const S=snap.data(); if(S.phase!=='game2') throw new Error('only 2.0');
-    const P=S.players||[]; const cur=P[S.turnIndex||0]||''; if(cur!==me) throw new Error('turn');
-    const A=S.piles?.[aId], B=S.piles?.[bId]; if(!A||!B) throw new Error('pile');
-
-    const my=[...(S.hands?.[me]||[])]; const i=my.indexOf(POWERS.SWAP); if(i<0) throw new Error('no swap');
-    my.splice(i,1);
-
-    const t=A.top; A.top=B.top; B.top=t;
-
-    const hands={...S.hands,[me]:my};
-    const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🔄 Swap</b> on ${aId}↔${bId}.`);
-    tx.update(gameRef,{piles:S.piles, hands, turnPlays:(S.turnPlays||0)+1, log});
-  }).then(()=>{
-    mySelected=null; showHint('');
-    renderPiles();
-    flashPile(aId); flashPile(bId);
-    updateActions(); gateEnd();
-  }).catch(e=>toast(e.message||'Error'));
+async function playSwap(firstId,secondId) {
+  await performAction(async () => {
+    await runTransaction(db,async transaction => {
+      const snap = await transaction.get(gameRef);
+      if (!snap.exists()) throw new Error("Game room is missing.");
+      const state = snap.data();
+      if (state.phase !== "game2") throw new Error("Swap is only available in Game 2.0.");
+      if (currentPlayerFrom(state) !== me) throw new Error("It is no longer your turn.");
+      const piles = structuredClone(state.piles || {});
+      const first = piles[firstId];
+      const second = piles[secondId];
+      const hand = [...(state.hands?.[me] || [])];
+      const index = hand.indexOf(POWERS.SWAP);
+      if (!first || !second || index < 0) throw new Error("Swap is no longer available.");
+      hand.splice(index,1);
+      [first.top,second.top] = [second.top,first.top];
+      const log = normalizedLog(state.log);
+      log.push(makeLog(`${me} swapped the top cards of ${firstId} and ${secondId}.`));
+      transaction.update(gameRef,{piles,hands:{...state.hands,[me]:hand},turnPlays:Number(state.turnPlays || 0)+1,log,updatedAt:Date.now()});
+    });
+    clearSelection();
+    flashPile(firstId);
+    flashPile(secondId);
+  },"Could not use Swap.");
 }
 
-async function playTradeTx(target){
-  await runTransaction(db, async tx=>{
-    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
-    const S=snap.data(); if(S.phase!=='game2') throw new Error('only 2.0');
-    const P=S.players||[]; const cur=P[S.turnIndex||0]||''; if(cur!==me) throw new Error('turn');
-    if(target===me) throw new Error('self');
-
-    const my=[...(S.hands?.[me]||[])]; const his=[...(S.hands?.[target]||[])];
-    const pi=my.indexOf(POWERS.TRADE); if(pi<0) throw new Error('no trade');
-    if(his.length===0 || my.length<=1) throw new Error('no cards');
-
-    my.splice(pi,1);
-    const mi=Math.floor(Math.random()*my.length), hi=Math.floor(Math.random()*his.length);
-    const myCard=my.splice(mi,1)[0]; const hisCard=his.splice(hi,1)[0];
-    my.push(hisCard); his.push(myCard);
-    my.sort(sortCards); his.sort(sortCards);
-
-    const hands={...S.hands,[me]:my,[target]:his};
-    const log=(S.log||[]).slice(-200); log.push(`${me} used <b>🤝 Trade</b> with <b>${target}</b>.`);
-    tx.update(gameRef,{hands,turnPlays:(S.turnPlays||0)+1,log});
-  }).then(()=>{
-    pending=null; mySelected=null; showHint('');
-    renderPlayers(); renderHand(); updateActions(); gateEnd();
-  }).catch(e=>toast(e.message||'Error'));
+async function playTrade(target) {
+  await performAction(async () => {
+    await runTransaction(db,async transaction => {
+      const snap = await transaction.get(gameRef);
+      if (!snap.exists()) throw new Error("Game room is missing.");
+      const state = snap.data();
+      if (state.phase !== "game2") throw new Error("Trade is only available in Game 2.0.");
+      if (currentPlayerFrom(state) !== me) throw new Error("It is no longer your turn.");
+      if (target === me || !(state.players || []).includes(target)) throw new Error("Choose another player.");
+      const mine = [...(state.hands?.[me] || [])];
+      const theirs = [...(state.hands?.[target] || [])];
+      const tradeIndex = mine.indexOf(POWERS.TRADE);
+      if (tradeIndex < 0 || theirs.length === 0 || mine.length <= 1) throw new Error("A trade cannot be completed right now.");
+      mine.splice(tradeIndex,1);
+      const myPool = mine.map((_,index) => index);
+      if (!myPool.length) throw new Error("You need another card to trade.");
+      const myIndex = myPool[Math.floor(Math.random() * myPool.length)];
+      const theirIndex = Math.floor(Math.random() * theirs.length);
+      const myCard = mine.splice(myIndex,1)[0];
+      const theirCard = theirs.splice(theirIndex,1)[0];
+      mine.push(theirCard);
+      theirs.push(myCard);
+      mine.sort(sortCards);
+      theirs.sort(sortCards);
+      const log = normalizedLog(state.log);
+      log.push(makeLog(`${me} traded a random card with ${target}.`));
+      transaction.update(gameRef,{hands:{...state.hands,[me]:mine,[target]:theirs},turnPlays:Number(state.turnPlays || 0)+1,log,updatedAt:Date.now()});
+    });
+    clearSelection();
+  },"Could not complete the trade.");
 }
 
-async function playTimeWarpTx(){
-  await runTransaction(db, async tx=>{
-    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
-    const S=snap.data(); if(S.phase!=='game2') throw new Error('only 2.0');
-    const P=S.players||[]; const cur=P[S.turnIndex||0]||''; if(cur!==me) throw new Error('turn');
-
-    const my=[...(S.hands?.[me]||[])]; const i=my.indexOf(POWERS.TIMEWARP); if(i<0) throw new Error('no tw');
-    my.splice(i,1);
-
-    const debts={...(S.debts||{})}; debts[me]=(debts[me]||0)+1;
-    const hands={...S.hands,[me]:my};
-    const log=(S.log||[]).slice(-200); log.push(`${me} used <b>⏳ Time Warp</b> (may end early; future requirement +1).`);
-    tx.update(gameRef,{hands,debts,timewarpPass:me,turnPlays:(S.turnPlays||0)+1,log});
-  }).then(()=>{
-    mySelected=null; showHint('⏳ Time Warp active: you may End Turn early this round.');
-    renderHand();
-    updateActions(); gateEnd(); toast('Time Warp ready: you may End Turn now.');
-  }).catch(e=>toast(e.message||'Error'));
+async function playTimeWarp() {
+  await performAction(async () => {
+    await runTransaction(db,async transaction => {
+      const snap = await transaction.get(gameRef);
+      if (!snap.exists()) throw new Error("Game room is missing.");
+      const state = snap.data();
+      if (state.phase !== "game2") throw new Error("Time Warp is only available in Game 2.0.");
+      if (currentPlayerFrom(state) !== me) throw new Error("It is no longer your turn.");
+      const hand = [...(state.hands?.[me] || [])];
+      const index = hand.indexOf(POWERS.TIMEWARP);
+      if (index < 0) throw new Error("Time Warp is no longer in your hand.");
+      hand.splice(index,1);
+      const debts = {...(state.debts || {}),[me]:Number(state.debts?.[me] || 0)+1};
+      const log = normalizedLog(state.log);
+      log.push(makeLog(`${me} used Time Warp and may end this turn early.`));
+      transaction.update(gameRef,{hands:{...state.hands,[me]:hand},debts,timewarpPass:me,turnPlays:Number(state.turnPlays || 0)+1,log,updatedAt:Date.now()});
+    });
+    clearSelection();
+    toast("Time Warp active — you may end your turn now.");
+  },"Could not use Time Warp.");
 }
 
-/* ---------------- End Turn ---------------- */
-async function endTurnTx(){
-  await runTransaction(db, async tx=>{
-    const snap=await tx.get(gameRef); if(!snap.exists()) throw new Error('gone');
-    const S=snap.data();
-    const P=S.players||[]; const idx=S.turnIndex||0; const cur=P[idx]||''; if(cur!==me) throw new Error('turn');
-
-    const deck=[...(S.deck||[])]; const hands={...(S.hands||{})};
-    const req=minRequiredFor(cur, deck.length, S.debts||{});
-    const early=(S.timewarpPass && S.timewarpPass===cur);
-    if((S.turnPlays||0) < req && !early) throw new Error('need more');
-
-    const cap=handCap(P.length);
-    const mine=[...(hands[me]||[])];
-    const before=mine.length;
-    while(mine.length<cap && deck.length){ mine.push(deck.pop()); }
-    mine.sort(sortCards); hands[me]=mine;
-
-    const next=(idx+1)%P.length; const turnNum = (next===0)?(S.turnNum||1)+1:(S.turnNum||1);
-    const log=(S.log||[]).slice(-200); const drew=Math.max(0, cap - before);
-    log.push(`${me} ended turn. Drew ${drew}. Next: <b>${P[next]||''}</b>.`);
-
-    const debts={...(S.debts||{})}; let pass=S.timewarpPass;
-    if(pass===cur) pass=null;
-    if((S.debts||{})[cur]>0){ debts[cur]=Math.max(0,(debts[cur]||0)-1); if(debts[cur]===0) delete debts[cur]; }
-
-    tx.update(gameRef,{deck,hands,turnIndex:next,turnNum,turnPlays:0,log,debts,timewarpPass:pass});
-  }).then(()=>{
-    mySelected = null;
-    pending = null;
-    showHint('');
-    updateActions();
-    gateEnd();
-  }).catch(e=>toast(e.message||'Error'));
+function currentPlayerFrom(state) {
+  return (state.players || [])[Number(state.turnIndex || 0)] || "";
 }
 
-/* ---------------- Log ---------------- */
-function renderLog(){
-  const log=(G.log||[]).slice(-200);
-  $log.innerHTML = log.map(x=>`<div>${x}</div>`).join('');
-  $log.scrollTop=$log.scrollHeight;
+async function endTurn() {
+  await performAction(async () => {
+    await runTransaction(db,async transaction => {
+      const snap = await transaction.get(gameRef);
+      if (!snap.exists()) throw new Error("Game room is missing.");
+      const state = snap.data();
+      if (!["game","game2"].includes(state.phase)) throw new Error("The game is not active.");
+      const players = state.players || [];
+      const index = Number(state.turnIndex || 0);
+      const current = players[index] || "";
+      if (current !== me) throw new Error("It is no longer your turn.");
+      const deck = [...(state.deck || [])];
+      const hands = structuredClone(state.hands || {});
+      const mine = [...(hands[me] || [])];
+      const requirement = requiredFor(current,deck.length,state.debts || {});
+      const plays = Number(state.turnPlays || 0);
+      const early = state.timewarpPass === current;
+      const actionsRemain = anyTurnActions(mine,state,me);
+      const log = normalizedLog(state.log);
+
+      if (plays < requirement && !early) {
+        if (actionsRemain) throw new Error(`You must play ${requirement - plays} more required card${requirement - plays === 1 ? "" : "s"}.`);
+        log.push(makeLog(`${me} had no legal move before completing the required plays.`));
+        transaction.update(gameRef,{phase:"lost",lostPlayer:me,log,updatedAt:Date.now()});
+        return;
+      }
+
+      const cap = handCap(players.length);
+      const before = mine.length;
+      while (mine.length < cap && deck.length) mine.push(deck.pop());
+      mine.sort(sortCards);
+      hands[me] = mine;
+      const drawn = mine.length - before;
+      const next = (index + 1) % players.length;
+      const turnNum = next === 0 ? Number(state.turnNum || 1) + 1 : Number(state.turnNum || 1);
+      const debts = {...(state.debts || {})};
+      let timewarpPass = state.timewarpPass || null;
+      if (timewarpPass === current) timewarpPass = null;
+      if (Number(debts[current] || 0) > 0) {
+        debts[current] = Math.max(0,Number(debts[current]) - 1);
+        if (!debts[current]) delete debts[current];
+      }
+      log.push(makeLog(`${me} ended the turn and drew ${drawn} card${drawn === 1 ? "" : "s"}. ${players[next]}'s turn.`));
+      transaction.update(gameRef,{deck,hands,turnIndex:next,turnNum,turnPlays:0,debts,timewarpPass,log,updatedAt:Date.now()});
+    });
+    clearSelection();
+  },"Could not end the turn.");
 }
 
-/* ---------------- Kickoff with anonymous auth (for rules) ---------------- */
-signInAnonymously(auth).catch(console.error);
+async function restartGame() {
+  if (G?.host !== me || actionBusy) return;
+  await performAction(async () => {
+    const players = G.players || lobbyPlayers(LOBBY);
+    const startedAt = Date.now();
+    await setDoc(gameRef,{
+      phase:"voting",host:G.host || me,players,votes:{},startedAt,deadline:startedAt+20000,
+      choice:null,log:[makeLog("A new mode vote was opened.")],updatedAt:Date.now()
+    });
+    clearSelection();
+  },"Could not restart the game.");
+}
 
-onAuthStateChanged(auth, (user)=>{
-  if(!user) return;
-  currentUser = user;
-  if(window.__theGameStarted) return;
+$optClassic.addEventListener("click",() => castVote("classic"));
+$optNew.addEventListener("click",() => castVote("game2"));
+$end.addEventListener("click",endTurn);
+$powersBtn.addEventListener("click",() => openPowersSheet());
+$closeSheet.addEventListener("click",closePowersSheet);
+$sheetWrap.addEventListener("click",event => { if (event.target === $sheetWrap) closePowersSheet(); });
+$restartBtn.addEventListener("click",restartGame);
+
+function fullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+$fsBtn.addEventListener("click",async () => {
+  try {
+    const root = document.documentElement;
+    if (!fullscreenElement()) {
+      if (root.requestFullscreen) await root.requestFullscreen({navigationUI:"hide"});
+      else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
+      else return toast("This mobile browser uses its own full-screen or Add to Home Screen control.",2600);
+    } else if (document.exitFullscreen) {
+      await document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    }
+  } catch (error) {
+    toast("Fullscreen is not available in this browser.");
+  }
+});
+
+function syncFullscreenButton() {
+  $fsBtn.textContent = fullscreenElement() ? "✕" : "⛶";
+}
+document.addEventListener("fullscreenchange",syncFullscreenButton);
+document.addEventListener("webkitfullscreenchange",syncFullscreenButton);
+
+document.addEventListener("visibilitychange",() => {
+  if (!document.hidden && G?.phase === "voting") resolveVoteIfReady(true).catch(() => {});
+});
+
+window.addEventListener("beforeunload",() => {
+  unsubLobby?.();
+  unsubGame?.();
+});
+
+signInAnonymously(auth).catch(error => toast(`Authentication failed: ${error.message}`,3200));
+onAuthStateChanged(auth,async user => {
+  if (!user || window.__theGameStarted) return;
   window.__theGameStarted = true;
-
-  // Now that request.auth != null is true, it's safe with your rules
-  ensureRoomVotingOrResume().catch(console.error);
-  startSubscriptions();
+  try {
+    await ensureRoom();
+    startSubscriptions();
+  } catch (error) {
+    renderConnecting(error.message || "Could not open the game.");
+    toast(error.message || "Could not open the game.",3200);
+  }
 });
 </script>
 </body>
 </html>
-
 
 
 
