@@ -525,6 +525,16 @@
       <div class="modal-foot"><button class="btn secondary" data-close-modal>Cancel</button><button id="sendInviteSubmit" class="btn">Send Invite</button></div>
     </div>
 
+    <div id="linkLobbyModal" class="modal" hidden>
+      <div class="modal-head"><div class="modal-title">Lobby Invitation</div><button class="modal-close" data-close-modal>×</button></div>
+      <div class="modal-body">
+        <div id="linkLobbyInfo" class="card card-pad" style="box-shadow:none;background:var(--surface-2)"></div>
+        <div class="help" style="margin-top:12px">Opening an invite link never joins or launches a game automatically. Press Join Lobby to enter.</div>
+        <div id="linkLobbyMessage" class="message"></div>
+      </div>
+      <div class="modal-foot"><button class="btn secondary" data-close-modal>Cancel</button><button id="linkLobbyJoinBtn" class="btn">Join Lobby</button></div>
+    </div>
+
     <div id="editProfileModal" class="modal" hidden>
       <div class="modal-head"><div class="modal-title">Edit Profile</div><button class="modal-close" data-close-modal>×</button></div>
       <div class="modal-body">
@@ -654,7 +664,9 @@
     let currentLobbyId=null;
     let currentLobbyData=null;
     let inviteTargetLobbyId=null;
+    let linkedLobbyId=null;
     let isHost=false;
+    let launchingGame=false;
     let pendingAction=null;
     let selectedVisibility="public";
     let selectedCategory="All";
@@ -666,6 +678,27 @@
     let lobbyBrowserUnsub=null,lobbyUnsub=null,inviteUnsub=null;
 
     const $=id=>document.getElementById(id);
+    const ALLOWED_GAME_LAUNCH_REASONS=new Set(["single-play","lobby-started"]);
+
+    function launchGameUrl(url,reason){
+      if(!ALLOWED_GAME_LAUNCH_REASONS.has(reason)){
+        console.warn("Blocked game launch without an approved reason",{url,reason});
+        toast("Game launch blocked because no Play or Start Game action was detected.","bad");
+        return false;
+      }
+      if(reason==="lobby-started"){
+        const players=Array.isArray(currentLobbyData?.players)?currentLobbyData.players:[];
+        if(!currentLobbyId||currentLobbyData?.status!=="started"||!players.includes(username)){
+          console.warn("Blocked launch because the user is not in a started lobby",{url,currentLobbyId,currentLobbyData});
+          toast("Game launch blocked because this lobby has not started for you.","bad");
+          return false;
+        }
+      }
+      if(launchingGame)return false;
+      launchingGame=true;
+      location.assign(url);
+      return true;
+    }
 
     function toast(message,type=""){
       const node=document.createElement("div");node.className=`toast ${type}`;
@@ -784,9 +817,10 @@
     async function runPendingAction(){
       const action=pendingAction;pendingAction=null;if(!action)return;
       if(action.type==="join")return joinLobby(action.lobbyId,action.inviteId);
+      if(action.type==="previewJoin")return showLinkedLobbyPrompt(action.lobbyId);
       if(action.type==="create")return openCreateLobby(action.gameKey);
       if(action.type==="profile")return showView("profile");
-      if(action.type==="single")return playSingle(getGame(action.gameKey));
+      if(action.type==="single")return playSingle(getGame(action.gameKey),true);
     }
 
     const TZ="America/New_York";
@@ -832,7 +866,7 @@
         <div class="game-content"><div class="game-name">${escapeHtml(game.title)}</div><div class="game-description">${escapeHtml(game.desc)}</div><div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
         <div class="game-bottom"><span class="play-count">🎮 ${gamePlayCounts[game.key]||0} plays</span><button class="btn small">${game.modes.includes("single")?"Play":"Create Lobby"}</button></div></div>`;
       card.querySelector(".favorite-btn").addEventListener("click",e=>{e.stopPropagation();toggleFavorite(game.key);});
-      card.querySelector(".btn").addEventListener("click",()=>game.modes.includes("single")?playSingle(game):openCreateLobby(game.key));
+      card.querySelector(".btn").addEventListener("click",()=>game.modes.includes("single")?playSingle(game,true):openCreateLobby(game.key));
       return card;
     }
     function renderAllGames(){renderSingleLibrary();}
@@ -850,10 +884,15 @@
     }
     $("gameSearch").addEventListener("input",renderSingleLibrary);$("gameSort").addEventListener("change",renderSingleLibrary);
 
-    async function playSingle(game){
+    async function playSingle(game,userInitiated=false){
+      if(!userInitiated){
+        console.warn("Blocked non-user-initiated single-player launch",game?.key);
+        toast("Select a one-player game and press Play to launch it.","bad");
+        return;
+      }
       if(game.requiresUser&&!username){pendingAction={type:"single",gameKey:game.key};return openModal("accountGateModal");}
       await logGamePlay(game);let url=game.route;if(game.autoUsername&&username)url+=`${url.includes("?")?"&":"?"}username=${encodeURIComponent(username)}`;
-      save(SK.lastGame,game.key);location.href=url;
+      save(SK.lastGame,game.key);launchGameUrl(url,"single-play");
     }
 
     function renderFeatured(){
@@ -866,7 +905,7 @@
     function populateStaticUI(){
       $("categoryPills").innerHTML="";CATEGORIES.forEach(cat=>{const btn=document.createElement("button");btn.className=`category-btn ${cat===selectedCategory?"active":""}`;btn.textContent=cat;btn.onclick=()=>{selectedCategory=cat;populateCategoriesOnly();renderSingleLibrary();};$("categoryPills").appendChild(btn);});
       const cats=CATEGORIES.filter(x=>x!=="All");$("profileCategoryInput").innerHTML=cats.map(x=>`<option>${escapeHtml(x)}</option>`).join("");
-      const multiOptions=MULTI_GAMES.map(g=>`<option value="${g.key}">${g.emoji} ${escapeHtml(gameTitle(g.key,true))}${g.quickPlay?" — Quick Play":""}</option>`).join("");
+      const multiOptions=MULTI_GAMES.map(g=>`<option value="${g.key}">${g.emoji} ${escapeHtml(gameTitle(g.key,true))}</option>`).join("");
       $("newLobbyGame").innerHTML=multiOptions;$("lobbyGameFilter").innerHTML='<option value="all">All Games</option>'+multiOptions;
       updateCreateGameInfo();
     }
@@ -945,13 +984,11 @@
     function updateVisibilityButtons(){document.querySelectorAll("[data-visibility]").forEach(btn=>btn.classList.toggle("active",btn.dataset.visibility===selectedVisibility));}
     function updateCreateGameInfo(){
       const game=getGame($("newLobbyGame").value||"chesswarlord"),cap=getMaxPlayers(game.key);
-      $("createLobbyGameInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${game.emoji}</div><div><strong>${escapeHtml(gameTitle(game.key,true))}</strong><div class="help">${escapeHtml(game.desc)} • ${game.quickPlay?"Quick play":game.directLaunch?"Direct launch":`${Number.isFinite(cap)?cap:"Flexible"} players max`}</div></div></div>`;
-      $("createLobbySubmit").textContent=game.quickPlay||game.directLaunch?"Play":"Create Lobby";
+      $("createLobbyGameInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${game.emoji}</div><div><strong>${escapeHtml(gameTitle(game.key,true))}</strong><div class="help">${escapeHtml(game.desc)} • ${Number.isFinite(cap)?cap:"Flexible"} players max • Launches only after the host presses Start Game</div></div></div>`;
+      $("createLobbySubmit").textContent="Create Lobby";
     }
     async function createLobby(){
       if(!username)return openModal("accountGateModal");const game=getGame($("newLobbyGame").value),name=$("newLobbyName").value.trim();
-      if(game.quickPlay){closeModal();await logGamePlay(game);save(SK.lastGame,game.key);location.href=`${game.route}?username=${encodeURIComponent(username)}`;return;}
-      if(game.directLaunch){closeModal();await logGamePlay(game);save(SK.lastGame,game.key);save(SK.lastLobby,"");location.href=`${game.route}?username=${encodeURIComponent(username)}`;return;}
       if(!name)return setMessage("createLobbyMessage","Enter a lobby name.","error");
       setBusy($("createLobbySubmit"),true,"Creating…");
       try{
@@ -989,7 +1026,12 @@
       if(!currentLobbyId||!isHost)return;const ref=doc(db,"lobbies",currentLobbyId),snap=await getDoc(ref);if(!snap.exists())return clearCurrentLobby("Lobby no longer exists.");
       const data=snap.data(),game=getGame(data.gameType);if(data.status==="started")return;
       if(game.key==="estate"){
-        const activeId=await joinOrCreateActiveEstate(data.players||[username]);await cleanupInvitesForLobby(currentLobbyId);await deleteDoc(ref).catch(()=>{});await logGamePlay(game);save(SK.lastGame,"estate");save(SK.lastLobby,activeId);location.href=`${game.route}?gameId=${encodeURIComponent(activeId)}&username=${encodeURIComponent(username)}`;return;
+        const activeId=await joinOrCreateActiveEstate(data.players||[username]);
+        await runTransaction(db,async tx=>{
+          const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");
+          if(cur.data().status!=="started")tx.update(ref,{status:"started",activeGameId:activeId,updatedAt:Date.now()});
+        });
+        await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});await logGamePlay(game);return;
       }
       if(game.key==="stoneyrelic"){
         const players=Array.isArray(data.players)?data.players:[];if(players.length<(game.minPlayers||2))return toast("Stoney's Relic needs at least 2 players.","bad");
@@ -1006,9 +1048,14 @@
       const ref=doc(collection(db,"lobbies"));await runTransaction(db,async tx=>tx.set(ref,{name:`Estate Defense — ${new Date().toLocaleTimeString()}`,gameType:"estate",category:"estate-defense",status:"active",players:unique(extraPlayers),host:username,createdAt:Date.now()}));return ref.id;
     }
     function redirectStartedGame(id,data){
-      const game=getGame(data.gameType);save(SK.lastGame,game.key);save(SK.lastLobby,id);
-      if(game.key==="stoneyrelic"){const isDM=data.dm===username,route=isDM?game.dmRoute:game.route,role=isDM?"dm":"player";location.href=`${route}?gameId=${encodeURIComponent(id)}&username=${encodeURIComponent(username)}&role=${role}`;return;}
-      if(game.autoRedirect)location.href=`${game.route}?gameId=${encodeURIComponent(id)}&username=${encodeURIComponent(username)}`;
+      const players=Array.isArray(data?.players)?data.players:[];
+      if(!id||data?.status!=="started"||currentLobbyId!==id||!players.includes(username))return;
+      const game=getGame(data.gameType),launchId=data.activeGameId||id;save(SK.lastGame,game.key);save(SK.lastLobby,id);
+      if(game.key==="stoneyrelic"){
+        const isDM=data.dm===username,route=isDM?game.dmRoute:game.route,role=isDM?"dm":"player";
+        launchGameUrl(`${route}?gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}&role=${role}`,"lobby-started");return;
+      }
+      launchGameUrl(`${game.route}?gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}`,"lobby-started");
     }
     async function leaveLobby(){
       if(!currentLobbyId)return;const id=currentLobbyId,ref=doc(db,"lobbies",id);
@@ -1025,6 +1072,23 @@
       const url=new URL(location.href);url.search="";url.searchParams.set("lobby",id);
       navigator.clipboard?.writeText(url.toString()).then(()=>toast("Invite link copied.","good")).catch(()=>prompt("Copy this invite link:",url.toString()));
     }
+
+    async function showLinkedLobbyPrompt(lobbyId){
+      if(!lobbyId)return;
+      if(!username){pendingAction={type:"previewJoin",lobbyId};openModal("accountGateModal");return;}
+      linkedLobbyId=lobbyId;setMessage("linkLobbyMessage","");setBusy($("linkLobbyJoinBtn"),true,"Loading…");
+      try{
+        const snap=await getDoc(doc(db,"lobbies",lobbyId));
+        if(!snap.exists())throw new Error("This lobby no longer exists.");
+        const lobby={id:snap.id,...snap.data()},game=getGame(lobby.gameType),players=Array.isArray(lobby.players)?lobby.players:[],cap=getMaxPlayers(lobby.gameType);
+        if(lobby.status!=="waiting")throw new Error("This lobby has already started or closed.");
+        $("linkLobbyInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${game.emoji}</div><div><strong>${escapeHtml(lobby.name||"Lobby")}</strong><div class="help">${escapeHtml(gameTitle(game.key,true))} • Host: ${escapeHtml(lobby.host||"Unknown")} • ${players.length}/${Number.isFinite(cap)?cap:"∞"} players</div></div></div>`;
+        setBusy($("linkLobbyJoinBtn"),false);openModal("linkLobbyModal");
+      }catch(e){linkedLobbyId=null;setBusy($("linkLobbyJoinBtn"),false);toast(e.message||"Unable to open that lobby.","bad");}
+    }
+    $("linkLobbyJoinBtn").addEventListener("click",()=>{
+      const id=linkedLobbyId;if(!id)return;linkedLobbyId=null;closeModal();requestJoinLobby(id);
+    });
 
     function openInviteModal(lobbyId){
       if(!requireUser())return;
@@ -1113,11 +1177,7 @@
       const params=new URLSearchParams(location.search),linkLobby=params.get("lobby");
       if(linkLobby){
         history.replaceState({},"",location.pathname);
-        if(username)requestJoinLobby(linkLobby);
-        else{
-          pendingAction={type:"join",lobbyId:linkLobby};
-          openModal("accountGateModal");
-        }
+        await showLinkedLobbyPrompt(linkLobby);
         return;
       }
       const last=read(SK.lastLobby);if(last&&username){try{const snap=await getDoc(doc(db,"lobbies",last));if(snap.exists()&&(snap.data().players||[]).includes(username)){currentLobbyId=last;currentLobbyData={id:last,...snap.data()};listenToCurrentLobby();}}catch{}}
