@@ -277,6 +277,67 @@
     {min:1000, key:'crown_of_life',     title:'Crown of Life',     emoji:'✨', color:'#9333ea'}
   ];
 
+
+  // Canonical Protestant Bible order. The source CSV's original book names are
+  // preserved for answers, while these normalized keys control ordering and
+  // Old/New Testament round selection.
+  const BIBLE_BOOK_ORDER = [
+    'Genesis','Exodus','Leviticus','Numbers','Deuteronomy','Joshua','Judges','Ruth',
+    '1 Samuel','2 Samuel','1 Kings','2 Kings','1 Chronicles','2 Chronicles','Ezra','Nehemiah','Esther',
+    'Job','Psalms','Proverbs','Ecclesiastes','Song of Solomon','Isaiah','Jeremiah','Lamentations',
+    'Ezekiel','Daniel','Hosea','Joel','Amos','Obadiah','Jonah','Micah','Nahum','Habakkuk','Zephaniah',
+    'Haggai','Zechariah','Malachi',
+    'Matthew','Mark','Luke','John','Acts','Romans','1 Corinthians','2 Corinthians','Galatians',
+    'Ephesians','Philippians','Colossians','1 Thessalonians','2 Thessalonians','1 Timothy','2 Timothy',
+    'Titus','Philemon','Hebrews','James','1 Peter','2 Peter','1 John','2 John','3 John','Jude','Revelation'
+  ];
+  const OLD_TESTAMENT_BOOK_COUNT = 39;
+
+  function normalizedBookKey(value){
+    let key=(value||'').toString().trim().toLowerCase()
+      .replace(/[.]/g,'')
+      .replace(/\s+/g,' ');
+    key=key
+      .replace(/^third\s+/,'3 ')
+      .replace(/^second\s+/,'2 ')
+      .replace(/^first\s+/,'1 ')
+      .replace(/^iii\s+/,'3 ')
+      .replace(/^ii\s+/,'2 ')
+      .replace(/^i\s+/,'1 ');
+    const aliases={
+      'psalm':'psalms',
+      'song of songs':'song of solomon',
+      'songs of solomon':'song of solomon',
+      'canticles':'song of solomon',
+      'acts of the apostles':'acts',
+      'revelation of john':'revelation',
+      'the revelation':'revelation'
+    };
+    return aliases[key]||key;
+  }
+
+  const BOOK_ORDER_INDEX = new Map(BIBLE_BOOK_ORDER.map((book,index)=>[normalizedBookKey(book),index]));
+
+  function bookOrderIndex(book){
+    return BOOK_ORDER_INDEX.get(normalizedBookKey(book)) ?? Number.MAX_SAFE_INTEGER;
+  }
+
+  function testamentForBook(book){
+    const index=bookOrderIndex(book);
+    if(index===Number.MAX_SAFE_INTEGER) return '';
+    return index<OLD_TESTAMENT_BOOK_COUNT?'old':'new';
+  }
+
+  function testamentLabel(testament){
+    if(testament==='old') return 'Old Testament';
+    if(testament==='new') return 'New Testament';
+    return '';
+  }
+
+  function alternatingTestamentForRound(round){
+    return Number(round||1)%2===1?'old':'new';
+  }
+
   let currentUser = null;
   let LOBBY = null;
   let CONTROL = null;
@@ -438,21 +499,37 @@
       out.push({id,book,chapter,verse,text});
       seenBooks.add(book);
     }
-    books=Array.from(seenBooks).sort((a,b)=>a.localeCompare(b));
+    books=Array.from(seenBooks).sort((a,b)=>bookOrderIndex(a)-bookOrderIndex(b)||a.localeCompare(b));
     return out;
   }
 
   function fillBookDropdown(){
     const sel=$('bookInput'); sel.innerHTML='';
     const blank=document.createElement('option'); blank.value=''; blank.textContent='Book'; sel.appendChild(blank);
-    for(const b of books){ const o=document.createElement('option'); o.value=b; o.textContent=b; sel.appendChild(o); }
+
+    const oldGroup=document.createElement('optgroup'); oldGroup.label='Old Testament';
+    const newGroup=document.createElement('optgroup'); newGroup.label='New Testament';
+    const otherGroup=document.createElement('optgroup'); otherGroup.label='Other';
+
+    for(const b of books){
+      const option=document.createElement('option'); option.value=b; option.textContent=b;
+      const testament=testamentForBook(b);
+      (testament==='old'?oldGroup:testament==='new'?newGroup:otherGroup).appendChild(option);
+    }
+    if(oldGroup.children.length) sel.appendChild(oldGroup);
+    if(newGroup.children.length) sel.appendChild(newGroup);
+    if(otherGroup.children.length) sel.appendChild(otherGroup);
   }
 
-  function pickRandomVerse(excludeIds=[]){
+  function pickRandomVerse(excludeIds=[],testament=''){
     const exclude=new Set(excludeIds||[]);
-    const pool=verses.filter(v=>!exclude.has(v.id));
-    const source=pool.length ? pool : verses;
-    return source.length ? source[Math.floor(Math.random()*source.length)] : null;
+    const testamentPool=(testament==='old'||testament==='new')
+      ? verses.filter(v=>testamentForBook(v.book)===testament)
+      : verses;
+    const unusedPool=testamentPool.filter(v=>!exclude.has(v.id));
+    const source=unusedPool.length ? unusedPool : (testamentPool.length ? testamentPool : verses.filter(v=>!exclude.has(v.id)));
+    const fallback=source.length ? source : verses;
+    return fallback.length ? fallback[Math.floor(Math.random()*fallback.length)] : null;
   }
 
   function genCoopOptions(correct){
@@ -861,8 +938,10 @@
 
   function buildVerseHeader(){
     if(!SESSION) return 'Verse';
-    if(SESSION.mode==='traditional') return `Round ${SESSION.round||1} of 6 • Shared verse`;
-    if(SESSION.mode==='teams') return `Round ${SESSION.round||1} of 6 • Team challenge`;
+    const currentTestament=testamentLabel(testamentForBook(SESSION.currentQuestion?.book));
+    const testamentPart=currentTestament?` • ${currentTestament}`:'';
+    if(SESSION.mode==='traditional') return `Round ${SESSION.round||1} of 6${testamentPart} • Shared verse`;
+    if(SESSION.mode==='teams') return `Round ${SESSION.round||1} of 6${testamentPart} • Team challenge`;
     if(SESSION.mode==='speed') return 'Your private speed question';
     if(SESSION.mode==='coop') return `Co-Op survival • Question ${SESSION.round||1}`;
     return 'Verse';
@@ -871,9 +950,9 @@
   function buildPlayHelp(){
     const m=SESSION.mode;
     let text='';
-    if(m==='traditional') text='One accepted answer per player each round • Scoring: 1 book, 3 book + chapter, 5 exact reference.';
+    if(m==='traditional') text='Rounds alternate Old Testament, then New Testament • one accepted answer per player • Scoring: 1 book, 3 book + chapter, 5 exact reference.';
     else if(m==='speed') text='Every answer and next question are saved atomically • −1 only when book, chapter, and verse are all wrong.';
-    else if(m==='teams') text='8s reading • 47s discussion • 20s final answer • Suggestions do not lock the team.';
+    else if(m==='teams') text='Rounds alternate Old Testament, then New Testament • 8s reading • 47s discussion • 20s final answer.';
     else if(m==='coop') text=`Shared lives • reach ${Number(SESSION.coopGoal||COOP_WIN_GOAL)} correct answers for a shared victory • a short reading period prevents instant locking.`;
     $('playHelp').textContent=text;
   }
@@ -1005,7 +1084,8 @@
     const active=activePlayers();
     const uids=active.map(p=>p.uid);
     if(!uids.includes(currentUser.uid)) uids.push(currentUser.uid);
-    const question=serializeVerse(pickRandomVerse());
+    const sharedTestament=['traditional','teams'].includes(chosen)?alternatingTestamentForRound(1):'';
+    const question=serializeVerse(pickRandomVerse([],sharedTestament));
     const speedQuestions=new Map(uids.map(uid=>[uid,serializeVerse(pickRandomVerse())]));
 
     await runTransaction(db,async tx=>{
@@ -1038,7 +1118,9 @@
   }
 
   async function advanceRound(){
-    const nextQuestion=serializeVerse(pickRandomVerse(SESSION.chosenIds||[]));
+    const expectedNextRound=Number(SESSION.round||1)+1;
+    const nextTestament=alternatingTestamentForRound(expectedNextRound);
+    const nextQuestion=serializeVerse(pickRandomVerse(SESSION.chosenIds||[],nextTestament));
     await runTransaction(db,async tx=>{
       const snap=await tx.get(sessionRef); if(!snap.exists()) return;
       const s=snap.data();
@@ -1570,4 +1652,3 @@
 </script>
 </body>
 </html>
-
