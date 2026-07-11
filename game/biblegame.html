@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>📖 Bible Game (Multiplayer)</title>
+<title>📖 Bible Game — Reliable Multiplayer</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <style>
   :root{
@@ -17,119 +17,68 @@
     background:radial-gradient(circle at top,#fef9c3,#fffaf5);
     color:var(--ink);
   }
-  .wrap{max-width:820px;margin:0 auto;padding:10px}
+  .wrap{max-width:900px;margin:0 auto;padding:10px}
   header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0 10px}
-  .brand{display:flex;align-items:center;gap:8px}
-  .logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#ede9fe;border:1px solid #ddd6fe;font-size:18px;box-shadow:0 4px 10px rgba(79,70,229,.18)}
+  .brand{display:flex;align-items:center;gap:8px;min-width:0}
+  .logo{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:#ede9fe;border:1px solid #ddd6fe;font-size:19px;box-shadow:0 4px 10px rgba(79,70,229,.18)}
   .muted{color:var(--muted)} .title{font-weight:900;font-size:1rem}
+  .subtitle{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58vw}
   .badge{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #ddd6fe;background:#f5f3ff;color:#3730a3;font-weight:800}
-  .panel{
-    background:linear-gradient(145deg,#ffffff,#fff7ed);
-    border:1px solid var(--br);
-    border-radius:var(--radius);
-    box-shadow:var(--shadow);
-    padding:10px;
-  }
+  .panel{background:linear-gradient(145deg,#ffffff,#fff7ed);border:1px solid var(--br);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px;margin-bottom:10px}
   .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .pill{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;border:1px solid var(--br);background:#fff;font-weight:700}
+  .pill.good{color:#166534;border-color:#bbf7d0;background:#f0fdf4}
+  .pill.warn{color:#92400e;border-color:#fde68a;background:#fffbeb}
+  .pill.bad{color:#991b1b;border-color:#fecaca;background:#fff1f2}
   .btn{appearance:none;border:none;cursor:pointer;background:var(--accent);color:#fff;font-weight:900;padding:10px 12px;border-radius:12px;min-height:40px;box-shadow:0 6px 16px rgba(124,58,237,.35)}
-  .btn:hover{background:var(--accent-2)}
-  .btn-ghost{background:#fff;border:1px solid var(--br);color:#0f172a;box-shadow:none}
-  .btn.small{padding:7px 10px;min-height:34px;border-radius:10px}
-  .scores{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-  .scores .entry{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:6px 8px;border:1px solid var(--br);border-radius:10px;background:#fff;
-    box-shadow:0 3px 8px rgba(148,163,184,.18);
-  }
-  .scores .name{font-weight:800;font-size:.95rem}
-  .verse-box{padding:10px;border:1px solid var(--br);border-radius:12px;background:#fff;box-shadow:0 4px 10px rgba(148,163,184,.16)}
-  .verse-text{font-size:1rem;line-height:1.45}
+  .btn:hover:not(:disabled){background:var(--accent-2)}
+  .btn:disabled{opacity:.48;cursor:not-allowed;box-shadow:none}
+  .btn-ghost{appearance:none;cursor:pointer;background:#fff;border:1px solid var(--br);color:#0f172a;font-weight:800;padding:9px 11px;border-radius:11px;min-height:38px;box-shadow:none}
+  .btn.small,.btn-ghost.small{padding:7px 10px;min-height:34px;border-radius:10px}
+  .scores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .scores .entry{display:flex;align-items:center;justify-content:space-between;padding:7px 9px;border:1px solid var(--br);border-radius:10px;background:#fff;box-shadow:0 3px 8px rgba(148,163,184,.18)}
+  .scores .name{font-weight:800;font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .verse-box{padding:12px;border:1px solid var(--br);border-radius:12px;background:#fff;box-shadow:0 4px 10px rgba(148,163,184,.16)}
+  .verse-text{font-size:1.05rem;line-height:1.52}
   .inputs{display:grid;grid-template-columns:1.2fr .5fr .5fr auto;gap:6px;margin-top:8px}
-  @media (max-width:520px){ .inputs{grid-template-columns:1fr 1fr 1fr auto} }
-  select, input[type="number"], input[type="text"]{
-    width:100%;padding:9px;border:1px solid var(--br);border-radius:10px;font-size:16px;outline:none;background:#fff
-  }
-  select:focus, input:focus{border-color:#e9d5ff;box-shadow:0 0 0 3px rgba(124,58,237,.15)}
+  select,input[type="number"],input[type="text"],textarea{width:100%;padding:9px;border:1px solid var(--br);border-radius:10px;font-size:16px;outline:none;background:#fff;color:var(--ink)}
+  select:focus,input:focus,textarea:focus{border-color:#e9d5ff;box-shadow:0 0 0 3px rgba(124,58,237,.15)}
   .sm{font-size:.9rem}
-  .vote-grid{display:grid;grid-template-columns: repeat(2,minmax(0,1fr)); gap:8px}
-  .card{border:1px solid var(--br);border-radius:12px;padding:9px;background:#fff;display:flex;gap:8px;align-items:center;justify-content:space-between;box-shadow:0 4px 10px rgba(148,163,184,.14);transition:transform .12s ease, box-shadow .12s ease}
-  .card .left{display:grid}
-  .card.leader{border-color:#7c3aed; box-shadow:0 0 0 3px rgba(124,58,237,.13)}
-  .card:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(148,163,184,.2)}
+  .vote-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .card{border:1px solid var(--br);border-radius:12px;padding:9px;background:#fff;display:flex;gap:8px;align-items:center;justify-content:space-between;box-shadow:0 4px 10px rgba(148,163,184,.14);transition:transform .12s ease,box-shadow .12s ease;cursor:pointer}
+  .card .left{display:grid;text-align:left}.card.leader{border-color:#7c3aed;box-shadow:0 0 0 3px rgba(124,58,237,.13)}
+  .card.mine{background:#faf5ff;border-color:#a78bfa}.card:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(148,163,184,.2)}
   .chat{border:1px solid var(--br);border-radius:12px;background:#fff;display:grid;gap:6px;padding:8px;box-shadow:0 4px 10px rgba(148,163,184,.18)}
-  .chatlog{display:grid;gap:4px;min-height:24px}
-  .bubble{padding:6px 8px;border-radius:9px;background:#f8fafc;border:1px solid #eef2f7;font-size:.92rem}
-  .team-tag{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:9px;background:rgba(0,0,0,.04);border:1px solid #e5e7eb}
-  .teams-bar{display:flex;align-items:center;justify-content:space-between;gap:6px}
-  .teams-bar .tot{font-weight:900}
-  .timer{font-weight:900;letter-spacing:.3px}
-  .header-actions{display:flex;gap:6px;align-items:center}
-  .typebox{border:1px dashed #e5e7eb;border-radius:12px;background:#fff;padding:8px}
-  .typeitem{font-size:.9rem;padding:4px 8px;border-radius:9px;background:#faf5ff;border:1px solid #e9d5ff;display:inline-block;margin:3px 3px 0 0}
-
-  /* Multiple-choice grid */
-  .mc-wrap{margin-top:8px}
-  .mc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .chatlog{display:grid;gap:5px;min-height:72px;max-height:230px;overflow:auto;padding-right:2px}
+  .bubble{padding:7px 9px;border-radius:9px;background:#f8fafc;border:1px solid #eef2f7;font-size:.92rem}
+  .bubble.mine{background:#faf5ff;border-color:#ddd6fe}.bubble .meta{font-size:.76rem;color:var(--muted);margin-bottom:2px}
+  .team-tag{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:9px;background:rgba(0,0,0,.04);border:1px solid #e5e7eb;font-weight:800}
+  .teams-bar{display:flex;align-items:center;justify-content:space-between;gap:6px}.teams-bar .tot{font-weight:900}
+  .timer{font-weight:900;letter-spacing:.3px}.header-actions{display:flex;gap:6px;align-items:center}
+  .stage{margin:8px 0;padding:9px 10px;border-radius:11px;border:1px solid #ddd6fe;background:#faf5ff;font-weight:850}
+  .stage.reading{border-color:#bae6fd;background:#f0f9ff;color:#075985}.stage.discuss{border-color:#fde68a;background:#fffbeb;color:#92400e}.stage.final{border-color:#fecaca;background:#fff1f2;color:#991b1b}
+  .suggestions{display:grid;gap:6px;margin-top:7px}.suggestion{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 8px;border:1px solid #e9d5ff;border-radius:10px;background:#faf5ff}
+  .suggestion button{white-space:nowrap}
+  .mc-wrap{margin-top:8px}.mc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
   .mc-btn{border:1px solid var(--br);background:#fff;border-radius:10px;padding:10px;cursor:pointer;text-align:left;box-shadow:0 2px 6px rgba(148,163,184,.18)}
-  .mc-btn.selected{outline:3px solid #c4b5fd;border-color:#a78bfa;background:#faf5ff}
-  .mc-btn[disabled]{opacity:.5;cursor:not-allowed}
-
-  /* Float-fade reveal */
-  @keyframes floatFade {
-    0% { transform: translate(-50%, 8px); opacity: 0; }
-    12% { opacity: 1; }
-    80% { opacity: 1; }
-    100% { transform: translate(-50%, -22px); opacity: 0; }
-  }
-  .reveal{
-    position:fixed; left:50%; top:16%;
-    transform:translate(-50%, 0);
-    padding:8px 12px; border-radius:12px; border:1px solid;
-    background:rgba(255,255,255,.96); box-shadow:var(--shadow);
-    font-weight:900; z-index:9999; animation: floatFade 1800ms ease-out forwards;
-  }
-  .reveal.good{ color:var(--good); border-color:#bbf7d0; background:#f0fdf4 }
-  .reveal.bad{  color:var(--bad);  border-color:#fecaca; background:#fff1f2 }
-
-  /* Submitted notice */
-  .notice{margin-top:6px;font-weight:800}
-  .notice.ok{color:var(--good)}
-  .notice.bad{color:var(--bad)}
-
-  /* History panel */
-  .history-list{display:grid;gap:4px;margin-top:4px}
-  .history-item{
-    font-size:.85rem;
-    padding:4px 8px;
-    border-radius:9px;
-    border:1px solid #e5e7eb;
-    background:#fff;
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-  }
-  .history-item.good{
-    border-color:#bbf7d0;
-    background:#f0fdf4;
-    color:#166534;
-  }
-  .history-item.bad{
-    border-color:#fecaca;
-    background:#fef2f2;
-    color:#b91c1c;
-  }
+  .mc-btn.selected{outline:3px solid #c4b5fd;border-color:#a78bfa;background:#faf5ff}.mc-btn[disabled]{opacity:.5;cursor:not-allowed}
+  .notice{margin-top:7px;font-weight:800;padding:8px 10px;border-radius:10px;display:none}.notice.ok{display:block;color:#166534;background:#f0fdf4;border:1px solid #bbf7d0}.notice.bad{display:block;color:#991b1b;background:#fff1f2;border:1px solid #fecaca}.notice.info{display:block;color:#3730a3;background:#f5f3ff;border:1px solid #ddd6fe}
+  .history-list{display:grid;gap:4px;margin-top:4px}.history-item{font-size:.85rem;padding:5px 8px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;display:flex;justify-content:space-between;align-items:center}.history-item.good{border-color:#bbf7d0;background:#f0fdf4;color:#166534}.history-item.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+  @keyframes floatFade{0%{transform:translate(-50%,8px);opacity:0}12%{opacity:1}80%{opacity:1}100%{transform:translate(-50%,-22px);opacity:0}}
+  .reveal{position:fixed;left:50%;top:16%;transform:translate(-50%,0);padding:9px 13px;border-radius:12px;border:1px solid;background:rgba(255,255,255,.97);box-shadow:var(--shadow);font-weight:900;z-index:9999;animation:floatFade 2200ms ease-out forwards;max-width:min(92vw,700px);text-align:center}
+  .reveal.good{color:var(--good);border-color:#bbf7d0;background:#f0fdf4}.reveal.bad{color:var(--bad);border-color:#fecaca;background:#fff1f2}.reveal.info{color:#3730a3;border-color:#ddd6fe;background:#f5f3ff}
+  .hidden{display:none!important}
+  @media(max-width:620px){.inputs{grid-template-columns:1fr 1fr 1fr}.inputs .btn{grid-column:1/-1}.vote-grid,.scores,.mc-grid{grid-template-columns:1fr}.subtitle{max-width:48vw}}
 </style>
 </head>
 <body>
 <div class="wrap">
-
   <header>
     <div class="brand">
       <div class="logo">📖</div>
-      <div>
+      <div style="min-width:0">
         <div class="title">Bible Game</div>
-        <div class="muted sm" id="subtitle">Connecting…</div>
+        <div class="muted sm subtitle" id="subtitle">Connecting…</div>
       </div>
     </div>
     <div class="header-actions">
@@ -138,90 +87,81 @@
     </div>
   </header>
 
-  <!-- TOP: MODE / TIMER / HOST / LIVES -->
   <section class="panel" id="scoresPanel">
     <div class="row" style="justify-content:space-between">
-      <span class="badge"><span id="modeLabel">Vote</span> • <span class="timer" id="timer">--:--</span></span>
+      <span class="badge"><span id="modeLabel">Connecting</span> • <span class="timer" id="timer">--:--</span></span>
       <div class="row">
+        <span class="pill" id="connectionPill">● Connecting</span>
+        <span class="pill">Players: <b id="playerCount">0</b></span>
         <span class="pill">Host: <b id="hostName">—</b></span>
-        <span class="pill" id="livesPill" style="display:none">♥ Lives: <b id="livesCount">3</b></span>
+        <span class="pill hidden" id="livesPill">♥ Lives: <b id="livesCount">3</b></span>
       </div>
     </div>
-    <div id="scoreboard" class="scores" style="margin-top:6px"></div>
+    <div id="scoreboard" class="scores" style="margin-top:7px"></div>
   </section>
 
-  <!-- VOTE -->
-  <section class="panel" id="phase-vote" style="display:none">
+  <section class="panel" id="phase-waiting">
+    <div class="title">Waiting for the host…</div>
+    <div class="muted sm" style="margin-top:5px">The multiplayer session will appear here as soon as the lobby host opens the Bible game.</div>
+  </section>
+
+  <section class="panel hidden" id="phase-vote">
     <div class="row" style="justify-content:space-between;align-items:flex-end">
       <div>
-        <div class="title">Vote: Game Type (30s)</div>
-        <div class="muted sm">Traditional • Speed • Teams • Co-Op Survival</div>
+        <div class="title">Vote for the game type</div>
+        <div class="muted sm">Each new session has fresh votes, chat, scores, and player state.</div>
       </div>
       <div class="pill">Your vote: <strong id="myVote">—</strong></div>
     </div>
     <div class="vote-grid" style="margin-top:8px">
-      <button class="card" data-mode="traditional">
-        <div class="left"><b>🕰️ Traditional</b><span class="sm muted">6 rounds, shared verse</span></div>
-        <span class="pill">Votes: <b id="v-traditional">0</b></span>
-      </button>
-      <button class="card" data-mode="speed">
-        <div class="left"><b>⚡ Speed</b><span class="sm muted">90s, per-player verses, −1 all-wrong</span></div>
-        <span class="pill">Votes: <b id="v-speed">0</b></span>
-      </button>
-      <button class="card" data-mode="teams">
-        <div class="left"><b>👥 Teams</b><span class="sm muted">6 rounds • team chat • 60s/round</span></div>
-        <span class="pill">Votes: <b id="v-teams">0</b></span>
-      </button>
-      <button class="card" data-mode="coop">
-        <div class="left"><b>🤝 Co-Op Survival</b><span class="sm muted">Shared lives • first answer locks • no timer</span></div>
-        <span class="pill">Votes: <b id="v-coop">0</b></span>
-      </button>
+      <button class="card" data-mode="traditional"><div class="left"><b>🕰️ Traditional</b><span class="sm muted">6 shared rounds • one answer each</span></div><span class="pill">Votes: <b id="v-traditional">0</b></span></button>
+      <button class="card" data-mode="speed"><div class="left"><b>⚡ Speed</b><span class="sm muted">90 seconds • private questions</span></div><span class="pill">Votes: <b id="v-speed">0</b></span></button>
+      <button class="card" data-mode="teams"><div class="left"><b>👥 Teams</b><span class="sm muted">Read • discuss • final answer</span></div><span class="pill">Votes: <b id="v-teams">0</b></span></button>
+      <button class="card" data-mode="coop"><div class="left"><b>🤝 Co-Op Survival</b><span class="sm muted">Shared lives • team discussion</span></div><span class="pill">Votes: <b id="v-coop">0</b></span></button>
     </div>
-    <div class="sm muted" style="margin-top:6px">Highest votes wins; ties are randomly chosen.</div>
+    <div class="sm muted" style="margin-top:6px">Highest votes wins. A tie is resolved randomly.</div>
   </section>
 
-  <!-- PLAY -->
-  <section class="panel" id="phase-play" style="display:none">
-    <!-- Teams meta (scores + chat) -->
-    <div id="teamsBar" class="teams-bar" style="display:none; margin-bottom:8px">
+  <section class="panel hidden" id="phase-play">
+    <div id="teamsBar" class="teams-bar hidden">
       <div class="tot">Team A: <span id="teamAScore">0</span></div>
+      <div class="pill" id="myTeamPill">Your team: —</div>
       <div class="tot">Team B: <span id="teamBScore">0</span></div>
     </div>
-    <div id="teamsLastSubmit" class="sm muted" style="display:none; margin:-2px 0 8px"></div>
+    <div id="teamStage" class="stage hidden"></div>
+    <div id="teamsLastSubmit" class="sm muted hidden" style="margin:0 0 8px"></div>
 
-    <!-- Chat + Teammate Typing -->
-    <div id="chatWrap" style="display:none; margin-bottom:8px">
+    <div id="chatWrap" class="hidden" style="margin-bottom:8px">
       <div class="chat">
         <div class="row" style="justify-content:space-between">
           <div class="team-tag" id="chatLabel">Chat</div>
-          <div class="muted sm">Last 3 messages</div>
+          <div class="muted sm"><span id="chatStatus">Synced</span> • newest 30</div>
         </div>
         <div class="chatlog" id="chatLog"></div>
         <div class="row">
-          <input id="chatInput" type="text" placeholder="Type hint/idea…" />
+          <input id="chatInput" type="text" maxlength="240" placeholder="Share an idea…" />
           <button class="btn small" id="sendChat">Send</button>
         </div>
       </div>
-      <div class="typebox" id="typePanel" style="display:none; margin-top:6px">
-        <div class="muted sm" style="margin-bottom:4px">Teammates are selecting…</div>
-        <div id="typeList"></div>
-      </div>
+    </div>
+
+    <div id="suggestionsWrap" class="hidden" style="margin-bottom:8px">
+      <div class="title sm">Team suggestions</div>
+      <div class="muted sm">Click Use to copy a teammate’s suggestion into your answer fields.</div>
+      <div id="suggestionsList" class="suggestions"></div>
     </div>
 
     <div class="verse-box">
       <div class="muted sm" id="verseHeader">Verse</div>
-      <div class="verse-text" id="verseText">Loading verses…</div>
+      <div class="verse-text" id="verseText">Loading…</div>
     </div>
 
-    <!-- Multiple choice (Co-Op Survival) -->
-    <div id="mcWrap" class="mc-wrap" style="display:none">
+    <div id="mcWrap" class="mc-wrap hidden">
+      <div id="coopDiscussHint" class="stage discuss">Discuss before locking an answer.</div>
       <div id="mcGrid" class="mc-grid"></div>
-      <div class="row" style="margin-top:6px;justify-content:flex-end">
-        <button class="btn" id="mcSubmitBtn">Submit</button>
-      </div>
+      <div class="row" style="margin-top:7px;justify-content:flex-end"><button class="btn" id="mcSubmitBtn">Submit</button></div>
     </div>
 
-    <!-- Manual inputs (other modes) -->
     <div id="inputsWrap" class="inputs">
       <select id="bookInput"></select>
       <input id="chapInput" type="number" min="1" placeholder="Chapter" />
@@ -229,40 +169,33 @@
       <button class="btn" id="submitBtn">Submit</button>
     </div>
 
-    <div id="playHelp" class="sm muted" style="margin-top:6px"></div>
-    <div id="submitNotice" class="notice" style="display:none"></div>
+    <div id="playHelp" class="sm muted" style="margin-top:7px"></div>
+    <div id="submitNotice" class="notice"></div>
 
-    <!-- Per-player recent answer history -->
-    <div id="historyPanel" class="sm" style="margin-top:6px">
-      <div class="muted">Recent answers:</div>
+    <div id="historyPanel" class="sm" style="margin-top:8px">
+      <div class="muted">Your recent answers:</div>
       <div id="historyList" class="history-list"></div>
     </div>
   </section>
 
-  <!-- END -->
-  <section class="panel" id="phase-end" style="display:none">
+  <section class="panel hidden" id="phase-end">
     <div class="title">Game Over</div>
-    <div class="muted sm">Final standings above. Host can start again or head back.</div>
+    <div class="muted sm">The session is complete. Starting again creates an entirely new session, so old votes, chat, and choices cannot leak into the next game.</div>
     <div class="row" style="margin-top:8px">
       <button class="btn" id="playAgainBtn">Play Again</button>
       <button class="btn-ghost" id="toLobbyBtn">Back to Lobby</button>
     </div>
   </section>
-
 </div>
 
-<!-- Firebase (v10 modular) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
     getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, addDoc,
-    serverTimestamp, query, orderBy, limit, getDocs, runTransaction, increment
+    serverTimestamp, query, orderBy, limit, getDocs, runTransaction, increment, Timestamp
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-  import {
-    getAuth, signInAnonymously, onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-  // ---------- CONFIG ----------
   const firebaseConfig = {
     apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
     authDomain: "bible-game-246c0.firebaseapp.com",
@@ -271,891 +204,1043 @@
     messagingSenderId: "959619818996",
     appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
   };
+
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
   const auth = getAuth(app);
+  const $ = id => document.getElementById(id);
+
+  const url = new URL(location.href);
+  const gameId = url.searchParams.get('gameId') || '';
+  const username = (url.searchParams.get('username') || '').trim();
+
+  const MODE_DURATION = {
+    voting: 35000,
+    traditional: 40000,
+    teams: 75000,
+    speed: 90000
+  };
+  const TEAM_READING_MS = 8000;
+  const TEAM_FINAL_MS = 20000;
+  const COOP_READING_MS = 6500;
+  const COOP_REVEAL_MS = 2300;
+  const PRESENCE_STALE_MS = 80000;
+  const HEARTBEAT_MS = 25000;
 
   let currentUser = null;
-
-  // ---------- DOM ----------
-  const $  = (id)=> document.getElementById(id);
-
-  // ---------- URL ----------
-  const url = new URL(location.href);
-  const gameId   = url.searchParams.get('gameId') || '';
-  const username = url.searchParams.get('username') || '';
-
-  // ---------- STATE ----------
-  let LOBBY=null, GAME=null, HOST=null, isHost=false;
-  let verses=[], books=[], bookSet=new Set();
-  let myCurrentVerse=null, tickTimer=null;
-  let lastMyWasCorrectFull = false; // for shared modes reveal
+  let LOBBY = null;
+  let CONTROL = null;
+  let SESSION = null;
+  let previousSession = null;
+  let PLAYERS = new Map();
+  let VOTES = new Map();
+  let SUGGESTIONS = [];
+  let verses = [];
+  let books = [];
+  let currentSessionId = '';
+  let sessionRef = null;
+  let playersCol = null;
+  let votesCol = null;
+  let submissionsCol = null;
+  let suggestionsCol = null;
+  let activePlayerRef = null;
+  let controlUnsub = null;
+  let sessionUnsub = null;
+  let playersUnsub = null;
+  let votesUnsub = null;
+  let suggestionsUnsub = null;
+  let chatUnsub = null;
+  let activeChatKey = '';
+  let heartbeatTimer = null;
+  let tickTimer = null;
+  let transitionBusy = false;
+  let createSessionBusy = false;
+  let serverClockOffsetMs = 0;
+  let myVote = '';
   let mcSelectedId = null;
-  let prevGame = null; // for coop reveal
-  let iTypedDebounce = null;
-  let iJustSubmitted = false; // prevent external re-renders from clearing my inputs
-  let lastSubmittedInfo = null; // for classic local notice
-  let hostTickBusy = false;
-  const myHistory = []; // per-player recent answers
+  let mcRenderedQuestionKey = '';
+  const myHistory = [];
 
-  // ---------- FS REFS ----------
-  const lobbyRef  = doc(db, 'lobbies', gameId);
-  const gameRef   = doc(db, 'games', gameId);
-  const votesCol  = collection(db, 'games', gameId, 'votes');
-  const pstateCol = collection(db, 'games', gameId, 'playerState');
-  const chatCol   = collection(db, 'games', gameId, 'chat');
+  const lobbyRef = doc(db, 'lobbies', gameId);
+  const controlRef = doc(db, 'lobbies', gameId, 'bibleGame', 'control');
 
-  // ---------- HELPERS ----------
-  const now = ()=> Date.now();
-  const fmtTime = (ms)=> { if (ms<0) ms=0; const s=Math.floor(ms/1000), m=Math.floor(s/60), r=s%60; return `${m}:${String(r).padStart(2,'0')}`; };
+  const safeName = value => (value || 'Player').toString().trim().slice(0, 40) || 'Player';
+  const nowServer = () => Date.now() + serverClockOffsetMs;
+  const fmtTime = ms => {
+    ms = Math.max(0, ms || 0);
+    const total = Math.ceil(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+  const normBook = s => (s || '').toString().trim().replace(/\s+/g, ' ').toLowerCase();
+  const serializeVerse = v => v ? ({ id:v.id, book:v.book, chapter:v.chapter, verse:v.verse, text:v.text }) : null;
+  const phaseStartMs = s => s?.phaseStartedAt?.toMillis ? s.phaseStartedAt.toMillis() : 0;
+  const phaseElapsedMs = s => Math.max(0, nowServer() - phaseStartMs(s));
+  const phaseRemainingMs = s => {
+    if (!s?.durationMs || !phaseStartMs(s)) return 0;
+    return Math.max(0, phaseStartMs(s) + Number(s.durationMs) - nowServer());
+  };
+  const isFreshPlayer = p => {
+    if (!p) return false;
+    if (p.online === false) return false;
+    const t = p.lastSeenAt?.toMillis ? p.lastSeenAt.toMillis() : nowServer();
+    return nowServer() - t < PRESENCE_STALE_MS;
+  };
 
   function parseCSV(text){
-    const rows=[]; let row=[], val=''; let inQ=false;
-    for (let i=0;i<text.length;i++){
-      const c = text[i];
-      if (inQ){
-        if (c === '"'){ if (text[i+1] === '"'){ val+='"'; i++; } else inQ=false; }
-        else val += c;
-      } else {
-        if (c === '"') inQ=true;
-        else if (c === ','){ row.push(val); val=''; }
-        else if (c === '\n'){ row.push(val); rows.push(row); row=[]; val=''; }
-        else if (c === '\r'){ }
-        else val += c;
+    const rows=[]; let row=[], val='', inQ=false;
+    for(let i=0;i<text.length;i++){
+      const c=text[i];
+      if(inQ){
+        if(c==='"'){ if(text[i+1]==='"'){ val+='"'; i++; } else inQ=false; }
+        else val+=c;
+      }else{
+        if(c==='"') inQ=true;
+        else if(c===','){ row.push(val); val=''; }
+        else if(c==='\n'){ row.push(val); rows.push(row); row=[]; val=''; }
+        else if(c!=='\r') val+=c;
       }
     }
-    if (val.length || row.length){ row.push(val); rows.push(row); }
+    if(val.length || row.length){ row.push(val); rows.push(row); }
     return rows;
   }
-  const normBook = (s)=> (s||'').toString().trim().replace(/\s+/g,' ').toLowerCase();
 
   function buildBooksAndVerses(rows){
-    const H = rows[0].map(h => (h||'').toString().trim());
-    const idx = (name)=> H.findIndex(h => h.toLowerCase() === name.toLowerCase());
+    const headers=(rows[0]||[]).map(h=>(h||'').toString().trim());
+    const idx=name=>headers.findIndex(h=>h.toLowerCase()===name.toLowerCase());
     const idI=idx('VerseID'), bookI=idx('BookName'), chapI=idx('Chapter'), verseI=idx('Verse'), textI=idx('Text');
-    const out=[];
-    for (let i=1;i<rows.length;i++){
-      const r = rows[i]; if (!r || !r.length) continue;
+    if([idI,bookI,chapI,verseI,textI].some(i=>i<0)) throw new Error('Bible CSV is missing one or more required headers.');
+    const seenBooks=new Set(); const out=[];
+    for(let i=1;i<rows.length;i++){
+      const r=rows[i]||[];
       const id=parseInt(r[idI],10), book=(r[bookI]||'').toString().trim();
-      const chap=parseInt(r[chapI],10), ver=parseInt(r[verseI],10), txt=(r[textI]||'').toString().trim();
-      if (!id || !book || !chap || !ver || !txt) continue;
-      out.push({id,book,chapter:chap,verse:ver,text:txt});
-      if (!bookSet.has(book)){ bookSet.add(book); books.push(book); }
+      const chapter=parseInt(r[chapI],10), verse=parseInt(r[verseI],10), text=(r[textI]||'').toString().trim();
+      if(!id || !book || !chapter || !verse || !text) continue;
+      out.push({id,book,chapter,verse,text});
+      seenBooks.add(book);
     }
-    books.sort((a,b)=> a.localeCompare(b));
+    books=Array.from(seenBooks).sort((a,b)=>a.localeCompare(b));
     return out;
   }
+
   function fillBookDropdown(){
-    const sel = $('bookInput'); sel.innerHTML='';
-    const blank = document.createElement('option'); blank.value=''; blank.textContent='Book';
-    sel.appendChild(blank);
-    for (const b of books){ const o=document.createElement('option'); o.value=b; o.textContent=b; sel.appendChild(o); }
+    const sel=$('bookInput'); sel.innerHTML='';
+    const blank=document.createElement('option'); blank.value=''; blank.textContent='Book'; sel.appendChild(blank);
+    for(const b of books){ const o=document.createElement('option'); o.value=b; o.textContent=b; sel.appendChild(o); }
   }
 
-  // Scoring: 1 Book • 3 Book+Chap • 5 Book+Chap+Verse
-  function scoreAnswerBits(guess, correct){
-    const bookOK = normBook(guess.book)===normBook(correct.book);
-    const chapOK = Number(guess.chapter)===Number(correct.chapter);
-    const verOK  = Number(guess.verse)===Number(correct.verse);
-    let pts = 0;
-    if (bookOK && chapOK && verOK) pts = 5;
-    else if (bookOK && chapOK) pts = 3;
-    else if (bookOK) pts = 1;
-    return {bookOK, chapOK, verOK, pts};
-  }
-  function scoreAnswer(guess, correct, mode){
-    const {bookOK, chapOK, verOK, pts:base} = scoreAnswerBits(guess, correct);
-    let pts = base;
-    if (mode==='speed'){ if (!bookOK && !chapOK && !verOK) pts -= 1; }
-    return {pts, full: (bookOK && chapOK && verOK)};
-  }
-  function getRoundKey(g){
-    return Number(g?.roundKey || 0);
+  function pickRandomVerse(excludeIds=[]){
+    const exclude=new Set(excludeIds||[]);
+    const pool=verses.filter(v=>!exclude.has(v.id));
+    const source=pool.length ? pool : verses;
+    return source.length ? source[Math.floor(Math.random()*source.length)] : null;
   }
 
-  function pickRandomVerse(filterFn=null, excludeSet=null){
-    let pool = verses;
-    if (filterFn) pool = pool.filter(filterFn);
-    if (excludeSet) pool = pool.filter(v => !excludeSet.has(v.id));
-    if (!pool.length) return null;
-    return pool[Math.floor(Math.random()*pool.length)];
-  }
-
-  // Co-Op option generator (returns array of verse IDs incl. correct)
-  function genCoopOptions(correctId){
-    const ids = new Set([correctId]);
-    while (ids.size < 4){
-      const v = verses[Math.floor(Math.random()*verses.length)];
-      if (v) ids.add(v.id);
+  function genCoopOptions(correct){
+    const chosen=new Map([[correct.id,correct]]);
+    while(chosen.size<4 && chosen.size<verses.length){
+      const v=verses[Math.floor(Math.random()*verses.length)];
+      if(v) chosen.set(v.id,v);
     }
-    // shuffle
-    const arr = Array.from(ids);
-    for (let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; }
+    const arr=Array.from(chosen.values()).map(v=>({id:v.id,book:v.book,chapter:v.chapter,verse:v.verse}));
+    for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; }
     return arr;
   }
 
-  // Per-player recent answer list
-  function addHistoryEntry(v, ok){
-    if (!v) return;
-    myHistory.unshift({
-      ok,
-      ref: `${v.book} ${v.chapter}:${v.verse}`
-    });
-    if (myHistory.length > 5) myHistory.pop();
-    const list = $('historyList');
-    if (!list) return;
-    list.innerHTML = '';
-    myHistory.forEach(item=>{
-      const row = document.createElement('div');
-      row.className = 'history-item ' + (item.ok ? 'good' : 'bad');
-      row.innerHTML = `<span>${item.ok ? '✓' : '✗'} ${item.ref}</span>`;
+  function scoreAnswer(guess, correct, mode){
+    const bookOK=normBook(guess.book)===normBook(correct.book);
+    const chapterOK=Number(guess.chapter)===Number(correct.chapter);
+    const verseOK=Number(guess.verse)===Number(correct.verse);
+    let points=0;
+    if(bookOK && chapterOK && verseOK) points=5;
+    else if(bookOK && chapterOK) points=3;
+    else if(bookOK) points=1;
+    if(mode==='speed' && !bookOK && !chapterOK && !verseOK) points=-1;
+    return {bookOK,chapterOK,verseOK,points,full:bookOK&&chapterOK&&verseOK};
+  }
+
+  function getLobbyHostName(data){
+    const host=data?.host;
+    if(typeof host==='string') return safeName(host);
+    if(host && typeof host==='object') return safeName(host.username || host.name || host.displayName);
+    const first=Array.isArray(data?.players) ? data.players[0] : '';
+    if(typeof first==='string') return safeName(first);
+    return username;
+  }
+
+  function setConnection(kind,text){
+    const pill=$('connectionPill');
+    pill.className=`pill ${kind||''}`.trim();
+    pill.textContent=`● ${text}`;
+  }
+
+  function showNotice(text,kind='info'){
+    const el=$('submitNotice'); el.className=`notice ${kind}`; el.textContent=text;
+  }
+  function clearNotice(){ $('submitNotice').className='notice'; $('submitNotice').textContent=''; }
+
+  function addHistory(ref,ok,points=0){
+    if(!ref) return;
+    myHistory.unshift({ref,ok,points});
+    if(myHistory.length>6) myHistory.pop();
+    const list=$('historyList'); list.innerHTML='';
+    for(const item of myHistory){
+      const row=document.createElement('div'); row.className=`history-item ${item.ok?'good':'bad'}`;
+      row.innerHTML=`<span>${item.ok?'✓':'✗'} ${escapeHtml(item.ref)}</span><b>${item.points>0?'+'+item.points:item.points||''}</b>`;
       list.appendChild(row);
-    });
-  }
-
-  // Floating reveal
-  function showRevealRef(v, ok){
-    if (!v) return;
-    const el = document.createElement('div');
-    el.className = `reveal ${ok ? 'good' : 'bad'}`;
-    el.textContent = `${ok ? '✓' : '✗'} ${v.book} ${v.chapter}:${v.verse}`;
-    document.body.appendChild(el);
-    setTimeout(()=> { if (el.parentNode) el.parentNode.removeChild(el); }, 1850);
-    addHistoryEntry(v, ok);
-  }
-
-  // ---------- UI WIRING ----------
-  $('leaveBtn').onclick = ()=> { location.href = `/index.html?username=${encodeURIComponent(username)}`; };
-  $('fsBtn').onclick = ()=>{
-    const docEl = document;
-    if (!docEl.fullscreenElement && !docEl.webkitFullscreenElement){
-      const el = docEl.documentElement;
-      (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen).call(el);
-    } else {
-      (docEl.exitFullscreen||docEl.webkitExitFullscreen||docEl.mozCancelFullScreen||docEl.msExitFullscreen).call(docEl);
-    }
-  };
-  for (const btn of document.querySelectorAll('#phase-vote .card')){
-    btn.addEventListener('click', ()=> submitVote(btn.dataset.mode));
-  }
-  $('submitBtn').onclick = onSubmitAnswer;
-  $('mcSubmitBtn').onclick = onSubmitMC;
-  $('sendChat').onclick = sendChat;
-  $('toLobbyBtn').onclick = ()=> location.href = `/index.html?username=${encodeURIComponent(username)}`;
-  $('playAgainBtn').onclick = async ()=> {
-    if (!isHost) return;
-    await runTransaction(db, async (tx)=>{
-      const l = await tx.get(lobbyRef); if (!l.exists()) throw 'no lobby';
-      const players = l.data().players || [];
-      tx.set(gameRef, {
-        status:'voting',
-        host:l.data().host || players[0] || username,
-        players,
-        mode:null,
-        deadline: now()+30000,
-        round:0,
-        roundKey: 0,
-        scores: Object.fromEntries(players.map(p=>[p,0])),
-        lives: Object.fromEntries(players.map(p=>[p,3])),
-        sharedLives: 3,
-        teamTotals:{A:0,B:0},
-        teamLocks:{},
-        lastTeamSubmission:{A:null,B:null},
-        chosenShared: [],
-        options: [],
-        endAt: 0,
-        coopLocked: false,
-        coopNextAt: 0,
-        coopAnsweredBy: "",
-        coopWasRight: null,
-        coopStartAt: 0
-      }, {merge:true});
-    });
-  };
-
-  // Live-typing publisher (Teams mode)
-  ['bookInput','chapInput','verseInput'].forEach(id=>{
-    $(id).addEventListener('input', ()=>{
-      if (GAME?.mode!=='teams') return;
-      if (iTypedDebounce) clearTimeout(iTypedDebounce);
-      iTypedDebounce = setTimeout(async ()=>{
-        const book = $('bookInput').value || '';
-        const chapter = parseInt($('chapInput').value,10) || '';
-        const verseNum = parseInt($('verseInput').value,10) || '';
-        await setDoc(doc(pstateCol, username), {
-          typingGuess: {book, chapter, verse: verseNum, t: now()}
-        }, {merge:true});
-      }, 120);
-    });
-  });
-
-  // ---------- STARTUP (Anonymous Auth) ----------
-  if (!gameId || !username){
-    $('subtitle').textContent='Missing gameId/username';
-  } else {
-    signInAnonymously(auth).catch(console.error);
-    onAuthStateChanged(auth, (user)=>{
-      if (user && !window.__bgMainStarted){
-        window.__bgMainStarted = true;
-        currentUser = user;
-        $('subtitle').textContent = `Connecting as ${username}…`;
-        main().catch(console.error);
-      }
-    });
-  }
-
-  async function main(){
-    const lobbySnap = await getDoc(lobbyRef);
-    if (!lobbySnap.exists()){ $('subtitle').textContent='Lobby not found.'; return; }
-    LOBBY = lobbySnap.data();
-    HOST  = LOBBY.host || (LOBBY.players && LOBBY.players[0]) || username;
-    isHost = (username === HOST);
-    $('hostName').textContent = HOST;
-    $('subtitle').textContent = `You are ${username} • Players: ${(LOBBY.players||[]).join(', ')}`;
-
-    // Load verses
-    const csvUrl = 'https://raw.githubusercontent.com/Sean-Pereksta/Bible-Data/refs/heads/main/web.csv';
-    const csvText = await (await fetch(csvUrl, {cache:'force-cache'})).text();
-    const rows = parseCSV(csvText);
-    verses = buildBooksAndVerses(rows);
-    fillBookDropdown();
-
-    // Ensure game doc
-    const gSnap = await getDoc(gameRef);
-    if (!gSnap.exists() && isHost){
-      const players = LOBBY.players || [username];
-      await setDoc(gameRef, {
-        status:'voting',
-        host: HOST,
-        players,
-        mode:null,
-        deadline: now()+30000,
-        round:0,
-        roundKey: 0,
-        scores: Object.fromEntries(players.map(p=>[p,0])),
-        lives: Object.fromEntries(players.map(p=>[p,3])),
-        sharedLives: 3,
-        teamTotals:{A:0,B:0},
-        teamLocks:{},
-        lastTeamSubmission:{A:null,B:null},
-        chosenShared: [],
-        options: [],
-        endAt: 0,
-        coopLocked: false,
-        coopNextAt: 0,
-        coopAnsweredBy: "",
-        coopWasRight: null,
-        coopStartAt: 0
-      });
-    }
-
-    // Game listener
-    onSnapshot(gameRef, (snap)=>{
-      if (!snap.exists()) return;
-      const old = prevGame;
-      const fresh = snap.data();
-
-      GAME = fresh; prevGame = fresh;
-      render();
-
-      // Reveal on shared-verse change
-      if (old && old.status==='playing' && old.currentSharedId && old.currentSharedId !== (fresh.currentSharedId||null)){
-        const v = verses.find(x=> x.id === old.currentSharedId);
-        if (old.mode==='coop'){
-          const ok = (old.coopAnsweredBy === username) ? !!old.coopWasRight : false;
-          showRevealRef(v, ok);
-        } else if (old.mode==='traditional' || old.mode==='teams'){
-          showRevealRef(v, !!lastMyWasCorrectFull);
-          lastMyWasCorrectFull = false;
-        }
-        // reset local notice on new round
-        lastSubmittedInfo = null;
-        $('submitNotice').style.display='none';
-      }
-      // Final reveal on end
-      if (old && old.status==='playing' && fresh.status==='ended' && old.currentSharedId){
-        const v = verses.find(x=> x.id === old.currentSharedId);
-        if (old.mode==='coop'){
-          const ok = (old.coopAnsweredBy === username) ? !!old.coopWasRight : false;
-          showRevealRef(v, ok);
-        } else if (old.mode==='traditional' || old.mode==='teams'){
-          showRevealRef(v, !!lastMyWasCorrectFull);
-          lastMyWasCorrectFull = false;
-        }
-      }
-    });
-
-    // Votes listener
-    onSnapshot(votesCol, (qsnap)=>{
-      const counts = {traditional:0, speed:0, teams:0, coop:0};
-      qsnap.forEach((snapDoc)=>{
-        const m = (snapDoc.data() || {}).mode;
-        if (counts[m] !== undefined) counts[m]++;
-      });
-      $('v-traditional').textContent = counts.traditional;
-      $('v-speed').textContent       = counts.speed;
-      $('v-teams').textContent       = counts.teams;
-      $('v-coop').textContent        = counts.coop;
-      highlightVoteLeader(counts);
-    });
-
-    // Chat listener
-    onSnapshot(query(chatCol, orderBy('ts','desc'), limit(20)), (qsnap)=>{
-      const msgs=[]; qsnap.forEach((snapDoc)=> msgs.push(snapDoc.data())); msgs.reverse(); drawChat(msgs);
-    });
-
-    // Player state (my current verse for speed)
-    onSnapshot(doc(pstateCol, username), (psnap)=>{
-      const st = psnap.exists() ? psnap.data() : null;
-      if (st && st.currentVerseId){
-        const v = verses.find(x=> x.id === st.currentVerseId);
-        if (v){ myCurrentVerse = v; maybeShowVerse(true); }
-      }
-    });
-
-    // Team typing panel listener (watch all)
-    onSnapshot(pstateCol, (qsnap)=>{
-      const all = [];
-      qsnap.forEach(s=>{
-        const data=s.data();
-        all.push({name:s.id, typingGuess:data.typingGuess||null});
-      });
-      drawTyping(all);
-    });
-
-    // Timer loop
-    if (tickTimer) clearInterval(tickTimer);
-    tickTimer = setInterval(isHost ? hostDrive : updateCountdownUI, 250);
-  }
-
-  // ---------- RENDER ----------
-  function render(){
-    if (!GAME) return;
-
-    const phase = GAME.status || 'voting';
-    const mode  = GAME.mode || 'Vote';
-    $('modeLabel').textContent = (phase==='voting') ? 'Vote' : (mode.charAt(0).toUpperCase()+mode.slice(1));
-
-    // Toggle views
-    $('phase-vote').style.display  = (phase === 'voting')   ? 'block' : 'none';
-    $('phase-play').style.display  = (phase === 'playing')  ? 'block' : 'none';
-    $('phase-end').style.display   = (phase === 'ended')    ? 'block' : 'none';
-
-    // Lives pill (Co-Op)
-    if (phase==='playing' && GAME.mode==='coop'){
-      $('livesPill').style.display='inline-flex';
-      $('livesCount').textContent = GAME.sharedLives ?? 3;
-    } else {
-      $('livesPill').style.display='none';
-    }
-
-    drawScores();
-
-    if (phase === 'playing'){
-      // Chat visibility
-      if (GAME.mode === 'teams'){
-        $('teamsBar').style.display = 'flex';
-        $('teamAScore').textContent = (GAME.teamTotals && GAME.teamTotals.A) || 0;
-        $('teamBScore').textContent = (GAME.teamTotals && GAME.teamTotals.B) || 0;
-        $('chatWrap').style.display = 'block';
-        $('chatLabel').textContent = 'Team chat';
-        $('typePanel').style.display = 'block';
-        const myTeam = getMyTeam();
-        const last = (GAME.lastTeamSubmission || {})[myTeam || ''];
-        if (myTeam && last){
-          $('teamsLastSubmit').style.display = 'block';
-          $('teamsLastSubmit').textContent = `Last ${myTeam} submission: ${last.by} → ${last.ref}`;
-        } else {
-          $('teamsLastSubmit').style.display = 'none';
-          $('teamsLastSubmit').textContent = '';
-        }
-      } else if (GAME.mode === 'coop'){
-        $('teamsBar').style.display = 'none';
-        $('teamsLastSubmit').style.display = 'none';
-        $('chatWrap').style.display = 'block';
-        $('chatLabel').textContent = 'Chat';
-        $('typePanel').style.display = 'none';
-      } else {
-        $('teamsBar').style.display = 'none';
-        $('teamsLastSubmit').style.display = 'none';
-        $('chatWrap').style.display = 'none';
-        $('typePanel').style.display = 'none';
-      }
-
-      // Inputs vs Multiple-choice
-      if (GAME.mode === 'coop'){
-        $('inputsWrap').style.display = 'none';
-        $('mcWrap').style.display = 'block';
-        buildMCUI();
-      } else {
-        $('mcWrap').style.display = 'none';
-        $('inputsWrap').style.display = 'grid';
-      }
-
-      buildPlayHelp();
-      maybeShowVerse(false);
-    }
-    updateCountdownUI();
-  }
-
-  function drawScores(){
-    const sb = $('scoreboard'); sb.innerHTML='';
-    const players = (GAME.players || []);
-    const scores = (GAME.scores || {});
-    const order = players.slice().sort((a,b)=> (scores[b]||0) - (scores[a]||0));
-    for (const p of order){
-      const row = document.createElement('div'); row.className='entry';
-      const name = document.createElement('div'); name.className='name';
-      const star = (p === GAME.host) ? ' ⭐' : '';
-      name.textContent = p + star;
-      const sc = document.createElement('div'); sc.innerHTML = `🏆 <b>${scores[p]||0}</b>`;
-      row.appendChild(name); row.appendChild(sc);
-      sb.appendChild(row);
-    }
-
-    // Disable Co-Op inputs if locked or game over
-    if (GAME.mode==='coop'){
-      const dead = (GAME.sharedLives||0) <= 0;
-      const locked = !!GAME.coopLocked;
-      for (const b of document.querySelectorAll('.mc-btn')) b.disabled = dead || locked;
-      if ($('mcSubmitBtn')) $('mcSubmitBtn').disabled = dead || locked || !mcSelectedId;
     }
   }
 
-  function updateCountdownUI(){
-    if (!GAME) return;
-    let text='--:--';
-    if (GAME.status === 'voting'){
-      const t = (GAME.deadline || 0) - now();
-      text = fmtTime(t);
-    } else if (GAME.status === 'playing'){
-      if (GAME.mode==='speed'){
-        text = fmtTime((GAME.endAt||0) - now());
-      } else if (GAME.mode==='coop'){
-        const start = GAME.coopStartAt || now();
-        text = fmtTime(now() - start); // survival time (count-up)
-      } else {
-        text = fmtTime((GAME.deadline||0) - now());
-      }
-    }
-    $('timer').textContent = text;
+  function showReveal(text,kind='info'){
+    const el=document.createElement('div'); el.className=`reveal ${kind}`; el.textContent=text; document.body.appendChild(el);
+    setTimeout(()=>el.remove(),2250);
   }
 
-  function highlightVoteLeader(counts){
-    for (const btn of document.querySelectorAll('#phase-vote .card')) btn.classList.remove('leader');
-    const max = Math.max(counts.traditional, counts.speed, counts.teams, counts.coop);
-    const leaders = [];
-    if (counts.traditional===max) leaders.push('traditional');
-    if (counts.speed===max)       leaders.push('speed');
-    if (counts.teams===max)       leaders.push('teams');
-    if (counts.coop===max)        leaders.push('coop');
-    for (const m of leaders){
-      const el = document.querySelector(`#phase-vote .card[data-mode="${m}"]`);
-      if (el) el.classList.add('leader');
-    }
+  function escapeHtml(value){
+    return String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   }
 
-  // ---------- VOTE ----------
-  async function submitVote(mode){
-    $('myVote').textContent = mode[0].toUpperCase()+mode.slice(1);
-    await setDoc(doc(votesCol, username), {mode, ts: serverTimestamp()});
-  }
-
-  // ---------- HOST DRIVER ----------
-  async function hostDrive(){
-    if (!GAME || hostTickBusy) return;
-    hostTickBusy = true;
-    try {
-      updateCountdownUI();
-      const tnow = now();
-
-      if (GAME.status === 'voting'){
-        if (tnow < (GAME.deadline || 0)) return;
-        const vSnap = await getDocs(votesCol);
-        const counts = {traditional:0, speed:0, teams:0, coop:0};
-        vSnap.forEach((snapDoc)=>{ const m=snapDoc.data().mode; if (counts[m]!==undefined) counts[m]++; });
-
-        const max = Math.max(counts.traditional, counts.speed, counts.teams, counts.coop);
-        const top = Object.entries(counts).filter(([k,v])=> v===max).map(([k])=>k);
-        const chosen = top[Math.floor(Math.random()*top.length)]; // random tie-break
-
-        await runTransaction(db, async (tx)=>{
-          const g = await tx.get(gameRef); if (!g.exists()) return;
-          const G = g.data();
-          if (G.status!=='voting' || tnow < (G.deadline||0)) return;
-
-          const shared = pickRandomVerse();
-          if (!shared) return;
-          const baseUpdate = {
-            status:'playing',
-            mode: chosen,
-            round: 1,
-            roundKey: getRoundKey(G) + 1,
-            scores: Object.fromEntries((G.players||[]).map(p=>[p,0])),
-            chosenShared: [shared.id],
-            currentSharedId: shared.id,
-            endAt: 0,
-            coopLocked: false,
-            coopNextAt: 0,
-            coopAnsweredBy: "",
-            coopWasRight: null,
-            options: [],
-            teamLocks: {A:false,B:false},
-            teamTotals: {A:0,B:0},
-            lastTeamSubmission:{A:null,B:null}
-          };
-
-          if (chosen === 'teams'){
-            const ps = (G.players||[]).slice();
-            const A=[], B=[]; ps.forEach((p,i)=> (i%2===0?A:B).push(p));
-            tx.update(gameRef, {
-              ...baseUpdate,
-              teamA:A,
-              teamB:B,
-              deadline: tnow + 60000
-            });
-          } else if (chosen === 'speed'){
-            tx.update(gameRef, {
-              ...baseUpdate,
-              deadline: 0,
-              endAt: tnow + 90000
-            });
-          } else if (chosen === 'coop'){
-            tx.update(gameRef, {
-              ...baseUpdate,
-              sharedLives: 3,
-              coopStartAt: tnow,
-              options: genCoopOptions(shared.id),
-              deadline: 0
-            });
-          } else {
-            tx.update(gameRef, {
-              ...baseUpdate,
-              deadline: tnow + 30000
-            });
-          }
-        });
-
-        if (chosen === 'speed') await seedPerPlayerVerses();
-      }
-      else if (GAME.status === 'playing'){
-        const mode = GAME.mode;
-        if (mode === 'coop'){
-          if ((GAME.sharedLives||0) <= 0){ await updateDoc(gameRef, {status:'ended'}); return; }
-          if (GAME.coopLocked && tnow >= (GAME.coopNextAt || 0)){
-            await runTransaction(db, async (tx)=>{
-              const g = await tx.get(gameRef); if (!g.exists()) return;
-              const G = g.data();
-              if (G.status!=='playing' || G.mode!=='coop') return;
-              if (!G.coopLocked || tnow < (G.coopNextAt || 0)) return;
-              const chosenSet = new Set(G.chosenShared || []);
-              let v = pickRandomVerse(null, chosenSet); if (!v) v = pickRandomVerse();
-              if (!v) return;
-              chosenSet.add(v.id);
-              tx.update(gameRef, {
-                currentSharedId: v.id,
-                options: genCoopOptions(v.id),
-                chosenShared: Array.from(chosenSet),
-                coopLocked: false,
-                coopAnsweredBy: "",
-                coopWasRight: null,
-                roundKey: getRoundKey(G) + 1
-              });
-            });
-          }
-        } else if (mode === 'traditional' || mode === 'teams'){
-          if (tnow >= (GAME.deadline || 0)){
-            await runTransaction(db, async (tx)=>{
-              const g = await tx.get(gameRef); if (!g.exists()) return;
-              const G = g.data();
-              if (G.status!=='playing' || (G.mode!=='traditional' && G.mode!=='teams')) return;
-              if (tnow < (G.deadline || 0)) return;
-              const nextRound = (G.round||1) + 1;
-              if (nextRound > 6){
-                tx.update(gameRef, {status:'ended', deadline:0});
-                return;
-              }
-              const chosenSet = new Set(G.chosenShared || []);
-              let v = pickRandomVerse(null, chosenSet); if (!v) v = pickRandomVerse();
-              if (!v) return;
-              chosenSet.add(v.id);
-              tx.update(gameRef, {
-                round: nextRound,
-                roundKey: getRoundKey(G) + 1,
-                currentSharedId: v.id,
-                chosenShared: Array.from(chosenSet),
-                deadline: tnow + (G.mode==='teams' ? 60000 : 30000),
-                teamLocks: G.mode==='teams' ? {A:false,B:false} : (G.teamLocks||{})
-              });
-            });
-          }
-        } else if (mode === 'speed'){
-          if (tnow >= (GAME.endAt || 0)){ await updateDoc(gameRef, {status:'ended'}); }
-        }
-      }
-    } finally {
-      hostTickBusy = false;
-    }
-  }
-
-  async function seedPerPlayerVerses(){
-    const players = (GAME.players || []);
-    for (const p of players){
-      const v = pickRandomVerse();
-      if (!v) continue;
-      await setDoc(doc(pstateCol, p), { currentVerseId: v.id }, {merge:true});
-    }
-  }
-
-  // ---------- PLAY VIEW ----------
-  function maybeShowVerse(isMineChange){
-    if (!GAME) return;
-    const mode = GAME.mode;
-    if (mode==='traditional' || mode==='teams' || mode==='coop'){
-      const v = verses.find(x=> x.id === GAME.currentSharedId);
-      $('verseHeader').textContent = (mode==='coop')
-        ? `Co-Op Survival`
-        : (mode==='teams' ? `Round ${GAME.round||1} • Teams (60s)` : `Round ${GAME.round||1} • Shared`);
-      $('verseText').textContent = v ? v.text : '—';
-      if (mode==='coop') buildMCUI();
-      // Do NOT clear my inputs here. (prevents resets on other players' submissions)
-      if (!isMineChange){
-        // keep what I'm typing
-      }
-    } else {
-      $('verseHeader').textContent = 'Your verse';
-      $('verseText').textContent = myCurrentVerse ? myCurrentVerse.text : '—';
-      // Do NOT clear inputs unless I submitted (handled in onSubmitAnswer)
-    }
-  }
-
-  function buildPlayHelp(){
-    const m = GAME.mode;
-    let txt='';
-    if (m==='traditional') txt='6 rounds • 30s each • Scoring: 1 Book • 3 Book+Chap • 5 Book+Chap+Verse (no negatives)';
-    else if (m==='speed') txt='90s • Per-player verses • Scoring 1/3/5 • −1 if ALL three wrong';
-    else if (m==='teams') txt='6 rounds • 60s • First team answer locks • Team chat above • Live teammate picks • Scoring 1/3/5';
-    else if (m==='coop')  txt='Survival • Shared lives • First answer locks • Choose 1 of 4 refs • +1 if correct, wrong costs a life';
-    $('playHelp').textContent = txt;
-  }
-
-  // Co-Op UI
-  function buildMCUI(){
-    if (GAME.mode!=='coop') return;
-    const grid = $('mcGrid'); grid.innerHTML='';
-    mcSelectedId = null;
-    const opts = GAME.options || [];
-    for (const id of opts){
-      const v = verses.find(x=> x.id === id);
-      const btn = document.createElement('button');
-      btn.className='mc-btn';
-      btn.textContent = v ? `${v.book} ${v.chapter}:${v.verse}` : '—';
-      btn.onclick = ()=>{
-        if (GAME.coopLocked) return;
-        mcSelectedId = id;
-        for (const b of document.querySelectorAll('.mc-btn')) b.classList.remove('selected');
-        btn.classList.add('selected');
-        $('mcSubmitBtn').disabled = (GAME.coopLocked || (GAME.sharedLives||0)<=0 || !mcSelectedId);
-      };
-      grid.appendChild(btn);
-    }
-    const locked = !!GAME.coopLocked;
-    const dead = (GAME.sharedLives||0) <= 0;
-    for (const b of document.querySelectorAll('.mc-btn')) b.disabled = locked || dead;
-    $('mcSubmitBtn').disabled = locked || dead || !mcSelectedId;
-  }
-
-  // Manual inputs submit (Traditional/Teams/Speed)
-  async function onSubmitAnswer(){
-    if (!GAME) return;
-    const mode = GAME.mode;
-    if (mode==='coop') return; // handled by MC flow
-    const book = $('bookInput').value;
-    const chapter = parseInt($('chapInput').value,10);
-    const verseNum = parseInt($('verseInput').value,10);
-    if (!chapter || !verseNum || !book) return;
-
-    if (mode==='traditional' || mode==='teams'){
-      const v = verses.find(x=> x.id === GAME.currentSharedId); if (!v) return;
-      const {pts, full} = scoreAnswer({book,chapter,verse:verseNum}, v, mode);
-      const roundKeyAtSubmit = getRoundKey(GAME);
-      let accepted = false;
-
-      if (mode==='teams'){
-        const team = getMyTeam(); if (!team) return;
-        await runTransaction(db, async (tx)=>{
-          const g = await tx.get(gameRef); if (!g.exists()) return;
-          const G = g.data();
-          if (G.status!=='playing' || G.mode!=='teams') return;
-          if (getRoundKey(G) !== roundKeyAtSubmit) return;
-          const locks = G.teamLocks || {A:false,B:false};
-          if (locks[team]) return;
-          locks[team] = true;
-          const scs = G.scores || {}; scs[username] = (scs[username]||0) + Math.max(0,pts);
-          const tots = G.teamTotals || {A:0,B:0}; tots[team] = (tots[team]||0) + Math.max(0,pts);
-          const submits = G.lastTeamSubmission || {A:null,B:null};
-          submits[team] = {
-            by: username,
-            ref: `${book} ${chapter}:${verseNum}`,
-            at: now()
-          };
-          tx.update(gameRef, { teamLocks: locks, scores: scs, teamTotals: tots, lastTeamSubmission: submits });
-          accepted = true;
-        });
-        if (!accepted) return;
-        lastMyWasCorrectFull = full;
-        // Announce who submitted what for teams
-        await addDoc(chatCol, {
-          name: username,
-          text: `submitted ${book} ${chapter}:${verseNum}`,
-          team: getMyTeam() || 'A',
-          ts: serverTimestamp()
-        });
-      } else {
-        await runTransaction(db, async (tx)=>{
-          const g = await tx.get(gameRef); if (!g.exists()) return;
-          const G = g.data();
-          if (G.status!=='playing' || G.mode!=='traditional') return;
-          if (getRoundKey(G) !== roundKeyAtSubmit) return;
-          const scs = G.scores || {};
-          scs[username] = (scs[username]||0) + Math.max(0, pts);
-          tx.update(gameRef, { scores: scs });
-          accepted = true;
-        });
-        if (!accepted) return;
-        lastMyWasCorrectFull = full;
-        // Classic: show immediate local submitted result
-        lastSubmittedInfo = {
-          ok: full,
-          correct: `${v.book} ${v.chapter}:${v.verse}`
-        };
-        showSubmittedNotice();
-      }
-
-      // I submitted: clear my inputs locally only
-      iJustSubmitted = true;
-      $('bookInput').value=''; $('chapInput').value=''; $('verseInput').value='';
-      setTimeout(()=>{ iJustSubmitted = false; }, 400);
-    } else if (mode==='speed'){
-      const v = myCurrentVerse; if (!v) return;
-      const {pts, full} = scoreAnswer({book,chapter,verse:verseNum}, v, mode);
-      await updateDoc(gameRef, { [`scores.${username}`]: increment(pts) });
-      showRevealRef(v, full);
-
-      const next = pickRandomVerse();
-      if (next) await setDoc(doc(pstateCol, username), { currentVerseId: next.id }, {merge:true});
-
-      // I submitted: clear my inputs locally only
-      iJustSubmitted = true;
-      $('bookInput').value=''; $('chapInput').value=''; $('verseInput').value='';
-      setTimeout(()=>{ iJustSubmitted = false; }, 400);
-    }
-  }
-
-  function showSubmittedNotice(){
-    if (!lastSubmittedInfo) return;
-    const el = $('submitNotice');
-    el.style.display='block';
-    el.className = 'notice ' + (lastSubmittedInfo.ok ? 'ok' : 'bad');
-    el.textContent = `Submitted — ${lastSubmittedInfo.ok ? 'Correct!' : 'Wrong'} • Correct: ${lastSubmittedInfo.correct}`;
-  }
-
-  // Co-Op submission (first answer locks; updates shared lives / score; schedules next verse)
-  async function onSubmitMC(){
-    if (!GAME || GAME.mode!=='coop') return;
-    if (!mcSelectedId) return;
-    await runTransaction(db, async (tx)=>{
-      const g = await tx.get(gameRef); if (!g.exists()) return;
-      const G = g.data(); if (G.mode!=='coop') return;
-      if (G.coopLocked) return; // already answered by someone
-      if ((G.sharedLives||0) <= 0) return;
-
-      const correctId = G.currentSharedId;
-      const wasRight = (mcSelectedId === correctId);
-      const scores = G.scores || {};
-      let sharedLives = G.sharedLives ?? 3;
-
-      if (wasRight){
-        scores[username] = (scores[username]||0) + 1; // +1 point to submitter
-      } else {
-        sharedLives = Math.max(0, sharedLives - 1);
-      }
-
-      const patch = {
-        scores,
-        sharedLives,
-        coopLocked: true,
-        coopAnsweredBy: username,
-        coopWasRight: wasRight,
-        coopNextAt: now() + 1500 // short reveal window
-      };
-
-      if (sharedLives <= 0){
-        patch.status = 'ended';
-      }
-      tx.update(gameRef, patch);
-    });
-  }
-
-  function getMyTeam(){
-    const A = GAME.teamA || []; const B = GAME.teamB || [];
-    if (A.includes(username)) return 'A';
-    if (B.includes(username)) return 'B';
+  function getMyTeam(s=SESSION){
+    if(!s || !currentUser) return null;
+    if((s.teamA||[]).includes(currentUser.uid)) return 'A';
+    if((s.teamB||[]).includes(currentUser.uid)) return 'B';
     return null;
   }
 
-  // ---------- CHAT ----------
-  async function sendChat(){
-    if (!GAME) return;
-    const txt = $('chatInput').value.trim(); if (!txt) return;
-    const payload = { name: username, text: txt.slice(0,160), ts: serverTimestamp() };
-    if (GAME.mode==='teams'){ payload.team = getMyTeam() || 'A'; } else { payload.team = 'all'; }
-    await addDoc(chatCol, payload);
-    $('chatInput').value='';
+  function getTeamStage(s=SESSION){
+    if(!s || s.mode!=='teams') return '';
+    const elapsed=phaseElapsedMs(s), remaining=phaseRemainingMs(s);
+    if(elapsed<TEAM_READING_MS) return 'reading';
+    if(remaining>TEAM_FINAL_MS) return 'discuss';
+    return 'final';
   }
-  function drawChat(msgs){
-    if (!GAME) return;
-    let show = [];
-    if (GAME.mode==='teams'){
-      const t = getMyTeam(); if (!t) return;
-      show = msgs.filter(m=> m.team===t).slice(-3);
-    } else if (GAME.mode==='coop'){
-      show = msgs.filter(m=> (m.team==='all' || !m.team)).slice(-3);
-    } else {
-      show = []; // no chat for other modes
-    }
-    const log = $('chatLog'); log.innerHTML='';
-    for (const m of show){
-      const div = document.createElement('div'); div.className='bubble';
-      div.textContent = `${m.name}: ${m.text}`; log.appendChild(div);
+
+  function coopCanAnswer(s=SESSION){
+    if(!s || s.mode!=='coop' || s.coopLocked) return false;
+    return phaseElapsedMs(s)>=COOP_READING_MS && Number(s.sharedLives||0)>0;
+  }
+
+  function activePlayers(){
+    return Array.from(PLAYERS.values()).filter(isFreshPlayer).sort((a,b)=>{
+      const at=a.joinedAt?.toMillis?.()||0, bt=b.joinedAt?.toMillis?.()||0;
+      return at-bt || String(a.uid).localeCompare(String(b.uid));
+    });
+  }
+
+  function isDriver(){
+    if(!SESSION || !currentUser) return false;
+    const active=activePlayers();
+    const host=PLAYERS.get(SESSION.hostUid);
+    if(host && isFreshPlayer(host)) return currentUser.uid===SESSION.hostUid;
+    return active.length>0 && active[0].uid===currentUser.uid;
+  }
+
+  async function loadBibleData(){
+    const csvUrl='https://raw.githubusercontent.com/Sean-Pereksta/Bible-Data/refs/heads/main/web.csv';
+    const response=await fetch(csvUrl,{cache:'no-cache'});
+    if(!response.ok) throw new Error(`Bible data failed to load (${response.status}).`);
+    verses=buildBooksAndVerses(parseCSV(await response.text()));
+    if(!verses.length) throw new Error('Bible data loaded, but no valid verses were found.');
+    fillBookDropdown();
+  }
+
+  function makeSessionId(){
+    const random=(crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+    return `bible_${Date.now()}_${random.slice(0,10)}`;
+  }
+
+  async function createFreshSession({onlyIfMissing=false}={}){
+    if(!currentUser || !LOBBY || createSessionBusy) return false;
+    createSessionBusy=true;
+    try{
+      const sid=makeSessionId();
+      const newSessionRef=doc(db,'lobbies',gameId,'bibleSessions',sid);
+      return await runTransaction(db,async tx=>{
+        const controlSnap=await tx.get(controlRef);
+        if(onlyIfMissing && controlSnap.exists() && controlSnap.data()?.activeSessionId) return false;
+        tx.set(newSessionRef,{
+          sessionId:sid,
+          status:'voting',
+          mode:null,
+          hostUid:currentUser.uid,
+          hostName:username,
+          phaseStartedAt:serverTimestamp(),
+          durationMs:MODE_DURATION.voting,
+          round:0,
+          roundKey:0,
+          currentQuestion:null,
+          chosenIds:[],
+          teamA:[], teamB:[],
+          teamTotals:{A:0,B:0},
+          teamLocks:{A:false,B:false},
+          lastTeamSubmission:{A:null,B:null},
+          sharedLives:3,
+          options:[],
+          coopLocked:false,
+          coopLockedAt:null,
+          coopAnsweredByUid:'',
+          coopAnsweredByName:'',
+          coopWasRight:null,
+          createdAt:serverTimestamp(),
+          updatedAt:serverTimestamp()
+        });
+        tx.set(controlRef,{
+          activeSessionId:sid,
+          hostUid:currentUser.uid,
+          hostName:username,
+          updatedAt:serverTimestamp()
+        },{merge:true});
+        return true;
+      });
+    }finally{
+      createSessionBusy=false;
     }
   }
 
-  // ---------- TEAM TYPING PANEL ----------
-  function drawTyping(allStates){
-    if (!GAME || GAME.mode!=='teams') return;
-    const myTeam = getMyTeam(); if (!myTeam) return;
-    const isOnTeam = (name)=>{
-      return (myTeam==='A' ? (GAME.teamA||[]).includes(name) : (GAME.teamB||[]).includes(name));
+  async function joinSession(){
+    if(!sessionRef || !currentUser) return;
+    activePlayerRef=doc(playersCol,currentUser.uid);
+    const sent=Date.now();
+    await runTransaction(db,async tx=>{
+      const sSnap=await tx.get(sessionRef);
+      if(!sSnap.exists()) return;
+      const s=sSnap.data();
+      const pSnap=await tx.get(activePlayerRef);
+      const base={
+        uid:currentUser.uid,
+        username:safeName(username),
+        online:true,
+        ready:true,
+        lastSeenAt:serverTimestamp(),
+        clockProbe:serverTimestamp(),
+        clockProbeClientMs:sent
+      };
+      if(!pSnap.exists()){
+        base.score=0;
+        base.joinedAt=serverTimestamp();
+        base.questionKey=0;
+        if(s.status==='playing' && s.mode==='speed'){
+          base.currentQuestion=serializeVerse(pickRandomVerse());
+          base.questionKey=1;
+        }
+        tx.set(activePlayerRef,base);
+        if(s.status==='playing' && s.mode==='teams'){
+          const A=(s.teamA||[]).slice(), B=(s.teamB||[]).slice();
+          if(!A.includes(currentUser.uid) && !B.includes(currentUser.uid)){
+            (A.length<=B.length?A:B).push(currentUser.uid);
+            tx.update(sessionRef,{teamA:A,teamB:B,updatedAt:serverTimestamp()});
+          }
+        }
+      }else{
+        tx.set(activePlayerRef,base,{merge:true});
+      }
+    });
+    startHeartbeat();
+  }
+
+  function startHeartbeat(){
+    if(heartbeatTimer) clearInterval(heartbeatTimer);
+    const beat=async()=>{
+      if(!activePlayerRef) return;
+      const sent=Date.now();
+      try{
+        await setDoc(activePlayerRef,{
+          online:true,
+          lastSeenAt:serverTimestamp(),
+          clockProbe:serverTimestamp(),
+          clockProbeClientMs:sent
+        },{merge:true});
+      }catch(err){ console.warn('Heartbeat failed',err); }
     };
-    const list = $('typeList'); list.innerHTML='';
-    const cutoff = now() - 65000; // show last ~65s
-    allStates
-      .filter(s=> s.name!==username && isOnTeam(s.name) && s.typingGuess && (s.typingGuess.t||0) >= cutoff)
-      .forEach(s=>{
-        const g = s.typingGuess;
-        const txt = `${s.name}: ${g.book||'—'} ${g.chapter||''}${g.verse?':'+g.verse:''}`;
-        const chip = document.createElement('div');
-        chip.className='typeitem';
-        chip.textContent = txt.trim();
-        list.appendChild(chip);
+    heartbeatTimer=setInterval(beat,HEARTBEAT_MS);
+  }
+
+  function detachSessionListeners(){
+    for(const un of [sessionUnsub,playersUnsub,votesUnsub,suggestionsUnsub,chatUnsub]){ try{un&&un();}catch{} }
+    sessionUnsub=playersUnsub=votesUnsub=suggestionsUnsub=chatUnsub=null;
+    activeChatKey='';
+    PLAYERS=new Map(); VOTES=new Map(); SUGGESTIONS=[]; SESSION=null; previousSession=null;
+  }
+
+  async function attachSession(sid){
+    if(!sid || sid===currentSessionId) return;
+    detachSessionListeners();
+    currentSessionId=sid;
+    sessionRef=doc(db,'lobbies',gameId,'bibleSessions',sid);
+    playersCol=collection(sessionRef,'players');
+    votesCol=collection(sessionRef,'votes');
+    submissionsCol=collection(sessionRef,'submissions');
+    suggestionsCol=collection(sessionRef,'suggestions');
+
+    sessionUnsub=onSnapshot(sessionRef,snap=>{
+      if(!snap.exists()) return;
+      const old=SESSION;
+      previousSession=old;
+      SESSION=snap.data();
+      render();
+      ensureChatListener();
+      handleRoundChange(old,SESSION).catch(console.error);
+    },err=>{ console.error(err); setConnection('bad','Game sync error'); });
+
+    playersUnsub=onSnapshot(playersCol,snap=>{
+      const next=new Map();
+      snap.forEach(d=>next.set(d.id,{...d.data(),uid:d.id}));
+      PLAYERS=next;
+      const me=PLAYERS.get(currentUser.uid);
+      if(me?.clockProbe?.toMillis && Number.isFinite(me.clockProbeClientMs)){
+        const recv=Date.now();
+        const midpoint=(Number(me.clockProbeClientMs)+recv)/2;
+        serverClockOffsetMs=me.clockProbe.toMillis()-midpoint;
+      }
+      setConnection('good','Synced');
+      render();
+      ensureChatListener();
+    },err=>{ console.error(err); setConnection('bad','Player sync error'); });
+
+    votesUnsub=onSnapshot(votesCol,snap=>{
+      const next=new Map(); snap.forEach(d=>next.set(d.id,d.data())); VOTES=next; renderVotes();
+    });
+
+    suggestionsUnsub=onSnapshot(suggestionsCol,snap=>{
+      const arr=[]; snap.forEach(d=>arr.push({...d.data(),id:d.id})); SUGGESTIONS=arr; drawSuggestions();
+    });
+
+    await joinSession();
+  }
+
+  async function handleRoundChange(oldState,newState){
+    if(!oldState || !newState || oldState.sessionId!==newState.sessionId) return;
+    const roundChanged=Number(oldState.roundKey)!==Number(newState.roundKey);
+    const justEnded=oldState.status==='playing' && newState.status==='ended';
+    if(!roundChanged && !justEnded) return;
+    if(oldState.mode==='traditional'){
+      const ref=doc(submissionsCol,`${oldState.roundKey}_${currentUser.uid}`);
+      const snap=await getDoc(ref);
+      const result=snap.exists()?snap.data():null;
+      const correct=oldState.currentQuestion;
+      if(result){
+        const refText=`${correct.book} ${correct.chapter}:${correct.verse}`;
+        showReveal(`${result.full?'✓ Correct':'Answer revealed'} • ${refText} • ${result.points} point${result.points===1?'':'s'}`,result.full?'good':'bad');
+        addHistory(refText,!!result.full,Number(result.points||0));
+      }else if(correct){
+        showReveal(`Time • ${correct.book} ${correct.chapter}:${correct.verse}`,'info');
+      }
+    }else if(oldState.mode==='teams'){
+      const team=getMyTeam(oldState);
+      const correct=oldState.currentQuestion;
+      if(team && correct){
+        const ref=doc(submissionsCol,`team_${oldState.roundKey}_${team}`);
+        const snap=await getDoc(ref);
+        const result=snap.exists()?snap.data():null;
+        const correctText=`${correct.book} ${correct.chapter}:${correct.verse}`;
+        if(result){
+          showReveal(`Team ${team}: ${result.full?'✓ Correct':'Result'} • ${correctText} • ${result.points} point${result.points===1?'':'s'}`,result.full?'good':'bad');
+          addHistory(correctText,!!result.full,Number(result.points||0));
+        }else showReveal(`Team ${team} did not lock an answer • ${correctText}`,'info');
+      }
+    }else if(oldState.mode==='coop' && oldState.currentQuestion){
+      const correct=oldState.currentQuestion;
+      const text=`${oldState.coopWasRight?'✓ Correct':'✗ Wrong'} • ${correct.book} ${correct.chapter}:${correct.verse}${oldState.coopAnsweredByName?' • '+oldState.coopAnsweredByName:''}`;
+      showReveal(text,oldState.coopWasRight?'good':'bad');
+      addHistory(`${correct.book} ${correct.chapter}:${correct.verse}`,!!oldState.coopWasRight,oldState.coopWasRight?1:0);
+    }
+  }
+
+  function render(){
+    $('phase-waiting').classList.toggle('hidden',!!SESSION);
+    if(!SESSION){ $('modeLabel').textContent='Waiting'; $('timer').textContent='--:--'; return; }
+
+    const phase=SESSION.status||'voting';
+    $('phase-vote').classList.toggle('hidden',phase!=='voting');
+    $('phase-play').classList.toggle('hidden',phase!=='playing');
+    $('phase-end').classList.toggle('hidden',phase!=='ended');
+    $('hostName').textContent=SESSION.hostName||CONTROL?.hostName||getLobbyHostName(LOBBY);
+    $('playerCount').textContent=activePlayers().length;
+    $('modeLabel').textContent=phase==='voting'?'Vote':(SESSION.mode?SESSION.mode[0].toUpperCase()+SESSION.mode.slice(1):'Game');
+
+    drawScores();
+    renderVotes();
+    updateCountdownUI();
+
+    if(phase==='ended'){
+      $('playAgainBtn').disabled=!canStartAgain();
+      return;
+    }
+    if(phase!=='playing') return;
+
+    const mode=SESSION.mode;
+    $('livesPill').classList.toggle('hidden',mode!=='coop');
+    if(mode==='coop') $('livesCount').textContent=SESSION.sharedLives??3;
+
+    const isTeams=mode==='teams';
+    $('teamsBar').classList.toggle('hidden',!isTeams);
+    $('teamStage').classList.toggle('hidden',!isTeams);
+    $('teamsLastSubmit').classList.toggle('hidden',!isTeams);
+    $('suggestionsWrap').classList.toggle('hidden',!isTeams);
+    $('chatWrap').classList.toggle('hidden',!(isTeams||mode==='coop'));
+    $('mcWrap').classList.toggle('hidden',mode!=='coop');
+    $('inputsWrap').classList.toggle('hidden',mode==='coop');
+
+    if(isTeams){
+      const team=getMyTeam();
+      $('teamAScore').textContent=SESSION.teamTotals?.A||0;
+      $('teamBScore').textContent=SESSION.teamTotals?.B||0;
+      $('myTeamPill').textContent=`Your team: ${team||'Spectator'}`;
+      const stage=getTeamStage();
+      const stageEl=$('teamStage'); stageEl.className=`stage ${stage}`;
+      if(stage==='reading') stageEl.textContent='Reading phase — answer controls unlock after everyone has time to read.';
+      else if(stage==='discuss') stageEl.textContent='Discussion phase — share suggestions without locking the team answer.';
+      else stageEl.textContent='Final-answer phase — your team may now lock one answer.';
+      const last=team?SESSION.lastTeamSubmission?.[team]:null;
+      $('teamsLastSubmit').textContent=last?`Team ${team} locked: ${last.byName} → ${last.ref}`:'No team answer has been locked yet.';
+      const submit=$('submitBtn');
+      submit.textContent=stage==='discuss'?'Share Suggestion':stage==='final'?'Lock Team Answer':'Read Verse';
+      submit.disabled=!team || stage==='reading' || !!SESSION.teamLocks?.[team] || phaseRemainingMs(SESSION)<=0;
+      drawSuggestions();
+    }else{
+      $('submitBtn').textContent='Submit';
+      $('submitBtn').disabled=false;
+    }
+
+    $('verseHeader').textContent=buildVerseHeader();
+    const question=mode==='speed' ? PLAYERS.get(currentUser.uid)?.currentQuestion : SESSION.currentQuestion;
+    $('verseText').textContent=question?.text||'Loading question…';
+    buildPlayHelp();
+    if(mode==='coop') buildCoopUI();
+  }
+
+  function buildVerseHeader(){
+    if(!SESSION) return 'Verse';
+    if(SESSION.mode==='traditional') return `Round ${SESSION.round||1} of 6 • Shared verse`;
+    if(SESSION.mode==='teams') return `Round ${SESSION.round||1} of 6 • Team challenge`;
+    if(SESSION.mode==='speed') return 'Your private speed question';
+    if(SESSION.mode==='coop') return `Co-Op survival • Question ${SESSION.round||1}`;
+    return 'Verse';
+  }
+
+  function buildPlayHelp(){
+    const m=SESSION.mode;
+    let text='';
+    if(m==='traditional') text='One accepted answer per player each round • Scoring: 1 book, 3 book + chapter, 5 exact reference.';
+    else if(m==='speed') text='Every answer and next question are saved atomically • −1 only when book, chapter, and verse are all wrong.';
+    else if(m==='teams') text='8s reading • 47s discussion • 20s final answer • Suggestions do not lock the team.';
+    else if(m==='coop') text='Shared lives • everyone sees the same result • a short reading period prevents instant answer locking.';
+    $('playHelp').textContent=text;
+  }
+
+  function drawScores(){
+    const sb=$('scoreboard'); sb.innerHTML='';
+    const list=Array.from(PLAYERS.values()).sort((a,b)=>Number(b.score||0)-Number(a.score||0)||safeName(a.username).localeCompare(safeName(b.username)));
+    for(const p of list){
+      const row=document.createElement('div'); row.className='entry';
+      const online=isFreshPlayer(p);
+      const host=p.uid===SESSION?.hostUid?' ⭐':'';
+      row.innerHTML=`<div class="name">${online?'🟢':'⚪'} ${escapeHtml(safeName(p.username))}${host}</div><div>🏆 <b>${Number(p.score||0)}</b></div>`;
+      sb.appendChild(row);
+    }
+  }
+
+  function renderVotes(){
+    const counts={traditional:0,speed:0,teams:0,coop:0};
+    for(const data of VOTES.values()) if(Object.prototype.hasOwnProperty.call(counts,data.mode)) counts[data.mode]++;
+    for(const [mode,count] of Object.entries(counts)){ const el=$(`v-${mode}`); if(el) el.textContent=count; }
+    const max=Math.max(...Object.values(counts));
+    document.querySelectorAll('#phase-vote .card').forEach(btn=>{
+      btn.classList.toggle('leader',counts[btn.dataset.mode]===max);
+      btn.classList.toggle('mine',btn.dataset.mode===myVote);
+    });
+  }
+
+  function updateCountdownUI(){
+    if(!SESSION){ $('timer').textContent='--:--'; return; }
+    if(SESSION.status==='voting' || (SESSION.status==='playing' && SESSION.mode!=='coop')) $('timer').textContent=fmtTime(phaseRemainingMs(SESSION));
+    else if(SESSION.status==='playing' && SESSION.mode==='coop') $('timer').textContent=fmtTime(phaseElapsedMs(SESSION));
+    else $('timer').textContent='0:00';
+
+    if(SESSION.status==='playing' && SESSION.mode==='teams'){
+      const stage=getTeamStage();
+      const team=getMyTeam();
+      $('submitBtn').disabled=!team || stage==='reading' || !!SESSION.teamLocks?.[team] || phaseRemainingMs(SESSION)<=0;
+    }
+    if(SESSION.status==='playing' && SESSION.mode==='coop') applyCoopDisabledState();
+  }
+
+  async function submitVote(mode){
+    if(!SESSION || SESSION.status!=='voting') return;
+    myVote=mode;
+    $('myVote').textContent=mode[0].toUpperCase()+mode.slice(1);
+    await setDoc(doc(votesCol,currentUser.uid),{
+      uid:currentUser.uid,
+      username:safeName(username),
+      mode,
+      updatedAt:serverTimestamp()
+    });
+  }
+
+  async function driveSession(){
+    if(!SESSION || transitionBusy || !isDriver()) return;
+    if(SESSION.status==='voting' && phaseRemainingMs(SESSION)<=0){
+      transitionBusy=true;
+      try{ await finishVoting(); }finally{ transitionBusy=false; }
+      return;
+    }
+    if(SESSION.status!=='playing') return;
+    if(SESSION.mode==='traditional' || SESSION.mode==='teams'){
+      if(phaseRemainingMs(SESSION)<=0){ transitionBusy=true; try{ await advanceRound(); }finally{ transitionBusy=false; } }
+    }else if(SESSION.mode==='speed'){
+      if(phaseRemainingMs(SESSION)<=0){ transitionBusy=true; try{ await endSpeed(); }finally{ transitionBusy=false; } }
+    }else if(SESSION.mode==='coop' && SESSION.coopLocked){
+      const lockedAt=SESSION.coopLockedAt?.toMillis?.()||0;
+      if(lockedAt && nowServer()-lockedAt>=COOP_REVEAL_MS){ transitionBusy=true; try{ await advanceCoop(); }finally{ transitionBusy=false; } }
+    }
+  }
+
+  async function finishVoting(){
+    const voteSnap=await getDocs(votesCol);
+    const counts={traditional:0,speed:0,teams:0,coop:0};
+    voteSnap.forEach(d=>{ const m=d.data().mode; if(Object.prototype.hasOwnProperty.call(counts,m)) counts[m]++; });
+    const max=Math.max(...Object.values(counts));
+    let candidates=Object.entries(counts).filter(([,v])=>v===max).map(([k])=>k);
+    if(max===0) candidates=['traditional'];
+    const chosen=candidates[Math.floor(Math.random()*candidates.length)];
+    const active=activePlayers();
+    const uids=active.map(p=>p.uid);
+    if(!uids.includes(currentUser.uid)) uids.push(currentUser.uid);
+    const question=serializeVerse(pickRandomVerse());
+    const speedQuestions=new Map(uids.map(uid=>[uid,serializeVerse(pickRandomVerse())]));
+
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(sessionRef); if(!snap.exists()) return;
+      const s=snap.data();
+      if(s.status!=='voting' || Number(s.roundKey||0)!==Number(SESSION.roundKey||0)) return;
+      if(phaseRemainingMs(s)>1200) return;
+
+      const A=[],B=[];
+      uids.forEach((uid,i)=>(i%2===0?A:B).push(uid));
+      const patch={
+        status:'playing', mode:chosen, round:1, roundKey:Number(s.roundKey||0)+1,
+        phaseStartedAt:serverTimestamp(), durationMs:chosen==='coop'?0:MODE_DURATION[chosen],
+        currentQuestion:question, chosenIds:question?[question.id]:[],
+        teamA:chosen==='teams'?A:[], teamB:chosen==='teams'?B:[],
+        teamTotals:{A:0,B:0}, teamLocks:{A:false,B:false}, lastTeamSubmission:{A:null,B:null},
+        sharedLives:3, options:chosen==='coop'?genCoopOptions(question):[],
+        coopLocked:false, coopLockedAt:null, coopAnsweredByUid:'', coopAnsweredByName:'', coopWasRight:null,
+        updatedAt:serverTimestamp()
+      };
+      tx.update(sessionRef,patch);
+      for(const uid of uids){
+        const pRef=doc(playersCol,uid);
+        const playerPatch={score:0,lastResult:null};
+        if(chosen==='speed') Object.assign(playerPatch,{currentQuestion:speedQuestions.get(uid),questionKey:1});
+        tx.set(pRef,playerPatch,{merge:true});
+      }
+    });
+  }
+
+  async function advanceRound(){
+    const nextQuestion=serializeVerse(pickRandomVerse(SESSION.chosenIds||[]));
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(sessionRef); if(!snap.exists()) return;
+      const s=snap.data();
+      if(s.status!=='playing' || !['traditional','teams'].includes(s.mode)) return;
+      if(Number(s.roundKey)!==Number(SESSION.roundKey)) return;
+      const start=s.phaseStartedAt?.toMillis?.()||0;
+      if(start && start+Number(s.durationMs||0)>nowServer()+1000) return;
+      const nextRound=Number(s.round||1)+1;
+      if(nextRound>6){ tx.update(sessionRef,{status:'ended',durationMs:0,updatedAt:serverTimestamp()}); return; }
+      const chosenIds=Array.from(new Set([...(s.chosenIds||[]),nextQuestion.id]));
+      tx.update(sessionRef,{
+        round:nextRound,
+        roundKey:Number(s.roundKey||0)+1,
+        currentQuestion:nextQuestion,
+        chosenIds,
+        phaseStartedAt:serverTimestamp(),
+        durationMs:MODE_DURATION[s.mode],
+        teamLocks:s.mode==='teams'?{A:false,B:false}:s.teamLocks,
+        lastTeamSubmission:s.mode==='teams'?{A:null,B:null}:s.lastTeamSubmission,
+        updatedAt:serverTimestamp()
       });
+    });
+  }
+
+  async function endSpeed(){
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(sessionRef); if(!snap.exists()) return;
+      const s=snap.data();
+      if(s.status!=='playing' || s.mode!=='speed' || Number(s.roundKey)!==Number(SESSION.roundKey)) return;
+      const start=s.phaseStartedAt?.toMillis?.()||0;
+      if(start && start+Number(s.durationMs||0)>nowServer()+1000) return;
+      tx.update(sessionRef,{status:'ended',durationMs:0,updatedAt:serverTimestamp()});
+    });
+  }
+
+  async function advanceCoop(){
+    const nextQuestion=serializeVerse(pickRandomVerse(SESSION.chosenIds||[]));
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(sessionRef); if(!snap.exists()) return;
+      const s=snap.data();
+      if(s.status!=='playing' || s.mode!=='coop' || !s.coopLocked) return;
+      const lockedAt=s.coopLockedAt?.toMillis?.()||0;
+      if(!lockedAt || nowServer()-lockedAt<COOP_REVEAL_MS-500) return;
+      if(Number(s.sharedLives||0)<=0){ tx.update(sessionRef,{status:'ended',updatedAt:serverTimestamp()}); return; }
+      tx.update(sessionRef,{
+        round:Number(s.round||1)+1,
+        roundKey:Number(s.roundKey||0)+1,
+        currentQuestion:nextQuestion,
+        chosenIds:Array.from(new Set([...(s.chosenIds||[]),nextQuestion.id])),
+        options:genCoopOptions(nextQuestion),
+        coopLocked:false, coopLockedAt:null, coopAnsweredByUid:'', coopAnsweredByName:'', coopWasRight:null,
+        phaseStartedAt:serverTimestamp(),
+        updatedAt:serverTimestamp()
+      });
+    });
+  }
+
+  function readGuess(){
+    const book=$('bookInput').value;
+    const chapter=parseInt($('chapInput').value,10);
+    const verse=parseInt($('verseInput').value,10);
+    if(!book || !chapter || !verse) return null;
+    return {book,chapter,verse};
+  }
+
+  function clearGuess(){
+    $('bookInput').value=''; $('chapInput').value=''; $('verseInput').value='';
+  }
+
+  async function onSubmitAnswer(){
+    if(!SESSION || SESSION.status!=='playing') return;
+    const guess=readGuess();
+    if(!guess){ showNotice('Choose a book, chapter, and verse first.','bad'); return; }
+    clearNotice();
+    if(SESSION.mode==='traditional') await submitTraditional(guess);
+    else if(SESSION.mode==='speed') await submitSpeed(guess);
+    else if(SESSION.mode==='teams'){
+      const stage=getTeamStage();
+      if(stage==='discuss') await submitSuggestion(guess);
+      else if(stage==='final') await submitTeamFinal(guess);
+      else showNotice('The reading phase is still active.','info');
+    }
+  }
+
+  async function submitTraditional(guess){
+    const stateAtSubmit=SESSION;
+    const result=scoreAnswer(guess,stateAtSubmit.currentQuestion,'traditional');
+    const submissionRef=doc(submissionsCol,`${stateAtSubmit.roundKey}_${currentUser.uid}`);
+    const playerRef=doc(playersCol,currentUser.uid);
+    const txResult=await runTransaction(db,async tx=>{
+      const [sSnap,subSnap,pSnap]=await Promise.all([tx.get(sessionRef),tx.get(submissionRef),tx.get(playerRef)]);
+      if(!sSnap.exists()||!pSnap.exists()) return {accepted:false,reason:'missing'};
+      const s=sSnap.data();
+      if(s.status!=='playing'||s.mode!=='traditional'||Number(s.roundKey)!==Number(stateAtSubmit.roundKey)) return {accepted:false,reason:'changed'};
+      if(subSnap.exists()) return {accepted:false,reason:'already'};
+      tx.set(submissionRef,{
+        uid:currentUser.uid,username:safeName(username),roundKey:s.roundKey,
+        guess,correct:s.currentQuestion,points:result.points,full:result.full,
+        createdAt:serverTimestamp()
+      });
+      tx.update(playerRef,{score:Number(pSnap.data().score||0)+Math.max(0,result.points),lastResult:{roundKey:s.roundKey,...result}});
+      return {accepted:true};
+    });
+    if(!txResult.accepted){
+      showNotice(txResult.reason==='already'?'Your answer for this round was already accepted.':'The round changed before the answer reached Firebase.','bad');
+      return;
+    }
+    clearGuess();
+    showNotice(`Answer accepted • ${result.points} point${result.points===1?'':'s'}.`,'ok');
+  }
+
+  async function submitSpeed(guess){
+    const playerRef=doc(playersCol,currentUser.uid);
+    const nextQuestion=serializeVerse(pickRandomVerse());
+    const txResult=await runTransaction(db,async tx=>{
+      const [sSnap,pSnap]=await Promise.all([tx.get(sessionRef),tx.get(playerRef)]);
+      if(!sSnap.exists()||!pSnap.exists()) return {accepted:false};
+      const s=sSnap.data(), p=pSnap.data();
+      if(s.status!=='playing'||s.mode!=='speed') return {accepted:false};
+      const current=p.currentQuestion;
+      if(!current) return {accepted:false};
+      const result=scoreAnswer(guess,current,'speed');
+      tx.update(playerRef,{
+        score:Number(p.score||0)+result.points,
+        currentQuestion:nextQuestion,
+        questionKey:Number(p.questionKey||0)+1,
+        lastResult:{questionKey:p.questionKey||0,correct:current,...result,answeredAtMs:nowServer()}
+      });
+      return {accepted:true,result,current};
+    });
+    if(!txResult.accepted){ showNotice('That answer could not be accepted because the game state changed.','bad'); return; }
+    clearGuess();
+    const correct=txResult.current;
+    const ref=`${correct.book} ${correct.chapter}:${correct.verse}`;
+    showReveal(`${txResult.result.full?'✓ Correct':'Answer'} • ${ref} • ${txResult.result.points>0?'+':''}${txResult.result.points}`,txResult.result.full?'good':'bad');
+    addHistory(ref,txResult.result.full,txResult.result.points);
+  }
+
+  async function submitSuggestion(guess){
+    const team=getMyTeam();
+    if(!team){ showNotice('You are not assigned to a team in this session.','bad'); return; }
+    const stage=getTeamStage();
+    if(stage!=='discuss'){ showNotice('Suggestions are only open during the discussion phase.','bad'); return; }
+    const ref=`${guess.book} ${guess.chapter}:${guess.verse}`;
+    await setDoc(doc(suggestionsCol,`${SESSION.roundKey}_${currentUser.uid}`),{
+      uid:currentUser.uid,username:safeName(username),team,roundKey:SESSION.roundKey,guess,ref,updatedAt:serverTimestamp()
+    });
+    showNotice(`Suggestion shared with Team ${team}: ${ref}`,'ok');
+  }
+
+  async function submitTeamFinal(guess){
+    const team=getMyTeam();
+    if(!team){ showNotice('You are not assigned to a team.','bad'); return; }
+    const stateAtSubmit=SESSION;
+    const result=scoreAnswer(guess,stateAtSubmit.currentQuestion,'teams');
+    const submissionRef=doc(submissionsCol,`team_${stateAtSubmit.roundKey}_${team}`);
+    const playerRef=doc(playersCol,currentUser.uid);
+    const chatRef=doc(collection(sessionRef,team==='A'?'chatTeamA':'chatTeamB'));
+
+    const txResult=await runTransaction(db,async tx=>{
+      const [sSnap,subSnap,pSnap]=await Promise.all([tx.get(sessionRef),tx.get(submissionRef),tx.get(playerRef)]);
+      if(!sSnap.exists()||!pSnap.exists()) return {accepted:false,reason:'missing'};
+      const s=sSnap.data();
+      if(s.status!=='playing'||s.mode!=='teams'||Number(s.roundKey)!==Number(stateAtSubmit.roundKey)) return {accepted:false,reason:'changed'};
+      const remaining=(s.phaseStartedAt?.toMillis?.()||0)+Number(s.durationMs||0)-nowServer();
+      if(remaining>TEAM_FINAL_MS+1200) return {accepted:false,reason:'tooSoon'};
+      if(remaining<=-1200) return {accepted:false,reason:'late'};
+      if(subSnap.exists()||s.teamLocks?.[team]) return {accepted:false,reason:'locked'};
+      const ref=`${guess.book} ${guess.chapter}:${guess.verse}`;
+      const teamTotals={A:Number(s.teamTotals?.A||0),B:Number(s.teamTotals?.B||0)};
+      teamTotals[team]+=Math.max(0,result.points);
+      const locks={A:!!s.teamLocks?.A,B:!!s.teamLocks?.B}; locks[team]=true;
+      const last={A:s.lastTeamSubmission?.A||null,B:s.lastTeamSubmission?.B||null};
+      last[team]={byUid:currentUser.uid,byName:safeName(username),ref,points:result.points,full:result.full,atMs:nowServer()};
+      tx.set(submissionRef,{team,roundKey:s.roundKey,submittedByUid:currentUser.uid,submittedByName:safeName(username),guess,correct:s.currentQuestion,points:result.points,full:result.full,createdAt:serverTimestamp()});
+      tx.update(sessionRef,{teamTotals,teamLocks:locks,lastTeamSubmission:last,updatedAt:serverTimestamp()});
+      tx.update(playerRef,{score:Number(pSnap.data().score||0)+Math.max(0,result.points)});
+      tx.set(chatRef,{uid:'system',name:'Game',text:`${safeName(username)} locked ${ref} for Team ${team}.`,ts:serverTimestamp(),kind:'system'});
+      return {accepted:true};
+    });
+
+    if(!txResult.accepted){
+      const messages={locked:'A teammate already locked this round’s answer.',tooSoon:'The final-answer window has not started yet.',late:'The round ended before Firebase accepted the answer.',changed:'The round changed before the answer was accepted.',missing:'Player state is not ready yet.'};
+      showNotice(messages[txResult.reason]||'The team answer was not accepted.','bad');
+      return;
+    }
+    clearGuess();
+    showNotice(`Team ${team} answer locked • ${result.points} point${result.points===1?'':'s'}.`,'ok');
+  }
+
+  function buildCoopUI(){
+    const key=`${SESSION.roundKey}_${SESSION.currentQuestion?.id||0}`;
+    if(key!==mcRenderedQuestionKey){
+      mcRenderedQuestionKey=key;
+      mcSelectedId=null;
+      const grid=$('mcGrid'); grid.innerHTML='';
+      for(const option of SESSION.options||[]){
+        const btn=document.createElement('button');
+        btn.className='mc-btn'; btn.dataset.id=String(option.id);
+        btn.textContent=`${option.book} ${option.chapter}:${option.verse}`;
+        btn.onclick=()=>{
+          if(!coopCanAnswer()) return;
+          mcSelectedId=option.id;
+          document.querySelectorAll('.mc-btn').forEach(b=>b.classList.toggle('selected',b===btn));
+          applyCoopDisabledState();
+        };
+        grid.appendChild(btn);
+      }
+    }
+    const remainingReading=Math.max(0,COOP_READING_MS-phaseElapsedMs(SESSION));
+    $('coopDiscussHint').textContent=remainingReading>0?`Read and discuss — answers unlock in ${Math.ceil(remainingReading/1000)}s.`:'Answers are unlocked. The first accepted answer locks this question.';
+    applyCoopDisabledState();
+  }
+
+  function applyCoopDisabledState(){
+    if(!SESSION || SESSION.mode!=='coop') return;
+    const can=coopCanAnswer();
+    document.querySelectorAll('.mc-btn').forEach(b=>b.disabled=!can);
+    $('mcSubmitBtn').disabled=!can || !mcSelectedId;
+  }
+
+  async function onSubmitMC(){
+    if(!SESSION || SESSION.mode!=='coop' || !mcSelectedId) return;
+    if(!coopCanAnswer()){ showNotice('The answer is still locked for reading or another player already answered.','bad'); return; }
+    const stateAtSubmit=SESSION;
+    const playerRef=doc(playersCol,currentUser.uid);
+    const txResult=await runTransaction(db,async tx=>{
+      const [sSnap,pSnap]=await Promise.all([tx.get(sessionRef),tx.get(playerRef)]);
+      if(!sSnap.exists()||!pSnap.exists()) return {accepted:false,reason:'missing'};
+      const s=sSnap.data();
+      if(s.status!=='playing'||s.mode!=='coop'||Number(s.roundKey)!==Number(stateAtSubmit.roundKey)) return {accepted:false,reason:'changed'};
+      if(s.coopLocked) return {accepted:false,reason:'locked'};
+      const elapsed=nowServer()-(s.phaseStartedAt?.toMillis?.()||nowServer());
+      if(elapsed<COOP_READING_MS-700) return {accepted:false,reason:'tooSoon'};
+      if(Number(s.sharedLives||0)<=0) return {accepted:false,reason:'dead'};
+      const wasRight=Number(mcSelectedId)===Number(s.currentQuestion.id);
+      const nextLives=wasRight?Number(s.sharedLives||3):Math.max(0,Number(s.sharedLives||3)-1);
+      tx.update(sessionRef,{
+        sharedLives:nextLives,
+        coopLocked:true,
+        coopLockedAt:serverTimestamp(),
+        coopAnsweredByUid:currentUser.uid,
+        coopAnsweredByName:safeName(username),
+        coopWasRight:wasRight,
+        updatedAt:serverTimestamp()
+      });
+      if(wasRight) tx.update(playerRef,{score:Number(pSnap.data().score||0)+1});
+      return {accepted:true,wasRight,nextLives};
+    });
+    if(!txResult.accepted){
+      const message=txResult.reason==='locked'?'Another player’s answer reached Firebase first.':txResult.reason==='tooSoon'?'The reading period is still active.':'The co-op answer was not accepted.';
+      showNotice(message,'bad'); return;
+    }
+    showNotice(txResult.wasRight?'Correct — the team keeps all lives.':`Wrong — ${txResult.nextLives} shared live${txResult.nextLives===1?'':'s'} remaining.`,txResult.wasRight?'ok':'bad');
+  }
+
+  function drawSuggestions(){
+    const wrap=$('suggestionsList'); if(!wrap) return;
+    wrap.innerHTML='';
+    if(!SESSION || SESSION.mode!=='teams') return;
+    const team=getMyTeam();
+    const rows=SUGGESTIONS.filter(s=>s.roundKey===SESSION.roundKey && s.team===team).sort((a,b)=>safeName(a.username).localeCompare(safeName(b.username)));
+    if(!rows.length){ wrap.innerHTML='<div class="muted sm">No suggestions yet.</div>'; return; }
+    for(const s of rows){
+      const row=document.createElement('div'); row.className='suggestion';
+      const text=document.createElement('div'); text.innerHTML=`<b>${escapeHtml(safeName(s.username))}</b> suggests ${escapeHtml(s.ref)}`;
+      const use=document.createElement('button'); use.className='btn-ghost small'; use.textContent='Use';
+      use.onclick=()=>{ $('bookInput').value=s.guess.book; $('chapInput').value=s.guess.chapter; $('verseInput').value=s.guess.verse; showNotice(`Copied ${s.ref} into your answer fields.`,'info'); };
+      row.append(text,use); wrap.appendChild(row);
+    }
+  }
+
+  function desiredChatCollection(){
+    if(!SESSION || SESSION.status!=='playing') return null;
+    if(SESSION.mode==='coop') return {key:'all',name:'chatAll',label:'Co-Op chat'};
+    if(SESSION.mode==='teams'){
+      const team=getMyTeam();
+      if(!team) return null;
+      return {key:`team${team}`,name:team==='A'?'chatTeamA':'chatTeamB',label:`Team ${team} chat`};
+    }
+    return null;
+  }
+
+  function ensureChatListener(){
+    const desired=desiredChatCollection();
+    if(!desired){ if(chatUnsub){chatUnsub();chatUnsub=null;} activeChatKey=''; $('chatLog').innerHTML=''; return; }
+    if(activeChatKey===desired.key) return;
+    if(chatUnsub) chatUnsub();
+    activeChatKey=desired.key;
+    $('chatLabel').textContent=desired.label;
+    const col=collection(sessionRef,desired.name);
+    chatUnsub=onSnapshot(query(col,orderBy('ts','desc'),limit(30)),snap=>{
+      const messages=[]; snap.forEach(d=>messages.push({...d.data(),id:d.id})); messages.reverse(); drawChat(messages); $('chatStatus').textContent='Synced';
+    },err=>{ console.error(err); $('chatStatus').textContent='Sync error'; });
+  }
+
+  function drawChat(messages){
+    const log=$('chatLog'); log.innerHTML='';
+    for(const m of messages){
+      const div=document.createElement('div'); div.className=`bubble ${m.uid===currentUser.uid?'mine':''}`;
+      const when=m.ts?.toDate?.();
+      const time=when?when.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'sending';
+      div.innerHTML=`<div class="meta">${escapeHtml(safeName(m.name))} • ${escapeHtml(time)}</div><div>${escapeHtml(m.text||'')}</div>`;
+      log.appendChild(div);
+    }
+    log.scrollTop=log.scrollHeight;
+  }
+
+  async function sendChat(){
+    const desired=desiredChatCollection();
+    const text=$('chatInput').value.trim();
+    if(!desired || !text) return;
+    $('sendChat').disabled=true; $('chatStatus').textContent='Sending…';
+    try{
+      await addDoc(collection(sessionRef,desired.name),{
+        uid:currentUser.uid,name:safeName(username),text:text.slice(0,240),ts:serverTimestamp(),kind:'user'
+      });
+      $('chatInput').value=''; $('chatStatus').textContent='Synced';
+    }catch(err){ console.error(err); $('chatStatus').textContent='Failed — retry'; }
+    finally{ $('sendChat').disabled=false; }
+  }
+
+  function canStartAgain(){
+    if(!SESSION || !currentUser) return false;
+    if(currentUser.uid===SESSION.hostUid) return true;
+    const host=PLAYERS.get(SESSION.hostUid);
+    return !host || !isFreshPlayer(host);
+  }
+
+  async function markOffline(){
+    if(!activePlayerRef) return;
+    try{ await setDoc(activePlayerRef,{online:false,lastSeenAt:serverTimestamp()},{merge:true}); }catch{}
+  }
+
+  async function leaveGame(){
+    await markOffline();
+    location.href=`/index.html?username=${encodeURIComponent(username)}`;
+  }
+
+  async function main(){
+    if(!gameId || !username){ $('subtitle').textContent='Missing gameId or username.'; setConnection('bad','Missing link data'); return; }
+    const lobbySnap=await getDoc(lobbyRef);
+    if(!lobbySnap.exists()){ $('subtitle').textContent='Lobby not found.'; setConnection('bad','Lobby missing'); return; }
+    LOBBY=lobbySnap.data();
+    $('hostName').textContent=getLobbyHostName(LOBBY);
+    $('subtitle').textContent=`${username} • Lobby ${gameId}`;
+
+    await loadBibleData();
+
+    controlUnsub=onSnapshot(controlRef,async snap=>{
+      CONTROL=snap.exists()?snap.data():null;
+      if(CONTROL?.activeSessionId) await attachSession(CONTROL.activeSessionId);
+      else if(getLobbyHostName(LOBBY).toLowerCase()===username.toLowerCase()) await createFreshSession({onlyIfMissing:true});
+    },err=>{ console.error(err); setConnection('bad','Control sync error'); });
+
+    const controlSnap=await getDoc(controlRef);
+    if(!controlSnap.exists() && getLobbyHostName(LOBBY).toLowerCase()===username.toLowerCase()) await createFreshSession({onlyIfMissing:true});
+
+    tickTimer=setInterval(()=>{ updateCountdownUI(); driveSession().catch(console.error); render(); },500);
+  }
+
+  document.querySelectorAll('#phase-vote .card').forEach(btn=>btn.addEventListener('click',()=>submitVote(btn.dataset.mode).catch(err=>{console.error(err);showNotice('Vote failed to sync.','bad');})));
+  $('submitBtn').onclick=()=>onSubmitAnswer().catch(err=>{console.error(err);showNotice('Answer failed to sync. Please try again.','bad');});
+  $('mcSubmitBtn').onclick=()=>onSubmitMC().catch(err=>{console.error(err);showNotice('Answer failed to sync.','bad');});
+  $('sendChat').onclick=()=>sendChat();
+  $('chatInput').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();} });
+  $('leaveBtn').onclick=()=>leaveGame();
+  $('toLobbyBtn').onclick=()=>leaveGame();
+  $('playAgainBtn').onclick=async()=>{
+    if(!canStartAgain()) return;
+    $('playAgainBtn').disabled=true;
+    try{ await createFreshSession(); }catch(err){ console.error(err); showNotice('Could not create the next session.','bad'); }
+  };
+  $('fsBtn').onclick=()=>{
+    const d=document;
+    if(!d.fullscreenElement){ const el=d.documentElement; (el.requestFullscreen||el.webkitRequestFullscreen)?.call(el); }
+    else (d.exitFullscreen||d.webkitExitFullscreen)?.call(d);
+  };
+
+  window.addEventListener('online',()=>setConnection('good','Online'));
+  window.addEventListener('offline',()=>setConnection('bad','Offline'));
+  window.addEventListener('beforeunload',()=>{ if(activePlayerRef) setDoc(activePlayerRef,{online:false,lastSeenAt:serverTimestamp()},{merge:true}).catch(()=>{}); });
+
+  if(!gameId || !username){
+    $('subtitle').textContent='Missing gameId or username.';
+    setConnection('bad','Invalid game link');
+  }else{
+    signInAnonymously(auth).catch(err=>{console.error(err);setConnection('bad','Authentication failed');});
+    onAuthStateChanged(auth,user=>{
+      if(user && !window.__bibleGameStarted){
+        window.__bibleGameStarted=true;
+        currentUser=user;
+        setConnection('warn','Loading Bible data');
+        main().catch(err=>{
+          console.error(err);
+          $('subtitle').textContent=err?.message||'The game could not start.';
+          setConnection('bad','Startup failed');
+        });
+      }
+    });
   }
 </script>
 </body>
 </html>
-
-
-
-
-
