@@ -2,681 +2,545 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>🕹️ Game Hub & Multiplayer Lobby</title>
+  <title>Game Hub</title>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#8f111d" />
   <style>
     :root{
-      --bg:#f9fafb; --ink:#111827; --muted:#6b7280; --card:#ffffff; --br:#e5e7eb;
-      --accent:#b91c1c; --accent-2:#991b1b; --accent-soft:#fee2e2; --good:#16a34a; --bad:#ef4444;
-      --shadow:0 14px 40px rgba(15,23,42,.12); --radius:16px; --radius-sm:12px;
-      --tap:56px;
+      --bg:#f5f6f8;
+      --surface:#ffffff;
+      --surface-2:#f8fafc;
+      --ink:#101828;
+      --muted:#667085;
+      --line:#e4e7ec;
+      --brand:#b4232f;
+      --brand-dark:#821522;
+      --brand-soft:#fff1f2;
+      --good:#15803d;
+      --warning:#b45309;
+      --bad:#dc2626;
+      --navy:#111827;
+      --shadow:0 18px 48px rgba(16,24,40,.12);
+      --shadow-soft:0 8px 24px rgba(16,24,40,.08);
+      --radius:20px;
+      --radius-sm:14px;
+      --tap:48px;
     }
     *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
     body{
       margin:0;
-      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      min-height:100vh;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
       color:var(--ink);
       background:
-        radial-gradient(1200px 600px at 0% -200px, rgba(248,113,113,.18) 0%, transparent 55%),
-        radial-gradient(1200px 600px at 100% -260px, rgba(248,113,113,.2) 0%, transparent 60%),
+        radial-gradient(900px 420px at -8% -10%,rgba(239,68,68,.17),transparent 65%),
+        radial-gradient(850px 420px at 108% -14%,rgba(99,102,241,.13),transparent 65%),
         var(--bg);
     }
+    button,input,select,textarea{font:inherit}
+    button{touch-action:manipulation}
+    [hidden]{display:none!important}
 
-    /* Header */
-    .hero{
-      background: radial-gradient(1200px 600px at 50% -260px, #ef4444 0%, #b91c1c 55%, #7f1d1d 100%);
+    .topbar{
+      position:sticky;
+      top:0;
+      z-index:80;
       color:#fff;
-      padding:24px 16px 18px;
-      position:relative;
-      overflow:visible;
-      box-shadow:var(--shadow);
-      padding-top: calc(24px + env(safe-area-inset-top));
-      z-index:20;
+      background:linear-gradient(115deg,#7f1420 0%,#b4232f 52%,#7c1730 100%);
+      box-shadow:0 12px 32px rgba(55,9,16,.25);
+      padding-top:env(safe-area-inset-top);
     }
-
-    .hero::after{
-      content:"";
-      position:absolute;
-      inset:auto -40px -160px;
-      height:280px;
-      background:radial-gradient(600px 280px at 50% 120%, rgba(0,0,0,.35) 0%, transparent 70%);
-      opacity:.4;
-      pointer-events:none;
-    }
-    .hero-inner{
-      max-width:1200px;
+    .topbar-inner{
+      min-height:72px;
+      max-width:1320px;
       margin:0 auto;
+      padding:10px 18px;
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:16px;
-      flex-wrap:wrap;
-      position:relative;
-      z-index:1;
     }
-    .brand{ display:flex; align-items:center; gap:14px; }
-    .logo{
-      width:46px; height:46px;
-      display:grid; place-items:center;
-      background:rgba(255,255,255,.14);
-      border:1px solid rgba(255,255,255,.26);
-      border-radius:18px;
-      font-size:24px;
-      box-shadow:0 12px 30px rgba(15,23,42,.45);
-      backdrop-filter:blur(10px);
+    .brand{display:flex;align-items:center;gap:12px;min-width:190px}
+    .brand-mark{
+      width:46px;height:46px;border-radius:16px;display:grid;place-items:center;
+      background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.25);
+      box-shadow:0 10px 26px rgba(0,0,0,.22);font-size:23px;
     }
-    .title{ font-weight:800; letter-spacing:.3px; font-size:1.4rem }
-    .subtitle{ color:#ffe2e2; font-size:.94rem }
+    .brand-title{font-size:1.08rem;font-weight:900;letter-spacing:.01em}
+    .brand-sub{font-size:.76rem;color:#fecdd3;margin-top:1px}
+    .main-nav{
+      display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px;
+      background:rgba(17,24,39,.18);border:1px solid rgba(255,255,255,.16);
+    }
+    .nav-btn{
+      border:0;background:transparent;color:#ffe4e6;cursor:pointer;border-radius:999px;
+      padding:9px 15px;font-weight:800;font-size:.88rem;white-space:nowrap;transition:.18s ease;
+    }
+    .nav-btn:hover{background:rgba(255,255,255,.12);color:#fff}
+    .nav-btn.active{background:#fff;color:#111827;box-shadow:0 5px 16px rgba(0,0,0,.18)}
+    .header-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:250px}
+    .header-btn{
+      min-height:40px;border-radius:999px;border:1px solid rgba(255,255,255,.26);
+      background:rgba(17,24,39,.16);color:#fff;padding:8px 12px;font-weight:800;
+      cursor:pointer;display:inline-flex;align-items:center;gap:7px;position:relative;
+    }
+    .header-btn:hover{background:rgba(255,255,255,.13)}
+    .count-bubble{
+      min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#fff;color:var(--brand);
+      display:inline-grid;place-items:center;font-size:.72rem;font-weight:900;
+    }
+    .pulse{animation:pulse .65s ease 2}
+    @keyframes pulse{50%{transform:scale(1.12);box-shadow:0 0 0 7px rgba(255,255,255,.14)}}
 
-    /* Tabs + HUD on right */
-    .hud{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-    .tabs{
-      display:flex; gap:8px;
-      background:rgba(15,23,42,.18);
-      padding:4px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.22);
-      overflow:auto;
-      -webkit-overflow-scrolling:touch;
+    .dropdown-wrap{position:relative}
+    .dropdown{
+      position:absolute;right:0;top:calc(100% + 10px);width:min(380px,92vw);max-height:480px;
+      overflow:auto;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:18px;
+      box-shadow:0 24px 60px rgba(16,24,40,.24);z-index:100;
     }
-    .tab-btn{
-      appearance:none; border:none; cursor:pointer;
-      padding:9px 16px; border-radius:999px;
-      color:#fffbfb; background:transparent;
-      font-weight:700; letter-spacing:.2px; transition:.2s ease; white-space:nowrap;
-      font-size:.9rem;
+    .dropdown-head{
+      position:sticky;top:0;z-index:2;padding:13px 15px;border-bottom:1px solid var(--line);
+      background:rgba(255,255,255,.96);backdrop-filter:blur(10px);display:flex;align-items:center;
+      justify-content:space-between;gap:12px;font-weight:900;
     }
-    .tab-btn:hover{ background:rgba(255,255,255,.18) }
-    .tab-btn[aria-selected="true"]{
-      background:#fff; color:#111827;
-      box-shadow:0 2px 16px rgba(15,23,42,.35);
+    .dropdown-body{padding:8px}
+    .dropdown-empty{padding:28px 14px;text-align:center;color:var(--muted)}
+    .invite-item,.member-item{
+      border:1px solid var(--line);border-radius:14px;padding:11px;margin:7px;background:#fff;
     }
+    .invite-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .invite-title{font-weight:900}.invite-meta{color:var(--muted);font-size:.79rem;margin-top:4px}
+    .mini-actions{display:flex;gap:7px;margin-top:10px;justify-content:flex-end}
 
-    /* Chips & buttons */
-    .pill{
-      display:inline-flex; align-items:center; gap:8px;
-      background:#fff; color:#111827;
-      border:1px solid rgba(148,163,184,.5);
-      border-radius:999px; padding:8px 12px;
-      font-weight:700; box-shadow:0 4px 16px rgba(15,23,42,.22);
-      font-size:.82rem;
+    .shell{max-width:1320px;margin:0 auto;padding:22px 18px 94px}
+    .view{display:none}.view.active{display:block}
+
+    .hero-banner{
+      --hero-a:#741524;--hero-b:#b4232f;
+      min-height:238px;border-radius:28px;overflow:hidden;position:relative;color:#fff;
+      background:
+        radial-gradient(460px 250px at 80% 20%,rgba(255,255,255,.18),transparent 65%),
+        linear-gradient(120deg,var(--hero-a),var(--hero-b));
+      box-shadow:var(--shadow);padding:34px;display:flex;align-items:flex-end;margin-bottom:22px;
     }
-    .pill i{ font-style:normal; font-weight:900; }
+    .hero-banner::before{
+      content:"";position:absolute;inset:0;opacity:.35;pointer-events:none;
+      background-image:linear-gradient(30deg,rgba(255,255,255,.08) 12%,transparent 12.5%,transparent 87%,rgba(255,255,255,.08) 87.5%,rgba(255,255,255,.08)),linear-gradient(150deg,rgba(255,255,255,.06) 12%,transparent 12.5%,transparent 87%,rgba(255,255,255,.06) 87.5%);
+      background-size:80px 140px;
+    }
+    .hero-copy{position:relative;z-index:1;max-width:680px}
+    .eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:.72rem;font-weight:900;color:#fecdd3}
+    .hero-title{font-size:clamp(2rem,5vw,3.8rem);line-height:.95;margin:9px 0 11px;font-weight:950;letter-spacing:-.045em}
+    .hero-desc{max-width:620px;color:#fff1f2;line-height:1.55;margin:0 0 20px}
+    .hero-actions{display:flex;gap:10px;flex-wrap:wrap}
+
+    .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:22px 0 12px}
+    .section-title{font-size:1.38rem;font-weight:950;letter-spacing:-.025em}
+    .section-sub{color:var(--muted);font-size:.88rem;margin-top:4px}
 
     .btn{
-      cursor:pointer;
-      font-weight:700;
-      border:1px solid var(--accent);
-      background:var(--accent);
-      color:#fff;
-      transition:background .18s, transform .08s, box-shadow .18s;
-      padding:10px 14px;
-      border-radius:12px;
-      box-shadow:0 8px 18px rgba(185,28,28,.35);
+      min-height:42px;border:1px solid var(--brand);border-radius:12px;padding:9px 14px;
+      background:var(--brand);color:#fff;font-weight:850;cursor:pointer;transition:.16s ease;
+      box-shadow:0 8px 18px rgba(180,35,47,.22);display:inline-flex;align-items:center;
+      justify-content:center;gap:7px;
     }
-    .btn:hover{ background:var(--accent-2); transform:translateY(-1px); }
-    .btn:active{ transform:translateY(0); box-shadow:0 4px 12px rgba(0,0,0,.2); }
+    .btn:hover{background:var(--brand-dark);transform:translateY(-1px)}
+    .btn:active{transform:none}.btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+    .btn.secondary{background:#fff;color:var(--ink);border-color:var(--line);box-shadow:none}
+    .btn.secondary:hover{background:var(--surface-2);border-color:#d0d5dd}
+    .btn.ghost-light{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.45);box-shadow:none}
+    .btn.danger{background:#fff;color:var(--bad);border-color:#fecaca;box-shadow:none}
+    .btn.small{min-height:34px;padding:7px 10px;font-size:.78rem;border-radius:10px}
+    .btn.block{width:100%}
 
-    .btn-ghost{
-      border-color:rgba(255,255,255,.8);
-      background:rgba(15,23,42,.15);
-      color:#fff;
-      font-weight:700;
-      padding:8px 12px;
-      border-radius:12px;
-      box-shadow:0 4px 14px rgba(15,23,42,.25);
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-soft)}
+    .card-pad{padding:18px}
+    .toolbar{
+      padding:14px;display:grid;grid-template-columns:minmax(220px,1.7fr) repeat(3,minmax(135px,.7fr)) auto;
+      gap:10px;align-items:center;margin-bottom:16px;
     }
-    .btn-ghost:hover{ background:rgba(255,255,255,.12); }
+    .field,.select,.textarea{
+      width:100%;min-height:44px;border:1px solid #d0d5dd;border-radius:12px;background:#fff;
+      padding:10px 12px;outline:none;color:var(--ink);transition:.16s ease;
+    }
+    .textarea{min-height:92px;resize:vertical}
+    .field:focus,.select:focus,.textarea:focus{border-color:#fda4af;box-shadow:0 0 0 4px rgba(244,63,94,.12)}
+    .label{display:block;font-size:.79rem;font-weight:850;color:#475467;margin:0 0 6px}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+    .form-row{margin-bottom:13px}
+    .help{font-size:.76rem;color:var(--muted);margin-top:5px}
 
-    /* Member dropdown */
-    .member-wrap{ position:relative; }
-    .member-btn{
-      cursor:pointer;
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,.8);
-      background:rgba(15,23,42,.12);
-      color:#fff;
-      font-size:.82rem;
-      font-weight:700;
-      box-shadow:0 4px 14px rgba(15,23,42,.3);
-    }
-    .member-btn span.chevron{
-      font-size:.78rem;
-      opacity:.8;
-      transform-origin:center;
-      transition:transform .16s;
-    }
-    .member-btn.open span.chevron{ transform:rotate(180deg); }
-
-    .member-panel{
-      position:absolute;
-      right:0;
-      top:calc(100% + 8px);
-      width:min(320px, 90vw);
-      max-height:380px;
-      background:#fff;
-      border-radius:var(--radius-sm);
-      border:1px solid var(--br);
-      box-shadow:0 18px 40px rgba(15,23,42,.25);
-      padding:0;
-      overflow:auto;
-      z-index:40;
-    }
-    .member-head{
-      padding:10px 14px;
-      border-bottom:1px solid var(--br);
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      font-weight:700;
-      font-size:.9rem;
-      background:#f9fafb;
-      position:sticky;
-      top:0;
-      z-index:1;
-    }
-    .member-head small{ color:var(--muted); font-weight:500; }
-    .member-list{ padding:4px 0; }
-    .member-row{
-      padding:8px 14px;
-      display:flex;
-      flex-direction:column;
-      gap:2px;
-      font-size:.85rem;
-    }
-    .member-row:nth-child(odd){ background:#f9fafb; }
-    .member-name{ font-weight:600; }
-    .member-meta{ color:var(--muted); font-size:.78rem; }
-
-    /* Layout */
-    .shell{
-      max-width:1200px;
-      margin:18px auto 32px;
-      padding:0 12px 28px;
-    }
-    .grid{ display:grid; grid-template-columns:2fr 1fr; gap:18px }
-    @media (max-width:980px){ .grid{ grid-template-columns:1fr } }
-
-    /* Cards */
-    .card{
-      background:var(--card);
-      border:1px solid var(--br);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      overflow:hidden;
-    }
-    .card-head{
-      padding:12px 16px;
-      border-bottom:1px solid var(--br);
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      background:linear-gradient(135deg,#fef2f2,#fff);
-    }
-    .card-title{ font-weight:800; font-size:.98rem; }
-    .card-body{ padding:14px 16px; }
-
-    /* Forms */
-    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center }
-    .input, .select{
-      padding:12px 12px;
-      border:1px solid var(--br);
-      border-radius:12px;
-      background:#fff;
-      font-size:15px;
-      outline:none;
-      min-height:42px;
-      transition:border-color .16s, box-shadow .16s, background .16s;
-    }
-    .input:focus, .select:focus{
-      border-color:#fecaca;
-      box-shadow:0 0 0 3px rgba(239,68,68,.18);
-      background:#fef2f2;
-    }
-    .btn-lg{ min-height:var(--tap); font-size:16px }
-    .btn-block{ width:100% }
-
-    /* Resume banner */
-    .resume{
-      display:none;
-      margin:12px 0 0;
-      padding:10px 12px;
-      border:1px solid #fecaca;
-      background:#fff1f2;
-      color:#7f1d1d;
-      border-radius:12px;
-      display:flex;
-      align-items:center;
-      gap:10px;
-      justify-content:space-between;
-      flex-wrap:wrap;
-    }
-    .resume .info{ font-weight:700; font-size:.9rem; }
-    .resume .actions{ display:flex; gap:8px; flex-wrap:wrap }
-
-    /* Lobby list as cards */
-    .lobbies{
-      display:grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap:14px;
-    }
+    .multi-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+    .lobby-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
     .lobby-card{
-      position:relative;
-      border:1px solid var(--br);
-      border-radius:14px;
-      padding:12px 12px 11px;
-      background:#ffffff;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      overflow:hidden;
+      --game:#b4232f;position:relative;overflow:hidden;padding:17px;border:1px solid var(--line);
+      border-radius:19px;background:#fff;box-shadow:var(--shadow-soft);transition:.18s ease;
     }
-    .lobby-card::before{
-      content:"";
-      position:absolute;
-      inset:0;
-      background:radial-gradient(400px 260px at 0% 0%, rgba(248,113,113,.20), transparent 65%);
-      opacity:0;
-      transition:opacity .18s;
-      pointer-events:none;
+    .lobby-card:hover{transform:translateY(-3px);box-shadow:0 18px 36px rgba(16,24,40,.13);border-color:#d0d5dd}
+    .lobby-card::before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:var(--game)}
+    .lobby-card.private::after{content:"🔒";position:absolute;right:14px;top:13px;font-size:1rem}
+    .lobby-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:11px;margin-top:2px}
+    .game-mark{
+      width:46px;height:46px;flex:0 0 auto;border-radius:15px;display:grid;place-items:center;font-size:23px;
+      background:color-mix(in srgb,var(--game) 12%,white);border:1px solid color-mix(in srgb,var(--game) 22%,white);
     }
-    .lobby-card:hover::before{ opacity:1; }
-    .lobby-main{
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:8px;
+    .lobby-title{font-weight:950;font-size:1rem;line-height:1.2}
+    .lobby-game{font-size:.78rem;color:var(--muted);font-weight:700;margin-top:4px}
+    .status-chip{
+      display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;
+      background:#ecfdf3;color:#027a48;font-size:.7rem;font-weight:900;border:1px solid #abefc6;white-space:nowrap;
     }
-    .lobby-name{ font-weight:800; font-size:.95rem; }
-    .lobby-meta{ color:var(--muted); font-size:.78rem; }
+    .lobby-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 11px}
+    .fact{border-radius:11px;background:var(--surface-2);padding:9px;font-size:.75rem;color:var(--muted)}
+    .fact strong{display:block;color:var(--ink);font-size:.82rem;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .player-preview{display:flex;align-items:center;min-height:32px;margin:10px 0}
+    .avatar-mini{
+      width:31px;height:31px;border-radius:50%;display:grid;place-items:center;margin-right:-6px;
+      background:#fff1f2;border:2px solid #fff;font-size:.72rem;font-weight:900;color:#9f1239;
+    }
+    .avatar-more{margin-left:11px;color:var(--muted);font-size:.74rem;font-weight:800}
+    .capacity{height:7px;background:#f2f4f7;border-radius:99px;overflow:hidden;margin:10px 0 13px}
+    .capacity i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#16a34a,#f59e0b,#ef4444);transition:width .25s ease}
+    .lobby-buttons{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 
-    .badge{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:4px 10px;
-      border-radius:999px;
-      font-size:11px;
-      background:var(--accent-soft);
-      color:var(--accent);
-      border:1px solid #fecaca;
-      font-weight:700;
-      white-space:nowrap;
-    }
-    .subtle{ color:var(--muted); font-size:.9rem }
+    .current-panel{position:sticky;top:94px;overflow:hidden}
+    .current-cover{padding:20px;color:#fff;background:linear-gradient(135deg,#111827,#7f1420)}
+    .current-cover .eyebrow{color:#fecdd3}.current-title{font-size:1.22rem;font-weight:950;margin-top:6px}
+    .current-game{font-size:.84rem;color:#ffe4e6;margin-top:3px}
+    .current-body{padding:15px}
+    .current-empty{text-align:center;padding:34px 12px;color:var(--muted)}
+    .player-list{display:grid;gap:8px}
+    .player-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;background:var(--surface-2);border-radius:12px}
+    .player-name{font-weight:850;display:flex;align-items:center;gap:8px}.host-tag{font-size:.67rem;font-weight:900;color:#9f1239;background:#ffe4e6;border-radius:999px;padding:3px 7px}
+    .current-actions{display:grid;gap:8px;margin-top:13px}
 
-    .cap{
-      height:7px;
-      background:#f9fafb;
-      border:1px solid var(--br);
-      border-radius:999px;
-      overflow:hidden;
+    .category-pills{display:flex;gap:8px;overflow:auto;padding:2px 0 10px;scrollbar-width:none}
+    .category-pills::-webkit-scrollbar{display:none}
+    .category-btn{
+      flex:0 0 auto;border:1px solid var(--line);background:#fff;color:#475467;border-radius:999px;
+      padding:8px 13px;font-weight:850;font-size:.8rem;cursor:pointer;
     }
-    .cap > i{
-      display:block;
-      height:100%;
-      width:0%;
-      background:linear-gradient(90deg,#22c55e,#f59e0b,#ef4444);
-      transition:width .18s;
-    }
-
-    .lobby-actions{
-      display:flex;
-      justify-content:flex-end;
-      margin-top:4px;
-    }
-
-    /* Players box */
-    .players{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      padding-top:2px;
-      border-top:1px dashed #e5e7eb;
-      margin-top:10px;
-    }
-    .chip{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:7px 11px;
-      border:1px solid var(--br);
-      border-radius:999px;
-      background:#fff7f7;
-      font-size:.82rem;
-      box-shadow:0 4px 10px rgba(15,23,42,.06);
-    }
-    .dot{ width:9px; height:9px; border-radius:50% }
-
-    /* Leaderboard */
-    .ladder{ display:grid; gap:10px }
-    .lb-row{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      padding:9px 11px;
-      border:1px solid var(--br);
-      border-radius:12px;
-      background:#fff;
-    }
-    .rank{
-      font-weight:900;
-      width:26px; height:26px;
-      border-radius:999px;
-      display:grid; place-items:center;
-      background:#fee2e2;
-      color:#7f1d1d;
-      font-size:.78rem;
-    }
-
-    /* Singleplayer catalog */
-    .catalog{
-      display:grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
-      gap:14px;
-    }
+    .category-btn.active{background:#111827;color:#fff;border-color:#111827}
+    .game-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:14px}
     .game-card{
-      border:1px solid var(--br);
-      border-radius:14px;
-      padding:14px;
-      background:#fff;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      box-shadow:0 10px 28px rgba(15,23,42,.08);
+      --game:#b4232f;position:relative;overflow:hidden;border:1px solid var(--line);border-radius:19px;
+      background:#fff;box-shadow:var(--shadow-soft);transition:.18s ease;display:flex;flex-direction:column;
     }
-    .featured-game-card{
-      position:relative;
-      overflow:hidden;
-      border:1px solid rgba(251,146,60,.72);
-      background:
-        linear-gradient(135deg, rgba(255,247,237,.98), rgba(254,226,226,.96) 45%, rgba(238,242,255,.98)),
-        #fff;
-      box-shadow:0 20px 46px rgba(185,28,28,.18), 0 10px 24px rgba(234,88,12,.16);
-      transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    .game-card:hover{transform:translateY(-3px);box-shadow:0 18px 36px rgba(16,24,40,.13)}
+    .game-art{
+      min-height:116px;padding:17px;display:flex;align-items:flex-end;justify-content:space-between;color:#fff;
+      background:radial-gradient(220px 120px at 88% 15%,rgba(255,255,255,.22),transparent 60%),linear-gradient(135deg,color-mix(in srgb,var(--game) 75%,#111827),var(--game));
     }
-    .featured-game-card::before{
-      content:"Featured";
-      position:absolute;
-      top:12px;
-      right:12px;
-      padding:4px 9px;
-      border-radius:999px;
-      background:linear-gradient(135deg,#f97316,#e11d48,#7c3aed);
-      color:#fff;
-      font-size:.68rem;
-      font-weight:900;
-      letter-spacing:.04em;
-      text-transform:uppercase;
-      box-shadow:0 8px 18px rgba(124,58,237,.25);
-    }
-    .featured-game-card:hover{
-      transform:translateY(-3px);
-      border-color:rgba(249,115,22,.95);
-      box-shadow:0 24px 54px rgba(185,28,28,.22), 0 14px 30px rgba(124,58,237,.16);
-    }
-    .game-title{
-      font-weight:800;
-      display:flex;
-      align-items:center;
-      gap:8px;
-      font-size:.98rem;
-    }
-    .featured-game-card .game-title{
-      padding-right:86px;
-      color:#7f1d1d;
-      font-size:1.04rem;
-    }
-    .game-desc{ color:var(--muted); line-height:1.45; font-size:.9rem; }
-    .featured-game-card .game-desc{ color:#4b5563; font-weight:600; }
-    .play-row{ display:flex; justify-content:flex-end }
-    .featured-play-btn{
-      border:none;
-      background:linear-gradient(135deg,#f97316 0%,#e11d48 52%,#7c3aed 100%);
-      color:#fff;
-      box-shadow:0 12px 26px rgba(225,29,72,.32);
-      letter-spacing:.02em;
-    }
-    .featured-play-btn:hover{
-      background:linear-gradient(135deg,#fb923c 0%,#f43f5e 52%,#8b5cf6 100%);
-      box-shadow:0 16px 32px rgba(124,58,237,.28);
-    }
+    .game-art .emoji{font-size:2.65rem;filter:drop-shadow(0 8px 14px rgba(0,0,0,.2))}
+    .favorite-btn{border:0;background:rgba(17,24,39,.22);color:#fff;width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:1.08rem}
+    .favorite-btn.active{background:#fff;color:#f59e0b}
+    .game-content{padding:15px;display:flex;flex-direction:column;gap:8px;flex:1}
+    .game-name{font-weight:950}.game-description{color:var(--muted);font-size:.83rem;line-height:1.45;min-height:48px}
+    .game-meta{display:flex;gap:7px;flex-wrap:wrap}
+    .tag{font-size:.68rem;font-weight:900;padding:4px 8px;border-radius:999px;background:#f2f4f7;color:#475467}
+    .game-bottom{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:auto;padding-top:4px}
+    .play-count{font-size:.75rem;color:var(--muted);font-weight:800}
+    .horizontal-strip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(230px,280px);gap:13px;overflow:auto;padding:2px 2px 12px;scroll-snap-type:x proximity}
+    .horizontal-strip>*{scroll-snap-align:start}
 
+    .profile-hero{
+      border-radius:26px;overflow:hidden;background:linear-gradient(120deg,#111827,#7f1420 58%,#b4232f);color:#fff;
+      box-shadow:var(--shadow);padding:28px;display:flex;align-items:center;gap:22px;position:relative;
+    }
+    .profile-hero::after{content:"";position:absolute;width:300px;height:300px;border-radius:50%;right:-100px;top:-150px;background:rgba(255,255,255,.1)}
+    .profile-avatar{width:96px;height:96px;border-radius:28px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);display:grid;place-items:center;font-size:3.2rem;position:relative;z-index:1}
+    .profile-info{position:relative;z-index:1;flex:1}.profile-name{font-size:2rem;font-weight:950}.profile-bio{color:#ffe4e6;margin-top:5px;max-width:680px}
+    .profile-stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}.profile-stat{padding:9px 12px;border-radius:13px;background:rgba(255,255,255,.12);font-size:.78rem}.profile-stat strong{display:block;font-size:1.02rem}
+    .profile-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,.75fr);gap:18px;margin-top:18px}
+    .activity-list{display:grid;gap:8px}.activity-row{display:flex;justify-content:space-between;gap:12px;padding:11px;border-radius:12px;background:var(--surface-2)}
 
+    .empty-state{padding:50px 20px;text-align:center;color:var(--muted);border:1px dashed #d0d5dd;border-radius:18px;background:rgba(255,255,255,.72)}
+    .empty-state .big{font-size:2rem;margin-bottom:7px}
+    .skeleton{height:210px;border-radius:18px;background:linear-gradient(90deg,#f2f4f7 25%,#eaecf0 37%,#f2f4f7 63%);background-size:400% 100%;animation:shimmer 1.25s infinite}
+    @keyframes shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
 
-    .game-picker-wrap{ min-width:min(100%, 280px); }
-    .game-picker-panel {
-      display: none;
-      margin-top: 12px;
-      border: 1px solid var(--br);
-      border-radius: 16px;
-      background: #fff;
-      box-shadow: var(--shadow);
-      max-height: min(520px, 70vh);
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      padding: 12px;
-    }
-    .game-picker-panel.open { display: block; }
-    .multiplayer-catalog {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 12px;
-    }
-    .multiplayer-game-card {
-      cursor: pointer;
-      border: 1px solid var(--br);
-      border-radius: 14px;
-      padding: 14px;
-      background: #fff;
-      box-shadow: 0 8px 20px rgba(15,23,42,.08);
-      transition: transform .12s, box-shadow .18s, border-color .18s;
-      text-align:left;
-      color:inherit;
-    }
-    .multiplayer-game-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 14px 28px rgba(15,23,42,.14);
-      border-color: #fecaca;
-    }
-    .multiplayer-game-card.selected {
-      border-color: var(--accent);
-      background: #fff1f2;
-    }
-    .selected-game-square {
-      cursor: pointer;
-      width:100%;
-      min-height: 120px;
-      border: 1px solid #fecaca;
-      border-radius: 18px;
-      padding: 16px;
-      background: linear-gradient(135deg, #fff, #fff1f2);
-      box-shadow: 0 12px 30px rgba(185,28,28,.14);
-      text-align:left;
-      color:inherit;
-    }
-    .selected-game-square:hover{ border-color:var(--accent); }
-    .game-picker-title{ font-weight:900; display:flex; align-items:center; gap:8px; margin-bottom:6px; }
-    .game-picker-desc{ color:var(--muted); font-size:.88rem; line-height:1.35; margin-bottom:8px; }
-    .play-count {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-weight: 900;
-      color: #7f1d1d;
-    }
+    .modal-layer{position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.62);backdrop-filter:blur(5px);display:grid;place-items:center;padding:18px}
+    .modal{width:min(560px,100%);max-height:min(800px,92vh);overflow:auto;background:#fff;border-radius:23px;box-shadow:0 30px 80px rgba(0,0,0,.3)}
+    .modal.wide{width:min(820px,100%)}
+    .modal-head{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .modal-title{font-weight:950;font-size:1.08rem}.modal-close{border:0;background:#f2f4f7;width:36px;height:36px;border-radius:50%;cursor:pointer;font-weight:900}
+    .modal-body{padding:20px}.modal-foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+    .account-tabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;background:#f2f4f7;padding:5px;border-radius:13px;margin-bottom:16px}
+    .account-tab{border:0;border-radius:10px;padding:9px;background:transparent;font-weight:900;cursor:pointer}.account-tab.active{background:#fff;box-shadow:0 3px 10px rgba(16,24,40,.09)}
+    .message{min-height:20px;font-size:.82rem;font-weight:800;margin-top:9px}.message.error{color:var(--bad)}.message.ok{color:var(--good)}
+    .visibility-choice{display:grid;grid-template-columns:1fr 1fr;gap:9px}.visibility-btn{border:1px solid var(--line);border-radius:14px;background:#fff;padding:13px;cursor:pointer;text-align:left}.visibility-btn.active{border-color:#fb7185;background:#fff1f2;box-shadow:0 0 0 3px rgba(244,63,94,.1)}
+    .visibility-btn strong{display:block}.visibility-btn span{display:block;color:var(--muted);font-size:.76rem;margin-top:3px}
 
-    /* Start/Leave buttons row */
-    .controls{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      margin-top:10px;
-      justify-content:flex-start;
-    }
-    #startBtn{ display:none }
-    #error{ margin-top:6px; color:var(--bad); font-weight:700; font-size:.9rem; }
+    .toast-stack{position:fixed;right:18px;bottom:22px;z-index:300;display:grid;gap:9px;max-width:min(390px,calc(100vw - 36px))}
+    .toast{background:#111827;color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 18px 48px rgba(0,0,0,.26);animation:toastIn .2s ease;display:flex;gap:10px;align-items:flex-start}
+    .toast.bad{background:#991b1b}.toast.good{background:#166534}@keyframes toastIn{from{opacity:0;transform:translateY(8px)}}
 
-    /* Mobile polish */
-    @media (max-width:720px){
-      .row{ flex-direction:column; align-items:stretch }
-      .input, .select, .btn{ width:100% }
-      .btn{ min-height:var(--tap) }
-      .tab-btn{ padding:11px 15px }
-      .hero-inner{ gap:10px }
-      .lobby-card .btn{ width:100% }
-      .subtitle{ font-size:.88rem }
-      .card{ border-radius:18px }
-      body{ padding-bottom: calc(env(safe-area-inset-bottom) + 8px) }
-      .member-panel{ right:auto; left:0; }
-      .catalog{ grid-template-columns:1fr; }
-      .featured-game-card{ padding:13px; }
-      .featured-game-card::before{ top:10px; right:10px; font-size:.62rem; padding:3px 8px; }
-      .featured-game-card .game-title{ padding-right:74px; font-size:.98rem; }
-      .featured-play-btn{ width:100%; }
-      .game-picker-panel { max-height: 62vh; }
-      .multiplayer-catalog { grid-template-columns: 1fr; }
-      .selected-game-square { min-height: 112px; }
+    .mobile-nav{display:none}
+    @media(max-width:1020px){
+      .multi-layout,.profile-layout{grid-template-columns:1fr}.current-panel{position:relative;top:auto}.toolbar{grid-template-columns:1fr 1fr}.toolbar .search-wide{grid-column:1/-1}.toolbar .create-toolbar{grid-column:1/-1}
+      .header-actions{min-width:auto}.brand-sub{display:none}
     }
+    @media(max-width:760px){
+      .topbar-inner{min-height:62px;padding:8px 12px}.main-nav{display:none}.brand{min-width:0}.brand-mark{width:41px;height:41px}.brand-title{font-size:.96rem}
+      .header-actions .daily,.header-actions .members{display:none}.header-btn{padding:8px 10px}.header-btn .desktop-label{display:none}
+      .shell{padding:14px 12px 90px}.hero-banner{min-height:260px;padding:24px 20px;border-radius:21px}.hero-title{font-size:2.35rem}.hero-actions .btn{width:100%}
+      .toolbar{grid-template-columns:1fr}.toolbar>*{grid-column:auto!important}.lobby-grid,.game-grid{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}
+      .profile-hero{align-items:flex-start;flex-direction:column;padding:22px}.profile-avatar{width:80px;height:80px;font-size:2.6rem}.profile-name{font-size:1.55rem}
+      .mobile-nav{position:fixed;display:grid;grid-template-columns:repeat(3,1fr);left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:120;background:#111827;border:1px solid rgba(255,255,255,.1);border-radius:17px;padding:6px;box-shadow:0 20px 45px rgba(0,0,0,.3)}
+      .mobile-nav button{border:0;background:transparent;color:#98a2b3;padding:8px;border-radius:12px;font-size:.72rem;font-weight:900}.mobile-nav button span{display:block;font-size:1.12rem;margin-bottom:2px}.mobile-nav button.active{background:#fff;color:#111827}
+      .modal-layer{padding:0;align-items:end}.modal,.modal.wide{width:100%;max-height:94vh;border-radius:24px 24px 0 0}.dropdown{position:fixed;left:10px;right:10px;top:70px;width:auto}
+    }
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
   </style>
 </head>
 <body>
-  <!-- HERO -->
-  <header class="hero">
-    <div class="hero-inner">
+  <header class="topbar">
+    <div class="topbar-inner">
       <div class="brand">
-        <div class="logo" aria-hidden="true">🎮</div>
-        <div>
-          <div class="title">Game Hub</div>
-          <div class="subtitle">Create a lobby, invite friends, or jump into solo play.</div>
-        </div>
+        <div class="brand-mark">🎮</div>
+        <div><div class="brand-title">Game Hub</div><div class="brand-sub">Play, gather, and launch.</div></div>
       </div>
 
-      <!-- RIGHT HUD: tabs + Daily Users pill + Members + Logout -->
-      <div class="hud">
-        <div class="tabs" role="tablist" aria-label="Game Modes">
-          <button id="tabbtn-multi" class="tab-btn" role="tab" aria-controls="panel-multi" aria-selected="true" onclick="showTab('multi')">👥 Multiplayer</button>
-          <button id="tabbtn-single" class="tab-btn" role="tab" aria-controls="panel-single" aria-selected="false" onclick="showTab('single')">🎮 Singleplayer</button>
-        </div>
+      <nav class="main-nav" aria-label="Primary navigation">
+        <button class="nav-btn active" data-view="multiplayer">👥 Multiplayer</button>
+        <button class="nav-btn" data-view="singleplayer">🎮 Singleplayer</button>
+        <button class="nav-btn" data-view="profile">👤 Profile</button>
+      </nav>
 
-        <div id="dailyUsersPill" class="pill" title="Unique logins today (America/New_York)">
-          👤 Today: <i id="dailyUsersCount">0</i>
-        </div>
+      <div class="header-actions">
+        <button id="dailyUsersPill" class="header-btn daily" title="Unique users today">👤 <span class="desktop-label">Today</span> <span id="dailyUsersCount" class="count-bubble">0</span></button>
 
-        <div class="member-wrap">
-          <button id="memberToggle" class="member-btn" type="button" onclick="toggleMembers()">
-            👥 Members <span class="chevron">▾</span>
-          </button>
-          <div id="memberPanel" class="member-panel" hidden>
-            <div class="member-head">
-              <span>Members</span>
-              <small>Sorted by last login</small>
-            </div>
-            <div id="memberList" class="member-list">
-              <!-- members injected -->
-            </div>
+        <div class="dropdown-wrap">
+          <button id="memberToggle" class="header-btn members">👥 <span class="desktop-label">Members</span></button>
+          <div id="memberPanel" class="dropdown" hidden>
+            <div class="dropdown-head"><span>Members</span><small style="color:var(--muted)">Recent logins</small></div>
+            <div id="memberList" class="dropdown-body"></div>
           </div>
         </div>
 
-        <button id="logoutBtn" class="btn-ghost" style="display:none" onclick="logout()">🚪 Logout</button>
+        <div class="dropdown-wrap">
+          <button id="inviteToggle" class="header-btn">✉️ <span class="desktop-label">Invites</span> <span id="inviteCount" class="count-bubble" hidden>0</span></button>
+          <div id="invitePanel" class="dropdown" hidden>
+            <div class="dropdown-head"><span>Lobby Invites</span><small id="inviteUserLabel" style="color:var(--muted)">Log in to receive invites</small></div>
+            <div id="inviteList" class="dropdown-body"></div>
+          </div>
+        </div>
+
+        <button id="accountButton" class="header-btn">👤 <span id="accountButtonText" class="desktop-label">Log In</span></button>
       </div>
     </div>
   </header>
 
-  <!-- MAIN -->
-  <div class="shell">
-    <!-- MULTIPLAYER -->
-    <section id="panel-multi" class="grid" role="tabpanel" aria-labelledby="tabbtn-multi">
-      <div class="left">
-        <div id="loginForm" class="card">
-          <div class="card-head"><div class="card-title">Welcome</div></div>
-          <div class="card-body">
-            <div class="row" style="margin-bottom:8px">
-              <input autocomplete="username" inputmode="text" type="text" id="username" class="input" placeholder="Username" />
-              <input autocomplete="current-password" type="password" id="password" class="input" placeholder="Password" />
-              <button class="btn btn-lg" onclick="login()">Login</button>
-            </div>
-            <div class="resume" id="resumeBanner" aria-live="polite" role="region">
-              <div class="info">You have an unfinished session.</div>
-              <div class="actions">
-                <button class="btn btn-lg" id="resumeLobbyBtn" style="background:#fff;color:#111;border-color:#ddd;box-shadow:none">Rejoin Lobby</button>
-                <button class="btn btn-lg" id="resumeGameBtn" style="background:#fff;color:#111;border-color:#ddd;box-shadow:none">Reopen Game</button>
-                <button class="btn btn-lg" id="clearSessionBtn" style="background:#fff;color:#111;border-color:#ddd;box-shadow:none">Clear</button>
-              </div>
-            </div>
-            <div id="error"></div>
+  <main class="shell">
+    <section id="view-multiplayer" class="view active">
+      <div id="featuredHero" class="hero-banner">
+        <div class="hero-copy">
+          <div class="eyebrow">Featured Multiplayer</div>
+          <div id="featuredTitle" class="hero-title">Chess Warlord</div>
+          <p id="featuredDesc" class="hero-desc">Command factions in an eight-player real-time territory war.</p>
+          <div class="hero-actions">
+            <button id="featuredMultiBtn" class="btn">Create a Lobby</button>
+            <button id="featuredFavoriteBtn" class="btn ghost-light">☆ Favorite</button>
           </div>
         </div>
-
-        <div id="lobbyInterface" class="card" style="display:none">
-          <div class="card-head">
-            <div id="lobbyHeaderTitle" class="card-title">Start a Lobby</div>
-          </div>
-          <div class="card-body">
-            <div class="row" style="align-items:flex-end">
-              <div id="lobbyNameWrap" style="flex:1 1 220px">
-                <label class="subtle">Lobby Name</label>
-                <input type="text" id="lobbyName" class="input" placeholder="e.g., Friday Night Squad" />
-              </div>
-              <div class="game-picker-wrap" style="flex:1 1 280px">
-                <label class="subtle">Game</label>
-                <button id="selectedGameSquare" class="selected-game-square" type="button" aria-expanded="false" aria-controls="gamePickerPanel"></button>
-                <div id="gamePickerPanel" class="game-picker-panel">
-                  <div id="multiplayerCatalog" class="multiplayer-catalog"></div>
-                </div>
-              </div>
-              <button id="createBtn" class="btn btn-lg" onclick="startLobby()">Start Lobby</button>
-            </div>
-
-            <div id="availLobbiesCard" class="card" style="margin-top:14px">
-              <div class="card-head"><div class="card-title">Available Lobbies</div></div>
-              <div class="card-body" style="padding-top:10px">
-                <div id="lobbyList" class="lobbies"><!-- Lobby cards injected here --></div>
-              </div>
-            </div>
-
-            <div id="playersCard" class="card" style="margin-top:14px">
-              <div class="card-head"><div class="card-title">Lobby Players</div></div>
-              <div class="card-body">
-                <div id="lobbyPlayers" class="players"><!-- chips injected --></div>
-                <div class="controls">
-                  <button id="startBtn" class="btn btn-lg">🚀 Start Game</button>
-                  <button class="btn btn-lg" style="background:#fff;color:#111;border-color:#ddd;box-shadow:none" onclick="leaveLobby()">❌ Leave Lobby</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
       </div>
 
-      <!-- RIGHT SIDEBAR -->
-      <aside class="right">
-        <div id="winsLeaderboard" class="card">
-          <div class="card-head"><div class="card-title">🏆 Top Players</div></div>
-          <div class="card-body">
-            <div id="leaderboardEntries" class="ladder"><!-- rows --></div>
+      <div class="section-head">
+        <div><div class="section-title">Multiplayer Lobbies</div><div class="section-sub">Browse public games before logging in. Private lobbies appear through invitations.</div></div>
+      </div>
+
+      <div class="card toolbar">
+        <input id="lobbySearch" class="field search-wide" type="search" placeholder="Search lobbies, hosts, or games…" />
+        <select id="lobbyGameFilter" class="select"><option value="all">All Games</option></select>
+        <select id="lobbyVisibilityFilter" class="select"><option value="all">All Visible</option><option value="public">Public</option><option value="private">Private</option></select>
+        <select id="lobbySlotFilter" class="select"><option value="all">Any Capacity</option><option value="open">Open Slots</option></select>
+        <button id="openCreateLobby" class="btn create-toolbar">＋ Create Lobby</button>
+      </div>
+
+      <div class="multi-layout">
+        <div>
+          <div id="lobbyGrid" class="lobby-grid">
+            <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
           </div>
         </div>
-      </aside>
+
+        <aside id="currentLobbyPanel" class="card current-panel">
+          <div id="currentLobbyEmpty" class="current-empty"><div style="font-size:2rem">🛡️</div><strong>No active lobby</strong><div style="margin-top:5px">Join a lobby or create your own.</div></div>
+          <div id="currentLobbyContent" hidden>
+            <div id="currentLobbyCover" class="current-cover">
+              <div class="eyebrow">Your Lobby</div>
+              <div id="currentLobbyName" class="current-title">Lobby</div>
+              <div id="currentLobbyGame" class="current-game">Game</div>
+            </div>
+            <div class="current-body">
+              <div id="currentLobbyPlayers" class="player-list"></div>
+              <div class="current-actions">
+                <button id="invitePlayerBtn" class="btn secondary" hidden>✉ Invite Player</button>
+                <button id="copyInviteBtn" class="btn secondary">🔗 Copy Invite Link</button>
+                <button id="startGameBtn" class="btn" hidden>🚀 Start Game</button>
+                <button id="leaveLobbyBtn" class="btn danger">Leave Lobby</button>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="section-head"><div><div class="section-title">Top Players</div><div class="section-sub">Current win leaders across the hub.</div></div></div>
+      <div id="leaderboardEntries" class="game-grid"></div>
     </section>
 
-    <!-- SINGLEPLAYER -->
-    <section id="panel-single" class="card" role="tabpanel" aria-labelledby="tabbtn-single" style="display:none">
-      <div class="card-head">
-        <div class="card-title">Singleplayer</div>
+    <section id="view-singleplayer" class="view">
+      <div class="section-head"><div><div class="section-title">Singleplayer Library</div><div class="section-sub">Continue recent games, save favorites, or browse by category.</div></div></div>
+
+      <div id="continueSection" hidden>
+        <div class="section-head"><div><div class="section-title" style="font-size:1.08rem">Continue Playing</div></div></div>
+        <div id="continueStrip" class="horizontal-strip"></div>
       </div>
-      <div class="card-body">
-        <p class="subtle" style="margin-top:0">Pick a game to play solo.</p>
-        <div id="catalog" class="catalog"><!-- game cards --></div>
+
+      <div id="favoritesSection" hidden>
+        <div class="section-head"><div><div class="section-title" style="font-size:1.08rem">Your Favorites</div></div></div>
+        <div id="favoritesStrip" class="horizontal-strip"></div>
+      </div>
+
+      <div class="card toolbar" style="grid-template-columns:minmax(220px,1fr) auto">
+        <input id="gameSearch" class="field" type="search" placeholder="Search games or categories…" />
+        <select id="gameSort" class="select"><option value="popular">Most Played</option><option value="title">Title</option><option value="recent">Recently Played</option></select>
+      </div>
+      <div id="categoryPills" class="category-pills"></div>
+      <div id="singleGameGrid" class="game-grid"></div>
+    </section>
+
+    <section id="view-profile" class="view">
+      <div id="profileGuest" class="empty-state">
+        <div class="big">👤</div><h2 style="margin:0 0 7px;color:var(--ink)">Create your Game Hub profile</h2>
+        <p>Log in or create a user to save favorites, recent games, and profile details.</p>
+        <button id="profileLoginBtn" class="btn">Log In or Create User</button>
+      </div>
+
+      <div id="profileContent" hidden>
+        <div class="profile-hero">
+          <div id="profileAvatar" class="profile-avatar">🎮</div>
+          <div class="profile-info">
+            <div id="profileName" class="profile-name">Player</div>
+            <div id="profileBio" class="profile-bio">Game Hub player</div>
+            <div class="profile-stats">
+              <div class="profile-stat"><strong id="profileWins">0</strong>Wins</div>
+              <div class="profile-stat"><strong id="profileFavoriteCount">0</strong>Favorites</div>
+              <div class="profile-stat"><strong id="profileRecentCount">0</strong>Recent Games</div>
+            </div>
+          </div>
+          <div style="position:relative;z-index:1;display:flex;gap:8px;flex-wrap:wrap"><button id="editProfileBtn" class="btn ghost-light">Edit Profile</button><button id="profileLogoutBtn" class="btn ghost-light">Logout</button></div>
+        </div>
+
+        <div class="profile-layout">
+          <div>
+            <div class="card card-pad">
+              <div class="section-title" style="font-size:1.05rem">Favorite Games</div>
+              <div id="profileFavorites" class="game-grid" style="margin-top:13px"></div>
+            </div>
+            <div class="card card-pad" style="margin-top:18px">
+              <div class="section-title" style="font-size:1.05rem">Recently Played</div>
+              <div id="profileRecent" class="activity-list" style="margin-top:13px"></div>
+            </div>
+          </div>
+          <div class="card card-pad">
+            <div class="section-title" style="font-size:1.05rem">Player Details</div>
+            <div id="profileDetails" style="margin-top:13px"></div>
+          </div>
+        </div>
       </div>
     </section>
+  </main>
+
+  <nav class="mobile-nav" aria-label="Mobile navigation">
+    <button class="active" data-view="multiplayer"><span>👥</span>Multiplayer</button>
+    <button data-view="singleplayer"><span>🎮</span>Singleplayer</button>
+    <button data-view="profile"><span>👤</span>Profile</button>
+  </nav>
+
+  <div id="modalLayer" class="modal-layer" hidden>
+    <div id="accountGateModal" class="modal" hidden>
+      <div class="modal-head"><div class="modal-title">Create a user to join multiplayer</div><button class="modal-close" data-close-modal>×</button></div>
+      <div class="modal-body">
+        <div style="font-size:2.3rem;margin-bottom:10px">🎮</div>
+        <p style="line-height:1.55;color:var(--muted);margin:0">You can browse public lobbies as a guest. Create a user or log in to join, host, receive invitations, save favorites, and use your profile.</p>
+      </div>
+      <div class="modal-foot">
+        <button id="gateNotNow" class="btn secondary">Not Right Now</button>
+        <button id="gateLogin" class="btn secondary">Log In</button>
+        <button id="gateCreate" class="btn">Okay — Create User</button>
+      </div>
+    </div>
+
+    <div id="accountModal" class="modal" hidden>
+      <div class="modal-head"><div class="modal-title">Game Hub Account</div><button class="modal-close" data-close-modal>×</button></div>
+      <div class="modal-body">
+        <div class="account-tabs">
+          <button id="showLoginTab" class="account-tab active">Log In</button>
+          <button id="showCreateTab" class="account-tab">Create User</button>
+        </div>
+        <div id="loginPane">
+          <div class="form-row"><label class="label" for="loginUsername">Username</label><input id="loginUsername" class="field" autocomplete="username" /></div>
+          <div class="form-row"><label class="label" for="loginPassword">Password</label><input id="loginPassword" class="field" type="password" autocomplete="current-password" /></div>
+          <button id="loginSubmit" class="btn block">Log In</button>
+        </div>
+        <div id="createPane" hidden>
+          <div class="form-row"><label class="label" for="createUsername">Username</label><input id="createUsername" class="field" autocomplete="off" /></div>
+          <div class="form-row"><label class="label" for="createPassword">Password</label><input id="createPassword" class="field" type="password" autocomplete="new-password" /></div>
+          <div class="form-row"><label class="label" for="createConfirm">Confirm Password</label><input id="createConfirm" class="field" type="password" autocomplete="new-password" /></div>
+          <div class="help">Uses the same username and password storage as the current Game Hub account system.</div>
+          <button id="createSubmit" class="btn block" style="margin-top:13px">Create User</button>
+        </div>
+        <div id="accountMessage" class="message"></div>
+      </div>
+    </div>
+
+    <div id="createLobbyModal" class="modal wide" hidden>
+      <div class="modal-head"><div class="modal-title">Create Multiplayer Lobby</div><button class="modal-close" data-close-modal>×</button></div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-row"><label class="label" for="newLobbyName">Lobby Name</label><input id="newLobbyName" class="field" placeholder="Friday Night Squad" /></div>
+          <div class="form-row"><label class="label" for="newLobbyGame">Game</label><select id="newLobbyGame" class="select"></select></div>
+        </div>
+        <div class="form-row"><label class="label">Visibility</label>
+          <div class="visibility-choice">
+            <button id="visibilityPublic" class="visibility-btn active" data-visibility="public"><strong>🌐 Public</strong><span>Visible in the lobby browser.</span></button>
+            <button id="visibilityPrivate" class="visibility-btn" data-visibility="private"><strong>🔒 Private</strong><span>Visible to the host, players, and invited users.</span></button>
+          </div>
+        </div>
+        <div id="createLobbyGameInfo" class="card card-pad" style="box-shadow:none;background:var(--surface-2)"></div>
+        <div id="createLobbyMessage" class="message"></div>
+      </div>
+      <div class="modal-foot"><button class="btn secondary" data-close-modal>Cancel</button><button id="createLobbySubmit" class="btn">Create Lobby</button></div>
+    </div>
+
+    <div id="inviteModal" class="modal" hidden>
+      <div class="modal-head"><div class="modal-title">Invite a Player</div><button class="modal-close" data-close-modal>×</button></div>
+      <div class="modal-body">
+        <div class="form-row"><label class="label" for="inviteUsername">Username</label><input id="inviteUsername" class="field" placeholder="Type an exact username" /></div>
+        <div class="help">The invitation appears instantly in that user’s Invites menu. It is removed when the lobby starts or closes.</div>
+        <div id="inviteMessage" class="message"></div>
+      </div>
+      <div class="modal-foot"><button class="btn secondary" data-close-modal>Cancel</button><button id="sendInviteSubmit" class="btn">Send Invite</button></div>
+    </div>
+
+    <div id="editProfileModal" class="modal" hidden>
+      <div class="modal-head"><div class="modal-title">Edit Profile</div><button class="modal-close" data-close-modal>×</button></div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-row"><label class="label" for="profileDisplayNameInput">Display Name</label><input id="profileDisplayNameInput" class="field" maxlength="30" /></div>
+          <div class="form-row"><label class="label" for="profileAvatarInput">Avatar Emoji</label><input id="profileAvatarInput" class="field" maxlength="8" placeholder="🎮" /></div>
+        </div>
+        <div class="form-row"><label class="label" for="profileBioInput">Bio</label><textarea id="profileBioInput" class="textarea" maxlength="180"></textarea></div>
+        <div class="form-row"><label class="label" for="profileCategoryInput">Favorite Category</label><select id="profileCategoryInput" class="select"></select></div>
+        <div id="profileMessage" class="message"></div>
+      </div>
+      <div class="modal-foot"><button class="btn secondary" data-close-modal>Cancel</button><button id="saveProfileSubmit" class="btn">Save Profile</button></div>
+    </div>
   </div>
+
+  <div id="toastStack" class="toast-stack"></div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -685,264 +549,8 @@
       query, where, getDoc, getDocs, deleteDoc, limit, runTransaction,
       serverTimestamp, getCountFromServer, orderBy, increment
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // ✅ NEW: Auth imports
-    import {
-      getAuth,
-      signInAnonymously,
-      onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-    // ---------- ROUTES ----------
-    const ROUTES = {
-      cat:        "/game/catandmouse.html",
-      grass:      "/game/grassrealms.html",
-      estate:     "/game/estatedefense.html",
-      mountain:   "/game/mountainblade.html",
-      mountonline:"/game/mountonline.html",
-      crownlands: "/game/crownlands.html",
-      rock:       "/game/rock.html",
-      stockkings: "/game/stockkings.html",
-      dutchblitz: "/game/dutchblitz.html",
-      splinters:  "/game/Splinters.html",
-      spelltower: "/game/spelltower.html",
-      zombiezone: "/game/zombiezone.html",
-      biblegame:  "/game/biblegame.html",
-      historyrush:"/game/historyrush.html",
-      crowncouncil:"/game/crowncouncil.html",
-      forgeroyale:"/game/forgeroyale.html",
-      thegame:    "/game/thegame.html",
-      matchwars:  "/game/matchwars.html",
-      catmobile:  "/game/catmousemobile.html",
-      flag:       "/game/Flag.html",
-      microwars:  "/game/microwars.html",
-      microwars2: "/game/microwaves2.html",
-      swarm:      "/game/swarms.html",
-      microwars4: "/game/microwaves4.html",   // legacy route reused
-      border:     "/game/border.html",
-      mobamania:  "/game/CatLanes.html",
-      trials:     "/game/trials.html",
-      roguecards: "/game/roguecard.html",
-      cardrealms: "/game/cardrealms.html",
-      cardrealmsmulti: "/game/cardrealmsmulti.html",
-      rogueworld: "/game/rogueworld.html",
-      rogueduel:  "/game/rogueduel.html",
-      versemem:   "/game/verse-memorizer.html",
-      village:    "/game/villagelobby.html",
-      jesusjumper:"/game/jesus.html",
-      castledefense: "/game/castlepanic.html",
-      // NEW multiplayer alias for former Micro Wars Nexus
-      trumprev:   "/game/donrevenge.html",
-      warspan:    "/game/WarspanOnline.html",
-      balatle:    "/game/balatle.html",
-      balatlesolo:"/game/balatlesolo.html",
-      dwarfworld: "/game/DwarfWorld.html",
-
-      // ✅ NEW: Stoney's Relic split routes
-      stoneyrelic:   "/game/stoney.html",
-      dungeonmaster: "/game/dungeonmaster.html",
-      starcraft2:   "/game/starcraft2.html",
-      knightwarfare: "/game/Knight.html",
-      goofywizard: "/game/Goofy Wizard.html",
-      basketball2: "/game/Basketball 2.html",
-      chrisrunner: "/game/chrisrunner.html",
-      forgeflight: "/game/forge&flight.html",
-      onehitknight: "/game/onehitknight.html",
-      deepsea: "/game/deep_sea.html",
-      chesswarlord: "/game/chess_warlord.html"
-    };
-
-    const AUTO_REDIRECT_GAMES = new Set([
-      "cat","grass","mountain","stockkings","dutchblitz","catmobile","splinters",
-      "spelltower","thegame","zombiezone","biblegame","historyrush","crowncouncil",
-      "forgeroyale","castledefense","rogueduel","trumprev","warspan",
-      "stoneyrelic","balatle","chesswarlord"
-    ]);
-
-    const MAX_PLAYERS = {
-      mountain: 4,
-      dutchblitz: 4,
-      splinters: 4,
-      spelltower: 8,
-      zombiezone: 4,
-      stockkings: 8,
-      biblegame: 20,
-      catmobile: 8,
-      historyrush: 4,
-      thegame: 5,
-      crowncouncil: 2,
-      forgeroyale: 2,
-      cardrealmsmulti: 2,
-      rogueduel: 2,
-      castledefense: 4,
-      trumprev: 4,
-      warspan: 4,
-      stoneyrelic: 8,
-      balatle: 8,
-      chesswarlord: 8
-    };
-    const getMaxPlayers = (gameType, fallback = Infinity) =>
-      typeof MAX_PLAYERS[gameType] === "number" ? MAX_PLAYERS[gameType] : fallback;
-
-    const SINGLEPLAYER_GAMES = [
-      {
-        key: "chrisrunner",
-        title: "Chris Runner",
-        emoji: "🏃‍♂️⚡",
-        desc: "Sprint, dodge, and chase a high score in Chris Runner.",
-        route: ROUTES.chrisrunner,
-        featured: true
-      },
-      {
-        key: "forgeflight",
-        title: "Forge & Flight",
-        emoji: "🔥🪽",
-        desc: "Enter Forge & Flight for a fast solo adventure.",
-        route: ROUTES.forgeflight,
-        featured: true
-      },
-      {
-        key: "onehitknight",
-        title: "One Hit Knight",
-        emoji: "🛡️⚔️",
-        desc: "Dash, slash, and survive in a fast one-hit arcade knight challenge.",
-        route: ROUTES.onehitknight,
-        featured: true
-      },
-      {
-        key: "deepsea",
-        title: "Deep Sea",
-        emoji: "🐟🌊",
-        desc: "Swim, grow, evolve, and survive in the deep sea.",
-        route: ROUTES.deepsea,
-        featured: true
-      },
-      { key: "village",    title: "Village",        emoji: "🏘️",     desc: "Build and manage your village.", route: ROUTES.village, requiresUser:true, autoUsername:true },
-      { key: "microwars2", title: "Monster Quest", emoji: "🦎", desc: "Catch Monsters, Train Them, Battle", route: ROUTES.microwars2 },
-      { key: "swarm",      title: "swarm wars", emoji: "⚔️",          desc: "Vast armies colide", route: ROUTES.swarm },
-      { key: "mobamania",  title: "MOBA Mania",      emoji: "🧙‍♂️🛡️💠", desc: "Single-lane hero brawler.", route: ROUTES.mobamania },
-      { key: "trials",     title: "Trials",          emoji: "⚔️",     desc: "Survive.", route: ROUTES.border },
-      {
-        key: "roguecards",
-        title: "Tiny Troops Emoji Battle",
-        emoji: "🧙‍♂️⚔️✨",
-        desc: "Build a tiny emoji squad, stack synergies, and battle wave after wave.",
-        route: ROUTES.roguecards,
-        featured: true
-      },
-      { key: "cardrealms", title: "Card Realms",     emoji: "🃏⚔️",  desc: "Deckbuilder battle game.", route: ROUTES.cardrealms },
-      { key: "rogueworld", title: "Rogue World",     emoji: "🌍🗡️",   desc: "Explore Rogue World in a solo adventure.", route: ROUTES.rogueworld },
-      { key: "trials2",    title: "Trials Rogue-like", emoji: "⚔️📱", desc: "Survive. 2.0", route: ROUTES.trials },
-      { key: "jesusjumper", title: "Jesus Jumper",   emoji: "✝️🦘",   desc: "Hop through challenges in this faith-fueled platformer.", route: ROUTES.jesusjumper },
-      { key: "mountain",   title: "Mountain Blade",  emoji: "⛰️⚔️",   desc: "Battle through Mountain Blade from the game folder.", route: ROUTES.mountain },
-      { key: "warspan",    title: "Warspan",         emoji: "⚔️🃏",   desc: "Launch Warspan from the game folder.", route: ROUTES.warspan },
-      { key: "balatlesolo", title: "Balatle Solo",   emoji: "🃏👤",   desc: "Single-player Balatle with difficulty levels and no timer.", route: ROUTES.balatlesolo },
-      { key: "dwarfworld", title: "DwarfWorld",      emoji: "⛏️🏔️",   desc: "Explore and survive in DwarfWorld.", route: ROUTES.dwarfworld },
-      { key: "knightwarfare", title: "Knight Warfare", emoji: "♞⚔️", desc: "Enter Knight Warfare from the game folder.", route: ROUTES.knightwarfare },
-      { key: "starcraft2", title: "HTML Craft",      emoji: "🚀🛠️",   desc: "Command units in a browser-based RTS survival challenge.", route: ROUTES.starcraft2 },
-      { key: "goofywizard", title: "Goofy Wizard",   emoji: "🧙✨",   desc: "Cast quirky spells in a whimsical wizard adventure.", route: ROUTES.goofywizard },
-      { key: "basketball2", title: "Basketball 2",   emoji: "🏀",      desc: "Hit the court in Basketball 2.", route: ROUTES.basketball2 }
-    ];
-
-
-
-    const MULTIPLAYER_GAMES = [
-      { key: "cat", title: "Cat & Mouse", emoji: "🐭", desc: "Classic multiplayer chase.", maxPlayers: null },
-      { key: "catmobile", title: "Cat vs Mouse Mobile", emoji: "🐭📱", desc: "Mobile-friendly 8-player chase.", maxPlayers: 8 },
-      { key: "grass", title: "Grass Realms", emoji: "🌿", desc: "Multiplayer realm battle.", maxPlayers: null },
-      { key: "estate", title: "Estate Defense", emoji: "🏡", desc: "Defend the estate together.", maxPlayers: null },
-      { key: "mountain", title: "Mountain Blade Skirmish", emoji: "🗻", desc: "4-player skirmish combat.", maxPlayers: 4 },
-      { key: "mountonline", title: "Mountain Blade Online", emoji: "🗻🌐", desc: "Quick-play online mode.", quickPlay: true },
-      { key: "crownlands", title: "Crownlands Online", emoji: "👑🌐", desc: "Persistent online strategy.", quickPlay: true },
-      { key: "rock", title: "Rock Paper Scissors MMO", emoji: "✊📄✂️", desc: "Quick-play RPS MMO.", quickPlay: true },
-      { key: "stockkings", title: "Stock Kings", emoji: "📈", desc: "Market battle game.", maxPlayers: 8 },
-      { key: "dutchblitz", title: "Dutch Blitz Arena", emoji: "🃏", desc: "Fast 4-player card action.", maxPlayers: 4 },
-      { key: "splinters", title: "Splinters", emoji: "🪄", desc: "4-player magic battle.", maxPlayers: 4 },
-      { key: "spelltower", title: "Spell Tower", emoji: "🗼", desc: "8-player spell challenge.", maxPlayers: 8 },
-      { key: "zombiezone", title: "Zombie Zone", emoji: "🧟‍♂️", desc: "4-player survival.", maxPlayers: 4 },
-      { key: "biblegame", title: "Bible Game", emoji: "📖", desc: "20-player Bible challenge.", maxPlayers: 20 },
-      { key: "historyrush", title: "History Rush", emoji: "🏛️", desc: "4-player history race.", maxPlayers: 4 },
-      { key: "crowncouncil", title: "Faction Forge", emoji: "👑", desc: "2-player faction duel.", maxPlayers: 2 },
-      { key: "forgeroyale", title: "Forge Royale", emoji: "⚔️", desc: "2-player forge battle.", maxPlayers: 2 },
-      { key: "rogueduel", title: "Rogue Duel", emoji: "🂡", desc: "2-player roguelike duel.", maxPlayers: 2 },
-      { key: "cardrealmsmulti", title: "Card Realms Multiplayer", emoji: "🃏⚔️", desc: "2-player card battle.", maxPlayers: 2 },
-      { key: "thegame", title: "The Game", emoji: "🃏", desc: "5-player card challenge.", maxPlayers: 5 },
-      { key: "castledefense", title: "Castle Defense", emoji: "🏰", desc: "4-player castle defense.", maxPlayers: 4 },
-      { key: "trumprev", title: "Base Defense: Revenge", emoji: "🏰", desc: "4-player base defense.", maxPlayers: 4 },
-      { key: "warspan", title: "Warspan Online", emoji: "⚔️🃏", desc: "4-player Warspan battle.", maxPlayers: 4 },
-      { key: "stoneyrelic", title: "Stoney's Relic", emoji: "🗿", desc: "2–8 player relic adventure.", maxPlayers: 8 },
-      { key: "balatle", title: "Balatle", emoji: "⚔️", desc: "8-player battle mode.", maxPlayers: 8 },
-      {
-        key: "chesswarlord",
-        title: "Chess Warlord",
-        emoji: "♛⚔️",
-        desc: "An 8-player real-time faction chess war with territory control, kings, cooldowns, AI seats, and Firebase multiplayer.",
-        route: ROUTES.chesswarlord,
-        maxPlayers: 8,
-        featured: true
-      }
-    ];
-
-    let selectedMultiplayerGame = "cat";
-    let gamePlayCounts = {};
-    let gameStatsLoaded = false;
-
-    function getGameByKey(key){
-      return MULTIPLAYER_GAMES.find(g => g.key === key) || SINGLEPLAYER_GAMES.find(g => g.key === key) || { key, title: gameLabel(key), emoji: "🎮" };
-    }
-    function getPlayCount(key) { return gamePlayCounts[key] || 0; }
-    function sortByMostPlayed(games) {
-      return [...games].sort((a, b) => {
-        const diff = getPlayCount(b.key) - getPlayCount(a.key);
-        if (diff !== 0) return diff;
-        return (a.title || "").localeCompare(b.title || "");
-      });
-    }
-    async function logGamePlay(g) {
-      try {
-        if (!db || !g || !g.key) return;
-        const ref = doc(db, "gameStats", g.key);
-        await setDoc(ref, {
-          key: g.key,
-          title: g.title || g.key,
-          plays: increment(1),
-          lastPlayedAt: serverTimestamp()
-        }, { merge: true });
-      } catch (e) {
-        console.warn("Play logging skipped:", e);
-      }
-    }
-
-    async function logGamePlayAndLaunch(g, launch) {
-      try {
-        await logGamePlay(g);
-      } catch (e) {
-        console.warn("Play logging skipped:", e);
-      } finally {
-        launch();
-      }
-    }
-    async function loadGameStats() {
-      try {
-        if (!db) return;
-        const snap = await getDocs(collection(db, "gameStats"));
-        const counts = {};
-        snap.forEach(docSnap => {
-          const d = docSnap.data();
-          counts[docSnap.id] = d.plays || 0;
-        });
-        gamePlayCounts = counts;
-        gameStatsLoaded = true;
-      } catch (e) {
-        console.warn("Game stats unavailable:", e);
-        gamePlayCounts = {};
-        gameStatsLoaded = false;
-      }
-      renderSingleplayer();
-      renderMultiplayerCatalog();
-    }
-
-    // ---------- FIREBASE ----------
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
       authDomain: "bible-game-246c0.firebaseapp.com",
@@ -951,804 +559,576 @@
       messagingSenderId: "959619818996",
       appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
     };
+
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-
-    // ✅ NEW: Auth setup so rules `request.auth != null` pass
     const auth = getAuth(app);
-    let authUser = null;
 
-    // username needs to be in outer scope for later use
-    let username = "";
+    const GAME_THEMES = {
+      Strategy:"#7c3aed", Action:"#dc2626", Cards:"#d97706", RPG:"#0f766e",
+      Arcade:"#2563eb", Faith:"#b45309", Sports:"#16a34a", Builder:"#475569",
+      Survival:"#9f1239", Party:"#db2777", Adventure:"#0891b2"
+    };
 
-    // ---------- DAILY USERS — per-user-per-day (NO HOT DOCS) ----------
-    const TZ = "America/New_York";
-    const fmtYMD = new Intl.DateTimeFormat("en-CA",{ timeZone:TZ, year:"numeric", month:"2-digit", day:"2-digit" });
-    const todayNY = () => fmtYMD.format(new Date()); // "YYYY-MM-DD"
-    const DU_KEY = () => "gh.du.marked." + todayNY();
+    // One registry drives routes, cards, categories, limits, lobby labels, and featured content.
+    const GAMES = [
+      {key:"cat",title:"Cat & Mouse",emoji:"🐭",desc:"Classic multiplayer chase.",route:"/game/catandmouse.html",category:"Party",modes:["multi"],autoRedirect:true},
+      {key:"grass",title:"Grass Realms",emoji:"🌿",desc:"Battle for a growing multiplayer realm.",route:"/game/grassrealms.html",category:"Strategy",modes:["multi"],autoRedirect:true},
+      {key:"estate",title:"Estate Defense",emoji:"🏡",desc:"Defend the estate together.",route:"/game/estatedefense.html",category:"Strategy",modes:["multi"]},
+      {key:"mountain",title:"Mountain Blade",multiTitle:"Mountain Blade Skirmish",emoji:"⛰️⚔️",desc:"Command troops through a medieval battlefield.",route:"/game/mountainblade.html",category:"Action",modes:["single","multi"],maxPlayers:4,autoRedirect:true},
+      {key:"mountonline",title:"Mountain Blade Online",emoji:"🗻🌐",desc:"Jump directly into the persistent online battlefield.",route:"/game/mountonline.html",category:"Action",modes:["multi"],quickPlay:true},
+      {key:"crownlands",title:"Crownlands Online",emoji:"👑🌐",desc:"Enter a persistent online strategy world.",route:"/game/crownlands.html",category:"Strategy",modes:["multi"],quickPlay:true},
+      {key:"rock",title:"Rock Paper Scissors MMO",emoji:"✊📄✂️",desc:"Fast persistent RPS multiplayer.",route:"/game/rock.html",category:"Party",modes:["multi"],quickPlay:true},
+      {key:"stockkings",title:"Stock Kings",emoji:"📈",desc:"Compete in a multiplayer market battle.",route:"/game/stockkings.html",category:"Strategy",modes:["multi"],maxPlayers:8,autoRedirect:true},
+      {key:"dutchblitz",title:"Dutch Blitz Arena",emoji:"🃏",desc:"Rapid four-player card action.",route:"/game/dutchblitz.html",category:"Cards",modes:["multi"],maxPlayers:4,autoRedirect:true},
+      {key:"splinters",title:"Splinters",emoji:"🪄",desc:"Four-player magical combat.",route:"/game/Splinters.html",category:"Action",modes:["multi"],maxPlayers:4,autoRedirect:true},
+      {key:"spelltower",title:"Spell Tower",emoji:"🗼",desc:"An eight-player spell challenge.",route:"/game/spelltower.html",category:"Party",modes:["multi"],maxPlayers:8,autoRedirect:true},
+      {key:"zombiezone",title:"Zombie Zone",emoji:"🧟‍♂️",desc:"Survive the horde with up to four players.",route:"/game/zombiezone.html",category:"Survival",modes:["multi"],maxPlayers:4,autoRedirect:true},
+      {key:"biblegame",title:"Bible Game",emoji:"📖",desc:"A large multiplayer Bible challenge.",route:"/game/biblegame.html",category:"Faith",modes:["multi"],maxPlayers:20,autoRedirect:true},
+      {key:"historyrush",title:"History Rush",emoji:"🏛️",desc:"Race through history with four players.",route:"/game/historyrush.html",category:"Party",modes:["multi"],maxPlayers:4,autoRedirect:true},
+      {key:"crowncouncil",title:"Faction Forge",emoji:"👑",desc:"Create factions in a two-player duel.",route:"/game/crowncouncil.html",category:"Strategy",modes:["multi"],maxPlayers:2,autoRedirect:true},
+      {key:"forgeroyale",title:"Forge Royale",emoji:"⚔️",desc:"A focused two-player forge battle.",route:"/game/forgeroyale.html",category:"Action",modes:["multi"],maxPlayers:2,autoRedirect:true},
+      {key:"thegame",title:"The Game",emoji:"🃏",desc:"A five-player card challenge.",route:"/game/thegame.html",category:"Cards",modes:["multi"],maxPlayers:5,autoRedirect:true},
+      {key:"matchwars",title:"Match Wars",emoji:"🧩⚔️",desc:"Match pieces and push through enemy lines.",route:"/game/matchwars.html",category:"Arcade",modes:["single"]},
+      {key:"catmobile",title:"Cat vs Mouse Mobile",emoji:"🐭📱",desc:"Mobile-friendly eight-player chase.",route:"/game/catmousemobile.html",category:"Party",modes:["multi"],maxPlayers:8,autoRedirect:true},
+      {key:"flag",title:"Flag",emoji:"🚩",desc:"Capture objectives in a compact action game.",route:"/game/Flag.html",category:"Action",modes:["single"]},
+      {key:"microwars",title:"Micro Wars",emoji:"🔬⚔️",desc:"Small units clash in a tactical battlefield.",route:"/game/microwars.html",category:"Strategy",modes:["single"]},
+      {key:"microwars2",title:"Monster Quest",emoji:"🦎",desc:"Catch monsters, train them, and battle.",route:"/game/microwaves2.html",category:"RPG",modes:["single"]},
+      {key:"swarm",title:"Swarm Wars",emoji:"⚔️",desc:"Vast armies collide.",route:"/game/swarms.html",category:"Strategy",modes:["single"]},
+      {key:"microwars4",title:"Micro Wars Nexus",emoji:"🌐⚔️",desc:"A legacy Micro Wars battlefield.",route:"/game/microwaves4.html",category:"Strategy",modes:["single"]},
+      {key:"border",title:"Border Trials",emoji:"🗺️⚔️",desc:"Hold the border and survive.",route:"/game/border.html",category:"Survival",modes:["single"]},
+      {key:"mobamania",title:"MOBA Mania",emoji:"🧙‍♂️🛡️",desc:"A single-lane hero brawler.",route:"/game/CatLanes.html",category:"Action",modes:["single"]},
+      {key:"trials",title:"Trials Rogue-like",emoji:"⚔️📱",desc:"Survive an evolving rogue-like challenge.",route:"/game/trials.html",category:"RPG",modes:["single"]},
+      {key:"roguecards",title:"Tiny Troops Emoji Battle",emoji:"🧙‍♂️⚔️",desc:"Build a tiny squad, stack synergies, and fight waves.",route:"/game/roguecard.html",category:"Cards",modes:["single"],featured:true},
+      {key:"cardrealms",title:"Card Realms",emoji:"🃏⚔️",desc:"Build a deck and battle through card realms.",route:"/game/cardrealms.html",category:"Cards",modes:["single"]},
+      {key:"cardrealmsmulti",title:"Card Realms Multiplayer",emoji:"🃏⚔️",desc:"Direct two-player card matchmaking.",route:"/game/cardrealmsmulti.html",category:"Cards",modes:["multi"],maxPlayers:2,directLaunch:true},
+      {key:"rogueworld",title:"Rogue World",emoji:"🌍🗡️",desc:"Explore a dangerous solo world.",route:"/game/rogueworld.html",category:"RPG",modes:["single"]},
+      {key:"rogueduel",title:"Rogue Duel",emoji:"🂡",desc:"A two-player roguelike duel.",route:"/game/rogueduel.html",category:"Cards",modes:["multi"],maxPlayers:2,autoRedirect:true},
+      {key:"versemem",title:"Verse Memorizer",emoji:"📜",desc:"Practice and remember Bible verses.",route:"/game/verse-memorizer.html",category:"Faith",modes:["single"]},
+      {key:"village",title:"Village",emoji:"🏘️",desc:"Build and manage your village.",route:"/game/villagelobby.html",category:"Builder",modes:["single"],requiresUser:true,autoUsername:true},
+      {key:"jesusjumper",title:"Jesus Jumper",emoji:"✝️🦘",desc:"Hop through a faith-fueled platformer.",route:"/game/jesus.html",category:"Faith",modes:["single"]},
+      {key:"castledefense",title:"Castle Defense",emoji:"🏰",desc:"Defend a castle with up to four players.",route:"/game/castlepanic.html",category:"Strategy",modes:["multi"],maxPlayers:4,autoRedirect:true},
+      {key:"trumprev",title:"Base Defense: Revenge",emoji:"🏰🔥",desc:"Four-player base defense.",route:"/game/donrevenge.html",category:"Strategy",modes:["multi"],maxPlayers:4,autoRedirect:true},
+      {key:"warspan",title:"Warspan",multiTitle:"Warspan Online",emoji:"⚔️🃏",desc:"Command a card-driven battlefield.",route:"/game/WarspanOnline.html",category:"Cards",modes:["single","multi"],maxPlayers:4,autoRedirect:true},
+      {key:"balatle",title:"Balatle",emoji:"⚔️",desc:"An eight-player battle mode.",route:"/game/balatle.html",category:"Cards",modes:["multi"],maxPlayers:8,autoRedirect:true},
+      {key:"balatlesolo",title:"Balatle Solo",emoji:"🃏👤",desc:"Single-player Balatle with difficulty levels.",route:"/game/balatlesolo.html",category:"Cards",modes:["single"]},
+      {key:"dwarfworld",title:"DwarfWorld",emoji:"⛏️🏔️",desc:"Explore, build, and survive underground.",route:"/game/DwarfWorld.html",category:"Builder",modes:["single"]},
+      {key:"stoneyrelic",title:"Stoney's Relic",emoji:"🗿",desc:"A two-to-eight-player relic adventure with a Dungeon Master.",route:"/game/stoney.html",dmRoute:"/game/dungeonmaster.html",category:"RPG",modes:["multi"],maxPlayers:8,minPlayers:2,autoRedirect:true},
+      {key:"starcraft2",title:"HTML Craft",emoji:"🚀🛠️",desc:"Command units in a browser RTS survival challenge.",route:"/game/starcraft2.html",category:"Strategy",modes:["single"]},
+      {key:"knightwarfare",title:"Knight Warfare",emoji:"♞⚔️",desc:"Lead knights into a fast tactical war.",route:"/game/Knight.html",category:"Action",modes:["single"]},
+      {key:"goofywizard",title:"Goofy Wizard",emoji:"🧙✨",desc:"Cast quirky spells in a whimsical adventure.",route:"/game/Goofy Wizard.html",category:"Arcade",modes:["single"]},
+      {key:"basketball2",title:"Basketball 2",emoji:"🏀",desc:"Hit the court in an arcade basketball challenge.",route:"/game/Basketball 2.html",category:"Sports",modes:["single"]},
+      {key:"chrisrunner",title:"Chris Runner",emoji:"🏃‍♂️⚡",desc:"Sprint, dodge, and chase a high score.",route:"/game/chrisrunner.html",category:"Arcade",modes:["single"],featured:true},
+      {key:"forgeflight",title:"Forge & Flight",emoji:"🔥🪽",desc:"Enter a fast solo aerial adventure.",route:"/game/forge&flight.html",category:"Action",modes:["single"],featured:true},
+      {key:"onehitknight",title:"One Hit Knight",emoji:"🛡️⚔️",desc:"Dash, slash, and survive a one-hit challenge.",route:"/game/onehitknight.html",category:"Action",modes:["single"],featured:true},
+      {key:"deepsea",title:"Deep Sea",emoji:"🐟🌊",desc:"Swim, grow, evolve, and survive below.",route:"/game/deep_sea.html",category:"Adventure",modes:["single"],featured:true},
+      {key:"chesswarlord",title:"Chess Warlord",emoji:"♛⚔️",desc:"An eight-player real-time faction chess war with territory control, kings, cooldowns, AI seats, and Firebase multiplayer.",route:"/game/chess_warlord.html",category:"Strategy",modes:["multi"],maxPlayers:8,autoRedirect:true,featured:true}
+    ];
 
-    const fmtLastLogin = new Intl.DateTimeFormat("en-US", {
-      timeZone: TZ,
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true
-    });
+    const GAME_BY_KEY = Object.fromEntries(GAMES.map(g => [g.key,g]));
+    const SINGLE_GAMES = GAMES.filter(g => g.modes.includes("single"));
+    const MULTI_GAMES = GAMES.filter(g => g.modes.includes("multi"));
+    const CATEGORIES = ["All",...Array.from(new Set(GAMES.map(g=>g.category))).sort()];
+    const getGame = key => GAME_BY_KEY[key] || {key,title:key||"Game",emoji:"🎮",desc:"Game",route:"/",category:"Arcade",modes:[]};
+    const getMaxPlayers = key => Number.isFinite(getGame(key).maxPlayers) ? getGame(key).maxPlayers : Infinity;
+    const gameTitle = (key,multi=false) => multi && getGame(key).multiTitle ? getGame(key).multiTitle : getGame(key).title;
+    const gameColor = key => GAME_THEMES[getGame(key).category] || "#b4232f";
 
-    async function markDailyUserOnce(uid){
-      if (!uid) return;
-      const key = DU_KEY();
-      if (sessionStorage.getItem(key)) return;
-      sessionStorage.setItem(key, "1");
-      const dateKey = todayNY();
-      await setDoc(doc(db, "metrics_dailyUsers", dateKey, "users", uid), { ts: serverTimestamp() }, { merge: true });
-    }
-
-    async function fetchDailyUserCount(){
-      const dateKey = todayNY();
-      const col = collection(db, "metrics_dailyUsers", dateKey, "users");
-      const snap = await getCountFromServer(col);
-      return snap.data().count || 0;
-    }
-
-    async function showDailyUsersPill(){
-      const countEl = document.getElementById("dailyUsersCount");
-      const pill = document.getElementById("dailyUsersPill");
-      try{
-        const c = await fetchDailyUserCount();
-        countEl.textContent = String(c);
-        pill.title = `Unique logins on ${todayNY()} (${TZ})`;
-      }catch(e){ /* ignore visual errors */ }
-    }
-
-    // ---------- STORAGE KEYS & SESSION HELPERS ----------
     const SK = {
-      user: "gh.username",
-      lastLobby: "gh.lastLobbyId",
-      lastGame: "gh.lastGameType",
-      lastTab: "gh.lastTab",
-      nextRoute: "gh.nextRoute"
+      user:"gh.username", lastLobby:"gh.lastLobbyId", lastGame:"gh.lastGameType", lastView:"gh.lastTab",
+      nextRoute:"gh.nextRoute", favorites:"gh.favorites", recent:"gh.recentGames"
     };
-    const save = (k,v)=> localStorage.setItem(k, v);
-    const read = (k)=> localStorage.getItem(k);
-    const del  = (k)=> localStorage.removeItem(k);
-
-    function persistSession() {
-      if (username) save(SK.user, username);
-      const activeTab = isMultiVisible() ? "multi" : "single";
-      save(SK.lastTab, activeTab);
-    }
-    function clearSession() {
-      del(SK.user); del(SK.lastLobby); del(SK.lastGame); del(SK.lastTab); del(SK.nextRoute);
-    }
-
-    // ---------- TABS ----------
-    function isMultiVisible(){ return document.getElementById('panel-multi').style.display !== 'none'; }
-    window.showTab = function(which){
-      const isMulti = which === 'multi';
-      document.getElementById('panel-multi').style.display = isMulti ? 'grid' : 'none';
-      document.getElementById('panel-single').style.display = isMulti ? 'none' : 'block';
-      document.getElementById('tabbtn-multi').setAttribute('aria-selected', String(isMulti));
-      document.getElementById('tabbtn-single').setAttribute('aria-selected', String(!isMulti));
-      save(SK.lastTab, which);
+    const save=(k,v)=>localStorage.setItem(k,v), read=k=>localStorage.getItem(k), del=k=>localStorage.removeItem(k);
+    const normalize=s=>String(s||"").trim().toLowerCase();
+    const initials=s=>String(s||"?").split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase();
+    const fmtAge=value=>{
+      let ms = typeof value === "number" ? value : value?.toMillis?.() || Date.now();
+      const diff=Math.max(0,Date.now()-ms), min=Math.floor(diff/60000);
+      if(min<1)return "just now"; if(min<60)return `${min}m ago`; const hr=Math.floor(min/60); if(hr<24)return `${hr}h ago`; return `${Math.floor(hr/24)}d ago`;
     };
 
-    async function playSingle(g){
-      if (g.requiresUser && !username){
-        save(SK.nextRoute, g.key);
-        showTab('multi');
-        showError("🔒 Please log in to play this game.");
-        const u = document.getElementById('username'); if (u) u.focus();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-      let url = g.route;
-      if (g.autoUsername && username){
-        url += (url.includes('?') ? '&' : '?') + `username=${encodeURIComponent(username)}`;
-      }
-      logGamePlayAndLaunch(g, () => { window.location.href = url; });
+    let authUser=null;
+    const initialParams=new URLSearchParams(location.search);
+    let username=(initialParams.get("username") || read(SK.user) || "").trim();
+    let currentUserData=null;
+    let currentLobbyId=null;
+    let currentLobbyData=null;
+    let inviteTargetLobbyId=null;
+    let isHost=false;
+    let pendingAction=null;
+    let selectedVisibility="public";
+    let selectedCategory="All";
+    let gamePlayCounts={};
+    let lobbyCache=new Map();
+    let inviteCache=new Map();
+    let favorites=new Set(JSON.parse(read(SK.favorites)||"[]"));
+    let recentGames=JSON.parse(read(SK.recent)||"[]");
+    let lobbyBrowserUnsub=null,lobbyUnsub=null,inviteUnsub=null;
+
+    const $=id=>document.getElementById(id);
+
+    function toast(message,type=""){
+      const node=document.createElement("div");node.className=`toast ${type}`;
+      node.innerHTML=`<span>${type==="good"?"✅":type==="bad"?"⚠️":"🎮"}</span><div>${escapeHtml(message)}</div>`;
+      $("toastStack").appendChild(node);setTimeout(()=>node.remove(),4200);
     }
+    function escapeHtml(value){return String(value??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));}
+    function setMessage(id,text,type=""){const el=$(id);el.textContent=text||"";el.className=`message ${type}`;}
+    function setBusy(button,busy,label){if(!button)return;button.disabled=busy;if(!button.dataset.original)button.dataset.original=button.textContent;button.textContent=busy?(label||"Working…"):button.dataset.original;}
 
-    function renderSingleplayer(){
-      const el = document.getElementById('catalog');
-      el.innerHTML = '';
-      const games = gameStatsLoaded ? sortByMostPlayed(SINGLEPLAYER_GAMES) : SINGLEPLAYER_GAMES;
-      for(const g of games){
-        const card = document.createElement('div');
-        card.className = `game-card${g.featured ? ' featured-game-card' : ''}`;
-        const t = document.createElement('div'); t.className = 'game-title'; t.textContent = `${g.emoji} ${g.title}`;
-        const d = document.createElement('div'); d.className = 'game-desc'; d.textContent = g.desc;
-        const count = document.createElement('div'); count.className = 'play-count'; count.textContent = `🎮 ${getPlayCount(g.key)}`;
-        const pr = document.createElement('div'); pr.className = 'play-row';
-        const btn = document.createElement('button');
-        btn.className = `btn btn-lg${g.featured ? ' featured-play-btn' : ''}`;
-        btn.textContent = 'Play';
-        btn.addEventListener('click', ()=> playSingle(g));
-        pr.appendChild(btn);
-        card.appendChild(t); card.appendChild(d); card.appendChild(count); card.appendChild(pr);
-        el.appendChild(card);
-      }
+    function showView(view){
+      document.querySelectorAll(".view").forEach(el=>el.classList.toggle("active",el.id===`view-${view}`));
+      document.querySelectorAll("[data-view]").forEach(btn=>btn.classList.toggle("active",btn.dataset.view===view));
+      save(SK.lastView,view);
+      if(view==="profile")renderProfile();
     }
-    function renderSelectedMultiplayerGame(){
-      const btn = document.getElementById('selectedGameSquare');
-      if (!btn) return;
-      const g = getGameByKey(selectedMultiplayerGame);
-      const detail = g.quickPlay ? 'Quick play' : (g.maxPlayers ? `${g.maxPlayers} players max` : 'Lobby game');
-      btn.innerHTML = `<div class="game-picker-title"><span>${g.emoji || '🎮'}</span><span>${g.title || g.key}</span></div><div class="game-picker-desc">${g.desc || detail} • ${detail}</div><div class="play-count">🎮 ${getPlayCount(g.key)}</div>`;
+    document.querySelectorAll("[data-view]").forEach(btn=>btn.addEventListener("click",()=>showView(btn.dataset.view)));
+
+    function closeDropdowns(except=null){
+      [["memberPanel","memberToggle"],["invitePanel","inviteToggle"]].forEach(([panel,btn])=>{if(panel!==except)$(panel).hidden=true;});
     }
+    $("memberToggle").addEventListener("click",e=>{e.stopPropagation();const open=$("memberPanel").hidden;closeDropdowns("memberPanel");$("memberPanel").hidden=!open;if(open)loadMembers();});
+    $("inviteToggle").addEventListener("click",e=>{e.stopPropagation();const open=$("invitePanel").hidden;closeDropdowns("invitePanel");$("invitePanel").hidden=!open;renderInvites();});
+    document.addEventListener("click",e=>{if(!e.target.closest(".dropdown-wrap"))closeDropdowns();});
 
-    function renderMultiplayerCatalog(){
-      renderSelectedMultiplayerGame();
-      const el = document.getElementById('multiplayerCatalog');
-      if (!el) return;
-      el.innerHTML = '';
-      for (const g of sortByMostPlayed(MULTIPLAYER_GAMES)){
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = `multiplayer-game-card${g.key === selectedMultiplayerGame ? ' selected' : ''}`;
-        const detail = g.quickPlay ? 'Quick play' : (g.maxPlayers ? `${g.maxPlayers} players max` : 'Lobby game');
-        card.innerHTML = `<div class="game-picker-title"><span>${g.emoji}</span><span>${g.title}</span></div><div class="game-picker-desc">${g.desc} • ${detail}</div><div class="play-count">🎮 ${getPlayCount(g.key)}</div>`;
-        card.addEventListener('click', () => {
-          selectedMultiplayerGame = g.key;
-          const panel = document.getElementById('gamePickerPanel');
-          const square = document.getElementById('selectedGameSquare');
-          if (panel) panel.classList.remove('open');
-          if (square) square.setAttribute('aria-expanded', 'false');
-          renderMultiplayerCatalog();
-          updateStartUI();
-        });
-        el.appendChild(card);
-      }
+    function openModal(id){
+      $("modalLayer").hidden=false;
+      document.querySelectorAll("#modalLayer > .modal").forEach(m=>m.hidden=m.id!==id);
+      document.body.style.overflow="hidden";
     }
-
-    function initMultiplayerPicker(){
-      const square = document.getElementById('selectedGameSquare');
-      const panel = document.getElementById('gamePickerPanel');
-      if (!square || !panel) return;
-      square.addEventListener('click', () => {
-        const open = !panel.classList.contains('open');
-        panel.classList.toggle('open', open);
-        square.setAttribute('aria-expanded', String(open));
-      });
-      renderMultiplayerCatalog();
+    function closeModal(){
+      $("modalLayer").hidden=true;document.querySelectorAll("#modalLayer > .modal").forEach(m=>m.hidden=true);document.body.style.overflow="";
     }
+    document.querySelectorAll("[data-close-modal]").forEach(btn=>btn.addEventListener("click",closeModal));
+    $("modalLayer").addEventListener("click",e=>{if(e.target===$("modalLayer"))closeModal();});
 
-    renderSingleplayer();
-    initMultiplayerPicker();
-
-    // ---------- LOBBY LOGIC ----------
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlUser = urlParams.get("username");
-    username = (urlUser ? urlUser.trim() : (read(SK.user) || "")).trim();
-
-    let currentLobbyId = null;
-    let isHost = false;
-    let lobbyUnsub = null;
-
-    if (urlUser) {
-      history.replaceState({}, "", window.location.pathname);
+    function requireUser(action){
+      if(username)return true;
+      pendingAction=action||null;openModal("accountGateModal");return false;
     }
-
-    const lastTab = read(SK.lastTab);
-    if (lastTab === "single") showTab("single");
-
-    function openPendingRouteIfAny(){
-      const key = read(SK.nextRoute);
-      if (!key) return;
-      const g = SINGLEPLAYER_GAMES.find(x => x.key === key);
-      del(SK.nextRoute);
-      if (!g) return;
-      let url = g.route;
-      if (g.autoUsername && username){
-        url += (url.includes('?') ? '&' : '?') + `username=${encodeURIComponent(username)}`;
-      }
-      logGamePlayAndLaunch(g, () => { window.location.href = url; });
+    $("gateNotNow").addEventListener("click",()=>{pendingAction=null;closeModal();});
+    $("gateLogin").addEventListener("click",()=>openAccount("login"));
+    $("gateCreate").addEventListener("click",()=>openAccount("create"));
+    function openAccount(tab="login"){
+      openModal("accountModal");showAccountTab(tab);
+      setMessage("accountMessage","");
+      setTimeout(()=>$(tab==="login"?"loginUsername":"createUsername").focus(),50);
     }
-
-    async function login() {
-      username = document.getElementById("username").value.trim();
-      const password = document.getElementById("password").value.trim();
-      if (!username || !password) { return showError("❌ Enter username & password."); }
-      const userRef = doc(db, "users", username);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists() || userSnap.data().password !== password) {
-        return showError("❌ Invalid login.");
-      }
-
-      // update last login timestamp
-      await setDoc(userRef, { lastLogin: serverTimestamp() }, { merge: true });
-
-      // Count unique daily user safely
-      await markDailyUserOnce(username);
-      await showDailyUsersPill();
-
-      enterLobbyUI();
-      persistSession();
-      maybeOfferResume();
-      openPendingRouteIfAny();
+    function showAccountTab(tab){
+      const login=tab==="login";$("loginPane").hidden=!login;$("createPane").hidden=login;
+      $("showLoginTab").classList.toggle("active",login);$("showCreateTab").classList.toggle("active",!login);
     }
+    $("showLoginTab").addEventListener("click",()=>showAccountTab("login"));
+    $("showCreateTab").addEventListener("click",()=>showAccountTab("create"));
+    $("accountButton").addEventListener("click",()=> username ? showView("profile") : openAccount("login"));
+    $("profileLoginBtn").addEventListener("click",()=>openAccount("login"));
 
-    async function autoLogin(name) {
+    async function login(){
+      const name=$("loginUsername").value.trim(),password=$("loginPassword").value;
+      if(!name||!password)return setMessage("accountMessage","Enter a username and password.","error");
+      setBusy($("loginSubmit"),true,"Logging in…");
       try{
-        const userRef = doc(db, "users", name);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) { return showError("❌ Username not found in system."); }
-        username = name;
-
-        // update last login timestamp for auto-login too
-        await setDoc(userRef, { lastLogin: serverTimestamp() }, { merge: true });
-
-        await markDailyUserOnce(username);
-        await showDailyUsersPill();
-
-        enterLobbyUI();
-        persistSession();
-        maybeOfferResume();
-        openPendingRouteIfAny();
-      }catch(e){ /* ignore */ }
+        const ref=doc(db,"users",name),snap=await getDoc(ref);
+        if(!snap.exists()||snap.data().password!==password)throw new Error("Invalid username or password.");
+        username=name;save(SK.user,username);await setDoc(ref,{lastLogin:serverTimestamp()},{merge:true});
+        await afterUserLogin(snap.data());closeModal();toast(`Welcome back, ${username}.`,"good");await runPendingAction();
+      }catch(e){setMessage("accountMessage",e.message||"Unable to log in.","error");}
+      finally{setBusy($("loginSubmit"),false);}
     }
 
-    function enterLobbyUI() {
-      document.getElementById("loginForm").style.display = "none";
-      document.getElementById("lobbyInterface").style.display = "block";
-      const lo = document.getElementById('logoutBtn'); if (lo) lo.style.display = 'inline-flex';
-      loadLobbies();
-      loadLeaderboard();
-      if (!window.__lobbyPoll){
-        window.__lobbyPoll = setInterval(loadLobbies, 5000);
-      }
-      document.getElementById("startBtn").addEventListener("click", startGame);
-      updateStartUI();
+    async function createUser(){
+      const name=$("createUsername").value.trim(),password=$("createPassword").value,confirm=$("createConfirm").value;
+      if(!name||!password||!confirm)return setMessage("accountMessage","Fill in all three fields.","error");
+      if(password!==confirm)return setMessage("accountMessage","Passwords do not match.","error");
+      if(name.length>32)return setMessage("accountMessage","Username must be 32 characters or fewer.","error");
+      if(name.includes("/"))return setMessage("accountMessage","Username cannot contain a slash.","error");
+      setBusy($("createSubmit"),true,"Creating…");
+      try{
+        const ref=doc(db,"users",name),existing=await getDoc(ref);
+        if(existing.exists())throw new Error("That username already exists.");
+        const payload={username:name,password,wins:0,lastLogin:serverTimestamp(),createdAt:serverTimestamp(),displayName:name,avatar:"🎮",bio:"Game Hub player",favoriteGames:[],recentlyPlayed:[],favoriteCategory:"Strategy"};
+        await setDoc(ref,payload);
+        username=name;save(SK.user,username);await afterUserLogin(payload);closeModal();toast(`Account “${name}” created.`,"good");await runPendingAction();
+      }catch(e){setMessage("accountMessage",e.message||"Unable to create account.","error");}
+      finally{setBusy($("createSubmit"),false);}
+    }
+    $("loginSubmit").addEventListener("click",login);$("createSubmit").addEventListener("click",createUser);
+    ["loginUsername","loginPassword"].forEach(id=>$(id).addEventListener("keydown",e=>{if(e.key==="Enter")login();}));
+    ["createUsername","createPassword","createConfirm"].forEach(id=>$(id).addEventListener("keydown",e=>{if(e.key==="Enter")createUser();}));
+
+    async function autoLogin(name){
+      try{
+        const ref=doc(db,"users",name),snap=await getDoc(ref);
+        if(!snap.exists()){username="";del(SK.user);updateAccountUI();return;}
+        username=name;await setDoc(ref,{lastLogin:serverTimestamp()},{merge:true});await afterUserLogin(snap.data());
+      }catch(e){console.warn("Auto-login skipped",e);}
+    }
+    async function afterUserLogin(data=null){
+      currentUserData=data||((await getDoc(doc(db,"users",username))).data());
+      favorites=new Set(Array.isArray(currentUserData?.favoriteGames)?currentUserData.favoriteGames:JSON.parse(read(SK.favorites)||"[]"));
+      recentGames=Array.isArray(currentUserData?.recentlyPlayed)?currentUserData.recentlyPlayed:JSON.parse(read(SK.recent)||"[]");
+      save(SK.favorites,JSON.stringify([...favorites]));save(SK.recent,JSON.stringify(recentGames));
+      updateAccountUI();listenForInvites();markDailyUserOnce(username).catch(()=>{});showDailyUsersPill();renderAllGames();renderProfile();
+    }
+    function updateAccountUI(){
+      $("accountButtonText").textContent=username?username:"Log In";$("inviteUserLabel").textContent=username?`For ${username}`:"Log in to receive invites";
+      if(!username){currentUserData=null;inviteCache.clear();if(inviteUnsub){inviteUnsub();inviteUnsub=null;}renderInvites();}
+      renderProfile();renderLobbyBrowser();
+    }
+    async function logout(){
+      try{if(currentLobbyId)await leaveLobby();}catch{}
+      username="";currentUserData=null;del(SK.user);del(SK.lastLobby);del(SK.lastGame);pendingAction=null;
+      favorites=new Set(JSON.parse(read(SK.favorites)||"[]"));recentGames=JSON.parse(read(SK.recent)||"[]");updateAccountUI();showView("multiplayer");toast("Logged out.");
     }
 
-    function showLoginUI() {
-      document.getElementById("loginForm").style.display = "block";
-      document.getElementById("lobbyInterface").style.display = "none";
-      const lo = document.getElementById('logoutBtn'); if (lo) lo.style.display = 'none';
+    async function runPendingAction(){
+      const action=pendingAction;pendingAction=null;if(!action)return;
+      if(action.type==="join")return joinLobby(action.lobbyId,action.inviteId);
+      if(action.type==="create")return openCreateLobby(action.gameKey);
+      if(action.type==="profile")return showView("profile");
+      if(action.type==="single")return playSingle(getGame(action.gameKey));
     }
 
-    function gameLabel(type){
-      return type==='grass' ? '🌿 Grass Realms' :
-             type==='estate'? '🏡 Estate Defense' :
-             type==='mountain'?'🗻 Mountain Blade Skirmish (4P)' :
-             type==='mountonline'?'🗻🌐 Mountain Blade Online' :
-             type==='crownlands'?'👑🌐 Crownlands Online' :
-             type==='rock'?'✊📄✂️ RPS MMO' :
-             type==='stockkings'?'📈 Stock Kings' :
-             type==='dutchblitz'?'🃏 Dutch Blitz Arena (4P)' :
-             type==='splinters'?'🪄 Splinters (4P)' :
-             type==='spelltower'?'🗼 Spell Tower (8P)' :
-             type==='zombiezone'?'🧟‍♂️ Zombie Zone (4P)' :
-             type==='biblegame'?'📖 Bible Game (20P)' :
-             type==='historyrush'?'🏛️ History Rush (4P)' :
-             type==='catmobile'?'🐭📱 Cat vs Mouse Mobile (8P)' :
-             type==='thegame'?'🃏 The Game (5P)' :
-             type==='crowncouncil'?'👑 Faction Forge (2P)' :
-             type==='forgeroyale'?'⚔️ Forge Royale (2P)' :
-             type==='cardrealmsmulti'?'🃏⚔️ Card Realms Multiplayer (2P)' :
-             type==='castledefense'?'🏰 Castle Defense (4P)' :
-             type==='rogueduel'?'🂡 Rogue Duel (2P)' :
-             type==='trumprev'?'🏰 Base Defense: Revenge (4P)' :
-             type==='warspan'?'⚔️🃏 Warspan Online (4P)' :
-             type==='stoneyrelic'?'🗿 Stoney\'s Relic (2–8P)' :
-             type==='balatle'?'⚔️ Balatle (8P)' :
-             type==='chesswarlord'?'♛⚔️ Chess Warlord (8P)' :
-             '🐭 Cat & Mouse';
+    const TZ="America/New_York";
+    const fmtYMD=new Intl.DateTimeFormat("en-CA",{timeZone:TZ,year:"numeric",month:"2-digit",day:"2-digit"});
+    const todayNY=()=>fmtYMD.format(new Date());
+    async function markDailyUserOnce(uid){
+      const key=`gh.du.marked.${todayNY()}`;if(!uid||sessionStorage.getItem(key))return;
+      sessionStorage.setItem(key,"1");await setDoc(doc(db,"metrics_dailyUsers",todayNY(),"users",uid),{ts:serverTimestamp()},{merge:true});
+    }
+    async function showDailyUsersPill(){
+      try{const snap=await getCountFromServer(collection(db,"metrics_dailyUsers",todayNY(),"users"));$("dailyUsersCount").textContent=snap.data().count||0;}catch{}
     }
 
-    function updateStartUI(){
-      const gt = selectedMultiplayerGame;
-      const title = document.getElementById("lobbyHeaderTitle");
-      const nameWrap = document.getElementById("lobbyNameWrap");
-      const createBtn = document.getElementById("createBtn");
-      const lobbiesCard = document.getElementById("availLobbiesCard");
-      const playersCard = document.getElementById("playersCard");
-
-      const isQuickPlay = (gt === "mountonline" || gt === "crownlands" || gt === "rock");
-
-      title.textContent = isQuickPlay ? "Quick Play" : "Start a Lobby";
-      nameWrap.style.display = isQuickPlay ? "none" : "block";
-      createBtn.textContent = isQuickPlay ? "Play" : "Start Lobby";
-      lobbiesCard.style.display = isQuickPlay ? "none" : "block";
-      playersCard.style.display = isQuickPlay ? "none" : "block";
+    async function loadGameStats(){
+      try{const snap=await getDocs(collection(db,"gameStats"));gamePlayCounts={};snap.forEach(d=>gamePlayCounts[d.id]=d.data().plays||0);}catch(e){console.warn("Game stats unavailable",e);}
+      renderAllGames();renderFeatured();
+    }
+    async function logGamePlay(game){
+      try{await setDoc(doc(db,"gameStats",game.key),{key:game.key,title:game.title,plays:increment(1),lastPlayedAt:serverTimestamp()},{merge:true});gamePlayCounts[game.key]=(gamePlayCounts[game.key]||0)+1;}catch(e){console.warn("Play logging skipped",e);}
+      await addRecentGame(game);
+    }
+    async function addRecentGame(game){
+      const entry={key:game.key,playedAt:Date.now()};
+      recentGames=[entry,...recentGames.filter(x=>(typeof x==="string"?x:x.key)!==game.key)].slice(0,12);
+      save(SK.recent,JSON.stringify(recentGames));
+      if(username){try{await setDoc(doc(db,"users",username),{recentlyPlayed:recentGames},{merge:true});if(currentUserData)currentUserData.recentlyPlayed=recentGames;}catch{}}
+      renderAllGames();renderProfile();
     }
 
-    async function startLobby() {
-      const gameType = selectedMultiplayerGame;
+    async function toggleFavorite(key){
+      if(!username){pendingAction={type:"profile"};return openModal("accountGateModal");}
+      favorites.has(key)?favorites.delete(key):favorites.add(key);save(SK.favorites,JSON.stringify([...favorites]));
+      try{await setDoc(doc(db,"users",username),{favoriteGames:[...favorites]},{merge:true});if(currentUserData)currentUserData.favoriteGames=[...favorites];toast(favorites.has(key)?"Added to favorites.":"Removed from favorites.","good");}
+      catch(e){toast("Could not save that favorite.","bad");}
+      renderAllGames();renderProfile();renderFeatured();
+    }
 
-      if (!authUser) {
-        return showError("⏳ Connecting to server, please try again in a moment.");
-      }
+    function gameCard(game,compact=false){
+      const card=document.createElement("article");card.className="game-card";card.style.setProperty("--game",gameColor(game.key));
+      const modeTags=game.modes.map(m=>`<span class="tag">${m==="single"?"Solo":"Multiplayer"}</span>`).join("");
+      card.innerHTML=`
+        <div class="game-art"><div class="emoji">${game.emoji}</div><button class="favorite-btn ${favorites.has(game.key)?"active":""}" title="Favorite">${favorites.has(game.key)?"★":"☆"}</button></div>
+        <div class="game-content"><div class="game-name">${escapeHtml(game.title)}</div><div class="game-description">${escapeHtml(game.desc)}</div><div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
+        <div class="game-bottom"><span class="play-count">🎮 ${gamePlayCounts[game.key]||0} plays</span><button class="btn small">${game.modes.includes("single")?"Play":"Create Lobby"}</button></div></div>`;
+      card.querySelector(".favorite-btn").addEventListener("click",e=>{e.stopPropagation();toggleFavorite(game.key);});
+      card.querySelector(".btn").addEventListener("click",()=>game.modes.includes("single")?playSingle(game):openCreateLobby(game.key));
+      return card;
+    }
+    function renderAllGames(){renderSingleLibrary();}
+    function renderSingleLibrary(){
+      const search=normalize($("gameSearch").value),sort=$("gameSort").value;
+      let games=SINGLE_GAMES.filter(g=>(selectedCategory==="All"||g.category===selectedCategory)&&(!search||normalize(`${g.title} ${g.desc} ${g.category}`).includes(search)));
+      const recentOrder=new Map(recentGames.map((x,i)=>[typeof x==="string"?x:x.key,i]));
+      games.sort((a,b)=>sort==="title"?a.title.localeCompare(b.title):sort==="recent"?(recentOrder.get(a.key)??999)-(recentOrder.get(b.key)??999):(gamePlayCounts[b.key]||0)-(gamePlayCounts[a.key]||0)||a.title.localeCompare(b.title));
+      $("singleGameGrid").innerHTML="";games.forEach(g=>$("singleGameGrid").appendChild(gameCard(g)));
+      if(!games.length)$("singleGameGrid").innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="big">🔎</div>No games match those filters.</div>';
+      const recentKeys=recentGames.map(x=>typeof x==="string"?x:x.key).filter(k=>getGame(k).modes.includes("single")).slice(0,8);
+      $("continueSection").hidden=!recentKeys.length;$("continueStrip").innerHTML="";recentKeys.forEach(k=>$("continueStrip").appendChild(gameCard(getGame(k),true)));
+      const favGames=[...favorites].map(getGame).filter(g=>g.modes.includes("single"));
+      $("favoritesSection").hidden=!favGames.length;$("favoritesStrip").innerHTML="";favGames.forEach(g=>$("favoritesStrip").appendChild(gameCard(g,true)));
+    }
+    $("gameSearch").addEventListener("input",renderSingleLibrary);$("gameSort").addEventListener("change",renderSingleLibrary);
 
-      if (gameType === "mountonline" || gameType === "crownlands" || gameType === "rock") {
-        if (!username) return showError("❌ You must be logged in.");
-        const route = ROUTES[gameType];
-        save(SK.lastGame, gameType);
-        logGamePlayAndLaunch(getGameByKey(gameType), () => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; });
-        return;
-      }
+    async function playSingle(game){
+      if(game.requiresUser&&!username){pendingAction={type:"single",gameKey:game.key};return openModal("accountGateModal");}
+      await logGamePlay(game);let url=game.route;if(game.autoUsername&&username)url+=`${url.includes("?")?"&":"?"}username=${encodeURIComponent(username)}`;
+      save(SK.lastGame,game.key);location.href=url;
+    }
 
-      const name = document.getElementById("lobbyName").value.trim();
-      if (!name) return showError("Please enter a lobby name.");
+    function renderFeatured(){
+      const featured=MULTI_GAMES.filter(g=>g.featured).sort((a,b)=>(gamePlayCounts[b.key]||0)-(gamePlayCounts[a.key]||0))[0]||getGame("chesswarlord");
+      $("featuredHero").style.setProperty("--hero-a",gameColor(featured.key));$("featuredHero").style.setProperty("--hero-b","#111827");
+      $("featuredTitle").textContent=featured.title;$("featuredDesc").textContent=featured.desc;$("featuredMultiBtn").onclick=()=>openCreateLobby(featured.key);
+      $("featuredFavoriteBtn").textContent=favorites.has(featured.key)?"★ Favorited":"☆ Favorite";$("featuredFavoriteBtn").onclick=()=>toggleFavorite(featured.key);
+    }
 
-      if (gameType === "cardrealmsmulti") {
-        const route = ROUTES.cardrealmsmulti;
-        save(SK.lastGame, "cardrealmsmulti");
-        save(SK.lastLobby, "");
-        logGamePlayAndLaunch(getGameByKey("cardrealmsmulti"), () => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; });
-        return;
-      }
+    function populateStaticUI(){
+      $("categoryPills").innerHTML="";CATEGORIES.forEach(cat=>{const btn=document.createElement("button");btn.className=`category-btn ${cat===selectedCategory?"active":""}`;btn.textContent=cat;btn.onclick=()=>{selectedCategory=cat;populateCategoriesOnly();renderSingleLibrary();};$("categoryPills").appendChild(btn);});
+      const cats=CATEGORIES.filter(x=>x!=="All");$("profileCategoryInput").innerHTML=cats.map(x=>`<option>${escapeHtml(x)}</option>`).join("");
+      const multiOptions=MULTI_GAMES.map(g=>`<option value="${g.key}">${g.emoji} ${escapeHtml(gameTitle(g.key,true))}${g.quickPlay?" — Quick Play":""}</option>`).join("");
+      $("newLobbyGame").innerHTML=multiOptions;$("lobbyGameFilter").innerHTML='<option value="all">All Games</option>'+multiOptions;
+      updateCreateGameInfo();
+    }
+    function populateCategoriesOnly(){document.querySelectorAll(".category-btn").forEach(btn=>btn.classList.toggle("active",btn.textContent===selectedCategory));}
 
-      if (!['cat','catmobile','grass','estate','mountain','stockkings','thegame','dutchblitz','splinters','spelltower','zombiezone','biblegame','historyrush','crowncouncil','forgeroyale','cardrealmsmulti','castledefense','rogueduel','trumprev','warspan','stoneyrelic','balatle','chesswarlord'].includes(gameType)) {
-        return showError("Invalid game type.");
-      }
-      let lobby;
-      try {
-        lobby = await addDoc(collection(db, "lobbies"), {
-          name, gameType, status: "waiting", players: [username], host: username, createdAt: Date.now()
+    function startLobbyBrowser(){
+      if(lobbyBrowserUnsub)lobbyBrowserUnsub();
+      const qy=query(collection(db,"lobbies"),where("status","==","waiting"));
+      lobbyBrowserUnsub=onSnapshot(qy,snap=>{
+        lobbyCache.clear();snap.forEach(d=>lobbyCache.set(d.id,{id:d.id,...d.data()}));renderLobbyBrowser();validateInvites();
+      },e=>{$("lobbyGrid").innerHTML=`<div class="empty-state" style="grid-column:1/-1"><div class="big">⚠️</div>Could not load lobbies.<br><small>${escapeHtml(e.message||"")}</small></div>`;});
+    }
+    function visibleLobby(lobby){
+      const visibility=lobby.visibility||"public";if(visibility!=="private")return true;if(!username)return false;
+      return lobby.host===username||(lobby.players||[]).includes(username)||[...inviteCache.values()].some(i=>i.lobbyId===lobby.id&&i.status!=="declined");
+    }
+    function renderLobbyBrowser(){
+      const search=normalize($("lobbySearch").value),game=$("lobbyGameFilter").value,visibility=$("lobbyVisibilityFilter").value,slots=$("lobbySlotFilter").value;
+      const items=[...lobbyCache.values()].filter(l=>{
+        if(!Array.isArray(l.players)||!l.players.length)return false;if(!visibleLobby(l))return false;
+        if(game!=="all"&&l.gameType!==game)return false;const vis=l.visibility||"public";if(visibility!=="all"&&vis!==visibility)return false;
+        const cap=getMaxPlayers(l.gameType);if(slots==="open"&&Number.isFinite(cap)&&l.players.length>=cap)return false;
+        return !search||normalize(`${l.name} ${l.host} ${gameTitle(l.gameType,true)}`).includes(search);
+      }).sort((a,b)=>(b.createdAt?.toMillis?.()||b.createdAt||0)-(a.createdAt?.toMillis?.()||a.createdAt||0));
+      const grid=$("lobbyGrid");grid.innerHTML="";
+      if(!items.length){grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="big">🎲</div><strong>No matching open lobbies</strong><div style="margin-top:5px">Create one or change the filters.</div></div>';return;}
+      items.forEach(l=>grid.appendChild(lobbyCard(l)));
+    }
+    function lobbyCard(lobby){
+      const game=getGame(lobby.gameType),cap=getMaxPlayers(lobby.gameType),count=lobby.players.length,full=Number.isFinite(cap)&&count>=cap,privateLobby=(lobby.visibility||"public")==="private";
+      const card=document.createElement("article");card.className=`lobby-card ${privateLobby?"private":""}`;card.style.setProperty("--game",gameColor(game.key));
+      const previews=lobby.players.slice(0,4).map(p=>`<span class="avatar-mini" title="${escapeHtml(p)}">${initials(p)}</span>`).join("");
+      card.innerHTML=`
+        <div class="lobby-card-head"><div style="display:flex;gap:11px;min-width:0"><div class="game-mark">${game.emoji}</div><div style="min-width:0"><div class="lobby-title">${escapeHtml(lobby.name||"Lobby")}</div><div class="lobby-game">${escapeHtml(gameTitle(game.key,true))}</div></div></div><span class="status-chip">● Waiting</span></div>
+        <div class="lobby-facts"><div class="fact">Host<strong>${escapeHtml(lobby.host||"Unknown")}</strong></div><div class="fact">Players<strong>${count}/${Number.isFinite(cap)?cap:"∞"}</strong></div></div>
+        <div class="player-preview">${previews}${count>4?`<span class="avatar-more">+${count-4} more</span>`:""}</div>
+        <div class="capacity"><i style="width:${Number.isFinite(cap)?Math.min(100,count/cap*100):35}%"></i></div>
+        <div class="lobby-buttons"><button class="btn secondary small copy">🔗 Invite Link</button>${lobby.host===username?'<button class="btn secondary small invite">✉ Invite</button>':''}<button class="btn small join" ${full&&!lobby.players.includes(username)?"disabled":""}>${lobby.players.includes(username)?"Open Lobby":full?"Full":"Join"}</button></div>`;
+      card.querySelector(".copy").onclick=()=>copyLobbyLink(lobby.id);
+      const inviteBtn=card.querySelector(".invite");if(inviteBtn)inviteBtn.onclick=()=>openInviteModal(lobby.id);
+      card.querySelector(".join").onclick=()=>requestJoinLobby(lobby.id);
+      return card;
+    }
+    ["lobbySearch","lobbyGameFilter","lobbyVisibilityFilter","lobbySlotFilter"].forEach(id=>$(id).addEventListener(id==="lobbySearch"?"input":"change",renderLobbyBrowser));
+
+    function requestJoinLobby(id,inviteId=null){
+      if(!username){pendingAction={type:"join",lobbyId:id,inviteId};return openModal("accountGateModal");}
+      joinLobby(id,inviteId);
+    }
+    async function joinLobby(id,inviteId=null){
+      if(!username)return requestJoinLobby(id,inviteId);
+      if(currentLobbyId&&currentLobbyId!==id)await leaveLobby();
+      const ref=doc(db,"lobbies",id);
+      try{
+        await runTransaction(db,async tx=>{
+          const snap=await tx.get(ref);if(!snap.exists())throw new Error("This lobby no longer exists.");
+          const d=snap.data();if(d.status!=="waiting")throw new Error("This lobby has already started.");
+          const players=Array.isArray(d.players)?d.players:[],cap=getMaxPlayers(d.gameType);
+          if(!players.includes(username)&&Number.isFinite(cap)&&players.length>=cap)throw new Error("This lobby is full.");
+          if(!players.includes(username))tx.update(ref,{players:[...players,username],updatedAt:Date.now()});
         });
-      } catch (error) {
-        const msg = (error && typeof error.message === "string") ? error.message : "Unable to create lobby.";
-        return showError(`❌ ${msg}`);
-      }
-      currentLobbyId = lobby.id; isHost = true;
-      save(SK.lastLobby, currentLobbyId);
-      save(SK.lastGame, gameType);
-      listenToLobby();
+        if(inviteId)await deleteDoc(doc(db,"lobbyInvites",inviteId)).catch(()=>{});
+        const snap=await getDoc(ref);if(!snap.exists())throw new Error("This lobby no longer exists.");
+        currentLobbyId=id;currentLobbyData={id,...snap.data()};isHost=currentLobbyData.host===username;
+        save(SK.lastLobby,id);save(SK.lastGame,currentLobbyData.gameType);listenToCurrentLobby();toast(`Joined ${currentLobbyData.name}.`,"good");
+      }catch(e){toast(e.message||"Unable to join lobby.","bad");if(inviteId)await deleteDoc(doc(db,"lobbyInvites",inviteId)).catch(()=>{});}
     }
 
-    async function loadLobbies() {
-      const qy = query(collection(db, "lobbies"), where("status", "==", "waiting"));
-      const snap = await getDocs(qy);
-      const list = document.getElementById("lobbyList");
-      list.innerHTML = "";
+    function openCreateLobby(gameKey="chesswarlord"){
+      if(!requireUser({type:"create",gameKey}))return;
+      $("newLobbyGame").value=GAME_BY_KEY[gameKey]?.modes.includes("multi")?gameKey:"chesswarlord";$("newLobbyName").value="";selectedVisibility="public";updateVisibilityButtons();updateCreateGameInfo();setMessage("createLobbyMessage","");openModal("createLobbyModal");
+    }
+    $("openCreateLobby").addEventListener("click",()=>openCreateLobby());
+    $("newLobbyGame").addEventListener("change",updateCreateGameInfo);
+    document.querySelectorAll("[data-visibility]").forEach(btn=>btn.addEventListener("click",()=>{selectedVisibility=btn.dataset.visibility;updateVisibilityButtons();}));
+    function updateVisibilityButtons(){document.querySelectorAll("[data-visibility]").forEach(btn=>btn.classList.toggle("active",btn.dataset.visibility===selectedVisibility));}
+    function updateCreateGameInfo(){
+      const game=getGame($("newLobbyGame").value||"chesswarlord"),cap=getMaxPlayers(game.key);
+      $("createLobbyGameInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${game.emoji}</div><div><strong>${escapeHtml(gameTitle(game.key,true))}</strong><div class="help">${escapeHtml(game.desc)} • ${game.quickPlay?"Quick play":game.directLaunch?"Direct launch":`${Number.isFinite(cap)?cap:"Flexible"} players max`}</div></div></div>`;
+      $("createLobbySubmit").textContent=game.quickPlay||game.directLaunch?"Play":"Create Lobby";
+    }
+    async function createLobby(){
+      if(!username)return openModal("accountGateModal");const game=getGame($("newLobbyGame").value),name=$("newLobbyName").value.trim();
+      if(game.quickPlay){closeModal();await logGamePlay(game);save(SK.lastGame,game.key);location.href=`${game.route}?username=${encodeURIComponent(username)}`;return;}
+      if(game.directLaunch){closeModal();await logGamePlay(game);save(SK.lastGame,game.key);save(SK.lastLobby,"");location.href=`${game.route}?username=${encodeURIComponent(username)}`;return;}
+      if(!name)return setMessage("createLobbyMessage","Enter a lobby name.","error");
+      setBusy($("createLobbySubmit"),true,"Creating…");
+      try{
+        if(currentLobbyId)await leaveLobby();
+        const created=await addDoc(collection(db,"lobbies"),{name,gameType:game.key,status:"waiting",players:[username],host:username,createdAt:Date.now(),updatedAt:Date.now(),visibility:selectedVisibility});
+        currentLobbyId=created.id;isHost=true;save(SK.lastLobby,created.id);save(SK.lastGame,game.key);closeModal();listenToCurrentLobby();toast("Lobby created.","good");
+      }catch(e){setMessage("createLobbyMessage",e.message||"Unable to create lobby.","error");}
+      finally{setBusy($("createLobbySubmit"),false);}
+    }
+    $("createLobbySubmit").addEventListener("click",createLobby);
 
-      if (snap.empty) {
-        const none = document.createElement("div"); none.className = "subtle";
-        none.textContent = "No open lobbies. Start one above!";
-        list.appendChild(none); return;
+    function listenToCurrentLobby(){
+      if(lobbyUnsub){lobbyUnsub();lobbyUnsub=null;}if(!currentLobbyId)return renderCurrentLobby();
+      lobbyUnsub=onSnapshot(doc(db,"lobbies",currentLobbyId),async snap=>{
+        if(!snap.exists()){await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});clearCurrentLobby("That lobby has closed.");return;}
+        const data=snap.data();currentLobbyData={id:snap.id,...data};isHost=data.host===username;renderCurrentLobby();
+        if(data.status==="started"){await cleanupInvitesForLobby(snap.id).catch(()=>{});redirectStartedGame(snap.id,data);}
+      },e=>{console.warn("Lobby listener",e);});
+    }
+    function renderCurrentLobby(){
+      const has=!!currentLobbyData&&!!currentLobbyId;$("currentLobbyEmpty").hidden=has;$("currentLobbyContent").hidden=!has;if(!has)return;
+      const game=getGame(currentLobbyData.gameType);$("currentLobbyCover").style.background=`linear-gradient(135deg,${gameColor(game.key)},#111827)`;
+      $("currentLobbyName").textContent=currentLobbyData.name||"Lobby";$("currentLobbyGame").textContent=`${game.emoji} ${gameTitle(game.key,true)} • ${(currentLobbyData.visibility||"public")==="private"?"Private":"Public"}`;
+      $("currentLobbyPlayers").innerHTML="";(currentLobbyData.players||[]).forEach(player=>{
+        const row=document.createElement("div");row.className="player-row";row.innerHTML=`<div class="player-name"><span class="avatar-mini" style="margin:0">${initials(player)}</span>${escapeHtml(player)} ${player===currentLobbyData.host?'<span class="host-tag">HOST</span>':''}</div>`;$("currentLobbyPlayers").appendChild(row);
+      });
+      $("invitePlayerBtn").hidden=!isHost;$("startGameBtn").hidden=!isHost;
+    }
+    function clearCurrentLobby(message=""){
+      currentLobbyId=null;currentLobbyData=null;isHost=false;del(SK.lastLobby);if(lobbyUnsub){lobbyUnsub();lobbyUnsub=null;}renderCurrentLobby();if(message)toast(message,"bad");
+    }
+    $("startGameBtn").addEventListener("click",startGame);$("leaveLobbyBtn").addEventListener("click",leaveLobby);$("copyInviteBtn").addEventListener("click",()=>currentLobbyId&&copyLobbyLink(currentLobbyId));$("invitePlayerBtn").addEventListener("click",()=>openInviteModal(currentLobbyId));
+
+    async function startGame(){
+      if(!currentLobbyId||!isHost)return;const ref=doc(db,"lobbies",currentLobbyId),snap=await getDoc(ref);if(!snap.exists())return clearCurrentLobby("Lobby no longer exists.");
+      const data=snap.data(),game=getGame(data.gameType);if(data.status==="started")return;
+      if(game.key==="estate"){
+        const activeId=await joinOrCreateActiveEstate(data.players||[username]);await cleanupInvitesForLobby(currentLobbyId);await deleteDoc(ref).catch(()=>{});await logGamePlay(game);save(SK.lastGame,"estate");save(SK.lastLobby,activeId);location.href=`${game.route}?gameId=${encodeURIComponent(activeId)}&username=${encodeURIComponent(username)}`;return;
       }
-
-      snap.forEach(async (docSnap) => {
-        const data = docSnap.data();
-        if (!data.players || data.players.length === 0) {
-          try { await deleteDoc(doc(db, "lobbies", docSnap.id)); } catch(e){}
-          return;
+      if(game.key==="stoneyrelic"){
+        const players=Array.isArray(data.players)?data.players:[];if(players.length<(game.minPlayers||2))return toast("Stoney's Relic needs at least 2 players.","bad");
+        const dm=data.dm&&players.includes(data.dm)?data.dm:players[Math.floor(Math.random()*players.length)];
+        await runTransaction(db,async tx=>{const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");if(cur.data().status!=="started")tx.update(ref,{status:"started",dm,updatedAt:Date.now()});});
+      }else{
+        await runTransaction(db,async tx=>{const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");if(cur.data().status!=="started")tx.update(ref,{status:"started",updatedAt:Date.now()});});
+      }
+      await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});await logGamePlay(game);
+    }
+    async function joinOrCreateActiveEstate(extraPlayers){
+      const unique=arr=>Array.from(new Set(arr.filter(Boolean)));const qy=query(collection(db,"lobbies"),where("gameType","==","estate"),where("status","==","active"),limit(1));const snap=await getDocs(qy);
+      if(!snap.empty){const ref=doc(db,"lobbies",snap.docs[0].id);try{return await runTransaction(db,async tx=>{const cur=await tx.get(ref);if(!cur.exists()||cur.data().status!=="active")throw new Error("gone");tx.update(ref,{players:unique([...(cur.data().players||[]),...extraPlayers])});return ref.id;});}catch{}}
+      const ref=doc(collection(db,"lobbies"));await runTransaction(db,async tx=>tx.set(ref,{name:`Estate Defense — ${new Date().toLocaleTimeString()}`,gameType:"estate",category:"estate-defense",status:"active",players:unique(extraPlayers),host:username,createdAt:Date.now()}));return ref.id;
+    }
+    function redirectStartedGame(id,data){
+      const game=getGame(data.gameType);save(SK.lastGame,game.key);save(SK.lastLobby,id);
+      if(game.key==="stoneyrelic"){const isDM=data.dm===username,route=isDM?game.dmRoute:game.route,role=isDM?"dm":"player";location.href=`${route}?gameId=${encodeURIComponent(id)}&username=${encodeURIComponent(username)}&role=${role}`;return;}
+      if(game.autoRedirect)location.href=`${game.route}?gameId=${encodeURIComponent(id)}&username=${encodeURIComponent(username)}`;
+    }
+    async function leaveLobby(){
+      if(!currentLobbyId)return;const id=currentLobbyId,ref=doc(db,"lobbies",id);
+      try{
+        const snap=await getDoc(ref);if(snap.exists()){
+          const data=snap.data(),players=(data.players||[]).filter(p=>p!==username);
+          if(!players.length){await cleanupInvitesForLobby(id).catch(()=>{});await deleteDoc(ref).catch(()=>{});}
+          else{const patch={players,updatedAt:Date.now()};if(data.host===username)patch.host=players[0];await updateDoc(ref,patch);}
         }
+      }catch(e){console.warn("Leave lobby",e);}clearCurrentLobby();toast("You left the lobby.");
+    }
 
-        const card = document.createElement("div"); card.className = "lobby-card";
+    function copyLobbyLink(id){
+      const url=new URL(location.href);url.search="";url.searchParams.set("lobby",id);
+      navigator.clipboard?.writeText(url.toString()).then(()=>toast("Invite link copied.","good")).catch(()=>prompt("Copy this invite link:",url.toString()));
+    }
 
-        const head = document.createElement("div");
-        head.className = "lobby-main";
-        const titleWrap = document.createElement("div");
-        const title = document.createElement("div"); title.className="lobby-name"; title.textContent = data.name || "Lobby";
-        const meta = document.createElement("div"); meta.className="lobby-meta";
-
-        const cap = getMaxPlayers(data.gameType);
-        const playerCount = (data.players || []).length;
-
-        meta.textContent =
-          (isFinite(cap) ? `${playerCount}/${cap} players` : `${playerCount} players`) +
-          ` • Host: ${data.host || "?"}`;
-
-        titleWrap.appendChild(title);
-        titleWrap.appendChild(meta);
-
-        const badge = document.createElement("span"); badge.className="badge"; badge.textContent = gameLabel(data.gameType);
-        head.appendChild(titleWrap); head.appendChild(badge);
-
-        const progress = document.createElement("div"); progress.className="cap";
-        const fill = document.createElement("i"); progress.appendChild(fill);
-        if (isFinite(cap)) {
-          const pct = Math.min(100, Math.round((playerCount / cap) * 100));
-          fill.style.width = pct + "%";
-        } else { fill.style.width = "100%"; }
-
-        const actions = document.createElement("div"); actions.className="lobby-actions";
-        const btn = document.createElement("button"); btn.className="btn btn-lg"; btn.textContent = "Join";
-        if (isFinite(cap) && playerCount >= cap) {
-          btn.disabled = true;
-          btn.className="btn btn-lg";
-          btn.style.background="#fff";
-          btn.style.color="#111";
-          btn.style.borderColor="#ddd";
-          btn.style.boxShadow="none";
-          btn.textContent="Full";
-        } else {
-          btn.addEventListener("click", ()=> joinLobby(docSnap.id));
+    function openInviteModal(lobbyId){
+      if(!requireUser())return;
+      if(!lobbyId)return;
+      const lobby=(currentLobbyData?.id===lobbyId?currentLobbyData:null)||lobbyCache.get(lobbyId);
+      if(!lobby||lobby.host!==username)return toast("Only the host can invite players.","bad");
+      inviteTargetLobbyId=lobbyId;$("inviteUsername").value="";setMessage("inviteMessage","");openModal("inviteModal");setTimeout(()=>$("inviteUsername").focus(),50);
+    }
+    $("sendInviteSubmit").addEventListener("click",sendInvite);
+    async function sendInvite(){
+      const target=$("inviteUsername").value.trim();if(!target)return setMessage("inviteMessage","Enter a username.","error");if(normalize(target)===normalize(username))return setMessage("inviteMessage","You cannot invite yourself.","error");
+      const lobby=(currentLobbyData?.id===inviteTargetLobbyId?currentLobbyData:null)||lobbyCache.get(inviteTargetLobbyId);if(!lobby||lobby.host!==username)return setMessage("inviteMessage","Only the host can send invitations.","error");
+      setBusy($("sendInviteSubmit"),true,"Sending…");
+      try{
+        const exact=await getDoc(doc(db,"users",target));let resolved=target;
+        if(!exact.exists()){
+          const users=await getDocs(collection(db,"users"));const match=users.docs.find(d=>normalize(d.id)===normalize(target));if(!match)throw new Error("No user with that username was found.");resolved=match.id;
         }
-        actions.appendChild(btn);
+        if((lobby.players||[]).includes(resolved))throw new Error("That user is already in the lobby.");
+        const inviteId=`${lobby.id}__${encodeURIComponent(normalize(resolved))}`;
+        await setDoc(doc(db,"lobbyInvites",inviteId),{lobbyId:lobby.id,lobbyName:lobby.name,gameType:lobby.gameType,fromUsername:username,toUsername:resolved,toUsernameLower:normalize(resolved),status:"pending",createdAt:serverTimestamp(),visibility:lobby.visibility||"public"});
+        setMessage("inviteMessage",`Invitation sent to ${resolved}.`,"ok");toast("Invitation sent.","good");setTimeout(closeModal,650);
+      }catch(e){setMessage("inviteMessage",e.message||"Unable to send invitation.","error");}
+      finally{setBusy($("sendInviteSubmit"),false);}
+    }
 
-        card.appendChild(head);
-        card.appendChild(progress);
-        card.appendChild(actions);
-        list.appendChild(card);
+    function listenForInvites(){
+      if(inviteUnsub){inviteUnsub();inviteUnsub=null;}inviteCache.clear();if(!username){renderInvites();return;}
+      const qy=query(collection(db,"lobbyInvites"),where("toUsernameLower","==",normalize(username)));
+      inviteUnsub=onSnapshot(qy,snap=>{
+        const previous=inviteCache.size;inviteCache.clear();snap.forEach(d=>inviteCache.set(d.id,{id:d.id,...d.data()}));renderInvites();renderLobbyBrowser();validateInvites();
+        if(inviteCache.size>previous){$("inviteToggle").classList.add("pulse");setTimeout(()=>$("inviteToggle").classList.remove("pulse"),1500);}
+      },e=>{console.warn("Invite listener unavailable",e);renderInvites();});
+    }
+    function renderInvites(){
+      const list=$("inviteList"),items=[...inviteCache.values()].filter(i=>i.status!=="declined").sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+      $("inviteCount").hidden=!items.length;$("inviteCount").textContent=items.length;list.innerHTML="";
+      if(!username){list.innerHTML='<div class="dropdown-empty">Log in to receive lobby invitations.</div>';return;}
+      if(!items.length){list.innerHTML='<div class="dropdown-empty">No active invitations.</div>';return;}
+      items.forEach(inv=>{
+        const game=getGame(inv.gameType),el=document.createElement("div");el.className="invite-item";
+        el.innerHTML=`<div class="invite-top"><div><div class="invite-title">${game.emoji} ${escapeHtml(inv.lobbyName||game.title)}</div><div class="invite-meta">${escapeHtml(gameTitle(game.key,true))} • From ${escapeHtml(inv.fromUsername||"Player")}</div></div></div><div class="mini-actions"><button class="btn secondary small decline">Decline</button><button class="btn small join">Join</button></div>`;
+        el.querySelector(".decline").onclick=()=>deleteDoc(doc(db,"lobbyInvites",inv.id)).catch(()=>{});el.querySelector(".join").onclick=()=>requestJoinLobby(inv.lobbyId,inv.id);list.appendChild(el);
       });
     }
-
-    async function joinLobby(id) {
-      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
-      const ref = doc(db, "lobbies", id);
-      try {
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(ref);
-          if (!snap.exists()) throw new Error("gone");
-          const d = snap.data(); const players = Array.isArray(d.players)? d.players : [];
-          const cap = getMaxPlayers(d.gameType);
-          if (players.includes(username)) return;
-          if (isFinite(cap) && players.length >= cap) throw new Error("Lobby is full");
-          tx.update(ref, { players: [...players, username] });
-        });
-      } catch (e) { return showError("❌ Lobby is full."); }
-
-      const snap = await getDoc(ref);
-      if (!snap.exists()) return showError("Lobby no longer exists.");
-      const data = snap.data();
-      currentLobbyId = id; isHost = data.host === username;
-      save(SK.lastLobby, currentLobbyId);
-      save(SK.lastGame, data.gameType);
-      listenToLobby();
-    }
-
-    function listenToLobby() {
-      if (!currentLobbyId) return;
-      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
-
-      const ref = doc(db, "lobbies", currentLobbyId);
-      lobbyUnsub = onSnapshot(ref, async (docSnap) => {
-        if (!docSnap.exists()) return;
-        const data = docSnap.data();
-
-        if (!data.players || data.players.length === 0) {
-          try { await deleteDoc(ref); } catch(e){}
-          currentLobbyId = null; isHost=false;
-          save(SK.lastLobby, "");
-          document.getElementById("lobbyPlayers").innerHTML = "";
-          document.getElementById("startBtn").style.display = "none";
-          if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub = null; }
-          loadLobbies(); return;
-        }
-
-        const container = document.getElementById("lobbyPlayers");
-        container.innerHTML = "";
-        const headerBadge = document.createElement("div");
-        headerBadge.className = "badge";
-        headerBadge.textContent = gameLabel(data.gameType);
-        container.appendChild(headerBadge);
-
-        for (const player of (data.players || [])) {
-          const userRef = doc(db, "users", player);
-          const userSnap = await getDoc(userRef);
-          const wins = userSnap.exists() ? (userSnap.data().wins || 0) : 0;
-
-          let color = "#cd7f32";
-          if (wins >= 5 && wins < 10) color = "#c0c0c0";
-          else if (wins >= 10 && wins < 15) color = "#ffd700";
-          else if (wins >= 15 && wins < 25) color = "#f59e0b";
-          else if (wins >= 25) color = "#ef4444";
-
-          const chip = document.createElement("div"); chip.className="chip";
-          const dot = document.createElement("span"); dot.className="dot"; dot.style.background=color;
-          const name = document.createElement("span"); name.textContent = player;
-          const w = document.createElement("span"); w.className="subtle"; w.textContent = `(${wins} wins)`;
-          chip.appendChild(dot); chip.appendChild(name); chip.appendChild(w);
-          container.appendChild(chip);
-        }
-
-        const startBtn = document.getElementById("startBtn");
-        startBtn.style.display = (data.host === username) ? "inline-block" : "none";
-
-        if (AUTO_REDIRECT_GAMES.has(data.gameType) && data.status === "started") {
-          save(SK.lastGame, data.gameType);
-          save(SK.lastLobby, currentLobbyId);
-
-          // ✅ Stoney's Relic split redirect: one DM → dungeonmaster.html, others → stoney.html
-          if (data.gameType === "stoneyrelic") {
-            const dm = data.dm;
-            const isDM = (dm && dm === username);
-            const route = isDM ? ROUTES.dungeonmaster : ROUTES.stoneyrelic;
-            const role = isDM ? "dm" : "player";
-            window.location.href = `${route}?gameId=${encodeURIComponent(docSnap.id)}&username=${encodeURIComponent(username)}&role=${role}`;
-            return;
-          }
-
-          // default redirect
-          const route = ROUTES[data.gameType] || ROUTES.cat;
-          window.location.href = `${route}?gameId=${encodeURIComponent(docSnap.id)}&username=${encodeURIComponent(username)}`;
-        }
-      });
-    }
-
-    // Estate Defense special-case
-    async function joinOrCreateActiveEstate(extraPlayers) {
-      const unique = (arr) => Array.from(new Set(arr.filter(Boolean)));
-      const qActive = query(collection(db, "lobbies"), where("gameType","==","estate"), where("status","==","active"), limit(1));
-      const snap = await getDocs(qActive);
-
-      if (!snap.empty) {
-        const targetRef = doc(db, "lobbies", snap.docs[0].id);
-        try {
-          const activeId = await runTransaction(db, async (tx) => {
-            const cur = await tx.get(targetRef);
-            if (!cur.exists()) throw new Error("gone");
-            const d = cur.data();
-            if (d.status !== "active" || d.gameType !== "estate") throw new Error("not_active");
-            const merged = unique([...(d.players || []), ...extraPlayers]);
-            tx.update(targetRef, { players: merged });
-            return targetRef.id;
-          });
-          return activeId;
-        } catch(e){ /* fall through */ }
+    async function validateInvites(){
+      for(const inv of inviteCache.values()){
+        const cached=lobbyCache.get(inv.lobbyId);if(cached&&cached.status==="waiting")continue;
+        try{const snap=await getDoc(doc(db,"lobbies",inv.lobbyId));if(!snap.exists()||snap.data().status!=="waiting")await deleteDoc(doc(db,"lobbyInvites",inv.id));}catch{}
       }
-
-      const newRef = doc(collection(db, "lobbies"));
-      const payload = {
-        name:`Estate Defense — ${new Date().toLocaleTimeString()}`,
-        gameType:"estate", category:"estate-defense", status:"active",
-        players:unique(extraPlayers), host:username, createdAt:Date.now()
-      };
-      await runTransaction(db, async (tx)=>{ tx.set(newRef, payload); });
-      return newRef.id;
+    }
+    async function cleanupInvitesForLobby(lobbyId){
+      if(!lobbyId)return;const snap=await getDocs(query(collection(db,"lobbyInvites"),where("lobbyId","==",lobbyId)));await Promise.all(snap.docs.map(d=>deleteDoc(d.ref).catch(()=>{})));
     }
 
-    async function startGame() {
-      if (!currentLobbyId) return;
-      const ref = doc(db, "lobbies", currentLobbyId);
-      const snap = await getDoc(ref); if (!snap.exists()) return;
-      const data = snap.data();
-      if (data.status === "started") return;
-
-      if (data.gameType === "cardrealmsmulti") {
-        const route = ROUTES.cardrealmsmulti;
-        save(SK.lastGame, "cardrealmsmulti");
-        save(SK.lastLobby, "");
-        logGamePlayAndLaunch(getGameByKey("cardrealmsmulti"), () => { window.location.href = `${route}?username=${encodeURIComponent(username)}`; });
-        return;
-      }
-
-      if (data.gameType === "estate") {
-        const playersFromThisLobby = data.players || [username];
-        const activeId = await joinOrCreateActiveEstate(playersFromThisLobby);
-        try { await deleteDoc(ref); } catch(e){}
-        const route = ROUTES.estate;
-        save(SK.lastGame, "estate");
-        save(SK.lastLobby, activeId);
-        logGamePlayAndLaunch(getGameByKey("estate"), () => { window.location.href = `${route}?gameId=${activeId}&username=${encodeURIComponent(username)}`; });
-        return;
-      }
-
-      // ✅ Stoney's Relic: pick ONE DM and store on the lobby doc
-      if (data.gameType === "stoneyrelic") {
-        const players = Array.isArray(data.players) ? data.players : [];
-        if (players.length < 2) return showError("❌ Stoney's Relic needs at least 2 players.");
-
-        let dm = data.dm;
-        if (!dm || !players.includes(dm)) {
-          dm = players[Math.floor(Math.random() * players.length)];
-        }
-
-        let startedNow = false;
-        await runTransaction(db, async (tx) => {
-          const cur = await tx.get(ref);
-          if (!cur.exists()) throw new Error("gone");
-          if (cur.data().status === "started") return;
-          tx.update(ref, { status: "started", dm });
-          startedNow = true;
-        });
-        if (startedNow) await logGamePlay(getGameByKey(data.gameType));
-        return;
-      }
-
-      let startedNow = false;
-      await runTransaction(db, async (tx) => {
-        const cur = await tx.get(ref);
-        if (!cur.exists()) throw new Error("gone");
-        if (cur.data().status === "started") return;
-        tx.update(ref, { status: "started" });
-        startedNow = true;
-      });
-      if (startedNow) await logGamePlay(getGameByKey(data.gameType));
+    async function loadLeaderboard(){
+      const box=$("leaderboardEntries");box.innerHTML='<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+      try{
+        const snap=await getDocs(collection(db,"users")),rows=[];snap.forEach(d=>rows.push({name:d.id,wins:d.data().wins||0,avatar:d.data().avatar||"🎮",favoriteCategory:d.data().favoriteCategory||"Player"}));rows.sort((a,b)=>b.wins-a.wins);box.innerHTML="";
+        rows.slice(0,8).forEach((r,i)=>{const card=document.createElement("div");card.className="card card-pad";card.innerHTML=`<div style="display:flex;align-items:center;gap:12px"><div class="game-mark" style="--game:${i<3?["#f59e0b","#94a3b8","#b45309"][i]:"#b4232f"}">${r.avatar}</div><div style="flex:1"><div style="font-weight:950">#${i+1} ${escapeHtml(r.name)}</div><div class="help">${escapeHtml(r.favoriteCategory)}</div></div><strong>🏆 ${r.wins}</strong></div>`;box.appendChild(card);});
+      }catch(e){box.innerHTML='<div class="empty-state" style="grid-column:1/-1">Leaderboard unavailable.</div>';}
     }
-
-    async function leaveLobby() {
-      if (!currentLobbyId) return;
-      const ref = doc(db, "lobbies", currentLobbyId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const data = snap.data();
-        const players = (data.players || []).filter(p => p !== username);
-        if (players.length > 0) { await updateDoc(ref, { players }); }
-        else { try { await deleteDoc(ref); } catch(e){} }
-      }
-      currentLobbyId = null; isHost=false;
-      if (lobbyUnsub) { lobbyUnsub(); lobbyUnsub=null; }
-      document.getElementById("lobbyPlayers").innerHTML = "";
-      document.getElementById("startBtn").style.display = "none";
-      loadLobbies();
-      save(SK.lastLobby, "");
-    }
-
-    async function loadLeaderboard() {
-      const qy = query(collection(db, "users"));
-      const snapshot = await getDocs(qy);
-      const rows = [];
-      snapshot.forEach(docSnap => rows.push({ name: docSnap.id, wins: docSnap.data().wins || 0 }));
-      rows.sort((a,b)=> b.wins - a.wins);
-      const box = document.getElementById("leaderboardEntries"); box.innerHTML = "";
-      rows.slice(0,8).forEach((r, i)=>{
-        const row = document.createElement("div"); row.className="lb-row";
-        const left = document.createElement("div"); left.style.display="flex"; left.style.alignItems="center"; left.style.gap="10px";
-        const rank = document.createElement("div"); rank.className="rank"; rank.textContent = i+1;
-        const name = document.createElement("div"); name.style.fontWeight="800"; name.textContent = r.name;
-        left.appendChild(rank); left.appendChild(name);
-        const right = document.createElement("div"); right.className="subtle"; right.textContent = `🏆 ${r.wins}`;
-        row.appendChild(left); row.appendChild(right);
-        box.appendChild(row);
-      });
-    }
-
-    function showError(msg){
-      const e = document.getElementById("error"); e.textContent = msg;
-    }
-
-    // ---------- MEMBER LIST ----------
     async function loadMembers(){
-      const box = document.getElementById("memberList");
-      if (!box) return;
-      box.innerHTML = '<div class="subtle" style="padding:8px 14px">Loading…</div>';
-      try{
-        const qy = query(collection(db, "users"), orderBy("lastLogin", "desc"), limit(50));
-        const snap = await getDocs(qy);
-        if (snap.empty){
-          box.innerHTML = '<div class="subtle" style="padding:8px 14px">No members found.</div>';
-          return;
-        }
-        box.innerHTML = "";
-        snap.forEach(docSnap => {
-          const d = docSnap.data();
-          const row = document.createElement("div"); row.className="member-row";
-          const nameEl = document.createElement("div"); nameEl.className="member-name"; nameEl.textContent = docSnap.id;
-          const metaEl = document.createElement("div"); metaEl.className="member-meta";
-
-          const wins = d.wins || 0;
-          let lastText = "No login recorded";
-          if (d.lastLogin && typeof d.lastLogin.toDate === "function"){
-            const dt = d.lastLogin.toDate();
-            lastText = `Last login: ${fmtLastLogin.format(dt)}`;
-          }
-          metaEl.textContent = `${lastText} • 🏆 ${wins} wins`;
-          row.appendChild(nameEl); row.appendChild(metaEl);
-          box.appendChild(row);
-        });
-      }catch(e){
-        box.innerHTML = '<div class="subtle" style="padding:8px 14px">Error loading members.</div>';
-      }
+      const box=$("memberList");box.innerHTML='<div class="dropdown-empty">Loading…</div>';
+      try{const snap=await getDocs(query(collection(db,"users"),orderBy("lastLogin","desc"),limit(50)));box.innerHTML="";snap.forEach(d=>{const data=d.data(),el=document.createElement("div");el.className="member-item";el.innerHTML=`<strong>${escapeHtml(data.avatar||"🎮")} ${escapeHtml(d.id)}</strong><div class="invite-meta">🏆 ${data.wins||0} wins${data.favoriteCategory?` • ${escapeHtml(data.favoriteCategory)}`:""}</div>`;box.appendChild(el);});if(!box.children.length)box.innerHTML='<div class="dropdown-empty">No members found.</div>';}catch{box.innerHTML='<div class="dropdown-empty">Members unavailable.</div>';}
     }
 
-    window.toggleMembers = function(){
-      const panel = document.getElementById("memberPanel");
-      const btn = document.getElementById("memberToggle");
-      if (!panel || !btn) return;
-      const nowHidden = !panel.hidden;
-      panel.hidden = nowHidden;
-      btn.classList.toggle("open", !panel.hidden);
-      if (!panel.hidden){
-        loadMembers();
-      }
-    };
-
-    document.addEventListener("click", (ev)=>{
-      const panel = document.getElementById("memberPanel");
-      const btn = document.getElementById("memberToggle");
-      if (!panel || !btn) return;
-      if (panel.hidden) return;
-      if (!panel.contains(ev.target) && !btn.contains(ev.target)){
-        panel.hidden = true;
-        btn.classList.remove("open");
-      }
+    function renderProfile(){
+      const logged=!!username;$("profileGuest").hidden=logged;$("profileContent").hidden=!logged;if(!logged)return;
+      const d=currentUserData||{},display=d.displayName||username,avatar=d.avatar||"🎮",bio=d.bio||"Game Hub player";
+      $("profileAvatar").textContent=avatar;$("profileName").textContent=display;$("profileBio").textContent=bio;$("profileWins").textContent=d.wins||0;$("profileFavoriteCount").textContent=favorites.size;$("profileRecentCount").textContent=recentGames.length;
+      const fav=$("profileFavorites");fav.innerHTML="";[...favorites].map(getGame).slice(0,8).forEach(g=>fav.appendChild(gameCard(g,true)));if(!fav.children.length)fav.innerHTML='<div class="empty-state" style="grid-column:1/-1;padding:25px">No favorite games yet. Use the star on a game card.</div>';
+      const rec=$("profileRecent");rec.innerHTML="";recentGames.slice(0,10).forEach(item=>{const key=typeof item==="string"?item:item.key,g=getGame(key),date=typeof item==="string"?null:item.playedAt;const row=document.createElement("div");row.className="activity-row";row.innerHTML=`<span>${g.emoji} <strong>${escapeHtml(g.title)}</strong></span><span class="help">${date?fmtAge(date):"Recently"}</span>`;rec.appendChild(row);});if(!rec.children.length)rec.innerHTML='<div class="empty-state" style="padding:25px">Play a game to begin your history.</div>';
+      $("profileDetails").innerHTML=`<div class="activity-list"><div class="activity-row"><span>Username</span><strong>${escapeHtml(username)}</strong></div><div class="activity-row"><span>Favorite category</span><strong>${escapeHtml(d.favoriteCategory||"Not selected")}</strong></div><div class="activity-row"><span>Account</span><strong>Game Hub Member</strong></div><div class="activity-row"><span>Lobby invites</span><strong>${inviteCache.size}</strong></div></div>`;
+    }
+    $("profileLogoutBtn").addEventListener("click",logout);
+    $("editProfileBtn").addEventListener("click",()=>{
+      const d=currentUserData||{};$("profileDisplayNameInput").value=d.displayName||username;$("profileAvatarInput").value=d.avatar||"🎮";$("profileBioInput").value=d.bio||"";$("profileCategoryInput").value=d.favoriteCategory||"Strategy";setMessage("profileMessage","");openModal("editProfileModal");
+    });
+    $("saveProfileSubmit").addEventListener("click",async()=>{
+      if(!username)return;const patch={displayName:$("profileDisplayNameInput").value.trim()||username,avatar:$("profileAvatarInput").value.trim()||"🎮",bio:$("profileBioInput").value.trim(),favoriteCategory:$("profileCategoryInput").value};
+      setBusy($("saveProfileSubmit"),true,"Saving…");try{await setDoc(doc(db,"users",username),patch,{merge:true});currentUserData={...(currentUserData||{}),...patch};renderProfile();closeModal();toast("Profile saved.","good");}catch(e){setMessage("profileMessage",e.message||"Could not save profile.","error");}finally{setBusy($("saveProfileSubmit"),false);}
     });
 
-    // ---------- RESUME BANNER ----------
-    function maybeOfferResume(){
-      const banner = document.getElementById("resumeBanner");
-      const lastLobby = read(SK.lastLobby);
-      const lastGame = read(SK.lastGame);
-
-      const resumeLobbyBtn = document.getElementById("resumeLobbyBtn");
-      const resumeGameBtn  = document.getElementById("resumeGameBtn");
-      const clearBtn       = document.getElementById("clearSessionBtn");
-
-      banner.style.display = "none";
-      resumeLobbyBtn.style.display = "none";
-      resumeGameBtn.style.display = "none";
-
-      if (document.getElementById("lobbyInterface").style.display !== "none") return;
-
-      if (lastLobby) {
-        banner.style.display = "flex";
-        resumeLobbyBtn.style.display = "inline-block";
-        resumeLobbyBtn.onclick = ()=> joinLobby(lastLobby);
-      }
-
-      if (lastGame && ROUTES[lastGame]) {
-        banner.style.display = "flex";
-        resumeGameBtn.style.display = "inline-block";
-
-        resumeGameBtn.onclick = async ()=> {
-          const gid = read(SK.lastLobby) || "";
-
-          // ✅ Stoney's Relic resume → check who DM is and route accordingly
-          if (lastGame === "stoneyrelic" && gid) {
-            try{
-              const ls = await getDoc(doc(db, "lobbies", gid));
-              const dm = ls.exists() ? ls.data().dm : null;
-              const isDM = (dm && dm === username);
-              const route = isDM ? ROUTES.dungeonmaster : ROUTES.stoneyrelic;
-              const role = isDM ? "dm" : "player";
-              window.location.href = `${route}?gameId=${encodeURIComponent(gid)}&username=${encodeURIComponent(username)}&role=${role}`;
-              return;
-            }catch(e){
-              // fall through to default
-            }
-          }
-
-          // Default resume behavior
-          const route = ROUTES[lastGame];
-          const glue = gid ? `?gameId=${encodeURIComponent(gid)}&username=${encodeURIComponent(username)}` : `?username=${encodeURIComponent(username)}`;
-          window.location.href = route + glue;
-        };
-      }
-
-      clearBtn.onclick = ()=> { clearSession(); banner.style.display="none"; };
+    async function resumeFromUrlOrStorage(){
+      const params=new URLSearchParams(location.search),linkLobby=params.get("lobby");
+      if(linkLobby){history.replaceState({},"",location.pathname);if(username)requestJoinLobby(linkLobby);else pendingAction={type:"join",lobbyId:linkLobby};return;}
+      const last=read(SK.lastLobby);if(last&&username){try{const snap=await getDoc(doc(db,"lobbies",last));if(snap.exists()&&(snap.data().players||[]).includes(username)){currentLobbyId=last;currentLobbyData={id:last,...snap.data()};listenToCurrentLobby();}}catch{}}
     }
 
-    // ---------- LOGOUT ----------
-    window.logout = async function(){
-      try {
-        if (currentLobbyId) { await leaveLobby(); }
-      } catch(e) { /* ignore */ }
-      if (lobbyUnsub) { lobbyUnsub = null; }
-      clearSession();
-      username = "";
-      showLoginUI();
-      document.getElementById('resumeBanner').style.display = 'none';
-      history.replaceState({}, "", window.location.pathname);
-      document.getElementById('error').textContent = "";
-    };
+    if(initialParams.has("username")){initialParams.delete("username");const clean=`${location.pathname}${initialParams.toString()?`?${initialParams}`:""}${location.hash}`;history.replaceState({},"",clean);}
+    populateStaticUI();renderFeatured();renderAllGames();renderCurrentLobby();renderInvites();updateAccountUI();showView(read(SK.lastView)||"multiplayer");
 
-    // ✅ NEW: Auth flow – everything waits until we have request.auth
-    signInAnonymously(auth).catch(err => {
-      console.warn("Anon sign-in failed", err);
+    signInAnonymously(auth).catch(err=>toast(`Firebase sign-in failed: ${err.message}`,"bad"));
+    onAuthStateChanged(auth,async user=>{
+      authUser=user;if(!user)return;
+      showDailyUsersPill();loadGameStats();startLobbyBrowser();loadLeaderboard();
+      if(username)await autoLogin(username);else updateAccountUI();
+      await resumeFromUrlOrStorage();
     });
 
-    onAuthStateChanged(auth, (user) => {
-      authUser = user;
-      if (!user) {
-        // Should be rare with anonymous auth, but keep UI sane
-        showLoginUI();
-        maybeOfferResume();
-        return;
-      }
-
-      // We have request.auth != null now → rules pass
-      showDailyUsersPill();
-      loadGameStats();
-
-      if (username) {
-        autoLogin(username);
-      } else {
-        showLoginUI();
-        maybeOfferResume();
-      }
-    });
-
-    // Expose
-    window.login = login;
-    window.startLobby = startLobby;
-    window.joinLobby = joinLobby;
-    window.startGame = startGame;
-    window.leaveLobby = leaveLobby;
+    window.addEventListener("beforeunload",()=>{lobbyBrowserUnsub?.();lobbyUnsub?.();inviteUnsub?.();});
+    window.logout=logout;
   </script>
 </body>
 </html>
+
