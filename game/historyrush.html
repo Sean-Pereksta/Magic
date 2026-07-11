@@ -23,7 +23,7 @@
       linear-gradient(135deg,#f6ead0,#e6d2aa);
   }
   button,select{font:inherit}
-  .shell{max-width:1040px;margin:0 auto;padding:10px 12px 34px}
+  .shell{max-width:1120px;margin:0 auto;padding:8px 10px 22px}
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0;flex-wrap:wrap}
   .leftrow{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
   .badge{
@@ -71,7 +71,7 @@
     border:1px solid var(--br);background:#fffdf7;color:var(--ink);border-radius:10px;padding:8px 10px;font-weight:800
   }
   .map-frame{
-    position:relative;padding:20px;border-radius:18px;border:2px solid #9f7944;
+    position:relative;padding:12px;border-radius:18px;border:2px solid #9f7944;
     background:
       radial-gradient(circle at 15% 20%,rgba(255,255,255,.5),transparent 20%),
       repeating-linear-gradient(12deg,rgba(119,82,39,.035) 0 2px,transparent 2px 8px),
@@ -88,11 +88,12 @@
     background:rgba(255,249,230,.86);font-size:13px;font-weight:950;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
   }
   .board{
-    display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;position:relative;aspect-ratio:1.2/1;
-    background:#8bb3a0;padding:5px;border-radius:14px;border:2px solid #6f8f7e;overflow:hidden
+    display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:3px;position:relative;
+    width:min(100%,calc(100dvh - 390px),700px);aspect-ratio:1/1;margin:0 auto;
+    background:#8bb3a0;padding:4px;border-radius:12px;border:2px solid #6f8f7e;overflow:hidden
   }
   .tile{
-    position:relative;min-width:0;border:1px solid rgba(73,52,29,.34);border-radius:8px;overflow:hidden;cursor:pointer;
+    position:relative;min-width:0;border:1px solid rgba(73,52,29,.34);border-radius:6px;overflow:hidden;cursor:pointer;
     isolation:isolate;transition:transform .13s ease,filter .13s ease,box-shadow .13s ease
   }
   .tile:hover{transform:translateY(-1px);filter:brightness(1.04);z-index:4}
@@ -112,13 +113,13 @@
   .terrain-river{background:linear-gradient(145deg,#85b9b1,#5d9aa2)}
   .terrain-city{background:linear-gradient(145deg,#c9b9a5,#9e8871)}
   .terrain-coast{background:linear-gradient(145deg,#b5d5a1 0 63%,#7eb5b3 64% 100%)}
-  .terrain-icon{position:absolute;left:4px;top:3px;z-index:6;font-size:clamp(12px,2.2vw,20px);filter:drop-shadow(0 1px 1px rgba(255,255,255,.45))}
+  .terrain-icon{position:absolute;left:3px;top:2px;z-index:6;font-size:clamp(11px,1.65vw,17px);filter:drop-shadow(0 1px 1px rgba(255,255,255,.45))}
   .cell-no{position:absolute;right:4px;top:3px;z-index:6;font-size:10px;font-weight:900;color:rgba(36,25,14,.58)}
   .control-wash{position:absolute;inset:0;z-index:2;opacity:0;transition:opacity .2s ease;background:var(--wash,#000)}
   .owner-crest{
     position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);z-index:6;display:none;
-    width:30px;height:30px;border-radius:50%;align-items:center;justify-content:center;color:#fff;
-    font-size:11px;font-weight:1000;border:2px solid rgba(255,255,255,.85);text-shadow:0 1px 2px rgba(0,0,0,.5);
+    width:25px;height:25px;border-radius:50%;align-items:center;justify-content:center;color:#fff;
+    font-size:9px;font-weight:1000;border:2px solid rgba(255,255,255,.85);text-shadow:0 1px 2px rgba(0,0,0,.5);
     box-shadow:0 3px 9px rgba(0,0,0,.28)
   }
   .tile.has-owner .owner-crest{display:flex}
@@ -131,10 +132,67 @@
   .battle-log{margin-top:10px;padding:10px 12px;border-radius:12px;background:#f3e3c3;border:1px solid #cfad70;font-weight:800}
   .map-help{margin-top:8px;font-size:13px;color:#66533f}
 
+
+  .territory-control{
+    margin:0 0 12px;padding:10px;border:1px solid #d3b77e;border-radius:12px;
+    background:#f7ead0
+  }
+  .territory-control-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:7px;font-size:13px}
+  .territory-control-title{font-weight:950}
+  .territory-control-status{color:var(--muted);font-weight:850;text-align:right}
+  .territory-control-bar{
+    height:18px;display:flex;overflow:hidden;border-radius:999px;background:#e4d5b8;
+    border:1px solid rgba(91,59,24,.3);box-shadow:inset 0 1px 3px rgba(58,38,18,.18)
+  }
+  .territory-control-segment{height:100%;min-width:0;transition:width .25s ease}
+  .territory-control-neutral{
+    background:repeating-linear-gradient(135deg,#e7dcc4 0 7px,#d7c7aa 7px 14px)
+  }
+  .territory-control-legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:5px 9px;margin-top:8px}
+  .territory-control-person{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;font-size:12px}
+  .territory-control-person .who{display:flex;align-items:center;gap:6px;min-width:0;font-weight:850}
+  .territory-control-person .who span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .territory-control-person .pct{font-weight:1000;white-space:nowrap}
+  .territory-control-person.is-me{padding:3px 5px;border-radius:7px;background:rgba(255,255,255,.62)}
+  .neutral-dot{background:repeating-linear-gradient(135deg,#e7dcc4 0 4px,#cdbb9b 4px 8px)}
+
+  html:fullscreen,html:-webkit-full-screen{background:var(--bg)}
+  html:fullscreen body,html:-webkit-full-screen body,body.fullscreen-fallback{overflow:hidden}
+  html:fullscreen .shell,html:-webkit-full-screen .shell,body.fullscreen-fallback .shell{
+    max-width:none;width:100%;height:100dvh;padding:5px 8px 7px;display:flex;flex-direction:column
+  }
+  html:fullscreen .topbar,html:-webkit-full-screen .topbar,body.fullscreen-fallback .topbar{margin:1px 0 5px}
+  html:fullscreen #scoreCard .card-head,html:-webkit-full-screen #scoreCard .card-head,body.fullscreen-fallback #scoreCard .card-head{padding:6px 10px}
+  html:fullscreen #scoreCard .card-body,html:-webkit-full-screen #scoreCard .card-body,body.fullscreen-fallback #scoreCard .card-body{padding:6px 9px}
+  html:fullscreen #scorebar,html:-webkit-full-screen #scorebar,body.fullscreen-fallback #scorebar{grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:5px}
+  html:fullscreen .score-pill,html:-webkit-full-screen .score-pill,body.fullscreen-fallback .score-pill{padding:5px 8px;font-size:13px}
+  html:fullscreen .score-pill .sub,html:-webkit-full-screen .score-pill .sub,body.fullscreen-fallback .score-pill .sub{font-size:11px}
+  html:fullscreen .conquest-strip,html:-webkit-full-screen .conquest-strip,body.fullscreen-fallback .conquest-strip{display:none}
+  html:fullscreen #boardCard,html:-webkit-full-screen #boardCard,body.fullscreen-fallback #boardCard{
+    margin-top:5px!important;flex:1;min-height:0;display:flex!important;flex-direction:column
+  }
+  html:fullscreen #boardCard .card-head,html:-webkit-full-screen #boardCard .card-head,body.fullscreen-fallback #boardCard .card-head{padding:6px 10px}
+  html:fullscreen #boardCard .card-head .muted,html:-webkit-full-screen #boardCard .card-head .muted,body.fullscreen-fallback #boardCard .card-head .muted{display:none}
+  html:fullscreen #boardCard .card-body,html:-webkit-full-screen #boardCard .card-body,body.fullscreen-fallback #boardCard .card-body{
+    padding:5px 8px;flex:1;min-height:0;overflow:hidden
+  }
+  html:fullscreen .map-frame,html:-webkit-full-screen .map-frame,body.fullscreen-fallback .map-frame{
+    width:min(100%,calc(100dvh - 195px));padding:6px;margin:0 auto
+  }
+  html:fullscreen .region-labels,html:-webkit-full-screen .region-labels,body.fullscreen-fallback .region-labels{margin-bottom:3px}
+  html:fullscreen .region-label,html:-webkit-full-screen .region-label,body.fullscreen-fallback .region-label{padding:3px 6px;font-size:11px}
+  html:fullscreen .board,html:-webkit-full-screen .board,body.fullscreen-fallback .board{
+    width:min(100%,calc(100dvh - 250px),760px);gap:2px;padding:3px
+  }
+  html:fullscreen .map-legend,html:-webkit-full-screen .map-legend,body.fullscreen-fallback .map-legend,
+  html:fullscreen .map-help,html:-webkit-full-screen .map-help,body.fullscreen-fallback .map-help{display:none}
+  html:fullscreen .battle-log,html:-webkit-full-screen .battle-log,body.fullscreen-fallback .battle-log{margin-top:5px;padding:5px 9px;font-size:12px}
+  body.fullscreen-fallback{position:fixed;inset:0;z-index:999;background:var(--bg)}
+
   .modal-back{position:fixed;inset:0;background:rgba(32,20,10,.62);display:none;align-items:center;justify-content:center;padding:16px;z-index:1000}
-  .modal{width:min(720px,96vw);background:#fffaf0;border-radius:17px;border:1px solid var(--br);box-shadow:var(--shadow);overflow:hidden}
+  .modal{width:min(720px,96vw);max-height:92dvh;background:#fffaf0;border-radius:17px;border:1px solid var(--br);box-shadow:var(--shadow);overflow:hidden}
   .modal .head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;justify-content:space-between;align-items:center;gap:10px}
-  .modal .body{padding:14px}
+  .modal .body{padding:14px;max-height:calc(92dvh - 58px);overflow:auto}
   .question-meta{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:9px}
   .difficulty{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:950;border:1px solid}
   .difficulty.easy{background:#dcfce7;color:#166534;border-color:#86efac}
@@ -151,8 +209,8 @@
   @media (max-width:680px){
     .shell{padding-left:7px;padding-right:7px}
     .card-body{padding:10px}
-    .map-frame{padding:10px}
-    .board{gap:2px;padding:3px;border-radius:10px}
+    .map-frame{padding:7px}
+    .board{width:min(100%,calc(100dvh - 410px),560px);gap:2px;padding:3px;border-radius:10px}
     .tile{border-radius:5px}
     .tile.region-right{border-right-width:3px}
     .tile.region-bottom{border-bottom-width:3px}
@@ -258,6 +316,14 @@
       <div class="question-meta">
         <span id="qDifficulty" class="difficulty easy">Easy</span>
         <span id="qTerrain" class="muted"></span>
+      </div>
+      <div id="territoryControl" class="territory-control">
+        <div class="territory-control-head">
+          <span class="territory-control-title">Territory control</span>
+          <span id="territoryControlStatus" class="territory-control-status">Neutral</span>
+        </div>
+        <div id="territoryControlBar" class="territory-control-bar" aria-label="Territory control percentages"></div>
+        <div id="territoryControlLegend" class="territory-control-legend"></div>
       </div>
       <div id="qText" style="font-weight:950;margin-bottom:10px;font-size:18px">—</div>
       <div id="qOpts" class="opts"></div>
@@ -855,6 +921,7 @@
     renderVoting();
     renderBoard();
     renderTimers();
+    if(currentCellIndex!==null && $("modalBack").style.display==="flex") renderQuestionTerritoryControl();
   }
 
   function renderScorebar(){
@@ -1083,6 +1150,86 @@
     openQuestion(currentEraForModal);
   }
 
+  function renderQuestionTerritoryControl(){
+    const bar=$("territoryControlBar");
+    const legend=$("territoryControlLegend");
+    const status=$("territoryControlStatus");
+    if(!bar || !legend || !status || currentCellIndex===null || !state){
+      return;
+    }
+    const cell=state.cells?.[currentCellIndex]||{shares:{}};
+    const shares=cleanShares(cell.shares||{});
+    const owner=ownerOf(shares);
+    const dominant=dominantOf(shares);
+    const order=(state.playerOrder||[]).filter(id=>state.players?.[id]);
+    const shown=[...order.filter(id=>id===myPlayerId),...order.filter(id=>id!==myPlayerId)];
+    const total=Object.values(shares).reduce((sum,value)=>sum+Number(value||0),0);
+    const neutral=clamp(100-total,0,100);
+
+    bar.innerHTML="";
+    for(const id of shown){
+      const pct=clamp(Number(shares[id]||0),0,100);
+      if(pct<=0) continue;
+      const seg=document.createElement("span");
+      seg.className="territory-control-segment";
+      seg.style.width=`${pct}%`;
+      seg.style.background=playerColor(id);
+      seg.title=`${playerName(id)}: ${Math.round(pct*10)/10}%`;
+      bar.appendChild(seg);
+    }
+    if(neutral>.01){
+      const seg=document.createElement("span");
+      seg.className="territory-control-segment territory-control-neutral";
+      seg.style.width=`${neutral}%`;
+      seg.title=`Unclaimed: ${Math.round(neutral*10)/10}%`;
+      bar.appendChild(seg);
+    }
+
+    legend.innerHTML="";
+    for(const id of shown){
+      const pct=clamp(Number(shares[id]||0),0,100);
+      const row=document.createElement("div");
+      row.className=`territory-control-person${id===myPlayerId?" is-me":""}`;
+      const who=document.createElement("span");
+      who.className="who";
+      const dot=document.createElement("span");
+      dot.className="dot";
+      dot.style.background=playerColor(id);
+      const name=document.createElement("span");
+      name.textContent=`${playerName(id)}${id===myPlayerId?" (You)":""}`;
+      const value=document.createElement("span");
+      value.className="pct";
+      value.textContent=`${Math.round(pct*10)/10}%`;
+      who.append(dot,name);
+      row.append(who,value);
+      legend.appendChild(row);
+    }
+    if(neutral>.01){
+      const row=document.createElement("div");
+      row.className="territory-control-person";
+      const who=document.createElement("span");
+      who.className="who";
+      const dot=document.createElement("span");
+      dot.className="dot neutral-dot";
+      const name=document.createElement("span");
+      name.textContent="Unclaimed";
+      const value=document.createElement("span");
+      value.className="pct";
+      value.textContent=`${Math.round(neutral*10)/10}%`;
+      who.append(dot,name);
+      row.append(who,value);
+      legend.appendChild(row);
+    }
+
+    if(owner){
+      status.textContent=`${playerName(owner)} controls this land`;
+    }else if(dominant.id){
+      status.textContent=`${playerName(dominant.id)} leads at ${Math.round(dominant.pct*10)/10}%`;
+    }else{
+      status.textContent="Completely unclaimed";
+    }
+  }
+
   function openQuestion(era){
     const q=getRandomQuestion(era);
     if(!q){
@@ -1099,6 +1246,7 @@
     difficulty.className=`difficulty ${q.difficulty}`;
     const terrain=TERRAIN_INFO[TERRAIN[currentCellIndex]]||TERRAIN_INFO.plains;
     $("qTerrain").textContent=`${terrain.icon} ${terrain.name}`;
+    renderQuestionTerritoryControl();
     const box=$("qOpts");
     box.innerHTML="";
     shuffled([q.a,...(q.wrong||[])]).forEach(text=>{
@@ -1360,12 +1508,56 @@
     return String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
   }
 
-  $("fitBtn").addEventListener("click",async()=>{
+  function activeFullscreenElement(){
+    return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement || null;
+  }
+  function syncFullscreenButton(){
+    const active=Boolean(activeFullscreenElement()) || document.body.classList.contains("fullscreen-fallback");
+    document.body.classList.toggle("fullscreen-active",active);
+    $("fitBtn").textContent=active?"⤢ Exit Full Screen":"⛶ Full Screen";
+    $("fitBtn").setAttribute("aria-pressed",active?"true":"false");
+    if(active) window.scrollTo(0,0);
+  }
+  async function requestRealFullscreen(){
+    const root=document.documentElement;
+    const request=root.requestFullscreen || root.webkitRequestFullscreen || root.msRequestFullscreen;
+    if(!request) return false;
     try{
-      if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
-      else await document.exitFullscreen();
-    }catch{}
+      const result=request.call(root,{navigationUI:"hide"});
+      if(result && typeof result.then==="function") await result;
+      return true;
+    }catch(firstError){
+      try{
+        const result=request.call(root);
+        if(result && typeof result.then==="function") await result;
+        return true;
+      }catch(secondError){
+        console.warn("Browser fullscreen was unavailable; using fitted full-window mode.",secondError||firstError);
+        return false;
+      }
+    }
+  }
+  async function exitRealFullscreen(){
+    const exit=document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if(!exit) return;
+    const result=exit.call(document);
+    if(result && typeof result.then==="function") await result;
+  }
+  $("fitBtn").addEventListener("click",async()=>{
+    const fallback=document.body.classList.contains("fullscreen-fallback");
+    if(activeFullscreenElement()){
+      await exitRealFullscreen().catch(error=>console.warn("Could not exit fullscreen",error));
+    }else if(fallback){
+      document.body.classList.remove("fullscreen-fallback");
+    }else{
+      const entered=await requestRealFullscreen();
+      if(!entered) document.body.classList.add("fullscreen-fallback");
+    }
+    syncFullscreenButton();
   });
+  document.addEventListener("fullscreenchange",syncFullscreenButton);
+  document.addEventListener("webkitfullscreenchange",syncFullscreenButton);
+  document.addEventListener("MSFullscreenChange",syncFullscreenButton);
   $("closeModal").addEventListener("click",()=>{
     $("modalBack").style.display="none";
     currentCellIndex=null;
@@ -1399,6 +1591,7 @@
     }
   }
 
+  syncFullscreenButton();
   setTimeout(()=>start(),0);
 
   const EASY_QUESTIONS = {
@@ -4945,6 +5138,15 @@
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
 
 
 
