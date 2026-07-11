@@ -645,8 +645,9 @@
     const gameColor = key => GAME_THEMES[getGame(key).category] || "#b4232f";
 
     const SK = {
-      user:"gh.username", lastLobby:"gh.lastLobbyId", lastGame:"gh.lastGameType", lastView:"gh.lastTab",
-      nextRoute:"gh.nextRoute", favorites:"gh.favorites", recent:"gh.recentGames"
+      user:"gh.username", lastLobby:"gh.lastLobbyId", staleLobby:"gh.staleLobbyCleanupId",
+      lastGame:"gh.lastGameType", lastView:"gh.lastTab", nextRoute:"gh.nextRoute",
+      favorites:"gh.favorites", recent:"gh.recentGames"
     };
     const save=(k,v)=>localStorage.setItem(k,v), read=k=>localStorage.getItem(k), del=k=>localStorage.removeItem(k);
     const normalize=s=>String(s||"").trim().toLowerCase();
@@ -667,6 +668,7 @@
     let linkedLobbyId=null;
     let isHost=false;
     let launchingGame=false;
+    let exitCleanupStarted=false;
     let pendingAction=null;
     let selectedVisibility="public";
     let selectedCategory="All";
@@ -1057,15 +1059,33 @@
       }
       launchGameUrl(`${game.route}?gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}`,"lobby-started");
     }
+    async function removePlayerFromLobby(id,playerName){
+      if(!id||!playerName)return {removed:false,closed:false};
+      const ref=doc(db,"lobbies",id);
+      const result=await runTransaction(db,async tx=>{
+        const snap=await tx.get(ref);
+        if(!snap.exists())return {removed:false,closed:true};
+        const data=snap.data(),existing=Array.isArray(data.players)?data.players:[];
+        if(!existing.includes(playerName))return {removed:false,closed:false};
+        const players=existing.filter(player=>player!==playerName);
+        if(!players.length){tx.delete(ref);return {removed:true,closed:true};}
+        const patch={players,updatedAt:Date.now()};
+        if(data.host===playerName)patch.host=players[0];
+        tx.update(ref,patch);
+        return {removed:true,closed:false};
+      });
+      if(result.closed)await cleanupInvitesForLobby(id).catch(()=>{});
+      return result;
+    }
+
     async function leaveLobby(){
-      if(!currentLobbyId)return;const id=currentLobbyId,ref=doc(db,"lobbies",id);
-      try{
-        const snap=await getDoc(ref);if(snap.exists()){
-          const data=snap.data(),players=(data.players||[]).filter(p=>p!==username);
-          if(!players.length){await cleanupInvitesForLobby(id).catch(()=>{});await deleteDoc(ref).catch(()=>{});}
-          else{const patch={players,updatedAt:Date.now()};if(data.host===username)patch.host=players[0];await updateDoc(ref,patch);}
-        }
-      }catch(e){console.warn("Leave lobby",e);}clearCurrentLobby();toast("You left the lobby.");
+      if(!currentLobbyId)return;
+      const id=currentLobbyId,playerName=username;
+      clearCurrentLobby();
+      if(read(SK.staleLobby)===id)del(SK.staleLobby);
+      try{await removePlayerFromLobby(id,playerName);}
+      catch(e){console.warn("Leave lobby",e);save(SK.staleLobby,id);}
+      toast("You left the lobby.");
     }
 
     function copyLobbyLink(id){
@@ -1173,14 +1193,31 @@
       setBusy($("saveProfileSubmit"),true,"Saving…");try{await setDoc(doc(db,"users",username),patch,{merge:true});currentUserData={...(currentUserData||{}),...patch};renderProfile();closeModal();toast("Profile saved.","good");}catch(e){setMessage("profileMessage",e.message||"Could not save profile.","error");}finally{setBusy($("saveProfileSubmit"),false);}
     });
 
-    async function resumeFromUrlOrStorage(){
+    async function handleStartupLobbyState(){
       const params=new URLSearchParams(location.search),linkLobby=params.get("lobby");
-      if(linkLobby){
-        history.replaceState({},"",location.pathname);
-        await showLinkedLobbyPrompt(linkLobby);
-        return;
+
+      // A remembered lobby is cleanup information only. Never restore it, subscribe to it,
+      // or launch its game after a fresh page load.
+      const staleLobbyId=read(SK.lastLobby)||read(SK.staleLobby);
+      del(SK.lastLobby);
+      if(staleLobbyId)save(SK.staleLobby,staleLobbyId);
+
+      if(staleLobbyId&&username){
+        try{
+          await removePlayerFromLobby(staleLobbyId,username);
+          if(read(SK.staleLobby)===staleLobbyId)del(SK.staleLobby);
+        }catch(e){
+          console.warn("Could not clean up the previous lobby yet",e);
+        }
       }
-      const last=read(SK.lastLobby);if(last&&username){try{const snap=await getDoc(doc(db,"lobbies",last));if(snap.exists()&&(snap.data().players||[]).includes(username)){currentLobbyId=last;currentLobbyData={id:last,...snap.data()};listenToCurrentLobby();}}catch{}}
+
+      // Invite links remain previews. The player must still press Join Lobby.
+      if(linkLobby){
+        params.delete("lobby");
+        const clean=`${location.pathname}${params.toString()?`?${params}`:""}${location.hash}`;
+        history.replaceState({},"",clean);
+        await showLinkedLobbyPrompt(linkLobby);
+      }
     }
 
     if(initialParams.has("username")){initialParams.delete("username");const clean=`${location.pathname}${initialParams.toString()?`?${initialParams}`:""}${location.hash}`;history.replaceState({},"",clean);}
@@ -1191,9 +1228,22 @@
       authUser=user;if(!user)return;
       showDailyUsersPill();loadGameStats();startLobbyBrowser();loadLeaderboard();
       if(username)await autoLogin(username);else updateAccountUI();
-      await resumeFromUrlOrStorage();
+      await handleStartupLobbyState();
     });
 
+    function beginExitLobbyCleanup(){
+      lobbyBrowserUnsub?.();lobbyUnsub?.();inviteUnsub?.();
+      if(launchingGame||exitCleanupStarted||!currentLobbyId||!username)return;
+      exitCleanupStarted=true;
+      const id=currentLobbyId,playerName=username;
+      save(SK.staleLobby,id);
+      // Browsers may stop async work during close, so this is best effort. The next launch
+      // retries the same cleanup before showing any lobby and never restores membership.
+      void removePlayerFromLobby(id,playerName).then(()=>{
+        if(read(SK.staleLobby)===id)del(SK.staleLobby);
+      }).catch(()=>{});
+    }
+    window.addEventListener("pagehide",beginExitLobbyCleanup);
     window.addEventListener("beforeunload",()=>{lobbyBrowserUnsub?.();lobbyUnsub?.();inviteUnsub?.();});
     window.logout=logout;
   </script>
