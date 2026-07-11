@@ -35,9 +35,38 @@
   .btn:disabled{opacity:.48;cursor:not-allowed;box-shadow:none}
   .btn-ghost{appearance:none;cursor:pointer;background:#fff;border:1px solid var(--br);color:#0f172a;font-weight:800;padding:9px 11px;border-radius:11px;min-height:38px;box-shadow:none}
   .btn.small,.btn-ghost.small{padding:7px 10px;min-height:34px;border-radius:10px}
-  .scores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-  .scores .entry{display:flex;align-items:center;justify-content:space-between;padding:7px 9px;border:1px solid var(--br);border-radius:10px;background:#fff;box-shadow:0 3px 8px rgba(148,163,184,.18)}
-  .scores .name{font-weight:800;font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .scores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .scores .entry{
+    --rank-color:#7c3aed; position:relative; overflow:hidden; min-height:92px;
+    display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;
+    padding:11px 12px;border:1px solid color-mix(in srgb,var(--rank-color) 36%,#e5e7eb);border-radius:15px;
+    background:linear-gradient(135deg,#fff 0%,color-mix(in srgb,var(--rank-color) 9%,#fff) 100%);
+    box-shadow:0 7px 18px rgba(15,23,42,.09);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease
+  }
+  .scores .entry::before{content:"";position:absolute;inset:0 auto 0 0;width:5px;background:var(--rank-color)}
+  .scores .entry:hover{transform:translateY(-2px);box-shadow:0 12px 25px rgba(15,23,42,.14)}
+  .scores .entry.me{outline:3px solid color-mix(in srgb,var(--rank-color) 25%,transparent);border-color:var(--rank-color)}
+  .scores .entry.offline{opacity:.62;filter:saturate(.7)}
+  .scores .entry.winner{box-shadow:0 0 0 3px color-mix(in srgb,var(--rank-color) 22%,transparent),0 14px 28px rgba(15,23,42,.15)}
+  .scores .entry.podium-1{min-height:104px}
+  .place-badge{width:39px;height:39px;border-radius:13px;display:grid;place-items:center;background:#fff;border:1px solid rgba(148,163,184,.26);font-size:1.15rem;font-weight:950;box-shadow:0 4px 10px rgba(15,23,42,.08)}
+  .score-player{min-width:0;display:grid;gap:4px}
+  .scores .name{font-weight:950;font-size:1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--rank-color);text-shadow:0 1px 0 rgba(255,255,255,.85)}
+  .rank-line{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:.78rem}
+  .rank-title{font-weight:900;color:var(--rank-color);padding:3px 7px;border-radius:999px;background:color-mix(in srgb,var(--rank-color) 10%,#fff);border:1px solid color-mix(in srgb,var(--rank-color) 28%,#fff)}
+  .elo-label{font-weight:800;color:#475569}
+  .score-value{text-align:right;display:grid;line-height:1}
+  .score-value b{font-size:1.75rem;font-weight:1000;letter-spacing:-.04em}
+  .score-value span{font-size:.7rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:900;margin-top:4px}
+  .elo-change{font-size:.78rem;font-weight:950;margin-top:5px}.elo-change.up{color:#15803d}.elo-change.down{color:#b91c1c}.elo-change.draw{color:#64748b}
+  .rank-pill{font-weight:950}
+  .end-summary{margin-top:10px;padding:12px;border-radius:13px;border:1px solid #ddd6fe;background:linear-gradient(135deg,#faf5ff,#fff);font-weight:900}
+  .rating-results{display:grid;gap:7px;margin-top:9px}
+  .rating-row{--rank-color:#7c3aed;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:12px;background:#fff;border:1px solid color-mix(in srgb,var(--rank-color) 25%,#e5e7eb)}
+  .rating-row .who{font-weight:950;color:var(--rank-color)}
+  .rating-row .delta{font-size:1.02rem;font-weight:1000}.rating-row .delta.up{color:#15803d}.rating-row .delta.down{color:#b91c1c}.rating-row .delta.draw{color:#64748b}
+  .rank-shift{display:inline-flex;margin-left:5px;padding:2px 6px;border-radius:999px;font-size:.7rem;font-weight:950;background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+  .rank-guide{margin-top:9px;border-top:1px solid var(--br);padding-top:8px}.rank-guide summary{cursor:pointer;font-weight:900;color:#475569}.rank-guide-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}.rank-guide-item{--rank-color:#7c3aed;padding:7px 8px;border-radius:10px;background:color-mix(in srgb,var(--rank-color) 8%,#fff);border:1px solid color-mix(in srgb,var(--rank-color) 24%,#e5e7eb);font-size:.82rem;font-weight:850;color:var(--rank-color)}
   .verse-box{padding:12px;border:1px solid var(--br);border-radius:12px;background:#fff;box-shadow:0 4px 10px rgba(148,163,184,.16)}
   .verse-text{font-size:1.05rem;line-height:1.52}
   .inputs{display:grid;grid-template-columns:1.2fr .5fr .5fr auto;gap:6px;margin-top:8px}
@@ -68,7 +97,7 @@
   .reveal{position:fixed;left:50%;top:16%;transform:translate(-50%,0);padding:9px 13px;border-radius:12px;border:1px solid;background:rgba(255,255,255,.97);box-shadow:var(--shadow);font-weight:900;z-index:9999;animation:floatFade 2200ms ease-out forwards;max-width:min(92vw,700px);text-align:center}
   .reveal.good{color:var(--good);border-color:#bbf7d0;background:#f0fdf4}.reveal.bad{color:var(--bad);border-color:#fecaca;background:#fff1f2}.reveal.info{color:#3730a3;border-color:#ddd6fe;background:#f5f3ff}
   .hidden{display:none!important}
-  @media(max-width:620px){.inputs{grid-template-columns:1fr 1fr 1fr}.inputs .btn{grid-column:1/-1}.vote-grid,.scores,.mc-grid{grid-template-columns:1fr}.subtitle{max-width:48vw}}
+  @media(max-width:620px){.inputs{grid-template-columns:1fr 1fr 1fr}.inputs .btn{grid-column:1/-1}.vote-grid,.scores,.mc-grid{grid-template-columns:1fr}.subtitle{max-width:48vw}.scores .entry{min-height:86px}.score-value b{font-size:1.5rem}.rating-row{grid-template-columns:1fr}.rating-row .delta{text-align:left}.rank-guide-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -93,11 +122,14 @@
       <div class="row">
         <span class="pill" id="connectionPill">● Connecting</span>
         <span class="pill">Players: <b id="playerCount">0</b></span>
+        <span class="pill rank-pill" id="myRankPill">🌱 Mustard Seed • 0</span>
         <span class="pill">Host: <b id="hostName">—</b></span>
         <span class="pill hidden" id="livesPill">♥ Lives: <b id="livesCount">3</b></span>
+        <span class="pill hidden" id="coopGoalPill">✨ Correct: <b id="coopGoalCount">0/12</b></span>
       </div>
     </div>
     <div id="scoreboard" class="scores" style="margin-top:7px"></div>
+    <details class="rank-guide"><summary>View Bible Game rank ladder</summary><div id="rankGuide" class="rank-guide-grid"></div></details>
   </section>
 
   <section class="panel" id="phase-waiting">
@@ -180,8 +212,10 @@
 
   <section class="panel hidden" id="phase-end">
     <div class="title">Game Over</div>
-    <div class="muted sm">The session is complete. Starting again creates an entirely new session, so old votes, chat, and choices cannot leak into the next game.</div>
-    <div class="row" style="margin-top:8px">
+    <div class="muted sm">Wins and Bible Game ELO are saved to each player’s Firebase profile exactly once for this session.</div>
+    <div id="endSummary" class="end-summary">Finalizing results…</div>
+    <div id="ratingResults" class="rating-results"></div>
+    <div class="row" style="margin-top:10px">
       <button class="btn" id="playAgainBtn">Play Again</button>
       <button class="btn-ghost" id="toLobbyBtn">Back to Lobby</button>
     </div>
@@ -226,6 +260,22 @@
   const COOP_REVEAL_MS = 2300;
   const PRESENCE_STALE_MS = 80000;
   const HEARTBEAT_MS = 25000;
+  const RATING_VERSION = 2;
+  const STARTING_ELO = 0;
+  const COOP_WIN_GOAL = 12;
+  const COOP_CHALLENGE_ELO = 250;
+  const RANKS = [
+    {min:0,    key:'mustard_seed',      title:'Mustard Seed',      emoji:'🌱', color:'#65a30d'},
+    {min:50,   key:'faithful_flock',    title:'Faithful Flock',    emoji:'🐑', color:'#0891b2'},
+    {min:100,  key:'lamp_bearer',       title:'Lamp Bearer',       emoji:'🪔', color:'#d97706'},
+    {min:175,  key:'scripture_scribe',  title:'Scripture Scribe',  emoji:'📜', color:'#7c3aed'},
+    {min:250,  key:'armor_bearer',      title:'Armor Bearer',      emoji:'🛡️', color:'#2563eb'},
+    {min:350,  key:'disciple',          title:'Disciple',          emoji:'🕊️', color:'#0f766e'},
+    {min:475,  key:'watchman',          title:'Watchman',          emoji:'🦅', color:'#0369a1'},
+    {min:625,  key:'kingdom_champion',  title:'Kingdom Champion',  emoji:'🦁', color:'#b45309'},
+    {min:800,  key:'crown_bearer',      title:'Crown Bearer',      emoji:'👑', color:'#be123c'},
+    {min:1000, key:'crown_of_life',     title:'Crown of Life',     emoji:'✨', color:'#9333ea'}
+  ];
 
   let currentUser = null;
   let LOBBY = null;
@@ -259,6 +309,7 @@
   let myVote = '';
   let mcSelectedId = null;
   let mcRenderedQuestionKey = '';
+  let MY_PROFILE = null;
   const myHistory = [];
 
   const lobbyRef = doc(db, 'lobbies', gameId);
@@ -287,6 +338,73 @@
     const t = p.lastSeenAt?.toMillis ? p.lastSeenAt.toMillis() : nowServer();
     return nowServer() - t < PRESENCE_STALE_MS;
   };
+
+  function rankForElo(value){
+    const elo=Math.max(0,Number(value??STARTING_ELO));
+    let rank=RANKS[0];
+    for(const candidate of RANKS){ if(elo>=candidate.min) rank=candidate; else break; }
+    return {...rank,elo};
+  }
+
+  function normalizedBibleProfile(data={}){
+    const current=data?.bibleGame||{};
+    const gamesPlayed=Math.max(0,Number(current.gamesPlayed||0));
+    const storedVersion=Number(current.ratingVersion ?? data?.bibleGameRatingVersion ?? 1);
+    const storedElo=Number(current.elo ?? data?.bibleGameElo ?? STARTING_ELO);
+    // One-time migration from the former 1000-point baseline. Old 1000 becomes
+    // the new 0 baseline, while rating earned above it is preserved proportionally.
+    const migratedElo=storedVersion>=RATING_VERSION
+      ? storedElo
+      : Math.round(Math.max(0,(storedElo-1000)*(4/3)));
+    const elo=Math.max(0,Number.isFinite(migratedElo)?migratedElo:STARTING_ELO);
+    const rank=rankForElo(elo);
+    return {
+      ...current, ratingVersion:RATING_VERSION, elo,
+      rankKey:rank.key, rankTitle:rank.title, rankEmoji:rank.emoji, rankColor:rank.color,
+      wins:Math.max(0,Number(current.wins ?? data?.bibleGameWins ?? 0)),
+      losses:Math.max(0,Number(current.losses||0)), draws:Math.max(0,Number(current.draws||0)),
+      gamesPlayed,
+      winStreak:Math.max(0,Number(current.winStreak||0)), bestWinStreak:Math.max(0,Number(current.bestWinStreak||0))
+    };
+  }
+
+  function eloExpected(playerElo,opponentElo){
+    return 1/(1+Math.pow(10,(Number(opponentElo)-Number(playerElo))/400));
+  }
+
+  function calculateEloChange(oldElo,opponentElo,actual,gamesPlayed){
+    // Fast early climb: an even first win grants about +50 ELO, enough to
+    // immediately reach Faithful Flock. Early losses are softened while
+    // players learn, and no final rating can ever fall below zero.
+    const k=gamesPlayed<5?100:(gamesPlayed<12?84:(gamesPlayed<25?68:52));
+    let change=Math.round(k*(actual-eloExpected(oldElo,opponentElo)));
+    if(actual===1) change=Math.max(gamesPlayed<5?28:15,change);
+    else if(actual===0){
+      const earlyLossFloor=gamesPlayed<5?-18:(gamesPlayed<12?-24:-52);
+      change=Math.max(earlyLossFloor,Math.min(-8,change));
+    }
+    return Math.max(-52,Math.min(100,change));
+  }
+
+  async function ensureBibleProfile(){
+    if(!currentUser) return null;
+    const profileRef=doc(db,'users',currentUser.uid);
+    const profile=await runTransaction(db,async tx=>{
+      const snap=await tx.get(profileRef);
+      const data=snap.exists()?snap.data():{};
+      const bible=normalizedBibleProfile(data);
+      const patch={
+        bibleGame:bible, bibleGameElo:bible.elo, bibleGameWins:bible.wins,
+        bibleGameRatingVersion:RATING_VERSION,
+        bibleGameRankTitle:bible.rankTitle, bibleGameRankEmoji:bible.rankEmoji, bibleGameRankColor:bible.rankColor
+      };
+      if(!data.username) patch.username=safeName(username);
+      tx.set(profileRef,patch,{merge:true});
+      return bible;
+    });
+    MY_PROFILE=profile;
+    return profile;
+  }
 
   function parseCSV(text){
     const rows=[]; let row=[], val='', inQ=false;
@@ -476,12 +594,21 @@
           teamLocks:{A:false,B:false},
           lastTeamSubmission:{A:null,B:null},
           sharedLives:3,
+          coopCorrectCount:0,
+          coopGoal:COOP_WIN_GOAL,
           options:[],
           coopLocked:false,
           coopLockedAt:null,
           coopAnsweredByUid:'',
           coopAnsweredByName:'',
           coopWasRight:null,
+          participantUids:[],
+          ratingsApplied:false,
+          ratingResults:{},
+          winnerUids:[],
+          winnerNames:[],
+          resultSummary:'',
+          endReason:'',
           createdAt:serverTimestamp(),
           updatedAt:serverTimestamp()
         });
@@ -500,6 +627,9 @@
 
   async function joinSession(){
     if(!sessionRef || !currentUser) return;
+    if(!MY_PROFILE) await ensureBibleProfile();
+    const profile=MY_PROFILE||normalizedBibleProfile({});
+    const rank=rankForElo(profile.elo);
     activePlayerRef=doc(playersCol,currentUser.uid);
     const sent=Date.now();
     await runTransaction(db,async tx=>{
@@ -514,7 +644,13 @@
         ready:true,
         lastSeenAt:serverTimestamp(),
         clockProbe:serverTimestamp(),
-        clockProbeClientMs:sent
+        clockProbeClientMs:sent,
+        elo:profile.elo,
+        rankKey:rank.key,
+        rankTitle:rank.title,
+        rankEmoji:rank.emoji,
+        rankColor:rank.color,
+        profileWins:profile.wins
       };
       if(!pSnap.exists()){
         base.score=0;
@@ -639,11 +775,12 @@
           addHistory(correctText,!!result.full,Number(result.points||0));
         }else showReveal(`Team ${team} did not lock an answer • ${correctText}`,'info');
       }
-    }else if(oldState.mode==='coop' && oldState.currentQuestion){
-      const correct=oldState.currentQuestion;
-      const text=`${oldState.coopWasRight?'✓ Correct':'✗ Wrong'} • ${correct.book} ${correct.chapter}:${correct.verse}${oldState.coopAnsweredByName?' • '+oldState.coopAnsweredByName:''}`;
-      showReveal(text,oldState.coopWasRight?'good':'bad');
-      addHistory(`${correct.book} ${correct.chapter}:${correct.verse}`,!!oldState.coopWasRight,oldState.coopWasRight?1:0);
+    }else if(oldState.mode==='coop' && (justEnded?newState:oldState).currentQuestion){
+      const revealState=justEnded?newState:oldState;
+      const correct=revealState.currentQuestion;
+      const text=`${revealState.coopWasRight?'✓ Correct':'✗ Wrong'} • ${correct.book} ${correct.chapter}:${correct.verse}${revealState.coopAnsweredByName?' • '+revealState.coopAnsweredByName:''}`;
+      showReveal(text,revealState.coopWasRight?'good':'bad');
+      addHistory(`${correct.book} ${correct.chapter}:${correct.verse}`,!!revealState.coopWasRight,revealState.coopWasRight?1:0);
     }
   }
 
@@ -658,20 +795,32 @@
     $('hostName').textContent=SESSION.hostName||CONTROL?.hostName||getLobbyHostName(LOBBY);
     $('playerCount').textContent=activePlayers().length;
     $('modeLabel').textContent=phase==='voting'?'Vote':(SESSION.mode?SESSION.mode[0].toUpperCase()+SESSION.mode.slice(1):'Game');
+    const me=PLAYERS.get(currentUser?.uid)||MY_PROFILE||{};
+    const myRank=rankForElo(me.elo);
+    $('myRankPill').textContent=`${myRank.emoji} ${myRank.title} • ${myRank.elo}`;
+    $('myRankPill').style.color=myRank.color;
+    $('myRankPill').style.borderColor=`color-mix(in srgb, ${myRank.color} 35%, #e5e7eb)`;
 
     drawScores();
     renderVotes();
     updateCountdownUI();
 
     if(phase==='ended'){
+      $('livesPill').classList.add('hidden');
+      $('coopGoalPill').classList.add('hidden');
       $('playAgainBtn').disabled=!canStartAgain();
+      renderEndResults();
       return;
     }
     if(phase!=='playing') return;
 
     const mode=SESSION.mode;
     $('livesPill').classList.toggle('hidden',mode!=='coop');
-    if(mode==='coop') $('livesCount').textContent=SESSION.sharedLives??3;
+    $('coopGoalPill').classList.toggle('hidden',mode!=='coop');
+    if(mode==='coop'){
+      $('livesCount').textContent=SESSION.sharedLives??3;
+      $('coopGoalCount').textContent=`${Number(SESSION.coopCorrectCount||0)}/${Number(SESSION.coopGoal||COOP_WIN_GOAL)}`;
+    }
 
     const isTeams=mode==='teams';
     $('teamsBar').classList.toggle('hidden',!isTeams);
@@ -725,19 +874,63 @@
     if(m==='traditional') text='One accepted answer per player each round • Scoring: 1 book, 3 book + chapter, 5 exact reference.';
     else if(m==='speed') text='Every answer and next question are saved atomically • −1 only when book, chapter, and verse are all wrong.';
     else if(m==='teams') text='8s reading • 47s discussion • 20s final answer • Suggestions do not lock the team.';
-    else if(m==='coop') text='Shared lives • everyone sees the same result • a short reading period prevents instant answer locking.';
+    else if(m==='coop') text=`Shared lives • reach ${Number(SESSION.coopGoal||COOP_WIN_GOAL)} correct answers for a shared victory • a short reading period prevents instant locking.`;
     $('playHelp').textContent=text;
   }
 
   function drawScores(){
     const sb=$('scoreboard'); sb.innerHTML='';
     const list=Array.from(PLAYERS.values()).sort((a,b)=>Number(b.score||0)-Number(a.score||0)||safeName(a.username).localeCompare(safeName(b.username)));
-    for(const p of list){
-      const row=document.createElement('div'); row.className='entry';
+    const winners=new Set(SESSION?.winnerUids||[]);
+    const placeIcons=['🥇','🥈','🥉'];
+    for(const [index,p] of list.entries()){
+      const row=document.createElement('div');
       const online=isFreshPlayer(p);
+      const rank=rankForElo(p.elo);
+      const result=SESSION?.ratingResults?.[p.uid];
+      row.className=`entry podium-${Math.min(index+1,4)} ${p.uid===currentUser?.uid?'me':''} ${online?'':'offline'} ${winners.has(p.uid)?'winner':''}`.trim();
+      row.style.setProperty('--rank-color',result?.rankColor||p.rankColor||rank.color);
       const host=p.uid===SESSION?.hostUid?' ⭐':'';
-      row.innerHTML=`<div class="name">${online?'🟢':'⚪'} ${escapeHtml(safeName(p.username))}${host}</div><div>🏆 <b>${Number(p.score||0)}</b></div>`;
+      const team=SESSION?.mode==='teams'?((SESSION.teamA||[]).includes(p.uid)?' • Team A':((SESSION.teamB||[]).includes(p.uid)?' • Team B':'')):'';
+      const delta=result?Number(result.change||0):null;
+      const deltaClass=delta>0?'up':delta<0?'down':'draw';
+      const deltaText=delta===null?'':`<div class="elo-change ${deltaClass}">${delta>0?'+':''}${delta} ELO</div>`;
+      row.innerHTML=`
+        <div class="place-badge">${placeIcons[index]||index+1}</div>
+        <div class="score-player">
+          <div class="name">${online?'●':'○'} ${escapeHtml(safeName(p.username))}${host}</div>
+          <div class="rank-line"><span class="rank-title">${escapeHtml(result?.rankEmoji||p.rankEmoji||rank.emoji)} ${escapeHtml(result?.rankTitle||p.rankTitle||rank.title)}</span><span class="elo-label">${Number(result?.newElo??p.elo??STARTING_ELO)} ELO${escapeHtml(team)}</span></div>
+        </div>
+        <div class="score-value"><b>${Number(p.score||0)}</b><span>points</span>${deltaText}</div>`;
       sb.appendChild(row);
+    }
+  }
+
+  function drawRankGuide(){
+    const guide=$('rankGuide'); if(!guide || guide.childElementCount) return;
+    for(const rank of RANKS){
+      const item=document.createElement('div'); item.className='rank-guide-item'; item.style.setProperty('--rank-color',rank.color);
+      item.textContent=`${rank.emoji} ${rank.title} • ${rank.min}+ ELO`; guide.appendChild(item);
+    }
+  }
+
+  function renderEndResults(){
+    const summary=$('endSummary'), list=$('ratingResults');
+    if(!SESSION?.ratingsApplied){
+      summary.textContent='Finalizing wins, ELO, and ranks…';
+      list.innerHTML='<div class="muted sm">The result is being saved once for every participant.</div>';
+      return;
+    }
+    summary.textContent=SESSION.resultSummary||'Results saved.';
+    list.innerHTML='';
+    const rows=Object.entries(SESSION.ratingResults||{}).sort(([,a],[,b])=>Number(b.score||0)-Number(a.score||0));
+    for(const [,r] of rows){
+      const row=document.createElement('div');
+      const change=Number(r.change||0), cls=change>0?'up':change<0?'down':'draw';
+      row.className='rating-row'; row.style.setProperty('--rank-color',r.rankColor||rankForElo(r.newElo).color);
+      const shift=r.rankShift&&r.rankShift!=='same'?`<span class="rank-shift">${r.rankShift==='up'?'Rank Up!':'Rank Down'}</span>`:'';
+      row.innerHTML=`<div><div class="who">${escapeHtml(r.rankEmoji)} ${escapeHtml(r.username)} • ${escapeHtml(r.rankTitle)} ${shift}</div><div class="muted sm">${escapeHtml(r.outcomeLabel)} • ${Number(r.oldElo)} → ${Number(r.newElo)} ELO • ${Number(r.wins||0)} Bible win${Number(r.wins||0)===1?'':'s'}</div></div><div class="delta ${cls}">${change>0?'+':''}${change}</div>`;
+      list.appendChild(row);
     }
   }
 
@@ -780,6 +973,11 @@
 
   async function driveSession(){
     if(!SESSION || transitionBusy || !isDriver()) return;
+    if(SESSION.status==='ended' && !SESSION.ratingsApplied){
+      transitionBusy=true;
+      try{ await applyRatingsAndWins(); }finally{ transitionBusy=false; }
+      return;
+    }
     if(SESSION.status==='voting' && phaseRemainingMs(SESSION)<=0){
       transitionBusy=true;
       try{ await finishVoting(); }finally{ transitionBusy=false; }
@@ -824,8 +1022,9 @@
         currentQuestion:question, chosenIds:question?[question.id]:[],
         teamA:chosen==='teams'?A:[], teamB:chosen==='teams'?B:[],
         teamTotals:{A:0,B:0}, teamLocks:{A:false,B:false}, lastTeamSubmission:{A:null,B:null},
-        sharedLives:3, options:chosen==='coop'?genCoopOptions(question):[],
+        sharedLives:3, coopCorrectCount:0, coopGoal:COOP_WIN_GOAL, options:chosen==='coop'?genCoopOptions(question):[],
         coopLocked:false, coopLockedAt:null, coopAnsweredByUid:'', coopAnsweredByName:'', coopWasRight:null,
+        participantUids:uids, ratingsApplied:false, ratingResults:{}, winnerUids:[], winnerNames:[], resultSummary:'', endReason:'',
         updatedAt:serverTimestamp()
       };
       tx.update(sessionRef,patch);
@@ -848,7 +1047,7 @@
       const start=s.phaseStartedAt?.toMillis?.()||0;
       if(start && start+Number(s.durationMs||0)>nowServer()+1000) return;
       const nextRound=Number(s.round||1)+1;
-      if(nextRound>6){ tx.update(sessionRef,{status:'ended',durationMs:0,updatedAt:serverTimestamp()}); return; }
+      if(nextRound>6){ tx.update(sessionRef,{status:'ended',durationMs:0,endReason:'completed',updatedAt:serverTimestamp()}); return; }
       const chosenIds=Array.from(new Set([...(s.chosenIds||[]),nextQuestion.id]));
       tx.update(sessionRef,{
         round:nextRound,
@@ -871,7 +1070,7 @@
       if(s.status!=='playing' || s.mode!=='speed' || Number(s.roundKey)!==Number(SESSION.roundKey)) return;
       const start=s.phaseStartedAt?.toMillis?.()||0;
       if(start && start+Number(s.durationMs||0)>nowServer()+1000) return;
-      tx.update(sessionRef,{status:'ended',durationMs:0,updatedAt:serverTimestamp()});
+      tx.update(sessionRef,{status:'ended',durationMs:0,endReason:'completed',updatedAt:serverTimestamp()});
     });
   }
 
@@ -883,7 +1082,7 @@
       if(s.status!=='playing' || s.mode!=='coop' || !s.coopLocked) return;
       const lockedAt=s.coopLockedAt?.toMillis?.()||0;
       if(!lockedAt || nowServer()-lockedAt<COOP_REVEAL_MS-500) return;
-      if(Number(s.sharedLives||0)<=0){ tx.update(sessionRef,{status:'ended',updatedAt:serverTimestamp()}); return; }
+      if(Number(s.sharedLives||0)<=0){ tx.update(sessionRef,{status:'ended',endReason:'coopDefeat',updatedAt:serverTimestamp()}); return; }
       tx.update(sessionRef,{
         round:Number(s.round||1)+1,
         roundKey:Number(s.roundKey||0)+1,
@@ -893,6 +1092,118 @@
         coopLocked:false, coopLockedAt:null, coopAnsweredByUid:'', coopAnsweredByName:'', coopWasRight:null,
         phaseStartedAt:serverTimestamp(),
         updatedAt:serverTimestamp()
+      });
+    });
+  }
+
+  async function applyRatingsAndWins(){
+    const fallbackUids=Array.from(PLAYERS.keys());
+    const participantUids=Array.from(new Set((SESSION?.participantUids?.length?SESSION.participantUids:fallbackUids).filter(Boolean)));
+    if(!participantUids.length) return;
+
+    await runTransaction(db,async tx=>{
+      const sSnap=await tx.get(sessionRef);
+      if(!sSnap.exists()) return;
+      const s=sSnap.data();
+      if(s.status!=='ended' || s.ratingsApplied) return;
+      const uids=Array.from(new Set((s.participantUids?.length?s.participantUids:participantUids).filter(Boolean)));
+      const playerRefs=uids.map(uid=>doc(playersCol,uid));
+      const profileRefs=uids.map(uid=>doc(db,'users',uid));
+      const playerSnaps=await Promise.all(playerRefs.map(ref=>tx.get(ref)));
+      const profileSnaps=await Promise.all(profileRefs.map(ref=>tx.get(ref)));
+      const players=uids.map((uid,i)=>({uid,ref:playerRefs[i],data:playerSnaps[i].exists()?playerSnaps[i].data():{uid,username:'Player',score:0}}));
+      const profiles=new Map(uids.map((uid,i)=>[uid,normalizedBibleProfile(profileSnaps[i].exists()?profileSnaps[i].data():{})]));
+      const scores=new Map(players.map(p=>[p.uid,Number(p.data.score||0)]));
+      const outcomes=new Map();
+      let winnerUids=[];
+      let resultSummary='';
+
+      if(s.mode==='coop'){
+        const won=s.endReason==='coopVictory';
+        for(const p of players) outcomes.set(p.uid,won?'win':'loss');
+        winnerUids=won?uids.slice():[];
+        resultSummary=won?`Co-Op victory! The group reached ${Number(s.coopCorrectCount||0)} correct answers and earned a shared win.`:`Co-Op defeat after ${Number(s.coopCorrectCount||0)} correct answers. The group can reclaim ELO in the next session.`;
+      }else if(s.mode==='teams'){
+        const a=Number(s.teamTotals?.A||0), b=Number(s.teamTotals?.B||0);
+        if(a===b){
+          for(const p of players) outcomes.set(p.uid,'draw');
+          resultSummary=`Team A and Team B draw ${a}–${b}.`;
+        }else{
+          const winningTeam=a>b?'A':'B';
+          const winningSet=new Set(winningTeam==='A'?(s.teamA||[]):(s.teamB||[]));
+          for(const p of players) outcomes.set(p.uid,winningSet.has(p.uid)?'win':'loss');
+          winnerUids=uids.filter(uid=>winningSet.has(uid));
+          resultSummary=`Team ${winningTeam} wins ${Math.max(a,b)}–${Math.min(a,b)}.`;
+        }
+      }else if(players.length===1){
+        const only=players[0];
+        const target=s.mode==='speed'?20:18;
+        const won=Number(only.data.score||0)>=target;
+        outcomes.set(only.uid,won?'win':'loss');
+        winnerUids=won?[only.uid]:[];
+        resultSummary=won?`${safeName(only.data.username)} clears the solo ${s.mode} target with ${Number(only.data.score||0)} points.`:`${safeName(only.data.username)} scored ${Number(only.data.score||0)}; the solo win target was ${target}.`;
+      }else{
+        const maxScore=Math.max(...players.map(p=>Number(p.data.score||0)));
+        const top=players.filter(p=>Number(p.data.score||0)===maxScore);
+        if(top.length===1){
+          winnerUids=[top[0].uid];
+          for(const p of players) outcomes.set(p.uid,p.uid===top[0].uid?'win':'loss');
+          resultSummary=`${safeName(top[0].data.username)} wins with ${maxScore} points.`;
+        }else{
+          const tied=new Set(top.map(p=>p.uid));
+          for(const p of players) outcomes.set(p.uid,tied.has(p.uid)?'draw':'loss');
+          resultSummary=`${top.map(p=>safeName(p.data.username)).join(', ')} tie for first with ${maxScore} points.`;
+        }
+      }
+
+      const winnerNames=players.filter(p=>winnerUids.includes(p.uid)).map(p=>safeName(p.data.username));
+      const ratingResults={};
+      for(const p of players){
+        const oldProfile=profiles.get(p.uid)||normalizedBibleProfile({});
+        const oldElo=Number(oldProfile.elo??STARTING_ELO);
+        const outcome=outcomes.get(p.uid)||'draw';
+        const actual=outcome==='win'?1:outcome==='loss'?0:.5;
+        let opponentElo=STARTING_ELO;
+        if(s.mode==='coop') opponentElo=COOP_CHALLENGE_ELO;
+        else if(s.mode==='teams'){
+          const onA=(s.teamA||[]).includes(p.uid);
+          const opponents=players.filter(x=>onA?(s.teamB||[]).includes(x.uid):(s.teamA||[]).includes(x.uid));
+          opponentElo=opponents.length?opponents.reduce((sum,x)=>sum+Number((profiles.get(x.uid)||{}).elo??STARTING_ELO),0)/opponents.length:STARTING_ELO;
+        }else{
+          const opponents=players.filter(x=>x.uid!==p.uid);
+          opponentElo=opponents.length?opponents.reduce((sum,x)=>sum+Number((profiles.get(x.uid)||{}).elo??STARTING_ELO),0)/opponents.length:STARTING_ELO;
+        }
+        const change=calculateEloChange(oldElo,opponentElo,actual,oldProfile.gamesPlayed);
+        const newElo=Math.max(0,oldElo+change);
+        const oldRank=rankForElo(oldElo);
+        const rank=rankForElo(newElo);
+        const rankShift=rank.min>oldRank.min?'up':rank.min<oldRank.min?'down':'same';
+        const wins=oldProfile.wins+(outcome==='win'?1:0);
+        const losses=oldProfile.losses+(outcome==='loss'?1:0);
+        const draws=oldProfile.draws+(outcome==='draw'?1:0);
+        const winStreak=outcome==='win'?oldProfile.winStreak+1:0;
+        const nextBible={
+          ...oldProfile, elo:newElo, rankKey:rank.key, rankTitle:rank.title, rankEmoji:rank.emoji, rankColor:rank.color,
+          wins, losses, draws, gamesPlayed:oldProfile.gamesPlayed+1, winStreak, bestWinStreak:Math.max(oldProfile.bestWinStreak,winStreak),
+          lastEloChange:change, lastOutcome:outcome, lastMode:s.mode, lastSessionId:s.sessionId, lastGameAt:serverTimestamp()
+        };
+        tx.set(profileRefs[uids.indexOf(p.uid)],{
+          bibleGame:nextBible, bibleGameElo:newElo, bibleGameWins:wins,
+          bibleGameRatingVersion:RATING_VERSION,
+          bibleGameRankTitle:rank.title, bibleGameRankEmoji:rank.emoji, bibleGameRankColor:rank.color
+        },{merge:true});
+        tx.set(p.ref,{
+          elo:newElo, rankKey:rank.key, rankTitle:rank.title, rankEmoji:rank.emoji, rankColor:rank.color,
+          profileWins:wins, eloBefore:oldElo, eloChange:change, outcome
+        },{merge:true});
+        ratingResults[p.uid]={
+          uid:p.uid, username:safeName(p.data.username), score:Number(p.data.score||0), outcome,
+          outcomeLabel:outcome==='win'?'Victory':outcome==='loss'?'Defeat':'Draw', oldElo, newElo, change, wins,
+          rankKey:rank.key, rankTitle:rank.title, rankEmoji:rank.emoji, rankColor:rank.color, oldRankTitle:oldRank.title, rankShift
+        };
+      }
+      tx.update(sessionRef,{
+        ratingsApplied:true, ratingResults, winnerUids, winnerNames, resultSummary, ratedAt:serverTimestamp(), updatedAt:serverTimestamp()
       });
     });
   }
@@ -1077,23 +1388,29 @@
       if(Number(s.sharedLives||0)<=0) return {accepted:false,reason:'dead'};
       const wasRight=Number(mcSelectedId)===Number(s.currentQuestion.id);
       const nextLives=wasRight?Number(s.sharedLives||3):Math.max(0,Number(s.sharedLives||3)-1);
+      const nextCorrect=Number(s.coopCorrectCount||0)+(wasRight?1:0);
+      const goal=Number(s.coopGoal||COOP_WIN_GOAL);
+      const won=wasRight && nextCorrect>=goal;
+      const lost=!wasRight && nextLives<=0;
       tx.update(sessionRef,{
         sharedLives:nextLives,
+        coopCorrectCount:nextCorrect,
         coopLocked:true,
         coopLockedAt:serverTimestamp(),
         coopAnsweredByUid:currentUser.uid,
         coopAnsweredByName:safeName(username),
         coopWasRight:wasRight,
+        ...(won||lost?{status:'ended',endReason:won?'coopVictory':'coopDefeat'}:{}),
         updatedAt:serverTimestamp()
       });
       if(wasRight) tx.update(playerRef,{score:Number(pSnap.data().score||0)+1});
-      return {accepted:true,wasRight,nextLives};
+      return {accepted:true,wasRight,nextLives,nextCorrect,won,lost};
     });
     if(!txResult.accepted){
       const message=txResult.reason==='locked'?'Another player’s answer reached Firebase first.':txResult.reason==='tooSoon'?'The reading period is still active.':'The co-op answer was not accepted.';
       showNotice(message,'bad'); return;
     }
-    showNotice(txResult.wasRight?'Correct — the team keeps all lives.':`Wrong — ${txResult.nextLives} shared live${txResult.nextLives===1?'':'s'} remaining.`,txResult.wasRight?'ok':'bad');
+    showNotice(txResult.won?`Victory — the team reached ${txResult.nextCorrect} correct answers!`:txResult.wasRight?`Correct — ${txResult.nextCorrect}/${Number(SESSION.coopGoal||COOP_WIN_GOAL)} toward victory.`:`Wrong — ${txResult.nextLives} shared live${txResult.nextLives===1?'':'s'} remaining.`,txResult.wasRight?'ok':'bad');
   }
 
   function drawSuggestions(){
@@ -1187,6 +1504,8 @@
     $('hostName').textContent=getLobbyHostName(LOBBY);
     $('subtitle').textContent=`${username} • Lobby ${gameId}`;
 
+    await ensureBibleProfile();
+    drawRankGuide();
     await loadBibleData();
 
     controlUnsub=onSnapshot(controlRef,async snap=>{
@@ -1227,8 +1546,15 @@
     $('subtitle').textContent='Missing gameId or username.';
     setConnection('bad','Invalid game link');
   }else{
-    signInAnonymously(auth).catch(err=>{console.error(err);setConnection('bad','Authentication failed');});
+    let authInitialized=false;
     onAuthStateChanged(auth,user=>{
+      if(!authInitialized){
+        authInitialized=true;
+        if(!user){
+          signInAnonymously(auth).catch(err=>{console.error(err);setConnection('bad','Authentication failed');});
+          return;
+        }
+      }
       if(user && !window.__bibleGameStarted){
         window.__bibleGameStarted=true;
         currentUser=user;
@@ -1244,3 +1570,4 @@
 </script>
 </body>
 </html>
+
