@@ -2,127 +2,174 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>🏛️ History Rush — 2×2 Regions</title>
+<title>🏛️ History Rush — Conquest Map</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <style>
   :root{
-    --ink:#0f172a; --muted:#6b7280; --bg:#fff7f7; --br:#f3e2e2; --card:#fff;
-    --accent:#b91c1c; --accent-2:#991b1b; --accent-soft:#fee2e2;
-    --good:#16a34a; --warn:#f59e0b; --bad:#ef4444;
-    --shadow:0 10px 30px rgba(15,23,42,.08); --radius:16px; --radius-sm:12px; --tap:52px;
-    --tileGap:8px;         /* gap between tiles */
-    --quadGap:24px;        /* big gutter between quadrants */
+    --ink:#241a12; --muted:#746354; --bg:#efe2c4; --br:#c9ae7b; --card:#fffaf0;
+    --accent:#8f2d1d; --accent-2:#6f1f14; --accent-soft:#f5d7c9;
+    --good:#247a3d; --warn:#b36b00; --bad:#b91c1c;
+    --shadow:0 14px 35px rgba(58,38,18,.18); --radius:18px;
+    --p0:#c83c32; --p1:#2e6fb2; --p2:#27865d; --p3:#c98516;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--ink);background:var(--bg)}
-  .shell{max-width:900px;margin:0 auto;padding:10px 12px 28px}
-  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0}
-  .leftrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .badge{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:var(--card);box-shadow:var(--shadow);font-weight:800}
-  .btn{appearance:none;border:1px solid var(--br);background:var(--accent);color:#fff;border-radius:12px;padding:12px 14px;font-weight:800;cursor:pointer}
-  .btn:hover{background:var(--accent-2)}
-  .btn-ghost{background:#fff;color:var(--ink)}
-  .btn-ghost:hover{background:#fff5f5}
-  .card{background:var(--card);border:1px solid var(--br);border-radius:var(--radius);box-shadow:var(--shadow)}
-  .card-head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;align-items:center;justify-content:space-between}
-  .card-title{font-weight:900}
+  html,body{min-height:100%}
+  body{
+    margin:0;
+    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    color:var(--ink);
+    background:
+      radial-gradient(circle at 20% 10%,rgba(255,255,255,.55),transparent 28%),
+      linear-gradient(135deg,#f6ead0,#e6d2aa);
+  }
+  button,select{font:inherit}
+  .shell{max-width:1040px;margin:0 auto;padding:10px 12px 34px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0;flex-wrap:wrap}
+  .leftrow{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .badge{
+    display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--br);
+    border-radius:999px;background:rgba(255,250,240,.95);box-shadow:0 6px 18px rgba(58,38,18,.1);font-weight:850
+  }
+  .btn{
+    appearance:none;border:1px solid #6f1f14;background:var(--accent);color:#fff;border-radius:12px;
+    padding:11px 14px;font-weight:850;cursor:pointer;box-shadow:0 4px 0 rgba(76,30,18,.18);
+    transition:transform .12s ease,background .12s ease,box-shadow .12s ease
+  }
+  .btn:hover{background:var(--accent-2);transform:translateY(-1px)}
+  .btn:active{transform:translateY(1px);box-shadow:0 1px 0 rgba(76,30,18,.18)}
+  .btn:disabled{opacity:.48;cursor:not-allowed;transform:none}
+  .btn-ghost{background:#fffaf0;color:var(--ink);border-color:var(--br)}
+  .btn-ghost:hover{background:#fff4dc}
+  .card{background:rgba(255,250,240,.97);border:1px solid var(--br);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .card-head{padding:12px 14px;border-bottom:1px solid rgba(153,118,65,.28);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .card-title{font-weight:950;letter-spacing:.2px}
   .card-body{padding:14px}
   .muted{color:var(--muted)}
+  .error{color:#8b1d1d;font-weight:850}
+  .hidden{display:none!important}
 
-  /* ===== 4×4 Board with a central quadrant gap ===== */
-  .board-wrap{position:relative;margin-top:12px}
+  #scorebar{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:9px}
+  .score-pill{
+    display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:9px 11px;
+    border:1px solid var(--br);border-radius:13px;background:#fffdf7;min-width:0
+  }
+  .score-pill .name{font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .score-pill .score{font-weight:950}
+  .score-pill .sub{grid-column:2/4;font-size:12px;color:var(--muted)}
+  .dot{width:12px;height:12px;border-radius:50%;box-shadow:0 0 0 3px rgba(0,0,0,.06)}
+  .conquest-strip{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .mini-stat{padding:7px 9px;border-radius:10px;background:#f4e7cc;border:1px solid #d7bd8d;font-size:13px;font-weight:800}
+
+  .voting{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:9px;max-height:54vh;overflow:auto;padding-right:5px}
+  .era{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;border:1px solid var(--br);border-radius:12px;background:#fffdf8}
+  .era[aria-disabled="true"]{opacity:.52}
+  .pick{font-weight:900}
+  .vote-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+
+  .map-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .select{
+    border:1px solid var(--br);background:#fffdf7;color:var(--ink);border-radius:10px;padding:8px 10px;font-weight:800
+  }
+  .map-frame{
+    position:relative;padding:20px;border-radius:18px;border:2px solid #9f7944;
+    background:
+      radial-gradient(circle at 15% 20%,rgba(255,255,255,.5),transparent 20%),
+      repeating-linear-gradient(12deg,rgba(119,82,39,.035) 0 2px,transparent 2px 8px),
+      #d8be88;
+    box-shadow:inset 0 0 0 5px rgba(255,250,230,.45),inset 0 0 24px rgba(66,40,12,.22)
+  }
+  .map-frame::after{
+    content:"✦ N";position:absolute;right:9px;top:7px;font-size:12px;font-weight:950;color:#6d4d28;
+    transform:rotate(4deg);opacity:.75
+  }
+  .region-labels{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px}
+  .region-label{
+    text-align:center;padding:5px 8px;border-radius:9px 9px 4px 4px;border:1px solid rgba(91,59,24,.25);
+    background:rgba(255,249,230,.86);font-size:13px;font-weight:950;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+  }
   .board{
-    display:grid;
-    grid-template-columns: repeat(2,1fr) var(--quadGap) repeat(2,1fr);
-    grid-template-rows:    repeat(2,1fr) var(--quadGap) repeat(2,1fr);
-    gap:var(--tileGap);
-    position:relative;
-    max-width:100%;
-    aspect-ratio:1/1;
-    z-index:1;
+    display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;position:relative;aspect-ratio:1.2/1;
+    background:#8bb3a0;padding:5px;border-radius:14px;border:2px solid #6f8f7e;overflow:hidden
   }
   .tile{
-    position:relative;background:#f3f4f6;border:2px solid #d1d5db;border-radius:10px;overflow:hidden;cursor:pointer;
+    position:relative;min-width:0;border:1px solid rgba(73,52,29,.34);border-radius:8px;overflow:hidden;cursor:pointer;
+    isolation:isolate;transition:transform .13s ease,filter .13s ease,box-shadow .13s ease
   }
-  .tile.owner-0{border-color:var(--p0)}
-  .tile.owner-1{border-color:var(--p1)}
-  .tile.owner-2{border-color:var(--p2)}
-  .tile.owner-3{border-color:var(--p3)}
-  .stack{position:absolute;left:1px;right:1px;bottom:1px;display:flex;flex-direction:column-reverse;height:80%;gap:1px}
-  .seg{width:100%}
-
-  /* Region labels outside the board */
-  .region-labels{
-    position:absolute; left:0; right:0; top:0; bottom:0; pointer-events:none; z-index:2;
+  .tile:hover{transform:translateY(-1px);filter:brightness(1.04);z-index:4}
+  .tile.reachable{box-shadow:inset 0 0 0 2px rgba(255,255,255,.44)}
+  .tile.locked{cursor:not-allowed;filter:saturate(.72) brightness(.9)}
+  .tile.locked::after{
+    content:"🔒";position:absolute;right:3px;bottom:3px;font-size:11px;opacity:.6;z-index:7
   }
-  .region-labels .pill{
-    position:absolute; padding:3px 8px; border-radius:10px;
-    background:rgba(255,255,255,.96); border:1px solid var(--br);
-    font-size:13px; font-weight:900; letter-spacing:.2px;
-    box-shadow:0 4px 12px rgba(15,23,42,.08);
-    transform:translateY(-36px);
+  .tile.region-right{border-right:4px solid rgba(78,49,20,.62)}
+  .tile.region-bottom{border-bottom:4px solid rgba(78,49,20,.62)}
+  .tile.captured{animation:capturePulse .7s ease}
+  @keyframes capturePulse{0%{filter:brightness(1)}45%{filter:brightness(1.4);transform:scale(1.03)}100%{filter:brightness(1)}}
+  .terrain-plains{background:linear-gradient(145deg,#d9c878,#bfa95d)}
+  .terrain-forest{background:linear-gradient(145deg,#6f9d58,#47753e)}
+  .terrain-hills{background:linear-gradient(145deg,#b69a70,#8f7351)}
+  .terrain-desert{background:linear-gradient(145deg,#e6c77d,#cfa658)}
+  .terrain-river{background:linear-gradient(145deg,#85b9b1,#5d9aa2)}
+  .terrain-city{background:linear-gradient(145deg,#c9b9a5,#9e8871)}
+  .terrain-coast{background:linear-gradient(145deg,#b5d5a1 0 63%,#7eb5b3 64% 100%)}
+  .terrain-icon{position:absolute;left:4px;top:3px;z-index:6;font-size:clamp(12px,2.2vw,20px);filter:drop-shadow(0 1px 1px rgba(255,255,255,.45))}
+  .cell-no{position:absolute;right:4px;top:3px;z-index:6;font-size:10px;font-weight:900;color:rgba(36,25,14,.58)}
+  .control-wash{position:absolute;inset:0;z-index:2;opacity:0;transition:opacity .2s ease;background:var(--wash,#000)}
+  .owner-crest{
+    position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);z-index:6;display:none;
+    width:30px;height:30px;border-radius:50%;align-items:center;justify-content:center;color:#fff;
+    font-size:11px;font-weight:1000;border:2px solid rgba(255,255,255,.85);text-shadow:0 1px 2px rgba(0,0,0,.5);
+    box-shadow:0 3px 9px rgba(0,0,0,.28)
   }
-  .region-labels .tl{ left:0; width:calc(50% - var(--quadGap)/2); top:0; }
-  .region-labels .tr{ right:0; width:calc(50% - var(--quadGap)/2); top:0; text-align:right; }
-  .region-labels .bl{ left:0; width:calc(50% - var(--quadGap)/2); top:calc(50% + var(--quadGap)/2); }
-  .region-labels .br{ right:0; width:calc(50% - var(--quadGap)/2); top:calc(50% + var(--quadGap)/2); text-align:right; }
+  .tile.has-owner .owner-crest{display:flex}
+  .sharebar{position:absolute;left:2px;right:2px;bottom:2px;height:7px;display:flex;z-index:8;border-radius:5px;overflow:hidden;background:rgba(255,255,255,.45);border:1px solid rgba(0,0,0,.16)}
+  .share-seg{height:100%}
+  .frontier-mark{position:absolute;right:4px;top:19px;z-index:7;font-size:11px;font-weight:1000;color:#fff;text-shadow:0 1px 2px #000;display:none}
+  .tile.reachable:not(.has-my-share) .frontier-mark{display:block}
+  .map-legend{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;font-size:12px}
+  .legend-item{display:flex;align-items:center;gap:5px;padding:5px 7px;border-radius:8px;background:rgba(255,251,238,.76);border:1px solid rgba(110,78,35,.22)}
+  .battle-log{margin-top:10px;padding:10px 12px;border-radius:12px;background:#f3e3c3;border:1px solid #cfad70;font-weight:800}
+  .map-help{margin-top:8px;font-size:13px;color:#66533f}
 
-  /* Soft color underlays for quadrants */
-  .underlays{
-    position:absolute;inset:0;pointer-events:none;
-    display:grid;
-    grid-template-columns:1fr var(--quadGap) 1fr;
-    grid-template-rows:1fr var(--quadGap) 1fr;
-    gap:var(--tileGap);
-    z-index:0;
-  }
-  .underlays > div{
-    border-radius:12px; opacity:.55; outline:1px solid rgba(0,0,0,.06);
-    background-size:12px 12px, 100% 100%; background-blend-mode:multiply;
-  }
-  .underlays .r0{grid-column:1;grid-row:1; background:
-    repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px),
-    var(--r0);}
-  .underlays .r1{grid-column:3;grid-row:1; background:
-    repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px),
-    var(--r1);}
-  .underlays .r2{grid-column:1;grid-row:3; background:
-    repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px),
-    var(--r2);}
-  .underlays .r3{grid-column:3;grid-row:3; background:
-    repeating-linear-gradient(135deg, rgba(255,255,255,.5) 0 6px, transparent 6px 12px),
-    var(--r3);}
-
-  /* Scorebar small bits */
-  #scorebar{display:flex;flex-wrap:wrap;gap:8px}
-  .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--br);border-radius:999px;background:#fff}
-  .dot{width:10px;height:10px;border-radius:50%}
-
-  /* Voting list */
-  .voting{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;max-height:55vh;overflow:auto;padding-right:6px}
-  .era{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--br);border-radius:12px;background:#fff}
-  .era[aria-disabled="true"]{opacity:.5}
-
-  /* Modal + Winner */
-  .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px;z-index:1000}
-  .modal{width:min(720px,96vw);background:#fff;border-radius:16px;border:1px solid var(--br);box-shadow:var(--shadow);overflow:hidden}
-  .modal .head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;justify-content:space-between;align-items:center}
+  .modal-back{position:fixed;inset:0;background:rgba(32,20,10,.62);display:none;align-items:center;justify-content:center;padding:16px;z-index:1000}
+  .modal{width:min(720px,96vw);background:#fffaf0;border-radius:17px;border:1px solid var(--br);box-shadow:var(--shadow);overflow:hidden}
+  .modal .head{padding:12px 14px;border-bottom:1px solid var(--br);display:flex;justify-content:space-between;align-items:center;gap:10px}
   .modal .body{padding:14px}
-  .opts{display:grid;gap:10px}
-  .opt{padding:12px;border:1px solid var(--br);border-radius:12px;background:#fff;font-weight:800;cursor:pointer}
-  .opt:hover{background:#fff5f5}
-  .closebar{display:flex;justify-content:flex-end;margin-top:10px}
-  .winner{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:1050}
-  .win-card{background:#fff;border:1px solid var(--br);border-radius:18px;box-shadow:var(--shadow);padding:18px 16px;text-align:center}
-  .win-card h2{margin:8px 0}
+  .question-meta{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:9px}
+  .difficulty{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:950;border:1px solid}
+  .difficulty.easy{background:#dcfce7;color:#166534;border-color:#86efac}
+  .difficulty.challenge{background:#ffedd5;color:#9a3412;border-color:#fdba74}
+  .opts{display:grid;gap:9px}
+  .opt{padding:12px;border:1px solid var(--br);border-radius:12px;background:#fffdf8;font-weight:850;cursor:pointer;text-align:left}
+  .opt:hover{background:#fff1d6}
+  .closebar{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+  .winner{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(24,15,8,.72);z-index:1050;padding:16px}
+  .win-card{width:min(520px,95vw);background:#fffaf0;border:1px solid var(--br);border-radius:18px;box-shadow:var(--shadow);padding:20px 17px;text-align:center}
+  .win-card h2{margin:6px 0 9px}
+  .win-actions{display:flex;justify-content:center;gap:9px;flex-wrap:wrap;margin-top:15px}
+
+  @media (max-width:680px){
+    .shell{padding-left:7px;padding-right:7px}
+    .card-body{padding:10px}
+    .map-frame{padding:10px}
+    .board{gap:2px;padding:3px;border-radius:10px}
+    .tile{border-radius:5px}
+    .tile.region-right{border-right-width:3px}
+    .tile.region-bottom{border-bottom-width:3px}
+    .owner-crest{width:24px;height:24px;font-size:9px}
+    .terrain-icon{left:2px;top:1px}
+    .cell-no{display:none}
+    .region-label{font-size:11px}
+  }
 </style>
 </head>
 <body>
 <div class="shell">
   <div class="topbar">
     <div class="leftrow">
-      <span class="badge">🏛️ History Rush</span>
-      <span id="statusBadge" class="badge">Loading…</span>
+      <span class="badge">🏛️ History Rush: Conquest</span>
+      <span id="statusBadge" class="badge">Connecting…</span>
+      <span id="authBadge" class="badge muted">Authenticating…</span>
     </div>
     <div class="leftrow">
       <button id="fitBtn" class="btn btn-ghost" title="Fullscreen / Fit">⛶ Fit</button>
@@ -130,64 +177,77 @@
     </div>
   </div>
 
-  <!-- SCOREBOARD -->
+  <div id="fatalCard" class="card hidden">
+    <div class="card-body error" id="fatalText"></div>
+  </div>
+
   <div class="card" id="scoreCard">
     <div class="card-head">
-      <div class="card-title">Scoreboard</div>
+      <div class="card-title">Empire Scoreboard</div>
       <div id="nextTick" class="muted"></div>
     </div>
     <div class="card-body">
       <div id="scorebar"></div>
+      <div id="conquestStrip" class="conquest-strip"></div>
     </div>
   </div>
 
-  <!-- VOTING -->
   <div class="card" id="voteCard" style="margin-top:12px">
     <div class="card-head">
-      <div class="card-title">Choose your Era (unique picks)</div>
+      <div>
+        <div class="card-title">Choose an Era</div>
+        <div class="muted" style="font-size:13px">Your choice enters the four-region conquest map.</div>
+      </div>
       <div class="timer" id="voteTimer">—</div>
     </div>
     <div class="card-body">
       <div class="voting" id="erasGrid"></div>
-      <div class="vote-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-        <div class="muted">Each player selects one unique era. After 20s, remaining slots fill randomly.</div>
-        <div><span class="badge" id="pickedBadge">None selected</span></div>
+      <div class="vote-row">
+        <div class="muted">Picks are unique. Empty regions are filled automatically when voting ends.</div>
+        <span class="badge" id="pickedBadge">None selected</span>
       </div>
     </div>
   </div>
 
-  <!-- BOARD -->
-  <div class="card" id="boardCard" style="margin-top:12px; display:none">
+  <div class="card" id="boardCard" style="margin-top:12px;display:none">
     <div class="card-head">
-      <div class="card-title">Board</div>
-      <div class="muted">Tap a square to answer a question from that region.</div>
+      <div>
+        <div class="card-title">Conquest Map</div>
+        <div class="muted" style="font-size:13px">Expand through adjacent territory. Correct answers break enemy control.</div>
+      </div>
+      <div class="map-tools">
+        <label id="aiControlWrap" class="hidden">
+          <span class="muted" style="font-size:12px;font-weight:850">AI pressure</span>
+          <select id="aiLevel" class="select">
+            <option value="easy">Easy</option>
+            <option value="normal" selected>Normal</option>
+            <option value="hard">Hard</option>
+          </select>
+        </label>
+      </div>
     </div>
     <div class="card-body">
-      <div class="board-wrap">
-        <!-- region labels -->
+      <div class="map-frame">
         <div class="region-labels">
-          <div class="pill tl" id="labelTL">—</div>
-          <div class="pill tr" id="labelTR">—</div>
-          <div class="pill bl" id="labelBL">—</div>
-          <div class="pill br" id="labelBR">—</div>
+          <div class="region-label" id="labelTL">—</div>
+          <div class="region-label" id="labelTR">—</div>
+          <div class="region-label" id="labelBL">—</div>
+          <div class="region-label" id="labelBR">—</div>
         </div>
-
-        <!-- underlays -->
-        <div class="underlays">
-          <div class="r0"></div>
-          <div class="r1"></div>
-          <div class="r2"></div>
-          <div class="r3"></div>
-        </div>
-
-        <!-- 4×4 board -->
         <div id="board" class="board"></div>
+        <div class="map-legend">
+          <span class="legend-item">⚔ frontier you can attack</span>
+          <span class="legend-item">🏛 city land is harder to capture</span>
+          <span class="legend-item">⛰ hills slow conquest</span>
+          <span class="legend-item">Own 24 lands or reach 120 points</span>
+        </div>
       </div>
+      <div id="battleLog" class="battle-log">The frontier is quiet.</div>
+      <div class="map-help">You may reinforce your land or attack any land touching your current territory. Each scoring wave rewards owned land and controlled regions.</div>
     </div>
   </div>
 </div>
 
-<!-- QUESTION MODAL -->
 <div id="modalBack" class="modal-back" role="dialog" aria-modal="true">
   <div class="modal">
     <div class="head">
@@ -195,29 +255,42 @@
       <button id="closeModal" class="btn btn-ghost">Close</button>
     </div>
     <div class="body">
-      <div id="qText" style="font-weight:900;margin-bottom:10px">—</div>
+      <div class="question-meta">
+        <span id="qDifficulty" class="difficulty easy">Easy</span>
+        <span id="qTerrain" class="muted"></span>
+      </div>
+      <div id="qText" style="font-weight:950;margin-bottom:10px;font-size:18px">—</div>
       <div id="qOpts" class="opts"></div>
-      <div id="qFeedback" class="muted" style="margin-top:8px"></div>
+      <div id="qFeedback" class="muted" style="margin-top:9px;font-weight:800"></div>
       <div class="closebar">
-        <button id="nextQ" class="btn" style="display:none">Next Question</button>
+        <button id="nextQ" class="btn" style="display:none">Press the Attack</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- WINNER -->
 <div id="winnerBack" class="winner">
   <div class="win-card">
-    <h2 id="winText">👑 Winner</h2>
-    <div class="muted">Returning to the lobby…</div>
+    <div style="font-size:42px">👑</div>
+    <h2 id="winText">Winner</h2>
+    <div id="winReason" class="muted"></div>
+    <div class="win-actions">
+      <button id="restartBtn" class="btn">New Conquest</button>
+      <button id="backLobbyBtn" class="btn btn-ghost">Back to Lobby</button>
+      <a href="/index.html" class="btn btn-ghost">Hub</a>
+    </div>
   </div>
 </div>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  import {
+    getFirestore, doc, getDoc, onSnapshot, runTransaction
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  import {
+    getAuth, onAuthStateChanged, signInAnonymously, setPersistence, browserLocalPersistence
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-  // ---------- CONFIG ----------
   const firebaseConfig = {
     apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
     authDomain: "bible-game-246c0.firebaseapp.com",
@@ -226,490 +299,2431 @@
     messagingSenderId: "959619818996",
     appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
   };
+
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
+  const auth = getAuth(app);
 
-  // ---------- PARAMS ----------
+  const $ = id => document.getElementById(id);
   const params = new URLSearchParams(location.search);
-  const gameId = params.get("gameId");
-  const username = params.get("username");
-  if (!gameId || !username) alert("Missing gameId or username. Launch from the lobby.");
+  const gameId = (params.get("gameId") || "").trim();
+  const username = (params.get("username") || "").trim();
+  const suppliedRoundId = (params.get("roundId") || "").trim();
+  const lobbyRef = gameId ? doc(db,"lobbies",gameId) : null;
+  const stateRef = gameId ? doc(db,"lobbies",gameId,"historyrush","state") : null;
 
-  // ---------- DOCS ----------
-  const lobbyRef = doc(db, "lobbies", gameId);
-  const stateRef = doc(db, "lobbies", gameId, "historyrush", "state");
-
-  // ---------- ERAS ----------
-  const BASE_ERAS = [
-    "Rome","Ancient China","Ancient Inca","Ancient Aztec","Ancient Egypt","Ancient Mali",
-    "Macedonia","Greece","Sumer","Persia","Assyria","Scandinavia"
+  const BOARD_SIZE = 6;
+  const CELL_COUNT = BOARD_SIZE * BOARD_SIZE;
+  const SCORE_INTERVAL = 15000;
+  const VOTE_DURATION = 25000;
+  const WIN_SCORE = 120;
+  const WIN_LANDS = 24;
+  const AI_ID = "ai_rival_empire";
+  const AI_NAME = "Rival Empire";
+  const PLAYER_COLORS = ["#c83c32","#2e6fb2","#27865d","#c98516"];
+  const REGION_KEYS = ["TL","TR","BL","BR"];
+  const REGION_LABEL_IDS = {TL:"labelTL",TR:"labelTR",BL:"labelBL",BR:"labelBR"};
+  const START_CLUSTERS = [
+    [0,1,6],
+    [35,34,29],
+    [5,4,11],
+    [30,31,24]
   ];
-  function getERAS(){
-    const qKeys = (typeof QUESTIONS === "object" && QUESTIONS) ? Object.keys(QUESTIONS) : [];
-    return Array.from(new Set([...BASE_ERAS, ...qKeys]));
-  }
+  const TERRAIN = [
+    "coast","plains","forest","hills","plains","coast",
+    "plains","city","forest","river","hills","plains",
+    "desert","plains","hills","forest","city","river",
+    "river","forest","city","plains","hills","desert",
+    "plains","hills","river","forest","city","plains",
+    "coast","plains","desert","hills","plains","coast"
+  ];
+  const TERRAIN_INFO = {
+    plains:{icon:"🌾",name:"Open plains",power:1},
+    forest:{icon:"🌲",name:"Forest",power:.90},
+    hills:{icon:"⛰️",name:"Hill country",power:.82},
+    desert:{icon:"🏜️",name:"Desert",power:.92},
+    river:{icon:"〰️",name:"River crossing",power:.86},
+    city:{icon:"🏛️",name:"Fortified city",power:.76},
+    coast:{icon:"🌊",name:"Coastal land",power:.94}
+  };
+  const AI_PROFILES = {
+    easy:{label:"Easy",interval:10000,gain:10},
+    normal:{label:"Normal",interval:8000,gain:14},
+    hard:{label:"Hard",interval:6000,gain:18}
+  };
 
-  // Regions (top-left, top-right, bottom-left, bottom-right)
-  const REGIONS = ["TL","TR","BL","BR"];
-  const REGION_IDX = {TL:0, TR:1, BL:2, BR:3};
-  const REGION_LABEL_IDS = {TL:"labelTL", TR:"labelTR", BL:"labelBL", BR:"labelBR"};
-
-  // region underlay colors
-  const regionSoft = ["#a5b4fc","#86efac","#fde68a","#fca5a5"];
-  document.documentElement.style.setProperty("--r0", regionSoft[0]);
-  document.documentElement.style.setProperty("--r1", regionSoft[1]);
-  document.documentElement.style.setProperty("--r2", regionSoft[2]);
-  document.documentElement.style.setProperty("--r3", regionSoft[3]);
-
-  // player colors
-  const PLAYER_COLORS = ["#ef4444","#3b82f6","#10b981","#f59e0b"];
-  let players = [];
-  let isHost = false;
-
-  // runtime
+  let currentUser = null;
+  let lobbyData = null;
+  let lobbyPlayers = [];
   let state = null;
-  let scoreTickTimer = null;
-  let voteCountdownTimer = null;
+  let myPlayerId = null;
+  let isLobbyHost = false;
+  let fatalStopped = false;
+  let stateUnsub = null;
+  let lobbyUnsub = null;
   let currentCellIndex = null;
   let currentEraForModal = null;
   let answeredThisModal = false;
+  let lastQuestionKeys = [];
+  let pendingEnsure = false;
+  let pendingClaim = false;
+  let pendingRosterSync = false;
+  let pendingVoteFinalize = false;
+  let pendingScoreTick = false;
+  let pendingAiTick = false;
+  let winnerShownFor = null;
+  let previousOwners = Array(CELL_COUNT).fill(null);
 
-  // ---------- UTIL ----------
-  const $ = (id)=>document.getElementById(id);
-  function setStatus(msg){ $("statusBadge").textContent = msg; }
-  function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
-  function clamp(n,min,max){ return Math.max(min, Math.min(max,n)); }
-  function colorIndex(name){
-    const idx = players.slice().sort().indexOf(name);
-    return Math.max(0, idx) % 4;
+  function setStatus(text){ $("statusBadge").textContent = text; }
+  function fatal(message){
+    fatalStopped = true;
+    $("fatalText").textContent = message;
+    $("fatalCard").classList.remove("hidden");
+    setStatus("Connection stopped");
+    console.error(message);
   }
-  function applyPlayerColorVars(){
-    document.documentElement.style.setProperty("--p0", PLAYER_COLORS[0]);
-    document.documentElement.style.setProperty("--p1", PLAYER_COLORS[1]);
-    document.documentElement.style.setProperty("--p2", PLAYER_COLORS[2]);
-    document.documentElement.style.setProperty("--p3", PLAYER_COLORS[3]);
+  function safeName(value,fallback="Player"){
+    const text = String(value ?? "").trim().replace(/\s+/g," ");
+    return text.slice(0,40) || fallback;
   }
-  applyPlayerColorVars();
+  function normalizeName(value){ return safeName(value,"").toLowerCase(); }
+  function hashString(value){
+    let h = 2166136261;
+    for (let i=0;i<value.length;i++){
+      h ^= value.charCodeAt(i);
+      h = Math.imul(h,16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
+  function legacyPlayerId(name){ return "n_" + hashString(normalizeName(name)); }
+  function uidPlayerId(uid){ return "u_" + String(uid).replace(/[^A-Za-z0-9_-]/g,"_"); }
+  function clamp(n,min,max){ return Math.max(min,Math.min(max,n)); }
+  function shuffled(values){
+    const a = values.slice();
+    for(let i=a.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [a[i],a[j]]=[a[j],a[i]];
+    }
+    return a;
+  }
+  function initials(name){
+    const parts=safeName(name).split(" ").filter(Boolean);
+    return parts.slice(0,2).map(p=>p[0]?.toUpperCase()||"").join("") || "P";
+  }
+  function timestampToken(value){
+    if (!value) return "";
+    if (typeof value.toMillis === "function") return String(value.toMillis());
+    if (typeof value.seconds === "number") return String(value.seconds);
+    if (typeof value === "number" || typeof value === "string") return String(value);
+    return "";
+  }
+  function deriveRoundKey(lobby){
+    const token = suppliedRoundId ||
+      lobby?.historyRushRoundId ||
+      lobby?.roundId ||
+      lobby?.gameSessionId ||
+      timestampToken(lobby?.startedAt) ||
+      timestampToken(lobby?.gameStartedAt);
+    return token ? String(token) : `${gameId}:default`;
+  }
+  function playerColor(id){
+    const order = state?.playerOrder || [];
+    const idx = Math.max(0,order.indexOf(id));
+    return PLAYER_COLORS[idx % PLAYER_COLORS.length];
+  }
+  function playerName(id){ return state?.players?.[id]?.name || id || "Unknown"; }
+  function isHumanParticipant(){
+    return Boolean(myPlayerId && state?.players?.[myPlayerId] && !state.players[myPlayerId].isAI);
+  }
 
-  $("fitBtn").onclick = async () => {
-    try{
-      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
-      else await document.exitFullscreen();
-    }catch(e){}
-  };
-
-  // ---------- 4×4 BOARD BUILD ----------
-  const boardEl = $("board");
-  const tiles = [];
-  for (let i=0;i<16;i++){
-    const r = Math.floor(i/4), c = i%4;
-    const gridRow = r + 1 + (r >= 2 ? 1 : 0); // add 1 row after the first two (the big gap)
-    const gridCol = c + 1 + (c >= 2 ? 1 : 0); // add 1 col after the first two
-    const div = document.createElement("div");
-    div.className = "tile";
-    div.setAttribute("data-idx", i);
-    div.style.gridRow = gridRow;
-    div.style.gridColumn = gridCol;
-
-    const stack = document.createElement("div");
-    stack.className="stack";
-    div.appendChild(stack);
-
-    div.addEventListener("click", ()=> onTileClick(i));
-    boardEl.appendChild(div);
-    tiles.push(div);
-  }
-
-  // ---------- REGION / OWNERSHIP HELPERS ----------
-  function cellRegion(cell){ // 4×4 grid
-    const r = Math.floor(cell/4), c = cell%4;
-    if (r < 2 && c < 2) return "TL";
-    if (r < 2 && c > 1) return "TR";
-    if (r > 1 && c < 2) return "BL";
-    if (r > 1 && c > 1) return "BR";
-    return null;
-  }
-  function eraForCell(cell){
-    const reg = cellRegion(cell);
-    const eraMap = state?.eraMap || {};
-    return eraMap[reg] || null;
-  }
-  function ownerOf(shares){
-    let winner=null, max=0;
-    for(const [k,v] of Object.entries(shares||{})){ if (v>max){max=v; winner=k;} }
-    return (max>50) ? winner : null;
-  }
-  function regionController(regionKey, cells){
-    const base = { TL:{r:0,c:0}, TR:{r:0,c:2}, BL:{r:2,c:0}, BR:{r:2,c:2} }[regionKey];
-    if (!base) return null;
-    const idxs = [];
-    for (let dr=0; dr<2; dr++){
-      for (let dc=0; dc<2; dc++){
-        const rr = base.r + dr, cc = base.c + dc;
-        idxs.push(rr*4 + cc);
+  function normalizeLobbyPlayers(lobby){
+    const raw = Array.isArray(lobby?.players) ? lobby.players : [];
+    const out = [];
+    for (const item of raw){
+      let name="", uid="";
+      if (typeof item === "string"){
+        name = safeName(item,"");
+      } else if (item && typeof item === "object"){
+        name = safeName(item.username ?? item.name ?? item.displayName ?? item.playerName,"");
+        uid = String(item.uid ?? item.userId ?? item.authUid ?? "").trim();
+      }
+      if (!name) continue;
+      const id = uid ? uidPlayerId(uid) : legacyPlayerId(name);
+      if (!out.some(p=>p.id===id || normalizeName(p.name)===normalizeName(name))){
+        out.push({id,name,uid:uid||null,isAI:false});
       }
     }
-    const owners = idxs.map(i => ownerOf(cells[i]?.shares || {})).filter(Boolean);
-    const tally = {}; owners.forEach(o => tally[o] = (tally[o]||0) + 1);
-    let best=null, cnt=0;
-    for (const [k,v] of Object.entries(tally)){ if (v>cnt){cnt=v; best=k;} }
-    return (cnt >= 3) ? best : null; // 3+ of 4 cells
+    if (!out.length && username){
+      out.push({id:legacyPlayerId(username),name:safeName(username),uid:null,isAI:false});
+    }
+    return out.slice(0,4);
   }
 
-  // ---------- LOBBY SNAP ----------
-  onSnapshot(lobbyRef, (snap)=>{
-    const d = snap.data();
-    if (!d) return;
-    players = (d.players||[]).slice(0,4);
-    isHost = (d.host === username);
-    renderScorebar();
-  });
+  function resolveMyPlayerId(){
+    if (!currentUser) return null;
+    const byUid = lobbyPlayers.find(p=>p.uid && p.uid===currentUser.uid);
+    if (byUid) return byUid.id;
+    const byName = lobbyPlayers.find(p=>normalizeName(p.name)===normalizeName(username));
+    if (byName) return byName.id;
+    if (state?.players){
+      const stateByUid = Object.entries(state.players).find(([,p])=>p?.uid===currentUser.uid);
+      if (stateByUid) return stateByUid[0];
+      const stateByName = Object.entries(state.players).find(([,p])=>normalizeName(p?.name)===normalizeName(username));
+      if (stateByName) return stateByName[0];
+    }
+    return uidPlayerId(currentUser.uid);
+  }
 
-  // ---------- STATE SNAP ----------
-  onSnapshot(stateRef, (snap)=>{
-    if (!snap.exists()) { bootstrapState(); return; }
-    state = snap.data();
-    updateStatusBadges();
+  function computeLobbyHost(){
+    if (!currentUser || !lobbyData) return false;
+    const hostUid = String(lobbyData.hostUid ?? lobbyData.ownerUid ?? "").trim();
+    if (hostUid) return hostUid===currentUser.uid;
+    const hostName = safeName(lobbyData.host ?? lobbyData.owner ?? lobbyData.createdByName,"");
+    if (hostName) return hostName===currentUser.uid || normalizeName(hostName)===normalizeName(username);
+    return lobbyPlayers[0]?.id===myPlayerId;
+  }
+
+  async function ensureSignedIn(){
+    await setPersistence(auth,browserLocalPersistence).catch(()=>{});
+    let user = await new Promise((resolve,reject)=>{
+      let unsub = ()=>{};
+      unsub = onAuthStateChanged(auth,u=>{unsub();resolve(u);},reject);
+    });
+    if (!user){
+      const cred = await signInAnonymously(auth);
+      user = cred.user;
+    }
+    return user;
+  }
+
+  function emptyCells(){ return Array.from({length:CELL_COUNT},()=>({shares:{}})); }
+  function seedCells(order){
+    const cells = emptyCells();
+    order.slice(0,4).forEach((id,index)=>{
+      const cluster = START_CLUSTERS[index] || [];
+      cluster.forEach((cellIndex,clusterIndex)=>{
+        cells[cellIndex] = {shares:{[id]:clusterIndex===0 ? 72 : 58}};
+      });
+    });
+    return cells;
+  }
+
+  function buildInitialState(baseRoundKey,roundNumber=1,uniqueRoundKey=baseRoundKey){
+    const humans = lobbyPlayers.length ? lobbyPlayers.slice() : [{
+      id:legacyPlayerId(username),name:safeName(username),uid:null,isAI:false
+    }];
+    const solo = humans.length===1;
+    const players = {};
+    const playerOrder = [];
+    for (const p of humans){
+      players[p.id] = {
+        name:p.name,
+        uid:p.uid || (normalizeName(p.name)===normalizeName(username) ? currentUser.uid : null),
+        isAI:false
+      };
+      playerOrder.push(p.id);
+    }
+    if (solo){
+      players[AI_ID] = {name:AI_NAME,uid:null,isAI:true};
+      playerOrder.push(AI_ID);
+    }
+    const scores = {};
+    playerOrder.forEach(id=>scores[id]=0);
+    const now=Date.now();
+    return {
+      schemaVersion:3,
+      lobbyRoundKey:baseRoundKey,
+      roundKey:uniqueRoundKey,
+      roundNumber,
+      status:"voting",
+      votingEndsAt:now+VOTE_DURATION,
+      votes:{},
+      players,
+      playerOrder,
+      hostUid:currentUser.uid,
+      eraMap:{},
+      scores,
+      cells:seedCells(playerOrder),
+      aiEnabled:solo,
+      aiLevel:"normal",
+      nextAiAt:solo ? now+AI_PROFILES.normal.interval : null,
+      nextScoreAt:now+SCORE_INTERVAL,
+      winner:null,
+      winReason:null,
+      lastAction:solo ? `${AI_NAME} has entered the map.` : "The empires are gathering.",
+      createdAtMs:now,
+      updatedAtMs:now
+    };
+  }
+
+  async function ensureState(){
+    if (pendingEnsure || fatalStopped || !lobbyData || !currentUser) return;
+    pendingEnsure=true;
+    try{
+      const roundKey=deriveRoundKey(lobbyData);
+      if (!isLobbyHost){
+        setStatus("Waiting for host");
+        return;
+      }
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(stateRef);
+        if (snap.exists()){
+          const existing=snap.data();
+          if ((existing?.lobbyRoundKey||existing?.roundKey)===roundKey) return;
+        }
+        const oldRound=snap.exists() ? Number(snap.data()?.roundNumber||0) : 0;
+        tx.set(stateRef,buildInitialState(roundKey,oldRound+1));
+      });
+    }catch(error){
+      showFirestoreError("Could not create the conquest state",error);
+    }finally{
+      pendingEnsure=false;
+    }
+  }
+
+  async function claimIdentity(){
+    if (pendingClaim || !state || !currentUser || !myPlayerId || !state.players?.[myPlayerId]) return;
+    const existing=state.players[myPlayerId];
+    if (existing.uid && existing.uid!==currentUser.uid){
+      fatal("This player name is already attached to a different authenticated session. Return to the lobby and choose your own player.");
+      return;
+    }
+    if (existing.uid===currentUser.uid) return;
+    pendingClaim=true;
+    try{
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(stateRef);
+        if (!snap.exists()) return;
+        const d=snap.data();
+        const p=d.players?.[myPlayerId];
+        if (!p || p.isAI) return;
+        if (p.uid && p.uid!==currentUser.uid) throw new Error("Player identity is already claimed.");
+        const players={...(d.players||{})};
+        players[myPlayerId]={...p,uid:currentUser.uid};
+        tx.update(stateRef,{players,updatedAtMs:Date.now()});
+      });
+    }catch(error){
+      showFirestoreError("Could not verify your player identity",error);
+    }finally{
+      pendingClaim=false;
+    }
+  }
+
+  async function syncVotingRoster(){
+    if (pendingRosterSync || !isLobbyHost || !state || state.status!=="voting") return;
+    pendingRosterSync=true;
+    try{
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(stateRef);
+        if (!snap.exists()) return;
+        const d=snap.data();
+        if (d.status!=="voting") return;
+        const humans=lobbyPlayers.slice();
+        const solo=humans.length===1;
+        const players={};
+        const order=[];
+        for (const p of humans){
+          const prior=d.players?.[p.id];
+          players[p.id]={
+            name:p.name,
+            uid:p.uid || prior?.uid || (normalizeName(p.name)===normalizeName(username) ? currentUser.uid : null),
+            isAI:false
+          };
+          order.push(p.id);
+        }
+        if (solo){
+          players[AI_ID]={name:AI_NAME,uid:null,isAI:true};
+          order.push(AI_ID);
+        }
+        const same=JSON.stringify(order)===JSON.stringify(d.playerOrder||[]);
+        if (same && Boolean(d.aiEnabled)===solo) return;
+        const scores={};
+        order.forEach(id=>scores[id]=Number(d.scores?.[id]||0));
+        const votes={};
+        for (const [id,era] of Object.entries(d.votes||{})){
+          if (players[id] && !players[id].isAI) votes[id]=era;
+        }
+        const profile=AI_PROFILES[d.aiLevel]||AI_PROFILES.normal;
+        tx.update(stateRef,{
+          players,playerOrder:order,scores,votes,cells:seedCells(order),
+          aiEnabled:solo,nextAiAt:solo ? Date.now()+profile.interval : null,
+          lastAction:solo ? `${AI_NAME} joined the empty seat.` : "Human challengers have joined.",
+          updatedAtMs:Date.now()
+        });
+      });
+    }catch(error){
+      console.error("Roster sync failed",error);
+    }finally{
+      pendingRosterSync=false;
+    }
+  }
+
+  function showFirestoreError(prefix,error){
+    const code=String(error?.code||"");
+    const detail=error?.message||String(error);
+    console.error(prefix,error);
+    if (code.includes("permission-denied")){
+      fatal(`${prefix}: Firebase rejected the request. Confirm Anonymous Authentication is enabled and the lobby rules are deployed.`);
+    }else{
+      $("fatalText").textContent=`${prefix}: ${detail}`;
+      $("fatalCard").classList.remove("hidden");
+    }
+  }
+
+  function subscribe(){
+    lobbyUnsub=onSnapshot(lobbyRef,snap=>{
+      if (!snap.exists()){
+        fatal("This lobby no longer exists. Return to the hub and create or join a new lobby.");
+        return;
+      }
+      lobbyData=snap.data();
+      lobbyPlayers=normalizeLobbyPlayers(lobbyData);
+      myPlayerId=resolveMyPlayerId();
+      isLobbyHost=computeLobbyHost();
+      if (!lobbyPlayers.some(p=>p.id===myPlayerId)){
+        fatal("Your player is not listed in this lobby. The game will not auto-join an old or unrelated match.");
+        return;
+      }
+      if (!state) ensureState();
+      else {
+        claimIdentity();
+        syncVotingRoster();
+        renderAll();
+      }
+    },error=>showFirestoreError("Lobby listener failed",error));
+
+    stateUnsub=onSnapshot(stateRef,snap=>{
+      if (!snap.exists()){
+        state=null;
+        ensureState();
+        return;
+      }
+      state=snap.data();
+      myPlayerId=resolveMyPlayerId();
+      claimIdentity();
+      renderAll();
+      handleWinner();
+    },error=>showFirestoreError("Game-state listener failed",error));
+  }
+
+  function getERAS(){
+    const easyKeys=typeof EASY_QUESTIONS==="object" ? Object.keys(EASY_QUESTIONS) : [];
+    const hardKeys=typeof QUESTIONS==="object" ? Object.keys(QUESTIONS) : [];
+    return Array.from(new Set([...easyKeys,...hardKeys]));
+  }
+
+  function regionForCell(index){
+    const row=Math.floor(index/BOARD_SIZE);
+    const col=index%BOARD_SIZE;
+    if (row<3 && col<3) return "TL";
+    if (row<3 && col>=3) return "TR";
+    if (row>=3 && col<3) return "BL";
+    return "BR";
+  }
+  function regionCells(key){
+    const rowStart=(key==="BL"||key==="BR")?3:0;
+    const colStart=(key==="TR"||key==="BR")?3:0;
+    const out=[];
+    for(let r=rowStart;r<rowStart+3;r++){
+      for(let c=colStart;c<colStart+3;c++) out.push(r*BOARD_SIZE+c);
+    }
+    return out;
+  }
+  function ownerOf(shares){
+    let best=null,max=50;
+    for(const [id,value] of Object.entries(shares||{})){
+      const n=Number(value)||0;
+      if(n>max){max=n;best=id;}
+    }
+    return best;
+  }
+  function dominantOf(shares){
+    let best=null,max=0;
+    for(const [id,value] of Object.entries(shares||{})){
+      const n=Number(value)||0;
+      if(n>max){max=n;best=id;}
+    }
+    return {id:best,pct:max};
+  }
+  function regionController(key,cells){
+    const tally={};
+    for(const index of regionCells(key)){
+      const owner=ownerOf(cells[index]?.shares||{});
+      if(owner) tally[owner]=(tally[owner]||0)+1;
+    }
+    let best=null,count=0;
+    for(const [id,n] of Object.entries(tally)){
+      if(n>count){best=id;count=n;}
+    }
+    return count>=5 ? best : null;
+  }
+  function ownedCount(id,cells=state?.cells||[]){
+    return cells.reduce((total,cell)=>total+(ownerOf(cell?.shares||{})===id?1:0),0);
+  }
+  function adjacentIndexes(index){
+    const row=Math.floor(index/BOARD_SIZE),col=index%BOARD_SIZE;
+    const out=[];
+    if(row>0) out.push(index-BOARD_SIZE);
+    if(row<BOARD_SIZE-1) out.push(index+BOARD_SIZE);
+    if(col>0) out.push(index-1);
+    if(col<BOARD_SIZE-1) out.push(index+1);
+    return out;
+  }
+  function hasPresence(cell,id){ return Number(cell?.shares?.[id]||0)>0; }
+  function isReachable(index,id,cells=state?.cells||[]){
+    if (!id || !cells[index]) return false;
+    if (hasPresence(cells[index],id)) return true;
+    const anyPresence=cells.some(cell=>hasPresence(cell,id));
+    if (!anyPresence) return true;
+    return adjacentIndexes(index).some(i=>hasPresence(cells[i],id));
+  }
+  function cleanShares(input){
+    const shares={};
+    for(const [id,value] of Object.entries(input||{})){
+      const n=clamp(Number(value)||0,0,100);
+      if(n>.01) shares[id]=n;
+    }
+    return shares;
+  }
+  function addShare(input,playerId,amount){
+    const shares=cleanShares(input);
+    const before=Number(shares[playerId]||0);
+    let remaining=Math.max(0,Number(amount)||0);
+    const total=Object.values(shares).reduce((a,b)=>a+b,0);
+    const open=Math.max(0,100-total);
+    const fromOpen=Math.min(open,remaining);
+    shares[playerId]=before+fromOpen;
+    remaining-=fromOpen;
+    if(remaining>0){
+      const others=Object.keys(shares).filter(id=>id!==playerId && shares[id]>0);
+      const pool=others.reduce((sum,id)=>sum+shares[id],0);
+      if(pool>0){
+        const steal=Math.min(remaining,pool);
+        for(const id of others){
+          shares[id]=Math.max(0,shares[id]-steal*(shares[id]/pool));
+        }
+        shares[playerId]=(shares[playerId]||0)+steal;
+      }
+    }
+    for(const id of Object.keys(shares)){
+      shares[id]=Math.round(shares[id]*10)/10;
+      if(shares[id]<=0) delete shares[id];
+    }
+    const sum=Object.values(shares).reduce((a,b)=>a+b,0);
+    if(sum>100.01){
+      shares[playerId]=Math.max(0,(shares[playerId]||0)-(sum-100));
+    }
+    return {shares,gained:Math.max(0,(shares[playerId]||0)-before)};
+  }
+  function removeShare(input,playerId,amount){
+    const shares=cleanShares(input);
+    const before=Number(shares[playerId]||0);
+    shares[playerId]=Math.max(0,before-Math.max(0,Number(amount)||0));
+    if(shares[playerId]<=0) delete shares[playerId];
+    return {shares,lost:before-Number(shares[playerId]||0)};
+  }
+
+  const boardEl=$("board");
+  const tiles=[];
+  for(let i=0;i<CELL_COUNT;i++){
+    const row=Math.floor(i/BOARD_SIZE),col=i%BOARD_SIZE;
+    const terrain=TERRAIN[i]||"plains";
+    const tile=document.createElement("div");
+    tile.className=`tile terrain-${terrain}`;
+    if(col===2) tile.classList.add("region-right");
+    if(row===2) tile.classList.add("region-bottom");
+    tile.dataset.index=String(i);
+    tile.innerHTML=`
+      <div class="control-wash"></div>
+      <div class="terrain-icon">${TERRAIN_INFO[terrain].icon}</div>
+      <div class="cell-no">${i+1}</div>
+      <div class="owner-crest"></div>
+      <div class="frontier-mark">⚔</div>
+      <div class="sharebar"></div>`;
+    tile.addEventListener("click",()=>onTileClick(i));
+    boardEl.appendChild(tile);
+    tiles.push(tile);
+  }
+
+  function renderAll(){
+    if(!state) return;
+    const st=state.status||"waiting";
+    setStatus(st==="voting"?"Choosing eras":st==="playing"?"Conquest underway":st==="finished"?"Conquest complete":"Waiting");
+    $("voteCard").style.display=st==="voting"?"block":"none";
+    $("boardCard").style.display=st==="playing"?"block":"none";
     renderScorebar();
     renderVoting();
     renderBoard();
-
-    if (state.status === "finished" && state.winner){
-      $("winText").textContent = `👑 ${state.winner} wins!`;
-      $("winnerBack").style.display = "flex";
-      setTimeout(()=>{ location.href="/index.html"; }, 3500);
-    }
-  });
-
-  // ---------- BOOTSTRAP ----------
-  async function bootstrapState(){
-    const lob = await getDoc(lobbyRef);
-    const lp = (lob.exists() && Array.isArray(lob.data().players)) ? lob.data().players.slice(0,4) : [username];
-    const init = {
-      status:"voting",
-      votingEndsAt: Date.now()+20000,
-      votes:{},
-      players: lp,
-      eraMap:{},             // TL/TR/BL/BR -> era
-      scores:{},
-      lastScoreTick: Date.now(),
-      winner:null,
-      // 16 cells now
-      cells: Array.from({length:16}, ()=>({ shares:{} }))
-    };
-    lp.forEach(n=> init.scores[n]=0);
-    await setDoc(stateRef, init);
+    renderTimers();
   }
 
-  // ---------- STATUS / TIMERS ----------
-  function updateStatusBadges(){
-    const st = state?.status || "—";
-    if (st==="voting"){
-      setStatus("Voting");
-      $("voteCard").style.display="block";
-      $("boardCard").style.display="none";
-      startVoteCountdown();
-    } else if (st==="playing"){
-      setStatus("Playing");
-      $("voteCard").style.display="none";
-      $("boardCard").style.display="block";
-      stopVoteCountdown();
-      if (isHost) ensureScoreTicker();
-    } else {
-      setStatus("Finished");
-      $("voteCard").style.display="none";
-      $("boardCard").style.display="none";
-      stopVoteCountdown();
-    }
-  }
-  function startVoteCountdown(){
-    stopVoteCountdown();
-    tickVoteTimer();
-    voteCountdownTimer = setInterval(tickVoteTimer, 300);
-    if (isHost) ensureScoreTicker();
-  }
-  function stopVoteCountdown(){
-    if (voteCountdownTimer){ clearInterval(voteCountdownTimer); voteCountdownTimer=null; }
-  }
-  function tickVoteTimer(){
-    if (!state?.votingEndsAt){ $("voteTimer").textContent="—"; return; }
-    const ms = Math.max(0, state.votingEndsAt - Date.now());
-    const s = Math.ceil(ms/1000);
-    $("voteTimer").textContent = `Time left: ${s}s`;
-    if (ms<=0 && isHost && state.status==="voting"){ finalizeVoting(); }
-  }
-
-  // ---------- VOTING ----------
-  function renderVoting(){
-    if (state?.status!=="voting") return;
-    const ERAS = getERAS();
-    const used = new Set(Object.values(state.votes||{}));
-    const grid = $("erasGrid"); grid.innerHTML = "";
-
-    for (const era of ERAS){
-      const row = document.createElement("div"); row.className = "era";
-      const left = document.createElement("div");
-      const name = document.createElement("div"); name.className="pick"; name.textContent = era;
-      const tiny = document.createElement("div"); tiny.className="muted"; tiny.textContent = used.has(era) ? "Taken" : "";
-      left.appendChild(name); left.appendChild(tiny);
-
-      const btn = document.createElement("button");
-      btn.className = "btn btn-ghost";
-      btn.textContent = (state.votes?.[username] === era) ? "Selected" : "Select";
-      if (state.votes?.[username] && state.votes[username] !== era) btn.disabled = true;
-      if (used.has(era) && state.votes?.[username] !== era) row.setAttribute("aria-disabled","true");
-      btn.onclick = ()=> castVote(era);
-
-      row.appendChild(left); row.appendChild(btn);
-      grid.appendChild(row);
-    }
-    const my = state.votes?.[username];
-    $("pickedBadge").textContent = my ? `Your pick: ${my}` : "None selected";
-  }
-  async function castVote(era){
-    try{
-      await runTransaction(db, async (tx)=>{
-        const s = await tx.get(stateRef);
-        if (!s.exists()) throw new Error("no state");
-        const d = s.data();
-        if (d.status!=="voting") throw new Error("voting closed");
-        const used = new Set(Object.values(d.votes||{}));
-        const myPrev = d.votes?.[username];
-        if (used.has(era) && myPrev !== era) throw new Error("Era already taken");
-        tx.update(stateRef, { [`votes.${username}`]: era });
-      });
-    }catch(e){ alert(e.message||"Failed to vote"); }
-  }
-  async function finalizeVoting(){
-    try{
-      await runTransaction(db, async (tx)=>{
-        const s = await tx.get(stateRef);
-        if (!s.exists()) throw new Error("no state");
-        const d = s.data();
-        if (d.status!=="voting") return;
-
-        const ERAS = getERAS();
-        const picks  = Object.values(d.votes||{});
-        const unique = Array.from(new Set(picks));
-        const remain = ERAS.filter(x => !unique.includes(x));
-        while (unique.length < 4 && remain.length > 0){
-          unique.push(remain.splice(Math.floor(Math.random()*remain.length),1)[0]);
-        }
-        const chosen = unique.slice(0,4);
-        const eraMap = {
-          TL: chosen[0] || remain.pop() || "Rome",
-          TR: chosen[1] || remain.pop() || "Ancient China",
-          BL: chosen[2] || remain.pop() || "Ancient Egypt",
-          BR: chosen[3] || remain.pop() || "Scandinavia"
-        };
-        tx.update(stateRef, { status:"playing", eraMap, lastScoreTick: Date.now() });
-      });
-    }catch(e){ console.error(e); }
-  }
-
-  // ---------- BOARD RENDER ----------
-  function renderBoard(){
-    if (!state) return;
-
-    // labels
-    for (const [key, id] of Object.entries(REGION_LABEL_IDS)){
-      const el = $(id);
-      if (el) el.textContent = state.eraMap?.[key] || "—";
-    }
-
-    // tiles
-    const cells = state.cells || [];
-    const namesSorted = players.slice().sort();
-
-    for (let i=0;i<16;i++){
-      const el = tiles[i];
-      const stack = el.querySelector(".stack");
-      const shares = (cells[i] && cells[i].shares) || {};
-      const owner = ownerOf(shares);
-
-      // border owner class
-      let desired = "";
-      if (owner){ desired = `owner-${colorIndex(owner)}`; }
-      if (el._ownerClass && el._ownerClass !== desired){ el.classList.remove(el._ownerClass); el._ownerClass = null; }
-      if (desired && el._ownerClass !== desired){ el.classList.add(desired); el._ownerClass = desired; }
-      if (!desired && el._ownerClass){ el.classList.remove(el._ownerClass); el._ownerClass = null; }
-
-      // stack
-      while (stack.firstChild) stack.removeChild(stack.firstChild);
-      for (const name of namesSorted){
-        const pct = Math.round(((shares[name] || 0) + Number.EPSILON) * 10) / 10;
-        if (pct > 0){
-          const seg = document.createElement("div");
-          seg.className = "seg";
-          seg.style.height = pct + "%";
-          seg.style.background = PLAYER_COLORS[colorIndex(name)];
-          seg.title = `${name}: ${pct}%`;
-          stack.appendChild(seg);
-        }
-      }
-    }
-
-    if (state.status === "playing" && isHost) ensureScoreTicker();
-  }
-
-  // ---------- SCOREBOARD ----------
   function renderScorebar(){
-    const bar = $("scorebar");
-    const scores = state?.scores || {};
-    const names = players.slice().sort();
-    bar.innerHTML = "";
-    for(const name of names){
-      const pill = document.createElement("div"); pill.className="pill";
-      const dot = document.createElement("span"); dot.className="dot"; dot.style.background = PLAYER_COLORS[colorIndex(name)];
-      const nm = document.createElement("span"); nm.textContent = name;
-      const sc = document.createElement("span"); sc.className="muted"; sc.textContent = `— ${scores[name]||0}`;
-      pill.appendChild(dot); pill.appendChild(nm); pill.appendChild(sc);
+    const bar=$("scorebar");
+    const strip=$("conquestStrip");
+    bar.innerHTML="";
+    strip.innerHTML="";
+    const order=state?.playerOrder||[];
+    for(const id of order){
+      const p=state.players?.[id];
+      if(!p) continue;
+      const score=Number(state.scores?.[id]||0);
+      const lands=ownedCount(id);
+      const regions=REGION_KEYS.filter(key=>regionController(key,state.cells||[])===id).length;
+      const pill=document.createElement("div");
+      pill.className="score-pill";
+      pill.innerHTML=`
+        <span class="dot" style="background:${playerColor(id)}"></span>
+        <span class="name">${escapeHtml(p.name)}${p.isAI?" 🤖":""}</span>
+        <span class="score">${score}</span>
+        <span class="sub">${lands} lands · ${regions} regions</span>`;
       bar.appendChild(pill);
     }
+    if(myPlayerId && state.players?.[myPlayerId]){
+      strip.innerHTML=`
+        <span class="mini-stat">Your land: ${ownedCount(myPlayerId)} / ${CELL_COUNT}</span>
+        <span class="mini-stat">Victory: ${WIN_LANDS} lands or ${WIN_SCORE} points</span>
+        <span class="mini-stat">${state.aiEnabled ? `Solo rival: ${AI_PROFILES[state.aiLevel]?.label||"Normal"}` : `${order.length}-player conquest`}</span>`;
+    }
   }
 
-  // ---------- TILE INTERACTION / QUESTIONS ----------
+  function renderVoting(){
+    if(state?.status!=="voting") return;
+    const grid=$("erasGrid");
+    grid.innerHTML="";
+    const eras=getERAS();
+    const votes=state.votes||{};
+    const used=new Set(Object.values(votes));
+    for(const era of eras){
+      const row=document.createElement("div");
+      row.className="era";
+      const isMine=votes[myPlayerId]===era;
+      const unavailable=used.has(era)&&!isMine;
+      row.setAttribute("aria-disabled",unavailable?"true":"false");
+      const easyCount=EASY_QUESTIONS[era]?.length||0;
+      row.innerHTML=`
+        <div>
+          <div class="pick">${escapeHtml(era)}</div>
+          <div class="muted" style="font-size:12px">${easyCount} easy questions${unavailable?" · Taken":""}</div>
+        </div>`;
+      const btn=document.createElement("button");
+      btn.className="btn btn-ghost";
+      btn.textContent=isMine?"Selected":"Select";
+      btn.disabled=unavailable || !isHumanParticipant();
+      btn.addEventListener("click",()=>castVote(era));
+      row.appendChild(btn);
+      grid.appendChild(row);
+    }
+    const mine=votes[myPlayerId];
+    $("pickedBadge").textContent=mine?`Your era: ${mine}`:"None selected";
+  }
+
+  function renderBoard(){
+    if(!state) return;
+    for(const [key,id] of Object.entries(REGION_LABEL_IDS)){
+      const era=state.eraMap?.[key]||"—";
+      const controller=regionController(key,state.cells||[]);
+      $(id).textContent=controller ? `${era} · ${playerName(controller)}` : era;
+    }
+    $("battleLog").textContent=state.lastAction||"The frontier is quiet.";
+    $("aiControlWrap").classList.toggle("hidden",!state.aiEnabled);
+    $("aiLevel").value=state.aiLevel||"normal";
+    $("aiLevel").disabled=!isLobbyHost;
+
+    const order=state.playerOrder||[];
+    for(let i=0;i<CELL_COUNT;i++){
+      const tile=tiles[i],cell=state.cells?.[i]||{shares:{}};
+      const owner=ownerOf(cell.shares||{});
+      const dominant=dominantOf(cell.shares||{});
+      const reachable=isHumanParticipant()&&isReachable(i,myPlayerId,state.cells||[]);
+      const myShare=Number(cell.shares?.[myPlayerId]||0)>0;
+      tile.classList.toggle("reachable",reachable);
+      tile.classList.toggle("locked",isHumanParticipant()&&!reachable);
+      tile.classList.toggle("has-owner",Boolean(owner));
+      tile.classList.toggle("has-my-share",myShare);
+      if(previousOwners[i]!==owner && previousOwners[i]!==null && owner){
+        tile.classList.remove("captured");
+        void tile.offsetWidth;
+        tile.classList.add("captured");
+      }
+      previousOwners[i]=owner;
+      const wash=tile.querySelector(".control-wash");
+      wash.style.setProperty("--wash",dominant.id?playerColor(dominant.id):"transparent");
+      wash.style.opacity=dominant.id?String(.12+.42*(dominant.pct/100)):"0";
+      const crest=tile.querySelector(".owner-crest");
+      if(owner){
+        crest.textContent=initials(playerName(owner));
+        crest.style.background=playerColor(owner);
+        crest.title=`Controlled by ${playerName(owner)}`;
+      }else{
+        crest.textContent="";
+        crest.removeAttribute("title");
+      }
+      const sharebar=tile.querySelector(".sharebar");
+      sharebar.innerHTML="";
+      for(const id of order){
+        const pct=Number(cell.shares?.[id]||0);
+        if(pct<=0) continue;
+        const seg=document.createElement("span");
+        seg.className="share-seg";
+        seg.style.width=`${pct}%`;
+        seg.style.background=playerColor(id);
+        seg.title=`${playerName(id)}: ${Math.round(pct)}%`;
+        sharebar.appendChild(seg);
+      }
+      const terrain=TERRAIN_INFO[TERRAIN[i]]||TERRAIN_INFO.plains;
+      tile.title=`${terrain.name}. ${owner?`${playerName(owner)} controls it.`:"Contested or neutral."}${reachable?" You can attack here.":""}`;
+    }
+  }
+
+  function renderTimers(){
+    if(!state) return;
+    const now=Date.now();
+    if(state.status==="voting"){
+      const seconds=Math.max(0,Math.ceil((Number(state.votingEndsAt||0)-now)/1000));
+      $("voteTimer").textContent=`${seconds}s`;
+      $("nextTick").textContent="Map begins when voting closes";
+    }else if(state.status==="playing"){
+      const scoreSeconds=Math.max(0,Math.ceil((Number(state.nextScoreAt||0)-now)/1000));
+      const aiText=state.aiEnabled?` · AI ${Math.max(0,Math.ceil((Number(state.nextAiAt||0)-now)/1000))}s`:"";
+      $("nextTick").textContent=`Scoring wave ${scoreSeconds}s${aiText}`;
+    }else{
+      $("nextTick").textContent="";
+    }
+  }
+
+  async function castVote(era){
+    if(!isHumanParticipant()) return;
+    try{
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(stateRef);
+        if(!snap.exists()) throw new Error("Game state is missing.");
+        const d=snap.data();
+        if(d.status!=="voting") throw new Error("Voting has closed.");
+        if(!d.players?.[myPlayerId] || d.players[myPlayerId].isAI) throw new Error("You are not an active player.");
+        const votes={...(d.votes||{})};
+        const used=new Set(Object.entries(votes).filter(([id])=>id!==myPlayerId).map(([,value])=>value));
+        if(used.has(era)) throw new Error("That era is already taken.");
+        votes[myPlayerId]=era;
+        tx.update(stateRef,{votes,updatedAtMs:Date.now()});
+      });
+    }catch(error){
+      alert(error?.message||"Vote failed.");
+    }
+  }
+
+  async function maybeFinalizeVoting(){
+    if(pendingVoteFinalize || state?.status!=="voting" || Date.now()<Number(state.votingEndsAt||0) || !isHumanParticipant()) return;
+    pendingVoteFinalize=true;
+    try{
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(stateRef);
+        if(!snap.exists()) return;
+        const d=snap.data();
+        const now=Date.now();
+        if(d.status!=="voting" || now<Number(d.votingEndsAt||0)) return;
+        const all=getERAS();
+        const humanPicks=Object.entries(d.votes||{})
+          .filter(([id])=>d.players?.[id] && !d.players[id].isAI)
+          .map(([,era])=>era);
+        const chosen=Array.from(new Set(humanPicks));
+        const remain=shuffled(all.filter(era=>!chosen.includes(era)));
+        while(chosen.length<4 && remain.length) chosen.push(remain.shift());
+        const fallback=["Rome","Ancient China","Ancient Egypt","Scandinavia"];
+        while(chosen.length<4) chosen.push(fallback[chosen.length]);
+        const eraMap={TL:chosen[0],TR:chosen[1],BL:chosen[2],BR:chosen[3]};
+        const profile=AI_PROFILES[d.aiLevel]||AI_PROFILES.normal;
+        tx.update(stateRef,{
+          status:"playing",eraMap,cells:seedCells(d.playerOrder||[]),
+          nextScoreAt:now+SCORE_INTERVAL,
+          nextAiAt:d.aiEnabled?now+profile.interval:null,
+          winner:null,winReason:null,
+          lastAction:"The borders are drawn. Expand from your starting lands.",
+          updatedAtMs:now
+        });
+      });
+    }catch(error){
+      console.error("Voting finalization failed",error);
+    }finally{
+      pendingVoteFinalize=false;
+    }
+  }
+
   function getRandomQuestion(era){
-    const list = QUESTIONS[era] || [];
-    if (!list.length) return null;
-    return list[Math.floor(Math.random()*list.length)];
+    const easyPool=EASY_QUESTIONS[era]||[];
+    const challengePool=QUESTIONS[era]||[];
+    const useEasy=easyPool.length && (!challengePool.length || Math.random()<.75);
+    let pool=useEasy?easyPool:challengePool;
+    let difficulty=useEasy?"easy":"challenge";
+    if(!pool.length){
+      pool=easyPool.length?easyPool:challengePool;
+      difficulty=easyPool.length?"easy":"challenge";
+    }
+    if(!pool.length) return null;
+    let candidates=pool.filter(q=>!lastQuestionKeys.includes(`${era}|${q.q}`));
+    if(!candidates.length) candidates=pool;
+    const q=candidates[Math.floor(Math.random()*candidates.length)];
+    const key=`${era}|${q.q}`;
+    lastQuestionKeys.push(key);
+    if(lastQuestionKeys.length>12) lastQuestionKeys.shift();
+    return {...q,difficulty};
   }
 
-  function onTileClick(idx){
-    if (state?.status!=="playing") return;
-    currentCellIndex = idx;
-    currentEraForModal = eraForCell(idx);
-    if (!currentEraForModal){ alert("No era assigned here yet."); return; }
+  function onTileClick(index){
+    if(state?.status!=="playing" || !isHumanParticipant()) return;
+    if(!isReachable(index,myPlayerId,state.cells||[])){
+      alert("That land is beyond your frontier. Capture an adjacent territory first.");
+      return;
+    }
+    currentCellIndex=index;
+    currentEraForModal=state.eraMap?.[regionForCell(index)]||null;
+    if(!currentEraForModal){
+      alert("This region has not been assigned an era.");
+      return;
+    }
     openQuestion(currentEraForModal);
   }
 
   function openQuestion(era){
-    const q = getRandomQuestion(era);
-    if (!q){ alert("No questions available for " + era); return; }
-
-    answeredThisModal = false;
-    $("modalTitle").textContent = `${era} — Trivia`;
-    $("qText").textContent = q.q;
-
-    const opts = shuffle([q.a, ...(q.wrong||[])]);
-    const box = $("qOpts"); box.innerHTML = "";
-    $("qFeedback").textContent = "";
-    $("nextQ").style.display = "none";
-
-    opts.forEach(text=>{
-      const b = document.createElement("button");
-      b.className = "opt";
-      b.textContent = text;
-      b.onclick = async ()=>{
-        if (answeredThisModal) return;
-        answeredThisModal = true;
-        [...box.children].forEach(btn => btn.disabled = true);
-        await evaluateAnswer(q, text === q.a);
-      };
-      box.appendChild(b);
-    });
-
-    $("modalBack").style.display = "flex";
-  }
-
-  $("closeModal").onclick = ()=> { $("modalBack").style.display="none"; currentCellIndex=null; };
-  $("nextQ").onclick  = ()=> { openQuestion(currentEraForModal); };
-
-  async function evaluateAnswer(q, correct){
-    let feedback = "";
-    if (correct){
-      await adjustCellShare(currentCellIndex, username, +10);
-      feedback = "✅ Correct! +10% share.";
-      $("nextQ").style.display = "inline-flex";
-    } else {
-      await adjustCellShare(currentCellIndex, username, -10);
-      feedback = "❌ Incorrect. You lost up to 10%. Try another question.";
-      $("nextQ").style.display = "inline-flex";
+    const q=getRandomQuestion(era);
+    if(!q){
+      alert(`No questions are available for ${era}.`);
+      return;
     }
-    $("qFeedback").textContent = feedback;
-  }
-
-  // ---------- SHARE MATH ----------
-  async function adjustCellShare(cellIdx, player, delta){
-    try{
-      await runTransaction(db, async (tx)=>{
-        const snap = await tx.get(stateRef);
-        if (!snap.exists()) throw new Error("no state");
-        const d = snap.data();
-        if (d.status!=="playing") return;
-        const cells = d.cells || [];
-        const cell = cells[cellIdx] || {shares:{}};
-        const shares = {...(cell.shares||{})};
-        const cur = shares[player] || 0;
-
-        if (delta>0){
-          const sum = Object.values(shares).reduce((a,b)=>a+(b||0),0);
-          if (sum < 100){
-            const add = Math.min(delta, 100 - sum);
-            shares[player] = clamp(cur + add, 0, 100);
-          } else {
-            const others = Object.keys(shares).filter(k=>k!==player);
-            const sumOthers = others.reduce((a,k)=>a+(shares[k]||0),0);
-            shares[player] = clamp(cur + delta, 0, 100);
-            if (sumOthers>0){
-              for(const k of others){
-                const cut = delta * ((shares[k]||0)/sumOthers);
-                shares[k] = clamp((shares[k]||0) - cut, 0, 100);
-              }
-            }
-            const total = Object.values(shares).reduce((a,b)=>a+(b||0),0);
-            const diff = 100 - total;
-            shares[player] = clamp((shares[player]||0)+diff, 0, 100);
-          }
-        } else {
-          const lose = Math.min(Math.abs(delta), cur);
-          shares[player] = clamp(cur - lose, 0, 100);
-        }
-        cells[cellIdx] = {shares};
-        tx.update(stateRef, { cells });
+    answeredThisModal=false;
+    $("modalTitle").textContent=`${era} — Land ${Number(currentCellIndex)+1}`;
+    $("qText").textContent=q.q;
+    $("qFeedback").textContent="";
+    $("nextQ").style.display="none";
+    const difficulty=$("qDifficulty");
+    difficulty.textContent=q.difficulty==="easy"?"Easy":"Challenge";
+    difficulty.className=`difficulty ${q.difficulty}`;
+    const terrain=TERRAIN_INFO[TERRAIN[currentCellIndex]]||TERRAIN_INFO.plains;
+    $("qTerrain").textContent=`${terrain.icon} ${terrain.name}`;
+    const box=$("qOpts");
+    box.innerHTML="";
+    shuffled([q.a,...(q.wrong||[])]).forEach(text=>{
+      const button=document.createElement("button");
+      button.className="opt";
+      button.textContent=text;
+      button.addEventListener("click",async()=>{
+        if(answeredThisModal) return;
+        answeredThisModal=true;
+        [...box.children].forEach(child=>child.disabled=true);
+        await evaluateAnswer(text===q.a);
       });
-    }catch(e){ console.error(e); }
+      box.appendChild(button);
+    });
+    $("modalBack").style.display="flex";
   }
 
-  // ---------- HOST TICK ----------
-  function ensureScoreTicker(){ if (!scoreTickTimer) scoreTickTimer = setInterval(()=> hostTick(), 1000); }
-  async function hostTick(){
-    const s = await getDoc(stateRef);
-    if (!s.exists()) return;
-    const d = s.data();
-    if (d.status!=="playing") return;
-    const last = d.lastScoreTick || 0;
-    const now = Date.now();
-    const remain = Math.max(0, Math.ceil((last+20000 - now)/1000));
-    $("nextTick").textContent = remain>0 ? `Next scoring in ${remain}s` : `Scoring…`;
-    if (now - last < 20000) return;
-
-    // compute scores (16 cells; 4 regions)
-    const inc = {}; (d.players||[]).forEach(n=> inc[n]=0);
-    const cells = d.cells||[];
-    for(let i=0;i<16;i++){
-      const own = ownerOf(cells[i]?.shares||{});
-      if (own) inc[own] = (inc[own]||0) + 1;
+  async function evaluateAnswer(correct){
+    try{
+      const result=await resolvePlayerAttack(currentCellIndex,correct);
+      if(result?.ignored){
+        $("qFeedback").textContent="The frontier changed before your answer landed. Choose another territory.";
+      }else if(correct){
+        $("qFeedback").textContent=`✅ Correct! Your forces gained ${Math.round(result?.amount||0)}% control.`;
+      }else{
+        $("qFeedback").textContent=`❌ Incorrect. The defenders strengthened by ${Math.round(result?.amount||0)}%.`;
+      }
+      $("nextQ").style.display="inline-flex";
+    }catch(error){
+      $("qFeedback").textContent=error?.message||"The attack could not be resolved.";
+      $("nextQ").style.display="inline-flex";
     }
-    for(const rk of ["TL","TR","BL","BR"]){
-      const ctrl = regionController(rk, cells);
-      if (ctrl) inc[ctrl] = (inc[ctrl]||0) + 5;
-    }
+  }
 
-    const newScores = {...(d.scores||{})};
-    for(const [k,v] of Object.entries(inc)){ newScores[k] = (newScores[k]||0) + v; }
-
-    // Winner at 40 points feels right with 16 cells; tweak as you like
-    let winner=null; let top=0;
-    for(const [k,v] of Object.entries(newScores)){ if (v>=40 && v>top){top=v; winner=k;} }
-
-    await updateDoc(stateRef, {
-      scores: newScores,
-      lastScoreTick: now,
-      winner: winner || null,
-      status: winner ? "finished" : "playing"
+  async function resolvePlayerAttack(index,correct){
+    return runTransaction(db,async tx=>{
+      const snap=await tx.get(stateRef);
+      if(!snap.exists()) throw new Error("Game state is missing.");
+      const d=snap.data();
+      if(d.status!=="playing") return {ignored:true};
+      if(!d.players?.[myPlayerId] || d.players[myPlayerId].isAI) throw new Error("You are not an active player.");
+      const cells=(d.cells||[]).map(cell=>({shares:{...(cell?.shares||{})}}));
+      if(!isReachable(index,myPlayerId,cells)) return {ignored:true};
+      const beforeOwner=ownerOf(cells[index]?.shares||{});
+      const terrain=TERRAIN_INFO[TERRAIN[index]]||TERRAIN_INFO.plains;
+      let amount=0;
+      if(correct){
+        const base=22;
+        const applied=addShare(cells[index]?.shares||{},myPlayerId,Math.max(10,Math.round(base*terrain.power)));
+        cells[index]={shares:applied.shares};
+        amount=applied.gained;
+      }else{
+        const defender=beforeOwner && beforeOwner!==myPlayerId ? beforeOwner :
+          Object.entries(cells[index]?.shares||{}).filter(([id])=>id!==myPlayerId).sort((a,b)=>Number(b[1])-Number(a[1]))[0]?.[0];
+        const removed=removeShare(cells[index]?.shares||{},myPlayerId,8);
+        cells[index]={shares:removed.shares};
+        if(defender){
+          const strengthened=addShare(cells[index].shares,defender,5);
+          cells[index]={shares:strengthened.shares};
+          amount=strengthened.gained;
+        }else{
+          amount=removed.lost;
+        }
+      }
+      const afterOwner=ownerOf(cells[index]?.shares||{});
+      const action=correct
+        ? `${playerNameFrom(d,myPlayerId)} advanced into ${terrain.name.toLowerCase()}${afterOwner===myPlayerId && beforeOwner!==myPlayerId?" and captured it":""}.`
+        : `${playerNameFrom(d,myPlayerId)} was repelled at ${terrain.name.toLowerCase()}.`;
+      const victory=evaluateVictory(d,cells,d.scores||{});
+      tx.update(stateRef,{
+        cells,lastAction:action,
+        winner:victory?.winner||null,
+        winReason:victory?.reason||null,
+        status:victory?"finished":"playing",
+        updatedAtMs:Date.now()
+      });
+      return {amount,ownerChanged:beforeOwner!==afterOwner};
     });
   }
+
+  function playerNameFrom(d,id){ return d.players?.[id]?.name||id; }
+
+  function chooseAiTarget(d){
+    const cells=d.cells||[];
+    const frontier=new Set();
+    for(let i=0;i<cells.length;i++){
+      if(hasPresence(cells[i],AI_ID)){
+        for(const adj of adjacentIndexes(i)){
+          if(ownerOf(cells[adj]?.shares||{})!==AI_ID) frontier.add(adj);
+        }
+      }
+    }
+    let candidates=[...frontier];
+    if(!candidates.length){
+      candidates=cells.map((_,i)=>i).filter(i=>ownerOf(cells[i]?.shares||{})!==AI_ID);
+    }
+    if(!candidates.length) return null;
+    const tick=Number(d.aiTickCount||0);
+    candidates.sort((a,b)=>{
+      const weight=index=>{
+        const shares=cells[index]?.shares||{};
+        const owner=ownerOf(shares);
+        const humanOwned=owner && owner!==AI_ID ? 5 : 0;
+        const contested=Object.keys(shares).length>1 ? 3 : 0;
+        const city=TERRAIN[index]==="city" ? 2 : 0;
+        const open=Object.keys(shares).length===0 ? 1 : 0;
+        return humanOwned+contested+city+open;
+      };
+      const diff=weight(b)-weight(a);
+      return diff || ((a+tick*7)%CELL_COUNT)-((b+tick*7)%CELL_COUNT);
+    });
+    return candidates[0];
+  }
+
+  async function maybeRunAI(){
+    if(pendingAiTick || state?.status!=="playing" || !state.aiEnabled || Date.now()<Number(state.nextAiAt||0) || !isHumanParticipant()) return;
+    pendingAiTick=true;
+    try{
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(stateRef);
+        if(!snap.exists()) return;
+        const d=snap.data();
+        const now=Date.now();
+        if(d.status!=="playing" || !d.aiEnabled || now<Number(d.nextAiAt||0)) return;
+        const profile=AI_PROFILES[d.aiLevel]||AI_PROFILES.normal;
+        const target=chooseAiTarget(d);
+        if(target===null){
+          tx.update(stateRef,{nextAiAt:now+profile.interval,updatedAtMs:now});
+          return;
+        }
+        const cells=(d.cells||[]).map(cell=>({shares:{...(cell?.shares||{})}}));
+        const before=ownerOf(cells[target]?.shares||{});
+        const terrain=TERRAIN_INFO[TERRAIN[target]]||TERRAIN_INFO.plains;
+        const applied=addShare(cells[target]?.shares||{},AI_ID,Math.max(7,Math.round(profile.gain*terrain.power)));
+        cells[target]={shares:applied.shares};
+        const after=ownerOf(cells[target].shares);
+        const action=after===AI_ID && before!==AI_ID
+          ? `${AI_NAME} captured land ${target+1}.`
+          : `${AI_NAME} pressed the frontier at land ${target+1}.`;
+        const victory=evaluateVictory(d,cells,d.scores||{});
+        tx.update(stateRef,{
+          cells,nextAiAt:now+profile.interval,
+          aiTickCount:Number(d.aiTickCount||0)+1,
+          lastAction:action,
+          winner:victory?.winner||null,
+          winReason:victory?.reason||null,
+          status:victory?"finished":"playing",
+          updatedAtMs:now
+        });
+      });
+    }catch(error){
+      console.error("AI turn failed",error);
+    }finally{
+      pendingAiTick=false;
+    }
+  }
+
+  function evaluateVictory(d,cells,scores){
+    for(const id of d.playerOrder||[]){
+      const lands=ownedCountWith(cells,id);
+      if(lands>=WIN_LANDS) return {winner:id,reason:`Dominated ${lands} of ${CELL_COUNT} lands`};
+      if(Number(scores?.[id]||0)>=WIN_SCORE) return {winner:id,reason:`Reached ${WIN_SCORE} conquest points`};
+    }
+    return null;
+  }
+  function ownedCountWith(cells,id){
+    return cells.reduce((total,cell)=>total+(ownerOf(cell?.shares||{})===id?1:0),0);
+  }
+
+  async function maybeScore(){
+    if(pendingScoreTick || state?.status!=="playing" || Date.now()<Number(state.nextScoreAt||0) || !isHumanParticipant()) return;
+    pendingScoreTick=true;
+    try{
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(stateRef);
+        if(!snap.exists()) return;
+        const d=snap.data();
+        const now=Date.now();
+        if(d.status!=="playing" || now<Number(d.nextScoreAt||0)) return;
+        const scores={...(d.scores||{})};
+        const gains={};
+        for(const id of d.playerOrder||[]) gains[id]=ownedCountWith(d.cells||[],id);
+        for(const key of REGION_KEYS){
+          const controller=regionController(key,d.cells||[]);
+          if(controller) gains[controller]=(gains[controller]||0)+8;
+        }
+        for(const [id,gain] of Object.entries(gains)){
+          scores[id]=Number(scores[id]||0)+gain;
+        }
+        const victory=evaluateVictory(d,d.cells||[],scores);
+        const summary=Object.entries(gains).map(([id,gain])=>`${playerNameFrom(d,id)} +${gain}`).join(" · ");
+        tx.update(stateRef,{
+          scores,nextScoreAt:now+SCORE_INTERVAL,
+          lastAction:`Scoring wave: ${summary}`,
+          winner:victory?.winner||null,
+          winReason:victory?.reason||null,
+          status:victory?"finished":"playing",
+          updatedAtMs:now
+        });
+      });
+    }catch(error){
+      console.error("Scoring wave failed",error);
+    }finally{
+      pendingScoreTick=false;
+    }
+  }
+
+  async function setAiLevel(level){
+    if(!AI_PROFILES[level] || !isLobbyHost || !state?.aiEnabled) return;
+    const profile=AI_PROFILES[level];
+    try{
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(stateRef);
+        if(!snap.exists()) return;
+        const d=snap.data();
+        if(!d.aiEnabled) return;
+        tx.update(stateRef,{
+          aiLevel:level,nextAiAt:Date.now()+profile.interval,
+          lastAction:`${AI_NAME} pressure set to ${profile.label}.`,
+          updatedAtMs:Date.now()
+        });
+      });
+    }catch(error){
+      console.error("AI level update failed",error);
+    }
+  }
+
+  function handleWinner(){
+    if(state?.status!=="finished" || !state.winner) return;
+    const marker=`${state.roundKey}:${state.roundNumber}:${state.winner}`;
+    if(winnerShownFor===marker) return;
+    winnerShownFor=marker;
+    $("winText").textContent=`${playerName(state.winner)} wins the conquest!`;
+    $("winReason").textContent=state.winReason||"The map has been conquered.";
+    $("restartBtn").style.display=isLobbyHost?"inline-flex":"none";
+    $("winnerBack").style.display="flex";
+  }
+
+  async function restartRound(){
+    if(!isLobbyHost || !state) return;
+    try{
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(stateRef);
+        if(!snap.exists()) return;
+        const old=snap.data();
+        const baseRoundKey=deriveRoundKey(lobbyData);
+        const nextRound=Number(old.roundNumber||1)+1;
+        const next=buildInitialState(baseRoundKey,nextRound,`${baseRoundKey}:rematch:${nextRound}`);
+        tx.set(stateRef,next);
+      });
+      $("winnerBack").style.display="none";
+      winnerShownFor=null;
+    }catch(error){
+      alert(error?.message||"Could not start a new conquest.");
+    }
+  }
+
+  function escapeHtml(value){
+    return String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+  }
+
+  $("fitBtn").addEventListener("click",async()=>{
+    try{
+      if(!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    }catch{}
+  });
+  $("closeModal").addEventListener("click",()=>{
+    $("modalBack").style.display="none";
+    currentCellIndex=null;
+  });
+  $("nextQ").addEventListener("click",()=>openQuestion(currentEraForModal));
+  $("aiLevel").addEventListener("change",event=>setAiLevel(event.target.value));
+  $("restartBtn").addEventListener("click",restartRound);
+  $("backLobbyBtn").addEventListener("click",()=>{
+    if(history.length>1) history.back();
+    else location.href="/index.html";
+  });
+
+  async function start(){
+    if(!gameId || !username){
+      fatal("Missing gameId or username. Launch this game from an active lobby.");
+      return;
+    }
+    try{
+      currentUser=await ensureSignedIn();
+      $("authBadge").textContent=`Authenticated · ${currentUser.uid.slice(0,6)}`;
+      subscribe();
+      setInterval(()=>{
+        if(fatalStopped || !state) return;
+        renderTimers();
+        maybeFinalizeVoting();
+        maybeScore();
+        maybeRunAI();
+      },500);
+    }catch(error){
+      showFirestoreError("Firebase Authentication failed",error);
+    }
+  }
+
+  setTimeout(()=>start(),0);
+
+  const EASY_QUESTIONS = {
+  "Rome": [
+    {
+      "q": "What city was the center of the Roman Empire?",
+      "a": "Rome",
+      "wrong": [
+        "Athens",
+        "Carthage",
+        "Alexandria"
+      ]
+    },
+    {
+      "q": "What language did ancient Romans mainly speak?",
+      "a": "Latin",
+      "wrong": [
+        "Arabic",
+        "Chinese",
+        "Sanskrit"
+      ]
+    },
+    {
+      "q": "What famous Roman arena hosted gladiator fights?",
+      "a": "The Colosseum",
+      "wrong": [
+        "The Parthenon",
+        "Stonehenge",
+        "The Great Pyramid"
+      ]
+    },
+    {
+      "q": "Who was Rome’s first emperor?",
+      "a": "Augustus",
+      "wrong": [
+        "Nero",
+        "Hannibal",
+        "Socrates"
+      ]
+    },
+    {
+      "q": "What did Roman aqueducts carry into cities?",
+      "a": "Water",
+      "wrong": [
+        "Gold",
+        "Soldiers",
+        "Grain only"
+      ]
+    },
+    {
+      "q": "Which river runs through Rome?",
+      "a": "The Tiber",
+      "wrong": [
+        "The Nile",
+        "The Danube",
+        "The Indus"
+      ]
+    },
+    {
+      "q": "What was a Roman soldier called?",
+      "a": "A legionary",
+      "wrong": [
+        "A samurai",
+        "A hoplite",
+        "A knight"
+      ]
+    },
+    {
+      "q": "What number does X represent in Roman numerals?",
+      "a": "10",
+      "wrong": [
+        "5",
+        "50",
+        "100"
+      ]
+    },
+    {
+      "q": "Which volcano buried Pompeii?",
+      "a": "Mount Vesuvius",
+      "wrong": [
+        "Mount Fuji",
+        "Mount Etna",
+        "Mount Olympus"
+      ]
+    },
+    {
+      "q": "What was the Roman Senate?",
+      "a": "A governing council",
+      "wrong": [
+        "A temple",
+        "A warship",
+        "A market"
+      ]
+    },
+    {
+      "q": "What were Roman roads mainly used for?",
+      "a": "Travel, trade, and moving armies",
+      "wrong": [
+        "Growing crops",
+        "Catching fish",
+        "Storing water"
+      ]
+    },
+    {
+      "q": "Which Roman leader crossed the Rubicon?",
+      "a": "Julius Caesar",
+      "wrong": [
+        "Alexander the Great",
+        "Pericles",
+        "Ramses II"
+      ]
+    }
+  ],
+  "Greece": [
+    {
+      "q": "Which city is famous as the birthplace of democracy?",
+      "a": "Athens",
+      "wrong": [
+        "Sparta",
+        "Rome",
+        "Memphis"
+      ]
+    },
+    {
+      "q": "Who was the Greek god of thunder and king of the gods?",
+      "a": "Zeus",
+      "wrong": [
+        "Hermes",
+        "Ares",
+        "Hades"
+      ]
+    },
+    {
+      "q": "Which goddess was the patron of Athens?",
+      "a": "Athena",
+      "wrong": [
+        "Aphrodite",
+        "Hera",
+        "Demeter"
+      ]
+    },
+    {
+      "q": "What famous temple stands on the Acropolis in Athens?",
+      "a": "The Parthenon",
+      "wrong": [
+        "The Pantheon",
+        "The Colosseum",
+        "The Ziggurat of Ur"
+      ]
+    },
+    {
+      "q": "What were heavily armed Greek foot soldiers called?",
+      "a": "Hoplites",
+      "wrong": [
+        "Legionaries",
+        "Vikings",
+        "Charioteers"
+      ]
+    },
+    {
+      "q": "Which Greek city-state was famous for its military training?",
+      "a": "Sparta",
+      "wrong": [
+        "Corinth",
+        "Thebes",
+        "Miletus"
+      ]
+    },
+    {
+      "q": "Who wrote the Iliad and the Odyssey?",
+      "a": "Homer",
+      "wrong": [
+        "Socrates",
+        "Herodotus",
+        "Plato"
+      ]
+    },
+    {
+      "q": "The ancient Olympic Games honored which god?",
+      "a": "Zeus",
+      "wrong": [
+        "Poseidon",
+        "Apollo",
+        "Ares"
+      ]
+    },
+    {
+      "q": "What was the marketplace and meeting place of a Greek city called?",
+      "a": "The agora",
+      "wrong": [
+        "The forum",
+        "The citadel",
+        "The circus"
+      ]
+    },
+    {
+      "q": "Which philosopher was the teacher of Plato?",
+      "a": "Socrates",
+      "wrong": [
+        "Aristotle",
+        "Homer",
+        "Solon"
+      ]
+    },
+    {
+      "q": "What sea surrounds much of Greece?",
+      "a": "The Aegean Sea",
+      "wrong": [
+        "The Caribbean Sea",
+        "The Red Sea",
+        "The Baltic Sea"
+      ]
+    },
+    {
+      "q": "What tightly packed battle formation did Greek soldiers use?",
+      "a": "The phalanx",
+      "wrong": [
+        "The testudo",
+        "The shield wall only",
+        "The wedge cavalry charge"
+      ]
+    }
+  ],
+  "Macedonia": [
+    {
+      "q": "Who was the most famous king of ancient Macedonia?",
+      "a": "Alexander the Great",
+      "wrong": [
+        "Julius Caesar",
+        "Cyrus the Great",
+        "Ramses II"
+      ]
+    },
+    {
+      "q": "Who was Alexander the Great’s father?",
+      "a": "Philip II",
+      "wrong": [
+        "Darius III",
+        "Pericles",
+        "Leonidas"
+      ]
+    },
+    {
+      "q": "What was the capital of ancient Macedonia?",
+      "a": "Pella",
+      "wrong": [
+        "Athens",
+        "Rome",
+        "Babylon"
+      ]
+    },
+    {
+      "q": "Who taught Alexander the Great?",
+      "a": "Aristotle",
+      "wrong": [
+        "Socrates",
+        "Homer",
+        "Confucius"
+      ]
+    },
+    {
+      "q": "What long spear did Macedonian soldiers carry?",
+      "a": "The sarissa",
+      "wrong": [
+        "The pilum",
+        "The gladius",
+        "The longbow"
+      ]
+    },
+    {
+      "q": "Which empire did Alexander defeat?",
+      "a": "The Persian Empire",
+      "wrong": [
+        "The Roman Empire",
+        "The Inca Empire",
+        "The Mali Empire"
+      ]
+    },
+    {
+      "q": "What was Alexander’s famous horse called?",
+      "a": "Bucephalus",
+      "wrong": [
+        "Pegasus",
+        "Incitatus",
+        "Sleipnir"
+      ]
+    },
+    {
+      "q": "Macedonia lay just north of which region?",
+      "a": "Greece",
+      "wrong": [
+        "Egypt",
+        "China",
+        "Scandinavia"
+      ]
+    },
+    {
+      "q": "What formation made Macedonian armies powerful?",
+      "a": "A deep phalanx",
+      "wrong": [
+        "A naval blockade",
+        "A wagon circle",
+        "A line of chariots only"
+      ]
+    },
+    {
+      "q": "Alexander founded many cities bearing what name?",
+      "a": "Alexandria",
+      "wrong": [
+        "Constantinople",
+        "Sparta",
+        "Nineveh"
+      ]
+    },
+    {
+      "q": "Alexander’s conquests helped spread what culture?",
+      "a": "Greek culture",
+      "wrong": [
+        "Aztec culture",
+        "Norse culture",
+        "Inca culture"
+      ]
+    },
+    {
+      "q": "At which battle did Alexander defeat Darius III decisively?",
+      "a": "Gaugamela",
+      "wrong": [
+        "Marathon",
+        "Actium",
+        "Cannae"
+      ]
+    }
+  ],
+  "Ancient China": [
+    {
+      "q": "What long defensive structure is a symbol of China?",
+      "a": "The Great Wall",
+      "wrong": [
+        "Hadrian’s Wall",
+        "The Colosseum",
+        "The Parthenon"
+      ]
+    },
+    {
+      "q": "Which river is also called the Yellow River?",
+      "a": "The Huang He",
+      "wrong": [
+        "The Nile",
+        "The Tiber",
+        "The Amazon"
+      ]
+    },
+    {
+      "q": "Who became the first emperor of a united China?",
+      "a": "Qin Shi Huang",
+      "wrong": [
+        "Confucius",
+        "Kublai Khan",
+        "Sun Tzu"
+      ]
+    },
+    {
+      "q": "What famous clay army guarded the first emperor’s tomb?",
+      "a": "The Terracotta Army",
+      "wrong": [
+        "The Golden Guard",
+        "The Stone Legion",
+        "The Bronze Fleet"
+      ]
+    },
+    {
+      "q": "What valuable fabric was China famous for producing?",
+      "a": "Silk",
+      "wrong": [
+        "Denim",
+        "Velvet",
+        "Wool only"
+      ]
+    },
+    {
+      "q": "Which thinker emphasized respect, duty, and good government?",
+      "a": "Confucius",
+      "wrong": [
+        "Socrates",
+        "Buddha",
+        "Homer"
+      ]
+    },
+    {
+      "q": "What material did ancient Chinese people help invent for writing?",
+      "a": "Paper",
+      "wrong": [
+        "Plastic",
+        "Glass",
+        "Concrete"
+      ]
+    },
+    {
+      "q": "What is a ruling family line in Chinese history called?",
+      "a": "A dynasty",
+      "wrong": [
+        "A senate",
+        "A legion",
+        "A republic"
+      ]
+    },
+    {
+      "q": "What idea said a ruler governed with heaven’s approval?",
+      "a": "The Mandate of Heaven",
+      "wrong": [
+        "Divine Right of Rome",
+        "The Social Contract",
+        "The Twelve Tables"
+      ]
+    },
+    {
+      "q": "Which dynasty followed the Qin and ruled for centuries?",
+      "a": "The Han Dynasty",
+      "wrong": [
+        "The Ming Dynasty",
+        "The Yuan Dynasty",
+        "The Xia only"
+      ]
+    },
+    {
+      "q": "What trade route carried silk westward?",
+      "a": "The Silk Road",
+      "wrong": [
+        "The Royal Road",
+        "The Appian Way",
+        "The Amber Trail only"
+      ]
+    },
+    {
+      "q": "What ancient Chinese book is linked to Sun Tzu?",
+      "a": "The Art of War",
+      "wrong": [
+        "The Republic",
+        "The Iliad",
+        "The Epic of Gilgamesh"
+      ]
+    }
+  ],
+  "Ancient Inca": [
+    {
+      "q": "In which mountain range did the Inca live?",
+      "a": "The Andes",
+      "wrong": [
+        "The Alps",
+        "The Himalayas",
+        "The Rockies"
+      ]
+    },
+    {
+      "q": "What was the capital of the Inca Empire?",
+      "a": "Cusco",
+      "wrong": [
+        "Lima",
+        "Tenochtitlan",
+        "Quito"
+      ]
+    },
+    {
+      "q": "What famous Inca site sits high in the mountains?",
+      "a": "Machu Picchu",
+      "wrong": [
+        "Chichen Itza",
+        "Pompeii",
+        "Petra"
+      ]
+    },
+    {
+      "q": "What animal did the Inca use for carrying goods?",
+      "a": "Llamas",
+      "wrong": [
+        "Camels",
+        "Horses",
+        "Elephants"
+      ]
+    },
+    {
+      "q": "What knotted cords did the Inca use to record information?",
+      "a": "Quipu",
+      "wrong": [
+        "Runes",
+        "Papyrus",
+        "Cuneiform"
+      ]
+    },
+    {
+      "q": "What farming method created flat steps on mountain slopes?",
+      "a": "Terrace farming",
+      "wrong": [
+        "Chinampas",
+        "Slash-and-burn only",
+        "Open-field farming"
+      ]
+    },
+    {
+      "q": "Who was the Inca sun god?",
+      "a": "Inti",
+      "wrong": [
+        "Ra",
+        "Zeus",
+        "Thor"
+      ]
+    },
+    {
+      "q": "What title was used for the Inca ruler?",
+      "a": "Sapa Inca",
+      "wrong": [
+        "Pharaoh",
+        "Consul",
+        "Satrap"
+      ]
+    },
+    {
+      "q": "The Inca built a huge network of what?",
+      "a": "Roads",
+      "wrong": [
+        "Canals across oceans",
+        "Railways",
+        "Stone aquariums"
+      ]
+    },
+    {
+      "q": "Which modern country contains the heartland of the Inca Empire?",
+      "a": "Peru",
+      "wrong": [
+        "Italy",
+        "Norway",
+        "India"
+      ]
+    },
+    {
+      "q": "Which Spanish conquistador defeated the Inca Empire?",
+      "a": "Francisco Pizarro",
+      "wrong": [
+        "Hernán Cortés",
+        "Christopher Columbus",
+        "Ferdinand Magellan"
+      ]
+    },
+    {
+      "q": "What crop was especially important in the high Andes?",
+      "a": "Potatoes",
+      "wrong": [
+        "Rice",
+        "Olives",
+        "Dates"
+      ]
+    }
+  ],
+  "Ancient Aztec": [
+    {
+      "q": "What was the capital of the Aztec Empire?",
+      "a": "Tenochtitlan",
+      "wrong": [
+        "Cusco",
+        "Rome",
+        "Babylon"
+      ]
+    },
+    {
+      "q": "Tenochtitlan stood where which modern city now stands?",
+      "a": "Mexico City",
+      "wrong": [
+        "Lima",
+        "Madrid",
+        "Cairo"
+      ]
+    },
+    {
+      "q": "On what lake was Tenochtitlan built?",
+      "a": "Lake Texcoco",
+      "wrong": [
+        "Lake Victoria",
+        "Lake Titicaca",
+        "Lake Erie"
+      ]
+    },
+    {
+      "q": "What were the Aztec floating garden farms called?",
+      "a": "Chinampas",
+      "wrong": [
+        "Terraces",
+        "Quipus",
+        "Satrapies"
+      ]
+    },
+    {
+      "q": "What language did many Aztecs speak?",
+      "a": "Nahuatl",
+      "wrong": [
+        "Latin",
+        "Quechua",
+        "Greek"
+      ]
+    },
+    {
+      "q": "Which crop was used to make chocolate drinks?",
+      "a": "Cacao",
+      "wrong": [
+        "Barley",
+        "Olives",
+        "Rice"
+      ]
+    },
+    {
+      "q": "Who was a major Aztec sun and war god?",
+      "a": "Huitzilopochtli",
+      "wrong": [
+        "Thor",
+        "Mars",
+        "Inti"
+      ]
+    },
+    {
+      "q": "Which Spanish conquistador led the campaign against the Aztecs?",
+      "a": "Hernán Cortés",
+      "wrong": [
+        "Francisco Pizarro",
+        "Leif Erikson",
+        "Marco Polo"
+      ]
+    },
+    {
+      "q": "Which Aztec ruler met Cortés in 1519?",
+      "a": "Moctezuma II",
+      "wrong": [
+        "Atahualpa",
+        "Mansa Musa",
+        "Cyrus II"
+      ]
+    },
+    {
+      "q": "What bird appears in the Aztec founding legend of Tenochtitlan?",
+      "a": "An eagle",
+      "wrong": [
+        "A raven",
+        "A swan",
+        "A peacock"
+      ]
+    },
+    {
+      "q": "What shape were many major Aztec temples?",
+      "a": "Stepped pyramids",
+      "wrong": [
+        "Round domes",
+        "Wooden towers",
+        "Underground halls"
+      ]
+    },
+    {
+      "q": "Which modern country was home to the Aztec Empire?",
+      "a": "Mexico",
+      "wrong": [
+        "Peru",
+        "Egypt",
+        "Greece"
+      ]
+    }
+  ],
+  "Ancient Egypt": [
+    {
+      "q": "Which river made farming possible in ancient Egypt?",
+      "a": "The Nile",
+      "wrong": [
+        "The Tiber",
+        "The Indus",
+        "The Rhine"
+      ]
+    },
+    {
+      "q": "What title was used for an Egyptian ruler?",
+      "a": "Pharaoh",
+      "wrong": [
+        "Consul",
+        "Emperor of Rome",
+        "Satrap"
+      ]
+    },
+    {
+      "q": "What huge stone tombs were built for some pharaohs?",
+      "a": "Pyramids",
+      "wrong": [
+        "Ziggurats",
+        "Longhouses",
+        "Amphitheaters"
+      ]
+    },
+    {
+      "q": "What picture-based writing did Egyptians use?",
+      "a": "Hieroglyphs",
+      "wrong": [
+        "Runes",
+        "Cuneiform",
+        "Latin letters only"
+      ]
+    },
+    {
+      "q": "Why were bodies made into mummies?",
+      "a": "To preserve them for the afterlife",
+      "wrong": [
+        "To train doctors",
+        "To create statues",
+        "To feed animals"
+      ]
+    },
+    {
+      "q": "Who was the Egyptian sun god?",
+      "a": "Ra",
+      "wrong": [
+        "Zeus",
+        "Thor",
+        "Mars"
+      ]
+    },
+    {
+      "q": "What creature has a lion’s body and a human head?",
+      "a": "The Sphinx",
+      "wrong": [
+        "A centaur",
+        "A griffin",
+        "A minotaur"
+      ]
+    },
+    {
+      "q": "What writing material was made from a Nile plant?",
+      "a": "Papyrus",
+      "wrong": [
+        "Parchment only",
+        "Silk",
+        "Bamboo"
+      ]
+    },
+    {
+      "q": "Which young pharaoh’s tomb was found nearly intact?",
+      "a": "Tutankhamun",
+      "wrong": [
+        "Ramses I",
+        "Akhenaten",
+        "Khufu"
+      ]
+    },
+    {
+      "q": "Which famous queen allied with Julius Caesar and Mark Antony?",
+      "a": "Cleopatra",
+      "wrong": [
+        "Nefertiti",
+        "Hatshepsut",
+        "Boudica"
+      ]
+    },
+    {
+      "q": "What desert surrounds much of Egypt?",
+      "a": "The Sahara",
+      "wrong": [
+        "The Gobi",
+        "The Mojave",
+        "The Kalahari only"
+      ]
+    },
+    {
+      "q": "Which direction did the Nile flow?",
+      "a": "North toward the Mediterranean",
+      "wrong": [
+        "South toward central Africa",
+        "East toward India",
+        "West toward the Atlantic"
+      ]
+    }
+  ],
+  "Ancient Mali": [
+    {
+      "q": "In which part of Africa was the Mali Empire?",
+      "a": "West Africa",
+      "wrong": [
+        "Southern Africa",
+        "East Asia",
+        "Northern Europe"
+      ]
+    },
+    {
+      "q": "Who was Mali’s most famous wealthy ruler?",
+      "a": "Mansa Musa",
+      "wrong": [
+        "Sundiata only",
+        "Shaka Zulu",
+        "Hannibal"
+      ]
+    },
+    {
+      "q": "What valuable metal made Mali wealthy?",
+      "a": "Gold",
+      "wrong": [
+        "Tin",
+        "Iron only",
+        "Silver from America"
+      ]
+    },
+    {
+      "q": "Which city became famous for trade and learning?",
+      "a": "Timbuktu",
+      "wrong": [
+        "Rome",
+        "Athens",
+        "Kyoto"
+      ]
+    },
+    {
+      "q": "Which religion was followed by Mansa Musa?",
+      "a": "Islam",
+      "wrong": [
+        "Norse paganism",
+        "Hinduism",
+        "Shinto"
+      ]
+    },
+    {
+      "q": "What major river flowed through the Mali Empire?",
+      "a": "The Niger River",
+      "wrong": [
+        "The Nile",
+        "The Amazon",
+        "The Tiber"
+      ]
+    },
+    {
+      "q": "What mineral was traded across the Sahara along with gold?",
+      "a": "Salt",
+      "wrong": [
+        "Coal",
+        "Oil",
+        "Marble"
+      ]
+    },
+    {
+      "q": "What animals carried goods across the Sahara?",
+      "a": "Camels",
+      "wrong": [
+        "Llamas",
+        "Elephants",
+        "Reindeer"
+      ]
+    },
+    {
+      "q": "Who founded the Mali Empire according to tradition?",
+      "a": "Sundiata Keita",
+      "wrong": [
+        "Mansa Musa",
+        "Askia Muhammad",
+        "Ibn Battuta"
+      ]
+    },
+    {
+      "q": "What were West African oral historians and storytellers called?",
+      "a": "Griots",
+      "wrong": [
+        "Skalds",
+        "Senators",
+        "Scribes only"
+      ]
+    },
+    {
+      "q": "Mansa Musa made a famous pilgrimage to which city?",
+      "a": "Mecca",
+      "wrong": [
+        "Rome",
+        "Jerusalem only",
+        "Athens"
+      ]
+    },
+    {
+      "q": "What great mud-brick mosque is associated with Djenné?",
+      "a": "The Great Mosque of Djenné",
+      "wrong": [
+        "The Parthenon",
+        "The Pantheon",
+        "The Blue Mosque"
+      ]
+    }
+  ],
+  "Sumer": [
+    {
+      "q": "Sumer developed in what region?",
+      "a": "Mesopotamia",
+      "wrong": [
+        "Scandinavia",
+        "Mesoamerica",
+        "The Andes"
+      ]
+    },
+    {
+      "q": "Between which two rivers did Sumer grow?",
+      "a": "The Tigris and Euphrates",
+      "wrong": [
+        "The Nile and Congo",
+        "The Rhine and Danube",
+        "The Indus and Ganges"
+      ]
+    },
+    {
+      "q": "What writing system did Sumerians use?",
+      "a": "Cuneiform",
+      "wrong": [
+        "Hieroglyphs",
+        "Runes",
+        "Latin"
+      ]
+    },
+    {
+      "q": "What large stepped temple did Sumerians build?",
+      "a": "A ziggurat",
+      "wrong": [
+        "A pyramid tomb",
+        "An amphitheater",
+        "A longhouse"
+      ]
+    },
+    {
+      "q": "Sumer was made up of many independent what?",
+      "a": "City-states",
+      "wrong": [
+        "Modern nations",
+        "Roman provinces",
+        "Nomadic tribes only"
+      ]
+    },
+    {
+      "q": "Which was a famous Sumerian city?",
+      "a": "Ur",
+      "wrong": [
+        "Sparta",
+        "Cusco",
+        "Tenochtitlan"
+      ]
+    },
+    {
+      "q": "What material was commonly used for Sumerian writing tablets?",
+      "a": "Clay",
+      "wrong": [
+        "Paper",
+        "Silk",
+        "Wood only"
+      ]
+    },
+    {
+      "q": "What farming system brought river water to fields?",
+      "a": "Irrigation",
+      "wrong": [
+        "Terrace walls only",
+        "Chinampas",
+        "Greenhouses"
+      ]
+    },
+    {
+      "q": "Which famous epic comes from ancient Mesopotamia?",
+      "a": "The Epic of Gilgamesh",
+      "wrong": [
+        "The Iliad",
+        "The Aeneid",
+        "Beowulf"
+      ]
+    },
+    {
+      "q": "Sumer lay mostly in which modern country?",
+      "a": "Iraq",
+      "wrong": [
+        "Norway",
+        "Mexico",
+        "Peru"
+      ]
+    },
+    {
+      "q": "Which invention is often associated with ancient Mesopotamia?",
+      "a": "The wheel",
+      "wrong": [
+        "The steam engine",
+        "The airplane",
+        "The compass"
+      ]
+    },
+    {
+      "q": "Who usually worked as trained writers in Sumer?",
+      "a": "Scribes",
+      "wrong": [
+        "Gladiators",
+        "Vikings",
+        "Samurai"
+      ]
+    }
+  ],
+  "Persia": [
+    {
+      "q": "Who founded the Persian Empire?",
+      "a": "Cyrus the Great",
+      "wrong": [
+        "Alexander the Great",
+        "Julius Caesar",
+        "Ramses II"
+      ]
+    },
+    {
+      "q": "Ancient Persia was centered in which modern country?",
+      "a": "Iran",
+      "wrong": [
+        "Italy",
+        "Peru",
+        "Norway"
+      ]
+    },
+    {
+      "q": "What road helped Persian messages and armies travel quickly?",
+      "a": "The Royal Road",
+      "wrong": [
+        "The Appian Way",
+        "The Silk Road only",
+        "The Inca Trail"
+      ]
+    },
+    {
+      "q": "What was a Persian provincial governor called?",
+      "a": "A satrap",
+      "wrong": [
+        "A consul",
+        "A pharaoh",
+        "A shogun"
+      ]
+    },
+    {
+      "q": "Which Persian king organized the empire into satrapies?",
+      "a": "Darius I",
+      "wrong": [
+        "Leonidas",
+        "Pericles",
+        "Augustus"
+      ]
+    },
+    {
+      "q": "What grand ceremonial capital did Darius build?",
+      "a": "Persepolis",
+      "wrong": [
+        "Pompeii",
+        "Athens",
+        "Timbuktu"
+      ]
+    },
+    {
+      "q": "What elite Persian soldiers were called the Immortals?",
+      "a": "A royal guard unit",
+      "wrong": [
+        "Priests",
+        "Merchants",
+        "Farmers"
+      ]
+    },
+    {
+      "q": "What religion is associated with the prophet Zoroaster?",
+      "a": "Zoroastrianism",
+      "wrong": [
+        "Buddhism",
+        "Shinto",
+        "Norse paganism"
+      ]
+    },
+    {
+      "q": "Persia fought famous wars against which Greek city-states?",
+      "a": "Athens and Sparta",
+      "wrong": [
+        "Rome and Carthage",
+        "Cusco and Tenochtitlan",
+        "Ur and Babylon only"
+      ]
+    },
+    {
+      "q": "What underground water channels did Persians develop?",
+      "a": "Qanats",
+      "wrong": [
+        "Aqueduct arches only",
+        "Chinampas",
+        "Quipus"
+      ]
+    },
+    {
+      "q": "Cyrus was known for allowing conquered peoples to keep what?",
+      "a": "Many local customs and religions",
+      "wrong": [
+        "No local customs",
+        "Only Persian clothing",
+        "Only Greek laws"
+      ]
+    },
+    {
+      "q": "Which Macedonian conqueror later defeated Persia?",
+      "a": "Alexander the Great",
+      "wrong": [
+        "Hannibal",
+        "Mansa Musa",
+        "Leif Erikson"
+      ]
+    }
+  ],
+  "Assyria": [
+    {
+      "q": "The Assyrian Empire arose in what region?",
+      "a": "Mesopotamia",
+      "wrong": [
+        "The Andes",
+        "Scandinavia",
+        "West Africa"
+      ]
+    },
+    {
+      "q": "What was one famous Assyrian capital?",
+      "a": "Nineveh",
+      "wrong": [
+        "Athens",
+        "Cusco",
+        "Tenochtitlan"
+      ]
+    },
+    {
+      "q": "The Assyrians were especially famous for their powerful what?",
+      "a": "Army",
+      "wrong": [
+        "Ocean navy only",
+        "Democratic assembly",
+        "Monasteries"
+      ]
+    },
+    {
+      "q": "What metal gave many Assyrian weapons strength?",
+      "a": "Iron",
+      "wrong": [
+        "Aluminum",
+        "Silver",
+        "Tin only"
+      ]
+    },
+    {
+      "q": "What military skill helped Assyrians capture walled cities?",
+      "a": "Siege warfare",
+      "wrong": [
+        "Naval boarding",
+        "Air attacks",
+        "Elephant racing"
+      ]
+    },
+    {
+      "q": "Which Assyrian king built a famous library at Nineveh?",
+      "a": "Ashurbanipal",
+      "wrong": [
+        "Cyrus",
+        "Hammurabi",
+        "Sargon of Akkad"
+      ]
+    },
+    {
+      "q": "Which river flowed near the Assyrian heartland?",
+      "a": "The Tigris",
+      "wrong": [
+        "The Amazon",
+        "The Tiber",
+        "The Thames"
+      ]
+    },
+    {
+      "q": "What did Assyrian palace walls often display?",
+      "a": "Carved stone reliefs",
+      "wrong": [
+        "Stained-glass windows",
+        "Printed posters",
+        "Oil paintings"
+      ]
+    },
+    {
+      "q": "What fast vehicle did Assyrian armies use in battle?",
+      "a": "Chariots",
+      "wrong": [
+        "Trains",
+        "Longships",
+        "Bicycles"
+      ]
+    },
+    {
+      "q": "Assyria was centered mainly in which modern country?",
+      "a": "Iraq",
+      "wrong": [
+        "Mexico",
+        "Sweden",
+        "Chile"
+      ]
+    },
+    {
+      "q": "What animals were often shown in Assyrian royal hunt reliefs?",
+      "a": "Lions",
+      "wrong": [
+        "Penguins",
+        "Llamas",
+        "Kangaroos"
+      ]
+    },
+    {
+      "q": "How did Assyria often control rebellious conquered regions?",
+      "a": "By moving populations and stationing armies",
+      "wrong": [
+        "By holding elections only",
+        "By abandoning all cities",
+        "By banning roads"
+      ]
+    }
+  ],
+  "Scandinavia": [
+    {
+      "q": "What were seafaring warriors from Scandinavia often called?",
+      "a": "Vikings",
+      "wrong": [
+        "Samurai",
+        "Hoplites",
+        "Legionaries"
+      ]
+    },
+    {
+      "q": "What type of ship helped Vikings travel far?",
+      "a": "A longship",
+      "wrong": [
+        "A trireme",
+        "A canoe only",
+        "A steamship"
+      ]
+    },
+    {
+      "q": "Who was the Norse god of thunder?",
+      "a": "Thor",
+      "wrong": [
+        "Loki",
+        "Odin",
+        "Freyr"
+      ]
+    },
+    {
+      "q": "Who was the chief Norse god associated with wisdom?",
+      "a": "Odin",
+      "wrong": [
+        "Thor",
+        "Baldur",
+        "Tyr"
+      ]
+    },
+    {
+      "q": "What writing symbols did Norse people use?",
+      "a": "Runes",
+      "wrong": [
+        "Hieroglyphs",
+        "Cuneiform",
+        "Quipus"
+      ]
+    },
+    {
+      "q": "What are the deep coastal inlets of Norway called?",
+      "a": "Fjords",
+      "wrong": [
+        "Deltas",
+        "Oases",
+        "Canyons"
+      ]
+    },
+    {
+      "q": "Which countries form the main Scandinavian heartland?",
+      "a": "Norway, Sweden, and Denmark",
+      "wrong": [
+        "Spain, France, and Italy",
+        "Peru, Chile, and Bolivia",
+        "Egypt, Libya, and Sudan"
+      ]
+    },
+    {
+      "q": "What hall did Odin welcome many fallen warriors into?",
+      "a": "Valhalla",
+      "wrong": [
+        "Olympus",
+        "The Underworld of Hades",
+        "The Forum"
+      ]
+    },
+    {
+      "q": "Which Norse explorer reached North America?",
+      "a": "Leif Erikson",
+      "wrong": [
+        "Marco Polo",
+        "Christopher Columbus only",
+        "Hernán Cortés"
+      ]
+    },
+    {
+      "q": "What was a Norse public assembly called?",
+      "a": "A Thing",
+      "wrong": [
+        "A Senate",
+        "A Satrapy",
+        "A Quipu"
+      ]
+    },
+    {
+      "q": "What shape were most Viking shields?",
+      "a": "Round",
+      "wrong": [
+        "Triangular",
+        "Rectangular tower shields",
+        "Star-shaped"
+      ]
+    },
+    {
+      "q": "Besides raiding, Vikings were also active as what?",
+      "a": "Traders and settlers",
+      "wrong": [
+        "Only priests",
+        "Only farmers who never traveled",
+        "Only palace scribes"
+      ]
+    }
+  ]
+};
+
   const QUESTIONS = {
     "Rome": [
       {q:"Who defeated Mark Antony at the Battle of Actium (31 BC)?", a:"Octavian", wrong:["Julius Caesar","Pompey","Brutus"]},
@@ -2931,14 +4945,6 @@
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
 
 
 
