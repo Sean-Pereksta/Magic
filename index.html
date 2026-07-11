@@ -411,6 +411,141 @@
     .send:hover{background:var(--brand-dark);transform:translateY(-1px)}
     .send:disabled{opacity:.48;cursor:not-allowed;transform:none;box-shadow:none}
 
+    .chat-share-bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:9px 11px;
+      border-top:1px solid var(--line);
+      background:#fff;
+    }
+    .chat-share-copy{
+      min-width:0;
+      display:flex;
+      align-items:center;
+      gap:9px;
+    }
+    .chat-share-icon{
+      width:34px;
+      height:34px;
+      flex:0 0 auto;
+      display:grid;
+      place-items:center;
+      border-radius:11px;
+      background:var(--brand-soft);
+      border:1px solid #fecdd3;
+    }
+    .chat-share-copy strong{
+      display:block;
+      max-width:190px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      font-size:.76rem;
+    }
+    .chat-share-copy small{
+      display:block;
+      margin-top:2px;
+      color:var(--muted);
+      font-size:.66rem;
+      line-height:1.25;
+    }
+    .share-lobby-btn{
+      flex:0 0 auto;
+      min-height:36px;
+      padding:7px 10px;
+      border:1px solid #fda4af;
+      border-radius:11px;
+      color:#9f1239;
+      background:#fff1f3;
+      font-size:.7rem;
+      font-weight:900;
+      cursor:pointer;
+      transition:.15s ease;
+    }
+    .share-lobby-btn:hover{background:#ffe4e8;transform:translateY(-1px)}
+    .share-lobby-btn:disabled{opacity:.48;cursor:not-allowed;transform:none}
+
+    .msg.lobby-message{
+      width:100%;
+      max-width:100%;
+      padding:10px;
+      border-color:#fecdd3;
+      background:linear-gradient(145deg,#fff,#fff7f8);
+    }
+    .lobby-ad{
+      margin-top:7px;
+      padding:11px;
+      border:1px solid #fecdd3;
+      border-radius:14px;
+      background:#fff;
+      box-shadow:0 8px 20px rgba(180,35,47,.08);
+    }
+    .lobby-ad.expired{
+      opacity:.7;
+      filter:grayscale(.35);
+    }
+    .lobby-ad-top{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .lobby-ad-game{
+      width:42px;
+      height:42px;
+      flex:0 0 auto;
+      display:grid;
+      place-items:center;
+      border-radius:13px;
+      background:linear-gradient(145deg,#fff1f3,#ffe4e8);
+      border:1px solid #fecdd3;
+      font-size:21px;
+    }
+    .lobby-ad-copy{min-width:0;flex:1}
+    .lobby-ad-name{
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      color:#101828;
+      font-size:.84rem;
+      font-weight:950;
+    }
+    .lobby-ad-meta{
+      margin-top:2px;
+      color:var(--muted);
+      font-size:.68rem;
+      line-height:1.35;
+    }
+    .lobby-ad-footer{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:9px;
+      margin-top:10px;
+      padding-top:9px;
+      border-top:1px solid #f2f4f7;
+    }
+    .lobby-ad-status{
+      color:#067647;
+      font-size:.67rem;
+      font-weight:850;
+    }
+    .join-ad-btn{
+      min-height:34px;
+      padding:7px 12px;
+      border:1px solid var(--brand);
+      border-radius:10px;
+      color:#fff;
+      background:var(--brand);
+      font-size:.72rem;
+      font-weight:900;
+      cursor:pointer;
+      transition:.15s ease;
+    }
+    .join-ad-btn:hover{background:var(--brand-dark);transform:translateY(-1px)}
+    .join-ad-btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
+
     .toast{
       position:fixed;
       left:50%;
@@ -443,6 +578,8 @@
       .frame-wrap{min-height:calc(100vh - 80px);border-radius:16px}
       iframe{min-height:calc(100vh - 82px)}
       .fab{right:14px;bottom:calc(14px + env(safe-area-inset-bottom));width:54px;height:54px;border-radius:17px}
+      .chat-share-copy strong{max-width:150px}
+      .share-lobby-btn{padding:7px 9px}
       .chat-sheet{
         right:7px;
         bottom:calc(76px + env(safe-area-inset-bottom));
@@ -529,6 +666,17 @@
       Log in or create a user inside the lobby first. Chat will automatically use that username.
     </div>
 
+    <div class="chat-share-bar">
+      <div class="chat-share-copy">
+        <div class="chat-share-icon" aria-hidden="true">🎮</div>
+        <div>
+          <strong id="activeLobbyLabel">No active public lobby</strong>
+          <small id="activeLobbyHelp">Join or create a public lobby to advertise it here.</small>
+        </div>
+      </div>
+      <button id="shareLobbyBtn" class="share-lobby-btn" type="button" disabled>📣 Advertise</button>
+    </div>
+
     <div class="chat-input">
       <input id="chatMessage" type="text" maxlength="500" placeholder="Type a message…" autocomplete="off" disabled />
       <button id="sendBtn" class="send" type="button" disabled>Send</button>
@@ -548,7 +696,9 @@
       orderBy,
       limit,
       onSnapshot,
-      serverTimestamp
+      serverTimestamp,
+      doc,
+      getDoc
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import {
       getAuth,
@@ -579,13 +729,121 @@
     const chatLoginNote = document.getElementById("chatLoginNote");
     const msgInput = document.getElementById("chatMessage");
     const sendBtn = document.getElementById("sendBtn");
+    const shareLobbyBtn = document.getElementById("shareLobbyBtn");
+    const activeLobbyLabel = document.getElementById("activeLobbyLabel");
+    const activeLobbyHelp = document.getElementById("activeLobbyHelp");
     const toast = document.getElementById("toast");
 
     let currentUsername = "";
+    let currentLobbyShare = null;
+    let lastLobbySignature = "";
     let toastTimer = null;
+
+    const LOBBY_URL = "https://catnmice.com/lobby/lobby.html";
+    const GAME_INFO = {
+      cat:{title:"Cat & Mouse",emoji:"🐭"},
+      catmobile:{title:"Cat vs Mouse Mobile",emoji:"🐭📱",maxPlayers:8},
+      grass:{title:"Grass Realms",emoji:"🌿"},
+      estate:{title:"Estate Defense",emoji:"🏡"},
+      mountain:{title:"Mountain Blade Skirmish",emoji:"🗻",maxPlayers:4},
+      mountonline:{title:"Mountain Blade Online",emoji:"🗻🌐"},
+      crownlands:{title:"Crownlands Online",emoji:"👑🌐"},
+      rock:{title:"Rock Paper Scissors MMO",emoji:"✊📄✂️"},
+      stockkings:{title:"Stock Kings",emoji:"📈",maxPlayers:8},
+      dutchblitz:{title:"Dutch Blitz Arena",emoji:"🃏",maxPlayers:4},
+      splinters:{title:"Splinters",emoji:"🪄",maxPlayers:4},
+      spelltower:{title:"Spell Tower",emoji:"🗼",maxPlayers:8},
+      zombiezone:{title:"Zombie Zone",emoji:"🧟‍♂️",maxPlayers:4},
+      biblegame:{title:"Bible Game",emoji:"📖",maxPlayers:20},
+      historyrush:{title:"History Rush",emoji:"🏛️",maxPlayers:4},
+      crowncouncil:{title:"Faction Forge",emoji:"👑",maxPlayers:2},
+      forgeroyale:{title:"Forge Royale",emoji:"⚔️",maxPlayers:2},
+      rogueduel:{title:"Rogue Duel",emoji:"🂡",maxPlayers:2},
+      cardrealmsmulti:{title:"Card Realms Multiplayer",emoji:"🃏⚔️",maxPlayers:2},
+      thegame:{title:"The Game",emoji:"🃏",maxPlayers:5},
+      castledefense:{title:"Castle Defense",emoji:"🏰",maxPlayers:4},
+      trumprev:{title:"Base Defense: Revenge",emoji:"🏰🔥",maxPlayers:4},
+      warspan:{title:"Warspan Online",emoji:"⚔️🃏",maxPlayers:4},
+      stoneyrelic:{title:"Stoney's Relic",emoji:"🗿",maxPlayers:8},
+      balatle:{title:"Balatle",emoji:"⚔️",maxPlayers:8},
+      chesswarlord:{title:"Chess Warlord",emoji:"♛⚔️",maxPlayers:8}
+    };
 
     function getLobbyUsername(){
       return (localStorage.getItem("gh.username") || "").trim();
+    }
+
+    function getActiveLobbyId(){
+      return (localStorage.getItem("gh.lastLobbyId") || "").trim();
+    }
+
+    function getGameInfo(key){
+      if(GAME_INFO[key]) return GAME_INFO[key];
+      const title = String(key || "Game")
+        .replace(/[-_]+/g," ")
+        .replace(/\b\w/g,character=>character.toUpperCase());
+      return {title,emoji:"🎮"};
+    }
+
+    function setLobbyShareState(data,message){
+      currentLobbyShare = data || null;
+      shareLobbyBtn.disabled = !data;
+      if(data){
+        const game = getGameInfo(data.gameType);
+        activeLobbyLabel.textContent = `${game.emoji} ${data.name || game.title}`;
+        activeLobbyHelp.textContent = "Post a joinable card in Game Hub chat.";
+        shareLobbyBtn.title = `Advertise ${data.name || game.title}`;
+      }else{
+        activeLobbyLabel.textContent = "No active public lobby";
+        activeLobbyHelp.textContent = message || "Join or create a public lobby to advertise it here.";
+        shareLobbyBtn.title = activeLobbyHelp.textContent;
+      }
+    }
+
+    async function syncActiveLobby(force=false){
+      const lobbyId = getActiveLobbyId();
+      const signature = `${getLobbyUsername()}|${lobbyId}`;
+      if(!force && signature === lastLobbySignature) return currentLobbyShare;
+      lastLobbySignature = signature;
+
+      if(!currentUsername || !lobbyId){
+        setLobbyShareState(null,currentUsername
+          ? "Join or create a public lobby to advertise it here."
+          : "Log in through the lobby first.");
+        return null;
+      }
+
+      shareLobbyBtn.disabled = true;
+      activeLobbyLabel.textContent = "Checking active lobby…";
+      activeLobbyHelp.textContent = "Making sure it is still open.";
+
+      try{
+        const snapshot = await getDoc(doc(db,"lobbies",lobbyId));
+        if(!snapshot.exists()){
+          setLobbyShareState(null,"That lobby has closed.");
+          return null;
+        }
+        const lobby = {id:snapshot.id,...snapshot.data()};
+        const players = Array.isArray(lobby.players) ? lobby.players : [];
+        if(lobby.status !== "waiting"){
+          setLobbyShareState(null,"The game has already started.");
+          return null;
+        }
+        if(!players.includes(currentUsername)){
+          setLobbyShareState(null,"Your saved lobby session is no longer active.");
+          return null;
+        }
+        if((lobby.visibility || "public") !== "public"){
+          setLobbyShareState(null,"Private lobbies should use username invitations.");
+          return null;
+        }
+        setLobbyShareState(lobby);
+        return lobby;
+      }catch(error){
+        console.warn("Active lobby check failed",error);
+        setLobbyShareState(null,"Could not verify the active lobby.");
+        return null;
+      }
     }
 
     function syncLobbyUsername(){
@@ -605,6 +863,7 @@
         sendBtn.disabled = true;
         msgInput.placeholder = "Log in inside the lobby to chat";
       }
+      syncActiveLobby();
     }
 
     function showToast(message,type=""){
@@ -664,9 +923,11 @@
       }
     }
 
-    function renderMessage({username="",text="",timestamp}){
+    function renderMessage(message){
+      const {username="",text="",timestamp,type="",lobbyId=""} = message || {};
+      const isLobbyAd = type === "lobby_ad" && lobbyId;
       const wrapper = document.createElement("article");
-      wrapper.className = `msg${username === currentUsername ? " mine" : ""}`;
+      wrapper.className = `msg${username === currentUsername ? " mine" : ""}${isLobbyAd ? " lobby-message" : ""}`;
 
       const meta = document.createElement("div");
       meta.className = "meta";
@@ -681,14 +942,141 @@
 
       const when = document.createElement("span");
       when.textContent = formatTime(timestamp);
-
-      const body = document.createElement("div");
-      body.className = "text";
-      body.textContent = text;
-
       meta.append(who,separator,when);
-      wrapper.append(meta,body);
+      wrapper.appendChild(meta);
+
+      if(text){
+        const body = document.createElement("div");
+        body.className = "text";
+        body.textContent = text;
+        wrapper.appendChild(body);
+      }
+
+      if(isLobbyAd){
+        const game = getGameInfo(message.gameType);
+        const playerCount = Number(message.playerCount || 0);
+        const maxPlayers = Number(message.maxPlayers || game.maxPlayers || 0);
+        const ad = document.createElement("div");
+        ad.className = "lobby-ad";
+
+        const top = document.createElement("div");
+        top.className = "lobby-ad-top";
+        const icon = document.createElement("div");
+        icon.className = "lobby-ad-game";
+        icon.textContent = message.gameEmoji || game.emoji;
+        const copy = document.createElement("div");
+        copy.className = "lobby-ad-copy";
+        const name = document.createElement("div");
+        name.className = "lobby-ad-name";
+        name.textContent = message.lobbyName || "Open Lobby";
+        const detail = document.createElement("div");
+        detail.className = "lobby-ad-meta";
+        detail.textContent = `${message.gameTitle || game.title} • Hosted by ${message.host || username || "Player"}`;
+        copy.append(name,detail);
+        top.append(icon,copy);
+
+        const footer = document.createElement("div");
+        footer.className = "lobby-ad-footer";
+        const status = document.createElement("div");
+        status.className = "lobby-ad-status";
+        status.textContent = maxPlayers > 0 ? `● Waiting • ${playerCount}/${maxPlayers} players` : `● Waiting • ${playerCount} players`;
+        const joinButton = document.createElement("button");
+        joinButton.type = "button";
+        joinButton.className = "join-ad-btn";
+        joinButton.textContent = "Join Lobby";
+        joinButton.addEventListener("click",()=>joinAdvertisedLobby(message,ad,status,joinButton));
+        footer.append(status,joinButton);
+        ad.append(top,footer);
+        wrapper.appendChild(ad);
+      }
+
       return wrapper;
+    }
+
+    async function joinAdvertisedLobby(message,ad,status,button){
+      button.disabled = true;
+      button.textContent = "Checking…";
+      try{
+        const snapshot = await getDoc(doc(db,"lobbies",message.lobbyId));
+        if(!snapshot.exists()) throw new Error("This lobby has closed.");
+        const lobby = snapshot.data();
+        if(lobby.status !== "waiting") throw new Error("This game has already started.");
+        if((lobby.visibility || "public") !== "public") throw new Error("This lobby is now private.");
+        const players = Array.isArray(lobby.players) ? lobby.players : [];
+        const game = getGameInfo(lobby.gameType);
+        const maxPlayers = Number(game.maxPlayers || message.maxPlayers || 0);
+        if(maxPlayers > 0 && players.length >= maxPlayers && !players.includes(currentUsername)){
+          throw new Error("This lobby is full.");
+        }
+
+        toggleChatPanel(false);
+        showLoader();
+        frame.src = `${LOBBY_URL}?lobby=${encodeURIComponent(message.lobbyId)}`;
+      }catch(error){
+        ad.classList.add("expired");
+        status.textContent = error.message || "This lobby is unavailable.";
+        status.style.color = "var(--bad)";
+        button.textContent = "Unavailable";
+        showToast(error.message || "This lobby is unavailable.","error");
+      }
+    }
+
+    async function advertiseActiveLobby(){
+      syncLobbyUsername();
+      if(!currentUsername){
+        showToast("Log in through the lobby before advertising a game.","error");
+        return;
+      }
+
+      shareLobbyBtn.disabled = true;
+      shareLobbyBtn.textContent = "Checking…";
+      const lobby = await syncActiveLobby(true);
+      if(!lobby){
+        shareLobbyBtn.textContent = "📣 Advertise";
+        return;
+      }
+
+      const cooldownKey = `gh.chatAd.${lobby.id}`;
+      const lastShared = Number(sessionStorage.getItem(cooldownKey) || 0);
+      if(Date.now() - lastShared < 30000){
+        const seconds = Math.ceil((30000 - (Date.now() - lastShared)) / 1000);
+        showToast(`You can advertise this lobby again in ${seconds} seconds.`,`error`);
+        shareLobbyBtn.disabled = false;
+        shareLobbyBtn.textContent = "📣 Advertise";
+        return;
+      }
+
+      const game = getGameInfo(lobby.gameType);
+      const players = Array.isArray(lobby.players) ? lobby.players : [];
+      try{
+        await addDoc(collection(db,"chat"),{
+          username:currentUsername,
+          text:`${currentUsername} is looking for players!`,
+          type:"lobby_ad",
+          lobbyId:lobby.id,
+          lobbyName:lobby.name || `${game.title} Lobby`,
+          gameType:lobby.gameType || "",
+          gameTitle:game.title,
+          gameEmoji:game.emoji,
+          host:lobby.host || currentUsername,
+          visibility:"public",
+          playerCount:players.length,
+          maxPlayers:Number(game.maxPlayers || 0),
+          timestamp:serverTimestamp()
+        });
+        sessionStorage.setItem(cooldownKey,String(Date.now()));
+        shareLobbyBtn.textContent = "✓ Advertised";
+        showToast("Your lobby was advertised in chat.");
+        setTimeout(()=>{
+          shareLobbyBtn.textContent = "📣 Advertise";
+          shareLobbyBtn.disabled = !currentLobbyShare;
+        },1800);
+      }catch(error){
+        console.warn("Lobby advertisement failed",error);
+        showToast("The lobby advertisement could not be posted.","error");
+        shareLobbyBtn.textContent = "📣 Advertise";
+        shareLobbyBtn.disabled = !currentLobbyShare;
+      }
     }
 
     async function sendMessage(){
@@ -757,6 +1145,7 @@
 
     toggleChat.addEventListener("click",()=>toggleChatPanel());
     closeChat.addEventListener("click",()=>toggleChatPanel(false));
+    shareLobbyBtn.addEventListener("click",advertiseActiveLobby);
     sendBtn.addEventListener("click",sendMessage);
     msgInput.addEventListener("keydown",event=>{
       if(event.key === "Enter"){
@@ -770,8 +1159,21 @@
     });
     window.addEventListener("focus",syncLobbyUsername);
     document.addEventListener("visibilitychange",()=>{
-      if(!document.hidden) syncLobbyUsername();
+      if(!document.hidden){
+        syncLobbyUsername();
+        syncActiveLobby(true);
+      }
     });
+
+    // Same-tab localStorage changes from the lobby iframe do not fire a storage
+    // event in this page, so this lightweight check detects lobby joins/leaves.
+    setInterval(()=>{
+      const signature = `${getLobbyUsername()}|${getActiveLobbyId()}`;
+      if(signature !== lastLobbySignature){
+        syncLobbyUsername();
+        syncActiveLobby(true);
+      }
+    },1200);
 
     syncLobbyUsername();
 
@@ -781,5 +1183,4 @@
   </script>
 </body>
 </html>
-
 
