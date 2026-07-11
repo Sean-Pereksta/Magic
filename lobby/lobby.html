@@ -1111,7 +1111,15 @@
 
     async function resumeFromUrlOrStorage(){
       const params=new URLSearchParams(location.search),linkLobby=params.get("lobby");
-      if(linkLobby){history.replaceState({},"",location.pathname);if(username)requestJoinLobby(linkLobby);else pendingAction={type:"join",lobbyId:linkLobby};return;}
+      if(linkLobby){
+        history.replaceState({},"",location.pathname);
+        if(username)requestJoinLobby(linkLobby);
+        else{
+          pendingAction={type:"join",lobbyId:linkLobby};
+          openModal("accountGateModal");
+        }
+        return;
+      }
       const last=read(SK.lastLobby);if(last&&username){try{const snap=await getDoc(doc(db,"lobbies",last));if(snap.exists()&&(snap.data().players||[]).includes(username)){currentLobbyId=last;currentLobbyData={id:last,...snap.data()};listenToCurrentLobby();}}catch{}}
     }
 
@@ -1131,4 +1139,3 @@
   </script>
 </body>
 </html>
-
