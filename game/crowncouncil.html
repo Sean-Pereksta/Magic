@@ -906,7 +906,7 @@
 /* ---------------- Firebase ---------------- */
 // NOTE: Make sure your Firestore rules allow access to
 // /lobbies/{gameId} and /lobbies/{gameId}/crowncouncil/state
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
@@ -919,14 +919,16 @@ const firebaseConfig = {
   appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
 };
 
-const app  = initializeApp(firebaseConfig);
+const app  = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const db   = getFirestore(app);
 const auth = getAuth(app);
 
-// 🔐 Sign in anonymously
-signInAnonymously(auth).catch((error) => {
-  console.error("Anon sign-in failed", error);
-});
+// 🔐 Reuse an existing anonymous session when the game is launched again in the same shell.
+if (!auth.currentUser) {
+  signInAnonymously(auth).catch((error) => {
+    console.error("Anon sign-in failed", error);
+  });
+}
 
 
 /* --------- safe deep clone ---------- */
@@ -941,6 +943,7 @@ function deepClone(obj){
 const params   = new URLSearchParams(location.search);
 const gameId   = params.get("gameId");
 const username = params.get("username");
+const clientInstanceId = crypto.randomUUID();
 const BATTLE_DEBUG_MODE = params.get("debugBattle") === "1";
 if (!gameId || !username){ alert("Missing gameId or username in URL."); }
 
@@ -950,17 +953,23 @@ const battleRef = doc(db,"lobbies",gameId,"crowncouncil","battle");
 
 /* ---------------- Pace / sizes ---------------- */
 const PACE = {
-  tickMs: 560,
-  atkMult: 2.35,
+  tickMs: 420,
+  atkMult: 1.85,
   moveSteps: 1,
   poisonDotMs: 900,
-  poisonSlowMs: 1100,
+  poisonSlowMs: 1050,
   toxicDotMs: 1000
 };
-const VIEW_MS  = 120;   // render cadence
-const LOGIC_MS = 560;   // core logic cadence
-const BATTLE_PUBLISH_MS = 280; // host battle publish cadence
-const MOVE_MS  = 560;   // gate movement per unit
+// The host simulates locally. Firebase receives a coalesced visual/gameplay snapshot,
+// rather than being read and written on every animation step.
+const SIMULATION_MS = 180;
+const LOGIC_MS = 420;
+const HOST_PHASE_MS = 350;
+const BATTLE_PUBLISH_MS = 650;
+const BATTLE_HEARTBEAT_MS = 5000;
+const MOVE_MS = 500;
+const SUDDEN_DEATH_MS = 60000;
+const SUDDEN_DEATH_TICK_MS = 1800;
 
 let CELL=64, GAP=4, W=8, H=16;
 
@@ -1025,6 +1034,22 @@ viewport.addEventListener("pointercancel", ()=>{ dragging=false; });
 let didEnsure = false;
 let ensureInFlight = false;
 let listenersStarted = false;
+let disposed = false;
+let unsubscribeLobby = null;
+let unsubscribeState = null;
+let unsubscribeBattle = null;
+let hostTickBusy = false;
+let battleTickBusy = false;
+let battleStartInFlight = false;
+let phaseWriteInFlight = false;
+let battlePublishInFlight = false;
+let queuedBattlePayload = null;
+let hostBattleState = null;
+let hostBattleTickId = 0;
+let hostBattleStartedAt = 0;
+let hostSuddenDeathAt = 0;
+let lastLeaseRenewalAt = 0;
+let lastLeaseClaimAttemptAt = 0;
 
 async function fetchPlayerMMR(players){
   const p = Array.isArray(players) ? players.slice(0,2) : [];
@@ -1045,45 +1070,99 @@ async function fetchPlayerMMR(players){
   return out;
 }
 
-/* -------- transactional state creation (host only) -------- */
-async function ensureStateExists(){
-  if (didEnsure || ensureInFlight) return;
+function timestampMs(value){
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000 + Math.floor((value.nanoseconds||0)/1e6);
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function lobbySessionKey(lob, players){
+  const explicit = lob && (lob.crownCouncilSessionId || lob.gameInstanceId || lob.matchId || lob.sessionId || lob.launchId);
+  if (explicit) return String(explicit);
+  const started = timestampMs(lob && (lob.gameStartedAt || lob.startedAt || lob.matchStartedAt || lob.createdAt));
+  if (started) return gameId + ":" + started;
+  return gameId + ":" + String((lob && lob.host) || "") + ":" + (players||[]).join("|");
+}
+function newMatchState(players, seededMMR, sessionKey){
+  const now = Date.now();
+  return {
+    schemaVersion: 2,
+    sessionKey: sessionKey,
+    matchCreatedAt: now,
+    hostClientId: clientInstanceId,
+    hostLeaseUntil: now + 30000,
+    players: players,
+    lives: [4, 4],
+    phase: players.length < 2 ? "waiting" : "faction-select",
+    phaseEndsAt: players.length < 2 ? 0 : now + 20000,
+    roster:   { p0: [], p1: [] },
+    relics:   { p0: [], p1: [] },
+    tactics:  { p0: [], p1: [] },
+    formations:{ p0: "balanced", p1: "balanced" },
+    factions: { p0: null, p1: null },
+    selections:   { p0: [], p1: [] },
+    currentPacks: { p0: [], p1: [] },
+    bonusFor: null,
+    draftIndex: 0,
+    winner: null,
+    mmr: seededMMR,
+    mmrChange: [0, 0],
+    eloCommitted: false
+  };
+}
+function samePlayers(a,b){
+  const aa=Array.isArray(a)?a.slice(0,2):[];
+  const bb=Array.isArray(b)?b.slice(0,2):[];
+  return aa.length===bb.length && aa.every((v,i)=>v===bb[i]);
+}
+
+/* -------- transactional state creation / stale-match reset (host only) -------- */
+async function ensureStateExists(lobbyData){
+  if (didEnsure || ensureInFlight || !isHost || disposed) return;
   ensureInFlight = true;
   try {
-    const lobSnap = await getDoc(lobbyRef);
-    const lob = lobSnap.exists() ? lobSnap.data() : {};
+    const lob = lobbyData || {};
     const players = Array.isArray(lob.players) ? lob.players.slice(0, 2) : [];
-    const seededMMR = await fetchPlayerMMR(players);
+    const sessionKey = lobbySessionKey(lob, players);
 
     await runTransaction(db, async (tx)=>{
       const stSnap = await tx.get(stateRef);
-      if (stSnap.exists()) {
-        didEnsure = true;
+      const existing = stSnap.exists() ? stSnap.data() : null;
+      const staleSchema = !!(existing && existing.schemaVersion !== 2);
+      const staleSession = !!(existing && existing.sessionKey && existing.sessionKey !== sessionKey);
+      const stalePlayers = !!(existing && !samePlayers(existing.players, players) && !["waiting","faction-select"].includes(existing.phase));
+      const completedMatch = !!(existing && existing.phase === "game-over");
+      const shouldReset = !existing || staleSchema || staleSession || stalePlayers || completedMatch;
+
+      if (!shouldReset) {
+        tx.update(stateRef, {
+          hostClientId: clientInstanceId,
+          hostLeaseUntil: Date.now() + 30000
+        });
         return;
       }
-      const now = Date.now();
 
-      tx.set(stateRef, {
-        players: players,
-        lives: [4, 4],
-        phase: players.length < 2 ? "waiting" : "faction-select",
-        phaseEndsAt: players.length < 2 ? 0 : now + 20000,
-        roster:   { p0: [], p1: [] },
-        relics:   { p0: [], p1: [] },
-        tactics:  { p0: [], p1: [] },
-        formations:{ p0: "balanced", p1: "balanced" },
-        factions: { p0: null, p1: null },
-        selections:   { p0: [], p1: [] },
-        currentPacks: { p0: [], p1: [] },
-        bonusFor: null,
-        draftIndex: 0,
-        winner: null,
-        mmr: seededMMR,
-        mmrChange: [0, 0],
-        eloCommitted: false
-      });
-      didEnsure = true;
+      const seededMMR=[1000,1000];
+      for (let i=0;i<2;i++){
+        const name=players[i];
+        if (!name) continue;
+        const userSnap=await tx.get(doc(db,"users",name));
+        if (!userSnap.exists()) continue;
+        const val=Number(userSnap.data()?.crowncouncilElo);
+        if (Number.isFinite(val) && val>0) seededMMR[i]=Math.round(val);
+      }
+
+      tx.set(stateRef, newMatchState(players, seededMMR, sessionKey));
+      tx.set(battleRef, Object.assign(battleEmpty(), {
+        schemaVersion:2,
+        sessionKey:sessionKey,
+        battleTickId:0,
+        updatedAt:Date.now()
+      }));
     });
+    didEnsure = true;
   } catch (e) {
     console.error("ensureStateExists failed", e);
   } finally {
@@ -1434,15 +1513,15 @@ function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
 let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
 let lastRenderedBattleTickId = -1;
 const battleSnapshotBuffer = [];
-const BATTLE_BUFFER_MS = 250;
-const BATTLE_BUFFER_MAX = 15;
+const BATTLE_BUFFER_MS = 160;
+const BATTLE_BUFFER_MAX = 10;
 const BATTLE_SYNC_GAP_WARN = 5;
 const BATTLE_SYNC_BADGE_MS = 900;
 let battleSyncBadgeUntil = 0;
 const LOW_EFFECTS_MODE = false;
 const DEBUG_BIG_UNIT_FOOTPRINT = false;
-const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[]});
-const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], updatedAt:0});
+const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], startedAt:0, suddenDeathTickAt:0});
+const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], startedAt:0, suddenDeathTickAt:0, updatedAt:0});
 
 function battleFromStateFallback(st){
   const fld = (st && st.field) ? st.field : fieldEmpty();
@@ -1467,7 +1546,7 @@ const lastHpPct = new Map();
 const unitEls = new Map();
 let visualFrameHandle = 0;
 /* 2×2 helpers */
-function unitSize(u){ return TROOPS[u.type] && TROOPS[u.type].size===2 ? 2 : 1; }
+function unitSize(u){ return (u && u.size===2) || (u && TROOPS[u.type] && TROOPS[u.type].size===2) ? 2 : 1; }
 function rectDistance(a, b){
   const as = unitSize(a);
   const bs = unitSize(b);
@@ -1485,7 +1564,9 @@ function rectDistance(a, b){
   const dx = ax1 > bx2 ? ax1 - bx2 : bx1 > ax2 ? bx1 - ax2 : 0;
   const dy = ay1 > by2 ? ay1 - by2 : by1 > ay2 ? by1 - ay2 : 0;
 
-  return dx + dy;
+  // Chebyshev rectangle distance makes every touching edge/corner a valid melee angle.
+  // A range-1 unit can hit any adjacent square around a 1×1 or 2×2 target.
+  return Math.max(dx, dy);
 }
 function nearestPointOnRectToUnit(target, mover){
   const ts = unitSize(target);
@@ -1950,6 +2031,7 @@ function pushSyncedFx(field, ev, now){
     battleTickId: Number.isFinite(field.battleTickId) ? field.battleTickId : null,
     createdAt: now || Date.now()
   });
+  if (field.syncedFx.length > 18) field.syncedFx.splice(0, field.syncedFx.length-18);
 }
 
 function groundTickParticles(x,y, purple){
@@ -2367,12 +2449,45 @@ function strongestArmorTargetInRange(u, units){
   }
   return best;
 }
+function targetPressure(targetId, units, team){
+  if (!targetId) return 0;
+  let count=0;
+  for (const ally of units){
+    if (ally && ally.p===team && ally.hp>0 && ally.targetId===targetId) count++;
+  }
+  return count;
+}
+function chooseBalancedEnemy(u, units, field, preferRanged){
+  const candidates=[];
+  for (const v of units){
+    if (!v || v.p===u.p || v.hp<=0) continue;
+    if (preferRanged && !(TROOPS[v.type] && TROOPS[v.type].role==="back")) continue;
+    const d=rectDistance(u,v);
+    const pressure=targetPressure(v.id,units,u.p);
+    const wounded=(1-(v.hp/Math.max(1,v.maxhp)));
+    candidates.push({v:v, score:d*10 + pressure*2.5 - wounded*1.5});
+  }
+  for (const w of (field.wards||[])){
+    if (!w || w.p===u.p || w.hp<=0 || !w.shoot) continue;
+    const id=w.id || ("ward:"+w.x+":"+w.y);
+    const d=rectDistance(u,w);
+    candidates.push({v:w, score:d*10 + targetPressure(id,units,u.p)*2.5 + 3});
+  }
+  if (!candidates.length && preferRanged) return chooseBalancedEnemy(u,units,field,false);
+  if (!candidates.length) return null;
+  candidates.sort((a,b)=>a.score-b.score);
+  const chosen=candidates[0].v;
+  u.targetId = chosen.id || ("ward:"+chosen.x+":"+chosen.y);
+  return chosen;
+}
 function pickTarget(u, units, field){
   const priority = strongestArmorTargetInRange(u, units);
-  if (priority) return priority;
-  return u.hunterRanged ? nearestEnemyRangedPriority(u,units,field)
-                        : nearestEnemy(u,units,field);
+  if (priority){ u.targetId=priority.id; return priority; }
+  const current = units.find(v=>v.id===u.targetId && v.p!==u.p && v.hp>0);
+  if (current && rectDistance(u,current) <= Math.max(3,(u.range||1)+2)) return current;
+  return chooseBalancedEnemy(u,units,field,!!u.hunterRanged);
 }
+
 function nearestEnemyRangedPriority(u,units,field){
   const wards = field.wards || [];
   let best=null, bd=1e9;
@@ -2394,18 +2509,40 @@ function nearestEnemyRangedPriority(u,units,field){
 function manhattanUnits(u,t){
   return rectDistance(u,t);
 }
-function stepToward(u,t,units){
-  const a=unitCenter(u), b=nearestPointOnRectToUnit(t, u);
-  const dx=b.x-a.x, dy=b.y-a.y;
-  const sx=Math.sign(dx), sy=Math.sign(dy);
-  const absx=Math.abs(dx), absy=Math.abs(dy);
-  const opts = (absx>=absy)
-    ? [[u.x+sx,u.y],[u.x,u.y+sy],[u.x-sx,u.y],[u.x,u.y-sy]]
-    : [[u.x,u.y+sy],[u.x+sx,u.y],[u.x,u.y-sy],[u.x-sx,u.y]];
-  for(let i=0;i<opts.length;i++){
-    const p=opts[i];
-    if (canMoveTo(u,units,p[0],p[1])){ u.x=p[0]; u.y=p[1]; return; }
+function nearbyCrowdPenalty(u, units, nx, ny){
+  let penalty = 0;
+  const probe = Object.assign({}, u, {x:nx,y:ny});
+  for (const other of units){
+    if (!other || other.id===u.id || other.hp<=0) continue;
+    if (other.p===u.p && rectDistance(probe, other)<=1) penalty += 1;
   }
+  return penalty;
+}
+function stepToward(u,t,units){
+  const candidates = [
+    [u.x+1,u.y],[u.x-1,u.y],[u.x,u.y+1],[u.x,u.y-1]
+  ];
+  const legal = [];
+  for (const p of candidates){
+    if (!canMoveTo(u,units,p[0],p[1])) continue;
+    const probe = Object.assign({}, u, {x:p[0],y:p[1]});
+    legal.push({
+      x:p[0], y:p[1],
+      distance:rectDistance(probe,t),
+      crowd:nearbyCrowdPenalty(u,units,p[0],p[1]),
+      lane:Math.abs((p[0] + (unitSize(u)-1)/2) - (W-1)/2)
+    });
+  }
+  if (!legal.length) return false;
+  legal.sort((a,b)=>
+    (a.distance-b.distance) ||
+    (a.crowd-b.crowd) ||
+    (a.lane-b.lane) ||
+    (Math.random()-.5)
+  );
+  const best=legal[0];
+  u.x=best.x; u.y=best.y;
+  return true;
 }
 function canStepNow(u, now){
   if (!u.nextStep || now>=u.nextStep){
@@ -2414,27 +2551,37 @@ function canStepNow(u, now){
   }
   return false;
 }
-function blinkIfNeeded(u){
+function blinkIfNeeded(u, units){
   if(!u.blink50 || u.blinked) return;
   if (u.hp <= 0.5*u.maxhp){
     const dir = (u.p===0? +1 : -1);
     for(let i=0;i<3;i++){
       const nx=u.x, ny=u.y+dir;
       if (!inside(nx,ny)) break;
-      if (canMoveTo(u, S.field.units, nx, ny)){ u.x=nx; u.y=ny; }
+      if (canMoveTo(u, units, nx, ny)){ u.x=nx; u.y=ny; }
+      else break;
     }
     u.blinked=true;
   }
 }
 
 /* Terrain */
+function upsertTerrainTile(list, tile, includeOwner){
+  const existing = list.find(v=>v.x===tile.x && v.y===tile.y && (!includeOwner || v.p===tile.p));
+  if (existing){
+    existing.until = Math.max(existing.until||0, tile.until||0);
+    return existing;
+  }
+  list.push(tile);
+  return tile;
+}
 function paintPoison(state, cx, cy, durMs, ownerP){
   const until = Date.now()+durMs;
   if (!state.field.poison) state.field.poison = [];
   for (let dy=-1; dy<=1; dy++){
     for (let dx=-1; dx<=1; dx++){
       const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-      state.field.poison.push({x:x,y:y,until:until,p:ownerP});
+      upsertTerrainTile(state.field.poison,{x:x,y:y,until:until,p:ownerP},true);
     }
   }
 }
@@ -2444,14 +2591,14 @@ function addToxicSplash(state, cx, cy, durMs, ownerP){
   for(let dy=-1;dy<=1;dy++){
     for(let dx=-1;dx<=1;dx++){
       const x=cx+dx, y=cy+dy; if(!inside(x,y)) continue;
-      state.field.toxic.push({x:x,y:y,until:until,p:ownerP});
+      upsertTerrainTile(state.field.toxic,{x:x,y:y,until:until,p:ownerP},true);
     }
   }
 }
 function addAcid(state, x,y, durMs){
   if(!inside(x,y)) return;
   if (!state.field.acid) state.field.acid = [];
-  state.field.acid.push({x:x,y:y,until:Date.now()+durMs});
+  upsertTerrainTile(state.field.acid,{x:x,y:y,until:Date.now()+durMs},false);
 }
 function placeWard(state, x, y, hp, dur, opts){
   if (!inside(x,y)) return false;
@@ -2684,11 +2831,13 @@ function applyDamage(victim, dmg, st){
 
 }
 function splash(units, field, x,y,dmg,srcP,kn,strong,opts){
+  const hitIds = new Set();
   for(let dy=-1;dy<=1;dy++){
     for(let dx=-1;dx<=1;dx++){
       const nx=x+dx, ny=y+dy; if(!inside(nx,ny)) continue;
-      const hit=units.find(o=>o.p!==srcP && nx>=o.x && nx<o.x+unitSize(o) && ny>=o.y && ny<o.y+unitSize(o));
-      if(hit){
+      const hit=units.find(o=>o.p!==srcP && o.hp>0 && nx>=o.x && nx<o.x+unitSize(o) && ny>=o.y && ny<o.y+unitSize(o));
+      if(hit && !hitIds.has(hit.id)){
+        hitIds.add(hit.id);
         const rd = reduceDamageForTarget(dmg, hit, field, opts);
         applyDamage(hit, rd, {field:field});
         if(kn) tryKnock(x,y,hit,units,strong);
@@ -2714,7 +2863,7 @@ function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
     let cand=null,bd=1e9;
     for(let i=0;i<units.length;i++){
       const v=units[i];
-      if(v.p===srcP || hit.has(v.id)) continue;
+      if(v.p===srcP || v.hp<=0 || hit.has(v.id)) continue;
       const d=rectDistance(cur, v);
       if(d<=2 && d<bd){ bd=d; cand=v; }
     }
@@ -2753,7 +2902,8 @@ function attack(u, t, now, st){
 
     if (u.splash1){
       const sd = Math.max(1, Math.floor(u.dmg * 0.6));
-      splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
+      const impact = nearestPointOnRectToUnit(t, u);
+      splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
     }
     if (u.paints) paintPoison(st, u.x, u.y, 7000, u.p);
 
@@ -2763,7 +2913,8 @@ function attack(u, t, now, st){
 
     deal(t, u.dmg, true);
     const sd = Math.max(1, Math.floor(u.dmg * (u.legendary ? 0.75 : 0.6)));
-    splash(st.field.units, st.field, t.x, t.y, sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
+    const impact = nearestPointOnRectToUnit(t, u);
+    splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, true, false, {ignoreArmor:!!u.trueDamage});
 
   } else if (u.chain3){
 
@@ -2786,7 +2937,8 @@ function attack(u, t, now, st){
     const strong = !!u.strongKnock;
     if (u.splash1){
       const sd = Math.max(1, Math.floor(u.dmg * 0.6));
-      splash(st.field.units, st.field, t.x, t.y, sd, u.p, !!u.knock, strong, {ignoreArmor:!!u.trueDamage});
+      const impact = nearestPointOnRectToUnit(t, u);
+      splash(st.field.units, st.field, Math.round(impact.x), Math.round(impact.y), sd, u.p, !!u.knock, strong, {ignoreArmor:!!u.trueDamage});
     }
     if (u.toxicSplash){
       addToxicSplash(st, t.x, t.y, 7000, u.p);
@@ -2904,47 +3056,212 @@ function rankClass(m){
 }
 
 function unitSig(u){
-  return [u.id, u.x, u.y, u.hp, u.status||"", u.slowUntil||0, u.bindUntil||0].join("|");
+  return [
+    u.id,u.x,u.y,u.hp,u.targetId||"",u.animUntil||0,
+    u.slowUntil||0,u.bindUntil||0,u.woundUntil||0,
+    u.statusShockUntil||0,u.statusPoisonUntil||0,u.statusAcidUntil||0
+  ].join("|");
+}
+function terrainSig(list){
+  return (list||[]).map(v=>[v.x,v.y,v.p==null?"":v.p,v.until||0].join("|")).sort().join(";");
 }
 function battleFieldSignature(field){
   const units = (field.units||[]).map(unitSig).sort().join(";");
-  const wards = (field.wards||[]).map(w=>[w.id,w.x,w.y,w.hp].join("|")).sort().join(";");
-  const poisonN = (field.poison||[]).length;
-  const toxicN  = (field.toxic||[]).length;
-  const acidN   = (field.acid||[]).length;
-  return [ (field.units||[]).length, units, (field.wards||[]).length, wards, poisonN, toxicN, acidN ].join("#");
+  const wards = (field.wards||[]).map(w=>[w.id||"",w.x,w.y,w.hp,w.until||0,w.disabledUntil||0,w.next||0,w.nextHeal||0].join("|")).sort().join(";");
+  return [units,wards,terrainSig(field.poison),terrainSig(field.toxic),terrainSig(field.acid)].join("#");
 }
 
 let hostTick=null, battleTick=null;
 
-/* keep lobby.players in state.players (host only) */
-async function syncPlayersIntoStateIfNeeded(){
-  const stSnap = await getDoc(stateRef);
-  if (!stSnap.exists()) return;
-  const st = stSnap.data();
-  const want = lobbyPlayers.slice(0,2);
-  const cur = Array.isArray(st.players)? st.players : [];
-  if (want.length && (cur.length!==want.length || cur.some((n,i)=>n!==want[i]))){
-    const next = { players: want };
-    if ((st.phase === "waiting" || st.phase === "faction-select") && !st.eloCommitted){
-      next.mmr = await fetchPlayerMMR(want);
-      next.mmrChange = [0,0];
+function sanitizeFirestoreValue(value){
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (Array.isArray(value)){
+    return value.map(sanitizeFirestoreValue).filter(v=>v!==undefined);
+  }
+  if (typeof value === "object"){
+    const out={};
+    for (const [key,val] of Object.entries(value)){
+      const clean=sanitizeFirestoreValue(val);
+      if (clean!==undefined) out[key]=clean;
     }
-    await updateDoc(stateRef, next);
+    return out;
+  }
+  if (typeof value === "number" && !Number.isFinite(value)) return 0;
+  return value;
+}
+function compactUnitForSync(unit){
+  const timerZeroKeys = new Set([
+    "nextAtk","nextHeal","nextWard","nextStep","nextBurrow","nextBrood","nextRegen",
+    "slowUntil","bindUntil","woundUntil","rangeDebuffUntil","statusShockUntil","statusPoisonUntil","statusAcidUntil",
+    "_poisonTick","_toxicTick","_acidTick"
+  ]);
+  const out={};
+  for (const [key,val] of Object.entries(unit||{})){
+    if (val===undefined || val===null || val===false) continue;
+    if (val===0 && timerZeroKeys.has(key)) continue;
+    const clean=sanitizeFirestoreValue(val);
+    if (clean!==undefined) out[key]=clean;
+  }
+  return out;
+}
+function pruneBattleField(field, now){
+  field.syncedFx=(field.syncedFx||[]).filter(ev=>(ev.createdAt||0)+1400>now).slice(-18);
+  field.poison=(field.poison||[]).filter(v=>(v.until||0)>now);
+  field.toxic=(field.toxic||[]).filter(v=>(v.until||0)>now);
+  field.acid=(field.acid||[]).filter(v=>(v.until||0)>now);
+  field.wards=(field.wards||[]).filter(v=>(v.until||0)>now && v.hp>0);
+}
+function makeBattlePayload(field, battleTickId){
+  const cleanField=field||fieldEmpty();
+  return sanitizeFirestoreValue({
+    schemaVersion:2,
+    sessionKey:(S&&S.sessionKey)||undefined,
+    battleTickId:battleTickId|0,
+    units:(cleanField.units||[]).filter(u=>u&&u.hp>0).map(compactUnitForSync),
+    poison:cleanField.poison||[],
+    toxic:cleanField.toxic||[],
+    acid:cleanField.acid||[],
+    wards:(cleanField.wards||[]).map(sanitizeFirestoreValue),
+    syncedFx:(cleanField.syncedFx||[]).slice(-18).map(sanitizeFirestoreValue),
+    startedAt:cleanField.startedAt||hostBattleStartedAt||Date.now(),
+    suddenDeathTickAt:cleanField.suddenDeathTickAt||0,
+    updatedAt:Date.now()
+  });
+}
+async function flushBattlePublishQueue(){
+  if (battlePublishInFlight || disposed) return;
+  battlePublishInFlight=true;
+  try{
+    while (queuedBattlePayload && !disposed){
+      const payload=queuedBattlePayload;
+      queuedBattlePayload=null;
+      await setDoc(battleRef,payload);
+    }
+  }catch(e){
+    console.error("battle publish failed",e);
+  }finally{
+    battlePublishInFlight=false;
+    if (queuedBattlePayload && !disposed) flushBattlePublishQueue();
+  }
+}
+function queueBattlePublish(payload){
+  queuedBattlePayload=payload;
+  flushBattlePublishQueue();
+}
+async function publishBattleNow(payload){
+  queuedBattlePayload=payload;
+  await flushBattlePublishQueue();
+  while (battlePublishInFlight) await new Promise(resolve=>setTimeout(resolve,20));
+}
+function applyHostBattleVisual(field){
+  const payload=makeBattlePayload(field,hostBattleTickId);
+  B=payload;
+  serverBattleState=payload;
+  upsertVisualUnitsFromBattle(payload);
+  render();
+}
+async function writeStatePatch(patch){
+  if (!patch || disposed) return;
+  const previous=S ? deepClone(S) : S;
+  phaseWriteInFlight=true;
+  try{
+    if (S) S=Object.assign({},S,deepClone(patch));
+    render();
+    await updateDoc(stateRef,sanitizeFirestoreValue(patch));
+  }catch(e){
+    S=previous;
+    render();
+    throw e;
+  }finally{
+    phaseWriteInFlight=false;
+  }
+}
+function hasHostLease(){
+  if (!isHost) return false;
+  if (!S || !S.hostClientId) return true;
+  return S.hostClientId===clientInstanceId;
+}
+async function claimExpiredHostLease(){
+  const now=Date.now();
+  if (!isHost || disposed || now-lastLeaseClaimAttemptAt<5000) return false;
+  lastLeaseClaimAttemptAt=now;
+  try{
+    let claimed=false;
+    await runTransaction(db,async(tx)=>{
+      const snap=await tx.get(stateRef);
+      if (!snap.exists()) return;
+      const data=snap.data();
+      if (data.hostClientId===clientInstanceId || (data.hostLeaseUntil||0)<=now){
+        tx.update(stateRef,{hostClientId:clientInstanceId,hostLeaseUntil:now+30000});
+        claimed=true;
+      }
+    });
+    return claimed;
+  }catch(e){
+    console.warn("host lease claim failed",e);
+    return false;
+  }
+}
+function stopHostLoops(){
+  if (hostTick){ clearInterval(hostTick); hostTick=null; }
+  if (battleTick){ clearInterval(battleTick); battleTick=null; }
+  hostTickBusy=false;
+  battleTickBusy=false;
+  battleStartInFlight=false;
+  hostBattleState=null;
+}
+
+/* keep lobby.players in state.players without polling Firestore */
+async function syncPlayersIntoStateIfNeeded(){
+  const st=S;
+  if (!st || !hasHostLease()) return;
+  const want=lobbyPlayers.slice(0,2);
+  const cur=Array.isArray(st.players)?st.players:[];
+  if (want.length && !samePlayers(cur,want)){
+    const next={players:want};
+    if ((st.phase==="waiting" || st.phase==="faction-select") && !st.eloCommitted){
+      next.mmr=await fetchPlayerMMR(want);
+      next.mmrChange=[0,0];
+    }
+    await writeStatePatch(next);
   }
 }
 
-/* ----------- Host loop (phase machine) ----------- */
-function startHostLoops(){
-  if(hostTick) return;
-  hostTick=setInterval(async ()=>{
-    const snap=await getDoc(stateRef); if(!snap.exists()) return;
-    const d=snap.data(); const now=Date.now();
+async function beginBattle(field){
+  const now=Date.now();
+  hostBattleStartedAt=now;
+  hostSuddenDeathAt=0;
+  hostBattleTickId=0;
+  hostBattleState=Object.assign(fieldEmpty(),deepClone(field||fieldEmpty()),{startedAt:now,suddenDeathTickAt:0});
+  const payload=makeBattlePayload(hostBattleState,0);
+  B=payload;
+  serverBattleState=payload;
+  upsertVisualUnitsFromBattle(payload);
+  await publishBattleNow(payload);
+  runBattle(hostBattleState);
+}
 
+/* ----------- Host loop (phase machine, no recurring reads) ----------- */
+async function processHostPhase(){
+  if (hostTickBusy || phaseWriteInFlight || !isHost || disposed || !S) return;
+  if (!hasHostLease()){
+    stopHostLoops();
+    if ((S.hostLeaseUntil||0)<=Date.now()) await claimExpiredHostLease();
+    return;
+  }
+  hostTickBusy=true;
+  try{
+    const d=deepClone(S);
+    const now=Date.now();
+    if ((d.hostLeaseUntil||0)-now<12000 && now-lastLeaseRenewalAt>8000){
+      lastLeaseRenewalAt=now;
+      await writeStatePatch({hostClientId:clientInstanceId,hostLeaseUntil:now+30000});
+    }
     if (!d.players || !Array.isArray(d.players)) d.players = lobbyPlayers.slice(0,2);
 
     if (d.phase==="waiting" && lobbyPlayers.length>=2){
-      await updateDoc(stateRef,{ phase:"faction-select", phaseEndsAt: now+20000 });
+      await writeStatePatch({ phase:"faction-select", phaseEndsAt: now+20000 });
       return;
     }
 
@@ -2954,7 +3271,7 @@ function startHostLoops(){
         fx.p0 = (d.factions && d.factions.p0) ? d.factions.p0 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
         fx.p1 = (d.factions && d.factions.p1) ? d.factions.p1 : ALL_FACTIONS[Math.floor(Math.random()*ALL_FACTIONS.length)];
 
-        await updateDoc(stateRef,{
+        await writeStatePatch({
           factions:fx, phase:"draft", draftIndex:0,
           selections:{p0:[],p1:[]},
           currentPacks:{
@@ -3005,7 +3322,7 @@ function startHostLoops(){
           factions: d.factions || {p0:null,p1:null}
         };
         rebuildFieldFromRoster(temp);
-        await updateDoc(stateRef,{
+        await writeStatePatch({
           roster: temp.roster,
           relics: draftState.relics || {p0:[],p1:[]},
           tactics: draftState.tactics || {p0:[],p1:[]},
@@ -3017,10 +3334,9 @@ function startHostLoops(){
           phaseEndsAt:0,
           bonusFor:null
         });
-        await setDoc(battleRef, Object.assign(battleEmpty(), temp.field, { battleTickId: 0, updatedAt: Date.now() }));
-        runBattle();
+        await beginBattle(temp.field);
       }else{
-        await updateDoc(stateRef,{
+        await writeStatePatch({
           roster: roster,
           relics: draftState.relics || {p0:[],p1:[]},
           tactics: draftState.tactics || {p0:[],p1:[]},
@@ -3064,7 +3380,7 @@ function startHostLoops(){
         if (pick){
           applyPickToState(bonusState, loser, pick);
         }
-        await updateDoc(stateRef,{
+        await writeStatePatch({
           roster: roster,
           relics: bonusState.relics || {p0:[],p1:[]},
           tactics: bonusState.tactics || {p0:[],p1:[]},
@@ -3121,7 +3437,7 @@ function startHostLoops(){
           factions: d.factions || {p0:null,p1:null}
         };
         rebuildFieldFromRoster(temp);
-        await updateDoc(stateRef,{
+        await writeStatePatch({
           roster: temp.roster,
           relics: afterState.relics || {p0:[],p1:[]},
           tactics: afterState.tactics || {p0:[],p1:[]},
@@ -3132,10 +3448,9 @@ function startHostLoops(){
           phase:"battle",
           phaseEndsAt:0
         });
-        await setDoc(battleRef, Object.assign(battleEmpty(), temp.field, { battleTickId: 0, updatedAt: Date.now() }));
-        runBattle();
+        await beginBattle(temp.field);
       }else{
-        await updateDoc(stateRef,{
+        await writeStatePatch({
           roster: roster,
           relics: afterState.relics || {p0:[],p1:[]},
           tactics: afterState.tactics || {p0:[],p1:[]},
@@ -3152,216 +3467,221 @@ function startHostLoops(){
       return;
     }
 
+
     if (d.phase==="battle" && !battleTick) runBattle();
-
-    /* cleanup FX + terrain (skip during battle; battle loop owns the field) */
-    if (d.phase === "battle") return;
-
-    const nf = (B && (B.units||B.poison||B.toxic||B.acid||B.wards)) ? deepClone(B) : battleFromStateFallback(d);
-    const now2=Date.now();
-    const beforeFx = (nf.syncedFx||[]).length;
-    const beforePoison = (nf.poison||[]).length;
-    const beforeToxic = (nf.toxic||[]).length;
-    const beforeAcid = (nf.acid||[]).length;
-    const beforeWards = (nf.wards||[]).length;
-    nf.syncedFx = (nf.syncedFx||[]).filter(ev=>ev.createdAt + 1200 > now2);
-    nf.poison= (nf.poison||[]).filter(p=>p.until>now2);
-    nf.toxic = (nf.toxic ||[]).filter(t=>t.until>now2);
-    nf.acid  = (nf.acid  ||[]).filter(a=>a.until>now2);
-    nf.wards = (nf.wards ||[]).filter(w=>w.until>now2 && w.hp>0);
-
-    const changed =
-      beforeFx !== nf.syncedFx.length ||
-      beforePoison !== nf.poison.length ||
-      beforeToxic !== nf.toxic.length ||
-      beforeAcid !== nf.acid.length ||
-      beforeWards !== nf.wards.length;
-
-    if (changed) await setDoc(battleRef, Object.assign(battleEmpty(), nf, { battleTickId: Number.isFinite(B.battleTickId)?B.battleTickId:0, updatedAt: Date.now() }), { merge:true });
-  }, 260);
+  }catch(e){
+    console.error("host phase loop failed",e);
+  }finally{
+    hostTickBusy=false;
+  }
+}
+function startHostLoops(){
+  if (hostTick || !hasHostLease() || disposed) return;
+  hostTick=setInterval(processHostPhase,HOST_PHASE_MS);
+  processHostPhase();
 }
 
-/* ----------- Battle loop ----------- */
-function runBattle(){
-  if (!isHost) return;
-  if (battleTick) return;
+function applySuddenDeath(st,now){
+  const field=st.field;
+  const started=field.startedAt||hostBattleStartedAt||now;
+  if ((now-started)<SUDDEN_DEATH_MS) return;
+  if (now<(field.suddenDeathTickAt||0)) return;
+  const level=1+Math.floor((now-started-SUDDEN_DEATH_MS)/18000);
+  for (const u of field.units||[]){
+    if (!u || u.hp<=0) continue;
+    u.hp-=level;
+    u.statusShockUntil=Math.max(u.statusShockUntil||0,now+800);
+  }
+  field.suddenDeathTickAt=now+SUDDEN_DEATH_TICK_MS;
+  hostSuddenDeathAt=now;
+}
+function resolveRoundLoser(st,had0,had1,preTickHealth){
+  if (had0 && !had1) return 1;
+  if (!had0 && had1) return 0;
+  if (!had0 && !had1){
+    if (preTickHealth[0]!==preTickHealth[1]) return preTickHealth[0]<preTickHealth[1]?0:1;
+    return (hostBattleTickId%2===0)?0:1;
+  }
+  return null;
+}
 
-  let lastLogic = 0;
-  let lastPublishAt = 0;
-  let lastPublishedSignature = null;
-
-  battleTick = setInterval(async ()=>{
-    const snap = await getDoc(stateRef);
-    if (!snap.exists()){
-      clearInterval(battleTick); battleTick=null; return;
-    }
-    const d = snap.data();
-    if (d.phase !== "battle" || !isHost){
-      clearInterval(battleTick); battleTick=null; return;
-    }
-
-    const bSnap = await getDoc(battleRef);
-    const battleData = bSnap.exists() ? bSnap.data() : battleFromStateFallback(d);
-    const st = deepClone(d);
-    st.field = Object.assign(fieldEmpty(), deepClone(battleData));
-    let battleTickId = Number.isFinite(battleData.battleTickId) ? battleData.battleTickId : 0;
-    const units = st.field.units || [];
-    const now = Date.now();
-
-    const doLogic = (now - lastLogic) >= LOGIC_MS;
-    if (!doLogic) return;
-    lastLogic = now;
-
-    if (doLogic) applyTerrain(st.field, units);
-    if (doLogic){
-      for (let i=0;i<units.length;i++){
-        blinkIfNeeded(units[i]);
+/* ----------- Local authoritative battle loop ----------- */
+async function runBattle(initialField){
+  if (!hasHostLease() || disposed || battleTick || battleStartInFlight) return;
+  battleStartInFlight=true;
+  try{
+    if (initialField){
+      hostBattleState=Object.assign(fieldEmpty(),deepClone(initialField));
+    }else if (!hostBattleState){
+      if (B && Array.isArray(B.units) && B.units.length){
+        hostBattleState=Object.assign(fieldEmpty(),deepClone(B));
+      }else{
+        const snap=await getDoc(battleRef); // one recovery read, not a repeating poll
+        hostBattleState=Object.assign(fieldEmpty(),snap.exists()?deepClone(snap.data()):fieldEmpty());
       }
     }
+    if (!hasHostLease() || !S || S.phase!=="battle" || disposed) return;
+    hostBattleStartedAt=hostBattleState.startedAt||Date.now();
+    hostBattleState.startedAt=hostBattleStartedAt;
+    hostBattleTickId=Number.isFinite(hostBattleState.battleTickId)?hostBattleState.battleTickId:(Number.isFinite(B&&B.battleTickId)?B.battleTickId:0);
+  }finally{
+    battleStartInFlight=false;
+  }
 
-    if (doLogic) wardsHeal(st, now);
-    if (doLogic) wardsShoot(st, now);
-    if (doLogic) broodTick(st, now);
+  let lastLogic=0;
+  let lastPublishAt=0;
+  let lastPublishedSignature=battleFieldSignature(hostBattleState);
 
-    for (let i=0;i<units.length;i++){
-      const u = units[i];
-      if (!u || u.hp<=0) continue;
+  const advanceBattle=async()=>{
+    if (battleTickBusy || disposed) return;
+    battleTickBusy=true;
+    try{
+      if (!hasHostLease() || !S || S.phase!=="battle"){
+        if (battleTick){clearInterval(battleTick);battleTick=null;}
+        hostBattleState=null;
+        return;
+      }
+      const st=deepClone(S);
+      st.field=hostBattleState;
+      const units=st.field.units||[];
+      const now=Date.now();
+      const preTickHealth=[0,0];
+      for (const u of units) if (u&&u.hp>0) preTickHealth[u.p]=(preTickHealth[u.p]||0)+u.hp;
+      const doLogic=(now-lastLogic)>=LOGIC_MS;
 
       if (doLogic){
-        healAction(u, st, now);
-        wardAction(u, st, now);
-        applyVguardRegen(u, st, now);
+        lastLogic=now;
+        pruneBattleField(st.field,now);
+        applyTerrain(st.field,units);
+        for (let i=0;i<units.length;i++) blinkIfNeeded(units[i],units);
+        wardsHeal(st,now);
+        wardsShoot(st,now);
+        broodTick(st,now);
+        applySuddenDeath(st,now);
       }
 
-      const t = pickTarget(u, units, st.field);
-      if (!t) continue;
-
-      const attacked = attack(u, t, now, st);
-
-      if (!attacked && doLogic){
-        if (canStepNow(u, now)) {
-          const slowed = (u.slowUntil && u.slowUntil > now);
-          const bound = (u.bindUntil && u.bindUntil > now);
-          const steps = bound ? 0 : (slowed ? 1 : PACE.moveSteps);
-
-          for (let s=0; s<steps; s++){
-            const t2 = pickTarget(u, units, st.field);
+      for (let i=0;i<units.length;i++){
+        const u=units[i];
+        if (!u || u.hp<=0) continue;
+        if (doLogic){
+          healAction(u,st,now);
+          wardAction(u,st,now);
+          applyVguardRegen(u,st,now);
+        }
+        const t=pickTarget(u,units,st.field);
+        if (!t) continue;
+        const attacked=attack(u,t,now,st);
+        if (!attacked && doLogic && canStepNow(u,now)){
+          const slowed=(u.slowUntil&&u.slowUntil>now);
+          const bound=(u.bindUntil&&u.bindUntil>now);
+          const steps=bound?0:(slowed?1:PACE.moveSteps);
+          for (let step=0;step<steps;step++){
+            const t2=pickTarget(u,units,st.field);
             if (!t2) break;
-
-            if (u.burrow) attemptBurrow(u, units, st, now);
-
-            const targetIsBack = isBacklineUnit(t2);
-            if (u.viperLeap && targetIsBack && frontBlocked(u, units)){
-              if (attemptViperLeap(u, units, st)){
-                if (rectDistance(u, t2) <= (u.range||1)){
-                  attack(u, t2, now, st);
-                }
+            if (u.burrow) attemptBurrow(u,units,st,now);
+            if (u.viperLeap && isBacklineUnit(t2) && frontBlocked(u,units)){
+              if (attemptViperLeap(u,units,st)){
+                if (rectDistance(u,t2)<=(u.range||1)) attack(u,t2,now,st);
                 continue;
               }
             }
-
-            stepToward(u, t2, units);
-            if (rectDistance(u, t2) <= (u.range||1)){
-              attack(u, t2, now, st);
+            stepToward(u,t2,units);
+            if (rectDistance(u,t2)<=(u.range||1)){
+              attack(u,t2,now,st);
               break;
             }
           }
         }
       }
-    }
 
-    if (doLogic){
-      const dead = st.field.units.filter(u=>u.hp<=0);
-      for (let i=0;i<dead.length;i++){
-        const u = dead[i];
-        if (u.paints){
-          paintPoison(st, u.x, u.y, 7000, u.p);
-          emitLocalEffect(fxBurst(u.x,u.y));
-        }
-      }
-      st.field.units = st.field.units.filter(u=>u.hp>0);
-    }
-
-    const a0 = st.field.units.some(u=>u.p===0);
-    const a1 = st.field.units.some(u=>u.p===1);
-    if (!a0 || !a1){
-      clearInterval(battleTick); battleTick=null;
-
-      const loser = a0 ? 1 : 0;
-      const lives = (st.lives || [4,4]).slice();
-      lives[loser] = Math.max(0, lives[loser]-1);
-
-      const players = st.players || [];
-      let winnerName = null;
-      if (lives[0]===0 && players.length>1) winnerName = players[1];
-      if (lives[1]===0 && players.length>0) winnerName = players[0];
-
-      if (winnerName){
-        const mmrInfo = calcMMRChange(st, winnerName);
-        await runTransaction(db, async (tx)=>{
-          const latest = await tx.get(stateRef);
-          if (!latest.exists()) return;
-          const live = latest.data();
-          if (live.phase === "game-over" && live.eloCommitted) return;
-
-          const names = Array.isArray(st.players) ? st.players.slice(0,2) : [];
-          for (let i=0;i<2;i++){
-            const nm = names[i];
-            if (!nm) continue;
-            tx.set(doc(db, "users", nm), {
-              crowncouncilElo: mmrInfo.mmr[i],
-              crowncouncilLastDelta: mmrInfo.delta[i],
-              crowncouncilLastMatchAt: Date.now()
-            }, { merge:true });
+      if (doLogic){
+        const dead=st.field.units.filter(u=>u.hp<=0);
+        for (const u of dead){
+          if (u.paints){
+            paintPoison(st,u.x,u.y,7000,u.p);
+            pushSyncedFx(st.field,fxBurst(u.x,u.y),now);
           }
-
-          tx.update(stateRef, {
-            lives: lives,
-            phase: "game-over",
-            phaseEndsAt: 0,
-            winner: winnerName,
-            mmr: mmrInfo.mmr,
-            mmrChange: mmrInfo.delta,
-            eloCommitted: true
-          });
-        });
-      } else {
-        const loserKey  = pKey(loser);
-        const winnerKey = pKey(1-loser);
-
-        const roster = st.roster || {p0:[],p1:[]};
-        if (!roster.p0) roster.p0 = [];
-        if (!roster.p1) roster.p1 = [];
-
-        await updateDoc(stateRef, {
-          lives: lives,
-          phase: "loser-bonus",
-          phaseEndsAt: Date.now()+10000,
-          selections: { p0:[], p1:[] },
-          currentPacks: (function(){
-            const packs = { p0:[], p1:[] };
-            packs[loserKey]  = packFor(roster[loserKey],  st.factions && st.factions[loserKey] ? st.factions[loserKey] : "Helions");
-            packs[winnerKey] = [];
-            return packs;
-          })(),
-          draftIndex: 0,
-          bonusFor: loserKey
-        });
-      }
-    } else {
-      st.field.wards = (st.field.wards||[]).filter(w=>w.hp>0 && w.until>now);
-      const nowPublish = Date.now();
-      if ((nowPublish - lastPublishAt) >= BATTLE_PUBLISH_MS){
-        const nextSig = battleFieldSignature(st.field);
-        if (nextSig !== lastPublishedSignature){
-          battleTickId += 1;
-          await setDoc(battleRef, Object.assign(battleEmpty(), st.field, { battleTickId: battleTickId, updatedAt: Date.now() }), { merge:true });
-          lastPublishedSignature = nextSig;
         }
-        lastPublishAt = nowPublish;
+        st.field.units=st.field.units.filter(u=>u.hp>0);
+        pruneBattleField(st.field,now);
       }
+      hostBattleState=st.field;
+      if (doLogic) applyHostBattleVisual(hostBattleState);
+
+      const alive0=st.field.units.some(u=>u.p===0&&u.hp>0);
+      const alive1=st.field.units.some(u=>u.p===1&&u.hp>0);
+      if (!alive0 || !alive1){
+        if (battleTick){clearInterval(battleTick);battleTick=null;}
+        hostBattleTickId+=1;
+        await publishBattleNow(makeBattlePayload(st.field,hostBattleTickId));
+        const loser=resolveRoundLoser(st,alive0,alive1,preTickHealth);
+        const lives=(st.lives||[4,4]).slice();
+        lives[loser]=Math.max(0,lives[loser]-1);
+        const players=st.players||[];
+        let winnerName=null;
+        if (lives[0]===0&&players.length>1) winnerName=players[1];
+        if (lives[1]===0&&players.length>0) winnerName=players[0];
+        hostBattleState=null;
+
+        if (winnerName){
+          const mmrInfo=calcMMRChange(st,winnerName);
+          await runTransaction(db,async(tx)=>{
+            const latest=await tx.get(stateRef);
+            if (!latest.exists()) return;
+            const live=latest.data();
+            if (live.phase==="game-over"&&live.eloCommitted) return;
+            const names=Array.isArray(st.players)?st.players.slice(0,2):[];
+            for (let i=0;i<2;i++){
+              const nm=names[i]; if(!nm) continue;
+              tx.set(doc(db,"users",nm),{
+                crowncouncilElo:mmrInfo.mmr[i],
+                crowncouncilLastDelta:mmrInfo.delta[i],
+                crowncouncilLastMatchAt:Date.now()
+              },{merge:true});
+            }
+            tx.update(stateRef,{
+              lives:lives,phase:"game-over",phaseEndsAt:0,winner:winnerName,
+              mmr:mmrInfo.mmr,mmrChange:mmrInfo.delta,eloCommitted:true,endedAt:Date.now()
+            });
+          });
+        }else{
+          const loserKey=pKey(loser),winnerKey=pKey(1-loser);
+          const roster=st.roster||{p0:[],p1:[]};
+          if(!roster.p0)roster.p0=[]; if(!roster.p1)roster.p1=[];
+          await writeStatePatch({
+            lives:lives,phase:"loser-bonus",phaseEndsAt:Date.now()+10000,
+            selections:{p0:[],p1:[]},
+            currentPacks:(()=>{
+              const packs={p0:[],p1:[]};
+              packs[loserKey]=packFor(roster[loserKey],st.factions&&st.factions[loserKey]?st.factions[loserKey]:"Helions");
+              packs[winnerKey]=[]; return packs;
+            })(),
+            draftIndex:0,bonusFor:loserKey
+          });
+        }
+        return;
+      }
+
+      const nowPublish=Date.now();
+      const nextSig=battleFieldSignature(hostBattleState);
+      const changed=nextSig!==lastPublishedSignature;
+      const heartbeat=(nowPublish-lastPublishAt)>=BATTLE_HEARTBEAT_MS;
+      if ((changed && (nowPublish-lastPublishAt)>=BATTLE_PUBLISH_MS) || heartbeat){
+        hostBattleTickId+=1;
+        const payload=makeBattlePayload(hostBattleState,hostBattleTickId);
+        queueBattlePublish(payload);
+        lastPublishedSignature=nextSig;
+        lastPublishAt=nowPublish;
+      }
+    }catch(e){
+      console.error("battle simulation failed",e);
+    }finally{
+      battleTickBusy=false;
     }
-  }, VIEW_MS);
+  };
+
+  battleTick=setInterval(advanceBattle,SIMULATION_MS);
+  advanceBattle();
 }
 
 /* ----------- UI render ----------- */
@@ -3378,7 +3698,15 @@ function render(){
   $("phaseBadge").textContent = phase.replaceAll("-"," ").toUpperCase();
   const draftish=["faction-select","draft","loser-bonus","draft-after"].includes(phase);
   const tleft = draftish ? Math.max(0,((S && S.phaseEndsAt) || 0)-Date.now()) : 0;
-  $("timerBadge").textContent = draftish ? "⏳ "+Math.ceil(tleft/1000)+"s" : "⏳ —";
+  if (draftish){
+    $("timerBadge").textContent = "⏳ "+Math.ceil(tleft/1000)+"s";
+  } else if (phase==="battle" && B && B.startedAt){
+    const elapsed=Math.max(0,Date.now()-B.startedAt);
+    const untilSudden=Math.max(0,SUDDEN_DEATH_MS-elapsed);
+    $("timerBadge").textContent = untilSudden>0 ? "⚔️ "+Math.ceil(untilSudden/1000)+"s to frenzy" : "🔥 SUDDEN DEATH";
+  } else {
+    $("timerBadge").textContent = "⏳ —";
+  }
 
   const counter = $("pickCounter");
   if (phase==="draft" || phase==="draft-after"){
@@ -3670,29 +3998,36 @@ function startListeners(){
   if (listenersStarted) return;
   listenersStarted = true;
 
-  onSnapshot(lobbyRef, async (snap)=>{
-  if (!snap.exists()) return;
+  unsubscribeLobby = onSnapshot(lobbyRef, async (snap)=>{
+    if (!snap.exists()) return;
 
-  const lob = snap.data() || {};
-  lobbyPlayers = (Array.isArray(lob.players) ? lob.players : []).slice(0,2);
-  isHost = (lob.host === username);
+    const lob = snap.data() || {};
+    const wasHost = isHost;
+    lobbyPlayers = (Array.isArray(lob.players) ? lob.players : []).slice(0,2);
+    isHost = (lob.host === username);
 
-  if (isHost) {
-    await ensureStateExists();
-    await syncPlayersIntoStateIfNeeded();
-    startHostLoops();
-  }
+    configureBattleListener();
+    if (isHost) {
+      await ensureStateExists(lob);
+      await syncPlayersIntoStateIfNeeded();
+      if (hasHostLease()){
+        startHostLoops();
+        if (S && S.phase === "battle" && !battleTick) runBattle();
+      }
+    } else if (wasHost) {
+      stopHostLoops();
+    }
 
-  const curPlayers = (S && Array.isArray(S.players)) ? S.players : lobbyPlayers;
-  let idx = curPlayers.indexOf(username);
-  if (idx < 0) idx = 0;
-  meIndex = Math.max(0, Math.min(1, idx));
+    const curPlayers = (S && Array.isArray(S.players)) ? S.players : lobbyPlayers;
+    let idx = curPlayers.indexOf(username);
+    if (idx < 0) idx = 0;
+    meIndex = Math.max(0, Math.min(1, idx));
 
-  fitBoard();
-  render();
-}, (err)=>{
-  console.error("lobby listener failed", err);
-});
+    fitBoard();
+    render();
+  }, (err)=>{
+    console.error("lobby listener failed", err);
+  });
 
 let seenEffectIds=new Set();
 let prevBattleForLocalFx = null;
@@ -3745,6 +4080,9 @@ function enqueueBattleSnapshot(snapshot){
     acid: Array.isArray(snapshot.acid) ? snapshot.acid : [],
     wards: Array.isArray(snapshot.wards) ? snapshot.wards : [],
     syncedFx: Array.isArray(snapshot.syncedFx) ? snapshot.syncedFx : [],
+    startedAt: Number.isFinite(snapshot.startedAt) ? snapshot.startedAt : 0,
+    suddenDeathTickAt: Number.isFinite(snapshot.suddenDeathTickAt) ? snapshot.suddenDeathTickAt : 0,
+    sessionKey: snapshot.sessionKey || null,
     updatedAt: Number.isFinite(snapshot.updatedAt) ? snapshot.updatedAt : 0
   });
   battleSnapshotBuffer.sort((a,b)=>a.battleTickId-b.battleTickId || a.receivedAt-b.receivedAt);
@@ -3777,7 +4115,7 @@ function pickBufferedBattleSnapshot(){
 function applyBattleSnapshot(nextBattle){
   const incomingTick = Number.isFinite(nextBattle.battleTickId) ? nextBattle.battleTickId : -1;
   const tickGap = incomingTick - lastRenderedBattleTickId;
-  if (S && S.phase === "battle" && incomingTick < lastRenderedBattleTickId && tickGap > -BATTLE_SYNC_GAP_WARN) return;
+  if (S && S.phase === "battle" && incomingTick <= lastRenderedBattleTickId) return;
   if (tickGap > BATTLE_SYNC_GAP_WARN) battleSyncBadgeUntil = Date.now() + BATTLE_SYNC_BADGE_MS;
   lastRenderedBattleTickId = Math.max(lastRenderedBattleTickId, incomingTick);
   renderLocalFxFromBattleDiff(prevBattleForLocalFx, nextBattle);
@@ -3788,44 +4126,74 @@ function applyBattleSnapshot(nextBattle){
   render();
 }
 
-onSnapshot(stateRef,(snap)=>{
+unsubscribeState = onSnapshot(stateRef,(snap)=>{
   if(!snap.exists()) return;
-  const nextState = snap.data();
-  S=nextState;
+  S=snap.data();
+  configureBattleListener();
+  if (hasHostLease()) startHostLoops();
+  else if (hostTick || battleTick) stopHostLoops();
   if (S.phase !== "battle"){
     lastRenderedBattleTickId = -1;
     battleSnapshotBuffer.length = 0;
     setBattleSyncBadgeVisible(false);
+    if (battleTick){ clearInterval(battleTick); battleTick=null; }
+    hostBattleState=null;
+  } else if (hasHostLease() && !battleTick && !hostTickBusy){
+    runBattle();
   }
   const current = S.players || lobbyPlayers || [];
   let idx = current.indexOf(username);
   if (idx < 0) idx = 0;
   meIndex = Math.max(0, Math.min(1, idx));
+  if (hasHostLease()) processHostPhase();
   render();
-
 }, (err)=>{
   console.error("state listener failed", err);
 });
 
-onSnapshot(battleRef,(snap)=>{
-  if (!snap.exists()){
-    prevBattleForLocalFx = null;
-    battleSnapshotBuffer.length = 0;
-    setBattleSyncBadgeVisible(false);
-    B = (S && S.phase === "battle") ? battleFromStateFallback(S) : battleEmpty();
-    render();
+function configureBattleListener(){
+  // The host already owns the authoritative in-memory battle. Not listening to its own
+  // high-frequency battle writes removes an entire stream of billed document reads.
+  if (hasHostLease()){
+    if (unsubscribeBattle){ unsubscribeBattle(); unsubscribeBattle=null; }
     return;
   }
-  const nextBattle = Object.assign(battleEmpty(), snap.data() || {});
-  if (!(S && S.phase === "battle")) return applyBattleSnapshot(nextBattle);
-  if (isHost) return applyBattleSnapshot(nextBattle);
-  enqueueBattleSnapshot(nextBattle);
-  const buffered = pickBufferedBattleSnapshot();
-  if (buffered) applyBattleSnapshot(buffered);
-}, (err)=>{
-  console.error("battle listener failed", err);
-});
+  if (unsubscribeBattle || disposed) return;
+  unsubscribeBattle = onSnapshot(battleRef,(snap)=>{
+    if (!snap.exists()){
+      prevBattleForLocalFx = null;
+      battleSnapshotBuffer.length = 0;
+      setBattleSyncBadgeVisible(false);
+      B = (S && S.phase === "battle") ? battleFromStateFallback(S) : battleEmpty();
+      render();
+      return;
+    }
+    const nextBattle = Object.assign(battleEmpty(), snap.data() || {});
+    if (S && S.sessionKey && nextBattle.sessionKey && S.sessionKey !== nextBattle.sessionKey) return;
+    if (!(S && S.phase === "battle")) return applyBattleSnapshot(nextBattle);
+    enqueueBattleSnapshot(nextBattle);
+    const buffered = pickBufferedBattleSnapshot();
+    if (buffered) applyBattleSnapshot(buffered);
+  }, (err)=>{
+    console.error("battle listener failed", err);
+  });
 }
+configureBattleListener();
+}
+
+function cleanupGameRuntime(){
+  if (disposed) return;
+  disposed=true;
+  stopHostLoops();
+  queuedBattlePayload=null;
+  if (unsubscribeLobby){ unsubscribeLobby(); unsubscribeLobby=null; }
+  if (unsubscribeState){ unsubscribeState(); unsubscribeState=null; }
+  if (unsubscribeBattle){ unsubscribeBattle(); unsubscribeBattle=null; }
+  if (visualFrameHandle){ cancelAnimationFrame(visualFrameHandle); visualFrameHandle=0; }
+  listenersStarted=false;
+}
+window.addEventListener("pagehide", cleanupGameRuntime, {once:true});
+window.addEventListener("beforeunload", cleanupGameRuntime, {once:true});
 
 onAuthStateChanged(auth, (user) => {
   if (!user) return;
