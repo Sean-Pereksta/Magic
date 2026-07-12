@@ -38,7 +38,7 @@
       );
 
       html=html.replace(
-        /function cardAssetCandidates\(card\)\{[\s\S]*?\n    \}\n    function categoryAsset/,
+        /function cardAssetCandidates\(card\)\{[\s\S]*?\r?\n    \}\r?\n    function categoryAsset/,
         `function cardAssetCandidates(card){
       // Images are named exactly after the displayed card name in lowercase,
       // preserving spaces: High Priest -> high priest.png.
@@ -48,8 +48,9 @@
     function categoryAsset`
       );
 
-      if(!html.includes("const GRAPHICS_ROOT = '../graphics/';")){
-        throw new Error('The graphics path patch could not be applied.');
+      if(!html.includes("const GRAPHICS_ROOT = '../graphics/';") ||
+         !html.includes('Images are named exactly after the displayed card name')){
+        throw new Error('The graphics-path update could not be applied to the game file.');
       }
 
       document.open();
