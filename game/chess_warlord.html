@@ -104,7 +104,7 @@
   #assetLoadTrack{height:10px;margin-top:8px;border-radius:999px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.12);overflow:hidden;}
   #assetLoadFill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#7dd3fc,#facc15,#86efac);transition:width .16s ease;}
   #assetLoadText{margin-top:7px;color:#b9c8dc;font-size:11px;line-height:1.35;}
-  .spawnThumb{position:absolute;right:6px;bottom:3px;width:54px;height:54px;object-fit:contain;image-rendering:auto;filter:drop-shadow(0 5px 8px rgba(0,0,0,.58));pointer-events:none;}
+  .spawnThumb{position:absolute;right:6px;bottom:3px;width:54px;height:54px;object-fit:contain;image-rendering:auto;background:rgba(5,10,18,.94);border:1px solid rgba(255,255,255,.24);border-radius:12px;padding:3px;box-shadow:0 5px 12px rgba(0,0,0,.48),inset 0 1px rgba(255,255,255,.08);filter:contrast(1.08) saturate(1.06) drop-shadow(0 5px 8px rgba(0,0,0,.58));pointer-events:none;}
   @media(max-width:760px){
     #topbar{height:98px;padding:8px;gap:6px;}
     #quickControls{width:104px;min-width:104px;padding:7px 6px;border-radius:14px;}
@@ -480,6 +480,7 @@ const chessGraphicResolvedFiles = new Map();
 const CHESS_GRAPHICS_ROOT = new URL('../graphics/chessgraphics/', document.baseURI);
 const PREGAME_READY_TIMEOUT_MS = 30000;
 const PREGAME_READY_RECHECK_MS = 900;
+const PIECE_GRAPHICS_OPAQUE_BACKING = true; // Keeps PNG art visually separated from terrain.
 
 const CHESS_ELO_START = 100;
 const CHESS_ELO_FLOOR = 0;
@@ -2366,45 +2367,38 @@ function loadImageWithTimeout(url, timeoutMs=9000){
   });
 }
 function processedGraphicCanvas(img){
-  // Source tiles include a dark presentation background and a printed label. Downsample, crop the label,
-  // then flood-fill only the connected dark edge background so black armor remains intact.
+  // Keep the presentation background behind each piece instead of cutting it to transparency.
+  // The lower label strip is still removed, then the remaining art is normalized onto a fully opaque,
+  // high-contrast panel so pieces remain readable over every terrain and faction color.
   const size = 384;
   const sourceHeight = Math.max(1,Math.floor(img.naturalHeight * .82));
-  const work = document.createElement('canvas');
-  work.width = size;
-  work.height = Math.max(1,Math.round(size * sourceHeight / Math.max(1,img.naturalWidth)));
-  const wctx = work.getContext('2d',{willReadFrequently:true});
-  wctx.drawImage(img,0,0,img.naturalWidth,sourceHeight,0,0,work.width,work.height);
-  try{
-    const frame = wctx.getImageData(0,0,work.width,work.height);
-    const data = frame.data, width=work.width, height=work.height;
-    const visited = new Uint8Array(width*height);
-    const queue = new Int32Array(width*height);
-    let head=0,tail=0;
-    const darkEdge = idx => {
-      const o=idx*4,r=data[o],g=data[o+1],b=data[o+2];
-      const max=Math.max(r,g,b),min=Math.min(r,g,b),lum=(r*3+g*4+b)/8;
-      return lum<74 && (max-min)<48;
-    };
-    const push = idx => { if(idx<0 || idx>=visited.length || visited[idx] || !darkEdge(idx)) return; visited[idx]=1; queue[tail++]=idx; };
-    for(let x=0;x<width;x++){push(x);push((height-1)*width+x);}
-    for(let y=0;y<height;y++){push(y*width);push(y*width+width-1);}
-    while(head<tail){
-      const idx=queue[head++],x=idx%width,y=(idx/width)|0;
-      if(x>0)push(idx-1);if(x+1<width)push(idx+1);if(y>0)push(idx-width);if(y+1<height)push(idx+width);
-    }
-    for(let i=0;i<visited.length;i++) if(visited[i]) data[i*4+3]=0;
-    wctx.putImageData(frame,0,0);
-    let minX=width,minY=height,maxX=-1,maxY=-1;
-    for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(data[(y*width+x)*4+3]>12){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
-    if(maxX>=minX && maxY>=minY){
-      const pad=8,cropW=maxX-minX+1,cropH=maxY-minY+1;
-      const out=document.createElement('canvas');out.width=cropW+pad*2;out.height=cropH+pad*2;
-      out.getContext('2d').drawImage(work,minX,minY,cropW,cropH,pad,pad,cropW,cropH);
-      return out;
-    }
-  }catch(e){ /* Same-origin GitHub Pages assets should be readable; raw image remains a safe fallback. */ }
-  return work;
+  const out = document.createElement('canvas');
+  out.width = size;
+  out.height = Math.max(1,Math.round(size * sourceHeight / Math.max(1,img.naturalWidth)));
+  const octx = out.getContext('2d');
+  const radius = Math.max(14,Math.round(Math.min(out.width,out.height)*.055));
+  octx.save();
+  roundRect(octx,0,0,out.width,out.height,radius);
+  octx.clip();
+  octx.fillStyle='#08111f';
+  octx.fillRect(0,0,out.width,out.height);
+  octx.filter='contrast(1.10) saturate(1.06) brightness(1.03)';
+  octx.drawImage(img,0,0,img.naturalWidth,sourceHeight,0,0,out.width,out.height);
+  octx.filter='none';
+  // Guarantee that even originally transparent PNGs receive a solid backing.
+  octx.globalCompositeOperation='destination-over';
+  const backing=octx.createLinearGradient(0,0,0,out.height);
+  backing.addColorStop(0,'#142238');
+  backing.addColorStop(1,'#060b14');
+  octx.fillStyle=backing;
+  octx.fillRect(0,0,out.width,out.height);
+  octx.restore();
+  octx.globalCompositeOperation='source-over';
+  octx.strokeStyle='rgba(228,240,255,.30)';
+  octx.lineWidth=Math.max(2,Math.round(out.width*.008));
+  roundRect(octx,octx.lineWidth/2,octx.lineWidth/2,out.width-octx.lineWidth,out.height-octx.lineWidth,radius);
+  octx.stroke();
+  return out;
 }
 async function loadFirstGraphic(candidates){
   for(const filename of candidates || []){
@@ -6224,10 +6218,19 @@ function drawPieces(){
       const targetW=Math.min(BASE_CELL*2.15,targetH*(graphic.width/Math.max(1,graphic.height)));
       const bottom=BASE_CELL*(def.building?.46:.42);
       ctx.save();
-      ctx.globalAlpha=p.flash>0?.78:1;
-      ctx.shadowColor=p.flash>0?'rgba(255,255,255,.92)':'rgba(0,0,0,.62)';ctx.shadowBlur=p.flash>0?18:8;
+      const plateX=-targetW/2-2, plateY=bottom-targetH-2, plateW=targetW+4, plateH=targetH+4;
+      ctx.globalAlpha=.98;
+      ctx.fillStyle='rgba(4,9,17,.96)';
+      ctx.strokeStyle=p.faction===PLAYER?'rgba(226,242,255,.68)':'rgba(205,220,238,.46)';
+      ctx.lineWidth=1.7;
+      roundRect(ctx,plateX,plateY,plateW,plateH,Math.max(4,targetW*.07));
+      ctx.fill();ctx.stroke();
+      ctx.globalAlpha=p.flash>0?.84:1;
+      ctx.shadowColor=p.flash>0?'rgba(255,255,255,.94)':'rgba(0,0,0,.82)';ctx.shadowBlur=p.flash>0?18:12;
       ctx.imageSmoothingEnabled=true;
+      ctx.filter='contrast(1.08) saturate(1.05) brightness(1.04)';
       ctx.drawImage(graphic,-targetW/2,bottom-targetH,targetW,targetH);
+      ctx.filter='none';
       ctx.restore();
     } else {
       const g=ctx.createRadialGradient(-r*.25,-r*.3,2,0,0,r*1.15);
