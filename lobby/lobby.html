@@ -129,7 +129,17 @@
       background-image:linear-gradient(30deg,rgba(255,255,255,.08) 12%,transparent 12.5%,transparent 87%,rgba(255,255,255,.08) 87.5%,rgba(255,255,255,.08)),linear-gradient(150deg,rgba(255,255,255,.06) 12%,transparent 12.5%,transparent 87%,rgba(255,255,255,.06) 87.5%);
       background-size:80px 140px;
     }
-    .hero-copy{position:relative;z-index:1;max-width:680px}
+    .hero-copy{position:relative;z-index:2;max-width:680px}
+    .hero-banner.has-art .hero-copy{max-width:min(680px,62%)}
+    .hero-art{
+      position:absolute;z-index:1;right:clamp(18px,5vw,72px);top:12px;bottom:0;
+      width:min(38%,430px);display:flex;align-items:flex-end;justify-content:center;
+      pointer-events:none;
+    }
+    .hero-art img{
+      display:block;max-width:100%;max-height:100%;object-fit:contain;
+      filter:drop-shadow(0 22px 28px rgba(0,0,0,.38));
+    }
     .eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:.72rem;font-weight:900;color:#fecdd3}
     .hero-title{font-size:clamp(2rem,5vw,3.8rem);line-height:.95;margin:9px 0 11px;font-weight:950;letter-spacing:-.045em}
     .hero-desc{max-width:620px;color:#fff1f2;line-height:1.55;margin:0 0 20px}
@@ -183,8 +193,16 @@
     .lobby-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:11px;margin-top:2px}
     .game-mark{
       width:46px;height:46px;flex:0 0 auto;border-radius:15px;display:grid;place-items:center;font-size:23px;
-      background:color-mix(in srgb,var(--game) 12%,white);border:1px solid color-mix(in srgb,var(--game) 22%,white);
+      overflow:hidden;background:color-mix(in srgb,var(--game) 12%,white);border:1px solid color-mix(in srgb,var(--game) 22%,white);
     }
+    .game-visual{position:relative;display:inline-grid;place-items:center;isolation:isolate}
+    .game-visual-fallback,.game-visual img{grid-area:1/1}
+    .game-visual-fallback{line-height:1}
+    .game-visual img{z-index:1;width:100%;height:100%;display:block;object-fit:contain}
+    .game-visual-mark{width:100%;height:100%;padding:4px}
+    .game-visual-art{width:82px;height:82px}
+    .game-visual-tiny{width:28px;height:28px;vertical-align:middle;margin-right:7px}
+    .game-visual.image-missing img{display:none}
     .lobby-title{font-weight:950;font-size:1rem;line-height:1.2}
     .lobby-game{font-size:.78rem;color:var(--muted);font-weight:700;margin-top:4px}
     .status-chip{
@@ -205,7 +223,10 @@
     .lobby-buttons{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 
     .current-panel{position:sticky;top:94px;overflow:hidden}
-    .current-cover{padding:20px;color:#fff;background:linear-gradient(135deg,#111827,#7f1420)}
+    .current-cover{padding:20px;color:#fff;background:linear-gradient(135deg,#111827,#7f1420);position:relative;overflow:hidden;min-height:118px}
+    .current-cover>:not(.current-lobby-art){position:relative;z-index:2;max-width:72%}
+    .current-lobby-art{position:absolute;z-index:1;right:8px;top:8px;bottom:0;width:104px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none}
+    .current-lobby-art img{display:block;max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 12px 18px rgba(0,0,0,.34))}
     .current-cover .eyebrow{color:#fecdd3}.current-title{font-size:1.22rem;font-weight:950;margin-top:6px}
     .current-game{font-size:.84rem;color:#ffe4e6;margin-top:3px}
     .current-body{padding:15px}
@@ -285,6 +306,7 @@
       .topbar-inner{min-height:62px;padding:8px 12px}.main-nav{display:none}.brand{min-width:0}.brand-mark{width:41px;height:41px}.brand-title{font-size:.96rem}
       .header-actions .daily,.header-actions .members{display:none}.header-btn{padding:8px 10px}.header-btn .desktop-label{display:none}
       .shell{padding:14px 12px 90px}.hero-banner{min-height:260px;padding:24px 20px;border-radius:21px}.hero-title{font-size:2.35rem}.hero-actions .btn{width:100%}
+      .hero-banner.has-art .hero-copy{max-width:100%}.hero-art{right:-4%;top:18px;width:58%;opacity:.28}.hero-art img{filter:drop-shadow(0 16px 22px rgba(0,0,0,.3))}
       .toolbar{grid-template-columns:1fr}.toolbar>*{grid-column:auto!important}.lobby-grid,.game-grid{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}
       .profile-hero{align-items:flex-start;flex-direction:column;padding:22px}.profile-avatar{width:80px;height:80px;font-size:2.6rem}.profile-name{font-size:1.55rem}
       .mobile-nav{position:fixed;display:grid;grid-template-columns:repeat(3,1fr);left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:120;background:#111827;border:1px solid rgba(255,255,255,.1);border-radius:17px;padding:6px;box-shadow:0 20px 45px rgba(0,0,0,.3)}
@@ -344,6 +366,7 @@
             <button id="featuredFavoriteBtn" class="btn ghost-light">☆ Favorite</button>
           </div>
         </div>
+        <div id="featuredArtwork" class="hero-art" hidden></div>
       </div>
 
       <div class="section-head">
@@ -372,6 +395,7 @@
               <div class="eyebrow">Your Lobby</div>
               <div id="currentLobbyName" class="current-title">Lobby</div>
               <div id="currentLobbyGame" class="current-game">Game</div>
+              <div id="currentLobbyArtwork" class="current-lobby-art" hidden></div>
             </div>
             <div class="current-body">
               <div id="currentLobbyPlayers" class="player-list"></div>
@@ -581,9 +605,10 @@
     };
 
     // One registry drives routes, cards, categories, limits, lobby labels, and featured content.
+    // Add imagePath:"graphics/your-image.png" to any game to use artwork; omit it to keep the emoji fallback.
     const GAMES = [
       {key:"cat",title:"Cat & Mouse",emoji:"🐭",desc:"Classic multiplayer chase.",route:"/game/catandmouse.html",category:"Party",modes:["multi"],autoRedirect:true},
-      {key:"grass",title:"Grass Realms",emoji:"🌿",desc:"Battle for a growing multiplayer realm.",route:"/game/grassrealms.html",category:"Strategy",modes:["multi"],autoRedirect:true},
+      {key:"grass",title:"Grass Realms",emoji:"🌿",imagePath:"graphics/red.png",desc:"Battle for a growing multiplayer realm.",route:"/game/grassrealms.html",category:"Strategy",modes:["multi"],autoRedirect:true},
       {key:"estate",title:"Estate Defense (Incomplete)",emoji:"🏡",desc:"Defend the estate together.",route:"/game/estatedefense.html",category:"Strategy",modes:["multi"]},
       {key:"mountain",title:"Mountain Blade (Incomplete)",multiTitle:"Mountain Blade Skirmish",emoji:"⛰️⚔️",desc:"Command troops through a medieval battlefield.",route:"/game/mountainblade.html",category:"Action",modes:["single","multi"],maxPlayers:4,autoRedirect:true},
       {key:"mountonline",title:"Mountain Blade Online (Incomplete)",emoji:"🗻🌐",desc:"Jump directly into the persistent online battlefield.",route:"/game/mountonline.html",category:"Action",modes:["multi"],quickPlay:true},
@@ -631,7 +656,7 @@
       {key:"forgeflight",title:"Forge & Flight",emoji:"🔥🪽",desc:"Enter a fast solo aerial adventure.",route:"/game/forge&flight.html",category:"Action",modes:["single"],featured:true},
       {key:"onehitknight",title:"One Hit Knight",emoji:"🛡️⚔️",desc:"Dash, slash, and survive a one-hit challenge.",route:"/game/onehitknight.html",category:"Action",modes:["single"],featured:true},
       {key:"deepsea",title:"Deep Sea",emoji:"🐟🌊",desc:"Swim, grow, evolve, and survive below.",route:"/game/deep_sea.html",category:"Adventure",modes:["single"],featured:true},
-      {key:"chesswarlord",title:"Chess Warlord",emoji:"♛⚔️",desc:"An eight-player real-time faction chess war with territory control, kings, cooldowns, AI seats, and Firebase multiplayer.",route:"/game/chess_warlord.html",category:"Strategy",modes:["multi"],maxPlayers:8,autoRedirect:true,featured:true}
+      {key:"chesswarlord",title:"Chess Warlord",emoji:"♛⚔️",imagePath:"graphics/chessgraphics/eagle knight.png",desc:"An eight-player real-time faction chess war with territory control, kings, cooldowns, AI seats, and Firebase multiplayer.",route:"/game/chess_warlord.html",category:"Strategy",modes:["multi"],maxPlayers:8,autoRedirect:true,featured:true}
     ];
 
     const GAME_BY_KEY = Object.fromEntries(GAMES.map(g => [g.key,g]));
@@ -642,6 +667,17 @@
     const getMaxPlayers = key => Number.isFinite(getGame(key).maxPlayers) ? getGame(key).maxPlayers : Infinity;
     const gameTitle = (key,multi=false) => multi && getGame(key).multiTitle ? getGame(key).multiTitle : getGame(key).title;
     const gameColor = key => GAME_THEMES[getGame(key).category] || "#b4232f";
+    const gameImagePath = game => String(game?.imagePath || "").trim();
+    function gameVisual(game,variant="mark"){
+      const imagePath=gameImagePath(game),emoji=escapeHtml(game?.emoji||"🎮");
+      return `<span class="game-visual game-visual-${variant} ${imagePath?"has-image":""}" aria-hidden="true"><span class="game-visual-fallback">${emoji}</span>${imagePath?`<img src="${escapeHtml(imagePath)}" alt="" loading="lazy" decoding="async" onerror="this.hidden=true;this.parentElement.classList.add('image-missing')">`:""}</span>`;
+    }
+    function renderLargeGameArtwork(targetId,game,hostClass=""){
+      const target=$(targetId),imagePath=gameImagePath(game);
+      if(!target)return;
+      target.hidden=!imagePath;target.innerHTML=imagePath?`<img src="${escapeHtml(imagePath)}" alt="" decoding="async" onerror="this.parentElement.hidden=true">`:"";
+      if(hostClass)target.parentElement?.classList.toggle(hostClass,!!imagePath);
+    }
 
     const SK = {
       user:"gh.username", lastLobby:"gh.lastLobbyId", staleLobby:"gh.staleLobbyCleanupId",
@@ -863,7 +899,7 @@
       const card=document.createElement("article");card.className="game-card";card.style.setProperty("--game",gameColor(game.key));
       const modeTags=game.modes.map(m=>`<span class="tag">${m==="single"?"Solo":"Multiplayer"}</span>`).join("");
       card.innerHTML=`
-        <div class="game-art"><div class="emoji">${game.emoji}</div><button class="favorite-btn ${favorites.has(game.key)?"active":""}" title="Favorite">${favorites.has(game.key)?"★":"☆"}</button></div>
+        <div class="game-art">${gameVisual(game,"art")}<button class="favorite-btn ${favorites.has(game.key)?"active":""}" title="Favorite">${favorites.has(game.key)?"★":"☆"}</button></div>
         <div class="game-content"><div class="game-name">${escapeHtml(game.title)}</div><div class="game-description">${escapeHtml(game.desc)}</div><div class="game-meta"><span class="tag">${escapeHtml(game.category)}</span>${modeTags}</div>
         <div class="game-bottom"><span class="play-count">🎮 ${gamePlayCounts[game.key]||0} plays</span><button class="btn small">${game.modes.includes("single")?"Play":"Create Lobby"}</button></div></div>`;
       card.querySelector(".favorite-btn").addEventListener("click",e=>{e.stopPropagation();toggleFavorite(game.key);});
@@ -899,6 +935,7 @@
     function renderFeatured(){
       const featured=MULTI_GAMES.filter(g=>g.featured).sort((a,b)=>(gamePlayCounts[b.key]||0)-(gamePlayCounts[a.key]||0))[0]||getGame("chesswarlord");
       $("featuredHero").style.setProperty("--hero-a",gameColor(featured.key));$("featuredHero").style.setProperty("--hero-b","#111827");
+      renderLargeGameArtwork("featuredArtwork",featured,"has-art");
       $("featuredTitle").textContent=featured.title;$("featuredDesc").textContent=featured.desc;$("featuredMultiBtn").onclick=()=>openCreateLobby(featured.key);
       $("featuredFavoriteBtn").textContent=favorites.has(featured.key)?"★ Favorited":"☆ Favorite";$("featuredFavoriteBtn").onclick=()=>toggleFavorite(featured.key);
     }
@@ -940,7 +977,7 @@
       const card=document.createElement("article");card.className=`lobby-card ${privateLobby?"private":""}`;card.style.setProperty("--game",gameColor(game.key));
       const previews=lobby.players.slice(0,4).map(p=>`<span class="avatar-mini" title="${escapeHtml(p)}">${initials(p)}</span>`).join("");
       card.innerHTML=`
-        <div class="lobby-card-head"><div style="display:flex;gap:11px;min-width:0"><div class="game-mark">${game.emoji}</div><div style="min-width:0"><div class="lobby-title">${escapeHtml(lobby.name||"Lobby")}</div><div class="lobby-game">${escapeHtml(gameTitle(game.key,true))}</div></div></div><span class="status-chip">● Waiting</span></div>
+        <div class="lobby-card-head"><div style="display:flex;gap:11px;min-width:0"><div class="game-mark">${gameVisual(game,"mark")}</div><div style="min-width:0"><div class="lobby-title">${escapeHtml(lobby.name||"Lobby")}</div><div class="lobby-game">${escapeHtml(gameTitle(game.key,true))}</div></div></div><span class="status-chip">● Waiting</span></div>
         <div class="lobby-facts"><div class="fact">Host<strong>${escapeHtml(lobby.host||"Unknown")}</strong></div><div class="fact">Players<strong>${count}/${Number.isFinite(cap)?cap:"∞"}</strong></div></div>
         <div class="player-preview">${previews}${count>4?`<span class="avatar-more">+${count-4} more</span>`:""}</div>
         <div class="capacity"><i style="width:${Number.isFinite(cap)?Math.min(100,count/cap*100):35}%"></i></div>
@@ -985,7 +1022,7 @@
     function updateVisibilityButtons(){document.querySelectorAll("[data-visibility]").forEach(btn=>btn.classList.toggle("active",btn.dataset.visibility===selectedVisibility));}
     function updateCreateGameInfo(){
       const game=getGame($("newLobbyGame").value||"chesswarlord"),cap=getMaxPlayers(game.key);
-      $("createLobbyGameInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${game.emoji}</div><div><strong>${escapeHtml(gameTitle(game.key,true))}</strong><div class="help">${escapeHtml(game.desc)} • ${Number.isFinite(cap)?cap:"Flexible"} players max • Launches only after the host presses Start Game</div></div></div>`;
+      $("createLobbyGameInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div><strong>${escapeHtml(gameTitle(game.key,true))}</strong><div class="help">${escapeHtml(game.desc)} • ${Number.isFinite(cap)?cap:"Flexible"} players max • Launches only after the host presses Start Game</div></div></div>`;
       $("createLobbySubmit").textContent="Create Lobby";
     }
     async function createLobby(){
@@ -1012,7 +1049,8 @@
     function renderCurrentLobby(){
       const has=!!currentLobbyData&&!!currentLobbyId;$("currentLobbyEmpty").hidden=has;$("currentLobbyContent").hidden=!has;if(!has)return;
       const game=getGame(currentLobbyData.gameType);$("currentLobbyCover").style.background=`linear-gradient(135deg,${gameColor(game.key)},#111827)`;
-      $("currentLobbyName").textContent=currentLobbyData.name||"Lobby";$("currentLobbyGame").textContent=`${game.emoji} ${gameTitle(game.key,true)} • ${(currentLobbyData.visibility||"public")==="private"?"Private":"Public"}`;
+      renderLargeGameArtwork("currentLobbyArtwork",game);
+      $("currentLobbyName").textContent=currentLobbyData.name||"Lobby";$("currentLobbyGame").textContent=`${gameImagePath(game)?"":`${game.emoji} `}${gameTitle(game.key,true)} • ${(currentLobbyData.visibility||"public")==="private"?"Private":"Public"}`;
       $("currentLobbyPlayers").innerHTML="";(currentLobbyData.players||[]).forEach(player=>{
         const row=document.createElement("div");row.className="player-row";row.innerHTML=`<div class="player-name"><span class="avatar-mini" style="margin:0">${initials(player)}</span>${escapeHtml(player)} ${player===currentLobbyData.host?'<span class="host-tag">HOST</span>':''}</div>`;$("currentLobbyPlayers").appendChild(row);
       });
@@ -1101,7 +1139,7 @@
         if(!snap.exists())throw new Error("This lobby no longer exists.");
         const lobby={id:snap.id,...snap.data()},game=getGame(lobby.gameType),players=Array.isArray(lobby.players)?lobby.players:[],cap=getMaxPlayers(lobby.gameType);
         if(lobby.status!=="waiting")throw new Error("This lobby has already started or closed.");
-        $("linkLobbyInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${game.emoji}</div><div><strong>${escapeHtml(lobby.name||"Lobby")}</strong><div class="help">${escapeHtml(gameTitle(game.key,true))} • Host: ${escapeHtml(lobby.host||"Unknown")} • ${players.length}/${Number.isFinite(cap)?cap:"∞"} players</div></div></div>`;
+        $("linkLobbyInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div><strong>${escapeHtml(lobby.name||"Lobby")}</strong><div class="help">${escapeHtml(gameTitle(game.key,true))} • Host: ${escapeHtml(lobby.host||"Unknown")} • ${players.length}/${Number.isFinite(cap)?cap:"∞"} players</div></div></div>`;
         setBusy($("linkLobbyJoinBtn"),false);openModal("linkLobbyModal");
       }catch(e){linkedLobbyId=null;setBusy($("linkLobbyJoinBtn"),false);toast(e.message||"Unable to open that lobby.","bad");}
     }
@@ -1149,7 +1187,7 @@
       if(!items.length){list.innerHTML='<div class="dropdown-empty">No active invitations.</div>';return;}
       items.forEach(inv=>{
         const game=getGame(inv.gameType),el=document.createElement("div");el.className="invite-item";
-        el.innerHTML=`<div class="invite-top"><div><div class="invite-title">${game.emoji} ${escapeHtml(inv.lobbyName||game.title)}</div><div class="invite-meta">${escapeHtml(gameTitle(game.key,true))} • From ${escapeHtml(inv.fromUsername||"Player")}</div></div></div><div class="mini-actions"><button class="btn secondary small decline">Decline</button><button class="btn small join">Join</button></div>`;
+        el.innerHTML=`<div class="invite-top"><div style="display:flex;gap:10px;align-items:center;min-width:0"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div style="min-width:0"><div class="invite-title">${escapeHtml(inv.lobbyName||game.title)}</div><div class="invite-meta">${escapeHtml(gameTitle(game.key,true))} • From ${escapeHtml(inv.fromUsername||"Player")}</div></div></div></div><div class="mini-actions"><button class="btn secondary small decline">Decline</button><button class="btn small join">Join</button></div>`;
         el.querySelector(".decline").onclick=()=>deleteDoc(doc(db,"lobbyInvites",inv.id)).catch(()=>{});el.querySelector(".join").onclick=()=>requestJoinLobby(inv.lobbyId,inv.id);list.appendChild(el);
       });
     }
@@ -1180,7 +1218,7 @@
       const d=currentUserData||{},display=d.displayName||username,avatar=d.avatar||"🎮",bio=d.bio||"Game Hub player";
       $("profileAvatar").textContent=avatar;$("profileName").textContent=display;$("profileBio").textContent=bio;$("profileWins").textContent=d.wins||0;$("profileFavoriteCount").textContent=favorites.size;$("profileRecentCount").textContent=recentGames.length;
       const fav=$("profileFavorites");fav.innerHTML="";[...favorites].map(getGame).slice(0,8).forEach(g=>fav.appendChild(gameCard(g,true)));if(!fav.children.length)fav.innerHTML='<div class="empty-state" style="grid-column:1/-1;padding:25px">No favorite games yet. Use the star on a game card.</div>';
-      const rec=$("profileRecent");rec.innerHTML="";recentGames.slice(0,10).forEach(item=>{const key=typeof item==="string"?item:item.key,g=getGame(key),date=typeof item==="string"?null:item.playedAt;const row=document.createElement("div");row.className="activity-row";row.innerHTML=`<span>${g.emoji} <strong>${escapeHtml(g.title)}</strong></span><span class="help">${date?fmtAge(date):"Recently"}</span>`;rec.appendChild(row);});if(!rec.children.length)rec.innerHTML='<div class="empty-state" style="padding:25px">Play a game to begin your history.</div>';
+      const rec=$("profileRecent");rec.innerHTML="";recentGames.slice(0,10).forEach(item=>{const key=typeof item==="string"?item:item.key,g=getGame(key),date=typeof item==="string"?null:item.playedAt;const row=document.createElement("div");row.className="activity-row";row.innerHTML=`<span style="display:flex;align-items:center">${gameVisual(g,"tiny")}<strong>${escapeHtml(g.title)}</strong></span><span class="help">${date?fmtAge(date):"Recently"}</span>`;rec.appendChild(row);});if(!rec.children.length)rec.innerHTML='<div class="empty-state" style="padding:25px">Play a game to begin your history.</div>';
       $("profileDetails").innerHTML=`<div class="activity-list"><div class="activity-row"><span>Username</span><strong>${escapeHtml(username)}</strong></div><div class="activity-row"><span>Favorite category</span><strong>${escapeHtml(d.favoriteCategory||"Not selected")}</strong></div><div class="activity-row"><span>Account</span><strong>Game Hub Member</strong></div><div class="activity-row"><span>Lobby invites</span><strong>${inviteCache.size}</strong></div></div>`;
     }
     $("profileLogoutBtn").addEventListener("click",logout);
