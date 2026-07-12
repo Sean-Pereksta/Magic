@@ -31,18 +31,22 @@
   #status{display:none !important;}
   #title{font-weight:900;letter-spacing:.5px;font-size:16px;display:flex;align-items:center;gap:8px;}
   #subtitle{font-size:12px;color:var(--muted);line-height:1.25;}
-  #spawnPanel{flex:0 1 720px;max-width:min(720px,calc(100vw - 190px));display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:10px;pointer-events:auto;}
-  .spawnCard{position:relative;overflow:hidden;padding:10px 10px 8px;display:flex;flex-direction:column;justify-content:space-between;border-radius:16px;border:1px solid rgba(255,255,255,.15);background:rgba(12,17,28,.74);min-width:0;transition:transform .12s,border-color .12s,background .12s;}
-  .spawnCard.ready:hover,.spawnCard.selected{transform:translateY(-2px);border-color:rgba(255,230,140,.8);background:rgba(45,36,15,.85);}
-  .spawnCard.locked{opacity:.54;}
-  .spawnName{font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .spawnMeta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .spawnIcon{position:absolute;right:10px;bottom:5px;font-size:28px;opacity:.76;filter:drop-shadow(0 4px 10px #000);}
-  .tierCard{grid-column:1/-1;position:relative;overflow:hidden;padding:10px 12px;border-radius:16px;border:1px solid rgba(255,255,255,.16);background:rgba(12,17,28,.78);display:flex;flex-direction:column;gap:7px;min-height:72px;}
-  .tierTop{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:12px;font-weight:1000;color:#eef6ff;}
-  .tierMeta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .tierTrack{height:11px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.12);overflow:hidden;}
-  .tierFill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#7dd3fc,#facc15,#fb7185);box-shadow:0 0 16px rgba(250,204,21,.32);}
+  #spawnPanel{flex:0 1 720px;max-width:min(720px,calc(100vw - 190px));display:grid;grid-template-columns:minmax(104px,.72fr) repeat(3,minmax(112px,1fr));gap:7px;pointer-events:auto;}
+  .spawnCard{position:relative;overflow:hidden;padding:7px 48px 7px 8px;display:flex;flex-direction:column;justify-content:center;border-radius:14px;border:1px solid rgba(255,255,255,.15);background:rgba(12,17,28,.78);min-width:0;min-height:70px;transition:transform .12s,border-color .12s,background .12s,opacity .12s;cursor:pointer;}
+  .spawnCard.ready:hover,.spawnCard.selected{transform:translateY(-2px);border-color:rgba(255,230,140,.82);background:rgba(45,36,15,.88);}
+  .spawnCard.selected{box-shadow:0 0 0 2px rgba(255,224,124,.35),0 12px 28px rgba(0,0,0,.24);}
+  .spawnCard.locked{opacity:.48;cursor:not-allowed;}
+  .spawnName{font-size:11px;font-weight:1000;line-height:1.12;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+  .spawnMeta{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .spawnCost{display:inline-flex;align-items:center;gap:3px;width:max-content;margin-top:5px;padding:2px 6px;border-radius:999px;background:rgba(255,212,107,.13);border:1px solid rgba(255,212,107,.34);color:#ffe7a0;font-size:10px;font-weight:1000;}
+  .spawnThumb{position:absolute;right:4px;bottom:3px;width:44px;height:58px;background:transparent;filter:drop-shadow(0 5px 8px rgba(0,0,0,.58));pointer-events:none;}
+  .spawnFallback{position:absolute;right:10px;bottom:12px;font-size:26px;opacity:.82;filter:drop-shadow(0 4px 10px #000);pointer-events:none;}
+  .tokenCard{position:relative;overflow:hidden;padding:7px 8px;border-radius:14px;border:1px solid rgba(125,211,252,.28);background:rgba(7,18,31,.84);display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:0;min-height:70px;}
+  .tokenTop{display:flex;justify-content:space-between;gap:5px;align-items:baseline;font-size:9px;font-weight:1000;color:#dff6ff;text-transform:uppercase;letter-spacing:.05em;}
+  .tokenCount{font-size:20px;line-height:1;color:#fff1a8;letter-spacing:-.04em;}
+  .tokenTrack{height:7px;border-radius:999px;background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.11);overflow:hidden;}
+  .tokenFill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#7dd3fc,#facc15,#fb7185);box-shadow:0 0 12px rgba(250,204,21,.30);}
+  .tokenMeta{font-size:9px;line-height:1.15;color:#aebdd0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   #rightHUD{display:none !important;}
   .bar{height:9px;border-radius:999px;background:rgba(255,255,255,.14);overflow:hidden;border:1px solid rgba(255,255,255,.1);}
   .fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#67e8f9,#facc15,#fb7185);box-shadow:0 0 16px rgba(250,204,21,.36);}
@@ -104,7 +108,6 @@
   #assetLoadTrack{height:10px;margin-top:8px;border-radius:999px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.12);overflow:hidden;}
   #assetLoadFill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#7dd3fc,#facc15,#86efac);transition:width .16s ease;}
   #assetLoadText{margin-top:7px;color:#b9c8dc;font-size:11px;line-height:1.35;}
-  .spawnThumb{position:absolute;right:6px;bottom:3px;width:54px;height:54px;object-fit:contain;image-rendering:auto;filter:drop-shadow(0 5px 8px rgba(0,0,0,.58));pointer-events:none;}
   @media(max-width:760px){
     #topbar{height:98px;padding:8px;gap:6px;}
     #quickControls{width:104px;min-width:104px;padding:7px 6px;border-radius:14px;}
@@ -113,14 +116,17 @@
     #quickPct{font-size:10px;}
     #status{display:none;}
     #rightHUD{display:none;}
-    #spawnPanel{max-width:calc(100vw - 122px);grid-template-columns:repeat(3,1fr);gap:6px;}
-    .spawnCard{padding:8px 7px;min-height:72px;border-radius:14px;}
-    .spawnName{font-size:11px;}
-    .spawnMeta{font-size:10px;}
-    .spawnIcon{font-size:22px;right:7px;bottom:3px;}
-    .tierCard{min-height:72px;padding:8px 9px;border-radius:14px;}
-    .tierTop{font-size:10px;}
-    .tierMeta{font-size:10px;}
+    #spawnPanel{max-width:calc(100vw - 122px);grid-template-columns:58px repeat(3,minmax(0,1fr));gap:4px;}
+    .spawnCard{padding:5px 31px 5px 5px;min-height:68px;border-radius:12px;}
+    .spawnName{font-size:8.5px;line-height:1.08;}
+    .spawnMeta{font-size:8px;}
+    .spawnCost{font-size:8px;padding:2px 4px;margin-top:3px;}
+    .spawnThumb{right:1px;bottom:5px;width:31px;height:49px;}
+    .spawnFallback{right:6px;bottom:15px;font-size:20px;}
+    .tokenCard{padding:5px;min-height:68px;border-radius:12px;gap:4px;}
+    .tokenTop{font-size:7px;display:block;}
+    .tokenCount{display:block;font-size:17px;margin-top:2px;}
+    .tokenMeta{font-size:7.5px;}
     #minimapDock{left:8px;bottom:8px;width:172px;padding:6px;}
     #minimapDock #minimap{width:158px;height:116px;border-radius:10px;}
     #minimapDock.collapsed{width:41px;padding:5px;}
@@ -151,11 +157,11 @@
 </div>
 <button id="fullscreenBtn" title="Toggle fullscreen">⛶ Fullscreen</button>
 <div id="topbar">
-  <div id="quickControls" class="glass"><button id="centerBtn">Center King</button><div id="quickPct">Spawn 0%</div></div>
+  <div id="quickControls" class="glass"><button id="centerBtn">Center King</button><div id="quickPct">Tokens 0</div></div>
   <div id="status" class="glass"></div>
   <div id="spawnPanel"></div>
   <div id="rightHUD" class="glass">
-    <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:900"><span>Spawn Bar</span><span id="spawnPct">0%</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:900"><span>Token Progress</span><span id="spawnPct">0%</span></div>
     <div class="bar"><div id="spawnFill" class="fill"></div></div>
     <div id="scoreLine" style="font-size:12px;color:var(--muted)">Territory 0 · Captures 0</div>
     <div id="factionLine" style="font-size:12px;color:var(--muted)">Faction: Crownward</div>
@@ -306,6 +312,8 @@ const EMBER_SCORCH_SECONDS = 60;
 const EMBER_KILL_HEAT_SECONDS = 10;
 const CINDER_ARCHON_DEN_COOLDOWN = 120;
 const GLOBAL_SPAWN_COOLDOWN_MULT = .75;
+const SPAWN_TOKEN_RATE_MULT = 2; // Every faction earns shop tokens in half the previous wait time.
+const MAX_SPAWN_TOKENS = 99;
 const SUNSPIRE_MAX_SOLAR_BEACONS = 10;
 const SUNSPIRE_BASE_SPAWN_SECONDS = 122 * GLOBAL_SPAWN_COOLDOWN_MULT;
 const SUNSPIRE_MIN_SPAWN_SECONDS = 60 * GLOBAL_SPAWN_COOLDOWN_MULT;
@@ -983,7 +991,7 @@ function buildSelfContainedState(reason='fullRepair'){
     controller: controllerName || username || '',
     controllerEpoch: currentControllerEpoch(),
     stats: {captures:gameStats.captures||0,kingsTaken:gameStats.kingsTaken||0,startedAt:gameStats.startedAt||now()},
-    factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,killPrestige:f.killPrestige||0,spawnsMade:f.spawnsMade||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
+    factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,killPrestige:f.killPrestige||0,spawnsMade:f.spawnsMade||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnTokens:Math.max(0,Math.floor(f.spawnTokens||0)),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
     winner: winnerName() || '',
     boardOwners: compressOwners(),
     boardKinds: compressCaptureKinds(),
@@ -1034,7 +1042,7 @@ function serializeState(reason='sync', forceFull=false){
     controller: controllerName || username || '',
     controllerEpoch: currentControllerEpoch(),
     stats: {captures:gameStats.captures||0,kingsTaken:gameStats.kingsTaken||0,startedAt:gameStats.startedAt||now()},
-    factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,killPrestige:f.killPrestige||0,spawnsMade:f.spawnsMade||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
+    factions: factions.map(f => ({idx:f.idx,id:f.id,alive:f.alive,kingId:f.kingId,piecesTaken:f.piecesTaken||0,territoryTaken:f.territoryTaken||0,killPrestige:f.killPrestige||0,spawnsMade:f.spawnsMade||0,difficulty:f.difficulty||1,nextThink:f.nextThink||now(),spawnMeter:+(f.spawnMeter||0).toFixed(3),spawnTokens:Math.max(0,Math.floor(f.spawnTokens||0)),spawnChoices:(f.spawnChoices||[]).slice(0,3)})),
     winner: winnerName() || ''
   };
   const includeLandPatch = (prev, next, patchField, fullField) => {
@@ -1225,7 +1233,10 @@ function applyRemoteState(data){
     f.spawnsMade = fd.spawnsMade || 0;
     f.nextThink = fd.nextThink || f.nextThink || now()+1;
     f.difficulty = fd.difficulty || f.difficulty || 1;
-    if(typeof fd.spawnMeter === 'number') f.spawnMeter = fd.spawnMeter;
+    const legacyReadySpawn = typeof fd.spawnTokens !== 'number' && Number(fd.spawnMeter || 0) >= 99.2;
+    if(typeof fd.spawnMeter === 'number') f.spawnMeter = legacyReadySpawn ? 0 : ((fd.spawnMeter % 100) + 100) % 100;
+    if(typeof fd.spawnTokens === 'number') f.spawnTokens = clamp(Math.floor(fd.spawnTokens),0,MAX_SPAWN_TOKENS);
+    else f.spawnTokens = legacyReadySpawn ? Math.max(1,Math.floor(f.spawnTokens||0)) : Math.max(0,Math.floor(f.spawnTokens||0));
     if(Array.isArray(fd.spawnChoices)) f.spawnChoices = fd.spawnChoices.slice(0,3);
   }
   gameStats = data.stats || gameStats;
@@ -1501,15 +1512,22 @@ function applyIncomingCommand(cmd){
     const type = String(cmd.type || '');
     const x = Number(cmd.x), y = Number(cmd.y);
     if(!f.pieces.includes(type) || type === 'king') return commandReject('bad_spawn_type');
+    if(!Array.isArray(f.spawnChoices) || !f.spawnChoices.includes(type)) return commandReject('offer_no_longer_available');
     if(!inBounds(x,y) || findPieceAt(x,y)) return commandReject('spawn_tile_blocked');
-    if((f.spawnMeter || 0) < 99.2) return commandReject('spawn_meter_not_ready');
+    const tokenCost = spawnTokenCost(type);
+    // Small tolerance for a non-host whose local token meter completed just before the controller tick.
+    if((f.spawnTokens || 0) < tokenCost && (f.spawnTokens || 0) + 1 >= tokenCost && (f.spawnMeter || 0) >= 98){
+      f.spawnTokens = Math.min(MAX_SPAWN_TOKENS,(f.spawnTokens || 0) + 1);
+      f.spawnMeter = 0;
+    }
+    if((f.spawnTokens || 0) < tokenCost) return commandReject('not_enough_spawn_tokens');
     if(!eligibleSpawnTiles(slot,type).some(t=>t.x===x && t.y===y)) return commandReject('spawn_tile_not_eligible');
     const pieceId = Number(cmd.pieceId) || allocateClientPieceId();
     if(getPiece(pieceId) || pieces.find(p=>p.alive && p.clientActionId === cmd.actionId)) return commandAccept('spawn_already_present');
     processedCommandIds.add(`action:${cmd.actionId || ''}`);
     newPiece(slot,type,x,y,{ready:false,id:pieceId,clientActionId:cmd.actionId || '',clientActionBy:cmd.by || ''});
     recordFactionSpawn(f,type);
-    f.spawnMeter = 0;
+    f.spawnTokens = Math.max(0,(f.spawnTokens || 0) - tokenCost);
     f.spawnChoices = chooseSpawnOptions(slot);
     burst(x,y,f.color,16);
     return commandAccept('spawn_applied');
@@ -1691,22 +1709,29 @@ async function requestPlayerAbility(actor,target,ability){
 async function requestPlayerSpawn(x,y){
   if(playerDefeated || !ownFactionAlive()) return;
   const f=factions[PLAYER];
-  const type=f.spawnChoices[spawnSelection];
+  const type=f.spawnChoices?.[spawnSelection];
   if(!type) return;
-  if(f.spawnMeter<100){ spawnSelection=null; renderSpawnCards(); return; }
+  const tokenCost=spawnTokenCost(type);
+  if((f.spawnTokens||0)<tokenCost){ spawnSelection=null; renderSpawnCards(); toast(`You need ${tokenCost} tokens for ${pieceDisplayName(PLAYER,type)}.`); return; }
+  if(lobbyId && !canAuthoritativelyWriteState() && pendingPlayerActions.some(a=>a.kind==='spawn')){
+    toast('Your previous deployment is still awaiting host confirmation.');
+    return;
+  }
   const legalSpawn = eligibleSpawnTiles(PLAYER,type).some(t=>t.x===x && t.y===y);
   if(!inBounds(x,y) || !legalSpawn){
     toast('That is not an eligible controlled spawn tile for this faction or piece.'); return;
   }
   const actionId = makeClientActionId('spawn');
   const pieceId = allocateClientPieceId();
-  const action = {kind:'spawn', actionId, pieceId, type, x, y, baseStateVersion: localStateVersion || 0};
+  const action = {kind:'spawn', actionId, pieceId, type, tokenCost, x, y, baseStateVersion: localStateVersion || 0};
   newPiece(PLAYER,type,x,y,{ready:false,id:pieceId,clientActionId:actionId,clientActionBy:username || ''});
+  f.spawnTokens=Math.max(0,(f.spawnTokens||0)-tokenCost);
+  recordFactionSpawn(f,type);
+  f.spawnChoices=chooseSpawnOptions(PLAYER);
   rememberPendingPlayerAction({...action, faction:PLAYER});
-  if(canAuthoritativelyWriteState()){ recordFactionSpawn(f,type); f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER); }
   spawnSelection=null;
   renderSpawnCards(); updateHUD();
-  burst(x,y,f.color,24); toast(`${pieceDisplayName(PLAYER,type)} deployed.`);
+  burst(x,y,f.color,24); toast(`${pieceDisplayName(PLAYER,type)} deployed for ${tokenCost} token${tokenCost===1?'':'s'}.`);
   if(canAuthoritativelyWriteState()){ queueReliableStateWrite('playerSpawn'); }
   else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
 }
@@ -2249,7 +2274,7 @@ const factionCatalog = {
   },
   verdant: {
     id:'verdant', name:'Verdant Swarm', short:'Verdant', icon:'🌿', color:'#6ee985', dark:'#217a3b', aura:'#83f795', aiStyle:'expansion', spawnRate:.80,
-    description:'Living-terrain faction. Root spread now comes from Seed Grove nodes instead of every troop; hill and crystal movement is still strategic, but less explosive.',
+    description:'Living-terrain faction. The Verdant King auto-captures up to two spaces away, while Seed Grove nodes spread and maintain the wider root network.',
     pieces:['seedpawn','thornguard','scout','stagrunner','vinehook','vinebishop','general','grovetower','queen','seedgrove','broodbloom']
   },
   shadow: {
@@ -2265,7 +2290,7 @@ const factionCatalog = {
   sunspire: {
     id:'sunspire', name:'Sunspire Order', short:'Sunspire', icon:'☀', color:'#ffd2a1', dark:'#a6611d', aura:'#ffe7bc', aiStyle:'honor', spawnRate:1.75,
     description:'Elite solar faction. Early spawns are guaranteed Solar Beacon access; beacons speed one ally, slow one enemy with a blue beam, and roads give 10% faster cooldowns.',
-    pieces:['dawnblade','eagleknight','eagleknight','lightlancer','radiantbishop','sunherald','paladin','dawnarchon','queen','sunspirebeacon','radiantmonastery']
+    pieces:['dawnblade','eagleknight','eagleknight','lightlancer','radiantbishop','sunherald','paladin','dawnarchon','general','tower','queen','sunspirebeacon','radiantmonastery']
   },
   frost: {
     id:'frost', name:'Frostbound Clans', short:'Frostbound', icon:'❄', color:'#a7f3ff', dark:'#1e5f78', aura:'#d4fbff', aiStyle:'defensive', spawnRate:1.25,
@@ -2386,7 +2411,7 @@ const FACTION_PIECE_NAMES = Object.freeze({
   iron:{king:'Iron King',shieldpawn:'Shieldbearer',bulwark:'Bulwark',hammerknight:'Iron Knight',gatebreaker:'Gatebreaker',rook:'Iron Rook',warden:'Warden',general:'Iron General',tower:'Iron Tower'},
   verdant:{king:'Verdant King',seedpawn:'Seed Pawn',thornguard:'Thorn Guard',scout:'Scout',stagrunner:'Stag Runner',vinehook:'Vinehook',vinebishop:'Vine Bishop',general:'Verdant General',grovetower:'Grove Tower',queen:'Verdant Queen'},
   shadow:{king:'Shadow King',shadepawn:'Shade Pawn',blinkpawn:'Blink Pawn',shadowstepper:'Shadow Stepper',assassin:'Assassin',nightblade:'Nightblade',wraith:'Wraith',voidstrider:'Void Strider',umbralbishop:'Umbral Bishop',queen:'Shadow Queen'},
-  sunspire:{king:'Sunspire King',dawnblade:'Dawn Blade',eagleknight:'Eagle Knight',lightlancer:'Light Lancer',radiantbishop:'Radiant Bishop',sunherald:'Sun Herald',paladin:'Paladin',dawnarchon:'Dawn Archon',queen:'Sun Queen'}
+  sunspire:{king:'Sunspire King',dawnblade:'Dawn Blade',eagleknight:'Eagle Knight',lightlancer:'Light Lancer',radiantbishop:'Radiant Bishop',sunherald:'Sun Herald',paladin:'Paladin',dawnarchon:'Dawn Archon',general:'Sun General',tower:'Sun Tower',queen:'Sun Queen'}
 });
 function pieceDisplayName(factionOrId,type){
   const factionId = typeof factionOrId === 'string' ? factionOrId : factions[factionOrId]?.id;
@@ -2410,7 +2435,7 @@ const PIECE_GRAPHIC_CANDIDATES = Object.freeze({
     king:['shadow king.png','king.png'],shadepawn:['shade pawn.png'],blinkpawn:['blink pawn.png'],shadowstepper:['shadow stepper.png'],assassin:['assassin.png'],nightblade:['nightblade.png'],wraith:['wraith.png'],voidstrider:['void strider.png'],umbralbishop:['umbral bishop.png'],queen:['shadow queen.png','queen.png'],obsidianmirror:['obsidian mirror.png'],knifechapel:['knife chapel.png']
   },
   sunspire:{
-    king:['sunspire king.png','king.png'],dawnblade:['dawn blade.png'],eagleknight:['eagle knight.png'],lightlancer:['light lancer.png'],radiantbishop:['radiant bishop.png'],sunherald:['sun herald.png'],paladin:['paladin.png'],dawnarchon:['dawn archon.png'],queen:['sun queen.png','queen.png'],sunspirebeacon:['solar beacon.png'],radiantmonastery:['radiant monastery.png']
+    king:['sunspire king.png','king.png'],dawnblade:['dawn blade.png'],eagleknight:['eagle knight.png'],lightlancer:['light lancer.png'],radiantbishop:['radiant bishop.png'],sunherald:['sun herald.png'],paladin:['paladin.png'],dawnarchon:['dawn archon.png'],general:['sun general.png','general.png'],tower:['sun tower.png','tower.png'],queen:['sun queen.png','queen.png'],sunspirebeacon:['solar beacon.png'],radiantmonastery:['radiant monastery.png']
   }
 });
 const WALL_GRAPHIC_CANDIDATES = Object.freeze({
@@ -3243,6 +3268,7 @@ function setupFactions(){
       aiSpawnScale: human ? 1 : aiSpawnScale,
       nextThink: now()+1+idx*.3,
       spawnMeter: human ? 12 : Math.random()*55,
+      spawnTokens: 0,
       spawnChoices: [],
       kingId:null,
       piecesTaken:0,
@@ -3438,6 +3464,10 @@ function eligibleSpawnTiles(factionIdx, type=null){
   }
   return arr;
 }
+function spawnTokenCost(type){
+  const value=Math.max(1,Number(pieceDefs[type]?.value||1));
+  return clamp(Math.ceil(value/2),1,5);
+}
 function chooseSpawnOptions(factionIdx){
   const f=factions[factionIdx];
   let pool = f.pieces.filter(t=>t!=='king');
@@ -3445,18 +3475,26 @@ function chooseSpawnOptions(factionIdx){
     pool = pool.filter(t=>t!=='sunacolyte' && (t!=='sunspirebeacon' || canOfferSolarBeacon(factionIdx)));
     // First three real Sunspire spawns always show a Solar Beacon option if one can still be placed.
     if((f.spawnsMade||0)<3 && canOfferSolarBeacon(factionIdx) && !pool.includes('sunspirebeacon')) pool.unshift('sunspirebeacon');
-    // Bias Sunspire toward elite saturation, but Eagle Knights are no longer spammed as heavily.
+    // Preserve elite weighting while still presenting three distinct choices.
     pool = pool.concat(['dawnblade','lightlancer','radiantbishop']);
+  }
+  if(f.id==='verdant'){
+    // Four additional weighted entries make Seed Groves a frequent shop choice without forcing one every roll.
+    pool = pool.concat(['seedgrove','seedgrove','seedgrove','seedgrove']);
   }
   if(f.id==='ember') pool = pool.filter(t=>t!=='ashhopper');
   if(!pool.length) pool = f.pieces.filter(t=>t!=='king' && t!=='sunspirebeacon');
   const picks=[];
-  let guard=0;
-  while(picks.length<3 && guard++<80){
-    const type=pool[Math.floor(Math.random()*pool.length)] || 'pawn';
-    if(picks.length<2 || !picks.includes(type) || Math.random()>.5) picks.push(type);
+  let weighted=pool.slice();
+  let offerRoll=0;
+  const offerRandom=()=>seededNoise((f.spawnsMade||0)*41+offerRoll++,factionIdx*67+(mapSeed||1)%997,9401);
+  while(picks.length<3 && weighted.length){
+    const type=weighted[Math.floor(offerRandom()*weighted.length)] || 'pawn';
+    picks.push(type);
+    weighted=weighted.filter(t=>t!==type);
   }
-  while(picks.length<3) picks.push(pool[picks.length%pool.length]||'pawn');
+  const fallback=[...new Set(pool)];
+  while(picks.length<3) picks.push(fallback[picks.length%Math.max(1,fallback.length)]||'pawn');
   if(f.id==='sunspire' && (f.spawnsMade||0)<3 && canOfferSolarBeacon(factionIdx) && !picks.includes('sunspirebeacon')){
     picks[picks.length-1]='sunspirebeacon';
   }
@@ -4395,17 +4433,35 @@ function claimRadius(factionIdx,cx,cy,r,kind,glow=.55,filter=null){
   }
   return n;
 }
-function accelerateSpawnSeconds(factionIdx, seconds, label='SPAWN RUSH'){
+function addSpawnProgress(f,gain,announce=false){
+  if(!f || !Number.isFinite(gain) || gain<=0) return 0;
+  const total=Math.max(0,f.spawnMeter||0)+gain;
+  const earned=Math.floor(total/100);
+  f.spawnMeter=total-earned*100;
+  if(earned>0){
+    const before=Math.max(0,Math.floor(f.spawnTokens||0));
+    f.spawnTokens=Math.min(MAX_SPAWN_TOKENS,before+earned);
+    const credited=f.spawnTokens-before;
+    if(credited>0){
+      markStateDirty();
+      if(announce && f.idx===PLAYER){
+        renderSpawnCards();
+        toast(`${credited} spawn token${credited===1?'':'s'} earned.`,1800);
+      }
+    }
+    return credited;
+  }
+  return 0;
+}
+function accelerateSpawnSeconds(factionIdx, seconds, label='TOKEN RUSH'){
   const f=factions[factionIdx]; if(!f || !f.alive) return;
   const territory=ownerCounts.get(factionIdx)||0;
   const army=pieces.filter(p=>p.alive&&p.faction===factionIdx).length;
   const gain=spawnRateForFaction(f, territory, army) * seconds;
-  const before=f.spawnMeter||0;
-  f.spawnMeter=Math.min(100,before+gain);
+  const earned=addSpawnProgress(f,gain,factionIdx===PLAYER);
   markStateDirty();
   const k=getPiece(f.kingId) || pieces.find(p=>p.alive&&p.faction===factionIdx);
-  if(k) floating(k.x,k.y,`-${seconds}s ${label}`, f.color);
-  if(factionIdx===PLAYER && before<100 && f.spawnMeter>=100){ f.spawnChoices=chooseSpawnOptions(factionIdx); renderSpawnCards(); toast('Spawn rushed and ready.'); }
+  if(k) floating(k.x,k.y,`${earned?`+${earned} TOKEN`:`-${seconds}s`} ${label}`, f.color);
 }
 function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPiece=null){
   if(!piece || !piece.alive) return 0;
@@ -5132,60 +5188,77 @@ function createGame(){
   if(pauseBtn) pauseBtn.textContent='Pause';
   maybeAnnounceWorldWinner.done=false;
   gameStats={captures:0,kingsTaken:0,startedAt:now()};
-  factions.forEach(f=>{ f.spawnChoices=chooseSpawnOptions(f.idx); if(typeof f.spawnMeter !== 'number') f.spawnMeter=f.isAI?Math.random()*70:12; f.alive=true; });
+  factions.forEach(f=>{ f.spawnChoices=chooseSpawnOptions(f.idx); if(typeof f.spawnMeter !== 'number') f.spawnMeter=f.isAI?Math.random()*70:12; if(typeof f.spawnTokens !== 'number') f.spawnTokens=0; f.alive=true; });
   gameStarted=true;
   stateDirty = true;
   renderSpawnCards(); updateHUD(); updatePiecePanel();
 }
 
+function drawSpawnCardThumbnail(card,factionId,type){
+  const graphic=getPieceGraphic(factionId,type);
+  if(!graphic){
+    const fallback=document.createElement('div');
+    fallback.className='spawnFallback';
+    fallback.textContent=pieceDefs[type]?.icon || '◇';
+    card.appendChild(fallback);
+    return;
+  }
+  const thumb=document.createElement('canvas');
+  thumb.className='spawnThumb';
+  thumb.width=88;
+  thumb.height=116;
+  const tctx=thumb.getContext('2d');
+  tctx.clearRect(0,0,thumb.width,thumb.height);
+  const scale=Math.min(thumb.width/graphic.width,thumb.height/graphic.height);
+  const dw=graphic.width*scale,dh=graphic.height*scale;
+  tctx.drawImage(graphic,(thumb.width-dw)/2,(thumb.height-dh)/2,dw,dh);
+  card.appendChild(thumb);
+}
 function renderSpawnCards(){
   const f=factions[PLAYER]; if(!f) return;
   if(playerDefeated){
-    spawnPanel.innerHTML='<div class="spawnCard glass locked" style="grid-column:1/-1;justify-content:center;text-align:center"><div class="spawnName">Defeated — spectating only</div><div class="spawnMeta">Exit back to the lobby or watch the remaining factions.</div></div>';
+    spawnPanel.innerHTML='<div class="spawnCard glass locked" style="grid-column:1/-1;justify-content:center;text-align:center;padding-right:8px"><div class="spawnName">Defeated — spectating only</div><div class="spawnMeta">Exit or watch the remaining factions.</div></div>';
     return;
   }
-  if(!f.spawnChoices.length) f.spawnChoices=chooseSpawnOptions(PLAYER);
-  const ready=f.spawnMeter>=100;
-  const shrineBoosts=controlledShrinesFor(PLAYER).filter(s=>s.spawnBonus>0);
-  const shrineMeta=shrineBoosts.length ? ` · ${shrineBoosts.map(s=>s.short).join('+')} shrine` : '';
+  if(!Array.isArray(f.spawnChoices) || !f.spawnChoices.length) f.spawnChoices=chooseSpawnOptions(PLAYER);
+  const tokens=Math.max(0,Math.floor(f.spawnTokens||0));
+  recalcOwnerCounts();
+  const territory=ownerCounts.get(PLAYER)||0;
+  const army=pieces.filter(p=>p.alive&&p.faction===PLAYER).length;
+  const tier=spawnTierInfoForFaction(f,territory);
+  const spawnRate=spawnRateForFaction(f,territory,army);
+  const progress=clamp(f.spawnMeter||0,0,99.999);
+  const remaining=Math.max(1,Math.ceil((100-progress)/Math.max(.01,spawnRate)));
+  if(spawnSelection!==null){
+    const selectedType=f.spawnChoices[spawnSelection];
+    if(!selectedType || tokens<spawnTokenCost(selectedType)) spawnSelection=null;
+  }
   spawnPanel.innerHTML='';
-  if(!ready){
-    recalcOwnerCounts();
-    const territory = ownerCounts.get(PLAYER)||0;
-    const army = pieces.filter(p=>p.alive&&p.faction===PLAYER).length;
-    const tier = spawnTierInfoForFaction(f, territory);
-    const spawnRate = spawnRateForFaction(f, territory, army);
-    const remaining = Math.ceil((100-clamp(f.spawnMeter,0,100))/Math.max(.01,spawnRate));
-    const tierCard=document.createElement('div');
-    tierCard.className='tierCard glass';
-    const fill = (tier.progress*100).toFixed(0);
-    const source = tier.mode==='kills' ? 'Kill economy' : 'Land economy';
-    tierCard.innerHTML=`
-      <div class="tierTop"><span>${source}: ${tier.label}</span><span>${remaining}s to spawn</span></div>
-      <div class="tierTrack"><div class="tierFill" style="width:${fill}%"></div></div>
-      <div class="tierMeta">${tier.basis} · ${tier.bonusText}</div>`;
-    spawnPanel.appendChild(tierCard);
-    return;
-  }
-  f.spawnChoices.forEach((type,i)=>{
-    const def=pieceDefs[type];
+  const tokenCard=document.createElement('div');
+  tokenCard.className='tokenCard glass';
+  tokenCard.title=`${tier.label}: ${tier.basis}. Each completed bar adds one token.`;
+  tokenCard.innerHTML=`<div class="tokenTop"><span>Tokens</span><span class="tokenCount">${tokens}</span></div><div class="tokenTrack"><div class="tokenFill" style="width:${progress.toFixed(1)}%"></div></div><div class="tokenMeta">next ${remaining}s · T${tier.tier}</div>`;
+  spawnPanel.appendChild(tokenCard);
+  f.spawnChoices.slice(0,3).forEach((type,i)=>{
+    const def=pieceDefs[type] || pieceDefs.pawn;
+    const cost=spawnTokenCost(type);
+    const affordable=tokens>=cost;
     const card=document.createElement('div');
-    card.className='spawnCard glass '+(ready?'ready':'locked')+(spawnSelection===i?' selected':'');
-    const king = getPiece(f.kingId) || {x:0,y:0};
-    const meta = def.building
-      ? `Building · ${def.desc}`
-      : `${patternName(def.pattern)} · ${baseCooldownFor({type, faction:PLAYER, level:1, x:king.x, y:king.y, alive:true}).toFixed(1)}s cooldown${shrineMeta}`;
-    card.innerHTML=`<div><div class="spawnName">${def.icon} ${pieceDisplayName(PLAYER,type)}</div><div class="spawnMeta">${meta}</div></div><div class="spawnIcon">${def.icon}</div>`;
+    card.className='spawnCard glass '+(affordable?'ready':'locked')+(spawnSelection===i?' selected':'');
+    card.title=`${pieceDisplayName(PLAYER,type)} · ${cost} token${cost===1?'':'s'} · ${def.desc}`;
+    card.innerHTML=`<div class="spawnName">${pieceDisplayName(PLAYER,type)}</div><div class="spawnCost">◆ ${cost}</div>`;
+    drawSpawnCardThumbnail(card,f.id,type);
     card.onclick=()=>{
-      if(!ready){ toast('Spawn bar is not full yet. Keep expanding and capturing.'); return; }
-      spawnSelection = spawnSelection===i ? null : i;
+      if(!affordable){ toast(`You need ${cost} tokens for ${pieceDisplayName(PLAYER,type)}.`); return; }
+      spawnSelection=spawnSelection===i ? null : i;
       selectedPiece=null; legalMoves=[];
-      renderSpawnCards();
-      toast(spawnSelection!==null ? `Place ${pieceDisplayName(PLAYER,type)} on any highlighted controlled tile.` : 'Spawn selection canceled.');
+      renderSpawnCards(); updatePiecePanel();
+      toast(spawnSelection!==null ? `Place ${pieceDisplayName(PLAYER,type)} on a highlighted open tile.` : 'Purchase canceled.');
     };
     spawnPanel.appendChild(card);
   });
 }
+
 function patternName(p){
   const names={building:'Building',pawn:'Pawn+',shadepawn:'Shade Blink',blinkpawn:'Blink Pawn',king:'King',general:'General',marshal:'Marshal Bend',tower:'Territory Tower',ballista:'Ballista Tower',aquanaut:'Aquanaut',shieldbearer:'Shieldbearer',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',cinderjack:'Cinder Jump',cinderarchon:'Cinder Archon',flamerunner:'Flame Rush',eagle:'Eagle Leap',lancer:'Lancer',scout:'Scout',thornguard:'Thorn Guard',stagrunner:'Stag Jump',vinehook:'Vinehook',assassin:'Assassin',shadowstepper:'Shadow Step',nightblade:'Nightblade',wraith:'Wraith',umbralbishop:'Umbral Bishop',warden:'Warden',paladin:'Paladin',sunacolyte:'Sun Skip',dawnblade:'Dawnblade',lightlancer:'Light Lancer',radiantbishop:'Radiant Jump',sunherald:'Sun Herald',frostpawn:'Frost Pawn',icespear:'Ice Spear',glacierguard:'Glacier Guard',frostbishop:'Frost Bishop',sledknight:'Sled Knight',mirrorskater:'Mirror Skate',voidstrider:'Void Strider',citadel:'Citadel Walker',archon:'Dawn Archon'};
   return names[p]||p;
@@ -5193,19 +5266,20 @@ function patternName(p){
 function updateHUD(){
   if(!factions[PLAYER]) return;
   const f=factions[PLAYER];
-  const pct=clamp(f.spawnMeter,0,100);
+  const pct=clamp(f.spawnMeter||0,0,99.999);
+  const tokens=Math.max(0,Math.floor(f.spawnTokens||0));
   spawnFill.style.width=pct.toFixed(0)+'%';
   recalcOwnerCounts();
   const territory = ownerCounts.get(PLAYER)||0;
   const army = pieces.filter(p=>p.alive&&p.faction===PLAYER).length;
   const spawnRate = spawnRateForFaction(f, territory, army);
   const tier = spawnTierInfoForFaction(f, territory);
-  const remaining = pct>=100 ? 0 : Math.ceil((100-pct)/Math.max(.01,spawnRate));
-  spawnPct.textContent = pct>=100 ? 'READY' : `${pct.toFixed(0)}% · ${remaining}s`;
-  if(quickPct) quickPct.textContent = playerDefeated ? 'Defeated' : (pct>=100 ? 'Spawn Ready' : `T${tier.tier} · ${remaining}s`);
-  scoreLine.textContent=`Territory ${territory} · Kills ${f.piecesTaken||0} · Tier ${tier.tier}`;
+  const remaining = Math.max(1,Math.ceil((100-pct)/Math.max(.01,spawnRate)));
+  spawnPct.textContent = `${tokens} token${tokens===1?'':'s'} · ${pct.toFixed(0)}%`;
+  if(quickPct) quickPct.textContent = playerDefeated ? 'Defeated' : `◆ ${tokens} · ${remaining}s`;
+  scoreLine.textContent=`Territory ${territory} · Kills ${f.piecesTaken||0} · Tokens ${tokens}`;
   factionLine.textContent=`${displayNameForFaction(PLAYER)} · ${f.name}`;
-  const panelSignature = `${playerDefeated}|${pct>=100}|${Math.floor(pct)}|${tier.mode}|${tier.tier}|${tier.value}|${tier.nextAt}|${Math.ceil(remaining/2)}|${spawnSelection}|${(f.spawnChoices||[]).join(',')}`;
+  const panelSignature = `${playerDefeated}|${tokens}|${Math.floor(pct/2)}|${tier.mode}|${tier.tier}|${tier.value}|${Math.ceil(remaining/2)}|${spawnSelection}|${(f.spawnChoices||[]).join(',')}`;
   if(panelSignature !== lastSpawnPanelSignature){
     lastSpawnPanelSignature = panelSignature;
     renderSpawnCards();
@@ -5388,9 +5462,7 @@ function updateLocalPlayerSpawn(dt){
   const territory=(ownerCounts.get(f.idx)||0);
   const army=pieces.filter(p=>p.alive&&p.faction===f.idx).length;
   const rate=spawnRateForFaction(f,territory,army);
-  const before=f.spawnMeter;
-  f.spawnMeter=Math.min(100,(f.spawnMeter||0)+dt*rate);
-  if(before<100 && f.spawnMeter>=100){ f.spawnChoices=chooseSpawnOptions(PLAYER); renderSpawnCards(); toast('Spawn ready.'); }
+  addSpawnProgress(f,dt*rate,true);
 }
 let specialLandTimer = 0;
 function updateSpecialLandRules(dt){
@@ -5484,7 +5556,10 @@ function updateCrownwardGeneralBanners(f,tNow){
   }
 }
 function updateVerdantSpreadAndFade(f,dt){
-  // Verdant expansion is now node-led only. Ordinary troops no longer paint a 4-tile living-ground radius.
+  // The Verdant King is a living command node and automatically captures every passable tile up to two spaces away.
+  const king=getPiece(f.kingId);
+  if(king?.alive) claimRadius(f.idx,king.x,king.y,2,'verdant_seed',0,(t)=>terrainOf(t).pass);
+  // Other Verdant expansion remains node-led; ordinary troops do not paint a broad living-ground radius.
   const nodes=liveBuildings(f.idx,'seedgrove');
   for(const node of nodes){
     claimRadius(f.idx,node.x,node.y,VERDANT_NODE_SPREAD_RADIUS,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
@@ -5803,7 +5878,7 @@ function spawnRateForFaction(f, territory, army){
     const seconds = Math.max(SUNSPIRE_MIN_SPAWN_SECONDS, SUNSPIRE_BASE_SPAWN_SECONDS - beacons * SUNSPIRE_SOLAR_BEACON_SECONDS);
     const armyDrag = 1 + Math.max(0, army - 28) * .014;
     const aiTempo = isHumanSlot(f.idx) ? 1 : (f.aiSpawnScale || 1);
-    return (100 / seconds) * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag;
+    return ((100 / seconds) * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag) * SPAWN_TOKEN_RATE_MULT;
   }
   const tier = spawnTierInfoForFaction(f, territory);
   let tierRate = 100 / Math.max(SPAWN_FASTEST_SECONDS, tier.seconds);
@@ -5813,7 +5888,7 @@ function spawnRateForFaction(f, territory, army){
 
   const factionTempo = 1 / Math.max(.62, f.spawnRate || 1);
   const aiTempo = isHumanSlot(f.idx) ? 1 : (f.aiSpawnScale || 1);
-  return Math.min(maxRate, Math.max(baseRate*.45, tierRate * factionTempo * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag));
+  return Math.min(maxRate, Math.max(baseRate*.45, tierRate * factionTempo * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag)) * SPAWN_TOKEN_RATE_MULT;
 }
 function updateSpawns(dt){
   for(const f of factions){
@@ -5821,12 +5896,7 @@ function updateSpawns(dt){
     const territory=(ownerCounts.get(f.idx)||0);
     const army=pieces.filter(p=>p.alive&&p.faction===f.idx).length;
     const rate = spawnRateForFaction(f, territory, army);
-    const before=f.spawnMeter;
-    f.spawnMeter = Math.min(100,f.spawnMeter+dt*rate);
-    if(f.idx===PLAYER && before<100 && f.spawnMeter>=100){
-      f.spawnChoices=chooseSpawnOptions(PLAYER);
-      renderSpawnCards(); toast('Spawn ready. Pick one of the three pieces at the top.');
-    }
+    addSpawnProgress(f,dt*rate,f.idx===PLAYER);
   }
 }
 function aiTick(dt){
@@ -5844,12 +5914,11 @@ function aiTick(dt){
       : clamp((1.45/aiSpeed) + Math.random()*.65, .32, 2.2));
     const maxActions = multiplayerAi ? MULTIPLAYER_AI_MAX_ACTIONS_PER_TICK : 3;
     let actions = 0;
-    if(f.spawnMeter>=100 && actions < maxActions){
-      aiSpawn(f);
-      f.spawnMeter=0;
-      f.spawnChoices=chooseSpawnOptions(f.idx);
-      budget--;
-      actions++;
+    if((f.spawnTokens||0)>0 && actions < maxActions){
+      if(aiSpawn(f)){
+        budget--;
+        actions++;
+      }
     }
     const army=pieces.filter(p=>p.alive&&p.faction===f.idx&&cooldownReady(p));
     const priorityAttackers = attackingPiecesForFactionKing(f.idx);
@@ -5968,13 +6037,15 @@ function aiMovePiece(f,p){
   return false;
 }
 function aiSpawn(f){
-  const choices=chooseSpawnOptions(f.idx);
-  choices.sort((a,b)=>(pieceDefs[b].value||1)-(pieceDefs[a].value||1));
+  if(!Array.isArray(f.spawnChoices) || !f.spawnChoices.length) f.spawnChoices=chooseSpawnOptions(f.idx);
+  let choices=f.spawnChoices.filter(type=>spawnTokenCost(type)<=(f.spawnTokens||0));
+  if(!choices.length) return false;
+  choices=choices.slice().sort((a,b)=>(pieceDefs[b].value||1)-(pieceDefs[a].value||1));
   let type=choices[0];
-  if(f.aiStyle==='expansion') type=choices.sort((a,b)=>(pieceDefs[a].cooldown||3)-(pieceDefs[b].cooldown||3))[0];
+  if(f.aiStyle==='expansion') type=choices.slice().sort((a,b)=>(pieceDefs[a].cooldown||3)-(pieceDefs[b].cooldown||3))[0];
   if(f.aiStyle==='defensive' && Math.random()<.55){ type=choices.find(t=>(pieceDefs[t].aura||0)>0 || pieceDefs[t].pattern==='rook' || pieceDefs[t].pattern==='tower') || type; }
   const tiles=eligibleSpawnTiles(f.idx,type);
-  if(!tiles.length) return;
+  if(!tiles.length) return false;
   const enemies=pieces.filter(p=>p.alive&&p.faction!==f.idx&&factions[p.faction].alive);
   let best=tiles[Math.floor(Math.random()*tiles.length)], bs=-999;
   for(let i=0;i<Math.min(80,tiles.length);i++){
@@ -5987,8 +6058,12 @@ function aiSpawn(f){
     if(s>bs){bs=s;best=t;}
   }
   newPiece(f.idx,type,best.x,best.y,{ready:false});
+  f.spawnTokens=Math.max(0,(f.spawnTokens||0)-spawnTokenCost(type));
   recordFactionSpawn(f,type);
+  f.spawnChoices=chooseSpawnOptions(f.idx);
   burst(best.x,best.y,f.color,14);
+  markStateDirty();
+  return true;
 }
 
 function draw(){
@@ -7420,10 +7495,16 @@ function onTap(sx,sy){
   if(!gameStarted || (playerDefeated && !spectating)) return;
   const b=screenToBoard(sx,sy);
   if(!inBounds(b.x,b.y)) return;
-  if(spawnSelection!==null && !playerDefeated){
-    handleSpawnPlace(b.x,b.y); return;
-  }
   const p=findPieceAt(b.x,b.y);
+  if(spawnSelection!==null && !playerDefeated){
+    if(p){
+      spawnSelection=null;
+      renderSpawnCards();
+      toast('Purchase canceled.');
+    } else {
+      handleSpawnPlace(b.x,b.y); return;
+    }
+  }
   if(selectedPiece){
     const abilityTarget=p ? selectedAbilityTargets().find(a=>a.targetId===p.id) : null;
     if(abilityTarget && selectedPiece.faction===PLAYER){
