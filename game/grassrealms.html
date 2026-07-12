@@ -18,7 +18,7 @@
     button,select,input{font:inherit}
     button{touch-action:manipulation}
     .hidden{display:none!important}
-    .topbar{height:var(--topbarH);position:relative;z-index:40;display:flex;align-items:center;gap:9px;padding:7px max(12px,env(safe-area-inset-left));background:rgba(12,17,11,.96);border-bottom:1px solid #39402e;backdrop-filter:blur(12px)}
+    .topbar{height:calc(var(--topbarH) + env(safe-area-inset-top));position:relative;z-index:40;display:flex;align-items:center;gap:9px;padding:calc(7px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 7px max(12px,env(safe-area-inset-left));background:rgba(12,17,11,.96);border-bottom:1px solid #39402e;backdrop-filter:blur(12px)}
     .brand{font-family:Georgia,serif;font-weight:900;font-size:21px;color:#ffe39a;letter-spacing:.3px;white-space:nowrap}
     .tag{padding:5px 9px;border:1px solid #626948;border-radius:999px;background:#20281c;color:#ddd5ba;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     #timerTag.urgent{border-color:#d96250;background:#5b241f;color:#ffe0d8;animation:timerPulse .8s ease-in-out infinite}
@@ -26,7 +26,9 @@
     .grow{flex:1}
     .iconBtn{border:1px solid #6a704f;border-radius:11px;background:#252d21;color:#fff4d0;padding:8px 10px;cursor:pointer}
     .iconBtn:hover{background:#343e2c}
-    #turnBanner{height:var(--turnH);position:relative;z-index:35;display:grid;place-items:center;padding:7px 14px;text-align:center;font-weight:900;letter-spacing:.4px;border-bottom:1px solid #4b5139;background:#342e1a;color:#ffe8a8}
+    #turnBanner{min-height:var(--turnH);position:relative;z-index:2;display:flex;align-items:center;justify-content:center;gap:9px;padding:7px 10px;text-align:center;font-weight:900;letter-spacing:.35px;border-bottom:1px solid #4b5139;background:#342e1a;color:#ffe8a8;flex:0 0 auto}
+    #turnBannerText{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    #quickEndTurnBtn{flex:0 0 auto;min-height:30px;padding:5px 9px;border-radius:9px;font-size:11px;box-shadow:none}
     #turnBanner.mine{background:linear-gradient(90deg,#1f5125,#52923b,#1f5125);color:white;box-shadow:0 0 25px rgba(97,210,74,.45);animation:turnPulse 1.35s ease-in-out infinite}
     #turnBanner.waiting{background:#293026;color:#cfcdbd}
     #turnBanner.finished{background:#704c19;color:#fff0bf}
@@ -34,8 +36,8 @@
     body.myTurn .commandPanel{border-color:#7bbf58;box-shadow:0 0 0 2px rgba(112,194,79,.24),0 14px 42px rgba(0,0,0,.42)}
     body.myTurn .topbar{box-shadow:inset 0 -2px #78ba54}
 
-    #app{height:calc(100dvh - var(--topbarH) - var(--turnH));width:min(1580px,100%);margin:auto;padding:10px;display:grid;grid-template-rows:minmax(210px,42%) minmax(0,58%);gap:10px;overflow:hidden}
-    .panel{background:linear-gradient(180deg,rgba(31,40,28,.98),rgba(19,25,18,.99));border:1px solid #4b523b;border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;min-height:0}
+    #app{height:calc(100dvh - var(--topbarH) - env(safe-area-inset-top));width:min(1800px,100%);margin:auto;padding:10px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:10px;overflow:hidden}
+    .panel{background:linear-gradient(180deg,rgba(31,40,28,.98),rgba(19,25,18,.99));border:1px solid #4b523b;border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;min-height:0;min-width:0}
     .panelHead{display:flex;align-items:center;gap:8px;min-height:46px;padding:9px 12px;border-bottom:1px solid #414834;background:rgba(255,255,255,.025)}
     .panelHead h2,.panelHead h3{font-family:Georgia,serif;margin:0;font-size:17px;color:#f8df9d}
     .subtle{font-size:12px;color:var(--muted)}
@@ -82,7 +84,7 @@
     .commandTab:last-child{border-right:0}
     .commandTab.active{background:linear-gradient(#34432d,#202b1d);color:#ffe39a}
     .commandTab.active:after{content:"";position:absolute;left:17%;right:17%;bottom:0;height:3px;border-radius:3px 3px 0 0;background:#e6bd55}
-    .commandPane{display:none;flex:1;min-height:0;overflow:hidden}
+    .commandPane{display:none;flex:1;min-height:0;min-width:0;overflow:hidden}
     .commandPane.active{display:block}
     .effectLegend{display:flex;gap:5px;overflow-x:auto;padding:5px 7px;border-bottom:1px solid #3c4534;background:#111711;scrollbar-width:thin;flex:0 0 auto}
     .effectChip{flex:0 0 auto;padding:3px 6px;border:1px solid #46503b;border-radius:999px;background:#192118;color:#d8d3bd;font-size:9px;white-space:nowrap}
@@ -132,25 +134,27 @@
     #toast{position:fixed;z-index:180;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#131912;border:1px solid #777b5b;color:#fff5d8;padding:10px 14px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;box-shadow:0 8px 28px #000}#toast.show{opacity:1;transform:translate(-50%,0)}
     dialog{border:1px solid #77704f;border-radius:17px;background:#161d15;color:#f6edd1;width:min(720px,94vw);padding:0;box-shadow:0 30px 90px #000}dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}.modalGrid{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:16px;padding:16px}.modalGrid #modalArt{width:100%;max-height:410px;object-fit:contain;border-radius:12px;background:#b9ad82}.modalBody h2{font-family:Georgia,serif;color:#ffe4a0;margin:0 0 8px}.modalBody p{line-height:1.5;color:#d5d0b8}.modalClose{position:absolute;right:9px;top:9px}
 
-    body.focusMode{position:fixed;inset:0;z-index:999;background:#090d09}body.focusMode .topbar{padding-top:max(7px,env(safe-area-inset-top));height:calc(var(--topbarH) + env(safe-area-inset-top))}body.focusMode #app{height:calc(100dvh - var(--topbarH) - var(--turnH) - env(safe-area-inset-top))}
-    :fullscreen body,:fullscreen{background:#090d09}
+    :fullscreen,:fullscreen body,html:-webkit-full-screen,html:-webkit-full-screen body{background:#090d09}
 
-    @media(max-width:1100px){
-      .actionLayout{grid-template-columns:minmax(165px,.55fr) minmax(320px,1.3fr)}.logCard{display:none}.shopGrid{grid-template-columns:repeat(3,minmax(200px,1fr))}.realmRow{grid-template-columns:145px 180px minmax(0,1fr)}
+    @media(max-width:1300px){
+      .realmRow{grid-template-columns:minmax(130px,.8fr) minmax(160px,1fr);grid-template-areas:"identity stats" "cards cards";align-items:center}.realmIdentity{grid-area:identity}.realmStats{grid-area:stats}.realmCards{grid-area:cards}
+      .actionLayout{grid-template-columns:minmax(155px,.52fr) minmax(0,1.48fr)}.logCard{display:none}.shopGrid{grid-template-columns:repeat(2,minmax(180px,1fr))}
     }
     @media(max-width:760px){
-      :root{--topbarH:50px;--turnH:40px}.topbar{padding:5px 7px}.brand{font-size:16px}.tag{display:none}#timerTag{display:inline-flex!important;font-size:10px;padding:4px 6px}.iconBtn{padding:7px 8px;font-size:12px}#turnBanner{font-size:12px;padding:6px}
-      #app{padding:6px;gap:6px;grid-template-rows:minmax(0,47%) minmax(0,53%)}.panel{border-radius:13px}.panelHead{min-height:38px;padding:7px 9px}.panelHead h2{font-size:15px}.panelHead .subtle{display:none}
-      .realmsList{padding:5px}.realmRow{display:grid;grid-template-columns:minmax(110px,.8fr) minmax(150px,1fr);grid-template-areas:"identity stats" "cards cards";gap:5px;min-height:0;padding:6px;margin-bottom:5px}.realmIdentity{grid-area:identity}.realmName{font-size:14px}.realmStatus{font-size:9px}.realmStats{grid-area:stats;grid-template-columns:repeat(4,1fr);gap:3px}.statTile{padding:4px 2px}.statTile strong{font-size:11px}.statTile small{font-size:7px}.townHealth{height:5px}.realmCards{grid-area:cards;padding:2px 2px 5px;gap:5px}.realmCard{width:61px;height:82px;flex-basis:61px;border-radius:8px}.cardCost,.cardHp,.cardCount{min-width:18px;height:18px;font-size:8px}.cardCount{top:23px}.cardName{font-size:8px;bottom:9px}.triggerMarks i{font-size:6px;line-height:7px}.damageBar{height:5px}
-      .commandTab{min-height:38px;font-size:12px}.effectLegend{padding:3px 5px;gap:3px}.effectChip{font-size:7px;padding:2px 4px}#actionsPane{padding:6px}.actionLayout{grid-template-columns:112px minmax(0,1fr);gap:6px}.diceStage{padding:6px;border-radius:11px}.diceStage:before{inset:5px}.die{width:55px;height:55px;border-width:3px;border-radius:12px;padding:6px}.pip{width:8px;height:8px}.polyDie{width:72px;height:64px;font-size:24px}.rollCaption{font-size:11px;margin-top:2px}.controlsArea{gap:5px}.phaseCard{padding:6px}.phaseTitle{font-size:12px}.phaseCard .subtle{font-size:9px}.playerSnapshot{padding:4px 5px}.playerSnapshot strong{display:none}.resourceStrip{gap:3px}.resource{font-size:9px;padding:3px 5px}.dieChoice{min-width:48px;padding:6px 4px;font-size:10px}.controlRow{grid-template-columns:repeat(2,1fr);gap:4px}.actionBtn{min-height:34px;padding:5px 4px;font-size:10px}#targetBox{grid-template-columns:1fr;gap:3px}#targetBox select{min-height:31px;padding:5px;font-size:10px}#queueBox{max-height:50px;min-height:34px;padding:4px;font-size:9px}.logCard{display:none}
-      .shopToolbar{padding:5px 7px}.categoryTabs{display:flex;overflow-x:auto;padding:5px 6px;gap:4px}.categoryTab{flex:0 0 68px;min-height:42px}.categoryTab span{font-size:8px;padding:4px 2px}.shopGrid{grid-template-columns:1fr;padding:0 6px 7px;gap:6px}.shopCard{grid-template-columns:65px 1fr;min-height:92px}.shopArt,.shopFallback{width:65px;height:92px}.shopInfo{padding:5px}.shopName{font-size:11px}.shopMeta,.shopEffect{font-size:8px}.shopBuy{padding:5px;font-size:9px}
-      .modalGrid{grid-template-columns:1fr}.modalGrid #modalArt{max-height:45vh}
+      :root{--topbarH:48px;--turnH:38px}
+      .topbar{padding:calc(5px + env(safe-area-inset-top)) max(6px,env(safe-area-inset-right)) 5px max(6px,env(safe-area-inset-left));gap:5px}.brand{font-size:14px}.tag{display:none}#timerTag{display:inline-flex!important;font-size:9px;padding:3px 5px}.iconBtn{padding:6px 7px;font-size:10px}.topbar #leaveBtn{font-size:0}.topbar #leaveBtn:after{content:'↩';font-size:15px}.topbar #fullscreenBtn{font-size:15px;line-height:1}
+      #app{padding:4px;gap:4px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}.panel{border-radius:10px}.panelHead{min-height:34px;padding:5px;gap:4px;flex-wrap:wrap}.panelHead h2{font-size:12px}.panelHead .subtle{display:none}.panelHead .resourceStrip{width:100%;margin-left:0;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto}.resource{font-size:8px;padding:2px 4px}
+      #turnBanner{min-height:36px;padding:4px;gap:4px;font-size:9px;letter-spacing:0;justify-content:space-between}#turnBannerText{text-align:left;white-space:normal;line-height:1.15}#quickEndTurnBtn{min-height:27px;padding:4px 5px;font-size:8px}
+      .realmsList{padding:3px}.realmRow{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"identity" "stats" "cards";gap:4px;min-height:0;padding:5px;margin-bottom:4px;border-radius:9px}.realmIdentity{padding-left:1px}.realmName{font-size:11px}.realmStatus{font-size:7px;gap:3px;margin-top:2px}.activePill,.youPill,.strategyPill{font-size:6px;padding:1px 3px}.realmStats{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}.statTile{padding:3px 1px;border-radius:6px}.statTile strong{font-size:9px}.statTile small{font-size:6px;margin-top:1px}.townHealth{height:4px}.realmCards{padding:1px 1px 4px;gap:4px}.realmCard{width:50px;height:69px;flex-basis:50px;border-radius:7px}.cardCost,.cardHp,.cardCount{min-width:15px;height:15px;padding:0 2px;font-size:6px;border-radius:5px}.cardCount{top:19px}.cardName{font-size:6px;bottom:7px;left:3px}.triggerMarks{left:3px}.triggerMarks i{font-size:5px;line-height:6px}.statusMarks{left:3px;right:3px;top:20px}.statusMarks i{font-size:5px;padding:1px 2px}.damageBar{height:4px}
+      .commandTabs{position:sticky;top:0;z-index:5}.commandTab{min-height:36px;font-size:9px;padding:3px}.effectLegend{padding:3px;gap:3px}.effectChip{font-size:6px;padding:2px 3px}#actionsPane{padding:4px;overflow-y:auto;overscroll-behavior:contain}.actionLayout{height:auto;min-height:100%;display:flex;flex-direction:column;gap:5px}.diceStage{min-height:86px;padding:4px;border-radius:9px;flex:0 0 auto}.diceStage:before{inset:4px}.die{width:44px;height:44px;border-width:2px;border-radius:9px;padding:4px}.pip{width:6px;height:6px}.polyDie{width:58px;height:52px;font-size:18px}.rollCaption{font-size:8px;margin-top:1px}.controlsArea{overflow:visible;gap:4px;padding:0}.phaseCard{padding:5px;border-radius:8px}.phaseTitle{font-size:10px}.phaseCard .subtle{font-size:7px}.playerSnapshot{padding:4px;gap:3px;flex-wrap:wrap}.playerSnapshot strong{display:none}.playerSnapshot .resourceStrip{width:100%;margin-left:0;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto}.dieToggle{gap:3px}.dieChoice{min-width:0;padding:5px 2px;font-size:8px;border-radius:7px}.controlRow{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}.actionBtn{min-height:31px;padding:4px 2px;font-size:8px;border-radius:7px}#targetBox{grid-template-columns:1fr;gap:3px}#targetBox select{min-height:29px;padding:4px;font-size:8px}#queueBox{max-height:none;min-height:34px;padding:4px;font-size:7px}.logCard{display:none}
+      #shopPane{overflow:hidden}.shopToolbar{padding:4px 5px;gap:3px}.shopToolbar strong{font-size:10px}.shopToolbar .subtle{font-size:7px}.categoryTabs{display:flex;overflow-x:auto;padding:4px;gap:3px}.categoryTab{flex:0 0 46px;min-height:34px;border-radius:7px}.categoryTab span{font-size:6px;padding:3px 1px}.shopGrid{grid-template-columns:minmax(0,1fr);padding:0 4px 5px;gap:4px}.shopCard{grid-template-columns:48px minmax(0,1fr);min-height:76px;border-radius:8px}.shopArt,.shopFallback{width:48px;height:76px}.shopFallback{font-size:22px}.shopInfo{padding:4px}.shopName{font-size:9px}.shopMeta,.shopEffect{font-size:6px;line-height:1.2}.shopEffect{-webkit-line-clamp:2}.shopBuy{padding:4px 2px;font-size:7px;border-radius:6px}.lockedNote{font-size:6px}
+      .modalGrid{grid-template-columns:1fr}.modalGrid #modalArt{max-height:38vh}
     }
     @media(max-width:430px){
-      #app{grid-template-rows:minmax(0,45%) minmax(0,55%)}.actionLayout{grid-template-columns:92px minmax(0,1fr)}.diceStage{min-width:0}.die{width:48px;height:48px;padding:5px}.pip{width:7px;height:7px}.polyDie{width:63px;height:56px;font-size:21px}.rollCaption{font-size:9px}.realmRow{grid-template-columns:104px minmax(135px,1fr)}.resource:nth-child(3){display:none}
+      .brand{max-width:82px;overflow:hidden;text-overflow:ellipsis}.panelHead h2{font-size:10px}.realmCard{width:46px;height:64px;flex-basis:46px}.diceStage{min-height:76px}.phaseCard{display:none}.shopCard{grid-template-columns:43px minmax(0,1fr)}.shopArt,.shopFallback{width:43px;height:72px}
     }
     @media(max-height:650px) and (max-width:760px){
-      #app{grid-template-rows:minmax(0,42%) minmax(0,58%)}.realmCard{height:74px}.phaseCard{display:none}.playerSnapshot{display:none}.queueBox{max-height:38px}
+      .playerSnapshot{display:none}.diceStage{min-height:70px}.realmCard{height:58px}.shopToolbar{display:none}
     }
   </style>
 </head>
@@ -173,12 +177,15 @@
     <span id="timerTag" class="tag hidden">⏱ --</span>
     <span class="grow"></span>
     <button id="leaveBtn" class="iconBtn" title="Leave or forfeit">Leave</button>
-    <button id="fullscreenBtn" class="iconBtn" title="Toggle fullscreen or focus mode">⛶</button>
+    <button id="fullscreenBtn" class="iconBtn" title="Enter true fullscreen" aria-label="Enter fullscreen">⛶</button>
   </header>
-  <div id="turnBanner" class="waiting">Preparing the game…</div>
 
   <main id="app">
     <section class="panel realmsPanel">
+      <div id="turnBanner" class="waiting">
+        <span id="turnBannerText">Preparing the game…</span>
+        <button id="quickEndTurnBtn" class="actionBtn secondary hidden" type="button">End Turn</button>
+      </div>
       <div class="panelHead">
         <h2>Every Realm</h2>
         <span class="subtle">The active realm is highlighted. Scroll each row to inspect every card.</span>
@@ -279,7 +286,7 @@
     let user = null, state = null, lobbyData = null, presence = new Map(), unsubLobby = null, unsubPresence = null;
     let rng = null;
     let selectedCategory = 'grey', actionBusy = false, aiTimer = 0, disconnectTimer = 0, heartbeatTimer = 0, turnTimerInterval = 0, timerActionPending = false;
-    let activeCommandTab = 'actions', lastAutoTabPhase = '', focusMode = false;
+    let activeCommandTab = 'actions', lastAutoTabPhase = '';
     let assetMap = {}, missingAssets = new Set(), graphicsReady = false, lastRenderedVersion = -1, toastTimer = 0;
     const lobbyRef = lobbyId ? doc(db,'lobbies',lobbyId) : null;
 
@@ -1336,14 +1343,14 @@ function resolveOne(rd, manual){
       else $('#loadingText').textContent='Graphics ready. Waiting for active players, then starting automatically…';
     }
     function renderTurnBanner(){
-      const banner=$('#turnBanner');banner.className='';document.body.classList.toggle('myTurn',isMyTurn());
-      if(!state){banner.classList.add('waiting');banner.textContent='Preparing the game…';document.title='Magic Realms';return;}
+      const banner=$('#turnBanner'),text=$('#turnBannerText'),quick=$('#quickEndTurnBtn');banner.className='';document.body.classList.toggle('myTurn',isMyTurn());
+      if(!state){banner.classList.add('waiting');text.textContent='Preparing the game…';quick.classList.add('hidden');document.title='Magic Realms';return;}
       if(state.phase==='finished'){
-        banner.classList.add('finished');banner.textContent=state.winner?`🏆 ${state.winner} wins the realm!`:'The game is finished.';document.title='Magic Realms — Finished';return;
+        banner.classList.add('finished');text.textContent=state.winner?`🏆 ${state.winner} wins the realm!`:'The game is finished.';quick.classList.add('hidden');document.title='Magic Realms — Finished';return;
       }
-      const active=activePlayer();
-      if(isMyTurn()){banner.classList.add('mine');banner.textContent=`YOUR TURN — ${phaseLabel(state.phase)}`;document.title=`★ YOUR TURN — Magic Realms`;}
-      else{banner.classList.add('waiting');banner.textContent=`${active?.name||'Player'}’s turn — ${phaseLabel(state.phase)}`;document.title=`${active?.name||'Player'} — Magic Realms`;}
+      const active=activePlayer(),mine=isMyTurn();quick.classList.toggle('hidden',!mine);quick.disabled=actionBusy||!mine;
+      if(mine){banner.classList.add('mine');text.textContent=`YOUR TURN — ${phaseLabel(state.phase)}`;document.title=`★ YOUR TURN — Magic Realms`;}
+      else{banner.classList.add('waiting');text.textContent=`${active?.name||'Player'}’s turn — ${phaseLabel(state.phase)}`;document.title=`${active?.name||'Player'} — Magic Realms`;}
     }
     function phaseLabel(phase){return phase==='await_roll'?'Roll the dice':phase==='resolving'?'Resolve triggers':phase==='buy'?'Shop and end turn':phase==='finished'?'Finished':'Waiting';}
     function renderDice(){
@@ -1489,6 +1496,7 @@ function resolveOne(rd, manual){
       $('#resolveBtn').disabled=actionBusy||!turn||phase!=='resolving'||(needs&&candidates.length>0);
       $('#applyTargetBtn').disabled=actionBusy||!turn||phase!=='resolving'||!needs||!selectedTargetPayload;
       $('#endTurnBtn').disabled=actionBusy||!turn||phase==='finished';
+      const quickEnd=$('#quickEndTurnBtn');quickEnd.classList.toggle('hidden',!turn||phase==='finished');quickEnd.disabled=actionBusy||!turn||phase==='finished';
       maybeAutoSelectTab();
     }
     function renderLog(){
@@ -1630,28 +1638,38 @@ function resolveOne(rd, manual){
     $('#rollBtn').addEventListener('click',()=>performAction('ROLL',{mode:$('#dieSelect').value}));
     $('#resolveBtn').addEventListener('click',()=>performAction('RESOLVE',{}));
     $('#applyTargetBtn').addEventListener('click',()=>selectedTargetPayload&&performAction('RESOLVE',selectedTargetPayload));
-    $('#endTurnBtn').addEventListener('click',()=>{
+    function endTurnFromUi(){
       const pending=state?.phase==='resolving'&&(state?.resolveQueue?.length||0)>0;
       if(pending&&!confirm('Forfeit every unresolved trigger and end the turn?'))return;
       performAction('END_TURN',{forfeitRemaining:pending});
-    });
+    }
+    $('#endTurnBtn').addEventListener('click',endTurnFromUi);
+    $('#quickEndTurnBtn').addEventListener('click',endTurnFromUi);
     $('#leaveBtn').addEventListener('click',async()=>{
       if(myPlayer()&&!myPlayer().eliminated&&confirm('Leave this game and forfeit your realm?'))await performAction('LEAVE',{});
       await markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});
       $('#leaveBtn').disabled=true;
     });
     document.querySelectorAll('[data-command-tab]').forEach(btn=>btn.addEventListener('click',()=>setCommandTab(btn.dataset.commandTab,true)));
-    function syncFullscreenButton(){const active=!!document.fullscreenElement||focusMode;document.body.classList.toggle('focusMode',focusMode&&!document.fullscreenElement);$('#fullscreenBtn').textContent=active?'✕':'⛶';$('#fullscreenBtn').title=active?'Exit fullscreen':'Enter fullscreen';}
+    function currentFullscreenElement(){return document.fullscreenElement||document.webkitFullscreenElement||null;}
+    function syncFullscreenButton(){const active=!!currentFullscreenElement(),btn=$('#fullscreenBtn');btn.textContent=active?'✕':'⛶';btn.title=active?'Exit fullscreen':'Enter true fullscreen';btn.setAttribute('aria-label',btn.title);}
+    async function enterTrueFullscreen(){
+      const root=document.documentElement;
+      if(root.requestFullscreen){await root.requestFullscreen();return true;}
+      if(root.webkitRequestFullscreen){root.webkitRequestFullscreen();return true;}
+      toast('True fullscreen is not supported by this browser. On iPhone, use Add to Home Screen for an app-like fullscreen view.');return false;
+    }
+    async function exitTrueFullscreen(){
+      if(document.exitFullscreen){await document.exitFullscreen();return;}
+      if(document.webkitExitFullscreen){document.webkitExitFullscreen();}
+    }
     $('#fullscreenBtn').addEventListener('click',async()=>{
-      try{
-        if(document.fullscreenElement){await document.exitFullscreen();focusMode=false;}
-        else if(focusMode){focusMode=false;}
-        else if(document.documentElement.requestFullscreen){await document.documentElement.requestFullscreen({navigationUI:'hide'});}
-        else{focusMode=true;toast('Focus mode enabled. Your browser does not expose native fullscreen.');}
-      }catch(error){focusMode=!focusMode;if(focusMode)toast('Focus mode enabled instead of native fullscreen.');}
+      try{if(currentFullscreenElement())await exitTrueFullscreen();else await enterTrueFullscreen();}
+      catch(error){console.warn('Fullscreen request failed',error);toast('The browser blocked fullscreen. Tap the fullscreen button directly again.');}
       syncFullscreenButton();
     });
-    document.addEventListener('fullscreenchange',()=>{if(document.fullscreenElement)focusMode=false;syncFullscreenButton();});
+    document.addEventListener('fullscreenchange',syncFullscreenButton);
+    document.addEventListener('webkitfullscreenchange',syncFullscreenButton);
     $('#modalClose').addEventListener('click',()=>$('#cardModal').close());
     $('#cardModal').addEventListener('click',event=>{if(event.target===$('#cardModal'))$('#cardModal').close();});
     addEventListener('pagehide',()=>{clearInterval(heartbeatTimer);clearInterval(turnTimerInterval);markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});});
