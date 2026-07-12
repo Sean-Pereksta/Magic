@@ -2,159 +2,199 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>🌿 Grass Realms — game</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#11170f" />
+  <title>Magic Realms</title>
   <style>
-  :root{ --bg:#f7f8fb; --ink:#1f2937; --muted:#6b7280; --card:#fff; --line:#e5e7eb; --accent:#2e7d32; }
-  *{box-sizing:border-box}
-  body{margin:0;font-family:Segoe UI,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
-  header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5}
-  header .tag{font-size:12px;color:#fff;background:var(--accent);padding:2px 8px;border-radius:14px}
-  main{padding:12px;display:grid;grid-template-columns:1fr 420px;gap:12px}
-  .board{display:grid;grid-template-areas:"p0 p1" "p2 p3"; gap:12px;}
-  .playerPanel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:220px;position:relative}
-  .playerPanel .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-  .playerPanel .hdr .hp{font-weight:600}
-
-  /* REPLACED: show tiles instead of one big emoji clump */
-  .playerPanel .emojiClump{
-    display:grid;
-    grid-template-columns:repeat(auto-fill,minmax(90px,1fr));
-    gap:8px;
-    min-height:80px;
-  }
-
-  /* Per-card tiles */
-  .tile{
-    position:relative;
-    border:1px solid var(--line);
-    background:#fff;
-    border-radius:10px;
-    padding:6px 6px 8px 6px;
-  }
-  .tile .label{
-    font-size:11px;
-    color:var(--muted);
-    text-align:center;
-    line-height:1.1;
-    margin-bottom:2px;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
-  .tile .emj{
-    font-size:24px;
-    line-height:1.2;
-    text-align:center;
-  }
-  .tile .meta{
-    font-size:11px;
-    color:var(--muted);
-    text-align:center;
-    margin-top:2px;
-  }
-  .tile .hp{
-    position:absolute;
-    top:4px; right:6px;
-    font-size:10px;
-    background:#eef7ee;
-    color:#1b5e20;
-    border-radius:6px;
-    padding:1px 6px;
-  }
-  .tile .cnt{
-    position:absolute;
-    top:4px; left:6px;
-    font-size:10px;
-    background:#f1f5f9;
-    color:#334155;
-    border-radius:6px;
-    padding:1px 6px;
-  }
-
-  .playerPanel .meta{font-size:12px;color:var(--muted)}
-  .you{outline:2px solid #1976d2}
-  .active{box-shadow:0 0 0 3px rgba(46,125,50,.35)}
-  .rightCol{display:flex;flex-direction:column;gap:12px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
-  .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-  .controls select, .controls button{padding:8px 10px;font-size:14px}
-  .shopGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-  .shopItem{border:1px solid var(--line);border-radius:10px;padding:8px}
-  .shopItem h4{margin:0 0 4px 0;font-size:14px}
-  .small{font-size:12px;color:var(--muted)}
-  .targets{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-  .targets select{padding:6px 8px}
-  .log{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
-  .logLine{padding:6px 8px;border-bottom:1px dashed var(--line);font-size:13px}
-  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef7ee;color:#1b5e20;font-size:12px}
-  .queue{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px}
-  .qItem{font-size:12px;color:var(--muted);margin:2px 0}
-  .needTarget{background:#fff7e6;border:1px solid #ffe0a3;padding:8px;border-radius:8px}
-  .spacer{flex:1}
-</style>
-
+    :root{
+      --bg:#0d120d;--panel:#171e16;--panel2:#20291d;--ink:#f7efd6;--muted:#b8b39f;
+      --line:#586042;--gold:#e8bf59;--gold2:#8f6518;--green:#4b7d38;--danger:#a7483d;
+      --shadow:0 14px 40px rgba(0,0,0,.34);--radius:18px;--cardW:92px;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% -20%,#28351f 0,#10160f 42%,#090d09 100%);color:var(--ink);font-family:Inter,Segoe UI,Arial,sans-serif}
+    button,select{font:inherit}
+    button{touch-action:manipulation}
+    .hidden{display:none!important}
+    .topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:9px;min-height:54px;padding:8px max(12px,env(safe-area-inset-left));background:rgba(12,17,11,.94);border-bottom:1px solid #39402e;backdrop-filter:blur(12px)}
+    .brand{font-family:Georgia,serif;font-weight:900;font-size:21px;color:#ffe39a;letter-spacing:.3px;white-space:nowrap}
+    .tag{padding:5px 9px;border:1px solid #626948;border-radius:999px;background:#20281c;color:#ddd5ba;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .grow{flex:1}
+    .iconBtn{border:1px solid #6a704f;border-radius:11px;background:#252d21;color:#fff4d0;padding:8px 10px;cursor:pointer}
+    .iconBtn:hover{background:#343e2c}
+    #turnBanner{position:sticky;top:54px;z-index:24;padding:10px 14px;text-align:center;font-weight:900;letter-spacing:.3px;border-bottom:1px solid #4b5139;background:#342e1a;color:#ffe8a8}
+    #turnBanner.mine{background:linear-gradient(90deg,#285c27,#4e8a38,#285c27);color:white;box-shadow:0 0 24px rgba(97,210,74,.38);animation:turnPulse 1.6s ease-in-out infinite}
+    #turnBanner.waiting{background:#293026;color:#cfcdbd}
+    #turnBanner.finished{background:#704c19;color:#fff0bf}
+    @keyframes turnPulse{50%{filter:brightness(1.2)}}
+    #app{width:min(1540px,100%);margin:auto;padding:12px;display:grid;grid-template-columns:minmax(0,1fr) minmax(310px,420px);gap:12px}
+    .mainColumn,.sideColumn{display:flex;flex-direction:column;gap:12px;min-width:0}
+    .panel{background:linear-gradient(180deg,rgba(31,40,28,.97),rgba(19,25,18,.98));border:1px solid #4b523b;border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+    .panelHead{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid #414834;background:rgba(255,255,255,.025)}
+    .panelHead h2,.panelHead h3{font-family:Georgia,serif;margin:0;font-size:17px;color:#f8df9d}
+    .subtle{font-size:12px;color:var(--muted)}
+    .opponentScroll{overflow:auto;max-height:310px;overscroll-behavior:contain}
+    .opponentTable{border-collapse:separate;border-spacing:0;min-width:930px;width:100%;font-size:13px}
+    .opponentTable th{position:sticky;top:0;z-index:2;background:#2b3426;color:#f4dda0;padding:9px;border-bottom:1px solid #5d644a;text-align:left}
+    .opponentTable td{padding:8px;border-bottom:1px solid #353c2f;vertical-align:middle}
+    .opponentTable tr.activeRow{background:rgba(93,153,66,.17)}
+    .opponentTable tr.eliminated{opacity:.48}
+    .tableCards{display:flex;gap:5px;min-width:500px}
+    .tinyCard{width:48px;height:68px;flex:0 0 48px;border:1px solid #727653;border-radius:7px;overflow:hidden;background:#e8dfc5;position:relative}
+    .tinyCard img{width:100%;height:100%;object-fit:cover;display:block}
+    .tinyCard .tinyFallback{height:100%;display:grid;place-items:center;font-size:22px;color:#202019}
+    .tinyBadge{position:absolute;right:2px;top:2px;padding:1px 4px;border-radius:5px;background:#10150ee8;color:#fff;font-size:9px;font-weight:800}
+    .battlePanel{padding:13px;display:grid;grid-template-columns:minmax(180px,.75fr) minmax(260px,1.25fr);gap:14px;align-items:stretch}
+    .diceStage{min-height:260px;border:1px solid #525a42;border-radius:16px;background:radial-gradient(circle at center,#3a422d 0,#1b2318 65%,#121711 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;position:relative;overflow:hidden}
+    .diceStage:before{content:"";position:absolute;inset:10px;border:1px solid rgba(232,191,89,.27);border-radius:12px;pointer-events:none}
+    #diceVisual{display:flex;align-items:center;justify-content:center;gap:14px;min-height:112px;position:relative;z-index:1}
+    .die{width:90px;height:90px;border-radius:18px;background:linear-gradient(145deg,#fff8df,#c9b778);border:4px solid #6e531d;box-shadow:0 11px 20px #0008,inset 0 0 0 2px #fff9;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:10px}
+    .pip{width:13px;height:13px;background:#211c12;border-radius:50%;align-self:center;justify-self:center;visibility:hidden}
+    .pip.on{visibility:visible}
+    .d20{width:112px;height:98px;clip-path:polygon(50% 0,95% 24%,82% 84%,50% 100%,18% 84%,5% 24%);display:grid;place-items:center;background:linear-gradient(145deg,#ffe48d,#9e6419 62%,#503410);border:none;color:#fff9df;text-shadow:0 2px 4px #000;font-size:35px;font-weight:900;filter:drop-shadow(0 12px 10px #0008)}
+    .rollCaption{font-family:Georgia,serif;font-size:18px;color:#ffe3a2;margin-top:7px;text-align:center;position:relative;z-index:1}
+    .controlsArea{display:flex;flex-direction:column;gap:10px;min-width:0}
+    .phaseCard{border:1px solid #565e45;border-radius:14px;background:#151b14;padding:11px}
+    .phaseTitle{font-weight:900;color:#f6dfa1;margin-bottom:4px}
+    .controlRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    select{background:#0e130d;color:#f7efd8;border:1px solid #6e7457;border-radius:10px;padding:9px 10px;min-height:42px}
+    .actionBtn{border:1px solid #8b773d;border-radius:11px;background:linear-gradient(#d6aa45,#9a6d20);color:#171208;font-weight:900;padding:10px 13px;cursor:pointer;box-shadow:inset 0 1px #fff7}
+    .actionBtn.secondary{background:#2c3828;color:#fff1cc;border-color:#667153}
+    .actionBtn.danger{background:#78382f;color:white;border-color:#ad5a4c}
+    .actionBtn:disabled{opacity:.38;cursor:not-allowed;filter:grayscale(.7)}
+    #targetBox{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:6px;margin-top:8px}
+    #targetBox select{width:100%;min-width:0}
+    #queueBox{max-height:105px;overflow:auto;padding:8px;border-radius:10px;background:#0e130d;border:1px solid #363e30;font-size:12px;line-height:1.45;color:#cfccb9}
+    .ownedPanel{padding-bottom:10px}
+    .resourceStrip{margin-left:auto;display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+    .resource{padding:4px 8px;background:#10150f;border:1px solid #50573f;border-radius:999px;font-size:12px}
+    .ownedRail{display:flex;gap:7px;overflow-x:auto;padding:10px 12px 6px;scroll-snap-type:x proximity;min-height:145px}
+    .ownedCard{position:relative;flex:0 0 var(--cardW);width:var(--cardW);border:1px solid #766b43;border-radius:10px;background:#e9dfbf;padding:0;overflow:hidden;cursor:pointer;scroll-snap-align:start;color:#17170f;box-shadow:0 5px 12px #0005}
+    .ownedCard img{width:100%;height:126px;object-fit:cover;display:block;background:#b9ad82}
+    .ownedCard .fallbackArt{height:126px;display:grid;place-items:center;font-size:38px;background:linear-gradient(#d9cea9,#aaa078)}
+    .ownedName{font-size:10px;font-weight:900;padding:4px 4px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+    .countBadge,.hpBadge{position:absolute;top:4px;padding:2px 5px;border-radius:6px;font-size:10px;font-weight:900;color:#fff;box-shadow:0 1px 4px #0009}
+    .countBadge{left:4px;background:#222d20e8}.hpBadge{right:4px;background:#7c2d25e8}.hpBadge.full{background:#28622de8}
+    .categoryTabs{display:grid;grid-template-columns:repeat(5,minmax(58px,1fr));gap:6px;padding:10px}
+    .categoryTab{position:relative;min-height:83px;border:2px solid transparent;border-radius:12px;overflow:hidden;padding:0;background:#111;cursor:pointer;color:white}
+    .categoryTab.active{border-color:#ffd66c;box-shadow:0 0 0 2px #8a682b,0 0 18px #d7a83666}
+    .categoryTab img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.72}
+    .categoryTab span{position:absolute;inset:auto 0 0;padding:6px 3px;background:linear-gradient(transparent,#000d);font-weight:900;text-transform:uppercase;font-size:11px;text-shadow:0 1px 3px #000}
+    .shopGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:0 10px 12px;max-height:680px;overflow:auto}
+    .shopCard{border:1px solid #565e45;border-radius:13px;background:#151b14;overflow:hidden;display:grid;grid-template-columns:88px 1fr;min-height:132px;position:relative}
+    .shopArt{width:88px;height:132px;object-fit:cover;background:#aaa078;display:block}
+    .shopFallback{width:88px;height:132px;display:grid;place-items:center;font-size:35px;background:#d9cea9;color:#16170f}
+    .shopInfo{padding:8px;display:flex;flex-direction:column;min-width:0}
+    .shopName{font-family:Georgia,serif;color:#ffe6a4;font-weight:900;font-size:14px;line-height:1.1}
+    .shopMeta{font-size:11px;color:#bebaa6;margin-top:3px;line-height:1.35}
+    .shopBuy{margin-top:auto;width:100%;padding:7px;border-radius:8px;border:1px solid #8b773d;background:#b98628;color:#171208;font-weight:900;cursor:pointer}
+    .shopBuy:disabled{opacity:.42;cursor:not-allowed}
+    .lockedNote{color:#e0a896;font-size:10px;font-weight:700;margin-top:3px}
+    .log{max-height:260px;overflow:auto;padding:4px 10px 10px}
+    .logLine{padding:7px 3px;border-bottom:1px dashed #3e4635;font-size:12px;color:#d4d0bc;line-height:1.35}
+    .empty{padding:16px;color:#aaa691;text-align:center}
+    #loadingOverlay{position:fixed;inset:0;z-index:100;background:radial-gradient(circle,#28351f,#090d09 72%);display:flex;align-items:center;justify-content:center;padding:20px}
+    .loadingCard{width:min(620px,100%);border:1px solid #6a704e;border-radius:22px;background:#171e16;box-shadow:0 25px 80px #000;padding:24px;text-align:center}
+    .loadingCard h1{font-family:Georgia,serif;color:#ffe4a0;margin:0 0 8px}
+    .progressTrack{height:13px;border-radius:999px;background:#090d09;border:1px solid #4f563e;overflow:hidden;margin:16px 0 8px}
+    #progressFill{height:100%;width:0;background:linear-gradient(90deg,#7b5b1b,#e5bd55,#83a948);transition:width .2s}
+    #readyList{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:12px}
+    .readyPill{font-size:12px;padding:5px 8px;border-radius:999px;border:1px solid #575e46;background:#10150f}
+    .readyPill.ready{border-color:#5b934a;color:#bde6a9}.readyPill.loading{color:#e7c976}.readyPill.offline{color:#c88d83}
+    #toast{position:fixed;z-index:120;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#131912;border:1px solid #777b5b;color:#fff5d8;padding:10px 14px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;box-shadow:0 8px 28px #000}
+    #toast.show{opacity:1;transform:translate(-50%,0)}
+    dialog{border:1px solid #77704f;border-radius:17px;background:#161d15;color:#f6edd1;width:min(720px,94vw);padding:0;box-shadow:0 30px 90px #000}
+    dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
+    .modalGrid{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:16px;padding:16px}
+    #modalArt{width:100%;max-height:410px;object-fit:contain;border-radius:12px;background:#b9ad82}
+    .modalBody h2{font-family:Georgia,serif;color:#ffe4a0;margin:0 0 8px}
+    .modalBody p{line-height:1.5;color:#d5d0b8}
+    .modalClose{position:absolute;right:9px;top:9px}
+    @media(max-width:1080px){#app{grid-template-columns:1fr}.sideColumn{display:grid;grid-template-columns:1fr 1fr}.sideColumn .panel:first-child{grid-column:1/-1}.shopGrid{max-height:500px}}
+    @media(max-width:720px){
+      :root{--cardW:72px}.topbar{min-height:50px;padding:6px 8px}.brand{font-size:17px}.tag{display:none}#turnBanner{top:50px;font-size:13px;padding:9px}
+      #app{padding:7px;gap:8px}.mainColumn,.sideColumn{gap:8px}.sideColumn{display:flex}.battlePanel{grid-template-columns:1fr;padding:9px}.diceStage{min-height:180px}.die{width:68px;height:68px;border-radius:14px;padding:7px}.pip{width:10px;height:10px}.d20{width:88px;height:78px}
+      .controlRow .actionBtn{flex:1 1 calc(50% - 8px);padding:10px 7px;font-size:13px}#targetBox{grid-template-columns:1fr}.opponentScroll{max-height:230px}.ownedCard img,.ownedCard .fallbackArt{height:99px}.categoryTabs{padding:7px;gap:4px}.categoryTab{min-height:65px}.shopGrid{grid-template-columns:1fr;padding:0 7px 9px;max-height:none}.shopCard{grid-template-columns:78px 1fr;min-height:116px}.shopArt,.shopFallback{width:78px;height:116px}.modalGrid{grid-template-columns:1fr}.modalGrid #modalArt{max-height:50vh}.panelHead{padding:9px 10px}}
+    @media(max-width:390px){.brand{font-size:15px}.iconBtn{padding:7px}.resourceStrip{gap:3px}.resource{font-size:10px;padding:3px 5px}.categoryTab span{font-size:9px}.controlRow .actionBtn{font-size:12px}}
+  </style>
 </head>
 <body>
-  <header>
-    <strong>🌿 Grass Realms</strong>
-    <span id="hdrLobby" class="tag" style="display:none"></span>
-    <span id="hdrUser" class="tag" style="display:none"></span>
-    <span id="hdrRole" class="tag" style="display:none"></span>
-    <span class="spacer"></span>
-    <span class="small" id="statusNote"></span>
-  </header>
+  <div id="loadingOverlay">
+    <div class="loadingCard">
+      <h1>Magic Realms</h1>
+      <div id="loadingText">Signing in and preparing the card art…</div>
+      <div class="progressTrack"><div id="progressFill"></div></div>
+      <div class="subtle" id="progressLabel">0 / 0 graphics loaded</div>
+      <div id="readyList"></div>
+    </div>
+  </div>
 
-  <main>
-    <section class="board" id="board">
-      <div class="playerPanel" id="p0"></div>
-      <div class="playerPanel" id="p1"></div>
-      <div class="playerPanel" id="p2"></div>
-      <div class="playerPanel" id="p3"></div>
+  <header class="topbar">
+    <div class="brand">✦ Magic Realms</div>
+    <span id="lobbyTag" class="tag"></span>
+    <span id="userTag" class="tag"></span>
+    <span id="connectionTag" class="tag">Connecting…</span>
+    <span class="grow"></span>
+    <button id="leaveBtn" class="iconBtn" title="Leave or forfeit">Leave</button>
+    <button id="fullscreenBtn" class="iconBtn" title="Toggle fullscreen">⛶</button>
+  </header>
+  <div id="turnBanner" class="waiting">Preparing the game…</div>
+
+  <main id="app">
+    <section class="mainColumn">
+      <section class="panel">
+        <div class="panelHead"><h2>Opponents</h2><span class="subtle">Scroll in both directions to inspect every realm and card.</span></div>
+        <div class="opponentScroll"><table class="opponentTable"><thead><tr><th>Player</th><th>Status</th><th>Gold</th><th>Town</th><th>Die</th><th>Cards</th></tr></thead><tbody id="opponentBody"></tbody></table></div>
+      </section>
+
+      <section class="panel battlePanel">
+        <div class="diceStage">
+          <div id="diceVisual"></div>
+          <div id="rollCaption" class="rollCaption">Waiting for the first roll</div>
+        </div>
+        <div class="controlsArea">
+          <div class="phaseCard"><div id="phaseTitle" class="phaseTitle">Waiting</div><div id="phaseHelp" class="subtle">The game will begin after the active players finish loading.</div></div>
+          <div class="controlRow">
+            <select id="dieSelect" aria-label="Choose die"><option value="d6">d6</option></select>
+            <button id="rollBtn" class="actionBtn">🎲 Roll</button>
+            <button id="resolveBtn" class="actionBtn secondary">Resolve</button>
+            <button id="applyTargetBtn" class="actionBtn secondary">Apply Target</button>
+            <button id="endTurnBtn" class="actionBtn secondary">End Turn</button>
+          </div>
+          <div id="targetBox"></div>
+          <div id="queueBox">No triggers pending.</div>
+        </div>
+      </section>
+
+      <section class="panel ownedPanel">
+        <div class="panelHead"><h2>Your Realm</h2><span id="yourStatus" class="subtle"></span><div id="resourceStrip" class="resourceStrip"></div></div>
+        <div id="ownedRail" class="ownedRail"></div>
+      </section>
     </section>
 
-    <aside class="rightCol">
-      <div class="card">
-        <h3>Your Turn Controls</h3>
-        <div class="controls">
-  <label>Die:
-    <select id="dieSelect"><option>d6</option></select>
-  </label>
-  <button id="rollBtn">🎲 Roll</button>
-  <button id="resolveBtn">▶ Resolve Next (auto / no‑target)</button>
-  <button id="applyTargetBtn">🎯 Apply Trigger (with target)</button>
-  <button id="endTurnBtn">⏭ End Turn</button>
-  <span id="lastRollBadge" class="pill" style="display:none;margin-left:8px"></span> <!-- NEW -->
-</div>
-
-        <div id="targetBox" class="targets"></div>
-        <div id="queueBox" class="queue small"></div>
-
-        <div style="margin-top:8px" class="small">
-          Roll → resolve each trigger in order. If a trigger needs a target, choose player & item and click <b>Apply Trigger</b>.
-          Walls protect <b>structures</b> (not troops). Opponent‑turn triggers fire on enemy rolls.
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Shop</h3>
-        <div id="shop" class="shopGrid"></div>
-      </div>
-
-      <div class="card">
-        <h3>Run Log</h3>
+    <aside class="sideColumn">
+      <section class="panel">
+        <div class="panelHead"><h2>Card Shop</h2><span id="shopStatus" class="subtle"></span></div>
+        <div id="categoryTabs" class="categoryTabs"></div>
+        <div id="shopGrid" class="shopGrid"></div>
+      </section>
+      <section class="panel">
+        <div class="panelHead"><h3>Battle Log</h3></div>
         <div id="log" class="log"></div>
-      </div>
+      </section>
     </aside>
   </main>
 
+  <dialog id="cardModal">
+    <button class="iconBtn modalClose" id="modalClose">✕</button>
+    <div class="modalGrid"><img id="modalArt" alt="Card art"><div class="modalBody"><h2 id="modalName"></h2><div id="modalMeta" class="subtle"></div><p id="modalDetails"></p></div></div>
+  </dialog>
+  <div id="toast"></div>
+
   <script type="module">
-    // -------- Firebase --------
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import {
-      getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, where,
-      collection, addDoc, serverTimestamp, runTransaction, query, orderBy, limit, getDocs
-    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -165,20 +205,32 @@
       appId: "1:959619818996:web:5a9fbf492e23c765e445a1"
     };
     const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
-
-    // -------- URL params from lobby redirect --------
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const $ = (s)=>document.querySelector(s);
     const qp = new URLSearchParams(location.search);
-    const lobbyId = qp.get('gameId') || '';     // the lobby doc id
-    const myName  = qp.get('username') || '';
-    if (!lobbyId || !myName) {
-      document.getElementById('statusNote').textContent = 'Missing gameId or username in URL.';
-    }
+    const lobbyId = qp.get('gameId') || qp.get('lobbyId') || '';
+    const myName = (qp.get('username') || qp.get('name') || localStorage.getItem('username') || 'Player').trim().slice(0,32);
+    const forceSolo = qp.get('solo') === '1' || qp.get('singleplayer') === '1';
+    const GRAPHICS_ROOT = './Magic/graphics/';
+    const STARTERS = ['townhall','farm','mill'];
+    const CATEGORIES = ['grey','white','black','red','green'];
+    const CATEGORY_NAMES = {grey:'Grey',white:'White',black:'Black',red:'Red',green:'Green'};
+    let user = null, state = null, lobbyData = null, presence = new Map(), unsubLobby = null, unsubPresence = null;
+    let rng = null;
+    let selectedCategory = 'grey', actionBusy = false, aiTimer = 0, disconnectTimer = 0, heartbeatTimer = 0;
+    let assetMap = {}, missingAssets = new Set(), graphicsReady = false, lastRenderedVersion = -1, toastTimer = 0;
+    const lobbyRef = lobbyId ? doc(db,'lobbies',lobbyId) : null;
 
-    // -------- RNG --------
-    function mulberry32(seed){ return function(){ let t = seed += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; } }
+    function toast(message){ const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2400); }
+    function escapeText(value){ return String(value ?? ''); }
+    function slug(value){ return String(value||'').trim().toLowerCase().replace(/['’]/g,'').replace(/&/g,'and').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+    function compact(value){ return String(value||'').trim().toLowerCase().replace(/['’]/g,'').replace(/[^a-z0-9]/g,''); }
+    function nowMs(){ return Date.now(); }
+    function timestampMs(value){ if(!value) return 0; if(typeof value==='number') return value; if(typeof value.toMillis==='function') return value.toMillis(); if(value.seconds) return value.seconds*1000; return Number(value)||0; }
+    function safeClone(value){ return JSON.parse(JSON.stringify(value)); }
+    function playerCategory(card){ if(card.key.startsWith('white_')) return 'white'; if(card.key.startsWith('black_')) return 'black'; if(card.key.startsWith('red_')) return 'red'; if(card.key.startsWith('green_')) return 'green'; return 'grey'; }
 
-    // ---------- Catalog ----------
     const RAW_CARDS = [
     // ---- Core / Economy ---- 
 { 
@@ -338,599 +390,180 @@
 },
 
     ];
-    const CARD_CATALOG = {}; for (const c of RAW_CARDS){ CARD_CATALOG[c.key] = { ...c }; }
-    const STARTERS = ['townhall','farm','mill'];
 
-    // ---------- Helpers / UI ----------
-    const $ = s=>document.querySelector(s);
-    const logDiv = $('#log');
-    function logLine(msg){ const d=document.createElement('div'); d.className='logLine'; d.textContent=msg; logDiv.appendChild(d); logDiv.scrollTop=logDiv.scrollHeight; }
 
-    // ---------- Game State (stored in lobbies/{lobbyId}) ----------
-    let me = { name: myName, idx: -1 };
-    let state = null;
-    let isHost = false;
-    let rng = null;
-    let unsubLobby = null, unsubIntents = null;
+    const CARD_CATALOG = Object.fromEntries(RAW_CARDS.map(card=>[card.key,{...card,category:playerCategory(card)}]));
 
-    // ---------- Rendering ----------
-    function emojiClumpForPlayer(p){
-      const owned = p.owned||[];
-      const sorted = owned.slice().sort((a,b)=>(CARD_CATALOG[a.key]?.type||'').localeCompare(CARD_CATALOG[b.key]?.type||'')); 
-      let s=''; for (const e of sorted){ const c=CARD_CATALOG[e.key]; if(!c) continue; const em=Array.from({length:e.count||1},()=>c.emoji).join(''); s+=`${em}${e.hp!=null?' ('+e.hp+')':''} `; }
-      return s.trim();
+    function cardAssetCandidates(card){
+      const exact = card.name.toLowerCase();
+      const names = [exact, exact.replace(/\s+/g,'-'), exact.replace(/\s+/g,'_'), slug(card.name), compact(card.name), card.key.toLowerCase()];
+      if(card.key==='archtwrX') names.unshift('archer tower');
+      if(card.key==='wall_stone') names.unshift('stone wall');
+      return [...new Set(names)].map(n=>`${GRAPHICS_ROOT}${encodeURIComponent(n).replace(/%2F/g,'/')}.png`);
     }
-    function render(){
-      const hdrLobby=$('#hdrLobby'), hdrUser=$('#hdrUser'), hdrRole=$('#hdrRole');
-      hdrLobby.style.display=lobbyId?'':'none'; hdrLobby.textContent='Lobby: '+lobbyId;
-      hdrUser.style.display=myName?'':'none'; hdrUser.textContent=myName;
-      hdrRole.style.display=isHost?'':'none'; hdrRole.textContent='Host';
-
-      const panels=[$('#p0'),$('#p1'),$('#p2'),$('#p3')]; panels.forEach(p=>{p.innerHTML=''; p.classList.remove('you','active');});
-      if (!state) return;
-
-      const players=state.players||[]; const turnIdx=state.turnIdx??0;
-      players.forEach((p,i)=>{
-        const panel=panels[i]; if (!panel) return;
-        panel.classList.toggle('you',p.name===me.name); panel.classList.toggle('active',i===turnIdx);
-        const hdr=document.createElement('div'); hdr.className='hdr';
-        hdr.innerHTML=`<div><strong>${p.name}</strong> ${i===turnIdx?'<span class="pill">Active</span>':''}</div>
-                       <div class="hp">💰 ${p.gold||0} | 🏰 ${p.townHp||0}</div>`;
-        const cl=document.createElement('div'); cl.className='emojiClump';
-renderOwnedTiles(cl, p);
-        const mt=document.createElement('div'); mt.className='meta';
-        mt.textContent=(p.unlocked==='d20'?'d20':p.unlocked==='2d6'?'2d6':'d6')+' unlocked';
-        panel.appendChild(hdr); panel.appendChild(cl); panel.appendChild(mt);
+    function categoryAsset(category){ return `${GRAPHICS_ROOT}${category}.png`; }
+    function loadFirstImage(candidates){
+      return new Promise(resolve=>{
+        let i=0;
+        const tryNext=()=>{
+          if(i>=candidates.length) return resolve('');
+          const src=candidates[i++], img=new Image();
+          img.onload=()=>resolve(src);
+          img.onerror=tryNext;
+          img.src=src;
+        };
+        tryNext();
       });
-
-      renderControls(); renderShop(); renderQueueAndTargets();
     }
-    function myPlayer(){ if (!state) return null; return (state.players||[]).find(p=>p.name===me.name)||null; }
-    function isMyTurn(){ const p=myPlayer(); if (!p||!state) return false; return (state.players||[]).findIndex(x=>x.name===p.name)===(state.turnIdx??0); }
-    function allowedDiceFor(player){ const u=player?.unlocked||'d6'; if (u==='d20') return ['d6','2d6','d20']; if (u==='2d6') return ['d6','2d6']; return ['d6']; }
-   function renderOwnedTiles(container, player){
-  container.innerHTML = '';
-  const owned = player?.owned || [];
-  for (let i=0; i<owned.length; i++){
-    const e = owned[i];
-    const c = CARD_CATALOG[e.key];
-    if (!c) continue;
-
-    const tile  = document.createElement('div'); tile.className='tile';
-    const label = document.createElement('div'); label.className='label'; label.textContent = c.name;
-    const emj   = document.createElement('div'); emj.className='emj';   emj.textContent = c.emoji;
-
-    // 🔽 Tooltip on hover (native browser tooltip)
-    const tip = buildCardTip(c);
-    emj.title  = tip;         // hover over emoji
-    tile.title = tip;         // hover anywhere on the tile
-
-    const rolls = (c.triggers && c.triggers.length) ? c.triggers.join(',') : '—';
-    const meta  = document.createElement('div'); meta.className='meta'; meta.innerHTML = `🎲 ${rolls}`;
-
-    if (e.hp != null){
-      const hp = document.createElement('div'); hp.className='hp'; hp.textContent = `HP ${e.hp}`;
-      tile.appendChild(hp);
-    }
-    const count = e.count || 1;
-    if (count > 1){
-      const cnt = document.createElement('div'); cnt.className='cnt'; cnt.textContent = `x${count}`;
-      tile.appendChild(cnt);
-    }
-
-    tile.appendChild(label);
-    tile.appendChild(emj);
-    tile.appendChild(meta);
-    container.appendChild(tile);
-  }
-}
-
-    function buildCardTip(card){
-  const rolls  = card.triggers?.length ? card.triggers.join(',') : '—';
-  const timing = card.timing || '—';
-  const hpTxt  = (card.hp ?? card.hpDynamic) ? ` | HP: ${card.hp ?? 'dynamic'}` : '';
-  return `${card.emoji} ${card.name}\n${card.details || ''}\nRolls: ${rolls} | Timing: ${timing}${hpTxt}`;
-}
-
-
-function renderControls(){
-  const p = myPlayer();
-  const dieSel = $('#dieSelect');
-
-  if (!p){
-    if (dieSel) dieSel.innerHTML = '<option>d6</option>';
-    $('#rollBtn').disabled = true;
-    $('#resolveBtn').disabled = true;
-    $('#applyTargetBtn').disabled = true;
-    $('#endTurnBtn').disabled = true;
-    const lb = $('#lastRollBadge'); if (lb) lb.style.display='none';
-    return;
-  }
-
-  // keep your die to the last chosen, clamped to what's unlocked
-  if (dieSel){
-    const allowed = allowedDiceFor(p); // ['d6'] | ['d6','2d6'] | ['d6','2d6','d20']
-    const desired = allowed.includes(uiPrefs.die) ? uiPrefs.die : allowed[allowed.length-1]; // prefer highest allowed if previous is invalid
-    dieSel.innerHTML = allowed.map(o=>`<option value="${o}">${o}</option>`).join('');
-    dieSel.value = desired; // restore
-    if (!dieSel.dataset.bound){
-      dieSel.addEventListener('change', ()=>{
-        uiPrefs.die = dieSel.value;
-        savePrefs(uiPrefs);
+    async function preloadGraphics(){
+      const entries=[...CATEGORIES.map(c=>({key:`category:${c}`,candidates:[categoryAsset(c)]})),...RAW_CARDS.map(c=>({key:c.key,candidates:cardAssetCandidates(c)}))];
+      const total=entries.length; let done=0;
+      $('#progressLabel').textContent=`0 / ${total} graphics loaded`;
+      const workers=Array.from({length:Math.min(8,entries.length)},async()=>{
+        while(entries.length){
+          const item=entries.shift();
+          const src=await loadFirstImage(item.candidates);
+          if(src) assetMap[item.key]=src; else missingAssets.add(item.key);
+          done++;
+          const pct=Math.round(done/total*100);
+          $('#progressFill').style.width=`${pct}%`;
+          $('#progressLabel').textContent=`${done} / ${total} graphics checked${missingAssets.size?` • ${missingAssets.size} fallback${missingAssets.size===1?'':'s'}`:''}`;
+        }
       });
-      dieSel.dataset.bound = '1';
+      await Promise.all(workers);
+      graphicsReady=true;
     }
-  }
-
-  const isTurn   = isMyTurn();
-  const phase    = state?.phase || 'await_roll';
-  const resolving = (phase === 'resolving');
-
-  // Use effective (crazy or normal) effect to decide target need
-  let needsT = false;
-  if (resolving){
-    const cur = (state?.resolveQueue || [])[0];
-    if (cur){
-      const card = CARD_CATALOG[cur.key];
-      const eff  = (cur.useCrazy && card.onTriggerCrazy) ? card.onTriggerCrazy : (card.onTrigger || {});
-      needsT = triggerNeedsTarget(eff.kind);
+    function makeArt(card,className=''){
+      const src=assetMap[card.key] || cardAssetCandidates(card)[0];
+      const img=document.createElement('img');
+      img.className=className; img.src=src; img.alt=card.name; img.loading='lazy';
+      img.onerror=()=>{
+        const fallback=document.createElement('div');
+        fallback.className=className.includes('shop')?'shopFallback':className.includes('owned')?'fallbackArt':'tinyFallback';
+        fallback.textContent=card.emoji||'✦';
+        img.replaceWith(fallback);
+      };
+      return img;
     }
-  }
-
-  $('#rollBtn').disabled        = !isTurn || (phase !== 'await_roll');
-  $('#resolveBtn').disabled     = !isTurn || !resolving || needsT;
-  $('#applyTargetBtn').disabled = !isTurn || !resolving || !needsT;
-  $('#endTurnBtn').disabled     = !isTurn;
-
-  const lb = $('#lastRollBadge');
-  if (lb){
-    if (state?.lastRoll?.value){
-      lb.style.display = '';
-      lb.textContent = `Last roll: ${state.lastRoll.value} (${state.lastRoll.mode})`;
-    } else {
-      lb.style.display = 'none';
-    }
-  }
-}
-
-
-    // ---- UI Prefs (persisted per lobby & user) ----
-const PREFS_KEY = `gr_prefs_${lobbyId}_${myName}`;
-function loadPrefs(){ try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch { return {}; } }
-function savePrefs(p){ try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch {} }
-let uiPrefs = Object.assign({ die:'d6', target:{ player:'', type:'', entry:null } }, loadPrefs());
-
-    function renderShop(){
-  const shop = $('#shop'); shop.innerHTML = '';
-  const p = myPlayer(); if (!p) return;
-
-  const canBuyNow = isMyTurn() && (state?.phase === 'buy');
-
-  // Helper to compute current HP for dynamic-HP cards
-  function computeHpNow(card){
-    if (!card.hpDynamic) return (card.hp ?? '—');
-    const perTemple = card.hpDynamic.perTemple;
-    const perHP     = card.hpDynamic.perHP || 1;
-    const temples = (p.owned||[]).find(e=>e.key===perTemple)?.count || 0;
-    const hpNow = Math.max(1, temples * perHP);
-    return `${hpNow} (scales)`;
-  }
-
-  // Sort by cost then name for a nicer shop
-  const cards = Object.values(CARD_CATALOG)
-    .filter(card => {
-      if (card.immutable) return false;
-      if (card.requiresTemple){
-        const hasTemple = (p.owned||[]).some(e=>e.key===card.requiresTemple);
-        if (!hasTemple) return false;
+    function currentMaxHp(player,key){
+      const card=CARD_CATALOG[key]; if(!card) return 1;
+      if(card.hpDynamic){
+        const temples=(player?.owned||[]).find(e=>e.key===card.hpDynamic.perTemple)?.count||0;
+        return Math.max(1,temples*(card.hpDynamic.perHP||1));
       }
-      const have = (p.owned||[]).find(e=>e.key===card.key)?.count || 0;
-      const max  = card.max ?? 3;
-      return have < max;
-    })
-    .sort((a,b)=> (a.cost - b.cost) || a.name.localeCompare(b.name));
-
-  cards.forEach(card=>{
-    const have = (p.owned||[]).find(e=>e.key===card.key)?.count || 0;
-    const max  = card.max ?? 3;
-    const rolls = (card.triggers?.length ? card.triggers.join(',') : '—');
-    const hpLabel = computeHpNow(card);
-    const timing = card.timing || '—';
-
-    // Build a nice hover tooltip (uses your `details`)
-    const reqTxt = card.requiresTemple ? `\nRequires: ${CARD_CATALOG[card.requiresTemple]?.emoji || ''} ${CARD_CATALOG[card.requiresTemple]?.name || 'Temple'}` : '';
-    const tip = `${card.emoji} ${card.name}
-${card.details || ''}
-Cost: ${card.cost} | HP: ${hpLabel}
-Rolls: ${rolls} | Timing: ${timing}${reqTxt}`.trim();
-
-    const div = document.createElement('div');
-    div.className = 'shopItem';
-    div.title = tip;
-
-    // Header
-    const h4 = document.createElement('h4');
-    const emj = document.createElement('span');
-    emj.className = 'emj';
-    emj.textContent = card.emoji;
-    emj.title = tip; // emoji-specific tooltip too
-    h4.appendChild(emj);
-    h4.appendChild(document.createTextNode(' ' + card.name));
-    div.appendChild(h4);
-
-    // Meta line
-    const meta = document.createElement('div');
-    meta.className = 'small';
-    const parts = [
-      `Cost: ${card.cost}`,
-      `HP: ${hpLabel}`,
-      (rolls !== '—' ? `Roll: ${rolls}` : null),
-      (card.requiresTemple ? `Req: ${CARD_CATALOG[card.requiresTemple]?.emoji || ''} ${CARD_CATALOG[card.requiresTemple]?.name || ''}` : null),
-      `${have}/${max}`
-    ].filter(Boolean);
-    meta.textContent = parts.join(' | ');
-    div.appendChild(meta);
-
-    // Buy button
-    const btn = document.createElement('button');
-    btn.textContent = 'Buy';
-    const afford = (p.gold || 0) >= card.cost;
-    btn.disabled = !(canBuyNow && afford);
-    if (btn.disabled){
-      if (!isMyTurn())          btn.title = 'Not your turn';
-      else if (state?.phase!=='buy') btn.title = 'Not in buy phase';
-      else if (!afford)         btn.title = `Need ${card.cost} gold`;
-    } else {
-      btn.title = '';
+      return Math.max(1,card.hp||1);
     }
-    btn.addEventListener('click', ()=>intentBuy(card.key));
-    div.appendChild(btn);
-
-    shop.appendChild(div);
-  });
-}
-
-
-    // ---------- Target UI ----------
+    function normalizeOwned(player){
+      player.owned=Array.isArray(player.owned)?player.owned:[];
+      for(const entry of player.owned){
+        entry.count=Math.max(1,Number(entry.count)||1);
+        const max=currentMaxHp(player,entry.key);
+        entry.maxHp=max;
+        if(entry.hp==null || !Number.isFinite(Number(entry.hp))) entry.hp=max;
+        entry.hp=Math.min(max,Math.max(0,Number(entry.hp)||0));
+      }
+      return player;
+    }
+    function mkStarter(name,uid='',isAI=false){
+      const player={id:uid||`ai-${Math.random().toString(36).slice(2)}`,uid:uid||'',name:name||'Player',isAI,eliminated:false,left:false,gold:0,townHp:20,unlocked:'d6',owned:[]};
+      for(const key of STARTERS){ const card=CARD_CATALOG[key]; player.owned.push({key,count:1,hp:card.hp,maxHp:card.hp}); }
+      return player;
+    }
+    function normalizeGame(game){
+      game=game&&typeof game==='object'?game:{};
+      game.players=Array.isArray(game.players)?game.players:[];
+      game.players.forEach((p,i)=>{p.id=p.id||p.uid||`legacy-${i}-${slug(p.name)}`;p.name=p.name||`Player ${i+1}`;p.isAI=!!p.isAI;p.eliminated=!!p.eliminated;p.gold=Number(p.gold)||0;p.townHp=Number(p.townHp??20);normalizeOwned(p);p.unlocked=computeUnlockForPlayer(p);});
+      game.turnIdx=Math.max(0,Math.min(Number(game.turnIdx)||0,Math.max(0,game.players.length-1)));
+      game.phase=game.phase||'await_roll';
+      game.resolveQueue=Array.isArray(game.resolveQueue)?game.resolveQueue:[];
+      game.version=Number(game.version)||0;
+      game.rollCount=Number(game.rollCount)||0;
+      game.seed=Number(game.seed)||Math.floor(Math.random()*1e9);
+      game.log=Array.isArray(game.log)?game.log.slice(-60):[];
+      game.turnBuys=Number(game.turnBuys)||0;
+      game.lastActionIds=game.lastActionIds&&typeof game.lastActionIds==='object'?game.lastActionIds:{};
+      return game;
+    }
+    function activePlayer(game=state){ return game?.players?.[game.turnIdx]||null; }
+    function myPlayer(game=state){ return game?.players?.find(p=>(user&&p.uid===user.uid)||(!p.uid&&p.name===myName))||null; }
+    function myIndex(game=state){ return game?.players?.findIndex(p=>(user&&p.uid===user.uid)||(!p.uid&&p.name===myName))??-1; }
+    function isMyTurn(){ const p=activePlayer(); return !!p&&!p.isAI&&myIndex()===state.turnIdx&&!p.eliminated&&state.phase!=='finished'; }
+    function allowedDiceFor(player){ const u=player?.unlocked||'d6'; return u==='d20'?['d6','2d6','d20']:u==='2d6'?['d6','2d6']:['d6']; }
+    function highestDie(player){ const list=allowedDiceFor(player); return list[list.length-1]; }
+    function isFreshPresence(p,maxAge=26000){ return !!p&&p.active!==false&&nowMs()-timestampMs(p.lastSeen)<maxAge; }
+    function findPresenceForPlayer(player){ if(!player||player.isAI) return null; if(player.uid&&presence.has(player.uid)) return presence.get(player.uid); return [...presence.values()].find(p=>p.name===player.name)||null; }
+    function pushLog(game,message){ if(!message)return; game._lastMsg=message; game.log=Array.isArray(game.log)?game.log:[]; game.log.push({at:nowMs(),message:String(message)}); if(game.log.length>60) game.log=game.log.slice(-60); }
+    function finalizeGame(game){
+      for(const p of game.players){ normalizeOwned(p); p.unlocked=computeUnlockForPlayer(p); if(!p.eliminated&&p.townHp<=0){p.eliminated=true;p.gold=0;p.owned=[];} }
+      const alive=game.players.filter(p=>!p.eliminated&&!p.left);
+      if(alive.length<=1&&game.players.length>1){ game.phase='finished'; game.winner=alive[0]?.name||''; pushLog(game,alive[0]?`🏆 ${alive[0].name} conquers the realm!`:'The realm ends with no victor.'); }
+      if(game.phase!=='finished'&&game.players[game.turnIdx]?.eliminated){
+        game.resolveQueue=[];game.lastRoll=null;game.turnBuys=0;game.phase='await_roll';
+        let guard=0;
+        while(game.players[game.turnIdx]?.eliminated&&guard++<game.players.length) game.turnIdx=(game.turnIdx+1)%game.players.length;
+        pushLog(game,`${game.players[game.turnIdx]?.name||'Next player'} takes the next turn.`);
+      }
+    }
+    function nextTurn(game){
+      const count=game.players.length; if(!count)return;
+      let next=(game.turnIdx+1)%count;
+      for(let i=0;i<count;i++){ if(!game.players[next]?.eliminated&&!game.players[next]?.left)break; next=(next+1)%count; }
+      game.turnIdx=next;game.phase='await_roll';game.resolveQueue=[];game.lastRoll=null;game.turnBuys=0;
+      pushLog(game,`${game.players[next]?.name||'Next player'} begins a new turn.`);
+      finalizeGame(game);
+    }
+    function randomUnit(seed,index,salt=0){
+      let x=(seed+Math.imul(index+1,0x9e3779b1)+Math.imul(salt+1,0x85ebca6b))|0;
+      x^=x>>>16;x=Math.imul(x,0x7feb352d);x^=x>>>15;x=Math.imul(x,0x846ca68b);x^=x>>>16;
+      return (x>>>0)/4294967296;
+    }
+    function rollDice(mode,game){
+      const one=(salt,max)=>1+Math.floor(randomUnit(game.seed,game.rollCount,salt)*max);
+      if(mode==='2d6'){const faces=[one(1,6),one(2,6)];return{value:faces[0]+faces[1],faces};}
+      if(mode==='d20'){const v=one(3,20);return{value:v,faces:[v]};}
+      const v=one(4,6);return{value:v,faces:[v]};
+    }
     function triggerNeedsTarget(kind){
-  return [
-    'attack_any',
-    'attack_structure',
-    'attack_troop',
-    'attack_any_and_heal',
-    'attack_any_per_temple',
-    'damage_per_temple_and_gain',
-    'lose_then_attack_any',
-    'attack_any_and_destroy_troop',
-    'destroy_troop',
-    'destroy_structure_non_temple',
-    'destroy_structure_and_attack_any',
-    'goliath_special',
-    'gain_and_destroy_two_walls'
-    // note: crazy kinds (smite_all_enemy_troops, destroy_all_enemy_walls, steal_from_each_enemy) are targetless
-  ].includes(kind);
-}
-function allowedTargetTypesFor(kind){
-  switch(kind){
-    // Troop/attack effects can hit walls directly now
-    case 'attack_any':
-    case 'attack_any_and_heal':
-    case 'attack_any_per_temple':
-    case 'lose_then_attack_any':
-    case 'damage_per_temple_and_gain':
-    case 'attack_any_and_destroy_troop':
-      return ['wall','troop','structure','townhall'];
-
-    case 'attack_structure':
-      return ['wall','structure']; // structures or walls (not Town Hall)
-
-    case 'attack_troop':
-    case 'destroy_troop':
-      return ['troop'];
-
-    case 'destroy_structure_non_temple':
-      return ['structure']; // cannot pick walls or Town Hall
-
-    case 'destroy_structure_and_attack_any':
-      return ['structure']; // first target is a structure only; second hit is auto-chosen
-
-    case 'goliath_special':
-      return ['wall','troop','structure','townhall'];
-
-    case 'gain_and_destroy_two_walls':
-      return ['wall'];
-
-    default:
-      return [];
-  }
-}
-    function listTargetableEntries(p, type){
-      const owned=p.owned||[];
-      if (type==='troop') return owned.map((e,idx)=>({idx, e, c:CARD_CATALOG[e.key]})).filter(x=>x.c?.type==='troop' && x.e.hp>0);
-      if (type==='wall')  return owned.map((e,idx)=>({idx, e, c:CARD_CATALOG[e.key]})).filter(x=>x.c?.type==='wall' && x.e.hp>0);
-      if (type==='structure') return owned.map((e,idx)=>({idx, e, c:CARD_CATALOG[e.key]})).filter(x=>x.c?.type==='structure' && x.e.key!=='townhall' && x.e.hp>0);
-      return [];
+      return ['attack_any','attack_structure','attack_troop','attack_any_and_heal','attack_any_per_temple','damage_per_temple_and_gain','lose_then_attack_any','attack_any_and_destroy_troop','destroy_troop','destroy_structure_non_temple','destroy_structure_and_attack_any','goliath_special','gain_and_destroy_two_walls','destroy_farm_and_damage_per_temple'].includes(kind);
     }
-function renderQueueAndTargets(){
-  const qb = $('#queueBox'); qb.innerHTML = '';
-  const tb = $('#targetBox'); tb.innerHTML = '';
-  if (!state) return;
-
-  const q = state.resolveQueue || [];
-  if (!q.length){
-    qb.innerHTML = '<div class="small">No triggers pending.</div>';
-    return;
-  }
-
-  const current = q[0];
-  const owner   = (state.players || [])[current?.ownerIdx];
-  const card    = CARD_CATALOG[current?.key];
-
-  if (!current || !owner || !card){
-    qb.innerHTML = '<div class="small">Waiting for next trigger…</div>';
-    return;
-  }
-
-  // Effective effect: prefer CRAZY when queued that way
-  const eff  = (current.useCrazy && card.onTriggerCrazy) ? card.onTriggerCrazy : (card.onTrigger || {});
-  const kind = eff.kind || '';
-
-  // Header for current + CRAZY badge
-  const title = document.createElement('div');
-  title.innerHTML = `<div><b>Current trigger:</b> ${owner.name} — ${card.emoji} ${card.name}${
-    current.roll ? ` (roll ${current.roll}${current.useCrazy ? ' • CRAZY':''})` : ''
-  }</div>`;
-  qb.appendChild(title);
-
-  // Peek remaining queue
-  if (q.length > 1){
-    const ol = document.createElement('div'); ol.className = 'small';
-    for (let i = 1; i < q.length; i++){
-      const t = q[i], o = (state.players||[])[t.ownerIdx], c = CARD_CATALOG[t.key];
-      const line = document.createElement('div'); line.className = 'qItem';
-      line.textContent = `${i+1}. ${o?.name ?? '(?)'} — ${c?.name ?? '(unknown)'}`;
-      ol.appendChild(line);
+    function allowedTargetTypesFor(kind){
+      if(['attack_any','attack_any_and_heal','attack_any_per_temple','damage_per_temple_and_gain','lose_then_attack_any','attack_any_and_destroy_troop','goliath_special','destroy_farm_and_damage_per_temple'].includes(kind))return['wall','troop','structure','townhall'];
+      if(kind==='attack_structure')return['wall','structure'];
+      if(['attack_troop','destroy_troop'].includes(kind))return['troop'];
+      if(['destroy_structure_non_temple','destroy_structure_and_attack_any'].includes(kind))return['structure'];
+      if(kind==='gain_and_destroy_two_walls')return['wall'];
+      return[];
     }
-    qb.appendChild(ol);
-  }
-
-  // Only the active player chooses targets (change if you want owner to choose)
-  if (!isMyTurn()){
-    const note = document.createElement('div'); note.className = 'small';
-    note.textContent = 'Waiting for the active player to resolve.';
-    tb.appendChild(note);
-    return;
-  }
-
-  const needsTarget = triggerNeedsTarget(kind);
-  if (!needsTarget){
-    const note = document.createElement('div'); note.className = 'small';
-    note.textContent = 'This effect needs no target. Use "Resolve Next".';
-    tb.appendChild(note);
-    return;
-  }
-
-  // ---- Targeting UI ----
-  const box = document.createElement('div'); box.className = 'needTarget';
-  const selP = document.createElement('select'); selP.id = 'selTargetPlayer';
-  const selT = document.createElement('select'); selT.id = 'selTargetType';
-  const selE = document.createElement('select'); selE.id = 'selTargetEntry';
-
-  // Persist prefs (guards if helpers weren’t added yet)
-  try{ if (typeof uiPrefs === 'undefined') window.uiPrefs = { die:'d6', target:{ player:'', type:'', entry:null } }; }catch{}
-  const persist = (typeof savePrefs === 'function') ? savePrefs : function(){};
-
-  const enemies = (state.players||[]).filter(p => !p.eliminated && p.name !== owner.name);
-  const opts    = allowedTargetTypesFor(kind);
-
-  // Players list
-  if (!enemies.length){
-    selP.innerHTML = '<option value="">(no enemy)</option>';
-  } else {
-    enemies.forEach(p => {
-      const o = document.createElement('option');
-      o.value = p.name; o.textContent = p.name; selP.appendChild(o);
-    });
-  }
-
-  // Types list
-  opts.forEach(t => {
-    const o = document.createElement('option');
-    o.value = t; o.textContent = t; selT.appendChild(o);
-  });
-
-  // Restore previous target choices when valid; else pick sensible defaults
-  const ATTACK_KINDS = new Set([
-    'attack_any','attack_structure','attack_troop',
-    'attack_any_and_heal','attack_any_per_temple',
-    'damage_per_temple_and_gain','lose_then_attack_any',
-    'attack_any_and_destroy_troop','goliath_special'
-  ]);
-
-  // Player
-  if (uiPrefs.target?.player && enemies.some(e=>e.name===uiPrefs.target.player)){
-    selP.value = uiPrefs.target.player;
-  } else if (enemies.length){
-    selP.value = enemies[0].name;
-  }
-
-  // Type/category
-  if (uiPrefs.target?.type && opts.includes(uiPrefs.target.type)){
-    selT.value = uiPrefs.target.type;
-  } else if (opts.length){
-    const isAttack = ATTACK_KINDS.has(kind);
-    const firstEnemy = enemies[0];
-    if (isAttack && firstEnemy && typeof hasActiveWall==='function' && hasActiveWall(firstEnemy) && opts.includes('wall')){
-      selT.value = 'wall';
-    } else {
-      selT.value = opts[0];
+    function listTargetableEntries(player,type){
+      return (player?.owned||[]).map((e,idx)=>({idx,e,c:CARD_CATALOG[e.key]})).filter(x=>x.c&&x.e.hp>0&&x.c.type===type&&(type!=='structure'||x.e.key!=='townhall'));
     }
-  }
-
-  // --- Apply button enablement helper
-  const refreshApplyButton = () => {
-    const applyBtn = document.getElementById('applyTargetBtn');
-    if (!applyBtn) return;
-
-    const tName = selP.value;
-    const tType = selT.value;
-
-    // Normalize selected entry index
-    const tIdxRaw = selE.disabled ? null : selE.value; // '' means none
-    const tIdx = (tIdxRaw === '' || tIdxRaw == null) ? null : Number(tIdxRaw);
-
-    const players = (state.players || []);
-    const target = players.find(p => p.name === tName) || null;
-
-    const hasTargetPlayer = !!tName && enemies.some(e => e.name === tName) && !!target;
-    const validTown = (tType === 'townhall') ? ((target?.townHp || 0) > 0) : true;
-
-    // Walls shield Town Hall + structures for attack-kind effects
-    const isAttack = ATTACK_KINDS.has(kind);
-    const shieldUp = target ? (typeof hasActiveWall === 'function' ? hasActiveWall(target) : false) : false;
-    const structOrTH = (tType === 'structure' || tType === 'townhall');
-    const blockedByWalls = isAttack && shieldUp && structOrTH;
-
-    // Validate selected entry when not townhall
-    let validEntry = true;
-    if (tType !== 'townhall') {
-      if (tIdx === null || Number.isNaN(tIdx)) {
-        validEntry = false;
-      } else {
-        const entry = target?.owned?.[tIdx];
-        const etype = entry ? CARD_CATALOG[entry.key]?.type : null;
-        const alive = (entry?.hp || 0) > 0;
-        validEntry = !!entry && alive && (etype === tType);
+    function effectiveTrigger(trigger){ const card=CARD_CATALOG[trigger?.key]; if(!card)return{}; return trigger.useCrazy&&card.onTriggerCrazy?card.onTriggerCrazy:(card.onTrigger||{}); }
+    function allTargetCandidates(game,ownerIdx,kind){
+      const out=[]; const owner=game.players[ownerIdx];
+      for(const target of game.players){
+        if(!target||target.eliminated||target.left||target===owner)continue;
+        for(const type of allowedTargetTypesFor(kind)){
+          if((type==='structure'||type==='townhall')&&hasActiveWall(target)&&['attack_any','attack_structure','attack_any_and_heal','attack_any_per_temple','damage_per_temple_and_gain','lose_then_attack_any','attack_any_and_destroy_troop','goliath_special','destroy_farm_and_damage_per_temple'].includes(kind))continue;
+          if(type==='townhall'&&target.townHp>0)out.push({targetPlayer:target.name,targetType:type,targetEntryIdx:null,score:target.townHp});
+          if(type!=='townhall')for(const item of listTargetableEntries(target,type)){
+            if(kind==='destroy_structure_non_temple'&&['_temple'].some(()=>false)){}
+            if(kind==='destroy_structure_non_temple'&&item.e.key.endsWith('_temple'))continue;
+            out.push({targetPlayer:target.name,targetType:type,targetEntryIdx:item.idx,score:item.e.hp});
+          }
+        }
       }
+      return out;
+    }
+    function chooseAITarget(game,trigger){
+      const kind=effectiveTrigger(trigger).kind;
+      const candidates=allTargetCandidates(game,trigger.ownerIdx,kind);
+      if(!candidates.length)return null;
+      const wall=candidates.filter(c=>c.targetType==='wall').sort((a,b)=>a.score-b.score)[0];
+      if(wall)return wall;
+      const troop=candidates.filter(c=>c.targetType==='troop').sort((a,b)=>a.score-b.score)[0];
+      return troop||candidates.sort((a,b)=>a.score-b.score)[0];
     }
 
-    const ok = hasTargetPlayer && validTown && validEntry && !blockedByWalls;
-    applyBtn.disabled = !ok;
-
-    // Helpful tooltip when disabled
-    if (!ok) {
-      let reason = '';
-      if (!hasTargetPlayer)          reason = 'Select a valid target player.';
-      else if (!validTown)           reason = 'Town Hall is already destroyed.';
-      else if (blockedByWalls)       reason = 'Walls are up — destroy walls first.';
-      else if (!validEntry && tType!=='townhall') reason = 'Select a valid target entry.';
-      applyBtn.title = reason || 'Not allowed.';
-    } else {
-      applyBtn.title = '';
-    }
-  };
-
-  // --- Fill the entry dropdown based on chosen player/type
-  function refillEntries(){
-    selE.innerHTML = '';
-
-    const targetName = selP.value;
-    const typ        = selT.value;
-    const players    = (state.players || []);
-    const target     = players.find(p => p.name === targetName) || null;
-
-    const currentKind = eff?.kind || '';
-    const isAttack = ATTACK_KINDS.has(currentKind);
-    const isTempleKey = (k) => (k==='white_temple'||k==='black_temple'||k==='red_temple'||k==='green_temple');
-
-    if (!target){
-      selE.disabled = true;
-      const o = document.createElement('option'); o.value=''; o.textContent='(no target player)';
-      selE.appendChild(o);
-      refreshApplyButton();
-      return;
-    }
-
-    // Town Hall pseudo-entry
-    if (typ === 'townhall'){
-      selE.disabled = true;
-      const dead = (target.townHp || 0) <= 0;
-      const blocked = typeof hasActiveWall === 'function' ? hasActiveWall(target) : false;
-
-      const o = document.createElement('option');
-      o.value = '';
-      if (dead)              o.textContent = '(Town Hall destroyed)';
-      else if (blocked && isAttack) o.textContent = '(Town Hall — blocked by walls)';
-      else                   o.textContent = '(Town Hall)';
-      selE.appendChild(o);
-
-      refreshApplyButton();
-      return;
-    }
-
-    // Structures blocked by walls for attack-kind effects
-    if (typ === 'structure'){
-      const shieldUp = (typeof hasActiveWall === 'function') ? hasActiveWall(target) : false;
-      if (shieldUp && isAttack){
-        selE.disabled = true;
-        const o = document.createElement('option'); o.value=''; o.textContent='(structures blocked by walls)';
-        selE.appendChild(o);
-        refreshApplyButton();
-        return;
-      }
-    }
-
-    // Real entries (wall/troop/structure)
-    selE.disabled = false;
-
-    let items = listTargetableEntries(target, typ); // [{idx, e, c}]
-    // For destroy_structure_non_temple, filter temples out
-    if (typ === 'structure' && currentKind === 'destroy_structure_non_temple'){
-      items = items.filter(it => !isTempleKey(it.e.key));
-    }
-
-    if (!items.length){
-      const o = document.createElement('option'); o.value=''; o.textContent='(none)';
-      selE.appendChild(o);
-      selE.disabled = true;
-      refreshApplyButton();
-      return;
-    }
-
-    items.forEach(it => {
-      const o = document.createElement('option');
-      o.value = String(it.idx);
-      const hp = (it.e.hp ?? 0);
-      o.textContent = `${it.c.emoji} ${it.c.name} (HP ${hp})`;
-      selE.appendChild(o);
-    });
-
-    // Try to restore previously selected entry if still valid
-    if (uiPrefs.target && uiPrefs.target.entry != null){
-      const exists = Array.from(selE.options).some(o => Number(o.value) === Number(uiPrefs.target.entry));
-      if (exists) selE.value = String(uiPrefs.target.entry);
-    }
-
-    refreshApplyButton();
-  }
-
-  // Initial fill + listeners + persistence
-  refillEntries();
-
-  selP.addEventListener('change', ()=>{
-    uiPrefs.target.player = selP.value;
-    persist(uiPrefs);
-    refillEntries();
-  });
-  selT.addEventListener('change', ()=>{
-    uiPrefs.target.type = selT.value;
-    persist(uiPrefs);
-    refillEntries();
-  });
-  selE.addEventListener('change', ()=>{
-    uiPrefs.target.entry = (selE.disabled || selE.value==='') ? null : Number(selE.value);
-    persist(uiPrefs);
-    refreshApplyButton();
-  });
-
-  box.appendChild(document.createTextNode('Target: '));
-  box.appendChild(selP);
-  box.appendChild(selT);
-  box.appendChild(selE);
-  tb.appendChild(box);
-}
-
-    // ---------- Engine (same logic, stored under lobbies/{id}) ----------
     function computeUnlockForPlayer(p){
       let u='d6'; for (const e of (p.owned||[])){ const c=CARD_CATALOG[e.key]; if (!c) continue;
         for (const n of (c.triggers||[])){ if (n>=7 && n<=12) u='2d6'; if (n>=13) return 'd20'; } }
@@ -944,27 +577,24 @@ function renderQueueAndTargets(){
   return 1;
 }
     function addOrIncOwned(p,key){
-      const c=CARD_CATALOG[key]; if (!c) return;
-      let hp=c.hp;
-      if (c.hpDynamic){ const temples=(p.owned||[]).find(e=>e.key===c.hpDynamic.perTemple)?.count||0; hp=Math.max(1, temples*(c.hpDynamic.perHP||1)); }
-      const f=(p.owned||[]).find(e=>e.key===key);
-      if (f){ f.count=(f.count||1)+1; f.hp=hp; } else { (p.owned||(p.owned=[])).push({key, count:1, hp}); }
+      const card=CARD_CATALOG[key]; if(!card)return false;
+      const found=(p.owned||[]).find(e=>e.key===key);
+      const have=found?.count||0;
+      if(have>=(card.max??3))return false;
+      const hp=currentMaxHp(p,key);
+      if(found){found.count=have+1;if(found.hp<=0)found.hp=hp;found.maxHp=hp;}
+      else{(p.owned||(p.owned=[])).push({key,count:1,hp,maxHp:hp});}
+      return true;
     }
-      function damageEntry(entry, dmg, owner, rd){
-    entry.hp = Math.max(0,(entry.hp||0)-(dmg||0));
-    if (entry.hp<=0){
-      const diedCard = CARD_CATALOG[entry.key];
-      if (diedCard?.type==='troop'){
-        for (const pl of (rd.players||[])){
-          if ((pl.owned||[]).some(e=>e.key==='black_altar')) pl.gold = (pl.gold||0)+1;
-        }
+    function damageEntry(entry,dmg,owner,rd){
+      entry.hp=Math.max(0,(Number(entry.hp)||0)-(Number(dmg)||0));
+      if(entry.hp<=0){
+        const diedCard=CARD_CATALOG[entry.key];
+        if(diedCard?.type==='troop')for(const pl of(rd.players||[]))if((pl.owned||[]).some(e=>e.key==='black_altar'))pl.gold=(pl.gold||0)+1;
+        entry.count=(entry.count||1)-1;
+        if(entry.count>0){const max=currentMaxHp(owner,entry.key);entry.maxHp=max;entry.hp=max;}else entry._remove=true;
       }
-      entry.count = (entry.count||1)-1;
-      if (entry.count>0){ entry.hp = CARD_CATALOG[entry.key]?.hp || 1; }
-      else { entry._remove = true; }
     }
-  }
-
     function firstOfTypeIdx(p, type){
       const owned=p.owned||[];
       if (type==='troop') return owned.findIndex(e=>CARD_CATALOG[e.key]?.type==='troop' && e.hp>0);
@@ -1108,7 +738,7 @@ function applyInstantIncome(owner, card){
       for (const pl of rd.players){ pl.owned = (pl.owned||[]).filter(e=>!e._remove); }
       for (const p of rd.players){ if (!p.eliminated && (p.townHp||0)<=0){ p.eliminated=true; p.owned=[]; p.gold=0; } }
     }
-function hostResolveOne(rd, manual){
+function resolveOne(rd, manual){
   const stack = rd.resolveQueue || [];
   if (!stack.length) return { changed:false, msg:'No triggers.' };
 
@@ -1140,50 +770,18 @@ function hostResolveOne(rd, manual){
   const needsTarget = triggerNeedsTarget(kind);
 
   // --- If this trigger needs a target but there are none, auto-skip it
-  if (needsTarget){
-    const ownerPlayer = rd.players[trig.ownerIdx];
-    const enemies = (rd.players||[]).filter(p=>!p.eliminated && p.name!==ownerPlayer.name);
-    const kinds = allowedTargetTypesFor(kind);
-    const enemyHasAnyValid = enemies.some(ep=>{
-      return kinds.some(typ=>{
-        if (typ==='townhall') return (ep.townHp||0) > 0;
-        const items = listTargetableEntries(ep, typ);
-        return items.length > 0;
-      });
-    });
-    if (!enemyHasAnyValid){
-      stack.shift();
-      rd.resolveQueue = stack;
-      postResolveCleanup(rd);
-      return { changed:true, msg: `${owner.name}'s ${card.name} had no valid targets (skipped).` };
-    }
+  if (needsTarget && !allTargetCandidates(rd,trig.ownerIdx,kind).length){
+    stack.shift();
+    rd.resolveQueue=stack;
+    postResolveCleanup(rd);
+    return {changed:true,msg:`${owner.name}'s ${card.name} had no valid targets (skipped).`};
   }
 
   // If target needed but not provided, auto-pick if exactly one exists
   if (needsTarget && !manual){
-    const ownerPlayer = rd.players[trig.ownerIdx];
-    const enemies = (rd.players||[]).filter(p=>!p.eliminated && p.name!==ownerPlayer.name);
-    const types = allowedTargetTypesFor(kind);
-
-    let possibleTargets = [];
-    enemies.forEach(ep=>{
-      types.forEach(typ=>{
-        if (typ==='townhall' && (ep.townHp||0)>0){
-          possibleTargets.push({ player:ep, type:'townhall', idx:null });
-        } else {
-          listTargetableEntries(ep, typ).forEach(it=>{
-            possibleTargets.push({ player:ep, type:typ, idx:it.idx });
-          });
-        }
-      });
-    });
-
-    if (possibleTargets.length === 1){
-      const pick = possibleTargets[0];
-      manual = { targetPlayer: pick.player.name, targetType: pick.type, targetEntryIdx: pick.idx };
-    } else {
-      return { changed:false, msg:'Target required.' };
-    }
+    const possibleTargets=allTargetCandidates(rd,trig.ownerIdx,kind);
+    if(possibleTargets.length===1) manual=possibleTargets[0];
+    else return {changed:false,msg:'Target required.'};
   }
 
   const applyAndShift = (extraMsg) => {
@@ -1217,6 +815,13 @@ function hostResolveOne(rd, manual){
       owner.townHp = (owner.townHp||0) + h;
       owner.gold   = (owner.gold||0) + c;
       return applyAndShift(`heals ${h} & +${c} coins.`);
+    }
+    case 'acquire_troop_cost_leq_temples': {
+      const temples=(owner.owned||[]).find(e=>e.key===eff.temple)?.count||0;
+      const eligible=Object.values(CARD_CATALOG).filter(c=>c.type==='troop'&&c.cost<=temples&&((owner.owned||[]).find(e=>e.key===c.key)?.count||0)<(c.max??3)&&(!c.requiresTemple||(owner.owned||[]).some(e=>e.key===c.requiresTemple))).sort((a,b)=>b.cost-a.cost||a.name.localeCompare(b.name));
+      if(!eligible.length)return applyAndShift('finds no eligible troop to recruit.');
+      addOrIncOwned(owner,eligible[0].key);
+      return applyAndShift(`recruits ${eligible[0].name} without paying.`);
     }
     case 'each_other_lose_hp': {
       const v = eff.value||0; // structure, no troop bonus
@@ -1325,7 +930,8 @@ function hostResolveOne(rd, manual){
     case 'destroy_structure_non_temple':
     case 'destroy_structure_and_attack_any':
     case 'goliath_special':
-    case 'gain_and_destroy_two_walls': {
+    case 'gain_and_destroy_two_walls':
+    case 'destroy_farm_and_damage_per_temple': {
       const tName = manual?.targetPlayer;
       const tType = manual?.targetType;
       const tIdx  = (manual?.targetEntryIdx!=null) ? Number(manual.targetEntryIdx) : null;
@@ -1333,6 +939,13 @@ function hostResolveOne(rd, manual){
       if (!target) return applyAndShift('no enemy.');
 
       switch(kind){
+        case 'destroy_farm_and_damage_per_temple': {
+          const farmIdx=(target.owned||[]).findIndex(e=>e.key==='farm'&&e.hp>0);
+          if(farmIdx>=0)damageEntry(target.owned[farmIdx],target.owned[farmIdx].hp||9999,target,rd);
+          const temples=(owner.owned||[]).find(e=>e.key===eff.temple)?.count||0;
+          const out=applyAttackToSpecific(owner,target,tType,tIdx,bonusDmg(temples*(eff.per||0)),rd);
+          return applyAndShift(`${farmIdx>=0?'destroys a Farm. ':'No Farm to destroy. '}${out}`);
+        }
         case 'attack_any': {
           const out = applyAttackToSpecific(owner, target, tType, tIdx, bonusDmg(eff.value||0), rd);
           return applyAndShift(out);
@@ -1435,325 +1048,416 @@ function hostResolveOne(rd, manual){
   return { changed:true, msg };
 }
 
-  // Add this once (top-level, above the function)
-let _processingIntents = false;
 
-// Requires: import { where } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"
 
-// hostApplyIntents: processes queued intents in order, resilient to missing indexes
-async function hostApplyIntents(){
-  if (!isHost || !state) return;
-  if (_processingIntents) return; // prevent parallel runs
-  _processingIntents = true;
+    function reduceAction(game,action,actorIdx){
+      game=normalizeGame(game);
+      const actor=game.players[actorIdx];
+      const current=game.players[game.turnIdx];
+      if(!actor||actor.eliminated||actor.left)return{changed:false,message:'That player is no longer active.'};
+      if(actorIdx!==game.turnIdx&&action.type!=='LEAVE')return{changed:false,message:'It is not that player’s turn.'};
+      const phase=game.phase;
+      if(action.type==='ROLL'){
+        if(phase!=='await_roll')return{changed:false,message:'The die has already been rolled.'};
+        const mode=allowedDiceFor(actor).includes(action.payload?.mode)?action.payload.mode:highestDie(actor);
+        const rolled=rollDice(mode,game);
+        game.lastRoll={mode,value:rolled.value,faces:rolled.faces,by:actor.name};
+        const built=buildResolveQueueAfterRoll(game,actorIdx,rolled.value,mode);
+        game.resolveQueue=built.q||[];
+        game.phase=game.resolveQueue.length?'resolving':'buy';
+        game.rollCount++;
+        pushLog(game,`${actor.name} rolled ${rolled.value} (${mode}).${built.autoNote?` ${built.autoNote}`:''}`);
+        return{changed:true};
+      }
+      if(action.type==='RESOLVE'){
+        if(phase!=='resolving')return{changed:false,message:'There is no trigger to resolve.'};
+        const currentTrigger=game.resolveQueue[0];
+        if(currentTrigger&&triggerNeedsTarget(effectiveTrigger(currentTrigger).kind)&&allTargetCandidates(game,currentTrigger.ownerIdx,effectiveTrigger(currentTrigger).kind).length&&!action.payload?.targetPlayer)return{changed:false,message:'Choose a target first.'};
+        const result=resolveOne(game,action.payload?.targetPlayer?action.payload:null);
+        if(!result.changed)return{changed:false,message:result.msg||'A target is required.'};
+        pushLog(game,result.msg);
+        if(!game.resolveQueue.length)game.phase='buy';
+        finalizeGame(game);
+        return{changed:true};
+      }
+      if(action.type==='BUY'){
+        if(phase!=='buy')return{changed:false,message:'Cards can only be purchased after resolving the roll.'};
+        const card=CARD_CATALOG[action.payload?.key];
+        if(!card||card.immutable)return{changed:false,message:'That card cannot be purchased.'};
+        const have=(actor.owned||[]).find(e=>e.key===card.key)?.count||0;
+        if(have>=(card.max??3))return{changed:false,message:'You already own the maximum number of that card.'};
+        if(card.requiresTemple&&!(actor.owned||[]).some(e=>e.key===card.requiresTemple))return{changed:false,message:`Build ${CARD_CATALOG[card.requiresTemple]?.name||'the Temple'} first.`};
+        if((actor.gold||0)<card.cost)return{changed:false,message:`You need ${card.cost} gold.`};
+        actor.gold-=card.cost;addOrIncOwned(actor,card.key);actor.unlocked=computeUnlockForPlayer(actor);game.turnBuys=(game.turnBuys||0)+1;
+        pushLog(game,`${actor.name} purchased ${card.name}.`);
+        return{changed:true};
+      }
+      if(action.type==='END_TURN'){
+        if(phase==='resolving'&&!action.payload?.forfeitRemaining)return{changed:false,message:'Resolve the remaining triggers or choose to forfeit them.'};
+        if(action.payload?.forfeitRemaining)game.resolveQueue=[];
+        nextTurn(game);
+        return{changed:true};
+      }
+      if(action.type==='LEAVE'){
+        actor.left=true;actor.eliminated=true;actor.owned=[];actor.gold=0;
+        pushLog(game,`${actor.name} left the game and forfeited.`);
+        if(actorIdx===game.turnIdx)nextTurn(game);else finalizeGame(game);
+        return{changed:true};
+      }
+      return{changed:false,message:'Unknown action.'};
+    }
 
-  try {
-    const movesRef = collection(db, 'lobbies', lobbyId, 'crowncouncil');
+    async function performAction(type,payload={},options={}){
+      if(!lobbyRef||actionBusy&&!options.ai)return false;
+      const actionId=options.actionId||`${user?.uid||'ai'}-${nowMs()}-${Math.random().toString(36).slice(2)}`;
+      if(!options.ai){actionBusy=true;renderControls();}
+      try{
+        let response='';
+        await runTransaction(db,async tx=>{
+          const snap=await tx.get(lobbyRef); if(!snap.exists())throw new Error('The lobby no longer exists.');
+          const data=snap.data(); if(!data.game)throw new Error('The game is not ready yet.');
+          const game=normalizeGame(safeClone(data.game));
+          const actorIdx=options.ai?Number(options.actorIdx):game.players.findIndex(p=>(user&&p.uid===user.uid)||(!p.uid&&p.name===myName));
+          if(actorIdx<0)throw new Error('You are not an active player in this game.');
+          const actorKey=game.players[actorIdx].uid||game.players[actorIdx].id||game.players[actorIdx].name;
+          if(game.lastActionIds?.[actorKey]===actionId)return;
+          const result=reduceAction(game,{type,payload},actorIdx);
+          if(!result.changed){response=result.message||'That move is not available.';return;}
+          game.lastActionIds[actorKey]=actionId;game.version=(game.version||0)+1;game.updatedAt=nowMs();
+          tx.update(lobbyRef,{game});
+        });
+        if(response&&!options.ai)toast(response);
+        return !response;
+      }catch(error){console.error(error);if(!options.ai)toast(error.message||'The move could not be completed.');return false;}
+      finally{if(!options.ai){actionBusy=false;renderControls();}else setTimeout(scheduleAi,650);}
+    }
 
-    // --- Build list of unprocessed intents with a server-ordered query,
-    // --- and gracefully fall back if the composite index isn't created yet.
-    let pendingDocs = [];
-    try {
-      const snap = await getDocs(query(
-        movesRef,
-        where('kind','==','intent'),
-        where('processed','==',false),
-        orderBy('ts','asc'),
-        orderBy('__name__','asc'),
-        limit(50)
-      ));
-      pendingDocs = snap.docs;
-    } catch (err){
-      console.warn('Composite index missing; falling back to client-side sort.', err);
-      // Fallback path: filter by processed and sort in JS by ts then id
-      const snap = await getDocs(query(
-        movesRef,
-        where('kind','==','intent'),
-        where('processed','==',false),
-        limit(100)
-      ));
-      pendingDocs = snap.docs.sort((a,b)=>{
-        const ta = a.data()?.ts?.toMillis?.() ?? 0;
-        const tb = b.data()?.ts?.toMillis?.() ?? 0;
-        if (ta !== tb) return ta - tb;
-        return a.id.localeCompare(b.id);
+    function normalizeRoster(lobby){
+      const raw=Array.isArray(lobby?.players)?lobby.players:Array.isArray(lobby?.members)?lobby.members:[];
+      const out=[];
+      for(const item of raw){
+        const name=(typeof item==='string'?item:item?.username||item?.name||item?.displayName||'').trim();
+        if(!name||out.some(x=>x.name.toLowerCase()===name.toLowerCase()))continue;
+        const matched=[...presence.values()].find(p=>p.name?.toLowerCase()===name.toLowerCase());
+        out.push({name,uid:typeof item==='object'?(item.uid||item.userId||matched?.uid||''):(matched?.uid||'')});
+      }
+      if(!out.length&&myName)out.push({name:myName,uid:user?.uid||''});
+      return out.slice(0,4);
+    }
+    async function markPresence(values={}){
+      if(!lobbyId||!user)return;
+      const ref=doc(db,'lobbies',lobbyId,'presence',user.uid);
+      await setDoc(ref,{uid:user.uid,name:myName,active:true,lastSeen:serverTimestamp(),...values},{merge:true});
+    }
+    async function setLoadingStart(){
+      if(!lobbyRef)return;
+      try{await runTransaction(db,async tx=>{const snap=await tx.get(lobbyRef);if(!snap.exists())return;const data=snap.data();if(data.game||data.magicLoadingStartedAt)return;tx.update(lobbyRef,{magicLoadingStartedAt:nowMs()});});}catch(error){console.warn(error);}
+    }
+    async function maybeInitializeGame(){
+      if(!lobbyRef||!lobbyData||lobbyData.game||!graphicsReady)return;
+      const started=forceSolo||lobbyData.status==='started'||lobbyData.started===true||lobbyData.gameStarted===true;
+      if(!started)return;
+      await setLoadingStart();
+      const loadingStart=timestampMs(lobbyData.magicLoadingStartedAt)||nowMs();
+      const elapsed=nowMs()-loadingStart;
+      const roster=normalizeRoster(lobbyData);
+      const records=roster.map(r=>({r,p:r.uid?presence.get(r.uid):[...presence.values()].find(x=>x.name?.toLowerCase()===r.name.toLowerCase())}));
+      const ready=records.filter(x=>x.p?.ready&&isFreshPresence(x.p));
+      const unresolved=records.filter(x=>!(x.p?.ready&&isFreshPresence(x.p))&&x.p?.active!==false);
+      const explicitGone=records.some(x=>x.p&&x.p.active===false);
+      const canStart=forceSolo||ready.length===roster.length||(ready.length>0&&unresolved.length===0)||(ready.length>0&&explicitGone)||(ready.length>0&&elapsed>12000);
+      if(!canStart)return;
+      try{
+        await runTransaction(db,async tx=>{
+          const snap=await tx.get(lobbyRef);if(!snap.exists())return;
+          const data=snap.data();if(data.game)return;
+          const latestRoster=normalizeRoster(data);
+          let entrants=latestRoster.map(r=>{const p=r.uid?presence.get(r.uid):[...presence.values()].find(x=>x.name?.toLowerCase()===r.name.toLowerCase());return{...r,p};}).filter(x=>x.p?.ready&&isFreshPresence(x.p));
+          if(!entrants.length)entrants=[{name:myName,uid:user.uid,p:{ready:true}}];
+          const players=entrants.slice(0,4).map(x=>mkStarter(x.name,x.uid,false));
+          if(players.length===1)players.push(mkStarter('Arcane Automaton','',true));
+          const game=normalizeGame({createdAt:nowMs(),players,turnIdx:0,phase:'await_roll',seed:Math.floor(Math.random()*1e9),rollCount:0,resolveQueue:[],version:1,turnBuys:0,log:[],_lastMsg:'The realms are ready. The first turn begins.'});
+          pushLog(game,game._lastMsg);
+          tx.update(lobbyRef,{game,magicStartedAt:nowMs()});
+        });
+      }catch(error){console.warn('Initialization race:',error);}
+    }
+
+
+    let selectedTargetPayload=null;
+    function statusForPlayer(player){
+      if(player.isAI)return'AI';
+      if(player.eliminated||player.left)return'Out';
+      const p=findPresenceForPlayer(player);
+      return isFreshPresence(p)?'Online':'Disconnected';
+    }
+    function renderLoading(){
+      if(state&&graphicsReady){$('#loadingOverlay').classList.add('hidden');return;}
+      $('#loadingOverlay').classList.remove('hidden');
+      const readyList=$('#readyList');readyList.innerHTML='';
+      const roster=lobbyData?normalizeRoster(lobbyData):[];
+      for(const person of roster){
+        const p=person.uid?presence.get(person.uid):[...presence.values()].find(x=>x.name?.toLowerCase()===person.name.toLowerCase());
+        const pill=document.createElement('span');pill.className='readyPill '+(p?.ready&&isFreshPresence(p)?'ready':p?.active===false?'offline':'loading');
+        pill.textContent=`${p?.ready&&isFreshPresence(p)?'✓':p?.active===false?'✕':'…'} ${person.name}`;readyList.appendChild(pill);
+      }
+      if(!lobbyId)$('#loadingText').textContent='Missing gameId in the URL.';
+      else if(!graphicsReady)$('#loadingText').textContent='Loading every card image from Magic/graphics…';
+      else if(!(forceSolo||lobbyData?.status==='started'||lobbyData?.started===true||lobbyData?.gameStarted===true))$('#loadingText').textContent='Graphics ready. Waiting for the lobby to start…';
+      else $('#loadingText').textContent='Graphics ready. Waiting for active players, then starting automatically…';
+    }
+    function renderTurnBanner(){
+      const banner=$('#turnBanner');banner.className='';
+      if(!state){banner.classList.add('waiting');banner.textContent='Preparing the game…';return;}
+      if(state.phase==='finished'){
+        banner.classList.add('finished');banner.textContent=state.winner?`🏆 ${state.winner} wins the realm!`:'The game is finished.';return;
+      }
+      const active=activePlayer();
+      if(isMyTurn()){banner.classList.add('mine');banner.textContent=`YOUR TURN — ${phaseLabel(state.phase)}`;}
+      else{banner.classList.add('waiting');banner.textContent=`${active?.name||'Player'}’s turn — ${phaseLabel(state.phase)}`;}
+    }
+    function phaseLabel(phase){return phase==='await_roll'?'Roll the dice':phase==='resolving'?'Resolve triggers':phase==='buy'?'Shop and end turn':phase==='finished'?'Finished':'Waiting';}
+    function renderDice(){
+      const box=$('#diceVisual');box.innerHTML='';
+      const roll=state?.lastRoll;
+      if(!roll){box.appendChild(makeD6(1,true));$('#rollCaption').textContent='Waiting for the next roll';return;}
+      if(roll.mode==='d20'){
+        const d=document.createElement('div');d.className='d20';d.textContent=roll.value;box.appendChild(d);
+      }else{
+        const faces=roll.faces?.length?roll.faces:roll.mode==='2d6'?[Math.max(1,Math.min(6,roll.value-1)),1]:[roll.value];
+        faces.forEach(v=>box.appendChild(makeD6(v,false)));
+      }
+      $('#rollCaption').textContent=`${roll.by} rolled ${roll.value} on ${roll.mode}`;
+    }
+    function makeD6(value,ghost=false){
+      const die=document.createElement('div');die.className='die';if(ghost)die.style.opacity='.35';
+      const patterns={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+      for(let i=0;i<9;i++){const pip=document.createElement('i');pip.className='pip '+((patterns[value]||[]).includes(i)?'on':'');die.appendChild(pip);}return die;
+    }
+    function renderOpponents(){
+      const body=$('#opponentBody');body.innerHTML='';
+      if(!state){body.innerHTML='<tr><td colspan="6" class="empty">Waiting for players…</td></tr>';return;}
+      state.players.forEach((player,index)=>{
+        const tr=document.createElement('tr');if(index===state.turnIdx)tr.classList.add('activeRow');if(player.eliminated)tr.classList.add('eliminated');
+        const status=statusForPlayer(player);
+        const name=document.createElement('td');name.innerHTML=`<strong>${escapeText(player.name)}</strong>${player.isAI?' 🤖':''}${index===state.turnIdx?' • Active':''}`;
+        const statusTd=document.createElement('td');statusTd.textContent=status;
+        const gold=document.createElement('td');gold.textContent=`💰 ${player.gold||0}`;
+        const hp=document.createElement('td');hp.textContent=`🏰 ${Math.max(0,player.townHp||0)}`;
+        const die=document.createElement('td');die.textContent=player.unlocked||'d6';
+        const cardsTd=document.createElement('td');const cards=document.createElement('div');cards.className='tableCards';
+        if(!(player.owned||[]).length)cards.textContent='No cards remaining';
+        for(const entry of player.owned||[]){const card=CARD_CATALOG[entry.key];if(!card)continue;const tile=document.createElement('button');tile.className='tinyCard';const shownHp=entry.key==='townhall'?player.townHp:entry.hp;tile.title=`${card.name} • ${shownHp}/${currentMaxHp(player,entry.key)} HP • ×${entry.count||1}`;tile.appendChild(makeArt(card,'tinyArt'));if((entry.count||1)>1){const b=document.createElement('span');b.className='tinyBadge';b.textContent=`×${entry.count}`;tile.appendChild(b);}tile.onclick=()=>showCardModal(card,entry,player);cards.appendChild(tile);}
+        cardsTd.appendChild(cards);tr.append(name,statusTd,gold,hp,die,cardsTd);body.appendChild(tr);
       });
     }
+    function renderOwned(){
+      const player=myPlayer();const rail=$('#ownedRail');rail.innerHTML='';const resources=$('#resourceStrip');resources.innerHTML='';
+      if(!player){$('#yourStatus').textContent=state?'Spectating — the match started without this player.':'Waiting';rail.innerHTML='<div class="empty">You are not an active player in this match.</div>';return;}
+      $('#yourStatus').textContent=player.eliminated?'Eliminated':statusForPlayer(player);
+      for(const text of [`💰 ${player.gold||0}`,`🏰 ${Math.max(0,player.townHp||0)}`,`🎲 ${player.unlocked||'d6'}`]){const span=document.createElement('span');span.className='resource';span.textContent=text;resources.appendChild(span);}
+      for(const entry of player.owned||[]){
+        const card=CARD_CATALOG[entry.key];if(!card)continue;const max=currentMaxHp(player,entry.key);const shownHp=entry.key==='townhall'?player.townHp:entry.hp;
+        const tile=document.createElement('button');tile.className='ownedCard';tile.title=card.details||card.name;tile.appendChild(makeArt(card,'ownedArt'));
+        if((entry.count||1)>1){const count=document.createElement('span');count.className='countBadge';count.textContent=`×${entry.count}`;tile.appendChild(count);}
+        const hp=document.createElement('span');hp.className='hpBadge '+(shownHp>=max?'full':'');hp.textContent=`${shownHp}/${max}`;tile.appendChild(hp);
+        const name=document.createElement('div');name.className='ownedName';name.textContent=card.name;tile.appendChild(name);tile.onclick=()=>showCardModal(card,entry,player);rail.appendChild(tile);
+      }
+    }
+    function showCardModal(card,entry=null,owner=null){
+      const modal=$('#cardModal');const art=$('#modalArt');art.src=assetMap[card.key]||cardAssetCandidates(card)[0];art.alt=card.name;art.onerror=()=>{art.style.display='none';};art.style.display='block';
+      $('#modalName').textContent=card.name;
+      const hp=entry?`${card.key==='townhall'?owner?.townHp:entry.hp}/${currentMaxHp(owner,card.key)}`:(card.hpDynamic?'Dynamic':card.hp??'—');
+      $('#modalMeta').textContent=`${CATEGORY_NAMES[card.category]} • ${card.type} • Cost ${card.cost} • HP ${hp} • Triggers ${(card.triggers||[]).join(', ')||'—'} • ${card.timing||'passive'}`;
+      $('#modalDetails').textContent=card.details||'';modal.showModal();
+    }
+    function renderCategoryTabs(){
+      const box=$('#categoryTabs');box.innerHTML='';
+      for(const category of CATEGORIES){const button=document.createElement('button');button.className='categoryTab '+(selectedCategory===category?'active':'');const img=document.createElement('img');img.src=assetMap[`category:${category}`]||categoryAsset(category);img.alt=`${category} faction`;img.onerror=()=>img.remove();const label=document.createElement('span');label.textContent=CATEGORY_NAMES[category];button.append(img,label);button.onclick=()=>{selectedCategory=category;renderCategoryTabs();renderShop();};box.appendChild(button);}
+    }
+    function canBuyCard(player,card){
+      if(!player||!isMyTurn()||state.phase!=='buy'||actionBusy)return{ok:false,reason:!isMyTurn()?'Wait for your turn':state?.phase!=='buy'?'Roll and resolve first':'Please wait'};
+      if(card.immutable)return{ok:false,reason:'Starting card'};
+      const have=(player.owned||[]).find(e=>e.key===card.key)?.count||0;if(have>=(card.max??3))return{ok:false,reason:'Maximum owned'};
+      if(card.requiresTemple&&!(player.owned||[]).some(e=>e.key===card.requiresTemple))return{ok:false,reason:`Build ${CARD_CATALOG[card.requiresTemple]?.name||'Temple'} first`};
+      if((player.gold||0)<card.cost)return{ok:false,reason:`Need ${card.cost} gold`};return{ok:true,reason:'Purchase'};
+    }
+    function renderShop(){
+      const grid=$('#shopGrid');grid.innerHTML='';const player=myPlayer();
+      $('#shopStatus').textContent=state?.phase==='buy'&&isMyTurn()?'Purchases are open':'Purchases open after your roll';
+      const cards=Object.values(CARD_CATALOG).filter(c=>!c.immutable&&c.category===selectedCategory).sort((a,b)=>a.cost-b.cost||a.name.localeCompare(b.name));
+      for(const card of cards){
+        const item=document.createElement('article');item.className='shopCard';const art=makeArt(card,'shopArt');art.onclick=()=>showCardModal(card);item.appendChild(art);
+        const info=document.createElement('div');info.className='shopInfo';const title=document.createElement('div');title.className='shopName';title.textContent=card.name;title.onclick=()=>showCardModal(card);
+        const meta=document.createElement('div');meta.className='shopMeta';meta.textContent=`${card.type} • ${card.cost} gold • ${card.hpDynamic?'scaling':card.hp??'—'} HP • 🎲 ${(card.triggers||[]).join(', ')||'—'}`;
+        const allowed=canBuyCard(player,card);const btn=document.createElement('button');btn.className='shopBuy';btn.disabled=!allowed.ok;btn.textContent=allowed.ok?`Buy for ${card.cost}`:allowed.reason;btn.onclick=()=>performAction('BUY',{key:card.key});
+        info.append(title,meta);
+        if(card.requiresTemple&&!player?.owned?.some(e=>e.key===card.requiresTemple)){const locked=document.createElement('div');locked.className='lockedNote';locked.textContent=`Requires ${CARD_CATALOG[card.requiresTemple]?.name}`;info.appendChild(locked);}
+        info.appendChild(btn);item.appendChild(info);grid.appendChild(item);
+      }
+    }
+    function renderTargetAndQueue(){
+      const queueBox=$('#queueBox'),targetBox=$('#targetBox');queueBox.innerHTML='';targetBox.innerHTML='';selectedTargetPayload=null;
+      const queue=state?.resolveQueue||[];
+      if(!queue.length){queueBox.textContent='No triggers pending.';return;}
+      queue.forEach((trigger,i)=>{const owner=state.players[trigger.ownerIdx],card=CARD_CATALOG[trigger.key],line=document.createElement('div');line.textContent=`${i===0?'▶':'•'} ${owner?.name||'?'} — ${card?.name||trigger.key}${trigger.useCrazy?' [CRAZY]':''}`;queueBox.appendChild(line);});
+      const trigger=queue[0],effect=effectiveTrigger(trigger),needs=triggerNeedsTarget(effect.kind);
+      if(!needs)return;
+      const candidates=allTargetCandidates(state,trigger.ownerIdx,effect.kind);
+      if(!candidates.length){const note=document.createElement('div');note.className='subtle';note.textContent='No valid targets remain. Resolve to skip this trigger.';targetBox.appendChild(note);return;}
+      const pSel=document.createElement('select'),tSel=document.createElement('select'),eSel=document.createElement('select');
+      function fillPlayers(){const names=[...new Set(candidates.map(c=>c.targetPlayer))];pSel.innerHTML=names.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('');fillTypes();}
+      function fillTypes(){const types=[...new Set(candidates.filter(c=>c.targetPlayer===pSel.value).map(c=>c.targetType))];tSel.innerHTML=types.map(t=>`<option value="${t}">${t}</option>`).join('');fillEntries();}
+      function fillEntries(){const items=candidates.filter(c=>c.targetPlayer===pSel.value&&c.targetType===tSel.value);eSel.innerHTML='';items.forEach((candidate,index)=>{const option=document.createElement('option');option.value=String(index);if(candidate.targetType==='townhall')option.textContent='Town Hall';else{const target=state.players.find(p=>p.name===candidate.targetPlayer),entry=target?.owned?.[candidate.targetEntryIdx],card=CARD_CATALOG[entry?.key];option.textContent=`${card?.name||'Card'} (${entry?.hp||0} HP)`;}eSel.appendChild(option);});const pick=items[Number(eSel.value)||0]||items[0];selectedTargetPayload=pick?{targetPlayer:pick.targetPlayer,targetType:pick.targetType,targetEntryIdx:pick.targetEntryIdx}:null;}
+      pSel.onchange=fillTypes;tSel.onchange=fillEntries;eSel.onchange=fillEntries;fillPlayers();targetBox.append(pSel,tSel,eSel);
+    }
+    function renderControls(){
+      const player=myPlayer(),turn=isMyTurn(),phase=state?.phase||'waiting',queue=state?.resolveQueue||[],trigger=queue[0],needs=trigger?triggerNeedsTarget(effectiveTrigger(trigger).kind):false,candidates=trigger?allTargetCandidates(state,trigger.ownerIdx,effectiveTrigger(trigger).kind):[];
+      const allowed=allowedDiceFor(player);const die=$('#dieSelect'),prior=die.value;die.innerHTML=allowed.map(v=>`<option value="${v}">${v}</option>`).join('');die.value=allowed.includes(prior)?prior:allowed[allowed.length-1];
+      $('#phaseTitle').textContent=phaseLabel(phase);
+      $('#phaseHelp').textContent=phase==='await_roll'?'Choose an unlocked die and roll.':phase==='resolving'?'Resolve the queued effects in order.':phase==='buy'?'Buy any affordable cards, then end your turn.':phase==='finished'?'The final realm remains.':'Waiting for the game.';
+      $('#rollBtn').disabled=actionBusy||!turn||phase!=='await_roll';
+      $('#resolveBtn').disabled=actionBusy||!turn||phase!=='resolving'||(needs&&candidates.length>0);
+      $('#applyTargetBtn').disabled=actionBusy||!turn||phase!=='resolving'||!needs||!selectedTargetPayload;
+      $('#endTurnBtn').disabled=actionBusy||!turn||phase==='finished';
+    }
+    function renderLog(){
+      const log=$('#log');log.innerHTML='';const entries=state?.log||[];
+      if(!entries.length){log.innerHTML='<div class="empty">No actions yet.</div>';return;}
+      [...entries].reverse().forEach(entry=>{const line=document.createElement('div');line.className='logLine';line.textContent=entry.message||String(entry);log.appendChild(line);});
+    }
+    function renderAll(){
+      $('#lobbyTag').textContent=lobbyId?`Lobby ${lobbyId}`:'No lobby';$('#userTag').textContent=myName;$('#connectionTag').textContent=user?'Authenticated':'Connecting…';
+      renderLoading();renderTurnBanner();renderOpponents();renderDice();renderOwned();renderCategoryTabs();renderShop();renderTargetAndQueue();renderControls();renderLog();
+      scheduleAi();scheduleDisconnectCheck();
+    }
 
-    for (const d of pendingDocs){
-      const mv = d.data();
-      if (mv.processed) continue;
 
-      await runTransaction(db, async (tx) => {
-        const ref = doc(db, 'lobbies', lobbyId);
-        const rs  = await tx.get(ref);
-        if (!rs.exists()) return;
-
-        const rd = rs.data().game || null;
-        if (!rd) return; // no game yet
-
-        const players = rd.players || [];
-        const tIdx    = rd.turnIdx ?? 0;
-        let   phase   = rd.phase || 'await_roll'; // must be let so we can repair
-        const actor   = players[tIdx];
-        const isActor = mv.from === actor?.name;
-
-        // --- Phase auto-repair: don't sit in 'resolving' with an empty queue
-        if (phase === 'resolving' && !((rd.resolveQueue||[]).length)){
-          rd.phase = 'buy';
-          rd._lastMsg = (rd._lastMsg || '') + ' [auto-repair: no pending triggers]';
-          phase = 'buy';
-          tx.update(ref, { game: rd });
-          // continue; we still want to try handling this mv against repaired phase
-        }
-
-        // --- ROLL ---
-        if (mv.type === 'ROLL' && isActor && phase === 'await_roll') {
-          const mode = mv.payload?.mode || 'd6';
-          const v    = rollDie(mode, rd); // deterministic RNG from state
-
-          // Always record the roll so UI shows it even if queue build fails
-          rd.lastRoll = { mode, value: v, by: actor.name };
-          rd._lastMsg = `${actor.name} rolled ${v} (${mode}).`;
-
-          try {
-            const { q, autoNote } = buildResolveQueueAfterRoll(rd, tIdx, v, mode);
-            rd.resolveQueue = Array.isArray(q) ? q : [];
-            rd.phase = rd.resolveQueue.length ? 'resolving' : 'buy';
-            if (autoNote) rd._lastMsg += ' — ' + autoNote;
-          } catch (e) {
-            console.error('Queue build failed:', e);
-            rd.resolveQueue = [];
-            rd.phase = 'buy';
-            rd._lastMsg += ' (auto-resolve disabled this roll due to an error)';
-          }
-
-          rd.rollCount = (rd.rollCount || 0) + 1;
-
-          // Safety: if we're in 'resolving' with empty queue, bump to 'buy'
-          if (rd.phase === 'resolving' && !(rd.resolveQueue?.length)) rd.phase = 'buy';
-
-          tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'crowncouncil', d.id), { processed: true });
-          return;
-        }
-
-        // --- RESOLVE (no target) ---
-        if (mv.type === 'RESOLVE_NEXT' && isActor && phase === 'resolving'){
-          const res = hostResolveOne(rd, null);
-          if (res?.msg) rd._lastMsg = res.msg;
-          if (!(rd.resolveQueue?.length)) rd.phase = 'buy';
-
-          tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'crowncouncil', d.id), { processed: true });
-          return;
-        }
-
-        // --- RESOLVE (with target) ---
-        if (mv.type === 'RESOLVE_WITH_TARGET' && isActor && phase === 'resolving'){
-          const manual = {
-            targetPlayer:   String(mv.payload?.targetPlayer ?? ''),
-            targetType:     String(mv.payload?.targetType ?? ''),
-            targetEntryIdx: (mv.payload?.targetEntryIdx == null ? null : Number(mv.payload.targetEntryIdx))
-          };
-          const res = hostResolveOne(rd, manual);
-          if (res?.msg) rd._lastMsg = res.msg;
-          if (!(rd.resolveQueue?.length)) rd.phase = 'buy';
-
-          tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'crowncouncil', d.id), { processed: true });
-          return;
-        }
-
-        // --- BUY ---
-        if (mv.type === 'BUY' && isActor && phase === 'buy'){
-          const key  = mv.payload?.key;
-          const card = CARD_CATALOG[key];
-          if (card){
-            const have     = (actor.owned?.find(e => e.key === key)?.count) || 0;
-            const max      = card.max ?? 3;
-            const okTemple = !card.requiresTemple || (actor.owned || []).some(e => e.key === card.requiresTemple);
-            if ((actor.gold || 0) >= card.cost && have < max && okTemple){
-              actor.gold    -= card.cost;
-              addOrIncOwned(actor, key);
-              actor.unlocked = computeUnlockForPlayer(actor);
-              rd._lastMsg    = `${actor.name} bought ${card.name}.`;
-            }
-          }
-          // remain in buy so End Turn stays enabled
-          rd.phase = 'buy';
-
-          tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'crowncouncil', d.id), { processed: true });
-          return;
-        }
-
-        // --- END TURN (allowed in any phase; can optionally forfeit remaining resolves)
-        if (mv.type === 'END_TURN' && isActor){
-          const forfeit = !!(mv.payload && mv.payload.forfeitRemaining);
-          if (forfeit) rd.resolveQueue = [];
-
-          // Advance to next non-eliminated player
-          const players = rd.players || [];
-          let next = (tIdx + 1) % players.length;
-          for (let g = 0; g < players.length; g++){
-            if (!(players[next]?.eliminated)) break;
-            next = (next + 1) % players.length;
-          }
-
-          rd.turnIdx  = next;
-          rd.phase    = 'await_roll';
-          rd.lastRoll = null;
-
-          const alive = players.filter(p => !p.eliminated);
-          if (alive.length <= 1) rd.phase = 'finished';
-
-          tx.update(ref, { game: rd });
-          tx.update(doc(db, 'lobbies', lobbyId, 'crowncouncil', d.id), { processed: true });
-          return;
-        }
-
-        // === Smarter fallback ===
-        // If it's not a known type OR it's not from the current actor, consume it.
-        // Otherwise (known type + current actor but wrong phase), leave it unprocessed
-        // so it can run when the phase flips (prevents "my click vanished").
-        const validTypes = new Set(['ROLL','RESOLVE_NEXT','RESOLVE_WITH_TARGET','BUY','END_TURN']);
-        const isValidType = validTypes.has(mv.type);
-        const isCurrentActor = isActor;
-
-        if (!isValidType || !isCurrentActor){
-          tx.update(doc(db,'lobbies', lobbyId, 'crowncouncil', d.id), { processed:true });
-          return;
-        }
-        // else: known + current actor + wrong phase → do nothing (leave unprocessed)
+    function aiPurchaseChoice(game,player){
+      const cards=Object.values(CARD_CATALOG).filter(card=>{
+        if(card.immutable||card.cost>(player.gold||0))return false;
+        if(((player.owned||[]).find(e=>e.key===card.key)?.count||0)>=(card.max??3))return false;
+        if(card.requiresTemple&&!(player.owned||[]).some(e=>e.key===card.requiresTemple))return false;
+        return true;
       });
-    }
-  } finally {
-    _processingIntents = false;
-  }
-}
-    // ---------- Intents ----------
-    async function pushIntent(type, payload={}){ if (!lobbyId||!myName) return; await addDoc(collection(db,'lobbies',lobbyId,'crowncouncil'),{kind:'intent',type,from:myName,payload,ts:serverTimestamp(),processed:false}); }
-    function intentRoll(mode){ pushIntent('ROLL',{mode}); }
-    function intentResolve(){ pushIntent('RESOLVE_NEXT',{}); }
-    function intentResolveWithTarget(){
-      const q=state?.resolveQueue||[]; if (!q.length) return;
-      const card=CARD_CATALOG[q[0].key]; const kind=card.onTrigger?.kind;
-      if (!triggerNeedsTarget(kind)) return;
-      const tp = $('#selTargetPlayer')?.value || '';
-      const tt = $('#selTargetType')?.value || '';
-      const te = $('#selTargetEntry')?.value || '';
-      pushIntent('RESOLVE_WITH_TARGET',{targetPlayer:tp, targetType:tt, targetEntryIdx: te===''? null : Number(te)});
-    }
-    function intentBuy(key){ pushIntent('BUY',{key}); }
-   function intentEndTurn(payload={}){ pushIntent('END_TURN', payload); }
-
-    // ---------- Init helpers ----------
-    function mkStarter(name){
-      const p={name, gold:0, townHp:20, unlocked:'d6', owned:[]};
-      for (const k of STARTERS){ const c=CARD_CATALOG[k]; p.owned.push({key:k, count:1, hp:c.hp}); }
-      return p;
-    }
-
-    async function hostMaybeInitializeGame(lobbySnap){
-      const data = lobbySnap.data();
-      const hasGame = !!data.game;
-      if (hasGame) return;
-
-      // Players come in as array of names from the lobby
-      const names = Array.isArray(data.players) ? data.players : [];
-      const players = names.slice(0,4).map(n => mkStarter(n));
-
-      const seed = Math.floor(Math.random()*1e9);
-     const game = {
-        createdAt: serverTimestamp(),
-        host: data.host || myName,
-        players,
-        maxPlayers: Math.min(Math.max(players.length || 2, 2), 4),
-        turnIdx: 0,
-        phase: 'await_roll',
-        seed,
-        rollCount: 0,
-        resolveQueue: [],
-        _lastMsg: 'Game initialized.'
+      if(!cards.length)return null;
+      const temples=cards.filter(c=>c.key.endsWith('_temple')&&!(player.owned||[]).some(e=>e.key===c.key));
+      if(temples.length)return temples.sort((a,b)=>a.cost-b.cost)[0];
+      const score=card=>{
+        let value=card.cost*2+(card.triggers?.length||0)*2;
+        if(['farm','mill','mine'].includes(card.key))value+=game.rollCount<12?16:5;
+        if(card.type==='wall')value+=(player.townHp<12?10:2);
+        if(card.onTrigger?.kind?.includes('attack')||card.onTrigger?.kind?.includes('destroy'))value+=8;
+        return value+randomUnit(game.seed,game.version,card.cost)*3;
       };
-      await updateDoc(doc(db,'lobbies',lobbyId), { game });
+      return cards.sort((a,b)=>score(b)-score(a))[0];
     }
-
+    function scheduleAi(){
+      clearTimeout(aiTimer);
+      const active=activePlayer();if(!state||state.phase==='finished'||!active?.isAI)return;
+      aiTimer=setTimeout(runAiStep,700+Math.floor(Math.random()*450));
+    }
+    async function runAiStep(){
+      if(!state||state.phase==='finished')return;const index=state.turnIdx,player=state.players[index];if(!player?.isAI)return;
+      if(state.phase==='await_roll'){await performAction('ROLL',{mode:highestDie(player)},{ai:true,actorIdx:index});return;}
+      if(state.phase==='resolving'){
+        const trigger=state.resolveQueue?.[0],target=trigger?chooseAITarget(state,trigger):null;
+        await performAction('RESOLVE',target||{},{ai:true,actorIdx:index});return;
+      }
+      if(state.phase==='buy'){
+        const card=(state.turnBuys||0)<3?aiPurchaseChoice(state,player):null;
+        if(card){await performAction('BUY',{key:card.key},{ai:true,actorIdx:index});return;}
+        await performAction('END_TURN',{forfeitRemaining:false},{ai:true,actorIdx:index});
+      }
+    }
+    function scheduleDisconnectCheck(){
+      clearTimeout(disconnectTimer);
+      const active=activePlayer();if(!state||state.phase==='finished'||!active||active.isAI||active.eliminated)return;
+      const p=findPresenceForPlayer(active);if(isFreshPresence(p,32000))return;
+      const delay=p?.active===false?7000:35000;
+      disconnectTimer=setTimeout(()=>forfeitDisconnectedTurn(active),delay);
+    }
+    async function forfeitDisconnectedTurn(expectedPlayer){
+      if(!lobbyRef||!expectedPlayer)return;
+      try{await runTransaction(db,async tx=>{
+        const lobbySnap=await tx.get(lobbyRef);if(!lobbySnap.exists()||!lobbySnap.data().game)return;
+        const game=normalizeGame(safeClone(lobbySnap.data().game)),active=game.players[game.turnIdx];
+        if(!active||active.isAI||active.eliminated||active.name!==expectedPlayer.name)return;
+        let p=null;
+        if(active.uid){const ps=await tx.get(doc(db,'lobbies',lobbyId,'presence',active.uid));p=ps.exists()?ps.data():null;}
+        else p=[...presence.values()].find(x=>x.name===active.name)||null;
+        if(isFreshPresence(p,32000))return;
+        active.left=true;active.eliminated=true;active.owned=[];active.gold=0;pushLog(game,`${active.name} disconnected and forfeited.`);nextTurn(game);game.version++;
+        tx.update(lobbyRef,{game});
+      });}catch(error){console.warn(error);}
+    }
+    async function ensureSoloAI(){
+      if(!lobbyRef||!state||state.players.length!==1||state.phase==='finished')return;
+      try{await runTransaction(db,async tx=>{const snap=await tx.get(lobbyRef);if(!snap.exists()||!snap.data().game)return;const game=normalizeGame(safeClone(snap.data().game));if(game.players.length!==1)return;game.players.push(mkStarter('Arcane Automaton','',true));game.version++;pushLog(game,'Arcane Automaton joins as the single-player opponent.');tx.update(lobbyRef,{game});});}catch(error){console.warn(error);}
+    }
+    async function claimLegacySeat(){
+      if(!lobbyRef||!state||!user)return;
+      const seat=state.players.find(p=>!p.isAI&&!p.uid&&p.name.toLowerCase()===myName.toLowerCase());if(!seat)return;
+      try{await runTransaction(db,async tx=>{const snap=await tx.get(lobbyRef);if(!snap.exists()||!snap.data().game)return;const game=normalizeGame(safeClone(snap.data().game));const p=game.players.find(x=>!x.isAI&&!x.uid&&x.name.toLowerCase()===myName.toLowerCase());if(!p)return;p.uid=user.uid;p.id=user.uid;game.version++;tx.update(lobbyRef,{game});});}catch(error){console.warn(error);}
+    }
     function attachListeners(){
-      if (unsubLobby) unsubLobby(); if (unsubIntents) unsubIntents();
-
-      const lobbyRef = doc(db,'lobbies',lobbyId);
-      unsubLobby = onSnapshot(lobbyRef, async (snap)=>{
-        if (!snap.exists()) return;
-        const lobby = snap.data();
-        isHost = (lobby.host === myName);
-
-        // Host initializes once when status is "started" and no game yet
-        if (isHost && lobby.status === 'started' && !lobby.game) {
-          await hostMaybeInitializeGame(snap);
-          return;
-        }
-
-        state = lobby.game || null;
-        if (state){
-          me.idx = (state.players||[]).findIndex(p=>p.name===myName);
-          if (state._lastMsg) logLine(state._lastMsg);
-          render();
-          if (isHost) hostApplyIntents();
-        } else {
-          document.getElementById('statusNote').textContent = 'Waiting for host to initialize the game...';
-        }
-      });
-
-      unsubIntents = onSnapshot(query(collection(db,'lobbies',lobbyId,'crowncouncil'), where('kind','==','intent')), ()=>{
-        if (isHost) hostApplyIntents();
-      });
+      unsubLobby?.();unsubPresence?.();
+      unsubLobby=onSnapshot(lobbyRef,snap=>{
+        if(!snap.exists()){lobbyData=null;state=null;renderAll();return;}
+        lobbyData=snap.data();state=lobbyData.game?normalizeGame(safeClone(lobbyData.game)):null;
+        renderAll();
+        if(state){claimLegacySeat();ensureSoloAI();}
+        else maybeInitializeGame();
+      },error=>{console.error(error);$('#connectionTag').textContent='Connection error';toast(error.message);});
+      unsubPresence=onSnapshot(collection(db,'lobbies',lobbyId,'presence'),snap=>{
+        presence=new Map();snap.forEach(d=>presence.set(d.id,{...d.data(),uid:d.data().uid||d.id}));renderAll();if(!state)maybeInitializeGame();
+      },error=>console.warn(error));
+    }
+    async function waitForAuth(){
+      if(auth.currentUser)return auth.currentUser;
+      try{return(await signInAnonymously(auth)).user;}
+      catch(error){
+        const existing=await new Promise(resolve=>{const off=onAuthStateChanged(auth,u=>{off();resolve(u);});setTimeout(()=>resolve(null),3000);});
+        if(existing)return existing;throw error;
+      }
+    }
+    async function boot(){
+      $('#lobbyTag').textContent=lobbyId?`Lobby ${lobbyId}`:'Missing lobby';$('#userTag').textContent=myName;
+      if(!lobbyId){$('#loadingText').textContent='This game needs a gameId in the URL, for example ?gameId=abc&username=Sean.';return;}
+      try{
+        user=await waitForAuth();$('#connectionTag').textContent='Connected';
+        if(forceSolo){const existing=await getDoc(lobbyRef);if(!existing.exists())await setDoc(lobbyRef,{status:'started',host:myName,players:[{name:myName,uid:user.uid}],createdAt:serverTimestamp()});}
+        await markPresence({ready:false,loading:true,joinedAt:serverTimestamp()});
+        attachListeners();
+        heartbeatTimer=setInterval(()=>markPresence({active:true}).catch(()=>{}),8000);
+        await preloadGraphics();
+        await markPresence({ready:true,loading:false,graphicsMissing:missingAssets.size});
+        renderAll();maybeInitializeGame();
+        setInterval(()=>{if(!state)maybeInitializeGame();},1000);
+      }catch(error){console.error(error);$('#loadingText').textContent=`Unable to start: ${error.message}`;$('#connectionTag').textContent='Offline';}
     }
 
-    // ---------- UI bindings ----------
-    document.getElementById('rollBtn').addEventListener('click', ()=>{
-      if (!isMyTurn()) return; const mode=$('#dieSelect').value;
-      const allow=allowedDiceFor(myPlayer()); if (!allow.includes(mode)) return alert('Die not unlocked');
-      intentRoll(mode);
+    $('#rollBtn').addEventListener('click',()=>performAction('ROLL',{mode:$('#dieSelect').value}));
+    $('#resolveBtn').addEventListener('click',()=>performAction('RESOLVE',{}));
+    $('#applyTargetBtn').addEventListener('click',()=>selectedTargetPayload&&performAction('RESOLVE',selectedTargetPayload));
+    $('#endTurnBtn').addEventListener('click',()=>{
+      const pending=state?.phase==='resolving'&&(state?.resolveQueue?.length||0)>0;
+      if(pending&&!confirm('Forfeit every unresolved trigger and end the turn?'))return;
+      performAction('END_TURN',{forfeitRemaining:pending});
     });
-    document.getElementById('resolveBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentResolve(); });
-    document.getElementById('applyTargetBtn').addEventListener('click', ()=>{ if (isMyTurn()) intentResolveWithTarget(); });
-   document.getElementById('endTurnBtn').addEventListener('click', ()=>{
-  if (!isMyTurn()) return;
+    $('#leaveBtn').addEventListener('click',async()=>{
+      if(myPlayer()&&!myPlayer().eliminated&&confirm('Leave this game and forfeit your realm?'))await performAction('LEAVE',{});
+      await markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});
+      $('#leaveBtn').disabled=true;
+    });
+    $('#fullscreenBtn').addEventListener('click',async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen();}catch(error){toast('Fullscreen is not available here.');}});
+    $('#modalClose').addEventListener('click',()=>$('#cardModal').close());
+    $('#cardModal').addEventListener('click',event=>{if(event.target===$('#cardModal'))$('#cardModal').close();});
+    addEventListener('pagehide',()=>{clearInterval(heartbeatTimer);markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});});
+    addEventListener('beforeunload',()=>{markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)markPresence({active:true,ready:graphicsReady}).catch(()=>{});});
 
-  const hasPending = (state?.phase === 'resolving') && ((state?.resolveQueue?.length || 0) > 0);
-  if (hasPending){
-    const ok = confirm('You still have unresolved actions. End turn and forfeit the rest?');
-    if (!ok) return;
-    intentEndTurn({ forfeitRemaining: true });
-  } else {
-    intentEndTurn({ forfeitRemaining: false });
-  }
-});
-
-
-    // ---------- Boot ----------
-    (async function boot(){
-      if (!lobbyId || !myName) return;
-      // Header tags
-      document.getElementById('hdrLobby').style.display='';
-      document.getElementById('hdrUser').style.display='';
-      document.getElementById('hdrLobby').textContent='Lobby: '+lobbyId;
-      document.getElementById('hdrUser').textContent=myName;
-
-      attachListeners();
-    })();
-      console.log('SCRIPT LOADED OK');
-
+    boot();
   </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
