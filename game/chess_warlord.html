@@ -360,6 +360,8 @@ let particles = [];
 let floatingText = [];
 // These effects are deliberately client-local: they celebrate the current player's input without adding network traffic or altering synced state.
 let localActionFx = [];
+// Local-only destruction scenes are reconstructed from authoritative piece removals, so every client sees the same capture as a crumble without extra Firebase traffic.
+let destructionFx = [];
 let chosenFactionId = 'crownward';
 let chosenDifficultyId = 'normal';
 let selectedSoloAiCount = 7;
@@ -1104,6 +1106,7 @@ function remoteSmoothAmount(p, dt){
 }
 function applyRemoteState(data){
   if(!data) return;
+  const remoteMapReset=!!(data.mapSeed && data.mapSeed !== mapSeed);
   applySharedBoardSize(data);
   if(typeof data.multiplayerAiCount === 'number') selectedMultiplayerAiCount = clampAiCount(data.multiplayerAiCount);
   const remotePieces = authoritativePiecesFromRemote(data);
@@ -1158,6 +1161,12 @@ function applyRemoteState(data){
     applyWalls(mergedWalls);
   }
   const oldMap = new Map(pieces.map(p=>[p.id,p]));
+  const remotePieceIds = new Set(remotePieces.map(pp=>pp.i));
+  if(gameStarted && !remoteMapReset && oldMap.size){
+    for(const old of oldMap.values()){
+      if(old?.alive && !remotePieceIds.has(old.id)) emitDestructionFx(old,'remote-capture');
+    }
+  }
   pieces = remotePieces.map(pp => {
     const old = oldMap.get(pp.i);
     const pendingMove = pendingMoveForPieceId(pp.i);
@@ -1318,6 +1327,18 @@ function pruneConfirmedPendingActions(remoteData){
       );
       return !confirmed;
     }
+    if(action.kind === 'ability'){
+      const actor = remotePieces.find(pp => pp.i === action.pieceId);
+      const target = remotePieces.find(pp => pp.i === action.targetId);
+      if(action.ability === 'guardianShield'){
+        const confirmed = !!actor && !!target && Number(actor.ga || 0) > Number(action.createdAt || 0) && Number(target.oc || 0) > 0 && Number(target.ou || 0) > Number(action.createdAt || 0);
+        return !confirmed;
+      }
+      if(action.ability === 'shadeMark'){
+        const confirmed = !!actor && !!target && Number(actor.ma || 0) > Number(action.createdAt || 0) && Number(target.smb || 0) === Number(action.pieceId) && Number(target.smu || 0) > Number(action.createdAt || 0);
+        return !confirmed;
+      }
+    }
     return false;
   });
 }
@@ -1460,6 +1481,20 @@ function applyIncomingCommand(cmd){
       return commandAccept('move_applied');
     }
     return commandReject('move_failed');
+  }
+  if(cmd.kind === 'ability'){
+    const actor = getPiece(Number(cmd.pieceId));
+    const target = getPiece(Number(cmd.targetId));
+    if(!actor || !target || !actor.alive || !target.alive || actor.faction !== slot) return commandReject('ability_piece_missing');
+    let ok = false;
+    if(cmd.ability === 'guardianShield') ok = applyGuardianShieldAbility(actor,target,'command');
+    else if(cmd.ability === 'shadeMark') ok = applyShadeMarkAbility(actor,target,'command');
+    else return commandReject('unknown_ability');
+    if(!ok) return commandReject('ability_not_available');
+    processedCommandIds.add(`action:${cmd.actionId || ''}`);
+    actor.clientActionId = cmd.actionId || actor.clientActionId || '';
+    actor.clientActionBy = cmd.by || actor.clientActionBy || '';
+    return commandAccept('ability_applied');
   }
   if(cmd.kind === 'spawn'){
     const f = factions[slot];
@@ -1629,6 +1664,29 @@ async function requestPlayerMove(piece,x,y){
     else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
   }
   return ok;
+}
+async function requestPlayerAbility(actor,target,ability){
+  if(!isMyPiece(actor) || !target?.alive) return false;
+  const liveActor=getPiece(actor.id), liveTarget=getPiece(target.id);
+  if(!liveActor || !liveTarget) return false;
+  const action={kind:'ability',ability,actionId:makeClientActionId('ability'),pieceId:liveActor.id,targetId:liveTarget.id,baseStateVersion:localStateVersion || 0};
+  let valid=false;
+  if(ability==='guardianShield') valid=guardianShieldTargets(liveActor).some(t=>t.targetId===liveTarget.id);
+  else if(ability==='shadeMark') valid=shadeMarkTargets(liveActor).some(t=>t.targetId===liveTarget.id);
+  if(!valid){ toast('That ability cannot affect this target right now.'); return false; }
+  let ok=true;
+  if(canAuthoritativelyWriteState()){
+    ok = ability==='guardianShield' ? applyGuardianShieldAbility(liveActor,liveTarget,'player') : applyShadeMarkAbility(liveActor,liveTarget,'player');
+  }
+  if(!ok) return false;
+  rememberPendingPlayerAction({...action,faction:PLAYER});
+  selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
+  if(canAuthoritativelyWriteState()) queueReliableStateWrite(ability);
+  else {
+    toast(ability==='guardianShield'?'Guardian jump sent to the host.':'Shade Mark sent to the host.',1600);
+    if(!(await submitPlayerCommand(action))) rollbackToAuthoritative('Ability command failed — refreshed from host state.');
+  }
+  return true;
 }
 async function requestPlayerSpawn(x,y){
   if(playerDefeated || !ownFactionAlive()) return;
@@ -2274,7 +2332,7 @@ const pieceDefs = {
   vinehook:{name:'Vinehook', icon:'⌁', pattern:'vinehook', cooldown:2.9, value:4, hp:1, forestWalker:true, desc:'Short hook-jumps toward friendly growth and pulls territory around the landing.'},
   vinebishop:{name:'Vine Bishop', icon:'♝', pattern:'bishop', cooldown:3.1, value:4, hp:1, forestWalker:true, desc:'Bishop that can slide through forest, but not mountains/water.'},
   grovetower:{name:'Grove Tower', icon:'♖', pattern:'tower', cooldown:5.8, value:6, aura:3, hp:1, forestWalker:true, desc:'Territory tower that likes forests.'},
-  shadepawn:{name:'Shade Pawn', icon:'♙', pattern:'shadepawn', cooldown:2.45, value:2, hp:1, wallVault:true, desc:'Skirmisher that can mark a distant enemy every 60 seconds for a Wraith execution.'},
+  shadepawn:{name:'Shade Pawn', icon:'♙', pattern:'shadepawn', cooldown:2.45, value:2, hp:1, wallVault:true, desc:'Skirmisher. Select it, then tap an orange enemy three to four tiles away to place a 15-second execution mark. Mark recharges in 60 seconds.'},
   blinkpawn:{name:'Blink Pawn', icon:'♙', pattern:'blinkpawn', cooldown:2.65, value:2, hp:1, wallVault:true, desc:'Cannot stop adjacent; instead blinks exactly two tiles in any direction.'},
   shadowstepper:{name:'Shadow Stepper', icon:'⟡', pattern:'shadowstepper', cooldown:3.2, value:4, hp:1, wallVault:true, desc:'Teleports one to four tiles, with recharge based on distance.'},
   assassin:{name:'Assassin', icon:'⟡', pattern:'assassin', cooldown:3.1, value:5, hp:1, wallVault:true, desc:'Moves diagonally or blinks in L-shapes for close assassinations. Cooldown halves after a kill.'},
@@ -2291,7 +2349,7 @@ const pieceDefs = {
   lightlancer:{name:'Light Lancer', icon:'↯', pattern:'lightlancer', cooldown:3.5, value:5, hp:1, wallVault:true, desc:'Jumps three to four cardinal tiles for clean strike lanes.'},
   radiantbishop:{name:'Radiant Bishop', icon:'♝', pattern:'radiantbishop', cooldown:3.55, value:5, hp:1, wallVault:true, desc:'Diagonal jumper, not a slider, over two to five tiles. Can guardian-jump to an ally and grant a one-shot dawn shield for 15 seconds.'},
   sunherald:{name:'Sun Herald', icon:'✦', pattern:'sunherald', cooldown:3.8, value:6, aura:2, hp:1, wallVault:true, desc:'Hops one to three tiles and can leap through friendly formations.'},
-  sunbishop:{name:'Sun Bishop', icon:'♝', pattern:'bishopLong', cooldown:3.8, value:5, hp:1, desc:'Longer bishop lines.'},
+  sunbishop:{name:'Sun Bishop', icon:'♝', pattern:'bishopLong', cooldown:3.8, value:5, hp:1, desc:'Long diagonal controller. Select it, then tap a green allied troop within seven tiles to guardian-jump beside it and grant a visible one-shot Dawn Shield for 15 seconds.'},
   eagleknight:{name:'Eagle Knight', icon:'♞', pattern:'eagle', cooldown:3.6, value:5, hp:1, wallVault:true, desc:'Weakened Sunspire jumper. Bursts exactly two spaces in any direction and can vault walls.'},
   paladin:{name:'Paladin', icon:'♞', pattern:'paladin', cooldown:4.1, value:6, hp:2, aura:1, desc:'Knight plus one-step king move, very sturdy.'},
   frostpawn:{name:'Frost Pawn', icon:'♙', pattern:'frostpawn', cooldown:2.75, value:1, hp:1, desc:'Deliberate one-tile cardinal mover.'},
@@ -4458,6 +4516,83 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
   return claimed;
 }
 
+function isGuardianBishop(piece){
+  return !!piece && ['radiantbishop','sunbishop'].includes(piece.type) && factions[piece.faction]?.id==='sunspire';
+}
+function guardianJumpSpotFor(bishop,target){
+  if(!bishop || !target) return null;
+  const spots=[];
+  for(const [dx,dy] of DIRS8){
+    const x=target.x+dx,y=target.y+dy;
+    if(!inBounds(x,y) || findPieceAt(x,y) || !passableFor(bishop,x,y)) continue;
+    spots.push({x,y,score:-dist2(x,y,bishop.x,bishop.y)+(tile(x,y).owner===bishop.faction?4:0)});
+  }
+  spots.sort((a,b)=>b.score-a.score || a.y-b.y || a.x-b.x);
+  return spots[0] || null;
+}
+function guardianShieldTargets(bishop){
+  if(!isGuardianBishop(bishop) || bishop.faction!==PLAYER || now() < (bishop.guardReadyAt || 0)) return [];
+  const targets=[];
+  for(const p of pieces){
+    if(!p.alive || p.faction!==bishop.faction || p.id===bishop.id || pieceDefs[p.type]?.building || pieceHasOrbShield(p)) continue;
+    if(dist2(p.x,p.y,bishop.x,bishop.y)>49) continue;
+    const spot=guardianJumpSpotFor(bishop,p);
+    if(spot) targets.push({kind:'guardianShield',targetId:p.id,x:p.x,y:p.y,spotX:spot.x,spotY:spot.y});
+  }
+  return targets;
+}
+function shadeMarkTargets(shade){
+  if(!shade || shade.type!=='shadepawn' || shade.faction!==PLAYER || now() < (shade.markReadyAt || 0)) return [];
+  const targets=[];
+  for(const p of pieces){
+    if(!p.alive || p.faction===shade.faction || !factions[p.faction]?.alive || isShadowFoggedForPlayer(p.x,p.y,PLAYER)) continue;
+    const cheb=Math.max(Math.abs(p.x-shade.x),Math.abs(p.y-shade.y));
+    if(cheb>=3 && cheb<=4) targets.push({kind:'shadeMark',targetId:p.id,x:p.x,y:p.y});
+  }
+  return targets;
+}
+function selectedAbilityTargets(){
+  if(!selectedPiece || selectedPiece.faction!==PLAYER || playerDefeated || !ownFactionAlive()) return [];
+  if(isGuardianBishop(selectedPiece)) return guardianShieldTargets(selectedPiece);
+  if(selectedPiece.type==='shadepawn') return shadeMarkTargets(selectedPiece);
+  return [];
+}
+function selectedAbilityTargetForPiece(piece){
+  if(!piece) return null;
+  return selectedAbilityTargets().find(t=>t.targetId===piece.id) || null;
+}
+function applyGuardianShieldAbility(bishop,target,source='player'){
+  if(!bishop?.alive || !target?.alive || !isGuardianBishop(bishop) || bishop.faction!==target.faction || pieceDefs[target.type]?.building || pieceHasOrbShield(target)) return false;
+  if(now() < (bishop.guardReadyAt || 0) || dist2(target.x,target.y,bishop.x,bishop.y)>49) return false;
+  const spot=guardianJumpSpotFor(bishop,target);
+  if(!spot) return false;
+  const fromX=bishop.x,fromY=bishop.y;
+  bishop.x=spot.x;bishop.y=spot.y;bishop.targetX=spot.x;bishop.targetY=spot.y;bishop.flash=1;
+  bishop.moveStartMs=Date.now();bishop.moveEndMs=bishop.moveStartMs+moveVisualDurationFor(bishop);
+  bishop.stationarySince=now();bishop.lastStationX=spot.x;bishop.lastStationY=spot.y;
+  bishop.guardReadyAt=now()+15;
+  setMoveCooldown(bishop,fromX,fromY,spot.x,spot.y,false);
+  grantOrbShield(target,15);
+  burst(spot.x,spot.y,factions[bishop.faction]?.color || '#fff4bd',22);
+  floating(spot.x,spot.y,'GUARDIAN JUMP',factions[bishop.faction]?.color || '#fff4bd');
+  applyFactionCapture(bishop,fromX,fromY,spot.x,spot.y,'move',null);
+  if(source==='player') emitLocalActionFx(bishop,fromX,fromY,spot.x,spot.y,false);
+  markStateDirty();
+  return true;
+}
+function applyShadeMarkAbility(shade,target,source='player'){
+  if(!shade?.alive || !target?.alive || shade.type!=='shadepawn' || shade.faction===target.faction || !factions[target.faction]?.alive) return false;
+  const cheb=Math.max(Math.abs(target.x-shade.x),Math.abs(target.y-shade.y));
+  if(now() < (shade.markReadyAt || 0) || cheb<3 || cheb>4) return false;
+  target.shadowMarkedUntil=now()+15;
+  target.shadowMarkedBy=shade.id;
+  shade.markReadyAt=now()+60;
+  target.flash=1;
+  floating(target.x,target.y,'SHADE MARK', '#ff594f');
+  burst(target.x,target.y,'rgba(255,92,64,.96)',20);
+  markStateDirty();
+  return true;
+}
 function pieceHasOrbShield(piece){
   return !!piece && (piece.orbShieldCharges || 0) > 0 && (piece.orbShieldUntil || 0) > now();
 }
@@ -4748,6 +4883,7 @@ function capturePiece(attacker, target){
     }
   }
 
+  emitDestructionFx(target,'capture');
   target.alive=false;
   trySunspireQueenRevive(target);
   if(target.type==='king') conquerFaction(attacker.faction,target.faction,target.x,target.y);
@@ -4767,6 +4903,7 @@ function conquerFaction(winner, loser, cx, cy){
   let removed=0;
   for(const p of pieces){
     if(p.alive && p.faction===loser){
+      emitDestructionFx(p,'faction-conquered');
       p.alive=false;
       removed++;
     }
@@ -4811,6 +4948,73 @@ function burst(x,y,color,count=10){
 }
 function floating(x,y,text,color){
   floatingText.push({x:(x+.5)*BASE_CELL,y:(y+.25)*BASE_CELL,text,color,life:1.2,max:1.2});
+}
+function destructionSeed(piece){
+  let h=(Number(piece?.id)||1)*2654435761;
+  const key=String(piece?.type||'piece');
+  for(let i=0;i<key.length;i++) h=Math.imul(h^key.charCodeAt(i),16777619);
+  return h>>>0;
+}
+function seededFxUnit(seed,index){
+  let x=(seed+Math.imul(index+1,374761393))>>>0;
+  x^=x>>>13;x=Math.imul(x,1274126177);x^=x>>>16;
+  return (x>>>0)/4294967295;
+}
+function emitDestructionFx(piece,reason='capture'){
+  if(!piece) return;
+  const existing=destructionFx.find(f=>f.pieceId===piece.id && now()-f.start<4.5);
+  if(existing) return;
+  const seed=destructionSeed(piece),building=!!pieceDefs[piece.type]?.building;
+  const shardCount=building?34:24;
+  const shards=[];
+  for(let i=0;i<shardCount;i++){
+    const rx=seededFxUnit(seed,i*5)-.5,ry=seededFxUnit(seed,i*5+1),spin=seededFxUnit(seed,i*5+2)*Math.PI*2;
+    shards.push({x:rx*(building?42:30),y:-8-ry*(building?62:46),vx:rx*(22+seededFxUnit(seed,i*5+3)*45),vy:12+seededFxUnit(seed,i*5+4)*42,spin,size:(building?3.2:2.2)+seededFxUnit(seed,i*7+6)*(building?5.8:4.2)});
+  }
+  destructionFx.push({pieceId:piece.id,faction:piece.faction,type:piece.type,x:piece.x,y:piece.y,start:now(),duration:4.1,seed,reason,shards});
+}
+function drawDestructionEffects(){
+  const t=now();
+  for(const fx of destructionFx){
+    const age=t-fx.start;
+    if(age<0 || age>fx.duration) continue;
+    const def=pieceDefs[fx.type]||pieceDefs.pawn,f=factions[fx.faction]||{color:'#cbd5e1',dark:'#4b5563',id:'neutral'};
+    const building=!!def.building,r=BASE_CELL*.36+Math.min(7,(def.value||1)*.6);
+    const cx=(fx.x+.5)*BASE_CELL,cy=(fx.y+.5)*BASE_CELL;
+    const crumble=clamp(age/.92,0,1),pileFade=age<2.55?1:clamp(1-(age-2.55)/1.55,0,1);
+    ctx.save();ctx.translate(cx,cy);makeCurrentTransformUpright(ctx);
+    if(pileFade>0){
+      const settle=clamp(age/.65,0,1);
+      ctx.globalAlpha=.16+.36*pileFade;
+      ctx.fillStyle='rgba(117,101,82,.80)';
+      ctx.beginPath();ctx.ellipse(0,BASE_CELL*.30,(building?24:18)*(0.55+settle*.45),(building?7:5)*(0.55+settle*.45),0,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=.18*pileFade;ctx.fillStyle=f.color;ctx.beginPath();ctx.ellipse(0,BASE_CELL*.28,(building?18:13),building?4.5:3.5,0,0,Math.PI*2);ctx.fill();
+    }
+    if(crumble<1){
+      const graphic=getPieceGraphic(f.id,fx.type);
+      const targetH=BASE_CELL*(building?2.48:(fx.type==='king'||fx.type==='queen'||fx.type==='flamequeen'||fx.type==='dawnarchon'?2.18:1.92));
+      const bottom=BASE_CELL*(building?.46:.42);
+      ctx.save();ctx.globalAlpha=.82*(1-crumble*.72);ctx.shadowColor='rgba(70,45,25,.75)';ctx.shadowBlur=8;
+      if(graphic){
+        const targetW=Math.min(BASE_CELL*2.15,targetH*(graphic.width/Math.max(1,graphic.height)));
+        const visibleH=targetH*(1-crumble);
+        ctx.beginPath();ctx.rect(-targetW/2,bottom-visibleH,targetW,visibleH+2);ctx.clip();
+        ctx.drawImage(graphic,-targetW/2,bottom-targetH,targetW,targetH);
+      }else{
+        ctx.fillStyle=f.color;ctx.strokeStyle=f.dark||'#333';ctx.lineWidth=2;ctx.beginPath();drawPieceShape(def.pattern,r,fx.pieceId,fx.type,f.id);ctx.fill();ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if(age<1.55){
+      for(let i=0;i<fx.shards.length;i++){
+        const s=fx.shards[i],delay=(i%7)*.045,st=Math.max(0,age-delay),life=clamp(1-st/1.25,0,1);
+        if(!life) continue;
+        const x=s.x+s.vx*st,y=s.y+s.vy*st+68*st*st;
+        ctx.save();ctx.translate(x,y);ctx.rotate(s.spin+st*(i%2?5:-5));ctx.globalAlpha=.18+.72*life;ctx.fillStyle=i%4===0?f.color:'rgba(151,128,99,.95)';ctx.fillRect(-s.size/2,-s.size/2,s.size,s.size*.72);ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
 }
 function shadowStrikeEffect(piece,x,y){
   const f=factions[piece?.faction];
@@ -4867,7 +5071,7 @@ function createGame(){
   const king=getPiece(factions[PLAYER].kingId) || pieces.find(p=>p.alive&&p.type==='king');
   cam.zoom=1;
   if(king) centerOn(king.x,king.y);
-  selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[]; pendingPlayerActions=[];
+  selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[]; destructionFx=[]; pendingPlayerActions=[];
   playerDefeated=false; spectating=false; paused=false; defeatOverlay.style.display='none';
   eloAwarding=false;
   if(pauseBtn) pauseBtn.textContent='Pause';
@@ -5007,6 +5211,19 @@ function updatePiecePanel(){
   const roadLine=roadCooldownNotice(p);
   const supply=overextensionInfo(p);
   const overextensionLine=supply.active ? `<p style="color:#ffcb7b"><b>Overextended:</b> ${supply.distance} tiles from friendly territory · cooldowns 15% slower.</p>` : '';
+  let abilityLine='';
+  if(isGuardianBishop(p)){
+    const remain=Math.max(0,Math.ceil((p.guardReadyAt||0)-now()));
+    const count=p.faction===PLAYER?guardianShieldTargets(p).length:0;
+    abilityLine=remain?`<p style="color:#a7f3d0"><b>Guardian Shield:</b> recharges in ${remain}s.</p>`:`<p style="color:#86efac"><b>Guardian Shield ready:</b> ${count} valid ally${count===1?'':'ies'} glow green. Tap one to jump beside it and shield it for 15s.</p>`;
+  }else if(p.type==='shadepawn'){
+    const remain=Math.max(0,Math.ceil((p.markReadyAt||0)-now()));
+    const count=p.faction===PLAYER?shadeMarkTargets(p).length:0;
+    abilityLine=remain?`<p style="color:#fdba74"><b>Shade Mark:</b> recharges in ${remain}s.</p>`:`<p style="color:#fb923c"><b>Shade Mark ready:</b> ${count} enemies glow orange. Tap one to place the red 15s execution mark.</p>`;
+  }
+  if(pieceHasOrbShield(p)) abilityLine+=`<p style="color:#bff6ff"><b>Dawn Shield active:</b> blocks the next capture attempt.</p>`;
+  if((p.shadowMarkedUntil||0)>now()) abilityLine+=`<p style="color:#ff8b82"><b>Marked:</b> Wraiths can execute this piece for ${Math.ceil(p.shadowMarkedUntil-now())}s.</p>`;
+  const legendLine=p.faction===PLAYER?`<p style="font-size:11px;color:#cbd5e1">Blue = move · Red glow = attack · Green glow = Guardian Shield · Orange glow = Shade Mark.</p>`:'';
   piecePanel.style.display='block';
   piecePanel.innerHTML=`
     <h3 style="color:${f.color}">${def.icon} ${pieceDisplayName(p.faction,p.type)} <span style="font-size:12px;color:#cbd5e1">Lv ${p.level}</span></h3>
@@ -5014,7 +5231,7 @@ function updatePiecePanel(){
     <div class="bar"><div class="fill" style="width:${(cd*100).toFixed(0)}%"></div></div>
     <p>${cooldownReady(p)?'Ready to move.':'Cooldown '+Math.ceil((1-cd)*cooldownFor(p))+'s remaining.'}</p>
     ${shrineLine}
-    ${solarLine}${marshalLine}${roadLine}${overextensionLine}
+    ${solarLine}${marshalLine}${roadLine}${overextensionLine}${abilityLine}${legendLine}
     <p>${def.desc}</p>
     <button id="panelCenter">Center on piece</button>`;
   const btn=document.getElementById('panelCenter');
@@ -5101,6 +5318,7 @@ function gameTick(dt){
     if(f.life<=0) floatingText.splice(i,1);
   }
   for(let i=localActionFx.length-1;i>=0;i--){ if(now()-localActionFx[i].start>localActionFx[i].duration) localActionFx.splice(i,1); }
+  for(let i=destructionFx.length-1;i>=0;i--){ if(now()-destructionFx[i].start>destructionFx[i].duration) destructionFx.splice(i,1); }
   if(canAuthoritativelyWriteState()){ updateSpawns(dt); aiTick(dt); updateSpecialLandRules(dt); maybeWriteControllerState(); }
   else { updateLocalPlayerSpawn(dt); }
   expirePendingPlayerActions();
@@ -5147,45 +5365,24 @@ function chooseGuardianShieldTarget(bishop){
   return allies[0] || null;
 }
 function updateSunspireFactionAbilities(f, step){
-  const tNow = now();
+  // Human Sunspire bishops are fully player-directed. AI warlords still choose their own guardian targets.
+  if(isHumanSlot(f.idx)) return;
+  const tNow=now();
   for(const p of pieces){
-    if(!p.alive || p.faction!==f.idx) continue;
-    if(['radiantbishop','sunbishop'].includes(p.type) && tNow >= (p.guardReadyAt || 0)){
-      const target = chooseGuardianShieldTarget(p);
-      if(target && dist2(target.x,target.y,p.x,p.y) <= 49){
-        const spot = openSpawnSpotNear(target.x,target.y,p.faction,p.type,1,true) || openSpawnSpotNear(target.x,target.y,p.faction,p.type,2,false);
-        if(spot){
-          const fromX=p.x, fromY=p.y;
-          p.x=spot.x; p.y=spot.y; p.targetX=spot.x; p.targetY=spot.y; p.flash=1;
-          p.moveStartMs=Date.now(); p.moveEndMs=p.moveStartMs+moveVisualDurationFor(p);
-          p.guardReadyAt = tNow + 15;
-          grantOrbShield(target,15);
-          burst(spot.x,spot.y,f.color,18);
-          floating(spot.x,spot.y,'GUARDIAN JUMP', f.color);
-          applyFactionCapture(p,fromX,fromY,spot.x,spot.y,'move',null);
-          markStateDirty();
-        }
-      }
-    }
+    if(!p.alive || p.faction!==f.idx || !isGuardianBishop(p) || tNow < (p.guardReadyAt || 0)) continue;
+    const target=chooseGuardianShieldTarget(p);
+    if(target && dist2(target.x,target.y,p.x,p.y)<=49) applyGuardianShieldAbility(p,target,'ai');
   }
 }
 function updateShadowFactionAbilities(f, step){
-  const tNow = now();
+  // Human Shade Pawns mark only when their owner taps an orange target. AI warlords retain autonomous marking.
+  if(isHumanSlot(f.idx)) return;
+  const tNow=now();
   for(const p of pieces){
-    if(!p.alive || p.faction!==f.idx) continue;
-    if(p.type==='shadepawn' && tNow >= (p.markReadyAt || 0)){
-      const candidates = pieces.filter(q=>q.alive && q.faction!==p.faction && factions[q.faction]?.alive).map(q=>({q, cheb:Math.max(Math.abs(q.x-p.x),Math.abs(q.y-p.y))})).filter(({cheb})=>cheb>=3 && cheb<=4);
-      candidates.sort((a,b)=>((pieceDefs[b.q.type]?.value || 1) - (pieceDefs[a.q.type]?.value || 1)) || a.cheb-b.cheb);
-      const pick = candidates[0]?.q || null;
-      if(pick){
-        pick.shadowMarkedUntil = tNow + 15;
-        pick.shadowMarkedBy = p.id;
-        p.markReadyAt = tNow + 60;
-        floating(pick.x,pick.y,'MARKED', f.color);
-        burst(pick.x,pick.y,f.color,16);
-        markStateDirty();
-      }
-    }
+    if(!p.alive || p.faction!==f.idx || p.type!=='shadepawn' || tNow < (p.markReadyAt || 0)) continue;
+    const candidates=pieces.filter(q=>q.alive && q.faction!==p.faction && factions[q.faction]?.alive).map(q=>({q,cheb:Math.max(Math.abs(q.x-p.x),Math.abs(q.y-p.y))})).filter(({cheb})=>cheb>=3&&cheb<=4);
+    candidates.sort((a,b)=>((pieceDefs[b.q.type]?.value||1)-(pieceDefs[a.q.type]?.value||1))||a.cheb-b.cheb);
+    if(candidates[0]?.q) applyShadeMarkAbility(p,candidates[0].q,'ai');
   }
 }
 function updateTemporaryPieces(f){
@@ -5193,6 +5390,7 @@ function updateTemporaryPieces(f){
   for(const p of pieces){
     if(!p.alive || p.faction!==f.idx) continue;
     if(pieceDefs[p.type]?.temporary && p.heatUntil && tNow>=p.heatUntil){
+      emitDestructionFx(p,'expired');
       p.alive=false;
       burst(p.x,p.y,f.color,12);
       floating(p.x,p.y,'BANNER FALLS', f.color);
@@ -5335,6 +5533,7 @@ function updateBuildingRules(f,dt){
     }
     if(b.type==='seedgrove'){
       if(enemyAdjacentTo(b.x,b.y,b.faction)){
+        emitDestructionFx(b,'seed-cut');
         b.alive=false;
         burst(b.x,b.y,f.color,18);
         floating(b.x,b.y,'SEED CUT', '#fff');
@@ -5750,6 +5949,7 @@ function draw(){
   drawShadowFog();
   drawHighlights();
   drawActors();
+  drawDestructionEffects();
   drawSolarBeaconChannels();
   drawParticlesWorld();
   drawLocalActionEffects();
@@ -6222,10 +6422,18 @@ function drawHighlights(){
     for(const m of legalMoves){
       const x=m.x*BASE_CELL, y=m.y*BASE_CELL;
       ctx.globalAlpha=m.capture?.55:.36;
-      ctx.fillStyle=m.capture?'#ff5f72':'#7dd3fc';
+      ctx.fillStyle=m.capture?'#ff4058':'#7dd3fc';
       ctx.beginPath(); ctx.arc(x+BASE_CELL/2,y+BASE_CELL/2,m.capture?15:10,0,Math.PI*2); ctx.fill();
       ctx.globalAlpha=1;
-      if(m.capture){ ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(x+8,y+8,BASE_CELL-16,BASE_CELL-16); }
+      if(m.capture){ ctx.strokeStyle='#ffedf0'; ctx.lineWidth=2.5; ctx.strokeRect(x+7,y+7,BASE_CELL-14,BASE_CELL-14); }
+    }
+    const abilityTargets=selectedAbilityTargets();
+    for(const a of abilityTargets){
+      const x=(a.x+.5)*BASE_CELL,y=(a.y+.5)*BASE_CELL,pulse=.5+.5*Math.sin(now()*8+a.targetId);
+      ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.18+.20*pulse;
+      ctx.fillStyle=a.kind==='guardianShield'?'#38f58a':'#ff982f';ctx.beginPath();ctx.arc(x,y,BASE_CELL*(.42+.05*pulse),0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=.78+.18*pulse;ctx.strokeStyle=a.kind==='guardianShield'?'#8affb7':'#ffb15d';ctx.lineWidth=3;ctx.setLineDash(a.kind==='shadeMark'?[7,5]:[]);ctx.beginPath();ctx.arc(x,y,BASE_CELL*.47,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=ctx.strokeStyle;ctx.font='1000 12px Inter,system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(a.kind==='guardianShield'?'SHIELD':'MARK',x,y-BASE_CELL*.58);ctx.restore();
     }
     const hovered=hoverBoardTile && legalMoves.find(m=>m.x===hoverBoardTile.x && m.y===hoverBoardTile.y);
     if(hovered){
@@ -6595,6 +6803,13 @@ function drawSinglePiece(p,labelIds=new Set()){
     makeCurrentTransformUpright(ctx);
     ctx.globalAlpha = p.alive?1:.2;
     const checkedKing = p.type==='king' && p.faction===PLAYER && kingInCheck;
+    const abilityTarget=selectedAbilityTargetForPiece(p);
+    const attackTarget=!!selectedPiece && selectedPiece.faction===PLAYER && p.faction!==selectedPiece.faction && legalMoves.some(m=>m.capture && !m.wall && m.x===p.x && m.y===p.y);
+    if(abilityTarget || attackTarget){
+      const pulse=.5+.5*Math.sin(now()*9+p.id),green=abilityTarget?.kind==='guardianShield',orange=abilityTarget?.kind==='shadeMark';
+      const glowColor=green?'rgba(52,255,135,.98)':orange?'rgba(255,145,38,.98)':'rgba(255,43,67,.98)';
+      ctx.save();ctx.globalCompositeOperation='screen';ctx.shadowColor=glowColor;ctx.shadowBlur=22+10*pulse;ctx.globalAlpha=.22+.20*pulse;ctx.fillStyle=glowColor;ctx.beginPath();ctx.arc(0,0,r+18+3*pulse,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.85;ctx.strokeStyle=glowColor;ctx.lineWidth=3.2;ctx.beginPath();ctx.arc(0,0,r+12+2*pulse,0,Math.PI*2);ctx.stroke();ctx.restore();
+    }
     if(checkedKing){const danger=.58+.42*Math.sin(now()*9+p.id);ctx.globalCompositeOperation='screen';ctx.globalAlpha=.18+.20*danger;ctx.fillStyle='rgba(255,18,34,.96)';ctx.beginPath();ctx.arc(0,0,r+22+5*danger,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.86;ctx.shadowColor='rgba(255,12,30,.98)';ctx.shadowBlur=24+10*danger;ctx.strokeStyle='rgba(255,54,68,.98)';ctx.lineWidth=3.5;ctx.beginPath();ctx.arc(0,0,r+11+4*danger,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;}
     if(def.aura){
       ctx.globalAlpha=.15;
@@ -6646,16 +6861,9 @@ function drawSinglePiece(p,labelIds=new Set()){
     }
     if((p.shadowMarkedUntil || 0) > now()){
       const pulse=.55+.45*Math.sin(now()*10+p.id);
-      ctx.globalAlpha=.26+.18*pulse;
-      ctx.strokeStyle='rgba(216,172,255,.98)';
-      ctx.lineWidth=2.2;
-      ctx.beginPath(); ctx.arc(0,0,r+12+2*pulse,0,Math.PI*2); ctx.stroke();
-      ctx.globalAlpha=.92;
-      ctx.fillStyle='rgba(216,172,255,.98)';
-      ctx.font='1000 9px Inter,system-ui,sans-serif';
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText('✦',0,-r-14);
-      ctx.globalAlpha=1;
+      ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.20+.20*pulse;ctx.fillStyle='rgba(255,34,48,.95)';ctx.beginPath();ctx.arc(0,0,r+16+3*pulse,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=.88;ctx.strokeStyle='rgba(255,75,68,.99)';ctx.lineWidth=2.8;ctx.setLineDash([5,4]);ctx.beginPath();ctx.arc(0,0,r+12+2*pulse,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      ctx.globalAlpha=1;ctx.fillStyle='rgba(255,64,56,.99)';ctx.strokeStyle='rgba(50,0,0,.96)';ctx.lineWidth=3;ctx.font='1000 18px Inter,system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.strokeText('⌖',0,-r-18);ctx.fillText('⌖',0,-r-18);ctx.restore();
     }
     for(let i=0;i<p.level;i++){
       const a=-Math.PI/2 + (i-(p.level-1)/2)*.22;
@@ -7029,6 +7237,11 @@ function onTap(sx,sy){
   }
   const p=findPieceAt(b.x,b.y);
   if(selectedPiece){
+    const abilityTarget=p ? selectedAbilityTargets().find(a=>a.targetId===p.id) : null;
+    if(abilityTarget && selectedPiece.faction===PLAYER){
+      requestPlayerAbility(selectedPiece,p,abilityTarget.kind);
+      return;
+    }
     const m=legalMoves.find(q=>q.x===b.x && q.y===b.y);
     if(m && selectedPiece.faction===PLAYER){
       requestPlayerMove(selectedPiece,b.x,b.y);
