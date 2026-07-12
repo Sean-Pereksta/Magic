@@ -286,7 +286,7 @@
     let user = null, state = null, lobbyData = null, presence = new Map(), unsubLobby = null, unsubPresence = null;
     let rng = null;
     let selectedCategory = 'grey', actionBusy = false, aiTimer = 0, disconnectTimer = 0, heartbeatTimer = 0, turnTimerInterval = 0, timerActionPending = false;
-    let activeCommandTab = 'actions', lastAutoTabPhase = '';
+    let activeCommandTab = 'actions';
     let assetMap = {}, missingAssets = new Set(), graphicsReady = false, lastRenderedVersion = -1, toastTimer = 0;
     const lobbyRef = lobbyId ? doc(db,'lobbies',lobbyId) : null;
 
@@ -1320,7 +1320,7 @@ function resolveOne(rd, manual){
     }
 
 
-    let selectedTargetPayload=null;
+    let selectedTargetPayload=null, preferredTargetPayload=null, preferredTargetTurnSerial=-1;
     function statusForPlayer(player){
       if(player.isAI)return'AI';
       if(player.eliminated||player.left)return'Out';
@@ -1461,8 +1461,30 @@ function resolveOne(rd, manual){
         info.appendChild(btn);item.appendChild(info);grid.appendChild(item);
       }
     }
+    function targetWithIdentity(candidate){
+      if(!candidate)return null;
+      const target=state?.players?.find(p=>p.name===candidate.targetPlayer);
+      const entry=candidate.targetType==='townhall'?null:target?.owned?.[candidate.targetEntryIdx];
+      return{targetPlayer:candidate.targetPlayer,targetType:candidate.targetType,targetEntryIdx:candidate.targetEntryIdx??null,targetKey:entry?.key||null};
+    }
+    function rememberTarget(candidate){
+      const payload=targetWithIdentity(candidate);
+      selectedTargetPayload=payload?{targetPlayer:payload.targetPlayer,targetType:payload.targetType,targetEntryIdx:payload.targetEntryIdx}:null;
+      preferredTargetPayload=payload;
+      preferredTargetTurnSerial=state?.turnSerial??-1;
+    }
+    function matchingPreferredCandidate(candidates,preferred){
+      if(!preferred)return null;
+      const sameBase=c=>c.targetPlayer===preferred.targetPlayer&&c.targetType===preferred.targetType;
+      let match=candidates.find(c=>sameBase(c)&&c.targetEntryIdx===preferred.targetEntryIdx);
+      if(match&&preferred.targetKey&&targetWithIdentity(match)?.targetKey!==preferred.targetKey)match=null;
+      if(!match&&preferred.targetKey)match=candidates.find(c=>sameBase(c)&&targetWithIdentity(c)?.targetKey===preferred.targetKey);
+      if(!match&&preferred.targetType==='townhall')match=candidates.find(sameBase);
+      return match||null;
+    }
     function renderTargetAndQueue(){
       const queueBox=$('#queueBox'),targetBox=$('#targetBox');queueBox.innerHTML='';targetBox.innerHTML='';selectedTargetPayload=null;
+      if(preferredTargetTurnSerial!==(state?.turnSerial??-1)){preferredTargetPayload=null;preferredTargetTurnSerial=state?.turnSerial??-1;}
       const queue=state?.resolveQueue||[];
       if(!queue.length){queueBox.textContent='No triggers pending.';return;}
       queue.forEach((trigger,i)=>{const owner=state.players[trigger.ownerIdx],card=CARD_CATALOG[trigger.key],line=document.createElement('div');line.textContent=`${i===0?'▶':'•'} ${owner?.name||'?'} — ${card?.name||trigger.key}${trigger.useCrazy?' [CRAZY]':''}`;queueBox.appendChild(line);});
@@ -1470,21 +1492,35 @@ function resolveOne(rd, manual){
       if(!needs)return;
       const candidates=allTargetCandidates(state,trigger.ownerIdx,effect.kind);
       if(!candidates.length){const note=document.createElement('div');note.className='subtle';note.textContent='No valid targets remain. Resolve to skip this trigger.';targetBox.appendChild(note);return;}
+      const preferred=matchingPreferredCandidate(candidates,preferredTargetPayload);
       const pSel=document.createElement('select'),tSel=document.createElement('select'),eSel=document.createElement('select');
-      function fillPlayers(){const names=[...new Set(candidates.map(c=>c.targetPlayer))];pSel.innerHTML=names.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('');fillTypes();}
-      function fillTypes(){const types=[...new Set(candidates.filter(c=>c.targetPlayer===pSel.value).map(c=>c.targetType))];tSel.innerHTML=types.map(t=>`<option value="${t}">${t}</option>`).join('');fillEntries();}
-      function fillEntries(){const items=candidates.filter(c=>c.targetPlayer===pSel.value&&c.targetType===tSel.value);eSel.innerHTML='';items.forEach((candidate,index)=>{const option=document.createElement('option');option.value=String(index);if(candidate.targetType==='townhall')option.textContent='Town Hall';else{const target=state.players.find(p=>p.name===candidate.targetPlayer),entry=target?.owned?.[candidate.targetEntryIdx],card=CARD_CATALOG[entry?.key];option.textContent=`${card?.name||'Card'} (${entry?.hp||0} HP)`;}eSel.appendChild(option);});const pick=items[Number(eSel.value)||0]||items[0];selectedTargetPayload=pick?{targetPlayer:pick.targetPlayer,targetType:pick.targetType,targetEntryIdx:pick.targetEntryIdx}:null;}
-      pSel.onchange=fillTypes;tSel.onchange=fillEntries;eSel.onchange=fillEntries;fillPlayers();targetBox.append(pSel,tSel,eSel);
+      function fillPlayers(){
+        const names=[...new Set(candidates.map(c=>c.targetPlayer))];
+        for(const name of names){const option=document.createElement('option');option.value=name;option.textContent=name;pSel.appendChild(option);}
+        if(preferred&&names.includes(preferred.targetPlayer))pSel.value=preferred.targetPlayer;
+        fillTypes();
+      }
+      function fillTypes(){
+        const types=[...new Set(candidates.filter(c=>c.targetPlayer===pSel.value).map(c=>c.targetType))];
+        tSel.innerHTML='';for(const type of types){const option=document.createElement('option');option.value=type;option.textContent=type;tSel.appendChild(option);}
+        if(preferred&&preferred.targetPlayer===pSel.value&&types.includes(preferred.targetType))tSel.value=preferred.targetType;
+        fillEntries();
+      }
+      function fillEntries(){
+        const items=candidates.filter(c=>c.targetPlayer===pSel.value&&c.targetType===tSel.value);eSel.innerHTML='';
+        items.forEach((candidate,index)=>{const option=document.createElement('option');option.value=String(index);if(candidate.targetType==='townhall')option.textContent='Town Hall';else{const target=state.players.find(p=>p.name===candidate.targetPlayer),entry=target?.owned?.[candidate.targetEntryIdx],card=CARD_CATALOG[entry?.key];option.textContent=`${card?.name||'Card'} (${entry?.hp||0} HP)`;}eSel.appendChild(option);});
+        const wanted=matchingPreferredCandidate(items,preferredTargetPayload);const wantedIndex=wanted?items.indexOf(wanted):-1;if(wantedIndex>=0)eSel.value=String(wantedIndex);
+        rememberTarget(items[Number(eSel.value)||0]||items[0]);
+      }
+      pSel.onchange=()=>{preferredTargetPayload=null;fillTypes();};
+      tSel.onchange=()=>{preferredTargetPayload=null;fillEntries();};
+      eSel.onchange=()=>{const items=candidates.filter(c=>c.targetPlayer===pSel.value&&c.targetType===tSel.value);rememberTarget(items[Number(eSel.value)||0]||items[0]);};
+      fillPlayers();targetBox.append(pSel,tSel,eSel);
     }
-    function setCommandTab(tab,manual=false){
+    function setCommandTab(tab){
       activeCommandTab=tab==='shop'?'shop':'actions';
       document.querySelectorAll('.commandTab').forEach(btn=>{const active=btn.dataset.commandTab===activeCommandTab;btn.classList.toggle('active',active);btn.setAttribute('aria-selected',String(active));});
       $('#actionsPane').classList.toggle('active',activeCommandTab==='actions');$('#shopPane').classList.toggle('active',activeCommandTab==='shop');
-      if(manual)lastAutoTabPhase=`${state?.version||0}:${state?.phase||''}`;
-    }
-    function maybeAutoSelectTab(){
-      if(!state||!isMyTurn())return;const key=`${state.version}:${state.phase}`;if(lastAutoTabPhase===key)return;
-      lastAutoTabPhase=key;setCommandTab(state.phase==='buy'?'shop':'actions');
     }
     function renderControls(){
       const player=myPlayer(),turn=isMyTurn(),phase=state?.phase||'waiting',queue=state?.resolveQueue||[],trigger=queue[0],needs=trigger?triggerNeedsTarget(effectiveTrigger(trigger).kind):false,candidates=trigger?allTargetCandidates(state,trigger.ownerIdx,effectiveTrigger(trigger).kind):[];
@@ -1497,7 +1533,6 @@ function resolveOne(rd, manual){
       $('#applyTargetBtn').disabled=actionBusy||!turn||phase!=='resolving'||!needs||!selectedTargetPayload;
       $('#endTurnBtn').disabled=actionBusy||!turn||phase==='finished';
       const quickEnd=$('#quickEndTurnBtn');quickEnd.classList.toggle('hidden',!turn||phase==='finished');quickEnd.disabled=actionBusy||!turn||phase==='finished';
-      maybeAutoSelectTab();
     }
     function renderLog(){
       const log=$('#log');log.innerHTML='';const entries=state?.log||[];
@@ -1638,10 +1673,11 @@ function resolveOne(rd, manual){
     $('#rollBtn').addEventListener('click',()=>performAction('ROLL',{mode:$('#dieSelect').value}));
     $('#resolveBtn').addEventListener('click',()=>performAction('RESOLVE',{}));
     $('#applyTargetBtn').addEventListener('click',()=>selectedTargetPayload&&performAction('RESOLVE',selectedTargetPayload));
-    function endTurnFromUi(){
+    async function endTurnFromUi(){
       const pending=state?.phase==='resolving'&&(state?.resolveQueue?.length||0)>0;
       if(pending&&!confirm('Forfeit every unresolved trigger and end the turn?'))return;
-      performAction('END_TURN',{forfeitRemaining:pending});
+      const completed=await performAction('END_TURN',{forfeitRemaining:pending});
+      if(completed)setCommandTab('actions');
     }
     $('#endTurnBtn').addEventListener('click',endTurnFromUi);
     $('#quickEndTurnBtn').addEventListener('click',endTurnFromUi);
@@ -1650,7 +1686,7 @@ function resolveOne(rd, manual){
       await markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});
       $('#leaveBtn').disabled=true;
     });
-    document.querySelectorAll('[data-command-tab]').forEach(btn=>btn.addEventListener('click',()=>setCommandTab(btn.dataset.commandTab,true)));
+    document.querySelectorAll('[data-command-tab]').forEach(btn=>btn.addEventListener('click',()=>setCommandTab(btn.dataset.commandTab)));
     function currentFullscreenElement(){return document.fullscreenElement||document.webkitFullscreenElement||null;}
     function syncFullscreenButton(){const active=!!currentFullscreenElement(),btn=$('#fullscreenBtn');btn.textContent=active?'✕':'⛶';btn.title=active?'Exit fullscreen':'Enter true fullscreen';btn.setAttribute('aria-label',btn.title);}
     async function enterTrueFullscreen(){
