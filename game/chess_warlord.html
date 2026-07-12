@@ -2366,46 +2366,239 @@ function loadImageWithTimeout(url, timeoutMs=9000){
   });
 }
 function processedGraphicCanvas(img){
-  // Source tiles include a dark presentation background and a printed label. Downsample, crop the label,
-  // then flood-fill only the connected dark edge background so black armor remains intact.
+  // The source art has an opaque near-black presentation background.
+  //
+  // Do not make every dark pixel transparent. Shadow units, black armor,
+  // windows, doors, outlines, and deep shading are legitimate foreground.
+  //
+  // Instead:
+  //   1. Learn the background color from the image border.
+  //   2. Build a strict "background-like" mask.
+  //   3. Protect the visible subject with a small foreground barrier.
+  //   4. Flood-fill only background connected to the outside edge.
+  //
+  // This preserves dark interior artwork while still removing the exterior.
   const size = 384;
-  const sourceHeight = Math.max(1,Math.floor(img.naturalHeight * .82));
+  const sourceHeight = Math.max(1, Math.floor(img.naturalHeight * .82));
   const work = document.createElement('canvas');
   work.width = size;
-  work.height = Math.max(1,Math.round(size * sourceHeight / Math.max(1,img.naturalWidth)));
-  const wctx = work.getContext('2d',{willReadFrequently:true});
-  wctx.drawImage(img,0,0,img.naturalWidth,sourceHeight,0,0,work.width,work.height);
+  work.height = Math.max(
+    1,
+    Math.round(size * sourceHeight / Math.max(1, img.naturalWidth))
+  );
+
+  const wctx = work.getContext('2d', {willReadFrequently:true});
+  wctx.drawImage(
+    img,
+    0, 0, img.naturalWidth, sourceHeight,
+    0, 0, work.width, work.height
+  );
+
   try{
-    const frame = wctx.getImageData(0,0,work.width,work.height);
-    const data = frame.data, width=work.width, height=work.height;
-    const visited = new Uint8Array(width*height);
-    const queue = new Int32Array(width*height);
-    let head=0,tail=0;
-    const darkEdge = idx => {
-      const o=idx*4,r=data[o],g=data[o+1],b=data[o+2];
-      const max=Math.max(r,g,b),min=Math.min(r,g,b),lum=(r*3+g*4+b)/8;
-      return lum<74 && (max-min)<48;
+    const frame = wctx.getImageData(0, 0, work.width, work.height);
+    const data = frame.data;
+    const width = work.width;
+    const height = work.height;
+    const pixelCount = width * height;
+
+    const luminance = (r,g,b) => (r * 3 + g * 4 + b) / 8;
+    const chroma = (r,g,b) => Math.max(r,g,b) - Math.min(r,g,b);
+
+    const median = values => {
+      if(!values.length) return 0;
+      values.sort((a,b) => a-b);
+      const middle = values.length >> 1;
+      return values.length & 1
+        ? values[middle]
+        : (values[middle - 1] + values[middle]) / 2;
     };
-    const push = idx => { if(idx<0 || idx>=visited.length || visited[idx] || !darkEdge(idx)) return; visited[idx]=1; queue[tail++]=idx; };
-    for(let x=0;x<width;x++){push(x);push((height-1)*width+x);}
-    for(let y=0;y<height;y++){push(y*width);push(y*width+width-1);}
-    while(head<tail){
-      const idx=queue[head++],x=idx%width,y=(idx/width)|0;
-      if(x>0)push(idx-1);if(x+1<width)push(idx+1);if(y>0)push(idx-width);if(y+1<height)push(idx+width);
+
+    // Sample a narrow border band. The median makes this resistant to a
+    // banner, tower tip, flame, or other artwork touching one edge.
+    const sampleR = [];
+    const sampleG = [];
+    const sampleB = [];
+    const borderBand = Math.max(
+      2,
+      Math.round(Math.min(width, height) * .015)
+    );
+
+    const samplePixel = idx => {
+      const offset = idx * 4;
+      const r = data[offset];
+      const g = data[offset + 1];
+      const b = data[offset + 2];
+      const lum = luminance(r,g,b);
+
+      // The supplied backgrounds are dark and nearly neutral. Restricting
+      // samples prevents colored artwork from influencing the learned key.
+      if(lum < 56 && chroma(r,g,b) < 22){
+        sampleR.push(r);
+        sampleG.push(g);
+        sampleB.push(b);
+      }
+    };
+
+    for(let y=0; y<height; y++){
+      for(let x=0; x<borderBand; x++){
+        samplePixel(y * width + x);
+        samplePixel(y * width + (width - 1 - x));
+      }
     }
-    for(let i=0;i<visited.length;i++) if(visited[i]) data[i*4+3]=0;
-    wctx.putImageData(frame,0,0);
-    let minX=width,minY=height,maxX=-1,maxY=-1;
-    for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(data[(y*width+x)*4+3]>12){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
-    if(maxX>=minX && maxY>=minY){
-      const pad=8,cropW=maxX-minX+1,cropH=maxY-minY+1;
-      const out=document.createElement('canvas');out.width=cropW+pad*2;out.height=cropH+pad*2;
-      out.getContext('2d').drawImage(work,minX,minY,cropW,cropH,pad,pad,cropW,cropH);
+    for(let x=0; x<width; x++){
+      for(let y=0; y<borderBand; y++){
+        samplePixel(y * width + x);
+        samplePixel((height - 1 - y) * width + x);
+      }
+    }
+
+    const bgR = sampleR.length ? median(sampleR) : 19;
+    const bgG = sampleG.length ? median(sampleG) : 20;
+    const bgB = sampleB.length ? median(sampleB) : 23;
+    const bgLum = luminance(bgR,bgG,bgB);
+
+    // This mask is intentionally strict. It identifies only pixels close to
+    // the learned presentation background, not every pixel that is dark.
+    const backgroundLike = new Uint8Array(pixelCount);
+    for(let i=0; i<pixelCount; i++){
+      const offset = i * 4;
+      const r = data[offset];
+      const g = data[offset + 1];
+      const b = data[offset + 2];
+      const dr = (r - bgR) * .70;
+      const dg = (g - bgG) * .90;
+      const db = (b - bgB) * .70;
+      const distance = Math.sqrt(dr*dr + dg*dg + db*db);
+      const lum = luminance(r,g,b);
+
+      if(
+        distance < 24 &&
+        lum < bgLum + 18 &&
+        chroma(r,g,b) < 18
+      ){
+        backgroundLike[i] = 1;
+      }
+    }
+
+    // Small cross-shaped dilation. Protecting clear foreground by two pixels
+    // seals the narrow paths that previously let the flood fill leak into
+    // doors, armor, stone shadows, and Shadow-faction bodies.
+    const dilateCross = (source, iterations=1) => {
+      let current = source;
+      for(let pass=0; pass<iterations; pass++){
+        const next = current.slice();
+        for(let y=0; y<height; y++){
+          const row = y * width;
+          for(let x=0; x<width; x++){
+            const idx = row + x;
+            if(!current[idx]) continue;
+            if(x > 0) next[idx - 1] = 1;
+            if(x + 1 < width) next[idx + 1] = 1;
+            if(y > 0) next[idx - width] = 1;
+            if(y + 1 < height) next[idx + width] = 1;
+          }
+        }
+        current = next;
+      }
+      return current;
+    };
+
+    const obviousForeground = new Uint8Array(pixelCount);
+    for(let i=0; i<pixelCount; i++){
+      obviousForeground[i] = backgroundLike[i] ? 0 : 1;
+    }
+    const protectedForeground = dilateCross(obviousForeground, 2);
+
+    // Flood-fill only strict background pixels that remain connected to an
+    // outside edge. Interior darkness is left opaque.
+    const exterior = new Uint8Array(pixelCount);
+    const queue = new Int32Array(pixelCount);
+    let head = 0;
+    let tail = 0;
+
+    const push = idx => {
+      if(
+        idx < 0 ||
+        idx >= pixelCount ||
+        exterior[idx] ||
+        !backgroundLike[idx] ||
+        protectedForeground[idx]
+      ){
+        return;
+      }
+      exterior[idx] = 1;
+      queue[tail++] = idx;
+    };
+
+    for(let x=0; x<width; x++){
+      push(x);
+      push((height - 1) * width + x);
+    }
+    for(let y=0; y<height; y++){
+      push(y * width);
+      push(y * width + width - 1);
+    }
+
+    while(head < tail){
+      const idx = queue[head++];
+      const x = idx % width;
+      const y = (idx / width) | 0;
+      if(x > 0) push(idx - 1);
+      if(x + 1 < width) push(idx + 1);
+      if(y > 0) push(idx - width);
+      if(y + 1 < height) push(idx + width);
+    }
+
+    // Expand the confirmed exterior back through two pixels of background-like
+    // fringe. This removes the dark presentation halo without reopening the
+    // protected routes into the subject.
+    const removalMask = dilateCross(exterior, 2);
+    for(let i=0; i<pixelCount; i++){
+      if(removalMask[i] && backgroundLike[i]){
+        data[i * 4 + 3] = 0;
+      }
+    }
+
+    wctx.putImageData(frame, 0, 0);
+
+    // Crop to the remaining opaque artwork.
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+
+    for(let y=0; y<height; y++){
+      for(let x=0; x<width; x++){
+        if(data[(y * width + x) * 4 + 3] > 12){
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+
+    if(maxX >= minX && maxY >= minY){
+      const pad = 8;
+      const cropW = maxX - minX + 1;
+      const cropH = maxY - minY + 1;
+      const out = document.createElement('canvas');
+      out.width = cropW + pad * 2;
+      out.height = cropH + pad * 2;
+      out.getContext('2d').drawImage(
+        work,
+        minX, minY, cropW, cropH,
+        pad, pad, cropW, cropH
+      );
       return out;
     }
-  }catch(e){ /* Same-origin GitHub Pages assets should be readable; raw image remains a safe fallback. */ }
+  }catch(error){
+    console.warn('Unable to build connected background mask:', error);
+  }
+
   return work;
 }
+
 async function loadFirstGraphic(candidates){
   for(const filename of candidates || []){
     try{
