@@ -7,115 +7,145 @@
   <title>Magic Realms</title>
   <style>
     :root{
-      --bg:#0d120d;--panel:#171e16;--panel2:#20291d;--ink:#f7efd6;--muted:#b8b39f;
+      --bg:#0b100b;--panel:#171e16;--panel2:#20291d;--ink:#f7efd6;--muted:#b8b39f;
       --line:#586042;--gold:#e8bf59;--gold2:#8f6518;--green:#4b7d38;--danger:#a7483d;
-      --shadow:0 14px 40px rgba(0,0,0,.34);--radius:18px;--cardW:92px;
+      --shadow:0 14px 40px rgba(0,0,0,.34);--radius:18px;--topbarH:54px;--turnH:44px;
+      --grey:#9da493;--white:#f0dfaa;--black:#9a73c4;--red:#d75a48;--greenFaction:#63a74f;
     }
     *{box-sizing:border-box}
-    html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% -20%,#28351f 0,#10160f 42%,#090d09 100%);color:var(--ink);font-family:Inter,Segoe UI,Arial,sans-serif}
-    button,select{font:inherit}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:radial-gradient(circle at 50% -20%,#28351f 0,#10160f 42%,#090d09 100%);color:var(--ink);font-family:Inter,Segoe UI,Arial,sans-serif}
+    body{min-height:100dvh}
+    button,select,input{font:inherit}
     button{touch-action:manipulation}
     .hidden{display:none!important}
-    .topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:9px;min-height:54px;padding:8px max(12px,env(safe-area-inset-left));background:rgba(12,17,11,.94);border-bottom:1px solid #39402e;backdrop-filter:blur(12px)}
+    .topbar{height:var(--topbarH);position:relative;z-index:40;display:flex;align-items:center;gap:9px;padding:7px max(12px,env(safe-area-inset-left));background:rgba(12,17,11,.96);border-bottom:1px solid #39402e;backdrop-filter:blur(12px)}
     .brand{font-family:Georgia,serif;font-weight:900;font-size:21px;color:#ffe39a;letter-spacing:.3px;white-space:nowrap}
     .tag{padding:5px 9px;border:1px solid #626948;border-radius:999px;background:#20281c;color:#ddd5ba;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .grow{flex:1}
     .iconBtn{border:1px solid #6a704f;border-radius:11px;background:#252d21;color:#fff4d0;padding:8px 10px;cursor:pointer}
     .iconBtn:hover{background:#343e2c}
-    #turnBanner{position:sticky;top:54px;z-index:24;padding:10px 14px;text-align:center;font-weight:900;letter-spacing:.3px;border-bottom:1px solid #4b5139;background:#342e1a;color:#ffe8a8}
-    #turnBanner.mine{background:linear-gradient(90deg,#285c27,#4e8a38,#285c27);color:white;box-shadow:0 0 24px rgba(97,210,74,.38);animation:turnPulse 1.6s ease-in-out infinite}
+    #turnBanner{height:var(--turnH);position:relative;z-index:35;display:grid;place-items:center;padding:7px 14px;text-align:center;font-weight:900;letter-spacing:.4px;border-bottom:1px solid #4b5139;background:#342e1a;color:#ffe8a8}
+    #turnBanner.mine{background:linear-gradient(90deg,#1f5125,#52923b,#1f5125);color:white;box-shadow:0 0 25px rgba(97,210,74,.45);animation:turnPulse 1.35s ease-in-out infinite}
     #turnBanner.waiting{background:#293026;color:#cfcdbd}
     #turnBanner.finished{background:#704c19;color:#fff0bf}
-    @keyframes turnPulse{50%{filter:brightness(1.2)}}
-    #app{width:min(1540px,100%);margin:auto;padding:12px;display:grid;grid-template-columns:minmax(0,1fr) minmax(310px,420px);gap:12px}
-    .mainColumn,.sideColumn{display:flex;flex-direction:column;gap:12px;min-width:0}
-    .panel{background:linear-gradient(180deg,rgba(31,40,28,.97),rgba(19,25,18,.98));border:1px solid #4b523b;border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
-    .panelHead{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid #414834;background:rgba(255,255,255,.025)}
+    @keyframes turnPulse{50%{filter:brightness(1.22)}}
+    body.myTurn .commandPanel{border-color:#7bbf58;box-shadow:0 0 0 2px rgba(112,194,79,.24),0 14px 42px rgba(0,0,0,.42)}
+    body.myTurn .topbar{box-shadow:inset 0 -2px #78ba54}
+
+    #app{height:calc(100dvh - var(--topbarH) - var(--turnH));width:min(1580px,100%);margin:auto;padding:10px;display:grid;grid-template-rows:minmax(210px,42%) minmax(0,58%);gap:10px;overflow:hidden}
+    .panel{background:linear-gradient(180deg,rgba(31,40,28,.98),rgba(19,25,18,.99));border:1px solid #4b523b;border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;min-height:0}
+    .panelHead{display:flex;align-items:center;gap:8px;min-height:46px;padding:9px 12px;border-bottom:1px solid #414834;background:rgba(255,255,255,.025)}
     .panelHead h2,.panelHead h3{font-family:Georgia,serif;margin:0;font-size:17px;color:#f8df9d}
     .subtle{font-size:12px;color:var(--muted)}
-    .opponentScroll{overflow:auto;max-height:310px;overscroll-behavior:contain}
-    .opponentTable{border-collapse:separate;border-spacing:0;min-width:930px;width:100%;font-size:13px}
-    .opponentTable th{position:sticky;top:0;z-index:2;background:#2b3426;color:#f4dda0;padding:9px;border-bottom:1px solid #5d644a;text-align:left}
-    .opponentTable td{padding:8px;border-bottom:1px solid #353c2f;vertical-align:middle}
-    .opponentTable tr.activeRow{background:rgba(93,153,66,.17)}
-    .opponentTable tr.eliminated{opacity:.48}
-    .tableCards{display:flex;gap:5px;min-width:500px}
-    .tinyCard{width:48px;height:68px;flex:0 0 48px;border:1px solid #727653;border-radius:7px;overflow:hidden;background:#e8dfc5;position:relative}
-    .tinyCard img{width:100%;height:100%;object-fit:cover;display:block}
-    .tinyCard .tinyFallback{height:100%;display:grid;place-items:center;font-size:22px;color:#202019}
-    .tinyBadge{position:absolute;right:2px;top:2px;padding:1px 4px;border-radius:5px;background:#10150ee8;color:#fff;font-size:9px;font-weight:800}
-    .battlePanel{padding:13px;display:grid;grid-template-columns:minmax(180px,.75fr) minmax(260px,1.25fr);gap:14px;align-items:stretch}
-    .diceStage{min-height:260px;border:1px solid #525a42;border-radius:16px;background:radial-gradient(circle at center,#3a422d 0,#1b2318 65%,#121711 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;position:relative;overflow:hidden}
-    .diceStage:before{content:"";position:absolute;inset:10px;border:1px solid rgba(232,191,89,.27);border-radius:12px;pointer-events:none}
-    #diceVisual{display:flex;align-items:center;justify-content:center;gap:14px;min-height:112px;position:relative;z-index:1}
-    .die{width:90px;height:90px;border-radius:18px;background:linear-gradient(145deg,#fff8df,#c9b778);border:4px solid #6e531d;box-shadow:0 11px 20px #0008,inset 0 0 0 2px #fff9;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:10px}
-    .pip{width:13px;height:13px;background:#211c12;border-radius:50%;align-self:center;justify-self:center;visibility:hidden}
-    .pip.on{visibility:visible}
-    .d20{width:112px;height:98px;clip-path:polygon(50% 0,95% 24%,82% 84%,50% 100%,18% 84%,5% 24%);display:grid;place-items:center;background:linear-gradient(145deg,#ffe48d,#9e6419 62%,#503410);border:none;color:#fff9df;text-shadow:0 2px 4px #000;font-size:35px;font-weight:900;filter:drop-shadow(0 12px 10px #0008)}
-    .rollCaption{font-family:Georgia,serif;font-size:18px;color:#ffe3a2;margin-top:7px;text-align:center;position:relative;z-index:1}
-    .controlsArea{display:flex;flex-direction:column;gap:10px;min-width:0}
-    .phaseCard{border:1px solid #565e45;border-radius:14px;background:#151b14;padding:11px}
-    .phaseTitle{font-weight:900;color:#f6dfa1;margin-bottom:4px}
-    .controlRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    select{background:#0e130d;color:#f7efd8;border:1px solid #6e7457;border-radius:10px;padding:9px 10px;min-height:42px}
-    .actionBtn{border:1px solid #8b773d;border-radius:11px;background:linear-gradient(#d6aa45,#9a6d20);color:#171208;font-weight:900;padding:10px 13px;cursor:pointer;box-shadow:inset 0 1px #fff7}
-    .actionBtn.secondary{background:#2c3828;color:#fff1cc;border-color:#667153}
-    .actionBtn.danger{background:#78382f;color:white;border-color:#ad5a4c}
-    .actionBtn:disabled{opacity:.38;cursor:not-allowed;filter:grayscale(.7)}
-    #targetBox{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:6px;margin-top:8px}
-    #targetBox select{width:100%;min-width:0}
-    #queueBox{max-height:105px;overflow:auto;padding:8px;border-radius:10px;background:#0e130d;border:1px solid #363e30;font-size:12px;line-height:1.45;color:#cfccb9}
-    .ownedPanel{padding-bottom:10px}
-    .resourceStrip{margin-left:auto;display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
-    .resource{padding:4px 8px;background:#10150f;border:1px solid #50573f;border-radius:999px;font-size:12px}
-    .ownedRail{display:flex;gap:7px;overflow-x:auto;padding:10px 12px 6px;scroll-snap-type:x proximity;min-height:145px}
-    .ownedCard{position:relative;flex:0 0 var(--cardW);width:var(--cardW);border:1px solid #766b43;border-radius:10px;background:#e9dfbf;padding:0;overflow:hidden;cursor:pointer;scroll-snap-align:start;color:#17170f;box-shadow:0 5px 12px #0005}
-    .ownedCard img{width:100%;height:126px;object-fit:cover;display:block;background:#b9ad82}
-    .ownedCard .fallbackArt{height:126px;display:grid;place-items:center;font-size:38px;background:linear-gradient(#d9cea9,#aaa078)}
-    .ownedName{font-size:10px;font-weight:900;padding:4px 4px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
-    .countBadge,.hpBadge{position:absolute;top:4px;padding:2px 5px;border-radius:6px;font-size:10px;font-weight:900;color:#fff;box-shadow:0 1px 4px #0009}
-    .countBadge{left:4px;background:#222d20e8}.hpBadge{right:4px;background:#7c2d25e8}.hpBadge.full{background:#28622de8}
-    .categoryTabs{display:grid;grid-template-columns:repeat(5,minmax(58px,1fr));gap:6px;padding:10px}
-    .categoryTab{position:relative;min-height:83px;border:2px solid transparent;border-radius:12px;overflow:hidden;padding:0;background:#111;cursor:pointer;color:white}
-    .categoryTab.active{border-color:#ffd66c;box-shadow:0 0 0 2px #8a682b,0 0 18px #d7a83666}
-    .categoryTab img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.72}
-    .categoryTab span{position:absolute;inset:auto 0 0;padding:6px 3px;background:linear-gradient(transparent,#000d);font-weight:900;text-transform:uppercase;font-size:11px;text-shadow:0 1px 3px #000}
-    .shopGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:0 10px 12px;max-height:680px;overflow:auto}
-    .shopCard{border:1px solid #565e45;border-radius:13px;background:#151b14;overflow:hidden;display:grid;grid-template-columns:88px 1fr;min-height:132px;position:relative}
-    .shopArt{width:88px;height:132px;object-fit:cover;background:#aaa078;display:block}
-    .shopFallback{width:88px;height:132px;display:grid;place-items:center;font-size:35px;background:#d9cea9;color:#16170f}
-    .shopInfo{padding:8px;display:flex;flex-direction:column;min-width:0}
-    .shopName{font-family:Georgia,serif;color:#ffe6a4;font-weight:900;font-size:14px;line-height:1.1}
-    .shopMeta{font-size:11px;color:#bebaa6;margin-top:3px;line-height:1.35}
-    .shopBuy{margin-top:auto;width:100%;padding:7px;border-radius:8px;border:1px solid #8b773d;background:#b98628;color:#171208;font-weight:900;cursor:pointer}
-    .shopBuy:disabled{opacity:.42;cursor:not-allowed}
-    .lockedNote{color:#e0a896;font-size:10px;font-weight:700;margin-top:3px}
-    .log{max-height:260px;overflow:auto;padding:4px 10px 10px}
-    .logLine{padding:7px 3px;border-bottom:1px dashed #3e4635;font-size:12px;color:#d4d0bc;line-height:1.35}
+    .resourceStrip{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+    .resource{padding:4px 8px;background:#10150f;border:1px solid #50573f;border-radius:999px;font-size:12px;white-space:nowrap}
+
+    .realmsPanel{display:flex;flex-direction:column}
+    .realmsList{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:8px;scrollbar-gutter:stable}
+    .realmRow{display:grid;grid-template-columns:minmax(150px,190px) minmax(170px,220px) minmax(0,1fr);gap:9px;align-items:center;min-height:112px;padding:8px;margin-bottom:7px;border:1px solid #414a38;border-radius:14px;background:#111811;position:relative;transition:.18s}
+    .realmRow:last-child{margin-bottom:0}
+    .realmRow.activeRealm{border-color:#e6c05e;background:linear-gradient(90deg,rgba(119,91,26,.28),rgba(28,40,24,.96));box-shadow:inset 4px 0 #e6c05e,0 0 16px rgba(230,192,94,.18)}
+    .realmRow.myRealm{outline:1px solid rgba(115,177,87,.5)}
+    .realmRow.myRealm.activeRealm{border-color:#79c05a;box-shadow:inset 5px 0 #79c05a,0 0 20px rgba(98,194,72,.28)}
+    .realmRow.eliminated{opacity:.48;filter:grayscale(.4)}
+    .realmIdentity{min-width:0;padding-left:5px}
+    .realmName{font-family:Georgia,serif;font-weight:900;font-size:17px;color:#ffe3a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .realmStatus{margin-top:4px;font-size:11px;color:#c4c0ac;display:flex;gap:6px;flex-wrap:wrap}
+    .activePill,.youPill,.strategyPill{display:inline-flex;align-items:center;border-radius:999px;padding:2px 6px;font-size:10px;font-weight:900}
+    .activePill{background:#6f4f12;color:#ffecae}.youPill{background:#285f2b;color:#d9ffd0}.strategyPill{background:#342944;color:#dfc8ff;border:1px solid #67547e}
+    .realmStats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+    .statTile{border:1px solid #424a37;border-radius:10px;background:#1c251a;padding:7px 5px;text-align:center;min-width:0}
+    .statTile strong{display:block;color:#fff0c1;font-size:14px;line-height:1.05}.statTile small{display:block;color:#999b89;font-size:9px;text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+    .townHealth{grid-column:1/-1;height:7px;border-radius:999px;background:#070a07;border:1px solid #3c4534;overflow:hidden;margin-top:1px}
+    .townHealth>i{display:block;height:100%;background:linear-gradient(90deg,#a54236,#e8be58,#65aa4d);transition:width .25s}
+    .realmCards{display:flex;gap:7px;min-width:0;overflow-x:auto;padding:4px 3px 8px;scroll-snap-type:x proximity;overscroll-behavior-x:contain}
+    .realmCard{--faction:#9da493;width:74px;height:102px;flex:0 0 74px;padding:0;border:2px solid var(--faction);border-radius:10px;overflow:hidden;background:#e8dfc5;position:relative;cursor:pointer;color:#16170f;scroll-snap-align:start;box-shadow:0 5px 11px #0008;isolation:isolate}
+    .realmCard:hover,.realmCard:focus-visible{transform:translateY(-3px) scale(1.03);z-index:4;box-shadow:0 10px 22px #000b,0 0 0 2px #f4d36d}
+    .realmCard img,.realmCard .tinyFallback{width:100%;height:100%;object-fit:cover;display:grid;place-items:center;font-size:25px;background:#bbb08a}
+    .cardShade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.06) 40%,rgba(0,0,0,.9) 100%);pointer-events:none}
+    .cardFactionBand{position:absolute;left:0;top:0;width:5px;height:100%;background:var(--faction);box-shadow:1px 0 4px #0008}
+    .cardCost,.cardHp,.cardCount{position:absolute;top:3px;min-width:21px;height:21px;padding:0 4px;display:grid;place-items:center;border-radius:7px;color:white;font-size:9px;font-weight:900;box-shadow:0 1px 5px #000c}
+    .cardCost{left:6px;background:#a66e17}.cardHp{right:3px;background:#28622d}.cardHp.damaged{background:#a63e32}.cardCount{right:3px;top:27px;background:#202b20}
+    .cardName{position:absolute;left:5px;right:4px;bottom:11px;color:#fff5d9;font-size:9px;font-weight:900;line-height:1.05;text-align:left;text-shadow:0 1px 3px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .triggerMarks{position:absolute;left:6px;right:4px;bottom:2px;display:flex;gap:2px;overflow:hidden}
+    .triggerMarks i{font-style:normal;background:#0d130de8;color:#f7dda0;border-radius:3px;padding:0 2px;font-size:7px;line-height:8px}
+    .damageBar{position:absolute;left:4px;right:4px;bottom:0;height:6px;border-radius:999px;background:#1a0908;border:1px solid #000c;overflow:hidden;z-index:5}
+    .damageBar i{display:block;height:100%;background:linear-gradient(90deg,#b83e34,#e9bc50,#65b34b);transition:width .25s}
+    .emptyCards{color:#9e9b89;font-size:12px;padding:16px}
+
+    .commandPanel{display:flex;flex-direction:column;min-height:0;transition:.2s}
+    .commandTabs{display:grid;grid-template-columns:1fr 1fr;flex:0 0 auto;background:#0e140d;border-bottom:1px solid #46503a}
+    .commandTab{min-height:43px;border:0;border-right:1px solid #3d4535;background:#172016;color:#bfbba7;font-weight:900;cursor:pointer;position:relative}
+    .commandTab:last-child{border-right:0}
+    .commandTab.active{background:linear-gradient(#34432d,#202b1d);color:#ffe39a}
+    .commandTab.active:after{content:"";position:absolute;left:17%;right:17%;bottom:0;height:3px;border-radius:3px 3px 0 0;background:#e6bd55}
+    .commandPane{display:none;flex:1;min-height:0;overflow:hidden}
+    .commandPane.active{display:block}
+    #actionsPane{padding:9px}
+    .actionLayout{height:100%;display:grid;grid-template-columns:minmax(180px,.62fr) minmax(330px,1.35fr) minmax(210px,.78fr);gap:9px;min-height:0}
+    .diceStage{min-height:0;border:1px solid #525a42;border-radius:15px;background:radial-gradient(circle at center,#3a422d 0,#1b2318 65%,#121711 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;position:relative;overflow:hidden}
+    .diceStage:before{content:"";position:absolute;inset:9px;border:1px solid rgba(232,191,89,.27);border-radius:11px;pointer-events:none}
+    #diceVisual{display:flex;align-items:center;justify-content:center;gap:12px;min-height:94px;position:relative;z-index:1}
+    .die{width:74px;height:74px;border-radius:16px;background:linear-gradient(145deg,#fff8df,#c9b778);border:4px solid #6e531d;box-shadow:0 11px 20px #0008,inset 0 0 0 2px #fff9;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:8px}
+    .pip{width:10px;height:10px;background:#211c12;border-radius:50%;align-self:center;justify-self:center;visibility:hidden}.pip.on{visibility:visible}
+    .polyDie{width:100px;height:88px;clip-path:polygon(50% 0,93% 20%,100% 62%,73% 100%,27% 100%,0 62%,7% 20%);display:grid;place-items:center;background:linear-gradient(145deg,#ffe48d,#9e6419 62%,#503410);color:#fff9df;text-shadow:0 2px 4px #000;font-size:31px;font-weight:900;filter:drop-shadow(0 12px 10px #0008)}
+    .polyDie.d20{clip-path:polygon(50% 0,95% 24%,82% 84%,50% 100%,18% 84%,5% 24%)}
+    .rollCaption{font-family:Georgia,serif;font-size:15px;color:#ffe3a2;margin-top:6px;text-align:center;position:relative;z-index:1}
+    .controlsArea{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0;overflow:auto;padding-right:2px}
+    .phaseCard{border:1px solid #565e45;border-radius:13px;background:#151b14;padding:9px}
+    .phaseTitle{font-weight:900;color:#f6dfa1;margin-bottom:3px}
+    .playerSnapshot{display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid #3e4736;border-radius:11px;background:#10160f;min-width:0}
+    .playerSnapshot strong{font-family:Georgia,serif;color:#ffe2a0;white-space:nowrap}
+    .dieToggle{display:flex;gap:5px;flex-wrap:wrap}
+    .dieChoice{flex:1;min-width:72px;border:1px solid #667153;border-radius:10px;background:#222d20;color:#d9d5c1;padding:8px;font-weight:900;cursor:pointer}
+    .dieChoice.active{background:linear-gradient(#d6aa45,#9a6d20);border-color:#efca6a;color:#171208;box-shadow:0 0 0 2px rgba(232,191,89,.2)}
+    .dieChoice:disabled{opacity:.35;cursor:not-allowed}
+    .controlRow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+    .actionBtn{border:1px solid #8b773d;border-radius:10px;background:linear-gradient(#d6aa45,#9a6d20);color:#171208;font-weight:900;padding:9px 7px;cursor:pointer;box-shadow:inset 0 1px #fff7;min-height:42px}
+    .actionBtn.secondary{background:#2c3828;color:#fff1cc;border-color:#667153}.actionBtn.danger{background:#78382f;color:white;border-color:#ad5a4c}.actionBtn:disabled{opacity:.35;cursor:not-allowed;filter:grayscale(.7)}
+    #targetBox{display:grid;grid-template-columns:1fr 1fr 1.25fr;gap:5px}
+    #targetBox select{width:100%;min-width:0;background:#0e130d;color:#f7efd8;border:1px solid #6e7457;border-radius:9px;padding:8px;min-height:38px}
+    #queueBox{min-height:48px;max-height:78px;overflow:auto;padding:7px;border-radius:10px;background:#0e130d;border:1px solid #363e30;font-size:11px;line-height:1.4;color:#cfccb9}
+    .logCard{min-height:0;display:flex;flex-direction:column;border:1px solid #424b38;border-radius:13px;background:#111711;overflow:hidden}
+    .logCardHead{padding:8px 10px;border-bottom:1px solid #3c4433;color:#f5d995;font-weight:900;font-family:Georgia,serif}
+    .log{flex:1;min-height:0;overflow:auto;padding:2px 8px 8px}.logLine{padding:6px 2px;border-bottom:1px dashed #3e4635;font-size:11px;color:#d4d0bc;line-height:1.35}
+
+    #shopPane{overflow:hidden}
+    .shopLayout{height:100%;display:flex;flex-direction:column;min-height:0}
+    .shopToolbar{display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:1px solid #414834}.shopToolbar strong{font-family:Georgia,serif;color:#f8df9d}.shopToolbar #shopStatus{margin-left:auto}
+    .categoryTabs{display:grid;grid-template-columns:repeat(5,minmax(72px,1fr));gap:6px;padding:7px 9px;flex:0 0 auto}
+    .categoryTab{position:relative;min-height:55px;border:2px solid transparent;border-radius:11px;overflow:hidden;padding:0;background:#111;cursor:pointer;color:white}.categoryTab.active{border-color:#ffd66c;box-shadow:0 0 0 2px #8a682b,0 0 14px #d7a83655}.categoryTab img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.68}.categoryTab span{position:absolute;inset:auto 0 0;padding:5px 3px;background:linear-gradient(transparent,#000e);font-weight:900;text-transform:uppercase;font-size:10px;text-shadow:0 1px 3px #000}
+    .shopGrid{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(4,minmax(205px,1fr));align-content:start;gap:8px;padding:0 9px 9px}
+    .shopCard{--faction:#9da493;border:1px solid #565e45;border-left:4px solid var(--faction);border-radius:12px;background:#151b14;overflow:hidden;display:grid;grid-template-columns:78px 1fr;min-height:116px;position:relative}.shopCard.affordable{box-shadow:0 0 0 1px rgba(232,191,89,.2)}
+    .shopArt{width:78px;height:116px;object-fit:cover;background:#aaa078;display:block;cursor:pointer}.shopFallback{width:78px;height:116px;display:grid;place-items:center;font-size:32px;background:#d9cea9;color:#16170f}.shopInfo{padding:7px;display:flex;flex-direction:column;min-width:0}.shopName{font-family:Georgia,serif;color:#ffe6a4;font-weight:900;font-size:13px;line-height:1.1;cursor:pointer}.shopMeta{font-size:10px;color:#bebaa6;margin-top:3px;line-height:1.3}.shopEffect{font-size:10px;color:#ddd7bb;margin-top:4px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.shopBuy{margin-top:auto;width:100%;padding:6px;border-radius:8px;border:1px solid #8b773d;background:#b98628;color:#171208;font-weight:900;cursor:pointer;font-size:11px}.shopBuy:disabled{opacity:.42;cursor:not-allowed}.lockedNote{color:#e0a896;font-size:9px;font-weight:700;margin-top:3px}
     .empty{padding:16px;color:#aaa691;text-align:center}
-    #loadingOverlay{position:fixed;inset:0;z-index:100;background:radial-gradient(circle,#28351f,#090d09 72%);display:flex;align-items:center;justify-content:center;padding:20px}
-    .loadingCard{width:min(620px,100%);border:1px solid #6a704e;border-radius:22px;background:#171e16;box-shadow:0 25px 80px #000;padding:24px;text-align:center}
-    .loadingCard h1{font-family:Georgia,serif;color:#ffe4a0;margin:0 0 8px}
-    .progressTrack{height:13px;border-radius:999px;background:#090d09;border:1px solid #4f563e;overflow:hidden;margin:16px 0 8px}
-    #progressFill{height:100%;width:0;background:linear-gradient(90deg,#7b5b1b,#e5bd55,#83a948);transition:width .2s}
-    #readyList{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:12px}
-    .readyPill{font-size:12px;padding:5px 8px;border-radius:999px;border:1px solid #575e46;background:#10150f}
-    .readyPill.ready{border-color:#5b934a;color:#bde6a9}.readyPill.loading{color:#e7c976}.readyPill.offline{color:#c88d83}
-    #toast{position:fixed;z-index:120;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#131912;border:1px solid #777b5b;color:#fff5d8;padding:10px 14px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;box-shadow:0 8px 28px #000}
-    #toast.show{opacity:1;transform:translate(-50%,0)}
-    dialog{border:1px solid #77704f;border-radius:17px;background:#161d15;color:#f6edd1;width:min(720px,94vw);padding:0;box-shadow:0 30px 90px #000}
-    dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
-    .modalGrid{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:16px;padding:16px}
-    #modalArt{width:100%;max-height:410px;object-fit:contain;border-radius:12px;background:#b9ad82}
-    .modalBody h2{font-family:Georgia,serif;color:#ffe4a0;margin:0 0 8px}
-    .modalBody p{line-height:1.5;color:#d5d0b8}
-    .modalClose{position:absolute;right:9px;top:9px}
-    @media(max-width:1080px){#app{grid-template-columns:1fr}.sideColumn{display:grid;grid-template-columns:1fr 1fr}.sideColumn .panel:first-child{grid-column:1/-1}.shopGrid{max-height:500px}}
-    @media(max-width:720px){
-      :root{--cardW:72px}.topbar{min-height:50px;padding:6px 8px}.brand{font-size:17px}.tag{display:none}#turnBanner{top:50px;font-size:13px;padding:9px}
-      #app{padding:7px;gap:8px}.mainColumn,.sideColumn{gap:8px}.sideColumn{display:flex}.battlePanel{grid-template-columns:1fr;padding:9px}.diceStage{min-height:180px}.die{width:68px;height:68px;border-radius:14px;padding:7px}.pip{width:10px;height:10px}.d20{width:88px;height:78px}
-      .controlRow .actionBtn{flex:1 1 calc(50% - 8px);padding:10px 7px;font-size:13px}#targetBox{grid-template-columns:1fr}.opponentScroll{max-height:230px}.ownedCard img,.ownedCard .fallbackArt{height:99px}.categoryTabs{padding:7px;gap:4px}.categoryTab{min-height:65px}.shopGrid{grid-template-columns:1fr;padding:0 7px 9px;max-height:none}.shopCard{grid-template-columns:78px 1fr;min-height:116px}.shopArt,.shopFallback{width:78px;height:116px}.modalGrid{grid-template-columns:1fr}.modalGrid #modalArt{max-height:50vh}.panelHead{padding:9px 10px}}
-    @media(max-width:390px){.brand{font-size:15px}.iconBtn{padding:7px}.resourceStrip{gap:3px}.resource{font-size:10px;padding:3px 5px}.categoryTab span{font-size:9px}.controlRow .actionBtn{font-size:12px}}
+
+    #hoverCardTooltip{position:fixed;z-index:150;pointer-events:none;display:none;width:min(300px,82vw);padding:10px 11px;border:1px solid #82744d;border-radius:11px;background:#111811f2;color:#f7efd6;box-shadow:0 14px 35px #000c;font-size:11px;line-height:1.4;backdrop-filter:blur(8px)}
+    #hoverCardTooltip.show{display:block}#hoverCardTooltip strong{display:block;color:#ffe39a;font-family:Georgia,serif;font-size:14px;margin-bottom:3px}#hoverCardTooltip .tooltipHp{color:#bfe5ae;font-weight:900;margin-bottom:4px}
+    #loadingOverlay{position:fixed;inset:0;z-index:200;background:radial-gradient(circle,#28351f,#090d09 72%);display:flex;align-items:center;justify-content:center;padding:20px}.loadingCard{width:min(620px,100%);border:1px solid #6a704e;border-radius:22px;background:#171e16;box-shadow:0 25px 80px #000;padding:24px;text-align:center}.loadingCard h1{font-family:Georgia,serif;color:#ffe4a0;margin:0 0 8px}.progressTrack{height:13px;border-radius:999px;background:#090d09;border:1px solid #4f563e;overflow:hidden;margin:16px 0 8px}#progressFill{height:100%;width:0;background:linear-gradient(90deg,#7b5b1b,#e5bd55,#83a948);transition:width .2s}#readyList{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:12px}.readyPill{font-size:12px;padding:5px 8px;border-radius:999px;border:1px solid #575e46;background:#10150f}.readyPill.ready{border-color:#5b934a;color:#bde6a9}.readyPill.loading{color:#e7c976}.readyPill.offline{color:#c88d83}
+    #toast{position:fixed;z-index:180;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#131912;border:1px solid #777b5b;color:#fff5d8;padding:10px 14px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;box-shadow:0 8px 28px #000}#toast.show{opacity:1;transform:translate(-50%,0)}
+    dialog{border:1px solid #77704f;border-radius:17px;background:#161d15;color:#f6edd1;width:min(720px,94vw);padding:0;box-shadow:0 30px 90px #000}dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}.modalGrid{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:16px;padding:16px}.modalGrid #modalArt{width:100%;max-height:410px;object-fit:contain;border-radius:12px;background:#b9ad82}.modalBody h2{font-family:Georgia,serif;color:#ffe4a0;margin:0 0 8px}.modalBody p{line-height:1.5;color:#d5d0b8}.modalClose{position:absolute;right:9px;top:9px}
+
+    body.focusMode{position:fixed;inset:0;z-index:999;background:#090d09}body.focusMode .topbar{padding-top:max(7px,env(safe-area-inset-top));height:calc(var(--topbarH) + env(safe-area-inset-top))}body.focusMode #app{height:calc(100dvh - var(--topbarH) - var(--turnH) - env(safe-area-inset-top))}
+    :fullscreen body,:fullscreen{background:#090d09}
+
+    @media(max-width:1100px){
+      .actionLayout{grid-template-columns:minmax(165px,.55fr) minmax(320px,1.3fr)}.logCard{display:none}.shopGrid{grid-template-columns:repeat(3,minmax(200px,1fr))}.realmRow{grid-template-columns:145px 180px minmax(0,1fr)}
+    }
+    @media(max-width:760px){
+      :root{--topbarH:50px;--turnH:40px}.topbar{padding:5px 7px}.brand{font-size:16px}.tag{display:none}.iconBtn{padding:7px 8px;font-size:12px}#turnBanner{font-size:12px;padding:6px}
+      #app{padding:6px;gap:6px;grid-template-rows:minmax(0,47%) minmax(0,53%)}.panel{border-radius:13px}.panelHead{min-height:38px;padding:7px 9px}.panelHead h2{font-size:15px}.panelHead .subtle{display:none}
+      .realmsList{padding:5px}.realmRow{display:grid;grid-template-columns:minmax(110px,.8fr) minmax(150px,1fr);grid-template-areas:"identity stats" "cards cards";gap:5px;min-height:0;padding:6px;margin-bottom:5px}.realmIdentity{grid-area:identity}.realmName{font-size:14px}.realmStatus{font-size:9px}.realmStats{grid-area:stats;grid-template-columns:repeat(3,1fr);gap:3px}.statTile{padding:4px 2px}.statTile strong{font-size:11px}.statTile small{font-size:7px}.townHealth{height:5px}.realmCards{grid-area:cards;padding:2px 2px 5px;gap:5px}.realmCard{width:61px;height:82px;flex-basis:61px;border-radius:8px}.cardCost,.cardHp,.cardCount{min-width:18px;height:18px;font-size:8px}.cardCount{top:23px}.cardName{font-size:8px;bottom:9px}.triggerMarks i{font-size:6px;line-height:7px}.damageBar{height:5px}
+      .commandTab{min-height:38px;font-size:12px}#actionsPane{padding:6px}.actionLayout{grid-template-columns:112px minmax(0,1fr);gap:6px}.diceStage{padding:6px;border-radius:11px}.diceStage:before{inset:5px}.die{width:55px;height:55px;border-width:3px;border-radius:12px;padding:6px}.pip{width:8px;height:8px}.polyDie{width:72px;height:64px;font-size:24px}.rollCaption{font-size:11px;margin-top:2px}.controlsArea{gap:5px}.phaseCard{padding:6px}.phaseTitle{font-size:12px}.phaseCard .subtle{font-size:9px}.playerSnapshot{padding:4px 5px}.playerSnapshot strong{display:none}.resourceStrip{gap:3px}.resource{font-size:9px;padding:3px 5px}.dieChoice{min-width:48px;padding:6px 4px;font-size:10px}.controlRow{grid-template-columns:repeat(2,1fr);gap:4px}.actionBtn{min-height:34px;padding:5px 4px;font-size:10px}#targetBox{grid-template-columns:1fr;gap:3px}#targetBox select{min-height:31px;padding:5px;font-size:10px}#queueBox{max-height:50px;min-height:34px;padding:4px;font-size:9px}.logCard{display:none}
+      .shopToolbar{padding:5px 7px}.categoryTabs{display:flex;overflow-x:auto;padding:5px 6px;gap:4px}.categoryTab{flex:0 0 68px;min-height:42px}.categoryTab span{font-size:8px;padding:4px 2px}.shopGrid{grid-template-columns:1fr;padding:0 6px 7px;gap:6px}.shopCard{grid-template-columns:65px 1fr;min-height:92px}.shopArt,.shopFallback{width:65px;height:92px}.shopInfo{padding:5px}.shopName{font-size:11px}.shopMeta,.shopEffect{font-size:8px}.shopBuy{padding:5px;font-size:9px}
+      .modalGrid{grid-template-columns:1fr}.modalGrid #modalArt{max-height:45vh}
+    }
+    @media(max-width:430px){
+      #app{grid-template-rows:minmax(0,45%) minmax(0,55%)}.actionLayout{grid-template-columns:92px minmax(0,1fr)}.diceStage{min-width:0}.die{width:48px;height:48px;padding:5px}.pip{width:7px;height:7px}.polyDie{width:63px;height:56px;font-size:21px}.rollCaption{font-size:9px}.realmRow{grid-template-columns:104px minmax(135px,1fr)}.resource:nth-child(3){display:none}
+    }
+    @media(max-height:650px) and (max-width:760px){
+      #app{grid-template-rows:minmax(0,42%) minmax(0,58%)}.realmCard{height:74px}.phaseCard{display:none}.playerSnapshot{display:none}.queueBox{max-height:38px}
+    }
   </style>
 </head>
 <body>
@@ -136,55 +166,66 @@
     <span id="connectionTag" class="tag">Connecting…</span>
     <span class="grow"></span>
     <button id="leaveBtn" class="iconBtn" title="Leave or forfeit">Leave</button>
-    <button id="fullscreenBtn" class="iconBtn" title="Toggle fullscreen">⛶</button>
+    <button id="fullscreenBtn" class="iconBtn" title="Toggle fullscreen or focus mode">⛶</button>
   </header>
   <div id="turnBanner" class="waiting">Preparing the game…</div>
 
   <main id="app">
-    <section class="mainColumn">
-      <section class="panel">
-        <div class="panelHead"><h2>Opponents</h2><span class="subtle">Scroll in both directions to inspect every realm and card.</span></div>
-        <div class="opponentScroll"><table class="opponentTable"><thead><tr><th>Player</th><th>Status</th><th>Gold</th><th>Town</th><th>Die</th><th>Cards</th></tr></thead><tbody id="opponentBody"></tbody></table></div>
-      </section>
-
-      <section class="panel battlePanel">
-        <div class="diceStage">
-          <div id="diceVisual"></div>
-          <div id="rollCaption" class="rollCaption">Waiting for the first roll</div>
-        </div>
-        <div class="controlsArea">
-          <div class="phaseCard"><div id="phaseTitle" class="phaseTitle">Waiting</div><div id="phaseHelp" class="subtle">The game will begin after the active players finish loading.</div></div>
-          <div class="controlRow">
-            <select id="dieSelect" aria-label="Choose die"><option value="d6">d6</option></select>
-            <button id="rollBtn" class="actionBtn">🎲 Roll</button>
-            <button id="resolveBtn" class="actionBtn secondary">Resolve</button>
-            <button id="applyTargetBtn" class="actionBtn secondary">Apply Target</button>
-            <button id="endTurnBtn" class="actionBtn secondary">End Turn</button>
-          </div>
-          <div id="targetBox"></div>
-          <div id="queueBox">No triggers pending.</div>
-        </div>
-      </section>
-
-      <section class="panel ownedPanel">
-        <div class="panelHead"><h2>Your Realm</h2><span id="yourStatus" class="subtle"></span><div id="resourceStrip" class="resourceStrip"></div></div>
-        <div id="ownedRail" class="ownedRail"></div>
-      </section>
+    <section class="panel realmsPanel">
+      <div class="panelHead">
+        <h2>Every Realm</h2>
+        <span class="subtle">The active realm is highlighted. Scroll each row to inspect every card.</span>
+        <div id="resourceStrip" class="resourceStrip"></div>
+      </div>
+      <div id="realmsList" class="realmsList"></div>
     </section>
 
-    <aside class="sideColumn">
-      <section class="panel">
-        <div class="panelHead"><h2>Card Shop</h2><span id="shopStatus" class="subtle"></span></div>
-        <div id="categoryTabs" class="categoryTabs"></div>
-        <div id="shopGrid" class="shopGrid"></div>
-      </section>
-      <section class="panel">
-        <div class="panelHead"><h3>Battle Log</h3></div>
-        <div id="log" class="log"></div>
-      </section>
-    </aside>
+    <section id="commandPanel" class="panel commandPanel">
+      <div class="commandTabs" role="tablist" aria-label="Game commands">
+        <button id="actionsTab" class="commandTab active" data-command-tab="actions" role="tab" aria-selected="true">🎲 Roll & Resolve</button>
+        <button id="shopTab" class="commandTab" data-command-tab="shop" role="tab" aria-selected="false">🛒 Card Shop</button>
+      </div>
+
+      <div id="actionsPane" class="commandPane active" role="tabpanel">
+        <div class="actionLayout">
+          <div class="diceStage">
+            <div id="diceVisual"></div>
+            <div id="rollCaption" class="rollCaption">Waiting for the first roll</div>
+          </div>
+
+          <div class="controlsArea">
+            <div class="phaseCard"><div id="phaseTitle" class="phaseTitle">Waiting</div><div id="phaseHelp" class="subtle">The game will begin after the active players finish loading.</div></div>
+            <div class="playerSnapshot"><strong>Your Realm</strong><span id="yourStatus" class="subtle"></span><div id="yourResourceStrip" class="resourceStrip"></div></div>
+            <input id="dieSelect" type="hidden" value="d6" />
+            <div id="dieToggle" class="dieToggle" aria-label="Choose die"></div>
+            <div class="controlRow">
+              <button id="rollBtn" class="actionBtn">🎲 Roll</button>
+              <button id="resolveBtn" class="actionBtn secondary">Resolve</button>
+              <button id="applyTargetBtn" class="actionBtn secondary">Apply Target</button>
+              <button id="endTurnBtn" class="actionBtn secondary">End Turn</button>
+            </div>
+            <div id="targetBox"></div>
+            <div id="queueBox">No triggers pending.</div>
+          </div>
+
+          <div class="logCard">
+            <div class="logCardHead">Battle Log</div>
+            <div id="log" class="log"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="shopPane" class="commandPane" role="tabpanel">
+        <div class="shopLayout">
+          <div class="shopToolbar"><strong>Card Shop</strong><span id="shopStatus" class="subtle"></span></div>
+          <div id="categoryTabs" class="categoryTabs"></div>
+          <div id="shopGrid" class="shopGrid"></div>
+        </div>
+      </div>
+    </section>
   </main>
 
+  <div id="hoverCardTooltip" role="tooltip"></div>
   <dialog id="cardModal">
     <button class="iconBtn modalClose" id="modalClose">✕</button>
     <div class="modalGrid"><img id="modalArt" alt="Card art"><div class="modalBody"><h2 id="modalName"></h2><div id="modalMeta" class="subtle"></div><p id="modalDetails"></p></div></div>
@@ -216,9 +257,12 @@
     const STARTERS = ['townhall','farm','mill'];
     const CATEGORIES = ['grey','white','black','red','green'];
     const CATEGORY_NAMES = {grey:'Grey',white:'White',black:'Black',red:'Red',green:'Green'};
+    const TEMPLE_KEYS = ['white_temple','black_temple','red_temple','green_temple'];
+    const FACTION_COLORS = {grey:'#9da493',white:'#f0dfaa',black:'#9a73c4',red:'#d75a48',green:'#63a74f'};
     let user = null, state = null, lobbyData = null, presence = new Map(), unsubLobby = null, unsubPresence = null;
     let rng = null;
     let selectedCategory = 'grey', actionBusy = false, aiTimer = 0, disconnectTimer = 0, heartbeatTimer = 0;
+    let activeCommandTab = 'actions', lastAutoTabPhase = '', focusMode = false;
     let assetMap = {}, missingAssets = new Set(), graphicsReady = false, lastRenderedVersion = -1, toastTimer = 0;
     const lobbyRef = lobbyId ? doc(db,'lobbies',lobbyId) : null;
 
@@ -470,16 +514,31 @@
       for(const key of STARTERS){ const card=CARD_CATALOG[key]; player.owned.push({key,count:1,hp:card.hp,maxHp:card.hp}); }
       return player;
     }
+    function makeAIStrategy(game,index){
+      const ranked=['white','black','red','green'].map((category,i)=>({category,roll:randomUnit(game.seed||1,index+11,i+31)})).sort((a,b)=>a.roll-b.roll);
+      const templeCount=randomUnit(game.seed||1,index+23,91)<0.68?1:2;
+      const factions=ranked.slice(0,templeCount).map(x=>x.category);
+      const labels={white:'Sanctuary',black:'Corruption',red:'Aggression',green:'Growth'};
+      return{factions,temples:factions.map(f=>`${f}_temple`),label:factions.map(f=>labels[f]).join(' + ')};
+    }
+    function ensureAIStrategy(game,player,index){
+      if(!player?.isAI)return;
+      const valid=player.aiStrategy&&Array.isArray(player.aiStrategy.temples)&&player.aiStrategy.temples.length>=1&&player.aiStrategy.temples.length<=2;
+      if(!valid)player.aiStrategy=makeAIStrategy(game,index);
+    }
     function normalizeGame(game){
       game=game&&typeof game==='object'?game:{};
+      game.seed=Number(game.seed)||Math.floor(Math.random()*1e9);
       game.players=Array.isArray(game.players)?game.players:[];
-      game.players.forEach((p,i)=>{p.id=p.id||p.uid||`legacy-${i}-${slug(p.name)}`;p.name=p.name||`Player ${i+1}`;p.isAI=!!p.isAI;p.eliminated=!!p.eliminated;p.gold=Number(p.gold)||0;p.townHp=Number(p.townHp??20);normalizeOwned(p);p.unlocked=computeUnlockForPlayer(p);});
+      game.players.forEach((p,i)=>{
+        p.id=p.id||p.uid||`legacy-${i}-${slug(p.name)}`;p.name=p.name||`Player ${i+1}`;p.isAI=!!p.isAI;p.eliminated=!!p.eliminated;p.gold=Number(p.gold)||0;p.townHp=Number(p.townHp??20);
+        normalizeOwned(p);p.unlocked=computeUnlockForPlayer(p);ensureAIStrategy(game,p,i);
+      });
       game.turnIdx=Math.max(0,Math.min(Number(game.turnIdx)||0,Math.max(0,game.players.length-1)));
       game.phase=game.phase||'await_roll';
       game.resolveQueue=Array.isArray(game.resolveQueue)?game.resolveQueue:[];
       game.version=Number(game.version)||0;
       game.rollCount=Number(game.rollCount)||0;
-      game.seed=Number(game.seed)||Math.floor(Math.random()*1e9);
       game.log=Array.isArray(game.log)?game.log.slice(-60):[];
       game.turnBuys=Number(game.turnBuys)||0;
       game.lastActionIds=game.lastActionIds&&typeof game.lastActionIds==='object'?game.lastActionIds:{};
@@ -489,7 +548,7 @@
     function myPlayer(game=state){ return game?.players?.find(p=>(user&&p.uid===user.uid)||(!p.uid&&p.name===myName))||null; }
     function myIndex(game=state){ return game?.players?.findIndex(p=>(user&&p.uid===user.uid)||(!p.uid&&p.name===myName))??-1; }
     function isMyTurn(){ const p=activePlayer(); return !!p&&!p.isAI&&myIndex()===state.turnIdx&&!p.eliminated&&state.phase!=='finished'; }
-    function allowedDiceFor(player){ const u=player?.unlocked||'d6'; return u==='d20'?['d6','2d6','d20']:u==='2d6'?['d6','2d6']:['d6']; }
+    function allowedDiceFor(player){ const u=player?.unlocked||'d6'; return u==='d20'?['d6','d12','d20']:u==='d12'?['d6','d12']:['d6']; }
     function highestDie(player){ const list=allowedDiceFor(player); return list[list.length-1]; }
     function isFreshPresence(p,maxAge=26000){ return !!p&&p.active!==false&&nowMs()-timestampMs(p.lastSeen)<maxAge; }
     function findPresenceForPlayer(player){ if(!player||player.isAI) return null; if(player.uid&&presence.has(player.uid)) return presence.get(player.uid); return [...presence.values()].find(p=>p.name===player.name)||null; }
@@ -520,7 +579,7 @@
     }
     function rollDice(mode,game){
       const one=(salt,max)=>1+Math.floor(randomUnit(game.seed,game.rollCount,salt)*max);
-      if(mode==='2d6'){const faces=[one(1,6),one(2,6)];return{value:faces[0]+faces[1],faces};}
+      if(mode==='d12'){const v=one(2,12);return{value:v,faces:[v]};}
       if(mode==='d20'){const v=one(3,20);return{value:v,faces:[v]};}
       const v=one(4,6);return{value:v,faces:[v]};
     }
@@ -566,14 +625,12 @@
     }
 
     function computeUnlockForPlayer(p){
-      let u='d6'; for (const e of (p.owned||[])){ const c=CARD_CATALOG[e.key]; if (!c) continue;
-        for (const n of (c.triggers||[])){ if (n>=7 && n<=12) u='2d6'; if (n>=13) return 'd20'; } }
-      return u;
+      let u='d6'; for(const e of(p.owned||[])){const c=CARD_CATALOG[e.key];if(!c)continue;for(const n of(c.triggers||[])){if(n>=7&&n<=12)u='d12';if(n>=13)return'd20';}}return u;
     }
     function rollDie(mode, rdRef = state){
   if (!rng) rng = mulberry32((rdRef.seed||1) + (rdRef.rollCount||0));
   if (mode==='d6') return 1+Math.floor(rng()*6);
-  if (mode==='2d6') return (1+Math.floor(rng()*6)) + (1+Math.floor(rng()*6));
+  if (mode==='d12') return 1+Math.floor(rng()*12);
   if (mode==='d20') return 1+Math.floor(rng()*20);
   return 1;
 }
@@ -1208,26 +1265,22 @@ function resolveOne(rd, manual){
       else $('#loadingText').textContent='Graphics ready. Waiting for active players, then starting automatically…';
     }
     function renderTurnBanner(){
-      const banner=$('#turnBanner');banner.className='';
-      if(!state){banner.classList.add('waiting');banner.textContent='Preparing the game…';return;}
+      const banner=$('#turnBanner');banner.className='';document.body.classList.toggle('myTurn',isMyTurn());
+      if(!state){banner.classList.add('waiting');banner.textContent='Preparing the game…';document.title='Magic Realms';return;}
       if(state.phase==='finished'){
-        banner.classList.add('finished');banner.textContent=state.winner?`🏆 ${state.winner} wins the realm!`:'The game is finished.';return;
+        banner.classList.add('finished');banner.textContent=state.winner?`🏆 ${state.winner} wins the realm!`:'The game is finished.';document.title='Magic Realms — Finished';return;
       }
       const active=activePlayer();
-      if(isMyTurn()){banner.classList.add('mine');banner.textContent=`YOUR TURN — ${phaseLabel(state.phase)}`;}
-      else{banner.classList.add('waiting');banner.textContent=`${active?.name||'Player'}’s turn — ${phaseLabel(state.phase)}`;}
+      if(isMyTurn()){banner.classList.add('mine');banner.textContent=`YOUR TURN — ${phaseLabel(state.phase)}`;document.title=`★ YOUR TURN — Magic Realms`;}
+      else{banner.classList.add('waiting');banner.textContent=`${active?.name||'Player'}’s turn — ${phaseLabel(state.phase)}`;document.title=`${active?.name||'Player'} — Magic Realms`;}
     }
     function phaseLabel(phase){return phase==='await_roll'?'Roll the dice':phase==='resolving'?'Resolve triggers':phase==='buy'?'Shop and end turn':phase==='finished'?'Finished':'Waiting';}
     function renderDice(){
-      const box=$('#diceVisual');box.innerHTML='';
-      const roll=state?.lastRoll;
+      const box=$('#diceVisual');box.innerHTML='';const roll=state?.lastRoll;
       if(!roll){box.appendChild(makeD6(1,true));$('#rollCaption').textContent='Waiting for the next roll';return;}
-      if(roll.mode==='d20'){
-        const d=document.createElement('div');d.className='d20';d.textContent=roll.value;box.appendChild(d);
-      }else{
-        const faces=roll.faces?.length?roll.faces:roll.mode==='2d6'?[Math.max(1,Math.min(6,roll.value-1)),1]:[roll.value];
-        faces.forEach(v=>box.appendChild(makeD6(v,false)));
-      }
+      if(roll.mode==='d12'||roll.mode==='d20'){
+        const d=document.createElement('div');d.className=`polyDie ${roll.mode==='d20'?'d20':''}`;d.textContent=roll.value;box.appendChild(d);
+      }else{(roll.faces?.length?roll.faces:[roll.value]).forEach(v=>box.appendChild(makeD6(v,false)));}
       $('#rollCaption').textContent=`${roll.by} rolled ${roll.value} on ${roll.mode}`;
     }
     function makeD6(value,ghost=false){
@@ -1235,35 +1288,65 @@ function resolveOne(rd, manual){
       const patterns={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
       for(let i=0;i<9;i++){const pip=document.createElement('i');pip.className='pip '+((patterns[value]||[]).includes(i)?'on':'');die.appendChild(pip);}return die;
     }
+    function factionColor(category){return FACTION_COLORS[category]||FACTION_COLORS.grey;}
+    function addDamageBar(tile,current,max){
+      if(!(Number(current)<Number(max)))return;
+      const bar=document.createElement('span');bar.className='damageBar';const fill=document.createElement('i');fill.style.width=`${Math.max(0,Math.min(100,(Number(current)||0)/Math.max(1,Number(max)||1)*100))}%`;bar.appendChild(fill);tile.appendChild(bar);
+    }
+    function positionTooltip(event){
+      const tip=$('#hoverCardTooltip');if(!tip.classList.contains('show'))return;
+      const pad=12,w=tip.offsetWidth||280,h=tip.offsetHeight||110;let x=event.clientX+14,y=event.clientY+14;
+      if(x+w>innerWidth-pad)x=event.clientX-w-14;if(y+h>innerHeight-pad)y=event.clientY-h-14;
+      tip.style.left=`${Math.max(pad,x)}px`;tip.style.top=`${Math.max(pad,y)}px`;
+    }
+    function attachCardHover(tile,card,entry,owner){
+      const shown=entry?(entry.key==='townhall'?owner?.townHp:entry.hp):(card.hpDynamic?'Scaling':card.hp??'—');
+      const max=entry?currentMaxHp(owner,entry.key):(card.hpDynamic?'Scaling':card.hp??'—');
+      tile.addEventListener('mouseenter',event=>{const tip=$('#hoverCardTooltip');tip.innerHTML=`<strong>${escapeText(card.name)}</strong><div class="tooltipHp">HP ${shown}/${max} • ×${entry?.count||1} • Cost ${card.cost}</div><div>${escapeText(card.details||'')}</div>`;tip.classList.add('show');positionTooltip(event);});
+      tile.addEventListener('mousemove',positionTooltip);tile.addEventListener('mouseleave',()=>$('#hoverCardTooltip').classList.remove('show'));
+    }
+    function makeRealmCard(card,entry,player){
+      const max=currentMaxHp(player,entry.key),shownHp=entry.key==='townhall'?player.townHp:entry.hp;
+      const tile=document.createElement('button');tile.className='realmCard';tile.style.setProperty('--faction',factionColor(card.category));tile.setAttribute('aria-label',`${card.name}, ${shownHp} of ${max} health`);
+      tile.appendChild(makeArt(card,'tinyArt'));
+      const shade=document.createElement('span');shade.className='cardShade';tile.appendChild(shade);
+      const band=document.createElement('span');band.className='cardFactionBand';tile.appendChild(band);
+      const cost=document.createElement('span');cost.className='cardCost';cost.textContent=`💰${card.cost}`;tile.appendChild(cost);
+      const hp=document.createElement('span');hp.className=`cardHp ${shownHp<max?'damaged':''}`;hp.textContent=`♥${shownHp}`;tile.appendChild(hp);
+      if((entry.count||1)>1){const count=document.createElement('span');count.className='cardCount';count.textContent=`×${entry.count}`;tile.appendChild(count);}
+      const name=document.createElement('span');name.className='cardName';name.textContent=card.name;tile.appendChild(name);
+      const triggers=document.createElement('span');triggers.className='triggerMarks';(card.triggers||[]).slice(0,5).forEach(n=>{const mark=document.createElement('i');mark.textContent=n;triggers.appendChild(mark);});tile.appendChild(triggers);
+      addDamageBar(tile,shownHp,max);attachCardHover(tile,card,entry,player);tile.onclick=()=>showCardModal(card,entry,player);return tile;
+    }
     function renderOpponents(){
-      const body=$('#opponentBody');body.innerHTML='';
-      if(!state){body.innerHTML='<tr><td colspan="6" class="empty">Waiting for players…</td></tr>';return;}
+      const list=$('#realmsList');list.innerHTML='';
+      if(!state){list.innerHTML='<div class="empty">Waiting for players…</div>';return;}
+      const mine=myPlayer();
       state.players.forEach((player,index)=>{
-        const tr=document.createElement('tr');if(index===state.turnIdx)tr.classList.add('activeRow');if(player.eliminated)tr.classList.add('eliminated');
-        const status=statusForPlayer(player);
-        const name=document.createElement('td');name.innerHTML=`<strong>${escapeText(player.name)}</strong>${player.isAI?' 🤖':''}${index===state.turnIdx?' • Active':''}`;
-        const statusTd=document.createElement('td');statusTd.textContent=status;
-        const gold=document.createElement('td');gold.textContent=`💰 ${player.gold||0}`;
-        const hp=document.createElement('td');hp.textContent=`🏰 ${Math.max(0,player.townHp||0)}`;
-        const die=document.createElement('td');die.textContent=player.unlocked||'d6';
-        const cardsTd=document.createElement('td');const cards=document.createElement('div');cards.className='tableCards';
-        if(!(player.owned||[]).length)cards.textContent='No cards remaining';
-        for(const entry of player.owned||[]){const card=CARD_CATALOG[entry.key];if(!card)continue;const tile=document.createElement('button');tile.className='tinyCard';const shownHp=entry.key==='townhall'?player.townHp:entry.hp;tile.title=`${card.name} • ${shownHp}/${currentMaxHp(player,entry.key)} HP • ×${entry.count||1}`;tile.appendChild(makeArt(card,'tinyArt'));if((entry.count||1)>1){const b=document.createElement('span');b.className='tinyBadge';b.textContent=`×${entry.count}`;tile.appendChild(b);}tile.onclick=()=>showCardModal(card,entry,player);cards.appendChild(tile);}
-        cardsTd.appendChild(cards);tr.append(name,statusTd,gold,hp,die,cardsTd);body.appendChild(tr);
+        const row=document.createElement('article');row.className='realmRow';if(index===state.turnIdx)row.classList.add('activeRealm');if(player===mine)row.classList.add('myRealm');if(player.eliminated)row.classList.add('eliminated');
+        const identity=document.createElement('div');identity.className='realmIdentity';
+        const name=document.createElement('div');name.className='realmName';name.textContent=`${player.name}${player.isAI?' 🤖':''}`;identity.appendChild(name);
+        const status=document.createElement('div');status.className='realmStatus';
+        const statusText=document.createElement('span');statusText.textContent=statusForPlayer(player);status.appendChild(statusText);
+        if(index===state.turnIdx){const pill=document.createElement('span');pill.className='activePill';pill.textContent='ACTIVE';status.appendChild(pill);}
+        if(player===mine){const pill=document.createElement('span');pill.className='youPill';pill.textContent='YOU';status.appendChild(pill);}
+        if(player.isAI&&player.aiStrategy?.label){const pill=document.createElement('span');pill.className='strategyPill';pill.textContent=player.aiStrategy.label;status.appendChild(pill);}
+        identity.appendChild(status);
+        const stats=document.createElement('div');stats.className='realmStats';
+        for(const [value,label] of [[`💰 ${player.gold||0}`,'Gold'],[`🏰 ${Math.max(0,player.townHp||0)}`,'Town'],[`🎲 ${player.unlocked||'d6'}`,'Die']]){const box=document.createElement('div');box.className='statTile';const strong=document.createElement('strong');strong.textContent=value;const small=document.createElement('small');small.textContent=label;box.append(strong,small);stats.appendChild(box);}
+        const townBar=document.createElement('div');townBar.className='townHealth';const townFill=document.createElement('i');townFill.style.width=`${Math.max(0,Math.min(100,(player.townHp||0)/20*100))}%`;townBar.appendChild(townFill);stats.appendChild(townBar);
+        const cards=document.createElement('div');cards.className='realmCards';
+        if(!(player.owned||[]).length){const empty=document.createElement('div');empty.className='emptyCards';empty.textContent='No cards remaining';cards.appendChild(empty);}
+        for(const entry of player.owned||[]){const card=CARD_CATALOG[entry.key];if(card)cards.appendChild(makeRealmCard(card,entry,player));}
+        row.append(identity,stats,cards);list.appendChild(row);
       });
     }
     function renderOwned(){
-      const player=myPlayer();const rail=$('#ownedRail');rail.innerHTML='';const resources=$('#resourceStrip');resources.innerHTML='';
-      if(!player){$('#yourStatus').textContent=state?'Spectating — the match started without this player.':'Waiting';rail.innerHTML='<div class="empty">You are not an active player in this match.</div>';return;}
+      const player=myPlayer(),top=$('#resourceStrip'),mine=$('#yourResourceStrip');top.innerHTML='';mine.innerHTML='';
+      if(!player){$('#yourStatus').textContent=state?'Spectating':'Waiting';return;}
       $('#yourStatus').textContent=player.eliminated?'Eliminated':statusForPlayer(player);
-      for(const text of [`💰 ${player.gold||0}`,`🏰 ${Math.max(0,player.townHp||0)}`,`🎲 ${player.unlocked||'d6'}`]){const span=document.createElement('span');span.className='resource';span.textContent=text;resources.appendChild(span);}
-      for(const entry of player.owned||[]){
-        const card=CARD_CATALOG[entry.key];if(!card)continue;const max=currentMaxHp(player,entry.key);const shownHp=entry.key==='townhall'?player.townHp:entry.hp;
-        const tile=document.createElement('button');tile.className='ownedCard';tile.title=card.details||card.name;tile.appendChild(makeArt(card,'ownedArt'));
-        if((entry.count||1)>1){const count=document.createElement('span');count.className='countBadge';count.textContent=`×${entry.count}`;tile.appendChild(count);}
-        const hp=document.createElement('span');hp.className='hpBadge '+(shownHp>=max?'full':'');hp.textContent=`${shownHp}/${max}`;tile.appendChild(hp);
-        const name=document.createElement('div');name.className='ownedName';name.textContent=card.name;tile.appendChild(name);tile.onclick=()=>showCardModal(card,entry,player);rail.appendChild(tile);
-      }
+      const values=[`💰 ${player.gold||0}`,`🏰 ${Math.max(0,player.townHp||0)}`,`🎲 ${player.unlocked||'d6'}`];
+      values.forEach(text=>{for(const box of[top,mine]){const span=document.createElement('span');span.className='resource';span.textContent=text;box.appendChild(span);}});
     }
     function showCardModal(card,entry=null,owner=null){
       const modal=$('#cardModal');const art=$('#modalArt');art.src=assetMap[card.key]||cardAssetCandidates(card)[0];art.alt=card.name;art.onerror=()=>{art.style.display='none';};art.style.display='block';
@@ -1288,11 +1371,13 @@ function resolveOne(rd, manual){
       $('#shopStatus').textContent=state?.phase==='buy'&&isMyTurn()?'Purchases are open':'Purchases open after your roll';
       const cards=Object.values(CARD_CATALOG).filter(c=>!c.immutable&&c.category===selectedCategory).sort((a,b)=>a.cost-b.cost||a.name.localeCompare(b.name));
       for(const card of cards){
-        const item=document.createElement('article');item.className='shopCard';const art=makeArt(card,'shopArt');art.onclick=()=>showCardModal(card);item.appendChild(art);
+        const allowed=canBuyCard(player,card);const item=document.createElement('article');item.className=`shopCard ${allowed.ok?'affordable':''}`;item.style.setProperty('--faction',factionColor(card.category));
+        const art=makeArt(card,'shopArt');art.onclick=()=>showCardModal(card);item.appendChild(art);
         const info=document.createElement('div');info.className='shopInfo';const title=document.createElement('div');title.className='shopName';title.textContent=card.name;title.onclick=()=>showCardModal(card);
         const meta=document.createElement('div');meta.className='shopMeta';meta.textContent=`${card.type} • ${card.cost} gold • ${card.hpDynamic?'scaling':card.hp??'—'} HP • 🎲 ${(card.triggers||[]).join(', ')||'—'}`;
-        const allowed=canBuyCard(player,card);const btn=document.createElement('button');btn.className='shopBuy';btn.disabled=!allowed.ok;btn.textContent=allowed.ok?`Buy for ${card.cost}`:allowed.reason;btn.onclick=()=>performAction('BUY',{key:card.key});
-        info.append(title,meta);
+        const effect=document.createElement('div');effect.className='shopEffect';effect.textContent=card.details||'';
+        const btn=document.createElement('button');btn.className='shopBuy';btn.disabled=!allowed.ok;btn.textContent=allowed.ok?`Buy for ${card.cost}`:allowed.reason;btn.onclick=()=>performAction('BUY',{key:card.key});
+        info.append(title,meta,effect);
         if(card.requiresTemple&&!player?.owned?.some(e=>e.key===card.requiresTemple)){const locked=document.createElement('div');locked.className='lockedNote';locked.textContent=`Requires ${CARD_CATALOG[card.requiresTemple]?.name}`;info.appendChild(locked);}
         info.appendChild(btn);item.appendChild(info);grid.appendChild(item);
       }
@@ -1312,15 +1397,27 @@ function resolveOne(rd, manual){
       function fillEntries(){const items=candidates.filter(c=>c.targetPlayer===pSel.value&&c.targetType===tSel.value);eSel.innerHTML='';items.forEach((candidate,index)=>{const option=document.createElement('option');option.value=String(index);if(candidate.targetType==='townhall')option.textContent='Town Hall';else{const target=state.players.find(p=>p.name===candidate.targetPlayer),entry=target?.owned?.[candidate.targetEntryIdx],card=CARD_CATALOG[entry?.key];option.textContent=`${card?.name||'Card'} (${entry?.hp||0} HP)`;}eSel.appendChild(option);});const pick=items[Number(eSel.value)||0]||items[0];selectedTargetPayload=pick?{targetPlayer:pick.targetPlayer,targetType:pick.targetType,targetEntryIdx:pick.targetEntryIdx}:null;}
       pSel.onchange=fillTypes;tSel.onchange=fillEntries;eSel.onchange=fillEntries;fillPlayers();targetBox.append(pSel,tSel,eSel);
     }
+    function setCommandTab(tab,manual=false){
+      activeCommandTab=tab==='shop'?'shop':'actions';
+      document.querySelectorAll('.commandTab').forEach(btn=>{const active=btn.dataset.commandTab===activeCommandTab;btn.classList.toggle('active',active);btn.setAttribute('aria-selected',String(active));});
+      $('#actionsPane').classList.toggle('active',activeCommandTab==='actions');$('#shopPane').classList.toggle('active',activeCommandTab==='shop');
+      if(manual)lastAutoTabPhase=`${state?.version||0}:${state?.phase||''}`;
+    }
+    function maybeAutoSelectTab(){
+      if(!state||!isMyTurn())return;const key=`${state.version}:${state.phase}`;if(lastAutoTabPhase===key)return;
+      lastAutoTabPhase=key;setCommandTab(state.phase==='buy'?'shop':'actions');
+    }
     function renderControls(){
       const player=myPlayer(),turn=isMyTurn(),phase=state?.phase||'waiting',queue=state?.resolveQueue||[],trigger=queue[0],needs=trigger?triggerNeedsTarget(effectiveTrigger(trigger).kind):false,candidates=trigger?allTargetCandidates(state,trigger.ownerIdx,effectiveTrigger(trigger).kind):[];
-      const allowed=allowedDiceFor(player);const die=$('#dieSelect'),prior=die.value;die.innerHTML=allowed.map(v=>`<option value="${v}">${v}</option>`).join('');die.value=allowed.includes(prior)?prior:allowed[allowed.length-1];
+      const allowed=allowedDiceFor(player),hidden=$('#dieSelect');let selected=allowed.includes(hidden.value)?hidden.value:allowed[allowed.length-1];hidden.value=selected;
+      const toggle=$('#dieToggle');toggle.innerHTML='';for(const mode of['d6','d12','d20']){const btn=document.createElement('button');btn.className=`dieChoice ${selected===mode?'active':''}`;btn.textContent=mode;btn.disabled=!allowed.includes(mode)||actionBusy||!turn||phase!=='await_roll';btn.title=!allowed.includes(mode)?`${mode} unlocks when you own cards that trigger in its range`:`Roll a ${mode}`;btn.onclick=()=>{hidden.value=mode;renderControls();};toggle.appendChild(btn);}
       $('#phaseTitle').textContent=phaseLabel(phase);
-      $('#phaseHelp').textContent=phase==='await_roll'?'Choose an unlocked die and roll.':phase==='resolving'?'Resolve the queued effects in order.':phase==='buy'?'Buy any affordable cards, then end your turn.':phase==='finished'?'The final realm remains.':'Waiting for the game.';
+      $('#phaseHelp').textContent=phase==='await_roll'?'Choose d6 or your unlocked higher die, then roll.':phase==='resolving'?'Resolve queued effects in order; damaged cards show health bars.':phase==='buy'?'Open the Shop tab, buy cards, then end your turn.':phase==='finished'?'The final realm remains.':'Waiting for the game.';
       $('#rollBtn').disabled=actionBusy||!turn||phase!=='await_roll';
       $('#resolveBtn').disabled=actionBusy||!turn||phase!=='resolving'||(needs&&candidates.length>0);
       $('#applyTargetBtn').disabled=actionBusy||!turn||phase!=='resolving'||!needs||!selectedTargetPayload;
       $('#endTurnBtn').disabled=actionBusy||!turn||phase==='finished';
+      maybeAutoSelectTab();
     }
     function renderLog(){
       const log=$('#log');log.innerHTML='';const entries=state?.log||[];
@@ -1329,29 +1426,47 @@ function resolveOne(rd, manual){
     }
     function renderAll(){
       $('#lobbyTag').textContent=lobbyId?`Lobby ${lobbyId}`:'No lobby';$('#userTag').textContent=myName;$('#connectionTag').textContent=user?'Authenticated':'Connecting…';
-      renderLoading();renderTurnBanner();renderOpponents();renderDice();renderOwned();renderCategoryTabs();renderShop();renderTargetAndQueue();renderControls();renderLog();
+      $('#hoverCardTooltip').classList.remove('show');renderLoading();renderTurnBanner();renderOpponents();renderDice();renderOwned();renderCategoryTabs();renderShop();renderTargetAndQueue();renderControls();renderLog();setCommandTab(activeCommandTab);
       scheduleAi();scheduleDisconnectCheck();
     }
 
 
     function aiPurchaseChoice(game,player){
-      const cards=Object.values(CARD_CATALOG).filter(card=>{
+      const strategy=player.aiStrategy||makeAIStrategy(game,game.players.indexOf(player));player.aiStrategy=strategy;
+      const plannedTemples=strategy.temples||[];const plannedFactions=new Set(strategy.factions||plannedTemples.map(k=>k.split('_')[0]));
+      const ownedKeys=new Set((player.owned||[]).map(e=>e.key));const missingTemples=plannedTemples.filter(key=>!ownedKeys.has(key));
+      const affordable=Object.values(CARD_CATALOG).filter(card=>{
         if(card.immutable||card.cost>(player.gold||0))return false;
         if(((player.owned||[]).find(e=>e.key===card.key)?.count||0)>=(card.max??3))return false;
-        if(card.requiresTemple&&!(player.owned||[]).some(e=>e.key===card.requiresTemple))return false;
+        if(card.requiresTemple&&!ownedKeys.has(card.requiresTemple))return false;
+        if(card.key.endsWith('_temple')&&!plannedTemples.includes(card.key))return false;
+        if(card.category!=='grey'&&!plannedFactions.has(card.category))return false;
         return true;
       });
-      if(!cards.length)return null;
-      const temples=cards.filter(c=>c.key.endsWith('_temple')&&!(player.owned||[]).some(e=>e.key===c.key));
-      if(temples.length)return temples.sort((a,b)=>a.cost-b.cost)[0];
+      if(!affordable.length)return null;
+
+      // The AI saves for its first chosen temple instead of buying unrelated cards every turn.
+      if(missingTemples.length){
+        const firstMissing=CARD_CATALOG[missingTemples[0]];
+        if(firstMissing&&firstMissing.cost<=(player.gold||0))return firstMissing;
+        if(!ownedKeys.has(plannedTemples[0]))return null;
+        const factionForce=(player.owned||[]).filter(e=>plannedFactions.has(CARD_CATALOG[e.key]?.category)&&!e.key.endsWith('_temple')).reduce((sum,e)=>sum+(e.count||1),0);
+        const second=CARD_CATALOG[missingTemples[0]];
+        if(second&&factionForce>=2){if((player.gold||0)>=second.cost)return second;return null;}
+      }
+
       const score=card=>{
-        let value=card.cost*2+(card.triggers?.length||0)*2;
-        if(['farm','mill','mine'].includes(card.key))value+=game.rollCount<12?16:5;
-        if(card.type==='wall')value+=(player.townHp<12?10:2);
-        if(card.onTrigger?.kind?.includes('attack')||card.onTrigger?.kind?.includes('destroy'))value+=8;
-        return value+randomUnit(game.seed,game.version,card.cost)*3;
+        let value=card.cost*1.8+(card.triggers?.length||0)*2;
+        if(plannedTemples.includes(card.key))value+=55;
+        if(plannedFactions.has(card.category))value+=28;
+        if(card.requiresTemple&&plannedTemples.includes(card.requiresTemple))value+=18;
+        if(['farm','mill','mine'].includes(card.key))value+=game.rollCount<10?10:2;
+        if(card.type==='wall')value+=(player.townHp<12?18:3);
+        const kind=card.onTrigger?.kind||'';if(kind.includes('attack')||kind.includes('destroy'))value+=11;
+        if(kind.includes('earn')||kind.includes('heal'))value+=player.townHp<11?7:4;
+        return value+randomUnit(game.seed,game.version,card.cost+card.name.length)*3;
       };
-      return cards.sort((a,b)=>score(b)-score(a))[0];
+      return affordable.sort((a,b)=>score(b)-score(a))[0]||null;
     }
     function scheduleAi(){
       clearTimeout(aiTimer);
@@ -1451,7 +1566,18 @@ function resolveOne(rd, manual){
       await markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});
       $('#leaveBtn').disabled=true;
     });
-    $('#fullscreenBtn').addEventListener('click',async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen();}catch(error){toast('Fullscreen is not available here.');}});
+    document.querySelectorAll('[data-command-tab]').forEach(btn=>btn.addEventListener('click',()=>setCommandTab(btn.dataset.commandTab,true)));
+    function syncFullscreenButton(){const active=!!document.fullscreenElement||focusMode;document.body.classList.toggle('focusMode',focusMode&&!document.fullscreenElement);$('#fullscreenBtn').textContent=active?'✕':'⛶';$('#fullscreenBtn').title=active?'Exit fullscreen':'Enter fullscreen';}
+    $('#fullscreenBtn').addEventListener('click',async()=>{
+      try{
+        if(document.fullscreenElement){await document.exitFullscreen();focusMode=false;}
+        else if(focusMode){focusMode=false;}
+        else if(document.documentElement.requestFullscreen){await document.documentElement.requestFullscreen({navigationUI:'hide'});}
+        else{focusMode=true;toast('Focus mode enabled. Your browser does not expose native fullscreen.');}
+      }catch(error){focusMode=!focusMode;if(focusMode)toast('Focus mode enabled instead of native fullscreen.');}
+      syncFullscreenButton();
+    });
+    document.addEventListener('fullscreenchange',()=>{if(document.fullscreenElement)focusMode=false;syncFullscreenButton();});
     $('#modalClose').addEventListener('click',()=>$('#cardModal').close());
     $('#cardModal').addEventListener('click',event=>{if(event.target===$('#cardModal'))$('#cardModal').close();});
     addEventListener('pagehide',()=>{clearInterval(heartbeatTimer);markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});});
