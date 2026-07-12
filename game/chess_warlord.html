@@ -99,6 +99,12 @@
   #defeatActions button:first-child{background:linear-gradient(135deg,#facc15,#fb7185);color:#1c0b12;border:0;}
   #startBtn{appearance:none;border:0;background:linear-gradient(135deg,#facc15,#fb7185);color:#1c0b12;border-radius:17px;padding:13px 18px;font-size:15px;font-weight:1000;cursor:pointer;box-shadow:0 18px 45px rgba(251,113,133,.24);}
   #startBtn:hover{filter:brightness(1.06)}
+  #assetLoadPanel{margin:12px 0 14px;padding:12px;border-radius:16px;background:rgba(5,10,18,.66);border:1px solid rgba(165,198,255,.18);box-shadow:inset 0 1px rgba(255,255,255,.05);}
+  #assetLoadTop{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:12px;font-weight:1000;color:#eef6ff;}
+  #assetLoadTrack{height:10px;margin-top:8px;border-radius:999px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.12);overflow:hidden;}
+  #assetLoadFill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#7dd3fc,#facc15,#86efac);transition:width .16s ease;}
+  #assetLoadText{margin-top:7px;color:#b9c8dc;font-size:11px;line-height:1.35;}
+  .spawnThumb{position:absolute;right:6px;bottom:3px;width:54px;height:54px;object-fit:contain;image-rendering:auto;filter:drop-shadow(0 5px 8px rgba(0,0,0,.58));pointer-events:none;}
   @media(max-width:760px){
     #topbar{height:98px;padding:8px;gap:6px;}
     #quickControls{width:104px;min-width:104px;padding:7px 6px;border-radius:14px;}
@@ -168,7 +174,12 @@
   <div id="startCard">
     <h1>Faction Chess Warlords Online</h1>
     <p class="lead">A giant real-time chess war: factions now capture land in different ways, from Ember kill-zones to Verdant living ground and Shadow assassinations.</p>
-    <div id="pregameCountdown" style="display:none">Faction selection opens for 10 seconds when the lobby connects.</div>
+    <div id="assetLoadPanel">
+      <div id="assetLoadTop"><span>Loading isometric army graphics</span><span id="assetLoadPct">0%</span></div>
+      <div id="assetLoadTrack"><div id="assetLoadFill"></div></div>
+      <div id="assetLoadText">Preparing graphics/chessgraphics before the war begins.</div>
+    </div>
+    <div id="pregameCountdown" style="display:none">Faction selection opens after every active player finishes loading.</div>
     <div id="aiVotePanel">
       <div class="pickLabel">Multiplayer AI vote</div>
       <div class="voteGrid">
@@ -239,12 +250,25 @@ const territoryBtn = document.getElementById('territoryBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 const aiVotePanel = document.getElementById('aiVotePanel');
 const aiVoteResult = document.getElementById('aiVoteResult');
+const assetLoadPanel = document.getElementById('assetLoadPanel');
+const assetLoadFill = document.getElementById('assetLoadFill');
+const assetLoadPct = document.getElementById('assetLoadPct');
+const assetLoadText = document.getElementById('assetLoadText');
 
 const DEFAULT_BOARD_W = 86;
 const DEFAULT_BOARD_H = 86;
 let BOARD_W = DEFAULT_BOARD_W;
 let BOARD_H = DEFAULT_BOARD_H;
 const BASE_CELL = 46;
+// The logical board remains a normal square grid. Rendering projects each square into a 2:1 isometric diamond.
+const ISO_A = 1;
+const ISO_B = .5;
+const ISO_C = -1;
+const ISO_D = .5;
+const ISO_INV_A = .5;
+const ISO_INV_B = -.5;
+const ISO_INV_C = 1;
+const ISO_INV_D = 1;
 const MAX_AI_PER_FRAME = 22;
 const MULTIPLAYER_AI_SPEED_CAP = .72;
 const MULTIPLAYER_AI_SPAWN_SCALE = .72;
@@ -445,6 +469,17 @@ let kingInCheck = false;
 let chessEloProfiles = {};
 let eloLoadSeq = 0;
 let eloAwarding = false;
+let graphicsReady = false;
+let graphicsLoadPromise = null;
+let graphicsLoadedCount = 0;
+let graphicsTotalCount = 0;
+let graphicsMissingCount = 0;
+let pregameRosterLocked = false;
+const chessGraphicAssets = new Map();
+const chessGraphicResolvedFiles = new Map();
+const CHESS_GRAPHICS_ROOT = new URL('../graphics/chessgraphics/', document.baseURI);
+const PREGAME_READY_TIMEOUT_MS = 30000;
+const PREGAME_READY_RECHECK_MS = 900;
 
 const CHESS_ELO_START = 100;
 const CHESS_ELO_FLOOR = 0;
@@ -1598,7 +1633,7 @@ async function requestPlayerSpawn(x,y){
   if(canAuthoritativelyWriteState()){ recordFactionSpawn(f,type); f.spawnMeter=0; f.spawnChoices=chooseSpawnOptions(PLAYER); }
   spawnSelection=null;
   renderSpawnCards(); updateHUD();
-  burst(x,y,f.color,24); toast(`${pieceDefs[type].name} deployed.`);
+  burst(x,y,f.color,24); toast(`${pieceDisplayName(PLAYER,type)} deployed.`);
   if(canAuthoritativelyWriteState()){ queueReliableStateWrite('playerSpawn'); }
   else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
 }
@@ -1610,6 +1645,7 @@ async function refreshPresenceAndController(){
       await setDoc(presenceRef,{
         username,slot:PLAYER,lastSeenAt:serverTimestamp(),lastSeenMs:Date.now(),
         authUid:auth.currentUser?.uid || '',gameKey:GAME_KEY,selectedFaction:chosenFactionId,
+        graphicsReady,graphicsLoadedCount,graphicsTotalCount,graphicsProgress:graphicsTotalCount?graphicsLoadedCount/graphicsTotalCount:0,
         elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji
       },{merge:true});
     }
@@ -1644,15 +1680,17 @@ function showWarEnd(winner){
 }
 function exitToLobby(){
   try{ localStorage.setItem('gh.username', username || ''); localStorage.setItem('gh.lastLobbyId',''); localStorage.setItem('gh.lastGameType',''); }catch(e){}
+  if(presenceRef) deleteDoc(presenceRef).catch(()=>{});
   const glue = returnTo.includes('?') ? '&' : '?';
   location.href = `${returnTo}${glue}username=${encodeURIComponent(username || '')}`;
 }
+window.addEventListener('pagehide',()=>{ if(presenceRef) deleteDoc(presenceRef).catch(()=>{}); });
 
 async function publishFactionSelection(){
   if(!presenceRef || !username) return;
   try{
     const eloProfile = getChessEloProfile(username || 'Player', PLAYER);
-    const payload = {username,slot:PLAYER,lastSeenAt:serverTimestamp(),lastSeenMs:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji};
+    const payload = {username,slot:PLAYER,lastSeenAt:serverTimestamp(),lastSeenMs:Date.now(),gameKey:GAME_KEY,selectedFaction:chosenFactionId,graphicsReady,graphicsLoadedCount,graphicsTotalCount,graphicsProgress:graphicsTotalCount?graphicsLoadedCount/graphicsTotalCount:0,elo:eloProfile.elo,rankName:eloProfile.rankName,rankEmoji:eloProfile.rankEmoji};
     await setDoc(presenceRef,payload,{merge:true});
     if(pregameRef){
       const playerKey = safeDocId(username);
@@ -1890,6 +1928,49 @@ function runMultiplayerFactionCountdown(){
     pregameTimer = setInterval(tick, 250);
   });
 }
+function activeReadyLobbyPlayers(){
+  const lobbyPlayers=Array.isArray(lobbyData?.players)?lobbyData.players.filter(Boolean):slotHumans.slice();
+  const activeNames=new Set((activePresence||[]).map(p=>p.username));
+  return lobbyPlayers.filter(name=>activeNames.has(name));
+}
+async function waitForPregamePlayersReady(){
+  if(!lobbyId) return;
+  const countdownEl=document.getElementById('pregameCountdown');
+  if(countdownEl) countdownEl.style.display='block';
+  overlay.style.display='flex';
+  const started=Date.now();
+  let lastRefresh=0;
+  while(Date.now()-started<PREGAME_READY_TIMEOUT_MS){
+    if(Date.now()-lastRefresh>2800){await refreshPresenceAndController();lastRefresh=Date.now();}
+    const lobbyPlayers=Array.isArray(lobbyData?.players)?lobbyData.players.filter(Boolean):slotHumans.slice();
+    const active=(activePresence||[]).filter(p=>lobbyPlayers.includes(p.username));
+    const ready=active.filter(p=>p.graphicsReady);
+    const allListedPresent=lobbyPlayers.length>0 && lobbyPlayers.every(name=>active.some(p=>p.username===name));
+    const allActiveReady=active.length>0 && active.every(p=>p.graphicsReady);
+    const seconds=Math.max(0,Math.ceil((PREGAME_READY_TIMEOUT_MS-(Date.now()-started))/1000));
+    if(countdownEl) countdownEl.textContent=`Loading room: ${ready.length}/${Math.max(active.length,lobbyPlayers.length)} ready · ${seconds}s safety timeout. Players who leave are removed automatically.`;
+    if(allListedPresent && allActiveReady){
+      buildSlots(active.map(p=>p.username),selectedMultiplayerAiCount);
+      pregameRosterLocked=true;
+      return;
+    }
+    // After a brief grace period, a player removed from active presence no longer blocks everyone else.
+    if(Date.now()-started>9000 && allActiveReady && ready.length>=1){
+      buildSlots(ready.map(p=>p.username),selectedMultiplayerAiCount);
+      pregameRosterLocked=true;
+      return;
+    }
+    await new Promise(resolve=>setTimeout(resolve,PREGAME_READY_RECHECK_MS));
+  }
+  await refreshPresenceAndController();
+  const ready=(activePresence||[]).filter(p=>p.graphicsReady).map(p=>p.username).filter(Boolean);
+  const active=(activePresence||[]).map(p=>p.username).filter(Boolean);
+  const survivors=ready.length?ready:(active.length?active:[username||'Player']);
+  buildSlots(survivors,selectedMultiplayerAiCount);
+  pregameRosterLocked=true;
+  if(countdownEl) countdownEl.textContent='Loading timeout reached. Continuing with the active players so the lobby cannot freeze.';
+}
+
 async function bootMultiplayer(){
   try{
     if(!username){ username = prompt('Enter your lobby username') || `Player${Math.floor(Math.random()*9999)}`; }
@@ -1900,6 +1981,7 @@ async function bootMultiplayer(){
       if(!auth.currentUser) signInAnonymously(auth).catch(e=>{ console.error(e); resolve(); });
     });
     if(!lobbyId){
+      await ensureGraphicsReady();
       buildSlots([username]);
       refreshChessEloProfilesForSlots('soloBoot');
       PLAYER = 0;
@@ -1931,6 +2013,10 @@ async function bootMultiplayer(){
     chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || 'normal');
     chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
     slotFactionIds[PLAYER] = chosenFactionId;
+    await refreshPresenceAndController();
+    heartbeatTimer = setInterval(refreshPresenceAndController, 4000);
+    await ensureGraphicsReady();
+    await refreshPresenceAndController();
     if(slotHumans.length <= 1){
       lobbyId = '';
       stateRef = null;
@@ -1952,14 +2038,12 @@ async function bootMultiplayer(){
     chosenDifficultyId = 'normal';
     selectedMultiplayerAiCount = 0;
     updateDifficultyVisibility();
-    await refreshPresenceAndController();
-    heartbeatTimer = setInterval(refreshPresenceAndController, 4000);
     lobbyUnsub = onSnapshot(lobbyRef, snap=>{
       if(!snap.exists()) return;
       lobbyData = snap.data();
       applyControllerLease(controllerLeaseForLobby(lobbyData));
       const nextPlayers = Array.isArray(lobbyData.players) ? lobbyData.players : [];
-      if(JSON.stringify(nextPlayers) !== JSON.stringify(lastLoadedLobbyPlayers)){
+      if(!pregameRosterLocked && JSON.stringify(nextPlayers) !== JSON.stringify(lastLoadedLobbyPlayers)){
         slotHumans = nextPlayers.slice(0,MAX_ONLINE_PLAYERS);
       }
       seedChessEloProfilesFromLocalAndLobby();
@@ -1971,6 +2055,7 @@ async function bootMultiplayer(){
     });
     const existingState = await getDoc(stateRef);
     if(existingState.exists()){
+      pregameRosterLocked=true;
       stopPregameCountdownWatch();
       overlay.style.display='none';
       const data = existingState.data();
@@ -1978,12 +2063,13 @@ async function bootMultiplayer(){
       else applyRemoteState(data);
       return;
     }
+    await waitForPregamePlayersReady();
     beginFactionSelectionWatch();
     await ensureSharedAiVoteWindow();
     await runMultiplayerAiVoteCountdown();
     await refreshPresenceAndController();
     const votedAiCount = await finalizeSharedAiVote();
-    buildSlots(lobbyData.players || slotHumans || [username], votedAiCount);
+    buildSlots(slotHumans.length ? slotHumans : (lobbyData.players || [username]), votedAiCount);
     updateDifficultyVisibility();
     await publishFactionSelection();
     await ensureSharedPregameWindow();
@@ -1999,7 +2085,7 @@ async function bootMultiplayer(){
         const sharedEnd = Number(preData.endsAtMs || 0) || pregameEndsAt;
         if(sharedEnd && Date.now() < sharedEnd) return;
         const aiChoice = clampAiCount(preData.aiCount ?? tallyAiVotes(preData.aiVotes || {}).choice);
-        buildSlots(lobbyData.players || slotHumans || [username], aiChoice);
+        buildSlots(slotHumans.length ? slotHumans : (lobbyData.players || [username]), aiChoice);
         createGame();
         const initial = serializeState('initialCreate', true);
         tx.set(stateRef, initial);
@@ -2220,6 +2306,154 @@ const pieceDefs = {
   iceobelisk:{name:'Ice Obelisk', icon:'❖', pattern:'building', cooldown:8.0, value:7, hp:3, building:true, desc:'Enemies within five spaces suffer 25% longer movement cooldowns.'},
   sledyard:{name:'Sled Yard', icon:'▧', pattern:'building', cooldown:8.0, value:6, hp:3, building:true, desc:'Spawns a Sled Knight every 80 seconds.'}
 };
+
+const FACTION_PIECE_NAMES = Object.freeze({
+  crownward:{king:'Crown King',pawn:'Crown Pawn',rook:'Crown Rook',knight:'Crown Knight',queen:'Crown Queen',general:'Crown General',ballistatower:'Ballista Tower',lancer:'Crown Lancer'},
+  ember:{king:'Ember King',sparkpawn:'Spark Pawn',cinderjack:'Cinder Jack',cinderarchon:'Cinder Archon',flamerunner:'Flame Runner',emberknight:'Ember Knight',flamequeen:'Ember Queen',general:'Ember General',pyretower:'Pyre Tower',lancer:'Ember Lancer'},
+  iron:{king:'Iron King',shieldpawn:'Shieldbearer',bulwark:'Bulwark',hammerknight:'Iron Knight',gatebreaker:'Gatebreaker',rook:'Iron Rook',warden:'Warden',general:'Iron General',tower:'Iron Tower'},
+  verdant:{king:'Verdant King',seedpawn:'Seed Pawn',thornguard:'Thorn Guard',scout:'Scout',stagrunner:'Stag Runner',vinehook:'Vinehook',vinebishop:'Vine Bishop',general:'Verdant General',grovetower:'Grove Tower',queen:'Verdant Queen'},
+  shadow:{king:'Shadow King',shadepawn:'Shade Pawn',blinkpawn:'Blink Pawn',shadowstepper:'Shadow Stepper',assassin:'Assassin',nightblade:'Nightblade',wraith:'Wraith',voidstrider:'Void Strider',umbralbishop:'Umbral Bishop',queen:'Shadow Queen'},
+  sunspire:{king:'Sunspire King',dawnblade:'Dawn Blade',eagleknight:'Eagle Knight',lightlancer:'Light Lancer',radiantbishop:'Radiant Bishop',sunherald:'Sun Herald',paladin:'Paladin',dawnarchon:'Dawn Archon',queen:'Sun Queen'}
+});
+function pieceDisplayName(factionOrId,type){
+  const factionId = typeof factionOrId === 'string' ? factionOrId : factions[factionOrId]?.id;
+  return FACTION_PIECE_NAMES[factionId]?.[type] || pieceDefs[type]?.name || String(type || 'Piece');
+}
+
+const PIECE_GRAPHIC_CANDIDATES = Object.freeze({
+  crownward:{
+    king:['crown king.png','king.png'],pawn:['crown pawn.png','pawn.png'],rook:['crown rook.png'],aquanaut:['aquanaut.png'],knight:['crown knight.png'],marshal:['marshal.png'],queen:['crown queen.png','queen.png'],general:['crown general.png','general.png'],ballistatower:['crown tower.png','ballista tower.png'],lancer:['crown lancer.png','lancer.png'],royalbannerhall:['royal banner hall.png'],barrackskeep:['barracks keep.png'],commandbanner:['command banner.png']
+  },
+  ember:{
+    king:['ember king.png','king.png'],sparkpawn:['spark pawn.png'],cinderjack:['cinder jack.png'],cinderarchon:['cinder archon.png'],flamerunner:['flame runner.png'],emberknight:['ember knight.png'],flamequeen:['ember queen.png','flame queen.png'],general:['ember general.png','general.png'],pyretower:['pyre tower.png'],lancer:['ember lancer.png','lancer.png'],cinderfurnace:['cinder furnace.png'],sparkden:['spark den.png']
+  },
+  iron:{
+    king:['iron king.png','king.png'],shieldpawn:['shieldbearer.png'],bulwark:['bulwark.png'],hammerknight:['iron knight.png','hammer knight.png'],gatebreaker:['gatebreaker.png'],rook:['iron rook.png'],warden:['warden.png'],general:['iron general.png','general.png'],tower:['iron tower.png','tower.png'],citadelwalker:['citadel walker.png'],shieldfoundry:['shield foundry.png'],gatehouse:['gatehouse.png']
+  },
+  verdant:{
+    king:['verdant king.png','king.png'],seedpawn:['seed pawn.png'],thornguard:['thorn guard.png'],scout:['scout.png'],stagrunner:['stag runner.png'],vinehook:['vinehook.png'],vinebishop:['vine bishop.png'],general:['verdant general.png','general.png'],grovetower:['grove tower.png'],queen:['verdant queen.png','queen.png'],seedgrove:['seed grove.png'],broodbloom:['brood bloom.png']
+  },
+  shadow:{
+    king:['shadow king.png','king.png'],shadepawn:['shade pawn.png'],blinkpawn:['blink pawn.png'],shadowstepper:['shadow stepper.png'],assassin:['assassin.png'],nightblade:['nightblade.png'],wraith:['wraith.png'],voidstrider:['void strider.png'],umbralbishop:['umbral bishop.png'],queen:['shadow queen.png','queen.png'],obsidianmirror:['obsidian mirror.png'],knifechapel:['knife chapel.png']
+  },
+  sunspire:{
+    king:['sunspire king.png','king.png'],dawnblade:['dawn blade.png'],eagleknight:['eagle knight.png'],lightlancer:['light lancer.png'],radiantbishop:['radiant bishop.png'],sunherald:['sun herald.png'],paladin:['paladin.png'],dawnarchon:['dawn archon.png'],queen:['sun queen.png','queen.png'],sunspirebeacon:['solar beacon.png'],radiantmonastery:['radiant monastery.png']
+  }
+});
+const WALL_GRAPHIC_CANDIDATES = Object.freeze({
+  crownward:['crown wall.png'],ember:['ember wall.png'],iron:['iron wall.png'],verdant:['verdant wall.png'],shadow:['shadow wall.png'],sunspire:['sun wall.png','sunspire wall.png']
+});
+function graphicAssetKey(factionId,type){ return `${factionId}:${type}`; }
+function graphicUrl(filename){ return new URL(String(filename || '').toLowerCase(), CHESS_GRAPHICS_ROOT).href; }
+function getPieceGraphic(factionId,type){ return chessGraphicAssets.get(graphicAssetKey(factionId,type)) || null; }
+function getWallGraphic(factionId){ return chessGraphicAssets.get(`wall:${factionId}`) || null; }
+function updateGraphicLoader(text=''){
+  const pct = graphicsTotalCount ? Math.round(graphicsLoadedCount / graphicsTotalCount * 100) : 0;
+  if(assetLoadFill) assetLoadFill.style.width = `${pct}%`;
+  if(assetLoadPct) assetLoadPct.textContent = `${pct}%`;
+  if(assetLoadText) assetLoadText.textContent = text || `Loaded ${graphicsLoadedCount}/${graphicsTotalCount} graphics${graphicsMissingCount?` · ${graphicsMissingCount} using safe fallbacks`:''}.`;
+  if(assetLoadPanel) assetLoadPanel.style.display = graphicsReady ? 'none' : 'block';
+}
+function loadImageWithTimeout(url, timeoutMs=9000){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    let settled = false;
+    const timer = setTimeout(()=>{ if(settled) return; settled=true; img.src=''; reject(new Error('image timeout')); },timeoutMs);
+    img.onload=()=>{ if(settled) return; settled=true; clearTimeout(timer); resolve(img); };
+    img.onerror=()=>{ if(settled) return; settled=true; clearTimeout(timer); reject(new Error('image missing')); };
+    img.decoding='async';
+    img.src=url;
+  });
+}
+function processedGraphicCanvas(img){
+  // Source tiles include a dark presentation background and a printed label. Downsample, crop the label,
+  // then flood-fill only the connected dark edge background so black armor remains intact.
+  const size = 384;
+  const sourceHeight = Math.max(1,Math.floor(img.naturalHeight * .82));
+  const work = document.createElement('canvas');
+  work.width = size;
+  work.height = Math.max(1,Math.round(size * sourceHeight / Math.max(1,img.naturalWidth)));
+  const wctx = work.getContext('2d',{willReadFrequently:true});
+  wctx.drawImage(img,0,0,img.naturalWidth,sourceHeight,0,0,work.width,work.height);
+  try{
+    const frame = wctx.getImageData(0,0,work.width,work.height);
+    const data = frame.data, width=work.width, height=work.height;
+    const visited = new Uint8Array(width*height);
+    const queue = new Int32Array(width*height);
+    let head=0,tail=0;
+    const darkEdge = idx => {
+      const o=idx*4,r=data[o],g=data[o+1],b=data[o+2];
+      const max=Math.max(r,g,b),min=Math.min(r,g,b),lum=(r*3+g*4+b)/8;
+      return lum<74 && (max-min)<48;
+    };
+    const push = idx => { if(idx<0 || idx>=visited.length || visited[idx] || !darkEdge(idx)) return; visited[idx]=1; queue[tail++]=idx; };
+    for(let x=0;x<width;x++){push(x);push((height-1)*width+x);}
+    for(let y=0;y<height;y++){push(y*width);push(y*width+width-1);}
+    while(head<tail){
+      const idx=queue[head++],x=idx%width,y=(idx/width)|0;
+      if(x>0)push(idx-1);if(x+1<width)push(idx+1);if(y>0)push(idx-width);if(y+1<height)push(idx+width);
+    }
+    for(let i=0;i<visited.length;i++) if(visited[i]) data[i*4+3]=0;
+    wctx.putImageData(frame,0,0);
+    let minX=width,minY=height,maxX=-1,maxY=-1;
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(data[(y*width+x)*4+3]>12){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
+    if(maxX>=minX && maxY>=minY){
+      const pad=8,cropW=maxX-minX+1,cropH=maxY-minY+1;
+      const out=document.createElement('canvas');out.width=cropW+pad*2;out.height=cropH+pad*2;
+      out.getContext('2d').drawImage(work,minX,minY,cropW,cropH,pad,pad,cropW,cropH);
+      return out;
+    }
+  }catch(e){ /* Same-origin GitHub Pages assets should be readable; raw image remains a safe fallback. */ }
+  return work;
+}
+async function loadFirstGraphic(candidates){
+  for(const filename of candidates || []){
+    try{
+      const img=await loadImageWithTimeout(graphicUrl(filename));
+      return {asset:processedGraphicCanvas(img),filename};
+    }catch(e){}
+  }
+  return null;
+}
+async function preloadChessGraphics(){
+  graphicsReady=false;graphicsLoadedCount=0;graphicsMissingCount=0;
+  const jobs=[];
+  for(const factionId of DEFAULT_FACTION_IDS){
+    const types=new Set(['king',...(factionCatalog[factionId]?.pieces||[])]);
+    if(factionId==='crownward') types.add('commandbanner');
+    for(const type of types){
+      const candidates=PIECE_GRAPHIC_CANDIDATES[factionId]?.[type] || [`${factionId} ${pieceDefs[type]?.name||type}.png`,`${pieceDefs[type]?.name||type}.png`].map(v=>v.toLowerCase());
+      jobs.push({key:graphicAssetKey(factionId,type),label:pieceDisplayName(factionId,type),candidates});
+    }
+    jobs.push({key:`wall:${factionId}`,label:`${factionCatalog[factionId]?.short||factionId} Wall`,candidates:WALL_GRAPHIC_CANDIDATES[factionId]||[`${factionId} wall.png`]});
+  }
+  graphicsTotalCount=jobs.length;
+  updateGraphicLoader(`Loading 0/${graphicsTotalCount} graphics from graphics/chessgraphics…`);
+  const concurrency=Math.min(8,jobs.length);
+  let cursor=0;
+  async function worker(){
+    while(cursor<jobs.length){
+      const job=jobs[cursor++];
+      const result=await loadFirstGraphic(job.candidates);
+      if(result){chessGraphicAssets.set(job.key,result.asset);chessGraphicResolvedFiles.set(job.key,result.filename);}
+      else graphicsMissingCount++;
+      graphicsLoadedCount++;
+      updateGraphicLoader(`Loading ${graphicsLoadedCount}/${graphicsTotalCount}: ${job.label}${result?'':' · fallback art'}`);
+    }
+  }
+  await Promise.all(Array.from({length:concurrency},worker));
+  graphicsReady=true;
+  updateGraphicLoader(`Graphics ready${graphicsMissingCount?` · ${graphicsMissingCount} unavailable files will use built-in silhouettes`:''}.`);
+  initFactionPicker();
+  renderSpawnCards();
+  return true;
+}
+async function ensureGraphicsReady(){
+  if(!graphicsLoadPromise) graphicsLoadPromise=preloadChessGraphics();
+  await graphicsLoadPromise;
+  graphicsReady=true;
+  return true;
+}
 
 let board = [];
 let pieces = [];
@@ -4187,7 +4421,7 @@ function capturePiece(attacker, target){
   if(attacker.level>oldLevel){
     floating(attacker.x,attacker.y,'LEVEL '+attacker.level, '#fff2a6');
     burst(attacker.x,attacker.y,'#fff2a6',26);
-    if(attacker.faction===PLAYER) toast(`${pieceDefs[attacker.type].name} leveled up. Cooldown improved and movement may grow.`);
+    if(attacker.faction===PLAYER) toast(`${pieceDisplayName(attacker.faction,attacker.type)} leveled up. Cooldown improved and movement may grow.`);
   }
   applyFactionCapture(attacker,attacker.x,attacker.y,target.x,target.y,'kill',target);
   applyBuildingKillEffects(attacker,target);
@@ -4326,8 +4560,8 @@ function createGame(){
   mapSeed = Math.floor(Math.random()*1000000000) + Date.now();
   generateBoard(); setupFactions(); setupPieces(); recalcOwnerCounts();
   const king=getPiece(factions[PLAYER].kingId) || pieces.find(p=>p.alive&&p.type==='king');
-  if(king){ cam.x=(king.x+.5)*BASE_CELL-innerWidth/2; cam.y=(king.y+.5)*BASE_CELL-innerHeight/2; }
   cam.zoom=1;
+  if(king) centerOn(king.x,king.y);
   selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[]; pendingPlayerActions=[];
   playerDefeated=false; spectating=false; paused=false; defeatOverlay.style.display='none';
   eloAwarding=false;
@@ -4377,13 +4611,13 @@ function renderSpawnCards(){
     const meta = def.building
       ? `Building · ${def.desc}`
       : `${patternName(def.pattern)} · ${baseCooldownFor({type, faction:PLAYER, level:1, x:king.x, y:king.y, alive:true}).toFixed(1)}s cooldown${shrineMeta}`;
-    card.innerHTML=`<div><div class="spawnName">${def.icon} ${def.name}</div><div class="spawnMeta">${meta}</div></div><div class="spawnIcon">${def.icon}</div>`;
+    card.innerHTML=`<div><div class="spawnName">${def.icon} ${pieceDisplayName(PLAYER,type)}</div><div class="spawnMeta">${meta}</div></div><div class="spawnIcon">${def.icon}</div>`;
     card.onclick=()=>{
       if(!ready){ toast('Spawn bar is not full yet. Keep expanding and capturing.'); return; }
       spawnSelection = spawnSelection===i ? null : i;
       selectedPiece=null; legalMoves=[];
       renderSpawnCards();
-      toast(spawnSelection!==null ? `Place ${def.name} on any highlighted controlled tile.` : 'Spawn selection canceled.');
+      toast(spawnSelection!==null ? `Place ${pieceDisplayName(PLAYER,type)} on any highlighted controlled tile.` : 'Spawn selection canceled.');
     };
     spawnPanel.appendChild(card);
   });
@@ -4444,7 +4678,7 @@ function updateCheckBanner(){
     const attackers=attackingPiecesForKing(PLAYER);
     kingInCheck=attackers.length>0;
     if(kingInCheck){
-      const names=attackers.slice(0,2).map(p=>factions[p.faction].short+' '+pieceDefs[p.type].name).join(', ');
+      const names=attackers.slice(0,2).map(p=>pieceDisplayName(p.faction,p.type)).join(', ');
       currentCheckWarning='CHECK: your king is threatened by '+names+(attackers.length>2?' +'+(attackers.length-2):'');
     } else currentCheckWarning='';
   }
@@ -4470,7 +4704,7 @@ function updatePiecePanel(){
   const overextensionLine=supply.active ? `<p style="color:#ffcb7b"><b>Overextended:</b> ${supply.distance} tiles from friendly territory · cooldowns 15% slower.</p>` : '';
   piecePanel.style.display='block';
   piecePanel.innerHTML=`
-    <h3 style="color:${f.color}">${def.icon} ${def.name} <span style="font-size:12px;color:#cbd5e1">Lv ${p.level}</span></h3>
+    <h3 style="color:${f.color}">${def.icon} ${pieceDisplayName(p.faction,p.type)} <span style="font-size:12px;color:#cbd5e1">Lv ${p.level}</span></h3>
     <p><b>${f.short}</b> · Captures ${p.captures} · HP ${p.hp}/${p.maxHp}</p>
     <div class="bar"><div class="fill" style="width:${(cd*100).toFixed(0)}%"></div></div>
     <p>${cooldownReady(p)?'Ready to move.':'Cooldown '+Math.ceil((1-cd)*cooldownFor(p))+'s remaining.'}</p>
@@ -4481,24 +4715,49 @@ function updatePiecePanel(){
   const btn=document.getElementById('panelCenter');
   if(btn) btn.onclick=()=>centerOn(p.x,p.y);
 }
+function isoOriginX(){ return BOARD_H * BASE_CELL; }
+function isoProjectWorld(wx,wy){ return {x:isoOriginX()+wx-wy,y:(wx+wy)*.5}; }
+function isoUnprojectWorld(ix,iy){
+  const px=ix-isoOriginX();
+  return {x:px*.5+iy,y:-px*.5+iy};
+}
+function projectedBoardSize(){ const span=(BOARD_W+BOARD_H)*BASE_CELL; return {w:span,h:span*.5}; }
+function applyIsometricTransform(c=ctx){ c.translate(isoOriginX(),0); c.transform(ISO_A,ISO_B,ISO_C,ISO_D,0,0); }
+function makeCurrentTransformUpright(c=ctx){ c.transform(ISO_INV_A,ISO_INV_B,ISO_INV_C,ISO_INV_D,0,0); }
 function centerOn(x,y){
-  const worldX = (x + .5) * BASE_CELL;
-  const worldY = (y + .5) * BASE_CELL;
-  cam.x = worldX * cam.zoom - innerWidth / 2;
-  cam.y = worldY * cam.zoom - innerHeight / 2;
+  const world=isoProjectWorld((x+.5)*BASE_CELL,(y+.5)*BASE_CELL);
+  cam.x=world.x*cam.zoom-innerWidth/2;
+  cam.y=world.y*cam.zoom-innerHeight/2;
   clampCam();
 }
 function clampCam(){
-  const bw=BOARD_W*BASE_CELL*cam.zoom, bh=BOARD_H*BASE_CELL*cam.zoom;
-  cam.x=clamp(cam.x,-innerWidth*.25,Math.max(0,bw-innerWidth*0.75));
-  cam.y=clamp(cam.y,-innerHeight*.25,Math.max(0,bh-innerHeight*0.75));
+  const size=projectedBoardSize(),bw=size.w*cam.zoom,bh=size.h*cam.zoom;
+  cam.x=clamp(cam.x,-innerWidth*.25,Math.max(-innerWidth*.25,bw-innerWidth*.75));
+  cam.y=clamp(cam.y,-innerHeight*.25,Math.max(-innerHeight*.25,bh-innerHeight*.75));
+}
+function screenToBoardFloat(sx,sy){
+  const projectedX=(sx+cam.x)/cam.zoom;
+  const projectedY=(sy+cam.y)/cam.zoom;
+  const world=isoUnprojectWorld(projectedX,projectedY);
+  return {fx:world.x/BASE_CELL,fy:world.y/BASE_CELL};
 }
 function screenToBoard(sx,sy){
-  const x=(sx+cam.x)/(BASE_CELL*cam.zoom);
-  const y=(sy+cam.y)/(BASE_CELL*cam.zoom);
-  return {x:Math.floor(x), y:Math.floor(y), fx:x, fy:y};
+  const b=screenToBoardFloat(sx,sy);
+  return {x:Math.floor(b.fx),y:Math.floor(b.fy),fx:b.fx,fy:b.fy};
 }
-function boardToScreen(x,y){return {x:x*BASE_CELL*cam.zoom-cam.x,y:y*BASE_CELL*cam.zoom-cam.y};}
+function boardToScreen(x,y){
+  const projected=isoProjectWorld(x*BASE_CELL,y*BASE_CELL);
+  return {x:projected.x*cam.zoom-cam.x,y:projected.y*cam.zoom-cam.y};
+}
+function visibleBoardBounds(pad=2){
+  const pts=[screenToBoardFloat(0,0),screenToBoardFloat(innerWidth,0),screenToBoardFloat(0,innerHeight),screenToBoardFloat(innerWidth,innerHeight)];
+  return {
+    left:clamp(Math.floor(Math.min(...pts.map(p=>p.fx)))-pad,0,BOARD_W-1),
+    top:clamp(Math.floor(Math.min(...pts.map(p=>p.fy)))-pad,0,BOARD_H-1),
+    right:clamp(Math.ceil(Math.max(...pts.map(p=>p.fx)))+pad,0,BOARD_W-1),
+    bottom:clamp(Math.ceil(Math.max(...pts.map(p=>p.fy)))+pad,0,BOARD_H-1)
+  };
+}
 
 function gameTick(dt){
   if(!gameStarted || paused) return;
@@ -5124,6 +5383,7 @@ function draw(){
   ctx.save();
   ctx.scale(cam.zoom,cam.zoom);
   ctx.translate(-cam.x/cam.zoom,-cam.y/cam.zoom);
+  applyIsometricTransform(ctx);
   drawBoard();
   drawTerritoryEffects();
   drawWalls();
@@ -5151,10 +5411,7 @@ function drawBackground(){
   ctx.globalAlpha=1;
 }
 function drawBoard(){
-  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2;
-  const top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-2;
-  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+2;
-  const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
+  const {left,top,right,bottom}=visibleBoardBounds(3);
   for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
     for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
       const t=tile(x,y), td=terrainOf(t);
@@ -5490,10 +5747,7 @@ function drawTerritoryDecal(t,sx,sy,f){
 }
 function drawTerritoryEffects(){
   if(!showTerritory) return;
-  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2;
-  const top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-2;
-  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+2;
-  const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
+  const {left,top,right,bottom}=visibleBoardBounds(3);
   for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
     for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
       const t=tile(x,y); if(t.owner===null) continue;
@@ -5537,10 +5791,7 @@ function drawTerritoryEffects(){
   }
 }
 function drawShadowFog(){
-  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2;
-  const top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-2;
-  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+2;
-  const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
+  const {left,top,right,bottom}=visibleBoardBounds(3);
   ctx.save();
   for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
     for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
@@ -5555,68 +5806,43 @@ function drawShadowFog(){
   }
   ctx.restore();
 }
+function drawWallSpriteAt(x,y,f){
+  const asset=getWallGraphic(f.id),r=BASE_CELL*.43;
+  ctx.save();
+  ctx.translate((x+.5)*BASE_CELL,(y+.5)*BASE_CELL);
+  makeCurrentTransformUpright(ctx);
+  ctx.globalAlpha=.38;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(2,BASE_CELL*.22,BASE_CELL*.52,BASE_CELL*.17,0,0,Math.PI*2);ctx.fill();
+  if(asset){
+    const h=BASE_CELL*1.62,w=h*(asset.width/Math.max(1,asset.height));
+    ctx.globalAlpha=1;ctx.imageSmoothingEnabled=true;ctx.drawImage(asset,-w/2,-h+BASE_CELL*.38,w,h);
+    ctx.globalAlpha=.74;ctx.strokeStyle=f.color;ctx.lineWidth=2.2;ctx.beginPath();ctx.ellipse(0,BASE_CELL*.20,BASE_CELL*.48,BASE_CELL*.17,0,0,Math.PI*2);ctx.stroke();
+  } else {
+    ctx.globalAlpha=1;ctx.fillStyle='#4b5668';ctx.strokeStyle=f.color;ctx.lineWidth=2;roundRect(ctx,-r,-r*.55,r*2,r*1.15,4);ctx.fill();ctx.stroke();
+  }
+  ctx.restore();
+}
 function drawWalls(){
-  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-2,top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-2;
-  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+2,bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+2;
-  for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++)for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
+  const {left,top,right,bottom}=visibleBoardBounds(3);
+  const visible=[];
+  for(let y=top;y<=bottom;y++)for(let x=left;x<=right;x++){
     const tileData=tile(x,y);if(tileData.wallOwner==null)continue;
-    const f=factions[tileData.wallOwner]||{id:'neutral',color:'#dbeafe'},r=BASE_CELL*.42,pulse=.5+.5*Math.sin(now()*2+x*.7+y*.3);
-    ctx.save();ctx.translate((x+.5)*BASE_CELL,(y+.5)*BASE_CELL);
-    ctx.globalAlpha=.45;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(2,r*.55,r*.92,r*.22,0,0,Math.PI*2);ctx.fill();
-    const g=ctx.createLinearGradient(0,-r,0,r);g.addColorStop(0,'#aebaca');g.addColorStop(.48,'#4b5668');g.addColorStop(1,'#151c29');
-    ctx.globalAlpha=1;ctx.fillStyle=g;ctx.strokeStyle='rgba(241,247,255,.58)';ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(-r*.92,r*.70);ctx.lineTo(-r*.92,-r*.48);
-    for(let i=0;i<4;i++){const bx=-r*.92+i*r*.46;ctx.lineTo(bx,-r*.48);ctx.lineTo(bx,-r*.82);ctx.lineTo(bx+r*.24,-r*.82);ctx.lineTo(bx+r*.24,-r*.48);}ctx.lineTo(r*.92,r*.70);ctx.closePath();ctx.fill();ctx.stroke();
-    ctx.globalAlpha=.72+.18*pulse;ctx.strokeStyle=f.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-r*.82,r*.56);ctx.lineTo(r*.82,r*.56);ctx.stroke();ctx.globalAlpha=.94;
-    if(f.id==='crownward'){ctx.fillStyle='#ffea9c';for(let i=-1;i<=1;i++)ctx.fillRect(i*r*.42-r*.06,-r*.68,r*.12,r*.22);ctx.strokeStyle='#fff6bf';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(0,-r*.98);ctx.lineTo(0,-r*.55);ctx.lineTo(r*.34,-r*.70);ctx.stroke();}
-    else if(f.id==='ember'){ctx.strokeStyle='#ff6b3e';ctx.lineWidth=2;for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(i*r*.38,-r*.44);ctx.lineTo((i+.18)*r*.38,-r*.03);ctx.lineTo((i-.10)*r*.38,r*.36);ctx.stroke();}ctx.globalAlpha=.18+.18*pulse;ctx.fillStyle='#ff512f';ctx.fillRect(-r*.72,r*.20,r*1.44,r*.14);}
-    else if(f.id==='iron'){ctx.fillStyle='#e5eef7';for(let row=0;row<2;row++)for(let col=0;col<3;col++){ctx.beginPath();ctx.arc(-r*.48+col*r*.48,-r*.25+row*r*.46,r*.055,0,Math.PI*2);ctx.fill();}ctx.strokeStyle='#1a2637';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-r*.76,-r*.1);ctx.lineTo(r*.76,-r*.1);ctx.stroke();}
-    else if(f.id==='verdant'){ctx.strokeStyle='#b5ff9f';ctx.lineWidth=2.1;for(let i=-2;i<=2;i++){const bx=i*r*.30;ctx.beginPath();ctx.moveTo(bx,r*.62);ctx.quadraticCurveTo(bx-r*.12,0,bx+r*.05,-r*.70);ctx.stroke();ctx.fillStyle='#8df578';ctx.beginPath();ctx.ellipse(bx+r*.08,-r*.22,r*.12,r*.055,-.5,0,Math.PI*2);ctx.fill();}}
-    else if(f.id==='shadow'){ctx.fillStyle='#160d2a';for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(i*r*.42,-r*.50);ctx.lineTo((i+.18)*r*.42,-r*.96);ctx.lineTo((i+.34)*r*.42,-r*.50);ctx.closePath();ctx.fill();}ctx.strokeStyle='#caa9ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-r*.66,r*.26);ctx.lineTo(0,-r*.04);ctx.lineTo(r*.66,r*.26);ctx.stroke();}
-    else if(f.id==='sunspire'){ctx.fillStyle='#ffedaf';ctx.beginPath();ctx.arc(0,-r*.17,r*.18,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fff4ba';ctx.lineWidth=1.4;for(let i=0;i<8;i++){const a=i*Math.PI/4;ctx.beginPath();ctx.moveTo(Math.cos(a)*r*.26,Math.sin(a)*r*.26-r*.17);ctx.lineTo(Math.cos(a)*r*.42,Math.sin(a)*r*.42-r*.17);ctx.stroke();}}
-    else if(f.id==='tide'){ctx.strokeStyle='#aff1ff';ctx.lineWidth=2;for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(0,r*.05+i*r*.18,r*(.36-i*.06),Math.PI*.08,Math.PI*.92);ctx.stroke();}}
-    else if(f.id==='frost'){ctx.strokeStyle='#dcf9ff';ctx.lineWidth=2;for(let i=-1;i<=1;i++){ctx.beginPath();ctx.moveTo(i*r*.38,r*.62);ctx.lineTo(i*r*.38+r*.18,-r*.75);ctx.lineTo(i*r*.38+r*.34,r*.62);ctx.stroke();}}
-    ctx.restore();
+    visible.push({x,y,owner:tileData.wallOwner,depth:x+y});
+  }
+  visible.sort((a,b)=>a.depth-b.depth || a.x-b.x);
+  for(const wall of visible){
+    const f=factions[wall.owner]||{id:'neutral',color:'#dbeafe'};
+    drawWallSpriteAt(wall.x,wall.y,f);
   }
 }
 function drawShrines(){
   if(!shrines.length) return;
-  const viewLeft=(cam.x/cam.zoom)-BASE_CELL*2;
-  const viewTop=(cam.y/cam.zoom)-BASE_CELL*2;
-  const viewRight=(cam.x/cam.zoom+innerWidth/cam.zoom)+BASE_CELL*2;
-  const viewBottom=(cam.y/cam.zoom+innerHeight/cam.zoom)+BASE_CELL*2;
+  const bounds=visibleBoardBounds(SHRINE_RADIUS+3);
   for(const s of shrines){
-    const cx=(s.x+.5)*BASE_CELL, cy=(s.y+.5)*BASE_CELL;
-    const rr=(s.radius||SHRINE_RADIUS)*BASE_CELL;
-    if(cx+rr<viewLeft || cx-rr>viewRight || cy+rr<viewTop || cy-rr>viewBottom) continue;
-    const owner=shrineController(s);
-    const ownerFaction=owner==null ? null : factions[owner];
-    const pulse=.5+.5*Math.sin(now()*2.5+s.x);
-    ctx.save();
-    ctx.globalAlpha=.08+.05*pulse;
-    ctx.fillStyle=ownerFaction ? ownerFaction.color : s.color;
-    ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.fill();
-    ctx.globalAlpha=.28+.12*pulse;
-    ctx.strokeStyle=ownerFaction ? ownerFaction.color : s.color;
-    ctx.lineWidth=3;
-    ctx.beginPath(); ctx.arc(cx,cy,rr,0,Math.PI*2); ctx.stroke();
-    ctx.globalAlpha=1;
-    ctx.fillStyle='rgba(6,10,18,.82)';
-    ctx.strokeStyle=s.color;
-    ctx.lineWidth=3;
-    ctx.beginPath(); ctx.arc(cx,cy,BASE_CELL*.52,0,Math.PI*2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle=s.color;
-    ctx.font='24px serif';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(s.icon,cx,cy-1);
-    ctx.font='10px Inter, system-ui, sans-serif';
-    ctx.fillStyle='#fff3b0';
-    ctx.fillText(s.short.toUpperCase(),cx,cy+BASE_CELL*.78);
-    if(ownerFaction){
-      ctx.font='10px Inter, system-ui, sans-serif';
-      ctx.fillStyle=ownerFaction.color;
-      ctx.fillText(ownerFaction.short,cx,cy-BASE_CELL*.72);
-    }
-    ctx.restore();
+    if(s.x<bounds.left-SHRINE_RADIUS || s.x>bounds.right+SHRINE_RADIUS || s.y<bounds.top-SHRINE_RADIUS || s.y>bounds.bottom+SHRINE_RADIUS) continue;
+    const cx=(s.x+.5)*BASE_CELL,cy=(s.y+.5)*BASE_CELL,rr=(s.radius||SHRINE_RADIUS)*BASE_CELL;
+    const owner=shrineController(s),ownerFaction=owner==null?null:factions[owner],pulse=.5+.5*Math.sin(now()*2.5+s.x);
+    ctx.save();ctx.globalAlpha=.08+.05*pulse;ctx.fillStyle=ownerFaction?ownerFaction.color:s.color;ctx.beginPath();ctx.arc(cx,cy,rr,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.28+.12*pulse;ctx.strokeStyle=ownerFaction?ownerFaction.color:s.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,rr,0,Math.PI*2);ctx.stroke();ctx.restore();
+    ctx.save();ctx.translate(cx,cy);makeCurrentTransformUpright(ctx);ctx.globalAlpha=1;ctx.fillStyle='rgba(6,10,18,.86)';ctx.strokeStyle=s.color;ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,BASE_CELL*.52,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle=s.color;ctx.font='24px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(s.icon,0,-1);ctx.font='10px Inter,system-ui,sans-serif';ctx.fillStyle='#fff3b0';ctx.fillText(s.short.toUpperCase(),0,BASE_CELL*.78);if(ownerFaction){ctx.fillStyle=ownerFaction.color;ctx.fillText(ownerFaction.short,0,-BASE_CELL*.72);}ctx.restore();
   }
 }
 function drawHighlights(){
@@ -5970,7 +6196,7 @@ function drawBuildingTimerRing(p,r){
   ctx.restore();
 }
 function drawPieces(){
-  const visible = pieces.filter(p=>p.alive && (p.faction===PLAYER || !isShadowFoggedForPlayer(p.x,p.y,PLAYER))).sort((a,b)=>a.y-b.y || (pieceDefs[a.type].value||1)-(pieceDefs[b.type].value||1));
+  const visible = pieces.filter(p=>p.alive && (p.faction===PLAYER || !isShadowFoggedForPlayer(p.x,p.y,PLAYER))).sort((a,b)=>((a.px??a.x)+(a.py??a.y))-((b.px??b.x)+(b.py??b.y)) || (a.px??a.x)-(b.px??b.x) || (pieceDefs[a.type].value||1)-(pieceDefs[b.type].value||1));
   const labelIds = computeNameLabelPieceIds(visible);
   for(const p of visible){
     const f=factions[p.faction]; if(!f) continue;
@@ -5979,6 +6205,7 @@ function drawPieces(){
     const r=BASE_CELL*.36 + Math.min(7,(def.value||1)*.6);
     ctx.save();
     ctx.translate(x,y);
+    makeCurrentTransformUpright(ctx);
     ctx.globalAlpha = p.alive?1:.2;
     const checkedKing = p.type==='king' && p.faction===PLAYER && kingInCheck;
     if(checkedKing){const danger=.58+.42*Math.sin(now()*9+p.id);ctx.globalCompositeOperation='screen';ctx.globalAlpha=.18+.20*danger;ctx.fillStyle='rgba(255,18,34,.96)';ctx.beginPath();ctx.arc(0,0,r+22+5*danger,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.86;ctx.shadowColor='rgba(255,12,30,.98)';ctx.shadowBlur=24+10*danger;ctx.strokeStyle='rgba(255,54,68,.98)';ctx.lineWidth=3.5;ctx.beginPath();ctx.arc(0,0,r+11+4*danger,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;}
@@ -5991,23 +6218,25 @@ function drawPieces(){
     // shadow
     ctx.globalAlpha=.45; ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(2,10,r*.9,r*.35,0,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
     drawFactionFlair(f,p,r);
-    const g=ctx.createRadialGradient(-r*.25,-r*.3,2,0,0,r*1.15);
-    g.addColorStop(0,'#ffffff'); g.addColorStop(.16,f.color); g.addColorStop(1,f.dark||'#333');
-    ctx.fillStyle=g;
-    ctx.strokeStyle=checkedKing?'#ff3547':(p.flash>0?'#fff':f.color);
-    ctx.lineWidth=checkedKing?4.5:(p.flash>0?4:2);
-    drawPieceShape(def.pattern,r,p.id,p.type,f.id);
-    ctx.fill(); ctx.stroke();
-    if(!def.building) drawPieceMarkings(p.type,r,p.id,f.id);
-    if(def.building) drawBuildingDetails(f,p,r);
-    drawFactionInsignia(f,p,r);
-    // The classic glyph is now a quiet readability cue beneath the custom silhouette and sigil.
-    ctx.fillStyle = '#07101c';
-    ctx.globalAlpha=def.building ? .52 : .20;
-    ctx.font=`${Math.floor(r*(def.building ? .86 : .74))}px serif`;
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(def.icon,0,-1);
-    ctx.globalAlpha=1;
+    const graphic=getPieceGraphic(f.id,p.type);
+    if(graphic){
+      const targetH=BASE_CELL*(def.building?2.48:(p.type==='king'||p.type==='queen'||p.type==='flamequeen'||p.type==='dawnarchon'?2.18:1.92));
+      const targetW=Math.min(BASE_CELL*2.15,targetH*(graphic.width/Math.max(1,graphic.height)));
+      const bottom=BASE_CELL*(def.building?.46:.42);
+      ctx.save();
+      ctx.globalAlpha=p.flash>0?.78:1;
+      ctx.shadowColor=p.flash>0?'rgba(255,255,255,.92)':'rgba(0,0,0,.62)';ctx.shadowBlur=p.flash>0?18:8;
+      ctx.imageSmoothingEnabled=true;
+      ctx.drawImage(graphic,-targetW/2,bottom-targetH,targetW,targetH);
+      ctx.restore();
+    } else {
+      const g=ctx.createRadialGradient(-r*.25,-r*.3,2,0,0,r*1.15);
+      g.addColorStop(0,'#ffffff'); g.addColorStop(.16,f.color); g.addColorStop(1,f.dark||'#333');
+      ctx.fillStyle=g;ctx.strokeStyle=checkedKing?'#ff3547':(p.flash>0?'#fff':f.color);ctx.lineWidth=checkedKing?4.5:(p.flash>0?4:2);
+      drawPieceShape(def.pattern,r,p.id,p.type,f.id);ctx.fill();ctx.stroke();
+      if(!def.building) drawPieceMarkings(p.type,r,p.id,f.id);if(def.building) drawBuildingDetails(f,p,r);drawFactionInsignia(f,p,r);
+      ctx.fillStyle='#07101c';ctx.globalAlpha=def.building?.52:.20;ctx.font=`${Math.floor(r*(def.building?.86:.74))}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(def.icon,0,-1);ctx.globalAlpha=1;
+    }
     // level pips
     for(let i=0;i<p.level;i++){
       const a=-Math.PI/2 + (i-(p.level-1)/2)*.22;
@@ -6094,10 +6323,7 @@ function drawPieces(){
 
 function computeNameLabelPieceIds(visible){
   const ids = new Set();
-  const left=Math.floor((cam.x/cam.zoom)/BASE_CELL)-1;
-  const top=Math.floor((cam.y/cam.zoom)/BASE_CELL)-1;
-  const right=Math.ceil((cam.x/cam.zoom+innerWidth/cam.zoom)/BASE_CELL)+1;
-  const bottom=Math.ceil((cam.y/cam.zoom+innerHeight/cam.zoom)/BASE_CELL)+1;
+  const {left,top,right,bottom}=visibleBoardBounds(2);
   for(const f of factions){
     if(!f || !f.alive) continue;
     const onscreen = visible.filter(p=>p.faction===f.idx && p.x>=left && p.x<=right && p.y>=top && p.y<=bottom);
@@ -6371,10 +6597,9 @@ function drawMinimap(){
     if(p.faction===PLAYER && overextensionInfo(p).active){mctx.globalAlpha=.9;mctx.strokeStyle='#ffad4f';mctx.lineWidth=1;mctx.beginPath();mctx.arc(px,py,3.3,0,Math.PI*2);mctx.stroke();}
     mctx.globalAlpha=1;
   }
-  const vx=(cam.x/(BASE_CELL*cam.zoom))*sx, vy=(cam.y/(BASE_CELL*cam.zoom))*sy;
-  const vw=(innerWidth/(BASE_CELL*cam.zoom))*sx, vh=(innerHeight/(BASE_CELL*cam.zoom))*sy;
-  mctx.fillStyle='rgba(255,255,255,.055)';mctx.fillRect(vx,vy,vw,vh);
-  mctx.strokeStyle='#fff'; mctx.lineWidth=1.5; mctx.strokeRect(vx,vy,vw,vh);
+  const corners=[screenToBoardFloat(0,0),screenToBoardFloat(innerWidth,0),screenToBoardFloat(innerWidth,innerHeight),screenToBoardFloat(0,innerHeight)];
+  mctx.beginPath();corners.forEach((p,i)=>{const x=p.fx*sx,y=p.fy*sy;if(i===0)mctx.moveTo(x,y);else mctx.lineTo(x,y);});mctx.closePath();
+  mctx.fillStyle='rgba(255,255,255,.055)';mctx.fill();mctx.strokeStyle='#fff';mctx.lineWidth=1.5;mctx.stroke();
 }
 function terrainMiniColor(type){
   if(type==='water') return '#287bb3'; if(type==='mountain') return '#83899a'; if(type==='road') return '#9a8051'; if(type==='hill') return '#9d855a'; if(type==='crystal') return '#7da2ff'; return '#46556c';
@@ -6597,7 +6822,9 @@ requestAnimationFrame(loop);
 
 // Multiplayer boot: lobby URL should provide ?gameId=<lobbyId>&username=<lobby username>.
 generateBoard();
-cam.x=BOARD_W*BASE_CELL/2-innerWidth/2; cam.y=BOARD_H*BASE_CELL/2-innerHeight/2; cam.zoom=.75;
+cam.zoom=.72;
+centerOn((BOARD_W-1)/2,(BOARD_H-1)/2);
+graphicsLoadPromise=preloadChessGraphics();
 bootMultiplayer();
 })();
 </script>
