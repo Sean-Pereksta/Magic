@@ -2,21 +2,64 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#11170f">
   <title>Loading Magic Realms…</title>
-  <style>html,body{margin:0;min-height:100%;display:grid;place-items:center;background:#0d120d;color:#f7efd6;font-family:Segoe UI,Arial,sans-serif}.box{text-align:center;padding:24px}.spin{font-size:38px;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style>
+  <style>
+    html,body{margin:0;min-height:100%;display:grid;place-items:center;background:radial-gradient(circle,#28351f,#090d09 72%);color:#f7efd6;font-family:Segoe UI,Arial,sans-serif}
+    .box{text-align:center;padding:24px;max-width:560px}
+    .spin{font-size:42px;animation:s 1s linear infinite}
+    .error{color:#ffb4a9;white-space:pre-wrap;font-size:13px}
+    @keyframes s{to{transform:rotate(360deg)}}
+  </style>
 </head>
 <body>
-  <div class="box"><div class="spin">✦</div><h2>Loading Magic Realms…</h2><p>Preparing card graphics.</p></div>
+  <div class="box">
+    <div class="spin">✦</div>
+    <h2>Loading Magic Realms…</h2>
+    <p id="status">Preparing the game and card graphics.</p>
+  </div>
   <script>
   (async()=>{
-    const target='./grassrealms_core.html'+location.search+location.hash;
-    if(!('serviceWorker' in navigator)){ location.replace(target); return; }
+    const status=document.getElementById('status');
     try{
-      await navigator.serviceWorker.register('./magic-assets-sw.js',{scope:'./'});
-      await navigator.serviceWorker.ready;
-    }catch(error){ console.warn('Asset router unavailable:',error); }
-    location.replace(target);
+      if('serviceWorker' in navigator){
+        const registrations=await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(registration=>registration.unregister()));
+      }
+
+      const response=await fetch('./grassrealms_core.html',{cache:'no-store'});
+      if(!response.ok) throw new Error(`Unable to load grassrealms_core.html (${response.status})`);
+      let html=await response.text();
+
+      html=html.replace(
+        "const GRAPHICS_ROOT = './Magic/graphics/';",
+        "const GRAPHICS_ROOT = '../graphics/';"
+      );
+
+      html=html.replace(
+        /function cardAssetCandidates\(card\)\{[\s\S]*?\n    \}\n    function categoryAsset/,
+        `function cardAssetCandidates(card){
+      // Images are named exactly after the displayed card name in lowercase,
+      // preserving spaces: High Priest -> high priest.png.
+      const filename = \`${'${String(card.assetName || card.name).trim().toLowerCase()}'}\.png\`;
+      return [\`${'${GRAPHICS_ROOT}${encodeURIComponent(filename)}'}\`];
+    }
+    function categoryAsset`
+      );
+
+      if(!html.includes("const GRAPHICS_ROOT = '../graphics/';")){
+        throw new Error('The graphics path patch could not be applied.');
+      }
+
+      document.open();
+      document.write(html);
+      document.close();
+    }catch(error){
+      console.error(error);
+      status.className='error';
+      status.textContent=`Magic Realms could not start.\n${error.message}`;
+    }
   })();
   </script>
 </body>
