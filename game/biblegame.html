@@ -407,17 +407,31 @@
     return {...rank,elo};
   }
 
+  function getStoredBibleElo(data={}){
+    const current=data?.bibleGame||{};
+    const nestedRaw=current.elo;
+    const legacyRaw=data?.bibleGameElo;
+    const nestedElo=nestedRaw!==null && nestedRaw!==undefined && nestedRaw!=='' ? Number(nestedRaw) : NaN;
+    const legacyElo=legacyRaw!==null && legacyRaw!==undefined && legacyRaw!=='' ? Number(legacyRaw) : NaN;
+
+    // Never replace a real saved ELO with the starting value. If one copy was
+    // previously reset to 0 while the other still has a positive rating, keep
+    // the positive saved rating. New players use STARTING_ELO only when neither
+    // saved field contains a usable number.
+    if(Number.isFinite(nestedElo) && nestedElo>0) return nestedElo;
+    if(Number.isFinite(legacyElo) && legacyElo>0) return legacyElo;
+    if(Number.isFinite(nestedElo)) return nestedElo;
+    if(Number.isFinite(legacyElo)) return legacyElo;
+    return STARTING_ELO;
+  }
+
   function normalizedBibleProfile(data={}){
     const current=data?.bibleGame||{};
     const gamesPlayed=Math.max(0,Number(current.gamesPlayed||0));
-    const storedVersion=Number(current.ratingVersion ?? data?.bibleGameRatingVersion ?? 1);
-    const storedElo=Number(current.elo ?? data?.bibleGameElo ?? STARTING_ELO);
-    // One-time migration from the former 1000-point baseline. Old 1000 becomes
-    // the new 0 baseline, while rating earned above it is preserved proportionally.
-    const migratedElo=storedVersion>=RATING_VERSION
-      ? storedElo
-      : Math.round(Math.max(0,(storedElo-1000)*(4/3)));
-    const elo=Math.max(0,Number.isFinite(migratedElo)?migratedElo:STARTING_ELO);
+    const storedElo=getStoredBibleElo(data);
+    // Preserve the saved rating exactly. ratingVersion is metadata only and
+    // must never trigger an automatic conversion or reset.
+    const elo=Math.max(0,storedElo);
     const rank=rankForElo(elo);
     return {
       ...current, ratingVersion:RATING_VERSION, elo,
