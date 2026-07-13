@@ -293,6 +293,13 @@ const REMOVED_FACTION_IDS = new Set(['tide','frost']);
 function playableFactionId(id, fallback='crownward'){
   return DEFAULT_FACTION_IDS.includes(id) ? id : fallback;
 }
+function randomPlayableFactionId(){
+  return DEFAULT_FACTION_IDS[Math.floor(Math.random() * DEFAULT_FACTION_IDS.length)] || 'crownward';
+}
+function fallbackFactionIdForSlot(name, idx){
+  if(isAIName(name)) return playableFactionId(slotFactionIds[idx], randomPlayableFactionId());
+  return idx===PLAYER && isHumanSlot(idx) ? playableFactionId(chosenFactionId) : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length];
+}
 const SLOT_OUTLINE_COLORS = ['#fff3a3','#7dd3fc','#fb7185','#86efac','#c4b5fd','#67e8f9','#fdba74','#e5e7eb'];
 const MULTIPLAYER_AI_VOTE_SECONDS = 10;
 const MULTIPLAYER_FACTION_PICK_SECONDS = 10;
@@ -868,7 +875,7 @@ function buildSlots(players, aiCountOverride=null){
   configureBoardSizeForSlots(slots.length);
   const mine = humans.indexOf(username);
   PLAYER = mine >= 0 ? mine : 0;
-  slotFactionIds = slots.map((name,idx) => playableFactionId(factionSelections[name], (idx===PLAYER && !isAIName(name) ? playableFactionId(chosenFactionId) : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length])));
+  slotFactionIds = slots.map((name,idx) => playableFactionId(factionSelections[name], fallbackFactionIdForSlot(name, idx)));
   lastLoadedLobbyPlayers = humans;
   seedChessEloProfilesFromLocalAndLobby();
   renderEloProfileLine();
@@ -1926,7 +1933,7 @@ function applyFactionSelectionsFromPresence(snap){
     }
   });
   factionSelections = map;
-  slotFactionIds = slotNames.map((name,idx)=> playableFactionId(map[name], (idx===PLAYER && !isAIName(name) ? playableFactionId(chosenFactionId) : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length])));
+  slotFactionIds = slotNames.map((name,idx)=> playableFactionId(map[name], fallbackFactionIdForSlot(name, idx)));
   initFactionPicker();
 }
 function tallyAiVotes(votes){
@@ -3510,7 +3517,7 @@ function setupFactions(){
   const diff = difficultyProfiles[chosenDifficultyId] || difficultyProfiles.normal;
   const multiplayerAi = isMultiplayerGame();
   const aiSpawnScale = multiplayerAi ? MULTIPLAYER_AI_SPAWN_SCALE : diff.spawn;
-  slotFactionIds = slotNames.map((name,idx)=> playableFactionId(slotFactionIds[idx] || factionSelections[name], (idx===PLAYER && isHumanSlot(idx) ? playableFactionId(chosenFactionId) : DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length])));
+  slotFactionIds = slotNames.map((name,idx)=> playableFactionId(slotFactionIds[idx] || factionSelections[name], fallbackFactionIdForSlot(name, idx)));
   const duplicateCounts = slotFactionIds.reduce((m,id)=>{m[id]=(m[id]||0)+1; return m;},{});
   factions = slotFactionIds.map((id,idx)=>{
     const safeId = playableFactionId(id, DEFAULT_FACTION_IDS[idx % DEFAULT_FACTION_IDS.length]);
