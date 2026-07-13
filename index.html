@@ -632,6 +632,7 @@
         src="https://catnmice.com/lobby/lobby.html"
         title="Cat’N Mice Game Hub Lobby"
         allow="fullscreen"
+        allowfullscreen
       ></iframe>
 
       <div class="loader" id="frameLoader" aria-live="polite">
@@ -733,6 +734,20 @@
     const activeLobbyLabel = document.getElementById("activeLobbyLabel");
     const activeLobbyHelp = document.getElementById("activeLobbyHelp");
     const toast = document.getElementById("toast");
+
+
+    function requestChessWarlordFullscreenFromMessage(event){
+      if(event.source !== frame.contentWindow) return;
+      const data = event.data || {};
+      if(data.type !== "chess-warlord-fullscreen" || data.action !== "toggle") return;
+      const src = String(frame.getAttribute("src") || "");
+      if(!src.includes("chess_warlord.html")) return;
+      const target = frame.closest(".frame-wrap") || frame;
+      const requestTarget = (target.requestFullscreen || target.webkitRequestFullscreen) ? target : frame;
+      const request = requestTarget.requestFullscreen || requestTarget.webkitRequestFullscreen;
+      if(request) Promise.resolve(request.call(requestTarget)).catch(err=>console.warn("Chess Warlord hub fullscreen failed", err));
+    }
+    window.addEventListener("message", requestChessWarlordFullscreenFromMessage);
 
     let currentUsername = "";
     let currentLobbyShare = null;

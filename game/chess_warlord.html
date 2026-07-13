@@ -19,6 +19,10 @@
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
   html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;color:var(--text);touch-action:none;}
   canvas{display:block;width:100vw;height:100vh;background:#07101e;cursor:grab;}
+  html.cw-immersive-mode,body.cw-immersive-mode{position:fixed;inset:0;width:100vw;height:100vh;width:100dvw;height:100dvh;max-width:100vw;max-height:100vh;max-width:100dvw;max-height:100dvh;overflow:hidden;background:var(--bg);z-index:2147483647;}
+  html.cw-immersive-mode body,body.cw-immersive-mode{overscroll-behavior:none;touch-action:none;}
+  html.cw-immersive-mode canvas,body.cw-immersive-mode canvas{position:fixed;inset:0;width:100vw;height:100vh;width:100dvw;height:100dvh;}
+  html.cw-immersive-mode #topbar,html.cw-immersive-mode #fullscreenBtn,html.cw-immersive-mode #minimapDock,html.cw-immersive-mode #networkBadge,html.cw-immersive-mode #toast,html.cw-immersive-mode #checkBanner,html.cw-immersive-mode #piecePanel,html.cw-immersive-mode #overlay,html.cw-immersive-mode #defeatOverlay{position:fixed;}
   canvas.dragging{cursor:grabbing;}
   #topbar{position:fixed;left:0;right:0;top:0;height:92px;display:flex;align-items:stretch;justify-content:center;gap:10px;padding:10px 12px;pointer-events:none;z-index:4;}
   #quickControls{width:150px;min-width:132px;padding:9px 10px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;pointer-events:auto;}
@@ -310,6 +314,22 @@ const SHADOW_HOME_KILL_RADIUS = 2;
 const SHADOW_BACKSTAB_RADIUS = 3;
 const EMBER_SCORCH_SECONDS = 60;
 const EMBER_KILL_HEAT_SECONDS = 10;
+const EMBER_KILL_TIER_STEP = 4;
+const EMBER_HOME_KILL_ACCEL_SECONDS = 6;
+const EMBER_INVASION_KILL_ACCEL_SECONDS = 11;
+const EMBER_VALUE_ACCEL_PER_POINT = .65;
+const EMBER_MAJOR_KILL_ACCEL_SECONDS = 3;
+const EMBER_KILL_ACCEL_CAP_SECONDS = 15;
+const SHADOW_KILL_TIER_STEP = 4;
+const SHADOW_BASIC_KILL_ACCEL_SECONDS = 8;
+const SHADOW_VALUE_ACCEL_PER_POINT = .9;
+const SHADOW_DISADVANTAGE_ACCEL_PER_POINT = 1.25;
+const SHADOW_MARKED_ACCEL_SECONDS = 6;
+const SHADOW_MAJOR_ACCEL_SECONDS = 5;
+const SHADOW_BACKSTAB_ACCEL_SECONDS = 4;
+const SHADOW_KILL_ACCEL_CAP_SECONDS = 24;
+const SUNSPIRE_BEACON_EXTRA_WEIGHT = 4;
+const SUNSPIRE_BEACON_FORCED_CHANCE = .50;
 const CINDER_ARCHON_DEN_COOLDOWN = 120;
 const GLOBAL_SPAWN_COOLDOWN_MULT = .75;
 const SPAWN_TOKEN_RATE_MULT = 2; // Every faction earns shop tokens in half the previous wait time.
@@ -2802,7 +2822,7 @@ function setMinimapOpen(open, persist=true){
   if(persist) localStorage.setItem('cw.minimapOpen', minimapOpen ? '1' : '0');
   requestAnimationFrame(resize);
 }
-window.addEventListener('resize', resize);
+window.addEventListener('resize', ()=>{ resize(); updateFullscreenButton(); });
 resize();
 setMinimapOpen(minimapOpen, false);
 if(minimapToggle) minimapToggle.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); setMinimapOpen(!minimapOpen); };
@@ -3473,8 +3493,10 @@ function chooseSpawnOptions(factionIdx){
   let pool = f.pieces.filter(t=>t!=='king');
   if(f.id==='sunspire'){
     pool = pool.filter(t=>t!=='sunacolyte' && (t!=='sunspirebeacon' || canOfferSolarBeacon(factionIdx)));
+    const beaconEligible = f.alive && canOfferSolarBeacon(factionIdx);
     // First three real Sunspire spawns always show a Solar Beacon option if one can still be placed.
-    if((f.spawnsMade||0)<3 && canOfferSolarBeacon(factionIdx) && !pool.includes('sunspirebeacon')) pool.unshift('sunspirebeacon');
+    if((f.spawnsMade||0)<3 && beaconEligible && !pool.includes('sunspirebeacon')) pool.unshift('sunspirebeacon');
+    if(beaconEligible) pool = pool.concat(Array(SUNSPIRE_BEACON_EXTRA_WEIGHT).fill('sunspirebeacon'));
     // Preserve elite weighting while still presenting three distinct choices.
     pool = pool.concat(['dawnblade','lightlancer','radiantbishop']);
   }
@@ -3484,7 +3506,7 @@ function chooseSpawnOptions(factionIdx){
   }
   if(f.id==='ember') pool = pool.filter(t=>t!=='ashhopper');
   if(!pool.length) pool = f.pieces.filter(t=>t!=='king' && t!=='sunspirebeacon');
-  const picks=[];
+  let picks=[];
   let weighted=pool.slice();
   let offerRoll=0;
   const offerRandom=()=>seededNoise((f.spawnsMade||0)*41+offerRoll++,factionIdx*67+(mapSeed||1)%997,9401);
@@ -3495,9 +3517,12 @@ function chooseSpawnOptions(factionIdx){
   }
   const fallback=[...new Set(pool)];
   while(picks.length<3) picks.push(fallback[picks.length%Math.max(1,fallback.length)]||'pawn');
-  if(f.id==='sunspire' && (f.spawnsMade||0)<3 && canOfferSolarBeacon(factionIdx) && !picks.includes('sunspirebeacon')){
-    picks[picks.length-1]='sunspirebeacon';
+  if(f.id==='sunspire' && canOfferSolarBeacon(factionIdx) && !picks.includes('sunspirebeacon')){
+    if((f.spawnsMade||0)<3 || seededNoise((f.spawnsMade||0)*97+13,factionIdx*131+(mapSeed||1)%997,9477) < SUNSPIRE_BEACON_FORCED_CHANCE){
+      picks[picks.length-1]='sunspirebeacon';
+    }
   }
+  if(f.id==='sunspire') picks = [...new Set(picks)].concat(picks).slice(0,3);
   return picks;
 }
 function recordFactionSpawn(f,type){
@@ -4454,7 +4479,10 @@ function addSpawnProgress(f,gain,announce=false){
   return 0;
 }
 function accelerateSpawnSeconds(factionIdx, seconds, label='TOKEN RUSH'){
+  if(!canAuthoritativelyWriteState()) return;
   const f=factions[factionIdx]; if(!f || !f.alive) return;
+  seconds = Math.max(0, Math.round(Number(seconds) || 0));
+  if(seconds<=0) return;
   const territory=ownerCounts.get(factionIdx)||0;
   const army=pieces.filter(p=>p.alive&&p.faction===factionIdx).length;
   const gain=spawnRateForFaction(f, territory, army) * seconds;
@@ -4475,7 +4503,9 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
       const wasInvasion = tile(toX,toY)?.owner!==piece.faction;
       const radius = ['flamequeen','emberknight','pyretower','cinderjack','flamerunner','cinderarchon'].includes(piece.type) ? (wasInvasion ? 3 : 2) : (wasInvasion ? 2 : 1);
       claimed += claimRadius(piece.faction,toX,toY,radius,'ember_kill',0,(t)=>t.type!=='mountain');
-      accelerateSpawnSeconds(piece.faction,wasInvasion ? 4 : 2,'EMBER INVASION');
+      const majorEmberKill = ['king','queen','general','tower','dawnarchon','cinderarchon','citadelwalker'].includes(targetPiece?.type);
+      const emberSeconds = Math.min(EMBER_KILL_ACCEL_CAP_SECONDS, (wasInvasion ? EMBER_INVASION_KILL_ACCEL_SECONDS : EMBER_HOME_KILL_ACCEL_SECONDS) + Math.max(0,targetValue-1)*EMBER_VALUE_ACCEL_PER_POINT + (majorEmberKill ? EMBER_MAJOR_KILL_ACCEL_SECONDS : 0));
+      accelerateSpawnSeconds(piece.faction,emberSeconds,'EMBER SURGE');
     } else if(id==='shadow'){
       const homeKill = tile(toX,toY)?.owner===piece.faction;
       const majorBackstab = ['queen','general','king'].includes(targetPiece?.type);
@@ -4489,9 +4519,12 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
         }
       }
       if(majorBackstab){ burst(toX,toY,f.color,34); floating(toX,toY,'BACKSTAB CLAIM', f.color); }
-      const assassinScore = Math.max(1, Math.floor(targetValue/3)) + (targetValue>selfValue ? 2 : 0) + (majorBackstab ? 3 : 0);
+      const markedAssassination = piece?.type==='wraith' && (targetPiece?.shadowMarkedUntil || 0) > now();
+      const valueDisadvantage = Math.max(0,targetValue-selfValue);
+      const assassinScore = Math.max(1, Math.floor(targetValue/3)) + (valueDisadvantage>0 ? 2 : 0) + (markedAssassination ? 3 : 0) + (majorBackstab ? 3 : 0);
       f.killPrestige=(f.killPrestige||0)+assassinScore;
-      accelerateSpawnSeconds(piece.faction,Math.min(18,4+assassinScore*1.8),'SHADOW ASSASSINATION');
+      const shadowSeconds = Math.min(SHADOW_KILL_ACCEL_CAP_SECONDS, SHADOW_BASIC_KILL_ACCEL_SECONDS + Math.max(0,targetValue-1)*SHADOW_VALUE_ACCEL_PER_POINT + valueDisadvantage*SHADOW_DISADVANTAGE_ACCEL_PER_POINT + (markedAssassination ? SHADOW_MARKED_ACCEL_SECONDS : 0) + (majorBackstab ? SHADOW_MAJOR_ACCEL_SECONDS : 0) + (piece.type==='assassin' || piece.type==='wraith' ? SHADOW_BACKSTAB_ACCEL_SECONDS : 0));
+      accelerateSpawnSeconds(piece.faction,shadowSeconds, majorBackstab ? 'ROYAL BACKSTAB' : (markedAssassination || shadowSeconds>=14 ? 'ASSASSINATION' : 'SHADOW KILL'));
     } else if(id==='iron'){
       if(['king','general','tower'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,pieceDefs[piece.type]?.aura||2,'iron_fortified',0,(t)=>t.type!=='water'&&t.type!=='mountain');
       else if(['shieldpawn','bulwark','hammerknight','gatebreaker','warden','citadelwalker'].includes(piece.type)) claimed += claimRadius(piece.faction,toX,toY,1,'iron_fortified',0,(t)=>t.type!=='water'&&t.type!=='mountain');
@@ -5775,12 +5808,12 @@ function scaledTerritorySpawnTiers(){
 }
 function killSpawnTierInfo(f){
   const kills = Math.max(0, f?.piecesTaken || 0);
-  const score = f?.id==='shadow' ? Math.max(kills, Math.round(f.killPrestige || 0)) : kills;
-  const step = f?.id==='shadow' ? 4 : KILL_TIER_STEP;
+  const score = f?.id==='shadow' ? kills + Math.round(f.killPrestige || 0) : kills;
+  const step = f?.id==='shadow' ? SHADOW_KILL_TIER_STEP : (f?.id==='ember' ? EMBER_KILL_TIER_STEP : KILL_TIER_STEP);
   const completed = Math.floor(score / step);
   let secondsBonus = 0;
-  if(f?.id==='shadow') secondsBonus = completed > 0 ? 6 + completed * 5 : 0;
-  else if(f?.id==='ember') secondsBonus = completed > 0 ? 4 + completed * 4 : 0;
+  if(f?.id==='shadow') secondsBonus = completed > 0 ? 8 + (completed - 1) * 6 : 0;
+  else if(f?.id==='ember') secondsBonus = completed > 0 ? 6 + (completed - 1) * 5 : 0;
   else secondsBonus = completed > 0 ? completed + 1 : 0;
   const seconds = Math.max(SPAWN_FASTEST_SECONDS, SPAWN_SLOWEST_SECONDS - secondsBonus);
   const currentStart = completed * step;
@@ -5798,7 +5831,7 @@ function killSpawnTierInfo(f){
     progress,
     label:f?.id==='shadow'?`Assassin Tier ${completed}`:`Kill Tier ${completed}`,
     basis:f?.id==='shadow'?`${score}/${nextAt} kill-score`:`${kills}/${nextAt} kills`,
-    bonusText:secondsBonus ? `-${secondsBonus}s spawn timer` : (f?.id==='shadow'?'First jump at 4 kill-score':'First boost at 5 kills')
+    bonusText:secondsBonus ? `-${secondsBonus}s spawn timer` : (f?.id==='shadow'?'First jump at 4 kill-score':(f?.id==='ember'?'First boost at 4 kills':'First boost at 5 kills'))
   };
 }
 function territorySpawnTierInfo(territory){
@@ -7630,30 +7663,78 @@ mini.addEventListener('pointerdown', e=>{
   centerOn(x,y);
 });
 if(exitLobbyBtn) exitLobbyBtn.onclick=()=>exitToLobby();
-function isFullscreen(){ return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement; }
-async function toggleFullscreen(){
-  try{
-    if(isFullscreen()){
-      const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-      if(exit) await exit.call(document);
-    } else {
-      const el = document.documentElement;
-      const enter = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-      if(enter) await enter.call(el);
-      else toast('Fullscreen is not supported in this browser.', 1600);
-    }
-  }catch(e){
-    console.warn('fullscreen toggle failed', e);
-    toast('Fullscreen could not be changed by this browser.', 1800);
-  }
+let cwImmersiveMode = false;
+let lastFullscreenTapAt = 0;
+const isEmbeddedInHub = (()=>{ try{ return window.self !== window.top; }catch(_){ return true; } })();
+function nativeFullscreenElement(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
+function isFullscreen(){ return !!nativeFullscreenElement() || cwImmersiveMode; }
+function bestFullscreenElements(){ return [document.body, document.documentElement, canvas].filter(Boolean); }
+function setImmersiveMode(on){
+  cwImmersiveMode = !!on;
+  document.documentElement.classList.toggle('cw-immersive-mode', cwImmersiveMode);
+  document.body.classList.toggle('cw-immersive-mode', cwImmersiveMode);
+  if(cwImmersiveMode) window.scrollTo(0,0);
   updateFullscreenButton();
+  requestAnimationFrame(resize);
+}
+function requestNativeFullscreenNow(){
+  for(const el of bestFullscreenElements()){
+    const request = el.requestFullscreen || el.webkitRequestFullscreen;
+    if(request) return Promise.resolve(request.call(el));
+  }
+  return Promise.reject(new Error('Native fullscreen API unavailable'));
+}
+function exitNativeFullscreenNow(){
+  const exit = document.exitFullscreen || document.webkitExitFullscreen;
+  return exit ? Promise.resolve(exit.call(document)) : Promise.resolve();
+}
+function notifyHubFullscreenToggle(){
+  if(!isEmbeddedInHub) return;
+  try{ window.parent.postMessage({type:'chess-warlord-fullscreen', action:'toggle'}, '*'); }catch(_){}
+}
+function toggleFullscreen(e){
+  if(e){ e.preventDefault(); e.stopPropagation(); }
+  const t = Date.now();
+  if(t - lastFullscreenTapAt < 450) return;
+  lastFullscreenTapAt = t;
+  if(nativeFullscreenElement() || cwImmersiveMode){
+    setImmersiveMode(false);
+    exitNativeFullscreenNow().catch(()=>{}).finally(()=>{ updateFullscreenButton(); requestAnimationFrame(resize); });
+    return;
+  }
+  const p = requestNativeFullscreenNow();
+  p.then(()=>{
+    setImmersiveMode(false);
+    screen.orientation?.lock?.('landscape').catch(()=>{});
+    updateFullscreenButton();
+    requestAnimationFrame(resize);
+  }).catch(err=>{
+    console.warn('native fullscreen failed', err);
+    notifyHubFullscreenToggle();
+    try{
+      setImmersiveMode(true);
+    }catch(fallbackErr){
+      console.warn('immersive fullscreen fallback failed', fallbackErr);
+      toast('Fullscreen is blocked by this browser. Try opening Chess Warlord in a new tab.', 2400);
+    }
+  });
 }
 function updateFullscreenButton(){
-  if(fullscreenBtn) fullscreenBtn.textContent = isFullscreen() ? '⛶ Window' : '⛶ Fullscreen';
+  if(fullscreenBtn) fullscreenBtn.textContent = isFullscreen() ? '⛶ Exit Fullscreen' : '⛶ Fullscreen';
 }
-if(fullscreenBtn) fullscreenBtn.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); toggleFullscreen(); };
-document.addEventListener('fullscreenchange', updateFullscreenButton);
-document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+if(fullscreenBtn){
+  fullscreenBtn.addEventListener('pointerup', toggleFullscreen, {passive:false});
+  fullscreenBtn.addEventListener('click', toggleFullscreen, {passive:false});
+}
+function onFullscreenLayoutChange(){
+  if(nativeFullscreenElement()) setImmersiveMode(false);
+  updateFullscreenButton();
+  requestAnimationFrame(resize);
+}
+document.addEventListener('fullscreenchange', onFullscreenLayoutChange);
+document.addEventListener('webkitfullscreenchange', onFullscreenLayoutChange);
+window.addEventListener('orientationchange', onFullscreenLayoutChange);
+if(window.visualViewport) window.visualViewport.addEventListener('resize', onFullscreenLayoutChange);
 centerBtn.onclick=(e)=>{
   e.preventDefault();
   e.stopPropagation();
