@@ -606,22 +606,64 @@ function virtualAiEloForSlot(idx=null){
   const base = isMultiplayerGame() ? CHESS_ELO_START : (SOLO_AI_ELO_BY_DIFFICULTY[diff] || CHESS_ELO_START);
   return Math.max(CHESS_ELO_FLOOR, Math.round(base + Math.max(0, Number(idx) || 0) * 8));
 }
+function firebaseUserDocId(name){
+  // Keep the visible player name as the Users document id; only Firestore path separators are unsafe.
+  return String(name || 'player').trim().replace(/[\/\u0000-\u001f]/g,'_').slice(0,120) || 'player';
+}
 function chessEloProfileDocRef(name){
+  // Persistent ratings live at Users/{player name}; lobby/local copies remain fallbacks.
+  return doc(db,'Users',firebaseUserDocId(name));
+}
+function legacyChessEloProfileDocRef(name){
   if(!lobbyId) return null;
   return doc(db,'lobbies',lobbyId,'chess_warlord_profiles',profileKeyForName(name));
+}
+function chessEloProfileFromUserDoc(name, data={}){
+  const nested = data.chessWarlord || data.chessWarlordEloProfile || {};
+  return {
+    ...data,
+    ...nested,
+    username: nested.username || data.username || name,
+    elo: nested.elo ?? nested.rating ?? data.chessWarlordElo ?? data.elo ?? data.rating,
+    rating: nested.rating ?? nested.elo ?? data.chessWarlordElo ?? data.rating ?? data.elo,
+    rankName: nested.rankName || data.chessWarlordRankName || data.rankName,
+    rankEmoji: nested.rankEmoji || data.chessWarlordRankEmoji || data.rankEmoji,
+    wins: nested.wins ?? data.chessWarlordWins ?? data.wins,
+    losses: nested.losses ?? data.chessWarlordLosses ?? data.losses,
+    games: nested.games ?? data.chessWarlordGames ?? data.games
+  };
 }
 async function refreshChessEloProfilesForSlots(reason='slots'){
   const seq = ++eloLoadSeq;
   seedChessEloProfilesFromLocalAndLobby();
-  if(lobbyId){
-    for(const name of slotNames){
-      if(seq !== eloLoadSeq) return;
-      if(!name || isAIName(name)) continue;
-      try{
-        const snap = await getDoc(chessEloProfileDocRef(name));
-        if(snap.exists()) rememberChessEloProfile(name, snap.data());
-      }catch(e){ /* Lobby-level cache/localStorage remain the approved fallback. */ }
-    }
+  for(const name of slotNames){
+    if(seq !== eloLoadSeq) return;
+    if(!name || isAIName(name)) continue;
+    try{
+      const userRef = chessEloProfileDocRef(name);
+      const snap = await getDoc(userRef);
+      if(snap.exists()){
+        rememberChessEloProfile(name, chessEloProfileFromUserDoc(name, snap.data()));
+      } else {
+        const legacyRef = legacyChessEloProfileDocRef(name);
+        const legacySnap = legacyRef ? await getDoc(legacyRef) : null;
+        if(legacySnap?.exists()){
+          const migrated = normalizeChessEloProfile(name, legacySnap.data());
+          rememberChessEloProfile(name, migrated);
+          await setDoc(userRef,{
+            username:migrated.username,
+            chessWarlordElo:migrated.elo,
+            chessWarlordRankName:migrated.rankName,
+            chessWarlordRankEmoji:migrated.rankEmoji,
+            chessWarlordWins:migrated.wins,
+            chessWarlordLosses:migrated.losses,
+            chessWarlordGames:migrated.games,
+            chessWarlord:{...migrated,gameKey:GAME_KEY,updatedAtMs:Date.now()},
+            updatedAt:serverTimestamp()
+          },{merge:true});
+        }
+      }
+    }catch(e){ /* Lobby-level cache/localStorage remain the fallback if Users is unavailable. */ }
   }
   renderEloProfileLine();
   renderSpawnCards();
@@ -652,8 +694,18 @@ async function saveChessEloProfile(profile){
   }
   try{
     const ref = chessEloProfileDocRef(clean.username);
-    if(ref) await setDoc(ref,payload,{merge:true});
-  }catch(e){ console.warn('profile ELO save fallback used', e); }
+    await setDoc(ref,{
+      username: clean.username,
+      chessWarlordElo: clean.elo,
+      chessWarlordRankName: clean.rankName,
+      chessWarlordRankEmoji: clean.rankEmoji,
+      chessWarlordWins: clean.wins,
+      chessWarlordLosses: clean.losses,
+      chessWarlordGames: clean.games,
+      chessWarlord: payload,
+      updatedAt: serverTimestamp()
+    },{merge:true});
+  }catch(e){ console.warn('Users ELO save fallback used', e); }
   renderEloProfileLine();
   renderSpawnCards();
   updateHUD();
@@ -2289,7 +2341,7 @@ const factionCatalog = {
   },
   iron: {
     id:'iron', name:'Iron Bastion', short:'Bastion', icon:'🛡️', color:'#aeb7c2', dark:'#53606b', aura:'#cfd8e3', aiStyle:'defensive', spawnRate:1.40,
-    description:'Fortress army. Spawning is driven by controlled tower types, foundries, gatehouses, and citadel anchors; roads give Bastion troops 15% faster cooldowns.',
+    description:'Fortress army. Its heaviest troops move deliberately, and every nonlethal hit on an Iron troop restarts that troop’s movement cooldown. Controlled towers, foundries, gatehouses, and citadel anchors drive spawning.',
     pieces:['shieldpawn','bulwark','hammerknight','gatebreaker','rook','warden','general','tower','citadelwalker','shieldfoundry','gatehouse']
   },
   verdant: {
@@ -2357,32 +2409,32 @@ const pieceDefs = {
   tower:{name:'Tower', icon:'♖', pattern:'tower', cooldown:6.0, value:6, aura:3, hp:1, desc:'Slow one-step orthogonal anchor that projects territory.'},
   ballistatower:{name:'Ballista Tower', icon:'▧', pattern:'ballista', cooldown:6.8, value:7, aura:3, hp:2, desc:'Crownward siege tower. Moves one cardinal tile, but attacks only by jumping onto enemies or buildings exactly four cardinal spaces away.'},
   lancer:{name:'Lancer', icon:'♘', pattern:'lancer', cooldown:3.6, value:4, hp:1, desc:'Moves up to three straight squares and attacks at the end of a lane.'},
-  marshal:{name:'Marshal', icon:'✦', pattern:'marshal', cooldown:4.6, value:6, aura:2, hp:1, desc:'Moves two straight, then may bend one tile when fighting from owned land. Crownward troops within 3 tiles cool down 14% faster.'},
+  marshal:{name:'Marshal', icon:'✦', pattern:'marshal', cooldown:4.6, value:6, aura:2, hp:2, desc:'Crownward elite. Moves two straight, then may bend one tile when fighting from owned land. Crownward troops within 3 tiles cool down 14% faster.'},
   sparkpawn:{name:'Spark Pawn', icon:'♟', pattern:'pawn', cooldown:2.0, value:1, hp:1, desc:'Fast pawn. Moves one any direction and captures diagonally.'},
   emberknight:{name:'Ember Knight', icon:'♞', pattern:'knight', cooldown:2.55, value:4, hp:1, desc:'Very fast knight pressure.'},
   cinderjack:{name:'Cinder Jack', icon:'♞', pattern:'cinderjack', cooldown:2.85, value:4, hp:1, desc:'L-jump raider that scorches ground around its landing spot.'},
-  cinderarchon:{name:'Cinder Archon', icon:'◇', pattern:'cinderarchon', cooldown:2.85, value:5, hp:1, desc:'Jumps exactly two tiles. Its kills summon a Spark Den near the kill, with a two minute personal cooldown.'},
+  cinderarchon:{name:'Cinder Archon', icon:'◇', pattern:'cinderarchon', cooldown:2.85, value:5, hp:2, desc:'Ember elite. Jumps exactly two tiles. Its kills summon a Spark Den near the kill, with a two minute personal cooldown.'},
   flamerunner:{name:'Flame Runner', icon:'↯', pattern:'flamerunner', cooldown:3.15, value:4, hp:1, desc:'Rushes exactly two or three tiles in a cardinal line.'},
   flamequeen:{name:'Flame Queen', icon:'♛', pattern:'queen', cooldown:4.75, value:10, hp:1, desc:'Aggressive queen with lower cooldown.'},
   pyretower:{name:'Pyre Tower', icon:'♖', pattern:'tower', cooldown:5.6, value:6, aura:3, hp:1, desc:'Territory tower with faster cooldown.'},
   shieldpawn:{name:'Shieldbearer', icon:'♟', pattern:'shieldbearer', cooldown:3.2, value:1, hp:2, shieldPush:true, desc:'Heavy one-tile shield unit that pushes enemies on attack.'},
-  bulwark:{name:'Bulwark', icon:'▣', pattern:'rookShort', cooldown:4.8, value:5, hp:2, desc:'Short rook that can survive one capture attempt.'},
+  bulwark:{name:'Bulwark', icon:'▣', pattern:'rookShort', cooldown:5.6, value:5, hp:3, desc:'Slow Iron heavy. A short rook with three health and a deliberately long movement cooldown.'},
   hammerknight:{name:'Hammer Knight', icon:'♞', pattern:'hammerknight', cooldown:4.55, value:5, hp:2, shieldPush:true, desc:'Charges exactly two cardinal tiles and pushes on impact.'},
   gatebreaker:{name:'Gatebreaker', icon:'▰', pattern:'gatebreaker', cooldown:4.35, value:4, hp:2, shieldPush:true, desc:'Moves one straight, or strikes one more straight into an enemy or wall.'},
-  warden:{name:'Warden', icon:'◆', pattern:'warden', cooldown:5.2, value:6, aura:2, hp:2, desc:'Defensive diagonal/orthogonal stepper with small territory aura.'},
+  warden:{name:'Warden', icon:'◆', pattern:'warden', cooldown:6.0, value:6, aura:2, hp:3, desc:'Slow Iron elite. A three-health defensive stepper with a small territory aura.'},
   seedpawn:{name:'Seed Pawn', icon:'♙', pattern:'pawn', cooldown:1.9, value:1, hp:1, desc:'Quickest pawn; helps Verdant flood territory.'},
   thornguard:{name:'Thorn Guard', icon:'♙', pattern:'thornguard', cooldown:2.25, value:2, hp:1, desc:'Moves cardinally and recharges best when staying connected to owned land.'},
   scout:{name:'Scout', icon:'◇', pattern:'scout', cooldown:2.2, value:2, hp:1, desc:'Leaps two squares orthogonally or steps diagonally.'},
   stagrunner:{name:'Stag Runner', icon:'♞', pattern:'stagrunner', cooldown:2.7, value:4, hp:1, desc:'Verdant L-jumper that must land near friendly growth, forests, or allies.'},
   vinehook:{name:'Vinehook', icon:'⌁', pattern:'vinehook', cooldown:2.9, value:4, hp:1, forestWalker:true, desc:'Short hook-jumps toward friendly growth and pulls territory around the landing.'},
-  vinebishop:{name:'Vine Bishop', icon:'♝', pattern:'bishop', cooldown:3.1, value:4, hp:1, forestWalker:true, desc:'Bishop that can slide through forest, but not mountains/water.'},
+  vinebishop:{name:'Vine Bishop', icon:'♝', pattern:'bishop', cooldown:3.1, value:4, hp:2, forestWalker:true, desc:'Verdant elite. Bishop that can slide through forest, but not mountains or water.'},
   grovetower:{name:'Grove Tower', icon:'♖', pattern:'tower', cooldown:5.8, value:6, aura:3, hp:1, forestWalker:true, desc:'Territory tower that likes forests.'},
   shadepawn:{name:'Shade Pawn', icon:'♙', pattern:'shadepawn', cooldown:2.45, value:2, hp:1, wallVault:true, desc:'Skirmisher. Select it, then tap an orange enemy three to four tiles away to place a 15-second execution mark. Mark recharges in 60 seconds.'},
   blinkpawn:{name:'Blink Pawn', icon:'♙', pattern:'blinkpawn', cooldown:2.65, value:2, hp:1, wallVault:true, desc:'Cannot stop adjacent; instead blinks exactly two tiles in any direction.'},
   shadowstepper:{name:'Shadow Stepper', icon:'⟡', pattern:'shadowstepper', cooldown:3.2, value:4, hp:1, wallVault:true, desc:'Teleports one to four tiles, with recharge based on distance.'},
   assassin:{name:'Assassin', icon:'⟡', pattern:'assassin', cooldown:3.1, value:5, hp:1, wallVault:true, desc:'Moves diagonally or blinks in L-shapes for close assassinations. Cooldown halves after a kill.'},
   nightblade:{name:'Nightblade', icon:'☾', pattern:'nightblade', cooldown:4.6, value:6, hp:1, wallVault:true, desc:'Stalks to open tiles beside enemies, then can rapidly strike any adjacent or diagonal enemy. After any Shadow kill, it may shadow-rush to that death site even while on cooldown.'},
-  wraith:{name:'Wraith', icon:'✷', pattern:'wraith', cooldown:4.2, value:7, hp:1, wallVault:true, desc:'Long-range teleporter. May execute Shade-marked enemies within four tiles.'},
+  wraith:{name:'Wraith', icon:'✷', pattern:'wraith', cooldown:4.2, value:7, hp:2, wallVault:true, desc:'Shadow elite. Long-range teleporter that may execute Shade-marked enemies within four tiles.'},
   umbralbishop:{name:'Umbral Bishop', icon:'♝', pattern:'umbralbishop', cooldown:3.65, value:5, hp:1, wallVault:true, desc:'Diagonal controller with short diagonal teleport options.'},
   nightknight:{name:'Night Knight', icon:'♞', pattern:'knight', cooldown:2.85, value:4, hp:1, desc:'Fast shadow knight.'},
   tidepawn:{name:'Tide Pawn', icon:'♙', pattern:'pawn', cooldown:2.25, value:1, hp:1, amphibious:true, desc:'Pawn that can cross water.'},
@@ -2403,7 +2455,7 @@ const pieceDefs = {
   frostbishop:{name:'Frost Bishop', icon:'♝', pattern:'frostbishop', cooldown:4.0, value:5, hp:1, desc:'Moves two to five diagonal tiles, rewarding straight icy lanes.'},
   sledknight:{name:'Sled Knight', icon:'♞', pattern:'sledknight', cooldown:3.9, value:5, hp:1, desc:'Momentum jump: three straight, then one sideways.'},
   mirrorskater:{name:'Mirror Skater', icon:'◇', pattern:'mirrorskater', cooldown:3.6, value:4, hp:1, desc:'Moves exactly two, four, or six tiles in a straight line; never one.'},
-  citadelwalker:{name:'Citadel Walker', icon:'▦', pattern:'citadel', cooldown:5.7, value:8, hp:3, aura:2, desc:'Iron elite. Moves one orthogonal or exactly three orthogonal, anchoring fortified land.'},
+  citadelwalker:{name:'Citadel Walker', icon:'▦', pattern:'citadel', cooldown:6.8, value:8, hp:4, aura:2, desc:'Iron Bastion’s toughest elite. Four health, a very slow cooldown, and movement of one or exactly three orthogonal tiles.'},
   dawnarchon:{name:'Dawn Archon', icon:'✹', pattern:'archon', cooldown:4.9, value:9, hp:2, aura:2, reviveOnce:true, desc:'Sunspire elite. Moves like a stronger bishop/knight hybrid; the first time it falls, it revives once beside its own king.'},
   voidstrider:{name:'Void Strider', icon:'✷', pattern:'voidstrider', cooldown:3.6, value:7, hp:1, wallVault:true, desc:'Shadow elite. Moves one diagonal or exactly ten spaces in any straight or diagonal direction.'},
   commandbanner:{name:'Command Banner', icon:'⚐', pattern:'building', cooldown:30, value:2, hp:1, building:true, temporary:true, aura:3, desc:'Temporary Crownward banner. Lives for 30 seconds and makes nearby troops cool down 25% faster.'},
@@ -4918,6 +4970,16 @@ function applyBuildingMoveEffects(piece,fromX,fromY){
     piece.lastMirrorStepAt=now();
   }
 }
+function restartIronMovementCooldownAfterHit(target){
+  if(!target?.alive || target.hp<=0 || factions[target.faction]?.id!=='iron' || pieceDefs[target.type]?.building) return false;
+  const duration = Math.max(.25, Number(target.lastCooldownDuration) || baseCooldownFor(target,target.x,target.y));
+  target.lastMove = now();
+  target.cooldownUntil = target.lastMove + duration;
+  target.lastCooldownDuration = duration;
+  target.flash = 1;
+  floating(target.x,target.y,'STAGGERED', factions[target.faction]?.color || '#dbeafe');
+  return true;
+}
 function capturePiece(attacker, target){
   if(!target.alive) return false;
   const markedAssassination = attacker?.type==='wraith' && target.faction!==attacker.faction && (target.shadowMarkedUntil || 0) > now() && dist2(attacker.x,attacker.y,target.x,target.y) <= 16;
@@ -4935,8 +4997,10 @@ function capturePiece(attacker, target){
   burst(target.x,target.y,factions[target.faction].color,18);
   floating(target.x,target.y,markedAssassination ? 'EXECUTED' : 'CAPTURE', factions[attacker.faction].color);
   if(target.hp>0){
-    floating(target.x,target.y,'SHIELD', '#dbeafe');
+    const ironCooldownRestarted = restartIronMovementCooldownAfterHit(target);
+    floating(target.x,target.y,ironCooldownRestarted ? 'COOLDOWN RESET' : 'SHIELD', '#dbeafe');
     target.flash=1;
+    markStateDirty();
     return false;
   }
   attacker.captures++;
