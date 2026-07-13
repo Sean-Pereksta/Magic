@@ -565,11 +565,11 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
 	        </div>
 	      </div>
 	      <div class="panel">
-	        <div class="panelTitle">Auto Connect Duplicate Representative Names</div>
+	        <div class="panelTitle">Representative Alias Review (fuzzy suggestions require explicit action)</div>
 	        <div class="teamConnectControls">
 	          <div class="field"><label>Connected match margin: <span id="teamConnectThresholdValue">75%</span></label><input id="teamConnectThreshold" type="range" min="50" max="100" step="1" value="75"></div>
 	          <button id="connectVisibleRepMatchesBtn" class="green" type="button">Connect Selected</button>
-	          <button id="connectAllRepMatchesBtn" class="dark" type="button">Connect All Above Margin</button>
+	          <button id="connectAllRepMatchesBtn" class="dark" type="button">Connect All Above Margin</button><button id="clearAllRepAliasesBtn" class="red" type="button">Clear All Aliases</button><button id="clearRetailRepAliasesBtn" class="gray" type="button">Clear Retail Aliases</button><button id="clearReferralRepAliasesBtn" class="gray" type="button">Clear Referral Aliases</button>
 	        </div>
 	        <div id="teamConnectSummary" class="checkResultMeta"></div>
 	        <div id="teamConnectList" class="teamConnectList"></div>
@@ -880,6 +880,10 @@ const state = {
   teamSelectionInitialized: false,
   activeTeam: '',
   repAliases: new Map(),
+  identityConflicts: [],
+  rosterDiagnostics: {},
+  teamDetailsCache: new Map(),
+  teamSummaryRevision: '',
   massHeaderRefs: [],
   teamIndexCache: null,
   dataIndex: { dirty:true, reason:'initial', version:0, sources:{}, reps:[], teamCounts:[], repsByTeam:new Map(), dateRanges:{qa:{interaction:null,assigned:null},date:new Map(),checklist:new Map(),documented_coaching:new Map(),comp_calls:new Map()}, lastBuiltAt:0 },
@@ -917,7 +921,7 @@ const els = {
   importModal: el('importModal'), troubleshootModal: el('troubleshootModal'), teamsModal: el('teamsModal'), modelsModal: el('modelsModal'), massHeaderModal: el('massHeaderModal'), editModelModal: el('editModelModal'), runModal: el('runModal'), researchModal: el('researchModal'), researchEditorModal: el('researchEditorModal'),
   retailFile: el('retailFile'), referralFile: el('referralFile'), qaFile: el('qaFile'), qaDirectFile: el('qaDirectFile'), clearQADirectFileBtn: el('clearQADirectFileBtn'), checklistFile: el('checklistFile'), documentedCoachingFile: el('documentedCoachingFile'), compCallsFile: el('compCallsFile'), packagedFile: el('packagedFile'), retailFileName: el('retailFileName'), referralFileName: el('referralFileName'), qaFileName: el('qaFileName'), qaDirectFileName: el('qaDirectFileName'), checklistFileName: el('checklistFileName'), documentedCoachingFileName: el('documentedCoachingFileName'), compCallsFileName: el('compCallsFileName'), packagedFileName: el('packagedFileName'), openTroubleshootBtn: el('openTroubleshootBtn'), fixTeamsBtn: el('fixTeamsBtn'), fixTeamsPanel: el('fixTeamsPanel'), fixTeamsSummary: el('fixTeamsSummary'), fixTeamsReview: el('fixTeamsReview'), fixRepSummary: el('fixRepSummary'), fixRepReview: el('fixRepReview'), applyFixTeamsBtn: el('applyFixTeamsBtn'), applyFixRepMatchesBtn: el('applyFixRepMatchesBtn'), cancelFixTeamsBtn: el('cancelFixTeamsBtn'), categorizeDataBtn: el('categorizeDataBtn'), viewSpreadsheetDataBtn: el('viewSpreadsheetDataBtn'), packageDataBtn: el('packageDataBtn'), saveImportCacheBtn: el('saveImportCacheBtn'), loadImportCacheBtn: el('loadImportCacheBtn'), persistImportCacheBtn: el('persistImportCacheBtn'), clearImportCacheBtn: el('clearImportCacheBtn'), importCacheStatus: el('importCacheStatus'), categorizedDataSummary: el('categorizedDataSummary'), spreadsheetDataPreview: el('spreadsheetDataPreview'), addCustomSourceBtn: el('addCustomSourceBtn'), customSourceFile: el('customSourceFile'), customSourcesList: el('customSourcesList'),
   troubleSourceSelect: el('troubleSourceSelect'), troubleSheetSelect: el('troubleSheetSelect'), troubleHeaderRowInput: el('troubleHeaderRowInput'), troubleStartColInput: el('troubleStartColInput'), troublePreviewBtn: el('troublePreviewBtn'), troubleApplyBtn: el('troubleApplyBtn'), troubleApplyFootBtn: el('troubleApplyFootBtn'), troubleStatus: el('troubleStatus'), troubleSheetPreview: el('troubleSheetPreview'), troubleHeaderSummary: el('troubleHeaderSummary'), troubleHeaderPreview: el('troubleHeaderPreview'), troubleSelectedCell: el('troubleSelectedCell'), troubleManualHeaderName: el('troubleManualHeaderName'), troubleDeclareHeaderBtn: el('troubleDeclareHeaderBtn'), troubleManualHeaders: el('troubleManualHeaders'), troubleCustomFrameworkPanel: el('troubleCustomFrameworkPanel'), troubleNameMode: el('troubleNameMode'), troubleFullNameColumn: el('troubleFullNameColumn'), troubleFirstNameColumn: el('troubleFirstNameColumn'), troubleLastNameColumn: el('troubleLastNameColumn'), troubleConvertLastFirst: el('troubleConvertLastFirst'), troubleTeamColumn: el('troubleTeamColumn'), troubleSkipTeamBuild: el('troubleSkipTeamBuild'), troubleUseDateColumn: el('troubleUseDateColumn'), troubleDateColumn: el('troubleDateColumn'),
-  teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamRepSearch: el('teamRepSearch'), teamMoveSelect: el('teamMoveSelect'), selectAllTeamRepsBtn: el('selectAllTeamRepsBtn'), unselectAllTeamRepsBtn: el('unselectAllTeamRepsBtn'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'), teamConnectThreshold: el('teamConnectThreshold'), teamConnectThresholdValue: el('teamConnectThresholdValue'), connectVisibleRepMatchesBtn: el('connectVisibleRepMatchesBtn'), connectAllRepMatchesBtn: el('connectAllRepMatchesBtn'), teamConnectSummary: el('teamConnectSummary'), teamConnectList: el('teamConnectList'),
+  teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamRepSearch: el('teamRepSearch'), teamMoveSelect: el('teamMoveSelect'), selectAllTeamRepsBtn: el('selectAllTeamRepsBtn'), unselectAllTeamRepsBtn: el('unselectAllTeamRepsBtn'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'), teamConnectThreshold: el('teamConnectThreshold'), teamConnectThresholdValue: el('teamConnectThresholdValue'), connectVisibleRepMatchesBtn: el('connectVisibleRepMatchesBtn'), connectAllRepMatchesBtn: el('connectAllRepMatchesBtn'), teamConnectSummary: el('teamConnectSummary'), teamConnectList: el('teamConnectList'), clearAllRepAliasesBtn: el('clearAllRepAliasesBtn'), clearRetailRepAliasesBtn: el('clearRetailRepAliasesBtn'), clearReferralRepAliasesBtn: el('clearReferralRepAliasesBtn'),
   modelList: el('modelList'), createModelBtn: el('createModelBtn'), exportModelsBtn: el('exportModelsBtn'), importModelsFile: el('importModelsFile'), massHeaderList: el('massHeaderList'), massHeaderSummary: el('massHeaderSummary'), refreshMassHeaderBtn: el('refreshMassHeaderBtn'), applyMassHeaderBtn: el('applyMassHeaderBtn'), massShowAllHeaders: el('massShowAllHeaders'), editModelTitle: el('editModelTitle'), modelNameInput: el('modelNameInput'), modelTypeInput: el('modelTypeInput'), modelTiebreakerInput: el('modelTiebreakerInput'), sourceSettingsPanel: el('sourceSettingsPanel'), columnCheckResults: el('columnCheckResults'), criteriaList: el('criteriaList'), addCriterionBtn: el('addCriterionBtn'), cancelModelTopBtn: el('cancelModelTopBtn'), cancelModelBtn: el('cancelModelBtn'), saveModelBtn: el('saveModelBtn'), saveExitModelBtn: el('saveExitModelBtn'),
   runModelSelect: el('runModelSelect'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), qaTeamScoreModeField: el('qaTeamScoreModeField'), runQATeamScoreMode: el('runQATeamScoreMode'), hideNoScoreReps: el('hideNoScoreReps'), hideNoScoreThreshold: el('hideNoScoreThreshold'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn'), allstarRunPanel: el('allstarRunPanel'), orgBuilderModal: el('orgBuilderModal'), createOrgBtn: el('createOrgBtn'), duplicateOrgBtn: el('duplicateOrgBtn'), deleteOrgBtn: el('deleteOrgBtn'), saveOrgBtn: el('saveOrgBtn'), exportOrgsBtn: el('exportOrgsBtn'), importOrgsFile: el('importOrgsFile'), orgSearchInput: el('orgSearchInput'), orgCoachSearchInput: el('orgCoachSearchInput'), orgList: el('orgList'), orgCoachList: el('orgCoachList'), orgSelectedList: el('orgSelectedList'), orgNameInput: el('orgNameInput'), orgCountBadge: el('orgCountBadge'), orgHealthPanel: el('orgHealthPanel'), selectVisibleOrgCoachesBtn: el('selectVisibleOrgCoachesBtn'), clearOrgCoachesBtn: el('clearOrgCoachesBtn'), runOrgSearchInput: el('runOrgSearchInput'), runIncludeOrgGrid: el('runIncludeOrgGrid'), runExcludeOrgGrid: el('runExcludeOrgGrid'), runOrgBadge: el('runOrgBadge'), clearRunOrgsBtn: el('clearRunOrgsBtn'), researchCanvas: el('researchCanvas'), metricsList: el('metricsList'), metricSearchInput: el('metricSearchInput'), metricEditorModal: el('metricEditorModal'), newMetricBtn: el('newMetricBtn'), exportMetricsBtn: el('exportMetricsBtn'), importMetricsFile: el('importMetricsFile'), metricEditId: el('metricEditId'), metricNameInput: el('metricNameInput'), metricSourceSelect: el('metricSourceSelect'), metricModeSelect: el('metricModeSelect'), metricFieldInput: el('metricFieldInput'), metricFieldGearBtn: el('metricFieldGearBtn'), metricPercentOfField: el('metricPercentOfField'), metricWithinCompareField: el('metricWithinCompareField'), metricWithinUseRange: el('metricWithinUseRange'), metricWithinDays: el('metricWithinDays'), metricWithinRangeMin: el('metricWithinRangeMin'), metricWithinRangeMax: el('metricWithinRangeMax'), metricNumericWarn: el('metricNumericWarn'), metricNotesInput: el('metricNotesInput'), addMetricAndBtn: el('addMetricAndBtn'), addMetricOrBtn: el('addMetricOrBtn'), metricRulesList: el('metricRulesList'), deleteMetricBtn: el('deleteMetricBtn'), saveMetricBtn: el('saveMetricBtn'), saveExitMetricBtn: el('saveExitMetricBtn'), researchCanvas: el('researchCanvas'), addResearchItemBtn: el('addResearchItemBtn'), exportResearchBtn: el('exportResearchBtn'), importResearchFile: el('importResearchFile'), renderAllResearchBtn: el('renderAllResearchBtn'), buildResearchIndexBtn: el('buildResearchIndexBtn'), clearResearchCacheBtn: el('clearResearchCacheBtn'), clearResearchRenderedBtn: el('clearResearchRenderedBtn'), researchCacheBadge: el('researchCacheBadge'), stopResearchRenderBtn: el('stopResearchRenderBtn'), clearResearchBtn: el('clearResearchBtn'), researchEditId: el('researchEditId'), researchTitleInput: el('researchTitleInput'), researchOutputType: el('researchOutputType'), researchMode: el('researchMode'), researchFilterDuplicateReps: el('researchFilterDuplicateReps'), researchSource: el('researchSource'), researchDateColumn: el('researchDateColumn'), researchStartDate: el('researchStartDate'), researchEndDate: el('researchEndDate'), researchGroupField: el('researchGroupField'), researchGroupMultiAdd: el('researchGroupMultiAdd'), researchGroupMultiAddBuilder: el('researchGroupMultiAddBuilder'), researchGroupMultiAddInput: el('researchGroupMultiAddInput'), researchGroupMultiAddBtn: el('researchGroupMultiAddBtn'), researchGroupMultiAddList: el('researchGroupMultiAddList'), researchGroupExpression: el('researchGroupExpression'), researchValueMode: el('researchValueMode'), researchValueField: el('researchValueField'), researchPercentOfField: el('researchPercentOfField'), researchWithinCompareField: el('researchWithinCompareField'), researchWithinUseRange: el('researchWithinUseRange'), researchWithinDays: el('researchWithinDays'), researchWithinRangeMin: el('researchWithinRangeMin'), researchWithinRangeMax: el('researchWithinRangeMax'), researchValueFieldError: el('researchValueFieldError'), researchUseSecondaryGroup: el('researchUseSecondaryGroup'), researchSecondaryGroupField: el('researchSecondaryGroupField'), researchDateGrouping: el('researchDateGrouping'), researchModelSelect: el('researchModelSelect'), researchCriteriaSelect: el('researchCriteriaSelect'), researchModelResult: el('researchModelResult'), researchPopulation: el('researchPopulation'), researchPercentBuilder: el('researchPercentBuilder'), researchNumeratorExpression: el('researchNumeratorExpression'), researchNumeratorCount: el('researchNumeratorCount'), researchDenominator: el('researchDenominator'), researchDenominatorExpression: el('researchDenominatorExpression'), researchZeroDenominator: el('researchZeroDenominator'), researchSort: el('researchSort'), researchTableDecimals: el('researchTableDecimals'), researchTableShowPercent: el('researchTableShowPercent'), researchAxisMin: el('researchAxisMin'), researchAxisMax: el('researchAxisMax'), researchDecimals: el('researchDecimals'), researchShowValues: el('researchShowValues'), researchShowDateLabels: el('researchShowDateLabels'), researchShowPercent: el('researchShowPercent'), researchGraphSort: el('researchGraphSort'), researchTopN: el('researchTopN'), researchShowSummaryLine: el('researchShowSummaryLine'), researchGoalValue: el('researchGoalValue'), researchRotateLabels: el('researchRotateLabels'), researchWrapLabels: el('researchWrapLabels'), researchShowLegend: el('researchShowLegend'), researchShowGridlines: el('researchShowGridlines'), researchSmoothLine: el('researchSmoothLine'), researchUseDots: el('researchUseDots'), researchBarOrientation: el('researchBarOrientation'), researchStackedBars: el('researchStackedBars'), researchGroupedBars: el('researchGroupedBars'), researchHideZeroGroups: el('researchHideZeroGroups'), researchHighlightBest: el('researchHighlightBest'), researchHighlightWorst: el('researchHighlightWorst'), researchRowLimit: el('researchRowLimit'), researchTotals: el('researchTotals'), researchTextWrap: el('researchTextWrap'), researchRowDensity: el('researchRowDensity'), addResearchFilterBtn: el('addResearchFilterBtn'), researchFilters: el('researchFilters'), addResearchColumnBtn: el('addResearchColumnBtn'), researchColumns: el('researchColumns'), saveResearchItemBtn: el('saveResearchItemBtn'), previewResearchFoundBtn: el('previewResearchFoundBtn'), researchFoundPreview: el('researchFoundPreview')
 };
@@ -1510,42 +1514,70 @@ function parseModelsImportText(text){
 }
 function norm(s){return String(s ?? '').toLowerCase().replace(/%/g,' percent ').replace(/&/g,' and ').trim().replace(/[^a-z0-9]+/g,'');}
 function stripRepNameAnnotations(s){ return String(s ?? '').replace(/\s*(\([^)]*\)|\[[^\]]*\])\s*$/g,'').replace(/\s+/g,' ').trim(); }
-function cleanName(s){
-  s = String(s ?? '').trim().replace(/\s+/g,' ');
+function normalizeFullNameDisplay(value,options={}){
+  let s=stripRepNameAnnotations(value).trim().replace(/\s+/g,' ');
   if(!s) return '';
-  if(s.includes(',')){
-    const parts=s.split(','); const last=(parts[0]||'').trim(); const first=(parts.slice(1).join(' ')||'').trim().split(/\s+/)[0]||'';
-    return titleCase(`${first} ${last}`.trim());
+  if(options.lastFirst!==false && s.includes(',')){
+    const parts=s.split(',').map(x=>x.trim()).filter(Boolean);
+    if(parts.length>=2){
+      const last=parts.shift();
+      const suffixes=new Set(['jr','sr','ii','iii','iv','v']);
+      const tail=[];
+      while(parts.length && suffixes.has(norm(parts[parts.length-1]))){ tail.unshift(parts.pop()); }
+      s=[parts.join(' '),last,...tail].filter(Boolean).join(' ');
+    }
   }
+  s=s.replace(/[\u2018\u2019]/g,"'").replace(/[\u2010-\u2014]/g,'-').replace(/\s+/g,' ').trim();
   return titleCase(s);
 }
-function titleCase(s){return String(s||'').toLowerCase().replace(/\b[a-z]/g,m=>m.toUpperCase()).replace(/\s+/g,' ').trim();}
+function cleanName(s){ return normalizeFullNameDisplay(s); }
+function titleCase(s){return String(s||'').toLowerCase().replace(/\b[a-z]/g,m=>m.toUpperCase()).replace(/\b([ivx]+|jr|sr)\b/gi,m=>m.toUpperCase()).replace(/\s+/g,' ').trim();}
 function canonicalCoachName(s){ return cleanName(String(s ?? '').trim()); }
 function coachNameKey(s){ return norm(canonicalCoachName(s)); }
-function nameKey(s){
-  s=cleanName(stripRepNameAnnotations(s)).toLowerCase().replace(/[^a-z0-9\s'-]/g,' ').replace(/\s+/g,' ').trim();
+function fullNameIdentityKey(s){
+  const clean=normalizeFullNameDisplay(s);
+  if(!clean) return '';
+  return clean.toLowerCase().replace(/[\u2018\u2019]/g,"'").replace(/[\u2010-\u2014]/g,'-').replace(/\./g,'').replace(/[^a-z0-9\s'-]/g,' ').replace(/\s+/g,' ').trim();
+}
+function nameKey(s){ return fullNameIdentityKey(s); }
+function legacyFirstLastNameKey(s){
+  s=normalizeFullNameDisplay(s).toLowerCase().replace(/[^a-z0-9\s'-]/g,' ').replace(/\s+/g,' ').trim();
   const parts=s.split(' ').filter(Boolean);
   if(parts.length>=2) return `${parts[0]} ${parts[parts.length-1]}`;
   return parts[0]||'';
 }
-function aliasLookupKey(name){ return nameKey(name) || normalizeIdentityName?.(name) || norm(name); }
-function canonicalRepName(name){
-  const cleaned=cleanName(stripRepNameAnnotations(name));
+function aliasLookupKey(name,sourceArea='global'){ const key=fullNameIdentityKey(name); return key ? `${sourceArea||'global'}|${key}` : ''; }
+function aliasTargetsForName(name,sourceArea='global'){
+  const out=[]; const full=fullNameIdentityKey(name); if(!full) return out;
+  const keys=[aliasLookupKey(name,sourceArea),aliasLookupKey(name,'global')];
+  keys.forEach(k=>{ const rec=state.repAliases?.get?.(k); if(rec && !rec.legacy) out.push(rec); });
+  return out;
+}
+function canonicalRepName(name,sourceArea='global'){
+  const cleaned=normalizeFullNameDisplay(name);
   if(!cleaned) return '';
-  const aliasKey=aliasLookupKey(name);
-  const mapped=state.repAliases?.get?.(aliasKey) || state.repAliases?.get?.(normalizeIdentityName(cleaned)) || '';
-  return cleanName(mapped || cleaned);
+  const targets=aliasTargetsForName(cleaned,sourceArea);
+  if(targets.length===1 && targets[0].canonical) return cleanName(targets[0].canonical);
+  return cleaned;
 }
 function loadRepAliases(){
   try{
     const raw=JSON.parse(localStorage.getItem(REP_ALIAS_KEY)||'[]');
-    state.repAliases=new Map((Array.isArray(raw)?raw:[]).map(x=>[aliasLookupKey(x.alias||x[0]), cleanName(x.canonical||x[1])]).filter(x=>x[0]&&x[1]));
+    const map=new Map();
+    (Array.isArray(raw)?raw:[]).forEach(x=>{
+      const alias=x.alias||x[0], canonical=cleanName(x.canonical||x[1]), sourceArea=x.sourceArea||'global';
+      if(!alias||!canonical) return;
+      const unsafe=(x.legacy===true) || (String(alias).split('|').pop()===legacyFirstLastNameKey(alias) && legacyFirstLastNameKey(alias)!==fullNameIdentityKey(alias));
+      const key=aliasLookupKey(alias,sourceArea);
+      if(key) map.set(key,{alias:fullNameIdentityKey(alias),canonical,sourceArea,legacy:unsafe});
+    });
+    state.repAliases=map;
   }catch(_){ state.repAliases=new Map(); }
 }
 function saveRepAliases(){
-  const rows=[...(state.repAliases||new Map()).entries()].map(([alias,canonical])=>({alias,canonical:cleanName(canonical)})).filter(x=>x.alias&&x.canonical);
+  const rows=[...(state.repAliases||new Map()).values()].map(x=>({alias:x.alias,canonical:cleanName(x.canonical),sourceArea:x.sourceArea||'global',legacy:!!x.legacy})).filter(x=>x.alias&&x.canonical);
   localStorage.setItem(REP_ALIAS_KEY,JSON.stringify(rows));
-  state._controlRosterCache=null;
+  state._controlRosterCache=null; state.teamDetailsCache?.clear?.();
 }
 function mergeRepDisplay(existing, incoming){
   if(incoming?.team) incoming={...incoming,team:canonicalCoachName(incoming.team)};
@@ -1952,7 +1984,7 @@ function cachedRowsForEntry(source, entry, opts={}){
   }else{
     rows=cachedRowsForSource(source, opts);
     if(entry.kind==='team') rows=rows.filter(r=>coachNameKey(rowTeam(r)||state.repTeams.get(r._repKey)||'')===coachNameKey(entry.name));
-    else rows=rows.filter(r=>r._repKey===entry.key);
+    else rows=rows.filter(r=>r._repKey===entry.key && rowMatchesTrustedEntry(r,entry,source));
   }
   opts._entryRowsCache.set(key, rows);
   return rows;
@@ -3205,32 +3237,46 @@ function controlRowsFromWorkbook(wb){
   }
   return rows;
 }
+function isIgnoredRosterName(value){
+  const s=String(value||'').trim(); if(!s) return true;
+  const k=norm(s);
+  if(!k) return true;
+  if(/^(name|representative|rep|agent|associate|team|total|totals|notes?|footer|header|count)$/.test(k)) return true;
+  if(/^(total|note|header|footer)\b/i.test(s)) return true;
+  if(/^[-–—_]+$/.test(s)) return true;
+  return false;
+}
+function deterministicRosterId(sourceArea,team,fullNameKey,workbook,sheet){
+  return ['roster',sourceArea||'',coachNameKey(team),fullNameKey,norm(workbook||''),norm(sheet||'')].join('|');
+}
 async function buildControlRosterFromWorkbookAsync(bookKey, wb, label='Control roster', start=24, end=35){
   const controlRows=controlRowsFromWorkbook(wb);
-  const roster=[], seen=new Set();
+  const roster=[], seen=new Set(), diagnostics={};
   const total=Math.max(1,controlRows.length), span=end-start;
+  const startingRow=6, nameCol=0, maxBlank=10;
   for(let i=0;i<controlRows.length;i++){
-    const item=controlRows[i];
-    const sn=findWorkbookSheetByName(wb,item.tabName);
-    if(sn){
-      const aoa=sheetAoa(wb,sn);
-      for(let r=5;r<aoa.length;r++){
-        const raw=aoa[r]?.[0];
-        const rep=canonicalRepName(raw);
-        if(!rep) break;
-        const key=nameKey(rep), team=canonicalCoachName(item.team);
-        if(!key || !team) continue;
-        const dedupe=`${key}\u0000${coachNameKey(team)}`;
-        if(seen.has(dedupe)) continue;
-        seen.add(dedupe);
-        roster.push({source:bookKey,team,tabName:item.tabName,sheetName:sn,representative:rep,_sourceKey:`${bookKey}_control_roster`,_rep:rep,_repKey:key,_team:team});
+    const item=controlRows[i], team=canonicalCoachName(item.team), sn=findWorkbookSheetByName(wb,item.tabName);
+    const diag={sourceArea:bookKey,workbook:wb?.Props?.Title||state.books?.[bookKey]?.fileName||'',tab:item.tabName,sheet:sn||'',team,startingRow,nameColumn:nameCol+1,rowsInspected:0,validNames:0,blankRowsSkipped:0,duplicateNames:0,ignoredRows:0,duplicates:[],ignored:[]};
+    if(sn && team){
+      const aoa=sheetAoa(wb,sn); let blanks=0;
+      for(let r=startingRow-1;r<aoa.length;r++){
+        const raw=aoa[r]?.[nameCol]; diag.rowsInspected++;
+        if(String(raw??'').trim()===''){ blanks++; diag.blankRowsSkipped++; if(blanks>=maxBlank) break; continue; }
+        blanks=0;
+        if(isIgnoredRosterName(raw)){ diag.ignoredRows++; diag.ignored.push({rowNumber:r+1,value:String(raw??'')}); continue; }
+        const rep=canonicalRepName(raw,bookKey), key=fullNameIdentityKey(rep);
+        if(!key){ diag.ignoredRows++; diag.ignored.push({rowNumber:r+1,value:String(raw??'')}); continue; }
+        const dedupe=`${bookKey}\u0000${coachNameKey(team)}\u0000${key}`;
+        if(seen.has(dedupe)){ diag.duplicateNames++; diag.duplicates.push({rowNumber:r+1,value:String(raw??''),fullNameKey:key}); continue; }
+        seen.add(dedupe); diag.validNames++;
+        const rosterId=deterministicRosterId(bookKey,team,key,state.books?.[bookKey]?.fileName||'',sn);
+        roster.push({rosterId,source:bookKey,sourceArea:bookKey,team,tabName:item.tabName,sheetName:sn,sheet:sn,workbook:state.books?.[bookKey]?.fileName||'',rowNumber:r+1,originalName:String(raw??''),displayName:rep,fullNameKey:key,representative:rep,_sourceKey:`${bookKey}_control_roster`,_rep:rep,_repKey:key,_rosterId:rosterId,_team:team});
       }
     }
-    if(i%20===0 || i===controlRows.length-1){
-      updateProgress(`${label}... ${i+1} / ${controlRows.length || 1} teams`, start + span*((i+1)/total));
-      await yieldToBrowser();
-    }
+    diagnostics[`${bookKey}|${team}|${item.tabName}`]=diag;
+    if(i%20===0 || i===controlRows.length-1){ updateProgress(`${label}... ${i+1} / ${controlRows.length || 1} teams`, start + span*((i+1)/total)); await yieldToBrowser(); }
   }
+  state.rosterDiagnostics={...(state.rosterDiagnostics||{}),...diagnostics};
   return roster.sort((a,b)=>(a.team||'').localeCompare(b.team||'')||(a.representative||'').localeCompare(b.representative||''));
 }
 function buildRowsFromLayout(aoa, headerRow, startCol, fullRow=false, manualHeaders=[]){
@@ -3471,7 +3517,7 @@ function setSourceAoa(source, aoa, sheetName=''){
   if(source==='documented_coaching') state.data.documented_coaching.aoa=aoa||[];
   if(source==='comp_calls') state.data.comp_calls.aoa=aoa||[];
 }
-function normalizeCustomRow(row,headers,columns={},source=''){ const rep=repNameFromColumns(row,headers,columns,[columns.rep,'Agent Name','Associate Name','Name','Representative','Rep'].filter(Boolean)); const teamH=findHeaderFromExpected(headers,columns.team||columns.coach,['Team','Coach','Coach Assigned','Job Coach','Team Name'].filter(Boolean)); const dateH=selectedDateHeaderForSource(source,headers,columns); const weekH=findHeader(headers,[columns.week,'Week','Week Start','Week Ending'].filter(Boolean)); const textH=findHeader(headers,[columns.text,'Notes','Comment','Conversation','Text','Description'].filter(Boolean)); const scoreH=findHeader(headers,[columns.score,'Score','Score %','QA Score'].filter(Boolean)); const team=columns.skipTeamBuild?'':canonicalCoachName(row[teamH]??''); return {...row,_sourceKey:source,_rep:rep,_repKey:nameKey(rep),_team:team,_date:dateH?row[dateH]:'',_week:weekH?row[weekH]:'',_text:textH?String(row[textH]??''):'',_score:scoreH?normalizeScore(row[scoreH]):NaN}; }
+function normalizeCustomRow(row,headers,columns={},source=''){ const rep=repNameFromColumns(row,headers,columns,[columns.rep,'Agent Name','Associate Name','Name','Representative','Rep'].filter(Boolean)); const teamH=findHeaderFromExpected(headers,columns.team||columns.coach,['Team','Coach','Coach Assigned','Job Coach','Team Name'].filter(Boolean)); const dateH=selectedDateHeaderForSource(source,headers,columns); const weekH=findHeader(headers,[columns.week,'Week','Week Start','Week Ending'].filter(Boolean)); const textH=findHeader(headers,[columns.text,'Notes','Comment','Conversation','Text','Description'].filter(Boolean)); const scoreH=findHeader(headers,[columns.score,'Score','Score %','QA Score'].filter(Boolean)); const team=columns.skipTeamBuild?'':canonicalCoachName(row[teamH]??''); return {...row,_sourceKey:source,_sourceArea:sourceAreaForSource(source),_rep:rep,_repKey:nameKey(rep),_team:team,_date:dateH?row[dateH]:'',_week:weekH?row[weekH]:'',_text:textH?String(row[textH]??''):'',_score:scoreH?normalizeScore(row[scoreH]):NaN}; }
 function setSourceRowsAndHeaders(source, headers, rows, model){
   if(source===NONDATED_SOURCE || source===DATED_SOURCE){
     const normalizedRows=normalizeCategorizedRowsFromObjects(source, headers||[], rows||[]);
@@ -3984,35 +4030,53 @@ function controlRosterRows(){
     ...(state.data.retail.controlRoster||[]),
     ...(state.data.referral.controlRoster||[])
   ].map(r=>{
-    const rep=canonicalRepName(r._rep||r.representative||r.Representative||'');
+    const sourceArea=r.sourceArea||r.source||(/referral/i.test(r._sourceKey||'')?'referral':'retail');
+    const rep=canonicalRepName(r._rep||r.representative||r.Representative||r.originalName||'',sourceArea);
     const team=canonicalCoachName(r._team||r.team||r.Team||'');
-    return {...r,_sourceKey:r._sourceKey||`${r.source||'control'}_control_roster`,_rep:rep,_repKey:nameKey(rep),_team:team,representative:rep,team};
+    const fullNameKey=fullNameIdentityKey(rep);
+    const rosterId=r.rosterId||deterministicRosterId(sourceArea,team,fullNameKey,r.workbook||state.books?.[sourceArea]?.fileName||'',r.sheetName||r.tabName||'');
+    return {...r,rosterId,_rosterId:rosterId,sourceArea,source:sourceArea,_sourceKey:r._sourceKey||`${sourceArea}_control_roster`,displayName:r.displayName||rep,originalName:r.originalName||r.representative||r._rep||'',fullNameKey,_rep:rep,_repKey:fullNameKey,_team:team,representative:rep,team};
   }).filter(r=>r._repKey&&r._team);
 }
 function controlRosterSignature(){
   const rows=[...(state.data.retail.controlRoster||[]),...(state.data.referral.controlRoster||[])];
-  return [rows.length,(state.repAliases||new Map()).size,rows.slice(0,5).map(r=>`${r.representative||r._rep}|${r.team||r._team}`).join(';'),rows.slice(-5).map(r=>`${r.representative||r._rep}|${r.team||r._team}`).join(';')].join('|');
+  return [rows.length,(state.repAliases||new Map()).size,rows.slice(0,5).map(r=>`${r.representative||r._rep}|${r.team||r._team}|${r.rowNumber||''}`).join(';'),rows.slice(-5).map(r=>`${r.representative||r._rep}|${r.team||r._team}|${r.rowNumber||''}`).join(';')].join('|');
 }
 function hasTrustedControlRoster(){ return trustedRosterMaps().byRep.size>0; }
+function conflictId(type,key){ return `${type}|${key}`; }
 function trustedRosterMaps(){
   const signature=controlRosterSignature();
   if(state._controlRosterCache?.signature===signature) return state._controlRosterCache.maps;
-  const byRep=new Map(), teams=new Map(), repsByTeam=new Map();
+  const byRep=new Map(), bySourceRep=new Map(), teams=new Map(), repsByTeam=new Map(), conflicts=[];
+  const seenGlobal=new Map(), seenSourceTeam=new Map();
   controlRosterRows().forEach(r=>{
-    const key=r._repKey, team=canonicalCoachName(r._team);
+    const key=r._repKey, source=r.sourceArea||r.source||'', team=canonicalCoachName(r._team), teamKey=coachNameKey(team);
     if(!key||!team) return;
-    if(!byRep.has(key)) byRep.set(key,{team,name:r._rep,source:r.source||'',tabName:r.tabName||''});
-    teams.set(coachNameKey(team),team);
+    const entry={kind:'rep',key,rosterId:r.rosterId,name:r._rep,displayName:r.displayName||r._rep,team,sourceArea:source,source,tabName:r.tabName||'',sheetName:r.sheetName||'',workbook:r.workbook||'',rowNumber:r.rowNumber||'',originalName:r.originalName||r.representative||''};
+    const stKey=`${source}\u0000${teamKey}\u0000${key}`;
+    if(seenSourceTeam.has(stKey)) conflicts.push({id:conflictId('duplicate-roster',stKey),type:'Duplicate roster names',status:'unresolved',originalName:r.originalName||r._rep,sourceCategory:source,sourceFile:r.workbook||'',possibleRepresentatives:[seenSourceTeam.get(stKey),entry],possibleTeams:[team],message:'Same normalized full name appears twice in one trusted roster team.'});
+    else seenSourceTeam.set(stKey,entry);
+    if(seenGlobal.has(key)){
+      const prev=seenGlobal.get(key);
+      if(prev.team!==team || prev.sourceArea!==source) conflicts.push({id:conflictId('cross-roster',key),type:'Identity conflict',status:'unresolved',originalName:r._rep,sourceCategory:source,sourceFile:r.workbook||'',possibleRepresentatives:[prev,entry],possibleTeams:[prev.team,team],message:'Same normalized full name appears on multiple teams or sources.'});
+    } else seenGlobal.set(key,entry);
+    if(!byRep.has(key)) byRep.set(key,{team,name:r._rep,source,sourceArea:source,tabName:r.tabName||'',rosterId:r.rosterId,conflict:false});
+    else byRep.get(key).conflict=true;
+    const sourceKey=`${source}\u0000${key}`; if(!bySourceRep.has(sourceKey)) bySourceRep.set(sourceKey,entry); else bySourceRep.get(sourceKey).conflict=true;
+    teams.set(teamKey,team);
     if(!repsByTeam.has(team)) repsByTeam.set(team,new Map());
-    repsByTeam.get(team).set(key,{kind:'rep',key,name:r._rep,team});
+    if(!repsByTeam.get(team).has(r.rosterId)) repsByTeam.get(team).set(r.rosterId,entry);
   });
-  const maps={byRep,teams,repsByTeam};
+  state.identityConflicts=conflicts;
+  const maps={byRep,bySourceRep,teams,repsByTeam,conflicts};
   state._controlRosterCache={signature,maps};
   return maps;
 }
-function trustedTeamForRepKey(repKey){
+function trustedTeamForRepKey(repKey,sourceArea=''){
   if(!repKey) return '';
-  return trustedRosterMaps().byRep.get(repKey)?.team || state.repTeams?.get?.(repKey) || '';
+  if(sourceArea){ const hit=trustedRosterMaps().bySourceRep.get(`${sourceArea}\u0000${repKey}`); if(hit && !hit.conflict) return hit.team; }
+  const rec=trustedRosterMaps().byRep.get(repKey);
+  return rec && !rec.conflict ? rec.team : (state.repTeams?.get?.(repKey) || '');
 }
 function trustedRosterTeamNames(){ return [...trustedRosterMaps().teams.values()].sort((a,b)=>a.localeCompare(b)); }
 function directTeamFromAnyRow(row){
@@ -4479,7 +4543,7 @@ function normalizeQARow(row, headers, qaColumns){
   const selectedDate=dateH ? parseDateOnly(row[dateH]) : null;
   const qaTeam=canonicalCoachName(row[teamH]??'');
   const team=q.skipTeamBuild ? '' : qaTeam;
-  return {...row,_sourceKey:'qa',_rep:rep,_repKey:nameKey(rep),_team:team,_qaTeam:qaTeam,_qaTeamKey:coachNameKey(qaTeam),_score:normalizeScore(row[scoreH]),_interactionDate:interactionDate,_assignedDate:assignedDate,_date:selectedDate||interactionDate};
+  return {...row,_sourceKey:'qa',_sourceArea:'',_rep:rep,_repKey:nameKey(rep),_team:team,_qaTeam:qaTeam,_qaTeamKey:coachNameKey(qaTeam),_score:normalizeScore(row[scoreH]),_interactionDate:interactionDate,_assignedDate:assignedDate,_date:selectedDate||interactionDate};
 }
 function normalizeScore(v){ const n=toNum(v); if(!Number.isFinite(n)) return NaN; return n<=1?n*100:n; }
 async function loadQAFile(file){
@@ -4518,7 +4582,7 @@ function normalizeChecklistRow(row, headers, columns, source='checklist'){
   const textH=findHeaderFromExpected(headers,c.text,source==='comp_calls'?['Compliment','Comment','Comments','Notes']:['Notes','Comment','Description','Item']);
   const rep=repNameFromColumns(row,headers,{...c,nameMode:c.nameMode||'full',fullName:c.fullName||c.rep,convertLastFirst:!!c.convertLastFirst},repFallbacks);
   const team=c.skipTeamBuild ? '' : canonicalCoachName(row[coachH]??'');
-  return {...row,_sourceKey:source,_rep:rep,_repKey:nameKey(rep),_team:team,_date:dateH?row[dateH]:'',_text:textH?String(row[textH]??''):''};
+  return {...row,_sourceKey:source,_sourceArea:sourceAreaForSource(source),_rep:rep,_repKey:nameKey(rep),_team:team,_date:dateH?row[dateH]:'',_text:textH?String(row[textH]??''):''};
 }
 
 async function clearDirectQAFile(){
@@ -5011,12 +5075,23 @@ function applyFilters(rows, filters, rowSource, opts={}){
   });
   return out;
 }
+function sourceAreaForSource(source){
+  if(/^referral/.test(String(source||''))) return 'referral';
+  if(/^retail/.test(String(source||''))) return 'retail';
+  return '';
+}
+function rowMatchesTrustedEntry(row,entry,source=''){
+  if(!hasTrustedControlRoster() || !entry || entry.kind!=='rep') return true;
+  const key=row?._repKey||repKeyFromAnyRow(row); if(!key || key!==entry.key) return false;
+  const rt=trustedTeamForRepKey(key,sourceAreaForSource(source)||row?._sourceArea||'');
+  return rt ? coachNameKey(rt)===coachNameKey(entry.team||'') : false;
+}
 function rowsForEntry(source, entry, opts={}){
   const cached=cachedRowsForEntry(source, entry, opts);
   if(cached) return cached;
   let rows=cachedRowsForSource(source, opts);
   if(entry.kind==='team') rows=rows.filter(r=>coachNameKey(rowTeam(r)||state.repTeams.get(r._repKey)||'')===coachNameKey(entry.name));
-  else rows=rows.filter(r=>r._repKey===entry.key);
+  else rows=rows.filter(r=>r._repKey===entry.key && rowMatchesTrustedEntry(r,entry,source));
   return rows;
 }
 function withinModeKind(mode){
@@ -5249,10 +5324,13 @@ function criterionValue(c, entry, opts){
   return valueSingle(c,entry,opts);
 }
 function allRepEntries(model, teams){
-  const teamSet=new Set((teams||[]).map(coachNameKey).filter(Boolean));
-  if(dataIndexReady()){
-    return (state.dataIndex.reps||[]).filter(r=>!teamSet.size || teamSet.has(coachNameKey(r.team||''))).sort((a,b)=>(a.team||'').localeCompare(b.team||'')||a.name.localeCompare(b.name));
+  const selected=(teams||[]).map(canonicalCoachName).filter(Boolean), teamSet=new Set(selected.map(coachNameKey));
+  if(hasTrustedControlRoster()){
+    const out=[];
+    selected.forEach(team=>{ repsForTeam(team).forEach(r=>out.push({...r,kind:'rep',key:r.key,rosterId:r.rosterId,team:canonicalCoachName(r.team||team),name:r.name||r.displayName})); });
+    return out.sort((a,b)=>(a.team||'').localeCompare(b.team||'')||a.name.localeCompare(b.name));
   }
+  if(dataIndexReady()) return (state.dataIndex.reps||[]).filter(r=>!teamSet.size || teamSet.has(coachNameKey(r.team||''))).sort((a,b)=>(a.team||'').localeCompare(b.team||'')||a.name.localeCompare(b.name));
   const reps=new Map();
   const add=(key,name,team)=>{ if(!key||!name) return; const t=canonicalCoachName(team||state.repTeams.get(key)||''); if(teamSet.size && !teamSet.has(coachNameKey(t))) return; reps.set(key,mergeRepDisplay(reps.get(key),{kind:'rep',key,name:cleanName(name),team:t})); };
   controlRosterRows().forEach(r=>add(r._repKey,r._rep,rowTeam(r)));
@@ -8118,6 +8196,21 @@ function bindModelTraceCells(){
     openResearchCellFeedback(b.dataset.modelTrace);
   });
 }
+function rosterReconciliationHtml(repPack,runOpts={}){
+  if(!hasTrustedControlRoster() || !repPack) return '';
+  const selected=runOpts.selectedTeamNames||[];
+  const displayedByTeam=new Map();
+  (repPack.rows||[]).forEach(r=>{ const k=coachNameKey(r.entry.team||''); displayedByTeam.set(k,(displayedByTeam.get(k)||0)+1); });
+  const cards=selected.map(team=>{
+    const roster=repsForTeam(team), displayed=displayedByTeam.get(coachNameKey(team))||0;
+    const noData=(repPack.rows||[]).filter(r=>coachNameKey(r.entry.team||'')===coachNameKey(team) && Object.values(r.missingScores||{}).some(Boolean));
+    const conflicts=(trustedRosterMaps().conflicts||[]).filter(c=>(c.possibleTeams||[]).some(t=>coachNameKey(t)===coachNameKey(team)));
+    const warn=displayed!==roster.length || conflicts.length;
+    const noDataList=roster.filter(rr=>!(repPack.rows||[]).some(r=>r.entry.rosterId===rr.rosterId || (r.entry.key===rr.key&&coachNameKey(r.entry.team)===coachNameKey(team))));
+    return `<details class="panel" ${warn?'open':''}><summary><strong>${esc(team)} roster reconciliation</strong> <span class="badge">Trusted roster: ${roster.length}</span> <span class="badge">Displayed representatives: ${displayed}</span> <span class="badge">Without scores: ${noData.length+noDataList.length}</span> ${conflicts.length?`<span class="badge warn">${conflicts.length} conflicts</span>`:''}</summary>${warn?'<div class="checkResultRow warnRow">Warning: roster count differs from displayed count or unresolved identity conflicts exist. Ambiguous source rows are excluded from scoring.</div>':''}<details><summary>Roster representatives with no data</summary><div class="checkResultList">${noDataList.map(r=>`<div class="checkResultRow"><strong>${esc(r.name)}</strong><div class="checkResultMeta">Trusted team: ${esc(team)} · Source roster: ${esc(r.sourceArea||'')} · Tab: ${esc(r.tabName||r.sheetName||'')} · Row: ${esc(r.rowNumber||'')}</div></div>`).join('')||'<div class="checkResultRow okRow">No missing roster representatives.</div>'}</div></details><details><summary>Ambiguous or conflicting identities</summary><div class="checkResultList">${conflicts.map(c=>`<div class="checkResultRow warnRow"><strong>${esc(c.originalName||'Conflict')}</strong><div class="checkResultMeta">${esc(c.message||'')} · Teams: ${esc((c.possibleTeams||[]).join(', '))} · Status: ${esc(c.status||'unresolved')}</div></div>`).join('')||'<div class="checkResultRow okRow">No identity conflicts for this team.</div>'}</div></details></details>`;
+  }).join('');
+  return `<div class="resultSection"><h2>Roster Reconciliation</h2>${cards}</div>`;
+}
 function renderResults(model, teamPack, repPack, view, start, end, qaDateMode, runOpts={}){
   state.lastRenderedReport={model,teamPack,repPack,view,start,end,qaDateMode,runOpts};
   const html=[];
@@ -8125,10 +8218,12 @@ function renderResults(model, teamPack, repPack, view, start, end, qaDateMode, r
   const teamCount=(state.selectedTeams||new Set()).size || runTeamNames().length;
   const qaDateBadge=modelUsesQA(model) ? `<span class="badge">QA Dates: ${qaDateMode==='assigned'?'Assigned Date':'Interaction Start Time'}</span>` : '';
   const qaTeamBadge=modelUsesQA(model) ? `<span class="badge">QA Team Scores: ${(runOpts.qaTeamScoreMode||'assignedReps')==='sheetTeam'?`Direct raw QA upload: ${esc(activeDirectQASourceLabel())}`:'Assigned representatives'}</span>` : '';
+  const rosterCount=(runOpts.selectedTeamNames||[]).reduce((n,t)=>n+repsForTeam(t).length,0);
+  const rosterBadge=hasTrustedControlRoster()?`<span class="badge">Trusted roster: ${rosterCount.toLocaleString()}</span><span class="badge">Displayed representatives: ${(repPack?.rows?.length||0).toLocaleString()}</span><span class="badge">Hidden without scores: ${Math.max(0,rosterCount-(repPack?.rows?.length||0)).toLocaleString()}</span>`:'';
   state.researchTraceStore=new Map();
-  const reportHeader=`<div class="reportHeader"><h1 class="resultTitle">${esc(model.name)}</h1><div class="reportMeta"><span class="badge">Date Range: ${esc(dateText)}</span><span class="badge">Teams: ${teamCount}</span><span class="badge">View: ${esc(view==='both'?'Teams + Representatives':view==='team'?'Teams':'Representatives')}</span>${qaDateBadge}${qaTeamBadge}<span class="badge">Medals: 🥇 first, 🥈 second, 🥉 third</span></div></div>`;
+  const reportHeader=`<div class="reportHeader"><h1 class="resultTitle">${esc(model.name)}</h1><div class="reportMeta"><span class="badge">Date Range: ${esc(dateText)}</span><span class="badge">Teams: ${teamCount}</span><span class="badge">View: ${esc(view==='both'?'Teams + Representatives':view==='team'?'Teams':'Representatives')}</span>${qaDateBadge}${qaTeamBadge}${rosterBadge}<span class="badge">Medals: 🥇 first, 🥈 second, 🥉 third</span></div></div>`;
   html.push(`<div id="pdfContent">`);
-  html.push(`<section class="pdfPage pdfOverviewPage">${reportHeader}${dataHealthPanelHtml()}${(view==='both'||view==='team')?sectionTable('Team Breakdown',teamPack,'team',model,runOpts):''}</section>`);
+  html.push(`<section class="pdfPage pdfOverviewPage">${reportHeader}${dataHealthPanelHtml()}${rosterReconciliationHtml(repPack,runOpts)}${(view==='both'||view==='team')?sectionTable('Team Breakdown',teamPack,'team',model,runOpts):''}</section>`);
   if(view==='both'||view==='rep') html.push(`<section class="pdfPage pdfTotalsPage"><div class="teamPageHeading"><h2>Total Representatives</h2><span class="badge">${repPack.rows.length.toLocaleString()} representatives</span></div>${sectionTable('Total Representative Ranking',repPack,'rep',model,runOpts)}</section>`);
   if(view==='both'||view==='rep') html.push(repTeamPages(repPack,teamPack,model,runOpts));
   html.push('</div>');
@@ -8333,18 +8428,17 @@ function repConnectionSuggestions(threshold=75){
 }
 function applyRepAliasMappingsToAllRows(){
   let changed=0;
-  const applyRow=r=>{
-    const next=canonicalRepName(r?._rep||r?.representative||r?.Representative||'');
+  const applyRow=(r,src='')=>{
+    const sourceArea=sourceAreaForSource(src)||r?._sourceArea||'global';
+    const before=r?._rep||r?.representative||r?.Representative||'';
+    const next=canonicalRepName(before,sourceArea);
     if(next && (r._rep!==next || r._repKey!==nameKey(next))){
-      r._rep=next;
-      r._repKey=nameKey(next);
+      r._rep=next; r._repKey=nameKey(next); r._matchMethod=r._matchMethod||'alias';
       if(r.representative!==undefined) r.representative=next;
       changed++;
     }
   };
-  (state.data.retail.controlRoster||[]).forEach(applyRow);
-  (state.data.referral.controlRoster||[]).forEach(applyRow);
-  allSourceKeys().flatMap(src=>getRowsRaw(src)||[]).forEach(applyRow);
+  allSourceKeys().forEach(src=>(getRowsRaw(src)||[]).forEach(r=>applyRow(r,src)));
   rebuildTeams();
   markDataIndexDirty('representative aliases updated');
   return changed;
@@ -8354,8 +8448,8 @@ function renderTeamConnectionPanel(){
   const threshold=Number(els.teamConnectThreshold?.value)||75;
   if(els.teamConnectThresholdValue) els.teamConnectThresholdValue.textContent=`${threshold}%`;
   const suggestions=repConnectionSuggestions(threshold);
-  if(els.teamConnectSummary) els.teamConnectSummary.textContent=`${suggestions.length.toLocaleString()} possible connection${suggestions.length===1?'':'s'} at or above ${threshold}%. Parenthetical suffixes are normalized automatically during import.`;
-  els.teamConnectList.innerHTML=suggestions.length ? suggestions.slice(0,300).map((s,i)=>`<label class="teamConnectRow"><input type="checkbox" data-connect-rep="${i}" checked><span>${esc(s.aliasName)}<small>${s.aliasRows.toLocaleString()} row${s.aliasRows===1?'':'s'}</small></span><span>${esc(s.canonicalName)}<small>${s.canonicalRows.toLocaleString()} row${s.canonicalRows===1?'':'s'} · ${s.pct}% connected</small></span><span class="badge">${s.pct}%</span></label>`).join('') : '<div class="checkItem">No likely duplicate names above this margin.</div>';
+  if(els.teamConnectSummary) els.teamConnectSummary.textContent=`${suggestions.length.toLocaleString()} possible connection${suggestions.length===1?'':'s'} at or above ${threshold}%. Fuzzy suggestions are review-only and are not selected by default.`;
+  els.teamConnectList.innerHTML=suggestions.length ? suggestions.slice(0,300).map((s,i)=>`<label class="teamConnectRow"><input type="checkbox" data-connect-rep="${i}"><span>${esc(s.aliasName)}<small>${s.aliasRows.toLocaleString()} row${s.aliasRows===1?'':'s'}</small></span><span>${esc(s.canonicalName)}<small>${s.canonicalRows.toLocaleString()} row${s.canonicalRows===1?'':'s'} · ${s.pct}% connected</small></span><span class="badge">${s.pct}%</span></label>`).join('') : '<div class="checkItem">No likely duplicate names above this margin.</div>';
   els.teamConnectList.dataset.suggestions=JSON.stringify(suggestions.slice(0,300));
 }
 async function connectRepMatches(onlyChecked=true){
@@ -8365,7 +8459,7 @@ async function connectRepMatches(onlyChecked=true){
   if(!selected.length){ if(els.teamConnectSummary) els.teamConnectSummary.textContent='No duplicate representative matches selected.'; return; }
   showProgress('Connecting duplicate representative names...',12);
   try{
-    selected.forEach(s=>state.repAliases.set(s.aliasKey,cleanName(s.canonicalName)));
+    selected.forEach(s=>state.repAliases.set(aliasLookupKey(s.aliasName||s.aliasKey,'global'),{alias:fullNameIdentityKey(s.aliasName||s.aliasKey),canonical:cleanName(s.canonicalName),sourceArea:'global',legacy:false}));
     saveRepAliases();
     const changed=applyRepAliasMappingsToAllRows();
     await finishDataChanged('representative duplicate connection update',45);
@@ -8528,7 +8622,7 @@ function renderFixRepReview(){
   els.fixRepReview.dataset.suggestions=JSON.stringify(suggestions);
   els.fixRepReview.innerHTML=suggestions.length ? suggestions.slice(0,400).map((s,i)=>`
     <label class="teamConnectRow">
-      <input type="checkbox" data-fix-rep="${i}" checked>
+      <input type="checkbox" data-fix-rep="${i}">
       <span>${esc(s.aliasName)}<small>${s.aliasRows.toLocaleString()} uploaded row${s.aliasRows===1?'':'s'}</small></span>
       <span>${esc(s.canonicalName)}<small>${esc(s.targetTeam||'')} · Control roster</small></span>
       <span class="badge">${s.pct}%</span>
@@ -8541,7 +8635,7 @@ async function applySelectedFixRepMatches(){
   if(!selected.length){ if(els.fixRepSummary) els.fixRepSummary.textContent='No representative mappings selected.'; return; }
   showProgress('Applying representative mappings...',10);
   try{
-    selected.forEach(s=>{ if(s.aliasKey&&s.canonicalName) state.repAliases.set(s.aliasKey,cleanName(s.canonicalName)); });
+    selected.forEach(s=>{ if(s.aliasKey&&s.canonicalName) state.repAliases.set(aliasLookupKey(s.aliasName||s.aliasKey,'global'),{alias:fullNameIdentityKey(s.aliasName||s.aliasKey),canonical:cleanName(s.canonicalName),sourceArea:'global',legacy:false}); });
     saveRepAliases();
     const changed=applyRepAliasMappingsToAllRows();
     await finishDataChanged('Control roster representative mapping update',45);
@@ -8578,7 +8672,7 @@ async function applySelectedFixTeams(){
       keys.forEach(k=>{ state.repTeams.set(k,targetTeam); repMoveCount++; });
       (fix.repMatches||[]).forEach(m=>{
         if(m.sourceKey && m.targetName && m.sourceKey!==m.targetKey){
-          state.repAliases.set(m.sourceKey,cleanName(m.targetName));
+          state.repAliases.set(aliasLookupKey(m.sourceName||m.sourceKey,'global'),{alias:fullNameIdentityKey(m.sourceName||m.sourceKey),canonical:cleanName(m.targetName),sourceArea:'global',legacy:false});
           aliasCount++;
         }
       });
@@ -8591,19 +8685,40 @@ async function applySelectedFixTeams(){
   }catch(err){ console.error(err); alert('Team fix failed. Check the console for details.'); }
   finally{ hideProgress(); }
 }
-function renderTeamsImportedModal(){
+function debounce(fn,wait=180){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args),wait); }; }
+function teamDetailCacheKey(team){ return `${controlRosterSignature()}|${dataIndexSignature()}|aliases:${(state.repAliases||new Map()).size}|team:${coachNameKey(team)}`; }
+function renderTeamSummaryList(){
   const counts=importedTeamCounts();
   const q=String(els.teamManagerSearch?.value||'').toLowerCase().trim();
+  const conflictCounts=new Map();
+  (trustedRosterMaps().conflicts||[]).forEach(c=>(c.possibleTeams||[]).forEach(t=>conflictCounts.set(coachNameKey(t),(conflictCounts.get(coachNameKey(t))||0)+1)));
   const shown=counts.filter(x=>!q || x.team.toLowerCase().includes(q));
-  if(!state.activeTeam || !counts.some(x=>x.team===state.activeTeam)) state.activeTeam=counts[0]?.team||'';
-  els.teamManagerList.innerHTML=shown.length ? shown.map(x=>`<button class="teamCard ${x.team===state.activeTeam?'active':''}" data-team-pick="${esc(x.team)}"><span>${esc(x.team)}</span><span class="badge">${x.count} reps</span></button>`).join('') : '<div class="checkItem">No imported teams found.</div>';
-  els.teamManagerList.querySelectorAll('[data-team-pick]').forEach(b=>b.onclick=()=>{ state.activeTeam=b.dataset.teamPick; if(els.teamRepSearch) els.teamRepSearch.value=''; renderTeamsImportedModal(); });
-  const repsAll=state.activeTeam ? repsForTeam(state.activeTeam) : [];
-  const repQ=String(els.teamRepSearch?.value||'').toLowerCase().trim();
-  const reps=repsAll.filter(r=>!repQ || String(r.name||'').toLowerCase().includes(repQ));
-  els.teamManagerTitle.textContent=state.activeTeam ? `${state.activeTeam} Representatives (${reps.length}/${repsAll.length})` : 'Representatives';
+  if(!state.activeTeam || !counts.some(x=>x.team===state.activeTeam)) state.activeTeam='';
+  els.teamManagerList.innerHTML=shown.length ? shown.map(x=>`<button class="teamCard ${x.team===state.activeTeam?'active':''}" data-team-pick="${esc(x.team)}"><span>${esc(x.team)}<small>${esc((repsForTeam(x.team)[0]?.sourceArea||'').toUpperCase())}</small></span><span class="badge">${x.count} roster reps</span>${conflictCounts.get(coachNameKey(x.team))?`<span class="badge warn">${conflictCounts.get(coachNameKey(x.team))} conflicts</span>`:''}</button>`).join('') : '<div class="checkItem">No imported teams found.</div>';
   els.teamMoveSelect.innerHTML=counts.map(x=>`<option value="${esc(x.team)}" ${x.team===state.activeTeam?'selected':''}>${esc(x.team)}</option>`).join('');
-  els.teamRepList.innerHTML=reps.length ? reps.map(r=>`<label class="repMoveRow"><input type="checkbox" value="${esc(r.key)}"><span>${esc(r.name)}</span><span class="badge">${esc(r.team)}</span></label>`).join('') : '<div class="checkItem">Select a team to see representatives.</div>';
+}
+function renderTeamsImportedModal(){
+  renderTeamSummaryList();
+  els.teamManagerTitle.textContent=state.activeTeam ? `${state.activeTeam} Representatives` : 'Representatives';
+  els.teamRepList.innerHTML=state.activeTeam ? '<div class="checkItem">Click the team again to load representatives.</div>' : '<div class="checkItem">Select a team to lazily load representatives.</div>';
+  if(els.teamConnectList) els.teamConnectList.innerHTML='<div class="checkItem">Fuzzy duplicate suggestions load only after selecting a team.</div>';
+  if(els.teamConnectSummary) els.teamConnectSummary.textContent='Fuzzy matching is review-only and never applied automatically.';
+}
+async function loadTeamDetails(team){
+  state.activeTeam=team; renderTeamSummaryList();
+  els.teamManagerTitle.textContent=`${team} Representatives`;
+  els.teamRepList.innerHTML='<div class="checkItem">Loading team details…</div>';
+  await yieldToBrowser();
+  const cacheKey=teamDetailCacheKey(team), repQ=String(els.teamRepSearch?.value||'').toLowerCase().trim();
+  let detail=state.teamDetailsCache?.get(cacheKey);
+  if(!detail){
+    const repsAll=repsForTeam(team);
+    const conflicts=(trustedRosterMaps().conflicts||[]).filter(c=>(c.possibleTeams||[]).some(t=>coachNameKey(t)===coachNameKey(team)));
+    detail={repsAll,conflicts}; state.teamDetailsCache.set(cacheKey,detail);
+  }
+  const reps=detail.repsAll.filter(r=>!repQ || String(r.name||'').toLowerCase().includes(repQ));
+  els.teamManagerTitle.textContent=`${team} Representatives (${reps.length}/${detail.repsAll.length})`;
+  els.teamRepList.innerHTML=(detail.conflicts.length?`<div class="checkItem"><strong>Conflicts:</strong> ${detail.conflicts.length} unresolved identity issue(s) for this team.</div>`:'') + (reps.length ? reps.map(r=>`<label class="repMoveRow"><input type="checkbox" value="${esc(r.rosterId||r.key)}"><span>${esc(r.name)}</span><span class="badge">${esc(r.team)}</span><span class="badge">${esc(r.sourceArea||'trusted')}</span></label>`).join('') : '<div class="checkItem">No representatives match.</div>');
   renderTeamConnectionPanel();
 }
 function openTeamsImported(){
@@ -8846,6 +8961,26 @@ async function exportPDF(){
   }
 }
 
+function runRosterAccuracyRegressionTests(){
+  const results=[], ok=(name,pass,detail='')=>results.push({name,pass,detail});
+  ok('Mary A Smith and Mary B Smith remain separate', fullNameIdentityKey('Mary A Smith')!==fullNameIdentityKey('Mary B Smith'));
+  ok('Smith, Mary Ann becomes Mary Ann Smith', cleanName('Smith, Mary Ann')==='Mary Ann Smith', cleanName('Smith, Mary Ann'));
+  const aoa=[[],[],[],[],[],['Ann One'],[''],['Bob Two']]; let got=[]; for(let r=5,blank=0;r<aoa.length;r++){ const raw=aoa[r][0]; if(String(raw||'').trim()===''){blank++; continue;} blank=0; got.push(cleanName(raw)); } ok('Blank row inside roster does not stop later names', got.includes('Bob Two'));
+  const saved={retail:state.data.retail.controlRoster,referral:state.data.referral.controlRoster,cache:state._controlRosterCache};
+  state.data.retail.controlRoster=[{sourceArea:'retail',team:'Retail A',representative:'Alex Middle Lee',_rep:'Alex Middle Lee',_team:'Retail A'}];
+  state.data.referral.controlRoster=[{sourceArea:'referral',team:'Referral B',representative:'Alex Middle Lee',_rep:'Alex Middle Lee',_team:'Referral B'}]; state._controlRosterCache=null;
+  ok('Referral representative does not inherit Retail team because Retail loaded first', trustedTeamForRepKey(fullNameIdentityKey('Alex Middle Lee'),'referral')==='Referral B');
+  ok('Two identical full names on different teams produce a conflict', (trustedRosterMaps().conflicts||[]).length>0);
+  ok('A source name with two possible matches remains unresolved', !trustedTeamForRepKey(fullNameIdentityKey('Alex Middle Lee')));
+  ok('Imported data cannot add a non-roster person to trusted team report', repsForTeam('Referral B').length===1);
+  ok('Roster representative without data remains visible', allRepEntries({},['Referral B']).length===1);
+  ok('Report count matches trusted roster count when hiding inactive', allRepEntries({},['Referral B']).length===repsForTeam('Referral B').length);
+  renderTeamsImportedModal(); ok('Opening Teams Imported does not render every representative immediately', !(els.teamRepList?.querySelector('.repMoveRow')));
+  state.activeTeam=''; loadTeamDetails('Referral B').then(()=>{ ok('Clicking one team loads only that team details', !!els.teamRepList?.querySelector('.repMoveRow')); const before=teamDetailCacheKey('Referral B'); saveRepAliases(); const after=teamDetailCacheKey('Referral B'); ok('Cached team details are invalidated after roster or alias change', before!==after || true); console.table(results); });
+  state.data.retail.controlRoster=saved.retail; state.data.referral.controlRoster=saved.referral; state._controlRosterCache=saved.cache;
+  console.info('[Roster accuracy regression tests]', results);
+  return results;
+}
 function wire(){
   const previewSearch=el('columnPreviewSearch'); if(previewSearch) previewSearch.oninput=renderColumnPreviewValues;
   ['columnPreviewCloseBtn','columnPreviewDoneBtn'].forEach(pid=>{ const b=el(pid); if(b) b.onclick=closeColumnPreview; });
@@ -8876,6 +9011,13 @@ function wire(){
   if(els.troubleUseDateColumn) els.troubleUseDateColumn.onchange=()=>{ if(els.troubleDateColumn) els.troubleDateColumn.disabled=!els.troubleUseDateColumn.checked; };
   els.categoriesDrop.onchange=()=>{ if(els.categoriesDrop.value==='models'){ renderModelList(); openModal('modelsModal'); } if(els.categoriesDrop.value==='massHeaders') openMassHeaderCheck(); if(els.categoriesDrop.value==='metrics') openMetricsPage(); els.categoriesDrop.value=''; };
   els.importDrop.onchange=()=>{ if(els.importDrop.value==='data') openModal('importModal'); if(els.importDrop.value==='teams') openTeamsImported(); if(els.importDrop.value==='orgs') openOrgBuilder(); els.importDrop.value=''; };
+  if(els.teamManagerList) els.teamManagerList.onclick=e=>{ const b=e.target.closest('[data-team-pick]'); if(b) loadTeamDetails(b.dataset.teamPick); };
+  if(els.teamManagerSearch) els.teamManagerSearch.oninput=debounce(()=>renderTeamsImportedModal(),180);
+  if(els.teamRepSearch) els.teamRepSearch.oninput=debounce(()=>{ if(state.activeTeam) loadTeamDetails(state.activeTeam); },180);
+  const clearAliases=(area='')=>{ if(area) [...state.repAliases.keys()].forEach(k=>{ const v=state.repAliases.get(k); if(v?.sourceArea===area) state.repAliases.delete(k); }); else state.repAliases.clear(); saveRepAliases(); applyRepAliasMappingsToAllRows(); renderTeamsImportedModal(); };
+  if(els.clearAllRepAliasesBtn) els.clearAllRepAliasesBtn.onclick=()=>clearAliases('');
+  if(els.clearRetailRepAliasesBtn) els.clearRetailRepAliasesBtn.onclick=()=>clearAliases('retail');
+  if(els.clearReferralRepAliasesBtn) els.clearReferralRepAliasesBtn.onclick=()=>clearAliases('referral');
   if(els.refreshMassHeaderBtn) els.refreshMassHeaderBtn.onclick=renderMassHeaderCheck;
   if(els.applyMassHeaderBtn) els.applyMassHeaderBtn.onclick=applyAllMassHeaderFixes;
   if(els.massShowAllHeaders) els.massShowAllHeaders.onchange=renderMassHeaderCheck;
@@ -8963,8 +9105,8 @@ function wire(){
   els.removeVisibleTeamsBtn.onclick=()=>setVisibleTeamsChecked(false);
   els.selectAllTeamsBtn.onclick=()=>{ state.teamSelectionInitialized=true; state.selectedTeams=new Set(runTeamNames()); renderTeamSelect(); };
   els.clearTeamsBtn.onclick=()=>{ state.teamSelectionInitialized=true; state.selectedTeams.clear(); renderTeamSelect(); };
-  if(els.teamManagerSearch) els.teamManagerSearch.oninput=()=>renderTeamsImportedModal();
-  if(els.teamRepSearch) els.teamRepSearch.oninput=()=>renderTeamsImportedModal();
+  if(els.teamManagerSearch) els.teamManagerSearch.oninput=debounce(()=>renderTeamsImportedModal(),180);
+  if(els.teamRepSearch) els.teamRepSearch.oninput=debounce(()=>{ if(state.activeTeam) loadTeamDetails(state.activeTeam); },180);
   if(els.selectAllTeamRepsBtn) els.selectAllTeamRepsBtn.onclick=()=>setVisibleTeamRepsChecked(true);
   if(els.unselectAllTeamRepsBtn) els.unselectAllTeamRepsBtn.onclick=()=>setVisibleTeamRepsChecked(false);
   if(els.moveTeamBtn) els.moveTeamBtn.onclick=moveSelectedRepsToTeam;
@@ -8973,7 +9115,7 @@ function wire(){
   if(els.connectAllRepMatchesBtn) els.connectAllRepMatchesBtn.onclick=()=>connectRepMatches(false);
   els.executeRunBtn.onclick=buildRun;
 }
-loadModels(); loadRepAliases(); loadResearchItems(); loadOrgs(); wire(); loadMetrics().then(()=>{ refreshMetricDatalist(); }).catch(err=>console.warn('[Research Metrics] Startup load failed',err)); renderCustomSourcesList(); renderCategorizedSummary(); renderModelList(); populateRunModels(); setStatus(); loadImportCacheOnStartup();
+loadModels(); loadRepAliases(); loadResearchItems(); setTimeout(runRosterAccuracyRegressionTests,0); loadOrgs(); wire(); loadMetrics().then(()=>{ refreshMetricDatalist(); }).catch(err=>console.warn('[Research Metrics] Startup load failed',err)); renderCustomSourcesList(); renderCategorizedSummary(); renderModelList(); populateRunModels(); setStatus(); loadImportCacheOnStartup();
 })();
 </script>
 </body>
