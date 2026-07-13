@@ -1574,7 +1574,7 @@ function applyIncomingCommand(cmd){
     if(!actor || !target || !actor.alive || !target.alive || actor.faction !== slot) return commandReject('ability_piece_missing');
     let ok = false;
     if(cmd.ability === 'guardianShield') ok = applyGuardianShieldAbility(actor,target,'command');
-    else if(cmd.ability === 'shadeMark') ok = applyShadeMarkAbility(actor,target,'command');
+    else if(cmd.ability === 'shadeMark') ok = applyShadowMarkAbility(actor,target,'command');
     else return commandReject('unknown_ability');
     if(!ok) return commandReject('ability_not_available');
     processedCommandIds.add(`action:${cmd.actionId || ''}`);
@@ -1765,11 +1765,11 @@ async function requestPlayerAbility(actor,target,ability){
   const action={kind:'ability',ability,actionId:makeClientActionId('ability'),pieceId:liveActor.id,targetId:liveTarget.id,baseStateVersion:localStateVersion || 0};
   let valid=false;
   if(ability==='guardianShield') valid=guardianShieldTargets(liveActor).some(t=>t.targetId===liveTarget.id);
-  else if(ability==='shadeMark') valid=shadeMarkTargets(liveActor).some(t=>t.targetId===liveTarget.id);
+  else if(ability==='shadeMark') valid=shadowMarkTargets(liveActor).some(t=>t.targetId===liveTarget.id);
   if(!valid){ toast('That ability cannot affect this target right now.'); return false; }
   let ok=true;
   if(canAuthoritativelyWriteState()){
-    ok = ability==='guardianShield' ? applyGuardianShieldAbility(liveActor,liveTarget,'player') : applyShadeMarkAbility(liveActor,liveTarget,'player');
+    ok = ability==='guardianShield' ? applyGuardianShieldAbility(liveActor,liveTarget,'player') : applyShadowMarkAbility(liveActor,liveTarget,'player');
   }
   if(!ok) return false;
   rememberPendingPlayerAction({...action,faction:PLAYER});
@@ -2423,7 +2423,7 @@ const pieceDefs = {
   shieldpawn:{name:'Shieldbearer', icon:'♟', pattern:'shieldbearer', cooldown:3.2, value:1, hp:2, shieldPush:true, desc:'Heavy one-tile shield unit that pushes enemies on attack.'},
   bulwark:{name:'Bulwark', icon:'▣', pattern:'rookShort', cooldown:5.6, value:5, hp:3, desc:'Slow Iron heavy. A short rook with three health and a deliberately long movement cooldown.'},
   hammerknight:{name:'Hammer Knight', icon:'♞', pattern:'hammerknight', cooldown:4.55, value:5, hp:2, shieldPush:true, desc:'Charges exactly two cardinal tiles and pushes on impact.'},
-  gatebreaker:{name:'Gatebreaker', icon:'▰', pattern:'gatebreaker', cooldown:4.35, value:4, hp:2, shieldPush:true, desc:'Moves one straight, or strikes one more straight into an enemy or wall.'},
+  gatebreaker:{name:'Gatebreaker', icon:'▰', pattern:'gatebreaker', cooldown:4.35, value:4, hp:2, shieldPush:true, desc:'Moves exactly one straight tile. Can breach troops up to 2 cardinal tiles and buildings or walls up to 3 cardinal tiles through clear lanes; distant breaches are stationary and deal 2 damage to structures.'},
   warden:{name:'Warden', icon:'◆', pattern:'warden', cooldown:6.0, value:6, aura:2, hp:3, desc:'Slow Iron elite. A three-health defensive stepper with a small territory aura.'},
   seedpawn:{name:'Seed Pawn', icon:'♙', pattern:'pawn', cooldown:1.9, value:1, hp:1, desc:'Quickest pawn; helps Verdant flood territory.'},
   thornguard:{name:'Thorn Guard', icon:'♙', pattern:'thornguard', cooldown:2.25, value:2, hp:1, desc:'Moves cardinally and recharges best when staying connected to owned land.'},
@@ -2435,10 +2435,10 @@ const pieceDefs = {
   shadepawn:{name:'Shade Pawn', icon:'♙', pattern:'shadepawn', cooldown:2.45, value:2, hp:1, wallVault:true, desc:'Skirmisher. Select it, then tap an orange enemy three to four tiles away to place a 15-second execution mark. Mark recharges in 60 seconds.'},
   blinkpawn:{name:'Blink Pawn', icon:'♙', pattern:'blinkpawn', cooldown:2.65, value:2, hp:1, wallVault:true, desc:'Cannot stop adjacent; instead blinks exactly two tiles in any direction.'},
   shadowstepper:{name:'Shadow Stepper', icon:'⟡', pattern:'shadowstepper', cooldown:3.2, value:4, hp:1, wallVault:true, desc:'Teleports one to four tiles, with recharge based on distance.'},
-  assassin:{name:'Assassin', icon:'⟡', pattern:'assassin', cooldown:3.1, value:5, hp:1, wallVault:true, desc:'Moves diagonally or blinks in L-shapes for close assassinations. Cooldown halves after a kill.'},
+  assassin:{name:'Assassin', icon:'⟡', pattern:'assassin', cooldown:3.1, value:5, hp:1, wallVault:true, desc:'Moves diagonally or blinks in L-shapes for close assassinations. Deals 2 damage per hit and cooldown halves after a kill.'},
   nightblade:{name:'Nightblade', icon:'☾', pattern:'nightblade', cooldown:4.6, value:6, hp:1, wallVault:true, desc:'Stalks to open tiles beside enemies, then can rapidly strike any adjacent or diagonal enemy. After any Shadow kill, it may shadow-rush to that death site even while on cooldown.'},
-  wraith:{name:'Wraith', icon:'✷', pattern:'wraith', cooldown:4.2, value:7, hp:2, wallVault:true, desc:'Shadow elite. Long-range teleporter that may execute Shade-marked enemies within four tiles.'},
-  umbralbishop:{name:'Umbral Bishop', icon:'♝', pattern:'umbralbishop', cooldown:3.65, value:5, hp:1, wallVault:true, desc:'Diagonal controller with short diagonal teleport options.'},
+  wraith:{name:'Wraith', icon:'✷', pattern:'wraith', cooldown:4.2, value:7, hp:2, wallVault:true, desc:'Shadow elite. Long-range teleporter that deals 2 damage and may execute Shadow-marked enemies within four tiles.'},
+  umbralbishop:{name:'Umbral Bishop', icon:'♝', pattern:'umbralbishop', cooldown:3.65, value:5, hp:1, wallVault:true, desc:'Diagonal controller with short diagonal teleport options. Can mark a visible cardinal enemy 1-4 tiles away for 15s every 30s.'},
   nightknight:{name:'Night Knight', icon:'♞', pattern:'knight', cooldown:2.85, value:4, hp:1, desc:'Fast shadow knight.'},
   tidepawn:{name:'Tide Pawn', icon:'♙', pattern:'pawn', cooldown:2.25, value:1, hp:1, amphibious:true, desc:'Pawn that can cross water.'},
   crabrook:{name:'Crab Rook', icon:'♜', pattern:'rookShort', cooldown:3.55, value:5, hp:1, amphibious:true, desc:'Short rook that moves well through water lanes.'},
@@ -3246,10 +3246,17 @@ function isEnemyWallFor(piece,x,y){
 }
 function canVaultWalls(piece){ return !!(pieceDefs[piece?.type]?.wallVault); }
 function canAttackWall(piece,x,y){ return isEnemyWallFor(piece,x,y); }
+function wallDamageFor(attacker){ return attacker?.type==='gatebreaker' ? 2 : 1; }
+function attackDamageFor(attacker,target){
+  if(!attacker || !target) return 1;
+  if(attacker.type==='gatebreaker' && isBuildingType(target.type)) return 2;
+  if(attacker.type==='assassin' || attacker.type==='wraith') return 2;
+  return 1;
+}
 function destroyWallAt(x,y,attacker=null){
   const t=wallAt(x,y);
   if(!t || !attacker || t.wallOwner===attacker.faction) return false;
-  t.wallHp = Math.max(0,(t.wallHp || 1)-1);
+  t.wallHp = Math.max(0,(t.wallHp || 1)-wallDamageFor(attacker));
   burst(x,y,factions[t.wallOwner]?.color || '#dbeafe',12);
   floating(x,y,'WALL BREACH', factions[attacker.faction]?.color || '#fff');
   if(t.wallHp<=0){
@@ -4238,7 +4245,18 @@ function getLegalMoves(piece, ignoreCooldown=false){
   } else if(pattern==='gatebreaker'){
     for(const [dx,dy] of ORTHO){
       addStep(piece.x+dx,piece.y+dy,true,true);
-      addLineExact(dx,dy,2,true,false);
+      for(let r=2;r<=3;r++){
+        const tx=piece.x+dx*r, ty=piece.y+dy*r;
+        let clear=true;
+        for(let i=1;i<r;i++){
+          const ix=piece.x+dx*i, iy=piece.y+dy*i;
+          if(!inBounds(ix,iy) || findPieceAt(ix,iy) || !passableFor(piece,ix,iy) || blocksSlideFor(piece,ix,iy)){ clear=false; break; }
+        }
+        if(!clear || !inBounds(tx,ty)) continue;
+        const target=findPieceAt(tx,ty);
+        if(target && target.faction!==own && (r===2 || isBuildingType(target.type))) addMove(moves,tx,ty,true,{stationaryAttack:true,rangedStrike:true});
+        else if(canAttackWall(piece,tx,ty)) addMove(moves,tx,ty,true,{wall:true,stationaryAttack:true,rangedStrike:true});
+      }
     }
   } else if(pattern==='rook') slide(ORTHO, 9+lvl);
   else if(pattern==='rookShort') slide(ORTHO, 4+Math.floor(lvl/2));
@@ -4426,8 +4444,33 @@ function getLegalMoves(piece, ignoreCooldown=false){
       }
     }
   }
+  addShadowMarkedRangeBonusMoves(piece,moves);
   const seenMoves=new Set();
   return moves.filter(m=>{ const k=m.x+','+m.y+','+(m.capture?'c':'m'); if(seenMoves.has(k)) return false; seenMoves.add(k); return true; });
+}
+function clearLineForAttack(piece,toX,toY){
+  const dx=toX-piece.x, dy=toY-piece.y;
+  if(!(dx===0 || dy===0 || Math.abs(dx)===Math.abs(dy))) return true;
+  const sx=Math.sign(dx), sy=Math.sign(dy), steps=Math.max(Math.abs(dx),Math.abs(dy));
+  for(let r=1;r<steps;r++){
+    const x=piece.x+sx*r,y=piece.y+sy*r;
+    if(!inBounds(x,y) || findPieceAt(x,y) || !passableFor(piece,x,y) || blocksSlideFor(piece,x,y)) return false;
+  }
+  return true;
+}
+function addShadowMarkedRangeBonusMoves(piece,moves){
+  if(!piece || factions[piece.faction]?.id!=='shadow' || isBuildingType(piece.type)) return;
+  const baseKeys=new Set(moves.filter(m=>!m.markedRangeBonus).map(m=>m.x+','+m.y));
+  for(const target of pieces){
+    if(!target.alive || target.faction===piece.faction || (target.shadowMarkedUntil||0)<=now()) continue;
+    if(piece.faction===PLAYER && isShadowFoggedForPlayer(target.x,target.y,PLAYER)) continue;
+    const dx=target.x-piece.x, dy=target.y-piece.y;
+    if(dx===0 && dy===0) continue;
+    const px=target.x-Math.sign(dx), py=target.y-Math.sign(dy);
+    if(!baseKeys.has(px+','+py)) continue;
+    if(findPieceAt(px,py) || !clearLineForAttack(piece,target.x,target.y)) continue;
+    moves.push({x:target.x,y:target.y,capture:true,markedRangeBonus:true});
+  }
 }
 
 function travelPathCells(fromX,fromY,toX,toY){
@@ -4697,20 +4740,28 @@ function guardianShieldTargets(bishop){
   }
   return targets;
 }
-function shadeMarkTargets(shade){
-  if(!shade || shade.type!=='shadepawn' || shade.faction!==PLAYER || now() < (shade.markReadyAt || 0)) return [];
+function shadowMarkCooldownFor(marker){ return marker?.type==='umbralbishop' ? 30 : 60; }
+function canShadowMarkerMarkTarget(marker,target){
+  if(!marker?.alive || !target?.alive || !['shadepawn','umbralbishop'].includes(marker.type) || marker.faction===target.faction || !factions[target.faction]?.alive) return false;
+  if(now() < (marker.markReadyAt || 0)) return false;
+  const dx=Math.abs(target.x-marker.x), dy=Math.abs(target.y-marker.y), cheb=Math.max(dx,dy);
+  if(marker.type==='shadepawn') return cheb>=3 && cheb<=4;
+  return ((dx===0) !== (dy===0)) && cheb>=1 && cheb<=4;
+}
+function shadowMarkTargets(marker){
+  if(!marker || marker.faction!==PLAYER || now() < (marker.markReadyAt || 0)) return [];
   const targets=[];
   for(const p of pieces){
-    if(!p.alive || p.faction===shade.faction || !factions[p.faction]?.alive || isShadowFoggedForPlayer(p.x,p.y,PLAYER)) continue;
-    const cheb=Math.max(Math.abs(p.x-shade.x),Math.abs(p.y-shade.y));
-    if(cheb>=3 && cheb<=4) targets.push({kind:'shadeMark',targetId:p.id,x:p.x,y:p.y});
+    if(!p.alive || p.faction===marker.faction || !factions[p.faction]?.alive || isShadowFoggedForPlayer(p.x,p.y,PLAYER)) continue;
+    if(canShadowMarkerMarkTarget(marker,p)) targets.push({kind:'shadeMark',targetId:p.id,x:p.x,y:p.y});
   }
   return targets;
 }
+function shadeMarkTargets(shade){ return shadowMarkTargets(shade); }
 function selectedAbilityTargets(){
   if(!selectedPiece || selectedPiece.faction!==PLAYER || playerDefeated || !ownFactionAlive()) return [];
   if(isGuardianBishop(selectedPiece)) return guardianShieldTargets(selectedPiece);
-  if(selectedPiece.type==='shadepawn') return shadeMarkTargets(selectedPiece);
+  if(['shadepawn','umbralbishop'].includes(selectedPiece.type)) return shadowMarkTargets(selectedPiece);
   return [];
 }
 function selectedAbilityTargetForPiece(piece){
@@ -4736,19 +4787,19 @@ function applyGuardianShieldAbility(bishop,target,source='player'){
   markStateDirty();
   return true;
 }
-function applyShadeMarkAbility(shade,target,source='player'){
-  if(!shade?.alive || !target?.alive || shade.type!=='shadepawn' || shade.faction===target.faction || !factions[target.faction]?.alive) return false;
-  const cheb=Math.max(Math.abs(target.x-shade.x),Math.abs(target.y-shade.y));
-  if(now() < (shade.markReadyAt || 0) || cheb<3 || cheb>4) return false;
+function applyShadowMarkAbility(shade,target,source='player'){
+  if(!canShadowMarkerMarkTarget(shade,target)) return false;
+  if(isHumanSlot(shade.faction) && isShadowFoggedForPlayer(target.x,target.y,shade.faction)) return false;
   target.shadowMarkedUntil=now()+15;
   target.shadowMarkedBy=shade.id;
-  shade.markReadyAt=now()+60;
+  shade.markReadyAt=now()+shadowMarkCooldownFor(shade);
   target.flash=1;
-  floating(target.x,target.y,'SHADE MARK', '#ff594f');
+  floating(target.x,target.y,shade.type==='umbralbishop'?'BISHOP MARK':'SHADE MARK', '#ff594f');
   burst(target.x,target.y,'rgba(255,92,64,.96)',20);
   markStateDirty();
   return true;
 }
+function applyShadeMarkAbility(shade,target,source='player'){ return applyShadowMarkAbility(shade,target,source); }
 function pieceHasOrbShield(piece){
   return !!piece && (piece.orbShieldCharges || 0) > 0 && (piece.orbShieldUntil || 0) > now();
 }
@@ -4802,6 +4853,7 @@ function movePiece(piece,x,y,source='player'){
   const prevLastMove = piece.lastMove;
   const prevCooldownUntil = piece.cooldownUntil || 0;
   const prevLastCooldownDuration = piece.lastCooldownDuration || 0;
+  const moveMeta=(getLegalMoves(piece,true).find(m=>m.x===x && m.y===y && (m.capture || !findPieceAt(x,y))) || {});
   const target=findPieceAt(x,y);
   if(target && target.faction===piece.faction) return false;
   const targetWall = canAttackWall(piece,x,y);
@@ -4833,6 +4885,15 @@ function movePiece(piece,x,y,source='player'){
     }
   }
   if(targetWall) destroyWallAt(x,y,piece);
+  if(moveMeta.stationaryAttack){
+    piece.flash=1;
+    setMoveCooldown(piece,fromX,fromY,x,y,!!target || !!targetWall);
+    piece.moveStartMs=Date.now(); piece.moveEndMs=piece.moveStartMs+moveVisualDurationFor(piece);
+    if((!!target || !!targetWall) && factions[piece.faction]?.id==='shadow') shadowStrikeEffect(piece,x,y);
+    burst(x,y,factions[piece.faction]?.color || '#fff',14);
+    markStateDirty();
+    return true;
+  }
   piece.x=x; piece.y=y; piece.targetX=x; piece.targetY=y; piece.flash=1;
   setMoveCooldown(piece,fromX,fromY,x,y,!!target || !!targetWall);
   if(piece.type==='assassin' && defeated){
@@ -5007,10 +5068,10 @@ function capturePiece(attacker, target){
     markStateDirty();
     return false;
   }
-  if(markedAssassination) target.hp = 1;
-  target.hp -= 1;
+  const dmg = markedAssassination ? Math.max(1,target.hp) : attackDamageFor(attacker,target);
+  target.hp -= dmg;
   burst(target.x,target.y,factions[target.faction].color,18);
-  floating(target.x,target.y,markedAssassination ? 'EXECUTED' : 'CAPTURE', factions[attacker.faction].color);
+  floating(target.x,target.y,markedAssassination ? 'EXECUTED' : (dmg>1 ? `-${dmg} HP` : 'CAPTURE'), factions[attacker.faction].color);
   if(target.hp>0){
     const ironCooldownRestarted = restartIronMovementCooldownAfterHit(target);
     floating(target.x,target.y,ironCooldownRestarted ? 'COOLDOWN RESET' : 'SHIELD', '#dbeafe');
@@ -5457,13 +5518,13 @@ function updatePiecePanel(){
     const remain=Math.max(0,Math.ceil((p.guardReadyAt||0)-now()));
     const count=p.faction===PLAYER?guardianShieldTargets(p).length:0;
     abilityLine=remain?`<p style="color:#a7f3d0"><b>Guardian Shield:</b> recharges in ${remain}s.</p>`:`<p style="color:#86efac"><b>Guardian Shield ready:</b> ${count} valid ally${count===1?'':'ies'} glow green. Tap one to jump beside it and shield it for 15s.</p>`;
-  }else if(p.type==='shadepawn'){
+  }else if(['shadepawn','umbralbishop'].includes(p.type)){
     const remain=Math.max(0,Math.ceil((p.markReadyAt||0)-now()));
-    const count=p.faction===PLAYER?shadeMarkTargets(p).length:0;
-    abilityLine=remain?`<p style="color:#fdba74"><b>Shade Mark:</b> recharges in ${remain}s.</p>`:`<p style="color:#fb923c"><b>Shade Mark ready:</b> ${count} enemies glow orange. Tap one to place the red 15s execution mark.</p>`;
+    const count=p.faction===PLAYER?shadowMarkTargets(p).length:0;
+    abilityLine=remain?`<p style="color:#fdba74"><b>Shadow Mark:</b> recharges in ${remain}s.</p>`:`<p style="color:#fb923c"><b>Shadow Mark ready:</b> ${count} enemies glow orange. Tap one to place a 15s mark (+1 Shadow attack reach; Wraiths execute).</p>`;
   }
   if(pieceHasOrbShield(p)) abilityLine+=`<p style="color:#bff6ff"><b>Dawn Shield active:</b> blocks the next capture attempt.</p>`;
-  if((p.shadowMarkedUntil||0)>now()) abilityLine+=`<p style="color:#ff8b82"><b>Marked:</b> Wraiths can execute this piece for ${Math.ceil(p.shadowMarkedUntil-now())}s.</p>`;
+  if((p.shadowMarkedUntil||0)>now()) abilityLine+=`<p style="color:#ff8b82"><b>Marked:</b> All Shadow troops gain +1 valid attack reach against this unit. Wraiths may execute it. ${Math.ceil(p.shadowMarkedUntil-now())}s.</p>`;
   const legendLine=p.faction===PLAYER?`<p style="font-size:11px;color:#cbd5e1">Blue = move · Red glow = attack · Green glow = Guardian Shield · Orange glow = Shade Mark.</p>`:'';
   piecePanel.style.display='block';
   piecePanel.innerHTML=`
@@ -5618,10 +5679,10 @@ function updateShadowFactionAbilities(f, step){
   if(isHumanSlot(f.idx)) return;
   const tNow=now();
   for(const p of pieces){
-    if(!p.alive || p.faction!==f.idx || p.type!=='shadepawn' || tNow < (p.markReadyAt || 0)) continue;
-    const candidates=pieces.filter(q=>q.alive && q.faction!==p.faction && factions[q.faction]?.alive).map(q=>({q,cheb:Math.max(Math.abs(q.x-p.x),Math.abs(q.y-p.y))})).filter(({cheb})=>cheb>=3&&cheb<=4);
-    candidates.sort((a,b)=>((pieceDefs[b.q.type]?.value||1)-(pieceDefs[a.q.type]?.value||1))||a.cheb-b.cheb);
-    if(candidates[0]?.q) applyShadeMarkAbility(p,candidates[0].q,'ai');
+    if(!p.alive || p.faction!==f.idx || !['shadepawn','umbralbishop'].includes(p.type) || tNow < (p.markReadyAt || 0)) continue;
+    const candidates=pieces.filter(q=>q.alive && q.faction!==p.faction && factions[q.faction]?.alive && canShadowMarkerMarkTarget(p,q)).map(q=>({q,cheb:Math.max(Math.abs(q.x-p.x),Math.abs(q.y-p.y))}));
+    candidates.sort((a,b)=>((b.q.type==='king')-(a.q.type==='king')) || ((pieceDefs[b.q.type]?.value||1)-(pieceDefs[a.q.type]?.value||1)) || ((b.q.maxHp||1)-(a.q.maxHp||1)) || a.cheb-b.cheb);
+    if(candidates[0]?.q) applyShadowMarkAbility(p,candidates[0].q,'ai');
   }
 }
 function updateTemporaryPieces(f){
@@ -6667,10 +6728,10 @@ function drawHighlights(){
     for(const m of legalMoves){
       const x=m.x*BASE_CELL, y=m.y*BASE_CELL;
       ctx.globalAlpha=m.capture?.55:.36;
-      ctx.fillStyle=m.capture?'#ff4058':'#7dd3fc';
+      ctx.fillStyle=m.markedRangeBonus?'#b388ff':(m.capture?'#ff4058':'#7dd3fc');
       ctx.beginPath(); ctx.arc(x+BASE_CELL/2,y+BASE_CELL/2,m.capture?15:10,0,Math.PI*2); ctx.fill();
       ctx.globalAlpha=1;
-      if(m.capture){ ctx.strokeStyle='#ffedf0'; ctx.lineWidth=2.5; ctx.strokeRect(x+7,y+7,BASE_CELL-14,BASE_CELL-14); }
+      if(m.capture){ ctx.strokeStyle=m.markedRangeBonus?'#d8b4fe':'#ffedf0'; ctx.lineWidth=2.5; ctx.strokeRect(x+7,y+7,BASE_CELL-14,BASE_CELL-14); }
     }
     const abilityTargets=selectedAbilityTargets();
     for(const a of abilityTargets){
