@@ -156,6 +156,20 @@
     }
     .header-btn:hover{background:rgba(255,255,255,.2);transform:translateY(-1px)}
     .header-btn:active{transform:none}
+    .header-btn.fullscreen-active{background:#fff;color:var(--brand-deep);border-color:#fff}
+
+    /* The iframe itself becomes the fullscreen element, so the outer app bar,
+       chat controls, and borders cannot sit above or crop the running game. */
+    #contentFrame:fullscreen,
+    #contentFrame:-webkit-full-screen{
+      width:100vw!important;
+      height:100vh!important;
+      width:100dvw!important;
+      height:100dvh!important;
+      min-height:0!important;
+      border:0!important;
+      background:#000;
+    }
 
     /* Lobby frame */
     .viewport{
@@ -617,6 +631,10 @@
           <span class="status-dot"></span>
           Lobby &amp; Game Library
         </div>
+        <button id="fullscreenLobby" class="header-btn" type="button" title="Toggle fullscreen for the current lobby or game" aria-pressed="false">
+          <span id="fullscreenLobbyIcon" aria-hidden="true">⛶</span>
+          <span id="fullscreenLobbyLabel" class="label">Fullscreen</span>
+        </button>
         <button id="reloadLobby" class="header-btn" type="button" title="Reload the lobby">
           <span aria-hidden="true">↻</span>
           <span class="label">Reload</span>
@@ -631,8 +649,9 @@
         id="contentFrame"
         src="https://catnmice.com/lobby/lobby.html"
         title="Cat’N Mice Game Hub Lobby"
-        allow="fullscreen"
-        allowfullscreen
+        allow="fullscreen *"
+        allowfullscreen="true"
+        webkitallowfullscreen="true"
       ></iframe>
 
       <div class="loader" id="frameLoader" aria-live="polite">
@@ -721,6 +740,9 @@
 
     const frame = document.getElementById("contentFrame");
     const loader = document.getElementById("frameLoader");
+    const fullscreenLobby = document.getElementById("fullscreenLobby");
+    const fullscreenLobbyIcon = document.getElementById("fullscreenLobbyIcon");
+    const fullscreenLobbyLabel = document.getElementById("fullscreenLobbyLabel");
     const reloadLobby = document.getElementById("reloadLobby");
     const chatContainer = document.getElementById("chatContainer");
     const toggleChat = document.getElementById("toggleChat");
@@ -736,18 +758,102 @@
     const toast = document.getElementById("toast");
 
 
-    function requestChessWarlordFullscreenFromMessage(event){
-      if(event.source !== frame.contentWindow) return;
-      const data = event.data || {};
-      if(data.type !== "chess-warlord-fullscreen" || data.action !== "toggle") return;
-      const src = String(frame.getAttribute("src") || "");
-      if(!src.includes("chess_warlord.html")) return;
-      const target = frame.closest(".frame-wrap") || frame;
-      const requestTarget = (target.requestFullscreen || target.webkitRequestFullscreen) ? target : frame;
-      const request = requestTarget.requestFullscreen || requestTarget.webkitRequestFullscreen;
-      if(request) Promise.resolve(request.call(requestTarget)).catch(err=>console.warn("Chess Warlord hub fullscreen failed", err));
+    function currentFullscreenElement(){
+      return document.fullscreenElement || document.webkitFullscreenElement || null;
     }
-    window.addEventListener("message", requestChessWarlordFullscreenFromMessage);
+
+    function updateFullscreenUi(){
+      const active = currentFullscreenElement() === frame;
+      fullscreenLobby.classList.toggle("fullscreen-active",active);
+      fullscreenLobby.setAttribute("aria-pressed",active ? "true" : "false");
+      fullscreenLobbyIcon.textContent = active ? "⛶" : "⛶";
+      fullscreenLobbyLabel.textContent = active ? "Exit Fullscreen" : "Fullscreen";
+
+      try{
+        frame.contentWindow.postMessage({
+          type:"game-fullscreen-state",
+          active
+        },"*");
+      }catch(error){
+        console.debug("Could not report fullscreen state to the game",error);
+      }
+    }
+
+    async function enterFrameFullscreen(){
+      const request = frame.requestFullscreen || frame.webkitRequestFullscreen;
+      if(!request) throw new Error("This browser does not expose the Fullscreen API.");
+
+      try{
+        await request.call(frame,{navigationUI:"hide"});
+      }catch(firstError){
+        // Safari and older Chromium builds reject the options object.
+        await request.call(frame);
+      }
+    }
+
+    async function exitFrameFullscreen(){
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if(exit) await exit.call(document);
+    }
+
+    async function setFrameFullscreen(action="toggle"){
+      const active = currentFullscreenElement() === frame;
+      const shouldExit = action === "exit" || (action === "toggle" && active);
+
+      if(shouldExit){
+        await exitFrameFullscreen();
+      }else if(!active){
+        await enterFrameFullscreen();
+      }
+    }
+
+    async function handleFullscreenButton(){
+      try{
+        await setFrameFullscreen("toggle");
+      }catch(error){
+        console.warn("Game Hub fullscreen failed",error);
+        showToast("Fullscreen was blocked by the browser. Tap the button again after interacting with the game.","error");
+      }
+    }
+
+    async function requestGameFullscreenFromMessage(event){
+      if(event.source !== frame.contentWindow) return;
+
+      const data = event.data || {};
+      const acceptedTypes = new Set([
+        "chess-warlord-fullscreen",
+        "game-fullscreen-request",
+        "game-fullscreen"
+      ]);
+      if(!acceptedTypes.has(data.type)) return;
+
+      const action = ["enter","exit","toggle"].includes(data.action)
+        ? data.action
+        : "toggle";
+
+      try{
+        // The old code compared against frame.getAttribute("src"). That value
+        // remains lobby.html after the iframe navigates itself into a game, so
+        // every real game request was discarded. The message source check above
+        // safely identifies the currently loaded iframe without that stale URL.
+        await setFrameFullscreen(action);
+      }catch(error){
+        console.warn("Iframe fullscreen request was blocked",error);
+        showToast("Use the Fullscreen button in the top bar to enter fullscreen.","error");
+        try{
+          frame.contentWindow.postMessage({
+            type:"game-fullscreen-result",
+            ok:false,
+            reason:String(error?.message || error)
+          },"*");
+        }catch(ignore){}
+      }
+    }
+
+    fullscreenLobby.addEventListener("click",handleFullscreenButton);
+    window.addEventListener("message",requestGameFullscreenFromMessage);
+    document.addEventListener("fullscreenchange",updateFullscreenUi);
+    document.addEventListener("webkitfullscreenchange",updateFullscreenUi);
 
     let currentUsername = "";
     let currentLobbyShare = null;
