@@ -37,9 +37,10 @@
   #status{display:none !important;}
   #title{font-weight:900;letter-spacing:.5px;font-size:16px;display:flex;align-items:center;gap:8px;}
   #subtitle{font-size:12px;color:var(--muted);line-height:1.25;}
-  #spawnPanel{flex:0 1 720px;max-width:min(720px,calc(100vw - 190px));display:grid;grid-template-columns:minmax(104px,.72fr) repeat(3,minmax(112px,1fr));gap:7px;pointer-events:auto;}
-  .spawnCard{position:relative;overflow:hidden;padding:7px 48px 7px 8px;display:flex;flex-direction:column;justify-content:center;border-radius:14px;border:1px solid rgba(255,255,255,.15);background:rgba(12,17,28,.78);min-width:0;min-height:70px;transition:transform .12s,border-color .12s,background .12s,opacity .12s;cursor:pointer;}
+  #spawnPanel{flex:0 1 720px;max-width:min(720px,calc(100vw - 190px));display:grid;grid-template-columns:minmax(104px,.72fr) repeat(3,minmax(112px,1fr));gap:7px;pointer-events:auto;touch-action:manipulation;}
+  .spawnCard{appearance:none;color:inherit;font:inherit;text-align:left;position:relative;overflow:hidden;padding:7px 48px 7px 8px;display:flex;flex-direction:column;justify-content:center;border-radius:14px;border:1px solid rgba(255,255,255,.15);background:rgba(12,17,28,.78);min-width:0;min-height:70px;transition:transform .12s,border-color .12s,background .12s,opacity .12s,filter .12s;cursor:pointer;touch-action:manipulation;}
   .spawnCard.ready:hover,.spawnCard.selected{transform:translateY(-2px);border-color:rgba(255,230,140,.82);background:rgba(45,36,15,.88);}
+  .spawnCard.pressed,.spawnCard:active{transform:translateY(1px) scale(.98);filter:brightness(1.12);}
   .spawnCard.selected{box-shadow:0 0 0 2px rgba(255,224,124,.35),0 12px 28px rgba(0,0,0,.24);}
   .spawnCard.locked{opacity:.48;cursor:not-allowed;}
   .spawnName{font-size:11px;font-weight:1000;line-height:1.12;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
@@ -393,6 +394,9 @@ let selectedPiece = null;
 let legalMoves = [];
 let spawnSelection = null;
 let lastSpawnPanelSignature = '';
+let lastSpawnLiveValues = null;
+let pressedSpawnCard = null;
+let suppressNextSpawnClick = false;
 let showTerritory = true;
 let minimapOpen = localStorage.getItem('cw.minimapOpen') !== '0';
 let hoverBoardTile = null;
@@ -1802,7 +1806,7 @@ async function requestPlayerMove(piece,x,y){
     else if(!visualTarget) playMoveSound();
     emitLocalActionFx(live,fromX,fromY,x,y,!!visualTarget);
     rememberPendingPlayerAction({...action, faction:PLAYER});
-    selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
+    selectedPiece=null; legalMoves=[]; updatePiecePanel(); updateSpawnCardValues();
     if(canAuthoritativelyWriteState()){ queueReliableStateWrite('playerMove'); }
     else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
   }
@@ -1823,7 +1827,7 @@ async function requestPlayerAbility(actor,target,ability){
   }
   if(!ok) return false;
   rememberPendingPlayerAction({...action,faction:PLAYER});
-  selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
+  selectedPiece=null; legalMoves=[]; updatePiecePanel(); updateSpawnCardValues();
   if(canAuthoritativelyWriteState()) queueReliableStateWrite(ability);
   else {
     toast(ability==='guardianShield'?'Guardian jump sent to the host.':'Shade Mark sent to the host.',1600);
@@ -1837,7 +1841,7 @@ async function requestPlayerSpawn(x,y){
   const type=f.spawnChoices?.[spawnSelection];
   if(!type) return;
   const tokenCost=spawnTokenCost(type);
-  if((f.spawnTokens||0)<tokenCost){ spawnSelection=null; renderSpawnCards(); toast(`You need ${tokenCost} tokens for ${pieceDisplayName(PLAYER,type)}.`); return; }
+  if((f.spawnTokens||0)<tokenCost){ spawnSelection=null; updateSpawnCardValues(); toast(`You need ${tokenCost} tokens for ${pieceDisplayName(PLAYER,type)}.`); return; }
   if(lobbyId && !canAuthoritativelyWriteState() && pendingPlayerActions.some(a=>a.kind==='spawn')){
     toast('Your previous deployment is still awaiting host confirmation.');
     return;
@@ -5577,50 +5581,161 @@ function drawSpawnCardThumbnail(card,factionId,type){
   tctx.drawImage(graphic,(thumb.width-dw)/2,(thumb.height-dh)/2,dw,dh);
   card.appendChild(thumb);
 }
-function renderSpawnCards(){
+function spawnPanelStructureSignature(f){
+  const choices=Array.isArray(f?.spawnChoices) ? f.spawnChoices : [];
+  return `${playerDefeated}|${f?.id||''}|${choices.length}|${choices.join(',')}`;
+}
+function setSpawnCardPressed(card,pressed){
+  if(!card) return;
+  card.classList.toggle('pressed',!!pressed);
+}
+function clearPressedSpawnCard(){
+  setSpawnCardPressed(pressedSpawnCard,false);
+  pressedSpawnCard=null;
+}
+function refreshSpawnThumbnail(card,factionId,type){
+  if(card.dataset.spawnTypeRendered===type && card.dataset.spawnFactionRendered===String(factionId)) return;
+  card.querySelectorAll('.spawnThumb,.spawnFallback').forEach(el=>el.remove());
+  drawSpawnCardThumbnail(card,factionId,type);
+  card.dataset.spawnTypeRendered=type;
+  card.dataset.spawnFactionRendered=String(factionId);
+}
+function ensureSpawnCardStructure(){
   const f=factions[PLAYER]; if(!f) return;
+  if(!playerDefeated && (!Array.isArray(f.spawnChoices) || !f.spawnChoices.length)) f.spawnChoices=chooseSpawnOptions(PLAYER);
+  const signature=spawnPanelStructureSignature(f);
+  if(signature===lastSpawnPanelSignature) return;
+  lastSpawnPanelSignature=signature;
+  spawnPanel.innerHTML='';
   if(playerDefeated){
-    spawnPanel.innerHTML='<div class="spawnCard glass locked" style="grid-column:1/-1;justify-content:center;text-align:center;padding-right:8px"><div class="spawnName">Defeated — spectating only</div><div class="spawnMeta">Exit or watch the remaining factions.</div></div>';
+    const defeated=document.createElement('div');
+    defeated.className='spawnCard glass locked';
+    defeated.style.cssText='grid-column:1/-1;justify-content:center;text-align:center;padding-right:8px';
+    defeated.innerHTML='<div class="spawnName">Defeated — spectating only</div><div class="spawnMeta">Exit or watch the remaining factions.</div>';
+    spawnPanel.appendChild(defeated);
     return;
   }
-  if(!Array.isArray(f.spawnChoices) || !f.spawnChoices.length) f.spawnChoices=chooseSpawnOptions(PLAYER);
-  const tokens=Math.max(0,Math.floor(f.spawnTokens||0));
-  recalcOwnerCounts();
-  const territory=ownerCounts.get(PLAYER)||0;
-  const army=pieces.filter(p=>p.alive&&p.faction===PLAYER).length;
-  const tier=spawnTierInfoForFaction(f,territory);
-  const spawnRate=spawnRateForFaction(f,territory,army);
-  const progress=clamp(f.spawnMeter||0,0,99.999);
-  const remaining=Math.max(1,Math.ceil((100-progress)/Math.max(.01,spawnRate)));
-  if(spawnSelection!==null){
-    const selectedType=f.spawnChoices[spawnSelection];
-    if(!selectedType || tokens<spawnTokenCost(selectedType)) spawnSelection=null;
-  }
-  spawnPanel.innerHTML='';
   const tokenCard=document.createElement('div');
   tokenCard.className='tokenCard glass';
-  tokenCard.title=`${tier.label}: ${tier.basis}. Each completed bar adds one token.`;
-  tokenCard.innerHTML=`<div class="tokenTop"><span>Tokens</span><span class="tokenCount">${tokens}</span></div><div class="tokenTrack"><div class="tokenFill" style="width:${progress.toFixed(1)}%"></div></div><div class="tokenMeta">next ${remaining}s · T${tier.tier}</div>`;
+  tokenCard.innerHTML='<div class="tokenTop"><span>Tokens</span><span class="tokenCount"></span></div><div class="tokenTrack"><div class="tokenFill"></div></div><div class="tokenMeta"></div>';
   spawnPanel.appendChild(tokenCard);
   f.spawnChoices.slice(0,3).forEach((type,i)=>{
-    const def=pieceDefs[type] || pieceDefs.pawn;
-    const cost=spawnTokenCost(type);
-    const affordable=tokens>=cost;
-    const card=document.createElement('div');
-    card.className='spawnCard glass '+(affordable?'ready':'locked')+(spawnSelection===i?' selected':'');
-    card.title=`${pieceDisplayName(PLAYER,type)} · ${cost} token${cost===1?'':'s'} · ${def.desc}`;
-    card.innerHTML=`<div class="spawnName">${pieceDisplayName(PLAYER,type)}</div><div class="spawnCost">◆ ${cost}</div>`;
-    drawSpawnCardThumbnail(card,f.id,type);
-    card.onclick=()=>{
-      if(!affordable){ toast(`You need ${cost} tokens for ${pieceDisplayName(PLAYER,type)}.`); return; }
-      spawnSelection=spawnSelection===i ? null : i;
-      selectedPiece=null; legalMoves=[];
-      renderSpawnCards(); updatePiecePanel();
-      toast(spawnSelection!==null ? `Place ${pieceDisplayName(PLAYER,type)} on a highlighted open tile.` : 'Purchase canceled.');
-    };
+    const card=document.createElement('button');
+    card.type='button';
+    card.className='spawnCard glass';
+    card.dataset.spawnIndex=String(i);
+    card.dataset.spawnType=type;
+    card.innerHTML='<div class="spawnName"></div><div class="spawnCost"></div>';
     spawnPanel.appendChild(card);
   });
 }
+function updateSpawnCardValues(values=lastSpawnLiveValues){
+  const f=factions[PLAYER]; if(!f) return;
+  ensureSpawnCardStructure();
+  if(playerDefeated) return;
+  if(!values){
+    const progress=clamp(f.spawnMeter||0,0,99.999);
+    const tokens=Math.max(0,Math.floor(f.spawnTokens||0));
+    recalcOwnerCounts();
+    const territory=ownerCounts.get(PLAYER)||0;
+    const army=pieces.filter(p=>p.alive&&p.faction===PLAYER).length;
+    const tier=spawnTierInfoForFaction(f,territory);
+    const spawnRate=spawnRateForFaction(f,territory,army);
+    const remaining=Math.max(1,Math.ceil((100-progress)/Math.max(.01,spawnRate)));
+    values={tokens,progress,remaining,tier};
+  }
+  lastSpawnLiveValues=values;
+  const choices=Array.isArray(f.spawnChoices) ? f.spawnChoices : [];
+  if(spawnSelection!==null){
+    const selectedType=choices[spawnSelection];
+    if(!selectedType || values.tokens<spawnTokenCost(selectedType)){
+      spawnSelection=null;
+      selectedPiece=null;
+      legalMoves=[];
+      updatePiecePanel();
+    }
+  }
+  const tokenCard=spawnPanel.querySelector('.tokenCard');
+  if(tokenCard){
+    tokenCard.title=`${values.tier.label}: ${values.tier.basis}. Each completed bar adds one token.`;
+    tokenCard.querySelector('.tokenCount').textContent=values.tokens;
+    tokenCard.querySelector('.tokenFill').style.width=`${values.progress.toFixed(1)}%`;
+    tokenCard.querySelector('.tokenMeta').textContent=`next ${values.remaining}s · T${values.tier.tier}`;
+  }
+  spawnPanel.querySelectorAll('.spawnCard[data-spawn-index]').forEach(card=>{
+    const i=Number(card.dataset.spawnIndex);
+    const type=choices[i];
+    if(!type) return;
+    const def=pieceDefs[type] || pieceDefs.pawn;
+    const cost=spawnTokenCost(type);
+    const affordable=values.tokens>=cost;
+    const selected=spawnSelection===i;
+    card.dataset.spawnType=type;
+    card.classList.toggle('ready',affordable);
+    card.classList.toggle('locked',!affordable);
+    card.classList.toggle('selected',selected);
+    card.setAttribute('aria-disabled',affordable?'false':'true');
+    card.setAttribute('aria-pressed',selected?'true':'false');
+    card.title=`${pieceDisplayName(PLAYER,type)} · ${cost} token${cost===1?'':'s'} · ${def.desc}`;
+    card.querySelector('.spawnName').textContent=pieceDisplayName(PLAYER,type);
+    card.querySelector('.spawnCost').textContent=`◆ ${cost}`;
+    refreshSpawnThumbnail(card,f.id,type);
+  });
+}
+function renderSpawnCards(){
+  lastSpawnPanelSignature='';
+  ensureSpawnCardStructure();
+  updateSpawnCardValues();
+}
+function activateSpawnChoice(index){
+  const f=factions[PLAYER];
+  if(playerDefeated || !f) return;
+  const type=f.spawnChoices?.[index];
+  if(!type) return;
+  const cost=spawnTokenCost(type);
+  const tokens=Math.max(0,Math.floor(f.spawnTokens||0));
+  if(tokens<cost){
+    toast(`You need ${cost} tokens for ${pieceDisplayName(PLAYER,type)}.`);
+    updateSpawnCardValues();
+    return;
+  }
+  spawnSelection=spawnSelection===index ? null : index;
+  selectedPiece=null; legalMoves=[];
+  updateSpawnCardValues();
+  updatePiecePanel();
+  draw();
+  toast(spawnSelection!==null ? `Place ${pieceDisplayName(PLAYER,type)} on a highlighted open tile.` : 'Purchase canceled.');
+}
+spawnPanel.addEventListener('pointerdown',e=>{
+  const card=e.target.closest('.spawnCard[data-spawn-index]');
+  if(!card || !spawnPanel.contains(card)) return;
+  pressedSpawnCard=card;
+  setSpawnCardPressed(card,true);
+  try{ card.setPointerCapture(e.pointerId); }catch(err){}
+  e.preventDefault();
+},{passive:false});
+spawnPanel.addEventListener('pointerup',e=>{
+  const card=e.target.closest('.spawnCard[data-spawn-index]') || pressedSpawnCard;
+  const activate=card && pressedSpawnCard===card && spawnPanel.contains(card);
+  clearPressedSpawnCard();
+  if(activate){
+    suppressNextSpawnClick=true;
+    setTimeout(()=>{ suppressNextSpawnClick=false; },0);
+    activateSpawnChoice(Number(card.dataset.spawnIndex));
+    e.preventDefault();
+  }
+},{passive:false});
+spawnPanel.addEventListener('click',e=>{
+  const card=e.target.closest('.spawnCard[data-spawn-index]');
+  if(!card) return;
+  if(suppressNextSpawnClick){ suppressNextSpawnClick=false; e.preventDefault(); return; }
+  activateSpawnChoice(Number(card.dataset.spawnIndex));
+});
+['pointercancel','lostpointercapture'].forEach(type=>spawnPanel.addEventListener(type,clearPressedSpawnCard));
+spawnPanel.addEventListener('pointerleave',e=>{
+  const card=e.target.closest?.('.spawnCard[data-spawn-index]');
+  if(card && card===pressedSpawnCard) clearPressedSpawnCard();
+},true);
 
 function patternName(p){
   const names={building:'Building',pawn:'Pawn+',shadepawn:'Shade Blink',blinkpawn:'Blink Pawn',king:'King',general:'General',marshal:'Marshal Bend',tower:'Territory Tower',ballista:'Ballista Tower',aquanaut:'Aquanaut',shieldbearer:'Shieldbearer',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',cinderjack:'Cinder Jump',cinderarchon:'Cinder Archon',flamerunner:'Flame Rush',eagle:'Eagle Leap',lancer:'Lancer',scout:'Scout',thornguard:'Thorn Guard',stagrunner:'Stag Jump',vinehook:'Vinehook',assassin:'Assassin',shadowstepper:'Shadow Step',nightblade:'Nightblade',wraith:'Wraith',umbralbishop:'Umbral Bishop',warden:'Warden',paladin:'Paladin',sunacolyte:'Sun Skip',dawnblade:'Dawnblade',lightlancer:'Light Lancer',radiantbishop:'Radiant Jump',sunherald:'Sun Herald',frostpawn:'Frost Pawn',icespear:'Ice Spear',glacierguard:'Glacier Guard',frostbishop:'Frost Bishop',sledknight:'Sled Knight',mirrorskater:'Mirror Skate',voidstrider:'Void Strider',citadel:'Citadel Walker',archon:'Dawn Archon'};
@@ -5642,11 +5757,7 @@ function updateHUD(){
   if(quickPct) quickPct.textContent = playerDefeated ? 'Defeated' : `◆ ${tokens} · ${remaining}s`;
   scoreLine.textContent=`Territory ${territory} · Kills ${f.piecesTaken||0} · Tokens ${tokens}`;
   factionLine.textContent=`${displayNameForFaction(PLAYER)} · ${f.name}`;
-  const panelSignature = `${playerDefeated}|${tokens}|${Math.floor(pct/2)}|${tier.mode}|${tier.tier}|${tier.value}|${Math.ceil(remaining/2)}|${spawnSelection}|${(f.spawnChoices||[]).join(',')}`;
-  if(panelSignature !== lastSpawnPanelSignature){
-    lastSpawnPanelSignature = panelSignature;
-    renderSpawnCards();
-  }
+  updateSpawnCardValues({tokens,progress:pct,remaining,tier});
   updateCheckBanner();
 }
 function attackingPiecesForFactionKing(factionIdx){
@@ -7865,7 +7976,7 @@ function onTap(sx,sy){
   if(spawnSelection!==null && !playerDefeated){
     if(p){
       spawnSelection=null;
-      renderSpawnCards();
+      updateSpawnCardValues();
       toast('Purchase canceled.');
     } else {
       handleSpawnPlace(b.x,b.y); return;
@@ -8121,7 +8232,7 @@ function keyboard(){
     if(e.key==='ArrowRight'||e.key==='d') cam.x+=step;
     if(e.key==='ArrowUp'||e.key==='w') cam.y-=step;
     if(e.key==='ArrowDown'||e.key==='s') cam.y+=step;
-    if(e.key==='Escape'){selectedPiece=null;legalMoves=[];spawnSelection=null;renderSpawnCards();updatePiecePanel();}
+    if(e.key==='Escape'){selectedPiece=null;legalMoves=[];spawnSelection=null;updateSpawnCardValues();updatePiecePanel();}
     if(e.key==='m' || e.key==='M') setMinimapOpen(!minimapOpen);
     if((e.key==='v' || e.key==='V') && !['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName || '')) toggleAudioMuted();
     if(e.key===' '){paused=!paused; pauseBtn.textContent=paused?'Resume':'Pause';}
