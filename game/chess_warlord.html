@@ -3736,10 +3736,12 @@ function eligibleSpawnTiles(factionIdx, type=null){
   }
   return arr;
 }
+const ironMultiHealthSpawnTypes = new Set(['shieldpawn','bulwark','hammerknight','gatebreaker','warden','citadelwalker','shieldfoundry','gatehouse']);
 function spawnTokenCost(type){
   if(type==='sunspirebeacon') return 2;
   const value=Math.max(1,Number(pieceDefs[type]?.value||1));
-  return clamp(Math.ceil(value/2),1,5);
+  const ironDurabilitySurcharge=ironMultiHealthSpawnTypes.has(type) ? 1 : 0;
+  return clamp(Math.ceil(value/2)+ironDurabilitySurcharge,1,6);
 }
 function chooseSpawnOptions(factionIdx){
   const f=factions[factionIdx];
