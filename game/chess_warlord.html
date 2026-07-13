@@ -320,19 +320,22 @@ const EMBER_INVASION_KILL_ACCEL_SECONDS = 11;
 const EMBER_VALUE_ACCEL_PER_POINT = .65;
 const EMBER_MAJOR_KILL_ACCEL_SECONDS = 3;
 const EMBER_KILL_ACCEL_CAP_SECONDS = 15;
+const EMBER_SPARK_DEN_KILL_RANGE = 5;
+const EMBER_SPARK_DEN_KILL_BONUS_SECONDS = 5;
 const SHADOW_KILL_TIER_STEP = 4;
-const SHADOW_BASIC_KILL_ACCEL_SECONDS = 8;
-const SHADOW_VALUE_ACCEL_PER_POINT = .9;
-const SHADOW_DISADVANTAGE_ACCEL_PER_POINT = 1.25;
-const SHADOW_MARKED_ACCEL_SECONDS = 6;
-const SHADOW_MAJOR_ACCEL_SECONDS = 5;
-const SHADOW_BACKSTAB_ACCEL_SECONDS = 4;
-const SHADOW_KILL_ACCEL_CAP_SECONDS = 24;
+const SHADOW_BASIC_KILL_ACCEL_SECONDS = 12;
+const SHADOW_VALUE_ACCEL_PER_POINT = 1.35;
+const SHADOW_DISADVANTAGE_ACCEL_PER_POINT = 1.875;
+const SHADOW_MARKED_ACCEL_SECONDS = 9;
+const SHADOW_MAJOR_ACCEL_SECONDS = 7.5;
+const SHADOW_BACKSTAB_ACCEL_SECONDS = 6;
+const SHADOW_KILL_ACCEL_CAP_SECONDS = 36;
 const SUNSPIRE_BEACON_EXTRA_WEIGHT = 4;
 const SUNSPIRE_BEACON_FORCED_CHANCE = .50;
 const CINDER_ARCHON_DEN_COOLDOWN = 120;
 const GLOBAL_SPAWN_COOLDOWN_MULT = .75;
-const SPAWN_TOKEN_RATE_MULT = 2; // Every faction earns shop tokens in half the previous wait time.
+const GLOBAL_TOKEN_INTERVAL_MULT = 0.67; // Shared token interval multiplier: every faction earns shop tokens 33% faster than before.
+const SPAWN_TOKEN_RATE_MULT = 2; // Legacy token rate multiplier; do not also bake the global interval reduction into cooldown constants.
 const MAX_SPAWN_TOKENS = 99;
 const SUNSPIRE_MAX_SOLAR_BEACONS = 10;
 const SUNSPIRE_BASE_SPAWN_SECONDS = 122 * GLOBAL_SPAWN_COOLDOWN_MULT;
@@ -3537,6 +3540,7 @@ function eligibleSpawnTiles(factionIdx, type=null){
   return arr;
 }
 function spawnTokenCost(type){
+  if(type==='sunspirebeacon') return 2;
   const value=Math.max(1,Number(pieceDefs[type]?.value||1));
   return clamp(Math.ceil(value/2),1,5);
 }
@@ -4530,10 +4534,14 @@ function addSpawnProgress(f,gain,announce=false){
   }
   return 0;
 }
+function formatSecondsLabel(seconds){
+  const n = Number(seconds) || 0;
+  return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/,'');
+}
 function accelerateSpawnSeconds(factionIdx, seconds, label='TOKEN RUSH'){
   if(!canAuthoritativelyWriteState()) return;
   const f=factions[factionIdx]; if(!f || !f.alive) return;
-  seconds = Math.max(0, Math.round(Number(seconds) || 0));
+  seconds = Math.max(0, Math.round((Number(seconds) || 0) * 10) / 10);
   if(seconds<=0) return;
   const territory=ownerCounts.get(factionIdx)||0;
   const army=pieces.filter(p=>p.alive&&p.faction===factionIdx).length;
@@ -4541,7 +4549,10 @@ function accelerateSpawnSeconds(factionIdx, seconds, label='TOKEN RUSH'){
   const earned=addSpawnProgress(f,gain,factionIdx===PLAYER);
   markStateDirty();
   const k=getPiece(f.kingId) || pieces.find(p=>p.alive&&p.faction===factionIdx);
-  if(k) floating(k.x,k.y,`${earned?`+${earned} TOKEN`:`-${seconds}s`} ${label}`, f.color);
+  if(k) floating(k.x,k.y,`${earned?`+${earned} TOKEN`:`-${formatSecondsLabel(seconds)}s`} ${label}`, f.color);
+}
+function hasFriendlySparkDenNear(factionIdx,x,y){
+  return pieces.some(p=>p.alive && p.faction===factionIdx && p.type==='sparkden' && Math.max(Math.abs(p.x-x),Math.abs(p.y-y))<=EMBER_SPARK_DEN_KILL_RANGE);
 }
 function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPiece=null){
   if(!piece || !piece.alive) return 0;
@@ -4558,6 +4569,10 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
       const majorEmberKill = ['king','queen','general','tower','dawnarchon','cinderarchon','citadelwalker'].includes(targetPiece?.type);
       const emberSeconds = Math.min(EMBER_KILL_ACCEL_CAP_SECONDS, (wasInvasion ? EMBER_INVASION_KILL_ACCEL_SECONDS : EMBER_HOME_KILL_ACCEL_SECONDS) + Math.max(0,targetValue-1)*EMBER_VALUE_ACCEL_PER_POINT + (majorEmberKill ? EMBER_MAJOR_KILL_ACCEL_SECONDS : 0));
       accelerateSpawnSeconds(piece.faction,emberSeconds,'EMBER SURGE');
+      if(hasFriendlySparkDenNear(piece.faction,toX,toY)){
+        accelerateSpawnSeconds(piece.faction,EMBER_SPARK_DEN_KILL_BONUS_SECONDS,'SPARK DEN');
+        floating(toX,toY,`SPARK DEN −${formatSecondsLabel(EMBER_SPARK_DEN_KILL_BONUS_SECONDS)}s`, f.color);
+      }
     } else if(id==='shadow'){
       const homeKill = tile(toX,toY)?.owner===piece.faction;
       const majorBackstab = ['queen','general','king'].includes(targetPiece?.type);
@@ -5863,6 +5878,9 @@ function updateTidalBeacon(beacon){
   }
   if(claimed) floating(beacon.x,beacon.y,'TIDE +'+claimed, factions[beacon.faction]?.color || '#fff');
 }
+function effectiveTokenWaitSeconds(seconds){
+  return Math.max(0, (Number(seconds) || 0) * GLOBAL_TOKEN_INTERVAL_MULT / SPAWN_TOKEN_RATE_MULT);
+}
 function scaledTerritorySpawnTiers(){
   const boardScale = clamp((BOARD_W * BOARD_H) / (DEFAULT_BOARD_W * DEFAULT_BOARD_H), .42, 1.18);
   return SPAWN_TERRITORY_TIERS.map((tier,idx)=>({
@@ -5895,7 +5913,7 @@ function killSpawnTierInfo(f){
     progress,
     label:f?.id==='shadow'?`Assassin Tier ${completed}`:`Kill Tier ${completed}`,
     basis:f?.id==='shadow'?`${score}/${nextAt} kill-score`:`${kills}/${nextAt} kills`,
-    bonusText:secondsBonus ? `-${secondsBonus}s spawn timer` : (f?.id==='shadow'?'First jump at 4 kill-score':(f?.id==='ember'?'First boost at 4 kills':'First boost at 5 kills'))
+    bonusText:secondsBonus ? `${effectiveTokenWaitSeconds(seconds).toFixed(1)}s effective token timer (-${secondsBonus}s base)` : (f?.id==='shadow'?'First jump at 4 kill-score':(f?.id==='ember'?'First boost at 4 kills':'First boost at 5 kills'))
   };
 }
 function territorySpawnTierInfo(territory){
@@ -5920,7 +5938,7 @@ function territorySpawnTierInfo(territory){
     progress,
     label:`Land Tier ${idx}`,
     basis:idx >= tiers.length-1 ? `${territory} land · max tier` : `${territory}/${next.tiles} land`,
-    bonusText:idx >= tiers.length-1 ? `${current.seconds.toFixed(1)}s base spawn timer` : `${next.tiles-territory} land to next tier`
+    bonusText:idx >= tiers.length-1 ? `${effectiveTokenWaitSeconds(current.seconds).toFixed(1)}s effective token timer` : `${next.tiles-territory} land to next tier`
   };
 }
 function bastionTowerSpawnTierInfo(f){
@@ -5942,7 +5960,7 @@ function bastionTowerSpawnTierInfo(f){
     progress:clamp((towerScore%4)/4,0,1),
     label:`Tower Network ${uniqueTypes.size}`,
     basis:`${uniqueTypes.size} tower types · ${towerPieces.length} controlled towers`,
-    bonusText:uniqueTypes.size ? `${seconds.toFixed(1)}s tower-based spawn timer` : 'Control tower types to accelerate Bastion spawns'
+    bonusText:uniqueTypes.size ? `${effectiveTokenWaitSeconds(seconds).toFixed(1)}s effective tower token timer` : 'Control tower types to accelerate Bastion spawns'
   };
 }
 function spawnTierInfoForFaction(f, territory){
@@ -5975,7 +5993,7 @@ function spawnRateForFaction(f, territory, army){
     const seconds = Math.max(SUNSPIRE_MIN_SPAWN_SECONDS, SUNSPIRE_BASE_SPAWN_SECONDS - beacons * SUNSPIRE_SOLAR_BEACON_SECONDS);
     const armyDrag = 1 + Math.max(0, army - 28) * .014;
     const aiTempo = isHumanSlot(f.idx) ? 1 : (f.aiSpawnScale || 1);
-    return ((100 / seconds) * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag) * SPAWN_TOKEN_RATE_MULT;
+    return ((100 / seconds) * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag) * SPAWN_TOKEN_RATE_MULT / GLOBAL_TOKEN_INTERVAL_MULT;
   }
   const tier = spawnTierInfoForFaction(f, territory);
   let tierRate = 100 / Math.max(SPAWN_FASTEST_SECONDS, tier.seconds);
@@ -5985,7 +6003,7 @@ function spawnRateForFaction(f, territory, army){
 
   const factionTempo = 1 / Math.max(.62, f.spawnRate || 1);
   const aiTempo = isHumanSlot(f.idx) ? 1 : (f.aiSpawnScale || 1);
-  return Math.min(maxRate, Math.max(baseRate*.45, tierRate * factionTempo * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag)) * SPAWN_TOKEN_RATE_MULT;
+  return Math.min(maxRate, Math.max(baseRate*.45, tierRate * factionTempo * aiTempo * shrineSpawnMultiplier(f.idx) / armyDrag)) * SPAWN_TOKEN_RATE_MULT / GLOBAL_TOKEN_INTERVAL_MULT;
 }
 function updateSpawns(dt){
   for(const f of factions){
