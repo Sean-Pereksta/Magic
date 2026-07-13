@@ -22,12 +22,14 @@
   html.cw-immersive-mode,body.cw-immersive-mode{position:fixed;inset:0;width:100vw;height:100vh;width:100dvw;height:100dvh;max-width:100vw;max-height:100vh;max-width:100dvw;max-height:100dvh;overflow:hidden;background:var(--bg);z-index:2147483647;}
   html.cw-immersive-mode body,body.cw-immersive-mode{overscroll-behavior:none;touch-action:none;}
   html.cw-immersive-mode canvas,body.cw-immersive-mode canvas{position:fixed;inset:0;width:100vw;height:100vh;width:100dvw;height:100dvh;}
-  html.cw-immersive-mode #topbar,html.cw-immersive-mode #fullscreenBtn,html.cw-immersive-mode #minimapDock,html.cw-immersive-mode #networkBadge,html.cw-immersive-mode #toast,html.cw-immersive-mode #checkBanner,html.cw-immersive-mode #piecePanel,html.cw-immersive-mode #overlay,html.cw-immersive-mode #defeatOverlay{position:fixed;}
+  html.cw-immersive-mode #topbar,html.cw-immersive-mode #fullscreenBtn,html.cw-immersive-mode #audioMuteBtn,html.cw-immersive-mode #minimapDock,html.cw-immersive-mode #networkBadge,html.cw-immersive-mode #toast,html.cw-immersive-mode #checkBanner,html.cw-immersive-mode #piecePanel,html.cw-immersive-mode #overlay,html.cw-immersive-mode #defeatOverlay{position:fixed;}
   canvas.dragging{cursor:grabbing;}
   #topbar{position:fixed;left:0;right:0;top:0;height:92px;display:flex;align-items:stretch;justify-content:center;gap:10px;padding:10px 12px;pointer-events:none;z-index:4;}
   #quickControls{width:150px;min-width:132px;padding:9px 10px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;pointer-events:auto;}
   #fullscreenBtn{position:fixed;left:12px;top:12px;z-index:7;appearance:none;border:1px solid rgba(255,255,255,.2);background:linear-gradient(180deg,rgba(18,28,48,.9),rgba(8,12,21,.82));color:#fff;border-radius:13px;padding:10px 12px;font-size:12px;font-weight:1000;cursor:pointer;box-shadow:0 14px 38px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.08);backdrop-filter:blur(10px);pointer-events:auto;}
   #fullscreenBtn:hover{background:rgba(255,212,107,.22);border-color:rgba(255,212,107,.72)}
+  #audioMuteBtn{position:fixed;right:12px;top:12px;z-index:8;appearance:none;width:36px;height:36px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.2);background:linear-gradient(180deg,rgba(18,28,48,.9),rgba(8,12,21,.82));color:#fff;border-radius:13px;font-size:17px;font-weight:1000;cursor:pointer;box-shadow:0 14px 38px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.08);backdrop-filter:blur(10px);pointer-events:auto;padding:0;}
+  #audioMuteBtn:hover{background:rgba(255,212,107,.22);border-color:rgba(255,212,107,.72)}
   #centerBtn{appearance:none;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.09);color:#fff;border-radius:13px;padding:9px 10px;font-size:12px;font-weight:1000;cursor:pointer;width:100%;}
   #centerBtn:hover{background:rgba(255,212,107,.22);border-color:rgba(255,212,107,.72)}
   #quickPct{font-size:12px;font-weight:900;color:#dbeafe;text-align:center;}
@@ -116,6 +118,7 @@
     #topbar{height:98px;padding:8px;gap:6px;}
     #quickControls{width:104px;min-width:104px;padding:7px 6px;border-radius:14px;}
     #fullscreenBtn{left:8px;top:8px;padding:8px 9px;border-radius:11px;font-size:10px;}
+    #audioMuteBtn{right:8px;top:8px;width:34px;height:34px;border-radius:11px;font-size:16px;}
     #centerBtn{font-size:10px;padding:8px 6px;border-radius:11px;}
     #quickPct{font-size:10px;}
     #status{display:none;}
@@ -160,6 +163,7 @@
   <canvas id="minimap"></canvas>
 </div>
 <button id="fullscreenBtn" title="Toggle fullscreen">⛶ Fullscreen</button>
+<button id="audioMuteBtn" title="Mute audio" aria-label="Mute audio">🔊</button>
 <div id="topbar">
   <div id="quickControls" class="glass"><button id="centerBtn">Center King</button><div id="quickPct">Tokens 0</div></div>
   <div id="status" class="glass"></div>
@@ -185,9 +189,9 @@
     <h1>Faction Chess Warlords Online</h1>
     <p class="lead">A giant real-time chess war: factions now capture land in different ways, from Ember kill-zones to Verdant living ground and Shadow assassinations.</p>
     <div id="assetLoadPanel">
-      <div id="assetLoadTop"><span>Loading isometric army graphics</span><span id="assetLoadPct">0%</span></div>
+      <div id="assetLoadTop"><span>Loading game assets</span><span id="assetLoadPct">0%</span></div>
       <div id="assetLoadTrack"><div id="assetLoadFill"></div></div>
-      <div id="assetLoadText">Preparing graphics/chessgraphics before the war begins.</div>
+      <div id="assetLoadText">Preparing chess pieces, music, and sound effects before the war begins.</div>
     </div>
     <div id="pregameCountdown" style="display:none">Faction selection opens after every active player finishes loading.</div>
     <div id="aiVotePanel">
@@ -254,6 +258,7 @@ const quickPct = document.getElementById('quickPct');
 const startBtn = document.getElementById('startBtn');
 const centerBtn = document.getElementById('centerBtn');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
+const audioMuteBtn = document.getElementById('audioMuteBtn');
 const networkText = document.getElementById('networkText');
 const exitLobbyBtn = document.getElementById('exitLobbyBtn');
 const territoryBtn = document.getElementById('territoryBtn');
@@ -507,10 +512,27 @@ let graphicsLoadPromise = null;
 let graphicsLoadedCount = 0;
 let graphicsTotalCount = 0;
 let graphicsMissingCount = 0;
+let audioReady = false;
+let audioLoadPromise = null;
+let audioLoadedCount = 0;
+let audioFailedCount = 0;
+let audioUnlocked = false;
+let themeStartedForMatch = false;
+let pendingThemeRetry = false;
+let takeSoundKeys = new Map();
+let lastRemoteAudioVersion = 0;
+let hasAppliedInitialRemoteAudioState = false;
 let pregameRosterLocked = false;
 const chessGraphicAssets = new Map();
 const chessGraphicResolvedFiles = new Map();
 const CHESS_GRAPHICS_ROOT = new URL('../graphics/chessgraphics/', document.baseURI);
+const CHESS_SOUND_ROOT = new URL('../sound/chess/', document.baseURI);
+const THEME_VOLUME = 0.28;
+const MOVE_SOUND_VOLUME = 0.55;
+const TAKE_SOUND_VOLUME = 0.72;
+const AUDIO_STORAGE_KEY = 'cw.audioMuted';
+const chessAudio = {theme:null, move:null, take:null};
+let audioMuted = localStorage.getItem(AUDIO_STORAGE_KEY) === '1';
 const PREGAME_READY_TIMEOUT_MS = 30000;
 const PREGAME_READY_RECHECK_MS = 900;
 
@@ -1245,9 +1267,23 @@ function applyRemoteState(data){
   }
   const oldMap = new Map(pieces.map(p=>[p.id,p]));
   const remotePieceIds = new Set(remotePieces.map(pp=>pp.i));
+  const shouldDetectRemoteTakes = gameStarted && hasAppliedInitialRemoteAudioState && !remoteMapReset && oldMap.size;
   if(gameStarted && !remoteMapReset && oldMap.size){
     for(const old of oldMap.values()){
-      if(old?.alive && !remotePieceIds.has(old.id)) emitDestructionFx(old,'remote-capture');
+      if(old?.alive && !remotePieceIds.has(old.id)){
+        emitDestructionFx(old,'remote-capture');
+        if(shouldDetectRemoteTakes && old.faction === PLAYER){
+          playTakeSound(`lost:${old.id}:${incomingVersion || Date.now()}`);
+        }
+      }
+    }
+  }
+  if(shouldDetectRemoteTakes){
+    const pendingByAction = new Map(pendingPlayerActions.filter(a=>a.kind==='move' && a.actionId).map(a=>[a.actionId,a]));
+    for(const old of oldMap.values()){
+      if(!old?.alive || remotePieceIds.has(old.id) || old.faction === PLAYER) continue;
+      const pending = old.clientActionId ? pendingByAction.get(old.clientActionId) : null;
+      if(pending) playTakeSound(`confirm:${pending.actionId}:${old.id}`);
     }
   }
   pieces = remotePieces.map(pp => {
@@ -1335,6 +1371,9 @@ function applyRemoteState(data){
   if(wasAlive && !mineAlive && !playerDefeated){ triggerDefeat(findWinnerIndexAgainst(PLAYER)); }
   const w = data.winner || winnerName();
   if(w && w !== lastRemoteWinner){ lastRemoteWinner = w; showWarEnd(w); }
+  hasAppliedInitialRemoteAudioState = true;
+  lastRemoteAudioVersion = Math.max(lastRemoteAudioVersion, incomingVersion || 0);
+  startGameplayAudio();
 }
 function makeClientActionId(kind){
   return `${safeDocId(username || 'player')}:${kind}:${Date.now()}:${clientActionSeq++}`;
@@ -1745,11 +1784,15 @@ async function requestPlayerMove(piece,x,y){
   if(!legal.some(m=>m.x===x && m.y===y)){ toast('That piece cannot move there.'); return false; }
   const fromX = live.x, fromY = live.y;
   const visualTarget = findPieceAt(x,y);
+  const beforeIds = new Set(pieces.filter(p=>p.alive).map(p=>p.id));
   const moveStartMs = Date.now();
   const moveEndMs = moveStartMs + moveVisualDurationFor(live);
   const action = {kind:'move', actionId:makeClientActionId('move'), pieceId:live.id, type:live.type, fromX, fromY, toX:x, toY:y, moveStartMs, moveEndMs, baseStateVersion: localStateVersion || 0};
   const ok = (lobbyId && !canAuthoritativelyWriteState()) ? predictLocalMove(live,x,y,action) : movePiece(live,x,y,'player');
   if(ok){
+    const removedTarget = visualTarget && beforeIds.has(visualTarget.id) && !pieces.some(p=>p.alive && p.id===visualTarget.id);
+    if(removedTarget && (!lobbyId || canAuthoritativelyWriteState())) playTakeSound(`local:${action.actionId}:${visualTarget.id}`);
+    else if(!visualTarget) playMoveSound();
     emitLocalActionFx(live,fromX,fromY,x,y,!!visualTarget);
     rememberPendingPlayerAction({...action, faction:PLAYER});
     selectedPiece=null; legalMoves=[]; updatePiecePanel(); renderSpawnCards();
@@ -1852,6 +1895,8 @@ function showWarEnd(winner){
   if(canAuthoritativelyWriteState()) completeLobbyIfNeeded(winner);
 }
 function exitToLobby(){
+  stopThemeMusic();
+  gameStarted = false;
   try{ localStorage.setItem('gh.username', username || ''); localStorage.setItem('gh.lastLobbyId',''); localStorage.setItem('gh.lastGameType',''); }catch(e){}
   if(presenceRef) deleteDoc(presenceRef).catch(()=>{});
   const glue = returnTo.includes('?') ? '&' : '?';
@@ -2517,15 +2562,147 @@ const WALL_GRAPHIC_CANDIDATES = Object.freeze({
   crownward:['crown wall.png'],ember:['ember wall.png'],iron:['iron wall.png'],verdant:['verdant wall.png'],shadow:['shadow wall.png'],sunspire:['sun wall.png','sunspire wall.png']
 });
 function graphicAssetKey(factionId,type){ return `${factionId}:${type}`; }
+
+function soundUrl(filename){ return new URL(String(filename || ''), CHESS_SOUND_ROOT).href; }
+function updateAudioMuteButton(){
+  if(!audioMuteBtn) return;
+  audioMuteBtn.textContent = audioMuted ? '🔇' : '🔊';
+  audioMuteBtn.title = audioMuted ? 'Unmute audio' : 'Mute audio';
+  audioMuteBtn.setAttribute('aria-label', audioMuted ? 'Unmute audio' : 'Mute audio');
+}
+function createChessAudio(filename, volume, loop=false){
+  const audio = new Audio(soundUrl(filename));
+  audio.preload = 'auto';
+  audio.volume = volume;
+  audio.loop = loop;
+  audio.muted = audioMuted;
+  return audio;
+}
+function loadAudioElement(audio, label, timeoutMs=9000){
+  return new Promise(resolve=>{
+    let settled = false;
+    const done = ok => {
+      if(settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if(!ok) console.warn(`Chess audio failed to load: ${label}`);
+      resolve(!!ok);
+    };
+    const timer = setTimeout(()=>done(false), timeoutMs);
+    audio.addEventListener('canplaythrough', ()=>done(true), {once:true});
+    audio.addEventListener('loadeddata', ()=>done(true), {once:true});
+    audio.addEventListener('error', ()=>done(false), {once:true});
+    try{ audio.load(); }catch(e){ console.warn(`Chess audio load error: ${label}`, e); done(false); }
+  });
+}
+async function preloadChessAudio(){
+  audioReady = false;
+  audioLoadedCount = 0;
+  audioFailedCount = 0;
+  chessAudio.move = createChessAudio('move.mp3', MOVE_SOUND_VOLUME, false);
+  chessAudio.take = createChessAudio('take.mp3', TAKE_SOUND_VOLUME, false);
+  chessAudio.theme = createChessAudio('theme.mp3', THEME_VOLUME, true);
+  const entries = [['move', chessAudio.move], ['take', chessAudio.take], ['theme', chessAudio.theme]];
+  await Promise.all(entries.map(async ([label,audio])=>{
+    const ok = await loadAudioElement(audio, `${label}.mp3`);
+    if(ok) audioLoadedCount++; else audioFailedCount++;
+    updateGraphicLoader();
+  }));
+  audioReady = true;
+  updateGraphicLoader();
+  return true;
+}
+function unlockChessAudio(){
+  if(audioUnlocked) return;
+  audioUnlocked = true;
+  for(const audio of [chessAudio.move, chessAudio.take]){
+    if(!audio) continue;
+    try{
+      audio.muted = true;
+      const p = audio.play();
+      if(p?.then) p.then(()=>{ audio.pause(); audio.currentTime = 0; audio.muted = audioMuted; }).catch(()=>{ audio.muted = audioMuted; });
+      else { audio.pause(); audio.currentTime = 0; audio.muted = audioMuted; }
+    }catch(e){ audio.muted = audioMuted; }
+  }
+  if(pendingThemeRetry || (gameStarted && !themeStartedForMatch)) startThemeMusic();
+}
+function registerAudioUnlockHandlers(){
+  const handler = () => unlockChessAudio();
+  ['pointerdown','touchstart','keydown'].forEach(type=>window.addEventListener(type, handler, {once:true, passive:true}));
+  if(startBtn) startBtn.addEventListener('pointerdown', handler, {once:true, passive:true});
+}
+function playAudioClone(source, volume){
+  if(audioMuted || !source) return;
+  try{
+    const node = source.cloneNode(true);
+    node.volume = volume;
+    node.muted = audioMuted;
+    node.play().catch(()=>{});
+  }catch(e){ console.warn('Chess sound playback failed', e); }
+}
+function startThemeMusic(){
+  if(!gameStarted || audioMuted || !chessAudio.theme) return;
+  const theme = chessAudio.theme;
+  theme.loop = true;
+  theme.volume = THEME_VOLUME;
+  theme.muted = false;
+  if(!theme.paused && themeStartedForMatch) return;
+  const playPromise = theme.play();
+  if(playPromise?.then){
+    playPromise.then(()=>{ themeStartedForMatch = true; pendingThemeRetry = false; }).catch(err=>{
+      pendingThemeRetry = true;
+      if(!startThemeMusic.warned){ console.warn('Theme music playback blocked until user interaction.', err); startThemeMusic.warned = true; }
+    });
+  } else {
+    themeStartedForMatch = true;
+    pendingThemeRetry = false;
+  }
+}
+function stopThemeMusic(){
+  const theme = chessAudio.theme;
+  if(theme){
+    theme.pause();
+    try{ theme.currentTime = 0; }catch(e){}
+  }
+  themeStartedForMatch = false;
+  pendingThemeRetry = false;
+}
+function playMoveSound(){ playAudioClone(chessAudio.move, MOVE_SOUND_VOLUME); }
+function rememberTakeSoundKey(key){
+  if(!key) return false;
+  const t = Date.now();
+  for(const [k,when] of takeSoundKeys) if(t - when > 15000) takeSoundKeys.delete(k);
+  if(takeSoundKeys.has(key)) return false;
+  takeSoundKeys.set(key, t);
+  return true;
+}
+function playTakeSound(key='take'){
+  if(!rememberTakeSoundKey(key)) return;
+  playAudioClone(chessAudio.take, TAKE_SOUND_VOLUME);
+}
+function setAudioMuted(muted){
+  audioMuted = !!muted;
+  localStorage.setItem(AUDIO_STORAGE_KEY, audioMuted ? '1' : '0');
+  for(const audio of [chessAudio.theme, chessAudio.move, chessAudio.take]) if(audio) audio.muted = audioMuted;
+  updateAudioMuteButton();
+  if(audioMuted){ if(chessAudio.theme) chessAudio.theme.pause(); }
+  else if(gameStarted) startThemeMusic();
+}
+function toggleAudioMuted(){ setAudioMuted(!audioMuted); }
+function startGameplayAudio(){ startThemeMusic(); }
+
 function graphicUrl(filename){ return new URL(String(filename || '').toLowerCase(), CHESS_GRAPHICS_ROOT).href; }
 function getPieceGraphic(factionId,type){ return chessGraphicAssets.get(graphicAssetKey(factionId,type)) || null; }
 function getWallGraphic(factionId){ return chessGraphicAssets.get(`wall:${factionId}`) || null; }
 function updateGraphicLoader(text=''){
-  const pct = graphicsTotalCount ? Math.round(graphicsLoadedCount / graphicsTotalCount * 100) : 0;
+  const total = graphicsTotalCount + 3;
+  const loaded = graphicsLoadedCount + audioLoadedCount + audioFailedCount;
+  const pct = total ? Math.round(loaded / total * 100) : 0;
+  const ready = graphicsReady && audioReady;
   if(assetLoadFill) assetLoadFill.style.width = `${pct}%`;
   if(assetLoadPct) assetLoadPct.textContent = `${pct}%`;
-  if(assetLoadText) assetLoadText.textContent = text || `Loaded ${graphicsLoadedCount}/${graphicsTotalCount} graphics${graphicsMissingCount?` · ${graphicsMissingCount} using safe fallbacks`:''}.`;
-  if(assetLoadPanel) assetLoadPanel.style.display = graphicsReady ? 'none' : 'block';
+  if(assetLoadText) assetLoadText.textContent = text || `Loaded ${graphicsLoadedCount}/${graphicsTotalCount} chess graphics and ${audioLoadedCount}/3 audio files${graphicsMissingCount?` · ${graphicsMissingCount} graphics using safe fallbacks`:''}${audioFailedCount?` · ${audioFailedCount} audio unavailable; continuing silently`:''}.`;
+  if(assetLoadPanel) assetLoadPanel.style.display = ready ? 'none' : 'block';
 }
 function loadImageWithTimeout(url, timeoutMs=9000){
   return new Promise((resolve,reject)=>{
@@ -2794,7 +2971,7 @@ async function preloadChessGraphics(){
     jobs.push({key:`wall:${factionId}`,label:`${factionCatalog[factionId]?.short||factionId} Wall`,candidates:WALL_GRAPHIC_CANDIDATES[factionId]||[`${factionId} wall.png`]});
   }
   graphicsTotalCount=jobs.length;
-  updateGraphicLoader(`Loading 0/${graphicsTotalCount} graphics from graphics/chessgraphics…`);
+  updateGraphicLoader(`Loading game assets: 0/${graphicsTotalCount} graphics from graphics/chessgraphics plus music and sound effects…`);
   const concurrency=Math.min(8,jobs.length);
   let cursor=0;
   async function worker(){
@@ -2809,15 +2986,17 @@ async function preloadChessGraphics(){
   }
   await Promise.all(Array.from({length:concurrency},worker));
   graphicsReady=true;
-  updateGraphicLoader(`Graphics ready${graphicsMissingCount?` · ${graphicsMissingCount} unavailable files will use built-in silhouettes`:''}.`);
+  updateGraphicLoader(`Game assets ready${graphicsMissingCount?` · ${graphicsMissingCount} unavailable graphics will use built-in silhouettes`:''}${audioFailedCount?` · ${audioFailedCount} audio files unavailable; continuing silently`:''}.`);
   initFactionPicker();
   renderSpawnCards();
   return true;
 }
 async function ensureGraphicsReady(){
   if(!graphicsLoadPromise) graphicsLoadPromise=preloadChessGraphics();
-  await graphicsLoadPromise;
+  if(!audioLoadPromise) audioLoadPromise=preloadChessAudio();
+  await Promise.all([graphicsLoadPromise, audioLoadPromise]);
   graphicsReady=true;
+  audioReady=true;
   return true;
 }
 
@@ -5357,12 +5536,16 @@ function createGame(){
   if(king) centerOn(king.x,king.y);
   selectedPiece=null; legalMoves=[]; spawnSelection=null; particles=[]; floatingText=[]; destructionFx=[]; pendingPlayerActions=[];
   playerDefeated=false; spectating=false; paused=false; defeatOverlay.style.display='none';
+  takeSoundKeys.clear();
+  hasAppliedInitialRemoteAudioState = true;
   eloAwarding=false;
   if(pauseBtn) pauseBtn.textContent='Pause';
   maybeAnnounceWorldWinner.done=false;
   gameStats={captures:0,kingsTaken:0,startedAt:now()};
   factions.forEach(f=>{ f.spawnChoices=chooseSpawnOptions(f.idx); if(typeof f.spawnMeter !== 'number') f.spawnMeter=f.isAI?Math.random()*70:12; if(typeof f.spawnTokens !== 'number') f.spawnTokens=0; f.alive=true; });
   gameStarted=true;
+  hasAppliedInitialRemoteAudioState = true;
+  startGameplayAudio();
   stateDirty = true;
   renderSpawnCards(); updateHUD(); updatePiecePanel();
 }
@@ -7869,6 +8052,12 @@ if(fullscreenBtn){
   fullscreenBtn.addEventListener('pointerup', toggleFullscreen, {passive:false});
   fullscreenBtn.addEventListener('click', toggleFullscreen, {passive:false});
 }
+if(audioMuteBtn){
+  updateAudioMuteButton();
+  audioMuteBtn.addEventListener('pointerup', e=>{ e.preventDefault(); e.stopPropagation(); unlockChessAudio(); toggleAudioMuted(); }, {passive:false});
+  audioMuteBtn.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); }, {passive:false});
+}
+registerAudioUnlockHandlers();
 function onFullscreenLayoutChange(){
   if(nativeFullscreenElement()) setImmersiveMode(false);
   updateFullscreenButton();
@@ -7927,6 +8116,7 @@ function keyboard(){
     if(e.key==='ArrowDown'||e.key==='s') cam.y+=step;
     if(e.key==='Escape'){selectedPiece=null;legalMoves=[];spawnSelection=null;renderSpawnCards();updatePiecePanel();}
     if(e.key==='m' || e.key==='M') setMinimapOpen(!minimapOpen);
+    if((e.key==='v' || e.key==='V') && !['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName || '')) toggleAudioMuted();
     if(e.key===' '){paused=!paused; pauseBtn.textContent=paused?'Resume':'Pause';}
     clampCam();
   });
@@ -7946,6 +8136,7 @@ generateBoard();
 cam.zoom=.72;
 centerOn((BOARD_W-1)/2,(BOARD_H-1)/2);
 graphicsLoadPromise=preloadChessGraphics();
+audioLoadPromise=preloadChessAudio();
 bootMultiplayer();
 })();
 </script>
