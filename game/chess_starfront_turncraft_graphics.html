@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Chess Starfront Online</title>
+<style>
+:root{
+  --bg:#050812;--panel:rgba(8,14,27,.92);--panel2:rgba(13,22,40,.96);--line:rgba(160,196,255,.22);
+  --text:#eef6ff;--muted:#9eb0c7;--gold:#ffd166;--good:#72e3a6;--bad:#ff6b78;--blue:#69b8ff;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;color:var(--text);touch-action:none}
+button,select{font:inherit}
+canvas{display:block;width:100vw;height:100vh;background:#07111e;cursor:grab}
+canvas.dragging{cursor:grabbing}
+.glass{background:linear-gradient(180deg,rgba(18,31,54,.94),rgba(7,12,23,.90));border:1px solid var(--line);box-shadow:0 18px 55px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);backdrop-filter:blur(12px);border-radius:18px}
+#topHud{position:fixed;left:12px;right:12px;top:10px;z-index:6;display:flex;align-items:center;gap:8px;pointer-events:none}
+#resourceHud{display:flex;align-items:center;gap:8px;padding:8px 10px;pointer-events:auto;min-width:0}
+.resourcePill{display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);font-size:12px;font-weight:900;white-space:nowrap}
+.resourcePill span:first-child{font-size:16px}.resourcePill small{color:var(--muted);font-size:10px;font-weight:800}
+#statusHud{margin-left:auto;padding:8px 10px;display:flex;align-items:center;gap:8px;pointer-events:auto;min-width:0}
+#statusText{font-size:11px;color:#dbeafe;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hudBtn{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;border-radius:11px;padding:7px 9px;font-size:11px;font-weight:1000;cursor:pointer}
+.hudBtn:hover{background:rgba(255,209,102,.18);border-color:rgba(255,209,102,.65)}
+#sidePanel{position:fixed;left:12px;top:78px;bottom:170px;width:326px;z-index:5;padding:10px;display:flex;flex-direction:column;pointer-events:auto;transition:transform .18s ease}
+#sidePanel.collapsed{transform:translateX(calc(-100% + 42px))}
+#sideHeader{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+#sideHeader b{font-size:13px;letter-spacing:.03em}
+#sideToggle{width:30px;height:29px;padding:0}
+#techSummary{font-size:11px;color:var(--muted);line-height:1.35;margin:0 3px 8px}
+#sideTabs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:8px}
+.tabBtn{appearance:none;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cfe1f7;border-radius:10px;padding:7px 4px;font-size:10px;font-weight:1000;cursor:pointer}
+.tabBtn.active{background:rgba(105,184,255,.18);border-color:rgba(105,184,255,.65);color:#fff}
+#actionList{overflow:auto;padding-right:2px;display:flex;flex-direction:column;gap:6px}.actionGrid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px!important;align-content:start}.buildTierTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}.buildTierBtn{appearance:none;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#cfe1f7;border-radius:10px;padding:8px 5px;font-size:10px;font-weight:1000;cursor:pointer}.buildTierBtn.active{background:rgba(255,209,102,.16);border-color:rgba(255,209,102,.64);color:#fff4c7}
+.actionCard{appearance:none;width:100%;text-align:left;color:#fff;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.055);border-radius:12px;padding:9px;cursor:pointer;position:relative;min-height:92px}.actionGrid .actionCard{min-height:112px}.actionGrid .actionTitle{padding-right:0;margin-bottom:23px}.actionGrid .actionCost{top:34px;left:8px;right:auto;display:flex;gap:7px}.actionGrid .actionMeta{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.actionCard:hover:not(:disabled){background:rgba(255,209,102,.12);border-color:rgba(255,209,102,.55)}
+.actionCard:disabled{opacity:.43;cursor:not-allowed}
+.actionCard.selected{border-color:#ffd166;box-shadow:0 0 0 2px rgba(255,209,102,.2)}
+.actionTitle{font-size:12px;font-weight:1000;padding-right:50px}.actionMeta{font-size:10px;color:var(--muted);line-height:1.3;margin-top:3px}.actionCost{position:absolute;right:8px;top:8px;font-size:9px;color:#ffe6a3;font-weight:900;text-align:right}
+.treeLine{padding:8px 9px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04)}
+.treeLine b{display:block;font-size:11px}.treeLine small{display:block;color:var(--muted);font-size:9px;margin-top:2px}.treeLine.owned{border-color:rgba(114,227,166,.5);background:rgba(114,227,166,.08)}.treeLine.locked{opacity:.5}
+#commandPanel{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;width:min(820px,calc(100vw - 360px));min-height:146px;z-index:6;padding:9px;pointer-events:auto;display:grid;grid-template-columns:188px 1fr;gap:9px}
+#selectionCard{padding:8px;border-radius:13px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.11);min-width:0}
+#selectionName{font-size:14px;font-weight:1000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#selectionMeta,#selectionOrder{font-size:10px;color:var(--muted);line-height:1.35;margin-top:4px}
+.hpTrack{height:7px;border-radius:999px;background:rgba(255,255,255,.10);overflow:hidden;margin-top:7px;border:1px solid rgba(255,255,255,.08)}
+.hpFill{height:100%;background:linear-gradient(90deg,#ff6574,#ffd166,#72e3a6)}#cooldownGrid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:7px}.coolChip{padding:5px 6px;border-radius:8px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);font-size:8px;color:#afc3db;line-height:1.15}.coolChip b{display:block;color:#f3f8ff;font-size:9px;margin-top:2px}.coolChip.ready{border-color:rgba(114,227,166,.38);background:rgba(114,227,166,.07)}
+#commandWorkspace{display:grid;grid-template-columns:1fr 1fr;gap:7px;min-width:0}.commandGroup{padding:7px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);min-width:0}.commandGroupTitle{font-size:9px;color:#9fb4cd;font-weight:1000;letter-spacing:.1em;text-transform:uppercase;margin:0 2px 6px}.buttonGrid{display:grid;grid-template-columns:repeat(2,minmax(76px,1fr));gap:6px;align-content:start}.buttonGrid .cmdBtn{min-width:0}.cmdBtn small{display:block;color:#9fb4cd;font-size:8px;margin-top:3px;font-weight:800}
+#commandButtons,#abilityButtons{display:grid;grid-template-columns:repeat(2,minmax(76px,1fr));gap:6px;align-content:start}
+.cmdBtn{appearance:none;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.055);color:#fff;border-radius:12px;padding:9px 7px;min-height:48px;font-size:10px;font-weight:1000;cursor:pointer;line-height:1.15}
+.cmdBtn:hover:not(:disabled){background:rgba(105,184,255,.15);border-color:rgba(105,184,255,.55)}.cmdBtn:disabled{opacity:.35;cursor:not-allowed}.cmdBtn.active{background:rgba(255,209,102,.18);border-color:#ffd166;color:#fff4c7}
+#hintLine{grid-column:1/-1;font-size:10px;color:#a9bdd5;padding:2px 3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#minimapDock{position:fixed;right:12px;bottom:12px;z-index:5;width:232px;padding:8px;pointer-events:auto}
+#miniHeader{display:flex;align-items:center;justify-content:space-between;padding:0 3px 6px;font-size:10px;font-weight:1000;text-transform:uppercase;letter-spacing:.08em;color:#dcecff}
+#minimap{display:block;width:214px;height:146px;border-radius:11px;border:1px solid rgba(255,255,255,.17);background:#030711;cursor:crosshair}
+#toast{position:fixed;left:50%;top:72px;transform:translateX(-50%);z-index:10;padding:10px 14px;max-width:min(650px,calc(100vw - 24px));border-radius:14px;background:rgba(5,9,18,.94);border:1px solid rgba(255,255,255,.18);box-shadow:0 18px 48px rgba(0,0,0,.45);font-size:12px;font-weight:900;text-align:center;display:none}
+#loadingOverlay,#overlay,#endOverlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:14px;background:radial-gradient(circle at 50% 28%,rgba(55,116,190,.22),rgba(3,5,11,.90))}
+#overlay{display:none}
+#loadingCard{width:min(560px,calc(100vw - 26px));padding:24px;border-radius:25px;background:linear-gradient(180deg,rgba(19,34,62,.98),rgba(6,10,20,.98));border:1px solid rgba(255,255,255,.18);box-shadow:0 38px 120px rgba(0,0,0,.66);text-align:center}
+#loadingCard h2{margin:0 0 8px;font-size:clamp(25px,5vw,42px)}
+#loadingStatus{font-size:12px;color:#cfe1f7;margin:0 0 14px}
+#loadingTrack{height:12px;border-radius:999px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.12);overflow:hidden}
+#loadingFill{height:100%;width:0;background:linear-gradient(90deg,#63c7ff,#c08cff,#ff7d89);transition:width .12s ease}
+#loadingCount{margin-top:9px;color:#91a6bf;font-size:10px;font-weight:900}
+.assetThumb{width:34px;height:34px;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 4px 5px rgba(0,0,0,.45));vertical-align:middle;margin-right:6px}
+.actionTitle{display:flex;align-items:center;gap:5px}.queueInfo{display:flex;align-items:center;gap:4px}.queueInfoText{display:block}
+#startCard,#endCard{width:min(790px,calc(100vw - 26px));max-height:calc(100vh - 26px);overflow:auto;padding:22px;border-radius:26px;background:linear-gradient(180deg,rgba(19,34,62,.98),rgba(6,10,20,.98));border:1px solid rgba(255,255,255,.18);box-shadow:0 38px 120px rgba(0,0,0,.66)}
+#startCard h1,#endCard h2{margin:0 0 6px;font-size:clamp(30px,5vw,54px);line-height:.96;letter-spacing:-1.3px}#startCard .lead{margin:0 0 15px;color:#cfe1f7;line-height:1.45;font-size:14px}
+#factionGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0 14px}
+.factionCard{appearance:none;text-align:left;color:#fff;min-height:145px;border:1px solid rgba(255,255,255,.14);border-radius:19px;padding:14px;background:linear-gradient(145deg,var(--ink),rgba(5,9,18,.9));cursor:pointer;position:relative;overflow:hidden}
+.factionCard::after{content:'';position:absolute;width:150px;height:150px;border-radius:50%;right:-50px;top:-55px;background:radial-gradient(circle,var(--glow),transparent 68%)}.factionCard:hover,.factionCard.chosen{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 20%,transparent)}
+.factionCard h3{margin:0 0 5px;font-size:17px}.factionCard p{margin:0;color:#cad9eb;font-size:11px;line-height:1.4}.factionTag{display:inline-block;margin-top:9px;font-size:9px;font-weight:1000;letter-spacing:.09em;text-transform:uppercase;color:var(--accent)}
+.factionCard[data-faction="frontier"]{--ink:rgba(21,76,110,.72);--glow:rgba(80,198,255,.42);--accent:#76d8ff}.factionCard[data-faction="ascendant"]{--ink:rgba(89,52,135,.68);--glow:rgba(212,150,255,.42);--accent:#d7a3ff}.factionCard[data-faction="brood"]{--ink:rgba(93,37,43,.72);--glow:rgba(255,97,111,.42);--accent:#ff8b96}
+#startOptions{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:8px;margin:8px 0 14px}.optionBox{padding:10px;border-radius:14px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.12)}.optionBox label{display:block;font-size:10px;color:var(--muted);font-weight:1000;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}.optionBox select{width:100%;appearance:none;border:1px solid rgba(255,255,255,.16);background:#08101e;color:#fff;border-radius:11px;padding:9px;font-weight:900}.optionNote{display:block;color:#91a6bf;font-size:9px;line-height:1.3;margin-top:6px;min-height:24px}
+#startStatus{padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.12);font-size:11px;color:#d9e9fb;margin-bottom:11px}
+#startBtn{appearance:none;border:0;background:linear-gradient(135deg,#63c7ff,#c08cff,#ff7d89);color:#07101d;border-radius:15px;padding:13px 18px;font-size:14px;font-weight:1000;cursor:pointer;box-shadow:0 18px 42px rgba(105,184,255,.2)}#startBtn:disabled{opacity:.45;cursor:not-allowed}
+#endOverlay{display:none}#endCard{width:min(520px,calc(100vw - 26px));text-align:center}#endCard p{color:#cad8e9;line-height:1.45}.endActions{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}.endActions button{appearance:none;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#fff;border-radius:13px;padding:11px 14px;font-weight:1000;cursor:pointer}
+@media(max-width:900px){
+  #sidePanel{top:auto;left:8px;right:8px;bottom:165px;width:auto;height:205px}.sideMobileHidden{display:none!important}#sidePanel.collapsed{transform:translateY(calc(100% - 39px))}
+  #commandPanel{left:8px;right:8px;bottom:8px;transform:none;width:auto;min-height:148px;grid-template-columns:132px 1fr;padding:7px}#commandWorkspace{grid-template-columns:1fr 1fr;gap:5px}.commandGroup{padding:5px}#commandButtons,#abilityButtons{grid-template-columns:repeat(2,1fr);gap:4px}.cmdBtn{min-width:0;padding:7px 4px;font-size:9px}
+  #minimapDock{display:none}#resourceHud{gap:4px;padding:6px}.resourcePill{padding:6px;font-size:10px}.resourcePill small{display:none}#statusHud{padding:6px}#statusText{display:none}
+}
+@media(max-width:620px){#factionGrid{grid-template-columns:1fr}.factionCard{min-height:110px}#startOptions{grid-template-columns:1fr}#topHud{left:6px;right:6px;top:6px}.resourcePill span:first-child{font-size:13px}.resourcePill{gap:3px;padding:5px}.hudBtn{padding:6px;font-size:9px}#commandPanel{grid-template-columns:104px 1fr}#commandWorkspace{grid-template-columns:1fr 1fr}#commandButtons,#abilityButtons{grid-template-columns:1fr}.cmdBtn{min-height:38px}.commandGroupTitle{font-size:8px}#sidePanel{bottom:176px}.actionGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Consolidated in-match interface */
+#topHud{right:auto;bottom:auto;pointer-events:none}
+#statusHud,#sidePanel,#minimapDock,#minimap,#miniLeader{display:none!important}
+#commandPanel{left:12px;right:12px;bottom:10px;transform:none;width:auto;min-height:205px;max-height:270px;padding:10px;display:grid;grid-template-columns:210px 238px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;gap:10px;overflow:hidden}
+#selectionCard{background:transparent;border:0;border-radius:0;padding:4px 10px 2px 2px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+#selectionOrder{max-height:35px;overflow:hidden}
+#statusText{display:block;margin-top:5px;color:#8fa9c5;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#utilityButtons{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:auto;padding-top:7px}
+#utilityButtons .hudBtn{padding:6px 5px;font-size:9px}
+.commandGroup{background:transparent;border:0;border-left:1px solid rgba(255,255,255,.10);border-radius:0;padding:4px 8px 2px 10px;min-width:0;min-height:0;overflow:hidden}
+#ordersPanel{grid-column:2;grid-row:1}
+#contextPanel{grid-column:3;grid-row:1;display:flex;flex-direction:column}
+#commandButtons{display:grid;grid-template-columns:repeat(2,minmax(88px,1fr));gap:6px;align-content:start;overflow:auto;padding-right:2px}
+#contextHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex:0 0 auto}
+#contextSummary{font-size:9px;color:var(--muted);line-height:1.25;margin:0 2px 6px;max-width:520px}
+#abilityButtons{display:grid;grid-template-columns:repeat(2,minmax(90px,1fr));gap:5px;min-width:190px;max-width:390px}
+#abilityButtons:empty{display:none}
+#abilityButtons .cmdBtn{min-height:38px;padding:6px 7px}
+#productionQueue{display:none;align-items:center;gap:8px;min-height:57px;padding:2px 2px 6px;overflow-x:auto;flex:0 0 auto}
+#productionQueue.visible{display:flex}
+.queueTitle{font-size:8px;color:#9fb4cd;font-weight:1000;text-transform:uppercase;letter-spacing:.09em;white-space:nowrap;margin-right:2px}
+.queueItem{display:flex;align-items:center;gap:6px;min-width:94px}
+.queueCircle{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;position:relative;flex:0 0 auto;box-shadow:0 0 0 1px rgba(255,255,255,.12),0 7px 18px rgba(0,0,0,.22)}
+.queueCircle::after{content:'';position:absolute;inset:5px;border-radius:50%;background:#091321;border:1px solid rgba(255,255,255,.09)}
+.queueCircle b{position:relative;z-index:1;font-size:9px;color:#f7fbff;text-align:center;line-height:1.05}
+.queueInfo{font-size:9px;color:#dbe9f8;line-height:1.2;white-space:nowrap}.queueInfo small{display:block;color:#8fa5bd;font-size:8px;margin-top:2px}
+#actionList{display:grid;grid-template-columns:repeat(4,minmax(128px,1fr));gap:6px;align-content:start;overflow:auto;min-height:0;padding-right:2px}
+#actionList:empty{display:none}
+.actionGrid{display:grid!important;grid-template-columns:repeat(4,minmax(128px,1fr));gap:6px!important;align-content:start}
+.actionCard,.actionGrid .actionCard{min-height:78px;padding:7px 8px;border-radius:10px}
+.actionGrid .actionTitle{margin-bottom:18px;font-size:10px}.actionGrid .actionCost{top:28px;font-size:8px}.actionGrid .actionMeta{font-size:8px;-webkit-line-clamp:2}.actionTitle{font-size:10px}.actionMeta{font-size:8px}.actionCost{font-size:8px}
+#hintLine{grid-column:1/-1;grid-row:2;padding:4px 3px 0;border-top:1px solid rgba(255,255,255,.08)}
+#toast{display:none!important}
+@media(max-width:980px){
+ #commandPanel{grid-template-columns:170px 210px minmax(0,1fr);max-height:310px}
+ #actionList,.actionGrid{grid-template-columns:repeat(3,minmax(112px,1fr))}
+ #abilityButtons{min-width:150px;grid-template-columns:1fr}
+}
+@media(max-width:760px){
+ #commandPanel{left:6px;right:6px;bottom:6px;grid-template-columns:118px minmax(0,1fr);grid-template-rows:170px minmax(92px,1fr) auto;max-height:52vh;min-height:300px;padding:7px;gap:6px}
+ #selectionCard{grid-column:1;grid-row:1;padding-right:5px}
+ #ordersPanel{grid-column:2;grid-row:1;padding-left:7px}
+ #contextPanel{grid-column:1/-1;grid-row:2;border-left:0;border-top:1px solid rgba(255,255,255,.10);padding:7px 2px 0}
+ #hintLine{grid-row:3}
+ #selectionName{font-size:11px}#selectionMeta{font-size:8px}#selectionOrder,#statusText{display:none}.coolChip{padding:3px 4px}.coolChip b{font-size:8px}
+ #utilityButtons{grid-template-columns:1fr 1fr;gap:3px;margin-top:5px;padding-top:3px}#utilityButtons .hudBtn{font-size:7px;padding:4px 1px;min-height:25px}
+ #commandButtons{grid-template-columns:repeat(3,minmax(70px,1fr));gap:4px}.cmdBtn{min-height:38px;padding:6px 4px;font-size:9px}
+ #contextHeader{gap:5px}#abilityButtons{grid-template-columns:repeat(2,minmax(90px,1fr));max-width:none;min-width:0}
+ #actionList,.actionGrid{grid-template-columns:repeat(3,minmax(105px,1fr))}
+}
+@media(max-width:520px){
+ #resourceHud{gap:3px;padding:5px}.resourcePill{padding:5px;font-size:9px}.resourcePill small{display:none}
+ #commandPanel{grid-template-columns:104px minmax(0,1fr);max-height:56vh}
+ #commandButtons{grid-template-columns:repeat(2,minmax(70px,1fr))}
+ #actionList,.actionGrid{grid-template-columns:repeat(2,minmax(112px,1fr))}
+ #contextHeader{display:block}#abilityButtons{grid-template-columns:repeat(2,minmax(95px,1fr));margin-bottom:5px}
+ .queueCircle{width:40px;height:40px}.queueItem{min-width:84px}
+}
+
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="topHud">
+  <div id="resourceHud" class="glass">
+    <div class="resourcePill"><span>◆</span><div><div id="mineralsText">0</div><small>Minerals</small></div></div>
+    <div class="resourcePill"><span>◈</span><div><div id="gasText">0</div><small>Gas</small></div></div>
+    <div class="resourcePill"><span>⬡</span><div><div id="supplyText">0 / 10</div><small>Supply</small></div></div>
+    <div class="resourcePill"><span>⚔</span><div><div id="armyText">0</div><small>Army</small></div></div>
+  </div>
+</div>
+<div id="sidePanel" hidden><button id="sideToggle"></button><span id="sideTitle"></span><p id="techSummary"></p></div>
+<div id="commandPanel" class="glass">
+  <div id="selectionCard">
+    <div id="selectionName">No selection</div>
+    <div id="selectionMeta">Choose one of your units or structures.</div>
+    <div class="hpTrack"><div id="hpFill" class="hpFill" style="width:0%"></div></div>
+    <div id="cooldownGrid"></div>
+    <div id="selectionOrder">Movement, attacks, mining, construction, and production use separate timers.</div>
+    <div id="utilityButtons">
+      <button id="centerBtn" class="hudBtn">Center Base</button>
+      <button id="pauseBtn" class="hudBtn">Pause</button>
+      <button id="fullscreenBtn" class="hudBtn">⛶ Fullscreen</button>
+      <button id="exitBtn" class="hudBtn">Exit</button>
+    </div>
+    <span id="statusText">Local simulation</span>
+  </div>
+  <section id="ordersPanel" class="commandGroup">
+    <div class="commandGroupTitle">Orders</div>
+    <div id="commandButtons"></div>
+  </section>
+  <section id="contextPanel" class="commandGroup">
+    <div id="contextHeader">
+      <div><div id="contextMenuTitle" class="commandGroupTitle">Context Actions</div><div id="contextSummary">Select a unit, worker, larva, or structure.</div></div>
+      <div id="abilityButtons"></div>
+    </div>
+    <div id="productionQueue"></div>
+    <div id="actionList"></div>
+  </section>
+  <div id="hintLine">Click a unit, then a highlighted tile. Press A for attack mode, B for building actions, Esc to cancel.</div>
+</div>
+<canvas id="minimap" hidden></canvas><span id="miniLeader" hidden></span>
+<div id="toast"></div>
+<div id="loadingOverlay"><div id="loadingCard"><h2>Loading Turncraft Graphics</h2><p id="loadingStatus">Preparing battlefield art before opening the game menu…</p><div id="loadingTrack"><div id="loadingFill"></div></div><div id="loadingCount">0 / 0</div></div></div>
+<div id="overlay"><div id="startCard"><h1>Chess Starfront Online</h1><p class="lead">A three-faction real-time strategy war played on a tactical grid. Build an economy, unlock a tech tree, command every move and attack, and destroy the enemy command bases.</p><div id="factionGrid"></div><div id="startOptions"><div class="optionBox" id="difficultyBox"><label>AI difficulty</label><select id="difficultySelect"><option value="easy">Easy — very slow learner</option><option value="medium" selected>Medium — steady commander</option><option value="hard">Hard — fast macro pressure</option><option value="pro">Pro — ruthless battlefield AI</option></select><small id="difficultyNote" class="optionNote"></small></div><div class="optionBox" id="aiCountBox"><label>AI opponents</label><select id="aiCountSelect"><option value="1">1 AI opponent</option><option value="2" selected>2 AI opponents</option></select><small class="optionNote">The battlefield still uses three starting bases; unused slots are controlled by AI.</small></div><div class="optionBox" id="aiStyleBox"><label>AI temperament</label><select id="aiStyleSelect"><option value="cautious">Cautious</option><option value="balanced" selected>Balanced</option><option value="aggressive">Aggressive</option></select><small class="optionNote">Changes when armies leave their base without replacing the core difficulty scaling.</small></div></div><div id="startStatus">Choose a faction. Solo games run locally; multiplayer uses the same anonymous Firebase lobby flow as the warlord game.</div><button id="startBtn">Deploy Command Base</button></div></div>
+<div id="endOverlay"><div id="endCard"><h2 id="endTitle">Victory</h2><p id="endText">The opposing command bases have fallen.</p><div class="endActions"><button id="restartBtn">New Local Match</button><button id="spectateBtn">Spectate</button><button id="endExitBtn">Exit</button></div></div></div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, serverTimestamp, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+(() => {
+'use strict';
+
+// ---------- DOM ----------
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const mini=document.getElementById('minimap'),mctx=mini.getContext('2d');
+const mineralsText=document.getElementById('mineralsText'),gasText=document.getElementById('gasText'),supplyText=document.getElementById('supplyText'),armyText=document.getElementById('armyText');
+const statusText=document.getElementById('statusText'),centerBtn=document.getElementById('centerBtn'),pauseBtn=document.getElementById('pauseBtn'),fullscreenBtn=document.getElementById('fullscreenBtn'),exitBtn=document.getElementById('exitBtn');
+const sidePanel=document.getElementById('sidePanel'),sideToggle=document.getElementById('sideToggle'),sideTitle=document.getElementById('sideTitle'),techSummary=document.getElementById('techSummary'),actionList=document.getElementById('actionList');
+const selectionName=document.getElementById('selectionName'),selectionMeta=document.getElementById('selectionMeta'),selectionOrder=document.getElementById('selectionOrder'),hpFill=document.getElementById('hpFill'),cooldownGrid=document.getElementById('cooldownGrid'),commandButtons=document.getElementById('commandButtons'),abilityButtons=document.getElementById('abilityButtons'),contextMenuTitle=document.getElementById('contextMenuTitle'),contextSummary=document.getElementById('contextSummary'),productionQueue=document.getElementById('productionQueue'),hintLine=document.getElementById('hintLine');
+const overlay=document.getElementById('overlay'),factionGrid=document.getElementById('factionGrid'),difficultySelect=document.getElementById('difficultySelect'),difficultyNote=document.getElementById('difficultyNote'),difficultyBox=document.getElementById('difficultyBox'),aiCountSelect=document.getElementById('aiCountSelect'),aiCountBox=document.getElementById('aiCountBox'),aiStyleSelect=document.getElementById('aiStyleSelect'),aiStyleBox=document.getElementById('aiStyleBox'),startStatus=document.getElementById('startStatus'),startBtn=document.getElementById('startBtn');
+const loadingOverlay=document.getElementById('loadingOverlay'),loadingStatus=document.getElementById('loadingStatus'),loadingFill=document.getElementById('loadingFill'),loadingCount=document.getElementById('loadingCount');
+const toastEl=document.getElementById('toast'),endOverlay=document.getElementById('endOverlay'),endTitle=document.getElementById('endTitle'),endText=document.getElementById('endText'),restartBtn=document.getElementById('restartBtn'),spectateBtn=document.getElementById('spectateBtn'),endExitBtn=document.getElementById('endExitBtn'),miniLeader=document.getElementById('miniLeader');
+
+// ---------- Firebase / lobby compatibility ----------
+const firebaseConfig={apiKey:"AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",authDomain:"bible-game-246c0.firebaseapp.com",databaseURL:"https://bible-game-246c0-default-rtdb.firebaseio.com",projectId:"bible-game-246c0",storageBucket:"bible-game-246c0.firebasestorage.app",messagingSenderId:"959619818996",appId:"1:959619818996:web:5a9fbf492e23c765e445a1",measurementId:"G-8PR6LVKSH3"};
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+const params=new URLSearchParams(location.search);
+let lobbyId=params.get('gameId')||params.get('lobbyId')||'';
+let username=(params.get('username')||localStorage.getItem('gh.username')||'Commander').trim();
+let returnTo=params.get('returnTo')||params.get('return')||localStorage.getItem('gh.returnUrl')||'/game/index.html';
+const NET_KEY='chess_starfront';
+let lobbyRef=null,stateRef=null,presenceRef=null,lobbyData=null,stateUnsub=null,lobbyUnsub=null,presenceTimer=null,controllerTimer=null,commandUnsub=null;
+let controllerLease=null,isController=false,controllerName='',onlinePresence=[];
+const CONTROLLER_LEASE_MS=13000,CONTROLLER_RENEW_MS=3500,PRESENCE_STALE_MS=16000,STATE_WRITE_MS=700;
+let stateDirty=false,lastStateWrite=0,stateVersion=0,applyingRemote=false,processedCommands=new Set();
+
+function safeId(v){return String(v||'player').replace(/[^a-zA-Z0-9_@.-]/g,'_').slice(0,100)||'player'}
+function stateDoc(){return doc(db,'lobbies',lobbyId,NET_KEY,'state')}
+function commandCollection(){return collection(db,'lobbies',lobbyId,`${NET_KEY}_commands`)}
+function commandDoc(id){return doc(db,'lobbies',lobbyId,`${NET_KEY}_commands`,safeId(id))}
+function nowMs(){return Date.now()}
+function effectiveMoveCd(e){return Math.max(.1,(UNITS[e?.type]?.moveCd||1)*COOLDOWN_SCALE.move)}
+function effectiveAttackCd(e){return Math.max(.1,(attackDef(e)?.cooldown||1)*COOLDOWN_SCALE.attack)}
+function effectiveMiningCd(type){return (type==='gas'?1700:1500)*COOLDOWN_SCALE.mining}
+function effectiveAbilityCd(id){return Math.max(1,(ABILITIES[id]?.cooldown||1)*COOLDOWN_SCALE.ability)}
+function cooldownSeconds(at){return Math.max(0,(Number(at||0)-nowMs())/1000)}
+function fmtCd(seconds){return seconds<=.05?'READY':seconds<10?`${seconds.toFixed(1)}s`:`${Math.ceil(seconds)}s`}
+function abilitiesFor(e){return e?.kind==='unit'?(UNIT_ABILITIES[e.type]||[]):[]}
+function markDirty(){if(gameStarted&&!applyingRemote)stateDirty=true}
+function toast(msg,ms=2600){if(gameStarted&&hintLine){const previous=hintLine.textContent;hintLine.textContent=msg;clearTimeout(toast._t);toast._t=setTimeout(()=>{if(hintLine.textContent===msg)hintLine.textContent=previous},ms);return}toastEl.textContent=msg;toastEl.style.display='none'}
+function setStatus(msg){statusText.textContent=msg}
+
+// ---------- Game definitions ----------
+const BOARD_W=42,BOARD_H=30,TILE=48,MAX_SUPPLY=25,BASE_SUPPLY=10;
+const ORTHO=[[1,0],[-1,0],[0,1],[0,-1]],DIR8=[...ORTHO,[1,1],[1,-1],[-1,1],[-1,-1]];
+const FACTIONS={
+  frontier:{id:'frontier',name:'Frontier Directorate',short:'Frontier',color:'#55c8ff',dark:'#154d70',worker:'engineer',base:'commandHub',gas:'refinery',supply:'supplyDepot',icon:'⚙',summary:'Durable mechanical armies, flexible production queues, repairs, and strong siege weapons.'},
+  ascendant:{id:'ascendant',name:'Ascendant Conclave',short:'Ascendant',color:'#cf9cff',dark:'#5b3588',worker:'probe',base:'nexus',gas:'assimilator',supply:'pylon',icon:'✦',summary:'Power-field construction, shields, precise ranged troops, and expensive elite units.'},
+  brood:{id:'brood',name:'Brood Dominion',short:'Brood',color:'#ff7483',dark:'#6c2730',worker:'drone',base:'hatchery',gas:'extractor',supply:'broodColony',icon:'⬢',summary:'Workers morph into structures. Hatcheries, nests, and hives generate larva that become any unlocked organism.'}
+};
+const TAG_LABEL={light:'Light',armored:'Armored',biological:'Biological',mechanical:'Mechanical',psionic:'Psionic',massive:'Massive',structure:'Structure',flying:'Flying'};
+const STRUCTURES={
+  commandHub:{f:'frontier',name:'Command Hub',icon:'⌂',hp:500,cost:[400,0],time:13,supply:0,base:true,produces:['engineer'],desc:'Primary base. Produces Engineers and anchors an expansion.'},
+  supplyDepot:{f:'frontier',name:'Supply Depot',icon:'▣',hp:210,cost:[100,0],time:6,supply:5,desc:'+5 supply, up to the 25 hard cap.'},
+  barracks:{f:'frontier',name:'Barracks',icon:'▤',hp:300,cost:[150,0],time:8,requires:[],produces:['rifleman','medic','marauder','reaper'],desc:'Trains biological infantry.'},
+  academy:{f:'frontier',name:'Tactical Academy',icon:'⌘',hp:230,cost:[125,75],time:8,requires:['barracks'],desc:'Unlocks Medics, Marauders, and Reapers.'},
+  factory:{f:'frontier',name:'Factory',icon:'⚙',hp:340,cost:[200,100],time:10,requires:['barracks'],produces:['hellion','siegeTank','goliath'],desc:'Builds armored ground vehicles.'},
+  starport:{f:'frontier',name:'Starport',icon:'△',hp:300,cost:[220,150],time:11,requires:['factory'],produces:['wraith','battlecruiser'],desc:'Builds flying strike craft.'},
+  armory:{f:'frontier',name:'Armory',icon:'◇',hp:260,cost:[150,125],time:9,requires:['factory'],desc:'Unlocks Goliaths and Battlecruisers.'},
+  refinery:{f:'frontier',name:'Refinery',icon:'◈',hp:240,cost:[80,0],time:5,gas:true,desc:'Must be built on a gas vent. Orthogonally adjacent workers mine gas.'},
+  missileTurret:{f:'frontier',name:'Missile Turret',icon:'↟',hp:220,cost:[100,50],time:6,requires:['academy'],attack:{damage:12,range:5,cooldown:1.5,bonuses:{flying:6}},desc:'Automated defensive structure.'},
+
+  nexus:{f:'ascendant',name:'Nexus',icon:'◉',hp:430,shield:180,cost:[400,0],time:13,supply:0,base:true,produces:['probe'],desc:'Primary base. Produces Probes and anchors an expansion.'},
+  pylon:{f:'ascendant',name:'Pylon',icon:'♦',hp:150,shield:100,cost:[100,0],time:6,supply:5,power:2,desc:'+5 supply and powers structures within 2 tiles.'},
+  gateway:{f:'ascendant',name:'Gateway',icon:'⬡',hp:250,shield:110,cost:[150,0],time:8,requires:['pylon'],produces:['zealot','dragoon','sentinel'],desc:'Warps in core ground warriors.'},
+  forge:{f:'ascendant',name:'Forge',icon:'✧',hp:220,shield:90,cost:[130,75],time:8,requires:['pylon'],desc:'Unlocks Photon Cannons and stronger support units.'},
+  robotics:{f:'ascendant',name:'Robotics Bay',icon:'▱',hp:260,shield:110,cost:[200,125],time:10,requires:['gateway'],produces:['immortal','disruptor'],desc:'Produces armored constructs.'},
+  stargate:{f:'ascendant',name:'Stargate',icon:'✶',hp:250,shield:130,cost:[220,150],time:11,requires:['gateway'],produces:['phoenix','carrier'],desc:'Warps in flying units.'},
+  citadel:{f:'ascendant',name:'Psionic Citadel',icon:'Ψ',hp:230,shield:120,cost:[175,150],time:10,requires:['forge','gateway'],desc:'Unlocks Templars and Carriers.'},
+  assimilator:{f:'ascendant',name:'Assimilator',icon:'◈',hp:180,shield:90,cost:[80,0],time:5,gas:true,desc:'Must be built on a gas vent.'},
+  photonCannon:{f:'ascendant',name:'Photon Cannon',icon:'✺',hp:170,shield:100,cost:[125,50],time:7,requires:['forge'],attack:{damage:13,range:5,cooldown:1.6,bonuses:{light:4}},desc:'Powered automated defense. Shuts down without a Pylon.'},
+
+  hatchery:{f:'brood',name:'Hatchery',icon:'◍',hp:520,cost:[350,0],time:13,supply:0,base:true,larvaEvery:10,larvaCap:5,desc:'Primary nest. Generates larva and anchors an expansion.'},
+  broodColony:{f:'brood',name:'Brood Colony',icon:'⬢',hp:230,cost:[100,0],time:6,supply:5,larvaEvery:22,larvaCap:1,desc:'+5 supply and slowly produces an extra larva.'},
+  spawningPool:{f:'brood',name:'Spawning Pool',icon:'≋',hp:270,cost:[150,0],time:8,desc:'Unlocks Zerglings and Roaches.'},
+  hydraDen:{f:'brood',name:'Hydra Den',icon:'⋔',hp:250,cost:[150,100],time:9,requires:['spawningPool'],desc:'Unlocks Hydralisks and Lurkers.'},
+  evolutionNest:{f:'brood',name:'Evolution Nest',icon:'☣',hp:260,cost:[125,75],time:8,requires:['spawningPool'],desc:'Unlocks advanced organisms and defensive colonies.'},
+  spire:{f:'brood',name:'Spire',icon:'♢',hp:260,cost:[200,150],time:11,requires:['hydraDen'],desc:'Unlocks flying organisms.'},
+  hive:{f:'brood',name:'Hive',icon:'⬣',hp:470,cost:[250,200],time:12,requires:['hydraDen','evolutionNest'],larvaEvery:12,larvaCap:4,desc:'Advanced nest that generates additional larva.'},
+  extractor:{f:'brood',name:'Extractor',icon:'◈',hp:230,cost:[70,0],time:5,gas:true,desc:'Drone morphs into an extractor on a gas vent.'},
+  sunkenColony:{f:'brood',name:'Sunken Colony',icon:'♨',hp:280,cost:[125,50],time:7,requires:['evolutionNest'],attack:{damage:17,range:4,cooldown:1.8,bonuses:{armored:6}},desc:'Automated ground defense.'}
+};
+const UNITS={
+  engineer:{f:'frontier',name:'Engineer',icon:'⚒',hp:65,cost:[50,0],time:5,supply:1,worker:true,tags:['light','biological'],move:2,moveCd:1.8,attack:{damage:5,range:1,cooldown:1.4},desc:'Mines, builds, repairs, and fights weakly.'},
+  rifleman:{f:'frontier',name:'Rifleman',icon:'⌁',hp:85,cost:[75,0],time:4,supply:1,tags:['light','biological'],move:3,moveCd:1.6,attack:{damage:9,range:4,cooldown:1.25,bonuses:{light:3}},desc:'Cheap ranged infantry.'},
+  medic:{f:'frontier',name:'Field Medic',icon:'✚',hp:75,cost:[75,50],time:5,supply:1,tags:['light','biological'],move:3,moveCd:1.7,requires:['academy'],heal:{amount:10,range:3,cooldown:1.5},attack:{damage:2,range:2,cooldown:1.6},desc:'Automatically heals nearby biological allies.'},
+  marauder:{f:'frontier',name:'Marauder',icon:'▰',hp:145,cost:[125,50],time:6,supply:2,tags:['armored','biological'],move:2,moveCd:2,requires:['academy'],attack:{damage:16,range:4,cooldown:1.8,bonuses:{armored:7}},desc:'Heavy anti-armor infantry.'},
+  reaper:{f:'frontier',name:'Reaper',icon:'↯',hp:75,cost:[100,50],time:5,supply:1,tags:['light','biological'],move:4,moveCd:1.35,requires:['academy'],attack:{damage:10,range:3,cooldown:1.15,bonuses:{light:4}},desc:'Very mobile raider.'},
+  hellion:{f:'frontier',name:'Hellion',icon:'»',hp:120,cost:[125,50],time:6,supply:2,tags:['light','mechanical'],move:4,moveCd:1.5,requires:['factory'],attack:{damage:12,range:3,cooldown:1.45,splash:1,bonuses:{biological:5}},desc:'Fast flame vehicle with small splash.'},
+  siegeTank:{f:'frontier',name:'Siege Tank',icon:'▥',hp:210,cost:[200,125],time:9,supply:3,tags:['armored','mechanical'],move:2,moveCd:2.6,requires:['factory'],attack:{damage:26,range:6,minRange:2,cooldown:2.7,splash:1,bonuses:{armored:8}},desc:'Long-range siege cannon; cannot fire adjacent.'},
+  goliath:{f:'frontier',name:'Goliath',icon:'Ж',hp:175,cost:[175,100],time:8,supply:2,tags:['armored','mechanical'],move:3,moveCd:2.1,requires:['armory'],attack:{damage:18,range:5,cooldown:2,bonuses:{flying:9}},desc:'Versatile anti-air walker.'},
+  wraith:{f:'frontier',name:'Wraith',icon:'⌃',hp:135,cost:[175,125],time:8,supply:2,tags:['light','mechanical','flying'],move:5,moveCd:1.6,requires:['starport'],attack:{damage:15,range:4,cooldown:1.65,bonuses:{flying:5}},desc:'Fast flying strike craft.'},
+  battlecruiser:{f:'frontier',name:'Battlecruiser',icon:'▴',hp:310,cost:[300,250],time:13,supply:3,tags:['armored','mechanical','massive','flying'],move:3,moveCd:2.8,requires:['starport','armory'],attack:{damage:24,range:5,cooldown:2.2,splash:1},desc:'Massive late-game capital ship.'},
+
+  probe:{f:'ascendant',name:'Probe',icon:'◌',hp:35,shield:35,cost:[50,0],time:5,supply:1,worker:true,tags:['light','mechanical'],move:3,moveCd:1.65,attack:{damage:5,range:1,cooldown:1.35},desc:'Mines and initiates powered warp construction.'},
+  zealot:{f:'ascendant',name:'Zealot',icon:'ϟ',hp:100,shield:70,cost:[100,0],time:5,supply:2,tags:['light','biological','psionic'],move:3,moveCd:1.55,requires:['gateway'],attack:{damage:15,range:1,cooldown:1.4,bonuses:{light:4}},desc:'Fast melee warrior with shields.'},
+  dragoon:{f:'ascendant',name:'Dragoon',icon:'◇',hp:100,shield:80,cost:[150,75],time:7,supply:2,tags:['armored','mechanical'],move:3,moveCd:2,requires:['gateway'],attack:{damage:17,range:5,cooldown:1.9,bonuses:{armored:5}},desc:'Long-range armored walker.'},
+  sentinel:{f:'ascendant',name:'Sentinel',icon:'◈',hp:65,shield:85,cost:[100,100],time:6,supply:1,tags:['light','mechanical','psionic'],move:3,moveCd:1.8,requires:['forge'],attack:{damage:8,range:4,cooldown:1.5},auraShield:2,desc:'Restores nearby allied shields.'},
+  templar:{f:'ascendant',name:'High Templar',icon:'Ψ',hp:70,shield:90,cost:[125,175],time:8,supply:2,tags:['light','biological','psionic'],move:2,moveCd:2.1,requires:['citadel'],attack:{damage:20,range:5,cooldown:2.6,splash:1,bonuses:{biological:7}},desc:'Psionic splash attacker.'},
+  immortal:{f:'ascendant',name:'Immortal',icon:'⬙',hp:150,shield:110,cost:[225,125],time:9,supply:3,tags:['armored','mechanical'],move:2,moveCd:2.5,requires:['robotics'],attack:{damage:24,range:4,cooldown:2.2,bonuses:{armored:10}},desc:'Elite anti-armor construct.'},
+  disruptor:{f:'ascendant',name:'Disruptor',icon:'☼',hp:85,shield:105,cost:[200,175],time:10,supply:3,tags:['armored','mechanical','psionic'],move:2,moveCd:2.5,requires:['robotics','citadel'],attack:{damage:30,range:5,cooldown:3.4,splash:2},desc:'Slow, devastating area attacker.'},
+  phoenix:{f:'ascendant',name:'Phoenix',icon:'⌁',hp:90,shield:90,cost:[175,125],time:8,supply:2,tags:['light','mechanical','flying'],move:5,moveCd:1.5,requires:['stargate'],attack:{damage:14,range:4,cooldown:1.35,bonuses:{flying:6}},desc:'Extremely mobile flying interceptor.'},
+  carrier:{f:'ascendant',name:'Carrier',icon:'✹',hp:220,shield:180,cost:[325,250],time:13,supply:3,tags:['armored','mechanical','massive','flying'],move:3,moveCd:2.8,requires:['stargate','citadel'],attack:{damage:22,range:6,cooldown:2.1,splash:1},desc:'Massive shielded capital craft.'},
+
+  drone:{f:'brood',name:'Drone',icon:'☍',hp:60,cost:[50,0],time:4,supply:1,worker:true,tags:['light','biological'],move:3,moveCd:1.65,attack:{damage:6,range:1,cooldown:1.3},desc:'Mines and permanently morphs into structures.'},
+  zergling:{f:'brood',name:'Zergling Pair',icon:'〽',hp:90,cost:[75,0],time:3.5,supply:1,tags:['light','biological'],move:4,moveCd:1.25,requires:['spawningPool'],attack:{damage:8,range:1,cooldown:.9,bonuses:{light:2}},desc:'Fast melee pack represented as one tactical unit.'},
+  roach:{f:'brood',name:'Roach',icon:'◓',hp:150,cost:[125,50],time:6,supply:2,tags:['armored','biological'],move:3,moveCd:1.9,requires:['spawningPool'],attack:{damage:15,range:3,cooldown:1.65,bonuses:{armored:4}},regen:1.2,desc:'Durable regenerating ranged organism.'},
+  hydralisk:{f:'brood',name:'Hydralisk',icon:'⋔',hp:105,cost:[125,75],time:6,supply:2,tags:['light','biological'],move:3,moveCd:1.7,requires:['hydraDen'],attack:{damage:13,range:5,cooldown:1.35,bonuses:{flying:5}},desc:'Rapid ranged attacker.'},
+  lurker:{f:'brood',name:'Lurker',icon:'⌇',hp:160,cost:[175,125],time:8,supply:2,tags:['armored','biological'],move:2,moveCd:2.2,requires:['hydraDen','evolutionNest'],attack:{damage:22,range:5,minRange:2,cooldown:2.4,splash:1,bonuses:{light:5}},desc:'Long-range spine attacker.'},
+  mutalisk:{f:'brood',name:'Mutalisk',icon:'⌁',hp:125,cost:[150,125],time:7,supply:2,tags:['light','biological','flying'],move:5,moveCd:1.45,requires:['spire'],attack:{damage:13,range:4,cooldown:1.35,chain:2},regen:1,desc:'Flying attacker whose shot chains to nearby targets.'},
+  defiler:{f:'brood',name:'Defiler',icon:'☣',hp:110,cost:[125,175],time:8,supply:2,tags:['light','biological','psionic'],move:3,moveCd:1.9,requires:['hive'],attack:{damage:16,range:5,cooldown:2.1,splash:1,bonuses:{biological:5}},regen:.8,desc:'Advanced corrosive splash organism.'},
+  ultralisk:{f:'brood',name:'Ultralisk',icon:'♜',hp:340,cost:[300,200],time:12,supply:3,tags:['armored','biological','massive'],move:3,moveCd:2.2,requires:['hive'],attack:{damage:30,range:1,cooldown:2,splash:1,bonuses:{structure:8}},regen:1.5,desc:'Massive assault organism.'}
+};
+const BUILD_ORDER={frontier:['commandHub','supplyDepot','refinery','barracks','academy','factory','armory','starport','missileTurret'],ascendant:['nexus','pylon','assimilator','gateway','forge','robotics','citadel','stargate','photonCannon'],brood:['hatchery','broodColony','extractor','spawningPool','hydraDen','evolutionNest','spire','hive','sunkenColony']};
+const ROSTER_ORDER={frontier:['engineer','rifleman','medic','marauder','reaper','hellion','siegeTank','goliath','wraith','battlecruiser'],ascendant:['probe','zealot','dragoon','sentinel','templar','immortal','disruptor','phoenix','carrier'],brood:['drone','zergling','roach','hydralisk','lurker','mutalisk','defiler','ultralisk']};
+
+// ---------- Runtime state ----------
+let DPR=1,W=0,H=0,cam={x:0,y:0,zoom:.8},MIN_ZOOM=.42,MAX_ZOOM=1.65;
+let terrain=[],resourceNodes=[],entities=[],players=[],slotNames=[],humanNames=[],PLAYER=0,nextEntityId=1,nextNodeId=1,mapSeed=1;
+let selectedId=null,legalTiles=[],interactionMode=null,interactionPayload=null,hoverTile=null,sideTab='actions';
+let gameStarted=false,paused=false,spectating=false,gameOver=false,lastFrame=performance.now(),simAccumulator=0,lastAiTick=0,initialCameraSet=false;
+let particles=[],shots=[],floating=[];
+let chosenFaction='frontier',chosenDifficulty='medium',chosenAiCount=2,chosenAiStyle='balanced',buildTier='basic';
+let dragging=false,dragStart=null,pointerMoved=false,activePointers=new Map(),pinch=null;
+const COOLDOWN_SCALE={move:1.65,attack:1.5,mining:1.6,ability:1.35};
+const DIFFICULTY={
+  easy:{thinkInterval:6.5,income:.62,aggression:.28,workerGoal:5,attackAt:9,commandLimit:2,macroChance:.48,trainChance:.48,desiredBases:1,expandChance:.01,label:'Easy AI waits, expands slowly, earns less, and sends small late armies.'},
+  medium:{thinkInterval:2.8,income:1,aggression:.88,workerGoal:7,attackAt:6,commandLimit:6,macroChance:.82,trainChance:.88,desiredBases:2,expandChance:.10,label:'Medium AI builds a complete economy and claims one natural expansion.'},
+  hard:{thinkInterval:1.45,income:1.18,aggression:1.35,workerGoal:8,attackAt:5,commandLimit:11,macroChance:.96,trainChance:1,desiredBases:2,expandChance:.22,label:'Hard AI reacts quickly, expands technology, and coordinates larger waves.'},
+  pro:{thinkInterval:.72,income:1.42,aggression:1.9,workerGoal:10,attackAt:3,commandLimit:22,macroChance:1,trainChance:1,desiredBases:3,expandChance:.38,label:'Pro AI gains an economy advantage, takes multiple expansions, and applies constant pressure.'}
+};
+const AI_STYLE={cautious:.72,balanced:1,aggressive:1.3};
+const BASIC_BUILDINGS={
+  frontier:['commandHub','supplyDepot','refinery','barracks','missileTurret'],
+  ascendant:['nexus','pylon','assimilator','gateway','photonCannon'],
+  brood:['hatchery','broodColony','extractor','spawningPool','sunkenColony']
+};
+const ABILITIES={
+  fieldSurge:{name:'Field Surge',icon:'✚',cooldown:16,target:'self',desc:'Heal nearby biological allies for 24 HP.'},
+  jetLeap:{name:'Jet Leap',icon:'↯',cooldown:14,target:'tile',range:5,desc:'Leap up to 5 tiles, ignoring ground obstacles.'},
+  siegeMode:{name:'Siege Mode',icon:'▥',cooldown:5,target:'self',desc:'Toggle +2 range, +8 damage and larger splash, but become immobile.'},
+  psionicCharge:{name:'Psionic Charge',icon:'ϟ',cooldown:13,target:'self',desc:'Refresh movement and add 2 tiles to the next move.'},
+  shieldPulse:{name:'Shield Pulse',icon:'◈',cooldown:16,target:'self',desc:'Restore 32 shields to nearby allies.'},
+  psionicStorm:{name:'Psionic Storm',icon:'Ψ',cooldown:20,target:'tile',range:5,desc:'Strike a tile and nearby enemies for 28 damage.'},
+  adrenalRush:{name:'Adrenal Rush',icon:'〽',cooldown:14,target:'self',desc:'Immediately refresh movement and attack.'},
+  burrowMend:{name:'Burrow Mend',icon:'◓',cooldown:18,target:'self',desc:'Regenerate 55 HP immediately.'},
+  needleVolley:{name:'Needle Volley',icon:'⋔',cooldown:15,target:'self',desc:'Refresh attack and add 8 damage to the next shot.'},
+  frenzy:{name:'Frenzy',icon:'♜',cooldown:20,target:'self',desc:'Refresh movement and attack and empower the next strike.'}
+};
+const UNIT_ABILITIES={medic:['fieldSurge'],reaper:['jetLeap'],siegeTank:['siegeMode'],zealot:['psionicCharge'],sentinel:['shieldPulse'],templar:['psionicStorm'],zergling:['adrenalRush'],roach:['burrowMend'],hydralisk:['needleVolley'],ultralisk:['frenzy']};
+
+// ---------- Turncraft graphics ----------
+const TURNCRAFT_ASSET_BASE='https://raw.githubusercontent.com/Sean-Pereksta/Magic/main/graphics/turncraft/';
+const ASSET_IMAGES=new Map(),ASSET_FAILURES=[];
+function assetFileName(name){return `${String(name||'').trim().toLowerCase()}.png`}
+function assetUrl(file){return TURNCRAFT_ASSET_BASE+file.split('/').map(encodeURIComponent).join('/')}
+function assetKeyForType(type){const d=STRUCTURES[type]||UNITS[type];return d?assetFileName(d.name):assetFileName(type)}
+function miningAssetKey(e){if(!isWorker(e)||!e.miningNodeId)return null;const node=resourceNodes.find(n=>n.id===e.miningNodeId);return node?assetFileName(`${UNITS[e.type]?.name||e.type} ${node.type}`):null}
+function entityAssetKey(e){if(!e)return null;if(e.kind==='larva')return 'larva.png';if(e.kind==='cocoon')return 'cocoon.png';return miningAssetKey(e)||assetKeyForType(e.type)}
+function terrainAssetKey(t){if(!t)return 'ground.png';if(t.type==='mineral')return 'mineral.png';if(t.type==='gas')return 'gas.png';if(t.blocked||t.type==='rock'||t.type==='crystal')return 'cliff.png';return 'ground.png'}
+function getAsset(key){return key?ASSET_IMAGES.get(key)||null:null}
+function drawContainedImage(image,x,y,w,h,pad=0){if(!image)return false;const iw=image.naturalWidth||image.width,ih=image.naturalHeight||image.height;if(!iw||!ih)return false;const scale=Math.min((w-pad*2)/iw,(h-pad*2)/ih),dw=iw*scale,dh=ih*scale;ctx.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh);return true}
+function allTurncraftFiles(){const files=new Set(['ground.png','cliff.png','mineral.png','gas.png','larva.png']);for(const d of Object.values(STRUCTURES))files.add(assetFileName(d.name));for(const d of Object.values(UNITS))files.add(assetFileName(d.name));for(const worker of ['engineer','probe','drone']){const name=UNITS[worker]?.name||worker;files.add(assetFileName(`${name} mineral`));files.add(assetFileName(`${name} gas`))}return [...files].sort()}
+function loadTurncraftImage(file){return new Promise(resolve=>{const img=new Image();let settled=false;const finish=ok=>{if(settled)return;settled=true;clearTimeout(timer);if(ok)ASSET_IMAGES.set(file,img);else ASSET_FAILURES.push(file);resolve(ok)},timer=setTimeout(()=>finish(false),12000);img.decoding='async';img.crossOrigin='anonymous';img.onload=()=>finish(true);img.onerror=()=>finish(false);img.src=assetUrl(file)})}
+async function preloadTurncraftGraphics(){const files=allTurncraftFiles();loadingCount.textContent=`0 / ${files.length}`;let completed=0;await Promise.all(files.map(async file=>{await loadTurncraftImage(file);completed++;loadingFill.style.width=`${Math.round(completed/files.length*100)}%`;loadingCount.textContent=`${completed} / ${files.length}`;loadingStatus.textContent=`Loading ${file}`}));loadingStatus.textContent=ASSET_FAILURES.length?`Graphics loaded with ${ASSET_FAILURES.length} missing file${ASSET_FAILURES.length===1?'':'s'}; built-in fallbacks will be used.`:'All Turncraft graphics loaded.';await new Promise(r=>setTimeout(r,180))}
+function imageHtmlForType(type,alt=''){const key=assetKeyForType(type);return `<img class="assetThumb" src="${assetUrl(key)}" alt="${alt||key}" onerror="this.style.display='none'">`}
+
+
+function rand(){mapSeed=(Math.imul(mapSeed,1664525)+1013904223)>>>0;return mapSeed/4294967296}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function manhattan(a,b){return Math.abs(a.x-b.x)+Math.abs(a.y-b.y)}
+function inBounds(x,y){return x>=0&&y>=0&&x<BOARD_W&&y<BOARD_H}
+function tileAt(x,y){return inBounds(x,y)?terrain[y*BOARD_W+x]:null}
+function entityById(id){return entities.find(e=>e.id===id&&e.alive!==false)||null}
+function selected(){return entityById(selectedId)}
+function defOf(e){return e?e.kind==='structure'?STRUCTURES[e.type]:e.kind==='larva'?{name:'Larva',icon:'●',desc:'Morph into any unlocked Brood unit.',hp:35}:UNITS[e.type]:null}
+function factionOf(i){return FACTIONS[players[i]?.factionId]||FACTIONS.frontier}
+function ownEntity(e){return e&&e.faction===PLAYER&&!players[PLAYER]?.eliminated}
+function isWorker(e){return e?.kind==='unit'&&!!UNITS[e.type]?.worker}
+function isBase(e){return e?.kind==='structure'&&!!STRUCTURES[e.type]?.base}
+function isFlying(e){return e?.kind==='unit'&&UNITS[e.type]?.tags?.includes('flying')}
+function entityAt(x,y,ignoreId=null){return entities.find(e=>e.alive!==false&&e.id!==ignoreId&&e.x===x&&e.y===y)||null}
+function nodeAt(x,y,type=null){return resourceNodes.find(n=>n.amount>0&&n.x===x&&n.y===y&&(!type||n.type===type))||null}
+function aliveEnemies(f){return players.filter(p=>!p.eliminated&&p.idx!==f)}
+function tagsFor(e){if(e.kind==='structure')return ['structure','armored'];return UNITS[e.type]?.tags||[]}
+function hasTag(e,tag){return tagsFor(e).includes(tag)}
+function playerStructures(f,type=null){return entities.filter(e=>e.alive!==false&&e.faction===f&&e.kind==='structure'&&e.complete!==false&&(!type||e.type===type))}
+function playerUnits(f){return entities.filter(e=>e.alive!==false&&e.faction===f&&e.kind==='unit')}
+function countType(f,type){return entities.filter(e=>e.alive!==false&&e.faction===f&&e.type===type&&e.complete!==false).length}
+function requirementsMet(f,req=[]){return (req||[]).every(type=>countType(f,type)>0)}
+function supplyCap(f){return clamp(BASE_SUPPLY+playerStructures(f).reduce((s,e)=>s+(STRUCTURES[e.type]?.supply||0),0),0,MAX_SUPPLY)}
+function supplyUsed(f){return entities.filter(e=>e.alive!==false&&e.faction===f&&e.kind==='unit').reduce((s,e)=>s+(UNITS[e.type]?.supply||0),0)+entities.filter(e=>e.alive!==false&&e.faction===f&&e.kind==='cocoon').reduce((s,e)=>s+(UNITS[e.morphType]?.supply||0),0)}
+function canAfford(f,cost){const p=players[f];return p&&p.minerals>=cost[0]&&p.gas>=cost[1]}
+function spend(f,cost){players[f].minerals-=cost[0];players[f].gas-=cost[1];markDirty()}
+function refund(f,cost,ratio=.75){players[f].minerals+=Math.round(cost[0]*ratio);players[f].gas+=Math.round(cost[1]*ratio);markDirty()}
+function ownedTech(f){return new Set(playerStructures(f).map(e=>e.type))}
+function unitUnlocked(f,type){const d=UNITS[type];return d&&d.f===players[f].factionId&&requirementsMet(f,d.requires||[])}
+function structureUnlocked(f,type){const d=STRUCTURES[type];return d&&d.f===players[f].factionId&&requirementsMet(f,d.requires||[])}
+function occupiedFor(e,x,y){const other=entityAt(x,y,e?.id);if(!other)return false;if(isFlying(e)&&!isFlying(other)&&other.kind!=='structure')return false;return true}
+function groundBlocked(x,y){const t=tileAt(x,y);return !t||t.blocked}
+function validMoveTile(e,x,y){if(!inBounds(x,y)||occupiedFor(e,x,y))return false;if(!isFlying(e)&&groundBlocked(x,y))return false;return true}
+function nearestFreeAround(x,y,e=null,maxR=3){for(let r=1;r<=maxR;r++){for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){if(Math.max(Math.abs(dx),Math.abs(dy))!==r)continue;const nx=x+dx,ny=y+dy;if(validMoveTile(e||{},nx,ny)&&!nodeAt(nx,ny,'mineral'))return {x:nx,y:ny}}}return null}
+
+// ---------- Map and game creation ----------
+function expansionPositions(){return [
+  {x:13,y:10,rotation:.25,naturalFor:0,rich:false},
+  {x:29,y:10,rotation:2.9,naturalFor:1,rich:false},
+  {x:21,y:20,rotation:-1.55,naturalFor:2,rich:false},
+  {x:8,y:20,rotation:.15,naturalFor:null,rich:false},
+  {x:34,y:20,rotation:3.0,naturalFor:null,rich:false},
+  {x:21,y:14,rotation:1.55,naturalFor:null,rich:true}
+]}
+function paintTerrainCircle(cx,cy,r,type,blocked=false){for(let y=Math.floor(cy-r);y<=Math.ceil(cy+r);y++)for(let x=Math.floor(cx-r);x<=Math.ceil(cx+r);x++){const t=tileAt(x,y);if(!t||Math.hypot(x-cx,y-cy)>r+.2)continue;t.type=type;t.blocked=blocked}}
+function carveCorridor(a,b,width=1,type='lane'){const steps=Math.max(Math.abs(b.x-a.x),Math.abs(b.y-a.y))*2||1;for(let i=0;i<=steps;i++){const x=Math.round(a.x+(b.x-a.x)*i/steps),y=Math.round(a.y+(b.y-a.y)*i/steps);for(let oy=-width;oy<=width;oy++)for(let ox=-width;ox<=width;ox++){const t=tileAt(x+ox,y+oy);if(t){t.type=type;t.blocked=false}}}}
+function createTerrain(){terrain=[];for(let y=0;y<BOARD_H;y++)for(let x=0;x<BOARD_W;x++){let type='ground';const roll=rand();if(y>BOARD_H*.58&&roll<.34)type='grass';else if(y<BOARD_H*.42&&roll<.20)type='sand';else if(roll<.10)type='grass';terrain.push({x,y,type,blocked:false})}
+  const starts=startPositions(),sites=expansionPositions(),protectedPoints=[...starts,...sites,{x:BOARD_W/2,y:BOARD_H/2}];
+  for(let i=0;i<14;i++){const cx=3+Math.floor(rand()*(BOARD_W-6)),cy=3+Math.floor(rand()*(BOARD_H-6));if(protectedPoints.some(p=>Math.hypot(p.x-cx,p.y-cy)<5.5))continue;const rx=2+Math.floor(rand()*3),ry=1+Math.floor(rand()*3),kind=rand()<.68?'rock':'crystal';for(let y=cy-ry;y<=cy+ry;y++)for(let x=cx-rx;x<=cx+rx;x++){const t=tileAt(x,y);if(!t)continue;const ellipse=((x-cx)*(x-cx))/(rx*rx)+((y-cy)*(y-cy))/(ry*ry);if(ellipse<=1&&rand()<.84){t.type=kind;t.blocked=true}}}
+  for(const s of starts)paintTerrainCircle(s.x,s.y,5,'ground',false);
+  for(const site of sites)paintTerrainCircle(site.x,site.y,3.8,'expansion',false);
+  const center={x:21,y:14};
+  for(let i=0;i<starts.length;i++){const natural=sites.find(s=>s.naturalFor===i);carveCorridor(starts[i],natural,2,'lane');carveCorridor(natural,center,1,'lane')}
+  carveCorridor(sites[3],center,1,'lane');carveCorridor(sites[4],center,1,'lane');carveCorridor(sites[3],sites[2],1,'lane');carveCorridor(sites[4],sites[2],1,'lane');
+  for(const site of sites)paintTerrainCircle(site.x,site.y,2.5,'expansion',false);
+}
+function startPositions(){return [{x:6,y:6},{x:BOARD_W-7,y:6},{x:Math.floor(BOARD_W/2),y:BOARD_H-6}]}
+function startClear(x,y,r){return startPositions().some(s=>Math.hypot(s.x-x,s.y-y)<r)}
+function addNode(type,x,y,amount){resourceNodes.push({id:nextNodeId++,type,x,y,amount,maxAmount:amount,reservedBy:null})}
+function addResourceCluster(s,rotation=0){const spots=[[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3]];for(const [dx,dy] of spots){const rx=Math.round(dx*Math.cos(rotation)-dy*Math.sin(rotation)),ry=Math.round(dx*Math.sin(rotation)+dy*Math.cos(rotation));const x=clamp(s.x+rx,1,BOARD_W-2),y=clamp(s.y+ry,1,BOARD_H-2);const t=tileAt(x,y);if(t){t.blocked=false;t.type='mineral';addNode('mineral',x,y,900)}}
+  const gx=clamp(s.x-3,1,BOARD_W-2),gy=clamp(s.y+1,1,BOARD_H-2);tileAt(gx,gy).blocked=false;tileAt(gx,gy).type='gas';addNode('gas',gx,gy,1800);
+}
+function addExpansionCluster(site){const rotation=site.rotation||0,spots=[[2,0],[2,1],[1,2],[0,2],[-1,2]],mineralAmount=site.rich?1100:760,gasAmount=site.rich?2100:1450;for(const [dx,dy] of spots){const rx=Math.round(dx*Math.cos(rotation)-dy*Math.sin(rotation)),ry=Math.round(dx*Math.sin(rotation)+dy*Math.cos(rotation));const x=clamp(site.x+rx,1,BOARD_W-2),y=clamp(site.y+ry,1,BOARD_H-2),t=tileAt(x,y);if(t&&!resourceNodes.some(n=>n.x===x&&n.y===y)){t.blocked=false;t.type='mineral';addNode('mineral',x,y,mineralAmount)}}const gdx=-2,gdy=-1,gx=clamp(site.x+Math.round(gdx*Math.cos(rotation)-gdy*Math.sin(rotation)),1,BOARD_W-2),gy=clamp(site.y+Math.round(gdx*Math.sin(rotation)+gdy*Math.cos(rotation)),1,BOARD_H-2),gt=tileAt(gx,gy);if(gt&&!resourceNodes.some(n=>n.x===gx&&n.y===gy)){gt.blocked=false;gt.type='gas';addNode('gas',gx,gy,gasAmount)}}
+function makePlayer(idx,name,factionId,ai=false){return {idx,name,factionId,ai,minerals:360,gas:0,eliminated:false,kills:0,lastAi:0,attackWave:false,ready:true}}
+function addEntity(kind,type,faction,x,y,opts={}){const d=kind==='structure'?STRUCTURES[type]:UNITS[type]||{};const e={id:nextEntityId++,kind,type,faction,x,y,px:x,py:y,alive:true,hp:opts.hp??d.hp??35,maxHp:d.hp??35,shield:opts.shield??d.shield??0,maxShield:d.shield??0,complete:opts.complete??true,buildEnd:opts.buildEnd||0,moveReadyAt:opts.moveReadyAt||0,attackReadyAt:opts.attackReadyAt||0,miningReadyAt:opts.miningReadyAt||0,abilityReadyAt:0,targetId:null,order:'idle',miningNodeId:null,queue:opts.queue||[],nextLarvaAt:opts.nextLarvaAt||0,powered:true,decayTick:0};entities.push(e);markDirty();return e}
+function addLarva(f,x,y,sourceId){const p=nearestFreeAround(x,y,{kind:'larva',id:-1},2);if(!p)return null;const e={id:nextEntityId++,kind:'larva',type:'larva',faction:f,x:p.x,y:p.y,px:p.x,py:p.y,alive:true,hp:35,maxHp:35,shield:0,maxShield:0,complete:true,moveReadyAt:0,attackReadyAt:0,miningReadyAt:0,targetId:null,order:'idle',sourceId};entities.push(e);markDirty();return e}
+function createGame(slotConfig){mapSeed=Math.floor(Math.random()*0xffffffff);nextEntityId=1;nextNodeId=1;entities=[];resourceNodes=[];players=[];selectedId=null;interactionMode=null;gameOver=false;spectating=false;paused=false;pauseBtn.textContent='Pause';createTerrain();const starts=startPositions();
+  slotConfig.slice(0,3).forEach((s,i)=>{players.push(makePlayer(i,s.name,s.factionId,s.ai));addResourceCluster(starts[i],i===0?0:i===1?Math.PI/2:-Math.PI/2);const f=FACTIONS[s.factionId];const base=addEntity('structure',f.base,i,starts[i].x,starts[i].y,{nextLarvaAt:nowMs()+8000});const workerSpots=[[1,0],[0,1],[-1,0],[0,-1]];workerSpots.forEach(([dx,dy])=>addEntity('unit',f.worker,i,starts[i].x+dx,starts[i].y+dy));if(s.factionId==='brood'){addLarva(i,base.x,base.y,base.id);addLarva(i,base.x,base.y,base.id)}});
+  for(const site of expansionPositions())addExpansionCluster(site);
+  gameStarted=true;lastFrame=performance.now();overlay.style.display='none';endOverlay.style.display='none';initialCameraSet=false;focusOwnBase();markDirty();refreshUI(true);toast('Command base deployed. Expansion clearings are connected by broad lanes; all commands now live in the bottom panel.',4600)
+}
+function buildSoloSlots(){const used=[chosenFaction];const other=Object.keys(FACTIONS).filter(x=>!used.includes(x));const count=clamp(Number(chosenAiCount)||2,1,2);const slots=[{name:username||'Commander',factionId:chosenFaction,ai:false}];for(let i=0;i<count;i++)slots.push({name:`AI Commander ${i+1}`,factionId:other[i%other.length],ai:true});while(slots.length<3){const id=Object.keys(FACTIONS).find(x=>!slots.some(s=>s.factionId===x))||'frontier';slots.push({name:`AI Commander ${slots.length}`,factionId:id,ai:true})}return slots}
+
+// ---------- Movement / path / targeting ----------
+function lineClear(x0,y0,x1,y1,ignoreId=null){let dx=Math.abs(x1-x0),sx=x0<x1?1:-1,dy=-Math.abs(y1-y0),sy=y0<y1?1:-1,err=dx+dy;while(!(x0===x1&&y0===y1)){const e2=2*err;if(e2>=dy){err+=dy;x0+=sx}if(e2<=dx){err+=dx;y0+=sy}if(x0===x1&&y0===y1)break;const blocker=entityAt(x0,y0,ignoreId);if(blocker?.kind==='structure'||groundBlocked(x0,y0))return false}return true}
+function legalMovesFor(e){if(!e||e.kind!=='unit'||nowMs()<e.moveReadyAt||e.siegeMode)return[];const d=UNITS[e.type],out=[];const r=(d.move||2)+(e.chargeUntil>nowMs()?2:0);for(let y=e.y-r;y<=e.y+r;y++)for(let x=e.x-r;x<=e.x+r;x++){if(x===e.x&&y===e.y)continue;const distance=isFlying(e)?Math.max(Math.abs(x-e.x),Math.abs(y-e.y)):Math.abs(x-e.x)+Math.abs(y-e.y);if(distance>r||!validMoveTile(e,x,y))continue;if(!isFlying(e)&&!pathExists(e.x,e.y,x,y,r,e.id))continue;out.push({x,y})}return out}
+function pathExists(sx,sy,tx,ty,maxSteps,ignoreId){const q=[[sx,sy,0]],seen=new Set([`${sx},${sy}`]);while(q.length){const [x,y,d]=q.shift();if(x===tx&&y===ty)return true;if(d>=maxSteps)continue;for(const [dx,dy] of ORTHO){const nx=x+dx,ny=y+dy,k=`${nx},${ny}`;if(seen.has(k)||!inBounds(nx,ny)||groundBlocked(nx,ny))continue;const o=entityAt(nx,ny,ignoreId);if(o&&!(nx===tx&&ny===ty))continue;seen.add(k);q.push([nx,ny,d+1])}}return false}
+function moveEntity(e,x,y){if(!e||e.kind!=='unit'||e.siegeMode||!validMoveTile(e,x,y))return false;const legal=legalMovesFor(e).some(t=>t.x===x&&t.y===y);if(!legal)return false;releaseMining(e);e.x=x;e.y=y;e.moveReadyAt=nowMs()+effectiveMoveCd(e)*1000;e.chargeUntil=0;e.order=e.targetId?'attack':'move';spawnFx(x,y,factionOf(e.faction).color,6);if(selectedId===e.id)legalTiles=[];markDirty();return true}
+function attackRange(e){return e.kind==='structure'?STRUCTURES[e.type]?.attack?.range||0:UNITS[e.type]?.attack?.range||0}
+function attackDef(e){const base=e?.kind==='structure'?STRUCTURES[e.type]?.attack:UNITS[e?.type]?.attack;if(!base)return null;let out=base;if(e?.type==='siegeTank'&&e.siegeMode)out={...base,damage:(base.damage||0)+8,range:(base.range||0)+2,cooldown:(base.cooldown||1)*1.18,splash:Math.max(2,base.splash||0)};if(e?.bonusDamageOnce)out={...out,damage:(out.damage||0)+e.bonusDamageOnce};return out}
+function canTarget(attacker,target){if(!attacker||!target||target.alive===false||attacker.faction===target.faction)return false;const a=attackDef(attacker);if(!a)return false;const d=dist(attacker,target);if(d>a.range+.05||d<(a.minRange||0)-.05)return false;if(!hasTag(attacker,'flying')&&!lineClear(attacker.x,attacker.y,target.x,target.y,attacker.id)&&a.range>1)return false;return true}
+function issueAttack(e,target){if(!e||!target||e.faction===target.faction||!attackDef(e))return false;e.targetId=target.id;e.order='attack';markDirty();return true}
+function nearestEnemyInRange(e){let best=null,bd=1e9;for(const t of entities){if(t.alive===false||t.faction===e.faction||players[t.faction]?.eliminated)continue;if(canTarget(e,t)){const d=dist(e,t);if(d<bd){bd=d;best=t}}}return best}
+function damageAgainst(attacker,target){const a=attackDef(attacker);let damage=a.damage||0;for(const [tag,bonus] of Object.entries(a.bonuses||{}))if(hasTag(target,tag))damage+=bonus;return damage}
+function applyDamage(target,amount,attacker=null){if(target.alive===false)return;target.lastDamagedAt=nowMs();let left=amount;if(target.shield>0){const s=Math.min(target.shield,left);target.shield-=s;left-=s}if(left>0)target.hp-=left;floating.push({x:target.x+.5,y:target.y-.1,text:`-${Math.round(amount)}`,color:'#ff8792',life:1,max:1});if(target.hp<=0)killEntity(target,attacker)}
+function killEntity(e,attacker=null){if(e.alive===false)return;e.alive=false;releaseMining(e);if(attacker&&players[attacker.faction])players[attacker.faction].kills++;spawnFx(e.x,e.y,'#ff6f78',18);if(selectedId===e.id){selectedId=null;interactionMode=null}if(isBase(e))checkElimination(e.faction);markDirty()}
+function fireAt(e,target){const a=attackDef(e);if(!a||!canTarget(e,target)||nowMs()<e.attackReadyAt)return;e.attackReadyAt=nowMs()+effectiveAttackCd(e)*1000;e.order='attack';const dmg=damageAgainst(e,target);shots.push({x:e.x+.5,y:e.y+.5,tx:target.x+.5,ty:target.y+.5,color:factionOf(e.faction).color,life:.25,max:.25});applyDamage(target,dmg,e);if(e.bonusDamageOnce)e.bonusDamageOnce=0;
+  if(a.splash){for(const t of entities){if(t.alive===false||t.faction===e.faction||t.id===target.id)continue;if(dist(t,target)<=a.splash+.2)applyDamage(t,Math.round(dmg*.45),e)}}
+  if(a.chain){let origin=target;for(let i=0;i<a.chain;i++){const next=entities.filter(t=>t.alive!==false&&t.faction!==e.faction&&t.id!==origin.id&&dist(t,origin)<=2.2).sort((a,b)=>dist(a,origin)-dist(b,origin))[0];if(!next)break;applyDamage(next,Math.round(dmg*.45),e);origin=next}}
+  markDirty()}
+function updateCombat(dt){for(const e of entities){if(e.alive===false||!e.complete||players[e.faction]?.eliminated)continue;const a=attackDef(e);if(!a)continue;let target=entityById(e.targetId);if(!target||target.faction===e.faction||!canTarget(e,target)){if(target&&dist(e,target)>a.range+1)e.targetId=null;target=nearestEnemyInRange(e);if(target)e.targetId=target.id}if(target&&canTarget(e,target))fireAt(e,target)}}
+
+// ---------- Mining ----------
+function releaseMining(e){if(!e?.miningNodeId)return;const n=resourceNodes.find(n=>n.id===e.miningNodeId);if(n&&n.reservedBy===e.id)n.reservedBy=null;e.miningNodeId=null}
+function gasStructureOn(node,faction){return entities.find(e=>e.alive!==false&&e.complete&&e.faction===faction&&e.kind==='structure'&&STRUCTURES[e.type]?.gas&&e.x===node.x&&e.y===node.y)}
+function autoMiningNode(e){const mineral=nodeAt(e.x,e.y,'mineral');if(mineral&&(!mineral.reservedBy||mineral.reservedBy===e.id))return mineral;for(const [dx,dy] of ORTHO){const gas=nodeAt(e.x+dx,e.y+dy,'gas');if(gas&&gasStructureOn(gas,e.faction))return gas}return null}
+function updateMining(){const t=nowMs();for(const e of entities){if(e.alive===false||!isWorker(e)||players[e.faction]?.eliminated)continue;const n=autoMiningNode(e);if(!n){releaseMining(e);continue}if(n.type==='mineral'){if(n.reservedBy&&n.reservedBy!==e.id){releaseMining(e);continue}n.reservedBy=e.id}if(e.miningNodeId!==n.id){releaseMining(e);e.miningNodeId=n.id;if(n.type==='mineral')n.reservedBy=e.id;e.miningReadyAt=t+900*COOLDOWN_SCALE.mining}if(t>=e.miningReadyAt&&n.amount>0){const base=n.type==='mineral'?8:6;const bonus=players[e.faction].ai?(DIFFICULTY[chosenDifficulty]?.income||1):1;const gain=Math.min(n.amount,Math.max(1,Math.round(base*bonus)));n.amount-=gain;if(n.type==='mineral')players[e.faction].minerals+=gain;else players[e.faction].gas+=gain;e.miningReadyAt=t+effectiveMiningCd(n.type);floating.push({x:e.x+.5,y:e.y-.2,text:`+${gain}${n.type==='gas'?' gas':''}`,color:n.type==='gas'?'#b9a1ff':'#75d9ff',life:1.1,max:1.1});if(n.amount<=0)releaseMining(e);markDirty()}}}
+
+// ---------- Construction / power / production ----------
+function isPoweredTile(f,x,y){return playerStructures(f,'pylon').some(p=>Math.max(Math.abs(p.x-x),Math.abs(p.y-y))<=2)}
+function structurePowered(e){if(players[e.faction]?.factionId!=='ascendant'||e.type==='nexus'||e.type==='pylon'||e.type==='assimilator')return true;return isPoweredTile(e.faction,e.x,e.y)}
+function validBuildTile(worker,type,x,y){const d=STRUCTURES[type];if(!worker||!isWorker(worker)||worker.faction!==PLAYER&& !players[worker.faction]?.ai)return false;if(!inBounds(x,y)||Math.max(Math.abs(x-worker.x),Math.abs(y-worker.y))>1||occupiedFor({id:worker.id},x,y))return false;const node=nodeAt(x,y);if(d.gas)return !!node&&node.type==='gas'&&!gasStructureOn(node,worker.faction);if(node)return false;if(groundBlocked(x,y))return false;if(d.base){const nearestResource=Math.min(...resourceNodes.filter(n=>n.amount>0).map(n=>Math.hypot(n.x-x,n.y-y)));if(nearestResource>7)return false}
+  if(d.f==='ascendant'&&type!=='pylon'&&type!=='nexus'&&type!=='assimilator'&&!isPoweredTile(worker.faction,x,y))return false;return true}
+function issueBuild(worker,type,x,y){const d=STRUCTURES[type];if(!d||!structureUnlocked(worker.faction,type)||!canAfford(worker.faction,d.cost)||!validBuildTile(worker,type,x,y))return false;spend(worker.faction,d.cost);const end=nowMs()+d.time*1000;const structure=addEntity('structure',type,worker.faction,x,y,{complete:false,buildEnd:end,hp:Math.max(20,Math.round(d.hp*.12)),shield:0,nextLarvaAt:end+7000});structure.maxHp=d.hp;structure.maxShield=d.shield||0;structure.order='constructing';if(players[worker.faction].factionId==='brood'){worker.alive=false;releaseMining(worker);if(selectedId===worker.id)selectedId=structure.id}else{worker.order='building'}markDirty();return true}
+function completeConstruction(e){const d=STRUCTURES[e.type];e.complete=true;e.hp=d.hp;e.maxHp=d.hp;e.shield=d.shield||0;e.maxShield=d.shield||0;e.order='idle';e.powered=structurePowered(e);spawnFx(e.x,e.y,factionOf(e.faction).color,16);toast(`${players[e.faction]?.name||'Faction'} completed ${d.name}.`,1800);markDirty()}
+function canUseStructure(e){return e&&e.alive!==false&&e.kind==='structure'&&e.complete&&structurePowered(e)}
+function queueUnit(structure,type){const d=UNITS[type],sd=STRUCTURES[structure.type];if(!d||!sd?.produces?.includes(type)||!canUseStructure(structure)||!unitUnlocked(structure.faction,type))return false;if(structure.queue.length>=3)return false;if(!canAfford(structure.faction,d.cost))return false;if(supplyUsed(structure.faction)+d.supply>supplyCap(structure.faction))return false;spend(structure.faction,d.cost);const start=Math.max(nowMs(),structure.queue.length?structure.queue[structure.queue.length-1].finishAt:nowMs());structure.queue.push({type,startAt:start,finishAt:start+d.time*1000,cost:d.cost});markDirty();return true}
+function morphLarva(larva,type){const d=UNITS[type];if(!larva||larva.kind!=='larva'||players[larva.faction]?.factionId!=='brood'||!unitUnlocked(larva.faction,type))return false;if(!canAfford(larva.faction,d.cost)||supplyUsed(larva.faction)+d.supply>supplyCap(larva.faction))return false;spend(larva.faction,d.cost);larva.kind='cocoon';larva.morphType=type;larva.morphEnd=nowMs()+d.time*1000;larva.hp=55;larva.maxHp=55;larva.order='morphing';markDirty();return true}
+function spawnProducedUnit(structure,type){const p=nearestFreeAround(structure.x,structure.y,{kind:'unit',id:-1,type},3);if(!p)return false;addEntity('unit',type,structure.faction,p.x,p.y);spawnFx(p.x,p.y,factionOf(structure.faction).color,9);return true}
+function updateProduction(dt){const t=nowMs();for(const e of entities){if(e.alive===false)continue;if(e.kind==='structure'){e.powered=structurePowered(e);if(!e.complete&&t>=e.buildEnd){completeConstruction(e);continue}if(e.complete&&players[e.faction]?.factionId==='ascendant'&&!e.powered){e.hp-=dt*3.5;if(e.hp<=0)killEntity(e);continue}if(canUseStructure(e)&&e.queue?.length&&t>=e.queue[0].finishAt){const item=e.queue[0];if(spawnProducedUnit(e,item.type)){e.queue.shift();markDirty()}else item.finishAt=t+800}
+      const sd=STRUCTURES[e.type];if(e.complete&&sd?.larvaEvery){const existing=entities.filter(l=>l.alive!==false&&l.faction===e.faction&&(l.kind==='larva'||l.kind==='cocoon')&&l.sourceId===e.id).length;if(!e.nextLarvaAt)e.nextLarvaAt=t+sd.larvaEvery*1000;if(t>=e.nextLarvaAt){if(existing<sd.larvaCap)addLarva(e.faction,e.x,e.y,e.id);e.nextLarvaAt=t+sd.larvaEvery*1000}}
+    }else if(e.kind==='cocoon'&&t>=e.morphEnd){const type=e.morphType,d=UNITS[type];e.kind='unit';e.type=type;delete e.morphType;delete e.morphEnd;e.hp=d.hp;e.maxHp=d.hp;e.shield=d.shield||0;e.maxShield=d.shield||0;e.order='idle';spawnFx(e.x,e.y,factionOf(e.faction).color,10);markDirty()}}
+}
+function updateRegeneration(dt){for(const e of entities){if(e.alive===false)continue;const d=e.kind==='unit'?UNITS[e.type]:null;if(d?.regen&&e.hp<e.maxHp)e.hp=Math.min(e.maxHp,e.hp+d.regen*dt);if(e.maxShield>0&&e.shield<e.maxShield&&nowMs()-e.lastDamagedAt>3500)e.shield=Math.min(e.maxShield,e.shield+6*dt)}
+  for(const e of entities){const d=e.kind==='unit'?UNITS[e.type]:null;if(!d?.heal&&!d?.auraShield)continue;if(d.heal&&nowMs()>=e.abilityReadyAt){const ally=entities.filter(a=>a.alive!==false&&a.faction===e.faction&&a.id!==e.id&&hasTag(a,'biological')&&a.hp<a.maxHp&&dist(a,e)<=d.heal.range).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0];if(ally){ally.hp=Math.min(ally.maxHp,ally.hp+d.heal.amount);e.abilityReadyAt=nowMs()+d.heal.cooldown*1000*COOLDOWN_SCALE.ability;floating.push({x:ally.x+.5,y:ally.y-.2,text:`+${d.heal.amount}`,color:'#72e3a6',life:1,max:1})}}
+    if(d.auraShield){for(const ally of entities){if(ally.alive===false||ally.faction!==e.faction||ally.maxShield<=0||ally.shield>=ally.maxShield||dist(ally,e)>d.auraShield)continue;ally.shield=Math.min(ally.maxShield,ally.shield+4*dt)}}}}
+
+
+// ---------- Active unit abilities ----------
+function legalAbilityTiles(e,id){const a=ABILITIES[id];if(!e||!a||a.target!=='tile'||nowMs()<e.abilityReadyAt)return[];const out=[],r=a.range||4;for(let y=e.y-r;y<=e.y+r;y++)for(let x=e.x-r;x<=e.x+r;x++){if(!inBounds(x,y)||Math.hypot(x-e.x,y-e.y)>r+.05)continue;if(id==='jetLeap'){if(validMoveTile(e,x,y))out.push({x,y})}else out.push({x,y})}return out}
+function useAbility(e,id,payload={}){const a=ABILITIES[id];if(!e||e.kind!=='unit'||!a||!abilitiesFor(e).includes(id)||nowMs()<e.abilityReadyAt)return false;const finish=()=>{e.abilityReadyAt=nowMs()+effectiveAbilityCd(id)*1000;e.order=a.name;spawnFx(e.x,e.y,factionOf(e.faction).color,12);markDirty();return true};
+  if(id==='fieldSurge'){for(const ally of entities){if(ally.alive===false||ally.faction!==e.faction||!hasTag(ally,'biological')||dist(ally,e)>2.6)continue;ally.hp=Math.min(ally.maxHp,ally.hp+24);floating.push({x:ally.x+.5,y:ally.y-.2,text:'+24',color:'#72e3a6',life:1,max:1})}return finish()}
+  if(id==='jetLeap'){const x=Number(payload.x),y=Number(payload.y);if(!legalAbilityTiles(e,id).some(t=>t.x===x&&t.y===y))return false;releaseMining(e);e.x=x;e.y=y;e.moveReadyAt=nowMs()+effectiveMoveCd(e)*1000*.75;return finish()}
+  if(id==='siegeMode'){e.siegeMode=!e.siegeMode;e.moveReadyAt=Math.max(e.moveReadyAt,nowMs()+2200);e.targetId=null;toast(e.siegeMode?'Siege mode engaged: immobile, longer range and heavier splash.':'Siege mode released: movement restored.',1900);return finish()}
+  if(id==='psionicCharge'){e.moveReadyAt=0;e.chargeUntil=nowMs()+7000;return finish()}
+  if(id==='shieldPulse'){for(const ally of entities){if(ally.alive===false||ally.faction!==e.faction||ally.maxShield<=0||dist(ally,e)>2.8)continue;ally.shield=Math.min(ally.maxShield,ally.shield+32);floating.push({x:ally.x+.5,y:ally.y-.2,text:'+32 shield',color:'#c59cff',life:1,max:1})}return finish()}
+  if(id==='psionicStorm'){const x=Number(payload.x),y=Number(payload.y);if(!legalAbilityTiles(e,id).some(t=>t.x===x&&t.y===y))return false;for(const enemy of entities){if(enemy.alive===false||enemy.faction===e.faction||Math.hypot(enemy.x-x,enemy.y-y)>1.65)continue;applyDamage(enemy,28,e)}spawnFx(x,y,'#d8a7ff',24);return finish()}
+  if(id==='adrenalRush'){e.moveReadyAt=0;e.attackReadyAt=0;return finish()}
+  if(id==='burrowMend'){const gain=Math.min(55,e.maxHp-e.hp);e.hp+=gain;floating.push({x:e.x+.5,y:e.y-.2,text:`+${Math.round(gain)}`,color:'#72e3a6',life:1,max:1});return finish()}
+  if(id==='needleVolley'){e.attackReadyAt=0;e.bonusDamageOnce=8;return finish()}
+  if(id==='frenzy'){e.moveReadyAt=0;e.attackReadyAt=0;e.bonusDamageOnce=10;return finish()}
+  return false
+}
+
+// ---------- AI ----------
+function aiThinkAll(){const t=performance.now()/1000;for(const p of players){if(!p.ai||p.eliminated)continue;const cfg=DIFFICULTY[chosenDifficulty]||DIFFICULTY.medium;if(t-p.lastAi<cfg.thinkInterval)continue;p.lastAi=t;aiThink(p.idx,cfg)}}
+function aiThink(f,cfg){const faction=FACTIONS[players[f].factionId],workers=playerUnits(f).filter(isWorker),units=playerUnits(f).filter(e=>!isWorker(e)),style=AI_STYLE[chosenAiStyle]||1;let orders=0;const mayOrder=()=>orders<cfg.commandLimit;const record=ok=>{if(ok)orders++;return ok};
+  for(const w of workers){if(!mayOrder()||w.miningNodeId)continue;const gasReady=players[f].gas<180&&playerStructures(f).some(s=>STRUCTURES[s.type]?.gas);let target=null;if(gasReady){const gases=resourceNodes.filter(n=>n.type==='gas'&&n.amount>0&&gasStructureOn(n,f));for(const g of gases){const spots=ORTHO.map(([dx,dy])=>({x:g.x+dx,y:g.y+dy})).filter(p=>validMoveTile(w,p.x,p.y));if(spots.length){target=spots.sort((a,b)=>manhattan(w,a)-manhattan(w,b))[0];break}}}if(!target){const free=resourceNodes.filter(n=>n.type==='mineral'&&n.amount>0&&(!n.reservedBy||n.reservedBy===w.id));target=free.sort((a,b)=>manhattan(w,a)-manhattan(w,b))[0]}if(target&&nowMs()>=w.moveReadyAt)record(aiStepToward(w,target.x,target.y))}
+  if(workers.length<cfg.workerGoal&&players[f].minerals>=50&&Math.random()<cfg.trainChance){const base=playerStructures(f).find(b=>STRUCTURES[b.type]?.base);if(base&&base.queue.length<2)queueUnit(base,faction.worker)}
+  if(Math.random()<cfg.macroChance){const cap=supplyCap(f),used=supplyUsed(f);if(used>=cap-2&&cap<MAX_SUPPLY)aiBuildNear(f,faction.supply);if(!playerStructures(f).some(s=>STRUCTURES[s.type]?.gas)&&players[f].minerals>=100){const gas=resourceNodes.filter(n=>n.type==='gas'&&n.amount>0).sort((a,b)=>nearestBaseDistance(f,a)-nearestBaseDistance(f,b))[0];if(gas)aiBuildGas(f,faction.gas,gas)}if(playerStructures(f).filter(isBase).length<(cfg.desiredBases||1)&&players[f].minerals>STRUCTURES[faction.base].cost[0]+180&&rand()<(cfg.expandChance||0))record(aiExpand(f,cfg));const plan=BUILD_ORDER[players[f].factionId].filter(t=>!STRUCTURES[t].base&&!STRUCTURES[t].gas&&!STRUCTURES[t].supply);for(const type of plan){if(countType(f,type)===0&&structureUnlocked(f,type)&&canAfford(f,STRUCTURES[type].cost)){aiBuildNear(f,type);break}}}
+  if(Math.random()<cfg.trainChance){if(players[f].factionId==='brood')aiMorphLarva(f,cfg);else aiQueueArmy(f,cfg)}
+  const aggression=cfg.aggression*style;if(units.length>=cfg.attackAt&&aggression*(units.length/8)>rand())aiAttack(f,units,cfg);else if(units.length)aiDefend(f,units,cfg)
+}
+
+function nearestBaseDistance(f,p){const b=playerStructures(f).find(e=>STRUCTURES[e.type]?.base);return b?manhattan(b,p):999}
+function aiWorkerForBuild(f){return playerUnits(f).filter(isWorker).sort((a,b)=>(a.miningNodeId?1:0)-(b.miningNodeId?1:0))[0]}
+function aiBuildNear(f,type){const w=aiWorkerForBuild(f),d=STRUCTURES[type];if(!w||!d||!structureUnlocked(f,type)||!canAfford(f,d.cost))return false;for(const [dx,dy] of DIR8){const x=w.x+dx,y=w.y+dy;if(validBuildTile(w,type,x,y))return issueBuild(w,type,x,y)}const base=playerStructures(f)[0];if(base&&nowMs()>=w.moveReadyAt)aiStepToward(w,base.x+(rand()<.5?3:-3),base.y+(rand()<.5?3:-3));return false}
+function aiBuildGas(f,type,node){const w=aiWorkerForBuild(f);if(!w)return false;if(Math.max(Math.abs(w.x-node.x),Math.abs(w.y-node.y))<=1)return issueBuild(w,type,node.x,node.y);if(nowMs()>=w.moveReadyAt)aiStepToward(w,node.x,node.y);return false}
+function aiExpand(f,cfg){const faction=FACTIONS[players[f].factionId],bases=playerStructures(f).filter(isBase);if(bases.length>=(cfg.desiredBases||1)||!canAfford(f,STRUCTURES[faction.base].cost))return false;const sites=expansionPositions().filter(site=>!entities.some(e=>e.alive!==false&&isBase(e)&&Math.hypot(e.x-site.x,e.y-site.y)<4));if(!sites.length)return false;sites.sort((a,b)=>Math.min(...bases.map(base=>manhattan(base,a)))-Math.min(...bases.map(base=>manhattan(base,b))));const site=sites[0],workers=playerUnits(f).filter(isWorker).sort((a,b)=>manhattan(a,site)-manhattan(b,site)),w=workers[0];if(!w)return false;const adjacent=Math.max(Math.abs(w.x-site.x),Math.abs(w.y-site.y))<=1&&!((w.x===site.x)&&(w.y===site.y));if(adjacent&&validBuildTile(w,faction.base,site.x,site.y))return issueBuild(w,faction.base,site.x,site.y);const stands=DIR8.map(([dx,dy])=>({x:site.x+dx,y:site.y+dy})).filter(p=>validMoveTile(w,p.x,p.y));if(!stands.length)return false;stands.sort((a,b)=>manhattan(w,a)-manhattan(w,b));return nowMs()>=w.moveReadyAt?aiStepToward(w,stands[0].x,stands[0].y):false}
+function aiQueueArmy(f,cfg=DIFFICULTY.medium){const structures=playerStructures(f).filter(s=>STRUCTURES[s.type]?.produces?.length&&s.queue.length<2&&canUseStructure(s)).slice(0,Math.max(1,Math.ceil(cfg.commandLimit/4)));for(const s of structures){const options=STRUCTURES[s.type].produces.filter(t=>unitUnlocked(f,t)&&canAfford(f,UNITS[t].cost)&&supplyUsed(f)+UNITS[t].supply<=supplyCap(f));if(options.length){options.sort((a,b)=>(UNITS[b].cost[0]+UNITS[b].cost[1]*1.4)-(UNITS[a].cost[0]+UNITS[a].cost[1]*1.4));queueUnit(s,options[Math.floor(rand()*Math.min(3,options.length))])}}}
+function aiMorphLarva(f,cfg=DIFFICULTY.medium){const larva=entities.filter(e=>e.alive!==false&&e.faction===f&&e.kind==='larva');for(const l of larva.slice(0,Math.max(1,Math.ceil(cfg.commandLimit/6)))){const options=ROSTER_ORDER.brood.filter(t=>unitUnlocked(f,t)&&canAfford(f,UNITS[t].cost)&&supplyUsed(f)+UNITS[t].supply<=supplyCap(f));if(options.length){const combat=options.filter(t=>!UNITS[t].worker);const pick=playerUnits(f).filter(isWorker).length<cfg.workerGoal?'drone':combat[Math.floor(rand()*combat.length)]||'zergling';morphLarva(l,pick)}}}
+function aiAttack(f,units,cfg=DIFFICULTY.medium){const enemyBases=entities.filter(e=>e.alive!==false&&e.faction!==f&&isBase(e));if(!enemyBases.length)return;const target=enemyBases.sort((a,b)=>Math.min(...units.map(u=>dist(u,a)))-Math.min(...units.map(u=>dist(u,b))))[0];for(const u of units.slice(0,cfg.commandLimit)){if(canTarget(u,target))issueAttack(u,target);else if(nowMs()>=u.moveReadyAt)aiStepToward(u,target.x,target.y)}}
+function aiDefend(f,units,cfg=DIFFICULTY.medium){const base=playerStructures(f).find(isBase);if(!base)return;const threat=entities.filter(e=>e.alive!==false&&e.faction!==f&&dist(e,base)<8).sort((a,b)=>dist(a,base)-dist(b,base))[0];if(threat){for(const u of units.slice(0,cfg.commandLimit)){if(canTarget(u,threat))issueAttack(u,threat);else if(nowMs()>=u.moveReadyAt)aiStepToward(u,threat.x,threat.y)}}}
+function aiStepToward(e,tx,ty){const legal=legalMovesFor(e);if(!legal.length)return false;if(isFlying(e)){legal.sort((a,b)=>manhattan(a,{x:tx,y:ty})-manhattan(b,{x:tx,y:ty}));return moveEntity(e,legal[0].x,legal[0].y)}const startKey=`${e.x},${e.y}`,queue=[{x:e.x,y:e.y}],prev=new Map([[startKey,null]]);let best={x:e.x,y:e.y},bestScore=manhattan(e,{x:tx,y:ty});for(let qi=0;qi<queue.length;qi++){const cur=queue[qi],score=Math.abs(cur.x-tx)+Math.abs(cur.y-ty);if(score<bestScore){best=cur;bestScore=score;if(score===0)break}for(const [dx,dy] of ORTHO){const nx=cur.x+dx,ny=cur.y+dy,key=`${nx},${ny}`;if(prev.has(key)||!inBounds(nx,ny)||groundBlocked(nx,ny))continue;const occupant=entityAt(nx,ny,e.id);if(occupant)continue;prev.set(key,`${cur.x},${cur.y}`);queue.push({x:nx,y:ny})}}if(best.x===e.x&&best.y===e.y)return false;const path=[];let key=`${best.x},${best.y}`;while(key&&key!==startKey){const [x,y]=key.split(',').map(Number);path.push({x,y});key=prev.get(key)}path.reverse();const legalSet=new Set(legal.map(p=>`${p.x},${p.y}`));let chosen=null;for(const p of path){if(legalSet.has(`${p.x},${p.y}`))chosen=p;else break}if(!chosen){legal.sort((a,b)=>manhattan(a,{x:tx,y:ty})-manhattan(b,{x:tx,y:ty}));chosen=legal[0]}return moveEntity(e,chosen.x,chosen.y)}
+
+// ---------- Victory ----------
+function checkElimination(f){if(playerStructures(f).some(isBase))return;players[f].eliminated=true;for(const e of entities)if(e.faction===f)e.targetId=null;toast(`${players[f].name} has lost every command base.`,3200);const alive=players.filter(p=>!p.eliminated);if(alive.length<=1){gameOver=true;const winner=alive[0];endOverlay.style.display='flex';if(winner?.idx===PLAYER){endTitle.textContent='Victory';endText.textContent='Your economy, technology, and army broke every opposing command base.'}else{endTitle.textContent='Defeat';endText.textContent=`${winner?.name||'An enemy commander'} controls the battlefield.`}markDirty()}}
+
+// ---------- Commands and multiplayer ----------
+function serializeEntity(e){const out={...e};delete out.px;delete out.py;return out}
+function serializeState(){return {gameKey:NET_KEY,version:++stateVersion,updatedAtMs:nowMs(),updatedBy:username,controller:controllerName,mapSeed,players,entities:entities.filter(e=>e.alive!==false).map(serializeEntity),resourceNodes,terrain:terrain.map(t=>t.type),gameOver,chosenDifficulty,chosenAiStyle}}
+function applyRemoteState(data){if(!data||data.gameKey!==NET_KEY||Number(data.version||0)<stateVersion)return;const firstView=!gameStarted||!initialCameraSet;applyingRemote=true;try{stateVersion=Number(data.version||0);mapSeed=data.mapSeed||mapSeed;players=Array.isArray(data.players)?data.players:players;resourceNodes=Array.isArray(data.resourceNodes)?data.resourceNodes:resourceNodes;chosenDifficulty=data.chosenDifficulty||chosenDifficulty;chosenAiStyle=data.chosenAiStyle||chosenAiStyle;if(Array.isArray(data.terrain)&&data.terrain.length===BOARD_W*BOARD_H){terrain=data.terrain.map((type,i)=>({x:i%BOARD_W,y:Math.floor(i/BOARD_W),type,blocked:type==='rock'||type==='crystal'}))}const old=new Map(entities.map(e=>[e.id,e]));entities=(data.entities||[]).map(re=>{const o=old.get(re.id);return {...re,px:o?.px??re.x,py:o?.py??re.y}});nextEntityId=Math.max(1,...entities.map(e=>e.id+1));gameStarted=true;gameOver=!!data.gameOver;overlay.style.display='none';if(!selected())selectedId=null;if(firstView)focusOwnBase();refreshUI(true)}finally{applyingRemote=false}}
+async function writeState(force=false){if(!lobbyId||!isController||!gameStarted||(!stateDirty&&!force)||nowMs()-lastStateWrite<STATE_WRITE_MS&&!force)return;lastStateWrite=nowMs();stateDirty=false;try{await setDoc(stateRef,serializeState(),{merge:false})}catch(e){stateDirty=true;console.warn('state write failed',e)}}
+function leaseFresh(l=controllerLease){return l&&Number(l.expiresAtMs||0)>nowMs()}
+function activeControllerCandidate(){const active=onlinePresence.slice().sort((a,b)=>{const ah=a.username===lobbyData?.host?0:1,bh=b.username===lobbyData?.host?0:1;return ah-bh||a.slot-b.slot||String(a.username).localeCompare(String(b.username))});return active[0]}
+async function refreshPresenceAndLease(){if(!lobbyRef||!auth.currentUser)return;const uid=auth.currentUser.uid;try{await setDoc(presenceRef,{username,uid,slot:PLAYER,lastSeenMs:nowMs(),lastSeenAt:serverTimestamp()},{merge:true})}catch(e){}
+  try{await runTransaction(db,async tx=>{const snap=await tx.get(lobbyRef);if(!snap.exists())return;const data=snap.data(),current=data.chessStarfrontController||null;const candidate=activeControllerCandidate();const mayClaim=!leaseFresh(current)||current.ownerUid===uid||!candidate||candidate.uid===uid;if(!mayClaim){controllerLease=current;return}const next={ownerUid:uid,ownerName:username,expiresAtMs:nowMs()+CONTROLLER_LEASE_MS,epoch:(current?.ownerUid===uid?current.epoch||1:(current?.epoch||0)+1)};tx.set(lobbyRef,{chessStarfrontController:next,updatedAt:serverTimestamp()},{merge:true});controllerLease=next})}catch(e){}
+  const was=isController;isController=controllerLease?.ownerUid===uid&&leaseFresh();controllerName=controllerLease?.ownerName||lobbyData?.host||'';if(was!==isController){setStatus(isController?'You are simulating the shared battlefield.':`Synced through ${controllerName||'controller'}`);manageCommandListener();if(isController&&gameStarted)markDirty()}}
+function updatePresenceFromLobby(){const map=lobbyData?.chessStarfrontPresence||{};onlinePresence=Object.values(map).filter(p=>nowMs()-Number(p.lastSeenMs||0)<PRESENCE_STALE_MS)}
+async function publishPresenceInline(){if(!lobbyRef||!auth.currentUser)return;const key=safeId(username);try{await setDoc(lobbyRef,{chessStarfrontPresence:{[key]:{username,uid:auth.currentUser.uid,slot:PLAYER,lastSeenMs:nowMs()}},updatedAt:serverTimestamp()},{merge:true})}catch(e){}}
+function manageCommandListener(){if(commandUnsub){commandUnsub();commandUnsub=null}if(!isController||!lobbyId)return;commandUnsub=onSnapshot(commandCollection(),snap=>{for(const ch of snap.docChanges()){if(ch.type!=='added')continue;const data=ch.doc.data(),id=ch.doc.id;if(processedCommands.has(id))continue;processedCommands.add(id);if(nowMs()-Number(data.createdAtMs||0)<10000)applyCommand(data);deleteDoc(commandDoc(id)).catch(()=>{})}})}
+async function sendCommand(command){command={...command,by:username,slot:PLAYER,createdAtMs:nowMs(),id:`${safeId(username)}_${nowMs()}_${Math.floor(Math.random()*99999)}`};if(!lobbyId||isController){applyCommand(command);return}try{await setDoc(commandDoc(command.id),command)}catch(e){toast('Command could not reach Firebase.',2600)}}
+function applyCommand(c){if(!gameStarted)return;const e=entityById(c.entityId);if(e&&e.faction!==c.slot)return;switch(c.type){case'move':moveEntity(e,c.x,c.y);break;case'attack':issueAttack(e,entityById(c.targetId));break;case'build':issueBuild(e,c.buildType,c.x,c.y);break;case'train':queueUnit(e,c.unitType);break;case'morph':morphLarva(e,c.unitType);break;case'ability':useAbility(e,c.abilityId,{x:c.x,y:c.y,targetId:c.targetId});break;case'cancelQueue':if(e?.queue?.length){const item=e.queue.pop();refund(e.faction,item.cost);markDirty()}break;case'stop':if(e){e.targetId=null;e.order='idle';markDirty()}break}refreshUI(true)}
+async function bootNetwork(){localStorage.setItem('gh.username',username);await new Promise(resolve=>{const unsub=onAuthStateChanged(auth,u=>{if(u){unsub();resolve()}});if(!auth.currentUser)signInAnonymously(auth).catch(()=>resolve())});if(!lobbyId){setStatus('Local solo simulation');PLAYER=0;renderStartMenu();overlay.style.display='flex';return}
+  try{lobbyRef=doc(db,'lobbies',lobbyId);stateRef=stateDoc();presenceRef=doc(db,'lobbies',lobbyId,`${NET_KEY}_presence`,safeId(username));const snap=await getDoc(lobbyRef);if(!snap.exists())throw new Error('Lobby not found');lobbyData=snap.data();humanNames=(Array.isArray(lobbyData.players)?lobbyData.players:[username]).slice(0,3);if(!humanNames.includes(username))humanNames.unshift(username);humanNames=humanNames.slice(0,3);PLAYER=Math.max(0,humanNames.indexOf(username));difficultyBox.style.display='none';aiCountBox.style.display='none';aiStyleBox.style.display='none';startStatus.textContent=`Multiplayer lobby ${lobbyId}: choose a faction and deploy. The match begins when everyone is ready, or 12 seconds after the first ready player.`;setStatus('Connecting to shared battlefield…');
+    lobbyUnsub=onSnapshot(lobbyRef,s=>{if(!s.exists())return;lobbyData=s.data();controllerLease=lobbyData.chessStarfrontController||controllerLease;updatePresenceFromLobby();maybeInitializeMultiplayer();renderStartStatus()});
+    stateUnsub=onSnapshot(stateRef,s=>{if(s.exists()&&!isController)applyRemoteState(s.data())});
+    const existing=await getDoc(stateRef);if(existing.exists()){applyRemoteState(existing.data());overlay.style.display='none'}
+    await publishPresenceInline();await refreshPresenceAndLease();presenceTimer=setInterval(async()=>{await publishPresenceInline();await refreshPresenceAndLease()},CONTROLLER_RENEW_MS);controllerTimer=setInterval(()=>writeState(false),STATE_WRITE_MS);
+  }catch(e){console.warn(e);lobbyId='';setStatus('Lobby unavailable — local simulation');toast('Lobby connection failed. Starting options remain available locally.',3500);difficultyBox.style.display='block';aiCountBox.style.display='block';aiStyleBox.style.display='block'}renderStartMenu();if(!gameStarted)overlay.style.display='flex'}
+async function publishReady(){if(!lobbyRef)return;const key=safeId(username);const pick={factionId:chosenFaction,ready:true,readyAtMs:nowMs(),username};try{await setDoc(lobbyRef,{chessStarfrontReady:{[key]:pick},updatedAt:serverTimestamp()},{merge:true});startBtn.disabled=true;startBtn.textContent='Ready — Waiting for Commanders';startStatus.textContent='Your faction is locked. Waiting for the shared match to initialize.'}catch(e){toast('Could not lock in your faction.',2500)}}
+function renderStartStatus(){if(!lobbyId||!lobbyData)return;const ready=lobbyData.chessStarfrontReady||{},count=humanNames.filter(n=>ready[safeId(n)]?.ready).length;startStatus.textContent=`${count}/${humanNames.length} commanders ready. Match starts when all are ready, or 12 seconds after the first lock-in.`}
+async function maybeInitializeMultiplayer(){if(!lobbyId||gameStarted||!isController||!lobbyData)return;const ready=lobbyData.chessStarfrontReady||{},records=humanNames.map(n=>ready[safeId(n)]).filter(Boolean),all=records.length>=humanNames.length&&records.every(r=>r.ready),first=Math.min(...records.map(r=>Number(r.readyAtMs||Infinity)));if(!all&&(!Number.isFinite(first)||nowMs()-first<12000))return;const snap=await getDoc(stateRef);if(snap.exists()){applyRemoteState(snap.data());return}const used=[];const slots=humanNames.map((name,i)=>{const id=ready[safeId(name)]?.factionId||Object.keys(FACTIONS)[i%3];used.push(id);return{name,factionId:id,ai:false}});while(slots.length<3){const id=Object.keys(FACTIONS).find(f=>!used.includes(f))||Object.keys(FACTIONS)[slots.length%3];used.push(id);slots.push({name:`AI Commander ${slots.length-humanNames.length+1}`,factionId:id,ai:true})}chosenDifficulty='medium';chosenAiStyle='balanced';createGame(slots);stateDirty=true;await writeState(true)}
+
+// ---------- UI / player actions ----------
+function renderStartMenu(){factionGrid.innerHTML='';for(const f of Object.values(FACTIONS)){const b=document.createElement('button');b.className='factionCard'+(chosenFaction===f.id?' chosen':'');b.dataset.faction=f.id;b.innerHTML=`<h3>${f.icon} ${f.name}</h3><p>${f.summary}</p><span class="factionTag">${f.id==='frontier'?'Mechanical production':f.id==='ascendant'?'Power field warfare':'Larva evolution'}</span>`;b.onclick=()=>{chosenFaction=f.id;localStorage.setItem('csf.faction',f.id);renderStartMenu()};factionGrid.appendChild(b)}difficultySelect.value=chosenDifficulty;aiCountSelect.value=String(chosenAiCount);aiStyleSelect.value=chosenAiStyle;difficultyNote.textContent=(DIFFICULTY[chosenDifficulty]||DIFFICULTY.medium).label;renderStartStatus()}
+function refreshLegalTiles(){const e=selected();if(!e||!ownEntity(e)){legalTiles=[];return}if(interactionMode==='build'&&isWorker(e)&&interactionPayload){legalTiles=[];for(let y=e.y-1;y<=e.y+1;y++)for(let x=e.x-1;x<=e.x+1;x++)if(validBuildTile(e,interactionPayload,x,y))legalTiles.push({x,y});return}if(interactionMode==='ability'&&interactionPayload){legalTiles=legalAbilityTiles(e,interactionPayload);return}if(e.kind==='unit'&&(interactionMode==='move'||interactionMode===null))legalTiles=legalMovesFor(e);else if(interactionMode!=='attack')legalTiles=[]}
+function refreshUI(force=false){if(!gameStarted){renderStartMenu();return}const p=players[PLAYER];mineralsText.textContent=Math.floor(p?.minerals||0);gasText.textContent=Math.floor(p?.gas||0);supplyText.textContent=`${supplyUsed(PLAYER)} / ${supplyCap(PLAYER)}`;armyText.textContent=playerUnits(PLAYER).filter(e=>!isWorker(e)).length;refreshLegalTiles();renderSelection();renderCommandButtons();renderSidePanel();renderProductionQueue();drawMinimap()}
+function selectEntity(e){selectedId=e?.id||null;interactionMode=null;interactionPayload=null;refreshLegalTiles();refreshUI(true)}
+function renderSelection(){const e=selected(),d=defOf(e);if(!e||!d){selectionName.textContent='No selection';selectionMeta.textContent='Choose one of your units or structures.';selectionOrder.textContent='Movement, attacks, mining, construction, and production use separate timers.';hpFill.style.width='0%';cooldownGrid.innerHTML='<div class="coolChip"><span>Move</span><b>—</b></div><div class="coolChip"><span>Attack</span><b>—</b></div><div class="coolChip"><span>Mine</span><b>—</b></div><div class="coolChip"><span>Ability</span><b>—</b></div>';return}selectionName.textContent=`${d.icon||''} ${d.name}${ownEntity(e)?'':' — Enemy'}`;const tags=(e.kind==='unit'?UNITS[e.type]?.tags||[]:e.kind==='structure'?['structure']:[]).map(t=>TAG_LABEL[t]||t).join(' · ');selectionMeta.textContent=`HP ${Math.max(0,Math.ceil(e.hp))}/${e.maxHp}${e.maxShield?` · Shield ${Math.ceil(e.shield)}/${e.maxShield}`:''}${tags?` · ${tags}`:''}`;const status=e.complete===false?`Constructing ${Math.max(0,Math.ceil((e.buildEnd-nowMs())/1000))}s`:e.kind==='cocoon'?`Morphing ${Math.max(0,Math.ceil((e.morphEnd-nowMs())/1000))}s`:e.siegeMode?'Siege mode: movement locked, weapon range increased':e.miningNodeId?`Mining ${resourceNodes.find(n=>n.id===e.miningNodeId)?.type||''}; movement remains independent`:e.queue?.length?`Queue: ${e.queue.map(q=>UNITS[q.type]?.name).join(' → ')}`:e.powered===false?'UNPOWERED — disabled and decaying':e.order||'idle';selectionOrder.textContent=status;hpFill.style.width=`${clamp(e.hp/e.maxHp*100,0,100)}%`;const move=e.kind==='unit'?cooldownSeconds(e.moveReadyAt):null,attack=attackDef(e)?cooldownSeconds(e.attackReadyAt):null,mine=isWorker(e)&&e.miningNodeId?cooldownSeconds(e.miningReadyAt):null,ability=abilitiesFor(e).length?cooldownSeconds(e.abilityReadyAt):null;const chips=[['Move',move],['Attack',attack],['Mine',mine],['Ability',ability]];cooldownGrid.innerHTML=chips.map(([label,value])=>`<div class="coolChip ${value!==null&&value<=.05?'ready':''}"><span>${label}</span><b>${value===null?'—':fmtCd(value)}</b></div>`).join('')}
+function renderProductionQueue(){productionQueue.innerHTML='';productionQueue.classList.remove('visible');const e=selected();if(!e)return;const now=nowMs(),items=[];if(e.complete===false&&e.kind==='structure'){const d=STRUCTURES[e.type],start=(e.buildEnd||now)-(d?.time||1)*1000,end=e.buildEnd||now,remain=Math.max(0,(end-now)/1000),pct=clamp((now-start)/Math.max(1,end-start),0,1);items.push({name:d?.name||'Structure',icon:d?.icon||'⌂',remain,pct,state:'Building'})}else if(e.kind==='cocoon'){const d=UNITS[e.morphType],start=(e.morphEnd||now)-(d?.time||1)*1000,end=e.morphEnd||now,remain=Math.max(0,(end-now)/1000),pct=clamp((now-start)/Math.max(1,end-start),0,1);items.push({name:d?.name||'Organism',icon:d?.icon||'◉',remain,pct,state:'Morphing'})}else if(e.kind==='structure'&&e.queue?.length){e.queue.forEach((item,index)=>{const d=UNITS[item.type],fallbackStart=index===0?(item.finishAt-(d?.time||1)*1000):(e.queue[index-1]?.finishAt||now),start=item.startAt??fallbackStart,end=item.finishAt||start+(d?.time||1)*1000,active=now>=start,remain=Math.max(0,(end-now)/1000),pct=active?clamp((now-start)/Math.max(1,end-start),0,1):0;items.push({name:d?.name||item.type,icon:d?.icon||'●',remain,pct,state:active?'Training':`Queued ${index+1}`})})}if(!items.length)return;productionQueue.classList.add('visible');const title=document.createElement('div');title.className='queueTitle';title.textContent='Live Queue';productionQueue.appendChild(title);for(const item of items){const wrap=document.createElement('div');wrap.className='queueItem';const deg=Math.round(item.pct*360);wrap.innerHTML=`<div class="queueCircle" style="background:conic-gradient(#69b8ff ${deg}deg,rgba(255,255,255,.08) ${deg}deg)"><b>${item.remain>0?fmtCd(item.remain):'Ready'}</b></div><div class="queueInfo">${item.icon} ${item.name}<small>${item.state} · ${Math.round(item.pct*100)}%</small></div>`;productionQueue.appendChild(wrap)}}
+
+function renderCommandButtons(){commandButtons.innerHTML='';abilityButtons.innerHTML='';const e=selected();const add=(host,label,action,disabled=false,active=false,sub='',title='')=>{const b=document.createElement('button');b.className='cmdBtn'+(active?' active':'');b.innerHTML=`${label}${sub?`<small>${sub}</small>`:''}`;b.disabled=disabled;b.title=title||sub;b.onclick=action;host.appendChild(b);return b};if(!e){contextMenuTitle.textContent='Context Actions';add(commandButtons,'Select Unit',()=>{},true,false,'Click battlefield');add(commandButtons,'Pan / Zoom',()=>{},true,false,'Drag or scroll');add(commandButtons,'Center Base',()=>focusOwnBase(),false,false,'Return home');contextSummary.textContent='Select one of your units, workers, larva, or structures to reveal every available action here.';hintLine.textContent='Workers mine automatically. One worker may occupy each mineral patch; gas miners stand beside a completed gas structure.';return}const mine=ownEntity(e);if(e.kind==='unit'){const moveCd=cooldownSeconds(e.moveReadyAt),atkCd=cooldownSeconds(e.attackReadyAt);add(commandButtons,'Move',()=>{interactionMode='move';interactionPayload=null;refreshLegalTiles();refreshUI()},!mine||moveCd>0||e.siegeMode,interactionMode==='move',e.siegeMode?'Sieged':fmtCd(moveCd));add(commandButtons,'Attack',()=>{interactionMode='attack';interactionPayload=null;legalTiles=[];refreshUI()},!mine||!attackDef(e),interactionMode==='attack',attackDef(e)?fmtCd(atkCd):'No weapon');add(commandButtons,'Stop',()=>sendCommand({type:'stop',entityId:e.id}),!mine,false,'Clear target');add(commandButtons,e.targetId?'Pursuing':'Hold / Auto',()=>{e.targetId=null;e.order='hold';markDirty();refreshUI()},!mine,false,e.targetId?'Target set':'Guard range');if(e.miningNodeId)add(commandButtons,'Leave Patch',()=>{interactionMode='move';refreshLegalTiles();refreshUI()},!mine,false,'Choose move tile');add(commandButtons,'Center Unit',()=>centerOn(e.x,e.y),false,false,'Focus camera')}
+  if(e.kind==='structure'){add(commandButtons,'Center',()=>centerOn(e.x,e.y),false,false,'Focus camera');add(commandButtons,'Cancel Last',()=>sendCommand({type:'cancelQueue',entityId:e.id}),!mine||!e.queue?.length,false,e.queue?.length?`${e.queue.length} queued`:'Empty');add(commandButtons,e.powered===false?'Unpowered':'Operational',()=>{},true,false,e.powered===false?'Needs Pylon':'Online')}
+  if(e.kind==='larva'){add(commandButtons,'Center Larva',()=>centerOn(e.x,e.y),false,false,'Focus camera');add(commandButtons,'Morph Ready',()=>{},true,false,'Choose below')}
+  if(e.kind==='cocoon'){add(commandButtons,'Center Cocoon',()=>centerOn(e.x,e.y),false,false,'Focus camera');add(commandButtons,'Morphing…',()=>{},true,false,fmtCd(cooldownSeconds(e.morphEnd)))}
+  if(isWorker(e)){contextMenuTitle.textContent='Construction';add(abilityButtons,'Basic Structures',()=>{buildTier='basic';renderCommandButtons();renderSidePanel()},!mine,buildTier==='basic','Economy & core');add(abilityButtons,'Advanced Structures',()=>{buildTier='advanced';renderCommandButtons();renderSidePanel()},!mine,buildTier==='advanced','Tech & defense')}
+  else if(e.kind==='structure')contextMenuTitle.textContent=STRUCTURES[e.type]?.produces?.length?'Training & Production':'Structure Status';
+  else if(e.kind==='larva')contextMenuTitle.textContent='Morph Organisms';
+  else if(e.kind==='cocoon')contextMenuTitle.textContent='Morph Progress';
+  else{const ids=abilitiesFor(e);contextMenuTitle.textContent=ids.length?'Unit Abilities':'Unit Status';for(const id of ids){const a=ABILITIES[id],remain=cooldownSeconds(e.abilityReadyAt);add(abilityButtons,`${a.icon} ${a.name}`,()=>{if(a.target==='tile'){interactionMode='ability';interactionPayload=id;refreshLegalTiles();refreshUI()}else sendCommand({type:'ability',entityId:e.id,abilityId:id})},!mine||remain>0,interactionMode==='ability'&&interactionPayload===id,fmtCd(remain),a.desc)}if(!ids.length)add(abilityButtons,'No Active Ability',()=>{},true,false,'Passive troop')}
+  hintLine.textContent=interactionMode==='ability'?`Choose a highlighted tile for ${ABILITIES[interactionPayload]?.name||'the ability'}.`:interactionMode==='attack'?'Click an enemy to assign a persistent attack target.':interactionMode==='build'?'Click a highlighted adjacent construction tile.':'Movement, attacks, mining, abilities, construction, and training all recharge independently.'
+}
+function renderSidePanel(){actionList.innerHTML='';actionList.className='';const e=selected(),p=players[PLAYER];if(!e||!ownEntity(e)){contextSummary.textContent=e?'Enemy selected. You can inspect its health and cooldowns but cannot issue commands.':'Select one of your pieces to see commands, abilities, buildings, or training options.';return}
+  if(isWorker(e)){actionList.className='actionGrid';const basic=new Set(BASIC_BUILDINGS[p.factionId]||[]),types=BUILD_ORDER[p.factionId].filter(type=>(buildTier==='basic')===basic.has(type));contextSummary.textContent=buildTier==='basic'?'Economy, supply, gas, first production, defenses, and expansion bases.':'Higher technology and specialized production structures.';for(const type of types)renderActionCard('build',type,e,actionList)}
+  else if(e.kind==='structure'){const sd=STRUCTURES[e.type];contextSummary.textContent=e.powered===false?'This Ascendant structure has lost Pylon power and cannot operate.':sd?.produces?.length?'Choose a unit below. Up to three units may be queued; circular meters show exact production progress.':sd?.desc||'Completed structure.';actionList.className='actionGrid';for(const type of sd?.produces||[])renderActionCard('train',type,e,actionList)}
+  else if(e.kind==='larva'){contextSummary.textContent='Larva can become any unlocked Brood unit. The cocoon receives its own circular morph timer.';actionList.className='actionGrid';for(const type of ROSTER_ORDER.brood)renderActionCard('morph',type,e,actionList)}
+  else if(e.kind==='cocoon')contextSummary.textContent='This organism is still morphing. Its exact remaining time appears in the circular meter.';
+  else{const ids=abilitiesFor(e);contextSummary.textContent=ids.length?'Use the ability buttons above. Each active ability has its own visible cooldown.':'This troop has no active ability; its movement and attack orders remain available in the Orders section.'}
+}
+function renderActionCard(mode,type,e,host=actionList){const d=mode==='build'?STRUCTURES[type]:UNITS[type],cost=d.cost||[0,0],unlocked=mode==='build'?structureUnlocked(PLAYER,type):unitUnlocked(PLAYER,type);const supplyOkay=mode==='build'||supplyUsed(PLAYER)+(d.supply||0)<=supplyCap(PLAYER),usable=unlocked&&canAfford(PLAYER,cost)&&supplyOkay&&(mode!=='train'||canUseStructure(e));const b=document.createElement('button');b.className='actionCard';b.disabled=!usable;b.innerHTML=`<div class="actionTitle">${imageHtmlForType(type,d.name)}<span>${d.name}</span></div><div class="actionMeta">${unlocked?`${d.desc} · ${d.time}s ${mode==='build'?'build':mode==='train'?'train':'morph'}`:`Requires ${(d.requires||[]).map(r=>STRUCTURES[r]?.name||r).join(' + ')||'technology'}`}</div><div class="actionCost"><span>◆ ${cost[0]}</span>${cost[1]?`<span>◈ ${cost[1]}</span>`:''}${d.supply?`<span>⬡ ${d.supply}</span>`:''}</div>`;b.onclick=()=>{if(mode==='build'){interactionMode='build';interactionPayload=type;refreshLegalTiles();hintLine.textContent=`Place ${d.name} on a highlighted adjacent tile.`;refreshUI()}else if(mode==='train')sendCommand({type:'train',entityId:e.id,unitType:type});else sendCommand({type:'morph',entityId:e.id,unitType:type})};host.appendChild(b)}
+
+// ---------- Rendering ----------
+function resize(){DPR=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0);ctx.imageSmoothingEnabled=false;mini.width=214*DPR;mini.height=146*DPR;mctx.setTransform(DPR,0,0,DPR,0,0);mctx.imageSmoothingEnabled=false;clampCam()}
+function worldToScreen(x,y){return{x:x*TILE*cam.zoom-cam.x,y:y*TILE*cam.zoom-cam.y}}
+function screenToTile(sx,sy){return{x:Math.floor((sx+cam.x)/(TILE*cam.zoom)),y:Math.floor((sy+cam.y)/(TILE*cam.zoom))}}
+function centerOn(x,y){cam.x=(x+.5)*TILE*cam.zoom-W/2;cam.y=(y+.5)*TILE*cam.zoom-H/2;clampCam()}
+function centerOnFaction(f){const b=playerStructures(f).find(isBase)||entities.find(e=>e.faction===f);if(b)centerOn(b.x,b.y)}
+function focusOwnBase(){cam.zoom=clamp(W<700?1.08:1.28,MIN_ZOOM,MAX_ZOOM);centerOnFaction(PLAYER);initialCameraSet=true}
+function clampCam(){const ww=BOARD_W*TILE*cam.zoom,hh=BOARD_H*TILE*cam.zoom;cam.x=clamp(cam.x,-W*.15,Math.max(-W*.15,ww-W*.15));cam.y=clamp(cam.y,-H*.15,Math.max(-H*.15,hh-H*.15))}
+function draw(){ctx.clearRect(0,0,W,H);ctx.fillStyle='#06101c';ctx.fillRect(0,0,W,H);if(!terrain.length){ctx.strokeStyle='rgba(105,184,255,.07)';const z=42;for(let x=0;x<W;x+=z)for(let y=0;y<H;y+=z)ctx.strokeRect(x+.5,y+.5,z,z);return}drawBoard();drawResources();drawLegal();drawEntities();drawShots();drawEffects();if(paused){ctx.fillStyle='rgba(0,0,0,.45)';ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='900 42px Inter';ctx.fillText('PAUSED',W/2,H/2)}drawMinimap()}
+function drawBoard(){const size=TILE*cam.zoom,start=screenToTile(0,0),end=screenToTile(W,H);for(let y=clamp(start.y-1,0,BOARD_H-1);y<=clamp(end.y+1,0,BOARD_H-1);y++)for(let x=clamp(start.x-1,0,BOARD_W-1);x<=clamp(end.x+1,0,BOARD_W-1);x++){const t=tileAt(x,y),s=worldToScreen(x,y),key=terrainAssetKey(t),img=getAsset(key);if(img)ctx.drawImage(img,s.x,s.y,size+1,size+1);else{ctx.fillStyle=t?.blocked?'#2b3544':t?.type==='mineral'?'#102d46':t?.type==='gas'?'#251d43':'#10273a';ctx.fillRect(s.x,s.y,size+1,size+1)}ctx.strokeStyle='rgba(145,190,230,.12)';ctx.lineWidth=Math.max(.5,cam.zoom);ctx.strokeRect(s.x+.5,s.y+.5,size-1,size-1)}}
+function drawResources(){for(const n of resourceNodes){if(n.amount<=0)continue;const s=worldToScreen(n.x,n.y),z=TILE*cam.zoom,ratio=n.amount/n.maxAmount;ctx.fillStyle='rgba(0,0,0,.68)';ctx.fillRect(s.x+z*.12,s.y+z*.88,z*.76,Math.max(3,z*.055));ctx.fillStyle=n.type==='mineral'?'#72d7ff':'#b58cff';ctx.fillRect(s.x+z*.12,s.y+z*.88,z*.76*ratio,Math.max(3,z*.055))}}
+function drawLegal(){for(const t of legalTiles){const s=worldToScreen(t.x,t.y),z=TILE*cam.zoom;ctx.fillStyle=interactionMode==='build'?'rgba(114,227,166,.25)':'rgba(105,184,255,.22)';ctx.fillRect(s.x+2,s.y+2,z-4,z-4);ctx.strokeStyle=interactionMode==='build'?'#72e3a6':'#69b8ff';ctx.lineWidth=2;ctx.strokeRect(s.x+3,s.y+3,z-6,z-6)}if(hoverTile&&inBounds(hoverTile.x,hoverTile.y)){const s=worldToScreen(hoverTile.x,hoverTile.y),z=TILE*cam.zoom;ctx.strokeStyle='rgba(255,255,255,.38)';ctx.strokeRect(s.x+2,s.y+2,z-4,z-4)}}
+function drawEntities(){const sorted=entities.filter(e=>e.alive!==false).slice().sort((a,b)=>(a.y-b.y)||(a.x-b.x)||(a.kind==='structure'?-1:1));for(const e of sorted){e.px+=(e.x-e.px)*.18;e.py+=(e.y-e.py)*.18;const s=worldToScreen(e.px,e.py),z=TILE*cam.zoom,d=defOf(e),f=factionOf(e.faction),asset=getAsset(entityAssetKey(e));ctx.save();ctx.translate(s.x+z/2,s.y+z/2);const r=z*(e.kind==='structure'?.44:e.kind==='larva'||e.kind==='cocoon'?.31:.38);if(selectedId===e.id){ctx.strokeStyle='#fff4ae';ctx.lineWidth=Math.max(2,z*.055);ctx.beginPath();ctx.arc(0,0,r*1.12,0,Math.PI*2);ctx.stroke()}if(e.targetId){ctx.strokeStyle='rgba(255,90,105,.8)';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,r*1.04,0,Math.PI*2);ctx.stroke()}ctx.globalAlpha=e.complete===false?.62:e.powered===false?.42:1;if(asset){const drawSize=e.kind==='structure'?z*.94:z*.88;drawContainedImage(asset,-drawSize/2,-drawSize/2,drawSize,drawSize,1)}else{ctx.fillStyle=f.dark;ctx.strokeStyle=f.color;ctx.lineWidth=Math.max(1.5,z*.045);ctx.beginPath();if(e.kind==='structure')ctx.roundRect(-r,-r*.78,r*2,r*1.56,r*.25);else if(e.kind==='larva'||e.kind==='cocoon')ctx.ellipse(0,0,r*1.2,r*.72,.25,0,Math.PI*2);else ctx.arc(0,0,r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle='#f3f8ff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`900 ${Math.max(10,z*.34)}px Inter`;ctx.fillText(e.kind==='cocoon'?'◉':d?.icon||'?',0,0)}if(STRUCTURES[e.type]?.power){ctx.strokeStyle='rgba(207,156,255,.45)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(0,0,z*2.05,0,Math.PI*2);ctx.stroke()}ctx.globalAlpha=1;if(e.complete===false){const pct=clamp(1-(e.buildEnd-nowMs())/(STRUCTURES[e.type].time*1000),0,1);ctx.strokeStyle='#72e3a6';ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,r*1.12,-Math.PI/2,-Math.PI/2+Math.PI*2*pct);ctx.stroke()}ctx.restore();drawEntityBars(e,s.x,s.y,z,r)}}
+function drawEntityBars(e,sx,sy,z,r){const w=z*.72,x=sx+z/2-w/2,y=sy+z*.07;ctx.fillStyle='rgba(0,0,0,.68)';ctx.fillRect(x,y,w,4);ctx.fillStyle=e.hp/e.maxHp>.55?'#72e3a6':e.hp/e.maxHp>.25?'#ffd166':'#ff6b78';ctx.fillRect(x,y,w*clamp(e.hp/e.maxHp,0,1),4);let row=y+5;if(e.maxShield){ctx.fillStyle='rgba(0,0,0,.65)';ctx.fillRect(x,row,w,3);ctx.fillStyle='#b78cff';ctx.fillRect(x,row,w*clamp(e.shield/e.maxShield,0,1),3);row+=4}if(e.kind==='unit'&&e.faction===PLAYER){const moveTotal=effectiveMoveCd(e)*1000,moveRemain=Math.max(0,(e.moveReadyAt||0)-nowMs()),movePct=1-clamp(moveRemain/moveTotal,0,1);ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(x,row,w,2.5);ctx.fillStyle='#69b8ff';ctx.fillRect(x,row,w*movePct,2.5);row+=3.5;const a=attackDef(e);if(a){const atkTotal=effectiveAttackCd(e)*1000,atkRemain=Math.max(0,(e.attackReadyAt||0)-nowMs()),atkPct=1-clamp(atkRemain/atkTotal,0,1);ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(x,row,w,2.5);ctx.fillStyle='#ff8792';ctx.fillRect(x,row,w*atkPct,2.5)}if(selectedId===e.id&&z>32){ctx.font=`900 ${Math.max(8,z*.15)}px Inter`;ctx.textAlign='center';ctx.fillStyle='#eaf5ff';ctx.strokeStyle='rgba(0,0,0,.9)';ctx.lineWidth=3;const label=`M ${fmtCd(moveRemain/1000)}${a?`  A ${fmtCd(Math.max(0,(e.attackReadyAt||0)-nowMs())/1000)}`:''}`;ctx.strokeText(label,sx+z/2,sy+z*.98);ctx.fillText(label,sx+z/2,sy+z*.98)}}if(isWorker(e)&&e.miningNodeId){ctx.fillStyle='#75d9ff';ctx.beginPath();ctx.arc(sx+z*.18,sy+z*.18,Math.max(2,z*.05),0,Math.PI*2);ctx.fill()}}
+function drawShots(){for(const sh of shots){const p=1-sh.life/sh.max,a=worldToScreen(sh.x+(sh.tx-sh.x)*p,sh.y+(sh.ty-sh.y)*p);ctx.fillStyle=sh.color;ctx.shadowColor=sh.color;ctx.shadowBlur=10;ctx.beginPath();ctx.arc(a.x,a.y,4,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0}}
+function spawnFx(x,y,color,count=8){for(let i=0;i<count;i++)particles.push({x:x+.5,y:y+.5,vx:(Math.random()-.5)*1.4,vy:(Math.random()-.5)*1.4,color,life:.8+Math.random()*.5,max:1.3,size:2+Math.random()*3})}
+function drawEffects(){for(const p of particles){const s=worldToScreen(p.x,p.y);ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(s.x,s.y,p.size,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;for(const f of floating){const s=worldToScreen(f.x,f.y);ctx.globalAlpha=clamp(f.life/f.max,0,1);ctx.font='900 12px Inter';ctx.textAlign='center';ctx.strokeStyle='rgba(0,0,0,.8)';ctx.lineWidth=4;ctx.strokeText(f.text,s.x,s.y);ctx.fillStyle=f.color;ctx.fillText(f.text,s.x,s.y)}ctx.globalAlpha=1}
+function updateFx(dt){for(const p of particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=.7*dt;p.life-=dt}particles=particles.filter(p=>p.life>0);for(const s of shots)s.life-=dt;shots=shots.filter(s=>s.life>0);for(const f of floating){f.y-=.35*dt;f.life-=dt}floating=floating.filter(f=>f.life>0)}
+function drawMinimap(){if(!mini.offsetParent)return;const mw=214,mh=146,sx=mw/BOARD_W,sy=mh/BOARD_H;mctx.clearRect(0,0,mw,mh);mctx.fillStyle='#030711';mctx.fillRect(0,0,mw,mh);for(const t of terrain){mctx.fillStyle=t.blocked?'#394657':t.type==='lane'?'#18344b':'#0d2234';mctx.fillRect(t.x*sx,t.y*sy,Math.ceil(sx),Math.ceil(sy))}for(const n of resourceNodes){if(n.amount<=0)continue;mctx.fillStyle=n.type==='gas'?'#b58cff':'#72d7ff';mctx.fillRect(n.x*sx,n.y*sy,Math.max(2,sx),Math.max(2,sy))}for(const e of entities){if(e.alive===false)continue;mctx.fillStyle=factionOf(e.faction).color;const r=isBase(e)?3:e.kind==='structure'?2:1.3;mctx.beginPath();mctx.arc((e.x+.5)*sx,(e.y+.5)*sy,r,0,Math.PI*2);mctx.fill()}const vx=cam.x/(TILE*cam.zoom)*sx,vy=cam.y/(TILE*cam.zoom)*sy,vw=W/(TILE*cam.zoom)*sx,vh=H/(TILE*cam.zoom)*sy;mctx.strokeStyle='#fff';mctx.strokeRect(vx,vy,vw,vh);const alive=players.filter(p=>!p.eliminated);miniLeader.textContent=`${alive.length} factions alive`}
+
+// ---------- Input ----------
+function handleTap(sx,sy){if(!gameStarted||paused)return;const t=screenToTile(sx,sy);if(!inBounds(t.x,t.y))return;const e=selected(),clicked=entityAt(t.x,t.y);if(interactionMode==='build'&&e&&legalTiles.some(q=>q.x===t.x&&q.y===t.y)){sendCommand({type:'build',entityId:e.id,buildType:interactionPayload,x:t.x,y:t.y});interactionMode=null;interactionPayload=null;legalTiles=[];return}if(interactionMode==='move'&&e&&legalTiles.some(q=>q.x===t.x&&q.y===t.y)){sendCommand({type:'move',entityId:e.id,x:t.x,y:t.y});interactionMode=null;legalTiles=[];return}if(interactionMode==='ability'&&e&&legalTiles.some(q=>q.x===t.x&&q.y===t.y)){sendCommand({type:'ability',entityId:e.id,abilityId:interactionPayload,x:t.x,y:t.y,targetId:clicked?.id||null});interactionMode=null;interactionPayload=null;legalTiles=[];return}if(interactionMode==='attack'&&e&&clicked&&clicked.faction!==e.faction){sendCommand({type:'attack',entityId:e.id,targetId:clicked.id});interactionMode=null;return}if(e&&ownEntity(e)&&clicked&&clicked.faction!==e.faction&&attackDef(e)){sendCommand({type:'attack',entityId:e.id,targetId:clicked.id});return}if(e&&ownEntity(e)&&legalTiles.some(q=>q.x===t.x&&q.y===t.y)){sendCommand({type:'move',entityId:e.id,x:t.x,y:t.y});return}if(clicked)selectEntity(clicked);else selectEntity(null)}
+canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(activePointers.size>=2){const pts=[...activePointers.values()],a=pts[0],b=pts[1],cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;pinch={dist:Math.hypot(a.x-b.x,a.y-b.y),zoom:cam.zoom,cx,cy,wx:(cx+cam.x)/cam.zoom,wy:(cy+cam.y)/cam.zoom};dragging=false;pointerMoved=true;return}dragging=true;pointerMoved=false;dragStart={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y};canvas.classList.add('dragging')});
+canvas.addEventListener('pointermove',e=>{hoverTile=screenToTile(e.clientX,e.clientY);if(activePointers.has(e.pointerId))activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pinch&&activePointers.size>=2){const pts=[...activePointers.values()],a=pts[0],b=pts[1],cx=(a.x+b.x)/2,cy=(a.y+b.y)/2,nz=clamp(pinch.zoom*Math.hypot(a.x-b.x,a.y-b.y)/pinch.dist,MIN_ZOOM,MAX_ZOOM);cam.zoom=nz;cam.x=pinch.wx*nz-cx;cam.y=pinch.wy*nz-cy;clampCam();pointerMoved=true;return}if(!dragging)return;const dx=e.clientX-dragStart.x,dy=e.clientY-dragStart.y;if(Math.hypot(dx,dy)>4)pointerMoved=true;cam.x=dragStart.cx-dx;cam.y=dragStart.cy-dy;clampCam()});
+canvas.addEventListener('pointerup',e=>{activePointers.delete(e.pointerId);if(activePointers.size<2)pinch=null;if(dragging&&!pointerMoved)handleTap(e.clientX,e.clientY);dragging=false;canvas.classList.remove('dragging')});
+canvas.addEventListener('pointercancel',e=>{activePointers.delete(e.pointerId);dragging=false;pinch=null;canvas.classList.remove('dragging')});
+canvas.addEventListener('wheel',e=>{e.preventDefault();const old=cam.zoom,nz=clamp(old*Math.exp(-e.deltaY*.0012),MIN_ZOOM,MAX_ZOOM),wx=(e.clientX+cam.x)/old,wy=(e.clientY+cam.y)/old;cam.zoom=nz;cam.x=wx*nz-e.clientX;cam.y=wy*nz-e.clientY;clampCam()},{passive:false});
+mini.addEventListener('pointerdown',e=>{const r=mini.getBoundingClientRect(),x=(e.clientX-r.left)/r.width*BOARD_W,y=(e.clientY-r.top)/r.height*BOARD_H;centerOn(x,y)});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){interactionMode=null;interactionPayload=null;refreshLegalTiles();refreshUI()}if(e.key.toLowerCase()==='a'&&selected()&&ownEntity(selected())){interactionMode='attack';legalTiles=[];refreshUI()}if(e.key.toLowerCase()==='b'&&isWorker(selected())&&ownEntity(selected())){buildTier='basic';renderCommandButtons();renderSidePanel()}if(e.key===' '){paused=!paused;pauseBtn.textContent=paused?'Resume':'Pause';e.preventDefault()}});
+
+// ---------- Event wiring ----------
+for(const b of document.querySelectorAll('.tabBtn'))b.onclick=()=>{sideTab=b.dataset.tab;document.querySelectorAll('.tabBtn').forEach(x=>x.classList.toggle('active',x===b));renderSidePanel()};
+sideToggle.onclick=()=>{sidePanel.classList.toggle('collapsed');sideToggle.textContent=sidePanel.classList.contains('collapsed')?'›':'‹'};
+centerBtn.onclick=()=>focusOwnBase();pauseBtn.onclick=()=>{paused=!paused;pauseBtn.textContent=paused?'Resume':'Pause'};fullscreenBtn.onclick=()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();else document.exitFullscreen?.()};
+function exitGame(){if(returnTo&&returnTo.startsWith('/'))location.href=returnTo;else location.href='/game/index.html'}exitBtn.onclick=exitGame;endExitBtn.onclick=exitGame;
+difficultySelect.onchange=()=>{chosenDifficulty=difficultySelect.value;difficultyNote.textContent=(DIFFICULTY[chosenDifficulty]||DIFFICULTY.medium).label;localStorage.setItem('csf.difficulty',chosenDifficulty)};aiCountSelect.onchange=()=>{chosenAiCount=Number(aiCountSelect.value);localStorage.setItem('csf.aiCount',String(chosenAiCount))};aiStyleSelect.onchange=()=>{chosenAiStyle=aiStyleSelect.value;localStorage.setItem('csf.aiStyle',chosenAiStyle)};
+startBtn.onclick=async()=>{chosenDifficulty=difficultySelect.value;chosenAiCount=Number(aiCountSelect.value);chosenAiStyle=aiStyleSelect.value;if(lobbyId){await publishReady()}else createGame(buildSoloSlots())};
+restartBtn.onclick=()=>{lobbyId='';gameStarted=false;gameOver=false;entities=[];players=[];overlay.style.display='flex';endOverlay.style.display='none';startBtn.disabled=false;startBtn.textContent='Deploy Command Base';difficultyBox.style.display='block';aiCountBox.style.display='block';aiStyleBox.style.display='block';setStatus('Local solo simulation');renderStartMenu()};spectateBtn.onclick=()=>{spectating=true;endOverlay.style.display='none'};
+window.addEventListener('resize',resize);window.addEventListener('beforeunload',()=>{if(presenceRef)deleteDoc(presenceRef).catch(()=>{})});
+
+// ---------- Main loop ----------
+function frame(ts){const dt=Math.min(.05,(ts-lastFrame)/1000||.016);lastFrame=ts;if(gameStarted&&!paused&&!gameOver&&(isController||!lobbyId)){simAccumulator+=dt;updateCombat(dt);updateProduction(dt);updateRegeneration(dt);updateFx(dt);if(simAccumulator>=.25){simAccumulator=0;updateMining();aiThinkAll();checkBaseStates();markDirty()}if(lobbyId&&isController)writeState(false)}else updateFx(dt);draw();if(gameStarted&&Math.floor(ts/250)!==Math.floor((ts-dt*1000)/250))refreshUI();requestAnimationFrame(frame)}
+function checkBaseStates(){for(const p of players)if(!p.eliminated&&!playerStructures(p.idx).some(isBase))checkElimination(p.idx)}
+
+chosenFaction=localStorage.getItem('csf.faction')||'frontier';if(!FACTIONS[chosenFaction])chosenFaction='frontier';chosenDifficulty=localStorage.getItem('csf.difficulty')||'medium';if(chosenDifficulty==='normal')chosenDifficulty='medium';if(chosenDifficulty==='insane')chosenDifficulty='pro';chosenAiCount=clamp(Number(localStorage.getItem('csf.aiCount')||2),1,2);chosenAiStyle=localStorage.getItem('csf.aiStyle')||'balanced';if(!AI_STYLE[chosenAiStyle])chosenAiStyle='balanced';
+async function boot(){resize();requestAnimationFrame(frame);await preloadTurncraftGraphics();await bootNetwork();loadingOverlay.style.display='none';if(!gameStarted)overlay.style.display='flex'}
+boot();
+})();
+</script>
+</body>
+</html>
