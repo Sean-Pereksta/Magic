@@ -999,7 +999,7 @@
       try{
         const ref=doc(db,"users",name),existing=await getDoc(ref);
         if(existing.exists())throw new Error("That username already exists.");
-        const payload={username:name,password,wins:0,lastLogin:serverTimestamp(),createdAt:serverTimestamp(),displayName:name,avatar:"🎮",bio:"Game Hub player",favoriteGames:[],recentlyPlayed:[],gamePlayCounts:{},favoriteCategory:"Strategy"};
+        const payload={username:name,password,wins:0,lastLogin:serverTimestamp(),createdAt:serverTimestamp(),displayName:name,avatar:"🎮",bio:"Game Hub player",favoriteGames:[],recentlyPlayed:[],gamePlayCounts:{},favoriteCategory:"Strategy",chatAuthUid:authUser?.uid||""};
         await setDoc(ref,payload);
         username=name;save(SK.user,username);await afterUserLogin(payload);closeModal();toast(`Account “${name}” created.`,"good");await runPendingAction();
       }catch(e){setMessage("accountMessage",e.message||"Unable to create account.","error");}
@@ -1018,6 +1018,9 @@
     }
     async function afterUserLogin(data=null){
       currentUserData=data||((await getDoc(doc(db,"users",username))).data());
+      if(authUser?.uid&&currentUserData?.chatAuthUid!==authUser.uid){
+        await setDoc(doc(db,"users",username),{chatAuthUid:authUser.uid},{merge:true});currentUserData={...(currentUserData||{}),chatAuthUid:authUser.uid};
+      }
       baseProfileCache.set(normalize(username),Promise.resolve({username,...(currentUserData||{})}));profileBundleCache.delete(normalize(username));
       favorites=new Set(Array.isArray(currentUserData?.favoriteGames)?currentUserData.favoriteGames:JSON.parse(read(SK.favorites)||"[]"));
       recentGames=Array.isArray(currentUserData?.recentlyPlayed)?currentUserData.recentlyPlayed:JSON.parse(read(SK.recent)||"[]");
