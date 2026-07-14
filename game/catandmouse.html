@@ -75,6 +75,7 @@
     .iso-structure.wide .structure-art{inset:-12px -13px -3px;width:62px;height:62px}
     .building-card-art{width:38px;height:38px;object-fit:contain;image-rendering:pixelated;float:right;margin:-4px 0 4px 8px}
     .dock-building-art{width:27px;height:27px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:3px}
+    .dock-hotkey{position:absolute;left:4px;top:4px;min-width:17px;height:17px;padding:0 2px;display:grid;place-items:center;border-radius:5px;background:#facc15;color:#111827;font:900 11px/1 sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.45)}
 
     #assetLoadingScreen{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(circle at top,#1d3a28,#050b08 62%);color:#f0fdf4}
     #assetLoadingScreen[hidden]{display:none}
@@ -186,6 +187,8 @@
     .iso-rescue::before{inset:4px;background:#0ea5e9;border-radius:50%;} .iso-rescue::after{left:9px;top:4px;width:10px;height:10px;background:#f0f9ff;transform:rotate(45deg);box-shadow:0 8px 0 #f0f9ff,8px 0 0 #f0f9ff,-8px 0 0 #f0f9ff;}
     .combat-vfx.shape::before{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);} 
     .vfx-hit.shape::before{width:12px;height:12px;background:conic-gradient(from 0deg,#fde047,#f97316,#fde047);clip-path:polygon(50% 0,64% 36%,100% 50%,64% 64%,50% 100%,36% 64%,0 50%,36% 36%);} 
+    .vfx-sparks.shape::before{width:22px;height:22px;background:conic-gradient(from 0deg,transparent 0 8%,#fff7ae 9% 13%,transparent 14% 23%,#facc15 24% 30%,transparent 31% 43%,#fb923c 44% 49%,transparent 50% 61%,#fff7ae 62% 67%,transparent 68% 80%,#f97316 81% 87%,transparent 88%);clip-path:polygon(45% 0,55% 0,58% 38%,78% 8%,86% 15%,64% 43%,100% 40%,100% 51%,64% 53%,91% 78%,83% 86%,58% 61%,55% 100%,45% 100%,42% 62%,17% 87%,9% 79%,36% 53%,0 51%,0 40%,37% 42%,14% 15%,22% 8%,42% 38%)}
+    .vfx-sparks.shape::after{content:"";position:absolute;left:50%;top:50%;width:7px;height:7px;border-radius:50%;background:#fffbd1;box-shadow:0 0 8px 3px #f59e0b;transform:translate(-50%,-50%)}
     .vfx-claw.shape::before{width:16px;height:12px;border-top:2px solid #b91c1c;border-bottom:2px solid #7f1d1d;transform:translate(-50%,-50%) rotate(-24deg);} 
     .vfx-explosion.shape::before{width:16px;height:16px;background:radial-gradient(circle,#fef08a,#f97316 60%,transparent 62%);} 
     .vfx-flame.shape::before{width:12px;height:16px;background:radial-gradient(circle at 50% 75%,#f59e0b 10%,#ef4444 55%,transparent 60%);} 
@@ -580,6 +583,7 @@
     }
     .vfx-flame{ animation:vfxFlame 0.45s ease-out forwards; }
     .vfx-hit{ animation:vfxHit 0.4s ease-out forwards; }
+    .vfx-sparks{ animation:vfxSparkBurst 0.46s ease-out forwards; }
     .vfx-explosion{ animation:vfxExplosion 0.65s ease-out forwards; }
     .vfx-pop{ animation:vfxPop 0.45s ease-out forwards; }
     .vfx-claw{ animation:vfxClaw 0.55s ease-out forwards; color:#a30f0f; }
@@ -649,6 +653,11 @@
     @keyframes vfxHit{
       0% { opacity:1; transform:translate(-50%, -50%) scale(0.45); }
       100%{ opacity:0; transform:translate(-50%, -50%) scale(1.35); }
+    }
+    @keyframes vfxSparkBurst{
+      0% { opacity:1; transform:translate(-50%, -50%) scale(.2) rotate(0deg); }
+      45% { opacity:1; transform:translate(-50%, -50%) scale(1.18) rotate(18deg); }
+      100%{ opacity:0; transform:translate(-50%, -50%) scale(1.65) rotate(34deg); }
     }
     @keyframes vfxExplosion{
       0% { opacity:1; transform:translate(-50%, -50%) scale(0.3); }
@@ -2202,13 +2211,20 @@
     document.getElementById("hudWins").textContent = `🏆 ${playerWins}`;
     updateRoleHud();
   }
+  function getActiveBuildSlots(){
+    const source = Array.isArray(selectedBuildSlots) && selectedBuildSlots.length
+      ? selectedBuildSlots
+      : mobileBuildOrder;
+    return (Array.isArray(source) ? source : [])
+      .map(Number)
+      .filter(buildId => BUILD_DEFS[buildId])
+      .slice(0, MAX_BUILD_SLOTS);
+  }
   function renderBuildingDock(){
   const dock = document.getElementById("bottomDock");
   if (!dock) return;
 
-  const slots = Array.isArray(selectedBuildSlots) && selectedBuildSlots.length
-    ? selectedBuildSlots
-    : mobileBuildOrder;
+  const slots = getActiveBuildSlots();
 
   if (!Array.isArray(slots) || !slots.length) {
     dock.innerHTML = "";
@@ -2227,6 +2243,7 @@
     const item = document.createElement("button");
     const artPath = STRUCTURE_ASSETS[b.symbol];
     item.innerHTML = `
+      <span class="dock-hotkey" aria-hidden="true">${idx + 1}</span>
       ${artPath && !failedAssetPaths.has(artPath) ? `<img class="dock-building-art" src="${getAssetUrl(artPath)}" alt="">` : (b.symbol || "🏗")}
       <small>${b.cost}🧀</small>
       ${locked ? `<small style="color:#f87171;"> ❌${b.minWins || 0}🏆</small>` : ""}
@@ -2235,7 +2252,8 @@
     item.title = `${idx + 1}: ${b.name} — Cost ${b.cost}`;
     item.style.cssText = `
       border-radius:10px;
-      padding:8px 10px;
+      position:relative;
+      padding:8px 10px 8px 24px;
       border:1px solid #334155;
       background:${locked ? "#374151" : afford ? "#14532d" : "#4b5563"};
       color:#fff;
@@ -2505,6 +2523,12 @@
   function showClawHit(x, y){
     addCombatVfx(x, y, "🗡️", "vfx-claw", 560, 13);
     addCombatVfx(x, y, "✦", "vfx-hit", 420, 10);
+  }
+
+  function showProjectileImpact(x, y){
+    addCombatVfx(x, y, "✦", "vfx-sparks", 460, 18);
+    addCombatVfx(x, y, "✦", "vfx-hit", 340, 9);
+    requestRender("projectileImpact");
   }
 
   // ============================================================
@@ -2968,8 +2992,8 @@
   // Keep this at 0.50 for true center framing; only change intentionally for
   // an over-the-shoulder style composition.
   const ISO_CAMERA_CENTER_Y = 0.50;
-  const ISO_CAMERA_SMOOTHING = 0.32;
-  const ISO_CAMERA_LEAD_TILES = 1.5;
+  const ISO_CAMERA_SMOOTHING = 0.44;
+  const ISO_CAMERA_LEAD_TILES = 0;
   const ISO_CAMERA_LEAD_SMOOTHING = 0.20;
   const ISO_CAMERA_IDLE_LEAD_DAMPING = 0.72;
   const ISO_CAMERA_CLAMP_PADDING_RATIO = 0.40;
@@ -3012,8 +3036,11 @@
 
   function getLocalFocusPlayer(){
     if (!gameStarted) return null;
+    if (isAlive && typeof playerPos?.x === "number" && typeof playerPos?.y === "number"){
+      return { x:playerPos.x, y:playerPos.y, facing:playerFacing || "se", isLocal:true };
+    }
     const me = players[uid];
-    if (me && (me.alive ?? true) && typeof me.x === "number" && typeof me.y === "number") return me;
+    if (me && (me.alive ?? true) && typeof me.x === "number" && typeof me.y === "number") return { ...me, isLocal:true };
     const aliveTeammates = Object.values(players).filter(p => (p?.alive ?? true) && typeof p?.x === "number" && typeof p?.y === "number");
     if (aliveTeammates.length){
       const refX = typeof playerPos?.x === "number" ? playerPos.x : catPos.x;
@@ -3031,7 +3058,7 @@
     const focus = getLocalFocusPlayer();
     if (focus && typeof focus.x === "number" && typeof focus.y === "number"){
       const localPlayer = players[uid];
-      const isLocalFocus = localPlayer && focus === localPlayer;
+      const isLocalFocus = focus.isLocal === true || (localPlayer && focus === localPlayer);
       const facingDirection = isLocalFocus ? (playerFacing || focus.facing || "se") : (focus.facing || playerFacing || "se");
       const leadDir = directionToTileLead(facingDirection);
       const hasLastFocus = Number.isFinite(camera.lastFocusTileX) && Number.isFinite(camera.lastFocusTileY);
@@ -3043,8 +3070,8 @@
       camera.leadY += (desiredLeadY - camera.leadY) * ISO_CAMERA_LEAD_SMOOTHING;
 
       const ledFocusScreen = isoToScreen(focus.x + camera.leadX, focus.y + camera.leadY);
-      camera.targetX = ledFocusScreen.x;
-      camera.targetY = ledFocusScreen.y;
+      camera.targetX = (stageMetrics.originX || 0) + ledFocusScreen.x;
+      camera.targetY = (stageMetrics.originY || 0) + ledFocusScreen.y;
       camera.lastFocusTileX = focus.x;
       camera.lastFocusTileY = focus.y;
     } else if (!focus) {
@@ -3359,7 +3386,7 @@
     for (const v of combatVfx){
       const fx = document.createElement("div");
       fx.className = `combat-vfx ${v.className} shape`;
-      if (!["vfx-hit","vfx-claw","vfx-explosion","vfx-flame","vfx-pop"].includes(v.className)) fx.textContent = v.icon;
+      if (!["vfx-hit","vfx-sparks","vfx-claw","vfx-explosion","vfx-flame","vfx-pop"].includes(v.className)) fx.textContent = v.icon;
       fx.style.fontSize = `${v.size}px`;
       positionIsoElement(fx, v.x, v.y, 14);
       entityLayer.appendChild(fx);
@@ -3704,7 +3731,12 @@
     updateIsoCamera({
       worldW: stageW,
       worldH: stageH,
-      mapCenter: isoToScreen((gridSize - 1) / 2, (gridSize - 1) / 2)
+      originX:leftPad,
+      originY:topPad,
+      mapCenter:{
+        x:leftPad + isoToScreen((gridSize - 1) / 2, (gridSize - 1) / 2).x,
+        y:topPad + isoToScreen((gridSize - 1) / 2, (gridSize - 1) / 2).y
+      }
     });
     applyIsoCameraTransform({
       worldW: stageW,
@@ -3737,6 +3769,7 @@
     const facing = directionFromDelta(playerPos.x, playerPos.y, newX, newY);
     if (facing) playerFacing = facing;
     playerPos = { x: newX, y: newY };
+    if (players[uid]) Object.assign(players[uid], { x:newX, y:newY, facing:playerFacing || players[uid].facing || "se" });
     savePosition();
     checkCheese().catch(()=>{});
     maybeTeleportOnCrystal().catch(()=>{});
@@ -4229,7 +4262,7 @@
         const dyCat = Math.abs(catPos.y - y);
         if (dxCat<=5 && dyCat<=5){
           addCombatVfx(x, y, "🔥", "vfx-flame", 460, 14);
-          addCombatVfx(catPos.x, catPos.y, "💥", "vfx-hit", 420, 15);
+          showProjectileImpact(catPos.x, catPos.y);
           catHealth -= damage;
           writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt: Date.now() } });
           if (catHealth <= 0){
@@ -4247,7 +4280,7 @@
             const dyRat = Math.abs(r.y - y);
             if (dxRat<=5 && dyRat<=5){
               addCombatVfx(x, y, "🔥", "vfx-flame", 460, 14);
-              addCombatVfx(r.x, r.y, "💥", "vfx-hit", 420, 15);
+              showProjectileImpact(r.x, r.y);
               r.health -= damage;
               attacked = true;
               if (r.health <= 0){
@@ -4268,7 +4301,7 @@
             const dyOx = Math.abs(o.y - y);
             if (dxOx<=5 && dyOx<=5){
               addCombatVfx(x, y, "🔥", "vfx-flame", 460, 14);
-              addCombatVfx(o.x, o.y, "💥", "vfx-hit", 420, 15);
+              showProjectileImpact(o.x, o.y);
               o.health -= damage;
               attacked = true;
               if (o.health <= 0){
@@ -4322,6 +4355,7 @@
 
         addCombatVfx(x, y, "🔥", "vfx-flame", 500, 14);
         addCombatVfx(target.x, target.y, "💣", "vfx-explosion", 700, boosted ? 24 : 21);
+        showProjectileImpact(target.x, target.y);
 
         target.health -= mainDamage;
         if (target.health <= 0){
@@ -5620,6 +5654,7 @@
   }
 
   async function damageEnemyUnit(enemy, amount){
+    showProjectileImpact(enemy.x, enemy.y);
     enemy.health -= amount;
     if (enemy.health <= 0){
       if (enemy.kind === "rat") await runtimeDeleteDoc(ccRef(ID.rat(enemy.id)));
@@ -6895,7 +6930,7 @@
 
     if (!upgradeMenuOpen && ["1","2","3","4","5","6","7","8"].includes(e.key)){
       const idx = Number(e.key) - 1;
-      const buildId = mobileBuildOrder[idx];
+      const buildId = getActiveBuildSlots()[idx];
       if (buildId) selectBuild(String(buildId));
     }
 
