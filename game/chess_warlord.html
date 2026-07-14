@@ -2969,6 +2969,29 @@ async function loadFirstGraphic(candidates){
   }
   return null;
 }
+async function recheckMissingGraphics(missingJobs){
+  const retryJobs = (missingJobs || []).filter(job => job && !chessGraphicAssets.has(job.key));
+  if(!retryJobs.length) return 0;
+  updateGraphicLoader(`Rechecking ${retryJobs.length} chess graphic${retryJobs.length===1?'':'s'} that did not finish loading…`);
+  let recovered = 0;
+  let cursor = 0;
+  const concurrency = Math.min(4, retryJobs.length);
+  async function retryWorker(){
+    while(cursor < retryJobs.length){
+      const job = retryJobs[cursor++];
+      const result = await loadFirstGraphic(job.candidates);
+      if(result && !chessGraphicAssets.has(job.key)){
+        chessGraphicAssets.set(job.key, result.asset);
+        chessGraphicResolvedFiles.set(job.key, result.filename);
+        graphicsMissingCount = Math.max(0, graphicsMissingCount - 1);
+        recovered++;
+        updateGraphicLoader(`Recovered missing graphic: ${job.label}`);
+      }
+    }
+  }
+  await Promise.all(Array.from({length:concurrency}, retryWorker));
+  return recovered;
+}
 async function preloadChessGraphics(){
   graphicsReady=false;graphicsLoadedCount=0;graphicsMissingCount=0;
   const jobs=[];
@@ -2984,20 +3007,22 @@ async function preloadChessGraphics(){
   graphicsTotalCount=jobs.length;
   updateGraphicLoader(`Loading game assets: 0/${graphicsTotalCount} graphics from graphics/chessgraphics plus music and sound effects…`);
   const concurrency=Math.min(8,jobs.length);
+  const missingJobs=[];
   let cursor=0;
   async function worker(){
     while(cursor<jobs.length){
       const job=jobs[cursor++];
       const result=await loadFirstGraphic(job.candidates);
       if(result){chessGraphicAssets.set(job.key,result.asset);chessGraphicResolvedFiles.set(job.key,result.filename);}
-      else graphicsMissingCount++;
+      else { graphicsMissingCount++; missingJobs.push(job); }
       graphicsLoadedCount++;
       updateGraphicLoader(`Loading ${graphicsLoadedCount}/${graphicsTotalCount}: ${job.label}${result?'':' · fallback art'}`);
     }
   }
   await Promise.all(Array.from({length:concurrency},worker));
+  const recovered = await recheckMissingGraphics(missingJobs);
   graphicsReady=true;
-  updateGraphicLoader(`Game assets ready${graphicsMissingCount?` · ${graphicsMissingCount} unavailable graphics will use built-in silhouettes`:''}${audioFailedCount?` · ${audioFailedCount} audio files unavailable; continuing silently`:''}.`);
+  updateGraphicLoader(`Game assets ready${recovered?` · recovered ${recovered} graphic${recovered===1?'':'s'} on recheck`:''}${graphicsMissingCount?` · ${graphicsMissingCount} unavailable graphics will use built-in silhouettes`:''}${audioFailedCount?` · ${audioFailedCount} audio files unavailable; continuing silently`:''}.`);
   initFactionPicker();
   renderSpawnCards();
   return true;
