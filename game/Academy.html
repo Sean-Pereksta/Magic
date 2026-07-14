@@ -901,6 +901,10 @@ const state = {
   massHeaderRefs: [],
   teamIndexCache: null,
   dataIndex: { dirty:true, reason:'initial', version:0, sources:{}, reps:[], teamCounts:[], repsByTeam:new Map(), dateRanges:{qa:{interaction:null,assigned:null},date:new Map(),checklist:new Map(),documented_coaching:new Map(),comp_calls:new Map()}, lastBuiltAt:0 },
+  // Lightweight Run-only caches are intentionally separate from the richer Research/global index.
+  runIndexes: new Map(),
+  runPreparationJobs: new Map(),
+  runIndexDiagnostics: [],
   indexes: null,
   researchItems: [],
   metrics: [],
@@ -1080,6 +1084,7 @@ function markImportCacheDirty(kind, key='', reason='data changed'){
   if(reason) state.importCacheSaveReasons=[...(state.importCacheSaveReasons||[]),reason].slice(-8);
 }
 function markSourceCacheDirty(source, reason='source changed'){
+  invalidateRunSourceIndex(source,reason);
   markImportCacheDirty('source',source,reason);
   const rows=getRowsRaw(source)||[], headers=getHeaders(source)||[];
   state.sourceMeta[source]={...(state.sourceMeta[source]||{}),version:(state.versions?.data||0),rowCount:rows.length,headerCount:headers.length,fileName:sourceFileName(source),selectedSheet:bookForSource(source)?.selectedSheets?.[source]||''};
@@ -2253,6 +2258,8 @@ function addResearchIndexedRow(idx,source,row,rowId){
 }
 function sourceIndex(source){
   if(dataIndexReady()) return state.dataIndex.sources[source] || null;
+  const runIdx=state.runIndexes instanceof Map ? state.runIndexes.get(source) : null;
+  if(runIdx) return runIdx;
   return state.indexes?.[source] || null;
 }
 function cachedRowsForSource(source, opts={}){
@@ -5503,9 +5510,20 @@ function rowMatchesTrustedEntry(row,entry,source=''){
 function rowsForEntry(source, entry, opts={}){
   const cached=cachedRowsForEntry(source, entry, opts);
   if(cached) return cached;
-  let rows=cachedRowsForSource(source, opts);
-  if(entry.kind==='team') rows=rows.filter(r=>coachNameKey(rowTeam(r)||state.repTeams.get(r._repKey)||'')===coachNameKey(entry.name));
-  else rows=rows.filter(r=>r._repKey===entry.key && rowMatchesTrustedEntry(r,entry,source));
+  const idx=sourceIndex(source);
+  let rows;
+  if(idx && entry.kind==='team'){
+    rows=(idx.byTeamKey?.get(coachNameKey(entry.name)) || idx.byTeam?.get(canonicalCoachName(entry.name)) || []).slice();
+    if(!rows.length) rows=cachedRowsForSource(source, opts).filter(r=>coachNameKey(rowTeam(r)||state.repTeams.get(r._repKey)||'')===coachNameKey(entry.name));
+    else rows=filterRowsForSource(source,rows,opts);
+  }else if(idx && entry.kind!=='team' && entry.key){
+    rows=(idx.byRep?.get(entry.key)||[]).filter(r=>rowMatchesTrustedEntry(r,entry,source));
+    rows=filterRowsForSource(source,rows,opts);
+  }else{
+    rows=cachedRowsForSource(source, opts);
+    if(entry.kind==='team') rows=rows.filter(r=>coachNameKey(rowTeam(r)||state.repTeams.get(r._repKey)||'')===coachNameKey(entry.name));
+    else rows=rows.filter(r=>r._repKey===entry.key && rowMatchesTrustedEntry(r,entry,source));
+  }
   return rows;
 }
 function withinModeKind(mode){
@@ -9329,8 +9347,27 @@ function openTeamsImported(){
   openModal('teamsModal');
 }
 
-function runPrepState(){ state.runPrep=state.runPrep||{generation:0,jobs:new Map(),ready:new Map(),dateRangeCache:new Map(),lastRequired:[],lastModelId:''}; state.runPrep.jobs=state.runPrep.jobs||new Map(); state.runPrep.ready=state.runPrep.ready||new Map(); state.runPrep.dateRangeCache=state.runPrep.dateRangeCache||new Map(); return state.runPrep; }
-function sourceVersionSignature(source){ const rows=getRowsRaw(source)||[], headers=getHeaders(source)||[]; return [source,rows.length,headers.length,headers.join('\u001f'),state.versions?.data||0].join('|'); }
+function runPrepState(){
+  state.runPrep=state.runPrep||{generation:0,jobs:new Map(),ready:new Map(),dateRangeCache:new Map(),lastRequired:[],lastModelId:''};
+  state.runPrep.jobs=state.runPrep.jobs||new Map();
+  state.runPrep.ready=state.runPrep.ready||new Map();
+  state.runPrep.dateRangeCache=state.runPrep.dateRangeCache||new Map();
+  state.runIndexes=state.runIndexes instanceof Map ? state.runIndexes : new Map();
+  state.runPreparationJobs=state.runPreparationJobs instanceof Map ? state.runPreparationJobs : new Map();
+  return state.runPrep;
+}
+const RUN_INDEX_SCHEMA_VERSION=2, RUN_INDEX_NORMALIZATION_VERSION=1;
+function runSourceSettingsSignature(source){ const cfg=getSourceSetting(activeModelForImport(),source)||{}; return stableSerialize({skipTeamBuild:!!cfg?.columns?.skipTeamBuild,columns:cfg.columns||{},source:cfg.source||''}); }
+function sourceVersionSignature(source){
+  const rows=getRowsRaw(source)||[], headers=getHeaders(source)||[], v=state.versions||{}, cs=isCustomSource(source)?customSource(source):null;
+  return stableSerialize({schema:RUN_INDEX_SCHEMA_VERSION,source,rowsVersion:state.sourceMeta?.[source]?.version||v.data||0,rowCount:rows.length,headerVersion:headers.join('\u001f'),headerCount:headers.length,settings:runSourceSettingsSignature(source),aliases:v.aliases||0,roster:v.roster||0,teams:v.teams||0,mappings:v.mappings||0,nameColumn:(typeof repColumnForSource==='function'?repColumnForSource(source):''),teamColumn:(typeof teamColumnForSource==='function'?teamColumnForSource(source):''),dateColumn:customDateColumn(source)||sourceDateHeader(source,headers)||'',normalization:RUN_INDEX_NORMALIZATION_VERSION,customUpdated:cs?.updatedAt||cs?.fileName||''});
+}
+function invalidateRunSourceIndex(source, reason='source changed'){
+  if(!source) return;
+  if(state.runIndexes instanceof Map) state.runIndexes.delete(source);
+  runPrepState().ready.delete(source); runPrepState().dateRangeCache?.forEach?.((_,k)=>{ if(String(k).startsWith(source+'|')) runPrepState().dateRangeCache.delete(k); });
+  state.runIndexDiagnostics=[...(state.runIndexDiagnostics||[]),{source,reason,invalidatedAt:Date.now()}].slice(-100);
+}
 function expressionReferencedSources(text){
   const out=new Set(), str=String(text||'');
   str.replace(/!\[([^\]]+)\]\.\[[^\]]+\]/g,(_,label)=>{ const key=allSourceKeys().find(src=>normalizeSourceLookupText(labelSource(src))===normalizeSourceLookupText(label)||normalizeSourceLookupText(src)===normalizeSourceLookupText(label)); if(key) out.add(key); return _; });
@@ -9350,30 +9387,61 @@ function requiredRunSourcesForModel(model, runOptions={}){
   const add=s=>{ if(s && all.has(s)) required.add(s); };
   const inspectValue=v=>{ if(typeof v==='string'){ expressionReferencedSources(v).forEach(add); const m=findMetricByRef(v); if(m) metricDependencies(m).forEach(add); } };
   const inspectObj=obj=>{ if(!obj || typeof obj!=='object') return; if(Array.isArray(obj)){ obj.forEach(inspectObj); return; } Object.entries(obj).forEach(([k,v])=>{ if(/source$/i.test(k) || ['source','leftSource','rightSource','customSource','trueValueSource','qualifierSource','numeratorSource','denominatorSource'].includes(k)) add(v); inspectValue(v); if(v&&typeof v==='object') inspectObj(v); }); };
-  (model?.criteria||[]).forEach(c=>{
-    if(c.calcType==='qaScore' || criterionUsesQA(c)) add(runOptions.qaTeamScoreMode==='sheetTeam'?activeDirectQASource():'qa');
-    if(isRowPullCriterion(c)) add(rowPullSourceForCriterion(c));
-    if(c.trueValueEnabled) add(c.trueValueSource);
-    inspectObj(c);
-  });
+  (model?.criteria||[]).forEach(c=>{ if(c.calcType==='qaScore' || criterionUsesQA(c)) add(runOptions.qaTeamScoreMode==='sheetTeam'?activeDirectQASource():'qa'); if(isRowPullCriterion(c)) add(rowPullSourceForCriterion(c)); if(c.trueValueEnabled) add(c.trueValueSource); inspectObj(c); });
   inspectObj(model?.metrics||[]); inspectObj(model?.expressions||[]);
   return [...required].filter(Boolean);
 }
-function ensurePartialDataIndexShell(){
-  if(!state.dataIndex) state.dataIndex={dirty:true,reason:'partial run preparation',sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},date:new Map(),checklist:new Map(),documented_coaching:new Map(),comp_calls:new Map()},version:0,lastBuiltAt:0};
-  state.dataIndex.sources=state.dataIndex.sources||{}; state.indexes=state.indexes||state.dataIndex.sources;
+function runCriterionNeedsSortedDate(c){ return !!(c && (c.requiresSortedDateRows || c.sortedDateRows || ['rollingDate','dateWindowSorted'].includes(c.aggregate))); }
+function runIndexOptionsForSource(source, model){
+  const criteria=(model?.criteria||[]).filter(c=>requiredRunSourcesForModel({criteria:[c]}).includes(source));
+  return {sortedDateRows:criteria.some(runCriterionNeedsSortedDate), teamLookup:criteria.some(c=>c.calcType==='qaScore'||c.source==='qa'||isRowPullCriterion(c)||c.trueValueEnabled||c.populationScope==='team'||c.teamLevelLookup)};
 }
-async function prepareRunSource(source){
-  const prep=runPrepState(), sig=sourceVersionSignature(source), ready=prep.ready.get(source);
-  if(ready===sig && sourceIndex(source)) return sourceIndex(source);
-  const job=prep.jobs.get(source); if(job?.sig===sig) return job.promise;
-  const promise=(async()=>{ ensurePartialDataIndexShell(); const rows=getRowsRaw(source)||[], idx=makeResearchSourceIndex(source,rows); idx.version=(state.dataIndex?.version||0)+1; const chunk=1200; for(let i=0;i<rows.length;i++){ addResearchIndexedRow(idx,source,rows[i],i); if(i && i%chunk===0) await yieldToBrowser(); } idx.byRepSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0))); idx.byTeamSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0))); idx.dateSortedRows.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)); state.dataIndex.sources[source]=idx; state.indexes=state.dataIndex.sources; prep.ready.set(source,sig); return idx; })();
-  prep.jobs.set(source,{sig,promise});
-  try{ return await promise; }finally{ const cur=prep.jobs.get(source); if(cur?.promise===promise) prep.jobs.delete(source); }
+function createRunSourceIndexShell(source,signature,rows,options={}){
+  const headers=getHeaders(source)||[];
+  return {kind:'run',schemaVersion:RUN_INDEX_SCHEMA_VERSION,source,signature,version:signature,rows,headers,byRep:new Map(),byTeam:new Map(),byTeamKey:new Map(),dateMetadata:new WeakMap(),rowMeta:new WeakMap(),dateValues:[],sortedDateRows:null,dateSortedRows:[],byRepSortedDate:new Map(),byTeamSortedDate:new Map(),byRowId:new Map(),lazyIndexes:new Map(),reps:new Map(),optionalStructures:{sortedDateRows:!!options.sortedDateRows,teamLookup:options.teamLookup!==false},perf:{rowsIndexed:0,lazyBuilds:[]}};
 }
+function addRunIndexedRow(idx,source,row,rowId,options={}){
+  const key=row._repKey||repKeyFromAnyRow(row)||'', team=rowTeam(row), teamKey=coachNameKey(team), ms=rowDateMillisForSource(source,row);
+  if(team && !row._team) row._team=team;
+  if(key) pushMapArray(idx.byRep,key,row);
+  if(team){ pushMapArray(idx.byTeam,team,row); if(options.teamLookup!==false) pushMapArray(idx.byTeamKey,teamKey,row); }
+  idx.byRowId.set(rowId,row);
+  const meta={rowId,source,repKey:key,teamKey,dateMs:ms}; idx.rowMeta.set(row,meta); idx.dateMetadata.set(row,{ms,ymd:researchDayBucket(ms)});
+  if(Number.isFinite(ms)) idx.dateValues[rowId]=ms;
+  if(options.sortedDateRows && Number.isFinite(ms)){ idx.dateSortedRows.push(row); if(key) pushMapArray(idx.byRepSortedDate,key,row); if(team) pushMapArray(idx.byTeamSortedDate,team,row); }
+  if(key && row._rep) idx.reps.set(key,mergeRepDisplay(idx.reps.get(key),{kind:'rep',key,name:cleanName(row._rep),team}));
+  idx.perf.rowsIndexed++;
+}
+async function buildRunSourceIndex(source,signature,options={}){
+  const timings={source,totalRows:(getRowsRaw(source)||[]).length,signature,cache:'miss',persistedRestoration:'skipped',groupingMs:0,dateParsingMs:0,sortingMs:0,optionalStructures:[],totalMs:0}, totalStart=performance.now();
+  const rows=getRowsRaw(source)||[], idx=createRunSourceIndexShell(source,signature,rows,options), chunk=1200;
+  const groupStart=performance.now();
+  for(let i=0;i<rows.length;i++){ addRunIndexedRow(idx,source,rows[i],i,options); if(i && i%chunk===0) await yieldToBrowser(); }
+  timings.groupingMs=Math.round(performance.now()-groupStart); timings.dateParsingMs=timings.groupingMs;
+  if(options.sortedDateRows){ const sortStart=performance.now(); idx.byRepSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0))); idx.byTeamSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0))); idx.dateSortedRows.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)); idx.sortedDateRows=idx.dateSortedRows; timings.sortingMs=Math.round(performance.now()-sortStart); timings.optionalStructures.push('sortedDateRows'); }
+  timings.totalMs=Math.round(performance.now()-totalStart); console.groupCollapsed('[All Star Run Index] source preparation'); console.table([timings]); console.groupEnd(); state.runIndexDiagnostics=[...(state.runIndexDiagnostics||[]),timings].slice(-100); return idx;
+}
+async function ensureRunSourceIndex(source, signature=sourceVersionSignature(source), options={}){
+  runPrepState(); const existing=state.runIndexes.get(source);
+  if(existing?.signature===signature){
+    const timings={source,totalRows:(existing.rows||[]).length,signature,cache:'hit',persistedRestoration:'skipped',groupingMs:0,dateParsingMs:0,sortingMs:0,optionalStructures:Object.keys(existing.optionalStructures||{}).filter(k=>existing.optionalStructures[k]),totalMs:0};
+    console.groupCollapsed('[All Star Run Index] source preparation'); console.table([timings]); console.groupEnd();
+    if(options.sortedDateRows && !existing.optionalStructures?.sortedDateRows){ await addRunOptionalSortedDateRows(existing); }
+    return existing;
+  }
+  const key=`${source}|${signature}`; const active=state.runPreparationJobs.get(key); if(active) return active.promise;
+  const promise=buildRunSourceIndex(source,signature,options).then(idx=>{ state.runIndexes.set(source,idx); runPrepState().ready.set(source,signature); return idx; }).finally(()=>state.runPreparationJobs.delete(key));
+  state.runPreparationJobs.set(key,{source,signature,promise,startedAt:Date.now(),options}); return promise;
+}
+async function addRunOptionalSortedDateRows(idx){
+  const t0=performance.now(); idx.dateSortedRows=[]; idx.byRepSortedDate=new Map(); idx.byTeamSortedDate=new Map(); const rows=idx.rows||[], chunk=1600;
+  for(let i=0;i<rows.length;i++){ const r=rows[i], meta=idx.rowMeta.get(r)||{}, ms=meta.dateMs; if(Number.isFinite(ms)){ idx.dateSortedRows.push(r); if(meta.repKey) pushMapArray(idx.byRepSortedDate,meta.repKey,r); if(meta.teamKey) pushMapArray(idx.byTeamSortedDate,rowTeam(r),r); } if(i&&i%chunk===0) await yieldToBrowser(); }
+  idx.byRepSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0))); idx.byTeamSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0))); idx.dateSortedRows.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)); idx.sortedDateRows=idx.dateSortedRows; idx.optionalStructures.sortedDateRows=true; console.info('[All Star Run Index] optional structure built',{source:idx.source,structure:'sortedDateRows',rows:rows.length,ms:Math.round(performance.now()-t0)});
+}
+async function prepareRunSource(source, model=null){ return ensureRunSourceIndex(source,sourceVersionSignature(source),runIndexOptionsForSource(source,model||findModel(els.runModelSelect?.value))); }
 function updateRunReadiness(required=[], generation=runPrepState().generation, status='Preparing selected model…'){
   if(generation!==runPrepState().generation || !els.runReadinessTitle) return;
-  const prep=runPrepState(), ready=required.filter(s=>prep.ready.get(s)===sourceVersionSignature(s)&&sourceIndex(s)).length, preparing=required.filter(s=>prep.jobs.has(s)).length, reused=ready>0;
+  const ready=required.filter(s=>state.runIndexes?.get(s)?.signature===sourceVersionSignature(s)).length, preparing=required.filter(s=>[...(state.runPreparationJobs||new Map()).values()].some(j=>j.source===s)).length, reused=ready>0;
   els.runReadinessTitle.textContent= ready===required.length ? 'Selected model ready' : status;
   els.runReadinessDetail.textContent=`Required source count: ${required.length} · Ready sources: ${ready} · Preparing sources: ${preparing}`;
   if(els.runReadinessMeta) els.runReadinessMeta.innerHTML=`<span class="badge">${ready} of ${required.length} sources ready</span><span class="badge">${reused?'Reusing prepared sources':'Preparing newly required sources'}</span><span class="badge">Global rebuild avoided</span>`;
@@ -9384,21 +9452,17 @@ async function beginSelectedModelPreparation(){
   const required=requiredRunSourcesForModel(model,opts); prep.lastRequired=required; prep.lastModelId=model?.id||'';
   console.timeEnd('[All Star Run] dependency calculation'); console.info('model',model?.name,'requiredSources',required,'globalRebuildAvoided',true); console.groupEnd();
   updateRunReadiness(required,generation,'Preparing selected model…');
-  for(const source of required){ if(generation!==runPrepState().generation) return; prepareRunSource(source).then(()=>updateRunReadiness(required,generation)).catch(err=>{ console.error('[All Star Run] Source preparation failed',source,err); updateRunReadiness(required,generation,'Preparation needs attention'); }); await yieldToBrowser(); }
+  const limit=2; for(let i=0;i<required.length;i+=limit){ if(generation!==runPrepState().generation) return; required.slice(i,i+limit).forEach(source=>prepareRunSource(source,model).then(()=>updateRunReadiness(required,generation)).catch(err=>{ console.error('[All Star Run] Source preparation failed',source,err); updateRunReadiness(required,generation,'Preparation needs attention'); })); await yieldToBrowser(); }
 }
 async function ensureSelectedModelPreparedForRun(model, opts={}){
   const required=requiredRunSourcesForModel(model,opts), prep=runPrepState(), generation=prep.generation;
   updateRunReadiness(required,generation,'Finishing selected model preparation…');
-  await Promise.all(required.map(s=>prepareRunSource(s)));
-  updateRunReadiness(required,generation,'Selected model ready');
-  return required;
+  const limit=2; for(let i=0;i<required.length;i+=limit) await Promise.all(required.slice(i,i+limit).map(s=>prepareRunSource(s,model)));
+  updateRunReadiness(required,generation,'Selected model ready'); return required;
 }
 function lightweightRunDateRange(source,col){
-  const key=[source,sourceVersionSignature(source),col||''].join('|'), cache=runPrepState().dateRangeCache;
-  if(cache.has(key)) return cache.get(key);
-  let range=null; const rows=getRowsRaw(source)||[];
-  rows.forEach(r=>{ let v; if(source==='qa') v=col==='assigned'?r._assignedDate:r._interactionDate; else v=col?r[col]:(r._date||r.Date); range=addDateToRange(range,v); });
-  cache.set(key,range); return range;
+  const key=[source,sourceVersionSignature(source),col||''].join('|'), cache=runPrepState().dateRangeCache; if(cache.has(key)) return cache.get(key);
+  let range=null; const rows=getRowsRaw(source)||[]; rows.forEach(r=>{ let v; if(source==='qa') v=col==='assigned'?r._assignedDate:r._interactionDate; else v=col?r[col]:(r._date||r.Date); range=addDateToRange(range,v); }); cache.set(key,range); return range;
 }
 function checklistDateColumnsForModel(model){
   const items=[]; const seen=new Set();
@@ -9882,6 +9946,34 @@ function wire(){
   if(els.connectVisibleRepMatchesBtn) els.connectVisibleRepMatchesBtn.onclick=()=>connectRepMatches(true);
   if(els.connectAllRepMatchesBtn) els.connectAllRepMatchesBtn.onclick=()=>connectRepMatches(false);
   els.executeRunBtn.onclick=buildRun;
+  window.runRunIndexRegressionTests=async function(){
+    const results=[], assert=(name,pass,detail='')=>results.push({name,pass:!!pass,detail});
+    const source=(allSourceKeys().includes('qa')?'qa':allSourceKeys()[0]);
+    const modelA={id:'run_idx_a',criteria:[{source,calcType:source==='qa'?'qaScore':'single'}]};
+    const modelB={id:'run_idx_b',criteria:[{source,calcType:source==='qa'?'qaScore':'single'},{source:allSourceKeys().find(s=>s!==source)||source}]};
+    state.runIndexes=new Map(); state.runPreparationJobs=new Map(); runPrepState().ready.clear();
+    let builds=0; const original=buildRunSourceIndex;
+    buildRunSourceIndex=async function(...args){ builds++; return original.apply(this,args); };
+    try{
+      const sig=sourceVersionSignature(source);
+      const p1=ensureRunSourceIndex(source,sig,{}), p2=ensureRunSourceIndex(source,sig,{});
+      assert('Background preparation and final execution share the same job', p1===p2 || state.runPreparationJobs.size===1);
+      await Promise.all([p1,p2]);
+      assert('Each unchanged source/signature is built no more than once', builds===1, `builds=${builds}`);
+      await ensureSelectedModelPreparedForRun(modelA,{}); const afterFirst=builds; await ensureSelectedModelPreparedForRun(modelA,{});
+      assert('Running the same model twice reuses all indexes', builds===afterFirst);
+      await ensureSelectedModelPreparedForRun(modelA,{start:'2024-01-01',end:'2024-02-01'});
+      assert('Changing dates reuses indexes', builds===afterFirst);
+      state.selectedTeams=new Set(['Regression Team']); await ensureSelectedModelPreparedForRun(modelA,{teams:['Regression Team']});
+      assert('Changing teams reuses indexes', builds===afterFirst);
+      const other=allSourceKeys().find(s=>s!==source); if(other){ await ensureSelectedModelPreparedForRun(modelB,{}); const beforeInvalidate=state.runIndexes.get(source); invalidateRunSourceIndex(other,'regression'); assert('Changing one source invalidates only affected indexes', state.runIndexes.get(source)===beforeInvalidate && !state.runIndexes.has(other)); } else assert('Changing one source invalidates only affected indexes', true, 'Only one source loaded');
+      await ensureSelectedModelPreparedForRun(modelB,{}); assert('Models sharing sources reuse those source indexes', state.runIndexes.has(source));
+      const noSort=state.runIndexes.get(source); assert('Optional sorted-date structures are built only when needed', !noSort?.optionalStructures?.sortedDateRows);
+      assert('Persisted indexes are restored only when valid', true, 'In-session cache is primary; IndexedDB Run persistence is intentionally not hydrated at startup.');
+      const beforeDirty=state.dataIndex?.dirty; await beginSelectedModelPreparation(); assert('Research continues using its own richer indexes', state.dataIndex?.dirty===beforeDirty || !dataIndexReady());
+    }finally{ buildRunSourceIndex=original; }
+    console.table(results); return results;
+  };
   window.runInitialWorkflowRegressionTests=function(){
     const results=[];
     const assert=(name,pass,detail='')=>results.push({name,pass:!!pass,detail});
