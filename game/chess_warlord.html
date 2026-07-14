@@ -58,14 +58,19 @@
   .bar{height:9px;border-radius:999px;background:rgba(255,255,255,.14);overflow:hidden;border:1px solid rgba(255,255,255,.1);}
   .fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#67e8f9,#facc15,#fb7185);box-shadow:0 0 16px rgba(250,204,21,.36);}
   #bottomHint{display:none !important;}
-  #piecePanel{position:fixed;right:12px;bottom:14px;width:min(360px,calc(100vw - 24px));padding:12px;z-index:4;pointer-events:auto;display:none;}
-  #piecePanel h3{margin:0 0 5px;font-size:16px;}
-  #piecePanel p{margin:3px 0;color:var(--muted);font-size:12px;line-height:1.35;}
-  #piecePanel button,#menu button{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;padding:8px 10px;border-radius:12px;font-weight:800;margin-top:8px;cursor:pointer;}
+  #piecePanel{position:fixed;left:8px;bottom:8px;width:auto;max-width:min(290px,calc(100vw - 16px));padding:0;z-index:7;pointer-events:auto;display:none;overflow:hidden;border-radius:10px;}
+  #piecePanel .piecePanelToggle{appearance:none;display:flex;align-items:center;gap:6px;width:100%;min-height:30px;margin:0;padding:6px 9px;border:0;background:rgba(8,12,22,.94);color:#fff;font-size:10px;font-weight:1000;text-align:left;cursor:pointer;white-space:nowrap;}
+  #piecePanel .piecePanelToggle .piecePanelName{overflow:hidden;text-overflow:ellipsis;}
+  #piecePanel .piecePanelToggle .piecePanelChevron{margin-left:auto;color:#cbd5e1;font-size:9px;}
+  #piecePanel .piecePanelDetails{display:none;width:min(290px,calc(100vw - 16px));max-height:min(42vh,320px);padding:8px 10px 10px;overflow:auto;background:rgba(8,12,22,.94);border-top:1px solid rgba(255,255,255,.12);}
+  #piecePanel.expanded .piecePanelDetails{display:block;}
+  #piecePanel h3{margin:0 0 5px;font-size:14px;}
+  #piecePanel p{margin:3px 0;color:var(--muted);font-size:11px;line-height:1.3;}
+  #piecePanel .piecePanelDetails button,#menu button{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;padding:7px 9px;border-radius:10px;font-weight:800;margin-top:7px;cursor:pointer;}
   #piecePanel button:hover,#menu button:hover{background:rgba(255,255,255,.16)}
   #menu{display:none !important;}
   #menu button.active{background:rgba(255,212,107,.24);border-color:rgba(255,212,107,.7)}
-  #minimapDock{position:fixed;left:12px;bottom:14px;z-index:5;width:218px;padding:7px;pointer-events:auto;transition:width .16s ease,transform .16s ease,background .16s ease;overflow:hidden;}
+  #minimapDock{position:fixed;left:12px;bottom:14px;z-index:5;width:218px;padding:7px;pointer-events:auto;transition:width .16s ease,transform .16s ease,background .16s ease,opacity .12s ease;overflow:hidden;}
   #minimapHeader{height:29px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 3px 5px 7px;}
   #minimapTitle{font-size:10px;font-weight:1000;letter-spacing:.08em;text-transform:uppercase;color:#e8f2ff;white-space:nowrap;}
   #minimapToggle{appearance:none;width:27px;height:25px;border:1px solid rgba(255,255,255,.18);border-radius:9px;background:rgba(255,255,255,.09);color:#fff;font-weight:1000;cursor:pointer;display:grid;place-items:center;padding:0;}
@@ -74,6 +79,8 @@
   #minimapDock.collapsed{width:43px;padding:5px;}
   #minimapDock.collapsed #minimapHeader{height:31px;padding:3px;justify-content:center;}
   #minimapDock.collapsed #minimapTitle,#minimapDock.collapsed #minimap{display:none !important;}
+  body.piece-panel-visible #minimapDock{bottom:48px;}
+  body.piece-panel-expanded #minimapDock{opacity:0;pointer-events:none;}
   #networkBadge{position:fixed;right:12px;top:108px;z-index:5;display:flex;gap:8px;align-items:center;padding:9px 11px;border-radius:15px;background:rgba(6,10,18,.84);border:1px solid rgba(255,255,255,.16);box-shadow:0 16px 42px rgba(0,0,0,.32);font-size:12px;color:#dbeafe;pointer-events:auto;}
   #exitLobbyBtn{appearance:none;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;border-radius:10px;padding:6px 9px;font-weight:900;cursor:pointer;}
   #exitLobbyBtn:hover{background:rgba(255,255,255,.16)}
@@ -138,6 +145,9 @@
     #minimapDock{left:8px;bottom:8px;width:172px;padding:6px;}
     #minimapDock #minimap{width:158px;height:116px;border-radius:10px;}
     #minimapDock.collapsed{width:41px;padding:5px;}
+    #piecePanel{left:6px;bottom:6px;max-width:min(250px,calc(100vw - 12px));}
+    #piecePanel .piecePanelDetails{width:min(250px,calc(100vw - 12px));max-height:36vh;}
+    body.piece-panel-visible #minimapDock{bottom:44px;}
     #menu{display:none !important;}
     #bottomHint{display:none !important;}
     #checkBanner{top:104px;font-size:11px;padding:7px 10px;max-width:calc(100vw - 24px);}
@@ -233,9 +243,9 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gsta
 (() => {
 'use strict';
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d',{alpha:false,desynchronized:true});
 const mini = document.getElementById('minimap');
-const mctx = mini.getContext('2d');
+const mctx = mini.getContext('2d',{alpha:false,desynchronized:true});
 const minimapDock = document.getElementById('minimapDock');
 const minimapToggle = document.getElementById('minimapToggle');
 const minimapTitle = document.getElementById('minimapTitle');
@@ -404,6 +414,7 @@ let hoverBoardTile = null;
 let paused = false;
 let lastTime = performance.now();
 let tickTime = 0;
+let hudTickTime = 0;
 let particles = [];
 let floatingText = [];
 // These effects are deliberately client-local: they celebrate the current player's input without adding network traffic or altering synced state.
@@ -411,6 +422,19 @@ let localActionFx = [];
 // Local-only destruction scenes are reconstructed from authoritative piece removals, so every client sees the same capture as a crumble without extra Firebase traffic.
 let destructionFx = [];
 let backgroundGradient = null;
+let renderFrameId = 0;
+let renderBoundsCache = new Map();
+let renderPieceLookup = null;
+let renderPlayerVision = null;
+let renderingFrame = false;
+let frameAbilityTargets = null;
+let frameAbilityTargetMap = null;
+let frameAttackTargetKeys = new Set();
+let lastMinimapDrawAt = 0;
+let piecePanelExpanded = false;
+let lastPiecePanelSignature = '';
+let lastPiecePanelId = null;
+let spawnHighlightCache = {key:'',expires:0,tiles:[]};
 const minimapBaseCanvas = document.createElement('canvas');
 const minimapBaseCtx = minimapBaseCanvas.getContext('2d');
 let minimapBaseState = {boardRef:null,revision:-1,width:0,height:0};
@@ -471,7 +495,8 @@ const db = getFirestore(app);
 const params = new URLSearchParams(location.search);
 const GAME_KEY = 'chesswarlord';
 const MAX_ONLINE_PLAYERS = 8;
-let lobbyId = params.get('gameId') || params.get('lobbyId') || localStorage.getItem('gh.lastLobbyId') || '';
+// Only an explicit lobby URL enables multiplayer. A stale prior-lobby id must never turn a solo launch into a failing sync session.
+let lobbyId = params.get('gameId') || params.get('lobbyId') || '';
 let username = (params.get('username') || localStorage.getItem('gh.username') || '').trim();
 let returnTo = params.get('returnTo') || params.get('return') || localStorage.getItem('gh.returnUrl') || '/game/index.html';
 let lobbyData = null;
@@ -2210,12 +2235,8 @@ async function bootMultiplayer(){
   try{
     if(!username){ username = prompt('Enter your lobby username') || `Player${Math.floor(Math.random()*9999)}`; }
     localStorage.setItem('gh.username', username);
-    setNetwork('Signing in…');
-    await new Promise(resolve => {
-      const unsub = onAuthStateChanged(auth, user => { if(user){ unsub(); resolve(); } });
-      if(!auth.currentUser) signInAnonymously(auth).catch(e=>{ console.error(e); resolve(); });
-    });
     if(!lobbyId){
+      // A local match never signs into Firebase, opens listeners, or surfaces network/sync failures.
       await ensureGraphicsReady();
       buildSlots([username]);
       refreshChessEloProfilesForSlots('soloBoot');
@@ -2234,6 +2255,11 @@ async function bootMultiplayer(){
       setNetwork('Local solo vs AI');
       return;
     }
+    setNetwork('Signing in…');
+    await new Promise(resolve => {
+      const unsub = onAuthStateChanged(auth, user => { if(user){ unsub(); resolve(); } });
+      if(!auth.currentUser) signInAnonymously(auth).catch(e=>{ console.error(e); resolve(); });
+    });
     lobbyRef = doc(db,'lobbies',lobbyId);
     stateRef = stateDocRef();
     fullStateRef = fullStateDocRef();
@@ -2253,11 +2279,16 @@ async function bootMultiplayer(){
     await ensureGraphicsReady();
     await refreshPresenceAndController();
     if(slotHumans.length <= 1){
+      if(heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer=null; }
+      if(controllerTimer){ clearInterval(controllerTimer); controllerTimer=null; }
       lobbyId = '';
+      lobbyRef = null;
       stateRef = null;
       fullStateRef = null;
       pregameRef = null;
       presenceRef = null;
+      controllerLease = null;
+      activePresence = [];
       isController = true;
       controllerName = username || 'Player';
       onlineCount = 1;
@@ -2329,13 +2360,16 @@ async function bootMultiplayer(){
     }
   }catch(e){
     console.error(e);
-    setNetwork('Lobby connection failed');
-    toast('Could not connect to the lobby. Choose solo AI difficulty, then start.', 4200);
+    const wasExplicitLobby=!!lobbyId;
+    if(heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer=null; }
+    if(controllerTimer){ clearInterval(controllerTimer); controllerTimer=null; }
     lobbyId = '';
+    lobbyRef = null;
     stateRef = null;
     fullStateRef = null;
     pregameRef = null;
     presenceRef = null;
+    setNetwork(wasExplicitLobby?'Lobby unavailable · local solo':'Local solo vs AI');
     buildSlots([username || 'Player']);
     refreshChessEloProfilesForSlots('fallbackSolo');
     PLAYER = 0;
@@ -3073,13 +3107,16 @@ function smoothNoise(x,y,scale,seed){
   return lerp(lerp(a,b,u),lerp(c,d,u),v);
 }
 function toast(msg, ms=2200){
+  if(!lobbyId && /(?:sync|command (?:failed|rejected)|lobby connection)/i.test(String(msg))) return;
   toastEl.textContent = msg;
   toastEl.style.display = 'block';
   clearTimeout(toast._t);
   toast._t = setTimeout(()=>toastEl.style.display='none', ms);
 }
 function resize(){
-  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const constrainedDevice=innerWidth<=900 || Number(navigator.deviceMemory||8)<=4;
+  const dprCap=constrainedDevice?1.5:2;
+  DPR = Math.max(1, Math.min(dprCap, window.devicePixelRatio || 1));
   W = Math.floor(innerWidth * DPR); H = Math.floor(innerHeight * DPR);
   canvas.width = W; canvas.height = H;
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -3630,7 +3667,10 @@ function newPiece(faction,type,x,y,opts={}){
   applyAuraTerritory(p);
   return p;
 }
-function findPieceAt(x,y){return pieces.find(p=>p.alive && p.x===x && p.y===y) || null;}
+function findPieceAt(x,y){
+  if(renderingFrame && renderPieceLookup) return renderPieceLookup.get(key(x,y)) || null;
+  return pieces.find(p=>p.alive && p.x===x && p.y===y) || null;
+}
 function getPiece(id){return pieces.find(p=>p.id===id && p.alive) || null;}
 function weakestTypeForFaction(factionIdx){
   const f=factions[factionIdx];
@@ -4996,9 +5036,16 @@ function selectedAbilityTargets(){
   if(['shadepawn','umbralbishop'].includes(selectedPiece.type)) return shadowMarkTargets(selectedPiece);
   return [];
 }
+function selectedAbilityTargetsForFrame(){
+  if(frameAbilityTargets) return frameAbilityTargets;
+  frameAbilityTargets=selectedAbilityTargets();
+  frameAbilityTargetMap=new Map(frameAbilityTargets.map(target=>[target.targetId,target]));
+  return frameAbilityTargets;
+}
 function selectedAbilityTargetForPiece(piece){
   if(!piece) return null;
-  return selectedAbilityTargets().find(t=>t.targetId===piece.id) || null;
+  selectedAbilityTargetsForFrame();
+  return frameAbilityTargetMap.get(piece.id) || null;
 }
 function applyGuardianShieldAbility(bishop,target,source='player'){
   if(!bishop?.alive || !target?.alive || !isGuardianBishop(bishop) || bishop.faction!==target.faction || pieceDefs[target.type]?.building || pieceHasOrbShield(target)) return false;
@@ -5439,6 +5486,7 @@ function drawDestructionEffects(){
   for(const fx of destructionFx){
     const age=t-fx.start;
     if(age<0 || age>fx.duration) continue;
+    if(!tileInRenderBounds(fx.x,fx.y,4)) continue;
     const def=pieceDefs[fx.type]||pieceDefs.pawn, f=factions[fx.faction]||{color:'#cbd5e1',dark:'#4b5563',id:'neutral'};
     const r=BASE_CELL*.36+Math.min(7,(def.value||1)*.6);
     const graphic=getPieceGraphic(f.id,fx.type);
@@ -5559,6 +5607,7 @@ function emitLocalActionFx(piece,fromX,fromY,toX,toY,isAttack){
 function drawLocalActionEffects(){
   const time=now();
   for(const fx of localActionFx){
+    if(!segmentTouchesRenderBounds({x:fx.fromX,y:fx.fromY},{x:fx.toX,y:fx.toY},3)) continue;
     const u=clamp((time-fx.start)/fx.duration,0,1), fade=1-u;
     const ax=(fx.fromX+.5)*BASE_CELL, ay=(fx.fromY+.5)*BASE_CELL, bx=(fx.toX+.5)*BASE_CELL, by=(fx.toY+.5)*BASE_CELL;
     const dx=bx-ax,dy=by-ay,len=Math.max(1,Math.hypot(dx,dy)),nx=-dy/len,ny=dx/len;
@@ -5861,8 +5910,18 @@ function roadCooldownNotice(piece){
   return label ? `<p style="color:${f.id==='ember'?'#ffb4a2':'#fff3b0'}">${label}</p>` : '';
 }
 function updatePiecePanel(){
-  if(!selectedPiece || !selectedPiece.alive){ piecePanel.style.display='none'; return; }
+  if(!selectedPiece || !selectedPiece.alive){
+    piecePanel.style.display='none';
+    piecePanel.classList.remove('expanded');
+    document.body.classList.remove('piece-panel-visible');
+    document.body.classList.remove('piece-panel-expanded');
+    lastPiecePanelSignature='';
+    lastPiecePanelId=null;
+    piecePanelExpanded=false;
+    return;
+  }
   const p=selectedPiece, def=pieceDefs[p.type], f=factions[p.faction];
+  if(lastPiecePanelId!==p.id){ piecePanelExpanded=false; lastPiecePanelId=p.id; }
   const cd=cooldownProgress(p);
   const shrineNames=localShrineNamesForPiece(p);
   const shrineLine=shrineNames.length ? `<p style="color:#fff3b0">Local shrine: ${shrineNames.join(', ')}</p>` : '';
@@ -5884,19 +5943,40 @@ function updatePiecePanel(){
   if(pieceHasOrbShield(p)) abilityLine+=`<p style="color:#bff6ff"><b>Dawn Shield active:</b> blocks the next capture attempt.</p>`;
   if((p.shadowMarkedUntil||0)>now()) abilityLine+=`<p style="color:#ff8b82"><b>Marked:</b> All Shadow troops gain +1 valid attack reach against this unit. Wraiths may execute it. ${Math.ceil(p.shadowMarkedUntil-now())}s.</p>`;
   const legendLine=p.faction===PLAYER?`<p style="font-size:11px;color:#cbd5e1">Blue = move · Red glow = attack · Green glow = Guardian Shield · Orange glow = Shade Mark.</p>`:'';
+  const troopName=pieceDisplayName(p.faction,p.type);
+  const cooldownText=cooldownReady(p)?'Ready to move.':'Cooldown '+Math.ceil((1-cd)*cooldownFor(p))+'s remaining.';
+  const signature=[p.id,p.type,p.level,p.captures,p.hp,p.maxHp,Math.round(cd*20),cooldownText,shrineLine,solarLine,marshalLine,roadLine,overextensionLine,abilityLine,piecePanelExpanded].join('|');
   piecePanel.style.display='block';
+  piecePanel.classList.toggle('expanded',piecePanelExpanded);
+  document.body.classList.add('piece-panel-visible');
+  document.body.classList.toggle('piece-panel-expanded',piecePanelExpanded);
+  if(signature===lastPiecePanelSignature) return;
+  lastPiecePanelSignature=signature;
   piecePanel.innerHTML=`
-    <h3 style="color:${f.color}">${def.icon} ${pieceDisplayName(p.faction,p.type)} <span style="font-size:12px;color:#cbd5e1">Lv ${p.level}</span></h3>
-    <p><b>${f.short}</b> · Captures ${p.captures} · HP ${p.hp}/${p.maxHp}</p>
-    <div class="bar"><div class="fill" style="width:${(cd*100).toFixed(0)}%"></div></div>
-    <p>${cooldownReady(p)?'Ready to move.':'Cooldown '+Math.ceil((1-cd)*cooldownFor(p))+'s remaining.'}</p>
-    ${shrineLine}
-    ${solarLine}${marshalLine}${roadLine}${overextensionLine}${abilityLine}${legendLine}
-    <p>${def.desc}</p>
-    <button id="panelCenter">Center on piece</button>`;
-  const btn=document.getElementById('panelCenter');
-  if(btn) btn.onclick=()=>centerOn(p.x,p.y);
+    <button type="button" class="piecePanelToggle" aria-expanded="${piecePanelExpanded?'true':'false'}" title="${piecePanelExpanded?'Collapse':'Expand'} troop details">
+      <span>${def.icon}</span><span class="piecePanelName" style="color:${f.color}">${troopName}</span><span class="piecePanelChevron">${piecePanelExpanded?'▼':'▲'}</span>
+    </button>
+    <div class="piecePanelDetails">
+      <h3 style="color:${f.color}">${def.icon} ${troopName} <span style="font-size:11px;color:#cbd5e1">Lv ${p.level}</span></h3>
+      <p><b>${f.short}</b> · Captures ${p.captures} · HP ${p.hp}/${p.maxHp}</p>
+      <div class="bar"><div class="fill" style="width:${(cd*100).toFixed(0)}%"></div></div>
+      <p>${cooldownText}</p>
+      ${shrineLine}
+      ${solarLine}${marshalLine}${roadLine}${overextensionLine}${abilityLine}${legendLine}
+      <p>${def.desc}</p>
+      <button type="button" data-piece-panel-center>Center on piece</button>
+    </div>`;
 }
+piecePanel.addEventListener('click',event=>{
+  if(event.target.closest('[data-piece-panel-center]')){
+    if(selectedPiece?.alive) centerOn(selectedPiece.x,selectedPiece.y);
+    return;
+  }
+  if(!event.target.closest('.piecePanelToggle')) return;
+  piecePanelExpanded=!piecePanelExpanded;
+  lastPiecePanelSignature='';
+  updatePiecePanel();
+});
 function isoOriginX(){ return BOARD_H * BASE_CELL; }
 function isoProjectWorld(wx,wy){ return {x:isoOriginX()+wx-wy,y:(wx+wy)*.5}; }
 function isoUnprojectWorld(ix,iy){
@@ -5932,18 +6012,55 @@ function boardToScreen(x,y){
   return {x:projected.x*cam.zoom-cam.x,y:projected.y*cam.zoom-cam.y};
 }
 function visibleBoardBounds(pad=2){
+  const cached=renderBoundsCache.get(pad);
+  if(cached?.frame===renderFrameId) return cached.bounds;
   const pts=[screenToBoardFloat(0,0),screenToBoardFloat(innerWidth,0),screenToBoardFloat(0,innerHeight),screenToBoardFloat(innerWidth,innerHeight)];
-  return {
+  const bounds={
     left:clamp(Math.floor(Math.min(...pts.map(p=>p.fx)))-pad,0,BOARD_W-1),
     top:clamp(Math.floor(Math.min(...pts.map(p=>p.fy)))-pad,0,BOARD_H-1),
     right:clamp(Math.ceil(Math.max(...pts.map(p=>p.fx)))+pad,0,BOARD_W-1),
     bottom:clamp(Math.ceil(Math.max(...pts.map(p=>p.fy)))+pad,0,BOARD_H-1)
   };
+  renderBoundsCache.set(pad,{frame:renderFrameId,bounds});
+  return bounds;
+}
+function prepareRenderLookups(){
+  renderPieceLookup=new Map();
+  for(const p of pieces){ if(p.alive) renderPieceLookup.set(key(p.x,p.y),p); }
+  renderPlayerVision=null;
+  if(!factions.some(f=>f?.alive && f.id==='shadow')) return;
+  const vision=new Uint8Array(BOARD_W*BOARD_H);
+  const rr=SHADOW_FOG_RADIUS*SHADOW_FOG_RADIUS;
+  for(const p of pieces){
+    if(!p.alive || p.faction!==PLAYER) continue;
+    for(let y=Math.max(0,p.y-SHADOW_FOG_RADIUS);y<=Math.min(BOARD_H-1,p.y+SHADOW_FOG_RADIUS);y++){
+      for(let x=Math.max(0,p.x-SHADOW_FOG_RADIUS);x<=Math.min(BOARD_W-1,p.x+SHADOW_FOG_RADIUS);x++){
+        if(dist2(x,y,p.x,p.y)<=rr) vision[y*BOARD_W+x]=1;
+      }
+    }
+  }
+  renderPlayerVision=vision;
+}
+function isShadowFoggedForRender(x,y){
+  if(!renderPlayerVision || !inBounds(x,y)) return false;
+  const t=tile(x,y);
+  if(t.owner==null || t.owner===PLAYER || factions[t.owner]?.id!=='shadow') return false;
+  return renderPlayerVision[y*BOARD_W+x]!==1;
+}
+function tileInRenderBounds(x,y,pad=0){
+  const b=visibleBoardBounds(pad);
+  return x>=b.left && x<=b.right && y>=b.top && y<=b.bottom;
+}
+function segmentTouchesRenderBounds(a,b,pad=2){
+  const bounds=visibleBoardBounds(pad);
+  const ax=(a.px ?? a.x), ay=(a.py ?? a.y), bx=(b.px ?? b.x), by=(b.py ?? b.y);
+  return !(Math.max(ax,bx)<bounds.left || Math.min(ax,bx)>bounds.right || Math.max(ay,by)<bounds.top || Math.min(ay,by)>bounds.bottom);
 }
 
 function gameTick(dt){
   if(!gameStarted || paused) return;
   tickTime += dt;
+  hudTickTime += dt;
   updateSolarBeaconChannels(dt, canAuthoritativelyWriteState());
   const pendingActionIds = pendingPlayerActions.length ? new Set(pendingPlayerActions.map(a=>a.actionId)) : null;
   const frameNowMs = Date.now();
@@ -5983,9 +6100,10 @@ function gameTick(dt){
   if(canAuthoritativelyWriteState()){ updateSpawns(dt); aiTick(dt); updateSpecialLandRules(dt); maybeWriteControllerState(); }
   else { updateLocalPlayerSpawn(dt); }
   expirePendingPlayerActions();
-  updateHUD();
+  // DOM/minimap-style UI does not need a 60 Hz refresh. Game simulation and input remain frame-rate driven.
+  if(hudTickTime>=.10){ hudTickTime=0; updateHUD(); }
   maybeAnnounceWorldWinner();
-  if(tickTime>.5){ tickTime=0; updatePiecePanel(); }
+  if(tickTime>.25){ tickTime=0; updatePiecePanel(); }
 }
 
 function updateLocalPlayerSpawn(dt){
@@ -6610,25 +6728,37 @@ function aiSpawn(f){
 }
 
 function draw(){
-  ctx.clearRect(0,0,innerWidth,innerHeight);
+  renderFrameId++;
+  renderBoundsCache.clear();
+  frameAbilityTargets=null;
+  frameAbilityTargetMap=null;
+  frameAttackTargetKeys=new Set(selectedPiece ? legalMoves.filter(m=>m.capture && !m.wall).map(m=>key(m.x,m.y)) : []);
+  prepareRenderLookups();
+  renderingFrame=true;
   drawBackground();
-  ctx.save();
-  ctx.scale(cam.zoom,cam.zoom);
-  ctx.translate(-cam.x/cam.zoom,-cam.y/cam.zoom);
-  applyIsometricTransform(ctx);
-  drawBoard();
-  drawTerritoryEffects();
-  drawShrines();
-  drawShadowFog();
-  drawHighlights();
-  drawActors();
-  drawDestructionEffects();
-  drawSolarBeaconChannels();
-  drawParticlesWorld();
-  drawLocalActionEffects();
-  ctx.restore();
-  drawScreenEffects();
-  drawMinimap();
+  try{
+    ctx.save();
+    ctx.scale(cam.zoom,cam.zoom);
+    ctx.translate(-cam.x/cam.zoom,-cam.y/cam.zoom);
+    applyIsometricTransform(ctx);
+    drawBoard();
+    drawTerritoryEffects();
+    drawShrines();
+    drawShadowFog();
+    drawHighlights();
+    drawActors();
+    drawDestructionEffects();
+    drawSolarBeaconChannels();
+    drawParticlesWorld();
+    drawLocalActionEffects();
+    ctx.restore();
+    drawScreenEffects();
+    drawMinimap();
+  } finally {
+    renderingFrame=false;
+    renderPieceLookup=null;
+    renderPlayerVision=null;
+  }
 }
 function drawBackground(){
   if(!backgroundGradient){
@@ -6636,9 +6766,10 @@ function drawBackground(){
     backgroundGradient.addColorStop(0,'#091426');backgroundGradient.addColorStop(.55,'#07101c');backgroundGradient.addColorStop(1,'#050813');
   }
   ctx.fillStyle=backgroundGradient; ctx.fillRect(0,0,innerWidth,innerHeight);
+  const time=now();
   ctx.globalAlpha=.2;
   for(let i=0;i<40;i++){
-    const x=(i*193+Math.sin(now()*0.05+i)*60)%innerWidth;
+    const x=(i*193+Math.sin(time*0.05+i)*60)%innerWidth;
     const y=(i*97)%innerHeight;
     ctx.fillStyle=i%3?'#79a7ff':'#fff6b8'; ctx.fillRect(x,y,1.3,1.3);
   }
@@ -6646,6 +6777,8 @@ function drawBackground(){
 }
 function drawBoard(){
   const {left,top,right,bottom}=visibleBoardBounds(3);
+  const visibleTileCount=(right-left+1)*(bottom-top+1);
+  const detailedTerrain=cam.zoom>=.66 && visibleTileCount<=720;
   for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
     for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
       const t=tile(x,y), td=terrainOf(t);
@@ -6653,8 +6786,8 @@ function drawBoard(){
       const alt=t.type==='water' ? td.color : ((x+y)%2 ? td.alt : td.color);
       ctx.fillStyle=alt;
       ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);
-      // Water gets its own pixel texture; land keeps the soft terrain grain.
-      if(t.type!=='water'){
+      // At distant zoom, micro-texture is smaller than a screen pixel. Use a lightweight terrain silhouette instead.
+      if(detailedTerrain && t.type!=='water'){
         const n=seededNoise(x,y,707);
         ctx.globalAlpha=.13;
         ctx.fillStyle=n>.5?'#ffffff':'#000000';
@@ -6663,7 +6796,9 @@ function drawBoard(){
         ctx.fill();
         ctx.globalAlpha=1;
       }
-      if(t.type==='water'){
+      if(!detailedTerrain){
+        drawLowDetailTerrain(sx,sy,x,y,t.type,td);
+      } else if(t.type==='water'){
         drawWaterTile(sx,sy,x,y);
       } else if(t.type==='mountain'){
         drawMountainTile(sx,sy,x,y);
@@ -6679,7 +6814,7 @@ function drawBoard(){
         ctx.fillText(td.glyph,sx+BASE_CELL/2,sy+BASE_CELL/2);
         ctx.globalAlpha=1;
       }
-      drawTerrainLandmarks(sx,sy,x,y,t.type);
+      if(detailedTerrain) drawTerrainLandmarks(sx,sy,x,y,t.type);
       // Do not grid water internally: shorelines are drawn only around each body's exposed edge.
       if(t.type!=='water'){
         ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1;
@@ -6687,6 +6822,21 @@ function drawBoard(){
       }
     }
   }
+}
+function drawLowDetailTerrain(sx,sy,x,y,type,td){
+  ctx.save();
+  if(type==='water'){
+    ctx.fillStyle='#0b416d';ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);drawWaterBodyOutline(sx,sy,x,y);
+  } else if(type==='road'){
+    ctx.restore();drawRoadTile(sx,sy,x,y);return;
+  } else if(type==='mountain'){
+    ctx.globalAlpha=.7;ctx.fillStyle='#69707f';ctx.beginPath();ctx.moveTo(sx+BASE_CELL*.5,sy+BASE_CELL*.18);ctx.lineTo(sx+BASE_CELL*.18,sy+BASE_CELL*.82);ctx.lineTo(sx+BASE_CELL*.82,sy+BASE_CELL*.82);ctx.closePath();ctx.fill();
+  } else if(type==='crystal'){
+    ctx.globalAlpha=.76;ctx.fillStyle='#b9c7ff';ctx.beginPath();ctx.moveTo(sx+BASE_CELL*.5,sy+BASE_CELL*.18);ctx.lineTo(sx+BASE_CELL*.68,sy+BASE_CELL*.72);ctx.lineTo(sx+BASE_CELL*.38,sy+BASE_CELL*.78);ctx.closePath();ctx.fill();
+  } else if(td.rough>0 || type==='hill'){
+    ctx.globalAlpha=.35;ctx.fillStyle='rgba(255,255,255,.5)';ctx.beginPath();ctx.ellipse(sx+BASE_CELL*.5,sy+BASE_CELL*.62,BASE_CELL*.24,BASE_CELL*.10,0,Math.PI,Math.PI*2);ctx.fill();
+  }
+  ctx.restore();
 }
 function drawMountainTile(sx,sy,x,y){
   ctx.save();
@@ -7029,7 +7179,7 @@ function drawShadowFog(){
   ctx.save();
   for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
     for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
-      if(!isShadowFoggedForPlayer(x,y,PLAYER)) continue;
+      if(!isShadowFoggedForRender(x,y)) continue;
       const sx=x*BASE_CELL, sy=y*BASE_CELL;
       ctx.globalAlpha=.82;
       ctx.fillStyle='rgba(4,5,12,.96)';
@@ -7081,10 +7231,18 @@ function drawShrines(){
 }
 function drawHighlights(){
   if(spawnSelection!==null){
-    const tiles=eligibleSpawnTiles(PLAYER, factions[PLAYER]?.spawnChoices?.[spawnSelection] || 'pawn');
+    const spawnType=factions[PLAYER]?.spawnChoices?.[spawnSelection] || 'pawn';
+    const cacheKey=`${PLAYER}|${spawnType}|${landRevision}|${pieces.length}`;
+    const stamp=performance.now();
+    if(spawnHighlightCache.key!==cacheKey || stamp>=spawnHighlightCache.expires){
+      spawnHighlightCache={key:cacheKey,expires:stamp+150,tiles:eligibleSpawnTiles(PLAYER,spawnType)};
+    }
+    const tiles=spawnHighlightCache.tiles;
+    const bounds=visibleBoardBounds(1);
     const time=now();
     ctx.save();
     for(const t of tiles){
+      if(t.x<bounds.left || t.x>bounds.right || t.y<bounds.top || t.y>bounds.bottom) continue;
       const sx=t.x*BASE_CELL, sy=t.y*BASE_CELL;
       ctx.globalAlpha=.18+.08*Math.sin(time*5+t.x+t.y);
       ctx.fillStyle='#ffe985'; ctx.fillRect(sx+5,sy+5,BASE_CELL-10,BASE_CELL-10);
@@ -7102,7 +7260,7 @@ function drawHighlights(){
       ctx.globalAlpha=1;
       if(m.capture){ ctx.strokeStyle=m.markedRangeBonus?'#d8b4fe':'#ffedf0'; ctx.lineWidth=2.5; ctx.strokeRect(x+7,y+7,BASE_CELL-14,BASE_CELL-14); }
     }
-    const abilityTargets=selectedAbilityTargets();
+    const abilityTargets=selectedAbilityTargetsForFrame();
     for(const a of abilityTargets){
       const x=(a.x+.5)*BASE_CELL,y=(a.y+.5)*BASE_CELL,pulse=.5+.5*Math.sin(now()*8+a.targetId);
       ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.18+.20*pulse;
@@ -7292,7 +7450,8 @@ function drawSolarBeaconChannels(){
   for(const link of solarChannelLinks){
     const b=link.beacon, target=link.target;
     if(!b || !target || !b.alive || !target.alive) continue;
-    if(isShadowFoggedForPlayer(b.x,b.y,PLAYER) || isShadowFoggedForPlayer(target.x,target.y,PLAYER)) continue;
+    if(!segmentTouchesRenderBounds(b,target,3)) continue;
+    if(isShadowFoggedForRender(b.x,b.y) || isShadowFoggedForRender(target.x,target.y)) continue;
     const a=pieceWorldCenter(b);
     const c=pieceWorldCenter(target);
     const dx=c.x-a.x, dy=c.y-a.y;
@@ -7339,7 +7498,8 @@ function drawSolarBeaconChannels(){
   for(const link of solarAttackLinks){
     const b=link.beacon, target=link.target;
     if(!b || !target || !b.alive || !target.alive) continue;
-    if(isShadowFoggedForPlayer(b.x,b.y,PLAYER) || isShadowFoggedForPlayer(target.x,target.y,PLAYER)) continue;
+    if(!segmentTouchesRenderBounds(b,target,3)) continue;
+    if(isShadowFoggedForRender(b.x,b.y) || isShadowFoggedForRender(target.x,target.y)) continue;
     const a=pieceWorldCenter(b);
     const c=pieceWorldCenter(target);
     const dx=c.x-a.x, dy=c.y-a.y;
@@ -7448,7 +7608,7 @@ function drawActors(){
     if(!p.alive) return false;
     const px=p.px ?? p.x, py=p.py ?? p.y;
     if(px<left-piecePad || px>right+piecePad || py<top-piecePad || py>bottom+piecePad) return false;
-    return p.faction===PLAYER || !isShadowFoggedForPlayer(p.x,p.y,PLAYER);
+    return p.faction===PLAYER || !isShadowFoggedForRender(p.x,p.y);
   });
   const labelIds = computeNameLabelPieceIds(visiblePieces);
   const actors = [];
@@ -7456,7 +7616,7 @@ function drawActors(){
     if(!inBounds(x,y)) continue;
     const t=tile(x,y);
     if(t.wallOwner==null) continue;
-    if(isShadowFoggedForPlayer(x,y,PLAYER)) continue;
+    if(isShadowFoggedForRender(x,y)) continue;
     actors.push({kind:'wall',x,y,owner:t.wallOwner,depth:actorDepth(x,y)});
   }
   for(const p of visiblePieces){
@@ -7638,7 +7798,7 @@ function drawSinglePiece(p,labelIds=new Set()){
     const metrics=pieceSpriteMetrics(def,p.type,graphic,r);
     const checkedKing = p.type==='king' && p.faction===PLAYER && kingInCheck;
     const abilityTarget=selectedAbilityTargetForPiece(p);
-    const attackTarget=!!selectedPiece && selectedPiece.faction===PLAYER && p.faction!==selectedPiece.faction && legalMoves.some(m=>m.capture && !m.wall && m.x===p.x && m.y===p.y);
+    const attackTarget=!!selectedPiece && selectedPiece.faction===PLAYER && p.faction!==selectedPiece.faction && frameAttackTargetKeys.has(key(p.x,p.y));
     const targetPulse=.5 + .5*Math.sin(now()*9+p.id);
     const targetGlowColor=abilityTarget?.kind==='guardianShield' ? 'rgba(52,255,135,.98)' : (abilityTarget?.kind==='shadeMark' ? 'rgba(255,145,38,.98)' : 'rgba(255,43,67,.98)');
     ctx.save();
@@ -7803,12 +7963,17 @@ function drawSinglePiece(p,labelIds=new Set()){
 function computeNameLabelPieceIds(visible){
   const ids = new Set();
   const {left,top,right,bottom}=visibleBoardBounds(2);
+  const bestByFaction=new Map();
+  const kingByFaction=new Map();
+  for(const p of visible){
+    if(p.x<left || p.x>right || p.y<top || p.y>bottom) continue;
+    if(p.type==='king') kingByFaction.set(p.faction,p);
+    const prior=bestByFaction.get(p.faction);
+    if(!prior || (pieceDefs[p.type]?.value||1)>(pieceDefs[prior.type]?.value||1)) bestByFaction.set(p.faction,p);
+  }
   for(const f of factions){
     if(!f || !f.alive) continue;
-    const onscreen = visible.filter(p=>p.faction===f.idx && p.x>=left && p.x<=right && p.y>=top && p.y<=bottom);
-    if(!onscreen.length) continue;
-    const king = onscreen.find(p=>p.type==='king');
-    const labelPiece = king || onscreen.sort((a,b)=>(pieceDefs[b.type].value||1)-(pieceDefs[a.type].value||1))[0];
+    const labelPiece=kingByFaction.get(f.idx) || bestByFaction.get(f.idx);
     if(labelPiece) ids.add(labelPiece.id);
   }
   return ids;
@@ -8023,12 +8188,17 @@ function drawPieceMarkings(type,r,id,factionId){
   ctx.restore();
 }
 function drawParticlesWorld(){
+  const bounds=visibleBoardBounds(3);
   for(const p of particles){
+    const bx=p.x/BASE_CELL,by=p.y/BASE_CELL;
+    if(bx<bounds.left || bx>bounds.right || by<bounds.top || by>bounds.bottom) continue;
     ctx.globalAlpha=Math.max(0,p.life/p.max);
     ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
   }
   ctx.globalAlpha=1;
   for(const f of floatingText){
+    const bx=f.x/BASE_CELL,by=f.y/BASE_CELL;
+    if(bx<bounds.left || bx>bounds.right || by<bounds.top || by>bounds.bottom) continue;
     ctx.globalAlpha=Math.max(0,f.life/f.max);
     ctx.font='bold 13px Inter, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.lineWidth=4; ctx.strokeStyle='rgba(0,0,0,.75)'; ctx.strokeText(f.text,f.x,f.y);
@@ -8068,6 +8238,9 @@ function ensureMinimapBase(mw,mh){
 }
 function drawMinimap(){
   if(!minimapOpen || !mini || !mctx) return;
+  const stamp=performance.now();
+  if(stamp-lastMinimapDrawAt<100) return;
+  lastMinimapDrawAt=stamp;
   const mw=mini.clientWidth, mh=mini.clientHeight;
   if(mw<2 || mh<2) return;
   mctx.clearRect(0,0,mw,mh);
@@ -8085,7 +8258,7 @@ function drawMinimap(){
     mctx.beginPath();mctx.arc((s.x+.5)*sx,(s.y+.5)*sy,3.2,0,Math.PI*2);mctx.fill();mctx.stroke();
   }
   for(const p of pieces){
-    if(!p.alive || (p.faction!==PLAYER && isShadowFoggedForPlayer(p.x,p.y,PLAYER))) continue;
+    if(!p.alive || (p.faction!==PLAYER && isShadowFoggedForRender(p.x,p.y))) continue;
     const px=(p.x+.5)*sx,py=(p.y+.5)*sy;
     if(p.type==='king'){
       mctx.fillStyle=factions[p.faction]?.color||'#fff';mctx.strokeStyle='#fff';mctx.lineWidth=1.4;mctx.beginPath();mctx.arc(px,py,4.2,0,Math.PI*2);mctx.fill();mctx.stroke();
@@ -8395,3 +8568,4 @@ bootMultiplayer();
 </script>
 </body>
 </html>
+
