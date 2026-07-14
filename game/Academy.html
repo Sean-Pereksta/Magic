@@ -148,6 +148,10 @@ input[type="file"]{background:#fff}
 @media(max-width:900px){#editModelModal .grid5,#editModelModal .grid4,#runModal .grid4,.teamPickerBar{grid-template-columns:1fr}.teamPickerBar button{width:100%}}
 
 #qaDateField,#qaTeamScoreModeField{border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:7px}
+.runReadiness{border:1px solid #cbd5e1;border-left:5px solid #2563eb;border-radius:10px;background:#eff6ff;padding:8px 10px;display:grid;gap:4px;font-size:12px;color:#1e3a8a}
+.runReadinessTitle{font-weight:900;color:#111827}
+.runReadinessMeta{display:flex;gap:6px;flex-wrap:wrap}
+.runReadinessMeta .badge{border-color:#bfdbfe;background:#fff;color:#1e3a8a}
 #qaDateField select,#qaTeamScoreModeField select{background:#f8fafc}
 
 
@@ -690,6 +694,7 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
         <div id="qaTeamScoreModeField" class="field hidden"><label>QA Team Scores</label><select id="runQATeamScoreMode"><option value="assignedReps">Average assigned representatives</option><option value="sheetTeam">Direct raw QA upload: Assigned Date + QA Team + Score</option></select></div>
         <div class="field"><label><input id="hideNoScoreReps" type="checkbox"> Hide representatives with no score</label><select id="hideNoScoreThreshold" class="hidden"><option value="all">All categories</option><option value="1">1 category</option><option value="2">2 categories</option><option value="3">3 categories</option><option value="4">4 categories</option><option value="5">5 categories</option></select></div>
       </div>
+      <div id="runReadiness" class="runReadiness"><div id="runReadinessTitle" class="runReadinessTitle">Selected model preparation will start after this window opens.</div><div id="runReadinessDetail">Required source count: 0 · Ready sources: 0 · Preparing sources: 0</div><div id="runReadinessMeta" class="runReadinessMeta"><span class="badge">Global rebuild avoided</span></div></div>
       <div class="runTeamPanel">
         <div class="runPanelTitle"><span>Teams to Include</span><span id="teamCountBadge" class="teamCount">0 selected</span></div>
         <div class="teamPickerBar">
@@ -931,7 +936,8 @@ const state = {
   importCacheDirty: null,
   importCacheSaveTimer: null,
   importCacheSaveQueued: false,
-  importCacheSaveReasons: []
+  importCacheSaveReasons: [],
+  runPrep: {generation:0,jobs:new Map(),ready:new Map(),dateRangeCache:new Map(),lastRequired:[],lastModelId:''}
 };
 const el = id => document.getElementById(id);
 const els = {
@@ -941,7 +947,7 @@ const els = {
   troubleSourceSelect: el('troubleSourceSelect'), troubleSheetSelect: el('troubleSheetSelect'), troubleHeaderRowInput: el('troubleHeaderRowInput'), troubleStartColInput: el('troubleStartColInput'), troublePreviewBtn: el('troublePreviewBtn'), troubleApplyBtn: el('troubleApplyBtn'), troubleApplyFootBtn: el('troubleApplyFootBtn'), troubleStatus: el('troubleStatus'), troubleSheetPreview: el('troubleSheetPreview'), troubleHeaderSummary: el('troubleHeaderSummary'), troubleHeaderPreview: el('troubleHeaderPreview'), troubleSelectedCell: el('troubleSelectedCell'), troubleManualHeaderName: el('troubleManualHeaderName'), troubleDeclareHeaderBtn: el('troubleDeclareHeaderBtn'), troubleManualHeaders: el('troubleManualHeaders'), troubleCustomFrameworkPanel: el('troubleCustomFrameworkPanel'), troubleNameMode: el('troubleNameMode'), troubleFullNameColumn: el('troubleFullNameColumn'), troubleFirstNameColumn: el('troubleFirstNameColumn'), troubleLastNameColumn: el('troubleLastNameColumn'), troubleConvertLastFirst: el('troubleConvertLastFirst'), troubleTeamColumn: el('troubleTeamColumn'), troubleSkipTeamBuild: el('troubleSkipTeamBuild'), troubleUseDateColumn: el('troubleUseDateColumn'), troubleDateColumn: el('troubleDateColumn'),
   teamManagerSearch: el('teamManagerSearch'), teamManagerList: el('teamManagerList'), teamManagerTitle: el('teamManagerTitle'), teamRepSearch: el('teamRepSearch'), teamMoveSelect: el('teamMoveSelect'), selectAllTeamRepsBtn: el('selectAllTeamRepsBtn'), unselectAllTeamRepsBtn: el('unselectAllTeamRepsBtn'), moveTeamBtn: el('moveTeamBtn'), teamMoveStatus: el('teamMoveStatus'), teamRepList: el('teamRepList'), teamConnectThreshold: el('teamConnectThreshold'), teamConnectThresholdValue: el('teamConnectThresholdValue'), teamQuarantineSummary: el('teamQuarantineSummary'), teamQuarantineList: el('teamQuarantineList'), connectVisibleRepMatchesBtn: el('connectVisibleRepMatchesBtn'), connectAllRepMatchesBtn: el('connectAllRepMatchesBtn'), teamConnectSummary: el('teamConnectSummary'), teamConnectList: el('teamConnectList'), rebuildControlRosterBtn: el('rebuildControlRosterBtn'), clearAllRepAliasesBtn: el('clearAllRepAliasesBtn'), clearRetailRepAliasesBtn: el('clearRetailRepAliasesBtn'), clearReferralRepAliasesBtn: el('clearReferralRepAliasesBtn'),
   modelList: el('modelList'), createModelBtn: el('createModelBtn'), exportModelsBtn: el('exportModelsBtn'), importModelsFile: el('importModelsFile'), massHeaderList: el('massHeaderList'), massHeaderSummary: el('massHeaderSummary'), refreshMassHeaderBtn: el('refreshMassHeaderBtn'), applyMassHeaderBtn: el('applyMassHeaderBtn'), massShowAllHeaders: el('massShowAllHeaders'), editModelTitle: el('editModelTitle'), modelNameInput: el('modelNameInput'), modelTypeInput: el('modelTypeInput'), modelTiebreakerInput: el('modelTiebreakerInput'), sourceSettingsPanel: el('sourceSettingsPanel'), columnCheckResults: el('columnCheckResults'), criteriaList: el('criteriaList'), addCriterionBtn: el('addCriterionBtn'), cancelModelTopBtn: el('cancelModelTopBtn'), cancelModelBtn: el('cancelModelBtn'), saveModelBtn: el('saveModelBtn'), saveExitModelBtn: el('saveExitModelBtn'),
-  runModelSelect: el('runModelSelect'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), qaTeamScoreModeField: el('qaTeamScoreModeField'), runQATeamScoreMode: el('runQATeamScoreMode'), hideNoScoreReps: el('hideNoScoreReps'), hideNoScoreThreshold: el('hideNoScoreThreshold'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn'), allstarRunPanel: el('allstarRunPanel'), orgBuilderModal: el('orgBuilderModal'), createOrgBtn: el('createOrgBtn'), duplicateOrgBtn: el('duplicateOrgBtn'), deleteOrgBtn: el('deleteOrgBtn'), saveOrgBtn: el('saveOrgBtn'), exportOrgsBtn: el('exportOrgsBtn'), importOrgsFile: el('importOrgsFile'), orgSearchInput: el('orgSearchInput'), orgCoachSearchInput: el('orgCoachSearchInput'), orgList: el('orgList'), orgCoachList: el('orgCoachList'), orgSelectedList: el('orgSelectedList'), orgNameInput: el('orgNameInput'), orgCountBadge: el('orgCountBadge'), orgHealthPanel: el('orgHealthPanel'), selectVisibleOrgCoachesBtn: el('selectVisibleOrgCoachesBtn'), clearOrgCoachesBtn: el('clearOrgCoachesBtn'), runOrgSearchInput: el('runOrgSearchInput'), runIncludeOrgGrid: el('runIncludeOrgGrid'), runExcludeOrgGrid: el('runExcludeOrgGrid'), runOrgBadge: el('runOrgBadge'), clearRunOrgsBtn: el('clearRunOrgsBtn'), researchCanvas: el('researchCanvas'), metricsList: el('metricsList'), metricSearchInput: el('metricSearchInput'), metricEditorModal: el('metricEditorModal'), newMetricBtn: el('newMetricBtn'), exportMetricsBtn: el('exportMetricsBtn'), importMetricsFile: el('importMetricsFile'), metricEditId: el('metricEditId'), metricNameInput: el('metricNameInput'), metricSourceSelect: el('metricSourceSelect'), metricModeSelect: el('metricModeSelect'), metricFieldInput: el('metricFieldInput'), metricFieldGearBtn: el('metricFieldGearBtn'), metricPercentOfField: el('metricPercentOfField'), metricWithinCompareField: el('metricWithinCompareField'), metricWithinUseRange: el('metricWithinUseRange'), metricWithinDays: el('metricWithinDays'), metricWithinRangeMin: el('metricWithinRangeMin'), metricWithinRangeMax: el('metricWithinRangeMax'), metricNumericWarn: el('metricNumericWarn'), metricNotesInput: el('metricNotesInput'), addMetricAndBtn: el('addMetricAndBtn'), addMetricOrBtn: el('addMetricOrBtn'), metricRulesList: el('metricRulesList'), deleteMetricBtn: el('deleteMetricBtn'), saveMetricBtn: el('saveMetricBtn'), saveExitMetricBtn: el('saveExitMetricBtn'), researchCanvas: el('researchCanvas'), addResearchItemBtn: el('addResearchItemBtn'), exportResearchBtn: el('exportResearchBtn'), importResearchFile: el('importResearchFile'), renderAllResearchBtn: el('renderAllResearchBtn'), buildResearchIndexBtn: el('buildResearchIndexBtn'), clearResearchCacheBtn: el('clearResearchCacheBtn'), clearResearchRenderedBtn: el('clearResearchRenderedBtn'), researchCacheBadge: el('researchCacheBadge'), stopResearchRenderBtn: el('stopResearchRenderBtn'), clearResearchBtn: el('clearResearchBtn'), researchEditId: el('researchEditId'), researchTitleInput: el('researchTitleInput'), researchOutputType: el('researchOutputType'), researchMode: el('researchMode'), researchFilterDuplicateReps: el('researchFilterDuplicateReps'), researchSource: el('researchSource'), researchDateColumn: el('researchDateColumn'), researchStartDate: el('researchStartDate'), researchEndDate: el('researchEndDate'), researchGroupField: el('researchGroupField'), researchGroupMultiAdd: el('researchGroupMultiAdd'), researchGroupMultiAddBuilder: el('researchGroupMultiAddBuilder'), researchGroupMultiAddInput: el('researchGroupMultiAddInput'), researchGroupMultiAddBtn: el('researchGroupMultiAddBtn'), researchGroupMultiAddList: el('researchGroupMultiAddList'), researchGroupExpression: el('researchGroupExpression'), researchValueMode: el('researchValueMode'), researchValueField: el('researchValueField'), researchPercentOfField: el('researchPercentOfField'), researchWithinCompareField: el('researchWithinCompareField'), researchWithinUseRange: el('researchWithinUseRange'), researchWithinDays: el('researchWithinDays'), researchWithinRangeMin: el('researchWithinRangeMin'), researchWithinRangeMax: el('researchWithinRangeMax'), researchValueFieldError: el('researchValueFieldError'), researchUseSecondaryGroup: el('researchUseSecondaryGroup'), researchSecondaryGroupField: el('researchSecondaryGroupField'), researchDateGrouping: el('researchDateGrouping'), researchModelSelect: el('researchModelSelect'), researchCriteriaSelect: el('researchCriteriaSelect'), researchModelResult: el('researchModelResult'), researchPopulation: el('researchPopulation'), researchPercentBuilder: el('researchPercentBuilder'), researchNumeratorExpression: el('researchNumeratorExpression'), researchNumeratorCount: el('researchNumeratorCount'), researchDenominator: el('researchDenominator'), researchDenominatorExpression: el('researchDenominatorExpression'), researchZeroDenominator: el('researchZeroDenominator'), researchSort: el('researchSort'), researchTableDecimals: el('researchTableDecimals'), researchTableShowPercent: el('researchTableShowPercent'), researchAxisMin: el('researchAxisMin'), researchAxisMax: el('researchAxisMax'), researchDecimals: el('researchDecimals'), researchShowValues: el('researchShowValues'), researchShowDateLabels: el('researchShowDateLabels'), researchShowPercent: el('researchShowPercent'), researchGraphSort: el('researchGraphSort'), researchTopN: el('researchTopN'), researchShowSummaryLine: el('researchShowSummaryLine'), researchGoalValue: el('researchGoalValue'), researchRotateLabels: el('researchRotateLabels'), researchWrapLabels: el('researchWrapLabels'), researchShowLegend: el('researchShowLegend'), researchShowGridlines: el('researchShowGridlines'), researchSmoothLine: el('researchSmoothLine'), researchUseDots: el('researchUseDots'), researchBarOrientation: el('researchBarOrientation'), researchStackedBars: el('researchStackedBars'), researchGroupedBars: el('researchGroupedBars'), researchHideZeroGroups: el('researchHideZeroGroups'), researchHighlightBest: el('researchHighlightBest'), researchHighlightWorst: el('researchHighlightWorst'), researchRowLimit: el('researchRowLimit'), researchTotals: el('researchTotals'), researchTextWrap: el('researchTextWrap'), researchRowDensity: el('researchRowDensity'), addResearchFilterBtn: el('addResearchFilterBtn'), researchFilters: el('researchFilters'), addResearchColumnBtn: el('addResearchColumnBtn'), researchColumns: el('researchColumns'), saveResearchItemBtn: el('saveResearchItemBtn'), previewResearchFoundBtn: el('previewResearchFoundBtn'), researchFoundPreview: el('researchFoundPreview')
+  runModelSelect: el('runModelSelect'), runReadiness: el('runReadiness'), runReadinessTitle: el('runReadinessTitle'), runReadinessDetail: el('runReadinessDetail'), runReadinessMeta: el('runReadinessMeta'), runStartDate: el('runStartDate'), runEndDate: el('runEndDate'), runViewSelect: el('runViewSelect'), qaDateField: el('qaDateField'), runQADateSelect: el('runQADateSelect'), qaTeamScoreModeField: el('qaTeamScoreModeField'), runQATeamScoreMode: el('runQATeamScoreMode'), hideNoScoreReps: el('hideNoScoreReps'), hideNoScoreThreshold: el('hideNoScoreThreshold'), teamSelectGrid: el('teamSelectGrid'), teamSearchInput: el('teamSearchInput'), teamCountBadge: el('teamCountBadge'), addVisibleTeamsBtn: el('addVisibleTeamsBtn'), removeVisibleTeamsBtn: el('removeVisibleTeamsBtn'), selectAllTeamsBtn: el('selectAllTeamsBtn'), clearTeamsBtn: el('clearTeamsBtn'), executeRunBtn: el('executeRunBtn'), allstarRunPanel: el('allstarRunPanel'), orgBuilderModal: el('orgBuilderModal'), createOrgBtn: el('createOrgBtn'), duplicateOrgBtn: el('duplicateOrgBtn'), deleteOrgBtn: el('deleteOrgBtn'), saveOrgBtn: el('saveOrgBtn'), exportOrgsBtn: el('exportOrgsBtn'), importOrgsFile: el('importOrgsFile'), orgSearchInput: el('orgSearchInput'), orgCoachSearchInput: el('orgCoachSearchInput'), orgList: el('orgList'), orgCoachList: el('orgCoachList'), orgSelectedList: el('orgSelectedList'), orgNameInput: el('orgNameInput'), orgCountBadge: el('orgCountBadge'), orgHealthPanel: el('orgHealthPanel'), selectVisibleOrgCoachesBtn: el('selectVisibleOrgCoachesBtn'), clearOrgCoachesBtn: el('clearOrgCoachesBtn'), runOrgSearchInput: el('runOrgSearchInput'), runIncludeOrgGrid: el('runIncludeOrgGrid'), runExcludeOrgGrid: el('runExcludeOrgGrid'), runOrgBadge: el('runOrgBadge'), clearRunOrgsBtn: el('clearRunOrgsBtn'), researchCanvas: el('researchCanvas'), metricsList: el('metricsList'), metricSearchInput: el('metricSearchInput'), metricEditorModal: el('metricEditorModal'), newMetricBtn: el('newMetricBtn'), exportMetricsBtn: el('exportMetricsBtn'), importMetricsFile: el('importMetricsFile'), metricEditId: el('metricEditId'), metricNameInput: el('metricNameInput'), metricSourceSelect: el('metricSourceSelect'), metricModeSelect: el('metricModeSelect'), metricFieldInput: el('metricFieldInput'), metricFieldGearBtn: el('metricFieldGearBtn'), metricPercentOfField: el('metricPercentOfField'), metricWithinCompareField: el('metricWithinCompareField'), metricWithinUseRange: el('metricWithinUseRange'), metricWithinDays: el('metricWithinDays'), metricWithinRangeMin: el('metricWithinRangeMin'), metricWithinRangeMax: el('metricWithinRangeMax'), metricNumericWarn: el('metricNumericWarn'), metricNotesInput: el('metricNotesInput'), addMetricAndBtn: el('addMetricAndBtn'), addMetricOrBtn: el('addMetricOrBtn'), metricRulesList: el('metricRulesList'), deleteMetricBtn: el('deleteMetricBtn'), saveMetricBtn: el('saveMetricBtn'), saveExitMetricBtn: el('saveExitMetricBtn'), researchCanvas: el('researchCanvas'), addResearchItemBtn: el('addResearchItemBtn'), exportResearchBtn: el('exportResearchBtn'), importResearchFile: el('importResearchFile'), renderAllResearchBtn: el('renderAllResearchBtn'), buildResearchIndexBtn: el('buildResearchIndexBtn'), clearResearchCacheBtn: el('clearResearchCacheBtn'), clearResearchRenderedBtn: el('clearResearchRenderedBtn'), researchCacheBadge: el('researchCacheBadge'), stopResearchRenderBtn: el('stopResearchRenderBtn'), clearResearchBtn: el('clearResearchBtn'), researchEditId: el('researchEditId'), researchTitleInput: el('researchTitleInput'), researchOutputType: el('researchOutputType'), researchMode: el('researchMode'), researchFilterDuplicateReps: el('researchFilterDuplicateReps'), researchSource: el('researchSource'), researchDateColumn: el('researchDateColumn'), researchStartDate: el('researchStartDate'), researchEndDate: el('researchEndDate'), researchGroupField: el('researchGroupField'), researchGroupMultiAdd: el('researchGroupMultiAdd'), researchGroupMultiAddBuilder: el('researchGroupMultiAddBuilder'), researchGroupMultiAddInput: el('researchGroupMultiAddInput'), researchGroupMultiAddBtn: el('researchGroupMultiAddBtn'), researchGroupMultiAddList: el('researchGroupMultiAddList'), researchGroupExpression: el('researchGroupExpression'), researchValueMode: el('researchValueMode'), researchValueField: el('researchValueField'), researchPercentOfField: el('researchPercentOfField'), researchWithinCompareField: el('researchWithinCompareField'), researchWithinUseRange: el('researchWithinUseRange'), researchWithinDays: el('researchWithinDays'), researchWithinRangeMin: el('researchWithinRangeMin'), researchWithinRangeMax: el('researchWithinRangeMax'), researchValueFieldError: el('researchValueFieldError'), researchUseSecondaryGroup: el('researchUseSecondaryGroup'), researchSecondaryGroupField: el('researchSecondaryGroupField'), researchDateGrouping: el('researchDateGrouping'), researchModelSelect: el('researchModelSelect'), researchCriteriaSelect: el('researchCriteriaSelect'), researchModelResult: el('researchModelResult'), researchPopulation: el('researchPopulation'), researchPercentBuilder: el('researchPercentBuilder'), researchNumeratorExpression: el('researchNumeratorExpression'), researchNumeratorCount: el('researchNumeratorCount'), researchDenominator: el('researchDenominator'), researchDenominatorExpression: el('researchDenominatorExpression'), researchZeroDenominator: el('researchZeroDenominator'), researchSort: el('researchSort'), researchTableDecimals: el('researchTableDecimals'), researchTableShowPercent: el('researchTableShowPercent'), researchAxisMin: el('researchAxisMin'), researchAxisMax: el('researchAxisMax'), researchDecimals: el('researchDecimals'), researchShowValues: el('researchShowValues'), researchShowDateLabels: el('researchShowDateLabels'), researchShowPercent: el('researchShowPercent'), researchGraphSort: el('researchGraphSort'), researchTopN: el('researchTopN'), researchShowSummaryLine: el('researchShowSummaryLine'), researchGoalValue: el('researchGoalValue'), researchRotateLabels: el('researchRotateLabels'), researchWrapLabels: el('researchWrapLabels'), researchShowLegend: el('researchShowLegend'), researchShowGridlines: el('researchShowGridlines'), researchSmoothLine: el('researchSmoothLine'), researchUseDots: el('researchUseDots'), researchBarOrientation: el('researchBarOrientation'), researchStackedBars: el('researchStackedBars'), researchGroupedBars: el('researchGroupedBars'), researchHideZeroGroups: el('researchHideZeroGroups'), researchHighlightBest: el('researchHighlightBest'), researchHighlightWorst: el('researchHighlightWorst'), researchRowLimit: el('researchRowLimit'), researchTotals: el('researchTotals'), researchTextWrap: el('researchTextWrap'), researchRowDensity: el('researchRowDensity'), addResearchFilterBtn: el('addResearchFilterBtn'), researchFilters: el('researchFilters'), addResearchColumnBtn: el('addResearchColumnBtn'), researchColumns: el('researchColumns'), saveResearchItemBtn: el('saveResearchItemBtn'), previewResearchFoundBtn: el('previewResearchFoundBtn'), researchFoundPreview: el('researchFoundPreview')
 };
 function esc(v){return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function id(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
@@ -2051,7 +2057,7 @@ function getHeaders(source){
   if(source==='comp_calls') return state.data.comp_calls.headers;
   return [];
 }
-function allSourceKeys(){ return [NONDATED_SOURCE,DATED_SOURCE,'retail_sv2','retail_wiper','retail_team_totals','referral_sv2','referral_wiper','referral_team_totals','qa','checklist','documented_coaching','comp_calls',...customSourceKeys()]; }
+function allSourceKeys(){ return [NONDATED_SOURCE,DATED_SOURCE,'retail_sv2','retail_wiper','retail_team_totals','referral_sv2','referral_wiper','referral_team_totals','qa',QA_DIRECT_SOURCE,'checklist','documented_coaching','comp_calls',...customSourceKeys()]; }
 function getRowsRaw(source){
   if(source===NONDATED_SOURCE) return state.categorized.nondated.rows || [];
   if(source===DATED_SOURCE) return state.categorized.dated.rows || [];
@@ -2246,7 +2252,8 @@ function addResearchIndexedRow(idx,source,row,rowId){
   idx.perf.rowsIndexed++;
 }
 function sourceIndex(source){
-  return dataIndexReady() ? state.dataIndex.sources[source] : null;
+  if(dataIndexReady()) return state.dataIndex.sources[source] || null;
+  return state.indexes?.[source] || null;
 }
 function cachedRowsForSource(source, opts={}){
   if(!opts || !opts._sourceRowsCache) return getRows(source, opts);
@@ -4339,7 +4346,7 @@ async function loadPackagedFile(file){
     const metaSheet=(wb.SheetNames||[]).find(sn=>norm(sn)===norm('All Star Metadata'));
     let packageMeta={};
     if(metaSheet){ try{ const metaAoa=sheetAoa(wb,metaSheet); packageMeta=JSON.parse(metaAoa?.[1]?.[0]||'{}')||{}; if(packageMeta.schemaVersion==='intake-v1' && packageMeta.preprocessed){ state.sourceMeta={...(state.sourceMeta||{}),...(packageMeta.sourceMeta||{})}; state.categorizedFragments={...(state.categorizedFragments||{}),...(packageMeta.categorizedFragments||{})}; } (packageMeta.customSources||[]).forEach(def=>{ if(!def.sourceKey || customSource(def.sourceKey)) return; const c={...def,id:def.id||id(),sourceType:'custom',rows:[],headers:[],aoa:[],sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,sheetName:def.sheetName||def.name,headerRow:def.headerRow||1,startCol:def.startCol||1,manualHeaders:def.manualHeaders||[]}; state.customSources.push(c); state.books[c.sourceKey]={fileName:file.name,sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,selectedSheets:{[c.sourceKey]:c.sheetName||c.name}}; }); if(Array.isArray(packageMeta.orgs)){ const prev=state.orgs||[]; packageMeta.orgs.map(normalizeOrg).forEach(o=>{ const i=prev.findIndex(x=>x.id===o.id); if(i>=0) prev[i]=o; else prev.push(o); }); state.orgs=prev; saveOrgs(); } }catch(e){ console.warn('Package metadata could not be read',e); } }
-    [...CATEGORIZED_SOURCE_KEYS,'retail','referral','qa','checklist','documented_coaching','comp_calls'].forEach(key=>{ state.books[key]={...state.books.packaged,selectedSheets:{}}; });
+    [...CATEGORIZED_SOURCE_KEYS,'retail','referral','qa',QA_DIRECT_SOURCE,'checklist','documented_coaching','comp_calls'].forEach(key=>{ state.books[key]={...state.books.packaged,selectedSheets:{}}; });
     (state.customSources||[]).forEach(c=>{ state.books[c.sourceKey]={fileName:file.name,sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,selectedSheets:{[c.sourceKey]:c.sheetName||c.name}}; });
     const m=activeModelForImport(); ensureSourceSettings(m);
     const assigned={};
@@ -5766,6 +5773,8 @@ function allRepEntries(model, teams){
     return out.sort((a,b)=>(a.team||'').localeCompare(b.team||'')||a.name.localeCompare(b.name));
   }
   if(dataIndexReady()) return (state.dataIndex.reps||[]).filter(r=>!teamSet.size || teamSet.has(coachNameKey(r.team||''))).sort((a,b)=>(a.team||'').localeCompare(b.team||'')||a.name.localeCompare(b.name));
+  const compact=currentTeamIndex();
+  if(compact?.reps?.length) return (compact.reps||[]).filter(r=>!teamSet.size || teamSet.has(coachNameKey(r.team||''))).sort((a,b)=>(a.team||'').localeCompare(b.team||'')||a.name.localeCompare(b.name));
   const reps=new Map();
   const add=(key,name,team)=>{ if(!key||!name) return; const t=canonicalCoachName(team||state.repTeams.get(key)||''); if(teamSet.size && !teamSet.has(coachNameKey(t))) return; reps.set(key,mergeRepDisplay(reps.get(key),{kind:'rep',key,name:cleanName(name),team:t})); };
   controlRosterRows().forEach(r=>add(r._repKey,r._rep,rowTeam(r)));
@@ -8405,9 +8414,9 @@ async function buildRun(){
   const oldRunText=els.executeRunBtn ? els.executeRunBtn.textContent : '';
   if(els.executeRunBtn){ els.executeRunBtn.disabled=true; els.executeRunBtn.textContent='Running...'; }
   try{
-    showProgress(dataIndexReady() ? 'Preparing report...' : 'Refreshing data index...',2);
+    showProgress('Preparing report...',2);
     await yieldToBrowser();
-    if(!dataIndexReady()) await rebuildDataIndexAsync('Refreshing data index', {start:3,end:20});
+    await ensureSelectedModelPreparedForRun(model,{qaTeamScoreMode,qaDateMode});
     const teamEntryList=teamEntries(teams);
     const repEntryList=allRepEntries(model, teams);
     const teamRows=await computeEntriesAsync(model, teamEntryList, 'team', opts, {start:22,end:48,label:'Scoring teams'});
@@ -9319,6 +9328,78 @@ function openTeamsImported(){
   renderTeamsImportedModal();
   openModal('teamsModal');
 }
+
+function runPrepState(){ state.runPrep=state.runPrep||{generation:0,jobs:new Map(),ready:new Map(),dateRangeCache:new Map(),lastRequired:[],lastModelId:''}; state.runPrep.jobs=state.runPrep.jobs||new Map(); state.runPrep.ready=state.runPrep.ready||new Map(); state.runPrep.dateRangeCache=state.runPrep.dateRangeCache||new Map(); return state.runPrep; }
+function sourceVersionSignature(source){ const rows=getRowsRaw(source)||[], headers=getHeaders(source)||[]; return [source,rows.length,headers.length,headers.join('\u001f'),state.versions?.data||0].join('|'); }
+function expressionReferencedSources(text){
+  const out=new Set(), str=String(text||'');
+  str.replace(/!\[([^\]]+)\]\.\[[^\]]+\]/g,(_,label)=>{ const key=allSourceKeys().find(src=>normalizeSourceLookupText(labelSource(src))===normalizeSourceLookupText(label)||normalizeSourceLookupText(src)===normalizeSourceLookupText(label)); if(key) out.add(key); return _; });
+  str.replace(/!([a-z0-9_]+)\b/gi,(_,key)=>{ if(allSourceKeys().includes(key)) out.add(key); return _; });
+  return [...out];
+}
+function metricDependencies(metric, seen=new Set()){
+  const out=new Set(); if(!metric || seen.has(metric.id||metric.name)) return out; seen.add(metric.id||metric.name);
+  const add=s=>{ if(s && allSourceKeys().includes(s)) out.add(s); };
+  add(metric.source);
+  const fields=[metric.field,metric.percentOfField,metric.withinCompareField,...(metric.rules||[]).flatMap(r=>[r.field,r.value,r.value2])];
+  fields.forEach(f=>{ expressionReferencedSources(f).forEach(add); const ref=findMetricByRef(f); if(ref) metricDependencies(ref,seen).forEach(add); });
+  return out;
+}
+function requiredRunSourcesForModel(model, runOptions={}){
+  const required=new Set(), all=new Set(allSourceKeys());
+  const add=s=>{ if(s && all.has(s)) required.add(s); };
+  const inspectValue=v=>{ if(typeof v==='string'){ expressionReferencedSources(v).forEach(add); const m=findMetricByRef(v); if(m) metricDependencies(m).forEach(add); } };
+  const inspectObj=obj=>{ if(!obj || typeof obj!=='object') return; if(Array.isArray(obj)){ obj.forEach(inspectObj); return; } Object.entries(obj).forEach(([k,v])=>{ if(/source$/i.test(k) || ['source','leftSource','rightSource','customSource','trueValueSource','qualifierSource','numeratorSource','denominatorSource'].includes(k)) add(v); inspectValue(v); if(v&&typeof v==='object') inspectObj(v); }); };
+  (model?.criteria||[]).forEach(c=>{
+    if(c.calcType==='qaScore' || criterionUsesQA(c)) add(runOptions.qaTeamScoreMode==='sheetTeam'?activeDirectQASource():'qa');
+    if(isRowPullCriterion(c)) add(rowPullSourceForCriterion(c));
+    if(c.trueValueEnabled) add(c.trueValueSource);
+    inspectObj(c);
+  });
+  inspectObj(model?.metrics||[]); inspectObj(model?.expressions||[]);
+  return [...required].filter(Boolean);
+}
+function ensurePartialDataIndexShell(){
+  if(!state.dataIndex) state.dataIndex={dirty:true,reason:'partial run preparation',sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},date:new Map(),checklist:new Map(),documented_coaching:new Map(),comp_calls:new Map()},version:0,lastBuiltAt:0};
+  state.dataIndex.sources=state.dataIndex.sources||{}; state.indexes=state.indexes||state.dataIndex.sources;
+}
+async function prepareRunSource(source){
+  const prep=runPrepState(), sig=sourceVersionSignature(source), ready=prep.ready.get(source);
+  if(ready===sig && sourceIndex(source)) return sourceIndex(source);
+  const job=prep.jobs.get(source); if(job?.sig===sig) return job.promise;
+  const promise=(async()=>{ ensurePartialDataIndexShell(); const rows=getRowsRaw(source)||[], idx=makeResearchSourceIndex(source,rows); idx.version=(state.dataIndex?.version||0)+1; const chunk=1200; for(let i=0;i<rows.length;i++){ addResearchIndexedRow(idx,source,rows[i],i); if(i && i%chunk===0) await yieldToBrowser(); } idx.byRepSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0))); idx.byTeamSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0))); idx.dateSortedRows.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)); state.dataIndex.sources[source]=idx; state.indexes=state.dataIndex.sources; prep.ready.set(source,sig); return idx; })();
+  prep.jobs.set(source,{sig,promise});
+  try{ return await promise; }finally{ const cur=prep.jobs.get(source); if(cur?.promise===promise) prep.jobs.delete(source); }
+}
+function updateRunReadiness(required=[], generation=runPrepState().generation, status='Preparing selected model…'){
+  if(generation!==runPrepState().generation || !els.runReadinessTitle) return;
+  const prep=runPrepState(), ready=required.filter(s=>prep.ready.get(s)===sourceVersionSignature(s)&&sourceIndex(s)).length, preparing=required.filter(s=>prep.jobs.has(s)).length, reused=ready>0;
+  els.runReadinessTitle.textContent= ready===required.length ? 'Selected model ready' : status;
+  els.runReadinessDetail.textContent=`Required source count: ${required.length} · Ready sources: ${ready} · Preparing sources: ${preparing}`;
+  if(els.runReadinessMeta) els.runReadinessMeta.innerHTML=`<span class="badge">${ready} of ${required.length} sources ready</span><span class="badge">${reused?'Reusing prepared sources':'Preparing newly required sources'}</span><span class="badge">Global rebuild avoided</span>`;
+}
+async function beginSelectedModelPreparation(){
+  const prep=runPrepState(), generation=++prep.generation, model=findModel(els.runModelSelect?.value), opts={qaTeamScoreMode:els.runQATeamScoreMode?.value||'assignedReps'};
+  console.groupCollapsed('[All Star Run] Selected model dependencies'); console.time('[All Star Run] dependency calculation');
+  const required=requiredRunSourcesForModel(model,opts); prep.lastRequired=required; prep.lastModelId=model?.id||'';
+  console.timeEnd('[All Star Run] dependency calculation'); console.info('model',model?.name,'requiredSources',required,'globalRebuildAvoided',true); console.groupEnd();
+  updateRunReadiness(required,generation,'Preparing selected model…');
+  for(const source of required){ if(generation!==runPrepState().generation) return; prepareRunSource(source).then(()=>updateRunReadiness(required,generation)).catch(err=>{ console.error('[All Star Run] Source preparation failed',source,err); updateRunReadiness(required,generation,'Preparation needs attention'); }); await yieldToBrowser(); }
+}
+async function ensureSelectedModelPreparedForRun(model, opts={}){
+  const required=requiredRunSourcesForModel(model,opts), prep=runPrepState(), generation=prep.generation;
+  updateRunReadiness(required,generation,'Finishing selected model preparation…');
+  await Promise.all(required.map(s=>prepareRunSource(s)));
+  updateRunReadiness(required,generation,'Selected model ready');
+  return required;
+}
+function lightweightRunDateRange(source,col){
+  const key=[source,sourceVersionSignature(source),col||''].join('|'), cache=runPrepState().dateRangeCache;
+  if(cache.has(key)) return cache.get(key);
+  let range=null; const rows=getRowsRaw(source)||[];
+  rows.forEach(r=>{ let v; if(source==='qa') v=col==='assigned'?r._assignedDate:r._interactionDate; else v=col?r[col]:(r._date||r.Date); range=addDateToRange(range,v); });
+  cache.set(key,range); return range;
+}
 function checklistDateColumnsForModel(model){
   const items=[]; const seen=new Set();
   (model?.criteria||[]).forEach(c=>{
@@ -9337,29 +9418,24 @@ function checklistDateRangeForColumn(source,col){
   if(!col) return null;
   const idx=state.dataIndex;
   if(dataIndexReady() && idx.dateRanges && idx.dateRanges[source] instanceof Map && idx.dateRanges[source].has(col)) return idx.dateRanges[source].get(col);
-  const actual=resolveColumn(source,col);
-  let range=null;
-  (checklistLikeRowsState(source).rows||[]).forEach(r=>{ range=addDateToRange(range,r[actual]); });
+  const actual=resolveColumn(source,col)||col;
+  const range=lightweightRunDateRange(source,actual);
   if(dataIndexReady() && idx.dateRanges && idx.dateRanges[source] instanceof Map) idx.dateRanges[source].set(col,range);
   return range;
 }
 function setDefaultRunDates(){
+  console.time('[All Star Run] Default-date calculation');
   const qaMode=els.runQADateSelect ? els.runQADateSelect.value : 'interaction';
   const model=findModel(els.runModelSelect?.value);
   let dates=[];
-  if(dataIndexReady()){
-    if(modelUsesQA(model)) dates=dates.concat(rangeToDates(state.dataIndex.dateRanges?.qa?.[qaMode]));
-    checklistDateColumnsForModel(model).forEach(({source,col})=>{ dates=dates.concat(rangeToDates(checklistDateRangeForColumn(source,col))); });
-  }else{
-    const qaDates=(modelUsesQA(model) && state.data.qa.rows.length) ? state.data.qa.rows.map(r=>qaDateFromRow(r,qaMode)) : [];
-    const checklistCols=checklistDateColumnsForModel(model);
-    const checklistDates=checklistCols.flatMap(({source,col})=>checklistLikeRowsState(source).rows.map(r=>parseDateOnly(r[col])));
-    dates=[...qaDates,...checklistDates];
-  }
+  if(modelUsesQA(model)) dates=dates.concat(rangeToDates(lightweightRunDateRange('qa',qaMode)));
+  checklistDateColumnsForModel(model).forEach(({source,col})=>{ dates=dates.concat(rangeToDates(checklistDateRangeForColumn(source,col))); });
+  requiredRunSourcesForModel(model,{qaTeamScoreMode:els.runQATeamScoreMode?.value||'assignedReps'}).filter(isDatedRowPullSource).forEach(src=>{ const h=sourceDateHeader(src,getHeaders(src)); if(h) dates=dates.concat(rangeToDates(lightweightRunDateRange(src,h))); });
   dates=dates.filter(d=>d instanceof Date&&!isNaN(d));
   const end=dates.length?new Date(Math.max(...dates.map(d=>d.getTime()))):parseDateOnly(new Date());
   const start=new Date(end.getTime()-29*86400000);
   els.runStartDate.value=ymd(start); els.runEndDate.value=ymd(end);
+  console.timeEnd('[All Star Run] Default-date calculation');
 }
 function pdfText(value,fallback=''){
   return String(value===undefined||value===null||value===''?fallback:value).replace(/\s+/g,' ').trim();
@@ -9703,11 +9779,22 @@ function wire(){
   if(els.applyMassHeaderBtn) els.applyMassHeaderBtn.onclick=applyAllMassHeaderFixes;
   if(els.massShowAllHeaders) els.massShowAllHeaders.onchange=renderMassHeaderCheck;
   els.runBtn.onclick=async()=>{
+    const t0=performance.now();
     state.teamSearch='';
     if(els.teamSearchInput) els.teamSearchInput.value='';
     try{
-      if(!dataIndexReady()){ showProgress('Preparing run data...',4); await rebuildDataIndexAsync('Preparing run data', {start:6,end:94}); }
-      populateRunModels(); updateRunQADateField(); setDefaultRunDates(); renderRunOrgSelect(); openModal('runModal');
+      console.groupCollapsed('[All Star Run] Open Run modal');
+      console.time('[All Star Run] Model-selector rendering'); populateRunModels(); console.timeEnd('[All Star Run] Model-selector rendering');
+      updateRunQADateField();
+      console.time('[All Star Run] Team rendering'); renderTeamSelect(); console.timeEnd('[All Star Run] Team rendering');
+      console.time('[All Star Run] Organization rendering'); renderRunOrgSelect(); console.timeEnd('[All Star Run] Organization rendering');
+      setDefaultRunDates();
+      openModal('runModal');
+      console.info('[All Star Run] Global rebuild avoided', !dataIndexReady());
+      console.info('[All Star Run] Time until Run modal visible', Math.round(performance.now()-t0)+'ms');
+      console.groupEnd();
+      await new Promise(resolve=>requestAnimationFrame(()=>resolve()));
+      setTimeout(beginSelectedModelPreparation,0);
     }catch(err){ console.error(err); alert('Run setup failed. Check the console for details.'); }
     finally{ hideProgress(); }
   };
@@ -9776,9 +9863,9 @@ function wire(){
   els.modelNameInput.oninput=()=>{ if(state.editModel) state.editModel.name=els.modelNameInput.value; };
   els.modelTypeInput.onchange=()=>{ if(state.editModel) state.editModel.type=els.modelTypeInput.value; };
   els.modelTiebreakerInput.onchange=()=>{ if(state.editModel) state.editModel.tiebreaker=els.modelTiebreakerInput.value; };
-  if(els.runModelSelect) els.runModelSelect.onchange=()=>{ updateRunQADateField(); setDefaultRunDates(); renderTeamSelect(); };
+  if(els.runModelSelect) els.runModelSelect.onchange=()=>{ updateRunQADateField(); setDefaultRunDates(); renderTeamSelect(); beginSelectedModelPreparation(); };
   if(els.hideNoScoreReps) els.hideNoScoreReps.onchange=()=>{ if(els.hideNoScoreThreshold) els.hideNoScoreThreshold.classList.toggle('hidden', !els.hideNoScoreReps.checked); };
-  if(els.runQADateSelect) els.runQADateSelect.onchange=()=>setDefaultRunDates();
+  if(els.runQADateSelect) els.runQADateSelect.onchange=()=>{ setDefaultRunDates(); beginSelectedModelPreparation(); };
   if(els.runOrgSearchInput) els.runOrgSearchInput.oninput=()=>{ state.runOrgSearch=els.runOrgSearchInput.value; renderRunOrgSelect(); };
   if(els.clearRunOrgsBtn) els.clearRunOrgsBtn.onclick=()=>{ state.runIncludeOrgs.clear(); state.runExcludeOrgs.clear(); renderRunOrgSelect(); };
   els.teamSearchInput.oninput=()=>{ syncTeamSelectionsFromDom(); state.teamSearch=els.teamSearchInput.value; renderTeamSelect(); };
@@ -9795,6 +9882,30 @@ function wire(){
   if(els.connectVisibleRepMatchesBtn) els.connectVisibleRepMatchesBtn.onclick=()=>connectRepMatches(true);
   if(els.connectAllRepMatchesBtn) els.connectAllRepMatchesBtn.onclick=()=>connectRepMatches(false);
   els.executeRunBtn.onclick=buildRun;
+  window.runInitialWorkflowRegressionTests=function(){
+    const results=[];
+    const assert=(name,pass,detail='')=>results.push({name,pass:!!pass,detail});
+    const prevDirty=state.dataIndex?.dirty;
+    if(!state.dataIndex) markDataIndexDirty('regression dirty index'); else state.dataIndex.dirty=true;
+    const beforeBuilds=state.perfCounters.baseIndexBuilds||0;
+    populateRunModels(); renderTeamSelect(); renderRunOrgSelect(); setDefaultRunDates();
+    assert('Run modal can be populated while global data index is dirty', !!els.runModelSelect && state.dataIndex?.dirty===true);
+    assert('Opening Run does not start a complete all-source rebuild', (state.perfCounters.baseIndexBuilds||0)===beforeBuilds);
+    assert('Model choices remain correct', (els.runModelSelect?.options.length||0)===(state.models||[]).length);
+    assert('Team choices and counts remain correct', !!els.teamSelectGrid && runTeamNames().length>=(els.teamSelectGrid.querySelectorAll('input[type="checkbox"]').length||0));
+    assert('Organization coverage remains correct', !!els.runOrgBadge);
+    assert('Default dates remain correct', !!els.runStartDate?.value && !!els.runEndDate?.value);
+    const qa={id:'qa_test',criteria:[{source:'qa',calcType:'qaScore'}]}, retail={id:'retail_test',criteria:[{source:'retail_sv2'}]}, referral={id:'referral_test',criteria:[{source:'referral_sv2'}]}, mixed={id:'mixed_test',criteria:[{source:'qa',calcType:'qaScore'},{source:'retail_sv2'}]}, custom=customSourceKeys()[0]?{id:'custom_test',criteria:[{source:customSourceKeys()[0]}]}:null;
+    assert('QA-only dependencies exclude Retail/Referral', requiredRunSourcesForModel(qa).includes('qa') && !requiredRunSourcesForModel(qa).some(s=>/^retail|^referral/.test(s)));
+    assert('Retail-only dependencies exclude Referral', requiredRunSourcesForModel(retail).includes('retail_sv2') && !requiredRunSourcesForModel(retail).some(s=>/^referral/.test(s)));
+    assert('Referral-only dependencies exclude Retail', requiredRunSourcesForModel(referral).includes('referral_sv2') && !requiredRunSourcesForModel(referral).some(s=>/^retail/.test(s)));
+    assert('Mixed dependencies include only referenced standard sources', requiredRunSourcesForModel(mixed).includes('qa') && requiredRunSourcesForModel(mixed).includes('retail_sv2') && !requiredRunSourcesForModel(mixed).includes('referral_sv2'));
+    if(custom) assert('Custom-source model identifies the referenced custom source only', requiredRunSourcesForModel(custom).includes(customSourceKeys()[0])); else assert('Custom-source model identifies the referenced custom source only', true, 'No custom sources loaded');
+    const prep=runPrepState(), source='qa'; prep.ready.set(source,sourceVersionSignature(source)); const gen=++prep.generation; updateRunReadiness([source],gen); assert('Changing models uses generation-based stale update guard', prep.generation===gen);
+    const jobCount=prep.jobs.size; prepareRunSource(source); prepareRunSource(source); assert('Run Report preparation does not restart identical jobs', prep.jobs.size<=jobCount+1);
+    if(state.dataIndex) state.dataIndex.dirty=prevDirty;
+    console.table(results); return results;
+  };
 }
 loadModels(); loadRepAliases(); loadResearchItems(); setTimeout(runRosterAccuracyRegressionTests,0); loadOrgs(); wire(); loadMetrics().then(()=>{ refreshMetricDatalist(); }).catch(err=>console.warn('[Research Metrics] Startup load failed',err)); renderCustomSourcesList(); renderCategorizedSummary(); renderModelList(); populateRunModels(); setStatus(); loadImportCacheOnStartup();
 })();
