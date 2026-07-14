@@ -416,7 +416,7 @@ button.green:hover,button.dark:hover,button.red:hover,button.gray:hover{transfor
           </div>
           <div id="fixRepReview" class="fixTeamsReview"></div>
         </div>
-        <div id="categorizedDataSummary" class="checkResultMeta">Categorized database not built yet.</div>
+        <div id="categorizedDataSummary" class="checkResultMeta">Categorized database not built yet.</div><div id="teamTotalsImportControls" class="checkResultList"></div>
         <div id="spreadsheetDataPreview" class="checkResultList hidden"></div>
       </div>
       <div class="panel">
@@ -840,8 +840,8 @@ const state = {
   editModel: null,
   editOriginalId: null,
   data: {
-    retail: { fileName:'', sv2:[], wiper:[], sv2Aoa:[], wiperAoa:[], controlRoster:[], headers:{sv2:[],wiper:[]} },
-    referral: { fileName:'', sv2:[], wiper:[], itac:[], sv2Aoa:[], wiperAoa:[], itacAoa:[], controlRoster:[], headers:{sv2:[],wiper:[],itac:[]}, itacSheetName:'' },
+    retail: { fileName:'', sv2:[], wiper:[], sv2Aoa:[], wiperAoa:[], controlRoster:[], teamTotals:emptyTeamTotalsDataset('retail'), headers:{sv2:[],wiper:[]} },
+    referral: { fileName:'', sv2:[], wiper:[], itac:[], sv2Aoa:[], wiperAoa:[], itacAoa:[], controlRoster:[], teamTotals:emptyTeamTotalsDataset('referral'), headers:{sv2:[],wiper:[],itac:[]}, itacSheetName:'' },
     qa: { fileName:'', rows:[], headers:[], aoa:[] },
     qa_direct: { fileName:'', rows:[], headers:[], aoa:[], sheetName:'' },
     checklist: { fileName:'', rows:[], headers:[], aoa:[] },
@@ -927,13 +927,42 @@ const els = {
 };
 function esc(v){return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 function id(){return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
-const HEADER_FIELDS = ['column','leftColumn','rightColumn','withinCompareColumn','checkDateColumn','checkColumn'];
-const SOURCE_LABELS = {nondate:'Non-Date Database',date:'Dated Database',retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',qa:'QA Genesys Evaluation Score',qa_direct:'Direct QA Team Score Override',checklist:'Checklist',documented_coaching:'Documented Coaching',comp_calls:'Comp Calls'};
-const PACKAGE_SHEETS = {nondate:'Non-Date Database',date:'Dated Database',retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',qa:'QA Genesys Evaluation Score',checklist:'Checklist',documented_coaching:'Documented Coaching',comp_calls:'Comp Calls'};
-const SOURCE_TO_BOOK = {retail_sv2:'retail',retail_wiper:'retail',referral_sv2:'referral',referral_wiper:'referral',qa:'qa',checklist:'checklist',documented_coaching:'documented_coaching',comp_calls:'comp_calls'};
+const HEADER_FIELDS = ['column','leftColumn','rightColumn','withinCompareColumn','checkDateColumn','checkColumn','trueValueColumn'];
+const SOURCE_LABELS = {nondate:'Non-Date Database',date:'Dated Database',retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',retail_team_totals:'Retail Team Totals',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',referral_team_totals:'Referral Team Totals',qa:'QA Genesys Evaluation Score',qa_direct:'Direct QA Team Score Override',checklist:'Checklist',documented_coaching:'Documented Coaching',comp_calls:'Comp Calls'};
+const PACKAGE_SHEETS = {nondate:'Non-Date Database',date:'Dated Database',retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',retail_team_totals:'Retail Team Totals',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',referral_team_totals:'Referral Team Totals',qa:'QA Genesys Evaluation Score',checklist:'Checklist',documented_coaching:'Documented Coaching',comp_calls:'Comp Calls'};
+const SOURCE_TO_BOOK = {retail_sv2:'retail',retail_wiper:'retail',retail_team_totals:'retail',referral_sv2:'referral',referral_wiper:'referral',referral_team_totals:'referral',qa:'qa',checklist:'checklist',documented_coaching:'documented_coaching',comp_calls:'comp_calls'};
 const SOURCE_SHEET_HINTS = {retail_sv2:['Retail SV2','sv2'],retail_wiper:['Retail Wipers','Retail SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],referral_sv2:['Referral SV2','sv2'],referral_wiper:['Referral Wipers','Referral SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],qa:['QA Genesys Evaluation Score','Genesys Evaluation Score','genesys evaluation score','qa','evaluation','evaluations','quality','sheet1'],checklist:['All Items','Checklist','checklist','items','sheet1'],documented_coaching:['Documented Coaching','documented coaching','documented_coaching','coaching','sheet1'],comp_calls:['Compliments','Compliment','Comp Calls','Comp Call','Compliment Calls','sheet1']};
-const FORCE_NONDATED_IMPORT_SOURCES = new Set(['retail_sv2','retail_wiper','referral_sv2','referral_wiper']);
+const FORCE_NONDATED_IMPORT_SOURCES = new Set(['retail_sv2','retail_wiper','retail_team_totals','referral_sv2','referral_wiper','referral_team_totals']);
+const TEAM_TOTAL_SOURCE_KEYS = ['retail_team_totals','referral_team_totals'];
 const NA_TEAM = 'N/A';
+
+function emptyTeamTotalsDataset(area='retail'){
+  const retail=area==='retail';
+  return {fileName:retail?'Retail Team Totals.xlsx':'Referral Team Totals.xlsx',sheetName:retail?'Retail Team Totals':'Referral Team Totals',headers:[],rows:[],mappings:[],diagnostics:{},rowsByTeamKey:{}};
+}
+function normalizeTeamTotalLookupKey(v){ return norm(v).replace(/[^a-z0-9]+/g,''); }
+function teamTotalsDataset(source){ return source==='retail_team_totals' ? (state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')) : source==='referral_team_totals' ? (state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')) : emptyTeamTotalsDataset('retail'); }
+function rebuildTeamTotalsIndex(ds){ ds=ds||emptyTeamTotalsDataset('retail'); ds.rowsByTeamKey={}; (ds.rows||[]).forEach(r=>{ if(r?._teamKey) { if(!ds.rowsByTeamKey[r._teamKey]) ds.rowsByTeamKey[r._teamKey]=r; } }); return ds; }
+function teamTotalsSummaryText(area){ const ds=area==='retail'?(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')):(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')); const d=ds.diagnostics||{}; return `${area==='retail'?'Retail':'Referral'} Team Totals: ${(ds.rows||[]).length}/${d.controlTeamsInspected||0} teams matched · ${(d.teamsWithNoExtractedRow||[]).length} missing`; }
+function teamTotalsDiagnosticsHtml(ds){ const d=ds?.diagnostics||{}; const list=(a)=>Array.isArray(a)&&a.length?`<div class="checkResultMeta">${a.slice(0,12).map(x=>esc(typeof x==='string'?x:JSON.stringify(x))).join(' · ')}${a.length>12?' …':''}</div>`:''; return `<div class="checkResultRow ${(ds?.rows||[]).length?'okRow':'warnRow'}"><strong>${esc(ds?.sheetName||'Team Totals')}</strong><div class="checkResultMeta">${d.controlTeamsInspected||0} teams inspected · ${d.coachTabsFound||0} tabs found · ${d.distinctAA2Keys||0} AA2 keys · ${d.summaryRowsMatched||0} summary rows matched</div>${list(d.coachTabsMissing)}${list(d.blankAA2Values)}${list(d.aa2KeysNotFound)}${list(d.duplicateSummaryRows)}${list(d.duplicateAA2Keys)}${list(d.teamsWithNoExtractedRow)}${d.missingSummarySheet?`<div class="checkResultMeta"><span class="badge warn">Missing ${esc(d.expectedSummarySheet||'summary sheet')}</span></div>`:''}${d.invalidHeaders?`<div class="checkResultMeta"><span class="badge warn">Blank or invalid Row 3 headers</span></div>`:''}</div>`; }
+async function buildTeamTotalsFromWorkbook(area, wb, fileName='', start=32, end=38){
+  const retail=area==='retail', sourceKey=retail?'retail_team_totals':'referral_team_totals', summaryName=retail?'Appt Summary':'KPI Summary', sheetName=retail?'Retail Team Totals':'Referral Team Totals';
+  const ds=emptyTeamTotalsDataset(area), rows=[], mappings=[], diag={expectedSummarySheet:summaryName,controlTeamsInspected:0,coachTabsFound:0,coachTabsMissing:[],blankAA2Values:[],distinctAA2Keys:0,summaryRowsMatched:0,aa2KeysNotFound:[],duplicateSummaryRows:[],duplicateAA2Keys:[],teamsWithMultipleExtractedRows:[],teamsWithNoExtractedRow:[],missingSummarySheet:false,invalidHeaders:false};
+  ds.fileName=fileName||ds.fileName; const controlRows=controlRowsFromWorkbook(wb); diag.controlTeamsInspected=controlRows.length; const keyTeams=new Map();
+  for(let i=0;i<controlRows.length;i++){ const item=controlRows[i], team=canonicalCoachName(item.team), tab=String(item.tabName||'').trim(), sn=findWorkbookSheetByName(wb,tab); let aa2=''; if(sn){ diag.coachTabsFound++; const aoa=sheetAoa(wb,sn); aa2=String(aoa?.[1]?.[26]??'').trim(); } else diag.coachTabsMissing.push(`${team} -> ${tab}`); if(!aa2) diag.blankAA2Values.push(`${team} -> ${tab}`); const k=normalizeTeamTotalLookupKey(aa2); if(k){ if(!keyTeams.has(k)) keyTeams.set(k,[]); keyTeams.get(k).push(team); } mappings.push({team,teamKey:coachNameKey(team),controlTab:tab,workbookSheet:sn,summaryLookupKey:aa2,lookupKey:k}); if(i%20===0){ updateProgress(`Extracting ${sheetName} AA2 keys... ${i+1}/${controlRows.length||1}`, start+(end-start)*.45*((i+1)/Math.max(1,controlRows.length))); await yieldToBrowser(); } }
+  diag.duplicateAA2Keys=[...keyTeams.entries()].filter(([,v])=>v.length>1).map(([k,v])=>`${k}: ${v.join(', ')}`); diag.distinctAA2Keys=keyTeams.size;
+  const sumSn=findWorkbookSheetByName(wb,summaryName); if(!sumSn){ diag.missingSummarySheet=true; ds.mappings=mappings; ds.diagnostics=diag; return rebuildTeamTotalsIndex(ds); }
+  const aoa=sheetAoa(wb,sumSn), headerRow=aoa[2]||[]; const headers=[]; for(let c=0;c<headerRow.length;c++){ const h=String(headerRow[c]??'').trim(); if(!h) break; headers.push(h); } if(!headers.length) diag.invalidHeaders=true; ds.headers=headers;
+  const summaryMap=new Map(); for(let r=3;r<aoa.length;r++){ const arr=aoa[r]||[], raw=String(arr[0]??'').trim(), k=normalizeTeamTotalLookupKey(raw); if(!k) continue; const obj={}; headers.forEach((h,i)=>obj[h]=arr[i]??''); const rec={row:obj,rowNumber:r+1,rawKey:raw}; if(!summaryMap.has(k)) summaryMap.set(k,[]); summaryMap.get(k).push(rec); }
+  diag.duplicateSummaryRows=[...summaryMap.entries()].filter(([,v])=>v.length>1).map(([k,v])=>`${k}: rows ${v.map(x=>x.rowNumber).join(', ')}`);
+  const rowsPerTeam=new Map(); for(const m of mappings){ if(!m.lookupKey) continue; const hits=summaryMap.get(m.lookupKey)||[]; if(!hits.length){ diag.aa2KeysNotFound.push(m.summaryLookupKey); continue; } hits.forEach(hit=>{ const row={...hit.row,_sourceKey:sourceKey,_team:m.team,_teamKey:m.teamKey,_summaryLookupKey:m.summaryLookupKey,_controlTab:m.controlTab,_summarySheet:summaryName,_summaryRowNumber:hit.rowNumber}; rows.push(row); rowsPerTeam.set(m.teamKey,(rowsPerTeam.get(m.teamKey)||0)+1); }); }
+  diag.summaryRowsMatched=rows.length; mappings.forEach(m=>{ if(!rowsPerTeam.has(m.teamKey)) diag.teamsWithNoExtractedRow.push(m.team); }); diag.teamsWithMultipleExtractedRows=[...rowsPerTeam.entries()].filter(([,n])=>n>1).map(([k,n])=>`${k}: ${n}`);
+  ds.rows=rows; ds.mappings=mappings; ds.diagnostics=diag; return rebuildTeamTotalsIndex(ds);
+}
+function teamTotalsExportAoa(ds){ const headers=[...(ds?.headers||[]),'Full Team Name','Control Tab','AA2 Lookup Key','Source Summary Sheet','Source Summary Row']; return [headers,...(ds?.rows||[]).map(r=>[...(ds.headers||[]).map(h=>r[h]??''),r._team||'',r._controlTab||'',r._summaryLookupKey||'',r._summarySheet||'',r._summaryRowNumber||''])]; }
+function downloadTeamTotals(area){ if(!window.XLSX) return alert('Excel export library is not available.'); const ds=area==='retail'?state.data.retail.teamTotals:state.data.referral.teamTotals; if(!(ds?.rows||[]).length) return alert('No Team Totals dataset is available yet.'); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(teamTotalsExportAoa(ds)),ds.sheetName.slice(0,31)); XLSX.writeFile(wb,ds.fileName||`${ds.sheetName}.xlsx`); }
+function renderTeamTotalsImportControls(){ const host=document.getElementById('teamTotalsImportControls'); if(!host) return; host.innerHTML=`<div class="panelTitle">Extracted Team Totals</div><div class="row"><button id="downloadRetailTeamTotalsBtn" class="dark" type="button" ${((state.data.retail.teamTotals?.rows||[]).length?'':'disabled')}>Download Retail Team Totals</button><button id="downloadReferralTeamTotalsBtn" class="dark" type="button" ${((state.data.referral.teamTotals?.rows||[]).length?'':'disabled')}>Download Referral Team Totals</button><span class="checkResultMeta">${esc(teamTotalsSummaryText('retail'))} · ${esc(teamTotalsSummaryText('referral'))}</span></div><div class="checkResultList">${teamTotalsDiagnosticsHtml(state.data.retail.teamTotals)}${teamTotalsDiagnosticsHtml(state.data.referral.teamTotals)}</div>`; document.getElementById('downloadRetailTeamTotalsBtn')?.addEventListener('click',()=>downloadTeamTotals('retail')); document.getElementById('downloadReferralTeamTotalsBtn')?.addEventListener('click',()=>downloadTeamTotals('referral')); }
+
 function sourceAlwaysNonDated(source){ return FORCE_NONDATED_IMPORT_SOURCES.has(source); }
 const SOURCE_FRAMEWORKS = {
   generic_table:{label:'Generic Table',mappings:['rep','team','coach','date','week','month','score','numerator','denominator','text','category','uniqueId'],help:'Usable in Research and Metrics. User chooses all fields manually; only header/date parsing is assumed.'},
@@ -983,8 +1012,8 @@ function clonePlain(obj){return JSON.parse(JSON.stringify(obj||{}));}
 
 function defaultImportedDataState(){
   return {
-    retail: { fileName:'', sv2:[], wiper:[], sv2Aoa:[], wiperAoa:[], controlRoster:[], headers:{sv2:[],wiper:[]} },
-    referral: { fileName:'', sv2:[], wiper:[], itac:[], sv2Aoa:[], wiperAoa:[], itacAoa:[], controlRoster:[], headers:{sv2:[],wiper:[],itac:[]}, itacSheetName:'' },
+    retail: { fileName:'', sv2:[], wiper:[], sv2Aoa:[], wiperAoa:[], controlRoster:[], teamTotals:emptyTeamTotalsDataset('retail'), headers:{sv2:[],wiper:[]} },
+    referral: { fileName:'', sv2:[], wiper:[], itac:[], sv2Aoa:[], wiperAoa:[], itacAoa:[], controlRoster:[], teamTotals:emptyTeamTotalsDataset('referral'), headers:{sv2:[],wiper:[],itac:[]}, itacSheetName:'' },
     qa: { fileName:'', rows:[], headers:[], aoa:[] },
     qa_direct: { fileName:'', rows:[], headers:[], aoa:[], sheetName:'' },
     checklist: { fileName:'', rows:[], headers:[], aoa:[] },
@@ -1160,7 +1189,7 @@ async function loadImportedDataFromIndexedDB(opts={}){
     const nextBooks=defaultImportedBooksState();
     bookRecords.forEach(r=>{ if(r?.id) nextBooks[r.id]={...(nextBooks[r.id]||{}),...(r.value||{})}; });
     state.data=nextData; state.books=nextBooks; state.customSources=Array.isArray(customSources?.value) ? customSources.value : []; state.categorized=categorized?.value || state.categorized; state.teamIndexCache=restoreTeamIndex(teamIndex?.value); state.importCache.meta=meta; state.importCache.status='loaded';
-    afterImportedDataRestored('local IndexedDB import cache loaded');
+    state.data.retail.teamTotals=rebuildTeamTotalsIndex(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')); state.data.referral.teamTotals=rebuildTeamTotalsIndex(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')); afterImportedDataRestored('local IndexedDB import cache loaded'); renderTeamTotalsImportControls();
     if(opts.showProgress) updateProgress('Local data loaded',100,{force:true});
     if(opts.showProgress) setTimeout(hideProgress,250);
     await renderImportCacheStatus('Loaded local IndexedDB data.');
@@ -1266,6 +1295,9 @@ function normalizeCriterionForStorage(c){
   c.direction=['higher','lower'].includes(c.direction)?c.direction:'higher';
   c.weight=String(c.weight||'1')==='autofail'?'autofail':String(Number(c.weight)||1);
   c.format=['number','pct'].includes(c.format)?c.format:'number';
+  c.trueValueEnabled=!!c.trueValueEnabled;
+  c.trueValueSource=TEAM_TOTAL_SOURCE_KEYS.includes(c.trueValueSource)?c.trueValueSource:'';
+  c.trueValueColumn=String(c.trueValueColumn||'').trim();
   c.calcType=['single','multi','custom','qaScore','checklistCount'].includes(c.calcType)?c.calcType:'single';
   c.aggregate=['sum','avg','count','latest','first','max','min','uniqueWeeks','uniqueReps','percent','avgWeeklyPercent','weightedPercent','dateWithin','dateWithinPercent','valueWithin','valueWithinPercent'].includes(c.aggregate)?c.aggregate:'sum';
   c.operator=['divide','multiply','plus','minus','greaterThan','lessThan'].includes(c.operator)?c.operator:'divide';
@@ -1833,7 +1865,7 @@ function defaultQAModel(){
   return normalizeModelForStorage({id:id(),name:'QA Score',type:'both',tiebreaker:'overallScore',criteria:[{id:id(),name:'QA Score %',source:'qa',calcType:'qaScore',audience:'both',scoreType:'rank',direction:'higher',weight:'1',format:'pct',missingRank:999,missingPoints:0,zeroCanWin:false,minimumMonitors:0,filters:[],minimumEnabled:false,minimum:0,autofailThreshold:1,autofailOperator:'greaterEqual'}]});
 }
 function emptyCriterion(){
-  return {id:id(),name:'New Criteria',source:'retail_sv2',calcType:'single',audience:'both',scoreType:'rank',direction:'higher',weight:'1',format:'number',missingRank:999,missingPoints:0,zeroCanWin:false,minimumMonitors:0,column:'',aggregate:'sum',withinCompareColumn:'',withinUseRange:false,withinDays:'',withinRangeMin:'',withinRangeMax:'',leftSource:'retail_sv2',leftColumn:'',operator:'divide',rightSource:'retail_sv2',rightColumn:'',customSource:'retail_sv2',expression:'',checkDateColumn:'',checkColumn:'',checkOperator:'contains',checkValueType:'text',checkText:'',filters:[],minimumEnabled:false,minimum:0,points:1,autofailThreshold:1,autofailOperator:'greaterEqual'};
+  return {id:id(),name:'New Criteria',source:'retail_sv2',calcType:'single',audience:'both',scoreType:'rank',direction:'higher',weight:'1',format:'number',missingRank:999,missingPoints:0,zeroCanWin:false,minimumMonitors:0,column:'',aggregate:'sum',withinCompareColumn:'',withinUseRange:false,withinDays:'',withinRangeMin:'',withinRangeMax:'',leftSource:'retail_sv2',leftColumn:'',operator:'divide',rightSource:'retail_sv2',rightColumn:'',customSource:'retail_sv2',expression:'',checkDateColumn:'',checkColumn:'',checkOperator:'contains',checkValueType:'text',checkText:'',filters:[],minimumEnabled:false,minimum:0,points:1,autofailThreshold:1,autofailOperator:'greaterEqual',trueValueEnabled:false,trueValueSource:'',trueValueColumn:''};
 }
 function getHeaders(source){
   if(source===NONDATED_SOURCE) return state.categorized.nondated.headers || ['Representative','Coach'];
@@ -1841,8 +1873,10 @@ function getHeaders(source){
   if(isCustomSource(source)) return customSource(source)?.headers||[];
   if(source==='retail_sv2') return state.data.retail.headers.sv2;
   if(source==='retail_wiper') return state.data.retail.headers.wiper;
+  if(source==='retail_team_totals') return state.data.retail.teamTotals?.headers || [];
   if(source==='referral_sv2') return state.data.referral.headers.sv2;
   if(source==='referral_wiper') return state.data.referral.headers.wiper;
+  if(source==='referral_team_totals') return state.data.referral.teamTotals?.headers || [];
   if(source==='qa') return state.data.qa.headers;
   if(source===QA_DIRECT_SOURCE) return state.data.qa_direct?.headers || [];
   if(source==='checklist') return state.data.checklist.headers;
@@ -1850,15 +1884,17 @@ function getHeaders(source){
   if(source==='comp_calls') return state.data.comp_calls.headers;
   return [];
 }
-function allSourceKeys(){ return [NONDATED_SOURCE,DATED_SOURCE,'retail_sv2','retail_wiper','referral_sv2','referral_wiper','qa','checklist','documented_coaching','comp_calls',...customSourceKeys()]; }
+function allSourceKeys(){ return [NONDATED_SOURCE,DATED_SOURCE,'retail_sv2','retail_wiper','retail_team_totals','referral_sv2','referral_wiper','referral_team_totals','qa','checklist','documented_coaching','comp_calls',...customSourceKeys()]; }
 function getRowsRaw(source){
   if(source===NONDATED_SOURCE) return state.categorized.nondated.rows || [];
   if(source===DATED_SOURCE) return state.categorized.dated.rows || [];
   if(isCustomSource(source)) return customSource(source)?.rows||[];
   if(source==='retail_sv2') return state.data.retail.sv2 || [];
   if(source==='retail_wiper') return state.data.retail.wiper || [];
+  if(source==='retail_team_totals') return state.data.retail.teamTotals?.rows || [];
   if(source==='referral_sv2') return state.data.referral.sv2 || [];
   if(source==='referral_wiper') return state.data.referral.wiper || [];
+  if(source==='referral_team_totals') return state.data.referral.teamTotals?.rows || [];
   if(source==='qa') return state.data.qa.rows || [];
   if(source===QA_DIRECT_SOURCE) return state.data.qa_direct?.rows || [];
   if(source==='checklist') return state.data.checklist.rows || [];
@@ -2287,7 +2323,7 @@ function addRequired(map, source, label, expected){
 function sourcesUsedByModel(model){
   const used=new Set();
   (model?.criteria||[]).forEach(c=>{
-    ['source','leftSource','rightSource','customSource'].forEach(f=>{ if(c[f]) used.add(c[f]); });
+    ['source','leftSource','rightSource','customSource','trueValueSource'].forEach(f=>{ if(c[f]) used.add(c[f]); });
   });
   return Array.from(used);
 }
@@ -2310,6 +2346,7 @@ function requiredColumnsForModel(model){
         if(cond.connector==='andSeparate') addRequired(req,checkSrc,`${c.name} ${labelSource(checkSrc)} condition ${idx+1} date`,cond.dateColumn||c.checkDateColumn);
       });
     }
+    if(c.trueValueEnabled) addRequired(req,c.trueValueSource,`${c.name} true value column`,c.trueValueColumn);
     (c.filters||[]).forEach(f=>{
       if(f.dynamicColumn && isNumericFilterOperator(f.operator)) expressionRefsForSource(f.columnExpression,f.source||c.source).forEach(ref=>addRequired(req,ref.source||ref.sourceLabel,`${c.name} dynamic filter column`,ref.column));
       else addRequired(req,f.source||c.source,`${c.name} filter`,f.column);
@@ -2394,8 +2431,10 @@ function sourceHasImportedData(source){
   if(source===DATED_SOURCE) return !!(state.categorized.dated.rows||[]).length;
   if(source==='retail_sv2') return !!(state.data.retail.sv2Aoa&&state.data.retail.sv2Aoa.length);
   if(source==='retail_wiper') return !!(state.data.retail.wiperAoa&&state.data.retail.wiperAoa.length);
+  if(source==='retail_team_totals') return !!(state.data.retail.teamTotals?.rows||[]).length;
   if(source==='referral_sv2') return !!(state.data.referral.sv2Aoa&&state.data.referral.sv2Aoa.length);
   if(source==='referral_wiper') return !!(state.data.referral.wiperAoa&&state.data.referral.wiperAoa.length);
+  if(source==='referral_team_totals') return !!(state.data.referral.teamTotals?.rows||[]).length;
   if(source==='qa') return !!(state.data.qa.aoa&&state.data.qa.aoa.length);
   if(source===QA_DIRECT_SOURCE) return !!(state.data.qa_direct?.aoa&&state.data.qa_direct.aoa.length);
   if(source==='checklist') return !!(state.data.checklist.aoa&&state.data.checklist.aoa.length);
@@ -2523,6 +2562,14 @@ function criterionHtml(c,i){
       <div class="field"><label>Direction</label><select data-cfield="direction"><option value="higher" ${c.direction==='higher'?'selected':''}>Higher Best</option><option value="lower" ${c.direction==='lower'?'selected':''}>Lower Best</option></select></div>
       <div class="field"><label>Format</label><select data-cfield="format"><option value="number" ${c.format==='number'?'selected':''}>Number</option><option value="pct" ${c.format==='pct'?'selected':''}>Percent</option></select></div>
       <div class="field"><label>Points</label><input data-cfield="points" type="number" step="0.01" value="${esc(c.points??1)}"></div>
+    </div>
+    <div class="panel ${c.audience==='rep'?'hidden':''}" data-block="trueValueSettings">
+      <label class="checkItem"><input data-cfield="trueValueEnabled" type="checkbox" ${c.trueValueEnabled?'checked':''}> True Value for Team Rankings Only</label>
+      <div class="grid2 ${c.trueValueEnabled?'':'hidden'}">
+        <div class="field"><label>True Value Source</label><select data-cfield="trueValueSource"><option value="">Select...</option>${TEAM_TOTAL_SOURCE_KEYS.map(k=>`<option value="${k}" ${c.trueValueSource===k?'selected':''}>${esc(labelSource(k))}</option>`).join('')}</select></div>
+        <div class="field"><label>True Value Column</label><select data-cfield="trueValueColumn">${headerOptions(c.trueValueSource||'retail_team_totals',c.trueValueColumn)}</select></div>
+      </div>
+      <div class="hint">Only team rows use this direct value. Representative calculations still use the normal Source and calculation settings.</div>
     </div>
     <div class="noScorePanel ${c.scoreType==='display'?'hidden':''}" data-block="noScoreSettings">
       <div class="noScoreHint">No-score behavior keeps representatives with missing data or disallowed zero values from leading the report. Turn on “0s can win” only when a real zero should be allowed to place first.</div>
@@ -2755,7 +2802,7 @@ function bindCriteriaEditors(){
       if(field==='checkValueType'){
         ensureRowPullConditions(c).forEach(cond=>{ cond.operator=normalizeRowPullOperator(cond.operator,c.checkValueType||'text'); });
       }
-      if(['source','weight','scoreType','calcType','aggregate','withinUseRange','leftSource','rightSource','customSource','checkColumn','checkDateColumn','checkValueType'].includes(field)) renderEditModel();
+      if(['source','weight','scoreType','calcType','aggregate','withinUseRange','leftSource','rightSource','customSource','checkColumn','checkDateColumn','checkValueType','audience','trueValueEnabled','trueValueSource'].includes(field)) renderEditModel();
     };
   });
   els.criteriaList.querySelectorAll('[data-expression-input]').forEach(input=>{
@@ -3022,6 +3069,7 @@ function collectHeaderRefsForModel(model){
       addHeaderRef(refs,{...base,kind:'criterion',source:c.rightSource,field:'rightColumn',label:'Right column',expected:c.rightColumn});
     }
     if(c.calcType==='custom') expressionRefsForSource(c.expression,c.customSource||c.source).forEach(ref=>addHeaderRef(refs,{...base,kind:'expression',source:ref.source||ref.sourceLabel,field:'expression',label:'Custom expression',expected:ref.column}));
+    if(c.trueValueEnabled) addHeaderRef(refs,{...base,kind:'criterion',source:c.trueValueSource,field:'trueValueColumn',label:'True Value column',expected:c.trueValueColumn});
     if(isRowPullCriterion(c)){
       const checkSrc=rowPullSourceForCriterion(c);
       addHeaderRef(refs,{...base,kind:'criterion',source:checkSrc,field:'checkDateColumn',label:`${labelSource(checkSrc)} date column`,expected:c.checkDateColumn});
@@ -3172,6 +3220,8 @@ function syncEditModelFields(){
 function saveEditModel(exit){
   syncEditModelFields();
   const m=normalizeModelForStorage(JSON.parse(JSON.stringify(state.editModel)));
+  const badTrue=(m.criteria||[]).find(c=>c.trueValueEnabled && (!TEAM_TOTAL_SOURCE_KEYS.includes(c.trueValueSource)||!plainHeaderName(c.trueValueColumn)));
+  if(badTrue){ alert(`True Value settings for ${badTrue.name||'a criterion'} require a Team Totals source and column.`); return; }
   const saved=upsertModel(m);
   state.editModel=JSON.parse(JSON.stringify(saved));
   state.editOriginalId=saved.id;
@@ -3527,8 +3577,10 @@ function setSourceRowsAndHeaders(source, headers, rows, model){
   if(isCustomSource(source)){ const c=customSource(source); if(c){ const cfg=getSourceSetting(model,source); c.headers=headers||[]; c.rows=(rows||[]).map(r=>normalizeCustomRow(r,headers||[],cfg.columns||{},source)); c.headerRow=cfg.headerRow; c.startCol=cfg.startCol; c.sheetName=cfg.sheetName||c.sheetName; c.manualHeaders=cfg.manualHeaders||[]; c.framework=cfg.framework||c.framework||'generic_table'; c.columns={...(c.columns||{}),...(cfg.columns||{})}; } }
   if(source==='retail_sv2'){ state.data.retail.headers.sv2=headers; state.data.retail.sv2=rows.map(r=>normalizeStatRow(r,'retail','sv2',getSourceSetting(model,source).columns,headers)); }
   if(source==='retail_wiper'){ state.data.retail.headers.wiper=headers; state.data.retail.wiper=rows.map(r=>normalizeStatRow(r,'retail','wiper',getSourceSetting(model,source).columns,headers)); }
+  if(source==='retail_team_totals'){ const base=(headers||[]).filter(h=>!['Full Team Name','Control Tab','AA2 Lookup Key','Source Summary Sheet','Source Summary Row'].includes(h)); const rows2=(rows||[]).map(r=>({...r,_sourceKey:'retail_team_totals',_team:canonicalCoachName(r._team||r['Full Team Name']||''),_teamKey:coachNameKey(r._team||r['Full Team Name']||''),_controlTab:r._controlTab||r['Control Tab']||'',_summaryLookupKey:r._summaryLookupKey||r['AA2 Lookup Key']||'',_summarySheet:r._summarySheet||r['Source Summary Sheet']||'Appt Summary',_summaryRowNumber:r._summaryRowNumber||r['Source Summary Row']||''})); state.data.retail.teamTotals=rebuildTeamTotalsIndex({...(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')),headers:base,rows:rows2}); }
   if(source==='referral_sv2'){ state.data.referral.headers.sv2=headers; state.data.referral.sv2=rows.map(r=>normalizeStatRow(r,'referral','sv2',getSourceSetting(model,source).columns,headers)); }
   if(source==='referral_wiper'){ state.data.referral.headers.wiper=headers; state.data.referral.wiper=rows.map(r=>normalizeStatRow(r,'referral','wiper',getSourceSetting(model,source).columns,headers)); }
+  if(source==='referral_team_totals'){ const base=(headers||[]).filter(h=>!['Full Team Name','Control Tab','AA2 Lookup Key','Source Summary Sheet','Source Summary Row'].includes(h)); const rows2=(rows||[]).map(r=>({...r,_sourceKey:'referral_team_totals',_team:canonicalCoachName(r._team||r['Full Team Name']||''),_teamKey:coachNameKey(r._team||r['Full Team Name']||''),_controlTab:r._controlTab||r['Control Tab']||'',_summaryLookupKey:r._summaryLookupKey||r['AA2 Lookup Key']||'',_summarySheet:r._summarySheet||r['Source Summary Sheet']||'KPI Summary',_summaryRowNumber:r._summaryRowNumber||r['Source Summary Row']||''})); state.data.referral.teamTotals=rebuildTeamTotalsIndex({...(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')),headers:base,rows:rows2}); }
   if(source==='qa'){ const q=getSourceSetting(model,'qa').columns||{}; state.data.qa.headers=headers; state.data.qa.rows=rows.map(r=>normalizeQARow(r,headers,q)).filter(r=>r._repKey||r._team||Number.isFinite(r._score)); }
   if(source==='checklist'){ const c=getSourceSetting(model,'checklist').columns||{}; state.data.checklist.headers=headers; state.data.checklist.rows=rows.map(r=>normalizeChecklistRow(r,headers,c,'checklist')).filter(r=>r._repKey||r._team); }
   if(source==='documented_coaching'){ const c=getSourceSetting(model,'documented_coaching').columns||{}; state.data.documented_coaching.headers=headers; state.data.documented_coaching.rows=rows.map(r=>normalizeChecklistRow(r,headers,c,'documented_coaching')).filter(r=>r._repKey||r._team); }
@@ -3835,8 +3887,10 @@ function sourcePackageAoa(source){
   if(isCustomSource(source)){ const c=customSource(source)||{}; return packageRowsToAoa(c.headers,c.rows); }
   if(source==='retail_sv2') return packageRowsToAoa(state.data.retail.headers.sv2,state.data.retail.sv2);
   if(source==='retail_wiper') return packageRowsToAoa(state.data.retail.headers.wiper,state.data.retail.wiper);
+  if(source==='retail_team_totals') return teamTotalsExportAoa(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail'));
   if(source==='referral_sv2') return packageRowsToAoa(state.data.referral.headers.sv2,state.data.referral.sv2);
   if(source==='referral_wiper') return packageRowsToAoa(state.data.referral.headers.wiper,state.data.referral.wiper);
+  if(source==='referral_team_totals') return teamTotalsExportAoa(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral'));
   if(source==='qa') return packageRowsToAoa(state.data.qa.headers,state.data.qa.rows);
   if(source==='checklist') return packageRowsToAoa(state.data.checklist.headers,state.data.checklist.rows);
   if(source==='documented_coaching') return packageRowsToAoa(state.data.documented_coaching.headers,state.data.documented_coaching.rows);
@@ -3850,7 +3904,7 @@ async function packageImportedData(){
     if(!(state.categorized.nondated.rows||[]).length && !(state.categorized.dated.rows||[]).length) return;
   }
   const wb=XLSX.utils.book_new();
-  CATEGORIZED_SOURCE_KEYS.forEach(src=>{
+  allSourceKeys().filter(src=>!isCustomSource(src)).forEach(src=>{
     const aoa=sourcePackageAoa(src);
     const ws=XLSX.utils.aoa_to_sheet(aoa.length && aoa[0].length ? aoa : [[]]);
     XLSX.utils.book_append_sheet(wb,ws,(PACKAGE_SHEETS[src]||labelSource(src)).slice(0,31));
@@ -4347,7 +4401,7 @@ async function finishDataChanged(reason='Data updated', progressStart=55){
 }
 function activeModelForImport(){ return state.editModel || findModel(els.runModelSelect?.value) || state.models[0] || normalizeModelForStorage({criteria:[]}); }
 function sourceRowsFromStoredAoa(source, model, strict=true){
-  if(isCategorizedSource(source)) return {headers:getHeaders(source),rows:getRowsRaw(source),headerRow:0,startCol:0,detected:false,matchCount:getHeaders(source).length,fullRow:true,manualHeaders:[]};
+  if(isCategorizedSource(source) || TEAM_TOTAL_SOURCE_KEYS.includes(source)) return {headers:getHeaders(source),rows:getRowsRaw(source),headerRow:0,startCol:0,detected:false,matchCount:getHeaders(source).length,fullRow:true,manualHeaders:[]};
   const cfg=getSourceSetting(model,source);
   const hr=Math.max(0,(Number(cfg.headerRow)||1)-1), sc=Math.max(0,(Number(cfg.startCol)||1)-1);
   let aoa=[];
@@ -4368,7 +4422,7 @@ function sourceRowsFromStoredAoa(source, model, strict=true){
   return pack;
 }
 async function sourceRowsFromStoredAoaAsync(source, model, strict=true, label='Building imported rows', start=20, end=38){
-  if(isCategorizedSource(source)) return {headers:getHeaders(source),rows:getRowsRaw(source),headerRow:0,startCol:0,detected:false,matchCount:getHeaders(source).length,fullRow:true,manualHeaders:[]};
+  if(isCategorizedSource(source) || TEAM_TOTAL_SOURCE_KEYS.includes(source)) return {headers:getHeaders(source),rows:getRowsRaw(source),headerRow:0,startCol:0,detected:false,matchCount:getHeaders(source).length,fullRow:true,manualHeaders:[]};
   const cfg=getSourceSetting(model,source);
   const hr=Math.max(0,(Number(cfg.headerRow)||1)-1), sc=Math.max(0,(Number(cfg.startCol)||1)-1);
   let aoa=[];
@@ -4417,13 +4471,15 @@ async function loadRetailFile(file){
     const sv2Aoa=sheetAoa(wb,sv2Name), wiperAoa=sheetAoa(wb,wiperName);
     state.data.retail.sv2Aoa=sv2Aoa; state.data.retail.wiperAoa=wiperAoa; state.books.retail.selectedSheets.retail_sv2=sv2Name; state.books.retail.selectedSheets.retail_wiper=wiperName;
     const controlRoster=await buildControlRosterFromWorkbookAsync('retail',wb,'Building retail Control roster',24,32);
-    updateProgress('Normalizing retail rows...',36); await yieldToBrowser();
+    const teamTotals=await buildTeamTotalsFromWorkbook('retail',wb,'Retail Team Totals.xlsx',32,38);
+    updateProgress('Normalizing retail rows...',38); await yieldToBrowser();
     const sv2=await sourceRowsFromStoredAoaAsync('retail_sv2',m,true,'Building retail SV2 dataset',28,40);
     const wip=await sourceRowsFromStoredAoaAsync('retail_wiper',m,true,'Building retail wiper dataset',40,47);
     const sv2Rows=await mapRowsChunked(sv2.rows,r=>normalizeStatRow(r,'retail','sv2',getSourceSetting(m,'retail_sv2').columns,sv2.headers),null,'Normalizing retail SV2 rows',40,47);
     const wiperRows=await mapRowsChunked(wip.rows,r=>normalizeStatRow(r,'retail','wiper',getSourceSetting(m,'retail_wiper').columns,wip.headers),null,'Normalizing retail wiper rows',47,54);
-    state.data.retail={...state.data.retail,fileName:file.name,sv2:sv2Rows,wiper:wiperRows,controlRoster,headers:{sv2:sv2.headers,wiper:wip.headers}};
-    els.retailFileName.textContent=`${file.name}${controlRoster.length?` · ${controlRoster.length.toLocaleString()} Control reps`:''}`;
+    state.data.retail={...state.data.retail,fileName:file.name,sv2:sv2Rows,wiper:wiperRows,controlRoster,teamTotals,headers:{sv2:sv2.headers,wiper:wip.headers}};
+    els.retailFileName.textContent=`${file.name}${controlRoster.length?` · ${controlRoster.length.toLocaleString()} Control reps`:''} · ${teamTotalsSummaryText('retail')}`;
+    renderTeamTotalsImportControls();
     await finishDataChanged('retail import',55);
   }catch(err){ console.error(err); alert('Retail import failed. Check the console for details.'); }
   finally{ hideProgress(); }
@@ -4505,7 +4561,8 @@ async function loadReferralFile(file){
     state.data.referral.sv2Aoa=sv2Aoa; state.data.referral.wiperAoa=wiperAoa; state.data.referral.itacAoa=itacAoa;
     state.books.referral.selectedSheets.referral_sv2=sv2Name; state.books.referral.selectedSheets.referral_wiper=wiperName; if(itacFound) state.books.referral.selectedSheets.referral_itac=itacFound.sheetName;
     const controlRoster=await buildControlRosterFromWorkbookAsync('referral',wb,'Building referral Control roster',24,32);
-    updateProgress('Normalizing referral rows...',36); await yieldToBrowser();
+    const teamTotals=await buildTeamTotalsFromWorkbook('referral',wb,'Referral Team Totals.xlsx',32,38);
+    updateProgress('Normalizing referral rows...',38); await yieldToBrowser();
     const sv2=await sourceRowsFromStoredAoaAsync('referral_sv2',m,true,'Building referral SV2 dataset',28,40);
     const wip=await sourceRowsFromStoredAoaAsync('referral_wiper',m,true,'Building referral wiper dataset',40,47);
     const sv2Rows=await mapRowsChunked(sv2.rows,r=>normalizeStatRow(r,'referral','sv2',getSourceSetting(m,'referral_sv2').columns,sv2.headers),null,'Normalizing referral SV2 rows',40,47);
@@ -4514,9 +4571,10 @@ async function loadReferralFile(file){
     const itacRows=parseItacRows(itacFound);
     const itacMatch=attachItacToReferralSv2(sv2Rows,itacRows,sv2.headers);
     const mergedSv2Headers=[...sv2.headers]; ['Offered ITAC','Accepted ITAC'].forEach(h=>{if(!mergedSv2Headers.includes(h)) mergedSv2Headers.push(h);});
-    state.data.referral={...state.data.referral,fileName:file.name,sv2:sv2Rows,wiper:wiperRows,itac:itacRows,itacAoa,controlRoster,headers:{sv2:mergedSv2Headers,wiper:wip.headers,itac:itacFound?.headers||[]},itacSheetName:itacFound?.sheetName||''};
+    state.data.referral={...state.data.referral,fileName:file.name,sv2:sv2Rows,wiper:wiperRows,itac:itacRows,itacAoa,controlRoster,teamTotals,headers:{sv2:mergedSv2Headers,wiper:wip.headers,itac:itacFound?.headers||[]},itacSheetName:itacFound?.sheetName||''};
     const itacStatus=itacFound?` · ITAC ${itacMatch.matched.toLocaleString()} SV2 rows matched via ${itacMatch.phoneHeader||'Phone_ID missing'}`:' · no ITAC sheet detected';
-    els.referralFileName.textContent=`${file.name}${controlRoster.length?` · ${controlRoster.length.toLocaleString()} Control reps`:''}${itacStatus}`;
+    els.referralFileName.textContent=`${file.name}${controlRoster.length?` · ${controlRoster.length.toLocaleString()} Control reps`:''}${itacStatus} · ${teamTotalsSummaryText('referral')}`;
+    renderTeamTotalsImportControls();
     await finishDataChanged('referral import',55);
   }catch(err){ console.error(err); alert('Referral import failed. Check the console for details.'); }
   finally{ hideProgress(); }
@@ -5316,7 +5374,25 @@ function valueChecklist(c, entry, opts){
   if(conditions.length) rows=rows.filter(r=>checklistRowPassesConditions(source,r,entry,rowPullOpts,conditions));
   return rows.length;
 }
+
+function trueTeamCriterionValue(c, entry, opts={}){
+  const ds=teamTotalsDataset(c.trueValueSource);
+  rebuildTeamTotalsIndex(ds);
+  const team=canonicalCoachName(entry.team||entry.name||entry.key||'');
+  const row=(ds.rowsByTeamKey||{})[coachNameKey(team)] || (ds.rows||[]).find(r=>coachNameKey(r._team||'')===coachNameKey(team));
+  opts.trueValueDiagnostics=opts.trueValueDiagnostics||[];
+  if(!row){ opts.trueValueDiagnostics.push({criterion:c.name||'',team,source:c.trueValueSource,reason:'Missing Team Totals row'}); return NaN; }
+  const col=resolveColumn(c.trueValueSource,c.trueValueColumn)||c.trueValueColumn;
+  if(!col || !(col in row)){ opts.trueValueDiagnostics.push({criterion:c.name||'',team,source:c.trueValueSource,column:c.trueValueColumn,reason:'Missing True Value column'}); return NaN; }
+  const raw=row[col];
+  if(String(raw??'').trim()===''){ opts.trueValueDiagnostics.push({criterion:c.name||'',team,source:c.trueValueSource,column:col,reason:'Blank True Value'}); return NaN; }
+  const value=c.format==='pct' ? normalizeScore(raw) : toNum(raw);
+  opts.trueValueDiagnostics.push({criterion:c.name||'',team,source:c.trueValueSource,column:col,controlTab:row._controlTab,summaryLookupKey:row._summaryLookupKey,summarySheet:row._summarySheet,summaryRow:row._summaryRowNumber,rawValue:raw,parsedValue:value,note:'No representative aggregation was performed.'});
+  return value;
+}
+
 function criterionValue(c, entry, opts){
+  if(entry.kind === 'team' && c.trueValueEnabled && TEAM_TOTAL_SOURCE_KEYS.includes(c.trueValueSource)) return trueTeamCriterionValue(c, entry, opts);
   if(c.calcType==='qaScore' || c.source==='qa' || isCustomQAStyleSource(c.source)) return valueQA(c,entry,opts);
   if(isRowPullCriterion(c)) return valueChecklist(c,entry,opts);
   if(c.calcType==='multi') return valueMulti(c,entry,opts);
@@ -5339,6 +5415,7 @@ function allRepEntries(model, teams){
 }
 function teamEntries(teams){ return teams.map(t=>({kind:'team',name:t,key:t,team:t})); }
 function applyHideNoScoreRepOption(repPack){
+  if(hasTrustedControlRoster()) return repPack;
   if(!els.hideNoScoreReps || !els.hideNoScoreReps.checked || !repPack) return repPack;
   const criteria=repPack.criteria||[];
   if(!criteria.length) return repPack;
@@ -8025,6 +8102,12 @@ async function computeEntriesAsync(model, entries, kind, opts, progress={}){
       if(done%chunkSize===0){ update(`${progress.label||'Scoring'}: ${esc(c.name||'criterion')}`); await yieldToBrowser(); }
     }
   }
+  rows.forEach(r=>{
+    const applicable=criteria.filter(c=>c.scoreType!=='display');
+    const has=applicable.length ? applicable.some(c=>Number.isFinite(r.values[c.id])) : criteria.some(c=>Number.isFinite(r.values[c.id]));
+    r.hasAnyData=has; r.noData=!has;
+    if(!has){ r.eligible=false; if(!r.minimumFails.includes('No imported data')) r.minimumFails.push('No imported data'); }
+  });
   criteria.forEach(c=>{
     if(c.scoreType==='rank'){
       const valid=rows.filter(r=>isScorableValue(c,r.values[c.id]));
@@ -8065,6 +8148,12 @@ function computeEntries(model, entries, kind, opts){
   const criteria=(model.criteria||[]).filter(c=>c.audience==='both'||c.audience===kind);
   const rows=entries.map(entry=>({entry, values:{}, ranks:{}, scoreParts:{}, missingScores:{}, overallScore:0, eligible:true, autofails:[], minimumFails:[], zeroCanWinOverall:false}));
   criteria.forEach(c=> rows.forEach(r=>{r.values[c.id]=criterionValue(c,r.entry,opts);}));
+  rows.forEach(r=>{
+    const applicable=criteria.filter(c=>c.scoreType!=='display');
+    const has=applicable.length ? applicable.some(c=>Number.isFinite(r.values[c.id])) : criteria.some(c=>Number.isFinite(r.values[c.id]));
+    r.hasAnyData=has; r.noData=!has;
+    if(!has){ r.eligible=false; if(!r.minimumFails.includes('No imported data')) r.minimumFails.push('No imported data'); }
+  });
   criteria.forEach(c=>{
     if(c.scoreType==='rank'){
       const valid=rows.filter(r=>isScorableValue(c,r.values[c.id]));
@@ -8093,6 +8182,28 @@ function computeEntries(model, entries, kind, opts){
   if(kind==='rep') assignVisibleRepMedalRanks(rows);
   return {criteria, rows};
 }
+
+async function runTeamTotalsRegressionTests(){
+  const makeWb=(summaryName)=>{ const wb=XLSX.utils.book_new(); const control=[['Team Name','Tab Name'],['Madison Ellis','Ellis'],['John Smith','Smith']]; XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(control),'Control'); const ellis=[[],Array(27).fill('')]; ellis[1][26]='M.ELLIS'; const smith=[[],Array(27).fill('')]; smith[1][26]='J.SMITH'; XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ellis),'Ellis'); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(smith),'Smith'); const summary=[[],[],['User','Cash Appointment Rate','Insurance Appointment Rate',''],['M.ELLIS','61%','42%'],['J.SMITH',0,'12%']]; XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summary),summaryName); return wb; };
+  const retail=await buildTeamTotalsFromWorkbook('retail',makeWb('Appt Summary'),'Retail Team Totals.xlsx',1,2);
+  const referral=await buildTeamTotalsFromWorkbook('referral',makeWb('KPI Summary'),'Referral Team Totals.xlsx',1,2);
+  state.data.retail.teamTotals=retail; state.data.referral.teamTotals=referral;
+  const c={...emptyCriterion(),name:'Cash Appointment Rate',source:'retail_sv2',audience:'both',scoreType:'rank',format:'pct',trueValueEnabled:true,trueValueSource:'retail_team_totals',trueValueColumn:'Cash Appointment Rate'};
+  const teamVal=criterionValue(c,{kind:'team',name:'Madison Ellis',team:'Madison Ellis'},{});
+  const repVal=criterionValue(c,{kind:'rep',name:'No One',team:'Madison Ellis',key:'noone'},{_sourceRowsCache:new Map(),_entryRowsCache:new Map()});
+  const missing=criterionValue(c,{kind:'team',name:'Missing Team',team:'Missing Team'},{});
+  const assert=(ok,msg)=>{ if(!ok) throw new Error(msg); };
+  assert(retail.headers.length===3,'Retail headers should stop before blank column');
+  assert(retail.rows.length===2 && retail.rows[0]._team==='Madison Ellis','Retail team mapping failed');
+  assert(referral.rows.length===2 && referral.rows[1]._sourceKey==='referral_team_totals','Referral team totals failed');
+  assert(Number.isFinite(teamVal) && Math.round(teamVal)===61,'True team value should parse 61%');
+  assert(!Number.isFinite(repVal),'Representative should not use Team Totals true value');
+  assert(!Number.isFinite(missing),'Missing true value should not fall back');
+  console.info('Team Totals regression tests passed',{retail,referral,teamVal,repVal,missing});
+  return true;
+}
+window.runTeamTotalsRegressionTests=runTeamTotalsRegressionTests;
+
 function autofailHit(v,c){
   if(!Number.isFinite(v)) return false;
   const t=Number(c.autofailThreshold||1);
@@ -8105,7 +8216,7 @@ function sourceDateRangeText(src,rows){ const vals=(rows||[]).map(r=>rowDateMill
 function dataHealthPanelHtml(){
   const indexCurrent=dataIndexReady();
   const rows=allSourceKeys().map(src=>{ const headers=sourceHeaders(src)||[], rows=sourceRows(src)||[], cfg=getSourceSetting(activeModelForImport(),src); const imported=sourceHasImportedData(src); const fw=isCustomSource(src)?` · ${frameworkDef(sourceFramework(src)).label}`:''; const keys=isCustomSource(src)?relevantMappingKeys(src,cfg.framework||sourceFramework(src)):[]; const mapped=keys.filter(k=>cfg.columns?.[k]).length; const mapText=isCustomSource(src)?` · ${mapped}/${keys.length} mappings set`:''; const warn=isCustomSource(src)?customSourceWarnings(src):[]; const cols=cfg.columns||{}; const mappedText=isCustomSource(src)?`<div class="checkResultMeta">Rep: <b>${esc(cols.rep||cols.fullName||'')}</b> · Team: <b>${esc(cols.team||cols.coach||'')}</b> · Date/Week: <b>${esc(cols.date||cols.week||cols.month||'')}</b></div>`:''; const warnText=warn.length?`<div class="checkResultMeta"><span class="badge warn">${warn.map(esc).join('</span> <span class="badge warn">')}</span></div>`:''; return `<div class="checkResultRow ${(imported&&!warn.length)?'okRow':'warnRow'}"><strong>${esc(labelSource(src))}${esc(fw)}</strong><div class="checkResultMeta">${rows.length.toLocaleString()} rows · ${headers.length} headers · ${esc(sourceDateRangeText(src,rows))} · indexes ${indexCurrent&&sourceIndex(src)?'current':'need rebuild'} · header row ${esc(cfg.headerRow||1)} · start column ${esc(cfg.startCol||1)}${mapText}</div>${mappedText}${warnText}</div>`; }).join('');
-  return `<details class="panel" open><summary><strong>Data Health</strong> <span class="badge">${allSourceKeys().length} sources checked</span></summary><div class="checkResultList">${rows}</div></details>`;
+  return `<details class="panel" open><summary><strong>Data Health</strong> <span class="badge">${allSourceKeys().length} sources checked</span></summary><div class="checkResultList">${rows}</div><div class="checkResultList">${teamTotalsDiagnosticsHtml(state.data.retail.teamTotals)}${teamTotalsDiagnosticsHtml(state.data.referral.teamTotals)}</div></details>`;
 }
 function modelTraceFieldList(source,c){
   const fields=[], add=f=>{ f=plainHeaderName(f); if(f && !fields.includes(f)) fields.push(f); };
@@ -8122,6 +8233,7 @@ function modelTraceRowRefsForSource(source,rows,fields){
   return (rows||[]).slice(0,2000).map((r,i)=>({source,index:researchRowSourceIndex(source,r),fallback:i,rep:researchTraceRepName(r),team:researchRowTeam(r,source)||rowTeam(r)||'',evidence:researchCompactEvidenceSnapshot(source,r,fields)}));
 }
 function modelTraceRowsForCriterion(c,entry,opts){
+  if(entry.kind==='team' && c.trueValueEnabled && TEAM_TOTAL_SOURCE_KEYS.includes(c.trueValueSource)){ const ds=teamTotalsDataset(c.trueValueSource); rebuildTeamTotalsIndex(ds); const row=(ds.rowsByTeamKey||{})[coachNameKey(entry.team||entry.name||'')]; const fields=['_team','_controlTab','_summaryLookupKey','_summarySheet','_summaryRowNumber',c.trueValueColumn].filter(Boolean); return {trueValue:true,sourceKeys:[c.trueValueSource],refs:row?modelTraceRowRefsForSource(c.trueValueSource,[row],fields):[],rows:row?[row]:[],fields}; }
   if(c.calcType==='qaScore' || c.source==='qa' || isCustomQAStyleSource(c.source)){
     const source=directQATeamScoreMode(c,entry,opts) ? activeDirectQASource() : (c.source||'qa'), rows=qaRowsForEntry(c,entry,opts), fields=modelTraceFieldList(source,c);
     return {sourceKeys:[source], refs:modelTraceRowRefsForSource(source,rows,fields), rows, fields};
@@ -8149,7 +8261,8 @@ function modelTraceRowsForCriterion(c,entry,opts){
 function modelTraceCalcLines(c,row,kind,cellType,traceRows,opts){
   const entry=row.entry, value=row.values?.[c.id], score=Number.isFinite(row.scoreParts?.[c.id]) ? row.scoreParts[c.id] : row.ranks?.[c.id];
   const sourceKeys=traceRows.sourceKeys||[], lines=[`${kind==='team'?'Team':'Representative'}: ${entry.name}`,`Criterion: ${c.name}`,`Cell: ${cellType==='score'?'Score / rank':'Value'}`,`Source: ${sourceKeys.map(s=>labelSource(s)||s).join(', ')}`,`Matching rows after date range and filters: ${(traceRows.refs||[]).length.toLocaleString()}`];
-  if(c.calcType==='qaScore' || c.source==='qa' || isCustomQAStyleSource(c.source)){
+  if(traceRows.trueValue){ const r=(traceRows.rows||[])[0]||{}, raw=r[c.trueValueColumn]; lines.push('True Team Value',`Value source: ${labelSource(c.trueValueSource)}`,`Selected column: ${c.trueValueColumn}`,`Team: ${entry.name}`,`Control tab: ${r._controlTab||''}`,`AA2 lookup key: ${r._summaryLookupKey||''}`,`Summary sheet: ${r._summarySheet||''}`,`Summary row: ${r._summaryRowNumber||''}`,`Raw source value: ${raw??''}`,`Parsed value: ${fmt(value,c.format)}`,'No representative aggregation was performed.');
+  }else if(c.calcType==='qaScore' || c.source==='qa' || isCustomQAStyleSource(c.source)){
     const directTeamMode=directQATeamScoreMode(c,entry,opts);
     const mode=entry.kind==='team' ? (directTeamMode?'Direct raw QA upload: Assigned Date + QA Team + Score':'assigned representative roster') : 'representative name match';
     const calcSource=directTeamMode ? activeDirectQASource() : (c.source||'qa');
@@ -8255,7 +8368,7 @@ function scoreDisplay(r,c){
 function sectionTable(title, pack, kind, model, runOpts={}){
   const criteria=pack.criteria||[];
   const context={winningTeam:kind==='team'?firstWinningRow(pack.rows,'team'):null};
-  const head=`<tr><th>Rank</th><th>${kind==='team'?'Team':'Representative'}</th>${kind==='rep'?'<th>Team</th>':''}<th class="right">Score</th><th>Eligible</th>${criteria.map(c=>`<th class="right">${esc(c.name)} Value</th><th class="right">${esc(c.name)} Score</th>`).join('')}<th>Autofail</th></tr>`;
+  const head=`<tr><th>Rank</th><th>${kind==='team'?'Team':'Representative'}</th>${kind==='rep'?'<th>Team</th>':''}<th class="right">Score</th><th>Eligible</th>${criteria.map(c=>`<th class="right">${esc(c.name)} Value${kind==='team'&&c.trueValueEnabled?'<br><span class="badge">True Team Value</span>':''}</th><th class="right">${esc(c.name)} Score</th>`).join('')}<th>Autofail</th></tr>`;
   const body=pack.rows.map(r=>`<tr class="${rowHighlightClasses(r,kind,context)}"><td>${r.overallRank}${medalForRow(r,kind)}</td><td>${esc(r.entry.name)}${kind==='team'&&context.winningTeam===r?winnerBadge('team'):''}</td>${kind==='rep'?`<td>${esc(r.entry.team||'')}</td>`:''}<td class="right">${fmt(r.overallScore,'number')}</td><td>${r.eligible?'<span class="badge good">Yes</span>':'<span class="badge bad">No</span>'}</td>${criteria.map(c=>`<td class="right">${modelTraceCell(valueDisplay(r,c),createModelCellTrace(model,c,r,kind,'value',runOpts))}</td><td class="right">${modelTraceCell(scoreDisplay(r,c),createModelCellTrace(model,c,r,kind,'score',runOpts))}</td>`).join('')}<td>${esc([...r.autofails,...r.minimumFails].join(', '))}</td></tr>`).join('');
   return `<div class="resultSection"><h2>${esc(title)}</h2><div class="tableWrap"><table>${head}${body}</table></div></div>`;
 }
@@ -9010,7 +9123,7 @@ function wire(){
   ['troubleNameMode','troubleFullNameColumn','troubleFirstNameColumn','troubleLastNameColumn','troubleConvertLastFirst','troubleTeamColumn','troubleSkipTeamBuild','troubleDateColumn'].forEach(id=>{ if(els[id]) els[id].onchange=renderTroubleshootHeaderPreview; });
   if(els.troubleUseDateColumn) els.troubleUseDateColumn.onchange=()=>{ if(els.troubleDateColumn) els.troubleDateColumn.disabled=!els.troubleUseDateColumn.checked; };
   els.categoriesDrop.onchange=()=>{ if(els.categoriesDrop.value==='models'){ renderModelList(); openModal('modelsModal'); } if(els.categoriesDrop.value==='massHeaders') openMassHeaderCheck(); if(els.categoriesDrop.value==='metrics') openMetricsPage(); els.categoriesDrop.value=''; };
-  els.importDrop.onchange=()=>{ if(els.importDrop.value==='data') openModal('importModal'); if(els.importDrop.value==='teams') openTeamsImported(); if(els.importDrop.value==='orgs') openOrgBuilder(); els.importDrop.value=''; };
+  els.importDrop.onchange=()=>{ if(els.importDrop.value==='data'){ renderTeamTotalsImportControls(); openModal('importModal'); } if(els.importDrop.value==='teams') openTeamsImported(); if(els.importDrop.value==='orgs') openOrgBuilder(); els.importDrop.value=''; };
   if(els.teamManagerList) els.teamManagerList.onclick=e=>{ const b=e.target.closest('[data-team-pick]'); if(b) loadTeamDetails(b.dataset.teamPick); };
   if(els.teamManagerSearch) els.teamManagerSearch.oninput=debounce(()=>renderTeamsImportedModal(),180);
   if(els.teamRepSearch) els.teamRepSearch.oninput=debounce(()=>{ if(state.activeTeam) loadTeamDetails(state.activeTeam); },180);
