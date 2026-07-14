@@ -3764,6 +3764,7 @@ function getSourceAoa(source){
   if(source==='referral_sv2') return state.data.referral.sv2Aoa||[];
   if(source==='referral_wiper') return state.data.referral.wiperAoa||[];
   if(source==='qa') return state.data.qa.aoa||[];
+  if(source===QA_DIRECT_SOURCE) return state.data.qa_direct?.aoa||[];
   if(source==='checklist') return state.data.checklist.aoa||[];
   if(source==='documented_coaching') return state.data.documented_coaching.aoa||[];
   if(source==='comp_calls') return state.data.comp_calls.aoa||[];
@@ -3779,6 +3780,7 @@ function setSourceAoa(source, aoa, sheetName=''){
   if(source==='referral_sv2') state.data.referral.sv2Aoa=aoa||[];
   if(source==='referral_wiper') state.data.referral.wiperAoa=aoa||[];
   if(source==='qa') state.data.qa.aoa=aoa||[];
+  if(source===QA_DIRECT_SOURCE) state.data.qa_direct={...(state.data.qa_direct||{}),aoa:aoa||[],sheetName:sheetName||state.data.qa_direct?.sheetName||''};
   if(source==='checklist') state.data.checklist.aoa=aoa||[];
   if(source==='documented_coaching') state.data.documented_coaching.aoa=aoa||[];
   if(source==='comp_calls') state.data.comp_calls.aoa=aoa||[];
@@ -3786,7 +3788,130 @@ function setSourceAoa(source, aoa, sheetName=''){
   markSourceCacheDirty(source,`${labelSource(source)} source AOA changed`);
 }
 
-function normalizeCustomRow(row,headers,columns={},source=''){ const rep=repNameFromColumns(row,headers,columns,[columns.rep,'Agent Name','Associate Name','Name','Representative','Rep'].filter(Boolean)); const teamH=findHeaderFromExpected(headers,columns.team||columns.coach,['Team','Coach','Coach Assigned','Job Coach','Team Name'].filter(Boolean)); const dateH=selectedDateHeaderForSource(source,headers,columns); const weekH=findHeader(headers,[columns.week,'Week','Week Start','Week Ending'].filter(Boolean)); const textH=findHeader(headers,[columns.text,'Notes','Comment','Conversation','Text','Description'].filter(Boolean)); const scoreH=findHeader(headers,[columns.score,'Score','Score %','QA Score'].filter(Boolean)); const team=columns.skipTeamBuild?'':canonicalCoachName(row[teamH]??''); return {...row,_sourceKey:source,_sourceArea:sourceAreaForSource(source),_rawRep:rep,_rawRepKey:fullNameIdentityKey(rep),_rep:rep,_repKey:fullNameIdentityKey(rep),_rosterId:safeFallbackRosterIdentity({_rep:rep,_team:team},sourceAreaForSource(source)),_aliasApplied:false,_aliasRecord:null,_team:team,_date:dateH?row[dateH]:'',_week:weekH?row[weekH]:'',_text:textH?String(row[textH]??''):'',_score:scoreH?normalizeScore(row[scoreH]):NaN}; }
+function normalizeCustomRow(row,headers,columns={},source=''){ const rep=repNameFromColumns(row,headers,columns,[columns.rep,'Agent Name','Associate Name','Name','Representative','Rep'].filter(Boolean)); const teamH=findHeaderFromExpected(headers,columns.team||columns.coach,['Team','Coach','Coach Assigned','Job Coach','Team Name'].filter(Boolean)); const dateH=selectedDateHeaderForSource(source,headers,columns); const weekH=findHeader(headers,[columns.week,'Week','Week Start','Week Ending'].filter(Boolean)); const textH=findHeader(headers,[columns.text,'Notes','Comment','Conversation','Text','Description'].filter(Boolean)); const scoreH=findHeader(headers,[columns.score,'Score','Score %','QA Score'].filter(Boolean)); const team=columns.skipTeamBuild?'':canonicalCoachName(row[teamH]??''); return {...row,_sourceKey:source,_sourceArea:sourceAreaForSource(source),_rawRep:rep,_rawRepKey:fullNameIdentityKey(rep),_rep:rep,_repKey:fullNameIdentityKey(rep),_rosterId:safeFallbackRosterIdentity({_rep:rep,_team:team},sourceAreaForSource(source)),_aliasApplied:false,_aliasRecord:null,_team:team,_date:dateH?row[dateH]:'',_dateValue:dateH?cachedSourceDateValue(source,dateH,row[dateH]):NaN,_week:weekH?row[weekH]:'',_text:textH?String(row[textH]??''):'',_score:scoreH?normalizeScore(row[scoreH]):NaN}; }
+function nextSourceVersion(source){ state.sourceMeta=state.sourceMeta||{}; const m=state.sourceMeta[source]||{}; return Number(m.sourceVersion||0)+1; }
+function cachedSourceDateValue(source,column,value){
+  if(value instanceof Date) return value.getTime();
+  const key=[source||'',column||'',String(value??'')].join('\u001f');
+  state._dateParseCache=state._dateParseCache||new Map();
+  if(state._dateParseCache.has(key)) return state._dateParseCache.get(key);
+  const d=parseDateOnly(value)||parseWeekLabel(value);
+  const n=d?d.getTime():NaN;
+  if(state._dateParseCache.size>50000) state._dateParseCache.clear();
+  state._dateParseCache.set(key,n);
+  return n;
+}
+function buildHeaderMetadata(source, headers, cfg={}, pack={}){
+  headers=headers||[];
+  const normalizedHeaders=headers.map(h=>plainHeaderName(h));
+  const headerMap={}, plainHeaderMap={}, columnIndexes={};
+  headers.forEach((h,i)=>{ headerMap[h]=i; plainHeaderMap[plainHeaderName(h)]=h; columnIndexes[h]=i; });
+  const cols=cfg.columns||{};
+  const meta={sourceVersion:nextSourceVersion(source),originalHeaders:[...headers],normalizedHeaders,headerMap,plainHeaderMap,columnIndexes,headerRow:(pack.headerRow??0)+1,startCol:(pack.startCol??0)+1,detectedNameColumns:{},detectedTeamColumn:'',detectedDateColumn:''};
+  if(source==='qa'){
+    meta.detectedNameColumns.fullName=findHeaderFromExpected(headers,cols.fullName||cols.agent,['Agent Name','AgentName']);
+    meta.detectedTeamColumn=findHeaderFromExpected(headers,cols.team,['Team']);
+    meta.detectedDateColumn=selectedDateHeaderForSource(source,headers,cols);
+    meta.scoreColumn=findHeaderFromExpected(headers,cols.score,['Score %','Score%','Score Percent','Evaluation Score']);
+    meta.interactionDateColumn=findHeaderFromExpected(headers,cols.interactionDate,['Interaction start Time','Interaction Start Time','Interaction Start','Start Time','Date']);
+    meta.assignedDateColumn=findHeaderFromExpected(headers,cols.assignedDate,['Assigned Date','Date Assigned','Assignment Date']);
+  }else{
+    const repFallbacks=source==='comp_calls'?['CSR/SSR Name (This is the person being complimented)','CSR/SSR Name','Representative','Associate Name','Associate','Agent Name','Rep']:(source==='documented_coaching'?['Associate name','Associate Name','Associate','Agent Name','Rep']:['Associate Name','Associate','Agent Name','Rep']);
+    const teamFallbacks=source==='comp_calls'?['CSR Team/Coach','Coach Assigned','Coach','Team','Job Coach']:(source==='documented_coaching'?['Job Coach','Coach Assigned','Coach','Team']:['Coach Assigned','Coach','Team','Job Coach']);
+    meta.detectedNameColumns.fullName=findHeaderFromExpected(headers,cols.fullName||cols.rep,repFallbacks);
+    meta.detectedNameColumns.firstName=findHeader(headers,[cols.firstName,'First Name','First']);
+    meta.detectedNameColumns.lastName=findHeader(headers,[cols.lastName,'Last Name','Last']);
+    meta.detectedTeamColumn=findHeaderFromExpected(headers,cols.team||cols.coach,teamFallbacks);
+    meta.detectedDateColumn=selectedDateHeaderForSource(source,headers,cols);
+    meta.textColumn=findHeaderFromExpected(headers,cols.text,source==='comp_calls'?['Compliment','Comment','Comments','Notes']:['Notes','Comment','Description','Item']);
+    meta.weekColumn=findHeader(headers,[cols.week,'Week','Week Start','Week Ending'].filter(Boolean));
+    meta.scoreColumn=findHeader(headers,[cols.score,'Score','Score %','QA Score'].filter(Boolean));
+  }
+  return meta;
+}
+function repFromResolvedColumns(row, headers, cols, meta, fallbacks=[]){
+  const c={...(cols||{})};
+  if(meta?.detectedNameColumns?.fullName) c.fullName=meta.detectedNameColumns.fullName;
+  if(meta?.detectedNameColumns?.firstName) c.firstName=meta.detectedNameColumns.firstName;
+  if(meta?.detectedNameColumns?.lastName) c.lastName=meta.detectedNameColumns.lastName;
+  return repNameFromColumns(row,headers,c,fallbacks);
+}
+function normalizeImportedRowOnce(row, headers, cfg, source, meta, i){
+  const cols=cfg.columns||{}, sourceArea=sourceAreaForSource(source);
+  if(source==='qa' || source===QA_DIRECT_SOURCE){
+    const q={...(SOURCE_SETTING_DEFAULTS.qa.columns||{}),...cols};
+    const rep=repFromResolvedColumns(row,headers,{...q,nameMode:q.nameMode||'full',fullName:q.fullName||q.agent,convertLastFirst:!!q.convertLastFirst},meta,['Agent Name','AgentName']);
+    const qaTeam=canonicalCoachName(row[meta.detectedTeamColumn]??'');
+    const selectedDate=meta.detectedDateColumn?row[meta.detectedDateColumn]:'';
+    const dateValue=cachedSourceDateValue(source,meta.detectedDateColumn||meta.interactionDateColumn,selectedDate || row[meta.interactionDateColumn]);
+    return {...row,_rowId:`${source}:${i+1}`,_source:labelSource(source),_sourceKey:source,_sourceArea:'',_rep:rep,_repKey:nameKey(rep),_team:q.skipTeamBuild?'':qaTeam,_teamKey:q.skipTeamBuild?'':coachNameKey(qaTeam),_coach:q.skipTeamBuild?'':qaTeam,_coachKey:q.skipTeamBuild?'':coachNameKey(qaTeam),_qaTeam:qaTeam,_qaTeamKey:coachNameKey(qaTeam),_score:normalizeScore(row[meta.scoreColumn]),_interactionDate:row[meta.interactionDateColumn]||'',_interactionDateValue:cachedSourceDateValue(source,meta.interactionDateColumn,row[meta.interactionDateColumn]),_assignedDate:row[meta.assignedDateColumn]||'',_assignedDateValue:cachedSourceDateValue(source,meta.assignedDateColumn,row[meta.assignedDateColumn]),_date:selectedDate || row[meta.interactionDateColumn] || '',_dateValue:dateValue};
+  }
+  const defaults=SOURCE_SETTING_DEFAULTS[source]?.columns||SOURCE_SETTING_DEFAULTS.checklist.columns||{};
+  const c={...defaults,...cols};
+  const repFallbacks=source==='comp_calls'?['CSR/SSR Name (This is the person being complimented)','CSR/SSR Name','Representative','Associate Name','Associate','Agent Name','Rep']:(source==='documented_coaching'?['Associate name','Associate Name','Associate','Agent Name','Rep']:['Associate Name','Associate','Agent Name','Rep']);
+  const rep=repFromResolvedColumns(row,headers,{...c,nameMode:c.nameMode||'full',fullName:c.fullName||c.rep,convertLastFirst:!!c.convertLastFirst},meta,repFallbacks);
+  const directTeam=canonicalCoachName(row[meta.detectedTeamColumn]??'');
+  const team=c.skipTeamBuild?'':directTeam;
+  const dateRaw=meta.detectedDateColumn?row[meta.detectedDateColumn]:'';
+  return {...row,_rowId:`${source}:${i+1}`,_source:labelSource(source),_sourceKey:source,_sourceArea:sourceArea,_rawRep:rep,_rawRepKey:fullNameIdentityKey(rep),_rep:rep,_repKey:fullNameIdentityKey(rep),_team:team,_teamKey:coachNameKey(team),_coach:team,_coachKey:coachNameKey(team),_rosterId:safeFallbackRosterIdentity({_rep:rep,_team:team},sourceArea),_date:dateRaw,_dateValue:dateRaw?cachedSourceDateValue(source,meta.detectedDateColumn,dateRaw):NaN,_week:meta.weekColumn?row[meta.weekColumn]:'',_text:meta.textColumn?String(row[meta.textColumn]??''):'',_score:meta.scoreColumn?normalizeScore(row[meta.scoreColumn]):NaN,_aliasApplied:false,_aliasRecord:null};
+}
+function commitImportedSource(source, file, pack, rows, cfg, meta, options={}){
+  state.sourceMeta=state.sourceMeta||{}; state.categorizedFragments=state.categorizedFragments||{};
+  const sourceVersion=meta.sourceVersion;
+  meta.sourceVersion=sourceVersion;
+  state.sourceMeta[source]={...(state.sourceMeta[source]||{}),...meta,sourceVersion,aliasVersionApplied:state.versions?.aliases||0,dirtyCategorized:true,lastImportedAt:new Date().toISOString(),lastImportDiagnostics:options.diagnostics||{}};
+  if(isCustomSource(source)){ const c=customSource(source); if(c){ c.fileName=file?.name||c.fileName; c.headers=pack.headers; c.rows=rows; c.headerRow=cfg.headerRow; c.startCol=cfg.startCol; c.sheetName=cfg.sheetName||c.sheetName; c.manualHeaders=cfg.manualHeaders||[]; c.framework=cfg.framework||c.framework||'generic_table'; c.columns={...(c.columns||{}),...(cfg.columns||{})}; } markImportCacheDirty('misc','customSources',`${labelSource(source)} custom source updated`); }
+  else if(source==='qa'){ state.data.qa={...state.data.qa,fileName:file.name,headers:pack.headers,rows}; }
+  else if(source===QA_DIRECT_SOURCE){ state.data.qa_direct={fileName:file.name,headers:pack.headers,rows,aoa:getSourceAoa(source),sheetName:cfg.sheetName||''}; }
+  else if(state.data[source]){ state.data[source]={...state.data[source],fileName:file.name,headers:pack.headers,rows}; }
+  state.categorizedFragments[source]={sourceVersion,datedRows:null,nonDatedRows:null,dirty:true};
+  markSourceCacheDirty(source,`${labelSource(source)} source rows updated`);
+  markImportCacheDirty('misc','sourceMeta',`${labelSource(source)} source metadata updated`);
+}
+function sourceNameElement(source){ return source==='qa'?els.qaFileName:source===QA_DIRECT_SOURCE?els.qaDirectFileName:source==='comp_calls'?els.compCallsFileName:source==='documented_coaching'?els.documentedCoachingFileName:source==='checklist'?els.checklistFileName:null; }
+async function finishSingleSourceIntake(source, reason, timing, counts){
+  markDataIndexDirty(reason);
+  // Non-roster imports should invalidate derived indexes but not rebuild Retail/Referral Control rosters or full team membership.
+  selectiveResearchInvalidation({reason,source});
+  setStatus(); renderEditModelSafe(); if(isCustomSource(source)) renderCustomSourcesList(); updateResearchCacheBadge();
+  counts.render++;
+  scheduleImportedDataSave(reason,{delay:500}); counts.cacheSave++;
+  updateProgress(`${labelSource(source)} ready`,100,{force:true});
+  await yieldToBrowser();
+  timing.mark('Schedule save', 'one incremental IndexedDB save scheduled');
+  console.info('[Import Timing Summary]', labelSource(source), {counts});
+  timing.end('shared staged intake complete; team/categorized/research indexes remain lazy');
+}
+async function processImportedSource(source, file, options={}){
+  const label=options.label||labelSource(source), timing=importTiming(`${label} intake`), counts={workbookParse:0,rowNormalization:0,teamRebuild:0,categorizedRebuild:0,indexRebuild:0,cacheSave:0,render:0};
+  showProgress(`Reading ${label} file...`,3);
+  beginDataUpdate(source);
+  try{
+    const wb=options.workbook || await readFileWorkbook(file); if(!options.workbook) counts.workbookParse++;
+    timing.mark('Read/parse workbook', `${(wb.SheetNames||[]).length} sheets`);
+    const bookKey=options.bookKey || (source===QA_DIRECT_SOURCE?QA_DIRECT_SOURCE:source);
+    if(!options.workbookAlreadyStored) await storeWorkbookAsync(bookKey,file,wb,`Preparing ${label} workbook`,12,24);
+    const m=activeModelForImport(); ensureSourceSettings(m);
+    const settingSource=source===QA_DIRECT_SOURCE?'qa':source;
+    const sn=options.sheetName || pickBestSheetForSource(wb,settingSource,m,SOURCE_SHEET_HINTS[settingSource]);
+    const cfg=getSourceSetting(m,settingSource);
+    cfg.sheetName=sn; if(m.sourceSettings?.[source]) m.sourceSettings[source].sheetName=sn;
+    const aoa=options.aoa || sheetAoa(wb,sn);
+    if(source!==QA_DIRECT_SOURCE){ state.books[sourceBookKey(source)].selectedSheets[source]=sn; setSourceAoa(source,aoa,sn); }
+    else { setSourceAoa(source,aoa,sn); }
+    updateProgress(`Detecting ${label} headers...`,28); await yieldToBrowser();
+    const pack=await sheetRowsFromAoaAsync(aoa||[],Math.max(0,(Number(cfg.headerRow)||1)-1),Math.max(0,(Number(cfg.startCol)||1)-1),!isCustomSource(source),expectedHeadersForSource(settingSource,m),settingSource,m,cfg.manualHeaders||[],`Building ${label} rows`,28,42);
+    if((pack.detected || pack.fullRow) && m.sourceSettings?.[settingSource]){ m.sourceSettings[settingSource].headerRow=pack.headerRow+1; m.sourceSettings[settingSource].startCol=pack.startCol+1; cfg.headerRow=pack.headerRow+1; cfg.startCol=pack.startCol+1; }
+    const meta=buildHeaderMetadata(settingSource,pack.headers,cfg,pack);
+    timing.mark('Detect headers', `${pack.headers.length} headers`);
+    const rows=await mapRowsChunked(pack.rows,r=>normalizeImportedRowOnce(r,pack.headers,cfg,source,meta,counts.rowNormalization++),(r)=>source==='qa'||source===QA_DIRECT_SOURCE?(r._repKey||r._team||Number.isFinite(r._score)):(r._repKey||r._team),`Normalizing ${label} rows`,42,70);
+    timing.mark(`Normalize ${rows.length.toLocaleString()} rows`, 'identity/team/date fields resolved once per row');
+    commitImportedSource(source,file,pack,rows,cfg,meta,{diagnostics:{counts}});
+    const nameEl=sourceNameElement(source); if(nameEl) nameEl.textContent=`${file.name} · ${sn}${source===QA_DIRECT_SOURCE?' · direct mode source':''}`;
+    await finishSingleSourceIntake(source,`${label} import`,timing,counts);
+  }catch(err){ console.error(err); alert(`${label} import failed. Check the console for details.`); }
+  finally{ state.dataUpdateBatch=null; hideProgress(); }
+}
 function setSourceRowsAndHeaders(source, headers, rows, model){
   if(source===NONDATED_SOURCE || source===DATED_SOURCE){
     const normalizedRows=normalizeCategorizedRowsFromObjects(source, headers||[], rows||[]);
@@ -4135,7 +4260,7 @@ async function packageImportedData(){
     const ws=XLSX.utils.aoa_to_sheet(aoa.length && aoa[0].length ? aoa : [[]]);
     XLSX.utils.book_append_sheet(wb,ws,(PACKAGE_SHEETS[src]||labelSource(src)).slice(0,31));
   });
-  const meta={version:2,packageType:'categorized_databases',categorized:{nondated:{headers:state.categorized.nondated.headers||[],rows:(state.categorized.nondated.rows||[]).length,builtAt:state.categorized.nondated.builtAt,sourceStats:state.categorized.nondated.sourceStats||[]},dated:{headers:state.categorized.dated.headers||[],rows:(state.categorized.dated.rows||[]).length,builtAt:state.categorized.dated.builtAt,sourceStats:state.categorized.dated.sourceStats||[]},warnings:state.categorized.warnings||[]},customSources:(state.customSources||[]).map(c=>({id:c.id,name:c.name,sourceKey:c.sourceKey,sourceType:c.sourceType||'custom',framework:c.framework||'generic_table',fileName:c.fileName,sheetName:(PACKAGE_SHEETS[c.sourceKey]||c.name),headerRow:c.headerRow||1,startCol:c.startCol||1,manualHeaders:c.manualHeaders||[],columns:c.columns||{},aggregation:c.aggregation||{}})),orgs:state.orgs||[]};
+  const meta={version:3,schemaVersion:'intake-v1',packageType:'categorized_databases',preprocessed:true,sourceMeta:state.sourceMeta||{},categorizedFragments:state.categorizedFragments||{},categorized:{nondated:{headers:state.categorized.nondated.headers||[],rows:(state.categorized.nondated.rows||[]).length,builtAt:state.categorized.nondated.builtAt,sourceStats:state.categorized.nondated.sourceStats||[]},dated:{headers:state.categorized.dated.headers||[],rows:(state.categorized.dated.rows||[]).length,builtAt:state.categorized.dated.builtAt,sourceStats:state.categorized.dated.sourceStats||[]},warnings:state.categorized.warnings||[]},customSources:(state.customSources||[]).map(c=>({id:c.id,name:c.name,sourceKey:c.sourceKey,sourceType:c.sourceType||'custom',framework:c.framework||'generic_table',fileName:c.fileName,sheetName:(PACKAGE_SHEETS[c.sourceKey]||c.name),headerRow:c.headerRow||1,startCol:c.startCol||1,manualHeaders:c.manualHeaders||[],columns:c.columns||{},aggregation:c.aggregation||{}})),orgs:state.orgs||[]};
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['All Star Package Metadata'],[JSON.stringify(meta)]]),'All Star Metadata');
   XLSX.writeFile(wb,'All_Star_Packaged_Data.xlsx');
 }
@@ -4162,7 +4287,7 @@ async function loadPackagedFile(file){
     timing.mark('package load hydration', 'workbook sheets cached');
     const metaSheet=(wb.SheetNames||[]).find(sn=>norm(sn)===norm('All Star Metadata'));
     let packageMeta={};
-    if(metaSheet){ try{ const metaAoa=sheetAoa(wb,metaSheet); packageMeta=JSON.parse(metaAoa?.[1]?.[0]||'{}')||{}; (packageMeta.customSources||[]).forEach(def=>{ if(!def.sourceKey || customSource(def.sourceKey)) return; const c={...def,id:def.id||id(),sourceType:'custom',rows:[],headers:[],aoa:[],sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,sheetName:def.sheetName||def.name,headerRow:def.headerRow||1,startCol:def.startCol||1,manualHeaders:def.manualHeaders||[]}; state.customSources.push(c); state.books[c.sourceKey]={fileName:file.name,sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,selectedSheets:{[c.sourceKey]:c.sheetName||c.name}}; }); if(Array.isArray(packageMeta.orgs)){ const prev=state.orgs||[]; packageMeta.orgs.map(normalizeOrg).forEach(o=>{ const i=prev.findIndex(x=>x.id===o.id); if(i>=0) prev[i]=o; else prev.push(o); }); state.orgs=prev; saveOrgs(); } }catch(e){ console.warn('Package metadata could not be read',e); } }
+    if(metaSheet){ try{ const metaAoa=sheetAoa(wb,metaSheet); packageMeta=JSON.parse(metaAoa?.[1]?.[0]||'{}')||{}; if(packageMeta.schemaVersion==='intake-v1' && packageMeta.preprocessed){ state.sourceMeta={...(state.sourceMeta||{}),...(packageMeta.sourceMeta||{})}; state.categorizedFragments={...(state.categorizedFragments||{}),...(packageMeta.categorizedFragments||{})}; } (packageMeta.customSources||[]).forEach(def=>{ if(!def.sourceKey || customSource(def.sourceKey)) return; const c={...def,id:def.id||id(),sourceType:'custom',rows:[],headers:[],aoa:[],sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,sheetName:def.sheetName||def.name,headerRow:def.headerRow||1,startCol:def.startCol||1,manualHeaders:def.manualHeaders||[]}; state.customSources.push(c); state.books[c.sourceKey]={fileName:file.name,sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,selectedSheets:{[c.sourceKey]:c.sheetName||c.name}}; }); if(Array.isArray(packageMeta.orgs)){ const prev=state.orgs||[]; packageMeta.orgs.map(normalizeOrg).forEach(o=>{ const i=prev.findIndex(x=>x.id===o.id); if(i>=0) prev[i]=o; else prev.push(o); }); state.orgs=prev; saveOrgs(); } }catch(e){ console.warn('Package metadata could not be read',e); } }
     [...CATEGORIZED_SOURCE_KEYS,'retail','referral','qa','checklist','documented_coaching','comp_calls'].forEach(key=>{ state.books[key]={...state.books.packaged,selectedSheets:{}}; });
     (state.customSources||[]).forEach(c=>{ state.books[c.sourceKey]={fileName:file.name,sheetNames:wb.SheetNames||[],aoaBySheet:state.books.packaged.aoaBySheet,selectedSheets:{[c.sourceKey]:c.sheetName||c.name}}; });
     const m=activeModelForImport(); ensureSourceSettings(m);
@@ -4826,26 +4951,7 @@ function normalizeQARow(row, headers, qaColumns){
 }
 function normalizeScore(v){ const n=toNum(v); if(!Number.isFinite(n)) return NaN; return n<=1?n*100:n; }
 async function loadQAFile(file){
-  showProgress('Reading QA file...',3);
-  try{
-    await yieldToBrowser();
-    const wb=await readFileWorkbook(file);
-    updateProgress('Preparing QA workbook...',18); await yieldToBrowser();
-    await storeWorkbookAsync('qa',file,wb,'Preparing QA workbook',12,24);
-    const m=activeModelForImport(); ensureSourceSettings(m);
-    const sn=pickBestSheetForSource(wb,'qa',m,SOURCE_SHEET_HINTS.qa);
-    m.sourceSettings.qa.sheetName=sn;
-    state.books.qa.selectedSheets.qa=sn;
-    const cfg=getSourceSetting(m,'qa');
-    const aoa=sheetAoa(wb,sn); state.data.qa.aoa=aoa;
-    updateProgress('Normalizing QA rows...',38); await yieldToBrowser();
-    const pack=await sourceRowsFromStoredAoaAsync('qa',m,true,'Building QA dataset',28,42);
-    const qaRows=await mapRowsChunked(pack.rows,r=>normalizeQARow(r,pack.headers,cfg.columns),r=>r._repKey||r._team||Number.isFinite(r._score),'Normalizing QA rows',42,54);
-    state.data.qa={...state.data.qa,fileName:file.name,headers:pack.headers,rows:qaRows};
-    els.qaFileName.textContent=`${file.name} · ${sn}`;
-    await finishDataChanged('QA import',55);
-  }catch(err){ console.error(err); alert('QA import failed. Check the console for details.'); }
-  finally{ hideProgress(); }
+  return processImportedSource('qa',file,{label:'QA Stats',bookKey:'qa'});
 }
 function normalizeChecklistRow(row, headers, columns, source='checklist'){
   const defaults=SOURCE_SETTING_DEFAULTS[source]?.columns||SOURCE_SETTING_DEFAULTS.checklist.columns||{};
@@ -4873,52 +4979,10 @@ async function clearDirectQAFile(){
   alert('Direct QA override cleared. Direct mode will use the main QA Stats upload.');
 }
 async function loadDirectQAFile(file){
-  showProgress('Reading direct QA team-score file...',3);
-  try{
-    await yieldToBrowser();
-    const wb=await readFileWorkbook(file);
-    const m=activeModelForImport(); ensureSourceSettings(m);
-    const sn=pickBestSheetForSource(wb,'qa',m,SOURCE_SHEET_HINTS.qa);
-    const cfg=getSourceSetting(m,'qa');
-    const aoa=sheetAoa(wb,sn);
-    const hr=Math.max(0,(Number(cfg.headerRow)||1)-1), sc=Math.max(0,(Number(cfg.startCol)||1)-1);
-    updateProgress('Building direct QA rows from raw upload...',32); await yieldToBrowser();
-    const pack=await sheetRowsFromAoaAsync(aoa||[],hr,sc,true,expectedHeadersForSource('qa',m),'qa',m,cfg.manualHeaders||[],`Building direct QA team-score dataset`,32,54);
-    const qaRows=await mapRowsChunked(pack.rows,r=>normalizeQARow(r,pack.headers,cfg.columns),r=>r._qaTeam||Number.isFinite(r._score)||r._repKey,'Normalizing direct QA team-score rows',54,76);
-    state.data.qa_direct={fileName:file.name,headers:pack.headers,rows:qaRows,aoa:aoa||[],sheetName:sn};
-    if(els.qaDirectFileName) els.qaDirectFileName.textContent=`${file.name} · ${sn} · direct mode source`;
-    markDataIndexDirty('direct QA team-score override imported');
-    selectiveResearchInvalidation({reason:'direct QA team-score override imported',source:'qa_direct'});
-    updateProgress('Saving direct QA override locally...',86,{force:true});
-    markSourceCacheDirty(QA_DIRECT_SOURCE,'direct QA team-score override import'); scheduleImportedDataSave('direct QA team-score override import',{delay:250});
-    updateProgress('Direct QA override ready',100,{force:true});
-    await yieldToBrowser();
-  }catch(err){ console.error(err); alert('Direct QA team-score override import failed. Check the file and console for details.'); }
-  finally{ hideProgress(); }
+  return processImportedSource(QA_DIRECT_SOURCE,file,{label:'Direct QA Team Score Override',bookKey:QA_DIRECT_SOURCE});
 }
 async function loadChecklistLikeFile(file, source){
-  const label=labelSource(source);
-  showProgress(`Reading ${label} file...`,3);
-  try{
-    await yieldToBrowser();
-    const wb=await readFileWorkbook(file);
-    updateProgress(`Preparing ${label} workbook...`,18); await yieldToBrowser();
-    await storeWorkbookAsync(source,file,wb,`Preparing ${label} workbook`,12,24);
-    const m=activeModelForImport(); ensureSourceSettings(m);
-    const sn=pickBestSheetForSource(wb,source,m,SOURCE_SHEET_HINTS[source]);
-    m.sourceSettings[source].sheetName=sn;
-    state.books[source].selectedSheets[source]=sn;
-    const cfg=getSourceSetting(m,source);
-    const aoa=sheetAoa(wb,sn); state.data[source].aoa=aoa;
-    updateProgress(`Normalizing ${label} rows...`,38); await yieldToBrowser();
-    const pack=await sourceRowsFromStoredAoaAsync(source,m,true,`Building ${label} dataset`,28,42);
-    const rows=await mapRowsChunked(pack.rows,r=>normalizeChecklistRow(r,pack.headers,cfg.columns,source),r=>r._repKey||r._team,`Normalizing ${label} rows`,42,54);
-    state.data[source]={...state.data[source],fileName:file.name,headers:pack.headers,rows};
-    const nameEl=source==='comp_calls'?els.compCallsFileName:(source==='documented_coaching'?els.documentedCoachingFileName:els.checklistFileName);
-    if(nameEl) nameEl.textContent=`${file.name} · ${sn}`;
-    await finishDataChanged(`${label} import`,55);
-  }catch(err){ console.error(err); alert(`${label} import failed. Check the console for details.`); }
-  finally{ hideProgress(); }
+  return processImportedSource(source,file,{label:labelSource(source),bookKey:source});
 }
 async function loadChecklistFile(file){ return loadChecklistLikeFile(file,'checklist'); }
 
@@ -4953,8 +5017,8 @@ async function loadCustomSourceFile(file,name){
     const custom={id:id(),name,sourceKey,sourceType:'custom',fileName:file.name,rows:[],headers:[],aoa:aoaBySheet[sn]||[],sheetNames:wb.SheetNames||[],aoaBySheet,sheetName:sn,headerRow:1,startCol:1,manualHeaders:[],framework:'generic_table',columns:{nameMode:'auto',fullName:'',firstName:'',lastName:'',convertLastFirst:false,useDateColumn:null,skipTeamBuild:false,rep:'',team:'',coach:'',date:'',week:'',month:'',score:'',numerator:'',denominator:'',text:'',category:'',uniqueId:'',statPeriod:'week',weekStart:'sunday',dateBasis:'date'},aggregation:{}};
     state.customSources.push(custom); state.books[sourceKey]={fileName:file.name,sheetNames:custom.sheetNames,aoaBySheet,selectedSheets:{[sourceKey]:sn}};
     const m=activeModelForImport(); ensureSourceSettings(m); m.sourceSettings[sourceKey]=customSourceDefaultSettings(sourceKey);
-    const pack=await sourceRowsFromStoredAoaAsync(sourceKey,m,false,`Building ${name} dataset`,28,48); await setSourceRowsAndHeadersAsync(sourceKey,pack.headers,pack.rows,m,`Normalizing ${name} rows`,48,55);
-    renderCustomSourcesList(); await finishDataChanged(`${name} import`,55);
+    hideProgress();
+    await processImportedSource(sourceKey,file,{label:name,workbook:wb,workbookAlreadyStored:true,sheetName:sn,aoa:aoaBySheet[sn],bookKey:sourceKey});
   }catch(err){ console.error(err); alert('Custom source import failed. Check the console for details.'); }
   finally{ hideProgress(); }
 }
@@ -9607,7 +9671,3 @@ loadModels(); loadRepAliases(); loadResearchItems(); setTimeout(runRosterAccurac
 </script>
 </body>
 </html>
-
-
-
-
