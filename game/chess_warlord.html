@@ -2231,6 +2231,44 @@ async function waitForPregamePlayersReady(){
   if(countdownEl) countdownEl.textContent='Loading timeout reached. Continuing with the active players so the lobby cannot freeze.';
 }
 
+
+function resetFirebaseSyncHandles(){
+  if(heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer=null; }
+  if(controllerTimer){ clearInterval(controllerTimer); controllerTimer=null; }
+  if(controllerFlushTimer){ clearTimeout(controllerFlushTimer); controllerFlushTimer=null; }
+  if(stateUnsub){ stateUnsub(); stateUnsub=null; }
+  if(lobbyUnsub){ lobbyUnsub(); lobbyUnsub=null; }
+  stopCommandWatch();
+  for(const actionId of Array.from(commandAckUnsubs.keys())) stopCommandAckWatch(actionId);
+  lobbyId = '';
+  lobbyRef = null;
+  stateRef = null;
+  fullStateRef = null;
+  pregameRef = null;
+  presenceRef = null;
+  controllerLease = null;
+  controllerLeaseAction = null;
+  activePresence = [];
+  onlineCount = 1;
+}
+function enterLocalSoloMode(statusText='Local solo vs AI'){
+  resetFirebaseSyncHandles();
+  buildSlots([username || 'Player']);
+  refreshChessEloProfilesForSlots('soloLocal');
+  PLAYER = 0;
+  chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || chosenDifficultyId);
+  chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
+  slotFactionIds[PLAYER] = chosenFactionId;
+  isController = true;
+  controllerName = username || 'Player';
+  initFactionPicker();
+  initDifficultyPicker();
+  initSoloAiCountPicker();
+  updateDifficultyVisibility();
+  startBtn.textContent = 'Start Solo War';
+  setNetwork(statusText);
+}
+
 async function bootMultiplayer(){
   try{
     if(!username){ username = prompt('Enter your lobby username') || `Player${Math.floor(Math.random()*9999)}`; }
@@ -2238,21 +2276,7 @@ async function bootMultiplayer(){
     if(!lobbyId){
       // A local match never signs into Firebase, opens listeners, or surfaces network/sync failures.
       await ensureGraphicsReady();
-      buildSlots([username]);
-      refreshChessEloProfilesForSlots('soloBoot');
-      PLAYER = 0;
-      chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || chosenDifficultyId);
-      chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
-      slotFactionIds[PLAYER] = chosenFactionId;
-      isController = true;
-      controllerName = username || 'Player';
-      onlineCount = 1;
-      initFactionPicker();
-      initDifficultyPicker();
-      initSoloAiCountPicker();
-      updateDifficultyVisibility();
-      startBtn.textContent = 'Start Solo War';
-      setNetwork('Local solo vs AI');
+      enterLocalSoloMode('Local solo vs AI');
       return;
     }
     setNetwork('Signing in…');
@@ -2268,8 +2292,16 @@ async function bootMultiplayer(){
     const lsnap = await getDoc(lobbyRef);
     if(!lsnap.exists()) throw new Error('Lobby not found');
     lobbyData = lsnap.data();
+    const lobbyPlayers = Array.isArray(lobbyData.players) ? lobbyData.players.filter(Boolean) : [username];
+    if(lobbyPlayers.length <= 1){
+      // A one-player lobby is gameplay-equivalent to solo mode. Drop Firebase sync before
+      // presence/lease listeners can show sync toasts over the board.
+      await ensureGraphicsReady();
+      enterLocalSoloMode(`${username || 'Player'} · local vs AI`);
+      return;
+    }
     applyControllerLease(controllerLeaseForLobby(lobbyData));
-    buildSlots(lobbyData.players || [username]);
+    buildSlots(lobbyPlayers);
     refreshChessEloProfilesForSlots('lobbyBoot');
     chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || 'normal');
     chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
@@ -2279,26 +2311,7 @@ async function bootMultiplayer(){
     await ensureGraphicsReady();
     await refreshPresenceAndController();
     if(slotHumans.length <= 1){
-      if(heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer=null; }
-      if(controllerTimer){ clearInterval(controllerTimer); controllerTimer=null; }
-      lobbyId = '';
-      lobbyRef = null;
-      stateRef = null;
-      fullStateRef = null;
-      pregameRef = null;
-      presenceRef = null;
-      controllerLease = null;
-      activePresence = [];
-      isController = true;
-      controllerName = username || 'Player';
-      onlineCount = 1;
-      initFactionPicker();
-      initDifficultyPicker();
-      initSoloAiCountPicker();
-      updateDifficultyVisibility();
-      startBtn.textContent = 'Start Solo War';
-      setNetwork(`${username || 'Player'} · local vs AI`);
-      toast('Solo lobby detected - running locally. Choose AI difficulty, then start.', 3600);
+      enterLocalSoloMode(`${username || 'Player'} · local vs AI`);
       return;
     }
     chosenDifficultyId = 'normal';
@@ -2360,31 +2373,8 @@ async function bootMultiplayer(){
     }
   }catch(e){
     console.error(e);
-    const wasExplicitLobby=!!lobbyId;
-    if(heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer=null; }
-    if(controllerTimer){ clearInterval(controllerTimer); controllerTimer=null; }
-    lobbyId = '';
-    lobbyRef = null;
-    stateRef = null;
-    fullStateRef = null;
-    pregameRef = null;
-    presenceRef = null;
-    setNetwork(wasExplicitLobby?'Lobby unavailable · local solo':'Local solo vs AI');
-    buildSlots([username || 'Player']);
-    refreshChessEloProfilesForSlots('fallbackSolo');
-    PLAYER = 0;
-    chosenDifficultyId = normalizedDifficultyId(localStorage.getItem('cw.lastDifficulty') || chosenDifficultyId);
-    chosenFactionId = playableFactionId(localStorage.getItem('cw.lastFaction') || chosenFactionId);
-    slotFactionIds[PLAYER] = chosenFactionId;
-    isController = true;
-    controllerName = username || 'Player';
-    onlineCount = 1;
-    initFactionPicker();
-    initDifficultyPicker();
-    initSoloAiCountPicker();
-    updateDifficultyVisibility();
+    enterLocalSoloMode('Local solo vs AI');
     overlay.style.display='flex';
-    startBtn.textContent = 'Start Solo War';
   }
 }
 
