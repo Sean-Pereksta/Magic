@@ -7436,6 +7436,48 @@ function pieceSpriteMetrics(def,type,graphic,r){
   const centerY = top + targetH * .54;
   return {building,targetH,targetW,bottom,top,centerY};
 }
+function drawIsometricCooldownBase(p,f,progress){
+  const ready=progress>=1;
+  const ringRadius=BASE_CELL*.68;
+  ctx.save();
+  ctx.globalCompositeOperation='source-over';
+  ctx.lineCap='round';
+
+  // This is drawn while the board's isometric transform is still active, so the
+  // circle becomes a flat ground-plane ring that surrounds the troop's tile.
+  ctx.globalAlpha=ready?.10:.16;
+  ctx.fillStyle=ready?'rgba(177,255,207,.42)':'rgba(2,7,14,.68)';
+  ctx.beginPath();
+  ctx.arc(0,0,ringRadius-4,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.globalAlpha=.78;
+  ctx.strokeStyle='rgba(2,7,14,.88)';
+  ctx.lineWidth=7;
+  ctx.beginPath();
+  ctx.arc(0,0,ringRadius,0,Math.PI*2);
+  ctx.stroke();
+
+  ctx.globalAlpha=ready?.98:.84;
+  ctx.strokeStyle=ready
+    ? (p.faction===PLAYER?'rgba(139,255,180,.98)':'rgba(255,159,159,.96)')
+    : (f?.color || 'rgba(225,238,255,.72)');
+  ctx.lineWidth=3.4;
+  ctx.beginPath();
+  ctx.arc(0,0,ringRadius,-Math.PI*.75,-Math.PI*.75+Math.PI*2*progress);
+  ctx.stroke();
+
+  if(ready){
+    const pulse=.78+.22*Math.sin(now()*6+p.id);
+    const markerAngle=-Math.PI*.75;
+    ctx.globalAlpha=.72+.24*pulse;
+    ctx.fillStyle=p.faction===PLAYER?'rgba(200,255,219,.98)':'rgba(255,205,205,.96)';
+    ctx.beginPath();
+    ctx.arc(Math.cos(markerAngle)*ringRadius,Math.sin(markerAngle)*ringRadius,3.2,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
 function drawTargetablePieceGlow(graphic,def,metrics,r,pieceId,pieceType,factionId,glowColor,pulse){
   ctx.save();
   ctx.globalCompositeOperation='screen';
@@ -7553,6 +7595,9 @@ function drawSinglePiece(p,labelIds=new Set()){
     const targetGlowColor=abilityTarget?.kind==='guardianShield' ? 'rgba(52,255,135,.98)' : (abilityTarget?.kind==='shadeMark' ? 'rgba(255,145,38,.98)' : 'rgba(255,43,67,.98)');
     ctx.save();
     ctx.translate(x,y);
+    const cd=cooldownProgress(p);
+    const pieceReady=cd>=1;
+    drawIsometricCooldownBase(p,f,cd);
     makeCurrentTransformUpright(ctx);
     ctx.globalAlpha = p.alive ? 1 : .2;
 
@@ -7597,9 +7642,12 @@ function drawSinglePiece(p,labelIds=new Set()){
 
     if(graphic){
       ctx.save();
-      ctx.globalAlpha=p.flash>0 ? .78 : 1;
+      ctx.globalAlpha=p.flash>0 ? .78 : (pieceReady ? 1 : .92);
       ctx.shadowColor=p.flash>0 ? 'rgba(255,255,255,.92)' : 'rgba(0,0,0,.62)';
       ctx.shadowBlur=p.flash>0 ? 18 : 8;
+      ctx.filter=pieceReady
+        ? 'brightness(1.07) saturate(1.05)'
+        : 'brightness(.80) saturate(.74)';
       ctx.imageSmoothingEnabled=true;
       ctx.drawImage(graphic,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
       ctx.restore();
@@ -7636,13 +7684,6 @@ function drawSinglePiece(p,labelIds=new Set()){
       ctx.arc(Math.cos(a)*(r+6),Math.sin(a)*(r+6),2.4,0,Math.PI*2);
       ctx.fill();
     }
-    const cd=cooldownProgress(p);
-    const readyRingColor = p.faction===PLAYER ? 'rgba(125,255,174,.98)' : 'rgba(255,121,121,.96)';
-    ctx.globalAlpha=.62;ctx.strokeStyle='rgba(2,7,14,.82)';ctx.lineWidth=5;ctx.beginPath();ctx.arc(0,0,r+6,0,Math.PI*2);ctx.stroke();
-    ctx.globalAlpha=1;ctx.strokeStyle=cd>=1?readyRingColor:'rgba(225,238,255,.62)';
-    ctx.lineWidth=3;
-    ctx.beginPath(); ctx.arc(0,0,r+6,-Math.PI/2,-Math.PI/2+Math.PI*2*cd); ctx.stroke();
-    if(cd>=1){ctx.fillStyle=readyRingColor;ctx.beginPath();ctx.arc(0,-r-6,3.2,0,Math.PI*2);ctx.fill();}
     const supply=overextensionInfo(p);
     if(supply.active){
       const pulse=.55+.45*Math.sin(now()*6+p.id);
