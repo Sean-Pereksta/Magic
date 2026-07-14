@@ -883,7 +883,11 @@
     let toastTimer = null;
     let unreadMessages = 0;
     let messagesInitialized = false;
+    let privateMessagesInitialized = false;
     let latestMessageDocs = [];
+    let publicMessageDocs = [];
+    let privateMessageDocs = [];
+    let privateMessagesUnsub = null;
     const avatarCache = new Map();
     const CHAT_RETENTION_MS = 24*60*60*1000;
 
@@ -1051,6 +1055,7 @@
         msgInput.placeholder = "Log in inside the lobby to chat";
       }
       if(changed&&latestMessageDocs.length)renderChatDocs(latestMessageDocs,false);
+      if(changed&&auth.currentUser)loadPrivateMessages();
       syncActiveLobby();
     }
 
@@ -1299,14 +1304,17 @@
           const requested=privateMatch[1].trim(),body=privateMatch[2].trim();
           if(!body)throw new Error("Add a message after the private recipient.");
           const recipient=await resolveCommunityUsername(requested);
-          if(!recipient)throw new Error(`No community user named “${requested}” was found.`);
-          if(normalizeName(recipient)===normalizeName(currentUsername))throw new Error("Choose another player for a private message.");
-          await addDoc(collection(db,"chat"),{
+          if(!recipient?.username)throw new Error(`No community user named “${requested}” was found.`);
+          if(normalizeName(recipient.username)===normalizeName(currentUsername))throw new Error("Choose another player for a private message.");
+          if(!recipient.chatAuthUid)throw new Error(`${recipient.username} needs to log in once before receiving private messages.`);
+          const senderUid=auth.currentUser?.uid;if(!senderUid)throw new Error("Firebase sign-in is still finishing. Try again in a moment.");
+          await addDoc(collection(db,"privateChat"),{
             username:currentUsername,avatar:currentAvatar,text:body.slice(0,500),type:"private",
-            privateTo:recipient,privateToLower:normalizeName(recipient),privateFromLower:normalizeName(currentUsername),
+            privateTo:recipient.username,privateToLower:normalizeName(recipient.username),privateFromLower:normalizeName(currentUsername),
+            senderUid,recipientUid:recipient.chatAuthUid,participantUids:Array.from(new Set([senderUid,recipient.chatAuthUid])),
             timestamp:serverTimestamp()
           });
-          showToast(`[private message] sent to ${recipient}.`);
+          showToast(`[private message] sent to ${recipient.username}.`);
         }else{
           await addDoc(collection(db,"chat"),{
             username:currentUsername,avatar:currentAvatar,text:text.slice(0,500),type:"message",timestamp:serverTimestamp()
@@ -1324,12 +1332,12 @@
 
     async function resolveCommunityUsername(requested){
       const name=String(requested||"").trim();if(!name)return "";
-      try{const exact=await getDoc(doc(db,"users",name));if(exact.exists())return exact.id;}catch{}
+      try{const exact=await getDoc(doc(db,"users",name));if(exact.exists())return {username:exact.id,chatAuthUid:String(exact.data().chatAuthUid||"")};}catch{}
       try{
         const snap=await getDocs(query(collection(db,"users"),limit(200)));
         const match=snap.docs.find(d=>normalizeName(d.id)===normalizeName(name)&&(d.data().password||normalizeName(d.data().username)===normalizeName(d.id)));
-        return match?.id||"";
-      }catch{return "";}
+        return match?{username:match.id,chatAuthUid:String(match.data().chatAuthUid||"")}:null;
+      }catch{return null;}
     }
 
     function renderChatDocs(docs,keepScroll=true){
@@ -1346,17 +1354,27 @@
       if(shouldStickToBottom||visible.length<=3)chatMessages.scrollTop=chatMessages.scrollHeight;
     }
 
+    function messageDocTime(messageDoc){
+      const value=messageDoc.data().timestamp;
+      return value?.toMillis?value.toMillis():(value instanceof Date?value.getTime():Number(value||0));
+    }
+    function refreshCombinedMessages(keepScroll=true){
+      const cutoff=Date.now()-CHAT_RETENTION_MS;
+      const combined=[...publicMessageDocs,...privateMessageDocs].filter(messageDoc=>!messageDocTime(messageDoc)||messageDocTime(messageDoc)>=cutoff).sort((a,b)=>messageDocTime(a)-messageDocTime(b));
+      renderChatDocs(combined.slice(-100),keepScroll);
+    }
+    function countUnreadChanges(snapshot){
+      if(chatContainer.classList.contains("open"))return 0;
+      return snapshot.docChanges().filter(change=>change.type==="added").map(change=>change.doc.data()).filter(message=>visibleToCurrentUser(message)&&normalizeName(message.username)!==normalizeName(currentUsername)).length;
+    }
+
     function loadMessages(){
       const cutoff=new Date(Date.now()-CHAT_RETENTION_MS);
       const messagesQuery=query(collection(db,"chat"),where("timestamp",">=",cutoff),orderBy("timestamp","desc"),limit(80));
 
       onSnapshot(messagesQuery,(snapshot)=>{
-        const docs=[...snapshot.docs].reverse();
-        if(messagesInitialized&&!chatContainer.classList.contains("open")){
-          const added=snapshot.docChanges().filter(change=>change.type==="added").map(change=>change.doc.data()).filter(message=>visibleToCurrentUser(message)&&normalizeName(message.username)!==normalizeName(currentUsername)).length;
-          if(added)setUnreadCount(unreadMessages+added);
-        }
-        messagesInitialized=true;renderChatDocs(docs,true);
+        if(messagesInitialized){const added=countUnreadChanges(snapshot);if(added)setUnreadCount(unreadMessages+added);}
+        messagesInitialized=true;publicMessageDocs=[...snapshot.docs];refreshCombinedMessages(true);
       },(error)=>{
         console.warn("Chat subscription failed",error);
         chatMessages.innerHTML = `
@@ -1365,6 +1383,16 @@
             Chat is unavailable until its Firestore rule is enabled.
           </div>`;
       });
+    }
+
+    function loadPrivateMessages(){
+      privateMessagesUnsub?.();privateMessagesUnsub=null;privateMessageDocs=[];privateMessagesInitialized=false;
+      const uid=auth.currentUser?.uid;if(!uid||!currentUsername){refreshCombinedMessages(false);return;}
+      const privateQuery=query(collection(db,"privateChat"),where("participantUids","array-contains",uid));
+      privateMessagesUnsub=onSnapshot(privateQuery,snapshot=>{
+        if(privateMessagesInitialized){const added=countUnreadChanges(snapshot);if(added)setUnreadCount(unreadMessages+added);}
+        privateMessagesInitialized=true;privateMessageDocs=[...snapshot.docs];refreshCombinedMessages(true);
+      },error=>{console.warn("Private chat subscription failed",error);privateMessageDocs=[];refreshCombinedMessages(false);});
     }
 
     async function cleanExpiredChat(){
@@ -1377,6 +1405,12 @@
           if(expired.size<300)break;
         }
       }catch(error){console.warn("Expired chat cleanup skipped",error);}
+      const uid=auth.currentUser?.uid;if(!uid)return;
+      try{
+        const privateSnap=await getDocs(query(collection(db,"privateChat"),where("participantUids","array-contains",uid)));
+        const expired=privateSnap.docs.filter(messageDoc=>{const value=messageDoc.data().timestamp;const ms=value?.toMillis?value.toMillis():0;return ms&&ms<cutoff.getTime();});
+        for(let i=0;i<expired.length;i+=300){const batch=writeBatch(db);expired.slice(i,i+300).forEach(messageDoc=>batch.delete(messageDoc.ref));await batch.commit();}
+      }catch(error){console.warn("Expired private chat cleanup skipped",error);}
     }
 
     toggleChat.addEventListener("click",()=>toggleChatPanel());
@@ -1415,7 +1449,7 @@
 
     signInAnonymously(auth)
       .catch(error=>console.warn("Anonymous Firebase sign-in failed",error))
-      .finally(()=>{loadMessages();cleanExpiredChat();});
+      .finally(()=>{loadMessages();loadPrivateMessages();cleanExpiredChat();});
   </script>
 </body>
 </html>
