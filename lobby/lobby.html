@@ -188,6 +188,7 @@
       border-radius:19px;background:#fff;box-shadow:var(--shadow-soft);transition:.18s ease;
     }
     .lobby-card:hover{transform:translateY(-3px);box-shadow:0 18px 36px rgba(16,24,40,.13);border-color:#d0d5dd}
+    .lobby-card.current{border-color:#fb7185;box-shadow:0 0 0 3px rgba(244,63,94,.1),var(--shadow-soft)}
     .lobby-card::before{content:"";position:absolute;left:0;right:0;top:0;height:5px;background:var(--game)}
     .lobby-card.private::after{content:"🔒";position:absolute;right:14px;top:13px;font-size:1rem}
     .lobby-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:11px;margin-top:2px}
@@ -216,13 +217,17 @@
     .avatar-mini{
       width:31px;height:31px;border-radius:50%;display:grid;place-items:center;margin-right:-6px;
       background:#fff1f2;border:2px solid #fff;font-size:.72rem;font-weight:900;color:#9f1239;
+      padding:0;overflow:hidden;cursor:pointer;box-shadow:0 2px 7px rgba(16,24,40,.08);
     }
+    .avatar-mini img,.profile-avatar img,.avatar-choice img,.public-avatar img{width:100%;height:100%;display:block;object-fit:contain}
+    .profile-link:hover{transform:translateY(-2px);z-index:2}
     .avatar-more{margin-left:11px;color:var(--muted);font-size:.74rem;font-weight:800}
     .capacity{height:7px;background:#f2f4f7;border-radius:99px;overflow:hidden;margin:10px 0 13px}
     .capacity i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#16a34a,#f59e0b,#ef4444);transition:width .25s ease}
     .lobby-buttons{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 
-    .current-panel{position:sticky;top:94px;overflow:hidden}
+    .current-panel{position:sticky;top:94px;overflow:hidden;transition:.18s ease}
+    .current-panel.has-lobby{border-color:#fda4af;box-shadow:0 18px 44px rgba(127,20,32,.16)}
     .current-cover{padding:20px;color:#fff;background:linear-gradient(135deg,#111827,#7f1420);position:relative;overflow:hidden;min-height:118px}
     .current-cover>:not(.current-lobby-art){position:relative;z-index:2;max-width:72%}
     .current-lobby-art{position:absolute;z-index:1;right:8px;top:8px;bottom:0;width:104px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none}
@@ -234,7 +239,12 @@
     .player-list{display:grid;gap:8px}
     .player-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;background:var(--surface-2);border-radius:12px}
     .player-name{font-weight:850;display:flex;align-items:center;gap:8px}.host-tag{font-size:.67rem;font-weight:900;color:#9f1239;background:#ffe4e6;border-radius:999px;padding:3px 7px}
+    .player-profile{border:0;background:transparent;color:inherit;padding:0;display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer;font-weight:850}
+    .current-state{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:11px;padding:9px 10px;border-radius:12px;background:#fff1f2;color:#9f1239;font-size:.75rem;font-weight:900}
+    .current-state i{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.13)}
+    .waiting-host{padding:10px 11px;border-radius:12px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:.77rem;font-weight:850;text-align:center}
     .current-actions{display:grid;gap:8px;margin-top:13px}
+    #startGameBtn{min-height:54px;font-size:1rem;order:-2;background:linear-gradient(135deg,#16a34a,#15803d);border-color:#15803d;box-shadow:0 12px 24px rgba(21,128,61,.25)}
 
     .category-pills{display:flex;gap:8px;overflow:auto;padding:2px 0 10px;scrollbar-width:none}
     .category-pills::-webkit-scrollbar{display:none}
@@ -270,11 +280,23 @@
       box-shadow:var(--shadow);padding:28px;display:flex;align-items:center;gap:22px;position:relative;
     }
     .profile-hero::after{content:"";position:absolute;width:300px;height:300px;border-radius:50%;right:-100px;top:-150px;background:rgba(255,255,255,.1)}
-    .profile-avatar{width:96px;height:96px;border-radius:28px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);display:grid;place-items:center;font-size:3.2rem;position:relative;z-index:1}
+    .profile-avatar{width:96px;height:96px;border-radius:28px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);display:grid;place-items:center;font-size:3.2rem;position:relative;z-index:1;overflow:hidden}
     .profile-info{position:relative;z-index:1;flex:1}.profile-name{font-size:2rem;font-weight:950}.profile-bio{color:#ffe4e6;margin-top:5px;max-width:680px}
     .profile-stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}.profile-stat{padding:9px 12px;border-radius:13px;background:rgba(255,255,255,.12);font-size:.78rem}.profile-stat strong{display:block;font-size:1.02rem}
     .profile-layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,.75fr);gap:18px;margin-top:18px}
     .activity-list{display:grid;gap:8px}.activity-row{display:flex;justify-content:space-between;gap:12px;padding:11px;border-radius:12px;background:var(--surface-2)}
+    .rank-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:13px}
+    .rank-card{--rank:#7c3aed;padding:13px;border-radius:15px;border:1px solid color-mix(in srgb,var(--rank) 28%,#e4e7ec);background:linear-gradient(145deg,#fff,color-mix(in srgb,var(--rank) 8%,#fff));min-width:0}
+    .rank-game{font-size:.72rem;color:var(--muted);font-weight:850}.rank-title{margin-top:5px;color:var(--rank);font-weight:950;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rank-elo{margin-top:3px;font-size:.78rem;font-weight:850;color:#475467}
+    .profile-summary-button{width:100%;border:0;background:transparent;padding:0;color:inherit;text-align:left;cursor:pointer}
+    .profile-summary-button:hover strong{text-decoration:underline}
+    .avatar-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:8px;margin-top:7px}
+    .avatar-choice{height:58px;border:1px solid var(--line);border-radius:15px;background:#fff;display:grid;place-items:center;padding:7px;font-size:1.55rem;cursor:pointer;overflow:hidden}
+    .avatar-choice.active{border-color:#fb7185;background:#fff1f2;box-shadow:0 0 0 3px rgba(244,63,94,.12)}
+    .avatar-edit-preview{width:72px;height:72px;border-radius:20px;display:grid;place-items:center;overflow:hidden;background:#111827;color:#fff;font-size:2.1rem;flex:0 0 auto}
+    .public-profile-head{display:flex;align-items:center;gap:15px;padding:17px;border-radius:18px;background:linear-gradient(135deg,#111827,#7f1420);color:#fff}
+    .public-avatar{width:82px;height:82px;flex:0 0 auto;border-radius:23px;display:grid;place-items:center;overflow:hidden;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);font-size:2.6rem}
+    .public-bio{margin-top:5px;color:#ffe4e6;line-height:1.45}
 
     .empty-state{padding:50px 20px;text-align:center;color:var(--muted);border:1px dashed #d0d5dd;border-radius:18px;background:rgba(255,255,255,.72)}
     .empty-state .big{font-size:2rem;margin-bottom:7px}
@@ -299,7 +321,7 @@
 
     .mobile-nav{display:none}
     @media(max-width:1020px){
-      .multi-layout,.profile-layout{grid-template-columns:1fr}.current-panel{position:relative;top:auto}.toolbar{grid-template-columns:1fr 1fr}.toolbar .search-wide{grid-column:1/-1}.toolbar .create-toolbar{grid-column:1/-1}
+      .multi-layout,.profile-layout{grid-template-columns:1fr}.current-panel{position:relative;top:auto;order:-1}.toolbar{grid-template-columns:1fr 1fr}.toolbar .search-wide{grid-column:1/-1}.toolbar .create-toolbar{grid-column:1/-1}
       .header-actions{min-width:auto}.brand-sub{display:none}
     }
     @media(max-width:760px){
@@ -309,6 +331,7 @@
       .hero-banner.has-art .hero-copy{max-width:100%}.hero-art{right:-4%;top:18px;width:58%;opacity:.28}.hero-art img{filter:drop-shadow(0 16px 22px rgba(0,0,0,.3))}
       .toolbar{grid-template-columns:1fr}.toolbar>*{grid-column:auto!important}.lobby-grid,.game-grid{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}
       .profile-hero{align-items:flex-start;flex-direction:column;padding:22px}.profile-avatar{width:80px;height:80px;font-size:2.6rem}.profile-name{font-size:1.55rem}
+      .rank-grid{grid-template-columns:1fr}.current-panel.has-lobby{position:sticky;top:68px;z-index:18}.current-cover{min-height:96px;padding:16px}.current-body{padding:12px}
       .mobile-nav{position:fixed;display:grid;grid-template-columns:repeat(3,1fr);left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:120;background:#111827;border:1px solid rgba(255,255,255,.1);border-radius:17px;padding:6px;box-shadow:0 20px 45px rgba(0,0,0,.3)}
       .mobile-nav button{border:0;background:transparent;color:#98a2b3;padding:8px;border-radius:12px;font-size:.72rem;font-weight:900}.mobile-nav button span{display:block;font-size:1.12rem;margin-bottom:2px}.mobile-nav button.active{background:#fff;color:#111827}
       .modal-layer{padding:0;align-items:end}.modal,.modal.wide{width:100%;max-height:94vh;border-radius:24px 24px 0 0}.dropdown{position:fixed;left:10px;right:10px;top:70px;width:auto}
@@ -398,7 +421,9 @@
               <div id="currentLobbyArtwork" class="current-lobby-art" hidden></div>
             </div>
             <div class="current-body">
+              <div id="currentLobbyState" class="current-state"><span style="display:flex;align-items:center;gap:8px"><i></i> You are in this lobby</span><span id="currentLobbyRole">Player</span></div>
               <div id="currentLobbyPlayers" class="player-list"></div>
+              <div id="waitingForHost" class="waiting-host" hidden>Waiting for the host to start the game.</div>
               <div class="current-actions">
                 <button id="invitePlayerBtn" class="btn secondary" hidden>✉ Invite Player</button>
                 <button id="copyInviteBtn" class="btn secondary">🔗 Copy Invite Link</button>
@@ -452,6 +477,7 @@
               <div class="profile-stat"><strong id="profileWins">0</strong>Wins</div>
               <div class="profile-stat"><strong id="profileFavoriteCount">0</strong>Favorites</div>
               <div class="profile-stat"><strong id="profileRecentCount">0</strong>Recent Games</div>
+              <div class="profile-stat"><strong id="profileMostPlayed">—</strong>Most Played</div>
             </div>
           </div>
           <div style="position:relative;z-index:1;display:flex;gap:8px;flex-wrap:wrap"><button id="editProfileBtn" class="btn ghost-light">Edit Profile</button><button id="profileLogoutBtn" class="btn ghost-light">Logout</button></div>
@@ -460,6 +486,10 @@
         <div class="profile-layout">
           <div>
             <div class="card card-pad">
+              <div class="section-title" style="font-size:1.05rem">Game Ranks</div>
+              <div id="profileRanks" class="rank-grid"></div>
+            </div>
+            <div class="card card-pad" style="margin-top:18px">
               <div class="section-title" style="font-size:1.05rem">Favorite Games</div>
               <div id="profileFavorites" class="game-grid" style="margin-top:13px"></div>
             </div>
@@ -562,15 +592,39 @@
     <div id="editProfileModal" class="modal" hidden>
       <div class="modal-head"><div class="modal-title">Edit Profile</div><button class="modal-close" data-close-modal>×</button></div>
       <div class="modal-body">
-        <div class="form-grid">
-          <div class="form-row"><label class="label" for="profileDisplayNameInput">Display Name</label><input id="profileDisplayNameInput" class="field" maxlength="30" /></div>
-          <div class="form-row"><label class="label" for="profileAvatarInput">Avatar Emoji</label><input id="profileAvatarInput" class="field" maxlength="8" placeholder="🎮" /></div>
+        <div class="form-row"><label class="label" for="profileDisplayNameInput">Display Name</label><input id="profileDisplayNameInput" class="field" maxlength="30" /></div>
+        <div class="form-row">
+          <label class="label">Profile Icon</label>
+          <div style="display:flex;gap:13px;align-items:center"><div id="avatarEditPreview" class="avatar-edit-preview">🎮</div><div style="flex:1"><input id="profileAvatarEmojiInput" class="field" maxlength="8" placeholder="Or type one emoji" /><div class="help">Choose a community icon below or enter your own emoji.</div></div></div>
+          <input id="profileAvatarInput" type="hidden" value="🎮" />
+          <div id="avatarPicker" class="avatar-picker" role="listbox" aria-label="Choose a profile icon"></div>
         </div>
         <div class="form-row"><label class="label" for="profileBioInput">Bio</label><textarea id="profileBioInput" class="textarea" maxlength="180"></textarea></div>
         <div class="form-row"><label class="label" for="profileCategoryInput">Favorite Category</label><select id="profileCategoryInput" class="select"></select></div>
         <div id="profileMessage" class="message"></div>
       </div>
       <div class="modal-foot"><button class="btn secondary" data-close-modal>Cancel</button><button id="saveProfileSubmit" class="btn">Save Profile</button></div>
+    </div>
+
+    <div id="publicProfileModal" class="modal wide" hidden>
+      <div class="modal-head"><div class="modal-title">Community Profile</div><button class="modal-close" data-close-modal>×</button></div>
+      <div class="modal-body">
+        <div id="publicProfileLoading" class="empty-state" style="padding:34px"><div class="big">👤</div>Loading profile…</div>
+        <div id="publicProfileContent" hidden>
+          <div class="public-profile-head">
+            <div id="publicProfileAvatar" class="public-avatar">🎮</div>
+            <div style="min-width:0"><div id="publicProfileName" style="font-size:1.5rem;font-weight:950"></div><div id="publicProfileBio" class="public-bio"></div></div>
+          </div>
+          <div class="card card-pad" style="margin-top:15px;box-shadow:none">
+            <div class="section-title" style="font-size:1rem">Most Played</div>
+            <div id="publicProfileMostPlayed" style="margin-top:8px;font-weight:900"></div>
+          </div>
+          <div class="card card-pad" style="margin-top:15px;box-shadow:none">
+            <div class="section-title" style="font-size:1rem">Game Ranks</div>
+            <div id="publicProfileRanks" class="rank-grid"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -608,7 +662,7 @@
     // Add imagePath:"graphics/your-image.png" to any game to use artwork; omit it to keep the emoji fallback.
     const GAMES = [
       {key:"cat",title:"Cat & Mouse",emoji:"🐭",desc:"Classic multiplayer chase.",route:"/game/catandmouse.html",category:"Party",modes:["multi"],autoRedirect:true},
-      {key:"grass",title:"Grass Realms",emoji:"🌿",imagePath:"graphics/red.png",desc:"Battle for a growing multiplayer realm.",route:"/game/grassrealms.html",category:"Strategy",modes:["multi"],autoRedirect:true},
+      {key:"grass",title:"Grass Realms",emoji:"🌿",imagePath:"/graphics/red.png",desc:"Battle for a growing multiplayer realm.",route:"/game/grassrealms.html",category:"Strategy",modes:["multi"],autoRedirect:true},
       {key:"estate",title:"Estate Defense (Incomplete)",emoji:"🏡",desc:"Defend the estate together.",route:"/game/estatedefense.html",category:"Strategy",modes:["multi"]},
       {key:"mountain",title:"Mountain Blade (Incomplete)",multiTitle:"Mountain Blade Skirmish",emoji:"⛰️⚔️",desc:"Command troops through a medieval battlefield.",route:"/game/mountainblade.html",category:"Action",modes:["single","multi"],maxPlayers:4,autoRedirect:true},
       {key:"mountonline",title:"Mountain Blade Online (Incomplete)",emoji:"🗻🌐",desc:"Jump directly into the persistent online battlefield.",route:"/game/mountonline.html",category:"Action",modes:["multi"],quickPlay:true},
@@ -656,8 +710,8 @@
       {key:"forgeflight",title:"Forge & Flight",emoji:"🔥🪽",desc:"Enter a fast solo aerial adventure.",route:"/game/forge&flight.html",category:"Action",modes:["single"],featured:true},
       {key:"onehitknight",title:"One Hit Knight",emoji:"🛡️⚔️",desc:"Dash, slash, and survive a one-hit challenge.",route:"/game/onehitknight.html",category:"Action",modes:["single"],featured:true},
       {key:"deepsea",title:"Deep Sea",emoji:"🐟🌊",desc:"Swim, grow, evolve, and survive below.",route:"/game/deep_sea.html",category:"Adventure",modes:["single"],featured:true},
-      {key:"turncraft",title:"Turncraft",emoji:"⚙️⚔️",desc:"Build bases, command factions, and battle alone or with up to four players.",route:"/game/turncraft.html",category:"Strategy",modes:["single","multi"],minPlayers:1,maxPlayers:4,autoRedirect:true},
-      {key:"chesswarlord",title:"Chess Warlord",emoji:"♛⚔️",imagePath:"graphics/chessgraphics/eagle knight.png",desc:"An eight-player real-time faction chess war with territory control, kings, cooldowns, AI seats, and Firebase multiplayer.",route:"/game/chess_warlord.html",category:"Strategy",modes:["multi"],maxPlayers:8,autoRedirect:true,featured:true}
+      {key:"turncraft",title:"Turncraft",emoji:"⚙️⚔️",imagePath:"/graphics/turncraft/immortal.png",desc:"Build bases, command factions, and battle alone or with up to four players.",route:"/game/turncraft.html",category:"Strategy",modes:["single","multi"],minPlayers:1,maxPlayers:4,autoRedirect:true},
+      {key:"chesswarlord",title:"Chess Warlord",emoji:"♛⚔️",imagePath:"/graphics/chessgraphics/paladin.png",desc:"An eight-player real-time faction chess war with territory control, kings, cooldowns, AI seats, and Firebase multiplayer.",route:"/game/chess_warlord.html",category:"Strategy",modes:["multi"],maxPlayers:8,autoRedirect:true,featured:true}
     ];
 
     const GAME_BY_KEY = Object.fromEntries(GAMES.map(g => [g.key,g]));
@@ -669,6 +723,35 @@
     const gameTitle = (key,multi=false) => multi && getGame(key).multiTitle ? getGame(key).multiTitle : getGame(key).title;
     const gameColor = key => GAME_THEMES[getGame(key).category] || "#b4232f";
     const gameImagePath = game => String(game?.imagePath || "").trim();
+    const AVATAR_PRESETS = [
+      "🎮","👑","🛡️","⚔️","🧙","🐉","📖","🌿","🔥","🌙","🦅","🤖",
+      "/graphics/chessgraphics/paladin.png","/graphics/turncraft/immortal.png"
+    ];
+    const BIBLE_RANKS = [
+      [1000,"✨","Crown of Life"],[800,"👑","Crown Bearer"],[625,"🦁","Kingdom Champion"],
+      [475,"🦅","Watchman"],[350,"🕊️","Disciple"],[250,"🛡️","Armor Bearer"],
+      [175,"📜","Scripture Scribe"],[100,"🪔","Lamp Bearer"],[50,"🐑","Faithful Flock"],[0,"🌱","Mustard Seed"]
+    ];
+    const CHESS_RANKS = [[500,"💎","Diamond"],[400,"🟢","Emerald"],[300,"🥇","Gold"],[200,"🥈","Silver"],[0,"🥉","Bronze"]];
+    const isImageAvatar = value => /^\/graphics\/[a-z0-9 _&().\/-]+\.png$/i.test(String(value||""));
+    const normalizedAvatar = value => {
+      const avatar=String(value||"🎮").trim()||"🎮";
+      if(avatar.startsWith("../graphics/"))return avatar.slice(2);
+      return isImageAvatar(avatar)?avatar:avatar.slice(0,8);
+    };
+    function avatarMarkup(value,alt=""){
+      const avatar=normalizedAvatar(value);
+      return isImageAvatar(avatar)
+        ? `<img src="${escapeHtml(avatar)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" onerror="this.replaceWith(document.createTextNode('🎮'))">`
+        : escapeHtml(avatar);
+    }
+    function setAvatarNode(node,value,alt=""){
+      if(!node)return;
+      const avatar=normalizedAvatar(value);node.innerHTML="";
+      if(isImageAvatar(avatar)){
+        const img=document.createElement("img");img.src=avatar;img.alt=alt;img.decoding="async";img.onerror=()=>{node.textContent="🎮";};node.appendChild(img);
+      }else node.textContent=avatar;
+    }
     function gameVisual(game,variant="mark"){
       const imagePath=gameImagePath(game),emoji=escapeHtml(game?.emoji||"🎮");
       return `<span class="game-visual game-visual-${variant} ${imagePath?"has-image":""}" aria-hidden="true"><span class="game-visual-fallback">${emoji}</span>${imagePath?`<img src="${escapeHtml(imagePath)}" alt="" loading="lazy" decoding="async" onerror="this.hidden=true;this.parentElement.classList.add('image-missing')">`:""}</span>`;
@@ -703,6 +786,7 @@
     let inviteTargetLobbyId=null;
     let linkedLobbyId=null;
     let isHost=false;
+    let startingLobbyGame=false;
     let launchingGame=false;
     let exitCleanupStarted=false;
     let pendingAction=null;
@@ -714,6 +798,9 @@
     let favorites=new Set(JSON.parse(read(SK.favorites)||"[]"));
     let recentGames=JSON.parse(read(SK.recent)||"[]");
     let lobbyBrowserUnsub=null,lobbyUnsub=null,inviteUnsub=null;
+    const baseProfileCache=new Map();
+    const profileBundleCache=new Map();
+    let ownProfileRenderSeq=0;
 
     const $=id=>document.getElementById(id);
     const ALLOWED_GAME_LAUNCH_REASONS=new Set(["single-play","lobby-started"]);
@@ -746,6 +833,101 @@
     function escapeHtml(value){return String(value??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));}
     function setMessage(id,text,type=""){const el=$(id);el.textContent=text||"";el.className=`message ${type}`;}
     function setBusy(button,busy,label){if(!button)return;button.disabled=busy;if(!button.dataset.original)button.dataset.original=button.textContent;button.textContent=busy?(label||"Working…"):button.dataset.original;}
+
+    function valueMs(value){
+      if(typeof value==="number")return value;
+      if(value?.toMillis)return value.toMillis();
+      if(typeof value?.seconds==="number")return value.seconds*1000;
+      return 0;
+    }
+    async function getBaseProfile(name,force=false){
+      const key=normalize(name);if(!key)return {};
+      if(force)baseProfileCache.delete(key);
+      if(!baseProfileCache.has(key))baseProfileCache.set(key,(async()=>{
+        try{const snap=await getDoc(doc(db,"users",name));return snap.exists()?{username:snap.id,...snap.data()}:{};}catch{return {};}
+      })());
+      return baseProfileCache.get(key);
+    }
+    async function getProfileBundle(name,force=false){
+      const key=normalize(name);if(!key)return {name,base:{},chess:{},bible:{}};
+      if(force)profileBundleCache.delete(key);
+      if(!profileBundleCache.has(key))profileBundleCache.set(key,(async()=>{
+        const [base,chessSnap,bibleSnap]=await Promise.all([
+          getBaseProfile(name,force),
+          getDoc(doc(db,"Users",name)).catch(()=>null),
+          getDocs(query(collection(db,"users"),where("username","==",name),limit(12))).catch(()=>null)
+        ]);
+        const candidates=[];
+        if(base?.bibleGame||Number.isFinite(Number(base?.bibleGameElo)))candidates.push(base);
+        bibleSnap?.forEach?.(d=>{const data=d.data();if(normalize(data.username)===key)candidates.push(data);});
+        candidates.sort((a,b)=>{
+          const aTime=valueMs(a?.bibleGame?.lastGameAt||a?.lastLogin||a?.updatedAt),bTime=valueMs(b?.bibleGame?.lastGameAt||b?.lastLogin||b?.updatedAt);
+          return bTime-aTime||Number(b?.bibleGameElo||b?.bibleGame?.elo||0)-Number(a?.bibleGameElo||a?.bibleGame?.elo||0);
+        });
+        return {name,base:base||{},chess:chessSnap?.exists?.()?chessSnap.data():{},bible:candidates[0]||{}};
+      })());
+      return profileBundleCache.get(key);
+    }
+    function crownRank(elo){
+      if(elo>=3000)return ["👑","Grandmaster"];if(elo>=2500)return ["⚜️","Masters"];if(elo>=2000)return ["💎","Diamond"];
+      if(elo>=1600)return ["🥇","Gold"];if(elo>=1300)return ["🥈","Silver"];return ["🥉","Bronze"];
+    }
+    function tierFor(elo,tiers){return tiers.find(([min])=>elo>=min)||tiers[tiers.length-1];}
+    function ranksForBundle(bundle){
+      const crownRaw=bundle?.base?.crowncouncilElo;
+      const chessData=bundle?.chess?.chessWarlord||bundle?.chess?.chessWarlordEloProfile||bundle?.chess||{};
+      const chessRaw=chessData.elo??chessData.rating??bundle?.chess?.chessWarlordElo;
+      const bibleData=bundle?.bible?.bibleGame||{};
+      const bibleRaw=bibleData.elo??bundle?.bible?.bibleGameElo;
+      const crownElo=Number(crownRaw),chessElo=Number(chessRaw),bibleElo=Number(bibleRaw);
+      const crown=Number.isFinite(crownElo)?crownRank(crownElo):["👑","Unranked"];
+      const chess=Number.isFinite(chessElo)?tierFor(chessElo,CHESS_RANKS):[0,"♛","Unranked"];
+      const bible=Number.isFinite(bibleElo)?tierFor(bibleElo,BIBLE_RANKS):[0,"📖","Unranked"];
+      return [
+        {game:"Faction Forge",emoji:crown[0],title:crown[1],elo:Number.isFinite(crownElo)?Math.round(crownElo):null,color:"#b45309"},
+        {game:"Chess Warlord",emoji:chess[1],title:chess[2],elo:Number.isFinite(chessElo)?Math.round(chessElo):null,color:"#2563eb"},
+        {game:"Bible Game",emoji:bible[1],title:bible[2],elo:Number.isFinite(bibleElo)?Math.round(bibleElo):null,color:"#7c3aed"}
+      ];
+    }
+    function renderRankCards(target,bundle){
+      target.innerHTML=ranksForBundle(bundle).map(rank=>`<div class="rank-card" style="--rank:${rank.color}"><div class="rank-game">${escapeHtml(rank.game)}</div><div class="rank-title">${rank.emoji} ${escapeHtml(rank.title)}</div><div class="rank-elo">${rank.elo===null?"No games recorded":`${rank.elo} ELO`}</div></div>`).join("");
+    }
+    function mostPlayedGame(data={}){
+      const counts=data.gamePlayCounts&&typeof data.gamePlayCounts==="object"?data.gamePlayCounts:{};
+      const ranked=Object.entries(counts).filter(([,count])=>Number(count)>0).sort((a,b)=>Number(b[1])-Number(a[1]));
+      if(ranked.length){const game=getGame(ranked[0][0]);return {game,count:Number(ranked[0][1])};}
+      const recent=Array.isArray(data.recentlyPlayed)?data.recentlyPlayed:[];
+      if(recent.length){const key=typeof recent[0]==="string"?recent[0]:recent[0]?.key;if(key)return {game:getGame(key),count:null};}
+      return null;
+    }
+    function mostPlayedLabel(data={}){
+      const item=mostPlayedGame(data);return item?`${item.game.emoji} ${item.game.title}${item.count?` • ${item.count} play${item.count===1?"":"s"}`:""}`:"No games recorded yet";
+    }
+    async function hydrateAvatar(node,name){
+      if(!node||!name)return;
+      const profile=await getBaseProfile(name);if(!node.isConnected)return;
+      setAvatarNode(node,profile.avatar||"🎮",`${profile.displayName||name} profile icon`);
+    }
+    function bindProfileLinks(root=document){
+      root.querySelectorAll("[data-profile-name]:not([data-profile-bound])").forEach(node=>{
+        node.dataset.profileBound="1";
+        node.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();viewPublicProfile(node.dataset.profileName);});
+      });
+      root.querySelectorAll("[data-avatar-for]:not([data-avatar-loaded])").forEach(node=>{
+        node.dataset.avatarLoaded="1";hydrateAvatar(node,node.dataset.avatarFor);
+      });
+    }
+    async function viewPublicProfile(name){
+      if(!name)return;
+      $("publicProfileLoading").hidden=false;$("publicProfileContent").hidden=true;openModal("publicProfileModal");
+      try{
+        const bundle=await getProfileBundle(name);
+        const d=bundle.base||{};setAvatarNode($("publicProfileAvatar"),d.avatar||"🎮",`${name} profile icon`);
+        $("publicProfileName").textContent=d.displayName||name;$("publicProfileBio").textContent=d.bio||"Game Hub player";
+        $("publicProfileMostPlayed").textContent=mostPlayedLabel(d);renderRankCards($("publicProfileRanks"),bundle);
+        $("publicProfileLoading").hidden=true;$("publicProfileContent").hidden=false;
+      }catch(e){$("publicProfileLoading").innerHTML='<div class="big">⚠️</div>That profile could not be loaded.';}
+    }
 
     function showView(view){
       document.querySelectorAll(".view").forEach(el=>el.classList.toggle("active",el.id===`view-${view}`));
@@ -817,7 +999,7 @@
       try{
         const ref=doc(db,"users",name),existing=await getDoc(ref);
         if(existing.exists())throw new Error("That username already exists.");
-        const payload={username:name,password,wins:0,lastLogin:serverTimestamp(),createdAt:serverTimestamp(),displayName:name,avatar:"🎮",bio:"Game Hub player",favoriteGames:[],recentlyPlayed:[],favoriteCategory:"Strategy"};
+        const payload={username:name,password,wins:0,lastLogin:serverTimestamp(),createdAt:serverTimestamp(),displayName:name,avatar:"🎮",bio:"Game Hub player",favoriteGames:[],recentlyPlayed:[],gamePlayCounts:{},favoriteCategory:"Strategy"};
         await setDoc(ref,payload);
         username=name;save(SK.user,username);await afterUserLogin(payload);closeModal();toast(`Account “${name}” created.`,"good");await runPendingAction();
       }catch(e){setMessage("accountMessage",e.message||"Unable to create account.","error");}
@@ -836,6 +1018,7 @@
     }
     async function afterUserLogin(data=null){
       currentUserData=data||((await getDoc(doc(db,"users",username))).data());
+      baseProfileCache.set(normalize(username),Promise.resolve({username,...(currentUserData||{})}));profileBundleCache.delete(normalize(username));
       favorites=new Set(Array.isArray(currentUserData?.favoriteGames)?currentUserData.favoriteGames:JSON.parse(read(SK.favorites)||"[]"));
       recentGames=Array.isArray(currentUserData?.recentlyPlayed)?currentUserData.recentlyPlayed:JSON.parse(read(SK.recent)||"[]");
       save(SK.favorites,JSON.stringify([...favorites]));save(SK.recent,JSON.stringify(recentGames));
@@ -884,7 +1067,14 @@
       const entry={key:game.key,playedAt:Date.now()};
       recentGames=[entry,...recentGames.filter(x=>(typeof x==="string"?x:x.key)!==game.key)].slice(0,12);
       save(SK.recent,JSON.stringify(recentGames));
-      if(username){try{await setDoc(doc(db,"users",username),{recentlyPlayed:recentGames},{merge:true});if(currentUserData)currentUserData.recentlyPlayed=recentGames;}catch{}}
+      if(username){
+        try{
+          const counts={...((currentUserData?.gamePlayCounts&&typeof currentUserData.gamePlayCounts==="object")?currentUserData.gamePlayCounts:{})};counts[game.key]=Number(counts[game.key]||0)+1;
+          await setDoc(doc(db,"users",username),{recentlyPlayed:recentGames,gamePlayCounts:counts},{merge:true});
+          currentUserData={...(currentUserData||{}),recentlyPlayed:recentGames,gamePlayCounts:counts};
+          baseProfileCache.set(normalize(username),Promise.resolve({username,...currentUserData}));profileBundleCache.delete(normalize(username));
+        }catch{}
+      }
       renderAllGames();renderProfile();
     }
 
@@ -975,10 +1165,11 @@
     }
     function lobbyCard(lobby){
       const game=getGame(lobby.gameType),cap=getMaxPlayers(lobby.gameType),count=lobby.players.length,full=Number.isFinite(cap)&&count>=cap,privateLobby=(lobby.visibility||"public")==="private";
-      const card=document.createElement("article");card.className=`lobby-card ${privateLobby?"private":""}`;card.style.setProperty("--game",gameColor(game.key));
-      const previews=lobby.players.slice(0,4).map(p=>`<span class="avatar-mini" title="${escapeHtml(p)}">${initials(p)}</span>`).join("");
+      const inLobby=lobby.id===currentLobbyId;
+      const card=document.createElement("article");card.className=`lobby-card ${privateLobby?"private":""} ${inLobby?"current":""}`;card.style.setProperty("--game",gameColor(game.key));
+      const previews=lobby.players.slice(0,4).map(p=>`<button class="avatar-mini profile-link" data-profile-name="${escapeHtml(p)}" data-avatar-for="${escapeHtml(p)}" title="View ${escapeHtml(p)}'s profile">${initials(p)}</button>`).join("");
       card.innerHTML=`
-        <div class="lobby-card-head"><div style="display:flex;gap:11px;min-width:0"><div class="game-mark">${gameVisual(game,"mark")}</div><div style="min-width:0"><div class="lobby-title">${escapeHtml(lobby.name||"Lobby")}</div><div class="lobby-game">${escapeHtml(gameTitle(game.key,true))}</div></div></div><span class="status-chip">● Waiting</span></div>
+        <div class="lobby-card-head"><div style="display:flex;gap:11px;min-width:0"><div class="game-mark">${gameVisual(game,"mark")}</div><div style="min-width:0"><div class="lobby-title">${escapeHtml(lobby.name||"Lobby")}</div><div class="lobby-game">${escapeHtml(gameTitle(game.key,true))}</div></div></div><span class="status-chip">${inLobby?"✓ You're here":"● Waiting"}</span></div>
         <div class="lobby-facts"><div class="fact">Host<strong>${escapeHtml(lobby.host||"Unknown")}</strong></div><div class="fact">Players<strong>${count}/${Number.isFinite(cap)?cap:"∞"}</strong></div></div>
         <div class="player-preview">${previews}${count>4?`<span class="avatar-more">+${count-4} more</span>`:""}</div>
         <div class="capacity"><i style="width:${Number.isFinite(cap)?Math.min(100,count/cap*100):35}%"></i></div>
@@ -986,6 +1177,7 @@
       card.querySelector(".copy").onclick=()=>copyLobbyLink(lobby.id);
       const inviteBtn=card.querySelector(".invite");if(inviteBtn)inviteBtn.onclick=()=>openInviteModal(lobby.id);
       card.querySelector(".join").onclick=()=>requestJoinLobby(lobby.id);
+      bindProfileLinks(card);
       return card;
     }
     ["lobbySearch","lobbyGameFilter","lobbyVisibilityFilter","lobbySlotFilter"].forEach(id=>$(id).addEventListener(id==="lobbySearch"?"input":"change",renderLobbyBrowser));
@@ -1009,7 +1201,8 @@
         if(inviteId)await deleteDoc(doc(db,"lobbyInvites",inviteId)).catch(()=>{});
         const snap=await getDoc(ref);if(!snap.exists())throw new Error("This lobby no longer exists.");
         currentLobbyId=id;currentLobbyData={id,...snap.data()};isHost=currentLobbyData.host===username;
-        save(SK.lastLobby,id);save(SK.lastGame,currentLobbyData.gameType);listenToCurrentLobby();toast(`Joined ${currentLobbyData.name}.`,"good");
+        save(SK.lastLobby,id);save(SK.lastGame,currentLobbyData.gameType);listenToCurrentLobby();renderLobbyBrowser();toast(`Joined ${currentLobbyData.name}.`,"good");
+        if(matchMedia("(max-width:1020px)").matches)setTimeout(()=>$("currentLobbyPanel").scrollIntoView({behavior:"smooth",block:"start"}),80);
       }catch(e){toast(e.message||"Unable to join lobby.","bad");if(inviteId)await deleteDoc(doc(db,"lobbyInvites",inviteId)).catch(()=>{});}
     }
 
@@ -1048,39 +1241,47 @@
       },e=>{console.warn("Lobby listener",e);});
     }
     function renderCurrentLobby(){
-      const has=!!currentLobbyData&&!!currentLobbyId;$("currentLobbyEmpty").hidden=has;$("currentLobbyContent").hidden=!has;if(!has)return;
+      const has=!!currentLobbyData&&!!currentLobbyId;$("currentLobbyEmpty").hidden=has;$("currentLobbyContent").hidden=!has;$("currentLobbyPanel").classList.toggle("has-lobby",has);if(!has)return;
       const game=getGame(currentLobbyData.gameType);$("currentLobbyCover").style.background=`linear-gradient(135deg,${gameColor(game.key)},#111827)`;
       renderLargeGameArtwork("currentLobbyArtwork",game);
       $("currentLobbyName").textContent=currentLobbyData.name||"Lobby";$("currentLobbyGame").textContent=`${gameImagePath(game)?"":`${game.emoji} `}${gameTitle(game.key,true)} • ${(currentLobbyData.visibility||"public")==="private"?"Private":"Public"}`;
       $("currentLobbyPlayers").innerHTML="";(currentLobbyData.players||[]).forEach(player=>{
-        const row=document.createElement("div");row.className="player-row";row.innerHTML=`<div class="player-name"><span class="avatar-mini" style="margin:0">${initials(player)}</span>${escapeHtml(player)} ${player===currentLobbyData.host?'<span class="host-tag">HOST</span>':''}</div>`;$("currentLobbyPlayers").appendChild(row);
+        const row=document.createElement("div");row.className="player-row";row.innerHTML=`<button class="player-profile" data-profile-name="${escapeHtml(player)}"><span class="avatar-mini" data-avatar-for="${escapeHtml(player)}" style="margin:0">${initials(player)}</span><span>${escapeHtml(player)}</span> ${player===currentLobbyData.host?'<span class="host-tag">HOST</span>':''}</button>`;$("currentLobbyPlayers").appendChild(row);
       });
-      $("invitePlayerBtn").hidden=!isHost;$("startGameBtn").hidden=!isHost;
+      bindProfileLinks($("currentLobbyPlayers"));
+      $("currentLobbyRole").textContent=isHost?"Host":"Player";$("waitingForHost").hidden=isHost;
+      $("invitePlayerBtn").hidden=!isHost;$("startGameBtn").hidden=!isHost;$("startGameBtn").textContent=`🚀 Start ${gameTitle(game.key,true)}`;
+      renderLobbyBrowser();
     }
     function clearCurrentLobby(message=""){
-      currentLobbyId=null;currentLobbyData=null;isHost=false;del(SK.lastLobby);if(lobbyUnsub){lobbyUnsub();lobbyUnsub=null;}renderCurrentLobby();if(message)toast(message,"bad");
+      currentLobbyId=null;currentLobbyData=null;isHost=false;startingLobbyGame=false;del(SK.lastLobby);if(lobbyUnsub){lobbyUnsub();lobbyUnsub=null;}renderCurrentLobby();renderLobbyBrowser();if(message)toast(message,"bad");
     }
     $("startGameBtn").addEventListener("click",startGame);$("leaveLobbyBtn").addEventListener("click",leaveLobby);$("copyInviteBtn").addEventListener("click",()=>currentLobbyId&&copyLobbyLink(currentLobbyId));$("invitePlayerBtn").addEventListener("click",()=>openInviteModal(currentLobbyId));
 
     async function startGame(){
-      if(!currentLobbyId||!isHost)return;const ref=doc(db,"lobbies",currentLobbyId),snap=await getDoc(ref);if(!snap.exists())return clearCurrentLobby("Lobby no longer exists.");
-      const data=snap.data(),game=getGame(data.gameType);if(data.status==="started")return;
-      if(game.key==="estate"){
-        const activeId=await joinOrCreateActiveEstate(data.players||[username]);
-        await runTransaction(db,async tx=>{
-          const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");
-          if(cur.data().status!=="started")tx.update(ref,{status:"started",activeGameId:activeId,updatedAt:Date.now()});
-        });
-        await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});await logGamePlay(game);return;
-      }
-      if(game.key==="stoneyrelic"){
-        const players=Array.isArray(data.players)?data.players:[];if(players.length<(game.minPlayers||2))return toast("Stoney's Relic needs at least 2 players.","bad");
-        const dm=data.dm&&players.includes(data.dm)?data.dm:players[Math.floor(Math.random()*players.length)];
-        await runTransaction(db,async tx=>{const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");if(cur.data().status!=="started")tx.update(ref,{status:"started",dm,updatedAt:Date.now()});});
-      }else{
-        await runTransaction(db,async tx=>{const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");if(cur.data().status!=="started")tx.update(ref,{status:"started",updatedAt:Date.now()});});
-      }
-      await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});await logGamePlay(game);
+      if(!currentLobbyId||!isHost||startingLobbyGame)return;
+      startingLobbyGame=true;setBusy($("startGameBtn"),true,"Starting game…");
+      try{
+        const ref=doc(db,"lobbies",currentLobbyId),snap=await getDoc(ref);if(!snap.exists())return clearCurrentLobby("Lobby no longer exists.");
+        const data=snap.data(),game=getGame(data.gameType);if(data.status==="started")return;
+        if(game.key==="estate"){
+          const activeId=await joinOrCreateActiveEstate(data.players||[username]);
+          await runTransaction(db,async tx=>{
+            const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");
+            if(cur.data().status!=="started")tx.update(ref,{status:"started",activeGameId:activeId,updatedAt:Date.now()});
+          });
+          await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});await logGamePlay(game);return;
+        }
+        if(game.key==="stoneyrelic"){
+          const players=Array.isArray(data.players)?data.players:[];if(players.length<(game.minPlayers||2)){toast("Stoney's Relic needs at least 2 players.","bad");return;}
+          const dm=data.dm&&players.includes(data.dm)?data.dm:players[Math.floor(Math.random()*players.length)];
+          await runTransaction(db,async tx=>{const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");if(cur.data().status!=="started")tx.update(ref,{status:"started",dm,updatedAt:Date.now()});});
+        }else{
+          await runTransaction(db,async tx=>{const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");if(cur.data().status!=="started")tx.update(ref,{status:"started",updatedAt:Date.now()});});
+        }
+        await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});await logGamePlay(game);
+      }catch(e){toast(e.message||"The game could not be started.","bad");}
+      finally{startingLobbyGame=false;if(currentLobbyData?.status!=="started"){setBusy($("startGameBtn"),false);renderCurrentLobby();}}
     }
     async function joinOrCreateActiveEstate(extraPlayers){
       const unique=arr=>Array.from(new Set(arr.filter(Boolean)));const qy=query(collection(db,"lobbies"),where("gameType","==","estate"),where("status","==","active"),limit(1));const snap=await getDocs(qy);
@@ -1205,30 +1406,41 @@
     async function loadLeaderboard(){
       const box=$("leaderboardEntries");box.innerHTML='<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
       try{
-        const snap=await getDocs(collection(db,"users")),rows=[];snap.forEach(d=>rows.push({name:d.id,wins:d.data().wins||0,avatar:d.data().avatar||"🎮",favoriteCategory:d.data().favoriteCategory||"Player"}));rows.sort((a,b)=>b.wins-a.wins);box.innerHTML="";
-        rows.slice(0,8).forEach((r,i)=>{const card=document.createElement("div");card.className="card card-pad";card.innerHTML=`<div style="display:flex;align-items:center;gap:12px"><div class="game-mark" style="--game:${i<3?["#f59e0b","#94a3b8","#b45309"][i]:"#b4232f"}">${r.avatar}</div><div style="flex:1"><div style="font-weight:950">#${i+1} ${escapeHtml(r.name)}</div><div class="help">${escapeHtml(r.favoriteCategory)}</div></div><strong>🏆 ${r.wins}</strong></div>`;box.appendChild(card);});
+        const snap=await getDocs(collection(db,"users")),rows=[];snap.forEach(d=>{const data=d.data();if(!data.password&&normalize(data.username)!==normalize(d.id))return;rows.push({name:d.id,wins:data.wins||0,avatar:data.avatar||"🎮",favoriteCategory:data.favoriteCategory||"Player"});});rows.sort((a,b)=>b.wins-a.wins);box.innerHTML="";
+        rows.slice(0,8).forEach((r,i)=>{const card=document.createElement("div");card.className="card card-pad";card.innerHTML=`<button class="profile-summary-button" data-profile-name="${escapeHtml(r.name)}"><span style="display:flex;align-items:center;gap:12px"><span class="game-mark" style="--game:${i<3?["#f59e0b","#94a3b8","#b45309"][i]:"#b4232f"}">${avatarMarkup(r.avatar,`${r.name} profile icon`)}</span><span style="flex:1"><span style="display:block;font-weight:950">#${i+1} ${escapeHtml(r.name)}</span><span class="help">${escapeHtml(r.favoriteCategory)}</span></span><strong>🏆 ${r.wins}</strong></span></button>`;box.appendChild(card);});bindProfileLinks(box);
       }catch(e){box.innerHTML='<div class="empty-state" style="grid-column:1/-1">Leaderboard unavailable.</div>';}
     }
     async function loadMembers(){
       const box=$("memberList");box.innerHTML='<div class="dropdown-empty">Loading…</div>';
-      try{const snap=await getDocs(query(collection(db,"users"),orderBy("lastLogin","desc"),limit(50)));box.innerHTML="";snap.forEach(d=>{const data=d.data(),el=document.createElement("div");el.className="member-item";el.innerHTML=`<strong>${escapeHtml(data.avatar||"🎮")} ${escapeHtml(d.id)}</strong><div class="invite-meta">🏆 ${data.wins||0} wins${data.favoriteCategory?` • ${escapeHtml(data.favoriteCategory)}`:""}</div>`;box.appendChild(el);});if(!box.children.length)box.innerHTML='<div class="dropdown-empty">No members found.</div>';}catch{box.innerHTML='<div class="dropdown-empty">Members unavailable.</div>';}
+      try{const snap=await getDocs(query(collection(db,"users"),orderBy("lastLogin","desc"),limit(50)));box.innerHTML="";snap.forEach(d=>{const data=d.data();if(!data.password&&normalize(data.username)!==normalize(d.id))return;const el=document.createElement("div");el.className="member-item";el.innerHTML=`<button class="profile-summary-button" data-profile-name="${escapeHtml(d.id)}"><span style="display:flex;align-items:center;gap:10px"><span class="avatar-mini" style="margin:0">${avatarMarkup(data.avatar||"🎮",`${d.id} profile icon`)}</span><span><strong>${escapeHtml(data.displayName||d.id)}</strong><span class="invite-meta" style="display:block">🏆 ${data.wins||0} wins${data.favoriteCategory?` • ${escapeHtml(data.favoriteCategory)}`:""}</span></span></span></button>`;box.appendChild(el);});bindProfileLinks(box);if(!box.children.length)box.innerHTML='<div class="dropdown-empty">No members found.</div>';}catch{box.innerHTML='<div class="dropdown-empty">Members unavailable.</div>';}
     }
 
     function renderProfile(){
       const logged=!!username;$("profileGuest").hidden=logged;$("profileContent").hidden=!logged;if(!logged)return;
       const d=currentUserData||{},display=d.displayName||username,avatar=d.avatar||"🎮",bio=d.bio||"Game Hub player";
-      $("profileAvatar").textContent=avatar;$("profileName").textContent=display;$("profileBio").textContent=bio;$("profileWins").textContent=d.wins||0;$("profileFavoriteCount").textContent=favorites.size;$("profileRecentCount").textContent=recentGames.length;
+      setAvatarNode($("profileAvatar"),avatar,`${display} profile icon`);$("profileName").textContent=display;$("profileBio").textContent=bio;$("profileWins").textContent=d.wins||0;$("profileFavoriteCount").textContent=favorites.size;$("profileRecentCount").textContent=recentGames.length;$("profileMostPlayed").textContent=mostPlayedGame(d)?.game?.title||"—";
+      const seq=++ownProfileRenderSeq;$("profileRanks").innerHTML='<div class="help">Loading saved game ranks…</div>';
+      getProfileBundle(username).then(bundle=>{if(seq===ownProfileRenderSeq&&username)renderRankCards($("profileRanks"),bundle);});
       const fav=$("profileFavorites");fav.innerHTML="";[...favorites].map(getGame).slice(0,8).forEach(g=>fav.appendChild(gameCard(g,true)));if(!fav.children.length)fav.innerHTML='<div class="empty-state" style="grid-column:1/-1;padding:25px">No favorite games yet. Use the star on a game card.</div>';
       const rec=$("profileRecent");rec.innerHTML="";recentGames.slice(0,10).forEach(item=>{const key=typeof item==="string"?item:item.key,g=getGame(key),date=typeof item==="string"?null:item.playedAt;const row=document.createElement("div");row.className="activity-row";row.innerHTML=`<span style="display:flex;align-items:center">${gameVisual(g,"tiny")}<strong>${escapeHtml(g.title)}</strong></span><span class="help">${date?fmtAge(date):"Recently"}</span>`;rec.appendChild(row);});if(!rec.children.length)rec.innerHTML='<div class="empty-state" style="padding:25px">Play a game to begin your history.</div>';
       $("profileDetails").innerHTML=`<div class="activity-list"><div class="activity-row"><span>Username</span><strong>${escapeHtml(username)}</strong></div><div class="activity-row"><span>Favorite category</span><strong>${escapeHtml(d.favoriteCategory||"Not selected")}</strong></div><div class="activity-row"><span>Account</span><strong>Game Hub Member</strong></div><div class="activity-row"><span>Lobby invites</span><strong>${inviteCache.size}</strong></div></div>`;
     }
     $("profileLogoutBtn").addEventListener("click",logout);
+    function chooseAvatar(value){
+      const avatar=normalizedAvatar(value);$("profileAvatarInput").value=avatar;$("profileAvatarEmojiInput").value=isImageAvatar(avatar)?"":avatar;setAvatarNode($("avatarEditPreview"),avatar,"Selected profile icon");
+      $("avatarPicker").querySelectorAll(".avatar-choice").forEach(btn=>btn.classList.toggle("active",btn.dataset.avatar===avatar));
+    }
+    function renderAvatarPicker(){
+      const picker=$("avatarPicker");picker.innerHTML="";AVATAR_PRESETS.forEach(value=>{const btn=document.createElement("button");btn.type="button";btn.className="avatar-choice";btn.dataset.avatar=value;btn.setAttribute("role","option");btn.innerHTML=avatarMarkup(value,"Profile icon option");btn.onclick=()=>chooseAvatar(value);picker.appendChild(btn);});
+    }
+    renderAvatarPicker();
+    $("profileAvatarEmojiInput").addEventListener("input",()=>{const value=$("profileAvatarEmojiInput").value.trim();if(value)chooseAvatar(value);});
     $("editProfileBtn").addEventListener("click",()=>{
-      const d=currentUserData||{};$("profileDisplayNameInput").value=d.displayName||username;$("profileAvatarInput").value=d.avatar||"🎮";$("profileBioInput").value=d.bio||"";$("profileCategoryInput").value=d.favoriteCategory||"Strategy";setMessage("profileMessage","");openModal("editProfileModal");
+      const d=currentUserData||{};$("profileDisplayNameInput").value=d.displayName||username;chooseAvatar(d.avatar||"🎮");$("profileBioInput").value=d.bio||"";$("profileCategoryInput").value=d.favoriteCategory||"Strategy";setMessage("profileMessage","");openModal("editProfileModal");
     });
     $("saveProfileSubmit").addEventListener("click",async()=>{
-      if(!username)return;const patch={displayName:$("profileDisplayNameInput").value.trim()||username,avatar:$("profileAvatarInput").value.trim()||"🎮",bio:$("profileBioInput").value.trim(),favoriteCategory:$("profileCategoryInput").value};
-      setBusy($("saveProfileSubmit"),true,"Saving…");try{await setDoc(doc(db,"users",username),patch,{merge:true});currentUserData={...(currentUserData||{}),...patch};renderProfile();closeModal();toast("Profile saved.","good");}catch(e){setMessage("profileMessage",e.message||"Could not save profile.","error");}finally{setBusy($("saveProfileSubmit"),false);}
+      if(!username)return;const patch={displayName:$("profileDisplayNameInput").value.trim()||username,avatar:normalizedAvatar($("profileAvatarInput").value),bio:$("profileBioInput").value.trim(),favoriteCategory:$("profileCategoryInput").value};
+      setBusy($("saveProfileSubmit"),true,"Saving…");try{await setDoc(doc(db,"users",username),patch,{merge:true});currentUserData={...(currentUserData||{}),...patch};baseProfileCache.set(normalize(username),Promise.resolve({username,...currentUserData}));profileBundleCache.delete(normalize(username));renderProfile();renderCurrentLobby();loadMembers();closeModal();toast("Profile saved.","good");}catch(e){setMessage("profileMessage",e.message||"Could not save profile.","error");}finally{setBusy($("saveProfileSubmit"),false);}
     });
 
     async function handleStartupLobbyState(){
@@ -1283,6 +1495,10 @@
     }
     window.addEventListener("pagehide",beginExitLobbyCleanup);
     window.addEventListener("beforeunload",()=>{lobbyBrowserUnsub?.();lobbyUnsub?.();inviteUnsub?.();});
+    window.addEventListener("message",event=>{
+      if(event.source!==window.parent||event.data?.type!=="game-hub-open-profile")return;
+      const target=String(event.data.username||"").trim();if(target)viewPublicProfile(target);
+    });
     window.logout=logout;
   </script>
 </body>
