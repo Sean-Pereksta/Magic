@@ -55,6 +55,9 @@
       background-image:
         radial-gradient(circle at 20% 25%, rgba(255,255,255,.18) 0 12%, transparent 13% 100%),
         linear-gradient(135deg, rgba(34,197,94,.18), rgba(22,163,74,.06));
+      background-size:cover;
+      background-position:center;
+      image-rendering:pixelated;
     }
     .iso-entity{
       width: 34px;
@@ -63,6 +66,24 @@
       font-size: 24px;
       z-index: 10;
     }
+    .asset-sprite{display:block;width:46px;height:46px;object-fit:contain;image-rendering:pixelated;pointer-events:none;filter:drop-shadow(0 3px 2px rgba(0,0,0,.34));transform:translateY(-9px)}
+    .asset-sprite.sprite-bull,.asset-sprite.sprite-cat,.asset-sprite.sprite-ratking{width:54px;height:54px;transform:translateY(-13px)}
+    .asset-sprite.sprite-vulture{width:52px;height:52px;transform:translateY(-16px)}
+    .asset-sprite.sprite-flea,.asset-sprite.sprite-termite{width:38px;height:38px;transform:translateY(-6px)}
+    .structure-art{position:absolute;inset:-12px -12px -4px;width:58px;height:58px;object-fit:contain;image-rendering:pixelated;z-index:5;pointer-events:none}
+    .iso-structure.tall .structure-art{inset:-16px -15px -2px;width:64px;height:64px}
+    .iso-structure.wide .structure-art{inset:-12px -13px -3px;width:62px;height:62px}
+    .building-card-art{width:38px;height:38px;object-fit:contain;image-rendering:pixelated;float:right;margin:-4px 0 4px 8px}
+    .dock-building-art{width:27px;height:27px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:3px}
+
+    #assetLoadingScreen{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(circle at top,#1d3a28,#050b08 62%);color:#f0fdf4}
+    #assetLoadingScreen[hidden]{display:none}
+    .asset-loader-card{width:min(520px,94vw);padding:26px;border-radius:22px;background:rgba(5,18,12,.94);border:1px solid rgba(134,239,172,.28);box-shadow:0 28px 70px rgba(0,0,0,.48);text-align:left}
+    .asset-loader-title{font-size:clamp(1.5rem,5vw,2.2rem);font-weight:900;margin-bottom:7px}
+    .asset-loader-copy{font-size:.9rem;color:#bbf7d0;margin-bottom:17px;line-height:1.45}
+    .asset-loader-track{height:14px;background:#14251b;border-radius:999px;overflow:hidden;border:1px solid rgba(255,255,255,.1)}
+    #assetLoadingFill{height:100%;width:0;background:linear-gradient(90deg,#22c55e,#a3e635);transition:width .18s ease}
+    #assetLoadingText{margin-top:10px;font-size:.82rem;color:#dcfce7;min-height:1.2em}
 
     .iso-creature{
       --creature-body:#9ca3af;
@@ -1223,6 +1244,14 @@
 </head>
 
 <body>
+  <div id="assetLoadingScreen" role="status" aria-live="polite" aria-busy="true">
+    <div class="asset-loader-card">
+      <div class="asset-loader-title">🐭 Preparing Cat &amp; Mouse</div>
+      <div class="asset-loader-copy">Loading and preparing every creature, structure, and terrain image before the war room opens.</div>
+      <div class="asset-loader-track"><div id="assetLoadingFill"></div></div>
+      <div id="assetLoadingText">Starting graphics check…</div>
+    </div>
+  </div>
   <button id="fullscreenBtn" aria-label="Toggle full screen">⛶ Fullscreen</button>
   <div id="topHud" style="position:sticky;top:0;z-index:35;background:rgba(15,23,42,.92);color:#fff;padding:8px 10px;font-size:14px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;backdrop-filter:blur(6px);">
     <span id="hudPlayer">🐭 Player</span><span id="hudCheese">🧀 0</span><span id="hudWins">🏆 0</span><span id="hudTimer">⏱ --:--</span><span id="hudWave">🌊 Wave 1</span><span id="hudBuild">🏗 Build: None</span><span id="hudRole">🎭 Spectator</span>
@@ -1480,6 +1509,181 @@
   let username = (urlParams.get("username") || "guest").trim();
   const usernameNorm = username.toLowerCase();
 
+  const ASSET_DIR = "/graphics/mousegraphics";
+  const ASSET_MANIFEST_VERSION = 1;
+  const CARDINAL_DIRECTIONS = ["up", "down", "left", "right"];
+  const CREATURE_ASSET_NAMES = {
+    mouse:"mouse", cat:"cat", rat:"rat", stinkrat:"stink rat", ox:"bull",
+    rabbit:"rabbit", ratking:"king rat", vulture:"vulture", termite:"termite",
+    flea:"flea", caterpillar:"catipillar"
+  };
+  const CREATURE_ASSETS = Object.fromEntries(Object.entries(CREATURE_ASSET_NAMES).map(([type, fileBase]) => [
+    type,
+    Object.fromEntries(CARDINAL_DIRECTIONS.map(direction => [direction, `${ASSET_DIR}/${fileBase} ${direction}.png`]))
+  ]));
+  const STRUCTURE_ASSETS = {
+    "🧱":`${ASSET_DIR}/wall.png`, "🔫":`${ASSET_DIR}/turret.png`, "🪳":`${ASSET_DIR}/flea nest.png`,
+    "🏭":`${ASSET_DIR}/generator.png`, "💎":`${ASSET_DIR}/super wall.png`, "🗼":`${ASSET_DIR}/cheese beacon.png`,
+    "🐦‍🔥":`${ASSET_DIR}/phoenix cheese.png`, "🚀":`${ASSET_DIR}/rocket tower.png`, "🛠️":`${ASSET_DIR}/repair station.png`,
+    "🧀":`${ASSET_DIR}/cheese farm.png`, "🐇":`${ASSET_DIR}/rabbit den.png`, "⚡":`${ASSET_DIR}/tesla tower.png`,
+    "☄️":`${ASSET_DIR}/ultra laser.png`, "🛡️":`${ASSET_DIR}/shield tower.png`, "🟢":`${ASSET_DIR}/slime tower.png`,
+    "🔮":`${ASSET_DIR}/teleporter crystal.png`, "🌰":`${ASSET_DIR}/acorn tower.png`, "🪭":`${ASSET_DIR}/whirlwind fan.png`,
+    "🕸️":`${ASSET_DIR}/web launcher.png`, "🥁":`${ASSET_DIR}/rally drum.png`
+  };
+  const TERRAIN_ASSETS = {
+    grass:`${ASSET_DIR}/grass.png`, blood:`${ASSET_DIR}/grass blood.png`, rubble:`${ASSET_DIR}/grass rubble.png`
+  };
+  const TERRAIN_ASSET_SET = new Set(Object.values(TERRAIN_ASSETS));
+  const ASSET_MANIFEST = [...new Set([
+    ...Object.values(CREATURE_ASSETS).flatMap(directions => Object.values(directions)),
+    ...Object.values(STRUCTURE_ASSETS),
+    ...Object.values(TERRAIN_ASSETS)
+  ])];
+  const resolvedAssetUrls = new Map();
+  const generatedAssetUrls = new Set();
+  const failedAssetPaths = new Set();
+
+  function getAssetUrl(path){
+    return resolvedAssetUrls.get(path) || encodeURI(path);
+  }
+
+  function makeAssetImage(path, className = "", alt = ""){
+    const image = new Image();
+    image.src = getAssetUrl(path);
+    image.alt = alt;
+    image.decoding = "async";
+    image.draggable = false;
+    if (className) image.className = className;
+    return image;
+  }
+
+  function setAssetLoadingProgress(percent, message){
+    const fill = document.getElementById("assetLoadingFill");
+    const text = document.getElementById("assetLoadingText");
+    if (fill) fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    if (text) text.textContent = message;
+  }
+
+  function loadImageOnce(path, retry = false){
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.decoding = "async";
+      image.fetchPriority = "high";
+      image.onload = () => resolve({ image, source:image.src });
+      image.onerror = () => reject(new Error(`Unable to load ${path}`));
+      const separator = path.includes("?") ? "&" : "?";
+      image.src = `${encodeURI(path)}${retry ? `${separator}assetRetry=${Date.now()}` : ""}`;
+    });
+  }
+
+  function canvasToBlob(canvas){
+    return new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+  }
+
+  async function prepareDisplayAsset(path, loaded){
+    if (TERRAIN_ASSET_SET.has(path)) return loaded.source;
+    try{
+      const size = 320;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const context = canvas.getContext("2d", { willReadFrequently:true });
+      if (!context) return loaded.source;
+      context.imageSmoothingEnabled = false;
+      context.drawImage(loaded.image, 0, 0, size, size);
+      const frame = context.getImageData(0, 0, size, size);
+      const pixels = frame.data;
+      const total = size * size;
+      const visited = new Uint8Array(total);
+      const stack = new Int32Array(total);
+      let stackSize = 0;
+      const isCheckerPixel = index => {
+        const offset = index * 4;
+        const r = pixels[offset], g = pixels[offset + 1], b = pixels[offset + 2];
+        return pixels[offset + 3] > 0 && Math.min(r,g,b) >= 222 && (Math.max(r,g,b) - Math.min(r,g,b)) <= 10;
+      };
+      const enqueue = index => {
+        if (index < 0 || index >= total || visited[index] || !isCheckerPixel(index)) return;
+        visited[index] = 1;
+        stack[stackSize++] = index;
+      };
+      for (let x=0; x<size; x++){ enqueue(x); enqueue((size - 1) * size + x); }
+      for (let y=1; y<size-1; y++){ enqueue(y * size); enqueue(y * size + size - 1); }
+      while (stackSize){
+        const index = stack[--stackSize];
+        pixels[index * 4 + 3] = 0;
+        const x = index % size;
+        if (x > 0) enqueue(index - 1);
+        if (x < size - 1) enqueue(index + 1);
+        enqueue(index - size);
+        enqueue(index + size);
+      }
+      context.putImageData(frame, 0, 0);
+      const blob = await canvasToBlob(canvas);
+      if (!blob) return loaded.source;
+      const objectUrl = URL.createObjectURL(blob);
+      generatedAssetUrls.add(objectUrl);
+      return objectUrl;
+    } catch (error){
+      console.warn("Display asset preparation failed", path, error);
+      return loaded.source;
+    }
+  }
+
+  async function runAssetWorkers(paths, worker, concurrency = 6){
+    let nextIndex = 0;
+    await Promise.all(Array.from({length:Math.min(concurrency, paths.length)}, async () => {
+      while (nextIndex < paths.length){
+        const index = nextIndex++;
+        await worker(paths[index], index);
+      }
+    }));
+  }
+
+  async function preloadGameGraphics(){
+    const failed = [];
+    let completed = 0;
+    setAssetLoadingProgress(1, `Loading graphics 0 / ${ASSET_MANIFEST.length}`);
+    await runAssetWorkers(ASSET_MANIFEST, async path => {
+      try{
+        const loaded = await loadImageOnce(path, false);
+        resolvedAssetUrls.set(path, await prepareDisplayAsset(path, loaded));
+      } catch {
+        failed.push(path);
+      } finally {
+        completed++;
+        setAssetLoadingProgress((completed / ASSET_MANIFEST.length) * 88, `Loading graphics ${completed} / ${ASSET_MANIFEST.length}`);
+      }
+    });
+
+    const finalFailures = [];
+    if (failed.length){
+      let retried = 0;
+      setAssetLoadingProgress(89, `Double-checking ${failed.length} image${failed.length === 1 ? "" : "s"}…`);
+      await runAssetWorkers(failed, async path => {
+        try{
+          const loaded = await loadImageOnce(path, true);
+          resolvedAssetUrls.set(path, await prepareDisplayAsset(path, loaded));
+        } catch {
+          finalFailures.push(path);
+        } finally {
+          retried++;
+          setAssetLoadingProgress(89 + (retried / failed.length) * 11, `Retrying graphics ${retried} / ${failed.length}`);
+        }
+      }, 3);
+    }
+    finalFailures.forEach(path => failedAssetPaths.add(path));
+    setAssetLoadingProgress(100, finalFailures.length ? `${ASSET_MANIFEST.length - finalFailures.length} ready; ${finalFailures.length} using fallback art.` : "All graphics ready.");
+    return finalFailures;
+  }
+
+  function finishAssetLoadingScreen(){
+    const screen = document.getElementById("assetLoadingScreen");
+    if (!screen) return;
+    screen.setAttribute("aria-busy", "false");
+    screen.hidden = true;
+  }
+
   const lobbyRef = doc(db, `lobbies/${gameId}`);
   const ccCol    = collection(db, `lobbies/${gameId}/crowncouncil`);
   const ccRef    = (id) => doc(db, `lobbies/${gameId}/crowncouncil/${id}`);
@@ -1639,6 +1843,7 @@
   const PLAYER_STALE_MS = 24000;
   const STALE_ENEMY_MS = 30000;
   const DEAD_ENEMY_CLEANUP_MS = 1500;
+  const TILE_EFFECT_MS = 5000;
   const PROJECTILE_TTL_MS = 2500;
   const EFFECT_TTL_MS = 1200;
   const ROOM_ABANDONED_MS = 30000;
@@ -1652,6 +1857,30 @@
     termites: 9,
     totalEnemies: MAX_TOTAL_ENEMIES
   };
+  const tileEffects = new Map();
+
+  function setTileEffect(x, y, type, durationMs = TILE_EFFECT_MS){
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= gridSize || y >= gridSize) return;
+    const key = `${x}_${y}`;
+    const effect = { type, expiresAt:Date.now() + durationMs };
+    tileEffects.set(key, effect);
+    requestRender(`tileEffect:${type}`);
+    setTimeout(() => {
+      if (tileEffects.get(key) !== effect) return;
+      tileEffects.delete(key);
+      requestRender(`tileEffectExpired:${type}`);
+    }, durationMs + 40);
+  }
+
+  function getTileTexture(x, y){
+    const key = `${x}_${y}`;
+    const effect = tileEffects.get(key);
+    if (effect && effect.expiresAt <= Date.now()) tileEffects.delete(key);
+    const active = tileEffects.get(key);
+    if (active?.type === "blood") return TERRAIN_ASSETS.blood;
+    if (active?.type === "rubble") return TERRAIN_ASSETS.rubble;
+    return TERRAIN_ASSETS.grass;
+  }
 
   const BUILD_DEFS = {
     1:{symbol:"🧱",name:"Wall",cost:1,hp:15,minWins:0},
@@ -1687,8 +1916,12 @@
     const wrap = document.createElement("div");
     const baseVisual = visual || "iso-unknown-structure";
     wrap.className = `iso-structure ${baseVisual} ${TALL_STRUCTURE_SYMBOLS.has(symbol) ? "tall" : ""} ${WIDE_STRUCTURE_SYMBOLS.has(symbol) ? "wide" : ""}`.trim();
-    wrap.innerHTML = '<div class="iso-shadow"></div><div class="base"></div><div class="body"></div><div class="top"></div><div class="side side-left"></div><div class="side side-right"></div><div class="accent"></div><div class="core"></div><div class="ring"></div><div class="tip"></div><div class="detail detail-a"></div><div class="detail detail-b"></div><div class="detail detail-c"></div>';
-    if (!visual){
+    wrap.innerHTML = '<div class="iso-shadow"></div>';
+    const artPath = STRUCTURE_ASSETS[symbol];
+    if (artPath && !failedAssetPaths.has(artPath)){
+      wrap.appendChild(makeAssetImage(artPath, "structure-art", BUILD_DEFS[Object.keys(BUILD_DEFS).find(id => BUILD_DEFS[id].symbol === symbol)]?.name || "Structure"));
+    } else {
+      wrap.insertAdjacentHTML("beforeend", '<div class="base"></div><div class="body"></div><div class="top"></div><div class="side side-left"></div><div class="side side-right"></div>');
       const unknownLabel = document.createElement("div");
       unknownLabel.className = "unknown-structure-label";
       unknownLabel.textContent = symbol || "?";
@@ -1738,6 +1971,7 @@
   let mySelectionDone = false;
   let selectionStates = {};
   let selectionDeadlineAt = null;
+  let selectionAssetsReadyAt = null;
   let rabbitShots = [];
   let structureShields = {};
 
@@ -1814,8 +2048,9 @@
     const afford = cheeseCount >= b.cost;
 
     const item = document.createElement("button");
+    const artPath = STRUCTURE_ASSETS[b.symbol];
     item.innerHTML = `
-      ${b.symbol || "🏗"}
+      ${artPath && !failedAssetPaths.has(artPath) ? `<img class="dock-building-art" src="${getAssetUrl(artPath)}" alt="">` : (b.symbol || "🏗")}
       <small>${b.cost}🧀</small>
       ${locked ? `<small style="color:#f87171;"> ❌${b.minWins || 0}🏆</small>` : ""}
     `;
@@ -2181,7 +2416,9 @@
       .map(([pu]) => pu);
   }
 
-
+  function getActiveSelectionParticipants(){
+    return getLobbyParticipants().filter(([,p]) => isPlayerActive(p));
+  }
 
   function addFirebaseListener(unsubscribeFn) {
     if (typeof unsubscribeFn === "function") firebaseUnsubscribers.push(unsubscribeFn);
@@ -2647,6 +2884,7 @@
     const tile = document.createElement("div");
     tile.className = "cell iso-tile";
     tile.id = `cell-${x}-${y}`;
+    tile.style.backgroundImage = `url("${getAssetUrl(TERRAIN_ASSETS.grass)}")`;
     positionIsoElement(tile, x, y, 0);
     return tile;
   }
@@ -2687,6 +2925,23 @@
 
   function getDirectionClass(dir){
     return `facing-${dir || "se"}`;
+  }
+
+  function toCardinalAssetDirection(direction){
+    switch ((direction || "").toLowerCase()){
+      case "north": case "ne": case "nw": case "up": return "up";
+      case "south": case "se": case "sw": case "down": return "down";
+      case "west": case "left": return "left";
+      case "east": case "right": default: return "right";
+    }
+  }
+
+  function renderAssetCreature(type, direction, extraClass = ""){
+    const cardinal = toCardinalAssetDirection(direction);
+    const path = CREATURE_ASSETS[type]?.[cardinal];
+    if (!path || failedAssetPaths.has(path)) return null;
+    const spriteClass = type === "ox" ? "bull" : type;
+    return makeAssetImage(path, `asset-sprite sprite-${spriteClass} ${extraClass}`.trim(), `${spriteClass} facing ${cardinal}`);
   }
 
   function renderIsoCreature(type, direction, options = {}) {
@@ -2809,9 +3064,13 @@
     const isoType = typeMap[baseCreatureClass];
     const extraClass = [opts.extraClass || "", ...extraCreatureClasses].filter(Boolean).join(" " );
     if (isoType){
-      const detailed = renderDetailedCreature(isoType, facing, { extraClass });
-      if (detailed) el.appendChild(detailed);
-      else el.appendChild(renderIsoCreature(isoType, facing, { extraClass }));
+      const assetCreature = renderAssetCreature(isoType, facing, extraClass);
+      if (assetCreature) el.appendChild(assetCreature);
+      else {
+        const detailed = renderDetailedCreature(isoType, facing, { extraClass });
+        if (detailed) el.appendChild(detailed);
+        else el.appendChild(renderIsoCreature(isoType, facing, { extraClass }));
+      }
     } else {
       const creature = document.createElement("div");
       creature.className = `iso-creature ${creatureClass} ${getDirectionClass(facing)}`;
@@ -2968,16 +3227,15 @@
 
           cell.style.boxShadow = "";
           cell.style.outline = "";
-          if (beaconBoosted.has(key)) cell.style.background = "#ff8a8a";
-          else if (generatorTriggers.has(key)) cell.style.background = "#fff977";
-          else {
-            cell.style.boxShadow = "";
-            cell.style.outline = "";
-            const tone = (Math.abs((x * 13) + (y * 17) + localTileSeed) % 4);
-            if (tone === 0) cell.style.background = "#c8f7c5";
-            else if (tone === 1) cell.style.background = "#bfeeb9";
-            else if (tone === 2) cell.style.background = "#d5f9d3";
-            else cell.style.background = "#b7e8b5";
+          cell.style.filter = "";
+          cell.style.backgroundColor = "#68b947";
+          cell.style.backgroundImage = `url("${getAssetUrl(getTileTexture(x, y))}")`;
+          if (beaconBoosted.has(key)){
+            cell.style.boxShadow = "inset 0 0 0 2px rgba(239,68,68,.82),0 0 7px rgba(239,68,68,.7)";
+            cell.style.filter = "saturate(1.15) brightness(1.06)";
+          } else if (generatorTriggers.has(key)){
+            cell.style.boxShadow = "inset 0 0 0 2px rgba(250,204,21,.9),0 0 7px rgba(250,204,21,.75)";
+            cell.style.filter = "brightness(1.12)";
           }
 
           if (isCheesePickupCell(symbol)){
@@ -3006,7 +3264,7 @@
 
           if (isInStinkAura(x, y)) {
             cell.style.boxShadow = "inset 0 0 8px rgba(90, 60, 20, 0.9)";
-            cell.style.background = "#b6d46a";
+            cell.style.filter = "sepia(.35) hue-rotate(28deg) saturate(.85)";
           }
 
           if (beaconWallBoosted.has(key)){
@@ -3453,7 +3711,7 @@
     return playerWritePromise;
   }
 
-  async function upsertMyPlayerDoc(){
+  async function upsertMyPlayerDoc(assetsReady = false, assetFailures = []){
     const pRef = ccRef(ID.player(uid));
     await setDoc(pRef, {
       kind: "player",
@@ -3466,10 +3724,25 @@
       cheese: 0,
       alive: true,
       online: true,
+      assetsReady,
+      assetFailures:assetFailures.slice(0,20),
+      assetManifestVersion:ASSET_MANIFEST_VERSION,
       joinedAt: Date.now(),
       lastSeen: Date.now(),
       clientSeq: 0,
       updatedAt: Date.now()
+    }, { merge:true });
+  }
+
+  async function publishAssetReadiness(failures = []){
+    const assetFailures = failures.slice(0,20);
+    await setDoc(ccRef(ID.player(uid)), {
+      assetsReady:true,
+      assetFailures,
+      assetManifestVersion:ASSET_MANIFEST_VERSION,
+      online:true,
+      lastSeen:Date.now(),
+      updatedAt:Date.now()
     }, { merge:true });
   }
 
@@ -4677,8 +4950,10 @@
       if (bestTarget){
         if (bestPath && bestPath.length>0){
           const next = bestPath[0];
+          const oldX = ox.x, oldY = ox.y;
           ox.x = next.x; ox.y = next.y;
-          writes.push({ type:"update", ref: ccRef(ID.ox(ox.id)), data: { x: ox.x, y: ox.y } });
+          ox.facing = directionFromDelta(oldX, oldY, ox.x, ox.y) || ox.facing || "west";
+          writes.push({ type:"update", ref: ccRef(ID.ox(ox.id)), data: { x: ox.x, y: ox.y, facing:ox.facing, updatedAt:Date.now() } });
         }
 
         const distance = Math.abs(ox.x - bestTarget.x) + Math.abs(ox.y - bestTarget.y);
@@ -4718,9 +4993,11 @@
       if (!finalTarget) continue;
 
       if (bestPath && bestPath.length>0){
+        const oldX = king.x, oldY = king.y;
         king.x = bestPath[0].x;
         king.y = bestPath[0].y;
-        writes.push({ type:"update", ref: ccRef(ID.ratKing(king.id)), data: { x: king.x, y: king.y, updatedAt: Date.now() } });
+        king.facing = directionFromDelta(oldX, oldY, king.x, king.y) || king.facing || "west";
+        writes.push({ type:"update", ref: ccRef(ID.ratKing(king.id)), data: { x: king.x, y: king.y, facing:king.facing, updatedAt: Date.now() } });
       }
 
       const d = Math.abs(king.x-finalTarget.x)+Math.abs(king.y-finalTarget.y);
@@ -4763,8 +5040,9 @@
       if (!t) continue;
       const path = findPath(sr.x, sr.y, t.x, t.y, false);
       if (path && path.length){
-        const n = path[0]; sr.x = n.x; sr.y = n.y;
-        writes.push({ type:"update", ref: ccRef(ID.stinkRat(sr.id)), data: { x:sr.x, y:sr.y, updatedAt:Date.now() } });
+        const n = path[0], oldX = sr.x, oldY = sr.y; sr.x = n.x; sr.y = n.y;
+        sr.facing = directionFromDelta(oldX, oldY, sr.x, sr.y) || sr.facing || "west";
+        writes.push({ type:"update", ref: ccRef(ID.stinkRat(sr.id)), data: { x:sr.x, y:sr.y, facing:sr.facing, updatedAt:Date.now() } });
       }
     }
     await commitEnemyBatch(writes);
@@ -4807,9 +5085,11 @@
 
       if (bestPath && bestPath.length>0){
         const next = bestPath[0];
+        const oldX = v.x, oldY = v.y;
         v.x = next.x;
         v.y = next.y;
-        writes.push({ type:"update", ref: ccRef(ID.vulture(v.id)), data: { x: v.x, y: v.y, updatedAt: Date.now() } });
+        v.facing = directionFromDelta(oldX, oldY, v.x, v.y) || v.facing || "east";
+        writes.push({ type:"update", ref: ccRef(ID.vulture(v.id)), data: { x: v.x, y: v.y, facing:v.facing, updatedAt: Date.now() } });
       }
 
       const distance = Math.abs(v.x-bestTarget.x) + Math.abs(v.y-bestTarget.y);
@@ -4850,8 +5130,10 @@
 
       if (bestPath && bestPath.length>0){
         const next = bestPath[0];
+        const oldX = termite.x, oldY = termite.y;
         termite.x = next.x; termite.y = next.y;
-        writes.push({ type:"update", ref: ccRef(ID.termite(termite.id)), data: { x: termite.x, y: termite.y } });
+        termite.facing = directionFromDelta(oldX, oldY, termite.x, termite.y) || termite.facing || "east";
+        writes.push({ type:"update", ref: ccRef(ID.termite(termite.id)), data: { x: termite.x, y: termite.y, facing:termite.facing, updatedAt:Date.now() } });
       }
 
       const distance = Math.abs(termite.x-closestWall.x) + Math.abs(termite.y-closestWall.y);
@@ -4870,6 +5152,7 @@
     // Fleas are stored as docs in crowncouncil (both nest fleas + player fleas)
     for (let i=fleas.length-1; i>=0; i--){
       const flea = fleas[i];
+      const fleaOldX = flea.x, fleaOldY = flea.y;
       let target = null;
       let minDist = Infinity;
 
@@ -4912,6 +5195,7 @@
         const newY = flea.y + dy;
         if (newX>=0 && newX<gridSize && newY>=0 && newY<gridSize){
           flea.x = newX; flea.y = newY;
+          flea.facing = directionFromDelta(fleaOldX, fleaOldY, flea.x, flea.y) || flea.facing || "east";
         }
 
         const nearDrum = isNearRallyDrum(flea.x, flea.y);
@@ -4952,7 +5236,7 @@
         writes.push({ type:"delete", ref: ccRef(flea.docId) });
         fleas.splice(i,1);
       } else {
-        writes.push({ type:"update", ref: ccRef(flea.docId), data: { x: flea.x, y: flea.y, lifetime: flea.lifetime, updatedAt: Date.now() } });
+        writes.push({ type:"update", ref: ccRef(flea.docId), data: { x: flea.x, y: flea.y, facing:flea.facing || "east", lifetime: flea.lifetime, updatedAt: Date.now() } });
       }
     }
     await commitEnemyBatch(writes);
@@ -5694,6 +5978,7 @@
           } else if (id.startsWith("structure_")){
             const x = data?.x, y = data?.y;
             if (Number.isInteger(x) && Number.isInteger(y)){
+              setTileEffect(x, y, "rubble");
               const key = `${x}_${y}`;
               structures.delete(key);
               markBlockedGridDirty();
@@ -5710,19 +5995,26 @@
             traps = traps.filter(t => !(t.x===x && t.y===y));
             if (Number.isInteger(x) && Number.isInteger(y) && grid[y][x] === "🪤") grid[y][x] = "";
           } else if (id.startsWith("rat_")){
+            setTileEffect(data?.x, data?.y, "blood");
             rats = rats.filter(r => r.id !== data?.id);
           } else if (id.startsWith("ox_")){
+            setTileEffect(data?.x, data?.y, "blood");
             oxen = oxen.filter(o => o.id !== data?.id);
           } else if (id.startsWith("rabbit_")){
+            setTileEffect(data?.x, data?.y, "blood");
             rabbits = rabbits.filter(r => r.id !== data?.id);
           } else if (id.startsWith("vulture_")){
+            setTileEffect(data?.x, data?.y, "blood");
             const vId = data?.id || id;
             vultures = vultures.filter(v => v.id !== vId);
           } else if (id.startsWith("termite_")){
+            setTileEffect(data?.x, data?.y, "blood");
             termites = termites.filter(t => t.id !== data?.id);
           } else if (id.startsWith("stinkrat_")){
+            setTileEffect(data?.x, data?.y, "blood");
             stinkRats = stinkRats.filter(sr => sr.id !== (data?.id || id));
           } else if (id.startsWith("flea_") || id.startsWith("pflea_")){
+            setTileEffect(data?.x, data?.y, "blood");
             fleas = fleas.filter(f => f.docId !== id);
           } else if (id.startsWith("cheese_")){
             const x = data?.x, y = data?.y;
@@ -5739,6 +6031,7 @@
             delete selectionStates[su];
             renderSelectionOverlay();
           } else if (id.startsWith("ratking_")){
+            setTileEffect(data?.x, data?.y, "blood");
             ratKings = ratKings.filter(k => k.id !== (data?.id || id));
           }
           continue;
@@ -5747,6 +6040,7 @@
         // added / modified
         if (id === ID.STATE){
           const beforeStateVisual = `${catPos.x}|${catPos.y}|${catHealth}|${catPower}|${ratPower}|${gameStarted}|${currentDifficulty}|${JSON.stringify(objectiveState)}`;
+          const previousCatHealth = catHealth;
           const wasHost = isHost;
           const hostUid = data.hostUid;
           const hostName = data.hostName;
@@ -5773,8 +6067,10 @@
           const cat = data.cat || {};
           catPos = { x: (cat.x ?? catPos.x), y: (cat.y ?? catPos.y) };
           if (typeof cat.health === "number") catHealth = cat.health;
+          if (previousCatHealth > 0 && catHealth <= 0) setTileEffect(catPos.x, catPos.y, "blood");
           catFacingDir = cat.facing || catFacingDir;
-          if (typeof data.selectionDeadline === "number") selectionDeadlineAt = data.selectionDeadline;
+          if (Object.prototype.hasOwnProperty.call(data, "selectionDeadline")) selectionDeadlineAt = typeof data.selectionDeadline === "number" ? data.selectionDeadline : null;
+          if (Object.prototype.hasOwnProperty.call(data, "selectionAssetsReadyAt")) selectionAssetsReadyAt = typeof data.selectionAssetsReadyAt === "number" ? data.selectionAssetsReadyAt : null;
           if (data.phase === "playing" && !gameStarted){
             if (!(Array.isArray(selectedBuildSlots) && selectedBuildSlots.length===MAX_BUILD_SLOTS)){
               selectedBuildSlots = [...BASE_BUILD_ORDER];
@@ -5805,10 +6101,14 @@
             cheese: data.cheese ?? 0,
             alive: (data.alive !== false),
             online: data.online !== false,
+            assetsReady: data.assetsReady === true,
+            assetFailures: Array.isArray(data.assetFailures) ? data.assetFailures : [],
+            assetManifestVersion: data.assetManifestVersion ?? 0,
             lastSeen: data.lastSeen ?? data.updatedAt ?? 0,
             joinedAt: data.joinedAt ?? data.createdAt ?? 0,
             clientSeq: data.clientSeq ?? 0
           };
+          if (previousPlayer?.alive !== false && players[pu].alive === false) setTileEffect(players[pu].x, players[pu].y, "blood");
           if (!previousPlayer || previousPlayer.x !== players[pu].x || previousPlayer.y !== players[pu].y || previousPlayer.facing !== players[pu].facing || previousPlayer.cheese !== players[pu].cheese || previousPlayer.alive !== players[pu].alive || previousPlayer.online !== players[pu].online) snapshotNeedsRender = true;
 
           // Ignore stale position acknowledgements for the local player.
@@ -5869,6 +6169,7 @@
           const r = { ...data };
           if (!r.id) r.id = data.id || id;
           if (!isLivingRat(r)){
+            setTileEffect(r.x, r.y, "blood");
             rats = rats.filter(rr => rr.id !== r.id);
             continue;
           }
@@ -5881,6 +6182,7 @@
           const o = { ...data };
           if (!o.id) o.id = data.id || id;
           if (!isLivingEnemy(o)){
+            setTileEffect(o.x, o.y, "blood");
             oxen = oxen.filter(oo => oo.id !== o.id);
             continue;
           }
@@ -5892,6 +6194,7 @@
           snapshotNeedsRender = true;
           const rb = { ...data };
           if (!rb.id) rb.id = data.id || id;
+          if ((rb.health ?? 1) <= 0) setTileEffect(rb.x, rb.y, "blood");
           const existing = rabbits.find(rr => rr.id === rb.id);
           if (existing) Object.assign(existing, rb);
           else rabbits.push(rb);
@@ -5901,6 +6204,7 @@
           const v = { ...data };
           if (!v.id) v.id = data.id || id;
           if (!isLivingEnemy(v)){
+            setTileEffect(v.x, v.y, "blood");
             vultures = vultures.filter(vv => vv.id !== v.id);
             continue;
           }
@@ -5921,6 +6225,7 @@
           const sr = { ...data };
           if (!sr.id) sr.id = data.id || id;
           if (!isLivingEnemy(sr)){
+            setTileEffect(sr.x, sr.y, "blood");
             stinkRats = stinkRats.filter(ss => ss.id !== sr.id);
             continue;
           }
@@ -5934,6 +6239,7 @@
           f.docId = id;
           if (!f.id) f.id = id;
           if (!isLivingFlea(f)){
+            setTileEffect(f.x, f.y, "blood");
             fleas = fleas.filter(ff => ff.docId !== id);
             continue;
           }
@@ -5967,6 +6273,7 @@
           const rk = { ...data };
           if (!rk.id) rk.id = data.id || id;
           if (!isLivingEnemy(rk)){
+            setTileEffect(rk.x, rk.y, "blood");
             ratKings = ratKings.filter(rr => rr.id !== rk.id);
             continue;
           }
@@ -6012,6 +6319,7 @@
           kind: "state",
           hostUid: uid,
           hostName: username,
+          hostHeartbeatAt: Date.now(),
           difficulty: "medium",
           cat: { x: gridSize-1, y: gridSize-1, health: DIFFICULTY_SETTINGS.medium.catStartHealth },
           catPower: 0,
@@ -6026,7 +6334,8 @@
             rescue: { active:false }
           },
           phase: "selection",
-          selectionDeadline: Date.now() + 55000,
+          selectionDeadline: null,
+          selectionAssetsReadyAt: null,
           createdAt: Date.now(),
           updatedAt: Date.now()
         }, { merge:true });
@@ -6046,7 +6355,8 @@
       catPos = { x: cat.x ?? catPos.x, y: cat.y ?? catPos.y };
       catHealth = (typeof cat.health === "number") ? cat.health : catHealth;
       catFacingDir = cat.facing || catFacingDir;
-      selectionDeadlineAt = (typeof s.selectionDeadline === "number") ? s.selectionDeadline : (Date.now()+55000);
+      selectionDeadlineAt = (typeof s.selectionDeadline === "number") ? s.selectionDeadline : null;
+      selectionAssetsReadyAt = (typeof s.selectionAssetsReadyAt === "number") ? s.selectionAssetsReadyAt : null;
       gameStarted = s.phase === "playing";
       updateHostDisplay(s.hostName);
       updateCatHealthBar();
@@ -6055,7 +6365,6 @@
   }
 
   async function checkHostTransfer(){
-    if (!gameStarted) return;
     const now = Date.now();
     if (now - lastHostCheckAt < 3000) return;
     lastHostCheckAt = now;
@@ -6081,6 +6390,32 @@
     });
   }
 
+  async function hostSyncAssetLoadingBarrier(){
+    if (!isHost || gameStarted) return;
+    const active = getActiveSelectionParticipants();
+    if (!active.length) return;
+    const allReady = active.every(([,p]) => p.assetsReady === true);
+    const barrierOpen = typeof selectionAssetsReadyAt === "number" && typeof selectionDeadlineAt === "number";
+    if (allReady && !barrierOpen){
+      const now = Date.now();
+      selectionAssetsReadyAt = now;
+      selectionDeadlineAt = now + 55000;
+      await updateDoc(ccRef(ID.STATE), {
+        selectionAssetsReadyAt,
+        selectionDeadline:selectionDeadlineAt,
+        updatedAt:now
+      });
+    } else if (!allReady && (selectionAssetsReadyAt !== null || selectionDeadlineAt !== null)){
+      selectionAssetsReadyAt = null;
+      selectionDeadlineAt = null;
+      await updateDoc(ccRef(ID.STATE), {
+        selectionAssetsReadyAt:null,
+        selectionDeadline:null,
+        updatedAt:Date.now()
+      });
+    }
+  }
+
   function renderSelectionOverlay(){
     const slots = Array.from({length:MAX_BUILD_SLOTS}, (_,i) => `${i+1}: ${BUILD_DEFS[selectedBuildSlots[i]]?.symbol || "_"}`).join(" | ");
     const topSlots = document.getElementById("selectedBuildSlotsTop");
@@ -6101,8 +6436,12 @@
     const slotListEl = document.getElementById("slotList");
     const finalizeMeta = document.getElementById("selectionFinalizeMeta");
     const now = Date.now();
-    const left = selectionDeadlineAt ? Math.max(0, Math.ceil((selectionDeadlineAt - now)/1000)) : 45;
-    info.textContent = `Wins: ${playerWins}. Time left: ${left}s. Difficulty: ${DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium"}`;
+    const left = selectionDeadlineAt ? Math.max(0, Math.ceil((selectionDeadlineAt - now)/1000)) : null;
+    const activeParticipants = getActiveSelectionParticipants();
+    const loadingCount = activeParticipants.filter(([,p]) => p.assetsReady !== true).length;
+    info.textContent = loadingCount
+      ? `Wins: ${playerWins}. Waiting for ${loadingCount} player${loadingCount === 1 ? "" : "s"} to finish loading graphics.`
+      : `Wins: ${playerWins}. Time left: ${left ?? 55}s. Difficulty: ${DIFFICULTY_SETTINGS[currentDifficulty]?.label || "Medium"}`;
 
     slotsEl.textContent = `Selected: ${selectedBuildSlots.length} / ${MAX_BUILD_SLOTS}`;
 
@@ -6139,7 +6478,9 @@
       const requiredWins = def.requiredWins ?? def.minWins ?? 0;
       const locked = !unlocked.has(buildId);
       const alreadyChosen = selectedBuildSlots.includes(buildId);
+      const artPath = STRUCTURE_ASSETS[def.symbol];
       b.innerHTML = `
+        ${artPath && !failedAssetPaths.has(artPath) ? `<img class="building-card-art" src="${getAssetUrl(artPath)}" alt="${def.name}">` : ""}
         <div><strong>${def.symbol} ${def.name}</strong></div>
         <div style="font-size:12px;">Cost: ${def.cost} Cheese</div>
         <div style="font-size:12px;opacity:.9;">Role: ${def.category || "Utility"} • HP: ${def.hp}</div>
@@ -6180,10 +6521,12 @@
       gridEl.appendChild(b);
     });
 
-    const participantIds = getLobbyParticipants().map(([pu]) => pu);
+    const participantIds = activeParticipants.map(([pu]) => pu);
     const doneCount = participantIds.reduce((acc, pu) => acc + (selectionStates[pu]?.done ? 1 : 0), 0);
     const stillNeeded = Math.max(0, participantIds.length - doneCount);
-    if (finalizeMeta) finalizeMeta.textContent = stillNeeded ? `${stillNeeded} player${stillNeeded === 1 ? "" : "s"} still choosing.` : "Everyone is ready.";
+    if (finalizeMeta) finalizeMeta.textContent = loadingCount
+      ? `${loadingCount} active player${loadingCount === 1 ? " is" : "s are"} still loading graphics.`
+      : stillNeeded ? `${stillNeeded} player${stillNeeded === 1 ? "" : "s"} still choosing.` : "Everyone is ready.";
     const readyFill = document.getElementById("menuReadyFill");
     if (readyFill) readyFill.style.width = `${participantIds.length ? (doneCount / participantIds.length) * 100 : 0}%`;
     const playerCountEl = document.getElementById("menuPlayerCount");
@@ -6191,13 +6534,14 @@
     const playerLobby = document.getElementById("playerLobbyList");
     if (playerLobby){
       playerLobby.innerHTML = "";
-      getLobbyParticipants().forEach(([pu, p]) => {
+      activeParticipants.forEach(([pu, p]) => {
         const row = document.createElement("div");
         const vote = difficultyVotes[pu] || "";
         const voteMeta = DIFFICULTY_UI_META[vote] || { icon:"❔", label:"No vote" };
-        const done = !!selectionStates[pu]?.done;
+        const assetsReady = p.assetsReady === true;
+        const done = assetsReady && !!selectionStates[pu]?.done;
         row.className = "player-lobby-row";
-        row.innerHTML = `<div>${p.displayName || "mouse"} <span style="opacity:.8">${voteMeta.icon} ${voteMeta.label}</span></div><span class="${done ? "ready-badge" : "choosing-badge"}">${done ? "✅ Ready" : "⏳ Choosing"}</span>`;
+        row.innerHTML = `<div>${p.displayName || "mouse"} <span style="opacity:.8">${voteMeta.icon} ${voteMeta.label}</span></div><span class="${done ? "ready-badge" : "choosing-badge"}">${!assetsReady ? "🖼️ Loading" : done ? "✅ Ready" : "⏳ Choosing"}</span>`;
         playerLobby.appendChild(row);
       });
     }
@@ -6229,7 +6573,9 @@
 
   async function tryHostFinalizeSelection(force=false){
     if (!isHost) return;
-    const participantIds = getLobbyParticipants().map(([pu]) => pu);
+    const activeParticipants = getActiveSelectionParticipants();
+    if (!activeParticipants.length || activeParticipants.some(([,p]) => p.assetsReady !== true)) return;
+    const participantIds = activeParticipants.map(([pu]) => pu);
     const allDone = participantIds.length > 0 && participantIds.every(pu => selectionStates[pu]?.done === true);
     if (allDone || force){
       const finalDifficulty = computeDifficultyFromVotes(difficultyVotes);
@@ -6348,11 +6694,12 @@
       };
     }
 
-    setInterval(() => {
+    setInterval(async () => {
       if (gameStarted) return;
       renderSelectionOverlay();
       if (isHost){
-        hostSyncDifficultyVote().catch(()=>{});
+        await hostSyncAssetLoadingBarrier().catch(()=>{});
+        await hostSyncDifficultyVote().catch(()=>{});
       }
       if (isHost && selectionDeadlineAt && Date.now() >= selectionDeadlineAt){
         tryHostFinalizeSelection(true).catch(()=>{});
@@ -6462,6 +6809,10 @@
     setInterval(() => { waveSchedulerTick().catch(()=>{}); }, 1000);
     setInterval(() => { objectiveSchedulerTick().catch(()=>{}); }, 1000);
     setInterval(() => { checkHostTransfer().catch(()=>{}); }, 3000);
+    setInterval(() => {
+      if (!isHost || gameStarted) return;
+      updateDoc(ccRef(ID.STATE), { hostHeartbeatAt:Date.now(), updatedAt:Date.now() }).catch(()=>{});
+    }, HOST_HEARTBEAT_MS);
     setInterval(() => {
       const now = Date.now();
       rabbitShots = rabbitShots.filter(shot => now - (shot.createdAt || now) <= PROJECTILE_TTL_MS);
@@ -6833,21 +7184,27 @@
 
   async function bootGame() {
     await ensureLobbyAndState();
-    await fetchPlayerWins();
-    await upsertMyPlayerDoc();
-
+    await upsertMyPlayerDoc(false, []);
     startPlayerHeartbeat();
 
-    window.addEventListener("beforeunload", () => {
+    const markLocalPlayerOffline = () => {
       stopPlayerHeartbeat();
       cleanupFirebaseListeners();
-    });
+      void updateDoc(ccRef(ID.player(uid)), { online:false, lastSeen:Date.now(), updatedAt:Date.now() }).catch(()=>{});
+    };
+    window.addEventListener("pagehide", markLocalPlayerOffline);
+    window.addEventListener("beforeunload", markLocalPlayerOffline);
+
+    const assetFailures = await preloadGameGraphics();
+    await publishAssetReadiness(assetFailures);
+    await fetchPlayerWins();
 
     await publishMySelection(false);
     listenToCrownCouncil();
 
     startGlobalLoops();
     renderSelectionOverlay();
+    finishAssetLoadingScreen();
 
     const focusBtn = document.getElementById("focusBtn");
     if (focusBtn) {
@@ -6899,6 +7256,7 @@
 
   bootGame().catch(err => {
     console.error("Boot failed:", err);
+    setAssetLoadingProgress(100, `Unable to start: ${err?.message || "unknown error"}`);
     showToast?.("Game failed to start. Check console.", "error");
   });
 
