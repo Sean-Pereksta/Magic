@@ -916,6 +916,10 @@ const state = {
   researchRenderAllToken: null,
   researchConversationViewers: new Map(),
   researchDuplicateRepCache: new Map(),
+  versions: {data:0,roster:0,aliases:0,teams:0,mappings:0,models:0,metrics:0,researchDefinitions:0},
+  perfCounters: {baseIndexBuilds:0,lazyIndexBuilds:0,filterCompiles:0,filterCacheHits:0,criterionInputCacheHits:0,researchResultCacheHits:0,selectiveInvalidations:0,teamTotalsIndexBuilds:0},
+  compiledFilterCache: new Map(),
+  criterionInputCache: new Map(),
   expressionCache: new Map(),
   expressionStats: null,
   importCache: { meta:null, status:'idle', lastError:'' },
@@ -950,11 +954,13 @@ const NA_TEAM = 'N/A';
 
 function emptyTeamTotalsDataset(area='retail'){
   const retail=area==='retail';
-  return {fileName:retail?'Retail Team Totals.xlsx':'Referral Team Totals.xlsx',sheetName:retail?'Retail Team Totals':'Referral Team Totals',headers:[],rows:[],mappings:[],diagnostics:{},rowsByTeamKey:{}};
+  return {fileName:retail?'Retail Team Totals.xlsx':'Referral Team Totals.xlsx',sheetName:retail?'Retail Team Totals':'Referral Team Totals',headers:[],rows:[],mappings:[],diagnostics:{},rowsVersion:0,indexVersion:-1,rowsByTeamKey:Object.create(null)};
 }
 function normalizeTeamTotalLookupKey(v){ return norm(v).replace(/[^a-z0-9]+/g,''); }
-function teamTotalsDataset(source){ return source==='retail_team_totals' ? (state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')) : source==='referral_team_totals' ? (state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')) : emptyTeamTotalsDataset('retail'); }
-function rebuildTeamTotalsIndex(ds){ ds=ds||emptyTeamTotalsDataset('retail'); ds.rowsByTeamKey={}; (ds.rows||[]).forEach(r=>{ if(r?._teamKey) { if(!ds.rowsByTeamKey[r._teamKey]) ds.rowsByTeamKey[r._teamKey]=r; } }); return ds; }
+function teamTotalsDataset(source){ const ds=source==='retail_team_totals' ? (state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')) : source==='referral_team_totals' ? (state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')) : emptyTeamTotalsDataset('retail'); return ensureTeamTotalsIndex(ds); }
+function markTeamTotalsRowsChanged(ds){ if(!ds) return ds; ds.rowsVersion=(Number(ds.rowsVersion)||0)+1; ds.indexVersion=-1; ds.rowsByTeamKey=Object.create(null); return ds; }
+function ensureTeamTotalsIndex(ds){ ds=ds||emptyTeamTotalsDataset('retail'); if(!ds.rowsByTeamKey) ds.rowsByTeamKey=Object.create(null); if(ds.indexVersion===ds.rowsVersion) return ds; const t0=performance.now(); const next=Object.create(null); (ds.rows||[]).forEach(r=>{ if(r?._teamKey && !next[r._teamKey]) next[r._teamKey]=r; }); ds.rowsByTeamKey=next; ds.indexVersion=Number(ds.rowsVersion)||0; state.perfCounters.teamTotalsIndexBuilds++; console.info('[All Star Perf] Team Totals index build',{rows:(ds.rows||[]).length,rowsVersion:ds.rowsVersion,ms:Math.round(performance.now()-t0)}); return ds; }
+function rebuildTeamTotalsIndex(ds){ ds=markTeamTotalsRowsChanged(ds||emptyTeamTotalsDataset('retail')); return ensureTeamTotalsIndex(ds); }
 function teamTotalsSummaryText(area){ const ds=area==='retail'?(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')):(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')); const d=ds.diagnostics||{}; return `${area==='retail'?'Retail':'Referral'} Team Totals: ${(ds.rows||[]).length}/${d.controlTeamsInspected||0} teams matched · ${(d.teamsWithNoExtractedRow||[]).length} missing`; }
 function teamTotalsDiagnosticsHtml(ds){ const d=ds?.diagnostics||{}; const list=(a)=>Array.isArray(a)&&a.length?`<div class="checkResultMeta">${a.slice(0,12).map(x=>esc(typeof x==='string'?x:JSON.stringify(x))).join(' · ')}${a.length>12?' …':''}</div>`:''; return `<div class="checkResultRow ${(ds?.rows||[]).length?'okRow':'warnRow'}"><strong>${esc(ds?.sheetName||'Team Totals')}</strong><div class="checkResultMeta">${d.controlTeamsInspected||0} teams inspected · ${d.coachTabsFound||0} tabs found · ${d.distinctAA2Keys||0} AA2 keys · ${d.summaryRowsMatched||0} summary rows matched</div>${list(d.coachTabsMissing)}${list(d.blankAA2Values)}${list(d.aa2KeysNotFound)}${list(d.duplicateSummaryRows)}${list(d.duplicateAA2Keys)}${list(d.teamsWithNoExtractedRow)}${d.missingSummarySheet?`<div class="checkResultMeta"><span class="badge warn">Missing ${esc(d.expectedSummarySheet||'summary sheet')}</span></div>`:''}${d.invalidHeaders?`<div class="checkResultMeta"><span class="badge warn">Blank or invalid Row 3 headers</span></div>`:''}</div>`; }
 async function buildTeamTotalsFromWorkbook(area, wb, fileName='', start=32, end=38){
@@ -1260,7 +1266,7 @@ function afterImportedDataRestored(reason='local cache loaded'){
   state.data={...defaultImportedDataState(),...(state.data||{})};
   state.books={...defaultImportedBooksState(),...(state.books||{})};
   state.categorized=state.categorized||{nondated:{headers:['Representative','Coach'],rows:[],builtAt:'',sourceStats:[]},dated:{headers:['Representative','Coach','Date'],rows:[],builtAt:'',sourceStats:[]},warnings:[]};
-  applyRepAliasMappingsToAllRows(); markDataIndexDirty(reason); state.teamIndexCache=buildCompactTeamIndexFromRows(reason); clearResearchComputedCaches(reason);
+  applyRepAliasMappingsToAllRows(); markDataIndexDirty(reason); state.teamIndexCache=buildCompactTeamIndexFromRows(reason); selectiveResearchInvalidation({reason,aliases:true,teams:true,mappings:true});
   restoreImportFileLabels(); renderCustomSourcesList(); renderCategorizedSummary(); renderModelList(); populateRunModels(); renderTeamSelect(); renderEditModelSafe(); updateResearchCacheBadge();
 }
 async function loadImportedDataFromIndexedDB(opts={}){
@@ -1760,7 +1766,7 @@ function revalidateRepAliases(){
   });
   state.repAliases=active; state.quarantinedRepAliases=quarantine;
 }
-function saveRepAliases(){
+function saveRepAliases(){ bumpVersion('aliases');
   const rows=[...(state.repAliases||new Map()).values()].map(x=>({alias:x.alias,aliasName:x.aliasName,canonical:cleanName(x.canonical),sourceArea:x.sourceArea||'global',legacy:!!x.legacy})).filter(x=>x.alias&&x.canonical);
   localStorage.setItem(REP_ALIAS_KEY,JSON.stringify(rows));
   markImportCacheDirty('misc','aliases','representative aliases changed'); scheduleImportedDataSave('representative aliases changed',{delay:500});
@@ -2019,7 +2025,7 @@ function loadModels(){
     state.models=[defaultQAModel()]; saveModels();
   }
 }
-function saveModels(){ state.models=(state.models||[]).map(normalizeModelForStorage); localStorage.setItem(MODEL_KEY, JSON.stringify(state.models)); markImportCacheDirty('misc','sourceSettings','source settings changed'); scheduleImportedDataSave('source settings changed',{delay:700}); clearResearchComputedCaches('model setup changed'); renderModelList(); populateRunModels(); }
+function saveModels(){ bumpVersion('models'); state.models=(state.models||[]).map(normalizeModelForStorage); localStorage.setItem(MODEL_KEY, JSON.stringify(state.models)); markImportCacheDirty('misc','sourceSettings','source settings changed'); scheduleImportedDataSave('source settings changed',{delay:700}); selectiveResearchInvalidation({reason:'model setup changed',models:true}); renderModelList(); populateRunModels(); }
 function defaultQAModel(){
   return normalizeModelForStorage({id:id(),name:'QA Score',type:'both',tiebreaker:'overallScore',criteria:[{id:id(),name:'QA Score %',source:'qa',calcType:'qaScore',audience:'both',scoreType:'rank',direction:'higher',weight:'1',format:'pct',missingRank:999,missingPoints:0,zeroCanWin:false,minimumMonitors:0,filters:[],minimumEnabled:false,minimum:0,autofailThreshold:1,autofailOperator:'greaterEqual'}]});
 }
@@ -2142,7 +2148,7 @@ function markDataIndexDirty(reason='data changed'){
   if(!state.dataIndex) state.dataIndex={dirty:true,reason,sources:{},reps:[],teamCounts:[],repsByTeam:new Map(),dateRanges:{qa:{interaction:null,assigned:null},date:new Map(),checklist:new Map(),documented_coaching:new Map(),comp_calls:new Map()},version:0,lastBuiltAt:0};
   state.dataIndex.dirty=true;
   state.dataIndex.reason=reason;
-  clearResearchComputedCaches('data changed');
+  selectiveResearchInvalidation({reason:'data changed',source:reason});
   state.indexes=null;
   state.teamIndexCache=null;
   state._controlRosterCache=null;
@@ -2168,7 +2174,7 @@ function rowDateMillisForSource(source,row){
 }
 function makeResearchSourceIndex(source, rows){
   const headers=getHeaders(source)||[], descHeaders=source==='documented_coaching'?sourceDescriptionHeaders(source):headers;
-  return {rows,headers,descriptionHeaders:descHeaders,byRep:new Map(),byTeam:new Map(),byTeamKey:new Map(),byCoach:new Map(),byCoachKey:new Map(),bySourceName:new Map(),byCategory:new Map(),byDate:new Map(),byDateBucket:new Map(),byWeek:new Map(),byMonth:new Map(),byHeader:new Map(),byHeaderName:new Map(),byColumnValue:new Map(),byWord:new Map(),byRepWord:new Map(),byRepSortedDate:new Map(),byTeamSortedDate:new Map(),byRowId:new Map(),searchText:new WeakMap(),tokens:new WeakMap(),rowMeta:new WeakMap(),reps:new Map(),perf:{rowsIndexed:0}};
+  return {version:state.dataIndex?.version||0,rows,headers,descriptionHeaders:descHeaders,byRep:new Map(),byTeam:new Map(),byTeamKey:new Map(),byCoach:new Map(),byCoachKey:new Map(),bySourceName:new Map(),byCategory:new Map(),byDate:new Map(),byDateBucket:new Map(),byWeek:new Map(),byMonth:new Map(),byHeader:new Map(),byHeaderName:new Map(),byColumnValue:new Map(),byWord:new Map(),byRepWord:new Map(),byRepSortedDate:new Map(),byTeamSortedDate:new Map(),byRowId:new Map(),dateValues:[],dateSortedRows:[],searchText:new WeakMap(),tokens:new WeakMap(),rowMeta:new WeakMap(),lazyIndexes:new Map(),reps:new Map(),perf:{rowsIndexed:0,lazyBuilds:[]}};
 }
 function addResearchIndexedRow(idx,source,row,rowId){
   const key=row._repKey||'', team=rowTeam(row), coach=team, ms=rowDateMillisForSource(source,row), day=researchDayBucket(ms), month=researchMonthBucket(ms), week=Number.isFinite(ms)?ymd(startOfWeekDate(new Date(ms),'sunday')):'';
@@ -2181,11 +2187,8 @@ function addResearchIndexedRow(idx,source,row,rowId){
   if(categoryName) pushMapArray(idx.byCategory,normalizeResearchText(categoryName),row);
   if(day) pushMapArray(idx.byDate,day,row); if(day) pushMapArray(idx.byDateBucket,day,row); if(week){ pushMapArray(idx.byDateBucket,week,row); pushMapArray(idx.byWeek,week,row); } if(month){ pushMapArray(idx.byDateBucket,month,row); pushMapArray(idx.byMonth,month,row); }
   idx.byRowId.set(rowId,row);
-  (idx.headers||[]).forEach(h=>{ pushMapArray(idx.byHeader,h,row); pushMapArray(idx.byHeaderName,plainHeaderName(h),row); pushMapArray(idx.byColumnValue,h+'\u0000'+normalizeResearchText(row[h]),row); });
-  const fullText=(idx.headers||[]).map(h=>row[h]).join(' '), searchable=(source==='documented_coaching'?idx.descriptionHeaders:idx.headers).map(h=>row[h]).join(' ');
-  const lower=normalizeResearchText(fullText), tokens=researchTokenizeText(searchable+' '+fullText);
-  idx.searchText.set(row,lower); idx.tokens.set(row,tokens); idx.rowMeta.set(row,{rowId,source,repKey:key,coachKey:nameKey(coach)||normalizeResearchText(coach),teamKey:normalizeResearchText(team),dateMs:ms,searchText:lower,tokens});
-  tokens.forEach(w=>{ pushMapArray(idx.byWord,w,row); if(key) pushMapArray(idx.byRepWord,key+'|'+w,row); });
+  if(Number.isFinite(ms)){ idx.dateValues[rowId]=ms; idx.dateSortedRows.push(row); }
+  idx.rowMeta.set(row,{rowId,source,repKey:key,coachKey:nameKey(coach)||normalizeResearchText(coach),teamKey:normalizeResearchText(team),dateMs:ms});
   if(key && Number.isFinite(ms)) pushMapArray(idx.byRepSortedDate,key,row);
   if(team && Number.isFinite(ms)) pushMapArray(idx.byTeamSortedDate,team,row);
   if(key && row._rep){ const rep={kind:'rep',key,name:cleanName(row._rep),team}; idx.reps.set(key,mergeRepDisplay(idx.reps.get(key),rep)); }
@@ -4495,7 +4498,7 @@ function rebuildDataIndexSync(reason='data changed'){
   });
   allSourceKeys().forEach(source=>{
     const rows=getRowsRaw(source);
-    const idx=makeResearchSourceIndex(source,rows);
+    const idx=makeResearchSourceIndex(source,rows); idx.version=index.version;
     rows.forEach((r,i)=>{
       const key=r._repKey||'';
       const team=rowTeam(r);
@@ -4516,6 +4519,7 @@ function rebuildDataIndexSync(reason='data changed'){
     });
     idx.byRepSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)));
     idx.byTeamSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)));
+    idx.dateSortedRows.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0));
     index.sources[source]=idx;
   });
   const reps=Array.from(globalReps.values()).sort((a,b)=>(a.team||'').localeCompare(b.team||'')||a.name.localeCompare(b.name));
@@ -4544,7 +4548,7 @@ async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
   const chunkSize=Number(progress.chunkSize)||1200;
   for(const source of allSourceKeys()){
     const rows=getRowsRaw(source);
-    const idx=makeResearchSourceIndex(source,rows);
+    const idx=makeResearchSourceIndex(source,rows); idx.version=index.version;
     for(let i=0;i<rows.length;i++){
       const r=rows[i];
       const key=r._repKey||'';
@@ -4571,6 +4575,7 @@ async function rebuildDataIndexAsync(reason='Indexing data...', progress={}){
     }
     idx.byRepSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)));
     idx.byTeamSortedDate.forEach(list=>list.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0)));
+    idx.dateSortedRows.sort((a,b)=>(idx.rowMeta.get(a)?.dateMs||0)-(idx.rowMeta.get(b)?.dateMs||0));
     index.sources[source]=idx;
     timing.mark(`indexed ${labelSource(source)}`, `${rows.length.toLocaleString()} rows`);
     updateProgress(`${reason} · ${labelSource(source)} indexed`, start + span*Math.min(.95,done/totalRows));
@@ -4883,7 +4888,7 @@ async function loadDirectQAFile(file){
     state.data.qa_direct={fileName:file.name,headers:pack.headers,rows:qaRows,aoa:aoa||[],sheetName:sn};
     if(els.qaDirectFileName) els.qaDirectFileName.textContent=`${file.name} · ${sn} · direct mode source`;
     markDataIndexDirty('direct QA team-score override imported');
-    clearResearchComputedCaches('direct QA team-score override imported');
+    selectiveResearchInvalidation({reason:'direct QA team-score override imported',source:'qa_direct'});
     updateProgress('Saving direct QA override locally...',86,{force:true});
     markSourceCacheDirty(QA_DIRECT_SOURCE,'direct QA team-score override import'); scheduleImportedDataSave('direct QA team-score override import',{delay:250});
     updateProgress('Direct QA override ready',100,{force:true});
@@ -5415,10 +5420,20 @@ function withinStatsForRows(rows, source, leftField, rightField, kind='date', lo
   if(skipped && warnings && !warnings.includes('Some rows were skipped because within mode requires both compared fields.')) warnings.push('Some rows were skipped because within mode requires both compared fields.');
   return {within,compared,skipped,percent:compared?within/compared*100:0};
 }
+function criterionRowsForEntry(c,entry,opts={}){
+  const extra=isCustomWeeklyStatSource(c.source)?(customSource(c.source)?.columns||{}):{};
+  const ctx={...opts,dateBasis:extra.dateBasis,weekStart:extra.weekStart};
+  const entryKey=entry?.kind==='team'?'team:'+coachNameKey(entry.name):'rep:'+(entry?.key||'');
+  const key=stableSerialize({run:opts.runId||opts._runId||'',source:c.source,version:state.dataIndex?.version||0,entryKey,start:ymd(ctx.start),end:ymd(ctx.end),dateColumn:ctx.dateColumn||'',qaDateMode:ctx.qaDateMode||'',filters:(c.filters||[]).map(f=>normalizeFilterForStorage(f,c.source)),mapping:state.versions?.mappings||0,aliases:state.versions?.aliases||0});
+  state.criterionInputCache=state.criterionInputCache||new Map();
+  if(state.criterionInputCache.has(key)){ state.perfCounters.criterionInputCacheHits++; const v=state.criterionInputCache.get(key); state.criterionInputCache.delete(key); state.criterionInputCache.set(key,v); return v; }
+  let rows=rowsForEntry(c.source, entry, ctx);
+  if((c.filters||[]).length){ const predicate=getCompiledFilterPredicate(c.source,c.filters,ctx); rows=rows.filter(predicate); }
+  return boundedMapSet(state.criterionInputCache,key,rows,500);
+}
 function valueSingle(c, entry, opts){
   const extra=isCustomWeeklyStatSource(c.source)?(customSource(c.source)?.columns||{}):{};
-  let rows=rowsForEntry(c.source, entry, {...opts,dateBasis:extra.dateBasis,weekStart:extra.weekStart});
-  rows=applyFilters(rows,c.filters,c.source,{...opts,dateBasis:extra.dateBasis,weekStart:extra.weekStart});
+  let rows=criterionRowsForEntry(c,entry,opts);
   const col=resolveColumn(c.source,c.column), mode=c.aggregate||'sum';
   if(['dateWithin','dateWithinPercent','valueWithin','valueWithinPercent'].includes(mode)){
     const {low,high}=withinBoundsForConfig(c);
@@ -5442,15 +5457,15 @@ function valueSingle(c, entry, opts){
   if(isCustomWeeklyStatSource(c.source) && c.format==='pct' && extra.numerator && extra.denominator){ c={...c,aggregate:'weightedPercent'}; return valueSingle(c,entry,opts); }
   let pairs=rows.map((r,i)=>({r,i,n:toNum(r[col]),t:rowDateMillisForSource(c.source,r)})).filter(x=>Number.isFinite(x.n));
   if(!pairs.length) return NaN;
-  if(mode==='latest') return pairs.sort((a,b)=>(b.t||0)-(a.t||0)||b.i-a.i)[0].n;
-  if(mode==='first') return pairs.sort((a,b)=>(a.t||0)-(b.t||0)||a.i-b.i)[0].n;
+  if(mode==='latest'){ let best=pairs[0]; for(const p of pairs){ if(((p.t||0)>(best.t||0)) || ((p.t||0)===(best.t||0) && p.i>best.i)) best=p; } return best.n; }
+  if(mode==='first'){ let best=pairs[0]; for(const p of pairs){ if(((p.t||0)<(best.t||0)) || ((p.t||0)===(best.t||0) && p.i<best.i)) best=p; } return best.n; }
   if(mode==='avg') return pairs.reduce((a,b)=>a+b.n,0)/pairs.length;
   if(mode==='max') return Math.max(...pairs.map(x=>x.n));
   if(mode==='min') return Math.min(...pairs.map(x=>x.n));
   return pairs.reduce((a,b)=>a+b.n,0);
 }
 function sumColumn(source, col, entry, opts, filters){
-  let rows=rowsForEntry(source, entry, opts); rows=applyFilters(rows,filters,source,opts);
+  let rows=rowsForEntry(source, entry, opts); if((filters||[]).length){ const predicate=getCompiledFilterPredicate(source,filters,opts); rows=rows.filter(predicate); }
   const actualCol=resolveColumn(source,col);
   return rows.reduce((s,r)=>{const n=toNum(r[actualCol]); return s+(Number.isFinite(n)?n:0);},0);
 }
@@ -5741,7 +5756,7 @@ async function saveMetrics(){
   try{
     const meta=await saveMetricsToIndexedDB(state.metrics);
     safeSetLocalStorage(METRICS_KEY,JSON.stringify({savedAt:meta.savedAt,count:state.metrics.length,storage:'indexeddb'}));
-    state.metricCache=new Map(); state.researchMetricCache=new Map(); clearResearchComputedCaches('metric definitions changed');
+    bumpVersion('metrics'); state.metricCache=new Map(); state.researchMetricCache=new Map(); selectiveResearchInvalidation({reason:'metric definitions changed',metrics:true});
     if(els.topStatus) els.topStatus.textContent='Metrics saved locally.';
     return true;
   }catch(err){
@@ -6120,7 +6135,7 @@ function normalizeResearchItem(item={}){
 function researchItemForLocalStorage(item){ const copy=clonePlain(item||{}); if(copy.renderedResult){ copy.renderedResult={version:2,outputType:copy.outputType,renderedAt:copy.renderedResult.renderedAt||'',id:copy.id,storedIn:'indexedDB'}; } return copy; }
 function loadResearchItems(){ try{ state.researchItems=(JSON.parse(localStorage.getItem(RESEARCH_KEY)||'[]')||[]).map(normalizeResearchItem); }catch(_){ state.researchItems=[]; } loadResearchResultCache(); migrateLegacyResearchRenderedResults(); }
 function persistResearchItemsToLocalStorage(){ try{ localStorage.setItem(RESEARCH_KEY, JSON.stringify((state.researchItems||[]).map(researchItemForLocalStorage))); }catch(e){ console.warn('[Research Builder] Saving definitions only after storage error',e); localStorage.setItem(RESEARCH_KEY, JSON.stringify((state.researchItems||[]).map(x=>{ const y=researchItemForLocalStorage(x); delete y.renderedResult; return y; }))); } updateResearchCacheBadge(); }
-function saveResearchItems(){ clearResearchComputedCaches('research changed'); persistResearchItemsToLocalStorage(); }
+function saveResearchItems(){ bumpVersion('researchDefinitions'); selectiveResearchInvalidation({reason:'research changed',researchDefinitions:true}); persistResearchItemsToLocalStorage(); }
 
 function concreteResearchSources(){ return allSourceKeys().map(k=>({value:k,label:labelSource(k)})); }
 function metricSources(){ return concreteResearchSources(); }
@@ -6912,12 +6927,48 @@ function dateWindowPass(anchor,target,f){ if(f.windowMode==='range'){ const d=pa
 function researchAnchorDate(item,row){ item=effectiveResearchItem(item||{}); if(item.dateColumn) return row[item.dateColumn]; const hs=getResearchHeaders(item.source); const h=findHeader(hs, item.source==='qa'?['Interaction Start Time','Assigned Date','Date']:checklistLikeDefaultDateHeaders(item.source)); return h?row[h]:''; }
 function researchRowsIntersect(a,b){ const set=new Set(a||[]); return (b||[]).filter(r=>set.has(r)); }
 function researchFilterWord(f){ if((f.op||'')!=='contains') return ''; const toks=researchTokenizeText(f.value||''); return toks.length===1 ? toks[0] : ''; }
+
+function stableSerialize(value){
+  if(value===null || typeof value!=='object') return JSON.stringify(value);
+  if(Array.isArray(value)) return '['+value.map(stableSerialize).join(',')+']';
+  return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stableSerialize(value[k])).join(',')+'}';
+}
+function bumpVersion(name){ if(!state.versions) state.versions={}; state.versions[name]=(Number(state.versions[name])||0)+1; return state.versions[name]; }
+function boundedMapSet(map,key,value,max=250){ if(!map) return value; if(map.has(key)) map.delete(key); map.set(key,value); while(map.size>max){ map.delete(map.keys().next().value); } return value; }
+function ensureColumnValueIndex(sourceOrIdx,column){
+  const idx=typeof sourceOrIdx==='string'?sourceIndex(sourceOrIdx):sourceOrIdx; if(!idx || !column) return null;
+  const actual=resolveColumn(idx.rows?.[0]?._sourceKey||'',column)||column, cacheKey=`columnValue|${idx.version}|${actual}|norm`;
+  if(idx.lazyIndexes?.has(cacheKey)) return idx.lazyIndexes.get(cacheKey);
+  const t0=performance.now(), map=new Map(); (idx.rows||[]).forEach((r,pos)=>pushMapArray(map,normalizeResearchText(r[actual]),pos));
+  idx.lazyIndexes.set(cacheKey,map); idx.byColumnValue=idx.byColumnValue||new Map(); map.forEach((positions,val)=>idx.byColumnValue.set(actual+'\u0000'+val,positions.map(i=>idx.rows[i])));
+  idx.perf.lazyBuilds.push({type:'columnValue',column:actual,ms:Math.round(performance.now()-t0)}); state.perfCounters.lazyIndexBuilds++; console.info('[All Star Perf] lazy index build',{type:'columnValue',column:actual,rows:(idx.rows||[]).length,ms:Math.round(performance.now()-t0)}); return map;
+}
+function ensureTextTokenIndex(sourceOrIdx,column='*'){
+  const idx=typeof sourceOrIdx==='string'?sourceIndex(sourceOrIdx):sourceOrIdx; if(!idx) return null;
+  const actual=column==='*'?'*':(resolveColumn(idx.rows?.[0]?._sourceKey||'',column)||column), cacheKey=`textToken|${idx.version}|${actual}|norm`;
+  if(idx.lazyIndexes?.has(cacheKey)) return idx.lazyIndexes.get(cacheKey);
+  const t0=performance.now(), map=new Map(), repMap=new Map(), cols=actual==='*'?(idx.descriptionHeaders?.length?idx.descriptionHeaders:idx.headers):[actual];
+  (idx.rows||[]).forEach((r,pos)=>{ const toks=researchTokenizeText(cols.map(h=>r[h]).join(' ')); idx.tokens.set(r,toks); idx.searchText.set(r,normalizeResearchText(cols.map(h=>r[h]).join(' '))); toks.forEach(w=>{ pushMapArray(map,w,pos); const rep=r._repKey||''; if(rep) pushMapArray(repMap,rep+'|'+w,pos); }); });
+  idx.lazyIndexes.set(cacheKey,map); if(actual==='*'){ idx.byWord=new Map(); map.forEach((positions,w)=>idx.byWord.set(w,positions.map(i=>idx.rows[i]))); idx.byRepWord=new Map(); repMap.forEach((positions,w)=>idx.byRepWord.set(w,positions.map(i=>idx.rows[i]))); }
+  idx.perf.lazyBuilds.push({type:'textToken',column:actual,ms:Math.round(performance.now()-t0)}); state.perfCounters.lazyIndexBuilds++; console.info('[All Star Perf] lazy index build',{type:'textToken',column:actual,rows:(idx.rows||[]).length,ms:Math.round(performance.now()-t0)}); return map;
+}
+function ensureMonthIndex(sourceOrIdx,dateColumn){ return ensureDateBucketIndex(sourceOrIdx,dateColumn,'month'); }
+function ensureWeekIndex(sourceOrIdx,dateColumn){ return ensureDateBucketIndex(sourceOrIdx,dateColumn,'week'); }
+function ensureDateBucketIndex(sourceOrIdx,dateColumn,type){ const idx=typeof sourceOrIdx==='string'?sourceIndex(sourceOrIdx):sourceOrIdx; if(!idx) return null; const col=dateColumn||'_date', key=`${type}|${idx.version}|${col}`; if(idx.lazyIndexes.has(key)) return idx.lazyIndexes.get(key); const t0=performance.now(), map=new Map(); (idx.rows||[]).forEach((r,pos)=>{ const ms=parseDateOnly(researchFieldValue(r,col,r._sourceKey||''))?.getTime()||idx.rowMeta.get(r)?.dateMs; const b=type==='month'?researchMonthBucket(ms):(Number.isFinite(ms)?ymd(startOfWeekDate(new Date(ms),'sunday')):''); if(b) pushMapArray(map,b,pos); }); idx.lazyIndexes.set(key,map); state.perfCounters.lazyIndexBuilds++; console.info('[All Star Perf] lazy index build',{type,column:col,ms:Math.round(performance.now()-t0)}); return map; }
+function ensureHeaderIndex(sourceOrIdx,column){ const idx=typeof sourceOrIdx==='string'?sourceIndex(sourceOrIdx):sourceOrIdx; if(!idx) return null; const key=`header|${idx.version}|${plainHeaderName(column)}`; if(idx.lazyIndexes.has(key)) return idx.lazyIndexes.get(key); const actual=(idx.headers||[]).find(h=>plainHeaderName(h)===plainHeaderName(column))||column; const rows=(idx.rows||[]).map((_,i)=>i); idx.lazyIndexes.set(key,{column:actual,rows}); state.perfCounters.lazyIndexBuilds++; return idx.lazyIndexes.get(key); }
+function compiledFilterSignature(source,filters,context={}){ return stableSerialize({source,version:state.dataIndex?.version||0,start:ymd(context.start||context.startDate),end:ymd(context.end||context.endDate),dateColumn:context.dateColumn||'',qaDateMode:context.qaDateMode||'',filters:(filters||[]).map(f=>normalizeFilterForStorage(f,source)),scope:context.scope||''}); }
+function getCompiledFilterPredicate(source,filters,context={}){ const key=compiledFilterSignature(source,filters,context); state.compiledFilterCache=state.compiledFilterCache||new Map(); if(state.compiledFilterCache.has(key)){ state.perfCounters.filterCacheHits++; const v=state.compiledFilterCache.get(key); state.compiledFilterCache.delete(key); state.compiledFilterCache.set(key,v); return v; } const t0=performance.now(), normalized=(filters||[]).map(f=>normalizeFilterForStorage(f,source)); const predicate=(r)=>applyFilters([r],normalized,source,context).length===1; state.perfCounters.filterCompiles++; console.info('[All Star Perf] filter compiled',{source,count:normalized.length,ms:Math.round(performance.now()-t0)}); return boundedMapSet(state.compiledFilterCache,key,predicate,300); }
+
 function indexRowsForExactFieldValue(idx,field,value){
   if(!idx || !field) return null;
   const val=normalizeResearchText(value), normalizedField=plainHeaderName(field);
   if(normalizedField==='source') return idx.bySourceName?.get(val)||null;
   if(normalizedField==='category' || normalizedField==='type') return idx.byCategory?.get(val)||null;
-  return idx.byColumnValue?.get(field+'\u0000'+val)||idx.byColumnValue?.get((idx.headers||[]).find(h=>plainHeaderName(h)===normalizedField)+'\u0000'+val)||null;
+  const actual=(idx.headers||[]).find(h=>plainHeaderName(h)===normalizedField)||field;
+  const lazy=ensureColumnValueIndex(idx,actual);
+  const positions=lazy?.get(val);
+  if(positions) return positions.map(i=>idx.rows[i]);
+  return null;
 }
 function lowerBoundDateRows(list,idx,target){ let lo=0, hi=(list||[]).length; while(lo<hi){ const mid=(lo+hi)>>1, ms=idx.rowMeta.get(list[mid])?.dateMs||0; if(ms<target) lo=mid+1; else hi=mid; } return lo; }
 function researchDateCandidatesForRep(idx,rep,anchor,f){
@@ -6932,8 +6983,9 @@ function researchDateCandidatesForRep(idx,rep,anchor,f){
 }
 function dateAwareResearchMatch(row,item,f){
   const src=f.targetSource||'qa', idx=sourceIndex(src), rep=personKeyFromRow(row), team=researchRowTeam(row), word=researchFilterWord({op:f.targetOp==='does not contain'?'does not contain':'contains',value:f.targetValue}), anchor=researchAnchorDate(item,row);
+  if(idx && word) ensureTextTokenIndex(idx,'*');
   let candidates=idx ? (researchDateCandidatesForRep(idx,rep,anchor,f) || (rep&&word&&idx.byRepWord.has(rep+'|'+word) ? idx.byRepWord.get(rep+'|'+word) : [...(idx.byRep.get(rep)||[]),...(idx.byTeam.get(team)||[])])) : getRowsRaw(src);
-  if(idx && word && candidates.length>25 && idx.byWord.has(word)) candidates=researchRowsIntersect(candidates, idx.byWord.get(word));
+  if(idx && word){ ensureTextTokenIndex(idx,'*'); if(candidates.length>25 && idx.byWord.has(word)) candidates=researchRowsIntersect(candidates, idx.byWord.get(word)); }
   const seen=new Set(), col=f.targetValueColumn||'', dateCol=resolveColumn(src,f.targetDateColumn)||f.targetDateColumn;
   return candidates.some(tr=>{ if(seen.has(tr)) return false; seen.add(tr); const personOk=rep&&personKeyFromRow(tr)&&rep===personKeyFromRow(tr); const teamOk=team&&researchRowTeam(tr)&&team===researchRowTeam(tr); if(!personOk&&!teamOk) return false; if(!dateWindowPass(anchor, tr[dateCol], f)) return false; return compareFilter(researchFieldValue(tr,col,src), f.targetOp||'contains', f.targetValue||''); });
 }
@@ -6991,6 +7043,7 @@ function buildQueryPlan(source, opts={}){
   const last=[];
   next.forEach(f=>{
     const word=researchFilterWord(f), include=f.include||'include';
+    if(include==='include' && word && idx){ ensureTextTokenIndex(idx,'*'); }
     if(include==='include' && word && idx?.byWord?.has(word)){ const before=rows.length, cand=intersectRowsFast(rows,idx.byWord.get(word)); rows=cand.filter(r=>compareFilter(researchFieldValue(r,f.field,source),f.op||'contains',f.value,f.value2)); step('word/text search filter',before,cand.length,rows.length,true); return; }
     last.push(f);
   });
@@ -7007,6 +7060,7 @@ function applyResearchFilters(rows, filters, item, perf){
   compiled.sort((a,b)=>{ const sa=a.word&&idx?.byWord?.has(a.word)?idx.byWord.get(a.word).length:Infinity, sb=b.word&&idx?.byWord?.has(b.word)?idx.byWord.get(b.word).length:Infinity; return sa-sb; });
   compiled.forEach(plan=>{
     const f=plan.f, before=out.length; let candidates=out; const isTeamFilter=f.type==='team_is'||f.fieldType==='team_is';
+    if(!isTeamFilter && plan.word && idx){ ensureTextTokenIndex(idx,'*'); }
     if(!isTeamFilter && plan.word && idx?.byWord?.has(plan.word) && f.include!=='exclude' && f.include!=='excludeWithin'){
       candidates=researchRowsIntersect(out, idx.byWord.get(plan.word)); stat.indexesUsed.push(`byWord:${plan.word}`);
     }
@@ -7411,6 +7465,7 @@ function aggregateResearchValue(item, rows, col, ctx={}){
   return vals.reduce((a,b)=>a+b,0);
 }
 function researchSourceCacheSignature(){
+  if(state.dataIndex?.signature) return `dataV${state.versions?.data||0}:indexV${state.dataIndex.version}:${state.dataIndex.signature.length}`;
   return allSourceKeys().map(src=>{
     const rows=getRowsRaw(src)||[], headers=getHeaders(src)||[], cs=isCustomSource(src)?customSource(src):null;
     const fn=cs?.fileName || (src.startsWith('retail')?state.data.retail.fileName:src.startsWith('referral')?state.data.referral.fileName:(state.data[src]?.fileName||''));
@@ -7419,7 +7474,7 @@ function researchSourceCacheSignature(){
 }
 function researchItemCacheKey(item,kind){
   const normItem=normalizeResearchItem(item); const src=resolveDynamicResearchSource(normItem); const keyItem=src&&src!==normItem.source?{...normItem,source:src,_dynamicSource:normItem.source}:normItem;
-  return ['identityResolverV3',kind,researchSourceCacheSignature(),JSON.stringify(keyItem),JSON.stringify(state.repMappings||{}),JSON.stringify(state.teamMappings||{}),JSON.stringify(state.repTeams?[...state.repTeams.entries()]:[]),keyItem.startDate||'',keyItem.endDate||'',keyItem.dateColumn||''].join('|');
+  return ['identityResolverV4',kind,researchSourceCacheSignature(),stableSerialize(keyItem),'aliasesV'+(state.versions?.aliases||0),'teamsV'+(state.versions?.teams||0),'mappingsV'+(state.versions?.mappings||0),'metricsV'+(state.versions?.metrics||0),'modelsV'+(state.versions?.models||0),keyItem.startDate||'',keyItem.endDate||'',keyItem.dateColumn||''].join('|');
 }
 function loadResearchResultCache(){
   try{ state.researchPersistentCache=JSON.parse(localStorage.getItem(RESEARCH_CACHE_KEY)||'{}')||{}; }catch(_){ state.researchPersistentCache={}; }
@@ -7435,6 +7490,18 @@ function saveResearchResultCache(){
     state.researchPersistentCache=Object.fromEntries(entries);
     try{ localStorage.setItem(RESEARCH_CACHE_KEY, JSON.stringify(state.researchPersistentCache)); }catch(_){ localStorage.removeItem(RESEARCH_CACHE_KEY); state.researchPersistentCache={}; }
   }
+  updateResearchCacheBadge();
+}
+
+function selectiveResearchInvalidation(dep={}){
+  state.perfCounters.selectiveInvalidations++;
+  const reason=dep.reason||'selective invalidation';
+  if(dep.full) return clearResearchComputedCaches(reason);
+  state.researchResultCache=new Map();
+  if(dep.metrics) state.researchMetricCache=new Map();
+  if(dep.aliases || dep.teams || dep.mappings) state.researchDuplicateRepCache=new Map();
+  state.percentBuilderCache=new Map();
+  console.info('[All Star Perf] selective invalidation',{reason,dep,versions:state.versions});
   updateResearchCacheBadge();
 }
 function clearResearchComputedCaches(reason='cache cleared'){
@@ -7456,16 +7523,16 @@ function compactResearchResultForStorage(key,out){
 }
 function researchCacheGet(key){
   const v=state.researchResultCache?.get(key);
-  if(v){ state.researchCacheStats.hits++; const out={...v,perf:{...(v.perf||{}),cacheUsed:true}}; updateResearchCacheBadge(); return out; }
+  if(v){ state.researchCacheStats.hits++; state.perfCounters.researchResultCacheHits++; const out={...v,perf:{...(v.perf||{}),cacheUsed:true}}; updateResearchCacheBadge(); return out; }
   const pv=state.researchPersistentCache?.[key];
-  if(pv){ state.researchCacheStats.hits++; const out={...pv,perf:{...(pv.perf||{}),cacheUsed:true,persistent:true}}; if(!state.researchResultCache) state.researchResultCache=new Map(); state.researchResultCache.set(key,out); updateResearchCacheBadge(); return out; }
+  if(pv){ state.researchCacheStats.hits++; state.perfCounters.researchResultCacheHits++; const out={...pv,perf:{...(pv.perf||{}),cacheUsed:true,persistent:true}}; if(!state.researchResultCache) state.researchResultCache=new Map(); boundedMapSet(state.researchResultCache,key,out,RESEARCH_CACHE_LIMIT); updateResearchCacheBadge(); return out; }
   return null;
 }
 function researchHasCache(key){ return !!(state.researchResultCache?.has(key) || state.researchPersistentCache?.[key]); }
 function researchCacheSet(key,value,perf){
   if(!state.researchResultCache) state.researchResultCache=new Map();
   const out={...value,perf:{...(value.perf||{}),...(perf||{}),cacheUsed:false}};
-  state.researchResultCache.set(key,out);
+  boundedMapSet(state.researchResultCache,key,out,RESEARCH_CACHE_LIMIT);
   const compact=compactResearchResultForStorage(key,out);
   if(compact){ state.researchPersistentCache[key]=compact; state.researchCacheStats.writes++; saveResearchResultCache(); }
   else updateResearchCacheBadge();
@@ -8183,7 +8250,7 @@ async function importResearchConfig(text){ const obj=JSON.parse(text); if(obj&&A
 function normalizeOrgName(v){ return normalizeResearchText(v); }
 function normalizeOrg(o={}){ const now=new Date().toISOString(), coaches=new Map(); (o.coachNames||[]).forEach(x=>{ const name=canonicalCoachName(x); if(name) coaches.set(coachNameKey(name),name); }); return {id:o.id||id(),name:String(o.name||'New Org').trim()||'New Org',coachNames:[...coaches.values()].sort((a,b)=>a.localeCompare(b)),createdAt:o.createdAt||now,updatedAt:o.updatedAt||now}; }
 function loadOrgs(){ try{ const raw=JSON.parse(localStorage.getItem(ORG_BUILDER_KEY)||'[]'); state.orgs=(Array.isArray(raw)?raw:(raw.orgs||[])).map(normalizeOrg); }catch(_){ state.orgs=[]; } }
-function saveOrgs(){ state.orgs=(state.orgs||[]).map(normalizeOrg); localStorage.setItem(ORG_BUILDER_KEY,JSON.stringify(state.orgs)); clearResearchComputedCaches('org builder changed'); renderRunOrgSelect(); }
+function saveOrgs(){ state.orgs=(state.orgs||[]).map(normalizeOrg); localStorage.setItem(ORG_BUILDER_KEY,JSON.stringify(state.orgs)); selectiveResearchInvalidation({reason:'org builder changed',teams:true}); renderRunOrgSelect(); }
 function findOrg(ref){ const raw=String(ref||'').replace(/^\$/,'').trim(), n=normalizeOrgName(raw); return (state.orgs||[]).find(o=>o.id===raw||normalizeOrgName(o.name)===n); }
 function orgCoachSet(ref){ const o=typeof ref==='object'?ref:findOrg(ref); return new Set((o?.coachNames||[]).map(normalizeOrgName)); }
 function inOrg(value, orgNameOrId){ const set=orgCoachSet(orgNameOrId); return set.has(normalizeOrgName(value)); }
@@ -8462,7 +8529,7 @@ function modelTraceRowRefsForSource(source,rows,fields){
   return (rows||[]).slice(0,2000).map((r,i)=>({source,index:researchRowSourceIndex(source,r),fallback:i,rep:researchTraceRepName(r),team:researchRowTeam(r,source)||rowTeam(r)||'',evidence:researchCompactEvidenceSnapshot(source,r,fields)}));
 }
 function modelTraceRowsForCriterion(c,entry,opts){
-  if(entry.kind==='team' && c.trueValueEnabled && TEAM_TOTAL_SOURCE_KEYS.includes(c.trueValueSource)){ const ds=teamTotalsDataset(c.trueValueSource); rebuildTeamTotalsIndex(ds); const row=(ds.rowsByTeamKey||{})[coachNameKey(entry.team||entry.name||'')]; const fields=['_team','_controlTab','_summaryLookupKey','_summarySheet','_summaryRowNumber',c.trueValueColumn].filter(Boolean); return {trueValue:true,sourceKeys:[c.trueValueSource],refs:row?modelTraceRowRefsForSource(c.trueValueSource,[row],fields):[],rows:row?[row]:[],fields}; }
+  if(entry.kind==='team' && c.trueValueEnabled && TEAM_TOTAL_SOURCE_KEYS.includes(c.trueValueSource)){ const ds=teamTotalsDataset(c.trueValueSource); ensureTeamTotalsIndex(ds); const row=(ds.rowsByTeamKey||{})[coachNameKey(entry.team||entry.name||'')]; const fields=['_team','_controlTab','_summaryLookupKey','_summarySheet','_summaryRowNumber',c.trueValueColumn].filter(Boolean); return {trueValue:true,sourceKeys:[c.trueValueSource],refs:row?modelTraceRowRefsForSource(c.trueValueSource,[row],fields):[],rows:row?[row]:[],fields}; }
   if(c.calcType==='qaScore' || c.source==='qa' || isCustomQAStyleSource(c.source)){
     const source=directQATeamScoreMode(c,entry,opts) ? activeDirectQASource() : (c.source||'qa'), rows=qaRowsForEntry(c,entry,opts), fields=modelTraceFieldList(source,c);
     return {sourceKeys:[source], refs:modelTraceRowRefsForSource(source,rows,fields), rows, fields};
