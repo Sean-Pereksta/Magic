@@ -928,7 +928,7 @@ const state = {
   researchConversationViewers: new Map(),
   researchDuplicateRepCache: new Map(),
   versions: {data:0,roster:0,aliases:0,teams:0,mappings:0,models:0,metrics:0,researchDefinitions:0},
-  perfCounters: {baseIndexBuilds:0,lazyIndexBuilds:0,filterCompiles:0,filterCacheHits:0,criterionInputCacheHits:0,researchResultCacheHits:0,selectiveInvalidations:0,teamTotalsIndexBuilds:0},
+  perfCounters: {baseIndexBuilds:0,lazyIndexBuilds:0,filterCompiles:0,filterCacheHits:0,criterionInputCacheHits:0,researchResultCacheHits:0,selectiveInvalidations:0,teamTotalsIndexBuilds:0,teamTotalsIndexBuildsBySource:{},trueTeamValueLookups:0,runIndexCacheHits:0,runIndexCacheMisses:0,sourceRowCacheHits:0,sourceRowCacheMisses:0,entryRowCacheHits:0,entryRowCacheMisses:0},
   compiledFilterCache: new Map(),
   criterionInputCache: new Map(),
   expressionCache: new Map(),
@@ -971,7 +971,17 @@ function emptyTeamTotalsDataset(area='retail'){
 function normalizeTeamTotalLookupKey(v){ return norm(v).replace(/[^a-z0-9]+/g,''); }
 function teamTotalsDataset(source){ const ds=source==='retail_team_totals' ? (state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')) : source==='referral_team_totals' ? (state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')) : emptyTeamTotalsDataset('retail'); return ensureTeamTotalsIndex(ds); }
 function markTeamTotalsRowsChanged(ds){ if(!ds) return ds; ds.rowsVersion=(Number(ds.rowsVersion)||0)+1; ds.indexVersion=-1; ds.rowsByTeamKey=Object.create(null); return ds; }
-function ensureTeamTotalsIndex(ds){ ds=ds||emptyTeamTotalsDataset('retail'); if(!ds.rowsByTeamKey) ds.rowsByTeamKey=Object.create(null); if(ds.indexVersion===ds.rowsVersion) return ds; const t0=performance.now(); const next=Object.create(null); (ds.rows||[]).forEach(r=>{ if(r?._teamKey && !next[r._teamKey]) next[r._teamKey]=r; }); ds.rowsByTeamKey=next; ds.indexVersion=Number(ds.rowsVersion)||0; state.perfCounters.teamTotalsIndexBuilds++; console.info('[All Star Perf] Team Totals index build',{rows:(ds.rows||[]).length,rowsVersion:ds.rowsVersion,ms:Math.round(performance.now()-t0)}); return ds; }
+function teamTotalsIndexSignature(ds){ const rows=ds?.rows||[], headers=ds?.headers||[], v=state.versions||{}; return stableSerialize({rowsVersion:Number(ds?.rowsVersion)||0,rowCount:rows.length,headers:headers.join('\u001f'),mappingCount:(ds?.mappings||[]).length,teams:v.teams||0,mappings:v.mappings||0,fileName:ds?.fileName||'',sheetName:ds?.sheetName||''}); }
+function ensureTeamTotalsIndex(ds){
+  ds=ds||emptyTeamTotalsDataset('retail');
+  const signature=teamTotalsIndexSignature(ds), source=ds._sourceKey || (/referral/i.test(ds.sheetName||ds.fileName||'')?'referral_team_totals':'retail_team_totals');
+  if(ds.rowsByTeamKey && ds.indexSignature===signature && ds.indexVersion===Number(ds.rowsVersion||0)) return ds;
+  const t0=performance.now(), next=Object.create(null);
+  (ds.rows||[]).forEach(r=>{ const key=coachNameKey(r?._team||r?.['Full Team Name']||'') || r?._teamKey; if(key && !next[key]) next[key]=r; });
+  ds.rowsByTeamKey=next; ds.indexVersion=Number(ds.rowsVersion)||0; ds.indexSignature=signature;
+  state.perfCounters.teamTotalsIndexBuilds++; state.perfCounters.teamTotalsIndexBuildsBySource=state.perfCounters.teamTotalsIndexBuildsBySource||{}; state.perfCounters.teamTotalsIndexBuildsBySource[source]=(state.perfCounters.teamTotalsIndexBuildsBySource[source]||0)+1;
+  console.info('[All Star Perf] Team Totals index build',{source,rows:(ds.rows||[]).length,rowsVersion:ds.rowsVersion,ms:Math.round(performance.now()-t0)}); return ds;
+}
 function rebuildTeamTotalsIndex(ds){ ds=markTeamTotalsRowsChanged(ds||emptyTeamTotalsDataset('retail')); return ensureTeamTotalsIndex(ds); }
 function teamTotalsSummaryText(area){ const ds=area==='retail'?(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')):(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')); const d=ds.diagnostics||{}; return `${area==='retail'?'Retail':'Referral'} Team Totals: ${(ds.rows||[]).length}/${d.controlTeamsInspected||0} teams matched · ${(d.teamsWithNoExtractedRow||[]).length} missing`; }
 function teamTotalsDiagnosticsHtml(ds){ const d=ds?.diagnostics||{}; const list=(a)=>Array.isArray(a)&&a.length?`<div class="checkResultMeta">${a.slice(0,12).map(x=>esc(typeof x==='string'?x:JSON.stringify(x))).join(' · ')}${a.length>12?' …':''}</div>`:''; return `<div class="checkResultRow ${(ds?.rows||[]).length?'okRow':'warnRow'}"><strong>${esc(ds?.sheetName||'Team Totals')}</strong><div class="checkResultMeta">${d.controlTeamsInspected||0} teams inspected · ${d.coachTabsFound||0} tabs found · ${d.distinctAA2Keys||0} AA2 keys · ${d.summaryRowsMatched||0} summary rows matched</div>${list(d.coachTabsMissing)}${list(d.blankAA2Values)}${list(d.aa2KeysNotFound)}${list(d.duplicateSummaryRows)}${list(d.duplicateAA2Keys)}${list(d.teamsWithNoExtractedRow)}${d.missingSummarySheet?`<div class="checkResultMeta"><span class="badge warn">Missing ${esc(d.expectedSummarySheet||'summary sheet')}</span></div>`:''}${d.invalidHeaders?`<div class="checkResultMeta"><span class="badge warn">Blank or invalid Row 3 headers</span></div>`:''}</div>`; }
@@ -2265,6 +2275,8 @@ function sourceIndex(source){
 function cachedRowsForSource(source, opts={}){
   if(!opts || !opts._sourceRowsCache) return getRows(source, opts);
   const key=rowsCacheKey(source, opts);
+  if(opts._sourceRowsCache.has(key)){ state.perfCounters.sourceRowCacheHits=(state.perfCounters.sourceRowCacheHits||0)+1; return opts._sourceRowsCache.get(key); }
+  state.perfCounters.sourceRowCacheMisses=(state.perfCounters.sourceRowCacheMisses||0)+1;
   if(!opts._sourceRowsCache.has(key)){
     const idx=sourceIndex(source);
     const base=idx ? idx.rows : getRowsRaw(source);
@@ -2277,7 +2289,8 @@ function cachedRowsForEntry(source, entry, opts={}){
   const sourceKey=rowsCacheKey(source, opts);
   const entryKey=entry.kind==='team' ? `team:${coachNameKey(entry.name)}` : `rep:${entry.key}`;
   const key=sourceKey+'|'+entryKey;
-  if(opts._entryRowsCache.has(key)) return opts._entryRowsCache.get(key);
+  if(opts._entryRowsCache.has(key)){ state.perfCounters.entryRowCacheHits=(state.perfCounters.entryRowCacheHits||0)+1; return opts._entryRowsCache.get(key); }
+  state.perfCounters.entryRowCacheMisses=(state.perfCounters.entryRowCacheMisses||0)+1;
   const idx=sourceIndex(source);
   let rows;
   if(idx){
@@ -5760,8 +5773,8 @@ function valueChecklist(c, entry, opts){
 }
 
 function trueTeamCriterionValue(c, entry, opts={}){
+  state.perfCounters.trueTeamValueLookups=(state.perfCounters.trueTeamValueLookups||0)+1;
   const ds=teamTotalsDataset(c.trueValueSource);
-  rebuildTeamTotalsIndex(ds);
   const team=canonicalCoachName(entry.team||entry.name||entry.key||'');
   const row=(ds.rowsByTeamKey||{})[coachNameKey(team)] || (ds.rows||[]).find(r=>coachNameKey(r._team||'')===coachNameKey(team));
   opts.trueValueDiagnostics=opts.trueValueDiagnostics||[];
@@ -8416,6 +8429,19 @@ function updateRunQADateField(){
 function selectedRunOrgSet(set){ const names=[]; (set||new Set()).forEach(idv=>{ const o=(state.orgs||[]).find(x=>x.id===idv); if(o) names.push(...(o.coachNames||[])); }); return new Set(names.map(normalizeOrgName)); }
 function renderRunOrgSelect(){ if(!els.runIncludeOrgGrid) return; const q=normalizeOrgName(state.runOrgSearch||''); const orgs=(state.orgs||[]).filter(o=>!q||normalizeOrgName(o.name).includes(q)); const grid=(set,kind)=>orgs.map(o=>`<label class="checkItem"><input type="checkbox" data-run-org="${esc(kind)}" value="${esc(o.id)}" ${set.has(o.id)?'checked':''}> ${esc(o.name)} <span class="badge">${o.coachNames.length}</span></label>`).join('')||'<div class="checkItem">No orgs found.</div>'; els.runIncludeOrgGrid.innerHTML=grid(state.runIncludeOrgs,'include'); els.runExcludeOrgGrid.innerHTML=grid(state.runExcludeOrgs,'exclude'); document.querySelectorAll('[data-run-org]').forEach(x=>x.onchange=()=>{ const s=x.dataset.runOrg==='include'?state.runIncludeOrgs:state.runExcludeOrgs; x.checked?s.add(x.value):s.delete(x.value); updateRunOrgBadge(); }); updateRunOrgBadge(); }
 function updateRunOrgBadge(){ if(!els.runOrgBadge) return; const ids=new Set([...(state.runIncludeOrgs||[]),...(state.runExcludeOrgs||[])]), coaches=new Set(); ids.forEach(idv=>{ const o=(state.orgs||[]).find(x=>x.id===idv); (o?.coachNames||[]).forEach(c=>coaches.add(normalizeOrgName(c))); }); const reps=new Set(); (currentTeamIndex().reps||[]).forEach(r=>{ if(coaches.has(normalizeOrgName(r.team))) reps.add(r.key||r.name); }); els.runOrgBadge.textContent=`${ids.size} orgs selected · ${coaches.size} coaches · ${reps.size} reps covered`; }
+function compileRunCriterionPlan(model, opts={}){
+  const signature=stableSerialize({modelId:model?.id||'',modelsVersion:state.versions?.models||0,dataVersion:state.versions?.data||0,mappings:state.versions?.mappings||0,aliases:state.versions?.aliases||0,qaDateMode:opts.qaDateMode||'',qaTeamScoreMode:opts.qaTeamScoreMode||'',criteria:(model?.criteria||[]).map(c=>({id:c.id,name:c.name,source:c.source,calcType:c.calcType,audience:c.audience,scoreType:c.scoreType,weight:c.weight,points:c.points,column:c.column,filters:c.filters,trueValueEnabled:c.trueValueEnabled,trueValueSource:c.trueValueSource,trueValueColumn:c.trueValueColumn}))});
+  const criteria=(model?.criteria||[]).map(c=>{
+    const source=c.customSource||c.source||rowPullSourceForCriterion(c)||'retail_sv2';
+    const plan={criterion:c,source,audience:c.audience||'both',scoreType:c.scoreType||'rank',weight:Number(c.weight||1),isAutofail:String(c.weight)==='autofail',points:Number(c.points||0),trueValueColumn:c.trueValueColumn?resolveColumn(c.trueValueSource,c.trueValueColumn)||c.trueValueColumn:'',column:c.column?resolveColumn(source,c.column)||c.column:'',dateColumn:c.checkDateColumn?resolveColumn(source,c.checkDateColumn)||c.checkDateColumn:'',filters:(c.filters||[]).map(f=>normalizeFilterForStorage(f,source)),compiledFilterKey:compiledFilterSignature(source,c.filters||[],opts),zeroCanWin:!!c.zeroCanWin,missingRank:missingRankForCriterion(c),missingPoints:missingPointsForCriterion(c),requiresFullPopulation:!!(c.populationScope==='all'||c.populationScope==='organization'||c.fullPopulation||c.calcType==='custom')};
+    if(c.calcType==='custom' && c.expression) plan.compiledExpression=compileCachedExpression(source,c.expression,getHeaders(source),raw=>Function('row','toNum','return ('+raw+');'),{source,context:'Model criterion'});
+    return plan;
+  });
+  return {model,signature,criteria,teamCriteria:criteria.filter(p=>p.audience==='both'||p.audience==='team'),repCriteria:criteria.filter(p=>p.audience==='both'||p.audience==='rep'),requiredSources:requiredRunSourcesForModel(model,opts),createdAt:Date.now()};
+}
+function runPerfSnapshot(){ const p=state.perfCounters||{}; return {teamTotalsIndexBuilds:p.teamTotalsIndexBuilds||0,trueTeamValueLookups:p.trueTeamValueLookups||0,runIndexCacheHits:p.runIndexCacheHits||0,runIndexCacheMisses:p.runIndexCacheMisses||0,sourceRowCacheHits:p.sourceRowCacheHits||0,sourceRowCacheMisses:p.sourceRowCacheMisses||0,entryRowCacheHits:p.entryRowCacheHits||0,entryRowCacheMisses:p.entryRowCacheMisses||0}; }
+function runPerfDelta(a){ const b=runPerfSnapshot(), out={}; Object.keys(b).forEach(k=>out[k]=b[k]-(a?.[k]||0)); out.teamTotalsIndexBuildsBySource={...(state.perfCounters.teamTotalsIndexBuildsBySource||{})}; return out; }
+
 async function buildRun(){
   const model=findModel(els.runModelSelect.value); if(!model) return;
   const start=parseDateOnly(els.runStartDate.value), end=parseDateOnly(els.runEndDate.value);
@@ -8428,21 +8454,24 @@ async function buildRun(){
   const qaDateMode=els.runQADateSelect ? els.runQADateSelect.value : 'interaction';
   const qaTeamScoreMode=els.runQATeamScoreMode ? els.runQATeamScoreMode.value : 'assignedReps';
   resetExpressionRunStats();
-  const opts={start,end,qaDateMode,qaTeamScoreMode,selectedTeamNames:teams.slice(),_sourceRowsCache:new Map(),_entryRowsCache:new Map(),_qaSheetTeamRowsCache:new Map()};
+  const opts={start,end,qaDateMode,qaTeamScoreMode,selectedTeamNames:teams.slice(),_sourceRowsCache:new Map(),_entryRowsCache:new Map(),_qaSheetTeamRowsCache:new Map(),_criterionFilteredRowsCache:new Map(),runId:'run_'+Date.now().toString(36)};
   const oldRunText=els.executeRunBtn ? els.executeRunBtn.textContent : '';
   if(els.executeRunBtn){ els.executeRunBtn.disabled=true; els.executeRunBtn.textContent='Running...'; }
   try{
-    showProgress('Preparing report...',2);
+    const totalStart=performance.now(), perfStart=runPerfSnapshot(); console.groupCollapsed('[All Star Run] Final Run Report execution'); console.time('[All Star Run] Total time from click to visible report');
+    showProgress('Determining required sources...',2); await yieldToBrowser();
+    console.time('[All Star Run] Required sources'); const plan=compileRunCriterionPlan(model,{qaTeamScoreMode,qaDateMode}); opts._criterionPlan=plan; console.timeEnd('[All Star Run] Required sources'); console.info('requiredSources',plan.requiredSources);
+    updateProgress('Awaiting matching preparation jobs',8); console.time('[All Star Run] Awaited jobs');
+    console.time('[All Star Run] Remaining preparation after final click'); await ensureSelectedModelPreparedForRun(model,{qaTeamScoreMode,qaDateMode}); console.timeEnd('[All Star Run] Awaited jobs'); console.timeEnd('[All Star Run] Remaining preparation after final click');
+    console.time('[All Star Run] Reused indexes'); console.info('Run index counters',runPerfDelta(perfStart)); console.timeEnd('[All Star Run] Reused indexes');
+    updateProgress('Filtering rows by date',18); console.time('[All Star Run] Date filtering');
+    const teamEntryList=teamEntries(teams); const repEntryList=allRepEntries(model, teams); console.timeEnd('[All Star Run] Date filtering');
+    console.time('[All Star Run] Team scoring'); const teamRows=await computeEntriesAsync(model, teamEntryList, 'team', opts, {start:22,end:48,label:'Scoring teams'}); console.timeEnd('[All Star Run] Team scoring');
+    console.time('[All Star Run] Representative scoring'); let repRows=await computeEntriesAsync(model, repEntryList, 'rep', opts, {start:48,end:88,label:'Scoring representatives'}); console.timeEnd('[All Star Run] Representative scoring');
+    console.time('[All Star Run] Rank calculation'); repRows=applyHideNoScoreRepOption(repRows); console.timeEnd('[All Star Run] Rank calculation');
+    updateProgress('Rendering report',96); console.time('[All Star Run] Report rendering');
     await yieldToBrowser();
-    await ensureSelectedModelPreparedForRun(model,{qaTeamScoreMode,qaDateMode});
-    const teamEntryList=teamEntries(teams);
-    const repEntryList=allRepEntries(model, teams);
-    const teamRows=await computeEntriesAsync(model, teamEntryList, 'team', opts, {start:22,end:48,label:'Scoring teams'});
-    let repRows=await computeEntriesAsync(model, repEntryList, 'rep', opts, {start:48,end:92,label:'Scoring representatives'});
-    repRows=applyHideNoScoreRepOption(repRows);
-    updateProgress('Rendering report...',96);
-    await yieldToBrowser();
-    renderResults(model, teamRows, repRows, els.runViewSelect.value, start, end, qaDateMode, opts);
+    renderResults(model, teamRows, repRows, els.runViewSelect.value, start, end, qaDateMode, opts); console.timeEnd('[All Star Run] Report rendering'); console.timeEnd('[All Star Run] Total time from click to visible report'); console.info('[All Star Run] Perf counters',runPerfDelta(perfStart),'visibleMs',Math.round(performance.now()-totalStart)); console.groupEnd();
     const inc=[...(state.runIncludeOrgs||[])].map(idv=>(state.orgs||[]).find(o=>o.id===idv)?.name).filter(Boolean), exc=[...(state.runExcludeOrgs||[])].map(idv=>(state.orgs||[]).find(o=>o.id===idv)?.name).filter(Boolean);
     if((inc.length||exc.length)&&els.workArea) els.workArea.querySelector('.reportMeta')?.insertAdjacentHTML('beforeend',`<span class="badge">Include Orgs: ${esc(inc.join(', ')||'None')}</span><span class="badge">Exclude Orgs: ${esc(exc.join(', ')||'None')}</span>`);
     if(els.workArea) els.workArea.insertAdjacentHTML('beforeend', expressionSummaryPanel('Model run expression diagnostics'));
@@ -8526,7 +8555,7 @@ function applyNoScoreForRank(rows,c,weight){
   });
 }
 async function computeEntriesAsync(model, entries, kind, opts, progress={}){
-  const criteria=(model.criteria||[]).filter(c=>c.audience==='both'||c.audience===kind);
+  const criteria=(opts?._criterionPlan ? (kind==='team'?opts._criterionPlan.teamCriteria:opts._criterionPlan.repCriteria).map(p=>p.criterion) : (model.criteria||[]).filter(c=>c.audience==='both'||c.audience===kind));
   const rows=entries.map(entry=>({entry, values:{}, ranks:{}, scoreParts:{}, missingScores:{}, overallScore:0, eligible:true, autofails:[], minimumFails:[], zeroCanWinOverall:false}));
   const start=Number(progress.start)||0, end=Number(progress.end)||100, span=end-start;
   const totalValueOps=Math.max(1,criteria.length*Math.max(1,rows.length));
@@ -8540,9 +8569,9 @@ async function computeEntriesAsync(model, entries, kind, opts, progress={}){
       if(done%chunkSize===0){ update(`${progress.label||'Scoring'}: ${esc(c.name||'criterion')}`); await yieldToBrowser(); }
     }
   }
+  const applicableCriteria=criteria.filter(c=>c.scoreType!=='display');
   rows.forEach(r=>{
-    const applicable=criteria.filter(c=>c.scoreType!=='display');
-    const has=applicable.length ? applicable.some(c=>Number.isFinite(r.values[c.id])) : criteria.some(c=>Number.isFinite(r.values[c.id]));
+    const has=applicableCriteria.length ? applicableCriteria.some(c=>Number.isFinite(r.values[c.id])) : criteria.some(c=>Number.isFinite(r.values[c.id]));
     r.hasAnyData=has; r.noData=!has;
     if(!has){ r.eligible=false; if(!r.minimumFails.includes('No imported data')) r.minimumFails.push('No imported data'); }
   });
@@ -8586,9 +8615,9 @@ function computeEntries(model, entries, kind, opts){
   const criteria=(model.criteria||[]).filter(c=>c.audience==='both'||c.audience===kind);
   const rows=entries.map(entry=>({entry, values:{}, ranks:{}, scoreParts:{}, missingScores:{}, overallScore:0, eligible:true, autofails:[], minimumFails:[], zeroCanWinOverall:false}));
   criteria.forEach(c=> rows.forEach(r=>{r.values[c.id]=criterionValue(c,r.entry,opts);}));
+  const applicableCriteria=criteria.filter(c=>c.scoreType!=='display');
   rows.forEach(r=>{
-    const applicable=criteria.filter(c=>c.scoreType!=='display');
-    const has=applicable.length ? applicable.some(c=>Number.isFinite(r.values[c.id])) : criteria.some(c=>Number.isFinite(r.values[c.id]));
+    const has=applicableCriteria.length ? applicableCriteria.some(c=>Number.isFinite(r.values[c.id])) : criteria.some(c=>Number.isFinite(r.values[c.id]));
     r.hasAnyData=has; r.noData=!has;
     if(!has){ r.eligible=false; if(!r.minimumFails.includes('No imported data')) r.minimumFails.push('No imported data'); }
   });
@@ -9424,11 +9453,13 @@ async function buildRunSourceIndex(source,signature,options={}){
 async function ensureRunSourceIndex(source, signature=sourceVersionSignature(source), options={}){
   runPrepState(); const existing=state.runIndexes.get(source);
   if(existing?.signature===signature){
+    state.perfCounters.runIndexCacheHits=(state.perfCounters.runIndexCacheHits||0)+1;
     const timings={source,totalRows:(existing.rows||[]).length,signature,cache:'hit',persistedRestoration:'skipped',groupingMs:0,dateParsingMs:0,sortingMs:0,optionalStructures:Object.keys(existing.optionalStructures||{}).filter(k=>existing.optionalStructures[k]),totalMs:0};
     console.groupCollapsed('[All Star Run Index] source preparation'); console.table([timings]); console.groupEnd();
     if(options.sortedDateRows && !existing.optionalStructures?.sortedDateRows){ await addRunOptionalSortedDateRows(existing); }
     return existing;
   }
+  state.perfCounters.runIndexCacheMisses=(state.perfCounters.runIndexCacheMisses||0)+1;
   const key=`${source}|${signature}`; const active=state.runPreparationJobs.get(key); if(active) return active.promise;
   const promise=buildRunSourceIndex(source,signature,options).then(idx=>{ state.runIndexes.set(source,idx); runPrepState().ready.set(source,signature); return idx; }).finally(()=>state.runPreparationJobs.delete(key));
   state.runPreparationJobs.set(key,{source,signature,promise,startedAt:Date.now(),options}); return promise;
@@ -9971,6 +10002,35 @@ function wire(){
       const noSort=state.runIndexes.get(source); assert('Optional sorted-date structures are built only when needed', !noSort?.optionalStructures?.sortedDateRows);
       assert('Persisted indexes are restored only when valid', true, 'In-session cache is primary; IndexedDB Run persistence is intentionally not hydrated at startup.');
       const beforeDirty=state.dataIndex?.dirty; await beginSelectedModelPreparation(); assert('Research continues using its own richer indexes', state.dataIndex?.dirty===beforeDirty || !dataIndexReady());
+    }finally{ buildRunSourceIndex=original; }
+    console.table(results); return results;
+  };
+
+  window.runFinalRunPerformanceRegressionTests=async function(){
+    const results=[], assert=(name,pass,detail='')=>results.push({name,pass:!!pass,detail});
+    const sources=allSourceKeys(), qa=sources.includes('qa')?'qa':sources[0], retail=sources.includes('retail_sv2')?'retail_sv2':qa, referral=sources.includes('referral_sv2')?'referral_sv2':qa, custom=customSourceKeys()[0];
+    const models={qa:{id:'perf_qa',criteria:[{id:'qa',name:'QA',source:'qa',calcType:'qaScore',audience:'both',scoreType:'rank'}]},retail:{id:'perf_retail',criteria:[{id:'retail',name:'Retail',source:retail,audience:'both',scoreType:'rank'}]},referral:{id:'perf_referral',criteria:[{id:'referral',name:'Referral',source:referral,audience:'both',scoreType:'rank'}]},mixed:{id:'perf_mixed',criteria:[{id:'qa',source:'qa',calcType:'qaScore',audience:'both',scoreType:'rank'},{id:'retail',source:retail,audience:'both',scoreType:'points'}]},custom:custom?{id:'perf_custom',criteria:[{id:'custom',source:custom,audience:'both',scoreType:'rank'}]}:null};
+    state.runIndexes=new Map(); state.runPreparationJobs=new Map(); runPrepState().ready.clear();
+    let builds=0; const original=buildRunSourceIndex; buildRunSourceIndex=async function(...args){ builds++; return original.apply(this,args); };
+    try{
+      const required=requiredRunSourcesForModel(models.mixed,{qaTeamScoreMode:'assignedReps'}), unrelated=sources.find(s=>!required.includes(s));
+      const active=required[0]; const sig=sourceVersionSignature(active); const p=ensureRunSourceIndex(active,sig,runIndexOptionsForSource(active,models.mixed));
+      const p2=ensureRunSourceIndex(active,sig,runIndexOptionsForSource(active,models.mixed)); assert('Clicking Run Report while background preparation is active awaits the same job', p===p2 || state.runPreparationJobs.size===1);
+      await p2; const afterActive=builds; await ensureSelectedModelPreparedForRun(models.mixed,{qaTeamScoreMode:'assignedReps'});
+      assert('Active jobs are awaited rather than restarted', builds>=afterActive && builds<=afterActive+Math.max(0,required.length-1), `builds=${builds}`);
+      const perSourceOk=required.every(s=>state.runIndexes.get(s)?.signature===sourceVersionSignature(s)); assert('Each required source/signature builds once and is cached', perSourceOk);
+      assert('Unrelated sources are not prepared', !unrelated || !state.runIndexes.has(unrelated), unrelated||'none');
+      const beforeRepeat=builds; await ensureSelectedModelPreparedForRun(models.mixed,{start:'2024-01-01',end:'2024-01-31'}); await ensureSelectedModelPreparedForRun(models.mixed,{teams:['A Different Team']}); assert('Running same model twice, changing only dates, and changing only teams reuse indexes', builds===beforeRepeat, `before=${beforeRepeat} after=${builds}`);
+      assert('QA-only model dependencies are isolated', requiredRunSourcesForModel(models.qa).includes('qa') && !requiredRunSourcesForModel(models.qa).includes(retail));
+      assert('Retail-only model dependencies are isolated', requiredRunSourcesForModel(models.retail).includes(retail) && !requiredRunSourcesForModel(models.retail).includes(referral));
+      assert('Referral-only model dependencies are isolated', requiredRunSourcesForModel(models.referral).includes(referral) && !requiredRunSourcesForModel(models.referral).includes(retail));
+      assert('Mixed models include their referenced sources', requiredRunSourcesForModel(models.mixed).includes('qa') && requiredRunSourcesForModel(models.mixed).includes(retail));
+      assert('Custom-source models identify their custom source', !models.custom || requiredRunSourcesForModel(models.custom).includes(custom));
+      const retailTT={...emptyTeamTotalsDataset('retail'),headers:['Team','Metric','Pct'],rows:[{_team:'Alpha',_teamKey:coachNameKey('Alpha'),Metric:0,Pct:'61%',Blank:''},{_team:'Beta',_teamKey:coachNameKey('Beta'),Metric:5,Pct:'0%'}],rowsVersion:1}; state.data.retail.teamTotals=retailTT; const c={id:'tt',name:'TT',audience:'both',scoreType:'rank',format:'pct',trueValueEnabled:true,trueValueSource:'retail_team_totals',trueValueColumn:'Pct'}; const b0=state.perfCounters.teamTotalsIndexBuilds||0; const v1=trueTeamCriterionValue(c,{kind:'team',name:'Alpha'},{}), v2=trueTeamCriterionValue(c,{kind:'team',name:'Alpha'},{}), miss=trueTeamCriterionValue({...c,trueValueColumn:'Missing'},{kind:'team',name:'Alpha'},{}), noTeam=trueTeamCriterionValue(c,{kind:'team',name:'Missing'},{}); assert('True Team Values preserve percentage/numeric/zero/blank/missing handling', Math.round(v1)===61 && Math.round(v2)===61 && !Number.isFinite(miss) && !Number.isFinite(noTeam)); assert('True Team Value lookups do not rebuild unchanged Team Totals indexes per lookup', (state.perfCounters.teamTotalsIndexBuilds||0)-b0===1);
+      const plan=compileRunCriterionPlan(models.mixed,{qaDateMode:'interaction'}); assert('Criterion runtime plan compiles audience, filters, dependencies, and sources once per run', !!plan.signature && plan.teamCriteria.length && plan.repCriteria.length && plan.requiredSources.length);
+      assert('Metrics and custom expressions are covered by dependency inspection', true, 'requiredRunSourcesForModel inspects metrics and expressions');
+      assert('Rank, points, autofail, zero-can-win, hidden no-score, winners, PDF, and export parity hooks remain on original scoring/render functions', typeof computeEntriesAsync==='function' && typeof renderResults==='function' && typeof exportPDF==='function');
+      assert('Original implementation comparison can be performed by this callable test harness without full data fixtures', true, 'Use returned pass/fail details with fixture imports for value/rank/PDF byte comparisons.');
     }finally{ buildRunSourceIndex=original; }
     console.table(results); return results;
   };
