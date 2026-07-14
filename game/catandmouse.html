@@ -32,7 +32,8 @@
       top: 0;
       z-index: 0;
       margin: 0;
-      transform-origin: top center;
+      /* Camera translation is calculated in top-left stage coordinates. */
+      transform-origin: top left;
       will-change: transform;
     }
 
@@ -4508,6 +4509,60 @@
     }
     return best;
   }
+
+  function getNearestHostileObjectiveTarget(startX, startY, passableFn = false){
+    const candidates = [];
+
+    const mouseTarget = getNearestMouseTarget(startX, startY, passableFn);
+    if (mouseTarget){
+      candidates.push({
+        x: mouseTarget.x,
+        y: mouseTarget.y,
+        type: "mouse",
+        uid: mouseTarget.uid,
+        id: mouseTarget.uid,
+        path: mouseTarget.path,
+        distance: mouseTarget.path.length,
+        tiePriority: 2
+      });
+    }
+
+    const rabbitTarget = getNearestRabbitTarget(startX, startY, passableFn);
+    if (rabbitTarget){
+      candidates.push({
+        x: rabbitTarget.x,
+        y: rabbitTarget.y,
+        type: "rabbit",
+        id: rabbitTarget.rabbit.id,
+        rabbit: rabbitTarget.rabbit,
+        path: rabbitTarget.path,
+        distance: rabbitTarget.path.length,
+        tiePriority: 1
+      });
+    }
+
+    const structureTarget = getNearestStructureContactTarget(startX, startY, passableFn);
+    if (structureTarget){
+      candidates.push({
+        x: structureTarget.structureX,
+        y: structureTarget.structureY,
+        type: "structure",
+        path: structureTarget.path,
+        // The route stops beside a structure, so include the final attack step
+        // when comparing it with targets enemies can occupy directly.
+        distance: structureTarget.path.length + 1,
+        tiePriority: 0
+      });
+    }
+
+    candidates.sort((a, b) =>
+      (a.distance - b.distance) ||
+      (a.tiePriority - b.tiePriority) ||
+      (a.y - b.y) ||
+      (a.x - b.x)
+    );
+    return candidates[0] || null;
+  }
   // ============================================================
   // Cat AI
   // ============================================================
@@ -5043,54 +5098,17 @@
       const shouldThink = ratsToAiUpdate.has(rat.id) && (!rat.ai.nextThinkAt || now >= rat.ai.nextThinkAt || !isRatTargetStillValid(rat) || pathEmpty || isStuck || targetMovedFarAway);
 
       if (shouldThink){
-        let closestTarget = null;
-        let bestPath = null;
-
-        const rabbitTarget = getNearestRabbitTarget(rat.x, rat.y, (x, y) => {
+        const closestTarget = getNearestHostileObjectiveTarget(rat.x, rat.y, (x, y) => {
           const isBlocked = blockedGrid[y]?.[x] === true;
           const ratOccupied = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===x && r.y===y);
           return !isBlocked && !ratOccupied;
         });
 
-        if (rabbitTarget){
-          closestTarget = { x:rabbitTarget.x, y:rabbitTarget.y, type:"rabbit", id:rabbitTarget.rabbit.id };
-          bestPath = rabbitTarget.path;
-        }
-
-        const mouseTarget = !closestTarget ? getNearestMouseTarget(rat.x, rat.y, (x, y) => {
-          const isBlocked = blockedGrid[y]?.[x] === true;
-          const ratOccupied = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===x && r.y===y);
-          return !isBlocked && !ratOccupied;
-        }) : null;
-
-        if (mouseTarget){
-          closestTarget = { x:mouseTarget.x, y:mouseTarget.y, type:"mouse", id:mouseTarget.uid };
-          bestPath = mouseTarget.path;
-        }
-
-        if (!closestTarget){
-          const structureTarget = getNearestStructureContactTarget(
-            rat.x,
-            rat.y,
-            (x, y) => {
-              const symbol = grid[y][x];
-              const isBlocked = ["🧱","🏭","💎","🗼"].includes(symbol);
-              const ratOccupied = rats.some(r => r.id !== rat.id && isLivingRat(r) && r.x===x && r.y===y);
-              return !isBlocked && !ratOccupied;
-            }
-          );
-
-          if (structureTarget){
-            bestPath = structureTarget.path;
-            closestTarget = { x: structureTarget.structureX, y: structureTarget.structureY, type:"structure" };
-          }
-        }
-
         rat.ai.targetType = closestTarget?.type ?? null;
         rat.ai.targetId = closestTarget?.id ?? null;
         rat.ai.targetX = closestTarget?.x ?? null;
         rat.ai.targetY = closestTarget?.y ?? null;
-        rat.ai.path = bestPath ? [...bestPath] : null;
+        rat.ai.path = closestTarget?.path ? [...closestTarget.path] : null;
         rat.ai.nextThinkAt = now + RAT_THINK_INTERVAL_MS + Math.floor(Math.random() * RAT_REPATH_JITTER_MS);
       }
 
@@ -5209,28 +5227,8 @@
         continue;
       }
 
-      let bestTarget = null;
-      let bestPath = null;
-
-      const rabbitTarget = getNearestRabbitTarget(ox.x, ox.y, false);
-      if (rabbitTarget){
-        bestTarget = { x:rabbitTarget.x, y:rabbitTarget.y, type:"rabbit", rabbit:rabbitTarget.rabbit };
-        bestPath = rabbitTarget.path;
-      }
-
-      const mouseTarget = !bestTarget ? getNearestMouseTarget(ox.x, ox.y, false) : null;
-      if (mouseTarget){
-        bestTarget = { x:mouseTarget.x, y:mouseTarget.y, type:"mouse", uid: mouseTarget.uid };
-        bestPath = mouseTarget.path;
-      }
-
-      if (!bestTarget){
-        const structureTarget = getNearestStructureContactTarget(ox.x, ox.y, false);
-        if (structureTarget){
-          bestTarget = { x: structureTarget.structureX, y: structureTarget.structureY, type:"structure" };
-          bestPath = structureTarget.path;
-        }
-      }
+      const bestTarget = getNearestHostileObjectiveTarget(ox.x, ox.y, false);
+      const bestPath = bestTarget?.path || null;
 
       if (bestTarget){
         if (bestPath && bestPath.length>0){
@@ -5270,11 +5268,8 @@
         continue;
       }
 
-      const mouseTarget = getNearestMouseTarget(king.x, king.y, false);
-      const target = mouseTarget ? {x:mouseTarget.x,y:mouseTarget.y,type:"mouse",uid:mouseTarget.uid,path:mouseTarget.path} : null;
-      const structureTarget = !target ? getNearestStructureContactTarget(king.x, king.y, false) : null;
-      const bestPath = target?.path || structureTarget?.path || null;
-      const finalTarget = target || (structureTarget ? {x:structureTarget.structureX,y:structureTarget.structureY,type:"structure"} : null);
+      const finalTarget = getNearestHostileObjectiveTarget(king.x, king.y, false);
+      const bestPath = finalTarget?.path || null;
       if (!finalTarget) continue;
 
       if (bestPath && bestPath.length>0){
@@ -5288,6 +5283,10 @@
       const d = Math.abs(king.x-finalTarget.x)+Math.abs(king.y-finalTarget.y);
       if (finalTarget.type === "structure" && d===1){
         await damageStructure(finalTarget.x, finalTarget.y, Math.max(10, ratPower * 2));
+      } else if (finalTarget.type === "rabbit" && d===0){
+        finalTarget.rabbit.health -= Math.max(10, ratPower * 2);
+        if (finalTarget.rabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(finalTarget.rabbit.id)) });
+        else writes.push({ type:"update", ref: ccRef(ID.rabbit(finalTarget.rabbit.id)), data: { health: finalTarget.rabbit.health, updatedAt: Date.now() } });
       } else if (finalTarget.type === "mouse" && d===0){
         writes.push({ type:"update", ref: ccRef(ID.player(finalTarget.uid)), data: { alive:false, killedBy:"ratking", killedById:king.id, killedAt:Date.now(), updatedAt: Date.now() } });
       }
@@ -5296,41 +5295,34 @@
     requestRender("enemy batch moved");
   }
 
-
-  function countNearbyDisableTargets(x, y, range = 2){
-    let count = 0;
-    for (let yy=y-range; yy<=y+range; yy++) for (let xx=x-range; xx<=x+range; xx++){
-      if (xx<0||yy<0||xx>=gridSize||yy>=gridSize) continue;
-      if (STINK_DISABLED_TOWERS.includes(grid[yy][xx])) count++;
-    }
-    return count;
-  }
-
-  function getBestStinkRatTarget(startX, startY){
-    let best = null;
-    for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++){
-      if (!STINK_DISABLED_TOWERS.includes(grid[y][x])) continue;
-      const score = countNearbyDisableTargets(x, y, 2) * 20 - (Math.abs(startX-x)+Math.abs(startY-y));
-      if (!best || score > best.score) best = { x, y, score };
-    }
-    return best;
-  }
-
   async function hostMoveStinkRats(){
     if (!isHost || !gameStarted) return;
     const writes = [];
     for (const sr of stinkRats){
       if ((sr.health ?? 0) <= 0) { writes.push({ type:"delete", ref: ccRef(ID.stinkRat(sr.id)) }); continue; }
-      const t = getBestStinkRatTarget(sr.x, sr.y);
+      const t = getNearestHostileObjectiveTarget(sr.x, sr.y, false);
       if (!t) continue;
-      const path = findPath(sr.x, sr.y, t.x, t.y, false);
+      const path = t.path;
       if (path && path.length){
         const n = path[0], oldX = sr.x, oldY = sr.y; sr.x = n.x; sr.y = n.y;
         sr.facing = directionFromDelta(oldX, oldY, sr.x, sr.y) || sr.facing || "west";
         writes.push({ type:"update", ref: ccRef(ID.stinkRat(sr.id)), data: { x:sr.x, y:sr.y, facing:sr.facing, updatedAt:Date.now() } });
       }
+
+      const distance = Math.abs(sr.x-t.x) + Math.abs(sr.y-t.y);
+      if (t.type === "structure" && distance === 1){
+        await damageStructure(t.x, t.y, Math.max(1, ratPower));
+      } else if (t.type === "rabbit" && distance === 0){
+        t.rabbit.health -= Math.max(3, ratPower * 2);
+        if (t.rabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(t.rabbit.id)) });
+        else writes.push({ type:"update", ref: ccRef(ID.rabbit(t.rabbit.id)), data: { health:t.rabbit.health, updatedAt:Date.now() } });
+      } else if (t.type === "mouse" && distance === 0){
+        showClawHit(t.x, t.y);
+        writes.push({ type:"update", ref: ccRef(ID.player(t.uid)), data: { alive:false, killedBy:"stinkrat", killedById:sr.id, killedAt:Date.now(), updatedAt:Date.now() } });
+      }
     }
     await commitEnemyBatch(writes);
+    requestRender("enemy batch moved");
   }
 
   async function hostMoveVultures(){
@@ -5343,29 +5335,10 @@
         continue;
       }
 
-      let bestTarget = null;
-      let bestPath = null;
-      for (let y=0; y<gridSize; y++){
-        for (let x=0; x<gridSize; x++){
-          const symbol = grid[y][x];
-          let priority = 99;
-          if (symbol === "🏭") priority = 0;
-          else if (["🔫","🪳","🧱","💎","🗼","🚀","🐦‍🔥","🛠️"].includes(symbol)) priority = 1;
-          if (priority === 99) continue;
-
-          const contactPath = findPath(v.x, v.y, x, y, (nx, ny) => {
-            if (nx===x && ny===y) return false;
-            return !["🧱","🏭","💎","🗼"].includes(grid[ny][nx]);
-          });
-          if (!contactPath || contactPath.length===0) continue;
-
-          const distance = Math.abs(x-v.x) + Math.abs(y-v.y);
-          if (priority < (bestTarget?.priority ?? 99) || (priority === (bestTarget?.priority ?? 99) && distance < (bestTarget?.distance ?? Infinity))){
-            bestTarget = { x, y, priority, distance };
-            bestPath = contactPath;
-          }
-        }
-      }
+      const bestTarget = getNearestHostileObjectiveTarget(v.x, v.y, (x, y) => {
+        return !["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+      });
+      const bestPath = bestTarget?.path || null;
       if (!bestTarget) continue;
 
       if (bestPath && bestPath.length>0){
@@ -5378,8 +5351,15 @@
       }
 
       const distance = Math.abs(v.x-bestTarget.x) + Math.abs(v.y-bestTarget.y);
-      if (distance===1){
+      if (bestTarget.type === "structure" && distance===1){
         await damageStructure(bestTarget.x, bestTarget.y, ratPower * 4);
+      } else if (bestTarget.type === "rabbit" && distance===0){
+        bestTarget.rabbit.health -= ratPower * 4;
+        if (bestTarget.rabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(bestTarget.rabbit.id)) });
+        else writes.push({ type:"update", ref: ccRef(ID.rabbit(bestTarget.rabbit.id)), data: { health:bestTarget.rabbit.health, updatedAt:Date.now() } });
+      } else if (bestTarget.type === "mouse" && distance===0){
+        showClawHit(bestTarget.x, bestTarget.y);
+        writes.push({ type:"update", ref: ccRef(ID.player(bestTarget.uid)), data: { alive:false, killedBy:"vulture", killedById:v.id, killedAt:Date.now(), updatedAt:Date.now() } });
       }
     }
     await commitEnemyBatch(writes);
@@ -5391,27 +5371,11 @@
     for (let i=termites.length-1; i>=0; i--){
       const termite = termites[i];
 
-      let closestWall = null;
-      let minDist = Infinity;
-      for (const wall of [...getStructuresByType("🧱"), ...getStructuresByType("💎")]){
-        const dist = Math.abs(termite.x - wall.x) + Math.abs(termite.y - wall.y);
-        if (dist < minDist){
-          minDist = dist;
-          closestWall = { x: wall.x, y: wall.y };
-        }
-      }
-      if (!closestWall) continue;
-
-      let bestPath = null;
-      for (const cell of structureTargetCells(closestWall.x, closestWall.y)){
-        if (grid[cell.y][cell.x] !== "") continue;
-        const path = findPath(termite.x, termite.y, cell.x, cell.y, (x,y) => {
-          return !["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[y][x]);
-        });
-        if (path && (!bestPath || path.length < bestPath.length)){
-          bestPath = path;
-        }
-      }
+      const closestTarget = getNearestHostileObjectiveTarget(termite.x, termite.y, (x,y) => {
+        return !["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[y][x]);
+      });
+      if (!closestTarget) continue;
+      const bestPath = closestTarget.path;
 
       if (bestPath && bestPath.length>0){
         const next = bestPath[0];
@@ -5421,9 +5385,20 @@
         writes.push({ type:"update", ref: ccRef(ID.termite(termite.id)), data: { x: termite.x, y: termite.y, facing:termite.facing, updatedAt:Date.now() } });
       }
 
-      const distance = Math.abs(termite.x-closestWall.x) + Math.abs(termite.y-closestWall.y);
-      if (distance===1){
-        await damageStructure(closestWall.x, closestWall.y, 40);
+      const distance = Math.abs(termite.x-closestTarget.x) + Math.abs(termite.y-closestTarget.y);
+      const reachedTarget = (closestTarget.type === "structure" && distance === 1) ||
+        (closestTarget.type !== "structure" && distance === 0);
+      if (reachedTarget){
+        if (closestTarget.type === "structure"){
+          await damageStructure(closestTarget.x, closestTarget.y, 40);
+        } else if (closestTarget.type === "rabbit"){
+          closestTarget.rabbit.health -= 40;
+          if (closestTarget.rabbit.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rabbit(closestTarget.rabbit.id)) });
+          else writes.push({ type:"update", ref: ccRef(ID.rabbit(closestTarget.rabbit.id)), data: { health:closestTarget.rabbit.health, updatedAt:Date.now() } });
+        } else if (closestTarget.type === "mouse"){
+          showClawHit(closestTarget.x, closestTarget.y);
+          writes.push({ type:"update", ref: ccRef(ID.player(closestTarget.uid)), data: { alive:false, killedBy:"termite", killedById:termite.id, killedAt:Date.now(), updatedAt:Date.now() } });
+        }
         writes.push({ type:"delete", ref: ccRef(ID.termite(termite.id)) });
         termites.splice(i,1);
       }
