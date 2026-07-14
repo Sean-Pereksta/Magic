@@ -72,6 +72,7 @@
     .asset-sprite.sprite-vulture{width:52px;height:52px;transform:translateY(-16px)}
     .asset-sprite.sprite-flea,.asset-sprite.sprite-termite{width:38px;height:38px;transform:translateY(-6px)}
     .structure-art{position:absolute;inset:-12px -12px -4px;width:58px;height:58px;object-fit:contain;image-rendering:pixelated;z-index:5;pointer-events:none}
+    .structure-art.cheese-beacon-tint{filter:sepia(.32) saturate(1.35) hue-rotate(348deg) brightness(1.12) drop-shadow(0 0 7px rgba(250,204,21,.42))}
     .iso-structure.tall .structure-art{inset:-16px -15px -2px;width:64px;height:64px}
     .iso-structure.wide .structure-art{inset:-12px -13px -3px;width:62px;height:62px}
     .building-card-art{width:38px;height:38px;object-fit:contain;image-rendering:pixelated;float:right;margin:-4px 0 4px 8px}
@@ -1549,7 +1550,7 @@
   const usernameNorm = username.toLowerCase();
 
   const ASSET_DIR = "/graphics/mousegraphics";
-  const ASSET_MANIFEST_VERSION = 1;
+  const ASSET_MANIFEST_VERSION = 2;
   const CARDINAL_DIRECTIONS = ["up", "down", "left", "right"];
   const CREATURE_ASSET_NAMES = {
     mouse:"mouse", cat:"cat", rat:"rat", stinkrat:"stink rat", ox:"bull",
@@ -1560,9 +1561,11 @@
     type,
     Object.fromEntries(CARDINAL_DIRECTIONS.map(direction => [direction, `${ASSET_DIR}/${fileBase} ${direction}.png`]))
   ]));
+  const GENERATOR_OFF_ASSET = `${ASSET_DIR}/generator off.png`;
+  const GENERATOR_ON_ASSET = `${ASSET_DIR}/generator on.png`;
   const STRUCTURE_ASSETS = {
     "🧱":`${ASSET_DIR}/wall.png`, "🔫":`${ASSET_DIR}/turret.png`, "🪳":`${ASSET_DIR}/flea nest.png`,
-    "🏭":`${ASSET_DIR}/generator.png`, "💎":`${ASSET_DIR}/super wall.png`, "🗼":`${ASSET_DIR}/cheese beacon.png`,
+    "🏭":GENERATOR_OFF_ASSET, "💎":`${ASSET_DIR}/super wall.png`, "🗼":`${ASSET_DIR}/cheese beacon.png`,
     "🐦‍🔥":`${ASSET_DIR}/phoenix cheese.png`, "🚀":`${ASSET_DIR}/rocket tower.png`, "🛠️":`${ASSET_DIR}/repair station.png`,
     "🧀":`${ASSET_DIR}/cheese farm.png`, "🐇":`${ASSET_DIR}/rabbit den.png`, "⚡":`${ASSET_DIR}/tesla tower.png`,
     "☄️":`${ASSET_DIR}/ultra laser.png`, "🛡️":`${ASSET_DIR}/shield tower.png`, "🟢":`${ASSET_DIR}/slime tower.png`,
@@ -1576,6 +1579,7 @@
   const ASSET_MANIFEST = [...new Set([
     ...Object.values(CREATURE_ASSETS).flatMap(directions => Object.values(directions)),
     ...Object.values(STRUCTURE_ASSETS),
+    GENERATOR_ON_ASSET,
     ...Object.values(TERRAIN_ASSETS)
   ])];
   const resolvedAssetUrls = new Map();
@@ -2164,15 +2168,16 @@
   const WIDE_STRUCTURE_SYMBOLS = new Set(["🧀","🧱"]);
   const STRUCTURE_SYMBOL_SET = new Set(Object.keys(STRUCTURE_VISUALS));
   function getStructureVisualClass(symbol){ return STRUCTURE_VISUALS[symbol] || ""; }
-  function renderStructureIso(symbol, x, y, health, shield){
+  function renderStructureIso(symbol, x, y, health, shield, opts = {}){
     const visual = getStructureVisualClass(symbol);
     const wrap = document.createElement("div");
     const baseVisual = visual || "iso-unknown-structure";
     wrap.className = `iso-structure ${baseVisual} ${TALL_STRUCTURE_SYMBOLS.has(symbol) ? "tall" : ""} ${WIDE_STRUCTURE_SYMBOLS.has(symbol) ? "wide" : ""}`.trim();
     wrap.innerHTML = '<div class="iso-shadow"></div>';
-    const artPath = STRUCTURE_ASSETS[symbol];
+    const artPath = symbol === "🏭" && opts.generatorOn ? GENERATOR_ON_ASSET : STRUCTURE_ASSETS[symbol];
     if (artPath && !failedAssetPaths.has(artPath)){
-      wrap.appendChild(makeAssetImage(artPath, "structure-art", BUILD_DEFS[Object.keys(BUILD_DEFS).find(id => BUILD_DEFS[id].symbol === symbol)]?.name || "Structure"));
+      const art = makeAssetImage(artPath, `structure-art${opts.cheeseBeaconTint ? " cheese-beacon-tint" : ""}`, BUILD_DEFS[Object.keys(BUILD_DEFS).find(id => BUILD_DEFS[id].symbol === symbol)]?.name || "Structure");
+      wrap.appendChild(art);
     } else {
       wrap.insertAdjacentHTML("beforeend", '<div class="base"></div><div class="body"></div><div class="top"></div><div class="side side-left"></div><div class="side side-right"></div>');
       const unknownLabel = document.createElement("div");
@@ -3425,8 +3430,8 @@
 
   function renderIsoStructures(entityLayer, structureEntries){
     for (const entry of structureEntries){
-      const {x,y,symbol,hp,shield} = entry;
-      const structureEl = renderStructureIso(symbol, x, y, hp, shield);
+      const {x,y,symbol,hp,shield,generatorOn,cheeseBeaconTint} = entry;
+      const structureEl = renderStructureIso(symbol, x, y, hp, shield, { generatorOn, cheeseBeaconTint });
       if (structureEl){ positionIsoElement(structureEl, x, y, 8); entityLayer.appendChild(structureEl); }
     }
   }
@@ -3485,6 +3490,7 @@
     // beacon boosted tiles
     const beaconBoosted = new Set();
     const beaconWallBoosted = new Set();
+    const beaconTinted = new Set();
     for (const beacon of getStructuresByType("🗼")){
       const x = beacon.x, y = beacon.y;
           for (let dy=-2; dy<=2; dy++){
@@ -3494,6 +3500,7 @@
                 const tSymbol = grid[ty][tx];
                 if (["🔫","🏭","🪳","🚀"].includes(tSymbol)) beaconBoosted.add(`${tx}_${ty}`);
                 if (["🧱","💎"].includes(tSymbol)) beaconWallBoosted.add(`${tx}_${ty}`);
+                if (STRUCTURE_SYMBOL_SET.has(tSymbol) && tSymbol !== "🗼") beaconTinted.add(`${tx}_${ty}`);
               }
             }
           }
@@ -3576,7 +3583,11 @@
           if (STRUCTURE_SYMBOL_SET.has(symbol)){
             const hp = structureHealth[`${x}_${y}`] ?? (STRUCTURE_MAX_HP[symbol] ?? 1);
             const shield = structureShields[`${x}_${y}`] ?? 0;
-            structureEntries.push({x,y,symbol,hp,shield});
+            structureEntries.push({
+              x,y,symbol,hp,shield,
+              generatorOn: symbol === "🏭" && generatorTriggers.has(key),
+              cheeseBeaconTint: beaconTinted.has(key)
+            });
           }
           if (objectiveState.supplyDrop?.active && objectiveState.supplyDrop.x===x && objectiveState.supplyDrop.y===y){
             const obj = document.createElement("div"); obj.className = "iso-object iso-objective iso-supply"; positionIsoElement(obj, x, y, 7); entityLayer.appendChild(obj);
