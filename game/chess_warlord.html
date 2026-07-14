@@ -395,6 +395,7 @@ let legalMoves = [];
 let spawnSelection = null;
 let lastSpawnPanelSignature = '';
 let lastSpawnLiveValues = null;
+let lastSpawnValuesSignature = '';
 let pressedSpawnCard = null;
 let suppressNextSpawnClick = false;
 let showTerritory = true;
@@ -409,6 +410,10 @@ let floatingText = [];
 let localActionFx = [];
 // Local-only destruction scenes are reconstructed from authoritative piece removals, so every client sees the same capture as a crumble without extra Firebase traffic.
 let destructionFx = [];
+let backgroundGradient = null;
+const minimapBaseCanvas = document.createElement('canvas');
+const minimapBaseCtx = minimapBaseCanvas.getContext('2d');
+let minimapBaseState = {boardRef:null,revision:-1,width:0,height:0};
 let chosenFactionId = 'crownward';
 let chosenDifficultyId = 'normal';
 let selectedSoloAiCount = 7;
@@ -820,6 +825,7 @@ function renderEloProfileLine(){
 function markStateDirty(){ if(gameStarted && !applyingRemote) stateDirty = true; }
 function invalidateSupplyDistanceCache(){
   landRevision++;
+  ownerCountsDirty = true;
   supplyDistanceCache.clear();
 }
 function markLandDirty(){
@@ -3040,6 +3046,7 @@ let board = [];
 let pieces = [];
 let factions = [];
 let ownerCounts = new Map();
+let ownerCountsDirty = true;
 let idCounter = 1;
 let gameStats = {captures:0, kingsTaken:0, startedAt:0};
 let solarChannelLinks = [];
@@ -3080,6 +3087,11 @@ function resize(){
   const miniH = Math.max(1, mini.clientHeight || 1);
   mini.width = Math.floor(miniW*DPR); mini.height = Math.floor(miniH*DPR);
   mctx.setTransform(DPR,0,0,DPR,0,0);
+  backgroundGradient = ctx.createLinearGradient(0,0,0,innerHeight);
+  backgroundGradient.addColorStop(0,'#091426');
+  backgroundGradient.addColorStop(.55,'#07101c');
+  backgroundGradient.addColorStop(1,'#050813');
+  minimapBaseState = {boardRef:null,revision:-1,width:0,height:0};
 }
 function setMinimapOpen(open, persist=true){
   minimapOpen = !!open;
@@ -3685,8 +3697,11 @@ function createBaseWall(factionIdx,cx,cy){
   markLandDirty();
 }
 function recalcOwnerCounts(){
+  if(!ownerCountsDirty && board.length===BOARD_W*BOARD_H) return ownerCounts;
   ownerCounts = new Map();
   for(const t of normalizeBoard()){ if(t.owner!==null) ownerCounts.set(t.owner,(ownerCounts.get(t.owner)||0)+1); }
+  ownerCountsDirty = false;
+  return ownerCounts;
 }
 function claimTile(faction,x,y,glow=.35,captureKind='normal'){
   if(!inBounds(x,y)) return false;
@@ -5633,6 +5648,7 @@ function ensureSpawnCardStructure(){
   const signature=spawnPanelStructureSignature(f);
   if(signature===lastSpawnPanelSignature) return;
   lastSpawnPanelSignature=signature;
+  lastSpawnValuesSignature='';
   spawnPanel.innerHTML='';
   if(playerDefeated){
     const defeated=document.createElement('div');
@@ -5673,6 +5689,13 @@ function updateSpawnCardValues(values=lastSpawnLiveValues){
   }
   lastSpawnLiveValues=values;
   const choices=Array.isArray(f.spawnChoices) ? f.spawnChoices : [];
+  const valueSignature=[
+    f.id, values.tokens, values.progress.toFixed(1), values.remaining,
+    values.tier.tier, values.tier.label, values.tier.basis,
+    spawnSelection, choices.join(',')
+  ].join('|');
+  if(valueSignature===lastSpawnValuesSignature) return;
+  lastSpawnValuesSignature=valueSignature;
   if(spawnSelection!==null){
     const selectedType=choices[spawnSelection];
     if(!selectedType || values.tokens<spawnTokenCost(selectedType)){
@@ -5711,6 +5734,7 @@ function updateSpawnCardValues(values=lastSpawnLiveValues){
 }
 function renderSpawnCards(){
   lastSpawnPanelSignature='';
+  lastSpawnValuesSignature='';
   ensureSpawnCardStructure();
   updateSpawnCardValues();
 }
@@ -5768,22 +5792,28 @@ function patternName(p){
   const names={building:'Building',pawn:'Pawn+',shadepawn:'Shade Blink',blinkpawn:'Blink Pawn',king:'King',general:'General',marshal:'Marshal Bend',tower:'Territory Tower',ballista:'Ballista Tower',aquanaut:'Aquanaut',shieldbearer:'Shieldbearer',rook:'Rook',rookShort:'Short Rook',bishop:'Bishop',bishopLong:'Long Bishop',queen:'Queen',knight:'Knight',cinderjack:'Cinder Jump',cinderarchon:'Cinder Archon',flamerunner:'Flame Rush',eagle:'Eagle Leap',lancer:'Lancer',scout:'Scout',thornguard:'Thorn Guard',stagrunner:'Stag Jump',vinehook:'Vinehook',assassin:'Assassin',shadowstepper:'Shadow Step',nightblade:'Nightblade',wraith:'Wraith',umbralbishop:'Umbral Bishop',warden:'Warden',paladin:'Paladin',sunacolyte:'Sun Skip',dawnblade:'Dawnblade',lightlancer:'Light Lancer',radiantbishop:'Radiant Jump',sunherald:'Sun Herald',frostpawn:'Frost Pawn',icespear:'Ice Spear',glacierguard:'Glacier Guard',frostbishop:'Frost Bishop',sledknight:'Sled Knight',mirrorskater:'Mirror Skate',voidstrider:'Void Strider',citadel:'Citadel Walker',archon:'Dawn Archon'};
   return names[p]||p;
 }
+function setTextIfChanged(el,text){
+  if(el && el.textContent!==String(text)) el.textContent=String(text);
+}
+function setStyleIfChanged(el,property,value){
+  if(el && el.style[property]!==value) el.style[property]=value;
+}
 function updateHUD(){
   if(!factions[PLAYER]) return;
   const f=factions[PLAYER];
   const pct=clamp(f.spawnMeter||0,0,99.999);
   const tokens=Math.max(0,Math.floor(f.spawnTokens||0));
-  spawnFill.style.width=pct.toFixed(0)+'%';
+  setStyleIfChanged(spawnFill,'width',pct.toFixed(0)+'%');
   recalcOwnerCounts();
   const territory = ownerCounts.get(PLAYER)||0;
   const army = pieces.filter(p=>p.alive&&p.faction===PLAYER).length;
   const spawnRate = spawnRateForFaction(f, territory, army);
   const tier = spawnTierInfoForFaction(f, territory);
   const remaining = Math.max(1,Math.ceil((100-pct)/Math.max(.01,spawnRate)));
-  spawnPct.textContent = `${tokens} token${tokens===1?'':'s'} · ${pct.toFixed(0)}%`;
-  if(quickPct) quickPct.textContent = playerDefeated ? 'Defeated' : `◆ ${tokens} · ${remaining}s`;
-  scoreLine.textContent=`Territory ${territory} · Kills ${f.piecesTaken||0} · Tokens ${tokens}`;
-  factionLine.textContent=`${displayNameForFaction(PLAYER)} · ${f.name}`;
+  setTextIfChanged(spawnPct,`${tokens} token${tokens===1?'':'s'} · ${pct.toFixed(0)}%`);
+  setTextIfChanged(quickPct,playerDefeated ? 'Defeated' : `◆ ${tokens} · ${remaining}s`);
+  setTextIfChanged(scoreLine,`Territory ${territory} · Kills ${f.piecesTaken||0} · Tokens ${tokens}`);
+  setTextIfChanged(factionLine,`${displayNameForFaction(PLAYER)} · ${f.name}`);
   updateSpawnCardValues({tokens,progress:pct,remaining,tier});
   updateCheckBanner();
 }
@@ -5821,8 +5851,8 @@ function updateCheckBanner(){
       currentCheckWarning='CHECK: your king is threatened by '+names+(attackers.length>2?' +'+(attackers.length-2):'');
     } else currentCheckWarning='';
   }
-  checkBanner.textContent=currentCheckWarning;
-  checkBanner.style.display=currentCheckWarning?'block':'none';
+  setTextIfChanged(checkBanner,currentCheckWarning);
+  setStyleIfChanged(checkBanner,'display',currentCheckWarning?'block':'none');
 }
 function roadCooldownNotice(piece){
   const f=factions[piece?.faction];
@@ -5914,14 +5944,15 @@ function visibleBoardBounds(pad=2){
 function gameTick(dt){
   if(!gameStarted || paused) return;
   tickTime += dt;
-  for(const t of normalizeBoard()){ t.glow = Math.max(0,t.glow-dt*.7); }
   updateSolarBeaconChannels(dt, canAuthoritativelyWriteState());
+  const pendingActionIds = pendingPlayerActions.length ? new Set(pendingPlayerActions.map(a=>a.actionId)) : null;
+  const frameNowMs = Date.now();
   for(const p of pieces){
     if(!p.alive) continue;
     const pred = p.predictedMove;
-    if(pred && pendingPlayerActions.some(a=>a.actionId===pred.actionId)){
+    if(pred && pendingActionIds?.has(pred.actionId)){
       const denom = Math.max(1, pred.endMs - pred.startMs);
-      const u = clamp((Date.now() - pred.startMs) / denom, 0, 1);
+      const u = clamp((frameNowMs - pred.startMs) / denom, 0, 1);
       p.px = lerp(pred.fromX, pred.toX, u);
       p.py = lerp(pred.fromY, pred.toY, u);
     } else if(pred){
@@ -6463,6 +6494,14 @@ function nearestEnemy(x,y,faction,maxD=999){
   }
   return best;
 }
+function nearestPieceFromList(list,x,y){
+  let best=null,bd=Infinity;
+  for(const p of list){
+    const d=dist2(x,y,p.x,p.y);
+    if(d<bd){bd=d;best=p;}
+  }
+  return best;
+}
 function nearestOwnedFrontier(x,y,faction){
   let best=null,bd=999999;
   for(const t of normalizeBoard()){
@@ -6501,7 +6540,7 @@ function aiMovePiece(f,p){
       if(enemyKing) s += Math.max(0,22-Math.sqrt(dist2(m.x,m.y,enemyKing.x,enemyKing.y))*1.7);
     }
     if(pieceDefs[p.type].aura) s += 4;
-    const nearestKing=kingTargets.sort((a,b)=>dist2(m.x,m.y,a.x,a.y)-dist2(m.x,m.y,b.x,b.y))[0];
+    const nearestKing=nearestPieceFromList(kingTargets,m.x,m.y);
     if(nearestKing){
       const d=Math.sqrt(dist2(m.x,m.y,nearestKing.x,nearestKing.y));
       s += (style==='aggressive'||style==='assassin') ? Math.max(0,34-d*1.8) : Math.max(0,15-d);
@@ -6526,7 +6565,7 @@ function aiMovePiece(f,p){
         const threatened = enemyThreatensSquare(f.idx,m.x,m.y,p.id);
         if(kingInCheck) s += threatened ? -900 : 420;
         else if(threatened) s -= 260;
-        const nearestAttacker = attackers.sort((a,b)=>dist2(m.x,m.y,a.x,a.y)-dist2(m.x,m.y,b.x,b.y))[0];
+        const nearestAttacker = nearestPieceFromList(attackers,m.x,m.y);
         if(nearestAttacker && !threatened) s += Math.sqrt(dist2(m.x,m.y,nearestAttacker.x,nearestAttacker.y))*9;
       }
     }
@@ -6555,7 +6594,7 @@ function aiSpawn(f){
   for(let i=0;i<Math.min(80,tiles.length);i++){
     const t=tiles[Math.floor(Math.random()*tiles.length)];
     let s=Math.random()*5;
-    const e=enemies.sort((a,b)=>dist2(t.x,t.y,a.x,a.y)-dist2(t.x,t.y,b.x,b.y))[0];
+    const e=nearestPieceFromList(enemies,t.x,t.y);
     if(e){ const d=Math.sqrt(dist2(t.x,t.y,e.x,e.y)); s += f.aiStyle==='defensive' ? -Math.abs(d-9) : Math.max(0,22-d); }
     for(const [dx,dy] of ORTHO){ if(inBounds(t.x+dx,t.y+dy)&&tile(t.x+dx,t.y+dy).owner!==f.idx) s+=8; }
     if(pieceDefs[type].amphibious && tile(t.x,t.y).type==='water') s+=12;
@@ -6592,9 +6631,11 @@ function draw(){
   drawMinimap();
 }
 function drawBackground(){
-  const g=ctx.createLinearGradient(0,0,0,innerHeight);
-  g.addColorStop(0,'#091426'); g.addColorStop(.55,'#07101c'); g.addColorStop(1,'#050813');
-  ctx.fillStyle=g; ctx.fillRect(0,0,innerWidth,innerHeight);
+  if(!backgroundGradient){
+    backgroundGradient=ctx.createLinearGradient(0,0,0,innerHeight);
+    backgroundGradient.addColorStop(0,'#091426');backgroundGradient.addColorStop(.55,'#07101c');backgroundGradient.addColorStop(1,'#050813');
+  }
+  ctx.fillStyle=backgroundGradient; ctx.fillRect(0,0,innerWidth,innerHeight);
   ctx.globalAlpha=.2;
   for(let i=0;i<40;i++){
     const x=(i*193+Math.sin(now()*0.05+i)*60)%innerWidth;
@@ -7400,9 +7441,16 @@ function actorDepth(x,y){
   return y * 2048 + x;
 }
 function drawActors(){
-  const visiblePieces = pieces.filter(p=>p.alive && (p.faction===PLAYER || !isShadowFoggedForPlayer(p.x,p.y,PLAYER)));
-  const labelIds = computeNameLabelPieceIds(visiblePieces);
   const {left,top,right,bottom}=visibleBoardBounds(3);
+  // Buildings and labels can extend beyond their tile, so keep a generous margin while avoiding work for distant armies.
+  const piecePad=4;
+  const visiblePieces = pieces.filter(p=>{
+    if(!p.alive) return false;
+    const px=p.px ?? p.x, py=p.py ?? p.y;
+    if(px<left-piecePad || px>right+piecePad || py<top-piecePad || py>bottom+piecePad) return false;
+    return p.faction===PLAYER || !isShadowFoggedForPlayer(p.x,p.y,PLAYER);
+  });
+  const labelIds = computeNameLabelPieceIds(visiblePieces);
   const actors = [];
   for(let y=top;y<=bottom;y++) for(let x=left;x<=right;x++){
     if(!inBounds(x,y)) continue;
@@ -7994,22 +8042,41 @@ function drawScreenEffects(){
     ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='900 42px Inter'; ctx.fillText('PAUSED',innerWidth/2,innerHeight/2);
   }
 }
+function ensureMinimapBase(mw,mh){
+  const width=Math.max(1,Math.ceil(mw)),height=Math.max(1,Math.ceil(mh));
+  const cached=minimapBaseState;
+  if(cached.boardRef===board && cached.revision===landRevision && cached.width===width && cached.height===height) return minimapBaseCanvas;
+  minimapBaseCanvas.width=width;
+  minimapBaseCanvas.height=height;
+  minimapBaseCtx.clearRect(0,0,width,height);
+  minimapBaseCtx.fillStyle='rgba(4,8,15,.96)';
+  minimapBaseCtx.fillRect(0,0,width,height);
+  const sx=width/BOARD_W,sy=height/BOARD_H;
+  for(const t of normalizeBoard()){
+    if(t.owner!==null){
+      minimapBaseCtx.fillStyle=factions[t.owner]?.color || '#fff';
+      minimapBaseCtx.globalAlpha=t.owner===PLAYER?.90:.72;
+    }else{
+      minimapBaseCtx.fillStyle=terrainMiniColor(t.type);
+      minimapBaseCtx.globalAlpha=.42;
+    }
+    minimapBaseCtx.fillRect(t.x*sx,t.y*sy,Math.ceil(sx)+.2,Math.ceil(sy)+.2);
+  }
+  minimapBaseCtx.globalAlpha=1;
+  minimapBaseState={boardRef:board,revision:landRevision,width,height};
+  return minimapBaseCanvas;
+}
 function drawMinimap(){
   if(!minimapOpen || !mini || !mctx) return;
   const mw=mini.clientWidth, mh=mini.clientHeight;
   if(mw<2 || mh<2) return;
   mctx.clearRect(0,0,mw,mh);
-  mctx.fillStyle='rgba(4,8,15,.96)'; mctx.fillRect(0,0,mw,mh);
+  mctx.globalAlpha=1;
+  mctx.drawImage(ensureMinimapBase(mw,mh),0,0,mw,mh);
   const sx=mw/BOARD_W, sy=mh/BOARD_H;
   let leader=null,leaderLand=-1;
   for(const f of factions){const land=ownerCounts.get(f.idx)||0;if(f.alive&&land>leaderLand){leader=f;leaderLand=land;}}
-  if(minimapTitle) minimapTitle.textContent=leader ? `War Map · ${leader.short}` : 'War Map';
-  for(const t of normalizeBoard()){
-    if(t.owner!==null){ mctx.fillStyle=factions[t.owner]?.color || '#fff'; mctx.globalAlpha=t.owner===PLAYER?.90:.72; }
-    else { mctx.fillStyle=terrainMiniColor(t.type); mctx.globalAlpha=.42; }
-    mctx.fillRect(t.x*sx,t.y*sy,Math.ceil(sx)+.2,Math.ceil(sy)+.2);
-    if(t.glow>0){mctx.globalAlpha=Math.min(.7,.18+t.glow*.5);mctx.fillStyle='#fff6bf';mctx.fillRect(t.x*sx-1,t.y*sy-1,Math.max(2,sx+2),Math.max(2,sy+2));}
-  }
+  setTextIfChanged(minimapTitle,leader ? `War Map · ${leader.short}` : 'War Map');
   mctx.globalAlpha=1;
   for(const s of shrines){
     const owner=shrineController(s);
