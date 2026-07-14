@@ -1484,7 +1484,8 @@
     collection,
     getDocs,
     runTransaction,
-    writeBatch
+    writeBatch,
+    increment
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -1688,10 +1689,182 @@
   const ccCol    = collection(db, `lobbies/${gameId}/crowncouncil`);
   const ccRef    = (id) => doc(db, `lobbies/${gameId}/crowncouncil/${id}`);
 
+  let soloMode = false;
+  let soloRuntimeActivated = false;
+  let matchId = null;
+  let lastLobbyMaintenanceAt = 0;
+  let lastLobbyStatus = "";
+  let lastLobbyActiveCount = -1;
+  let pendingStateRuntimePatch = null;
+  let stateRuntimeWritePromise = null;
+  let lastStateRuntimeWriteAt = 0;
+  const lastRuntimePatchByShape = new Map();
+
+  function getRuntimeEntityList(docId){
+    if (docId.startsWith("rat_")) return rats;
+    if (docId.startsWith("ox_")) return oxen;
+    if (docId.startsWith("rabbit_")) return rabbits;
+    if (docId.startsWith("ratking_")) return ratKings;
+    if (docId.startsWith("vulture_")) return vultures;
+    if (docId.startsWith("termite_")) return termites;
+    if (docId.startsWith("stinkrat_")) return stinkRats;
+    if (docId.startsWith("flea_") || docId.startsWith("pflea_")) return fleas;
+    return null;
+  }
+
+  function findRuntimeEntity(list, docId, data = {}){
+    return list?.find(entity => entity && (
+      entity.docId === docId ||
+      (data.id && entity.id === data.id) ||
+      docId.endsWith(`_${entity.id}`)
+    ));
+  }
+
+  function applyLocalRuntimeMutation(kind, ref, data = {}){
+    const id = ref?.id || "";
+    if (!id) return;
+    if (id === ID.STATE){
+      if (data.cat){
+        catPos = { x:data.cat.x ?? catPos.x, y:data.cat.y ?? catPos.y };
+        if (typeof data.cat.health === "number") catHealth = data.cat.health;
+        if (data.cat.facing) catFacingDir = data.cat.facing;
+      }
+      if (typeof data.catPower === "number") catPower = data.catPower;
+      if (typeof data.ratPower === "number") ratPower = data.ratPower;
+      if (typeof data.nextRatWave === "number") nextRatWaveAt = data.nextRatWave;
+      if (typeof data.catWeakenedUntil === "number") catWeakenedUntil = data.catWeakenedUntil;
+      if (typeof data.matchId === "string") matchId = data.matchId;
+      if (data.objectives) Object.assign(objectiveState, data.objectives);
+      return;
+    }
+    if (id.startsWith("player_")){
+      const playerUid = data.uid || id.slice("player_".length);
+      const previous = players[playerUid] || { uid:playerUid, x:1, y:1, alive:true, online:true };
+      players[playerUid] = { ...previous, ...data };
+      if (previous.alive !== false && players[playerUid].alive === false) setTileEffect(players[playerUid].x, players[playerUid].y, "blood");
+      if (playerUid === uid){
+        playerPos = { x:players[playerUid].x ?? playerPos.x, y:players[playerUid].y ?? playerPos.y };
+        playerFacing = players[playerUid].facing || playerFacing;
+        cheeseCount = players[playerUid].cheese ?? cheeseCount;
+        isAlive = players[playerUid].alive !== false;
+      }
+      return;
+    }
+    if (id.startsWith("structure_")){
+      const parts = id.split("_");
+      const x = Number(data.x ?? parts[1]), y = Number(data.y ?? parts[2]);
+      const key = `${x}_${y}`;
+      if (kind === "delete"){
+        const symbol = grid[y]?.[x];
+        if (grid[y] && STRUCTURE_TYPES.has(symbol)) grid[y][x] = "";
+        delete structureHealth[key];
+        delete structureShields[key];
+        structures.delete(key);
+        removeFromStructureIndex(x, y);
+        setTileEffect(x, y, "rubble");
+      } else {
+        const symbol = data.type || grid[y]?.[x];
+        if (grid[y] && symbol) grid[y][x] = symbol;
+        if (typeof data.health === "number") structureHealth[key] = data.health;
+        if (typeof data.shield === "number") structureShields[key] = Math.max(0, data.shield);
+        const health = structureHealth[key] ?? STRUCTURE_MAX_HP[symbol] ?? 1;
+        structures.set(key, { x, y, type:symbol, health });
+        addToStructureIndex(x, y, symbol, health);
+      }
+      markBlockedGridDirty();
+      markStructureIndexDirty();
+      return;
+    }
+    if (id.startsWith("trap_")){
+      const parts = id.split("_");
+      const x = Number(data.x ?? parts[1]), y = Number(data.y ?? parts[2]);
+      traps = traps.filter(trap => !(trap.x === x && trap.y === y));
+      if (kind !== "delete") traps.push({ x, y, ...data });
+      if (grid[y]) grid[y][x] = kind === "delete" ? "" : "🪤";
+      return;
+    }
+    if (id.startsWith("cheese_")){
+      const parts = id.split("_");
+      const x = Number(data.x ?? parts[1]), y = Number(data.y ?? parts[2]);
+      if (grid[y]) grid[y][x] = kind === "delete" ? "" : CHEESE_PICKUP;
+      if (kind === "delete") delete cheesePickupExpiryByCell[`${x}_${y}`];
+      else if (data.expiresAt) cheesePickupExpiryByCell[`${x}_${y}`] = data.expiresAt;
+      return;
+    }
+    if (id.startsWith("wallheal_")){
+      const key = `${data.x}_${data.y}`;
+      const symbol = grid[data.y]?.[data.x];
+      if (["🧱","💎"].includes(symbol)) structureHealth[key] = Math.min(STRUCTURE_MAX_HP[symbol] || 80, (structureHealth[key] || 0) + Math.max(0, data.amount || 4));
+      return;
+    }
+    const list = getRuntimeEntityList(id);
+    if (!list) return;
+    const existing = findRuntimeEntity(list, id, data);
+    if (kind === "delete"){
+      if (existing) setTileEffect(existing.x, existing.y, "blood");
+      const index = existing ? list.indexOf(existing) : -1;
+      if (index >= 0) list.splice(index, 1);
+      return;
+    }
+    if (existing) Object.assign(existing, data, { docId:existing.docId || id });
+    else list.push({ ...data, id:data.id || id, docId:id });
+  }
+
+  async function runtimeSetDoc(ref, data, options){
+    if (!soloMode) return setDoc(ref, data, options);
+    applyLocalRuntimeMutation("set", ref, data);
+  }
+
+  async function runtimeUpdateDoc(ref, data){
+    if (soloMode){
+      applyLocalRuntimeMutation("update", ref, data);
+      return;
+    }
+    if (gameStarted && ref?.id === ID.STATE){
+      const stableData = Object.fromEntries(Object.entries(data).filter(([key]) => key !== "updatedAt"));
+      const shape = Object.keys(stableData).sort().join("|");
+      const signature = JSON.stringify(stableData);
+      const previous = lastRuntimePatchByShape.get(shape);
+      if (previous?.signature === signature && Date.now() - previous.at < 1200) return;
+      lastRuntimePatchByShape.set(shape, { signature, at:Date.now() });
+
+      pendingStateRuntimePatch = {
+        ...(pendingStateRuntimePatch || {}),
+        ...data,
+        ...((pendingStateRuntimePatch?.cat || data.cat) ? { cat:{ ...(pendingStateRuntimePatch?.cat || {}), ...(data.cat || {}) } } : {}),
+        ...((pendingStateRuntimePatch?.objectives || data.objectives) ? { objectives:{ ...(pendingStateRuntimePatch?.objectives || {}), ...(data.objectives || {}) } } : {})
+      };
+      if (!stateRuntimeWritePromise){
+        stateRuntimeWritePromise = (async () => {
+          while (pendingStateRuntimePatch){
+            const waitMs = Math.max(0, 250 - (Date.now() - lastStateRuntimeWriteAt));
+            if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+            const patch = pendingStateRuntimePatch;
+            pendingStateRuntimePatch = null;
+            await updateDoc(ref, patch);
+            lastStateRuntimeWriteAt = Date.now();
+          }
+        })().finally(() => { stateRuntimeWritePromise = null; });
+      }
+      return stateRuntimeWritePromise;
+    }
+    return updateDoc(ref, data);
+  }
+
+  async function runtimeDeleteDoc(ref){
+    if (!soloMode) return deleteDoc(ref);
+    applyLocalRuntimeMutation("delete", ref, {});
+  }
+
 
 
   async function commitEnemyBatch(actions) {
     if (!actions.length) return;
+
+    if (soloMode){
+      for (const action of actions) applyLocalRuntimeMutation(action.type, action.ref, action.data || {});
+      return;
+    }
 
     const batch = writeBatch(db);
 
@@ -1837,10 +2010,12 @@
   }
 
   const ENEMY_CHEESE_DROP_TTL_MS = 30000;
-  const HOST_HEARTBEAT_MS = 4000;
-  const HOST_STALE_MS = 12000;
-  const PLAYER_HEARTBEAT_MS = 8000;
-  const PLAYER_STALE_MS = 24000;
+  const HOST_HEARTBEAT_MS = 6000;
+  const HOST_STALE_MS = 20000;
+  const PLAYER_HEARTBEAT_MS = 12000;
+  const PLAYER_STALE_MS = 40000;
+  const SELECTION_PLAYER_STALE_MS = 24000;
+  const PLAYER_SYNC_MIN_INTERVAL_MS = 120;
   const STALE_ENEMY_MS = 30000;
   const DEAD_ENEMY_CLEANUP_MS = 1500;
   const TILE_EFFECT_MS = 5000;
@@ -1967,6 +2142,8 @@
   const BASE_BUILD_ORDER = [1,2,3,4,5,6,7,8];
   let mobileBuildOrder = [...BASE_BUILD_ORDER];
   let playerWins = 0;
+  let playerUserDocId = null;
+  let winAwardPromise = null;
   let selectedBuildSlots = [];
   let mySelectionDone = false;
   let selectionStates = {};
@@ -2274,7 +2451,7 @@
 
     // Only the authoritative host creates shared pickup documents.
     if (isHost){
-      setDoc(ccRef(ID.cheese(x, y)), {
+      runtimeSetDoc(ccRef(ID.cheese(x, y)), {
         kind:"cheese",
         x,
         y,
@@ -2296,7 +2473,7 @@
       const x = Number(xs), y = Number(ys);
       if (x>=0 && x<gridSize && y>=0 && y<gridSize && isCheesePickupCell(grid[y][x])){
         grid[y][x] = "";
-        deleteDoc(ccRef(ID.cheese(x, y))).catch(()=>{});
+        runtimeDeleteDoc(ccRef(ID.cheese(x, y))).catch(()=>{});
         removed = true;
       }
       delete cheesePickupExpiryByCell[key];
@@ -2431,8 +2608,36 @@
     }
   }
 
+  function activateSoloRuntime(){
+    if (!soloMode || soloRuntimeActivated) return;
+    soloRuntimeActivated = true;
+    stopPlayerHeartbeat();
+    pendingPlayerPayload = null;
+    cleanupFirebaseListeners();
+    const me = players[uid] || {
+      uid,
+      displayName:username,
+      x:playerPos.x,
+      y:playerPos.y,
+      facing:playerFacing,
+      cheese:cheeseCount,
+      alive:isAlive,
+      online:true,
+      assetsReady:true
+    };
+    players = { [uid]:{ ...me, online:true, assetsReady:true } };
+    isHost = true;
+    const connection = document.getElementById("menuConnectionStatus");
+    if (connection){
+      connection.className = "menu-status-pill connected";
+      connection.innerHTML = `<span class="status-dot"></span><span>Local solo</span>`;
+    }
+    showToast("Solo mode: gameplay is running locally.");
+  }
+
   function isPlayerActive(p){
-    return !!(p && p.online !== false && (Date.now() - (p.lastSeen || 0)) <= PLAYER_STALE_MS);
+    const staleAfter = gameStarted ? PLAYER_STALE_MS : SELECTION_PLAYER_STALE_MS;
+    return !!(p && p.online !== false && (Date.now() - (p.lastSeen || 0)) <= staleAfter);
   }
 
   function applyDifficulty(mode){
@@ -2572,12 +2777,40 @@
       let wins = 0;
       usersSnap.forEach(docSnap => {
         const data = docSnap.data();
-        if ((data.username || "").toLowerCase() === usernameNorm) wins = data.wins || 0;
+        if ((data.username || "").toLowerCase() === usernameNorm){
+          wins = data.wins || 0;
+          playerUserDocId = docSnap.id;
+        }
       });
       playerWins = wins;
     } catch {
       playerWins = 0;
     }
+  }
+
+  function winAwardStorageKey(){
+    return `catmouse-win:${matchId || gameId}:${usernameNorm}`;
+  }
+
+  async function awardWinOnce(){
+    if (catHealth > 0) return false;
+    try {
+      if (localStorage.getItem(winAwardStorageKey()) === "1") return true;
+    } catch {}
+    if (winAwardPromise) return winAwardPromise;
+    winAwardPromise = (async () => {
+      if (!playerUserDocId) await fetchPlayerWins();
+      if (!playerUserDocId) throw new Error(`No user record found for ${username}`);
+      await updateDoc(doc(db, "users", playerUserDocId), { wins:increment(1) });
+      playerWins += 1;
+      try { localStorage.setItem(winAwardStorageKey(), "1"); } catch {}
+      return true;
+    })().catch(err => {
+      winAwardPromise = null;
+      console.error("Error awarding Cat & Mouse win:", err);
+      return false;
+    });
+    return winAwardPromise;
   }
 
   function getSelectionDocId(uidVal){
@@ -3577,6 +3810,14 @@
     delete cheesePickupExpiryByCell[`${x}_${y}`];
     requestRender("checkCheeseOptimistic");
 
+    if (soloMode){
+      cheeseCount += 3 + cheesePickupBonus;
+      if (players[uid]) players[uid].cheese = cheeseCount;
+      document.getElementById("cheeseCount").textContent = cheeseCount;
+      checkObjectiveCollection().catch(()=>{});
+      return;
+    }
+
     try{
       const result = await runTransaction(db, async tx => {
         const cheeseRef = ccRef(ID.cheese(x, y));
@@ -3634,12 +3875,12 @@
       if (!p) continue;
       p.cheese = (p.cheese ?? 0) + bonus;
       if (pu === uid) cheeseCount = p.cheese;
-      await updateDoc(ccRef(ID.player(pu)), { cheese: p.cheese, updatedAt: Date.now() });
+      await runtimeUpdateDoc(ccRef(ID.player(pu)), { cheese: p.cheese, updatedAt: Date.now() });
     }
     grid[sd.y][sd.x] = "";
     objectiveState.supplyDrop = { active:false };
     document.getElementById("cheeseCount").textContent = cheeseCount;
-    await updateDoc(ccRef(ID.STATE), { objectives: objectiveState, updatedAt: Date.now() });
+    await runtimeUpdateDoc(ccRef(ID.STATE), { objectives: objectiveState, updatedAt: Date.now() });
     requestRender("checkObjectiveCollection");
   }
 
@@ -3689,10 +3930,19 @@
       updatedAt:now
     };
 
+    if (soloMode){
+      applyLocalRuntimeMutation("update", ccRef(ID.player(uid)), pendingPlayerPayload);
+      pendingPlayerPayload = null;
+      lastPlayerWriteAt = now;
+      return Promise.resolve();
+    }
+
     if (!playerWritePromise){
       playerWritePromise = (async () => {
         try{
           while (pendingPlayerPayload){
+            const waitMs = Math.max(0, PLAYER_SYNC_MIN_INTERVAL_MS - (Date.now() - lastPlayerWriteAt));
+            if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
             const payload = pendingPlayerPayload;
             pendingPlayerPayload = null;
             await setDoc(ccRef(ID.player(uid)), payload, { merge:true });
@@ -3748,6 +3998,7 @@
 
 
   async function sendPlayerHeartbeat(){
+    if (soloMode) return;
     if ((Date.now() - lastPlayerWriteAt) < 5000) return;
     await updateDoc(ccRef(ID.player(uid)), { online:true, lastSeen:Date.now(), updatedAt:Date.now() });
   }
@@ -3785,7 +4036,7 @@
     if (isCheesePickupCell(grid[ty][tx])){
       delete cheesePickupExpiryByCell[`${tx}_${ty}`];
       grid[ty][tx] = "";
-      await deleteDoc(ccRef(ID.cheese(tx, ty))).catch(()=>{});
+      await runtimeDeleteDoc(ccRef(ID.cheese(tx, ty))).catch(()=>{});
     }
     if (grid[ty][tx] !== "") return;
 
@@ -3801,7 +4052,7 @@
     savePosition();
 
     // ✅ store under crowncouncil
-    await setDoc(ccRef(ID.structure(tx,ty)), {
+    await runtimeSetDoc(ccRef(ID.structure(tx,ty)), {
       kind: "structure",
       x: tx,
       y: ty,
@@ -3857,10 +4108,10 @@
       delete structureHealth[key];
       delete structureShields[key];
       markBlockedGridDirty();
-      await deleteDoc(ccRef(ID.structure(x,y)));
+      await runtimeDeleteDoc(ccRef(ID.structure(x,y)));
       markStructureIndexDirty();
     } else {
-      await updateDoc(ccRef(ID.structure(x,y)), { health: structureHealth[key], shield: structureShields[key] ?? 0 });
+      await runtimeUpdateDoc(ccRef(ID.structure(x,y)), { health: structureHealth[key], shield: structureShields[key] ?? 0 });
       markStructureIndexDirty();
     }
     requestRender("damageStructure");
@@ -3879,7 +4130,7 @@
     grid[y][x] = "🪤";
     lastTrapTime = now;
 
-    await setDoc(ccRef(ID.trap(x,y)), {
+    await runtimeSetDoc(ccRef(ID.trap(x,y)), {
       kind: "trap",
       x, y,
       placedAt: now,
@@ -3898,7 +4149,7 @@
     for (const f of fleas.filter(ff => ff.ownerUid === uid && ff.origin === "player")){
       if (!f.docId) continue;
       myFleaDocIds.add(f.docId);
-      writes.push(setDoc(ccRef(f.docId), {
+      writes.push(runtimeSetDoc(ccRef(f.docId), {
         kind: "flea",
         id: f.id || f.docId,
         docId: f.docId,
@@ -4336,7 +4587,7 @@
       if ((p.alive ?? true) === false) continue;
       const d = Math.abs((p.x ?? 0) - catPos.x) + Math.abs((p.y ?? 0) - catPos.y);
       if (d <= 6){
-        await updateDoc(ccRef(ID.player(pu)), { slowedUntil: until, slowMult: 0.75, updatedAt: Date.now() });
+        await runtimeUpdateDoc(ccRef(ID.player(pu)), { slowedUntil: until, slowMult: 0.75, updatedAt: Date.now() });
         changed = true;
       }
     }
@@ -4403,7 +4654,7 @@
     rebuildSpatialIndexes();
     if (Date.now() < catWebTrappedUntil){
       addCombatVfx(catPos.x, catPos.y, "🕸️", "vfx-pop", 260, 14);
-      await updateDoc(ccRef(ID.STATE), {
+      await runtimeUpdateDoc(ccRef(ID.STATE), {
         cat: { x: catPos.x, y: catPos.y, health: catHealth, facing: catFacingDir },
         updatedAt: Date.now()
       });
@@ -4419,7 +4670,7 @@
         clearInterval(catMoveInterval);
         setTimeout(() => startCatBehaviorLoop(), 5000);
 
-        await deleteDoc(ccRef(ID.trap(catPos.x, catPos.y)));
+        await runtimeDeleteDoc(ccRef(ID.trap(catPos.x, catPos.y)));
         const cell = document.getElementById(`cell-${catPos.x}-${catPos.y}`);
         if (cell){
           cell.style.backgroundColor = "#ffaaaa";
@@ -4491,15 +4742,15 @@
       const d = Math.abs(rb.x-catPos.x)+Math.abs(rb.y-catPos.y);
       if (d===0){
         rb.health -= ratPower * 10;
-        if (rb.health <= 0) await deleteDoc(ccRef(ID.rabbit(rb.id)));
-        else await updateDoc(ccRef(ID.rabbit(rb.id)), { health: rb.health, updatedAt: Date.now() });
+        if (rb.health <= 0) await runtimeDeleteDoc(ccRef(ID.rabbit(rb.id)));
+        else await runtimeUpdateDoc(ccRef(ID.rabbit(rb.id)), { health: rb.health, updatedAt: Date.now() });
       }
     }
 
     // kill players on cat tile
     for (const [pu, p] of Object.entries(players)){
       if ((p.alive ?? true) && catPos.x===p.x && catPos.y===p.y){
-        await updateDoc(ccRef(ID.player(pu)), { alive:false, killedBy:"cat", killedAt:Date.now(), updatedAt: Date.now() });
+        await runtimeUpdateDoc(ccRef(ID.player(pu)), { alive:false, killedBy:"cat", killedAt:Date.now(), updatedAt: Date.now() });
         if (pu === uid){
           isAlive = false;
           document.getElementById("status").textContent = "💀 You were killed by: cat";
@@ -4508,7 +4759,7 @@
     }
 
     // write cat state
-    await updateDoc(ccRef(ID.STATE), {
+    await runtimeUpdateDoc(ccRef(ID.STATE), {
       cat: { x: catPos.x, y: catPos.y, health: catHealth, facing: catFacingDir },
       updatedAt: Date.now()
     });
@@ -5254,7 +5505,7 @@
     let revived = false;
     for (const [pu, p] of Object.entries(players)){
       if ((p.alive ?? true) === false){
-        await updateDoc(ccRef(ID.player(pu)), { alive:true, x: phoenixSpot.x, y: phoenixSpot.y, updatedAt: Date.now() });
+        await runtimeUpdateDoc(ccRef(ID.player(pu)), { alive:true, x: phoenixSpot.x, y: phoenixSpot.y, updatedAt: Date.now() });
         revived = true;
         break;
       }
@@ -5264,7 +5515,7 @@
       const key = `${phoenixSpot.x}_${phoenixSpot.y}`;
       grid[phoenixSpot.y][phoenixSpot.x] = "";
       delete structureHealth[key];
-      await deleteDoc(ccRef(ID.structure(phoenixSpot.x, phoenixSpot.y)));
+      await runtimeDeleteDoc(ccRef(ID.structure(phoenixSpot.x, phoenixSpot.y)));
 
       const cell = document.getElementById(`cell-${phoenixSpot.x}-${phoenixSpot.y}`);
       if (cell){
@@ -5321,7 +5572,7 @@
             if (toCell) toCell.style.backgroundColor = "";
           }, 220);
 
-          await updateDoc(ccRef(ID.structure(target.tx,target.ty)), { health: healedHp, updatedAt: Date.now() });
+          await runtimeUpdateDoc(ccRef(ID.structure(target.tx,target.ty)), { health: healedHp, updatedAt: Date.now() });
         }
 
         setTimeout(() => {
@@ -5362,7 +5613,7 @@
             const totalCheese = 1 + bonusCheese;
             cheeseCount += totalCheese;
             document.getElementById("cheeseCount").textContent = cheeseCount;
-            await updateDoc(ccRef(ID.player(uid)), { cheese: cheeseCount, updatedAt: Date.now() });
+            await runtimeUpdateDoc(ccRef(ID.player(uid)), { cheese: cheeseCount, updatedAt: Date.now() });
           }
         }
     }
@@ -5371,10 +5622,10 @@
   async function damageEnemyUnit(enemy, amount){
     enemy.health -= amount;
     if (enemy.health <= 0){
-      if (enemy.kind === "rat") await deleteDoc(ccRef(ID.rat(enemy.id)));
-      else if (enemy.kind === "ox") await deleteDoc(ccRef(ID.ox(enemy.id)));
+      if (enemy.kind === "rat") await runtimeDeleteDoc(ccRef(ID.rat(enemy.id)));
+      else if (enemy.kind === "ox") await runtimeDeleteDoc(ccRef(ID.ox(enemy.id)));
       else if (enemy.kind === "ratking"){
-        await deleteDoc(ccRef(ID.ratKing(enemy.id)));
+        await runtimeDeleteDoc(ccRef(ID.ratKing(enemy.id)));
         let dropped = 0;
         for (let dy=-2; dy<=2 && dropped<5; dy++) for (let dx=-2; dx<=2 && dropped<5; dx++){
           const nx = enemy.x + dx;
@@ -5384,12 +5635,12 @@
           dropped++;
         }
       }
-      else if (enemy.kind === "vulture") await deleteDoc(ccRef(ID.vulture(enemy.id)));
+      else if (enemy.kind === "vulture") await runtimeDeleteDoc(ccRef(ID.vulture(enemy.id)));
     } else {
-      if (enemy.kind === "rat") await updateDoc(ccRef(ID.rat(enemy.id)), { health: enemy.health, slowedUntil: enemy.slowedUntil || 0 });
-      else if (enemy.kind === "ox") await updateDoc(ccRef(ID.ox(enemy.id)), { health: enemy.health, slowedUntil: enemy.slowedUntil || 0 });
-      else if (enemy.kind === "ratking") await updateDoc(ccRef(ID.ratKing(enemy.id)), { health: enemy.health, updatedAt: Date.now() });
-      else if (enemy.kind === "vulture") await updateDoc(ccRef(ID.vulture(enemy.id)), { health: enemy.health, updatedAt: Date.now() });
+      if (enemy.kind === "rat") await runtimeUpdateDoc(ccRef(ID.rat(enemy.id)), { health: enemy.health, slowedUntil: enemy.slowedUntil || 0 });
+      else if (enemy.kind === "ox") await runtimeUpdateDoc(ccRef(ID.ox(enemy.id)), { health: enemy.health, slowedUntil: enemy.slowedUntil || 0 });
+      else if (enemy.kind === "ratking") await runtimeUpdateDoc(ccRef(ID.ratKing(enemy.id)), { health: enemy.health, updatedAt: Date.now() });
+      else if (enemy.kind === "vulture") await runtimeUpdateDoc(ccRef(ID.vulture(enemy.id)), { health: enemy.health, updatedAt: Date.now() });
     }
   }
 
@@ -5438,7 +5689,7 @@
               const next = Math.min(125, prev+4);
               if (next !== prev){
                 structureShields[k] = next;
-                await updateDoc(ccRef(ID.structure(tx,ty)), { shield: next, updatedAt: Date.now() });
+                await runtimeUpdateDoc(ccRef(ID.structure(tx,ty)), { shield: next, updatedAt: Date.now() });
               }
             }
           }
@@ -5458,7 +5709,7 @@
               for (const o of oxen){ if (o.x===cx && o.y===cy && (o.health??0)>0){ await damageEnemyUnit({...o,kind:"ox"}, 18); } }
               for (const k of ratKings){ if (k.x===cx && k.y===cy && (k.health??0)>0){ await damageEnemyUnit({...k,kind:"ratking"}, 18); } }
               for (const v of vultures){ if (v.x===cx && v.y===cy && (v.health??0)>0){ await damageEnemyUnit({...v,kind:"vulture"}, 18); } }
-              if (catPos.x===cx&&catPos.y===cy){ catHealth -= 18; await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() }); }
+              if (catPos.x===cx&&catPos.y===cy){ catHealth -= 18; await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() }); }
               cx += dx; cy += dy;
             }
           }
@@ -5477,13 +5728,13 @@
               if (hit.length>=4) break;
             }
             for (const h of hit){ if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:h.x,y:h.y}); if (h.kind==="cat"){ catHealth -= 4; } else { await damageEnemyUnit({...h.enemy,kind:h.kind}, 4); } }
-            await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
+            await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
           }
         }
         if (sym === "🟢"){
-          for (const r of rats){ const d=Math.abs(r.x-x)+Math.abs(r.y-y); if (d<=6){ r.slowedUntil = Date.now()+3500; await updateDoc(ccRef(ID.rat(r.id)), { slowedUntil:r.slowedUntil, updatedAt:Date.now() }); } }
-          for (const o of oxen){ const d=Math.abs(o.x-x)+Math.abs(o.y-y); if (d<=6){ o.slowedUntil = Date.now()+3500; await updateDoc(ccRef(ID.ox(o.id)), { slowedUntil:o.slowedUntil, updatedAt:Date.now() }); } }
-          for (const k of ratKings){ const d=Math.abs(k.x-x)+Math.abs(k.y-y); if (d<=6){ k.slowedUntil = Date.now()+3500; await updateDoc(ccRef(ID.ratKing(k.id)), { slowedUntil:k.slowedUntil, updatedAt:Date.now() }); } }
+          for (const r of rats){ const d=Math.abs(r.x-x)+Math.abs(r.y-y); if (d<=6){ r.slowedUntil = Date.now()+3500; await runtimeUpdateDoc(ccRef(ID.rat(r.id)), { slowedUntil:r.slowedUntil, updatedAt:Date.now() }); } }
+          for (const o of oxen){ const d=Math.abs(o.x-x)+Math.abs(o.y-y); if (d<=6){ o.slowedUntil = Date.now()+3500; await runtimeUpdateDoc(ccRef(ID.ox(o.id)), { slowedUntil:o.slowedUntil, updatedAt:Date.now() }); } }
+          for (const k of ratKings){ const d=Math.abs(k.x-x)+Math.abs(k.y-y); if (d<=6){ k.slowedUntil = Date.now()+3500; await runtimeUpdateDoc(ccRef(ID.ratKing(k.id)), { slowedUntil:k.slowedUntil, updatedAt:Date.now() }); } }
         }
         if (sym === "🌰" && Date.now() - lastAcornShotAt >= 10000){
           if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
@@ -5496,7 +5747,7 @@
           } else if (catHealth > 0){
             catHealth -= 45;
             lastAcornShotAt = Date.now();
-            await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
+            await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
           }
         }
         if (sym === "🕸️" && Date.now() - lastWebShotAt >= 30000){
@@ -5510,7 +5761,7 @@
               const until = Date.now() + 3000;
               target.enemy.trappedUntil = until;
               const docFn = target.kind==="rat"?ID.rat:target.kind==="ox"?ID.ox:target.kind==="ratking"?ID.ratKing:ID.vulture;
-              await updateDoc(ccRef(docFn(target.enemy.id)), { trappedUntil: until, updatedAt: Date.now() });
+              await runtimeUpdateDoc(ccRef(docFn(target.enemy.id)), { trappedUntil: until, updatedAt: Date.now() });
               addCombatVfx(target.enemy.x, target.enemy.y, "🕸️", "vfx-pop", 700, 16);
             }
             lastWebShotAt = Date.now();
@@ -5536,7 +5787,7 @@
                   await damageEnemyUnit({ ...unit.enemy, kind: unit.kind }, 3);
                   const pushed = randomPushDestination(x, y, unit.enemy.x, unit.enemy.y, 1, 2);
                   const docFn = unit.kind==="rat"?ID.rat:unit.kind==="ox"?ID.ox:unit.kind==="ratking"?ID.ratKing:ID.vulture;
-                  await updateDoc(ccRef(docFn(unit.enemy.id)), { x:pushed.x, y:pushed.y, updatedAt:Date.now() });
+                  await runtimeUpdateDoc(ccRef(docFn(unit.enemy.id)), { x:pushed.x, y:pushed.y, updatedAt:Date.now() });
                 }
               }
             }
@@ -5558,7 +5809,7 @@
       const lastSpawn = window.__lastRabbitSpawnAt[denKey] || 0;
       if (Date.now() - lastSpawn < 15000) continue;
       const id = `rabbit_${crypto.randomUUID()}`;
-      await setDoc(ccRef(ID.rabbit(id)), { kind:"rabbit", id, x, y, health:5, createdAt:Date.now() }, { merge:true });
+      await runtimeSetDoc(ccRef(ID.rabbit(id)), { kind:"rabbit", id, x, y, health:5, createdAt:Date.now() }, { merge:true });
       window.__lastRabbitSpawnAt[denKey] = Date.now();
     }
 
@@ -5577,7 +5828,7 @@
           while (cx!==tx || cy!==ty){ cx += Math.sign(tx-cx); cy += Math.sign(ty-cy); if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:cx,y:cy}); }
           if (target.kind==="cat"){
             catHealth -= rabbitDamage;
-            await updateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
+            await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
           } else {
             await damageEnemyUnit({...target.enemy,kind:target.kind}, rabbitDamage);
           }
@@ -5588,7 +5839,7 @@
           if (nx>=0&&ny>=0&&nx<gridSize&&ny<gridSize&&grid[ny][nx]===""&&!rabbits.some(r=>r.id!==rb.id&&r.x===nx&&r.y===ny)){
             rb.x = nx;
             rb.y = ny;
-            await updateDoc(ccRef(ID.rabbit(rb.id)), { x:nx, y:ny, updatedAt:Date.now() });
+            await runtimeUpdateDoc(ccRef(ID.rabbit(rb.id)), { x:nx, y:ny, updatedAt:Date.now() });
           }
         }
       } else {
@@ -5597,7 +5848,7 @@
         const nx=rb.x+dx, ny=rb.y+dy;
         if (nx>=0&&ny>=0&&nx<gridSize&&ny<gridSize&&grid[ny][nx]===""&&!rabbits.some(r=>r.id!==rb.id&&r.x===nx&&r.y===ny)){
           rb.x=nx; rb.y=ny;
-          await updateDoc(ccRef(ID.rabbit(rb.id)), { x:nx, y:ny, updatedAt:Date.now() });
+          await runtimeUpdateDoc(ccRef(ID.rabbit(rb.id)), { x:nx, y:ny, updatedAt:Date.now() });
         }
       }
     }
@@ -5617,7 +5868,7 @@
       await spawnRatWave();
       const nextTime = now + 32000;
       nextRatWaveAt = nextTime;
-      await updateDoc(ccRef(ID.STATE), { nextRatWave: nextTime, updatedAt: now });
+      await runtimeUpdateDoc(ccRef(ID.STATE), { nextRatWave: nextTime, updatedAt: now });
     }
 
     const secondsLeft = (typeof nextRatWaveAt === "number") ? Math.max(0, Math.floor((nextRatWaveAt - now)/1000)) : "?";
@@ -5677,7 +5928,7 @@
           const p = players[pu];
           if (!p) continue;
           p.cheese = (p.cheese ?? 0) + 7;
-          await updateDoc(ccRef(ID.player(pu)), { cheese: p.cheese, updatedAt: Date.now() });
+          await runtimeUpdateDoc(ccRef(ID.player(pu)), { cheese: p.cheese, updatedAt: Date.now() });
         }
         objectiveState.repair.active = false;
         changed = true;
@@ -5699,7 +5950,7 @@
             const deadMouse = Object.entries(players).find(([,pp]) => (pp.alive ?? true) === false);
             if (deadMouse){
               const [deadUid, deadP] = deadMouse;
-              await updateDoc(ccRef(ID.player(deadUid)), { alive:true, x: deadP.x ?? 1, y: deadP.y ?? 1, updatedAt: Date.now() });
+              await runtimeUpdateDoc(ccRef(ID.player(deadUid)), { alive:true, x: deadP.x ?? 1, y: deadP.y ?? 1, updatedAt: Date.now() });
             }
             objectiveState.rescue.active = false;
             changed = true;
@@ -5719,7 +5970,7 @@
     }
 
     if (changed){
-      await updateDoc(ccRef(ID.STATE), {
+      await runtimeUpdateDoc(ccRef(ID.STATE), {
         objectives: objectiveState,
         catWeakenedUntil,
         updatedAt: now
@@ -5735,30 +5986,11 @@
     stopPlayerHeartbeat();
     cleanupFirebaseListeners();
     try {
-      await updateDoc(ccRef(ID.player(uid)), { online:false, alive:false, updatedAt: Date.now() });
+      await runtimeUpdateDoc(ccRef(ID.player(uid)), { online:false, alive:false, updatedAt: Date.now() });
     } catch {}
     const safeUsername = encodeURIComponent(username.trim());
 
-    // award win if cat defeated
-    if (catHealth <= 0){
-      try{
-        const usersSnap = await getDocs(collection(db, "users"));
-        let matched = null;
-
-        usersSnap.forEach(docSnap => {
-          const data = docSnap.data();
-          if ((data.username || "").toLowerCase() === usernameNorm){
-            matched = { id: docSnap.id, wins: data.wins || 0 };
-          }
-        });
-
-        if (matched){
-          await updateDoc(doc(db, "users", matched.id), { wins: matched.wins + 1 });
-        }
-      } catch (err){
-        console.error("🔥 Error awarding win:", err);
-      }
-    }
+    if (catHealth <= 0) await awardWinOnce();
 
     window.location.href = `/lobby/lobby.html?username=${safeUsername}`;
   }
@@ -5937,7 +6169,7 @@
   async function setStructureTargeting(x, y, option){
     const key = `${x}_${y}`;
     structureTargeting[key] = option;
-    await updateDoc(ccRef(ID.structure(x, y)), { targeting: option, updatedAt: Date.now() });
+    await runtimeUpdateDoc(ccRef(ID.structure(x, y)), { targeting: option, updatedAt: Date.now() });
     closeStructurePopup();
   }
   function openStructurePopup(x, y){
@@ -6044,6 +6276,8 @@
           const wasHost = isHost;
           const hostUid = data.hostUid;
           const hostName = data.hostName;
+          soloMode = data.runtimeMode === "solo";
+          if (typeof data.matchId === "string") matchId = data.matchId;
           isHost = (hostUid === uid);
           if (wasHost && !isHost && catMoveInterval){ clearInterval(catMoveInterval); catMoveInterval = null; }
           if (!wasHost && isHost && gameStarted){
@@ -6067,7 +6301,10 @@
           const cat = data.cat || {};
           catPos = { x: (cat.x ?? catPos.x), y: (cat.y ?? catPos.y) };
           if (typeof cat.health === "number") catHealth = cat.health;
-          if (previousCatHealth > 0 && catHealth <= 0) setTileEffect(catPos.x, catPos.y, "blood");
+          if (previousCatHealth > 0 && catHealth <= 0){
+            setTileEffect(catPos.x, catPos.y, "blood");
+            awardWinOnce().catch(()=>{});
+          }
           catFacingDir = cat.facing || catFacingDir;
           if (Object.prototype.hasOwnProperty.call(data, "selectionDeadline")) selectionDeadlineAt = typeof data.selectionDeadline === "number" ? data.selectionDeadline : null;
           if (Object.prototype.hasOwnProperty.call(data, "selectionAssetsReadyAt")) selectionAssetsReadyAt = typeof data.selectionAssetsReadyAt === "number" ? data.selectionAssetsReadyAt : null;
@@ -6079,6 +6316,7 @@
             if (!selectedBuild && mobileBuildOrder[0]) selectBuild(String(mobileBuildOrder[0]));
             gameStarted = true;
             startHostLoops();
+            if (soloMode) setTimeout(activateSoloRuntime, 0);
           }
 
           updateHostDisplay(hostName);
@@ -6357,6 +6595,8 @@
       catFacingDir = cat.facing || catFacingDir;
       selectionDeadlineAt = (typeof s.selectionDeadline === "number") ? s.selectionDeadline : null;
       selectionAssetsReadyAt = (typeof s.selectionAssetsReadyAt === "number") ? s.selectionAssetsReadyAt : null;
+      soloMode = s.runtimeMode === "solo";
+      matchId = typeof s.matchId === "string" ? s.matchId : matchId;
       gameStarted = s.phase === "playing";
       updateHostDisplay(s.hostName);
       updateCatHealthBar();
@@ -6579,10 +6819,13 @@
     const allDone = participantIds.length > 0 && participantIds.every(pu => selectionStates[pu]?.done === true);
     if (allDone || force){
       const finalDifficulty = computeDifficultyFromVotes(difficultyVotes);
+      const nextMatchId = crypto.randomUUID();
       await updateDoc(ccRef(ID.STATE), {
         difficulty:finalDifficulty,
         cat:{ x:catPos.x, y:catPos.y, health:DIFFICULTY_SETTINGS[finalDifficulty].catStartHealth, facing:catFacingDir },
         phase:"playing",
+        matchId:nextMatchId,
+        runtimeMode:participantIds.length === 1 ? "solo" : "multiplayer",
         nextRatWave:Date.now() + 22000,
         updatedAt:Date.now()
       });
@@ -6748,7 +6991,7 @@
 
         const docId = ID.pflea(uid, myFleaCounter++);
         myFleaDocIds.add(docId);
-        setDoc(ccRef(docId), {
+        runtimeSetDoc(ccRef(docId), {
           kind: "flea",
           id: docId,
           docId,
@@ -6780,6 +7023,8 @@
     // game over check
     setInterval(() => {
       if (!gameStarted) return;
+
+      if (catHealth <= 0) awardWinOnce().catch(()=>{});
 
       const anyAlive = Object.values(players).some(p => (p.alive ?? true) !== false);
 
@@ -6823,12 +7068,13 @@
 
   async function hostCleanupStaleEntities(){
     if (!canRunHostSimulation()) return;
+    if (soloMode) return;
     const now = Date.now();
     for (const [pu, p] of Object.entries(players)){
       if (pu === uid) continue;
       if (!p) continue;
       if ((now - (p.lastSeen || 0)) > PLAYER_STALE_MS){
-        await updateDoc(ccRef(ID.player(pu)), { online:false, alive:false, updatedAt: now });
+        await runtimeUpdateDoc(ccRef(ID.player(pu)), { online:false, alive:false, updatedAt: now });
       }
     }
     const staleEnemy = (e) =>
@@ -6838,32 +7084,39 @@
       (typeof e.health === "number" && e.health <= 0) ||
       (typeof e.lifetime === "number" && e.lifetime <= 0) ||
       (now - (e.updatedAt || e.createdAt || 0)) > STALE_ENEMY_MS;
-    for (const r of rats){ if (staleEnemy(r)) await deleteDoc(ccRef(ID.rat(r.id))); }
-    for (const o of oxen){ if (staleEnemy(o)) await deleteDoc(ccRef(ID.ox(o.id))); }
-    for (const k of ratKings){ if (staleEnemy(k)) await deleteDoc(ccRef(ID.ratKing(k.id))); }
-    for (const v of vultures){ if (staleEnemy(v)) await deleteDoc(ccRef(ID.vulture(v.id))); }
-    for (const t of termites){ if (staleEnemy(t)) await deleteDoc(ccRef(ID.termite(t.id))); }
-    for (const f of fleas){ if (!f || (typeof f.lifetime === "number" && f.lifetime <= 0) || (now - (f.updatedAt || f.createdAt || 0)) > STALE_ENEMY_MS) await deleteDoc(ccRef(f.docId || ID.flea(f.id))); }
+    for (const r of rats){ if (staleEnemy(r)) await runtimeDeleteDoc(ccRef(ID.rat(r.id))); }
+    for (const o of oxen){ if (staleEnemy(o)) await runtimeDeleteDoc(ccRef(ID.ox(o.id))); }
+    for (const k of ratKings){ if (staleEnemy(k)) await runtimeDeleteDoc(ccRef(ID.ratKing(k.id))); }
+    for (const v of vultures){ if (staleEnemy(v)) await runtimeDeleteDoc(ccRef(ID.vulture(v.id))); }
+    for (const t of termites){ if (staleEnemy(t)) await runtimeDeleteDoc(ccRef(ID.termite(t.id))); }
+    for (const f of fleas){ if (!f || (typeof f.lifetime === "number" && f.lifetime <= 0) || (now - (f.updatedAt || f.createdAt || 0)) > STALE_ENEMY_MS) await runtimeDeleteDoc(ccRef(f.docId || ID.flea(f.id))); }
     const activePlayers = Object.values(players).filter(p => isPlayerActive(p));
-    await setDoc(lobbyRef, { lastActivity: now, status: activePlayers.length ? "active" : "abandoned", updatedAt: now }, { merge:true });
+    const nextStatus = activePlayers.length ? "active" : "abandoned";
+    const shouldPublishLobbyHealth = nextStatus !== lastLobbyStatus || activePlayers.length !== lastLobbyActiveCount || now - lastLobbyMaintenanceAt >= 30000;
+    if (shouldPublishLobbyHealth){
+      await setDoc(lobbyRef, { lastActivity: now, status:nextStatus, updatedAt:now }, { merge:true });
+      lastLobbyMaintenanceAt = now;
+      lastLobbyStatus = nextStatus;
+      lastLobbyActiveCount = activePlayers.length;
+    }
   }
 
   // ============================================================
   // Host loops (cat AI + spawns + enemy sim)
   // ============================================================
   function canRunHostSimulation(){
-    return isHost && gameStarted && hostInitialized;
+    return (soloMode || isHost) && gameStarted && hostInitialized;
   }
 
   async function scrubGhostEnemies() {
     if (!canRunHostSimulation()) return;
     const deletes = [];
-    for (const r of rats){ if (!isLivingRat(r)) deletes.push(deleteDoc(ccRef(ID.rat(r.id)))); }
-    for (const o of oxen){ if (!isLivingEnemy(o)) deletes.push(deleteDoc(ccRef(ID.ox(o.id)))); }
-    for (const k of ratKings){ if (!isLivingEnemy(k)) deletes.push(deleteDoc(ccRef(ID.ratKing(k.id)))); }
-    for (const v of vultures){ if (!isLivingEnemy(v)) deletes.push(deleteDoc(ccRef(ID.vulture(v.id)))); }
-    for (const sr of stinkRats){ if (!isLivingEnemy(sr)) deletes.push(deleteDoc(ccRef(ID.stinkRat(sr.id)))); }
-    for (const f of fleas){ if (!isLivingFlea(f)) deletes.push(deleteDoc(ccRef(f.docId || ID.flea(f.id)))); }
+    for (const r of rats){ if (!isLivingRat(r)) deletes.push(runtimeDeleteDoc(ccRef(ID.rat(r.id)))); }
+    for (const o of oxen){ if (!isLivingEnemy(o)) deletes.push(runtimeDeleteDoc(ccRef(ID.ox(o.id)))); }
+    for (const k of ratKings){ if (!isLivingEnemy(k)) deletes.push(runtimeDeleteDoc(ccRef(ID.ratKing(k.id)))); }
+    for (const v of vultures){ if (!isLivingEnemy(v)) deletes.push(runtimeDeleteDoc(ccRef(ID.vulture(v.id)))); }
+    for (const sr of stinkRats){ if (!isLivingEnemy(sr)) deletes.push(runtimeDeleteDoc(ccRef(ID.stinkRat(sr.id)))); }
+    for (const f of fleas){ if (!isLivingFlea(f)) deletes.push(runtimeDeleteDoc(ccRef(f.docId || ID.flea(f.id)))); }
     await Promise.allSettled(deletes);
   }
 
@@ -6900,7 +7153,7 @@
   }
 
   function startHostLoops(){
-    if (!isHost || hostInitialized) return;
+    if ((!isHost && !soloMode) || hostInitialized) return;
     hostInitialized = true;
 
     gameStarted = true;
@@ -6915,7 +7168,7 @@
       const playerCount = Object.keys(players).length;
       catHealth += 15 * playerCount;
 
-      await updateDoc(ccRef(ID.STATE), {
+      await runtimeUpdateDoc(ccRef(ID.STATE), {
         catPower,
         cat: { x: catPos.x, y: catPos.y, health: catHealth, facing: catFacingDir },
         updatedAt: Date.now()
@@ -6934,7 +7187,7 @@
     // rat power ramp
     setInterval(async () => {
       ratPower++;
-      await updateDoc(ccRef(ID.STATE), { ratPower, updatedAt: Date.now() });
+      await runtimeUpdateDoc(ccRef(ID.STATE), { ratPower, updatedAt: Date.now() });
     }, 120000);
 
     async function fleaNestAttackTick(){
@@ -6991,7 +7244,7 @@
           const fx = tile.x, fy = tile.y;
           const now = Date.now();
           const fid = `nest_${x}_${y}_${now}_${Math.floor(Math.random()*9999)}`;
-          await setDoc(ccRef(ID.flea(fid)), {
+          await runtimeSetDoc(ccRef(ID.flea(fid)), {
             kind: "flea",
             id: fid,
             docId: ID.flea(fid),
@@ -7045,7 +7298,7 @@
         if (termites.some(t => t.x===ox && t.y===oy)) continue;
 
         const id = `termite_${Date.now()}_${i}`;
-        await setDoc(ccRef(ID.termite(id)), {
+        await runtimeSetDoc(ccRef(ID.termite(id)), {
           kind: "termite",
           id,
           x: ox,
@@ -7071,7 +7324,7 @@
         const vx = Math.max(0, Math.min(gridSize-1, catPos.x + (Math.floor(Math.random()*7)-3)));
         const vy = Math.max(0, Math.min(gridSize-1, catPos.y + (Math.floor(Math.random()*7)-3)));
         const id = `vulture_${crypto.randomUUID()}`;
-        await setDoc(ccRef(ID.vulture(id)), {
+        await runtimeSetDoc(ccRef(ID.vulture(id)), {
           kind: "vulture",
           id,
           x: vx,
@@ -7104,14 +7357,14 @@
 
     // phoenix revive
     setInterval(() => { if (!canRunHostSimulation()) return; hostPhoenixRevive().catch(()=>{}); }, 2000);
-    setInterval(() => { if (!canRunHostSimulation()) return; hostCleanupStaleEntities().catch(()=>{}); }, 3000);
-    setInterval(() => { if (!canRunHostSimulation()) return; scrubGhostEnemies().catch(()=>{}); }, 1500);
+    setInterval(() => { if (!canRunHostSimulation()) return; hostCleanupStaleEntities().catch(()=>{}); }, 12000);
+    setInterval(() => { if (!canRunHostSimulation()) return; scrubGhostEnemies().catch(()=>{}); }, 5000);
 
     // Cat state is already published by its authoritative movement tick.
 
     setInterval(async () => {
       if (!isHost || !gameStarted) return;
-      await updateDoc(ccRef(ID.STATE), {
+      await runtimeUpdateDoc(ccRef(ID.STATE), {
         hostUid: uid,
         hostName: username,
         hostHeartbeatAt: Date.now(),
@@ -7134,7 +7387,7 @@
 
         const key = `${tx}_${ty}`;
         if ((grid[ty][tx]==="🧱" || grid[ty][tx]==="💎") && (structureHealth[key] ?? 0) < 80){
-          await setDoc(ccRef(ID.wallHealRequest(uid, tx, ty)), {
+          await runtimeSetDoc(ccRef(ID.wallHealRequest(uid, tx, ty)), {
             kind: "wallheal",
             uid,
             x: tx,
@@ -7190,7 +7443,7 @@
     const markLocalPlayerOffline = () => {
       stopPlayerHeartbeat();
       cleanupFirebaseListeners();
-      void updateDoc(ccRef(ID.player(uid)), { online:false, lastSeen:Date.now(), updatedAt:Date.now() }).catch(()=>{});
+      if (!soloMode) void updateDoc(ccRef(ID.player(uid)), { online:false, lastSeen:Date.now(), updatedAt:Date.now() }).catch(()=>{});
     };
     window.addEventListener("pagehide", markLocalPlayerOffline);
     window.addEventListener("beforeunload", markLocalPlayerOffline);
@@ -7251,7 +7504,10 @@
       if (waveHud) waveHud.textContent = `🌊 Wave ${wave}`;
     }, 300);
 
-    if (gameStarted) startHostLoops();
+    if (gameStarted){
+      startHostLoops();
+      if (soloMode) setTimeout(activateSoloRuntime, 0);
+    }
   }
 
   bootGame().catch(err => {
