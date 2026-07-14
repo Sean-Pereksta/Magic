@@ -259,6 +259,7 @@
       font-size:23px;
       transition:.16s ease;
     }
+    .fab-badge{position:absolute;right:-5px;top:-6px;min-width:23px;height:23px;padding:0 6px;border-radius:999px;display:grid;place-items:center;background:#fff;color:var(--brand);border:2px solid var(--brand);font-size:.68rem;font-weight:950;box-shadow:0 5px 12px rgba(16,24,40,.2)}
     .fab:hover{transform:translateY(-3px);box-shadow:0 20px 40px rgba(127,20,32,.42)}
     .fab:active{transform:none}
     .fab.open{background:#111827}
@@ -366,12 +367,19 @@
       border-radius:14px 5px 14px 14px;
       background:var(--brand-soft);
     }
+    .msg.private{border-color:#c4b5fd;background:#f5f3ff}
+    .msg.private.mine{border-color:#a78bfa;background:#ede9fe}
     .meta{
       margin-bottom:3px;
       color:var(--muted);
       font-size:.67rem;
       font-weight:750;
+      display:flex;align-items:center;gap:5px;
     }
+    .message-avatar{width:24px;height:24px;flex:0 0 auto;border-radius:8px;display:grid;place-items:center;overflow:hidden;background:#f2f4f7;border:1px solid var(--line);font-size:.76rem}
+    .message-avatar img{width:100%;height:100%;display:block;object-fit:contain}
+    .message-author{border:0;background:transparent;padding:0;color:inherit;font:inherit;font-weight:850;cursor:pointer}.message-author:hover{text-decoration:underline}
+    .private-label{display:inline-flex;margin:0 0 5px;padding:2px 6px;border-radius:999px;background:#ddd6fe;color:#5b21b6;font-size:.64rem;font-weight:950;text-transform:lowercase}
     .text{font-size:.84rem;line-height:1.4;overflow-wrap:anywhere}
 
     .chat-login-note{
@@ -394,6 +402,9 @@
       border-top:1px solid var(--line);
       background:#fff;
     }
+    .chat-compose{border-top:1px solid var(--line);background:#fff}
+    .chat-compose .chat-input{border-top:0;padding-bottom:6px}
+    .chat-compose-help{padding:0 12px 9px;color:var(--muted);font-size:.66rem;line-height:1.35}.chat-compose-help strong{color:#5b21b6}
     .chat-input input{
       flex:1;
       min-width:0;
@@ -663,7 +674,7 @@
     </div>
   </main>
 
-  <section id="chatContainer" class="chat-sheet" aria-hidden="true" aria-label="Lobby chat">
+  <section id="chatContainer" class="chat-sheet" aria-hidden="true" aria-label="Lobby chat" inert>
     <div class="chat-head">
       <div class="chat-title">
         <div class="chat-title-icon" aria-hidden="true">💬</div>
@@ -697,13 +708,17 @@
       <button id="shareLobbyBtn" class="share-lobby-btn" type="button" disabled>📣 Advertise</button>
     </div>
 
-    <div class="chat-input">
-      <input id="chatMessage" type="text" maxlength="500" placeholder="Type a message…" autocomplete="off" disabled />
-      <button id="sendBtn" class="send" type="button" disabled>Send</button>
+    <div class="chat-compose">
+      <div class="chat-input">
+        <input id="chatMessage" type="text" maxlength="500" placeholder="Type a message…" autocomplete="off" list="chatUserSuggestions" disabled />
+        <datalist id="chatUserSuggestions"></datalist>
+        <button id="sendBtn" class="send" type="button" disabled>Send</button>
+      </div>
+      <div class="chat-compose-help">Private message: start with <strong>@username</strong> (or <strong>@&quot;name with spaces&quot;</strong>).</div>
     </div>
   </section>
 
-  <button id="toggleChat" class="fab" type="button" aria-label="Open Game Hub chat" aria-pressed="false">💬</button>
+  <button id="toggleChat" class="fab" type="button" aria-label="Open Game Hub chat" aria-pressed="false"><span id="chatFabIcon">💬</span><span id="chatUnreadBadge" class="fab-badge" hidden>0</span></button>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
@@ -718,7 +733,10 @@
       onSnapshot,
       serverTimestamp,
       doc,
-      getDoc
+      getDoc,
+      getDocs,
+      where,
+      writeBatch
     } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import {
       getAuth,
@@ -746,11 +764,14 @@
     const reloadLobby = document.getElementById("reloadLobby");
     const chatContainer = document.getElementById("chatContainer");
     const toggleChat = document.getElementById("toggleChat");
+    const chatFabIcon = document.getElementById("chatFabIcon");
+    const chatUnreadBadge = document.getElementById("chatUnreadBadge");
     const closeChat = document.getElementById("closeChat");
     const chatMessages = document.getElementById("chatMessages");
     const chatUser = document.getElementById("chatUser");
     const chatLoginNote = document.getElementById("chatLoginNote");
     const msgInput = document.getElementById("chatMessage");
+    const chatUserSuggestions = document.getElementById("chatUserSuggestions");
     const sendBtn = document.getElementById("sendBtn");
     const shareLobbyBtn = document.getElementById("shareLobbyBtn");
     const activeLobbyLabel = document.getElementById("activeLobbyLabel");
@@ -856,9 +877,15 @@
     document.addEventListener("webkitfullscreenchange",updateFullscreenUi);
 
     let currentUsername = "";
+    let currentAvatar = "🎮";
     let currentLobbyShare = null;
     let lastLobbySignature = "";
     let toastTimer = null;
+    let unreadMessages = 0;
+    let messagesInitialized = false;
+    let latestMessageDocs = [];
+    const avatarCache = new Map();
+    const CHAT_RETENTION_MS = 24*60*60*1000;
 
     const LOBBY_URL = "https://catnmice.com/lobby/lobby.html";
     const GAME_INFO = {
@@ -904,6 +931,40 @@
         .replace(/[-_]+/g," ")
         .replace(/\b\w/g,character=>character.toUpperCase());
       return {title,emoji:"🎮"};
+    }
+
+    const normalizeName = value=>String(value||"").trim().toLowerCase();
+    const isImageAvatar = value=>/^\/graphics\/[a-z0-9 _&().\/-]+\.png$/i.test(String(value||""));
+    function normalizeAvatar(value){
+      const avatar=String(value||"🎮").trim()||"🎮";
+      if(avatar.startsWith("../graphics/"))return avatar.slice(2);
+      return isImageAvatar(avatar)?avatar:avatar.slice(0,8);
+    }
+    function setAvatarNode(node,value,label=""){
+      if(!node)return;const avatar=normalizeAvatar(value);node.innerHTML="";
+      if(isImageAvatar(avatar)){
+        const img=document.createElement("img");img.src=avatar;img.alt=label;img.decoding="async";img.onerror=()=>{node.textContent="🎮";};node.appendChild(img);
+      }else node.textContent=avatar;
+    }
+    async function avatarForUser(name){
+      const key=normalizeName(name);if(!key)return "🎮";
+      if(!avatarCache.has(key))avatarCache.set(key,(async()=>{
+        try{const snap=await getDoc(doc(db,"users",name));return normalizeAvatar(snap.exists()?snap.data().avatar:"🎮");}catch{return "🎮";}
+      })());
+      return avatarCache.get(key);
+    }
+    function openCommunityProfile(name){
+      if(!name)return;
+      try{frame.contentWindow.postMessage({type:"game-hub-open-profile",username:name},"*");toggleChatPanel(false);}catch{}
+    }
+    function visibleToCurrentUser(message={}){
+      if(message.type!=="private"&&!message.privateTo)return true;
+      const me=normalizeName(currentUsername);
+      return !!me&&(normalizeName(message.username)===me||normalizeName(message.privateTo)===me);
+    }
+    function setUnreadCount(value){
+      unreadMessages=Math.max(0,Number(value)||0);chatUnreadBadge.hidden=!unreadMessages;chatUnreadBadge.textContent=unreadMessages>99?"99+":String(unreadMessages);
+      toggleChat.setAttribute("aria-label",unreadMessages?`Open Game Hub chat, ${unreadMessages} unread message${unreadMessages===1?"":"s"}`:"Open Game Hub chat");
     }
 
     function setLobbyShareState(data,message){
@@ -969,6 +1030,7 @@
 
     function syncLobbyUsername(){
       const nextUsername = getLobbyUsername();
+      const changed=nextUsername!==currentUsername;
       currentUsername = nextUsername;
 
       if(currentUsername){
@@ -976,14 +1038,19 @@
         chatLoginNote.classList.remove("show");
         msgInput.disabled = false;
         sendBtn.disabled = false;
-        msgInput.placeholder = "Type a message…";
+        msgInput.placeholder = "Message everyone or @username privately…";
+        if(changed){
+          avatarForUser(currentUsername).then(avatar=>{if(normalizeName(currentUsername)===normalizeName(nextUsername))currentAvatar=avatar;});
+        }
       }else{
+        currentAvatar="🎮";
         chatUser.textContent = "Log in through the lobby to chat";
         chatLoginNote.classList.add("show");
         msgInput.disabled = true;
         sendBtn.disabled = true;
         msgInput.placeholder = "Log in inside the lobby to chat";
       }
+      if(changed&&latestMessageDocs.length)renderChatDocs(latestMessageDocs,false);
       syncActiveLobby();
     }
 
@@ -1017,9 +1084,11 @@
       const nextOpen = typeof force === "boolean" ? force : !chatContainer.classList.contains("open");
       chatContainer.classList.toggle("open",nextOpen);
       chatContainer.setAttribute("aria-hidden",nextOpen ? "false" : "true");
+      chatContainer.inert=!nextOpen;
       toggleChat.setAttribute("aria-pressed",nextOpen ? "true" : "false");
       toggleChat.classList.toggle("open",nextOpen);
-      toggleChat.textContent = nextOpen ? "✕" : "💬";
+      chatFabIcon.textContent = nextOpen ? "✕" : "💬";
+      if(nextOpen)setUnreadCount(0);
       syncLobbyUsername();
       if(nextOpen && currentUsername){
         setTimeout(()=>msgInput.focus(),120);
@@ -1045,17 +1114,25 @@
     }
 
     function renderMessage(message){
-      const {username="",text="",timestamp,type="",lobbyId=""} = message || {};
+      const {username="",text="",timestamp,type="",lobbyId="",privateTo=""} = message || {};
       const isLobbyAd = type === "lobby_ad" && lobbyId;
+      const isPrivate = type === "private" || !!privateTo;
       const wrapper = document.createElement("article");
-      wrapper.className = `msg${username === currentUsername ? " mine" : ""}${isLobbyAd ? " lobby-message" : ""}`;
+      wrapper.className = `msg${normalizeName(username) === normalizeName(currentUsername) ? " mine" : ""}${isLobbyAd ? " lobby-message" : ""}${isPrivate ? " private" : ""}`;
 
       const meta = document.createElement("div");
       meta.className = "meta";
 
-      const who = document.createElement("span");
+      const avatar = document.createElement("span");
+      avatar.className = "message-avatar";
+      setAvatarNode(avatar,message.avatar||"🎮",`${username||"Player"} profile icon`);
+      if(!message.avatar)avatarForUser(username).then(value=>{if(avatar.isConnected)setAvatarNode(avatar,value,`${username||"Player"} profile icon`);});
+
+      const who = document.createElement("button");
+      who.type="button";who.className="message-author";
       who.textContent = username || "Someone";
       who.style.color = hashColor(username || "Someone");
+      who.addEventListener("click",()=>openCommunityProfile(username));
 
       const separator = document.createElement("span");
       separator.textContent = " · ";
@@ -1063,8 +1140,12 @@
 
       const when = document.createElement("span");
       when.textContent = formatTime(timestamp);
-      meta.append(who,separator,when);
+      meta.append(avatar,who,separator,when);
       wrapper.appendChild(meta);
+
+      if(isPrivate){
+        const label=document.createElement("div");label.className="private-label";label.textContent="[private message]";label.title=normalizeName(username)===normalizeName(currentUsername)?`Only you and ${privateTo} can see this message.`:`Only you and ${username} can see this message.`;wrapper.appendChild(label);
+      }
 
       if(text){
         const body = document.createElement("div");
@@ -1172,6 +1253,7 @@
       try{
         await addDoc(collection(db,"chat"),{
           username:currentUsername,
+          avatar:currentAvatar,
           text:`${currentUsername} is looking for players!`,
           type:"lobby_ad",
           lobbyId:lobby.id,
@@ -1212,48 +1294,69 @@
 
       sendBtn.disabled = true;
       try{
-        await addDoc(collection(db,"chat"),{
-          username:currentUsername,
-          text:text.slice(0,500),
-          timestamp:serverTimestamp()
-        });
+        const privateMatch=text.match(/^@"([^"]+)"\s+([\s\S]+)$/)||text.match(/^@([^\s]+)\s+([\s\S]+)$/);
+        if(privateMatch){
+          const requested=privateMatch[1].trim(),body=privateMatch[2].trim();
+          if(!body)throw new Error("Add a message after the private recipient.");
+          const recipient=await resolveCommunityUsername(requested);
+          if(!recipient)throw new Error(`No community user named “${requested}” was found.`);
+          if(normalizeName(recipient)===normalizeName(currentUsername))throw new Error("Choose another player for a private message.");
+          await addDoc(collection(db,"chat"),{
+            username:currentUsername,avatar:currentAvatar,text:body.slice(0,500),type:"private",
+            privateTo:recipient,privateToLower:normalizeName(recipient),privateFromLower:normalizeName(currentUsername),
+            timestamp:serverTimestamp()
+          });
+          showToast(`[private message] sent to ${recipient}.`);
+        }else{
+          await addDoc(collection(db,"chat"),{
+            username:currentUsername,avatar:currentAvatar,text:text.slice(0,500),type:"message",timestamp:serverTimestamp()
+          });
+        }
         msgInput.value = "";
       }catch(error){
         console.warn("Chat send failed",error);
-        showToast("Chat could not send. Check the Firestore chat rule.","error");
+        showToast(error.message||"Chat could not send. Check the Firestore chat rule.","error");
       }finally{
         sendBtn.disabled = false;
         msgInput.focus();
       }
     }
 
+    async function resolveCommunityUsername(requested){
+      const name=String(requested||"").trim();if(!name)return "";
+      try{const exact=await getDoc(doc(db,"users",name));if(exact.exists())return exact.id;}catch{}
+      try{
+        const snap=await getDocs(query(collection(db,"users"),limit(200)));
+        const match=snap.docs.find(d=>normalizeName(d.id)===normalizeName(name)&&(d.data().password||normalizeName(d.data().username)===normalizeName(d.id)));
+        return match?.id||"";
+      }catch{return "";}
+    }
+
+    function renderChatDocs(docs,keepScroll=true){
+      const shouldStickToBottom=!keepScroll||chatMessages.scrollTop+chatMessages.clientHeight>=chatMessages.scrollHeight-70;
+      latestMessageDocs=docs;
+      const visible=docs.filter(messageDoc=>visibleToCurrentUser(messageDoc.data()));
+      const names=new Set();visible.forEach(d=>{const data=d.data();if(data.username)names.add(data.username);if(data.privateTo)names.add(data.privateTo);});
+      chatUserSuggestions.innerHTML="";[...names].filter(name=>normalizeName(name)!==normalizeName(currentUsername)).sort().forEach(name=>{const option=document.createElement("option");option.value=name.includes(" ")?`@"${name}" `:`@${name} `;option.label=`Private message ${name}`;chatUserSuggestions.appendChild(option);});
+      chatMessages.innerHTML="";
+      if(!visible.length){
+        chatMessages.innerHTML=`<div class="chat-empty"><div class="big">💬</div>No messages from the last 24 hours. Start the conversation.</div>`;return;
+      }
+      visible.forEach(messageDoc=>chatMessages.appendChild(renderMessage(messageDoc.data())));
+      if(shouldStickToBottom||visible.length<=3)chatMessages.scrollTop=chatMessages.scrollHeight;
+    }
+
     function loadMessages(){
-      const messagesQuery = query(
-        collection(db,"chat"),
-        orderBy("timestamp","desc"),
-        limit(50)
-      );
+      const cutoff=new Date(Date.now()-CHAT_RETENTION_MS);
+      const messagesQuery=query(collection(db,"chat"),where("timestamp",">=",cutoff),orderBy("timestamp","desc"),limit(80));
 
       onSnapshot(messagesQuery,(snapshot)=>{
-        const shouldStickToBottom =
-          chatMessages.scrollTop + chatMessages.clientHeight >= chatMessages.scrollHeight - 70;
-
-        chatMessages.innerHTML = "";
-        const docs = [...snapshot.docs].reverse();
-
-        if(!docs.length){
-          chatMessages.innerHTML = `
-            <div class="chat-empty">
-              <div class="big">💬</div>
-              No messages yet. Start the conversation.
-            </div>`;
-          return;
+        const docs=[...snapshot.docs].reverse();
+        if(messagesInitialized&&!chatContainer.classList.contains("open")){
+          const added=snapshot.docChanges().filter(change=>change.type==="added").map(change=>change.doc.data()).filter(message=>visibleToCurrentUser(message)&&normalizeName(message.username)!==normalizeName(currentUsername)).length;
+          if(added)setUnreadCount(unreadMessages+added);
         }
-
-        docs.forEach(messageDoc=>chatMessages.appendChild(renderMessage(messageDoc.data())));
-        if(shouldStickToBottom || docs.length <= 3){
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
+        messagesInitialized=true;renderChatDocs(docs,true);
       },(error)=>{
         console.warn("Chat subscription failed",error);
         chatMessages.innerHTML = `
@@ -1262,6 +1365,18 @@
             Chat is unavailable until its Firestore rule is enabled.
           </div>`;
       });
+    }
+
+    async function cleanExpiredChat(){
+      const cutoff=new Date(Date.now()-CHAT_RETENTION_MS);
+      try{
+        for(let pass=0;pass<4;pass++){
+          const expired=await getDocs(query(collection(db,"chat"),where("timestamp","<",cutoff),orderBy("timestamp","asc"),limit(300)));
+          if(expired.empty)break;
+          const batch=writeBatch(db);expired.docs.forEach(messageDoc=>batch.delete(messageDoc.ref));await batch.commit();
+          if(expired.size<300)break;
+        }
+      }catch(error){console.warn("Expired chat cleanup skipped",error);}
     }
 
     toggleChat.addEventListener("click",()=>toggleChatPanel());
@@ -1300,8 +1415,7 @@
 
     signInAnonymously(auth)
       .catch(error=>console.warn("Anonymous Firebase sign-in failed",error))
-      .finally(loadMessages);
+      .finally(()=>{loadMessages();cleanExpiredChat();});
   </script>
 </body>
 </html>
-
