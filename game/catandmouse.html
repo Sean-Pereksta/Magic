@@ -1250,6 +1250,33 @@
       }
     }
 
+    #musicToggleBtn{
+      position:fixed;
+      top:6px;
+      right:6px;
+      z-index:70;
+      display:grid;
+      place-items:center;
+      width:32px;
+      height:32px;
+      margin:0;
+      padding:0;
+      border:1px solid rgba(255,255,255,.32);
+      border-radius:9px;
+      background:rgba(15,23,42,.92);
+      color:#fff;
+      font:700 16px/1 sans-serif;
+      box-shadow:0 3px 10px rgba(0,0,0,.28);
+      cursor:pointer;
+      touch-action:manipulation;
+    }
+    #musicToggleBtn:hover{background:rgba(30,41,59,.98);}
+    #musicToggleBtn:focus-visible{outline:2px solid #facc15;outline-offset:2px;}
+    @media(max-width:768px){
+      #fullscreenBtn{right:44px!important;}
+      #topHud{padding-right:88px!important;}
+    }
+
   </style>
 </head>
 
@@ -1263,6 +1290,7 @@
     </div>
   </div>
   <button id="fullscreenBtn" aria-label="Toggle full screen">⛶ Fullscreen</button>
+  <button id="musicToggleBtn" type="button" aria-label="Mute music" aria-pressed="false" title="Mute music">🔊</button>
   <div id="topHud" style="position:sticky;top:0;z-index:35;background:rgba(15,23,42,.92);color:#fff;padding:8px 10px;font-size:14px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;backdrop-filter:blur(6px);">
     <span id="hudPlayer">🐭 Player</span><span id="hudCheese">🧀 0</span><span id="hudWins">🏆 0</span><span id="hudTimer">⏱ --:--</span><span id="hudWave">🌊 Wave 1</span><span id="hudBuild">🏗 Build: None</span><span id="hudRole">🎭 Spectator</span>
   </div>
@@ -1919,6 +1947,46 @@
   const grid = Array.from({length:gridSize}, () => Array.from({length:gridSize}, () => ""));
 
   let gameStarted = false;
+
+  const gameMusic = new Audio("../sound/chess/mousetrap.mp3");
+  gameMusic.loop = true;
+  gameMusic.preload = "auto";
+  gameMusic.volume = 0.5;
+  let musicMuted = false;
+
+  function updateMusicToggle(){
+    const button = document.getElementById("musicToggleBtn");
+    if (!button) return;
+    button.textContent = musicMuted ? "🔇" : "🔊";
+    button.setAttribute("aria-pressed", String(musicMuted));
+    button.setAttribute("aria-label", musicMuted ? "Unmute music" : "Mute music");
+    button.title = musicMuted ? "Unmute music" : "Mute music";
+  }
+
+  function playGameMusic(){
+    if (!gameStarted || musicMuted) return;
+    gameMusic.play().catch(() => {
+      // Browsers can block autoplay until the player's next interaction.
+    });
+  }
+
+  function stopGameMusic(){
+    gameMusic.pause();
+  }
+
+  document.getElementById("musicToggleBtn")?.addEventListener("click", () => {
+    musicMuted = !musicMuted;
+    if (musicMuted) stopGameMusic();
+    else playGameMusic();
+    updateMusicToggle();
+  });
+
+  const resumeGameMusicAfterInteraction = () => {
+    if (gameStarted && !musicMuted && gameMusic.paused) playGameMusic();
+  };
+  window.addEventListener("pointerdown", resumeGameMusicAfterInteraction, { passive:true });
+  window.addEventListener("keydown", resumeGameMusicAfterInteraction);
+  updateMusicToggle();
 
   let playerPos = { x: 1, y: 1 };
   let catPos    = { x: 15, y: 15 };
@@ -6325,6 +6393,7 @@
             mobileBuildOrder = selectedBuildSlots.slice(0,MAX_BUILD_SLOTS);
             if (!selectedBuild && mobileBuildOrder[0]) selectBuild(String(mobileBuildOrder[0]));
             gameStarted = true;
+            playGameMusic();
             startHostLoops();
             if (soloMode) setTimeout(activateSoloRuntime, 0);
           }
@@ -7057,6 +7126,7 @@
         st.style.border = "2px solid red";
         st.style.marginTop = "10px";
         gameStarted = false;
+        stopGameMusic();
       }
     }, 1000);
 
@@ -7167,6 +7237,7 @@
     hostInitialized = true;
 
     gameStarted = true;
+    playGameMusic();
     initializeCatAbilityLoadout(currentDifficulty);
     startCatBehaviorLoop();
 
@@ -7515,6 +7586,7 @@
     }, 300);
 
     if (gameStarted){
+      playGameMusic();
       startHostLoops();
       if (soloMode) setTimeout(activateSoloRuntime, 0);
     }
