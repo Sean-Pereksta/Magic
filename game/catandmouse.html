@@ -2281,6 +2281,22 @@
   }
 
 
+  function earlyEnemyHpMultiplier(round){
+    if (round <= 10) return 0.5;
+    if (round <= 15) return 0.75;
+    return 1;
+  }
+
+  function scaleEnemyHealthForRound(maxHp, round = catPower){
+    // Preserve weak early rounds while allowing the stronger mid/late-game scaling to remain intact.
+    return Math.max(1, Math.round(maxHp * earlyEnemyHpMultiplier(round)));
+  }
+
+  function enemyHealthStats(maxHp, round = catPower){
+    const scaledHp = scaleEnemyHealthForRound(maxHp, round);
+    return { health: scaledHp, maxHealth: scaledHp, maxHp: scaledHp };
+  }
+
   function getRatHealthForDifficulty(){
     const cfg = DIFFICULTY_SETTINGS[currentDifficulty] || DIFFICULTY_SETTINGS.medium;
     return cfg.ratBaseHealth * ratPower;
@@ -4311,7 +4327,7 @@
         id,
         x: spot.x,
         y: spot.y,
-        health: getOxHealthForDifficulty(),
+        ...enemyHealthStats(getOxHealthForDifficulty()),
         wave: waveTag,
         createdAt: Date.now()
       }});
@@ -4332,7 +4348,7 @@
             id,
             x: openSpot.x,
             y: openSpot.y,
-            health: Math.max(120, getRatHealthForDifficulty() * 10),
+            ...enemyHealthStats(Math.max(120, getRatHealthForDifficulty() * 10)),
             wave: waveTag,
             createdAt: Date.now()
           }});
@@ -4345,7 +4361,7 @@
       const sid = `${Date.now()}_${crypto.randomUUID()}`;
       const sx = Math.max(0, Math.min(gridSize-1, catPos.x + (Math.floor(Math.random()*7)-3)));
       const sy = Math.max(0, Math.min(gridSize-1, catPos.y + (Math.floor(Math.random()*7)-3)));
-      writes.push({ type:"set", ref: ccRef(ID.stinkRat(sid)), data: { kind:"stinkrat", id:sid, x:sx, y:sy, health:Math.max(10, getRatHealthForDifficulty()*2), createdAt:Date.now() } });
+      writes.push({ type:"set", ref: ccRef(ID.stinkRat(sid)), data: { kind:"stinkrat", id:sid, x:sx, y:sy, ...enemyHealthStats(Math.max(10, getRatHealthForDifficulty()*2)), createdAt:Date.now() } });
     }
 
     const maxRats = catPower;
@@ -4365,7 +4381,7 @@
         id,
         x: spot.x,
         y: spot.y,
-        health: getRatHealthForDifficulty(),
+        ...enemyHealthStats(getRatHealthForDifficulty()),
         wave: waveTag,
         createdAt: Date.now()
       }});
@@ -6725,7 +6741,7 @@
           id,
           x: vx,
           y: vy,
-          health: ratPower * 20,
+          ...enemyHealthStats(ratPower * 20),
           createdAt: Date.now()
         }, { merge:true });
       }
