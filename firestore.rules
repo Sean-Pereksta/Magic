@@ -32,6 +32,44 @@ service cloud.firestore {
       allow read, write: if isAuthed();
     }
 
+    // Community chat is split so Firestore can enforce private visibility.
+    // Public messages are readable by signed-in visitors and become deletable
+    // after the same 24-hour retention window used by the client.
+    match /chat/{messageId} {
+      allow read: if isAuthed();
+      allow create: if isAuthed()
+        && request.resource.data.username is string
+        && request.resource.data.text is string
+        && request.resource.data.text.size() <= 500
+        && request.resource.data.type in ['message', 'lobby_ad'];
+      allow update: if false;
+      allow delete: if isAuthed()
+        && resource.data.timestamp < request.time - duration.value(24, 'h');
+    }
+
+    // Each private document carries the two Firebase Auth UIDs. Queries must
+    // use array-contains(request.auth.uid), allowing rules to prove that every
+    // returned message belongs to the current participant.
+    match /privateChat/{messageId} {
+      allow read: if isAuthed()
+        && request.auth.uid in resource.data.participantUids;
+      allow create: if isAuthed()
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.recipientUid is string
+        && request.resource.data.participantUids is list
+        && request.resource.data.participantUids.size() == 2
+        && request.auth.uid in request.resource.data.participantUids
+        && request.resource.data.username is string
+        && request.resource.data.privateTo is string
+        && request.resource.data.text is string
+        && request.resource.data.text.size() <= 500
+        && request.resource.data.type == 'private';
+      allow update: if false;
+      allow delete: if isAuthed()
+        && request.auth.uid in resource.data.participantUids
+        && resource.data.timestamp < request.time - duration.value(24, 'h');
+    }
+
     match /metrics_dailyUsers/{dateKey} {
       match /users/{uid} {
         allow read, write: if isAuthed();
