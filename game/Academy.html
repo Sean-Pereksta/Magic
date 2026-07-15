@@ -871,7 +871,7 @@ const IMPORT_CACHE_META_STORE = 'meta';
 const IMPORT_CACHE_SOURCE_STORE = 'sourceData';
 const IMPORT_CACHE_BOOK_STORE = 'books';
 const IMPORT_CACHE_MISC_STORE = 'misc';
-const IMPORT_CACHE_SCHEMA_VERSION = 2;
+const IMPORT_CACHE_SCHEMA_VERSION = 3;
 const CONTROL_ROSTER_SCHEMA_VERSION = 2;
 const METRICS_KEY = 'allStarResearchMetrics.v1';
 const METRICS_DB = 'allStarResearchMetricsDb.v1';
@@ -1165,11 +1165,70 @@ function scheduleImportedDataSave(reason='automatic save', opts={}){
   state.importCacheSaveTimer=setTimeout(()=>{ state.importCacheSaveTimer=null; saveImportedDataToIndexedDB((state.importCacheSaveReasons||[reason]).join('; ')||reason,{silent:opts.silent!==false}); },delay);
   return true;
 }
+function sourceCacheRecordId(source){
+  const legacy={retail_sv2:'retail:sv2',retail_wiper:'retail:wiper',retail_team_totals:'retail:teamTotals',referral_sv2:'referral:sv2',referral_wiper:'referral:wiper',referral_team_totals:'referral:teamTotals'};
+  return legacy[source] || source;
+}
 function sourceCacheValue(source){
-  if(source==='retail_sv2'||source==='retail_wiper'||source==='retail_team_totals') return importCacheClone(state.data.retail||{});
-  if(source==='referral_sv2'||source==='referral_wiper'||source==='referral_team_totals') return importCacheClone(state.data.referral||{});
-  if(isCustomSource(source)) return importCacheClone(customSource(source)||{});
-  return importCacheClone(state.data[source]||{});
+  const key=sourceCacheRecordId(source);
+  const retail=state.data.retail||{}, referral=state.data.referral||{};
+  if(key==='retail:metadata') return importCacheClone({fileName:retail.fileName||'',headers:retail.headers||{sv2:[],wiper:[]}});
+  if(key==='retail:sv2') return importCacheClone({headers:retail.headers?.sv2||[],rows:retail.sv2||[],aoa:retail.sv2Aoa||[]});
+  if(key==='retail:wiper') return importCacheClone({headers:retail.headers?.wiper||[],rows:retail.wiper||[],aoa:retail.wiperAoa||[]});
+  if(key==='retail:controlRoster') return importCacheClone({rows:retail.controlRoster||[]});
+  if(key==='retail:teamTotals') return importCacheClone(retail.teamTotals||emptyTeamTotalsDataset('retail'));
+  if(key==='referral:metadata') return importCacheClone({fileName:referral.fileName||'',headers:referral.headers||{sv2:[],wiper:[],itac:[]},itacSheetName:referral.itacSheetName||''});
+  if(key==='referral:sv2') return importCacheClone({headers:referral.headers?.sv2||[],rows:referral.sv2||[],aoa:referral.sv2Aoa||[]});
+  if(key==='referral:wiper') return importCacheClone({headers:referral.headers?.wiper||[],rows:referral.wiper||[],aoa:referral.wiperAoa||[]});
+  if(key==='referral:itac') return importCacheClone({headers:referral.headers?.itac||[],rows:referral.itac||[],aoa:referral.itacAoa||[],sheetName:referral.itacSheetName||''});
+  if(key==='referral:controlRoster') return importCacheClone({rows:referral.controlRoster||[]});
+  if(key==='referral:teamTotals') return importCacheClone(referral.teamTotals||emptyTeamTotalsDataset('referral'));
+  if(isCustomSource(key)){ const c=customSource(key)||{}; return importCacheClone({sourceKey:c.sourceKey,id:c.id,name:c.name,fileName:c.fileName,headers:c.headers||[],rows:c.rows||[],framework:c.framework||'generic_table',sheetName:c.sheetName||'',headerRow:c.headerRow||1,startCol:c.startCol||1,manualHeaders:c.manualHeaders||[],columns:c.columns||{},aggregation:c.aggregation||{},sourceType:c.sourceType||'custom'}); }
+  return importCacheClone(state.data[key]||{});
+}
+function hydrateSourceCacheRecord(nextData, rec, customData){
+  const id=sourceCacheRecordId(rec?.id||''), v=rec?.value||{};
+  const newest=(a,b)=>{ const ta=Date.parse(a?.updatedAt||a?.savedAt||0)||0, tb=Date.parse(b?.updatedAt||b?.savedAt||0)||0; return tb>=ta?b:a; };
+  if(['retail_sv2','retail_wiper','retail_team_totals'].includes(rec?.id)){ // v2 aggregate migration, field-wise and not key-order authoritative
+    nextData.retail=newest(nextData.retail,{...nextData.retail,...v}); return;
+  }
+  if(['referral_sv2','referral_wiper','referral_team_totals'].includes(rec?.id)){ nextData.referral=newest(nextData.referral,{...nextData.referral,...v}); return; }
+  if(id==='retail:metadata'){ nextData.retail.fileName=v.fileName||''; nextData.retail.headers={...(nextData.retail.headers||{}),...(v.headers||{})}; return; }
+  if(id==='retail:sv2'){ nextData.retail.sv2=v.rows||[]; nextData.retail.sv2Aoa=v.aoa||[]; nextData.retail.headers.sv2=v.headers||[]; return; }
+  if(id==='retail:wiper'){ nextData.retail.wiper=v.rows||[]; nextData.retail.wiperAoa=v.aoa||[]; nextData.retail.headers.wiper=v.headers||[]; return; }
+  if(id==='retail:controlRoster'){ nextData.retail.controlRoster=v.rows||[]; return; }
+  if(id==='retail:teamTotals'){ nextData.retail.teamTotals=v||emptyTeamTotalsDataset('retail'); return; }
+  if(id==='referral:metadata'){ nextData.referral.fileName=v.fileName||''; nextData.referral.headers={...(nextData.referral.headers||{}),...(v.headers||{})}; nextData.referral.itacSheetName=v.itacSheetName||''; return; }
+  if(id==='referral:sv2'){ nextData.referral.sv2=v.rows||[]; nextData.referral.sv2Aoa=v.aoa||[]; nextData.referral.headers.sv2=v.headers||[]; return; }
+  if(id==='referral:wiper'){ nextData.referral.wiper=v.rows||[]; nextData.referral.wiperAoa=v.aoa||[]; nextData.referral.headers.wiper=v.headers||[]; return; }
+  if(id==='referral:itac'){ nextData.referral.itac=v.rows||[]; nextData.referral.itacAoa=v.aoa||[]; nextData.referral.headers.itac=v.headers||[]; nextData.referral.itacSheetName=v.sheetName||v.itacSheetName||''; return; }
+  if(id==='referral:controlRoster'){ nextData.referral.controlRoster=v.rows||[]; return; }
+  if(id==='referral:teamTotals'){ nextData.referral.teamTotals=v||emptyTeamTotalsDataset('referral'); return; }
+  if(isCustomSource(id)){ customData[id]=v; return; }
+  if(nextData[id]) nextData[id]={...nextData[id],...v};
+}
+function markRetailPersistenceDirty(reason='retail changed'){
+  ['retail:metadata','retail:sv2','retail:wiper','retail:controlRoster','retail:teamTotals'].forEach(k=>markImportCacheDirty('source',k,reason));
+  markBookCacheDirty('retail',reason); markImportCacheDirty('misc','sourceMeta',reason); markImportCacheDirty('misc','sourceSettings',reason);
+}
+function markReferralPersistenceDirty(reason='referral changed'){
+  ['referral:metadata','referral:sv2','referral:wiper','referral:itac','referral:controlRoster','referral:teamTotals'].forEach(k=>markImportCacheDirty('source',k,reason));
+  markBookCacheDirty('referral',reason); markImportCacheDirty('misc','sourceMeta',reason); markImportCacheDirty('misc','sourceSettings',reason);
+}
+function normalizedCustomSourceDefinitions(){
+  return (state.customSources||[]).map(c=>({id:c.id,sourceKey:c.sourceKey,name:c.name,displayName:c.displayName||c.name,fileName:c.fileName||'',framework:c.framework||'generic_table',sheetName:c.sheetName||'',selectedWorksheet:c.sheetName||'',sheetNames:c.sheetNames||[],headerRow:c.headerRow||1,startCol:c.startCol||1,manualHeaders:c.manualHeaders||[],columns:c.columns||{},aggregation:c.aggregation||{},sourceType:c.sourceType||'custom'}));
+}
+function recordPersistenceMutation({reason='data changed',sources=[],books=[],sheets=[],misc=[],deletions={},critical=false}={}){
+  sources.forEach(s=>markImportCacheDirty('source',sourceCacheRecordId(s),reason)); books.forEach(b=>markBookCacheDirty(b,reason)); sheets.forEach(s=>markImportCacheDirty('sheet',s,reason)); misc.forEach(m=>markImportCacheDirty('misc',m,reason));
+  (deletions.sources||[]).forEach(s=>markImportCacheDirty('deletedSource',sourceCacheRecordId(s),reason)); (deletions.books||[]).forEach(b=>markImportCacheDirty('deletedBook',b,reason)); (deletions.sheets||[]).forEach(s=>markImportCacheDirty('deletedSheet',s,reason));
+  return critical ? flushImportCacheSave(reason) : (scheduleImportedDataSave(reason), Promise.resolve(true));
+}
+async function persistCriticalMutation(args={}){ recordPersistenceMutation({...args,critical:false}); return flushImportCacheSave(args.reason||'critical save'); }
+async function flushImportCacheSave(reason='flush import cache'){
+  if(state.importCacheSaveTimer){ clearTimeout(state.importCacheSaveTimer); state.importCacheSaveTimer=null; }
+  while(state.importCacheSaving) await state.importCacheSavePromise?.catch(()=>{}) || new Promise(r=>setTimeout(r,50));
+  if(!importCacheHasDirty() && state.importCache?.status==='saved') return true;
+  return saveImportedDataToIndexedDB(reason,{silent:true,force:true});
 }
 function workbookMetadataRecord(bookKey){
   const b=state.books?.[bookKey]||{}; return {fileName:b.fileName||'',sheetNames:b.sheetNames||[],selectedSheets:b.selectedSheets||{},sheetVersions:b.sheetVersions||{},updatedAt:new Date().toISOString()};
@@ -1264,6 +1323,32 @@ function importCacheMetadata(reason='manual save'){
   allSourceKeys().forEach(src=>{ const m=state.sourceMeta?.[src]; rowCounts[src]=Number.isFinite(m?.rowCount)?m.rowCount:(getRowsRaw(src)||[]).length; });
   return {id:'current',version:IMPORT_CACHE_SCHEMA_VERSION,controlRosterSchemaVersion:CONTROL_ROSTER_SCHEMA_VERSION,savedAt:new Date().toISOString(),reason,rowCounts,totalRows:Object.values(rowCounts).reduce((a,b)=>a+Number(b||0),0),sheetCount:importCacheSheetCount(),fileNames:importedFileNameMap(),customSourceCount:(state.customSources||[]).length,categorizedBuiltAt:state.categorized?.nondated?.builtAt || state.categorized?.dated?.builtAt || '',sourceMeta:importCacheClone(state.sourceMeta||{})};
 }
+
+function mergeImportCacheDirtySnapshot(snapshot){
+  if(!snapshot) return; const d=ensureImportCacheDirty(); d.metadata=true;
+  ['sources','books','sheets','misc','deletedSources','deletedBooks','deletedSheets'].forEach(k=>{ (snapshot[k]||new Set()).forEach(v=>d[k].add(v)); });
+}
+function scheduleImportCacheRetry(reason='retry import cache save'){
+  const delays=[500,1500,4000]; state.importCache.retryCount=Number(state.importCache.retryCount||0);
+  if(state.importCache.retryCount>=delays.length){ state.importCache.status='manual_action_required'; return false; }
+  const delay=delays[state.importCache.retryCount++]; state.importCache.status='retrying';
+  setTimeout(()=>{ if(importCacheHasDirty()) saveImportedDataToIndexedDB(reason+' retry '+state.importCache.retryCount,{silent:true}); },delay);
+  return true;
+}
+function importCacheManifest(meta={}, snapshot={}){
+  const sourceIds=[...new Set([...(snapshot.sources||[]),...Object.keys(state.sourceMeta||{}).map(sourceCacheRecordId)])].sort();
+  const bookIds=Object.keys(state.books||{}).map(bookRecordId).sort();
+  const sheetIds=[]; Object.entries(state.books||{}).forEach(([bookKey,b])=>(b.sheetNames||[]).forEach(sn=>sheetIds.push(sheetRecordId(bookKey,sn))));
+  const headerCounts={}; sourceIds.forEach(src=>{ const h=getHeaders(src)||[]; headerCounts[src]=h.length; });
+  return {schemaVersion:IMPORT_CACHE_SCHEMA_VERSION,generationId:state.importCache?.generationId||(state.importCache.generationId=id()),revision:Number(state.importCache?.revision||0)+1,savedAt:meta.savedAt,reason:meta.reason,sourceIds,bookIds,sheetIds:sheetIds.sort(),miscIds:[...(snapshot.misc||[])].sort(),rowCounts:meta.rowCounts||{},headerCounts,workbookWorksheetCounts:Object.fromEntries(Object.entries(state.books||{}).map(([k,b])=>[k,(b.sheetNames||[]).length])),selectedSheets:Object.fromEntries(Object.entries(state.books||{}).map(([k,b])=>[k,b.selectedSheets||{}])),customSourceKeys:customSourceKeys(),controlRosterCounts:{retail:(state.data.retail.controlRoster||[]).length,referral:(state.data.referral.controlRoster||[]).length},teamTotalsCounts:{retail:(state.data.retail.teamTotals?.rows||[]).length,referral:(state.data.referral.teamTotals?.rows||[]).length},categorizedRowCounts:{nondated:(state.categorized?.nondated?.rows||[]).length,dated:(state.categorized?.dated?.rows||[]).length,warnings:(state.categorized?.warnings||[]).length},aliasCounts:{active:(state.repAliases||new Map()).size,quarantined:(state.quarantinedRepAliases||[]).length},sourceSettingModelCount:(state.models||[]).filter(m=>m.sourceSettings).length};
+}
+function mergeSourceSettingsFromImportCache(records){
+  if(!Array.isArray(records)) return; const byId=new Map((state.models||[]).map(m=>[m.id,m]));
+  records.forEach(r=>{ const m=byId.get(r.id); if(m&&r.sourceSettings) m.sourceSettings=normalizeSourceSettings({...r.sourceSettings,...(m.sourceSettings||{})}); });
+}
+function restoreAliasesFromImportCache(value){
+  const active=Array.isArray(value)?value:(value?.active||[]); state.repAliases=new Map(); active.forEach(a=>{ const key=a?.alias||a?.aliasKey||a?.aliasName; if(key) state.repAliases.set(key,a); }); state.quarantinedRepAliases=Array.isArray(value?.quarantined)?value.quarantined:(state.quarantinedRepAliases||[]); if(value?.sourceArea) state.aliasSourceArea=value.sourceArea;
+}
 async function saveImportedDataToIndexedDB(reason='manual save', opts={}){
   if(state.importCacheLoading && !opts.force) return false;
   if(state.importCacheSaving){ state.importCacheSaveQueued=true; return false; }
@@ -1272,10 +1357,11 @@ async function saveImportedDataToIndexedDB(reason='manual save', opts={}){
   if(opts.full || !state.importCache.meta){
     allSourceKeys().forEach(src=>markSourceCacheDirty(src,reason));
     Object.keys(state.books||{}).forEach(k=>markBookCacheDirty(k,reason));
-    ['categorized','customSources','teamIndex','sourceMeta','sourceSettings','aliases'].forEach(k=>markImportCacheDirty('misc',k,reason));
+    ['categorized','customSources','teamIndex','sourceMeta','sourceSettings','aliases','manifest'].forEach(k=>markImportCacheDirty('misc',k,reason));
   }
   if(!importCacheHasDirty(dirty) && !opts.force){ await renderImportCacheStatus('Local cache already up to date.'); return true; }
-  state.importCacheSaving=true; state.importCache.status='saving';
+  state.importCacheSaving=true; state.importCache.status='saving'; state.importCacheSavePromise=null;
+  let snapshot=null;
   let db;
   try{
     db=await importCacheOpenDb();
@@ -1283,40 +1369,43 @@ async function saveImportedDataToIndexedDB(reason='manual save', opts={}){
     const teamIndex=serializeTeamIndex(state.teamIndexCache || buildCompactTeamIndexFromRows(reason));
     state.teamIndexCache=restoreTeamIndex(teamIndex);
     if(dirty.misc.has('teamIndex')) dirty.misc.add('teamIndex');
-    const snapshot={sources:new Set(dirty.sources),books:new Set(dirty.books),sheets:new Set(dirty.sheets),misc:new Set(dirty.misc),deletedSources:new Set(dirty.deletedSources),deletedBooks:new Set(dirty.deletedBooks),deletedSheets:new Set(dirty.deletedSheets)};
-    clearImportCacheDirty();
+    snapshot={sources:new Set(dirty.sources),books:new Set(dirty.books),sheets:new Set(dirty.sheets),misc:new Set(dirty.misc),deletedSources:new Set(dirty.deletedSources),deletedBooks:new Set(dirty.deletedBooks),deletedSheets:new Set(dirty.deletedSheets)};
     const tx=db.transaction([IMPORT_CACHE_META_STORE,IMPORT_CACHE_SOURCE_STORE,IMPORT_CACHE_BOOK_STORE,IMPORT_CACHE_MISC_STORE],'readwrite');
-    const done=idbTxDone(tx);
+    const done=idbTxDone(tx); state.importCacheSavePromise=done;
     const metaStore=tx.objectStore(IMPORT_CACHE_META_STORE), sourceStore=tx.objectStore(IMPORT_CACHE_SOURCE_STORE), bookStore=tx.objectStore(IMPORT_CACHE_BOOK_STORE), miscStore=tx.objectStore(IMPORT_CACHE_MISC_STORE);
     // Normal saves never clear stores; they put dirty records and delete only explicit removals.
     snapshot.deletedSources.forEach(k=>sourceStore.delete(k));
     snapshot.deletedBooks.forEach(k=>bookStore.delete(bookRecordId(k)));
     snapshot.deletedSheets.forEach(k=>bookStore.delete(sheetRecordId(...splitSheetDirtyKey(k))));
-    snapshot.sources.forEach(k=>sourceStore.put({id:k,value:sourceCacheValue(k)}));
+    snapshot.sources.forEach(k=>{ const id=sourceCacheRecordId(k); sourceStore.put({id,value:sourceCacheValue(id),updatedAt:meta.savedAt,revision:meta.revision}); });
     snapshot.books.forEach(k=>bookStore.put({id:bookRecordId(k),type:'book',bookKey:k,value:importCacheClone(workbookMetadataRecord(k))}));
     snapshot.sheets.forEach(k=>{ const [bookKey,sheetName]=splitSheetDirtyKey(k); bookStore.put({id:sheetRecordId(bookKey,sheetName),type:'sheet',bookKey,sheetName,value:{aoa:importCacheClone(getBookSheetAoa(bookKey,sheetName)),version:Date.now()}}); });
     if(snapshot.misc.has('categorized')) miscStore.put({id:'categorized',value:importCacheClone(state.categorized||{})});
-    if(snapshot.misc.has('customSources')) miscStore.put({id:'customSources',value:importCacheClone(state.customSources||[])});
+    if(snapshot.misc.has('customSources')) miscStore.put({id:'customSources',value:importCacheClone(normalizedCustomSourceDefinitions())});
     if(snapshot.misc.has('teamIndex')) miscStore.put({id:'teamIndex',value:importCacheClone(teamIndex)});
     if(snapshot.misc.has('sourceMeta')) miscStore.put({id:'sourceMeta',value:importCacheClone(state.sourceMeta||{})});
     if(snapshot.misc.has('sourceSettings')) miscStore.put({id:'sourceSettings',value:importCacheClone((state.models||[]).map(m=>({id:m.id,sourceSettings:m.sourceSettings||{}})))});
-    if(snapshot.misc.has('aliases')) miscStore.put({id:'aliases',value:importCacheClone([...(state.repAliases||new Map()).values()])});
+    if(snapshot.misc.has('aliases')) miscStore.put({id:'aliases',value:importCacheClone({active:[...(state.repAliases||new Map()).values()],quarantined:state.quarantinedRepAliases||[],sourceArea:state.aliasSourceArea||''})});
+    const manifest=importCacheManifest(meta, snapshot);
+    miscStore.put({id:'manifest',value:manifest}); meta.manifest=manifest;
     metaStore.put(meta); // metadata last is the commit marker for the completed dirty batch.
     await done;
     Object.keys(state.books||{}).forEach(releaseInactiveWorkbookSheets);
-    state.importCache.meta=meta; state.importCache.status='saved'; state.importCache.lastError=''; state.importCacheSaveReasons=[];
+    clearImportCacheDirty(); state.importCache.meta=meta; state.importCache.status='saved'; state.importCache.lastError=''; state.importCache.retryCount=0; state.importCacheSaveReasons=[];
     if(!opts.silent) alert('Imported data saved locally in IndexedDB.');
     await renderImportCacheStatus('Saved imported data locally.');
     return true;
   }catch(err){
     console.error('[Import Cache] Save failed',err);
+    mergeImportCacheDirtySnapshot(snapshot);
     state.importCache.status='error'; state.importCache.lastError=String(err?.message||err);
     if(!opts.silent) alert('Could not save local IndexedDB import cache. The previous valid cache was left in place.');
     await renderImportCacheStatus('Local cache save failed; previous cache retained: '+state.importCache.lastError);
+    scheduleImportCacheRetry(reason);
     return false;
   }finally{
     if(db) db.close();
-    state.importCacheSaving=false;
+    state.importCacheSaving=false; state.importCacheSavePromise=null;
     if(state.importCacheSaveQueued || importCacheHasDirty()){ state.importCacheSaveQueued=false; scheduleImportedDataSave('changes queued during save',{delay:250}); }
   }
 }
@@ -1363,13 +1452,12 @@ async function loadImportedDataFromIndexedDB(opts={}){
     const customSources=await idbReq(miscStore.get('customSources'));
     const teamIndex=await idbReq(miscStore.get('teamIndex'));
     const sourceMeta=await idbReq(miscStore.get('sourceMeta'));
+    const sourceSettings=await idbReq(miscStore.get('sourceSettings'));
+    const aliases=await idbReq(miscStore.get('aliases'));
+    const manifest=await idbReq(miscStore.get('manifest'));
     const nextData=defaultImportedDataState();
-    sourceRecords.forEach(r=>{
-      if(!r?.id) return;
-      if(r.id.startsWith('retail_')) nextData.retail={...nextData.retail,...(r.value||{})};
-      else if(r.id.startsWith('referral_')) nextData.referral={...nextData.referral,...(r.value||{})};
-      else if(nextData[r.id]) nextData[r.id]={...nextData[r.id],...(r.value||{})};
-    });
+    const customData={};
+    sourceRecords.forEach(r=>hydrateSourceCacheRecord(nextData,r,customData));
     if(Number(meta.controlRosterSchemaVersion||0)<CONTROL_ROSTER_SCHEMA_VERSION){
       if(nextData.retail) nextData.retail.controlRoster=[];
       if(nextData.referral) nextData.referral.controlRoster=[];
@@ -1387,10 +1475,11 @@ async function loadImportedDataFromIndexedDB(opts={}){
     // dirty sheet records, and get one scheduled schema save instead of being discarded.
     let migrated=false;
     legacyBookRecords.forEach(r=>{ const sheets=r.value?.aoaBySheet||{}; Object.keys(sheets).forEach(sn=>{ markImportCacheDirty('sheet',`${r.id}:${sn}`,'legacy workbook sheet migration'); migrated=true; }); markImportCacheDirty('book',r.id,'legacy workbook metadata migration'); });
-    state.data=nextData; state.books=nextBooks; state.customSources=Array.isArray(customSources?.value) ? customSources.value : []; state.categorized=categorized?.value || state.categorized; state.teamIndexCache=restoreTeamIndex(teamIndex?.value); state.sourceMeta=sourceMeta?.value || meta.sourceMeta || {}; state.importCache.meta=meta; state.importCache.status='loaded';
+    state.data=nextData; state.books=nextBooks; state.customSources=Array.isArray(customSources?.value) ? customSources.value.map(c=>({...c,headers:customData[c.sourceKey]?.headers||c.headers||[],rows:customData[c.sourceKey]?.rows||c.rows||[],aoaBySheet:{}})) : []; Object.entries(customData).forEach(([key,val])=>{ if(!customSource(key)) state.customSources.push({...val,sourceKey:key,aoaBySheet:{}}); }); state.categorized=categorized?.value || state.categorized; state.teamIndexCache=restoreTeamIndex(teamIndex?.value); state.sourceMeta=sourceMeta?.value || meta.sourceMeta || {}; if(sourceSettings?.value) mergeSourceSettingsFromImportCache(sourceSettings.value); if(aliases?.value) restoreAliasesFromImportCache(aliases.value); state.importCache.meta={...meta,manifest:manifest?.value||meta.manifest}; state.importCache.status='loaded';
     revalidateRepAliases();
     state.data.retail.teamTotals=rebuildTeamTotalsIndex(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')); state.data.referral.teamTotals=rebuildTeamTotalsIndex(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')); afterImportedDataRestored('local IndexedDB import cache loaded'); renderTeamTotalsImportControls();
     clearImportCacheDirty();
+    if(Number(meta.version||0)<IMPORT_CACHE_SCHEMA_VERSION || migrated){ ['retail:metadata','retail:sv2','retail:wiper','retail:controlRoster','retail:teamTotals','referral:metadata','referral:sv2','referral:wiper','referral:itac','referral:controlRoster','referral:teamTotals'].forEach(k=>markImportCacheDirty('source',k,'schema v3 migration')); markImportCacheDirty('misc','customSources','schema v3 migration'); markImportCacheDirty('misc','manifest','schema v3 migration'); migrated=true; }
     if(migrated){ legacyBookRecords.forEach(r=>{ markBookCacheDirty(r.id,'legacy cache migrated to sheet records'); }); scheduleImportedDataSave('legacy cache migrated to sheet records',{delay:500}); }
     if(opts.showProgress) updateProgress('Local data loaded',100,{force:true});
     if(opts.showProgress) setTimeout(hideProgress,250);
@@ -1415,7 +1504,7 @@ async function clearImportedDataIndexedDB(){
   try{
     db=await importCacheOpenDb();
     const tx=db.transaction([IMPORT_CACHE_META_STORE,IMPORT_CACHE_SOURCE_STORE,IMPORT_CACHE_BOOK_STORE,IMPORT_CACHE_MISC_STORE],'readwrite');
-    const done=idbTxDone(tx);
+    const done=idbTxDone(tx); state.importCacheSavePromise=done;
     tx.objectStore(IMPORT_CACHE_META_STORE).clear(); tx.objectStore(IMPORT_CACHE_SOURCE_STORE).clear(); tx.objectStore(IMPORT_CACHE_BOOK_STORE).clear(); tx.objectStore(IMPORT_CACHE_MISC_STORE).clear();
     await done;
     state.importCache.meta=null; state.importCache.status='empty'; state.importCache.lastError='';
@@ -4331,7 +4420,11 @@ async function categorizeImportedData(){
     state.categorized.warnings=warnings;
     timing.mark('building date/non-date datasets', `${nonRows.length.toLocaleString()} non-date, ${datedRows.length.toLocaleString()} dated`);
     updateProgress('Finalizing categorized import...',86); await yieldToBrowser();
+    markImportCacheDirty('misc','categorized','categorized database build');
+    markImportCacheDirty('misc','sourceMeta','categorized database build');
     await finishDataChanged('categorized database build',88);
+    updateProgress('Saving categorized databases to IndexedDB...',97,{force:true});
+    await flushImportCacheSave('categorized database build complete');
     renderCategorizedSummary();
     timing.mark('rendering previews', 'summary only; full preview deferred until opened');
     timing.end('categorize complete');
@@ -4872,7 +4965,7 @@ async function finishDataChanged(reason='Data updated', progressStart=55){
   scheduleImportedDataSave(reason,{delay:500});
   updateProgress('Preparing headers complete',100,{force:true});
   await yieldToBrowser();
-  timing.end('essential import flow complete; indexes build on first research/model need; imported data cached locally');
+  timing.end('essential import flow complete; indexes build on first research/model need; local save scheduled');
 }
 function activeModelForImport(){ return state.editModel || findModel(els.runModelSelect?.value) || state.models[0] || normalizeModelForStorage({criteria:[]}); }
 function sourceRowsFromStoredAoa(source, model, strict=true){
@@ -4955,7 +5048,10 @@ async function loadRetailFile(file){
     state.data.retail={...state.data.retail,fileName:file.name,sv2:sv2Rows,wiper:wiperRows,controlRoster,teamTotals,headers:{sv2:sv2.headers,wiper:wip.headers}}; bumpVersion('roster'); invalidateRosterIndex('retail control roster imported'); ensureRosterIndex();
     els.retailFileName.textContent=`${file.name}${controlRoster.length?` · ${controlRoster.length.toLocaleString()} Control reps`:''} · ${teamTotalsSummaryText('retail')}`;
     renderTeamTotalsImportControls();
+    markRetailPersistenceDirty('retail import complete');
     await finishDataChanged('retail import',55);
+    updateProgress('Saving retail import to IndexedDB...',97,{force:true});
+    await flushImportCacheSave('retail import complete');
   }catch(err){ console.error(err); alert('Retail import failed. Check the console for details.'); }
   finally{ hideProgress(); }
 }
@@ -5050,7 +5146,10 @@ async function loadReferralFile(file){
     const itacStatus=itacFound?` · ITAC ${itacMatch.matched.toLocaleString()} SV2 rows matched via ${itacMatch.phoneHeader||'Phone_ID missing'}`:' · no ITAC sheet detected';
     els.referralFileName.textContent=`${file.name}${controlRoster.length?` · ${controlRoster.length.toLocaleString()} Control reps`:''}${itacStatus} · ${teamTotalsSummaryText('referral')}`;
     renderTeamTotalsImportControls();
+    markReferralPersistenceDirty('referral import complete');
     await finishDataChanged('referral import',55);
+    updateProgress('Saving referral import to IndexedDB...',97,{force:true});
+    await flushImportCacheSave('referral import complete');
   }catch(err){ console.error(err); alert('Referral import failed. Check the console for details.'); }
   finally{ hideProgress(); }
 }
@@ -10329,6 +10428,22 @@ function wire(){
     }finally{ buildRunSourceIndex=original; }
     console.table(results); return results;
   };
+  window.runImportCachePersistenceRegressionTests=async function(){
+    const results=[], ok=(name,pass,detail='')=>results.push({name,pass:!!pass,detail});
+    const snap=importCacheClone({data:state.data,books:state.books,customSources:state.customSources,categorized:state.categorized,sourceMeta:state.sourceMeta});
+    try{
+      state.data=defaultImportedDataState(); state.books=defaultImportedBooksState(); state.customSources=[]; state.sourceMeta={}; state.categorized={nondated:{headers:['Representative','Coach'],rows:[],builtAt:'',sourceStats:[]},dated:{headers:['Representative','Coach','Date'],rows:[],builtAt:'',sourceStats:[]},warnings:[]}; clearImportCacheDirty();
+      state.data.retail.fileName='regression-retail.xlsx'; state.data.retail.headers.sv2=['Rep','Team','Metric']; state.data.retail.sv2=[{_rep:'A',_repKey:'a',_team:'Alpha',Metric:1}]; state.data.retail.headers.wiper=['Rep','Team','Metric']; state.data.retail.wiper=[{_rep:'B',_repKey:'b',_team:'Beta',Metric:2}]; state.data.retail.controlRoster=[{_rep:'A',_repKey:'a',_team:'Alpha'}]; state.data.retail.teamTotals={...emptyTeamTotalsDataset('retail'),rows:[{_team:'Alpha'}]}; state.books.retail={fileName:'regression-retail.xlsx',sheetNames:['SV2','Wiper'],aoaBySheet:{SV2:[['Rep']],Wiper:[['Rep']]},selectedSheets:{retail_sv2:'SV2',retail_wiper:'Wiper'}};
+      markRetailPersistenceDirty('regression retail full reload'); await flushImportCacheSave('regression retail full reload'); state.data=defaultImportedDataState(); state.books=defaultImportedBooksState(); await loadImportedDataFromIndexedDB({}); ok('Retail full reload restores SV2/Wiper/Control/Team Totals/file/sheets/headers', state.data.retail.sv2.length===1 && state.data.retail.wiper.length===1 && state.data.retail.controlRoster.length===1 && (state.data.retail.teamTotals.rows||[]).length===1 && state.data.retail.fileName==='regression-retail.xlsx' && state.books.retail.selectedSheets.retail_sv2==='SV2' && state.data.retail.headers.sv2.length===3);
+      state.data.retail.wiper=[{_rep:'C',_repKey:'c',_team:'Gamma',Metric:3}]; markImportCacheDirty('source','retail:wiper','regression stale overwrite'); await flushImportCacheSave('regression stale overwrite'); state.data=defaultImportedDataState(); await loadImportedDataFromIndexedDB({}); ok('Stale aggregate overwrite prevention keeps independent Retail records', state.data.retail.sv2[0]?.Metric===1 && state.data.retail.wiper[0]?.Metric===3);
+      state.categorized.nondated={headers:['Representative','Coach','Metric'],rows:[{Representative:'A',Coach:'Alpha',Metric:1}],builtAt:'2026-07-15T00:00:00.000Z',sourceStats:[{source:'retail_sv2',rows:1}]}; state.categorized.dated={headers:['Representative','Coach','Date'],rows:[{Representative:'A',Coach:'Alpha',Date:'2026-07-15'}],builtAt:'2026-07-15T00:01:00.000Z',sourceStats:[{source:'qa',rows:1}]}; state.categorized.warnings=['warn']; markImportCacheDirty('misc','categorized','regression categorized'); await flushImportCacheSave('regression categorized'); state.categorized={nondated:{headers:[],rows:[]},dated:{headers:[],rows:[]},warnings:[]}; await loadImportedDataFromIndexedDB({}); ok('Categorization persistence restores counts, headers, warnings, stats, and timestamps', state.categorized.nondated.rows.length===1 && state.categorized.dated.rows.length===1 && state.categorized.warnings.length===1 && state.categorized.nondated.builtAt==='2026-07-15T00:00:00.000Z' && state.categorized.nondated.sourceStats.length===1);
+      markImportCacheDirty('source','retail:sv2','regression failed transaction'); const before=importCacheHasDirty(); mergeImportCacheDirtySnapshot({sources:new Set(['retail:sv2']),books:new Set(),sheets:new Set(),misc:new Set(),deletedSources:new Set(),deletedBooks:new Set(),deletedSheets:new Set()}); ok('Failed transaction recovery retains dirty records for retry', before && ensureImportCacheDirty().sources.has('retail:sv2'));
+      ok('Worksheet lazy loading keeps selected worksheet records addressable', !!sheetRecordId('retail','SV2') && state.books.retail.selectedSheets.retail_sv2==='SV2');
+      ok('Schema migration path writes v3 manifest metadata', Number(state.importCache?.meta?.version)===IMPORT_CACHE_SCHEMA_VERSION && !!state.importCache?.meta?.manifest);
+    }finally{ Object.assign(state,snap); afterImportedDataRestored('regression state restored'); }
+    console.table(results); return results;
+  };
+
   window.runInitialWorkflowRegressionTests=function(){
     const results=[];
     const assert=(name,pass,detail='')=>results.push({name,pass:!!pass,detail});
@@ -10354,6 +10469,8 @@ function wire(){
     console.table(results); return results;
   };
 }
+window.addEventListener('pagehide',()=>{ flushImportCacheSave('pagehide flush').catch(err=>console.warn('[Import Cache] pagehide flush failed',err)); });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushImportCacheSave('visibilitychange flush').catch(err=>console.warn('[Import Cache] visibility flush failed',err)); });
 loadModels(); loadRepAliases(); loadResearchItems(); loadPdfOptions(); setTimeout(runRosterAccuracyRegressionTests,0); loadOrgs(); wire(); loadMetrics().then(()=>{ refreshMetricDatalist(); }).catch(err=>console.warn('[Research Metrics] Startup load failed',err)); renderCustomSourcesList(); renderCategorizedSummary(); renderModelList(); populateRunModels(); setStatus(); loadImportCacheOnStartup();
 })();
 </script>
