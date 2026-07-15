@@ -2699,7 +2699,7 @@ const factionCatalog = {
   },
   verdant: {
     id:'verdant', name:'Verdant Swarm', short:'Verdant', icon:'🌿', color:'#6ee985', dark:'#217a3b', aura:'#83f795', aiStyle:'expansion', spawnRate:.80,
-    description:'Living-terrain faction. The Verdant King auto-captures up to two spaces away, while Seed Grove nodes spread and maintain the wider root network.',
+    description:'Living-terrain faction. Starts with a Seed Grove; the Verdant King auto-captures up to two spaces away, while Seed Grove nodes spread and maintain the wider root network.',
     pieces:['seedpawn','thornguard','scout','stagrunner','vinehook','vinebishop','general','grovetower','queen','seedgrove','broodbloom']
   },
   shadow: {
@@ -4435,10 +4435,12 @@ function addFactionStartingExtras(f,s){
       if(!findPieceAt(x,y) && passableFor({type,faction:f.idx},x,y)) newPiece(f.idx,type,x,y,{ready:true});
     }
   } else if(f.id==='verdant'){
-    const extras=[['seedgrove',2,1]];
-    for(const [type,dx,dy] of extras){
+    const groveOffsets=[[2,1],[1,2],[-2,1],[1,-2],[2,0],[0,2],[-1,2],[2,-1]];
+    for(const [dx,dy] of groveOffsets){
       const x=clamp(s.x+dx,0,BOARD_W-1), y=clamp(s.y+dy,0,BOARD_H-1);
-      if(!findPieceAt(x,y) && passableFor({type,faction:f.idx},x,y)) newPiece(f.idx,type,x,y,{ready:true,nextBuildingTick:now()+60});
+      if(findPieceAt(x,y) || !passableFor({type:'seedgrove',faction:f.idx},x,y)) continue;
+      newPiece(f.idx,'seedgrove',x,y,{ready:true,nextBuildingTick:now()+60});
+      break;
     }
   }
 }
@@ -4614,8 +4616,8 @@ function chooseSpawnOptions(factionIdx){
     pool = pool.concat(['dawnblade','lightlancer','radiantbishop']);
   }
   if(f.id==='verdant'){
-    // Brood Blooms are Verdant's signature shop card, with Seed Groves still appearing often.
-    pool = pool.concat(['broodbloom','broodbloom','broodbloom','broodbloom','broodbloom','broodbloom','seedgrove','seedgrove','seedgrove','seedgrove']);
+    // Seed Groves are Verdant's signature shop card and are weighted above Brood Blooms.
+    pool = pool.concat(['seedgrove','seedgrove','seedgrove','seedgrove','seedgrove','seedgrove','broodbloom','broodbloom','broodbloom']);
   }
   if(f.id==='ember') pool = pool.filter(t=>t!=='ashhopper');
   if(!pool.length) pool = f.pieces.filter(t=>t!=='king' && t!=='sunspirebeacon');
@@ -4630,9 +4632,9 @@ function chooseSpawnOptions(factionIdx){
   }
   const fallback=[...new Set(pool)];
   while(picks.length<3) picks.push(fallback[picks.length%Math.max(1,fallback.length)]||'pawn');
-  if(f.id==='verdant' && !picks.includes('broodbloom')){
+  if(f.id==='verdant' && !picks.includes('seedgrove')){
     if(seededNoise((f.spawnsMade||0)*83+29,factionIdx*109+(mapSeed||1)%997,9421) < .75){
-      picks[picks.length-1]='broodbloom';
+      picks[picks.length-1]='seedgrove';
     }
   }
   if(f.id==='sunspire' && canOfferSolarBeacon(factionIdx) && !picks.includes('sunspirebeacon')){
