@@ -413,6 +413,9 @@
     .iso-structure::before{left:9px; right:9px; top:2px; height:10px; border-radius:4px; transform:skewX(-30deg);}
     .iso-structure::after{right:3px; top:8px; bottom:7px; width:10px; border-radius:4px; transform:skewY(30deg); opacity:.86}
     .iso-structure.tall{height:44px; transform:translate(-50%,-78%);} .iso-structure.wide{width:40px;}
+    .iso-structure.stink-disabled{filter:drop-shadow(0 0 9px rgba(34,197,94,.92)) drop-shadow(0 2px 2px rgba(0,0,0,.35));}
+    .iso-structure.stink-disabled .structure-art{filter:sepia(.45) saturate(2.2) hue-rotate(58deg) brightness(1.15) drop-shadow(0 0 9px rgba(34,197,94,.82));}
+    .iso-structure.stink-disabled .body,.iso-structure.stink-disabled .top,.iso-structure.stink-disabled .side{background:#22c55e!important;box-shadow:0 0 10px rgba(34,197,94,.75);}
     .iso-structure .accent,.iso-structure .core,.iso-structure .ring,.iso-structure .tip,.iso-structure .detail{position:absolute;border-radius:999px;z-index:5;}
     .iso-structure .detail{opacity:.85;}
     .iso-wall.wide .body{inset:12px 3px 9px 3px;border-radius:4px;background:repeating-linear-gradient(0deg,#a16e47 0 3px,#7a5135 3px 6px);}
@@ -2172,7 +2175,7 @@
     const visual = getStructureVisualClass(symbol);
     const wrap = document.createElement("div");
     const baseVisual = visual || "iso-unknown-structure";
-    wrap.className = `iso-structure ${baseVisual} ${TALL_STRUCTURE_SYMBOLS.has(symbol) ? "tall" : ""} ${WIDE_STRUCTURE_SYMBOLS.has(symbol) ? "wide" : ""}`.trim();
+    wrap.className = `iso-structure ${baseVisual} ${TALL_STRUCTURE_SYMBOLS.has(symbol) ? "tall" : ""} ${WIDE_STRUCTURE_SYMBOLS.has(symbol) ? "wide" : ""} ${opts.stinkDisabled ? "stink-disabled" : ""}`.trim();
     wrap.innerHTML = '<div class="iso-shadow"></div>';
     const artPath = symbol === "🏭" && opts.generatorOn ? GENERATOR_ON_ASSET : STRUCTURE_ASSETS[symbol];
     if (artPath && !failedAssetPaths.has(artPath)){
@@ -2414,6 +2417,14 @@
   }
 
   const STINK_DISABLED_TOWERS = ["🔫","🚀","⚡","☄️","🌰","🪭","🕸️","🟢"];
+  const STINK_DISABLE_DURATION_MS = 5000;
+  const TERMITE_SPAWN_INTERVAL_MS = 60000;
+  const TERMITE_SPAWN_WARNING_MS = 5000;
+  const TERMITE_SPAWN_OFFSETS = [
+    {x:0,y:0},{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1},
+    {x:1,y:1},{x:-1,y:-1},{x:1,y:-1},{x:-1,y:1}
+  ];
+  let nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS;
   const TARGETING_OPTIONS = ["Nearest","Weakest","Strongest","Cat","Rats","Oxen","Vultures","Termites"];
   const TARGETABLE_STRUCTURES = ["🔫","🚀","⚡","☄️","🌰","🟢","🕸️"];
   function isLivingEnemy(e) {
@@ -3468,8 +3479,8 @@
 
   function renderIsoStructures(entityLayer, structureEntries){
     for (const entry of structureEntries){
-      const {x,y,symbol,hp,shield,generatorOn,cheeseBeaconTint} = entry;
-      const structureEl = renderStructureIso(symbol, x, y, hp, shield, { generatorOn, cheeseBeaconTint });
+      const {x,y,symbol,hp,shield,generatorOn,cheeseBeaconTint,stinkDisabled} = entry;
+      const structureEl = renderStructureIso(symbol, x, y, hp, shield, { generatorOn, cheeseBeaconTint, stinkDisabled });
       if (structureEl){ positionIsoElement(structureEl, x, y, 8); entityLayer.appendChild(structureEl); }
     }
   }
@@ -3624,7 +3635,8 @@
             structureEntries.push({
               x,y,symbol,hp,shield,
               generatorOn: symbol === "🏭" && generatorTriggers.has(key),
-              cheeseBeaconTint: beaconTinted.has(key)
+              cheeseBeaconTint: beaconTinted.has(key),
+              stinkDisabled: isTowerDisabledByStink(x, y)
             });
           }
           if (objectiveState.supplyDrop?.active && objectiveState.supplyDrop.x===x && objectiveState.supplyDrop.y===y){
@@ -3640,7 +3652,10 @@
             cell.style.outline = "2px solid #60a5fa";
           }
 
-          if (isInStinkAura(x, y)) {
+          if (isTermiteSpawnWarningCell(x, y)) {
+            cell.style.boxShadow = "inset 0 0 0 2px rgba(239,68,68,.95), 0 0 13px rgba(220,38,38,.9)";
+            cell.style.filter = "saturate(1.45) brightness(1.08) hue-rotate(320deg)";
+          } else if (isInStinkAura(x, y)) {
             cell.style.boxShadow = "inset 0 0 8px rgba(90, 60, 20, 0.9)";
             cell.style.filter = "sepia(.35) hue-rotate(28deg) saturate(.85)";
           }
@@ -4322,9 +4337,38 @@
     return false;
   }
 
+  function hashStinkRatId(id){
+    const text = String(id || "stinkrat");
+    let hash = 0;
+    for (let i=0; i<text.length; i++) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+    return Math.abs(hash);
+  }
+
+  function getStinkRatDisabledTowerKey(sr, now = Date.now()){
+    if (!sr || (sr.health ?? 0) <= 0) return null;
+    const candidates = getAllStructures()
+      .filter(s => STINK_DISABLED_TOWERS.includes(s.type) && Math.abs(sr.x - s.x) + Math.abs(sr.y - s.y) <= 2)
+      .sort((a,b) => (Math.abs(sr.x-a.x)+Math.abs(sr.y-a.y)) - (Math.abs(sr.x-b.x)+Math.abs(sr.y-b.y)) || a.key.localeCompare(b.key));
+    if (!candidates.length) return null;
+    const windowIndex = Math.floor(now / STINK_DISABLE_DURATION_MS);
+    return candidates[(windowIndex + hashStinkRatId(sr.id)) % candidates.length].key;
+  }
+
   function isTowerDisabledByStink(x, y){
     const symbol = grid[y]?.[x];
-    return STINK_DISABLED_TOWERS.includes(symbol) && isInStinkAura(x, y);
+    if (!STINK_DISABLED_TOWERS.includes(symbol)) return false;
+    const key = getTowerKey(x, y);
+    const now = Date.now();
+    return stinkRats.some(sr => getStinkRatDisabledTowerKey(sr, now) === key);
+  }
+
+  function isTermiteSpawnWarningCell(x, y){
+    if (!gameStarted || typeof nextTermiteSpawnAt !== "number") return false;
+    const remaining = nextTermiteSpawnAt - Date.now();
+    if (remaining < 0 || remaining > TERMITE_SPAWN_WARNING_MS) return false;
+    const centerX = Math.floor(gridSize/2);
+    const centerY = Math.floor(gridSize/2);
+    return TERMITE_SPAWN_OFFSETS.some(o => centerX + o.x === x && centerY + o.y === y);
   }
 
   function getStructureTargeting(x, y){
@@ -5072,7 +5116,7 @@
       const sid = `${Date.now()}_${crypto.randomUUID()}`;
       const sx = Math.max(0, Math.min(gridSize-1, catPos.x + (Math.floor(Math.random()*7)-3)));
       const sy = Math.max(0, Math.min(gridSize-1, catPos.y + (Math.floor(Math.random()*7)-3)));
-      writes.push({ type:"set", ref: ccRef(ID.stinkRat(sid)), data: { kind:"stinkrat", id:sid, x:sx, y:sy, health:Math.max(10, getRatHealthForDifficulty()*2), createdAt:Date.now() } });
+      writes.push({ type:"set", ref: ccRef(ID.stinkRat(sid)), data: { kind:"stinkrat", id:sid, x:sx, y:sy, health:Math.max(10, getRatHealthForDifficulty()*3), createdAt:Date.now() } });
     }
 
     const maxRats = catPower;
@@ -7398,26 +7442,21 @@
 
     // termites spawn center
     setInterval(async () => {
-      if (!canRunHostSimulation() || catPower <= 0) return;
+      if (!canRunHostSimulation() || catPower <= 0) { nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS; return; }
 
       const centerX = Math.floor(gridSize/2);
       const centerY = Math.floor(gridSize/2);
       const numToSpawn = Math.ceil(catPower/2);
-      if (getActiveEnemyCount("termites") >= ENEMY_CAPS.termites) return;
-      if (getActiveEnemyCount() >= ENEMY_CAPS.totalEnemies) return;
+      if (getActiveEnemyCount("termites") >= ENEMY_CAPS.termites) { nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS; return; }
+      if (getActiveEnemyCount() >= ENEMY_CAPS.totalEnemies) { nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS; return; }
       const termiteSlots = Math.max(0, ENEMY_CAPS.termites - getActiveEnemyCount("termites"));
       const totalSlots = Math.max(0, ENEMY_CAPS.totalEnemies - getActiveEnemyCount());
       const termitesToSpawn = Math.min(numToSpawn, termiteSlots, totalSlots);
 
-      const offsets = [
-        {x:0,y:0},{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1},
-        {x:1,y:1},{x:-1,y:-1},{x:1,y:-1},{x:-1,y:1}
-      ];
-
       let spawned = 0;
-      for (let i=0; i<offsets.length && spawned<termitesToSpawn; i++){
-        const ox = centerX + offsets[i].x;
-        const oy = centerY + offsets[i].y;
+      for (let i=0; i<TERMITE_SPAWN_OFFSETS.length && spawned<termitesToSpawn; i++){
+        const ox = centerX + TERMITE_SPAWN_OFFSETS[i].x;
+        const oy = centerY + TERMITE_SPAWN_OFFSETS[i].y;
         if (ox<0||oy<0||ox>=gridSize||oy>=gridSize) continue;
         if (termites.some(t => t.x===ox && t.y===oy)) continue;
 
@@ -7431,7 +7470,12 @@
         }, { merge:true });
         spawned++;
       }
-    }, 60000);
+      nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS;
+    }, TERMITE_SPAWN_INTERVAL_MS);
+
+    setInterval(() => {
+      if (isTermiteSpawnWarningCell(Math.floor(gridSize/2), Math.floor(gridSize/2))) requestRender("termite spawn warning");
+    }, 500);
 
     // late game vultures (after oxen phase)
     setInterval(async () => {
