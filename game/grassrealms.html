@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#11170f" />
   <title>Magic Realms</title>
+  <!-- Visual targeting and multiplayer realm-card update: 2026-07-15 -->
   <style>
     :root{
       --bg:#0b100b;--panel:#171e16;--panel2:#20291d;--ink:#f7efd6;--muted:#b8b39f;
@@ -52,7 +53,14 @@
     .realmRow.myRealm{outline:1px solid rgba(115,177,87,.5)}
     .realmRow.myRealm.activeRealm{border-color:#79c05a;box-shadow:inset 5px 0 #79c05a,0 0 20px rgba(98,194,72,.28)}
     .realmRow.eliminated{opacity:.48;filter:grayscale(.4)}
+    .realmRow:before{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--realm-stripes,transparent);opacity:.28;pointer-events:none;z-index:0}
+    .realmRow.activeRealm:before{opacity:.38}
+    .realmRow> *{position:relative;z-index:1}
     .realmIdentity{min-width:0;padding-left:5px}
+    .realmQuickFacts{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+    .realmFact{display:inline-flex;align-items:center;gap:3px;padding:3px 6px;border:1px solid #4b543d;border-radius:999px;background:#0b100bd9;color:#eee6cd;font-size:10px;font-weight:800;white-space:nowrap}
+    .realmFact.colors{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+    .factionDot{width:9px;height:9px;flex:0 0 9px;border-radius:50%;background:var(--dot,#9da493);box-shadow:0 0 0 1px #0008}
     .realmName{font-family:Georgia,serif;font-weight:900;font-size:17px;color:#ffe3a0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .realmStatus{margin-top:4px;font-size:11px;color:#c4c0ac;display:flex;gap:6px;flex-wrap:wrap}
     .activePill,.youPill,.strategyPill{display:inline-flex;align-items:center;border-radius:999px;padding:2px 6px;font-size:10px;font-weight:900}
@@ -63,6 +71,10 @@
     .townHealth{grid-column:1/-1;height:7px;border-radius:999px;background:#070a07;border:1px solid #3c4534;overflow:hidden;margin-top:1px}
     .townHealth>i{display:block;height:100%;background:linear-gradient(90deg,#a54236,#e8be58,#65aa4d);transition:width .25s}
     .realmCards{display:flex;gap:7px;min-width:0;overflow-x:auto;padding:4px 3px 8px;scroll-snap-type:x proximity;overscroll-behavior-x:contain}
+    @media(min-width:761px){
+      .realmsList.twoPlayerRows .realmCards{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,102px);grid-auto-columns:74px;align-content:start;overflow-x:auto;overflow-y:hidden;max-height:218px}
+      .realmsList.twoPlayerRows .realmRow{min-height:218px}
+    }
     .realmCard{--faction:#9da493;width:74px;height:102px;flex:0 0 74px;padding:0;border:2px solid var(--faction);border-radius:10px;overflow:hidden;background:#e8dfc5;position:relative;cursor:pointer;color:#16170f;scroll-snap-align:start;box-shadow:0 5px 11px #0008;isolation:isolate}
     .realmCard:hover,.realmCard:focus-visible{transform:translateY(-3px) scale(1.03);z-index:4;box-shadow:0 10px 22px #000b,0 0 0 2px #f4d36d}
     .realmCard img,.realmCard .tinyFallback{width:100%;height:100%;object-fit:cover;display:grid;place-items:center;font-size:25px;background:#bbb08a}
@@ -131,8 +143,34 @@
     #hoverCardTooltip{position:fixed;z-index:150;pointer-events:none;display:none;width:min(300px,82vw);padding:10px 11px;border:1px solid #82744d;border-radius:11px;background:#111811f2;color:#f7efd6;box-shadow:0 14px 35px #000c;font-size:11px;line-height:1.4;backdrop-filter:blur(8px)}
     #hoverCardTooltip.show{display:block}#hoverCardTooltip strong{display:block;color:#ffe39a;font-family:Georgia,serif;font-size:14px;margin-bottom:3px}#hoverCardTooltip .tooltipHp{color:#bfe5ae;font-weight:900;margin-bottom:4px}
     #loadingOverlay{position:fixed;inset:0;z-index:200;background:radial-gradient(circle,#28351f,#090d09 72%);display:flex;align-items:center;justify-content:center;padding:20px}.loadingCard{width:min(620px,100%);border:1px solid #6a704e;border-radius:22px;background:#171e16;box-shadow:0 25px 80px #000;padding:24px;text-align:center}.loadingCard h1{font-family:Georgia,serif;color:#ffe4a0;margin:0 0 8px}.progressTrack{height:13px;border-radius:999px;background:#090d09;border:1px solid #4f563e;overflow:hidden;margin:16px 0 8px}#progressFill{height:100%;width:0;background:linear-gradient(90deg,#7b5b1b,#e5bd55,#83a948);transition:width .2s}#readyList{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:12px}.readyPill{font-size:12px;padding:5px 8px;border-radius:999px;border:1px solid #575e46;background:#10150f}.readyPill.ready{border-color:#5b934a;color:#bde6a9}.readyPill.loading{color:#e7c976}.readyPill.offline{color:#c88d83}
-    #toast{position:fixed;z-index:180;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#131912;border:1px solid #777b5b;color:#fff5d8;padding:10px 14px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;box-shadow:0 8px 28px #000}#toast.show{opacity:1;transform:translate(-50%,0)}
+    #toast{position:fixed;z-index:180;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#131912;border:1px solid #777b5b;color:#fff5d8;padding:10px 14px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;box-shadow:0 8px 28px #000;max-width:min(560px,90vw);text-align:center}#toast.show{opacity:1;transform:translate(-50%,0)}
     dialog{border:1px solid #77704f;border-radius:17px;background:#161d15;color:#f6edd1;width:min(720px,94vw);padding:0;box-shadow:0 30px 90px #000}dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}.modalGrid{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:16px;padding:16px}.modalGrid #modalArt{width:100%;max-height:410px;object-fit:contain;border-radius:12px;background:#b9ad82}.modalBody h2{font-family:Georgia,serif;color:#ffe4a0;margin:0 0 8px}.modalBody p{line-height:1.5;color:#d5d0b8}.modalClose{position:absolute;right:9px;top:9px}
+    #targetDialog{width:min(1120px,96vw);height:min(780px,92dvh);max-width:none;overflow:hidden;background:linear-gradient(180deg,#1c261a,#0e140d)}
+    .targetShell{height:100%;display:flex;flex-direction:column;min-height:0}
+    .targetHeader{display:flex;align-items:center;gap:10px;padding:12px 52px 10px 14px;border-bottom:1px solid #4c563f;background:#182117}
+    .targetHeader h2{margin:0;font-family:Georgia,serif;color:#ffe3a0;font-size:20px}.targetHeader .subtle{margin-left:auto;text-align:right}
+    .targetArena{flex:1;min-height:0;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:9px}
+    .targetRealmLane{border:1px solid #48513d;border-radius:14px;background:#10160f;overflow:hidden;position:relative}
+    .targetRealmHead{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #394332;background:var(--realm-stripes,linear-gradient(#1a2118,#1a2118));background-size:auto;color:#fff4d1;font-weight:900}
+    .targetRealmHead small{margin-left:auto;color:#dad3b9;font-weight:700}
+    .targetRanks{padding:8px;display:grid;gap:8px}
+    .targetRankLabel{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#aaa58f;font-weight:900;margin-bottom:4px}
+    .targetCardRow{display:flex;gap:7px;overflow-x:auto;padding:2px 2px 7px;min-height:114px}
+    .targetCard{--faction:#9da493;width:78px;height:108px;flex:0 0 78px;border:2px solid var(--faction);border-radius:10px;padding:0;background:#ded3ae;position:relative;overflow:hidden;color:white;box-shadow:0 5px 12px #0009;transition:transform .16s,filter .16s,opacity .16s;cursor:default}
+    .targetCard img,.targetCard .tinyFallback{width:100%;height:100%;object-fit:cover}.targetCard .cardShade{background:linear-gradient(180deg,transparent 34%,#000e 100%)}
+    .targetCard.selectable{cursor:pointer;box-shadow:0 0 0 2px #f1ce68,0 8px 18px #000b}.targetCard.selectable:hover,.targetCard.selectable:focus-visible{transform:translateY(-5px) scale(1.04);z-index:3}
+    .targetCard.blocked{filter:grayscale(.65);opacity:.48}.targetCard.blocked:after{content:attr(data-blocked);position:absolute;inset:auto 3px 5px;padding:3px;border-radius:5px;background:#270f0fe8;color:#ffd5cb;font-size:7px;font-weight:900;line-height:1.05;text-align:center;z-index:8}
+    .targetCard.hitTarget{animation:targetHit .42s ease}.targetCard.hitTarget:before{content:"✦";position:absolute;inset:0;display:grid;place-items:center;font-size:42px;color:#fff3ae;text-shadow:0 0 15px #ff7a32;z-index:12;animation:impactFlash .42s ease}
+    @keyframes targetHit{45%{transform:translateX(8px) scale(.96);filter:brightness(1.65)}100%{transform:none}}
+    @keyframes impactFlash{0%{opacity:0;transform:scale(.25)}45%{opacity:1;transform:scale(1.25)}100%{opacity:0;transform:scale(1.8)}}
+    .targetAttackerStage{flex:0 0 auto;min-height:142px;border-top:1px solid #4e583f;background:radial-gradient(circle at 50% 120%,#4a4126,#171e15 62%);padding:9px 14px 12px;display:flex;align-items:center;justify-content:center;gap:14px;position:relative}
+    .targetAttackerStage:before{content:"YOUR ATTACK";position:absolute;top:7px;left:12px;font-size:9px;letter-spacing:1px;color:#c7bf9f;font-weight:900}
+    .targetSourceCard{width:86px;height:119px;flex:0 0 86px;border:3px solid var(--faction,#9da493);border-radius:12px;overflow:hidden;position:relative;background:#d9cfaa;box-shadow:0 8px 22px #000c;transition:transform .2s,opacity .2s}
+    .targetSourceCard img,.targetSourceCard .tinyFallback{width:100%;height:100%;object-fit:cover}.targetSourceCard.attacking{animation:sourceLunge .42s ease}.targetTransition .targetSourceCard{animation:sourceSwap .22s ease}
+    @keyframes sourceLunge{45%{transform:translateY(-14px) scale(1.08)}100%{transform:none}}
+    @keyframes sourceSwap{0%{opacity:.2;transform:translateX(-18px) scale(.92)}100%{opacity:1;transform:none}}
+    .targetAttackCopy{max-width:420px}.targetAttackCopy strong{display:block;color:#ffe4a0;font-family:Georgia,serif;font-size:16px}.targetAttackCopy span{display:block;color:#c9c4ad;font-size:11px;line-height:1.4;margin-top:3px}
+    .targetEmpty{padding:30px;text-align:center;color:#c4bea6}
 
     :fullscreen,:fullscreen body,html:-webkit-full-screen,html:-webkit-full-screen body{background:#090d09}
 
@@ -145,7 +183,8 @@
       .topbar{padding:calc(5px + env(safe-area-inset-top)) max(6px,env(safe-area-inset-right)) 5px max(6px,env(safe-area-inset-left));gap:5px}.brand{font-size:14px}.tag{display:none}#timerTag{display:inline-flex!important;font-size:9px;padding:3px 5px}.iconBtn{padding:6px 7px;font-size:10px}.topbar #leaveBtn{font-size:0}.topbar #leaveBtn:after{content:'↩';font-size:15px}.topbar #fullscreenBtn{font-size:15px;line-height:1}
       #app{padding:4px;gap:4px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}.panel{border-radius:10px}.panelHead{min-height:34px;padding:5px;gap:4px;flex-wrap:wrap}.panelHead h2{font-size:12px}.panelHead .subtle{display:none}.panelHead .resourceStrip{width:100%;margin-left:0;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto}.resource{font-size:8px;padding:2px 4px}
       #turnBanner{min-height:36px;padding:4px;gap:4px;font-size:9px;letter-spacing:0;justify-content:space-between}#turnBannerText{text-align:left;white-space:normal;line-height:1.15}#quickEndTurnBtn{min-height:27px;padding:4px 5px;font-size:8px}
-      .realmsList{padding:3px}.realmRow{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"identity" "stats" "cards";gap:4px;min-height:0;padding:5px;margin-bottom:4px;border-radius:9px}.realmIdentity{padding-left:1px}.realmName{font-size:11px}.realmStatus{font-size:7px;gap:3px;margin-top:2px}.activePill,.youPill,.strategyPill{font-size:6px;padding:1px 3px}.realmStats{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}.statTile{padding:3px 1px;border-radius:6px}.statTile strong{font-size:9px}.statTile small{font-size:6px;margin-top:1px}.townHealth{height:4px}.realmCards{padding:1px 1px 4px;gap:4px}.realmCard{width:50px;height:69px;flex-basis:50px;border-radius:7px}.cardCost,.cardHp,.cardCount{min-width:15px;height:15px;padding:0 2px;font-size:6px;border-radius:5px}.cardCount{top:19px}.cardName{font-size:6px;bottom:7px;left:3px}.triggerMarks{left:3px}.triggerMarks i{font-size:5px;line-height:6px}.statusMarks{left:3px;right:3px;top:20px}.statusMarks i{font-size:5px;padding:1px 2px}.damageBar{height:4px}
+      .realmsList{padding:3px}.realmRow{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"identity" "stats" "cards";gap:4px;min-height:0!important;padding:5px;margin-bottom:4px;border-radius:9px}.realmIdentity{padding-left:1px}.realmName{font-size:11px}.realmStatus{font-size:7px;gap:3px;margin-top:2px}.activePill,.youPill,.strategyPill{font-size:6px;padding:1px 3px}.realmQuickFacts{gap:2px;margin-top:3px}.realmFact{font-size:6px;padding:1px 3px}.factionDot{width:6px;height:6px;flex-basis:6px}.realmStats{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}.statTile{padding:3px 1px;border-radius:6px}.statTile strong{font-size:9px}.statTile small{font-size:6px;margin-top:1px}.townHealth{height:4px}.realmCards,.realmsList.twoPlayerRows .realmCards{display:flex;max-height:none;padding:1px 1px 4px;gap:4px}.realmCard{width:50px;height:69px;flex-basis:50px;border-radius:7px}.cardCost,.cardHp,.cardCount{min-width:15px;height:15px;padding:0 2px;font-size:6px;border-radius:5px}.cardCount{top:19px}.cardName{font-size:6px;bottom:7px;left:3px}.triggerMarks{left:3px}.triggerMarks i{font-size:5px;line-height:6px}.statusMarks{left:3px;right:3px;top:20px}.statusMarks i{font-size:5px;padding:1px 2px}.damageBar{height:4px}
+      #targetDialog{width:98vw;height:94dvh}.targetHeader{padding:8px 42px 7px 9px;display:block}.targetHeader h2{font-size:14px}.targetHeader .subtle{margin:2px 0 0;text-align:left;font-size:8px}.targetArena{padding:5px;gap:5px}.targetRealmHead{padding:5px 7px;font-size:10px}.targetRanks{padding:5px;gap:4px}.targetCardRow{gap:4px;min-height:76px}.targetCard{width:51px;height:71px;flex-basis:51px;border-radius:7px}.targetCard.blocked:after{font-size:5px;inset:auto 2px 3px;padding:2px}.targetAttackerStage{min-height:92px;padding:7px;gap:8px}.targetSourceCard{width:54px;height:75px;flex-basis:54px}.targetAttackCopy strong{font-size:11px}.targetAttackCopy span{font-size:7px}
       .commandTabs{position:sticky;top:0;z-index:5}.commandTab{min-height:36px;font-size:9px;padding:3px}.effectLegend{padding:3px;gap:3px}.effectChip{font-size:6px;padding:2px 3px}#actionsPane{padding:4px;overflow-y:auto;overscroll-behavior:contain}.actionLayout{height:auto;min-height:100%;display:flex;flex-direction:column;gap:5px}.diceStage{min-height:86px;padding:4px;border-radius:9px;flex:0 0 auto}.diceStage:before{inset:4px}.die{width:44px;height:44px;border-width:2px;border-radius:9px;padding:4px}.pip{width:6px;height:6px}.polyDie{width:58px;height:52px;font-size:18px}.rollCaption{font-size:8px;margin-top:1px}.controlsArea{overflow:visible;gap:4px;padding:0}.phaseCard{padding:5px;border-radius:8px}.phaseTitle{font-size:10px}.phaseCard .subtle{font-size:7px}.playerSnapshot{padding:4px;gap:3px;flex-wrap:wrap}.playerSnapshot strong{display:none}.playerSnapshot .resourceStrip{width:100%;margin-left:0;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto}.dieToggle{gap:3px}.dieChoice{min-width:0;padding:5px 2px;font-size:8px;border-radius:7px}.controlRow{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}.actionBtn{min-height:31px;padding:4px 2px;font-size:8px;border-radius:7px}#targetBox{grid-template-columns:1fr;gap:3px}#targetBox select{min-height:29px;padding:4px;font-size:8px}#queueBox{max-height:none;min-height:34px;padding:4px;font-size:7px}.logCard{display:none}
       #shopPane{overflow:hidden}.shopToolbar{padding:4px 5px;gap:3px}.shopToolbar strong{font-size:10px}.shopToolbar .subtle{font-size:7px}.categoryTabs{display:flex;overflow-x:auto;padding:4px;gap:3px}.categoryTab{flex:0 0 46px;min-height:34px;border-radius:7px}.categoryTab span{font-size:6px;padding:3px 1px}.shopGrid{grid-template-columns:minmax(0,1fr);padding:0 4px 5px;gap:4px}.shopCard{grid-template-columns:48px minmax(0,1fr);min-height:76px;border-radius:8px}.shopArt,.shopFallback{width:48px;height:76px}.shopFallback{font-size:22px}.shopInfo{padding:4px}.shopName{font-size:9px}.shopMeta,.shopEffect{font-size:6px;line-height:1.2}.shopEffect{-webkit-line-clamp:2}.shopBuy{padding:4px 2px;font-size:7px;border-radius:6px}.lockedNote{font-size:6px}
       .modalGrid{grid-template-columns:1fr}.modalGrid #modalArt{max-height:38vh}
@@ -225,7 +264,7 @@
             <div class="controlRow">
               <button id="rollBtn" class="actionBtn">🎲 Roll</button>
               <button id="resolveBtn" class="actionBtn secondary">Resolve</button>
-              <button id="applyTargetBtn" class="actionBtn secondary">Apply Target</button>
+              <button id="applyTargetBtn" class="actionBtn secondary">Choose Target</button>
               <button id="endTurnBtn" class="actionBtn secondary">End Turn</button>
             </div>
             <div id="targetBox"></div>
@@ -250,6 +289,14 @@
   </main>
 
   <div id="hoverCardTooltip" role="tooltip"></div>
+  <dialog id="targetDialog">
+    <button class="iconBtn modalClose" id="targetDialogClose" title="Close targeting view">✕</button>
+    <div class="targetShell">
+      <div class="targetHeader"><h2 id="targetTitle">Choose a target</h2><div id="targetInstruction" class="subtle"></div></div>
+      <div id="targetArena" class="targetArena"></div>
+      <div id="targetAttackerStage" class="targetAttackerStage"></div>
+    </div>
+  </dialog>
   <dialog id="cardModal">
     <button class="iconBtn modalClose" id="modalClose">✕</button>
     <div class="modalGrid"><img id="modalArt" alt="Card art"><div class="modalBody"><h2 id="modalName"></h2><div id="modalMeta" class="subtle"></div><p id="modalDetails"></p></div></div>
@@ -288,9 +335,21 @@
     let selectedCategory = 'grey', actionBusy = false, aiTimer = 0, disconnectTimer = 0, heartbeatTimer = 0, turnTimerInterval = 0, timerActionPending = false;
     let activeCommandTab = 'actions';
     let assetMap = {}, missingAssets = new Set(), graphicsReady = false, lastRenderedVersion = -1, toastTimer = 0;
+    let noticeQueue=[],noticeShowing=false,lastObservedLogAt=0,targetActionBusy=false,lastTargetDialogKey='';
     const lobbyRef = lobbyId ? doc(db,'lobbies',lobbyId) : null;
 
     function toast(message){ const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2400); }
+    function queueNotice(message){if(!message)return;noticeQueue.push(String(message));if(noticeQueue.length>8)noticeQueue=noticeQueue.slice(-8);showNextNotice();}
+    function showNextNotice(){if(noticeShowing||!noticeQueue.length)return;noticeShowing=true;toast(noticeQueue.shift());setTimeout(()=>{noticeShowing=false;showNextNotice();},2550);}
+    function observeBattleMessages(nextState){
+      const entries=nextState?.log||[];if(!entries.length)return;
+      const newest=Math.max(...entries.map(e=>Number(e?.at)||0));
+      if(!lastObservedLogAt){lastObservedLogAt=newest;return;}
+      const mine=myPlayer(nextState)?.name||myName;
+      const fresh=entries.filter(e=>(Number(e?.at)||0)>lastObservedLogAt).sort((a,b)=>(a.at||0)-(b.at||0));
+      lastObservedLogAt=Math.max(lastObservedLogAt,newest);
+      fresh.slice(-4).forEach(e=>{const message=String(e?.message||e||'');if(message&&!message.startsWith(`${mine} `)&&!message.startsWith(`${mine}'s `))queueNotice(message);});
+    }
     function escapeText(value){ return String(value ?? ''); }
     function slug(value){ return String(value||'').trim().toLowerCase().replace(/['’]/g,'').replace(/&/g,'and').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
     function compact(value){ return String(value||'').trim().toLowerCase().replace(/['’]/g,'').replace(/[^a-z0-9]/g,''); }
@@ -298,6 +357,14 @@
     function timestampMs(value){ if(!value) return 0; if(typeof value==='number') return value; if(typeof value.toMillis==='function') return value.toMillis(); if(value.seconds) return value.seconds*1000; return Number(value)||0; }
     function safeClone(value){ return JSON.parse(JSON.stringify(value)); }
     function playerCategory(card){ if(card.key.startsWith('white_')) return 'white'; if(card.key.startsWith('black_')) return 'black'; if(card.key.startsWith('red_')) return 'red'; if(card.key.startsWith('green_')) return 'green'; return 'grey'; }
+    function templeFactions(player){return ['white','black','red','green'].filter(f=>factionTempleCount(player,f)>0);}
+    function totalWallHealth(player){return (player?.owned||[]).reduce((sum,e)=>{if(CARD_CATALOG[e.key]?.type!=='wall'||e.hp<=0)return sum;const max=currentMaxHp(player,e.key),copies=Math.max(1,e.count||1);return sum+(e.hp||0)+Math.max(0,copies-1)*max;},0);}
+    function totalTroops(player){return (player?.owned||[]).reduce((sum,e)=>sum+(CARD_CATALOG[e.key]?.type==='troop'&&e.hp>0?Math.max(1,e.count||1):0),0);}
+    function playerStripeGradient(player,alpha='.58'){
+      const factions=templeFactions(player);if(!factions.length)return'linear-gradient(90deg,rgba(157,164,147,.22),rgba(22,28,20,.08))';
+      const colors=factions.map(f=>factionColor(f));if(colors.length===1)return`linear-gradient(115deg,${colors[0]}${alpha==='1'?'':'99'},rgba(13,18,12,.12) 72%)`;
+      const width=Math.max(16,Math.floor(68/colors.length));const stops=[];colors.forEach((color,i)=>{stops.push(`${color} ${i*width}px`,`${color} ${(i+1)*width}px`);});return`repeating-linear-gradient(135deg,${stops.join(',')})`;
+    }
     function totalTempleCount(player){return (player?.owned||[]).reduce((sum,e)=>sum+(TEMPLE_KEYS.includes(e.key)?(e.count||1):0),0);}
     function factionTempleCount(player,faction){return (player?.owned||[]).find(e=>e.key===`${faction}_temple`)?.count||0;}
     function cardPurchaseCost(player,card){return TEMPLE_KEYS.includes(card?.key)?(card.cost||4)+2*totalTempleCount(player):(card?.cost||0);}
@@ -665,15 +732,15 @@
       return (player?.owned||[]).map((e,idx)=>({idx,e,c:CARD_CATALOG[e.key]})).filter(x=>x.c&&x.e.hp>0&&x.c.type===type&&(type!=='structure'||x.e.key!=='townhall'));
     }
     function effectiveTrigger(trigger){ const card=CARD_CATALOG[trigger?.key]; if(!card)return{}; return trigger.useCrazy&&card.onTriggerCrazy?card.onTriggerCrazy:(card.onTrigger||{}); }
+    function effectBypassesWalls(kind){return ['destroy_structure_non_temple','destroy_structure_and_attack_any','trebuchet_siege','sapper_breach'].includes(kind);}
     function allTargetCandidates(game,ownerIdx,kind){
-      const out=[]; const owner=game.players[ownerIdx];
+      const out=[]; const owner=game.players[ownerIdx],bypassesWalls=effectBypassesWalls(kind);
       for(const target of game.players){
         if(!target||target.eliminated||target.left||target===owner)continue;
         for(const type of allowedTargetTypesFor(kind)){
-          if((type==='structure'||type==='townhall')&&hasActiveWall(target)&&['attack_any','attack_structure','attack_any_and_heal','attack_any_per_temple','damage_per_temple_and_gain','lose_then_attack_any','attack_any_and_destroy_troop','goliath_special','destroy_farm_and_damage_per_temple'].includes(kind))continue;
+          if((type==='structure'||type==='townhall')&&hasActiveWall(target)&&!bypassesWalls)continue;
           if(type==='townhall'&&target.townHp>0)out.push({targetPlayer:target.name,targetType:type,targetEntryIdx:null,score:target.townHp});
           if(type!=='townhall')for(const item of listTargetableEntries(target,type)){
-            if(kind==='destroy_structure_non_temple'&&['_temple'].some(()=>false)){}
             if(['destroy_structure_non_temple','trebuchet_siege'].includes(kind)&&item.e.key.endsWith('_temple'))continue;
             if(kind==='necromancer_execute_summon'&&item.e.hp>=currentMaxHp(target,item.e.key))continue;
             out.push({targetPlayer:target.name,targetType:type,targetEntryIdx:item.idx,score:item.e.hp});
@@ -1399,10 +1466,12 @@ function resolveOne(rd, manual){
     }
     function renderOpponents(){
       const list=$('#realmsList');list.innerHTML='';
-      if(!state){list.innerHTML='<div class="empty">Waiting for players…</div>';return;}
+      if(!state){list.classList.remove('twoPlayerRows');list.innerHTML='<div class="empty">Waiting for players…</div>';return;}
+      const visiblePlayers=state.players.filter(p=>!p.left);list.classList.toggle('twoPlayerRows',visiblePlayers.length===2);
       const mine=myPlayer();
       state.players.forEach((player,index)=>{
-        const row=document.createElement('article');row.className='realmRow';if(index===state.turnIdx)row.classList.add('activeRealm');if(player===mine)row.classList.add('myRealm');if(player.eliminated)row.classList.add('eliminated');
+        const factions=templeFactions(player);
+        const row=document.createElement('article');row.className='realmRow';row.style.setProperty('--realm-stripes',playerStripeGradient(player));if(index===state.turnIdx)row.classList.add('activeRealm');if(player===mine)row.classList.add('myRealm');if(player.eliminated)row.classList.add('eliminated');
         const identity=document.createElement('div');identity.className='realmIdentity';
         const name=document.createElement('div');name.className='realmName';name.textContent=`${player.name}${player.isAI?' 🤖':''}`;identity.appendChild(name);
         const status=document.createElement('div');status.className='realmStatus';
@@ -1411,6 +1480,13 @@ function resolveOne(rd, manual){
         if(player===mine){const pill=document.createElement('span');pill.className='youPill';pill.textContent='YOU';status.appendChild(pill);}
         if(player.isAI&&player.aiStrategy?.label){const pill=document.createElement('span');pill.className='strategyPill';pill.textContent=player.aiStrategy.label;status.appendChild(pill);}
         identity.appendChild(status);
+        const facts=document.createElement('div');facts.className='realmQuickFacts';
+        const wallFact=document.createElement('span');wallFact.className='realmFact';wallFact.textContent=`🧱 ${totalWallHealth(player)} wall HP`;facts.appendChild(wallFact);
+        const troopFact=document.createElement('span');troopFact.className='realmFact';troopFact.textContent=`⚔ ${totalTroops(player)} troops`;facts.appendChild(troopFact);
+        const colorFact=document.createElement('span');colorFact.className='realmFact colors';
+        if(factions.length){factions.forEach(f=>{const dot=document.createElement('i');dot.className='factionDot';dot.style.setProperty('--dot',factionColor(f));colorFact.appendChild(dot);});colorFact.append(document.createTextNode(factions.map(f=>CATEGORY_NAMES[f]).join(' + ')));}
+        else{const dot=document.createElement('i');dot.className='factionDot';dot.style.setProperty('--dot',factionColor('grey'));colorFact.append(dot,document.createTextNode('Unaligned'));}
+        facts.appendChild(colorFact);identity.appendChild(facts);
         const stats=document.createElement('div');stats.className='realmStats';
         for(const [value,label] of [[`💰 ${player.gold||0}`,'Gold'],[`🏰 ${Math.max(0,player.townHp||0)}${player.townShield?` +${player.townShield}✨`:''}`,'Town'],[`⛪ ${totalTempleCount(player)}`,'Temples'],[`🎲 ${player.unlocked||'d6'}`,'Die']]){const box=document.createElement('div');box.className='statTile';const strong=document.createElement('strong');strong.textContent=value;const small=document.createElement('small');small.textContent=label;box.append(strong,small);stats.appendChild(box);}
         const townBar=document.createElement('div');townBar.className='townHealth';const townFill=document.createElement('i');townFill.style.width=`${Math.max(0,Math.min(100,(player.townHp||0)/20*100))}%`;townBar.appendChild(townFill);stats.appendChild(townBar);
@@ -1482,40 +1558,71 @@ function resolveOne(rd, manual){
       if(!match&&preferred.targetType==='townhall')match=candidates.find(sameBase);
       return match||null;
     }
+    function targetDialogTriggerKey(trigger){return trigger?`${state?.turnSerial||0}:${state?.version||0}:${trigger.ownerIdx}:${trigger.key}:${state?.resolveQueue?.length||0}`:'';}
+    function candidateKey(candidate){return `${candidate.targetPlayer}|${candidate.targetType}|${candidate.targetEntryIdx==null?'town':candidate.targetEntryIdx}`;}
+    function targetCandidateFor(candidates,player,type,idx){return candidates.find(c=>c.targetPlayer===player.name&&c.targetType===type&&(type==='townhall'||Number(c.targetEntryIdx)===Number(idx)))||null;}
+    function makeTargetCard(card,entry,player,candidate,blockedReason=''){
+      const tile=document.createElement('button');tile.type='button';tile.className=`targetCard ${candidate?'selectable':'blocked'}`;tile.style.setProperty('--faction',factionColor(card.category));if(blockedReason)tile.dataset.blocked=blockedReason;tile.disabled=!candidate||targetActionBusy;
+      tile.appendChild(makeArt(card,'tinyArt'));const shade=document.createElement('span');shade.className='cardShade';tile.appendChild(shade);
+      const shownHp=entry?.key==='townhall'?player.townHp:entry?.hp??player.townHp,max=entry?currentMaxHp(player,entry.key):20;
+      const hp=document.createElement('span');hp.className=`cardHp ${shownHp<max?'damaged':''}`;hp.textContent=`♥${shownHp}`;tile.appendChild(hp);
+      if(entry&&(entry.count||1)>1){const count=document.createElement('span');count.className='cardCount';count.textContent=`×${entry.count}`;tile.appendChild(count);}
+      const name=document.createElement('span');name.className='cardName';name.textContent=card.name;tile.appendChild(name);addDamageBar(tile,shownHp,max);
+      if(candidate)tile.onclick=()=>resolveVisualTarget(candidate,tile);else tile.title=blockedReason||'This effect cannot target that card.';
+      return tile;
+    }
+    function makeTargetSource(trigger){
+      const owner=state.players[trigger.ownerIdx],card=CARD_CATALOG[trigger.key],entry=findSourceEntry(owner,trigger.key);
+      const tile=document.createElement('div');tile.className='targetSourceCard';tile.style.setProperty('--faction',factionColor(card.category));tile.appendChild(makeArt(card,'tinyArt'));const shade=document.createElement('span');shade.className='cardShade';tile.appendChild(shade);const name=document.createElement('span');name.className='cardName';name.textContent=card.name;tile.appendChild(name);return{tile,owner,card,entry};
+    }
+    function blockedTargetReason(kind,player,type){
+      if((type==='structure'||type==='townhall')&&hasActiveWall(player)&&!effectBypassesWalls(kind))return'Protected by wall';
+      return'Not valid for this attack';
+    }
+    function renderTargetDialog(forceOpen=false){
+      const dialog=$('#targetDialog'),arena=$('#targetArena'),stage=$('#targetAttackerStage');arena.innerHTML='';stage.innerHTML='';
+      const trigger=state?.resolveQueue?.[0],effect=trigger?effectiveTrigger(trigger):{},needs=trigger&&triggerNeedsTarget(effect.kind),turn=isMyTurn()&&state?.phase==='resolving';
+      if(!turn||!needs){if(dialog.open)dialog.close();lastTargetDialogKey='';return;}
+      const candidates=allTargetCandidates(state,trigger.ownerIdx,effect.kind),source=makeTargetSource(trigger),key=targetDialogTriggerKey(trigger);
+      $('#targetTitle').textContent=`${source.owner.name}'s ${source.card.name}`;$('#targetInstruction').textContent=candidates.length?'Select a glowing card. Walls are shown in front of protected cards.':'No legal targets remain; close this view and resolve to skip.';
+      stage.appendChild(source.tile);const copy=document.createElement('div');copy.className='targetAttackCopy';copy.innerHTML=`<strong>${escapeText(source.card.name)} is ready</strong><span>${escapeText(source.card.details||'Choose a target to resolve this attack.')}</span>`;stage.appendChild(copy);
+      for(const player of state.players){
+        if(player===source.owner||player.eliminated||player.left)continue;
+        const lane=document.createElement('section');lane.className='targetRealmLane';lane.style.setProperty('--realm-stripes',playerStripeGradient(player,'1'));
+        const head=document.createElement('div');head.className='targetRealmHead';head.textContent=player.name;const summary=document.createElement('small');summary.textContent=`🧱 ${totalWallHealth(player)} HP • ⚔ ${totalTroops(player)} troops`;head.appendChild(summary);lane.appendChild(head);
+        const ranks=document.createElement('div');ranks.className='targetRanks';
+        const walls=(player.owned||[]).map((e,idx)=>({e,idx,card:CARD_CATALOG[e.key]})).filter(x=>x.card?.type==='wall'&&x.e.hp>0);
+        if(walls.length){const front=document.createElement('div');const label=document.createElement('div');label.className='targetRankLabel';label.textContent='Front wall';const row=document.createElement('div');row.className='targetCardRow';walls.forEach(x=>row.appendChild(makeTargetCard(x.card,x.e,player,targetCandidateFor(candidates,player,'wall',x.idx),blockedTargetReason(effect.kind,player,'wall'))));front.append(label,row);ranks.appendChild(front);}
+        const back=document.createElement('div');const backLabel=document.createElement('div');backLabel.className='targetRankLabel';backLabel.textContent=walls.length?'Protected realm':'Realm cards';const backRow=document.createElement('div');backRow.className='targetCardRow';
+        const townCard=CARD_CATALOG.townhall;const townEntry=(player.owned||[]).find(e=>e.key==='townhall')||{key:'townhall',hp:player.townHp,count:1};const townCandidate=targetCandidateFor(candidates,player,'townhall',null);backRow.appendChild(makeTargetCard(townCard,townEntry,player,townCandidate,blockedTargetReason(effect.kind,player,'townhall')));
+        (player.owned||[]).forEach((entry,idx)=>{const card=CARD_CATALOG[entry.key];if(!card||entry.key==='townhall'||card.type==='wall'||entry.hp<=0)return;const candidate=targetCandidateFor(candidates,player,card.type,idx);backRow.appendChild(makeTargetCard(card,entry,player,candidate,blockedTargetReason(effect.kind,player,card.type)));});
+        back.append(backLabel,backRow);ranks.appendChild(back);lane.appendChild(ranks);arena.appendChild(lane);
+      }
+      if(!arena.children.length){const empty=document.createElement('div');empty.className='targetEmpty';empty.textContent='No enemy cards remain.';arena.appendChild(empty);}
+      if((forceOpen||key!==lastTargetDialogKey)&&!dialog.open){try{dialog.showModal();}catch{}lastTargetDialogKey=key;}
+      else if(key!==lastTargetDialogKey){lastTargetDialogKey=key;dialog.classList.add('targetTransition');setTimeout(()=>dialog.classList.remove('targetTransition'),220);}
+    }
+    async function resolveVisualTarget(candidate,targetTile){
+      if(targetActionBusy||!candidate)return;targetActionBusy=true;rememberTarget(candidate);
+      const source=$('#targetAttackerStage .targetSourceCard');source?.classList.add('attacking');targetTile?.classList.add('hitTarget');
+      await new Promise(resolve=>setTimeout(resolve,420));
+      const completed=await performAction('RESOLVE',selectedTargetPayload||candidate);
+      targetActionBusy=false;if(!completed){source?.classList.remove('attacking');targetTile?.classList.remove('hitTarget');renderTargetDialog(false);}
+    }
+    function openTargetDialog(){renderTargetDialog(true);}
     function renderTargetAndQueue(){
       const queueBox=$('#queueBox'),targetBox=$('#targetBox');queueBox.innerHTML='';targetBox.innerHTML='';selectedTargetPayload=null;
       if(preferredTargetTurnSerial!==(state?.turnSerial??-1)){preferredTargetPayload=null;preferredTargetTurnSerial=state?.turnSerial??-1;}
       const queue=state?.resolveQueue||[];
-      if(!queue.length){queueBox.textContent='No triggers pending.';return;}
+      if(!queue.length){queueBox.textContent='No triggers pending.';renderTargetDialog(false);return;}
       queue.forEach((trigger,i)=>{const owner=state.players[trigger.ownerIdx],card=CARD_CATALOG[trigger.key],line=document.createElement('div');line.textContent=`${i===0?'▶':'•'} ${owner?.name||'?'} — ${card?.name||trigger.key}${trigger.useCrazy?' [CRAZY]':''}`;queueBox.appendChild(line);});
       const trigger=queue[0],effect=effectiveTrigger(trigger),needs=triggerNeedsTarget(effect.kind);
-      if(!needs)return;
+      if(!needs){renderTargetDialog(false);return;}
       const candidates=allTargetCandidates(state,trigger.ownerIdx,effect.kind);
-      if(!candidates.length){const note=document.createElement('div');note.className='subtle';note.textContent='No valid targets remain. Resolve to skip this trigger.';targetBox.appendChild(note);return;}
-      const preferred=matchingPreferredCandidate(candidates,preferredTargetPayload);
-      const pSel=document.createElement('select'),tSel=document.createElement('select'),eSel=document.createElement('select');
-      function fillPlayers(){
-        const names=[...new Set(candidates.map(c=>c.targetPlayer))];
-        for(const name of names){const option=document.createElement('option');option.value=name;option.textContent=name;pSel.appendChild(option);}
-        if(preferred&&names.includes(preferred.targetPlayer))pSel.value=preferred.targetPlayer;
-        fillTypes();
-      }
-      function fillTypes(){
-        const types=[...new Set(candidates.filter(c=>c.targetPlayer===pSel.value).map(c=>c.targetType))];
-        tSel.innerHTML='';for(const type of types){const option=document.createElement('option');option.value=type;option.textContent=type;tSel.appendChild(option);}
-        if(preferred&&preferred.targetPlayer===pSel.value&&types.includes(preferred.targetType))tSel.value=preferred.targetType;
-        fillEntries();
-      }
-      function fillEntries(){
-        const items=candidates.filter(c=>c.targetPlayer===pSel.value&&c.targetType===tSel.value);eSel.innerHTML='';
-        items.forEach((candidate,index)=>{const option=document.createElement('option');option.value=String(index);if(candidate.targetType==='townhall')option.textContent='Town Hall';else{const target=state.players.find(p=>p.name===candidate.targetPlayer),entry=target?.owned?.[candidate.targetEntryIdx],card=CARD_CATALOG[entry?.key];option.textContent=`${card?.name||'Card'} (${entry?.hp||0} HP)`;}eSel.appendChild(option);});
-        const wanted=matchingPreferredCandidate(items,preferredTargetPayload);const wantedIndex=wanted?items.indexOf(wanted):-1;if(wantedIndex>=0)eSel.value=String(wantedIndex);
-        rememberTarget(items[Number(eSel.value)||0]||items[0]);
-      }
-      pSel.onchange=()=>{preferredTargetPayload=null;fillTypes();};
-      tSel.onchange=()=>{preferredTargetPayload=null;fillEntries();};
-      eSel.onchange=()=>{const items=candidates.filter(c=>c.targetPlayer===pSel.value&&c.targetType===tSel.value);rememberTarget(items[Number(eSel.value)||0]||items[0]);};
-      fillPlayers();targetBox.append(pSel,tSel,eSel);
+      if(!candidates.length){const note=document.createElement('div');note.className='subtle';note.textContent='No valid targets remain. Resolve to skip this trigger.';targetBox.appendChild(note);renderTargetDialog(false);return;}
+      const button=document.createElement('button');button.type='button';button.className='actionBtn secondary';button.textContent=`🎯 Open visual targeting (${candidates.length})`;button.disabled=!isMyTurn()||targetActionBusy;button.onclick=openTargetDialog;targetBox.appendChild(button);
+      const hint=document.createElement('div');hint.className='subtle';hint.textContent='Select the glowing card in the battlefield popup. Protected cards remain visible behind their walls.';targetBox.appendChild(hint);
+      if(isMyTurn())queueMicrotask(()=>renderTargetDialog(false));
     }
     function setCommandTab(tab){
       activeCommandTab=tab==='shop'?'shop':'actions';
@@ -1530,7 +1637,7 @@ function resolveOne(rd, manual){
       $('#phaseHelp').textContent=phase==='await_roll'?`Round ${state?.round||1}. Choose d6 or your unlocked higher die, then roll.`:phase==='resolving'?'Resolve queued effects in order; damaged cards show health bars.':phase==='buy'?'Open the Shop tab, buy cards, then end your turn.':phase==='finished'?'The final realm remains.':'Waiting for the game.';
       $('#rollBtn').disabled=actionBusy||!turn||phase!=='await_roll';
       $('#resolveBtn').disabled=actionBusy||!turn||phase!=='resolving'||(needs&&candidates.length>0);
-      $('#applyTargetBtn').disabled=actionBusy||!turn||phase!=='resolving'||!needs||!selectedTargetPayload;
+      $('#applyTargetBtn').disabled=actionBusy||targetActionBusy||!turn||phase!=='resolving'||!needs||!candidates.length;
       $('#endTurnBtn').disabled=actionBusy||!turn||phase==='finished';
       const quickEnd=$('#quickEndTurnBtn');quickEnd.classList.toggle('hidden',!turn||phase==='finished');quickEnd.disabled=actionBusy||!turn||phase==='finished';
     }
@@ -1637,7 +1744,7 @@ function resolveOne(rd, manual){
       unsubLobby?.();unsubPresence?.();
       unsubLobby=onSnapshot(lobbyRef,snap=>{
         if(!snap.exists()){lobbyData=null;state=null;renderAll();return;}
-        lobbyData=snap.data();state=lobbyData.game?normalizeGame(safeClone(lobbyData.game)):null;
+        lobbyData=snap.data();const nextState=lobbyData.game?normalizeGame(safeClone(lobbyData.game)):null;observeBattleMessages(nextState);state=nextState;
         renderAll();
         if(state){claimLegacySeat();ensureSoloAI();}
         else maybeInitializeGame();
@@ -1672,7 +1779,7 @@ function resolveOne(rd, manual){
 
     $('#rollBtn').addEventListener('click',()=>performAction('ROLL',{mode:$('#dieSelect').value}));
     $('#resolveBtn').addEventListener('click',()=>performAction('RESOLVE',{}));
-    $('#applyTargetBtn').addEventListener('click',()=>selectedTargetPayload&&performAction('RESOLVE',selectedTargetPayload));
+    $('#applyTargetBtn').addEventListener('click',openTargetDialog);
     async function endTurnFromUi(){
       const pending=state?.phase==='resolving'&&(state?.resolveQueue?.length||0)>0;
       if(pending&&!confirm('Forfeit every unresolved trigger and end the turn?'))return;
@@ -1706,6 +1813,7 @@ function resolveOne(rd, manual){
     });
     document.addEventListener('fullscreenchange',syncFullscreenButton);
     document.addEventListener('webkitfullscreenchange',syncFullscreenButton);
+    $('#targetDialogClose').addEventListener('click',()=>$('#targetDialog').close());
     $('#modalClose').addEventListener('click',()=>$('#cardModal').close());
     $('#cardModal').addEventListener('click',event=>{if(event.target===$('#cardModal'))$('#cardModal').close();});
     addEventListener('pagehide',()=>{clearInterval(heartbeatTimer);clearInterval(turnTimerInterval);markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});});
