@@ -365,7 +365,7 @@ const SLOT_OUTLINE_COLORS = ['#fff3a3','#7dd3fc','#fb7185','#86efac','#c4b5fd','
 const MULTIPLAYER_AI_VOTE_SECONDS = 10;
 const MULTIPLAYER_FACTION_PICK_SECONDS = 10;
 const VERDANT_SPREAD_RADIUS = 4; // Kept as a legacy value for old saves/UI text; troops no longer auto-spread land.
-const VERDANT_NODE_SPREAD_RADIUS = 2;
+const VERDANT_NODE_SPREAD_RADIUS = 3;
 const VERDANT_NODE_MAINTAIN_RADIUS = 3;
 const VERDANT_FADE_SECONDS = 8.5;
 const VERDANT_PRUNE_RADIUS = 1;
@@ -1580,6 +1580,7 @@ function applyRemoteState(data){
   idCounter = pieces.reduce((m,p)=>Math.max(m,Number(p.id)||0),0)+1;
   rebuildPieceIndexes('remote-state');
   assertPieceIndexes('applyRemoteState');
+  for(const f of factions) if(f?.idx!=null) reconcileVerdantRootSupport(f.idx);
   const fData = Array.isArray(data.factions) ? data.factions : [];
   for(const fd of fData){
     const f = factions[fd.idx]; if(!f) continue;
@@ -1648,6 +1649,7 @@ function pendingMoveForPieceId(pieceId){
 function softConfirmPendingAction(actionId){
   const pending = pendingPlayerActions.find(a => a.actionId === actionId);
   if(!pending) return;
+  if(pending.kind === 'spawn' && findAuthoritativePieceForPendingSpawn(pending)){ clearPendingSpawnAction(actionId); return; }
   pending.hostAccepted = true;
   pending.hostAcceptedAt = now();
   pending.expiresAt = Math.max(pending.expiresAt || 0, now() + HOST_ACCEPTED_PENDING_TTL_SECONDS);
@@ -1681,6 +1683,27 @@ function softConfirmPendingAction(actionId){
     pending.expiresAt = Math.max(pending.expiresAt || 0, now() + HOST_ACCEPTED_PENDING_TTL_SECONDS);
   }
 }
+function remotePieceMatchesPendingSpawn(pp,action){
+  if(!pp || !action) return false;
+  if(action.actionId && pp.aid === action.actionId) return true;
+  if(action.pieceId != null && Number(pp.i) === Number(action.pieceId)) return true;
+  const createdMs = Number(action.createdAt || 0) * 1000;
+  const withinWindow = !createdMs || Math.abs(Date.now() - createdMs) < SPAWN_COMMAND_MAX_AGE_MS;
+  return withinWindow && action.hostAccepted && Number(pp.f)===Number(action.faction) && pp.t===action.type && Math.max(Math.abs(Number(pp.x)-Number(action.x)),Math.abs(Number(pp.y)-Number(action.y)))<=8;
+}
+function localPieceToRemoteShape(p){ return p ? {i:p.id,f:p.faction,t:p.type,x:p.x,y:p.y,aid:p.clientActionId || ''} : null; }
+function findAuthoritativePieceForPendingSpawn(action,remotePieces=null){
+  // Spawn reconciliation uses one matcher for pruning and rendering so a live troop never coexists with its pending ghost.
+  if(!action || action.kind!=='spawn') return null;
+  const list = remotePieces || pieces.filter(p=>p && p.alive).map(localPieceToRemoteShape);
+  return list.find(pp=>remotePieceMatchesPendingSpawn(pp,action)) || null;
+}
+function clearPendingSpawnAction(actionId){
+  if(!actionId) return;
+  stopCommandAckWatch(actionId);
+  pendingPlayerActions = pendingPlayerActions.filter(a=>!(a.kind==='spawn' && a.actionId===actionId));
+  localWritePendingUntil = pendingPlayerActions.length ? localWritePendingUntil : 0;
+}
 function remotePositionIsStillBeforePendingMove(pp, pending){
   return !!(pp && pending && pp.f === PLAYER && pp.x === pending.fromX && pp.y === pending.fromY);
 }
@@ -1701,12 +1724,10 @@ function pruneConfirmedPendingActions(remoteData){
       return !remotePositionConfirmsPendingMove(rp, action);
     }
     if(action.kind === 'spawn'){
-      const confirmed = remotePieces.some(pp =>
-        pp.aid === action.actionId || pp.i === action.pieceId
-      );
+      const finalPiece = findAuthoritativePieceForPendingSpawn(action, remotePieces);
+      const confirmed = !!finalPiece;
       if(confirmed){
         stopCommandAckWatch(action.actionId);
-        const finalPiece = remotePieces.find(pp => pp.aid === action.actionId || pp.i === action.pieceId);
         if(finalPiece && (Number(finalPiece.x) !== Number(action.x) || Number(finalPiece.y) !== Number(action.y))){
           toast('Deployment shifted to the nearest open tile.', 2400);
         }
@@ -3742,8 +3763,11 @@ function updatePieceTileIndex(p,oldX,oldY){
 }
 function setPieceDead(p,reason='dead'){
   if(!p || !p.alive) return false;
+  const wasSeedGrove = p.type==='seedgrove';
+  const oldFaction = p.faction, oldX = p.x, oldY = p.y;
   deindexPiece(p);
   p.alive=false;
+  if(wasSeedGrove) reconcileVerdantRootSupport(oldFaction,verdantRootBoundsAround(oldX,oldY));
   markStateDirty();
   return true;
 }
@@ -4465,11 +4489,36 @@ function recalcOwnerCounts(){
   ownerCountsDirty = false;
   return ownerCounts;
 }
+function territoryPriority(kind){
+  // Supported Seed Grove roots are absolute-priority land until their living Grove support disappears.
+  return kind === 'verdant_root' ? 1000 : 0;
+}
+function liveSeedGrovesForFaction(factionIdx){
+  return pieces.filter(p=>p && p.alive && p.faction===factionIdx && p.type==='seedgrove');
+}
+function isSupportedVerdantRootTile(tileX,tileY,factionIdx=null){
+  if(!inBounds(tileX,tileY)) return false;
+  const owner = factionIdx == null ? tile(tileX,tileY).owner : factionIdx;
+  if(owner == null) return false;
+  return liveSeedGrovesForFaction(owner).some(g=>Math.max(Math.abs(tileX-g.x),Math.abs(tileY-g.y))<=VERDANT_NODE_SPREAD_RADIUS);
+}
+function clearTerritoryTile(x,y){
+  if(!inBounds(x,y)) return false;
+  const t=tile(x,y);
+  if(t.owner==null && !t.captureKind) return false;
+  forgetTimedTerritoryTile(t.owner,t.captureKind,x,y);
+  t.lastOwner=t.owner;
+  t.owner=null; t.captureKind=null; t.verdantFade=0; t.glow=0;
+  markLandTileDirty(x,y);
+  return true;
+}
 function claimTile(faction,x,y,glow=.35,captureKind='normal'){
   if(!inBounds(x,y)) return false;
   const t=tile(x,y);
   const nextKind = captureKind || t.captureKind || 'normal';
   const oldOwner=t.owner, oldKind=t.captureKind;
+  if(oldKind==='verdant_root' && isSupportedVerdantRootTile(x,y,oldOwner) && !(nextKind==='verdant_root' && faction===oldOwner)) return false;
+  if(oldKind && territoryPriority(oldKind) > territoryPriority(nextKind) && t.owner!==faction) return false;
   if(t.owner!==faction){
     if(oldOwner!=null) forgetTimedTerritoryTile(oldOwner,oldKind,x,y);
     t.lastOwner=t.owner;
@@ -4483,7 +4532,11 @@ function claimTile(faction,x,y,glow=.35,captureKind='normal'){
     markLandTileDirty(x,y);
     return true;
   } else {
-    if(nextKind && t.captureKind!==nextKind){ forgetTimedTerritoryTile(faction,t.captureKind,x,y); t.captureKind = nextKind; if(['verdant_root','verdant_seed','ember_kill','tide_flow','iron_fortified'].includes(nextKind)) rememberTimedTerritoryTile(faction,nextKind,x,y); markLandTileDirty(x,y); }
+    if(nextKind && t.captureKind!==nextKind){
+      if(t.captureKind==='verdant_root' && isSupportedVerdantRootTile(x,y,faction) && nextKind!=='verdant_root') return false;
+      if(territoryPriority(t.captureKind) > territoryPriority(nextKind)) return false;
+      forgetTimedTerritoryTile(faction,t.captureKind,x,y); t.captureKind = nextKind; if(['verdant_root','verdant_seed','ember_kill','tide_flow','iron_fortified'].includes(nextKind)) rememberTimedTerritoryTile(faction,nextKind,x,y); markLandTileDirty(x,y);
+    }
     t.verdantFade=0;
     t.glow=0;
   }
@@ -4951,18 +5004,47 @@ function buildGatehouseRing(gate){
   }
   return false;
 }
-function nearestNonVerdantTile(cx,cy,factionIdx,r=3){
-  let best=null,bd=999;
-  for(let y=cy-r;y<=cy+r;y++) for(let x=cx-r;x<=cx+r;x++){
-    if(!inBounds(x,y) || findPieceAt(x,y) || dist2(x,y,cx,cy)>r*r) continue;
+function reconcileVerdantRootSupport(factionIdx,bounds=null){
+  // Reconcile root support from live pieces, not cached buildings, so Grove removals immediately clear only unsupported roots.
+  let changed=false;
+  const left=Math.max(0,bounds?.left ?? 0), right=Math.min(BOARD_W-1,bounds?.right ?? BOARD_W-1);
+  const top=Math.max(0,bounds?.top ?? 0), bottom=Math.min(BOARD_H-1,bounds?.bottom ?? BOARD_H-1);
+  for(let y=top;y<=bottom;y++) for(let x=left;x<=right;x++){
     const t=tile(x,y);
-    if(t.owner===factionIdx && t.captureKind==='verdant_root') continue;
-    if(!passableFor({type:'seedgrove',faction:factionIdx},x,y)) continue;
-    const frontier = ORTHO.some(([dx,dy])=>inBounds(x+dx,y+dy) && tile(x+dx,y+dy).owner!==factionIdx);
-    const score = (frontier ? -10 : 0) + dist2(x,y,cx,cy);
-    if(score<bd){bd=score; best=t;}
+    if(t.owner!==factionIdx || t.captureKind!=='verdant_root') continue;
+    if(!isSupportedVerdantRootTile(x,y,factionIdx)) changed = clearTerritoryTile(x,y) || changed;
   }
-  return best;
+  if(changed) markStateDirty();
+  return changed;
+}
+function verdantRootBoundsAround(x,y,r=VERDANT_NODE_SPREAD_RADIUS){ return {left:x-r,right:x+r,top:y-r,bottom:y+r}; }
+function nearestNonVerdantTile(cx,cy,factionIdx,r=3){
+  return chooseSeedGroveChildTile({x:cx,y:cy,faction:factionIdx,id:0},factionIdx,r,8);
+}
+function chooseSeedGroveChildTile(parent,factionIdx,minR=3,maxR=8){
+  // Child Seed Groves jump on deterministic outward rings and keep at least three Chebyshev squares from allied Groves.
+  const groves=liveSeedGrovesForFaction(factionIdx);
+  const center=groves.reduce((a,g)=>({x:a.x+g.x,y:a.y+g.y}),{x:0,y:0});
+  const count=Math.max(1,groves.length); center.x/=count; center.y/=count;
+  const candidates=[];
+  for(let r=minR;r<=maxR;r++) for(let y=parent.y-r;y<=parent.y+r;y++) for(let x=parent.x-r;x<=parent.x+r;x++){
+    if(!inBounds(x,y) || Math.max(Math.abs(x-parent.x),Math.abs(y-parent.y))!==r || findPieceAt(x,y)) continue;
+    if(!passableFor({type:'seedgrove',faction:factionIdx},x,y)) continue;
+    const nearest = groves.reduce((m,g)=>Math.min(m,Math.max(Math.abs(x-g.x),Math.abs(y-g.y))),999);
+    if(nearest < 3) continue;
+    let newLand=0, enemyOrOpen=0;
+    for(let yy=y-VERDANT_NODE_SPREAD_RADIUS;yy<=y+VERDANT_NODE_SPREAD_RADIUS;yy++) for(let xx=x-VERDANT_NODE_SPREAD_RADIUS;xx<=x+VERDANT_NODE_SPREAD_RADIUS;xx++){
+      if(!inBounds(xx,yy) || Math.max(Math.abs(xx-x),Math.abs(yy-y))>VERDANT_NODE_SPREAD_RADIUS) continue;
+      const t=tile(xx,yy); if(!isNaturalVerdantTerrain(t.type)) continue;
+      if(!(t.owner===factionIdx && t.captureKind==='verdant_root')) newLand++;
+      if(t.owner==null || t.owner!==factionIdx) enemyOrOpen++;
+    }
+    const outward=(x-center.x)*(parent.x-center.x)+(y-center.y)*(parent.y-center.y);
+    const score=nearest*1000 + newLand*35 + enemyOrOpen*20 + outward - r*2 - seededNoise(x,y,(parent.id||0)+7300)*.01;
+    candidates.push({x,y,score});
+  }
+  candidates.sort((a,b)=>b.score-a.score || a.y-b.y || a.x-b.x);
+  return candidates[0] || null;
 }
 function nearbyBasicSunspire(monastery){
   const basics=['sunacolyte','dawnblade','lightlancer'];
@@ -7237,6 +7319,7 @@ function updateCrownwardGeneralBanners(f,tNow){
   }
 }
 function updateVerdantSpreadAndFade(f,dt){
+  if(lobbyId && !canAuthoritativelyWriteState()) return;
   const king=getPiece(f.kingId);
   if(king?.alive) claimRadius(f.idx,king.x,king.y,2,'verdant_seed',0,(t)=>terrainOf(t).pass);
   const nodes=liveBuildings(f.idx,'seedgrove');
@@ -7259,7 +7342,7 @@ function updateVerdantSpreadAndFade(f,dt){
     const [x,y]=k.split(',').map(Number); if(!inBounds(x,y)){ active.delete(k); continue; }
     const t=tile(x,y);
     if(t.owner!==f.idx || (t.captureKind!=='verdant_root' && t.captureKind!=='verdant_seed')){ forgetTimedTerritoryTile(f.idx,'verdant_root',x,y); forgetTimedTerritoryTile(f.idx,'verdant_seed',x,y); continue; }
-    if(t.captureKind==='verdant_root' && nearestVerdantNodeWithin(t.x,t.y,f.idx,VERDANT_NODE_MAINTAIN_RADIUS)){ t.verdantFade=0; continue; }
+    if(t.captureKind==='verdant_root'){ if(isSupportedVerdantRootTile(t.x,t.y,f.idx)){ t.verdantFade=0; continue; } clearTerritoryTile(x,y); continue; }
     t.verdantFade=(t.verdantFade||0)+dt; t.glow=0;
     if(t.verdantFade>=VERDANT_FADE_SECONDS){ forgetTimedTerritoryTile(f.idx,t.captureKind,x,y); t.owner=null; t.captureKind=null; t.verdantFade=0; t.glow=0; markLandTileDirty(x,y); }
     else markTileChunkDirty(x,y,false);
@@ -7315,6 +7398,7 @@ function updateCommandLand(f){
   }
 }
 function updateBuildingRules(f,dt){
+  if(lobbyId && !canAuthoritativelyWriteState()) return;
   const tNow=now();
   updateCrownwardGeneralBanners(f,tNow);
   for(const b of liveBuildings(f.idx)){
@@ -7356,9 +7440,11 @@ function updateBuildingRules(f,dt){
       }
       claimRadius(f.idx,b.x,b.y,VERDANT_NODE_SPREAD_RADIUS,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
       if(!b.seedChildDone && tNow>=b.nextBuildingTick){
-        const spot=nearestNonVerdantTile(b.x,b.y,f.idx,3);
+        const spot=chooseSeedGroveChildTile(b,f.idx,3,8);
         if(spot){
           newPiece(f.idx,'seedgrove',spot.x,spot.y,{ready:false,seedGen:(b.seedGen||0)+1,nextBuildingTick:tNow+25});
+          claimRadius(f.idx,spot.x,spot.y,VERDANT_NODE_SPREAD_RADIUS,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
+          reconcileVerdantRootSupport(f.idx,verdantRootBoundsAround(spot.x,spot.y));
           b.seedChildDone=true;
           floating(spot.x,spot.y,'NEW SEED', f.color);
         }
@@ -8681,7 +8767,7 @@ function drawActors(){
       const wb=renderIndex.wallsByDepthRow.get(row); if(wb){ perfCount('actorBucketsVisited'); for(const rec of wb){ if(rec.x<left||rec.x>right||rec.y<top||rec.y>bottom||isShadowFoggedForRender(rec.x,rec.y)) continue; actors.push(rec); perfCount('visibleWallRecords'); } }
       const bb=renderIndex.buildingsByDepthRow.get(row); if(bb){ perfCount('actorBucketsVisited'); for(const rec of bb){ const p=rec.p; if(!p.alive||p.x<left||p.x>right||p.y<top||p.y>bottom||(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) continue; rec.x=p.px ?? p.x; rec.y=p.py ?? p.y; rec.depth=actorDepth(rec.x + rec.x*.002, rec.y + rec.x*.02); actors.push(rec); } }
       const pb=renderIndex.piecesByDepthRow.get(row); if(pb){ perfCount('actorBucketsVisited'); for(const rec of pb){ const p=rec.p, px=p.px ?? p.x, py=p.py ?? p.y; if(!p.alive||px<left||px>right||py<top||py>bottom||(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) continue; rec.x=px; rec.y=py; rec.depth=actorDepth(px + px*.002, py + px*.02); actors.push(rec); } }
-      for(const action of pendingPlayerActions){ if(action.kind==='spawn'&&action.faction===PLAYER&&depthRowFor(action.x,action.y)===row&&action.x>=left&&action.x<=right&&action.y>=top&&action.y<=bottom){ actors.push({kind:'spawnGhost',kindOrder:2.5,id:Number(action.pieceId)||0,x:action.x,y:action.y,depth:actorDepth(action.x + action.x*.002, action.y + action.x*.02),action}); perfCount('tempRenderAllocations'); } }
+      for(const action of pendingPlayerActions){ if(action.kind==='spawn'&&action.faction===PLAYER&&depthRowFor(action.x,action.y)===row&&action.x>=left&&action.x<=right&&action.y>=top&&action.y<=bottom){ if(findAuthoritativePieceForPendingSpawn(action)){ clearPendingSpawnAction(action.actionId); continue; } actors.push({kind:'spawnGhost',kindOrder:2.5,id:Number(action.pieceId)||0,x:action.x,y:action.y,depth:actorDepth(action.x + action.x*.002, action.y + action.x*.02),action}); perfCount('tempRenderAllocations'); } }
       if(actors.length>1){ actors.sort(stableActorCompare); perfCount('localBucketSorts'); }
       for(const actor of actors){
         if(actor.kind==='wall'){ drawWallSpriteAt(actor.x,actor.y,factions[actor.owner]||{id:'neutral',color:'#dbeafe'}); perfCount('cachedWallsDrawn'); }
@@ -8706,6 +8792,7 @@ function pieceSpriteMetrics(def,type,graphic,r){
   return {building,targetH,targetW,bottom,top,centerY};
 }
 function drawPendingSpawnGhost(action){
+  if(findAuthoritativePieceForPendingSpawn(action)){ clearPendingSpawnAction(action.actionId); return; }
   const f=factions[action.faction]; if(!f) return;
   const def=pieceDefs[action.type] || pieceDefs.pawn;
   const x=(action.x+.5)*BASE_CELL, y=(action.y+.5)*BASE_CELL;
