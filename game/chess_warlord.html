@@ -498,7 +498,7 @@ const MAX_ONLINE_PLAYERS = 8;
 // Only an explicit lobby URL enables multiplayer. A stale prior-lobby id must never turn a solo launch into a failing sync session.
 let lobbyId = params.get('gameId') || params.get('lobbyId') || '';
 let username = (params.get('username') || localStorage.getItem('gh.username') || '').trim();
-let returnTo = params.get('returnTo') || params.get('return') || localStorage.getItem('gh.returnUrl') || '/game/index.html';
+let returnTo = '/lobby/lobby.html';
 let lobbyData = null;
 let slotNames = [];
 let slotHumans = [];
@@ -1941,8 +1941,7 @@ function exitToLobby(){
   gameStarted = false;
   try{ localStorage.setItem('gh.username', username || ''); localStorage.setItem('gh.lastLobbyId',''); localStorage.setItem('gh.lastGameType',''); }catch(e){}
   if(presenceRef) deleteDoc(presenceRef).catch(()=>{});
-  const glue = returnTo.includes('?') ? '&' : '?';
-  location.href = `${returnTo}${glue}username=${encodeURIComponent(username || '')}`;
+  location.href = `/lobby/lobby.html?username=${encodeURIComponent(username || '')}`;
 }
 window.addEventListener('pagehide',()=>{ if(presenceRef) deleteDoc(presenceRef).catch(()=>{}); });
 
