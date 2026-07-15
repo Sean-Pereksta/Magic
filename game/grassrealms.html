@@ -56,7 +56,9 @@
     .realmRow:before{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--realm-stripes,transparent);opacity:.28;pointer-events:none;z-index:0}
     .realmRow.activeRealm:before{opacity:.38}
     .realmRow> *{position:relative;z-index:1}
-    .realmIdentity{min-width:0;padding-left:5px}
+    .realmIdentity{min-width:0;padding:6px 7px 6px 5px;border-radius:10px;cursor:pointer;outline:none}
+    .realmIdentity:hover,.realmIdentity:focus-visible{background:#ffffff0b;box-shadow:inset 0 0 0 1px #8d815744}
+    .realmRow{cursor:pointer}.realmCards{cursor:default}
     .realmQuickFacts{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
     .realmFact{display:inline-flex;align-items:center;gap:3px;padding:3px 6px;border:1px solid #4b543d;border-radius:999px;background:#0b100bd9;color:#eee6cd;font-size:10px;font-weight:800;white-space:nowrap}
     .realmFact.colors{max-width:100%;overflow:hidden;text-overflow:ellipsis}
@@ -147,6 +149,7 @@
     #toast{position:fixed;z-index:180;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#131912;border:1px solid #777b5b;color:#fff5d8;padding:10px 14px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;box-shadow:0 8px 28px #000;max-width:min(560px,90vw);text-align:center}#toast.show{opacity:1;transform:translate(-50%,0)}
     dialog{border:1px solid #77704f;border-radius:17px;background:#161d15;color:#f6edd1;width:min(720px,94vw);padding:0;box-shadow:0 30px 90px #000}dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}.modalGrid{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:16px;padding:16px}.modalGrid #modalArt{width:100%;max-height:410px;object-fit:contain;border-radius:12px;background:#b9ad82}.modalBody h2{font-family:Georgia,serif;color:#ffe4a0;margin:0 0 8px}.modalBody p{line-height:1.5;color:#d5d0b8}.modalClose{position:absolute;right:9px;top:9px}
     #targetDialog{width:min(1120px,96vw);height:min(780px,92dvh);max-width:none;overflow:hidden;background:linear-gradient(180deg,#1c261a,#0e140d)}
+    .targetSkipBtn{flex:0 0 auto;min-height:34px;padding:6px 10px;margin-left:4px}
     .targetShell{height:100%;display:flex;flex-direction:column;min-height:0}
     .targetHeader{display:flex;align-items:center;gap:10px;padding:12px 52px 10px 14px;border-bottom:1px solid #4c563f;background:#182117}
     .targetHeader h2{margin:0;font-family:Georgia,serif;color:#ffe3a0;font-size:20px}.targetHeader .subtle{margin-left:auto;text-align:right}
@@ -172,6 +175,12 @@
     @keyframes sourceSwap{0%{opacity:.2;transform:translateX(-18px) scale(.92)}100%{opacity:1;transform:none}}
     .targetAttackCopy{max-width:420px}.targetAttackCopy strong{display:block;color:#ffe4a0;font-family:Georgia,serif;font-size:16px}.targetAttackCopy span{display:block;color:#c9c4ad;font-size:11px;line-height:1.4;margin-top:3px}
     .targetEmpty{padding:30px;text-align:center;color:#c4bea6}
+    #playerCardsDialog{width:min(900px,95vw);height:min(720px,88dvh);max-width:none;overflow:hidden;background:linear-gradient(180deg,#1c261a,#0e140d)}
+    .playerCardsShell{height:100%;display:flex;flex-direction:column;min-height:0}
+    .playerCardsHeader{flex:0 0 auto;padding:14px 52px 11px 15px;border-bottom:1px solid #4c563f;background:#182117}
+    .playerCardsHeader h2{margin:0;font-family:Georgia,serif;color:#ffe3a0;font-size:22px}.playerCardsSummary{margin-top:5px;color:#c9c4ad;font-size:11px;line-height:1.4}
+    .playerCardsGrid{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));align-content:start;gap:10px;padding:12px;scrollbar-gutter:stable}
+    .playerCardsGrid .realmCard{width:100%;height:auto;aspect-ratio:74/102;min-width:0}.playerCardsGrid .empty{grid-column:1/-1}
     #gameOverDialog{width:min(520px,calc(100vw - 24px));max-width:none;padding:0;overflow:hidden;text-align:center;background:radial-gradient(circle at 50% 0,#3c512f,#151d14 58%,#0c120b);border-color:#c79b3c}
     .gameOverCard{padding:26px 24px 22px}.gameOverTrophy{font-size:54px;line-height:1;margin-bottom:8px;filter:drop-shadow(0 5px 12px #0009)}.gameOverCard h2{margin:0;font-family:Georgia,serif;font-size:30px;color:#ffe4a0}.gameOverMessage{margin:10px auto 6px;max-width:410px;color:#f5ecd3;font-size:16px;line-height:1.45}.gameOverStatus{min-height:20px;margin:7px 0 16px;color:#beb9a5;font-size:12px}.gameOverActions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}.gameOverActions .actionBtn{min-width:150px}.gameOverCountdown{margin-top:10px;color:#d8c98e;font-size:11px}    .compactSelect{max-width:150px;padding:7px 8px}.forecastDialog{width:min(760px,95vw);max-height:88dvh;overflow:auto}.forecastBody{padding:16px}.forecastBody h2{margin:0 0 4px;font-family:Georgia,serif;color:#ffe4a0}.forecastSummary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:12px 0}.forecastMetric{padding:9px;border:1px solid #4f5841;border-radius:10px;background:#10160f;text-align:center}.forecastMetric strong{display:block;color:#ffe7a7;font-size:18px}.forecastMetric small{color:#aaa690;font-size:9px;text-transform:uppercase}.forecastRolls{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:6px}.forecastRoll{padding:7px;border:1px solid #404a37;border-radius:9px;background:#151c14;font-size:10px;line-height:1.35}.forecastRoll.hot{border-color:#d8b350;background:#2c2918}.cardInspector{display:grid;gap:9px;margin-top:10px}.inspectorSection{border:1px solid #46503b;border-radius:10px;background:#10160f;padding:8px}.inspectorSection strong{display:block;color:#ffe19a;font-family:Georgia,serif;margin-bottom:4px}.inspectorSection div{font-size:11px;line-height:1.45;color:#d8d1b8}.modalAbilityMarks{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.matchSummary{margin:14px auto 4px;text-align:left;max-height:36dvh;overflow:auto;border:1px solid #596143;border-radius:12px;background:#0e140dcc}.summaryRow{display:grid;grid-template-columns:minmax(110px,1.2fr) repeat(4,minmax(55px,.7fr));gap:5px;padding:7px 8px;border-bottom:1px solid #30382d;font-size:10px;align-items:center}.summaryRow:last-child{border-bottom:0}.summaryRow.header{position:sticky;top:0;background:#202a1d;color:#f3d98d;font-weight:900}.summaryRow.winner{background:#443716}.summaryAwards{padding:9px;font-size:10px;color:#ded6bc;line-height:1.5}
 
@@ -192,6 +201,7 @@
       .commandTabs{position:sticky;top:0;z-index:5}.commandTab{min-height:36px;font-size:9px;padding:3px}.effectLegend{padding:3px;gap:3px}.effectChip{font-size:6px;padding:2px 3px}#actionsPane{padding:4px;overflow-y:auto;overscroll-behavior:contain}.actionLayout{height:auto;min-height:100%;display:flex;flex-direction:column;gap:5px}.diceStage{min-height:86px;padding:4px;border-radius:9px;flex:0 0 auto}.diceStage:before{inset:4px}.die{width:44px;height:44px;border-width:2px;border-radius:9px;padding:4px}.pip{width:6px;height:6px}.polyDie{width:58px;height:52px;font-size:18px}.rollCaption{font-size:8px;margin-top:1px}.controlsArea{overflow:visible;gap:4px;padding:0}.phaseCard{padding:5px;border-radius:8px}.phaseTitle{font-size:10px}.phaseCard .subtle{font-size:7px}.playerSnapshot{padding:4px;gap:3px;flex-wrap:wrap}.playerSnapshot strong{display:none}.playerSnapshot .resourceStrip{width:100%;margin-left:0;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto}.dieToggle{gap:3px}.dieChoice{min-width:0;padding:5px 2px;font-size:8px;border-radius:7px}.controlRow{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}.actionBtn{min-height:31px;padding:4px 2px;font-size:8px;border-radius:7px}#targetBox{grid-template-columns:1fr;gap:3px}#targetBox select{min-height:29px;padding:4px;font-size:8px}#queueBox{max-height:none;min-height:34px;padding:4px;font-size:7px}.logCard{display:none}
       #shopPane{overflow:hidden}.shopToolbar{padding:4px 5px;gap:3px}.shopToolbar strong{font-size:10px}.shopToolbar .subtle{font-size:7px}.categoryTabs{display:flex;overflow-x:auto;padding:4px;gap:3px}.categoryTab{flex:0 0 46px;min-height:34px;border-radius:7px}.categoryTab span{font-size:6px;padding:3px 1px}.shopGrid{grid-template-columns:minmax(0,1fr);padding:0 4px 5px;gap:4px}.shopCard{grid-template-columns:48px minmax(0,1fr);min-height:76px;border-radius:8px}.shopArt,.shopFallback{width:48px;height:76px}.shopFallback{font-size:22px}.shopInfo{padding:4px}.shopName{font-size:9px}.shopMeta,.shopEffect{font-size:6px;line-height:1.2}.shopEffect{-webkit-line-clamp:2}.shopBuy{padding:4px 2px;font-size:7px;border-radius:6px}.lockedNote{font-size:6px}
       .modalGrid{grid-template-columns:1fr}.modalGrid #modalArt{max-height:38vh}
+      #playerCardsDialog{width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;margin:0;border:0;border-radius:0}.playerCardsShell{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}.playerCardsHeader{padding:10px 46px 8px 9px}.playerCardsHeader h2{font-size:16px}.playerCardsSummary{font-size:8px}.playerCardsGrid{grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:6px;padding:7px}.targetSkipBtn{min-height:28px;padding:4px 6px;font-size:8px}
     }
     @media(max-width:430px){
       .brand{max-width:82px;overflow:hidden;text-overflow:ellipsis}.panelHead h2{font-size:10px}.realmCard{width:46px;height:64px;flex-basis:46px}.diceStage{min-height:76px}.phaseCard{display:none}.shopCard{grid-template-columns:43px minmax(0,1fr)}.shopArt,.shopFallback{width:43px;height:72px}
@@ -275,6 +285,7 @@
               <button id="rollBtn" class="actionBtn">🎲 Roll</button>
               <button id="resolveBtn" class="actionBtn secondary">Resolve</button>
               <button id="applyTargetBtn" class="actionBtn secondary">Choose Target</button>
+              <button id="skipAbilityBtn" class="actionBtn danger hidden" type="button">Skip Ability</button>
               <button id="endTurnBtn" class="actionBtn secondary">End Turn</button>
             </div>
             <div id="targetBox"></div>
@@ -302,10 +313,14 @@
   <dialog id="targetDialog">
     <button class="iconBtn modalClose" id="targetDialogClose" title="Close targeting view">✕</button>
     <div class="targetShell">
-      <div class="targetHeader"><h2 id="targetTitle">Choose a target</h2><div id="targetInstruction" class="subtle"></div></div>
+      <div class="targetHeader"><h2 id="targetTitle">Choose a target</h2><div id="targetInstruction" class="subtle"></div><button id="targetSkipBtn" class="actionBtn danger targetSkipBtn hidden" type="button">Skip Ability</button></div>
       <div id="targetArena" class="targetArena"></div>
       <div id="targetAttackerStage" class="targetAttackerStage"></div>
     </div>
+  </dialog>
+  <dialog id="playerCardsDialog" aria-labelledby="playerCardsTitle">
+    <button class="iconBtn modalClose" id="playerCardsClose" title="Close player cards">✕</button>
+    <div class="playerCardsShell"><div class="playerCardsHeader"><h2 id="playerCardsTitle">Realm Cards</h2><div id="playerCardsSummary" class="playerCardsSummary"></div></div><div id="playerCardsGrid" class="playerCardsGrid"></div></div>
   </dialog>
   <dialog id="cardModal">
     <button class="iconBtn modalClose" id="modalClose">✕</button>
@@ -361,12 +376,18 @@
     let user = null, state = null, lobbyData = null, presence = new Map(), unsubLobby = null, unsubPresence = null;
     let rng = null;
     let selectedCategory = 'grey', actionBusy = false, aiTimer = 0, disconnectTimer = 0, heartbeatTimer = 0, turnTimerInterval = 0, timerActionPending = false;
+    const CLIENT_SESSION_ID=globalThis.crypto?.randomUUID?.()||`session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let firebaseStatus='Connecting',lastGameIdentity='';
     let activeCommandTab = 'actions';
     let assetMap = {}, missingAssets = new Set(), graphicsReady = false, lastRenderedVersion = -1, toastTimer = 0;
     let noticeQueue=[],noticeShowing=false,lastObservedLogAt=0,targetActionBusy=false,lastTargetDialogKey='';
     let gameOverFlowKey='',gameOverReturnTimer=0,gameOverCountdownTimer=0,winRecordPromise=null;
     const lobbyRef = lobbyId ? doc(db,'lobbies',lobbyId) : null;
 
+    function renderConnectionStatus(){const el=$('#connectionTag');if(!el)return;el.textContent=firebaseStatus;el.title='Firebase: '+firebaseStatus;}
+    function setFirebaseStatus(value){firebaseStatus=value||'Connecting';renderConnectionStatus();}
+    function isTransientFirebaseError(error){const code=String(error?.code||'').split('/').pop();return['aborted','unavailable','deadline-exceeded','resource-exhausted','internal','unknown'].includes(code);}
+    function waitMs(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
     function toast(message){ const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2400); }
     function queueNotice(message){if(!message)return;noticeQueue.push(String(message));if(noticeQueue.length>8)noticeQueue=noticeQueue.slice(-8);showNextNotice();}
     function showNextNotice(){if(noticeShowing||!noticeQueue.length)return;noticeShowing=true;toast(noticeQueue.shift());setTimeout(()=>{noticeShowing=false;showNextNotice();},2550);}
@@ -508,7 +529,7 @@
   details:'Deal 2 damage and apply 2 Poison to a troop; every other troop in that realm gains 1 Poison. Healing removes one Poison instead of restoring HP.'
 },
 { key:'black_bloodtransmuter', name:'Blood Transmuter', assetName:'blood transmuter', emoji:'🩸⚗️', type:'troop', cost:5, hp:5, max:2, triggers:[6,10,14], timing:'your', requiresTemple:'black_temple', onTrigger:{kind:'sacrifice_to_heal', multiplier:1.5},
-  details:'Choose one friendly non-token permanent to sacrifice. Heal your most damaged other card—or your Town Hall if no card is damaged—for 1.5× the sacrificed copy’s remaining HP, rounded up. A natural 13+ adds the troop healing boost.'
+  details:'Choose one of your troops to sacrifice, including a summoned troop. Heal your most damaged other card—or your Town Hall if no card is damaged—for 1.5× the sacrificed troop’s remaining HP, rounded up. You must choose the troop in the popup. A natural 13+ adds the troop healing boost.'
 },
 { key:'black_skeleton', name:'Skeleton', assetName:'skeleton', emoji:'💀', type:'troop', cost:0, hp:1, max:5, triggers:[1,3,5,7,9,11,13,15,17,19], timing:'every', token:true, hiddenFromShop:true, onTrigger:{kind:'skeleton_strike', value:1},
   details:'Summoned token, maximum 5. On any odd roll, automatically attack the weakest enemy troop, then wall, then non-Town structure. It can reach a Town Hall only after that realm has no other permanent cards. Expires after two owner turns.'
@@ -621,7 +642,11 @@
     ];
 
 
+    const duplicateCardKeys=RAW_CARDS.map(card=>card.key).filter((key,index,all)=>all.indexOf(key)!==index);
+    if(duplicateCardKeys.length)throw new Error(`Duplicate card keys: ${[...new Set(duplicateCardKeys)].join(', ')}`);
     const CARD_CATALOG = Object.fromEntries(RAW_CARDS.map(card=>[card.key,{...card,category:playerCategory(card)}]));
+    const CARD_CATALOG_SIGNATURE=`cards-${RAW_CARDS.map(card=>card.key).sort().join('|').split('').reduce((hash,char)=>Math.imul(hash^char.charCodeAt(0),16777619)>>>0,2166136261).toString(36)}`;
+    function validateCardCatalog(){const invalid=RAW_CARDS.filter(card=>!card.key||!card.name||!card.type);if(invalid.length)throw new Error(`Invalid card definitions: ${invalid.map(card=>card.key||card.name||'?').join(', ')}`);console.info(`Magic Realms catalog ${CARD_CATALOG_SIGNATURE}: ${RAW_CARDS.length} cards registered.`);}
     function effectAbilityKeys(effect={}){
       const kind=String(effect.kind||'').toLowerCase(),keys=[];const add=k=>{if(k&&!keys.includes(k))keys.push(k);};
       if(/attack|strike|damage|smite|claw|goliath|judgment|slam/.test(kind))add('attack');
@@ -659,7 +684,7 @@
       });
     }
     async function preloadGraphics(){
-      const entries=[...CATEGORIES.map(c=>({key:`category:${c}`,candidates:[categoryAsset(c)]})),...RAW_CARDS.map(c=>({key:c.key,candidates:cardAssetCandidates(c)}))];
+      const entries=[...CATEGORIES.map(c=>({key:`category:${c}`,candidates:[categoryAsset(c)]})),...Object.values(CARD_CATALOG).map(c=>({key:c.key,candidates:cardAssetCandidates(c)}))];
       const total=entries.length; let done=0;
       $('#progressLabel').textContent=`0 / ${total} graphics loaded`;
       const workers=Array.from({length:Math.min(8,entries.length)},async()=>{
@@ -759,7 +784,7 @@
       game.log=Array.isArray(game.log)?game.log.slice(-60):[];
       game.turnBuys=Number(game.turnBuys)||0;
       game.round=Math.max(1,Number(game.round)||1);game.turnSerial=Math.max(0,Number(game.turnSerial)||0);game.phaseDeadline=Math.max(0,Number(game.phaseDeadline)||0);
-      game.lastActionIds=game.lastActionIds&&typeof game.lastActionIds==='object'?game.lastActionIds:{};
+      game.lastActionIds=game.lastActionIds&&typeof game.lastActionIds==='object'?game.lastActionIds:{};game.recentActionIds=Array.isArray(game.recentActionIds)?game.recentActionIds.filter(Boolean).slice(-48):[];game.catalogSignature=String(game.catalogSignature||CARD_CATALOG_SIGNATURE);
       game.resultRecordedAt=Math.max(0,Number(game.resultRecordedAt)||0);game.startedAt=Math.max(0,Number(game.startedAt||game.createdAt)||0);game.finishedAt=Math.max(0,Number(game.finishedAt)||0);
       return game;
     }
@@ -827,15 +852,18 @@
       if(['attack_troop','destroy_troop','necromancer_execute_summon','plague_cloud','fire_splash'].includes(kind))return['troop'];
       if(['destroy_structure_non_temple','destroy_structure_and_attack_any'].includes(kind))return['structure'];
       if(['trebuchet_siege','sapper_breach','battering_ram'].includes(kind))return['wall','structure'];
-      if(kind==='target_sacrifice_per_temple'||kind==='sacrifice_to_heal')return['wall','troop','structure'];
+      if(kind==='target_sacrifice_per_temple')return['wall','troop','structure'];
+      if(kind==='sacrifice_to_heal')return['troop'];
       if(kind==='gain_and_destroy_two_walls')return['wall'];
       return[];
     }
     function listTargetableEntries(player,type){
-      return (player?.owned||[]).map((e,idx)=>({idx,e,c:CARD_CATALOG[e.key]})).filter(x=>x.c&&x.e.hp>0&&x.c.type===type&&(type!=='structure'||x.e.key!=='townhall'));
+      return (player?.owned||[]).map((e,idx)=>({idx,e,c:CARD_CATALOG[e.key]})).filter(x=>x.c&&x.e.hp>0&&!x.e._remove&&x.c.type===type&&(type!=='structure'||x.e.key!=='townhall'));
     }
     function effectiveTrigger(trigger){ const card=CARD_CATALOG[trigger?.key]; if(!card)return{}; return trigger.useCrazy&&card.onTriggerCrazy?card.onTriggerCrazy:(card.onTrigger||{}); }
     function triggerNeedsEffectChoice(trigger){return !!trigger?.canChooseCrazy&&trigger.choiceMade!==true;}
+    function triggerRequiresExplicitTarget(kind){return kind==='sacrifice_to_heal';}
+    function canSkipCurrentTrigger(game,actorIdx){const trigger=game?.resolveQueue?.[0],card=CARD_CATALOG[trigger?.key];return game?.phase==='resolving'&&!!trigger&&trigger.ownerIdx===actorIdx&&card?.type==='troop';}
     function chooseAICrazyEffect(game,trigger){const card=CARD_CATALOG[trigger?.key];if(!card?.onTriggerCrazy)return false;const owner=game.players[trigger.ownerIdx],score=effect=>{const m=estimateEffectMetrics(effect,card);let total=m.damage*3+m.gold*2+m.healing*2+m.utility;if(effect.kind==='destroy_all_enemy_walls')total=(game.players||[]).filter(p=>p!==owner&&!p.eliminated).reduce((sum,p)=>sum+(p.owned||[]).filter(e=>CARD_CATALOG[e.key]?.type==='wall'&&e.hp>0).length*(effect.dmg||4),0);if(effect.kind==='smite_all_enemy_troops'||effect.kind==='necromancer_crazy')total+=(game.players||[]).filter(p=>p!==owner&&!p.eliminated).reduce((sum,p)=>sum+(p.owned||[]).filter(e=>CARD_CATALOG[e.key]?.type==='troop'&&e.hp>0).length*(effect.dmg||2),0);if(effect.kind==='steal_from_each_enemy')total+=(game.players||[]).filter(p=>p!==owner&&!p.eliminated).length*(effect.coins||1)*2;return total;};return score(card.onTriggerCrazy)>score(card.onTrigger||{});}
     function effectBypassesWalls(kind){return ['destroy_structure_non_temple','destroy_structure_and_attack_any','trebuchet_siege','sapper_breach'].includes(kind);}
     function allTargetCandidates(game,ownerIdx,kind){
@@ -848,7 +876,7 @@
           if(type!=='townhall')for(const item of listTargetableEntries(target,type)){
             if(['destroy_structure_non_temple','trebuchet_siege'].includes(kind)&&item.e.key.endsWith('_temple'))continue;
             if(kind==='necromancer_execute_summon'&&item.e.hp>=currentMaxHp(target,item.e.key))continue;
-            if(kind==='sacrifice_to_heal'&&(item.c?.token||item.c?.immutable))continue;
+            if(kind==='sacrifice_to_heal'&&item.c?.immutable)continue;
             out.push({targetPlayer:target.name,targetType:type,targetEntryIdx:item.idx,score:item.e.hp});
           }
         }
@@ -1091,8 +1119,8 @@ function resolveOne(rd, manual){
   // If target needed but not provided, auto-pick if exactly one exists
   if (needsTarget && !manual){
     const possibleTargets=allTargetCandidates(rd,trig.ownerIdx,kind);
-    if(possibleTargets.length===1) manual=possibleTargets[0];
-    else return {changed:false,msg:'Target required.'};
+    if(possibleTargets.length===1&&!triggerRequiresExplicitTarget(kind)) manual=possibleTargets[0];
+    else return {changed:false,msg:triggerRequiresExplicitTarget(kind)?'Choose the troop to sacrifice.':'Target required.'};
   }
 
   const applyAndShift = (extraMsg) => {
@@ -1271,7 +1299,7 @@ function resolveOne(rd, manual){
           if(target===owner||tType==='townhall'||tIdx==null)return applyAndShift('requires an enemy permanent.');const times=Math.max(1,factionTempleCount(owner,'black')),chosen=target.owned[tIdx];let sacrificed=0;if(chosen&&chosen.hp>0&&!chosen._remove){damageEntry(chosen,chosen.hp||9999,target,rd,{attack:false,execute:true,bypassMartyr:true,ignoreShield:true,attackerOwner:owner});sacrificed++;}for(let k=1;k<times;k++){const next=['troop','structure','wall'].map(type=>weakestEntryOfType(target,type)).find(Boolean);if(!next)break;damageEntry(next.e,next.e.hp||9999,target,rd,{attack:false,execute:true,bypassMartyr:true,ignoreShield:true,attackerOwner:owner});sacrificed++;}return applyAndShift(`${target.name} sacrifices ${sacrificed} card${sacrificed===1?'':'s'} from ${times} Black Temple power.`);
         }
         case 'sacrifice_to_heal': {
-          if(target!==owner||tType==='townhall'||tIdx==null)return applyAndShift('requires one of your non-token permanents.');const entry=owner.owned[tIdx],sacCard=CARD_CATALOG[entry?.key];if(!entry||entry.hp<=0||sacCard?.token||sacCard?.immutable)return applyAndShift('that card cannot be sacrificed.');const remaining=Math.max(1,entry.hp||0),healValue=bonusHeal(Math.ceil(remaining*(eff.multiplier||1.5))),sacrificedName=sacCard?.name||'card';damageEntry(entry,entry.hp||9999,owner,rd,{attack:false,execute:true,bypassMartyr:true,ignoreShield:true});const ally=mostDamagedEntry(owner);if(ally){const healed=healEntry(owner,ally,healValue);return applyAndShift(`sacrifices ${sacrificedName} with ${remaining} HP and ${healed.poisonRemoved?'removes Poison from':`heals`} ${CARD_CATALOG[ally.key]?.name||'an ally'}${healed.healed?` for ${healed.healed}`:''}.`);}const healed=healTown(owner,healValue);return applyAndShift(`sacrifices ${sacrificedName} with ${remaining} HP and heals Town Hall for ${healed.healed}${healed.shielded?` with ${healed.shielded} Town Shield`:''}.`);
+          if(target!==owner||tType!=='troop'||tIdx==null)return applyAndShift('requires one of your troops.');const entry=owner.owned[tIdx],sacCard=CARD_CATALOG[entry?.key];if(!entry||entry.hp<=0||sacCard?.type!=='troop'||sacCard?.immutable)return applyAndShift('that troop cannot be sacrificed.');const remaining=Math.max(1,entry.hp||0),healValue=bonusHeal(Math.ceil(remaining*(eff.multiplier||1.5))),sacrificedName=sacCard?.name||'card';damageEntry(entry,entry.hp||9999,owner,rd,{attack:false,execute:true,bypassMartyr:true,ignoreShield:true});const ally=mostDamagedEntry(owner);if(ally){const healed=healEntry(owner,ally,healValue);return applyAndShift(`sacrifices ${sacrificedName} with ${remaining} HP and ${healed.poisonRemoved?'removes Poison from':`heals`} ${CARD_CATALOG[ally.key]?.name||'an ally'}${healed.healed?` for ${healed.healed}`:''}.`);}const healed=healTown(owner,healValue);return applyAndShift(`sacrifices ${sacrificedName} with ${remaining} HP and heals Town Hall for ${healed.healed}${healed.shielded?` with ${healed.shielded} Town Shield`:''}.`);
         }
         case 'trebuchet_siege': {
           if(!['wall','structure'].includes(tType))return applyAndShift('invalid siege target.');const r=dealAttack(owner,target,tType,tIdx,bonusDmg(eff.dmg||8),rd,{sourceCard:card,sourceEntry:findSourceEntry(owner,trig.key),applyExpose:true,ignoreWalls:true});return applyAndShift(`${r.message}${r.statusApplied?' Armor Break applied.':' The target was destroyed before Armor Break could remain.'}`);
@@ -1423,6 +1451,9 @@ function resolveOne(rd, manual){
       if(action.type==='CHOOSE_EFFECT'){
         if(phase!=='resolving')return{changed:false,message:'There is no effect choice right now.'};const trig=game.resolveQueue?.[0],card=CARD_CATALOG[trig?.key];if(!triggerNeedsEffectChoice(trig)||!card?.onTriggerCrazy)return{changed:false,message:'This trigger does not need a Normal/Crazy choice.'};trig.useCrazy=!!action.payload?.useCrazy;trig.choiceMade=true;resetPhaseDeadline(game);pushLog(game,`${actor.name} chooses ${trig.useCrazy?'the Crazy replacement':'the Normal effect'} for ${card.name}.`);return{changed:true};
       }
+      if(action.type==='SKIP_TRIGGER'){
+        if(phase!=='resolving')return{changed:false,message:'There is no ability to skip.'};const trigger=game.resolveQueue?.[0],card=CARD_CATALOG[trigger?.key];if(!canSkipCurrentTrigger(game,actorIdx))return{changed:false,message:'Only your own optional troop ability can be skipped.'};game.resolveQueue.shift();pushLog(game,`${actor.name} skips ${card.name}'s optional ability for this copy.`);if(!game.resolveQueue.length)game.phase='buy';resetPhaseDeadline(game);finalizeGame(game);return{changed:true};
+      }
       if(action.type==='RESOLVE'){
         if(phase!=='resolving')return{changed:false,message:'There is no trigger to resolve.'};
         const currentTrigger=game.resolveQueue[0];
@@ -1461,27 +1492,40 @@ function resolveOne(rd, manual){
 
     async function performAction(type,payload={},options={}){
       if(!lobbyRef||actionBusy&&!options.ai)return false;
-      const actionId=options.actionId||`${user?.uid||'ai'}-${nowMs()}-${Math.random().toString(36).slice(2)}`;
-      if(!options.ai){actionBusy=true;renderControls();}
+      const aiReceipt=['ai',lobbyId,state?.createdAt||0,state?.version||0,state?.phase||'',state?.resolveQueue?.length||0,state?.turnIdx||0].join('-');
+      const actionId=options.actionId||(options.ai?aiReceipt:[CLIENT_SESSION_ID,user?.uid||'guest',nowMs(),Math.random().toString(36).slice(2)].join('-'));
+      if(!options.ai){actionBusy=true;setFirebaseStatus(navigator.onLine?'Syncing':'Offline');renderControls();}
       try{
         let response='';
-        await runTransaction(db,async tx=>{
-          const snap=await tx.get(lobbyRef); if(!snap.exists())throw new Error('The lobby no longer exists.');
-          const data=snap.data(); if(!data.game)throw new Error('The game is not ready yet.');
-          const game=normalizeGame(safeClone(data.game));
-          const actorIdx=options.ai?Number(options.actorIdx):game.players.findIndex(p=>(user&&p.uid===user.uid)||(!p.uid&&p.name===myName));
-          if(actorIdx<0)throw new Error('You are not an active player in this game.');
-          const actorKey=game.players[actorIdx].uid||game.players[actorIdx].id||game.players[actorIdx].name;
-          if(game.lastActionIds?.[actorKey]===actionId)return;
-          const result=reduceAction(game,{type,payload},actorIdx);
-          if(!result.changed){response=result.message||'That move is not available.';return;}
-          game.lastActionIds[actorKey]=actionId;game.version=(game.version||0)+1;game.updatedAt=nowMs();
-          tx.update(lobbyRef,{game});
-        });
+        for(let attempt=0;attempt<3;attempt++){
+          try{
+            await runTransaction(db,async tx=>{
+              const snap=await tx.get(lobbyRef); if(!snap.exists())throw new Error('The lobby no longer exists.');
+              const data=snap.data(); if(!data.game)throw new Error('The game is not ready yet.');
+              const game=normalizeGame(safeClone(data.game));
+              if(game.catalogSignature!==CARD_CATALOG_SIGNATURE)throw new Error('This match is using a different card catalog. Refresh every player before continuing.');
+              const actorIdx=options.ai?Number(options.actorIdx):game.players.findIndex(p=>(user&&p.uid===user.uid)||(!p.uid&&p.name===myName));
+              if(actorIdx<0)throw new Error('You are not an active player in this game.');
+              if(game.recentActionIds.includes(actionId))return;
+              const actorKey=game.players[actorIdx].uid||game.players[actorIdx].id||game.players[actorIdx].name;
+              if(game.lastActionIds?.[actorKey]===actionId)return;
+              const result=reduceAction(game,{type,payload},actorIdx);
+              if(!result.changed){response=result.message||'That move is not available.';return;}
+              game.lastActionIds[actorKey]=actionId;
+              game.recentActionIds=[...game.recentActionIds,actionId].slice(-48);
+              game.version=(game.version||0)+1;game.updatedAt=nowMs();game.catalogSignature=CARD_CATALOG_SIGNATURE;
+              tx.update(lobbyRef,{game,magicSync:{version:game.version,actionId,sessionId:CLIENT_SESSION_ID,updatedAt:serverTimestamp()}});
+            });
+            break;
+          }catch(error){
+            if(attempt>=2||!isTransientFirebaseError(error))throw error;
+            await waitMs(250+attempt*500);
+          }
+        }
         if(response&&!options.ai)toast(response);
         return !response;
-      }catch(error){console.error(error);if(!options.ai)toast(error.message||'The move could not be completed.');return false;}
-      finally{if(!options.ai){actionBusy=false;renderControls();}else setTimeout(scheduleAi,650);}
+      }catch(error){console.error(error);if(!options.ai){setFirebaseStatus(navigator.onLine?'Sync error':'Offline');toast(error.message||'The move could not be completed.');}return false;}
+      finally{if(!options.ai){actionBusy=false;if(firebaseStatus==='Syncing')setFirebaseStatus(navigator.onLine?'Connected':'Offline');renderControls();}else setTimeout(scheduleAi,650);}
     }
 
     function normalizeRoster(lobby){
@@ -1499,7 +1543,7 @@ function resolveOne(rd, manual){
     async function markPresence(values={}){
       if(!lobbyId||!user)return;
       const ref=doc(db,'lobbies',lobbyId,'presence',user.uid);
-      await setDoc(ref,{uid:user.uid,name:myName,active:true,lastSeen:serverTimestamp(),...values},{merge:true});
+      await setDoc(ref,{uid:user.uid,name:myName,active:true,lastSeen:serverTimestamp(),sessionId:CLIENT_SESSION_ID,catalogSignature:CARD_CATALOG_SIGNATURE,seenGameVersion:state?.version||0,...values},{merge:true});
     }
     async function setLoadingStart(){
       if(!lobbyRef)return;
@@ -1670,6 +1714,22 @@ function resolveOne(rd, manual){
       const triggers=document.createElement('span');triggers.className='triggerMarks';(card.triggers||[]).slice(0,5).forEach(n=>{const mark=document.createElement('i');mark.textContent=n;triggers.appendChild(mark);});tile.appendChild(triggers);
       addDamageBar(tile,shownHp,max);attachCardHover(tile,card,entry,player);tile.onclick=()=>showCardModal(card,entry,player);return tile;
     }
+    function showPlayerCards(player){
+      const current=state?.players?.find(p=>(player.uid&&p.uid===player.uid)||p.id===player.id)||state?.players?.find(p=>p.name===player.name)||player;
+      const dialog=$('#playerCardsDialog'),grid=$('#playerCardsGrid');
+      $('#playerCardsTitle').textContent=current.name+(current.isAI?' 🤖':'')+' — All Cards';
+      $('#playerCardsSummary').textContent=statusForPlayer(current)+' • '+Math.max(0,current.townHp||0)+' Town HP'+(current.townShield?' +'+current.townShield+' Shield':'')+' • '+(current.gold||0)+' gold • '+totalTroops(current)+' troops • '+totalWallHealth(current)+' wall HP';
+      grid.innerHTML='';
+      const entries=(current.owned||[]).filter(entry=>entry.hp>0&&!entry._remove);
+      if(!entries.length){grid.innerHTML='<div class="empty">No cards remaining in this realm.</div>';}
+      for(const entry of entries){
+        const card=CARD_CATALOG[entry.key];if(!card)continue;
+        const tile=makeRealmCard(card,entry,current);
+        tile.onclick=event=>{event.stopPropagation();dialog.close();showCardModal(card,entry,current);};
+        grid.appendChild(tile);
+      }
+      if(!dialog.open){try{dialog.showModal();}catch{dialog.setAttribute('open','');}}
+    }
     function renderOpponents(){
       const list=$('#realmsList');list.innerHTML='';
       if(!state){list.classList.remove('twoPlayerRows');list.innerHTML='<div class="empty">Waiting for players…</div>';return;}
@@ -1678,7 +1738,7 @@ function resolveOne(rd, manual){
       state.players.forEach((player,index)=>{
         const factions=templeFactions(player);
         const row=document.createElement('article');row.className='realmRow';row.style.setProperty('--realm-stripes',playerStripeGradient(player));if(index===state.turnIdx)row.classList.add('activeRealm');if(player===mine)row.classList.add('myRealm');if(player.eliminated)row.classList.add('eliminated');
-        const identity=document.createElement('div');identity.className='realmIdentity';
+        const identity=document.createElement('div');identity.className='realmIdentity';identity.tabIndex=0;identity.setAttribute('role','button');identity.setAttribute('aria-label',`View all cards owned by ${player.name}`);identity.title='View all cards';identity.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();showPlayerCards(player);}});
         const name=document.createElement('div');name.className='realmName';name.textContent=`${player.name}${player.isAI?' 🤖':''}`;identity.appendChild(name);
         const status=document.createElement('div');status.className='realmStatus';
         const statusText=document.createElement('span');statusText.textContent=statusForPlayer(player);status.appendChild(statusText);
@@ -1699,7 +1759,7 @@ function resolveOne(rd, manual){
         const cards=document.createElement('div');cards.className='realmCards';
         if(!(player.owned||[]).length){const empty=document.createElement('div');empty.className='emptyCards';empty.textContent='No cards remaining';cards.appendChild(empty);}
         for(const entry of player.owned||[]){const card=CARD_CATALOG[entry.key];if(card)cards.appendChild(makeRealmCard(card,entry,player));}
-        row.append(identity,stats,cards);list.appendChild(row);
+        row.append(identity,stats,cards);row.addEventListener('click',event=>{if(event.target.closest('.realmCard,.realmCards,button'))return;showPlayerCards(player);});list.appendChild(row);
       });
     }
     function renderOwned(){
@@ -1785,15 +1845,16 @@ function resolveOne(rd, manual){
       const tile=document.createElement('div');tile.className='targetSourceCard';tile.style.setProperty('--faction',factionColor(card.category));tile.appendChild(makeArt(card,'tinyArt'));const shade=document.createElement('span');shade.className='cardShade';tile.appendChild(shade);appendAbilityMarks(tile,card,3);const name=document.createElement('span');name.className='cardName';name.textContent=card.name;tile.appendChild(name);return{tile,owner,card,entry};
     }
     function blockedTargetReason(kind,player,type){
-      if(kind==='sacrifice_to_heal')return type==='townhall'?'Town Hall cannot be sacrificed':'Only a friendly non-token permanent can be sacrificed';if((type==='structure'||type==='townhall')&&hasActiveWall(player)&&!effectBypassesWalls(kind))return'Protected by wall';
+      if(kind==='sacrifice_to_heal')return type==='townhall'?'Town Hall cannot be sacrificed':'Only one of your living troops can be sacrificed';if((type==='structure'||type==='townhall')&&hasActiveWall(player)&&!effectBypassesWalls(kind))return'Protected by wall';
       return'Not valid for this attack';
     }
     function renderTargetDialog(forceOpen=false){
       const dialog=$('#targetDialog'),arena=$('#targetArena'),stage=$('#targetAttackerStage');arena.innerHTML='';stage.innerHTML='';
-      const trigger=state?.resolveQueue?.[0],effect=trigger?effectiveTrigger(trigger):{},needs=trigger&&triggerNeedsTarget(effect.kind),turn=isMyTurn()&&state?.phase==='resolving';
+      const trigger=state?.resolveQueue?.[0],effect=trigger?effectiveTrigger(trigger):{},needs=trigger&&triggerNeedsTarget(effect.kind),turn=isMyTurn()&&state?.phase==='resolving',skipAllowed=canSkipCurrentTrigger(state,myIndex()),skipBtn=$('#targetSkipBtn');
+      skipBtn.classList.toggle('hidden',!skipAllowed);skipBtn.disabled=actionBusy||targetActionBusy||!skipAllowed;
       if(!turn||!needs||triggerNeedsEffectChoice(trigger)){if(dialog.open)dialog.close();lastTargetDialogKey='';return;}
       const candidates=allTargetCandidates(state,trigger.ownerIdx,effect.kind),source=makeTargetSource(trigger),key=targetDialogTriggerKey(trigger);
-      const friendly=effect.kind==='sacrifice_to_heal';$('#targetTitle').textContent=`${source.owner.name}'s ${source.card.name}`;$('#targetInstruction').textContent=candidates.length?(friendly?'Select the friendly permanent to sacrifice.':'Select a glowing card. Walls are shown in front of protected cards.'):'No legal targets remain; close this view and resolve to skip.';
+      const friendly=effect.kind==='sacrifice_to_heal';$('#targetTitle').textContent=`${source.owner.name}'s ${source.card.name}`;$('#targetInstruction').textContent=candidates.length?(friendly?'Select the troop to sacrifice. Summoned troops are included.':'Select a glowing card. Walls are shown in front of protected cards.'):'No legal targets remain; close this view and resolve to skip.';
       stage.appendChild(source.tile);const copy=document.createElement('div');copy.className='targetAttackCopy';copy.innerHTML=`<strong>${escapeText(source.card.name)} is ready</strong><span>${escapeText(source.card.details||'Choose a target to resolve this attack.')}</span>`;stage.appendChild(copy);
       for(const player of state.players){
         if(player.eliminated||player.left||(friendly?player!==source.owner:player===source.owner))continue;
@@ -1839,14 +1900,15 @@ function resolveOne(rd, manual){
       $('#actionsPane').classList.toggle('active',activeCommandTab==='actions');$('#shopPane').classList.toggle('active',activeCommandTab==='shop');
     }
     function renderControls(){
-      const player=myPlayer(),turn=isMyTurn(),phase=state?.phase||'waiting',queue=state?.resolveQueue||[],trigger=queue[0],choicePending=triggerNeedsEffectChoice(trigger),needs=trigger&&!choicePending?triggerNeedsTarget(effectiveTrigger(trigger).kind):false,candidates=trigger&&!choicePending?allTargetCandidates(state,trigger.ownerIdx,effectiveTrigger(trigger).kind):[];
+      const player=myPlayer(),turn=isMyTurn(),phase=state?.phase||'waiting',queue=state?.resolveQueue||[],trigger=queue[0],choicePending=triggerNeedsEffectChoice(trigger),needs=trigger&&!choicePending?triggerNeedsTarget(effectiveTrigger(trigger).kind):false,candidates=trigger&&!choicePending?allTargetCandidates(state,trigger.ownerIdx,effectiveTrigger(trigger).kind):[],skipAllowed=turn&&canSkipCurrentTrigger(state,myIndex());
       const allowed=allowedDiceFor(player),hidden=$('#dieSelect');let selected=allowed.includes(hidden.value)?hidden.value:allowed[allowed.length-1];hidden.value=selected;
       const toggle=$('#dieToggle');toggle.innerHTML='';for(const mode of['d6','d12','d20']){const btn=document.createElement('button');btn.className=`dieChoice ${selected===mode?'active':''}`;const forecast=player&&allowed.includes(mode)?buildRollForecast(player,mode):null;btn.textContent=forecast?`${mode} · ${forecast.activationChance}%`:mode;btn.disabled=!allowed.includes(mode)||actionBusy||!turn||phase!=='await_roll';btn.title=!allowed.includes(mode)?`${mode} unlocks when you own cards that trigger in its range`:`Select ${mode} and open its roll forecast`;btn.onclick=()=>{hidden.value=mode;renderControls();showRollForecast(mode);};toggle.appendChild(btn);}
       $('#phaseTitle').textContent=phaseLabel(phase);
-      $('#phaseHelp').textContent=phase==='await_roll'?`Round ${state?.round||1}. Choose d6 or your unlocked higher die, then roll.`:phase==='resolving'?(choicePending?'Choose Normal or Crazy Replacement for the current card copy.':'Resolve queued effects in order; damaged cards show health bars.'):phase==='buy'?'Open the Shop tab, buy cards, then end your turn.':phase==='finished'?'The final realm remains.':'Waiting for the game.';
+      $('#phaseHelp').textContent=phase==='await_roll'?`Round ${state?.round||1}. Choose d6 or your unlocked higher die, then roll.`:phase==='resolving'?(choicePending?'Choose Normal, Crazy Replacement, or skip this troop copy.':'Resolve queued effects in order. Your troop abilities are optional and may be skipped per copy.'):phase==='buy'?'Open the Shop tab, buy cards, then end your turn.':phase==='finished'?'The final realm remains.':'Waiting for the game.';
       $('#rollBtn').disabled=actionBusy||!turn||phase!=='await_roll';
       $('#resolveBtn').disabled=actionBusy||!turn||phase!=='resolving'||choicePending||(needs&&candidates.length>0);
       $('#applyTargetBtn').disabled=actionBusy||targetActionBusy||!turn||phase!=='resolving'||choicePending||!needs||!candidates.length;
+      const skipButton=$('#skipAbilityBtn');skipButton.classList.toggle('hidden',!skipAllowed);skipButton.disabled=actionBusy||targetActionBusy||!skipAllowed;skipButton.textContent=trigger?`Skip ${CARD_CATALOG[trigger.key]?.name||'Ability'}`:'Skip Ability';
       $('#endTurnBtn').disabled=actionBusy||!turn||phase==='finished';
       $('#shopEndTurnBtn').disabled=actionBusy||!turn||phase==='finished';
       const quickEnd=$('#quickEndTurnBtn');quickEnd.classList.toggle('hidden',!turn||phase==='finished');quickEnd.disabled=actionBusy||!turn||phase==='finished';
@@ -1859,7 +1921,7 @@ function resolveOne(rd, manual){
     function renderTimer(){const tag=$('#timerTag');if(!state||!isTimedMultiplayer(state)||state.phase==='finished'){tag.classList.add('hidden');return;}tag.classList.remove('hidden');const left=Math.max(0,Math.ceil(((state.phaseDeadline||0)-nowMs())/1000));tag.textContent=`⏱ ${left}s`;tag.classList.toggle('urgent',left<=10);}
     async function timerTick(){renderTimer();if(timerActionPending||!state||!isTimedMultiplayer(state)||state.phase==='finished'||!state.phaseDeadline||nowMs()<state.phaseDeadline)return;const idx=state.turnIdx,actor=state.players[idx];if(!actor||actor.isAI)return;timerActionPending=true;try{const id=`timeout-${state.phase}-${state.phaseDeadline}-${state.resolveQueue?.length||0}`;if(state.phase==='await_roll')await performAction('ROLL',{mode:chooseAIDie(state,actor)},{ai:true,actorIdx:idx,actionId:id});else if(state.phase==='resolving'){const trig=state.resolveQueue?.[0];if(triggerNeedsEffectChoice(trig))await performAction('CHOOSE_EFFECT',{useCrazy:chooseAICrazyEffect(state,trig)},{ai:true,actorIdx:idx,actionId:id});else{const target=trig?chooseAITarget(state,trig):null;await performAction('RESOLVE',target||{},{ai:true,actorIdx:idx,actionId:id});}}else if(state.phase==='buy')await performAction('END_TURN',{forfeitRemaining:false},{ai:true,actorIdx:idx,actionId:id});}finally{timerActionPending=false;}}
     function renderAll(){
-      $('#lobbyTag').textContent=lobbyId?`Lobby ${lobbyId}`:'No lobby';$('#userTag').textContent=myName;$('#connectionTag').textContent=user?'Authenticated':'Connecting…';const spectator=$('#spectatorTag');spectator.classList.toggle('hidden',!isSpectating());const aiSelect=$('#aiDifficultySelect'),ais=state?.players?.filter(p=>p.isAI&&!p.left)||[],humans=state?.players?.filter(p=>!p.isAI&&!p.left)||[];aiSelect.classList.toggle('hidden',!(ais.length&&humans.length===1&&myPlayer()&&!myPlayer().eliminated));if(ais.length)aiSelect.value=AI_DIFFICULTIES.includes(ais[0].aiDifficulty)?ais[0].aiDifficulty:'adept';
+      $('#lobbyTag').textContent=lobbyId?`Lobby ${lobbyId}`:'No lobby';$('#userTag').textContent=myName;renderConnectionStatus();const spectator=$('#spectatorTag');spectator.classList.toggle('hidden',!isSpectating());const aiSelect=$('#aiDifficultySelect'),ais=state?.players?.filter(p=>p.isAI&&!p.left)||[],humans=state?.players?.filter(p=>!p.isAI&&!p.left)||[];aiSelect.classList.toggle('hidden',!(ais.length&&humans.length===1&&myPlayer()&&!myPlayer().eliminated));if(ais.length)aiSelect.value=AI_DIFFICULTIES.includes(ais[0].aiDifficulty)?ais[0].aiDifficulty:'adept';
       $('#hoverCardTooltip').classList.remove('show');renderLoading();renderTurnBanner();renderTimer();renderOpponents();renderDice();renderOwned();renderCategoryTabs();renderShop();renderTargetAndQueue();renderControls();renderLog();setCommandTab(activeCommandTab);
       scheduleAi();scheduleDisconnectCheck();
     }
@@ -1953,17 +2015,26 @@ function resolveOne(rd, manual){
     async function updateAIDifficulty(value){if(!AI_DIFFICULTIES.includes(value)||!lobbyRef)return;try{await runTransaction(db,async tx=>{const snap=await tx.get(lobbyRef);if(!snap.exists()||!snap.data().game)return;const game=normalizeGame(safeClone(snap.data().game));for(const p of game.players){if(!p.isAI)continue;p.aiDifficulty=value;ensureAIStrategy(game,p,game.players.indexOf(p));p.aiStrategy.difficulty=value;}game.version++;pushLog(game,`AI difficulty changed to ${value}.`);tx.update(lobbyRef,{game});});}catch(error){console.warn(error);toast('AI difficulty could not be changed.');}}
     function attachListeners(){
       unsubLobby?.();unsubPresence?.();
-      unsubLobby=onSnapshot(lobbyRef,snap=>{
-        if(!snap.exists()){lobbyData=null;state=null;renderAll();return;}
-        lobbyData=snap.data();const nextState=lobbyData.game?normalizeGame(safeClone(lobbyData.game)):null;observeBattleMessages(nextState);state=nextState;
+      unsubLobby=onSnapshot(lobbyRef,{includeMetadataChanges:true},snap=>{
+        if(!snap.exists()){lobbyData=null;state=null;lastRenderedVersion=-1;lastGameIdentity='';setFirebaseStatus('Lobby unavailable');renderAll();return;}
+        const nextLobby=snap.data(),nextState=nextLobby.game?normalizeGame(safeClone(nextLobby.game)):null;
+        const identity=nextState?String(nextState.createdAt||nextState.startedAt||'legacy'):'';
+        if(nextState&&identity===lastGameIdentity&&Number(nextState.version)<lastRenderedVersion&&snap.metadata.fromCache){setFirebaseStatus('Reconnecting');return;}
+        lobbyData=nextLobby;
+        if(nextState){if(identity!==lastGameIdentity){lastGameIdentity=identity;lastRenderedVersion=-1;}lastRenderedVersion=Math.max(lastRenderedVersion,Number(nextState.version)||0);}
+        else{lastRenderedVersion=-1;lastGameIdentity='';}
+        observeBattleMessages(nextState);state=nextState;
+        const catalogMismatch=state?.catalogSignature&&state.catalogSignature!==CARD_CATALOG_SIGNATURE;
+        setFirebaseStatus(catalogMismatch?'Refresh required':snap.metadata.hasPendingWrites?'Syncing':snap.metadata.fromCache?'Reconnecting':'Synced');
         renderAll();
         if(state){claimLegacySeat();ensureSoloAI();if(state.phase==='finished')queueMicrotask(handleFinishedGame);}
         else maybeInitializeGame();
-      },error=>{console.error(error);$('#connectionTag').textContent='Connection error';toast(error.message);});
-      unsubPresence=onSnapshot(collection(db,'lobbies',lobbyId,'presence'),snap=>{
+      },error=>{console.error(error);setFirebaseStatus(navigator.onLine?'Connection error':'Offline');toast(error.message);});
+      unsubPresence=onSnapshot(collection(db,'lobbies',lobbyId,'presence'),{includeMetadataChanges:true},snap=>{
         presence=new Map();snap.forEach(d=>presence.set(d.id,{...d.data(),uid:d.data().uid||d.id}));renderAll();if(!state)maybeInitializeGame();
       },error=>console.warn(error));
     }
+
     async function waitForAuth(){
       if(auth.currentUser)return auth.currentUser;
       try{return(await signInAnonymously(auth)).user;}
@@ -1973,10 +2044,10 @@ function resolveOne(rd, manual){
       }
     }
     async function boot(){
-      $('#lobbyTag').textContent=lobbyId?`Lobby ${lobbyId}`:'Missing lobby';$('#userTag').textContent=myName;
+      validateCardCatalog();$('#lobbyTag').textContent=lobbyId?`Lobby ${lobbyId}`:'Missing lobby';$('#userTag').textContent=myName;
       if(!lobbyId){$('#loadingText').textContent='This game needs a gameId in the URL, for example ?gameId=abc&username=Sean.';return;}
       try{
-        user=await waitForAuth();$('#connectionTag').textContent='Connected';
+        user=await waitForAuth();setFirebaseStatus('Connected');
         if(forceSolo){const existing=await getDoc(lobbyRef);if(!existing.exists())await setDoc(lobbyRef,{status:'started',host:myName,players:[{name:myName,uid:user.uid}],createdAt:serverTimestamp()});}
         await markPresence({ready:false,loading:true,joinedAt:serverTimestamp()});
         attachListeners();
@@ -1985,11 +2056,14 @@ function resolveOne(rd, manual){
         await markPresence({ready:true,loading:false,graphicsMissing:missingAssets.size});
         renderAll();maybeInitializeGame();
         setInterval(()=>{if(!state)maybeInitializeGame();},1000);
-      }catch(error){console.error(error);$('#loadingText').textContent=`Unable to start: ${error.message}`;$('#connectionTag').textContent='Offline';}
+      }catch(error){console.error(error);$('#loadingText').textContent=`Unable to start: ${error.message}`;setFirebaseStatus(navigator.onLine?'Connection error':'Offline');}
     }
 
     $('#rollBtn').addEventListener('click',()=>performAction('ROLL',{mode:$('#dieSelect').value}));
     $('#resolveBtn').addEventListener('click',()=>performAction('RESOLVE',{}));
+    async function skipCurrentAbility(){if($('#targetDialog').open)$('#targetDialog').close();await performAction('SKIP_TRIGGER',{});}
+    $('#skipAbilityBtn').addEventListener('click',skipCurrentAbility);
+    $('#targetSkipBtn').addEventListener('click',skipCurrentAbility);
     $('#applyTargetBtn').addEventListener('click',openTargetDialog);
     async function endTurnFromUi(){
       const pending=state?.phase==='resolving'&&(state?.resolveQueue?.length||0)>0;
@@ -2029,6 +2103,8 @@ function resolveOne(rd, manual){
     document.addEventListener('fullscreenchange',syncFullscreenButton);
     document.addEventListener('webkitfullscreenchange',syncFullscreenButton);
     $('#targetDialogClose').addEventListener('click',()=>$('#targetDialog').close());
+    $('#playerCardsClose').addEventListener('click',()=>$('#playerCardsDialog').close());
+    $('#playerCardsDialog').addEventListener('click',event=>{if(event.target===$('#playerCardsDialog'))$('#playerCardsDialog').close();});
     $('#forecastClose').addEventListener('click',()=>$('#forecastDialog').close());
     $('#forecastDialog').addEventListener('click',event=>{if(event.target===$('#forecastDialog'))$('#forecastDialog').close();});
     $('#aiDifficultySelect').addEventListener('change',event=>updateAIDifficulty(event.target.value));
@@ -2036,7 +2112,9 @@ function resolveOne(rd, manual){
     $('#cardModal').addEventListener('click',event=>{if(event.target===$('#cardModal'))$('#cardModal').close();});
     addEventListener('pagehide',()=>{clearInterval(heartbeatTimer);clearInterval(turnTimerInterval);markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});});
     addEventListener('beforeunload',()=>{markPresence({active:false,ready:false,leftAt:serverTimestamp()}).catch(()=>{});});
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden)markPresence({active:true,ready:graphicsReady}).catch(()=>{});});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden){setFirebaseStatus(navigator.onLine?'Reconnecting':'Offline');markPresence({active:true,ready:graphicsReady}).catch(()=>{});}});
+    addEventListener('online',()=>{setFirebaseStatus('Reconnecting');markPresence({active:true,ready:graphicsReady}).catch(()=>{});});
+    addEventListener('offline',()=>setFirebaseStatus('Offline'));
 
     // Remove the temporary asset-routing service worker used by an earlier build.
     // Correct relative URLs now load directly from ../graphics/.
