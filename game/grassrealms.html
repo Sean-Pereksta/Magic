@@ -256,6 +256,7 @@
         <span class="effectChip"><strong>Burn</strong> 1 damage, remove 1 each owner turn</span>
         <span class="effectChip"><strong>Poison</strong> healing removes 1 instead</span>
         <span class="effectChip"><strong>Bleed</strong> next attack +2 per counter</span>
+        <span class="effectChip"><strong>13+ Troop Boost</strong> +2 damage, +1 gold, or +1 healing</span>
       </div>
 
       <div id="actionsPane" class="commandPane active" role="tabpanel">
@@ -430,8 +431,8 @@
 { key:'spy', name:'Spy', emoji:'🕵️', type:'troop', cost:2, hp:3, max:3, triggers:[5,7], timing:'opponent', onTrigger:{kind:'steal_fixed', value:2},
   details:'Sneak economy denial. On an opponent’s 5 or 7, steal 2 coins from the active player.'
 },
-{ key:'knight', name:'Knight', emoji:'🐴', type:'troop', cost:3, hp:6, max:3, triggers:[5,7,9], timing:'your', onTrigger:{kind:'attack_any', value:4},
-  details:'Heavy hitter on your turn. On 5, 7, or 9, deal 4 damage to any target.'
+{ key:'knight', name:'Knight', emoji:'🐴', type:'troop', cost:3, hp:6, max:3, triggers:[5,7,9], timing:'your', onTrigger:{kind:'attack_any', value:3},
+  details:'Heavy hitter on your turn. On 5, 7, or 9, deal 3 damage to any target.'
 },
 { key:'wall_stone', name:'Stone Wall', emoji:'🧱', type:'wall', cost:3, hp:5, max:3, triggers:[], timing:null, retaliation:{damage:1,once:'round'},
   details:'Sturdy barrier (wall). Priority target for siege/targeting rules; soaks damage to protect backline.'
@@ -444,8 +445,8 @@
 },
 
 // ---- White ----
-{ key:'white_temple', name:'White Temple', emoji:'🤍⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'heal_town', value:3},
-  details:'Sanctuary. On your 6, heal your Town Hall for 3. At 2 Temples excess healing becomes Shield; at 3 Temples the first permanent card destroyed each round survives at 1 HP.'
+{ key:'white_temple', name:'White Temple', emoji:'🤍⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'heal_town', value:4},
+  details:'Sanctuary. On your 6, heal your Town Hall for 4. At 2 Temples excess healing becomes Town Shield; at 3 Temples the first permanent card destroyed each round survives at 1 HP.'
 },
 { key:'white_devotee', name:'Devotee', emoji:'🕯️', type:'troop', cost:3, hp:4, max:3, triggers:[4,7], timing:'every', requiresTemple:'white_temple', onTrigger:{kind:'earn_per_temple', temple:'white_temple', per:1},
   details:'Tithes scale with faith. On 4 or 7 every turn, gain +1 coin per White Temple you control (requires White Temple).'
@@ -453,18 +454,18 @@
 { key:'white_recruiter', name:'Recruiter', emoji:'📜', type:'troop', cost:4, hp:5, max:3, triggers:[7,9], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'acquire_troop_cost_leq_temples', temple:'white_temple'},
   details:'Free enlistment. On your 7 or 9, acquire a troop with cost ≤ your number of White Temples (requires White Temple).'
 },
-{ key:'white_scholar', name:'Scholar', emoji:'📚', type:'troop', cost:5, hp:5, max:3, triggers:[7,9,11], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'heal_and_earn', heal:3, coins:3},
-  details:'Sustain and economy. On 7, 9, or 11 every turn, heal 3 and gain 3 coins (requires White Temple).'
+{ key:'white_scholar', name:'Scholar', emoji:'📚', type:'troop', cost:5, hp:5, max:3, triggers:[7,9,11], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'heal_and_earn', heal:4, coins:3},
+  details:'Sustain and economy. On your 7, 9, or 11, heal your Town Hall for 4 and gain 3 coins (requires White Temple).'
 },
-{ key:'white_paladin', name:'Paladin', emoji:'🛡️', type:'troop', cost:6, hp:8, max:3, triggers:[8,10,12], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'paladin_guard_strike', dmg:7, heal:3}, retaliation:{damage:2,once:'turn'},
-  details:'Smite and restore. Deal 7 damage and heal your Town Hall for 3. On a natural 12, the Paladin also gains Guard and intercepts the next direct attack against an ally.'
+{ key:'white_paladin', name:'Paladin', emoji:'🛡️', type:'troop', cost:6, hp:8, max:3, triggers:[8,10,12], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'paladin_guard_strike', dmg:7, heal:4}, retaliation:{damage:2,once:'turn'},
+  details:'Smite and restore. Deal 7 damage and heal your Town Hall for 4. On a natural 12, the Paladin also gains Guard and intercepts the next direct attack against an ally.'
 },
 {
   key:'white_highpriest', name:'High Priest', emoji:'🙏', type:'troop', cost:7, hp:8, max:3,
   triggers:[11,13,17], timing:'your', requiresTemple:'white_temple',
   onTrigger:{kind:'attack_any_and_destroy_troop', dmg:5, troopDmg:7},
   onTriggerCrazy:{kind:'smite_all_enemy_troops', dmg:3},
-  details:'Deal 5 damage to any target and 7 damage to an enemy troop. Crazy: holy splash deals 3 to all enemy troops.'
+  details:'Normal: deal 5 damage to any target and 7 damage to an enemy troop. Crazy replacement (d20): instead deal 3 holy splash damage to all enemy troops.'
 },
 { key:'white_pylon', name:'Temple Pylon', emoji:'🗼', type:'wall', cost:4, hpDynamic:{perTemple:'white_temple', perHP:3}, max:3, requiresTemple:'white_temple', triggers:[], timing:null,
   details:'Scaling wall. Gains +3 HP for each White Temple you control (requires White Temple).'
@@ -475,10 +476,10 @@
 
 // ---- Black ----
 { key:'black_temple', name:'Black Temple', emoji:'🖤⛪', type:'structure', cost:4, hp:5, max:3, triggers:[6], timing:'your', onTrigger:{kind:'each_other_lose_hp', value:1},
-  details:'Dread aura. On your 6, each other player loses 1 Town Hall HP. At 2 Temples prevent the first self-damage each turn; at 3 gain up to 2 gold per round when enemy troops die.'
+  details:'Dread aura. On your 6, deal 1 damage directly to every enemy Town Hall even while walls remain; Town Shield absorbs it first. At 2 Temples prevent the first self-damage each turn; at 3 gain up to 2 gold per round when enemy troops die.'
 },
 { key:'black_acolyte', name:'Acolyte', emoji:'🩸', type:'troop', cost:3, hp:4, max:3, triggers:[8,10], timing:'opponent', requiresTemple:'black_temple', onTrigger:{kind:'active_loses_per_temple', temple:'black_temple', per:2},
-  details:'Bleed the active. On an opponent’s 8 or 10, the active player loses 2 HP per Black Temple you control (requires Black Temple).'
+  details:'On an opponent’s 8 or 10, deal 2 damage per Black Temple you control to that realm’s weakest wall. Only after its walls are gone can this damage its Town Hall, where Town Shield absorbs damage first.'
 },
 { key:'black_tithetaker', name:'Tithe Taker', emoji:'🧾', type:'troop', cost:4, hp:5, max:3, triggers:[5,7,9], timing:'every', requiresTemple:'black_temple', onTrigger:{kind:'lose_hp_gain_coins', lose:2, coins:3},
   details:'Profit at a price. On 5, 7, or 9 every turn, you lose 2 HP and gain 3 coins (requires Black Temple).'
@@ -486,9 +487,9 @@
 {
   key:'black_falseprophet', name:'False Prophet', emoji:'🗿', type:'troop', cost:5, hp:6, max:3,
   triggers:[11,13,17], timing:'your', requiresTemple:'black_temple',
-  onTrigger:{kind:'others_sacrifice_cards_per_temple', temple:'black_temple'},
+  onTrigger:{kind:'target_sacrifice_per_temple', temple:'black_temple'},
   onTriggerCrazy:{ kind:'steal_from_each_enemy', coins:1 }, // steal 1 from each enemy
-  details:'Corrupt influence. Other realms sacrifice one card per Black Temple. Sacrifice remains a distinct effect and is not ordinary destruction damage. Crazy: steal 1 gold from each enemy.'
+  details:'Normal: choose one enemy realm; it sacrifices one card per Black Temple you control. This scales only from your Black Temples, and each False Prophet copy resolves independently. Crazy replacement (d20): instead steal 1 gold from each enemy.'
 },
 { key:'black_oathbreaker', name:'Oathbreaker', emoji:'🗡️🩸', type:'troop', cost:6, hp:7, max:3, triggers:[7,9,11], timing:'your', requiresTemple:'black_temple', onTrigger:{kind:'oathbreaker_lifesteal', lose:1, dmg:8, bleed:1},
   details:'Lose 1 Town Hall HP, deal 8 damage, apply Bleed, and heal for half the HP damage actually dealt.'
@@ -498,7 +499,7 @@
   triggers:[9,13,17], timing:'your', requiresTemple:'black_temple',
   onTrigger:{kind:'necromancer_execute_summon'},
   onTriggerCrazy:{kind:'necromancer_crazy', dmg:2},
-  details:'Execute one damaged enemy troop and summon a Skeleton. Crazy: deal 2 splash damage to all enemy troops and summon two Skeletons.'
+  details:'Normal: execute one damaged enemy troop and summon a Skeleton. Crazy replacement (d20): instead deal 2 splash damage to all enemy troops and summon two Skeletons.'
 },
 { key:'black_altar', name:'Altar', emoji:'⛓️', type:'structure', cost:5, hp:6, max:3, triggers:[], timing:'passive', passive:{altar:true},
   details:'Passive focus (Altar). No trigger; counts as an Altar for effects that reference it.'
@@ -506,8 +507,11 @@
 { key:'black_plaguedoctor', name:'Plague Doctor', assetName:'plague doctor', emoji:'☣️', type:'troop', cost:5, hp:5, max:3, triggers:[8,12], timing:'your', requiresTemple:'black_temple', onTrigger:{kind:'plague_cloud', dmg:2, poison:2},
   details:'Deal 2 damage and apply 2 Poison to a troop; every other troop in that realm gains 1 Poison. Healing removes one Poison instead of restoring HP.'
 },
-{ key:'black_skeleton', name:'Skeleton', assetName:'skeleton', emoji:'💀', type:'troop', cost:0, hp:1, max:12, triggers:[1,3,5,7,9,11,13,15,17,19], timing:'every', token:true, hiddenFromShop:true, onTrigger:{kind:'skeleton_strike', value:1},
-  details:'Summoned token. On any odd roll, automatically deal 1 damage to the weakest enemy troop, or Town Hall if none remain. Expires after two owner turns.'
+{ key:'black_bloodtransmuter', name:'Blood Transmuter', assetName:'blood transmuter', emoji:'🩸⚗️', type:'troop', cost:5, hp:5, max:2, triggers:[6,10,14], timing:'your', requiresTemple:'black_temple', onTrigger:{kind:'sacrifice_to_heal', multiplier:1.5},
+  details:'Choose one friendly non-token permanent to sacrifice. Heal your most damaged other card—or your Town Hall if no card is damaged—for 1.5× the sacrificed copy’s remaining HP, rounded up. A natural 13+ adds the troop healing boost.'
+},
+{ key:'black_skeleton', name:'Skeleton', assetName:'skeleton', emoji:'💀', type:'troop', cost:0, hp:1, max:5, triggers:[1,3,5,7,9,11,13,15,17,19], timing:'every', token:true, hiddenFromShop:true, onTrigger:{kind:'skeleton_strike', value:1},
+  details:'Summoned token, maximum 5. On any odd roll, automatically attack the weakest enemy troop, then wall, then non-Town structure. It can reach a Town Hall only after that realm has no other permanent cards. Expires after two owner turns.'
 },
 
 // ---- Red ----
@@ -527,11 +531,11 @@
   details:'Deal 1 damage per Red Temple, gain 2 gold, and apply Armor Break: the next hit ignores Armor and deals +2.'
 },
 {
-  key:'red_warlord', name:'Warlord', emoji:'⚔️', type:'troop', cost:8, hp:10, max:3,
+  key:'red_warlord', name:'Warlord', emoji:'⚔️', type:'troop', cost:8, hp:10, max:2,
   triggers:[11,12,13,15,19], timing:'your', requiresTemple:'red_temple',
   onTrigger:{kind:'destroy_structure_and_attack_any', dmg:5, siegeDmg:8},
   onTriggerCrazy:{kind:'destroy_all_enemy_walls', dmg:4}, lastStandBonus:3,
-  details:'Deal 8 siege damage to a structure, apply Armor Break, then deal 5 more damage. Crazy: deal 4 splash to every enemy wall. Last Stand +3 while damaged.'
+  details:'Normal: deal 8 siege damage to a structure, apply Armor Break, then deal 5 more damage. Crazy replacement (d20): instead deal 4 splash damage to every enemy wall. Last Stand +3 while damaged. Maximum 2 copies.'
 },
 { key:'red_fortress', name:'Fortress', emoji:'🏯', type:'structure', cost:7, hp:9, max:2, armor:1, triggers:[], timing:'passive', passive:{fortress:true,fortressArmor:1},
   details:'Has Armor 1 and grants Armor 1 to friendly walls and structures.'
@@ -561,14 +565,14 @@
   triggers:[11,12,13,17], timing:'your', requiresTemple:'green_temple',
   onTrigger:{kind:'goliath_special'},
   onTriggerCrazy:{kind:'destroy_all_enemy_walls', dmg:4},
-  details:'Its special deals heavy damage rather than automatic destruction. Crazy: deal 4 splash damage to every enemy wall.'
+  details:'Normal: deal 10 damage; on a natural 12 also deal 6 to a wall and 7 to a troop in that realm. Crazy replacement (d20): instead deal 4 splash damage to every enemy wall. Maximum 2 copies.'
 },
 {
   key:'green_elemental', name:'Elemental', emoji:'🌪️', type:'troop', cost:8, hp:10, max:2,
   triggers:[9,10,13,16], timing:'your', requiresTemple:'green_temple',
   onTrigger:{kind:'gain_and_destroy_two_walls', coins:4, wallDmg:6},
   onTriggerCrazy:{ kind:'smite_all_enemy_troops', dmg:2 },
-  details:'Storm surge. Gain 4 gold and deal 6 siege damage to up to two enemy walls. Crazy: deal 2 splash damage to all enemy troops.'
+  details:'Normal: gain 4 gold and deal 6 siege damage to up to two enemy walls. Crazy replacement (d20): instead deal 2 splash damage to all enemy troops.'
 },
 { key:'green_livingwall', name:'Living Wall', emoji:'🌳', type:'wall', cost:6, hpDynamic:{perTemple:'green_temple', perHP:2}, max:3, requiresTemple:'green_temple', triggers:[], timing:null, passive:{regenerate:1},
   details:'Gains +2 maximum HP per Green Temple and regenerates 1 HP at the end of its owner’s turn.'
@@ -594,7 +598,7 @@
 
 // ---- Expanded Black ----
 {key:'black_bonerampart',name:'Bone Rampart',emoji:'🦴🧱',type:'wall',cost:5,hp:6,max:3,triggers:[],timing:'passive',requiresTemple:'black_temple',deathEffect:{kind:'summon',key:'black_skeleton',count:1},details:'When destroyed, summon a Skeleton.'},
-{key:'black_soulcollector',name:'Soul Collector',emoji:'🫙👻',type:'structure',cost:6,hp:6,max:2,triggers:[],timing:'passive',requiresTemple:'black_temple',passive:{soulCollector:true,threshold:3,dmg:5},details:'Collect a soul whenever an enemy troop dies. At 3 souls, automatically deal 5 damage to the weakest enemy Town Hall.'},
+{key:'black_soulcollector',name:'Soul Collector',emoji:'🫙👻',type:'structure',cost:6,hp:6,max:2,triggers:[],timing:'passive',requiresTemple:'black_temple',passive:{soulCollector:true,threshold:3,dmg:5},details:'Collect a soul whenever an enemy troop dies. At 3 souls, deal 5 damage to the weakest wall protecting the weakest enemy realm. Only when that realm has no walls does the strike reach its Town Hall, where Town Shield absorbs damage first.'},
 {key:'black_hexbinder',name:'Hexbinder',emoji:'🔇🪄',type:'troop',cost:6,hp:6,max:3,triggers:[6,10,14],timing:'your',requiresTemple:'black_temple',onTrigger:{kind:'silence_strike',dmg:3,rounds:1},details:'Deal 3 damage and Silence the surviving target through the next round, disabling its triggers and retaliation.'},
 {key:'black_gravemerchant',name:'Grave Merchant',emoji:'⚰️🪙',type:'troop',cost:5,hp:5,max:2,triggers:[],timing:'passive',requiresTemple:'black_temple',passive:{graveMerchant:true,gold:1},details:'Gain 1 gold per copy whenever an enemy troop dies.'},
 {key:'black_dreadknight',name:'Dread Knight',emoji:'🖤🐴',type:'troop',cost:7,hp:9,max:2,triggers:[8,12,16],timing:'your',requiresTemple:'black_temple',onTrigger:{kind:'attack_any',value:6},retaliation:{damage:3,once:'round'},details:'Deal 6 damage. Once per round after surviving a direct attack, automatically retaliate for 3.'},
@@ -612,7 +616,7 @@
 {key:'green_sporekeeper',name:'Spore Keeper',emoji:'🍄☣️',type:'troop',cost:5,hp:6,max:3,triggers:[5,9,13],timing:'your',requiresTemple:'green_temple',onTrigger:{kind:'poison_strike',dmg:2,poison:2},passive:{sporeKeeper:true,gold:1},details:'Deal 2 damage and apply 2 Poison. Gain 1 gold whenever Poison is removed from one of your cards.'},
 {key:'green_seedtender',name:'Seed Tender',emoji:'🌱🫶',type:'troop',cost:5,hp:6,max:2,triggers:[4,8,12],timing:'your',requiresTemple:'green_temple',onTrigger:{kind:'seed_tender',heal:2,summon:1},details:'Heal the most damaged ally for 2 and summon a temporary Sprout wall.'},
 {key:'green_thornguardian',name:'Thorn Guardian',emoji:'🌵🛡️',type:'troop',cost:6,hp:9,max:3,triggers:[6,10,14],timing:'your',requiresTemple:'green_temple',onTrigger:{kind:'attack_any',value:4},retaliation:{damage:2,once:'turn'},details:'Deal 4 damage. Once per turn after surviving a direct attack, automatically retaliate for 2.'},
-{key:'green_sprout',name:'Defensive Sprout',emoji:'🌱🧱',type:'wall',cost:0,hp:2,max:12,triggers:[],timing:'passive',token:true,hiddenFromShop:true,details:'Temporary summoned wall. Expires after two owner turns.'},
+{key:'green_sprout',name:'Defensive Sprout',emoji:'🌱🧱',type:'wall',cost:0,hp:2,max:5,triggers:[],timing:'passive',token:true,hiddenFromShop:true,details:'Temporary summoned wall, maximum 5. Expires after two owner turns.'},
 
     ];
 
@@ -622,7 +626,7 @@
       const kind=String(effect.kind||'').toLowerCase(),keys=[];const add=k=>{if(k&&!keys.includes(k))keys.push(k);};
       if(/attack|strike|damage|smite|claw|goliath|judgment|slam/.test(kind))add('attack');
       if(/wall|structure|siege|breach|battering|trebuchet/.test(kind))add('siege');
-      if(/heal/.test(kind))add('heal');if(/repair/.test(kind))add('repair');if(/earn|coin|discount|market/.test(kind))add('gold');
+      if(/heal|transmut/.test(kind))add('heal');if(/repair/.test(kind))add('repair');if(/earn|coin|discount|market/.test(kind))add('gold');
       if(/shield/.test(kind))add('shield');if(/guard/.test(kind))add('guard');if(/burn|fire/.test(kind)||effect.burn)add('burn');if(/poison|plague|spore/.test(kind)||effect.poison)add('poison');if(/bleed|oath/.test(kind)||effect.bleed)add('bleed');if(/expose|break|breach|ranger/.test(kind))add('break');
       if(/summon|recruit|acquire|seed/.test(kind))add('summon');if(/silence|hex/.test(kind))add('silence');if(/banner|drum|blessing|buff/.test(kind))add('buff');if(/steal|tithe/.test(kind))add('steal');if(/sacrifice/.test(kind))add('sacrifice');if(/cleanse|confessor/.test(kind))add('cleanse');if(/forecast|reveal/.test(kind))add('forecast');if(/lifesteal/.test(kind))add('lifesteal');if(/execute/.test(kind))add('execute');if(/all_enemy|splash|cloud/.test(kind))add('splash');if(/discount/.test(kind))add('discount');return keys;
     }
@@ -696,6 +700,18 @@
     }
     function harmfulStatusCount(entry){return ['burn','poison','bleed','exposed'].reduce((sum,key)=>sum+(Number(entry?.[key])>0?1:0),0)+(Number(entry?.silencedUntilRound)>=(state?.round||0)?1:0);}
     function clearHarmfulStatuses(entry,max=99){let removed=0;for(const key of ['burn','poison','bleed','exposed']){if(removed>=max)break;if((entry?.[key]||0)>0){entry[key]=0;removed++;}}if(removed<max&&entry?.silencedUntilRound){entry.silencedUntilRound=0;removed++;}return removed;}
+    function enforceTokenCaps(player){
+      for(const card of Object.values(CARD_CATALOG).filter(c=>c.token)){
+        let remaining=Math.max(0,Number(card.max)||5);
+        for(const entry of player.owned||[]){
+          if(entry.key!==card.key)continue;
+          const copies=Math.max(1,Number(entry.count)||1);
+          const keep=Math.min(remaining,copies);
+          entry.count=keep;remaining-=keep;if(keep<=0)entry._remove=true;
+        }
+      }
+      player.owned=(player.owned||[]).filter(e=>!e._remove);
+    }
     function normalizeOwned(player){
       player.owned=Array.isArray(player.owned)?player.owned:[];
       for(const entry of player.owned){
@@ -708,7 +724,7 @@
         if(entry.turnsLeft!=null)entry.turnsLeft=Math.max(0,Number(entry.turnsLeft)||0);
         entry.token=!!entry.token||!!CARD_CATALOG[entry.key]?.token;
       }
-      ensureStats(player);return player;
+      enforceTokenCaps(player);ensureStats(player);return player;
     }
     function mkStarter(name,uid='',isAI=false){
       const player={id:uid||`ai-${Math.random().toString(36).slice(2)}`,uid:uid||'',name:name||'Player',isAI,aiDifficulty:isAI?DEFAULT_AI_DIFFICULTY:'',eliminated:false,left:false,gold:0,townHp:20,townShield:0,unlocked:'d6',owned:[],stats:{}};ensureStats(player);
@@ -803,7 +819,7 @@
       const v=one(4,6);return{value:v,faces:[v]};
     }
     function triggerNeedsTarget(kind){
-      return ['attack_any','attack_structure','attack_troop','attack_any_and_heal','attack_any_per_temple','damage_per_temple_and_gain','lose_then_attack_any','attack_any_and_destroy_troop','destroy_troop','destroy_structure_non_temple','destroy_structure_and_attack_any','goliath_special','gain_and_destroy_two_walls','destroy_farm_and_damage_per_temple','trebuchet_siege','ranger_expose','oathbreaker_lifesteal','paladin_guard_strike','necromancer_execute_summon','plague_cloud','sapper_breach','fire_splash','paid_attack','status_judgment','silence_strike','battering_ram','arena_strike','poison_strike','treant_slam'].includes(kind);
+      return ['attack_any','attack_structure','attack_troop','attack_any_and_heal','attack_any_per_temple','damage_per_temple_and_gain','lose_then_attack_any','attack_any_and_destroy_troop','destroy_troop','destroy_structure_non_temple','destroy_structure_and_attack_any','goliath_special','gain_and_destroy_two_walls','destroy_farm_and_damage_per_temple','trebuchet_siege','ranger_expose','oathbreaker_lifesteal','paladin_guard_strike','necromancer_execute_summon','plague_cloud','sapper_breach','fire_splash','paid_attack','status_judgment','silence_strike','battering_ram','arena_strike','poison_strike','treant_slam','target_sacrifice_per_temple','sacrifice_to_heal'].includes(kind);
     }
     function allowedTargetTypesFor(kind){
       if(['attack_any','attack_any_and_heal','attack_any_per_temple','damage_per_temple_and_gain','lose_then_attack_any','attack_any_and_destroy_troop','goliath_special','destroy_farm_and_damage_per_temple','ranger_expose','oathbreaker_lifesteal','paladin_guard_strike','paid_attack','status_judgment','silence_strike','arena_strike','poison_strike','treant_slam'].includes(kind))return['wall','troop','structure','townhall'];
@@ -811,6 +827,7 @@
       if(['attack_troop','destroy_troop','necromancer_execute_summon','plague_cloud','fire_splash'].includes(kind))return['troop'];
       if(['destroy_structure_non_temple','destroy_structure_and_attack_any'].includes(kind))return['structure'];
       if(['trebuchet_siege','sapper_breach','battering_ram'].includes(kind))return['wall','structure'];
+      if(kind==='target_sacrifice_per_temple'||kind==='sacrifice_to_heal')return['wall','troop','structure'];
       if(kind==='gain_and_destroy_two_walls')return['wall'];
       return[];
     }
@@ -818,17 +835,20 @@
       return (player?.owned||[]).map((e,idx)=>({idx,e,c:CARD_CATALOG[e.key]})).filter(x=>x.c&&x.e.hp>0&&x.c.type===type&&(type!=='structure'||x.e.key!=='townhall'));
     }
     function effectiveTrigger(trigger){ const card=CARD_CATALOG[trigger?.key]; if(!card)return{}; return trigger.useCrazy&&card.onTriggerCrazy?card.onTriggerCrazy:(card.onTrigger||{}); }
+    function triggerNeedsEffectChoice(trigger){return !!trigger?.canChooseCrazy&&trigger.choiceMade!==true;}
+    function chooseAICrazyEffect(game,trigger){const card=CARD_CATALOG[trigger?.key];if(!card?.onTriggerCrazy)return false;const owner=game.players[trigger.ownerIdx],score=effect=>{const m=estimateEffectMetrics(effect,card);let total=m.damage*3+m.gold*2+m.healing*2+m.utility;if(effect.kind==='destroy_all_enemy_walls')total=(game.players||[]).filter(p=>p!==owner&&!p.eliminated).reduce((sum,p)=>sum+(p.owned||[]).filter(e=>CARD_CATALOG[e.key]?.type==='wall'&&e.hp>0).length*(effect.dmg||4),0);if(effect.kind==='smite_all_enemy_troops'||effect.kind==='necromancer_crazy')total+=(game.players||[]).filter(p=>p!==owner&&!p.eliminated).reduce((sum,p)=>sum+(p.owned||[]).filter(e=>CARD_CATALOG[e.key]?.type==='troop'&&e.hp>0).length*(effect.dmg||2),0);if(effect.kind==='steal_from_each_enemy')total+=(game.players||[]).filter(p=>p!==owner&&!p.eliminated).length*(effect.coins||1)*2;return total;};return score(card.onTriggerCrazy)>score(card.onTrigger||{});}
     function effectBypassesWalls(kind){return ['destroy_structure_non_temple','destroy_structure_and_attack_any','trebuchet_siege','sapper_breach'].includes(kind);}
     function allTargetCandidates(game,ownerIdx,kind){
-      const out=[]; const owner=game.players[ownerIdx],bypassesWalls=effectBypassesWalls(kind);
+      const out=[]; const owner=game.players[ownerIdx],bypassesWalls=effectBypassesWalls(kind),friendly=kind==='sacrifice_to_heal';
       for(const target of game.players){
-        if(!target||target.eliminated||target.left||target===owner)continue;
+        if(!target||target.eliminated||target.left||(friendly?target!==owner:target===owner))continue;
         for(const type of allowedTargetTypesFor(kind)){
-          if((type==='structure'||type==='townhall')&&hasActiveWall(target)&&!bypassesWalls)continue;
+          if(!friendly&&(type==='structure'||type==='townhall')&&hasActiveWall(target)&&!bypassesWalls)continue;
           if(type==='townhall'&&target.townHp>0)out.push({targetPlayer:target.name,targetType:type,targetEntryIdx:null,score:target.townHp});
           if(type!=='townhall')for(const item of listTargetableEntries(target,type)){
             if(['destroy_structure_non_temple','trebuchet_siege'].includes(kind)&&item.e.key.endsWith('_temple'))continue;
             if(kind==='necromancer_execute_summon'&&item.e.hp>=currentMaxHp(target,item.e.key))continue;
+            if(kind==='sacrifice_to_heal'&&(item.c?.token||item.c?.immutable))continue;
             out.push({targetPlayer:target.name,targetType:type,targetEntryIdx:item.idx,score:item.e.hp});
           }
         }
@@ -863,11 +883,19 @@
     function clearCopyStatuses(entry){for(const key of ['shield','burn','poison','bleed','guard','exposed','silencedUntilRound','retaliatedRound','retaliatedTurn','siegeMomentum','glory','bonusMaxHp','souls'])entry[key]=0;}
     function entryArmor(owner,entry){const card=CARD_CATALOG[entry?.key];if(!card)return 0;let armor=Number(card.armor)||0;if((owner?.owned||[]).some(e=>e.key==='red_fortress'&&e.hp>0)&&['wall','structure'].includes(card.type))armor=Math.max(armor,1);return Math.max(0,armor);}
     function weakestEnemyTown(game,owner){return (game.players||[]).filter(p=>p!==owner&&!p.eliminated&&!p.left).sort((a,b)=>(a.townHp||0)-(b.townHp||0))[0]||null;}
+    function weakestEntryOfType(player,type){return (player?.owned||[]).map((e,idx)=>({e,idx,card:CARD_CATALOG[e.key]})).filter(x=>x.e.hp>0&&!x.e._remove&&x.card?.type===type&&(type!=='structure'||x.e.key!=='townhall')).sort((a,b)=>a.e.hp-b.e.hp)[0]||null;}
+    function damageTownHall(attacker,target,dmg,game,{ignoreWalls=false}={}){
+      if(!target||target.eliminated||target.left)return{dealt:0,blocked:0,blockedByWalls:false};
+      if(hasActiveWall(target)&&!ignoreWalls)return{dealt:0,blocked:0,blockedByWalls:true};
+      let incoming=Math.max(0,Number(dmg)||0),blocked=0;if((target.townShield||0)>0){blocked=Math.min(target.townShield,incoming);target.townShield-=blocked;incoming-=blocked;}
+      const before=target.townHp||0;target.townHp=Math.max(0,before-incoming);const dealt=before-target.townHp;ensureStats(target).damageTaken+=dealt;if(attacker&&attacker!==target){const stats=ensureStats(attacker);stats.damageDealt+=dealt;stats.highestHit=Math.max(stats.highestHit,dealt);}return{dealt,blocked,blockedByWalls:false};
+    }
+    function automaticEnemyPermanent(game,ownerIdx){for(const type of ['troop','wall','structure']){const candidates=[];(game.players||[]).forEach((p,i)=>{if(i===ownerIdx||p.eliminated||p.left)return;const pick=weakestEntryOfType(p,type);if(pick)candidates.push({p,...pick});});if(candidates.length)return candidates.sort((a,b)=>a.e.hp-b.e.hp)[0];}return null;}
     function awardTroopDeath(game,deadOwner,attackerOwner=null){
       for(const p of game.players||[]){
         if((p.owned||[]).some(e=>e.key==='black_altar'&&e.hp>0))gainGold(p,1);
         if(p!==deadOwner&&factionTempleCount(p,'black')>=3){if(p.blackDeathGoldRound!==game.round){p.blackDeathGoldRound=game.round;p.blackDeathGoldCount=0;}if((p.blackDeathGoldCount||0)<2){gainGold(p,1);p.blackDeathGoldCount=(p.blackDeathGoldCount||0)+1;}}
-        if(p!==deadOwner){const merchant=(p.owned||[]).find(e=>e.key==='black_gravemerchant'&&e.hp>0);if(merchant)gainGold(p,(merchant.count||1)*(CARD_CATALOG.black_gravemerchant?.passive?.gold||1));for(const collector of(p.owned||[]).filter(e=>e.key==='black_soulcollector'&&e.hp>0)){collector.souls=(collector.souls||0)+(collector.count||1);const threshold=CARD_CATALOG.black_soulcollector?.passive?.threshold||3;while(collector.souls>=threshold){collector.souls-=threshold;const target=weakestEnemyTown(game,p);if(!target)break;const dmg=CARD_CATALOG.black_soulcollector?.passive?.dmg||5,before=target.townHp||0;target.townHp=Math.max(0,before-dmg);const dealt=before-target.townHp;ensureStats(p).damageDealt+=dealt;ensureStats(target).damageTaken+=dealt;ensureStats(p).highestHit=Math.max(ensureStats(p).highestHit,dealt);pushLog(game,`${p.name}'s Soul Collector releases 3 souls and deals ${dealt} damage to ${target.name}'s Town Hall.`);}}}
+        if(p!==deadOwner){const merchant=(p.owned||[]).find(e=>e.key==='black_gravemerchant'&&e.hp>0);if(merchant)gainGold(p,(merchant.count||1)*(CARD_CATALOG.black_gravemerchant?.passive?.gold||1));for(const collector of(p.owned||[]).filter(e=>e.key==='black_soulcollector'&&e.hp>0)){collector.souls=(collector.souls||0)+(collector.count||1);const threshold=CARD_CATALOG.black_soulcollector?.passive?.threshold||3;while(collector.souls>=threshold){collector.souls-=threshold;const target=weakestEnemyTown(game,p);if(!target)break;const dmg=CARD_CATALOG.black_soulcollector?.passive?.dmg||5,wall=weakestEntryOfType(target,'wall');if(wall){const result=damageEntry(wall.e,dmg,target,game,{attack:true,attackerOwner:p});pushLog(game,`${p.name}'s Soul Collector releases ${threshold} souls and deals ${result.dealt} damage to ${target.name}'s ${wall.card?.name||'wall'}.`);}else{const result=damageTownHall(p,target,dmg,game);pushLog(game,`${p.name}'s Soul Collector releases ${threshold} souls and deals ${result.dealt} damage to ${target.name}'s Town Hall${result.blocked?` (${result.blocked} absorbed by Town Shield)`:''}.`);}}}}
       }
       if(attackerOwner&&attackerOwner!==deadOwner)ensureStats(attackerOwner).cardsDestroyed++;
     }
@@ -888,14 +916,14 @@
     function dealAttack(owner,target,targetType,targetIdx,rawDmg,rd,opts={}){
       let dmg=Math.max(0,Number(rawDmg)||0);const sourceCard=opts.sourceCard||null,sourceEntry=opts.sourceEntry||null;if(sourceCard?.lastStandBonus&&sourceEntry&&sourceEntry.hp<currentMaxHp(owner,sourceEntry.key))dmg+=sourceCard.lastStandBonus;if(sourceEntry?.glory)dmg+=sourceEntry.glory;if(factionTempleCount(owner,'red')>=2&&owner.redAttackSerial!==rd.turnSerial){dmg+=1;owner.redAttackSerial=rd.turnSerial;}if(sourceCard?.type==='troop'&&(owner.nextAttackBonus||0)>0&&(!owner.nextAttackFaction||sourceCard.category===owner.nextAttackFaction)){dmg+=owner.nextAttackBonus;owner.nextAttackBonus=0;owner.nextAttackFaction='';}if(sourceCard?.type==='troop'&&sourceCard.category==='red'&&sourceEntry&&sourceEntry.hp<currentMaxHp(owner,sourceEntry.key)&&(owner.redDrumBonus||0)>0){dmg+=owner.redDrumBonus;owner.redDrumBonus=0;}
       if((targetType==='structure'||targetType==='townhall')&&hasActiveWall(target)&&!opts.ignoreWalls)return{message:'blocked by walls — destroy walls first.',dealt:0,finalDamage:0};
-      if(targetType==='townhall'){let incoming=dmg;if((target.townShield||0)>0){const blocked=Math.min(target.townShield,incoming);target.townShield-=blocked;incoming-=blocked;}const before=target.townHp||0;target.townHp=Math.max(0,before-incoming);const dealt=before-target.townHp;ensureStats(target).damageTaken+=dealt;if(owner!==target){const stats=ensureStats(owner);stats.damageDealt+=dealt;stats.highestHit=Math.max(stats.highestHit,dealt);}return{message:`hits ${target.name}'s 🏰 Town Hall for ${dealt}.`,dealt,finalDamage:dealt};}
+      if(targetType==='townhall'){const result=damageTownHall(owner,target,dmg,rd,{ignoreWalls:!!opts.ignoreWalls});return{message:`hits ${target.name}'s 🏰 Town Hall for ${result.dealt}${result.blocked?` (${result.blocked} absorbed by Town Shield)`:''}.`,dealt:result.dealt,finalDamage:result.dealt};}
       if(targetIdx==null||targetIdx<0)return{message:'no valid target.',dealt:0,finalDamage:0};let entry=target.owned[targetIdx];if(!entry)return{message:'no valid target.',dealt:0,finalDamage:0};const realType=CARD_CATALOG[entry.key]?.type;if(targetType==='structure'&&realType!=='structure'||targetType==='wall'&&realType!=='wall'||targetType==='troop'&&realType!=='troop')return{message:'invalid target.',dealt:0,finalDamage:0};
       const redirect=findGuardRedirect(target,targetIdx);if(redirect){redirect.e.guard=Math.max(0,(redirect.e.guard||0)-1);entry=redirect.e;targetIdx=redirect.idx;targetType=CARD_CATALOG[entry.key]?.type||targetType;}
       let rootText='';if(targetType==='structure'&&entry.key!=='green_rootnetwork'){const network=(target.owned||[]).find(e=>e.key==='green_rootnetwork'&&e.hp>0&&!e._remove),wall=(target.owned||[]).find(e=>e.key==='green_livingwall'&&e.hp>0&&!e._remove);if(network&&wall){const redirectDmg=Math.min(dmg,CARD_CATALOG.green_rootnetwork?.passive?.redirect||2);if(redirectDmg>0){const rr=damageEntry(wall,redirectDmg,target,rd,{attack:true,attackerOwner:owner,sourceEntry,sourceCard,noRetaliation:true});dmg=Math.max(0,dmg-redirectDmg);rootText=` Root Network redirects ${rr.dealt} into Living Wall.`;}}}
       const shieldBefore=entry.shield||0;if(opts.breakShield)entry.shield=0;const wasUndamaged=entry.hp>=currentMaxHp(target,entry.key);const result=damageEntry(entry,dmg,target,rd,{attack:true,ignoreShield:opts.ignoreShield,attackerOwner:owner,sourceEntry,sourceCard});const sameCopySurvived=!result.destroyed&&!entry._remove&&entry.hp>0;
       if(sameCopySurvived){if(opts.applyExpose)entry.exposed=Math.max(entry.exposed||0,1);if(opts.applyBurn)entry.burn=(entry.burn||0)+opts.applyBurn;if(opts.applyPoison)entry.poison=(entry.poison||0)+opts.applyPoison;if(opts.applyBleed)entry.bleed=(entry.bleed||0)+opts.applyBleed;if(wasUndamaged&&result.dealt>0&&factionTempleCount(owner,'red')>=3)entry.burn=(entry.burn||0)+1;const hardened=CARD_CATALOG[entry.key]?.passive?.battleHardened;if(hardened&&result.dealt>0)entry.glory=Math.min(3,(entry.glory||0)+hardened);}
       let shieldText='';if(shieldBefore>0&&(entry.shield||0)===0&&CARD_CATALOG[entry.key]?.passive?.healOnShieldBreak){const h=healTown(target,CARD_CATALOG[entry.key].passive.healOnShieldBreak);shieldText=` Shield break heals Town Hall ${h.healed}.`;}
-      let spillText='';if(CARD_CATALOG[entry.key]?.type==='wall'&&result.destroyed&&result.overkill>0&&(owner.owned||[]).some(e=>e.key==='red_warstandard'&&e.hp>0)){const before=target.townHp||0;target.townHp=Math.max(0,before-result.overkill);const spill=before-target.townHp;ensureStats(owner).damageDealt+=spill;ensureStats(target).damageTaken+=spill;spillText=` ${spill} excess damage spills into Town Hall.`;}
+      let spillText='';if(CARD_CATALOG[entry.key]?.type==='wall'&&result.destroyed&&result.overkill>0&&(owner.owned||[]).some(e=>e.key==='red_warstandard'&&e.hp>0)){const spill=damageTownHall(owner,target,result.overkill,rd,{ignoreWalls:true});spillText=` ${spill.dealt} excess damage spills into Town Hall${spill.blocked?` (${spill.blocked} absorbed by Town Shield)`:''}.`; }
       const retaliation=applyAutomaticRetaliation(target,entry,owner,sourceEntry,rd,result,opts);const redirected=redirect?` Guard redirects to ${CARD_CATALOG[entry.key]?.name}.`:'';return{message:`hits ${target.name}'s ${CARD_CATALOG[entry.key]?.name||'card'} for ${result.dealt}.${redirected}${rootText}${shieldText}${spillText}${retaliation}`,dealt:result.dealt,entry,statusApplied:sameCopySurvived,destroyed:result.destroyed,overkill:result.overkill,retaliation,finalDamage:result.dealt};
     }
     function applyAttackToSpecific(owner,target,targetType,targetIdx,rawDmg,rd,opts={}){return dealAttack(owner,target,targetType,targetIdx,rawDmg,rd,opts).message;}
@@ -922,7 +950,7 @@ function destroySpecific(target, targetType, targetIdx, allowTemple=true, rd){
 
 
 const INSTANT_EARN_KINDS = new Set(['earn', 'earn_per_temple']);
-    const HIGH_ROLL_EDGE = 7;
+    const HIGH_ROLL_EDGE = 13;
 const HIGH_ROLL_DMG_BONUS  = 2;
 const HIGH_ROLL_COIN_BONUS = 1;
 const HIGH_ROLL_HEAL_BONUS = 1;
@@ -969,16 +997,15 @@ function applyInstantIncome(owner, card){
 
       const copies = Math.max(1, e.count || 1);
       for (let k = 0; k < copies; k++){
-        // In d20 mode, prefer the crazy effect if present; otherwise use normal
+        // In d20 mode, cards with a Crazy replacement pause for a per-copy Normal/Crazy choice.
         const crazy = (isD20 && card.onTriggerCrazy) ? card.onTriggerCrazy : null;
-        const action = crazy || card.onTrigger;
+        const action = card.onTrigger;
         if (!action) continue;
 
         // Instant earn effects resolve immediately; others go to queue
         const kind = action.kind;
         if (INSTANT_EARN_KINDS.has(kind)){
-          // Reuse existing helper (uses card.onTrigger), but we want the
-          // 'action' semantics; for earn kinds they’re identical here.
+          // Instant income has no Crazy replacement in the current catalog.
           const got = applyInstantIncome(p, { onTrigger: action });
           if (got > 0) earnedBy.set(p.name, (earnedBy.get(p.name) || 0) + got);
         } else {
@@ -986,7 +1013,9 @@ function applyInstantIncome(owner, card){
             ownerIdx,
             key: e.key,
             roll: rollValue,
-            useCrazy: !!crazy
+            canChooseCrazy: !!crazy,
+            choiceMade: !crazy,
+            useCrazy: false
           });
         }
       }
@@ -1002,7 +1031,7 @@ function applyInstantIncome(owner, card){
 
     function dieFaces(mode){return mode==='d20'?20:mode==='d12'?12:6;}
     function estimateEffectMetrics(effect={},card=null){const kind=String(effect.kind||''),m={damage:0,gold:0,healing:0,utility:0};const val=Number(effect.value||effect.dmg||0);if(/attack|damage|strike|smite|slam|battering|goliath|fire|plague/.test(kind))m.damage=Math.max(1,val);if(/earn|coin|discount|market|steal/.test(kind))m.gold=Math.max(1,Number(effect.coins||effect.value||1));if(/heal|repair|cleanse|shield|guard|seed/.test(kind))m.healing=Math.max(1,Number(effect.heal||effect.repair||effect.value||1));if(/silence|summon|banner|drum|forecast|sacrifice|execute/.test(kind))m.utility+=2;if(card?.retaliation)m.utility+=1;return m;}
-    function buildRollForecast(player,mode,game=state){const faces=dieFaces(mode),rolls=[];let activeRolls=0,dangerRolls=0,totalDamage=0,totalGold=0,totalHealing=0,totalUtility=0;const ownerIdx=game?.players?.indexOf(player)??-1,hasWatch=(player?.owned||[]).some(e=>e.key==='watchtower'&&e.hp>0);for(let value=1;value<=faces;value++){const own=[],danger=[];for(const entry of player?.owned||[]){const card=CARD_CATALOG[entry.key];if(!card?.triggers?.includes(value)||(entry.silencedUntilRound||0)>=(game?.round||1))continue;if(card.timing==='opponent')continue;own.push({card,copies:entry.count||1});const metrics=estimateEffectMetrics(mode==='d20'&&card.onTriggerCrazy?card.onTriggerCrazy:card.onTrigger,card),copies=entry.count||1;totalDamage+=metrics.damage*copies;totalGold+=metrics.gold*copies;totalHealing+=metrics.healing*copies;totalUtility+=metrics.utility*copies;}for(const enemy of game?.players||[]){if(enemy===player||enemy.eliminated||enemy.left)continue;for(const entry of enemy.owned||[]){const card=CARD_CATALOG[entry.key];if(!card?.triggers?.includes(value)||(entry.silencedUntilRound||0)>=(game?.round||1))continue;if(card.timing==='your')continue;danger.push(hasWatch?card.name:'Enemy reaction');}}if(own.length)activeRolls++;if(danger.length)dangerRolls++;rolls.push({value,own,danger});}return{mode,faces,rolls,activationChance:Math.round(activeRolls/faces*100),dangerChance:Math.round(dangerRolls/faces*100),damage:(totalDamage/faces).toFixed(1),gold:(totalGold/faces).toFixed(1),healing:(totalHealing/faces).toFixed(1),utility:(totalUtility/faces).toFixed(1)};}
+    function buildRollForecast(player,mode,game=state){const faces=dieFaces(mode),rolls=[];let activeRolls=0,dangerRolls=0,totalDamage=0,totalGold=0,totalHealing=0,totalUtility=0;const ownerIdx=game?.players?.indexOf(player)??-1,hasWatch=(player?.owned||[]).some(e=>e.key==='watchtower'&&e.hp>0);for(let value=1;value<=faces;value++){const own=[],danger=[];for(const entry of player?.owned||[]){const card=CARD_CATALOG[entry.key];if(!card?.triggers?.includes(value)||(entry.silencedUntilRound||0)>=(game?.round||1))continue;if(card.timing==='opponent')continue;own.push({card,copies:entry.count||1});const normalMetrics=estimateEffectMetrics(card.onTrigger,card),crazyMetrics=mode==='d20'&&card.onTriggerCrazy?estimateEffectMetrics(card.onTriggerCrazy,card):null,metricScore=m=>m.damage*3+m.gold*2+m.healing*2+m.utility,metrics=crazyMetrics&&metricScore(crazyMetrics)>metricScore(normalMetrics)?crazyMetrics:normalMetrics,copies=entry.count||1,boost=card.type==='troop'&&value>=HIGH_ROLL_EDGE;totalDamage+=(metrics.damage+(boost&&metrics.damage?HIGH_ROLL_DMG_BONUS:0))*copies;totalGold+=(metrics.gold+(boost&&metrics.gold?HIGH_ROLL_COIN_BONUS:0))*copies;totalHealing+=(metrics.healing+(boost&&metrics.healing?HIGH_ROLL_HEAL_BONUS:0))*copies;totalUtility+=metrics.utility*copies;}for(const enemy of game?.players||[]){if(enemy===player||enemy.eliminated||enemy.left)continue;for(const entry of enemy.owned||[]){const card=CARD_CATALOG[entry.key];if(!card?.triggers?.includes(value)||(entry.silencedUntilRound||0)>=(game?.round||1))continue;if(card.timing==='your')continue;danger.push(hasWatch?card.name:'Enemy reaction');}}if(own.length)activeRolls++;if(danger.length)dangerRolls++;rolls.push({value,own,danger});}return{mode,faces,rolls,activationChance:Math.round(activeRolls/faces*100),dangerChance:Math.round(dangerRolls/faces*100),damage:(totalDamage/faces).toFixed(1),gold:(totalGold/faces).toFixed(1),healing:(totalHealing/faces).toFixed(1),utility:(totalUtility/faces).toFixed(1)};}
     function showRollForecast(mode){const player=myPlayer();if(!player)return;const f=buildRollForecast(player,mode),body=$('#forecastBody');body.innerHTML=`<h2 id="forecastTitle">${escapeHtml(mode.toUpperCase())} Roll Forecast</h2><div class="subtle">Expected activations based on the realm as it exists now. Watchtowers reveal enemy card names.</div><div class="forecastSummary"><div class="forecastMetric"><strong>${f.activationChance}%</strong><small>Useful roll</small></div><div class="forecastMetric"><strong>${f.damage}</strong><small>Expected damage</small></div><div class="forecastMetric"><strong>${f.gold}</strong><small>Expected gold</small></div><div class="forecastMetric"><strong>${f.dangerChance}%</strong><small>Enemy reaction</small></div></div><div class="forecastRolls">${f.rolls.map(r=>`<div class="forecastRoll ${r.own.length?'hot':''}"><strong>Roll ${r.value}</strong><br>${r.own.length?r.own.map(x=>`${escapeHtml(x.card.name)}${x.copies>1?` ×${x.copies}`:''}`).join(', '):'No owned trigger'}${r.danger.length?`<br><span style="color:#e8a99e">⚠ ${escapeHtml([...new Set(r.danger)].join(', '))}</span>`:''}</div>`).join('')}</div>`;const dialog=$('#forecastDialog');if(!dialog.open)dialog.showModal();}
     function chooseAIDie(game,player){const allowed=allowedDiceFor(player),difficulty=player.aiDifficulty||'adept';if(difficulty==='apprentice')return allowed[Math.floor(randomUnit(game.seed,game.rollCount,71)*allowed.length)]||'d6';return allowed.map(mode=>({mode,f:buildRollForecast(player,mode,game)})).sort((a,b)=>{const sa=Number(a.f.damage)+Number(a.f.gold)+Number(a.f.healing)+a.f.activationChance/10-a.f.dangerChance*(difficulty==='archmage'?.08:.03),sb=Number(b.f.damage)+Number(b.f.gold)+Number(b.f.healing)+b.f.activationChance/10-b.f.dangerChance*(difficulty==='archmage'?.08:.03);return sb-sa;})[0]?.mode||highestDie(player);}
 
@@ -1011,7 +1040,7 @@ function applyInstantIncome(owner, card){
 }
 
 
-    function summonToken(owner,key,count=1,turnsLeft=2){const card=CARD_CATALOG[key];if(!card)return 0;for(let i=0;i<count;i++){const max=currentMaxHp(owner,key);owner.owned.push({key,count:1,hp:max,maxHp:max,token:true,turnsLeft,freshToken:true,summonId:`${slug(key)}-${nowMs()}-${Math.random().toString(36).slice(2)}`});}return count;}
+    function summonToken(owner,key,count=1,turnsLeft=2){const card=CARD_CATALOG[key];if(!card?.token)return 0;const cap=Math.min(5,Math.max(0,Number(card.max)||5)),current=(owner.owned||[]).reduce((sum,e)=>sum+(e.key===key&&e.hp>0&&!e._remove?Math.max(1,e.count||1):0),0),add=Math.max(0,Math.min(Math.max(0,Number(count)||0),cap-current));for(let i=0;i<add;i++){const max=currentMaxHp(owner,key);owner.owned.push({key,count:1,hp:max,maxHp:max,token:true,turnsLeft,freshToken:true,summonId:`${slug(key)}-${nowMs()}-${Math.random().toString(36).slice(2)}`});}return add;}
     function summonSkeleton(owner,count=1){return summonToken(owner,'black_skeleton',count,2);}
     function shieldWeakestAllies(owner,count,amount){const list=(owner.owned||[]).filter(e=>e.hp>0&&!e._remove&&!e.token).sort((a,b)=>((a.shield||0)-(b.shield||0))||((a.hp/currentMaxHp(owner,a.key))-(b.hp/currentMaxHp(owner,b.key))));for(const entry of list.slice(0,count))entry.shield=(entry.shield||0)+amount;return Math.min(count,list.length);}
     function weakestEnemyTarget(rd,ownerIdx,type='troop'){const candidates=[];(rd.players||[]).forEach((p,i)=>{if(i===ownerIdx||p.eliminated||p.left)return;(p.owned||[]).forEach((e,idx)=>{if(e.hp>0&&!e._remove&&CARD_CATALOG[e.key]?.type===type)candidates.push({p,e,idx});});});return candidates.sort((a,b)=>a.e.hp-b.e.hp)[0]||null;}
@@ -1029,21 +1058,22 @@ function resolveOne(rd, manual){
   const roll   = trig.roll || 0;
   const mode   = rd.lastRoll?.mode || 'd6';
 
-  // Prefer the queued flag from buildResolveQueueAfterRoll; also fall back to d20 check
-  const useCrazy = (trig.useCrazy && !!card.onTriggerCrazy) || (mode === 'd20' && !!card.onTriggerCrazy);
+  // A d20 Crazy replacement is chosen separately for each resolving copy.
+  if(triggerNeedsEffectChoice(trig))return{changed:false,msg:'Choose the Normal or Crazy replacement effect first.'};
+  const useCrazy = !!trig.useCrazy && !!card.onTriggerCrazy;
 
   const eff   = useCrazy ? (card.onTriggerCrazy || {}) : (card.onTrigger || {});
   const kind  = eff.kind;
 
   const isTroop   = (CARD_CATALOG[trig.key]?.type === 'troop');
-  const highTroop = isTroop && (roll >= HIGH_ROLL_EDGE); // 7+ bonus
+  const highTroop = isTroop && (roll >= HIGH_ROLL_EDGE); // 13+ troop bonus
 
-  // Bonus helpers: only apply for troop triggers on 7+
+  // Bonus helpers: only apply for troop triggers on natural 13+ rolls
   const bonusDmg   = (x)=> x + (highTroop ? HIGH_ROLL_DMG_BONUS  : 0);
   const bonusCoins = (x)=> x + (highTroop ? HIGH_ROLL_COIN_BONUS : 0);
   const bonusHeal  = (x)=> x + (highTroop ? HIGH_ROLL_HEAL_BONUS : 0);
 
-  let msg = `${owner.name} triggers ${card.emoji} ${card.name}${useCrazy ? ' [CRAZY]' : ''}: `;
+  let msg = `${owner.name} triggers ${card.emoji} ${card.name}${useCrazy ? ' [CRAZY REPLACEMENT]' : ''}: `;
 
   const activeName   = rd.lastRoll?.by;
   const activePlayer = (rd.players||[]).find(p=>p.name===activeName) || null;
@@ -1102,20 +1132,10 @@ function resolveOne(rd, manual){
       return applyAndShift(`recruits ${eligible[0].name} without paying.`);
     }
     case 'each_other_lose_hp': {
-      const v = eff.value||0; // structure, no troop bonus
-      (rd.players||[]).forEach((p,i)=>{
-        if (i!==trig.ownerIdx && !p.eliminated){
-          p.townHp = Math.max(0, (p.townHp||0) - v);
-        }
-      });
-      return applyAndShift(`each other player loses ${v}.`);
+      const v=eff.value||0;let dealt=0,blocked=0;(rd.players||[]).forEach((p,i)=>{if(i===trig.ownerIdx||p.eliminated)return;const r=damageTownHall(owner,p,v,rd,{ignoreWalls:true});dealt+=r.dealt;blocked+=r.blocked;});return applyAndShift(`deals ${v} direct Town Hall damage to each enemy (${dealt} dealt${blocked?`, ${blocked} absorbed by Town Shield`:''}).`);
     }
     case 'active_loses_per_temple': {
-      const t = activePlayer; if (!t) return applyAndShift('no active opponent.');
-      const n = (owner.owned||[]).find(e=>e.key===eff.temple)?.count || 0;
-      const loss = (n * (eff.per||0)) + (highTroop ? HIGH_ROLL_DMG_BONUS : 0);
-      t.townHp = Math.max(0, (t.townHp||0) - loss);
-      return applyAndShift(`${t.name} loses ${loss} health.`);
+      const t=activePlayer;if(!t)return applyAndShift('no active opponent.');const n=(owner.owned||[]).find(e=>e.key===eff.temple)?.count||0,loss=bonusDmg(n*(eff.per||0)),wall=weakestEntryOfType(t,'wall');if(wall){const r=damageEntry(wall.e,loss,t,rd,{attack:true,attackerOwner:owner});return applyAndShift(`deals ${r.dealt} damage to ${t.name}'s ${wall.card?.name||'wall'}.`);}const r=damageTownHall(owner,t,loss,rd);return applyAndShift(`hits ${t.name}'s Town Hall for ${r.dealt}${r.blocked?` (${r.blocked} absorbed by Town Shield)`:''}.`);
     }
     case 'lose_hp_gain_coins': {
       const lose=consumeSelfDamage(owner,eff.lose||0,rd),gain=bonusCoins(eff.coins||0);owner.gold=(owner.gold||0)+gain;return applyAndShift(`loses ${lose}, gains ${gain} coins.`);
@@ -1173,7 +1193,7 @@ function resolveOne(rd, manual){
       if(roll===12){let total=0;(rd.players||[]).forEach((p,i)=>{if(i===trig.ownerIdx||p.eliminated)return;(p.owned||[]).forEach(e=>{if(CARD_CATALOG[e.key]?.type==='troop'&&e.hp>0){const d=CARD_CATALOG[e.key]?.category==='black'?(eff.antiBlack||5):(eff.holy||3);total+=damageEntry(e,d,p,rd,{attack:true}).dealt;}});});shieldWeakestAllies(owner,1,2);return applyAndShift(`holy splash deals ${total} total damage and shields one ally for 2.`);}const n=shieldWeakestAllies(owner,2,eff.shield||3);return applyAndShift(`grants ${eff.shield||3} Shield to ${n} allies.`);
     }
     case 'skeleton_strike': {
-      const pick=weakestEnemyTarget(rd,trig.ownerIdx,'troop');if(pick){const r=damageEntry(pick.e,eff.value||1,pick.p,rd,{attack:true});return applyAndShift(`claws ${pick.p.name}'s ${CARD_CATALOG[pick.e.key]?.name} for ${r.dealt}.`);}const enemy=(rd.players||[]).find((p,i)=>i!==trig.ownerIdx&&!p.eliminated&&!p.left);if(enemy){const before=enemy.townHp||0;enemy.townHp=Math.max(0,before-(eff.value||1));return applyAndShift(`claws ${enemy.name}'s Town Hall for ${before-enemy.townHp}.`);}return applyAndShift('finds no enemy.');
+      const pick=automaticEnemyPermanent(rd,trig.ownerIdx);if(pick){const r=damageEntry(pick.e,bonusDmg(eff.value||1),pick.p,rd,{attack:true,attackerOwner:owner});return applyAndShift(`claws ${pick.p.name}'s ${pick.card?.name||'card'} for ${r.dealt}.`);}const enemy=weakestEnemyTown(rd,owner);if(enemy){const r=damageTownHall(owner,enemy,bonusDmg(eff.value||1),rd);return applyAndShift(`claws ${enemy.name}'s Town Hall for ${r.dealt}${r.blocked?` (${r.blocked} absorbed by Town Shield)`:''}.`);}return applyAndShift('finds no enemy.');
     }
     // ===== CRAZY (d20) non-targeted effects =====
     case 'smite_all_enemy_troops': {
@@ -1237,6 +1257,8 @@ function resolveOne(rd, manual){
     case 'arena_strike':
     case 'poison_strike':
     case 'treant_slam':
+    case 'target_sacrifice_per_temple':
+    case 'sacrifice_to_heal':
     case 'destroy_farm_and_damage_per_temple': {
       const tName = manual?.targetPlayer;
       const tType = manual?.targetType;
@@ -1245,6 +1267,12 @@ function resolveOne(rd, manual){
       if (!target) return applyAndShift('no enemy.');
 
       switch(kind){
+        case 'target_sacrifice_per_temple': {
+          if(target===owner||tType==='townhall'||tIdx==null)return applyAndShift('requires an enemy permanent.');const times=Math.max(1,factionTempleCount(owner,'black')),chosen=target.owned[tIdx];let sacrificed=0;if(chosen&&chosen.hp>0&&!chosen._remove){damageEntry(chosen,chosen.hp||9999,target,rd,{attack:false,execute:true,bypassMartyr:true,ignoreShield:true,attackerOwner:owner});sacrificed++;}for(let k=1;k<times;k++){const next=['troop','structure','wall'].map(type=>weakestEntryOfType(target,type)).find(Boolean);if(!next)break;damageEntry(next.e,next.e.hp||9999,target,rd,{attack:false,execute:true,bypassMartyr:true,ignoreShield:true,attackerOwner:owner});sacrificed++;}return applyAndShift(`${target.name} sacrifices ${sacrificed} card${sacrificed===1?'':'s'} from ${times} Black Temple power.`);
+        }
+        case 'sacrifice_to_heal': {
+          if(target!==owner||tType==='townhall'||tIdx==null)return applyAndShift('requires one of your non-token permanents.');const entry=owner.owned[tIdx],sacCard=CARD_CATALOG[entry?.key];if(!entry||entry.hp<=0||sacCard?.token||sacCard?.immutable)return applyAndShift('that card cannot be sacrificed.');const remaining=Math.max(1,entry.hp||0),healValue=bonusHeal(Math.ceil(remaining*(eff.multiplier||1.5))),sacrificedName=sacCard?.name||'card';damageEntry(entry,entry.hp||9999,owner,rd,{attack:false,execute:true,bypassMartyr:true,ignoreShield:true});const ally=mostDamagedEntry(owner);if(ally){const healed=healEntry(owner,ally,healValue);return applyAndShift(`sacrifices ${sacrificedName} with ${remaining} HP and ${healed.poisonRemoved?'removes Poison from':`heals`} ${CARD_CATALOG[ally.key]?.name||'an ally'}${healed.healed?` for ${healed.healed}`:''}.`);}const healed=healTown(owner,healValue);return applyAndShift(`sacrifices ${sacrificedName} with ${remaining} HP and heals Town Hall for ${healed.healed}${healed.shielded?` with ${healed.shielded} Town Shield`:''}.`);
+        }
         case 'trebuchet_siege': {
           if(!['wall','structure'].includes(tType))return applyAndShift('invalid siege target.');const r=dealAttack(owner,target,tType,tIdx,bonusDmg(eff.dmg||8),rd,{sourceCard:card,sourceEntry:findSourceEntry(owner,trig.key),applyExpose:true,ignoreWalls:true});return applyAndShift(`${r.message}${r.statusApplied?' Armor Break applied.':' The target was destroyed before Armor Break could remain.'}`);
         }
@@ -1391,6 +1419,9 @@ function resolveOne(rd, manual){
         game.rollCount++;
         pushLog(game,`${actor.name} rolled ${rolled.value} (${mode}).${built.autoNote?` ${built.autoNote}`:''}`);
         return{changed:true};
+      }
+      if(action.type==='CHOOSE_EFFECT'){
+        if(phase!=='resolving')return{changed:false,message:'There is no effect choice right now.'};const trig=game.resolveQueue?.[0],card=CARD_CATALOG[trig?.key];if(!triggerNeedsEffectChoice(trig)||!card?.onTriggerCrazy)return{changed:false,message:'This trigger does not need a Normal/Crazy choice.'};trig.useCrazy=!!action.payload?.useCrazy;trig.choiceMade=true;resetPhaseDeadline(game);pushLog(game,`${actor.name} chooses ${trig.useCrazy?'the Crazy replacement':'the Normal effect'} for ${card.name}.`);return{changed:true};
       }
       if(action.type==='RESOLVE'){
         if(phase!=='resolving')return{changed:false,message:'There is no trigger to resolve.'};
@@ -1679,12 +1710,12 @@ function resolveOne(rd, manual){
       values.forEach(text=>{for(const box of[top,mine]){const span=document.createElement('span');span.className='resource';span.textContent=text;box.appendChild(span);}});
     }
     function triggerProbability(card,faces){return Math.round((card.triggers||[]).filter(n=>n<=faces).length/faces*100);}
-    function passiveDescription(card){const items=[];if(card.retaliation){const r=card.retaliation,parts=[];if(r.damage)parts.push(`${r.damage} damage`);if(r.burn)parts.push(`${r.burn} Burn`);if(r.poison)parts.push(`${r.poison} Poison`);items.push(`Retaliation: ${parts.join(' and ')} (${r.once||'round'} limit).`);}if(card.deathEffect)items.push(`Death effect: ${card.deathEffect.kind==='summon'?`summon ${card.deathEffect.count||1} ${CARD_CATALOG[card.deathEffect.key]?.name||'token'}`:card.deathEffect.kind==='heal_town'?`heal Town Hall ${card.deathEffect.value||0}`:card.deathEffect.kind}.`);const p=card.passive||{};if(p.martyr)items.push('Automatically sacrifices itself to save another permanent.');if(p.treasurer)items.push(`Gain ${p.gold||1} gold when an opponent buys an expensive card.`);if(p.soulCollector)items.push(`Collect ${p.threshold||3} souls to deal ${p.dmg||5} automatic Town Hall damage.`);if(p.rootNetwork)items.push(`Redirect up to ${p.redirect||2} structure damage into a Living Wall.`);if(p.wallSpillover)items.push('Excess wall damage spills into Town Hall.');if(p.ancientTreant)items.push(`Surviving ${p.threshold||4}+ damage grants +${p.grow||1} maximum HP.`);if(p.sporeKeeper)items.push('Gain gold whenever Poison is removed from your realm.');return items.join(' ')||'No automatic ability.';}
+    function passiveDescription(card){const items=[];if(card.retaliation){const r=card.retaliation,parts=[];if(r.damage)parts.push(`${r.damage} damage`);if(r.burn)parts.push(`${r.burn} Burn`);if(r.poison)parts.push(`${r.poison} Poison`);items.push(`Retaliation: ${parts.join(' and ')} (${r.once||'round'} limit).`);}if(card.deathEffect)items.push(`Death effect: ${card.deathEffect.kind==='summon'?`summon ${card.deathEffect.count||1} ${CARD_CATALOG[card.deathEffect.key]?.name||'token'}`:card.deathEffect.kind==='heal_town'?`heal Town Hall ${card.deathEffect.value||0}`:card.deathEffect.kind}.`);const p=card.passive||{};if(p.martyr)items.push('Automatically sacrifices itself to save another permanent.');if(p.treasurer)items.push(`Gain ${p.gold||1} gold when an opponent buys an expensive card.`);if(p.soulCollector)items.push(`Collect ${p.threshold||3} souls to deal ${p.dmg||5} automatic damage to a protecting wall, then Town Hall only after walls are gone.`);if(p.rootNetwork)items.push(`Redirect up to ${p.redirect||2} structure damage into a Living Wall.`);if(p.wallSpillover)items.push('Excess wall damage spills into Town Hall.');if(p.ancientTreant)items.push(`Surviving ${p.threshold||4}+ damage grants +${p.grow||1} maximum HP.`);if(p.sporeKeeper)items.push('Gain gold whenever Poison is removed from your realm.');return items.join(' ')||'No automatic ability.';}
     function addInspectorSection(container,title,text){const section=document.createElement('section');section.className='inspectorSection';const heading=document.createElement('strong');heading.textContent=title;const body=document.createElement('div');body.textContent=text;section.append(heading,body);container.appendChild(section);}
     function showCardModal(card,entry=null,owner=null){
       const modal=$('#cardModal'),art=$('#modalArt');art.src=assetMap[card.key]||cardAssetCandidates(card)[0];art.alt=card.name;art.onerror=()=>{art.style.display='none';};art.style.display='block';$('#modalName').textContent=card.name;appendAbilityPills($('#modalAbilities'),card);
       const hp=entry?`${card.key==='townhall'?owner?.townHp:entry.hp}/${currentMaxHp(owner,card.key)}`:(card.hpDynamic?'Dynamic':card.hp??'—'),statuses=entry?[entryArmor(owner,entry)?`Armor ${entryArmor(owner,entry)}`:'',entry.shield?`Shield ${entry.shield}`:'',entry.guard?'Guard':'',entry.poison?`Poison ${entry.poison}`:'',entry.burn?`Burn ${entry.burn}`:'',entry.bleed?`Bleed ${entry.bleed}`:'',entry.exposed?'Armor Break':'',(entry.silencedUntilRound||0)>=(state?.round||1)?`Silenced through round ${entry.silencedUntilRound}`:'',entry.glory?`Glory +${entry.glory}`:'',entry.siegeMomentum?`Siege +${entry.siegeMomentum}`:'',(entry.souls>0||card.passive?.soulCollector)?`Souls ${entry.souls||0}`:'',entry.turnsLeft!=null?`${entry.turnsLeft} turns left`:''].filter(Boolean).join(' • '):'';$('#modalMeta').textContent=`${CATEGORY_NAMES[card.category]} • ${card.type} • Cost ${card.cost} • HP ${hp}${entry?` • ×${entry.count||1}`:''}${statuses?` • ${statuses}`:''}`;
-      const details=$('#modalDetails');details.innerHTML='';addInspectorSection(details,'Activation',(card.triggers||[]).length?`Roll ${(card.triggers||[]).join(', ')} • ${card.timing||'passive'} • d6 ${triggerProbability(card,6)}% • d12 ${triggerProbability(card,12)}% • d20 ${triggerProbability(card,20)}%`:'Passive — no roll required.');addInspectorSection(details,'Card Effect',card.details||'No description.');addInspectorSection(details,'Automatic Effects',passiveDescription(card));if(card.onTriggerCrazy)addInspectorSection(details,'Crazy Effect',`Available while rolling d20: ${cardAbilityKeys({...card,onTrigger:card.onTriggerCrazy,onTriggerCrazy:null}).map(abilityLabel).join(', ')}. ${card.details||''}`);addInspectorSection(details,'Ability Profile',cardAbilityKeys(card).map(k=>`${ABILITY_META[k]?.[0]||'✦'} ${abilityLabel(k)}`).join(' • ')||'Standard permanent.');modal.showModal();
+      const details=$('#modalDetails');details.innerHTML='';addInspectorSection(details,'Activation',(card.triggers||[]).length?`Roll ${(card.triggers||[]).join(', ')} • ${card.timing||'passive'} • d6 ${triggerProbability(card,6)}% • d12 ${triggerProbability(card,12)}% • d20 ${triggerProbability(card,20)}%`:'Passive — no roll required.');addInspectorSection(details,'Card Effect',card.details||'No description.');addInspectorSection(details,'Automatic Effects',passiveDescription(card));if(card.onTriggerCrazy)addInspectorSection(details,'Crazy Replacement Effect',`When this card triggers on d20, choose Normal or Crazy. Choosing Crazy replaces the normal effect for this copy only. Abilities: ${cardAbilityKeys({...card,onTrigger:card.onTriggerCrazy,onTriggerCrazy:null}).map(abilityLabel).join(', ')}.`);addInspectorSection(details,'Ability Profile',cardAbilityKeys(card).map(k=>`${ABILITY_META[k]?.[0]||'✦'} ${abilityLabel(k)}`).join(' • ')||'Standard permanent.');modal.showModal();
     }
     function renderCategoryTabs(){
       const box=$('#categoryTabs');box.innerHTML='';
@@ -1714,7 +1745,7 @@ function resolveOne(rd, manual){
       }
     }
     function rawEffectDamage(trigger,effect,owner,sourceEntry){const roll=trigger?.roll||0,high=CARD_CATALOG[trigger?.key]?.type==='troop'&&roll>=HIGH_ROLL_EDGE;let dmg=Number(effect?.dmg??effect?.value??0);switch(effect?.kind){case'attack_any_per_temple':case'damage_per_temple_and_gain':dmg=factionTempleCount(owner,String(effect.temple||'').split('_')[0])*(effect.per||0);break;case'status_judgment':dmg=effect.dmg||4;break;case'battering_ram':dmg=(effect.dmg||4)+Math.min(effect.maxBonus||6,sourceEntry?.siegeMomentum||0);break;case'arena_strike':dmg=(effect.dmg||5)+(sourceEntry?.glory||0);break;case'paid_attack':dmg=(owner.gold||0)>=(effect.cost||1)?(effect.dmg||7):3;break;case'paladin_guard_strike':dmg=effect.dmg||7;break;case'treant_slam':dmg=effect.dmg||6;break;case'silence_strike':dmg=effect.dmg||3;break;case'poison_strike':dmg=effect.dmg||2;break;}if(high)dmg+=HIGH_ROLL_DMG_BONUS;if(sourceEntry?.glory&&effect?.kind!=='arena_strike')dmg+=sourceEntry.glory;return Math.max(0,dmg);}
-    function estimateCandidateOutcome(trigger,candidate,game=state){if(!trigger||!candidate||!game)return{final:0,lethal:false,retaliates:false,label:''};const owner=game.players[trigger.ownerIdx],sourceEntry=findSourceEntry(owner,trigger.key),effect=effectiveTrigger(trigger),target=game.players.find(p=>p.name===candidate.targetPlayer);if(!target)return{final:0,lethal:false,retaliates:false,label:''};let raw=rawEffectDamage(trigger,effect,owner,sourceEntry);if(effect.kind==='status_judgment'&&candidate.targetType!=='townhall'){const judged=target.owned?.[candidate.targetEntryIdx];raw+=(judged?harmfulStatusCount(judged):0)*(effect.perStatus||2);}if(candidate.targetType==='townhall'){const final=Math.max(0,raw-(target.townShield||0));return{raw,final,lethal:final>=(target.townHp||0),retaliates:false,label:`${final} dmg${final>=(target.townHp||0)?' • LETHAL':''}`};}const entry=target.owned?.[candidate.targetEntryIdx],card=CARD_CATALOG[entry?.key];if(!entry||!card)return{final:0,lethal:false,retaliates:false,label:''};let incoming=raw;if(entry.exposed)incoming+=2;else incoming=Math.max(1,incoming-entryArmor(target,entry));if(entry.bleed)incoming+=2*entry.bleed;incoming=Math.max(0,incoming-(entry.shield||0));const final=Math.min(entry.hp||0,incoming),lethal=incoming>=(entry.hp||0),retaliates=!!card.retaliation&&(entry.silencedUntilRound||0)<(game.round||1);return{raw,final,lethal,retaliates,label:`${final} dmg${lethal?' • LETHAL':''}${retaliates?' • ↩':''}`};}
+    function estimateCandidateOutcome(trigger,candidate,game=state){if(!trigger||!candidate||!game)return{final:0,lethal:false,retaliates:false,label:''};const owner=game.players[trigger.ownerIdx],sourceEntry=findSourceEntry(owner,trigger.key),effect=effectiveTrigger(trigger),target=game.players.find(p=>p.name===candidate.targetPlayer);if(!target)return{final:0,lethal:false,retaliates:false,label:''};if(effect.kind==='sacrifice_to_heal'){const entry=target.owned?.[candidate.targetEntryIdx],heal=Math.ceil(Math.max(1,entry?.hp||0)*(effect.multiplier||1.5))+(trigger.roll>=HIGH_ROLL_EDGE?HIGH_ROLL_HEAL_BONUS:0);return{raw:0,final:0,lethal:false,retaliates:false,label:`Sacrifice • heal ${heal}`};}if(effect.kind==='target_sacrifice_per_temple'){const n=Math.max(1,factionTempleCount(owner,'black'));return{raw:0,final:0,lethal:false,retaliates:false,label:`Sacrifice up to ${n}`};}let raw=rawEffectDamage(trigger,effect,owner,sourceEntry);if(effect.kind==='status_judgment'&&candidate.targetType!=='townhall'){const judged=target.owned?.[candidate.targetEntryIdx];raw+=(judged?harmfulStatusCount(judged):0)*(effect.perStatus||2);}if(candidate.targetType==='townhall'){const final=Math.max(0,raw-(target.townShield||0));return{raw,final,lethal:final>=(target.townHp||0),retaliates:false,label:`${final} dmg${final>=(target.townHp||0)?' • LETHAL':''}`};}const entry=target.owned?.[candidate.targetEntryIdx],card=CARD_CATALOG[entry?.key];if(!entry||!card)return{final:0,lethal:false,retaliates:false,label:''};let incoming=raw;if(entry.exposed)incoming+=2;else incoming=Math.max(1,incoming-entryArmor(target,entry));if(entry.bleed)incoming+=2*entry.bleed;incoming=Math.max(0,incoming-(entry.shield||0));const final=Math.min(entry.hp||0,incoming),lethal=incoming>=(entry.hp||0),retaliates=!!card.retaliation&&(entry.silencedUntilRound||0)<(game.round||1);return{raw,final,lethal,retaliates,label:`${final} dmg${lethal?' • LETHAL':''}${retaliates?' • ↩':''}`};}
     function targetWithIdentity(candidate){
       if(!candidate)return null;
       const target=state?.players?.find(p=>p.name===candidate.targetPlayer);
@@ -1754,18 +1785,18 @@ function resolveOne(rd, manual){
       const tile=document.createElement('div');tile.className='targetSourceCard';tile.style.setProperty('--faction',factionColor(card.category));tile.appendChild(makeArt(card,'tinyArt'));const shade=document.createElement('span');shade.className='cardShade';tile.appendChild(shade);appendAbilityMarks(tile,card,3);const name=document.createElement('span');name.className='cardName';name.textContent=card.name;tile.appendChild(name);return{tile,owner,card,entry};
     }
     function blockedTargetReason(kind,player,type){
-      if((type==='structure'||type==='townhall')&&hasActiveWall(player)&&!effectBypassesWalls(kind))return'Protected by wall';
+      if(kind==='sacrifice_to_heal')return type==='townhall'?'Town Hall cannot be sacrificed':'Only a friendly non-token permanent can be sacrificed';if((type==='structure'||type==='townhall')&&hasActiveWall(player)&&!effectBypassesWalls(kind))return'Protected by wall';
       return'Not valid for this attack';
     }
     function renderTargetDialog(forceOpen=false){
       const dialog=$('#targetDialog'),arena=$('#targetArena'),stage=$('#targetAttackerStage');arena.innerHTML='';stage.innerHTML='';
       const trigger=state?.resolveQueue?.[0],effect=trigger?effectiveTrigger(trigger):{},needs=trigger&&triggerNeedsTarget(effect.kind),turn=isMyTurn()&&state?.phase==='resolving';
-      if(!turn||!needs){if(dialog.open)dialog.close();lastTargetDialogKey='';return;}
+      if(!turn||!needs||triggerNeedsEffectChoice(trigger)){if(dialog.open)dialog.close();lastTargetDialogKey='';return;}
       const candidates=allTargetCandidates(state,trigger.ownerIdx,effect.kind),source=makeTargetSource(trigger),key=targetDialogTriggerKey(trigger);
-      $('#targetTitle').textContent=`${source.owner.name}'s ${source.card.name}`;$('#targetInstruction').textContent=candidates.length?'Select a glowing card. Walls are shown in front of protected cards.':'No legal targets remain; close this view and resolve to skip.';
+      const friendly=effect.kind==='sacrifice_to_heal';$('#targetTitle').textContent=`${source.owner.name}'s ${source.card.name}`;$('#targetInstruction').textContent=candidates.length?(friendly?'Select the friendly permanent to sacrifice.':'Select a glowing card. Walls are shown in front of protected cards.'):'No legal targets remain; close this view and resolve to skip.';
       stage.appendChild(source.tile);const copy=document.createElement('div');copy.className='targetAttackCopy';copy.innerHTML=`<strong>${escapeText(source.card.name)} is ready</strong><span>${escapeText(source.card.details||'Choose a target to resolve this attack.')}</span>`;stage.appendChild(copy);
       for(const player of state.players){
-        if(player===source.owner||player.eliminated||player.left)continue;
+        if(player.eliminated||player.left||(friendly?player!==source.owner:player===source.owner))continue;
         const lane=document.createElement('section');lane.className='targetRealmLane';lane.style.setProperty('--realm-stripes',playerStripeGradient(player,'1'));
         const head=document.createElement('div');head.className='targetRealmHead';head.textContent=player.name;const summary=document.createElement('small');summary.textContent=`🧱 ${totalWallHealth(player)} HP • ⚔ ${totalTroops(player)} troops`;head.appendChild(summary);lane.appendChild(head);
         const ranks=document.createElement('div');ranks.className='targetRanks';
@@ -1776,7 +1807,7 @@ function resolveOne(rd, manual){
         (player.owned||[]).forEach((entry,idx)=>{const card=CARD_CATALOG[entry.key];if(!card||entry.key==='townhall'||card.type==='wall'||entry.hp<=0)return;const candidate=targetCandidateFor(candidates,player,card.type,idx);backRow.appendChild(makeTargetCard(card,entry,player,candidate,blockedTargetReason(effect.kind,player,card.type)));});
         back.append(backLabel,backRow);ranks.appendChild(back);lane.appendChild(ranks);arena.appendChild(lane);
       }
-      if(!arena.children.length){const empty=document.createElement('div');empty.className='targetEmpty';empty.textContent='No enemy cards remain.';arena.appendChild(empty);}
+      if(!arena.children.length){const empty=document.createElement('div');empty.className='targetEmpty';empty.textContent=friendly?'No friendly cards can be sacrificed.':'No enemy cards remain.';arena.appendChild(empty);}
       if((forceOpen||key!==lastTargetDialogKey)&&!dialog.open){try{dialog.showModal();}catch{}lastTargetDialogKey=key;}
       else if(key!==lastTargetDialogKey){lastTargetDialogKey=key;dialog.classList.add('targetTransition');setTimeout(()=>dialog.classList.remove('targetTransition'),220);}
     }
@@ -1793,8 +1824,8 @@ function resolveOne(rd, manual){
       if(preferredTargetTurnSerial!==(state?.turnSerial??-1)){preferredTargetPayload=null;preferredTargetTurnSerial=state?.turnSerial??-1;}
       const queue=state?.resolveQueue||[];
       if(!queue.length){queueBox.textContent='No triggers pending.';renderTargetDialog(false);return;}
-      queue.forEach((trigger,i)=>{const owner=state.players[trigger.ownerIdx],card=CARD_CATALOG[trigger.key],line=document.createElement('div');line.textContent=`${i===0?'▶':'•'} ${owner?.name||'?'} — ${card?.name||trigger.key}${trigger.useCrazy?' [CRAZY]':''}`;queueBox.appendChild(line);});
-      const trigger=queue[0],effect=effectiveTrigger(trigger),needs=triggerNeedsTarget(effect.kind);
+      queue.forEach((trigger,i)=>{const owner=state.players[trigger.ownerIdx],card=CARD_CATALOG[trigger.key],line=document.createElement('div'),choice=triggerNeedsEffectChoice(trigger)?' [CHOOSE EFFECT]':trigger.canChooseCrazy?(trigger.useCrazy?' [CRAZY REPLACEMENT]':' [NORMAL]'):'';line.textContent=`${i===0?'▶':'•'} ${owner?.name||'?'} — ${card?.name||trigger.key}${choice}`;queueBox.appendChild(line);});
+      const trigger=queue[0],card=CARD_CATALOG[trigger.key];if(triggerNeedsEffectChoice(trigger)){const normal=document.createElement('button');normal.type='button';normal.className='actionBtn secondary';normal.textContent='Use Normal Effect';normal.onclick=()=>performAction('CHOOSE_EFFECT',{useCrazy:false});const crazy=document.createElement('button');crazy.type='button';crazy.className='actionBtn danger';crazy.textContent='Use Crazy Replacement';crazy.onclick=()=>performAction('CHOOSE_EFFECT',{useCrazy:true});const hint=document.createElement('div');hint.className='subtle';hint.textContent=`Choose separately for this ${card?.name||'card'} copy. Crazy replaces Normal only for this resolution.`;targetBox.append(normal,crazy,hint);renderTargetDialog(false);return;}const effect=effectiveTrigger(trigger),needs=triggerNeedsTarget(effect.kind);
       if(!needs){renderTargetDialog(false);return;}
       const candidates=allTargetCandidates(state,trigger.ownerIdx,effect.kind);
       if(!candidates.length){const note=document.createElement('div');note.className='subtle';note.textContent='No valid targets remain. Resolve to skip this trigger.';targetBox.appendChild(note);renderTargetDialog(false);return;}
@@ -1808,14 +1839,14 @@ function resolveOne(rd, manual){
       $('#actionsPane').classList.toggle('active',activeCommandTab==='actions');$('#shopPane').classList.toggle('active',activeCommandTab==='shop');
     }
     function renderControls(){
-      const player=myPlayer(),turn=isMyTurn(),phase=state?.phase||'waiting',queue=state?.resolveQueue||[],trigger=queue[0],needs=trigger?triggerNeedsTarget(effectiveTrigger(trigger).kind):false,candidates=trigger?allTargetCandidates(state,trigger.ownerIdx,effectiveTrigger(trigger).kind):[];
+      const player=myPlayer(),turn=isMyTurn(),phase=state?.phase||'waiting',queue=state?.resolveQueue||[],trigger=queue[0],choicePending=triggerNeedsEffectChoice(trigger),needs=trigger&&!choicePending?triggerNeedsTarget(effectiveTrigger(trigger).kind):false,candidates=trigger&&!choicePending?allTargetCandidates(state,trigger.ownerIdx,effectiveTrigger(trigger).kind):[];
       const allowed=allowedDiceFor(player),hidden=$('#dieSelect');let selected=allowed.includes(hidden.value)?hidden.value:allowed[allowed.length-1];hidden.value=selected;
       const toggle=$('#dieToggle');toggle.innerHTML='';for(const mode of['d6','d12','d20']){const btn=document.createElement('button');btn.className=`dieChoice ${selected===mode?'active':''}`;const forecast=player&&allowed.includes(mode)?buildRollForecast(player,mode):null;btn.textContent=forecast?`${mode} · ${forecast.activationChance}%`:mode;btn.disabled=!allowed.includes(mode)||actionBusy||!turn||phase!=='await_roll';btn.title=!allowed.includes(mode)?`${mode} unlocks when you own cards that trigger in its range`:`Select ${mode} and open its roll forecast`;btn.onclick=()=>{hidden.value=mode;renderControls();showRollForecast(mode);};toggle.appendChild(btn);}
       $('#phaseTitle').textContent=phaseLabel(phase);
-      $('#phaseHelp').textContent=phase==='await_roll'?`Round ${state?.round||1}. Choose d6 or your unlocked higher die, then roll.`:phase==='resolving'?'Resolve queued effects in order; damaged cards show health bars.':phase==='buy'?'Open the Shop tab, buy cards, then end your turn.':phase==='finished'?'The final realm remains.':'Waiting for the game.';
+      $('#phaseHelp').textContent=phase==='await_roll'?`Round ${state?.round||1}. Choose d6 or your unlocked higher die, then roll.`:phase==='resolving'?(choicePending?'Choose Normal or Crazy Replacement for the current card copy.':'Resolve queued effects in order; damaged cards show health bars.'):phase==='buy'?'Open the Shop tab, buy cards, then end your turn.':phase==='finished'?'The final realm remains.':'Waiting for the game.';
       $('#rollBtn').disabled=actionBusy||!turn||phase!=='await_roll';
-      $('#resolveBtn').disabled=actionBusy||!turn||phase!=='resolving'||(needs&&candidates.length>0);
-      $('#applyTargetBtn').disabled=actionBusy||targetActionBusy||!turn||phase!=='resolving'||!needs||!candidates.length;
+      $('#resolveBtn').disabled=actionBusy||!turn||phase!=='resolving'||choicePending||(needs&&candidates.length>0);
+      $('#applyTargetBtn').disabled=actionBusy||targetActionBusy||!turn||phase!=='resolving'||choicePending||!needs||!candidates.length;
       $('#endTurnBtn').disabled=actionBusy||!turn||phase==='finished';
       $('#shopEndTurnBtn').disabled=actionBusy||!turn||phase==='finished';
       const quickEnd=$('#quickEndTurnBtn');quickEnd.classList.toggle('hidden',!turn||phase==='finished');quickEnd.disabled=actionBusy||!turn||phase==='finished';
@@ -1826,7 +1857,7 @@ function resolveOne(rd, manual){
       [...entries].reverse().forEach(entry=>{const line=document.createElement('div');line.className='logLine';line.textContent=entry.message||String(entry);log.appendChild(line);});
     }
     function renderTimer(){const tag=$('#timerTag');if(!state||!isTimedMultiplayer(state)||state.phase==='finished'){tag.classList.add('hidden');return;}tag.classList.remove('hidden');const left=Math.max(0,Math.ceil(((state.phaseDeadline||0)-nowMs())/1000));tag.textContent=`⏱ ${left}s`;tag.classList.toggle('urgent',left<=10);}
-    async function timerTick(){renderTimer();if(timerActionPending||!state||!isTimedMultiplayer(state)||state.phase==='finished'||!state.phaseDeadline||nowMs()<state.phaseDeadline)return;const idx=state.turnIdx,actor=state.players[idx];if(!actor||actor.isAI)return;timerActionPending=true;try{const id=`timeout-${state.phase}-${state.phaseDeadline}-${state.resolveQueue?.length||0}`;if(state.phase==='await_roll')await performAction('ROLL',{mode:chooseAIDie(state,actor)},{ai:true,actorIdx:idx,actionId:id});else if(state.phase==='resolving'){const trig=state.resolveQueue?.[0],target=trig?chooseAITarget(state,trig):null;await performAction('RESOLVE',target||{},{ai:true,actorIdx:idx,actionId:id});}else if(state.phase==='buy')await performAction('END_TURN',{forfeitRemaining:false},{ai:true,actorIdx:idx,actionId:id});}finally{timerActionPending=false;}}
+    async function timerTick(){renderTimer();if(timerActionPending||!state||!isTimedMultiplayer(state)||state.phase==='finished'||!state.phaseDeadline||nowMs()<state.phaseDeadline)return;const idx=state.turnIdx,actor=state.players[idx];if(!actor||actor.isAI)return;timerActionPending=true;try{const id=`timeout-${state.phase}-${state.phaseDeadline}-${state.resolveQueue?.length||0}`;if(state.phase==='await_roll')await performAction('ROLL',{mode:chooseAIDie(state,actor)},{ai:true,actorIdx:idx,actionId:id});else if(state.phase==='resolving'){const trig=state.resolveQueue?.[0];if(triggerNeedsEffectChoice(trig))await performAction('CHOOSE_EFFECT',{useCrazy:chooseAICrazyEffect(state,trig)},{ai:true,actorIdx:idx,actionId:id});else{const target=trig?chooseAITarget(state,trig):null;await performAction('RESOLVE',target||{},{ai:true,actorIdx:idx,actionId:id});}}else if(state.phase==='buy')await performAction('END_TURN',{forfeitRemaining:false},{ai:true,actorIdx:idx,actionId:id});}finally{timerActionPending=false;}}
     function renderAll(){
       $('#lobbyTag').textContent=lobbyId?`Lobby ${lobbyId}`:'No lobby';$('#userTag').textContent=myName;$('#connectionTag').textContent=user?'Authenticated':'Connecting…';const spectator=$('#spectatorTag');spectator.classList.toggle('hidden',!isSpectating());const aiSelect=$('#aiDifficultySelect'),ais=state?.players?.filter(p=>p.isAI&&!p.left)||[],humans=state?.players?.filter(p=>!p.isAI&&!p.left)||[];aiSelect.classList.toggle('hidden',!(ais.length&&humans.length===1&&myPlayer()&&!myPlayer().eliminated));if(ais.length)aiSelect.value=AI_DIFFICULTIES.includes(ais[0].aiDifficulty)?ais[0].aiDifficulty:'adept';
       $('#hoverCardTooltip').classList.remove('show');renderLoading();renderTurnBanner();renderTimer();renderOpponents();renderDice();renderOwned();renderCategoryTabs();renderShop();renderTargetAndQueue();renderControls();renderLog();setCommandTab(activeCommandTab);
@@ -1880,7 +1911,7 @@ function resolveOne(rd, manual){
       if(!state||state.phase==='finished')return;const index=state.turnIdx,player=state.players[index];if(!player?.isAI)return;
       if(state.phase==='await_roll'){await performAction('ROLL',{mode:chooseAIDie(state,player)},{ai:true,actorIdx:index});return;}
       if(state.phase==='resolving'){
-        const trigger=state.resolveQueue?.[0],target=trigger?chooseAITarget(state,trigger):null;
+        const trigger=state.resolveQueue?.[0];if(triggerNeedsEffectChoice(trigger)){await performAction('CHOOSE_EFFECT',{useCrazy:chooseAICrazyEffect(state,trigger)},{ai:true,actorIdx:index});return;}const target=trigger?chooseAITarget(state,trigger):null;
         await performAction('RESOLVE',target||{},{ai:true,actorIdx:index});return;
       }
       if(state.phase==='buy'){
