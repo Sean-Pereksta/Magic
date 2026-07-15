@@ -1188,14 +1188,16 @@ const CHAR_TO_CAPTURE_KIND = Object.fromEntries(Object.entries(CAPTURE_KIND_TO_C
 function captureKindChar(kind){ return CAPTURE_KIND_TO_CHAR[kind || 'normal'] || '.'; }
 function compressCaptureKinds(){ return normalizeBoard().map(t => captureKindChar(t.captureKind)).join(''); }
 function applyWalls(str){
-  normalizeBoard();
+  normalizeBoard(); let wallsChanged=false;
   if(!str || str.length < board.length) return;
   for(let i=0;i<board.length;i++){
     const ch = str[i];
     const owner = ch === '-' ? null : Number(ch);
+    if(board[i].wallOwner !== owner) wallsChanged=true;
     board[i].wallOwner = owner;
     board[i].wallHp = owner == null ? 0 : 1;
   }
+  if(wallsChanged) markWallIndexDirty();
 }
 function applyOwners(str){
   normalizeBoard();
@@ -3262,6 +3264,7 @@ async function preloadChessGraphics(){
   updateGraphicLoader(`Game assets ready${recovered?` · recovered ${recovered} graphic${recovered===1?'':'s'} on recheck`:''}${graphicsMissingCount?` · ${graphicsMissingCount} unavailable graphics will use built-in silhouettes`:''}${audioFailedCount?` · ${audioFailedCount} audio files unavailable; continuing silently`:''}.`);
   initFactionPicker();
   renderSpawnCards();
+  reportAssetPerformanceDiagnostics();
   return true;
 }
 async function ensureGraphicsReady(){
@@ -3270,7 +3273,50 @@ async function ensureGraphicsReady(){
   await Promise.all([graphicsLoadPromise, audioLoadPromise]);
   graphicsReady=true;
   audioReady=true;
+  reportAssetPerformanceDiagnostics();
   return true;
+}
+
+async function reportAssetPerformanceDiagnostics(){
+  if(!ASSET_PERF_DEBUG || reportAssetPerformanceDiagnostics.done) return;
+  reportAssetPerformanceDiagnostics.done = true;
+  // Asset diagnostics are intentionally opt-in. Merely making a PNG look pixelated does not improve performance;
+  // lower source dimensions help download/decode/memory, while runtime target-size caching supplies most draw-time wins.
+  // Manual resizing should remain optional and focused only on assets flagged as oversized here.
+  const rows=[];
+  let totalDecoded=0,totalCache=perfStats.spriteCacheBytes||0,totalTransparent=0,oversizedCount=0;
+  const duplicateGroups=new Map();
+  for(const [key,graphic] of chessGraphicAssets){
+    const path=chessGraphicResolvedFiles.get(key) || key;
+    const w=graphic.width||graphic.naturalWidth||0, h=graphic.height||graphic.naturalHeight||0;
+    const decoded=w*h*4; totalDecoded+=decoded;
+    const crop=sourceAlphaCrop(graphic);
+    const alphaW=crop.sw||w, alphaH=crop.sh||h;
+    const transparentPct=w&&h ? Math.max(0,1-(alphaW*alphaH)/(w*h))*100 : 0;
+    totalTransparent += decoded*transparentPct/100;
+    const isWall=key.startsWith('wall:'), parts=key.split(':'), factionId=isWall?parts[1]:parts[0], type=isWall?'wall':parts[1];
+    const def=pieceDefs[type] || {};
+    const metrics=isWall ? {targetW:BASE_CELL*1.12,targetH:BASE_CELL*1.28} : pieceSpriteMetrics(def,type,graphic,BASE_CELL*.38);
+    const maxDisplayW=metrics.targetW, maxDisplayH=metrics.targetH;
+    const sourceRatio=Math.max(w/Math.max(1,maxDisplayW), h/Math.max(1,maxDisplayH));
+    const setting=assetRenderSetting(factionId,type);
+    const cacheBytes=[...spriteVariantCache.values(),...precomposedPlateCache.values()].filter(v=>v?.source===graphic).reduce((a,v)=>a+(v.bytes||0),0);
+    const draws=assetPerfStats.get(key)?.draws || 0;
+    const duplicateKey=`${w}x${h}|${alphaW}x${alphaH}`;
+    if(!duplicateGroups.has(duplicateKey)) duplicateGroups.set(duplicateKey,[]);
+    duplicateGroups.get(duplicateKey).push(key);
+    const oversized=sourceRatio>3.5 || transparentPct>45 || decoded>8*1048576;
+    if(oversized) oversizedCount++;
+    rows.push({asset:path,key,naturalWidth:w,naturalHeight:h,decodedMB:+(decoded/1048576).toFixed(2),alphaBox:`${alphaW}x${alphaH}`,transparentPaddingPct:+transparentPct.toFixed(1),maxDisplay:`${Math.round(maxDisplayW)}x${Math.round(maxDisplayH)}`,sourceToDisplayRatio:+sourceRatio.toFixed(2),smoothingEnabled:!setting.pixelArt,pixelArt:!!setting.pixelArt,runtimeCacheMB:+(cacheBytes/1048576).toFixed(2),timesDrawn:draws,oversized,duplicateUnderDifferentPaths:false,estimatedWastedMB:+((decoded*transparentPct/100)/1048576).toFixed(2)});
+  }
+  for(const group of duplicateGroups.values()){ if(group.length>1) for(const row of rows) if(group.includes(row.key)) row.duplicateUnderDifferentPaths=true; }
+  rows.sort((a,b)=>b.estimatedWastedMB-a.estimatedWastedMB || b.decodedMB-a.decodedMB);
+  const totals={assets:rows.length,totalSourceEncodedBytes:'unknown (browser cache opaque)',estimatedDecodedMB:+(totalDecoded/1048576).toFixed(2),estimatedCachedRuntimeMB:+(totalCache/1048576).toFixed(2),estimatedTransparentWastedMB:+(totalTransparent/1048576).toFixed(2),oversizedAssets:oversizedCount};
+  console.groupCollapsed('Chess Warlord asset performance diagnostics (?assetperf=1)');
+  console.table(rows); console.info('Asset totals', totals); console.groupEnd();
+  let el=document.getElementById('assetPerfPanel');
+  if(!el){ el=document.createElement('pre'); el.id='assetPerfPanel'; el.style.cssText='position:fixed;right:8px;bottom:8px;z-index:99999;max-width:520px;max-height:45vh;overflow:auto;margin:0;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.82);color:#d8f8ff;font:11px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;'; document.body.appendChild(el); }
+  el.textContent='assetperf=1\n'+JSON.stringify({totals,topOversized:rows.filter(r=>r.oversized).slice(0,12)},null,2);
 }
 
 let board = [];
@@ -3298,6 +3344,7 @@ let solarChannelLinks = [];
 let solarAttackLinks = [];
 let lastSolarChannelStateMark = 0;
 const PERF_DEBUG = params.get('perf') === '1';
+const ASSET_PERF_DEBUG = params.get('assetperf') === '1';
 const perfStats = {frames:[], frameTimes:[], boardScans:0, pieceScans:0, solarUpdates:0, spawnUpdates:0, lastReport:0, frame:null, warnings:[], lastBoardScans:0, lastPieceScans:0, resolutionChanges:0, spriteHits:0, spriteMisses:0, spriteVariantsCreated:0, spriteCacheBytes:0};
 let spawnEconomyAccumulator = 0;
 let localSpawnEconomyAccumulator = 0;
@@ -3317,7 +3364,7 @@ function timedTerritorySet(faction,kind){ return timedTerritoryKeysByFaction.get
 
 function perfStartFrame(){
   if(!PERF_DEBUG) return null;
-  return perfStats.frame={start:performance.now(), marks:new Map(), counts:{visiblePieces:0,renderedPieces:0,visibleChunks:0,dirtyChunks:0,filters:0,shadowBlur:0,precomposedPlates:0,uncachedSourceImages:0,smoothingOnSpriteDraws:0,smoothingOffSpriteDraws:0,detailedCooldownRings:0,minimalCooldownIndicators:0,buildingTimerLabels:0,timerTextCacheHits:0,timerTextCacheMisses:0,visibleFogChunks:0,dirtyFogChunks:0,fogChunksRebuilt:0,fogRebuildMs:0,solarLinksVisible:0,solarBeamGeometryRebuilds:0,cachedBeamDraws:0,dynamicBeamPathsCreated:0,decorativeVisualRate:0}};
+  return perfStats.frame={start:performance.now(), marks:new Map(), counts:{visiblePieces:0,renderedPieces:0,visibleChunks:0,dirtyChunks:0,filters:0,shadowBlur:0,precomposedPlates:0,uncachedSourceImages:0,smoothingOnSpriteDraws:0,smoothingOffSpriteDraws:0,detailedCooldownRings:0,minimalCooldownIndicators:0,buildingTimerLabels:0,timerTextCacheHits:0,timerTextCacheMisses:0,visibleFogChunks:0,dirtyFogChunks:0,fogChunksRebuilt:0,fogRebuildMs:0,solarLinksVisible:0,solarBeamGeometryRebuilds:0,cachedBeamDraws:0,dynamicBeamPathsCreated:0,decorativeVisualRate:0,actorBucketsVisited:0,actorRecordsDrawn:0,actorsRebucketed:0,fullActorSorts:0,localBucketSorts:0,wallTileScans:0,cachedWallsDrawn:0,cachedBuildingsDrawn:0,tempRenderAllocations:0}};
 }
 function perfTime(label,fn){
   if(!PERF_DEBUG) return fn();
@@ -3362,6 +3409,9 @@ function trimSpriteCaches(){
   while(precomposedPlateCache.size>SPRITE_CACHE_LIMIT){ const k=precomposedPlateCache.keys().next().value; const v=precomposedPlateCache.get(k); perfStats.spriteCacheBytes-=v?.bytes||0; precomposedPlateCache.delete(k); }
 }
 function clearRenderSpriteCaches(){ spriteVariantCache.clear(); precomposedPlateCache.clear(); perfStats.spriteCacheBytes=0; }
+const assetPerfStats = new Map();
+function assetPerfKeyForGraphic(graphic){ for(const [k,v] of chessGraphicAssets) if(v===graphic) return k; return ''; }
+function noteAssetDraw(graphic){ if(!ASSET_PERF_DEBUG || !graphic) return; const k=assetPerfKeyForGraphic(graphic); if(!k) return; const e=assetPerfStats.get(k) || {draws:0}; e.draws++; assetPerfStats.set(k,e); }
 function sourceAlphaCrop(graphic){
   if(sourceCropCache.has(graphic)) return sourceCropCache.get(graphic);
   const w=graphic.width||1,h=graphic.height||1; let crop={sx:0,sy:0,sw:w,sh:h};
@@ -3375,7 +3425,7 @@ function sourceAlphaCrop(graphic){
 }
 function targetSpriteSize(graphic,metrics){ const z=currentRenderState?.zoomTier||'close'; const q=effectiveRenderDpr; const mult=z==='far'?.72:(z==='medium'?1:1.22); return {w:Math.max(1,Math.round(metrics.targetW*q*mult)),h:Math.max(1,Math.round(metrics.targetH*q*mult)),zoomTier:z}; }
 function getCachedSpriteVariant(factionId,type,graphic,metrics,state='ready',tier=2,outline=false){
-  if(!graphic) return null;
+  if(!graphic) return null; noteAssetDraw(graphic);
   const setting=assetRenderSetting(factionId,type), pixelArt=!!setting.pixelArt, quality=spriteQualityTier(), target=targetSpriteSize(graphic,metrics);
   const k=spriteVariantKey(factionId,type,state,target.zoomTier,quality,pixelArt,outline);
   const cached=spriteVariantCache.get(k);
@@ -3566,6 +3616,7 @@ function rebuildPieceIndexes(reason='rebuild'){
   }
   markPieceStatsDirty();
   invalidateSimulation(reason);
+  markActorIndexDirty();
   return pieceById;
 }
 function indexPiece(p){
@@ -3586,6 +3637,7 @@ function indexPiece(p){
   }
   markPieceStatsDirty();
   invalidateSimulation('piece-index');
+  markActorIndexDirty();
 }
 function deindexPiece(p){
   if(!p) return;
@@ -3601,6 +3653,7 @@ function deindexPiece(p){
   }
   markPieceStatsDirty();
   invalidateSimulation('piece-deindex');
+  markActorIndexDirty();
 }
 function updatePieceTileIndex(p,oldX,oldY){
   if(!p || !p.alive) return;
@@ -3608,6 +3661,7 @@ function updatePieceTileIndex(p,oldX,oldY){
   if(pieceAtTile.get(oldKey)===p) pieceAtTile.delete(oldKey);
   pieceAtTile.set(tileKeyForPiece(p),p);
   invalidateSimulation('piece-move');
+  markActorIndexDirty();
 }
 function setPieceDead(p,reason='dead'){
   if(!p || !p.alive) return false;
@@ -4097,6 +4151,7 @@ function destroyWallAt(x,y,attacker=null){
     t.wallOwner=null;
     t.wallHp=0;
     markLandDirty();
+    markWallIndexDirty();
     return true;
   }
   markLandDirty();
@@ -4761,10 +4816,11 @@ function buildOrRepairWall(x,y,factionIdx){
   if(!inBounds(x,y) || findPieceAt(x,y)) return false;
   const t=tile(x,y);
   if(!terrainOf(t).pass && t.type!=='road' && t.type!=='ruins') return false;
-  if(t.wallOwner===factionIdx){ t.wallHp=1; burst(x,y,factions[factionIdx]?.color || '#dbeafe',4); return true; }
+  if(t.wallOwner===factionIdx){ t.wallHp=1; markWallIndexDirty(); burst(x,y,factions[factionIdx]?.color || '#dbeafe',4); return true; }
   if(t.wallOwner!=null) return false;
   t.wallOwner=factionIdx;
   t.wallHp=1;
+  markWallIndexDirty();
   burst(x,y,factions[factionIdx]?.color || '#dbeafe',8);
   markLandDirty();
   return true;
@@ -8001,7 +8057,7 @@ function drawWallSpriteAt(x,y,f){
   ctx.globalAlpha=.38;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(2,BASE_CELL*.22,BASE_CELL*.52,BASE_CELL*.17,0,0,Math.PI*2);ctx.fill();
   if(asset){
     const h=BASE_CELL*1.62,w=h*(asset.width/Math.max(1,asset.height));
-    ctx.globalAlpha=1;ctx.imageSmoothingEnabled=true;ctx.drawImage(asset,-w/2,-h+BASE_CELL*.38,w,h);
+    ctx.globalAlpha=1;ctx.imageSmoothingEnabled=true;noteAssetDraw(asset);ctx.drawImage(asset,-w/2,-h+BASE_CELL*.38,w,h);
     ctx.globalAlpha=.74;ctx.strokeStyle=f.color;ctx.lineWidth=2.2;ctx.beginPath();ctx.ellipse(0,BASE_CELL*.20,BASE_CELL*.48,BASE_CELL*.17,0,0,Math.PI*2);ctx.stroke();
   } else {
     ctx.globalAlpha=1;ctx.fillStyle='#4b5668';ctx.strokeStyle=f.color;ctx.lineWidth=2;roundRect(ctx,-r,-r*.55,r*2,r*1.15,4);ctx.fill();ctx.stroke();
@@ -8318,58 +8374,73 @@ function drawBuildingTimerRing(p,r){
 function actorDepth(x,y){
   return y * 2048 + x;
 }
+const renderIndex = {piecesByDepthRow:new Map(), buildingsByDepthRow:new Map(), wallsByDepthRow:new Map(), movingActors:[], activeFactionIndexes:[], pieceRevision:-1, wallRevision:-1, factionSignature:'', boundsKey:'', visibleRows:{min:0,max:0}, dirty:true, wallDirty:true, pieceRecords:new Map(), wallRecords:new Map()};
+let renderPieceRevision = 0;
+let renderWallRevision = 0;
+function markActorIndexDirty(){ renderIndex.dirty = true; renderPieceRevision++; }
+function markWallIndexDirty(){ renderIndex.wallDirty = true; renderWallRevision++; }
+function depthRowFor(x,y){ return Math.floor((Number(x)||0)+(Number(y)||0)); }
+function stableActorCompare(a,b){ return (a.depth-b.depth) || (a.kindOrder-b.kindOrder) || (a.x-b.x) || (a.y-b.y) || ((a.id||0)-(b.id||0)); }
+function bucketAdd(map,row,record){ let bucket=map.get(row); if(!bucket){ bucket=[]; map.set(row,bucket); } bucket.push(record); }
+function rebuildPieceRenderIndex(){
+  renderIndex.piecesByDepthRow.clear(); renderIndex.buildingsByDepthRow.clear(); renderIndex.movingActors.length=0; renderIndex.pieceRecords.clear();
+  renderIndex.activeFactionIndexes.length=0;
+  for(const f of factions) if(f?.idx!=null) renderIndex.activeFactionIndexes.push(f.idx);
+  for(const fi of renderIndex.activeFactionIndexes){
+    const list=alivePiecesByFaction[fi] || [];
+    for(const p of list){
+      if(!p?.alive) continue;
+      const building=isBuildingType(p.type), px=p.px ?? p.x, py=p.py ?? p.y;
+      const row=depthRowFor(px,py);
+      const rec={kind:'piece',kindOrder:building?1:2,id:Number(p.id)||0,p,x:px,y:py,row,depth:actorDepth(px + px*.002, py + px*.02),building};
+      renderIndex.pieceRecords.set(p.id,rec); bucketAdd(building?renderIndex.buildingsByDepthRow:renderIndex.piecesByDepthRow,row,rec);
+    }
+  }
+  for(const bucket of renderIndex.piecesByDepthRow.values()){ bucket.sort(stableActorCompare); perfCount('localBucketSorts'); }
+  for(const bucket of renderIndex.buildingsByDepthRow.values()){ bucket.sort(stableActorCompare); perfCount('localBucketSorts'); }
+  renderIndex.pieceRevision=renderPieceRevision; renderIndex.factionSignature=factionConfigSignature(); renderIndex.dirty=false; perfCount('actorsRebucketed');
+}
+function rebuildWallRenderIndex(){
+  renderIndex.wallsByDepthRow.clear(); renderIndex.wallRecords.clear(); normalizeBoard();
+  for(const t of board){ if(!t || t.wallOwner==null) continue; const rec={kind:'wall',kindOrder:0,id:t.y*BOARD_W+t.x,x:t.x,y:t.y,owner:t.wallOwner,row:depthRowFor(t.x,t.y),depth:actorDepth(t.x,t.y)}; renderIndex.wallRecords.set(key(t.x,t.y),rec); bucketAdd(renderIndex.wallsByDepthRow,rec.row,rec); }
+  for(const bucket of renderIndex.wallsByDepthRow.values()) bucket.sort(stableActorCompare);
+  renderIndex.wallRevision=renderWallRevision; renderIndex.wallDirty=false; perfCount('actorsRebucketed');
+}
+function ensureRenderIndex(){ if(renderIndex.dirty || renderIndex.pieceRevision!==renderPieceRevision || renderIndex.factionSignature!==factionConfigSignature()) rebuildPieceRenderIndex(); if(renderIndex.wallDirty || renderIndex.wallRevision!==renderWallRevision) rebuildWallRenderIndex(); }
+function visibleDepthRows(pad=8){ const b=visibleBoardBounds(pad); return {min:Math.max(0,b.left+b.top-pad*2), max:Math.min(BOARD_W+BOARD_H,b.right+b.bottom+pad*2), bounds:b}; }
 function drawActors(){
-  const {left,top,right,bottom}=visibleBoardBounds(3);
-  const piecePad=4;
+  ensureRenderIndex();
+  const {min,max,bounds}=visibleDepthRows(6);
+  const left=bounds.left-5,right=bounds.right+5,top=bounds.top-5,bottom=bounds.bottom+5;
   const visiblePieces=renderScratch.pieces; visiblePieces.length=0;
   perfTime('actorGather',()=>{
-    const minX=left-piecePad,maxX=right+piecePad,minY=top-piecePad,maxY=bottom+piecePad;
-    const factionsToCheck=factions.map(f=>f?.idx).filter(i=>i!=null);
-    for(const fi of factionsToCheck){
-      const list=alivePiecesByFaction[fi] || [];
-      for(const p of list){
-        if(!p.alive) continue;
-        const px=p.px ?? p.x, py=p.py ?? p.y;
-        if(px<minX || px>maxX || py<minY || py>maxY) continue;
-        if(p.faction!==PLAYER && isShadowFoggedForRender(p.x,p.y)) continue;
-        visiblePieces.push(p);
-      }
+    for(let row=min; row<=max; row++){
+      const pb=renderIndex.piecesByDepthRow.get(row); if(pb){ perfCount('actorBucketsVisited'); for(const rec of pb){ const p=rec.p, px=p.px ?? p.x, py=p.py ?? p.y; if(px>=left&&px<=right&&py>=top&&py<=bottom&&!(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) visiblePieces.push(p); } }
+      const bb=renderIndex.buildingsByDepthRow.get(row); if(bb){ perfCount('actorBucketsVisited'); for(const rec of bb){ const p=rec.p; if(p.x>=left&&p.x<=right&&p.y>=top&&p.y<=bottom&&!(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) visiblePieces.push(p); } }
     }
+    for(const p of visiblePieces){ const rec=renderIndex.pieceRecords.get(p.id); if(!rec) continue; const px=p.px ?? p.x, py=p.py ?? p.y, row=depthRowFor(px,py); if(row!==rec.row){ rec.depth=actorDepth(px + px*.002, py + px*.02); perfCount('actorsRebucketed'); markActorIndexDirty(); } }
   });
   perfCount('visiblePieces', visiblePieces.length);
   const labelIds = computeNameLabelPieceIds(visiblePieces);
-  const actors=renderScratch.actors; actors.length=0;
-  perfTime('actorGather',()=>{
-    for(let y=top;y<=bottom;y++) for(let x=left;x<=right;x++){
-      if(!inBounds(x,y)) continue;
-      const t=tile(x,y);
-      if(t.wallOwner==null || isShadowFoggedForRender(x,y)) continue;
-      actors.push(['wall',x,y,t.wallOwner,actorDepth(x,y)]);
-    }
-    for(const p of visiblePieces){
-      const px=p.px ?? p.x, py=p.py ?? p.y;
-      actors.push(['piece',p,0,0,actorDepth(px + px*.002, py + px*.02)]);
-    }
-    for(const action of pendingPlayerActions){
-      if(action.kind !== 'spawn' || action.faction !== PLAYER) continue;
-      if(action.x<left-piecePad || action.x>right+piecePad || action.y<top-piecePad || action.y>bottom+piecePad) continue;
-      actors.push(['spawnGhost',action,0,0,actorDepth(action.x + action.x*.002, action.y + action.x*.02)]);
-    }
-  });
-  perfTime('actorSort',()=>actors.sort((a,b)=>a[4]-b[4] || ((a[1]?.x ?? a[1])||0)-((b[1]?.x ?? b[1])||0)));
+  perfTime('actorOrdering',()=>{});
   perfTime('pieceDrawing',()=>{
-    for(const actor of actors){
-      if(actor[0]==='wall'){
-        const f=factions[actor[3]]||{id:'neutral',color:'#dbeafe'};
-        drawWallSpriteAt(actor[1],actor[2],f);
-      } else if(actor[0]==='spawnGhost'){
-        drawPendingSpawnGhost(actor[1]);
-      } else {
-        drawSinglePiece(actor[1],labelIds);
+    const actors=renderScratch.actors;
+    for(let row=min; row<=max; row++){
+      actors.length=0;
+      const wb=renderIndex.wallsByDepthRow.get(row); if(wb){ perfCount('actorBucketsVisited'); for(const rec of wb){ if(rec.x<left||rec.x>right||rec.y<top||rec.y>bottom||isShadowFoggedForRender(rec.x,rec.y)) continue; actors.push(rec); } }
+      const bb=renderIndex.buildingsByDepthRow.get(row); if(bb){ perfCount('actorBucketsVisited'); for(const rec of bb){ const p=rec.p; if(!p.alive||p.x<left||p.x>right||p.y<top||p.y>bottom||(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) continue; rec.x=p.px ?? p.x; rec.y=p.py ?? p.y; rec.depth=actorDepth(rec.x + rec.x*.002, rec.y + rec.x*.02); actors.push(rec); } }
+      const pb=renderIndex.piecesByDepthRow.get(row); if(pb){ perfCount('actorBucketsVisited'); for(const rec of pb){ const p=rec.p, px=p.px ?? p.x, py=p.py ?? p.y; if(!p.alive||px<left||px>right||py<top||py>bottom||(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) continue; rec.x=px; rec.y=py; rec.depth=actorDepth(px + px*.002, py + px*.02); actors.push(rec); } }
+      for(const action of pendingPlayerActions){ if(action.kind==='spawn'&&action.faction===PLAYER&&depthRowFor(action.x,action.y)===row&&action.x>=left&&action.x<=right&&action.y>=top&&action.y<=bottom){ actors.push({kind:'spawnGhost',kindOrder:2.5,id:Number(action.pieceId)||0,x:action.x,y:action.y,depth:actorDepth(action.x + action.x*.002, action.y + action.x*.02),action}); perfCount('tempRenderAllocations'); } }
+      if(actors.length>1){ actors.sort(stableActorCompare); perfCount('localBucketSorts'); }
+      for(const actor of actors){
+        if(actor.kind==='wall'){ drawWallSpriteAt(actor.x,actor.y,factions[actor.owner]||{id:'neutral',color:'#dbeafe'}); perfCount('cachedWallsDrawn'); }
+        else if(actor.kind==='spawnGhost') drawPendingSpawnGhost(actor.action);
+        else { drawSinglePiece(actor.p,labelIds); if(actor.building) perfCount('cachedBuildingsDrawn'); }
+        perfCount('actorRecordsDrawn');
       }
     }
-  });
-}
+    actors.length=0;
+  });}
 
 function drawPieces(){
   drawActors();
@@ -9345,11 +9416,13 @@ function updatePerfDebug(dt){
 frame avg ${avg.toFixed(2)}ms p95 ${p95.toFixed(2)}ms last ${(last.total||0).toFixed(2)}ms
 ${line('gameTick')}  ${line('aiTick')}  ${line('specialLandRules')}
 ${line('staticTerrain')}  ${line('territory')}  dirty chunks ${(m.dirtyChunkRebuild||0).toFixed(2)}ms
-${line('actorGather')}  ${line('actorSort')}  ${line('pieceDrawing')}  ${line('effects')}  ${line('minimap')}
+${line('actorGather')}  ${line('actorOrdering')}  ${line('pieceDrawing')}  ${line('effects')}  ${line('minimap')}
 effective DPR ${effectiveRenderDpr.toFixed(2)} render scale ${dynamicRenderScale.toFixed(2)} mode ${graphicsQualityMode}
 canvas internal ${W}x${H} css ${canvasCssW}x${canvasCssH} resolution changes ${perfStats.resolutionChanges}
 sprite hits ${perfStats.spriteHits} misses ${perfStats.spriteMisses} variants ${perfStats.spriteVariantsCreated} cache ${(perfStats.spriteCacheBytes/1048576).toFixed(1)}MB
 plates/frame ${c.precomposedPlates||0} uncached images/frame ${c.uncachedSourceImages||0} smooth on/off ${c.smoothingOnSpriteDraws||0}/${c.smoothingOffSpriteDraws||0}
+actor buckets ${c.actorBucketsVisited||0} records ${c.actorRecordsDrawn||0} rebucketed ${c.actorsRebucketed||0} full sorts ${c.fullActorSorts||0} local sorts ${c.localBucketSorts||0} wall scans ${c.wallTileScans||0}
+walls/buildings cached drawn ${c.cachedWallsDrawn||0}/${c.cachedBuildingsDrawn||0} temp alloc ${c.tempRenderAllocations||0}
 visible pieces ${c.visiblePieces||0} rendered ${c.renderedPieces||0} visible chunks ${c.visibleChunks||0} rebuilt ${c.dirtyChunks||0}
 cooldowns detailed/minimal ${c.detailedCooldownRings||0}/${c.minimalCooldownIndicators||0} building labels ${c.buildingTimerLabels||0} timer cache h/m ${c.timerTextCacheHits||0}/${c.timerTextCacheMisses||0}
 fog visible ${c.visibleFogChunks||0} dirty ${c.dirtyFogChunks||0} rebuilt ${c.fogChunksRebuilt||0} rebuild ms ${(c.fogRebuildMs||0).toFixed(2)}
