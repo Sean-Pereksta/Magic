@@ -2911,6 +2911,44 @@
     return winAwardPromise;
   }
 
+  function defeatAllEnemies(){
+    catHealth = 0;
+    setTileEffect(catPos.x, catPos.y, "blood");
+    const enemyGroups = [rats, oxen, rabbits, vultures, ratKings, termites, stinkRats, fleas];
+    for (const group of enemyGroups){
+      for (const enemy of group){
+        if (!enemy) continue;
+        if (Number.isFinite(enemy.x) && Number.isFinite(enemy.y)) setTileEffect(enemy.x, enemy.y, "blood");
+        enemy.health = 0;
+        if (Object.prototype.hasOwnProperty.call(enemy, "lifetime")) enemy.lifetime = 0;
+      }
+    }
+  }
+
+  async function handleCatDefeated(){
+    if (handleCatDefeated.done) return;
+    handleCatDefeated.done = true;
+    defeatAllEnemies();
+    gameStarted = false;
+    stopGameMusic();
+    const st = document.getElementById("status");
+    if (st){
+      st.textContent = `🎉 Congratulations! The cats and enemies are defeated. Total wins: ${playerWins}`;
+      st.style.color = "#14532d";
+      st.style.fontSize = "24px";
+      st.style.fontWeight = "bold";
+      st.style.background = "#ecfdf5";
+      st.style.padding = "10px";
+      st.style.border = "2px solid #22c55e";
+      st.style.marginTop = "10px";
+    }
+    const returnButton = document.getElementById("returnButton");
+    if (returnButton) returnButton.style.display = "block";
+    const awarded = await awardWinOnce();
+    if (st) st.textContent = `🎉 Congratulations! The cats and enemies are defeated. Total wins: ${playerWins}${awarded ? "" : " (win count could not be updated)"}`;
+    requestRender("cat defeated");
+  }
+
   function getSelectionDocId(uidVal){
     return `selection_${uidVal}`;
   }
@@ -4345,10 +4383,7 @@
           showProjectileImpact(catPos.x, catPos.y);
           catHealth -= damage;
           writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt: Date.now() } });
-          if (catHealth <= 0){
-            document.getElementById("status").textContent = "🎉 Mice win!";
-            document.getElementById("returnButton").style.display = "block";
-          }
+          if (catHealth <= 0) handleCatDefeated().catch(()=>{});
           attacked = true;
         }
 
@@ -6390,10 +6425,7 @@
           const cat = data.cat || {};
           catPos = { x: (cat.x ?? catPos.x), y: (cat.y ?? catPos.y) };
           if (typeof cat.health === "number") catHealth = cat.health;
-          if (previousCatHealth > 0 && catHealth <= 0){
-            setTileEffect(catPos.x, catPos.y, "blood");
-            awardWinOnce().catch(()=>{});
-          }
+          if (previousCatHealth > 0 && catHealth <= 0) handleCatDefeated().catch(()=>{});
           catFacingDir = cat.facing || catFacingDir;
           if (Object.prototype.hasOwnProperty.call(data, "selectionDeadline")) selectionDeadlineAt = typeof data.selectionDeadline === "number" ? data.selectionDeadline : null;
           if (Object.prototype.hasOwnProperty.call(data, "selectionAssetsReadyAt")) selectionAssetsReadyAt = typeof data.selectionAssetsReadyAt === "number" ? data.selectionAssetsReadyAt : null;
@@ -7114,7 +7146,7 @@
     setInterval(() => {
       if (!gameStarted) return;
 
-      if (catHealth <= 0) awardWinOnce().catch(()=>{});
+      if (catHealth <= 0) handleCatDefeated().catch(()=>{});
 
       const anyAlive = Object.values(players).some(p => (p.alive ?? true) !== false);
 
