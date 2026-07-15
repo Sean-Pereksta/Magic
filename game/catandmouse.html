@@ -1865,6 +1865,7 @@
         delete structureShields[key];
         structures.delete(key);
         removeFromStructureIndex(x, y);
+        clearTowerCooldownsAt(x, y);
         setTileEffect(x, y, "rubble");
       } else {
         const symbol = data.type || grid[y]?.[x];
@@ -2210,12 +2211,12 @@
     11:{symbol:"🐇",name:"Rabbit Den",cost:22,hp:20,minWins:8},
     12:{symbol:"⚡",name:"Tesla Tower",cost:22,hp:18,minWins:12},
     13:{symbol:"☄️",name:"Ultra Laser",cost:35,hp:18,minWins:15},
-    14:{symbol:"🛡️",name:"Shield Tower",cost:22,hp:22,minWins:20,tooltip:"Protects all structures within 3 Manhattan tiles. Shields absorb 40% max HP (min 10), break for 3s, then recharge 15%/s."},
-    15:{symbol:"🟢",name:"Slime Tower",cost:20,hp:20,minWins:25,tooltip:"Slows all registered hostile types; bosses receive reduced control instead of immunity."},
+    14:{symbol:"🛡️",name:"Shield Tower",cost:14,hp:30,minWins:20,tooltip:"Protects structures within 4 Manhattan tiles, including itself. Shields absorb 60% max HP (min 15), break for 3s, then recharge 18%/s with overlap bonuses."},
+    15:{symbol:"🟢",name:"Slime Tower",cost:10,hp:20,minWins:25,range:7,cooldownMs:1000,tooltip:"Continuously slows nearby enemies in a faint aura; bosses receive reduced control instead of immunity."},
     16:{symbol:"🔮",name:"Teleporter Crystal",cost:16,hp:16,minWins:15},
     17:{symbol:"🌰",name:"Acorn Tower",cost:32,hp:18,minWins:18},
-    18:{symbol:"🪭",name:"Whirlwind Fan",cost:18,hp:20,minWins:12,range:6,cooldownMs:3000,tooltip:"Aims a visible gust at enemy clusters; pushes rats/stink rats/termites/fleas 2 tiles, vultures 3, bosses 1."},
-    19:{symbol:"🕸️",name:"Web Launcher",cost:18,hp:20,minWins:15,range:6,cooldownMs:9000,tooltip:"Fires a visible web projectile. Standard enemies trap 3s then 50% slow 3s; oxen/rat kings trap 1.5s then 25% slow 3s."},
+    18:{symbol:"🪭",name:"Whirlwind Fan",cost:9,hp:20,minWins:12,range:7,cooldownMs:2000,tooltip:"Aims visible gust lanes at enemy clusters; pushes small enemies 2 tiles, vultures 3, bosses 1, and briefly slows."},
+    19:{symbol:"🕸️",name:"Web Launcher",cost:9,hp:20,minWins:15,range:7,cooldownMs:5000,tooltip:"Fires a visible web projectile. Standard enemies trap 3s then 50% slow 3s; oxen/rat kings trap 1.5s then 75% slow 3s."},
     20:{symbol:"🥁", name:"Rally Drum", cost:16, hp:22, minWins:10,tooltip:"Shows a gold support ring and pulses nearby supported units/towers when buffing."}
   };
   const STRUCTURE_VISUALS = {
@@ -2243,15 +2244,22 @@
       unknownLabel.textContent = symbol || "?";
       wrap.appendChild(unknownLabel);
     }
-    if ((shield ?? 0) > 0){
+    if (symbol === "🛡️"){
+      const radius = document.createElement("div");
+      radius.className = "shield-radius";
+      radius.style.cssText = "position:absolute;left:-58px;top:-58px;width:150px;height:150px;border:2px solid rgba(56,189,248,.22);background:rgba(56,189,248,.06);border-radius:50%;pointer-events:none;z-index:0;";
+      wrap.appendChild(radius);
+    }
+    const shieldDelay = opts.shieldBrokenAt && Date.now() - opts.shieldBrokenAt < 3000;
+    if ((shield ?? 0) > 0 || shieldDelay){
       if (symbol === "🛡️") wrap.classList.add("shield-active");
       const sh = document.createElement("div");
       sh.className = "ring";
       sh.style.left = "3px"; sh.style.top = "6px";
       sh.style.width = "28px"; sh.style.height = "18px";
-      sh.style.border = "2px solid rgba(125,211,252,.95)";
-      sh.style.background = "rgba(125,211,252,.14)";
-      sh.style.boxShadow = "0 0 10px rgba(56,189,248,.35)";
+      sh.style.border = shieldDelay ? "2px dashed rgba(147,197,253,.75)" : "2px solid rgba(125,211,252,.95)";
+      sh.style.background = shieldDelay ? "rgba(59,130,246,.08)" : "rgba(125,211,252,.14)";
+      sh.style.boxShadow = shieldDelay ? "0 0 10px rgba(96,165,250,.25)" : "0 0 10px rgba(56,189,248,.35)";
       sh.style.zIndex = "6";
       wrap.appendChild(sh);
     }
@@ -2328,8 +2336,18 @@
   let combatVfx = [];
   let lastGeneratorPayoutAt = Date.now();
   let lastAdvPointAt = Date.now();
-  let lastAcornShotAt = 0;
-  let lastFanBurstAt = 0;
+  const towerCooldowns = new Map();
+  let shieldTickInFlight = false;
+  function towerCooldownKey(type, x, y){ return `${type}:${x}_${y}`; }
+  function isTowerReady(type, x, y, cooldownMs, now = Date.now()){
+    return now - (towerCooldowns.get(towerCooldownKey(type, x, y)) || 0) >= cooldownMs;
+  }
+  function markTowerCooldown(type, x, y, now = Date.now()){ towerCooldowns.set(towerCooldownKey(type, x, y), now); }
+  function clearTowerCooldownsAt(x, y){
+    const suffix = `:${x}_${y}`;
+    for (const key of Array.from(towerCooldowns.keys())) if (key.endsWith(suffix)) towerCooldowns.delete(key);
+    for (const key of Array.from(slimeAuraMemory?.keys?.() || [])) if (key.includes(`:${x}_${y}:`)) slimeAuraMemory.delete(key);
+  }
   let unlockMessageTimeout = null;
   let focusMode = false;
   function showToast(message, type="info"){
@@ -2516,7 +2534,7 @@
     });
   }
 
-  let lastWebShotAt = 0;
+  const slimeAuraMemory = new Map();
   const firebaseUnsubscribers = [];
   let playerHeartbeatInterval = null;
   const wallHealQueue = new Map();
@@ -2712,7 +2730,7 @@
   const STRUCTURE_MAX_HP = {
     "🧱": 18, "🔫": 5, "🪳": 10, "🏭": 5,
     "💎": 75, "🧊": 375, "🗼": 25, "🐦‍🔥": 20, "🚀": 20, "🛠️": 24,
-    "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 22, "🟢": 20, "🔮": 16, "🌰": 18, "🪭": 20, "🕸️": 20, "🥁": 22
+    "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 30, "🟢": 20, "🔮": 16, "🌰": 18, "🪭": 20, "🕸️": 20, "🥁": 22
   };
 
   const CAT_ABILITY_DEFS = {
@@ -4512,54 +4530,122 @@
   // ============================================================
   // Structures
   // ============================================================
-  async function placeStructure(dir){
-    if (!gameStarted || !isAlive || !selectedBuild) return;
+  let buildPurchasePromise = null;
 
-        const def = BUILD_DEFS[selectedBuild];
-    if (!def) return;
-    if (playerWins < (def.minWins || 0)){ showToast?.(`Requires ${def.minWins} Wins`, "warn"); return; }
-    const cost = def.cost;
-    if (!mobileBuildOrder.includes(selectedBuild)) return;
-    if (cheeseCount < cost) return;
-
+  function getBuildDestination(dir){
     let tx = playerPos.x, ty = playerPos.y;
     if (dir==="w") ty--;
     if (dir==="a") tx--;
     if (dir==="s") ty++;
     if (dir==="d") tx++;
-    if (tx<0 || ty<0 || tx>=gridSize || ty>=gridSize) return;
-
-    if (isCheesePickupCell(grid[ty][tx])){
-      delete cheesePickupExpiryByCell[`${tx}_${ty}`];
-      grid[ty][tx] = "";
-      await runtimeDeleteDoc(ccRef(ID.cheese(tx, ty))).catch(()=>{});
-    }
-    if (grid[ty][tx] !== "") return;
-
-        let symbol = def.symbol;
-    let health = def.hp;
-
-    const key = `${tx}_${ty}`;
-    grid[ty][tx] = symbol;
-    structureHealth[key] = health;
-
-    cheeseCount -= cost;
-    document.getElementById("cheeseCount").textContent = cheeseCount;
-    savePosition();
-
-    // ✅ store under crowncouncil
-    await runtimeSetDoc(ccRef(ID.structure(tx,ty)), {
-      kind: "structure",
-      x: tx,
-      y: ty,
-      type: symbol,
-      health,
-      placedBy: uid,
-      placedAt: Date.now()
-    }, { merge:true });
-
-    requestRender("placeStructure");
+    return { tx, ty };
   }
+
+  function isLegallyBuildableCell(x, y, snapshotValue = grid[y]?.[x]){
+    if (x<0 || y<0 || x>=gridSize || y>=gridSize) return false;
+    return snapshotValue === "" || isCheesePickupCell(snapshotValue);
+  }
+
+  function refreshBuildAffordability(){
+    lastRenderedBuildAffordabilityKey = "";
+    renderMobileBuildDock?.("purchase");
+    renderBuildControls?.("purchase");
+    updateHudBuildDisplay?.();
+    updateMobileBuildDisplay?.();
+  }
+
+  function showCheeseSpend(amount, x = playerPos.x, y = playerPos.y){
+    if (persistentEntityLayer && Number.isFinite(amount) && amount > 0){
+      const el = document.createElement("div");
+      el.className = "reward-float";
+      el.textContent = `-${amount}`;
+      el.style.color = "#f97316";
+      positionIsoElement(el, x, y, 34);
+      persistentEntityLayer.appendChild(el);
+      setTimeout(() => el.remove(), 950);
+    } else {
+      showToast?.(`-${amount} cheese`, "info");
+    }
+  }
+
+  async function commitSoloStructurePurchase({ tx, ty, def, cost }){
+    const key = `${tx}_${ty}`;
+    if (!isAlive) return { ok:false, reason:"dead" };
+    if (!isBuildUnlockedForLocalPlayer(selectedBuild)) return { ok:false, reason:"locked" };
+    if ((players[uid]?.cheese ?? cheeseCount) < cost) return { ok:false, reason:"funds" };
+    if (!isLegallyBuildableCell(tx, ty)) return { ok:false, reason:"tile" };
+    if (structures.has(key) || STRUCTURE_TYPES.has(grid[ty]?.[tx])) return { ok:false, reason:"tile" };
+    const nextCheese = (players[uid]?.cheese ?? cheeseCount) - cost;
+    const structureData = { kind:"structure", x:tx, y:ty, type:def.symbol, health:def.hp, placedBy:uid, placedAt:Date.now() };
+    if (isCheesePickupCell(grid[ty][tx])) applyLocalRuntimeMutation("delete", ccRef(ID.cheese(tx, ty)), {});
+    applyLocalRuntimeMutation("update", ccRef(ID.player(uid)), { uid, x:playerPos.x, y:playerPos.y, facing:playerFacing || "se", alive:isAlive, cheese:nextCheese, updatedAt:Date.now() });
+    applyLocalRuntimeMutation("set", ccRef(ID.structure(tx, ty)), structureData);
+    return { ok:true, nextCheese, structure:structureData };
+  }
+
+  async function commitMultiplayerStructurePurchase({ tx, ty, buildId, def, cost }){
+    return runTransaction(db, async tr => {
+      const playerRef = ccRef(ID.player(uid));
+      const structureRef = ccRef(ID.structure(tx, ty));
+      const cheeseRef = ccRef(ID.cheese(tx, ty));
+      const playerSnap = await tr.get(playerRef);
+      const structureSnap = await tr.get(structureRef);
+      const cheeseSnap = isCheesePickupCell(grid[ty]?.[tx]) ? await tr.get(cheeseRef) : null;
+      const player = playerSnap.exists() ? (playerSnap.data() || {}) : {};
+      const currentCheese = Number(player.cheese ?? cheeseCount) || 0;
+      if (player.alive === false || !isAlive) return { ok:false, reason:"dead" };
+      if (!isBuildUnlockedForLocalPlayer(buildId)) return { ok:false, reason:"locked" };
+      if (currentCheese < cost) return { ok:false, reason:"funds" };
+      if (structureSnap.exists()) return { ok:false, reason:"tile" };
+      if (!isLegallyBuildableCell(tx, ty)) return { ok:false, reason:"tile" };
+      const nextCheese = currentCheese - cost;
+      const structureData = { kind:"structure", x:tx, y:ty, type:def.symbol, health:def.hp, placedBy:uid, placedAt:Date.now() };
+      tr.set(playerRef, { kind:"player", uid, displayName:username, nameKey:usernameNorm, cheese:nextCheese, online:true, lastSeen:Date.now(), updatedAt:Date.now() }, { merge:true });
+      tr.set(structureRef, structureData);
+      if (cheeseSnap?.exists()) tr.delete(cheeseRef);
+      return { ok:true, nextCheese, structure:structureData };
+    });
+  }
+
+  async function placeStructure(dir){
+    if (!gameStarted || !isAlive || !selectedBuild || buildPurchasePromise) return;
+    const buildId = selectedBuild;
+    const def = BUILD_DEFS[buildId];
+    if (!def) return;
+    if (playerWins < (def.minWins || 0)){ showToast?.(`Requires ${def.minWins} Wins`, "warn"); return; }
+    if (!mobileBuildOrder.includes(buildId)) return;
+    const cost = def.cost;
+    if (cheeseCount < cost){ showToast?.("Not enough cheese.", "warn"); return; }
+    const { tx, ty } = getBuildDestination(dir);
+    if (!isLegallyBuildableCell(tx, ty)){ showToast?.("That tile is no longer available.", "warn"); return; }
+
+    buildPurchasePromise = (async () => {
+      const result = soloMode
+        ? await commitSoloStructurePurchase({ tx, ty, def, cost })
+        : await commitMultiplayerStructurePurchase({ tx, ty, buildId, def, cost });
+      if (!result?.ok){
+        showToast?.(result?.reason === "funds" ? "Not enough cheese." : result?.reason === "tile" ? "That tile is no longer available." : "Building could not be placed.", "warn");
+        return;
+      }
+      const data = result.structure;
+      if (isCheesePickupCell(grid[ty]?.[tx])) delete cheesePickupExpiryByCell[`${tx}_${ty}`];
+      grid[ty][tx] = data.type;
+      structureHealth[`${tx}_${ty}`] = data.health;
+      structures.set(`${tx}_${ty}`, { x:tx, y:ty, type:data.type, health:data.health });
+      addToStructureIndex(tx, ty, data.type, data.health);
+      markBlockedGridDirty();
+      markStructureIndexDirty();
+      syncLocalCheese(result.nextCheese);
+      refreshBuildAffordability();
+      showCheeseSpend(cost, playerPos.x, playerPos.y);
+      requestRender("placeStructureConfirmed");
+    })().catch(err => {
+      console.warn("Structure purchase failed", err);
+      showToast?.("Building could not be placed.", "warn");
+    }).finally(() => { buildPurchasePromise = null; });
+    return buildPurchasePromise;
+  }
+
 
 
   function isWithinBeaconAura(x, y, range = 2){
@@ -4593,13 +4679,13 @@
     const shield = structureShields[key] ?? 0;
     if (shield > 0){
       const used = Math.min(shield, finalDamage);
-      structureShields[key] = shield - used;
+      const nextShield = Math.max(0, shield - used);
+      structureShields[key] = nextShield;
       finalDamage -= used;
       addCombatVfx(x, y, "🛡️", "vfx-pop", 420, 14);
-      if (structureShields[key] <= 0){
+      if (shield > 0 && nextShield <= 0){
         structureShieldBrokenAt[key] = Date.now();
         addCombatVfx(x, y, "💠", "vfx-explosion", 700, 18);
-        delete structureShields[key];
       }
     }
 
@@ -4609,6 +4695,7 @@
       delete structureHealth[key];
       delete structureShields[key];
       delete structureShieldBrokenAt[key];
+      clearTowerCooldownsAt(x, y);
       markBlockedGridDirty();
       await runtimeDeleteDoc(ccRef(ID.structure(x,y)));
       markStructureIndexDirty();
@@ -6045,7 +6132,68 @@
     return best;
   }
 
+  function shieldCoverageForStructure(st, shieldTowers){
+    return shieldTowers.filter(sh => Math.abs(sh.x-st.x)+Math.abs(sh.y-st.y) <= 4);
+  }
+
+  async function shieldTowerTick(){
+    if (shieldTickInFlight) return;
+    shieldTickInFlight = true;
+    try{
+      const now = Date.now();
+      const shieldTowers = getStructuresByType("🛡️");
+      const all = getAllStructures();
+      const changed = [];
+      for (const st of all){
+        const key = `${st.x}_${st.y}`;
+        const supports = shieldCoverageForStructure(st, shieldTowers);
+        if (!supports.length){ delete structureShields[key]; continue; }
+        const maxHp = STRUCTURE_MAX_HP[st.type] || structureHealth[key] || 25;
+        const extra = Math.max(0, supports.length - 1);
+        const capacityBonus = Math.min(0.60, extra * 0.20);
+        const rechargeBonus = Math.min(0.45, extra * 0.15);
+        const maxShield = Math.max(15, Math.ceil(maxHp * 0.60 * (1 + capacityBonus)));
+        const current = Math.min(maxShield, Math.max(0, structureShields[key] || 0));
+        const brokenAt = structureShieldBrokenAt[key] || 0;
+        if (current <= 0 && brokenAt && now - brokenAt < 3000) continue;
+        const next = Math.min(maxShield, current + maxShield * 0.18 * (1 + rechargeBonus));
+        if (Math.round(next) !== Math.round(current)){
+          structureShields[key] = next;
+          if (current <= 0) structureShieldBrokenAt[key] = 0;
+          changed.push({ x:st.x, y:st.y, shield:Math.round(next), maxShield, shieldBrokenAt:structureShieldBrokenAt[key] || 0, supports:supports.length });
+          addCombatVfx(st.x, st.y, "🛡️", "vfx-pop", 300, 11);
+        }
+      }
+      if (changed.length && !soloMode){
+        const batch = writeBatch(db);
+        for (const c of changed) batch.update(ccRef(ID.structure(c.x,c.y)), { shield:c.shield, maxShield:c.maxShield, shieldBrokenAt:c.shieldBrokenAt, shieldSupports:c.supports, updatedAt:now });
+        await batch.commit();
+      } else if (changed.length){
+        for (const c of changed) applyLocalRuntimeMutation("update", ccRef(ID.structure(c.x,c.y)), { shield:c.shield, maxShield:c.maxShield, shieldBrokenAt:c.shieldBrokenAt, shieldSupports:c.supports });
+      }
+    } finally { shieldTickInFlight = false; }
+  }
+
+  function isValidEnemyDestination(x, y){
+    return x>=0 && y>=0 && x<gridSize && y<gridSize && !STRUCTURE_TYPES.has(grid[y]?.[x]);
+  }
+  function pushDestination(srcX, srcY, targetX, targetY, maxPush){
+    const dx = Math.sign(targetX-srcX), dy = Math.sign(targetY-srcY);
+    let best = { x:targetX, y:targetY };
+    for (let step=1; step<=maxPush; step++){
+      const nx = targetX + dx * step, ny = targetY + dy * step;
+      if (!isValidEnemyDestination(nx, ny)) break;
+      best = { x:nx, y:ny };
+    }
+    return best;
+  }
+
+  function nearbyEnemyTargets(x, y, range){
+    return listCombatEnemies().filter(u => Math.abs(u.enemy.x-x)+Math.abs(u.enemy.y-y) <= range);
+  }
+
   async function specialStructureTick(){
+    await shieldTowerTick();
     rabbitShots = [];
     // cheese farm spawn: every 20s each farm can create one nearby pickup
     if (!window.__lastFarmSpawn || Date.now() - window.__lastFarmSpawn > 20000){
@@ -6064,27 +6212,6 @@
 
     for (const s of getAllStructures()){
         const x = s.x, y = s.y, sym = s.type;
-        if (sym === "🛡️"){
-          const now = Date.now();
-          const shieldTowers = getStructuresByType("🛡️");
-          for (const st of getAllStructures()){
-            const tx = st.x, ty = st.y, k = `${tx}_${ty}`;
-            const maxHp = STRUCTURE_MAX_HP[grid[ty]?.[tx]] || structureHealth[k] || 25;
-            const supports = shieldTowers.filter(sh => Math.abs(sh.x-tx)+Math.abs(sh.y-ty) <= 3);
-            if (!supports.length) continue;
-            const maxShield = Math.max(10, Math.ceil(maxHp * 0.40));
-            const current = Math.min(maxShield, structureShields[k] || 0);
-            const brokenAt = structureShieldBrokenAt?.[k] || 0;
-            if (current <= 0 && brokenAt && now - brokenAt < 3000) continue;
-            const overlapBonus = Math.min(0.5, Math.max(0, supports.length - 1) * 0.25);
-            const next = Math.min(maxShield, current + Math.max(1, Math.ceil(maxShield * 0.15 * (1 + overlapBonus) * 2)));
-            if (Math.abs(next - current) >= 1){
-              structureShields[k] = next;
-              await runtimeUpdateDoc(ccRef(ID.structure(tx,ty)), { shield:next, maxShield, shieldBrokenAt: current <= 0 ? 0 : brokenAt, updatedAt:now });
-              addCombatVfx(tx, ty, "🛡️", "vfx-pop", 350, 12);
-            }
-          }
-        }
         if (sym === "☄️"){
           if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
           const target = nearestEnemyFrom(x,y,8);
@@ -6121,86 +6248,101 @@
             await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
           }
         }
-        if (sym === "🟢"){
-          for (const unit of listCombatEnemies()){
-            const d=Math.abs(unit.enemy.x-x)+Math.abs(unit.enemy.y-y);
-            if (d<=6){
-              const boss = enemyRegistryEntry(unit.kind)?.category === "boss";
-              unit.enemy.slowedUntil = Date.now() + (boss ? 2200 : 3500);
+        if (sym === "🟢" && isTowerReady(sym, x, y, BUILD_DEFS[15].cooldownMs || 1000)){
+          if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
+          const now = Date.now();
+          addCombatVfx(x, y, "🟢", "vfx-pop", 260, 10);
+          for (const unit of nearbyEnemyTargets(x, y, BUILD_DEFS[15].range || 7)){
+            const boss = enemyRegistryEntry(unit.kind)?.category === "boss";
+            const mult = boss ? 0.80 : 0.55;
+            const nextUntil = now + 2500;
+            const memKey = `${unit.kind}:${unit.enemy.id || unit.enemy.docId}:${x}_${y}:${mult}`;
+            const prev = slimeAuraMemory.get(memKey) || 0;
+            const currentUntil = unit.enemy.slowedUntil || 0;
+            const shouldWrite = !prev || Math.abs((unit.enemy.slowMultiplier || mult) - mult) > 0.01 || currentUntil - now < 900;
+            if (shouldWrite){
+              unit.enemy.slowedUntil = nextUntil;
+              unit.enemy.slowMultiplier = mult;
+              slimeAuraMemory.set(memKey, now);
               const ref = enemyDocRef(unit.kind, unit.enemy.id, unit.enemy);
-              if (ref) await runtimeUpdateDoc(ref, { slowedUntil:unit.enemy.slowedUntil, slowMultiplier: boss ? 0.85 : 0.55, updatedAt:Date.now() });
+              if (ref) await runtimeUpdateDoc(ref, { slowedUntil:nextUntil, slowMultiplier:mult, updatedAt:now });
               addCombatVfx(unit.enemy.x, unit.enemy.y, "🟢", "vfx-pop", 500, 14);
             }
           }
+          markTowerCooldown(sym, x, y, now);
         }
-        if (sym === "🌰" && Date.now() - lastAcornShotAt >= 10000){
+        if (sym === "🌰" && isTowerReady(sym, x, y, 10000)){
           if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
           const enemies = listCombatEnemies();
           const target = enemies.sort((a,b)=>(b.enemy.health||0)-(a.enemy.health||0))[0];
           if (target){
             if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:target.enemy.x,y:target.enemy.y});
             await damageEnemyUnit({ ...target.enemy, kind: target.kind }, 55);
-            lastAcornShotAt = Date.now();
+            markTowerCooldown(sym, x, y);
           } else if (catHealth > 0){
             catHealth -= 45;
-            lastAcornShotAt = Date.now();
+            markTowerCooldown(sym, x, y);
             await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
           }
         }
-        if (sym === "🕸️" && Date.now() - lastWebShotAt >= (BUILD_DEFS[19].cooldownMs || 9000)){
+        if (sym === "🕸️" && isTowerReady(sym, x, y, BUILD_DEFS[19].cooldownMs || 5000)){
           if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
-          const target = nearestEnemyFrom(x,y,6);
-          if (target){
-            if (target.kind === "cat"){
-              catWebTrappedUntil = Date.now() + 3000;
-              addCombatVfx(catPos.x, catPos.y, "🕸️", "vfx-pop", 700, 16);
-            } else if (target.enemy?.id){
-              const boss = ["ox","ratking"].includes(target.kind);
-              const until = Date.now() + (boss ? 1500 : 3000);
-              target.enemy.trappedUntil = until;
-              target.enemy.slowedUntil = until + 3000;
-              const ref = enemyDocRef(target.kind, target.enemy.id, target.enemy);
-              if (ref) await runtimeUpdateDoc(ref, { trappedUntil: until, slowedUntil: target.enemy.slowedUntil, slowMultiplier: boss ? 0.75 : 0.5, updatedAt: Date.now() });
-              addCombatVfx(x, y, "◌", "vfx-pop", 350, 12);
-              addCombatVfx(target.enemy.x, target.enemy.y, "🕸️", "vfx-pop", 900, 18);
-            }
-            lastWebShotAt = Date.now();
+          const range = BUILD_DEFS[19].range || 7;
+          const targets = nearbyEnemyTargets(x, y, range).sort((a,b) => {
+            const at = (a.enemy.trappedUntil || 0) > Date.now() ? 1 : 0;
+            const bt = (b.enemy.trappedUntil || 0) > Date.now() ? 1 : 0;
+            return at - bt || (Math.abs(a.enemy.x-x)+Math.abs(a.enemy.y-y)) - (Math.abs(b.enemy.x-x)+Math.abs(b.enemy.y-y));
+          });
+          const target = targets[0];
+          if (target?.enemy?.id){
+            const boss = ["ox","ratking"].includes(target.kind) || enemyRegistryEntry(target.kind)?.category === "boss";
+            const until = Date.now() + (boss ? 1500 : 3000);
+            target.enemy.trappedUntil = until;
+            target.enemy.slowedUntil = until + 3000;
+            const ref = enemyDocRef(target.kind, target.enemy.id, target.enemy);
+            if (ref) await runtimeUpdateDoc(ref, { trappedUntil: until, slowedUntil: target.enemy.slowedUntil, slowMultiplier: boss ? 0.75 : 0.5, updatedAt: Date.now() });
+            if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x,y});
+            if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:target.enemy.x,y:target.enemy.y});
+            addCombatVfx(x, y, "🕸️", "vfx-pop", 350, 12);
+            addCombatVfx(target.enemy.x, target.enemy.y, "🕸️", "vfx-pop", 1100, 20);
+            markTowerCooldown(sym, x, y);
           }
         }
-        if (sym === "🪭" && Date.now() - lastFanBurstAt >= 3000){
+        if (sym === "🪭" && isTowerReady(sym, x, y, BUILD_DEFS[18].cooldownMs || 2000)){
           if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
-          const fanTarget = nearestEnemyFrom(x, y, BUILD_DEFS[18].range || 6);
-          if (!fanTarget || fanTarget.kind === "cat") continue;
-          const beaconBoost = isWithinBeaconAura(x, y, 2) ? 2 : 0;
-          const burstCount = 2 + beaconBoost;
+          const range = BUILD_DEFS[18].range || 7;
+          const targets = nearbyEnemyTargets(x, y, range);
+          if (!targets.length) continue;
+          const fanTarget = targets.map(t => ({ ...t, score:targets.filter(o => Math.abs(o.enemy.x-t.enemy.x)+Math.abs(o.enemy.y-t.enemy.y) <= 2).length * 10 - (Math.abs(t.enemy.x-x)+Math.abs(t.enemy.y-y)) })).sort((a,b)=>b.score-a.score)[0];
+          const beaconBoost = isWithinBeaconAura(x, y, 2) ? 1 : 0;
+          const burstCount = Math.min(3, 2 + beaconBoost);
           const primaryDx = Math.sign(fanTarget.enemy.x - x) || 1;
           const primaryDy = Math.sign(fanTarget.enemy.y - y) || 0;
-          const dirs = [[primaryDx,primaryDy],[primaryDx,0],[0,primaryDy],[primaryDx,primaryDy === 0 ? 1 : 0],[primaryDx,primaryDy === 0 ? -1 : primaryDy]];
+          const dirs = [[primaryDx,primaryDy],[primaryDy || primaryDx, primaryDx ? -primaryDx : 1],[primaryDx,0],[0,primaryDy || 1]];
+          const hitIds = new Set();
           for (let i=0; i<burstCount; i++){
             const [dx,dy] = dirs[i % dirs.length];
             let wx=x, wy=y;
-            for (let step=0; step<5; step++){
-              wx += dx + (Math.random()<0.25 ? (Math.floor(Math.random()*3)-1) : 0);
-              wy += dy + (Math.random()<0.25 ? (Math.floor(Math.random()*3)-1) : 0);
-              wx = Math.max(0, Math.min(gridSize-1, wx));
-              wy = Math.max(0, Math.min(gridSize-1, wy));
+            for (let step=0; step<range; step++){
+              wx += dx; wy += dy;
+              if (wx<0 || wy<0 || wx>=gridSize || wy>=gridSize) break;
               if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:wx,y:wy});
-
               for (const unit of listCombatEnemies()){
-                if (unit.enemy.x===wx && unit.enemy.y===wy){
-                  await damageEnemyUnit({ ...unit.enemy, kind: unit.kind }, 3);
-                  const ref = enemyDocRef(unit.kind, unit.enemy.id, unit.enemy);
-                  const cat = enemyRegistryEntry(unit.kind)?.category;
-                  const maxPush = cat === "flying" ? 3 : cat === "boss" ? 1 : 2;
-                  const pushed = randomPushDestination(x, y, unit.enemy.x, unit.enemy.y, 1, maxPush);
-                  const slowMs = cat === "boss" ? 1200 : 1500;
-                  if (ref) await runtimeUpdateDoc(ref, { x:pushed.x, y:pushed.y, slowedUntil:Date.now()+slowMs, slowMultiplier:cat === "boss" ? 0.88 : 0.8, updatedAt:Date.now() });
-                  addCombatVfx(unit.enemy.x, unit.enemy.y, "💨", "vfx-pop", 550, 15);
-                }
+                const id = `${unit.kind}:${unit.enemy.id || unit.enemy.docId || unit.enemy.x+","+unit.enemy.y}`;
+                if (hitIds.has(id) || unit.enemy.x!==wx || unit.enemy.y!==wy) continue;
+                hitIds.add(id);
+                await damageEnemyUnit({ ...unit.enemy, kind: unit.kind }, 3);
+                const ref = enemyDocRef(unit.kind, unit.enemy.id, unit.enemy);
+                const cat = enemyRegistryEntry(unit.kind)?.category;
+                const maxPush = cat === "flying" ? 3 : cat === "boss" ? 1 : 2;
+                const pushed = pushDestination(x, y, unit.enemy.x, unit.enemy.y, maxPush);
+                const slowMs = cat === "boss" ? 1200 : 1500;
+                if (ref) await runtimeUpdateDoc(ref, { x:pushed.x, y:pushed.y, slowedUntil:Date.now()+slowMs, slowMultiplier:cat === "boss" ? 0.88 : 0.8, updatedAt:Date.now() });
+                addCombatVfx(unit.enemy.x, unit.enemy.y, "💨", "vfx-pop", 650, 16);
               }
             }
           }
-          lastFanBurstAt = Date.now();
+          markTowerCooldown(sym, x, y);
         }
     }
     requestRender("generatorPayoutTick");
@@ -6589,7 +6731,13 @@
     popup.id = "structureTargetPopup"; popup.style.cssText = "position:fixed;right:10px;top:110px;background:#fff;border:2px solid #333;padding:8px;z-index:9999;max-width:250px";
     const name = BUILD_DEFS[Object.keys(BUILD_DEFS).find(k=>BUILD_DEFS[k].symbol===symbol)]?.name || "Structure";
     const hp = structureHealth[key] ?? 0; const maxHp = STRUCTURE_MAX_HP[symbol] ?? hp;
-    popup.innerHTML = `<div><b>${symbol} ${name}</b></div><div>HP: ${hp}/${maxHp}</div><div>Targeting: ${getStructureTargeting(x,y)}</div>`;
+    const supports = shieldCoverageForStructure({x,y,type:symbol}, getStructuresByType("🛡️")).length;
+    const extra = Math.max(0, supports - 1);
+    const maxShield = supports ? Math.max(15, Math.ceil(maxHp * 0.60 * (1 + Math.min(0.60, extra * 0.20)))) : 0;
+    const shield = Math.round(structureShields[key] || 0);
+    const brokenAt = structureShieldBrokenAt[key] || 0;
+    const recharge = !supports ? "none" : (shield <= 0 && brokenAt && Date.now() - brokenAt < 3000) ? "delayed" : shield >= maxShield ? "full" : "recharging";
+    popup.innerHTML = `<div><b>${symbol} ${name}</b></div><div>HP: ${hp}/${maxHp}</div><div>Shield: ${shield}/${maxShield} (${recharge}, ${supports} tower${supports === 1 ? "" : "s"})</div><div>Targeting: ${getStructureTargeting(x,y)}</div>`;
     for (const opt of TARGETING_OPTIONS){ const b=document.createElement("button"); b.textContent=opt; b.style.margin='2px'; b.onclick=()=>setStructureTargeting(x,y,opt).catch(()=>{}); popup.appendChild(b); }
     document.body.appendChild(popup);
   }
@@ -6625,6 +6773,7 @@
               delete structureHealth[key];
               delete structureShields[key];
               removeFromStructureIndex(x, y);
+              clearTowerCooldownsAt(x, y);
     markStructureIndexDirty();
               if (grid[y] && grid[y][x] && STRUCTURE_TYPES.has(grid[y][x])){
                 grid[y][x] = "";
@@ -7596,7 +7745,7 @@
     setInterval(() => { if (!canRunHostSimulation()) return; turretAttack().catch(()=>{}); }, 1500);
     setInterval(() => { if (!canRunHostSimulation()) return; rocketTowerAttack().catch(()=>{}); }, 3500);
     setInterval(() => { if (!canRunHostSimulation()) return; repairStationTick().catch(()=>{}); }, 3000);
-    setInterval(() => { if (!canRunHostSimulation()) return; specialStructureTick().catch(()=>{}); }, 2000);
+    setInterval(() => { if (!canRunHostSimulation()) return; specialStructureTick().catch(()=>{}); }, 1000);
     setInterval(() => { if (!canRunHostSimulation()) return; rabbitDenTick().catch(()=>{}); }, 2000);
 
     // rat power ramp
