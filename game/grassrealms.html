@@ -139,7 +139,7 @@
     .categoryTabs{display:grid;grid-template-columns:repeat(5,minmax(72px,1fr));gap:6px;padding:7px 9px;flex:0 0 auto}
     .categoryTab{position:relative;min-height:55px;border:2px solid transparent;border-radius:11px;overflow:hidden;padding:0;background:#111;cursor:pointer;color:white}.categoryTab.active{border-color:#ffd66c;box-shadow:0 0 0 2px #8a682b,0 0 14px #d7a83655}.categoryTab img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.68}.categoryTab span{position:absolute;inset:auto 0 0;padding:5px 3px;background:linear-gradient(transparent,#000e);font-weight:900;text-transform:uppercase;font-size:10px;text-shadow:0 1px 3px #000}
     .shopGrid{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(4,minmax(205px,1fr));align-content:start;gap:8px;padding:0 9px 9px}
-    .shopCard{--faction:#9da493;border:1px solid #565e45;border-left:4px solid var(--faction);border-radius:12px;background:#151b14;overflow:hidden;display:grid;grid-template-columns:78px 1fr;min-height:116px;position:relative}.shopCard.affordable{box-shadow:0 0 0 1px rgba(232,191,89,.2)}
+    .shopCard{--faction:#9da493;border:1px solid #565e45;border-left:4px solid var(--faction);border-radius:12px;background:#151b14;overflow:hidden;display:grid;grid-template-columns:78px 1fr;min-height:116px;position:relative;cursor:pointer}.shopCard.affordable{box-shadow:0 0 0 1px rgba(232,191,89,.2)}
     .shopArt{width:78px;height:116px;object-fit:cover;background:#aaa078;display:block;cursor:pointer}.shopFallback{width:78px;height:116px;display:grid;place-items:center;font-size:32px;background:#d9cea9;color:#16170f}.shopInfo{padding:7px;display:flex;flex-direction:column;min-width:0}.shopName{font-family:Georgia,serif;color:#ffe6a4;font-weight:900;font-size:13px;line-height:1.1;cursor:pointer}.shopMeta{font-size:10px;color:#bebaa6;margin-top:3px;line-height:1.3}.shopEffect{font-size:10px;color:#ddd7bb;margin-top:4px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.shopBuy{margin-top:auto;width:100%;padding:6px;border-radius:8px;border:1px solid #8b773d;background:#b98628;color:#171208;font-weight:900;cursor:pointer;font-size:11px}.shopBuy:disabled{opacity:.42;cursor:not-allowed}.lockedNote{color:#e0a896;font-size:9px;font-weight:700;margin-top:3px}
     .empty{padding:16px;color:#aaa691;text-align:center}
 
@@ -1794,12 +1794,13 @@ function resolveOne(rd, manual){
       const cards=Object.values(CARD_CATALOG).filter(c=>!c.immutable&&!c.hiddenFromShop&&c.category===selectedCategory).sort((a,b)=>a.cost-b.cost||a.name.localeCompare(b.name));
       for(const card of cards){
         const allowed=canBuyCard(player,card);const item=document.createElement('article');item.className=`shopCard ${allowed.ok?'affordable':''}`;item.style.setProperty('--faction',factionColor(card.category));
-        const art=makeArt(card,'shopArt');art.onclick=()=>showCardModal(card);item.appendChild(art);
-        const info=document.createElement('div');info.className='shopInfo';const title=document.createElement('div');title.className='shopName';title.textContent=card.name;title.onclick=()=>showCardModal(card);
+        item.addEventListener('click',()=>showCardModal(card));
+        const art=makeArt(card,'shopArt');item.appendChild(art);
+        const info=document.createElement('div');info.className='shopInfo';const title=document.createElement('div');title.className='shopName';title.textContent=card.name;
         const price=cardPurchaseCost(player,card);const meta=document.createElement('div');meta.className='shopMeta';meta.textContent=`${card.type} • ${price} gold${TEMPLE_KEYS.includes(card.key)?' (temples +2 each)':''} • ${card.hpDynamic?'scaling':card.hp??'—'} HP • 🎲 ${(card.triggers||[]).join(', ')||'—'}`;
-        const abilities=document.createElement('div');abilities.className='shopAbilityMarks';for(const key of cardAbilityKeys(card).slice(0,5)){const pill=document.createElement('span');pill.textContent=`${ABILITY_META[key]?.[0]||'✦'} ${abilityLabel(key)}`;abilities.appendChild(pill);}const effect=document.createElement('div');effect.className='shopEffect';effect.textContent=card.details||'';
-        const btn=document.createElement('button');btn.className='shopBuy';btn.disabled=!allowed.ok;btn.textContent=allowed.ok?`Buy for ${price}`:allowed.reason;btn.onclick=()=>performAction('BUY',{key:card.key});
-        info.append(title,meta,abilities,effect);
+        const abilities=document.createElement('div');abilities.className='shopAbilityMarks';for(const key of cardAbilityKeys(card).slice(0,5)){const pill=document.createElement('span');pill.textContent=`${ABILITY_META[key]?.[0]||'✦'} ${abilityLabel(key)}`;abilities.appendChild(pill);}
+        const btn=document.createElement('button');btn.className='shopBuy';btn.disabled=!allowed.ok;btn.textContent=allowed.ok?`Buy for ${price}`:allowed.reason;btn.onclick=event=>{event.stopPropagation();performAction('BUY',{key:card.key});};
+        info.append(title,meta,abilities);
         if(card.requiresTemple&&!player?.owned?.some(e=>e.key===card.requiresTemple)){const locked=document.createElement('div');locked.className='lockedNote';locked.textContent=`Requires ${CARD_CATALOG[card.requiresTemple]?.name}`;info.appendChild(locked);}
         info.appendChild(btn);item.appendChild(info);grid.appendChild(item);
       }
