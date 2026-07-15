@@ -871,7 +871,7 @@ const IMPORT_CACHE_META_STORE = 'meta';
 const IMPORT_CACHE_SOURCE_STORE = 'sourceData';
 const IMPORT_CACHE_BOOK_STORE = 'books';
 const IMPORT_CACHE_MISC_STORE = 'misc';
-const IMPORT_CACHE_SCHEMA_VERSION = 3;
+const IMPORT_CACHE_SCHEMA_VERSION = 4;
 const CONTROL_ROSTER_SCHEMA_VERSION = 2;
 const METRICS_KEY = 'allStarResearchMetrics.v1';
 const METRICS_DB = 'allStarResearchMetricsDb.v1';
@@ -1010,7 +1010,7 @@ const HEADER_FIELDS = ['column','leftColumn','rightColumn','withinCompareColumn'
 const SOURCE_LABELS = {nondate:'Non-Date Database',date:'Dated Database',retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',retail_team_totals:'Retail Team Totals',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',referral_team_totals:'Referral Team Totals',qa:'QA Genesys Evaluation Score',qa_direct:'Direct QA Team Score Override',checklist:'Checklist',documented_coaching:'Documented Coaching',comp_calls:'Comp Calls'};
 const PACKAGE_SHEETS = {nondate:'Non-Date Database',date:'Dated Database',retail_sv2:'Retail SV2',retail_wiper:'Retail Wipers',retail_team_totals:'Retail Team Totals',referral_sv2:'Referral SV2',referral_wiper:'Referral Wipers',referral_team_totals:'Referral Team Totals',qa:'QA Genesys Evaluation Score',checklist:'Checklist',documented_coaching:'Documented Coaching',comp_calls:'Comp Calls'};
 const SOURCE_TO_BOOK = {retail_sv2:'retail',retail_wiper:'retail',retail_team_totals:'retail',referral_sv2:'referral',referral_wiper:'referral',referral_team_totals:'referral',qa:'qa',checklist:'checklist',documented_coaching:'documented_coaching',comp_calls:'comp_calls'};
-const SOURCE_SHEET_HINTS = {retail_sv2:['Retail SV2','sv2'],retail_wiper:['Retail Wipers','Retail SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],referral_sv2:['Referral SV2','sv2'],referral_wiper:['Referral Wipers','Referral SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],qa:['QA Genesys Evaluation Score','Genesys Evaluation Score','genesys evaluation score','qa','evaluation','evaluations','quality','sheet1'],checklist:['All Items','Checklist','checklist','items','sheet1'],documented_coaching:['Documented Coaching','documented coaching','documented_coaching','coaching','sheet1'],comp_calls:['Compliments','Compliment','Comp Calls','Comp Call','Compliment Calls','sheet1']};
+const SOURCE_SHEET_HINTS = {retail_sv2:['Retail SV2','sv2'],retail_wiper:['Retail Wipers','Retail SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],referral_sv2:['Referral SV2','sv2'],referral_wiper:['Referral Wipers','Referral SV2 Wipers','sv2 wipers','sv2wipers','sv2 wiper','sv2wiper'],qa:['QA Genesys Evaluation Score','Genesys Evaluation Score','genesys evaluation score','qa','evaluation','evaluations','quality','sheet1'],checklist:['All Items','Checklist','checklist','items','sheet1'],documented_coaching:['Documented Coaching','documented coaching','documented_coaching','coaching','sheet1'],comp_calls:['Compliments','Compliment','Comp Calls','Comp Call','Compliment Calls','sheet1'],retail_team_totals:['Retail Team Totals','Appt Summary','Appointment Summary'],referral_team_totals:['Referral Team Totals','KPI Summary','KPI Summary Report']};
 const FORCE_NONDATED_IMPORT_SOURCES = new Set(['retail_sv2','retail_wiper','retail_team_totals','referral_sv2','referral_wiper','referral_team_totals']);
 const TEAM_TOTAL_SOURCE_KEYS = ['retail_team_totals','referral_team_totals'];
 const NA_TEAM = 'N/A';
@@ -1020,6 +1020,34 @@ function emptyTeamTotalsDataset(area='retail'){
   return {fileName:retail?'Retail Team Totals.xlsx':'Referral Team Totals.xlsx',sheetName:retail?'Retail Team Totals':'Referral Team Totals',headers:[],rows:[],mappings:[],diagnostics:{},rowsVersion:0,indexVersion:-1,rowsByTeamKey:Object.create(null)};
 }
 function normalizeTeamTotalLookupKey(v){ return norm(v).replace(/[^a-z0-9]+/g,''); }
+function normalizeTeamTotalSheetName(v){ return norm(v).replace(/appointment/g,'appt').replace(/report$/,''); }
+const TEAM_TOTAL_LOOKUP_ALIASES = ['User','Username','User Name','Login','Login ID','Agent','Agent ID','Representative','Rep'];
+function detectTeamTotalsSummaryLayout(aoa){
+  const scanLimit=Math.min(15,aoa?.length||0); let best=null;
+  for(let rowIndex=0; rowIndex<scanLimit; rowIndex++){
+    const row=aoa[rowIndex]||[], headers=row.map(value=>String(value??'').trim());
+    const lookupHeader=findHeader(headers,TEAM_TOTAL_LOOKUP_ALIASES);
+    if(!lookupHeader) continue;
+    const lookupColumn=headers.findIndex(header=>norm(header)===norm(lookupHeader));
+    const populatedHeaders=headers.filter(Boolean).length;
+    const score=populatedHeaders+(lookupColumn>=0?20:0);
+    if(!best || score>best.score) best={headerRowIndex:rowIndex,dataStartRowIndex:rowIndex+1,headers,lookupHeader,lookupColumn,score};
+  }
+  return best;
+}
+function findTeamTotalsSummarySheet(wb, area){
+  const requested=area==='retail'?'Appt Summary':'KPI Summary', names=wb?.SheetNames||[], target=normalizeTeamTotalSheetName(requested);
+  const exact=names.find(sn=>sn===requested); if(exact) return exact;
+  const normalized=names.find(sn=>normalizeTeamTotalSheetName(sn)===target); if(normalized) return normalized;
+  if(area==='retail') return names.find(sn=>{ const n=normalizeTeamTotalSheetName(sn); return n==='apptsummary' || n==='appointmentsummary'; }) || '';
+  return names.find(sn=>{ const n=normalizeTeamTotalSheetName(sn); return n==='kpisummary' || n==='kpisummaryreport'; }) || '';
+}
+function normalizeHydratedTeamTotals(value, area){
+  const fallback=emptyTeamTotalsDataset(area);
+  const candidate=value?.teamTotals || value;
+  if(!candidate || !Array.isArray(candidate.rows)) return fallback;
+  return rebuildTeamTotalsIndex({...fallback,...candidate,headers:Array.isArray(candidate.headers)?candidate.headers:[],rows:Array.isArray(candidate.rows)?candidate.rows:[],mappings:Array.isArray(candidate.mappings)?candidate.mappings:[],diagnostics:candidate.diagnostics&&typeof candidate.diagnostics==='object'?candidate.diagnostics:{}});
+}
 function teamTotalsDataset(source){ const ds=source==='retail_team_totals' ? (state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')) : source==='referral_team_totals' ? (state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')) : emptyTeamTotalsDataset('retail'); return ensureTeamTotalsIndex(ds); }
 function markTeamTotalsRowsChanged(ds){ if(!ds) return ds; ds.rowsVersion=(Number(ds.rowsVersion)||0)+1; ds.indexVersion=-1; ds.rowsByTeamKey=Object.create(null); return ds; }
 function teamTotalsIndexSignature(ds){ const rows=ds?.rows||[], headers=ds?.headers||[], v=state.versions||{}; return stableSerialize({rowsVersion:Number(ds?.rowsVersion)||0,rowCount:rows.length,headers:headers.join('\u001f'),mappingCount:(ds?.mappings||[]).length,teams:v.teams||0,mappings:v.mappings||0,fileName:ds?.fileName||'',sheetName:ds?.sheetName||''}); }
@@ -1035,24 +1063,56 @@ function ensureTeamTotalsIndex(ds){
 }
 function rebuildTeamTotalsIndex(ds){ ds=markTeamTotalsRowsChanged(ds||emptyTeamTotalsDataset('retail')); return ensureTeamTotalsIndex(ds); }
 function teamTotalsSummaryText(area){ const ds=area==='retail'?(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')):(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')); const d=ds.diagnostics||{}; return `${area==='retail'?'Retail':'Referral'} Team Totals: ${(ds.rows||[]).length}/${d.controlTeamsInspected||0} teams matched · ${(d.teamsWithNoExtractedRow||[]).length} missing`; }
-function teamTotalsDiagnosticsHtml(ds){ const d=ds?.diagnostics||{}; const list=(a)=>Array.isArray(a)&&a.length?`<div class="checkResultMeta">${a.slice(0,12).map(x=>esc(typeof x==='string'?x:JSON.stringify(x))).join(' · ')}${a.length>12?' …':''}</div>`:''; return `<div class="checkResultRow ${(ds?.rows||[]).length?'okRow':'warnRow'}"><strong>${esc(ds?.sheetName||'Team Totals')}</strong><div class="checkResultMeta">${d.controlTeamsInspected||0} teams inspected · ${d.coachTabsFound||0} tabs found · ${d.distinctAA2Keys||0} AA2 keys · ${d.summaryRowsMatched||0} summary rows matched</div>${list(d.coachTabsMissing)}${list(d.blankAA2Values)}${list(d.aa2KeysNotFound)}${list(d.duplicateSummaryRows)}${list(d.duplicateAA2Keys)}${list(d.teamsWithNoExtractedRow)}${d.missingSummarySheet?`<div class="checkResultMeta"><span class="badge warn">Missing ${esc(d.expectedSummarySheet||'summary sheet')}</span></div>`:''}${d.invalidHeaders?`<div class="checkResultMeta"><span class="badge warn">Blank or invalid Row 3 headers</span></div>`:''}</div>`; }
+function teamTotalsDiagnosticsHtml(ds){
+  const d=ds?.diagnostics||{}, area=/referral/i.test(ds?.sheetName||ds?.fileName||ds?.sourceName||'')?'Referral':'Retail';
+  const list=(a)=>Array.isArray(a)&&a.length?`<div class="checkResultMeta">${a.slice(0,12).map(x=>esc(typeof x==='string'?x:JSON.stringify(x))).join(' · ')}${a.length>12?' …':''}</div>`:'';
+  return `<div class="checkResultRow ${(ds?.rows||[]).length?'okRow':'warnRow'}"><strong>${area} Team Totals</strong><div class="checkResultMeta">Source: ${esc(d.matchedSheet||ds?.summarySheetName||d.expectedSummarySheet||'')} · Rows: ${(ds?.rows||[]).length} · Headers: ${(ds?.headers||[]).length} · Mapped teams: ${d.summaryRowsMatched||d.rowsMatchedToTeams||0} · Unmatched teams: ${(d.teamsWithNoExtractedRow||[]).length} · Cache status: ${(ds?.schemaVersion||0)>=IMPORT_CACHE_SCHEMA_VERSION?'Saved':'Needs migration'}${d.lastRebuilt?` · Last rebuilt: ${esc(d.lastRebuilt)}`:''}</div><div class="checkResultMeta">Requested sheet: ${esc(d.requestedSheet||d.expectedSummarySheet||'')} · Matched sheet: ${esc(d.matchedSheet||'')} · Header row: ${esc(d.headerRowSelected||'')} · Lookup column: ${esc(d.lookupColumnSelected||'')} · Rows extracted: ${d.summaryRowsExtracted||0} · Duplicate lookup keys: ${(d.duplicateLookupKeys||d.duplicateSummaryRows||[]).length}</div>${list(d.coachTabsMissing)}${list(d.blankAA2Values)}${list(d.aa2KeysNotFound)}${list(d.duplicateSummaryRows)}${list(d.duplicateAA2Keys)}${list(d.teamsWithNoExtractedRow)}${d.missingSummarySheet?`<div class="checkResultMeta"><span class="badge warn">Missing ${esc(d.expectedSummarySheet||'summary sheet')}</span></div>`:''}${d.invalidHeaders?`<div class="checkResultMeta"><span class="badge warn">Could not detect a summary header row with a lookup column</span></div>`:''}</div>`;
+}
 async function buildTeamTotalsFromWorkbook(area, wb, fileName='', start=32, end=38){
-  const retail=area==='retail', sourceKey=retail?'retail_team_totals':'referral_team_totals', summaryName=retail?'Appt Summary':'KPI Summary', sheetName=retail?'Retail Team Totals':'Referral Team Totals';
-  const ds=emptyTeamTotalsDataset(area), rows=[], mappings=[], diag={expectedSummarySheet:summaryName,controlTeamsInspected:0,coachTabsFound:0,coachTabsMissing:[],blankAA2Values:[],distinctAA2Keys:0,summaryRowsMatched:0,aa2KeysNotFound:[],duplicateSummaryRows:[],duplicateAA2Keys:[],teamsWithMultipleExtractedRows:[],teamsWithNoExtractedRow:[],missingSummarySheet:false,invalidHeaders:false};
-  ds.fileName=fileName||ds.fileName; const controlRows=controlRowsFromWorkbook(wb); diag.controlTeamsInspected=controlRows.length; const keyTeams=new Map();
-  for(let i=0;i<controlRows.length;i++){ const item=controlRows[i], team=canonicalCoachName(item.team), tab=String(item.tabName||'').trim(), sn=findWorkbookSheetByName(wb,tab); let aa2=''; if(sn){ diag.coachTabsFound++; const aoa=sheetAoa(wb,sn); aa2=String(aoa?.[1]?.[26]??'').trim(); } else diag.coachTabsMissing.push(`${team} -> ${tab}`); if(!aa2) diag.blankAA2Values.push(`${team} -> ${tab}`); const k=normalizeTeamTotalLookupKey(aa2); if(k){ if(!keyTeams.has(k)) keyTeams.set(k,[]); keyTeams.get(k).push(team); } mappings.push({team,teamKey:coachNameKey(team),controlTab:tab,workbookSheet:sn,summaryLookupKey:aa2,lookupKey:k}); if(i%20===0){ updateProgress(`Extracting ${sheetName} AA2 keys... ${i+1}/${controlRows.length||1}`, start+(end-start)*.45*((i+1)/Math.max(1,controlRows.length))); await yieldToBrowser(); } }
+  const retail=area==='retail', sourceKey=retail?'retail_team_totals':'referral_team_totals', requestedSummaryName=retail?'Appt Summary':'KPI Summary', sheetName=retail?'Retail Team Totals':'Referral Team Totals';
+  const ds=emptyTeamTotalsDataset(area), rows=[], mappings=[], diag={requestedSheet:requestedSummaryName,expectedSummarySheet:requestedSummaryName,matchedSheet:'',headerRowSelected:0,lookupColumnSelected:'',lookupHeaderSelected:'',controlTeamsInspected:0,coachTabsFound:0,coachTabsMissing:[],blankAA2Values:[],distinctAA2Keys:0,summaryRowsExtracted:0,summaryRowsMatched:0,rowsMatchedToTeams:0,rowsUnmatched:0,aa2KeysNotFound:[],duplicateSummaryRows:[],duplicateLookupKeys:[],duplicateAA2Keys:[],ambiguousLookupKeys:[],teamsWithMultipleExtractedRows:[],teamsWithNoExtractedRow:[],missingSummarySheet:false,invalidHeaders:false,lastRebuilt:new Date().toISOString(),schemaVersion:IMPORT_CACHE_SCHEMA_VERSION};
+  ds.fileName=fileName||ds.fileName; ds.sourceName=sheetName; ds.summarySheetName=requestedSummaryName; ds.controlSheetName='Control'; ds.importedAt=new Date().toISOString(); ds.schemaVersion=IMPORT_CACHE_SCHEMA_VERSION;
+  const controlRows=controlRowsFromWorkbook(wb); diag.controlTeamsInspected=controlRows.length; const keyTeams=new Map();
+  for(let i=0;i<controlRows.length;i++){
+    const item=controlRows[i], team=canonicalCoachName(item.team), tab=String(item.tabName||'').trim(), sn=findWorkbookSheetByName(wb,tab); let aa2='';
+    if(sn){ diag.coachTabsFound++; const aoa=sheetAoa(wb,sn); aa2=String(aoa?.[1]?.[26]??'').trim(); } else diag.coachTabsMissing.push(`${team} -> ${tab}`);
+    if(!aa2) diag.blankAA2Values.push(`${team} -> ${tab}`);
+    const k=normalizeTeamTotalLookupKey(aa2);
+    if(k){ if(!keyTeams.has(k)) keyTeams.set(k,[]); keyTeams.get(k).push(team); }
+    mappings.push({team,teamKey:coachNameKey(team),controlTab:tab,workbookSheet:sn,summaryLookupKey:aa2,lookupKey:k});
+    if(i%20===0){ updateProgress(`Extracting ${sheetName} AA2 keys... ${i+1}/${controlRows.length||1}`, start+(end-start)*.45*((i+1)/Math.max(1,controlRows.length))); await yieldToBrowser(); }
+  }
   diag.duplicateAA2Keys=[...keyTeams.entries()].filter(([,v])=>v.length>1).map(([k,v])=>`${k}: ${v.join(', ')}`); diag.distinctAA2Keys=keyTeams.size;
-  const sumSn=findWorkbookSheetByName(wb,summaryName); if(!sumSn){ diag.missingSummarySheet=true; ds.mappings=mappings; ds.diagnostics=diag; return rebuildTeamTotalsIndex(ds); }
-  const aoa=sheetAoa(wb,sumSn), headerRow=aoa[2]||[]; const headers=[]; for(let c=0;c<headerRow.length;c++){ const h=String(headerRow[c]??'').trim(); if(!h) break; headers.push(h); } if(!headers.length) diag.invalidHeaders=true; ds.headers=headers;
-  const summaryMap=new Map(); for(let r=3;r<aoa.length;r++){ const arr=aoa[r]||[], raw=String(arr[0]??'').trim(), k=normalizeTeamTotalLookupKey(raw); if(!k) continue; const obj={}; headers.forEach((h,i)=>obj[h]=arr[i]??''); const rec={row:obj,rowNumber:r+1,rawKey:raw}; if(!summaryMap.has(k)) summaryMap.set(k,[]); summaryMap.get(k).push(rec); }
-  diag.duplicateSummaryRows=[...summaryMap.entries()].filter(([,v])=>v.length>1).map(([k,v])=>`${k}: rows ${v.map(x=>x.rowNumber).join(', ')}`);
-  const rowsPerTeam=new Map(); for(const m of mappings){ if(!m.lookupKey) continue; const hits=summaryMap.get(m.lookupKey)||[]; if(!hits.length){ diag.aa2KeysNotFound.push(m.summaryLookupKey); continue; } hits.forEach(hit=>{ const row={...hit.row,_sourceKey:sourceKey,_team:m.team,_teamKey:m.teamKey,_summaryLookupKey:m.summaryLookupKey,_controlTab:m.controlTab,_summarySheet:summaryName,_summaryRowNumber:hit.rowNumber}; rows.push(row); rowsPerTeam.set(m.teamKey,(rowsPerTeam.get(m.teamKey)||0)+1); }); }
-  diag.summaryRowsMatched=rows.length; mappings.forEach(m=>{ if(!rowsPerTeam.has(m.teamKey)) diag.teamsWithNoExtractedRow.push(m.team); }); diag.teamsWithMultipleExtractedRows=[...rowsPerTeam.entries()].filter(([,n])=>n>1).map(([k,n])=>`${k}: ${n}`);
+  const sumSn=findTeamTotalsSummarySheet(wb,area); diag.matchedSheet=sumSn;
+  if(!sumSn){ diag.missingSummarySheet=true; ds.mappings=mappings; ds.diagnostics=diag; return rebuildTeamTotalsIndex(ds); }
+  const aoa=sheetAoa(wb,sumSn), layout=detectTeamTotalsSummaryLayout(aoa);
+  if(!layout){ diag.invalidHeaders=true; ds.mappings=mappings; ds.diagnostics=diag; return rebuildTeamTotalsIndex(ds); }
+  diag.headerRowSelected=layout.headerRowIndex+1; diag.lookupColumnSelected=layout.lookupColumn+1; diag.lookupHeaderSelected=layout.lookupHeader;
+  const headers=[], headerColumns=[];
+  layout.headers.forEach((header,columnIndex)=>{ const cleanHeader=String(header||'').trim(); if(!cleanHeader) return; headers.push(cleanHeader); headerColumns.push(columnIndex); });
+  if(!headers.length) diag.invalidHeaders=true; ds.headers=headers;
+  const summaryMap=new Map();
+  for(let r=layout.dataStartRowIndex;r<aoa.length;r++){
+    const arr=aoa[r]||[], raw=String(arr[layout.lookupColumn]??'').trim(), k=normalizeTeamTotalLookupKey(raw); if(!k) continue;
+    const obj={}; headers.forEach((h,i)=>obj[h]=arr[headerColumns[i]]??'');
+    const rec={row:obj,rowNumber:r+1,rawKey:raw}; if(!summaryMap.has(k)) summaryMap.set(k,[]); summaryMap.get(k).push(rec);
+  }
+  diag.summaryRowsExtracted=[...summaryMap.values()].reduce((a,b)=>a+b.length,0); diag.rowsUnmatched=Math.max(0,diag.summaryRowsExtracted);
+  diag.duplicateSummaryRows=[...summaryMap.entries()].filter(([,v])=>v.length>1).map(([k,v])=>`${k}: rows ${v.map(x=>x.rowNumber).join(', ')}`); diag.duplicateLookupKeys=diag.duplicateSummaryRows.slice();
+  const rowsPerTeam=new Map();
+  for(const m of mappings){
+    if(!m.lookupKey) continue;
+    const hits=summaryMap.get(m.lookupKey)||[];
+    if(!hits.length){ diag.aa2KeysNotFound.push(m.summaryLookupKey); continue; }
+    hits.forEach(hit=>{ const row={...hit.row,_sourceKey:sourceKey,_team:m.team,_teamKey:m.teamKey,_summaryLookupKey:m.summaryLookupKey,_controlTab:m.controlTab,_summarySheet:sumSn,_summaryRowNumber:hit.rowNumber}; rows.push(row); rowsPerTeam.set(m.teamKey,(rowsPerTeam.get(m.teamKey)||0)+1); });
+  }
+  diag.summaryRowsMatched=rows.length; diag.rowsMatchedToTeams=rows.length; diag.rowsUnmatched=Math.max(0,diag.summaryRowsExtracted-rows.length);
+  mappings.forEach(m=>{ if(!rowsPerTeam.has(m.teamKey)) diag.teamsWithNoExtractedRow.push(m.team); }); diag.teamsWithMultipleExtractedRows=[...rowsPerTeam.entries()].filter(([,n])=>n>1).map(([k,n])=>`${k}: ${n}`);
   ds.rows=rows; ds.mappings=mappings; ds.diagnostics=diag; return rebuildTeamTotalsIndex(ds);
 }
 function teamTotalsExportAoa(ds){ const headers=[...(ds?.headers||[]),'Full Team Name','Control Tab','AA2 Lookup Key','Source Summary Sheet','Source Summary Row']; return [headers,...(ds?.rows||[]).map(r=>[...(ds.headers||[]).map(h=>r[h]??''),r._team||'',r._controlTab||'',r._summaryLookupKey||'',r._summarySheet||'',r._summaryRowNumber||''])]; }
 function downloadTeamTotals(area){ if(!window.XLSX) return alert('Excel export library is not available.'); const ds=area==='retail'?state.data.retail.teamTotals:state.data.referral.teamTotals; if(!(ds?.rows||[]).length) return alert('No Team Totals dataset is available yet.'); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(teamTotalsExportAoa(ds)),ds.sheetName.slice(0,31)); XLSX.writeFile(wb,ds.fileName||`${ds.sheetName}.xlsx`); }
-function renderTeamTotalsImportControls(){ const host=document.getElementById('teamTotalsImportControls'); if(!host) return; host.innerHTML=`<div class="panelTitle">Extracted Team Totals</div><div class="row"><button id="downloadRetailTeamTotalsBtn" class="dark" type="button" ${((state.data.retail.teamTotals?.rows||[]).length?'':'disabled')}>Download Retail Team Totals</button><button id="downloadReferralTeamTotalsBtn" class="dark" type="button" ${((state.data.referral.teamTotals?.rows||[]).length?'':'disabled')}>Download Referral Team Totals</button><span class="checkResultMeta">${esc(teamTotalsSummaryText('retail'))} · ${esc(teamTotalsSummaryText('referral'))}</span></div><div class="checkResultList">${teamTotalsDiagnosticsHtml(state.data.retail.teamTotals)}${teamTotalsDiagnosticsHtml(state.data.referral.teamTotals)}</div>`; document.getElementById('downloadRetailTeamTotalsBtn')?.addEventListener('click',()=>downloadTeamTotals('retail')); document.getElementById('downloadReferralTeamTotalsBtn')?.addEventListener('click',()=>downloadTeamTotals('referral')); }
+function renderTeamTotalsImportControls(){ const host=document.getElementById('teamTotalsImportControls'); if(!host) return; host.innerHTML=`<div class="panelTitle">Extracted Team Totals</div><div class="row"><button id="downloadRetailTeamTotalsBtn" class="dark" type="button" ${((state.data.retail.teamTotals?.rows||[]).length?'':'disabled')}>Download Retail Team Totals</button><button id="downloadReferralTeamTotalsBtn" class="dark" type="button" ${((state.data.referral.teamTotals?.rows||[]).length?'':'disabled')}>Download Referral Team Totals</button><button id="rebuildRetailTeamTotalsBtn" type="button">Rebuild Retail Team Totals</button><button id="rebuildReferralTeamTotalsBtn" type="button">Rebuild Referral Team Totals</button><span class="checkResultMeta">${esc(teamTotalsSummaryText('retail'))} · ${esc(teamTotalsSummaryText('referral'))}</span></div><div class="checkResultList">${teamTotalsDiagnosticsHtml(state.data.retail.teamTotals)}${teamTotalsDiagnosticsHtml(state.data.referral.teamTotals)}</div>`; document.getElementById('downloadRetailTeamTotalsBtn')?.addEventListener('click',()=>downloadTeamTotals('retail')); document.getElementById('downloadReferralTeamTotalsBtn')?.addEventListener('click',()=>downloadTeamTotals('referral')); document.getElementById('rebuildRetailTeamTotalsBtn')?.addEventListener('click',()=>rebuildCachedTeamTotals('retail')); document.getElementById('rebuildReferralTeamTotalsBtn')?.addEventListener('click',()=>rebuildCachedTeamTotals('referral')); }
 
 function sourceAlwaysNonDated(source){ return FORCE_NONDATED_IMPORT_SOURCES.has(source); }
 const SOURCE_FRAMEWORKS = {
@@ -1176,34 +1236,35 @@ function sourceCacheValue(source){
   if(key==='retail:sv2') return importCacheClone({headers:retail.headers?.sv2||[],rows:retail.sv2||[],aoa:retail.sv2Aoa||[]});
   if(key==='retail:wiper') return importCacheClone({headers:retail.headers?.wiper||[],rows:retail.wiper||[],aoa:retail.wiperAoa||[]});
   if(key==='retail:controlRoster') return importCacheClone({rows:retail.controlRoster||[]});
-  if(key==='retail:teamTotals') return importCacheClone(retail.teamTotals||emptyTeamTotalsDataset('retail'));
+  if(key==='retail:teamTotals') return importCacheClone({...emptyTeamTotalsDataset('retail'),...(retail.teamTotals||{}),area:'retail',sourceName:'Retail Team Totals',summarySheetName:'Appt Summary',controlSheetName:'Control',importedAt:retail.teamTotals?.importedAt||new Date().toISOString(),schemaVersion:IMPORT_CACHE_SCHEMA_VERSION});
   if(key==='referral:metadata') return importCacheClone({fileName:referral.fileName||'',headers:referral.headers||{sv2:[],wiper:[],itac:[]},itacSheetName:referral.itacSheetName||''});
   if(key==='referral:sv2') return importCacheClone({headers:referral.headers?.sv2||[],rows:referral.sv2||[],aoa:referral.sv2Aoa||[]});
   if(key==='referral:wiper') return importCacheClone({headers:referral.headers?.wiper||[],rows:referral.wiper||[],aoa:referral.wiperAoa||[]});
   if(key==='referral:itac') return importCacheClone({headers:referral.headers?.itac||[],rows:referral.itac||[],aoa:referral.itacAoa||[],sheetName:referral.itacSheetName||''});
   if(key==='referral:controlRoster') return importCacheClone({rows:referral.controlRoster||[]});
-  if(key==='referral:teamTotals') return importCacheClone(referral.teamTotals||emptyTeamTotalsDataset('referral'));
+  if(key==='referral:teamTotals') return importCacheClone({...emptyTeamTotalsDataset('referral'),...(referral.teamTotals||{}),area:'referral',sourceName:'Referral Team Totals',summarySheetName:'KPI Summary',controlSheetName:'Control',importedAt:referral.teamTotals?.importedAt||new Date().toISOString(),schemaVersion:IMPORT_CACHE_SCHEMA_VERSION});
   if(isCustomSource(key)){ const c=customSource(key)||{}; return importCacheClone({sourceKey:c.sourceKey,id:c.id,name:c.name,fileName:c.fileName,headers:c.headers||[],rows:c.rows||[],framework:c.framework||'generic_table',sheetName:c.sheetName||'',headerRow:c.headerRow||1,startCol:c.startCol||1,manualHeaders:c.manualHeaders||[],columns:c.columns||{},aggregation:c.aggregation||{},sourceType:c.sourceType||'custom'}); }
   return importCacheClone(state.data[key]||{});
 }
 function hydrateSourceCacheRecord(nextData, rec, customData){
-  const id=sourceCacheRecordId(rec?.id||''), v=rec?.value||{};
-  const newest=(a,b)=>{ const ta=Date.parse(a?.updatedAt||a?.savedAt||0)||0, tb=Date.parse(b?.updatedAt||b?.savedAt||0)||0; return tb>=ta?b:a; };
-  if(['retail_sv2','retail_wiper','retail_team_totals'].includes(rec?.id)){ // v2 aggregate migration, field-wise and not key-order authoritative
-    nextData.retail=newest(nextData.retail,{...nextData.retail,...v}); return;
-  }
-  if(['referral_sv2','referral_wiper','referral_team_totals'].includes(rec?.id)){ nextData.referral=newest(nextData.referral,{...nextData.referral,...v}); return; }
+  const rawId=String(rec?.id||''), id=sourceCacheRecordId(rawId), v=rec?.value||{};
+  if(rawId==='retail_team_totals' || id==='retail:teamTotals'){ nextData.retail.teamTotals=normalizeHydratedTeamTotals(v,'retail'); return; }
+  if(rawId==='referral_team_totals' || id==='referral:teamTotals'){ nextData.referral.teamTotals=normalizeHydratedTeamTotals(v,'referral'); return; }
+  if(rawId==='retail_sv2'){ nextData.retail.sv2=v.rows||[]; nextData.retail.sv2Aoa=v.aoa||[]; nextData.retail.headers.sv2=v.headers||[]; return; }
+  if(rawId==='retail_wiper'){ nextData.retail.wiper=v.rows||[]; nextData.retail.wiperAoa=v.aoa||[]; nextData.retail.headers.wiper=v.headers||[]; return; }
+  if(rawId==='referral_sv2'){ nextData.referral.sv2=v.rows||[]; nextData.referral.sv2Aoa=v.aoa||[]; nextData.referral.headers.sv2=v.headers||[]; return; }
+  if(rawId==='referral_wiper'){ nextData.referral.wiper=v.rows||[]; nextData.referral.wiperAoa=v.aoa||[]; nextData.referral.headers.wiper=v.headers||[]; return; }
   if(id==='retail:metadata'){ nextData.retail.fileName=v.fileName||''; nextData.retail.headers={...(nextData.retail.headers||{}),...(v.headers||{})}; return; }
   if(id==='retail:sv2'){ nextData.retail.sv2=v.rows||[]; nextData.retail.sv2Aoa=v.aoa||[]; nextData.retail.headers.sv2=v.headers||[]; return; }
   if(id==='retail:wiper'){ nextData.retail.wiper=v.rows||[]; nextData.retail.wiperAoa=v.aoa||[]; nextData.retail.headers.wiper=v.headers||[]; return; }
   if(id==='retail:controlRoster'){ nextData.retail.controlRoster=v.rows||[]; return; }
-  if(id==='retail:teamTotals'){ nextData.retail.teamTotals=v||emptyTeamTotalsDataset('retail'); return; }
+  if(id==='retail:teamTotals'){ nextData.retail.teamTotals=normalizeHydratedTeamTotals(v,'retail'); return; }
   if(id==='referral:metadata'){ nextData.referral.fileName=v.fileName||''; nextData.referral.headers={...(nextData.referral.headers||{}),...(v.headers||{})}; nextData.referral.itacSheetName=v.itacSheetName||''; return; }
   if(id==='referral:sv2'){ nextData.referral.sv2=v.rows||[]; nextData.referral.sv2Aoa=v.aoa||[]; nextData.referral.headers.sv2=v.headers||[]; return; }
   if(id==='referral:wiper'){ nextData.referral.wiper=v.rows||[]; nextData.referral.wiperAoa=v.aoa||[]; nextData.referral.headers.wiper=v.headers||[]; return; }
   if(id==='referral:itac'){ nextData.referral.itac=v.rows||[]; nextData.referral.itacAoa=v.aoa||[]; nextData.referral.headers.itac=v.headers||[]; nextData.referral.itacSheetName=v.sheetName||v.itacSheetName||''; return; }
   if(id==='referral:controlRoster'){ nextData.referral.controlRoster=v.rows||[]; return; }
-  if(id==='referral:teamTotals'){ nextData.referral.teamTotals=v||emptyTeamTotalsDataset('referral'); return; }
+  if(id==='referral:teamTotals'){ nextData.referral.teamTotals=normalizeHydratedTeamTotals(v,'referral'); return; }
   if(isCustomSource(id)){ customData[id]=v; return; }
   if(nextData[id]) nextData[id]={...nextData[id],...v};
 }
@@ -1250,6 +1311,37 @@ async function ensureSheetLoaded(bookKey, sheetName){
   let db; try{ db=await importCacheOpenDb(); const rec=await idbReq(db.transaction(IMPORT_CACHE_BOOK_STORE,'readonly').objectStore(IMPORT_CACHE_BOOK_STORE).get(sheetRecordId(bookKey,sheetName))); const aoa=rec?.value?.aoa||rec?.aoa||[]; b.aoaBySheet=b.aoaBySheet||{}; b.aoaBySheet[sheetName]=aoa; return aoa; } finally{ if(db) db.close(); }
 }
 function getBookSheetAoa(bookKey, sheetName){ return state.books?.[bookKey]?.aoaBySheet?.[sheetName] || []; }
+function findCachedBookSheetName(bookKey, requested){
+  const names=state.books?.[bookKey]?.sheetNames||[], target=normalizeTeamTotalSheetName(requested);
+  return names.find(sn=>sn===requested) || names.find(sn=>normalizeTeamTotalSheetName(sn)===target) || '';
+}
+function hasCachedBookSheet(bookKey, requested){ return !!findCachedBookSheetName(bookKey,requested); }
+async function rebuildCachedTeamTotals(area){
+  const bookKey=area==='retail'?'retail':'referral', summaryName=area==='retail'?'Appt Summary':'KPI Summary', book=state.books?.[bookKey];
+  if(!book?.sheetNames?.length) return null;
+  const controlName=findCachedBookSheetName(bookKey,'Control') || 'Control', summarySheet=findCachedBookSheetName(bookKey,summaryName);
+  if(!summarySheet) return null;
+  const controlAoa=await ensureSheetLoaded(bookKey,controlName);
+  if(!controlAoa.length) return null;
+  const requiredSheets=new Set([controlName,summarySheet]);
+  controlRowsFromAoa(controlAoa).forEach(item=>{ const sn=findCachedBookSheetName(bookKey,item.tabName)||item.tabName; if(sn) requiredSheets.add(sn); });
+  for(const sheetName of requiredSheets) await ensureSheetLoaded(bookKey,sheetName);
+  const workbookLike={SheetNames:book.sheetNames.slice(),Sheets:{}};
+  for(const sheetName of requiredSheets){ const aoa=getBookSheetAoa(bookKey,sheetName); if(aoa.length) workbookLike.Sheets[sheetName]=XLSX.utils.aoa_to_sheet(aoa); }
+  const dataset=await buildTeamTotalsFromWorkbook(area,workbookLike,area==='retail'?'Retail Team Totals.xlsx':'Referral Team Totals.xlsx',1,100);
+  if(!dataset?.rows?.length) return null;
+  const existing=area==='retail'?state.data.retail.teamTotals:state.data.referral.teamTotals;
+  if((existing?.rows||[]).length && (existing.rows||[]).length>(dataset.rows||[]).length) return existing;
+  if(area==='retail') state.data.retail.teamTotals=dataset; else state.data.referral.teamTotals=dataset;
+  markSourceCacheDirty(area==='retail'?'retail_team_totals':'referral_team_totals',`rebuilt ${area} Team Totals from cached workbook`);
+  renderTeamTotalsImportControls();
+  await flushImportCacheSave(`${area} Team Totals cache repair`);
+  return dataset;
+}
+async function recoverMissingCachedTeamTotals(){
+  if(!(state.data.retail.teamTotals?.rows||[]).length && hasCachedBookSheet('retail','Appt Summary')) await rebuildCachedTeamTotals('retail');
+  if(!(state.data.referral.teamTotals?.rows||[]).length && hasCachedBookSheet('referral','KPI Summary')) await rebuildCachedTeamTotals('referral');
+}
 
 function bytesToNice(n){
   n=Number(n)||0;
@@ -1477,9 +1569,9 @@ async function loadImportedDataFromIndexedDB(opts={}){
     legacyBookRecords.forEach(r=>{ const sheets=r.value?.aoaBySheet||{}; Object.keys(sheets).forEach(sn=>{ markImportCacheDirty('sheet',`${r.id}:${sn}`,'legacy workbook sheet migration'); migrated=true; }); markImportCacheDirty('book',r.id,'legacy workbook metadata migration'); });
     state.data=nextData; state.books=nextBooks; state.customSources=Array.isArray(customSources?.value) ? customSources.value.map(c=>({...c,headers:customData[c.sourceKey]?.headers||c.headers||[],rows:customData[c.sourceKey]?.rows||c.rows||[],aoaBySheet:{}})) : []; Object.entries(customData).forEach(([key,val])=>{ if(!customSource(key)) state.customSources.push({...val,sourceKey:key,aoaBySheet:{}}); }); state.categorized=categorized?.value || state.categorized; state.teamIndexCache=restoreTeamIndex(teamIndex?.value); state.sourceMeta=sourceMeta?.value || meta.sourceMeta || {}; if(sourceSettings?.value) mergeSourceSettingsFromImportCache(sourceSettings.value); if(aliases?.value) restoreAliasesFromImportCache(aliases.value); state.importCache.meta={...meta,manifest:manifest?.value||meta.manifest}; state.importCache.status='loaded';
     revalidateRepAliases();
-    state.data.retail.teamTotals=rebuildTeamTotalsIndex(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')); state.data.referral.teamTotals=rebuildTeamTotalsIndex(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')); afterImportedDataRestored('local IndexedDB import cache loaded'); renderTeamTotalsImportControls();
+    state.data.retail.teamTotals=rebuildTeamTotalsIndex(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail')); state.data.referral.teamTotals=rebuildTeamTotalsIndex(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral')); await recoverMissingCachedTeamTotals(); afterImportedDataRestored('local IndexedDB import cache loaded'); renderTeamTotalsImportControls();
     clearImportCacheDirty();
-    if(Number(meta.version||0)<IMPORT_CACHE_SCHEMA_VERSION || migrated){ ['retail:metadata','retail:sv2','retail:wiper','retail:controlRoster','retail:teamTotals','referral:metadata','referral:sv2','referral:wiper','referral:itac','referral:controlRoster','referral:teamTotals'].forEach(k=>markImportCacheDirty('source',k,'schema v3 migration')); markImportCacheDirty('misc','customSources','schema v3 migration'); markImportCacheDirty('misc','manifest','schema v3 migration'); migrated=true; }
+    if(Number(meta.version||0)<IMPORT_CACHE_SCHEMA_VERSION || migrated){ ['retail:metadata','retail:sv2','retail:wiper','retail:controlRoster','retail:teamTotals','referral:metadata','referral:sv2','referral:wiper','referral:itac','referral:controlRoster','referral:teamTotals'].forEach(k=>markImportCacheDirty('source',k,'schema v4 migration')); markImportCacheDirty('misc','customSources','schema v4 migration'); markImportCacheDirty('misc','manifest','schema v4 migration'); migrated=true; }
     if(migrated){ legacyBookRecords.forEach(r=>{ markBookCacheDirty(r.id,'legacy cache migrated to sheet records'); }); scheduleImportedDataSave('legacy cache migrated to sheet records',{delay:500}); }
     if(opts.showProgress) updateProgress('Local data loaded',100,{force:true});
     if(opts.showProgress) setTimeout(hideProgress,250);
@@ -1954,7 +2046,7 @@ function lastFirstToFirstLast(v){
 function toNum(v){
   if(v===null||v===undefined||v==='') return NaN;
   if(typeof v==='number') return Number.isFinite(v)?v:NaN;
-  const n=parseFloat(String(v).replace(/,/g,'').replace(/%/g,'').trim());
+  const n=parseFloat(String(v).replace(/,/g,'').replace(/%/g,'').replace(/[$()]/g,'').trim());
   return Number.isFinite(n)?n:NaN;
 }
 function parseDate(v){
@@ -3698,10 +3790,7 @@ function detectControlColumns(aoa){
   }
   return null;
 }
-function controlRowsFromWorkbook(wb){
-  const sn=controlSheetName(wb);
-  if(!sn) return [];
-  const aoa=sheetAoa(wb,sn);
+function controlRowsFromAoa(aoa){
   const cols=detectControlColumns(aoa);
   if(!cols) return [];
   const rows=[];
@@ -3713,6 +3802,11 @@ function controlRowsFromWorkbook(wb){
     if(team && tabName) rows.push({team,tabName});
   }
   return rows;
+}
+function controlRowsFromWorkbook(wb){
+  const sn=controlSheetName(wb);
+  if(!sn) return [];
+  return controlRowsFromAoa(sheetAoa(wb,sn));
 }
 function isIgnoredRosterName(value){
   const s=String(value||'').trim(); if(!s) return true;
@@ -4515,10 +4609,10 @@ async function loadPackagedFile(file){
     const m=activeModelForImport(); ensureSourceSettings(m);
     const assigned={};
     (wb.SheetNames||[]).forEach(sn=>{ if(norm(sn)===norm('All Star Metadata')) return; const src=packageSheetToSource(sn); if(src && !assigned[src]) assigned[src]=sn; });
-    const packageSources=packageMeta.packageType==='categorized_databases' ? CATEGORIZED_SOURCE_KEYS : availableTroubleSources();
-    if(packageMeta.packageType!=='categorized_databases') packageSources.forEach(src=>{ if(!assigned[src]) assigned[src]=pickBestSheetForSource(wb,src,m,SOURCE_SHEET_HINTS[src]); });
+    const packageCandidates=allSourceKeys().filter(source=>source!==QA_DIRECT_SOURCE);
+    if(packageMeta.packageType!=='categorized_databases') packageCandidates.forEach(src=>{ if(!assigned[src]) assigned[src]=pickBestSheetForSource(wb,src,m,SOURCE_SHEET_HINTS[src]); });
+    const packageSources=packageCandidates.filter(src=>Boolean(assigned[src]));
     for(const src of packageSources){
-      if(!assigned[src]) continue;
       updateProgress(`Importing packaged ${labelSource(src)}...`,22);
       state.books[sourceBookKey(src)].selectedSheets[src]=assigned[src];
       setSourceAoa(src,sheetAoa(wb,assigned[src]),assigned[src]);
@@ -4528,11 +4622,16 @@ async function loadPackagedFile(file){
     }
     state.data.retail.fileName=file.name; state.data.referral.fileName=file.name; state.data.qa.fileName=file.name; state.data.checklist.fileName=file.name; state.data.documented_coaching.fileName=file.name; state.data.comp_calls.fileName=file.name;
     if(packageMeta.packageType==='categorized_databases') state.categorized.warnings=packageMeta.categorized?.warnings||[];
+    state.data.retail.teamTotals=rebuildTeamTotalsIndex(state.data.retail.teamTotals||emptyTeamTotalsDataset('retail'));
+    state.data.referral.teamTotals=rebuildTeamTotalsIndex(state.data.referral.teamTotals||emptyTeamTotalsDataset('referral'));
+    markSourceCacheDirty('retail_team_totals','packaged data import'); markSourceCacheDirty('referral_team_totals','packaged data import');
+    renderTeamTotalsImportControls();
     renderCustomSourcesList();
     renderCategorizedSummary();
     els.packagedFileName.textContent=`${file.name} · ${Object.keys(assigned).length} sheets assigned`;
     els.retailFileName.textContent=`${file.name} · packaged`; els.referralFileName.textContent=`${file.name} · packaged`; els.qaFileName.textContent=`${file.name} · packaged`; els.checklistFileName.textContent=`${file.name} · packaged`; if(els.documentedCoachingFileName) els.documentedCoachingFileName.textContent=`${file.name} · packaged`; if(els.compCallsFileName) els.compCallsFileName.textContent=`${file.name} · packaged`;
-    await finishDataChanged('packaged data import',55);
+    await finishDataChanged('packaged data import',90);
+    await flushImportCacheSave('packaged data import complete');
     timing.mark('rendering previews', 'summary only; full preview deferred until opened');
     timing.end(`${Object.keys(assigned).length} sheets assigned`);
   }catch(err){ console.error(err); alert('Packaged data import failed. Check the console for details.'); }
@@ -5934,7 +6033,8 @@ function trueTeamCriterionValue(c, entry, opts={}){
   const raw=row[col];
   if(String(raw??'').trim()===''){ opts.trueValueDiagnostics.push({criterion:c.name||'',team,source:c.trueValueSource,column:col,reason:'Blank True Value'}); return NaN; }
   const value=c.format==='pct' ? normalizeScore(raw) : toNum(raw);
-  opts.trueValueDiagnostics.push({criterion:c.name||'',team,source:c.trueValueSource,column:col,controlTab:row._controlTab,summaryLookupKey:row._summaryLookupKey,summarySheet:row._summarySheet,summaryRow:row._summaryRowNumber,rawValue:raw,parsedValue:value,note:'No representative aggregation was performed.'});
+  if(!Number.isFinite(value)){ opts.trueValueDiagnostics.push({criterion:c.name||'',team,source:c.trueValueSource,column:col,controlTab:row._controlTab,summaryLookupKey:row._summaryLookupKey,summarySheet:row._summarySheet,summaryRow:row._summaryRowNumber,rawValue:raw,reason:'Value is nonnumeric'}); return NaN; }
+  opts.trueValueDiagnostics.push({criterion:c.name||'',team,source:c.trueValueSource,column:col,controlTab:row._controlTab,summaryLookupKey:row._summaryLookupKey,summarySheet:row._summarySheet,summaryRow:row._summaryRowNumber,rawValue:raw,parsedValue:value,reason:value===0?'Value is zero':'Value parsed',note:'No representative aggregation was performed.'});
   return value;
 }
 
@@ -9028,22 +9128,34 @@ function computeEntries(model, entries, kind, opts){
 }
 
 async function runTeamTotalsRegressionTests(){
-  const makeWb=(summaryName)=>{ const wb=XLSX.utils.book_new(); const control=[['Team Name','Tab Name'],['Madison Ellis','Ellis'],['John Smith','Smith']]; XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(control),'Control'); const ellis=[[],Array(27).fill('')]; ellis[1][26]='M.ELLIS'; const smith=[[],Array(27).fill('')]; smith[1][26]='J.SMITH'; XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ellis),'Ellis'); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(smith),'Smith'); const summary=[[],[],['User','Cash Appointment Rate','Insurance Appointment Rate',''],['M.ELLIS','61%','42%'],['J.SMITH',0,'12%']]; XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summary),summaryName); return wb; };
+  const makeWb=(summaryName,opts={})=>{ const wb=XLSX.utils.book_new(); const control=[['Team Name','Tab Name'],['Madison Ellis','Ellis'],['John Smith','Smith']]; XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(control),'Control'); const ellis=[[],Array(27).fill('')]; ellis[1][26]='M.ELLIS'; const smith=[[],Array(27).fill('')]; smith[1][26]='J.SMITH'; XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ellis),'Ellis'); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(smith),'Smith'); const pad=Array(Math.max(0,opts.headerRow||2)).fill([]); const header=opts.lookupCol===1?['','User','Cash Appointment Rate','', 'Insurance Appointment Rate','Currency'] : ['User','Cash Appointment Rate','', 'Insurance Appointment Rate','Currency']; const e=opts.lookupCol===1?['','M.ELLIS','61%','','42%','$0'] : ['M.ELLIS','61%','','42%','$0']; const j=opts.lookupCol===1?['','J.SMITH',0,'','0%','$1,234.50'] : ['J.SMITH',0,'','0%','$1,234.50']; XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([...pad,header,e,j]),summaryName); return wb; };
   const retail=await buildTeamTotalsFromWorkbook('retail',makeWb('Appt Summary'),'Retail Team Totals.xlsx',1,2);
-  const referral=await buildTeamTotalsFromWorkbook('referral',makeWb('KPI Summary'),'Referral Team Totals.xlsx',1,2);
+  const referral=await buildTeamTotalsFromWorkbook('referral',makeWb('KPI SUMMARY',{headerRow:4,lookupCol:1}),'Referral Team Totals.xlsx',1,2);
   state.data.retail.teamTotals=retail; state.data.referral.teamTotals=referral;
   const c={...emptyCriterion(),name:'Cash Appointment Rate',source:'retail_sv2',audience:'both',scoreType:'rank',format:'pct',trueValueEnabled:true,trueValueSource:'retail_team_totals',trueValueColumn:'Cash Appointment Rate'};
+  const c0={...c,name:'Zero',trueValueColumn:'Cash Appointment Rate'};
+  const cPct0={...c,name:'Zero pct',trueValueSource:'referral_team_totals',trueValueColumn:'Insurance Appointment Rate'};
+  const cCurrency={...c,name:'Currency',format:'number',trueValueSource:'referral_team_totals',trueValueColumn:'Currency'};
   const teamVal=criterionValue(c,{kind:'team',name:'Madison Ellis',team:'Madison Ellis'},{});
+  const zeroVal=criterionValue(c0,{kind:'team',name:'John Smith',team:'John Smith'},{});
+  const zeroPct=criterionValue(cPct0,{kind:'team',name:'John Smith',team:'John Smith'},{});
+  const currency=criterionValue(cCurrency,{kind:'team',name:'John Smith',team:'John Smith'},{});
   const repVal=criterionValue(c,{kind:'rep',name:'No One',team:'Madison Ellis',key:'noone'},{_sourceRowsCache:new Map(),_entryRowsCache:new Map()});
   const missing=criterionValue(c,{kind:'team',name:'Missing Team',team:'Missing Team'},{});
   const assert=(ok,msg)=>{ if(!ok) throw new Error(msg); };
-  assert(retail.headers.length===3,'Retail headers should stop before blank column');
+  assert(retail.diagnostics.matchedSheet==='Appt Summary','Retail direct import must use Appt Summary');
+  assert(referral.diagnostics.matchedSheet==='KPI SUMMARY','Referral normalized import must use KPI Summary variation');
+  assert(retail.headers.includes('Insurance Appointment Rate') && retail.rows[0]['Insurance Appointment Rate']==='42%','Blank separator column must not truncate later fields');
+  assert(referral.diagnostics.headerRowSelected===5 && referral.diagnostics.lookupColumnSelected===2,'Shifted headers and lookup column should be detected');
   assert(retail.rows.length===2 && retail.rows[0]._team==='Madison Ellis','Retail team mapping failed');
   assert(referral.rows.length===2 && referral.rows[1]._sourceKey==='referral_team_totals','Referral team totals failed');
   assert(Number.isFinite(teamVal) && Math.round(teamVal)===61,'True team value should parse 61%');
+  assert(Number.isFinite(zeroVal) && zeroVal===0,'Numeric zero should remain valid');
+  assert(Number.isFinite(zeroPct) && zeroPct===0,'0% should remain valid');
+  assert(Number.isFinite(currency) && currency===1234.5,'Currency should parse');
   assert(!Number.isFinite(repVal),'Representative should not use Team Totals true value');
   assert(!Number.isFinite(missing),'Missing true value should not fall back');
-  console.info('Team Totals regression tests passed',{retail,referral,teamVal,repVal,missing});
+  console.info('Team Totals regression tests passed',{retail,referral,teamVal,zeroVal,zeroPct,currency,repVal,missing});
   return true;
 }
 window.runTeamTotalsRegressionTests=runTeamTotalsRegressionTests;
@@ -10439,7 +10551,7 @@ function wire(){
       state.categorized.nondated={headers:['Representative','Coach','Metric'],rows:[{Representative:'A',Coach:'Alpha',Metric:1}],builtAt:'2026-07-15T00:00:00.000Z',sourceStats:[{source:'retail_sv2',rows:1}]}; state.categorized.dated={headers:['Representative','Coach','Date'],rows:[{Representative:'A',Coach:'Alpha',Date:'2026-07-15'}],builtAt:'2026-07-15T00:01:00.000Z',sourceStats:[{source:'qa',rows:1}]}; state.categorized.warnings=['warn']; markImportCacheDirty('misc','categorized','regression categorized'); await flushImportCacheSave('regression categorized'); state.categorized={nondated:{headers:[],rows:[]},dated:{headers:[],rows:[]},warnings:[]}; await loadImportedDataFromIndexedDB({}); ok('Categorization persistence restores counts, headers, warnings, stats, and timestamps', state.categorized.nondated.rows.length===1 && state.categorized.dated.rows.length===1 && state.categorized.warnings.length===1 && state.categorized.nondated.builtAt==='2026-07-15T00:00:00.000Z' && state.categorized.nondated.sourceStats.length===1);
       markImportCacheDirty('source','retail:sv2','regression failed transaction'); const before=importCacheHasDirty(); mergeImportCacheDirtySnapshot({sources:new Set(['retail:sv2']),books:new Set(),sheets:new Set(),misc:new Set(),deletedSources:new Set(),deletedBooks:new Set(),deletedSheets:new Set()}); ok('Failed transaction recovery retains dirty records for retry', before && ensureImportCacheDirty().sources.has('retail:sv2'));
       ok('Worksheet lazy loading keeps selected worksheet records addressable', !!sheetRecordId('retail','SV2') && state.books.retail.selectedSheets.retail_sv2==='SV2');
-      ok('Schema migration path writes v3 manifest metadata', Number(state.importCache?.meta?.version)===IMPORT_CACHE_SCHEMA_VERSION && !!state.importCache?.meta?.manifest);
+      ok('Schema migration path writes current manifest metadata', Number(state.importCache?.meta?.version)===IMPORT_CACHE_SCHEMA_VERSION && !!state.importCache?.meta?.manifest);
     }finally{ Object.assign(state,snap); afterImportedDataRestored('regression state restored'); }
     console.table(results); return results;
   };
