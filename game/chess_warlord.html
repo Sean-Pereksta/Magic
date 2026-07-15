@@ -70,6 +70,8 @@
   #piecePanel button:hover,#menu button:hover{background:rgba(255,255,255,.16)}
   #menu{display:none !important;}
   #menu button.active{background:rgba(255,212,107,.24);border-color:rgba(255,212,107,.7)}
+  #graphicsQuality{position:fixed;right:12px;top:92px;z-index:30;border:1px solid rgba(255,255,255,.18);background:rgba(10,18,32,.72);color:#eaf2ff;border-radius:999px;padding:5px 8px;font:800 11px Inter,system-ui,sans-serif;max-width:112px;outline:none;}
+  @media(max-width:760px){#graphicsQuality{right:8px;top:82px;max-width:92px;padding:4px 5px;font-size:10px}}
   #minimapDock{position:fixed;left:12px;bottom:14px;z-index:5;width:218px;padding:7px;pointer-events:auto;transition:width .16s ease,transform .16s ease,background .16s ease,opacity .12s ease;overflow:hidden;}
   #minimapHeader{height:29px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 3px 5px 7px;}
   #minimapTitle{font-size:10px;font-weight:1000;letter-spacing:.08em;text-transform:uppercase;color:#e8f2ff;white-space:nowrap;}
@@ -201,6 +203,7 @@
 </div>
 <button id="fullscreenBtn" title="Toggle fullscreen">⛶ Fullscreen</button>
 <button id="audioMuteBtn" title="Mute audio" aria-label="Mute audio">🔊</button>
+<select id="graphicsQuality" title="Graphics quality" aria-label="Graphics quality"><option value="auto">Auto</option><option value="sharp">Sharp</option><option value="balanced">Balanced</option><option value="performance">Performance</option></select>
 <div id="topbar">
   <div id="quickControls" class="glass"><button id="centerBtn">Center King</button><div id="quickPct">Tokens 0</div></div>
   <div id="status" class="glass"></div>
@@ -428,6 +431,19 @@ const DIRS8 = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
 const ORTHO = [[1,0],[-1,0],[0,1],[0,-1]];
 const DIAG = [[1,1],[1,-1],[-1,1],[-1,-1]];
 let DPR = 1;
+let canvasCssW = 0;
+let canvasCssH = 0;
+let deviceDpr = 1;
+let deviceDprCap = 1.5;
+let dynamicRenderScale = 1;
+let effectiveRenderDpr = 1;
+let lastResolutionChangeMs = 0;
+const GRAPHICS_QUALITY_KEY = 'cw.graphicsQuality';
+const RENDER_SCALE_STEPS = [1,.9,.8,.7,.6];
+const graphicsQualitySelect = document.getElementById('graphicsQuality');
+let graphicsQualityMode = localStorage.getItem(GRAPHICS_QUALITY_KEY) || 'auto';
+if(!['auto','sharp','balanced','performance'].includes(graphicsQualityMode)) graphicsQualityMode='auto';
+if(graphicsQualitySelect) graphicsQualitySelect.value=graphicsQualityMode;
 let W = 0;
 let H = 0;
 let cam = {x: 0, y: 0, zoom: 1};
@@ -3271,7 +3287,7 @@ let solarChannelLinks = [];
 let solarAttackLinks = [];
 let lastSolarChannelStateMark = 0;
 const PERF_DEBUG = params.get('perf') === '1';
-const perfStats = {frames:[], boardScans:0, pieceScans:0, solarUpdates:0, spawnUpdates:0, lastReport:0, frame:null, warnings:[], lastBoardScans:0, lastPieceScans:0};
+const perfStats = {frames:[], frameTimes:[], boardScans:0, pieceScans:0, solarUpdates:0, spawnUpdates:0, lastReport:0, frame:null, warnings:[], lastBoardScans:0, lastPieceScans:0, resolutionChanges:0, spriteHits:0, spriteMisses:0, spriteVariantsCreated:0, spriteCacheBytes:0};
 let spawnEconomyAccumulator = 0;
 let localSpawnEconomyAccumulator = 0;
 let solarBeaconAccumulator = 0;
@@ -3290,7 +3306,7 @@ function timedTerritorySet(faction,kind){ return timedTerritoryKeysByFaction.get
 
 function perfStartFrame(){
   if(!PERF_DEBUG) return null;
-  return perfStats.frame={start:performance.now(), marks:new Map(), counts:{visiblePieces:0,renderedPieces:0,visibleChunks:0,dirtyChunks:0,filters:0,shadowBlur:0}};
+  return perfStats.frame={start:performance.now(), marks:new Map(), counts:{visiblePieces:0,renderedPieces:0,visibleChunks:0,dirtyChunks:0,filters:0,shadowBlur:0,precomposedPlates:0,uncachedSourceImages:0,smoothingOnSpriteDraws:0,smoothingOffSpriteDraws:0}};
 }
 function perfTime(label,fn){
   if(!PERF_DEBUG) return fn();
@@ -3302,6 +3318,7 @@ function perfWarn(msg){ if(PERF_DEBUG) perfStats.warnings.push(msg); }
 function perfEndFrame(){
   if(!PERF_DEBUG || !perfStats.frame) return;
   const total=performance.now()-perfStats.frame.start;
+  perfStats.frameTimes.push(total); if(perfStats.frameTimes.length>300) perfStats.frameTimes.shift();
   if(total>33) perfWarn(`frame ${total.toFixed(1)}ms`);
   const boardDelta=perfStats.boardScans-perfStats.lastBoardScans, pieceDelta=perfStats.pieceScans-perfStats.lastPieceScans;
   if(boardDelta) perfWarn(`full board scans this frame: ${boardDelta}`);
@@ -3320,20 +3337,59 @@ function makeRenderCanvas(w,h){
   const c=document.createElement('canvas'); c.width=Math.max(1,Math.ceil(w)); c.height=Math.max(1,Math.ceil(h)); return c;
 }
 const spriteVariantCache = new Map();
+const precomposedPlateCache = new Map();
+const sourceCropCache = new WeakMap();
 const fallbackPieceCache = new Map();
-function spriteVariantKey(factionId,type,state,tier){ return `${factionId}|${type}|${state}|${tier}`; }
-function getCachedSpriteVariant(factionId,type,graphic,state='ready',tier=2){
+const pieceAssetRenderSettings = {global:{pixelArt:true}, factions:{}, assets:{}};
+const SPRITE_CACHE_LIMIT = 520;
+function assetRenderSetting(factionId,type){ return {...(pieceAssetRenderSettings.global||{}), ...(pieceAssetRenderSettings.factions?.[factionId]||{}), ...(pieceAssetRenderSettings.assets?.[`${factionId}|${type}`]||{})}; }
+function spriteQualityTier(){ return graphicsQualityMode==='performance'?'performance':(effectiveRenderDpr>=1.55?'sharp':(effectiveRenderDpr>=1.15?'balanced':'performance')); }
+function spriteVariantKey(factionId,type,state,zoomTier,qualityTier,pixelArt,outline){ return `${factionId}|${type}|${state}|${zoomTier}|${qualityTier}|${pixelArt?'px':'smooth'}|${outline?'dup':'std'}`; }
+function estimateCanvasBytes(c){ return (c?.width||0)*(c?.height||0)*4; }
+function trimSpriteCaches(){
+  while(spriteVariantCache.size>SPRITE_CACHE_LIMIT){ const k=spriteVariantCache.keys().next().value; const v=spriteVariantCache.get(k); perfStats.spriteCacheBytes-=v?.bytes||0; spriteVariantCache.delete(k); }
+  while(precomposedPlateCache.size>SPRITE_CACHE_LIMIT){ const k=precomposedPlateCache.keys().next().value; const v=precomposedPlateCache.get(k); perfStats.spriteCacheBytes-=v?.bytes||0; precomposedPlateCache.delete(k); }
+}
+function clearRenderSpriteCaches(){ spriteVariantCache.clear(); precomposedPlateCache.clear(); perfStats.spriteCacheBytes=0; }
+function sourceAlphaCrop(graphic){
+  if(sourceCropCache.has(graphic)) return sourceCropCache.get(graphic);
+  const w=graphic.width||1,h=graphic.height||1; let crop={sx:0,sy:0,sw:w,sh:h};
+  try{
+    const c=makeRenderCanvas(w,h), g=c.getContext('2d',{willReadFrequently:true}); g.drawImage(graphic,0,0);
+    const d=g.getImageData(0,0,w,h).data; let minX=w,minY=h,maxX=-1,maxY=-1;
+    for(let y=0;y<h;y++) for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>18){ minX=Math.min(minX,x); minY=Math.min(minY,y); maxX=Math.max(maxX,x); maxY=Math.max(maxY,y); } }
+    if(maxX>=minX){ const pad=Math.max(2,Math.round(Math.min(w,h)*.018)); minX=Math.max(0,minX-pad); minY=Math.max(0,minY-pad); maxX=Math.min(w-1,maxX+pad); maxY=Math.min(h-1,maxY+pad); crop={sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1}; }
+  }catch(e){}
+  sourceCropCache.set(graphic,crop); return crop;
+}
+function targetSpriteSize(graphic,metrics){ const z=currentRenderState?.zoomTier||'close'; const q=effectiveRenderDpr; const mult=z==='far'?.72:(z==='medium'?1:1.22); return {w:Math.max(1,Math.round(metrics.targetW*q*mult)),h:Math.max(1,Math.round(metrics.targetH*q*mult)),zoomTier:z}; }
+function getCachedSpriteVariant(factionId,type,graphic,metrics,state='ready',tier=2,outline=false){
   if(!graphic) return null;
-  const k=spriteVariantKey(factionId,type,state,tier);
+  const setting=assetRenderSetting(factionId,type), pixelArt=!!setting.pixelArt, quality=spriteQualityTier(), target=targetSpriteSize(graphic,metrics);
+  const k=spriteVariantKey(factionId,type,state,target.zoomTier,quality,pixelArt,outline);
   const cached=spriteVariantCache.get(k);
-  if(cached && cached.source===graphic) return cached.canvas;
-  const c=makeRenderCanvas(graphic.width, graphic.height), g=c.getContext('2d');
-  g.imageSmoothingEnabled=true;
+  if(cached && cached.source===graphic){ perfStats.spriteHits++; spriteVariantCache.delete(k); spriteVariantCache.set(k,cached); return cached; }
+  perfStats.spriteMisses++;
+  const crop=sourceAlphaCrop(graphic); const c=makeRenderCanvas(target.w,target.h), g=c.getContext('2d');
+  g.imageSmoothingEnabled=!pixelArt;
   g.filter = state==='cooling' ? 'brightness(.80) saturate(.74)' : (state==='ready' ? 'brightness(1.07) saturate(1.05)' : 'none');
-  g.drawImage(graphic,0,0);
+  g.drawImage(graphic,crop.sx,crop.sy,crop.sw,crop.sh,0,0,target.w,target.h);
   g.filter='none';
-  spriteVariantCache.set(k,{source:graphic,canvas:c});
-  return c;
+  const entry={source:graphic,canvas:c,crop,w:target.w,h:target.h,pixelArt,bytes:estimateCanvasBytes(c)};
+  spriteVariantCache.set(k,entry); perfStats.spriteVariantsCreated++; perfStats.spriteCacheBytes+=entry.bytes; trimSpriteCaches(); return entry;
+}
+function drawSpriteCanvas(ctx,entry,x,y,w,h){ if(!entry?.canvas) return; ctx.save(); ctx.imageSmoothingEnabled=!entry.pixelArt; perfCount(entry.pixelArt?'smoothingOffSpriteDraws':'smoothingOnSpriteDraws'); ctx.drawImage(entry.canvas,x,y,w,h); ctx.restore(); }
+function precomposedPlateKey(p,f,state,zoomTier,quality,pixelArt){ return `${f.id}|${p.type}|${state}|${zoomTier}|${quality}|${pixelArt?'px':'smooth'}|${f.duplicateFaction?(f.outline||'dup'):'std'}`; }
+function getPrecomposedPiecePlate(p,f,def,graphic,metrics,r,state){
+  if(!graphic) return null; const setting=assetRenderSetting(f.id,p.type), pixelArt=!!setting.pixelArt, quality=spriteQualityTier(), z=currentRenderState?.zoomTier||'close'; const k=precomposedPlateKey(p,f,state,z,quality,pixelArt);
+  const cached=precomposedPlateCache.get(k); if(cached && cached.source===graphic){ perfStats.spriteHits++; precomposedPlateCache.delete(k); precomposedPlateCache.set(k,cached); return cached; }
+  perfStats.spriteMisses++;
+  const pad=26, w=Math.ceil(Math.max(metrics.targetW+pad*2,r*2+58)), h=Math.ceil(metrics.targetH+pad*2+36), c=makeRenderCanvas(w,h), g=c.getContext('2d');
+  g.translate(w/2, pad-metrics.top);
+  g.globalAlpha=.45; g.fillStyle='#000'; g.beginPath(); g.ellipse(2,10,r*.9,r*.35,0,0,Math.PI*2); g.fill(); g.globalAlpha=1;
+  g.save(); g.globalAlpha=state==='ready'?1:.92; g.shadowColor='rgba(0,0,0,.62)'; g.shadowBlur=0; const variant=getCachedSpriteVariant(f.id,p.type,graphic,metrics,state,visualQualityTier(),f.duplicateFaction); drawSpriteCanvas(g,variant,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH); g.restore();
+  if(f.duplicateFaction){ g.globalAlpha=.9; g.strokeStyle=f.outline || '#fff'; g.lineWidth=4; g.beginPath(); g.arc(0,0,r+14,0,Math.PI*2); g.stroke(); }
+  const entry={source:graphic,canvas:c,x:-w/2,y:metrics.top-pad,w,h,pixelArt,bytes:estimateCanvasBytes(c)}; precomposedPlateCache.set(k,entry); perfStats.spriteVariantsCreated++; perfStats.spriteCacheBytes+=entry.bytes; trimSpriteCaches(); return entry;
 }
 function getFallbackPieceLayer(f,def,p,r,state='ready'){ return null; }
 function markPieceStatsDirty(){ pieceStatsDirty = true; }
@@ -3585,23 +3641,50 @@ function toast(msg, ms=2200){
   clearTimeout(toast._t);
   toast._t = setTimeout(()=>toastEl.style.display='none', ms);
 }
-function resize(){
-  const constrainedDevice=innerWidth<=900 || Number(navigator.deviceMemory||8)<=4;
-  const dprCap=constrainedDevice?1.5:2;
-  DPR = Math.max(1, Math.min(dprCap, window.devicePixelRatio || 1));
-  W = Math.floor(innerWidth * DPR); H = Math.floor(innerHeight * DPR);
-  canvas.width = W; canvas.height = H;
+function computeDeviceDprCap(){
+  const mem=Number(navigator.deviceMemory||8), cores=Number(navigator.hardwareConcurrency||4), mobile=innerWidth<=900 || matchMedia('(pointer:coarse)').matches;
+  if(mobile || mem<=4 || cores<=4) return 1.25;
+  if(mem>=8 && cores>=8 && innerWidth>=1200) return 1.9;
+  return 1.5;
+}
+function fixedRenderScaleForMode(){
+  if(graphicsQualityMode==='sharp') return 1;
+  if(graphicsQualityMode==='balanced') return .82;
+  if(graphicsQualityMode==='performance') return .66;
+  return dynamicRenderScale;
+}
+function resize(force=false){
+  canvasCssW = Math.max(1, innerWidth); canvasCssH = Math.max(1, innerHeight);
+  deviceDpr = window.devicePixelRatio || 1;
+  deviceDprCap = computeDeviceDprCap();
+  const modeScale=fixedRenderScaleForMode();
+  const minDpr=(innerWidth<=900 || Number(navigator.deviceMemory||8)<=4) ? .85 : 1;
+  effectiveRenderDpr = Math.max(minDpr, Math.min(deviceDpr, deviceDprCap) * modeScale);
+  DPR = effectiveRenderDpr;
+  W = Math.max(1, Math.floor(canvasCssW * DPR)); H = Math.max(1, Math.floor(canvasCssH * DPR));
+  if(force || canvas.width!==W || canvas.height!==H){ canvas.width = W; canvas.height = H; perfStats.resolutionChanges++; lastResolutionChangeMs=performance.now(); }
   ctx.setTransform(DPR,0,0,DPR,0,0);
   const miniW = Math.max(1, mini.clientWidth || 1);
   const miniH = Math.max(1, mini.clientHeight || 1);
-  mini.width = Math.floor(miniW*DPR); mini.height = Math.floor(miniH*DPR);
-  mctx.setTransform(DPR,0,0,DPR,0,0);
+  const miniDpr=Math.min(deviceDpr,1.25);
+  mini.width = Math.floor(miniW*miniDpr); mini.height = Math.floor(miniH*miniDpr);
+  mctx.setTransform(miniDpr,0,0,miniDpr,0,0);
   backgroundGradient = ctx.createLinearGradient(0,0,0,innerHeight);
   backgroundGradient.addColorStop(0,'#091426');
   backgroundGradient.addColorStop(.55,'#07101c');
   backgroundGradient.addColorStop(1,'#050813');
   minimapBaseState = {boardRef:null,revision:-1,width:0,height:0};
 }
+function frameTimePercentile(pct){ const a=perfStats.frameTimes.slice().sort((a,b)=>a-b); return a[Math.min(a.length-1,Math.floor(a.length*pct))]||0; }
+function updateAdaptiveRenderScale(){
+  if(graphicsQualityMode!=='auto' || perfStats.frameTimes.length<90) return;
+  const t=performance.now(); if(t-lastResolutionChangeMs<3500) return;
+  const avg=perfStats.frameTimes.reduce((a,b)=>a+b,0)/perfStats.frameTimes.length, p95=frameTimePercentile(.95);
+  let idx=RENDER_SCALE_STEPS.indexOf(dynamicRenderScale); if(idx<0) idx=0;
+  if((p95>32 || avg>22.5) && idx<RENDER_SCALE_STEPS.length-1){ idx += p95>34 ? 2 : 1; dynamicRenderScale=RENDER_SCALE_STEPS[Math.min(idx,RENDER_SCALE_STEPS.length-1)]; resize(true); clearRenderSpriteCaches(); perfStats.frameTimes.length=0; return; }
+  if(avg<17.2 && p95<22 && idx>0 && t-lastResolutionChangeMs>7000){ dynamicRenderScale=RENDER_SCALE_STEPS[idx-1]; resize(true); clearRenderSpriteCaches(); perfStats.frameTimes.length=0; }
+}
+if(graphicsQualitySelect) graphicsQualitySelect.addEventListener('change',()=>{ graphicsQualityMode=graphicsQualitySelect.value||'auto'; localStorage.setItem(GRAPHICS_QUALITY_KEY,graphicsQualityMode); if(graphicsQualityMode==='auto') dynamicRenderScale=1; clearRenderSpriteCaches(); resize(true); });
 function setMinimapOpen(open, persist=true){
   minimapOpen = !!open;
   if(minimapDock) minimapDock.classList.toggle('collapsed', !minimapOpen);
@@ -8391,8 +8474,8 @@ function drawPendingSpawnGhost(action){
   ctx.setLineDash([]);
   if(graphic){
     ctx.globalAlpha=.42+.16*pulse;
-    const variant=getCachedSpriteVariant(f.id,action.type,graphic,'ready',visualQualityTier());
-    ctx.drawImage(variant || graphic,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
+    const variant=getCachedSpriteVariant(f.id,action.type,graphic,metrics,'ready',visualQualityTier());
+    drawSpriteCanvas(ctx,variant,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
   } else {
     ctx.fillStyle=f.color;
     drawPieceShape(def.pattern,r,Number(action.pieceId)||0,action.type,f.id);
@@ -8437,9 +8520,10 @@ function drawTargetablePieceGlow(graphic,def,metrics,r,pieceId,pieceType,faction
     const scale=1.06 + .03*pulse;
     const w=metrics.targetW*scale, h=metrics.targetH*scale;
     ctx.globalAlpha=.34 + .18*pulse;
-    ctx.drawImage(graphic,-w/2,metrics.bottom-h,w,h);
+    const variant=getCachedSpriteVariant(factionId,pieceType,graphic,{targetW:w,targetH:h,bottom:metrics.bottom},'ready',visualQualityTier());
+    drawSpriteCanvas(ctx,variant,-w/2,metrics.bottom-h,w,h);
     ctx.globalAlpha=.20 + .10*pulse;
-    ctx.drawImage(graphic,-w/2,metrics.bottom-h,w,h);
+    drawSpriteCanvas(ctx,variant,-w/2,metrics.bottom-h,w,h);
   }else{
     ctx.globalAlpha=.22 + .14*pulse;
     ctx.fillStyle=glowColor;
@@ -8583,25 +8667,30 @@ function drawSinglePiece(p,labelIds=new Set()){
       ctx.fill();
       ctx.globalAlpha=1;
     }
-    ctx.globalAlpha=.45;
-    ctx.fillStyle='#000';
-    ctx.beginPath();
-    ctx.ellipse(2,10,r*.9,r*.35,0,0,Math.PI*2);
-    ctx.fill();
-    ctx.globalAlpha=1;
-    drawFactionFlair(f,p,r);
-
     if(graphic){
-      ctx.save();
-      ctx.globalAlpha=p.flash>0 ? .78 : (pieceReady ? 1 : .92);
-      ctx.shadowColor=p.flash>0 ? 'rgba(255,255,255,.92)' : 'rgba(0,0,0,.62)';
+      drawFactionFlair(f,p,r);
       const needsBlur=p.flash>0 || abilityTarget || attackTarget || checkedKing || rstate.selectedPieceId===p.id;
-      ctx.shadowBlur=needsBlur ? (p.flash>0 ? 18 : 8) : 0; if(needsBlur) perfCount('shadowBlur');
-      ctx.imageSmoothingEnabled=true;
-      const variant=getCachedSpriteVariant(f.id,p.type,graphic,pieceReady?'ready':'cooling',rstate.tier);
-      ctx.drawImage(variant || graphic,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
-      ctx.restore();
+      if(needsBlur || p.flash>0){
+        ctx.save();
+        ctx.globalAlpha=p.flash>0 ? .78 : (pieceReady ? 1 : .92);
+        ctx.shadowColor=p.flash>0 ? 'rgba(255,255,255,.92)' : 'rgba(0,0,0,.62)';
+        ctx.shadowBlur=needsBlur ? (p.flash>0 ? 18 : 8) : 0; if(needsBlur) perfCount('shadowBlur');
+        const variant=getCachedSpriteVariant(f.id,p.type,graphic,metrics,pieceReady?'ready':'cooling',rstate.tier,f.duplicateFaction);
+        drawSpriteCanvas(ctx,variant,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
+        ctx.restore();
+      }else{
+        const plate=getPrecomposedPiecePlate(p,f,def,graphic,metrics,r,pieceReady?'ready':'cooling');
+        if(plate){ ctx.save(); ctx.globalAlpha=pieceReady ? 1 : .96; drawSpriteCanvas(ctx,plate,plate.x,plate.y,plate.w,plate.h); ctx.restore(); perfCount('precomposedPlates'); }
+        else { perfCount('uncachedSourceImages'); ctx.drawImage(graphic,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH); }
+      }
     } else {
+      ctx.globalAlpha=.45;
+      ctx.fillStyle='#000';
+      ctx.beginPath();
+      ctx.ellipse(2,10,r*.9,r*.35,0,0,Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha=1;
+      drawFactionFlair(f,p,r);
       const g=ctx.createRadialGradient(-r*.25,-r*.3,2,0,0,r*1.15);
       g.addColorStop(0,'#ffffff');
       g.addColorStop(.16,f.color);
@@ -9319,16 +9408,21 @@ frame avg ${avg.toFixed(2)}ms p95 ${p95.toFixed(2)}ms last ${(last.total||0).toF
 ${line('gameTick')}  ${line('aiTick')}  ${line('specialLandRules')}
 ${line('staticTerrain')}  ${line('territory')}  dirty chunks ${(m.dirtyChunkRebuild||0).toFixed(2)}ms
 ${line('actorGather')}  ${line('actorSort')}  ${line('pieceDrawing')}  ${line('effects')}  ${line('minimap')}
+effective DPR ${effectiveRenderDpr.toFixed(2)} render scale ${dynamicRenderScale.toFixed(2)} mode ${graphicsQualityMode}
+canvas internal ${W}x${H} css ${canvasCssW}x${canvasCssH} resolution changes ${perfStats.resolutionChanges}
+sprite hits ${perfStats.spriteHits} misses ${perfStats.spriteMisses} variants ${perfStats.spriteVariantsCreated} cache ${(perfStats.spriteCacheBytes/1048576).toFixed(1)}MB
+plates/frame ${c.precomposedPlates||0} uncached images/frame ${c.uncachedSourceImages||0} smooth on/off ${c.smoothingOnSpriteDraws||0}/${c.smoothingOffSpriteDraws||0}
 visible pieces ${c.visiblePieces||0} rendered ${c.renderedPieces||0} visible chunks ${c.visibleChunks||0} rebuilt ${c.dirtyChunks||0}
 board scans/s ${(perfStats.boardScans/elapsed).toFixed(1)} piece scans/s ${(perfStats.pieceScans/elapsed).toFixed(1)} filters/frame ${c.filters||0} shadowBlur/frame ${c.shadowBlur||0}
 solar updates/s ${(perfStats.solarUpdates/elapsed).toFixed(1)} spawn updates/s ${(perfStats.spawnUpdates/elapsed).toFixed(1)} alive pieces ${alive}
 warnings ${(last.warnings||[]).join(' | ') || 'none'}`;
-  perfStats.boardScans=0; perfStats.pieceScans=0; perfStats.solarUpdates=0; perfStats.spawnUpdates=0; perfStats.lastReport=tNow;
+  perfStats.boardScans=0; perfStats.pieceScans=0; perfStats.solarUpdates=0; perfStats.spawnUpdates=0; perfStats.spriteHits=0; perfStats.spriteMisses=0; perfStats.spriteVariantsCreated=0; perfStats.lastReport=tNow;
 }
 
 function loop(t){
   const dt=Math.min(.05,(t-lastTime)/1000 || .016); lastTime=t;
   updateVisualQuality(dt);
+  updateAdaptiveRenderScale();
   perfStartFrame();
   perfTime('gameTick',()=>gameTick(dt));
   draw();
