@@ -173,25 +173,30 @@
   .factionGuideBtn:hover,.factionGuideBtn:focus-visible{background:var(--faction-accent,#facc15);color:#111827;outline:3px solid rgba(255,255,255,.85);outline-offset:2px;}
   #factionLibraryOverlay{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:14px;background:rgba(2,6,14,.62);backdrop-filter:blur(4px);}
   #factionLibraryOverlay.open{display:flex;}
-  #factionLibraryModal{width:min(1180px,calc(100vw - 28px));height:min(900px,calc(100dvh - 28px));max-height:calc(100vh - 28px);display:grid;grid-template-rows:auto 1fr;border-radius:24px;background:linear-gradient(180deg,rgba(17,26,46,.98),rgba(5,9,16,.98));border:1px solid rgba(255,255,255,.22);box-shadow:0 38px 120px rgba(0,0,0,.7);overflow:hidden;color:#fff;}
-  #factionLibraryHeader{position:sticky;top:0;z-index:2;display:flex;gap:12px;justify-content:space-between;align-items:flex-start;padding:16px 18px;background:rgba(10,16,29,.96);border-bottom:1px solid rgba(255,255,255,.14);}
-  #factionLibraryHeader h2{margin:0;font-size:clamp(22px,4vw,36px);line-height:1;}
-  #factionLibraryHeader p{margin:6px 0 0;color:#d9e7fb;font-size:13px;line-height:1.35;max-width:820px;}
-  #factionLibraryClose{appearance:none;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.09);color:#fff;border-radius:14px;min-width:44px;min-height:44px;font-size:24px;font-weight:1000;cursor:pointer;}
-  #factionLibraryBody{min-height:0;display:grid;grid-template-columns:285px 1fr;}
-  #factionLibraryTroopList{min-height:0;overflow:auto;padding:12px;background:rgba(255,255,255,.045);border-right:1px solid rgba(255,255,255,.12);}
-  .librarySectionTitle{margin:12px 0 6px;color:#fff3b0;font-size:11px;font-weight:1000;text-transform:uppercase;letter-spacing:.08em;}
-  .libraryTroopBtn{width:100%;min-height:54px;margin:0 0 7px;display:grid;grid-template-columns:42px 1fr;gap:8px;align-items:center;text-align:left;border:1px solid rgba(255,255,255,.14);border-radius:14px;background:rgba(255,255,255,.06);color:#fff;cursor:pointer;padding:7px;}
-  .libraryTroopBtn[aria-selected="true"]{border-color:#facc15;background:rgba(250,204,21,.14);}
-  .libraryThumb{width:38px;height:38px;display:grid;place-items:center;border-radius:10px;background:rgba(255,255,255,.08);font-size:24px;overflow:hidden;}
+  #factionLibraryModal{width:min(980px,calc(100vw - 28px));height:min(860px,calc(100dvh - 28px));max-height:calc(100vh - 28px);display:grid;grid-template-rows:auto auto 1fr;border-radius:22px;background:linear-gradient(180deg,rgba(17,26,46,.98),rgba(5,9,16,.98));border:1px solid rgba(255,255,255,.22);box-shadow:0 38px 120px rgba(0,0,0,.7);overflow:hidden;color:#fff;}
+  #factionLibraryHeader{position:sticky;top:0;z-index:3;display:flex;gap:10px;justify-content:space-between;align-items:center;padding:12px 14px;background:rgba(10,16,29,.96);border-bottom:1px solid rgba(255,255,255,.14);}
+  #factionLibraryHeader h2{margin:0;font-size:clamp(20px,3.4vw,30px);line-height:1;}
+  #factionLibraryHeader p{display:none;}
+  #factionLibraryClose{appearance:none;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;border-radius:14px;min-width:46px;min-height:46px;font-size:25px;font-weight:1000;cursor:pointer;}
+  #factionLibraryBody{min-height:0;display:contents;}
+  #factionLibraryTroopList{position:relative;z-index:2;display:flex;gap:7px;min-width:0;overflow-x:auto;overflow-y:hidden;white-space:nowrap;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:auto;padding:8px 32px;background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.035));border-bottom:1px solid rgba(255,255,255,.12);}
+  #factionLibraryTroopList::before,#factionLibraryTroopList::after{content:'';position:sticky;top:0;bottom:0;width:22px;min-width:22px;pointer-events:none;z-index:3;}
+  #factionLibraryTroopList::before{left:-32px;margin-right:-22px;background:linear-gradient(90deg,rgba(5,9,16,.98),rgba(5,9,16,0));}
+  #factionLibraryTroopList::after{right:-32px;margin-left:-22px;background:linear-gradient(270deg,rgba(5,9,16,.98),rgba(5,9,16,0));}
+  #factionLibraryTroopList::-webkit-scrollbar{height:10px}#factionLibraryTroopList::-webkit-scrollbar-thumb{background:rgba(250,204,21,.65);border-radius:999px}#factionLibraryTroopList::-webkit-scrollbar-track{background:rgba(255,255,255,.08);border-radius:999px}
+  .librarySectionTitle{display:none;}
+  .libraryTroopBtn{flex:0 0 auto;width:112px;height:52px;display:grid;grid-template-columns:31px minmax(0,1fr);gap:5px;align-items:center;text-align:left;border:1px solid rgba(255,255,255,.14);border-radius:13px;background:rgba(255,255,255,.06);color:#fff;cursor:pointer;padding:5px 7px;position:relative;}
+  .libraryTroopBtn[aria-selected="true"]{border-color:var(--guide-accent,#facc15);outline:3px solid var(--guide-accent,#facc15);outline-offset:-2px;background:rgba(255,255,255,.16);box-shadow:0 0 18px color-mix(in srgb,var(--guide-accent,#facc15) 42%,transparent);}
+  .libraryTroopBtn[aria-selected="true"]::after{content:'✓';position:absolute;right:4px;top:2px;width:16px;height:16px;border-radius:50%;display:grid;place-items:center;background:var(--guide-accent,#facc15);color:#111827;font-size:11px;font-weight:1000;}
+  .libraryThumb{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;background:rgba(255,255,255,.08);font-size:19px;overflow:hidden;}
   .libraryThumb img{max-width:100%;max-height:100%;object-fit:contain;}
-  .libraryTroopBtn b{display:block;font-size:13px}.libraryTroopBtn small{display:block;color:#c9d6e8;font-size:11px;line-height:1.25}
-  #factionLibraryContent{min-height:0;overflow:auto;padding:16px;overscroll-behavior:contain;}
-  .libraryContentGrid{display:grid;grid-template-columns:minmax(310px,520px) 1fr;gap:16px;align-items:start;}
-  .guidePanel{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.055);border-radius:18px;padding:14px;}
-  .guidePanel h3{margin:0 0 8px;font-size:24px}.guideMeta{display:flex;flex-wrap:wrap;gap:7px;margin:9px 0}.guideMeta span{padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.09);font-size:12px;color:#e7eefb}
-  .guideGridWrap{position:sticky;top:0}.guideDemoGrid{display:grid;gap:3px;max-width:min(100%,520px);margin:auto;touch-action:none}.guideTile{aspect-ratio:1;border-radius:7px;background:rgba(148,163,184,.18);border:1px solid rgba(255,255,255,.08);display:grid;place-items:center;position:relative;font-size:16px}.guideTile.move{background:#f8fafc;color:#0f172a}.guideTile.attack{background:#dc2626;color:#fff}.guideTile.both{background:#dc2626;color:#fff;border:3px solid #fff}.guideTile.ability::after{content:'★';position:absolute;right:1px;top:-3px;color:#fde047;text-shadow:0 0 4px #000;font-size:16px}.guideTile.abilityOnly{background:#fde047;color:#111827}.guideTile.center{background:rgba(59,130,246,.25);border:2px solid #93c5fd}.guideTile.blocker{background:#475569;color:#fff}.guideLegend{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:12px}.guideLegend span{display:inline-flex;gap:5px;align-items:center;padding:6px 8px;border-radius:999px;background:rgba(255,255,255,.08)}.swatch{width:16px;height:16px;border-radius:4px;border:1px solid rgba(255,255,255,.35);display:inline-block}.swMove{background:#fff}.swAttack{background:#dc2626}.swBoth{background:#dc2626;border:3px solid #fff}.swAbility{background:#fde047}.guideToggle{display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap}.guideToggle button{min-height:36px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font-weight:900;cursor:pointer;padding:6px 10px}.guideToggle button.active{background:#facc15;color:#111827}.guideInfoList{margin:8px 0 0;padding-left:18px;color:#d7e2f1;line-height:1.45}.guideHero{width:86px;height:86px;float:right;margin:0 0 8px 12px;object-fit:contain;border-radius:16px;background:rgba(255,255,255,.08);padding:6px}.overviewCards{display:grid;gap:12px}.overviewCards h3{margin:0}.overviewCards ul{margin:8px 0 0;padding-left:18px;line-height:1.5;color:#dbe7f7}
-  @media(max-width:760px){#factionLibraryOverlay{padding:6px}#factionLibraryModal{width:calc(100vw - 12px);height:calc(100dvh - 12px);max-height:calc(100vh - 12px);border-radius:18px}#factionLibraryHeader{padding:12px;align-items:center}#factionLibraryBody{grid-template-columns:1fr;grid-template-rows:auto 1fr}#factionLibraryTroopList{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;border-right:0;border-bottom:1px solid rgba(255,255,255,.12);padding:10px}.librarySectionTitle{min-width:max-content;margin:18px 2px 0}.libraryTroopBtn{min-width:190px;min-height:48px;margin:0}.libraryContentGrid{grid-template-columns:1fr}#factionLibraryContent{padding:10px}.guideGridWrap{position:static}.factionGuideBtn{width:40px;height:40px}}
+  .libraryTroopBtn b{display:block;font-size:11px;line-height:1.05;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.libraryTroopBtn small{display:none;}
+  #factionLibraryContent{min-height:0;overflow:auto;padding:10px;overscroll-behavior:contain;}
+  .libraryContentGrid{display:grid;grid-template-columns:minmax(300px,520px) 1fr;gap:12px;align-items:start;}
+  .guidePanel{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.055);border-radius:16px;padding:10px;}
+  .guidePanel h3{margin:0 0 6px;font-size:22px}.guideMeta{display:flex;flex-wrap:wrap;gap:6px;margin:7px 0}.guideMeta span{padding:4px 7px;border-radius:999px;background:rgba(255,255,255,.09);font-size:11px;color:#e7eefb}
+  .guideGridWrap{position:sticky;top:0}.guideDemoGrid{display:grid;gap:3px;max-width:min(100%,540px);margin:auto;touch-action:none}.guideTile{aspect-ratio:1;border-radius:7px;background:rgba(148,163,184,.18);border:1px solid rgba(255,255,255,.08);display:grid;place-items:center;position:relative;font-size:16px}.guideTile.move{background:#f8fafc;color:#0f172a}.guideTile.attack{background:#dc2626;color:#fff}.guideTile.both{background:#dc2626;color:#fff;border:3px solid #fff}.guideTile.range{background:repeating-linear-gradient(135deg,rgba(56,189,248,.34),rgba(56,189,248,.34) 4px,rgba(14,165,233,.14) 4px,rgba(14,165,233,.14) 8px)}.guideTile.ability::after{content:'★';position:absolute;right:1px;top:-3px;color:#fde047;text-shadow:0 0 4px #000;font-size:16px}.guideTile.abilityOnly{background:#fde047;color:#111827}.guideTile.center{background:rgba(59,130,246,.25);border:2px solid #93c5fd;z-index:2}.guideTile.center img{max-width:92%;max-height:92%}.guideLegend{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:11px}.guideLegend span{display:inline-flex;gap:4px;align-items:center;padding:5px 7px;border-radius:999px;background:rgba(255,255,255,.08)}.swatch{width:14px;height:14px;border-radius:4px;border:1px solid rgba(255,255,255,.35);display:inline-block}.swMove{background:#fff}.swAttack{background:#dc2626}.swBoth{background:#dc2626;border:3px solid #fff}.swAbility{background:#fde047}.swRange{background:repeating-linear-gradient(135deg,#38bdf8,#38bdf8 4px,#0ea5e9 4px,#0ea5e9 8px)}.guideInfoList{margin:8px 0 0;padding-left:18px;color:#d7e2f1;line-height:1.4;font-size:13px}.guideHero{width:70px;height:70px;float:right;margin:0 0 8px 10px;object-fit:contain;border-radius:14px;background:rgba(255,255,255,.08);padding:5px}.overviewCards{display:grid;gap:10px}.overviewCards h3{margin:0}.overviewCards ul{margin:8px 0 0;padding-left:18px;line-height:1.45;color:#dbe7f7}
+  @media(max-width:760px){#factionLibraryOverlay{padding:6px}#factionLibraryModal{width:calc(100vw - 12px);height:calc(100dvh - 12px);max-height:calc(100vh - 12px);border-radius:18px}#factionLibraryHeader{padding:10px}#factionLibraryTroopList{gap:6px;padding:7px 24px}.libraryTroopBtn{width:92px;height:46px;grid-template-columns:27px minmax(0,1fr);padding:4px 6px}.libraryThumb{width:26px;height:26px;font-size:17px}.libraryTroopBtn b{font-size:10px}.libraryContentGrid{grid-template-columns:1fr;gap:9px}#factionLibraryContent{padding:8px}.guideGridWrap{position:static}.guidePanel{padding:8px}.guideHero{width:56px;height:56px}.factionGuideBtn{width:40px;height:40px}}
 
 </style>
 </head>
@@ -5417,100 +5422,135 @@ function getLegalMoves(piece, ignoreCooldown=false){
   return moves.filter(m=>{ const k=m.x+','+m.y+','+(m.capture?'c':'m'); if(seenMoves.has(k)) return false; seenMoves.add(k); return true; });
 }
 
-const TROOP_GUIDE_VERSION = '2026-07-pregame-library-v1';
+const TROOP_GUIDE_VERSION = '2026-07-pregame-library-v2';
 const troopGuideModelCache = new Map();
-let factionLibraryState = {open:false,factionId:null,selectedId:null,blockers:false,lastFocus:null,keyHandler:null,resizeHandler:null};
+const factionLibraryLastSelection = new Map();
+let factionLibraryState = {open:false,factionId:null,selectedId:null,lastFocus:null,keyHandler:null,resizeHandler:null,wheelHandler:null};
 const guideRoleByType = {king:'King',queen:'Commander',general:'Support',tower:'Structure',ballistatower:'Siege',royalbannerhall:'Structure',barrackskeep:'Structure',cinderfurnace:'Structure',sparkden:'Structure',shieldfoundry:'Structure',gatehouse:'Structure',seedgrove:'Structure',broodbloom:'Structure',obsidianmirror:'Structure',knifechapel:'Structure',sunspirebeacon:'Structure',radiantmonastery:'Structure',pawn:'Frontline',sparkpawn:'Frontline',shieldpawn:'Defender',seedpawn:'Frontline',shadepawn:'Assassin',rook:'Siege',aquanaut:'Mobile',knight:'Mobile',marshal:'Support',lancer:'Ranged',cinderjack:'Mobile',cinderarchon:'Frontline',flamerunner:'Mobile',emberknight:'Mobile',flamequeen:'Commander',pyretower:'Siege',bulwark:'Defender',hammerknight:'Mobile',gatebreaker:'Siege',warden:'Defender',citadelwalker:'Defender',thornguard:'Defender',scout:'Mobile',stagrunner:'Mobile',vinehook:'Controller',vinebishop:'Summoner',grovetower:'Structure',blinkpawn:'Mobile',shadowstepper:'Assassin',assassin:'Assassin',nightblade:'Assassin',wraith:'Assassin',voidstrider:'Assassin',umbralbishop:'Assassin',dawnblade:'Frontline',eagleknight:'Mobile',lightlancer:'Ranged',radiantbishop:'Support',sunherald:'Support',paladin:'Defender',dawnarchon:'Support'};
-const factionOverviewGuide = {
-  crownward:['Command and formation faction built around the King, banners, generals, roads, and recall jumps.','Strong when troops stay organized around command auras and roads; weaker when scattered or separated from the King.','Territory comes from command pieces and disciplined advances. Tokens buy standard troops plus command structures.','Beginner plan: keep lanes clear, protect the King, use banners/halls to accelerate clustered troops, then recall threatened pieces toward the crown.'],
-  ember:['Aggressive kill-chain faction that gains tempo through captures and scorched territory.','Strong at pressure and snowballing after kills; weaker when forced to wait or fight away from Ember land.','Scorched land and kill buildings reward attacking. Tokens favor fast assault pieces and furnaces/dens.','Beginner plan: force trades near enemy clusters, keep pressure constant, and use fast troops to turn one capture into more territory.'],
-  iron:['Defensive structure faction that excels on fortified home territory.','Strong around walls, foundries, gatehouses, towers, and durable bodies; weaker at fast map-wide races.','Fortified territory, repairs, shields, and slow heavy troops define the economy.','Beginner plan: anchor a front with towers and buildings, keep units grouped for shield-wall durability, then push safely behind structures.'],
-  verdant:['Growth and mobility faction using Brood Blooms, living roots, Scouts, and Stag Runner networks.','Strong when its Bloom/root network expands; weaker if growth nodes are destroyed early.','Seed Groves and Brood Blooms spread living territory and create mobility shortcuts.','Beginner plan: protect growth structures, leap around Bloom networks, and use Vinehook/Vine Bishop control to keep enemies inside roots.'],
-  shadow:['Assassination and concealment faction using marks, fog, backstabs, mirrors, and precision attacks.','Strong at picking valuable targets and hiding in Shadow land; weaker in straight formation battles.','Shadow territory limits enemy vision. Kills and chapels create more assassins; kings cannot be Shadow Marked.','Beginner plan: mark non-king targets, use mirrors and vaulting movement to flank, and avoid exposing fragile assassins.'],
-  sunspire:['Support and beacon faction using shields, revival, acceleration, and battlefield channels.','Strong when units remain connected to Solar Beacons and support bishops; weaker when isolated.','Beacons accelerate allied recovery, slow enemies, and reduce spawn time; monasteries create elites.','Beginner plan: place early beacons safely, keep support lines connected, shield key allies, and let revives preserve expensive elites.']
-};
 function guideClassification(type){ const d=pieceDefs[type]||{}; if(type==='king') return 'King'; if(d.building) return 'Structure'; if(d.temporary) return 'Temporary'; if(['commandbanner','dawnblade'].includes(type)) return d.temporary?'Temporary':'Summoned'; return 'Troop'; }
-function guideSectionsForFaction(factionId){
+function guidePiecesForFaction(factionId){
   const f=factionCatalog[factionId]; if(!f) return [];
-  const unique=[...new Set(['king',...(f.pieces||[])])].filter(t=>pieceDefs[t] && !['tide','frost'].includes(factionId));
-  const sections=[{title:'Faction Overview',items:[{id:'overview',overview:true}]},{title:'King and starting army',items:[]},{title:'Recruitable troops',items:[]},{title:'Advanced or rare troops',items:[]},{title:'Summoned or temporary troops',items:[]},{title:'Structures',items:[]}];
-  const starters=new Set(['king','pawn','rook','knight','bishop','queen','general','sparkpawn','shieldpawn','seedpawn','shadepawn','dawnblade']);
-  for(const type of unique){ const item={id:type,type}; const d=pieceDefs[type]; if(d.building) sections[5].items.push(item); else if(d.temporary || ['commandbanner'].includes(type)) sections[4].items.push(item); else if(starters.has(type)) sections[1].items.push(item); else if((d.value||1)>=6) sections[3].items.push(item); else sections[2].items.push(item); }
-  if(factionId==='crownward') sections[4].items.push({id:'commandbanner',type:'commandbanner'});
-  return sections.filter(sec=>sec.items.length);
+  const out=[...new Set(['king',...(f.pieces||[]),...(factionId==='crownward'?['commandbanner']:[])])].filter(t=>pieceDefs[t]);
+  return out;
 }
+function guideSectionsForFaction(factionId){ return [{title:'Pieces',items:guidePiecesForFaction(factionId).map(type=>({id:type,type}))}]; }
 function guidePieceGlyph(factionId,type){ return pieceDefs[type]?.icon || '◇'; }
 function guideThumbHtml(factionId,type){ const g=getPieceGraphic(factionId,type); if(g?.img?.src) return `<img src="${g.img.src}" alt="">`; return guidePieceGlyph(factionId,type); }
-function buildTroopGuideModel(factionId,pieceType){
-  const cacheKey=`${TROOP_GUIDE_VERSION}:${factionId}:${pieceType}:${factionLibraryState.blockers?'block':'open'}`;
+function shortPieceName(factionId,type){ return pieceDisplayName(factionId,type).replace(/\b(Crownward|Ember|Iron|Verdant|Shadow|Sunspire)\b\s*/g,'').replace(/\s+(Tower|Pawn)$/,' $1'); }
+function addGuideTile(model,cat,dx,dy,meta={}){ if(!dx&&!dy) return; const item={dx,dy,...meta}; (model[cat]||model.moveAndAttack).push(item); }
+function addGuideRay(model,cat,dirs,min,max){ for(const [dx,dy] of dirs) for(let r=min;r<=max;r++) addGuideTile(model,cat,dx*r,dy*r,{ray:r===max?'edge':false}); }
+function addGuideSteps(model,cat,steps){ for(const [dx,dy] of steps) addGuideTile(model,cat,dx,dy); }
+function getLibraryPiecePattern(factionId,pieceType){
+  const cacheKey=`${TROOP_GUIDE_VERSION}:${factionId}:${pieceType}`;
   if(troopGuideModelCache.has(cacheKey)) return troopGuideModelCache.get(cacheKey);
-  const def=pieceDefs[pieceType]||{}; const model={moveOnly:[],attackOnly:[],moveAndAttack:[],specialAbility:[],conditional:[],notes:[],blockers:[],size:9};
-  if(def.building){ model.notes.push('Structure: cannot move. See placement, range, passive effects, spawning behavior, cooldown, and lifespan notes.'); model.size=9; troopGuideModelCache.set(cacheKey,model); return model; }
-  const oldPieces=pieces, oldFactions=factions, oldBoard=board, oldPieceById=pieceById, oldPieceAtTile=pieceAtTile, oldW=BOARD_W, oldH=BOARD_H;
-  try{
-    BOARD_W=17; BOARD_H=17; board=Array.from({length:BOARD_W*BOARD_H},(_,i)=>({x:i%BOARD_W,y:Math.floor(i/BOARD_W),type:'plain',pass:true,owner:0}));
-    factions=[{idx:0,id:factionId,alive:true,kingId:'guideKing',pieces:factionCatalog[factionId]?.pieces||[],color:factionCatalog[factionId]?.color||'#fff'},{idx:1,id:'previewEnemy',alive:true,color:'#ef4444'}];
-    const center=8; const preview={id:'guidePiece',type:pieceType,faction:0,x:center,y:center,alive:true,lastMove:-999,level:1,hp:def.hp||1,maxHp:def.hp||1};
-    pieces=[preview,{id:'guideKing',type:'king',faction:0,x:center-3,y:center,alive:true,lastMove:-999}];
-    pieceById=new Map(pieces.map(p=>[p.id,p])); pieceAtTile=new Map(pieces.map(p=>[key(p.x,p.y),p]));
-    if(factionId==='verdant'){ pieces.push({id:'bloomA',type:'broodbloom',faction:0,x:center+1,y:center,alive:true},{id:'bloomB',type:'broodbloom',faction:0,x:center-4,y:center+3,alive:true}); for(const p of pieces){ pieceById.set(p.id,p); pieceAtTile.set(key(p.x,p.y),p); } }
-    if(factionId==='shadow'){ pieces.push({id:'mirrorA',type:'obsidianmirror',faction:0,x:center-4,y:center-3,alive:true}); for(const p of pieces){ pieceById.set(p.id,p); pieceAtTile.set(key(p.x,p.y),p); } }
-    if(factionLibraryState.blockers && ['rook','bishop','queen','general','lancer','assassin','archon'].includes(def.pattern)){ pieces.push({id:'blockA',type:'pawn',faction:0,x:center+2,y:center,alive:true},{id:'blockE',type:'pawn',faction:1,x:center-3,y:center-3,alive:true}); for(const p of pieces){ pieceById.set(p.id,p); pieceAtTile.set(key(p.x,p.y),p); } model.blockers.push({dx:2,dy:0,kind:'friendly blocker'},{dx:-3,dy:-3,kind:'enemy target'}); }
-    const moves=getLegalMoves(preview,true);
-    const byTile=new Map(); for(const m of moves){ const dx=m.x-center,dy=m.y-center; if(Math.abs(dx)>6||Math.abs(dy)>6) continue; const k=dx+','+dy; const prev=byTile.get(k)||{dx,dy,move:false,attack:false,ability:false}; if(m.capture||m.wall||m.stationaryAttack||m.markedAssassination) prev.attack=true; else prev.move=true; if(m.broodLeap||m.mirror||m.vinePull||m.shadowRush) prev.ability=true; byTile.set(k,prev); }
-    for(const v of byTile.values()){ if(v.ability) model.specialAbility.push(v); if(v.move&&v.attack) model.moveAndAttack.push(v); else if(v.attack) model.attackOnly.push(v); else if(v.move) model.moveOnly.push(v); }
-  }catch(e){ model.notes.push('Preview used summarized rules because the live helper could not evaluate this pattern safely.'); console.warn('guide preview failed',e); }
-  finally{ pieces=oldPieces; factions=oldFactions; board=oldBoard; pieceById=oldPieceById; pieceAtTile=oldPieceAtTile; BOARD_W=oldW; BOARD_H=oldH; }
-  if(['shadepawn','umbralbishop'].includes(pieceType)){ model.specialAbility.push({dx:0,dy:-3},{dx:0,dy:-4}); model.notes.push('Shadow Mark targets visible non-king enemies; kings cannot be marked.'); }
-  if(['radiantbishop','sunbishop'].includes(pieceType)){ model.specialAbility.push({dx:3,dy:0},{dx:-2,dy:2}); model.notes.push('Guardian ability targets allies, jumps beside them, and grants a one-shot Dawn Shield.'); }
-  if(pieceType==='vinebishop') model.notes.push('After a kill, can grow a Brood Bloom near the defeated enemy once every 60 seconds.');
-  if(pieceType==='queen' && factionId==='sunspire') model.notes.push('Sunspire Queen may revive a nearby fallen ally as a Dawn Blade once per minute.');
-  const max=Math.max(4,...[...model.moveOnly,...model.attackOnly,...model.moveAndAttack,...model.specialAbility].map(t=>Math.max(Math.abs(t.dx),Math.abs(t.dy)))); model.size=max>5?13:(max>4?11:9);
+  const def=pieceDefs[pieceType]||{}, pattern=def.pattern||pieceType;
+  const model={moveOnly:[],attackOnly:[],moveAndAttack:[],specialAbility:[],rangeOnly:[],notes:[],size:13};
+  const king=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]], ortho=[[1,0],[-1,0],[0,1],[0,-1]], diag=[[1,1],[1,-1],[-1,1],[-1,-1]];
+  const knight=[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
+  if(def.building || pattern==='building'){
+    model.notes.push('Structure: no movement squares. Yellow/blue tiles show spawn, aura, beam, shield, or passive influence geometry only.');
+    const aura=def.aura||(['tower','pyretower','grovetower','reefspire','seedgrove','shieldfoundry','sunspirebeacon','royalbannerhall','barrackskeep','radiantmonastery'].includes(pieceType)?3:2);
+    addGuideRay(model,'rangeOnly',king,1,aura);
+    if(['ballistatower'].includes(pieceType)) addGuideRay(model,'attackOnly',ortho,4,4);
+    troopGuideModelCache.set(cacheKey,model); return model;
+  }
+  switch(pattern){
+    case 'king': addGuideSteps(model,'moveAndAttack',king); addGuideRay(model,'rangeOnly',king,2,3); model.notes.push('Blue range shows representative territory-capture influence around the king.'); break;
+    case 'pawn': addGuideSteps(model,'moveOnly',king); addGuideSteps(model,'attackOnly',diag); break;
+    case 'rook': addGuideRay(model,'moveAndAttack',ortho,1,6); model.notes.push('Rook-like rays continue to the displayed edge on a clean theoretical board.'); break;
+    case 'bishop': case 'bishopLong': addGuideRay(model,'moveAndAttack',diag,1,6); model.notes.push('Diagonal ray is not stopped by demonstration blockers.'); break;
+    case 'queen': addGuideRay(model,'moveAndAttack',[...ortho,...diag],1,6); break;
+    case 'rookShort': addGuideRay(model,'moveAndAttack',ortho,1,3); break;
+    case 'tower': addGuideSteps(model,'moveAndAttack',ortho); addGuideRay(model,'rangeOnly',king,1,def.aura||3); break;
+    case 'general': addGuideRay(model,'moveAndAttack',king,1,2); addGuideRay(model,'rangeOnly',king,3,3); break;
+    case 'knight': addGuideSteps(model,'moveAndAttack',knight); break;
+    case 'lancer': addGuideRay(model,'moveOnly',ortho,1,2); addGuideRay(model,'moveAndAttack',ortho,3,3); break;
+    case 'marshal': addGuideRay(model,'moveAndAttack',ortho,2,2); addGuideSteps(model,'specialAbility',[[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[-1,2],[1,-2],[-1,-2]]); break;
+    case 'aquanaut': addGuideRay(model,'moveAndAttack',diag,1,3); addGuideRay(model,'specialAbility',ortho,4,6); model.notes.push('Yellow shows theoretical same-water-body exit reach; no water objects are placed on the guide board.'); break;
+    case 'ballista': addGuideSteps(model,'moveOnly',ortho); addGuideRay(model,'attackOnly',ortho,4,4); break;
+    case 'cinderjack': addGuideSteps(model,'moveAndAttack',knight); addGuideRay(model,'specialAbility',king,1,1); model.notes.push('Yellow shows scorch area around a landing/capture.'); break;
+    case 'cinderarchon': addGuideRay(model,'moveAndAttack',king,2,2); addGuideRay(model,'specialAbility',king,1,1); break;
+    case 'flamerunner': addGuideRay(model,'moveAndAttack',ortho,2,3); break;
+    case 'shieldbearer': case 'warden': case 'glacierguard': addGuideSteps(model,'moveAndAttack',king); break;
+    case 'hammerknight': addGuideRay(model,'moveAndAttack',ortho,2,2); break;
+    case 'gatebreaker': addGuideSteps(model,'moveAndAttack',ortho); addGuideRay(model,'attackOnly',ortho,2,3); break;
+    case 'thornguard': addGuideSteps(model,'moveAndAttack',ortho); break;
+    case 'scout': addGuideRay(model,'moveAndAttack',ortho,2,2); addGuideSteps(model,'moveAndAttack',diag); addGuideRay(model,'specialAbility',king,1,1); break;
+    case 'stagrunner': addGuideSteps(model,'moveAndAttack',knight); addGuideRay(model,'specialAbility',king,3,5); model.notes.push('Yellow shows Brood Bloom travel geometry when starting beside one friendly Bloom and a valid destination Bloom exists.'); break;
+    case 'vinehook': addGuideSteps(model,'attackOnly',king); addGuideRay(model,'rangeOnly',ortho,2,2); addGuideRay(model,'rangeOnly',diag,2,2); model.notes.push('Blue range shows the two-space pull influence; adjacent red squares show normal attacks.'); break;
+    case 'shadepawn': addGuideSteps(model,'moveAndAttack',diag); addGuideRay(model,'specialAbility',ortho,3,4); addGuideRay(model,'specialAbility',diag,3,4); model.notes.push('Yellow marks visible non-king enemy assassination-mark range.'); break;
+    case 'blinkpawn': addGuideRay(model,'moveAndAttack',king,2,2); break;
+    case 'shadowstepper': addGuideRay(model,'moveAndAttack',king,1,4); break;
+    case 'assassin': addGuideRay(model,'moveAndAttack',diag,1,3); addGuideSteps(model,'moveAndAttack',knight); break;
+    case 'nightblade': addGuideSteps(model,'attackOnly',king); addGuideRay(model,'specialAbility',king,2,5); break;
+    case 'wraith': addGuideRay(model,'moveAndAttack',king,2,5); addGuideRay(model,'specialAbility',king,1,4); break;
+    case 'umbralbishop': addGuideRay(model,'moveAndAttack',diag,1,5); addGuideRay(model,'specialAbility',ortho,1,4); break;
+    case 'sunacolyte': case 'eagle': addGuideRay(model,'moveAndAttack',king,2,2); break;
+    case 'dawnblade': addGuideSteps(model,'moveAndAttack',king); addGuideRay(model,'attackOnly',king,2,3); break;
+    case 'lightlancer': addGuideRay(model,'moveAndAttack',ortho,3,4); break;
+    case 'radiantbishop': addGuideRay(model,'moveAndAttack',diag,2,5); addGuideRay(model,'specialAbility',king,1,7); model.notes.push('Yellow shows guardian-jump allied targeting range; a valid ally is required in a real match.'); break;
+    case 'sunherald': addGuideRay(model,'moveAndAttack',king,1,3); addGuideRay(model,'specialAbility',ortho,4,5); break;
+    case 'paladin': addGuideSteps(model,'moveAndAttack',[...king,...knight]); break;
+    case 'archon': addGuideRay(model,'moveAndAttack',diag,1,6); addGuideSteps(model,'moveAndAttack',knight); break;
+    case 'citadel': addGuideSteps(model,'moveAndAttack',ortho); addGuideRay(model,'moveAndAttack',ortho,3,3); break;
+    default: addGuideSteps(model,'moveAndAttack',king); model.notes.push('Pattern summarized by the isolated library evaluator.');
+  }
+  if(factionId==='crownward' && pieceType!=='king') { addGuideRay(model,'specialAbility',king,1,3); model.notes.push('Yellow includes Crownward recall/command geometry when the king is in range.'); }
+  if(pieceType==='vinebishop') { addGuideRay(model,'specialAbility',king,1,2); model.notes.push('Yellow shows Brood Bloom placement geometry after a qualifying kill; no fake Bloom is placed on the board.'); }
+  if(pieceType==='queen' && factionId==='sunspire') { addGuideRay(model,'specialAbility',king,1,3); model.notes.push('Yellow shows nearby ally revival support range when revival conditions are met.'); }
+  if(pieceType==='broodbloom') model.notes.push('Brood Bloom enables Verdant leap/travel conditions for nearby pieces; the board shows influence rather than fake occupied Blooms.');
+  const max=Math.max(4,...[...model.moveOnly,...model.attackOnly,...model.moveAndAttack,...model.specialAbility,...model.rangeOnly].map(t=>Math.max(Math.abs(t.dx),Math.abs(t.dy))));
+  model.size=max>5?15:(max>4?13:11);
   troopGuideModelCache.set(cacheKey,model); return model;
 }
+const buildTroopGuideModel = getLibraryPiecePattern;
 function renderGuideGrid(factionId,type){
-  const model=buildTroopGuideModel(factionId,type); const n=model.size||9, c=Math.floor(n/2); const cls=new Map();
-  const put=(arr,name)=>arr.forEach(t=>{ const k=(c+t.dx)+','+(c+t.dy); cls.set(k,(cls.get(k)||'')+' '+name); });
-  put(model.moveOnly,'move'); put(model.attackOnly,'attack'); put(model.moveAndAttack,'both'); put(model.specialAbility,'ability');
-  let html=`<div class="guideToggle"><button class="${!factionLibraryState.blockers?'active':''}" data-guide-blockers="0">Open Board</button><button class="${factionLibraryState.blockers?'active':''}" data-guide-blockers="1">Example Blockers</button></div><div class="guideDemoGrid" style="grid-template-columns:repeat(${n},minmax(0,1fr))">`;
-  for(let y=0;y<n;y++) for(let x=0;x<n;x++){ const key=x+','+y; let content=''; let klass='guideTile '+(cls.get(key)||''); if(x===c&&y===c){klass+=' center'; content=guideThumbHtml(factionId,type);} const b=model.blockers.find(b=>x===c+b.dx&&y===c+b.dy); if(b){klass+=' blocker'; content=b.kind[0].toUpperCase();} if(klass.includes('ability')&&!klass.match(/move|attack|both/)) klass+=' abilityOnly'; html+=`<div class="${klass}" aria-label="${klass}">${content}</div>`; }
-  html+='</div><div class="guideLegend"><span><i class="swatch swMove"></i>↗ White: Move only</span><span><i class="swatch swAttack"></i>⌖ Red: Attack only</span><span><i class="swatch swBoth"></i>Red + white: Move or attack</span><span><i class="swatch swAbility"></i>★ Yellow: Special ability</span><span>★ over color: ability overlaps normal move/attack</span></div>';
+  const model=getLibraryPiecePattern(factionId,type), n=model.size||13, c=Math.floor(n/2), rank=new Map();
+  const put=(arr,name,priority)=>arr.forEach(t=>{ const x=c+t.dx,y=c+t.dy; if(x<0||y<0||x>=n||y>=n) return; const k=x+','+y; if(!rank.has(k)||priority<rank.get(k).priority) rank.set(k,{name,priority}); });
+  put(model.rangeOnly,'range',5); put(model.moveOnly,'move',4); put(model.attackOnly,'attack',3); put(model.moveAndAttack,'both',2); put(model.specialAbility,'ability',1);
+  let html=`<div class="guideDemoGrid" style="grid-template-columns:repeat(${n},minmax(0,1fr))">`;
+  for(let y=0;y<n;y++) for(let x=0;x<n;x++){ const cell=rank.get(x+','+y); let content='', klass='guideTile '+(cell?.name||''); if(x===c&&y===c){klass+=' center'; content=guideThumbHtml(factionId,type);} if(klass.includes('ability')&&!klass.match(/move|attack|both/)) klass+=' abilityOnly'; html+=`<div class="${klass}" aria-label="${klass.trim()}">${content}</div>`; }
+  html+='</div><div class="guideLegend"><span><i class="swatch swMove"></i>Move</span><span><i class="swatch swAttack"></i>Attack</span><span><i class="swatch swBoth"></i>Move/attack</span><span><i class="swatch swAbility"></i>Special</span><span><i class="swatch swRange"></i>Range</span></div>';
   return html;
 }
 function renderFactionLibraryContent(){
-  const factionId=factionLibraryState.factionId, selected=factionLibraryState.selectedId || 'overview', f=factionCatalog[factionId];
+  const factionId=factionLibraryState.factionId, selected=factionLibraryState.selectedId || 'king', f=factionCatalog[factionId];
   const content=document.getElementById('factionLibraryContent'); if(!content||!f) return;
-  if(selected==='overview'){ const bullets=factionOverviewGuide[factionId]||[f.description]; content.innerHTML=`<div class="overviewCards"><section class="guidePanel"><h3>${f.icon} ${f.name}</h3><p>${f.description}</p><ul>${bullets.map(b=>`<li>${b}</li>`).join('')}</ul></section></div>`; return; }
   const type=selected, def=pieceDefs[type]||{}, name=pieceDisplayName(factionId,type), role=guideRoleByType[type]||'Troop', classification=guideClassification(type), cost= type==='king'?'—':spawnTokenCost(type);
-  const model=buildTroopGuideModel(factionId,type); const img=guideThumbHtml(factionId,type);
-  content.innerHTML=`<div class="libraryContentGrid"><section class="guidePanel guideGridWrap">${renderGuideGrid(factionId,type)}</section><section class="guidePanel"><div class="guideHero">${img}</div><h3>${name}</h3><div class="guideMeta"><span>Faction: ${f.short}</span><span>Role: ${role}</span><span>${classification}</span><span>Cost: ${cost}</span><span>Health: ${def.hp||1}</span><span>Cooldown: ${def.cooldown||'—'}s</span></div><p>${def.desc||'No description available.'}</p><ul class="guideInfoList"><li><b>Movement:</b> ${def.pattern==='building'?'Cannot move.':(def.desc||'Uses the live movement helper for this preview.')}</li><li><b>Attack:</b> Red tiles show attack-only targets; red tiles with white outlines can be moved onto or captured.</li><li><b>Special ability:</b> Yellow markers show abilities, conditional faction movement, ally targets, recalls, marks, pulls, revives, shields, beacons, or structure effects.</li>${model.notes.map(n=>`<li><b>Rule note:</b> ${n}</li>`).join('')}<li><b>Restrictions:</b> ${def.building?'Building cannot move. ':'Uses representative preview targets; live terrain, cooldown readiness, visibility, walls, and occupied paths still apply in-game.'}</li></ul></section></div>`;
-  content.querySelectorAll('[data-guide-blockers]').forEach(btn=>btn.onclick=()=>{ factionLibraryState.blockers=btn.dataset.guideBlockers==='1'; renderFactionLibraryContent(); });
+  const model=getLibraryPiecePattern(factionId,type); const img=guideThumbHtml(factionId,type);
+  content.innerHTML=`<div class="libraryContentGrid"><section class="guidePanel guideGridWrap">${renderGuideGrid(factionId,type)}</section><section class="guidePanel"><div class="guideHero">${img}</div><h3>${name}</h3><div class="guideMeta"><span>${f.short}</span><span>${role}</span><span>${classification}</span><span>Cost: ${cost}</span><span>HP: ${def.hp||1}</span><span>CD: ${def.cooldown||'—'}s</span></div><p>${def.desc||'No description available.'}</p><ul class="guideInfoList"><li><b>Guide board:</b> clean theoretical pattern only; it ignores occupancy, terrain, walls, cooldowns, turns, fog, territory, AI, and multiplayer state.</li><li><b>Color priority:</b> special, move/attack, attack, move, passive range.</li>${model.notes.map(n=>`<li><b>Rule note:</b> ${n}</li>`).join('')}<li><b>Match rules unchanged:</b> real games still apply legal movement, collision, Firebase, cooldown, visibility, and faction-balance rules.</li></ul></section></div>`;
 }
 function renderFactionLibraryTroops(){
-  const nav=document.getElementById('factionLibraryTroopList'); if(!nav) return; const factionId=factionLibraryState.factionId; const selected=factionLibraryState.selectedId||'overview';
-  nav.innerHTML=guideSectionsForFaction(factionId).map(sec=>`<div class="librarySectionTitle">${sec.title}</div>`+sec.items.map(item=> item.overview?`<button class="libraryTroopBtn" data-guide-item="overview" aria-selected="${selected==='overview'}"><span class="libraryThumb">ⓘ</span><span><b>Faction Overview</b><small>Theme, economy, territory, beginner plan</small></span></button>`:`<button class="libraryTroopBtn" data-guide-item="${item.type}" aria-selected="${selected===item.type}"><span class="libraryThumb">${guideThumbHtml(factionId,item.type)}</span><span><b>${pieceDisplayName(factionId,item.type)}</b><small>${guideRoleByType[item.type]||'Troop'} · ${guideClassification(item.type)}${item.type==='king'?'':` · ${spawnTokenCost(item.type)} tokens`}</small></span></button>`).join('')).join('');
-  nav.querySelectorAll('[data-guide-item]').forEach(btn=>{ btn.onclick=()=>{ factionLibraryState.selectedId=btn.dataset.guideItem; renderFactionLibraryTroops(); renderFactionLibraryContent(); }; btn.onkeydown=e=>{ if(e.key==='ArrowDown'||e.key==='ArrowRight'){ e.preventDefault(); (btn.nextElementSibling?.matches('button')?btn.nextElementSibling:nav.querySelector('button'))?.focus(); } if(e.key==='ArrowUp'||e.key==='ArrowLeft'){ e.preventDefault(); (btn.previousElementSibling?.matches('button')?btn.previousElementSibling:[...nav.querySelectorAll('button')].pop())?.focus(); } }; });
+  const nav=document.getElementById('factionLibraryTroopList'); if(!nav) return; const factionId=factionLibraryState.factionId; const selected=factionLibraryState.selectedId||'king'; const accent=factionCatalog[factionId]?.color||'#facc15';
+  nav.style.setProperty('--guide-accent', accent);
+  nav.innerHTML=guidePiecesForFaction(factionId).map(type=>`<button class="libraryTroopBtn" data-guide-item="${type}" aria-selected="${selected===type}" title="${pieceDisplayName(factionId,type)}"><span class="libraryThumb">${guideThumbHtml(factionId,type)}</span><span><b>${shortPieceName(factionId,type)}</b><small>${guideRoleByType[type]||'Troop'}</small></span></button>`).join('');
+  nav.querySelectorAll('[data-guide-item]').forEach(btn=>{ btn.onclick=()=>{ factionLibraryState.selectedId=btn.dataset.guideItem; factionLibraryLastSelection.set(factionId,factionLibraryState.selectedId); renderFactionLibraryTroops(); renderFactionLibraryContent(); requestAnimationFrame(()=>nav.querySelector('[aria-selected="true"]')?.scrollIntoView({inline:'nearest',block:'nearest'})); }; btn.onkeydown=e=>{ const buttons=[...nav.querySelectorAll('button')], i=buttons.indexOf(btn); if(e.key==='ArrowRight'||e.key==='ArrowDown'){ e.preventDefault(); buttons[(i+1)%buttons.length]?.focus(); } if(e.key==='ArrowLeft'||e.key==='ArrowUp'){ e.preventDefault(); buttons[(i-1+buttons.length)%buttons.length]?.focus(); } }; });
+  requestAnimationFrame(()=>nav.querySelector('[aria-selected="true"]')?.scrollIntoView({inline:'nearest',block:'nearest'}));
 }
 function openFactionLibrary(factionId,ev){
   if(ev){ ev.preventDefault(); ev.stopPropagation(); }
   if(gameStarted || !DEFAULT_FACTION_IDS.includes(factionId)) return;
   const overlayEl=document.getElementById('factionLibraryOverlay'), header=document.getElementById('factionLibraryHeader'), f=factionCatalog[factionId]; if(!overlayEl||!header||!f) return;
-  factionLibraryState={...factionLibraryState,open:true,factionId,selectedId:'king',blockers:false,lastFocus:document.activeElement};
-  header.innerHTML=`<div><h2 id="factionLibraryTitle">${f.icon} ${f.name} Troop Library</h2><p>${f.description}</p></div><button id="factionLibraryClose" aria-label="Close faction troop guide">×</button>`;
+  closeFactionLibrary('switch');
+  const last=factionLibraryLastSelection.get(factionId); const selected=guidePiecesForFaction(factionId).includes(last)?last:'king';
+  factionLibraryState={...factionLibraryState,open:true,factionId,selectedId:selected,lastFocus:document.activeElement};
+  header.innerHTML=`<div><h2 id="factionLibraryTitle">${f.icon} ${f.name}</h2></div><button id="factionLibraryClose" aria-label="Close faction troop guide">×</button>`;
   overlayEl.classList.add('open'); overlayEl.setAttribute('aria-hidden','false');
   renderFactionLibraryTroops(); renderFactionLibraryContent();
   const closeBtn=document.getElementById('factionLibraryClose'); closeBtn.onclick=()=>closeFactionLibrary('manual'); closeBtn.focus({preventScroll:true});
   overlayEl.onclick=e=>{ if(e.target===overlayEl) closeFactionLibrary('backdrop'); };
+  factionLibraryState.wheelHandler=e=>{ const nav=document.getElementById('factionLibraryTroopList'); if(!nav || !nav.contains(e.target) || Math.abs(e.deltaX)>Math.abs(e.deltaY)) return; e.preventDefault(); nav.scrollLeft += e.deltaY; };
   factionLibraryState.keyHandler=e=>{ if(!factionLibraryState.open) return; if(e.key==='Escape'&&!gameStarted){ e.preventDefault(); closeFactionLibrary('escape'); } if(e.key==='Tab'){ const focusables=[...document.getElementById('factionLibraryModal').querySelectorAll('button,[href],select,textarea,input,[tabindex]:not([tabindex="-1"])')].filter(el=>!el.disabled); if(!focusables.length) return; const first=focusables[0], last=focusables[focusables.length-1]; if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();} else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();} } };
   factionLibraryState.resizeHandler=()=>{ if(factionLibraryState.open) renderFactionLibraryContent(); };
-  document.addEventListener('keydown',factionLibraryState.keyHandler); window.addEventListener('resize',factionLibraryState.resizeHandler);
+  document.addEventListener('keydown',factionLibraryState.keyHandler); window.addEventListener('resize',factionLibraryState.resizeHandler); document.getElementById('factionLibraryTroopList')?.addEventListener('wheel',factionLibraryState.wheelHandler,{passive:false});
 }
 function closeFactionLibrary(reason='manual'){
   const overlayEl=document.getElementById('factionLibraryOverlay');
   if(factionLibraryState.keyHandler) document.removeEventListener('keydown',factionLibraryState.keyHandler);
   if(factionLibraryState.resizeHandler) window.removeEventListener('resize',factionLibraryState.resizeHandler);
+  if(factionLibraryState.wheelHandler) document.getElementById('factionLibraryTroopList')?.removeEventListener('wheel',factionLibraryState.wheelHandler);
   if(overlayEl){ overlayEl.classList.remove('open'); overlayEl.setAttribute('aria-hidden','true'); overlayEl.onclick=null; }
-  const prior=factionLibraryState.lastFocus; factionLibraryState={open:false,factionId:null,selectedId:null,blockers:false,lastFocus:null,keyHandler:null,resizeHandler:null};
+  const prior=factionLibraryState.lastFocus; factionLibraryState={open:false,factionId:null,selectedId:null,lastFocus:null,keyHandler:null,resizeHandler:null,wheelHandler:null};
   if(reason!=='game-start' && prior && typeof prior.focus==='function') try{ prior.focus({preventScroll:true}); }catch(e){}
 }
 
