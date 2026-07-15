@@ -466,6 +466,7 @@ let dragging = false;
 let dragStart = null;
 let pointerMoved = false;
 let selectedPiece = null;
+let selectedPieceWasReady = false;
 let legalMoves = [];
 let spawnSelection = null;
 let lastSpawnPanelSignature = '';
@@ -1607,6 +1608,7 @@ function applyRemoteState(data){
     legalMoves = selectedPiece
       ? (selectedPiece.faction===PLAYER && !playerDefeated && ownFactionAlive() ? getLegalMoves(selectedPiece,false) : getLegalMoves(selectedPiece,true))
       : [];
+    selectedPieceWasReady = !!selectedPiece && cooldownReady(selectedPiece);
   }
   applyingRemote = false;
   expirePendingPlayerActions();
@@ -2071,7 +2073,7 @@ async function requestPlayerMove(piece,x,y){
     else if(!visualTarget) playMoveSound();
     emitLocalActionFx(live,fromX,fromY,x,y,!!visualTarget);
     rememberPendingPlayerAction({...action, faction:PLAYER});
-    selectedPiece=null; legalMoves=[]; updatePiecePanel(); updateSpawnCardValues();
+    selectedPiece=null; selectedPieceWasReady=false; legalMoves=[]; updatePiecePanel(); updateSpawnCardValues();
     if(canAuthoritativelyWriteState()){ queueReliableStateWrite('playerMove'); }
     else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
   }
@@ -2093,7 +2095,7 @@ async function requestPlayerAbility(actor,target,ability){
   }
   if(!ok) return false;
   rememberPendingPlayerAction({...action,faction:PLAYER});
-  selectedPiece=null; legalMoves=[]; updatePiecePanel(); updateSpawnCardValues();
+  selectedPiece=null; selectedPieceWasReady=false; legalMoves=[]; updatePiecePanel(); updateSpawnCardValues();
   if(canAuthoritativelyWriteState()) queueReliableStateWrite(ability);
   else {
     toast(ability==='guardianShield'?'Guardian jump sent to the host.':(ability==='vinePull'?'Vine Pull sent to the host.':'Shade Mark sent to the host.'),1600);
@@ -7040,6 +7042,7 @@ function segmentTouchesRenderBounds(a,b,pad=2){
 
 function gameTick(dt){
   if(!gameStarted || paused) return;
+  refreshSelectedPieceCooldownMoves();
   tickTime += dt;
   hudTickTime += dt;
   solarBeaconAccumulator += dt;
@@ -7104,6 +7107,26 @@ function gameTick(dt){
   if(hudTickTime>=.10){ hudTickTime=0; updateHUD(); }
   maybeAnnounceWorldWinner();
   if(tickTime>.25){ tickTime=0; updatePiecePanel(); }
+}
+
+function refreshSelectedPieceCooldownMoves(){
+  if(!selectedPiece) return;
+  const live = getPiece(selectedPiece.id);
+  if(!live || !live.alive){
+    selectedPiece = null;
+    selectedPieceWasReady = false;
+    legalMoves = [];
+    updatePiecePanel();
+    return;
+  }
+  if(live !== selectedPiece) selectedPiece = live;
+  const isReady = cooldownReady(selectedPiece);
+  if(isReady && !selectedPieceWasReady && selectedPiece.faction===PLAYER && !playerDefeated && ownFactionAlive()){
+    legalMoves = getLegalMoves(selectedPiece,false);
+    moveModeHint = '';
+    updatePiecePanel();
+  }
+  selectedPieceWasReady = isReady;
 }
 
 function updateLocalPlayerSpawn(dt){
@@ -9373,12 +9396,13 @@ function onTap(sx,sy){
   }
   if(p){
     selectedPiece=p;
+    selectedPieceWasReady = cooldownReady(p);
     legalMoves=(p.faction===PLAYER && !playerDefeated && ownFactionAlive())?getLegalMoves(p,false):(p.faction!==PLAYER?getLegalMoves(p,true):[]);
     if(p.faction!==PLAYER) moveModeHint='Enemy move options previewed.';
     else if(!cooldownReady(p)) moveModeHint='Piece is cooling down.';
     updatePiecePanel();
   } else {
-    selectedPiece=null; legalMoves=[]; updatePiecePanel();
+    selectedPiece=null; selectedPieceWasReady=false; legalMoves=[]; updatePiecePanel();
   }
 }
 function handleSpawnPlace(x,y){
@@ -9609,7 +9633,7 @@ function keyboard(){
     if(e.key==='ArrowRight'||e.key==='d') cam.x+=step;
     if(e.key==='ArrowUp'||e.key==='w') cam.y-=step;
     if(e.key==='ArrowDown'||e.key==='s') cam.y+=step;
-    if(e.key==='Escape'){selectedPiece=null;legalMoves=[];spawnSelection=null;updateSpawnCardValues();updatePiecePanel();}
+    if(e.key==='Escape'){selectedPiece=null;selectedPieceWasReady=false;legalMoves=[];spawnSelection=null;updateSpawnCardValues();updatePiecePanel();}
     if(e.key==='m' || e.key==='M') setMinimapOpen(!minimapOpen);
     if((e.key==='v' || e.key==='V') && !['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName || '')) toggleAudioMuted();
     if(e.key===' '){paused=!paused; pauseBtn.textContent=paused?'Resume':'Pause';}
