@@ -1092,7 +1092,8 @@ function serializePiece(p){
     ga:p.guardReadyAt || 0, ma:p.markReadyAt || 0,
     smu:isKing ? 0 : (p.shadowMarkedUntil || 0), smb:isKing ? 0 : (p.shadowMarkedBy || 0),
     sru:p.shadowRushUntil || 0, srx:(typeof p.shadowRushX==='number'?p.shadowRushX:-999), sry:(typeof p.shadowRushY==='number'?p.shadowRushY:-999),
-    sq:p.sunReviveReadyAt || 0
+    sq:p.sunReviveReadyAt || 0,
+    vb:p.nextBroodBloomKillAt || 0
   };
 }
 function diffLandString(prev,next){
@@ -1123,7 +1124,7 @@ function applyStringPatches(base, patches){
 }
 function buildFullPieces(){ return pieces.filter(p=>p.alive).map(serializePiece); }
 function pieceSyncSignature(pp){
-  return [pp.i,pp.f,pp.t,pp.x,pp.y,pp.hp,pp.mh,pp.c,pp.lv,pp.aid,pp.aby,pp.ms,pp.me,pp.cu,pp.cd,pp.nb,pp.sg,pp.sc,pp.sh,pp.sr,pp.wc,pp.rv,pp.hu,pp.ou,pp.oc,pp.ga,pp.ma,pp.smu,pp.smb,pp.sru,pp.srx,pp.sry,pp.sq].join('|');
+  return [pp.i,pp.f,pp.t,pp.x,pp.y,pp.hp,pp.mh,pp.c,pp.lv,pp.aid,pp.aby,pp.ms,pp.me,pp.cu,pp.cd,pp.nb,pp.sg,pp.sc,pp.sh,pp.sr,pp.wc,pp.rv,pp.hu,pp.ou,pp.oc,pp.ga,pp.ma,pp.smu,pp.smb,pp.sru,pp.srx,pp.sry,pp.sq,pp.vb].join('|');
 }
 function buildSelfContainedState(reason='fullRepair'){
   recalcOwnerCounts();
@@ -1390,7 +1391,8 @@ function applyRemoteState(data){
       shadowRushUntil:pp.sru || 0,
       shadowRushX:pp.srx === -999 ? null : pp.srx,
       shadowRushY:pp.sry === -999 ? null : pp.sry,
-      sunReviveReadyAt:pp.sq || 0
+      sunReviveReadyAt:pp.sq || 0,
+      nextBroodBloomKillAt:pp.vb || (old ? old.nextBroodBloomKillAt : 0)
     };
   });
   idCounter = pieces.reduce((m,p)=>Math.max(m,Number(p.id)||0),0)+1;
@@ -1697,6 +1699,7 @@ function applyIncomingCommand(cmd){
     let ok = false;
     if(cmd.ability === 'guardianShield') ok = applyGuardianShieldAbility(actor,target,'command');
     else if(cmd.ability === 'shadeMark') ok = applyShadowMarkAbility(actor,target,'command');
+    else if(cmd.ability === 'vinePull') ok = applyVinePullAbility(actor,target,'command');
     else return commandReject('unknown_ability');
     if(!ok) return commandReject('ability_not_available');
     processedCommandIds.add(`action:${cmd.actionId || ''}`);
@@ -1900,17 +1903,18 @@ async function requestPlayerAbility(actor,target,ability){
   let valid=false;
   if(ability==='guardianShield') valid=guardianShieldTargets(liveActor).some(t=>t.targetId===liveTarget.id);
   else if(ability==='shadeMark') valid=shadowMarkTargets(liveActor).some(t=>t.targetId===liveTarget.id);
+  else if(ability==='vinePull') valid=vinePullTargets(liveActor).some(t=>t.targetId===liveTarget.id);
   if(!valid){ toast('That ability cannot affect this target right now.'); return false; }
   let ok=true;
   if(canAuthoritativelyWriteState()){
-    ok = ability==='guardianShield' ? applyGuardianShieldAbility(liveActor,liveTarget,'player') : applyShadowMarkAbility(liveActor,liveTarget,'player');
+    ok = ability==='guardianShield' ? applyGuardianShieldAbility(liveActor,liveTarget,'player') : (ability==='vinePull' ? applyVinePullAbility(liveActor,liveTarget,'player') : applyShadowMarkAbility(liveActor,liveTarget,'player'));
   }
   if(!ok) return false;
   rememberPendingPlayerAction({...action,faction:PLAYER});
   selectedPiece=null; legalMoves=[]; updatePiecePanel(); updateSpawnCardValues();
   if(canAuthoritativelyWriteState()) queueReliableStateWrite(ability);
   else {
-    toast(ability==='guardianShield'?'Guardian jump sent to the host.':'Shade Mark sent to the host.',1600);
+    toast(ability==='guardianShield'?'Guardian jump sent to the host.':(ability==='vinePull'?'Vine Pull sent to the host.':'Shade Mark sent to the host.'),1600);
     if(!(await submitPlayerCommand(action))) rollbackToAuthoritative('Ability command failed — refreshed from host state.');
   }
   return true;
@@ -2567,10 +2571,10 @@ const pieceDefs = {
   warden:{name:'Warden', icon:'◆', pattern:'warden', cooldown:6.0, value:6, aura:2, hp:3, desc:'Slow Iron elite. A three-health defensive stepper with a small territory aura.'},
   seedpawn:{name:'Seed Pawn', icon:'♙', pattern:'pawn', cooldown:1.9, value:1, hp:1, desc:'Quickest pawn; helps Verdant flood territory.'},
   thornguard:{name:'Thorn Guard', icon:'♙', pattern:'thornguard', cooldown:2.25, value:2, hp:1, desc:'Moves cardinally and recharges best when staying connected to owned land.'},
-  scout:{name:'Scout', icon:'◇', pattern:'scout', cooldown:2.2, value:2, hp:1, desc:'Leaps two squares orthogonally or steps diagonally.'},
-  stagrunner:{name:'Stag Runner', icon:'♞', pattern:'stagrunner', cooldown:2.7, value:4, hp:1, desc:'Verdant L-jumper that must land near friendly growth, forests, or allies.'},
-  vinehook:{name:'Vinehook', icon:'⌁', pattern:'vinehook', cooldown:2.9, value:4, hp:1, forestWalker:true, desc:'Short hook-jumps toward friendly growth and pulls territory around the landing.'},
-  vinebishop:{name:'Vine Bishop', icon:'♝', pattern:'bishop', cooldown:3.1, value:4, hp:2, forestWalker:true, desc:'Verdant elite. Bishop that can slide through forest, but not mountains or water.'},
+  scout:{name:'Scout', icon:'◇', pattern:'scout', cooldown:2.2, value:2, hp:1, desc:'Leaps two squares orthogonally or steps diagonally. Landing adjacent to a friendly Brood Bloom halves the cooldown from that move.'},
+  stagrunner:{name:'Stag Runner', icon:'♞', pattern:'stagrunner', cooldown:2.7, value:4, hp:1, desc:'Verdant L-jumper. Landing beside a friendly Brood Bloom halves its cooldown. When it begins beside one Bloom, it may leap to an open tile beside a different friendly Bloom.'},
+  vinehook:{name:'Vinehook', icon:'⌁', pattern:'vinehook', cooldown:2.9, value:4, hp:1, forestWalker:true, desc:'Attacks adjacent enemies. Enemies exactly two spaces away can be pulled onto an open tile beside the Vinehook. Pulling consumes the Vinehook action but does not change the enemy cooldown.'},
+  vinebishop:{name:'Vine Bishop', icon:'♝', pattern:'bishop', cooldown:3.1, value:4, hp:2, forestWalker:true, desc:'Forest-walking bishop. After it kills an enemy, it can grow a Brood Bloom near the kill once every 60 seconds.'},
   grovetower:{name:'Grove Tower', icon:'♖', pattern:'tower', cooldown:5.8, value:6, aura:3, hp:1, forestWalker:true, desc:'Territory tower that likes forests.'},
   shadepawn:{name:'Shade Pawn', icon:'♙', pattern:'shadepawn', cooldown:2.45, value:2, hp:1, wallVault:true, desc:'Skirmisher. Select it, then tap an orange non-king enemy three to four tiles away to place a 15-second execution mark. Kings cannot be marked. Mark recharges in 60 seconds.'},
   blinkpawn:{name:'Blink Pawn', icon:'♙', pattern:'blinkpawn', cooldown:2.65, value:2, hp:1, wallVault:true, desc:'Cannot stop adjacent; instead blinks exactly two tiles in any direction.'},
@@ -2609,7 +2613,7 @@ const pieceDefs = {
   shieldfoundry:{name:'Shield Foundry', icon:'▣', pattern:'building', cooldown:8.0, value:7, hp:3, building:true, desc:'Grants one nearby fragile Iron unit a temporary +1 health shield. Recharges in 35 seconds.'},
   gatehouse:{name:'Gatehouse', icon:'▤', pattern:'building', cooldown:8.0, value:7, hp:3, building:true, desc:'Repairs starting walls or slowly builds a 5x5 wall ring around itself.'},
   seedgrove:{name:'Seed Grove', icon:'✾', pattern:'building', cooldown:6.5, value:6, hp:1, building:true, desc:'Fragile Verdant node. The main source of root spread; each node spreads a small root patch and now sprouts its child node after 25 seconds.'},
-  broodbloom:{name:'Brood Bloom', icon:'❀', pattern:'building', cooldown:6.5, value:5, hp:2, building:true, desc:'Spawns a Seed Pawn every 45 seconds on Verdant land.'},
+  broodbloom:{name:'Brood Bloom', icon:'❀', pattern:'building', cooldown:6.5, value:5, hp:2, building:true, desc:'Verdant growth node. Spawns a Seed Pawn every 35 seconds. Scouts and Stag Runners landing beside it recover in half the normal time, and Stag Runners can leap between separate friendly Blooms.'},
   obsidianmirror:{name:'Obsidian Mirror', icon:'◈', pattern:'building', cooldown:7.0, value:7, hp:1, building:true, desc:'Fragile Shadow relay. Shadow Stepper, Nightblade, Wraith, and Void Strider may teleport to open spaces beside a friendly mirror.'},
   knifechapel:{name:'Knife Chapel', icon:'†', pattern:'building', cooldown:7.0, value:6, hp:2, building:true, desc:'Kills within five spaces spawn a Shade Pawn beside the chapel, with a 10 second cooldown.'},
   reefnursery:{name:'Reef Nursery', icon:'≋', pattern:'building', cooldown:7.0, value:6, hp:3, building:true, amphibious:true, desc:'Spawns Tide reinforcements every 45 seconds near water, coast, or owned land.'},
@@ -3188,6 +3192,100 @@ function alivePieceCountForFaction(idx){ return factionPieceStats().pieceCounts[
 function buildingCountForFactionType(idx,type){ return factionPieceStats().buildingsByType[idx]?.get(type) || 0; }
 function cachedKingForFaction(idx){ return factionPieceStats().kings[idx] || null; }
 
+
+
+const BROOD_BLOOM_SPAWN_SECONDS = 35;
+const VINE_BISHOP_BLOOM_KILL_SECONDS = 60;
+function friendlyBroodBlooms(faction){ return liveBuildings(faction,'broodbloom').filter(b=>b.alive && b.faction===faction); }
+function chebAdjacent(ax,ay,bx,by){ return Math.max(Math.abs(ax-bx),Math.abs(ay-by))===1; }
+function isAdjacentToFriendlyBroodBloom(pieceOrX,y,faction){
+  const x = typeof pieceOrX==='object' ? pieceOrX.x : pieceOrX;
+  const yy = typeof pieceOrX==='object' ? pieceOrX.y : y;
+  const ff = typeof pieceOrX==='object' ? (faction ?? pieceOrX.faction) : faction;
+  return adjacentFriendlyBroodBlooms(x,yy,ff).length>0;
+}
+function adjacentFriendlyBroodBlooms(x,y,faction){ return friendlyBroodBlooms(faction).filter(b=>chebAdjacent(x,y,b.x,b.y)); }
+function openTilesAdjacentToBroodBloom(bloom,movingPiece){
+  if(!bloom?.alive) return [];
+  const piece = movingPiece || {type:'seedpawn',faction:bloom.faction};
+  const out=[];
+  for(const [dx,dy] of DIRS8){
+    const x=bloom.x+dx,y=bloom.y+dy;
+    if(!inBounds(x,y) || findPieceAt(x,y) || !passableFor(piece,x,y) || tile(x,y).wallOwner!=null) continue;
+    out.push({x,y,bloom});
+  }
+  out.sort((a,b)=>a.y-b.y || a.x-b.x);
+  return out;
+}
+function broodBloomPlacementEligible(x,y,faction){
+  if(!inBounds(x,y) || findPieceAt(x,y) || tile(x,y).wallOwner!=null) return false;
+  if(!passableFor({type:'broodbloom',faction},x,y)) return false;
+  const t=tile(x,y), home=t.captureKind==='starting_land';
+  if(t.owner!==faction && !home) return false;
+  const nearNode=nearestVerdantNodeWithin(x,y,faction,VERDANT_NODE_MAINTAIN_RADIUS+1);
+  return !!nearNode || home || t.captureKind==='verdant_root';
+}
+function nearestEligibleBroodBloomPlacement(x,y,faction){
+  const candidates=[];
+  const add=(xx,yy,pri)=>{ if(broodBloomPlacementEligible(xx,yy,faction)) candidates.push({x:xx,y:yy,pri,d:dist2(x,y,xx,yy)}); };
+  for(const [dx,dy] of DIRS8) add(x+dx,y+dy,0);
+  for(let yy=y-2;yy<=y+2;yy++) for(let xx=x-2;xx<=x+2;xx++) if(Math.max(Math.abs(xx-x),Math.abs(yy-y))<=2) add(xx,yy,2);
+  candidates.sort((a,b)=>a.pri-b.pri || a.d-b.d || a.y-b.y || a.x-b.x);
+  return candidates[0] || null;
+}
+function vinePullDestination(vinehook,target){
+  if(!vinehook?.alive || !target?.alive || target.faction===vinehook.faction) return null;
+  if(Math.max(Math.abs(target.x-vinehook.x),Math.abs(target.y-vinehook.y))!==2) return null;
+  const sx=Math.sign(target.x-vinehook.x), sy=Math.sign(target.y-vinehook.y);
+  const direct={x:vinehook.x+sx,y:vinehook.y+sy};
+  const legal=(x,y)=>inBounds(x,y)&&!(x===vinehook.x&&y===vinehook.y)&&chebAdjacent(x,y,vinehook.x,vinehook.y)&&!findPieceAt(x,y)&&tile(x,y).wallOwner==null&&passableFor(target,x,y);
+  if(legal(direct.x,direct.y)) return direct;
+  const opts=[];
+  for(const [dx,dy] of DIRS8){ const x=vinehook.x+dx,y=vinehook.y+dy; if(legal(x,y)) opts.push({x,y,d:dist2(target.x,target.y,x,y)}); }
+  opts.sort((a,b)=>a.d-b.d || a.y-b.y || a.x-b.x);
+  return opts[0] || null;
+}
+function vinePullTargets(piece){
+  if(!piece || piece.type!=='vinehook') return [];
+  const out=[];
+  for(const enemy of pieces){
+    if(!enemy.alive || !factions[enemy.faction]?.alive) continue;
+    const dest=vinePullDestination(piece,enemy);
+    if(dest) out.push({x:enemy.x,y:enemy.y,capture:false,vinePull:true,targetId:enemy.id,pullX:dest.x,pullY:dest.y});
+  }
+  return out;
+}
+function applyVinePullAbility(vinehook,target,source='player'){
+  if(!vinehook?.alive || !target?.alive || vinehook.type!=='vinehook') return false;
+  const dest=vinePullDestination(vinehook,target); if(!dest) return false;
+  const oldX=target.x, oldY=target.y;
+  target.x=dest.x; target.y=dest.y; target.targetX=dest.x; target.targetY=dest.y; updatePieceTileIndex(target,oldX,oldY);
+  target.moveStartMs=Date.now(); target.moveEndMs=target.moveStartMs+180; target.flash=1;
+  setMoveCooldown(vinehook,vinehook.x,vinehook.y,vinehook.x,vinehook.y,true);
+  applyAuraTerritory(vinehook);
+  burst(dest.x,dest.y,'#55f09a',14); floating(target.x,target.y,'VINE PULL','#9cffb8'); markStateDirty(); return true;
+}
+function applyBroodBloomLandingBonus(piece){
+  if(!piece?.alive || !['scout','stagrunner'].includes(piece.type)) return false;
+  if(factions[piece.faction]?.id!=='verdant' || !isAdjacentToFriendlyBroodBloom(piece)) return false;
+  piece.lastCooldownDuration=Math.max(.15,(piece.lastCooldownDuration||0)*.5);
+  piece.cooldownUntil=piece.lastMove+piece.lastCooldownDuration;
+  burst(piece.x,piece.y,'#76ff9d',10); floating(piece.x,piece.y,'BLOOM HASTE','#b7ffd2'); return true;
+}
+function tryVineBishopBroodBloom(attacker,target){
+  if(!attacker?.alive || attacker.type!=='vinebishop' || factions[attacker.faction]?.id!=='verdant') return false;
+  const tNow=now(); if((attacker.nextBroodBloomKillAt||0)>tNow || winnerName()) return false;
+  const spots=[];
+  for(const [dx,dy] of DIRS8) if(broodBloomPlacementEligible(target.x+dx,target.y+dy,attacker.faction)) spots.push({x:target.x+dx,y:target.y+dy,pri:0,d:dist2(target.x,target.y,target.x+dx,target.y+dy)});
+  for(const [dx,dy] of DIRS8) if(broodBloomPlacementEligible(attacker.x+dx,attacker.y+dy,attacker.faction)) spots.push({x:attacker.x+dx,y:attacker.y+dy,pri:1,d:dist2(target.x,target.y,attacker.x+dx,attacker.y+dy)});
+  const near=nearestEligibleBroodBloomPlacement(target.x,target.y,attacker.faction); if(near) spots.push({...near,pri:2});
+  spots.sort((a,b)=>a.pri-b.pri || a.d-b.d || a.y-b.y || a.x-b.x);
+  const spot=spots[0]; if(!spot){ if(attacker.faction===PLAYER) floating(attacker.x,attacker.y,'No ground for Brood Bloom','#b7ffd2'); return false; }
+  newPiece(attacker.faction,'broodbloom',spot.x,spot.y,{ready:false,nextBuildingTick:tNow+BROOD_BLOOM_SPAWN_SECONDS});
+  claimTile(attacker.faction,spot.x,spot.y,0,'verdant_root');
+  attacker.nextBroodBloomKillAt=tNow+VINE_BISHOP_BLOOM_KILL_SECONDS;
+  burst(spot.x,spot.y,'#82f58f',28); floating(spot.x,spot.y,'BROOD BLOOM','#b7ffd2'); return true;
+}
 
 function invalidateSimulation(reason='sim'){
   simulationRevision++;
@@ -3855,7 +3953,8 @@ function newPiece(faction,type,x,y,opts={}){
     shadowRushUntil:opts.shadowRushUntil || 0,
     shadowRushX:typeof opts.shadowRushX==='number' ? opts.shadowRushX : null,
     shadowRushY:typeof opts.shadowRushY==='number' ? opts.shadowRushY : null,
-    sunReviveReadyAt:opts.sunReviveReadyAt || 0
+    sunReviveReadyAt:opts.sunReviveReadyAt || 0,
+    nextBroodBloomKillAt:opts.nextBroodBloomKillAt || 0
   };
   if(typeof assignedId === 'number') idCounter = Math.max(idCounter, assignedId + 1);
   pieces.push(p);
@@ -4842,9 +4941,23 @@ function getLegalMoves(piece, ignoreCooldown=false){
     }
   } else if(pattern==='stagrunner'){
     for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addVerdantLanding(piece.x+dx,piece.y+dy,true,true);
+    const origins=adjacentFriendlyBroodBlooms(piece.x,piece.y,own);
+    if(origins.length){
+      const originIds=new Set(origins.map(b=>b.id));
+      const seen=new Set();
+      for(const bloom of friendlyBroodBlooms(own)){
+        if(originIds.has(bloom.id)) continue;
+        for(const t of openTilesAdjacentToBroodBloom(bloom,piece)){
+          const k=key(t.x,t.y); if(seen.has(k)) continue; seen.add(k);
+          addMove(moves,t.x,t.y,false,{broodLeap:true,originBloomId:origins[0].id,destBloomId:bloom.id});
+        }
+      }
+    }
   } else if(pattern==='vinehook'){
+    for(const [dx,dy] of DIRS8) addStep(piece.x+dx,piece.y+dy,true,false);
     for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addVerdantLanding(piece.x+dx,piece.y+dy,true,true);
-    for(const [dx,dy] of DIRS8) addVerdantLanding(piece.x+dx*2,piece.y+dy*2,true,true);
+    for(const [dx,dy] of DIRS8) addVerdantLanding(piece.x+dx*2,piece.y+dy*2,false,true);
+    for(const pull of vinePullTargets(piece)) addMove(moves,pull.x,pull.y,false,pull);
   } else if(pattern==='assassin'){
     slide(DIAG,4+(lvl>=4?2:0));
     for(const [dx,dy] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) addStep(piece.x+dx,piece.y+dy,true,false);
@@ -5386,6 +5499,14 @@ function movePiece(piece,x,y,source='player'){
   const prevLastCooldownDuration = piece.lastCooldownDuration || 0;
   const moveMeta=(getLegalMoves(piece,true).find(m=>m.x===x && m.y===y && (m.capture || !findPieceAt(x,y))) || {});
   const target=findPieceAt(x,y);
+  if(moveMeta.vinePull && target && target.faction!==piece.faction){
+    const ok=applyVinePullAbility(piece,target,source);
+    if(ok){
+      piece.clientActionId = piece.clientActionId || '';
+      piece.clientActionBy = piece.clientActionBy || '';
+    }
+    return ok;
+  }
   if(target && target.faction===piece.faction) return false;
   const targetWall = canAttackWall(piece,x,y);
   if(!targetWall && !passableFor(piece,x,y)) return false;
@@ -5427,6 +5548,8 @@ function movePiece(piece,x,y,source='player'){
   }
   piece.x=x; piece.y=y; piece.targetX=x; piece.targetY=y; updatePieceTileIndex(piece,fromX,fromY); assertPieceIndexes('movePiece'); piece.flash=1;
   setMoveCooldown(piece,fromX,fromY,x,y,!!target || !!targetWall);
+  applyBroodBloomLandingBonus(piece);
+  if(moveMeta.broodLeap) floating(x,y,'BLOOM LEAP', factions[piece.faction]?.color || '#b7ffd2');
   if(piece.type==='assassin' && defeated){
     piece.lastCooldownDuration = Math.max(.22, piece.lastCooldownDuration * .5);
     piece.cooldownUntil = piece.lastMove + piece.lastCooldownDuration;
@@ -5624,6 +5747,7 @@ function capturePiece(attacker, target){
   }
   applyFactionCapture(attacker,attacker.x,attacker.y,target.x,target.y,'kill',target);
   applyBuildingKillEffects(attacker,target);
+  tryVineBishopBroodBloom(attacker,target);
 
   if(target.type==='dawnarchon' && factions[target.faction]?.id==='sunspire' && !target.reviveUsed){
     const king=getPiece(factions[target.faction].kingId);
@@ -6219,9 +6343,20 @@ function updatePiecePanel(){
     const count=p.faction===PLAYER?shadowMarkTargets(p).length:0;
     abilityLine=remain?`<p style="color:#fdba74"><b>Shadow Mark:</b> recharges in ${remain}s. Kings cannot be marked.</p>`:`<p style="color:#fb923c"><b>Shadow Mark ready:</b> ${count} non-king enemies glow orange. Tap one to place a 15s mark (+1 Shadow attack reach; Wraiths execute).</p>`;
   }
+  if(p.type==='vinebishop' && f.id==='verdant'){
+    const remain=Math.max(0,Math.ceil((p.nextBroodBloomKillAt||0)-now()));
+    abilityLine+=remain?`<p style="color:#a7f3d0"><b>Brood Bloom:</b> kill-growth recharges in ${remain}s.</p>`:`<p style="color:#86efac"><b>Brood Bloom ready:</b> next kill can grow a Bloom nearby.</p>`;
+  }
+  if(p.type==='stagrunner' && f.id==='verdant'){
+    const connected=adjacentFriendlyBroodBlooms(p.x,p.y,p.faction).length>0;
+    abilityLine+=`<p style="color:#b7ffd2"><b>Bloom network:</b> ${connected?'connected — can leap to another friendly Bloom.':'stand beside a friendly Bloom to connect.'}</p>`;
+  }
+  if(['scout','stagrunner'].includes(p.type) && f.id==='verdant' && isAdjacentToFriendlyBroodBloom(p)){
+    abilityLine+=`<p style="color:#b7ffd2"><b>Bloom landing bonus:</b> landing beside a friendly Brood Bloom halves this move cooldown.</p>`;
+  }
   if(pieceHasOrbShield(p)) abilityLine+=`<p style="color:#bff6ff"><b>Dawn Shield active:</b> blocks the next capture attempt.</p>`;
   if((p.shadowMarkedUntil||0)>now()) abilityLine+=`<p style="color:#ff8b82"><b>Marked:</b> All Shadow troops gain +1 valid attack reach against this unit. Wraiths may execute it. ${Math.ceil(p.shadowMarkedUntil-now())}s.</p>`;
-  const legendLine=p.faction===PLAYER?`<p style="font-size:11px;color:#cbd5e1">Blue = move · Red glow = attack · Green glow = Guardian Shield · Orange glow = Shade Mark.</p>`:'';
+  const legendLine=p.faction===PLAYER?`<p style="font-size:11px;color:#cbd5e1">Blue = move · Red glow = attack · Green = Guardian Shield / Vine Pull / Bloom Leap · Orange glow = Shade Mark.</p>`:'';
   const troopName=pieceDisplayName(p.faction,p.type);
   const cooldownText=cooldownReady(p)?'Ready to move.':'Cooldown '+Math.ceil((1-cd)*cooldownFor(p))+'s remaining.';
   const signature=[p.id,p.type,p.level,p.captures,p.hp,p.maxHp,Math.round(cd*20),cooldownText,shrineLine,solarLine,marshalLine,roadLine,overextensionLine,abilityLine,piecePanelExpanded].join('|');
@@ -6592,7 +6727,7 @@ function updateBuildingRules(f,dt){
       if(b.type==='seedgrove') b.nextBuildingTick=tNow+25;
       else if(b.type==='barrackskeep') b.nextBuildingTick=tNow+55;
       else if(b.type==='sparkden') b.nextBuildingTick=tNow+35;
-      else if(b.type==='broodbloom') b.nextBuildingTick=tNow+45;
+      else if(b.type==='broodbloom') b.nextBuildingTick=tNow+BROOD_BLOOM_SPAWN_SECONDS;
       else if(b.type==='reefnursery') b.nextBuildingTick=tNow+45;
       else if(b.type==='tidalbeacon') b.nextBuildingTick=tNow+18;
       else if(b.type==='radiantmonastery') b.nextBuildingTick=tNow+60;
@@ -6649,8 +6784,8 @@ function updateBuildingRules(f,dt){
       const ok=isInStartingBase(b.faction,b.x,b.y) ? repairStartingWall(b.faction) : buildGatehouseRing(b);
       b.nextBuildingTick=tNow+(ok?30:8);
     } else if(b.type==='broodbloom'){
-      if(spawnBuildingUnit(b,'seedpawn',1,true)) b.nextBuildingTick=tNow+45;
-      else b.nextBuildingTick=tNow+8;
+      if(spawnBuildingUnit(b,'seedpawn',1,true)) b.nextBuildingTick=tNow+BROOD_BLOOM_SPAWN_SECONDS;
+      else b.nextBuildingTick=tNow;
     } else if(b.type==='reefnursery'){
       const type=seededNoise(b.id,Math.floor(tNow/45),6100)>.62?'crabrook':'tidepawn';
       if(spawnBuildingUnit(b,type,2,false)) b.nextBuildingTick=tNow+45;
@@ -7602,7 +7737,7 @@ function drawHighlights(){
     for(const m of legalMoves){
       const x=m.x*BASE_CELL, y=m.y*BASE_CELL;
       ctx.globalAlpha=m.capture?.55:.36;
-      ctx.fillStyle=m.markedRangeBonus?'#b388ff':(m.capture?'#ff4058':'#7dd3fc');
+      ctx.fillStyle=m.vinePull?'#35e66f':(m.broodLeap?'#8cffb0':(m.markedRangeBonus?'#b388ff':(m.capture?'#ff4058':'#7dd3fc')));
       ctx.beginPath(); ctx.arc(x+BASE_CELL/2,y+BASE_CELL/2,m.capture?15:10,0,Math.PI*2); ctx.fill();
       ctx.globalAlpha=1;
       if(m.capture){ ctx.strokeStyle=m.markedRangeBonus?'#d8b4fe':'#ffedf0'; ctx.lineWidth=2.5; ctx.strokeRect(x+7,y+7,BASE_CELL-14,BASE_CELL-14); }
@@ -7622,7 +7757,7 @@ function drawHighlights(){
       const angle=Math.atan2(by-ay,bx-ax);
       ctx.save();
       ctx.globalAlpha=.92;
-      ctx.strokeStyle=hovered.capture?'#ff6d7e':'#9bd7ff';
+      ctx.strokeStyle=hovered.vinePull?'#35e66f':(hovered.broodLeap?'#8cffb0':(hovered.capture?'#ff6d7e':'#9bd7ff'));
       ctx.fillStyle=ctx.strokeStyle;
       ctx.lineWidth=3;
       ctx.setLineDash([9,7]);
@@ -7897,7 +8032,7 @@ function buildingTimerDurationFor(p){
   if(p.type==='seedgrove') return (p.seedGen||0)>0 ? 120 : 60;
   if(p.type==='barrackskeep') return 55;
   if(p.type==='sparkden') return 35;
-  if(p.type==='broodbloom') return 45;
+  if(p.type==='broodbloom') return BROOD_BLOOM_SPAWN_SECONDS;
   if(p.type==='reefnursery') return 45;
   if(p.type==='tidalbeacon') return 18;
   if(p.type==='radiantmonastery') return 60;
@@ -8691,6 +8826,7 @@ function onTap(sx,sy){
     }
     const m=legalMoves.find(q=>q.x===b.x && q.y===b.y);
     if(m && selectedPiece.faction===PLAYER){
+      if(m.vinePull && p){ requestPlayerAbility(selectedPiece,p,'vinePull'); return; }
       requestPlayerMove(selectedPiece,b.x,b.y);
       return;
     }
