@@ -466,6 +466,7 @@ const PENDING_ACTION_GRACE_SECONDS = 2.0;
 // Firebase snapshot moves it to the correct tile.
 const HOST_ACCEPTED_PENDING_TTL_SECONDS = 18.0;
 const COMMAND_MAX_AGE_MS = 6000;
+const SPAWN_COMMAND_MAX_AGE_MS = 45000;
 const PRESENCE_STALE_MS = 15000;
 const CONTROLLER_LEASE_MS = 14000;
 const CONTROLLER_LEASE_RENEW_MS = 3500;
@@ -1070,6 +1071,7 @@ function applyCaptureKinds(str){
   }
 }
 function serializePiece(p){
+  const isKing = p.type === 'king';
   return {
     i:p.id,f:p.faction,t:p.type,x:p.x,y:p.y,hp:p.hp,mh:p.maxHp,c:p.captures||0,lv:p.level||1,
     aid:p.clientActionId || '', aby:p.clientActionBy || '', ms:p.moveStartMs || 0, me:p.moveEndMs || 0,
@@ -1078,7 +1080,7 @@ function serializePiece(p){
     sh:p.shieldBoostId || 0, sr:p.shieldReadyAt || 0, wc:p.wallCursor || 0, rv:p.reviveUsed ? 1 : 0, hu:p.heatUntil || 0,
     ou:p.orbShieldUntil || 0, oc:p.orbShieldCharges || 0,
     ga:p.guardReadyAt || 0, ma:p.markReadyAt || 0,
-    smu:p.shadowMarkedUntil || 0, smb:p.shadowMarkedBy || 0,
+    smu:isKing ? 0 : (p.shadowMarkedUntil || 0), smb:isKing ? 0 : (p.shadowMarkedBy || 0),
     sru:p.shadowRushUntil || 0, srx:(typeof p.shadowRushX==='number'?p.shadowRushX:-999), sry:(typeof p.shadowRushY==='number'?p.shadowRushY:-999),
     sq:p.sunReviveReadyAt || 0
   };
@@ -1338,6 +1340,8 @@ function applyRemoteState(data){
     const visual = remoteVisualStart(old, useX, useY, moved);
     const keepPrediction = old && old.predictedMove && pendingPlayerActions.some(a => a.actionId === old.predictedMove.actionId);
     const confirmedOwnPrediction = old && old.predictedMove && (pp.aid === old.predictedMove.actionId || (pp.x === old.predictedMove.toX && pp.y === old.predictedMove.toY));
+    const reconstructedType = pp.t;
+    const kingShadowImmune = reconstructedType === 'king';
     return {
       id:pp.i, faction:pp.f, type:pp.t, x:useX, y:useY,
       px: confirmedOwnPrediction ? finiteCoord(old.px, old.predictedMove.toX) : visual.px,
@@ -1366,8 +1370,8 @@ function applyRemoteState(data){
       orbShieldCharges:pp.oc || 0,
       guardReadyAt:pp.ga || 0,
       markReadyAt:pp.ma || 0,
-      shadowMarkedUntil:pp.smu || 0,
-      shadowMarkedBy:pp.smb || 0,
+      shadowMarkedUntil:kingShadowImmune ? 0 : (pp.smu || 0),
+      shadowMarkedBy:kingShadowImmune ? 0 : (pp.smb || 0),
       shadowRushUntil:pp.sru || 0,
       shadowRushX:pp.srx === -999 ? null : pp.srx,
       shadowRushY:pp.sry === -999 ? null : pp.sry,
@@ -1427,8 +1431,10 @@ function allocateClientPieceId(){
 }
 function rememberPendingPlayerAction(action){
   const created = now();
-  const item = {...action, createdAt:created, visualUntil:created + PENDING_ACTION_GRACE_SECONDS, expiresAt:created + PENDING_ACTION_TTL_SECONDS};
+  const ttl = action.kind === 'spawn' ? SPAWN_COMMAND_MAX_AGE_MS / 1000 : PENDING_ACTION_TTL_SECONDS;
+  const item = {...action, createdAt:created, visualUntil:created + PENDING_ACTION_GRACE_SECONDS, expiresAt:created + ttl};
   if(item.kind === 'move') pendingPlayerActions = pendingPlayerActions.filter(a => !(a.kind === 'move' && a.pieceId === item.pieceId));
+  if(item.kind === 'spawn') pendingPlayerActions = pendingPlayerActions.filter(a => !(a.kind === 'spawn' && a.faction === item.faction));
   pendingPlayerActions.push(item);
   localWritePendingUntil = now() + PENDING_ACTION_GRACE_SECONDS;
 }
@@ -1466,6 +1472,9 @@ function softConfirmPendingAction(actionId){
         };
       }
     }
+  } else if(pending.kind === 'spawn'){
+    pending.visualUntil = Math.max(pending.visualUntil || 0, now() + HOST_ACCEPTED_PENDING_TTL_SECONDS);
+    pending.expiresAt = Math.max(pending.expiresAt || 0, now() + HOST_ACCEPTED_PENDING_TTL_SECONDS);
   }
 }
 function remotePositionIsStillBeforePendingMove(pp, pending){
@@ -1489,9 +1498,15 @@ function pruneConfirmedPendingActions(remoteData){
     }
     if(action.kind === 'spawn'){
       const confirmed = remotePieces.some(pp =>
-        pp.aid === action.actionId || pp.i === action.pieceId ||
-        (pp.f === PLAYER && pp.t === action.type && pp.x === action.x && pp.y === action.y)
+        pp.aid === action.actionId || pp.i === action.pieceId
       );
+      if(confirmed){
+        stopCommandAckWatch(action.actionId);
+        const finalPiece = remotePieces.find(pp => pp.aid === action.actionId || pp.i === action.pieceId);
+        if(finalPiece && (Number(finalPiece.x) !== Number(action.x) || Number(finalPiece.y) !== Number(action.y))){
+          toast('Deployment shifted to the nearest open tile.', 2400);
+        }
+      }
       return !confirmed;
     }
     if(action.kind === 'ability'){
@@ -1616,6 +1631,11 @@ function moveCommandReady(piece){
 }
 function commandAccept(reason='applied'){ return {ok:true, reason}; }
 function commandReject(reason='rejected'){ return {ok:false, reason}; }
+function nearestEligibleOpenSpawnTile(slot,type,x,y){
+  const tiles = eligibleSpawnTiles(slot,type).filter(t=>!findPieceAt(t.x,t.y));
+  tiles.sort((a,b)=>dist2(a.x,a.y,x,y)-dist2(b.x,b.y,x,y) || a.y-b.y || a.x-b.x);
+  return tiles[0] || null;
+}
 function applyIncomingCommand(cmd){
   if(cmd.actionId && processedCommandIds.has(`action:${cmd.actionId}`)) return commandAccept('duplicate_action');
   const baseVersion = Number(cmd.baseStateVersion || 0);
@@ -1653,6 +1673,7 @@ function applyIncomingCommand(cmd){
     const actor = getPiece(Number(cmd.pieceId));
     const target = getPiece(Number(cmd.targetId));
     if(!actor || !target || !actor.alive || !target.alive || actor.faction !== slot) return commandReject('ability_piece_missing');
+    if(cmd.ability === 'shadeMark' && target.type === 'king') return commandReject('king_mark_immune');
     let ok = false;
     if(cmd.ability === 'guardianShield') ok = applyGuardianShieldAbility(actor,target,'command');
     else if(cmd.ability === 'shadeMark') ok = applyShadowMarkAbility(actor,target,'command');
@@ -1668,8 +1689,9 @@ function applyIncomingCommand(cmd){
     const type = String(cmd.type || '');
     const x = Number(cmd.x), y = Number(cmd.y);
     if(!f.pieces.includes(type) || type === 'king') return commandReject('bad_spawn_type');
+    if(getPiece(Number(cmd.pieceId)) || pieces.find(p=>p.alive && p.clientActionId === cmd.actionId)) return commandAccept('spawn_already_present');
     if(!Array.isArray(f.spawnChoices) || !f.spawnChoices.includes(type)) return commandReject('offer_no_longer_available');
-    if(!inBounds(x,y) || findPieceAt(x,y)) return commandReject('spawn_tile_blocked');
+    if(!inBounds(x,y)) return commandReject('spawn_tile_not_eligible');
     const tokenCost = spawnTokenCost(type);
     // Small tolerance for a non-host whose local token meter completed just before the controller tick.
     if((f.spawnTokens || 0) < tokenCost && (f.spawnTokens || 0) + 1 >= tokenCost && (f.spawnMeter || 0) >= 98){
@@ -1677,16 +1699,22 @@ function applyIncomingCommand(cmd){
       f.spawnMeter = 0;
     }
     if((f.spawnTokens || 0) < tokenCost) return commandReject('not_enough_spawn_tokens');
-    if(!eligibleSpawnTiles(slot,type).some(t=>t.x===x && t.y===y)) return commandReject('spawn_tile_not_eligible');
+    const requestedEligible = eligibleSpawnTiles(slot,type).some(t=>t.x===x && t.y===y);
+    if(!requestedEligible) return commandReject('spawn_tile_not_eligible');
+    let finalX = x, finalY = y, shifted = false;
+    if(findPieceAt(x,y)){
+      const open = nearestEligibleOpenSpawnTile(slot,type,x,y);
+      if(!open) return commandReject('no_eligible_spawn_tile');
+      finalX = open.x; finalY = open.y; shifted = true;
+    }
     const pieceId = Number(cmd.pieceId) || allocateClientPieceId();
-    if(getPiece(pieceId) || pieces.find(p=>p.alive && p.clientActionId === cmd.actionId)) return commandAccept('spawn_already_present');
     processedCommandIds.add(`action:${cmd.actionId || ''}`);
-    newPiece(slot,type,x,y,{ready:false,id:pieceId,clientActionId:cmd.actionId || '',clientActionBy:cmd.by || ''});
+    newPiece(slot,type,finalX,finalY,{ready:false,id:pieceId,clientActionId:cmd.actionId || '',clientActionBy:cmd.by || ''});
     recordFactionSpawn(f,type);
     f.spawnTokens = Math.max(0,(f.spawnTokens || 0) - tokenCost);
     f.spawnChoices = chooseSpawnOptions(slot);
-    burst(x,y,f.color,16);
-    return commandAccept('spawn_applied');
+    burst(finalX,finalY,f.color,16);
+    return commandAccept(shifted ? 'spawn_shifted_to_open_tile' : 'spawn_applied');
   }
   return commandReject('unknown_command');
 }
@@ -1704,7 +1732,8 @@ function processCommandDoc(docId, cmd){
   if(processedCommandIds.has(docId)) return;
   processedCommandIds.add(docId);
   const createdAtMs = commandOrderMs(cmd);
-  if(createdAtMs && Date.now() - createdAtMs > COMMAND_MAX_AGE_MS){
+  const maxAgeMs = cmd.kind === 'spawn' ? SPAWN_COMMAND_MAX_AGE_MS : COMMAND_MAX_AGE_MS;
+  if(createdAtMs && Date.now() - createdAtMs > maxAgeMs){
     finishCommandDoc(docId,false,'command_too_old');
     return;
   }
@@ -1752,7 +1781,7 @@ function startCommandAckWatch(action){
       if(data.status === 'applied'){
         softConfirmPendingAction(action.actionId);
         setNetwork(`${username || 'Player'} · command confirmed`);
-        stopCommandAckWatch(action.actionId);
+        if(action.kind !== 'spawn') stopCommandAckWatch(action.actionId);
       } else if(data.status === 'rejected'){
         stopCommandAckWatch(action.actionId);
         pendingPlayerActions = pendingPlayerActions.filter(a=>a.actionId!==action.actionId);
@@ -1883,17 +1912,23 @@ async function requestPlayerSpawn(x,y){
   }
   const actionId = makeClientActionId('spawn');
   const pieceId = allocateClientPieceId();
-  const action = {kind:'spawn', actionId, pieceId, type, tokenCost, x, y, baseStateVersion: localStateVersion || 0};
-  newPiece(PLAYER,type,x,y,{ready:false,id:pieceId,clientActionId:actionId,clientActionBy:username || ''});
-  f.spawnTokens=Math.max(0,(f.spawnTokens||0)-tokenCost);
-  recordFactionSpawn(f,type);
-  f.spawnChoices=chooseSpawnOptions(PLAYER);
+  const offerVersion = `${(f.spawnChoices||[]).join(',')}:${f.spawnsMade||0}`;
+  const action = {kind:'spawn', actionId, pieceId, faction:PLAYER, slot:PLAYER, type, tokenCost, x, y, offerVersion, baseStateVersion: localStateVersion || 0};
   rememberPendingPlayerAction({...action, faction:PLAYER});
   spawnSelection=null;
   renderSpawnCards(); updateHUD();
-  burst(x,y,f.color,24); toast(`${pieceDisplayName(PLAYER,type)} deployed for ${tokenCost} token${tokenCost===1?'':'s'}.`);
-  if(canAuthoritativelyWriteState()){ queueReliableStateWrite('playerSpawn'); }
-  else if(!(await submitPlayerCommand(action))){ rollbackToAuthoritative('Command failed — refreshed from host state.'); }
+  if(canAuthoritativelyWriteState()){
+    newPiece(PLAYER,type,x,y,{ready:false,id:pieceId,clientActionId:actionId,clientActionBy:username || ''});
+    f.spawnTokens=Math.max(0,(f.spawnTokens||0)-tokenCost);
+    recordFactionSpawn(f,type);
+    f.spawnChoices=chooseSpawnOptions(PLAYER);
+    burst(x,y,f.color,24); toast(`${pieceDisplayName(PLAYER,type)} deployed for ${tokenCost} token${tokenCost===1?'':'s'}.`);
+    queueReliableStateWrite('playerSpawn');
+  }
+  else {
+    toast(`${pieceDisplayName(PLAYER,type)} deployment pending host confirmation.`);
+    if(!(await submitPlayerCommand(action))) rollbackToAuthoritative('Command failed — refreshed from host state.');
+  }
 }
 async function refreshPresenceAndController(){
   if(!lobbyId || !username) return;
@@ -2517,13 +2552,13 @@ const pieceDefs = {
   vinehook:{name:'Vinehook', icon:'⌁', pattern:'vinehook', cooldown:2.9, value:4, hp:1, forestWalker:true, desc:'Short hook-jumps toward friendly growth and pulls territory around the landing.'},
   vinebishop:{name:'Vine Bishop', icon:'♝', pattern:'bishop', cooldown:3.1, value:4, hp:2, forestWalker:true, desc:'Verdant elite. Bishop that can slide through forest, but not mountains or water.'},
   grovetower:{name:'Grove Tower', icon:'♖', pattern:'tower', cooldown:5.8, value:6, aura:3, hp:1, forestWalker:true, desc:'Territory tower that likes forests.'},
-  shadepawn:{name:'Shade Pawn', icon:'♙', pattern:'shadepawn', cooldown:2.45, value:2, hp:1, wallVault:true, desc:'Skirmisher. Select it, then tap an orange enemy three to four tiles away to place a 15-second execution mark. Mark recharges in 60 seconds.'},
+  shadepawn:{name:'Shade Pawn', icon:'♙', pattern:'shadepawn', cooldown:2.45, value:2, hp:1, wallVault:true, desc:'Skirmisher. Select it, then tap an orange non-king enemy three to four tiles away to place a 15-second execution mark. Kings cannot be marked. Mark recharges in 60 seconds.'},
   blinkpawn:{name:'Blink Pawn', icon:'♙', pattern:'blinkpawn', cooldown:2.65, value:2, hp:1, wallVault:true, desc:'Cannot stop adjacent; instead blinks exactly two tiles in any direction.'},
   shadowstepper:{name:'Shadow Stepper', icon:'⟡', pattern:'shadowstepper', cooldown:3.2, value:4, hp:1, wallVault:true, desc:'Teleports one to four tiles, with recharge based on distance.'},
   assassin:{name:'Assassin', icon:'⟡', pattern:'assassin', cooldown:3.1, value:5, hp:1, wallVault:true, desc:'Moves diagonally or blinks in L-shapes for close assassinations. Deals 2 damage per hit and cooldown halves after a kill.'},
   nightblade:{name:'Nightblade', icon:'☾', pattern:'nightblade', cooldown:4.6, value:6, hp:1, wallVault:true, desc:'Stalks to open tiles beside enemies, then can rapidly strike any adjacent or diagonal enemy. After any Shadow kill, it may shadow-rush to that death site even while on cooldown.'},
-  wraith:{name:'Wraith', icon:'✷', pattern:'wraith', cooldown:4.2, value:7, hp:2, wallVault:true, desc:'Shadow elite. Long-range teleporter that deals 2 damage and may execute Shadow-marked enemies within four tiles.'},
-  umbralbishop:{name:'Umbral Bishop', icon:'♝', pattern:'umbralbishop', cooldown:3.65, value:5, hp:1, wallVault:true, desc:'Diagonal controller with short diagonal teleport options. Can mark a visible cardinal enemy 1-4 tiles away for 15s every 30s.'},
+  wraith:{name:'Wraith', icon:'✷', pattern:'wraith', cooldown:4.2, value:7, hp:2, wallVault:true, desc:'Shadow elite. Long-range teleporter that deals 2 damage and may execute Shadow-marked non-king enemies within four tiles.'},
+  umbralbishop:{name:'Umbral Bishop', icon:'♝', pattern:'umbralbishop', cooldown:3.65, value:5, hp:1, wallVault:true, desc:'Diagonal controller with short diagonal teleport options. Can mark a visible cardinal non-king enemy 1-4 tiles away for 15s every 30s. Kings cannot be marked.'},
   nightknight:{name:'Night Knight', icon:'♞', pattern:'knight', cooldown:2.85, value:4, hp:1, desc:'Fast shadow knight.'},
   tidepawn:{name:'Tide Pawn', icon:'♙', pattern:'pawn', cooldown:2.25, value:1, hp:1, amphibious:true, desc:'Pawn that can cross water.'},
   crabrook:{name:'Crab Rook', icon:'♜', pattern:'rookShort', cooldown:3.55, value:5, hp:1, amphibious:true, desc:'Short rook that moves well through water lanes.'},
@@ -3640,8 +3675,8 @@ function newPiece(faction,type,x,y,opts={}){
     orbShieldCharges:opts.orbShieldCharges || 0,
     guardReadyAt:opts.guardReadyAt || 0,
     markReadyAt:opts.markReadyAt || 0,
-    shadowMarkedUntil:opts.shadowMarkedUntil || 0,
-    shadowMarkedBy:opts.shadowMarkedBy || 0,
+    shadowMarkedUntil:type === 'king' ? 0 : (opts.shadowMarkedUntil || 0),
+    shadowMarkedBy:type === 'king' ? 0 : (opts.shadowMarkedBy || 0),
     shadowRushUntil:opts.shadowRushUntil || 0,
     shadowRushX:typeof opts.shadowRushX==='number' ? opts.shadowRushX : null,
     shadowRushY:typeof opts.shadowRushY==='number' ? opts.shadowRushY : null,
@@ -4608,7 +4643,7 @@ function getLegalMoves(piece, ignoreCooldown=false){
       for(let r=6;r<=10;r++) addStep(piece.x+dx*r,piece.y+dy*r,true,true);
     }
     for(const enemy of pieces){
-      if(!enemy.alive || enemy.faction===own || (enemy.shadowMarkedUntil || 0) <= now()) continue;
+      if(!enemy.alive || enemy.faction===own || enemy.type === 'king' || (enemy.shadowMarkedUntil || 0) <= now()) continue;
       const cheb=Math.max(Math.abs(enemy.x-piece.x),Math.abs(enemy.y-piece.y));
       if(cheb>=1 && cheb<=4) addMove(moves,enemy.x,enemy.y,true,{markedAssassination:true});
     }
@@ -4723,7 +4758,7 @@ function addShadowMarkedRangeBonusMoves(piece,moves){
   if(!piece || factions[piece.faction]?.id!=='shadow' || isBuildingType(piece.type)) return;
   const baseKeys=new Set(moves.filter(m=>!m.markedRangeBonus).map(m=>m.x+','+m.y));
   for(const target of pieces){
-    if(!target.alive || target.faction===piece.faction || (target.shadowMarkedUntil||0)<=now()) continue;
+    if(!target.alive || target.faction===piece.faction || target.type === 'king' || (target.shadowMarkedUntil||0)<=now()) continue;
     if(piece.faction===PLAYER && isShadowFoggedForPlayer(target.x,target.y,PLAYER)) continue;
     const dx=target.x-piece.x, dy=target.y-piece.y;
     if(dx===0 && dy===0) continue;
@@ -4890,7 +4925,7 @@ function applyFactionCapture(piece,fromX,fromY,toX,toY,eventType='move',targetPi
         }
       }
       if(majorBackstab){ burst(toX,toY,f.color,34); floating(toX,toY,'BACKSTAB CLAIM', f.color); }
-      const markedAssassination = piece?.type==='wraith' && (targetPiece?.shadowMarkedUntil || 0) > now();
+      const markedAssassination = piece?.type==='wraith' && targetPiece?.type !== 'king' && (targetPiece?.shadowMarkedUntil || 0) > now();
       const valueDisadvantage = Math.max(0,targetValue-selfValue);
       const assassinScore = Math.max(1, Math.floor(targetValue/3)) + (valueDisadvantage>0 ? 2 : 0) + (markedAssassination ? 3 : 0) + (majorBackstab ? 3 : 0);
       f.killPrestige=(f.killPrestige||0)+assassinScore;
@@ -5004,6 +5039,7 @@ function guardianShieldTargets(bishop){
 function shadowMarkCooldownFor(marker){ return marker?.type==='umbralbishop' ? 30 : 60; }
 function canShadowMarkerMarkTarget(marker,target){
   if(!marker?.alive || !target?.alive || !['shadepawn','umbralbishop'].includes(marker.type) || marker.faction===target.faction || !factions[target.faction]?.alive) return false;
+  if(target.type === 'king') return false;
   if(now() < (marker.markReadyAt || 0)) return false;
   const dx=Math.abs(target.x-marker.x), dy=Math.abs(target.y-marker.y), cheb=Math.max(dx,dy);
   if(marker.type==='shadepawn') return cheb>=3 && cheb<=4;
@@ -5326,7 +5362,7 @@ function restartIronMovementCooldownAfterHit(target){
 }
 function capturePiece(attacker, target){
   if(!target.alive) return false;
-  const markedAssassination = attacker?.type==='wraith' && target.faction!==attacker.faction && (target.shadowMarkedUntil || 0) > now() && dist2(attacker.x,attacker.y,target.x,target.y) <= 16;
+  const markedAssassination = attacker?.type==='wraith' && target.type !== 'king' && target.faction!==attacker.faction && (target.shadowMarkedUntil || 0) > now() && dist2(attacker.x,attacker.y,target.x,target.y) <= 16;
   if(pieceHasOrbShield(target)){
     target.orbShieldCharges = Math.max(0, (target.orbShieldCharges || 1) - 1);
     target.orbShieldUntil = now();
@@ -5716,7 +5752,8 @@ function updateSpawnCardValues(values=lastSpawnLiveValues){
   if(playerDefeated) return;
   if(!values){
     const progress=clamp(f.spawnMeter||0,0,99.999);
-    const tokens=Math.max(0,Math.floor(f.spawnTokens||0));
+    const reserved=pendingPlayerActions.filter(a=>a.kind==='spawn' && a.faction===PLAYER).reduce((sum,a)=>sum+(Number(a.tokenCost)||0),0);
+    const tokens=Math.max(0,Math.floor(f.spawnTokens||0)-reserved);
     recalcOwnerCounts();
     const territory=ownerCounts.get(PLAYER)||0;
     const army=pieces.filter(p=>p.alive&&p.faction===PLAYER).length;
@@ -5927,7 +5964,7 @@ function updatePiecePanel(){
   }else if(['shadepawn','umbralbishop'].includes(p.type)){
     const remain=Math.max(0,Math.ceil((p.markReadyAt||0)-now()));
     const count=p.faction===PLAYER?shadowMarkTargets(p).length:0;
-    abilityLine=remain?`<p style="color:#fdba74"><b>Shadow Mark:</b> recharges in ${remain}s.</p>`:`<p style="color:#fb923c"><b>Shadow Mark ready:</b> ${count} enemies glow orange. Tap one to place a 15s mark (+1 Shadow attack reach; Wraiths execute).</p>`;
+    abilityLine=remain?`<p style="color:#fdba74"><b>Shadow Mark:</b> recharges in ${remain}s. Kings cannot be marked.</p>`:`<p style="color:#fb923c"><b>Shadow Mark ready:</b> ${count} non-king enemies glow orange. Tap one to place a 15s mark (+1 Shadow attack reach; Wraiths execute).</p>`;
   }
   if(pieceHasOrbShield(p)) abilityLine+=`<p style="color:#bff6ff"><b>Dawn Shield active:</b> blocks the next capture attempt.</p>`;
   if((p.shadowMarkedUntil||0)>now()) abilityLine+=`<p style="color:#ff8b82"><b>Marked:</b> All Shadow troops gain +1 valid attack reach against this unit. Wraiths may execute it. ${Math.ceil(p.shadowMarkedUntil-now())}s.</p>`;
@@ -7611,11 +7648,18 @@ function drawActors(){
   for(const p of visiblePieces){
     actors.push({kind:'piece',piece:p,depth:actorDepth((p.px ?? p.x) + ((p.px ?? p.x) * .002), (p.py ?? p.y) + ((p.px ?? p.x) * .02))});
   }
+  for(const action of pendingPlayerActions){
+    if(action.kind !== 'spawn' || action.faction !== PLAYER) continue;
+    if(action.x<left-piecePad || action.x>right+piecePad || action.y<top-piecePad || action.y>bottom+piecePad) continue;
+    actors.push({kind:'spawnGhost',action,depth:actorDepth(action.x + action.x * .002, action.y + action.x * .02)});
+  }
   actors.sort((a,b)=>a.depth-b.depth || (a.x||a.piece?.x||0)-(b.x||b.piece?.x||0));
   for(const actor of actors){
     if(actor.kind==='wall'){
       const f=factions[actor.owner]||{id:'neutral',color:'#dbeafe'};
       drawWallSpriteAt(actor.x,actor.y,f);
+    } else if(actor.kind==='spawnGhost'){
+      drawPendingSpawnGhost(actor.action);
     } else {
       drawSinglePiece(actor.piece,labelIds);
     }
@@ -7632,6 +7676,43 @@ function pieceSpriteMetrics(def,type,graphic,r){
   const top = bottom - targetH;
   const centerY = top + targetH * .54;
   return {building,targetH,targetW,bottom,top,centerY};
+}
+function drawPendingSpawnGhost(action){
+  const f=factions[action.faction]; if(!f) return;
+  const def=pieceDefs[action.type] || pieceDefs.pawn;
+  const x=(action.x+.5)*BASE_CELL, y=(action.y+.5)*BASE_CELL;
+  const r=BASE_CELL*.36 + Math.min(7,(def.value||1)*.6);
+  const graphic=getPieceGraphic(f.id,action.type);
+  const metrics=pieceSpriteMetrics(def,action.type,graphic,r);
+  const pulse=.55+.45*Math.sin(now()*7);
+  ctx.save();
+  ctx.translate(x,y);
+  drawIsometricCooldownBase({id:0,type:action.type,faction:action.faction,x:action.x,y:action.y,lastMove:now(),cooldownUntil:now()+1,lastCooldownDuration:1},f,.35+.25*pulse);
+  makeCurrentTransformUpright(ctx);
+  ctx.globalAlpha=.38+.18*pulse;
+  ctx.setLineDash([6,4]);
+  ctx.strokeStyle=f.color;
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.ellipse(0,metrics.centerY,Math.max(r+12,metrics.targetW*.45),Math.max(r+14,metrics.targetH*.34),0,0,Math.PI*2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if(graphic){
+    ctx.globalAlpha=.42+.16*pulse;
+    ctx.filter='grayscale(.2) brightness(1.15) saturate(.8)';
+    ctx.drawImage(graphic,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
+  } else {
+    ctx.fillStyle=f.color;
+    drawPieceShape(def.pattern,r,Number(action.pieceId)||0,action.type,f.id);
+    ctx.fill();
+  }
+  ctx.globalAlpha=.95;
+  ctx.fillStyle='#fff2b8';
+  ctx.font='1000 10px Inter,system-ui,sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(action.hostAccepted ? 'CONFIRMING' : 'PENDING',0,metrics.top-10);
+  ctx.restore();
 }
 function drawIsometricCooldownBase(p,f,progress){
   const ready=progress>=1;
@@ -8557,4 +8638,3 @@ bootMultiplayer();
 </script>
 </body>
 </html>
-
