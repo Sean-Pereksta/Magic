@@ -3580,19 +3580,27 @@ function openTilesAdjacentToBroodBloom(bloom,movingPiece){
   out.sort((a,b)=>a.y-b.y || a.x-b.x);
   return out;
 }
-function broodBloomPlacementEligible(x,y,faction){
+function broodBloomPlacementEligible(x,y,faction,opts={}){
   if(!inBounds(x,y) || findPieceAt(x,y) || tile(x,y).wallOwner!=null) return false;
   if(!passableFor({type:'broodbloom',faction},x,y)) return false;
+  if(opts.ignoreTerritory) return true;
   const t=tile(x,y), home=t.captureKind==='starting_land';
   if(t.owner!==faction && !home) return false;
   const nearNode=nearestVerdantNodeWithin(x,y,faction,VERDANT_NODE_MAINTAIN_RADIUS+1);
   return !!nearNode || home || t.captureKind==='verdant_root';
 }
-function nearestEligibleBroodBloomPlacement(x,y,faction){
+function nearestEligibleBroodBloomPlacement(x,y,faction,opts={}){
   const candidates=[];
-  const add=(xx,yy,pri)=>{ if(broodBloomPlacementEligible(xx,yy,faction)) candidates.push({x:xx,y:yy,pri,d:dist2(x,y,xx,yy)}); };
+  const seen=new Set();
+  const add=(xx,yy,pri)=>{
+    const key=xx+','+yy;
+    if(seen.has(key)) return;
+    seen.add(key);
+    if(broodBloomPlacementEligible(xx,yy,faction,opts)) candidates.push({x:xx,y:yy,pri,d:dist2(x,y,xx,yy)});
+  };
   for(const [dx,dy] of DIRS8) add(x+dx,y+dy,0);
-  for(let yy=y-2;yy<=y+2;yy++) for(let xx=x-2;xx<=x+2;xx++) if(Math.max(Math.abs(xx-x),Math.abs(yy-y))<=2) add(xx,yy,2);
+  const radius=opts.searchRadius || 2;
+  for(let yy=y-radius;yy<=y+radius;yy++) for(let xx=x-radius;xx<=x+radius;xx++) if(Math.max(Math.abs(xx-x),Math.abs(yy-y))<=radius) add(xx,yy,2);
   candidates.sort((a,b)=>a.pri-b.pri || a.d-b.d || a.y-b.y || a.x-b.x);
   return candidates[0] || null;
 }
@@ -3638,12 +3646,8 @@ function applyBroodBloomLandingBonus(piece){
 function tryVineBishopBroodBloom(attacker,target){
   if(!attacker?.alive || attacker.type!=='vinebishop' || factions[attacker.faction]?.id!=='verdant') return false;
   const tNow=now(); if((attacker.nextBroodBloomKillAt||0)>tNow || winnerName()) return false;
-  const spots=[];
-  for(const [dx,dy] of DIRS8) if(broodBloomPlacementEligible(target.x+dx,target.y+dy,attacker.faction)) spots.push({x:target.x+dx,y:target.y+dy,pri:0,d:dist2(target.x,target.y,target.x+dx,target.y+dy)});
-  for(const [dx,dy] of DIRS8) if(broodBloomPlacementEligible(attacker.x+dx,attacker.y+dy,attacker.faction)) spots.push({x:attacker.x+dx,y:attacker.y+dy,pri:1,d:dist2(target.x,target.y,attacker.x+dx,attacker.y+dy)});
-  const near=nearestEligibleBroodBloomPlacement(target.x,target.y,attacker.faction); if(near) spots.push({...near,pri:2});
-  spots.sort((a,b)=>a.pri-b.pri || a.d-b.d || a.y-b.y || a.x-b.x);
-  const spot=spots[0]; if(!spot){ if(attacker.faction===PLAYER) floating(attacker.x,attacker.y,'No ground for Brood Bloom','#b7ffd2'); return false; }
+  const spot=nearestEligibleBroodBloomPlacement(target.x,target.y,attacker.faction,{ignoreTerritory:true,searchRadius:4});
+  if(!spot){ if(attacker.faction===PLAYER) floating(attacker.x,attacker.y,'No ground for Brood Bloom','#b7ffd2'); return false; }
   newPiece(attacker.faction,'broodbloom',spot.x,spot.y,{ready:false,nextBuildingTick:tNow+BROOD_BLOOM_SPAWN_SECONDS});
   claimTile(attacker.faction,spot.x,spot.y,0,'verdant_root');
   attacker.nextBroodBloomKillAt=tNow+VINE_BISHOP_BLOOM_KILL_SECONDS;
@@ -4537,7 +4541,7 @@ function eligibleSpawnTiles(factionIdx, type=null){
 }
 const ironMultiHealthSpawnTypes = new Set(['shieldpawn','bulwark','hammerknight','gatebreaker','warden','citadelwalker','shieldfoundry','gatehouse']);
 function spawnTokenCost(type){
-  if(type==='sunspirebeacon') return 2;
+  if(type==='sunspirebeacon' || type==='broodbloom') return 1;
   const value=Math.max(1,Number(pieceDefs[type]?.value||1));
   const ironDurabilitySurcharge=ironMultiHealthSpawnTypes.has(type) ? 1 : 0;
   return clamp(Math.ceil(value/2)+ironDurabilitySurcharge,1,6);
@@ -4555,8 +4559,8 @@ function chooseSpawnOptions(factionIdx){
     pool = pool.concat(['dawnblade','lightlancer','radiantbishop']);
   }
   if(f.id==='verdant'){
-    // Four additional weighted entries make Seed Groves a frequent shop choice without forcing one every roll.
-    pool = pool.concat(['seedgrove','seedgrove','seedgrove','seedgrove']);
+    // Brood Blooms are Verdant's signature shop card, with Seed Groves still appearing often.
+    pool = pool.concat(['broodbloom','broodbloom','broodbloom','broodbloom','broodbloom','broodbloom','seedgrove','seedgrove','seedgrove','seedgrove']);
   }
   if(f.id==='ember') pool = pool.filter(t=>t!=='ashhopper');
   if(!pool.length) pool = f.pieces.filter(t=>t!=='king' && t!=='sunspirebeacon');
@@ -4571,6 +4575,11 @@ function chooseSpawnOptions(factionIdx){
   }
   const fallback=[...new Set(pool)];
   while(picks.length<3) picks.push(fallback[picks.length%Math.max(1,fallback.length)]||'pawn');
+  if(f.id==='verdant' && !picks.includes('broodbloom')){
+    if(seededNoise((f.spawnsMade||0)*83+29,factionIdx*109+(mapSeed||1)%997,9421) < .75){
+      picks[picks.length-1]='broodbloom';
+    }
+  }
   if(f.id==='sunspire' && canOfferSolarBeacon(factionIdx) && !picks.includes('sunspirebeacon')){
     if((f.spawnsMade||0)<3 || seededNoise((f.spawnsMade||0)*97+13,factionIdx*131+(mapSeed||1)%997,9477) < SUNSPIRE_BEACON_FORCED_CHANCE){
       picks[picks.length-1]='sunspirebeacon';
