@@ -473,7 +473,7 @@
   details:'Tithes scale with faith. On 4 or 7 every turn, gain +1 coin per White Temple you control (requires White Temple).'
 },
 { key:'white_recruiter', name:'Recruiter', emoji:'📜', type:'troop', cost:4, hp:5, max:3, triggers:[7,9], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'acquire_troop_cost_leq_temples', temple:'white_temple'},
-  details:'Free enlistment. On your 7 or 9, acquire a troop with cost ≤ your number of White Temples (requires White Temple).'
+  details:'Free enlistment. On your 7 or 9, acquire a troop for free with cost less than your number of White Temples + 2 (requires White Temple).'
 },
 { key:'white_scholar', name:'Scholar', emoji:'📚', type:'troop', cost:5, hp:5, max:3, triggers:[7,9,11], timing:'your', requiresTemple:'white_temple', onTrigger:{kind:'heal_and_earn', heal:4, coins:3},
   details:'Sustain and economy. On your 7, 9, or 11, heal your Town Hall for 4 and gain 3 coins (requires White Temple).'
@@ -612,7 +612,7 @@
 
 // ---- Expanded White ----
 {key:'white_confessor',name:'Confessor',emoji:'🕊️',type:'troop',cost:4,hp:5,max:3,triggers:[4,8,12],timing:'your',requiresTemple:'white_temple',onTrigger:{kind:'cleanse_allies',count:2,heal:1},details:'Cleanse up to two allies of harmful statuses and heal each for 1.'},
-{key:'white_martyr',name:'Martyr',emoji:'🕯️🛡️',type:'troop',cost:4,hp:4,max:2,triggers:[],timing:'passive',requiresTemple:'white_temple',passive:{martyr:true},details:'Automatically sacrifices itself to leave another friendly permanent at 1 HP when it would be destroyed.'},
+{key:'white_martyr',name:'Martyr',emoji:'🕯️🛡️',type:'troop',cost:3,hp:4,max:2,triggers:[],timing:'passive',requiresTemple:'white_temple',passive:{martyr:true},details:'Automatically sacrifices itself to leave another friendly permanent at 1 HP when it would be destroyed.'},
 {key:'white_sanctifiedwall',name:'Sanctified Wall',emoji:'🤍🧱',type:'wall',cost:5,hp:7,max:3,triggers:[],timing:'passive',requiresTemple:'white_temple',passive:{healOnShieldBreak:1},deathEffect:{kind:'heal_town',value:3},details:'When its Shield is broken, heal Town Hall for 1. When destroyed, heal Town Hall for 3.'},
 {key:'white_choirkeeper',name:'Choir Keeper',emoji:'🎶',type:'troop',cost:5,hp:6,max:2,triggers:[5,9,13],timing:'your',requiresTemple:'white_temple',onTrigger:{kind:'choir_blessing',value:2},details:'Your next healing or repair effect gains +2. Excess Town Hall healing can become Shield through White Temples.'},
 {key:'white_judicator',name:'Judicator',emoji:'⚖️',type:'troop',cost:6,hp:7,max:3,triggers:[7,11,15],timing:'your',requiresTemple:'white_temple',onTrigger:{kind:'status_judgment',dmg:4,perStatus:2},details:'Deal 4 damage plus 2 for each harmful status on the target.'},
@@ -1154,7 +1154,7 @@ function resolveOne(rd, manual){
     }
     case 'acquire_troop_cost_leq_temples': {
       const temples=(owner.owned||[]).find(e=>e.key===eff.temple)?.count||0;
-      const eligible=Object.values(CARD_CATALOG).filter(c=>c.type==='troop'&&c.cost<=temples&&((owner.owned||[]).find(e=>e.key===c.key)?.count||0)<(c.max??3)&&(!c.requiresTemple||(owner.owned||[]).some(e=>e.key===c.requiresTemple))).sort((a,b)=>b.cost-a.cost||a.name.localeCompare(b.name));
+      const eligible=Object.values(CARD_CATALOG).filter(c=>c.type==='troop'&&c.cost<temples+2&&((owner.owned||[]).find(e=>e.key===c.key)?.count||0)<(c.max??3)&&(!c.requiresTemple||(owner.owned||[]).some(e=>e.key===c.requiresTemple))).sort((a,b)=>b.cost-a.cost||a.name.localeCompare(b.name));
       if(!eligible.length)return applyAndShift('finds no eligible troop to recruit.');
       addOrIncOwned(owner,eligible[0].key);
       return applyAndShift(`recruits ${eligible[0].name} without paying.`);
