@@ -527,6 +527,7 @@ let lastStateWrite = 0;
 let lastFullSnapshotWrite = 0;
 let lastAuthoritativeData = null;
 let lastAuthoritativePieces = new Map();
+let lastAuthoritativePieceSignatures = new Map();
 let lastAuthoritativeOwners = '';
 let lastAuthoritativeKinds = '';
 let lastAuthoritativeWalls = '';
@@ -856,6 +857,8 @@ function invalidateSupplyDistanceCache(){
   supplyDistanceCache.clear();
 }
 function markLandDirty(){
+  invalidateSimulation('land');
+  invalidatePlayerVision('land');
   invalidateSupplyDistanceCache();
   if(gameStarted && !applyingRemote){ landDirty = true; stateDirty = true; }
 }
@@ -1119,6 +1122,9 @@ function applyStringPatches(base, patches){
   return chars.join('');
 }
 function buildFullPieces(){ return pieces.filter(p=>p.alive).map(serializePiece); }
+function pieceSyncSignature(pp){
+  return [pp.i,pp.f,pp.t,pp.x,pp.y,pp.hp,pp.mh,pp.c,pp.lv,pp.aid,pp.aby,pp.ms,pp.me,pp.cu,pp.cd,pp.nb,pp.sg,pp.sc,pp.sh,pp.sr,pp.wc,pp.rv,pp.hu,pp.ou,pp.oc,pp.ga,pp.ma,pp.smu,pp.smb,pp.sru,pp.srx,pp.sry,pp.sq].join('|');
+}
 function buildSelfContainedState(reason='fullRepair'){
   recalcOwnerCounts();
   return {
@@ -1151,6 +1157,7 @@ function serializeState(reason='sync', forceFull=false){
   recalcOwnerCounts();
   const livePieces = buildFullPieces();
   const liveMap = new Map(livePieces.map(pp=>[pp.i,pp]));
+  const liveSignatures = new Map(livePieces.map(pp=>[pp.i,pieceSyncSignature(pp)]));
   const pieceDeltas = [];
   const removedPieceIds = [];
   const fullSnapshot = forceFull || !lastAuthoritativeOwners || (now() - lastFullSnapshotWrite) >= FULL_SNAPSHOT_SECONDS;
@@ -1165,8 +1172,8 @@ function serializeState(reason='sync', forceFull=false){
   }
   if(!fullSnapshot){
     for(const pp of livePieces){
-      const old = lastAuthoritativePieces.get(pp.i);
-      if(!old || JSON.stringify(old) !== JSON.stringify(pp)) pieceDeltas.push(pp);
+      const oldSig = lastAuthoritativePieceSignatures.get(pp.i);
+      if(!oldSig || oldSig !== liveSignatures.get(pp.i)) pieceDeltas.push(pp);
     }
     for(const id of lastAuthoritativePieces.keys()) if(!liveMap.has(id)) removedPieceIds.push(id);
   }
@@ -1294,6 +1301,7 @@ function applyRemoteState(data){
   lastAuthoritativeKinds = mergedKinds || '';
   lastAuthoritativeWalls = mergedWalls || '';
   lastAuthoritativePieces = new Map(remotePieces.map(pp=>[pp.i,{...pp}]));
+  lastAuthoritativePieceSignatures = new Map(remotePieces.map(pp=>[pp.i,pieceSyncSignature(pp)]));
   pruneConfirmedPendingActions(mergedData);
   applyingRemote = true;
   const wasAlive = factions[PLAYER]?.alive !== false;
@@ -1386,6 +1394,8 @@ function applyRemoteState(data){
     };
   });
   idCounter = pieces.reduce((m,p)=>Math.max(m,Number(p.id)||0),0)+1;
+  rebuildPieceIndexes('remote-state');
+  assertPieceIndexes('applyRemoteState');
   const fData = Array.isArray(data.factions) ? data.factions : [];
   for(const fd of fData){
     const f = factions[fd.idx]; if(!f) continue;
@@ -1589,15 +1599,17 @@ async function writeStateNow(reason='sync'){
     lastStateWrite = now();
     const landSent = payload.fullSnapshot || payload.landIncluded || payload.boardOwners || payload.boardKinds || payload.boardWalls || payload.ownerPatches || payload.kindPatches || payload.wallPatches;
     if(landSent){
-      lastAuthoritativeOwners = compressOwners();
-      lastAuthoritativeKinds = compressCaptureKinds();
-      lastAuthoritativeWalls = compressWalls();
+      lastAuthoritativeOwners = payload.boardOwners || lastAuthoritativeOwners || compressOwners();
+      lastAuthoritativeKinds = payload.boardKinds || lastAuthoritativeKinds || compressCaptureKinds();
+      lastAuthoritativeWalls = payload.boardWalls || lastAuthoritativeWalls || compressWalls();
       lastLandSync = lastStateWrite;
       landDirty = false;
     }
     stateDirty = !!payload.landDeferred;
-    lastAuthoritativeData = {...payload, pieces:buildFullPieces(), boardOwners:lastAuthoritativeOwners, boardKinds:lastAuthoritativeKinds, boardWalls:lastAuthoritativeWalls};
-    lastAuthoritativePieces = new Map(lastAuthoritativeData.pieces.map(pp=>[pp.i,{...pp}]));
+    const authoritativePieces = payload.fullSnapshot ? (payload.pieces || []) : buildFullPieces();
+    lastAuthoritativeData = {...payload, pieces:authoritativePieces, boardOwners:lastAuthoritativeOwners, boardKinds:lastAuthoritativeKinds, boardWalls:lastAuthoritativeWalls};
+    lastAuthoritativePieces = new Map(authoritativePieces.map(pp=>[pp.i,{...pp}]));
+    lastAuthoritativePieceSignatures = new Map(authoritativePieces.map(pp=>[pp.i,pieceSyncSignature(pp)]));
     if(payload.fullSnapshot) lastFullSnapshotWrite = lastStateWrite;
   }catch(e){
     console.warn('state write failed', e);
@@ -3110,6 +3122,20 @@ async function ensureGraphicsReady(){
 
 let board = [];
 let pieces = [];
+let pieceById = new Map();
+let pieceAtTile = new Map();
+let alivePiecesByFaction = [];
+let aliveBuildingsByFaction = [];
+let buildingsByFactionType = [];
+let aliveKingsByFaction = [];
+let alivePieceCountsByFaction = [];
+let simulationRevision = 0;
+let threatCacheRevision = -1;
+let attackersByKingCache = new Map();
+let enemyThreatCache = new Map();
+let aiSupportCache = {revision:-1, enemiesByFaction:[], kingTargetsByFaction:[], buildingProximity:new Map()};
+let playerVisionCache = {revision:-1, landRevision:-1, player:-1, boardRef:null, w:0, h:0, vision:null};
+let visualQuality = {tier:2, avg:16, slow:0, fast:0};
 let factions = [];
 let ownerCounts = new Map();
 let ownerCountsDirty = true;
@@ -3161,6 +3187,104 @@ function factionPieceStats(){ return pieceStatsDirty || !pieceStatsCache ? rebui
 function alivePieceCountForFaction(idx){ return factionPieceStats().pieceCounts[idx] || 0; }
 function buildingCountForFactionType(idx,type){ return factionPieceStats().buildingsByType[idx]?.get(type) || 0; }
 function cachedKingForFaction(idx){ return factionPieceStats().kings[idx] || null; }
+
+
+function invalidateSimulation(reason='sim'){
+  simulationRevision++;
+  threatCacheRevision = -1;
+  if(reason !== 'visual') invalidatePlayerVision(reason);
+}
+function invalidatePlayerVision(reason='vision'){
+  playerVisionCache.revision = -1;
+}
+function emptyFactionLists(){ return factions.map(()=>[]); }
+function tileKeyForPiece(p){ return key(p.x,p.y); }
+function rebuildPieceIndexes(reason='rebuild'){
+  pieceById = new Map();
+  pieceAtTile = new Map();
+  alivePiecesByFaction = emptyFactionLists();
+  aliveBuildingsByFaction = emptyFactionLists();
+  buildingsByFactionType = factions.map(()=>new Map());
+  aliveKingsByFaction = factions.map(()=>null);
+  alivePieceCountsByFaction = factions.map(()=>0);
+  for(const p of pieces){
+    if(!p || !p.alive) continue;
+    pieceById.set(p.id,p);
+    pieceAtTile.set(tileKeyForPiece(p),p);
+    if(!alivePiecesByFaction[p.faction]) alivePiecesByFaction[p.faction]=[];
+    alivePiecesByFaction[p.faction].push(p);
+    alivePieceCountsByFaction[p.faction]=(alivePieceCountsByFaction[p.faction]||0)+1;
+    if(p.type==='king') aliveKingsByFaction[p.faction]=p;
+    if(isBuildingType(p.type)){
+      if(!aliveBuildingsByFaction[p.faction]) aliveBuildingsByFaction[p.faction]=[];
+      aliveBuildingsByFaction[p.faction].push(p);
+      if(!buildingsByFactionType[p.faction]) buildingsByFactionType[p.faction]=new Map();
+      const m=buildingsByFactionType[p.faction];
+      if(!m.has(p.type)) m.set(p.type,[]);
+      m.get(p.type).push(p);
+    }
+  }
+  markPieceStatsDirty();
+  invalidateSimulation(reason);
+  return pieceById;
+}
+function indexPiece(p){
+  if(!p || !p.alive) return;
+  pieceById.set(p.id,p);
+  pieceAtTile.set(tileKeyForPiece(p),p);
+  if(!alivePiecesByFaction[p.faction]) alivePiecesByFaction[p.faction]=[];
+  alivePiecesByFaction[p.faction].push(p);
+  alivePieceCountsByFaction[p.faction]=(alivePieceCountsByFaction[p.faction]||0)+1;
+  if(p.type==='king') aliveKingsByFaction[p.faction]=p;
+  if(isBuildingType(p.type)){
+    if(!aliveBuildingsByFaction[p.faction]) aliveBuildingsByFaction[p.faction]=[];
+    aliveBuildingsByFaction[p.faction].push(p);
+    if(!buildingsByFactionType[p.faction]) buildingsByFactionType[p.faction]=new Map();
+    const m=buildingsByFactionType[p.faction];
+    if(!m.has(p.type)) m.set(p.type,[]);
+    m.get(p.type).push(p);
+  }
+  markPieceStatsDirty();
+  invalidateSimulation('piece-index');
+}
+function deindexPiece(p){
+  if(!p) return;
+  pieceById.delete(p.id);
+  if(pieceAtTile.get(tileKeyForPiece(p))===p) pieceAtTile.delete(tileKeyForPiece(p));
+  const remove=list=>{ const i=list?.indexOf(p); if(i>=0) list.splice(i,1); };
+  remove(alivePiecesByFaction[p.faction]);
+  alivePieceCountsByFaction[p.faction]=Math.max(0,(alivePieceCountsByFaction[p.faction]||0)-1);
+  if(aliveKingsByFaction[p.faction]===p) aliveKingsByFaction[p.faction]=null;
+  if(isBuildingType(p.type)){
+    remove(aliveBuildingsByFaction[p.faction]);
+    remove(buildingsByFactionType[p.faction]?.get(p.type));
+  }
+  markPieceStatsDirty();
+  invalidateSimulation('piece-deindex');
+}
+function updatePieceTileIndex(p,oldX,oldY){
+  if(!p || !p.alive) return;
+  const oldKey=key(oldX,oldY);
+  if(pieceAtTile.get(oldKey)===p) pieceAtTile.delete(oldKey);
+  pieceAtTile.set(tileKeyForPiece(p),p);
+  invalidateSimulation('piece-move');
+}
+function setPieceDead(p,reason='dead'){
+  if(!p || !p.alive) return false;
+  deindexPiece(p);
+  p.alive=false;
+  markStateDirty();
+  return true;
+}
+function assertPieceIndexes(reason=''){
+  if(!PERF_DEBUG) return;
+  const byId=new Map(), at=new Map();
+  for(const p of pieces){ if(p?.alive){ byId.set(p.id,p); at.set(tileKeyForPiece(p),p); } }
+  console.assert(byId.size===pieceById.size, 'pieceById mismatch', reason);
+  console.assert(at.size===pieceAtTile.size, 'pieceAtTile mismatch', reason);
+  for(const [id,p] of byId) console.assert(pieceById.get(id)===p, 'pieceById stale', reason, id);
+  for(const [k,p] of at) console.assert(pieceAtTile.get(k)===p, 'pieceAtTile stale', reason, k);
+}
 
 function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
 function lerp(a,b,t){return a+(b-a)*t;}
@@ -3735,7 +3859,8 @@ function newPiece(faction,type,x,y,opts={}){
   };
   if(typeof assignedId === 'number') idCounter = Math.max(idCounter, assignedId + 1);
   pieces.push(p);
-  markPieceStatsDirty();
+  indexPiece(p);
+  assertPieceIndexes('newPiece');
   markStateDirty();
   const f = factions[faction];
   if(type==='king') f.kingId = p.id;
@@ -3745,9 +3870,9 @@ function newPiece(faction,type,x,y,opts={}){
 }
 function findPieceAt(x,y){
   if(renderingFrame && renderPieceLookup) return renderPieceLookup.get(key(x,y)) || null;
-  return pieces.find(p=>p.alive && p.x===x && p.y===y) || null;
+  return pieceAtTile.get(key(x,y)) || null;
 }
-function getPiece(id){return pieces.find(p=>p.id===id && p.alive) || null;}
+function getPiece(id){return pieceById.get(id) || null;}
 function weakestTypeForFaction(factionIdx){
   const f=factions[factionIdx];
   const order = [...f.pieces].sort((a,b)=>(pieceDefs[a].value||1)-(pieceDefs[b].value||1));
@@ -3775,7 +3900,7 @@ function addFactionStartingExtras(f,s){
   }
 }
 function setupPieces(){
-  pieces = []; markPieceStatsDirty(); idCounter = 1; ownerCounts = new Map();
+  pieces = []; rebuildPieceIndexes('setup-clear'); idCounter = 1; ownerCounts = new Map();
   const starts = getStartPositions();
   factions.forEach((f,idx)=>{
     const s = starts[idx];
@@ -4194,7 +4319,16 @@ function aquanautWaterExits(cx,cy,limit=6){
   return unique;
 }
 function liveBuildings(factionIdx=null,type=null){
-  return pieces.filter(p=>p.alive && isBuildingType(p.type) && (factionIdx==null || p.faction===factionIdx) && (!type || p.type===type));
+  if(factionIdx!=null){
+    if(type) return (buildingsByFactionType[factionIdx]?.get(type) || []).filter(p=>p.alive);
+    return (aliveBuildingsByFaction[factionIdx] || []).filter(p=>p.alive);
+  }
+  if(type){
+    const out=[];
+    for(const byType of buildingsByFactionType) out.push(...(byType?.get(type) || []));
+    return out.filter(p=>p.alive);
+  }
+  return aliveBuildingsByFaction.flat().filter(p=>p.alive);
 }
 function buildingNear(piece,type,r){
   if(!piece || !piece.alive) return null;
@@ -5171,7 +5305,7 @@ function applyGuardianShieldAbility(bishop,target,source='player'){
   const spot=guardianJumpSpotFor(bishop,target);
   if(!spot) return false;
   const fromX=bishop.x,fromY=bishop.y;
-  bishop.x=spot.x;bishop.y=spot.y;bishop.targetX=spot.x;bishop.targetY=spot.y;bishop.flash=1;
+  bishop.x=spot.x;bishop.y=spot.y;bishop.targetX=spot.x;bishop.targetY=spot.y;updatePieceTileIndex(bishop,fromX,fromY);assertPieceIndexes('guardian-jump');bishop.flash=1;
   bishop.moveStartMs=Date.now();bishop.moveEndMs=bishop.moveStartMs+moveVisualDurationFor(bishop);
   bishop.stationarySince=now();bishop.lastStationX=spot.x;bishop.lastStationY=spot.y;
   bishop.guardReadyAt=now()+15;
@@ -5264,7 +5398,7 @@ function movePiece(piece,x,y,source='player'){
       if(factions[piece.faction]?.id==='iron' && ironAdjacentGroupCount(piece)>=3 && target.maxHp>1){
         const landing=findIronAssaultLanding(piece,target,fromX,fromY);
         if(landing){
-          piece.x=landing.x; piece.y=landing.y; piece.targetX=landing.x; piece.targetY=landing.y; piece.flash=1;
+          piece.x=landing.x; piece.y=landing.y; piece.targetX=landing.x; piece.targetY=landing.y; updatePieceTileIndex(piece,fromX,fromY); assertPieceIndexes('iron-landing'); piece.flash=1;
           piece.moveStartMs=Date.now(); piece.moveEndMs=piece.moveStartMs+moveVisualDurationFor(piece);
           setMoveCooldown(piece,fromX,fromY,landing.x,landing.y,!!target);
           applyFactionCapture(piece,fromX,fromY,landing.x,landing.y,'move',target);
@@ -5291,7 +5425,7 @@ function movePiece(piece,x,y,source='player'){
     markStateDirty();
     return true;
   }
-  piece.x=x; piece.y=y; piece.targetX=x; piece.targetY=y; piece.flash=1;
+  piece.x=x; piece.y=y; piece.targetX=x; piece.targetY=y; updatePieceTileIndex(piece,fromX,fromY); assertPieceIndexes('movePiece'); piece.flash=1;
   setMoveCooldown(piece,fromX,fromY,x,y,!!target || !!targetWall);
   if(piece.type==='assassin' && defeated){
     piece.lastCooldownDuration = Math.max(.22, piece.lastCooldownDuration * .5);
@@ -5360,7 +5494,7 @@ function pushShieldedPiece(attacker,target,fromX,fromY){
     return false;
   }
   const oldX=target.x, oldY=target.y;
-  target.x=spot.x; target.y=spot.y; target.targetX=spot.x; target.targetY=spot.y;
+  target.x=spot.x; target.y=spot.y; target.targetX=spot.x; target.targetY=spot.y; updatePieceTileIndex(target,oldX,oldY); assertPieceIndexes('shield-push');
   target.moveStartMs = Date.now(); target.moveEndMs = target.moveStartMs + 180;
   target.stationarySince=now(); target.lastStationX=spot.x; target.lastStationY=spot.y;
   target.flash=1;
@@ -5497,8 +5631,9 @@ function capturePiece(attacker, target){
     if(spot){
       target.reviveUsed=true;
       target.hp=target.maxHp;
+      const oldTargetX=target.x, oldTargetY=target.y;
       target.x=spot.x; target.y=spot.y; target.targetX=spot.x; target.targetY=spot.y;
-      target.px=spot.x; target.py=spot.y;
+      target.px=spot.x; target.py=spot.y; updatePieceTileIndex(target,oldTargetX,oldTargetY);
       target.flash=1;
       target.cooldownUntil=now()+baseCooldownFor(target)*1.2;
       target.lastCooldownDuration=baseCooldownFor(target)*1.2;
@@ -5510,8 +5645,8 @@ function capturePiece(attacker, target){
   }
 
   emitDestructionFx(target,'capture');
-  target.alive=false;
-  markPieceStatsDirty();
+  setPieceDead(target,'capture');
+  assertPieceIndexes('capture');
   trySunspireQueenRevive(target);
   if(target.type==='king') conquerFaction(attacker.faction,target.faction,target.x,target.y);
   return true;
@@ -5531,8 +5666,8 @@ function conquerFaction(winner, loser, cx, cy){
   for(const p of pieces){
     if(p.alive && p.faction===loser){
       emitDestructionFx(p,'faction-conquered');
-      p.alive=false;
-      markPieceStatsDirty();
+      setPieceDead(p,'faction-conquered');
+      assertPieceIndexes('conquerFaction');
       removed++;
     }
   }
@@ -5567,14 +5702,30 @@ function maybeAnnounceWorldWinner(){
     markStateDirty();
   }
 }
+function visualQualityTier(){ return visualQuality.tier; }
+function updateVisualQuality(dt){
+  const ms=dt*1000;
+  visualQuality.avg = visualQuality.avg*.96 + ms*.04;
+  if(visualQuality.avg>28){ visualQuality.slow++; visualQuality.fast=0; }
+  else if(visualQuality.avg<19){ visualQuality.fast++; visualQuality.slow=0; }
+  if(visualQuality.slow>90 && visualQuality.tier>1){ visualQuality.tier--; visualQuality.slow=0; }
+  if(visualQuality.fast>240 && visualQuality.tier<2){ visualQuality.tier++; visualQuality.fast=0; }
+}
 function burst(x,y,color,count=10){
   const wx=(x+.5)*BASE_CELL, wy=(y+.5)*BASE_CELL;
+  const tier=visualQualityTier();
+  const cap=tier<2?96:180;
+  if(tier<2) count=Math.ceil(count*.55);
+  const room=Math.max(0,cap-particles.length);
+  count=Math.min(count,room);
   for(let i=0;i<count;i++){
     const a=Math.random()*Math.PI*2, s=30+Math.random()*90;
     particles.push({x:wx,y:wy,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:.35+Math.random()*.45,max:.7,color,size:2+Math.random()*3});
   }
 }
 function floating(x,y,text,color){
+  const cap=visualQualityTier()<2?22:48;
+  if(floatingText.length>=cap) floatingText.splice(0,floatingText.length-cap+1);
   floatingText.push({x:(x+.5)*BASE_CELL,y:(y+.25)*BASE_CELL,text,color,life:1.2,max:1.2});
 }
 function destructionSeed(piece){
@@ -5988,14 +6139,17 @@ function updateHUD(){
   updateCheckBanner();
 }
 function attackingPiecesForFactionKing(factionIdx){
+  if(threatCacheRevision!==simulationRevision){ attackersByKingCache = new Map(); enemyThreatCache = new Map(); threatCacheRevision=simulationRevision; }
+  if(attackersByKingCache.has(factionIdx)) return attackersByKingCache.get(factionIdx);
   const f=factions[factionIdx];
   const king=f ? getPiece(f.kingId) : null;
-  if(!king || f.alive===false) return [];
+  if(!king || f.alive===false){ attackersByKingCache.set(factionIdx,[]); return []; }
   const attackers=[];
   for(const p of pieces){
     if(!p.alive || p.faction===factionIdx || !factions[p.faction]?.alive) continue;
     if(getLegalMoves(p,true).some(m=>m.x===king.x && m.y===king.y)) attackers.push(p);
   }
+  attackersByKingCache.set(factionIdx,attackers);
   return attackers;
 }
 function attackingPiecesForKing(factionIdx){
@@ -6003,10 +6157,14 @@ function attackingPiecesForKing(factionIdx){
   return attackingPiecesForFactionKing(factionIdx);
 }
 function enemyThreatensSquare(factionIdx,x,y,ignoreId=null){
+  if(threatCacheRevision!==simulationRevision){ attackersByKingCache = new Map(); enemyThreatCache = new Map(); threatCacheRevision=simulationRevision; }
+  const cacheKey=`${factionIdx}|${x}|${y}|${ignoreId||''}`;
+  if(enemyThreatCache.has(cacheKey)) return enemyThreatCache.get(cacheKey);
   for(const p of pieces){
     if(!p.alive || p.id===ignoreId || p.faction===factionIdx || !factions[p.faction]?.alive) continue;
-    if(getLegalMoves(p,true).some(m=>m.x===x && m.y===y)) return true;
+    if(getLegalMoves(p,true).some(m=>m.x===x && m.y===y)){ enemyThreatCache.set(cacheKey,true); return true; }
   }
+  enemyThreatCache.set(cacheKey,false);
   return false;
 }
 function updateCheckBanner(){
@@ -6146,20 +6304,22 @@ function visibleBoardBounds(pad=2){
   return bounds;
 }
 function prepareRenderLookups(){
-  renderPieceLookup=new Map();
-  for(const p of pieces){ if(p.alive) renderPieceLookup.set(key(p.x,p.y),p); }
+  renderPieceLookup=pieceAtTile;
   renderPlayerVision=null;
   if(!factions.some(f=>f?.alive && f.id==='shadow')) return;
+  const valid = playerVisionCache.revision===simulationRevision && playerVisionCache.landRevision===landRevision && playerVisionCache.player===PLAYER && playerVisionCache.boardRef===board && playerVisionCache.w===BOARD_W && playerVisionCache.h===BOARD_H;
+  if(valid){ renderPlayerVision=playerVisionCache.vision; return; }
   const vision=new Uint8Array(BOARD_W*BOARD_H);
   const rr=SHADOW_FOG_RADIUS*SHADOW_FOG_RADIUS;
-  for(const p of pieces){
-    if(!p.alive || p.faction!==PLAYER) continue;
+  for(const p of (alivePiecesByFaction[PLAYER] || [])){
+    if(!p.alive) continue;
     for(let y=Math.max(0,p.y-SHADOW_FOG_RADIUS);y<=Math.min(BOARD_H-1,p.y+SHADOW_FOG_RADIUS);y++){
       for(let x=Math.max(0,p.x-SHADOW_FOG_RADIUS);x<=Math.min(BOARD_W-1,p.x+SHADOW_FOG_RADIUS);x++){
         if(dist2(x,y,p.x,p.y)<=rr) vision[y*BOARD_W+x]=1;
       }
     }
   }
+  playerVisionCache={revision:simulationRevision,landRevision,player:PLAYER,boardRef:board,w:BOARD_W,h:BOARD_H,vision};
   renderPlayerVision=vision;
 }
 function isShadowFoggedForRender(x,y){
@@ -6310,8 +6470,8 @@ function updateTemporaryPieces(f){
     if(!p.alive || p.faction!==f.idx) continue;
     if(pieceDefs[p.type]?.temporary && p.heatUntil && tNow>=p.heatUntil){
       emitDestructionFx(p,'expired');
-      p.alive=false;
-      markPieceStatsDirty();
+      setPieceDead(p,'faction-conquered');
+      assertPieceIndexes('conquerFaction');
       burst(p.x,p.y,f.color,12);
       floating(p.x,p.y,'BANNER FALLS', f.color);
       markStateDirty();
@@ -6457,8 +6617,8 @@ function updateBuildingRules(f,dt){
     if(b.type==='seedgrove'){
       if(enemyAdjacentTo(b.x,b.y,b.faction)){
         emitDestructionFx(b,'seed-cut');
-        b.alive=false;
-        markPieceStatsDirty();
+        setPieceDead(b,'seed-cut');
+        assertPieceIndexes('seed-cut');
         burst(b.x,b.y,f.color,18);
         floating(b.x,b.y,'SEED CUT', '#fff');
         markStateDirty();
@@ -6746,25 +6906,39 @@ function aiTick(dt){
         actions++;
       }
     }
-    const army=pieces.filter(p=>p.alive&&p.faction===f.idx&&cooldownReady(p));
-    const priorityAttackers = attackingPiecesForFactionKing(f.idx);
-    army.sort((a,b)=>aiPiecePriority(f,b,priorityAttackers)-aiPiecePriority(f,a,priorityAttackers));
-    for(let i=0;i<army.length && actions<maxActions && budget>0;i++){
-      if(aiMovePiece(f,army[i])){
+    const army=(alivePiecesByFaction[f.idx] || []).filter(p=>p.alive&&cooldownReady(p));
+    const aiContext = buildAiDecisionContext(f);
+    const scoredArmy=army.map(p=>({p,score:aiPiecePriority(f,p,aiContext),tie:Math.random()}));
+    scoredArmy.sort((a,b)=>b.score-a.score || a.tie-b.tie);
+    for(let i=0;i<scoredArmy.length && actions<maxActions && budget>0;i++){
+      if(aiMovePiece(f,scoredArmy[i].p)){
         budget--;
         actions++;
       }
     }
   }
 }
-function aiPiecePriority(f,p,attackersOverride=null){
+function buildAiDecisionContext(f){
+  const attackers=attackingPiecesForFactionKing(f.idx);
+  const ownKing=getPiece(f.kingId);
+  const enemies=[];
+  for(const list of alivePiecesByFaction){
+    for(const p of (list || [])) if(p.alive && p.faction!==f.idx && factions[p.faction]?.alive) enemies.push(p);
+  }
+  return {attackers,ownKing,enemies};
+}
+function aiPiecePriority(f,p,context=null){
   const def=pieceDefs[p.type];
   let v=(def.value||1)+p.level*.6+p.captures*.5;
   if(def.aura) v+=1.5;
-  const enemies=nearestEnemy(p.x,p.y,p.faction,12);
-  if(enemies) v+=12/Math.max(1,Math.sqrt(dist2(p.x,p.y,enemies.x,enemies.y)));
-  const ownKing=getPiece(f.kingId);
-  const attackers=attackersOverride || attackingPiecesForFactionKing(f.idx);
+  let nearest=null, nearestD=12*12;
+  const enemyList=context?.enemies || [];
+  if(enemyList.length){
+    for(const e of enemyList){ const d=dist2(p.x,p.y,e.x,e.y); if(d<nearestD){ nearestD=d; nearest=e; } }
+  } else nearest=nearestEnemy(p.x,p.y,p.faction,12);
+  if(nearest) v+=12/Math.max(1,Math.sqrt(dist2(p.x,p.y,nearest.x,nearest.y)));
+  const ownKing=context?.ownKing || getPiece(f.kingId);
+  const attackers=context?.attackers || attackingPiecesForFactionKing(f.idx);
   if(ownKing){
     const kingDist=Math.sqrt(dist2(p.x,p.y,ownKing.x,ownKing.y));
     if(kingDist<=7) v += Math.max(0,14-kingDist*1.8);
@@ -6774,7 +6948,7 @@ function aiPiecePriority(f,p,attackersOverride=null){
       if(attackers.some(a=>dist2(p.x,p.y,a.x,a.y)<=25)) v += 18;
     }
   }
-  return v+Math.random()*2;
+  return v;
 }
 function nearestEnemy(x,y,faction,maxD=999){
   let best=null,bd=maxD*maxD;
@@ -7644,11 +7818,13 @@ function drawSolarBeaconChannels(){
     ctx.strokeStyle=grad;
     ctx.lineWidth=3.2;
     ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(c.x,c.y); ctx.stroke();
-    for(let strand=0; strand<3; strand++){
+    const strandCount=visualQualityTier()<2?2:3;
+    const strandSteps=visualQualityTier()<2?16:30;
+    for(let strand=0; strand<strandCount; strand++){
       ctx.beginPath();
       const strandPhase=phase+strand*Math.PI*2/3;
-      for(let i=0;i<=30;i++){
-        const u=i/30;
+      for(let i=0;i<=strandSteps;i++){
+        const u=i/strandSteps;
         const wob=Math.sin(u*Math.PI*8+strandPhase)*BASE_CELL*.105*(.75+.25*Math.sin(phase+u*5));
         const twist=Math.cos(u*Math.PI*8+strandPhase)*BASE_CELL*.026;
         const x=lerp(a.x,c.x,u)+nx*wob+dx/len*twist;
@@ -8795,6 +8971,7 @@ function updatePerfDebug(dt){
 
 function loop(t){
   const dt=Math.min(.05,(t-lastTime)/1000 || .016); lastTime=t;
+  updateVisualQuality(dt);
   gameTick(dt);
   draw();
   updatePerfDebug(dt);
