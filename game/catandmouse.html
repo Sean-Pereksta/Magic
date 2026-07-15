@@ -4215,23 +4215,51 @@
     return 1 + 0.15 * (count - 1);
   }
 
-  function scheduleCheeseSpawnLoop(){
-    if (window.__cheeseSpawnTimer) clearInterval(window.__cheeseSpawnTimer);
-    const baseInterval = 8000;
-    const effectiveInterval = Math.max(2500, Math.round(baseInterval / getRandomCheeseSpawnMultiplier()));
-    window.__cheeseSpawnTimer = setInterval(spawnCheese, effectiveInterval);
-    window.__cheeseSpawnInterval = effectiveInterval;
+  const CHEESE_SPAWN_BASE_INTERVAL_MS = 8000;
+  const CHEESE_SPAWN_MIN_INTERVAL_MS = 2500;
+  const CHEESE_PICKUP_BASE_CAP = 14;
+
+  function getCheesePickupCap(){
+    return CHEESE_PICKUP_BASE_CAP + Math.max(0, getActiveParticipantIds().length - 1) * 3;
   }
 
-  function spawnCheese(){
-    if (!canRunHostSimulation()) return;
-    let existingPickups = 0;
-    for (let y=0; y<gridSize; y++) for (let x=0; x<gridSize; x++) if (isCheesePickupCell(grid[y][x])) existingPickups++;
+  function scheduleCheeseSpawnLoop(){
+    if (window.__cheeseSpawnTimer) clearInterval(window.__cheeseSpawnTimer);
+    const effectiveInterval = Math.max(CHEESE_SPAWN_MIN_INTERVAL_MS, Math.round(CHEESE_SPAWN_BASE_INTERVAL_MS / getRandomCheeseSpawnMultiplier()));
+    window.__cheeseSpawnTimer = setInterval(spawnCheese, effectiveInterval);
+    window.__cheeseSpawnInterval = effectiveInterval;
+    if (canRunHostSimulation()) spawnCheese({ forceMinimum:true });
+  }
 
-    const maxPickups = 14;
+  function countCheesePickups(){
+    let total = 0;
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        if (isCheesePickupCell(grid[y][x])) total++;
+      }
+    }
+    return total;
+  }
+
+  function getShuffledCheeseSpawnCells(){
+    const cells = [];
+    for (let y=0; y<gridSize; y++){
+      for (let x=0; x<gridSize; x++){
+        cells.push({ x, y, sort:Math.random() });
+      }
+    }
+    cells.sort((a, b) => a.sort - b.sort);
+    return cells;
+  }
+
+  function spawnCheese(options = {}){
+    if (!canRunHostSimulation()) return;
+    const existingPickups = countCheesePickups();
+    const maxPickups = getCheesePickupCap();
     if (existingPickups >= maxPickups) return;
 
-    const spawnTarget = Math.min(maxPickups - existingPickups, 1 + Math.floor(Math.random() * 2));
+    const minimumSpawn = options.forceMinimum ? Math.min(4, maxPickups) : 0;
+    const spawnTarget = Math.min(maxPickups - existingPickups, Math.max(minimumSpawn - existingPickups, 1 + Math.floor(Math.random() * 2)));
     let spawned = 0;
     let attempts = 0;
     while (spawned < spawnTarget && attempts < 120){
@@ -4240,6 +4268,14 @@
       if (tryPlaceCheesePickupAt(x, y)) spawned++;
       attempts++;
     }
+
+    if (spawned < spawnTarget){
+      for (const cell of getShuffledCheeseSpawnCells()){
+        if (spawned >= spawnTarget) break;
+        if (tryPlaceCheesePickupAt(cell.x, cell.y)) spawned++;
+      }
+    }
+
     if (spawned > 0) requestRender("spawnCheese");
   }
 
@@ -7537,6 +7573,7 @@
     playGameMusic();
     initializeCatAbilityLoadout(currentDifficulty);
     startCatBehaviorLoop();
+    spawnCheese({ forceMinimum:true });
 
     // power ramp
     setInterval(async () => {
