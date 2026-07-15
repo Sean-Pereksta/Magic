@@ -71,6 +71,18 @@
     .asset-sprite.sprite-bull,.asset-sprite.sprite-cat,.asset-sprite.sprite-ratking{width:54px;height:54px;transform:translateY(-13px)}
     .asset-sprite.sprite-vulture{width:52px;height:52px;transform:translateY(-16px)}
     .asset-sprite.sprite-flea,.asset-sprite.sprite-termite{width:38px;height:38px;transform:translateY(-6px)}
+    .pickup-art{position:absolute;left:50%;top:50%;object-fit:contain;image-rendering:pixelated;pointer-events:none;transform:translate(-50%,-62%);filter:drop-shadow(0 3px 2px rgba(0,0,0,.34));z-index:4}
+    .pickup-standard-cheese{width:28px;height:28px;filter:drop-shadow(0 0 7px rgba(250,204,21,.78)) drop-shadow(0 3px 2px rgba(0,0,0,.34));animation:pickupGentlePulse 1.8s ease-in-out infinite}
+    .pickup-rat-king-cheese{width:34px;height:34px;filter:drop-shadow(0 0 9px rgba(168,85,247,.82)) drop-shadow(0 0 6px rgba(250,204,21,.7));animation:ratKingCheeseSlowPulse 1.35s ease-in-out infinite}
+    .pickup-rat-king-cheese.urgent{animation:ratKingCheeseUrgentPulse .72s ease-in-out infinite}.pickup-rat-king-cheese.final{animation:ratKingCheeseFinalPulse .34s ease-in-out infinite}
+    .pickup-supply-drop{width:46px;height:46px;transform:translate(-50%,-70%);filter:drop-shadow(0 0 10px rgba(59,130,246,.8)) drop-shadow(0 0 7px rgba(250,204,21,.55))}
+    .pickup-weakening-shrine{width:42px;height:54px;transform:translate(-50%,-76%);filter:drop-shadow(0 0 10px rgba(168,85,247,.9))}
+    .pickup-repair-objective{width:38px;height:42px;transform:translate(-50%,-88%);filter:drop-shadow(0 0 10px rgba(96,165,250,.85))}
+    .pickup-rescue-spark{width:36px;height:42px;filter:drop-shadow(0 0 12px rgba(34,211,238,.95));animation:pickupGentlePulse 1s ease-in-out infinite}
+    .pickup-mousetrap{width:38px;height:24px;transform:translate(-50%,-46%);filter:drop-shadow(0 3px 2px rgba(0,0,0,.4))}
+    .pickup-pending{opacity:.55;filter:grayscale(.15) drop-shadow(0 0 8px rgba(255,255,255,.55))}
+    .local-mouse-obscured .asset-sprite{filter:drop-shadow(0 0 3px #fff) drop-shadow(0 0 8px #22d3ee) drop-shadow(0 3px 2px rgba(0,0,0,.34))}.local-mouse-ring{position:absolute;width:42px;height:22px;border:2px solid rgba(103,232,249,.95);transform:translate(-50%,-13%) rotate(0deg);border-radius:50%;box-shadow:0 0 10px rgba(34,211,238,.9);pointer-events:none;z-index:16;animation:pickupGentlePulse 1s ease-in-out infinite}.reward-float{position:absolute;z-index:30;pointer-events:none;color:#fde047;font-weight:900;font-size:20px;text-shadow:0 2px 2px #000,0 0 8px rgba(250,204,21,.9);animation:rewardFloat 900ms ease-out forwards}
+    @keyframes pickupGentlePulse{0%,100%{scale:1}50%{scale:1.08}}@keyframes ratKingCheeseSlowPulse{0%,100%{scale:1;filter:drop-shadow(0 0 8px rgba(168,85,247,.8)) drop-shadow(0 0 5px rgba(250,204,21,.6))}50%{scale:1.08;filter:drop-shadow(0 0 14px rgba(168,85,247,1)) drop-shadow(0 0 10px rgba(250,204,21,.9))}}@keyframes ratKingCheeseUrgentPulse{0%,100%{scale:1}50%{scale:1.16}}@keyframes ratKingCheeseFinalPulse{0%,100%{scale:1;outline:2px solid rgba(250,204,21,.85)}50%{scale:1.26;outline:3px solid rgba(255,255,255,.95)}}@keyframes rewardFloat{0%{opacity:0;transform:translate(-50%,-32px) scale(.7)}15%{opacity:1;transform:translate(-50%,-42px) scale(1.25)}100%{opacity:0;transform:translate(-50%,-82px) scale(1)}}
     .structure-art{position:absolute;inset:-12px -12px -4px;width:58px;height:58px;object-fit:contain;image-rendering:pixelated;z-index:5;pointer-events:none}
     .structure-art.cheese-beacon-tint{filter:sepia(.32) saturate(1.35) hue-rotate(348deg) brightness(1.12) drop-shadow(0 0 7px rgba(250,204,21,.42))}
     .iso-structure.tall .structure-art{inset:-16px -15px -2px;width:64px;height:64px}
@@ -1566,9 +1578,20 @@
   ]));
   const GENERATOR_OFF_ASSET = `${ASSET_DIR}/generator off.png`;
   const GENERATOR_ON_ASSET = `${ASSET_DIR}/generator on.png`;
+  const PICKUP_ASSET_FILES = {
+    standardCheese: "standard cheese pickup.png",
+    ratKingCheese: "rat king cheese drop.png",
+    supplyDrop: "supply drop.png",
+    weakeningShrine: "weakening shrine.png",
+    repairObjective: "repair objective.png",
+    rescueSpark: "rescue spark.png",
+    mousetrap: "mousetrap.png"
+  };
+  const PICKUP_ASSETS = Object.fromEntries(Object.entries(PICKUP_ASSET_FILES).map(([key, file]) => [key, `${ASSET_DIR}/${file}`]));
+  const ULTRA_WALL_ASSET = `${ASSET_DIR}/ultra wall.png`;
   const STRUCTURE_ASSETS = {
     "🧱":`${ASSET_DIR}/wall.png`, "🔫":`${ASSET_DIR}/turret.png`, "🪳":`${ASSET_DIR}/flea nest.png`,
-    "🏭":GENERATOR_OFF_ASSET, "💎":`${ASSET_DIR}/super wall.png`, "🗼":`${ASSET_DIR}/cheese beacon.png`,
+    "🏭":GENERATOR_OFF_ASSET, "💎":`${ASSET_DIR}/super wall.png`, "🧊":ULTRA_WALL_ASSET, "🗼":`${ASSET_DIR}/cheese beacon.png`,
     "🐦‍🔥":`${ASSET_DIR}/phoenix cheese.png`, "🚀":`${ASSET_DIR}/rocket tower.png`, "🛠️":`${ASSET_DIR}/repair station.png`,
     "🧀":`${ASSET_DIR}/cheese farm.png`, "🐇":`${ASSET_DIR}/rabbit den.png`, "⚡":`${ASSET_DIR}/tesla tower.png`,
     "☄️":`${ASSET_DIR}/ultra laser.png`, "🛡️":`${ASSET_DIR}/shield tower.png`, "🟢":`${ASSET_DIR}/slime tower.png`,
@@ -1583,6 +1606,7 @@
     ...Object.values(CREATURE_ASSETS).flatMap(directions => Object.values(directions)),
     ...Object.values(STRUCTURE_ASSETS),
     GENERATOR_ON_ASSET,
+    ...Object.values(PICKUP_ASSETS),
     ...Object.values(TERRAIN_ASSETS)
   ])];
   const resolvedAssetUrls = new Map();
@@ -1839,7 +1863,7 @@
     if (id.startsWith("wallheal_")){
       const key = `${data.x}_${data.y}`;
       const symbol = grid[data.y]?.[data.x];
-      if (["🧱","💎"].includes(symbol)) structureHealth[key] = Math.min(STRUCTURE_MAX_HP[symbol] || 80, (structureHealth[key] || 0) + Math.max(0, data.amount || 4));
+      if (["🧱","💎","🧊"].includes(symbol)) structureHealth[key] = Math.min(STRUCTURE_MAX_HP[symbol] || 80, (structureHealth[key] || 0) + Math.max(0, data.amount || 4));
       return;
     }
     const list = getRuntimeEntityList(id);
@@ -2055,7 +2079,7 @@
   const CHEESE_PICKUP = "__CHEESE_PICKUP__";
   const CHEESE_PICKUP_SYMBOL = "🧀";
   const STRUCTURE_TYPES = new Set([
-    "🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️",
+    "🧱","🔫","🪳","🏭","💎","🧊","🗼","🚀","🐦‍🔥","🛠️",
     "🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"
   ]);
   const structureIndex = {
@@ -2148,6 +2172,7 @@
     3:{symbol:"🪳",name:"Flea Nest",cost:5,hp:10,minWins:0},
     4:{symbol:"🏭",name:"Generator",cost:4,hp:5,minWins:0},
     5:{symbol:"💎",name:"Super Wall",cost:6,hp:75,minWins:0},
+    21:{symbol:"🧊",name:"Ultra Wall",cost:18,hp:375,minWins:30},
     6:{symbol:"🗼",name:"Cheese Beacon",cost:24,hp:25,minWins:0},
     7:{symbol:"🐦‍🔥",name:"Phoenix Cheese",cost:40,hp:20,minWins:0},
     8:{symbol:"🚀",name:"Rocket Tower",cost:30,hp:20,minWins:0},
@@ -2165,10 +2190,10 @@
     20:{symbol:"🥁", name:"Rally Drum", cost:20, hp:22, minWins:10}
   };
   const STRUCTURE_VISUALS = {
-    "🧱":"iso-wall","🔫":"iso-turret","🪳":"iso-flea-nest","🏭":"iso-generator","💎":"iso-super-wall","🗼":"iso-cheese-beacon","🐦‍🔥":"iso-phoenix-cheese","🚀":"iso-rocket-tower","🛠️":"iso-repair-station","🧀":"iso-cheese-farm","🐇":"iso-rabbit-den","⚡":"iso-tesla","☄️":"iso-ultra-laser","🛡️":"iso-shield","🟢":"iso-slime","🔮":"iso-teleporter","🌰":"iso-acorn","🪭":"iso-fan","🕸️":"iso-web","🥁":"iso-drum"
+    "🧱":"iso-wall","🔫":"iso-turret","🪳":"iso-flea-nest","🏭":"iso-generator","💎":"iso-super-wall","🧊":"iso-super-wall ultra-wall-visual","🗼":"iso-cheese-beacon","🐦‍🔥":"iso-phoenix-cheese","🚀":"iso-rocket-tower","🛠️":"iso-repair-station","🧀":"iso-cheese-farm","🐇":"iso-rabbit-den","⚡":"iso-tesla","☄️":"iso-ultra-laser","🛡️":"iso-shield","🟢":"iso-slime","🔮":"iso-teleporter","🌰":"iso-acorn","🪭":"iso-fan","🕸️":"iso-web","🥁":"iso-drum"
   };
-  const TALL_STRUCTURE_SYMBOLS = new Set(["💎","🗼","🚀","⚡","🛡️","🔮","🌰"]);
-  const WIDE_STRUCTURE_SYMBOLS = new Set(["🧀","🧱"]);
+  const TALL_STRUCTURE_SYMBOLS = new Set(["💎","🧊","🗼","🚀","⚡","🛡️","🔮","🌰"]);
+  const WIDE_STRUCTURE_SYMBOLS = new Set(["🧀","🧱","🧊"]);
   const STRUCTURE_SYMBOL_SET = new Set(Object.keys(STRUCTURE_VISUALS));
   function getStructureVisualClass(symbol){ return STRUCTURE_VISUALS[symbol] || ""; }
   function renderStructureIso(symbol, x, y, health, shield, opts = {}){
@@ -2177,7 +2202,8 @@
     const baseVisual = visual || "iso-unknown-structure";
     wrap.className = `iso-structure ${baseVisual} ${TALL_STRUCTURE_SYMBOLS.has(symbol) ? "tall" : ""} ${WIDE_STRUCTURE_SYMBOLS.has(symbol) ? "wide" : ""} ${opts.stinkDisabled ? "stink-disabled" : ""}`.trim();
     wrap.innerHTML = '<div class="iso-shadow"></div>';
-    const artPath = symbol === "🏭" && opts.generatorOn ? GENERATOR_ON_ASSET : STRUCTURE_ASSETS[symbol];
+    let artPath = symbol === "🏭" && opts.generatorOn ? GENERATOR_ON_ASSET : STRUCTURE_ASSETS[symbol];
+    if (symbol === "🧊" && failedAssetPaths.has(artPath)) artPath = STRUCTURE_ASSETS["💎"];
     if (artPath && !failedAssetPaths.has(artPath)){
       const art = makeAssetImage(artPath, `structure-art${opts.cheeseBeaconTint ? " cheese-beacon-tint" : ""}`, BUILD_DEFS[Object.keys(BUILD_DEFS).find(id => BUILD_DEFS[id].symbol === symbol)]?.name || "Structure");
       wrap.appendChild(art);
@@ -2215,8 +2241,11 @@
     wrap.appendChild(shell);
     return wrap;
   }
+  BUILD_DEFS[21].hp = BUILD_DEFS[5].hp * 5;
+  BUILD_DEFS[21].cost = BUILD_DEFS[5].cost * 3;
+
   const BUILD_CATEGORIES = {
-    defense: { label: "Defense", icon: "🛡️", ids: [1, 5, 14, 9] },
+    defense: { label: "Defense", icon: "🛡️", ids: [1, 5, 21, 14, 9] },
     damage: { label: "Damage", icon: "🔥", ids: [2, 8, 12, 13, 17] },
     control: { label: "Control", icon: "🌀", ids: [15, 18, 19, 16] },
     economy: { label: "Economy", icon: "🧀", ids: [4, 10, 6] },
@@ -2489,7 +2518,7 @@
   function rebuildBlockedGridFromStructures(){
     const blocked = Array.from({ length: gridSize }, () => Array(gridSize).fill(false));
     for (const st of getAllStructures()){
-      if (["🧱","🏭","💎","🗼"].includes(st.type)) blocked[st.y][st.x] = true;
+      if (["🧱","🏭","💎","🧊","🗼"].includes(st.type)) blocked[st.y][st.x] = true;
     }
     return blocked;
   }
@@ -2504,8 +2533,8 @@
   const ADV_POINT_MS = 180000;
 
   const STRUCTURE_MAX_HP = {
-    "🧱": 15, "🔫": 5, "🪳": 10, "🏭": 5,
-    "💎": 75, "🗼": 25, "🐦‍🔥": 20, "🚀": 20, "🛠️": 24,
+    "🧱": 18, "🔫": 5, "🪳": 10, "🏭": 5,
+    "💎": 75, "🧊": 375, "🗼": 25, "🐦‍🔥": 20, "🚀": 20, "🛠️": 24,
     "🧀": 20, "🐇": 20, "⚡": 18, "☄️": 18, "🛡️": 22, "🟢": 20, "🔮": 16, "🌰": 18, "🪭": 20, "🕸️": 20, "🥁": 22
   };
 
@@ -2678,8 +2707,10 @@
   }
 
   function selectBuild(value){
-    selectedBuild = parseInt(value, 10);
-    const def = BUILD_DEFS[selectedBuild];
+    const nextBuild = parseInt(value, 10);
+    const def = BUILD_DEFS[nextBuild];
+    if (def && playerWins < (def.minWins || 0)){ showToast?.(`Requires ${def.minWins} Wins`, "warn"); return; }
+    selectedBuild = nextBuild;
     const text = def ? `${def.name} ${def.symbol} (Cost: ${def.cost})` : "None";
     document.getElementById("buildType").textContent = text;
     updateMobileBuildDisplay();
@@ -3425,6 +3456,13 @@
     return facing;
   }
 
+  function isLocalMouseLikelyObscured(x, y){
+    for (const s of getAllStructures()){
+      if (Math.abs((s.x ?? -99) - x) <= 1 && Math.abs((s.y ?? -99) - y) <= 1 && ((s.x + s.y) >= (x + y))) return true;
+    }
+    return STRUCTURE_SYMBOL_SET.has(grid[y]?.[x]);
+  }
+
   function addCreatureEntityAt(entityLayer, x, y, creatureClass, facing = "se", opts = {}){
     const el = document.createElement("div");
     el.className = `cell iso-entity ${opts.entityClass || ""}`.trim();
@@ -3485,12 +3523,20 @@
     }
   }
 
+  function renderPickupSprite(entityLayer, x, y, assetKey, cssKey, z = 7, extraClass = ""){
+    const path = PICKUP_ASSETS[assetKey];
+    const wrap = document.createElement("div");
+    wrap.className = `iso-object pickup-wrap ${extraClass}`.trim();
+    const img = path && !failedAssetPaths.has(path) ? makeAssetImage(path, `pickup-art pickup-${cssKey}`, assetKey) : null;
+    if (img) wrap.appendChild(img); else wrap.classList.add(`iso-${cssKey}`);
+    positionIsoElement(wrap, x, y, z);
+    entityLayer.appendChild(wrap);
+    return wrap;
+  }
+
   function renderIsoPickupsAndTraps(entityLayer){
     for (const t of traps){
-      const trap = document.createElement("div");
-      trap.className = "iso-object iso-trap";
-      positionIsoElement(trap, t.x, t.y, 6);
-      entityLayer.appendChild(trap);
+      renderPickupSprite(entityLayer, t.x, t.y, "mousetrap", "mousetrap", 6);
     }
   }
 
@@ -3624,10 +3670,11 @@
           }
 
           if (isCheesePickupCell(symbol)){
-            const pickup = document.createElement("div");
-            pickup.className = "iso-object iso-cheese-pickup";
-            positionIsoElement(pickup, x, y, 6);
-            entityLayer.appendChild(pickup);
+            const expiresAt = cheesePickupExpiryByCell[key] || 0;
+            const remaining = expiresAt ? Math.ceil((expiresAt - now) / 1000) : 0;
+            const isRatKingDrop = expiresAt > 0;
+            const urgency = isRatKingDrop && remaining <= 5 ? "final" : isRatKingDrop && remaining <= 10 ? "urgent" : "";
+            renderPickupSprite(entityLayer, x, y, isRatKingDrop ? "ratKingCheese" : "standardCheese", isRatKingDrop ? "rat-king-cheese" : "standard-cheese", 6, urgency);
           }
           if (STRUCTURE_SYMBOL_SET.has(symbol)){
             const hp = structureHealth[`${x}_${y}`] ?? (STRUCTURE_MAX_HP[symbol] ?? 1);
@@ -3640,15 +3687,15 @@
             });
           }
           if (objectiveState.supplyDrop?.active && objectiveState.supplyDrop.x===x && objectiveState.supplyDrop.y===y){
-            const obj = document.createElement("div"); obj.className = "iso-object iso-objective iso-supply"; positionIsoElement(obj, x, y, 7); entityLayer.appendChild(obj);
+            renderPickupSprite(entityLayer, x, y, "supplyDrop", "supply-drop", 7);
             cell.style.boxShadow = "0 0 10px #fde047";
           }
           if (objectiveState.shrine?.active && objectiveState.shrine.x===x && objectiveState.shrine.y===y){
-            const obj = document.createElement("div"); obj.className = "iso-object iso-objective iso-shrine"; positionIsoElement(obj, x, y, 7); entityLayer.appendChild(obj);
+            renderPickupSprite(entityLayer, x, y, "weakeningShrine", "weakening-shrine", 7);
             cell.style.outline = "2px solid #a855f7";
           }
           if (objectiveState.rescue?.active && objectiveState.rescue.x===x && objectiveState.rescue.y===y){
-            const obj = document.createElement("div"); obj.className = "iso-object iso-objective iso-rescue"; positionIsoElement(obj, x, y, 7); entityLayer.appendChild(obj);
+            renderPickupSprite(entityLayer, x, y, "rescueSpark", "rescue-spark", 7);
             cell.style.outline = "2px solid #60a5fa";
           }
 
@@ -3684,7 +3731,15 @@
       if ((p.alive ?? true) === false) continue;
       const cell = document.getElementById(`cell-${p.x}-${p.y}`);
       if (cell){
-        const unit = addCreatureEntityAt(entityLayer, p.x, p.y, "mouse-creature", p.facing || "se");
+        const localObscured = pu === uid && isLocalMouseLikelyObscured(p.x, p.y);
+        if (localObscured){
+          const ring = document.createElement("div");
+          ring.className = "local-mouse-ring";
+          positionIsoElement(ring, p.x, p.y, 16);
+          entityLayer.appendChild(ring);
+        }
+        const unit = addCreatureEntityAt(entityLayer, p.x, p.y, "mouse-creature", p.facing || "se", { entityClass: localObscured ? "local-mouse-obscured" : "" });
+        if (localObscured) unit.style.zIndex = String(getIsoDepth(p.x, p.y, 17));
         if (Math.abs((p.x ?? 0) - centerX) + Math.abs((p.y ?? 0) - centerY) <= OVERLAY_RENDER_DISTANCE){
           const nameTag = document.createElement("div");
           nameTag.className = "name";
@@ -3807,6 +3862,8 @@
     if (objectiveState.repair?.active){
       const rep = document.createElement("div");
       rep.className = "iso-object iso-objective iso-repair-marker";
+      const repairImg = PICKUP_ASSETS.repairObjective && !failedAssetPaths.has(PICKUP_ASSETS.repairObjective) ? makeAssetImage(PICKUP_ASSETS.repairObjective, "pickup-art pickup-repair-objective", "repair objective") : null;
+      if (repairImg) rep.appendChild(repairImg);
       positionIsoElement(rep, objectiveState.repair.x, objectiveState.repair.y, 7);
       entityLayer.appendChild(rep);
     }
@@ -3939,9 +3996,48 @@
     place(buildDirMap[dir]);
   }
 
+
+  function syncLocalCheese(newValue){
+    cheeseCount = Math.max(0, Number(newValue) || 0);
+    if (players[uid]) players[uid].cheese = cheeseCount;
+    document.getElementById("cheeseCount").textContent = cheeseCount;
+    updateTopHud?.();
+  }
+
+  function showCheeseReward(amount, x = playerPos.x, y = playerPos.y){
+    if (!persistentEntityLayer || !Number.isFinite(amount) || amount <= 0) return;
+    const el = document.createElement("div");
+    el.className = "reward-float";
+    el.textContent = `+${amount}`;
+    positionIsoElement(el, x, y, 30);
+    persistentEntityLayer.appendChild(el);
+    setTimeout(() => el.remove(), 950);
+  }
+
+  function addPickupBurst(x, y, type = "cheese"){
+    const meta = {
+      cheese:["✨","vfx-pop",650,22], ratKing:["👑","vfx-pop",850,28], supply:["📦","vfx-sparks",850,26],
+      shrine:["💜","vfx-pop",850,25], repair:["🔧","vfx-sparks",850,24], rescue:["💠","vfx-pop",900,28]
+    }[type] || ["✨","vfx-pop",650,22];
+    addCombatVfx(x, y, meta[0], meta[1], meta[2], meta[3]);
+  }
+
   // ============================================================
   // Cheese
   // ============================================================
+  function getRandomCheeseSpawnMultiplier(){
+    const count = Math.max(1, Math.min(4, getActiveParticipantIds().length || 1));
+    return 1 + 0.15 * (count - 1);
+  }
+
+  function scheduleCheeseSpawnLoop(){
+    if (window.__cheeseSpawnTimer) clearInterval(window.__cheeseSpawnTimer);
+    const baseInterval = 8000;
+    const effectiveInterval = Math.max(2500, Math.round(baseInterval / getRandomCheeseSpawnMultiplier()));
+    window.__cheeseSpawnTimer = setInterval(spawnCheese, effectiveInterval);
+    window.__cheeseSpawnInterval = effectiveInterval;
+  }
+
   function spawnCheese(){
     if (!canRunHostSimulation()) return;
     let existingPickups = 0;
@@ -3970,42 +4066,53 @@
       return;
     }
 
-    // Optimistic local clear makes pickup feel instant. The transaction prevents
-    // two players from receiving the same shared cheese document.
-    grid[y][x] = "";
-    delete cheesePickupExpiryByCell[`${x}_${y}`];
-    requestRender("checkCheeseOptimistic");
+    const pickupId = ID.cheese(x, y);
+    const isRatKingDrop = !!cheesePickupExpiryByCell[`${x}_${y}`];
+    const reward = 3 + cheesePickupBonus;
 
     if (soloMode){
-      cheeseCount += 3 + cheesePickupBonus;
-      if (players[uid]) players[uid].cheese = cheeseCount;
-      document.getElementById("cheeseCount").textContent = cheeseCount;
+      grid[y][x] = "";
+      delete cheesePickupExpiryByCell[`${x}_${y}`];
+      syncLocalCheese(cheeseCount + reward);
+      showCheeseReward(reward, x, y);
+      addPickupBurst(x, y, isRatKingDrop ? "ratKing" : "cheese");
+      requestRender("checkCheeseSoloConfirmed");
       checkObjectiveCollection().catch(()=>{});
       return;
     }
 
     try{
       const result = await runTransaction(db, async tx => {
-        const cheeseRef = ccRef(ID.cheese(x, y));
+        const cheeseRef = ccRef(pickupId);
         const playerRef = ccRef(ID.player(uid));
         const cheeseSnap = await tx.get(cheeseRef);
-        if (!cheeseSnap.exists()) return null;
+        if (!cheeseSnap.exists()) return { ok:false, reason:"missing" };
+        const data = cheeseSnap.data() || {};
+        if (data.claimedBy) return { ok:false, reason:"claimed", claimedBy:data.claimedBy };
         const playerSnap = await tx.get(playerRef);
-        const current = playerSnap.exists() ? (playerSnap.data().cheese ?? cheeseCount) : cheeseCount;
-        const next = current + 3 + cheesePickupBonus;
+        const current = playerSnap.exists() ? (Number(playerSnap.data().cheese) || 0) : cheeseCount;
+        const next = current + reward;
         tx.delete(cheeseRef);
         tx.set(playerRef, {
           kind:"player", uid, displayName:username, nameKey:usernameNorm,
           cheese:next, online:true, lastSeen:Date.now(), updatedAt:Date.now()
         }, { merge:true });
-        return next;
+        return { ok:true, next, amount:reward, type:isRatKingDrop ? "ratKingCheese" : "standardCheese" };
       });
-      if (typeof result === "number"){
-        cheeseCount = result;
-        document.getElementById("cheeseCount").textContent = cheeseCount;
+      console.debug?.("Pickup claim", { pickupId, type:result?.type || (isRatKingDrop ? "ratKingCheese" : "standardCheese"), playerId:uid, success:!!result?.ok, amountAwarded:result?.amount || 0, reason:result?.reason });
+      if (result?.ok){
+        grid[y][x] = "";
+        delete cheesePickupExpiryByCell[`${x}_${y}`];
+        syncLocalCheese(result.next);
+        showCheeseReward(result.amount, x, y);
+        addPickupBurst(x, y, isRatKingDrop ? "ratKing" : "cheese");
+        requestRender("checkCheeseConfirmed");
+      } else {
+        requestRender("checkCheeseClaimLost");
       }
     } catch (err){
-      console.warn("Cheese pickup transaction failed", err);
+      console.warn("Cheese pickup transaction failed", { pickupId, type:isRatKingDrop ? "ratKingCheese" : "standardCheese", playerId:uid, success:false, amountAwarded:0, err });
+      requestRender("checkCheeseFailed");
     }
     checkObjectiveCollection().catch(()=>{});
   }
@@ -4026,11 +4133,13 @@
   }
 
   async function checkObjectiveCollection(){
-    if (!gameStarted || !isAlive || !objectiveState.supplyDrop?.active || !isHost) return;
+    if (!gameStarted || !isHost) return;
     const sd = objectiveState.supplyDrop;
-    if (playerPos.x !== sd.x || playerPos.y !== sd.y) return;
+    if (!sd?.active) return;
+    const collector = Object.entries(players).find(([,p]) => (p?.alive ?? true) !== false && p.x === sd.x && p.y === sd.y);
+    if (!collector) return;
     const active = getActiveParticipantIds();
-    if (active.length <= 0) return;
+    if (!active.length) return;
     const each = Math.floor(20 / active.length);
     const remainder = 20 - (each * active.length);
     for (let i=0; i<active.length; i++){
@@ -4039,14 +4148,14 @@
       if (bonus <= 0) continue;
       const p = players[pu];
       if (!p) continue;
-      p.cheese = (p.cheese ?? 0) + bonus;
-      if (pu === uid) cheeseCount = p.cheese;
-      await runtimeUpdateDoc(ccRef(ID.player(pu)), { cheese: p.cheese, updatedAt: Date.now() });
+      p.cheese = (Number(p.cheese) || 0) + bonus;
+      if (pu === uid){ syncLocalCheese(p.cheese); showCheeseReward(bonus, sd.x, sd.y); }
+      await runtimeUpdateDoc(ccRef(ID.player(pu)), { cheese:p.cheese, updatedAt:Date.now() });
     }
     grid[sd.y][sd.x] = "";
-    objectiveState.supplyDrop = { active:false };
-    document.getElementById("cheeseCount").textContent = cheeseCount;
-    await runtimeUpdateDoc(ccRef(ID.STATE), { objectives: objectiveState, updatedAt: Date.now() });
+    objectiveState.supplyDrop = { active:false, claimedBy:collector[0], claimedAt:Date.now() };
+    addPickupBurst(sd.x, sd.y, "supply");
+    await runtimeUpdateDoc(ccRef(ID.STATE), { objectives:objectiveState, updatedAt:Date.now() });
     requestRender("checkObjectiveCollection");
   }
 
@@ -4088,7 +4197,6 @@
       x:playerPos.x,
       y:playerPos.y,
       facing:playerFacing || "se",
-      cheese:cheeseCount,
       alive:isAlive,
       online:true,
       clientSeq:localPlayerSequence,
@@ -4115,7 +4223,7 @@
             lastPlayerWriteAt = Date.now();
             lastPlayerPayload = {
               x:payload.x, y:payload.y, facing:payload.facing,
-              cheese:payload.cheese, alive:payload.alive, clientSeq:payload.clientSeq
+              alive:payload.alive, clientSeq:payload.clientSeq
             };
           }
         } finally {
@@ -4188,6 +4296,7 @@
 
         const def = BUILD_DEFS[selectedBuild];
     if (!def) return;
+    if (playerWins < (def.minWins || 0)){ showToast?.(`Requires ${def.minWins} Wins`, "warn"); return; }
     const cost = def.cost;
     if (!mobileBuildOrder.includes(selectedBuild)) return;
     if (cheeseCount < cost) return;
@@ -4256,7 +4365,7 @@
     showClawHit(x, y);
 
     const symbol = grid[y]?.[x] || "";
-    const wallNearBeacon = ["🧱","💎"].includes(symbol) && isWithinBeaconAura(x, y, 2);
+    const wallNearBeacon = ["🧱","💎","🧊"].includes(symbol) && isWithinBeaconAura(x, y, 2);
     let finalDamage = wallNearBeacon ? (damageAmount * 0.5) : damageAmount;
     if (Date.now() < catWeakenedUntil) finalDamage *= 0.55;
 
@@ -4580,7 +4689,7 @@
 
         const isTarget = (nx===targetX && ny===targetY);
         const cell = grid[ny][nx];
-        const isWall = (cell==="🧱" || cell==="💎");
+        const isWall = (cell==="🧱" || cell==="💎" || cell==="🧊");
 
         let ok;
         if (passableFn){
@@ -4603,7 +4712,7 @@
       const x = s.x, y = s.y;
       const symbol = s.type;
 
-        const targetIsWall = (symbol === "🧱" || symbol === "💎");
+        const targetIsWall = (symbol === "🧱" || symbol === "💎" || symbol === "🧊");
         const passable = passableFn
           ? ((nx, ny) => (nx===x && ny===y) ? true : passableFn(nx, ny))
           : targetIsWall;
@@ -4816,7 +4925,7 @@
     let didHit = false;
     for (const c of cells){
       if (c.x<0 || c.y<0 || c.x>=gridSize || c.y>=gridSize) continue;
-      if (["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[c.y][c.x])){
+      if (["🧱","🔫","🪳","🏭","💎","🧊","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[c.y][c.x])){
         await damageStructure(c.x, c.y, 30);
         addCombatVfx(c.x, c.y, "🩸", "vfx-claw", 620, 14);
         didHit = true;
@@ -4966,7 +5075,7 @@
     if (target && path && path.length > 0){
       const next = path[0];
       const symbol = grid[next.y][next.x];
-      const isBlocked = (symbol==="🧱" || symbol==="💎");
+      const isBlocked = (symbol==="🧱" || symbol==="💎" || symbol==="🧊");
       if (!isBlocked){
         catFacing = { dx: Math.sign(next.x - catPos.x), dy: Math.sign(next.y - catPos.y) };
         catFacingDir = normalizeDirection(catFacing.dx, catFacing.dy) || catFacingDir || "se";
@@ -4979,7 +5088,7 @@
     let attacked = false;
     const nearbyStructures = structureSpatialIndex.query(catPos.x, catPos.y, 1).filter(s => Math.abs(s.x-catPos.x) <= 1 && Math.abs(s.y-catPos.y) <= 1);
     for (const s of nearbyStructures){
-      if (!attacked && ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[s.y]?.[s.x])){
+      if (!attacked && ["🧱","🔫","🪳","🏭","💎","🧊","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[s.y]?.[s.x])){
         await damageStructure(s.x, s.y);
         attacked = true;
       }
@@ -5187,7 +5296,7 @@
       }
 
       if (target.type === "structure"){
-        return ["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[target.y]?.[target.x] ?? "");
+        return ["🧱","🔫","🪳","🏭","💎","🧊","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[target.y]?.[target.x] ?? "");
       }
 
       return false;
@@ -5494,7 +5603,7 @@
       }
 
       const bestTarget = getNearestHostileObjectiveTarget(v.x, v.y, (x, y) => {
-        return !["🧱","🏭","💎","🗼"].includes(grid[y][x]);
+        return !["🧱","🏭","💎","🧊","🗼"].includes(grid[y][x]);
       });
       const bestPath = bestTarget?.path || null;
       if (!bestTarget) continue;
@@ -5530,7 +5639,7 @@
       const termite = termites[i];
 
       const closestTarget = getNearestHostileObjectiveTarget(termite.x, termite.y, (x,y) => {
-        return !["🧱","🔫","🪳","🏭","💎","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[y][x]);
+        return !["🧱","🔫","🪳","🏭","💎","🧊","🗼","🚀","🐦‍🔥","🛠️","🧀","🐇","⚡","☄️","🛡️","🟢","🔮","🌰","🪭","🕸️","🥁"].includes(grid[y][x]);
       });
       if (!closestTarget) continue;
       const bestPath = closestTarget.path;
@@ -7117,8 +7226,9 @@
 
     // no pre-placed walls on match start
     renderGrid();
-    // Shared host-authoritative cheese spawns.
-    setInterval(spawnCheese, 8000);
+    // Shared host-authoritative cheese spawns, rescheduled by active player count without duplicates.
+    scheduleCheeseSpawnLoop();
+    setInterval(scheduleCheeseSpawnLoop, 5000);
     setInterval(cleanupExpiredCheeseDrops, 1000);
 
     // ability cooldown UI
@@ -7308,7 +7418,7 @@
     for (const group of grouped.values()){
       const symbol = grid[group.y]?.[group.x];
       for (const requestId of group.ids) batch.delete(ccRef(requestId));
-      if (!["🧱","💎"].includes(symbol)) continue;
+      if (!["🧱","💎","🧊"].includes(symbol)) continue;
       const key = `${group.x}_${group.y}`;
       const maxHp = STRUCTURE_MAX_HP[symbol] || 80;
       const currentHp = structureHealth[key] ?? maxHp;
@@ -7554,7 +7664,7 @@
         if (tx<0||ty<0||tx>=gridSize||ty>=gridSize) continue;
 
         const key = `${tx}_${ty}`;
-        if ((grid[ty][tx]==="🧱" || grid[ty][tx]==="💎") && (structureHealth[key] ?? 0) < 80){
+        if ((grid[ty][tx]==="🧱" || grid[ty][tx]==="💎" || grid[ty][tx]==="🧊") && (structureHealth[key] ?? 0) < (STRUCTURE_MAX_HP[grid[ty][tx]] ?? 80)){
           await runtimeSetDoc(ccRef(ID.wallHealRequest(uid, tx, ty)), {
             kind: "wallheal",
             uid,
