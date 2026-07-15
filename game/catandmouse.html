@@ -2133,13 +2133,7 @@
   const ROOM_ABANDONED_MS = 30000;
   const OVERLAY_RENDER_DISTANCE = 7;
   const ENEMY_CAPS = {
-    rats: MAX_RATS,
-    fleas: MAX_FLEAS,
-    oxen: 8,
-    ratKings: 2,
-    vultures: 6,
-    termites: 9,
-    totalEnemies: MAX_TOTAL_ENEMIES
+    rats: 10, stinkrat: 2, fleas: 8, oxen: 3, ratKings: 1, vultures: 3, termites: 4, totalEnemies: 24
   };
   const tileEffects = new Map();
 
@@ -2179,15 +2173,15 @@
     9:{symbol:"🛠️",name:"Repair Station",cost:12,hp:24,minWins:0},
     10:{symbol:"🧀",name:"Cheese Farm",cost:18,hp:20,minWins:5},
     11:{symbol:"🐇",name:"Rabbit Den",cost:22,hp:20,minWins:8},
-    12:{symbol:"⚡",name:"Tesla Tower",cost:25,hp:18,minWins:12},
+    12:{symbol:"⚡",name:"Tesla Tower",cost:22,hp:18,minWins:12},
     13:{symbol:"☄️",name:"Ultra Laser",cost:35,hp:18,minWins:15},
-    14:{symbol:"🛡️",name:"Shield Tower",cost:28,hp:22,minWins:20},
-    15:{symbol:"🟢",name:"Slime Tower",cost:26,hp:20,minWins:25},
-    16:{symbol:"🔮",name:"Teleporter Crystal",cost:20,hp:16,minWins:15},
+    14:{symbol:"🛡️",name:"Shield Tower",cost:22,hp:22,minWins:20,tooltip:"Protects all structures within 3 Manhattan tiles. Shields absorb 40% max HP (min 10), break for 3s, then recharge 15%/s."},
+    15:{symbol:"🟢",name:"Slime Tower",cost:20,hp:20,minWins:25,tooltip:"Slows all registered hostile types; bosses receive reduced control instead of immunity."},
+    16:{symbol:"🔮",name:"Teleporter Crystal",cost:16,hp:16,minWins:15},
     17:{symbol:"🌰",name:"Acorn Tower",cost:32,hp:18,minWins:18},
-    18:{symbol:"🪭",name:"Whirlwind Fan",cost:24,hp:20,minWins:12},
-    19:{symbol:"🕸️",name:"Web Launcher",cost:27,hp:20,minWins:15},
-    20:{symbol:"🥁", name:"Rally Drum", cost:20, hp:22, minWins:10}
+    18:{symbol:"🪭",name:"Whirlwind Fan",cost:18,hp:20,minWins:12,range:6,cooldownMs:3000,tooltip:"Aims a visible gust at enemy clusters; pushes rats/stink rats/termites/fleas 2 tiles, vultures 3, bosses 1."},
+    19:{symbol:"🕸️",name:"Web Launcher",cost:18,hp:20,minWins:15,range:6,cooldownMs:9000,tooltip:"Fires a visible web projectile. Standard enemies trap 3s then 50% slow 3s; oxen/rat kings trap 1.5s then 25% slow 3s."},
+    20:{symbol:"🥁", name:"Rally Drum", cost:16, hp:22, minWins:10,tooltip:"Shows a gold support ring and pulses nearby supported units/towers when buffing."}
   };
   const STRUCTURE_VISUALS = {
     "🧱":"iso-wall","🔫":"iso-turret","🪳":"iso-flea-nest","🏭":"iso-generator","💎":"iso-super-wall","🧊":"iso-super-wall ultra-wall-visual","🗼":"iso-cheese-beacon","🐦‍🔥":"iso-phoenix-cheese","🚀":"iso-rocket-tower","🛠️":"iso-repair-station","🧀":"iso-cheese-farm","🐇":"iso-rabbit-den","⚡":"iso-tesla","☄️":"iso-ultra-laser","🛡️":"iso-shield","🟢":"iso-slime","🔮":"iso-teleporter","🌰":"iso-acorn","🪭":"iso-fan","🕸️":"iso-web","🥁":"iso-drum"
@@ -2266,6 +2260,7 @@
   let selectionAssetsReadyAt = null;
   let rabbitShots = [];
   let structureShields = {};
+  let structureShieldBrokenAt = {};
 
   let isHost = false;
   let hostInitialized = false;
@@ -2454,8 +2449,49 @@
     {x:1,y:1},{x:-1,y:-1},{x:1,y:-1},{x:-1,y:1}
   ];
   let nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS;
-  const TARGETING_OPTIONS = ["Nearest","Weakest","Strongest","Cat","Rats","Oxen","Vultures","Termites"];
-  const TARGETABLE_STRUCTURES = ["🔫","🚀","⚡","☄️","🌰","🟢","🕸️"];
+  const TARGETING_OPTIONS = ["Nearest","Weakest","Strongest","Cat","Rats","Stink Rats","Oxen","Rat Kings","Vultures","Termites","Fleas"];
+  const TARGETABLE_STRUCTURES = ["🔫","🚀","⚡","☄️","🌰","🟢","🕸️","🪭"];
+
+  const ENEMY_KIND_ALIASES = { rats:"rat", stinkRats:"stinkrat", oxen:"ox", ratKings:"ratking", vultures:"vulture", termites:"termite", fleas:"flea" };
+  const pendingEnemySpawnReservations = new Map();
+  const ENEMY_TYPE_REGISTRY = {
+    rat: { collection: () => rats, ref: id => ID.rat(id), category:"rat", label:"Rats", targetable:true },
+    stinkrat: { collection: () => stinkRats, ref: id => ID.stinkRat(id), category:"rat", label:"Stink Rats", targetable:true },
+    ox: { collection: () => oxen, ref: id => ID.ox(id), category:"ox", label:"Oxen", targetable:true },
+    ratking: { collection: () => ratKings, ref: id => ID.ratKing(id), category:"boss", label:"Rat Kings", targetable:true },
+    vulture: { collection: () => vultures, ref: id => ID.vulture(id), category:"flying", label:"Vultures", targetable:true },
+    termite: { collection: () => termites, ref: id => ID.termite(id), category:"termite", label:"Termites", targetable:true },
+    flea: { collection: () => fleas, ref: id => (String(id||"").startsWith("flea_") || String(id||"").startsWith("pflea_")) ? id : ID.flea(id), category:"flea", label:"Fleas", targetable:true }
+  };
+  function normalizeEnemyKind(kind){ return ENEMY_KIND_ALIASES[kind] || kind; }
+  function enemyRegistryEntry(kind){ return ENEMY_TYPE_REGISTRY[normalizeEnemyKind(kind)]; }
+  function enemyDocRef(kind, id, enemy = null){ const entry = enemyRegistryEntry(kind); if (!entry) return null; return ccRef(enemy?.docId || entry.ref(id)); }
+  function getActivePlayerCount(){
+    const now = Date.now();
+    const seen = new Set();
+    for (const [pid, p] of Object.entries(players || {})){
+      if (!p) continue;
+      const key = p.uid || pid;
+      if (seen.has(key)) continue;
+      const stale = (p.connected === false) || (p.left === true) || (p.inLobby === true && gameStarted) || (p.lastSeen && now - p.lastSeen > PLAYER_STALE_MS * 2) || (p.updatedAt && now - p.updatedAt > PLAYER_STALE_MS * 2);
+      if (!stale) seen.add(key);
+    }
+    return Math.max(1, Math.min(4, seen.size || 1));
+  }
+  function getEnemyCaps(activePlayerCount = getActivePlayerCount()){
+    const n = Math.max(1, Math.min(4, activePlayerCount || 1));
+    const lateKings = n >= 3 && (catPower >= 35 || ratPower >= 8);
+    return { rat:[0,10,12,14,16][n], stinkrat:n <= 2 ? 2 : 3, ox:[0,3,4,5,6][n], ratking:lateKings ? 2 : 1, vulture:[0,3,4,5,6][n], termite:[0,4,5,6,7][n], flea:[0,8,10,12,14][n], total:[0,24,28,32,36][n] };
+  }
+  function getPendingEnemyCount(kind){ return pendingEnemySpawnReservations.get(normalizeEnemyKind(kind)) || 0; }
+  function getLivingEnemyCount(kind){ const entry = enemyRegistryEntry(kind); return entry ? (entry.collection() || []).filter(isLivingEnemy).length : 0; }
+  function getTotalLivingEnemyCount(){ return Object.keys(ENEMY_TYPE_REGISTRY).reduce((sum, kind) => sum + getLivingEnemyCount(kind), 0); }
+  function canSpawnEnemy(kind, requestedCount = 1){ const k = normalizeEnemyKind(kind); const caps = getEnemyCaps(); const requested = Math.max(1, requestedCount|0); return getLivingEnemyCount(k) + getPendingEnemyCount(k) + requested <= caps[k] && getTotalLivingEnemyCount() + Array.from(pendingEnemySpawnReservations.values()).reduce((a,b)=>a+b,0) + requested <= caps.total; }
+  function reserveEnemySpawnSlots(kind, requestedCount = 1){ const k = normalizeEnemyKind(kind); let granted = 0; for (let i=0;i<requestedCount;i++){ if (!canSpawnEnemy(k,1)) break; pendingEnemySpawnReservations.set(k, getPendingEnemyCount(k)+1); granted++; } return { kind:k, count:granted }; }
+  function releaseEnemySpawnReservations(reservation){ if (!reservation) return; const k = normalizeEnemyKind(reservation.kind); pendingEnemySpawnReservations.set(k, Math.max(0, getPendingEnemyCount(k) - (reservation.count || 0))); }
+  function getEnemyScaling(waveNumber = Math.max(1, catPower || ratPower || 1)){ return { healthMultiplier:Math.min(3.0, 1 + Math.max(0, waveNumber - 1) * 0.06), damageMultiplier:Math.min(2.25, 1 + Math.max(0, waveNumber - 1) * 0.035), speedMultiplier:Math.min(1.20, 1 + Math.max(0, waveNumber - 1) * 0.0075) }; }
+  function scaleEnemyStats(baseHealth, baseDamage = 1, waveNumber = Math.max(1, catPower || 1)){ const s=getEnemyScaling(waveNumber); return { maxHealth:Math.ceil(baseHealth*s.healthMultiplier), health:Math.ceil(baseHealth*s.healthMultiplier), damage:Math.ceil(baseDamage*s.damageMultiplier), speedMultiplier:s.speedMultiplier, scalingWave:waveNumber }; }
+
   function isLivingEnemy(e) {
     if (!e) return false;
     if (!Number.isFinite(e.x) || !Number.isFinite(e.y)) return false;
@@ -2874,12 +2910,15 @@
   }
 
   function listCombatEnemies(){
-    return [
-      ...rats.filter(r => (r.health ?? 0) > 0).map(r => ({ kind:"rat", enemy:r })),
-      ...oxen.filter(o => (o.health ?? 0) > 0).map(o => ({ kind:"ox", enemy:o })),
-      ...ratKings.filter(k => (k.health ?? 0) > 0).map(k => ({ kind:"ratking", enemy:k })),
-      ...vultures.filter(v => (v.health ?? 0) > 0).map(v => ({ kind:"vulture", enemy:v }))
-    ];
+    const result = [];
+    for (const [kind, entry] of Object.entries(ENEMY_TYPE_REGISTRY)){
+      if (!entry.targetable) continue;
+      for (const enemy of (entry.collection() || [])){
+        if (!isLivingEnemy(enemy)) continue;
+        result.push({ kind, enemy, x:enemy.x, y:enemy.y, health:(enemy.health ?? enemy.maxHealth ?? 1) });
+      }
+    }
+    return result;
   }
 
   function getNearestCrystalTarget(fromX, fromY){
@@ -4374,7 +4413,12 @@
       const used = Math.min(shield, finalDamage);
       structureShields[key] = shield - used;
       finalDamage -= used;
-      if (structureShields[key] <= 0) delete structureShields[key];
+      addCombatVfx(x, y, "🛡️", "vfx-pop", 420, 14);
+      if (structureShields[key] <= 0){
+        structureShieldBrokenAt[key] = Date.now();
+        addCombatVfx(x, y, "💠", "vfx-explosion", 700, 18);
+        delete structureShields[key];
+      }
     }
 
     if (finalDamage > 0) structureHealth[key] -= finalDamage;
@@ -4382,11 +4426,12 @@
       grid[y][x] = "";
       delete structureHealth[key];
       delete structureShields[key];
+      delete structureShieldBrokenAt[key];
       markBlockedGridDirty();
       await runtimeDeleteDoc(ccRef(ID.structure(x,y)));
       markStructureIndexDirty();
     } else {
-      await runtimeUpdateDoc(ccRef(ID.structure(x,y)), { health: structureHealth[key], shield: structureShields[key] ?? 0 });
+      await runtimeUpdateDoc(ccRef(ID.structure(x,y)), { health: structureHealth[key], shield: structureShields[key] ?? 0, shieldBrokenAt: structureShieldBrokenAt[key] || 0 });
       markStructureIndexDirty();
     }
     requestRender("damageStructure");
@@ -4488,17 +4533,16 @@
     const radiusCells = Math.max(1, Math.ceil(range / SPATIAL_CELL_SIZE));
     let candidates = [];
     if (catHealth > 0) candidates.push({ kind:"Cat", refType:"cat", x:catPos.x, y:catPos.y, health:catHealth, dist:Math.abs(catPos.x-x)+Math.abs(catPos.y-y) });
-    const nearbyEnemies = entitySpatialIndex.query(x, y, radiusCells).filter(e => e.entityType === "enemy" && ((e.health ?? 1) > 0));
+    const nearbyEnemies = entitySpatialIndex.query(x, y, radiusCells).filter(e => e.entityType === "enemy" && isLivingEnemy(e));
     for (const e of nearbyEnemies){
-      const kindMap = (e.kind === "ox") ? ["Oxen","ox"] : (e.kind === "vulture") ? ["Vultures","vulture"] : (e.kind === "termite") ? ["Termites","termite"] : ["Rats", (e.kind === "stinkrat" ? "stinkrat" : "rat")];
-      candidates.push({ kind:kindMap[0], refType:kindMap[1], enemy:e, x:e.x, y:e.y, health:(e.health ?? 1), dist:Math.abs(e.x-x)+Math.abs(e.y-y) });
+      const entry = enemyRegistryEntry(e.kind);
+      if (!entry?.targetable) continue;
+      const k = normalizeEnemyKind(e.kind);
+      candidates.push({ kind:entry.label, refType:k, enemy:e, x:e.x, y:e.y, health:(e.health ?? e.maxHealth ?? 1), dist:Math.abs(e.x-x)+Math.abs(e.y-y) });
     }
     candidates = candidates.filter(e => e.dist <= range);
-    if (targeting === "Cat") candidates = candidates.filter(e => e.refType === "cat");
-    if (targeting === "Rats") candidates = candidates.filter(e => e.refType === "rat" || e.refType === "stinkrat");
-    if (targeting === "Oxen") candidates = candidates.filter(e => e.refType === "ox");
-    if (targeting === "Vultures") candidates = candidates.filter(e => e.refType === "vulture");
-    if (targeting === "Termites") candidates = candidates.filter(e => e.refType === "termite");
+    const filters = { "Cat":["cat"], "Rats":["rat","stinkrat"], "Stink Rats":["stinkrat"], "Oxen":["ox"], "Rat Kings":["ratking"], "Vultures":["vulture"], "Termites":["termite"], "Fleas":["flea"] };
+    if (filters[targeting]) candidates = candidates.filter(e => filters[targeting].includes(e.refType));
     if (!candidates.length) return null;
     if (targeting === "Weakest") candidates.sort((a,b)=>a.health-b.health);
     else if (targeting === "Strongest") candidates.sort((a,b)=>b.health-a.health);
@@ -4514,73 +4558,24 @@
     const writes = [];
     for (const turret of getStructuresByType("🔫")){
       const x = turret.x, y = turret.y;
-        if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
-
-        let attacked = false;
-
-        // beacon bonus within 2 tiles
-        let bonusDamage = 0;
-        for (let dy=-2; dy<=2; dy++){
-          for (let dx=-2; dx<=2; dx++){
-            const nx = x+dx, ny=y+dy;
-            if (nx>=0 && nx<gridSize && ny>=0 && ny<gridSize && grid[ny][nx]==="🗼") bonusDamage++;
-          }
-        }
-        const damage = 2 + bonusDamage;
-
-        // cat within 5
-        const dxCat = Math.abs(catPos.x - x);
-        const dyCat = Math.abs(catPos.y - y);
-        if (dxCat<=5 && dyCat<=5){
-          addCombatVfx(x, y, "🔥", "vfx-flame", 460, 14);
-          showProjectileImpact(catPos.x, catPos.y);
-          catHealth -= damage;
-          writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt: Date.now() } });
-          if (catHealth <= 0) handleCatDefeated().catch(()=>{});
-          attacked = true;
-        }
-
-        // else rat
-        if (!attacked){
-          for (const r of rats){
-            if ((r.health ?? 0) <= 0) continue;
-            const dxRat = Math.abs(r.x - x);
-            const dyRat = Math.abs(r.y - y);
-            if (dxRat<=5 && dyRat<=5){
-              addCombatVfx(x, y, "🔥", "vfx-flame", 460, 14);
-              showProjectileImpact(r.x, r.y);
-              r.health -= damage;
-              attacked = true;
-              if (r.health <= 0){
-                writes.push({ type:"delete", ref: ccRef(ID.rat(r.id)) });
-              } else {
-                writes.push({ type:"update", ref: ccRef(ID.rat(r.id)), data: { health: r.health } });
-              }
-              break;
-            }
-          }
-        }
-
-        // else ox
-        if (!attacked){
-          for (const o of oxen){
-            if ((o.health ?? 0) <= 0) continue;
-            const dxOx = Math.abs(o.x - x);
-            const dyOx = Math.abs(o.y - y);
-            if (dxOx<=5 && dyOx<=5){
-              addCombatVfx(x, y, "🔥", "vfx-flame", 460, 14);
-              showProjectileImpact(o.x, o.y);
-              o.health -= damage;
-              attacked = true;
-              if (o.health <= 0){
-                writes.push({ type:"delete", ref: ccRef(ID.ox(o.id)) });
-              } else {
-                writes.push({ type:"update", ref: ccRef(ID.ox(o.id)), data: { health: o.health } });
-              }
-              break;
-            }
-          }
-        }
+      if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
+      let bonusDamage = 0;
+      for (let dy=-2; dy<=2; dy++) for (let dx=-2; dx<=2; dx++){
+        const nx=x+dx, ny=y+dy;
+        if (nx>=0&&nx<gridSize&&ny>=0&&ny<gridSize&&grid[ny][nx]==="🗼") bonusDamage++;
+      }
+      const damage = 2 + bonusDamage;
+      const target = pickTargetForStructure(x, y, 5, getStructureTargeting(x, y));
+      if (!target) continue;
+      addCombatVfx(x, y, "🔥", "vfx-flame", 460, 14);
+      showProjectileImpact(target.x, target.y);
+      if (target.refType === "cat"){
+        catHealth -= damage;
+        writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat:{x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt:Date.now() } });
+        if (catHealth <= 0) handleCatDefeated().catch(()=>{});
+      } else {
+        await damageEnemyUnit({ ...target.enemy, kind: target.refType }, damage);
+      }
     }
     await commitEnemyBatch(writes);
     requestRender("turretAttack");
@@ -4591,75 +4586,22 @@
     const writes = [];
     for (const tower of getStructuresByType("🚀")){
       const x = tower.x, y = tower.y;
-        if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
-
-        // beacon boost?
-        let boosted = false;
-        for (let dy=-2; dy<=2; dy++){
-          for (let dx=-2; dx<=2; dx++){
-            const bx = x+dx, by=y+dy;
-            if (bx>=0 && bx<gridSize && by>=0 && by<gridSize && grid[by][bx]==="🗼"){
-              boosted = true; break;
-            }
-          }
-          if (boosted) break;
-        }
-
-        // farthest rat within 8
-        let target = null;
-        let maxDist = -1;
-        for (const r of rats){
-          if ((r.health ?? 0) <= 0) continue;
-          const dist = Math.abs(r.x - x) + Math.abs(r.y - y);
-          if (dist <= 8 && dist > maxDist){
-            maxDist = dist;
-            target = r;
-          }
-        }
-        if (!target) continue;
-
-        const mainDamage   = boosted ? 20 : 15;
-        const splashDamage = boosted ? 15 : 10;
-
-        addCombatVfx(x, y, "🔥", "vfx-flame", 500, 14);
-        addCombatVfx(target.x, target.y, "💣", "vfx-explosion", 700, boosted ? 24 : 21);
-        showProjectileImpact(target.x, target.y);
-
-        target.health -= mainDamage;
-        if (target.health <= 0){
-          writes.push({ type:"delete", ref: ccRef(ID.rat(target.id)) });
-        } else {
-          writes.push({ type:"update", ref: ccRef(ID.rat(target.id)), data: { health: target.health } });
-        }
-
-        for (let dy=-1; dy<=1; dy++){
-          for (let dx=-1; dx<=1; dx++){
-            const sx = target.x + dx;
-            const sy = target.y + dy;
-            if (sx<0 || sy<0 || sx>=gridSize || sy>=gridSize) continue;
-            if (dx===0 && dy===0) continue;
-
-            for (const r of rats){
-              if (r.id !== target.id && r.x===sx && r.y===sy && (r.health ?? 0) > 0){
-                r.health -= splashDamage;
-                if (r.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.rat(r.id)) });
-                else writes.push({ type:"update", ref: ccRef(ID.rat(r.id)), data: { health: r.health } });
-              }
-            }
-            for (const o of oxen){
-              if (o.x===sx && o.y===sy && (o.health ?? 0) > 0){
-                o.health -= splashDamage;
-                if (o.health <= 0) writes.push({ type:"delete", ref: ccRef(ID.ox(o.id)) });
-                else writes.push({ type:"update", ref: ccRef(ID.ox(o.id)), data: { health: o.health } });
-              }
-            }
-            if (catPos.x===sx && catPos.y===sy && catHealth>0){
-              addCombatVfx(catPos.x, catPos.y, "💥", "vfx-hit", 450, 15);
-              catHealth -= splashDamage;
-              writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat: {x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt: Date.now() } });
-            }
-          }
-        }
+      if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
+      const target = pickTargetForStructure(x, y, 8, getStructureTargeting(x, y));
+      if (!target || target.refType === "cat") continue;
+      const boosted = getStructuresByType("🗼").some(b => Math.abs(b.x-x)<=2 && Math.abs(b.y-y)<=2);
+      const mainDamage = boosted ? 20 : 15, splashDamage = boosted ? 15 : 10;
+      addCombatVfx(x, y, "🔥", "vfx-flame", 500, 14);
+      addCombatVfx(target.x, target.y, "💣", "vfx-explosion", 700, boosted ? 24 : 21);
+      await damageEnemyUnit({ ...target.enemy, kind: target.refType }, mainDamage);
+      for (const unit of listCombatEnemies()){
+        if (unit.enemy.id === target.enemy.id && unit.kind === target.refType) continue;
+        if (Math.abs(unit.enemy.x-target.x)<=1 && Math.abs(unit.enemy.y-target.y)<=1) await damageEnemyUnit({ ...unit.enemy, kind:unit.kind }, splashDamage);
+      }
+      if (Math.abs(catPos.x-target.x)<=1 && Math.abs(catPos.y-target.y)<=1 && catHealth>0){
+        catHealth -= splashDamage;
+        writes.push({ type:"update", ref: ccRef(ID.STATE), data: { cat:{x:catPos.x,y:catPos.y,health:catHealth,facing:catFacingDir}, updatedAt:Date.now() } });
+      }
     }
     await commitEnemyBatch(writes);
     requestRender("rocketTowerAttack");
@@ -5125,22 +5067,8 @@
   }
 
   function getActiveEnemyCount(type = null){
-    const safeCount = list => list.filter(e => e && ((e.health ?? 1) > 0)).length;
-    if (type === "rats") return safeCount(rats || []);
-    if (type === "fleas") return safeCount(fleas || []);
-    if (type === "oxen") return safeCount(oxen || []);
-    if (type === "ratKings") return safeCount(ratKings || []);
-    if (type === "vultures") return safeCount(vultures || []);
-    if (type === "termites") return safeCount(termites || []);
-
-    return (
-      safeCount(rats || []) +
-      safeCount(fleas || []) +
-      safeCount(oxen || []) +
-      safeCount(ratKings || []) +
-      safeCount(vultures || []) +
-      safeCount(termites || [])
-    );
+    if (type) return getLivingEnemyCount(normalizeEnemyKind(type));
+    return getTotalLivingEnemyCount();
   }
 
   // ============================================================
@@ -5148,8 +5076,7 @@
   // ============================================================
   async function spawnRatWave(){
     if (!isHost || catPower <= 0) return;
-    if (getActiveEnemyCount("rats") >= ENEMY_CAPS.rats) return;
-    if (getActiveEnemyCount() >= ENEMY_CAPS.totalEnemies) return;
+    if (!canSpawnEnemy("rat", 1) && !canSpawnEnemy("ox", 1) && !canSpawnEnemy("stinkrat", 1)) return;
 
     const waveTag = Date.now();
     const writes = [];
@@ -5175,9 +5102,8 @@
 
     // oxen
     const oxCount = (catPower>=15) ? (Math.floor((catPower-15)/10)+1) : 0;
-    const availableOxSlots = Math.max(0, ENEMY_CAPS.oxen - getActiveEnemyCount("oxen"));
-    const remainingTotalAfterRats = Math.max(0, ENEMY_CAPS.totalEnemies - getActiveEnemyCount());
-    const oxToSpawn = Math.min(oxCount, availableOxSlots, remainingTotalAfterRats);
+    const oxReservation = reserveEnemySpawnSlots("ox", oxCount);
+    const oxToSpawn = oxReservation.count;
     let oxSpawned = 0;
     for (let i=0; i<availableSpots.length && oxSpawned<oxToSpawn; i++){
       const spot = availableSpots[i];
@@ -5191,7 +5117,7 @@
         id,
         x: spot.x,
         y: spot.y,
-        health: getOxHealthForDifficulty(),
+        ...scaleEnemyStats(getOxHealthForDifficulty(), 3),
         wave: waveTag,
         createdAt: Date.now()
       }});
@@ -5199,10 +5125,12 @@
     }
 
 
+    let kingReservation = null;
     // rat king: late rounds random spawn
     if (catPower >= 22 && Math.random() < 0.35){
       const livingKings = ratKings.filter(k => (k.health ?? 0) > 0).length;
-      if (livingKings < Math.min(ENEMY_CAPS.ratKings, 2) && getActiveEnemyCount() < ENEMY_CAPS.totalEnemies){
+      kingReservation = reserveEnemySpawnSlots("ratking", 1);
+      if (livingKings < getEnemyCaps().ratking && kingReservation.count > 0){
         const openSpot = availableSpots.find(s => !usedKeys.has(`${s.x}_${s.y}`));
         if (openSpot){
           usedKeys.add(`${openSpot.x}_${openSpot.y}`);
@@ -5212,26 +5140,27 @@
             id,
             x: openSpot.x,
             y: openSpot.y,
-            health: Math.max(120, getRatHealthForDifficulty() * 10),
+            ...scaleEnemyStats(Math.max(120, getRatHealthForDifficulty() * 10), 8),
             wave: waveTag,
             createdAt: Date.now()
           }});
-        }
-      }
+        } else releaseEnemySpawnReservations(kingReservation);
+      } else releaseEnemySpawnReservations(kingReservation);
     }
 
+    let stinkReservation = null;
     // rats
     if (catPower >= 10 && Math.random() < 0.25){
       const sid = `${Date.now()}_${crypto.randomUUID()}`;
       const sx = Math.max(0, Math.min(gridSize-1, catPos.x + (Math.floor(Math.random()*7)-3)));
       const sy = Math.max(0, Math.min(gridSize-1, catPos.y + (Math.floor(Math.random()*7)-3)));
-      writes.push({ type:"set", ref: ccRef(ID.stinkRat(sid)), data: { kind:"stinkrat", id:sid, x:sx, y:sy, health:Math.max(10, getRatHealthForDifficulty()*3), createdAt:Date.now() } });
+      stinkReservation = reserveEnemySpawnSlots("stinkrat", 1);
+      if (stinkReservation.count > 0) writes.push({ type:"set", ref: ccRef(ID.stinkRat(sid)), data: { kind:"stinkrat", id:sid, x:sx, y:sy, ...scaleEnemyStats(Math.max(10, getRatHealthForDifficulty()*3), 2), createdAt:Date.now() } });
     }
 
     const maxRats = catPower;
-    const availableRatSlots = Math.max(0, ENEMY_CAPS.rats - getActiveEnemyCount("rats"));
-    const availableTotalSlots = Math.max(0, ENEMY_CAPS.totalEnemies - getActiveEnemyCount());
-    const ratsToSpawn = Math.min(maxRats, availableRatSlots, availableTotalSlots);
+    const ratReservation = reserveEnemySpawnSlots("rat", maxRats);
+    const ratsToSpawn = ratReservation.count;
     let ratsSpawned = 0;
     for (let i=0; i<availableSpots.length && ratsSpawned<ratsToSpawn; i++){
       const spot = availableSpots[i];
@@ -5245,13 +5174,13 @@
         id,
         x: spot.x,
         y: spot.y,
-        health: getRatHealthForDifficulty(),
+        ...scaleEnemyStats(getRatHealthForDifficulty(), 1),
         wave: waveTag,
         createdAt: Date.now()
       }});
       ratsSpawned++;
     }
-    await commitEnemyBatch(writes);
+    try { await commitEnemyBatch(writes); } finally { releaseEnemySpawnReservations(oxReservation); releaseEnemySpawnReservations(ratReservation); releaseEnemySpawnReservations(stinkReservation); releaseEnemySpawnReservations(kingReservation); }
     requestRender("enemy batch moved");
   }
 
@@ -5896,39 +5825,36 @@
   }
 
   async function damageEnemyUnit(enemy, amount){
+    if (!enemy) return;
+    const kind = normalizeEnemyKind(enemy.kind);
+    const ref = enemyDocRef(kind, enemy.id, enemy);
+    if (!ref) return;
     showProjectileImpact(enemy.x, enemy.y);
-    enemy.health -= amount;
+    enemy.health = (enemy.health ?? enemy.maxHealth ?? 1) - amount;
     if (enemy.health <= 0){
-      if (enemy.kind === "rat") await runtimeDeleteDoc(ccRef(ID.rat(enemy.id)));
-      else if (enemy.kind === "ox") await runtimeDeleteDoc(ccRef(ID.ox(enemy.id)));
-      else if (enemy.kind === "ratking"){
-        await runtimeDeleteDoc(ccRef(ID.ratKing(enemy.id)));
+      await runtimeDeleteDoc(ref);
+      if (kind === "ratking"){
         let dropped = 0;
         for (let dy=-2; dy<=2 && dropped<5; dy++) for (let dx=-2; dx<=2 && dropped<5; dx++){
-          const nx = enemy.x + dx;
-          const ny = enemy.y + dy;
+          const nx = enemy.x + dx, ny = enemy.y + dy;
           if (nx<0||ny<0||nx>=gridSize||ny>=gridSize) continue;
           if (!tryPlaceCheesePickupAt(nx, ny, ENEMY_CHEESE_DROP_TTL_MS)) continue;
           dropped++;
         }
       }
-      else if (enemy.kind === "vulture") await runtimeDeleteDoc(ccRef(ID.vulture(enemy.id)));
     } else {
-      if (enemy.kind === "rat") await runtimeUpdateDoc(ccRef(ID.rat(enemy.id)), { health: enemy.health, slowedUntil: enemy.slowedUntil || 0 });
-      else if (enemy.kind === "ox") await runtimeUpdateDoc(ccRef(ID.ox(enemy.id)), { health: enemy.health, slowedUntil: enemy.slowedUntil || 0 });
-      else if (enemy.kind === "ratking") await runtimeUpdateDoc(ccRef(ID.ratKing(enemy.id)), { health: enemy.health, updatedAt: Date.now() });
-      else if (enemy.kind === "vulture") await runtimeUpdateDoc(ccRef(ID.vulture(enemy.id)), { health: enemy.health, updatedAt: Date.now() });
+      await runtimeUpdateDoc(ref, { health:enemy.health, slowedUntil:enemy.slowedUntil || 0, trappedUntil:enemy.trappedUntil || 0, updatedAt:Date.now() });
     }
   }
 
   function nearestEnemyFrom(x, y, range = 6){
     const radiusCells = Number.isFinite(range) ? Math.max(1, Math.ceil(range / SPATIAL_CELL_SIZE)) : 20;
-    const nearby = entitySpatialIndex.query(x, y, radiusCells).filter(e => e.entityType === "enemy" && (e.health ?? 1) > 0);
+    const nearby = entitySpatialIndex.query(x, y, radiusCells).filter(e => e.entityType === "enemy" && isLivingEnemy(e) && enemyRegistryEntry(e.kind)?.targetable);
     let best = null;
     for (const e of nearby){
       const d = Math.abs(e.x - x) + Math.abs(e.y - y);
       if (d > range) continue;
-      if (!best || d < best.d) best = { kind: e.kind === "stinkrat" ? "rat" : e.kind, enemy: e, d };
+      if (!best || d < best.d) best = { kind: normalizeEnemyKind(e.kind), enemy: e, d };
     }
     if (catHealth > 0){
       const d = Math.abs(catPos.x - x) + Math.abs(catPos.y - y);
@@ -5957,17 +5883,23 @@
     for (const s of getAllStructures()){
         const x = s.x, y = s.y, sym = s.type;
         if (sym === "🛡️"){
-          for (let ty=0; ty<gridSize; ty++) for (let tx=0; tx<gridSize; tx++){
-            const k = `${tx}_${ty}`;
-            if (!structureHealth[k]) continue;
-            const d = Math.abs(tx-x)+Math.abs(ty-y);
-            if (d<=2){
-              const prev = structureShields[k]||0;
-              const next = Math.min(125, prev+4);
-              if (next !== prev){
-                structureShields[k] = next;
-                await runtimeUpdateDoc(ccRef(ID.structure(tx,ty)), { shield: next, updatedAt: Date.now() });
-              }
+          const now = Date.now();
+          const shieldTowers = getStructuresByType("🛡️");
+          for (const st of getAllStructures()){
+            const tx = st.x, ty = st.y, k = `${tx}_${ty}`;
+            const maxHp = STRUCTURE_MAX_HP[grid[ty]?.[tx]] || structureHealth[k] || 25;
+            const supports = shieldTowers.filter(sh => Math.abs(sh.x-tx)+Math.abs(sh.y-ty) <= 3);
+            if (!supports.length) continue;
+            const maxShield = Math.max(10, Math.ceil(maxHp * 0.40));
+            const current = Math.min(maxShield, structureShields[k] || 0);
+            const brokenAt = structureShieldBrokenAt?.[k] || 0;
+            if (current <= 0 && brokenAt && now - brokenAt < 3000) continue;
+            const overlapBonus = Math.min(0.5, Math.max(0, supports.length - 1) * 0.25);
+            const next = Math.min(maxShield, current + Math.max(1, Math.ceil(maxShield * 0.15 * (1 + overlapBonus) * 2)));
+            if (Math.abs(next - current) >= 1){
+              structureShields[k] = next;
+              await runtimeUpdateDoc(ccRef(ID.structure(tx,ty)), { shield:next, maxShield, shieldBrokenAt: current <= 0 ? 0 : brokenAt, updatedAt:now });
+              addCombatVfx(tx, ty, "🛡️", "vfx-pop", 350, 12);
             }
           }
         }
@@ -5982,10 +5914,9 @@
             let cx=x+dx, cy=y+dy;
             while (cx>=0&&cy>=0&&cx<gridSize&&cy<gridSize){
               if (rabbitShots.length < MAX_PROJECTILES) rabbitShots.push({createdAt:Date.now(),x:cx,y:cy});
-              for (const r of rats){ if (r.x===cx && r.y===cy && (r.health??0)>0){ await damageEnemyUnit({...r,kind:"rat"}, 18); } }
-              for (const o of oxen){ if (o.x===cx && o.y===cy && (o.health??0)>0){ await damageEnemyUnit({...o,kind:"ox"}, 18); } }
-              for (const k of ratKings){ if (k.x===cx && k.y===cy && (k.health??0)>0){ await damageEnemyUnit({...k,kind:"ratking"}, 18); } }
-              for (const v of vultures){ if (v.x===cx && v.y===cy && (v.health??0)>0){ await damageEnemyUnit({...v,kind:"vulture"}, 18); } }
+              for (const unit of listCombatEnemies()){
+                if (unit.enemy.x===cx && unit.enemy.y===cy) await damageEnemyUnit({...unit.enemy, kind:unit.kind}, 18);
+              }
               if (catPos.x===cx&&catPos.y===cy){ catHealth -= 18; await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() }); }
               cx += dx; cy += dy;
             }
@@ -5998,7 +5929,7 @@
             const hit = [];
             if (first.kind==="cat") hit.push({kind:"cat",x:catPos.x,y:catPos.y});
             else hit.push({kind:first.kind,enemy:first.enemy,x:first.enemy.x,y:first.enemy.y});
-            const pool=[...rats.map(r=>({kind:"rat",enemy:r,x:r.x,y:r.y})),...oxen.map(o=>({kind:"ox",enemy:o,x:o.x,y:o.y})),...ratKings.map(k=>({kind:"ratking",enemy:k,x:k.x,y:k.y})),...vultures.map(v=>({kind:"vulture",enemy:v,x:v.x,y:v.y})),{kind:"cat",x:catPos.x,y:catPos.y}];
+            const pool=[...listCombatEnemies().map(u=>({kind:u.kind,enemy:u.enemy,x:u.enemy.x,y:u.enemy.y})),{kind:"cat",x:catPos.x,y:catPos.y}];
             for (const h of [...hit]){
               const next=pool.filter(p=>!hit.some(q=>q.x===p.x&&q.y===p.y)).sort((a,b)=>(Math.abs(a.x-h.x)+Math.abs(a.y-h.y))-(Math.abs(b.x-h.x)+Math.abs(b.y-h.y)))[0];
               if (next && (Math.abs(next.x-h.x)+Math.abs(next.y-h.y)<=3)) hit.push(next);
@@ -6009,9 +5940,16 @@
           }
         }
         if (sym === "🟢"){
-          for (const r of rats){ const d=Math.abs(r.x-x)+Math.abs(r.y-y); if (d<=6){ r.slowedUntil = Date.now()+3500; await runtimeUpdateDoc(ccRef(ID.rat(r.id)), { slowedUntil:r.slowedUntil, updatedAt:Date.now() }); } }
-          for (const o of oxen){ const d=Math.abs(o.x-x)+Math.abs(o.y-y); if (d<=6){ o.slowedUntil = Date.now()+3500; await runtimeUpdateDoc(ccRef(ID.ox(o.id)), { slowedUntil:o.slowedUntil, updatedAt:Date.now() }); } }
-          for (const k of ratKings){ const d=Math.abs(k.x-x)+Math.abs(k.y-y); if (d<=6){ k.slowedUntil = Date.now()+3500; await runtimeUpdateDoc(ccRef(ID.ratKing(k.id)), { slowedUntil:k.slowedUntil, updatedAt:Date.now() }); } }
+          for (const unit of listCombatEnemies()){
+            const d=Math.abs(unit.enemy.x-x)+Math.abs(unit.enemy.y-y);
+            if (d<=6){
+              const boss = enemyRegistryEntry(unit.kind)?.category === "boss";
+              unit.enemy.slowedUntil = Date.now() + (boss ? 2200 : 3500);
+              const ref = enemyDocRef(unit.kind, unit.enemy.id, unit.enemy);
+              if (ref) await runtimeUpdateDoc(ref, { slowedUntil:unit.enemy.slowedUntil, slowMultiplier: boss ? 0.85 : 0.55, updatedAt:Date.now() });
+              addCombatVfx(unit.enemy.x, unit.enemy.y, "🟢", "vfx-pop", 500, 14);
+            }
+          }
         }
         if (sym === "🌰" && Date.now() - lastAcornShotAt >= 10000){
           if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
@@ -6027,7 +5965,7 @@
             await runtimeUpdateDoc(ccRef(ID.STATE), { cat:{x:catPos.x,y:catPos.y,health:catHealth}, updatedAt:Date.now() });
           }
         }
-        if (sym === "🕸️" && Date.now() - lastWebShotAt >= 30000){
+        if (sym === "🕸️" && Date.now() - lastWebShotAt >= (BUILD_DEFS[19].cooldownMs || 9000)){
           if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
           const target = nearestEnemyFrom(x,y,6);
           if (target){
@@ -6035,22 +5973,29 @@
               catWebTrappedUntil = Date.now() + 3000;
               addCombatVfx(catPos.x, catPos.y, "🕸️", "vfx-pop", 700, 16);
             } else if (target.enemy?.id){
-              const until = Date.now() + 3000;
+              const boss = ["ox","ratking"].includes(target.kind);
+              const until = Date.now() + (boss ? 1500 : 3000);
               target.enemy.trappedUntil = until;
-              const docFn = target.kind==="rat"?ID.rat:target.kind==="ox"?ID.ox:target.kind==="ratking"?ID.ratKing:ID.vulture;
-              await runtimeUpdateDoc(ccRef(docFn(target.enemy.id)), { trappedUntil: until, updatedAt: Date.now() });
-              addCombatVfx(target.enemy.x, target.enemy.y, "🕸️", "vfx-pop", 700, 16);
+              target.enemy.slowedUntil = until + 3000;
+              const ref = enemyDocRef(target.kind, target.enemy.id, target.enemy);
+              if (ref) await runtimeUpdateDoc(ref, { trappedUntil: until, slowedUntil: target.enemy.slowedUntil, slowMultiplier: boss ? 0.75 : 0.5, updatedAt: Date.now() });
+              addCombatVfx(x, y, "◌", "vfx-pop", 350, 12);
+              addCombatVfx(target.enemy.x, target.enemy.y, "🕸️", "vfx-pop", 900, 18);
             }
             lastWebShotAt = Date.now();
           }
         }
         if (sym === "🪭" && Date.now() - lastFanBurstAt >= 3000){
           if (isTowerSilenced(x, y) || isTowerDisabledByStink(x, y)) continue;
+          const fanTarget = nearestEnemyFrom(x, y, BUILD_DEFS[18].range || 6);
+          if (!fanTarget || fanTarget.kind === "cat") continue;
           const beaconBoost = isWithinBeaconAura(x, y, 2) ? 2 : 0;
           const burstCount = 2 + beaconBoost;
-          const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1]];
+          const primaryDx = Math.sign(fanTarget.enemy.x - x) || 1;
+          const primaryDy = Math.sign(fanTarget.enemy.y - y) || 0;
+          const dirs = [[primaryDx,primaryDy],[primaryDx,0],[0,primaryDy],[primaryDx,primaryDy === 0 ? 1 : 0],[primaryDx,primaryDy === 0 ? -1 : primaryDy]];
           for (let i=0; i<burstCount; i++){
-            const [dx,dy] = dirs[(i + Math.floor(Math.random()*dirs.length)) % dirs.length];
+            const [dx,dy] = dirs[i % dirs.length];
             let wx=x, wy=y;
             for (let step=0; step<5; step++){
               wx += dx + (Math.random()<0.25 ? (Math.floor(Math.random()*3)-1) : 0);
@@ -6062,9 +6007,13 @@
               for (const unit of listCombatEnemies()){
                 if (unit.enemy.x===wx && unit.enemy.y===wy){
                   await damageEnemyUnit({ ...unit.enemy, kind: unit.kind }, 3);
-                  const pushed = randomPushDestination(x, y, unit.enemy.x, unit.enemy.y, 1, 2);
-                  const docFn = unit.kind==="rat"?ID.rat:unit.kind==="ox"?ID.ox:unit.kind==="ratking"?ID.ratKing:ID.vulture;
-                  await runtimeUpdateDoc(ccRef(docFn(unit.enemy.id)), { x:pushed.x, y:pushed.y, updatedAt:Date.now() });
+                  const ref = enemyDocRef(unit.kind, unit.enemy.id, unit.enemy);
+                  const cat = enemyRegistryEntry(unit.kind)?.category;
+                  const maxPush = cat === "flying" ? 3 : cat === "boss" ? 1 : 2;
+                  const pushed = randomPushDestination(x, y, unit.enemy.x, unit.enemy.y, 1, maxPush);
+                  const slowMs = cat === "boss" ? 1200 : 1500;
+                  if (ref) await runtimeUpdateDoc(ref, { x:pushed.x, y:pushed.y, slowedUntil:Date.now()+slowMs, slowMultiplier:cat === "boss" ? 0.88 : 0.8, updatedAt:Date.now() });
+                  addCombatVfx(unit.enemy.x, unit.enemy.y, "💨", "vfx-pop", 550, 15);
                 }
               }
             }
@@ -7498,12 +7447,11 @@
 
         const beaconBonus = getStructuresByType("🗼").filter(b => Math.abs(b.x - x) <= 2 && Math.abs(b.y - y) <= 2).length;
         const requestedSpawns = Math.min(3, 1 + beaconBonus);
-        const fleaSlots = Math.max(0, ENEMY_CAPS.fleas - getActiveEnemyCount("fleas"));
-        const totalSlots = Math.max(0, ENEMY_CAPS.totalEnemies - getActiveEnemyCount());
-        const spawnBudget = Math.min(requestedSpawns, fleaSlots, totalSlots);
+        const fleaReservation = reserveEnemySpawnSlots("flea", requestedSpawns);
+        const spawnBudget = fleaReservation.count;
 
         if (spawnBudget <= 0){
-          if (cameraDebug && (fleaSlots <= 0 || totalSlots <= 0)) console.debug("[fleaNestAttackTick] cap reached");
+          if (cameraDebug) console.debug("[fleaNestAttackTick] cap reached");
           continue;
         }
 
@@ -7535,6 +7483,7 @@
           addCombatVfx(fx, fy, "✦", "vfx-pop", 350, 12);
           spawned++;
         }
+        releaseEnemySpawnReservations(fleaReservation);
         if (spawned > 0){
           addCombatVfx(x, y, "🐞", "vfx-pop", 500, 14);
           triggerNestFiringVfx(x, y);
@@ -7557,11 +7506,9 @@
       const centerX = Math.floor(gridSize/2);
       const centerY = Math.floor(gridSize/2);
       const numToSpawn = Math.ceil(catPower/2);
-      if (getActiveEnemyCount("termites") >= ENEMY_CAPS.termites) { nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS; return; }
-      if (getActiveEnemyCount() >= ENEMY_CAPS.totalEnemies) { nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS; return; }
-      const termiteSlots = Math.max(0, ENEMY_CAPS.termites - getActiveEnemyCount("termites"));
-      const totalSlots = Math.max(0, ENEMY_CAPS.totalEnemies - getActiveEnemyCount());
-      const termitesToSpawn = Math.min(numToSpawn, termiteSlots, totalSlots);
+      const termiteReservation = reserveEnemySpawnSlots("termite", numToSpawn);
+      const termitesToSpawn = termiteReservation.count;
+      if (termitesToSpawn <= 0) { nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS; return; }
 
       let spawned = 0;
       for (let i=0; i<TERMITE_SPAWN_OFFSETS.length && spawned<termitesToSpawn; i++){
@@ -7580,6 +7527,7 @@
         }, { merge:true });
         spawned++;
       }
+      releaseEnemySpawnReservations(termiteReservation);
       nextTermiteSpawnAt = Date.now() + TERMITE_SPAWN_INTERVAL_MS;
     }, TERMITE_SPAWN_INTERVAL_MS);
 
@@ -7592,13 +7540,13 @@
       if (!canRunHostSimulation() || catPower < 25) return;
       const desired = Math.min(6, 1 + Math.floor((catPower - 25) / 6));
       const living = vultures.filter(v => (v.health ?? 0) > 0).length;
-      const cappedDesired = Math.min(desired, ENEMY_CAPS.vultures);
+      const cappedDesired = Math.min(desired, getEnemyCaps().vulture);
       const toSpawn = Math.max(0, cappedDesired - living);
-      const totalSlots = Math.max(0, ENEMY_CAPS.totalEnemies - getActiveEnemyCount());
-      const vulturesToSpawn = Math.min(toSpawn, totalSlots);
+      const vultureReservation = reserveEnemySpawnSlots("vulture", toSpawn);
+      const vulturesToSpawn = vultureReservation.count;
       if (vulturesToSpawn <= 0) return;
 
-      for (let i=0; i<vulturesToSpawn; i++){
+      try { for (let i=0; i<vulturesToSpawn; i++){
         const vx = Math.max(0, Math.min(gridSize-1, catPos.x + (Math.floor(Math.random()*7)-3)));
         const vy = Math.max(0, Math.min(gridSize-1, catPos.y + (Math.floor(Math.random()*7)-3)));
         const id = `vulture_${crypto.randomUUID()}`;
@@ -7607,10 +7555,10 @@
           id,
           x: vx,
           y: vy,
-          health: ratPower * 20,
+          ...scaleEnemyStats(ratPower * 20, 3),
           createdAt: Date.now()
         }, { merge:true });
-      }
+      } } finally { releaseEnemySpawnReservations(vultureReservation); }
     }, 8000);
 
     // enemy sim ticks
