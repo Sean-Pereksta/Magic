@@ -463,6 +463,8 @@ let renderBoundsCache = new Map();
 let renderPieceLookup = null;
 let renderPlayerVision = null;
 let renderingFrame = false;
+const renderScratch = {pieces:[], actors:[], labelIds:new Set()};
+let currentRenderState = null;
 let frameAbilityTargets = null;
 let frameAbilityTargetMap = null;
 let frameAttackTargetKeys = new Set();
@@ -471,6 +473,79 @@ let piecePanelExpanded = false;
 let lastPiecePanelSignature = '';
 let lastPiecePanelId = null;
 let spawnHighlightCache = {key:'',expires:0,tiles:[]};
+
+const BOARD_CHUNK_SIZE = 8;
+const BOARD_CHUNK_PAD_TILES = 1;
+const boardChunkCache = {w:0,h:0,boardRef:null,chunks:new Map(),visibleKey:'',visible:[]};
+function chunkKey(cx,cy){ return cx+','+cy; }
+function resetBoardChunkCache(){ boardChunkCache.w=0; boardChunkCache.h=0; boardChunkCache.boardRef=null; boardChunkCache.chunks.clear(); boardChunkCache.visibleKey=''; boardChunkCache.visible=[]; }
+function getBoardChunk(cx,cy){
+  const k=chunkKey(cx,cy); let ch=boardChunkCache.chunks.get(k);
+  if(!ch){
+    const pad=BOARD_CHUNK_PAD_TILES*BASE_CELL, size=BOARD_CHUNK_SIZE*BASE_CELL+pad*2;
+    ch={cx,cy,key:k,x0:cx*BOARD_CHUNK_SIZE,y0:cy*BOARD_CHUNK_SIZE,pad,terrain:makeRenderCanvas(size,size),territory:makeRenderCanvas(size,size),terrainDirty:true,territoryDirty:true,revision:-1};
+    boardChunkCache.chunks.set(k,ch);
+  }
+  return ch;
+}
+function markTileChunkDirty(x,y,terrain=false){
+  if(!Number.isFinite(x)||!Number.isFinite(y)) return;
+  const cx=Math.floor(x/BOARD_CHUNK_SIZE), cy=Math.floor(y/BOARD_CHUNK_SIZE);
+  for(let yy=cy-1; yy<=cy+1; yy++) for(let xx=cx-1; xx<=cx+1; xx++){
+    if(xx<0||yy<0||xx*BOARD_CHUNK_SIZE>=BOARD_W||yy*BOARD_CHUNK_SIZE>=BOARD_H) continue;
+    const ch=getBoardChunk(xx,yy); ch.territoryDirty=true; if(terrain) ch.terrainDirty=true;
+  }
+}
+function markAllChunksDirty(terrain=true){ resetBoardChunkCache(); }
+function ensureChunkGrid(){
+  if(boardChunkCache.boardRef===board && boardChunkCache.w===BOARD_W && boardChunkCache.h===BOARD_H) return;
+  resetBoardChunkCache(); boardChunkCache.boardRef=board; boardChunkCache.w=BOARD_W; boardChunkCache.h=BOARD_H;
+  const cols=Math.ceil(BOARD_W/BOARD_CHUNK_SIZE), rows=Math.ceil(BOARD_H/BOARD_CHUNK_SIZE);
+  for(let cy=0; cy<rows; cy++) for(let cx=0; cx<cols; cx++) getBoardChunk(cx,cy);
+}
+function drawTileTerrainTo(g,t,detailedTerrain){
+  const x=t.x,y=t.y,sx=x*BASE_CELL,sy=y*BASE_CELL,td=terrainOf(t);
+  const alt=t.type==='water' ? td.color : ((x+y)%2 ? td.alt : td.color);
+  g.fillStyle=alt; g.fillRect(sx,sy,BASE_CELL,BASE_CELL);
+  if(detailedTerrain && t.type!=='water'){
+    const n=seededNoise(x,y,707); g.globalAlpha=.13; g.fillStyle=n>.5?'#ffffff':'#000000'; g.beginPath();
+    g.arc(sx+BASE_CELL*(.25+seededNoise(x,y,1)*.5), sy+BASE_CELL*(.25+seededNoise(x,y,2)*.5), 5+seededNoise(x,y,3)*15, 0, Math.PI*2); g.fill(); g.globalAlpha=1;
+  }
+  if(t.type==='water'){ g.globalAlpha=.35; g.strokeStyle='#9ee6ff'; g.lineWidth=1.2; g.beginPath(); g.arc(sx+BASE_CELL*.5,sy+BASE_CELL*.5,BASE_CELL*.26,0,Math.PI*2); g.stroke(); g.globalAlpha=1; }
+  else if(t.type==='mountain'){ g.fillStyle='#69707f'; g.beginPath(); g.moveTo(sx+BASE_CELL*.5,sy+BASE_CELL*.16); g.lineTo(sx+BASE_CELL*.15,sy+BASE_CELL*.84); g.lineTo(sx+BASE_CELL*.85,sy+BASE_CELL*.84); g.closePath(); g.fill(); }
+  else if(t.type==='crystal'){ g.fillStyle='#b9c7ff'; g.beginPath(); g.moveTo(sx+BASE_CELL*.5,sy+BASE_CELL*.14); g.lineTo(sx+BASE_CELL*.72,sy+BASE_CELL*.72); g.lineTo(sx+BASE_CELL*.38,sy+BASE_CELL*.82); g.closePath(); g.fill(); }
+  else if(t.type==='road'){ g.globalAlpha=.62; g.strokeStyle='#bda76d'; g.lineWidth=BASE_CELL*.18; g.beginPath(); g.moveTo(sx,sy+BASE_CELL*.5); g.lineTo(sx+BASE_CELL,sy+BASE_CELL*.5); g.stroke(); g.globalAlpha=1; }
+  else if(t.type==='hill' || td.rough>0){ g.globalAlpha=.34; g.fillStyle='rgba(255,255,255,.5)'; g.beginPath(); g.ellipse(sx+BASE_CELL*.5,sy+BASE_CELL*.62,BASE_CELL*.24,BASE_CELL*.10,0,Math.PI,Math.PI*2); g.fill(); g.globalAlpha=1; }
+  else if(td.glyph){ g.globalAlpha=.35; g.font='18px serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillStyle='#e5edf8'; g.fillText(td.glyph,sx+BASE_CELL/2,sy+BASE_CELL/2); g.globalAlpha=1; }
+  if(t.type!=='water'){ g.strokeStyle='rgba(255,255,255,.045)'; g.lineWidth=1; g.strokeRect(sx+.5,sy+.5,BASE_CELL,BASE_CELL); }
+}
+
+function rebuildBoardChunk(ch,detailedTerrain){
+  const old=ctx;
+  const minX=Math.max(0,ch.x0-BOARD_CHUNK_PAD_TILES), minY=Math.max(0,ch.y0-BOARD_CHUNK_PAD_TILES);
+  const maxX=Math.min(BOARD_W-1,ch.x0+BOARD_CHUNK_SIZE+BOARD_CHUNK_PAD_TILES-1), maxY=Math.min(BOARD_H-1,ch.y0+BOARD_CHUNK_SIZE+BOARD_CHUNK_PAD_TILES-1);
+  if(ch.terrainDirty){
+    const g=ch.terrain.getContext('2d'); g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,ch.terrain.width,ch.terrain.height); g.translate(-(ch.x0*BASE_CELL-ch.pad),-(ch.y0*BASE_CELL-ch.pad));
+    for(let y=minY;y<=maxY;y++) for(let x=minX;x<=maxX;x++) drawTileTerrainTo(g,tile(x,y),detailedTerrain);
+    ch.terrainDirty=false;
+  }
+  if(ch.territoryDirty || ch.revision!==landRevision){
+    const g=ch.territory.getContext('2d'); g.setTransform(1,0,0,1,0,0); g.clearRect(0,0,ch.territory.width,ch.territory.height); g.translate(-(ch.x0*BASE_CELL-ch.pad),-(ch.y0*BASE_CELL-ch.pad));
+    for(let y=minY;y<=maxY;y++) for(let x=minX;x<=maxX;x++){
+      const t=tile(x,y); if(t.owner===null) continue; const f=factions[t.owner]; if(!f) continue; const sx=x*BASE_CELL,sy=y*BASE_CELL;
+      g.globalAlpha=t.owner===PLAYER?.22:.16; g.fillStyle=f.color; g.fillRect(sx+2,sy+2,BASE_CELL-4,BASE_CELL-4);
+      if(f.id==='iron' && t.captureKind==='iron_fortified'){ g.globalAlpha=.22; g.fillStyle='rgba(230,238,248,.9)'; g.fillRect(sx+8,sy+BASE_CELL*.30,BASE_CELL-16,3); g.fillRect(sx+8,sy+BASE_CELL*.62,BASE_CELL-16,3); }
+      g.beginPath(); if(!inBounds(x,y-1)||tile(x,y-1).owner!==t.owner){g.moveTo(sx,sy+1);g.lineTo(sx+BASE_CELL,sy+1);} if(!inBounds(x+1,y)||tile(x+1,y).owner!==t.owner){g.moveTo(sx+BASE_CELL-1,sy);g.lineTo(sx+BASE_CELL-1,sy+BASE_CELL);} if(!inBounds(x,y+1)||tile(x,y+1).owner!==t.owner){g.moveTo(sx,sy+BASE_CELL-1);g.lineTo(sx+BASE_CELL,sy+BASE_CELL-1);} if(!inBounds(x-1,y)||tile(x-1,y).owner!==t.owner){g.moveTo(sx+1,sy);g.lineTo(sx+1,sy+BASE_CELL);} g.globalAlpha=.48; g.strokeStyle='rgba(3,7,14,.95)'; g.lineWidth=5; g.stroke(); g.globalAlpha=.88; g.strokeStyle=f.color; g.lineWidth=2.2; g.stroke(); g.globalAlpha=1;
+    }
+    ch.territoryDirty=false; ch.revision=landRevision;
+  }
+}
+function visibleBoardChunks(){
+  ensureChunkGrid(); const b=visibleBoardBounds(4); const l=Math.max(0,Math.floor(b.left/BOARD_CHUNK_SIZE)), t=Math.max(0,Math.floor(b.top/BOARD_CHUNK_SIZE)), r=Math.min(Math.ceil(BOARD_W/BOARD_CHUNK_SIZE)-1,Math.floor(b.right/BOARD_CHUNK_SIZE)), bo=Math.min(Math.ceil(BOARD_H/BOARD_CHUNK_SIZE)-1,Math.floor(b.bottom/BOARD_CHUNK_SIZE));
+  const k=`${l},${t},${r},${bo},${Math.round(cam.x)},${Math.round(cam.y)},${Math.round(cam.zoom*100)}`; if(boardChunkCache.visibleKey===k) return boardChunkCache.visible;
+  const out=[]; for(let cy=t;cy<=bo;cy++) for(let cx=l;cx<=r;cx++) out.push(getBoardChunk(cx,cy)); boardChunkCache.visibleKey=k; boardChunkCache.visible=out; return out;
+}
+
 const minimapBaseCanvas = document.createElement('canvas');
 const minimapBaseCtx = minimapBaseCanvas.getContext('2d');
 let minimapBaseState = {boardRef:null,revision:-1,width:0,height:0};
@@ -892,7 +967,16 @@ function invalidateSupplyDistanceCache(){
   specialSpawnTileCache = null;
   supplyDistanceCache.clear();
 }
+
+function markLandTileDirty(x,y){
+  markTileChunkDirty(x,y,false);
+  invalidateSimulation('land');
+  invalidatePlayerVision('land');
+  invalidateSupplyDistanceCache();
+  if(gameStarted && !applyingRemote){ landDirty = true; stateDirty = true; }
+}
 function markLandDirty(){
+  markAllChunksDirty(false);
   invalidateSimulation('land');
   invalidatePlayerVision('land');
   invalidateSupplyDistanceCache();
@@ -3187,7 +3271,7 @@ let solarChannelLinks = [];
 let solarAttackLinks = [];
 let lastSolarChannelStateMark = 0;
 const PERF_DEBUG = params.get('perf') === '1';
-const perfStats = {frames:[], boardScans:0, pieceScans:0, solarUpdates:0, spawnUpdates:0, lastReport:0};
+const perfStats = {frames:[], boardScans:0, pieceScans:0, solarUpdates:0, spawnUpdates:0, lastReport:0, frame:null, warnings:[], lastBoardScans:0, lastPieceScans:0};
 let spawnEconomyAccumulator = 0;
 let localSpawnEconomyAccumulator = 0;
 let solarBeaconAccumulator = 0;
@@ -3197,8 +3281,61 @@ let pieceStatsDirty = true;
 let pieceStatsCache = null;
 let specialSpawnTileCache = null;
 let specialSpawnAssertCounter = 0;
+let specialLandFactionCursor = 0;
+const timedTerritoryKeysByFaction = new Map();
+function territorySetKey(faction,kind){ return faction+'|'+kind; }
+function rememberTimedTerritoryTile(faction,kind,x,y){ if(!kind) return; const k=territorySetKey(faction,kind); let set=timedTerritoryKeysByFaction.get(k); if(!set){ set=new Set(); timedTerritoryKeysByFaction.set(k,set); } set.add(key(x,y)); }
+function forgetTimedTerritoryTile(faction,kind,x,y){ const set=timedTerritoryKeysByFaction.get(territorySetKey(faction,kind)); if(set) set.delete(key(x,y)); }
+function timedTerritorySet(faction,kind){ return timedTerritoryKeysByFaction.get(territorySetKey(faction,kind)) || new Set(); }
+
+function perfStartFrame(){
+  if(!PERF_DEBUG) return null;
+  return perfStats.frame={start:performance.now(), marks:new Map(), counts:{visiblePieces:0,renderedPieces:0,visibleChunks:0,dirtyChunks:0,filters:0,shadowBlur:0}};
+}
+function perfTime(label,fn){
+  if(!PERF_DEBUG) return fn();
+  const a=performance.now();
+  try{return fn();} finally { const f=perfStats.frame; if(f) f.marks.set(label,(f.marks.get(label)||0)+performance.now()-a); }
+}
+function perfCount(name,n=1){ if(PERF_DEBUG && perfStats.frame?.counts) perfStats.frame.counts[name]=(perfStats.frame.counts[name]||0)+n; }
+function perfWarn(msg){ if(PERF_DEBUG) perfStats.warnings.push(msg); }
+function perfEndFrame(){
+  if(!PERF_DEBUG || !perfStats.frame) return;
+  const total=performance.now()-perfStats.frame.start;
+  if(total>33) perfWarn(`frame ${total.toFixed(1)}ms`);
+  const boardDelta=perfStats.boardScans-perfStats.lastBoardScans, pieceDelta=perfStats.pieceScans-perfStats.lastPieceScans;
+  if(boardDelta) perfWarn(`full board scans this frame: ${boardDelta}`);
+  if(pieceDelta && renderingFrame) perfWarn(`full piece scans during render: ${pieceDelta}`);
+  perfStats.lastBoardScans=perfStats.boardScans; perfStats.lastPieceScans=perfStats.pieceScans;
+  perfStats.frames.push({total, marks:Object.fromEntries(perfStats.frame.marks), counts:{...perfStats.frame.counts}, warnings:perfStats.warnings.splice(-5)});
+  if(perfStats.frames.length>90) perfStats.frames.shift();
+  perfStats.frame=null;
+}
+
 function countBoardScan(){ if(PERF_DEBUG) perfStats.boardScans++; }
 function countPieceScan(){ if(PERF_DEBUG) perfStats.pieceScans++; }
+
+function makeRenderCanvas(w,h){
+  if(typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(Math.max(1,Math.ceil(w)),Math.max(1,Math.ceil(h)));
+  const c=document.createElement('canvas'); c.width=Math.max(1,Math.ceil(w)); c.height=Math.max(1,Math.ceil(h)); return c;
+}
+const spriteVariantCache = new Map();
+const fallbackPieceCache = new Map();
+function spriteVariantKey(factionId,type,state,tier){ return `${factionId}|${type}|${state}|${tier}`; }
+function getCachedSpriteVariant(factionId,type,graphic,state='ready',tier=2){
+  if(!graphic) return null;
+  const k=spriteVariantKey(factionId,type,state,tier);
+  const cached=spriteVariantCache.get(k);
+  if(cached && cached.source===graphic) return cached.canvas;
+  const c=makeRenderCanvas(graphic.width, graphic.height), g=c.getContext('2d');
+  g.imageSmoothingEnabled=true;
+  g.filter = state==='cooling' ? 'brightness(.80) saturate(.74)' : (state==='ready' ? 'brightness(1.07) saturate(1.05)' : 'none');
+  g.drawImage(graphic,0,0);
+  g.filter='none';
+  spriteVariantCache.set(k,{source:graphic,canvas:c});
+  return c;
+}
+function getFallbackPieceLayer(f,def,p,r,state='ready'){ return null; }
 function markPieceStatsDirty(){ pieceStatsDirty = true; }
 function factionConfigSignature(){ return factions.map(f=>`${f?.idx}:${f?.id}:${f?.baseId||''}`).join('|'); }
 function emptyFactionArray(){ return factions.map(()=>0); }
@@ -4087,8 +4224,9 @@ function claimTile(faction,x,y,glow=.35,captureKind='normal'){
   if(!inBounds(x,y)) return false;
   const t=tile(x,y);
   const nextKind = captureKind || t.captureKind || 'normal';
+  const oldOwner=t.owner, oldKind=t.captureKind;
   if(t.owner!==faction){
-    markLandDirty();
+    if(oldOwner!=null) forgetTimedTerritoryTile(oldOwner,oldKind,x,y);
     t.lastOwner=t.owner;
     t.owner=faction;
     t.captureKind=nextKind;
@@ -4096,9 +4234,11 @@ function claimTile(faction,x,y,glow=.35,captureKind='normal'){
     t.markTime=now();
     // No capture flash: the ownership color/border is the visual feedback.
     t.glow=0;
+    if(['verdant_root','verdant_seed','ember_kill','tide_flow','iron_fortified'].includes(nextKind)) rememberTimedTerritoryTile(faction,nextKind,x,y);
+    markLandTileDirty(x,y);
     return true;
   } else {
-    if(nextKind && t.captureKind!==nextKind){ t.captureKind = nextKind; markLandDirty(); }
+    if(nextKind && t.captureKind!==nextKind){ forgetTimedTerritoryTile(faction,t.captureKind,x,y); t.captureKind = nextKind; if(['verdant_root','verdant_seed','ember_kill','tide_flow','iron_fortified'].includes(nextKind)) rememberTimedTerritoryTile(faction,nextKind,x,y); markLandTileDirty(x,y); }
     t.verdantFade=0;
     t.glow=0;
   }
@@ -6664,7 +6804,7 @@ function gameTick(dt){
       spawnEconomyAccumulator = 0;
       updateSpawns(spawnDt);
     }
-    aiTick(dt); updateSpecialLandRules(dt); maybeWriteControllerState();
+    perfTime('aiTick',()=>aiTick(dt)); updateSpecialLandRules(dt); maybeWriteControllerState();
   } else {
     localSpawnEconomyAccumulator += dt;
     if(localSpawnEconomyAccumulator >= SPAWN_ECONOMY_STEP){
@@ -6695,33 +6835,38 @@ function updateSpecialLandRules(dt){
   specialLandTimer += dt;
   if(specialLandTimer < .65) return;
   const step = specialLandTimer; specialLandTimer = 0;
-  for(const f of factions){
-    if(!f.alive) continue;
-    updateTemporaryPieces(f);
-    if(f.id==='verdant') updateVerdantSpreadAndFade(f, step);
-    if(f.id==='ember') updateEmberScorchFade(f, step);
-    if(f.id==='iron' || f.id==='sunspire' || f.id==='crownward') updateCommandLand(f);
-    if(f.id==='shadow') updateShadowFactionAbilities(f, step);
-    if(f.id==='sunspire') updateSunspireFactionAbilities(f, step);
-    updateBuildingRules(f, step);
+  if(!factions.length) return;
+  let processed=0;
+  while(processed<factions.length){
+    const f=factions[specialLandFactionCursor % factions.length];
+    specialLandFactionCursor=(specialLandFactionCursor+1)%Math.max(1,factions.length);
+    processed++;
+    if(!f?.alive) continue;
+    perfTime('specialLandRules',()=>{
+      updateTemporaryPieces(f);
+      if(f.id==='verdant') updateVerdantSpreadAndFade(f, step);
+      if(f.id==='ember') updateEmberScorchFade(f, step);
+      if(f.id==='iron' || f.id==='sunspire' || f.id==='crownward') updateCommandLand(f);
+      if(f.id==='shadow') updateShadowFactionAbilities(f, step);
+      if(f.id==='sunspire') updateSunspireFactionAbilities(f, step);
+      updateBuildingRules(f, step);
+    });
+    break;
   }
 }
+
 function chooseGuardianShieldTarget(bishop){
-  const allies = pieces.filter(p=>p.alive && p.faction===bishop.faction && p.id!==bishop.id && !pieceDefs[p.type]?.building && !pieceHasOrbShield(p));
-  allies.sort((a,b)=>{
-    const aThreat = enemyNear(a.x,a.y,a.faction,2) ? 8 : 0;
-    const bThreat = enemyNear(b.x,b.y,b.faction,2) ? 8 : 0;
-    const aScore = aThreat + (pieceDefs[a.type]?.value || 1) - dist2(a.x,a.y,bishop.x,bishop.y)*.08;
-    const bScore = bThreat + (pieceDefs[b.type]?.value || 1) - dist2(b.x,b.y,bishop.x,bishop.y)*.08;
-    return bScore - aScore;
-  });
-  return allies[0] || null;
+  const allies=(alivePiecesByFaction[bishop.faction] || []).filter(p=>p.alive && p.id!==bishop.id && !pieceDefs[p.type]?.building && !pieceHasOrbShield(p));
+  const scored=allies.map(a=>({a,score:(enemyNear(a.x,a.y,a.faction,2)?8:0) + (pieceDefs[a.type]?.value || 1) - dist2(a.x,a.y,bishop.x,bishop.y)*.08}));
+  scored.sort((x,y)=>y.score-x.score);
+  return scored[0]?.a || null;
 }
+
 function updateSunspireFactionAbilities(f, step){
   // Human Sunspire bishops are fully player-directed. AI warlords still choose their own guardian targets.
   if(isHumanSlot(f.idx)) return;
   const tNow=now();
-  for(const p of pieces){
+  for(const p of (alivePiecesByFaction[f.idx] || [])){
     if(!p.alive || p.faction!==f.idx || !isGuardianBishop(p) || tNow < (p.guardReadyAt || 0)) continue;
     const target=chooseGuardianShieldTarget(p);
     if(target && dist2(target.x,target.y,p.x,p.y)<=49) applyGuardianShieldAbility(p,target,'ai');
@@ -6731,16 +6876,16 @@ function updateShadowFactionAbilities(f, step){
   // Human Shade Pawns mark only when their owner taps an orange target. AI warlords retain autonomous marking.
   if(isHumanSlot(f.idx)) return;
   const tNow=now();
-  for(const p of pieces){
+  for(const p of (alivePiecesByFaction[f.idx] || [])){
     if(!p.alive || p.faction!==f.idx || !['shadepawn','umbralbishop'].includes(p.type) || tNow < (p.markReadyAt || 0)) continue;
-    const candidates=pieces.filter(q=>q.alive && q.faction!==p.faction && factions[q.faction]?.alive && canShadowMarkerMarkTarget(p,q)).map(q=>({q,cheb:Math.max(Math.abs(q.x-p.x),Math.abs(q.y-p.y))}));
+    const candidates=[]; for(const list of alivePiecesByFaction){ for(const q of (list||[])){ if(q.alive && q.faction!==p.faction && factions[q.faction]?.alive && canShadowMarkerMarkTarget(p,q)) candidates.push({q,cheb:Math.max(Math.abs(q.x-p.x),Math.abs(q.y-p.y))}); } }
     candidates.sort((a,b)=>((b.q.type==='king')-(a.q.type==='king')) || ((pieceDefs[b.q.type]?.value||1)-(pieceDefs[a.q.type]?.value||1)) || ((b.q.maxHp||1)-(a.q.maxHp||1)) || a.cheb-b.cheb);
     if(candidates[0]?.q) applyShadowMarkAbility(p,candidates[0].q,'ai');
   }
 }
 function updateTemporaryPieces(f){
   const tNow=now();
-  for(const p of pieces){
+  for(const p of (alivePiecesByFaction[f.idx] || [])){
     if(!p.alive || p.faction!==f.idx) continue;
     if(pieceDefs[p.type]?.temporary && p.heatUntil && tNow>=p.heatUntil){
       emitDestructionFx(p,'expired');
@@ -6783,46 +6928,48 @@ function updateCrownwardGeneralBanners(f,tNow){
   }
 }
 function updateVerdantSpreadAndFade(f,dt){
-  // The Verdant King is a living command node and automatically captures every passable tile up to two spaces away.
   const king=getPiece(f.kingId);
   if(king?.alive) claimRadius(f.idx,king.x,king.y,2,'verdant_seed',0,(t)=>terrainOf(t).pass);
-  // Other Verdant expansion remains node-led; ordinary troops do not paint a broad living-ground radius.
   const nodes=liveBuildings(f.idx,'seedgrove');
-  for(const node of nodes){
-    claimRadius(f.idx,node.x,node.y,VERDANT_NODE_SPREAD_RADIUS,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
-  }
-  for(const enemy of pieces){
-    if(!enemy.alive || enemy.faction===f.idx || !factions[enemy.faction]?.alive || isBuildingType(enemy.type)) continue;
-    const standing=inBounds(enemy.x,enemy.y) ? tile(enemy.x,enemy.y) : null;
-    if(!standing || standing.owner!==f.idx || !['verdant_root','verdant_seed'].includes(standing.captureKind)) continue;
-    const pruneRadius = VERDANT_PRUNE_RADIUS + ((pieceDefs[enemy.type]?.value || 1) >= 6 ? 1 : 0);
-    for(let yy=enemy.y-pruneRadius; yy<=enemy.y+pruneRadius; yy++) for(let xx=enemy.x-pruneRadius; xx<=enemy.x+pruneRadius; xx++){
-      if(!inBounds(xx,yy) || dist2(xx,yy,enemy.x,enemy.y)>pruneRadius*pruneRadius) continue;
-      const vt=tile(xx,yy);
-      if(vt.owner===f.idx && ['verdant_root','verdant_seed'].includes(vt.captureKind)){
-        vt.verdantFade=(vt.verdantFade||0)+dt*3.2;
+  for(const node of nodes) claimRadius(f.idx,node.x,node.y,VERDANT_NODE_SPREAD_RADIUS,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
+  for(const enemyList of alivePiecesByFaction){
+    for(const enemy of (enemyList || [])){
+      if(!enemy.alive || enemy.faction===f.idx || !factions[enemy.faction]?.alive || isBuildingType(enemy.type)) continue;
+      const standing=inBounds(enemy.x,enemy.y) ? tile(enemy.x,enemy.y) : null;
+      if(!standing || standing.owner!==f.idx || !['verdant_root','verdant_seed'].includes(standing.captureKind)) continue;
+      const pruneRadius = VERDANT_PRUNE_RADIUS + ((pieceDefs[enemy.type]?.value || 1) >= 6 ? 1 : 0);
+      for(let yy=enemy.y-pruneRadius; yy<=enemy.y+pruneRadius; yy++) for(let xx=enemy.x-pruneRadius; xx<=enemy.x+pruneRadius; xx++){
+        if(!inBounds(xx,yy) || dist2(xx,yy,enemy.x,enemy.y)>pruneRadius*pruneRadius) continue;
+        const vt=tile(xx,yy);
+        if(vt.owner===f.idx && ['verdant_root','verdant_seed'].includes(vt.captureKind)){ vt.verdantFade=(vt.verdantFade||0)+dt*3.2; markTileChunkDirty(xx,yy,false); }
       }
     }
   }
-  for(const t of normalizeBoard()){
-    if(t.owner!==f.idx) continue;
-    if(t.captureKind!=='verdant_root' && t.captureKind!=='verdant_seed') continue;
+  const active=new Set([...timedTerritorySet(f.idx,'verdant_root'),...timedTerritorySet(f.idx,'verdant_seed')]);
+  for(const k of active){
+    const [x,y]=k.split(',').map(Number); if(!inBounds(x,y)){ active.delete(k); continue; }
+    const t=tile(x,y);
+    if(t.owner!==f.idx || (t.captureKind!=='verdant_root' && t.captureKind!=='verdant_seed')){ forgetTimedTerritoryTile(f.idx,'verdant_root',x,y); forgetTimedTerritoryTile(f.idx,'verdant_seed',x,y); continue; }
     if(t.captureKind==='verdant_root' && nearestVerdantNodeWithin(t.x,t.y,f.idx,VERDANT_NODE_MAINTAIN_RADIUS)){ t.verdantFade=0; continue; }
-    t.verdantFade=(t.verdantFade||0)+dt;
-    t.glow=0;
-    if(t.verdantFade>=VERDANT_FADE_SECONDS){ t.owner=null; t.captureKind=null; t.verdantFade=0; t.glow=0; markLandDirty(); }
+    t.verdantFade=(t.verdantFade||0)+dt; t.glow=0;
+    if(t.verdantFade>=VERDANT_FADE_SECONDS){ forgetTimedTerritoryTile(f.idx,t.captureKind,x,y); t.owner=null; t.captureKind=null; t.verdantFade=0; t.glow=0; markLandTileDirty(x,y); }
+    else markTileChunkDirty(x,y,false);
   }
 }
+
 function updateEmberScorchFade(f,dt){
   const tNow=now();
-  for(const t of normalizeBoard()){
-    if(t.owner===f.idx && t.captureKind==='ember_kill' && tNow-(t.markTime||0)>=EMBER_SCORCH_SECONDS){
-      t.owner=null; t.captureKind=null; t.glow=0; markLandDirty();
-    }
+  const active=[...timedTerritorySet(f.idx,'ember_kill')];
+  for(const k of active){
+    const [x,y]=k.split(',').map(Number); if(!inBounds(x,y)){ timedTerritorySet(f.idx,'ember_kill').delete(k); continue; }
+    const t=tile(x,y);
+    if(t.owner!==f.idx || t.captureKind!=='ember_kill'){ forgetTimedTerritoryTile(f.idx,'ember_kill',x,y); continue; }
+    if(tNow-(t.markTime||0)>=EMBER_SCORCH_SECONDS){ forgetTimedTerritoryTile(f.idx,'ember_kill',x,y); t.owner=null; t.captureKind=null; t.glow=0; markLandTileDirty(x,y); }
   }
 }
+
 function updateCommandLand(f){
-  for(const p of pieces){
+  for(const p of (alivePiecesByFaction[f.idx] || [])){
     if(!p.alive || p.faction!==f.idx) continue;
     const def=pieceDefs[p.type];
 
@@ -7349,36 +7496,40 @@ function aiSpawn(f){
 }
 
 function draw(){
+  if(PERF_DEBUG && !perfStats.frame) perfStartFrame();
   renderFrameId++;
   renderBoundsCache.clear();
   frameAbilityTargets=null;
   frameAbilityTargetMap=null;
   frameAttackTargetKeys=new Set(selectedPiece ? legalMoves.filter(m=>m.capture && !m.wall).map(m=>key(m.x,m.y)) : []);
+  currentRenderState={time:now(), tier:visualQualityTier(), zoom:cam.zoom, zoomTier:cam.zoom<.55?'far':(cam.zoom<.82?'medium':'close'), playerFaction:PLAYER, selectedPieceId:selectedPiece?.id||0, kingInCheck, attackTargetKeys:frameAttackTargetKeys};
   prepareRenderLookups();
   renderingFrame=true;
-  drawBackground();
+  perfTime('background',()=>drawBackground());
   try{
     ctx.save();
     ctx.scale(cam.zoom,cam.zoom);
     ctx.translate(-cam.x/cam.zoom,-cam.y/cam.zoom);
     applyIsometricTransform(ctx);
-    drawBoard();
-    drawTerritoryEffects();
+    perfTime('staticTerrain',()=>drawBoard());
+    perfTime('territory',()=>drawTerritoryEffects());
     drawShrines();
     drawShadowFog();
     drawHighlights();
-    drawActors();
-    drawDestructionEffects();
+    perfTime('actorsTotal',()=>drawActors());
+    perfTime('effects',()=>drawDestructionEffects());
     drawSolarBeaconChannels();
     drawParticlesWorld();
     drawLocalActionEffects();
     ctx.restore();
     drawScreenEffects();
-    drawMinimap();
+    perfTime('minimap',()=>drawMinimap());
   } finally {
     renderingFrame=false;
     renderPieceLookup=null;
     renderPlayerVision=null;
+    currentRenderState=null;
+    perfEndFrame();
   }
 }
 function drawBackground(){
@@ -7397,53 +7548,19 @@ function drawBackground(){
   ctx.globalAlpha=1;
 }
 function drawBoard(){
+  const chunks=visibleBoardChunks();
   const {left,top,right,bottom}=visibleBoardBounds(3);
   const visibleTileCount=(right-left+1)*(bottom-top+1);
   const detailedTerrain=cam.zoom>=.66 && visibleTileCount<=720;
-  for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
-    for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
-      const t=tile(x,y), td=terrainOf(t);
-      const sx=x*BASE_CELL, sy=y*BASE_CELL;
-      const alt=t.type==='water' ? td.color : ((x+y)%2 ? td.alt : td.color);
-      ctx.fillStyle=alt;
-      ctx.fillRect(sx,sy,BASE_CELL,BASE_CELL);
-      // At distant zoom, micro-texture is smaller than a screen pixel. Use a lightweight terrain silhouette instead.
-      if(detailedTerrain && t.type!=='water'){
-        const n=seededNoise(x,y,707);
-        ctx.globalAlpha=.13;
-        ctx.fillStyle=n>.5?'#ffffff':'#000000';
-        ctx.beginPath();
-        ctx.arc(sx+BASE_CELL*(.25+seededNoise(x,y,1)*.5), sy+BASE_CELL*(.25+seededNoise(x,y,2)*.5), 5+seededNoise(x,y,3)*15, 0, Math.PI*2);
-        ctx.fill();
-        ctx.globalAlpha=1;
-      }
-      if(!detailedTerrain){
-        drawLowDetailTerrain(sx,sy,x,y,t.type,td);
-      } else if(t.type==='water'){
-        drawWaterTile(sx,sy,x,y);
-      } else if(t.type==='mountain'){
-        drawMountainTile(sx,sy,x,y);
-      } else if(['hill','crystal'].includes(t.type) || td.rough>0){
-        drawRoughTerrainTile(sx,sy,x,y,t.type);
-      } else if(t.type==='sand'){
-        drawSandTile(sx,sy,x,y);
-      } else if(t.type==='road'){
-        drawRoadTile(sx,sy,x,y);
-      } else if(td.glyph){
-        ctx.globalAlpha=.35;
-        ctx.font='18px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle='#e5edf8';
-        ctx.fillText(td.glyph,sx+BASE_CELL/2,sy+BASE_CELL/2);
-        ctx.globalAlpha=1;
-      }
-      if(detailedTerrain) drawTerrainLandmarks(sx,sy,x,y,t.type);
-      // Do not grid water internally: shorelines are drawn only around each body's exposed edge.
-      if(t.type!=='water'){
-        ctx.strokeStyle='rgba(255,255,255,.045)'; ctx.lineWidth=1;
-        ctx.strokeRect(sx+.5,sy+.5,BASE_CELL,BASE_CELL);
-      }
-    }
+  perfCount('visibleChunks', chunks.length);
+  for(const ch of chunks){
+    const wasDirty=ch.terrainDirty || ch.territoryDirty || ch.revision!==landRevision;
+    if(wasDirty) perfTime('dirtyChunkRebuild',()=>rebuildBoardChunk(ch,detailedTerrain));
+    if(wasDirty) perfCount('dirtyChunks');
+    ctx.drawImage(ch.terrain,ch.x0*BASE_CELL-ch.pad,ch.y0*BASE_CELL-ch.pad);
   }
 }
+
 function drawLowDetailTerrain(sx,sy,x,y,type,td){
   ctx.save();
   if(type==='water'){
@@ -7752,49 +7869,13 @@ function drawTerritoryDecal(t,sx,sy,f){
 }
 function drawTerritoryEffects(){
   if(!showTerritory) return;
-  const {left,top,right,bottom}=visibleBoardBounds(3);
-  for(let y=clamp(top,0,BOARD_H-1);y<=clamp(bottom,0,BOARD_H-1);y++){
-    for(let x=clamp(left,0,BOARD_W-1);x<=clamp(right,0,BOARD_W-1);x++){
-      const t=tile(x,y); if(t.owner===null) continue;
-      const f=factions[t.owner]; if(!f) continue;
-      const sx=x*BASE_CELL, sy=y*BASE_CELL;
-      ctx.globalAlpha = t.owner===PLAYER ? .22 : .16;
-      ctx.fillStyle=f.color; ctx.fillRect(sx+2,sy+2,BASE_CELL-4,BASE_CELL-4);
-      if(f.id==='iron' && t.captureKind==='iron_fortified'){
-        const pulse=.5+.5*Math.sin(now()*3+x*.7+y*.3);
-        ctx.globalAlpha=.18+.08*pulse;
-        ctx.fillStyle='rgba(230,238,248,.9)';
-        ctx.fillRect(sx+8,sy+BASE_CELL*.30,BASE_CELL-16,3);
-        ctx.fillRect(sx+8,sy+BASE_CELL*.62,BASE_CELL-16,3);
-        ctx.globalAlpha=.28+.10*pulse;
-        ctx.strokeStyle='rgba(210,222,238,.95)';
-        ctx.lineWidth=1.5;
-        ctx.beginPath();
-        ctx.moveTo(sx+BASE_CELL*.22,sy+BASE_CELL*.76);
-        ctx.lineTo(sx+BASE_CELL*.50,sy+BASE_CELL*.22);
-        ctx.lineTo(sx+BASE_CELL*.78,sy+BASE_CELL*.76);
-        ctx.stroke();
-        ctx.globalAlpha=.34;
-        ctx.fillStyle='rgba(255,255,255,.95)';
-        for(let i=0;i<3;i++){
-          ctx.beginPath();
-          ctx.arc(sx+BASE_CELL*(.28+i*.22),sy+BASE_CELL*.47,2.1,0,Math.PI*2);
-          ctx.fill();
-        }
-      }
-      drawTerritoryDecal(t,sx,sy,f);
-      // Strong double-layer ownership borders make front lines readable at every zoom level.
-      ctx.beginPath();
-      if(!inBounds(x,y-1)||tile(x,y-1).owner!==t.owner){ctx.moveTo(sx,sy+1);ctx.lineTo(sx+BASE_CELL,sy+1);}
-      if(!inBounds(x+1,y)||tile(x+1,y).owner!==t.owner){ctx.moveTo(sx+BASE_CELL-1,sy);ctx.lineTo(sx+BASE_CELL-1,sy+BASE_CELL);}
-      if(!inBounds(x,y+1)||tile(x,y+1).owner!==t.owner){ctx.moveTo(sx,sy+BASE_CELL-1);ctx.lineTo(sx+BASE_CELL,sy+BASE_CELL-1);}
-      if(!inBounds(x-1,y)||tile(x-1,y).owner!==t.owner){ctx.moveTo(sx+1,sy);ctx.lineTo(sx+1,sy+BASE_CELL);}
-      ctx.globalAlpha=.48; ctx.strokeStyle='rgba(3,7,14,.95)'; ctx.lineWidth=5; ctx.stroke();
-      ctx.globalAlpha=.88; ctx.strokeStyle=f.color; ctx.lineWidth=2.2; ctx.stroke();
-      ctx.globalAlpha=1;
-    }
+  const chunks=visibleBoardChunks();
+  for(const ch of chunks){
+    if(ch.territoryDirty || ch.revision!==landRevision) perfTime('dirtyChunkRebuild',()=>rebuildBoardChunk(ch,cam.zoom>=.66));
+    ctx.drawImage(ch.territory,ch.x0*BASE_CELL-ch.pad,ch.y0*BASE_CELL-ch.pad);
   }
 }
+
 function drawShadowFog(){
   const {left,top,right,bottom}=visibleBoardBounds(3);
   ctx.save();
@@ -8196,7 +8277,7 @@ function drawBuildingTimerRing(p,r){
   if(!p || !isBuildingType(p.type)) return;
   const next = p.nextBuildingTick || 0;
   const duration = Math.max(.1, buildingTimerDurationFor(p));
-  const remain = Math.max(0,next-now());
+  const remain = Math.max(0,next-(currentRenderState?.time ?? now()));
   const progress = next ? clamp(1-remain/duration,0,1) : 1;
   const f=factions[p.faction];
   const label=buildingTimerLabel(p);
@@ -8225,43 +8306,57 @@ function actorDepth(x,y){
 }
 function drawActors(){
   const {left,top,right,bottom}=visibleBoardBounds(3);
-  // Buildings and labels can extend beyond their tile, so keep a generous margin while avoiding work for distant armies.
   const piecePad=4;
-  const visiblePieces = pieces.filter(p=>{
-    if(!p.alive) return false;
-    const px=p.px ?? p.x, py=p.py ?? p.y;
-    if(px<left-piecePad || px>right+piecePad || py<top-piecePad || py>bottom+piecePad) return false;
-    return p.faction===PLAYER || !isShadowFoggedForRender(p.x,p.y);
-  });
-  const labelIds = computeNameLabelPieceIds(visiblePieces);
-  const actors = [];
-  for(let y=top;y<=bottom;y++) for(let x=left;x<=right;x++){
-    if(!inBounds(x,y)) continue;
-    const t=tile(x,y);
-    if(t.wallOwner==null) continue;
-    if(isShadowFoggedForRender(x,y)) continue;
-    actors.push({kind:'wall',x,y,owner:t.wallOwner,depth:actorDepth(x,y)});
-  }
-  for(const p of visiblePieces){
-    actors.push({kind:'piece',piece:p,depth:actorDepth((p.px ?? p.x) + ((p.px ?? p.x) * .002), (p.py ?? p.y) + ((p.px ?? p.x) * .02))});
-  }
-  for(const action of pendingPlayerActions){
-    if(action.kind !== 'spawn' || action.faction !== PLAYER) continue;
-    if(action.x<left-piecePad || action.x>right+piecePad || action.y<top-piecePad || action.y>bottom+piecePad) continue;
-    actors.push({kind:'spawnGhost',action,depth:actorDepth(action.x + action.x * .002, action.y + action.x * .02)});
-  }
-  actors.sort((a,b)=>a.depth-b.depth || (a.x||a.piece?.x||0)-(b.x||b.piece?.x||0));
-  for(const actor of actors){
-    if(actor.kind==='wall'){
-      const f=factions[actor.owner]||{id:'neutral',color:'#dbeafe'};
-      drawWallSpriteAt(actor.x,actor.y,f);
-    } else if(actor.kind==='spawnGhost'){
-      drawPendingSpawnGhost(actor.action);
-    } else {
-      drawSinglePiece(actor.piece,labelIds);
+  const visiblePieces=renderScratch.pieces; visiblePieces.length=0;
+  perfTime('actorGather',()=>{
+    const minX=left-piecePad,maxX=right+piecePad,minY=top-piecePad,maxY=bottom+piecePad;
+    const factionsToCheck=factions.map(f=>f?.idx).filter(i=>i!=null);
+    for(const fi of factionsToCheck){
+      const list=alivePiecesByFaction[fi] || [];
+      for(const p of list){
+        if(!p.alive) continue;
+        const px=p.px ?? p.x, py=p.py ?? p.y;
+        if(px<minX || px>maxX || py<minY || py>maxY) continue;
+        if(p.faction!==PLAYER && isShadowFoggedForRender(p.x,p.y)) continue;
+        visiblePieces.push(p);
+      }
     }
-  }
+  });
+  perfCount('visiblePieces', visiblePieces.length);
+  const labelIds = computeNameLabelPieceIds(visiblePieces);
+  const actors=renderScratch.actors; actors.length=0;
+  perfTime('actorGather',()=>{
+    for(let y=top;y<=bottom;y++) for(let x=left;x<=right;x++){
+      if(!inBounds(x,y)) continue;
+      const t=tile(x,y);
+      if(t.wallOwner==null || isShadowFoggedForRender(x,y)) continue;
+      actors.push(['wall',x,y,t.wallOwner,actorDepth(x,y)]);
+    }
+    for(const p of visiblePieces){
+      const px=p.px ?? p.x, py=p.py ?? p.y;
+      actors.push(['piece',p,0,0,actorDepth(px + px*.002, py + px*.02)]);
+    }
+    for(const action of pendingPlayerActions){
+      if(action.kind !== 'spawn' || action.faction !== PLAYER) continue;
+      if(action.x<left-piecePad || action.x>right+piecePad || action.y<top-piecePad || action.y>bottom+piecePad) continue;
+      actors.push(['spawnGhost',action,0,0,actorDepth(action.x + action.x*.002, action.y + action.x*.02)]);
+    }
+  });
+  perfTime('actorSort',()=>actors.sort((a,b)=>a[4]-b[4] || ((a[1]?.x ?? a[1])||0)-((b[1]?.x ?? b[1])||0)));
+  perfTime('pieceDrawing',()=>{
+    for(const actor of actors){
+      if(actor[0]==='wall'){
+        const f=factions[actor[3]]||{id:'neutral',color:'#dbeafe'};
+        drawWallSpriteAt(actor[1],actor[2],f);
+      } else if(actor[0]==='spawnGhost'){
+        drawPendingSpawnGhost(actor[1]);
+      } else {
+        drawSinglePiece(actor[1],labelIds);
+      }
+    }
+  });
 }
+
 function drawPieces(){
   drawActors();
 }
@@ -8296,8 +8391,8 @@ function drawPendingSpawnGhost(action){
   ctx.setLineDash([]);
   if(graphic){
     ctx.globalAlpha=.42+.16*pulse;
-    ctx.filter='grayscale(.2) brightness(1.15) saturate(.8)';
-    ctx.drawImage(graphic,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
+    const variant=getCachedSpriteVariant(f.id,action.type,graphic,'ready',visualQualityTier());
+    ctx.drawImage(variant || graphic,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
   } else {
     ctx.fillStyle=f.color;
     drawPieceShape(def.pattern,r,Number(action.pieceId)||0,action.type,f.id);
@@ -8312,47 +8407,27 @@ function drawPendingSpawnGhost(action){
   ctx.restore();
 }
 function drawIsometricCooldownBase(p,f,progress){
-  const ready=progress>=1;
+  const state=currentRenderState || {time:now(),tier:visualQualityTier(),zoomTier:'close'};
+  const ready=progress>=1, isMine=p.faction===PLAYER;
+  if(state.zoomTier==='far' && !isMine){
+    if(ready){ ctx.save(); ctx.globalAlpha=.82; ctx.fillStyle='rgba(255,159,159,.96)'; ctx.beginPath(); ctx.arc(0,0,3.2,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+    return;
+  }
+  if(isBuildingType(p.type) && state.zoomTier==='far') return;
+  const medium=state.zoomTier==='medium' || state.tier<2;
   const ringRadius=BASE_CELL*.68;
-  ctx.save();
-  ctx.globalCompositeOperation='source-over';
-  ctx.lineCap='round';
-
-  // This is drawn while the board's isometric transform is still active, so the
-  // circle becomes a flat ground-plane ring that surrounds the troop's tile.
-  ctx.globalAlpha=ready?.10:.16;
-  ctx.fillStyle=ready?'rgba(177,255,207,.42)':'rgba(2,7,14,.68)';
-  ctx.beginPath();
-  ctx.arc(0,0,ringRadius-4,0,Math.PI*2);
-  ctx.fill();
-
-  ctx.globalAlpha=.78;
-  ctx.strokeStyle='rgba(2,7,14,.88)';
-  ctx.lineWidth=7;
-  ctx.beginPath();
-  ctx.arc(0,0,ringRadius,0,Math.PI*2);
-  ctx.stroke();
-
-  ctx.globalAlpha=ready?.98:.84;
-  ctx.strokeStyle=ready
-    ? (p.faction===PLAYER?'rgba(139,255,180,.98)':'rgba(255,159,159,.96)')
-    : (f?.color || 'rgba(225,238,255,.72)');
-  ctx.lineWidth=3.4;
-  ctx.beginPath();
-  ctx.arc(0,0,ringRadius,-Math.PI*.75,-Math.PI*.75+Math.PI*2*progress);
-  ctx.stroke();
-
-  if(ready){
-    const pulse=.78+.22*Math.sin(now()*6+p.id);
-    const markerAngle=-Math.PI*.75;
-    ctx.globalAlpha=.72+.24*pulse;
-    ctx.fillStyle=p.faction===PLAYER?'rgba(200,255,219,.98)':'rgba(255,205,205,.96)';
-    ctx.beginPath();
-    ctx.arc(Math.cos(markerAngle)*ringRadius,Math.sin(markerAngle)*ringRadius,3.2,0,Math.PI*2);
-    ctx.fill();
+  ctx.save(); ctx.globalCompositeOperation='source-over'; ctx.lineCap='round';
+  if(!medium){
+    ctx.globalAlpha=ready?.10:.16; ctx.fillStyle=ready?'rgba(177,255,207,.42)':'rgba(2,7,14,.68)'; ctx.beginPath(); ctx.arc(0,0,ringRadius-4,0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=medium?.58:.78; ctx.strokeStyle='rgba(2,7,14,.78)'; ctx.lineWidth=medium?3:7; ctx.beginPath(); ctx.arc(0,0,ringRadius,0,Math.PI*2); ctx.stroke();
+  ctx.globalAlpha=ready?.98:.84; ctx.strokeStyle=ready ? (isMine?'rgba(139,255,180,.98)':'rgba(255,159,159,.96)') : (f?.color || 'rgba(225,238,255,.72)'); ctx.lineWidth=medium?2.2:3.4; ctx.beginPath(); ctx.arc(0,0,ringRadius,-Math.PI*.75,-Math.PI*.75+Math.PI*2*progress); ctx.stroke();
+  if(ready && (!medium || isMine)){
+    const pulse=.78+.22*Math.sin(state.time*6+p.id); const markerAngle=-Math.PI*.75; ctx.globalAlpha=.72+.24*pulse; ctx.fillStyle=isMine?'rgba(200,255,219,.98)':'rgba(255,205,205,.96)'; ctx.beginPath(); ctx.arc(Math.cos(markerAngle)*ringRadius,Math.sin(markerAngle)*ringRadius,3.2,0,Math.PI*2); ctx.fill();
   }
   ctx.restore();
 }
+
 function drawTargetablePieceGlow(graphic,def,metrics,r,pieceId,pieceType,factionId,glowColor,pulse){
   ctx.save();
   ctx.globalCompositeOperation='screen';
@@ -8466,7 +8541,8 @@ function drawSinglePiece(p,labelIds=new Set()){
     const checkedKing = p.type==='king' && p.faction===PLAYER && kingInCheck;
     const abilityTarget=selectedAbilityTargetForPiece(p);
     const attackTarget=!!selectedPiece && selectedPiece.faction===PLAYER && p.faction!==selectedPiece.faction && frameAttackTargetKeys.has(key(p.x,p.y));
-    const targetPulse=.5 + .5*Math.sin(now()*9+p.id);
+    const rstate=currentRenderState || {time:now(),tier:visualQualityTier(),zoomTier:'close'};
+    const targetPulse=.5 + .5*Math.sin(rstate.time*9+p.id);
     const targetGlowColor=abilityTarget?.kind==='guardianShield' ? 'rgba(52,255,135,.98)' : (abilityTarget?.kind==='shadeMark' ? 'rgba(255,145,38,.98)' : 'rgba(255,43,67,.98)');
     ctx.save();
     ctx.translate(x,y);
@@ -8481,7 +8557,7 @@ function drawSinglePiece(p,labelIds=new Set()){
       drawTargetHighlightRings(metrics,r,targetGlowColor,targetPulse);
     }
     if(checkedKing){
-      const danger=.58+.42*Math.sin(now()*9+p.id);
+      const danger=.58+.42*Math.sin(rstate.time*9+p.id);
       ctx.save();
       ctx.globalCompositeOperation='screen';
       ctx.globalAlpha=.18+.20*danger;
@@ -8503,7 +8579,7 @@ function drawSinglePiece(p,labelIds=new Set()){
       ctx.globalAlpha=.15;
       ctx.fillStyle=f.color;
       ctx.beginPath();
-      ctx.arc(0,0,r+8+Math.sin(now()*3+p.id)*2,0,Math.PI*2);
+      ctx.arc(0,0,r+8+Math.sin(rstate.time*3+p.id)*2,0,Math.PI*2);
       ctx.fill();
       ctx.globalAlpha=1;
     }
@@ -8519,12 +8595,11 @@ function drawSinglePiece(p,labelIds=new Set()){
       ctx.save();
       ctx.globalAlpha=p.flash>0 ? .78 : (pieceReady ? 1 : .92);
       ctx.shadowColor=p.flash>0 ? 'rgba(255,255,255,.92)' : 'rgba(0,0,0,.62)';
-      ctx.shadowBlur=p.flash>0 ? 18 : 8;
-      ctx.filter=pieceReady
-        ? 'brightness(1.07) saturate(1.05)'
-        : 'brightness(.80) saturate(.74)';
+      const needsBlur=p.flash>0 || abilityTarget || attackTarget || checkedKing || rstate.selectedPieceId===p.id;
+      ctx.shadowBlur=needsBlur ? (p.flash>0 ? 18 : 8) : 0; if(needsBlur) perfCount('shadowBlur');
       ctx.imageSmoothingEnabled=true;
-      ctx.drawImage(graphic,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
+      const variant=getCachedSpriteVariant(f.id,p.type,graphic,pieceReady?'ready':'cooling',rstate.tier);
+      ctx.drawImage(variant || graphic,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
       ctx.restore();
     } else {
       const g=ctx.createRadialGradient(-r*.25,-r*.3,2,0,0,r*1.15);
@@ -8550,7 +8625,7 @@ function drawSinglePiece(p,labelIds=new Set()){
     }
 
     if(pieceHasOrbShield(p)) drawOrbShieldVisual(p,metrics,r);
-    if((p.shadowMarkedUntil || 0) > now()) drawShadowMarkVisual(p,metrics,r);
+    if((p.shadowMarkedUntil || 0) > rstate.time) drawShadowMarkVisual(p,metrics,r);
 
     for(let i=0;i<p.level;i++){
       const a=-Math.PI/2 + (i-(p.level-1)/2)*.22;
@@ -8561,29 +8636,29 @@ function drawSinglePiece(p,labelIds=new Set()){
     }
     const supply=overextensionInfo(p);
     if(supply.active){
-      const pulse=.55+.45*Math.sin(now()*6+p.id);
+      const pulse=.55+.45*Math.sin(rstate.time*6+p.id);
       ctx.globalAlpha=.52+.22*pulse;ctx.strokeStyle='rgba(255,174,76,.98)';ctx.lineWidth=2.5;ctx.setLineDash([5,4]);ctx.beginPath();ctx.arc(0,0,r+20,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
       ctx.globalAlpha=.95;ctx.fillStyle='rgba(255,174,76,.98)';ctx.beginPath();ctx.moveTo(r+11,-r-13);ctx.lineTo(r+21,-r-13);ctx.lineTo(r+16,-r-23);ctx.closePath();ctx.fill();
       ctx.fillStyle='#231307';ctx.font='1000 8px Inter,system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('!',r+16,-r-16);ctx.globalAlpha=1;
     }
     if(def.building) drawBuildingTimerRing(p,r);
     if(p.type==='cinderarchon'){
-      const remain=(p.nextBuildingTick || 0)-now();
+      const remain=(p.nextBuildingTick || 0)-rstate.time;
       ctx.strokeStyle=remain>0?'rgba(255,140,70,.55)':'rgba(255,220,120,.95)';
       ctx.lineWidth=2;
       const prog=remain>0 ? clamp(1-remain/CINDER_ARCHON_DEN_COOLDOWN,0,1) : 1;
       ctx.beginPath(); ctx.arc(0,0,r+13,-Math.PI/2,-Math.PI/2+Math.PI*2*prog); ctx.stroke();
     }
-    if(p.solarBoostUntil && now()<p.solarBoostUntil){
-      const pulse=.55+.45*Math.sin(now()*11+p.id);
+    if(p.solarBoostUntil && rstate.time<p.solarBoostUntil){
+      const pulse=.55+.45*Math.sin(rstate.time*11+p.id);
       ctx.globalAlpha=.45+.28*pulse;
       ctx.strokeStyle='rgba(255,232,122,.95)';
       ctx.lineWidth=2.4;
       ctx.beginPath(); ctx.arc(0,0,r+16+3*pulse,0,Math.PI*2); ctx.stroke();
       ctx.globalAlpha=1;
     }
-    if(p.solarSlowedUntil && now()<p.solarSlowedUntil){
-      const pulse=.55+.45*Math.sin(now()*12+p.id);
+    if(p.solarSlowedUntil && rstate.time<p.solarSlowedUntil){
+      const pulse=.55+.45*Math.sin(rstate.time*12+p.id);
       ctx.globalAlpha=.38+.22*pulse;
       ctx.strokeStyle='rgba(80,170,255,.95)';
       ctx.lineWidth=2.4;
@@ -8591,7 +8666,7 @@ function drawSinglePiece(p,labelIds=new Set()){
       ctx.globalAlpha=1;
     }
     if(crownMarshalNear(p) || crownKingNear(p) || crownBannerNear(p)){
-      const pulse=.55+.45*Math.sin(now()*7+p.id);
+      const pulse=.55+.45*Math.sin(rstate.time*7+p.id);
       ctx.globalAlpha=.24+.16*pulse;
       ctx.strokeStyle=crownKingNear(p)?'rgba(255,246,194,.96)':(crownBannerNear(p)?'rgba(255,215,105,.92)':'rgba(255,232,148,.92)');
       ctx.lineWidth=2.2;
@@ -8599,7 +8674,7 @@ function drawSinglePiece(p,labelIds=new Set()){
       ctx.globalAlpha=1;
     }
     if(f.id==='iron' && isIronShieldLocked(p)){
-      const pulse=.55+.45*Math.sin(now()*6+p.id);
+      const pulse=.55+.45*Math.sin(rstate.time*6+p.id);
       ctx.globalAlpha=.28+.20*pulse;
       ctx.strokeStyle='rgba(226,238,250,.95)';
       ctx.lineWidth=3.2;
@@ -8614,7 +8689,7 @@ function drawSinglePiece(p,labelIds=new Set()){
       ctx.globalAlpha=.9; ctx.strokeStyle=f.outline || '#fff'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,r+14,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=1;
     }
     if(cooldownReady(p)){
-      ctx.globalAlpha=.45+.2*Math.sin(now()*5+p.id);
+      ctx.globalAlpha=.45+.2*Math.sin(rstate.time*5+p.id);
       ctx.strokeStyle=p.faction===PLAYER?'#7ff0b0':'#ff7979'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.arc(0,0,r+10,0,Math.PI*2); ctx.stroke();
       ctx.globalAlpha=1;
@@ -8625,6 +8700,7 @@ function drawSinglePiece(p,labelIds=new Set()){
         ctx.fillStyle=i<p.hp?'#dbeafe':'rgba(0,0,0,.5)'; ctx.beginPath(); ctx.arc(-r+5+i*8,r+5,3,0,Math.PI*2); ctx.fill();
       }
     }
+    perfCount('renderedPieces');
     ctx.restore();
 }
 function computeNameLabelPieceIds(visible){
@@ -9219,35 +9295,42 @@ keyboard();
 
 function updatePerfDebug(dt){
   if(!PERF_DEBUG) return;
-  perfStats.frames.push(dt*1000);
-  if(perfStats.frames.length>600) perfStats.frames.shift();
   const tNow=now();
   if(!perfStats.lastReport) perfStats.lastReport=tNow;
   if(tNow-perfStats.lastReport<1) return;
   const elapsed=Math.max(.001,tNow-perfStats.lastReport);
-  const sorted=perfStats.frames.slice().sort((a,b)=>a-b);
+  const frames=perfStats.frames.filter(f=>f && typeof f.total==='number');
+  const sorted=frames.map(f=>f.total).sort((a,b)=>a-b);
   const avg=sorted.reduce((a,b)=>a+b,0)/Math.max(1,sorted.length);
   const p95=sorted[Math.min(sorted.length-1,Math.floor(sorted.length*.95))] || 0;
+  const last=frames[frames.length-1] || {marks:{},counts:{},warnings:[]};
   const alive=factionPieceStats().alivePieceCount;
   let el=document.getElementById('perfDebugPanel');
   if(!el){
     el=document.createElement('pre');
     el.id='perfDebugPanel';
-    el.style.cssText='position:fixed;left:8px;bottom:8px;z-index:99999;margin:0;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.75);color:#b7ffcf;font:11px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;pointer-events:none;';
+    el.style.cssText='position:fixed;left:8px;bottom:8px;z-index:99999;margin:0;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,.78);color:#b7ffcf;font:11px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;pointer-events:none;max-width:360px;white-space:pre-wrap;';
     document.body.appendChild(el);
   }
-  el.textContent=`perf=1\nframe avg ${avg.toFixed(2)}ms p95 ${p95.toFixed(2)}ms\nboard scans/s ${(perfStats.boardScans/elapsed).toFixed(1)}\npiece scans/s ${(perfStats.pieceScans/elapsed).toFixed(1)}\nsolar updates/s ${(perfStats.solarUpdates/elapsed).toFixed(1)}\nspawn updates/s ${(perfStats.spawnUpdates/elapsed).toFixed(1)}\nalive pieces ${alive}`;
-  perfStats.boardScans=0;
-  perfStats.pieceScans=0;
-  perfStats.solarUpdates=0;
-  perfStats.spawnUpdates=0;
-  perfStats.lastReport=tNow;
+  const m=last.marks || {}, c=last.counts || {};
+  const line=(name)=>`${name} ${(m[name]||0).toFixed(2)}ms`;
+  el.textContent=`perf=1
+frame avg ${avg.toFixed(2)}ms p95 ${p95.toFixed(2)}ms last ${(last.total||0).toFixed(2)}ms
+${line('gameTick')}  ${line('aiTick')}  ${line('specialLandRules')}
+${line('staticTerrain')}  ${line('territory')}  dirty chunks ${(m.dirtyChunkRebuild||0).toFixed(2)}ms
+${line('actorGather')}  ${line('actorSort')}  ${line('pieceDrawing')}  ${line('effects')}  ${line('minimap')}
+visible pieces ${c.visiblePieces||0} rendered ${c.renderedPieces||0} visible chunks ${c.visibleChunks||0} rebuilt ${c.dirtyChunks||0}
+board scans/s ${(perfStats.boardScans/elapsed).toFixed(1)} piece scans/s ${(perfStats.pieceScans/elapsed).toFixed(1)} filters/frame ${c.filters||0} shadowBlur/frame ${c.shadowBlur||0}
+solar updates/s ${(perfStats.solarUpdates/elapsed).toFixed(1)} spawn updates/s ${(perfStats.spawnUpdates/elapsed).toFixed(1)} alive pieces ${alive}
+warnings ${(last.warnings||[]).join(' | ') || 'none'}`;
+  perfStats.boardScans=0; perfStats.pieceScans=0; perfStats.solarUpdates=0; perfStats.spawnUpdates=0; perfStats.lastReport=tNow;
 }
 
 function loop(t){
   const dt=Math.min(.05,(t-lastTime)/1000 || .016); lastTime=t;
   updateVisualQuality(dt);
-  gameTick(dt);
+  perfStartFrame();
+  perfTime('gameTick',()=>gameTick(dt));
   draw();
   updatePerfDebug(dt);
   requestAnimationFrame(loop);
