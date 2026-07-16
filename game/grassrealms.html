@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#11170f" />
   <title>Grass Realms</title>
-  <!-- Three Ages, synchronized faction doctrines, and ordered resolving: 2026-07-16 -->
+  <!-- Three Ages, adaptive AI strategy, synchronized faction doctrines, and ordered resolving: 2026-07-16 -->
   <style>
     :root{
       --bg:#0b100b;--panel:#171e16;--panel2:#20291d;--ink:#f7efd6;--muted:#b8b39f;
@@ -2109,45 +2109,138 @@ function resolveOne(rd, manual){
     }
 
 
+    const AI_ECONOMY_KEYS=['farm','mill','mine'];
+    function aiOwnedCopies(player,predicate){
+      return (player?.owned||[]).reduce((sum,entry)=>{
+        const card=CARD_CATALOG[entry.key];
+        return card&&entry.hp>0&&!entry._remove&&predicate(card,entry)?sum+Math.max(1,entry.count||1):sum;
+      },0);
+    }
+    function aiBoardProfile(game,player){
+      const difficulty=player.aiDifficulty||player.aiStrategy?.difficulty||'adept',round=Math.max(1,game.round||1);
+      const economy=aiOwnedCopies(player,card=>AI_ECONOMY_KEYS.includes(card.key));
+      const troops=aiOwnedCopies(player,card=>card.type==='troop'&&!card.token);
+      const walls=aiOwnedCopies(player,card=>card.type==='wall');
+      const permanents=aiOwnedCopies(player,card=>!card.token&&card.key!=='townhall');
+      const opponents=(game.players||[]).filter(p=>p!==player&&!p.eliminated&&!p.left);
+      const enemyMax=selector=>opponents.reduce((best,p)=>Math.max(best,selector(p)),0);
+      const enemyEconomy=enemyMax(p=>aiOwnedCopies(p,card=>AI_ECONOMY_KEYS.includes(card.key)));
+      const enemyTroops=enemyMax(p=>aiOwnedCopies(p,card=>card.type==='troop'&&!card.token));
+      const enemyPermanents=enemyMax(p=>aiOwnedCopies(p,card=>!card.token&&card.key!=='townhall'));
+      let economyTarget=difficulty==='archmage'?(round<4?3:round<9?5:6):difficulty==='adept'?(round<4?3:round<9?4:5):(round<6?2:3);
+      economyTarget=Math.max(economyTarget,Math.min(6,enemyEconomy-(difficulty==='apprentice'?1:0)));
+      let troopTarget=difficulty==='archmage'?(round<4?2:round<9?4:5):difficulty==='adept'?(round<4?2:round<9?3:4):(round<7?1:2);
+      troopTarget=Math.max(troopTarget,Math.min(6,enemyTroops-(difficulty==='apprentice'?1:0)));
+      const armyDeficit=Math.max(0,troopTarget-troops),economyDeficit=Math.max(0,economyTarget-economy);
+      const pressured=(player.townHp||0)<=12||enemyTroops>troops+1||enemyPermanents>permanents+3;
+      return{difficulty,round,economy,troops,walls,permanents,enemyEconomy,enemyTroops,enemyPermanents,economyTarget,troopTarget,armyDeficit,economyDeficit,pressured};
+    }
+    function aiNextTempleKey(player,plannedTemples){
+      if(!plannedTemples.length)return'';
+      const ownedCount=key=>(player.owned||[]).find(e=>e.key===key&&e.hp>0)?.count||0;
+      const missing=plannedTemples.find(key=>ownedCount(key)===0);
+      if(missing)return missing;
+      if(totalTempleCount(player)<2)return[...plannedTemples].sort((a,b)=>ownedCount(a)-ownedCount(b))[0]||'';
+      const doctrineCopy=plannedTemples.find(key=>{
+        const faction=key.split('_')[0];
+        return ownedCount(key)===1&&(player.doctrines||[]).length<2&&!(player.doctrines||[]).some(d=>(d.factions||DOCTRINE_CATALOG[d.key]?.factions||[]).includes(faction));
+      });
+      if(doctrineCopy)return doctrineCopy;
+      if((player.ageLevel||0)>=1&&totalTempleCount(player)<3)return[...plannedTemples].filter(key=>ownedCount(key)<(CARD_CATALOG[key]?.max??3)).sort((a,b)=>ownedCount(a)-ownedCount(b))[0]||'';
+      return'';
+    }
+    function aiCardTriggerCoverage(card,player){
+      const faces=highestDie(player)==='d20'?20:highestDie(player)==='d12'?12:6;
+      return(card.triggers||[]).filter(value=>value<=faces).length/Math.max(1,faces);
+    }
+    function aiEconomyCardScore(card,player){
+      const effect=card.onTrigger||{},yieldValue=Number(effect.value??effect.coins??effect.gold??1)||1;
+      const owned=(player.owned||[]).find(e=>e.key===card.key)?.count||0;
+      return aiCardTriggerCoverage(card,player)*yieldValue*75+(owned===0?9:0)-cardPurchaseCost(player,card)*1.5+(card.key==='farm'&&owned<2?3:0);
+    }
+    function aiTroopCardScore(card,player,profile){
+      const effect=estimateEffectMetrics(card.onTrigger||{},card),price=Math.max(1,cardPurchaseCost(player,card));
+      const coverage=aiCardTriggerCoverage(card,player),abilities=cardAbilityKeys(card);
+      let value=(effect.damage*4+effect.gold*2+effect.healing*1.5+effect.utility*2+coverage*24+(card.hp||0)*.7)/price;
+      if(player.aiStrategy?.factions?.includes(card.category))value+=3;
+      if(abilities.includes('siege')&&profile.enemyPermanents>profile.permanents)value+=5;
+      if(abilities.includes('steal')&&profile.enemyEconomy>profile.economy)value+=4;
+      if(card.retaliation&&profile.pressured)value+=4;
+      return value;
+    }
     function aiPurchaseChoice(game,player){
-      const strategy=player.aiStrategy||makeAIStrategy(game,game.players.indexOf(player),player.aiDifficulty);player.aiStrategy=strategy;const difficulty=player.aiDifficulty||strategy.difficulty||'adept';
-      const plannedTemples=strategy.temples||[];const plannedFactions=new Set(strategy.factions||plannedTemples.map(k=>k.split('_')[0]));
-      const ownedKeys=new Set((player.owned||[]).map(e=>e.key));const missingTemples=plannedTemples.filter(key=>!ownedKeys.has(key)),doctrineTemples=plannedTemples.filter(key=>{const faction=key.split('_')[0];return factionTempleCount(player,faction)===1&&(player.doctrines||[]).length<2&&!player.doctrines.some(d=>(d.factions||[]).includes(faction));});
-      const affordable=Object.values(CARD_CATALOG).filter(card=>{
-        if(card.immutable||card.hiddenFromShop||cardPurchaseCost(player,card)>(player.gold||0))return false;
-        if(!cardAgeAvailable(player,card))return false;
-        if(((player.owned||[]).find(e=>e.key===card.key)?.count||0)>=(card.max??3))return false;
+      const strategy=player.aiStrategy||makeAIStrategy(game,game.players.indexOf(player),player.aiDifficulty);
+      player.aiStrategy=strategy;
+      const profile=aiBoardProfile(game,player),difficulty=profile.difficulty,turnBuys=Math.max(0,game.turnBuys||0);
+      const plannedTemples=strategy.temples||[],plannedFactions=new Set(strategy.factions||plannedTemples.map(key=>key.split('_')[0]));
+      const ownedKeys=new Set((player.owned||[]).filter(entry=>entry.hp>0&&!entry._remove).map(entry=>entry.key));
+      const eligible=Object.values(CARD_CATALOG).filter(card=>{
+        if(card.immutable||card.hiddenFromShop||!cardAgeAvailable(player,card))return false;
+        if(((player.owned||[]).find(entry=>entry.key===card.key)?.count||0)>=(card.max??3))return false;
         if(card.requiresTemple&&!ownedKeys.has(card.requiresTemple))return false;
-        if(card.key.endsWith('_temple')&&!plannedTemples.includes(card.key))return false;
+        if(TEMPLE_KEYS.includes(card.key)&&!plannedTemples.includes(card.key))return false;
         if(card.category!=='grey'&&!plannedFactions.has(card.category))return false;
         return true;
       });
+      const affordable=eligible.filter(card=>cardPurchaseCost(player,card)<=(player.gold||0));
       if(!affordable.length)return null;
 
-      // The AI saves for its first chosen temple instead of buying unrelated cards every turn.
-      if(missingTemples.length){
-        const firstMissing=CARD_CATALOG[missingTemples[0]];
-        if(firstMissing&&cardPurchaseCost(player,firstMissing)<=(player.gold||0))return firstMissing;
-        if(!ownedKeys.has(plannedTemples[0]))return null;
-        const factionForce=(player.owned||[]).filter(e=>plannedFactions.has(CARD_CATALOG[e.key]?.category)&&!e.key.endsWith('_temple')).reduce((sum,e)=>sum+(e.count||1),0);
-        const second=CARD_CATALOG[missingTemples[0]];
-        if(second&&factionForce>=2){if((player.gold||0)>=cardPurchaseCost(player,second))return second;return null;}
+      const economy=affordable.filter(card=>AI_ECONOMY_KEYS.includes(card.key)).sort((a,b)=>aiEconomyCardScore(b,player)-aiEconomyCardScore(a,player));
+      const troops=affordable.filter(card=>card.type==='troop'&&!card.token).sort((a,b)=>aiTroopCardScore(b,player,profile)-aiTroopCardScore(a,player,profile));
+      const walls=affordable.filter(card=>card.type==='wall').sort((a,b)=>(b.hp||0)/(cardPurchaseCost(player,b)+1)-(a.hp||0)/(cardPurchaseCost(player,a)+1));
+      const bestEconomy=economy[0]||null,bestTroop=troops[0]||null,bestWall=walls[0]||null;
+
+      // Hard recovery rules keep the bot alive after a player destroys its opening.
+      if(profile.economy===0&&bestEconomy)return bestEconomy;
+      if(profile.troops===0&&bestTroop)return bestTroop;
+      if(profile.economyDeficit>0&&bestEconomy&&(turnBuys===0||profile.economy<=1||profile.troops>=profile.troopTarget-1))return bestEconomy;
+      if(profile.armyDeficit>0&&bestTroop&&(turnBuys>0||profile.economy>=Math.max(2,profile.economyTarget-1)||profile.enemyTroops>profile.troops))return bestTroop;
+      if(profile.pressured&&profile.walls===0&&bestWall)return bestWall;
+
+      // Temples and Ages are pursued only after the current board can support them.
+      const nextTempleKey=aiNextTempleKey(player,plannedTemples),nextTemple=nextTempleKey?CARD_CATALOG[nextTempleKey]:null;
+      const stableForTemple=profile.economy>=Math.max(2,profile.economyTarget-1)&&profile.troops>=Math.max(1,profile.troopTarget-1)&&(!profile.pressured||profile.walls>0);
+      if(nextTemple&&stableForTemple&&cardPurchaseCost(player,nextTemple)<=(player.gold||0))return nextTemple;
+      if(nextTemple&&stableForTemple&&turnBuys===0){
+        const gap=cardPurchaseCost(player,nextTemple)-(player.gold||0);
+        if(gap>0&&gap<=2)return null;
       }
-      if(doctrineTemples.length){const target=CARD_CATALOG[doctrineTemples[0]],price=cardPurchaseCost(player,target);if((player.gold||0)>=price)return target;const force=(player.owned||[]).filter(e=>plannedFactions.has(CARD_CATALOG[e.key]?.category)&&!TEMPLE_KEYS.includes(e.key)).reduce((sum,e)=>sum+(e.count||1),0);if((game.round||1)>=2||force>=1)return null;}
+
+      // Compare the bot's live economy and army with the strongest opponent, then spend into the larger gap.
+      if(profile.economyDeficit>profile.armyDeficit&&bestEconomy)return bestEconomy;
+      if(profile.armyDeficit>0&&bestTroop)return bestTroop;
+      if((player.townHp||0)<=15&&bestWall&&profile.walls<2)return bestWall;
+      if(profile.economyDeficit>0&&bestEconomy)return bestEconomy;
 
       const score=card=>{
-        let value=cardPurchaseCost(player,card)*1.8+(card.triggers?.length||0)*2+cardAbilityKeys(card).length*(difficulty==='archmage'?4:2);
-        if(plannedTemples.includes(card.key))value+=55;
-        if(plannedFactions.has(card.category))value+=28;
-        if(card.requiresTemple&&plannedTemples.includes(card.requiresTemple))value+=18;
-        if(['farm','mill','mine'].includes(card.key))value+=game.rollCount<10?10:2;
-        if(card.type==='wall')value+=(player.townHp<12?18:3);
-        const kind=card.onTrigger?.kind||'';if(kind.includes('attack')||kind.includes('destroy'))value+=11;
-        if(kind.includes('earn')||kind.includes('heal'))value+=player.townHp<11?7:4;if(card.retaliation)value+=difficulty==='archmage'?12:5;if(card.deathEffect)value+=difficulty==='archmage'?9:3;if(card.passive?.martyr&&player.townHp<12)value+=18;
-        return value+randomUnit(game.seed,game.version,card.cost+card.name.length)*3;
+        const price=Math.max(1,cardPurchaseCost(player,card)),metrics=estimateEffectMetrics(card.onTrigger||{},card),abilities=cardAbilityKeys(card);
+        let value=(card.triggers?.length||0)*2+(card.hp||0)*.6+metrics.damage*3+metrics.gold*2+metrics.healing*1.4+metrics.utility*2;
+        if(card.type==='troop')value+=12+(profile.enemyTroops>profile.troops?10:0);
+        if(AI_ECONOMY_KEYS.includes(card.key))value+=profile.economyDeficit*8;
+        if(card.type==='wall')value+=profile.pressured?18:4;
+        if(TEMPLE_KEYS.includes(card.key))value+=card.key===nextTempleKey?20:3;
+        if(abilities.includes('siege')&&profile.enemyPermanents>=profile.permanents)value+=10;
+        if(abilities.includes('steal')&&profile.enemyEconomy>profile.economy)value+=7;
+        if(card.retaliation)value+=difficulty==='archmage'?8:3;
+        if(card.deathEffect)value+=difficulty==='archmage'?6:2;
+        return value/price+randomUnit(game.seed,game.version,card.cost+card.name.length)*(difficulty==='apprentice'?4:1);
       };
-      return affordable.sort((a,b)=>score(b)-score(a))[0]||null;
+      return[...affordable].sort((a,b)=>score(b)-score(a))[0]||null;
     }
+    function shouldAIAgeUp(game,player){
+      const requirement=nextAgeRequirement(player);
+      if(!requirement||totalTempleCount(player)<requirement.temples||(player.gold||0)<requirement.cost)return false;
+      const profile=aiBoardProfile(game,player),level=Math.max(0,player.ageLevel||0);
+      const minRound=level===0?(profile.difficulty==='archmage'?4:profile.difficulty==='adept'?5:7):(profile.difficulty==='archmage'?7:profile.difficulty==='adept'?8:10);
+      const rivalAhead=(game.players||[]).some(p=>p!==player&&!p.eliminated&&!p.left&&(p.ageLevel||0)>level);
+      if((game.round||1)<minRound&&!rivalAhead)return false;
+      const minEconomy=profile.difficulty==='archmage'?3:2,minTroops=profile.difficulty==='apprentice'?1:2;
+      if(profile.economy<minEconomy||profile.troops<minTroops)return false;
+      if(profile.pressured&&profile.walls===0)return false;
+      const reserve=profile.pressured?3:1;
+      return(player.gold||0)-requirement.cost>=reserve;
+    }
+
     function chooseAIDoctrine(game,player,pending){const strategy=player.aiStrategy||{},planned=new Set(strategy.factions||[]),owned=player.owned||[];const score=key=>{const meta=DOCTRINE_CATALOG[key];let value=doctrineSynergyNames(player,key).length*4+(meta.type==='hybrid'?2:1);if(meta.factions.every(f=>planned.has(f)))value+=8;const has=k=>owned.some(e=>e.hp>0&&k(CARD_CATALOG[e.key],e));if(key==='red_conquerors_fury'&&has((c,e)=>c?.category==='red'&&c.type==='troop'))value+=9;if(key==='red_breakers_creed'&&has(c=>c?.category==='red'&&cardAbilityKeys(c).includes('siege')))value+=10;if(key==='white_sanctuary_covenant'&&has(c=>c?.category==='white'&&cardAbilityKeys(c).some(x=>['heal','repair','shield'].includes(x))))value+=10;if(key==='white_righteous_judgment'&&has(c=>c?.category==='white'&&(c.retaliation||c.type==='wall')))value+=8;if(key==='black_blood_covenant'&&has(c=>c?.category==='black'&&cardAbilityKeys(c).includes('sacrifice')))value+=10;if(key==='black_grave_dominion'&&has(c=>c?.category==='black'&&cardAbilityKeys(c).some(x=>['summon','death'].includes(x))))value+=9;if(key==='green_verdant_renewal'&&has(c=>c?.category==='green'&&['wall','structure'].includes(c.type)))value+=8;if(key==='green_ancient_growth'&&has(c=>c?.category==='green'&&cardAbilityKeys(c).some(x=>['heal','repair'].includes(x))))value+=9;return value+randomUnit(game.seed||1,game.turnSerial||0,key.length);};return[...pending.options].sort((a,b)=>score(b)-score(a))[0]||pending.options[0];}
     function scheduleAi(){
       clearTimeout(aiTimer);
@@ -2157,7 +2250,7 @@ function resolveOne(rd, manual){
     async function runAiStep(){
       if(!state||state.phase==='finished')return;const index=state.turnIdx,player=state.players[index];if(!player?.isAI)return;
       if(state.pendingDoctrine?.playerIdx===index){await performAction('CHOOSE_DOCTRINE',{key:chooseAIDoctrine(state,player,state.pendingDoctrine)},{ai:true,actorIdx:index});return;}
-      if(state.phase==='await_roll'){const requirement=nextAgeRequirement(player);if(requirement&&totalTempleCount(player)>=requirement.temples&&(player.gold||0)>=requirement.cost&&(state.round||1)>=3+requirement.level*2){await performAction('AGE_UP',{}, {ai:true,actorIdx:index});return;}await performAction('ROLL',{mode:chooseAIDie(state,player)},{ai:true,actorIdx:index});return;}
+      if(state.phase==='await_roll'){if(shouldAIAgeUp(state,player)){await performAction('AGE_UP',{}, {ai:true,actorIdx:index});return;}await performAction('ROLL',{mode:chooseAIDie(state,player)},{ai:true,actorIdx:index});return;}
       if(state.phase==='await_keep'){const benefits=ageBenefits(player),mainUseful=(player.owned||[]).some(e=>CARD_CATALOG[e.key]?.triggers?.includes(state.pendingRoll?.value)&&CARD_CATALOG[e.key]?.timing!=='opponent'),canReroll=(state.rerollsUsed||0)<benefits.rerolls;if(canReroll&&!mainUseful){await performAction('REROLL',{}, {ai:true,actorIdx:index});return;}await performAction('KEEP_ROLL',{}, {ai:true,actorIdx:index});return;}
       if(state.phase==='resolving'){
         const trigger=state.resolveQueue?.[0];if(triggerNeedsEffectChoice(trigger)){await performAction('CHOOSE_EFFECT',{useCrazy:chooseAICrazyEffect(state,trigger)},{ai:true,actorIdx:index});return;}const target=trigger?chooseAITarget(state,trigger):null;
