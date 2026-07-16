@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#11170f" />
   <title>Magic Realms</title>
-  <!-- Visual targeting and multiplayer realm-card update: 2026-07-15 -->
+  <!-- Ordered resolving, Age Up dice, and synchronized damage receipts: 2026-07-16 -->
   <style>
     :root{
       --bg:#0b100b;--panel:#171e16;--panel2:#20291d;--ink:#f7efd6;--muted:#b8b39f;
@@ -108,11 +108,12 @@
     .actionLayout{height:100%;display:grid;grid-template-columns:minmax(180px,.62fr) minmax(330px,1.35fr) minmax(210px,.78fr);gap:9px;min-height:0}
     .diceStage{min-height:0;border:1px solid #525a42;border-radius:15px;background:radial-gradient(circle at center,#3a422d 0,#1b2318 65%,#121711 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;position:relative;overflow:hidden}
     .diceStage:before{content:"";position:absolute;inset:9px;border:1px solid rgba(232,191,89,.27);border-radius:11px;pointer-events:none}
-    #diceVisual{display:flex;align-items:center;justify-content:center;gap:12px;min-height:94px;position:relative;z-index:1}
+    #diceVisual{display:flex;align-items:center;justify-content:center;gap:12px;min-height:94px;position:relative;z-index:1;flex-wrap:wrap}
     .die{width:74px;height:74px;border-radius:16px;background:linear-gradient(145deg,#fff8df,#c9b778);border:4px solid #6e531d;box-shadow:0 11px 20px #0008,inset 0 0 0 2px #fff9;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);padding:8px}
     .pip{width:10px;height:10px;background:#211c12;border-radius:50%;align-self:center;justify-self:center;visibility:hidden}.pip.on{visibility:visible}
     .polyDie{width:100px;height:88px;clip-path:polygon(50% 0,93% 20%,100% 62%,73% 100%,27% 100%,0 62%,7% 20%);display:grid;place-items:center;background:linear-gradient(145deg,#ffe48d,#9e6419 62%,#503410);color:#fff9df;text-shadow:0 2px 4px #000;font-size:31px;font-weight:900;filter:drop-shadow(0 12px 10px #0008)}
     .polyDie.d20{clip-path:polygon(50% 0,95% 24%,82% 84%,50% 100%,18% 84%,5% 24%)}
+    .minorDieWrap{display:grid;justify-items:center;gap:3px}.minorDie{width:46px;height:46px;border-radius:11px;border:3px solid #5d713a;background:linear-gradient(145deg,#efffcf,#8bab58);color:#17210e;box-shadow:0 7px 14px #0008,inset 0 0 0 2px #fff7;display:grid;place-items:center;font-size:20px;font-weight:1000}.minorDieLabel{font-size:8px;font-weight:900;color:#cfe9a6;text-transform:uppercase;letter-spacing:.45px}
     .rollCaption{font-family:Georgia,serif;font-size:15px;color:#ffe3a2;margin-top:6px;text-align:center;position:relative;z-index:1}
     .controlsArea{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0;overflow:auto;padding-right:2px}
     .phaseCard{border:1px solid #565e45;border-radius:13px;background:#151b14;padding:9px}
@@ -124,11 +125,12 @@
     .dieChoice.active{background:linear-gradient(#d6aa45,#9a6d20);border-color:#efca6a;color:#171208;box-shadow:0 0 0 2px rgba(232,191,89,.2)}
     .dieChoice:disabled{opacity:.35;cursor:not-allowed}
     .controlRow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+    .rollDecisionRow{display:grid;grid-template-columns:1fr 1fr;gap:6px}.agePanel{display:grid;grid-template-columns:1fr;gap:5px}.ageButton{width:100%;text-align:left;padding:8px 10px}.ageButton small{display:block;margin-top:2px;font-size:9px;font-weight:700;opacity:.82}.ageStatus{padding:6px 8px;border:1px solid #43513a;border-radius:9px;background:#11180f;color:#d5d0b9;font-size:10px;line-height:1.35}
     .actionBtn{border:1px solid #8b773d;border-radius:10px;background:linear-gradient(#d6aa45,#9a6d20);color:#171208;font-weight:900;padding:9px 7px;cursor:pointer;box-shadow:inset 0 1px #fff7;min-height:42px}
     .actionBtn.secondary{background:#2c3828;color:#fff1cc;border-color:#667153}.actionBtn.danger{background:#78382f;color:white;border-color:#ad5a4c}.actionBtn:disabled{opacity:.35;cursor:not-allowed;filter:grayscale(.7)}
     #targetBox{display:grid;grid-template-columns:1fr 1fr 1.25fr;gap:5px}
     #targetBox select{width:100%;min-width:0;background:#0e130d;color:#f7efd8;border:1px solid #6e7457;border-radius:9px;padding:8px;min-height:38px}
-    #queueBox{min-height:48px;max-height:78px;overflow:auto;padding:7px;border-radius:10px;background:#0e130d;border:1px solid #363e30;font-size:11px;line-height:1.4;color:#cfccb9}
+    #queueBox{min-height:52px;max-height:180px;overflow:auto;padding:6px;border-radius:10px;background:#0e130d;border:1px solid #363e30;font-size:11px;line-height:1.4;color:#cfccb9;scrollbar-gutter:stable}.resolveQueueItem{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:6px;margin:0 0 5px;padding:7px;border:1px solid #414a38;border-radius:8px;background:#171f16;color:#ded8c1;text-align:left;cursor:pointer}.resolveQueueItem:last-child{margin-bottom:0}.resolveQueueItem:hover,.resolveQueueItem:focus-visible{border-color:#d6b653;background:#242b1d}.resolveQueueItem.current{border-color:#e4bd52;background:#342d18;box-shadow:inset 3px 0 #e4bd52}.resolveQueueItem:disabled{cursor:not-allowed;opacity:.58}.resolveQueueOrder{font-weight:1000;color:#f2ce6c;text-align:center}.resolveQueueName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.resolveQueueName small{display:block;color:#a9aa97;font-size:8px;overflow:hidden;text-overflow:ellipsis}.resolveQueueAction{font-size:8px;font-weight:900;color:#e7d491;white-space:nowrap}.targetQueuePicker{min-width:min(250px,45vw);padding:7px 9px;border:1px solid #677451;border-radius:9px;background:#10160f;color:#f7efd6;font-weight:800}
     .logCard{min-height:0;display:flex;flex-direction:column;border:1px solid #424b38;border-radius:13px;background:#111711;overflow:hidden}
     .logCardHead{padding:8px 10px;border-bottom:1px solid #3c4433;color:#f5d995;font-weight:900;font-family:Georgia,serif}
     .log{flex:1;min-height:0;overflow:auto;padding:2px 8px 8px}.logLine{padding:6px 2px;border-bottom:1px dashed #3e4635;font-size:11px;color:#d4d0bc;line-height:1.35}
@@ -138,9 +140,9 @@
     .shopToolbar{display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:1px solid #414834}.shopToolbar strong{font-family:Georgia,serif;color:#f8df9d;white-space:nowrap}.shopToolbar #shopStatus{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.shopEndTurnBtn{margin-left:auto;min-height:34px;padding:6px 12px;flex:0 0 auto}
     .categoryTabs{display:grid;grid-template-columns:repeat(5,minmax(72px,1fr));gap:6px;padding:7px 9px;flex:0 0 auto}
     .categoryTab{position:relative;min-height:55px;border:2px solid transparent;border-radius:11px;overflow:hidden;padding:0;background:#111;cursor:pointer;color:white}.categoryTab.active{border-color:#ffd66c;box-shadow:0 0 0 2px #8a682b,0 0 14px #d7a83655}.categoryTab img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.68}.categoryTab span{position:absolute;inset:auto 0 0;padding:5px 3px;background:linear-gradient(transparent,#000e);font-weight:900;text-transform:uppercase;font-size:10px;text-shadow:0 1px 3px #000}
-    .shopGrid{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(4,minmax(205px,1fr));align-content:start;gap:8px;padding:0 9px 9px}
-    .shopCard{--faction:#9da493;border:1px solid #565e45;border-left:4px solid var(--faction);border-radius:12px;background:#151b14;overflow:hidden;display:grid;grid-template-columns:78px 1fr;min-height:116px;position:relative;cursor:pointer}.shopCard.affordable{box-shadow:0 0 0 1px rgba(232,191,89,.2)}
-    .shopArt{width:78px;height:116px;object-fit:cover;background:#aaa078;display:block;cursor:pointer}.shopFallback{width:78px;height:116px;display:grid;place-items:center;font-size:32px;background:#d9cea9;color:#16170f}.shopInfo{padding:7px;display:flex;flex-direction:column;min-width:0}.shopName{font-family:Georgia,serif;color:#ffe6a4;font-weight:900;font-size:13px;line-height:1.1;cursor:pointer}.shopMeta{font-size:10px;color:#bebaa6;margin-top:3px;line-height:1.3}.shopEffect{font-size:10px;color:#ddd7bb;margin-top:4px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.shopBuy{margin-top:auto;width:100%;padding:6px;border-radius:8px;border:1px solid #8b773d;background:#b98628;color:#171208;font-weight:900;cursor:pointer;font-size:11px}.shopBuy:disabled{opacity:.42;cursor:not-allowed}.lockedNote{color:#e0a896;font-size:9px;font-weight:700;margin-top:3px}
+    .shopGrid{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(4,minmax(205px,1fr));grid-auto-rows:max-content;align-content:start;gap:8px;padding:0 9px 18px;scrollbar-gutter:stable}
+    .shopCard{--faction:#9da493;border:1px solid #565e45;border-left:4px solid var(--faction);border-radius:12px;background:#151b14;overflow:hidden;display:grid;grid-template-columns:78px minmax(0,1fr);min-height:116px;height:max-content;position:relative;cursor:pointer;align-items:stretch}.shopCard.affordable{box-shadow:0 0 0 1px rgba(232,191,89,.2)}
+    .shopArt{width:78px;height:100%;min-height:116px;object-fit:cover;background:#aaa078;display:block;cursor:pointer}.shopFallback{width:78px;height:100%;min-height:116px;display:grid;place-items:center;font-size:32px;background:#d9cea9;color:#16170f}.shopInfo{padding:7px;display:flex;flex-direction:column;min-width:0;min-height:116px}.shopName{font-family:Georgia,serif;color:#ffe6a4;font-weight:900;font-size:13px;line-height:1.1;cursor:pointer}.shopMeta{font-size:10px;color:#bebaa6;margin-top:3px;line-height:1.3}.shopEffect{font-size:10px;color:#ddd7bb;margin-top:5px;line-height:1.3;white-space:normal;overflow:visible}.shopBuy{margin-top:auto;width:100%;padding:6px;border-radius:8px;border:1px solid #8b773d;background:#b98628;color:#171208;font-weight:900;cursor:pointer;font-size:11px}.shopBuy:disabled{opacity:.42;cursor:not-allowed}.lockedNote{color:#e0a896;font-size:9px;font-weight:700;margin-top:3px}
     .empty{padding:16px;color:#aaa691;text-align:center}
 
     #hoverCardTooltip{position:fixed;z-index:150;pointer-events:none;display:none;width:min(300px,82vw);padding:10px 11px;border:1px solid #82744d;border-radius:11px;background:#111811f2;color:#f7efd6;box-shadow:0 14px 35px #000c;font-size:11px;line-height:1.4;backdrop-filter:blur(8px)}
@@ -198,13 +200,13 @@
       #turnBanner{min-height:36px;padding:4px;gap:4px;font-size:9px;letter-spacing:0;justify-content:space-between}#turnBannerText{text-align:left;white-space:normal;line-height:1.15}#quickEndTurnBtn{min-height:27px;padding:4px 5px;font-size:8px}
       .realmsList{padding:3px}.realmRow{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"identity" "stats" "cards";gap:4px;min-height:0!important;padding:5px;margin-bottom:4px;border-radius:9px}.realmIdentity{padding-left:1px}.realmName{font-size:11px}.realmStatus{font-size:7px;gap:3px;margin-top:2px}.activePill,.youPill,.strategyPill{font-size:6px;padding:1px 3px}.realmQuickFacts{gap:2px;margin-top:3px}.realmFact{font-size:6px;padding:1px 3px}.factionDot{width:6px;height:6px;flex-basis:6px}.realmStats{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}.statTile{padding:3px 1px;border-radius:6px}.statTile strong{font-size:9px}.statTile small{font-size:6px;margin-top:1px}.townHealth{height:4px}.realmCards,.realmsList.twoPlayerRows .realmCards{display:flex;max-height:none;padding:1px 1px 4px;gap:4px}.realmCard{width:50px;height:69px;flex-basis:50px;border-radius:7px}.cardCost,.cardHp,.cardCount{min-width:15px;height:15px;padding:0 2px;font-size:6px;border-radius:5px}.cardCount{top:19px}.cardName{font-size:6px;bottom:7px;left:3px}.triggerMarks{left:3px}.triggerMarks i{font-size:5px;line-height:6px}.statusMarks{left:3px;right:3px;top:20px}.statusMarks i{font-size:5px;padding:1px 2px}.abilityMarks{right:2px;bottom:14px;gap:1px}.abilityMarks i{width:11px;height:11px;font-size:6px}.damageBar{height:4px}
       #targetDialog{width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;margin:0;border:0;border-radius:0}.targetShell{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}#targetDialog .modalClose{z-index:5;top:calc(5px + env(safe-area-inset-top));right:calc(5px + env(safe-area-inset-right));min-width:34px;min-height:34px}.targetHeader{padding:8px 44px 7px 9px;display:block;flex:0 0 auto}.targetHeader h2{font-size:14px}.targetHeader .subtle{margin:2px 0 0;text-align:left;font-size:8px;line-height:1.25}.targetArena{padding:5px;gap:5px;scrollbar-width:thin}.targetRealmHead{padding:5px 7px;font-size:10px}.targetRealmHead small{font-size:7px}.targetRanks{padding:5px;gap:4px}.targetCardRow{gap:4px;min-height:76px;padding-bottom:4px}.targetCard{width:51px;height:71px;flex-basis:51px;border-radius:7px}.targetCard.blocked:after{font-size:5px;inset:auto 2px 3px;padding:2px}.targetAttackerStage{min-height:96px;max-height:30dvh;padding:14px 7px 7px;gap:8px;overflow:hidden}.targetSourceCard{width:54px;height:75px;flex-basis:54px}.targetAttackCopy{min-width:0;max-height:76px;overflow:auto}.targetAttackCopy strong{font-size:11px}.targetAttackCopy span{font-size:7px}.gameOverCard{padding:22px 16px 18px}.gameOverTrophy{font-size:44px}.gameOverCard h2{font-size:24px}.gameOverMessage{font-size:14px}.forecastSummary{grid-template-columns:repeat(2,minmax(0,1fr))}.summaryRow{grid-template-columns:minmax(80px,1.2fr) repeat(4,minmax(40px,.65fr));font-size:8px}.gameOverActions{display:grid;grid-template-columns:1fr}.gameOverActions .actionBtn{width:100%;min-width:0}.shopEndTurnBtn{min-height:30px;padding:4px 7px;font-size:8px}
-      .commandTabs{position:sticky;top:0;z-index:5}.commandTab{min-height:36px;font-size:9px;padding:3px}.effectLegend{padding:3px;gap:3px}.effectChip{font-size:6px;padding:2px 3px}#actionsPane{padding:4px;overflow-y:auto;overscroll-behavior:contain}.actionLayout{height:auto;min-height:100%;display:flex;flex-direction:column;gap:5px}.diceStage{min-height:86px;padding:4px;border-radius:9px;flex:0 0 auto}.diceStage:before{inset:4px}.die{width:44px;height:44px;border-width:2px;border-radius:9px;padding:4px}.pip{width:6px;height:6px}.polyDie{width:58px;height:52px;font-size:18px}.rollCaption{font-size:8px;margin-top:1px}.controlsArea{overflow:visible;gap:4px;padding:0}.phaseCard{padding:5px;border-radius:8px}.phaseTitle{font-size:10px}.phaseCard .subtle{font-size:7px}.playerSnapshot{padding:4px;gap:3px;flex-wrap:wrap}.playerSnapshot strong{display:none}.playerSnapshot .resourceStrip{width:100%;margin-left:0;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto}.dieToggle{gap:3px}.dieChoice{min-width:0;padding:5px 2px;font-size:8px;border-radius:7px}.controlRow{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}.actionBtn{min-height:31px;padding:4px 2px;font-size:8px;border-radius:7px}#targetBox{grid-template-columns:1fr;gap:3px}#targetBox select{min-height:29px;padding:4px;font-size:8px}#queueBox{max-height:none;min-height:34px;padding:4px;font-size:7px}.logCard{display:none}
-      #shopPane{overflow:hidden}.shopToolbar{padding:4px 5px;gap:3px}.shopToolbar strong{font-size:10px}.shopToolbar .subtle{font-size:7px}.categoryTabs{display:flex;overflow-x:auto;padding:4px;gap:3px}.categoryTab{flex:0 0 46px;min-height:34px;border-radius:7px}.categoryTab span{font-size:6px;padding:3px 1px}.shopGrid{grid-template-columns:minmax(0,1fr);padding:0 4px 5px;gap:4px}.shopCard{grid-template-columns:48px minmax(0,1fr);min-height:76px;border-radius:8px}.shopArt,.shopFallback{width:48px;height:76px}.shopFallback{font-size:22px}.shopInfo{padding:4px}.shopName{font-size:9px}.shopMeta,.shopEffect{font-size:6px;line-height:1.2}.shopEffect{-webkit-line-clamp:2}.shopBuy{padding:4px 2px;font-size:7px;border-radius:6px}.lockedNote{font-size:6px}
+      .commandTabs{position:sticky;top:0;z-index:5}.commandTab{min-height:36px;font-size:9px;padding:3px}.effectLegend{padding:3px;gap:3px}.effectChip{font-size:6px;padding:2px 3px}#actionsPane{padding:4px;overflow-y:auto;overscroll-behavior:contain}.actionLayout{height:auto;min-height:100%;display:flex;flex-direction:column;gap:5px}.diceStage{min-height:86px;padding:4px;border-radius:9px;flex:0 0 auto}.diceStage:before{inset:4px}.die{width:44px;height:44px;border-width:2px;border-radius:9px;padding:4px}.pip{width:6px;height:6px}.polyDie{width:58px;height:52px;font-size:18px}.minorDie{width:32px;height:32px;border-width:2px;border-radius:8px;font-size:14px}.minorDieLabel{font-size:5px}.rollCaption{font-size:8px;margin-top:1px}.controlsArea{overflow:visible;gap:4px;padding:0}.phaseCard{padding:5px;border-radius:8px}.phaseTitle{font-size:10px}.phaseCard .subtle{font-size:7px}.playerSnapshot{padding:4px;gap:3px;flex-wrap:wrap}.playerSnapshot strong{display:none}.playerSnapshot .resourceStrip{width:100%;margin-left:0;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto}.dieToggle{gap:3px}.dieChoice{min-width:0;padding:5px 2px;font-size:8px;border-radius:7px}.agePanel{gap:3px}.ageButton{padding:5px 6px;font-size:8px}.ageButton small,.ageStatus{font-size:6px}.rollDecisionRow,.controlRow{grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}.actionBtn{min-height:31px;padding:4px 2px;font-size:8px;border-radius:7px}#targetBox{grid-template-columns:1fr;gap:3px}#targetBox select{min-height:29px;padding:4px;font-size:8px}#queueBox{max-height:145px;min-height:42px;padding:4px;font-size:7px}.resolveQueueItem{grid-template-columns:18px minmax(0,1fr) auto;padding:5px;gap:4px}.resolveQueueName small,.resolveQueueAction{font-size:6px}.targetQueuePicker{min-width:0;width:100%;font-size:8px}.logCard{display:none}
+      #shopPane{overflow:hidden}.shopToolbar{padding:4px 5px;gap:3px}.shopToolbar strong{font-size:10px}.shopToolbar .subtle{font-size:7px}.categoryTabs{display:flex;overflow-x:auto;padding:4px;gap:3px}.categoryTab{flex:0 0 46px;min-height:34px;border-radius:7px}.categoryTab span{font-size:6px;padding:3px 1px}.shopGrid{grid-template-columns:minmax(0,1fr);padding:0 4px 12px;gap:4px}.shopCard{grid-template-columns:48px minmax(0,1fr);min-height:76px;border-radius:8px}.shopArt,.shopFallback{width:48px;height:100%;min-height:76px}.shopFallback{font-size:22px}.shopInfo{padding:4px;min-height:76px}.shopName{font-size:9px}.shopMeta,.shopEffect{font-size:6px;line-height:1.25}.shopBuy{padding:4px 2px;font-size:7px;border-radius:6px}.lockedNote{font-size:6px}
       .modalGrid{grid-template-columns:1fr}.modalGrid #modalArt{max-height:38vh}
       #playerCardsDialog{width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;margin:0;border:0;border-radius:0}.playerCardsShell{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}.playerCardsHeader{padding:10px 46px 8px 9px}.playerCardsHeader h2{font-size:16px}.playerCardsSummary{font-size:8px}.playerCardsGrid{grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:6px;padding:7px}.targetSkipBtn{min-height:28px;padding:4px 6px;font-size:8px}
     }
     @media(max-width:430px){
-      .brand{max-width:82px;overflow:hidden;text-overflow:ellipsis}.panelHead h2{font-size:10px}.realmCard{width:46px;height:64px;flex-basis:46px}.diceStage{min-height:76px}.phaseCard{display:none}.shopCard{grid-template-columns:43px minmax(0,1fr)}.shopArt,.shopFallback{width:43px;height:72px}
+      .brand{max-width:82px;overflow:hidden;text-overflow:ellipsis}.panelHead h2{font-size:10px}.realmCard{width:46px;height:64px;flex-basis:46px}.diceStage{min-height:76px}.phaseCard{display:none}.shopCard{grid-template-columns:43px minmax(0,1fr)}.shopArt,.shopFallback{width:43px;min-height:72px}
     }
     @media(max-height:650px) and (max-width:760px){
       .playerSnapshot{display:none}.diceStage{min-height:70px}.realmCard{height:58px}.shopToolbar #shopStatus{display:none}
@@ -281,9 +283,13 @@
             <div class="playerSnapshot"><strong>Your Realm</strong><span id="yourStatus" class="subtle"></span><div id="yourResourceStrip" class="resourceStrip"></div></div>
             <input id="dieSelect" type="hidden" value="d6" />
             <div id="dieToggle" class="dieToggle" aria-label="Choose die"></div>
+            <div id="agePanel" class="agePanel"></div>
+            <div id="rollDecisionRow" class="rollDecisionRow hidden">
+              <button id="acceptRollBtn" class="actionBtn" type="button">Keep Roll</button>
+              <button id="rerollBtn" class="actionBtn secondary" type="button">Reroll</button>
+            </div>
             <div class="controlRow">
               <button id="rollBtn" class="actionBtn">🎲 Roll</button>
-              <button id="resolveBtn" class="actionBtn secondary">Resolve</button>
               <button id="applyTargetBtn" class="actionBtn secondary">Choose Target</button>
               <button id="skipAbilityBtn" class="actionBtn danger hidden" type="button">Skip Ability</button>
               <button id="endTurnBtn" class="actionBtn secondary">End Turn</button>
@@ -421,7 +427,7 @@
     function factionTempleCount(player,faction){return (player?.owned||[]).find(e=>e.key===`${faction}_temple`)?.count||0;}
     function cardPurchaseCost(player,card){const base=TEMPLE_KEYS.includes(card?.key)?(card.cost||4)+2*totalTempleCount(player):(card?.cost||0);return Math.max(0,base-Math.min(3,Math.max(0,Number(player?.nextDiscount)||0)));}
     function isTimedMultiplayer(game){return (game?.players||[]).filter(p=>!p.isAI&&!p.left&&!p.eliminated).length>=2;}
-    function phaseDurationMs(phase){return phase==='await_roll'?30000:phase==='resolving'?60000:phase==='buy'?35000:0;}
+    function phaseDurationMs(phase){return phase==='await_roll'||phase==='await_keep'?30000:phase==='resolving'?60000:phase==='buy'?35000:0;}
     function resetPhaseDeadline(game){game.phaseDeadline=isTimedMultiplayer(game)?nowMs()+phaseDurationMs(game.phase):0;}
 
     const RAW_CARDS = [
@@ -645,7 +651,9 @@
     const duplicateCardKeys=RAW_CARDS.map(card=>card.key).filter((key,index,all)=>all.indexOf(key)!==index);
     if(duplicateCardKeys.length)throw new Error(`Duplicate card keys: ${[...new Set(duplicateCardKeys)].join(', ')}`);
     const CARD_CATALOG = Object.fromEntries(RAW_CARDS.map(card=>[card.key,{...card,category:playerCategory(card)}]));
-    const CARD_CATALOG_SIGNATURE=`cards-${RAW_CARDS.map(card=>card.key).sort().join('|').split('').reduce((hash,char)=>Math.imul(hash^char.charCodeAt(0),16777619)>>>0,2166136261).toString(36)}`;
+    const LEGACY_CATALOG_SIGNATURE=`cards-${RAW_CARDS.map(card=>card.key).sort().join('|').split('').reduce((hash,char)=>Math.imul(hash^char.charCodeAt(0),16777619)>>>0,2166136261).toString(36)}`;
+    const CARD_CATALOG_SIGNATURE=`age-resolve-v2-${LEGACY_CATALOG_SIGNATURE}`;
+    const COMPATIBLE_CATALOG_SIGNATURES=new Set([CARD_CATALOG_SIGNATURE,LEGACY_CATALOG_SIGNATURE]);
     function validateCardCatalog(){const invalid=RAW_CARDS.filter(card=>!card.key||!card.name||!card.type);if(invalid.length)throw new Error(`Invalid card definitions: ${invalid.map(card=>card.key||card.name||'?').join(', ')}`);console.info(`Magic Realms catalog ${CARD_CATALOG_SIGNATURE}: ${RAW_CARDS.length} cards registered.`);}
     function effectAbilityKeys(effect={}){
       const kind=String(effect.kind||'').toLowerCase(),keys=[];const add=k=>{if(k&&!keys.includes(k))keys.push(k);};
@@ -752,7 +760,7 @@
       enforceTokenCaps(player);ensureStats(player);return player;
     }
     function mkStarter(name,uid='',isAI=false){
-      const player={id:uid||`ai-${Math.random().toString(36).slice(2)}`,uid:uid||'',name:name||'Player',isAI,aiDifficulty:isAI?DEFAULT_AI_DIFFICULTY:'',eliminated:false,left:false,gold:0,townHp:20,townShield:0,unlocked:'d6',owned:[],stats:{}};ensureStats(player);
+      const player={id:uid||`ai-${Math.random().toString(36).slice(2)}`,uid:uid||'',name:name||'Player',isAI,aiDifficulty:isAI?DEFAULT_AI_DIFFICULTY:'',eliminated:false,left:false,gold:0,townHp:20,townShield:0,unlocked:'d6',ageLevel:0,owned:[],stats:{}};ensureStats(player);
       for(const key of STARTERS){ const card=CARD_CATALOG[key]; player.owned.push({key,count:1,hp:card.hp,maxHp:card.hp}); }
       return player;
     }
@@ -773,17 +781,18 @@
       game.seed=Number(game.seed)||Math.floor(Math.random()*1e9);
       game.players=Array.isArray(game.players)?game.players:[];
       game.players.forEach((p,i)=>{
-        p.id=p.id||p.uid||`legacy-${i}-${slug(p.name)}`;p.name=p.name||`Player ${i+1}`;p.isAI=!!p.isAI;p.eliminated=!!p.eliminated;p.gold=Number(p.gold)||0;p.townHp=Number(p.townHp??20);p.townShield=Math.max(0,Number(p.townShield)||0);
+        p.id=p.id||p.uid||`legacy-${i}-${slug(p.name)}`;p.name=p.name||`Player ${i+1}`;p.isAI=!!p.isAI;p.eliminated=!!p.eliminated;p.gold=Number(p.gold)||0;p.townHp=Number(p.townHp??20);p.townShield=Math.max(0,Number(p.townShield)||0);p.ageLevel=Math.max(0,Math.min(2,Number(p.ageLevel)||0));
         normalizeOwned(p);ensureStats(p);p.unlocked=computeUnlockForPlayer(p);ensureAIStrategy(game,p,i);
       });
       game.turnIdx=Math.max(0,Math.min(Number(game.turnIdx)||0,Math.max(0,game.players.length-1)));
       game.phase=game.phase||'await_roll';
-      game.resolveQueue=Array.isArray(game.resolveQueue)?game.resolveQueue:[];
+      game.resolveQueue=Array.isArray(game.resolveQueue)?game.resolveQueue:[];game.resolveQueue.forEach((trigger,i)=>{trigger.resolveId=String(trigger.resolveId||`${game.turnSerial||0}:${i}:${trigger.ownerIdx}:${trigger.key}:${trigger.roll||0}`);trigger.minorDie=Math.max(0,Number(trigger.minorDie)||0);});
       game.version=Number(game.version)||0;
       game.rollCount=Number(game.rollCount)||0;
       game.log=Array.isArray(game.log)?game.log.slice(-60):[];
       game.turnBuys=Number(game.turnBuys)||0;
-      game.round=Math.max(1,Number(game.round)||1);game.turnSerial=Math.max(0,Number(game.turnSerial)||0);game.phaseDeadline=Math.max(0,Number(game.phaseDeadline)||0);
+      game.round=Math.max(1,Number(game.round)||1);game.turnSerial=Math.max(0,Number(game.turnSerial)||0);game.phaseDeadline=Math.max(0,Number(game.phaseDeadline)||0);game.rerollsUsed=Math.max(0,Number(game.rerollsUsed)||0);
+      game.pendingRoll=game.pendingRoll&&typeof game.pendingRoll==='object'?game.pendingRoll:null;if(game.pendingRoll){game.pendingRoll.mode=allowedDiceFor(game.players[game.turnIdx]).includes(game.pendingRoll.mode)?game.pendingRoll.mode:'d6';game.pendingRoll.value=Math.max(1,Number(game.pendingRoll.value)||1);game.pendingRoll.faces=Array.isArray(game.pendingRoll.faces)?game.pendingRoll.faces:[game.pendingRoll.value];game.pendingRoll.minor=Array.isArray(game.pendingRoll.minor)?game.pendingRoll.minor.map(v=>Math.max(1,Math.min(10,Number(v)||1))).slice(0,2):[];}if(game.phase==='await_keep'&&!game.pendingRoll)game.phase='await_roll';if(game.phase!=='await_keep')game.pendingRoll=null;
       game.lastActionIds=game.lastActionIds&&typeof game.lastActionIds==='object'?game.lastActionIds:{};game.recentActionIds=Array.isArray(game.recentActionIds)?game.recentActionIds.filter(Boolean).slice(-48):[];game.catalogSignature=String(game.catalogSignature||CARD_CATALOG_SIGNATURE);
       game.resultRecordedAt=Math.max(0,Number(game.resultRecordedAt)||0);game.startedAt=Math.max(0,Number(game.startedAt||game.createdAt)||0);game.finishedAt=Math.max(0,Number(game.finishedAt)||0);
       return game;
@@ -819,7 +828,7 @@
     }
     function mostDamagedEntry(player,types=null){return (player?.owned||[]).filter(e=>!e._remove&&e.hp>0&&e.hp<currentMaxHp(player,e.key)&&(!types||types.includes(CARD_CATALOG[e.key]?.type))).sort((a,b)=>(a.hp/currentMaxHp(player,a.key))-(b.hp/currentMaxHp(player,b.key)))[0]||null;}
     function applyStartTurnEffects(game,player){
-      game.turnSerial=(game.turnSerial||0)+1;player.blackSelfPreventSerial=0;player.redAttackSerial=0;player.nextAttackBonus=0;player.nextAttackFaction='';player.redDrumBonus=0;
+      game.turnSerial=(game.turnSerial||0)+1;game.rerollsUsed=0;game.pendingRoll=null;player.blackSelfPreventSerial=0;player.redAttackSerial=0;player.nextAttackBonus=0;player.nextAttackFaction='';player.redDrumBonus=0;
       for(const entry of player.owned||[]){if((entry.burn||0)>0){damageEntry(entry,1,player,game,{attack:false,status:true});entry.burn=Math.max(0,(entry.burn||0)-1);}entry.guard=0;if(CARD_CATALOG[entry.key]?.passive?.renewGuard)entry.guard=1;}postResolveCleanup(game);
     }
     function applyEndTurnEffects(game,player){
@@ -830,7 +839,7 @@
       if((game.round||1)<10)return;const alive=game.players.filter(p=>!p.eliminated&&!p.left);if(alive.length<2)return;const counts=alive.map(permanentCardCount),min=Math.min(...counts),max=Math.max(...counts);if(min>=max)return;const names=[];alive.forEach((p,i)=>{if(counts[i]===min){p.gold=(p.gold||0)+1;names.push(p.name);}});if(names.length)pushLog(game,`Round ${game.round} comeback: ${names.join(', ')} gain 1 gold for having the smallest realm.`);
     }
     function nextTurn(game){
-      const count=game.players.length;if(!count)return;const old=game.turnIdx;applyEndTurnEffects(game,game.players[old]);let next=(old+1)%count;for(let i=0;i<count;i++){if(!game.players[next]?.eliminated&&!game.players[next]?.left)break;next=(next+1)%count;}if(next<=old){game.round=(game.round||1)+1;applyComebackGold(game);}game.turnIdx=next;game.phase='await_roll';game.resolveQueue=[];game.lastRoll=null;game.turnBuys=0;applyStartTurnEffects(game,game.players[next]);resetPhaseDeadline(game);pushLog(game,`Round ${game.round}: ${game.players[next]?.name||'Next player'} begins a new turn.`);finalizeGame(game);
+      const count=game.players.length;if(!count)return;const old=game.turnIdx;applyEndTurnEffects(game,game.players[old]);let next=(old+1)%count;for(let i=0;i<count;i++){if(!game.players[next]?.eliminated&&!game.players[next]?.left)break;next=(next+1)%count;}if(next<=old){game.round=(game.round||1)+1;applyComebackGold(game);}game.turnIdx=next;game.phase='await_roll';game.resolveQueue=[];game.lastRoll=null;game.pendingRoll=null;game.rerollsUsed=0;game.turnBuys=0;applyStartTurnEffects(game,game.players[next]);resetPhaseDeadline(game);pushLog(game,`Round ${game.round}: ${game.players[next]?.name||'Next player'} begins a new turn.`);finalizeGame(game);
     }
     function randomUnit(seed,index,salt=0){
       let x=(seed+Math.imul(index+1,0x9e3779b1)+Math.imul(salt+1,0x85ebca6b))|0;
@@ -843,6 +852,9 @@
       if(mode==='d20'){const v=one(3,20);return{value:v,faces:[v]};}
       const v=one(4,6);return{value:v,faces:[v]};
     }
+    function rollMinorDice(game,count){const values=[];for(let i=0;i<Math.max(0,Math.min(2,Number(count)||0));i++)values.push(1+Math.floor(randomUnit(game.seed,game.rollCount,101+i)*10));return values;}
+    function ageBenefits(player){const level=Math.max(0,Math.min(2,Number(player?.ageLevel)||0));return{level,rerolls:level,minorDice:level};}
+    function nextAgeRequirement(player){const level=Math.max(0,Number(player?.ageLevel)||0);return level===0?{level:1,cost:10,temples:2}:level===1?{level:2,cost:15,temples:3}:null;}
     function triggerNeedsTarget(kind){
       return ['attack_any','attack_structure','attack_troop','attack_any_and_heal','attack_any_per_temple','damage_per_temple_and_gain','lose_then_attack_any','attack_any_and_destroy_troop','destroy_troop','destroy_structure_non_temple','destroy_structure_and_attack_any','goliath_special','gain_and_destroy_two_walls','destroy_farm_and_damage_per_temple','trebuchet_siege','ranger_expose','oathbreaker_lifesteal','paladin_guard_strike','necromancer_execute_summon','plague_cloud','sapper_breach','fire_splash','paid_attack','status_judgment','silence_strike','battering_ram','arena_strike','poison_strike','treant_slam','target_sacrifice_per_temple','sacrifice_to_heal'].includes(kind);
     }
@@ -930,13 +942,16 @@
     function handleDeathEffect(entry,card,owner,rd,opts={}){const effect=card?.deathEffect;if(!effect)return'';if(effect.kind==='summon'){const n=summonToken(owner,effect.key,effect.count||1,effect.turnsLeft||2);const text=`${card.name} summons ${n} ${CARD_CATALOG[effect.key]?.name||'token'}${n===1?'':'s'}.`;pushLog(rd,`${owner.name}'s ${text}`);return text;}if(effect.kind==='heal_town'){const h=healTown(owner,effect.value||0),text=`${card.name} heals Town Hall for ${h.healed}.`;pushLog(rd,`${owner.name}'s ${text}`);return text;}return'';}
     function findMartyr(owner,excluded){return (owner.owned||[]).find(e=>e!==excluded&&e.key==='white_martyr'&&e.hp>0&&!e._remove)||null;}
     function damageEntry(entry,dmg,owner,rd,opts={}){
-      if(!entry||entry._remove)return{dealt:0,destroyed:false,overkill:0};let incoming=Math.max(0,Number(dmg)||0),dealt=0;
-      if(opts.attack!==false){if((entry.exposed||0)>0){incoming+=2;entry.exposed=Math.max(0,entry.exposed-1);}else incoming=Math.max(1,incoming-entryArmor(owner,entry));if((entry.bleed||0)>0){incoming+=2*(entry.bleed||0);entry.bleed=0;}}
-      if(!opts.ignoreShield&&(entry.shield||0)>0){const blocked=Math.min(entry.shield,incoming);entry.shield-=blocked;incoming-=blocked;}
+      if(!entry||entry._remove)return{dealt:0,destroyed:false,overkill:0,preventedReason:'Target is no longer present.'};let incoming=Math.max(0,Number(dmg)||0),dealt=0,armorBlocked=0,shieldBlocked=0,exposedBonus=0,bleedBonus=0;
+      const requested=incoming,copiesBefore=Math.max(1,entry.count||1);
+      if(opts.attack!==false){if((entry.exposed||0)>0){exposedBonus=2;incoming+=exposedBonus;entry.exposed=Math.max(0,entry.exposed-1);}else{const armor=entryArmor(owner,entry),afterArmor=incoming>0?Math.max(1,incoming-armor):0;armorBlocked=Math.max(0,incoming-afterArmor);incoming=afterArmor;}if((entry.bleed||0)>0){bleedBonus=2*(entry.bleed||0);incoming+=bleedBonus;entry.bleed=0;}}
+      if(!opts.ignoreShield&&(entry.shield||0)>0){shieldBlocked=Math.min(entry.shield,incoming);entry.shield-=shieldBlocked;incoming-=shieldBlocked;}
       const before=entry.hp||0,overkill=Math.max(0,incoming-before);if(incoming>0){entry.hp=Math.max(0,before-incoming);dealt=before-entry.hp;ensureStats(owner).damageTaken+=dealt;if(opts.attackerOwner&&opts.attackerOwner!==owner){const stats=ensureStats(opts.attackerOwner);stats.damageDealt+=dealt;stats.highestHit=Math.max(stats.highestHit,dealt);}}
-      if(entry.hp<=0){const card=CARD_CATALOG[entry.key];if(!opts.execute&&!opts.bypassMartyr&&!entry.token&&!card?.immutable){const martyr=findMartyr(owner,entry);if(martyr){damageEntry(martyr,martyr.hp||9999,owner,rd,{attack:false,execute:true,bypassMartyr:true});entry.hp=1;pushLog(rd,`${owner.name}'s Martyr sacrifices itself to save ${card?.name||'a permanent'} at 1 HP.`);return{dealt,destroyed:false,saved:true,overkill:0};}}if(!opts.execute&&!entry.token&&factionTempleCount(owner,'white')>=3&&owner.whiteSaveRound!==rd.round){entry.hp=1;owner.whiteSaveRound=rd.round;return{dealt,destroyed:false,saved:true,overkill:0};}if(card?.type==='troop')awardTroopDeath(rd,owner,opts.attackerOwner||null);handleDeathEffect(entry,card,owner,rd,opts);entry.count=(entry.count||1)-1;if(entry.count>0){const max=currentMaxHp(owner,entry.key);entry.maxHp=max;entry.hp=max;clearCopyStatuses(entry);}else entry._remove=true;return{dealt,destroyed:true,overkill};}
-      const passive=CARD_CATALOG[entry.key]?.passive||{};if(opts.attack!==false&&passive.ancientTreant&&dealt>=(passive.threshold||4)){const grow=passive.grow||1;entry.bonusMaxHp=(entry.bonusMaxHp||0)+grow;entry.maxHp=currentMaxHp(owner,entry.key);entry.hp+=grow;pushLog(rd,`${owner.name}'s ${CARD_CATALOG[entry.key].name} survives the blow and grows +${grow} maximum HP.`);}return{dealt,destroyed:false,overkill};
+      const meta={requested,armorBlocked,shieldBlocked,exposedBonus,bleedBonus,dealt,destroyed:false,overkill,hpBefore:before,hpAfter:entry.hp,copiesBefore,copiesRemaining:copiesBefore};
+      if(entry.hp<=0){const card=CARD_CATALOG[entry.key];if(!opts.execute&&!opts.bypassMartyr&&!entry.token&&!card?.immutable){const martyr=findMartyr(owner,entry);if(martyr){damageEntry(martyr,martyr.hp||9999,owner,rd,{attack:false,execute:true,bypassMartyr:true});entry.hp=1;pushLog(rd,`${owner.name}'s Martyr sacrifices itself to save ${card?.name||'a permanent'} at 1 HP.`);return{...meta,destroyed:false,saved:true,savedReason:'Martyr sacrificed itself',overkill:0,hpAfter:1};}}if(!opts.execute&&!entry.token&&factionTempleCount(owner,'white')>=3&&owner.whiteSaveRound!==rd.round){entry.hp=1;owner.whiteSaveRound=rd.round;pushLog(rd,`${owner.name}'s third White Temple preserves ${card?.name||'a permanent'} at 1 HP.`);return{...meta,destroyed:false,saved:true,savedReason:'third White Temple preserved it',overkill:0,hpAfter:1};}if(card?.type==='troop')awardTroopDeath(rd,owner,opts.attackerOwner||null);handleDeathEffect(entry,card,owner,rd,opts);entry.count=(entry.count||1)-1;if(entry.count>0){const max=currentMaxHp(owner,entry.key);entry.maxHp=max;entry.hp=max;clearCopyStatuses(entry);}else entry._remove=true;return{...meta,destroyed:true,hpAfter:entry._remove?0:entry.hp,copiesRemaining:Math.max(0,entry.count||0)};}
+      const passive=CARD_CATALOG[entry.key]?.passive||{};if(opts.attack!==false&&passive.ancientTreant&&dealt>=(passive.threshold||4)){const grow=passive.grow||1;entry.bonusMaxHp=(entry.bonusMaxHp||0)+grow;entry.maxHp=currentMaxHp(owner,entry.key);entry.hp+=grow;pushLog(rd,`${owner.name}'s ${CARD_CATALOG[entry.key].name} survives the blow and grows +${grow} maximum HP.`);}return{...meta,hpAfter:entry.hp};
     }
+    function damageResultExplanation(result){const parts=[];if(result?.armorBlocked)parts.push(`${result.armorBlocked} prevented by Armor`);if(result?.shieldBlocked)parts.push(`${result.shieldBlocked} absorbed by Shield`);if(result?.exposedBonus)parts.push(`Armor Break added ${result.exposedBonus}`);if(result?.bleedBonus)parts.push(`Bleed added ${result.bleedBonus}`);if(result?.savedReason)parts.push(`${result.savedReason}; it remains at 1 HP`);else if(result?.destroyed&&result.copiesRemaining>0)parts.push(`one copy destroyed; ${result.copiesRemaining} ${result.copiesRemaining===1?'copy remains':'copies remain'} at full HP`);else if(result?.destroyed)parts.push('card destroyed');else if(!result?.dealt&&!parts.length)parts.push(result?.preventedReason||'no health damage was dealt');return parts.length?` (${parts.join('; ')})`:'';}
     function firstOfTypeIdx(p,type){const owned=p.owned||[];if(type==='troop')return owned.findIndex(e=>CARD_CATALOG[e.key]?.type==='troop'&&e.hp>0&&!e._remove);if(type==='wall')return owned.findIndex(e=>CARD_CATALOG[e.key]?.type==='wall'&&e.hp>0&&!e._remove);if(type==='structure')return owned.findIndex(e=>CARD_CATALOG[e.key]?.type==='structure'&&e.key!=='townhall'&&e.hp>0&&!e._remove);return-1;}
     function findGuardRedirect(target,targetIdx){return (target.owned||[]).map((e,idx)=>({e,idx})).find(x=>x.idx!==targetIdx&&x.e.hp>0&&!x.e._remove&&(x.e.guard||0)>0)||null;}
     function consumeSelfDamage(player,amount,game){let loss=Math.max(0,amount||0);if(loss&&factionTempleCount(player,'black')>=2&&player.blackSelfPreventSerial!==game.turnSerial){player.blackSelfPreventSerial=game.turnSerial;loss=Math.max(0,loss-1);}player.townHp=Math.max(0,(player.townHp||0)-loss);ensureStats(player).damageTaken+=loss;return loss;}
@@ -952,7 +967,7 @@
       if(sameCopySurvived){if(opts.applyExpose)entry.exposed=Math.max(entry.exposed||0,1);if(opts.applyBurn)entry.burn=(entry.burn||0)+opts.applyBurn;if(opts.applyPoison)entry.poison=(entry.poison||0)+opts.applyPoison;if(opts.applyBleed)entry.bleed=(entry.bleed||0)+opts.applyBleed;if(wasUndamaged&&result.dealt>0&&factionTempleCount(owner,'red')>=3)entry.burn=(entry.burn||0)+1;const hardened=CARD_CATALOG[entry.key]?.passive?.battleHardened;if(hardened&&result.dealt>0)entry.glory=Math.min(3,(entry.glory||0)+hardened);}
       let shieldText='';if(shieldBefore>0&&(entry.shield||0)===0&&CARD_CATALOG[entry.key]?.passive?.healOnShieldBreak){const h=healTown(target,CARD_CATALOG[entry.key].passive.healOnShieldBreak);shieldText=` Shield break heals Town Hall ${h.healed}.`;}
       let spillText='';if(CARD_CATALOG[entry.key]?.type==='wall'&&result.destroyed&&result.overkill>0&&(owner.owned||[]).some(e=>e.key==='red_warstandard'&&e.hp>0)){const spill=damageTownHall(owner,target,result.overkill,rd,{ignoreWalls:true});spillText=` ${spill.dealt} excess damage spills into Town Hall${spill.blocked?` (${spill.blocked} absorbed by Town Shield)`:''}.`; }
-      const retaliation=applyAutomaticRetaliation(target,entry,owner,sourceEntry,rd,result,opts);const redirected=redirect?` Guard redirects to ${CARD_CATALOG[entry.key]?.name}.`:'';return{message:`hits ${target.name}'s ${CARD_CATALOG[entry.key]?.name||'card'} for ${result.dealt}.${redirected}${rootText}${shieldText}${spillText}${retaliation}`,dealt:result.dealt,entry,statusApplied:sameCopySurvived,destroyed:result.destroyed,overkill:result.overkill,retaliation,finalDamage:result.dealt};
+      const retaliation=applyAutomaticRetaliation(target,entry,owner,sourceEntry,rd,result,opts);const redirected=redirect?` Guard redirects to ${CARD_CATALOG[entry.key]?.name}.`:'';return{message:`hits ${target.name}'s ${CARD_CATALOG[entry.key]?.name||'card'} for ${result.dealt} health damage${damageResultExplanation(result)}.${redirected}${rootText}${shieldText}${spillText}${retaliation}`,dealt:result.dealt,entry,statusApplied:sameCopySurvived,destroyed:result.destroyed,overkill:result.overkill,retaliation,finalDamage:result.dealt};
     }
     function applyAttackToSpecific(owner,target,targetType,targetIdx,rawDmg,rd,opts={}){return dealAttack(owner,target,targetType,targetIdx,rawDmg,rd,opts).message;}
 
@@ -1038,9 +1053,11 @@ function applyInstantIncome(owner, card){
           if (got > 0) earnedBy.set(p.name, (earnedBy.get(p.name) || 0) + got);
         } else {
           q.push({
+            resolveId:`${rd.turnSerial||0}:main:${q.length}:${ownerIdx}:${e.key}:${k}`,
             ownerIdx,
             key: e.key,
             roll: rollValue,
+            minorDie:0,
             canChooseCrazy: !!crazy,
             choiceMade: !crazy,
             useCrazy: false
@@ -1059,6 +1076,19 @@ function applyInstantIncome(owner, card){
 
     function dieFaces(mode){return mode==='d20'?20:mode==='d12'?12:6;}
     function estimateEffectMetrics(effect={},card=null){const kind=String(effect.kind||''),m={damage:0,gold:0,healing:0,utility:0};const val=Number(effect.value||effect.dmg||0);if(/attack|damage|strike|smite|slam|battering|goliath|fire|plague/.test(kind))m.damage=Math.max(1,val);if(/earn|coin|discount|market|steal/.test(kind))m.gold=Math.max(1,Number(effect.coins||effect.value||1));if(/heal|repair|cleanse|shield|guard|seed/.test(kind))m.healing=Math.max(1,Number(effect.heal||effect.repair||effect.value||1));if(/silence|summon|banner|drum|forecast|sacrifice|execute/.test(kind))m.utility+=2;if(card?.retaliation)m.utility+=1;return m;}
+    function minorEffectScore(card,player){const effect=card?.onTrigger||{},m=estimateEffectMetrics(effect,card);let value=m.damage*3+m.gold*2+m.healing*2+m.utility;if(effect.kind==='earn_per_temple')value=Math.max(0,factionTempleCount(player,String(effect.temple||'').split('_')[0])*(effect.per||0))*2;if(effect.kind==='earn')value=Math.max(0,Number(effect.value)||0)*2;return value;}
+    function buildMinorResolveAfterRoll(rd,actorIdx,rollValue,minorIndex){
+      const owner=rd.players?.[actorIdx];if(!owner)return{q:[],autoNote:''};const candidates=[];
+      for(const entry of owner.owned||[]){const card=CARD_CATALOG[entry.key];if(!card?.onTrigger||!card.triggers?.includes(rollValue)||(entry.silencedUntilRound||0)>=rd.round||card.timing==='opponent')continue;candidates.push({entry,card,score:minorEffectScore(card,owner)});}
+      candidates.sort((a,b)=>a.score-b.score||(a.card.cost||0)-(b.card.cost||0)||a.card.name.localeCompare(b.card.name));const chosen=candidates[0];if(!chosen)return{q:[],autoNote:`minor d10 ${minorIndex} rolled ${rollValue}: no owned effect`};
+      if(INSTANT_EARN_KINDS.has(chosen.card.onTrigger.kind)){const got=applyInstantIncome(owner,chosen.card);return{q:[],autoNote:`minor d10 ${minorIndex} rolled ${rollValue}: ${chosen.card.name} +${got} gold`};}
+      return{q:[{resolveId:`${rd.turnSerial||0}:minor:${minorIndex}:${actorIdx}:${chosen.entry.key}`,ownerIdx:actorIdx,key:chosen.entry.key,roll:rollValue,minorDie:minorIndex,canChooseCrazy:false,choiceMade:true,useCrazy:false}],autoNote:`minor d10 ${minorIndex} rolled ${rollValue}: weakest effect is ${chosen.card.name}`};
+    }
+    function acceptPendingRoll(game,actorIdx){
+      const actor=game.players[actorIdx],pending=game.pendingRoll;if(!actor||!pending)return{changed:false,message:'There is no roll to keep.'};
+      game.lastRoll={mode:pending.mode,value:pending.value,faces:pending.faces,minor:[...(pending.minor||[])],by:actor.name,rerollsUsed:game.rerollsUsed||0};const built=buildResolveQueueAfterRoll(game,actorIdx,pending.value,pending.mode),queue=[...(built.q||[])],notes=[];if(built.autoNote)notes.push(built.autoNote);
+      (pending.minor||[]).forEach((value,index)=>{const minor=buildMinorResolveAfterRoll(game,actorIdx,value,index+1);queue.push(...minor.q);if(minor.autoNote)notes.push(minor.autoNote);});game.resolveQueue=queue;game.pendingRoll=null;game.phase=queue.length?'resolving':'buy';resetPhaseDeadline(game);pushLog(game,`${actor.name} keeps ${game.lastRoll.value} (${game.lastRoll.mode})${game.lastRoll.minor.length?` with minor d10 ${game.lastRoll.minor.join(' and ')}`:''}.${notes.length?` ${notes.join('. ')}.`:''}`);return{changed:true};
+    }
     function buildRollForecast(player,mode,game=state){const faces=dieFaces(mode),rolls=[];let activeRolls=0,dangerRolls=0,totalDamage=0,totalGold=0,totalHealing=0,totalUtility=0;const ownerIdx=game?.players?.indexOf(player)??-1,hasWatch=(player?.owned||[]).some(e=>e.key==='watchtower'&&e.hp>0);for(let value=1;value<=faces;value++){const own=[],danger=[];for(const entry of player?.owned||[]){const card=CARD_CATALOG[entry.key];if(!card?.triggers?.includes(value)||(entry.silencedUntilRound||0)>=(game?.round||1))continue;if(card.timing==='opponent')continue;own.push({card,copies:entry.count||1});const normalMetrics=estimateEffectMetrics(card.onTrigger,card),crazyMetrics=mode==='d20'&&card.onTriggerCrazy?estimateEffectMetrics(card.onTriggerCrazy,card):null,metricScore=m=>m.damage*3+m.gold*2+m.healing*2+m.utility,metrics=crazyMetrics&&metricScore(crazyMetrics)>metricScore(normalMetrics)?crazyMetrics:normalMetrics,copies=entry.count||1,boost=card.type==='troop'&&value>=HIGH_ROLL_EDGE;totalDamage+=(metrics.damage+(boost&&metrics.damage?HIGH_ROLL_DMG_BONUS:0))*copies;totalGold+=(metrics.gold+(boost&&metrics.gold?HIGH_ROLL_COIN_BONUS:0))*copies;totalHealing+=(metrics.healing+(boost&&metrics.healing?HIGH_ROLL_HEAL_BONUS:0))*copies;totalUtility+=metrics.utility*copies;}for(const enemy of game?.players||[]){if(enemy===player||enemy.eliminated||enemy.left)continue;for(const entry of enemy.owned||[]){const card=CARD_CATALOG[entry.key];if(!card?.triggers?.includes(value)||(entry.silencedUntilRound||0)>=(game?.round||1))continue;if(card.timing==='your')continue;danger.push(hasWatch?card.name:'Enemy reaction');}}if(own.length)activeRolls++;if(danger.length)dangerRolls++;rolls.push({value,own,danger});}return{mode,faces,rolls,activationChance:Math.round(activeRolls/faces*100),dangerChance:Math.round(dangerRolls/faces*100),damage:(totalDamage/faces).toFixed(1),gold:(totalGold/faces).toFixed(1),healing:(totalHealing/faces).toFixed(1),utility:(totalUtility/faces).toFixed(1)};}
     function showRollForecast(mode){const player=myPlayer();if(!player)return;const f=buildRollForecast(player,mode),body=$('#forecastBody');body.innerHTML=`<h2 id="forecastTitle">${escapeHtml(mode.toUpperCase())} Roll Forecast</h2><div class="subtle">Expected activations based on the realm as it exists now. Watchtowers reveal enemy card names.</div><div class="forecastSummary"><div class="forecastMetric"><strong>${f.activationChance}%</strong><small>Useful roll</small></div><div class="forecastMetric"><strong>${f.damage}</strong><small>Expected damage</small></div><div class="forecastMetric"><strong>${f.gold}</strong><small>Expected gold</small></div><div class="forecastMetric"><strong>${f.dangerChance}%</strong><small>Enemy reaction</small></div></div><div class="forecastRolls">${f.rolls.map(r=>`<div class="forecastRoll ${r.own.length?'hot':''}"><strong>Roll ${r.value}</strong><br>${r.own.length?r.own.map(x=>`${escapeHtml(x.card.name)}${x.copies>1?` ×${x.copies}`:''}`).join(', '):'No owned trigger'}${r.danger.length?`<br><span style="color:#e8a99e">⚠ ${escapeHtml([...new Set(r.danger)].join(', '))}</span>`:''}</div>`).join('')}</div>`;const dialog=$('#forecastDialog');if(!dialog.open)dialog.showModal();}
     function chooseAIDie(game,player){const allowed=allowedDiceFor(player),difficulty=player.aiDifficulty||'adept';if(difficulty==='apprentice')return allowed[Math.floor(randomUnit(game.seed,game.rollCount,71)*allowed.length)]||'d6';return allowed.map(mode=>({mode,f:buildRollForecast(player,mode,game)})).sort((a,b)=>{const sa=Number(a.f.damage)+Number(a.f.gold)+Number(a.f.healing)+a.f.activationChance/10-a.f.dangerChance*(difficulty==='archmage'?.08:.03),sb=Number(b.f.damage)+Number(b.f.gold)+Number(b.f.healing)+b.f.activationChance/10-b.f.dangerChance*(difficulty==='archmage'?.08:.03);return sb-sa;})[0]?.mode||highestDie(player);}
@@ -1439,14 +1469,22 @@ function resolveOne(rd, manual){
       if(action.type==='ROLL'){
         if(phase!=='await_roll')return{changed:false,message:'The die has already been rolled.'};
         const mode=allowedDiceFor(actor).includes(action.payload?.mode)?action.payload.mode:highestDie(actor);
-        const rolled=rollDice(mode,game);
-        game.lastRoll={mode,value:rolled.value,faces:rolled.faces,by:actor.name};ensureStats(actor).rolls++;
-        const built=buildResolveQueueAfterRoll(game,actorIdx,rolled.value,mode);
-        game.resolveQueue=built.q||[];
-        game.phase=game.resolveQueue.length?'resolving':'buy';resetPhaseDeadline(game);
-        game.rollCount++;
-        pushLog(game,`${actor.name} rolled ${rolled.value} (${mode}).${built.autoNote?` ${built.autoNote}`:''}`);
-        return{changed:true};
+        const rolled=rollDice(mode,game),benefits=ageBenefits(actor),minor=rollMinorDice(game,benefits.minorDice);game.pendingRoll={mode,value:rolled.value,faces:rolled.faces,minor};game.rollCount++;ensureStats(actor).rolls++;
+        if(!benefits.rerolls)return acceptPendingRoll(game,actorIdx);
+        game.phase='await_keep';resetPhaseDeadline(game);pushLog(game,`${actor.name} rolled ${rolled.value} (${mode})${minor.length?` with minor d10 ${minor.join(' and ')}`:''} and may keep or reroll.`);return{changed:true};
+      }
+      if(action.type==='REROLL'){
+        if(phase!=='await_keep'||!game.pendingRoll)return{changed:false,message:'Roll first before rerolling.'};const benefits=ageBenefits(actor);if((game.rerollsUsed||0)>=benefits.rerolls)return{changed:false,message:'No rerolls remain this turn.'};
+        game.rerollsUsed=(game.rerollsUsed||0)+1;const mode=game.pendingRoll.mode,rolled=rollDice(mode,game),minor=rollMinorDice(game,benefits.minorDice);game.pendingRoll={mode,value:rolled.value,faces:rolled.faces,minor};game.rollCount++;ensureStats(actor).rolls++;resetPhaseDeadline(game);pushLog(game,`${actor.name} uses reroll ${game.rerollsUsed}/${benefits.rerolls}: ${rolled.value} (${mode})${minor.length?` with minor d10 ${minor.join(' and ')}`:''}.`);return{changed:true};
+      }
+      if(action.type==='KEEP_ROLL'){
+        if(phase!=='await_keep')return{changed:false,message:'There is no pending roll to keep.'};return acceptPendingRoll(game,actorIdx);
+      }
+      if(action.type==='AGE_UP'){
+        if(phase!=='await_roll'||game.lastRoll||game.pendingRoll)return{changed:false,message:'Age Up must be chosen at the very beginning of your turn, before rolling.'};const requirement=nextAgeRequirement(actor);if(!requirement)return{changed:false,message:'Your realm is already at Age II.'};if(totalTempleCount(actor)<requirement.temples)return{changed:false,message:`Age ${requirement.level===1?'I':'II'} requires ${requirement.temples} Temples.`};if((actor.gold||0)<requirement.cost)return{changed:false,message:`Age ${requirement.level===1?'I':'II'} costs ${requirement.cost} gold.`};actor.gold-=requirement.cost;ensureStats(actor).spentGold+=requirement.cost;actor.ageLevel=requirement.level;pushLog(game,`${actor.name} spends ${requirement.cost} gold and advances to Age ${requirement.level===1?'I':'II'}, ending the turn.`);nextTurn(game);return{changed:true};
+      }
+      if(action.type==='SELECT_TRIGGER'){
+        if(phase!=='resolving')return{changed:false,message:'There is no resolve list right now.'};const requested=String(action.payload?.resolveId||''),index=requested?game.resolveQueue.findIndex(t=>t.resolveId===requested):Math.max(0,Number(action.payload?.index)||0);if(index<0||index>=game.resolveQueue.length)return{changed:false,message:'That queued card is no longer available.'};if(index===0)return{changed:false,message:'That card is already selected.'};const [chosen]=game.resolveQueue.splice(index,1);game.resolveQueue.unshift(chosen);resetPhaseDeadline(game);pushLog(game,`${actor.name} selects ${CARD_CATALOG[chosen.key]?.name||chosen.key} to resolve next.`);return{changed:true};
       }
       if(action.type==='CHOOSE_EFFECT'){
         if(phase!=='resolving')return{changed:false,message:'There is no effect choice right now.'};const trig=game.resolveQueue?.[0],card=CARD_CATALOG[trig?.key];if(!triggerNeedsEffectChoice(trig)||!card?.onTriggerCrazy)return{changed:false,message:'This trigger does not need a Normal/Crazy choice.'};trig.useCrazy=!!action.payload?.useCrazy;trig.choiceMade=true;resetPhaseDeadline(game);pushLog(game,`${actor.name} chooses ${trig.useCrazy?'the Crazy replacement':'the Normal effect'} for ${card.name}.`);return{changed:true};
@@ -1454,8 +1492,9 @@ function resolveOne(rd, manual){
       if(action.type==='SKIP_TRIGGER'){
         if(phase!=='resolving')return{changed:false,message:'There is no ability to skip.'};const trigger=game.resolveQueue?.[0],card=CARD_CATALOG[trigger?.key];if(!canSkipCurrentTrigger(game,actorIdx))return{changed:false,message:'Only your own optional troop ability can be skipped.'};game.resolveQueue.shift();pushLog(game,`${actor.name} skips ${card.name}'s optional ability for this copy.`);if(!game.resolveQueue.length)game.phase='buy';resetPhaseDeadline(game);finalizeGame(game);return{changed:true};
       }
-      if(action.type==='RESOLVE'){
+      if(action.type==='RESOLVE'||action.type==='RESOLVE_QUEUE_ITEM'){
         if(phase!=='resolving')return{changed:false,message:'There is no trigger to resolve.'};
+        if(action.type==='RESOLVE_QUEUE_ITEM'){const requested=String(action.payload?.resolveId||''),index=requested?game.resolveQueue.findIndex(t=>t.resolveId===requested):Math.max(0,Number(action.payload?.index)||0);if(index<0||index>=game.resolveQueue.length)return{changed:false,message:'That queued card is no longer available.'};if(index>0){const [chosen]=game.resolveQueue.splice(index,1);game.resolveQueue.unshift(chosen);}}
         const currentTrigger=game.resolveQueue[0];
         if(currentTrigger&&triggerNeedsTarget(effectiveTrigger(currentTrigger).kind)&&allTargetCandidates(game,currentTrigger.ownerIdx,effectiveTrigger(currentTrigger).kind).length&&!action.payload?.targetPlayer)return{changed:false,message:'Choose a target first.'};
         const result=resolveOne(game,action.payload?.targetPlayer?action.payload:null);
@@ -1476,6 +1515,7 @@ function resolveOne(rd, manual){
         return{changed:true};
       }
       if(action.type==='END_TURN'){
+        if(phase==='await_keep')return{changed:false,message:'Keep the roll or use a reroll before ending the turn.'};
         if(phase==='resolving'&&!action.payload?.forfeitRemaining)return{changed:false,message:'Resolve the remaining triggers or choose to forfeit them.'};
         if(action.payload?.forfeitRemaining)game.resolveQueue=[];
         nextTurn(game);
@@ -1496,14 +1536,14 @@ function resolveOne(rd, manual){
       const actionId=options.actionId||(options.ai?aiReceipt:[CLIENT_SESSION_ID,user?.uid||'guest',nowMs(),Math.random().toString(36).slice(2)].join('-'));
       if(!options.ai){actionBusy=true;setFirebaseStatus(navigator.onLine?'Syncing':'Offline');renderControls();}
       try{
-        let response='';
+        let response='',committedGame=null;
         for(let attempt=0;attempt<3;attempt++){
           try{
             await runTransaction(db,async tx=>{
               const snap=await tx.get(lobbyRef); if(!snap.exists())throw new Error('The lobby no longer exists.');
               const data=snap.data(); if(!data.game)throw new Error('The game is not ready yet.');
               const game=normalizeGame(safeClone(data.game));
-              if(game.catalogSignature!==CARD_CATALOG_SIGNATURE)throw new Error('This match is using a different card catalog. Refresh every player before continuing.');
+              if(!COMPATIBLE_CATALOG_SIGNATURES.has(game.catalogSignature))throw new Error('This match is using a different card catalog. Refresh every player before continuing.');
               const actorIdx=options.ai?Number(options.actorIdx):game.players.findIndex(p=>(user&&p.uid===user.uid)||(!p.uid&&p.name===myName));
               if(actorIdx<0)throw new Error('You are not an active player in this game.');
               if(game.recentActionIds.includes(actionId))return;
@@ -1514,6 +1554,7 @@ function resolveOne(rd, manual){
               game.lastActionIds[actorKey]=actionId;
               game.recentActionIds=[...game.recentActionIds,actionId].slice(-48);
               game.version=(game.version||0)+1;game.updatedAt=nowMs();game.catalogSignature=CARD_CATALOG_SIGNATURE;
+              committedGame=safeClone(game);
               tx.update(lobbyRef,{game,magicSync:{version:game.version,actionId,sessionId:CLIENT_SESSION_ID,updatedAt:serverTimestamp()}});
             });
             break;
@@ -1522,10 +1563,11 @@ function resolveOne(rd, manual){
             await waitMs(250+attempt*500);
           }
         }
+        if(committedGame&&!response&&Number(committedGame.version)>=(Number(state?.version)||0)){state=normalizeGame(committedGame);lastRenderedVersion=Math.max(lastRenderedVersion,Number(state.version)||0);renderAll();}
         if(response&&!options.ai)toast(response);
         return !response;
       }catch(error){console.error(error);if(!options.ai){setFirebaseStatus(navigator.onLine?'Sync error':'Offline');toast(error.message||'The move could not be completed.');}return false;}
-      finally{if(!options.ai){actionBusy=false;if(firebaseStatus==='Syncing')setFirebaseStatus(navigator.onLine?'Connected':'Offline');renderControls();}else setTimeout(scheduleAi,650);}
+      finally{if(!options.ai){actionBusy=false;if(firebaseStatus==='Syncing')setFirebaseStatus(navigator.onLine?'Connected':'Offline');renderTargetAndQueue();renderControls();}else setTimeout(scheduleAi,650);}
     }
 
     function normalizeRoster(lobby){
@@ -1669,14 +1711,16 @@ function resolveOne(rd, manual){
         else{$('#gameOverStatus').textContent='The game is complete. You can return to the lobby.';startGameOverCountdown(12);}
       }
     }
-    function phaseLabel(phase){return phase==='await_roll'?'Roll the dice':phase==='resolving'?'Resolve triggers':phase==='buy'?'Shop and end turn':phase==='finished'?'Finished':'Waiting';}
+    function phaseLabel(phase){return phase==='await_roll'?'Roll or Age Up':phase==='await_keep'?'Keep or reroll':phase==='resolving'?'Resolve triggers':phase==='buy'?'Shop and end turn':phase==='finished'?'Finished':'Waiting';}
     function renderDice(){
-      const box=$('#diceVisual');box.innerHTML='';const roll=state?.lastRoll;
+      const box=$('#diceVisual');box.innerHTML='';const pending=state?.pendingRoll,roll=pending||state?.lastRoll;
       if(!roll){box.appendChild(makeD6(1,true));$('#rollCaption').textContent='Waiting for the next roll';return;}
       if(roll.mode==='d12'||roll.mode==='d20'){
         const d=document.createElement('div');d.className=`polyDie ${roll.mode==='d20'?'d20':''}`;d.textContent=roll.value;box.appendChild(d);
       }else{(roll.faces?.length?roll.faces:[roll.value]).forEach(v=>box.appendChild(makeD6(v,false)));}
-      $('#rollCaption').textContent=`${roll.by} rolled ${roll.value} on ${roll.mode}`;
+      (roll.minor||[]).forEach((value,index)=>{const wrap=document.createElement('div');wrap.className='minorDieWrap';const die=document.createElement('div');die.className='minorDie';die.textContent=value;const label=document.createElement('span');label.className='minorDieLabel';label.textContent=`Minor d10 ${index+1}`;wrap.append(die,label);box.appendChild(wrap);});
+      if(pending){const benefits=ageBenefits(activePlayer()),left=Math.max(0,benefits.rerolls-(state?.rerollsUsed||0));$('#rollCaption').textContent=`${activePlayer()?.name||'Player'} rolled ${roll.value} on ${roll.mode} • ${left} reroll${left===1?'':'s'} left`;}
+      else $('#rollCaption').textContent=`${roll.by} kept ${roll.value} on ${roll.mode}${roll.minor?.length?` + minor ${roll.minor.join(', ')}`:''}`;
     }
     function makeD6(value,ghost=false){
       const die=document.createElement('div');die.className='die';if(ghost)die.style.opacity='.35';
@@ -1754,7 +1798,7 @@ function resolveOne(rd, manual){
         else{const dot=document.createElement('i');dot.className='factionDot';dot.style.setProperty('--dot',factionColor('grey'));colorFact.append(dot,document.createTextNode('Unaligned'));}
         facts.appendChild(colorFact);identity.appendChild(facts);
         const stats=document.createElement('div');stats.className='realmStats';
-        for(const [value,label] of [[`💰 ${player.gold||0}`,'Gold'],[`🏰 ${Math.max(0,player.townHp||0)}${player.townShield?` +${player.townShield}✨`:''}`,'Town'],[`⛪ ${totalTempleCount(player)}`,'Temples'],[`🎲 ${player.unlocked||'d6'}`,'Die']]){const box=document.createElement('div');box.className='statTile';const strong=document.createElement('strong');strong.textContent=value;const small=document.createElement('small');small.textContent=label;box.append(strong,small);stats.appendChild(box);}
+        for(const [value,label] of [[`💰 ${player.gold||0}`,'Gold'],[`🏰 ${Math.max(0,player.townHp||0)}${player.townShield?` +${player.townShield}✨`:''}`,'Town'],[`⛪ ${totalTempleCount(player)}`,'Temples'],[`🎲 ${player.unlocked||'d6'}`,'Die'],[player.ageLevel?`Age ${player.ageLevel===1?'I':'II'}`:'—','Age']]){const box=document.createElement('div');box.className='statTile';const strong=document.createElement('strong');strong.textContent=value;const small=document.createElement('small');small.textContent=label;box.append(strong,small);stats.appendChild(box);}
         const townBar=document.createElement('div');townBar.className='townHealth';const townFill=document.createElement('i');townFill.style.width=`${Math.max(0,Math.min(100,(player.townHp||0)/20*100))}%`;townBar.appendChild(townFill);stats.appendChild(townBar);
         const cards=document.createElement('div');cards.className='realmCards';
         if(!(player.owned||[]).length){const empty=document.createElement('div');empty.className='emptyCards';empty.textContent='No cards remaining';cards.appendChild(empty);}
@@ -1766,7 +1810,7 @@ function resolveOne(rd, manual){
       const player=myPlayer(),top=$('#resourceStrip'),mine=$('#yourResourceStrip');top.innerHTML='';mine.innerHTML='';
       if(!player){$('#yourStatus').textContent=state?'Spectating':'Waiting';return;}
       $('#yourStatus').textContent=player.eliminated?'Spectating after elimination':statusForPlayer(player);
-      const values=[`💰 ${player.gold||0}`,`🏰 ${Math.max(0,player.townHp||0)}${player.townShield?` +${player.townShield}✨`:''}`,`⛪ ${totalTempleCount(player)}`,`🎲 ${player.unlocked||'d6'}`,`Round ${state?.round||1}`];
+      const values=[`💰 ${player.gold||0}`,`🏰 ${Math.max(0,player.townHp||0)}${player.townShield?` +${player.townShield}✨`:''}`,`⛪ ${totalTempleCount(player)}`,`🎲 ${player.unlocked||'d6'}`,player.ageLevel?`Age ${player.ageLevel===1?'I':'II'}`:'No Age',`Round ${state?.round||1}`];
       values.forEach(text=>{for(const box of[top,mine]){const span=document.createElement('span');span.className='resource';span.textContent=text;box.appendChild(span);}});
     }
     function triggerProbability(card,faces){return Math.round((card.triggers||[]).filter(n=>n<=faces).length/faces*100);}
@@ -1798,15 +1842,15 @@ function resolveOne(rd, manual){
         const art=makeArt(card,'shopArt');item.appendChild(art);
         const info=document.createElement('div');info.className='shopInfo';const title=document.createElement('div');title.className='shopName';title.textContent=card.name;
         const price=cardPurchaseCost(player,card);const meta=document.createElement('div');meta.className='shopMeta';meta.textContent=`${card.type} • ${price} gold${TEMPLE_KEYS.includes(card.key)?' (temples +2 each)':''} • ${card.hpDynamic?'scaling':card.hp??'—'} HP • 🎲 ${(card.triggers||[]).join(', ')||'—'}`;
-        const abilities=document.createElement('div');abilities.className='shopAbilityMarks';for(const key of cardAbilityKeys(card).slice(0,5)){const pill=document.createElement('span');pill.textContent=`${ABILITY_META[key]?.[0]||'✦'} ${abilityLabel(key)}`;abilities.appendChild(pill);}
+        const effect=document.createElement('div');effect.className='shopEffect';effect.textContent=card.details||'No additional card text.';const abilities=document.createElement('div');abilities.className='shopAbilityMarks';for(const key of cardAbilityKeys(card).slice(0,5)){const pill=document.createElement('span');pill.textContent=`${ABILITY_META[key]?.[0]||'✦'} ${abilityLabel(key)}`;abilities.appendChild(pill);}
         const btn=document.createElement('button');btn.className='shopBuy';btn.disabled=!allowed.ok;btn.textContent=allowed.ok?`Buy for ${price}`:allowed.reason;btn.onclick=event=>{event.stopPropagation();performAction('BUY',{key:card.key});};
-        info.append(title,meta,abilities);
+        info.append(title,meta,effect,abilities);
         if(card.requiresTemple&&!player?.owned?.some(e=>e.key===card.requiresTemple)){const locked=document.createElement('div');locked.className='lockedNote';locked.textContent=`Requires ${CARD_CATALOG[card.requiresTemple]?.name}`;info.appendChild(locked);}
         info.appendChild(btn);item.appendChild(info);grid.appendChild(item);
       }
     }
     function rawEffectDamage(trigger,effect,owner,sourceEntry){const roll=trigger?.roll||0,high=CARD_CATALOG[trigger?.key]?.type==='troop'&&roll>=HIGH_ROLL_EDGE;let dmg=Number(effect?.dmg??effect?.value??0);switch(effect?.kind){case'attack_any_per_temple':case'damage_per_temple_and_gain':dmg=factionTempleCount(owner,String(effect.temple||'').split('_')[0])*(effect.per||0);break;case'status_judgment':dmg=effect.dmg||4;break;case'battering_ram':dmg=(effect.dmg||4)+Math.min(effect.maxBonus||6,sourceEntry?.siegeMomentum||0);break;case'arena_strike':dmg=(effect.dmg||5)+(sourceEntry?.glory||0);break;case'paid_attack':dmg=(owner.gold||0)>=(effect.cost||1)?(effect.dmg||7):3;break;case'paladin_guard_strike':dmg=effect.dmg||7;break;case'treant_slam':dmg=effect.dmg||6;break;case'silence_strike':dmg=effect.dmg||3;break;case'poison_strike':dmg=effect.dmg||2;break;}if(high)dmg+=HIGH_ROLL_DMG_BONUS;if(sourceEntry?.glory&&effect?.kind!=='arena_strike')dmg+=sourceEntry.glory;return Math.max(0,dmg);}
-    function estimateCandidateOutcome(trigger,candidate,game=state){if(!trigger||!candidate||!game)return{final:0,lethal:false,retaliates:false,label:''};const owner=game.players[trigger.ownerIdx],sourceEntry=findSourceEntry(owner,trigger.key),effect=effectiveTrigger(trigger),target=game.players.find(p=>p.name===candidate.targetPlayer);if(!target)return{final:0,lethal:false,retaliates:false,label:''};if(effect.kind==='sacrifice_to_heal'){const entry=target.owned?.[candidate.targetEntryIdx],heal=Math.ceil(Math.max(1,entry?.hp||0)*(effect.multiplier||1.5))+(trigger.roll>=HIGH_ROLL_EDGE?HIGH_ROLL_HEAL_BONUS:0);return{raw:0,final:0,lethal:false,retaliates:false,label:`Sacrifice • heal ${heal}`};}if(effect.kind==='target_sacrifice_per_temple'){const n=Math.max(1,factionTempleCount(owner,'black'));return{raw:0,final:0,lethal:false,retaliates:false,label:`Sacrifice up to ${n}`};}let raw=rawEffectDamage(trigger,effect,owner,sourceEntry);if(effect.kind==='status_judgment'&&candidate.targetType!=='townhall'){const judged=target.owned?.[candidate.targetEntryIdx];raw+=(judged?harmfulStatusCount(judged):0)*(effect.perStatus||2);}if(candidate.targetType==='townhall'){const final=Math.max(0,raw-(target.townShield||0));return{raw,final,lethal:final>=(target.townHp||0),retaliates:false,label:`${final} dmg${final>=(target.townHp||0)?' • LETHAL':''}`};}const entry=target.owned?.[candidate.targetEntryIdx],card=CARD_CATALOG[entry?.key];if(!entry||!card)return{final:0,lethal:false,retaliates:false,label:''};let incoming=raw;if(entry.exposed)incoming+=2;else incoming=Math.max(1,incoming-entryArmor(target,entry));if(entry.bleed)incoming+=2*entry.bleed;incoming=Math.max(0,incoming-(entry.shield||0));const final=Math.min(entry.hp||0,incoming),lethal=incoming>=(entry.hp||0),retaliates=!!card.retaliation&&(entry.silencedUntilRound||0)<(game.round||1);return{raw,final,lethal,retaliates,label:`${final} dmg${lethal?' • LETHAL':''}${retaliates?' • ↩':''}`};}
+    function estimateCandidateOutcome(trigger,candidate,game=state){if(!trigger||!candidate||!game)return{final:0,lethal:false,retaliates:false,label:''};const owner=game.players[trigger.ownerIdx],sourceEntry=findSourceEntry(owner,trigger.key),effect=effectiveTrigger(trigger),target=game.players.find(p=>p.name===candidate.targetPlayer);if(!target)return{final:0,lethal:false,retaliates:false,label:''};if(effect.kind==='sacrifice_to_heal'){const entry=target.owned?.[candidate.targetEntryIdx],heal=Math.ceil(Math.max(1,entry?.hp||0)*(effect.multiplier||1.5))+(trigger.roll>=HIGH_ROLL_EDGE?HIGH_ROLL_HEAL_BONUS:0);return{raw:0,final:0,lethal:false,retaliates:false,label:`Sacrifice • heal ${heal}`};}if(effect.kind==='target_sacrifice_per_temple'){const n=Math.max(1,factionTempleCount(owner,'black'));return{raw:0,final:0,lethal:false,retaliates:false,label:`Sacrifice up to ${n}`};}let raw=rawEffectDamage(trigger,effect,owner,sourceEntry);if(effect.kind==='status_judgment'&&candidate.targetType!=='townhall'){const judged=target.owned?.[candidate.targetEntryIdx];raw+=(judged?harmfulStatusCount(judged):0)*(effect.perStatus||2);}if(candidate.targetType==='townhall'){const final=Math.max(0,raw-(target.townShield||0));return{raw,final,lethal:final>=(target.townHp||0),retaliates:false,label:`${final} dmg${final>=(target.townHp||0)?' • LETHAL':''}`};}const entry=target.owned?.[candidate.targetEntryIdx],card=CARD_CATALOG[entry?.key];if(!entry||!card)return{final:0,lethal:false,retaliates:false,label:''};let incoming=raw;if(entry.exposed)incoming+=2;else incoming=incoming>0?Math.max(1,incoming-entryArmor(target,entry)):0;if(entry.bleed)incoming+=2*entry.bleed;incoming=Math.max(0,incoming-(entry.shield||0));const final=Math.min(entry.hp||0,incoming),lethal=incoming>=(entry.hp||0),retaliates=!!card.retaliation&&(entry.silencedUntilRound||0)<(game.round||1);return{raw,final,lethal,retaliates,label:`${final} dmg${lethal?' • LETHAL':''}${retaliates?' • ↩':''}`};}
     function targetWithIdentity(candidate){
       if(!candidate)return null;
       const target=state?.players?.find(p=>p.name===candidate.targetPlayer);
@@ -1828,7 +1872,7 @@ function resolveOne(rd, manual){
       if(!match&&preferred.targetType==='townhall')match=candidates.find(sameBase);
       return match||null;
     }
-    function targetDialogTriggerKey(trigger){return trigger?`${state?.turnSerial||0}:${state?.version||0}:${trigger.ownerIdx}:${trigger.key}:${state?.resolveQueue?.length||0}`:'';}
+    function targetDialogTriggerKey(trigger){return trigger?String(trigger.resolveId||`${state?.turnSerial||0}:${trigger.ownerIdx}:${trigger.key}:${trigger.roll||0}`):'';}
     function candidateKey(candidate){return `${candidate.targetPlayer}|${candidate.targetType}|${candidate.targetEntryIdx==null?'town':candidate.targetEntryIdx}`;}
     function targetCandidateFor(candidates,player,type,idx){return candidates.find(c=>c.targetPlayer===player.name&&c.targetType===type&&(type==='townhall'||Number(c.targetEntryIdx)===Number(idx)))||null;}
     function makeTargetCard(card,entry,player,candidate,blockedReason=''){
@@ -1857,6 +1901,7 @@ function resolveOne(rd, manual){
       const candidates=allTargetCandidates(state,trigger.ownerIdx,effect.kind),source=makeTargetSource(trigger),key=targetDialogTriggerKey(trigger);
       const friendly=effect.kind==='sacrifice_to_heal';$('#targetTitle').textContent=`${source.owner.name}'s ${source.card.name}`;$('#targetInstruction').textContent=candidates.length?(friendly?'Select the troop to sacrifice. Summoned troops are included.':'Select a glowing card. Walls are shown in front of protected cards.'):'No legal targets remain; close this view and resolve to skip.';
       stage.appendChild(source.tile);const copy=document.createElement('div');copy.className='targetAttackCopy';copy.innerHTML=`<strong>${escapeText(source.card.name)} is ready</strong><span>${escapeText(source.card.details||'Choose a target to resolve this attack.')}</span>`;stage.appendChild(copy);
+      if((state.resolveQueue||[]).length>1){const picker=document.createElement('select');picker.className='targetQueuePicker';picker.title='Switch the next card to resolve';(state.resolveQueue||[]).forEach((queued,index)=>{const option=document.createElement('option'),queuedOwner=state.players[queued.ownerIdx],queuedCard=CARD_CATALOG[queued.key];option.value=queued.resolveId;option.textContent=`${index===0?'Next:':'Switch:'} ${queuedOwner?.name||'?'} — ${queuedCard?.name||queued.key}${queued.minorDie?` (minor d10 ${queued.minorDie})`:''}`;picker.appendChild(option);});picker.value=trigger.resolveId;picker.disabled=actionBusy||targetActionBusy;picker.onchange=async()=>{const resolveId=picker.value;if(resolveId===trigger.resolveId)return;targetActionBusy=true;await performAction('SELECT_TRIGGER',{resolveId});targetActionBusy=false;renderTargetAndQueue();renderControls();};stage.appendChild(picker);}
       for(const player of state.players){
         if(player.eliminated||player.left||(friendly?player!==source.owner:player===source.owner))continue;
         const lane=document.createElement('section');lane.className='targetRealmLane';lane.style.setProperty('--realm-stripes',playerStripeGradient(player,'1'));
@@ -1878,15 +1923,20 @@ function resolveOne(rd, manual){
       const source=$('#targetAttackerStage .targetSourceCard');source?.classList.add('attacking');targetTile?.classList.add('hitTarget');
       await new Promise(resolve=>setTimeout(resolve,420));
       const completed=await performAction('RESOLVE',selectedTargetPayload||candidate);
-      targetActionBusy=false;if(!completed){source?.classList.remove('attacking');targetTile?.classList.remove('hitTarget');renderTargetDialog(false);}
+      targetActionBusy=false;if(!completed){source?.classList.remove('attacking');targetTile?.classList.remove('hitTarget');renderTargetDialog(false);}else{renderTargetAndQueue();renderControls();}
     }
     function openTargetDialog(){renderTargetDialog(true);}
+    async function activateResolveTrigger(trigger,index){
+      if(actionBusy||targetActionBusy||!isMyTurn()||state?.phase!=='resolving'||!trigger)return;const effect=effectiveTrigger(trigger);
+      if(triggerNeedsEffectChoice(trigger)||triggerNeedsTarget(effect.kind)){if(index===0){if(triggerNeedsTarget(effect.kind))openTargetDialog();return;}await performAction('SELECT_TRIGGER',{resolveId:trigger.resolveId});return;}
+      await performAction('RESOLVE_QUEUE_ITEM',{resolveId:trigger.resolveId});
+    }
     function renderTargetAndQueue(){
       const queueBox=$('#queueBox'),targetBox=$('#targetBox');queueBox.innerHTML='';targetBox.innerHTML='';selectedTargetPayload=null;
       if(preferredTargetTurnSerial!==(state?.turnSerial??-1)){preferredTargetPayload=null;preferredTargetTurnSerial=state?.turnSerial??-1;}
       const queue=state?.resolveQueue||[];
       if(!queue.length){queueBox.textContent='No triggers pending.';renderTargetDialog(false);return;}
-      queue.forEach((trigger,i)=>{const owner=state.players[trigger.ownerIdx],card=CARD_CATALOG[trigger.key],line=document.createElement('div'),choice=triggerNeedsEffectChoice(trigger)?' [CHOOSE EFFECT]':trigger.canChooseCrazy?(trigger.useCrazy?' [CRAZY REPLACEMENT]':' [NORMAL]'):'';line.textContent=`${i===0?'▶':'•'} ${owner?.name||'?'} — ${card?.name||trigger.key}${choice}`;queueBox.appendChild(line);});
+      queue.forEach((trigger,i)=>{const owner=state.players[trigger.ownerIdx],card=CARD_CATALOG[trigger.key],button=document.createElement('button'),choice=triggerNeedsEffectChoice(trigger)?'Choose Normal/Crazy':triggerNeedsTarget(effectiveTrigger(trigger).kind)?'Choose target':'Resolve now';button.type='button';button.className=`resolveQueueItem ${i===0?'current':''}`;button.disabled=actionBusy||targetActionBusy||!isMyTurn()||state?.phase!=='resolving';const order=document.createElement('span');order.className='resolveQueueOrder';order.textContent=i===0?'▶':String(i+1);const name=document.createElement('span');name.className='resolveQueueName';name.textContent=`${owner?.name||'?'} — ${card?.name||trigger.key}`;const detail=document.createElement('small');detail.textContent=`Roll ${trigger.roll}${trigger.minorDie?` • minor d10 ${trigger.minorDie}`:''}${trigger.canChooseCrazy?triggerNeedsEffectChoice(trigger)?' • effect not chosen':trigger.useCrazy?' • Crazy replacement':' • Normal effect':''}`;name.appendChild(detail);const action=document.createElement('span');action.className='resolveQueueAction';action.textContent=choice;button.append(order,name,action);button.onclick=()=>activateResolveTrigger(trigger,i);queueBox.appendChild(button);});
       const trigger=queue[0],card=CARD_CATALOG[trigger.key];if(triggerNeedsEffectChoice(trigger)){const normal=document.createElement('button');normal.type='button';normal.className='actionBtn secondary';normal.textContent='Use Normal Effect';normal.onclick=()=>performAction('CHOOSE_EFFECT',{useCrazy:false});const crazy=document.createElement('button');crazy.type='button';crazy.className='actionBtn danger';crazy.textContent='Use Crazy Replacement';crazy.onclick=()=>performAction('CHOOSE_EFFECT',{useCrazy:true});const hint=document.createElement('div');hint.className='subtle';hint.textContent=`Choose separately for this ${card?.name||'card'} copy. Crazy replaces Normal only for this resolution.`;targetBox.append(normal,crazy,hint);renderTargetDialog(false);return;}const effect=effectiveTrigger(trigger),needs=triggerNeedsTarget(effect.kind);
       if(!needs){renderTargetDialog(false);return;}
       const candidates=allTargetCandidates(state,trigger.ownerIdx,effect.kind);
@@ -1900,19 +1950,24 @@ function resolveOne(rd, manual){
       document.querySelectorAll('.commandTab').forEach(btn=>{const active=btn.dataset.commandTab===activeCommandTab;btn.classList.toggle('active',active);btn.setAttribute('aria-selected',String(active));});
       $('#actionsPane').classList.toggle('active',activeCommandTab==='actions');$('#shopPane').classList.toggle('active',activeCommandTab==='shop');
     }
+    function renderAgePanel(player,turn,phase){
+      const panel=$('#agePanel');panel.innerHTML='';if(!player)return;const benefits=ageBenefits(player),requirement=nextAgeRequirement(player),temples=totalTempleCount(player);
+      if(benefits.level){const status=document.createElement('div');status.className='ageStatus';status.textContent=`Age ${benefits.level===1?'I':'II'} • ${benefits.rerolls} reroll${benefits.rerolls===1?'':'s'} • ${benefits.minorDice} minor d10${benefits.minorDice===1?'':'s'}; each minor die activates only your weakest matching effect.`;panel.appendChild(status);}
+      if(!requirement||temples<requirement.temples)return;const button=document.createElement('button');button.type='button';button.className='actionBtn secondary ageButton';button.innerHTML=`Advance to Age ${requirement.level===1?'I':'II'} — ${requirement.cost} gold<small>Requires ${requirement.temples} Temples. Ends this turn immediately.</small>`;button.disabled=actionBusy||!turn||phase!=='await_roll'||(player.gold||0)<requirement.cost;button.title=(player.gold||0)<requirement.cost?`You need ${requirement.cost} gold`:'Age Up is your entire turn';button.onclick=()=>{if(confirm(`Spend ${requirement.cost} gold to advance to Age ${requirement.level===1?'I':'II'}? This immediately ends your turn.`))performAction('AGE_UP',{});};panel.appendChild(button);
+    }
     function renderControls(){
       const player=myPlayer(),turn=isMyTurn(),phase=state?.phase||'waiting',queue=state?.resolveQueue||[],trigger=queue[0],choicePending=triggerNeedsEffectChoice(trigger),needs=trigger&&!choicePending?triggerNeedsTarget(effectiveTrigger(trigger).kind):false,candidates=trigger&&!choicePending?allTargetCandidates(state,trigger.ownerIdx,effectiveTrigger(trigger).kind):[],skipAllowed=turn&&canSkipCurrentTrigger(state,myIndex());
       const allowed=allowedDiceFor(player),hidden=$('#dieSelect');let selected=allowed.includes(hidden.value)?hidden.value:allowed[allowed.length-1];hidden.value=selected;
-      const toggle=$('#dieToggle');toggle.innerHTML='';for(const mode of['d6','d12','d20']){const btn=document.createElement('button');btn.className=`dieChoice ${selected===mode?'active':''}`;const forecast=player&&allowed.includes(mode)?buildRollForecast(player,mode):null;btn.textContent=forecast?`${mode} · ${forecast.activationChance}%`:mode;btn.disabled=!allowed.includes(mode)||actionBusy||!turn||phase!=='await_roll';btn.title=!allowed.includes(mode)?`${mode} unlocks when you own cards that trigger in its range`:`Select ${mode} and open its roll forecast`;btn.onclick=()=>{hidden.value=mode;renderControls();showRollForecast(mode);};toggle.appendChild(btn);}
+      const toggle=$('#dieToggle');toggle.innerHTML='';for(const mode of['d6','d12','d20']){const btn=document.createElement('button');btn.className=`dieChoice ${selected===mode?'active':''}`;const forecast=player&&allowed.includes(mode)?buildRollForecast(player,mode):null;btn.textContent=forecast?`${mode} · ${forecast.activationChance}%`:mode;btn.disabled=!allowed.includes(mode)||actionBusy||!turn||phase!=='await_roll';btn.title=!allowed.includes(mode)?`${mode} unlocks when you own cards that trigger in its range`:`Select ${mode} and open its roll forecast`;btn.onclick=()=>{hidden.value=mode;renderControls();showRollForecast(mode);};toggle.appendChild(btn);}renderAgePanel(player,turn,phase);
       $('#phaseTitle').textContent=phaseLabel(phase);
-      $('#phaseHelp').textContent=phase==='await_roll'?`Round ${state?.round||1}. Choose d6 or your unlocked higher die, then roll.`:phase==='resolving'?(choicePending?'Choose Normal, Crazy Replacement, or skip this troop copy.':'Resolve queued effects in order. Your troop abilities are optional and may be skipped per copy.'):phase==='buy'?'Open the Shop tab, buy cards, then end your turn.':phase==='finished'?'The final realm remains.':'Waiting for the game.';
+      $('#phaseHelp').textContent=phase==='await_roll'?`Round ${state?.round||1}. Choose a die and roll, or spend the whole turn to Age Up.`:phase==='await_keep'?'Keep these dice or reroll the main die and every minor d10 together. Effects do not activate until you keep.':phase==='resolving'?(choicePending?'Choose Normal, Crazy Replacement, or skip this troop copy.':'Tap any card in the resolve list to choose the order. Non-targeted cards resolve immediately; attacks open targeting.'):phase==='buy'?'Open the Shop tab, buy cards, then end your turn.':phase==='finished'?'The final realm remains.':'Waiting for the game.';
       $('#rollBtn').disabled=actionBusy||!turn||phase!=='await_roll';
-      $('#resolveBtn').disabled=actionBusy||!turn||phase!=='resolving'||choicePending||(needs&&candidates.length>0);
+      const decision=$('#rollDecisionRow'),benefits=ageBenefits(player),rerollsLeft=Math.max(0,benefits.rerolls-(state?.rerollsUsed||0));decision.classList.toggle('hidden',phase!=='await_keep');$('#acceptRollBtn').disabled=actionBusy||!turn||phase!=='await_keep';$('#rerollBtn').disabled=actionBusy||!turn||phase!=='await_keep'||rerollsLeft<=0;$('#rerollBtn').textContent=`Reroll (${rerollsLeft} left)`;
       $('#applyTargetBtn').disabled=actionBusy||targetActionBusy||!turn||phase!=='resolving'||choicePending||!needs||!candidates.length;
       const skipButton=$('#skipAbilityBtn');skipButton.classList.toggle('hidden',!skipAllowed);skipButton.disabled=actionBusy||targetActionBusy||!skipAllowed;skipButton.textContent=trigger?`Skip ${CARD_CATALOG[trigger.key]?.name||'Ability'}`:'Skip Ability';
-      $('#endTurnBtn').disabled=actionBusy||!turn||phase==='finished';
-      $('#shopEndTurnBtn').disabled=actionBusy||!turn||phase==='finished';
-      const quickEnd=$('#quickEndTurnBtn');quickEnd.classList.toggle('hidden',!turn||phase==='finished');quickEnd.disabled=actionBusy||!turn||phase==='finished';
+      $('#endTurnBtn').disabled=actionBusy||!turn||phase==='finished'||phase==='await_keep';
+      $('#shopEndTurnBtn').disabled=actionBusy||!turn||phase==='finished'||phase==='await_keep';
+      const quickEnd=$('#quickEndTurnBtn');quickEnd.classList.toggle('hidden',!turn||phase==='finished'||phase==='await_keep');quickEnd.disabled=actionBusy||!turn||phase==='finished'||phase==='await_keep';
     }
     function renderLog(){
       const log=$('#log');log.innerHTML='';const entries=state?.log||[];
@@ -1920,7 +1975,7 @@ function resolveOne(rd, manual){
       [...entries].reverse().forEach(entry=>{const line=document.createElement('div');line.className='logLine';line.textContent=entry.message||String(entry);log.appendChild(line);});
     }
     function renderTimer(){const tag=$('#timerTag');if(!state||!isTimedMultiplayer(state)||state.phase==='finished'){tag.classList.add('hidden');return;}tag.classList.remove('hidden');const left=Math.max(0,Math.ceil(((state.phaseDeadline||0)-nowMs())/1000));tag.textContent=`⏱ ${left}s`;tag.classList.toggle('urgent',left<=10);}
-    async function timerTick(){renderTimer();if(timerActionPending||!state||!isTimedMultiplayer(state)||state.phase==='finished'||!state.phaseDeadline||nowMs()<state.phaseDeadline)return;const idx=state.turnIdx,actor=state.players[idx];if(!actor||actor.isAI)return;timerActionPending=true;try{const id=`timeout-${state.phase}-${state.phaseDeadline}-${state.resolveQueue?.length||0}`;if(state.phase==='await_roll')await performAction('ROLL',{mode:chooseAIDie(state,actor)},{ai:true,actorIdx:idx,actionId:id});else if(state.phase==='resolving'){const trig=state.resolveQueue?.[0];if(triggerNeedsEffectChoice(trig))await performAction('CHOOSE_EFFECT',{useCrazy:chooseAICrazyEffect(state,trig)},{ai:true,actorIdx:idx,actionId:id});else{const target=trig?chooseAITarget(state,trig):null;await performAction('RESOLVE',target||{},{ai:true,actorIdx:idx,actionId:id});}}else if(state.phase==='buy')await performAction('END_TURN',{forfeitRemaining:false},{ai:true,actorIdx:idx,actionId:id});}finally{timerActionPending=false;}}
+    async function timerTick(){renderTimer();if(timerActionPending||!state||!isTimedMultiplayer(state)||state.phase==='finished'||!state.phaseDeadline||nowMs()<state.phaseDeadline)return;const idx=state.turnIdx,actor=state.players[idx];if(!actor||actor.isAI)return;timerActionPending=true;try{const id=`timeout-${state.phase}-${state.phaseDeadline}-${state.resolveQueue?.length||0}`;if(state.phase==='await_roll')await performAction('ROLL',{mode:chooseAIDie(state,actor)},{ai:true,actorIdx:idx,actionId:id});else if(state.phase==='await_keep')await performAction('KEEP_ROLL',{}, {ai:true,actorIdx:idx,actionId:id});else if(state.phase==='resolving'){const trig=state.resolveQueue?.[0];if(triggerNeedsEffectChoice(trig))await performAction('CHOOSE_EFFECT',{useCrazy:chooseAICrazyEffect(state,trig)},{ai:true,actorIdx:idx,actionId:id});else{const target=trig?chooseAITarget(state,trig):null;await performAction('RESOLVE',target||{},{ai:true,actorIdx:idx,actionId:id});}}else if(state.phase==='buy')await performAction('END_TURN',{forfeitRemaining:false},{ai:true,actorIdx:idx,actionId:id});}finally{timerActionPending=false;}}
     function renderAll(){
       $('#lobbyTag').textContent=lobbyId?`Lobby ${lobbyId}`:'No lobby';$('#userTag').textContent=myName;renderConnectionStatus();const spectator=$('#spectatorTag');spectator.classList.toggle('hidden',!isSpectating());const aiSelect=$('#aiDifficultySelect'),ais=state?.players?.filter(p=>p.isAI&&!p.left)||[],humans=state?.players?.filter(p=>!p.isAI&&!p.left)||[];aiSelect.classList.toggle('hidden',!(ais.length&&humans.length===1&&myPlayer()&&!myPlayer().eliminated));if(ais.length)aiSelect.value=AI_DIFFICULTIES.includes(ais[0].aiDifficulty)?ais[0].aiDifficulty:'adept';
       $('#hoverCardTooltip').classList.remove('show');renderLoading();renderTurnBanner();renderTimer();renderOpponents();renderDice();renderOwned();renderCategoryTabs();renderShop();renderTargetAndQueue();renderControls();renderLog();setCommandTab(activeCommandTab);
@@ -1972,7 +2027,8 @@ function resolveOne(rd, manual){
     }
     async function runAiStep(){
       if(!state||state.phase==='finished')return;const index=state.turnIdx,player=state.players[index];if(!player?.isAI)return;
-      if(state.phase==='await_roll'){await performAction('ROLL',{mode:chooseAIDie(state,player)},{ai:true,actorIdx:index});return;}
+      if(state.phase==='await_roll'){const requirement=nextAgeRequirement(player);if(requirement&&totalTempleCount(player)>=requirement.temples&&(player.gold||0)>=requirement.cost&&(state.round||1)>=3+requirement.level*2){await performAction('AGE_UP',{}, {ai:true,actorIdx:index});return;}await performAction('ROLL',{mode:chooseAIDie(state,player)},{ai:true,actorIdx:index});return;}
+      if(state.phase==='await_keep'){const benefits=ageBenefits(player),mainUseful=(player.owned||[]).some(e=>CARD_CATALOG[e.key]?.triggers?.includes(state.pendingRoll?.value)&&CARD_CATALOG[e.key]?.timing!=='opponent'),canReroll=(state.rerollsUsed||0)<benefits.rerolls;if(canReroll&&!mainUseful){await performAction('REROLL',{}, {ai:true,actorIdx:index});return;}await performAction('KEEP_ROLL',{}, {ai:true,actorIdx:index});return;}
       if(state.phase==='resolving'){
         const trigger=state.resolveQueue?.[0];if(triggerNeedsEffectChoice(trigger)){await performAction('CHOOSE_EFFECT',{useCrazy:chooseAICrazyEffect(state,trigger)},{ai:true,actorIdx:index});return;}const target=trigger?chooseAITarget(state,trigger):null;
         await performAction('RESOLVE',target||{},{ai:true,actorIdx:index});return;
@@ -2025,7 +2081,7 @@ function resolveOne(rd, manual){
         if(nextState){if(identity!==lastGameIdentity){lastGameIdentity=identity;lastRenderedVersion=-1;}lastRenderedVersion=Math.max(lastRenderedVersion,Number(nextState.version)||0);}
         else{lastRenderedVersion=-1;lastGameIdentity='';}
         observeBattleMessages(nextState);state=nextState;
-        const catalogMismatch=state?.catalogSignature&&state.catalogSignature!==CARD_CATALOG_SIGNATURE;
+        const catalogMismatch=state?.catalogSignature&&!COMPATIBLE_CATALOG_SIGNATURES.has(state.catalogSignature);
         setFirebaseStatus(catalogMismatch?'Refresh required':snap.metadata.hasPendingWrites?'Syncing':snap.metadata.fromCache?'Reconnecting':'Synced');
         renderAll();
         if(state){claimLegacySeat();ensureSoloAI();if(state.phase==='finished')queueMicrotask(handleFinishedGame);}
@@ -2061,7 +2117,8 @@ function resolveOne(rd, manual){
     }
 
     $('#rollBtn').addEventListener('click',()=>performAction('ROLL',{mode:$('#dieSelect').value}));
-    $('#resolveBtn').addEventListener('click',()=>performAction('RESOLVE',{}));
+    $('#acceptRollBtn').addEventListener('click',()=>performAction('KEEP_ROLL',{}));
+    $('#rerollBtn').addEventListener('click',()=>performAction('REROLL',{}));
     async function skipCurrentAbility(){if($('#targetDialog').open)$('#targetDialog').close();await performAction('SKIP_TRIGGER',{});}
     $('#skipAbilityBtn').addEventListener('click',skipCurrentAbility);
     $('#targetSkipBtn').addEventListener('click',skipCurrentAbility);
