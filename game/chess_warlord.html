@@ -5023,14 +5023,18 @@ function verdantRootBoundsAround(x,y,r=VERDANT_NODE_SPREAD_RADIUS){ return {left
 function nearestNonVerdantTile(cx,cy,factionIdx,r=3){
   return chooseSeedGroveChildTile({x:cx,y:cy,faction:factionIdx,id:0},factionIdx,r,8);
 }
-function chooseSeedGroveChildTile(parent,factionIdx,minR=3,maxR=8){
-  // Child Seed Groves jump on deterministic outward rings and keep at least three Chebyshev squares from allied Groves.
+function chooseSeedGroveChildTile(parent,factionIdx,minR=1,maxR=VERDANT_NODE_SPREAD_RADIUS){
+  // Child Seed Groves sprout from existing Verdant ground no more than the node spread radius away from their parent.
+  maxR=Math.min(maxR,VERDANT_NODE_SPREAD_RADIUS);
+  minR=Math.min(minR,maxR);
   const groves=liveSeedGrovesForFaction(factionIdx);
   const center=groves.reduce((a,g)=>({x:a.x+g.x,y:a.y+g.y}),{x:0,y:0});
   const count=Math.max(1,groves.length); center.x/=count; center.y/=count;
   const candidates=[];
   for(let r=minR;r<=maxR;r++) for(let y=parent.y-r;y<=parent.y+r;y++) for(let x=parent.x-r;x<=parent.x+r;x++){
     if(!inBounds(x,y) || Math.max(Math.abs(x-parent.x),Math.abs(y-parent.y))!==r || findPieceAt(x,y)) continue;
+    const spawnTile=tile(x,y);
+    if(!isVerdantGroundForFaction(spawnTile,factionIdx)) continue;
     if(!passableFor({type:'seedgrove',faction:factionIdx},x,y)) continue;
     const nearest = groves.reduce((m,g)=>Math.min(m,Math.max(Math.abs(x-g.x),Math.abs(y-g.y))),999);
     if(nearest < 3) continue;
@@ -5047,6 +5051,9 @@ function chooseSeedGroveChildTile(parent,factionIdx,minR=3,maxR=8){
   }
   candidates.sort((a,b)=>b.score-a.score || a.y-b.y || a.x-b.x);
   return candidates[0] || null;
+}
+function isVerdantGroundForFaction(t,factionIdx){
+  return !!t && t.owner===factionIdx && ['verdant_root','verdant_seed'].includes(t.captureKind);
 }
 function nearbyBasicSunspire(monastery){
   const basics=['sunacolyte','dawnblade','lightlancer'];
@@ -7442,7 +7449,7 @@ function updateBuildingRules(f,dt){
       }
       claimRadius(f.idx,b.x,b.y,VERDANT_NODE_SPREAD_RADIUS,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
       if(!b.seedChildDone && tNow>=b.nextBuildingTick){
-        const spot=chooseSeedGroveChildTile(b,f.idx,3,8);
+        const spot=chooseSeedGroveChildTile(b,f.idx);
         if(spot){
           newPiece(f.idx,'seedgrove',spot.x,spot.y,{ready:false,seedGen:(b.seedGen||0)+1,nextBuildingTick:tNow+25});
           claimRadius(f.idx,spot.x,spot.y,VERDANT_NODE_SPREAD_RADIUS,'verdant_root',0,(t)=>isNaturalVerdantTerrain(t.type));
