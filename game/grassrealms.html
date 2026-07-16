@@ -2193,8 +2193,10 @@ function resolveOne(rd, manual){
       // Hard recovery rules keep the bot alive after a player destroys its opening.
       if(profile.economy===0&&bestEconomy)return bestEconomy;
       if(profile.troops===0&&bestTroop)return bestTroop;
+      if(profile.pressured&&profile.walls===0&&bestWall&&((player.townHp||0)<=12||profile.enemyTroops>profile.troops+1))return bestWall;
+      if(profile.armyDeficit>0&&bestTroop&&profile.enemyTroops>profile.troops)return bestTroop;
       if(profile.economyDeficit>0&&bestEconomy&&(turnBuys===0||profile.economy<=1||profile.troops>=profile.troopTarget-1))return bestEconomy;
-      if(profile.armyDeficit>0&&bestTroop&&(turnBuys>0||profile.economy>=Math.max(2,profile.economyTarget-1)||profile.enemyTroops>profile.troops))return bestTroop;
+      if(profile.armyDeficit>0&&bestTroop&&(turnBuys>0||profile.economy>=Math.max(2,profile.economyTarget-1)))return bestTroop;
       if(profile.pressured&&profile.walls===0&&bestWall)return bestWall;
 
       // Temples and Ages are pursued only after the current board can support them.
