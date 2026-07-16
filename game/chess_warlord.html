@@ -1693,7 +1693,7 @@ function remotePieceMatchesPendingSpawn(pp,action){
 }
 function localPieceToRemoteShape(p){ return p ? {i:p.id,f:p.faction,t:p.type,x:p.x,y:p.y,aid:p.clientActionId || ''} : null; }
 function findAuthoritativePieceForPendingSpawn(action,remotePieces=null){
-  // Spawn reconciliation uses one matcher for pruning and rendering so a live troop never coexists with its pending ghost.
+  // Spawn reconciliation uses one matcher so each accepted command resolves to exactly one authoritative live troop.
   if(!action || action.kind!=='spawn') return null;
   const list = remotePieces || pieces.filter(p=>p && p.alive).map(localPieceToRemoteShape);
   return list.find(pp=>remotePieceMatchesPendingSpawn(pp,action)) || null;
@@ -2155,7 +2155,7 @@ async function requestPlayerSpawn(x,y){
     queueReliableStateWrite('playerSpawn');
   }
   else {
-    toast(`${pieceDisplayName(PLAYER,type)} deployment pending host confirmation.`);
+    toast(`${pieceDisplayName(PLAYER,type)} deployment sent to the host.`);
     if(!(await submitPlayerCommand(action))) rollbackToAuthoritative('Command failed — refreshed from host state.');
   }
 }
@@ -8769,11 +8769,9 @@ function drawActors(){
       const wb=renderIndex.wallsByDepthRow.get(row); if(wb){ perfCount('actorBucketsVisited'); for(const rec of wb){ if(rec.x<left||rec.x>right||rec.y<top||rec.y>bottom||isShadowFoggedForRender(rec.x,rec.y)) continue; actors.push(rec); perfCount('visibleWallRecords'); } }
       const bb=renderIndex.buildingsByDepthRow.get(row); if(bb){ perfCount('actorBucketsVisited'); for(const rec of bb){ const p=rec.p; if(!p.alive||p.x<left||p.x>right||p.y<top||p.y>bottom||(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) continue; rec.x=p.px ?? p.x; rec.y=p.py ?? p.y; rec.depth=actorDepth(rec.x + rec.x*.002, rec.y + rec.x*.02); actors.push(rec); } }
       const pb=renderIndex.piecesByDepthRow.get(row); if(pb){ perfCount('actorBucketsVisited'); for(const rec of pb){ const p=rec.p, px=p.px ?? p.x, py=p.py ?? p.y; if(!p.alive||px<left||px>right||py<top||py>bottom||(p.faction!==PLAYER&&isShadowFoggedForRender(p.x,p.y))) continue; rec.x=px; rec.y=py; rec.depth=actorDepth(px + px*.002, py + px*.02); actors.push(rec); } }
-      for(const action of pendingPlayerActions){ if(action.kind==='spawn'&&action.faction===PLAYER&&depthRowFor(action.x,action.y)===row&&action.x>=left&&action.x<=right&&action.y>=top&&action.y<=bottom){ if(findAuthoritativePieceForPendingSpawn(action)){ clearPendingSpawnAction(action.actionId); continue; } actors.push({kind:'spawnGhost',kindOrder:2.5,id:Number(action.pieceId)||0,x:action.x,y:action.y,depth:actorDepth(action.x + action.x*.002, action.y + action.x*.02),action}); perfCount('tempRenderAllocations'); } }
       if(actors.length>1){ actors.sort(stableActorCompare); perfCount('localBucketSorts'); }
       for(const actor of actors){
         if(actor.kind==='wall'){ drawWallSpriteAt(actor.x,actor.y,factions[actor.owner]||{id:'neutral',color:'#dbeafe'}); perfCount('cachedWallsDrawn'); }
-        else if(actor.kind==='spawnGhost') drawPendingSpawnGhost(actor.action);
         else { drawSinglePiece(actor.p,labelIds); if(actor.building) perfCount('cachedBuildingsDrawn'); }
         perfCount('actorRecordsDrawn');
       }
@@ -8792,44 +8790,6 @@ function pieceSpriteMetrics(def,type,graphic,r){
   const top = bottom - targetH;
   const centerY = top + targetH * .54;
   return {building,targetH,targetW,bottom,top,centerY};
-}
-function drawPendingSpawnGhost(action){
-  if(findAuthoritativePieceForPendingSpawn(action)){ clearPendingSpawnAction(action.actionId); return; }
-  const f=factions[action.faction]; if(!f) return;
-  const def=pieceDefs[action.type] || pieceDefs.pawn;
-  const x=(action.x+.5)*BASE_CELL, y=(action.y+.5)*BASE_CELL;
-  const r=BASE_CELL*.36 + Math.min(7,(def.value||1)*.6);
-  const graphic=getPieceGraphic(f.id,action.type);
-  const metrics=pieceSpriteMetrics(def,action.type,graphic,r);
-  const pulse=.55+.45*Math.sin(now()*7);
-  ctx.save();
-  ctx.translate(x,y);
-  drawIsometricCooldownBase({id:0,type:action.type,faction:action.faction,x:action.x,y:action.y,lastMove:now(),cooldownUntil:now()+1,lastCooldownDuration:1},f,.35+.25*pulse);
-  makeCurrentTransformUpright(ctx);
-  ctx.globalAlpha=.38+.18*pulse;
-  ctx.setLineDash([6,4]);
-  ctx.strokeStyle=f.color;
-  ctx.lineWidth=3;
-  ctx.beginPath();
-  ctx.ellipse(0,metrics.centerY,Math.max(r+12,metrics.targetW*.45),Math.max(r+14,metrics.targetH*.34),0,0,Math.PI*2);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  if(graphic){
-    ctx.globalAlpha=.42+.16*pulse;
-    const variant=getCachedSpriteVariant(f.id,action.type,graphic,metrics,'ready',visualQualityTier());
-    drawSpriteCanvas(ctx,variant,-metrics.targetW/2,metrics.bottom-metrics.targetH,metrics.targetW,metrics.targetH);
-  } else {
-    ctx.fillStyle=f.color;
-    drawPieceShape(def.pattern,r,Number(action.pieceId)||0,action.type,f.id);
-    ctx.fill();
-  }
-  ctx.globalAlpha=.95;
-  ctx.fillStyle='#fff2b8';
-  ctx.font='1000 10px Inter,system-ui,sans-serif';
-  ctx.textAlign='center';
-  ctx.textBaseline='middle';
-  ctx.fillText(action.hostAccepted ? 'CONFIRMING' : 'PENDING',0,metrics.top-10);
-  ctx.restore();
 }
 function drawIsometricCooldownBase(p,f,progress){
   const state=currentRenderState || {time:now(),tier:visualQualityTier(),zoomTier:'close',selectedPieceId:0,attackTargetKeys:new Set()};
