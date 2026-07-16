@@ -1182,7 +1182,7 @@ function applyInstantIncome(owner, card){
     function minorEffectScore(card,player){const effect=card?.onTrigger||{},m=estimateEffectMetrics(effect,card);let value=m.damage*3+m.gold*2+m.healing*2+m.utility;if(effect.kind==='earn_per_temple')value=Math.max(0,factionTempleCount(player,String(effect.temple||'').split('_')[0])*(effect.per||0))*2;if(effect.kind==='earn')value=Math.max(0,Number(effect.value)||0)*2;return value;}
     function buildMinorResolveAfterRoll(rd,actorIdx,rollValue,minorIndex){
       const owner=rd.players?.[actorIdx];if(!owner)return{q:[],autoNote:''};const candidates=[];
-      for(const entry of owner.owned||[]){const card=CARD_CATALOG[entry.key];if(!card?.onTrigger||!card.triggers?.includes(rollValue)||(entry.silencedUntilRound||0)>=rd.round||card.timing==='opponent')continue;candidates.push({entry,card,score:minorEffectScore(card,owner)});}
+      for(const entry of owner.owned||[]){const card=CARD_CATALOG[entry.key];if(!card?.onTrigger||!card.triggers?.includes(rollValue)||(entry.silencedUntilRound||0)>=rd.round)continue;candidates.push({entry,card,score:minorEffectScore(card,owner)});}
       candidates.sort((a,b)=>a.score-b.score||(a.card.cost||0)-(b.card.cost||0)||a.card.name.localeCompare(b.card.name));const chosen=candidates[0];if(!chosen)return{q:[],autoNote:`minor d10 ${minorIndex} rolled ${rollValue}: no owned effect`};
       if(INSTANT_EARN_KINDS.has(chosen.card.onTrigger.kind)){const got=applyInstantIncome(owner,chosen.card);return{q:[],autoNote:`minor d10 ${minorIndex} rolled ${rollValue}: ${chosen.card.name} +${got} gold`};}
       return{q:[{resolveId:`${rd.turnSerial||0}:minor:${minorIndex}:${actorIdx}:${chosen.entry.key}`,ownerIdx:actorIdx,key:chosen.entry.key,roll:rollValue,minorDie:minorIndex,canChooseCrazy:false,choiceMade:true,useCrazy:false}],autoNote:`minor d10 ${minorIndex} rolled ${rollValue}: weakest effect is ${chosen.card.name}`};
@@ -1237,7 +1237,13 @@ function resolveOne(rd, manual){
   let msg = `${owner.name} triggers ${card.emoji} ${card.name}${useCrazy ? ' [CRAZY REPLACEMENT]' : ''}: `;
 
   const activeName   = rd.lastRoll?.by;
-  const activePlayer = (rd.players||[]).find(p=>p.name===activeName) || null;
+  const rolledPlayer = (rd.players||[]).find(p=>p.name===activeName) || null;
+  // A minor d10 is a dedicated team activation, so reaction cards are eligible too.
+  // When the selected reaction normally affects the active opponent, aim it at the
+  // weakest enemy realm instead of allowing the roller to damage or steal from itself.
+  const activePlayer = trig.minorDie && rolledPlayer===owner
+    ? weakestEnemyTown(rd,owner)
+    : rolledPlayer;
 
   const needsTarget = triggerNeedsTarget(kind);
 
