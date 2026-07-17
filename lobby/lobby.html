@@ -1240,7 +1240,12 @@
       lobbyUnsub=onSnapshot(doc(db,"lobbies",currentLobbyId),async snap=>{
         if(!snap.exists()){await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});clearCurrentLobby("That lobby has closed.");return;}
         const data=snap.data();currentLobbyData={id:snap.id,...data};isHost=data.host===username;renderCurrentLobby();
-        if(data.status==="started"){await cleanupInvitesForLobby(snap.id).catch(()=>{});redirectStartedGame(snap.id,data);}
+        if(data.status==="started"){
+          // Launch first. iPhone Safari can delay or suspend Firestore work during navigation,
+          // so invite cleanup must never block the game redirect.
+          redirectStartedGame(snap.id,data);
+          void cleanupInvitesForLobby(snap.id).catch(()=>{});
+        }
       },e=>{console.warn("Lobby listener",e);});
     }
     function renderCurrentLobby(){
@@ -1265,24 +1270,31 @@
       if(!currentLobbyId||!isHost||startingLobbyGame)return;
       startingLobbyGame=true;setBusy($("startGameBtn"),true,"Starting game…");
       try{
-        const ref=doc(db,"lobbies",currentLobbyId),snap=await getDoc(ref);if(!snap.exists())return clearCurrentLobby("Lobby no longer exists.");
-        const data=snap.data(),game=getGame(data.gameType);if(data.status==="started")return;
+        const lobbyId=currentLobbyId,ref=doc(db,"lobbies",lobbyId),snap=await getDoc(ref);if(!snap.exists())return clearCurrentLobby("Lobby no longer exists.");
+        const data=snap.data(),game=getGame(data.gameType);if(data.status==="started"){currentLobbyData={id:lobbyId,...data};redirectStartedGame(lobbyId,currentLobbyData);return;}
+        const launchPatch={status:"started"};
         if(game.key==="estate"){
           const activeId=await joinOrCreateActiveEstate(data.players||[username]);
+          launchPatch.activeGameId=activeId;
           await runTransaction(db,async tx=>{
             const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");
             if(cur.data().status!=="started")tx.update(ref,{status:"started",activeGameId:activeId,updatedAt:Date.now()});
           });
-          await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});await logGamePlay(game);return;
-        }
-        if(game.key==="stoneyrelic"){
+        }else if(game.key==="stoneyrelic"){
           const players=Array.isArray(data.players)?data.players:[];if(players.length<(game.minPlayers||2)){toast("Stoney's Relic needs at least 2 players.","bad");return;}
           const dm=data.dm&&players.includes(data.dm)?data.dm:players[Math.floor(Math.random()*players.length)];
+          launchPatch.dm=dm;
           await runTransaction(db,async tx=>{const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");if(cur.data().status!=="started")tx.update(ref,{status:"started",dm,updatedAt:Date.now()});});
         }else{
           await runTransaction(db,async tx=>{const cur=await tx.get(ref);if(!cur.exists())throw new Error("Lobby closed.");if(cur.data().status!=="started")tx.update(ref,{status:"started",updatedAt:Date.now()});});
         }
-        await cleanupInvitesForLobby(currentLobbyId).catch(()=>{});await logGamePlay(game);
+
+        // Do not rely on the Firestore listener to navigate the host. Mobile Safari can
+        // delay that callback, and cleanup/logging should not stand between Start and launch.
+        currentLobbyData={id:lobbyId,...data,...launchPatch};
+        redirectStartedGame(lobbyId,currentLobbyData);
+        void cleanupInvitesForLobby(lobbyId).catch(()=>{});
+        void logGamePlay(game).catch(()=>{});
       }catch(e){toast(e.message||"The game could not be started.","bad");}
       finally{startingLobbyGame=false;if(currentLobbyData?.status!=="started"){setBusy($("startGameBtn"),false);renderCurrentLobby();}}
     }
