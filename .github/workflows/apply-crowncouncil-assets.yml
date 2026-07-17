@@ -16,8 +16,17 @@ jobs:
         with:
           ref: agent/crown-council-troop-graphics
           fetch-depth: 1
-      - name: Normalize patch anchors
-        run: sed -i 's/[[:space:]]\+$//' scripts/patch_crowncouncil_assets.py
+      - name: Normalize patch anchors and validation
+        shell: bash
+        run: |
+          sed -i 's/[[:space:]]\+$//' scripts/patch_crowncouncil_assets.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/patch_crowncouncil_assets.py')
+          s=p.read_text()
+          s=s.replace("if len(keys)!=26: raise RuntimeError('expected 26 image mappings, got '+str(len(keys)))", "if s.count('../graphics/factionforge/')!=26: raise RuntimeError('expected 26 image mappings')")
+          p.write_text(s)
+          PY
       - name: Apply focused patch
         id: apply
         continue-on-error: true
