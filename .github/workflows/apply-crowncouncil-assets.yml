@@ -28,28 +28,22 @@ jobs:
           p.write_text(s)
           PY
       - name: Apply focused patch
-        id: apply
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -o pipefail
-          python scripts/patch_crowncouncil_assets.py 2>&1 | tee crowncouncil-patch.log
-      - name: Write result or diagnostics through API
+        run: python scripts/patch_crowncouncil_assets.py
+      - name: Write updated HTML through API
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if [ "${{ steps.apply.outcome }}" = "success" ]; then
-            TARGET=game/crowncouncil.html
-            SOURCE=game/crowncouncil.html
-            MESSAGE='Use Faction Forge troop graphics in Crown Council'
-          else
-            TARGET=crowncouncil-patch.log
-            SOURCE=crowncouncil-patch.log
-            MESSAGE='Capture Crown Council patch diagnostics'
-          fi
-          CURRENT_SHA=$(gh api repos/${{ github.repository }}/contents/$TARGET?ref=agent/crown-council-troop-graphics --jq .sha 2>/dev/null || true)
-          CONTENT=$(base64 -w0 "$SOURCE")
-          ARGS=(--method PUT repos/${{ github.repository }}/contents/$TARGET -f message="$MESSAGE" -f branch='agent/crown-council-troop-graphics' -f content="$CONTENT")
-          if [ -n "$CURRENT_SHA" ]; then ARGS+=(-f sha="$CURRENT_SHA"); fi
-          gh api "${ARGS[@]}"
+          CURRENT_SHA=$(gh api repos/${{ github.repository }}/contents/game/crowncouncil.html?ref=agent/crown-council-troop-graphics --jq .sha)
+          python - "$CURRENT_SHA" <<'PY'
+          import base64,json,sys
+          from pathlib import Path
+          payload={
+            "message":"Use Faction Forge troop graphics in Crown Council",
+            "branch":"agent/crown-council-troop-graphics",
+            "sha":sys.argv[1],
+            "content":base64.b64encode(Path("game/crowncouncil.html").read_bytes()).decode()
+          }
+          Path("update-payload.json").write_text(json.dumps(payload))
+          PY
+          gh api --method PUT repos/${{ github.repository }}/contents/game/crowncouncil.html --input update-payload.json
