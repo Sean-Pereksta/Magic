@@ -17,16 +17,28 @@ jobs:
           ref: agent/crown-council-troop-graphics
           fetch-depth: 1
       - name: Apply focused patch
-        run: python scripts/patch_crowncouncil_assets.py
-      - name: Write updated HTML to branch
+        id: apply
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/patch_crowncouncil_assets.py 2>&1 | tee crowncouncil-patch.log
+      - name: Write result or diagnostics through API
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          CURRENT_SHA=$(gh api repos/${{ github.repository }}/contents/game/crowncouncil.html?ref=agent/crown-council-troop-graphics --jq .sha)
-          CONTENT=$(base64 -w0 game/crowncouncil.html)
-          gh api --method PUT repos/${{ github.repository }}/contents/game/crowncouncil.html \
-            -f message='Use Faction Forge troop graphics in Crown Council' \
-            -f branch='agent/crown-council-troop-graphics' \
-            -f sha="$CURRENT_SHA" \
-            -f content="$CONTENT"
+          if [ "${{ steps.apply.outcome }}" = "success" ]; then
+            TARGET=game/crowncouncil.html
+            SOURCE=game/crowncouncil.html
+            MESSAGE='Use Faction Forge troop graphics in Crown Council'
+          else
+            TARGET=crowncouncil-patch.log
+            SOURCE=crowncouncil-patch.log
+            MESSAGE='Capture Crown Council patch diagnostics'
+          fi
+          CURRENT_SHA=$(gh api repos/${{ github.repository }}/contents/$TARGET?ref=agent/crown-council-troop-graphics --jq .sha 2>/dev/null || true)
+          CONTENT=$(base64 -w0 "$SOURCE")
+          ARGS=(--method PUT repos/${{ github.repository }}/contents/$TARGET -f message="$MESSAGE" -f branch='agent/crown-council-troop-graphics' -f content="$CONTENT")
+          if [ -n "$CURRENT_SHA" ]; then ARGS+=(-f sha="$CURRENT_SHA"); fi
+          gh api "${ARGS[@]}"
