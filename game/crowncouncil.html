@@ -209,6 +209,8 @@
     opacity:.98;
   }
   .unit .troop-art svg{ position:relative; z-index:2; }
+  .unit .troop-art .troop-image{position:relative;z-index:2;display:block;width:100%;height:100%;object-fit:contain;object-position:center;pointer-events:none;user-select:none;-webkit-user-drag:none}
+  .unit.big .troop-art .troop-image,.unit.big.troop-golem .troop-art .troop-image{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}
   .unit::before{
     content:"";
     position:absolute;
@@ -584,6 +586,12 @@
     background:linear-gradient(180deg, rgba(148,163,184,.16), rgba(2,6,23,.5));
     border:1px solid rgba(148,163,184,.35);
   }
+  .card .icon.troopIcon{position:relative;overflow:hidden;padding:2px}
+  .card .icon .troop-card-image{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none;user-select:none;-webkit-user-drag:none}
+  .card .icon.factionIcon{grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);gap:1px;padding:2px;overflow:hidden}
+  .card .icon .faction-troop-image{display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:contain;pointer-events:none;user-select:none;-webkit-user-drag:none}
+  .card.hasTroopStars{padding-bottom:24px}
+  .card .troopStars{position:absolute;left:50%;bottom:5px;transform:translateX(-50%);z-index:3;color:#fde047;font-size:.58rem;line-height:1;letter-spacing:1px;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 5px rgba(245,158,11,.8);pointer-events:none}
   .card .title{
     font-weight:800;
     letter-spacing:.02em;
@@ -811,6 +819,11 @@
     to{ opacity:0; transform:translate(-50%,-130%); }
   }
 
+  .assetGate{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at top,rgba(15,23,42,.97),rgba(2,6,23,.995));color:#e5e7eb}
+  .assetGatePanel{width:min(460px,94vw);display:grid;gap:10px;padding:18px;border:1px solid rgba(96,165,250,.7);border-radius:16px;background:linear-gradient(180deg,rgba(15,23,42,.98),rgba(2,6,23,.98));box-shadow:0 24px 70px rgba(0,0,0,.65);text-align:center}
+  .assetGate.error .assetGatePanel{border-color:rgba(248,113,113,.9)}
+  .assetGateTitle{font-size:1.05rem;font-weight:900;color:#dbeafe;letter-spacing:.04em;text-transform:uppercase}.assetGateStatus{font-size:.88rem;color:#cbd5e1;line-height:1.35}.assetGatePlayers{font-size:.78rem;color:#93c5fd;line-height:1.45}
+
   .endSummary{
     position:fixed;
     left:50%;
@@ -859,6 +872,7 @@
 </style>
 </head>
 <body>
+  <div id="assetGate" class="assetGate"><div class="assetGatePanel" role="status" aria-live="polite"><div class="assetGateTitle">Loading troop graphics</div><div id="assetGateStatus" class="assetGateStatus">Preparing the Faction Forge image set…</div><div id="assetGatePlayers" class="assetGatePlayers">Waiting for both players to finish loading.</div></div></div>
   <div class="topbar">
     <div class="row">
       <span class="badge">⚔️ Draft Brawl — Factions</span>
@@ -1095,8 +1109,9 @@ function newMatchState(players, seededMMR, sessionKey){
     hostLeaseUntil: now + 30000,
     players: players,
     lives: [4, 4],
-    phase: players.length < 2 ? "waiting" : "faction-select",
-    phaseEndsAt: players.length < 2 ? 0 : now + 20000,
+    phase: players.length < 2 ? "waiting" : "asset-loading",
+    phaseEndsAt:0,
+    assetReady:{p0:null,p1:null},
     roster:   { p0: [], p1: [] },
     relics:   { p0: [], p1: [] },
     tactics:  { p0: [], p1: [] },
@@ -1132,7 +1147,7 @@ async function ensureStateExists(lobbyData){
       const existing = stSnap.exists() ? stSnap.data() : null;
       const staleSchema = !!(existing && existing.schemaVersion !== 2);
       const staleSession = !!(existing && existing.sessionKey && existing.sessionKey !== sessionKey);
-      const stalePlayers = !!(existing && !samePlayers(existing.players, players) && !["waiting","faction-select"].includes(existing.phase));
+      const stalePlayers = !!(existing && !samePlayers(existing.players, players) && !["waiting","asset-loading","faction-select"].includes(existing.phase));
       const completedMatch = !!(existing && existing.phase === "game-over");
       const shouldReset = !existing || staleSchema || staleSession || stalePlayers || completedMatch;
 
@@ -1341,6 +1356,12 @@ const TROOPS = {
     burrowCd:2200
   }
 };
+const TROOP_IMAGE_VERSION="factionforge-2026-07-17-v1";
+const TROOP_IMAGE_PATHS=Object.freeze({
+ rifleman:"../graphics/factionforge/rifleman.png",vrocket:"../graphics/factionforge/rocket.png",vguard:"../graphics/factionforge/vanir guard.png",miner:"../graphics/factionforge/miner.png",medic:"../graphics/factionforge/field medic.png",suppressor:"../graphics/factionforge/suppressor.png",shieldcap:"../graphics/factionforge/shield captain.png",marksman:"../graphics/factionforge/marksman.png",emp:"../graphics/factionforge/emp grenadier.png",
+ phaser:"../graphics/factionforge/phasers.png",blade:"../graphics/factionforge/blademaster.png",storm:"../graphics/factionforge/storm seer.png",guardian:"../graphics/factionforge/guardian.png",wardmaker:"../graphics/factionforge/wardmaker.png",architect:"../graphics/factionforge/aegis architect.png",golem:"../graphics/factionforge/sentinel golem.png",runebinder:"../graphics/factionforge/rune binder.png",
+ hellspawn:"../graphics/factionforge/hell spawn.png",roach:"../graphics/factionforge/roach.png",defiler:"../graphics/factionforge/defiler.png",blood:"../graphics/factionforge/bloodburst.png",spitter:"../graphics/factionforge/spitter brood.png",matron:"../graphics/factionforge/brood matron.png",viper:"../graphics/factionforge/viper.png",carrion:"../graphics/factionforge/carrion priest.png",burrower:"../graphics/factionforge/burrower.png"
+});
 const LEGENDARY_ABILITIES = {
   rifleman:{name:"Overwatch Line", desc:"Fires faster and gains +1 damage vs enemies already damaged this battle.", notes:"+28% attack speed."}, vrocket:{name:"Siege Burst", desc:"Wider burst splash for anti-clump pressure.", notes:"Splash up."}, vguard:{name:"Shield Wall", desc:"Nearby backline allies take -1 incoming damage.", notes:"Aura mitigation."}, miner:{name:"Tunnel Breakers", desc:"First hit vs ranged/support stuns briefly and deals bonus damage.", notes:"One-time proc."}, medic:{name:"Emergency Revival", desc:"Once per battle, prevents a nearby ally from dying and heals a small amount.", notes:"One revive."}, suppressor:{name:"Lockdown Foam", desc:"Suppressed targets lose 1 range for longer.", notes:"Range debuff window."}, shieldcap:{name:"Rally Banner", desc:"Nearby allies gain +1 armor.", notes:"Aura armor."}, marksman:{name:"Headshot Protocol", desc:"Better support kills and non-tank execute.", notes:"Non-tank execute."}, emp:{name:"System Crash", desc:"EMP also disables nearby enemy wards briefly.", notes:"Ward disable."},
   phaser:{name:"Phase Echo", desc:"First blink grants brief invulnerability.", notes:"Short invuln."}, blade:{name:"Tempest Blades", desc:"Every third attack cleaves adjacent enemies.", notes:"3-hit cleave."}, storm:{name:"Chain Storm", desc:"Chains one additional target and prefers wounded units.", notes:"4 hops."}, guardian:{name:"Gravity Slam", desc:"First impact applies stronger slow/knock control.", notes:"First-hit control."}, wardmaker:{name:"Sanctuary Ward", desc:"First ward has bonus HP and pulse-heals nearby allies.", notes:"First ward bonus."}, architect:{name:"Arcane Turret Grid", desc:"Turret wards fire faster and deal +1 damage.", notes:"Ward buff."}, golem:{name:"Mountain Core", desc:"Reduced ranged damage and ignores first knockback.", notes:"First knock immunity."}, runebinder:{name:"Greater Bind", desc:"Bind lasts longer and amplifies magic/storm follow-up.", notes:"Longer bind."},
@@ -1510,7 +1531,16 @@ function rankColor(lvl){
 
 function manhattan(a, b){ return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
 
-let S=null, lobbyPlayers=[], meIndex=0, isHost=false;
+let S=null,lobbyPlayers=[],meIndex=0,isHost=false;
+let localTroopImagesReady=false,troopImageLoadError=null,troopImageLoadPass=0,troopImageLoadPromise=null,assetReadyPublishedForSession=null;
+function assetReadyEntryValid(e,n,k){return !!e&&e.username===n&&e.sessionKey===k&&e.version===TROOP_IMAGE_VERSION}
+function bothAssetsReady(st){if(!st||!Array.isArray(st.players)||st.players.length<2||!st.sessionKey)return false;const r=st.assetReady||{};return assetReadyEntryValid(r.p0,st.players[0],st.sessionKey)&&assetReadyEntryValid(r.p1,st.players[1],st.sessionKey)}
+function updateAssetGate(){const g=$("assetGate"),st=$("assetGateStatus"),pl=$("assetGatePlayers");if(!g||!st||!pl)return;const ph=S&&S.phase,show=!!troopImageLoadError||!localTroopImagesReady||!S||ph==="waiting"||ph==="asset-loading";g.style.display=show?"grid":"none";g.classList.toggle("error",!!troopImageLoadError);st.textContent=troopImageLoadError?"Troop graphics failed: "+troopImageLoadError.message:!localTroopImagesReady?(troopImageLoadPass?"Verifying all troop graphics — pass "+troopImageLoadPass+" of 2…":"Preparing the Faction Forge image set…"):ph==="waiting"?"Your graphics are ready. Waiting for the second player…":ph==="asset-loading"?"Your graphics are ready. Waiting for both players to confirm…":"All troop graphics are ready.";const names=(S&&Array.isArray(S.players)?S.players:lobbyPlayers).slice(0,2),r=S&&S.assetReady||{},k=S&&S.sessionKey;pl.textContent=[0,1].map(i=>{const n=names[i]||(i?"Player 2":"Player 1");return n+": "+(S&&assetReadyEntryValid(r[pKey(i)],n,k)?"ready":"loading")}).join("  •  ")}
+function loadTroopImage(src){return new Promise((ok,bad)=>{const im=new Image();let done=false;const end=e=>{if(done)return;done=true;e?bad(e):ok(src)};im.onload=async()=>{try{if(im.decode)await im.decode()}catch(_){ }im.naturalWidth&&im.naturalHeight?end():end(new Error("Invalid image: "+src))};im.onerror=()=>end(new Error("Missing image: "+src));im.decoding="async";im.src=src;if(im.complete&&im.naturalWidth)queueMicrotask(()=>im.onload())})}
+async function preloadTroopImagePass(pass){troopImageLoadPass=pass;updateAssetGate();const es=Object.entries(TROOP_IMAGE_PATHS),rs=await Promise.allSettled(es.map(([,src])=>loadTroopImage(src))),bad=[];rs.forEach((r,i)=>{if(r.status!=="fulfilled")bad.push(es[i][1])});if(bad.length)throw new Error(bad.join(", "))}
+async function preloadTroopImagesTwice(){await preloadTroopImagePass(1);await preloadTroopImagePass(2);localTroopImagesReady=true;updateAssetGate();await publishLocalAssetReady()}
+async function publishLocalAssetReady(){if(!localTroopImagesReady||!S||!S.sessionKey||disposed)return;const ps=Array.isArray(S.players)?S.players.slice(0,2):[],i=ps.indexOf(username);if(i<0)return;const side=pKey(i),cur=S.assetReady&&S.assetReady[side];if(assetReadyEntryValid(cur,username,S.sessionKey)){assetReadyPublishedForSession=S.sessionKey;return}if(assetReadyPublishedForSession===S.sessionKey)return;try{await runTransaction(db,async tx=>{const snap=await tx.get(stateRef);if(!snap.exists())return;const d=snap.data(),players=Array.isArray(d.players)?d.players.slice(0,2):[],ix=players.indexOf(username);if(ix<0||!d.sessionKey)return;const key=pKey(ix),ready=Object.assign({p0:null,p1:null},d.assetReady||{});if(assetReadyEntryValid(ready[key],username,d.sessionKey))return;ready[key]={username,version:TROOP_IMAGE_VERSION,sessionKey:d.sessionKey,readyAt:Date.now()};tx.update(stateRef,{assetReady:ready})});assetReadyPublishedForSession=S.sessionKey}catch(e){console.error("asset readiness publish failed",e);assetReadyPublishedForSession=null}}
+function startTroopImagePreload(){if(troopImageLoadPromise)return troopImageLoadPromise;troopImageLoadPromise=preloadTroopImagesTwice().catch(e=>{troopImageLoadError=e instanceof Error?e:new Error(String(e));updateAssetGate();throw troopImageLoadError});return troopImageLoadPromise}
 let lastRenderedBattleTickId = -1;
 const battleSnapshotBuffer = [];
 const BATTLE_BUFFER_MS = 160;
@@ -1750,6 +1780,8 @@ function weightedPick(pool, n){
   return out;
 }
 function unitEmoji(type){ return TROOPS[type]?.emoji || "❓"; }
+function troopImagePath(type){return TROOP_IMAGE_PATHS[type]||""}
+function troopImageTag(type,cls){const src=troopImagePath(type),name=TROOPS[type]?.name||type||"Troop";return src?'<img class="'+escapeHtml(cls||"troop-card-image")+'" src="'+escapeHtml(src)+'" alt="'+escapeHtml(name)+'" draggable="false" decoding="async">':escapeHtml(unitEmoji(type))}
 function troopVisual(type){
   return Object.assign({}, DEFAULT_TROOP_VISUAL, TROOP_VISUALS[type] || {});
 }
@@ -1775,42 +1807,7 @@ function troopBodyClass(type){
   if (["storm","wardmaker","architect","runebinder","medic","carrion"].includes(type)) return "caster";
   return "fighter";
 }
-function troopArt(type, u){
-  const hpPct = Math.max(0, Math.min(1, (u.hp||1)/Math.max(1,u.maxhp||1)));
-  const hpGlow = hpPct < 0.35 ? "drop-shadow(0 0 6px rgba(248,113,113,.85))" : "drop-shadow(0 0 0 transparent)";
-  const teamFill = u.p===0 ? "#f87171" : "#60a5fa";
-  const lvlGem = (u.lvl||1) >= 3 ? '<circle cx="39" cy="10" r="4" fill="#fde047" class="stroke" /><path d="M39 5 L40.2 8.2 L43.5 8.3 L40.9 10.2 L41.8 13.4 L39 11.5 L36.2 13.4 L37.1 10.2 L34.5 8.3 L37.8 8.2 Z" fill="#f59e0b" />' : '';
-  const ART = {
-    rifleman:'<rect x="7" y="10" width="20" height="28" rx="7" fill="#9ca3af" class="stroke"/><rect x="25" y="13" width="16" height="7" rx="3" fill="#1f2937" class="stroke"/><rect x="29" y="21" width="14" height="4" rx="2" fill="#374151"/><rect x="12" y="16" width="10" height="4" fill="'+teamFill+'" opacity=".9"/><circle cx="13" cy="28" r="3" fill="#d1d5db"/><circle cx="21" cy="28" r="3" fill="#d1d5db"/>',
-    vrocket:'<path d="M10 36 L24 7 L38 36 Z" fill="#64748b" class="stroke"/><path d="M24 10 L31 24 L24 27 L17 24 Z" fill="#e2e8f0"/><rect x="20" y="24" width="8" height="12" fill="#ef4444"/><path d="M14 33 L18 38 L10 38 Z" fill="#fb7185"/><path d="M34 33 L38 38 L30 38 Z" fill="#fb7185"/>',
-    vguard:'<path d="M24 6 L39 12 V24 C39 33 31 39 24 42 C17 39 9 33 9 24 V12 Z" fill="#334155" class="stroke"/><path d="M24 11 L34 15 V24 C34 30 29 34 24 36 C19 34 14 30 14 24 V15 Z" fill="#cbd5e1" class="stroke"/><rect x="21" y="17" width="6" height="16" fill="'+teamFill+'"/><rect x="16" y="21" width="16" height="5" fill="'+teamFill+'"/>',
-    miner:'<rect x="8" y="13" width="23" height="26" rx="8" fill="#52525b" class="stroke"/><path d="M24 10 L40 24 L34 30 L18 16 Z" fill="#a1a1aa" class="stroke"/><rect x="10" y="20" width="12" height="3" fill="#facc15"/><circle cx="16" cy="30" r="3" fill="#d4d4d8"/><rect x="32" y="21" width="5" height="10" rx="2" fill="#78716c"/>',
-    medic:'<rect x="8" y="10" width="31" height="30" rx="8" fill="#0f766e" class="stroke"/><rect x="13" y="16" width="21" height="18" rx="4" fill="#115e59"/><rect x="20" y="14" width="7" height="22" fill="#ecfeff"/><rect x="13" y="21" width="21" height="7" fill="#ecfeff"/><circle cx="34" cy="14" r="4" fill="#99f6e4"/>',
-    suppressor:'<rect x="8" y="12" width="30" height="28" rx="8" fill="#3f3f46" class="stroke"/><path d="M29 10 L41 14 L36 34 L25 30 Z" fill="#ef4444" class="stroke"/><rect x="12" y="18" width="12" height="5" fill="#a1a1aa"/><rect x="12" y="26" width="14" height="3" fill="#f97316"/><circle cx="33" cy="22" r="3" fill="#fecaca"/>',
-    shieldcap:'<path d="M24 5 L40 11 V23 C40 33 32 40 24 43 C16 40 8 33 8 23 V11 Z" fill="#1e293b" class="stroke"/><path d="M24 10 L34 14 V23 C34 29 29 34 24 37 C19 34 14 29 14 23 V14 Z" fill="#475569" class="stroke"/><circle cx="24" cy="24" r="6" fill="#fde68a" class="stroke"/><circle cx="24" cy="24" r="2" fill="#f59e0b"/>',
-    marksman:'<rect x="8" y="12" width="23" height="27" rx="8" fill="#94a3b8" class="stroke"/><circle cx="34" cy="15" r="8" fill="none" stroke="#ef4444" stroke-width="3"/><line x1="34" y1="8" x2="34" y2="22" stroke="#ef4444"/><line x1="27" y1="15" x2="41" y2="15" stroke="#ef4444"/><rect x="12" y="19" width="12" height="4" fill="#1f2937"/>',
-    emp:'<rect x="9" y="12" width="24" height="27" rx="9" fill="#334155" class="stroke"/><circle cx="34" cy="18" r="8" fill="#0ea5e9" class="stroke"/><path d="M34 11 L30 18 H35 L31 26" stroke="#dbeafe" fill="none" stroke-width="2.5"/><rect x="13" y="28" width="15" height="5" fill="#64748b"/>',
-    phaser:'<ellipse cx="24" cy="24" rx="13" ry="17" fill="#e2e8f0" class="stroke"/><path d="M14 18 Q24 6 34 18" fill="#93c5fd" class="stroke"/><circle cx="24" cy="24" r="4" fill="#60a5fa"/><path d="M10 24 H38" stroke="#bfdbfe" stroke-width="2" opacity=".8"/>',
-    blade:'<rect x="10" y="12" width="20" height="28" rx="8" fill="#f8fafc" class="stroke"/><path d="M30 8 L40 18 L28 31 L22 25 Z" fill="#cbd5e1" class="stroke"/><path d="M19 18 L23 10 L27 18" fill="#93c5fd"/><rect x="13" y="28" width="12" height="4" fill="#94a3b8"/>',
-    storm:'<rect x="9" y="11" width="30" height="29" rx="12" fill="#fde68a" class="stroke"/><path d="M25 9 L19 23 H26 L21 39 L34 21 H27 Z" fill="#3b82f6" class="stroke"/><circle cx="15" cy="16" r="3" fill="#fef3c7"/><circle cx="33" cy="31" r="2" fill="#fef3c7"/>',
-    guardian:'<circle cx="24" cy="24" r="17" fill="#d4af37" class="stroke"/><circle cx="24" cy="24" r="11" fill="#1d4ed8" class="stroke"/><circle cx="24" cy="24" r="5" fill="#93c5fd"/><path d="M24 7 L24 41 M7 24 L41 24" stroke="#fef08a" stroke-width="1.5"/>',
-    wardmaker:'<rect x="9" y="11" width="18" height="29" rx="8" fill="#fef3c7" class="stroke"/><circle cx="33" cy="18" r="8" fill="#38bdf8" class="stroke"/><circle cx="33" cy="18" r="3" fill="#e0f2fe"/><path d="M14 21 L22 21 M14 27 L22 27" stroke="#ca8a04" stroke-width="2"/>',
-    architect:'<rect x="7" y="12" width="32" height="27" rx="5" fill="#d4af37" class="stroke"/><rect x="12" y="18" width="22" height="15" fill="#93c5fd" class="stroke"/><path d="M10 17 L24 8 L38 17" fill="#fef3c7" class="stroke"/><rect x="17" y="22" width="6" height="9" fill="#1e3a8a"/>',
-    golem:'<rect x="6" y="7" width="36" height="33" rx="8" fill="#6b7280" class="stroke"/><rect x="12" y="12" width="24" height="8" fill="#9ca3af"/><circle cx="18" cy="24" r="3" fill="#0ea5e9"/><circle cx="30" cy="24" r="3" fill="#0ea5e9"/><rect x="15" y="29" width="18" height="4" fill="#4b5563"/>',
-    runebinder:'<circle cx="18" cy="26" r="11" fill="#e2e8f0" class="stroke"/><path d="M29 14 L39 24 L30 34" stroke="#a78bfa" stroke-width="4" fill="none"/><path d="M14 21 L21 21 L18 27 Z" fill="#7c3aed"/><circle cx="34" cy="24" r="2" fill="#ddd6fe"/>',
-    hellspawn:'<ellipse cx="22" cy="25" rx="13" ry="10" fill="#7f1d1d" class="stroke"/><path d="M10 24 L4 20 M34 24 L40 20" stroke="#b91c1c" stroke-width="3"/><path d="M10 28 L4 32 M34 28 L40 32" stroke="#b91c1c" stroke-width="2"/><circle cx="17" cy="23" r="2" fill="#fee2e2"/><circle cx="27" cy="23" r="2" fill="#fee2e2"/>',
-    roach:'<ellipse cx="23" cy="24" rx="14" ry="10" fill="#581c87" class="stroke"/><path d="M12 30 L6 36 M34 30 L40 36" stroke="#9333ea" stroke-width="3"/><path d="M13 19 L8 14 M33 19 L38 14" stroke="#a855f7" stroke-width="2"/><rect x="18" y="19" width="10" height="9" fill="#7e22ce"/>',
-    defiler:'<ellipse cx="20" cy="25" rx="14" ry="12" fill="#27272a" class="stroke"/><path d="M30 25 Q41 18 37 10" stroke="#22c55e" stroke-width="4" fill="none"/><circle cx="37" cy="9" r="3" fill="#86efac"/><path d="M8 26 L3 30 M12 33 L6 38 M28 34 L34 39" stroke="#4ade80" stroke-width="2"/>',
-    blood:'<circle cx="22" cy="24" r="12" fill="#b91c1c" class="stroke"/><circle cx="30" cy="16" r="5" fill="#ef4444" class="stroke"/><circle cx="17" cy="20" r="3" fill="#fecaca"/><path d="M15 33 L19 38 L23 33" fill="#f87171"/>',
-    matron:'<ellipse cx="23" cy="24" rx="14" ry="12" fill="#4c1d95" class="stroke"/><path d="M11 30 L5 36 M17 33 L12 39 M29 33 L34 39 M35 30 L41 36" stroke="#7c3aed" stroke-width="2"/><circle cx="18" cy="22" r="2" fill="#ddd6fe"/><circle cx="28" cy="22" r="2" fill="#ddd6fe"/>',
-    viper:'<path d="M7 30 Q16 10 34 20 Q42 25 35 33 Q25 38 16 34 Q11 32 7 30 Z" fill="#14532d" class="stroke"/><path d="M16 30 Q23 23 31 27" stroke="#86efac" stroke-width="2" fill="none"/><circle cx="34" cy="23" r="2" fill="#dcfce7"/><path d="M36 24 L40 23 L37 26" fill="#f87171"/>',
-    spitter:'<ellipse cx="22" cy="24" rx="14" ry="10" fill="#6d28d9" class="stroke"/><circle cx="34" cy="24" r="5" fill="#c4b5fd" class="stroke"/><circle cx="33" cy="24" r="2" fill="#ede9fe"/><path d="M10 25 L5 28 M13 30 L8 35" stroke="#8b5cf6" stroke-width="2"/>',
-    carrion:'<rect x="10" y="11" width="24" height="29" rx="8" fill="#7f1d1d" class="stroke"/><path d="M24 11 L30 4 L34 11" fill="#b91c1c" class="stroke"/><path d="M14 20 L30 20 M14 27 L30 27" stroke="#fca5a5" stroke-width="2" opacity=".8"/><circle cx="22" cy="33" r="3" fill="#ef4444"/>',
-    burrower:'<path d="M7 31 Q22 8 39 31 Q22 41 7 31 Z" fill="#78350f" class="stroke"/><path d="M20 22 L24 17 L28 22" stroke="#fbbf24" stroke-width="2" fill="none"/><path d="M12 32 Q22 35 34 32" stroke="#a16207" stroke-width="2" fill="none"/><circle cx="22" cy="27" r="2" fill="#fde68a"/>'
-  };
-  const body = ART[type] || ('<text x="24" y="30" text-anchor="middle" font-size="20">'+unitEmoji(type)+'</text>');
-  return '<div class="troop-art" style="--hp-filter:'+hpGlow+'">\n    <svg viewBox="0 0 48 48" aria-label="'+(TROOPS[type]?.name||type)+'">'+body+lvlGem+'</svg>\n  </div>';
-}
+function troopArt(type,u){const hpPct=Math.max(0,Math.min(1,(u.hp||1)/Math.max(1,u.maxhp||1))),hpGlow=hpPct<.35?"drop-shadow(0 0 6px rgba(248,113,113,.85))":"drop-shadow(0 0 0 transparent)",src=troopImagePath(type),name=TROOPS[type]?.name||type||"Troop",image=src?'<img class="troop-image" src="'+escapeHtml(src)+'" alt="'+escapeHtml(name)+'" draggable="false" decoding="async">':'<span>'+escapeHtml(unitEmoji(type))+'</span>';return '<div class="troop-art" style="--hp-filter:'+hpGlow+'">'+image+'</div>'}
 function unitActionClass(u, now){
   if ((u.animUntil||0) <= now) return "";
   return u.animType === "cast" ? "casting" : "attacking";
@@ -3220,10 +3217,7 @@ async function syncPlayersIntoStateIfNeeded(){
   const cur=Array.isArray(st.players)?st.players:[];
   if (want.length && !samePlayers(cur,want)){
     const next={players:want};
-    if ((st.phase==="waiting" || st.phase==="faction-select") && !st.eloCommitted){
-      next.mmr=await fetchPlayerMMR(want);
-      next.mmrChange=[0,0];
-    }
+    if (["waiting","asset-loading","faction-select"].includes(st.phase) && !st.eloCommitted){next.mmr=await fetchPlayerMMR(want);next.mmrChange=[0,0];next.assetReady={p0:null,p1:null};next.phase=want.length>=2?"asset-loading":"waiting";next.phaseEndsAt=0;assetReadyPublishedForSession=null}
     await writeStatePatch(next);
   }
 }
@@ -3260,10 +3254,8 @@ async function processHostPhase(){
     }
     if (!d.players || !Array.isArray(d.players)) d.players = lobbyPlayers.slice(0,2);
 
-    if (d.phase==="waiting" && lobbyPlayers.length>=2){
-      await writeStatePatch({ phase:"faction-select", phaseEndsAt: now+20000 });
-      return;
-    }
+    if(d.phase==="waiting"&&lobbyPlayers.length>=2){await writeStatePatch({phase:"asset-loading",phaseEndsAt:0,assetReady:{p0:null,p1:null}});return}
+    if(d.phase==="asset-loading"){if(bothAssetsReady(d))await writeStatePatch({phase:"faction-select",phaseEndsAt:now+20000});return}
 
     if (d.phase==="faction-select"){
       if (bothFactionsChosen(d) || now >= (d.phaseEndsAt||0)){
@@ -3787,11 +3779,8 @@ function render(){
     row.style.display="flex"; row.innerHTML=""; note.style.display="none";
     ["Helions","Aesir","Vanir"].forEach(f=>{
       const el=document.createElement("div"); el.className="card faction-"+f;
-      const units = (FACTIONS[f]||[]).map(k=>unitEmoji(k)+" "+TROOPS[k].name).join(" · ");
-      el.innerHTML=''+
-        '<div class="meta">FACTION</div><div class="icon">🏰</div>'+
-        '<div class="title">'+f+'</div>'+
-        '<div class="desc">'+units+'</div>';
+      const units=(FACTIONS[f]||[]).map(k=>TROOPS[k].name).join(" · "),factionImages=(FACTIONS[f]||[]).map(k=>troopImageTag(k,"faction-troop-image")).join("");
+      el.innerHTML='<div class="meta">FACTION</div><div class="icon factionIcon">'+factionImages+'</div><div class="title">'+f+'</div><div class="desc">'+units+'</div>';
       el.onclick=()=> chooseFaction(f);
       row.appendChild(el);
     });
@@ -3847,16 +3836,12 @@ function render(){
         strongAgainst:[], weakAgainst:[], bestWith:[],
         counterTip:"", dangerTip:""
       };
-      const draftFit = enemyRoster.length ? evaluateDraftFit(meta, enemyRoster) : "";
-      const legendary = (((S&&S.roster&&S.roster[sk])||[]).find(r=>r.type===c.key)?.lvl===2 && LEGENDARY_ABILITIES[c.key]) ? LEGENDARY_ABILITIES[c.key] : null;
+      const draftFit=enemyRoster.length?evaluateDraftFit(meta,enemyRoster):"",ownedTroop=((S&&S.roster&&S.roster[sk])||[]).find(r=>r.type===c.key),cardLevel=Math.max(1,Math.min(3,ownedTroop?(ownedTroop.lvl||1):1)),legendary=cardLevel===2&&LEGENDARY_ABILITIES[c.key]?LEGENDARY_ABILITIES[c.key]:null,troopStars=cardLevel>=2?'<div class="troopStars" aria-label="'+cardLevel+' star troop">'+"★".repeat(cardLevel)+'</div>':"";
+      if(cardLevel>=2)el.classList.add("hasTroopStars");
       const effectLine = meta.roleLabel || (tro.role==="back" ? "Backline damage" : "Frontline fighter");
       cardHtml=''+
         '<button class="cardInfoBtn" type="button" aria-label="More info about '+escapeHtml(c.name)+'">?</button>'+
-        '<div class="typeTag"><span class="typeIcon">🛡️</span>TROOP</div>'+
-        '<div class="icon">'+escapeHtml(c.emoji)+'</div>'+
-        '<div class="title">'+escapeHtml(c.name)+'</div>'+
-        '<div class="desc short">'+escapeHtml(effectLine)+'</div>'+
-        '<div class="counterRow"><span class="chip chip-role">'+escapeHtml(meta.roleLabel)+'</span></div>';
+        '<div class="typeTag"><span class="typeIcon">🛡️</span>TROOP</div><div class="icon troopIcon">'+troopImageTag(c.key,"troop-card-image")+'</div><div class="title">'+escapeHtml(c.name)+'</div><div class="desc short">'+escapeHtml(effectLine)+'</div><div class="counterRow"><span class="chip chip-role">'+escapeHtml(meta.roleLabel)+'</span></div>'+troopStars;
       infoBody = ''+
         infoSection("Card type", "Troop · "+tro.faction)+
         infoSection("Role / archetype", meta.roleLabel+" · "+meta.archetype)+
@@ -4023,8 +4008,7 @@ function startListeners(){
     if (idx < 0) idx = 0;
     meIndex = Math.max(0, Math.min(1, idx));
 
-    fitBoard();
-    render();
+    fitBoard();publishLocalAssetReady();updateAssetGate();render();
   }, (err)=>{
     console.error("lobby listener failed", err);
   });
@@ -4144,9 +4128,7 @@ unsubscribeState = onSnapshot(stateRef,(snap)=>{
   const current = S.players || lobbyPlayers || [];
   let idx = current.indexOf(username);
   if (idx < 0) idx = 0;
-  meIndex = Math.max(0, Math.min(1, idx));
-  if (hasHostLease()) processHostPhase();
-  render();
+  meIndex=Math.max(0,Math.min(1,idx));publishLocalAssetReady();updateAssetGate();if(hasHostLease())processHostPhase();render();
 }, (err)=>{
   console.error("state listener failed", err);
 });
@@ -4197,9 +4179,7 @@ window.addEventListener("beforeunload", cleanupGameRuntime, {once:true});
 
 onAuthStateChanged(auth, (user) => {
   if (!user) return;
-  console.log("Signed in as anon uid:", user.uid);
-  ensureVisualLoop();
-  startListeners();
+  console.log("Signed in as anon uid:",user.uid);startTroopImagePreload().catch(()=>{});ensureVisualLoop();startListeners();
 });
 
 const cardInfoModal = $("cardInfoModal");
