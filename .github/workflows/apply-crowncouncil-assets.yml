@@ -4,9 +4,9 @@ on:
   push:
     branches:
       - agent/crown-council-troop-graphics
-    paths:
-      - scripts/patch_crowncouncil_assets.py
-      - .github/workflows/apply-crowncouncil-assets.yml
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/crown-council-troop-graphics
+          fetch-depth: 0
       - name: Apply focused patch
         run: python scripts/patch_crowncouncil_assets.py
       - name: Commit updated game file
