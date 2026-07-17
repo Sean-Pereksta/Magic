@@ -226,6 +226,96 @@ body.selection-active canvas{cursor:crosshair}
   #actionList,.actionGrid{grid-template-columns:repeat(4,minmax(100px,1fr))}
 }
 
+
+/* Condensed mobile command dock: thin command strip + one unified scrollable option row */
+@media (max-width:760px), (max-height:520px) and (orientation:landscape){
+  #mobileDockToggle{display:block;top:-16px;width:38px;height:20px;line-height:16px;font-size:13px}
+  #commandPanel,
+  #commandPanel.hasActions:not(.mobileCollapsed){
+    left:4px;right:4px;bottom:max(4px,env(safe-area-inset-bottom));
+    width:auto;height:168px;min-height:168px;max-height:168px;
+    grid-template-columns:112px minmax(0,1fr);
+    grid-template-rows:58px minmax(0,1fr);
+    padding:5px;gap:4px;border-radius:12px;
+  }
+  #selectionCard{grid-column:1;grid-row:1;padding:1px 4px 0 1px;overflow:hidden}
+  #selectionName{font-size:9px;line-height:1.05;-webkit-line-clamp:1;white-space:nowrap}
+  #selectionMeta,#selectionOrder,#statusText,#cooldownGrid{display:none!important}
+  .hpTrack{height:4px;margin-top:3px}
+  #utilityButtons{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;margin-top:4px;padding:0}
+  #utilityButtons .hudBtn{font-size:0;padding:0;min-height:20px;height:20px;border-radius:6px}
+  #utilityButtons .hudBtn::after{font-size:10px;line-height:1}
+  #centerBtn::after{content:'⌖'}
+  #pauseBtn::after{content:'Ⅱ'}
+  #helpBtn::after{content:'?'}
+  #fullscreenBtn::after{content:'⛶'}
+  #exitBtn::after{content:'×'}
+
+  #ordersPanel{grid-column:2;grid-row:1;padding:1px 0 0 5px;overflow:hidden}
+  #ordersPanel>.commandGroupTitle{display:none}
+  #commandButtons{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(64px,1fr);grid-template-columns:none;grid-template-rows:1fr;gap:3px;overflow-x:auto;overflow-y:hidden;padding-bottom:1px;scroll-snap-type:x proximity}
+  #commandButtons .cmdBtn{min-width:64px;height:50px;min-height:50px;padding:4px 3px;font-size:8px;border-radius:7px;scroll-snap-align:start}
+  #commandButtons .cmdBtn small{font-size:6px;line-height:1.05;margin-top:1px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+  #contextPanel{grid-column:1/-1;grid-row:2;display:flex;flex-direction:column;padding:4px 0 0;border-left:0;border-top:1px solid rgba(255,255,255,.1);overflow:hidden}
+  #commandPanel.hasActions #contextPanel{overflow:hidden}
+  #commandPanel.hasActions #actionList{padding:1px 2px 2px 0}
+  #contextHeader{display:flex;align-items:center;min-height:18px;max-height:24px;gap:4px;overflow:hidden}
+  #contextHeader>div:first-child{min-width:96px;max-width:138px}
+  #contextMenuTitle{font-size:7px;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #contextSummary{font-size:6.5px;line-height:1.05;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #abilityButtons{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(82px,1fr);grid-template-columns:none;gap:3px;min-width:0;max-width:none;overflow-x:auto;overflow-y:hidden}
+  #abilityButtons .cmdBtn,.cmdBtn.abilityVisual{height:22px;min-height:22px;padding:2px 3px;font-size:7px;display:block;text-align:center;border-radius:6px}
+  .cmdBtn.abilityVisual .assetThumb,.cmdBtn.abilityVisual .abilityExplain,#abilityButtons .cmdBtn small{display:none}
+
+  #productionQueue{min-height:29px;max-height:31px;padding:1px 1px 2px;gap:4px;overflow-x:auto}
+  .queueTitle{font-size:6px}.queueCircle{width:25px;height:25px}.queueCircle::after{inset:3px}.queueCircle b{font-size:6px}.queueItem{min-width:62px;gap:3px}.queueInfo{font-size:6px}.queueInfo small{font-size:5.5px}
+
+  #actionList,#actionList.actionGrid,.actionGrid{
+    display:grid!important;grid-auto-flow:column;grid-auto-columns:minmax(92px,26vw);
+    grid-template-columns:none!important;grid-template-rows:1fr;
+    gap:4px!important;min-height:0;overflow-x:auto;overflow-y:hidden;padding:1px 2px 2px 0;
+    scroll-snap-type:x proximity;overscroll-behavior-x:contain;
+  }
+  .actionCard,.actionGrid .actionCard{min-width:92px;min-height:66px;height:66px;padding:4px;border-radius:8px;scroll-snap-align:start;overflow:hidden}
+  .actionCard .assetThumb{width:27px;height:27px;margin-right:3px}
+  .actionGrid .actionTitle,.actionTitle{min-height:28px;margin:0;font-size:7.5px;line-height:1.05;align-items:flex-start;gap:2px;padding:0}
+  .rolePill{display:none}
+  .actionMeta,.actionGrid .actionMeta{display:none}
+  .actionCost,.actionGrid .actionCost{position:static;display:flex;flex-wrap:wrap;gap:2px 5px;margin-top:3px;font-size:6.5px;text-align:left;color:#ffe6a3}
+  #hintLine{display:none}
+
+  #commandPanel.mobileExpanded{height:min(34dvh,245px);min-height:210px;max-height:245px;grid-template-rows:62px minmax(0,1fr)}
+  #commandPanel.mobileCollapsed{height:43px;min-height:43px;max-height:43px;grid-template-columns:minmax(0,1fr) 116px;grid-template-rows:1fr;padding:4px 34px 4px 5px}
+  #commandPanel.mobileCollapsed #selectionCard{grid-column:1/-1;grid-row:1;display:grid;grid-template-columns:minmax(0,1fr) 116px;align-items:center;padding:0}
+  #commandPanel.mobileCollapsed #selectionName{grid-column:1;white-space:nowrap}
+  #commandPanel.mobileCollapsed .hpTrack{grid-column:1;margin:2px 8px 0 0}
+  #commandPanel.mobileCollapsed #utilityButtons{grid-column:2;grid-row:1/3;margin:0;padding:0}
+  #commandPanel.mobileCollapsed #ordersPanel,#commandPanel.mobileCollapsed #contextPanel{display:none!important}
+}
+
+@media (max-width:520px) and (orientation:portrait){
+  #commandPanel,#commandPanel.hasActions:not(.mobileCollapsed){height:158px;min-height:158px;max-height:158px;grid-template-columns:104px minmax(0,1fr);grid-template-rows:55px minmax(0,1fr)}
+  #actionList,#actionList.actionGrid,.actionGrid{grid-auto-columns:minmax(88px,29vw)}
+  .actionCard,.actionGrid .actionCard{min-width:88px;height:62px;min-height:62px}
+  #contextHeader>div:first-child{min-width:88px;max-width:110px}
+}
+
+/* A sideways phone uses only the lower-right portion of the battlefield. */
+@media (max-height:520px) and (orientation:landscape){
+  #commandPanel,#commandPanel.hasActions:not(.mobileCollapsed){
+    left:auto;right:max(4px,env(safe-area-inset-right));bottom:max(4px,env(safe-area-inset-bottom));
+    width:min(62vw,620px);height:142px;min-height:142px;max-height:142px;
+    grid-template-columns:104px minmax(0,1fr);grid-template-rows:52px minmax(0,1fr);
+  }
+  #commandPanel.mobileExpanded{width:min(72vw,700px);height:min(52dvh,220px);min-height:180px;max-height:220px;grid-template-rows:56px minmax(0,1fr)}
+  #commandPanel.mobileCollapsed{width:min(48vw,440px);height:41px;min-height:41px;max-height:41px}
+  #commandButtons .cmdBtn{height:44px;min-height:44px}
+  #actionList,#actionList.actionGrid,.actionGrid{grid-auto-columns:minmax(88px,15vw)}
+  .actionCard,.actionGrid .actionCard{height:58px;min-height:58px}
+  #productionQueue{min-height:25px;max-height:27px}
+}
+
 </style>
 </head>
 <body>
@@ -421,10 +511,10 @@ let terrain=[],resourceNodes=[],entities=[],players=[],slotNames=[],humanNames=[
 let selectedId=null,selectedIds=[],legalTiles=[],interactionMode=null,interactionPayload=null,hoverTile=null,sideTab='actions';
 let gameStarted=false,paused=false,spectating=false,gameOver=false,lastFrame=performance.now(),simAccumulator=0,lastAiTick=0,initialCameraSet=false;
 let particles=[],shots=[],floating=[],shatters=[],areaEffects=[],pendingImpacts=[];
-let chosenFaction='frontier',chosenDifficulty='medium',chosenAiCount=2,chosenAiStyle='balanced',chosenGameMode='annihilation',modeState=null,buildTier='basic';
+let chosenFaction='frontier',chosenDifficulty='medium',chosenAiCount=2,chosenAiStyle='balanced',chosenGameMode='annihilation',modeState=null;
 let visionCache=new Map(),visionCacheAt=0,lastObjectiveTick=0;
 let dragging=false,dragStart=null,pointerMoved=false,activePointers=new Map(),pinch=null,selectionBox=null,selectionHoldTimer=null,lastCanvasTap={at:0,entityId:null},lastStackTap={key:'',idx:0,at:0},uiRenderSignature='',uiPointerLock=false,pseudoFullscreen=false,lastAutoExpandedSelectionId=null;
-const GAMEPLAY_TIME_SCALE=1.15,MINING_TIME_SCALE=1.55;
+const GAMEPLAY_TIME_SCALE=1.15,MINING_TIME_SCALE=1.9375; // Mining is 25% slower than the previous 1.55 pace.
 const COOLDOWN_SCALE={move:GAMEPLAY_TIME_SCALE,attack:GAMEPLAY_TIME_SCALE,mining:MINING_TIME_SCALE,ability:GAMEPLAY_TIME_SCALE,production:GAMEPLAY_TIME_SCALE};
 const DIFFICULTY={
   easy:{thinkInterval:8.5,income:.62,aggression:.25,workerGoal:5,attackAt:9,commandLimit:3,moveLimit:3,macroChance:.45,trainChance:.44,desiredBases:1,expandChance:.008,label:'Easy AI pauses longer between decisions and moves no more than 3 pieces per command wave.'},
@@ -618,7 +708,7 @@ function updateCombat(dt){for(const e of entities){if(e.alive===false||e.garriso
 function releaseMining(e){if(!e?.miningNodeId)return;const n=resourceNodes.find(n=>n.id===e.miningNodeId);if(n&&n.reservedBy===e.id)n.reservedBy=null;e.miningNodeId=null}
 function gasStructureOn(node,faction){return entities.find(e=>e.alive!==false&&e.complete&&e.faction===faction&&e.kind==='structure'&&STRUCTURES[e.type]?.gas&&e.x===node.x&&e.y===node.y)}
 function autoMiningNode(e){const mineral=nodeAt(e.x,e.y,'mineral');if(mineral&&(!mineral.reservedBy||mineral.reservedBy===e.id))return mineral;for(const [dx,dy] of ORTHO){const gas=nodeAt(e.x+dx,e.y+dy,'gas');if(gas&&gasStructureOn(gas,e.faction))return gas}return null}
-function updateMining(){const t=nowMs();for(const e of entities){if(e.alive===false||!isWorker(e)||players[e.faction]?.eliminated)continue;const n=autoMiningNode(e);if(!n){releaseMining(e);continue}if(n.type==='mineral'){if(n.reservedBy&&n.reservedBy!==e.id){releaseMining(e);continue}n.reservedBy=e.id}if(e.miningNodeId!==n.id){releaseMining(e);e.miningNodeId=n.id;if(n.type==='mineral')n.reservedBy=e.id;e.miningReadyAt=t+900*MINING_TIME_SCALE}if(t>=e.miningReadyAt&&n.amount>0){const base=n.type==='mineral'?8:6;const bonus=players[e.faction].ai?(DIFFICULTY[chosenDifficulty]?.income||1):1;const gain=Math.min(n.amount,Math.max(1,Math.round(base*bonus)));n.amount-=gain;if(n.type==='mineral')players[e.faction].minerals+=gain;else players[e.faction].gas+=gain;e.miningReadyAt=t+effectiveMiningCd(n.type);floating.push({x:e.x+.5,y:e.y-.2,text:`+${gain}${n.type==='gas'?' gas':''}`,color:n.type==='gas'?'#b9a1ff':'#75d9ff',life:1.1,max:1.1});if(n.amount<=0)releaseMining(e);markDirty()}}}
+function updateMining(){const t=nowMs();for(const e of entities){if(e.alive===false||!isWorker(e)||players[e.faction]?.eliminated)continue;const n=autoMiningNode(e);if(!n){releaseMining(e);continue}if(n.type==='mineral'){if(n.reservedBy&&n.reservedBy!==e.id){releaseMining(e);continue}n.reservedBy=e.id}if(e.miningNodeId!==n.id){releaseMining(e);e.miningNodeId=n.id;if(n.type==='mineral')n.reservedBy=e.id;e.miningReadyAt=t+900*MINING_TIME_SCALE}if(t>=e.miningReadyAt&&n.amount>0){const gain=Math.min(n.amount,4);n.amount-=gain;if(n.type==='mineral')players[e.faction].minerals+=gain;else players[e.faction].gas+=gain;const incomeRate=players[e.faction].ai?(DIFFICULTY[chosenDifficulty]?.income||1):1;e.miningReadyAt=t+effectiveMiningCd(n.type)/Math.max(.1,incomeRate);floating.push({x:e.x+.5,y:e.y-.2,text:`+${gain}${n.type==='gas'?' gas':''}`,color:n.type==='gas'?'#b9a1ff':'#75d9ff',life:1.1,max:1.1});if(n.amount<=0)releaseMining(e);markDirty()}}}
 
 // ---------- Construction / power / production ----------
 function isPoweredTile(f,x,y){return playerStructures(f,'pylon').some(p=>Math.max(Math.abs(p.x-x),Math.abs(p.y-y))<=2)}
@@ -761,7 +851,7 @@ async function maybeInitializeMultiplayer(){if(!lobbyId||gameStarted||!isControl
 // ---------- UI / player actions ----------
 function renderStartMenu(){factionGrid.innerHTML='';for(const f of Object.values(FACTIONS)){const b=document.createElement('button');b.className='factionCard'+(chosenFaction===f.id?' chosen':'');b.dataset.faction=f.id;b.innerHTML=`<h3>${f.icon} ${f.name}</h3><p>${f.summary}</p><span class="factionTag">${f.id==='frontier'?'Mechanical production':f.id==='ascendant'?'Power field warfare':'Larva evolution'}</span>`;b.onclick=()=>{chosenFaction=f.id;localStorage.setItem('csf.faction',f.id);renderStartMenu()};factionGrid.appendChild(b)}difficultySelect.value=chosenDifficulty;aiCountSelect.value=String(chosenAiCount);aiStyleSelect.value=chosenAiStyle;objectiveSelect.value=chosenGameMode;difficultyNote.textContent=(DIFFICULTY[chosenDifficulty]||DIFFICULTY.medium).label;objectiveNote.textContent=(GAME_MODES[chosenGameMode]||GAME_MODES.annihilation).desc;renderStartStatus()}
 function refreshLegalTiles(){const list=selectedEntities(),e=selected();if(!e||!ownEntity(e)){legalTiles=[];return}if(list.length>1){if(interactionMode==='ability'&&interactionPayload)legalTiles=legalAbilityTilesForSelection(interactionPayload);else legalTiles=[];return}if(interactionMode==='build'&&isWorker(e)&&interactionPayload){legalTiles=[];for(let y=e.y-1;y<=e.y+1;y++)for(let x=e.x-1;x<=e.x+1;x++)if(validBuildTile(e,interactionPayload,x,y))legalTiles.push({x,y});return}if(interactionMode==='ability'&&interactionPayload){legalTiles=legalAbilityTiles(e,interactionPayload);return}if(e.kind==='unit'&&interactionMode===null)legalTiles=legalMovesFor(e);else if(e.kind==='unit'&&interactionMode==='move')legalTiles=[];else if(interactionMode!=='attack')legalTiles=[]}
-function computeUiSignature(){const t=nowMs(),p=players[PLAYER]||{},list=selectedEntities();return JSON.stringify({ids:list.map(e=>e.id),shape:list.map(e=>[e.kind,e.type,e.queue?.length||0,!!e.siegeMode,!!e.targetId,!!e.miningNodeId,e.powered!==false,nowMs()>=Number(e.moveReadyAt||0),nowMs()>=Number(e.attackReadyAt||0),nowMs()>=Number(e.abilityReadyAt||0)]),mode:interactionMode,payload:interactionPayload,tier:buildTier,m:Math.floor((p.minerals||0)/5),g:Math.floor((p.gas||0)/5),s:supplyUsed(PLAYER),c:supplyCap(PLAYER)})}
+function computeUiSignature(){const t=nowMs(),p=players[PLAYER]||{},list=selectedEntities();return JSON.stringify({ids:list.map(e=>e.id),shape:list.map(e=>[e.kind,e.type,e.queue?.length||0,!!e.siegeMode,!!e.targetId,!!e.miningNodeId,e.powered!==false,nowMs()>=Number(e.moveReadyAt||0),nowMs()>=Number(e.attackReadyAt||0),nowMs()>=Number(e.abilityReadyAt||0)]),mode:interactionMode,payload:interactionPayload,m:Math.floor((p.minerals||0)/5),g:Math.floor((p.gas||0)/5),s:supplyUsed(PLAYER),c:supplyCap(PLAYER)})}
 function preserveMenuScroll(render){const a=actionList.scrollTop,c=commandButtons.scrollTop,al=abilityButtons.scrollLeft,at=abilityButtons.scrollTop;render();requestAnimationFrame(()=>{actionList.scrollTop=a;commandButtons.scrollTop=c;abilityButtons.scrollLeft=al;abilityButtons.scrollTop=at})}
 function refreshUI(force=false){if(!gameStarted){renderStartMenu();return}const p=players[PLAYER];mineralsText.textContent=Math.floor(p?.minerals||0);gasText.textContent=Math.floor(p?.gas||0);supplyText.textContent=`${supplyUsed(PLAYER)} / ${supplyCap(PLAYER)}`;armyText.textContent=playerUnits(PLAYER).filter(e=>!isWorker(e)).length;objectiveText.textContent=objectiveHudText();refreshLegalTiles();renderSelection();const signature=computeUiSignature();if((force||signature!==uiRenderSignature)&&(!uiPointerLock||force)){preserveMenuScroll(()=>{renderCommandButtons();renderSidePanel()});uiRenderSignature=signature}renderProductionQueue();drawMinimap()}
 function selectEntity(e){setSelection(e?[e]:[])}
@@ -776,15 +866,15 @@ function renderCommandButtons(){commandButtons.innerHTML='';abilityButtons.inner
   if(e.kind==='structure'){add(commandButtons,'Center',()=>centerOn(e.x,e.y),false,false,'Focus camera');if(e.type==='bunker')add(commandButtons,'Unload All',()=>sendCommand({type:'unloadBunker',entityId:e.id}),!mine||!(e.garrisonedIds||[]).length,false,`${(e.garrisonedIds||[]).length}/${STRUCTURES.bunker.garrisonCap} inside`);add(commandButtons,'Cancel Last',()=>sendCommand({type:'cancelQueue',entityId:e.id}),!mine||!e.queue?.length,false,e.queue?.length?`${e.queue.length} queued`:'Empty');add(commandButtons,e.powered===false?'Unpowered':'Operational',()=>{},true,false,e.powered===false?'Needs Pylon':'Online')}
   if(e.kind==='larva'){add(commandButtons,'Center Larva',()=>centerOn(e.x,e.y),false,false,'Focus camera');add(commandButtons,'Morph Ready',()=>{},true,false,'Choose below')}
   if(e.kind==='cocoon'){add(commandButtons,'Center Cocoon',()=>centerOn(e.x,e.y),false,false,'Focus camera');add(commandButtons,'Morphing…',()=>{},true,false,fmtCd(cooldownSeconds(e.morphEnd)))}
-  if(isWorker(e)){contextMenuTitle.textContent='Construction & Ability';add(abilityButtons,'Basic',()=>{buildTier='basic';uiRenderSignature='';refreshUI(true)},!mine,buildTier==='basic','Economy & core','Choose basic buildings');add(abilityButtons,'Advanced',()=>{buildTier='advanced';uiRenderSignature='';refreshUI(true)},!mine,buildTier==='advanced','Tech','Choose tech buildings');add(abilityButtons,'Defense',()=>{buildTier='defense';uiRenderSignature='';refreshUI(true)},!mine,buildTier==='defense','Static defense','Choose defensive buildings');for(const id of abilitiesFor(e))addAbility(id)}else if(e.kind==='structure')contextMenuTitle.textContent=STRUCTURES[e.type]?.produces?.length?'Training & Production':'Structure Status';else if(e.kind==='larva')contextMenuTitle.textContent='Morph Organisms';else if(e.kind==='cocoon')contextMenuTitle.textContent='Morph Progress';else{const ids=abilitiesFor(e);contextMenuTitle.textContent='Unit Abilities';for(const id of ids)addAbility(id)}hintLine.textContent=interactionMode==='ability'?`Choose a highlighted tile for ${ABILITIES[interactionPayload]?.name||'the ability'}.`:interactionMode==='attack'?'Click a visible enemy to assign persistent attack pursuit.':interactionMode==='build'?'Click a highlighted adjacent construction tile.':'Hold and drag to box-select. Double-click or double-tap a unit to select all visible units of that type.'}
-function revealMobileActions(e){if(!actionList.children.length)return;commandPanel.classList.add('hasActions');if(innerWidth<=760&&lastAutoExpandedSelectionId!==e.id){lastAutoExpandedSelectionId=e.id;setMobileDockState('expanded')}}
+  if(isWorker(e)){contextMenuTitle.textContent='Build Structures';for(const id of abilitiesFor(e))addAbility(id)}else if(e.kind==='structure')contextMenuTitle.textContent=STRUCTURES[e.type]?.produces?.length?'Training & Production':'Structure Status';else if(e.kind==='larva')contextMenuTitle.textContent='Morph Organisms';else if(e.kind==='cocoon')contextMenuTitle.textContent='Morph Progress';else{const ids=abilitiesFor(e);contextMenuTitle.textContent='Unit Abilities';for(const id of ids)addAbility(id)}hintLine.textContent=interactionMode==='ability'?`Choose a highlighted tile for ${ABILITIES[interactionPayload]?.name||'the ability'}.`:interactionMode==='attack'?'Click a visible enemy to assign persistent attack pursuit.':interactionMode==='build'?'Click a highlighted adjacent construction tile.':'Hold and drag to box-select. Double-click or double-tap a unit to select all visible units of that type.'}
+function revealMobileActions(e){if(!actionList.children.length)return;commandPanel.classList.add('hasActions');const compactViewport=innerWidth<=760||(innerHeight<=520&&innerWidth>innerHeight);if(compactViewport&&lastAutoExpandedSelectionId!==e.id){lastAutoExpandedSelectionId=e.id;setMobileDockState('compact')}}
 function renderSidePanel(){
   actionList.innerHTML='';actionList.className='';commandPanel.classList.remove('hasActions');
   const list=selectedEntities(),e=list[0],p=players[PLAYER];
   if(list.length>1){contextSummary.textContent='Group selection active. All abilities from the selected troop types appear above and matching units cast together.';return}
   if(!e||!ownEntity(e)){contextSummary.textContent=e?'Enemy selected. You can inspect its health and cooldowns but cannot issue commands.':'Select one of your pieces to see commands, abilities, buildings, or training options.';return}
   if(isWorker(e)){
-    actionList.className='actionGrid';const basic=new Set(BASIC_BUILDINGS[p.factionId]||[]),defense=new Set(['bunker','missileTurret','photonCannon','sunkenColony']);const types=BUILD_ORDER[p.factionId].filter(type=>buildTier==='defense'?defense.has(type):buildTier==='basic'?basic.has(type)&&!defense.has(type):!basic.has(type));contextSummary.textContent=buildTier==='basic'?'Step 1: economy, supply, gas, and first production.':buildTier==='defense'?'Optional defense: protect mineral lines, gas, and approaches.':'Step 2–3: unlock higher technology and specialized production.';for(const type of types)renderActionCard('build',type,e,actionList);revealMobileActions(e)
+    actionList.className='actionGrid';const types=BUILD_ORDER[p.factionId]||[];contextSummary.textContent='All available economy, production, technology, and defense structures are listed together. Scroll to find the structure you want.';for(const type of types)renderActionCard('build',type,e,actionList);revealMobileActions(e)
   }else if(e.kind==='structure'){
     const sd=STRUCTURES[e.type];contextSummary.textContent=e.powered===false?'This Ascendant structure has lost Pylon power and cannot operate.':sd?.produces?.length?'Choose a unit below. Roles make army composition clear; up to three units may be queued.':sd?.desc||'Completed structure.';actionList.className='actionGrid';for(const type of sd?.produces||[])renderActionCard('train',type,e,actionList);revealMobileActions(e)
   }else if(e.kind==='larva'){
@@ -862,7 +952,7 @@ canvas.addEventListener('pointerup',e=>{activePointers.delete(e.pointerId);if(ac
 canvas.addEventListener('pointercancel',e=>{activePointers.delete(e.pointerId);clearSelectionHold();selectionBox=null;dragging=false;pinch=null;document.body.classList.remove('selection-active');canvas.classList.remove('dragging')});
 canvas.addEventListener('wheel',e=>{e.preventDefault();const old=cam.zoom,nz=clamp(old*Math.exp(-e.deltaY*.0012),MIN_ZOOM,MAX_ZOOM),wx=(e.clientX+cam.x)/old,wy=(e.clientY+cam.y)/old;cam.zoom=nz;cam.x=wx*nz-e.clientX;cam.y=wy*nz-e.clientY;clampCam()},{passive:false});
 mini.addEventListener('pointerdown',e=>{const r=mini.getBoundingClientRect(),x=(e.clientX-r.left)/r.width*BOARD_W,y=(e.clientY-r.top)/r.height*BOARD_H;centerOn(x,y)});
-window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(helpOverlay.classList.contains('open')){helpOverlay.classList.remove('open');helpOverlay.setAttribute('aria-hidden','true');return}interactionMode=null;interactionPayload=null;refreshLegalTiles();refreshUI(true)}if(e.key.toLowerCase()==='a'&&selected()&&ownEntity(selected())){interactionMode='attack';legalTiles=[];refreshUI(true)}if(e.key.toLowerCase()==='b'&&isWorker(selected())&&ownEntity(selected())&&selectedEntities().length===1){buildTier='basic';setMobileDockState('expanded');uiRenderSignature='';refreshUI(true)}if(e.key===' '){paused=!paused;pauseBtn.textContent=paused?'Resume':'Pause';e.preventDefault()}});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(helpOverlay.classList.contains('open')){helpOverlay.classList.remove('open');helpOverlay.setAttribute('aria-hidden','true');return}interactionMode=null;interactionPayload=null;refreshLegalTiles();refreshUI(true)}if(e.key.toLowerCase()==='a'&&selected()&&ownEntity(selected())){interactionMode='attack';legalTiles=[];refreshUI(true)}if(e.key.toLowerCase()==='b'&&isWorker(selected())&&ownEntity(selected())&&selectedEntities().length===1){setMobileDockState('compact');uiRenderSignature='';refreshUI(true)}if(e.key===' '){paused=!paused;pauseBtn.textContent=paused?'Resume':'Pause';e.preventDefault()}});
 
 // ---------- Event wiring ----------
 for(const b of document.querySelectorAll('.tabBtn'))b.onclick=()=>{sideTab=b.dataset.tab;document.querySelectorAll('.tabBtn').forEach(x=>x.classList.toggle('active',x===b));renderSidePanel()};
