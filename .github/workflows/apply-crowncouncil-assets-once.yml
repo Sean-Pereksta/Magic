@@ -1,0 +1,25 @@
+name: Apply Crown Council graphics patch once
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/apply-crowncouncil-assets-once.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-feature-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/crown-council-troop-graphics
+          fetch-depth: 0
+      - run: python scripts/patch_crowncouncil_assets.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/crowncouncil.html
+          git commit -m "Use Faction Forge troop graphics in Crown Council"
+          git push origin HEAD:agent/crown-council-troop-graphics
