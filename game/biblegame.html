@@ -93,11 +93,21 @@
   .mc-btn.selected{outline:3px solid #c4b5fd;border-color:#a78bfa;background:#faf5ff}.mc-btn[disabled]{opacity:.5;cursor:not-allowed}
   .notice{margin-top:7px;font-weight:800;padding:8px 10px;border-radius:10px;display:none}.notice.ok{display:block;color:#166534;background:#f0fdf4;border:1px solid #bbf7d0}.notice.bad{display:block;color:#991b1b;background:#fff1f2;border:1px solid #fecaca}.notice.info{display:block;color:#3730a3;background:#f5f3ff;border:1px solid #ddd6fe}
   .history-list{display:grid;gap:4px;margin-top:4px}.history-item{font-size:.85rem;padding:5px 8px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;display:flex;justify-content:space-between;align-items:center}.history-item.good{border-color:#bbf7d0;background:#f0fdf4;color:#166534}.history-item.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
+  .book-setup{margin-top:10px;padding-top:10px;border-top:1px solid var(--br)}
+  .book-mode-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px}
+  .book-mode-card{border:1px solid var(--br);border-radius:12px;padding:9px;background:#fff;display:grid;gap:3px;text-align:left;cursor:pointer;box-shadow:0 4px 10px rgba(148,163,184,.14)}
+  .book-mode-card.active{border-color:#7c3aed;background:#faf5ff;box-shadow:0 0 0 3px rgba(124,58,237,.13)}
+  .book-mode-card:disabled{opacity:.62;cursor:not-allowed}
+  .book-choice-box{margin-top:8px;padding:9px;border:1px solid #ddd6fe;border-radius:12px;background:#faf5ff}
+  .book-choice-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:7px}
+  .book-choice-controls select[multiple]{min-height:190px}
+  .book-choice-status{display:grid;gap:5px;margin-top:8px}
+  .book-choice-row{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 8px;border-radius:9px;border:1px solid #e5e7eb;background:#fff;font-size:.85rem}
   @keyframes floatFade{0%{transform:translate(-50%,8px);opacity:0}12%{opacity:1}80%{opacity:1}100%{transform:translate(-50%,-22px);opacity:0}}
   .reveal{position:fixed;left:50%;top:16%;transform:translate(-50%,0);padding:9px 13px;border-radius:12px;border:1px solid;background:rgba(255,255,255,.97);box-shadow:var(--shadow);font-weight:900;z-index:9999;animation:floatFade 2200ms ease-out forwards;max-width:min(92vw,700px);text-align:center}
   .reveal.good{color:var(--good);border-color:#bbf7d0;background:#f0fdf4}.reveal.bad{color:var(--bad);border-color:#fecaca;background:#fff1f2}.reveal.info{color:#3730a3;border-color:#ddd6fe;background:#f5f3ff}
   .hidden{display:none!important}
-  @media(max-width:620px){.inputs{grid-template-columns:1fr 1fr 1fr}.inputs .btn{grid-column:1/-1}.vote-grid,.scores,.mc-grid{grid-template-columns:1fr}.subtitle{max-width:48vw}.scores .entry{min-height:86px}.score-value b{font-size:1.5rem}.rating-row{grid-template-columns:1fr}.rating-row .delta{text-align:left}.rank-guide-grid{grid-template-columns:1fr}}
+  @media(max-width:620px){.inputs{grid-template-columns:1fr 1fr 1fr}.inputs .btn{grid-column:1/-1}.vote-grid,.scores,.mc-grid,.book-mode-grid{grid-template-columns:1fr}.book-choice-controls{grid-template-columns:1fr}.subtitle{max-width:48vw}.scores .entry{min-height:86px}.score-value b{font-size:1.5rem}.rating-row{grid-template-columns:1fr}.rating-row .delta{text-align:left}.rank-guide-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -152,6 +162,41 @@
       <button class="card" data-mode="coop"><div class="left"><b>🤝 Co-Op Survival</b><span class="sm muted">Shared lives • team discussion</span></div><span class="pill">Votes: <b id="v-coop">0</b></span></button>
     </div>
     <div class="sm muted" style="margin-top:6px">Highest votes wins. A tie is resolved randomly.</div>
+
+    <div class="book-setup">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div>
+          <div class="title">Choose the book pool</div>
+          <div class="muted sm" id="bookPoolHelp">The host chooses how books enter this session.</div>
+        </div>
+        <div class="pill">Pool: <strong id="bookPoolModeLabel">All Books</strong></div>
+      </div>
+      <div class="book-mode-grid" id="bookModeGrid">
+        <button class="book-mode-card active" data-book-mode="all"><b>📚 All Books</b><span class="sm muted">Use the complete Bible book list.</span></button>
+        <button class="book-mode-card" data-book-mode="draft"><b>📝 Draft Together</b><span class="sm muted">Combine every player’s selected books.</span></button>
+        <button class="book-mode-card" data-book-mode="ban"><b>🚫 Ban One Each</b><span class="sm muted">Each player removes one book.</span></button>
+      </div>
+
+      <div id="bookDraftSetup" class="book-choice-box hidden">
+        <div><b>Select your drafted books</b></div>
+        <div class="muted sm">Choose one or more. Every player’s saved selections are merged into one shared pool.</div>
+        <div class="book-choice-controls">
+          <select id="draftBooksInput" multiple size="9" aria-label="Draft books"></select>
+          <button class="btn small" id="saveDraftBtn">Save My Draft</button>
+        </div>
+      </div>
+
+      <div id="bookBanSetup" class="book-choice-box hidden">
+        <div><b>Ban one book</b></div>
+        <div class="muted sm">Your ban joins every other player’s ban and that book will not appear.</div>
+        <div class="book-choice-controls">
+          <select id="banBookInput" aria-label="Book to ban"></select>
+          <button class="btn small" id="saveBanBtn">Lock My Ban</button>
+        </div>
+      </div>
+
+      <div id="bookChoiceStatus" class="book-choice-status"></div>
+    </div>
   </section>
 
   <section class="panel hidden" id="phase-play">
@@ -249,7 +294,7 @@
   const username = (url.searchParams.get('username') || '').trim();
 
   const MODE_DURATION = {
-    voting: 35000,
+    voting: 60000,
     traditional: 40000,
     teams: 75000,
     speed: 90000
@@ -345,6 +390,7 @@
   let previousSession = null;
   let PLAYERS = new Map();
   let VOTES = new Map();
+  let BOOK_CHOICES = new Map();
   let SUGGESTIONS = [];
   let verses = [];
   let books = [];
@@ -352,6 +398,7 @@
   let sessionRef = null;
   let playersCol = null;
   let votesCol = null;
+  let bookChoicesCol = null;
   let submissionsCol = null;
   let suggestionsCol = null;
   let activePlayerRef = null;
@@ -359,11 +406,13 @@
   let sessionUnsub = null;
   let playersUnsub = null;
   let votesUnsub = null;
+  let bookChoicesUnsub = null;
   let suggestionsUnsub = null;
   let chatUnsub = null;
   let activeChatKey = '';
   let heartbeatTimer = null;
   let tickTimer = null;
+  let profileUnsub = null;
   let transitionBusy = false;
   let createSessionBusy = false;
   let serverClockOffsetMs = 0;
@@ -371,6 +420,8 @@
   let mcSelectedId = null;
   let mcRenderedQuestionKey = '';
   let MY_PROFILE = null;
+  let bookDropdownKey = '';
+  let loadedChoiceSignature = '';
   const myHistory = [];
 
   const lobbyRef = doc(db, 'lobbies', gameId);
@@ -469,8 +520,8 @@
       const data=snap.exists()?snap.data():{};
       const bible=normalizedBibleProfile(data);
       const patch={
-        bibleGame:bible, bibleGameElo:bible.elo, bibleGameWins:bible.wins,
-        bibleGameRatingVersion:RATING_VERSION,
+        bibleGame:{...bible,profileUpdatedAt:serverTimestamp()}, bibleGameElo:bible.elo, bibleGameWins:bible.wins,
+        bibleGameRatingVersion:RATING_VERSION, bibleGameProfileUpdatedAt:serverTimestamp(),
         bibleGameRankTitle:bible.rankTitle, bibleGameRankEmoji:bible.rankEmoji, bibleGameRankColor:bible.rankColor
       };
       if(!data.username) patch.username=safeName(username);
@@ -517,39 +568,79 @@
     return out;
   }
 
-  function fillBookDropdown(){
-    const sel=$('bookInput'); sel.innerHTML='';
-    const blank=document.createElement('option'); blank.value=''; blank.textContent='Book'; sel.appendChild(blank);
+  function validBookList(values){
+    const requested=Array.isArray(values)?values:[];
+    const byKey=new Map(books.map(book=>[normalizedBookKey(book),book]));
+    const result=[];
+    const seen=new Set();
+    for(const value of requested){
+      const actual=byKey.get(normalizedBookKey(value));
+      if(actual && !seen.has(actual)){ seen.add(actual); result.push(actual); }
+    }
+    return result.sort((a,b)=>bookOrderIndex(a)-bookOrderIndex(b)||a.localeCompare(b));
+  }
 
+  function effectiveAllowedBooks(state=SESSION){
+    const allowed=validBookList(state?.allowedBooks||[]);
+    return allowed.length?allowed:books.slice();
+  }
+
+  function appendGroupedBookOptions(select,bookList,{blankLabel='',multiple=false}={}){
+    select.innerHTML='';
+    if(blankLabel && !multiple){
+      const blank=document.createElement('option'); blank.value=''; blank.textContent=blankLabel; select.appendChild(blank);
+    }
     const oldGroup=document.createElement('optgroup'); oldGroup.label='Old Testament';
     const newGroup=document.createElement('optgroup'); newGroup.label='New Testament';
     const otherGroup=document.createElement('optgroup'); otherGroup.label='Other';
-
-    for(const b of books){
+    for(const b of bookList){
       const option=document.createElement('option'); option.value=b; option.textContent=b;
       const testament=testamentForBook(b);
       (testament==='old'?oldGroup:testament==='new'?newGroup:otherGroup).appendChild(option);
     }
-    if(oldGroup.children.length) sel.appendChild(oldGroup);
-    if(newGroup.children.length) sel.appendChild(newGroup);
-    if(otherGroup.children.length) sel.appendChild(otherGroup);
+    if(oldGroup.children.length) select.appendChild(oldGroup);
+    if(newGroup.children.length) select.appendChild(newGroup);
+    if(otherGroup.children.length) select.appendChild(otherGroup);
   }
 
-  function pickRandomVerse(excludeIds=[],testament=''){
+  function fillBookDropdown(bookList=books){
+    const allowed=validBookList(bookList);
+    const finalBooks=allowed.length?allowed:books.slice();
+    const key=finalBooks.map(normalizedBookKey).join('|');
+    if(key===bookDropdownKey) return;
+    bookDropdownKey=key;
+    appendGroupedBookOptions($('bookInput'),finalBooks,{blankLabel:'Book'});
+  }
+
+  function fillBookSetupControls(){
+    appendGroupedBookOptions($('draftBooksInput'),books,{multiple:true});
+    appendGroupedBookOptions($('banBookInput'),books,{blankLabel:'Choose one book'});
+  }
+
+  function pickRandomVerse(excludeIds=[],testament='',allowedBookNames=null){
     const exclude=new Set(excludeIds||[]);
+    const requested=Array.isArray(allowedBookNames)?validBookList(allowedBookNames):effectiveAllowedBooks();
+    const allowedSet=new Set((requested.length?requested:books).map(normalizedBookKey));
+    const allowedPool=verses.filter(v=>allowedSet.has(normalizedBookKey(v.book)));
+    const basePool=allowedPool.length?allowedPool:verses;
     const testamentPool=(testament==='old'||testament==='new')
-      ? verses.filter(v=>testamentForBook(v.book)===testament)
-      : verses;
-    const unusedPool=testamentPool.filter(v=>!exclude.has(v.id));
-    const source=unusedPool.length ? unusedPool : (testamentPool.length ? testamentPool : verses.filter(v=>!exclude.has(v.id)));
-    const fallback=source.length ? source : verses;
-    return fallback.length ? fallback[Math.floor(Math.random()*fallback.length)] : null;
+      ? basePool.filter(v=>testamentForBook(v.book)===testament)
+      : basePool;
+    const unusedTestamentPool=testamentPool.filter(v=>!exclude.has(v.id));
+    const unusedAllowedPool=basePool.filter(v=>!exclude.has(v.id));
+    const source=unusedTestamentPool.length?unusedTestamentPool:(testamentPool.length?testamentPool:unusedAllowedPool);
+    const fallback=source.length?source:(basePool.length?basePool:verses);
+    return fallback.length?fallback[Math.floor(Math.random()*fallback.length)]:null;
   }
 
-  function genCoopOptions(correct){
+  function genCoopOptions(correct,allowedBookNames=null){
+    const requested=Array.isArray(allowedBookNames)?validBookList(allowedBookNames):effectiveAllowedBooks();
+    const allowedSet=new Set((requested.length?requested:books).map(normalizedBookKey));
+    const optionPool=verses.filter(v=>allowedSet.has(normalizedBookKey(v.book)));
+    const source=optionPool.length?optionPool:verses;
     const chosen=new Map([[correct.id,correct]]);
-    while(chosen.size<4 && chosen.size<verses.length){
-      const v=verses[Math.floor(Math.random()*verses.length)];
+    while(chosen.size<4 && chosen.size<source.length){
+      const v=source[Math.floor(Math.random()*source.length)];
       if(v) chosen.set(v.id,v);
     }
     const arr=Array.from(chosen.values()).map(v=>({id:v.id,book:v.book,chapter:v.chapter,verse:v.verse}));
@@ -567,6 +658,108 @@
     else if(bookOK) points=1;
     if(mode==='speed' && !bookOK && !chapterOK && !verseOK) points=-1;
     return {bookOK,chapterOK,verseOK,points,full:bookOK&&chapterOK&&verseOK};
+  }
+
+  function bookPoolModeLabel(mode){
+    if(mode==='draft') return 'Draft Together';
+    if(mode==='ban') return 'Ban One Each';
+    return 'All Books';
+  }
+
+  function canControlBookMode(){
+    if(!SESSION||!currentUser) return false;
+    if(currentUser.uid===SESSION.hostUid) return true;
+    const host=PLAYERS.get(SESSION.hostUid);
+    return (!host||!isFreshPlayer(host))&&isDriver();
+  }
+
+  function buildBookPool(mode,choiceMap,participantUids){
+    const participants=new Set(participantUids||[]);
+    const relevant=Array.from(choiceMap.values()).filter(choice=>participants.has(choice.uid));
+    if(mode==='draft'){
+      const drafted=validBookList(relevant.flatMap(choice=>choice.draftBooks||[]));
+      const allowedBooks=drafted.length?drafted:books.slice();
+      return {allowedBooks,bannedBooks:[],summary:drafted.length?`${allowedBooks.length} drafted book${allowedBooks.length===1?'':'s'} combined from all players`:'No draft was saved, so all books are available'};
+    }
+    if(mode==='ban'){
+      const bannedBooks=validBookList(relevant.map(choice=>choice.bannedBook).filter(Boolean));
+      const bannedSet=new Set(bannedBooks.map(normalizedBookKey));
+      const allowedBooks=books.filter(book=>!bannedSet.has(normalizedBookKey(book)));
+      if(!allowedBooks.length) return {allowedBooks:books.slice(),bannedBooks:[],summary:'All books would have been banned, so the full pool was restored'};
+      return {allowedBooks,bannedBooks,summary:bannedBooks.length?`${bannedBooks.length} unique book${bannedBooks.length===1?'':'s'} banned by the players`:'No bans were saved, so all books are available'};
+    }
+    return {allowedBooks:books.slice(),bannedBooks:[],summary:`All ${books.length} books are available`};
+  }
+
+  async function setBookPoolMode(mode){
+    if(!['all','draft','ban'].includes(mode)||!SESSION||SESSION.status!=='voting'||!canControlBookMode()) return;
+    await updateDoc(sessionRef,{bookPoolMode:mode,updatedAt:serverTimestamp()});
+  }
+
+  async function saveDraftChoice(){
+    if(!SESSION||SESSION.status!=='voting'||SESSION.bookPoolMode!=='draft') return;
+    const selected=Array.from($('draftBooksInput').selectedOptions).map(option=>option.value);
+    const draftBooks=validBookList(selected);
+    if(!draftBooks.length){ showReveal('Select at least one book for your draft.','bad'); return; }
+    await setDoc(doc(bookChoicesCol,currentUser.uid),{
+      uid:currentUser.uid,username:safeName(username),draftBooks,updatedAt:serverTimestamp()
+    },{merge:true});
+    showReveal(`Saved ${draftBooks.length} drafted book${draftBooks.length===1?'':'s'}.`,'good');
+  }
+
+  async function saveBanChoice(){
+    if(!SESSION||SESSION.status!=='voting'||SESSION.bookPoolMode!=='ban') return;
+    const bannedBook=validBookList([$('banBookInput').value])[0]||'';
+    if(!bannedBook){ showReveal('Choose one book to ban.','bad'); return; }
+    await setDoc(doc(bookChoicesCol,currentUser.uid),{
+      uid:currentUser.uid,username:safeName(username),bannedBook,updatedAt:serverTimestamp()
+    },{merge:true});
+    showReveal(`${bannedBook} is locked as your ban.`,'good');
+  }
+
+  function loadMyBookChoiceIntoControls(){
+    const choice=BOOK_CHOICES.get(currentUser?.uid)||{};
+    const signature=JSON.stringify({draftBooks:validBookList(choice.draftBooks||[]),bannedBook:choice.bannedBook||''});
+    if(signature===loadedChoiceSignature) return;
+    loadedChoiceSignature=signature;
+    const drafted=new Set(validBookList(choice.draftBooks||[]).map(normalizedBookKey));
+    for(const option of $('draftBooksInput').options) option.selected=drafted.has(normalizedBookKey(option.value));
+    $('banBookInput').value=validBookList([choice.bannedBook])[0]||'';
+  }
+
+  function renderBookSetup(){
+    if(!SESSION) return;
+    const mode=['draft','ban'].includes(SESSION.bookPoolMode)?SESSION.bookPoolMode:'all';
+    $('bookPoolModeLabel').textContent=bookPoolModeLabel(mode);
+    const controller=canControlBookMode();
+    $('bookPoolHelp').textContent=controller?'Choose the shared book-pool rule before the timer ends.':'The host chooses the shared rule; save your selection below.';
+    document.querySelectorAll('[data-book-mode]').forEach(button=>{
+      button.classList.toggle('active',button.dataset.bookMode===mode);
+      button.disabled=!controller||SESSION.status!=='voting';
+    });
+    $('bookDraftSetup').classList.toggle('hidden',mode!=='draft');
+    $('bookBanSetup').classList.toggle('hidden',mode!=='ban');
+    loadMyBookChoiceIntoControls();
+
+    const status=$('bookChoiceStatus'); status.innerHTML='';
+    if(mode==='all'){
+      const row=document.createElement('div'); row.className='book-choice-row'; row.innerHTML=`<span>Complete pool</span><b>${books.length} books</b>`; status.appendChild(row); return;
+    }
+    const players=activePlayers();
+    for(const player of players){
+      const choice=BOOK_CHOICES.get(player.uid)||{};
+      const row=document.createElement('div'); row.className='book-choice-row';
+      let result='Not saved yet';
+      if(mode==='draft'){
+        const count=validBookList(choice.draftBooks||[]).length;
+        if(count) result=`${count} book${count===1?'':'s'} drafted`;
+      }else{
+        const banned=validBookList([choice.bannedBook])[0];
+        if(banned) result=`Banned ${banned}`;
+      }
+      row.innerHTML=`<span>${escapeHtml(safeName(player.username))}${player.uid===currentUser?.uid?' (you)':''}</span><b>${escapeHtml(result)}</b>`;
+      status.appendChild(row);
+    }
   }
 
   function getLobbyHostName(data){
@@ -652,6 +845,7 @@
     verses=buildBooksAndVerses(parseCSV(await response.text()));
     if(!verses.length) throw new Error('Bible data loaded, but no valid verses were found.');
     fillBookDropdown();
+    fillBookSetupControls();
   }
 
   function makeSessionId(){
@@ -680,6 +874,10 @@
           roundKey:0,
           currentQuestion:null,
           chosenIds:[],
+          bookPoolMode:'all',
+          allowedBooks:[],
+          bannedBooks:[],
+          bookPoolSummary:'All books are available',
           teamA:[], teamB:[],
           teamTotals:{A:0,B:0},
           teamLocks:{A:false,B:false},
@@ -718,7 +916,7 @@
 
   async function joinSession(){
     if(!sessionRef || !currentUser) return;
-    if(!MY_PROFILE) await ensureBibleProfile();
+    await ensureBibleProfile();
     const profile=MY_PROFILE||normalizedBibleProfile({});
     const rank=rankForElo(profile.elo);
     activePlayerRef=doc(playersCol,currentUser.uid);
@@ -748,7 +946,7 @@
         base.joinedAt=serverTimestamp();
         base.questionKey=0;
         if(s.status==='playing' && s.mode==='speed'){
-          base.currentQuestion=serializeVerse(pickRandomVerse());
+          base.currentQuestion=serializeVerse(pickRandomVerse([], '', s.allowedBooks||[]));
           base.questionKey=1;
         }
         tx.set(activePlayerRef,base);
@@ -784,10 +982,10 @@
   }
 
   function detachSessionListeners(){
-    for(const un of [sessionUnsub,playersUnsub,votesUnsub,suggestionsUnsub,chatUnsub]){ try{un&&un();}catch{} }
-    sessionUnsub=playersUnsub=votesUnsub=suggestionsUnsub=chatUnsub=null;
+    for(const un of [sessionUnsub,playersUnsub,votesUnsub,bookChoicesUnsub,suggestionsUnsub,chatUnsub]){ try{un&&un();}catch{} }
+    sessionUnsub=playersUnsub=votesUnsub=bookChoicesUnsub=suggestionsUnsub=chatUnsub=null;
     activeChatKey='';
-    PLAYERS=new Map(); VOTES=new Map(); SUGGESTIONS=[]; SESSION=null; previousSession=null;
+    PLAYERS=new Map(); VOTES=new Map(); BOOK_CHOICES=new Map(); SUGGESTIONS=[]; SESSION=null; previousSession=null; loadedChoiceSignature='';
   }
 
   async function attachSession(sid){
@@ -797,6 +995,7 @@
     sessionRef=doc(db,'lobbies',gameId,'bibleSessions',sid);
     playersCol=collection(sessionRef,'players');
     votesCol=collection(sessionRef,'votes');
+    bookChoicesCol=collection(sessionRef,'bookChoices');
     submissionsCol=collection(sessionRef,'submissions');
     suggestionsCol=collection(sessionRef,'suggestions');
 
@@ -827,6 +1026,10 @@
 
     votesUnsub=onSnapshot(votesCol,snap=>{
       const next=new Map(); snap.forEach(d=>next.set(d.id,d.data())); VOTES=next; renderVotes();
+    });
+
+    bookChoicesUnsub=onSnapshot(bookChoicesCol,snap=>{
+      const next=new Map(); snap.forEach(d=>next.set(d.id,{...d.data(),uid:d.id})); BOOK_CHOICES=next; renderBookSetup();
     });
 
     suggestionsUnsub=onSnapshot(suggestionsCol,snap=>{
@@ -880,6 +1083,7 @@
     if(!SESSION){ $('modeLabel').textContent='Waiting'; $('timer').textContent='--:--'; return; }
 
     const phase=SESSION.status||'voting';
+    if(phase==='voting') fillBookDropdown(books);
     $('phase-vote').classList.toggle('hidden',phase!=='voting');
     $('phase-play').classList.toggle('hidden',phase!=='playing');
     $('phase-end').classList.toggle('hidden',phase!=='ended');
@@ -894,6 +1098,7 @@
 
     drawScores();
     renderVotes();
+    renderBookSetup();
     updateCountdownUI();
 
     if(phase==='ended'){
@@ -905,6 +1110,7 @@
     }
     if(phase!=='playing') return;
 
+    fillBookDropdown(effectiveAllowedBooks(SESSION));
     const mode=SESSION.mode;
     $('livesPill').classList.toggle('hidden',mode!=='coop');
     $('coopGoalPill').classList.toggle('hidden',mode!=='coop');
@@ -964,10 +1170,11 @@
   function buildPlayHelp(){
     const m=SESSION.mode;
     let text='';
-    if(m==='traditional') text='Rounds alternate Old Testament, then New Testament • one accepted answer per player • Scoring: 1 book, 3 book + chapter, 5 exact reference.';
-    else if(m==='speed') text='Every answer and next question are saved atomically • −1 only when book, chapter, and verse are all wrong.';
-    else if(m==='teams') text='Rounds alternate Old Testament, then New Testament • 8s reading • 47s discussion • 20s final answer.';
-    else if(m==='coop') text=`Shared lives • reach ${Number(SESSION.coopGoal||COOP_WIN_GOAL)} correct answers for a shared victory • a short reading period prevents instant locking.`;
+    const poolText=SESSION.bookPoolSummary?` • ${SESSION.bookPoolSummary}`:'';
+    if(m==='traditional') text='Rounds alternate Old Testament, then New Testament • one accepted answer per player • Scoring: 1 book, 3 book + chapter, 5 exact reference.'+poolText;
+    else if(m==='speed') text='Every answer and next question are saved atomically • −1 only when book, chapter, and verse are all wrong.'+poolText;
+    else if(m==='teams') text='Rounds alternate Old Testament, then New Testament • 8s reading • 47s discussion • 20s final answer.'+poolText;
+    else if(m==='coop') text=`Shared lives • reach ${Number(SESSION.coopGoal||COOP_WIN_GOAL)} correct answers for a shared victory • a short reading period prevents instant locking.${poolText}`;
     $('playHelp').textContent=text;
   }
 
@@ -1088,7 +1295,7 @@
   }
 
   async function finishVoting(){
-    const voteSnap=await getDocs(votesCol);
+    const [voteSnap,choiceSnap]=await Promise.all([getDocs(votesCol),getDocs(bookChoicesCol)]);
     const counts={traditional:0,speed:0,teams:0,coop:0};
     voteSnap.forEach(d=>{ const m=d.data().mode; if(Object.prototype.hasOwnProperty.call(counts,m)) counts[m]++; });
     const max=Math.max(...Object.values(counts));
@@ -1098,25 +1305,31 @@
     const active=activePlayers();
     const uids=active.map(p=>p.uid);
     if(!uids.includes(currentUser.uid)) uids.push(currentUser.uid);
-    const sharedTestament=['traditional','teams'].includes(chosen)?alternatingTestamentForRound(1):'';
-    const question=serializeVerse(pickRandomVerse([],sharedTestament));
-    const speedQuestions=new Map(uids.map(uid=>[uid,serializeVerse(pickRandomVerse())]));
+    const choiceMap=new Map();
+    choiceSnap.forEach(d=>choiceMap.set(d.id,{...d.data(),uid:d.id}));
 
     await runTransaction(db,async tx=>{
       const snap=await tx.get(sessionRef); if(!snap.exists()) return;
       const s=snap.data();
       if(s.status!=='voting' || Number(s.roundKey||0)!==Number(SESSION.roundKey||0)) return;
-      if(phaseRemainingMs(s)>1200) return;
+      const started=s.phaseStartedAt?.toMillis?.()||0;
+      if(started && started+Number(s.durationMs||0)>nowServer()+1200) return;
 
+      const bookPoolMode=['draft','ban'].includes(s.bookPoolMode)?s.bookPoolMode:'all';
+      const pool=buildBookPool(bookPoolMode,choiceMap,uids);
+      const sharedTestament=['traditional','teams'].includes(chosen)?alternatingTestamentForRound(1):'';
+      const question=serializeVerse(pickRandomVerse([],sharedTestament,pool.allowedBooks));
+      const speedQuestions=new Map(uids.map(uid=>[uid,serializeVerse(pickRandomVerse([], '', pool.allowedBooks))]));
       const A=[],B=[];
       uids.forEach((uid,i)=>(i%2===0?A:B).push(uid));
       const patch={
         status:'playing', mode:chosen, round:1, roundKey:Number(s.roundKey||0)+1,
         phaseStartedAt:serverTimestamp(), durationMs:chosen==='coop'?0:MODE_DURATION[chosen],
         currentQuestion:question, chosenIds:question?[question.id]:[],
+        bookPoolMode,allowedBooks:pool.allowedBooks,bannedBooks:pool.bannedBooks,bookPoolSummary:pool.summary,
         teamA:chosen==='teams'?A:[], teamB:chosen==='teams'?B:[],
         teamTotals:{A:0,B:0}, teamLocks:{A:false,B:false}, lastTeamSubmission:{A:null,B:null},
-        sharedLives:3, coopCorrectCount:0, coopGoal:COOP_WIN_GOAL, options:chosen==='coop'?genCoopOptions(question):[],
+        sharedLives:3, coopCorrectCount:0, coopGoal:COOP_WIN_GOAL, options:chosen==='coop'?genCoopOptions(question,pool.allowedBooks):[],
         coopLocked:false, coopLockedAt:null, coopAnsweredByUid:'', coopAnsweredByName:'', coopWasRight:null,
         participantUids:uids, ratingsApplied:false, ratingResults:{}, winnerUids:[], winnerNames:[], resultSummary:'', endReason:'',
         updatedAt:serverTimestamp()
@@ -1134,7 +1347,7 @@
   async function advanceRound(){
     const expectedNextRound=Number(SESSION.round||1)+1;
     const nextTestament=alternatingTestamentForRound(expectedNextRound);
-    const nextQuestion=serializeVerse(pickRandomVerse(SESSION.chosenIds||[],nextTestament));
+    const nextQuestion=serializeVerse(pickRandomVerse(SESSION.chosenIds||[],nextTestament,SESSION.allowedBooks||[]));
     await runTransaction(db,async tx=>{
       const snap=await tx.get(sessionRef); if(!snap.exists()) return;
       const s=snap.data();
@@ -1171,7 +1384,7 @@
   }
 
   async function advanceCoop(){
-    const nextQuestion=serializeVerse(pickRandomVerse(SESSION.chosenIds||[]));
+    const nextQuestion=serializeVerse(pickRandomVerse(SESSION.chosenIds||[], '', SESSION.allowedBooks||[]));
     await runTransaction(db,async tx=>{
       const snap=await tx.get(sessionRef); if(!snap.exists()) return;
       const s=snap.data();
@@ -1184,7 +1397,7 @@
         roundKey:Number(s.roundKey||0)+1,
         currentQuestion:nextQuestion,
         chosenIds:Array.from(new Set([...(s.chosenIds||[]),nextQuestion.id])),
-        options:genCoopOptions(nextQuestion),
+        options:genCoopOptions(nextQuestion,s.allowedBooks||SESSION.allowedBooks||[]),
         coopLocked:false, coopLockedAt:null, coopAnsweredByUid:'', coopAnsweredByName:'', coopWasRight:null,
         phaseStartedAt:serverTimestamp(),
         updatedAt:serverTimestamp()
@@ -1197,7 +1410,7 @@
     const participantUids=Array.from(new Set((SESSION?.participantUids?.length?SESSION.participantUids:fallbackUids).filter(Boolean)));
     if(!participantUids.length) return;
 
-    await runTransaction(db,async tx=>{
+    const appliedResults=await runTransaction(db,async tx=>{
       const sSnap=await tx.get(sessionRef);
       if(!sSnap.exists()) return;
       const s=sSnap.data();
@@ -1281,11 +1494,12 @@
         const nextBible={
           ...oldProfile, elo:newElo, rankKey:rank.key, rankTitle:rank.title, rankEmoji:rank.emoji, rankColor:rank.color,
           wins, losses, draws, gamesPlayed:oldProfile.gamesPlayed+1, winStreak, bestWinStreak:Math.max(oldProfile.bestWinStreak,winStreak),
+          profileUpdatedAt:serverTimestamp(),
           lastEloChange:change, lastOutcome:outcome, lastMode:s.mode, lastSessionId:s.sessionId, lastGameAt:serverTimestamp()
         };
         tx.set(profileRefs[uids.indexOf(p.uid)],{
           bibleGame:nextBible, bibleGameElo:newElo, bibleGameWins:wins,
-          bibleGameRatingVersion:RATING_VERSION,
+          bibleGameRatingVersion:RATING_VERSION, bibleGameProfileUpdatedAt:serverTimestamp(),
           bibleGameRankTitle:rank.title, bibleGameRankEmoji:rank.emoji, bibleGameRankColor:rank.color
         },{merge:true});
         tx.set(p.ref,{
@@ -1301,7 +1515,13 @@
       tx.update(sessionRef,{
         ratingsApplied:true, ratingResults, winnerUids, winnerNames, resultSummary, ratedAt:serverTimestamp(), updatedAt:serverTimestamp()
       });
+      return ratingResults;
     });
+    const mine=appliedResults?.[currentUser?.uid];
+    if(mine){
+      const current=MY_PROFILE||normalizedBibleProfile({});
+      MY_PROFILE={...current,elo:mine.newElo,wins:mine.wins,rankKey:mine.rankKey,rankTitle:mine.rankTitle,rankEmoji:mine.rankEmoji,rankColor:mine.rankColor};
+    }
   }
 
   function readGuess(){
@@ -1360,7 +1580,7 @@
 
   async function submitSpeed(guess){
     const playerRef=doc(playersCol,currentUser.uid);
-    const nextQuestion=serializeVerse(pickRandomVerse());
+    const nextQuestion=serializeVerse(pickRandomVerse([], '', SESSION.allowedBooks||[]));
     const txResult=await runTransaction(db,async tx=>{
       const [sSnap,pSnap]=await Promise.all([tx.get(sessionRef),tx.get(playerRef)]);
       if(!sSnap.exists()||!pSnap.exists()) return {accepted:false};
@@ -1601,6 +1821,12 @@
     $('subtitle').textContent=`${username} • Lobby ${gameId}`;
 
     await ensureBibleProfile();
+    if(profileUnsub) profileUnsub();
+    profileUnsub=onSnapshot(doc(db,'users',currentUser.uid),snap=>{
+      if(!snap.exists()) return;
+      MY_PROFILE=normalizedBibleProfile(snap.data());
+      render();
+    },err=>console.warn('Bible profile sync failed',err));
     drawRankGuide();
     await loadBibleData();
 
@@ -1617,6 +1843,9 @@
   }
 
   document.querySelectorAll('#phase-vote .card').forEach(btn=>btn.addEventListener('click',()=>submitVote(btn.dataset.mode).catch(err=>{console.error(err);showNotice('Vote failed to sync.','bad');})));
+  document.querySelectorAll('[data-book-mode]').forEach(btn=>btn.addEventListener('click',()=>setBookPoolMode(btn.dataset.bookMode).catch(err=>{console.error(err);showReveal('Book-pool mode failed to sync.','bad');})));
+  $('saveDraftBtn').onclick=()=>saveDraftChoice().catch(err=>{console.error(err);showReveal('Your drafted books failed to sync.','bad');});
+  $('saveBanBtn').onclick=()=>saveBanChoice().catch(err=>{console.error(err);showReveal('Your banned book failed to sync.','bad');});
   $('submitBtn').onclick=()=>onSubmitAnswer().catch(err=>{console.error(err);showNotice('Answer failed to sync. Please try again.','bad');});
   $('mcSubmitBtn').onclick=()=>onSubmitMC().catch(err=>{console.error(err);showNotice('Answer failed to sync.','bad');});
   $('sendChat').onclick=()=>sendChat();
