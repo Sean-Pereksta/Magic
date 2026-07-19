@@ -172,12 +172,37 @@ let audioUnlocked=false;
 let currentNpc=null;
 
 const ASSET_ROOT="../graphics/rpggraphics/";
-const ASSET_NAMES=["floor_stone","floor_moss","wall_stone","door_blue","door_red","player_archer","enemy_slime","enemy_skeleton","enemy_archer","enemy_brute","enemy_wraith","enemy_spider","enemy_mage","enemy_boss","projectile_arrow","projectile_magic","loot_bag"];
-const GRAPHIC_ALIASES={enemy_cultist:"enemy_mage",enemy_golem:"enemy_brute",enemy_necromancer:"enemy_mage",enemy_serpent:"enemy_spider",enemy_shade:"enemy_wraith",enemy_bombardier:"enemy_archer",boss_gate_warden:"enemy_boss",boss_abyss_hydra:"enemy_boss",boss_storm_titan:"enemy_boss",boss_bone_sovereign:"enemy_boss"};
+const ASSET_NAMES=["floor_stone","floor_moss","door_blue","door_red","player_archer","enemy_slime","enemy_skeleton","enemy_archer","enemy_brute","enemy_wraith","enemy_spider","enemy_mage","enemy_boss","projectile_arrow","projectile_magic","loot_bag"];
+const GRAPHIC_ALIASES={
+  enemy_cultist:"enemy_mage",enemy_golem:"enemy_brute",enemy_necromancer:"enemy_mage",enemy_serpent:"enemy_spider",enemy_shade:"enemy_wraith",enemy_bombardier:"enemy_archer",
+  enemy_fungal_hulk:"enemy_brute",enemy_rift_hound:"enemy_spider",enemy_icebound_knight:"enemy_skeleton",enemy_storm_eye:"enemy_wraith",enemy_soul_lantern:"enemy_mage",
+  enemy_thorn_matriarch:"enemy_spider",enemy_ash_reaver:"enemy_archer",enemy_void_mimic:"enemy_slime",enemy_grave_colossus:"enemy_brute",enemy_chronomancer:"enemy_mage",
+  boss_gate_warden:"enemy_boss",boss_abyss_hydra:"enemy_boss",boss_storm_titan:"enemy_boss",boss_bone_sovereign:"enemy_boss"
+};
 const GRAPHIC_FALLBACK_ONLY=new Set(["npc_quest","npc_merchant","npc_arcanist","armor_leather_suit","armor_chain_suit","armor_plate_suit","armor_mystic_suit","armor_shadow_suit","armor_blood_suit","armor_storm_suit","armor_grove_suit","armor_void_suit"]);
-const images=new Map(),missingImages=new Set();
-function graphic(name){if(!name||GRAPHIC_FALLBACK_ONLY.has(name))return null;const resolved=GRAPHIC_ALIASES[name]||name;if(images.has(resolved))return images.get(resolved);const img=new Image();img.decoding="async";img.src=`${ASSET_ROOT}${resolved}.png`;img.onerror=()=>missingImages.add(resolved);images.set(resolved,img);return img}
-async function preloadGraphics(){let finished=0;await Promise.all(ASSET_NAMES.map(name=>new Promise(resolve=>{const img=new Image();img.decoding="async";const done=()=>{finished++;loadingText.textContent=`Loading realm graphics… ${finished} / ${ASSET_NAMES.length}`;resolve()};img.onload=done;img.onerror=()=>{missingImages.add(name);done()};img.src=`${ASSET_ROOT}${name}.png`;images.set(name,img)})))}
+const CUTOUT_ASSETS=new Set(["player_archer","enemy_slime","enemy_skeleton","enemy_archer","enemy_brute","enemy_wraith","enemy_spider","enemy_mage","enemy_boss"]);
+const images=new Map(),cutoutImages=new Map(),missingImages=new Set();
+function graphicKey(name){return GRAPHIC_ALIASES[name]||name}
+function prepareCutout(name,img){
+  const resolved=graphicKey(name);if(!CUTOUT_ASSETS.has(resolved)||!img.naturalWidth||!img.naturalHeight)return;
+  try{
+    const source=document.createElement("canvas"),sourceCtx=source.getContext("2d",{willReadFrequently:true});source.width=img.naturalWidth;source.height=img.naturalHeight;sourceCtx.drawImage(img,0,0);
+    const frame=sourceCtx.getImageData(0,0,source.width,source.height),data=frame.data,w=source.width,h=source.height,hist=new Map(),border=[];
+    const remember=(x,y)=>{const i=(y*w+x)*4;if(data[i+3]<8)return;const key=`${data[i]>>4},${data[i+1]>>4},${data[i+2]>>4}`;hist.set(key,(hist.get(key)||0)+1);border.push([x,y])};
+    for(let x=0;x<w;x++){remember(x,0);remember(x,h-1)}for(let y=1;y<h-1;y++){remember(0,y);remember(w-1,y)}
+    const dominant=[...hist.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0];if(dominant){
+      const [br,bg,bb]=dominant.split(",").map(v=>(Number(v)<<4)+8),seen=new Uint8Array(w*h),queue=[];let head=0;
+      const close=(x,y)=>{const i=(y*w+x)*4,dr=data[i]-br,dg=data[i+1]-bg,db=data[i+2]-bb;return data[i+3]<8||dr*dr+dg*dg+db*db<3600};
+      for(const [x,y] of border)if(close(x,y)){const p=y*w+x;if(!seen[p]){seen[p]=1;queue.push([x,y])}}
+      while(head<queue.length){const [x,y]=queue[head++],i=(y*w+x)*4;data[i+3]=0;for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy,p=ny*w+nx;if(nx>=0&&ny>=0&&nx<w&&ny<h&&!seen[p]&&close(nx,ny)){seen[p]=1;queue.push([nx,ny])}}}
+    }
+    let minX=w,minY=h,maxX=-1,maxY=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(data[(y*w+x)*4+3]>8){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y)}
+    if(maxX>=minX){sourceCtx.putImageData(frame,0,0);const pad=Math.max(2,Math.round(Math.max(w,h)*.008));minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);maxX=Math.min(w-1,maxX+pad);maxY=Math.min(h-1,maxY+pad);const out=document.createElement("canvas");out.width=maxX-minX+1;out.height=maxY-minY+1;out.getContext("2d").drawImage(source,minX,minY,out.width,out.height,0,0,out.width,out.height);cutoutImages.set(resolved,out)}
+  }catch(error){console.warn(`Could not clean sprite background for ${resolved}`,error)}
+}
+function graphic(name){if(!name||GRAPHIC_FALLBACK_ONLY.has(name))return null;const resolved=graphicKey(name);if(images.has(resolved))return images.get(resolved);const img=new Image();img.decoding="async";img.onload=()=>prepareCutout(resolved,img);img.src=`${ASSET_ROOT}${resolved}.png`;img.onerror=()=>missingImages.add(resolved);images.set(resolved,img);return img}
+function drawableGraphic(name){const resolved=graphicKey(name),img=graphic(name);return cutoutImages.get(resolved)||img}
+async function preloadGraphics(){let finished=0;await Promise.all(ASSET_NAMES.map(name=>new Promise(resolve=>{const img=new Image();img.decoding="async";const done=()=>{finished++;loadingText.textContent=`Loading realm graphics… ${finished} / ${ASSET_NAMES.length}`;resolve()};img.onload=()=>{prepareCutout(name,img);done()};img.onerror=()=>{missingImages.add(name);done()};img.src=`${ASSET_ROOT}${name}.png`;images.set(name,img)})))}
 
 const WEAPONS={
   basic_bow:{name:'Basic Bow',kind:'weapon',weaponType:'bow',range:5,cooldown:1450,attack:6,effect:'none',icon:'🏹',specialty:'Reliable ranged attacks.'},
@@ -190,6 +215,16 @@ const WEAPONS={
   blood_blade:{name:'Bloodbound Blade',kind:'weapon',weaponType:'blade',range:1,cooldown:1050,attack:21,lifeSteal:.06,effect:'bleed',icon:'🗡️',specialty:'Fast attacks return a portion of damage as life.'},
   storm_scepter:{name:'Storm Scepter',kind:'weapon',weaponType:'staff',range:7,cooldown:1950,attack:18,spellPower:.18,effect:'shock',icon:'⚡',specialty:'Shock arcs are stronger and travel farther.'},
   plague_launcher:{name:'Plague Launcher',kind:'weapon',weaponType:'crossbow',range:7,cooldown:2150,attack:22,effect:'poison',icon:'☣️',specialty:'Poison splashes around the impact.'}
+  ,sunpiercer:{name:'Sunpiercer Greatbow',kind:'weapon',weaponType:'bow',range:9,cooldown:2050,attack:28,effect:'burn',crit:.04,icon:'☀️',specialty:'Long-range radiant arrows ignite their target.'}
+  ,iron_repeater:{name:'Ironhail Repeater',kind:'weapon',weaponType:'crossbow',range:6,cooldown:880,attack:14,effect:'none',icon:'🔩',specialty:'A rapid mechanical crossbow built for relentless fire.'}
+  ,moonfang:{name:'Moonfang Sabre',kind:'weapon',weaponType:'blade',range:1,cooldown:920,attack:25,crit:.08,effect:'bleed',icon:'🌙',specialty:'Fast lunar steel with an exceptional critical edge.'}
+  ,glacier_pike:{name:'Glacier Pike',kind:'weapon',weaponType:'spear',range:3,cooldown:1380,attack:27,frostPower:.12,effect:'slow',icon:'🧊',specialty:'A long frozen reach that empowers frost magic.'}
+  ,cinder_wand:{name:'Cinderwake Wand',kind:'weapon',weaponType:'wand',range:7,cooldown:1320,attack:18,spellPower:.14,firePower:.18,effect:'burn',icon:'🪄',specialty:'Quick cinder bolts greatly empower fire spells.'}
+  ,void_staff:{name:'Voidglass Crook',kind:'weapon',weaponType:'staff',range:8,cooldown:2100,attack:25,spellPower:.24,manaCostMult:.94,effect:'manaBurn',icon:'🌌',specialty:'Expensive power shaped into efficient void magic.'}
+  ,tempest_disc:{name:'Tempest War Disc',kind:'weapon',weaponType:'bow',range:6,cooldown:1180,attack:21,shockPower:.22,effect:'shock',icon:'🌀',specialty:'A returning storm disc that shocks on impact.'}
+  ,bone_saw:{name:'Ossuary Sawblade',kind:'weapon',weaponType:'blade',range:1,cooldown:1020,attack:30,lifeSteal:.09,effect:'bleed',icon:'🦴',specialty:'A brutal close weapon that feeds its wielder.'}
+  ,grove_staff:{name:'Heartwood Shepherd',kind:'weapon',weaponType:'staff',range:6,cooldown:1680,attack:20,lifePower:.24,hpRegen:.35,effect:'none',icon:'🌿',specialty:'Living wood strengthens healing and steady recovery.'}
+  ,dragon_cannon:{name:'Dragonbone Hand Cannon',kind:'weapon',weaponType:'crossbow',range:8,cooldown:2650,attack:38,effect:'stagger',icon:'🐉',specialty:'A massive bone bolt staggers even armored horrors.'}
 };
 const ARMORS={
   leather_suit:{name:'Leather Ranger Suit',kind:'armor',maxHp:16,armor:1,moveMult:.94,crit:.02,armorColor:'#7b5638',icon:'🥋',specialty:'Trailrunner — movement recovers 6% faster.'},
@@ -215,6 +250,16 @@ const SPELLBOOKS={
   storm_ledger:{name:'Stormcaller Ledger',kind:'spellbook',maxMana:20,shockPower:.3,cooldownMult:.94,icon:'📙',specialty:'Lightning spells chain harder and recover faster.'},
   sanguine_book:{name:'Sanguine Testament',kind:'spellbook',maxHp:18,lifePower:.32,hpRegen:.24,icon:'📕',specialty:'Life spells heal and drain 32% more.'},
   void_atlas:{name:'Atlas of Empty Roads',kind:'spellbook',maxMana:38,spellPower:.2,manaCostMult:.86,icon:'📓',specialty:'All spells cost 14% less mana.'}
+  ,phoenix_lectionary:{name:'Phoenix Lectionary',kind:'spellbook',maxMana:28,spellPower:.14,firePower:.42,hpRegen:.18,icon:'🦅',specialty:'Fire magic surges and a trace of phoenix warmth restores life.'}
+  ,hoarfrost_folio:{name:'Hoarfrost Folio',kind:'spellbook',maxMana:34,frostPower:.44,armor:2,icon:'🧊',specialty:'Deepens frost damage while sheathing the reader in ice.'}
+  ,thunderhead_manual:{name:'Thunderhead Manual',kind:'spellbook',maxMana:24,shockPower:.43,cooldownMult:.91,icon:'🌩️',specialty:'Lightning chains harder and all cooldowns recover faster.'}
+  ,saints_canticle:{name:'Saint’s Canticle',kind:'spellbook',maxHp:24,maxMana:18,lifePower:.46,hpRegen:.3,icon:'📖',specialty:'A powerful healing text for durable battle clerics.'}
+  ,beastcaller_bestiary:{name:'Beastcaller Bestiary',kind:'spellbook',maxMana:30,spellPower:.25,crit:.04,icon:'🐺',specialty:'Summoned spirits strike with greater force and precision.'}
+  ,nightmare_index:{name:'Nightmare Index',kind:'spellbook',maxMana:36,spellPower:.3,lifeSteal:.05,manaCostMult:.92,icon:'👁️',specialty:'Dark spells are stronger, cheaper, and return a little life.'}
+  ,chronicle_of_hours:{name:'Chronicle of Stolen Hours',kind:'spellbook',maxMana:22,cooldownMult:.84,moveMult:.94,icon:'⏳',specialty:'Time bends to accelerate movement and every ability.'}
+  ,runestone_primer:{name:'Runestone Primer',kind:'spellbook',maxHp:20,maxMana:24,armor:4,spellPower:.12,icon:'🪨',specialty:'Defensive runes turn a caster into a durable battlemage.'}
+  ,astral_cartulary:{name:'Astral Cartulary',kind:'spellbook',maxMana:52,spellPower:.26,dropChance:.08,icon:'🗺️',specialty:'Maps forgotten magic and improves rare treasure discovery.'}
+  ,tome_of_duality:{name:'Tome of Duality',kind:'spellbook',maxHp:16,maxMana:32,spellPower:.22,lifePower:.2,damageReduction:.03,icon:'☯️',specialty:'Balances offense, healing, and magical protection.'}
 };
 const CONSUMABLES={
   health_potion:{name:'Health Potion',kind:'consumable',heal:45,icon:'🧪',specialty:'Restores 45 health.'},
@@ -259,16 +304,26 @@ const SKILLS={
   shadow_bolt:{id:"shadow_bolt",name:"Shadow Bolt",icon:"🌑",mana:11,cooldown:3800,targetMode:"enemy",school:"dark",cost:1,requires:[],range:7,damageMult:1.25,effect:"bleed",desc:"Hurl corrupting shadow at one enemy."},
   soul_siphon:{id:"soul_siphon",name:"Soul Siphon",icon:"🩸",mana:32,cooldown:12000,targetMode:"enemy",school:"dark",cost:1,requires:["shadow_bolt"],range:6,damageMult:1.45,lifeSteal:.55,desc:"Drain a target and return much of the damage as health."},
   void_collapse:{id:"void_collapse",name:"Void Collapse",icon:"🕳️",mana:48,cooldown:23000,targetMode:"spot",school:"dark",cost:2,requires:["soul_siphon"],range:8,radius:3,damageMult:2.15,effect:"slow",desc:"Collapse dark energy across a wide area."}
+  ,ricochet_barrage:{id:"ricochet_barrage",name:"Ricochet Barrage",icon:"🪃",mana:24,cooldown:11200,targetMode:"enemy",school:"weapon",cost:2,requires:["volley"],range:8,maxTargets:6,damageMult:1.08,effect:"bleed",desc:"A precision shot ricochets through up to six clustered enemies."}
+  ,dragonbreaker:{id:"dragonbreaker",name:"Dragonbreaker",icon:"🐲",mana:34,cooldown:17000,targetMode:"enemy",school:"weapon",cost:2,requires:["piercing_rain"],range:9,damageMult:3.1,effect:"stagger",desc:"A colossal single-target strike built to crack bosses and golems."}
+  ,shadowstep:{id:"shadowstep",name:"Shadowstep",icon:"👣",mana:25,cooldown:12800,targetMode:"spot",school:"movement",cost:2,requires:["blink"],range:10,mobility:"blink",desc:"Slip through shadow to any open square within ten tiles."}
+  ,phoenix_burst:{id:"phoenix_burst",name:"Phoenix Burst",icon:"🦅",mana:52,cooldown:24000,targetMode:"spot",school:"fire",cost:2,requires:["meteor"],range:10,radius:3,damageMult:2.85,effect:"burn",desc:"Detonate a phoenix-shaped inferno over a large area."}
+  ,glacial_prison:{id:"glacial_prison",name:"Glacial Prison",icon:"🏔️",mana:39,cooldown:17800,targetMode:"enemy",school:"frost",cost:2,requires:["blizzard"],range:9,damageMult:2.15,effect:"slow",desc:"Entomb one enemy in crushing ice and a powerful slow."}
+  ,thunder_spear:{id:"thunder_spear",name:"Thunder Spear",icon:"🔱",mana:45,cooldown:18500,targetMode:"enemy",school:"shock",cost:2,requires:["storm_field"],range:9,maxTargets:7,damageMult:1.75,effect:"shock",desc:"A spear of lightning leaps through as many as seven foes."}
+  ,radiant_surge:{id:"radiant_surge",name:"Radiant Surge",icon:"🌞",mana:56,cooldown:26000,targetMode:"self",school:"life",cost:2,requires:["rejuvenation"],healPct:.82,desc:"Flood yourself with light to restore most of your maximum health."}
+  ,spirit_dragon:{id:"spirit_dragon",name:"Spirit Dragon",icon:"🐉",mana:54,cooldown:24500,targetMode:"enemy",school:"summoning",cost:2,requires:["summon_colossus"],range:9,maxTargets:6,damageMult:2.05,effect:"stagger",desc:"A spectral dragon tears through a chain of nearby enemies."}
+  ,earth_shatter:{id:"earth_shatter",name:"Earth Shatter",icon:"🌎",mana:48,cooldown:21500,targetMode:"spot",school:"summoning",cost:2,requires:["summon_colossus"],range:8,radius:3,damageMult:2.35,effect:"stagger",desc:"Summon stone fists beneath a wide target area."}
+  ,doom_mark:{id:"doom_mark",name:"Doom Mark",icon:"☠️",mana:50,cooldown:22000,targetMode:"enemy",school:"dark",cost:2,requires:["void_collapse"],range:9,damageMult:3.25,effect:"bleed",lifeSteal:.35,desc:"Brand one target for ruin and drain part of the devastating hit."}
 };
 const SKILL_SCHOOLS=[
-  {id:"fire",name:"Fire",icon:"🔥",desc:"Fireball → Fire Wall → Flame Rain → Meteor"},
-  {id:"frost",name:"Ice",icon:"❄️",desc:"Ice Bolt → Frost Nova → Blizzard"},
-  {id:"shock",name:"Lightning",icon:"⚡",desc:"Lightning Bolt → Chain Lightning → Storm Field"},
-  {id:"life",name:"Healing",icon:"💚",desc:"Mend → Healing Circle → Greater Restoration"},
-  {id:"summoning",name:"Summoning",icon:"🐺",desc:"Spirit Raven → Spectral Pack → Summon Colossus"},
-  {id:"dark",name:"Dark Magic",icon:"🌑",desc:"Shadow Bolt → Soul Siphon → Void Collapse"},
-  {id:"weapon",name:"Martial Arts",icon:"🏹",desc:"Power Shot → Volley → Piercing Rain"},
-  {id:"movement",name:"Movement",icon:"💨",desc:"Dash → Void Blink"}
+  {id:"fire",name:"Fire",icon:"🔥",desc:"Fireball → Fire Wall → Flame Rain → Meteor → Phoenix Burst"},
+  {id:"frost",name:"Ice",icon:"❄️",desc:"Ice Bolt → Frost Nova → Blizzard → Glacial Prison"},
+  {id:"shock",name:"Lightning",icon:"⚡",desc:"Lightning Bolt → Chain Lightning → Storm Field → Thunder Spear"},
+  {id:"life",name:"Healing",icon:"💚",desc:"Mend → Healing Circle → Greater Restoration → Radiant Surge"},
+  {id:"summoning",name:"Summoning",icon:"🐺",desc:"Spirit Raven → Spectral Pack → Colossus → Spirit Dragon / Earth Shatter"},
+  {id:"dark",name:"Dark Magic",icon:"🌑",desc:"Shadow Bolt → Soul Siphon → Void Collapse → Doom Mark"},
+  {id:"weapon",name:"Martial Arts",icon:"🏹",desc:"Power Shot → Volley → Piercing Rain / Ricochet → Dragonbreaker"},
+  {id:"movement",name:"Movement",icon:"💨",desc:"Dash → Void Blink → Shadowstep"}
 ];
 const ENEMY_TYPES={
   slime:{name:'Mire Slime',graphic:'enemy_slime',hp:24,attack:5,armor:0,range:1,moveCd:1450,attackCd:2600,warning:850,pattern:'single',aggro:6,xp:14,drop:.22},
@@ -284,6 +339,16 @@ const ENEMY_TYPES={
   serpent:{name:'Venomcoil Serpent',graphic:'enemy_serpent',hp:66,attack:14,armor:2,range:3,moveCd:1100,attackCd:3000,warning:1050,pattern:'line',aggro:11,xp:72,drop:.54,effect:'poison'},
   shade:{name:'Hunger Shade',graphic:'enemy_shade',hp:61,attack:16,armor:1,range:3,moveCd:950,attackCd:3250,warning:950,pattern:'burst',aggro:12,xp:78,drop:.58,effect:'manaBurn'},
   bombardier:{name:'Plague Bombardier',graphic:'enemy_bombardier',hp:75,attack:19,armor:3,range:8,moveCd:2050,attackCd:4700,warning:1900,pattern:'quake',aggro:14,xp:105,drop:.7,effect:'poison'},
+  fungal_hulk:{name:'Fungal Hulk',graphic:'enemy_fungal_hulk',filter:'hue-rotate(58deg) saturate(1.25)',hp:138,attack:20,armor:6,range:2,moveCd:2350,attackCd:4500,warning:1700,pattern:'spores',aggro:9,xp:112,drop:.68,effect:'poison'},
+  rift_hound:{name:'Rift Hound',graphic:'enemy_rift_hound',filter:'hue-rotate(228deg) saturate(1.4)',hp:62,attack:18,armor:1,range:2,moveCd:780,attackCd:2700,warning:800,pattern:'pounce',aggro:14,xp:91,drop:.57,effect:'bleed'},
+  icebound_knight:{name:'Icebound Knight',graphic:'enemy_icebound_knight',filter:'hue-rotate(165deg) brightness(1.2)',hp:126,attack:21,armor:9,range:2,moveCd:2050,attackCd:4200,warning:1650,pattern:'cone',aggro:10,xp:124,drop:.72,effect:'slow'},
+  storm_eye:{name:'Living Storm Eye',graphic:'enemy_storm_eye',filter:'hue-rotate(135deg) saturate(1.8)',hp:79,attack:22,armor:2,range:8,moveCd:1500,attackCd:3900,warning:1450,pattern:'checker',aggro:14,xp:128,drop:.7,effect:'shock'},
+  soul_lantern:{name:'Soul Lantern',graphic:'enemy_soul_lantern',filter:'hue-rotate(265deg) brightness(1.15)',hp:70,attack:19,armor:3,range:7,moveCd:1750,attackCd:4100,warning:1550,pattern:'spiral',aggro:13,xp:119,drop:.69,effect:'manaBurn'},
+  thorn_matriarch:{name:'Thorn Matriarch',graphic:'enemy_thorn_matriarch',filter:'hue-rotate(72deg) saturate(1.45)',hp:115,attack:23,armor:5,range:6,moveCd:1650,attackCd:4300,warning:1600,pattern:'thorns',aggro:12,xp:136,drop:.74,effect:'poison'},
+  ash_reaver:{name:'Ash Reaver',graphic:'enemy_ash_reaver',filter:'sepia(.55) saturate(1.7)',hp:92,attack:26,armor:4,range:6,moveCd:1250,attackCd:3600,warning:1150,pattern:'sweep',aggro:13,xp:143,drop:.76,effect:'burn'},
+  void_mimic:{name:'Void Mimic',graphic:'enemy_void_mimic',filter:'hue-rotate(245deg) saturate(1.5)',hp:104,attack:24,armor:3,range:4,moveCd:1150,attackCd:3500,warning:1000,pattern:'burst',aggro:12,xp:139,drop:.9,effect:'manaBurn'},
+  grave_colossus:{name:'Grave Colossus',graphic:'enemy_grave_colossus',filter:'grayscale(.65) contrast(1.25)',hp:220,attack:31,armor:12,range:3,moveCd:2700,attackCd:5200,warning:2150,pattern:'corridor',aggro:10,xp:196,drop:.88,effect:'stagger'},
+  chronomancer:{name:'Ruin Chronomancer',graphic:'enemy_chronomancer',filter:'hue-rotate(190deg) saturate(1.3)',hp:88,attack:25,armor:3,range:9,moveCd:1350,attackCd:4400,warning:1900,pattern:'clock',aggro:15,xp:172,drop:.82,effect:'slow'},
   boss:{name:'The Gate Warden',graphic:'boss_gate_warden',hp:340,attack:20,armor:6,range:5,moveCd:1550,attackCd:3900,warning:1500,pattern:'boss',aggro:16,xp:260,drop:1,boss:true},
   abyss_hydra:{name:'Abyss Hydra',graphic:'boss_abyss_hydra',hp:480,attack:23,armor:5,range:7,moveCd:1700,attackCd:4300,warning:1750,pattern:'boss',aggro:17,xp:390,drop:1,boss:true,effect:'poison'},
   storm_titan:{name:'Storm Titan',graphic:'boss_storm_titan',hp:620,attack:27,armor:9,range:7,moveCd:2100,attackCd:4600,warning:1850,pattern:'boss',aggro:18,xp:530,drop:1,boss:true,effect:'shock'},
@@ -368,10 +433,10 @@ function weaponStats(){return itemStats(equippedWeapon())||WEAPONS.basic_bow}
 function publicCombatData(){const s=derivedStats(),w=weaponStats();return{attack:s.attack,armor:s.armor,crit:s.crit,lifeSteal:s.lifeSteal,onHit:s.onHit,dropChance:s.dropChance,spellPower:s.spellPower,firePower:s.firePower,frostPower:s.frostPower,shockPower:s.shockPower,lifePower:s.lifePower,damageReduction:s.damageReduction,dodge:s.dodge,thorns:s.thorns,weaponType:w.weaponType||'bow',range:w.range||5,weaponCooldown:w.cooldown||1450,cooldownMult:s.cooldownMult,level:localPlayer.level}}
 
 const DUNGEON_ROUTES={
-  crypt:{id:"crypt",label:"Sunken Crypt",danger:0,statScale:1,countBonus:0,roomBonus:0,pool:["slime","spider","skeleton","archer"]},
-  ember:{id:"ember",label:"Ember Warrens",danger:1,statScale:1.14,countBonus:1,roomBonus:0,pool:["skeleton","archer","wraith","mage","cultist"]},
-  arcane:{id:"arcane",label:"Arcane Vault",danger:2,statScale:1.3,countBonus:1,roomBonus:1,pool:["archer","wraith","mage","golem","necromancer"]},
-  plague:{id:"plague",label:"Plague Descent",danger:3,statScale:1.48,countBonus:2,roomBonus:1,pool:["brute","cultist","serpent","shade","bombardier","necromancer"]},
+  crypt:{id:"crypt",label:"Sunken Crypt",danger:0,statScale:1,countBonus:0,roomBonus:0,pool:["slime","spider","skeleton","archer","rift_hound","icebound_knight"]},
+  ember:{id:"ember",label:"Ember Warrens",danger:1,statScale:1.14,countBonus:1,roomBonus:0,pool:["skeleton","archer","wraith","mage","cultist","ash_reaver","storm_eye"]},
+  arcane:{id:"arcane",label:"Arcane Vault",danger:2,statScale:1.3,countBonus:1,roomBonus:1,pool:["archer","wraith","mage","golem","necromancer","soul_lantern","void_mimic","chronomancer"]},
+  plague:{id:"plague",label:"Plague Descent",danger:3,statScale:1.48,countBonus:2,roomBonus:1,pool:["brute","cultist","serpent","shade","bombardier","necromancer","fungal_hulk","thorn_matriarch","grave_colossus"]},
   deep:{id:"deep",label:"Crimson Depths",danger:2,statScale:1.25,countBonus:1,roomBonus:1,pool:[]}
 };
 function routeForRoom(roomId){const value=String(roomId||"").toLowerCase();return Object.values(DUNGEON_ROUTES).find(route=>route.id!=="deep"&&value.includes(route.id))||DUNGEON_ROUTES.deep}
@@ -401,7 +466,7 @@ function generateDungeon(roomId,depth){
 function initialEnemiesForMap(m){
   if(m.isTown)return[];
   const random=rngFrom(hashString(`${m.roomId}:enemies`));const out=[];let n=0;
-  const depthPool=m.depth<2?["slime","spider","skeleton"]:m.depth<5?["spider","skeleton","archer","wraith","cultist"]:m.depth<9?["skeleton","archer","brute","wraith","mage","serpent","golem"]:["brute","mage","cultist","golem","necromancer","serpent","shade","bombardier"],pool=m.difficulty?.pool?.length?m.difficulty.pool:depthPool;
+  const depthPool=m.depth<2?["slime","spider","skeleton","rift_hound"]:m.depth<5?["spider","skeleton","archer","wraith","cultist","icebound_knight","ash_reaver"]:m.depth<9?["skeleton","archer","brute","wraith","mage","serpent","golem","fungal_hulk","storm_eye","soul_lantern"]:["brute","mage","cultist","golem","necromancer","serpent","shade","bombardier","thorn_matriarch","void_mimic","grave_colossus","chronomancer"],pool=m.difficulty?.pool?.length?m.difficulty.pool:depthPool;
   for(let ri=1;ri<m.rooms.length;ri++){
     const r=m.rooms[ri];const count=(ri===m.rooms.length-1?2:2+Math.floor(random()*3)+Math.min(2,Math.floor(m.depth/3)))+(m.difficulty?.countBonus||0);
     for(let j=0;j<count&&out.length<MAX_ROOM_ENEMIES-1;j++){
@@ -574,6 +639,7 @@ async function claimEventDoc(docSnap){
       const amount=Math.max(1,Math.round((Number(data.amount)||1)*(1-clamp(s.damageReduction,0,.45))-s.armor*.55));localPlayer.hp=Math.max(0,localPlayer.hp-amount);localPlayer.lastCombatAtMs=now();
       if(data.effect==='manaBurn')localPlayer.mana=Math.max(0,localPlayer.mana-8);
       if(data.effect==='slow')localPlayer.statusEffects.slow=now()+2600;
+      if(data.effect==='stagger')localPlayer.moveReadyAt=Math.max(localPlayer.moveReadyAt||0,now()+1200);
       if(data.effect==='burn')localPlayer.statusEffects.burn=now()+4000;
       if(data.effect==='poison')localPlayer.statusEffects.poison=now()+6000;
       floater(localPlayer.x,localPlayer.y,`-${amount}`,'#ff8b86');burst(localPlayer.x,localPlayer.y,'#ff6c65',10);
@@ -625,6 +691,15 @@ function telegraphTiles(e,target,def){
   if(def.pattern==='burst')return valid(cross.concat([{x:target.x+1,y:target.y+1},{x:target.x-1,y:target.y-1},{x:target.x+1,y:target.y-1},{x:target.x-1,y:target.y+1}]));
   if(def.pattern==='quake')return valid(Array.from({length:3},(_,yy)=>Array.from({length:3},(_,xx)=>({x:target.x+xx-1,y:target.y+yy-1}))).flat());
   if(def.pattern==='ring')return valid(Array.from({length:5},(_,yy)=>Array.from({length:5},(_,xx)=>({x:target.x+xx-2,y:target.y+yy-2}))).flat().filter(p=>distance(p,target)>=2));
+  if(def.pattern==='cone')return valid(Array.from({length:3},(_,i)=>Array.from({length:i*2+1},(_,j)=>({x:e.x+dx*(i+1)+(dy||0)*(j-i),y:e.y+dy*(i+1)+(dx||0)*(j-i)}))).flat());
+  if(def.pattern==='pounce')return valid([{x:target.x,y:target.y},{x:target.x-dx,y:target.y-dy},{x:target.x+dx,y:target.y+dy}]);
+  if(def.pattern==='checker')return valid(Array.from({length:5},(_,yy)=>Array.from({length:5},(_,xx)=>({x:target.x+xx-2,y:target.y+yy-2}))).flat().filter(p=>(p.x+p.y+e.abilityIndex)%2===0));
+  if(def.pattern==='spiral')return valid([{x:target.x,y:target.y},...Array.from({length:8},(_,i)=>{const ring=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]][(i+(e.abilityIndex||0))%8];return{x:target.x+ring[0]*2,y:target.y+ring[1]*2}})]);
+  if(def.pattern==='spores')return valid(Array.from({length:5},(_,yy)=>Array.from({length:5},(_,xx)=>({x:target.x+xx-2,y:target.y+yy-2}))).flat().filter(p=>distance(p,target)!==1));
+  if(def.pattern==='thorns')return valid([...cross,{x:target.x+2,y:target.y},{x:target.x-2,y:target.y},{x:target.x,y:target.y+2},{x:target.x,y:target.y-2}]);
+  if(def.pattern==='sweep')return valid(Array.from({length:7},(_,i)=>({x:target.x+(dy||1)*(i-3),y:target.y+(dx||0)*(i-3)})));
+  if(def.pattern==='corridor')return valid(Array.from({length:Math.max(3,def.range)},(_,i)=>[{x:e.x+dx*(i+1),y:e.y+dy*(i+1)},{x:e.x+dx*(i+1)+(dy||0),y:e.y+dy*(i+1)+(dx||0)}]).flat());
+  if(def.pattern==='clock'){const phase=(e.abilityIndex||0)%4,[ax,ay]=[[1,0],[1,1],[0,1],[-1,1]][phase];return valid(Array.from({length:9},(_,i)=>({x:target.x+ax*(i-4),y:target.y+ay*(i-4)})))}
   const phase=(Number(e.abilityIndex)||0)%3;if(phase===0)return valid(Array.from({length:Math.max(5,def.range)},(_,i)=>({x:e.x+dx*(i+1),y:e.y+dy*(i+1)})));if(phase===1)return valid(Array.from({length:5},(_,yy)=>Array.from({length:5},(_,xx)=>({x:target.x+xx-2,y:target.y+yy-2}))).flat().filter(p=>distance(p,target)>=2));return valid(Array.from({length:3},(_,yy)=>Array.from({length:3},(_,xx)=>({x:target.x+xx-1,y:target.y+yy-1}))).flat());
 }
 function nextStepToward(e,target){
@@ -729,8 +804,8 @@ async function castAttackSkill(skill,targets,target,t=now(),automatic=false,cast
 async function castSpotSkill(id,x,y){
   const skill=SKILLS[id];cancelTargeting();if(!skill||!skillReady(id)||distance(localPlayer,{x,y})>(skill.range||4)||tileAt(x,y)!==0){toast('That square is outside the spell’s range.');return}
   const t=now(),s=derivedStats(),mana=skillManaCost(skill);
-  if(id==='dash'||id==='blink'){
-    const path=findPath(localPlayer.x,localPlayer.y,x,y).slice(0,id==='dash'?4:skill.range);if(!path.length){toast('No clear route to that square.');return}const end=id==='blink'?{x,y}:path[path.length-1];if(!walkable(end.x,end.y)){toast('That square is occupied.');return}if(!spendMana(mana))return;localPlayer.x=end.x;localPlayer.y=end.y;movementPath=[];localPlayer.skillCooldowns[id]=t+skill.cooldown*s.cooldownMult;localPlayer.moveReadyAt=t+650;burst(end.x,end.y,id==='blink'?'#9a7cff':'#d7fff0',20);queueSave();setPresence(true);renderActionDock();return;
+  if(id==='dash'||id==='blink'||skill.mobility){
+    const isBlink=id==='blink'||skill.mobility==='blink',path=findPath(localPlayer.x,localPlayer.y,x,y).slice(0,isBlink?skill.range:4);if(!path.length){toast('No clear route to that square.');return}const end=isBlink?{x,y}:path[path.length-1];if(!walkable(end.x,end.y)){toast('That square is occupied.');return}if(!spendMana(mana))return;localPlayer.x=end.x;localPlayer.y=end.y;movementPath=[];localPlayer.skillCooldowns[id]=t+skill.cooldown*s.cooldownMult;localPlayer.moveReadyAt=t+650;burst(end.x,end.y,isBlink?'#9a7cff':'#d7fff0',20);queueSave();setPresence(true);renderActionDock();return;
   }
   if(id==='healing_circle'){if(!spendMana(mana))return;const heal=Math.round(s.maxHp*.24*(1+s.lifePower));localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+heal);localPlayer.skillCooldowns[id]=t+skill.cooldown*s.cooldownMult;floater(localPlayer.x,localPlayer.y,`+${heal}`,'#86efac');burst(x,y,'#86efac',24);queueSave();setPresence(true);renderActionDock();return}
   const targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,{x,y})<=(skill.radius||1)).map(e=>e.id);if(!targets.length){toast('No enemy is standing in that area.');return}await castAttackSkill(skill,targets,roomState.enemies.find(e=>e.id===targets[0]),t,false,{x,y});burst(x,y,skill.school==='fire'?'#ff7b45':'#8ab8ff',30);
@@ -806,12 +881,19 @@ function worldToScreen(x,y,z=0){const p=isoOf(x,y);return{x:(p.x-cam.x)*cam.zoom
 function screenToGrid(sx,sy){const ix=(sx-cssW/2)/cam.zoom+cam.x,iy=(sy-cssH/2)/cam.zoom+cam.y;return{x:Math.floor((ix/(TILE_W/2)+iy/(TILE_H/2))/2),y:Math.floor((iy/(TILE_H/2)-ix/(TILE_W/2))/2)}}
 function centerCamera(force=false){if(!localPlayer)return;const p=isoOf(localPlayer.x,localPlayer.y);if(force){cam.x=p.x;cam.y=p.y-40}else{cam.x+=(p.x-cam.x)*.12;cam.y+=(p.y-40-cam.y)*.12}}
 function drawDiamond(x,y,fill,stroke){const p=worldToScreen(x,y),w=TILE_W*cam.zoom,h=TILE_H*cam.zoom;ctx.beginPath();ctx.moveTo(p.x,p.y-h/2);ctx.lineTo(p.x+w/2,p.y);ctx.lineTo(p.x,p.y+h/2);ctx.lineTo(p.x-w/2,p.y);ctx.closePath();if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke()}}
-function drawWall(x,y){const p=worldToScreen(x,y),w=TILE_W*cam.zoom,h=TILE_H*cam.zoom,wh=WALL_H*cam.zoom;const img=graphic('wall_stone');if(img&&img.complete&&!missingImages.has('wall_stone')){ctx.drawImage(img,p.x-w*.52,p.y-h*.92-wh,w*1.04,h*1.35+wh);return}
-  ctx.fillStyle='#303b35';ctx.beginPath();ctx.moveTo(p.x,p.y-h/2-wh);ctx.lineTo(p.x+w/2,p.y-wh);ctx.lineTo(p.x+w/2,p.y);ctx.lineTo(p.x,p.y+h/2);ctx.closePath();ctx.fill();ctx.fillStyle='#222c27';ctx.beginPath();ctx.moveTo(p.x,p.y-h/2-wh);ctx.lineTo(p.x-w/2,p.y-wh);ctx.lineTo(p.x-w/2,p.y);ctx.lineTo(p.x,p.y+h/2);ctx.closePath();ctx.fill();ctx.fillStyle='#46544c';ctx.beginPath();ctx.moveTo(p.x,p.y-h/2-wh);ctx.lineTo(p.x+w/2,p.y-wh);ctx.lineTo(p.x,p.y+h/2-wh);ctx.lineTo(p.x-w/2,p.y-wh);ctx.closePath();ctx.fill()}
+function drawWall(x,y){
+  const p=worldToScreen(x,y),w=TILE_W*cam.zoom,h=TILE_H*cam.zoom,wh=WALL_H*cam.zoom,shade=((x*17+y*29+hashString(currentRoomId))%7-3)*2;
+  const face=(points,fill)=>{ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)ctx.lineTo(points[i][0],points[i][1]);ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle='rgba(10,16,13,.55)';ctx.lineWidth=Math.max(.7,cam.zoom);ctx.stroke()};
+  face([[p.x,p.y-h/2-wh],[p.x+w/2,p.y-wh],[p.x+w/2,p.y],[p.x,p.y+h/2]],`hsl(145 11% ${27+shade}%)`);
+  face([[p.x,p.y-h/2-wh],[p.x-w/2,p.y-wh],[p.x-w/2,p.y],[p.x,p.y+h/2]],`hsl(145 12% ${20+shade}%)`);
+  face([[p.x,p.y-h/2-wh],[p.x+w/2,p.y-wh],[p.x,p.y+h/2-wh],[p.x-w/2,p.y-wh]],`hsl(145 10% ${34+shade}%)`);
+  ctx.strokeStyle='rgba(210,226,216,.13)';ctx.lineWidth=Math.max(.55,cam.zoom*.7);for(const f of [.34,.67]){ctx.beginPath();ctx.moveTo(p.x-w/2*f,p.y-wh+(h/2)*f);ctx.lineTo(p.x,p.y-h/2-wh+(h/2)*f);ctx.lineTo(p.x+w/2*f,p.y-wh+(h/2)*f);ctx.stroke()}
+}
 function drawFloor(x,y){const visible=isVisibleTile(x,y),seen=discovered.has(keyXY(x,y));if(!seen&&!visible)return;let fill=(x+y)%2?'#26352e':'#2b3c33';const moss=(x*7+y*11+hashString(currentRoomId))%13===0;if(moss)fill='#30463a';if(!visible)fill='#111a16';drawDiamond(x,y,fill,'rgba(224,255,231,.05)');const img=graphic(moss?'floor_moss':'floor_stone');if(visible&&img&&img.complete&&img.naturalWidth&&!missingImages.has(moss?'floor_moss':'floor_stone')){const p=worldToScreen(x,y),w=TILE_W*cam.zoom,h=TILE_H*cam.zoom;ctx.save();ctx.beginPath();ctx.moveTo(p.x,p.y-h/2);ctx.lineTo(p.x+w/2,p.y);ctx.lineTo(p.x,p.y+h/2);ctx.lineTo(p.x-w/2,p.y);ctx.closePath();ctx.clip();ctx.globalAlpha=.42;ctx.drawImage(img,p.x-w/2,p.y-h/2,w,h);ctx.restore()}}
 function isVisibleTile(x,y){return distance({x,y},localPlayer)<=9}
 function revealAround(x,y,r){for(let yy=y-r;yy<=y+r;yy++)for(let xx=x-r;xx<=x+r;xx++)if(inBounds(xx,yy)&&distance({x:xx,y:yy},{x,y})<=r)discovered.add(keyXY(xx,yy))}
-function drawSprite(name,x,y,size=52,emoji='?'){const p=worldToScreen(x,y,12),img=graphic(name),s=size*cam.zoom;if(img&&img.complete&&!missingImages.has(name)&&img.naturalWidth){ctx.drawImage(img,p.x-s/2,p.y-s*.82,s,s);return}ctx.font=`${Math.max(15,s*.62)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(emoji,p.x,p.y-s*.28)}
+function imageReady(img){return!!img&&((img instanceof HTMLCanvasElement&&img.width>0)||(img.complete&&(img.naturalWidth||img.width)))}
+function drawSprite(name,x,y,size=52,emoji='?',filter='none'){const p=worldToScreen(x,y,12),img=drawableGraphic(name),s=size*cam.zoom,resolved=graphicKey(name);if(imageReady(img)&&!missingImages.has(resolved)){ctx.save();ctx.filter=filter||'none';ctx.drawImage(img,p.x-s/2,p.y-s*.82,s,s);ctx.restore();return}ctx.font=`${Math.max(15,s*.62)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(emoji,p.x,p.y-s*.28)}
 function drawHealthBar(entity,maxHp,color='#e85762'){const p=worldToScreen(entity.x,entity.y,52),w=44*cam.zoom,h=5*cam.zoom;ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(p.x-w/2,p.y,w,h);ctx.fillStyle=color;ctx.fillRect(p.x-w/2,p.y,w*clamp(entity.hp/maxHp,0,1),h)}
 function drawHut(h){const cx=h.x+(h.w-1)/2,cy=h.y+(h.h-1)/2;if(!isVisibleTile(Math.round(cx),Math.round(cy)))return;const corners=[worldToScreen(h.x,h.y,58),worldToScreen(h.x+h.w-1,h.y,58),worldToScreen(h.x+h.w-1,h.y+h.h-1,58),worldToScreen(h.x,h.y+h.h-1,58)];ctx.beginPath();ctx.moveTo(corners[0].x,corners[0].y);for(let i=1;i<corners.length;i++)ctx.lineTo(corners[i].x,corners[i].y);ctx.closePath();ctx.fillStyle=h.roof||"#7d5038";ctx.fill();ctx.strokeStyle="rgba(255,220,170,.55)";ctx.lineWidth=2;ctx.stroke();const p=worldToScreen(cx,cy,84);ctx.fillStyle="#ffe2ad";ctx.font=`bold ${Math.max(8,9*cam.zoom)}px sans-serif`;ctx.textAlign="center";ctx.fillText(h.name,p.x,p.y)}
 function drawDoor(d){if(!isVisibleTile(d.x,d.y)&&!discovered.has(keyXY(d.x,d.y)))return;const locked=d.requiresBoss&&!roomState.bossDefeated;drawSprite(d.type==="blue"?"door_blue":"door_red",d.x,d.y,68,"🚪");const p=worldToScreen(d.x,d.y,74),suggestion=d.recommendedLevel?`Suggested Lv ${d.recommendedLevel}${d.difficulty?` · ${d.difficulty}`:""}`:"";ctx.textAlign="center";ctx.font=`bold ${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.fillStyle=locked?"#d17c7c":d.type==="blue"?"#8fd8ff":"#f4a2a2";ctx.fillText(locked?"Sealed":d.name,p.x,p.y);if(suggestion){ctx.font=`bold ${Math.max(8,9*cam.zoom)}px sans-serif`;ctx.fillStyle="#ffe39a";ctx.fillText(suggestion,p.x,p.y+13*cam.zoom)}}
@@ -819,7 +901,7 @@ function drawPlayerSprite(p,isLocal){drawSprite('player_archer',p.x,p.y,60,'🧝
 function drawActor(actor){
   if(actor.kind==="wall"){drawWall(actor.data.x,actor.data.y);return}
   if(actor.kind==="hut"){drawHut(actor.data);return}
-  if(actor.kind==='enemy'){const e=actor.data;if(!isVisibleTile(e.x,e.y))return;const def=ENEMY_TYPES[e.type];const selected=e.id===selectedEnemyId;if(selected)drawDiamond(e.x,e.y,'rgba(255,94,94,.25)','#ff8b86');drawSprite(def.graphic,e.x,e.y,def.boss?82:56,def.boss?'👹':e.type==='slime'?'🟢':e.type==='archer'?'🏹':e.type==='mage'?'🧙':'💀');drawHealthBar(e,e.maxHp);return}
+  if(actor.kind==='enemy'){const e=actor.data;if(!isVisibleTile(e.x,e.y))return;const def=ENEMY_TYPES[e.type];const selected=e.id===selectedEnemyId;if(selected)drawDiamond(e.x,e.y,'rgba(255,94,94,.25)','#ff8b86');drawSprite(def.graphic,e.x,e.y,def.boss?82:56,def.boss?'👹':e.type==='slime'?'🟢':e.type==='archer'?'🏹':e.type==='mage'?'🧙':'💀',def.filter);drawHealthBar(e,e.maxHp);return}
   if(actor.kind==='npc'){const n=actor.data;if(!isVisibleTile(n.x,n.y))return;drawSprite(n.graphic,n.x,n.y,58,n.role==='store'?'🧑‍🏭':'🧙');const sp=worldToScreen(n.x,n.y,64);ctx.fillStyle='#ffe39a';ctx.font=`bold ${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(n.name,sp.x,sp.y);return}
   const p=actor.data;if(p.uid===uid){drawDiamond(p.x,p.y,'rgba(127,230,164,.16)','#7fe6a4');drawPlayerSprite(p,true);drawHealthBar({x:p.x,y:p.y,hp:localPlayer.hp},derivedStats().maxHp,'#7fe6a4')}else{if(!isVisibleTile(p.x,p.y))return;drawPlayerSprite(p,false);drawHealthBar(p,p.maxHp||100,'#72b9ff');const sp=worldToScreen(p.x,p.y,64);ctx.fillStyle='#dff0ff';ctx.font=`${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(p.username||'Adventurer',sp.x,sp.y)}
 }
