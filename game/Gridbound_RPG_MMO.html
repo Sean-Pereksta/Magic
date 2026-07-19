@@ -40,7 +40,7 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;background:
 #inventoryLayout{display:grid;grid-template-columns:260px 1fr;gap:13px}.panel{border:1px solid rgba(255,255,255,.13);border-radius:16px;background:rgba(255,255,255,.045);padding:12px}.panel h3{margin:0 0 10px;font-size:14px}
 .equipSlot{min-height:78px;margin-bottom:9px;padding:10px;border:1px dashed rgba(255,255,255,.24);border-radius:13px;background:rgba(0,0,0,.2);cursor:pointer}.equipSlot b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#bcd0c3;margin-bottom:4px}.equipSlot span{font-size:12px;font-weight:900}
 #inventoryGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:8px}.itemCard{min-height:116px;padding:9px;border:1px solid rgba(255,255,255,.16);border-radius:13px;background:rgba(7,14,11,.76);cursor:pointer;text-align:left;color:#fff}.itemCard.equipped{border-color:#7fe6a4}.itemCard .rarity{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#f0cf70}.itemCard b{display:block;margin:3px 0 5px;font-size:12px}.itemCard small{display:block;color:#b8c7bd;font-size:10px;line-height:1.3}.itemActions{display:flex;gap:6px;margin-top:8px}.itemActions button{flex:1;border:1px solid rgba(255,255,255,.16);border-radius:9px;background:rgba(255,255,255,.08);color:#fff;padding:6px;font-size:9px;font-weight:1000;cursor:pointer}
-#skillChoices{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.skillChoice{padding:13px;border:1px solid rgba(255,255,255,.17);border-radius:15px;background:rgba(255,255,255,.06);color:#fff;text-align:left;cursor:pointer}.skillChoice.available:hover{border-color:#7fe6a4;background:rgba(127,230,164,.1)}.skillChoice.locked{opacity:.48}.skillChoice b{display:block;font-size:15px;margin-bottom:5px}.skillChoice small{display:block;color:#b9c9bf;line-height:1.35}.skillChoice .req{margin-top:8px;color:#f0cf70;font-size:10px;font-weight:1000}
+#skillChoices{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.skillChoice{padding:13px;border:1px solid rgba(255,255,255,.17);border-radius:15px;background:rgba(255,255,255,.06);color:#fff;text-align:left;cursor:pointer}.skillChoice.available:hover{border-color:#7fe6a4;background:rgba(127,230,164,.1)}.skillChoice.locked{opacity:.48}.skillChoice b{display:block;font-size:15px;margin-bottom:5px}.skillChoice small{display:block;color:#b9c9bf;line-height:1.35}.skillChoice .req{margin-top:8px;color:#f0cf70;font-size:10px;font-weight:1000}.skillSchool{grid-column:1/-1;padding:12px;border:1px solid rgba(255,255,255,.13);border-radius:16px;background:rgba(0,0,0,.16)}.skillSchool h3{margin:0 0 3px;font-size:16px}.skillSchool>small{display:block;color:#9fb4a6;margin-bottom:10px}.skillBranch{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px}.skillChoice .path{display:block;margin-top:7px;color:#8fd8ff;font-size:9px;font-weight:900}
 #interactionGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.interactionCard{padding:13px;border:1px solid rgba(255,255,255,.17);border-radius:15px;background:rgba(255,255,255,.055);color:#fff;text-align:left}.interactionCard b{display:block;margin-bottom:6px}.interactionCard small{display:block;color:#b9c9bf;line-height:1.4}.interactionCard button{width:100%;margin-top:10px;padding:9px;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:#315c45;color:#fff;font-weight:900;cursor:pointer}.interactionCard button:disabled{opacity:.45;cursor:not-allowed}.specialty{margin-top:7px;color:#f1d477!important}.targeting{border-color:#e6bf4f!important;box-shadow:0 0 18px rgba(230,191,79,.3)!important}
 #doorChoices{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.doorChoice{min-height:130px;border:1px solid rgba(255,255,255,.18);border-radius:17px;background:rgba(255,255,255,.06);color:#fff;padding:15px;text-align:left;cursor:pointer}.doorChoice b{display:block;font-size:18px;margin-bottom:6px}.doorChoice small{color:#b9c9bf;line-height:1.4}.doorChoice:hover{border-color:#e6bf4f;background:rgba(230,191,79,.1)}
 #deathModal .modalCard{text-align:center;max-width:480px}#deathModal h2{font-size:34px;margin:0 0 8px}#respawnBtn{border:0;border-radius:14px;background:#e6bf4f;color:#1b1608;padding:12px 18px;font-weight:1000;cursor:pointer}
@@ -171,26 +171,13 @@ let discovered=new Set();
 let audioUnlocked=false;
 let currentNpc=null;
 
-const images=new Map();
-const missingImages=new Set();
-function graphic(name){
-  if(!name) return null;
-  if(images.has(name)) return images.get(name);
-  const img=new Image();
-  img.decoding='async';
-  img.src=`graphics/rpggraphics/${name}.png`;
-  img.onerror=()=>missingImages.add(name);
-  images.set(name,img);
-  return img;
-}
-[
-  'floor_stone','floor_moss','wall_stone','door_blue','door_red','player_archer',
-  'enemy_slime','enemy_skeleton','enemy_archer','enemy_brute','enemy_wraith','enemy_spider','enemy_mage','enemy_boss',
-  'enemy_cultist','enemy_golem','enemy_necromancer','enemy_serpent','enemy_shade','enemy_bombardier',
-  'boss_gate_warden','boss_abyss_hydra','boss_storm_titan','boss_bone_sovereign','npc_quest','npc_merchant','npc_arcanist',
-  'armor_leather_suit','armor_chain_suit','armor_plate_suit','armor_mystic_suit','armor_shadow_suit','armor_blood_suit','armor_storm_suit','armor_grove_suit','armor_void_suit',
-  'projectile_arrow','projectile_magic','loot_bag'
-].forEach(graphic);
+const ASSET_ROOT="../graphics/rpggraphics/";
+const ASSET_NAMES=["floor_stone","floor_moss","wall_stone","door_blue","door_red","player_archer","enemy_slime","enemy_skeleton","enemy_archer","enemy_brute","enemy_wraith","enemy_spider","enemy_mage","enemy_boss","projectile_arrow","projectile_magic","loot_bag"];
+const GRAPHIC_ALIASES={enemy_cultist:"enemy_mage",enemy_golem:"enemy_brute",enemy_necromancer:"enemy_mage",enemy_serpent:"enemy_spider",enemy_shade:"enemy_wraith",enemy_bombardier:"enemy_archer",boss_gate_warden:"enemy_boss",boss_abyss_hydra:"enemy_boss",boss_storm_titan:"enemy_boss",boss_bone_sovereign:"enemy_boss"};
+const GRAPHIC_FALLBACK_ONLY=new Set(["npc_quest","npc_merchant","npc_arcanist","armor_leather_suit","armor_chain_suit","armor_plate_suit","armor_mystic_suit","armor_shadow_suit","armor_blood_suit","armor_storm_suit","armor_grove_suit","armor_void_suit"]);
+const images=new Map(),missingImages=new Set();
+function graphic(name){if(!name||GRAPHIC_FALLBACK_ONLY.has(name))return null;const resolved=GRAPHIC_ALIASES[name]||name;if(images.has(resolved))return images.get(resolved);const img=new Image();img.decoding="async";img.src=`${ASSET_ROOT}${resolved}.png`;img.onerror=()=>missingImages.add(resolved);images.set(resolved,img);return img}
+async function preloadGraphics(){let finished=0;await Promise.all(ASSET_NAMES.map(name=>new Promise(resolve=>{const img=new Image();img.decoding="async";const done=()=>{finished++;loadingText.textContent=`Loading realm graphics… ${finished} / ${ASSET_NAMES.length}`;resolve()};img.onload=done;img.onerror=()=>{missingImages.add(name);done()};img.src=`${ASSET_ROOT}${name}.png`;images.set(name,img)})))}
 
 const WEAPONS={
   basic_bow:{name:'Basic Bow',kind:'weapon',weaponType:'bow',range:5,cooldown:1450,attack:6,effect:'none',icon:'🏹',specialty:'Reliable ranged attacks.'},
@@ -247,21 +234,42 @@ const SUFFIXES=[
   {id:'wellspring',name:'of the Wellspring',maxMana:24,manaRegen:.5},{id:'renewal',name:'of Renewal',maxHp:22,hpRegen:.3},{id:'focus',name:'of Focus',spellPower:.12}
 ];
 const SKILLS={
-  attack:{id:'attack',name:'Attack',icon:'🏹',level:1,mana:0,targetMode:'enemy',school:'weapon',desc:'Tap an enemy to keep firing whenever the weapon is ready.'},
-  power_shot:{id:'power_shot',name:'Power Shot',icon:'💥',level:2,mana:10,cooldown:5800,targetMode:'enemy',school:'weapon',damageMult:1.8,desc:'A heavy shot dealing 180% weapon damage and staggering the target.'},
-  arc_bolt:{id:'arc_bolt',name:'Arc Bolt',icon:'🔹',level:3,mana:9,cooldown:2800,targetMode:'enemy',school:'arcane',range:7,damageMult:1.25,desc:'A quick arcane bolt with a short cooldown.'},
-  volley:{id:'volley',name:'Volley',icon:'🌧️',level:4,mana:16,cooldown:8800,targetMode:'enemy',school:'weapon',damageMult:.86,desc:'Strike up to four enemies near your target.'},
-  firestorm:{id:'firestorm',name:'Firestorm',icon:'🔥',level:5,mana:24,cooldown:10500,targetMode:'spot',school:'fire',range:7,radius:2,damageMult:1.55,effect:'burn',desc:'Select a square; after a warning, fire scorches the surrounding area.'},
-  dash:{id:'dash',name:'Dash',icon:'💨',level:6,mana:12,cooldown:7600,targetMode:'spot',school:'movement',range:4,desc:'Select a square to rush up to four open tiles.'},
-  frost_nova:{id:'frost_nova',name:'Frost Nova',icon:'❄️',level:7,mana:22,cooldown:11500,targetMode:'self',school:'frost',radius:3,damageMult:.9,effect:'slow',desc:'Freeze and slow every enemy near you.'},
-  mend:{id:'mend',name:'Mend',icon:'✨',level:8,mana:20,cooldown:10800,targetMode:'self',school:'life',desc:'Restore 30% of maximum health.'},
-  chain_lightning:{id:'chain_lightning',name:'Chain Lightning',icon:'⚡',level:9,mana:27,cooldown:9800,targetMode:'enemy',school:'shock',range:7,damageMult:1.2,maxTargets:5,effect:'shock',desc:'Lightning leaps through up to five nearby enemies.'},
-  healing_circle:{id:'healing_circle',name:'Healing Circle',icon:'🌟',level:10,mana:30,cooldown:14500,targetMode:'spot',school:'life',range:6,noDamage:true,desc:'Select a square to create a restoring circle.'},
-  piercing_rain:{id:'piercing_rain',name:'Piercing Rain',icon:'☄️',level:11,mana:28,cooldown:14500,targetMode:'enemy',school:'weapon',damageMult:1.25,desc:'Damage every enemy in a long line.'},
-  blink:{id:'blink',name:'Void Blink',icon:'🌌',level:12,mana:18,cooldown:9000,targetMode:'spot',school:'arcane',range:7,desc:'Select an open square and teleport there.'},
-  meteor:{id:'meteor',name:'Meteor',icon:'☄️',level:14,mana:42,cooldown:19000,targetMode:'spot',school:'fire',range:9,radius:2,damageMult:2.5,effect:'burn',desc:'Select a square for a devastating delayed impact.'},
-  soul_siphon:{id:'soul_siphon',name:'Soul Siphon',icon:'🩸',level:16,mana:32,cooldown:12000,targetMode:'enemy',school:'life',damageMult:1.45,lifeSteal:.55,desc:'Drain a target and return much of the damage as health.'}
+  attack:{id:"attack",name:"Attack",icon:"🏹",mana:0,targetMode:"enemy",school:"weapon",cost:0,requires:[],desc:"Tap an enemy to keep firing whenever the weapon is ready."},
+  power_shot:{id:"power_shot",name:"Power Shot",icon:"💥",mana:10,cooldown:5800,targetMode:"enemy",school:"weapon",cost:1,requires:[],damageMult:1.8,desc:"A heavy shot that staggers its target."},
+  volley:{id:"volley",name:"Volley",icon:"🌧️",mana:16,cooldown:8800,targetMode:"enemy",school:"weapon",cost:1,requires:["power_shot"],damageMult:.86,desc:"Strike up to four enemies near the target."},
+  piercing_rain:{id:"piercing_rain",name:"Piercing Rain",icon:"☄️",mana:28,cooldown:14500,targetMode:"enemy",school:"weapon",cost:2,requires:["volley"],damageMult:1.25,desc:"Damage every enemy in a long line."},
+  dash:{id:"dash",name:"Dash",icon:"💨",mana:12,cooldown:7600,targetMode:"spot",school:"movement",cost:1,requires:[],range:4,desc:"Rush up to four open tiles."},
+  blink:{id:"blink",name:"Void Blink",icon:"🌌",mana:18,cooldown:9000,targetMode:"spot",school:"movement",cost:1,requires:["dash"],range:7,desc:"Teleport to an open square."},
+  fire_ball:{id:"fire_ball",name:"Fireball",icon:"🔥",mana:10,cooldown:3600,targetMode:"enemy",school:"fire",cost:1,requires:[],range:7,damageMult:1.2,effect:"burn",desc:"Launch a burning sphere at one enemy."},
+  fire_wall:{id:"fire_wall",name:"Fire Wall",icon:"🧱",mana:18,cooldown:8500,targetMode:"spot",school:"fire",cost:1,requires:["fire_ball"],range:6,radius:1,damageMult:1.35,effect:"burn",desc:"Scorch a compact line of squares around the target."},
+  firestorm:{id:"firestorm",name:"Flame Rain",icon:"🌋",mana:26,cooldown:12000,targetMode:"spot",school:"fire",cost:1,requires:["fire_wall"],range:8,radius:2,damageMult:1.65,effect:"burn",desc:"Rain fire across a wide targeted area."},
+  meteor:{id:"meteor",name:"Meteor",icon:"☄️",mana:42,cooldown:19000,targetMode:"spot",school:"fire",cost:2,requires:["firestorm"],range:9,radius:2,damageMult:2.5,effect:"burn",desc:"Call down a devastating delayed impact."},
+  ice_bolt:{id:"ice_bolt",name:"Ice Bolt",icon:"🧊",mana:9,cooldown:3400,targetMode:"enemy",school:"frost",cost:1,requires:[],range:7,damageMult:1.05,effect:"slow",desc:"A chilling bolt that slows its victim."},
+  frost_nova:{id:"frost_nova",name:"Frost Nova",icon:"❄️",mana:22,cooldown:11500,targetMode:"self",school:"frost",cost:1,requires:["ice_bolt"],radius:3,damageMult:.9,effect:"slow",desc:"Freeze and slow every nearby enemy."},
+  blizzard:{id:"blizzard",name:"Blizzard",icon:"🌨️",mana:34,cooldown:16000,targetMode:"spot",school:"frost",cost:2,requires:["frost_nova"],range:8,radius:3,damageMult:1.45,effect:"slow",desc:"Blanket a large area in damaging ice."},
+  arc_bolt:{id:"arc_bolt",name:"Lightning Bolt",icon:"⚡",mana:9,cooldown:3000,targetMode:"enemy",school:"shock",cost:1,requires:[],range:7,damageMult:1.22,effect:"shock",desc:"A fast bolt of crackling lightning."},
+  chain_lightning:{id:"chain_lightning",name:"Chain Lightning",icon:"🌩️",mana:27,cooldown:9800,targetMode:"enemy",school:"shock",cost:1,requires:["arc_bolt"],range:7,damageMult:1.2,maxTargets:5,effect:"shock",desc:"Lightning leaps through up to five enemies."},
+  storm_field:{id:"storm_field",name:"Storm Field",icon:"⛈️",mana:38,cooldown:16500,targetMode:"spot",school:"shock",cost:2,requires:["chain_lightning"],range:8,radius:3,damageMult:1.55,effect:"shock",desc:"Charge a large area with repeated lightning."},
+  mend:{id:"mend",name:"Mend",icon:"✨",mana:20,cooldown:10800,targetMode:"self",school:"life",cost:1,requires:[],healPct:.3,desc:"Restore 30% of maximum health."},
+  healing_circle:{id:"healing_circle",name:"Healing Circle",icon:"🌟",mana:30,cooldown:14500,targetMode:"spot",school:"life",cost:1,requires:["mend"],range:6,noDamage:true,desc:"Create a restoring circle at a selected square."},
+  rejuvenation:{id:"rejuvenation",name:"Greater Restoration",icon:"💚",mana:44,cooldown:21000,targetMode:"self",school:"life",cost:2,requires:["healing_circle"],healPct:.58,desc:"Restore a large amount of health."},
+  spirit_raven:{id:"spirit_raven",name:"Spirit Raven",icon:"🐦‍⬛",mana:12,cooldown:4200,targetMode:"enemy",school:"summoning",cost:1,requires:[],range:8,damageMult:1.15,desc:"Call a spirit raven to strike a distant enemy."},
+  spectral_pack:{id:"spectral_pack",name:"Spectral Pack",icon:"🐺",mana:28,cooldown:10500,targetMode:"enemy",school:"summoning",cost:1,requires:["spirit_raven"],range:7,maxTargets:4,damageMult:1.15,desc:"Send spectral wolves through a clustered group."},
+  summon_colossus:{id:"summon_colossus",name:"Summon Colossus",icon:"🗿",mana:46,cooldown:22000,targetMode:"spot",school:"summoning",cost:2,requires:["spectral_pack"],range:7,radius:2,damageMult:2.25,effect:"stagger",desc:"Manifest a colossus that crushes a target area."},
+  shadow_bolt:{id:"shadow_bolt",name:"Shadow Bolt",icon:"🌑",mana:11,cooldown:3800,targetMode:"enemy",school:"dark",cost:1,requires:[],range:7,damageMult:1.25,effect:"bleed",desc:"Hurl corrupting shadow at one enemy."},
+  soul_siphon:{id:"soul_siphon",name:"Soul Siphon",icon:"🩸",mana:32,cooldown:12000,targetMode:"enemy",school:"dark",cost:1,requires:["shadow_bolt"],range:6,damageMult:1.45,lifeSteal:.55,desc:"Drain a target and return much of the damage as health."},
+  void_collapse:{id:"void_collapse",name:"Void Collapse",icon:"🕳️",mana:48,cooldown:23000,targetMode:"spot",school:"dark",cost:2,requires:["soul_siphon"],range:8,radius:3,damageMult:2.15,effect:"slow",desc:"Collapse dark energy across a wide area."}
 };
+const SKILL_SCHOOLS=[
+  {id:"fire",name:"Fire",icon:"🔥",desc:"Fireball → Fire Wall → Flame Rain → Meteor"},
+  {id:"frost",name:"Ice",icon:"❄️",desc:"Ice Bolt → Frost Nova → Blizzard"},
+  {id:"shock",name:"Lightning",icon:"⚡",desc:"Lightning Bolt → Chain Lightning → Storm Field"},
+  {id:"life",name:"Healing",icon:"💚",desc:"Mend → Healing Circle → Greater Restoration"},
+  {id:"summoning",name:"Summoning",icon:"🐺",desc:"Spirit Raven → Spectral Pack → Summon Colossus"},
+  {id:"dark",name:"Dark Magic",icon:"🌑",desc:"Shadow Bolt → Soul Siphon → Void Collapse"},
+  {id:"weapon",name:"Martial Arts",icon:"🏹",desc:"Power Shot → Volley → Piercing Rain"},
+  {id:"movement",name:"Movement",icon:"💨",desc:"Dash → Void Blink"}
+];
 const ENEMY_TYPES={
   slime:{name:'Mire Slime',graphic:'enemy_slime',hp:24,attack:5,armor:0,range:1,moveCd:1450,attackCd:2600,warning:850,pattern:'single',aggro:6,xp:14,drop:.22},
   spider:{name:'Crypt Spider',graphic:'enemy_spider',hp:30,attack:7,armor:0,range:2,moveCd:1050,attackCd:2450,warning:900,pattern:'cross',aggro:8,xp:19,drop:.28,effect:'slow'},
@@ -359,70 +367,52 @@ function equippedWeapon(){return getItem(localPlayer.equipment.weapon)||localPla
 function weaponStats(){return itemStats(equippedWeapon())||WEAPONS.basic_bow}
 function publicCombatData(){const s=derivedStats(),w=weaponStats();return{attack:s.attack,armor:s.armor,crit:s.crit,lifeSteal:s.lifeSteal,onHit:s.onHit,dropChance:s.dropChance,spellPower:s.spellPower,firePower:s.firePower,frostPower:s.frostPower,shockPower:s.shockPower,lifePower:s.lifePower,damageReduction:s.damageReduction,dodge:s.dodge,thorns:s.thorns,weaponType:w.weaponType||'bow',range:w.range||5,weaponCooldown:w.cooldown||1450,cooldownMult:s.cooldownMult,level:localPlayer.level}}
 
+const DUNGEON_ROUTES={
+  crypt:{id:"crypt",label:"Sunken Crypt",danger:0,statScale:1,countBonus:0,roomBonus:0,pool:["slime","spider","skeleton","archer"]},
+  ember:{id:"ember",label:"Ember Warrens",danger:1,statScale:1.14,countBonus:1,roomBonus:0,pool:["skeleton","archer","wraith","mage","cultist"]},
+  arcane:{id:"arcane",label:"Arcane Vault",danger:2,statScale:1.3,countBonus:1,roomBonus:1,pool:["archer","wraith","mage","golem","necromancer"]},
+  plague:{id:"plague",label:"Plague Descent",danger:3,statScale:1.48,countBonus:2,roomBonus:1,pool:["brute","cultist","serpent","shade","bombardier","necromancer"]},
+  deep:{id:"deep",label:"Crimson Depths",danger:2,statScale:1.25,countBonus:1,roomBonus:1,pool:[]}
+};
+function routeForRoom(roomId){const value=String(roomId||"").toLowerCase();return Object.values(DUNGEON_ROUTES).find(route=>route.id!=="deep"&&value.includes(route.id))||DUNGEON_ROUTES.deep}
+function recommendedLevels(depth,danger=0){const min=Math.max(1,depth*2-1+danger);return `${min}-${min+2+danger}`}
 function generateTown(roomId,depth){
-  const w=58,h=30,tiles=Array.from({length:h},()=>Array(w).fill(1));
-  for(let y=3;y<h-3;y++)for(let x=3;x<w-3;x++)tiles[y][x]=0;
-  for(let x=8;x<w-8;x++)tiles[14][x]=0;
-  const tier=Math.max(0,Number(String(roomId).split('-').pop())||0),baseDepth=tier*4;
+  const w=38,h=22,tiles=Array.from({length:h},()=>Array(w).fill(1));for(let y=2;y<h-2;y++)for(let x=2;x<w-2;x++)tiles[y][x]=0;
+  const tier=Math.max(0,Number(String(roomId).split("-").pop())||0),baseDepth=tier*4;
   const doors=[
-    {id:'crypt',type:'red',name:'Sunken Crypt',desc:'Depth '+(baseDepth+1)+' · undead and close combat.',x:50,y:6,target:`dungeon-${baseDepth+1}-crypt`,targetDepth:baseDepth+1},
-    {id:'ember',type:'red',name:'Ember Warrens',desc:'Depth '+(baseDepth+2)+' · fire casters and richer weapon drops.',x:53,y:11,target:`dungeon-${baseDepth+2}-ember`,targetDepth:baseDepth+2},
-    {id:'arcane',type:'red',name:'Arcane Vault',desc:'Depth '+(baseDepth+3)+' · golems, mages, and spell books.',x:53,y:18,target:`dungeon-${baseDepth+3}-arcane`,targetDepth:baseDepth+3},
-    {id:'plague',type:'red',name:'Plague Descent',desc:'Depth '+(baseDepth+4)+' · venom, bombardiers, and stronger armor.',x:50,y:23,target:`dungeon-${baseDepth+4}-plague`,targetDepth:baseDepth+4}
+    {id:"crypt",type:"red",name:"Sunken Crypt",desc:`Depth ${baseDepth+1} · entry route with undead and close combat.`,x:33,y:4,target:`dungeon-${baseDepth+1}-crypt`,targetDepth:baseDepth+1,recommendedLevel:recommendedLevels(baseDepth+1,0),difficulty:"Novice"},
+    {id:"ember",type:"red",name:"Ember Warrens",desc:`Depth ${baseDepth+2} · dangerous fire casters and richer weapon drops.`,x:34,y:8,target:`dungeon-${baseDepth+2}-ember`,targetDepth:baseDepth+2,recommendedLevel:recommendedLevels(baseDepth+2,1),difficulty:"Seasoned"},
+    {id:"arcane",type:"red",name:"Arcane Vault",desc:`Depth ${baseDepth+3} · reinforced golems, mages, and spell books.`,x:34,y:13,target:`dungeon-${baseDepth+3}-arcane`,targetDepth:baseDepth+3,recommendedLevel:recommendedLevels(baseDepth+3,2),difficulty:"Veteran"},
+    {id:"plague",type:"red",name:"Plague Descent",desc:`Depth ${baseDepth+4} · dense venom packs, bombardiers, and elite armor drops.`,x:33,y:17,target:`dungeon-${baseDepth+4}-plague`,targetDepth:baseDepth+4,recommendedLevel:recommendedLevels(baseDepth+4,3),difficulty:"Deadly"}
   ];
-  const npcs=[
-    {id:'captain',role:'quest',name:'Captain Elian',graphic:'npc_quest',x:16,y:9,desc:'Posts contracts for threats beyond the gates.'},
-    {id:'merchant',role:'store',name:'Mara the Quartermaster',graphic:'npc_merchant',x:25,y:18,desc:'Sells potions, weapons, armor, and spell books.'},
-    {id:'arcanist',role:'quest',name:'Arcanist Ilya',graphic:'npc_arcanist',x:35,y:9,desc:'Studies magical creatures and rare spellcraft.'},
-    {id:'sister',role:'quest',name:'Sister Vale',graphic:'npc_quest',x:42,y:20,desc:'Rewards hunters who quiet the restless dead.'}
-  ];
-  return{roomId,depth,w,h,tiles,rooms:[],spawn:{x:7,y:14},doors,npcs,isTown:true,endRoom:null};
+  const huts=[{id:"forge",name:"Forge Hut",x:7,y:3,w:5,h:4,doorX:9,doorY:6,roof:"#8c5638"},{id:"hearth",name:"Hearth House",x:15,y:3,w:5,h:4,doorX:17,doorY:6,roof:"#6f4935"},{id:"herbalist",name:"Herbalist Hut",x:8,y:15,w:5,h:4,doorX:10,doorY:15,roof:"#5c6f3c"}];
+  for(const hut of huts){for(let y=hut.y;y<hut.y+hut.h;y++)for(let x=hut.x;x<hut.x+hut.w;x++)tiles[y][x]=1;tiles[hut.doorY][hut.doorX]=0}
+  const npcs=[{id:"captain",role:"quest",name:"Captain Elian",graphic:"npc_quest",x:12,y:10,desc:"Posts contracts for threats beyond the gates."},{id:"merchant",role:"store",name:"Mara the Quartermaster",graphic:"npc_merchant",x:19,y:12,desc:"Sells potions, weapons, armor, and spell books."},{id:"arcanist",role:"quest",name:"Arcanist Ilya",graphic:"npc_arcanist",x:23,y:7,desc:"Studies magical creatures and rare spellcraft."},{id:"sister",role:"quest",name:"Sister Vale",graphic:"npc_quest",x:24,y:16,desc:"Rewards hunters who quiet the restless dead."}];
+  for(const d of doors)tiles[d.y][d.x]=0;return{roomId,depth,w,h,tiles,rooms:[],spawn:{x:4,y:11},doors,npcs,huts,isTown:true,endRoom:null};
 }
 function generateDungeon(roomId,depth){
-  if(isSafeRoomId(roomId))return generateTown(roomId,depth);
-  const random=rngFrom(hashString(`${realmId}:${roomId}`));
-  const w=clamp(92+depth*4,92,128),h=clamp(34+Math.floor(depth/2),34,44);
-  const tiles=Array.from({length:h},()=>Array(w).fill(1));
-  const rooms=[];
-  const roomCount=8+Math.min(2,Math.floor(depth/4));
-  const segment=Math.floor((w-4)/roomCount);
-  for(let i=0;i<roomCount;i++){
-    const rw=clamp(Math.floor(segment-3+random()*3),6,10),rh=Math.floor(6+random()*7);
-    const ry=Math.floor(2+random()*Math.max(1,h-rh-4));
-    const rx=Math.min(2+i*segment,w-rw-3);
-    for(let y=ry;y<ry+rh;y++)for(let x=rx;x<rx+rw;x++)tiles[y][x]=0;
-    const room={x:rx,y:ry,w:rw,h:rh,cx:Math.floor(rx+rw/2),cy:Math.floor(ry+rh/2)};rooms.push(room);
-    if(i>0){
-      const prev=rooms[i-1];
-      const x1=Math.min(prev.cx,room.cx),x2=Math.max(prev.cx,room.cx),y1=Math.min(prev.cy,room.cy),y2=Math.max(prev.cy,room.cy);
-      for(let x=x1;x<=x2;x++){tiles[prev.cy][x]=0;tiles[prev.cy+1<h?prev.cy+1:prev.cy][x]=0}
-      for(let y=y1;y<=y2;y++){tiles[y][room.cx]=0;if(room.cx+1<w)tiles[y][room.cx+1]=0}
-    }
-  }
-  const start=rooms[0];const end=rooms[rooms.length-1];
-  const spawn={x:start.x+2,y:start.cy};
-  const doors=[
-    {id:'safe',type:'blue',name:'Waystone Refuge',desc:'Return to the nearest safe town to heal, trade, and claim quests.',x:start.x+1,y:start.y+1,target:safeTownForDepth(depth),targetDepth:depth},
-    {id:'deep',type:'red',name:`Crimson Descent · Depth ${depth+1}`,desc:'Defeat the dungeon boss to descend into a more dangerous route.',x:end.x+end.w-2,y:end.cy,target:`${roomId}.deep`,targetDepth:depth+1,requiresBoss:true}
-  ];
-  for(const d of doors)tiles[d.y][d.x]=0;
-  return{roomId,depth,w,h,tiles,rooms,spawn,doors,npcs:[],isTown:false,endRoom:end};
+  if(isSafeRoomId(roomId))return generateTown(roomId,depth);const random=rngFrom(hashString(`${realmId}:${roomId}`)),route=routeForRoom(roomId);
+  const w=clamp(84+depth*4+route.roomBonus*4,84,132),h=clamp(32+Math.floor(depth/2)+route.danger,32,46),tiles=Array.from({length:h},()=>Array(w).fill(1)),rooms=[];
+  const roomCount=7+Math.min(3,Math.floor(depth/4))+route.roomBonus,segment=Math.floor((w-4)/roomCount);
+  for(let i=0;i<roomCount;i++){const rw=clamp(Math.floor(segment-3+random()*3),6,11),rh=Math.floor(6+random()*(7+route.danger)),ry=Math.floor(2+random()*Math.max(1,h-rh-4)),rx=Math.min(2+i*segment,w-rw-3);for(let y=ry;y<ry+rh;y++)for(let x=rx;x<rx+rw;x++)tiles[y][x]=0;const room={x:rx,y:ry,w:rw,h:rh,cx:Math.floor(rx+rw/2),cy:Math.floor(ry+rh/2)};rooms.push(room);if(i>0){const prev=rooms[i-1],x1=Math.min(prev.cx,room.cx),x2=Math.max(prev.cx,room.cx),y1=Math.min(prev.cy,room.cy),y2=Math.max(prev.cy,room.cy);for(let x=x1;x<=x2;x++){tiles[prev.cy][x]=0;tiles[prev.cy+1<h?prev.cy+1:prev.cy][x]=0}for(let y=y1;y<=y2;y++){tiles[y][room.cx]=0;if(room.cx+1<w)tiles[y][room.cx+1]=0}}}
+  const start=rooms[0],end=rooms[rooms.length-1],spawn={x:start.x+2,y:start.cy},doors=[{id:"safe",type:"blue",name:"Waystone Refuge",desc:"Return to the nearest safe town to heal, trade, and claim quests.",x:start.x+1,y:start.y+1,target:safeTownForDepth(depth),targetDepth:depth},{id:"deep",type:"red",name:`Crimson Descent · Depth ${depth+1}`,desc:`Defeat the boss to continue along this ${route.label} route.`,x:end.x+end.w-2,y:end.cy,target:`${roomId}.deep`,targetDepth:depth+1,requiresBoss:true,recommendedLevel:recommendedLevels(depth+1,route.danger),difficulty:route.danger>=3?"Deadly":"Hard"}];
+  for(const d of doors)tiles[d.y][d.x]=0;return{roomId,depth,w,h,tiles,rooms,spawn,doors,npcs:[],huts:[],isTown:false,endRoom:end,difficulty:route};
 }
 function initialEnemiesForMap(m){
   if(m.isTown)return[];
   const random=rngFrom(hashString(`${m.roomId}:enemies`));const out=[];let n=0;
-  const pool=m.depth<2?['slime','spider','skeleton']:m.depth<5?['spider','skeleton','archer','wraith','cultist']:m.depth<9?['skeleton','archer','brute','wraith','mage','serpent','golem']:['brute','mage','cultist','golem','necromancer','serpent','shade','bombardier'];
+  const depthPool=m.depth<2?["slime","spider","skeleton"]:m.depth<5?["spider","skeleton","archer","wraith","cultist"]:m.depth<9?["skeleton","archer","brute","wraith","mage","serpent","golem"]:["brute","mage","cultist","golem","necromancer","serpent","shade","bombardier"],pool=m.difficulty?.pool?.length?m.difficulty.pool:depthPool;
   for(let ri=1;ri<m.rooms.length;ri++){
-    const r=m.rooms[ri];const count=ri===m.rooms.length-1?2:2+Math.floor(random()*3)+Math.min(2,Math.floor(m.depth/3));
+    const r=m.rooms[ri];const count=(ri===m.rooms.length-1?2:2+Math.floor(random()*3)+Math.min(2,Math.floor(m.depth/3)))+(m.difficulty?.countBonus||0);
     for(let j=0;j<count&&out.length<MAX_ROOM_ENEMIES-1;j++){
       let x=r.x+1+Math.floor(random()*Math.max(1,r.w-2)),y=r.y+1+Math.floor(random()*Math.max(1,r.h-2));
       if(out.some(e=>e.x===x&&e.y===y)){j--;continue}
-      const type=pool[Math.floor(random()*pool.length)];const def=ENEMY_TYPES[type];const scale=1+m.depth*.12;
-      out.push({id:`e${m.depth}-${n++}-${Math.floor(random()*99999)}`,type,x,y,hp:Math.round(def.hp*scale),maxHp:Math.round(def.hp*scale),attackReadyAt:0,moveReadyAt:0,damageBy:{},effects:{},spawnX:x,spawnY:y});
+      const type=pool[Math.floor(random()*pool.length)],def=ENEMY_TYPES[type],scale=(1+m.depth*.12)*(m.difficulty?.statScale||1);
+      out.push({id:`e${m.depth}-${n++}-${Math.floor(random()*99999)}`,type,x,y,hp:Math.round(def.hp*scale),maxHp:Math.round(def.hp*scale),powerScale:m.difficulty?.statScale||1,attackReadyAt:0,moveReadyAt:0,damageBy:{},effects:{},spawnX:x,spawnY:y});
     }
   }
-  const bosses=['boss','abyss_hydra','storm_titan','bone_sovereign'];const bossType=bosses[Math.min(bosses.length-1,Math.floor(m.depth/4))],br=m.endRoom,b=ENEMY_TYPES[bossType],scale=1+m.depth*.12;
-  out.push({id:`boss-${m.roomId}`,type:bossType,x:br.cx,y:br.cy,hp:Math.round(b.hp*scale),maxHp:Math.round(b.hp*scale),attackReadyAt:0,moveReadyAt:0,abilityIndex:0,damageBy:{},effects:{},spawnX:br.cx,spawnY:br.cy});
+  const bosses=["boss","abyss_hydra","storm_titan","bone_sovereign"],bossType=bosses[Math.min(bosses.length-1,Math.floor(m.depth/4))],br=m.endRoom,b=ENEMY_TYPES[bossType],scale=(1+m.depth*.12)*(m.difficulty?.statScale||1);
+  out.push({id:`boss-${m.roomId}`,type:bossType,x:br.cx,y:br.cy,hp:Math.round(b.hp*scale),maxHp:Math.round(b.hp*scale),powerScale:m.difficulty?.statScale||1,attackReadyAt:0,moveReadyAt:0,abilityIndex:0,damageBy:{},effects:{},spawnX:br.cx,spawnY:br.cy});
   return out;
 }
 
@@ -614,7 +604,7 @@ async function controllerTick(){
     if(!target||best>def.aggro)continue;
     if(best<=def.range&&t>=(e.attackReadyAt||0)){
       const tiles=telegraphTiles(e,target,def);e.abilityIndex=(Number(e.abilityIndex)||0)+1;e.attackReadyAt=t+def.attackCd;
-      roomState.telegraphs.push({id:`tell-${e.id}-${t}`,enemyId:e.id,source:def.name,tiles,damage:def.attack+currentDepth*1.1,effect:def.effect||null,kind:def.pattern||'single',createdAtMs:t,resolveAtMs:t+(def.warning||1000)});changed=true;
+      roomState.telegraphs.push({id:`tell-${e.id}-${t}`,enemyId:e.id,source:def.name,tiles,damage:Math.round((def.attack+currentDepth*1.1)*(e.powerScale||1)),effect:def.effect||null,kind:def.pattern||'single',createdAtMs:t,resolveAtMs:t+(def.warning||1000)});changed=true;
     }else if(best>def.range&&t>=(e.moveReadyAt||0)&&!(roomState.telegraphs||[]).some(q=>q.enemyId===e.id)){
       const step=nextStepToward(e,target);if(step){e.x=step.x;e.y=step.y;changed=true}e.moveReadyAt=t+def.moveCd*(e.effects?.slow>t?1.55:1);
     }
@@ -710,8 +700,8 @@ async function useSkill(id,automatic=false){
   if(skill.targetMode==='spot'){
     targetingSkillId=id;movementPath=[];toast(`Select a square for ${skill.name}.`,1500);renderActionDock();return;
   }
-  if(id==='mend'){
-    const mana=skillManaCost(skill);if(!spendMana(mana))return;const s=derivedStats(),heal=Math.round(s.maxHp*.3*(1+s.lifePower));localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+heal);localPlayer.skillCooldowns[id]=t+skill.cooldown*s.cooldownMult;floater(localPlayer.x,localPlayer.y,`+${heal}`,'#86efac');queueSave();setPresence(true);renderActionDock();return;
+  if(skill.targetMode==="self"&&skill.healPct){
+    const mana=skillManaCost(skill);if(!spendMana(mana))return;const s=derivedStats(),heal=Math.round(s.maxHp*skill.healPct*(1+s.lifePower));localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+heal);localPlayer.skillCooldowns[id]=t+skill.cooldown*s.cooldownMult;floater(localPlayer.x,localPlayer.y,`+${heal}`,"#86efac");burst(localPlayer.x,localPlayer.y,"#86efac",18);queueSave();setPresence(true);renderActionDock();return;
   }
   if(id==='frost_nova'){const targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,localPlayer)<=skill.radius).map(e=>e.id);if(!targets.length){toast('No enemies are close enough.');return}return castAttackSkill(skill,targets,roomState.enemies.find(e=>e.id===targets[0]),t)}
   const target=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(!target){toast('Select an enemy first.');return}
@@ -724,7 +714,7 @@ async function useSkill(id,automatic=false){
     targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,localPlayer)<=range&&((dx===0&&e.x===localPlayer.x)||(dy===0&&e.y===localPlayer.y)||(Math.sign(e.x-localPlayer.x)===dx&&Math.sign(e.y-localPlayer.y)===dy&&Math.abs(e.x-localPlayer.x)===Math.abs(e.y-localPlayer.y)))).sort((a,b)=>distance(a,localPlayer)-distance(b,localPlayer)).slice(0,2).map(e=>e.id);
   }
   if(id==='volley')targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,target)<=2&&distance(e,localPlayer)<=range).slice(0,4).map(e=>e.id);
-  if(id==='chain_lightning')targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,target)<=4&&distance(e,localPlayer)<=7).sort((a,b)=>distance(a,target)-distance(b,target)).slice(0,skill.maxTargets||5).map(e=>e.id);
+  if(skill.maxTargets&&id!=="volley")targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,target)<=4&&distance(e,localPlayer)<=(skill.range||7)).sort((a,b)=>distance(a,target)-distance(b,target)).slice(0,skill.maxTargets).map(e=>e.id);
   if(id==='piercing_rain'){
     const dx=Math.sign(target.x-localPlayer.x),dy=Math.sign(target.y-localPlayer.y);targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,localPlayer)<=9&&((dx===0&&e.x===localPlayer.x)||(dy===0&&e.y===localPlayer.y)||(Math.sign(e.x-localPlayer.x)===dx&&Math.sign(e.y-localPlayer.y)===dy&&Math.abs(e.x-localPlayer.x)===Math.abs(e.y-localPlayer.y)))).map(e=>e.id);
   }
@@ -758,9 +748,7 @@ function openDoorChoice(door){
   if(door.requiresBoss&&!roomState.bossDefeated){toast('The dungeon boss still seals the Crimson Descent.',1800);return}
   pendingDoor=door;renderDoorChoices();doorModal.classList.add('open');
 }
-function renderDoorChoices(){
-  const wrap=document.getElementById('doorChoices');wrap.innerHTML='';for(const d of map.doors){const locked=d.requiresBoss&&!roomState.bossDefeated,b=document.createElement('button');b.className='doorChoice';b.disabled=locked;b.innerHTML=`<b>${d.type==='blue'?'🔷':'🔻'} ${d.name}${locked?' · Sealed':''}</b><small>${d.desc}</small>`;b.onclick=()=>{if(!locked)enterRoom(d.target,Number(d.targetDepth??currentDepth))};wrap.appendChild(b)}
-}
+function renderDoorChoices(){const wrap=document.getElementById("doorChoices");wrap.innerHTML="";for(const d of map.doors){const locked=d.requiresBoss&&!roomState.bossDefeated,b=document.createElement("button");b.className="doorChoice";b.disabled=locked;const suggestion=d.recommendedLevel?`<strong>Suggested level ${d.recommendedLevel}${d.difficulty?` · ${d.difficulty}`:""}</strong><br>`:"";b.innerHTML=`<b>${d.type==="blue"?"🔷":"🔻"} ${d.name}${locked?" · Sealed":""}</b><small>${suggestion}${d.desc}</small>`;b.onclick=()=>{if(!locked)enterRoom(d.target,Number(d.targetDepth??currentDepth))};wrap.appendChild(b)}}
 async function enterRoom(roomId,depth){
   doorModal.classList.remove('open');const oldPresence=playerPresenceRef;teardownRoom(false);if(oldPresence)await deleteDoc(oldPresence).catch(()=>{});
   currentRoomId=roomId;currentDepth=depth;localPlayer.roomId=roomId;localPlayer.depth=depth;map=generateDungeon(roomId,depth);if(map.isTown)localPlayer.lastSafeRoomId=roomId;localPlayer.x=map.spawn.x;localPlayer.y=map.spawn.y;localPlayer.moveReadyAt=0;queueSave(0);
@@ -792,11 +780,10 @@ function renderInventory(){
   const grid=document.getElementById('inventoryGrid');grid.innerHTML='';for(const item of localPlayer.inventory){const base=itemBase(item),equipped=Object.values(localPlayer.equipment).includes(item.id),usable=item.kind==='consumable';const card=document.createElement('article');card.className='itemCard'+(equipped?' equipped':'');card.style.borderColor=equipped?'#7fe6a4':rarityColor(item.rarity);const stats=itemStats(item);card.innerHTML=`<span class="rarity">${item.rarity} ${item.kind}</span><b>${base?.icon||'🎒'} ${itemName(item)}</b><small>${describeItem(stats,item)}</small>${base?.specialty?`<small class="specialty">${base.specialty}</small>`:''}<div class="itemActions"><button data-equip>${usable?'Use':equipped?'Equipped':'Equip'}</button><button data-sell ${equipped?'disabled':''}>Sell</button></div>`;card.querySelector('[data-equip]').onclick=()=>usable?useItem(item.id):equipItem(item.id);card.querySelector('[data-sell]').onclick=()=>sellItem(item.id);grid.appendChild(card)}
 }
 function describeItem(s,item){const bits=[];if(s.attack)bits.push(`+${s.attack} attack`);if(s.range)bits.push(`${s.range} range`);if(s.cooldown)bits.push(`${s.cooldown}ms cooldown`);if(s.maxHp)bits.push(`${s.maxHp>0?'+':''}${s.maxHp} HP`);if(s.maxMana)bits.push(`+${s.maxMana} mana`);if(s.armor)bits.push(`+${s.armor} armor`);if(s.crit)bits.push(`+${Math.round(s.crit*100)}% crit`);if(s.spellPower)bits.push(`+${Math.round(s.spellPower*100)}% spell power`);if(s.manaRegen)bits.push(`+${s.manaRegen}/s mana`);if(s.hpRegen)bits.push(`+${s.hpRegen}/s health`);if(s.onHit)bits.push(`${s.onHit} on hit`);if(s.lifeSteal)bits.push(`${Math.round(s.lifeSteal*100)}% leech`);if(s.dropChance)bits.push(`+${Math.round(s.dropChance*100)}% drops`);if(s.heal)bits.push(`restore ${s.heal} HP`);if(s.restoreMana)bits.push(`restore ${s.restoreMana} mana`);return bits.join(' · ')||'A dependable piece of equipment.'}
-function renderSkills(){
-  document.getElementById('skillPointLine').textContent=`Skill points: ${localPlayer.skillPoints}. Skills become available as your level rises.`;const wrap=document.getElementById('skillChoices');wrap.innerHTML='';
-  for(const skill of Object.values(SKILLS).filter(s=>s.id!=='attack')){const has=learned(skill.id),can=!has&&localPlayer.skillPoints>0&&localPlayer.level>=skill.level;const b=document.createElement('button');b.className=`skillChoice ${can?'available':'locked'}`;b.innerHTML=`<b>${skill.icon} ${skill.name}${has?' ✓':''}</b><small>${skill.desc}</small><div class="req">${has?'Learned':`Requires level ${skill.level} · 1 skill point`}</div>`;if(can)b.onclick=()=>learnSkill(skill.id);wrap.appendChild(b)}
-}
-function learnSkill(id){if(learned(id)||localPlayer.skillPoints<1||localPlayer.level<SKILLS[id].level)return;localPlayer.skillPoints--;localPlayer.learnedSkills.push(id);queueSave(0);renderSkills();renderActionDock();toast(`${SKILLS[id].name} learned`,1400)}
+function skillCost(skill){return Math.max(1,Number(skill?.cost)||1)}
+function skillPrerequisitesMet(skill){return (skill?.requires||[]).every(learned)}
+function renderSkills(){document.getElementById("skillPointLine").textContent=`Skill points: ${localPlayer.skillPoints}. Choose a school root, then unlock connected upgrades in order.`;const wrap=document.getElementById("skillChoices");wrap.innerHTML="";for(const school of SKILL_SCHOOLS){const skills=Object.values(SKILLS).filter(skill=>skill.id!=="attack"&&skill.school===school.id);if(!skills.length)continue;const section=document.createElement("section");section.className="skillSchool";section.innerHTML=`<h3>${school.icon} ${school.name}</h3><small>${school.desc}</small>`;const branch=document.createElement("div");branch.className="skillBranch";for(const skill of skills){const has=learned(skill.id),cost=skillCost(skill),ready=skillPrerequisitesMet(skill),can=!has&&ready&&localPlayer.skillPoints>=cost,requirements=(skill.requires||[]).map(id=>SKILLS[id]?.name||id),button=document.createElement("button");button.className=`skillChoice ${can?"available":"locked"}`;button.innerHTML=`<b>${skill.icon} ${skill.name}${has?" ✓":""}</b><small>${skill.desc}</small><span class="path">${requirements.length?`← ${requirements.join(" + ")}`:"Path root"}</span><div class="req">${has?"Learned":!ready?`Research ${requirements.join(" + ")} first`:`${cost} skill point${cost===1?"":"s"}`}</div>`;if(can)button.onclick=()=>learnSkill(skill.id);branch.appendChild(button)}section.appendChild(branch);wrap.appendChild(section)}}
+function learnSkill(id){const skill=SKILLS[id];if(!skill||learned(id)||!skillPrerequisitesMet(skill)||localPlayer.skillPoints<skillCost(skill))return;localPlayer.skillPoints-=skillCost(skill);localPlayer.learnedSkills.push(id);queueSave(0);renderSkills();renderActionDock();toast(`${skill.name} researched`,1400)}
 function renderActionDock(){
   if(!localPlayer)return;actionDock.innerHTML='';const move=document.createElement('div');move.id='moveReady';move.innerHTML='<span>MOVE</span><strong>READY</strong>';actionDock.appendChild(move);
   const ids=localPlayer.learnedSkills.filter(id=>SKILLS[id]);ids.forEach((id,index)=>{const s=SKILLS[id],b=document.createElement('button');b.className='actionBtn'+(targetingSkillId===id?' targeting':'');b.dataset.skill=id;b.innerHTML=`<span class="key">${index+1}</span><span class="cooldown"></span><span class="icon">${s.icon}</span><span class="name">${s.name}</span>`;b.onclick=()=>targetingSkillId===id?cancelTargeting():useSkill(id);actionDock.appendChild(b)});
@@ -826,10 +813,12 @@ function isVisibleTile(x,y){return distance({x,y},localPlayer)<=9}
 function revealAround(x,y,r){for(let yy=y-r;yy<=y+r;yy++)for(let xx=x-r;xx<=x+r;xx++)if(inBounds(xx,yy)&&distance({x:xx,y:yy},{x,y})<=r)discovered.add(keyXY(xx,yy))}
 function drawSprite(name,x,y,size=52,emoji='?'){const p=worldToScreen(x,y,12),img=graphic(name),s=size*cam.zoom;if(img&&img.complete&&!missingImages.has(name)&&img.naturalWidth){ctx.drawImage(img,p.x-s/2,p.y-s*.82,s,s);return}ctx.font=`${Math.max(15,s*.62)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(emoji,p.x,p.y-s*.28)}
 function drawHealthBar(entity,maxHp,color='#e85762'){const p=worldToScreen(entity.x,entity.y,52),w=44*cam.zoom,h=5*cam.zoom;ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(p.x-w/2,p.y,w,h);ctx.fillStyle=color;ctx.fillRect(p.x-w/2,p.y,w*clamp(entity.hp/maxHp,0,1),h)}
-function drawDoor(d){if(!isVisibleTile(d.x,d.y)&&!discovered.has(keyXY(d.x,d.y)))return;const locked=d.requiresBoss&&!roomState.bossDefeated;drawSprite(d.type==='blue'?'door_blue':'door_red',d.x,d.y,68,'🚪');const p=worldToScreen(d.x,d.y,70);ctx.fillStyle=locked?'#d17c7c':d.type==='blue'?'#8fd8ff':'#f4a2a2';ctx.font=`bold ${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(locked?'Sealed':d.name,p.x,p.y)}
+function drawHut(h){const cx=h.x+(h.w-1)/2,cy=h.y+(h.h-1)/2;if(!isVisibleTile(Math.round(cx),Math.round(cy)))return;const corners=[worldToScreen(h.x,h.y,58),worldToScreen(h.x+h.w-1,h.y,58),worldToScreen(h.x+h.w-1,h.y+h.h-1,58),worldToScreen(h.x,h.y+h.h-1,58)];ctx.beginPath();ctx.moveTo(corners[0].x,corners[0].y);for(let i=1;i<corners.length;i++)ctx.lineTo(corners[i].x,corners[i].y);ctx.closePath();ctx.fillStyle=h.roof||"#7d5038";ctx.fill();ctx.strokeStyle="rgba(255,220,170,.55)";ctx.lineWidth=2;ctx.stroke();const p=worldToScreen(cx,cy,84);ctx.fillStyle="#ffe2ad";ctx.font=`bold ${Math.max(8,9*cam.zoom)}px sans-serif`;ctx.textAlign="center";ctx.fillText(h.name,p.x,p.y)}
+function drawDoor(d){if(!isVisibleTile(d.x,d.y)&&!discovered.has(keyXY(d.x,d.y)))return;const locked=d.requiresBoss&&!roomState.bossDefeated;drawSprite(d.type==="blue"?"door_blue":"door_red",d.x,d.y,68,"🚪");const p=worldToScreen(d.x,d.y,74),suggestion=d.recommendedLevel?`Suggested Lv ${d.recommendedLevel}${d.difficulty?` · ${d.difficulty}`:""}`:"";ctx.textAlign="center";ctx.font=`bold ${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.fillStyle=locked?"#d17c7c":d.type==="blue"?"#8fd8ff":"#f4a2a2";ctx.fillText(locked?"Sealed":d.name,p.x,p.y);if(suggestion){ctx.font=`bold ${Math.max(8,9*cam.zoom)}px sans-serif`;ctx.fillStyle="#ffe39a";ctx.fillText(suggestion,p.x,p.y+13*cam.zoom)}}
 function drawPlayerSprite(p,isLocal){drawSprite('player_archer',p.x,p.y,60,'🧝');const baseId=isLocal?getItem(localPlayer.equipment?.armor)?.baseId:p.armorBaseId,armor=ARMORS[baseId]||ARMORS.leather_suit,img=graphic(`armor_${baseId}`),sp=worldToScreen(p.x,p.y,13),s=60*cam.zoom;if(img&&img.complete&&img.naturalWidth&&!missingImages.has(`armor_${baseId}`)){ctx.drawImage(img,sp.x-s/2,sp.y-s*.82,s,s);return}ctx.save();ctx.globalAlpha=.72;ctx.fillStyle=armor.armorColor||'#8b765c';ctx.beginPath();ctx.moveTo(sp.x,sp.y-s*.5);ctx.lineTo(sp.x+s*.25,sp.y-s*.08);ctx.lineTo(sp.x+s*.16,sp.y+s*.1);ctx.lineTo(sp.x-s*.16,sp.y+s*.1);ctx.lineTo(sp.x-s*.25,sp.y-s*.08);ctx.closePath();ctx.fill();ctx.strokeStyle='rgba(255,255,255,.65)';ctx.lineWidth=Math.max(1,cam.zoom);ctx.stroke();ctx.restore()}
 function drawActor(actor){
-  if(actor.kind==='wall'){drawWall(actor.data.x,actor.data.y);return}
+  if(actor.kind==="wall"){drawWall(actor.data.x,actor.data.y);return}
+  if(actor.kind==="hut"){drawHut(actor.data);return}
   if(actor.kind==='enemy'){const e=actor.data;if(!isVisibleTile(e.x,e.y))return;const def=ENEMY_TYPES[e.type];const selected=e.id===selectedEnemyId;if(selected)drawDiamond(e.x,e.y,'rgba(255,94,94,.25)','#ff8b86');drawSprite(def.graphic,e.x,e.y,def.boss?82:56,def.boss?'👹':e.type==='slime'?'🟢':e.type==='archer'?'🏹':e.type==='mage'?'🧙':'💀');drawHealthBar(e,e.maxHp);return}
   if(actor.kind==='npc'){const n=actor.data;if(!isVisibleTile(n.x,n.y))return;drawSprite(n.graphic,n.x,n.y,58,n.role==='store'?'🧑‍🏭':'🧙');const sp=worldToScreen(n.x,n.y,64);ctx.fillStyle='#ffe39a';ctx.font=`bold ${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(n.name,sp.x,sp.y);return}
   const p=actor.data;if(p.uid===uid){drawDiamond(p.x,p.y,'rgba(127,230,164,.16)','#7fe6a4');drawPlayerSprite(p,true);drawHealthBar({x:p.x,y:p.y,hp:localPlayer.hp},derivedStats().maxHp,'#7fe6a4')}else{if(!isVisibleTile(p.x,p.y))return;drawPlayerSprite(p,false);drawHealthBar(p,p.maxHp||100,'#72b9ff');const sp=worldToScreen(p.x,p.y,64);ctx.fillStyle='#dff0ff';ctx.font=`${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(p.username||'Adventurer',sp.x,sp.y)}
@@ -843,7 +832,7 @@ function draw(){
   ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#07100d';ctx.fillRect(0,0,cssW,cssH);if(!map||!localPlayer)return;
   const bounds=visibleBounds();for(let y=bounds.y0;y<=bounds.y1;y++)for(let x=bounds.x0;x<=bounds.x1;x++)if(tileAt(x,y)===0)drawFloor(x,y);
   drawTelegraphs(now());for(const d of map.doors)drawDoor(d);
-  const actors=[];for(let y=bounds.y0;y<=bounds.y1;y++)for(let x=bounds.x0;x<=bounds.x1;x++)if(tileAt(x,y)===1&&discovered.has(keyXY(x,y))&&isWallEdge(x,y))actors.push({kind:'wall',data:{x,y},order:x+y-.15});for(const e of roomState.enemies)if(e.hp>0)actors.push({kind:'enemy',data:e,order:e.x+e.y});for(const n of map.npcs||[])actors.push({kind:'npc',data:n,order:n.x+n.y+.1});for(const p of onlinePlayers)actors.push({kind:'player',data:p,order:p.x+p.y+.2});if(!onlinePlayers.some(p=>p.uid===uid))actors.push({kind:'player',data:{...localPlayer,uid,username},order:localPlayer.x+localPlayer.y+.2});actors.sort((a,b)=>a.order-b.order);for(const a of actors)drawActor(a);
+  const actors=[];for(let y=bounds.y0;y<=bounds.y1;y++)for(let x=bounds.x0;x<=bounds.x1;x++)if(tileAt(x,y)===1&&discovered.has(keyXY(x,y))&&isWallEdge(x,y))actors.push({kind:'wall',data:{x,y},order:x+y-.15});for(const e of roomState.enemies)if(e.hp>0)actors.push({kind:'enemy',data:e,order:e.x+e.y});for(const h of map.huts||[])actors.push({kind:"hut",data:h,order:h.x+h.y+h.h+.05});for(const n of map.npcs||[])actors.push({kind:"npc",data:n,order:n.x+n.y+.1});for(const p of onlinePlayers)actors.push({kind:'player',data:p,order:p.x+p.y+.2});if(!onlinePlayers.some(p=>p.uid===uid))actors.push({kind:'player',data:{...localPlayer,uid,username},order:localPlayer.x+localPlayer.y+.2});actors.sort((a,b)=>a.order-b.order);for(const a of actors)drawActor(a);
   drawProjectiles(now());drawEffects(now());
   if(hoverTile&&inBounds(hoverTile.x,hoverTile.y)&&tileAt(hoverTile.x,hoverTile.y)===0)drawDiamond(hoverTile.x,hoverTile.y,targetingSkillId?'rgba(230,191,79,.2)':'rgba(255,255,255,.05)',targetingSkillId?'#e6bf4f':'rgba(255,255,255,.36)');
 }
@@ -871,7 +860,7 @@ function loop(ts){
 
 async function boot(){
   try{
-    resize();input();loadingText.textContent='Signing into the realm…';await ensureAuth();loadingText.textContent='Loading your saved adventurer…';await loadProfile();loadingText.textContent='Opening the shared dungeon room…';revealAround(localPlayer.x,localPlayer.y,9);await connectRoom();renderInventory();renderSkills();renderActionDock();updateHUD();clearInterval(autosaveTimer);autosaveTimer=setInterval(()=>{if(localPlayer)saveProfileNow()},10000);loading.style.display='none';requestAnimationFrame(loop);
+    resize();input();loadingText.textContent="Loading realm graphics…";await preloadGraphics();loadingText.textContent="Signing into the realm…";await ensureAuth();loadingText.textContent='Loading your saved adventurer…';await loadProfile();loadingText.textContent='Opening the shared dungeon room…';revealAround(localPlayer.x,localPlayer.y,9);await connectRoom();renderInventory();renderSkills();renderActionDock();updateHUD();clearInterval(autosaveTimer);autosaveTimer=setInterval(()=>{if(localPlayer)saveProfileNow()},10000);loading.style.display='none';requestAnimationFrame(loop);
   }catch(e){console.error(e);loadingText.textContent=`Could not open the realm: ${e?.message||e}`}
 }
 window.addEventListener('resize',resize);
