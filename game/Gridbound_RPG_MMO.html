@@ -174,8 +174,9 @@ let currentNpc=null;
 const ASSET_ROOT="../graphics/rpggraphics/";
 const ASSET_NAMES=["floor_stone","floor_moss","wall_stone","door_blue","door_red","player_archer","enemy_slime","enemy_skeleton","enemy_archer","enemy_brute","enemy_wraith","enemy_spider","enemy_mage","enemy_boss","projectile_arrow","projectile_magic","loot_bag"];
 const GRAPHIC_ALIASES={enemy_cultist:"enemy_mage",enemy_golem:"enemy_brute",enemy_necromancer:"enemy_mage",enemy_serpent:"enemy_spider",enemy_shade:"enemy_wraith",enemy_bombardier:"enemy_archer",boss_gate_warden:"enemy_boss",boss_abyss_hydra:"enemy_boss",boss_storm_titan:"enemy_boss",boss_bone_sovereign:"enemy_boss"};
+const GRAPHIC_FALLBACK_ONLY=new Set(["npc_quest","npc_merchant","npc_arcanist","armor_leather_suit","armor_chain_suit","armor_plate_suit","armor_mystic_suit","armor_shadow_suit","armor_blood_suit","armor_storm_suit","armor_grove_suit","armor_void_suit"]);
 const images=new Map(),missingImages=new Set();
-function graphic(name){if(!name)return null;const resolved=GRAPHIC_ALIASES[name]||name;if(images.has(resolved))return images.get(resolved);const img=new Image();img.decoding="async";img.src=`${ASSET_ROOT}${resolved}.png`;img.onerror=()=>missingImages.add(resolved);images.set(resolved,img);return img}
+function graphic(name){if(!name||GRAPHIC_FALLBACK_ONLY.has(name))return null;const resolved=GRAPHIC_ALIASES[name]||name;if(images.has(resolved))return images.get(resolved);const img=new Image();img.decoding="async";img.src=`${ASSET_ROOT}${resolved}.png`;img.onerror=()=>missingImages.add(resolved);images.set(resolved,img);return img}
 async function preloadGraphics(){let finished=0;await Promise.all(ASSET_NAMES.map(name=>new Promise(resolve=>{const img=new Image();img.decoding="async";const done=()=>{finished++;loadingText.textContent=`Loading realm graphics… ${finished} / ${ASSET_NAMES.length}`;resolve()};img.onload=done;img.onerror=()=>{missingImages.add(name);done()};img.src=`${ASSET_ROOT}${name}.png`;images.set(name,img)})))}
 
 const WEAPONS={
