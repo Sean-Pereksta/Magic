@@ -41,6 +41,7 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;background:
 .equipSlot{min-height:78px;margin-bottom:9px;padding:10px;border:1px dashed rgba(255,255,255,.24);border-radius:13px;background:rgba(0,0,0,.2);cursor:pointer}.equipSlot b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#bcd0c3;margin-bottom:4px}.equipSlot span{font-size:12px;font-weight:900}
 #inventoryGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:8px}.itemCard{min-height:116px;padding:9px;border:1px solid rgba(255,255,255,.16);border-radius:13px;background:rgba(7,14,11,.76);cursor:pointer;text-align:left;color:#fff}.itemCard.equipped{border-color:#7fe6a4}.itemCard .rarity{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#f0cf70}.itemCard b{display:block;margin:3px 0 5px;font-size:12px}.itemCard small{display:block;color:#b8c7bd;font-size:10px;line-height:1.3}.itemActions{display:flex;gap:6px;margin-top:8px}.itemActions button{flex:1;border:1px solid rgba(255,255,255,.16);border-radius:9px;background:rgba(255,255,255,.08);color:#fff;padding:6px;font-size:9px;font-weight:1000;cursor:pointer}
 #skillChoices{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.skillChoice{padding:13px;border:1px solid rgba(255,255,255,.17);border-radius:15px;background:rgba(255,255,255,.06);color:#fff;text-align:left;cursor:pointer}.skillChoice.available:hover{border-color:#7fe6a4;background:rgba(127,230,164,.1)}.skillChoice.locked{opacity:.48}.skillChoice b{display:block;font-size:15px;margin-bottom:5px}.skillChoice small{display:block;color:#b9c9bf;line-height:1.35}.skillChoice .req{margin-top:8px;color:#f0cf70;font-size:10px;font-weight:1000}
+#interactionGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.interactionCard{padding:13px;border:1px solid rgba(255,255,255,.17);border-radius:15px;background:rgba(255,255,255,.055);color:#fff;text-align:left}.interactionCard b{display:block;margin-bottom:6px}.interactionCard small{display:block;color:#b9c9bf;line-height:1.4}.interactionCard button{width:100%;margin-top:10px;padding:9px;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:#315c45;color:#fff;font-weight:900;cursor:pointer}.interactionCard button:disabled{opacity:.45;cursor:not-allowed}.specialty{margin-top:7px;color:#f1d477!important}.targeting{border-color:#e6bf4f!important;box-shadow:0 0 18px rgba(230,191,79,.3)!important}
 #doorChoices{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.doorChoice{min-height:130px;border:1px solid rgba(255,255,255,.18);border-radius:17px;background:rgba(255,255,255,.06);color:#fff;padding:15px;text-align:left;cursor:pointer}.doorChoice b{display:block;font-size:18px;margin-bottom:6px}.doorChoice small{color:#b9c9bf;line-height:1.4}.doorChoice:hover{border-color:#e6bf4f;background:rgba(230,191,79,.1)}
 #deathModal .modalCard{text-align:center;max-width:480px}#deathModal h2{font-size:34px;margin:0 0 8px}#respawnBtn{border:0;border-radius:14px;background:#e6bf4f;color:#1b1608;padding:12px 18px;font-weight:1000;cursor:pointer}
 #loading{position:fixed;z-index:120;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 35%,#173126,#07100d 68%)}#loadingCard{width:min(520px,calc(100vw - 28px));padding:23px;border:1px solid rgba(255,255,255,.18);border-radius:22px;background:rgba(7,15,12,.93);text-align:center;box-shadow:0 30px 100px rgba(0,0,0,.6)}#loadingCard h1{margin:0 0 7px;font-size:34px}#loadingText{color:#b9c9bf;font-size:12px;line-height:1.45}.loadTrack{height:9px;margin-top:14px;border-radius:999px;background:rgba(255,255,255,.09);overflow:hidden}.loadTrack div{height:100%;width:15%;background:#7fe6a4;animation:load 1.2s ease-in-out infinite alternate}@keyframes load{to{width:90%}}
@@ -59,8 +60,9 @@ canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;background:
 <div id="toast"></div>
 <div id="inventoryModal" class="modal"><div class="modalCard"><div class="modalHeader"><h2>Inventory & Equipment</h2><button class="closeBtn" data-close="inventoryModal">×</button></div><div id="inventoryLayout"><section class="panel"><h3>Equipped</h3><div id="equipmentSlots"></div><div id="statSummary"></div></section><section class="panel"><h3>Inventory</h3><div id="inventoryGrid"></div></section></div></div></div>
 <div id="skillsModal" class="modal"><div class="modalCard"><div class="modalHeader"><h2>Learn Skills</h2><button class="closeBtn" data-close="skillsModal">×</button></div><p id="skillPointLine"></p><div id="skillChoices"></div></div></div>
+<div id="interactionModal" class="modal"><div class="modalCard"><div class="modalHeader"><h2 id="interactionTitle">Town Services</h2><button class="closeBtn" data-close="interactionModal">×</button></div><p id="interactionLead"></p><div id="interactionGrid"></div></div></div>
 <div id="doorModal" class="modal"><div class="modalCard"><div class="modalHeader"><h2>Choose the Next Passage</h2><button class="closeBtn" data-close="doorModal">×</button></div><div id="doorChoices"></div></div></div>
-<div id="deathModal" class="modal"><div class="modalCard"><h2>Fallen</h2><p>Your adventurer will return to the dungeon entrance. A little gold was lost, but all equipment and experience remain.</p><button id="respawnBtn">Return to Entrance</button></div></div>
+<div id="deathModal" class="modal"><div class="modalCard"><h2>Fallen</h2><p>Your adventurer will return to the nearest safe town. A little gold is lost, but equipment, quests, spells, and experience remain.</p><button id="respawnBtn">Return to Safety</button></div></div>
 <div id="loading"><div id="loadingCard"><h1>Gridbound Realms</h1><div id="loadingText">Connecting your adventurer to the shared realm…</div><div class="loadTrack"><div></div></div></div></div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -103,6 +105,7 @@ const onlineLine = document.getElementById('onlineLine');
 const toastEl = document.getElementById('toast');
 const inventoryModal = document.getElementById('inventoryModal');
 const skillsModal = document.getElementById('skillsModal');
+const interactionModal = document.getElementById('interactionModal');
 const doorModal = document.getElementById('doorModal');
 const deathModal = document.getElementById('deathModal');
 
@@ -112,13 +115,15 @@ const WALL_H = 38;
 const PLAYER_STALE_MS = 15000;
 const HEARTBEAT_MS = 3500;
 const PLAYER_SYNC_MS = 180;
-const CONTROLLER_TICK_MS = 450;
-const ROOM_STATE_WRITE_MS = 320;
+const CONTROLLER_TICK_MS = 220;
+const ROOM_STATE_WRITE_MS = 240;
 const MAX_ROOM_ENEMIES = 30;
-const MAX_INVENTORY = 70;
-const BASIC_MOVE_COOLDOWN = 250;
-const MANA_REGEN_PER_SECOND = 2.1;
-const HP_REGEN_PER_SECOND = .18;
+const MAX_INVENTORY = 100;
+const BASIC_MOVE_COOLDOWN = 540;
+const MANA_REGEN_PER_SECOND = .72;
+const HP_REGEN_PER_SECOND = .055;
+const TOWN_HP_REGEN_PER_SECOND = 11;
+const TOWN_MANA_REGEN_PER_SECOND = 14;
 const MAX_PATH_LENGTH = 240;
 const BASE_DROP_CHANCE = .38;
 
@@ -134,16 +139,18 @@ let rewardsCol=null;
 let eventsCol=null;
 let roomUnsub=null, playersUnsub=null, commandsUnsub=null, rewardsUnsub=null, eventsUnsub=null;
 let heartbeatTimer=null, controllerTimer=null, saveTimer=null;
-let currentRoomId='depth-0-root';
+let currentRoomId='town-havenfall';
 let currentDepth=0;
 let map=null;
-let roomState={version:0,enemies:[],bossDefeated:false,updatedAtMs:0};
+let roomState={version:0,enemies:[],telegraphs:[],bossDefeated:false,updatedAtMs:0};
 let onlinePlayers=[];
 let isController=false;
 let processedCommands=new Set();
 let localPlayer=null;
 let movementPath=[];
 let selectedEnemyId='';
+let targetingSkillId='';
+let autoAttackPending=false;
 let hoverTile=null;
 let mouse={x:0,y:0};
 let lastFrame=performance.now();
@@ -162,6 +169,7 @@ let floaters=[];
 let projectiles=[];
 let discovered=new Set();
 let audioUnlocked=false;
+let currentNpc=null;
 
 const images=new Map();
 const missingImages=new Set();
@@ -170,7 +178,7 @@ function graphic(name){
   if(images.has(name)) return images.get(name);
   const img=new Image();
   img.decoding='async';
-  img.src=`rpggraphics/${name}.png`;
+  img.src=`graphics/rpggraphics/${name}.png`;
   img.onerror=()=>missingImages.add(name);
   images.set(name,img);
   return img;
@@ -178,24 +186,34 @@ function graphic(name){
 [
   'floor_stone','floor_moss','wall_stone','door_blue','door_red','player_archer',
   'enemy_slime','enemy_skeleton','enemy_archer','enemy_brute','enemy_wraith','enemy_spider','enemy_mage','enemy_boss',
+  'enemy_cultist','enemy_golem','enemy_necromancer','enemy_serpent','enemy_shade','enemy_bombardier',
+  'boss_gate_warden','boss_abyss_hydra','boss_storm_titan','boss_bone_sovereign','npc_quest','npc_merchant','npc_arcanist',
+  'armor_leather_suit','armor_chain_suit','armor_plate_suit','armor_mystic_suit','armor_shadow_suit','armor_blood_suit','armor_storm_suit','armor_grove_suit','armor_void_suit',
   'projectile_arrow','projectile_magic','loot_bag'
 ].forEach(graphic);
 
 const WEAPONS={
-  basic_bow:{name:'Basic Bow',kind:'weapon',weaponType:'bow',range:5,cooldown:900,attack:6,effect:'none',icon:'🏹'},
-  hunting_bow:{name:'Hunting Bow',kind:'weapon',weaponType:'bow',range:6,cooldown:820,attack:9,effect:'bleed',icon:'🏹'},
-  longbow:{name:'Longbow',kind:'weapon',weaponType:'bow',range:8,cooldown:1180,attack:14,effect:'pierce',icon:'🏹'},
-  crossbow:{name:'Crossbow',kind:'weapon',weaponType:'crossbow',range:7,cooldown:1450,attack:20,effect:'stagger',icon:'➶'},
-  ember_staff:{name:'Ember Staff',kind:'weapon',weaponType:'staff',range:6,cooldown:1050,attack:13,effect:'burn',icon:'🔥'},
-  frost_wand:{name:'Frost Wand',kind:'weapon',weaponType:'wand',range:6,cooldown:960,attack:11,effect:'slow',icon:'❄️'},
-  war_spear:{name:'War Spear',kind:'weapon',weaponType:'spear',range:2,cooldown:650,attack:16,effect:'cleave',icon:'🔱'}
+  basic_bow:{name:'Basic Bow',kind:'weapon',weaponType:'bow',range:5,cooldown:1450,attack:6,effect:'none',icon:'🏹',specialty:'Reliable ranged attacks.'},
+  hunting_bow:{name:'Hunting Bow',kind:'weapon',weaponType:'bow',range:6,cooldown:1350,attack:10,effect:'bleed',icon:'🏹',specialty:'Bleeds living targets.'},
+  longbow:{name:'Longbow',kind:'weapon',weaponType:'bow',range:8,cooldown:1850,attack:16,effect:'pierce',icon:'🏹',specialty:'Pierces a second enemy in line.'},
+  crossbow:{name:'Siegebreaker Crossbow',kind:'weapon',weaponType:'crossbow',range:7,cooldown:2300,attack:24,effect:'stagger',icon:'➶',specialty:'Heavy bolts interrupt enemy movement.'},
+  ember_staff:{name:'Ember Staff',kind:'weapon',weaponType:'staff',range:6,cooldown:1750,attack:15,spellPower:.14,effect:'burn',icon:'🔥',specialty:'Empowers fire spells and burns on hit.'},
+  frost_wand:{name:'Frost Wand',kind:'weapon',weaponType:'wand',range:6,cooldown:1550,attack:12,spellPower:.1,effect:'slow',icon:'❄️',specialty:'Slows enemies and empowers frost spells.'},
+  war_spear:{name:'War Spear',kind:'weapon',weaponType:'spear',range:2,cooldown:1150,attack:19,effect:'cleave',icon:'🔱',specialty:'Cleave strikes enemies beside the target.'},
+  blood_blade:{name:'Bloodbound Blade',kind:'weapon',weaponType:'blade',range:1,cooldown:1050,attack:21,lifeSteal:.06,effect:'bleed',icon:'🗡️',specialty:'Fast attacks return a portion of damage as life.'},
+  storm_scepter:{name:'Storm Scepter',kind:'weapon',weaponType:'staff',range:7,cooldown:1950,attack:18,spellPower:.18,effect:'shock',icon:'⚡',specialty:'Shock arcs are stronger and travel farther.'},
+  plague_launcher:{name:'Plague Launcher',kind:'weapon',weaponType:'crossbow',range:7,cooldown:2150,attack:22,effect:'poison',icon:'☣️',specialty:'Poison splashes around the impact.'}
 };
 const ARMORS={
-  leather_suit:{name:'Leather Ranger Suit',kind:'armor',maxHp:14,armor:1,moveMult:.96,icon:'🥋'},
-  chain_suit:{name:'Chainmail Battle Suit',kind:'armor',maxHp:25,armor:3,moveMult:1.08,icon:'🛡️'},
-  plate_suit:{name:'Full Plate Suit',kind:'armor',maxHp:42,armor:6,moveMult:1.18,icon:'🛡️'},
-  mystic_suit:{name:'Mystic Weave Suit',kind:'armor',maxHp:18,maxMana:28,armor:2,moveMult:1.0,icon:'🧥'},
-  shadow_suit:{name:'Shadowstalker Suit',kind:'armor',maxHp:20,armor:2,crit:.07,moveMult:.88,icon:'🥷'}
+  leather_suit:{name:'Leather Ranger Suit',kind:'armor',maxHp:16,armor:1,moveMult:.94,crit:.02,armorColor:'#7b5638',icon:'🥋',specialty:'Trailrunner — movement recovers 6% faster.'},
+  chain_suit:{name:'Chainmail Battle Suit',kind:'armor',maxHp:28,armor:4,moveMult:1.08,armorColor:'#9aa3a7',icon:'🛡️',specialty:'Linked defense — strong armor without the full weight of plate.'},
+  plate_suit:{name:'Bulwark Plate Suit',kind:'armor',maxHp:48,armor:7,moveMult:1.2,damageReduction:.04,armorColor:'#d6c485',icon:'🛡️',specialty:'Bulwark — reduces all incoming damage by 4%.'},
+  mystic_suit:{name:'Mystic Weave Suit',kind:'armor',maxHp:18,maxMana:34,armor:2,manaRegen:1.1,spellPower:.12,armorColor:'#6f7ee8',icon:'🧥',specialty:'Manawoven — stronger spells and faster mana recovery.'},
+  shadow_suit:{name:'Shadowstalker Suit',kind:'armor',maxHp:21,armor:2,crit:.09,moveMult:.9,dodge:.05,armorColor:'#6d4a87',icon:'🥷',specialty:'Veilstep — 5% chance to evade a telegraphed hit.'},
+  blood_suit:{name:'Crimson Covenant Suit',kind:'armor',maxHp:36,armor:3,lifeSteal:.07,hpRegen:.18,armorColor:'#a42f42',icon:'🩸',specialty:'Blood pact — attacks leech life but mana regenerates slowly.'},
+  storm_suit:{name:'Stormglass Regalia',kind:'armor',maxHp:24,maxMana:25,armor:3,cooldownMult:.93,spellPower:.16,armorColor:'#42b8dc',icon:'⚡',specialty:'Stormcharge — spell cooldowns recover 7% faster.'},
+  grove_suit:{name:'Living Grove Plate',kind:'armor',maxHp:42,armor:5,hpRegen:.8,moveMult:1.1,armorColor:'#4d9a5b',icon:'🌿',specialty:'Living bark — strong health regeneration outside combat.'},
+  void_suit:{name:'Voidwalker Mantle',kind:'armor',maxHp:26,maxMana:40,armor:3,spellPower:.22,manaCostMult:.9,armorColor:'#7b4bb2',icon:'🌌',specialty:'Void channel — spells cost 10% less mana.'}
 };
 const CHARMS={
   oak_charm:{name:'Oakheart Charm',kind:'charm',maxHp:12,hpRegen:.35,icon:'🌿'},
@@ -203,32 +221,78 @@ const CHARMS={
   hunter_charm:{name:'Hunter’s Mark Charm',kind:'charm',crit:.06,dropChance:.08,icon:'🧿'},
   ward_charm:{name:'Warding Charm',kind:'charm',armor:2,icon:'🔰'}
 };
+const SPELLBOOKS={
+  novice_grimoire:{name:'Novice Grimoire',kind:'spellbook',maxMana:14,spellPower:.06,manaRegen:.25,icon:'📘',specialty:'A balanced introduction to spellcraft.'},
+  ember_codex:{name:'Codex of Cinders',kind:'spellbook',maxMana:22,spellPower:.12,firePower:.28,icon:'📕',specialty:'Fire spells deal 28% more damage.'},
+  winter_tome:{name:'Tome of the Still Moon',kind:'spellbook',maxMana:26,frostPower:.3,manaRegen:.45,icon:'📘',specialty:'Frost spells last longer and deal 30% more damage.'},
+  storm_ledger:{name:'Stormcaller Ledger',kind:'spellbook',maxMana:20,shockPower:.3,cooldownMult:.94,icon:'📙',specialty:'Lightning spells chain harder and recover faster.'},
+  sanguine_book:{name:'Sanguine Testament',kind:'spellbook',maxHp:18,lifePower:.32,hpRegen:.24,icon:'📕',specialty:'Life spells heal and drain 32% more.'},
+  void_atlas:{name:'Atlas of Empty Roads',kind:'spellbook',maxMana:38,spellPower:.2,manaCostMult:.86,icon:'📓',specialty:'All spells cost 14% less mana.'}
+};
+const CONSUMABLES={
+  health_potion:{name:'Health Potion',kind:'consumable',heal:45,icon:'🧪',specialty:'Restores 45 health.'},
+  greater_health_potion:{name:'Greater Health Potion',kind:'consumable',heal:95,icon:'❤️‍🔥',specialty:'Restores 95 health.'},
+  mana_potion:{name:'Mana Potion',kind:'consumable',restoreMana:55,icon:'🔷',specialty:'Restores 55 mana.'}
+};
 const PREFIXES=[
-  {id:'fierce',name:'Fierce',attack:4},{id:'swift',name:'Swift',cooldownMult:.90},{id:'vital',name:'Vital',maxHp:18},
-  {id:'arcane',name:'Arcane',maxMana:20},{id:'hunters',name:'Hunter’s',crit:.06},{id:'guardian',name:'Guardian',armor:3}
+  {id:'fierce',name:'Fierce',attack:4},{id:'swift',name:'Swift',cooldownMult:.92},{id:'vital',name:'Vital',maxHp:18},
+  {id:'arcane',name:'Arcane',maxMana:20,spellPower:.06},{id:'hunters',name:'Hunter’s',crit:.06},{id:'guardian',name:'Guardian',armor:3},
+  {id:'renewing',name:'Renewing',hpRegen:.35},{id:'channelers',name:'Channeler’s',manaRegen:.65},{id:'hexed',name:'Hexed',spellPower:.14,maxHp:-8},
+  {id:'vampiric',name:'Vampiric',lifeSteal:.05},{id:'fleet',name:'Fleet',moveMult:.93},{id:'unyielding',name:'Unyielding',damageReduction:.035}
 ];
 const SUFFIXES=[
   {id:'embers',name:'of Embers',onHit:'burn'},{id:'frost',name:'of Frost',onHit:'slow'},{id:'leeching',name:'of Leeching',lifeSteal:.08},
-  {id:'giants',name:'of Giants',attack:6},{id:'wind',name:'of the Wind',moveMult:.90},{id:'fortune',name:'of Fortune',dropChance:.12}
+  {id:'giants',name:'of Giants',attack:6},{id:'wind',name:'of the Wind',moveMult:.92},{id:'fortune',name:'of Fortune',dropChance:.12},
+  {id:'storms',name:'of Storms',onHit:'shock',shockPower:.14},{id:'venom',name:'of Venom',onHit:'poison'},{id:'warding',name:'of Warding',armor:3},
+  {id:'wellspring',name:'of the Wellspring',maxMana:24,manaRegen:.5},{id:'renewal',name:'of Renewal',maxHp:22,hpRegen:.3},{id:'focus',name:'of Focus',spellPower:.12}
 ];
 const SKILLS={
-  attack:{id:'attack',name:'Attack',icon:'🏹',level:1,mana:0,cooldownMult:1,desc:'Fire your equipped weapon.'},
-  power_shot:{id:'power_shot',name:'Power Shot',icon:'💥',level:2,mana:8,cooldown:4200,desc:'A heavy shot dealing 180% weapon damage and staggering the target.'},
-  volley:{id:'volley',name:'Volley',icon:'🌧️',level:4,mana:14,cooldown:7000,desc:'Strike up to four enemies near your target.'},
-  dash:{id:'dash',name:'Dash',icon:'💨',level:6,mana:10,cooldown:6200,desc:'Rush up to four open tiles toward the selected destination.'},
-  mend:{id:'mend',name:'Mend',icon:'✨',level:8,mana:18,cooldown:9000,desc:'Restore 30% of your maximum health.'},
-  piercing_rain:{id:'piercing_rain',name:'Piercing Rain',icon:'⚡',level:11,mana:24,cooldown:12000,desc:'Damage every enemy in a long line.'}
+  attack:{id:'attack',name:'Attack',icon:'🏹',level:1,mana:0,targetMode:'enemy',school:'weapon',desc:'Tap an enemy to keep firing whenever the weapon is ready.'},
+  power_shot:{id:'power_shot',name:'Power Shot',icon:'💥',level:2,mana:10,cooldown:5800,targetMode:'enemy',school:'weapon',damageMult:1.8,desc:'A heavy shot dealing 180% weapon damage and staggering the target.'},
+  arc_bolt:{id:'arc_bolt',name:'Arc Bolt',icon:'🔹',level:3,mana:9,cooldown:2800,targetMode:'enemy',school:'arcane',range:7,damageMult:1.25,desc:'A quick arcane bolt with a short cooldown.'},
+  volley:{id:'volley',name:'Volley',icon:'🌧️',level:4,mana:16,cooldown:8800,targetMode:'enemy',school:'weapon',damageMult:.86,desc:'Strike up to four enemies near your target.'},
+  firestorm:{id:'firestorm',name:'Firestorm',icon:'🔥',level:5,mana:24,cooldown:10500,targetMode:'spot',school:'fire',range:7,radius:2,damageMult:1.55,effect:'burn',desc:'Select a square; after a warning, fire scorches the surrounding area.'},
+  dash:{id:'dash',name:'Dash',icon:'💨',level:6,mana:12,cooldown:7600,targetMode:'spot',school:'movement',range:4,desc:'Select a square to rush up to four open tiles.'},
+  frost_nova:{id:'frost_nova',name:'Frost Nova',icon:'❄️',level:7,mana:22,cooldown:11500,targetMode:'self',school:'frost',radius:3,damageMult:.9,effect:'slow',desc:'Freeze and slow every enemy near you.'},
+  mend:{id:'mend',name:'Mend',icon:'✨',level:8,mana:20,cooldown:10800,targetMode:'self',school:'life',desc:'Restore 30% of maximum health.'},
+  chain_lightning:{id:'chain_lightning',name:'Chain Lightning',icon:'⚡',level:9,mana:27,cooldown:9800,targetMode:'enemy',school:'shock',range:7,damageMult:1.2,maxTargets:5,effect:'shock',desc:'Lightning leaps through up to five nearby enemies.'},
+  healing_circle:{id:'healing_circle',name:'Healing Circle',icon:'🌟',level:10,mana:30,cooldown:14500,targetMode:'spot',school:'life',range:6,noDamage:true,desc:'Select a square to create a restoring circle.'},
+  piercing_rain:{id:'piercing_rain',name:'Piercing Rain',icon:'☄️',level:11,mana:28,cooldown:14500,targetMode:'enemy',school:'weapon',damageMult:1.25,desc:'Damage every enemy in a long line.'},
+  blink:{id:'blink',name:'Void Blink',icon:'🌌',level:12,mana:18,cooldown:9000,targetMode:'spot',school:'arcane',range:7,desc:'Select an open square and teleport there.'},
+  meteor:{id:'meteor',name:'Meteor',icon:'☄️',level:14,mana:42,cooldown:19000,targetMode:'spot',school:'fire',range:9,radius:2,damageMult:2.5,effect:'burn',desc:'Select a square for a devastating delayed impact.'},
+  soul_siphon:{id:'soul_siphon',name:'Soul Siphon',icon:'🩸',level:16,mana:32,cooldown:12000,targetMode:'enemy',school:'life',damageMult:1.45,lifeSteal:.55,desc:'Drain a target and return much of the damage as health.'}
 };
 const ENEMY_TYPES={
-  slime:{name:'Mire Slime',graphic:'enemy_slime',hp:22,attack:4,armor:0,range:1,moveCd:850,attackCd:1200,aggro:6,xp:14,drop:.22},
-  spider:{name:'Crypt Spider',graphic:'enemy_spider',hp:28,attack:6,armor:0,range:1,moveCd:520,attackCd:950,aggro:8,xp:19,drop:.28,effect:'slow'},
-  skeleton:{name:'Skeleton Guard',graphic:'enemy_skeleton',hp:42,attack:8,armor:2,range:1,moveCd:760,attackCd:1150,aggro:8,xp:27,drop:.34},
-  archer:{name:'Hollow Archer',graphic:'enemy_archer',hp:34,attack:7,armor:1,range:5,moveCd:900,attackCd:1450,aggro:10,xp:31,drop:.38},
-  brute:{name:'Grave Brute',graphic:'enemy_brute',hp:78,attack:13,armor:4,range:1,moveCd:1100,attackCd:1550,aggro:7,xp:52,drop:.48},
-  wraith:{name:'Ash Wraith',graphic:'enemy_wraith',hp:50,attack:11,armor:1,range:2,moveCd:650,attackCd:1100,aggro:9,xp:46,drop:.44,effect:'manaBurn'},
-  mage:{name:'Ruin Mage',graphic:'enemy_mage',hp:46,attack:12,armor:1,range:6,moveCd:1000,attackCd:1750,aggro:11,xp:58,drop:.5,effect:'burn'},
-  boss:{name:'The Gate Warden',graphic:'enemy_boss',hp:320,attack:18,armor:6,range:2,moveCd:900,attackCd:1350,aggro:14,xp:260,drop:1,boss:true}
+  slime:{name:'Mire Slime',graphic:'enemy_slime',hp:24,attack:5,armor:0,range:1,moveCd:1450,attackCd:2600,warning:850,pattern:'single',aggro:6,xp:14,drop:.22},
+  spider:{name:'Crypt Spider',graphic:'enemy_spider',hp:30,attack:7,armor:0,range:2,moveCd:1050,attackCd:2450,warning:900,pattern:'cross',aggro:8,xp:19,drop:.28,effect:'slow'},
+  skeleton:{name:'Skeleton Guard',graphic:'enemy_skeleton',hp:44,attack:9,armor:2,range:1,moveCd:1350,attackCd:2800,warning:950,pattern:'cleave',aggro:8,xp:27,drop:.34},
+  archer:{name:'Hollow Archer',graphic:'enemy_archer',hp:36,attack:8,armor:1,range:6,moveCd:1650,attackCd:3200,warning:1200,pattern:'line',aggro:11,xp:31,drop:.38},
+  brute:{name:'Grave Brute',graphic:'enemy_brute',hp:82,attack:15,armor:4,range:2,moveCd:1900,attackCd:3800,warning:1450,pattern:'quake',aggro:8,xp:52,drop:.48},
+  wraith:{name:'Ash Wraith',graphic:'enemy_wraith',hp:53,attack:12,armor:1,range:3,moveCd:1250,attackCd:3100,warning:1100,pattern:'cross',aggro:10,xp:46,drop:.44,effect:'manaBurn'},
+  mage:{name:'Ruin Mage',graphic:'enemy_mage',hp:49,attack:14,armor:1,range:7,moveCd:1800,attackCd:3900,warning:1500,pattern:'burst',aggro:12,xp:58,drop:.5,effect:'burn'},
+  cultist:{name:'Blood Cultist',graphic:'enemy_cultist',hp:58,attack:13,armor:2,range:4,moveCd:1500,attackCd:3400,warning:1250,pattern:'cross',aggro:10,xp:63,drop:.5,effect:'bleed'},
+  golem:{name:'Runestone Golem',graphic:'enemy_golem',hp:120,attack:18,armor:7,range:2,moveCd:2300,attackCd:4300,warning:1650,pattern:'quake',aggro:8,xp:88,drop:.62,effect:'stagger'},
+  necromancer:{name:'Bone Necromancer',graphic:'enemy_necromancer',hp:72,attack:17,armor:2,range:7,moveCd:1900,attackCd:4400,warning:1700,pattern:'ring',aggro:13,xp:96,drop:.65,effect:'manaBurn'},
+  serpent:{name:'Venomcoil Serpent',graphic:'enemy_serpent',hp:66,attack:14,armor:2,range:3,moveCd:1100,attackCd:3000,warning:1050,pattern:'line',aggro:11,xp:72,drop:.54,effect:'poison'},
+  shade:{name:'Hunger Shade',graphic:'enemy_shade',hp:61,attack:16,armor:1,range:3,moveCd:950,attackCd:3250,warning:950,pattern:'burst',aggro:12,xp:78,drop:.58,effect:'manaBurn'},
+  bombardier:{name:'Plague Bombardier',graphic:'enemy_bombardier',hp:75,attack:19,armor:3,range:8,moveCd:2050,attackCd:4700,warning:1900,pattern:'quake',aggro:14,xp:105,drop:.7,effect:'poison'},
+  boss:{name:'The Gate Warden',graphic:'boss_gate_warden',hp:340,attack:20,armor:6,range:5,moveCd:1550,attackCd:3900,warning:1500,pattern:'boss',aggro:16,xp:260,drop:1,boss:true},
+  abyss_hydra:{name:'Abyss Hydra',graphic:'boss_abyss_hydra',hp:480,attack:23,armor:5,range:7,moveCd:1700,attackCd:4300,warning:1750,pattern:'boss',aggro:17,xp:390,drop:1,boss:true,effect:'poison'},
+  storm_titan:{name:'Storm Titan',graphic:'boss_storm_titan',hp:620,attack:27,armor:9,range:7,moveCd:2100,attackCd:4600,warning:1850,pattern:'boss',aggro:18,xp:530,drop:1,boss:true,effect:'shock'},
+  bone_sovereign:{name:'Bone Sovereign',graphic:'boss_bone_sovereign',hp:760,attack:31,armor:11,range:8,moveCd:1950,attackCd:4900,warning:2000,pattern:'boss',aggro:19,xp:720,drop:1,boss:true,effect:'manaBurn'}
 };
+const QUESTS={
+  slime_cull:{id:'slime_cull',name:'Mire Underfoot',giver:'Captain Elian',target:'slime',count:6,gold:70,desc:'Defeat 6 Mire Slimes.'},
+  broken_bones:{id:'broken_bones',name:'Rest for the Restless',giver:'Sister Vale',target:'skeleton',count:8,gold:130,desc:'Defeat 8 Skeleton Guards.'},
+  venom_hunt:{id:'venom_hunt',name:'Venom Sample',giver:'Arcanist Ilya',target:'serpent',count:5,gold:210,desc:'Defeat 5 Venomcoil Serpents.'},
+  mage_silence:{id:'mage_silence',name:'Silence the Ruins',giver:'Captain Elian',target:'mage',count:6,gold:260,desc:'Defeat 6 Ruin Mages.'},
+  sovereign_fall:{id:'sovereign_fall',name:'A Crown of Dust',giver:'Sister Vale',target:'bone_sovereign',count:1,gold:900,desc:'Defeat the Bone Sovereign.'}
+};
+const STORE_CATALOG=[
+  {baseId:'health_potion',kind:'consumable',price:18},{baseId:'greater_health_potion',kind:'consumable',price:44},{baseId:'mana_potion',kind:'consumable',price:22},
+  {baseId:'hunting_bow',kind:'weapon',price:95},{baseId:'war_spear',kind:'weapon',price:110},{baseId:'mystic_suit',kind:'armor',price:155},
+  {baseId:'novice_grimoire',kind:'spellbook',price:80},{baseId:'ember_codex',kind:'spellbook',price:230},{baseId:'winter_tome',kind:'spellbook',price:230}
+];
 
 function safeId(v){return String(v||'').trim().toLowerCase().replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'default'}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
@@ -253,47 +317,69 @@ function tileAt(x,y){return inBounds(x,y)?map.tiles[y][x]:1}
 function walkable(x,y){return inBounds(x,y)&&tileAt(x,y)===0&&!enemyAt(x,y)&&!remotePlayerAt(x,y)}
 function enemyAt(x,y){return roomState.enemies.find(e=>e.hp>0&&e.x===x&&e.y===y)||null}
 function remotePlayerAt(x,y){return onlinePlayers.find(p=>p.uid!==uid&&p.hp>0&&p.x===x&&p.y===y)||null}
+function isSafeRoomId(roomId=currentRoomId){return String(roomId||'').startsWith('town-')}
+function safeTownForDepth(depth=0){const tier=Math.max(0,Math.floor(Number(depth||0)/4));return tier?`town-waystone-${tier}`:'town-havenfall'}
 function defaultProfile(){
   const starter={id:'starter-bow',baseId:'basic_bow',kind:'weapon',rarity:'Common',prefix:null,suffix:null,level:1};
   const suit={id:'starter-suit',baseId:'leather_suit',kind:'armor',rarity:'Common',prefix:null,suffix:null,level:1};
   return {
     version:1,username,level:1,xp:0,gold:0,hp:80,mana:45,baseMaxHp:80,baseMaxMana:45,
-    roomId:'depth-0-root',depth:0,x:3,y:0,inventory:[starter,suit],equipment:{weapon:starter.id,armor:suit.id,charm:null},
-    learnedSkills:['attack'],skillPoints:0,skillCooldowns:{},moveReadyAt:0,statusEffects:{},createdAtMs:now(),updatedAtMs:now()
+    roomId:'town-havenfall',lastSafeRoomId:'town-havenfall',depth:0,x:6,y:14,inventory:[starter,suit],equipment:{weapon:starter.id,armor:suit.id,charm:null,spellbook:null},
+    learnedSkills:['attack'],skillPoints:0,skillCooldowns:{},moveReadyAt:0,statusEffects:{},quests:{},lastCombatAtMs:0,createdAtMs:now(),updatedAtMs:now()
   };
 }
 function normalizeProfile(raw){
   const p={...defaultProfile(),...(raw||{})};
   p.inventory=Array.isArray(p.inventory)?p.inventory.slice(0,MAX_INVENTORY):defaultProfile().inventory;
-  p.equipment={weapon:null,armor:null,charm:null,...(p.equipment||{})};
+  p.equipment={weapon:null,armor:null,charm:null,spellbook:null,...(p.equipment||{})};
   p.learnedSkills=Array.from(new Set(['attack',...(p.learnedSkills||[])]));
-  p.skillCooldowns=p.skillCooldowns||{};p.statusEffects=p.statusEffects||{};
+  p.skillCooldowns=p.skillCooldowns||{};p.statusEffects=p.statusEffects||{};p.quests=p.quests||{};
   p.level=Math.max(1,Number(p.level)||1);p.xp=Math.max(0,Number(p.xp)||0);p.gold=Math.max(0,Number(p.gold)||0);
-  p.roomId=String(p.roomId||'depth-0-root');p.depth=Math.max(0,Number(p.depth)||0);
+  p.roomId=String(p.roomId||'town-havenfall');p.lastSafeRoomId=String(p.lastSafeRoomId||safeTownForDepth(p.depth));p.depth=Math.max(0,Number(p.depth)||0);
   return p;
 }
 function xpToNext(level=localPlayer?.level||1){return 75+level*45+level*level*12}
 function getItem(id){return localPlayer?.inventory?.find(i=>i.id===id)||null}
-function itemBase(item){if(!item)return null;return item.kind==='weapon'?WEAPONS[item.baseId]:item.kind==='armor'?ARMORS[item.baseId]:CHARMS[item.baseId]}
+function itemBase(item){if(!item)return null;return item.kind==='weapon'?WEAPONS[item.baseId]:item.kind==='armor'?ARMORS[item.baseId]:item.kind==='charm'?CHARMS[item.baseId]:item.kind==='spellbook'?SPELLBOOKS[item.baseId]:CONSUMABLES[item.baseId]}
 function itemPrefix(item){return PREFIXES.find(x=>x.id===item?.prefix)||null}
 function itemSuffix(item){return SUFFIXES.find(x=>x.id===item?.suffix)||null}
 function itemName(item){const b=itemBase(item);if(!b)return'Unknown Item';const p=itemPrefix(item),s=itemSuffix(item);return`${p?p.name+' ':''}${b.name}${s?' '+s.name:''}`}
 function itemStats(item){return Object.assign({},itemBase(item)||{},itemPrefix(item)||{},itemSuffix(item)||{})}
 function derivedStats(){
-  const out={maxHp:Number(localPlayer.baseMaxHp)||80,maxMana:Number(localPlayer.baseMaxMana)||45,attack:0,armor:0,crit:.04,moveMult:1,cooldownMult:1,dropChance:0,manaRegen:0,hpRegen:0,lifeSteal:0,onHit:null};
-  for(const slot of ['weapon','armor','charm']){
+  const out={maxHp:Number(localPlayer.baseMaxHp)||80,maxMana:Number(localPlayer.baseMaxMana)||45,attack:0,armor:0,crit:.04,moveMult:1,cooldownMult:1,manaCostMult:1,dropChance:0,manaRegen:0,hpRegen:0,lifeSteal:0,spellPower:0,firePower:0,frostPower:0,shockPower:0,lifePower:0,damageReduction:0,dodge:0,thorns:0,onHit:null};
+  for(const slot of ['weapon','armor','charm','spellbook']){
     const item=getItem(localPlayer.equipment?.[slot]);if(!item)continue;const s=itemStats(item);
     out.maxHp+=s.maxHp||0;out.maxMana+=s.maxMana||0;out.attack+=s.attack||0;out.armor+=s.armor||0;out.crit+=s.crit||0;
-    out.moveMult*=s.moveMult||1;out.cooldownMult*=s.cooldownMult||1;out.dropChance+=s.dropChance||0;out.manaRegen+=s.manaRegen||0;out.hpRegen+=s.hpRegen||0;out.lifeSteal+=s.lifeSteal||0;out.onHit=s.onHit||out.onHit;
+    out.moveMult*=s.moveMult||1;out.cooldownMult*=s.cooldownMult||1;out.manaCostMult*=s.manaCostMult||1;out.dropChance+=s.dropChance||0;out.manaRegen+=s.manaRegen||0;out.hpRegen+=s.hpRegen||0;out.lifeSteal+=s.lifeSteal||0;out.spellPower+=s.spellPower||0;out.firePower+=s.firePower||0;out.frostPower+=s.frostPower||0;out.shockPower+=s.shockPower||0;out.lifePower+=s.lifePower||0;out.damageReduction+=s.damageReduction||0;out.dodge+=s.dodge||0;out.thorns+=s.thorns||0;out.onHit=s.onHit||out.onHit;
   }
   out.attack+=2+localPlayer.level*1.35;out.maxHp+=localPlayer.level*4;out.maxMana+=localPlayer.level*2;
   return out;
 }
 function equippedWeapon(){return getItem(localPlayer.equipment.weapon)||localPlayer.inventory.find(i=>i.kind==='weapon')||null}
 function weaponStats(){return itemStats(equippedWeapon())||WEAPONS.basic_bow}
-function publicCombatData(){const s=derivedStats(),w=weaponStats();return{attack:s.attack,armor:s.armor,crit:s.crit,lifeSteal:s.lifeSteal,onHit:s.onHit,dropChance:s.dropChance,weaponType:w.weaponType||'bow',range:w.range||5,weaponCooldown:w.cooldown||900,cooldownMult:s.cooldownMult,level:localPlayer.level}}
+function publicCombatData(){const s=derivedStats(),w=weaponStats();return{attack:s.attack,armor:s.armor,crit:s.crit,lifeSteal:s.lifeSteal,onHit:s.onHit,dropChance:s.dropChance,spellPower:s.spellPower,firePower:s.firePower,frostPower:s.frostPower,shockPower:s.shockPower,lifePower:s.lifePower,damageReduction:s.damageReduction,dodge:s.dodge,thorns:s.thorns,weaponType:w.weaponType||'bow',range:w.range||5,weaponCooldown:w.cooldown||1450,cooldownMult:s.cooldownMult,level:localPlayer.level}}
 
+function generateTown(roomId,depth){
+  const w=58,h=30,tiles=Array.from({length:h},()=>Array(w).fill(1));
+  for(let y=3;y<h-3;y++)for(let x=3;x<w-3;x++)tiles[y][x]=0;
+  for(let x=8;x<w-8;x++)tiles[14][x]=0;
+  const tier=Math.max(0,Number(String(roomId).split('-').pop())||0),baseDepth=tier*4;
+  const doors=[
+    {id:'crypt',type:'red',name:'Sunken Crypt',desc:'Depth '+(baseDepth+1)+' · undead and close combat.',x:50,y:6,target:`dungeon-${baseDepth+1}-crypt`,targetDepth:baseDepth+1},
+    {id:'ember',type:'red',name:'Ember Warrens',desc:'Depth '+(baseDepth+2)+' · fire casters and richer weapon drops.',x:53,y:11,target:`dungeon-${baseDepth+2}-ember`,targetDepth:baseDepth+2},
+    {id:'arcane',type:'red',name:'Arcane Vault',desc:'Depth '+(baseDepth+3)+' · golems, mages, and spell books.',x:53,y:18,target:`dungeon-${baseDepth+3}-arcane`,targetDepth:baseDepth+3},
+    {id:'plague',type:'red',name:'Plague Descent',desc:'Depth '+(baseDepth+4)+' · venom, bombardiers, and stronger armor.',x:50,y:23,target:`dungeon-${baseDepth+4}-plague`,targetDepth:baseDepth+4}
+  ];
+  const npcs=[
+    {id:'captain',role:'quest',name:'Captain Elian',graphic:'npc_quest',x:16,y:9,desc:'Posts contracts for threats beyond the gates.'},
+    {id:'merchant',role:'store',name:'Mara the Quartermaster',graphic:'npc_merchant',x:25,y:18,desc:'Sells potions, weapons, armor, and spell books.'},
+    {id:'arcanist',role:'quest',name:'Arcanist Ilya',graphic:'npc_arcanist',x:35,y:9,desc:'Studies magical creatures and rare spellcraft.'},
+    {id:'sister',role:'quest',name:'Sister Vale',graphic:'npc_quest',x:42,y:20,desc:'Rewards hunters who quiet the restless dead.'}
+  ];
+  return{roomId,depth,w,h,tiles,rooms:[],spawn:{x:7,y:14},doors,npcs,isTown:true,endRoom:null};
+}
 function generateDungeon(roomId,depth){
+  if(isSafeRoomId(roomId))return generateTown(roomId,depth);
   const random=rngFrom(hashString(`${realmId}:${roomId}`));
   const w=clamp(92+depth*4,92,128),h=clamp(34+Math.floor(depth/2),34,44);
   const tiles=Array.from({length:h},()=>Array(w).fill(1));
@@ -316,15 +402,16 @@ function generateDungeon(roomId,depth){
   const start=rooms[0];const end=rooms[rooms.length-1];
   const spawn={x:start.x+2,y:start.cy};
   const doors=[
-    {id:'sun',name:'Sunlit Gate',desc:'A brighter route with more ranged enemies and richer weapon drops.',x:end.x+end.w-2,y:end.y+1,target:`${roomId}.sun`},
-    {id:'deep',name:'Deep Gate',desc:'A darker route with tougher enemies and better armor drops.',x:end.x+end.w-2,y:end.y+end.h-2,target:`${roomId}.deep`}
+    {id:'safe',type:'blue',name:'Waystone Refuge',desc:'Return to the nearest safe town to heal, trade, and claim quests.',x:start.x+1,y:start.y+1,target:safeTownForDepth(depth),targetDepth:depth},
+    {id:'deep',type:'red',name:`Crimson Descent · Depth ${depth+1}`,desc:'Defeat the dungeon boss to descend into a more dangerous route.',x:end.x+end.w-2,y:end.cy,target:`${roomId}.deep`,targetDepth:depth+1,requiresBoss:true}
   ];
   for(const d of doors)tiles[d.y][d.x]=0;
-  return{roomId,depth,w,h,tiles,rooms,spawn,doors,endRoom:end};
+  return{roomId,depth,w,h,tiles,rooms,spawn,doors,npcs:[],isTown:false,endRoom:end};
 }
 function initialEnemiesForMap(m){
+  if(m.isTown)return[];
   const random=rngFrom(hashString(`${m.roomId}:enemies`));const out=[];let n=0;
-  const pool=m.depth<2?['slime','spider','skeleton']:m.depth<5?['spider','skeleton','archer','wraith']:['skeleton','archer','brute','wraith','mage'];
+  const pool=m.depth<2?['slime','spider','skeleton']:m.depth<5?['spider','skeleton','archer','wraith','cultist']:m.depth<9?['skeleton','archer','brute','wraith','mage','serpent','golem']:['brute','mage','cultist','golem','necromancer','serpent','shade','bombardier'];
   for(let ri=1;ri<m.rooms.length;ri++){
     const r=m.rooms[ri];const count=ri===m.rooms.length-1?2:2+Math.floor(random()*3)+Math.min(2,Math.floor(m.depth/3));
     for(let j=0;j<count&&out.length<MAX_ROOM_ENEMIES-1;j++){
@@ -334,8 +421,8 @@ function initialEnemiesForMap(m){
       out.push({id:`e${m.depth}-${n++}-${Math.floor(random()*99999)}`,type,x,y,hp:Math.round(def.hp*scale),maxHp:Math.round(def.hp*scale),attackReadyAt:0,moveReadyAt:0,damageBy:{},effects:{},spawnX:x,spawnY:y});
     }
   }
-  const br=m.endRoom,b=ENEMY_TYPES.boss,scale=1+m.depth*.14;
-  out.push({id:`boss-${m.roomId}`,type:'boss',x:br.cx,y:br.cy,hp:Math.round(b.hp*scale),maxHp:Math.round(b.hp*scale),attackReadyAt:0,moveReadyAt:0,damageBy:{},effects:{},spawnX:br.cx,spawnY:br.cy});
+  const bosses=['boss','abyss_hydra','storm_titan','bone_sovereign'];const bossType=bosses[Math.min(bosses.length-1,Math.floor(m.depth/4))],br=m.endRoom,b=ENEMY_TYPES[bossType],scale=1+m.depth*.12;
+  out.push({id:`boss-${m.roomId}`,type:bossType,x:br.cx,y:br.cy,hp:Math.round(b.hp*scale),maxHp:Math.round(b.hp*scale),attackReadyAt:0,moveReadyAt:0,abilityIndex:0,damageBy:{},effects:{},spawnX:br.cx,spawnY:br.cy});
   return out;
 }
 
@@ -352,10 +439,13 @@ async function ensureAuth(){
 async function loadProfile(){
   profileRef=profileDoc();const snap=await getDoc(profileRef);const data=snap.exists()?snap.data()?.rpgProfile:null;
   localPlayer=normalizeProfile(data);localPlayer.uid=uid;localPlayer.username=username;
-  currentRoomId=localPlayer.roomId;currentDepth=localPlayer.depth;
+  const returningFromDungeon=!isSafeRoomId(localPlayer.roomId);currentDepth=localPlayer.depth;
+  currentRoomId=isSafeRoomId(localPlayer.roomId)?localPlayer.roomId:(localPlayer.lastSafeRoomId||safeTownForDepth(currentDepth));
+  localPlayer.roomId=currentRoomId;localPlayer.lastSafeRoomId=currentRoomId;
   map=generateDungeon(currentRoomId,currentDepth);
-  if(!inBounds(localPlayer.x,localPlayer.y)||tileAt(localPlayer.x,localPlayer.y)!==0){localPlayer.x=map.spawn.x;localPlayer.y=map.spawn.y}
+  if(returningFromDungeon||!inBounds(localPlayer.x,localPlayer.y)||tileAt(localPlayer.x,localPlayer.y)!==0){localPlayer.x=map.spawn.x;localPlayer.y=map.spawn.y}
   const s=derivedStats();localPlayer.hp=clamp(Number(localPlayer.hp)||s.maxHp,0,s.maxHp);localPlayer.mana=clamp(Number(localPlayer.mana)||s.maxMana,0,s.maxMana);
+  if(localPlayer.hp<=0)localPlayer.hp=Math.max(1,Math.round(s.maxHp*.35));
   await saveProfileNow();
 }
 async function saveProfileNow(){
@@ -367,7 +457,7 @@ function queueSave(delay=350){saveQueued=true;clearTimeout(saveTimer);saveTimer=
 
 async function connectRoom(){
   teardownRoom(false);
-  map=generateDungeon(currentRoomId,currentDepth);roomState={version:0,enemies:[],bossDefeated:false,updatedAtMs:0};discovered.clear();movementPath=[];selectedEnemyId='';knownRewardIds.clear();knownEventIds.clear();processingRewardIds.clear();processingEventIds.clear();processedCommands.clear();
+  map=generateDungeon(currentRoomId,currentDepth);roomState={version:0,enemies:[],telegraphs:[],bossDefeated:map.isTown,updatedAtMs:0};discovered.clear();movementPath=[];selectedEnemyId='';targetingSkillId='';knownRewardIds.clear();knownEventIds.clear();processingRewardIds.clear();processingEventIds.clear();processedCommands.clear();
   roomRef=currentRoomDoc();playersCol=roomSub('players');commandsCol=roomSub('commands');rewardsCol=roomSub('rewards');eventsCol=roomSub('events');
   playerPresenceRef=roomSubDoc('players',uid);
   await setPresence(true);
@@ -380,7 +470,7 @@ async function connectRoom(){
   roomUnsub=onSnapshot(roomRef,snap=>{
     if(!snap.exists())return;const d=snap.data();
     if(d.roomId&&d.roomId!==currentRoomId)return;
-    roomState={version:Number(d.version)||0,enemies:Array.isArray(d.enemies)?d.enemies:[],bossDefeated:!!d.bossDefeated,updatedAtMs:Number(d.updatedAtMs)||0};
+    roomState={version:Number(d.version)||0,enemies:Array.isArray(d.enemies)?d.enemies:[],telegraphs:Array.isArray(d.telegraphs)?d.telegraphs:[],bossDefeated:map.isTown||!!d.bossDefeated,updatedAtMs:Number(d.updatedAtMs)||0};
   });
   rewardsUnsub=onSnapshot(rewardsCol,snap=>{snap.docChanges().forEach(ch=>{if(ch.type==='added'||ch.type==='modified')claimRewardDoc(ch.doc).catch(console.warn)})});
   eventsUnsub=onSnapshot(eventsCol,snap=>{snap.docChanges().forEach(ch=>{if(ch.type==='added'||ch.type==='modified')claimEventDoc(ch.doc).catch(console.warn)})});
@@ -395,7 +485,7 @@ function teardownRoom(deletePresence=true){
 }
 async function setPresence(force){
   if(!playerPresenceRef||!localPlayer)return;const s=derivedStats();
-  const payload={uid,username,x:localPlayer.x,y:localPlayer.y,hp:localPlayer.hp,maxHp:s.maxHp,mana:localPlayer.mana,maxMana:s.maxMana,level:localPlayer.level,lastSeenMs:now(),lastSeenAt:serverTimestamp(),roomId:currentRoomId,depth:currentDepth,combat:publicCombatData(),force:!!force};
+  const armor=getItem(localPlayer.equipment?.armor),payload={uid,username,x:localPlayer.x,y:localPlayer.y,hp:localPlayer.hp,maxHp:s.maxHp,mana:localPlayer.mana,maxMana:s.maxMana,level:localPlayer.level,lastSeenMs:now(),lastSeenAt:serverTimestamp(),roomId:currentRoomId,depth:currentDepth,armorBaseId:armor?.baseId||'leather_suit',combat:publicCombatData(),force:!!force};
   await setDoc(playerPresenceRef,payload,{merge:true}).catch(()=>{});
 }
 async function ensureRoomState(){
@@ -403,7 +493,7 @@ async function ensureRoomState(){
   await runTransaction(db,async tx=>{
     const snap=await tx.get(ref);const data=snap.exists()?snap.data():null;
     if(!data||data.roomId!==currentRoomId||!Array.isArray(data.enemies)){
-      tx.set(ref,{roomId:currentRoomId,depth:currentDepth,version:1,enemies:initialEnemiesForMap(map),bossDefeated:false,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedAtMs:now()},{merge:false});
+      tx.set(ref,{roomId:currentRoomId,depth:currentDepth,version:1,enemies:initialEnemiesForMap(map),telegraphs:[],bossDefeated:map.isTown,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedAtMs:now()},{merge:false});
     }
   }).catch(e=>console.warn('room init failed',e));
 }
@@ -427,37 +517,42 @@ async function processCommand(id,cmd){
 }
 function activePresence(uidValue){return onlinePlayers.find(p=>p.uid===uidValue&&now()-(p.lastSeenMs||0)<PLAYER_STALE_MS)}
 async function resolveAttackCommand(cmd){
-  const attacker=activePresence(cmd.uid);if(!attacker||attacker.hp<=0)return;
-  const targets=Array.isArray(cmd.targets)?cmd.targets.slice(0,8):[cmd.targetId];
-  const skill=SKILLS[cmd.skillId]||SKILLS.attack;
-  const combat=attacker.combat||{};
-  let changed=false,totalDamage=0;
-  for(const targetId of targets){
-    const e=roomState.enemies.find(x=>x.id===targetId&&x.hp>0);if(!e)continue;
-    const maxRange=cmd.skillId==='piercing_rain'?9:cmd.skillId==='volley'?7:Number(combat.range)||5;
-    if(distance(attacker,e)>maxRange)continue;
-    const def=ENEMY_TYPES[e.type];let mult=1;
-    if(cmd.skillId==='power_shot')mult=1.8;else if(cmd.skillId==='volley')mult=.86;else if(cmd.skillId==='piercing_rain')mult=1.25;
-    const crit=Math.random()<clamp(Number(combat.crit)||.04,0,.55);let damage=Math.max(1,Math.round(((Number(combat.attack)||6)+(Number(cmd.bonus)||0))*mult-(def.armor||0)*.6));if(crit)damage=Math.round(damage*1.75);totalDamage+=damage;
-    e.hp=Math.max(0,e.hp-damage);e.damageBy=e.damageBy||{};e.damageBy[cmd.uid]={username:cmd.username||attacker.username,damage:(e.damageBy[cmd.uid]?.damage||0)+damage,lastHitMs:now()};
-    const effect=cmd.effect||combat.onHit;if(effect&&effect!=='none')e.effects={...(e.effects||{}),[effect]:now()+(effect==='bleed'?5000:3500)};
-    if(cmd.skillId==='power_shot'||effect==='stagger')e.staggerUntil=now()+(cmd.skillId==='power_shot'?800:550);
-    changed=true;
-    if(e.hp<=0)await handleEnemyDeath(e,attacker);
-  }
-  if(changed){roomState.version++;dirtyRoomState=true}
-  if(totalDamage>0&&(Number(combat.lifeSteal)||0)>0){const heal=Math.max(1,Math.round(totalDamage*Number(combat.lifeSteal)));await addDoc(eventsCol,{uid:cmd.uid,type:'heal',amount:heal,claimed:false,createdAtMs:now(),createdAt:serverTimestamp()}).catch(()=>{})}
+  return executeAuthoritativeAttack(cmd);
 }
-async function handleEnemyDeath(enemy,killer){
-  const def=ENEMY_TYPES[enemy.type];if(def.boss)roomState.bossDefeated=true;
+async function executeAuthoritativeAttack(cmd){
+  const attackId=safeId(cmd.attackId||`${cmd.uid}-${cmd.createdAtMs}-${cmd.skillId}-${cmd.targetId}`),result=await runTransaction(db,async tx=>{
+    const [roomSnap,presenceSnap]=await Promise.all([tx.get(roomRef),tx.get(roomSubDoc('players',cmd.uid))]);
+    if(!roomSnap.exists()||!presenceSnap.exists())return{totalDamage:0,deaths:[],hitTargets:[]};
+    const data=roomSnap.data(),attacker=presenceSnap.data(),processed=Array.isArray(data.processedAttackIds)?data.processedAttackIds:[];
+    if(processed.includes(attackId)||attacker.hp<=0||now()-(attacker.lastSeenMs||0)>PLAYER_STALE_MS)return{totalDamage:0,deaths:[],hitTargets:[]};
+    const enemies=Array.isArray(data.enemies)?deepClone(data.enemies):[],targets=Array.isArray(cmd.targets)?cmd.targets.slice(0,12):[cmd.targetId],skill=SKILLS[cmd.skillId]||SKILLS.attack,combat=attacker.combat||{},deaths=[],hitTargets=[];
+    const seeded=rngFrom(hashString(attackId)),schoolBonus=Number(combat.spellPower||0)+Number(combat[`${skill.school}Power`]||0),mult=(skill.damageMult||1)*(skill.school&&skill.school!=='weapon'?1+schoolBonus:1);let totalDamage=0,bossDefeated=!!data.bossDefeated;
+    for(const targetId of targets){
+      const e=enemies.find(x=>x.id===targetId&&x.hp>0);if(!e)continue;const def=ENEMY_TYPES[e.type];
+      const maxRange=Number(skill.range)||(cmd.skillId==='piercing_rain'?9:cmd.skillId==='volley'?7:Number(combat.range)||5),isArea=Number.isFinite(Number(cmd.castX))&&Number.isFinite(Number(cmd.castY));if(isArea?(distance(attacker,{x:Number(cmd.castX),y:Number(cmd.castY)})>maxRange||distance(e,{x:Number(cmd.castX),y:Number(cmd.castY)})>(skill.radius||1)):distance(attacker,e)>maxRange)continue;
+      const crit=seeded()<clamp(Number(combat.crit)||.04,0,.55);let damage=Math.max(1,Math.round(((Number(combat.attack)||6)+(Number(cmd.bonus)||0))*mult-(def.armor||0)*.6));if(crit)damage=Math.round(damage*1.75);
+      e.hp=Math.max(0,e.hp-damage);totalDamage+=damage;hitTargets.push({id:e.id,x:e.x,y:e.y,damage,crit});e.damageBy=e.damageBy||{};e.damageBy[cmd.uid]={username:cmd.username||attacker.username,damage:(e.damageBy[cmd.uid]?.damage||0)+damage,lastHitMs:now()};
+      const effect=cmd.effect||skill.effect||combat.onHit;if(effect&&effect!=='none')e.effects={...(e.effects||{}),[effect]:now()+((effect==='bleed'||effect==='poison')?6000:4200)};
+      if(cmd.skillId==='power_shot'||effect==='stagger'||effect==='shock')e.staggerUntil=now()+(cmd.skillId==='power_shot'?1100:effect==='shock'?500:700);
+      if(e.hp<=0){deaths.push(deepClone(e));if(def.boss)bossDefeated=true}
+    }
+    tx.set(roomRef,{enemies,bossDefeated,processedAttackIds:[...processed.slice(-39),attackId],version:(Number(data.version)||0)+1,updatedAtMs:now(),updatedAt:serverTimestamp()},{merge:true});
+    return{totalDamage,deaths,hitTargets,attacker};
+  }).catch(e=>{console.warn('authoritative attack failed',e);return{totalDamage:0,deaths:[],hitTargets:[],error:e}});
+  if(result.error){toast('The realm could not confirm that attack. Try again.',1200);return result}
+  for(const hit of result.hitTargets||[]){floater(hit.x,hit.y,`${hit.crit?'CRIT ':''}-${hit.damage}`,hit.crit?'#ffd166':'#f0f3e8');burst(hit.x,hit.y,hit.crit?'#ffd166':'#ff8b86',hit.crit?16:9)}
+  for(const enemy of result.deaths||[])await handleEnemyDeath(enemy,result.attacker||activePresence(cmd.uid),attackId);
+  const combat=(result.attacker?.combat)||activePresence(cmd.uid)?.combat||{};const skill=SKILLS[cmd.skillId]||SKILLS.attack,leech=Number(skill.lifeSteal)||Number(combat.lifeSteal)||0;
+  if(result.totalDamage>0&&leech>0){const heal=Math.max(1,Math.round(result.totalDamage*leech));await addDoc(eventsCol,{uid:cmd.uid,type:'heal',amount:heal,claimed:false,createdAtMs:now(),createdAt:serverTimestamp()}).catch(()=>{})}
+  return result;
+}
+async function handleEnemyDeath(enemy,killer,deathKey='dot'){
+  const def=ENEMY_TYPES[enemy.type];
   const eligible=Object.entries(enemy.damageBy||{}).filter(([,v])=>now()-(v.lastHitMs||0)<120000);
-  const batch=writeBatch(db);const eventBase=`${enemy.id}-${now()}`;
-  for(const [rewardUid,credit] of eligible){
+  const eventBase=enemy.id;await Promise.all(eligible.map(async([rewardUid,credit])=>{
     const rp=activePresence(rewardUid);const dropSeed=hashString(`${eventBase}:${rewardUid}`);const item=rollItem(currentDepth,def.drop||BASE_DROP_CHANCE,dropSeed,enemy.type,Number(rp?.combat?.dropChance)||0);
-    const rewardId=`${eventBase}-${rewardUid}`;
-    batch.set(roomSubDoc('rewards',rewardId),{id:rewardId,uid:rewardUid,username:credit.username||rp?.username||'Adventurer',xp:def.xp+currentDepth*5,gold:Math.max(1,Math.round(def.xp*.35)),item:item||null,claimed:false,createdAtMs:now(),createdAt:serverTimestamp()});
-  }
-  if(eligible.length)await batch.commit().catch(console.warn);
+    const rewardId=`${eventBase}-${rewardUid}`,rewardRef=roomSubDoc('rewards',rewardId);await runTransaction(db,async tx=>{const existing=await tx.get(rewardRef);if(existing.exists())return;tx.set(rewardRef,{id:rewardId,uid:rewardUid,username:credit.username||rp?.username||'Adventurer',enemyType:enemy.type,xp:def.xp+currentDepth*5,gold:Math.max(1,Math.round(def.xp*.35)),item:item||null,claimed:false,createdAtMs:now(),createdAt:serverTimestamp()})}).catch(console.warn)
+  }));
 }
 async function claimRewardDoc(docSnap){
   const data=docSnap.data();if(!data||data.uid!==uid||data.claimed||knownRewardIds.has(docSnap.id)||processingRewardIds.has(docSnap.id))return;
@@ -474,7 +569,7 @@ async function claimRewardDoc(docSnap){
     if(!claimed){knownRewardIds.add(docSnap.id);return}
     knownRewardIds.add(docSnap.id);localPlayer.xp+=Number(data.xp)||0;localPlayer.gold+=Number(data.gold)||0;
     if(data.item&&localPlayer.inventory.length<MAX_INVENTORY){localPlayer.inventory.push(data.item);toast(`Loot: ${itemName(data.item)}`,2400)}else toast(`+${data.xp} XP · +${data.gold} gold`,1600);
-    applyLevelUps();renderInventory();updateHUD();queueSave(120);setTimeout(()=>deleteDoc(docSnap.ref).catch(()=>{}),10000);
+    recordQuestKill(data.enemyType);applyLevelUps();renderInventory();updateHUD();queueSave(120);setTimeout(()=>deleteDoc(docSnap.ref).catch(()=>{}),10000);
   }finally{processingRewardIds.delete(docSnap.id)}
 }
 async function claimEventDoc(docSnap){
@@ -485,10 +580,12 @@ async function claimEventDoc(docSnap){
     if(!claimed){knownEventIds.add(docSnap.id);return}
     knownEventIds.add(docSnap.id);
     if(data.type==='damage'&&localPlayer.hp>0){
-      const s=derivedStats();const amount=Math.max(1,Math.round((Number(data.amount)||1)-s.armor*.55));localPlayer.hp=Math.max(0,localPlayer.hp-amount);
+      const s=derivedStats();if(Math.random()<clamp(s.dodge,0,.35)){floater(localPlayer.x,localPlayer.y,'DODGE','#9ee7ff');setTimeout(()=>deleteDoc(docSnap.ref).catch(()=>{}),10000);return}
+      const amount=Math.max(1,Math.round((Number(data.amount)||1)*(1-clamp(s.damageReduction,0,.45))-s.armor*.55));localPlayer.hp=Math.max(0,localPlayer.hp-amount);localPlayer.lastCombatAtMs=now();
       if(data.effect==='manaBurn')localPlayer.mana=Math.max(0,localPlayer.mana-8);
       if(data.effect==='slow')localPlayer.statusEffects.slow=now()+2600;
       if(data.effect==='burn')localPlayer.statusEffects.burn=now()+4000;
+      if(data.effect==='poison')localPlayer.statusEffects.poison=now()+6000;
       floater(localPlayer.x,localPlayer.y,`-${amount}`,'#ff8b86');burst(localPlayer.x,localPlayer.y,'#ff6c65',10);
       if(localPlayer.hp<=0)deathModal.classList.add('open');queueSave();setPresence(true);updateHUD();
     }else if(data.type==='heal'&&localPlayer.hp>0){const s=derivedStats();const amount=Math.max(1,Math.round(Number(data.amount)||1));localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+amount);floater(localPlayer.x,localPlayer.y,`+${amount}`,'#86efac');queueSave();setPresence(true);updateHUD()}
@@ -501,24 +598,44 @@ async function controllerTick(){
   const t=now();const livePlayers=onlinePlayers.filter(p=>p.hp>0&&t-(p.lastSeenMs||0)<PLAYER_STALE_MS);
   if(!livePlayers.length)return;
   const damageEvents=[];let changed=false;
+  const pending=[];
+  for(const telegraph of roomState.telegraphs||[]){
+    if(t<(telegraph.resolveAtMs||0)){pending.push(telegraph);continue}
+    for(const p of livePlayers){if((telegraph.tiles||[]).some(tile=>tile.x===p.x&&tile.y===p.y))damageEvents.push({target:p,telegraph})}
+    changed=true;
+  }
+  roomState.telegraphs=pending;
   for(const e of roomState.enemies){
     if(e.hp<=0)continue;const def=ENEMY_TYPES[e.type];
-    if(e.effects?.burn&&e.effects.burn>t&&Math.random()<.16){e.hp=Math.max(0,e.hp-1);changed=true;if(e.hp<=0){await handleEnemyDeath(e,livePlayers[0]);continue}}
-    if(e.effects?.bleed&&e.effects.bleed>t&&Math.random()<.12){e.hp=Math.max(0,e.hp-1);changed=true;if(e.hp<=0){await handleEnemyDeath(e,livePlayers[0]);continue}}
+    if(e.effects?.burn&&e.effects.burn>t&&Math.random()<.12){e.hp=Math.max(0,e.hp-1);changed=true;if(e.hp<=0){await handleEnemyDeath(e,livePlayers[0],`dot-${e.id}`);continue}}
+    if((e.effects?.bleed&&e.effects.bleed>t||e.effects?.poison&&e.effects.poison>t)&&Math.random()<.1){e.hp=Math.max(0,e.hp-1);changed=true;if(e.hp<=0){await handleEnemyDeath(e,livePlayers[0],`dot-${e.id}`);continue}}
     if(e.staggerUntil>t)continue;
     let target=null,best=Infinity;for(const p of livePlayers){const d=distance(e,p);if(d<best){best=d;target=p}}
     if(!target||best>def.aggro)continue;
     if(best<=def.range&&t>=(e.attackReadyAt||0)){
-      e.attackReadyAt=t+def.attackCd;damageEvents.push({target,enemy:e,def});changed=true;
-    }else if(best>def.range&&t>=(e.moveReadyAt||0)){
+      const tiles=telegraphTiles(e,target,def);e.abilityIndex=(Number(e.abilityIndex)||0)+1;e.attackReadyAt=t+def.attackCd;
+      roomState.telegraphs.push({id:`tell-${e.id}-${t}`,enemyId:e.id,source:def.name,tiles,damage:def.attack+currentDepth*1.1,effect:def.effect||null,kind:def.pattern||'single',createdAtMs:t,resolveAtMs:t+(def.warning||1000)});changed=true;
+    }else if(best>def.range&&t>=(e.moveReadyAt||0)&&!(roomState.telegraphs||[]).some(q=>q.enemyId===e.id)){
       const step=nextStepToward(e,target);if(step){e.x=step.x;e.y=step.y;changed=true}e.moveReadyAt=t+def.moveCd*(e.effects?.slow>t?1.55:1);
     }
   }
   if(damageEvents.length){
-    const batch=writeBatch(db);for(const hit of damageEvents){const id=`hit-${hit.enemy.id}-${hit.target.uid}-${t}-${Math.floor(Math.random()*9999)}`;batch.set(roomSubDoc('events',id),{id,uid:hit.target.uid,type:'damage',amount:hit.def.attack+currentDepth*1.1,effect:hit.def.effect||null,source:hit.def.name,claimed:false,createdAtMs:t,createdAt:serverTimestamp()})}await batch.commit().catch(()=>{});
+    const batch=writeBatch(db);for(const hit of damageEvents){const q=hit.telegraph,id=`hit-${q.id}-${hit.target.uid}`;batch.set(roomSubDoc('events',id),{id,uid:hit.target.uid,type:'damage',amount:q.damage,effect:q.effect||null,source:q.source,telegraphId:q.id,claimed:false,createdAtMs:t,createdAt:serverTimestamp()},{merge:true})}await batch.commit().catch(()=>{});
   }
   if(changed){roomState.version++;dirtyRoomState=true}
   if(dirtyRoomState&&t-lastRoomWrite>ROOM_STATE_WRITE_MS)await writeRoomState();
+}
+function telegraphTiles(e,target,def){
+  const valid=(tiles)=>Array.from(new Map(tiles.filter(p=>inBounds(p.x,p.y)&&tileAt(p.x,p.y)===0).map(p=>[keyXY(p.x,p.y),p])).values());
+  const dx=Math.sign(target.x-e.x),dy=Math.sign(target.y-e.y),single=[{x:target.x,y:target.y}],cross=[...single,{x:target.x+1,y:target.y},{x:target.x-1,y:target.y},{x:target.x,y:target.y+1},{x:target.x,y:target.y-1}];
+  if(def.pattern==='single')return valid(single);
+  if(def.pattern==='cross')return valid(cross);
+  if(def.pattern==='cleave')return valid([{x:e.x+dx,y:e.y+dy},{x:e.x+dx+(dy||0),y:e.y+dy+(dx||0)},{x:e.x+dx-(dy||0),y:e.y+dy-(dx||0)}]);
+  if(def.pattern==='line')return valid(Array.from({length:Math.max(2,def.range)},(_,i)=>({x:e.x+dx*(i+1),y:e.y+dy*(i+1)})));
+  if(def.pattern==='burst')return valid(cross.concat([{x:target.x+1,y:target.y+1},{x:target.x-1,y:target.y-1},{x:target.x+1,y:target.y-1},{x:target.x-1,y:target.y+1}]));
+  if(def.pattern==='quake')return valid(Array.from({length:3},(_,yy)=>Array.from({length:3},(_,xx)=>({x:target.x+xx-1,y:target.y+yy-1}))).flat());
+  if(def.pattern==='ring')return valid(Array.from({length:5},(_,yy)=>Array.from({length:5},(_,xx)=>({x:target.x+xx-2,y:target.y+yy-2}))).flat().filter(p=>distance(p,target)>=2));
+  const phase=(Number(e.abilityIndex)||0)%3;if(phase===0)return valid(Array.from({length:Math.max(5,def.range)},(_,i)=>({x:e.x+dx*(i+1),y:e.y+dy*(i+1)})));if(phase===1)return valid(Array.from({length:5},(_,yy)=>Array.from({length:5},(_,xx)=>({x:target.x+xx-2,y:target.y+yy-2}))).flat().filter(p=>distance(p,target)>=2));return valid(Array.from({length:3},(_,yy)=>Array.from({length:3},(_,xx)=>({x:target.x+xx-1,y:target.y+yy-1}))).flat());
 }
 function nextStepToward(e,target){
   const candidates=[{x:e.x+Math.sign(target.x-e.x),y:e.y},{x:e.x,y:e.y+Math.sign(target.y-e.y)},{x:e.x+Math.sign(target.x-e.x),y:e.y+Math.sign(target.y-e.y)}]
@@ -527,17 +644,20 @@ function nextStepToward(e,target){
 }
 async function writeRoomState(){
   if(!isController||!dirtyRoomState)return;dirtyRoomState=false;lastRoomWrite=now();
-  await setDoc(roomRef,{roomId:currentRoomId,depth:currentDepth,version:roomState.version,enemies:roomState.enemies,bossDefeated:roomState.bossDefeated,controllerUid:uid,updatedAtMs:now(),updatedAt:serverTimestamp()},{merge:true}).catch(e=>{dirtyRoomState=true;console.warn(e)});
+  await runTransaction(db,async tx=>{const snap=await tx.get(roomRef),remote=snap.exists()?snap.data():{},remoteEnemies=Array.isArray(remote.enemies)?remote.enemies:[];
+    const reconciled=roomState.enemies.map(local=>{const authoritative=remoteEnemies.find(e=>e.id===local.id);if(!authoritative)return local;return{...authoritative,...local,hp:Math.min(Number(local.hp)||0,Number(authoritative.hp)||0),damageBy:{...(local.damageBy||{}),...(authoritative.damageBy||{})}}});
+    tx.set(roomRef,{roomId:currentRoomId,depth:currentDepth,version:(Number(remote.version)||0)+1,enemies:reconciled,telegraphs:roomState.telegraphs||[],bossDefeated:!!remote.bossDefeated||roomState.bossDefeated,controllerUid:uid,updatedAtMs:now(),updatedAt:serverTimestamp()},{merge:true});
+  }).catch(e=>{dirtyRoomState=true;console.warn(e)});
 }
 
 function rollItem(depth,chance,seed,enemyType,bonus=0){
   const random=rngFrom(seed);if(random()>clamp(chance+bonus,0,1))return null;
-  const route=currentRoomId.endsWith('.deep')?'armor':currentRoomId.endsWith('.sun')?'weapon':'';
-  let kind=random()<.48?'weapon':random()<.82?'armor':'charm';if(route&&random()<.38)kind=route;
-  const table=kind==='weapon'?Object.keys(WEAPONS).filter(x=>x!=='basic_bow'):kind==='armor'?Object.keys(ARMORS):Object.keys(CHARMS);
+  const route=currentRoomId.includes('arcane')?'spellbook':currentRoomId.includes('plague')?'armor':currentRoomId.includes('ember')?'weapon':'';
+  const kindRoll=random();let kind=kindRoll<.4?'weapon':kindRoll<.72?'armor':kindRoll<.88?'spellbook':'charm';if(route&&random()<.42)kind=route;
+  const table=kind==='weapon'?Object.keys(WEAPONS).filter(x=>x!=='basic_bow'):kind==='armor'?Object.keys(ARMORS):kind==='spellbook'?Object.keys(SPELLBOOKS):Object.keys(CHARMS);
   const baseId=table[Math.floor(random()*table.length)];const rarityRoll=random()+Math.min(.22,depth*.015);
   const rarity=rarityRoll>.94?'Legendary':rarityRoll>.77?'Epic':rarityRoll>.48?'Rare':'Common';
-  const affixCount=rarity==='Legendary'?2:rarity==='Epic'?2:rarity==='Rare'?1:0;
+  const affixCount=rarity==='Legendary'?2:rarity==='Epic'?2:rarity==='Rare'?1:(kind==='armor'||kind==='spellbook'?1:0);
   const prefix=affixCount>=1?PREFIXES[Math.floor(random()*PREFIXES.length)].id:null;
   const suffix=affixCount>=2?SUFFIXES[Math.floor(random()*SUFFIXES.length)].id:null;
   return{id:`item-${seed.toString(36)}-${Math.floor(random()*99999)}`,baseId,kind,rarity,prefix,suffix,level:Math.max(1,depth+1),source:enemyType};
@@ -562,8 +682,11 @@ function findPath(sx,sy,tx,ty){
 }
 function setMoveTarget(x,y){
   if(localPlayer.hp<=0)return;
+  if(targetingSkillId){castSpotSkill(targetingSkillId,x,y);return}
+  const npc=(map.npcs||[]).find(n=>n.x===x&&n.y===y);if(npc&&distance(localPlayer,npc)<=2){openNpc(npc);return}
   const door=map.doors.find(d=>d.x===x&&d.y===y);if(door&&distance(localPlayer,door)<=1){openDoorChoice(door);return}
-  const enemy=enemyAt(x,y);if(enemy){selectedEnemyId=enemy.id;movementPath=[];toast(`${ENEMY_TYPES[enemy.type].name} selected`,800);return}
+  const enemy=enemyAt(x,y);if(enemy){selectedEnemyId=enemy.id;movementPath=[];toast(`${ENEMY_TYPES[enemy.type].name} targeted · auto-attack engaged`,1100);updateAutoAttack(now());return}
+  selectedEnemyId='';
   movementPath=findPath(localPlayer.x,localPlayer.y,x,y);
 }
 function updateMovement(t){
@@ -575,23 +698,24 @@ function updateMovement(t){
   revealAround(localPlayer.x,localPlayer.y,8);queueSave(900);setPresence(false);checkDoorProximity();
 }
 function checkDoorProximity(){
-  const d=map.doors.find(x=>distance(localPlayer,x)<=1);if(d&&roomState.bossDefeated)toast(`${d.name} is open. Select it to continue.`,1100);
+  const d=map.doors.find(x=>distance(localPlayer,x)<=1);if(d&&(!d.requiresBoss||roomState.bossDefeated))toast(`${d.name} is open. Select it to continue.`,1100);
 }
 function skillReady(id,t=now()){return t>=(localPlayer.skillCooldowns[id]||0)}
 function learned(id){return localPlayer.learnedSkills.includes(id)}
+function skillManaCost(skill){return Math.max(0,Math.round((skill.mana||0)*derivedStats().manaCostMult))}
 function spendMana(n){if(localPlayer.mana<n){toast('Not enough mana.');return false}localPlayer.mana-=n;return true}
-async function useSkill(id){
+function cancelTargeting(){targetingSkillId='';renderActionDock()}
+async function useSkill(id,automatic=false){
   if(localPlayer.hp<=0||!learned(id))return;const skill=SKILLS[id];const t=now();if(!skillReady(id,t)){toast('That skill is still recharging.',900);return}
-  if(id==='dash'){
-    const target=hoverTile;if(!target){toast('Point at a destination first.');return}const path=findPath(localPlayer.x,localPlayer.y,target.x,target.y).slice(0,4);if(!path.length)return;if(!spendMana(skill.mana))return;
-    const end=path[path.length-1];localPlayer.x=end.x;localPlayer.y=end.y;movementPath=[];localPlayer.skillCooldowns[id]=t+skill.cooldown;localPlayer.moveReadyAt=t+300;burst(end.x,end.y,'#d7fff0',18);queueSave();setPresence(true);renderActionDock();return;
+  if(skill.targetMode==='spot'){
+    targetingSkillId=id;movementPath=[];toast(`Select a square for ${skill.name}.`,1500);renderActionDock();return;
   }
   if(id==='mend'){
-    if(!spendMana(skill.mana))return;const s=derivedStats();const heal=Math.round(s.maxHp*.3);localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+heal);localPlayer.skillCooldowns[id]=t+skill.cooldown;floater(localPlayer.x,localPlayer.y,`+${heal}`,'#86efac');queueSave();setPresence(true);renderActionDock();return;
+    const mana=skillManaCost(skill);if(!spendMana(mana))return;const s=derivedStats(),heal=Math.round(s.maxHp*.3*(1+s.lifePower));localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+heal);localPlayer.skillCooldowns[id]=t+skill.cooldown*s.cooldownMult;floater(localPlayer.x,localPlayer.y,`+${heal}`,'#86efac');queueSave();setPresence(true);renderActionDock();return;
   }
+  if(id==='frost_nova'){const targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,localPlayer)<=skill.radius).map(e=>e.id);if(!targets.length){toast('No enemies are close enough.');return}return castAttackSkill(skill,targets,roomState.enemies.find(e=>e.id===targets[0]),t)}
   const target=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(!target){toast('Select an enemy first.');return}
-  const w=weaponStats();const range=id==='piercing_rain'?9:id==='volley'?7:w.range||5;if(distance(localPlayer,target)>range){toast('Target is out of range.');return}
-  if(!spendMana(skill.mana||0))return;
+  const w=weaponStats();const range=skill.range||(id==='piercing_rain'?9:id==='volley'?7:w.range||5);if(distance(localPlayer,target)>range){toast('Target is out of range.');return}
   let targets=[target.id];
   const weaponEffect=itemStats(equippedWeapon()).effect;
   if(id==='attack'&&weaponEffect==='cleave')targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,target)<=1&&distance(e,localPlayer)<=range).slice(0,3).map(e=>e.id);
@@ -600,46 +724,74 @@ async function useSkill(id){
     targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,localPlayer)<=range&&((dx===0&&e.x===localPlayer.x)||(dy===0&&e.y===localPlayer.y)||(Math.sign(e.x-localPlayer.x)===dx&&Math.sign(e.y-localPlayer.y)===dy&&Math.abs(e.x-localPlayer.x)===Math.abs(e.y-localPlayer.y)))).sort((a,b)=>distance(a,localPlayer)-distance(b,localPlayer)).slice(0,2).map(e=>e.id);
   }
   if(id==='volley')targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,target)<=2&&distance(e,localPlayer)<=range).slice(0,4).map(e=>e.id);
+  if(id==='chain_lightning')targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,target)<=4&&distance(e,localPlayer)<=7).sort((a,b)=>distance(a,target)-distance(b,target)).slice(0,skill.maxTargets||5).map(e=>e.id);
   if(id==='piercing_rain'){
     const dx=Math.sign(target.x-localPlayer.x),dy=Math.sign(target.y-localPlayer.y);targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,localPlayer)<=9&&((dx===0&&e.x===localPlayer.x)||(dy===0&&e.y===localPlayer.y)||(Math.sign(e.x-localPlayer.x)===dx&&Math.sign(e.y-localPlayer.y)===dy&&Math.abs(e.x-localPlayer.x)===Math.abs(e.y-localPlayer.y)))).map(e=>e.id);
   }
-  const cooldown=id==='attack'?(w.cooldown||900)*derivedStats().cooldownMult:skill.cooldown;
-  localPlayer.skillCooldowns[id]=t+cooldown;
-  const equipped=itemStats(equippedWeapon()),hitEffect=equipped.onHit||derivedStats().onHit||((equipped.effect&&equipped.effect!=='none')?equipped.effect:null);const cmd={kind:'attack',uid,username,skillId:id,targetId:target.id,targets,createdAtMs:t,effect:hitEffect,bonus:0};
-  await addDoc(commandsCol,cmd).catch(()=>toast('Attack could not reach the room host.'));
-  for(const targetId of targets){const e=roomState.enemies.find(x=>x.id===targetId);if(e)projectiles.push({x:localPlayer.x,y:localPlayer.y,tx:e.x,ty:e.y,started:t,duration:280,kind:w.weaponType||'bow'})}
-  renderActionDock();updateHUD();queueSave(900);
+  return castAttackSkill(skill,targets,target,t,automatic);
+}
+async function castAttackSkill(skill,targets,target,t=now(),automatic=false,castPoint=null){
+  const mana=skillManaCost(skill);if(!spendMana(mana))return false;const w=weaponStats(),s=derivedStats(),cooldown=skill.id==='attack'?(w.cooldown||1450)*s.cooldownMult:(skill.cooldown||3000)*s.cooldownMult;localPlayer.skillCooldowns[skill.id]=t+cooldown;localPlayer.lastCombatAtMs=t;
+  const equipped=itemStats(equippedWeapon()),hitEffect=skill.effect||equipped.onHit||s.onHit||((equipped.effect&&equipped.effect!=='none')?equipped.effect:null),cmd={kind:'attack',attackId:`atk-${uid}-${t}-${Math.floor(Math.random()*999999)}`,uid,username,skillId:skill.id,targetId:target?.id||targets[0],targets,createdAtMs:t,effect:hitEffect,bonus:0};if(castPoint){cmd.castX=castPoint.x;cmd.castY=castPoint.y}
+  for(const targetId of targets){const e=roomState.enemies.find(x=>x.id===targetId);if(e)projectiles.push({x:localPlayer.x,y:localPlayer.y,tx:e.x,ty:e.y,started:t,duration:420,kind:w.weaponType||'bow'})}
+  const result=await executeAuthoritativeAttack(cmd);if(result.totalDamage<=0&&!automatic)toast('The target escaped before the attack landed.',1000);renderActionDock();updateHUD();queueSave(500);return result.totalDamage>0;
+}
+async function castSpotSkill(id,x,y){
+  const skill=SKILLS[id];cancelTargeting();if(!skill||!skillReady(id)||distance(localPlayer,{x,y})>(skill.range||4)||tileAt(x,y)!==0){toast('That square is outside the spell’s range.');return}
+  const t=now(),s=derivedStats(),mana=skillManaCost(skill);
+  if(id==='dash'||id==='blink'){
+    const path=findPath(localPlayer.x,localPlayer.y,x,y).slice(0,id==='dash'?4:skill.range);if(!path.length){toast('No clear route to that square.');return}const end=id==='blink'?{x,y}:path[path.length-1];if(!walkable(end.x,end.y)){toast('That square is occupied.');return}if(!spendMana(mana))return;localPlayer.x=end.x;localPlayer.y=end.y;movementPath=[];localPlayer.skillCooldowns[id]=t+skill.cooldown*s.cooldownMult;localPlayer.moveReadyAt=t+650;burst(end.x,end.y,id==='blink'?'#9a7cff':'#d7fff0',20);queueSave();setPresence(true);renderActionDock();return;
+  }
+  if(id==='healing_circle'){if(!spendMana(mana))return;const heal=Math.round(s.maxHp*.24*(1+s.lifePower));localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+heal);localPlayer.skillCooldowns[id]=t+skill.cooldown*s.cooldownMult;floater(localPlayer.x,localPlayer.y,`+${heal}`,'#86efac');burst(x,y,'#86efac',24);queueSave();setPresence(true);renderActionDock();return}
+  const targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,{x,y})<=(skill.radius||1)).map(e=>e.id);if(!targets.length){toast('No enemy is standing in that area.');return}await castAttackSkill(skill,targets,roomState.enemies.find(e=>e.id===targets[0]),t,false,{x,y});burst(x,y,skill.school==='fire'?'#ff7b45':'#8ab8ff',30);
+}
+function updateAutoAttack(t){
+  if(autoAttackPending||targetingSkillId||!selectedEnemyId||localPlayer.hp<=0||!skillReady('attack',t))return;const target=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(!target){selectedEnemyId='';return}const range=weaponStats().range||5;if(distance(localPlayer,target)>range)return;autoAttackPending=true;useSkill('attack',true).finally(()=>autoAttackPending=false);
 }
 function updateRegeneration(dt,t){
-  if(localPlayer.hp<=0)return;const s=derivedStats();localPlayer.mana=Math.min(s.maxMana,localPlayer.mana+(MANA_REGEN_PER_SECOND+s.manaRegen)*dt);localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+(HP_REGEN_PER_SECOND+s.hpRegen)*dt);
+  if(localPlayer.hp<=0)return;const s=derivedStats(),safe=map?.isTown;localPlayer.mana=Math.min(s.maxMana,localPlayer.mana+((safe?TOWN_MANA_REGEN_PER_SECOND:MANA_REGEN_PER_SECOND)+s.manaRegen)*dt);localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+((safe?TOWN_HP_REGEN_PER_SECOND:HP_REGEN_PER_SECOND)+s.hpRegen)*dt);
   if(localPlayer.statusEffects.burn>t&&Math.random()<dt*.8){localPlayer.hp=Math.max(0,localPlayer.hp-.7)}
+  if(localPlayer.statusEffects.poison>t&&Math.random()<dt*.75){localPlayer.hp=Math.max(0,localPlayer.hp-.55)}
 }
 
 function openDoorChoice(door){
-  if(!roomState.bossDefeated){toast('The Gate Warden still seals these passages.',1800);return}
+  if(door.requiresBoss&&!roomState.bossDefeated){toast('The dungeon boss still seals the Crimson Descent.',1800);return}
   pendingDoor=door;renderDoorChoices();doorModal.classList.add('open');
 }
 function renderDoorChoices(){
-  const wrap=document.getElementById('doorChoices');wrap.innerHTML='';for(const d of map.doors){const b=document.createElement('button');b.className='doorChoice';b.innerHTML=`<b>${d.id==='sun'?'☀️':'🌑'} ${d.name}</b><small>${d.desc}</small>`;b.onclick=()=>enterRoom(d.target,currentDepth+1);wrap.appendChild(b)}
+  const wrap=document.getElementById('doorChoices');wrap.innerHTML='';for(const d of map.doors){const locked=d.requiresBoss&&!roomState.bossDefeated,b=document.createElement('button');b.className='doorChoice';b.disabled=locked;b.innerHTML=`<b>${d.type==='blue'?'🔷':'🔻'} ${d.name}${locked?' · Sealed':''}</b><small>${d.desc}</small>`;b.onclick=()=>{if(!locked)enterRoom(d.target,Number(d.targetDepth??currentDepth))};wrap.appendChild(b)}
 }
 async function enterRoom(roomId,depth){
   doorModal.classList.remove('open');const oldPresence=playerPresenceRef;teardownRoom(false);if(oldPresence)await deleteDoc(oldPresence).catch(()=>{});
-  currentRoomId=roomId;currentDepth=depth;localPlayer.roomId=roomId;localPlayer.depth=depth;map=generateDungeon(roomId,depth);localPlayer.x=map.spawn.x;localPlayer.y=map.spawn.y;localPlayer.hp=derivedStats().maxHp;localPlayer.mana=derivedStats().maxMana;localPlayer.moveReadyAt=0;queueSave(0);
-  loadingText.textContent=`Entering dungeon depth ${depth}…`;loading.style.display='flex';await connectRoom();loading.style.display='none';toast(`Dungeon depth ${depth}`,1800);
+  currentRoomId=roomId;currentDepth=depth;localPlayer.roomId=roomId;localPlayer.depth=depth;map=generateDungeon(roomId,depth);if(map.isTown)localPlayer.lastSafeRoomId=roomId;localPlayer.x=map.spawn.x;localPlayer.y=map.spawn.y;localPlayer.moveReadyAt=0;queueSave(0);
+  loadingText.textContent=map.isTown?'Entering a safe town…':`Entering dungeon depth ${depth}…`;loading.style.display='flex';await connectRoom();loading.style.display='none';toast(map.isTown?'Safe town · recovery greatly increased':`Dungeon depth ${depth}`,1800);
 }
 function respawn(){
-  const loss=Math.min(localPlayer.gold,Math.max(1,Math.floor(localPlayer.gold*.08)));localPlayer.gold-=loss;const s=derivedStats();localPlayer.hp=s.maxHp;localPlayer.mana=s.maxMana;localPlayer.x=map.spawn.x;localPlayer.y=map.spawn.y;movementPath=[];deathModal.classList.remove('open');queueSave(0);setPresence(true);toast(`Returned to the entrance · lost ${loss} gold`,1800);
+  const loss=Math.min(localPlayer.gold,Math.max(1,Math.floor(localPlayer.gold*.08)));localPlayer.gold-=loss;const s=derivedStats();localPlayer.hp=Math.max(1,Math.round(s.maxHp*.35));localPlayer.mana=Math.round(s.maxMana*.35);deathModal.classList.remove('open');enterRoom(localPlayer.lastSafeRoomId||safeTownForDepth(currentDepth),currentDepth);toast(`Returned to safety · lost ${loss} gold`,1800);
 }
 
-function equipItem(id){const item=getItem(id);if(!item)return;localPlayer.equipment[item.kind]=id;const s=derivedStats();localPlayer.hp=Math.min(localPlayer.hp,s.maxHp);localPlayer.mana=Math.min(localPlayer.mana,s.maxMana);queueSave(0);renderInventory();renderActionDock();setPresence(true)}
-function sellItem(id){const item=getItem(id);if(!item||Object.values(localPlayer.equipment).includes(id))return;const value={Common:4,Rare:12,Epic:28,Legendary:70}[item.rarity]||4;localPlayer.inventory=localPlayer.inventory.filter(i=>i.id!==id);localPlayer.gold+=value;queueSave(0);renderInventory();toast(`Sold for ${value} gold`,1000)}
+function openNpc(npc){currentNpc=npc;document.getElementById('interactionTitle').textContent=npc.name;document.getElementById('interactionLead').textContent=npc.desc;interactionModal.classList.add('open');npc.role==='store'?renderStore():renderQuests(npc)}
+function renderQuests(npc){
+  const wrap=document.getElementById('interactionGrid');wrap.innerHTML='';for(const quest of Object.values(QUESTS).filter(q=>q.giver===npc.name)){const state=localPlayer.quests[quest.id],progress=Math.min(quest.count,Number(state?.progress)||0),ready=state?.status==='accepted'&&progress>=quest.count,card=document.createElement('article');card.className='interactionCard';card.innerHTML=`<b>📜 ${quest.name}</b><small>${quest.desc}</small><small>${progress} / ${quest.count} · Reward ${quest.gold} gold</small>`;const button=document.createElement('button');button.textContent=!state?'Accept Quest':state.status==='claimed'?'Reward Claimed':ready?'Claim Gold':'In Progress';button.disabled=state?.status==='claimed'||(!!state&&!ready);button.onclick=()=>{if(!state){localPlayer.quests[quest.id]={status:'accepted',progress:0,acceptedAtMs:now()};toast(`${quest.name} accepted`,1200)}else if(ready){localPlayer.gold+=quest.gold;localPlayer.quests[quest.id].status='claimed';toast(`Quest complete · +${quest.gold} gold`,1600)}queueSave(0);renderQuests(npc);updateHUD()};card.appendChild(button);wrap.appendChild(card)}
+}
+function renderStore(){
+  const wrap=document.getElementById('interactionGrid');wrap.innerHTML='';for(const entry of STORE_CATALOG){const base=itemBase(entry),card=document.createElement('article');card.className='interactionCard';card.innerHTML=`<b>${base.icon||'🎒'} ${base.name}</b><small>${base.specialty||''}</small><small>${entry.price} gold</small>`;const button=document.createElement('button');button.textContent=localPlayer.gold>=entry.price?'Buy':'Need More Gold';button.disabled=localPlayer.gold<entry.price||localPlayer.inventory.length>=MAX_INVENTORY;button.onclick=()=>buyStoreItem(entry);card.appendChild(button);wrap.appendChild(card)}
+}
+function buyStoreItem(entry){
+  if(localPlayer.gold<entry.price||localPlayer.inventory.length>=MAX_INVENTORY)return;const rarity=entry.kind==='consumable'?'Common':'Rare',seed=hashString(`${uid}-${now()}-${entry.baseId}`),random=rngFrom(seed),prefix=(entry.kind==='armor'||entry.kind==='spellbook')?PREFIXES[Math.floor(random()*PREFIXES.length)].id:null,item={id:`shop-${seed.toString(36)}-${Math.floor(random()*9999)}`,baseId:entry.baseId,kind:entry.kind,rarity,prefix,suffix:null,level:Math.max(1,currentDepth+1),source:'town-store'};localPlayer.gold-=entry.price;localPlayer.inventory.push(item);queueSave(0);renderStore();renderInventory();updateHUD();toast(`${itemName(item)} purchased`,1300)
+}
+function useItem(id){const item=getItem(id),base=itemBase(item);if(!item||item.kind!=='consumable')return;const s=derivedStats();if(base.heal)localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+base.heal);if(base.restoreMana)localPlayer.mana=Math.min(s.maxMana,localPlayer.mana+base.restoreMana);localPlayer.inventory=localPlayer.inventory.filter(i=>i.id!==id);queueSave(0);renderInventory();updateHUD();toast(`${base.name} used`,900)}
+function recordQuestKill(enemyType){let completed='';for(const quest of Object.values(QUESTS)){const state=localPlayer.quests[quest.id];if(state?.status!=='accepted'||quest.target!==enemyType)continue;state.progress=Math.min(quest.count,(Number(state.progress)||0)+1);if(state.progress>=quest.count)completed=quest.name}if(completed)toast(`${completed} complete · return to town`,2400);queueSave(200)}
+
+function equipItem(id){const item=getItem(id);if(!item||item.kind==='consumable')return;localPlayer.equipment[item.kind]=id;const s=derivedStats();localPlayer.hp=Math.min(localPlayer.hp,s.maxHp);localPlayer.mana=Math.min(localPlayer.mana,s.maxMana);queueSave(0);renderInventory();renderActionDock();setPresence(true)}
+function sellItem(id){const item=getItem(id);if(!item||Object.values(localPlayer.equipment).includes(id))return;const value={Common:5,Rare:16,Epic:38,Legendary:90}[item.rarity]||5;localPlayer.inventory=localPlayer.inventory.filter(i=>i.id!==id);localPlayer.gold+=value;queueSave(0);renderInventory();toast(`Sold for ${value} gold`,1000)}
 function renderInventory(){
   if(!localPlayer)return;const slots=document.getElementById('equipmentSlots');slots.innerHTML='';
-  for(const kind of ['weapon','armor','charm']){const id=localPlayer.equipment[kind],item=getItem(id);const d=document.createElement('div');d.className='equipSlot';d.innerHTML=`<b>${kind==='armor'?'Full Armor Suit':kind}</b><span>${item?itemName(item):'Empty'}</span>`;if(item)d.onclick=()=>{localPlayer.equipment[kind]=null;queueSave();renderInventory()};slots.appendChild(d)}
-  const s=derivedStats(),w=weaponStats();document.getElementById('statSummary').innerHTML=`<small>Level ${localPlayer.level} · ${localPlayer.gold} gold</small><br><small>Attack ${Math.round(s.attack)} · Armor ${Math.round(s.armor)} · Crit ${Math.round(s.crit*100)}%</small><br><small>Range ${w.range||1} · Weapon cooldown ${Math.round((w.cooldown||900)*s.cooldownMult)}ms</small>`;
-  const grid=document.getElementById('inventoryGrid');grid.innerHTML='';for(const item of localPlayer.inventory){const base=itemBase(item),equipped=Object.values(localPlayer.equipment).includes(item.id);const card=document.createElement('article');card.className='itemCard'+(equipped?' equipped':'');card.style.borderColor=equipped?'#7fe6a4':rarityColor(item.rarity);const stats=itemStats(item);card.innerHTML=`<span class="rarity">${item.rarity} ${item.kind}</span><b>${base?.icon||'🎒'} ${itemName(item)}</b><small>${describeItem(stats,item)}</small><div class="itemActions"><button data-equip>${equipped?'Equipped':'Equip'}</button><button data-sell ${equipped?'disabled':''}>Sell</button></div>`;card.querySelector('[data-equip]').onclick=()=>equipItem(item.id);card.querySelector('[data-sell]').onclick=()=>sellItem(item.id);grid.appendChild(card)}
+  for(const kind of ['weapon','armor','charm','spellbook']){const id=localPlayer.equipment[kind],item=getItem(id);const d=document.createElement('div');d.className='equipSlot';d.innerHTML=`<b>${kind==='armor'?'Full Armor Suit':kind}</b><span>${item?itemName(item):'Empty'}</span>`;if(item)d.onclick=()=>{localPlayer.equipment[kind]=null;queueSave();renderInventory();setPresence(true)};slots.appendChild(d)}
+  const s=derivedStats(),w=weaponStats();document.getElementById('statSummary').innerHTML=`<small>Level ${localPlayer.level} · ${localPlayer.gold} gold</small><br><small>Attack ${Math.round(s.attack)} · Armor ${Math.round(s.armor)} · Crit ${Math.round(s.crit*100)}%</small><br><small>Spell power ${Math.round(s.spellPower*100)}% · HP regen ${(HP_REGEN_PER_SECOND+s.hpRegen).toFixed(2)}/s · Mana regen ${(MANA_REGEN_PER_SECOND+s.manaRegen).toFixed(2)}/s</small><br><small>Range ${w.range||1} · Weapon cooldown ${Math.round((w.cooldown||1450)*s.cooldownMult)}ms</small>`;
+  const grid=document.getElementById('inventoryGrid');grid.innerHTML='';for(const item of localPlayer.inventory){const base=itemBase(item),equipped=Object.values(localPlayer.equipment).includes(item.id),usable=item.kind==='consumable';const card=document.createElement('article');card.className='itemCard'+(equipped?' equipped':'');card.style.borderColor=equipped?'#7fe6a4':rarityColor(item.rarity);const stats=itemStats(item);card.innerHTML=`<span class="rarity">${item.rarity} ${item.kind}</span><b>${base?.icon||'🎒'} ${itemName(item)}</b><small>${describeItem(stats,item)}</small>${base?.specialty?`<small class="specialty">${base.specialty}</small>`:''}<div class="itemActions"><button data-equip>${usable?'Use':equipped?'Equipped':'Equip'}</button><button data-sell ${equipped?'disabled':''}>Sell</button></div>`;card.querySelector('[data-equip]').onclick=()=>usable?useItem(item.id):equipItem(item.id);card.querySelector('[data-sell]').onclick=()=>sellItem(item.id);grid.appendChild(card)}
 }
-function describeItem(s,item){const bits=[];if(s.attack)bits.push(`+${s.attack} attack`);if(s.range)bits.push(`${s.range} range`);if(s.cooldown)bits.push(`${s.cooldown}ms cooldown`);if(s.maxHp)bits.push(`+${s.maxHp} HP`);if(s.maxMana)bits.push(`+${s.maxMana} mana`);if(s.armor)bits.push(`+${s.armor} armor`);if(s.crit)bits.push(`+${Math.round(s.crit*100)}% crit`);if(s.onHit)bits.push(`${s.onHit} on hit`);if(s.lifeSteal)bits.push(`${Math.round(s.lifeSteal*100)}% leech`);if(s.dropChance)bits.push(`+${Math.round(s.dropChance*100)}% drops`);return bits.join(' · ')||'A dependable piece of equipment.'}
+function describeItem(s,item){const bits=[];if(s.attack)bits.push(`+${s.attack} attack`);if(s.range)bits.push(`${s.range} range`);if(s.cooldown)bits.push(`${s.cooldown}ms cooldown`);if(s.maxHp)bits.push(`${s.maxHp>0?'+':''}${s.maxHp} HP`);if(s.maxMana)bits.push(`+${s.maxMana} mana`);if(s.armor)bits.push(`+${s.armor} armor`);if(s.crit)bits.push(`+${Math.round(s.crit*100)}% crit`);if(s.spellPower)bits.push(`+${Math.round(s.spellPower*100)}% spell power`);if(s.manaRegen)bits.push(`+${s.manaRegen}/s mana`);if(s.hpRegen)bits.push(`+${s.hpRegen}/s health`);if(s.onHit)bits.push(`${s.onHit} on hit`);if(s.lifeSteal)bits.push(`${Math.round(s.lifeSteal*100)}% leech`);if(s.dropChance)bits.push(`+${Math.round(s.dropChance*100)}% drops`);if(s.heal)bits.push(`restore ${s.heal} HP`);if(s.restoreMana)bits.push(`restore ${s.restoreMana} mana`);return bits.join(' · ')||'A dependable piece of equipment.'}
 function renderSkills(){
   document.getElementById('skillPointLine').textContent=`Skill points: ${localPlayer.skillPoints}. Skills become available as your level rises.`;const wrap=document.getElementById('skillChoices');wrap.innerHTML='';
   for(const skill of Object.values(SKILLS).filter(s=>s.id!=='attack')){const has=learned(skill.id),can=!has&&localPlayer.skillPoints>0&&localPlayer.level>=skill.level;const b=document.createElement('button');b.className=`skillChoice ${can?'available':'locked'}`;b.innerHTML=`<b>${skill.icon} ${skill.name}${has?' ✓':''}</b><small>${skill.desc}</small><div class="req">${has?'Learned':`Requires level ${skill.level} · 1 skill point`}</div>`;if(can)b.onclick=()=>learnSkill(skill.id);wrap.appendChild(b)}
@@ -647,16 +799,16 @@ function renderSkills(){
 function learnSkill(id){if(learned(id)||localPlayer.skillPoints<1||localPlayer.level<SKILLS[id].level)return;localPlayer.skillPoints--;localPlayer.learnedSkills.push(id);queueSave(0);renderSkills();renderActionDock();toast(`${SKILLS[id].name} learned`,1400)}
 function renderActionDock(){
   if(!localPlayer)return;actionDock.innerHTML='';const move=document.createElement('div');move.id='moveReady';move.innerHTML='<span>MOVE</span><strong>READY</strong>';actionDock.appendChild(move);
-  const ids=localPlayer.learnedSkills.filter(id=>SKILLS[id]);ids.forEach((id,index)=>{const s=SKILLS[id],b=document.createElement('button');b.className='actionBtn';b.dataset.skill=id;b.innerHTML=`<span class="key">${index+1}</span><span class="cooldown"></span><span class="icon">${s.icon}</span><span class="name">${s.name}</span>`;b.onclick=()=>useSkill(id);actionDock.appendChild(b)});
+  const ids=localPlayer.learnedSkills.filter(id=>SKILLS[id]);ids.forEach((id,index)=>{const s=SKILLS[id],b=document.createElement('button');b.className='actionBtn'+(targetingSkillId===id?' targeting':'');b.dataset.skill=id;b.innerHTML=`<span class="key">${index+1}</span><span class="cooldown"></span><span class="icon">${s.icon}</span><span class="name">${s.name}</span>`;b.onclick=()=>targetingSkillId===id?cancelTargeting():useSkill(id);actionDock.appendChild(b)});
   const inv=document.createElement('button');inv.className='actionBtn utilityBtn';inv.innerHTML='<span class="key">I</span><span class="icon">🎒</span><span class="name">Inventory</span>';inv.onclick=()=>{renderInventory();inventoryModal.classList.add('open')};actionDock.appendChild(inv);
   const skills=document.createElement('button');skills.className='actionBtn utilityBtn';skills.innerHTML=`<span class="key">K</span><span class="icon">📖</span><span class="name">Skills${localPlayer.skillPoints?` (${localPlayer.skillPoints})`:''}</span>`;skills.onclick=()=>{renderSkills();skillsModal.classList.add('open')};actionDock.appendChild(skills);
 }
 function updateActionDock(t){
   const move=actionDock.querySelector('#moveReady');if(move){const rem=Math.max(0,(localPlayer.moveReadyAt||0)-t);move.querySelector('strong').textContent=rem?`${(rem/1000).toFixed(1)}s`:'READY';move.querySelector('strong').style.color=rem?'#d8c781':'#7fe6a4'}
-  actionDock.querySelectorAll('[data-skill]').forEach(b=>{const id=b.dataset.skill,s=SKILLS[id],ready=skillReady(id,t),until=localPlayer.skillCooldowns[id]||0;let total=id==='attack'?(weaponStats().cooldown||900)*derivedStats().cooldownMult:s.cooldown||1;const rem=Math.max(0,until-t);const pct=clamp(rem/total,0,1);b.style.setProperty('--cd',`${pct*360}deg`);b.classList.toggle('ready',ready);b.querySelector('.cooldown').textContent=rem?`${(rem/1000).toFixed(1)}`:''})
+  actionDock.querySelectorAll('[data-skill]').forEach(b=>{const id=b.dataset.skill,s=SKILLS[id],ready=skillReady(id,t),until=localPlayer.skillCooldowns[id]||0;let total=id==='attack'?(weaponStats().cooldown||1450)*derivedStats().cooldownMult:(s.cooldown||1)*derivedStats().cooldownMult;const rem=Math.max(0,until-t);const pct=clamp(rem/total,0,1);b.style.setProperty('--cd',`${pct*360}deg`);b.classList.toggle('ready',ready);b.classList.toggle('targeting',targetingSkillId===id);b.querySelector('.cooldown').textContent=rem?`${(rem/1000).toFixed(1)}`:''})
 }
 function updateHUD(){
-  if(!localPlayer)return;const s=derivedStats();playerLine.textContent=`${username} · Lv ${localPlayer.level} · Depth ${currentDepth}`;
+  if(!localPlayer)return;const s=derivedStats();playerLine.textContent=`${username} · Lv ${localPlayer.level} · ${map?.isTown?'Safe Town':`Depth ${currentDepth}`} · ${localPlayer.gold}g`;
   setBar('hp',localPlayer.hp,s.maxHp);setBar('mana',localPlayer.mana,s.maxMana);setBar('xp',localPlayer.xp,xpToNext(localPlayer.level));
 }
 function setBar(id,value,max){document.getElementById(`${id}Fill`).style.width=`${clamp(value/max*100,0,100)}%`;document.getElementById(`${id}Label`).textContent=`${id.toUpperCase()} ${Math.floor(value)} / ${Math.floor(max)}`}
@@ -674,12 +826,15 @@ function isVisibleTile(x,y){return distance({x,y},localPlayer)<=9}
 function revealAround(x,y,r){for(let yy=y-r;yy<=y+r;yy++)for(let xx=x-r;xx<=x+r;xx++)if(inBounds(xx,yy)&&distance({x:xx,y:yy},{x,y})<=r)discovered.add(keyXY(xx,yy))}
 function drawSprite(name,x,y,size=52,emoji='?'){const p=worldToScreen(x,y,12),img=graphic(name),s=size*cam.zoom;if(img&&img.complete&&!missingImages.has(name)&&img.naturalWidth){ctx.drawImage(img,p.x-s/2,p.y-s*.82,s,s);return}ctx.font=`${Math.max(15,s*.62)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(emoji,p.x,p.y-s*.28)}
 function drawHealthBar(entity,maxHp,color='#e85762'){const p=worldToScreen(entity.x,entity.y,52),w=44*cam.zoom,h=5*cam.zoom;ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(p.x-w/2,p.y,w,h);ctx.fillStyle=color;ctx.fillRect(p.x-w/2,p.y,w*clamp(entity.hp/maxHp,0,1),h)}
-function drawDoor(d){if(!isVisibleTile(d.x,d.y)&&!discovered.has(keyXY(d.x,d.y)))return;drawSprite(d.id==='sun'?'door_blue':'door_red',d.x,d.y,68,d.id==='sun'?'🚪':'🚪');const p=worldToScreen(d.x,d.y,70);ctx.fillStyle=roomState.bossDefeated?'#f4da7a':'#d17c7c';ctx.font=`${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(roomState.bossDefeated?d.name:'Sealed',p.x,p.y)}
+function drawDoor(d){if(!isVisibleTile(d.x,d.y)&&!discovered.has(keyXY(d.x,d.y)))return;const locked=d.requiresBoss&&!roomState.bossDefeated;drawSprite(d.type==='blue'?'door_blue':'door_red',d.x,d.y,68,'🚪');const p=worldToScreen(d.x,d.y,70);ctx.fillStyle=locked?'#d17c7c':d.type==='blue'?'#8fd8ff':'#f4a2a2';ctx.font=`bold ${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(locked?'Sealed':d.name,p.x,p.y)}
+function drawPlayerSprite(p,isLocal){drawSprite('player_archer',p.x,p.y,60,'🧝');const baseId=isLocal?getItem(localPlayer.equipment?.armor)?.baseId:p.armorBaseId,armor=ARMORS[baseId]||ARMORS.leather_suit,img=graphic(`armor_${baseId}`),sp=worldToScreen(p.x,p.y,13),s=60*cam.zoom;if(img&&img.complete&&img.naturalWidth&&!missingImages.has(`armor_${baseId}`)){ctx.drawImage(img,sp.x-s/2,sp.y-s*.82,s,s);return}ctx.save();ctx.globalAlpha=.72;ctx.fillStyle=armor.armorColor||'#8b765c';ctx.beginPath();ctx.moveTo(sp.x,sp.y-s*.5);ctx.lineTo(sp.x+s*.25,sp.y-s*.08);ctx.lineTo(sp.x+s*.16,sp.y+s*.1);ctx.lineTo(sp.x-s*.16,sp.y+s*.1);ctx.lineTo(sp.x-s*.25,sp.y-s*.08);ctx.closePath();ctx.fill();ctx.strokeStyle='rgba(255,255,255,.65)';ctx.lineWidth=Math.max(1,cam.zoom);ctx.stroke();ctx.restore()}
 function drawActor(actor){
   if(actor.kind==='wall'){drawWall(actor.data.x,actor.data.y);return}
   if(actor.kind==='enemy'){const e=actor.data;if(!isVisibleTile(e.x,e.y))return;const def=ENEMY_TYPES[e.type];const selected=e.id===selectedEnemyId;if(selected)drawDiamond(e.x,e.y,'rgba(255,94,94,.25)','#ff8b86');drawSprite(def.graphic,e.x,e.y,def.boss?82:56,def.boss?'👹':e.type==='slime'?'🟢':e.type==='archer'?'🏹':e.type==='mage'?'🧙':'💀');drawHealthBar(e,e.maxHp);return}
-  const p=actor.data;if(p.uid===uid){drawDiamond(p.x,p.y,'rgba(127,230,164,.16)','#7fe6a4');drawSprite('player_archer',p.x,p.y,60,'🧝');drawHealthBar({x:p.x,y:p.y,hp:localPlayer.hp},derivedStats().maxHp,'#7fe6a4')}else{if(!isVisibleTile(p.x,p.y))return;drawSprite('player_archer',p.x,p.y,57,'🧙');drawHealthBar(p,p.maxHp||100,'#72b9ff');const sp=worldToScreen(p.x,p.y,64);ctx.fillStyle='#dff0ff';ctx.font=`${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(p.username||'Adventurer',sp.x,sp.y)}
+  if(actor.kind==='npc'){const n=actor.data;if(!isVisibleTile(n.x,n.y))return;drawSprite(n.graphic,n.x,n.y,58,n.role==='store'?'🧑‍🏭':'🧙');const sp=worldToScreen(n.x,n.y,64);ctx.fillStyle='#ffe39a';ctx.font=`bold ${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(n.name,sp.x,sp.y);return}
+  const p=actor.data;if(p.uid===uid){drawDiamond(p.x,p.y,'rgba(127,230,164,.16)','#7fe6a4');drawPlayerSprite(p,true);drawHealthBar({x:p.x,y:p.y,hp:localPlayer.hp},derivedStats().maxHp,'#7fe6a4')}else{if(!isVisibleTile(p.x,p.y))return;drawPlayerSprite(p,false);drawHealthBar(p,p.maxHp||100,'#72b9ff');const sp=worldToScreen(p.x,p.y,64);ctx.fillStyle='#dff0ff';ctx.font=`${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(p.username||'Adventurer',sp.x,sp.y)}
 }
+function drawTelegraphs(t){for(const q of roomState.telegraphs||[]){const pulse=.28+.16*Math.sin(t/90),urgent=(q.resolveAtMs||0)-t<450;for(const tile of q.tiles||[])drawDiamond(tile.x,tile.y,urgent?`rgba(255,46,46,${pulse+.2})`:`rgba(255,143,42,${pulse})`,urgent?'#fff0a8':'#ff9a4a');const source=roomState.enemies.find(e=>e.id===q.enemyId);if(source){const p=worldToScreen(source.x,source.y,72);ctx.fillStyle='#ffd19b';ctx.font=`bold ${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(`${q.source} · ${Math.max(0,(q.resolveAtMs-t)/1000).toFixed(1)}s`,p.x,p.y)}}}
 function drawProjectiles(t){projectiles=projectiles.filter(p=>t-p.started<p.duration);for(const p of projectiles){const f=clamp((t-p.started)/p.duration,0,1),x=p.x+(p.tx-p.x)*f,y=p.y+(p.ty-p.y)*f;drawSprite(p.kind==='staff'||p.kind==='wand'?'projectile_magic':'projectile_arrow',x,y,25,p.kind==='staff'?'🔥':'➶')}}
 function drawEffects(t){particles=particles.filter(p=>t-p.born<p.life);for(const p of particles){const f=(t-p.born)/p.life,sp=worldToScreen(p.x+p.vx*f,p.y+p.vy*f,p.z*f*20);ctx.globalAlpha=1-f;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(sp.x,sp.y,p.size*(1-f)*cam.zoom,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;floaters=floaters.filter(f=>t-f.born<900);for(const f of floaters){const sp=worldToScreen(f.x,f.y,50+(t-f.born)*.04);ctx.globalAlpha=1-(t-f.born)/900;ctx.fillStyle=f.color;ctx.font='bold 15px sans-serif';ctx.textAlign='center';ctx.fillText(f.text,sp.x,sp.y)}ctx.globalAlpha=1}
 function burst(x,y,color,count=12){const t=now(),r=rngFrom(Math.floor(t+x*31+y*67));for(let i=0;i<count;i++)particles.push({x,y,vx:(r()-.5)*1.5,vy:(r()-.5)*1.5,z:r(),born:t,life:500+r()*500,size:2+r()*3,color})}
@@ -687,10 +842,10 @@ function floater(x,y,text,color){floaters.push({x,y,text,color,born:now()})}
 function draw(){
   ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#07100d';ctx.fillRect(0,0,cssW,cssH);if(!map||!localPlayer)return;
   const bounds=visibleBounds();for(let y=bounds.y0;y<=bounds.y1;y++)for(let x=bounds.x0;x<=bounds.x1;x++)if(tileAt(x,y)===0)drawFloor(x,y);
-  for(const d of map.doors)drawDoor(d);
-  const actors=[];for(let y=bounds.y0;y<=bounds.y1;y++)for(let x=bounds.x0;x<=bounds.x1;x++)if(tileAt(x,y)===1&&discovered.has(keyXY(x,y))&&isWallEdge(x,y))actors.push({kind:'wall',data:{x,y},order:x+y-.15});for(const e of roomState.enemies)if(e.hp>0)actors.push({kind:'enemy',data:e,order:e.x+e.y});for(const p of onlinePlayers)actors.push({kind:'player',data:p,order:p.x+p.y+.2});if(!onlinePlayers.some(p=>p.uid===uid))actors.push({kind:'player',data:{...localPlayer,uid,username},order:localPlayer.x+localPlayer.y+.2});actors.sort((a,b)=>a.order-b.order);for(const a of actors)drawActor(a);
+  drawTelegraphs(now());for(const d of map.doors)drawDoor(d);
+  const actors=[];for(let y=bounds.y0;y<=bounds.y1;y++)for(let x=bounds.x0;x<=bounds.x1;x++)if(tileAt(x,y)===1&&discovered.has(keyXY(x,y))&&isWallEdge(x,y))actors.push({kind:'wall',data:{x,y},order:x+y-.15});for(const e of roomState.enemies)if(e.hp>0)actors.push({kind:'enemy',data:e,order:e.x+e.y});for(const n of map.npcs||[])actors.push({kind:'npc',data:n,order:n.x+n.y+.1});for(const p of onlinePlayers)actors.push({kind:'player',data:p,order:p.x+p.y+.2});if(!onlinePlayers.some(p=>p.uid===uid))actors.push({kind:'player',data:{...localPlayer,uid,username},order:localPlayer.x+localPlayer.y+.2});actors.sort((a,b)=>a.order-b.order);for(const a of actors)drawActor(a);
   drawProjectiles(now());drawEffects(now());
-  if(hoverTile&&inBounds(hoverTile.x,hoverTile.y)&&tileAt(hoverTile.x,hoverTile.y)===0)drawDiamond(hoverTile.x,hoverTile.y,'rgba(255,255,255,.05)','rgba(255,255,255,.36)');
+  if(hoverTile&&inBounds(hoverTile.x,hoverTile.y)&&tileAt(hoverTile.x,hoverTile.y)===0)drawDiamond(hoverTile.x,hoverTile.y,targetingSkillId?'rgba(230,191,79,.2)':'rgba(255,255,255,.05)',targetingSkillId?'#e6bf4f':'rgba(255,255,255,.36)');
 }
 function isWallEdge(x,y){for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(tileAt(x+dx,y+dy)===0)return true;return false}
 function visibleBounds(){const radius=Math.ceil(Math.max(cssW/(TILE_W*cam.zoom),cssH/(TILE_H*cam.zoom)))+8;return{x0:clamp(localPlayer.x-radius,0,map.w-1),x1:clamp(localPlayer.x+radius,0,map.w-1),y0:clamp(localPlayer.y-radius,0,map.h-1),y1:clamp(localPlayer.y+radius,0,map.h-1)}}
@@ -705,13 +860,13 @@ function input(){
     if(e.key.toLowerCase()==='i'){renderInventory();inventoryModal.classList.add('open')}
     if(e.key.toLowerCase()==='k'){renderSkills();skillsModal.classList.add('open')}
     const dirs={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]};const d=dirs[e.key]||dirs[e.key.toLowerCase()];if(d){e.preventDefault();setMoveTarget(localPlayer.x+d[0],localPlayer.y+d[1])}
-    if(e.key==='Escape')document.querySelectorAll('.modal.open').forEach(m=>m.classList.remove('open'));
+    if(e.key==='Escape'){cancelTargeting();document.querySelectorAll('.modal.open').forEach(m=>m.classList.remove('open'))}
   });
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>document.getElementById(b.dataset.close).classList.remove('open'));
   document.getElementById('respawnBtn').onclick=respawn;
 }
 function loop(ts){
-  const dt=Math.min(.05,(ts-lastFrame)/1000||.016);lastFrame=ts;if(localPlayer){const t=now();updateMovement(t);updateRegeneration(dt,t);centerCamera();updateHUD();updateActionDock(t);if(t-lastPlayerSync>PLAYER_SYNC_MS){lastPlayerSync=t;if(movementPath.length)setPresence(false)}}draw();requestAnimationFrame(loop)
+  const dt=Math.min(.05,(ts-lastFrame)/1000||.016);lastFrame=ts;if(localPlayer){const t=now();updateMovement(t);updateAutoAttack(t);updateRegeneration(dt,t);centerCamera();updateHUD();updateActionDock(t);if(t-lastPlayerSync>PLAYER_SYNC_MS){lastPlayerSync=t;if(movementPath.length)setPresence(false)}}draw();requestAnimationFrame(loop)
 }
 
 async function boot(){
