@@ -711,6 +711,7 @@
       {key:"onehitknight",title:"One Hit Knight",emoji:"🛡️⚔️",desc:"Dash, slash, and survive a one-hit challenge.",route:"/game/onehitknight.html",category:"Action",modes:["single"],featured:true},
       {key:"deepsea",title:"Deep Sea",emoji:"🐟🌊",desc:"Swim, grow, evolve, and survive below.",route:"/game/deep_sea.html",category:"Adventure",modes:["single"],featured:true},
       {key:"turncraft",title:"Turncraft",emoji:"⚙️⚔️",imagePath:"/graphics/turncraft/immortal.png",desc:"Build bases, command factions, and battle alone or with up to four players.",route:"/game/turncraft.html",category:"Strategy",modes:["single","multi"],minPlayers:1,maxPlayers:4,autoRedirect:true},
+      {key:"gridbound",title:"Gridbound Realms",emoji:"🏹",desc:"Enter a persistent shared isometric RPG realm. Each lobby holds one adventurer.",route:"/game/Gridbound_RPG_MMO.html",category:"RPG",modes:["multi"],maxPlayers:1,sharedRealm:"public-gridbound-realm"},
       {key:"chesswarlord",title:"Chess Warlord",emoji:"♛⚔️",imagePath:"/graphics/titlegraphics/chess warlord.png",desc:"An eight-player real-time faction chess war with territory control, kings, cooldowns, AI seats, and Firebase multiplayer.",route:"/game/chess_warlord.html",category:"Strategy",modes:["multi"],maxPlayers:8,autoRedirect:true,featured:true}
     ];
 
@@ -1258,7 +1259,7 @@
       });
       bindProfileLinks($("currentLobbyPlayers"));
       $("currentLobbyRole").textContent=isHost?"Host":"Player";$("waitingForHost").hidden=isHost;
-      $("invitePlayerBtn").hidden=!isHost;$("startGameBtn").hidden=!isHost;$("startGameBtn").textContent=`🚀 Start ${gameTitle(game.key,true)}`;
+      $("invitePlayerBtn").hidden=!isHost||getMaxPlayers(game.key)<=1;$("startGameBtn").hidden=!isHost;$("startGameBtn").textContent=`🚀 Start ${gameTitle(game.key,true)}`;
       renderLobbyBrowser();
     }
     function clearCurrentLobby(message=""){
@@ -1307,11 +1308,12 @@
       const players=Array.isArray(data?.players)?data.players:[];
       if(!id||data?.status!=="started"||currentLobbyId!==id||!players.includes(username))return;
       const game=getGame(data.gameType),launchId=data.activeGameId||id;save(SK.lastGame,game.key);save(SK.lastLobby,id);
+      const launchQuery=game.sharedRealm?`realm=${encodeURIComponent(game.sharedRealm)}&username=${encodeURIComponent(username)}`:`gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}`;
       if(game.key==="stoneyrelic"){
         const isDM=data.dm===username,route=isDM?game.dmRoute:game.route,role=isDM?"dm":"player";
         launchGameUrl(`${route}?gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}&role=${role}`,"lobby-started");return;
       }
-      launchGameUrl(`${game.route}?gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}`,"lobby-started");
+      launchGameUrl(`${game.route}?${launchQuery}`,"lobby-started");
     }
     async function removePlayerFromLobby(id,playerName){
       if(!id||!playerName)return {removed:false,closed:false};
