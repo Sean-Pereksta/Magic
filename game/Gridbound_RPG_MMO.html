@@ -68,7 +68,7 @@ import {
   getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, serverTimestamp,
   collection, getDocs, deleteDoc, addDoc, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 (() => {
 'use strict';
@@ -236,10 +236,13 @@ function now(){return Date.now()}
 function hashString(str){let h=2166136261>>>0;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
 function rngFrom(seed){let s=seed>>>0;return()=>{s+=0x6D2B79F5;let t=s;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
 function uidKey(v){return safeId(v).slice(0,60)}
-function profileDoc(){return doc(db,'Users',uidKey(username))}
-function currentRoomDoc(roomId=currentRoomId){return doc(db,'rpg_realms',realmId,'rooms',safeId(roomId))}
-function roomSub(name,roomId=currentRoomId){return collection(db,'rpg_realms',realmId,'rooms',safeId(roomId),name)}
-function roomSubDoc(name,id,roomId=currentRoomId){return doc(db,'rpg_realms',realmId,'rooms',safeId(roomId),name,safeId(id))}
+// Keep all data inside paths already permitted by the shared hub rules.
+// Firestore collection names are case-sensitive: the rules allow `users`, not `Users`.
+function profileDoc(){return doc(db,'users',uidKey(username))}
+// Reuse the lobby's recursively permitted subtree for Gridbound room state.
+function currentRoomDoc(roomId=currentRoomId){return doc(db,'lobbies',realmId,'rpg_rooms',safeId(roomId))}
+function roomSub(name,roomId=currentRoomId){return collection(db,'lobbies',realmId,'rpg_rooms',safeId(roomId),name)}
+function roomSubDoc(name,id,roomId=currentRoomId){return doc(db,'lobbies',realmId,'rpg_rooms',safeId(roomId),name,safeId(id))}
 function toast(message,ms=1800){toastEl.textContent=message;toastEl.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>toastEl.style.display='none',ms)}
 function rarityColor(r){return r==='Legendary'?'#ffcb61':r==='Epic'?'#c896ff':r==='Rare'?'#70b7ff':'#d8e1db'}
 function deepClone(v){return JSON.parse(JSON.stringify(v))}
@@ -337,8 +340,14 @@ function initialEnemiesForMap(m){
 }
 
 async function ensureAuth(){
-  await new Promise(resolve=>{const off=onAuthStateChanged(auth,u=>{if(u){off();resolve()}});if(!auth.currentUser)signInAnonymously(auth).catch(()=>resolve())});
-  uid=auth.currentUser?.uid||`local-${Math.random().toString(36).slice(2)}`;
+  try{
+    const user=auth.currentUser||(await signInAnonymously(auth)).user;
+    if(!user?.uid)throw new Error('Firebase returned no authenticated user.');
+    uid=user.uid;
+  }catch(error){
+    const code=error?.code?` (${error.code})`:'';
+    throw new Error(`Firebase anonymous sign-in failed${code}. Enable Anonymous Authentication in Firebase Console, then reload. ${error?.message||''}`.trim());
+  }
 }
 async function loadProfile(){
   profileRef=profileDoc();const snap=await getDoc(profileRef);const data=snap.exists()?snap.data()?.rpgProfile:null;
