@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Gridbound Realms</title>
+<style>
+:root{
+  --bg:#07100d;--panel:rgba(9,17,15,.91);--line:rgba(229,255,235,.18);--text:#f3fff6;
+  --muted:#a9bbb0;--hp:#e84f5f;--mana:#4f8fe8;--xp:#e6bf4f;--ready:#7fe6a4;--danger:#ff8b86;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;touch-action:none}
+button{font:inherit}
+canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;background:#07100d}
+#statusHud{position:fixed;z-index:20;left:12px;top:12px;width:min(370px,calc(100vw - 24px));pointer-events:none}
+#identity{display:flex;align-items:center;gap:8px;margin:0 0 6px;padding:7px 10px;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:0 12px 35px rgba(0,0,0,.35);backdrop-filter:blur(8px);font-size:12px;font-weight:900}
+#identity span:last-child{margin-left:auto;color:var(--muted);font-size:10px}
+.hudBar{position:relative;height:18px;margin-top:4px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.55);box-shadow:0 8px 20px rgba(0,0,0,.22)}
+.hudBar .fill{height:100%;width:0;transition:width .16s linear}
+.hudBar .label{position:absolute;inset:0;display:grid;place-items:center;font-size:10px;font-weight:1000;text-shadow:0 1px 3px #000;letter-spacing:.02em}
+#hpFill{background:linear-gradient(90deg,#9e263d,var(--hp))}#manaFill{background:linear-gradient(90deg,#2450a8,var(--mana))}#xpFill{background:linear-gradient(90deg,#98701e,var(--xp))}
+#actionDock{position:fixed;z-index:25;left:50%;bottom:max(10px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:flex-end;gap:7px;max-width:calc(100vw - 14px);padding:7px;border:1px solid var(--line);border-radius:17px;background:var(--panel);box-shadow:0 16px 50px rgba(0,0,0,.45);backdrop-filter:blur(10px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none;touch-action:pan-x}
+#actionDock::-webkit-scrollbar{display:none}
+.actionBtn{--cd:0deg;position:relative;flex:0 0 62px;width:62px;height:62px;border:1px solid rgba(255,255,255,.2);border-radius:13px;background:conic-gradient(rgba(0,0,0,.72) var(--cd),transparent 0),linear-gradient(180deg,rgba(45,67,56,.96),rgba(12,23,18,.96));color:#fff;cursor:pointer;overflow:hidden;box-shadow:inset 0 1px rgba(255,255,255,.08)}
+.actionBtn.ready{border-color:rgba(127,230,164,.8);box-shadow:0 0 0 2px rgba(127,230,164,.12),0 0 16px rgba(127,230,164,.22),inset 0 1px rgba(255,255,255,.12)}
+.actionBtn.locked{opacity:.38;filter:grayscale(.5)}
+.actionBtn .key{position:absolute;left:5px;top:4px;font-size:9px;color:#d5e6db;font-weight:1000}
+.actionBtn .icon{display:block;font-size:23px;line-height:1;margin-top:1px}
+.actionBtn .name{display:block;margin-top:3px;font-size:8px;font-weight:1000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 3px}
+.actionBtn .cooldown{position:absolute;right:5px;top:4px;font-size:9px;font-weight:1000;text-shadow:0 1px 2px #000}
+#moveReady{flex:0 0 58px;width:58px;height:45px;align-self:center;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(8,16,13,.95);display:flex;flex-direction:column;justify-content:center;align-items:center;font-size:8px;font-weight:1000;color:var(--muted)}
+#moveReady strong{font-size:10px;color:var(--ready);margin-top:2px}
+.utilityBtn{background:linear-gradient(180deg,rgba(46,47,67,.96),rgba(17,18,27,.96))}
+#toast{position:fixed;z-index:60;left:50%;top:24%;transform:translate(-50%,-50%);max-width:min(620px,calc(100vw - 28px));padding:11px 15px;border-radius:14px;border:1px solid rgba(255,255,255,.2);background:rgba(4,9,7,.94);box-shadow:0 20px 60px rgba(0,0,0,.5);font-size:12px;font-weight:900;text-align:center;display:none;pointer-events:none}
+.modal{position:fixed;z-index:80;inset:0;display:none;align-items:center;justify-content:center;padding:14px;background:rgba(1,5,3,.72);backdrop-filter:blur(5px);touch-action:pan-y}
+.modal.open{display:flex}
+.modalCard{width:min(850px,calc(100vw - 24px));max-height:calc(100dvh - 28px);overflow:auto;border-radius:22px;border:1px solid rgba(255,255,255,.2);background:linear-gradient(180deg,rgba(24,38,31,.98),rgba(8,15,12,.98));box-shadow:0 35px 120px rgba(0,0,0,.7);padding:17px}
+.modalHeader{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}.modalHeader h2{margin:0;font-size:24px}.closeBtn{width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:22px;font-weight:1000;cursor:pointer}
+#inventoryLayout{display:grid;grid-template-columns:260px 1fr;gap:13px}.panel{border:1px solid rgba(255,255,255,.13);border-radius:16px;background:rgba(255,255,255,.045);padding:12px}.panel h3{margin:0 0 10px;font-size:14px}
+.equipSlot{min-height:78px;margin-bottom:9px;padding:10px;border:1px dashed rgba(255,255,255,.24);border-radius:13px;background:rgba(0,0,0,.2);cursor:pointer}.equipSlot b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#bcd0c3;margin-bottom:4px}.equipSlot span{font-size:12px;font-weight:900}
+#inventoryGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:8px}.itemCard{min-height:116px;padding:9px;border:1px solid rgba(255,255,255,.16);border-radius:13px;background:rgba(7,14,11,.76);cursor:pointer;text-align:left;color:#fff}.itemCard.equipped{border-color:#7fe6a4}.itemCard .rarity{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#f0cf70}.itemCard b{display:block;margin:3px 0 5px;font-size:12px}.itemCard small{display:block;color:#b8c7bd;font-size:10px;line-height:1.3}.itemActions{display:flex;gap:6px;margin-top:8px}.itemActions button{flex:1;border:1px solid rgba(255,255,255,.16);border-radius:9px;background:rgba(255,255,255,.08);color:#fff;padding:6px;font-size:9px;font-weight:1000;cursor:pointer}
+#skillChoices{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}.skillChoice{padding:13px;border:1px solid rgba(255,255,255,.17);border-radius:15px;background:rgba(255,255,255,.06);color:#fff;text-align:left;cursor:pointer}.skillChoice.available:hover{border-color:#7fe6a4;background:rgba(127,230,164,.1)}.skillChoice.locked{opacity:.48}.skillChoice b{display:block;font-size:15px;margin-bottom:5px}.skillChoice small{display:block;color:#b9c9bf;line-height:1.35}.skillChoice .req{margin-top:8px;color:#f0cf70;font-size:10px;font-weight:1000}
+#doorChoices{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.doorChoice{min-height:130px;border:1px solid rgba(255,255,255,.18);border-radius:17px;background:rgba(255,255,255,.06);color:#fff;padding:15px;text-align:left;cursor:pointer}.doorChoice b{display:block;font-size:18px;margin-bottom:6px}.doorChoice small{color:#b9c9bf;line-height:1.4}.doorChoice:hover{border-color:#e6bf4f;background:rgba(230,191,79,.1)}
+#deathModal .modalCard{text-align:center;max-width:480px}#deathModal h2{font-size:34px;margin:0 0 8px}#respawnBtn{border:0;border-radius:14px;background:#e6bf4f;color:#1b1608;padding:12px 18px;font-weight:1000;cursor:pointer}
+#loading{position:fixed;z-index:120;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 35%,#173126,#07100d 68%)}#loadingCard{width:min(520px,calc(100vw - 28px));padding:23px;border:1px solid rgba(255,255,255,.18);border-radius:22px;background:rgba(7,15,12,.93);text-align:center;box-shadow:0 30px 100px rgba(0,0,0,.6)}#loadingCard h1{margin:0 0 7px;font-size:34px}#loadingText{color:#b9c9bf;font-size:12px;line-height:1.45}.loadTrack{height:9px;margin-top:14px;border-radius:999px;background:rgba(255,255,255,.09);overflow:hidden}.loadTrack div{height:100%;width:15%;background:#7fe6a4;animation:load 1.2s ease-in-out infinite alternate}@keyframes load{to{width:90%}}
+@media(max-width:720px){#statusHud{left:7px;top:7px;width:calc(100vw - 14px)}#identity{padding:6px 8px}.hudBar{height:15px}.actionBtn{flex-basis:55px;width:55px;height:57px}.actionBtn .icon{font-size:20px}#actionDock{left:7px;right:7px;transform:none;max-width:none;justify-content:flex-start;padding:5px;gap:5px;border-radius:14px}#moveReady{flex-basis:50px;width:50px}#inventoryLayout{grid-template-columns:1fr}#doorChoices{grid-template-columns:1fr}.modalCard{padding:13px}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="statusHud">
+  <div id="identity"><span id="playerLine">Loading adventurer…</span><span id="onlineLine">0 online</span></div>
+  <div class="hudBar"><div id="hpFill" class="fill"></div><div id="hpLabel" class="label">HP</div></div>
+  <div class="hudBar"><div id="manaFill" class="fill"></div><div id="manaLabel" class="label">Mana</div></div>
+  <div class="hudBar"><div id="xpFill" class="fill"></div><div id="xpLabel" class="label">XP</div></div>
+</div>
+<div id="actionDock"></div>
+<div id="toast"></div>
+<div id="inventoryModal" class="modal"><div class="modalCard"><div class="modalHeader"><h2>Inventory & Equipment</h2><button class="closeBtn" data-close="inventoryModal">×</button></div><div id="inventoryLayout"><section class="panel"><h3>Equipped</h3><div id="equipmentSlots"></div><div id="statSummary"></div></section><section class="panel"><h3>Inventory</h3><div id="inventoryGrid"></div></section></div></div></div>
+<div id="skillsModal" class="modal"><div class="modalCard"><div class="modalHeader"><h2>Learn Skills</h2><button class="closeBtn" data-close="skillsModal">×</button></div><p id="skillPointLine"></p><div id="skillChoices"></div></div></div>
+<div id="doorModal" class="modal"><div class="modalCard"><div class="modalHeader"><h2>Choose the Next Passage</h2><button class="closeBtn" data-close="doorModal">×</button></div><div id="doorChoices"></div></div></div>
+<div id="deathModal" class="modal"><div class="modalCard"><h2>Fallen</h2><p>Your adventurer will return to the dungeon entrance. A little gold was lost, but all equipment and experience remain.</p><button id="respawnBtn">Return to Entrance</button></div></div>
+<div id="loading"><div id="loadingCard"><h1>Gridbound Realms</h1><div id="loadingText">Connecting your adventurer to the shared realm…</div><div class="loadTrack"><div></div></div></div></div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction, serverTimestamp,
+  collection, getDocs, deleteDoc, addDoc, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+(() => {
+'use strict';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+  authDomain: "bible-game-246c0.firebaseapp.com",
+  databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+  projectId: "bible-game-246c0",
+  storageBucket: "bible-game-246c0.firebasestorage.app",
+  messagingSenderId: "959619818996",
+  appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+  measurementId: "G-8PR6LVKSH3"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const params = new URLSearchParams(location.search);
+const realmId = safeId(params.get('realm') || params.get('gameId') || 'public-gridbound-realm');
+let username = String(params.get('username') || localStorage.getItem('gh.username') || '').trim();
+if(!username) username = (prompt('Choose an adventurer name') || `Adventurer${Math.floor(Math.random()*9999)}`).trim();
+localStorage.setItem('gh.username', username);
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d',{alpha:false,desynchronized:true});
+const actionDock = document.getElementById('actionDock');
+const loading = document.getElementById('loading');
+const loadingText = document.getElementById('loadingText');
+const playerLine = document.getElementById('playerLine');
+const onlineLine = document.getElementById('onlineLine');
+const toastEl = document.getElementById('toast');
+const inventoryModal = document.getElementById('inventoryModal');
+const skillsModal = document.getElementById('skillsModal');
+const doorModal = document.getElementById('doorModal');
+const deathModal = document.getElementById('deathModal');
+
+const TILE_W = 64;
+const TILE_H = 32;
+const WALL_H = 38;
+const PLAYER_STALE_MS = 15000;
+const HEARTBEAT_MS = 3500;
+const PLAYER_SYNC_MS = 180;
+const CONTROLLER_TICK_MS = 450;
+const ROOM_STATE_WRITE_MS = 320;
+const MAX_ROOM_ENEMIES = 30;
+const MAX_INVENTORY = 70;
+const BASIC_MOVE_COOLDOWN = 250;
+const MANA_REGEN_PER_SECOND = 2.1;
+const HP_REGEN_PER_SECOND = .18;
+const MAX_PATH_LENGTH = 240;
+const BASE_DROP_CHANCE = .38;
+
+let cssW=0, cssH=0, dpr=1;
+let cam={x:0,y:0,zoom:1};
+let uid='';
+let profileRef=null;
+let roomRef=null;
+let playerPresenceRef=null;
+let playersCol=null;
+let commandsCol=null;
+let rewardsCol=null;
+let eventsCol=null;
+let roomUnsub=null, playersUnsub=null, commandsUnsub=null, rewardsUnsub=null, eventsUnsub=null;
+let heartbeatTimer=null, controllerTimer=null, saveTimer=null;
+let currentRoomId='depth-0-root';
+let currentDepth=0;
+let map=null;
+let roomState={version:0,enemies:[],bossDefeated:false,updatedAtMs:0};
+let onlinePlayers=[];
+let isController=false;
+let processedCommands=new Set();
+let localPlayer=null;
+let movementPath=[];
+let selectedEnemyId='';
+let hoverTile=null;
+let mouse={x:0,y:0};
+let lastFrame=performance.now();
+let lastPlayerSync=0;
+let lastRoomWrite=0;
+let dirtyRoomState=false;
+let saveQueued=false;
+let pendingDoor=null;
+let knownRewardIds=new Set();
+let knownEventIds=new Set();
+let processingRewardIds=new Set();
+let processingEventIds=new Set();
+let autosaveTimer=null;
+let particles=[];
+let floaters=[];
+let projectiles=[];
+let discovered=new Set();
+let audioUnlocked=false;
+
+const images=new Map();
+const missingImages=new Set();
+function graphic(name){
+  if(!name) return null;
+  if(images.has(name)) return images.get(name);
+  const img=new Image();
+  img.decoding='async';
+  img.src=`rpggraphics/${name}.png`;
+  img.onerror=()=>missingImages.add(name);
+  images.set(name,img);
+  return img;
+}
+[
+  'floor_stone','floor_moss','wall_stone','door_blue','door_red','player_archer',
+  'enemy_slime','enemy_skeleton','enemy_archer','enemy_brute','enemy_wraith','enemy_spider','enemy_mage','enemy_boss',
+  'projectile_arrow','projectile_magic','loot_bag'
+].forEach(graphic);
+
+const WEAPONS={
+  basic_bow:{name:'Basic Bow',kind:'weapon',weaponType:'bow',range:5,cooldown:900,attack:6,effect:'none',icon:'🏹'},
+  hunting_bow:{name:'Hunting Bow',kind:'weapon',weaponType:'bow',range:6,cooldown:820,attack:9,effect:'bleed',icon:'🏹'},
+  longbow:{name:'Longbow',kind:'weapon',weaponType:'bow',range:8,cooldown:1180,attack:14,effect:'pierce',icon:'🏹'},
+  crossbow:{name:'Crossbow',kind:'weapon',weaponType:'crossbow',range:7,cooldown:1450,attack:20,effect:'stagger',icon:'➶'},
+  ember_staff:{name:'Ember Staff',kind:'weapon',weaponType:'staff',range:6,cooldown:1050,attack:13,effect:'burn',icon:'🔥'},
+  frost_wand:{name:'Frost Wand',kind:'weapon',weaponType:'wand',range:6,cooldown:960,attack:11,effect:'slow',icon:'❄️'},
+  war_spear:{name:'War Spear',kind:'weapon',weaponType:'spear',range:2,cooldown:650,attack:16,effect:'cleave',icon:'🔱'}
+};
+const ARMORS={
+  leather_suit:{name:'Leather Ranger Suit',kind:'armor',maxHp:14,armor:1,moveMult:.96,icon:'🥋'},
+  chain_suit:{name:'Chainmail Battle Suit',kind:'armor',maxHp:25,armor:3,moveMult:1.08,icon:'🛡️'},
+  plate_suit:{name:'Full Plate Suit',kind:'armor',maxHp:42,armor:6,moveMult:1.18,icon:'🛡️'},
+  mystic_suit:{name:'Mystic Weave Suit',kind:'armor',maxHp:18,maxMana:28,armor:2,moveMult:1.0,icon:'🧥'},
+  shadow_suit:{name:'Shadowstalker Suit',kind:'armor',maxHp:20,armor:2,crit:.07,moveMult:.88,icon:'🥷'}
+};
+const CHARMS={
+  oak_charm:{name:'Oakheart Charm',kind:'charm',maxHp:12,hpRegen:.35,icon:'🌿'},
+  moon_charm:{name:'Moonwell Charm',kind:'charm',maxMana:22,manaRegen:.8,icon:'🌙'},
+  hunter_charm:{name:'Hunter’s Mark Charm',kind:'charm',crit:.06,dropChance:.08,icon:'🧿'},
+  ward_charm:{name:'Warding Charm',kind:'charm',armor:2,icon:'🔰'}
+};
+const PREFIXES=[
+  {id:'fierce',name:'Fierce',attack:4},{id:'swift',name:'Swift',cooldownMult:.90},{id:'vital',name:'Vital',maxHp:18},
+  {id:'arcane',name:'Arcane',maxMana:20},{id:'hunters',name:'Hunter’s',crit:.06},{id:'guardian',name:'Guardian',armor:3}
+];
+const SUFFIXES=[
+  {id:'embers',name:'of Embers',onHit:'burn'},{id:'frost',name:'of Frost',onHit:'slow'},{id:'leeching',name:'of Leeching',lifeSteal:.08},
+  {id:'giants',name:'of Giants',attack:6},{id:'wind',name:'of the Wind',moveMult:.90},{id:'fortune',name:'of Fortune',dropChance:.12}
+];
+const SKILLS={
+  attack:{id:'attack',name:'Attack',icon:'🏹',level:1,mana:0,cooldownMult:1,desc:'Fire your equipped weapon.'},
+  power_shot:{id:'power_shot',name:'Power Shot',icon:'💥',level:2,mana:8,cooldown:4200,desc:'A heavy shot dealing 180% weapon damage and staggering the target.'},
+  volley:{id:'volley',name:'Volley',icon:'🌧️',level:4,mana:14,cooldown:7000,desc:'Strike up to four enemies near your target.'},
+  dash:{id:'dash',name:'Dash',icon:'💨',level:6,mana:10,cooldown:6200,desc:'Rush up to four open tiles toward the selected destination.'},
+  mend:{id:'mend',name:'Mend',icon:'✨',level:8,mana:18,cooldown:9000,desc:'Restore 30% of your maximum health.'},
+  piercing_rain:{id:'piercing_rain',name:'Piercing Rain',icon:'⚡',level:11,mana:24,cooldown:12000,desc:'Damage every enemy in a long line.'}
+};
+const ENEMY_TYPES={
+  slime:{name:'Mire Slime',graphic:'enemy_slime',hp:22,attack:4,armor:0,range:1,moveCd:850,attackCd:1200,aggro:6,xp:14,drop:.22},
+  spider:{name:'Crypt Spider',graphic:'enemy_spider',hp:28,attack:6,armor:0,range:1,moveCd:520,attackCd:950,aggro:8,xp:19,drop:.28,effect:'slow'},
+  skeleton:{name:'Skeleton Guard',graphic:'enemy_skeleton',hp:42,attack:8,armor:2,range:1,moveCd:760,attackCd:1150,aggro:8,xp:27,drop:.34},
+  archer:{name:'Hollow Archer',graphic:'enemy_archer',hp:34,attack:7,armor:1,range:5,moveCd:900,attackCd:1450,aggro:10,xp:31,drop:.38},
+  brute:{name:'Grave Brute',graphic:'enemy_brute',hp:78,attack:13,armor:4,range:1,moveCd:1100,attackCd:1550,aggro:7,xp:52,drop:.48},
+  wraith:{name:'Ash Wraith',graphic:'enemy_wraith',hp:50,attack:11,armor:1,range:2,moveCd:650,attackCd:1100,aggro:9,xp:46,drop:.44,effect:'manaBurn'},
+  mage:{name:'Ruin Mage',graphic:'enemy_mage',hp:46,attack:12,armor:1,range:6,moveCd:1000,attackCd:1750,aggro:11,xp:58,drop:.5,effect:'burn'},
+  boss:{name:'The Gate Warden',graphic:'enemy_boss',hp:320,attack:18,armor:6,range:2,moveCd:900,attackCd:1350,aggro:14,xp:260,drop:1,boss:true}
+};
+
+function safeId(v){return String(v||'').trim().toLowerCase().replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'default'}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function now(){return Date.now()}
+function hashString(str){let h=2166136261>>>0;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+function rngFrom(seed){let s=seed>>>0;return()=>{s+=0x6D2B79F5;let t=s;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+function uidKey(v){return safeId(v).slice(0,60)}
+function profileDoc(){return doc(db,'Users',uidKey(username))}
+function currentRoomDoc(roomId=currentRoomId){return doc(db,'rpg_realms',realmId,'rooms',safeId(roomId))}
+function roomSub(name,roomId=currentRoomId){return collection(db,'rpg_realms',realmId,'rooms',safeId(roomId),name)}
+function roomSubDoc(name,id,roomId=currentRoomId){return doc(db,'rpg_realms',realmId,'rooms',safeId(roomId),name,safeId(id))}
+function toast(message,ms=1800){toastEl.textContent=message;toastEl.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>toastEl.style.display='none',ms)}
+function rarityColor(r){return r==='Legendary'?'#ffcb61':r==='Epic'?'#c896ff':r==='Rare'?'#70b7ff':'#d8e1db'}
+function deepClone(v){return JSON.parse(JSON.stringify(v))}
+function distance(a,b){return Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y))}
+function inBounds(x,y){return map&&x>=0&&y>=0&&x<map.w&&y<map.h}
+function keyXY(x,y){return `${x},${y}`}
+function tileAt(x,y){return inBounds(x,y)?map.tiles[y][x]:1}
+function walkable(x,y){return inBounds(x,y)&&tileAt(x,y)===0&&!enemyAt(x,y)&&!remotePlayerAt(x,y)}
+function enemyAt(x,y){return roomState.enemies.find(e=>e.hp>0&&e.x===x&&e.y===y)||null}
+function remotePlayerAt(x,y){return onlinePlayers.find(p=>p.uid!==uid&&p.hp>0&&p.x===x&&p.y===y)||null}
+function defaultProfile(){
+  const starter={id:'starter-bow',baseId:'basic_bow',kind:'weapon',rarity:'Common',prefix:null,suffix:null,level:1};
+  const suit={id:'starter-suit',baseId:'leather_suit',kind:'armor',rarity:'Common',prefix:null,suffix:null,level:1};
+  return {
+    version:1,username,level:1,xp:0,gold:0,hp:80,mana:45,baseMaxHp:80,baseMaxMana:45,
+    roomId:'depth-0-root',depth:0,x:3,y:0,inventory:[starter,suit],equipment:{weapon:starter.id,armor:suit.id,charm:null},
+    learnedSkills:['attack'],skillPoints:0,skillCooldowns:{},moveReadyAt:0,statusEffects:{},createdAtMs:now(),updatedAtMs:now()
+  };
+}
+function normalizeProfile(raw){
+  const p={...defaultProfile(),...(raw||{})};
+  p.inventory=Array.isArray(p.inventory)?p.inventory.slice(0,MAX_INVENTORY):defaultProfile().inventory;
+  p.equipment={weapon:null,armor:null,charm:null,...(p.equipment||{})};
+  p.learnedSkills=Array.from(new Set(['attack',...(p.learnedSkills||[])]));
+  p.skillCooldowns=p.skillCooldowns||{};p.statusEffects=p.statusEffects||{};
+  p.level=Math.max(1,Number(p.level)||1);p.xp=Math.max(0,Number(p.xp)||0);p.gold=Math.max(0,Number(p.gold)||0);
+  p.roomId=String(p.roomId||'depth-0-root');p.depth=Math.max(0,Number(p.depth)||0);
+  return p;
+}
+function xpToNext(level=localPlayer?.level||1){return 75+level*45+level*level*12}
+function getItem(id){return localPlayer?.inventory?.find(i=>i.id===id)||null}
+function itemBase(item){if(!item)return null;return item.kind==='weapon'?WEAPONS[item.baseId]:item.kind==='armor'?ARMORS[item.baseId]:CHARMS[item.baseId]}
+function itemPrefix(item){return PREFIXES.find(x=>x.id===item?.prefix)||null}
+function itemSuffix(item){return SUFFIXES.find(x=>x.id===item?.suffix)||null}
+function itemName(item){const b=itemBase(item);if(!b)return'Unknown Item';const p=itemPrefix(item),s=itemSuffix(item);return`${p?p.name+' ':''}${b.name}${s?' '+s.name:''}`}
+function itemStats(item){return Object.assign({},itemBase(item)||{},itemPrefix(item)||{},itemSuffix(item)||{})}
+function derivedStats(){
+  const out={maxHp:Number(localPlayer.baseMaxHp)||80,maxMana:Number(localPlayer.baseMaxMana)||45,attack:0,armor:0,crit:.04,moveMult:1,cooldownMult:1,dropChance:0,manaRegen:0,hpRegen:0,lifeSteal:0,onHit:null};
+  for(const slot of ['weapon','armor','charm']){
+    const item=getItem(localPlayer.equipment?.[slot]);if(!item)continue;const s=itemStats(item);
+    out.maxHp+=s.maxHp||0;out.maxMana+=s.maxMana||0;out.attack+=s.attack||0;out.armor+=s.armor||0;out.crit+=s.crit||0;
+    out.moveMult*=s.moveMult||1;out.cooldownMult*=s.cooldownMult||1;out.dropChance+=s.dropChance||0;out.manaRegen+=s.manaRegen||0;out.hpRegen+=s.hpRegen||0;out.lifeSteal+=s.lifeSteal||0;out.onHit=s.onHit||out.onHit;
+  }
+  out.attack+=2+localPlayer.level*1.35;out.maxHp+=localPlayer.level*4;out.maxMana+=localPlayer.level*2;
+  return out;
+}
+function equippedWeapon(){return getItem(localPlayer.equipment.weapon)||localPlayer.inventory.find(i=>i.kind==='weapon')||null}
+function weaponStats(){return itemStats(equippedWeapon())||WEAPONS.basic_bow}
+function publicCombatData(){const s=derivedStats(),w=weaponStats();return{attack:s.attack,armor:s.armor,crit:s.crit,lifeSteal:s.lifeSteal,onHit:s.onHit,dropChance:s.dropChance,weaponType:w.weaponType||'bow',range:w.range||5,weaponCooldown:w.cooldown||900,cooldownMult:s.cooldownMult,level:localPlayer.level}}
+
+function generateDungeon(roomId,depth){
+  const random=rngFrom(hashString(`${realmId}:${roomId}`));
+  const w=clamp(92+depth*4,92,128),h=clamp(34+Math.floor(depth/2),34,44);
+  const tiles=Array.from({length:h},()=>Array(w).fill(1));
+  const rooms=[];
+  const roomCount=8+Math.min(2,Math.floor(depth/4));
+  const segment=Math.floor((w-4)/roomCount);
+  for(let i=0;i<roomCount;i++){
+    const rw=clamp(Math.floor(segment-3+random()*3),6,10),rh=Math.floor(6+random()*7);
+    const ry=Math.floor(2+random()*Math.max(1,h-rh-4));
+    const rx=Math.min(2+i*segment,w-rw-3);
+    for(let y=ry;y<ry+rh;y++)for(let x=rx;x<rx+rw;x++)tiles[y][x]=0;
+    const room={x:rx,y:ry,w:rw,h:rh,cx:Math.floor(rx+rw/2),cy:Math.floor(ry+rh/2)};rooms.push(room);
+    if(i>0){
+      const prev=rooms[i-1];
+      const x1=Math.min(prev.cx,room.cx),x2=Math.max(prev.cx,room.cx),y1=Math.min(prev.cy,room.cy),y2=Math.max(prev.cy,room.cy);
+      for(let x=x1;x<=x2;x++){tiles[prev.cy][x]=0;tiles[prev.cy+1<h?prev.cy+1:prev.cy][x]=0}
+      for(let y=y1;y<=y2;y++){tiles[y][room.cx]=0;if(room.cx+1<w)tiles[y][room.cx+1]=0}
+    }
+  }
+  const start=rooms[0];const end=rooms[rooms.length-1];
+  const spawn={x:start.x+2,y:start.cy};
+  const doors=[
+    {id:'sun',name:'Sunlit Gate',desc:'A brighter route with more ranged enemies and richer weapon drops.',x:end.x+end.w-2,y:end.y+1,target:`${roomId}.sun`},
+    {id:'deep',name:'Deep Gate',desc:'A darker route with tougher enemies and better armor drops.',x:end.x+end.w-2,y:end.y+end.h-2,target:`${roomId}.deep`}
+  ];
+  for(const d of doors)tiles[d.y][d.x]=0;
+  return{roomId,depth,w,h,tiles,rooms,spawn,doors,endRoom:end};
+}
+function initialEnemiesForMap(m){
+  const random=rngFrom(hashString(`${m.roomId}:enemies`));const out=[];let n=0;
+  const pool=m.depth<2?['slime','spider','skeleton']:m.depth<5?['spider','skeleton','archer','wraith']:['skeleton','archer','brute','wraith','mage'];
+  for(let ri=1;ri<m.rooms.length;ri++){
+    const r=m.rooms[ri];const count=ri===m.rooms.length-1?2:2+Math.floor(random()*3)+Math.min(2,Math.floor(m.depth/3));
+    for(let j=0;j<count&&out.length<MAX_ROOM_ENEMIES-1;j++){
+      let x=r.x+1+Math.floor(random()*Math.max(1,r.w-2)),y=r.y+1+Math.floor(random()*Math.max(1,r.h-2));
+      if(out.some(e=>e.x===x&&e.y===y)){j--;continue}
+      const type=pool[Math.floor(random()*pool.length)];const def=ENEMY_TYPES[type];const scale=1+m.depth*.12;
+      out.push({id:`e${m.depth}-${n++}-${Math.floor(random()*99999)}`,type,x,y,hp:Math.round(def.hp*scale),maxHp:Math.round(def.hp*scale),attackReadyAt:0,moveReadyAt:0,damageBy:{},effects:{},spawnX:x,spawnY:y});
+    }
+  }
+  const br=m.endRoom,b=ENEMY_TYPES.boss,scale=1+m.depth*.14;
+  out.push({id:`boss-${m.roomId}`,type:'boss',x:br.cx,y:br.cy,hp:Math.round(b.hp*scale),maxHp:Math.round(b.hp*scale),attackReadyAt:0,moveReadyAt:0,damageBy:{},effects:{},spawnX:br.cx,spawnY:br.cy});
+  return out;
+}
+
+async function ensureAuth(){
+  await new Promise(resolve=>{const off=onAuthStateChanged(auth,u=>{if(u){off();resolve()}});if(!auth.currentUser)signInAnonymously(auth).catch(()=>resolve())});
+  uid=auth.currentUser?.uid||`local-${Math.random().toString(36).slice(2)}`;
+}
+async function loadProfile(){
+  profileRef=profileDoc();const snap=await getDoc(profileRef);const data=snap.exists()?snap.data()?.rpgProfile:null;
+  localPlayer=normalizeProfile(data);localPlayer.uid=uid;localPlayer.username=username;
+  currentRoomId=localPlayer.roomId;currentDepth=localPlayer.depth;
+  map=generateDungeon(currentRoomId,currentDepth);
+  if(!inBounds(localPlayer.x,localPlayer.y)||tileAt(localPlayer.x,localPlayer.y)!==0){localPlayer.x=map.spawn.x;localPlayer.y=map.spawn.y}
+  const s=derivedStats();localPlayer.hp=clamp(Number(localPlayer.hp)||s.maxHp,0,s.maxHp);localPlayer.mana=clamp(Number(localPlayer.mana)||s.maxMana,0,s.maxMana);
+  await saveProfileNow();
+}
+async function saveProfileNow(){
+  if(!profileRef||!localPlayer)return;saveQueued=false;localPlayer.updatedAtMs=now();
+  const payload=deepClone(localPlayer);delete payload.uid;
+  await setDoc(profileRef,{username,rpgProfile:payload,rpgUpdatedAt:serverTimestamp()},{merge:true}).catch(e=>console.warn('profile save failed',e));
+}
+function queueSave(delay=350){saveQueued=true;clearTimeout(saveTimer);saveTimer=setTimeout(saveProfileNow,delay)}
+
+async function connectRoom(){
+  teardownRoom(false);
+  map=generateDungeon(currentRoomId,currentDepth);roomState={version:0,enemies:[],bossDefeated:false,updatedAtMs:0};discovered.clear();movementPath=[];selectedEnemyId='';knownRewardIds.clear();knownEventIds.clear();processingRewardIds.clear();processingEventIds.clear();processedCommands.clear();
+  roomRef=currentRoomDoc();playersCol=roomSub('players');commandsCol=roomSub('commands');rewardsCol=roomSub('rewards');eventsCol=roomSub('events');
+  playerPresenceRef=roomSubDoc('players',uid);
+  await setPresence(true);
+  playersUnsub=onSnapshot(playersCol,snap=>{
+    const cutoff=now()-PLAYER_STALE_MS;const list=[];snap.forEach(d=>{const p=d.data();if((p.lastSeenMs||0)>=cutoff)list.push({...p,docId:d.id})});
+    onlinePlayers=list;onlineLine.textContent=`${list.length} online`;
+    const leader=list.slice().sort((a,b)=>String(a.uid).localeCompare(String(b.uid)))[0];const next=!!leader&&leader.uid===uid;
+    if(next!==isController){isController=next;manageController()}
+  });
+  roomUnsub=onSnapshot(roomRef,snap=>{
+    if(!snap.exists())return;const d=snap.data();
+    if(d.roomId&&d.roomId!==currentRoomId)return;
+    roomState={version:Number(d.version)||0,enemies:Array.isArray(d.enemies)?d.enemies:[],bossDefeated:!!d.bossDefeated,updatedAtMs:Number(d.updatedAtMs)||0};
+  });
+  rewardsUnsub=onSnapshot(rewardsCol,snap=>{snap.docChanges().forEach(ch=>{if(ch.type==='added'||ch.type==='modified')claimRewardDoc(ch.doc).catch(console.warn)})});
+  eventsUnsub=onSnapshot(eventsCol,snap=>{snap.docChanges().forEach(ch=>{if(ch.type==='added'||ch.type==='modified')claimEventDoc(ch.doc).catch(console.warn)})});
+  heartbeatTimer=setInterval(()=>setPresence(false),HEARTBEAT_MS);
+  await ensureRoomState();
+  centerCamera(true);renderActionDock();updateHUD();
+}
+function teardownRoom(deletePresence=true){
+  roomUnsub?.();playersUnsub?.();commandsUnsub?.();rewardsUnsub?.();eventsUnsub?.();roomUnsub=playersUnsub=commandsUnsub=rewardsUnsub=eventsUnsub=null;
+  clearInterval(heartbeatTimer);clearInterval(controllerTimer);heartbeatTimer=controllerTimer=null;isController=false;
+  if(deletePresence&&playerPresenceRef)deleteDoc(playerPresenceRef).catch(()=>{});
+}
+async function setPresence(force){
+  if(!playerPresenceRef||!localPlayer)return;const s=derivedStats();
+  const payload={uid,username,x:localPlayer.x,y:localPlayer.y,hp:localPlayer.hp,maxHp:s.maxHp,mana:localPlayer.mana,maxMana:s.maxMana,level:localPlayer.level,lastSeenMs:now(),lastSeenAt:serverTimestamp(),roomId:currentRoomId,depth:currentDepth,combat:publicCombatData(),force:!!force};
+  await setDoc(playerPresenceRef,payload,{merge:true}).catch(()=>{});
+}
+async function ensureRoomState(){
+  const ref=roomRef;
+  await runTransaction(db,async tx=>{
+    const snap=await tx.get(ref);const data=snap.exists()?snap.data():null;
+    if(!data||data.roomId!==currentRoomId||!Array.isArray(data.enemies)){
+      tx.set(ref,{roomId:currentRoomId,depth:currentDepth,version:1,enemies:initialEnemiesForMap(map),bossDefeated:false,createdAt:serverTimestamp(),updatedAt:serverTimestamp(),updatedAtMs:now()},{merge:false});
+    }
+  }).catch(e=>console.warn('room init failed',e));
+}
+function manageController(){
+  commandsUnsub?.();commandsUnsub=null;clearInterval(controllerTimer);controllerTimer=null;
+  if(!isController)return;
+  commandsUnsub=onSnapshot(commandsCol,snap=>{
+    snap.docChanges().forEach(ch=>{if(ch.type==='added')processCommand(ch.doc.id,ch.doc.data()).catch(console.warn)});
+  });
+  controllerTimer=setInterval(controllerTick,CONTROLLER_TICK_MS);
+  toast('You are guiding this room’s enemies.',1200);
+}
+async function processCommand(id,cmd){
+  if(!isController||processedCommands.has(id))return;processedCommands.add(id);
+  try{
+    if(cmd.kind==='attack')await resolveAttackCommand(cmd);
+  }finally{
+    deleteDoc(roomSubDoc('commands',id)).catch(()=>{});
+    if(processedCommands.size>500)processedCommands.clear();
+  }
+}
+function activePresence(uidValue){return onlinePlayers.find(p=>p.uid===uidValue&&now()-(p.lastSeenMs||0)<PLAYER_STALE_MS)}
+async function resolveAttackCommand(cmd){
+  const attacker=activePresence(cmd.uid);if(!attacker||attacker.hp<=0)return;
+  const targets=Array.isArray(cmd.targets)?cmd.targets.slice(0,8):[cmd.targetId];
+  const skill=SKILLS[cmd.skillId]||SKILLS.attack;
+  const combat=attacker.combat||{};
+  let changed=false,totalDamage=0;
+  for(const targetId of targets){
+    const e=roomState.enemies.find(x=>x.id===targetId&&x.hp>0);if(!e)continue;
+    const maxRange=cmd.skillId==='piercing_rain'?9:cmd.skillId==='volley'?7:Number(combat.range)||5;
+    if(distance(attacker,e)>maxRange)continue;
+    const def=ENEMY_TYPES[e.type];let mult=1;
+    if(cmd.skillId==='power_shot')mult=1.8;else if(cmd.skillId==='volley')mult=.86;else if(cmd.skillId==='piercing_rain')mult=1.25;
+    const crit=Math.random()<clamp(Number(combat.crit)||.04,0,.55);let damage=Math.max(1,Math.round(((Number(combat.attack)||6)+(Number(cmd.bonus)||0))*mult-(def.armor||0)*.6));if(crit)damage=Math.round(damage*1.75);totalDamage+=damage;
+    e.hp=Math.max(0,e.hp-damage);e.damageBy=e.damageBy||{};e.damageBy[cmd.uid]={username:cmd.username||attacker.username,damage:(e.damageBy[cmd.uid]?.damage||0)+damage,lastHitMs:now()};
+    const effect=cmd.effect||combat.onHit;if(effect&&effect!=='none')e.effects={...(e.effects||{}),[effect]:now()+(effect==='bleed'?5000:3500)};
+    if(cmd.skillId==='power_shot'||effect==='stagger')e.staggerUntil=now()+(cmd.skillId==='power_shot'?800:550);
+    changed=true;
+    if(e.hp<=0)await handleEnemyDeath(e,attacker);
+  }
+  if(changed){roomState.version++;dirtyRoomState=true}
+  if(totalDamage>0&&(Number(combat.lifeSteal)||0)>0){const heal=Math.max(1,Math.round(totalDamage*Number(combat.lifeSteal)));await addDoc(eventsCol,{uid:cmd.uid,type:'heal',amount:heal,claimed:false,createdAtMs:now(),createdAt:serverTimestamp()}).catch(()=>{})}
+}
+async function handleEnemyDeath(enemy,killer){
+  const def=ENEMY_TYPES[enemy.type];if(def.boss)roomState.bossDefeated=true;
+  const eligible=Object.entries(enemy.damageBy||{}).filter(([,v])=>now()-(v.lastHitMs||0)<120000);
+  const batch=writeBatch(db);const eventBase=`${enemy.id}-${now()}`;
+  for(const [rewardUid,credit] of eligible){
+    const rp=activePresence(rewardUid);const dropSeed=hashString(`${eventBase}:${rewardUid}`);const item=rollItem(currentDepth,def.drop||BASE_DROP_CHANCE,dropSeed,enemy.type,Number(rp?.combat?.dropChance)||0);
+    const rewardId=`${eventBase}-${rewardUid}`;
+    batch.set(roomSubDoc('rewards',rewardId),{id:rewardId,uid:rewardUid,username:credit.username||rp?.username||'Adventurer',xp:def.xp+currentDepth*5,gold:Math.max(1,Math.round(def.xp*.35)),item:item||null,claimed:false,createdAtMs:now(),createdAt:serverTimestamp()});
+  }
+  if(eligible.length)await batch.commit().catch(console.warn);
+}
+async function claimRewardDoc(docSnap){
+  const data=docSnap.data();if(!data||data.uid!==uid||data.claimed||knownRewardIds.has(docSnap.id)||processingRewardIds.has(docSnap.id))return;
+  processingRewardIds.add(docSnap.id);
+  try{
+    const claimed=await runTransaction(db,async tx=>{
+      const rewardSnap=await tx.get(docSnap.ref);if(!rewardSnap.exists()||rewardSnap.data().claimed)return false;
+      const userSnap=await tx.get(profileRef);const p=normalizeProfile(userSnap.exists()?userSnap.data()?.rpgProfile:null);
+      p.xp+=Number(data.xp)||0;p.gold+=Number(data.gold)||0;
+      if(data.item&&p.inventory.length<MAX_INVENTORY)p.inventory.push(data.item);
+      p.updatedAtMs=now();tx.set(profileRef,{username,rpgProfile:p,rpgUpdatedAt:serverTimestamp()},{merge:true});
+      tx.set(docSnap.ref,{claimed:true,claimedAt:serverTimestamp()},{merge:true});return true;
+    });
+    if(!claimed){knownRewardIds.add(docSnap.id);return}
+    knownRewardIds.add(docSnap.id);localPlayer.xp+=Number(data.xp)||0;localPlayer.gold+=Number(data.gold)||0;
+    if(data.item&&localPlayer.inventory.length<MAX_INVENTORY){localPlayer.inventory.push(data.item);toast(`Loot: ${itemName(data.item)}`,2400)}else toast(`+${data.xp} XP · +${data.gold} gold`,1600);
+    applyLevelUps();renderInventory();updateHUD();queueSave(120);setTimeout(()=>deleteDoc(docSnap.ref).catch(()=>{}),10000);
+  }finally{processingRewardIds.delete(docSnap.id)}
+}
+async function claimEventDoc(docSnap){
+  const data=docSnap.data();if(!data||data.uid!==uid||data.claimed||knownEventIds.has(docSnap.id)||processingEventIds.has(docSnap.id))return;
+  processingEventIds.add(docSnap.id);
+  try{
+    const claimed=await runTransaction(db,async tx=>{const eventSnap=await tx.get(docSnap.ref);if(!eventSnap.exists()||eventSnap.data().claimed)return false;tx.set(docSnap.ref,{claimed:true,claimedAt:serverTimestamp()},{merge:true});return true});
+    if(!claimed){knownEventIds.add(docSnap.id);return}
+    knownEventIds.add(docSnap.id);
+    if(data.type==='damage'&&localPlayer.hp>0){
+      const s=derivedStats();const amount=Math.max(1,Math.round((Number(data.amount)||1)-s.armor*.55));localPlayer.hp=Math.max(0,localPlayer.hp-amount);
+      if(data.effect==='manaBurn')localPlayer.mana=Math.max(0,localPlayer.mana-8);
+      if(data.effect==='slow')localPlayer.statusEffects.slow=now()+2600;
+      if(data.effect==='burn')localPlayer.statusEffects.burn=now()+4000;
+      floater(localPlayer.x,localPlayer.y,`-${amount}`,'#ff8b86');burst(localPlayer.x,localPlayer.y,'#ff6c65',10);
+      if(localPlayer.hp<=0)deathModal.classList.add('open');queueSave();setPresence(true);updateHUD();
+    }else if(data.type==='heal'&&localPlayer.hp>0){const s=derivedStats();const amount=Math.max(1,Math.round(Number(data.amount)||1));localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+amount);floater(localPlayer.x,localPlayer.y,`+${amount}`,'#86efac');queueSave();setPresence(true);updateHUD()}
+    setTimeout(()=>deleteDoc(docSnap.ref).catch(()=>{}),10000);
+  }finally{processingEventIds.delete(docSnap.id)}
+}
+
+async function controllerTick(){
+  if(!isController||!map||!roomState.enemies.length)return;
+  const t=now();const livePlayers=onlinePlayers.filter(p=>p.hp>0&&t-(p.lastSeenMs||0)<PLAYER_STALE_MS);
+  if(!livePlayers.length)return;
+  const damageEvents=[];let changed=false;
+  for(const e of roomState.enemies){
+    if(e.hp<=0)continue;const def=ENEMY_TYPES[e.type];
+    if(e.effects?.burn&&e.effects.burn>t&&Math.random()<.16){e.hp=Math.max(0,e.hp-1);changed=true;if(e.hp<=0){await handleEnemyDeath(e,livePlayers[0]);continue}}
+    if(e.effects?.bleed&&e.effects.bleed>t&&Math.random()<.12){e.hp=Math.max(0,e.hp-1);changed=true;if(e.hp<=0){await handleEnemyDeath(e,livePlayers[0]);continue}}
+    if(e.staggerUntil>t)continue;
+    let target=null,best=Infinity;for(const p of livePlayers){const d=distance(e,p);if(d<best){best=d;target=p}}
+    if(!target||best>def.aggro)continue;
+    if(best<=def.range&&t>=(e.attackReadyAt||0)){
+      e.attackReadyAt=t+def.attackCd;damageEvents.push({target,enemy:e,def});changed=true;
+    }else if(best>def.range&&t>=(e.moveReadyAt||0)){
+      const step=nextStepToward(e,target);if(step){e.x=step.x;e.y=step.y;changed=true}e.moveReadyAt=t+def.moveCd*(e.effects?.slow>t?1.55:1);
+    }
+  }
+  if(damageEvents.length){
+    const batch=writeBatch(db);for(const hit of damageEvents){const id=`hit-${hit.enemy.id}-${hit.target.uid}-${t}-${Math.floor(Math.random()*9999)}`;batch.set(roomSubDoc('events',id),{id,uid:hit.target.uid,type:'damage',amount:hit.def.attack+currentDepth*1.1,effect:hit.def.effect||null,source:hit.def.name,claimed:false,createdAtMs:t,createdAt:serverTimestamp()})}await batch.commit().catch(()=>{});
+  }
+  if(changed){roomState.version++;dirtyRoomState=true}
+  if(dirtyRoomState&&t-lastRoomWrite>ROOM_STATE_WRITE_MS)await writeRoomState();
+}
+function nextStepToward(e,target){
+  const candidates=[{x:e.x+Math.sign(target.x-e.x),y:e.y},{x:e.x,y:e.y+Math.sign(target.y-e.y)},{x:e.x+Math.sign(target.x-e.x),y:e.y+Math.sign(target.y-e.y)}]
+    .filter(p=>inBounds(p.x,p.y)&&tileAt(p.x,p.y)===0&&(!(p.x!==e.x&&p.y!==e.y)||(tileAt(p.x,e.y)===0&&tileAt(e.x,p.y)===0))&&!roomState.enemies.some(o=>o!==e&&o.hp>0&&o.x===p.x&&o.y===p.y)&&!onlinePlayers.some(o=>o.hp>0&&o.x===p.x&&o.y===p.y));
+  candidates.sort((a,b)=>distance(a,target)-distance(b,target));return candidates[0]||null;
+}
+async function writeRoomState(){
+  if(!isController||!dirtyRoomState)return;dirtyRoomState=false;lastRoomWrite=now();
+  await setDoc(roomRef,{roomId:currentRoomId,depth:currentDepth,version:roomState.version,enemies:roomState.enemies,bossDefeated:roomState.bossDefeated,controllerUid:uid,updatedAtMs:now(),updatedAt:serverTimestamp()},{merge:true}).catch(e=>{dirtyRoomState=true;console.warn(e)});
+}
+
+function rollItem(depth,chance,seed,enemyType,bonus=0){
+  const random=rngFrom(seed);if(random()>clamp(chance+bonus,0,1))return null;
+  const route=currentRoomId.endsWith('.deep')?'armor':currentRoomId.endsWith('.sun')?'weapon':'';
+  let kind=random()<.48?'weapon':random()<.82?'armor':'charm';if(route&&random()<.38)kind=route;
+  const table=kind==='weapon'?Object.keys(WEAPONS).filter(x=>x!=='basic_bow'):kind==='armor'?Object.keys(ARMORS):Object.keys(CHARMS);
+  const baseId=table[Math.floor(random()*table.length)];const rarityRoll=random()+Math.min(.22,depth*.015);
+  const rarity=rarityRoll>.94?'Legendary':rarityRoll>.77?'Epic':rarityRoll>.48?'Rare':'Common';
+  const affixCount=rarity==='Legendary'?2:rarity==='Epic'?2:rarity==='Rare'?1:0;
+  const prefix=affixCount>=1?PREFIXES[Math.floor(random()*PREFIXES.length)].id:null;
+  const suffix=affixCount>=2?SUFFIXES[Math.floor(random()*SUFFIXES.length)].id:null;
+  return{id:`item-${seed.toString(36)}-${Math.floor(random()*99999)}`,baseId,kind,rarity,prefix,suffix,level:Math.max(1,depth+1),source:enemyType};
+}
+function applyLevelUps(){
+  let leveled=false;while(localPlayer.xp>=xpToNext(localPlayer.level)){localPlayer.xp-=xpToNext(localPlayer.level);localPlayer.level++;localPlayer.skillPoints++;localPlayer.baseMaxHp+=3;localPlayer.baseMaxMana+=2;const s=derivedStats();localPlayer.hp=s.maxHp;localPlayer.mana=s.maxMana;leveled=true}
+  if(leveled){toast(`Level ${localPlayer.level}! Choose a new skill.`,3000);skillsModal.classList.add('open');renderSkills();queueSave(0)}
+}
+
+function findPath(sx,sy,tx,ty){
+  tx=Math.floor(tx);ty=Math.floor(ty);if(!inBounds(tx,ty)||tileAt(tx,ty)!==0)return[];
+  const q=[{x:sx,y:sy}],seen=new Set([keyXY(sx,sy)]),prev=new Map();let found=false;
+  for(let qi=0;qi<q.length&&qi<map.w*map.h;qi++){
+    const p=q[qi];if(p.x===tx&&p.y===ty){found=true;break}
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){
+      const nx=p.x+dx,ny=p.y+dy,k=keyXY(nx,ny);if(seen.has(k)||!inBounds(nx,ny)||tileAt(nx,ny)!==0)continue;
+      if(dx&&dy&&(tileAt(p.x+dx,p.y)!==0||tileAt(p.x,p.y+dy)!==0))continue;
+      if(enemyAt(nx,ny)||remotePlayerAt(nx,ny))continue;seen.add(k);prev.set(k,p);q.push({x:nx,y:ny});
+    }
+  }
+  if(!found)return[];const path=[];let cur={x:tx,y:ty};while(cur.x!==sx||cur.y!==sy){path.push(cur);cur=prev.get(keyXY(cur.x,cur.y));if(!cur)break}return path.reverse().slice(0,MAX_PATH_LENGTH);
+}
+function setMoveTarget(x,y){
+  if(localPlayer.hp<=0)return;
+  const door=map.doors.find(d=>d.x===x&&d.y===y);if(door&&distance(localPlayer,door)<=1){openDoorChoice(door);return}
+  const enemy=enemyAt(x,y);if(enemy){selectedEnemyId=enemy.id;movementPath=[];toast(`${ENEMY_TYPES[enemy.type].name} selected`,800);return}
+  movementPath=findPath(localPlayer.x,localPlayer.y,x,y);
+}
+function updateMovement(t){
+  if(!movementPath.length||localPlayer.hp<=0)return;
+  const slow=localPlayer.statusEffects.slow>t?1.45:1;const stats=derivedStats();
+  if(t<(localPlayer.moveReadyAt||0))return;
+  const next=movementPath[0];if(!next||!walkable(next.x,next.y)){movementPath=[];return}
+  localPlayer.x=next.x;localPlayer.y=next.y;movementPath.shift();localPlayer.moveReadyAt=t+BASIC_MOVE_COOLDOWN*stats.moveMult*slow;
+  revealAround(localPlayer.x,localPlayer.y,8);queueSave(900);setPresence(false);checkDoorProximity();
+}
+function checkDoorProximity(){
+  const d=map.doors.find(x=>distance(localPlayer,x)<=1);if(d&&roomState.bossDefeated)toast(`${d.name} is open. Select it to continue.`,1100);
+}
+function skillReady(id,t=now()){return t>=(localPlayer.skillCooldowns[id]||0)}
+function learned(id){return localPlayer.learnedSkills.includes(id)}
+function spendMana(n){if(localPlayer.mana<n){toast('Not enough mana.');return false}localPlayer.mana-=n;return true}
+async function useSkill(id){
+  if(localPlayer.hp<=0||!learned(id))return;const skill=SKILLS[id];const t=now();if(!skillReady(id,t)){toast('That skill is still recharging.',900);return}
+  if(id==='dash'){
+    const target=hoverTile;if(!target){toast('Point at a destination first.');return}const path=findPath(localPlayer.x,localPlayer.y,target.x,target.y).slice(0,4);if(!path.length)return;if(!spendMana(skill.mana))return;
+    const end=path[path.length-1];localPlayer.x=end.x;localPlayer.y=end.y;movementPath=[];localPlayer.skillCooldowns[id]=t+skill.cooldown;localPlayer.moveReadyAt=t+300;burst(end.x,end.y,'#d7fff0',18);queueSave();setPresence(true);renderActionDock();return;
+  }
+  if(id==='mend'){
+    if(!spendMana(skill.mana))return;const s=derivedStats();const heal=Math.round(s.maxHp*.3);localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+heal);localPlayer.skillCooldowns[id]=t+skill.cooldown;floater(localPlayer.x,localPlayer.y,`+${heal}`,'#86efac');queueSave();setPresence(true);renderActionDock();return;
+  }
+  const target=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(!target){toast('Select an enemy first.');return}
+  const w=weaponStats();const range=id==='piercing_rain'?9:id==='volley'?7:w.range||5;if(distance(localPlayer,target)>range){toast('Target is out of range.');return}
+  if(!spendMana(skill.mana||0))return;
+  let targets=[target.id];
+  const weaponEffect=itemStats(equippedWeapon()).effect;
+  if(id==='attack'&&weaponEffect==='cleave')targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,target)<=1&&distance(e,localPlayer)<=range).slice(0,3).map(e=>e.id);
+  if(id==='attack'&&weaponEffect==='pierce'){
+    const dx=Math.sign(target.x-localPlayer.x),dy=Math.sign(target.y-localPlayer.y);
+    targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,localPlayer)<=range&&((dx===0&&e.x===localPlayer.x)||(dy===0&&e.y===localPlayer.y)||(Math.sign(e.x-localPlayer.x)===dx&&Math.sign(e.y-localPlayer.y)===dy&&Math.abs(e.x-localPlayer.x)===Math.abs(e.y-localPlayer.y)))).sort((a,b)=>distance(a,localPlayer)-distance(b,localPlayer)).slice(0,2).map(e=>e.id);
+  }
+  if(id==='volley')targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,target)<=2&&distance(e,localPlayer)<=range).slice(0,4).map(e=>e.id);
+  if(id==='piercing_rain'){
+    const dx=Math.sign(target.x-localPlayer.x),dy=Math.sign(target.y-localPlayer.y);targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,localPlayer)<=9&&((dx===0&&e.x===localPlayer.x)||(dy===0&&e.y===localPlayer.y)||(Math.sign(e.x-localPlayer.x)===dx&&Math.sign(e.y-localPlayer.y)===dy&&Math.abs(e.x-localPlayer.x)===Math.abs(e.y-localPlayer.y)))).map(e=>e.id);
+  }
+  const cooldown=id==='attack'?(w.cooldown||900)*derivedStats().cooldownMult:skill.cooldown;
+  localPlayer.skillCooldowns[id]=t+cooldown;
+  const equipped=itemStats(equippedWeapon()),hitEffect=equipped.onHit||derivedStats().onHit||((equipped.effect&&equipped.effect!=='none')?equipped.effect:null);const cmd={kind:'attack',uid,username,skillId:id,targetId:target.id,targets,createdAtMs:t,effect:hitEffect,bonus:0};
+  await addDoc(commandsCol,cmd).catch(()=>toast('Attack could not reach the room host.'));
+  for(const targetId of targets){const e=roomState.enemies.find(x=>x.id===targetId);if(e)projectiles.push({x:localPlayer.x,y:localPlayer.y,tx:e.x,ty:e.y,started:t,duration:280,kind:w.weaponType||'bow'})}
+  renderActionDock();updateHUD();queueSave(900);
+}
+function updateRegeneration(dt,t){
+  if(localPlayer.hp<=0)return;const s=derivedStats();localPlayer.mana=Math.min(s.maxMana,localPlayer.mana+(MANA_REGEN_PER_SECOND+s.manaRegen)*dt);localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+(HP_REGEN_PER_SECOND+s.hpRegen)*dt);
+  if(localPlayer.statusEffects.burn>t&&Math.random()<dt*.8){localPlayer.hp=Math.max(0,localPlayer.hp-.7)}
+}
+
+function openDoorChoice(door){
+  if(!roomState.bossDefeated){toast('The Gate Warden still seals these passages.',1800);return}
+  pendingDoor=door;renderDoorChoices();doorModal.classList.add('open');
+}
+function renderDoorChoices(){
+  const wrap=document.getElementById('doorChoices');wrap.innerHTML='';for(const d of map.doors){const b=document.createElement('button');b.className='doorChoice';b.innerHTML=`<b>${d.id==='sun'?'☀️':'🌑'} ${d.name}</b><small>${d.desc}</small>`;b.onclick=()=>enterRoom(d.target,currentDepth+1);wrap.appendChild(b)}
+}
+async function enterRoom(roomId,depth){
+  doorModal.classList.remove('open');const oldPresence=playerPresenceRef;teardownRoom(false);if(oldPresence)await deleteDoc(oldPresence).catch(()=>{});
+  currentRoomId=roomId;currentDepth=depth;localPlayer.roomId=roomId;localPlayer.depth=depth;map=generateDungeon(roomId,depth);localPlayer.x=map.spawn.x;localPlayer.y=map.spawn.y;localPlayer.hp=derivedStats().maxHp;localPlayer.mana=derivedStats().maxMana;localPlayer.moveReadyAt=0;queueSave(0);
+  loadingText.textContent=`Entering dungeon depth ${depth}…`;loading.style.display='flex';await connectRoom();loading.style.display='none';toast(`Dungeon depth ${depth}`,1800);
+}
+function respawn(){
+  const loss=Math.min(localPlayer.gold,Math.max(1,Math.floor(localPlayer.gold*.08)));localPlayer.gold-=loss;const s=derivedStats();localPlayer.hp=s.maxHp;localPlayer.mana=s.maxMana;localPlayer.x=map.spawn.x;localPlayer.y=map.spawn.y;movementPath=[];deathModal.classList.remove('open');queueSave(0);setPresence(true);toast(`Returned to the entrance · lost ${loss} gold`,1800);
+}
+
+function equipItem(id){const item=getItem(id);if(!item)return;localPlayer.equipment[item.kind]=id;const s=derivedStats();localPlayer.hp=Math.min(localPlayer.hp,s.maxHp);localPlayer.mana=Math.min(localPlayer.mana,s.maxMana);queueSave(0);renderInventory();renderActionDock();setPresence(true)}
+function sellItem(id){const item=getItem(id);if(!item||Object.values(localPlayer.equipment).includes(id))return;const value={Common:4,Rare:12,Epic:28,Legendary:70}[item.rarity]||4;localPlayer.inventory=localPlayer.inventory.filter(i=>i.id!==id);localPlayer.gold+=value;queueSave(0);renderInventory();toast(`Sold for ${value} gold`,1000)}
+function renderInventory(){
+  if(!localPlayer)return;const slots=document.getElementById('equipmentSlots');slots.innerHTML='';
+  for(const kind of ['weapon','armor','charm']){const id=localPlayer.equipment[kind],item=getItem(id);const d=document.createElement('div');d.className='equipSlot';d.innerHTML=`<b>${kind==='armor'?'Full Armor Suit':kind}</b><span>${item?itemName(item):'Empty'}</span>`;if(item)d.onclick=()=>{localPlayer.equipment[kind]=null;queueSave();renderInventory()};slots.appendChild(d)}
+  const s=derivedStats(),w=weaponStats();document.getElementById('statSummary').innerHTML=`<small>Level ${localPlayer.level} · ${localPlayer.gold} gold</small><br><small>Attack ${Math.round(s.attack)} · Armor ${Math.round(s.armor)} · Crit ${Math.round(s.crit*100)}%</small><br><small>Range ${w.range||1} · Weapon cooldown ${Math.round((w.cooldown||900)*s.cooldownMult)}ms</small>`;
+  const grid=document.getElementById('inventoryGrid');grid.innerHTML='';for(const item of localPlayer.inventory){const base=itemBase(item),equipped=Object.values(localPlayer.equipment).includes(item.id);const card=document.createElement('article');card.className='itemCard'+(equipped?' equipped':'');card.style.borderColor=equipped?'#7fe6a4':rarityColor(item.rarity);const stats=itemStats(item);card.innerHTML=`<span class="rarity">${item.rarity} ${item.kind}</span><b>${base?.icon||'🎒'} ${itemName(item)}</b><small>${describeItem(stats,item)}</small><div class="itemActions"><button data-equip>${equipped?'Equipped':'Equip'}</button><button data-sell ${equipped?'disabled':''}>Sell</button></div>`;card.querySelector('[data-equip]').onclick=()=>equipItem(item.id);card.querySelector('[data-sell]').onclick=()=>sellItem(item.id);grid.appendChild(card)}
+}
+function describeItem(s,item){const bits=[];if(s.attack)bits.push(`+${s.attack} attack`);if(s.range)bits.push(`${s.range} range`);if(s.cooldown)bits.push(`${s.cooldown}ms cooldown`);if(s.maxHp)bits.push(`+${s.maxHp} HP`);if(s.maxMana)bits.push(`+${s.maxMana} mana`);if(s.armor)bits.push(`+${s.armor} armor`);if(s.crit)bits.push(`+${Math.round(s.crit*100)}% crit`);if(s.onHit)bits.push(`${s.onHit} on hit`);if(s.lifeSteal)bits.push(`${Math.round(s.lifeSteal*100)}% leech`);if(s.dropChance)bits.push(`+${Math.round(s.dropChance*100)}% drops`);return bits.join(' · ')||'A dependable piece of equipment.'}
+function renderSkills(){
+  document.getElementById('skillPointLine').textContent=`Skill points: ${localPlayer.skillPoints}. Skills become available as your level rises.`;const wrap=document.getElementById('skillChoices');wrap.innerHTML='';
+  for(const skill of Object.values(SKILLS).filter(s=>s.id!=='attack')){const has=learned(skill.id),can=!has&&localPlayer.skillPoints>0&&localPlayer.level>=skill.level;const b=document.createElement('button');b.className=`skillChoice ${can?'available':'locked'}`;b.innerHTML=`<b>${skill.icon} ${skill.name}${has?' ✓':''}</b><small>${skill.desc}</small><div class="req">${has?'Learned':`Requires level ${skill.level} · 1 skill point`}</div>`;if(can)b.onclick=()=>learnSkill(skill.id);wrap.appendChild(b)}
+}
+function learnSkill(id){if(learned(id)||localPlayer.skillPoints<1||localPlayer.level<SKILLS[id].level)return;localPlayer.skillPoints--;localPlayer.learnedSkills.push(id);queueSave(0);renderSkills();renderActionDock();toast(`${SKILLS[id].name} learned`,1400)}
+function renderActionDock(){
+  if(!localPlayer)return;actionDock.innerHTML='';const move=document.createElement('div');move.id='moveReady';move.innerHTML='<span>MOVE</span><strong>READY</strong>';actionDock.appendChild(move);
+  const ids=localPlayer.learnedSkills.filter(id=>SKILLS[id]);ids.forEach((id,index)=>{const s=SKILLS[id],b=document.createElement('button');b.className='actionBtn';b.dataset.skill=id;b.innerHTML=`<span class="key">${index+1}</span><span class="cooldown"></span><span class="icon">${s.icon}</span><span class="name">${s.name}</span>`;b.onclick=()=>useSkill(id);actionDock.appendChild(b)});
+  const inv=document.createElement('button');inv.className='actionBtn utilityBtn';inv.innerHTML='<span class="key">I</span><span class="icon">🎒</span><span class="name">Inventory</span>';inv.onclick=()=>{renderInventory();inventoryModal.classList.add('open')};actionDock.appendChild(inv);
+  const skills=document.createElement('button');skills.className='actionBtn utilityBtn';skills.innerHTML=`<span class="key">K</span><span class="icon">📖</span><span class="name">Skills${localPlayer.skillPoints?` (${localPlayer.skillPoints})`:''}</span>`;skills.onclick=()=>{renderSkills();skillsModal.classList.add('open')};actionDock.appendChild(skills);
+}
+function updateActionDock(t){
+  const move=actionDock.querySelector('#moveReady');if(move){const rem=Math.max(0,(localPlayer.moveReadyAt||0)-t);move.querySelector('strong').textContent=rem?`${(rem/1000).toFixed(1)}s`:'READY';move.querySelector('strong').style.color=rem?'#d8c781':'#7fe6a4'}
+  actionDock.querySelectorAll('[data-skill]').forEach(b=>{const id=b.dataset.skill,s=SKILLS[id],ready=skillReady(id,t),until=localPlayer.skillCooldowns[id]||0;let total=id==='attack'?(weaponStats().cooldown||900)*derivedStats().cooldownMult:s.cooldown||1;const rem=Math.max(0,until-t);const pct=clamp(rem/total,0,1);b.style.setProperty('--cd',`${pct*360}deg`);b.classList.toggle('ready',ready);b.querySelector('.cooldown').textContent=rem?`${(rem/1000).toFixed(1)}`:''})
+}
+function updateHUD(){
+  if(!localPlayer)return;const s=derivedStats();playerLine.textContent=`${username} · Lv ${localPlayer.level} · Depth ${currentDepth}`;
+  setBar('hp',localPlayer.hp,s.maxHp);setBar('mana',localPlayer.mana,s.maxMana);setBar('xp',localPlayer.xp,xpToNext(localPlayer.level));
+}
+function setBar(id,value,max){document.getElementById(`${id}Fill`).style.width=`${clamp(value/max*100,0,100)}%`;document.getElementById(`${id}Label`).textContent=`${id.toUpperCase()} ${Math.floor(value)} / ${Math.floor(max)}`}
+
+function resize(){cssW=innerWidth;cssH=innerHeight;dpr=Math.min(devicePixelRatio||1,1.75);canvas.width=Math.floor(cssW*dpr);canvas.height=Math.floor(cssH*dpr);canvas.style.width=`${cssW}px`;canvas.style.height=`${cssH}px`;ctx.setTransform(dpr,0,0,dpr,0,0)}
+function isoOf(x,y){return{x:(x-y)*TILE_W/2,y:(x+y)*TILE_H/2}}
+function worldToScreen(x,y,z=0){const p=isoOf(x,y);return{x:(p.x-cam.x)*cam.zoom+cssW/2,y:(p.y-cam.y-z)*cam.zoom+cssH/2}}
+function screenToGrid(sx,sy){const ix=(sx-cssW/2)/cam.zoom+cam.x,iy=(sy-cssH/2)/cam.zoom+cam.y;return{x:Math.floor((ix/(TILE_W/2)+iy/(TILE_H/2))/2),y:Math.floor((iy/(TILE_H/2)-ix/(TILE_W/2))/2)}}
+function centerCamera(force=false){if(!localPlayer)return;const p=isoOf(localPlayer.x,localPlayer.y);if(force){cam.x=p.x;cam.y=p.y-40}else{cam.x+=(p.x-cam.x)*.12;cam.y+=(p.y-40-cam.y)*.12}}
+function drawDiamond(x,y,fill,stroke){const p=worldToScreen(x,y),w=TILE_W*cam.zoom,h=TILE_H*cam.zoom;ctx.beginPath();ctx.moveTo(p.x,p.y-h/2);ctx.lineTo(p.x+w/2,p.y);ctx.lineTo(p.x,p.y+h/2);ctx.lineTo(p.x-w/2,p.y);ctx.closePath();if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.stroke()}}
+function drawWall(x,y){const p=worldToScreen(x,y),w=TILE_W*cam.zoom,h=TILE_H*cam.zoom,wh=WALL_H*cam.zoom;const img=graphic('wall_stone');if(img&&img.complete&&!missingImages.has('wall_stone')){ctx.drawImage(img,p.x-w*.52,p.y-h*.92-wh,w*1.04,h*1.35+wh);return}
+  ctx.fillStyle='#303b35';ctx.beginPath();ctx.moveTo(p.x,p.y-h/2-wh);ctx.lineTo(p.x+w/2,p.y-wh);ctx.lineTo(p.x+w/2,p.y);ctx.lineTo(p.x,p.y+h/2);ctx.closePath();ctx.fill();ctx.fillStyle='#222c27';ctx.beginPath();ctx.moveTo(p.x,p.y-h/2-wh);ctx.lineTo(p.x-w/2,p.y-wh);ctx.lineTo(p.x-w/2,p.y);ctx.lineTo(p.x,p.y+h/2);ctx.closePath();ctx.fill();ctx.fillStyle='#46544c';ctx.beginPath();ctx.moveTo(p.x,p.y-h/2-wh);ctx.lineTo(p.x+w/2,p.y-wh);ctx.lineTo(p.x,p.y+h/2-wh);ctx.lineTo(p.x-w/2,p.y-wh);ctx.closePath();ctx.fill()}
+function drawFloor(x,y){const visible=isVisibleTile(x,y),seen=discovered.has(keyXY(x,y));if(!seen&&!visible)return;let fill=(x+y)%2?'#26352e':'#2b3c33';const moss=(x*7+y*11+hashString(currentRoomId))%13===0;if(moss)fill='#30463a';if(!visible)fill='#111a16';drawDiamond(x,y,fill,'rgba(224,255,231,.05)');const img=graphic(moss?'floor_moss':'floor_stone');if(visible&&img&&img.complete&&img.naturalWidth&&!missingImages.has(moss?'floor_moss':'floor_stone')){const p=worldToScreen(x,y),w=TILE_W*cam.zoom,h=TILE_H*cam.zoom;ctx.save();ctx.beginPath();ctx.moveTo(p.x,p.y-h/2);ctx.lineTo(p.x+w/2,p.y);ctx.lineTo(p.x,p.y+h/2);ctx.lineTo(p.x-w/2,p.y);ctx.closePath();ctx.clip();ctx.globalAlpha=.42;ctx.drawImage(img,p.x-w/2,p.y-h/2,w,h);ctx.restore()}}
+function isVisibleTile(x,y){return distance({x,y},localPlayer)<=9}
+function revealAround(x,y,r){for(let yy=y-r;yy<=y+r;yy++)for(let xx=x-r;xx<=x+r;xx++)if(inBounds(xx,yy)&&distance({x:xx,y:yy},{x,y})<=r)discovered.add(keyXY(xx,yy))}
+function drawSprite(name,x,y,size=52,emoji='?'){const p=worldToScreen(x,y,12),img=graphic(name),s=size*cam.zoom;if(img&&img.complete&&!missingImages.has(name)&&img.naturalWidth){ctx.drawImage(img,p.x-s/2,p.y-s*.82,s,s);return}ctx.font=`${Math.max(15,s*.62)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(emoji,p.x,p.y-s*.28)}
+function drawHealthBar(entity,maxHp,color='#e85762'){const p=worldToScreen(entity.x,entity.y,52),w=44*cam.zoom,h=5*cam.zoom;ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(p.x-w/2,p.y,w,h);ctx.fillStyle=color;ctx.fillRect(p.x-w/2,p.y,w*clamp(entity.hp/maxHp,0,1),h)}
+function drawDoor(d){if(!isVisibleTile(d.x,d.y)&&!discovered.has(keyXY(d.x,d.y)))return;drawSprite(d.id==='sun'?'door_blue':'door_red',d.x,d.y,68,d.id==='sun'?'🚪':'🚪');const p=worldToScreen(d.x,d.y,70);ctx.fillStyle=roomState.bossDefeated?'#f4da7a':'#d17c7c';ctx.font=`${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(roomState.bossDefeated?d.name:'Sealed',p.x,p.y)}
+function drawActor(actor){
+  if(actor.kind==='wall'){drawWall(actor.data.x,actor.data.y);return}
+  if(actor.kind==='enemy'){const e=actor.data;if(!isVisibleTile(e.x,e.y))return;const def=ENEMY_TYPES[e.type];const selected=e.id===selectedEnemyId;if(selected)drawDiamond(e.x,e.y,'rgba(255,94,94,.25)','#ff8b86');drawSprite(def.graphic,e.x,e.y,def.boss?82:56,def.boss?'👹':e.type==='slime'?'🟢':e.type==='archer'?'🏹':e.type==='mage'?'🧙':'💀');drawHealthBar(e,e.maxHp);return}
+  const p=actor.data;if(p.uid===uid){drawDiamond(p.x,p.y,'rgba(127,230,164,.16)','#7fe6a4');drawSprite('player_archer',p.x,p.y,60,'🧝');drawHealthBar({x:p.x,y:p.y,hp:localPlayer.hp},derivedStats().maxHp,'#7fe6a4')}else{if(!isVisibleTile(p.x,p.y))return;drawSprite('player_archer',p.x,p.y,57,'🧙');drawHealthBar(p,p.maxHp||100,'#72b9ff');const sp=worldToScreen(p.x,p.y,64);ctx.fillStyle='#dff0ff';ctx.font=`${Math.max(9,10*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(p.username||'Adventurer',sp.x,sp.y)}
+}
+function drawProjectiles(t){projectiles=projectiles.filter(p=>t-p.started<p.duration);for(const p of projectiles){const f=clamp((t-p.started)/p.duration,0,1),x=p.x+(p.tx-p.x)*f,y=p.y+(p.ty-p.y)*f;drawSprite(p.kind==='staff'||p.kind==='wand'?'projectile_magic':'projectile_arrow',x,y,25,p.kind==='staff'?'🔥':'➶')}}
+function drawEffects(t){particles=particles.filter(p=>t-p.born<p.life);for(const p of particles){const f=(t-p.born)/p.life,sp=worldToScreen(p.x+p.vx*f,p.y+p.vy*f,p.z*f*20);ctx.globalAlpha=1-f;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(sp.x,sp.y,p.size*(1-f)*cam.zoom,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;floaters=floaters.filter(f=>t-f.born<900);for(const f of floaters){const sp=worldToScreen(f.x,f.y,50+(t-f.born)*.04);ctx.globalAlpha=1-(t-f.born)/900;ctx.fillStyle=f.color;ctx.font='bold 15px sans-serif';ctx.textAlign='center';ctx.fillText(f.text,sp.x,sp.y)}ctx.globalAlpha=1}
+function burst(x,y,color,count=12){const t=now(),r=rngFrom(Math.floor(t+x*31+y*67));for(let i=0;i<count;i++)particles.push({x,y,vx:(r()-.5)*1.5,vy:(r()-.5)*1.5,z:r(),born:t,life:500+r()*500,size:2+r()*3,color})}
+function floater(x,y,text,color){floaters.push({x,y,text,color,born:now()})}
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#07100d';ctx.fillRect(0,0,cssW,cssH);if(!map||!localPlayer)return;
+  const bounds=visibleBounds();for(let y=bounds.y0;y<=bounds.y1;y++)for(let x=bounds.x0;x<=bounds.x1;x++)if(tileAt(x,y)===0)drawFloor(x,y);
+  for(const d of map.doors)drawDoor(d);
+  const actors=[];for(let y=bounds.y0;y<=bounds.y1;y++)for(let x=bounds.x0;x<=bounds.x1;x++)if(tileAt(x,y)===1&&discovered.has(keyXY(x,y))&&isWallEdge(x,y))actors.push({kind:'wall',data:{x,y},order:x+y-.15});for(const e of roomState.enemies)if(e.hp>0)actors.push({kind:'enemy',data:e,order:e.x+e.y});for(const p of onlinePlayers)actors.push({kind:'player',data:p,order:p.x+p.y+.2});if(!onlinePlayers.some(p=>p.uid===uid))actors.push({kind:'player',data:{...localPlayer,uid,username},order:localPlayer.x+localPlayer.y+.2});actors.sort((a,b)=>a.order-b.order);for(const a of actors)drawActor(a);
+  drawProjectiles(now());drawEffects(now());
+  if(hoverTile&&inBounds(hoverTile.x,hoverTile.y)&&tileAt(hoverTile.x,hoverTile.y)===0)drawDiamond(hoverTile.x,hoverTile.y,'rgba(255,255,255,.05)','rgba(255,255,255,.36)');
+}
+function isWallEdge(x,y){for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(tileAt(x+dx,y+dy)===0)return true;return false}
+function visibleBounds(){const radius=Math.ceil(Math.max(cssW/(TILE_W*cam.zoom),cssH/(TILE_H*cam.zoom)))+8;return{x0:clamp(localPlayer.x-radius,0,map.w-1),x1:clamp(localPlayer.x+radius,0,map.w-1),y0:clamp(localPlayer.y-radius,0,map.h-1),y1:clamp(localPlayer.y+radius,0,map.h-1)}}
+
+function input(){
+  canvas.addEventListener('pointermove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;hoverTile=screenToGrid(mouse.x,mouse.y)});
+  canvas.addEventListener('pointerdown',e=>{audioUnlocked=true;hoverTile=screenToGrid(e.clientX,e.clientY);setMoveTarget(hoverTile.x,hoverTile.y)});
+  canvas.addEventListener('wheel',e=>{e.preventDefault();cam.zoom=clamp(cam.zoom*(e.deltaY>0?.9:1.1),.62,1.5)},{passive:false});
+  window.addEventListener('keydown',e=>{
+    const tag=document.activeElement?.tagName;if(['INPUT','TEXTAREA','SELECT'].includes(tag))return;
+    if(/^[1-9]$/.test(e.key)){const id=localPlayer.learnedSkills[Number(e.key)-1];if(id)useSkill(id)}
+    if(e.key.toLowerCase()==='i'){renderInventory();inventoryModal.classList.add('open')}
+    if(e.key.toLowerCase()==='k'){renderSkills();skillsModal.classList.add('open')}
+    const dirs={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]};const d=dirs[e.key]||dirs[e.key.toLowerCase()];if(d){e.preventDefault();setMoveTarget(localPlayer.x+d[0],localPlayer.y+d[1])}
+    if(e.key==='Escape')document.querySelectorAll('.modal.open').forEach(m=>m.classList.remove('open'));
+  });
+  document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>document.getElementById(b.dataset.close).classList.remove('open'));
+  document.getElementById('respawnBtn').onclick=respawn;
+}
+function loop(ts){
+  const dt=Math.min(.05,(ts-lastFrame)/1000||.016);lastFrame=ts;if(localPlayer){const t=now();updateMovement(t);updateRegeneration(dt,t);centerCamera();updateHUD();updateActionDock(t);if(t-lastPlayerSync>PLAYER_SYNC_MS){lastPlayerSync=t;if(movementPath.length)setPresence(false)}}draw();requestAnimationFrame(loop)
+}
+
+async function boot(){
+  try{
+    resize();input();loadingText.textContent='Signing into the realm…';await ensureAuth();loadingText.textContent='Loading your saved adventurer…';await loadProfile();loadingText.textContent='Opening the shared dungeon room…';revealAround(localPlayer.x,localPlayer.y,9);await connectRoom();renderInventory();renderSkills();renderActionDock();updateHUD();clearInterval(autosaveTimer);autosaveTimer=setInterval(()=>{if(localPlayer)saveProfileNow()},10000);loading.style.display='none';requestAnimationFrame(loop);
+  }catch(e){console.error(e);loadingText.textContent=`Could not open the realm: ${e?.message||e}`}
+}
+window.addEventListener('resize',resize);
+window.addEventListener('pagehide',()=>{clearInterval(autosaveTimer);if(playerPresenceRef)deleteDoc(playerPresenceRef).catch(()=>{});saveProfileNow()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){setPresence(false);queueSave(0)}else setPresence(true)});
+boot();
+})();
+</script>
+</body>
+</html>
