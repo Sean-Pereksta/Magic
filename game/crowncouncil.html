@@ -725,7 +725,17 @@
   .guideClose{margin-top:10px;}
 
   /* VFX */
-  .beams, .particles{ position:absolute; left:0; top:0; width:1px; height:1px; transform:translate3d(0,0,0); pointer-events:none; }
+  .beams, .particles{
+    position:absolute;
+    left:0;
+    top:0;
+    width:1px;
+    height:1px;
+    z-index:22;
+    overflow:visible;
+    transform:translate3d(0,0,0);
+    pointer-events:none;
+  }
   .beam{
     position:absolute; height:3px; border-radius:3px; background:linear-gradient(90deg,rgba(59,130,246,.98),rgba(239,68,68,.98));
     opacity:.98; transform-origin:0 50%; animation:beamfade .35s ease-out forwards; box-shadow:0 0 16px rgba(59,130,246,.8);
@@ -745,6 +755,187 @@
     box-shadow:0 0 16px rgba(45,212,191,.9);
   }
   @keyframes beamfade{ to{ opacity:0 } }
+
+  /* Synced combat strokes.  These are intentionally separate from unit animation so
+     both clients can replay the same attack from the battle snapshot. */
+  .attackFx{
+    --attack:#a5f3fc;
+    --attack-hot:#f8fafc;
+    --attack-glow:rgba(34,211,238,.85);
+    --travel:0px;
+    position:absolute;
+    height:0;
+    overflow:visible;
+    transform-origin:0 50%;
+    pointer-events:none;
+    filter:drop-shadow(0 0 5px var(--attack-glow));
+  }
+  .attackFx.team0{ --attack:#fb7185; --attack-hot:#fff1f2; --attack-glow:rgba(251,113,133,.92); }
+  .attackFx.team1{ --attack:#60a5fa; --attack-hot:#eff6ff; --attack-glow:rgba(96,165,250,.92); }
+  .attackFx .attackTrail{
+    position:absolute;
+    left:0;
+    top:-2px;
+    width:100%;
+    height:4px;
+    border-radius:999px;
+    background:linear-gradient(90deg,transparent 0%,var(--attack) 12%,var(--attack-hot) 48%,var(--attack) 82%,transparent 100%);
+    box-shadow:0 0 8px var(--attack-glow);
+    opacity:.86;
+    animation:attackTrailFade .48s ease-out forwards;
+  }
+  .attackFx .attackProjectile{
+    position:absolute;
+    left:0;
+    top:-5px;
+    width:13px;
+    height:10px;
+    border-radius:60% 45% 45% 60%;
+    background:radial-gradient(circle at 30% 35%,var(--attack-hot) 0 12%,var(--attack) 34%,transparent 71%);
+    box-shadow:0 0 9px var(--attack-glow);
+    animation:attackProjectileFly .44s cubic-bezier(.18,.72,.24,1) forwards;
+  }
+  .attackFx.melee .attackTrail{
+    width:100%;
+    height:3px;
+    opacity:.52;
+    background:linear-gradient(90deg,transparent 0 20%,var(--attack) 42%,var(--attack-hot) 50%,var(--attack) 58%,transparent 80%);
+  }
+  .attackFx.melee .attackProjectile{
+    top:-8px;
+    width:28px;
+    height:16px;
+    border:2px solid var(--attack-hot);
+    border-left-color:transparent;
+    border-bottom-color:transparent;
+    border-radius:70% 80% 20% 70%;
+    background:transparent;
+    box-shadow:0 0 8px var(--attack-glow);
+    transform-origin:50% 50%;
+    animation:attackSlashFly .34s ease-out forwards;
+  }
+  .attackFx.rocket .attackTrail{
+    height:6px;
+    background:linear-gradient(90deg,transparent 0%,rgba(251,146,60,.1) 12%,#f97316 52%,#fef3c7 78%,transparent 100%);
+  }
+  .attackFx.rocket .attackProjectile{
+    top:-6px;
+    width:20px;
+    height:12px;
+    border-radius:80% 20% 20% 80%;
+    background:linear-gradient(90deg,#7c2d12 0 22%,#f97316 24% 70%,#fef3c7 72% 100%);
+  }
+  .attackFx.acid{ --attack:#a3e635; --attack-hot:#ecfccb; --attack-glow:rgba(163,230,53,.9); }
+  .attackFx.acid .attackTrail{
+    height:3px;
+    background:linear-gradient(90deg,transparent 0%,rgba(132,204,22,.35) 30%,#bef264 72%,transparent 100%);
+  }
+  .attackFx.acid .attackProjectile{
+    top:-7px;
+    width:13px;
+    height:13px;
+    border-radius:60% 45% 65% 40%;
+    background:radial-gradient(circle at 34% 30%,#f7fee7 0 10%,#a3e635 36%,#4d7c0f 72%);
+  }
+  .attackFx.magic{ --attack:#c084fc; --attack-hot:#f5f3ff; --attack-glow:rgba(192,132,252,.94); }
+  .attackFx.magic .attackTrail{
+    height:2px;
+    background:linear-gradient(90deg,transparent 0%,#a78bfa 25%,#f5f3ff 52%,#c084fc 77%,transparent 100%);
+  }
+  .attackFx.magic .attackProjectile{
+    top:-7px;
+    width:14px;
+    height:14px;
+    border-radius:2px;
+    background:linear-gradient(135deg,#f5f3ff,#c084fc 48%,#6d28d9);
+    transform:rotate(45deg);
+  }
+  .attackFx.beam{ --attack:#67e8f9; --attack-hot:#ecfeff; --attack-glow:rgba(34,211,238,.96); }
+  .attackFx.beam .attackTrail{
+    height:5px;
+    opacity:.96;
+    background:linear-gradient(90deg,transparent 0%,#22d3ee 16%,#ecfeff 48%,#06b6d4 82%,transparent 100%);
+  }
+  .attackFx.beam .attackProjectile{ display:none; }
+  .attackFx.charge .attackTrail{
+    height:7px;
+    background:linear-gradient(90deg,transparent 0%,#fb7185 34%,#fef2f2 71%,transparent 100%);
+  }
+  .attackFx.charge .attackProjectile{
+    top:-8px;
+    width:18px;
+    height:18px;
+    background:radial-gradient(circle,#fff1f2 0 12%,#fb7185 38%,#991b1b 74%);
+  }
+  @keyframes attackTrailFade{
+    0%{ opacity:0; transform:scaleX(.2); }
+    26%{ opacity:1; transform:scaleX(1); }
+    100%{ opacity:0; transform:scaleX(1.06); }
+  }
+  @keyframes attackProjectileFly{
+    0%{ opacity:0; transform:translateX(-4px) scale(.45); }
+    12%{ opacity:1; }
+    76%{ opacity:1; transform:translateX(calc(var(--travel) - 13px)) scale(1); }
+    100%{ opacity:0; transform:translateX(calc(var(--travel) - 6px)) scale(.5); }
+  }
+  @keyframes attackSlashFly{
+    0%{ opacity:0; transform:translateX(-8px) rotate(-42deg) scale(.45); }
+    18%{ opacity:1; }
+    78%{ opacity:1; transform:translateX(calc(var(--travel) - 26px)) rotate(35deg) scale(1); }
+    100%{ opacity:0; transform:translateX(calc(var(--travel) - 16px)) rotate(56deg) scale(1.14); }
+  }
+  .attackImpact{
+    --attack:#a5f3fc;
+    --attack-hot:#f8fafc;
+    --attack-glow:rgba(34,211,238,.85);
+    position:absolute;
+    width:24px;
+    height:24px;
+    border:2px solid var(--attack);
+    border-radius:50%;
+    box-shadow:0 0 12px var(--attack-glow), inset 0 0 9px var(--attack-hot);
+    animation:attackImpactPop .42s ease-out forwards;
+  }
+  .attackImpact::before,.attackImpact::after{
+    content:"";
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:150%;
+    height:2px;
+    border-radius:999px;
+    background:linear-gradient(90deg,transparent,var(--attack-hot),transparent);
+    transform:translate(-50%,-50%) rotate(45deg);
+  }
+  .attackImpact::after{ transform:translate(-50%,-50%) rotate(-45deg); }
+  .attackImpact.team0{ --attack:#fb7185; --attack-hot:#fff1f2; --attack-glow:rgba(251,113,133,.92); }
+  .attackImpact.team1{ --attack:#60a5fa; --attack-hot:#eff6ff; --attack-glow:rgba(96,165,250,.92); }
+  .attackImpact.acid{ --attack:#a3e635; --attack-hot:#ecfccb; --attack-glow:rgba(163,230,53,.92); }
+  .attackImpact.magic,.attackImpact.chain{ --attack:#c084fc; --attack-hot:#f5f3ff; --attack-glow:rgba(192,132,252,.94); }
+  .attackImpact.rocket{ --attack:#fb923c; --attack-hot:#fff7ed; --attack-glow:rgba(251,146,60,.96); }
+  @keyframes attackImpactPop{
+    0%{ opacity:0; transform:translate(-50%,-50%) scale(.35) rotate(-20deg); }
+    22%{ opacity:1; }
+    100%{ opacity:0; transform:translate(-50%,-50%) scale(1.55) rotate(32deg); }
+  }
+  .chainArc{
+    --chain:#c084fc;
+    position:absolute;
+    height:7px;
+    border-radius:4px;
+    transform-origin:0 50%;
+    background:linear-gradient(90deg,transparent 0%,var(--chain) 10%,#f5f3ff 48%,var(--chain) 90%,transparent 100%);
+    clip-path:polygon(0 44%,13% 32%,24% 65%,38% 27%,51% 63%,66% 25%,78% 64%,91% 33%,100% 48%,91% 63%,79% 43%,67% 76%,51% 43%,38% 75%,24% 42%,13% 67%,0 55%);
+    box-shadow:0 0 12px rgba(192,132,252,.96);
+    animation:chainArcFade .58s ease-out backwards;
+  }
+  .chainArc.team0{ --chain:#fb7185; box-shadow:0 0 12px rgba(251,113,133,.96); }
+  .chainArc.team1{ --chain:#60a5fa; box-shadow:0 0 12px rgba(96,165,250,.96); }
+  @keyframes chainArcFade{
+    0%{ opacity:0; }
+    28%{ opacity:1; }
+    100%{ opacity:0; }
+  }
 
   .p{ position:absolute; width:6px; height:6px; border-radius:50%; background:#ef4444; opacity:.95; animation:pfade .7s ease-out forwards; box-shadow:0 0 10px rgba(248,113,113,.7);}
   .p.purple{ background:#a855f7; box-shadow:0 0 12px rgba(168,85,247,.9);}
@@ -817,6 +1008,10 @@
   @keyframes statusFloat{
     from{ opacity:.95; transform:translate(-50%,-50%); }
     to{ opacity:0; transform:translate(-50%,-130%); }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .attackFx .attackTrail,.attackFx .attackProjectile,.attackImpact,.chainArc{ animation-duration:.01ms; }
   }
 
   .assetGate{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at top,rgba(15,23,42,.97),rgba(2,6,23,.995));color:#e5e7eb}
@@ -1550,6 +1745,7 @@ const BATTLE_SYNC_BADGE_MS = 900;
 let battleSyncBadgeUntil = 0;
 const LOW_EFFECTS_MODE = false;
 const DEBUG_BIG_UNIT_FOOTPRINT = false;
+const SYNCED_FX_LIMIT = 32;
 const fieldEmpty = ()=>({units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], startedAt:0, suddenDeathTickAt:0});
 const battleEmpty = ()=>({battleTickId:0, units:[], poison:[], toxic:[], acid:[], wards:[], syncedFx:[], startedAt:0, suddenDeathTickAt:0, updatedAt:0});
 
@@ -1934,10 +2130,40 @@ function fxTransport(x1,y1,x2,y2){ return { id:crypto.randomUUID(), type:"transp
 function fxImpact(x,y){ return { id:crypto.randomUUID(), type:"impact", x:x, y:y, at:Date.now(), ttl:320 }; }
 function fxStorm(cx,cy){ return { id:crypto.randomUUID(), type:"storm", cx:cx, cy:cy, at:Date.now(), ttl:620 }; }
 function fxStatus(x,y,emoji){ return { id:crypto.randomUUID(), type:"status", x:x, y:y, emoji:emoji, at:Date.now(), ttl:620 }; }
+const ATTACK_VFX_VARIANTS = new Set(["melee","bolt","rocket","acid","magic","beam","charge"]);
+function fxAttack(x1,y1,x2,y2,variant,team){
+  const v=ATTACK_VFX_VARIANTS.has(variant)?variant:"bolt";
+  return { id:crypto.randomUUID(), type:"attack", x1:x1,y1:y1,x2:x2,y2:y2, variant:v, team:team===1?1:0, at:Date.now(), ttl:v==="melee"?380:520 };
+}
+function fxChain(path,team){
+  const points=(path||[]).filter(p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y)).map(p=>({x:p.x,y:p.y}));
+  return { id:crypto.randomUUID(), type:"chain", path:points, team:team===1?1:0, at:Date.now(), ttl:620 };
+}
+function attackVfxVariantFor(u){
+  if (!u) return "bolt";
+  if (u.kamikaze || u.type==="blood") return "charge";
+  if (u.type==="vrocket") return "rocket";
+  if (u.type==="spitter" || u.acid || u.type==="roach") return "acid";
+  if (u.type==="suppressor" || u.type==="emp") return "beam";
+  if (["phaser","runebinder","carrion","wardmaker","architect","medic","matron"].includes(u.type)) return "magic";
+  if (["blade","vguard","miner","shieldcap","guardian","golem","hellspawn","defiler","viper","burrower"].includes(u.type)) return "melee";
+  return (u.range||1)>1 ? "bolt" : "melee";
+}
+function fxUnitAttack(u,t,variant){
+  const a=unitCenter(u), b=unitCenter(t);
+  return fxAttack(a.x,a.y,b.x,b.y,variant||attackVfxVariantFor(u),u&&u.p);
+}
 
 function centerPx(x,y){
-  const left = x*(CELL+GAP) + CELL/2;
-  const top  = y*(CELL+GAP) + CELL/2;
+  const first=cellsEl.children[0];
+  const nextX=cellsEl.children[1];
+  const nextY=cellsEl.children[W];
+  const left=first
+    ? first.offsetLeft + first.offsetWidth/2 + Number(x||0)*((nextX?nextX.offsetLeft-first.offsetLeft:CELL+GAP))
+    : Number(x||0)*(CELL+GAP) + CELL/2;
+  const top=first
+    ? first.offsetTop + first.offsetHeight/2 + Number(y||0)*((nextY?nextY.offsetTop-first.offsetTop:CELL+GAP))
+    : Number(y||0)*(CELL+GAP) + CELL/2;
   return {left:left, top:top};
 }
 function renderBeam(ev, heal){
@@ -1963,6 +2189,61 @@ function renderTransport(ev){
   el.style.transform = "rotate("+ang+"rad)";
   beamsEl.appendChild(el);
   setTimeout(()=>el.remove(), ev.ttl);
+}
+function renderAttackImpact(ev){
+  const x=Number.isFinite(ev.x2)?ev.x2:ev.x;
+  const y=Number.isFinite(ev.y2)?ev.y2:ev.y;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+  const a=centerPx(x,y);
+  const el=document.createElement("div");
+  const variant=ATTACK_VFX_VARIANTS.has(ev.variant)?ev.variant:"bolt";
+  el.classList.add("attackImpact",variant,ev.team===1?"team1":"team0");
+  el.style.left=a.left+"px";
+  el.style.top=a.top+"px";
+  partsEl.appendChild(el);
+  setTimeout(()=>el.remove(),ev.ttl||420);
+}
+function renderAttack(ev){
+  if (!Number.isFinite(ev.x1) || !Number.isFinite(ev.y1) || !Number.isFinite(ev.x2) || !Number.isFinite(ev.y2)) return;
+  const a=centerPx(ev.x1,ev.y1), b=centerPx(ev.x2,ev.y2);
+  const dx=b.left-a.left, dy=b.top-a.top, len=Math.hypot(dx,dy), ang=Math.atan2(dy,dx);
+  if (len<1) return;
+  const variant=ATTACK_VFX_VARIANTS.has(ev.variant)?ev.variant:"bolt";
+  const el=document.createElement("div");
+  el.classList.add("attackFx",variant,ev.team===1?"team1":"team0");
+  el.style.left=a.left+"px";
+  el.style.top=a.top+"px";
+  el.style.width=Math.max(1,len)+"px";
+  el.style.setProperty("--travel",Math.max(18,len)+"px");
+  el.style.transform="rotate("+ang+"rad)";
+  const trail=document.createElement("i"); trail.className="attackTrail";
+  const projectile=document.createElement("i"); projectile.className="attackProjectile";
+  el.append(trail,projectile);
+  beamsEl.appendChild(el);
+  const ttl=ev.ttl||520;
+  setTimeout(()=>el.remove(),ttl);
+  setTimeout(()=>renderAttackImpact({x2:ev.x2,y2:ev.y2,variant:variant,team:ev.team,ttl:Math.min(430,ttl)}),Math.max(60,Math.min(ttl-80,Math.round(ttl*.58))));
+}
+function renderChain(ev){
+  const path=Array.isArray(ev.path)?ev.path.filter(p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y)):[];
+  if (path.length<2) return;
+  const ttl=ev.ttl||620;
+  for(let i=1;i<path.length;i++){
+    const a=centerPx(path[i-1].x,path[i-1].y), b=centerPx(path[i].x,path[i].y);
+    const dx=b.left-a.left, dy=b.top-a.top, len=Math.hypot(dx,dy);
+    if (len<1) continue;
+    const el=document.createElement("div");
+    el.classList.add("chainArc",ev.team===1?"team1":"team0");
+    el.style.left=a.left+"px";
+    el.style.top=a.top+"px";
+    el.style.width=Math.max(1,len)+"px";
+    el.style.transform="rotate("+Math.atan2(dy,dx)+"rad)";
+    el.style.animationDelay=(i-1)*55+"ms";
+    beamsEl.appendChild(el);
+    setTimeout(()=>el.remove(),ttl+(i-1)*55);
+  }
+  const last=path[path.length-1];
+  setTimeout(()=>renderAttackImpact({x2:last.x,y2:last.y,variant:"chain",team:ev.team,ttl:420}),Math.min(220,(path.length-1)*55+75));
 }
 function renderBurst(ev){
   for(let i=0;i<10;i++){
@@ -2008,9 +2289,11 @@ function renderStatusPop(ev){
 
 function emitLocalEffect(ev){
   if (!ev) return;
-  if (LOW_EFFECTS_MODE && (ev.type === "burst" || ev.type === "status")) return;
+  if (LOW_EFFECTS_MODE && (ev.type === "burst" || ev.type === "status" || ev.type === "attack" || ev.type === "chain")) return;
   if (ev.type==="beam") renderBeam(ev,false);
   if (ev.type==="hbeam") renderBeam(ev,true);
+  if (ev.type==="attack") renderAttack(ev);
+  if (ev.type==="chain") renderChain(ev);
   if (ev.type==="burst") renderBurst(ev);
   if (ev.type==="transport") renderTransport(ev);
   if (ev.type==="impact") renderImpact(ev);
@@ -2025,10 +2308,17 @@ function pushSyncedFx(field, ev, now){
     id: ev.id || crypto.randomUUID(),
     type: ev.type,
     x: ev.x, y: ev.y, cx: ev.cx, cy: ev.cy, x1: ev.x1, y1: ev.y1, x2: ev.x2, y2: ev.y2,
+    ttl:ev.ttl, variant:ev.variant, team:ev.team,
+    path:Array.isArray(ev.path)?ev.path.map(p=>({x:p.x,y:p.y})):undefined,
     battleTickId: Number.isFinite(field.battleTickId) ? field.battleTickId : null,
     createdAt: now || Date.now()
   });
-  if (field.syncedFx.length > 18) field.syncedFx.splice(0, field.syncedFx.length-18);
+  if (field.syncedFx.length > SYNCED_FX_LIMIT) field.syncedFx.splice(0, field.syncedFx.length-SYNCED_FX_LIMIT);
+}
+function playBattleFx(field, ev, now){
+  if (!ev) return;
+  pushSyncedFx(field,ev,now);
+  renderSyncedFxEvents([ev]);
 }
 
 function groundTickParticles(x,y, purple){
@@ -2119,7 +2409,7 @@ function spawnAdjacentUnit(st, parent, typeKey){
         nextAtk:0, nextHeal:0, nextWard:0, slowUntil:0, nextStep:0
       };
       st.field.units.push(u);
-      emitLocalEffect(fxBurst(x,y));
+      playBattleFx(st.field,fxBurst(x,y),Date.now());
       return true;
     }
   }
@@ -2155,7 +2445,7 @@ function attemptViperLeap(u, units, st){
     if (canMoveTo(u, units, nx, ny)){
       u.x = nx; u.y = ny;
       if ((u.lvl||1) >= 3){
-        emitLocalEffect(fxTransport(fromX, fromY, nx, ny));
+        playBattleFx(st.field,fxTransport(fromX, fromY, nx, ny),Date.now());
       }
       return true;
     }
@@ -2176,7 +2466,7 @@ function attemptBurrow(u, units, st, now){
     if (canMoveTo(u, units, nx, ny)){
       u.x=nx; u.y=ny;
       u.nextBurrow = now + (u.burrowCd || 2200);
-      emitLocalEffect(fxTransport(fromX, fromY, nx, ny));
+      playBattleFx(st.field,fxTransport(fromX, fromY, nx, ny),now);
       return true;
     }
   }
@@ -2226,7 +2516,7 @@ function applyShockDebuff(st, target, now, dur){
   const d = dur || 1500;
   target.statusShockUntil = Math.max(target.statusShockUntil||0, now + d);
   target.slowUntil = Math.max(target.slowUntil||0, now + d);
-  emitLocalEffect(fxStatus(target.x, target.y, "⚡"));
+  playBattleFx(st.field,fxStatus(target.x, target.y, "⚡"),now);
   const wards = (st && st.field && st.field.wards) ? st.field.wards : [];
   for (let i=0;i<wards.length;i++){
     const w=wards[i];
@@ -2709,6 +2999,8 @@ function wardsHeal(st, now){
     const raw = Math.max(1, w.hAmt|0);
     const amt = Math.max(1, Math.round(raw * healScale(tgt, now)));
     tgt.hp = Math.min(tgt.maxhp, tgt.hp + amt);
+    const targetCenter=unitCenter(tgt);
+    playBattleFx(st.field,fxHeal(w.x,w.y,targetCenter.x,targetCenter.y),now);
 
     w.nextHeal = now + (w.hCd || 1500);
   }
@@ -2740,6 +3032,8 @@ function wardsShoot(st, now){
 
       const raw = w.wDmg || 1;
       const dmg = reduceDamageForTarget(raw, tgt, st.field);
+      const targetCenter=unitCenter(tgt);
+      playBattleFx(st.field,fxAttack(w.x,w.y,targetCenter.x,targetCenter.y,"magic",w.p),now);
       applyDamage(tgt, dmg, st);
     }
     w.next = now + (w.wCd || 1400);
@@ -2765,6 +3059,8 @@ function healAction(u, st, now){
   const raw = Math.max(1, u.healAmt|0);
   const amt = Math.max(1, Math.round(raw * healScale(target, now)));
   target.hp = Math.min(target.maxhp, target.hp + amt);
+  const healerCenter=unitCenter(u), targetCenter=unitCenter(target);
+  playBattleFx(st.field,fxHeal(healerCenter.x,healerCenter.y,targetCenter.x,targetCenter.y),now);
   if (u.legendary && u.type==="medic" && u.reviveReady){
     const critical = allies.find(a=>a.hp>0 && a.hp <= Math.max(2, Math.floor(a.maxhp*0.2)));
     if (critical){
@@ -2810,6 +3106,7 @@ function wardAction(u, st, now){
         for (const a of allies) a.hp = Math.min(a.maxhp, a.hp + 1);
         u.firstWardBoost = false;
       }
+      playBattleFx(st.field,fxBurst(tx,ty),now);
       u.nextWard = now + (u.wardCd||1700);
       return true;
     }
@@ -2853,10 +3150,11 @@ function tryKnock(cx,cy,t,units,strong){
   }
 }
 function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
-  let cur = startTarget; let left=hops; const hit=new Set();
+  let cur = startTarget; let left=hops; const hit=new Set(), path=[];
   while(cur && left>0){
     applyDamage(cur, reduceDamageForTarget(dmg, cur, field, opts), {field:field});
     hit.add(cur.id);
+    path.push(cur);
     let cand=null,bd=1e9;
     for(let i=0;i<units.length;i++){
       const v=units[i];
@@ -2866,6 +3164,7 @@ function chainLightning(units, field, startTarget, srcP, hops, dmg, opts){
     }
     cur=cand; left--;
   }
+  return path;
 }
 function attack(u, t, now, st){
   const effRange = (u.rangeDebuffUntil && u.rangeDebuffUntil > now) ? Math.max(1,(u.range||1)-1) : (u.range||1);
@@ -2876,6 +3175,8 @@ function attack(u, t, now, st){
   const ranged = (u.range||1) > 1;
   u.animUntil = now + 320;
   u.animType = troopBodyClass(u.type) === "caster" ? "cast" : "attack";
+  const attackVariant=attackVfxVariantFor(u);
+  if (!u.chain3) playBattleFx(st.field,fxUnitAttack(u,t,attackVariant),now);
 
   function deal(victim, raw, isRanged){
     let dmg = raw|0;
@@ -2894,7 +3195,7 @@ function attack(u, t, now, st){
   }
 
   if (u.kamikaze){
-    emitLocalEffect(fxBurst(u.x,u.y));
+    playBattleFx(st.field,fxBurst(u.x,u.y),now);
     deal(t, u.dmg, ranged);
 
     if (u.splash1){
@@ -2915,8 +3216,9 @@ function attack(u, t, now, st){
 
   } else if (u.chain3){
 
-    if (u.type === "storm") pushSyncedFx(st.field, fxStorm(t.x,t.y), now);
-    chainLightning(st.field.units, st.field, t, u.p, (u.legendary?4:3), u.dmg, {ignoreArmor:!!u.trueDamage});
+    const chainTargets=chainLightning(st.field.units, st.field, t, u.p, (u.legendary?4:3), u.dmg, {ignoreArmor:!!u.trueDamage});
+    playBattleFx(st.field,fxChain([unitCenter(u),...chainTargets.map(unitCenter)],u.p),now);
+    if (u.type === "storm") playBattleFx(st.field,fxStorm(t.x,t.y),now);
 
   } else if (u.type === "roach" && (u.lvl||1) >= 3){
 
@@ -3103,7 +3405,7 @@ function compactUnitForSync(unit){
   return out;
 }
 function pruneBattleField(field, now){
-  field.syncedFx=(field.syncedFx||[]).filter(ev=>(ev.createdAt||0)+1400>now).slice(-18);
+  field.syncedFx=(field.syncedFx||[]).filter(ev=>(ev.createdAt||0)+1400>now).slice(-SYNCED_FX_LIMIT);
   field.poison=(field.poison||[]).filter(v=>(v.until||0)>now);
   field.toxic=(field.toxic||[]).filter(v=>(v.until||0)>now);
   field.acid=(field.acid||[]).filter(v=>(v.until||0)>now);
@@ -3120,7 +3422,7 @@ function makeBattlePayload(field, battleTickId){
     toxic:cleanField.toxic||[],
     acid:cleanField.acid||[],
     wards:(cleanField.wards||[]).map(sanitizeFirestoreValue),
-    syncedFx:(cleanField.syncedFx||[]).slice(-18).map(sanitizeFirestoreValue),
+    syncedFx:(cleanField.syncedFx||[]).slice(-SYNCED_FX_LIMIT).map(sanitizeFirestoreValue),
     startedAt:cleanField.startedAt||hostBattleStartedAt||Date.now(),
     suddenDeathTickAt:cleanField.suddenDeathTickAt||0,
     updatedAt:Date.now()
@@ -3591,7 +3893,7 @@ async function runBattle(initialField){
         for (const u of dead){
           if (u.paints){
             paintPoison(st,u.x,u.y,7000,u.p);
-            pushSyncedFx(st.field,fxBurst(u.x,u.y),now);
+            playBattleFx(st.field,fxBurst(u.x,u.y),now);
           }
         }
         st.field.units=st.field.units.filter(u=>u.hp>0);
