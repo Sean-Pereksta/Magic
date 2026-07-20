@@ -160,17 +160,17 @@ const WALL_H = 38;
 const PLAYER_STALE_MS = 15000;
 const HEARTBEAT_MS = 3500;
 const CONTROLLER_TICK_MS = 220;
-const ROOM_STATE_WRITE_MS = 520;
+const ROOM_STATE_WRITE_MS = 650;
 const ATTACK_DELAY_NOTICE_MS = 700;
 const ATTACK_DESYNC_NOTICE_MS = 1500;
 const ATTACK_RETRY_MS = 4000;
 const ATTACK_EXPIRE_MS = 8500;
 const ATTACK_HISTORY_LIMIT = 160;
-const NORMAL_ATTACK_QUEUE_LIMIT = 1;
-const BASIC_ATTACK_PACING_MULT = 1.26;
-const MIN_BASIC_ATTACK_COOLDOWN = 1100;
-const ENEMY_ATTACK_PACING_MULT = 1.14;
-const INTERPOLATION_MS = 360;
+const NORMAL_ATTACK_QUEUE_LIMIT = 2;
+const BASIC_ATTACK_PACING_MULT = 1.0;
+const MIN_BASIC_ATTACK_COOLDOWN = 700;
+const ENEMY_ATTACK_PACING_MULT = 1.0;
+const INTERPOLATION_MS = 140;
 const MAX_ROOM_ENEMIES = 40;
 const MAX_PARTICLES = 420;
 const MAX_FLOATERS = 90;
@@ -257,7 +257,7 @@ let skillsViewTab='equip';
 let draggedSkillId='';
 let abilityPointerDrag=null;
 let controllerTickRunning=false,controllerTickQueued=false,roomWriteRunning=false,sideEffectsRunning=false;
-let presenceWriteChain=Promise.resolve(false);
+let presenceWriteRunning=false,presenceWriteQueuedForce=false,presenceWriteResolvers=[];
 let lastRuntimeProblemAt=0,frameErrorCount=0;
 let equipmentCache={key:'',stats:null,setCounts:null,setBonuses:null};
 let lastSpecialtyTick=0;
@@ -1108,7 +1108,8 @@ async function connectRoom(){
   enemyCollectionReady=false;
   rewardsUnsub=onSnapshot(rewardsCol,snap=>{snap.docChanges().forEach(ch=>{if(ch.type==='added'||ch.type==='modified')claimRewardDoc(ch.doc).catch(console.warn)})});
   eventsUnsub=onSnapshot(eventsCol,snap=>{snap.docChanges().forEach(ch=>{if(ch.type==='added'||ch.type==='modified')claimEventDoc(ch.doc).catch(console.warn)})});
-  perfMetrics.listenerCount=4;
+  resultsUnsub=onSnapshot(resultsCol,snap=>{noteSnapshot();snap.docChanges().forEach(ch=>{if(ch.type!=='added'&&ch.type!=='modified')return;const snapshotData=ch.doc.data(),data={...snapshotData,attackId:snapshotData.attackId||ch.doc.id};receiveAttackResult(ch.doc.id,data);if(data.success&&!data.sideEffectsComplete){pendingSideEffects.set(data.attackId,data);if(isController)resumePendingSideEffects().catch(error=>reportRuntimeProblem('combat side effects',error))}})});
+  perfMetrics.listenerCount=5;
   heartbeatTimer=setInterval(()=>setPresence(false),HEARTBEAT_MS);
   updateMapDiscovery(true);scanCodexDiscoveries(true);centerCamera(true);renderActionDock();updateHUD();
 }
@@ -1125,13 +1126,29 @@ function teardownRoom(deletePresence=true){
   if(deletePresence&&playerPresenceRef)deleteDoc(playerPresenceRef).catch(()=>{});
 }
 function setPresence(force=false){
-  const write=async()=>{
-    if(!playerPresenceRef||!localPlayer)return false;const s=derivedStats(),t=now();
-    const armor=getItem(localPlayer.equipment?.armor),weapon=equippedWeapon(),meaningful={uid,username,x:localPlayer.x,y:localPlayer.y,positionSequence,hp:Math.round(localPlayer.hp),maxHp:s.maxHp,mana:Math.round(localPlayer.mana),maxMana:s.maxMana,level:localPlayer.level,activeAdvancedPath:localPlayer.activeAdvancedPath||null,activeTitle:localPlayer.activeTitle||'',cosmeticEffect:localPlayer.cosmeticEffects?.[0]||null,roomId:currentRoomId,depth:currentDepth,roomSessionId,roomEnteredAtMs,armorBaseId:armor?.baseId||'leather_suit',weaponBaseId:weapon?.baseId||'basic_bow',weaponType:weaponStats().weaponType||'bow',equippedRelic:localPlayer.equippedRelic||null,combat:publicCombatData()},hash=compactHash(meaningful),heartbeatDue=t-lastPresenceWriteAt>=HEARTBEAT_MS-100;
-    if(!force&&hash===lastPresenceHash&&!heartbeatDue)return true;const payload={...meaningful,positionChangedAtMs,lastSeenMs:t,lastSeenAt:serverTimestamp()},started=performance.now();
-    try{await setDoc(playerPresenceRef,payload,{merge:true});lastPresenceHash=hash;lastPresenceWriteAt=t;metric('presenceWrites',t,120);metric('presenceWriteLatency',performance.now()-started);return true}catch(error){if(combatDebug)console.warn('presence sync failed',error);return false}
-  };
-  const scheduled=presenceWriteChain.catch(()=>false).then(write);presenceWriteChain=scheduled;return scheduled;
+  presenceWriteQueuedForce=presenceWriteQueuedForce||force;
+  const promise=new Promise(resolve=>presenceWriteResolvers.push(resolve));
+  if(!presenceWriteRunning)queueMicrotask(flushPresenceWrites);
+  return promise;
+}
+async function flushPresenceWrites(){
+  if(presenceWriteRunning)return;
+  presenceWriteRunning=true;
+  try{
+    while(presenceWriteResolvers.length){
+      const resolvers=presenceWriteResolvers.splice(0),force=presenceWriteQueuedForce;presenceWriteQueuedForce=false;
+      let success=false;
+      if(playerPresenceRef&&localPlayer){
+        const s=derivedStats(),t=now(),armor=getItem(localPlayer.equipment?.armor),weapon=equippedWeapon(),meaningful={uid,username,x:localPlayer.x,y:localPlayer.y,positionSequence,hp:Math.round(localPlayer.hp),maxHp:s.maxHp,mana:Math.round(localPlayer.mana),maxMana:s.maxMana,level:localPlayer.level,activeAdvancedPath:localPlayer.activeAdvancedPath||null,activeTitle:localPlayer.activeTitle||'',cosmeticEffect:localPlayer.cosmeticEffects?.[0]||null,roomId:currentRoomId,depth:currentDepth,roomSessionId,roomEnteredAtMs,armorBaseId:armor?.baseId||'leather_suit',weaponBaseId:weapon?.baseId||'basic_bow',weaponType:weaponStats().weaponType||'bow',equippedRelic:localPlayer.equippedRelic||null,combat:publicCombatData()},hash=compactHash(meaningful),heartbeatDue=t-lastPresenceWriteAt>=HEARTBEAT_MS-100;
+        if(!force&&hash===lastPresenceHash&&!heartbeatDue)success=true;
+        else{
+          const payload={...meaningful,positionChangedAtMs,lastSeenMs:t,lastSeenAt:serverTimestamp()},started=performance.now();
+          try{await setDoc(playerPresenceRef,payload,{merge:true});lastPresenceHash=hash;lastPresenceWriteAt=t;metric('presenceWrites',t,120);metric('presenceWriteLatency',performance.now()-started);success=true}catch(error){if(combatDebug)console.warn('presence sync failed',error)}
+        }
+      }
+      for(const resolve of resolvers)resolve(success);
+    }
+  }finally{presenceWriteRunning=false;if(presenceWriteResolvers.length)queueMicrotask(flushPresenceWrites)}
 }
 async function ensureRoomState(){
   const ref=roomRef;
@@ -1154,7 +1171,8 @@ async function manageController(){
   controllerEpoch=now();lastCommandRecoveryAt=0;controllerLease=`${uid.slice(0,10)}-${controllerEpoch.toString(36)}-${Math.floor(Math.random()*1e6).toString(36)}`;
   try{await runTransaction(db,async tx=>{const snap=await tx.get(roomRef);if(!snap.exists())return;tx.set(roomRef,{controllerUid:uid,controllerLease,controllerEpoch,controllerHeartbeatAtMs:now(),updatedAtMs:now()},{merge:true})})}catch(error){isController=false;console.warn('controller lease failed',error);return}
   controllerTimer=setInterval(controllerTick,CONTROLLER_TICK_MS);
-  perfMetrics.listenerCount=4;
+  resumePendingSideEffects().catch(error=>reportRuntimeProblem('combat side effects',error));
+  perfMetrics.listenerCount=5;
   toast('You are guiding this room’s enemies.',1200);
 }
 async function drainCommandQueue(){if(drainingCommands||!isController)return;drainingCommands=true;let handled=0;try{while(isController&&queuedCommands.size&&handled<8){const ordered=[...queuedCommands.values()].sort((a,b)=>Number(a.createdAtMs)-Number(b.createdAtMs)||Number(a.positionSequence)-Number(b.positionSequence)||String(a.attackId).localeCompare(String(b.attackId))),cmd=ordered[0];queuedCommands.delete(cmd.attackId);await processCommand(cmd.attackId,cmd);handled++;if(handled%2===0)await new Promise(resolve=>setTimeout(resolve,0))}}catch(error){reportRuntimeProblem('Combat command queue',error)}finally{drainingCommands=false;if(isController&&queuedCommands.size)setTimeout(()=>drainCommandQueue().catch(error=>reportRuntimeProblem('Combat command retry',error)),0)}}
@@ -1207,6 +1225,15 @@ function authoritativeAttackModifiers(attacker,combat,skill,createdAtMs,targetId
   }
   return{state,damageBonus,critBonus,procs}
 }
+function attackResultPayload(result){
+  const {attacker,error,...payload}=result||{};
+  return{...payload,deaths:Array.isArray(payload.deaths)?payload.deaths.slice(0,24):[],hitTargets:Array.isArray(payload.hitTargets)?payload.hitTargets.slice(0,24):[],reflectedHits:Array.isArray(payload.reflectedHits)?payload.reflectedHits.slice(0,16):[],combatProcs:Array.isArray(payload.combatProcs)?payload.combatProcs.slice(0,12):[]};
+}
+function publishAttackResult(result,attempt=0){
+  if(!result?.attackId||!resultsCol)return Promise.resolve(false);
+  const ref=roomSubDoc('results',result.attackId),payload={...attackResultPayload(result),publishedAtMs:now(),createdAt:serverTimestamp()};
+  return setDoc(ref,payload,{merge:false}).then(()=>true).catch(error=>{if(attempt<2)return new Promise(resolve=>setTimeout(resolve,250*(attempt+1))).then(()=>publishAttackResult(result,attempt+1));if(combatDebug)console.warn('attack result publish failed',error);return false});
+}
 async function executeRoomDocumentAttack(cmd){
   const attackId=safeId(cmd.attackId||`${cmd.uid}-${cmd.createdAtMs}-${cmd.skillId}-${cmd.targetId}`),started=performance.now();
   const result=await runTransaction(db,async tx=>{
@@ -1230,7 +1257,7 @@ async function executeRoomDocumentAttack(cmd){
     const expectedMana=armorProc?0:Math.max(0,Math.round(Number(skill.mana||0)*Number(combat.manaCostMult||1))),manaBefore=Number(cmd.manaBefore),maxMana=Number(combat.maxMana||attacker.maxMana)||0;
     if(Number(cmd.manaSpent)!==expectedMana||manaBefore+.01<expectedMana||!Number.isFinite(manaBefore)||manaBefore>maxMana+2)return reject('invalid-resource','Not enough mana');
     const cooldowns={...(attacker.confirmedCooldowns||{})},cooldownKey=armorProc?'static-shell':cmd.skillId,authoritativeCooldown=armorProc?4000:cmd.skillId==='attack'?pacedBasicAttackCooldown(combat.weaponCooldown,combat.cooldownMult):(Number(skill.cooldown)||3000)*Number(combat.cooldownMult||1);
-    if(createdAtMs+50<Number(cooldowns[cooldownKey]||0))return reject('cooldown','Ability not ready');
+    if(createdAtMs+50<Number(cooldowns[cooldownKey]||0))return reject('cooldown','Ability not ready',{authoritativeReadyAtMs:Number(cooldowns[cooldownKey])||0});
     cooldowns[cooldownKey]=createdAtMs+authoritativeCooldown;
     const modifiers=authoritativeAttackModifiers(attacker,combat,skill,createdAtMs,cmd.targetId,armorProc,manaBefore),enemies=deepClone(data.enemies||[]),telegraphs=deepClone(data.telegraphs||[]),targets=(Array.isArray(cmd.targets)?cmd.targets:[cmd.targetId]).filter(Boolean).slice(0,allowedAttackTargetCount(skill,combat,attacker,createdAtMs)),deaths=[],hitTargets=[],reflectedHits=[],missReasons=[],seeded=rngFrom(hashString(attackId)),authoritativeBonus=armorProc?Math.max(1,Math.round(Number(combat.attack||6)*.2)):0;
     const schoolPower=Number(combat.spellPower||0)+Number(combat[`${skill.school}Power`]||0)+Number(combat.elementalPower||0),ranged=['bow','crossbow','wand','staff'].includes(combat.weaponType),schoolAffinity=Number(combat.schoolMultipliers?.[skill.school])||1,baseMult=(skill.damageMult||1)*(skill.school&&skill.school!=='weapon'?1+schoolPower:1)*schoolAffinity*(1+modifiers.damageBonus)*(skill.school==='weapon'&&ranged?1+Number(combat.rangedPower||0):1);
@@ -1252,14 +1279,20 @@ async function executeRoomDocumentAttack(cmd){
     }
     const objective=data.objective?deepClone(data.objective):null;if(objective&&!objective.complete&&!objective.failed){for(const dead of deaths){const def=ENEMY_TYPES[dead.type],matches=!objective.targets?.length||objective.targets.includes(dead.type)||objective.targets.includes(def?.role);if((objective.kind==='kill'&&matches)||(objective.kind==='elite'&&dead.affix))objective.progress=Math.min(objective.goal,(Number(objective.progress)||0)+1);if(objective.kind==='ordered'&&dead.markedOrder){if(dead.markedOrder===Number(objective.orderIndex||1)){objective.progress=Math.min(objective.goal,(Number(objective.progress)||0)+1);objective.orderIndex=Number(objective.orderIndex||1)+1}else{objective.failed=true;objective.failureReason=`Marked target ${dead.markedOrder} was defeated out of order.`}}if(objective.kind==='key'&&dead.keyCarrier){objective.progress=1;objective.keyFoundBy=cmd.uid;objective.keyFoundAtMs=t}}objective.complete=!objective.failed&&(Number(objective.progress)||0)>=Number(objective.goal||1);if(objective.complete&&!objective.completedAtMs)objective.completedAtMs=t}
     const hazards=(Array.isArray(data.hazards)?data.hazards:[]).filter(hazard=>(hazard.expiresAtMs||0)>t);if(combat.equippedRelic==='emberheart_coal'&&skill.school==='fire'&&hitTargets[0])hazards.push({id:`haz-${attackId}`,type:'burn',x:hitTargets[0].x,y:hitTargets[0].y,damage:3+Math.round(schoolPower*3),ownerUid:cmd.uid,expiresAtMs:t+4500,tickReadyAtMs:t+600});
-    const reason=hitTargets.length?'confirmed':missReasons[0]||(targets.some(id=>enemies.some(enemy=>enemy.id===id&&enemy.hp<=0))?'target-defeated':'invalid-target'),displayMessage=hitTargets.length?'Hit confirmed':reason==='out-of-range'?'Out of range':reason==='no-line-of-sight'?'No line of sight':reason==='target-defeated'?'Target already defeated':'Invalid target',resolved={attackId,uid:cmd.uid,skillId:cmd.skillId,success:hitTargets.length>0,state:hitTargets.length?'confirmed':'rejected',reason,displayMessage,totalDamage,deaths,hitTargets,reflectedHits,combatProcs:modifiers.procs,objective,createdAtMs,confirmedAtMs:t,positionSequence:sequence,originX:origin.x,originY:origin.y,cosmetic:{weaponType:combat.weaponType||cmd.cosmetic?.weaponType||'bow',school:skill.school},roomId:currentRoomId,sideEffectsComplete:true};
+    const reason=hitTargets.length?'confirmed':missReasons[0]||(targets.some(id=>enemies.some(enemy=>enemy.id===id&&enemy.hp<=0))?'target-defeated':'invalid-target'),displayMessage=hitTargets.length?'Hit confirmed':reason==='out-of-range'?'Out of range':reason==='no-line-of-sight'?'No line of sight':reason==='target-defeated'?'Target already defeated':'Invalid target',resolved={attackId,uid:cmd.uid,skillId:cmd.skillId,success:hitTargets.length>0,state:hitTargets.length?'confirmed':'rejected',reason,displayMessage,totalDamage,deaths,hitTargets,reflectedHits,combatProcs:modifiers.procs,objective,createdAtMs,confirmedAtMs:t,positionSequence:sequence,originX:origin.x,originY:origin.y,cosmetic:{weaponType:combat.weaponType||cmd.cosmetic?.weaponType||'bow',school:skill.school},roomId:currentRoomId,expiresAtMs:t+30000,sideEffectsComplete:hitTargets.length===0};
     tx.set(roomSubDoc('players',cmd.uid),{confirmedCooldowns:cooldowns,confirmedCombatState:modifiers.state,lastConfirmedAttackId:attackId,lastConfirmedAttackAtMs:t},{merge:true});
     tx.set(roomRef,{enemies,telegraphs,hazards,objective,bossDefeated,processedAttackIds:[...processed.slice(-79),attackId],version:(Number(data.version)||0)+1,updatedAtMs:t,updatedAt:serverTimestamp(),schemaVersion:2},{merge:true});
     return{...resolved,attacker};
   }).catch(error=>{perfMetrics.transactionRetryCount++;console.warn('room-document attack failed',error);return{attackId,uid:cmd.uid,skillId:cmd.skillId,success:false,state:'rejected',reason:'connection-failure',displayMessage:'Attack synchronization failed',totalDamage:0,deaths:[],hitTargets:[],createdAtMs:cmd.createdAtMs,confirmedAtMs:now(),roomId:currentRoomId,sideEffectsComplete:true,error}});
   metric('roomWriteLatency',performance.now()-started);
-  if(result.success&&!result.duplicate){for(const hit of result.hitTargets||[]){const localEnemy=roomState.enemies.find(enemy=>enemy.id===hit.id);if(localEnemy)Object.assign(localEnemy,{hp:hit.remainingHp})}markEntityIndexesDirty();actorSortCache.key='';for(const reflected of result.reflectedHits||[]){const id=`reflect-${result.attackId}-${reflected.uid}-${reflected.enemyId}`;await setDoc(roomSubDoc('events',id),{id,uid:reflected.uid,type:'damage',amount:reflected.amount,effect:null,source:`${reflected.source} reflection`,sourceEnemyId:reflected.enemyId,claimed:false,createdAtMs:now(),createdAt:serverTimestamp()},{merge:true}).catch(()=>{})}for(const enemy of result.deaths||[])await handleEnemyDeath(enemy,result.attacker||activePresence(cmd.uid),result.attackId);const combat=result.attacker?.combat||activePresence(cmd.uid)?.combat||{},skill=SKILLS[result.skillId]||SKILLS.attack,leech=Number(skill.lifeSteal)||Number(combat.lifeSteal)||0;if(result.totalDamage>0&&leech>0){const id=`leech-${result.attackId}`;await setDoc(roomSubDoc('events',id),{id,uid:result.uid,type:'heal',amount:Math.max(1,Math.round(result.totalDamage*leech)),claimed:false,createdAtMs:now(),createdAt:serverTimestamp()},{merge:true}).catch(()=>{})}}
-  return result;
+  if(result.success&&!result.duplicate){
+    for(const hit of result.hitTargets||[]){const localEnemy=roomState.enemies.find(enemy=>enemy.id===hit.id);if(localEnemy)Object.assign(localEnemy,{hp:hit.remainingHp})}
+    markEntityIndexesDirty();actorSortCache.key='';
+  }
+  if(result.duplicate){try{const existing=await getDoc(roomSubDoc('results',result.attackId));if(existing.exists())return attackResultPayload(existing.data())}catch(error){if(combatDebug)console.warn('duplicate attack lookup failed',error)}}
+  const publicResult=attackResultPayload(result);
+  if(!result.duplicate)publishAttackResult(publicResult).catch(()=>{});
+  return publicResult;
 }
 async function executeAuthoritativeAttack(cmd){
   const attackId=safeId(cmd.attackId||`${cmd.uid}-${cmd.createdAtMs}-${cmd.skillId}-${cmd.targetId}`),resultRef=roomSubDoc('results',attackId),commandRef=roomSubDoc('commands',attackId),targetIds=Array.from(new Set((Array.isArray(cmd.targets)?cmd.targets:[cmd.targetId]).filter(Boolean).slice(0,12))),targetRefs=targetIds.map(id=>roomSubDoc('enemies',id)),started=performance.now(),result=await runTransaction(db,async tx=>{
@@ -1454,7 +1487,7 @@ async function controllerTick(){
   if(deaths.length&&roomState.objective&&!roomState.objective.complete&&!roomState.objective.failed){const o=roomState.objective;for(const death of deaths){if(o.kind==='ordered'&&death.markedOrder){if(death.markedOrder===Number(o.orderIndex||1)){o.progress=Math.min(o.goal,(Number(o.progress)||0)+1);o.orderIndex=Number(o.orderIndex||1)+1}else{o.failed=true;o.failureReason=`Marked target ${death.markedOrder} was defeated out of order.`}}if(o.kind==='key'&&death.keyCarrier){o.progress=1;o.keyFoundBy=death.effectSources?.burn||death.effectSources?.poison||livePlayers[0]?.uid;o.keyFoundAtMs=t}}if(!o.failed&&Number(o.progress)>=Number(o.goal)){o.complete=true;o.completedAtMs=t}changed=true}
   for(const death of deaths)await handleEnemyDeath(death,livePlayers[0],`dot-${death.id}-${t}`);
   if(damageEvents.length){const batch=writeBatch(db);for(const hit of damageEvents){const q=hit.telegraph,id=`hit-${q.id}-${hit.target.uid}`,sourceEnemy=roomState.enemies.find(e=>e.id===q.enemyId),glacialReduction=Number(hit.target.combat?.setCounts?.glacial_ward||0)>=3&&sourceEnemy&&statusActive(sourceEnemy,'slow',t)?0.94:1,statusOnly=Number(q.damage)<=0;batch.set(roomSubDoc('events',id),{id,uid:hit.target.uid,type:'damage',amount:statusOnly?0:Math.max(1,Math.round(q.damage*glacialReduction)),statusOnly,effect:q.effect||null,stealAmount:q.effect==='stealGold'?Math.min(12,Math.max(3,Math.round(Number(q.damage)*.5))):0,source:q.source,sourceEnemyId:q.enemyId||'',telegraphId:q.id,claimed:false,createdAtMs:t,createdAt:serverTimestamp()},{merge:true})}await batch.commit().catch(()=>{})}
-  if(changed){dirtyRoomState=true;markEntityIndexesDirty()}const telegraphChanged=telegraphHashBefore!==compactHash(roomState.telegraphs||[]);if(dirtyRoomState&&(telegraphChanged||t-lastRoomWrite>ROOM_STATE_WRITE_MS))await writeRoomState();cleanupRoomTransient(t).catch(()=>{});
+  if(changed){dirtyRoomState=true;markEntityIndexesDirty()}const telegraphChanged=telegraphHashBefore!==compactHash(roomState.telegraphs||[]);if(dirtyRoomState&&(telegraphChanged||t-lastRoomWrite>ROOM_STATE_WRITE_MS))await writeRoomState();resumePendingSideEffects().catch(error=>reportRuntimeProblem('combat side effects',error));cleanupRoomTransient(t).catch(()=>{});
 
   }catch(error){reportRuntimeProblem('Enemy controller',error)}finally{controllerTickRunning=false;if(controllerTickQueued){controllerTickQueued=false;setTimeout(()=>controllerTick().catch(error=>reportRuntimeProblem('Enemy controller retry',error)),40)}}
 }
@@ -1548,10 +1581,20 @@ function effectiveSkillRange(skill){const affinity=ARMOR_AFFINITIES[getItem(loca
 function targetFailure(message,entity=localPlayer){toast(message,1000);floater(entity.x,entity.y,message.toUpperCase(),message.includes('mana')?'#7bdcff':'#ff9b95')}
 function unresolvedAttack(entry){return entry&&!['confirmed','animating','rejected','expired'].includes(entry.state)}
 function canQueueAttack(skillId){const unresolved=[...pendingAttacks.values()].filter(unresolvedAttack);if(skillId==='attack')return unresolved.filter(entry=>entry.skillId==='attack').length<NORMAL_ATTACK_QUEUE_LIMIT;return!unresolved.some(entry=>entry.skillId===skillId)}
-function projectileDuration(origin,target,skill,weaponType){const tiles=Math.max(1,distance(origin,target)),melee=['blade','sword','dagger','axe','hammer','mace','scythe','spear'].includes(weaponType)&&tiles<=2;if(melee)return 120+tiles*35;const speed=skill.school==='shock'?42:weaponType==='crossbow'?58:weaponType==='bow'?52:skill.school&&skill.school!=='weapon'?46:62;return clamp(180+tiles*speed,240,850)}
+function projectileDuration(origin,target,skill,weaponType){const tiles=Math.max(1,distance(origin,target)),melee=['blade','sword','dagger','axe','hammer','mace','scythe','spear'].includes(weaponType)&&tiles<=2;if(melee)return 85+tiles*28;const speed=skill.school==='shock'?24:weaponType==='crossbow'?34:weaponType==='bow'?30:skill.school&&skill.school!=='weapon'?27:36;return clamp(95+tiles*speed,135,520)}
+function beginPredictedAttack(entry){
+  if(!entry||entry.predictedVisualStarted)return Number(entry?.visualImpactAtMs)||now();
+  entry.predictedVisualStarted=true;
+  const origin={x:entry.originX,y:entry.originY},skill=entry.skill||SKILLS[entry.skillId]||SKILLS.attack,weaponType=entry.weaponType||'bow',color=skill.school==='fire'?'#ff714d':skill.school==='frost'?'#9ee7ff':skill.school==='shock'?'#7bdcff':skill.school==='dark'?'#ba8cff':'#f0d1a0',started=now();
+  burst(origin.x,origin.y,color,weaponType==='staff'||weaponType==='wand'?13:8);let impact=started+100;
+  const targetIds=entry.targetIds?.length?entry.targetIds:[...entry.visualTargets.keys()];
+  for(const targetId of targetIds.slice(0,24)){const snapshot=entry.visualTargets.get(targetId);if(!snapshot)continue;const target={id:targetId,x:Number(snapshot.x),y:Number(snapshot.y)},duration=projectileDuration(origin,target,skill,weaponType);impact=Math.max(impact,started+duration);if(projectiles.length>=MAX_PROJECTILES)projectiles.splice(0,projectiles.length-MAX_PROJECTILES+1);projectiles.push({attackId:entry.attackId,targetId:target.id,x:origin.x,y:origin.y,tx:target.x,ty:target.y,started,duration,kind:weaponType,skillSchool:skill.school,predicted:true,confirmed:false})}
+  entry.visualImpactAtMs=impact;entry.state='predicted';lastAttackResult='Attack launched · confirming';return impact;
+}
 function beginConfirmedAttack(entry,result){
-  if(confirmedProjectileIds.has(entry.attackId))return now();boundedMapSet(confirmedProjectileIds,entry.attackId,now());
-  const origin={x:entry.originX,y:entry.originY},skill=entry.skill||SKILLS[result.skillId]||SKILLS.attack,weaponType=entry.weaponType||result.cosmetic?.weaponType||'bow',color=skill.school==='fire'?'#ff714d':skill.school==='frost'?'#9ee7ff':skill.school==='shock'?'#7bdcff':skill.school==='dark'?'#ba8cff':'#f0d1a0',started=now();burst(origin.x,origin.y,color,weaponType==='staff'||weaponType==='wand'?13:8);let impact=started+140;
+  if(confirmedProjectileIds.has(entry.attackId))return Math.max(now(),Number(entry.visualImpactAtMs)||0);boundedMapSet(confirmedProjectileIds,entry.attackId,now());
+  if(entry.predictedVisualStarted){entry.state='animating';lastAttackResult=result.displayMessage||'Hit confirmed';return Math.max(now(),Number(entry.visualImpactAtMs)||now())}
+  const origin={x:entry.originX,y:entry.originY},skill=entry.skill||SKILLS[result.skillId]||SKILLS.attack,weaponType=entry.weaponType||result.cosmetic?.weaponType||'bow',color=skill.school==='fire'?'#ff714d':skill.school==='frost'?'#9ee7ff':skill.school==='shock'?'#7bdcff':skill.school==='dark'?'#ba8cff':'#f0d1a0',started=now();burst(origin.x,origin.y,color,weaponType==='staff'||weaponType==='wand'?13:8);let impact=started+100;
   for(const hit of (result.hitTargets||[]).slice(0,24)){const target={id:hit.id,x:Number(hit.x),y:Number(hit.y)},duration=projectileDuration(origin,target,skill,weaponType);impact=Math.max(impact,started+duration);if(projectiles.length>=MAX_PROJECTILES)projectiles.splice(0,projectiles.length-MAX_PROJECTILES+1);projectiles.push({attackId:entry.attackId,targetId:target.id,x:origin.x,y:origin.y,tx:target.x,ty:target.y,started,duration,kind:weaponType,skillSchool:skill.school,confirmed:true});const before=entry.visualTargets?.get(hit.id);if(before)combatVisualEchoes.set(hit.id,{...before,hp:Math.max(1,Number(before.hp)||1),visualExpiresAtMs:started+duration+90})
   }
   entry.visualImpactAtMs=impact;entry.state='animating';actorSortCache.key='';lastAttackResult=`${result.displayMessage||'Hit confirmed'} · animating`;return impact;
@@ -1563,15 +1606,19 @@ function applyAttackResultVisual(result){
   for(const hit of (result.hitTargets||[]).slice(0,24)){combatVisualEchoes.delete(hit.id);const colors={fire:'#ff714d',frost:'#9ee7ff',shock:'#7bdcff',poison:'#8ddd65',dark:'#ba8cff',life:'#9af0a8',physical:'#f0d1a0'},statusLabel={stagger:'STAGGERED',root:'ROOTED',silence:'SILENCED',slow:'SLOWED',freeze:'FROZEN',burn:'BURNING',poison:'POISONED',bleed:'BLEEDING',shock:'CAST DELAYED'}[hit.effect],mitigation=hit.absorbed?` · SHIELD ${hit.absorbed}`:hit.armorAbsorbed?` · ARMOR ${hit.armorAbsorbed}`:'',label=hit.interrupted?'INTERRUPTED':hit.resisted?'RESISTED':hit.absorbed&&!hit.damage?'BLOCKED':`${hit.crit?'CRITICAL ':''}-${hit.damage}${mitigation}${statusLabel?` · ${statusLabel}`:''}`;floater(hit.x,hit.y,label,hit.interrupted?'#ffe08a':hit.crit?'#ffd166':colors[hit.school]||'#f0f3e8');targetFlashes.set(hit.id,now()+180);if(hit.interrupted){burst(hit.x,hit.y,'#ffe08a',24);playCue('crit');if(result.uid===uid)toast('Enemy cast interrupted!',1100)}else{burst(hit.x,hit.y,colors[hit.school]||'#ff8b86',hit.crit?18:10);playCue(hit.crit?'crit':hit.absorbed&&!hit.damage?'blocked':hit.effect?'status':'hit')}impactEffect(hit.x,hit.y,hit.school||'physical',hit.crit?1.45:1,!!(hit.absorbed&&!hit.damage),!!hit.crit);for(const combo of hit.statusCombos||[])if(result.uid===uid)recordCodex('statusCombos',combo,1,{name:combo.split('+').map(id=>STATUS_DEFS[id]?.name||id).join(' + '),discoveredAtMs:now()});if(hit.damage>=25)cameraShake=Math.min(8,cameraShake+2.5);if(hit.reborn&&result.uid===uid){playCue('boss');toast('The Ashen Seraph rises in a burning form!',2600)}}actorSortCache.key='';
 }
 function receiveAttackResult(id,data){if(!data||data.roomId&&data.roomId!==currentRoomId)return;const result={...data,attackId:data.attackId||id},pending=pendingAttacks.get(result.attackId);if(!pending&&Number(result.confirmedAtMs||0)<roomEnteredAtMs-100)return;const latency=Math.max(0,Number(result.confirmedAtMs||now())-Number(result.createdAtMs||pending?.createdAtMs||now()));let visualAt=Number(pending?.visualImpactAtMs)||now();if(pending&&!pending.result){metric('attackLatency',latency);pending.result=result;pending.confirmedAtMs=now();settlePendingAttack(pending,result);if(result.uid===uid&&result.combatProcs?.length)toast(result.combatProcs.join(' · '),1100);if(result.success&&!pending.confirmedVisualStarted){pending.confirmedVisualStarted=true;visualAt=beginConfirmedAttack(pending,result)}setTimeout(()=>pendingAttacks.delete(result.attackId),Math.max(1400,visualAt-now()+900))}else if(result.success&&!pending){const attacker=activePresence(result.uid),originX=Number.isFinite(Number(result.originX))?Number(result.originX):Number(attacker?.x),originY=Number.isFinite(Number(result.originY))?Number(result.originY):Number(attacker?.y);if(Number.isFinite(originX)&&Number.isFinite(originY)){const skill=SKILLS[result.skillId]||SKILLS.attack,remoteEntry={attackId:result.attackId,originX,originY,skill,weaponType:result.cosmetic?.weaponType||attacker?.weaponType||'bow',visualTargets:new Map(),state:'confirmed'};visualAt=beginConfirmedAttack(remoteEntry,result)}}if(result.success&&visualAt>now()+12)setTimeout(()=>applyAttackResultVisual(result),visualAt-now());else applyAttackResultVisual(result)}
-function settlePendingAttack(entry,result){if(!entry||entry.settled)return;entry.settled=true;clearTimeout(entry.expiryTimer);entry.result=result;entry.state=result.success?'confirmed':result.state||'rejected';entry.confirmedAtMs=now();entry.resolve?.(result)}
+const REFUNDABLE_ATTACK_REASONS=new Set(['cooldown','invalid-resource','stale-origin','out-of-range','no-line-of-sight','target-defeated','invalid-target','stale-presence','presence-missing','room-mismatch','old-room-command','ability-not-owned','invalid-skill','attacker-defeated']);
+function refundRejectedAttack(entry,result){if(!entry||entry.resourceRefunded||result?.success||!REFUNDABLE_ATTACK_REASONS.has(result?.reason))return;entry.resourceRefunded=true;const mana=Math.max(0,Number(entry.command?.manaSpent)||0),stats=derivedStats();if(mana)localPlayer.mana=Math.min(stats.maxMana,localPlayer.mana+mana);const prior=Math.max(0,Number(entry.previousCooldown)||0),serverReady=Math.max(0,Number(result.authoritativeReadyAtMs)||0);localPlayer.skillCooldowns[entry.skillId]=Math.max(prior,serverReady);renderActionDock();updateHUD();queueSave(500)}
+function settlePendingAttack(entry,result){if(!entry||entry.settled)return;entry.settled=true;clearTimeout(entry.expiryTimer);entry.result=result;entry.state=result.success?'confirmed':result.state||'rejected';entry.confirmedAtMs=now();refundRejectedAttack(entry,result);entry.resolve?.(result)}
 
 async function submitAttackCommand(cmd,visualTargets,skill,weaponType){
-  const entry={attackId:cmd.attackId,skillId:cmd.skillId,targetIds:[...cmd.targets],originX:cmd.originX,originY:cmd.originY,createdAtMs:cmd.createdAtMs,state:'created',retryCount:0,command:cmd,skill,weaponType,visualTargets:new Map(visualTargets.map(target=>[target.id,deepClone(target)])),resolve:null};const promise=new Promise(resolve=>entry.resolve=resolve);entry.expiryTimer=setTimeout(()=>{if(!entry.settled)receiveAttackResult(cmd.attackId,{attackId:cmd.attackId,uid,skillId:cmd.skillId,success:false,state:'expired',reason:'expired',displayMessage:'Attack expired safely',createdAtMs:cmd.createdAtMs,confirmedAtMs:now()})},ATTACK_EXPIRE_MS+400);pendingAttacks.set(cmd.attackId,entry);cmd.state='queued';
-  try{const presenceReady=await setPresence(true);if(!presenceReady)throw new Error('presence-flush-failed');entry.state='processing';const result=await executeRoomDocumentAttack(cmd);receiveAttackResult(cmd.attackId,result)}catch(error){receiveAttackResult(cmd.attackId,{attackId:cmd.attackId,uid,skillId:cmd.skillId,success:false,state:'rejected',reason:'connection-failure',displayMessage:'Connection failure',createdAtMs:cmd.createdAtMs,confirmedAtMs:now(),roomId:currentRoomId})}
+  const entry={attackId:cmd.attackId,skillId:cmd.skillId,targetIds:[...cmd.targets],originX:cmd.originX,originY:cmd.originY,createdAtMs:cmd.createdAtMs,state:'created',retryCount:0,command:cmd,skill,weaponType,previousCooldown:Number(cmd.clientPreviousCooldown)||0,visualTargets:new Map(visualTargets.map(target=>[target.id,deepClone(target)])),resolve:null};const promise=new Promise(resolve=>entry.resolve=resolve);entry.expiryTimer=setTimeout(()=>{if(!entry.settled)receiveAttackResult(cmd.attackId,{attackId:cmd.attackId,uid,skillId:cmd.skillId,success:false,state:'expired',reason:'expired',displayMessage:'Attack expired safely',createdAtMs:cmd.createdAtMs,confirmedAtMs:now(),roomId:currentRoomId})},ATTACK_EXPIRE_MS+400);pendingAttacks.set(cmd.attackId,entry);cmd.state='queued';
+  beginPredictedAttack(entry);
+  setPresence(true).catch(()=>{});
+  try{entry.state='processing';const result=await executeRoomDocumentAttack(cmd);receiveAttackResult(cmd.attackId,result)}catch(error){receiveAttackResult(cmd.attackId,{attackId:cmd.attackId,uid,skillId:cmd.skillId,success:false,state:'rejected',reason:'connection-failure',displayMessage:'Connection failure',createdAtMs:cmd.createdAtMs,confirmedAtMs:now(),roomId:currentRoomId})}
   return promise;
 }
 function updatePendingAttacks(t){for(const entry of pendingAttacks.values()){if(!unresolvedAttack(entry))continue;const age=t-entry.createdAtMs;if(age>=ATTACK_EXPIRE_MS){entry.state='expired';const result={attackId:entry.attackId,uid,skillId:entry.skillId,success:false,state:'expired',reason:'expired',displayMessage:'Attack expired',createdAtMs:entry.createdAtMs,confirmedAtMs:t,roomId:currentRoomId};settlePendingAttack(entry,result);applyAttackResultVisual(result);setTimeout(()=>pendingAttacks.delete(entry.attackId),1200);continue}if(age>=ATTACK_DESYNC_NOTICE_MS&&!entry.desyncNotified){entry.desyncNotified=true;entry.state='processing';networkNotice('Realm delay · confirming hit')}else if(age>=ATTACK_DELAY_NOTICE_MS&&!entry.delayNotified){entry.delayNotified=true;entry.state='processing';lastAttackResult='Delayed confirmation'}}}
-async function cleanupRoomTransient(t=now()){if(!isController||t-lastCleanupAt<45000)return;lastCleanupAt=t;try{const players=await getDocs(playersCol),batch=writeBatch(db);let count=0;players.forEach(snap=>{if(t-Number(snap.data().lastSeenMs||0)>PLAYER_STALE_MS*2){batch.delete(snap.ref);count++}});if(count)await batch.commit()}catch(error){if(combatDebug)console.warn('transient cleanup failed',error)}}
+async function cleanupRoomTransient(t=now()){if(!isController||t-lastCleanupAt<45000)return;lastCleanupAt=t;try{const [players,results,commands]=await Promise.all([getDocs(playersCol),getDocs(resultsCol),getDocs(commandsCol)]),batch=writeBatch(db);let count=0;players.forEach(snap=>{if(t-Number(snap.data().lastSeenMs||0)>PLAYER_STALE_MS*2){batch.delete(snap.ref);count++}});results.forEach(snap=>{const data=snap.data();if(Number(data.expiresAtMs||data.confirmedAtMs||0)<t-15000){batch.delete(snap.ref);count++}});commands.forEach(snap=>{const data=snap.data();if(t-Number(data.createdAtMs||0)>ATTACK_EXPIRE_MS*2){batch.delete(snap.ref);count++}});if(count)await batch.commit()}catch(error){if(combatDebug)console.warn('transient cleanup failed',error)}}
 function validEnemyForSkill(enemy,skill,origin=localPlayer){if(!enemy||enemy.hp<=0)return false;const range=effectiveSkillRange(skill);return distance(origin,enemy)<=range&&skillHasLineOfSight(origin,enemy,skill)&&(!enemy.camouflaged||distance(origin,enemy)<=2)}
 function nearestValidEnemy(skill=SKILLS.attack){return roomState.enemies.filter(e=>validEnemyForSkill(e,skill)).sort((a,b)=>distance(localPlayer,a)-distance(localPlayer,b)||a.id.localeCompare(b.id))[0]||null}
 function autoAimEnemy(skill){
@@ -1664,9 +1711,9 @@ async function useSkill(id,automatic=false){
   return castAttackSkill(skill,targets,target,t,automatic);
 }
 async function castAttackSkill(skill,targets,target,t=now(),automatic=false,castPoint=null){
-  if(!canQueueAttack(skill.id)){if(!automatic)targetFailure(skill.id==='attack'?'Realm delay · attack queue full':'That ability is still confirming');return false}const mana=skillManaCost(skill),preMana=localPlayer.mana;if(!spendMana(mana))return false;const w=weaponStats(),s=derivedStats(),cooldown=skill.id==='attack'?pacedBasicAttackCooldown(w.cooldown,s.cooldownMult):(skill.cooldown||3000)*s.cooldownMult;localPlayer.skillCooldowns[skill.id]=t+cooldown;localPlayer.lastCombatAtMs=t;
+  if(!canQueueAttack(skill.id)){if(!automatic)targetFailure(skill.id==='attack'?'Realm delay · attack queue full':'That ability is still confirming');return false}const mana=skillManaCost(skill),preMana=localPlayer.mana,previousCooldown=Number(localPlayer.skillCooldowns[skill.id]||0);if(!spendMana(mana))return false;const w=weaponStats(),s=derivedStats(),cooldown=skill.id==='attack'?pacedBasicAttackCooldown(w.cooldown,s.cooldownMult):(skill.cooldown||3000)*s.cooldownMult;localPlayer.skillCooldowns[skill.id]=t+cooldown;localPlayer.lastCombatAtMs=t;
   const equipped=itemStats(equippedWeapon()),family=w.weaponType||'bow',effectIds=['weapon','armor','charm','spellbook'].map(k=>getItem(localPlayer.equipment?.[k])?.uniqueEffect).filter(Boolean);let hitEffect=skill.effect||equipped.onHit||s.onHit||((equipped.effect&&equipped.effect!=='none')?equipped.effect:null);if(skill.id==='attack'&&(family==='hammer'||family==='mace'||family==='crossbow'))hitEffect='stagger';if(skill.id==='attack'&&family==='dagger'&&equipped.poisonPower)hitEffect='poison';
-  const cmd={kind:'attack',attackId:`atk-${uid}-${t}-${positionSequence}-${Math.floor(Math.random()*999999)}`,uid,username,skillId:skill.id,targetId:target?.id||targets[0],targets,originX:localPlayer.x,originY:localPlayer.y,positionSequence,roomId:currentRoomId,depth:currentDepth,roomSessionId,createdAtMs:t,manaBefore:preMana,manaSpent:mana,cosmetic:{weaponType:w.weaponType||'bow',school:skill.school}};if(castPoint){cmd.castX=castPoint.x;cmd.castY=castPoint.y}const visualTargets=Array.from(new Set(targets)).map(targetId=>roomState.enemies.find(enemy=>enemy.id===targetId)).filter(Boolean);
+  const cmd={kind:'attack',attackId:`atk-${uid}-${t}-${positionSequence}-${Math.floor(Math.random()*999999)}`,uid,username,skillId:skill.id,targetId:target?.id||targets[0],targets,originX:localPlayer.x,originY:localPlayer.y,positionSequence,roomId:currentRoomId,depth:currentDepth,roomSessionId,createdAtMs:t,manaBefore:preMana,manaSpent:mana,clientPreviousCooldown:previousCooldown,cosmetic:{weaponType:w.weaponType||'bow',school:skill.school}};if(castPoint){cmd.castX=castPoint.x;cmd.castY=castPoint.y}const visualTargets=Array.from(new Set(targets)).map(targetId=>roomState.enemies.find(enemy=>enemy.id===targetId)).filter(Boolean);
   const result=await submitAttackCommand(cmd,visualTargets,skill,w.weaponType||'bow');if((result.hitTargets||[]).some(hit=>hit.crit)&&RELICS[localPlayer.equippedRelic]?.effect==='critCooldown'){const longest=longestCooldownId();if(longest)localPlayer.skillCooldowns[longest]=Math.max(now(),localPlayer.skillCooldowns[longest]-700)}if(effectIds.includes('manyfold_focus')&&family==='staff'&&(result.hitTargets||[]).length>1)localPlayer.mana=Math.min(s.maxMana,localPlayer.mana+Math.min(12,(result.hitTargets.length-1)*3));if(effectIds.includes('recoil_cannon')&&skill.id==='power_shot'&&target&&result.success){const back={x:localPlayer.x-Math.sign(target.x-localPlayer.x),y:localPlayer.y-Math.sign(target.y-localPlayer.y)};if(walkable(back.x,back.y)){localPlayer.x=back.x;localPlayer.y=back.y;positionSequence++;positionChangedAtMs=now();markEntityIndexesDirty();burst(back.x,back.y,'#d8c7a7',12)}}if((hitEffect==='slow'||skill.school==='frost')&&result.totalDamage>0&&(activeSetTier('glacial_ward',4)||RELICS[localPlayer.equippedRelic]?.effect==='frostShield'))localPlayer.temporaryShield=Math.min(s.maxHp*.25,(localPlayer.temporaryShield||0)+Math.max(3,Math.round(s.maxHp*.07)));if(skill.school==='dark'&&s.emptyStep)localPlayer.moveReadyAt=Math.max(t,localPlayer.moveReadyAt-260);if(skill.school==='dark'&&activeSetTier('voidwalker',3)&&result.totalDamage>0)localPlayer.mana=Math.min(s.maxMana,localPlayer.mana+3);if(skill.school==='dark'&&activeSetTier('voidwalker',4)&&result.success){localPlayer.setMetadata.darkCasts=(Number(localPlayer.setMetadata.darkCasts)||0)+1;if(localPlayer.setMetadata.darkCasts%4===0)await specialtyAreaBurst('curse',Math.max(2,Math.round(s.attack*.2)),2)}setPresence(false);renderActionDock();updateHUD();queueSave(500);return!!result.success;
 }
 async function castSpotSkill(id,x,y,confirmed=false){
