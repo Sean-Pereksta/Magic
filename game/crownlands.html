@@ -74,6 +74,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, serverTimestamp, writeBatch, deleteDoc, runTransaction, query, where } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+import { getDatabase, ref as rtdbRef, update as rtdbUpdate, remove as rtdbRemove, runTransaction as runRtdbTransaction, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
@@ -89,7 +90,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const rtdb = getDatabase(app);
 const GAME_ID = "massive_grid_rts_v1";
+const RTDB_RTS_ROOT = "massiveGridRts/v1";
 const basePath = `lobbies/${GAME_ID}`;
 
 const INITIAL_WORLD_CHUNKS = 200;
@@ -457,7 +460,7 @@ const ACTIVE_CHUNK_RADIUS = 3, WARM_CHUNK_RADIUS = 8, WARM_SIM_INTERVAL_MS = 300
 const REQUEST_MIN_SPAWN_MS = 6 * 3600000;
 const REQUEST_TYPE_DEFS = {well:{title:"Villagers Request a Well",reward:"+5 district stability, growth, and lower unrest",ignored:"lower efficiency, fire risk, and unrest"},road:{title:"District Requests a Road Connection",reward:"+4 stability, faster local construction, and better trade",ignored:"slower income and construction"},tavern:{title:"Residents Ask for a Tavern",reward:"+120 gold and local morale",ignored:"unrest among crowded homes"},watchtower:{title:"Citizens Request Watchtower Protection",reward:"+2 stability and safer borders",ignored:"barbarian interest and fear"},clearCamp:{title:"District Pleads to Clear Nearby Camp",reward:"+250 gold and +2 stability",ignored:"raids, unrest, and danger"},repair:{title:"Workers Request Repairs",reward:"+150 lumber and workshop morale",ignored:"construction delays and fire risk"},troops:{title:"Garrison Requests Defensive Troops",reward:"+75 hero XP and morale",ignored:"training disruption and fear"},residential:{title:"Sacred District Requests Housing Support",reward:"+3 district stability",ignored:"pilgrim shortages and unrest"},organization:{title:"Mixed District Requests Better Organization",reward:"+1 research and +2 stability",ignored:"income confusion and unrest"}};
 
-let uid=null, player=null, playerKey=null;
+let uid=null, player=null, playerKey=null, rtdbPresenceDisconnect=null;
 function normalizeWorldSettings(data={}){return {minChunkX:Number.isFinite(data.minChunkX)?data.minChunkX:0,minChunkY:Number.isFinite(data.minChunkY)?data.minChunkY:0,maxChunkX:Number.isFinite(data.maxChunkX)?data.maxChunkX:INITIAL_WORLD_CHUNKS-1,maxChunkY:Number.isFinite(data.maxChunkY)?data.maxChunkY:INITIAL_WORLD_CHUNKS-1,expansionVersion:Number(data.expansionVersion)||1,lastExpandedAt:Number(data.lastExpandedAt)||0,expanding:!!data.expanding};}
 function worldMinTileX(){return worldSettings.minChunkX*CHUNK_SIZE}function worldMinTileY(){return worldSettings.minChunkY*CHUNK_SIZE}function worldMaxTileX(){return (worldSettings.maxChunkX+1)*CHUNK_SIZE-1}function worldMaxTileY(){return (worldSettings.maxChunkY+1)*CHUNK_SIZE-1}
 function worldWidthChunks(){return worldSettings.maxChunkX-worldSettings.minChunkX+1}function worldHeightChunks(){return worldSettings.maxChunkY-worldSettings.minChunkY+1}function worldAreaChunks(){return worldWidthChunks()*worldHeightChunks()}
@@ -605,6 +608,34 @@ function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;',
 async function sha256(text){ const data=new TextEncoder().encode(text); const hash=await crypto.subtle.digest('SHA-256',data); return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
 function ref(...parts){return doc(db, basePath, ...parts)}
 function col(...parts){return collection(db, basePath, ...parts)}
+function rtsRtdbRef(...parts){return rtdbRef(rtdb,[RTDB_RTS_ROOT,...parts].join('/'))}
+async function claimRtdbRaidLease(raid){
+  if(!raid?.id||!uid)return false;
+  const n=now(),leaseRef=rtsRtdbRef('raidLeases',raid.id);
+  const result=await runRtdbTransaction(leaseRef,current=>{
+    const existing=current&&typeof current==='object'?current:null;
+    if(existing&&existing.authorityUid!==uid&&Number(existing.leaseUntilMs||0)>n)return;
+    const changingOwner=!existing||existing.authorityUid!==uid;
+    return {raidId:raid.id,authorityUid:uid,assignedPlayerKey:String(raid.intendedPlayerKey||raid.assignedPlayerKey||playerKey).slice(0,24),leaseUntilMs:n+BARBARIAN_AUTHORITY_LEASE_MS,heartbeatAtMs:n,epoch:Math.max(1,Number(existing?.epoch||0)+(changingOwner?1:0))};
+  },{applyLocally:false});
+  return !!result.committed;
+}
+async function releaseRtdbRaidLease(raidId){
+  if(!raidId||!uid)return;
+  const leaseRef=rtsRtdbRef('raidLeases',raidId);
+  try{await runRtdbTransaction(leaseRef,current=>current?.authorityUid===uid?null:undefined,{applyLocally:false});}catch(e){console.warn('RTDB raid lease release failed',e);}
+}
+async function updateRtsRtdbPresence(){
+  if(!uid||!playerKey||!account?.home)return;
+  const homeChunk=getChunkOfTile(Number(account.home.x)||0,Number(account.home.y)||0).key;
+  await rtdbUpdate(rtsRtdbRef('presence',uid),{uid,playerKey:String(playerKey).slice(0,24),gameId:GAME_ID,status:document.hidden?'away':'online',lastSeenMs:now(),homeChunk,fortressLevel:Math.max(1,Number(account.fortressLevel||1)),displayName:String(account.displayName||playerKey).slice(0,64)});
+}
+async function startRtsRtdbPresence(){
+  if(!uid||!playerKey)return;
+  const presenceRef=rtsRtdbRef('presence',uid);
+  try{rtdbPresenceDisconnect=onDisconnect(presenceRef);await rtdbPresenceDisconnect.remove();await updateRtsRtdbPresence();}catch(e){console.warn('RTDB presence unavailable',e);}
+}
+
 function chunkKey(cx,cy){return `${cx}_${cy}`} function parseChunkKey(k){const [cx,cy]=k.split('_').map(Number); return {cx,cy}}
 function entityChunkKey(e){return e?.chunkKey||getChunkOfTile(e.x||0,e.y||0).key}
 function ensureEntityChunkKey(e){if(!e)return e;const k=getChunkOfTile(Number(e.x)||0,Number(e.y)||0).key;e.chunkKey=k;return e;}
@@ -1014,9 +1045,12 @@ async function createUnifiedRaidFromPressure(){
   setBarbarianWarningMarker(spawn.chunkKey,n+BARBARIAN_WARNING_MARKER_MS);showOnlineRaidWarning(raid,isChunkVisible(spawn.cx,spawn.cy));markUIDirty('barbarian raid rumors');return true;
 }
 async function claimUnifiedRaidAuthority(raid){
-  const n=now();if(raid.authorityUid===uid&&Number(raid.authorityLeaseUntil||0)>n+4000)return true;
+  const n=now();
+  if(!await claimRtdbRaidLease(raid))return false;
+  if(raid.authorityUid===uid&&Number(raid.authorityLeaseUntil||0)>n+4000)return true;
   const rr=ref('onlineRaids',raid.id),claimed=await runTransaction(db,async tx=>{const snap=await tx.get(rr);if(!snap.exists())return false;const data=snap.data();if(BARBARIAN_FINAL_RAID_STATES.has(data.status))return false;if(Number(data.authorityLeaseUntil||0)>n&&data.authorityUid!==uid)return false;tx.update(rr,{authorityUid:uid,authorityLeaseUntil:n+BARBARIAN_AUTHORITY_LEASE_MS});return true;});
-  if(claimed){raid.authorityUid=uid;raid.authorityLeaseUntil=n+BARBARIAN_AUTHORITY_LEASE_MS;}return !!claimed;
+  if(claimed){raid.authorityUid=uid;raid.authorityLeaseUntil=n+BARBARIAN_AUTHORITY_LEASE_MS;return true;}
+  await releaseRtdbRaidLease(raid.id);return false;
 }
 async function updateUnifiedRaidDocument(raid,patch){Object.assign(raid,patch);onlineRaids.set(raid.id,raid);await setDoc(ref('onlineRaids',raid.id),patch,{merge:true});markUIDirty('barbarian raid state');}
 async function spawnUnifiedRaidUnits(raid){
@@ -1551,7 +1585,7 @@ async function startGame(){
   unsub.push(onSnapshot(ref('world','settings'),s=>{worldSettings=normalizeWorldSettings(s.exists()?s.data():WORLD_SETTINGS_DEFAULT);provinceMetadata.clear();clearProvinceDerivedCache();markVisibleChunksDirty();markUIDirty('world');}));
   unsub.push(subscribeOwnTroops());
   unsub.push(subscribeAssignedBarbarians());
-  await saveAccount();await collectOfflineResources(); resetStartupPollTimers(10000); buildButtons(); if(!gameLoopStarted){gameLoopStarted=true;requestAnimationFrame(loop);} log(`Entered world at your fortress. World size: ${worldWidthChunks()}×${worldHeightChunks()} chunks.`);
+  await saveAccount();await collectOfflineResources();await startRtsRtdbPresence(); resetStartupPollTimers(10000); buildButtons(); if(!gameLoopStarted){gameLoopStarted=true;requestAnimationFrame(loop);} log(`Entered world at your fortress. World size: ${worldWidthChunks()}×${worldHeightChunks()} chunks.`);
   setRuntimeTimeout(()=>maybeRunBarbarianSpawnCheck().catch(e=>log('Barbarian spawn error: '+e.message)),1200);
   setRuntimeTimeout(()=>ensureLandmarksGenerated().catch(e=>log('Landmark generation error: '+e.message)),1800);
   setRuntimeTimeout(()=>maybeRunTerrainRebalance().catch(e=>log('Terrain rebalance error: '+e.message)),2400);
@@ -1565,7 +1599,7 @@ async function collectOfflineResources(){
   if(elapsed>0){ const income=totalHourlyIncome();account.researchPoints=Math.min(researchPointCap(),(account.researchPoints||0)+Math.floor(elapsed/24)); const grant={gold:income.gold*elapsed,lumber:income.lumber*elapsed,oil:income.oil*elapsed}; addRes(grant); account.lastResourceAt=(account.lastResourceAt||now())+elapsed*RESOURCE_HOUR_MS; await saveAccount(); log(`Collected ${elapsed} hour(s) of income: +${grant.gold} gold, +${grant.lumber} lumber, +${grant.oil} oil.`); }
 }
 async function saveAccount(){ if(!playerKey)return; await setDoc(ref('accounts',playerKey),account,{merge:true}); }
-async function updatePresence(){if(!playerKey)return;account.lastSeenAt=now();await setDoc(ref('accounts',playerKey),{lastSeenAt:account.lastSeenAt},{merge:true}).catch(()=>{});}
+async function updatePresence(){if(!playerKey)return;account.lastSeenAt=now();await Promise.allSettled([setDoc(ref('accounts',playerKey),{lastSeenAt:account.lastSeenAt},{merge:true}),updateRtsRtdbPresence()]);}
 
 async function createAlliance(){
   const name=$('allianceNameInput')?.value.trim();
@@ -1603,6 +1637,7 @@ function renderAlliance(){
 Object.assign(window,{createAlliance,inviteAlliancePlayer,respondAllianceInvite,leaveAlliance,removeAllianceMember,updateAllianceSetting});
 
 function resize(){canvas.width=wrap.clientWidth; canvas.height=wrap.clientHeight;clampCamera();markVisibleChunksDirty();cameraStreamDirty=true;} window.addEventListener('resize',resize);
+document.addEventListener('visibilitychange',()=>{updateRtsRtdbPresence().catch(()=>{});});
 function updateFullscreenButton(){const b=$('fullscreenBtn');if(b)b.textContent=document.fullscreenElement?'Exit Full Screen':'Full Screen';}
 $('fullscreenBtn')?.addEventListener('click',async()=>{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();setTimeout(resize,80);});
 document.addEventListener('fullscreenchange',()=>{updateFullscreenButton();setTimeout(resize,80);});
@@ -2528,7 +2563,7 @@ async function resolveOnlineRaid(raid,expired=false){
   const contributors=raid.contributors||{},scores=Object.fromEntries(Object.entries(contributors).map(([id,c])=>[id,(c.damage||0)+(c.kills||0)*10+(c.nearbyKills||0)*2]));scores[raid.intendedPlayerKey]=Math.max(scores[raid.intendedPlayerKey]||0,15);const total=Math.max(1,Object.values(scores).reduce((a,b)=>a+b,0)),reward=raid.rewardPool||{};
   if(!expired)for(const [id,score] of Object.entries(scores)){const share=clamp(score/total,.1,.75),helper=id!==raid.intendedPlayerKey,grant={gold:Math.round((reward.gold||0)*share*(helper?.8:1)),lumber:Math.round((reward.lumber||0)*share*(helper?.8:1)),oil:Math.round((reward.oil||0)*share*(helper?.8:1))};if(id===playerKey){addRes(grant);addHeroXp(Math.round((reward.heroXp||0)*share),helper?'helping defeat a barbarian invasion':'defending the kingdom');if(reward.fragments&&share>=.25)account.relicFragments=(account.relicFragments||0)+reward.fragments;log(`${helper?'Helper':'Defense'} reward: +${grant.gold} gold, +${grant.lumber} lumber, +${grant.oil} oil.`);}else await runTransaction(db,async tx=>{const ar=ref('accounts',id),snap=await tx.get(ar);if(!snap.exists())return;const data=snap.data(),resources=data.resources||{};tx.update(ar,{resources:{gold:Number(resources.gold||0)+grant.gold,lumber:Number(resources.lumber||0)+grant.lumber,oil:Number(resources.oil||0)+grant.oil}});});}
   if(raid.intendedPlayerKey===playerKey){const director=ensureBarbarianDirectorState(),survival=ensureSurvivalState();director.lastRaidResolvedAt=n;director.activeRaidId=null;director.pressure=expired?clamp(director.pressure+12,0,100):Math.max(8,director.pressure-12);if(!expired){survival.totalRaidsSurvived++;survival.lastRaidSurvivedAt=n;survival.recentRaidLosses=Math.max(0,survival.recentRaidLosses-1);progressQuest('daily_defend');account.districtRaidHistory=account.districtRaidHistory||{};account.districtRaidHistory[raid.targetChunk]=n;}else survival.recentRaidLosses=(survival.recentRaidLosses||0)+1;await saveAccount();}
-  onlineRaids.set(raid.id,{...raid,status:finalStatus,resolvedAt:n});markUIDirty('barbarian raid resolved');
+  onlineRaids.set(raid.id,{...raid,status:finalStatus,resolvedAt:n});await releaseRtdbRaidLease(raid.id);markUIDirty('barbarian raid resolved');
 }
 async function runOnlineRaidDirector(){
   if(now()<startupHeavySystemsBlockedUntil||!ONLINE_SURVIVAL_ENABLED||onlineRaidDirectorRunning||!playerKey||document.hidden)return;onlineRaidDirectorRunning=true;
