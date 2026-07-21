@@ -194,10 +194,16 @@ const MAX_PATH_LENGTH = 240;
 const BASE_DROP_CHANCE = .38;
 const ENEMY_RESPAWN_MS = 300000;
 const DOOR_INTERACTION_RANGE = 1;
+// RTDB room paths are protocol-versioned. Increment RTDB_ROOM_PROTOCOL_ID whenever
+// the active-room payload or matching database rules change incompatibly.
+const RTDB_ROOM_SCHEMA_VERSION = 3;
+const RTDB_ROOM_PROTOCOL_ID = 'gridbound-combat-v3-20260721';
+const RTDB_ROOM_NAMESPACE_ATTEMPTS = 8;
 
 let cssW=0, cssH=0, dpr=1;
 let cam={x:0,y:0,zoom:1};
 let uid='';
+let activeRoomNamespace=RTDB_ROOM_PROTOCOL_ID;
 let profileRef=null;
 let roomRef=null;
 let roomMetaRef=null;
@@ -837,10 +843,38 @@ function persistentRoomStateDoc(roomId=currentRoomId){return currentRoomDoc(room
 function roomSub(name,roomId=currentRoomId){return collection(db,'lobbies',realmId,'rpg_rooms',safeId(roomId),name)}
 function roomSubDoc(name,id,roomId=currentRoomId){return doc(db,'lobbies',realmId,'rpg_rooms',safeId(roomId),name,safeId(id))}
 function rewardDoc(id){return doc(db,'rewards',safeId(id))}
-// Realtime Database is the active-room authority. Realm is folded into the key to avoid collisions.
-function activeRoomKey(roomId=currentRoomId){return `${safeId(realmId)}--${safeId(roomId)}`}
-function activeRoomRef(roomId=currentRoomId){return rtdbRef(realtimeDb,`activeRooms/${activeRoomKey(roomId)}`)}
+// Realtime Database is the active-room authority. The protocol namespace prevents
+// an older room payload from ever being overwritten by a newer client.
+function roomMetaMatchesProtocol(meta,roomId=currentRoomId){
+  return !!meta&&
+    meta.roomId===roomId&&
+    meta.realmId===realmId&&
+    Number(meta.schemaVersion)===RTDB_ROOM_SCHEMA_VERSION&&
+    Number.isFinite(Number(meta.depth))&&
+    Number.isFinite(Number(meta.version))&&
+    typeof meta.bossDefeated==='boolean'&&
+    typeof meta.initializedBy==='string'&&meta.initializedBy.length>0&&
+    Number.isFinite(Number(meta.initializedAtMs))&&
+    Number.isFinite(Number(meta.updatedAtMs));
+}
+function activeRoomKey(roomId=currentRoomId,namespace=activeRoomNamespace){return `${safeId(realmId)}--${safeId(namespace)}--${safeId(roomId)}`}
+function activeRoomRef(roomId=currentRoomId,namespace=activeRoomNamespace){return rtdbRef(realtimeDb,`activeRooms/${activeRoomKey(roomId,namespace)}`)}
 function activeRoomChild(path,roomId=currentRoomId){return rtdbChild(activeRoomRef(roomId),String(path||'').replace(/^\/+|\/+$/g,''))}
+async function resolveActiveRoomNamespace(roomId=currentRoomId){
+  for(let attempt=0;attempt<RTDB_ROOM_NAMESPACE_ATTEMPTS;attempt++){
+    const namespace=attempt===0?RTDB_ROOM_PROTOCOL_ID:`${RTDB_ROOM_PROTOCOL_ID}-repair-${attempt}`;
+    const candidateRef=activeRoomRef(roomId,namespace);
+    let snap;
+    try{snap=await rtdbGet(candidateRef)}catch(error){throw new Error(`Could not inspect Realtime Database room namespace ${namespace}: ${String(error?.message||error)}`)}
+    const value=snap.val();
+    if(!snap.exists()||roomMetaMatchesProtocol(value?.meta,roomId)){
+      activeRoomNamespace=namespace;
+      return namespace;
+    }
+    console.warn('Skipping incompatible RTDB room namespace',{namespace,roomId,meta:value?.meta||null});
+  }
+  throw new Error(`No compatible Realtime Database namespace was available for ${roomId}. Increase RTDB_ROOM_NAMESPACE_ATTEMPTS or change RTDB_ROOM_PROTOCOL_ID.`);
+}
 function authPathKey(value){return String(value||'').trim().replace(/[.#$\[\]\/]/g,'-').slice(0,128)||'anonymous'}
 function activeRoomEntityRef(group,id,roomId=currentRoomId){const key=group==='players'?authPathKey(id):safeId(id);return rtdbChild(activeRoomChild(group,roomId),key)}
 function rtdbList(value,limit=Infinity){return Object.entries(value&&typeof value==='object'?value:{}).map(([id,data])=>({...data,id:data?.id||id})).slice(0,limit)}
@@ -1144,7 +1178,7 @@ function validateRealtimePresence(cmd,attacker,t=now()){
 }
 async function armPresenceDisconnect(){if(!playerPresenceRef)return;try{presenceDisconnect=onDisconnect(playerPresenceRef);await presenceDisconnect.remove()}catch(error){if(combatDebug)console.warn('presence disconnect hook failed',error)}}
 function queuePersistentRoomCheckpoint(delay=900){if(!persistentStateRef||map?.isTown)return;clearTimeout(persistentCheckpointTimer);persistentCheckpointTimer=setTimeout(savePersistentRoomCheckpoint,delay)}
-async function savePersistentRoomCheckpoint(){if(!persistentStateRef||!roomState||map?.isTown)return;const payload={roomId:currentRoomId,realmId,depth:currentDepth,schemaVersion:1,bossDefeated:!!roomState.bossDefeated,objective:roomState.objective?{id:roomState.objective.id,kind:roomState.objective.kind,progress:Number(roomState.objective.progress)||0,goal:Number(roomState.objective.goal)||1,complete:!!roomState.objective.complete,failed:!!roomState.objective.failed,completedAtMs:Number(roomState.objective.completedAtMs)||0}:null,eventComplete:!!roomState.eventState?.complete,checkpointAtMs:now()};await setDoc(persistentStateRef,{persistentState:payload,persistentUpdatedAt:serverTimestamp(),activeCombatMigratedToRTDB:true,activeCombatDatabase:'realtime-database',activeCombatSchemaVersion:3},{merge:true}).catch(error=>{if(combatDebug)console.warn('persistent room checkpoint failed',error)})}
+async function savePersistentRoomCheckpoint(){if(!persistentStateRef||!roomState||map?.isTown)return;const payload={roomId:currentRoomId,realmId,depth:currentDepth,schemaVersion:1,bossDefeated:!!roomState.bossDefeated,objective:roomState.objective?{id:roomState.objective.id,kind:roomState.objective.kind,progress:Number(roomState.objective.progress)||0,goal:Number(roomState.objective.goal)||1,complete:!!roomState.objective.complete,failed:!!roomState.objective.failed,completedAtMs:Number(roomState.objective.completedAtMs)||0}:null,eventComplete:!!roomState.eventState?.complete,checkpointAtMs:now()};await setDoc(persistentStateRef,{persistentState:payload,persistentUpdatedAt:serverTimestamp(),activeCombatMigratedToRTDB:true,activeCombatDatabase:'realtime-database',activeCombatSchemaVersion:RTDB_ROOM_SCHEMA_VERSION},{merge:true}).catch(error=>{if(combatDebug)console.warn('persistent room checkpoint failed',error)})}
 function waitForCommandResult(id,timeout=6500){return new Promise(resolve=>{const timer=setTimeout(()=>{roomCommandWaiters.delete(id);resolve(null)},timeout);roomCommandWaiters.set(id,{resolve:value=>{clearTimeout(timer);resolve(value)}})})}
 function receiveRoomCommandResult(id,data){const waiter=roomCommandWaiters.get(id);if(!waiter)return;roomCommandWaiters.delete(id);waiter.resolve(data)}
 async function sendRoomCommand(kind,payload={},timeout=6500){const t=now(),commandId=safeId(payload.commandId||payload.attackId||`${kind}-${uid}-${t}-${Math.floor(Math.random()*999999)}`),cmd={...payload,kind,commandId,attackId:commandId,uid,username,roomId:currentRoomId,depth:currentDepth,roomSessionId,createdAtMs:Number(payload.createdAtMs)||t,state:'queued',createdAtServer:rtdbServerTimestamp()};const waiting=waitForCommandResult(commandId,timeout);try{await rtdbSet(commandRef(commandId),sanitizeRealtimeValue(cmd));if(isController){queuedCommands.set(commandId,cmd);drainCommandQueue().catch(error=>reportRuntimeProblem('local command queue',error))}}catch(error){roomCommandWaiters.delete(commandId);return realtimeReject(cmd,'connection-failure','Command synchronization failed',{error:String(error?.message||error)})}return await waiting}
@@ -1158,6 +1192,7 @@ async function connectRoom(){
   teardownRoom(true);
   const entered=now();roomEnteredAtMs=entered;roomSessionId=`${safeId(currentRoomId)}-${uid.slice(0,8)}-${entered.toString(36)}`;positionSequence++;positionChangedAtMs=entered;lastPresenceHash='';enemyCollectionReady=false;pendingAttacks.clear();pendingSideEffects.clear();pendingRoomEventWrites={};queuedCommands.clear();roomCommandWaiters.clear();
   map=generateDungeon(currentRoomId,currentDepth);roomState={version:0,enemies:[],telegraphs:[],summons:[],hazards:[],eventState:null,objective:null,bossDefeated:map.isTown,updatedAtMs:0};stateHashes={enemies:new Map(),telegraphs:new Map(),hazards:new Map(),summons:new Map(),objective:'',eventState:''};discovered.clear();movementPath=[];projectiles=[];combatVisualEchoes.clear();targetFlashes.clear();selectedEnemyId='';targetingSkillId='';autoAttackEnabled=false;pendingDangerousCast=null;targetControls.classList.remove('show');objectiveSaveKey='';knownRewardIds.clear();knownEventIds.clear();processingRewardIds.clear();processingEventIds.clear();processedCommands.clear();invalidateStaticRendering();markEntityIndexesDirty();
+  await resolveActiveRoomNamespace(currentRoomId);
   roomRef=activeRoomRef();roomMetaRef=activeRoomChild('meta');playersCol=activeRoomChild('players');commandsCol=activeRoomChild('commands');resultsCol=activeRoomChild('results');enemiesCol=activeRoomChild('enemies');eventsCol=activeRoomChild('events');telegraphsCol=activeRoomChild('telegraphs');hazardsCol=activeRoomChild('hazards');summonsCol=activeRoomChild('summons');objectiveRef=activeRoomChild('objective');eventStateRef=activeRoomChild('eventState');controllerRef=activeRoomChild('controller');projectilesRef=activeRoomChild('projectiles');rewardsCol=query(collection(db,'rewards'),where('uid','==',uid),firestoreLimit(100));persistentStateRef=persistentRoomStateDoc();playerPresenceRef=activeRoomEntityRef('players',uid);
   await armPresenceDisconnect();await ensureRoomState();await setPresence(true);
   connectionUnsub=onValue(rtdbRef(realtimeDb,'.info/connected'),snap=>{if(snap.val()===true)armPresenceDisconnect().then(()=>setPresence(true))});
@@ -1223,16 +1258,111 @@ async function flushPresenceWrites(){
     }
   }finally{presenceWriteRunning=false;if(presenceWriteResolvers.length)queueMicrotask(flushPresenceWrites)}
 }
+function normalizeInitialEnemy(raw,t){
+  if(!raw||typeof raw!=='object')return null;
+  const type=String(raw.type||'');
+  const def=ENEMY_TYPES[type];
+  const id=safeId(raw.id);
+  const x=Number(raw.x),y=Number(raw.y);
+  if(!id||!def||!Number.isFinite(x)||!Number.isFinite(y))return null;
+  const maxHp=clamp(Math.round(Number(raw.maxHp)||Number(def.hp)||1),1,1000000000);
+  const hp=clamp(Number.isFinite(Number(raw.hp))?Math.round(Number(raw.hp)):maxHp,0,maxHp);
+  const enemy={...deepClone(raw),id,type,x:clamp(Math.round(x),-10000,10000),y:clamp(Math.round(y),-10000,10000),maxHp,hp};
+  enemy.spawnX=Number.isFinite(Number(enemy.spawnX))?clamp(Math.round(Number(enemy.spawnX)),-10000,10000):enemy.x;
+  enemy.spawnY=Number.isFinite(Number(enemy.spawnY))?clamp(Math.round(Number(enemy.spawnY)),-10000,10000):enemy.y;
+  enemy.faction=String(enemy.faction||routeForRoom(currentRoomId).id).slice(0,96);
+  enemy.damageBy=enemy.damageBy&&typeof enemy.damageBy==='object'&&!Array.isArray(enemy.damageBy)?enemy.damageBy:{};
+  enemy.effects=enemy.effects&&typeof enemy.effects==='object'&&!Array.isArray(enemy.effects)?enemy.effects:{};
+  enemy.effectStacks=enemy.effectStacks&&typeof enemy.effectStacks==='object'&&!Array.isArray(enemy.effectStacks)?enemy.effectStacks:{};
+  enemy.attackReceipts=enemy.attackReceipts&&typeof enemy.attackReceipts==='object'&&!Array.isArray(enemy.attackReceipts)?pruneReceiptMap(enemy.attackReceipts,24):{};
+  enemy.commandReceipts=enemy.commandReceipts&&typeof enemy.commandReceipts==='object'&&!Array.isArray(enemy.commandReceipts)?pruneReceiptMap(enemy.commandReceipts,24):{};
+  if(!Number.isFinite(Number(enemy.staggerThreshold))){enemy.staggerThreshold=enemyStaggerThreshold(def,!!enemy.elite);enemy.stagger=0}
+  if(enemy.hp<=0&&!def.boss&&(!Number.isFinite(Number(enemy.respawnAtMs))||Number(enemy.respawnAtMs)<=t)){
+    enemy.hp=maxHp;enemy.x=enemy.spawnX;enemy.y=enemy.spawnY;enemy.effects={};enemy.effectStacks={};enemy.damageBy={};enemy.stagger=0;enemy.killedAtMs=0;enemy.respawnAtMs=0;enemy.respawnedAtMs=t;
+  }
+  return enemy;
+}
+function safeInitialObjective(generated,persistent){
+  if(!generated)return null;
+  const saved=persistent&&typeof persistent==='object'?persistent:{};
+  const goal=Math.max(0,Number(generated.goal)||0);
+  const objective={
+    ...deepClone(generated),
+    id:String(generated.id||'objective').slice(0,128),
+    kind:String(generated.kind||'kill').slice(0,64),
+    goal,
+    progress:clamp(Number(saved.progress)||0,0,goal||1000000000),
+    complete:!!saved.complete,
+    failed:!!saved.failed,
+    completedAtMs:Number(saved.completedAtMs)||0
+  };
+  delete objective.processedAttackIds;
+  if(objective.claimedBy&&(!Array.isArray(objective.claimedBy)||objective.claimedBy.length))objective.claimedBy={};
+  return sanitizeRealtimeValue(objective);
+}
 async function ensureRoomState(){
-  const t=now(),objective=createObjectiveForMap(map,t),eventState=map.isTown?null:{...deepClone(map.eventNode),progress:0,complete:false,claimedBy:[],startedAtMs:0};
+  const t=now();
+  const existingSnap=await rtdbGet(roomRef).catch(error=>{throw new Error(`Realtime Database room read failed at activeRooms/${activeRoomKey()}: ${String(error?.message||error)}`)});
+  if(existingSnap.exists()){
+    const existing=existingSnap.val();
+    if(roomMetaMatchesProtocol(existing?.meta,currentRoomId))return existing;
+    throw new Error(`The selected Realtime Database room namespace is incompatible: activeRooms/${activeRoomKey()}. The client refused to overwrite it.`);
+  }
+
+  const generatedObjective=createObjectiveForMap(map,t);
+  const generatedEventState=map.isTown?null:{...deepClone(map.eventNode),progress:0,complete:false,claimedBy:{},startedAtMs:0};
   let legacy=null,persistent=null;
   try{const legacySnap=await getDoc(currentRoomDoc());legacy=legacySnap.exists()?legacySnap.data():null;persistent=legacy?.persistentState||null}catch(error){if(combatDebug)console.warn('legacy room migration read failed',error)}
-  const legacyCombat=legacy?.activeCombatMigratedToRTDB?null:legacy;let enemies=legacyCombat?.roomId===currentRoomId&&Array.isArray(legacyCombat.enemies)?deepClone(legacyCombat.enemies):initialEnemiesForMap(map),telegraphs=legacyCombat?.roomId===currentRoomId&&Array.isArray(legacyCombat.telegraphs)?legacyCombat.telegraphs:[],hazards=legacyCombat?.roomId===currentRoomId&&Array.isArray(legacyCombat.hazards)?legacyCombat.hazards:[],summons=[];
-  for(const e of enemies){const def=ENEMY_TYPES[e.type];e.spawnX=Number.isFinite(Number(e.spawnX))?Number(e.spawnX):Number(e.x)||0;e.spawnY=Number.isFinite(Number(e.spawnY))?Number(e.spawnY):Number(e.y)||0;e.faction=e.faction||routeForRoom(currentRoomId).id;if(!Number.isFinite(Number(e.staggerThreshold))){e.staggerThreshold=enemyStaggerThreshold(def,!!e.elite);e.stagger=0}if(e.hp<=0&&!def?.boss&&(!Number.isFinite(Number(e.respawnAtMs))||Number(e.respawnAtMs)<=t)){e.hp=Math.max(1,Number(e.maxHp)||Number(def?.hp)||1);e.x=e.spawnX;e.y=e.spawnY;e.effects={};e.effectStacks={};e.damageBy={};e.stagger=0;e.killedAtMs=0;e.respawnAtMs=0;e.respawnedAtMs=t}}
-  const initial={meta:{roomId:currentRoomId,realmId,depth:currentDepth,schemaVersion:3,version:1,bossDefeated:map.isTown||!!legacyCombat?.bossDefeated||!!persistent?.bossDefeated,initializedBy:uid,initializedAtMs:t,updatedAtMs:t,legacyMigrated:!!legacy},enemies:rtdbObject(enemies.map(cleanEnemyForRealtime)),telegraphs:rtdbObject(telegraphs.slice(-MAX_TELEGRAPHS)),hazards:rtdbObject(hazards.filter(h=>(h.expiresAtMs||0)>t).slice(-MAX_HAZARDS)),summons:rtdbObject(summons),objective:legacyCombat?.roomId===currentRoomId&&legacyCombat.objective?legacyCombat.objective:(persistent?.objective?{...objective,...persistent.objective}:objective),eventState:legacyCombat?.roomId===currentRoomId&&legacyCombat.eventState?legacyCombat.eventState:eventState,commands:{},results:{},events:{},projectiles:{}};
-  const result=await runRtdbTransaction(roomRef,current=>{if(current?.meta?.roomId===currentRoomId&&Number(current?.meta?.schemaVersion)>=3)return;return{...initial,players:current?.players||{},controller:current?.controller||null}},{applyLocally:false}).catch(error=>{console.warn('RTDB room init failed',error);return null});
-  if(!result?.snapshot?.exists())throw new Error('Realtime Database room initialization was denied. Deploy the supplied RTDB rules.');await setDoc(persistentStateRef,{activeCombatMigratedToRTDB:true,activeCombatDatabase:'realtime-database',activeCombatSchemaVersion:3,migratedAt:serverTimestamp()},{merge:true}).catch(()=>{});
+
+  // Only migrate a legacy enemy list when every enemy can be normalized to the
+  // exact shape accepted by the current RTDB rules. Transient telegraphs,
+  // hazards, summons, commands, and projectiles are intentionally restarted.
+  const legacyEnemySource=!map.isTown&&!legacy?.activeCombatMigratedToRTDB&&legacy?.roomId===currentRoomId&&Array.isArray(legacy.enemies)?legacy.enemies:null;
+  let enemies=(legacyEnemySource||initialEnemiesForMap(map)).slice(0,MAX_ROOM_ENEMIES).map(enemy=>normalizeInitialEnemy(enemy,t)).filter(Boolean);
+  if(legacyEnemySource&&enemies.length!==legacyEnemySource.slice(0,MAX_ROOM_ENEMIES).length)enemies=initialEnemiesForMap(map).slice(0,MAX_ROOM_ENEMIES).map(enemy=>normalizeInitialEnemy(enemy,t)).filter(Boolean);
+  if(!map.isTown&&!enemies.length)enemies=initialEnemiesForMap(map).slice(0,MAX_ROOM_ENEMIES).map(enemy=>normalizeInitialEnemy(enemy,t)).filter(Boolean);
+
+  const objective=map.isTown?null:safeInitialObjective(generatedObjective,persistent?.objective);
+  const initial={
+    meta:{
+      roomId:currentRoomId,
+      realmId,
+      depth:currentDepth,
+      schemaVersion:RTDB_ROOM_SCHEMA_VERSION,
+      version:1,
+      bossDefeated:map.isTown||!!persistent?.bossDefeated,
+      initializedBy:uid,
+      initializedAtMs:t,
+      updatedAtMs:t,
+      legacyMigrated:!!legacyEnemySource
+    },
+    enemies:rtdbObject(enemies.map(cleanEnemyForRealtime)),
+    telegraphs:{},hazards:{},summons:{},
+    objective,
+    eventState:generatedEventState,
+    commands:{},results:{},events:{},projectiles:{}
+  };
+
+  const result=await runRtdbTransaction(roomRef,current=>{
+    if(current){
+      // Never rewrite a room that already exists. A compatible concurrent
+      // initializer wins; an incompatible node is handled by the namespace resolver.
+      return;
+    }
+    return sanitizeRealtimeValue(initial);
+  },{applyLocally:false}).catch(error=>{
+    console.warn('RTDB room init failed',{error,roomPath:`activeRooms/${activeRoomKey()}`,schemaVersion:RTDB_ROOM_SCHEMA_VERSION});
+    return null;
+  });
+
+  const committed=result?.snapshot?.val();
+  if(!roomMetaMatchesProtocol(committed?.meta,currentRoomId)){
+    throw new Error(`Realtime Database room initialization was denied or produced an incompatible room at activeRooms/${activeRoomKey()}. Confirm anonymous authentication is enabled and deploy the matching RTDB rules.`);
+  }
+
+  await setDoc(persistentStateRef,{activeCombatMigratedToRTDB:true,activeCombatDatabase:'realtime-database',activeCombatSchemaVersion:RTDB_ROOM_SCHEMA_VERSION,migratedAt:serverTimestamp()},{merge:true}).catch(()=>{});
   if(persistent?.bossDefeated&&!map.isTown)queuePersistentRoomCheckpoint(1200);
+  return committed;
 }
 async function manageController(){
   commandsUnsub?.();commandsUnsub=null;clearInterval(controllerTimer);controllerTimer=null;
