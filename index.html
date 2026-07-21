@@ -642,11 +642,15 @@
           <span class="status-dot"></span>
           Lobby &amp; Game Library
         </div>
+        <button id="returnToLobby" class="header-btn" type="button" title="Leave the current game and return to the lobby">
+          <span aria-hidden="true">⌂</span>
+          <span class="label">Lobby</span>
+        </button>
         <button id="fullscreenLobby" class="header-btn" type="button" title="Toggle fullscreen for the current lobby or game" aria-pressed="false">
           <span id="fullscreenLobbyIcon" aria-hidden="true">⛶</span>
           <span id="fullscreenLobbyLabel" class="label">Fullscreen</span>
         </button>
-        <button id="reloadLobby" class="header-btn" type="button" title="Reload the lobby">
+        <button id="reloadLobby" class="header-btn" type="button" title="Reload the current lobby or game">
           <span aria-hidden="true">↻</span>
           <span class="label">Reload</span>
         </button>
@@ -758,6 +762,7 @@
 
     const frame = document.getElementById("contentFrame");
     const loader = document.getElementById("frameLoader");
+    const returnToLobby = document.getElementById("returnToLobby");
     const fullscreenLobby = document.getElementById("fullscreenLobby");
     const fullscreenLobbyIcon = document.getElementById("fullscreenLobbyIcon");
     const fullscreenLobbyLabel = document.getElementById("fullscreenLobbyLabel");
@@ -1076,12 +1081,35 @@
       syncLobbyUsername();
     });
 
+    returnToLobby.addEventListener("click",async()=>{
+      returnToLobby.disabled = true;
+
+      try{
+        if(currentFullscreenElement() === frame){
+          await exitFrameFullscreen();
+        }
+      }catch(error){
+        console.debug("Could not exit fullscreen before returning to the lobby",error);
+      }
+
+      toggleChatPanel(false);
+      localStorage.removeItem("gh.lastLobbyId");
+      lastLobbySignature = "";
+      setLobbyShareState(null,"Join or create a public lobby to advertise it here.");
+      showLoader();
+      frame.src = LOBBY_URL;
+
+      window.setTimeout(()=>{
+        returnToLobby.disabled = false;
+      },700);
+    });
+
     reloadLobby.addEventListener("click",()=>{
       showLoader();
       try{
         frame.contentWindow.location.reload();
       }catch{
-        frame.src = "https://catnmice.com/lobby/lobby.html";
+        frame.src = LOBBY_URL;
       }
     });
 
