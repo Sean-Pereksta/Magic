@@ -194,6 +194,8 @@ const MAX_PATH_LENGTH = 240;
 const BASE_DROP_CHANCE = .38;
 const ENEMY_RESPAWN_MS = 300000;
 const DOOR_INTERACTION_RANGE = 1;
+const AUTO_APPROACH_MAX_DISTANCE = 10;
+const AUTO_APPROACH_REPLAN_MS = 320;
 // RTDB room paths are protocol-versioned. Increment RTDB_ROOM_PROTOCOL_ID whenever
 // the active-room payload or matching database rules change incompatibly.
 const RTDB_ROOM_SCHEMA_VERSION = 3;
@@ -243,6 +245,7 @@ let queuedCommands=new Map();
 let drainingCommands=false;
 let localPlayer=null;
 let movementPath=[];
+let pendingApproach=null;
 let selectedEnemyId='';
 let targetingSkillId='';
 let autoAttackEnabled=false;
@@ -1191,7 +1194,7 @@ async function refreshControllerLease(t=now()){
 async function connectRoom(){
   teardownRoom(true);
   const entered=now();roomEnteredAtMs=entered;roomSessionId=`${safeId(currentRoomId)}-${uid.slice(0,8)}-${entered.toString(36)}`;positionSequence++;positionChangedAtMs=entered;lastPresenceHash='';enemyCollectionReady=false;pendingAttacks.clear();pendingSideEffects.clear();pendingRoomEventWrites={};queuedCommands.clear();roomCommandWaiters.clear();
-  map=generateDungeon(currentRoomId,currentDepth);roomState={version:0,enemies:[],telegraphs:[],summons:[],hazards:[],eventState:null,objective:null,bossDefeated:map.isTown,updatedAtMs:0};stateHashes={enemies:new Map(),telegraphs:new Map(),hazards:new Map(),summons:new Map(),objective:'',eventState:''};discovered.clear();movementPath=[];projectiles=[];combatVisualEchoes.clear();targetFlashes.clear();selectedEnemyId='';targetingSkillId='';autoAttackEnabled=false;pendingDangerousCast=null;targetControls.classList.remove('show');objectiveSaveKey='';knownRewardIds.clear();knownEventIds.clear();processingRewardIds.clear();processingEventIds.clear();processedCommands.clear();invalidateStaticRendering();markEntityIndexesDirty();
+  map=generateDungeon(currentRoomId,currentDepth);roomState={version:0,enemies:[],telegraphs:[],summons:[],hazards:[],eventState:null,objective:null,bossDefeated:map.isTown,updatedAtMs:0};stateHashes={enemies:new Map(),telegraphs:new Map(),hazards:new Map(),summons:new Map(),objective:'',eventState:''};discovered.clear();movementPath=[];pendingApproach=null;projectiles=[];combatVisualEchoes.clear();targetFlashes.clear();selectedEnemyId='';targetingSkillId='';autoAttackEnabled=false;pendingDangerousCast=null;targetControls.classList.remove('show');objectiveSaveKey='';knownRewardIds.clear();knownEventIds.clear();processingRewardIds.clear();processingEventIds.clear();processedCommands.clear();invalidateStaticRendering();markEntityIndexesDirty();
   await resolveActiveRoomNamespace(currentRoomId);
   roomRef=activeRoomRef();roomMetaRef=activeRoomChild('meta');playersCol=activeRoomChild('players');commandsCol=activeRoomChild('commands');resultsCol=activeRoomChild('results');enemiesCol=activeRoomChild('enemies');eventsCol=activeRoomChild('events');telegraphsCol=activeRoomChild('telegraphs');hazardsCol=activeRoomChild('hazards');summonsCol=activeRoomChild('summons');objectiveRef=activeRoomChild('objective');eventStateRef=activeRoomChild('eventState');controllerRef=activeRoomChild('controller');projectilesRef=activeRoomChild('projectiles');rewardsCol=query(collection(db,'rewards'),where('uid','==',uid),firestoreLimit(100));persistentStateRef=persistentRoomStateDoc();playerPresenceRef=activeRoomEntityRef('players',uid);
   await armPresenceDisconnect();await ensureRoomState();await setPresence(true);
@@ -1522,7 +1525,13 @@ async function claimRewardDoc(docSnap){
 async function claimRealtimeEvent(eventId,eventData){
   const id=safeId(eventId),data=eventData||{};if(!id||data.uid!==uid||data.claimed||knownEventIds.has(id)||processingEventIds.has(id))return;processingEventIds.add(id);const ref=eventRef(id);
   try{
-    await rtdbGet(ref).catch(()=>{});const claim=await runRtdbTransaction(ref,current=>{if(!current||current.uid!==uid||current.claimed)return;return{...current,claimed:true,claimedBy:uid,claimedAtMs:now(),claimedAt:rtdbServerTimestamp()}},{applyLocally:false});if(!claim.committed){knownEventIds.add(id);return}const payload={...data,...claim.snapshot.val()};knownEventIds.add(id);
+    let claim=null,claimError=null;
+    try{
+      claim=await runRtdbTransaction(ref,current=>{if(!current||current.uid!==uid||current.claimed)return;return{...current,claimed:true,claimedBy:uid}},{applyLocally:false});
+    }catch(error){claimError=error;if(combatDebug)console.warn('damage event claim failed; applying local fallback',id,error)}
+    if(claim&&!claim.committed){knownEventIds.add(id);return}
+    const payload=claim?.snapshot?.val()||data;knownEventIds.add(id);
+    if(claimError)lastAttackResult='Damage received · acknowledgement retry pending';
     if(payload.type==='damage'&&localPlayer.hp>0){
       const stats=derivedStats(),seeded=rngFrom(hashString(id)),parry=weaponStats().weaponType==='sword'?Number(stats.parry)||.04:0;if(seeded()<clamp(stats.dodge+parry,0,.42)){floater(localPlayer.x,localPlayer.y,seeded()<parry?'PARRY':'DODGE','#9ee7ff');setTimeout(()=>rtdbRemove(ref).catch(()=>{}),10000);return}
       const before=localPlayer.hp,reduction=clamp(stats.damageReduction+(statusActive(localPlayer,'curse')?-.04:0),0,.5),raw=payload.statusOnly?0:Math.max(1,Math.round((Number(payload.amount)||1)*(1-reduction)-stats.armor*.55)),shieldUsed=Math.min(localPlayer.temporaryShield||0,raw),amount=Math.max(0,raw-shieldUsed);localPlayer.temporaryShield=Math.max(0,(localPlayer.temporaryShield||0)-shieldUsed);localPlayer.hp=Math.max(0,localPlayer.hp-amount);localPlayer.lastCombatAtMs=now();
@@ -1530,7 +1539,7 @@ async function claimRealtimeEvent(eventId,eventData){
       floater(localPlayer.x,localPlayer.y,payload.statusOnly?(STATUS_DEFS[payload.effect]?.name||'Affected').toUpperCase():`-${amount}`,'#ff8b86');burst(localPlayer.x,localPlayer.y,'#ff6c65',10);playCue(payload.statusOnly?'status':'hit');await triggerArmorOnHit(payload,amount,before,stats);
       if(localPlayer.hp<=0){const armorItem=getItem(localPlayer.equipment?.armor),armor=ARMORS[armorItem?.baseId],canRebirth=armor?.specialtyId==='ember_rebirth'&&!map.isTown&&(!localPlayer.phoenixRebirth.used||localPlayer.phoenixRebirth.roomId!==currentRoomId);if(!canRebirth&&['survive_time','escape'].includes(roomState.objective?.kind)&&!onlinePlayers.some(player=>player.uid!==uid&&player.hp>0))failSharedObjective('The party fell before completing the objective.');if(canRebirth){localPlayer.phoenixRebirth={roomId:currentRoomId,used:true,usedAtMs:now()};localPlayer.hp=Math.max(1,Math.round(stats.maxHp*.25));localPlayer.mana=Math.round(stats.maxMana*.2);selectedEnemyId='';localPlayer.statusEffects.rebirthGrace=now()+1800;burst(localPlayer.x,localPlayer.y,'#ff7b45',40);if(armorItem?.uniqueEffect==='rebirth_nova')await specialtyAreaBurst('burn',Math.max(6,Math.round(stats.attack*.85)),3);toast('Ember Rebirth!',2300)}else deathModal.classList.add('open')}queueSave();setPresence(true);updateHUD()
     }else if(payload.type==='heal'&&localPlayer.hp>0){const stats=derivedStats(),armor=ARMORS[getItem(localPlayer.equipment?.armor)?.baseId],moonward=armor?.specialtyId==='moonward'&&localPlayer.hp/stats.maxHp<.4?1.3:1,amount=Math.max(1,Math.round((Number(payload.amount)||1)*moonward)),overflow=Math.max(0,localPlayer.hp+amount-stats.maxHp);localPlayer.hp=Math.min(stats.maxHp,localPlayer.hp+amount);if(overflow&&RELICS[localPlayer.equippedRelic]?.effect==='leechShield')localPlayer.temporaryShield=Math.min(stats.maxHp*.25,(localPlayer.temporaryShield||0)+overflow);if(RELICS[localPlayer.equippedRelic]?.effect==='healMana')localPlayer.mana=Math.min(stats.maxMana,localPlayer.mana+Math.max(1,Math.round(amount*.08)));floater(localPlayer.x,localPlayer.y,`+${amount}`,'#86efac');playCue('heal');queueSave();setPresence(true);updateHUD()}
-    setTimeout(()=>rtdbRemove(ref).catch(()=>{}),10000)
+    setTimeout(()=>rtdbRemove(ref).catch(error=>{if(combatDebug)console.warn('damage event cleanup deferred',id,error)}),2500)
   }finally{processingEventIds.delete(id)}
 }
 
@@ -1724,6 +1733,33 @@ function findPath(sx,sy,tx,ty){
   }
   if(!found)return[];const path=[];let cur={x:tx,y:ty},guard=0;while((cur.x!==sx||cur.y!==sy)&&guard++<MAX_PATH_LENGTH+8){path.push(cur);cur=prev.get(keyXY(cur.x,cur.y));if(!cur)break}const result=path.reverse().slice(0,MAX_PATH_LENGTH);pathCache.set(cacheKey,{path:result,expiresAtMs:now()+700});if(pathCache.size>80)pathCache.delete(pathCache.keys().next().value);return result.map(point=>({...point}));
 }
+function cancelAutoApproach(clearAutoAttack=false){pendingApproach=null;if(clearAutoAttack)autoAttackEnabled=false}
+function approachRangeForSkill(skill){return skill?.id==='frost_nova'?Math.max(1,Number(skill.radius)||1):effectiveSkillRange(skill)}
+function approachTargetValid(target,skill){if(!target||target.hp<=0)return false;const range=approachRangeForSkill(skill);return distance(localPlayer,target)<=range&&skillHasLineOfSight(localPlayer,target,skill)&&(!target.camouflaged||distance(localPlayer,target)<=2)}
+function findApproachPath(target,skill){
+  if(!target||target.hp<=0||distance(localPlayer,target)>AUTO_APPROACH_MAX_DISTANCE)return[];
+  const range=clamp(Math.floor(approachRangeForSkill(skill)),1,AUTO_APPROACH_MAX_DISTANCE),candidates=[];
+  for(let y=Math.max(0,target.y-range);y<=Math.min(map.h-1,target.y+range);y++)for(let x=Math.max(0,target.x-range);x<=Math.min(map.w-1,target.x+range);x++){
+    const point={x,y};if(distance(point,target)>range||!walkable(x,y)||!skillHasLineOfSight(point,target,skill)||target.camouflaged&&distance(point,target)>2)continue;
+    candidates.push(point)
+  }
+  candidates.sort((a,b)=>distance(localPlayer,a)-distance(localPlayer,b)||distance(a,target)-distance(b,target));
+  let best=[];for(const point of candidates){const path=findPath(localPlayer.x,localPlayer.y,point.x,point.y);if(!path.length&&point.x===localPlayer.x&&point.y===localPlayer.y)return[];if(path.length&&(!best.length||path.length<best.length)){best=path;if(best.length<=1)break}}
+  return best
+}
+function nearestApproachableEnemy(skill=SKILLS.attack){return roomState.enemies.filter(enemy=>enemy.hp>0&&distance(localPlayer,enemy)<=AUTO_APPROACH_MAX_DISTANCE).sort((a,b)=>distance(localPlayer,a)-distance(localPlayer,b)||a.id.localeCompare(b.id))[0]||null}
+function beginAutoApproach(skill,target,quiet=false){
+  if(!skill||!target||target.hp<=0)return false;if(distance(localPlayer,target)>AUTO_APPROACH_MAX_DISTANCE){if(!quiet)targetFailure('Enemy is more than 10 spaces away',target);return false}
+  if(approachTargetValid(target,skill))return false;const path=findApproachPath(target,skill);if(!path.length){if(!quiet)targetFailure('No clear route into range',target);return false}
+  selectedEnemyId=target.id;pendingApproach={skillId:skill.id,targetId:target.id,queuedAtMs:now(),lastPlanAtMs:now()};movementPath=path;if(skill.id==='attack')autoAttackEnabled=true;if(!quiet)toast(`${skill.name} · moving into range`,1150);return true
+}
+function updateAutoApproach(t){
+  if(!pendingApproach||localPlayer.hp<=0)return;const queued=pendingApproach,skill=SKILLS[queued.skillId],target=roomState.enemies.find(enemy=>enemy.id===queued.targetId&&enemy.hp>0);
+  if(!skill||!target){cancelAutoApproach(skill?.id==='attack');movementPath=[];return}
+  if(approachTargetValid(target,skill)){pendingApproach=null;movementPath=[];selectedEnemyId=target.id;if(skill.id==='frost_nova')useSkill(skill.id,true).catch(error=>reportRuntimeProblem('auto approach cast',error));else if(isAutoAimSpotSkill(skill))castSpotSkill(skill.id,target.x,target.y,true).catch(error=>reportRuntimeProblem('auto approach cast',error));else useSkill(skill.id,true).catch(error=>reportRuntimeProblem('auto approach cast',error));return}
+  if(distance(localPlayer,target)>AUTO_APPROACH_MAX_DISTANCE){cancelAutoApproach(skill.id==='attack');movementPath=[];targetFailure('Target moved beyond 10 spaces',target);return}
+  if((!movementPath.length||!walkable(movementPath[0]?.x,movementPath[0]?.y))&&t-Number(queued.lastPlanAtMs||0)>=AUTO_APPROACH_REPLAN_MS){queued.lastPlanAtMs=t;const path=findApproachPath(target,skill);if(path.length)movementPath=path;else{cancelAutoApproach(skill.id==='attack');targetFailure('No clear route into range',target)}}
+}
 function armorMoveStride(){const armor=ARMORS[getItem(localPlayer?.equipment?.armor)?.baseId];return clamp(Math.floor(Number(armor?.moveStride)||1),1,3)}
 function effectiveSkillRange(skill){const affinity=ARMOR_AFFINITIES[getItem(localPlayer.equipment?.armor)?.baseId],base=Number(skill?.range)||Number(weaponStats().range)||1;return Math.max(1,base-((skill?.school==='movement'||skill?.id==='dash'||skill?.id==='blink')?Number(affinity?.dashPenalty||0):0))}
 function targetFailure(message,entity=localPlayer){toast(message,1000);floater(entity.x,entity.y,message.toUpperCase(),message.includes('mana')?'#7bdcff':'#ff9b95')}
@@ -1771,9 +1807,9 @@ function validEnemyForSkill(enemy,skill,origin=localPlayer){if(!enemy||enemy.hp<
 function nearestValidEnemy(skill=SKILLS.attack){return roomState.enemies.filter(e=>validEnemyForSkill(e,skill)).sort((a,b)=>distance(localPlayer,a)-distance(localPlayer,b)||a.id.localeCompare(b.id))[0]||null}
 function autoAimEnemy(skill){
   let target=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);
-  if(target&&!validEnemyForSkill(target,skill)){targetFailure(distance(localPlayer,target)>effectiveSkillRange(skill)?'Out of range':'No line of sight',target);return null}
-  if(!target){target=nearestValidEnemy(skill);if(target)selectedEnemyId=target.id}
-  if(!target)targetFailure('No valid enemy in range');
+  if(target&&distance(localPlayer,target)>AUTO_APPROACH_MAX_DISTANCE)target=null;
+  if(!target){target=nearestValidEnemy(skill)||nearestApproachableEnemy(skill);if(target)selectedEnemyId=target.id}
+  if(!target)targetFailure('No enemy within 10 spaces');
   return target;
 }
 function isAutoAimSpotSkill(skill){return skill?.targetMode==='spot'&&skill.school!=='movement'&&!skill.noDamage&&!skill.summonType}
@@ -1789,12 +1825,13 @@ function interactObjectiveAt(x,y){const o=roomState.objective;if(!o||o.failed)re
 }
 function setMoveTarget(x,y){
   if(localPlayer.hp<=0)return;
-  const enemy=enemyAt(x,y);if(targetingSkillId){const skill=SKILLS[targetingSkillId];if(skill?.targetMode==='enemy'){if(!enemy){targetFailure('Select a valid enemy.');return}selectedEnemyId=enemy.id;if(!validEnemyForSkill(enemy,skill)){targetFailure(distance(localPlayer,enemy)>effectiveSkillRange(skill)?'Out of range':'No line of sight',enemy);return}const id=targetingSkillId;cancelTargeting();useSkill(id,true);return}castSpotSkill(targetingSkillId,x,y);return}
+  const enemy=enemyAt(x,y);if(targetingSkillId){const skill=SKILLS[targetingSkillId];if(skill?.targetMode==='enemy'){if(!enemy){targetFailure('Select a valid enemy.');return}selectedEnemyId=enemy.id;if(!validEnemyForSkill(enemy,skill)){const id=targetingSkillId;cancelTargeting();if(beginAutoApproach(skill,enemy))return;targetFailure(distance(localPlayer,enemy)>AUTO_APPROACH_MAX_DISTANCE?'Enemy is more than 10 spaces away':'No clear route into range',enemy);return}const id=targetingSkillId;cancelTargeting();useSkill(id,true);return}castSpotSkill(targetingSkillId,x,y);return}
+  cancelAutoApproach(true);
   const npc=(map.npcs||[]).find(n=>n.x===x&&n.y===y);if(npc&&distance(localPlayer,npc)<=2){openNpc(npc);return}
   const roomEvent=map.eventNode&&map.eventNode.x===x&&map.eventNode.y===y?map.eventNode:null;if(roomEvent&&distance(localPlayer,roomEvent)<=2){openRoomEvent(roomEvent);return}
   const door=map.doors.find(d=>d.x===x&&d.y===y);if(door&&distance(localPlayer,door)<=1){openDoorChoice(door);return}
   if(interactObjectiveAt(x,y))return;
-  if(enemy){movementPath=[];if(selectedEnemyId===enemy.id){autoAttackEnabled=true;toast(`${ENEMY_TYPES[enemy.type].name} locked · auto-attack engaged`,1100);useSkill('attack',true)}else{selectedEnemyId=enemy.id;autoAttackEnabled=false;toast(`${ENEMY_TYPES[enemy.type].name} selected · tap again to attack`,1300)}return}
+  if(enemy){movementPath=[];if(selectedEnemyId===enemy.id){autoAttackEnabled=true;toast(`${ENEMY_TYPES[enemy.type].name} locked · auto-attack engaged`,1100);if(!validEnemyForSkill(enemy,SKILLS.attack)&&beginAutoApproach(SKILLS.attack,enemy,true))toast(`${ENEMY_TYPES[enemy.type].name} locked · moving into attack range`,1200);else useSkill('attack',true)}else{selectedEnemyId=enemy.id;autoAttackEnabled=false;toast(`${ENEMY_TYPES[enemy.type].name} selected · tap again to attack`,1300)}return}
   movementPath=findPath(localPlayer.x,localPlayer.y,x,y);
 }
 function updateMovement(t){
@@ -1822,17 +1859,17 @@ function cancelTargeting(){targetingSkillId='';pendingDangerousCast=null;targetC
 async function useSkill(id,automatic=false){
   if(localPlayer.hp<=0||!learned(id))return;const skill=SKILLS[id];const t=now();if(!skillReady(id,t)){targetFailure('Ability not ready');return}
   if(statusActive(localPlayer,'silence',t)&&skill.school!=='weapon'&&skill.school!=='movement'){targetFailure('Silenced');return}
-  if(!automatic&&skill.targetMode==='enemy'){const target=autoAimEnemy(skill);if(!target)return;selectedEnemyId=target.id;return useSkill(id,true)}
-  if(!automatic&&isAutoAimSpotSkill(skill)){const target=autoAimEnemy(skill);if(!target)return;selectedEnemyId=target.id;return castSpotSkill(id,target.x,target.y,true)}
+  if(!automatic&&skill.targetMode==='enemy'){const target=autoAimEnemy(skill);if(!target)return;selectedEnemyId=target.id;if(!validEnemyForSkill(target,skill)){beginAutoApproach(skill,target);return}return useSkill(id,true)}
+  if(!automatic&&isAutoAimSpotSkill(skill)){const target=autoAimEnemy(skill);if(!target)return;selectedEnemyId=target.id;if(!approachTargetValid(target,skill)){beginAutoApproach(skill,target);return}return castSpotSkill(id,target.x,target.y,true)}
   if(skill.targetMode==='spot'){
     targetingSkillId=id;pendingDangerousCast=null;movementPath=[];targetControls.classList.add('show');toast(`Select a square for ${skill.name}.`,1500);renderActionDock();return;
   }
   if(skill.targetMode==="self"&&skill.healPct){
     const mana=skillManaCost(skill);if(!spendMana(mana))return;const s=derivedStats(),armorItem=getItem(localPlayer.equipment?.armor),armor=ARMORS[armorItem?.baseId],low=localPlayer.hp/s.maxHp<.4,moon=armor?.specialtyId==='moonward'&&low?1.3:1,curse=statusActive(localPlayer,'curse',t)?0.7:1,heal=Math.round(s.maxHp*skill.healPct*(1+s.lifePower)*(s.schoolMultipliers?.life||1)*moon*curse);localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+heal);if(armorItem?.uniqueEffect==='moonward_aegis'&&low)localPlayer.temporaryShield=Math.min(s.maxHp*.3,(localPlayer.temporaryShield||0)+Math.round(s.maxHp*.12));if(activeSetTier('living_grove',3))localPlayer.statusEffects.groveArmor=t+3500;if(s.livingCycle)localPlayer.statusEffects.livingCycle=t+5000;if(RELICS[localPlayer.equippedRelic]?.effect==='healMana')localPlayer.mana=Math.min(s.maxMana,localPlayer.mana+Math.max(1,Math.round(heal*.08)));localPlayer.skillCooldowns[id]=t+skill.cooldown*s.cooldownMult;floater(localPlayer.x,localPlayer.y,`+${heal}`,"#86efac");burst(localPlayer.x,localPlayer.y,"#86efac",18);queueSave();setPresence(true);renderActionDock();return;
   }
-  if(id==='frost_nova'){const targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,localPlayer)<=skill.radius&&skillHasLineOfSight(localPlayer,e,skill)).map(e=>e.id);if(!targets.length){toast('No enemies are close enough.');return}return castAttackSkill(skill,targets,roomState.enemies.find(e=>e.id===targets[0]),t)}
-  let target=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(target&&!validEnemyForSkill(target,skill)){targetFailure(distance(localPlayer,target)>effectiveSkillRange(skill)?'Out of range':'No line of sight',target);return}if(!target){target=nearestValidEnemy(skill);if(target)selectedEnemyId=target.id}if(!target){targetFailure('No valid enemy in range');return}
-  const w=weaponStats();const range=effectiveSkillRange(skill);if(distance(localPlayer,target)>range){targetFailure('Out of range',target);return}if(!skillHasLineOfSight(localPlayer,target,skill)){targetFailure('No line of sight',target);return}
+  if(id==='frost_nova'){const targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,localPlayer)<=skill.radius&&skillHasLineOfSight(localPlayer,e,skill)).map(e=>e.id);if(!targets.length){const target=nearestApproachableEnemy(skill);if(target&&beginAutoApproach(skill,target))return;toast('No enemies are within 10 spaces.');return}return castAttackSkill(skill,targets,roomState.enemies.find(e=>e.id===targets[0]),t)}
+  let target=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(!target){target=nearestValidEnemy(skill)||nearestApproachableEnemy(skill);if(target)selectedEnemyId=target.id}if(!target){targetFailure('No enemy within 10 spaces');return}if(!validEnemyForSkill(target,skill)){if(beginAutoApproach(skill,target,automatic))return true;targetFailure(distance(localPlayer,target)>AUTO_APPROACH_MAX_DISTANCE?'Enemy is more than 10 spaces away':'No clear route into range',target);return}
+  const w=weaponStats();const range=effectiveSkillRange(skill);if(distance(localPlayer,target)>range||!skillHasLineOfSight(localPlayer,target,skill)){if(beginAutoApproach(skill,target,automatic))return true;targetFailure('No clear route into range',target);return}
   let targets=[target.id];
   const weaponEffect=itemStats(equippedWeapon()).effect;
   if(id==='attack'&&weaponEffect==='cleave')targets=roomState.enemies.filter(e=>e.hp>0&&distance(e,target)<=1&&distance(e,localPlayer)<=range).slice(0,3).map(e=>e.id);
@@ -1877,7 +1914,7 @@ async function castSpotSkill(id,x,y,confirmed=false){
 }
 async function transformTerrainWithSchool(school,x,y,radius){const result=await sendRoomCommand('terrain',{school,x:Math.round(x),y:Math.round(y),radius:clamp(Number(radius)||1,1,4)},4500);return !!result?.success}
 function updateAutoAttack(t){
-  if(!autoAttackEnabled||targetingSkillId||localPlayer.hp<=0||!skillReady('attack',t)||!canQueueAttack('attack'))return;let target=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(!target)target=nearestValidEnemy(SKILLS.attack);if(!target){selectedEnemyId='';autoAttackEnabled=false;return}selectedEnemyId=target.id;if(!validEnemyForSkill(target,SKILLS.attack))return;useSkill('attack',true).catch(error=>combatDebug&&console.warn('auto attack failed',error));
+  if(!autoAttackEnabled||targetingSkillId||pendingApproach||localPlayer.hp<=0||!skillReady('attack',t)||!canQueueAttack('attack'))return;let target=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(!target)target=nearestValidEnemy(SKILLS.attack)||nearestApproachableEnemy(SKILLS.attack);if(!target){selectedEnemyId='';autoAttackEnabled=false;return}selectedEnemyId=target.id;if(!validEnemyForSkill(target,SKILLS.attack)){beginAutoApproach(SKILLS.attack,target,true);return}useSkill('attack',true).catch(error=>combatDebug&&console.warn('auto attack failed',error));
 }
 function updateRegeneration(dt,t){
   if(localPlayer.hp<=0)return;const s=derivedStats(),safe=map?.isTown,outOfCombat=t-(localPlayer.lastCombatAtMs||0)>6000,bonus=outOfCombat?Number(s.outCombatRegen||0):0;localPlayer.mana=Math.min(s.maxMana,localPlayer.mana+((safe?TOWN_MANA_REGEN_PER_SECOND:MANA_REGEN_PER_SECOND)+s.manaRegen+bonus)*dt);localPlayer.hp=Math.min(s.maxHp,localPlayer.hp+((safe?TOWN_HP_REGEN_PER_SECOND:HP_REGEN_PER_SECOND)+s.hpRegen+bonus)*dt);localPlayer.statusTickReadyAt=localPlayer.statusTickReadyAt||{};
@@ -2077,7 +2114,7 @@ function updateHUD(){
   if(!localPlayer)return;const s=derivedStats(),t=now(),path=activeAdvancedPath(),line=`${localPlayer.activeTitle?`[${localPlayer.activeTitle}] `:''}${username} · Lv ${localPlayer.level}${path?` · ${path.name}`:''} · ${map?.isTown?'Safe Town':map.legendMode?`${routeForRoom(currentRoomId).label} · Legend · Enemies Lv 100–200`:`${routeForRoom(currentRoomId).label} · Level ${map.areaLevel||1} / ${DUNGEON_AREA_LEVELS}`} · ${localPlayer.gold}g`;if(playerLine.textContent!==line)playerLine.textContent=line;
   setBar('hp',localPlayer.hp,s.maxHp);setBar('mana',localPlayer.mana,s.maxMana);updateQuickPotionButtons(s);updateDoorOpenButton();setBar('xp',localPlayer.xp,xpToNext(localPlayer.level));const objective=document.getElementById('objectiveHud'),status=document.getElementById('statusHudLine'),o=roomState.objective,timed=['survive_time','ritual_stop','escape'].includes(o?.kind)||(o?.kind==='chest_defense'&&o?.chest?.state==='defending'),timer=timed&&!o.complete&&!o.failed?` · ${Math.max(0,Math.ceil((o.deadlineMs-t)/1000))}s`:'';objective.textContent=o?`${o.complete?'✓':o.failed?'✕':'◆'} ${o.title} · ${o.progress||0}/${o.goal}${timer}${o.kind==='ordered'&&!o.complete?` · Next mark ${o.orderIndex||1}`:''}${o.failureReason?` · ${o.failureReason}`:''}`:'';objective.classList.toggle('show',!!o);const statuses=Object.entries(STATUS_DEFS).filter(([id])=>statusActive(localPlayer,id,t)).map(([id,d])=>`${d.icon} ${displayStatusName(id,d)}`);if(localPlayer.temporaryShield>0)statuses.push(`🛡️ ${Math.round(localPlayer.temporaryShield)}`);if(localPlayer.restrictionProgress?.carryingArtifact===currentRoomId)statuses.push('🏺 Carrying artifact');status.textContent=statuses.join(' · ');status.classList.toggle('show',!!statuses.length);updateTargetHUD(t);
 }
-function updateTargetHUD(t=now()){const enemy=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(!enemy){targetHud.classList.remove('show');if(hudCache.target){targetHud.innerHTML='';hudCache.target=''}return}const def=ENEMY_TYPES[enemy.type],affix=ELITE_AFFIXES[enemy.affix],range=weaponStats().range||5,inRange=distance(localPlayer,enemy)<=range,los=lineOfSight(localPlayer,enemy),active=Object.entries(STATUS_DEFS).filter(([id])=>statusActive(enemy,id,t)).map(([id,d])=>`${d.icon} ${displayStatusName(id,d)}${(enemy.effectStacks?.[id]||1)>1?` ×${enemy.effectStacks[id]}`:''}`).join(' · '),resistance=Number(enemy.resistanceUntil)>t?`◇ Resists ${enemy.resistanceSchool}`:'',state=!los?'NO LINE OF SIGHT':!inRange?'OUT OF RANGE':autoAttackEnabled?'TARGET LOCKED':'SELECTED',threshold=Number(enemy.staggerThreshold)||enemyStaggerThreshold(def,!!enemy.elite),cast=(roomState.telegraphs||[]).find(q=>q.enemyId===enemy.id&&!q.falseTelegraph),castLine=cast?`${cast.unstoppable?'⛔ Unstoppable':'Interruptible'} cast · ${Math.max(0,(cast.resolveAtMs-t)/1000).toFixed(1)}s`:'',html=`<div class="targetTop"><span>${affix?`${affix.name} `:''}${def.name}${def.boss?` · Boss Phase ${enemy.phase||1}`:enemy.elite?' · Elite':''}</span><span class="targetState">${state}</span></div><div class="targetBar"><div style="width:${clamp(enemy.hp/enemy.maxHp*100,0,100)}%"></div></div><div class="staggerBar"><div style="width:${clamp(Number(enemy.stagger||0)/threshold*100,0,100)}%"></div></div><div class="targetMeta">HP ${Math.ceil(enemy.hp)} / ${enemy.maxHp} · Stagger ${Math.round(enemy.stagger||0)} / ${threshold} · Armor ${(def.armor||0)+(enemy.armorBonus||0)} · Distance ${distance(localPlayer,enemy)}${castLine?`<br><span class="${cast?.unstoppable?'bad':'good'}">${castLine}</span>`:''}${active?`<br>${active}`:''}${resistance?`<br><span class="good">${resistance}</span>`:''}${enemy.revived?'<br><span class="bad">Revived · vulnerable to fire and life</span>':''}</div>`;if(hudCache.target!==html){hudCache.target=html;targetHud.innerHTML=html}targetHud.classList.add('show')}
+function updateTargetHUD(t=now()){const enemy=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(!enemy){targetHud.classList.remove('show');if(hudCache.target){targetHud.innerHTML='';hudCache.target=''}return}const def=ENEMY_TYPES[enemy.type],affix=ELITE_AFFIXES[enemy.affix],range=weaponStats().range||5,inRange=distance(localPlayer,enemy)<=range,los=lineOfSight(localPlayer,enemy),active=Object.entries(STATUS_DEFS).filter(([id])=>statusActive(enemy,id,t)).map(([id,d])=>`${d.icon} ${displayStatusName(id,d)}${(enemy.effectStacks?.[id]||1)>1?` ×${enemy.effectStacks[id]}`:''}`).join(' · '),resistance=Number(enemy.resistanceUntil)>t?`◇ Resists ${enemy.resistanceSchool}`:'',state=pendingApproach?.targetId===enemy.id?'MOVING INTO RANGE':!los?'NO LINE OF SIGHT':!inRange?'OUT OF RANGE':autoAttackEnabled?'TARGET LOCKED':'SELECTED',threshold=Number(enemy.staggerThreshold)||enemyStaggerThreshold(def,!!enemy.elite),cast=(roomState.telegraphs||[]).find(q=>q.enemyId===enemy.id&&!q.falseTelegraph),castLine=cast?`${cast.unstoppable?'⛔ Unstoppable':'Interruptible'} cast · ${Math.max(0,(cast.resolveAtMs-t)/1000).toFixed(1)}s`:'',html=`<div class="targetTop"><span>${affix?`${affix.name} `:''}${def.name}${def.boss?` · Boss Phase ${enemy.phase||1}`:enemy.elite?' · Elite':''}</span><span class="targetState">${state}</span></div><div class="targetBar"><div style="width:${clamp(enemy.hp/enemy.maxHp*100,0,100)}%"></div></div><div class="staggerBar"><div style="width:${clamp(Number(enemy.stagger||0)/threshold*100,0,100)}%"></div></div><div class="targetMeta">HP ${Math.ceil(enemy.hp)} / ${enemy.maxHp} · Stagger ${Math.round(enemy.stagger||0)} / ${threshold} · Armor ${(def.armor||0)+(enemy.armorBonus||0)} · Distance ${distance(localPlayer,enemy)}${castLine?`<br><span class="${cast?.unstoppable?'bad':'good'}">${castLine}</span>`:''}${active?`<br>${active}`:''}${resistance?`<br><span class="good">${resistance}</span>`:''}${enemy.revived?'<br><span class="bad">Revived · vulnerable to fire and life</span>':''}</div>`;if(hudCache.target!==html){hudCache.target=html;targetHud.innerHTML=html}targetHud.classList.add('show')}
 function setBar(id,value,max){const width=`${clamp(value/max*100,0,100)}%`,label=`${id.toUpperCase()} ${Math.floor(value)} / ${Math.floor(max)}`,key=`${width}|${label}`;if(hudCache.bars[id]===key)return;hudCache.bars[id]=key;document.getElementById(`${id}Fill`).style.width=width;document.getElementById(`${id}Label`).textContent=label}
 
 function resize(){cssW=innerWidth;cssH=innerHeight;dpr=Math.min(devicePixelRatio||1,1.75);canvas.width=Math.floor(cssW*dpr);canvas.height=Math.floor(cssH*dpr);canvas.style.width=`${cssW}px`;canvas.style.height=`${cssH}px`;ctx.setTransform(dpr,0,0,dpr,0,0);invalidateStaticRendering();if(localPlayer){updateDoorOpenButton(true);drawDungeonMap(minimapCanvas,false);if(mapModal.classList.contains('open'))drawDungeonMap(mapCanvas,true)}}
@@ -2168,7 +2205,7 @@ function input(){
     if(e.key.toLowerCase()==='m')openDungeonMap()
     if(e.key.toLowerCase()==='e'&&nearbyDoor()){e.preventDefault();activateNearbyDoor()}
     const dirs={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]};const d=dirs[e.key]||dirs[e.key.toLowerCase()];if(d){e.preventDefault();const stride=armorMoveStride();setMoveTarget(localPlayer.x+d[0]*stride,localPlayer.y+d[1]*stride)}
-    if(e.key==='Escape'){cancelTargeting();document.querySelectorAll('.modal.open').forEach(m=>m.classList.remove('open'))}
+    if(e.key==='Escape'){cancelTargeting();cancelAutoApproach(true);movementPath=[];document.querySelectorAll('.modal.open').forEach(m=>m.classList.remove('open'))}
   });
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>document.getElementById(b.dataset.close).classList.remove('open'));
   document.getElementById('cancelTargetBtn').onclick=cancelTargeting;
@@ -2188,7 +2225,7 @@ window.addEventListener('unhandledrejection',event=>reportRuntimeProblem('async 
 
 function updateCombatDebug(t){if(!combatDebug)return;combatDebugEl.classList.add('show');const fps=metricAverage('frameTime')?1000/metricAverage('frameTime'):0,avgSnapshot=metricAverage('snapshotFrequency'),pending=[...pendingAttacks.values()].filter(unresolvedAttack).length,controller=currentControllerUid?(currentControllerUid===uid?'self':`peer-${hashString(currentControllerUid).toString(36)}`):'none';combatDebugEl.textContent=[`Combat diagnostics`,`FPS ${fps.toFixed(0)} · frame ${metricAverage('frameTime').toFixed(1)} ms`,`Attack confirm ${metricAverage('attackLatency').toFixed(0)} ms · pending ${pending}`,`Presence ${ratePerMinute('presenceWrites',t)}/min · ${metricAverage('presenceWriteLatency').toFixed(0)} ms`,`Room writes ${ratePerMinute('roomWrites',t)}/min · ${metricAverage('roomWriteLatency').toFixed(0)} ms`,`Controller ${controller} · v${roomState.version}`,`Enemies ${roomState.enemies.length} · telegraphs ${(roomState.telegraphs||[]).length} · hazards ${(roomState.hazards||[]).length}`,`Listeners ${perfMetrics.listenerCount} · snapshots ${avgSnapshot?`${(1000/avgSnapshot).toFixed(1)}/s`:'0/s'}`,`Retries/failures ${perfMetrics.transactionRetryCount}`,`Last ${lastAttackResult}`].join('\n')}
 function loop(ts){
-  try{const elapsed=Math.max(.1,ts-lastFrame),dt=Math.min(.05,elapsed/1000||.016);lastFrame=ts;frameSequence++;metric('frameTime',elapsed);if(localPlayer){const t=now();updateMovement(t);updateAutoAttack(t);updatePendingAttacks(t);updateRegeneration(dt,t);updateArmorSpecialties(t);scanCodexDiscoveries();if(cameraLocked)centerCamera();updateDoorOpenButton();if(t-lastHudUpdate>=75){lastHudUpdate=t;updateHUD()}if(t-lastActionDockUpdate>=65){lastActionDockUpdate=t;updateActionDock(t)}if(t-lastDebugUpdate>=250){lastDebugUpdate=t;updateCombatDebug(t)}for(const [id,until] of targetFlashes)if(until<=t)targetFlashes.delete(id)}draw()}catch(error){reportRuntimeProblem('frame update',error)}finally{requestAnimationFrame(loop)}
+  try{const elapsed=Math.max(.1,ts-lastFrame),dt=Math.min(.05,elapsed/1000||.016);lastFrame=ts;frameSequence++;metric('frameTime',elapsed);if(localPlayer){const t=now();updateMovement(t);updateAutoApproach(t);updateAutoAttack(t);updatePendingAttacks(t);updateRegeneration(dt,t);updateArmorSpecialties(t);scanCodexDiscoveries();if(cameraLocked)centerCamera();updateDoorOpenButton();if(t-lastHudUpdate>=75){lastHudUpdate=t;updateHUD()}if(t-lastActionDockUpdate>=65){lastActionDockUpdate=t;updateActionDock(t)}if(t-lastDebugUpdate>=250){lastDebugUpdate=t;updateCombatDebug(t)}for(const [id,until] of targetFlashes)if(until<=t)targetFlashes.delete(id)}draw()}catch(error){reportRuntimeProblem('frame update',error)}finally{requestAnimationFrame(loop)}
 }
 
 async function boot(){
