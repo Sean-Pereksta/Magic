@@ -196,6 +196,9 @@ const ENEMY_RESPAWN_MS = 300000;
 const DOOR_INTERACTION_RANGE = 1;
 const AUTO_APPROACH_MAX_DISTANCE = 10;
 const AUTO_APPROACH_REPLAN_MS = 320;
+const REALTIME_EVENT_RETRY_MS = 90;
+const REALTIME_EVENT_MAX_RETRIES = 14;
+const REALTIME_EVENT_MAX_AGE_MS = 12000;
 // RTDB room paths are protocol-versioned. Increment RTDB_ROOM_PROTOCOL_ID whenever
 // the active-room payload or matching database rules change incompatibly.
 const RTDB_ROOM_SCHEMA_VERSION = 3;
@@ -269,6 +272,7 @@ let knownRewardIds=new Set();
 let knownEventIds=new Set();
 let processingRewardIds=new Set();
 let processingEventIds=new Set();
+let eventRetryTimers=new Map();
 let autosaveTimer=null;
 let profileSaveChain=Promise.resolve();
 let lastProfileHash='';
@@ -1194,7 +1198,7 @@ async function refreshControllerLease(t=now()){
 async function connectRoom(){
   teardownRoom(true);
   const entered=now();roomEnteredAtMs=entered;roomSessionId=`${safeId(currentRoomId)}-${uid.slice(0,8)}-${entered.toString(36)}`;positionSequence++;positionChangedAtMs=entered;lastPresenceHash='';enemyCollectionReady=false;pendingAttacks.clear();pendingSideEffects.clear();pendingRoomEventWrites={};queuedCommands.clear();roomCommandWaiters.clear();
-  map=generateDungeon(currentRoomId,currentDepth);roomState={version:0,enemies:[],telegraphs:[],summons:[],hazards:[],eventState:null,objective:null,bossDefeated:map.isTown,updatedAtMs:0};stateHashes={enemies:new Map(),telegraphs:new Map(),hazards:new Map(),summons:new Map(),objective:'',eventState:''};discovered.clear();movementPath=[];pendingApproach=null;projectiles=[];combatVisualEchoes.clear();targetFlashes.clear();selectedEnemyId='';targetingSkillId='';autoAttackEnabled=false;pendingDangerousCast=null;targetControls.classList.remove('show');objectiveSaveKey='';knownRewardIds.clear();knownEventIds.clear();processingRewardIds.clear();processingEventIds.clear();processedCommands.clear();invalidateStaticRendering();markEntityIndexesDirty();
+  map=generateDungeon(currentRoomId,currentDepth);roomState={version:0,enemies:[],telegraphs:[],summons:[],hazards:[],eventState:null,objective:null,bossDefeated:map.isTown,updatedAtMs:0};stateHashes={enemies:new Map(),telegraphs:new Map(),hazards:new Map(),summons:new Map(),objective:'',eventState:''};discovered.clear();movementPath=[];pendingApproach=null;projectiles=[];combatVisualEchoes.clear();targetFlashes.clear();selectedEnemyId='';targetingSkillId='';autoAttackEnabled=false;pendingDangerousCast=null;targetControls.classList.remove('show');objectiveSaveKey='';knownRewardIds.clear();for(const timer of eventRetryTimers.values())clearTimeout(timer);eventRetryTimers.clear();knownEventIds.clear();processingRewardIds.clear();processingEventIds.clear();processedCommands.clear();invalidateStaticRendering();markEntityIndexesDirty();
   await resolveActiveRoomNamespace(currentRoomId);
   roomRef=activeRoomRef();roomMetaRef=activeRoomChild('meta');playersCol=activeRoomChild('players');commandsCol=activeRoomChild('commands');resultsCol=activeRoomChild('results');enemiesCol=activeRoomChild('enemies');eventsCol=activeRoomChild('events');telegraphsCol=activeRoomChild('telegraphs');hazardsCol=activeRoomChild('hazards');summonsCol=activeRoomChild('summons');objectiveRef=activeRoomChild('objective');eventStateRef=activeRoomChild('eventState');controllerRef=activeRoomChild('controller');projectilesRef=activeRoomChild('projectiles');rewardsCol=query(collection(db,'rewards'),where('uid','==',uid),firestoreLimit(100));persistentStateRef=persistentRoomStateDoc();playerPresenceRef=activeRoomEntityRef('players',uid);
   await armPresenceDisconnect();await ensureRoomState();await setPresence(true);
@@ -1239,7 +1243,7 @@ function teardownRoom(deletePresence=true){
   roomUnsub=playersUnsub=commandsUnsub=resultsUnsub=enemiesUnsub=rewardsUnsub=eventsUnsub=telegraphsUnsub=hazardsUnsub=summonsUnsub=objectiveUnsub=eventStateUnsub=controllerUnsub=projectilesUnsub=connectionUnsub=null;
   clearInterval(heartbeatTimer);clearInterval(controllerTimer);clearTimeout(persistentCheckpointTimer);heartbeatTimer=controllerTimer=persistentCheckpointTimer=null;
   if(controllerRef&&controllerLease)runRtdbTransaction(controllerRef,current=>realtimeControllerOwns(current)?null:undefined,{applyLocally:false}).catch(()=>{});
-  isController=false;controllerLease='';currentControllerUid='';queuedCommands.clear();roomCommandWaiters.clear();perfMetrics.listenerCount=0;
+  isController=false;controllerLease='';currentControllerUid='';queuedCommands.clear();roomCommandWaiters.clear();for(const timer of eventRetryTimers.values())clearTimeout(timer);eventRetryTimers.clear();perfMetrics.listenerCount=0;
   if(deletePresence&&playerPresenceRef){presenceDisconnect?.cancel().catch(()=>{});rtdbRemove(playerPresenceRef).catch(()=>{})}
 }
 function setPresence(force=false){
@@ -1522,16 +1526,49 @@ async function claimRewardDoc(docSnap){
     recordEnemyDefeat(data);recordQuestKill(data.enemyType);advanceQuestChainsForKill(data);applyKillSpecialties(data);applyLevelUps();renderInventory();updateHUD();queueSave(120);setTimeout(()=>deleteDoc(docSnap.ref).catch(()=>{}),10000);
   }finally{processingRewardIds.delete(docSnap.id)}
 }
-async function claimRealtimeEvent(eventId,eventData){
-  const id=safeId(eventId),data=eventData||{};if(!id||data.uid!==uid||data.claimed||knownEventIds.has(id)||processingEventIds.has(id))return;processingEventIds.add(id);const ref=eventRef(id);
+function scheduleRealtimeEventRetry(eventId,eventData,attempt,eventSessionId){
+  const id=safeId(eventId);if(!id||eventSessionId!==roomSessionId||knownEventIds.has(id)||eventRetryTimers.has(id))return;
+  const createdAtMs=Number(eventData?.createdAtMs)||now(),forceFallback=attempt>=REALTIME_EVENT_MAX_RETRIES||now()-createdAtMs>REALTIME_EVENT_MAX_AGE_MS;
+  if(forceFallback&&eventData?.uid!==uid){if(combatDebug)console.warn('damage event retry expired before a valid payload was available',id);return}
+  const delay=forceFallback?0:Math.min(520,REALTIME_EVENT_RETRY_MS*Math.max(1,attempt+1));
+  const timer=setTimeout(()=>{
+    eventRetryTimers.delete(id);if(eventSessionId!==roomSessionId||knownEventIds.has(id))return;
+    claimRealtimeEvent(id,forceFallback?eventData:null,forceFallback?REALTIME_EVENT_MAX_RETRIES:attempt+1,eventSessionId,forceFallback).catch(error=>reportRuntimeProblem(forceFallback?'combat event fallback':'combat event retry',error))
+  },delay);
+  eventRetryTimers.set(id,timer)
+}
+async function claimRealtimeEvent(eventId,eventData,attempt=0,eventSessionId=roomSessionId,forceLocalFallback=false){
+  const id=safeId(eventId),supplied=eventData&&typeof eventData==='object'?eventData:{};
+  if(!id||eventSessionId!==roomSessionId||knownEventIds.has(id)||processingEventIds.has(id)||supplied.uid&&supplied.uid!==uid)return;
+  if(supplied.claimed){knownEventIds.add(id);return}
+  processingEventIds.add(id);const ref=eventRef(id);
   try{
-    let claim=null,claimError=null;
-    try{
-      claim=await runRtdbTransaction(ref,current=>{if(!current||current.uid!==uid||current.claimed)return;return{...current,claimed:true,claimedBy:uid}},{applyLocally:false});
-    }catch(error){claimError=error;if(combatDebug)console.warn('damage event claim failed; applying local fallback',id,error)}
-    if(claim&&!claim.committed){knownEventIds.add(id);return}
-    const payload=claim?.snapshot?.val()||data;knownEventIds.add(id);
-    if(claimError)lastAttackResult='Damage received · acknowledgement retry pending';
+    let payload=supplied,claim=null,claimError=null;
+    if(!payload.uid){
+      const snap=await rtdbGet(ref).catch(error=>{claimError=error;return null});payload=snap?.val()||null
+    }
+    if(!payload){if(!forceLocalFallback)scheduleRealtimeEventRetry(id,supplied,attempt,eventSessionId);return}
+    if(payload.uid!==uid){knownEventIds.add(id);return}
+    if(payload.claimed){knownEventIds.add(id);return}
+    if(!forceLocalFallback){
+      try{
+        claim=await runRtdbTransaction(ref,current=>{
+          if(!current||current.uid!==uid||current.claimed)return;
+          return{...current,claimed:true,claimedBy:uid,claimedBySessionId:eventSessionId,claimedAtMs:now()}
+        },{applyLocally:false})
+      }catch(error){claimError=error;if(combatDebug)console.warn('damage event claim delayed; retrying',id,error)}
+      if(claim?.committed)payload=claim.snapshot.val()||payload;
+      else{
+        const confirmed=await rtdbGet(ref).catch(()=>null),latest=confirmed?.val()||null;
+        if(latest?.claimed&&latest.claimedBy===uid&&latest.claimedBySessionId===eventSessionId)payload=latest;
+        else if(latest?.claimed){knownEventIds.add(id);return}
+        else{scheduleRealtimeEventRetry(id,latest||payload,attempt,eventSessionId);return}
+      }
+    }else{
+      rtdbUpdate(ref,{claimed:true,claimedBy:uid,claimedBySessionId:eventSessionId,claimedAtMs:now()}).catch(error=>{if(combatDebug)console.warn('damage event fallback acknowledgement deferred',id,error)})
+    }
+    const retryTimer=eventRetryTimers.get(id);if(retryTimer)clearTimeout(retryTimer);eventRetryTimers.delete(id);knownEventIds.add(id);
+    if(claimError||forceLocalFallback)lastAttackResult=forceLocalFallback?'Damage received · local combat fallback':'Damage received · acknowledgement recovered';
     if(payload.type==='damage'&&localPlayer.hp>0){
       const stats=derivedStats(),seeded=rngFrom(hashString(id)),parry=weaponStats().weaponType==='sword'?Number(stats.parry)||.04:0;if(seeded()<clamp(stats.dodge+parry,0,.42)){floater(localPlayer.x,localPlayer.y,seeded()<parry?'PARRY':'DODGE','#9ee7ff');setTimeout(()=>rtdbRemove(ref).catch(()=>{}),10000);return}
       const before=localPlayer.hp,reduction=clamp(stats.damageReduction+(statusActive(localPlayer,'curse')?-.04:0),0,.5),raw=payload.statusOnly?0:Math.max(1,Math.round((Number(payload.amount)||1)*(1-reduction)-stats.armor*.55)),shieldUsed=Math.min(localPlayer.temporaryShield||0,raw),amount=Math.max(0,raw-shieldUsed);localPlayer.temporaryShield=Math.max(0,(localPlayer.temporaryShield||0)-shieldUsed);localPlayer.hp=Math.max(0,localPlayer.hp-amount);localPlayer.lastCombatAtMs=now();
@@ -1613,11 +1650,11 @@ async function controllerTick(){
   controllerTickRunning=true;
   try{
   if(!isController||!map)return;const t=now();if(!await refreshControllerLease(t))return;if(drainingCommands||queuedCommands.size){setTimeout(()=>drainCommandQueue().catch(()=>{}),0);return}if(!roomState.enemies.length)return;
-  const telegraphHashBefore=compactHash(roomState.telegraphs||[]),livePlayers=onlinePlayers.filter(p=>p.hp>0&&t-(p.lastSeenMs||0)<PLAYER_STALE_MS);if(!livePlayers.length)return;const damageEvents=[];let changed=false;
+  const telegraphHashBefore=compactHash(roomState.telegraphs||[]);let livePlayers=onlinePlayers.filter(p=>p.hp>0&&t-(p.lastSeenMs||0)<PLAYER_STALE_MS);if(localPlayer?.hp>0){const localSnapshot={uid,username,x:Math.round(localPlayer.x),y:Math.round(localPlayer.y),hp:localPlayer.hp,mana:localPlayer.mana,roomId:currentRoomId,depth:currentDepth,roomSessionId,positionSequence,lastSeenMs:t,combat:publicCombatData()},localIndex=livePlayers.findIndex(p=>p.uid===uid);if(localIndex>=0)livePlayers[localIndex]={...livePlayers[localIndex],...localSnapshot};else livePlayers.push(localSnapshot)}if(!livePlayers.length)return;const damageEvents=[];let changed=false;
   const pending=[];for(const telegraph of roomState.telegraphs||[]){
     if(t<(telegraph.resolveAtMs||0)){pending.push(telegraph);continue}const source=roomState.enemies.find(e=>e.id===telegraph.enemyId);
     if(telegraph.kind==='revive'){const corpse=roomState.enemies.find(e=>e.id===telegraph.reviveId&&e.hp<=0&&!ENEMY_TYPES[e.type]?.boss);if(corpse){corpse.hp=Math.max(1,Math.round(corpse.maxHp*.45));corpse.x=corpse.spawnX;corpse.y=corpse.spawnY;corpse.respawnAtMs=0;corpse.killedAtMs=0;corpse.respawnedAtMs=t;corpse.revived=true;corpse.effects={};corpse.effectStacks={};changed=true}}
-    if(!telegraph.falseTelegraph)for(const p of livePlayers)if((telegraph.tiles||[]).some(tile=>tile.x===p.x&&tile.y===p.y)&&Number(telegraph.damage)>0){damageEvents.push({target:p,telegraph});if(telegraph.effect==='stealGold'&&source)source.stolenGold=(Number(source.stolenGold)||0)+Math.min(12,Math.max(3,Math.round((Number(telegraph.damage)||1)*.5)))}
+    if(!telegraph.falseTelegraph)for(const p of livePlayers)if((telegraph.tiles||[]).some(tile=>Math.round(tile.x)===Math.round(p.x)&&Math.round(tile.y)===Math.round(p.y))&&Number(telegraph.damage)>0){damageEvents.push({target:p,telegraph});if(telegraph.effect==='stealGold'&&source)source.stolenGold=(Number(source.stolenGold)||0)+Math.min(12,Math.max(3,Math.round((Number(telegraph.damage)||1)*.5)))}
     const objective=roomState.objective;if(objective?.actor&&(telegraph.tiles||[]).some(tile=>tile.x===objective.actor.x&&tile.y===objective.actor.y)&&Number(telegraph.damage)>0){objective.actor.hp=Math.max(0,objective.actor.hp-Math.max(1,Math.round(Number(telegraph.damage)*.7)));changed=true}
     if(source&&telegraph.moveTo&&tileAt(telegraph.moveTo.x,telegraph.moveTo.y)===0&&!enemyAt(telegraph.moveTo.x,telegraph.moveTo.y)){source.x=telegraph.moveTo.x;source.y=telegraph.moveTo.y;source.burrowedUntil=0}if(source?.affix==='vampiric'&&damageEvents.some(h=>h.telegraph.id===telegraph.id))source.hp=Math.min(source.maxHp,source.hp+Math.max(1,Math.round(telegraph.damage*.24)));changed=true
   }roomState.telegraphs=pending;
