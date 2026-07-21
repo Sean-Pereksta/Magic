@@ -182,6 +182,27 @@
     .help{font-size:.76rem;color:var(--muted);margin-top:5px}
 
     .multi-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+    .online-world-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px;margin-bottom:26px}
+    .online-world-card{
+      --game:#0f766e;position:relative;overflow:hidden;min-height:218px;padding:19px 19px 17px 23px;
+      border:1px solid var(--line);border-radius:20px;background:
+        radial-gradient(280px 170px at 102% -8%,color-mix(in srgb,var(--game) 18%,transparent),transparent 68%),
+        var(--surface);box-shadow:var(--shadow-soft);display:flex;flex-direction:column;gap:13px;transition:.18s ease;
+    }
+    .online-world-card:hover{transform:translateY(-3px);box-shadow:0 18px 36px rgba(16,24,40,.13);border-color:#d0d5dd}
+    .online-world-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--game)}
+    .online-world-head{display:flex;align-items:flex-start;gap:12px}
+    .online-world-copy{min-width:0;flex:1}
+    .online-world-title{font-size:1.05rem;font-weight:950;line-height:1.2}
+    .online-world-desc{margin-top:5px;color:var(--muted);font-size:.82rem;line-height:1.45}
+    .online-world-status{
+      display:inline-flex;align-items:center;gap:7px;width:max-content;max-width:100%;padding:6px 10px;
+      border:1px solid #abefc6;border-radius:999px;background:#ecfdf3;color:#027a48;font-size:.71rem;font-weight:900;
+    }
+    .online-world-status::before{content:"";width:8px;height:8px;flex:0 0 auto;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.13)}
+    .online-world-badges{display:flex;flex-wrap:wrap;gap:7px}
+    .online-world-actions{margin-top:auto;display:flex;justify-content:flex-end}
+    .online-world-actions .btn{min-height:48px;min-width:156px}
     .lobby-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
     .lobby-card{
       --game:#b4232f;position:relative;overflow:hidden;padding:17px;border:1px solid var(--line);
@@ -329,7 +350,7 @@
       .header-actions .daily,.header-actions .members{display:none}.header-btn{padding:8px 10px}.header-btn .desktop-label{display:none}
       .shell{padding:14px 12px 90px}.hero-banner{min-height:260px;padding:24px 20px;border-radius:21px}.hero-title{font-size:2.35rem}.hero-actions .btn{width:100%}
       .hero-banner.has-art .hero-copy{max-width:100%}.hero-art{right:-4%;top:18px;width:58%;opacity:.28}.hero-art img{filter:drop-shadow(0 16px 22px rgba(0,0,0,.3))}
-      .toolbar{grid-template-columns:1fr}.toolbar>*{grid-column:auto!important}.lobby-grid,.game-grid{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}
+      .toolbar{grid-template-columns:1fr}.toolbar>*{grid-column:auto!important}.online-world-grid,.lobby-grid,.game-grid{grid-template-columns:1fr}.online-world-actions .btn{width:100%}.form-grid{grid-template-columns:1fr}
       .profile-hero{align-items:flex-start;flex-direction:column;padding:22px}.profile-avatar{width:80px;height:80px;font-size:2.6rem}.profile-name{font-size:1.55rem}
       .rank-grid{grid-template-columns:1fr}.current-panel.has-lobby{position:sticky;top:68px;z-index:18}.current-cover{min-height:96px;padding:16px}.current-body{padding:12px}
       .mobile-nav{position:fixed;display:grid;grid-template-columns:repeat(3,1fr);left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:120;background:#111827;border:1px solid rgba(255,255,255,.1);border-radius:17px;padding:6px;box-shadow:0 20px 45px rgba(0,0,0,.3)}
@@ -393,12 +414,12 @@
       </div>
 
       <div class="section-head">
-        <div><div class="section-title">Multiplayer Lobbies</div><div class="section-sub">Browse public games before logging in. Private lobbies appear through invitations.</div></div>
+        <div><div class="section-title">Hosted Lobbies</div><div class="section-sub">Browse public waiting rooms, join friends, or create a lobby for games that launch together.</div></div>
       </div>
 
       <div class="card toolbar">
         <input id="lobbySearch" class="field search-wide" type="search" placeholder="Search lobbies, hosts, or games…" />
-        <select id="lobbyGameFilter" class="select"><option value="all">All Games</option></select>
+        <select id="lobbyGameFilter" class="select"><option value="all">All Hosted Games</option></select>
         <select id="lobbyVisibilityFilter" class="select"><option value="all">All Visible</option><option value="public">Public</option><option value="private">Private</option></select>
         <select id="lobbySlotFilter" class="select"><option value="all">Any Capacity</option><option value="open">Open Slots</option></select>
         <button id="openCreateLobby" class="btn create-toolbar">＋ Create Lobby</button>
@@ -437,6 +458,13 @@
 
       <div class="section-head"><div><div class="section-title">Top Players</div><div class="section-sub">Current win leaders across the hub.</div></div></div>
       <div id="leaderboardEntries" class="game-grid"></div>
+
+      <section id="onlineWorldSection">
+        <div class="section-head">
+          <div><div class="section-title">Join Online Games</div><div class="section-sub">Enter persistent shared worlds or matchmaking games immediately. No player-created lobby or host is required.</div></div>
+        </div>
+        <div id="onlineWorldGrid" class="online-world-grid"></div>
+      </section>
     </section>
 
     <section id="view-singleplayer" class="view">
@@ -665,9 +693,9 @@
       {key:"grass",title:"Grass Realms",emoji:"🌿",imagePath:"/graphics/titlegraphics/grass realms.png",desc:"Battle for a growing multiplayer realm.",route:"/game/grassrealms.html",category:"Strategy",modes:["multi"],autoRedirect:true},
       {key:"estate",title:"Estate Defense (Incomplete)",emoji:"🏡",desc:"Defend the estate together.",route:"/game/estatedefense.html",category:"Strategy",modes:["multi"]},
       {key:"mountain",title:"Mountain Blade (Incomplete)",multiTitle:"Mountain Blade Skirmish",emoji:"⛰️⚔️",desc:"Command troops through a medieval battlefield.",route:"/game/mountainblade.html",category:"Action",modes:["single","multi"],maxPlayers:4,autoRedirect:true},
-      {key:"mountonline",title:"Mountain Blade Online (Incomplete)",emoji:"🗻🌐",desc:"Jump directly into the persistent online battlefield.",route:"/game/mountonline.html",category:"Action",modes:["multi"],quickPlay:true},
-      {key:"crownlands",title:"Crownlands Online (Incomplete)",emoji:"👑🌐",desc:"Enter a persistent online strategy world.",route:"/game/crownlands.html",category:"Strategy",modes:["multi"],quickPlay:true},
-      {key:"rock",title:"Rock Paper Scissors MMO (Incomplete)",emoji:"✊📄✂️",desc:"Fast persistent RPS multiplayer.",route:"/game/rock.html",category:"Party",modes:["multi"],quickPlay:true},
+      {key:"mountonline",title:"Mountain Blade Online (Incomplete)",emoji:"🗻🌐",desc:"Jump directly into the persistent online battlefield.",route:"/game/mountonline.html",category:"Action",modes:["multi"],launchMode:"realm",joinLabel:"Enter Battlefield"},
+      {key:"crownlands",title:"Crownlands Online (Incomplete)",emoji:"👑🌐",desc:"Enter a persistent online strategy world.",route:"/game/crownlands.html",category:"Strategy",modes:["multi"],launchMode:"realm",joinLabel:"Enter World"},
+      {key:"rock",title:"Rock Paper Scissors MMO (Incomplete)",emoji:"✊📄✂️",desc:"Fast persistent RPS multiplayer.",route:"/game/rock.html",category:"Party",modes:["multi"],launchMode:"realm",joinLabel:"Enter Arena"},
       {key:"stockkings",title:"Stock Kings (Incomplete)",emoji:"📈",desc:"Compete in a multiplayer market battle.",route:"/game/stockkings.html",category:"Strategy",modes:["multi"],maxPlayers:8,autoRedirect:true},
       {key:"dutchblitz",title:"Dutch Blitz Arena (Incomplete)",emoji:"🃏",desc:"Rapid four-player card action.",route:"/game/dutchblitz.html",category:"Cards",modes:["multi"],maxPlayers:4,autoRedirect:true},
       {key:"splinters",title:"Splinters (Incomplete)",emoji:"🪄",desc:"Four-player magical combat.",route:"/game/Splinters.html",category:"Action",modes:["multi"],maxPlayers:4,autoRedirect:true},
@@ -689,7 +717,7 @@
       {key:"trials",title:"Trials Rogue-like (Incomplete)",emoji:"⚔️📱",desc:"Survive an evolving rogue-like challenge.",route:"/game/trials.html",category:"RPG",modes:["single"]},
       {key:"roguecards",title:"Tiny Troops Emoji Battle",emoji:"🧙‍♂️⚔️",desc:"Build a tiny squad, stack synergies, and fight waves.",route:"/game/roguecard.html",category:"Cards",modes:["single"],featured:true},
       {key:"cardrealms",title:"Card Realms (Incomplete)",emoji:"🃏⚔️",desc:"Build a deck and battle through card realms.",route:"/game/cardrealms.html",category:"Cards",modes:["single"]},
-      {key:"cardrealmsmulti",title:"Card Realms Multiplayer (Incomplete)",emoji:"🃏⚔️",desc:"Direct two-player card matchmaking.",route:"/game/cardrealmsmulti.html",category:"Cards",modes:["multi"],maxPlayers:2,directLaunch:true},
+      {key:"cardrealmsmulti",title:"Card Realms Multiplayer (Incomplete)",emoji:"🃏⚔️",desc:"Direct two-player card matchmaking.",route:"/game/cardrealmsmulti.html",category:"Cards",modes:["multi"],launchMode:"matchmaking",joinLabel:"Find Match"},
       {key:"rogueworld",title:"Rogue World",emoji:"🌍🗡️",desc:"Explore a dangerous solo world.",route:"/game/rogueworld.html",category:"RPG",modes:["single"]},
       {key:"rogueduel",title:"Rogue Duel (Incomplete)",emoji:"🂡",desc:"A two-player roguelike duel.",route:"/game/rogueduel.html",category:"Cards",modes:["multi"],maxPlayers:2,autoRedirect:true},
       {key:"versemem",title:"Verse Memorizer",emoji:"📜",desc:"Practice and remember Bible verses.",route:"/game/verse-memorizer.html",category:"Faith",modes:["single"]},
@@ -711,13 +739,18 @@
       {key:"onehitknight",title:"One Hit Knight",emoji:"🛡️⚔️",desc:"Dash, slash, and survive a one-hit challenge.",route:"/game/onehitknight.html",category:"Action",modes:["single"],featured:true},
       {key:"deepsea",title:"Deep Sea",emoji:"🐟🌊",desc:"Swim, grow, evolve, and survive below.",route:"/game/deep_sea.html",category:"Adventure",modes:["single"],featured:true},
       {key:"turncraft",title:"Turncraft",emoji:"⚙️⚔️",imagePath:"/graphics/turncraft/immortal.png",desc:"Build bases, command factions, and battle alone or with up to four players.",route:"/game/turncraft.html",category:"Strategy",modes:["single","multi"],minPlayers:1,maxPlayers:4,autoRedirect:true},
-      {key:"gridbound",title:"Gridbound Realms",emoji:"🏹",desc:"Enter a persistent shared isometric RPG realm. Each lobby holds one adventurer.",route:"/game/Gridbound_RPG_MMO.html",category:"RPG",modes:["multi"],maxPlayers:1,sharedRealm:"public-gridbound-realm"},
+      {key:"gridbound",title:"Gridbound Realms",emoji:"🏹",desc:"Enter a persistent shared isometric RPG world with every active adventurer.",route:"/game/Gridbound_RPG_MMO.html",category:"RPG",modes:["multi"],launchMode:"realm",realmId:"public-gridbound-realm",joinLabel:"Enter Realm",badges:["Always Online","Shared World","No Host Required"]},
       {key:"chesswarlord",title:"Chess Warlord",emoji:"♛⚔️",imagePath:"/graphics/titlegraphics/chess warlord.png",desc:"An eight-player real-time faction chess war with territory control, kings, cooldowns, AI seats, and Firebase multiplayer.",route:"/game/chess_warlord.html",category:"Strategy",modes:["multi"],maxPlayers:8,autoRedirect:true,featured:true}
     ];
 
+    const MULTIPLAYER_LAUNCH_MODES = Object.freeze({LOBBY:"lobby",REALM:"realm",MATCHMAKING:"matchmaking"});
     const GAME_BY_KEY = Object.fromEntries(GAMES.map(g => [g.key,g]));
     const SINGLE_GAMES = GAMES.filter(g => g.modes.includes("single"));
     const MULTI_GAMES = GAMES.filter(g => g.modes.includes("multi"));
+    const getLaunchMode = game => game?.launchMode || MULTIPLAYER_LAUNCH_MODES.LOBBY;
+    const ONLINE_WORLD_GAMES = MULTI_GAMES.filter(g => getLaunchMode(g)===MULTIPLAYER_LAUNCH_MODES.REALM);
+    const MATCHMAKING_GAMES = MULTI_GAMES.filter(g => getLaunchMode(g)===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING);
+    const LOBBY_GAMES = MULTI_GAMES.filter(g => getLaunchMode(g)===MULTIPLAYER_LAUNCH_MODES.LOBBY);
     const CATEGORIES = ["All",...Array.from(new Set(GAMES.map(g=>g.category))).sort()];
     const getGame = key => GAME_BY_KEY[key] || {key,title:key||"Game",emoji:"🎮",desc:"Game",route:"/",category:"Arcade",modes:[]};
     const getMaxPlayers = key => Number.isFinite(getGame(key).maxPlayers) ? getGame(key).maxPlayers : Infinity;
@@ -804,7 +837,7 @@
     let ownProfileRenderSeq=0;
 
     const $=id=>document.getElementById(id);
-    const ALLOWED_GAME_LAUNCH_REASONS=new Set(["single-play","lobby-started"]);
+    const ALLOWED_GAME_LAUNCH_REASONS=new Set(["single-play","lobby-started","online-world-join","matchmaking-join"]);
 
     function launchGameUrl(url,reason){
       if(!ALLOWED_GAME_LAUNCH_REASONS.has(reason)){
@@ -1026,7 +1059,7 @@
       favorites=new Set(Array.isArray(currentUserData?.favoriteGames)?currentUserData.favoriteGames:JSON.parse(read(SK.favorites)||"[]"));
       recentGames=Array.isArray(currentUserData?.recentlyPlayed)?currentUserData.recentlyPlayed:JSON.parse(read(SK.recent)||"[]");
       save(SK.favorites,JSON.stringify([...favorites]));save(SK.recent,JSON.stringify(recentGames));
-      updateAccountUI();listenForInvites();markDailyUserOnce(username).catch(()=>{});showDailyUsersPill();renderAllGames();renderProfile();
+      updateAccountUI();listenForInvites();markDailyUserOnce(username).catch(()=>{});showDailyUsersPill();renderAllGames();renderOnlineWorlds();renderProfile();
     }
     function updateAccountUI(){
       $("accountButtonText").textContent=username?username:"Log In";$("inviteUserLabel").textContent=username?`For ${username}`:"Log in to receive invites";
@@ -1046,6 +1079,7 @@
       if(action.type==="create")return openCreateLobby(action.gameKey);
       if(action.type==="profile")return showView("profile");
       if(action.type==="single")return playSingle(getGame(action.gameKey),true);
+      if(action.type==="online")return joinOnlineGame(getGame(action.gameKey),true);
     }
 
     const TZ="America/New_York";
@@ -1061,7 +1095,7 @@
 
     async function loadGameStats(){
       try{const snap=await getDocs(collection(db,"gameStats"));gamePlayCounts={};snap.forEach(d=>gamePlayCounts[d.id]=d.data().plays||0);}catch(e){console.warn("Game stats unavailable",e);}
-      renderAllGames();renderFeatured();
+      renderAllGames();renderOnlineWorlds();renderFeatured();
     }
     async function logGamePlay(game){
       try{await setDoc(doc(db,"gameStats",game.key),{key:game.key,title:game.title,plays:increment(1),lastPlayedAt:serverTimestamp()},{merge:true});gamePlayCounts[game.key]=(gamePlayCounts[game.key]||0)+1;}catch(e){console.warn("Play logging skipped",e);}
@@ -1087,7 +1121,7 @@
       favorites.has(key)?favorites.delete(key):favorites.add(key);save(SK.favorites,JSON.stringify([...favorites]));
       try{await setDoc(doc(db,"users",username),{favoriteGames:[...favorites]},{merge:true});if(currentUserData)currentUserData.favoriteGames=[...favorites];toast(favorites.has(key)?"Added to favorites.":"Removed from favorites.","good");}
       catch(e){toast("Could not save that favorite.","bad");}
-      renderAllGames();renderProfile();renderFeatured();
+      renderAllGames();renderOnlineWorlds();renderProfile();renderFeatured();
     }
 
     function gameCard(game,compact=false){
@@ -1127,19 +1161,58 @@
       save(SK.lastGame,game.key);launchGameUrl(url,"single-play");
     }
 
+    async function joinOnlineGame(game,userInitiated=false){
+      if(!userInitiated){
+        console.warn("Blocked non-user-initiated online launch",game?.key);
+        toast("Press Enter World or Find Match to launch this online game.","bad");
+        return;
+      }
+      if(!game)return;
+      const mode=getLaunchMode(game);
+      if(mode===MULTIPLAYER_LAUNCH_MODES.LOBBY)return openCreateLobby(game.key);
+      if(!requireUser({type:"online",gameKey:game.key}))return;
+      if(currentLobbyId)await leaveLobby();
+      await logGamePlay(game);
+      const params=new URLSearchParams();params.set("username",username);
+      if(mode===MULTIPLAYER_LAUNCH_MODES.REALM&&game.realmId)params.set("realm",game.realmId);
+      save(SK.lastGame,game.key);
+      const reason=mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?"matchmaking-join":"online-world-join";
+      launchGameUrl(`${game.route}${game.route.includes("?")?"&":"?"}${params.toString()}`,reason);
+    }
+
+    function createOnlineWorldCard(game){
+      const card=document.createElement("article"),mode=getLaunchMode(game);
+      const badges=Array.isArray(game.badges)?game.badges:(mode===MULTIPLAYER_LAUNCH_MODES.REALM?["Always Online","Shared World","No Host"]:["Automatic Matchmaking","No Host"]);
+      const actionLabel=game.joinLabel||(mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?"Find Match":"Enter World");
+      card.className="online-world-card";card.style.setProperty("--game",gameColor(game.key));
+      card.innerHTML=`<div class="online-world-head"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div class="online-world-copy"><div class="online-world-title">${escapeHtml(game.title)}</div><div class="online-world-desc">${escapeHtml(game.desc)}</div></div></div><div class="online-world-status">${mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?"Matchmaking Available":"World Available"}</div><div class="online-world-badges">${badges.map(label=>`<span class="tag">${escapeHtml(label)}</span>`).join("")}</div><div class="online-world-actions"><button type="button" class="btn join-online-world">${escapeHtml(actionLabel)}</button></div>`;
+      card.querySelector(".join-online-world").addEventListener("click",()=>joinOnlineGame(game,true));
+      return card;
+    }
+
+    function renderOnlineWorlds(){
+      const section=$("onlineWorldSection"),grid=$("onlineWorldGrid"),games=[...ONLINE_WORLD_GAMES,...MATCHMAKING_GAMES];
+      if(!section||!grid)return;
+      section.hidden=!games.length;grid.innerHTML="";
+      games.forEach(game=>grid.appendChild(createOnlineWorldCard(game)));
+    }
+
     function renderFeatured(){
       const featured=MULTI_GAMES.filter(g=>g.featured).sort((a,b)=>(gamePlayCounts[b.key]||0)-(gamePlayCounts[a.key]||0))[0]||getGame("chesswarlord");
+      const mode=getLaunchMode(featured);
       $("featuredHero").style.setProperty("--hero-a",gameColor(featured.key));$("featuredHero").style.setProperty("--hero-b","#111827");
       renderLargeGameArtwork("featuredArtwork",featured,"has-art");
-      $("featuredTitle").textContent=featured.title;$("featuredDesc").textContent=featured.desc;$("featuredMultiBtn").onclick=()=>openCreateLobby(featured.key);
+      $("featuredTitle").textContent=featured.title;$("featuredDesc").textContent=featured.desc;
+      $("featuredMultiBtn").textContent=mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?(featured.joinLabel||"Find Match"):mode===MULTIPLAYER_LAUNCH_MODES.REALM?(featured.joinLabel||"Enter World"):"Create a Lobby";
+      $("featuredMultiBtn").onclick=()=>mode===MULTIPLAYER_LAUNCH_MODES.LOBBY?openCreateLobby(featured.key):joinOnlineGame(featured,true);
       $("featuredFavoriteBtn").textContent=favorites.has(featured.key)?"★ Favorited":"☆ Favorite";$("featuredFavoriteBtn").onclick=()=>toggleFavorite(featured.key);
     }
 
     function populateStaticUI(){
       $("categoryPills").innerHTML="";CATEGORIES.forEach(cat=>{const btn=document.createElement("button");btn.className=`category-btn ${cat===selectedCategory?"active":""}`;btn.textContent=cat;btn.onclick=()=>{selectedCategory=cat;populateCategoriesOnly();renderSingleLibrary();};$("categoryPills").appendChild(btn);});
       const cats=CATEGORIES.filter(x=>x!=="All");$("profileCategoryInput").innerHTML=cats.map(x=>`<option>${escapeHtml(x)}</option>`).join("");
-      const multiOptions=MULTI_GAMES.map(g=>`<option value="${g.key}">${g.emoji} ${escapeHtml(gameTitle(g.key,true))}</option>`).join("");
-      $("newLobbyGame").innerHTML=multiOptions;$("lobbyGameFilter").innerHTML='<option value="all">All Games</option>'+multiOptions;
+      const multiOptions=LOBBY_GAMES.map(g=>`<option value="${g.key}">${g.emoji} ${escapeHtml(gameTitle(g.key,true))}</option>`).join("");
+      $("newLobbyGame").innerHTML=multiOptions;$("lobbyGameFilter").innerHTML='<option value="all">All Hosted Games</option>'+multiOptions;
       updateCreateGameInfo();
     }
     function populateCategoriesOnly(){document.querySelectorAll(".category-btn").forEach(btn=>btn.classList.toggle("active",btn.textContent===selectedCategory));}
@@ -1158,6 +1231,7 @@
     function renderLobbyBrowser(){
       const search=normalize($("lobbySearch").value),game=$("lobbyGameFilter").value,visibility=$("lobbyVisibilityFilter").value,slots=$("lobbySlotFilter").value;
       const items=[...lobbyCache.values()].filter(l=>{
+        if(getLaunchMode(getGame(l.gameType))!==MULTIPLAYER_LAUNCH_MODES.LOBBY)return false;
         if(!Array.isArray(l.players)||!l.players.length)return false;if(!visibleLobby(l))return false;
         if(game!=="all"&&l.gameType!==game)return false;const vis=l.visibility||"public";if(visibility!=="all"&&vis!==visibility)return false;
         const cap=getMaxPlayers(l.gameType);if(slots==="open"&&Number.isFinite(cap)&&l.players.length>=cap)return false;
@@ -1198,6 +1272,7 @@
         await runTransaction(db,async tx=>{
           const snap=await tx.get(ref);if(!snap.exists())throw new Error("This lobby no longer exists.");
           const d=snap.data();if(d.status!=="waiting")throw new Error("This lobby has already started.");
+          if(getLaunchMode(getGame(d.gameType))!==MULTIPLAYER_LAUNCH_MODES.LOBBY)throw new Error("This game no longer uses hosted lobbies. Enter it from Join Online Games.");
           const players=Array.isArray(d.players)?d.players:[],cap=getMaxPlayers(d.gameType);
           if(!players.includes(username)&&Number.isFinite(cap)&&players.length>=cap)throw new Error("This lobby is full.");
           if(!players.includes(username))tx.update(ref,{players:[...players,username],updatedAt:Date.now()});
@@ -1211,8 +1286,11 @@
     }
 
     function openCreateLobby(gameKey="chesswarlord"){
+      const game=getGame(gameKey);
+      if(getLaunchMode(game)!==MULTIPLAYER_LAUNCH_MODES.LOBBY)return joinOnlineGame(game,true);
       if(!requireUser({type:"create",gameKey}))return;
-      $("newLobbyGame").value=GAME_BY_KEY[gameKey]?.modes.includes("multi")?gameKey:"chesswarlord";$("newLobbyName").value="";selectedVisibility="public";updateVisibilityButtons();updateCreateGameInfo();setMessage("createLobbyMessage","");openModal("createLobbyModal");
+      const fallback=LOBBY_GAMES.some(item=>item.key==="chesswarlord")?"chesswarlord":LOBBY_GAMES[0]?.key||"";
+      $("newLobbyGame").value=LOBBY_GAMES.some(item=>item.key===gameKey)?gameKey:fallback;$("newLobbyName").value="";selectedVisibility="public";updateVisibilityButtons();updateCreateGameInfo();setMessage("createLobbyMessage","");openModal("createLobbyModal");
     }
     $("openCreateLobby").addEventListener("click",()=>openCreateLobby());
     $("newLobbyGame").addEventListener("change",updateCreateGameInfo);
@@ -1225,6 +1303,7 @@
     }
     async function createLobby(){
       if(!username)return openModal("accountGateModal");const game=getGame($("newLobbyGame").value),name=$("newLobbyName").value.trim();
+      if(getLaunchMode(game)!==MULTIPLAYER_LAUNCH_MODES.LOBBY)return setMessage("createLobbyMessage","This game launches directly and does not use hosted lobbies.","error");
       if(!name)return setMessage("createLobbyMessage","Enter a lobby name.","error");
       setBusy($("createLobbySubmit"),true,"Creating…");
       try{
@@ -1308,7 +1387,8 @@
       const players=Array.isArray(data?.players)?data.players:[];
       if(!id||data?.status!=="started"||currentLobbyId!==id||!players.includes(username))return;
       const game=getGame(data.gameType),launchId=data.activeGameId||id;save(SK.lastGame,game.key);save(SK.lastLobby,id);
-      const launchQuery=game.sharedRealm?`realm=${encodeURIComponent(game.sharedRealm)}&username=${encodeURIComponent(username)}`:`gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}`;
+      const realmId=game.realmId||game.sharedRealm;
+      const launchQuery=realmId?`realm=${encodeURIComponent(realmId)}&username=${encodeURIComponent(username)}`:`gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}`;
       if(game.key==="stoneyrelic"){
         const isDM=data.dm===username,route=isDM?game.dmRoute:game.route,role=isDM?"dm":"player";
         launchGameUrl(`${route}?gameId=${encodeURIComponent(launchId)}&username=${encodeURIComponent(username)}&role=${role}`,"lobby-started");return;
@@ -1357,6 +1437,7 @@
         const snap=await getDoc(doc(db,"lobbies",lobbyId));
         if(!snap.exists())throw new Error("This lobby no longer exists.");
         const lobby={id:snap.id,...snap.data()},game=getGame(lobby.gameType),players=Array.isArray(lobby.players)?lobby.players:[],cap=getMaxPlayers(lobby.gameType);
+        if(getLaunchMode(game)!==MULTIPLAYER_LAUNCH_MODES.LOBBY)throw new Error("This game now launches from Join Online Games and no longer uses invite links.");
         if(lobby.status!=="waiting")throw new Error("This lobby has already started or closed.");
         $("linkLobbyInfo").innerHTML=`<div style="display:flex;gap:12px;align-items:center"><div class="game-mark" style="--game:${gameColor(game.key)}">${gameVisual(game,"mark")}</div><div><strong>${escapeHtml(lobby.name||"Lobby")}</strong><div class="help">${escapeHtml(gameTitle(game.key,true))} • Host: ${escapeHtml(lobby.host||"Unknown")} • ${players.length}/${Number.isFinite(cap)?cap:"∞"} players</div></div></div>`;
         setBusy($("linkLobbyJoinBtn"),false);openModal("linkLobbyModal");
@@ -1400,7 +1481,7 @@
       },e=>{console.warn("Invite listener unavailable",e);renderInvites();});
     }
     function renderInvites(){
-      const list=$("inviteList"),items=[...inviteCache.values()].filter(i=>i.status!=="declined").sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+      const list=$("inviteList"),items=[...inviteCache.values()].filter(i=>i.status!=="declined"&&getLaunchMode(getGame(i.gameType))===MULTIPLAYER_LAUNCH_MODES.LOBBY).sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
       $("inviteCount").hidden=!items.length;$("inviteCount").textContent=items.length;list.innerHTML="";
       if(!username){list.innerHTML='<div class="dropdown-empty">Log in to receive lobby invitations.</div>';return;}
       if(!items.length){list.innerHTML='<div class="dropdown-empty">No active invitations.</div>';return;}
@@ -1488,7 +1569,7 @@
     }
 
     if(initialParams.has("username")){initialParams.delete("username");const clean=`${location.pathname}${initialParams.toString()?`?${initialParams}`:""}${location.hash}`;history.replaceState({},"",clean);}
-    populateStaticUI();renderFeatured();renderAllGames();renderCurrentLobby();renderInvites();updateAccountUI();showView(read(SK.lastView)||"multiplayer");
+    populateStaticUI();renderFeatured();renderOnlineWorlds();renderAllGames();renderCurrentLobby();renderInvites();updateAccountUI();showView(read(SK.lastView)||"multiplayer");
 
     signInAnonymously(auth).catch(err=>toast(`Firebase sign-in failed: ${err.message}`,"bad"));
     onAuthStateChanged(auth,async user=>{
