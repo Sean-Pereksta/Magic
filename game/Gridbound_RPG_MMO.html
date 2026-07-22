@@ -256,8 +256,7 @@ const TOWN_MANA_REGEN_PER_SECOND = 14;
 const MAX_PATH_LENGTH = 240;
 const BASE_DROP_CHANCE = .38;
 // Normal dungeon enemies stay defeated for the entire generated dungeon run.
-// Escape objectives are the only mode that automatically reforms the horde.
-const ESCAPE_ENEMY_RESPAWN_MS = 4500;
+// Necromancers can still revive valid nearby corpses through their telegraphed ability.
 const NECROMANCER_REVIVE_RANGE = 6;
 const DOOR_INTERACTION_RANGE = 1;
 const AUTO_APPROACH_MAX_DISTANCE = 10;
@@ -1073,7 +1072,7 @@ const OBJECTIVE_TEMPLATES=[
   {id:'stop_ritual',title:'Stop the ritual before completion',kind:'ritual_stop',goal:3,duration:90000,rewardBase:145},
   {id:'marked_order',title:'Eliminate marked enemies in order',kind:'ordered',goal:3,rewardBase:150},
   {id:'key_hunt',title:'Find the Wayfinder key',kind:'key',goal:1,rewardBase:115},
-  {id:'escape_hunt',title:'Escape while the horde reforms',kind:'escape',goal:1,duration:105000,rewardBase:165},
+  {id:'escape_hunt',title:'Escape before the route collapses',kind:'escape',goal:1,duration:105000,rewardBase:165},
   {id:'sealed_war_chest',title:'Open the sealed war chest',kind:'chest_defense',goal:60,duration:60000,rewardBase:185}
 ];
 const QUEST_CHAINS={
@@ -1663,7 +1662,7 @@ function generateDungeon(roomId,depth){
   const start=rooms[0],end=rooms[rooms.length-1],spawn={x:start.x+2,y:start.cy},nextLevel=Math.min(DUNGEON_AREA_LEVELS,areaLevel+1),deepName=legendMode?'Leave Gold Level 400':areaLevel<DUNGEON_AREA_LEVELS?`Advance to ${route.label} · Level ${nextLevel}`:`Complete ${route.label}`,doors=[{id:'safe',type:'blue',name:'Waystone Refuge',desc:'Return to the nearest safe town to heal, trade, and claim quests.',x:start.x+1,y:start.y+1,target:safeTownForDepth(baseDepth),targetDepth:baseDepth},{id:'deep',type:'red',name:deepName,desc:legendMode?'Complete the Level 400 Gold arena and return through its gold passage.':areaLevel<DUNGEON_AREA_LEVELS?`Clear the objective and boss to unlock Level ${nextLevel}.`:'Clear the sixth level to turn this area door gold and unlock the Level 400 Gold run.',x:end.x+end.w-2,y:end.cy,target:'',targetDepth:baseDepth,requiresBoss:true,requiresObjective:true,recommendedLevel:legendMode?String(GOLD_ENEMY_LEVEL):dungeonLevelRecommendation({id:route.id,targetDepth:baseDepth},areaLevel),difficulty:legendMode?'Gold 400':`Level ${areaLevel}`,completesLevel:true}];
   const eventRoll=random(),eventPool=[...Object.keys(ROOM_EVENTS),'rune_sequence','rune_sequence','monster_tracks','monster_tracks'],eventId=eventPool[Math.floor(eventRoll*eventPool.length)],eventRoom=rooms[Math.min(rooms.length-2,2+Math.floor(random()*Math.max(1,rooms.length-3)))],objectiveTemplate=OBJECTIVE_TEMPLATES[Math.floor(random()*OBJECTIVE_TEMPLATES.length)],shortcuts=rooms.length>=7?[{id:'sc-1',from:1,to:rooms.length-2,x:rooms[1].cx,y:rooms[1].cy,targetX:rooms[rooms.length-2].cx,targetY:rooms[rooms.length-2].cy}]:[];
   const sideQuestKinds=['plagued_survivor','riddle_keeper','lost_cartographer'],npcCandidates=rooms.slice(2,-2).filter(room=>room!==eventRoom),npcRoom=npcCandidates[Math.floor(random()*Math.max(1,npcCandidates.length))]||rooms[1],questKind=sideQuestKinds[Math.floor(random()*sideQuestKinds.length)],npcNames={plagued_survivor:'Wounded Delver',riddle_keeper:'The Runebound Sage',lost_cartographer:'Lost Cartographer'},npcDescriptions={plagued_survivor:'A wounded explorer begs you to destroy the named creature sealed deeper in the dungeon.',riddle_keeper:'An ancient sage offers a rich reward for one correct answer—and punishment for a careless guess.',lost_cartographer:'A cartographer lost a map satchel to a dangerous creature and will reveal the floor when it is returned.'},dungeonNpcs=(random()<.72||params.get('dungeonNpc')==='1')?[{id:`sidequest-${safeId(roomId)}`,role:'dungeon_side_quest',questKind,name:npcNames[questKind],graphic:questKind==='riddle_keeper'?'npc_arcanist':'npc_quest',x:npcRoom.cx,y:npcRoom.cy,interactRange:2,targetRoomIndex:Math.min(rooms.length-2,Number(npcRoom.index||2)+2),riddleId:Math.floor(random()*DUNGEON_RIDDLES.length),desc:npcDescriptions[questKind]}]:[];
-  rooms.forEach((room,index)=>{room.index=index;room.type=index===0?'safe':index===rooms.length-1?'boss':room===eventRoom?'treasure':index===Math.floor(rooms.length/2)?'objective':'combat'});if(objectiveTemplate.kind==='escape'){doors[1].requiresBoss=false;doors[1].desc='Reach this exit before the escape timer ends. The horde continually reforms behind you.'}
+  rooms.forEach((room,index)=>{room.index=index;room.type=index===0?'safe':index===rooms.length-1?'boss':room===eventRoom?'treasure':index===Math.floor(rooms.length/2)?'objective':'combat'});if(objectiveTemplate.kind==='escape'){doors[1].requiresBoss=false;doors[1].desc='Reach this exit before the escape timer ends. Defeated enemies stay defeated.'}
   for(const d of doors)tiles[d.y][d.x]=0;return{roomId,depth,w,h,tiles,rooms,spawn,doors,npcs:dungeonNpcs,huts:[],shortcuts,isTown:false,endRoom:end,difficulty:route,palette:route.palette,eventNode:{id:`event-${safeId(roomId)}`,type:eventId,x:eventRoom.cx,y:eventRoom.cy},objectiveTemplate:deepClone(objectiveTemplate),areaLevel,legendMode,baseDepth,runToken:variant.runToken};
 }
 function createObjectiveForMap(m,t=now()){
@@ -1674,7 +1673,7 @@ function createObjectiveForMap(m,t=now()){
   if(objective.kind==='capture'){const candidates=[rooms[2]||middle,rooms[Math.max(3,rooms.length-2)]||late];objective.nodes=candidates.slice(0,objective.goal).map((r,i)=>({id:`control-${i}`,x:r.cx,y:r.cy,captured:false,heldMs:0,marker:'control'}));objective.lastTickMs=t}
   if(objective.kind==='ordered')objective.orderIndex=1;
   if(objective.kind==='key')objective.keyId=`wayfinder-${safeId(m.roomId)}`;
-  if(objective.kind==='escape')Object.assign(objective,{deadlineMs:t+Number(objective.duration||105000),nextWaveAtMs:t+5000,wave:0,exitX:m.doors.find(d=>d.id==='deep')?.x,exitY:m.doors.find(d=>d.id==='deep')?.y});
+  if(objective.kind==='escape')Object.assign(objective,{deadlineMs:t+Number(objective.duration||105000),exitX:m.doors.find(d=>d.id==='deep')?.x,exitY:m.doors.find(d=>d.id==='deep')?.y});
   if(objective.kind==='chest_defense')Object.assign(objective,{chest:{x:middle.cx,y:middle.cy,state:'sealed',name:'Sealed War Chest'},startedAtMs:0,deadlineMs:0,nextWaveAtMs:0,wave:0,waveMilestones:{15:false,30:false,45:false,60:false},timerFinished:false,claimedBy:[],progress:0});
   return objective;
 }
@@ -2373,7 +2372,7 @@ function updateSharedObjective(t,livePlayers){
   if(o.kind==='chest_defense'&&o.chest){if(o.chest.state==='defending'){const elapsed=Math.max(0,Math.floor((t-Number(o.startedAtMs||t))/1000)),milestones=[15,30,45,60];o.progress=Math.min(o.goal,elapsed);o.waveMilestones=o.waveMilestones&&typeof o.waveMilestones==='object'?o.waveMilestones:{15:false,30:false,45:false,60:false};for(const second of milestones){if(elapsed<second||o.waveMilestones[second])continue;o.waveMilestones[second]=true;spawnWave('chest',Math.max(0,milestones.indexOf(second)),999999,o.chest);if(second===60){const eliteType=route.miniBoss||route.pool?.[Math.max(0,(route.pool?.length||1)-1)]||'brute',spot={x:clamp(o.chest.x+4,1,map.w-2),y:o.chest.y},elite=addFactionEnemy(eliteType,spot.x,spot.y,`chest-final-${currentRoomId}`,t,{objectiveHunter:true,objectiveWave:'chest',elite:true,affix:'juggernaut',markedLabel:'FINAL WAVE',hpScale:1.25});if(elite)elite.staggerThreshold=Math.round(Number(elite.staggerThreshold||60)*1.25);o.timerFinished=true;o.title='Final wave · defeat every marked attacker';}else o.title=`Defend the room · next assault at ${second+15} seconds`;changed=true}if(t>=o.deadlineMs)o.timerFinished=true;if(o.timerFinished&&!roomState.enemies.some(enemy=>enemy.hp>0&&enemy.objectiveWave==='chest')){o.progress=o.goal;o.complete=true;o.chest.state='ready';o.title='War chest secured · claim your reward';o.completedAtMs=t;changed=true}}}
   if(o.kind==='capture'){const dt=clamp(t-Number(o.lastTickMs||t),0,500),holdMs=Number(o.holdMs)||9000;o.lastTickMs=t;for(const node of o.nodes||[]){if(node.captured)continue;const holders=livePlayers.filter(player=>distance(player,node)<=1).length,contested=roomState.enemies.some(enemy=>enemy.hp>0&&distance(enemy,node)<=2);if(holders&&!contested)node.heldMs=Math.min(holdMs,(Number(node.heldMs)||0)+dt*(1+Math.max(0,holders-1)*.25));else if(contested)node.heldMs=Math.max(0,(Number(node.heldMs)||0)-dt*.35);if(node.heldMs>=holdMs)node.captured=true}o.progress=(o.nodes||[]).filter(node=>node.captured).length;if(o.progress>=o.goal)o.complete=true;changed=true}
   if(['altars','ritual_stop'].includes(o.kind)){o.progress=(o.nodes||[]).filter(node=>node.disabled).length;if(o.progress>=o.goal){o.complete=true;changed=true}else if(o.kind==='ritual_stop'&&t>=o.deadlineMs){o.failed=true;o.failureReason='The ritual was completed before every altar was destroyed.';changed=true}}
-  if(o.kind==='escape'){o.progress=0;if(t>=o.deadlineMs){o.failed=true;o.failureReason='The escape route collapsed.';changed=true}else if(t>=(o.nextWaveAtMs||0))spawnWave('escape',o.wave,7500)}
+  if(o.kind==='escape'){o.progress=0;if(t>=o.deadlineMs){o.failed=true;o.failureReason='The escape route collapsed.';changed=true}}
   if(['ordered','key'].includes(o.kind)&&Number(o.progress)>=Number(o.goal)){o.complete=true;changed=true}
   if(o.complete&&!o.completedAtMs){o.completedAtMs=t;changed=true}if(o.failed&&!o.failedAtMs)o.failedAtMs=t;return changed
 }
@@ -2451,7 +2450,7 @@ async function controllerTick(){
   if(updateDungeonEncounterSystems(t,livePlayers))changed=true;
   if(updateSummonController(t,livePlayers,deaths))changed=true;
   for(const e of roomState.enemies){
-    const def=ENEMY_TYPES[e.type];if(e.hp<=0){const escapeRespawn=roomState.objective?.kind==='escape'&&t-Number(e.killedAtMs||t)>=ESCAPE_ENEMY_RESPAWN_MS;if(!def.boss&&escapeRespawn){restoreEnemyAtSpawn(e,t,1);e.revived=false;changed=true}else if(Number(e.respawnAtMs)!==0){e.respawnAtMs=0;changed=true}continue}
+    const def=ENEMY_TYPES[e.type];if(e.hp<=0){if(Number(e.respawnAtMs)!==0){e.respawnAtMs=0;changed=true}continue}
     if(Number(e.stagger)>0&&t-Number(e.lastStaggerAtMs||0)>1500&&t>=(e.staggerDecayAtMs||0)){e.stagger=Math.max(0,Number(e.stagger)-4);e.staggerDecayAtMs=t+350;changed=true}
     e.effectTickReadyAt=e.effectTickReadyAt||{};for(const id of ['burn','poison','bleed'])if(statusActive(e,id,t)&&t>=(e.effectTickReadyAt[id]||0)){const stacks=Math.max(1,Number(e.effectStacks?.[id])||1),source=activePresence(e.effectSources?.[id]),setBoost=id==='burn'?(1+(Number(source?.combat?.setCounts?.sunfire_covenant||0)>=2?0.12:0)+Number(source?.combat?.burnPower||0)):1,damage=Math.max(1,Math.round((id==='burn'?2:stacks)*setBoost));e.hp=Math.max(0,e.hp-damage);e.effectTickReadyAt[id]=t+(id==='poison'?1100:1400);changed=true}
     if(e.hp<=0){defeatEnemyForDungeonRun(e,t);deaths.push(deepClone(e));continue}
