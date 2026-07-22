@@ -219,7 +219,8 @@ const TILE_W = 64;
 const TILE_H = 32;
 const WALL_H = 38;
 const PLAYER_STALE_MS = 15000;
-const DUNGEON_EMPTY_RESET_GRACE_MS = 22000;
+// A dungeon run is preserved while empty and only resets after a full ten-minute gap.
+const DUNGEON_EMPTY_RESET_GRACE_MS = 10*60*1000;
 const HEARTBEAT_MS = 3500;
 const CONTROLLER_TICK_MS = 220;
 const ARENA_CONTROLLER_TICK_MS = 120;
@@ -257,6 +258,7 @@ const BASE_DROP_CHANCE = .38;
 // Normal dungeon enemies stay defeated for the entire generated dungeon run.
 // Escape objectives are the only mode that automatically reforms the horde.
 const ESCAPE_ENEMY_RESPAWN_MS = 4500;
+const NECROMANCER_REVIVE_RANGE = 6;
 const DOOR_INTERACTION_RANGE = 1;
 const AUTO_APPROACH_MAX_DISTANCE = 10;
 const AUTO_APPROACH_REPLAN_MS = 320;
@@ -2309,8 +2311,21 @@ function updateSummonController(t,livePlayers,deaths){
   roomState.summons=active;return changed
 }
 function factionOf(enemy){return enemy?.faction||routeForRoom(currentRoomId).id}
+function releaseDeadEnemySlotForSpawn(){
+  if(roomState.enemies.length<MAX_ROOM_ENEMIES)return true;
+  const candidates=roomState.enemies.filter(enemy=>enemy.hp<=0&&!enemy.arenaAvatar&&!ENEMY_TYPES[enemy.type]?.boss).sort((a,b)=>{
+    const priority=enemy=>(enemy.eventEnemy||enemy.clone||enemy.dropSuppressed||enemy.objectiveHunter?0:enemy.revived?1:2);
+    return priority(a)-priority(b)||Number(a.killedAtMs||0)-Number(b.killedAtMs||0)||String(a.id).localeCompare(String(b.id));
+  });
+  const corpse=candidates[0];if(!corpse)return false;
+  roomState.enemies=roomState.enemies.filter(enemy=>enemy.id!==corpse.id);
+  markEntityIndexesDirty();actorSortCache.key='';
+  return true
+}
 function addFactionEnemy(type,x,y,sourceId,t=now(),overrides={}){
-  const def=ENEMY_TYPES[type];if(!def||roomState.enemies.length>=MAX_ROOM_ENEMIES||tileAt(x,y)!==0||enemyAt(x,y))return null;const random=rngFrom(hashString(`${currentRoomId}:${sourceId}:${t}`)),enemyLevel=enemyLevelForMap(map,random,!!def.boss),scale=enemyHealthScaleForMap(map,enemyLevel),maxHp=Math.max(1,Math.round(def.hp*scale*(overrides.hpScale||1))),enemy={id:`spawn-${sourceId}-${t}-${roomState.enemies.length}`,type,faction:factionOf(roomState.enemies.find(e=>e.id===sourceId))||routeForRoom(currentRoomId).id,x,y,hp:maxHp,maxHp,enemyLevel,powerScale:enemyPowerScaleForMap(map,enemyLevel),armorBonus:enemyArmorBonusForLevel(enemyLevel,!!def.boss),tempoScale:enemyTempoScaleForLevel(enemyLevel),stagger:0,staggerThreshold:Math.round(enemyStaggerThreshold(def,false)*enemyStaggerScaleForLevel(enemyLevel,!!def.boss)),attackReadyAt:t+1000,moveReadyAt:t+600,factionReadyAt:t+3000,damageBy:{},effects:{},effectStacks:{},spawnX:x,spawnY:y,killedAtMs:0,...overrides};delete enemy.hpScale;roomState.enemies.push(enemy);return enemy
+  const def=ENEMY_TYPES[type];if(!def||tileAt(x,y)!==0||enemyAt(x,y))return null;
+  if(roomState.enemies.length>=MAX_ROOM_ENEMIES&&!releaseDeadEnemySlotForSpawn())return null;
+  const random=rngFrom(hashString(`${currentRoomId}:${sourceId}:${t}`)),enemyLevel=enemyLevelForMap(map,random,!!def.boss),scale=enemyHealthScaleForMap(map,enemyLevel),maxHp=Math.max(1,Math.round(def.hp*scale*(overrides.hpScale||1))),enemy={id:`spawn-${sourceId}-${t}-${roomState.enemies.length}`,type,faction:factionOf(roomState.enemies.find(e=>e.id===sourceId))||routeForRoom(currentRoomId).id,x,y,hp:maxHp,maxHp,enemyLevel,powerScale:enemyPowerScaleForMap(map,enemyLevel),armorBonus:enemyArmorBonusForLevel(enemyLevel,!!def.boss),tempoScale:enemyTempoScaleForLevel(enemyLevel),stagger:0,staggerThreshold:Math.round(enemyStaggerThreshold(def,false)*enemyStaggerScaleForLevel(enemyLevel,!!def.boss)),attackReadyAt:t+1000,moveReadyAt:t+600,factionReadyAt:t+3000,damageBy:{},effects:{},effectStacks:{},spawnX:x,spawnY:y,killedAtMs:0,respawnAtMs:0,spawnedAtMs:t,...overrides};delete enemy.hpScale;roomState.enemies.push(enemy);markEntityIndexesDirty();return enemy
 }
 function retreatStep(enemy,target){return[{x:enemy.x-Math.sign(target.x-enemy.x),y:enemy.y},{x:enemy.x,y:enemy.y-Math.sign(target.y-enemy.y)},{x:enemy.x-Math.sign(target.x-enemy.x),y:enemy.y-Math.sign(target.y-enemy.y)}].filter(p=>walkable(p.x,p.y)).sort((a,b)=>distance(b,target)-distance(a,target))[0]||null}
 function visibleFactionTelegraph(enemy,source,tiles,t,kind,extra={}){roomState.telegraphs.push({id:`faction-${kind}-${enemy.id}-${t}`,enemyId:enemy.id,source,tiles,damage:0,kind,createdAtMs:t,resolveAtMs:t+1200,...extra})}
@@ -2318,7 +2333,7 @@ function runFactionTactic(e,def,target,best,t){
   const faction=factionOf(e),canTarget=enemyCanAttackTarget(e,target,def,t);if(t<(e.factionReadyAt||0))return false;
   if(faction==='crypt'){
     if((def.role==='ranged'||e.type.includes('marksman'))&&best<=3){const step=retreatStep(e,target);if(step){e.x=step.x;e.y=step.y;e.moveReadyAt=t+def.moveCd*(e.tempoScale||1)*enemyMovementPacing(e,def);e.factionReadyAt=t+900;return true}}
-    if((e.type.includes('necromancer')||e.type.includes('acolyte'))){const corpse=roomState.enemies.find(o=>o.hp<=0&&!ENEMY_TYPES[o.type]?.boss&&!o.revived);if(corpse){visibleFactionTelegraph(e,'Necromantic Revival',[{x:corpse.x,y:corpse.y}],t,'revive',{reviveId:corpse.id,resolveAtMs:t+1800});e.factionReadyAt=t+12000;return true}}
+    if((e.type.includes('necromancer')||e.type.includes('acolyte'))){const reviveRange=Math.min(NECROMANCER_REVIVE_RANGE,Math.max(3,Number(def.range)||NECROMANCER_REVIVE_RANGE)),corpse=roomState.enemies.filter(o=>o.hp<=0&&!ENEMY_TYPES[o.type]?.boss&&!o.revived&&!o.eventEnemy&&!o.objectiveHunter&&!o.sideQuestTarget&&!o.fleeingRare&&!o.clone&&!o.dropSuppressed&&distance(e,o)<=reviveRange&&lineOfSight(e,o)).sort((a,b)=>distance(e,a)-distance(e,b)||Number(b.killedAtMs||0)-Number(a.killedAtMs||0))[0];if(corpse){visibleFactionTelegraph(e,'Necromantic Revival',[{x:corpse.x,y:corpse.y}],t,'revive',{reviveId:corpse.id,reviveRange,resolveAtMs:t+1800});e.factionReadyAt=t+12000;return true}}
     if(ENEMY_TYPES[e.type]?.boss){for(const [i,[dx,dy]] of [[1,0],[-1,0],[0,1],[0,-1]].entries()){const x=e.x+dx*2,y=e.y+dy*2;if(inBounds(x,y)&&tileAt(x,y)===0)roomState.hazards.push({id:`bone-${e.id}-${t}-${i}`,enemyId:e.id,type:'boneWall',x,y,expiresAtMs:t+6500})}e.factionReadyAt=t+10500;return true}
   }
   if(faction==='goblin'){
@@ -2364,16 +2379,28 @@ function updateSharedObjective(t,livePlayers){
 }
 
 function eventChallengeEnemies(state=roomState.eventState){return(roomState.enemies||[]).filter(enemy=>enemy.hp>0&&enemy.eventChallengeId===state?.id)}
+function eventWaveSpawnSpot(anchor,index){
+  const center={x:Number(anchor?.x??map.eventNode?.x??map.startRoom?.cx??1),y:Number(anchor?.y??map.eventNode?.y??map.startRoom?.cy??1)},offsets=[[3,0],[-3,0],[0,3],[0,-3],[2,2],[-2,2],[-2,-2],[2,-2],[4,1],[-4,1],[1,4],[1,-4],[4,-1],[-4,-1],[-1,4],[-1,-4],[5,0],[-5,0],[0,5],[0,-5]];
+  for(let step=0;step<offsets.length;step++){const spot=offsets[(index+step)%offsets.length],x=clamp(Math.round(center.x+spot[0]),1,map.w-2),y=clamp(Math.round(center.y+spot[1]),1,map.h-2);if(walkable(x,y))return{x,y}}
+  return null
+}
 function spawnEventWave(state,label,wave,count,t,anchor=map.eventNode,overrides={}){
-  const route=routeForRoom(currentRoomId),offsets=[[3,0],[-3,0],[0,3],[0,-3],[2,2],[-2,2],[-2,-2],[2,-2]],spawned=[];
-  for(let i=0;i<count&&roomState.enemies.filter(enemy=>enemy.hp>0).length<MAX_ROOM_ENEMIES;i++){const type=route.pool?.[(wave+i)%Math.max(1,route.pool.length)]||'skeleton',spot=offsets[i%offsets.length],enemy=addFactionEnemy(type,clamp(Number(anchor?.x||map.eventNode.x)+spot[0],1,map.w-2),clamp(Number(anchor?.y||map.eventNode.y)+spot[1],1,map.h-2),`${label}-${state.id}-${wave}-${i}`,t,{eventEnemy:true,eventChallengeId:state.id,eventChallengeType:state.type,markedLabel:overrides.markedLabel||label.toUpperCase(),...overrides});if(enemy)spawned.push(enemy)}return spawned
+  const route=routeForRoom(currentRoomId),spawned=[];
+  for(let i=0;i<count&&roomState.enemies.filter(enemy=>enemy.hp>0).length<MAX_ROOM_ENEMIES;i++){
+    const spawnKey=safeId(`${state.id}-${label}-${wave}-${i}`),existing=roomState.enemies.find(enemy=>enemy.eventSpawnKey===spawnKey);
+    if(existing){spawned.push(existing);continue}
+    const spot=eventWaveSpawnSpot(anchor,i);if(!spot)continue;
+    const type=route.pool?.[(wave+i)%Math.max(1,route.pool.length)]||'skeleton',enemy=addFactionEnemy(type,spot.x,spot.y,`${label}-${state.id}-${wave}-${i}`,t,{eventEnemy:true,eventChallengeId:state.id,eventChallengeType:state.type,eventSpawnKey:spawnKey,eventWave:wave,eventWaveLabel:label,markedLabel:overrides.markedLabel||label.toUpperCase(),...overrides});
+    if(enemy){pendingRoomEventWrites[`enemies/${safeId(enemy.id)}`]=cleanEnemyForRealtime(enemy);spawned.push(enemy)}
+  }
+  return spawned
 }
 function stepTowardTarget(actor,target){const options=[[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:actor.x+dx,y:actor.y+dy})).filter(spot=>inBounds(spot.x,spot.y)&&tileAt(spot.x,spot.y)===0).sort((a,b)=>distance(a,target)-distance(b,target));if(options[0]){actor.x=options[0].x;actor.y=options[0].y;return true}return false}
 function updateDungeonEncounterSystems(t,livePlayers){
   const state=roomState.eventState;if(!state||map?.isTown||map?.isArena)return false;let changed=false,route=routeForRoom(currentRoomId),challengeEnemies=()=>eventChallengeEnemies(state);
   const spawnPenalty=(label,anchor=map.eventNode)=>{if(Number(state.pendingPenaltyWave)<=Number(state.spawnedPenaltyWave))return false;const wave=Number(state.pendingPenaltyWave);spawnEventWave(state,label,wave,clamp(2+wave,2,6),t,anchor,{markedLabel:label.toUpperCase()});state.spawnedPenaltyWave=wave;eventLogPush(state,`${label} wave ${wave} enters the chamber.`,'bad',t);return true};
   if(state.type==='rune_sequence'&&spawnPenalty('Rune Guard',map.eventNode))changed=true;
-  if(state.type==='survival'&&state.started&&!state.complete){const elapsed=Math.max(0,Math.floor((t-Number(state.startedAtMs||t))/1000));state.progress=Math.min(Number(state.goal)||60,elapsed);state.spawnedMilestones=state.spawnedMilestones||{};for(const second of state.waveMilestones||[15,30,45,60]){if(elapsed<second||state.spawnedMilestones[second])continue;state.spawnedMilestones[second]=true;const wave=(state.waveMilestones||[]).indexOf(second),final=second===60;spawnEventWave(state,'Holdout',wave,final?7:3+wave,t,map.eventNode,{elite:final,affix:final?'juggernaut':undefined,markedLabel:final?'FINAL WAVE':`WAVE ${wave+1}`,hpScale:final?1.25:1});eventLogPush(state,`${final?'Final':'Wave '+(wave+1)} assault has entered the room.`,'warn',t);if(final)state.timerFinished=true;changed=true}if(t>=Number(state.deadlineMs||Infinity))state.timerFinished=true;if(state.timerFinished&&!challengeEnemies().length){state.complete=true;state.rewardReady=true;state.status='complete';state.progress=state.goal;state.completedAtMs=t;eventLogPush(state,'All four assault waves are defeated. The holdout reward is ready.','good',t);changed=true}}
+  if(state.type==='survival'&&state.started&&!state.complete){const elapsed=Math.max(0,Math.floor((t-Number(state.startedAtMs||t))/1000));state.progress=Math.min(Number(state.goal)||60,elapsed);state.spawnedMilestones=state.spawnedMilestones||{};for(const second of state.waveMilestones||[15,30,45,60]){if(elapsed<second||state.spawnedMilestones[second])continue;const wave=(state.waveMilestones||[]).indexOf(second),final=second===60,requested=final?7:3+wave,spawned=spawnEventWave(state,'Holdout',wave,requested,t,map.eventNode,{elite:final,affix:final?'juggernaut':undefined,markedLabel:final?'FINAL WAVE':`WAVE ${wave+1}`,hpScale:final?1.25:1});if(spawned.length<requested)continue;state.spawnedMilestones[second]=true;eventLogPush(state,`${final?'Final':'Wave '+(wave+1)} assault has entered the room (${spawned.length}/${requested}).`,'warn',t);if(final)state.timerFinished=true;changed=true}const allWavesSpawned=(state.waveMilestones||[15,30,45,60]).every(second=>state.spawnedMilestones[second]);if(t>=Number(state.deadlineMs||Infinity)&&allWavesSpawned)state.timerFinished=true;if(state.timerFinished&&allWavesSpawned&&!challengeEnemies().length){state.complete=true;state.rewardReady=true;state.status='complete';state.progress=state.goal;state.completedAtMs=t;eventLogPush(state,'All four assault waves are defeated. The holdout reward is ready.','good',t);changed=true}}
   if(state.type==='infestation'&&state.started&&!state.complete){const living=(state.nests||[]).filter(nest=>!nest.destroyed);if(living.length&&t>=Number(state.nextSpawnAtMs||0)){living.slice(0,Math.min(2,living.length)).forEach((nest,index)=>spawnEventWave(state,'Brood',Number(state.spawnPulse||0)+index,1,t,nest,{markedLabel:'NEST SPAWN'}));state.spawnPulse=(Number(state.spawnPulse)||0)+1;state.nextSpawnAtMs=t+12000;eventLogPush(state,`${living.length} living nest${living.length===1?'':'s'} release another spawning pulse.`,'warn',t);changed=true}if(spawnPenalty('Nest Defenders',state.penaltyAnchor||map.eventNode)){state.penaltyAnchor=null;changed=true}if((state.nests||[]).every(nest=>nest.destroyed)){state.status='cleanup';if(!challengeEnemies().length){state.complete=true;state.rewardReady=true;state.status='complete';state.completedAtMs=t;eventLogPush(state,'Every nest and defender has been destroyed.','good',t);changed=true}}}
   if(state.type==='lever'&&spawnPenalty('Switch Guard',map.eventNode))changed=true;
   if(state.type==='cursed_treasure'&&state.started&&!state.complete){if(state.mode==='break'&&t>=Number(state.nextAmbushAtMs||0)&&Number(state.ambushWavesSpawned||0)<2){const wave=Number(state.ambushWavesSpawned)||0;spawnEventWave(state,'Cursed',wave,wave?6:4,t,map.eventNode,{elite:wave===1,affix:wave===1?'vampiric':undefined,markedLabel:wave?'CURSE ELITE':'CURSED'});state.ambushWavesSpawned=wave+1;state.nextAmbushAtMs=t+8000;eventLogPush(state,`${wave?'Final':'First'} cursed ambush enters the chamber.`,'bad',t);changed=true}if(spawnPenalty('Ward Guard',map.eventNode))changed=true;if(state.mode==='break'&&Number(state.ambushWavesSpawned)>=2&&!challengeEnemies().length){state.complete=true;state.rewardReady=true;state.status='complete';state.progress=state.goal;state.completedAtMs=t;eventLogPush(state,'The cursed ambush is defeated. The treasure is ready.','good',t);changed=true}}
@@ -2393,7 +2420,7 @@ async function controllerTick(){
   const telegraphHashBefore=compactHash(roomState.telegraphs||[]);let livePlayers=onlinePlayers.filter(p=>p.hp>0&&t-(p.lastSeenMs||0)<PLAYER_STALE_MS);if(localPlayer?.hp>0){const localSnapshot={uid,username,x:Math.round(localPlayer.x),y:Math.round(localPlayer.y),hp:localPlayer.hp,maxHp:derivedStats().maxHp,mana:localPlayer.mana,roomId:currentRoomId,depth:currentDepth,roomSessionId,positionSequence,lastSeenMs:t,combat:publicCombatData()},localIndex=livePlayers.findIndex(p=>p.uid===uid);if(localIndex>=0)livePlayers[localIndex]={...livePlayers[localIndex],...localSnapshot};else livePlayers.push(localSnapshot)}if(!livePlayers.length)return;const liveSummons=(roomState.summons||[]).filter(s=>s.hp>0&&SUMMON_TYPES[s.type]),summonHitsByTelegraph=new Set();const damageEvents=[];let changed=false;
   const pending=[];for(const telegraph of roomState.telegraphs||[]){
     if(t<(telegraph.resolveAtMs||0)){pending.push(telegraph);continue}const source=roomState.enemies.find(e=>e.id===telegraph.enemyId);
-    if(telegraph.kind==='revive'){const corpse=roomState.enemies.find(e=>e.id===telegraph.reviveId&&e.hp<=0&&!ENEMY_TYPES[e.type]?.boss);if(corpse){restoreEnemyAtSpawn(corpse,t,.45);corpse.revived=true;changed=true}}
+    if(telegraph.kind==='revive'){const reviver=roomState.enemies.find(e=>e.id===telegraph.enemyId&&e.hp>0),reviveRange=Math.max(1,Number(telegraph.reviveRange)||NECROMANCER_REVIVE_RANGE),corpse=roomState.enemies.find(e=>e.id===telegraph.reviveId&&e.hp<=0&&!ENEMY_TYPES[e.type]?.boss&&!e.revived&&!e.eventEnemy&&!e.objectiveHunter&&!e.sideQuestTarget&&!e.fleeingRare&&!e.clone&&!e.dropSuppressed);if(reviver&&corpse&&distance(reviver,corpse)<=reviveRange&&lineOfSight(reviver,corpse)){restoreEnemyAtSpawn(corpse,t,.45);corpse.revived=true;corpse.revivedBy=reviver.id;corpse.revivedAtMs=t;changed=true}}
     if(!telegraph.falseTelegraph)for(const p of livePlayers)if((telegraph.tiles||[]).some(tile=>Math.round(tile.x)===Math.round(p.x)&&Math.round(tile.y)===Math.round(p.y))&&Number(telegraph.damage)>0){damageEvents.push({target:p,telegraph});if(telegraph.effect==='stealGold'&&source)source.stolenGold=(Number(source.stolenGold)||0)+Math.min(12,Math.max(3,Math.round((Number(telegraph.damage)||1)*.5)))}
     if(!telegraph.falseTelegraph)for(const summon of liveSummons)if((telegraph.tiles||[]).some(tile=>Math.round(tile.x)===Math.round(summon.x)&&Math.round(tile.y)===Math.round(summon.y))&&Number(telegraph.damage)>0){if(damageSummon(summon,telegraph.damage,telegraph.effect,t,telegraph.source)>0){summonHitsByTelegraph.add(telegraph.id);changed=true}}
     const objective=roomState.objective;if(objective?.actor&&(telegraph.tiles||[]).some(tile=>tile.x===objective.actor.x&&tile.y===objective.actor.y)&&Number(telegraph.damage)>0){objective.actor.hp=Math.max(0,objective.actor.hp-Math.max(1,Math.round(Number(telegraph.damage)*.7)));changed=true}
