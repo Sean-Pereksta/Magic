@@ -436,7 +436,7 @@ const EXPANSION_ENEMY_ASSETS=[
   "enemy_eclipse_blade","enemy_starless_priest","enemy_mirror_knight","enemy_umbral_obelisk","boss_eclipse_emperor",
   "enemy_worldscar_devourer","enemy_magma_behemoth","enemy_rift_cannon","enemy_apocalypse_herald","boss_worldscar_avatar"
 ];
-const ASSET_NAMES=["floor_stone","floor_moss","door_blue","door_red","door_gold","player_archer","enemy_slime","enemy_skeleton","enemy_archer","enemy_brute","enemy_wraith","enemy_spider","enemy_mage","enemy_boss","loot_bag","armor_leather_suit","armor_chain_suit","armor_plate_suit","armor_mystic_suit","armor_shadow_suit","armor_blood_suit","armor_storm_suit","armor_grove_suit","armor_void_suit","armor_frost_suit","armor_sunfire_suit","armor_venom_suit","armor_ironroot_suit","armor_spirit_suit","armor_reaper_suit","armor_stormguard_suit","armor_sand_suit","armor_phoenix_suit","armor_moon_suit","armor_spirit_shepherd_suit","armor_legionmaster_raiment","weapon_bow","weapon_crossbow","weapon_spear","weapon_blade","weapon_staff","weapon_wand","weapon_axe","weapon_hammer","weapon_dagger","weapon_scythe","weapon_shield_round","weapon_shield_kite",...EXPANSION_ENEMY_ASSETS];
+const ASSET_NAMES=["floor_stone","floor_moss","door_blue","door_red","door_gold","player_archer","enemy_slime","enemy_skeleton","enemy_archer","enemy_brute","enemy_wraith","enemy_spider","enemy_mage","enemy_boss","loot_bag","house","house1","house2","house3","armor_leather_suit","armor_chain_suit","armor_plate_suit","armor_mystic_suit","armor_shadow_suit","armor_blood_suit","armor_storm_suit","armor_grove_suit","armor_void_suit","armor_frost_suit","armor_sunfire_suit","armor_venom_suit","armor_ironroot_suit","armor_spirit_suit","armor_reaper_suit","armor_stormguard_suit","armor_sand_suit","armor_phoenix_suit","armor_moon_suit","armor_spirit_shepherd_suit","armor_legionmaster_raiment","weapon_bow","weapon_crossbow","weapon_spear","weapon_blade","weapon_staff","weapon_wand","weapon_axe","weapon_hammer","weapon_dagger","weapon_scythe","weapon_shield_round","weapon_shield_kite",...EXPANSION_ENEMY_ASSETS];
 const GRAPHIC_ALIASES={
   enemy_cultist:"enemy_mage",enemy_golem:"enemy_brute",enemy_necromancer:"enemy_mage",enemy_serpent:"enemy_spider",enemy_shade:"enemy_wraith",enemy_bombardier:"enemy_archer",
   enemy_fungal_hulk:"enemy_brute",enemy_rift_hound:"enemy_spider",enemy_icebound_knight:"enemy_skeleton",enemy_storm_eye:"enemy_wraith",enemy_soul_lantern:"enemy_mage",
@@ -445,6 +445,7 @@ const GRAPHIC_ALIASES={
 };
 // New PNGs are preferred; these only keep the game playable until each file is added.
 const GRAPHIC_FALLBACKS={
+  house1:"house",house2:"house",house3:"house",
   enemy_rime_stalker:"enemy_spider",enemy_glacier_witch:"enemy_mage",enemy_frost_colossus:"enemy_brute",enemy_pale_banneret:"enemy_skeleton",boss_frostbound_empress:"enemy_boss",
   enemy_thunder_roc:"enemy_wraith",enemy_clockwork_oracle:"enemy_mage",enemy_tempest_seraph:"enemy_wraith",enemy_skybreaker_golem:"enemy_brute",boss_tempest_archon:"enemy_boss",
   enemy_tide_revenant:"enemy_wraith",enemy_abyss_jailer:"enemy_skeleton",enemy_leviathan_spawn:"enemy_spider",enemy_trench_siren:"enemy_mage",boss_leviathan_heart:"enemy_boss",
@@ -452,7 +453,7 @@ const GRAPHIC_FALLBACKS={
   enemy_worldscar_devourer:"enemy_brute",enemy_magma_behemoth:"enemy_brute",enemy_rift_cannon:"enemy_archer",enemy_apocalypse_herald:"enemy_mage",boss_worldscar_avatar:"enemy_boss"
 };
 const GRAPHIC_FALLBACK_ONLY=new Set();
-const CUTOUT_ASSETS=new Set(["player_archer","door_blue","door_red","door_gold","npc_quest","npc_merchant","npc_arcanist",...ASSET_NAMES.filter(name=>name.startsWith('enemy_')||name.startsWith('boss_')||name.startsWith('armor_')||name.startsWith('weapon_'))]);
+const CUTOUT_ASSETS=new Set(["player_archer","door_blue","door_red","door_gold","npc_quest","npc_merchant","npc_arcanist",...ASSET_NAMES.filter(name=>name.startsWith('enemy_')||name.startsWith('boss_')||name.startsWith('armor_')||name.startsWith('weapon_')||name.startsWith('house'))]);
 const images=new Map(),cutoutImages=new Map(),cutoutAttempted=new Set(),missingImages=new Set();
 function graphicKey(name){return GRAPHIC_ALIASES[name]||name}
 function prepareCutout(name,img,force=false){
@@ -1368,8 +1369,9 @@ function canonicalRoomDepth(roomId,fallback=0){
   return Math.max(0,variant.legendMode?variant.baseDepth:variant.baseDepth+variant.areaLevel-1);
 }
 function sharedDungeonRunToken(){return SHARED_DUNGEON_INSTANCE_TOKEN}
-function playerMatchesCurrentRoom(player){return !!player&&player.roomId===currentRoomId&&Number(player.depth)===Number(currentDepth)}
-function roomHasLivePlayers(roomValue,t=now()){const cutoff=t-PLAYER_STALE_MS;return Object.values(roomValue?.players||{}).some(player=>player&&Number(player.lastSeenMs||0)>=cutoff&&player.roomId===roomValue?.meta?.roomId&&Number(player.depth)===Number(roomValue?.meta?.depth))}
+function sameActiveRoomScope(player,roomId,depth){if(!player||player.roomId!==roomId)return false;return isSafeRoomId(roomId)||Number(player.depth)===Number(depth)}
+function playerMatchesCurrentRoom(player){return sameActiveRoomScope(player,currentRoomId,currentDepth)}
+function roomHasLivePlayers(roomValue,t=now()){const cutoff=t-PLAYER_STALE_MS,roomId=roomValue?.meta?.roomId,depth=roomValue?.meta?.depth;return Object.values(roomValue?.players||{}).some(player=>player&&Number(player.lastSeenMs||0)>=cutoff&&sameActiveRoomScope(player,roomId,depth))}
 function defaultProfile(){
   const starter={id:'starter-bow',baseId:'basic_bow',kind:'weapon',rarity:'Common',prefix:null,suffix:null,level:1,upgradeLevel:0,createdAtMs:now()};
   const suit={id:'starter-suit',baseId:'leather_suit',kind:'armor',rarity:'Common',prefix:null,suffix:null,level:1,upgradeLevel:0,createdAtMs:now()};
@@ -1519,34 +1521,69 @@ function enemyStaggerScaleForLevel(enemyLevel,boss=false){return 1+Math.max(1,Nu
 function enemyTempoScaleForLevel(enemyLevel){return clamp(1-Math.max(1,Number(enemyLevel)||1)*.00072,.7,1)}
 function enemyRewardLevel(enemy){return Math.max(1,Number(enemy?.enemyLevel)||dungeonTargetLevel(map)||1)}
 function generateTown(roomId,depth){
-  const w=42,h=26,tiles=Array.from({length:h},()=>Array(w).fill(1));for(let y=2;y<h-2;y++)for(let x=2;x<w-2;x++)tiles[y][x]=0;
+  const w=60,h=38,tiles=Array.from({length:h},()=>Array(w).fill(1));for(let y=2;y<h-2;y++)for(let x=2;x<w-2;x++)tiles[y][x]=0;
   const tier=Math.max(0,Number(String(roomId).split("-").pop())||0),baseDepth=tier*4;
   const doors=[
-    {id:'crypt',type:'red',name:'Sunken Crypt',x:37,y:3,target:`dungeon-${baseDepth+1}-crypt`,targetDepth:baseDepth+1,difficulty:'Novice'},
-    {id:'goblin',type:'red',name:'Scrapfang Warrens',x:38,y:6,target:`dungeon-${baseDepth+2}-goblin`,targetDepth:baseDepth+2,difficulty:'Seasoned'},
-    {id:'cult',type:'red',name:'Bloodglass Sanctum',x:38,y:9,target:`dungeon-${baseDepth+3}-cult`,targetDepth:baseDepth+3,difficulty:'Veteran'},
-    {id:'crystal',type:'red',name:'Prismdeep Caverns',x:38,y:12,target:`dungeon-${baseDepth+3}-crystal`,targetDepth:baseDepth+3,difficulty:'Veteran',unlockKey:'route:crystal'},
-    {id:'brood',type:'red',name:'Broodmother Nest',x:38,y:15,target:`dungeon-${baseDepth+4}-brood`,targetDepth:baseDepth+4,difficulty:'Deadly'},
-    {id:'infernal',type:'red',name:'Cinder Cathedral',x:38,y:18,target:`dungeon-${baseDepth+5}-infernal`,targetDepth:baseDepth+5,difficulty:'Deadly',unlockKey:'route:infernal'},
-    {id:'fey',type:'red',name:'Thornwake Grove',x:38,y:21,target:`dungeon-${baseDepth+5}-fey`,targetDepth:baseDepth+5,difficulty:'Deadly',unlockKey:'route:fey'},
-    {id:'void',type:'red',name:'Void Hollows',x:35,y:22,target:`dungeon-${baseDepth+6}-void`,targetDepth:baseDepth+6,difficulty:'Mythic',unlockKey:'route:void'},
-    {id:'ember',type:'red',name:'Ember Warrens',x:23,y:2,target:`dungeon-${baseDepth+2}-ember`,targetDepth:baseDepth+2,difficulty:'Legacy'},
-    {id:'arcane',type:'red',name:'Arcane Vault',x:27,y:2,target:`dungeon-${baseDepth+3}-arcane`,targetDepth:baseDepth+3,difficulty:'Legacy'},
-    {id:'plague',type:'red',name:'Plague Descent',x:31,y:2,target:`dungeon-${baseDepth+4}-plague`,targetDepth:baseDepth+4,difficulty:'Legacy'}
-    ,{id:'frostspire',type:'red',name:'Frostspire Citadel',x:2,y:3,target:'dungeon-15-frostspire',targetDepth:15,difficulty:'Ascendant'}
-    ,{id:'stormbreak',type:'red',name:'Stormbreak Observatory',x:2,y:7,target:'dungeon-19-stormbreak',targetDepth:19,difficulty:'Ascendant'}
-    ,{id:'leviathan',type:'red',name:'Leviathan Trench',x:2,y:11,target:'dungeon-23-leviathan',targetDepth:23,difficulty:'Mythic'}
-    ,{id:'eclipse',type:'red',name:'Eclipse Throne',x:2,y:15,target:'dungeon-27-eclipse',targetDepth:27,difficulty:'Mythic'}
-    ,{id:'worldscar',type:'red',name:'Worldscar Crucible',x:2,y:19,target:'dungeon-30-worldscar',targetDepth:30,difficulty:'Apex'}
+    {id:'crypt',type:'red',name:'Sunken Crypt',target:`dungeon-${baseDepth+1}-crypt`,targetDepth:baseDepth+1,difficulty:'Novice'},
+    {id:'goblin',type:'red',name:'Scrapfang Warrens',target:`dungeon-${baseDepth+2}-goblin`,targetDepth:baseDepth+2,difficulty:'Seasoned'},
+    {id:'cult',type:'red',name:'Bloodglass Sanctum',target:`dungeon-${baseDepth+3}-cult`,targetDepth:baseDepth+3,difficulty:'Veteran'},
+    {id:'crystal',type:'red',name:'Prismdeep Caverns',target:`dungeon-${baseDepth+3}-crystal`,targetDepth:baseDepth+3,difficulty:'Veteran',unlockKey:'route:crystal'},
+    {id:'brood',type:'red',name:'Broodmother Nest',target:`dungeon-${baseDepth+4}-brood`,targetDepth:baseDepth+4,difficulty:'Deadly'},
+    {id:'infernal',type:'red',name:'Cinder Cathedral',target:`dungeon-${baseDepth+5}-infernal`,targetDepth:baseDepth+5,difficulty:'Deadly',unlockKey:'route:infernal'},
+    {id:'fey',type:'red',name:'Thornwake Grove',target:`dungeon-${baseDepth+5}-fey`,targetDepth:baseDepth+5,difficulty:'Deadly',unlockKey:'route:fey'},
+    {id:'void',type:'red',name:'Void Hollows',target:`dungeon-${baseDepth+6}-void`,targetDepth:baseDepth+6,difficulty:'Mythic',unlockKey:'route:void'},
+    {id:'ember',type:'red',name:'Ember Warrens',target:`dungeon-${baseDepth+2}-ember`,targetDepth:baseDepth+2,difficulty:'Legacy'},
+    {id:'arcane',type:'red',name:'Arcane Vault',target:`dungeon-${baseDepth+3}-arcane`,targetDepth:baseDepth+3,difficulty:'Legacy'},
+    {id:'plague',type:'red',name:'Plague Descent',target:`dungeon-${baseDepth+4}-plague`,targetDepth:baseDepth+4,difficulty:'Legacy'},
+    {id:'frostspire',type:'red',name:'Frostspire Citadel',target:'dungeon-15-frostspire',targetDepth:15,difficulty:'Ascendant'},
+    {id:'stormbreak',type:'red',name:'Stormbreak Observatory',target:'dungeon-19-stormbreak',targetDepth:19,difficulty:'Ascendant'},
+    {id:'leviathan',type:'red',name:'Leviathan Trench',target:'dungeon-23-leviathan',targetDepth:23,difficulty:'Mythic'},
+    {id:'eclipse',type:'red',name:'Eclipse Throne',target:'dungeon-27-eclipse',targetDepth:27,difficulty:'Mythic'},
+    {id:'worldscar',type:'red',name:'Worldscar Crucible',target:'dungeon-30-worldscar',targetDepth:30,difficulty:'Apex'}
   ];
   for(const d of doors){const route=DUNGEON_ROUTES[d.id];d.recommendedLevel=route?.recommendedLevel||recommendedLevels(d.targetDepth,route?.danger||0);d.levelRequirement=Number(route?.minLevel)||0;d.difficulty=route?.difficultyTier||d.difficulty;d.faction=route?.faction||'Unknown';d.desc=`${route?.desc||'A dangerous legacy passage.'} Faction: ${d.faction}. Standard enemy band: Level ${route?.recommendedLevel||d.recommendedLevel}. Gold clear: Level ${GOLD_ENEMY_LEVEL}.`}
   doors.sort((a,b)=>Number(a.levelRequirement||String(a.recommendedLevel).match(/\d+/)?.[0]||0)-Number(b.levelRequirement||String(b.recommendedLevel).match(/\d+/)?.[0]||0)||Number(DUNGEON_ROUTES[a.id]?.danger||0)-Number(DUNGEON_ROUTES[b.id]?.danger||0)||a.name.localeCompare(b.name));
-  doors.forEach((door,index)=>{door.difficultyRank=index+1;door.x=index<8?39:2;door.y=2+(index%8)*3;door.gold=dungeonDoorIsGold(door)});
-  const huts=[{id:'forge',name:'Ironhand Forge',x:6,y:3,w:5,h:4,doorX:8,doorY:6,roof:'#8c5638'},{id:'arcane',name:'Vale Enchanting',x:13,y:3,w:5,h:4,doorX:15,doorY:6,roof:'#554b78'},{id:'herbalist',name:'Fen Alchemy',x:7,y:18,w:5,h:4,doorX:9,doorY:18,roof:'#5c6f3c'},{id:'relic',name:'Greyglass Relics',x:15,y:18,w:5,h:4,doorX:17,doorY:18,roof:'#365f68'}];
+  doors.forEach((door,index)=>{const slot=Math.floor(index/2);door.x=index%2===0?2:w-3;door.y=3+slot*4;door.difficultyRank=index+1;door.gold=dungeonDoorIsGold(door)});
+
+  const huts=[
+    {id:'forge',name:'Ironhand Forge',kind:'shop',graphic:'house1',x:8,y:4,w:5,h:4,doorX:10,doorY:7},
+    {id:'arcane',name:'Vale Enchanting',kind:'shop',graphic:'house2',x:15,y:4,w:5,h:4,doorX:17,doorY:7},
+    {id:'weapons',name:'Steelstring Weapons',kind:'shop',graphic:'house3',x:40,y:4,w:5,h:4,doorX:42,doorY:7},
+    {id:'armor',name:'Stoneplate Armory',kind:'shop',graphic:'house1',x:47,y:4,w:5,h:4,doorX:49,doorY:7},
+    {id:'provisions',name:'Quickflask Provisions',kind:'shop',graphic:'house2',x:8,y:14,w:5,h:4,doorX:10,doorY:17},
+    {id:'arcanist-home',name:'Ilya\'s Rune House',kind:'house',graphic:'house3',x:15,y:14,w:5,h:4,doorX:17,doorY:17},
+    {id:'guildhall',name:'Havenfall Guildhall',kind:'house',graphic:'house',x:24,y:14,w:5,h:4,doorX:26,doorY:17},
+    {id:'quartermaster',name:'Quartermaster Market',kind:'shop',graphic:'house1',x:33,y:14,w:5,h:4,doorX:35,doorY:17},
+    {id:'wayfinder',name:'Wayfinder Maps',kind:'shop',graphic:'house2',x:42,y:14,w:5,h:4,doorX:44,doorY:17},
+    {id:'commonstock',name:'Commonstock Supplies',kind:'shop',graphic:'house3',x:49,y:14,w:5,h:4,doorX:51,doorY:17},
+    {id:'chapel',name:'Vale Chapel',kind:'house',graphic:'house1',x:8,y:25,w:5,h:4,doorX:10,doorY:28},
+    {id:'alchemy',name:'Fen Alchemy',kind:'shop',graphic:'house2',x:15,y:25,w:5,h:4,doorX:17,doorY:28},
+    {id:'spellbroker',name:'Rook\'s Spell House',kind:'shop',graphic:'house3',x:24,y:25,w:5,h:4,doorX:26,doorY:28},
+    {id:'lockbox',name:'Nessa\'s Lockbox',kind:'house',graphic:'house',x:33,y:25,w:5,h:4,doorX:35,doorY:28},
+    {id:'relic',name:'Greyglass Relics',kind:'shop',graphic:'house1',x:42,y:25,w:5,h:4,doorX:44,doorY:28}
+  ];
   for(const hut of huts){for(let y=hut.y;y<hut.y+hut.h;y++)for(let x=hut.x;x<hut.x+hut.w;x++)tiles[y][x]=1;tiles[hut.doorY][hut.doorX]=0}
-  const npcs=[{id:'captain',role:'quest',name:'Captain Elian',graphic:'npc_quest',x:11,y:11,desc:'Posts contracts for threats beyond the gates.'},{id:'merchant',role:'store_general',name:'Mara the Quartermaster',graphic:'npc_merchant',x:20,y:13,desc:'Sells a rotating selection of essentials.'},{id:'arcanist',role:'quest',name:'Arcanist Ilya',graphic:'npc_arcanist',x:23,y:8,desc:'Studies magical creatures and rare spellcraft.'},{id:'sister',role:'quest',name:'Sister Vale',graphic:'npc_quest',x:25,y:17,desc:'Rewards hunters who quiet the restless dead.'},{id:'blacksmith',role:'blacksmith',name:'Bram Ironhand',graphic:'npc_merchant',x:9,y:8,desc:'Forges weapons and armor, then reforges them into higher-star versions using dungeon materials.'},{id:'enchanter',role:'enchanter',name:'Selene Vale',graphic:'npc_arcanist',x:16,y:8,desc:'Rerolls prefixes and suffixes and previews enchantments.'},{id:'alchemist',role:'alchemist',name:'Mira Fen',graphic:'npc_quest',x:10,y:17,desc:'Crafts potions and resistance mixtures.'},{id:'cartographer',role:'cartographer',name:'Orin Wayfinder',graphic:'npc_quest',x:28,y:12,desc:'Charts discovered routes, danger, and alternate branches.'},{id:'appraiser',role:'appraiser',name:'Tomas Greyglass',graphic:'npc_arcanist',x:18,y:17,desc:'Manages relics and converts unwanted finds.'},{id:'provisioner',role:'store_provisions',name:'Pippa Quickflask',graphic:'npc_merchant',x:5,y:13,desc:'Keeps health and mana potions within easy reach.'},{id:'weaponsmith',role:'store_weapons',name:'Doran Steelstring',graphic:'npc_merchant',x:29,y:9,desc:'Stocks bows, blades, spears, repeaters, and heavy weapons.'},{id:'armorer',role:'store_armor',name:'Helga Stoneplate',graphic:'npc_merchant',x:30,y:16,desc:'Sells defensive suits for several weapon and spell builds.'},{id:'spellbroker',role:'store_arcane',name:'Rook the Spellbroker',graphic:'npc_arcanist',x:21,y:20,desc:'Trades spellbooks, wands, and unusual magical weapons.'},{id:'stash',role:'stash',name:'Nessa Lockbox',graphic:'npc_merchant',x:25,y:12,desc:'Keeps account equipment safe outside the carried inventory.'},{id:'bounty',role:'bounty',name:'Havenfall Bounty Board',graphic:'npc_quest',x:30,y:17,desc:'Tracks elite, faction, and boss bounties.'},{id:'materials',role:'store_materials',name:'Corin Commonstock',graphic:'npc_merchant',x:34,y:12,desc:'Sells dependable common supplies: Iron Shards and Arcane Dust. Rare dungeon materials are never stocked.'}];
-  if(roomId===ARENA_HUB_ROOM_ID){npcs.push({id:'arena-master',role:'arena_master',name:'Havenfall Arena Gate',graphic:'',x:20,y:7,interactRange:3,desc:'Stand within three spaces and enter the ranked arena lobby managed by Arena Master Kael.'},{id:'arena-leaderboard',role:'arena_leaderboard',name:'Arena Champions Board',graphic:'',x:24,y:7,interactRange:3,desc:'Displays the ten highest current player ELO ratings.'})}
-  for(const d of doors)tiles[d.y][d.x]=0;return{roomId,depth,w,h,tiles,rooms:[],spawn:{x:4,y:11},doors,npcs,huts,isTown:true,endRoom:null};
+  const front=(buildingId,offsetX=0,offsetY=1)=>{const hut=huts.find(value=>value.id===buildingId);return{x:hut.doorX+offsetX,y:hut.doorY+offsetY,homeId:buildingId}};
+  const npcs=[
+    {id:'captain',role:'quest',name:'Captain Elian',graphic:'npc_quest',...front('guildhall'),desc:'Posts contracts for threats beyond the gates.'},
+    {id:'merchant',role:'store_general',name:'Mara the Quartermaster',graphic:'npc_merchant',...front('quartermaster'),desc:'Sells a rotating selection of essentials.'},
+    {id:'arcanist',role:'quest',name:'Arcanist Ilya',graphic:'npc_arcanist',...front('arcanist-home'),desc:'Studies magical creatures and rare spellcraft.'},
+    {id:'sister',role:'quest',name:'Sister Vale',graphic:'npc_quest',...front('chapel'),desc:'Rewards hunters who quiet the restless dead.'},
+    {id:'blacksmith',role:'blacksmith',name:'Bram Ironhand',graphic:'npc_merchant',...front('forge'),desc:'Forges weapons and armor, then reforges them into higher-star versions using dungeon materials.'},
+    {id:'enchanter',role:'enchanter',name:'Selene Vale',graphic:'npc_arcanist',...front('arcane'),desc:'Rerolls prefixes and suffixes and previews enchantments.'},
+    {id:'alchemist',role:'alchemist',name:'Mira Fen',graphic:'npc_quest',...front('alchemy'),desc:'Crafts potions and resistance mixtures.'},
+    {id:'cartographer',role:'cartographer',name:'Orin Wayfinder',graphic:'npc_quest',...front('wayfinder'),desc:'Charts discovered routes, danger, and alternate branches.'},
+    {id:'appraiser',role:'appraiser',name:'Tomas Greyglass',graphic:'npc_arcanist',...front('relic'),desc:'Manages relics and converts unwanted finds.'},
+    {id:'provisioner',role:'store_provisions',name:'Pippa Quickflask',graphic:'npc_merchant',...front('provisions'),desc:'Keeps health and mana potions within easy reach.'},
+    {id:'weaponsmith',role:'store_weapons',name:'Doran Steelstring',graphic:'npc_merchant',...front('weapons'),desc:'Stocks bows, blades, spears, repeaters, and heavy weapons.'},
+    {id:'armorer',role:'store_armor',name:'Helga Stoneplate',graphic:'npc_merchant',...front('armor'),desc:'Sells defensive suits for several weapon and spell builds.'},
+    {id:'spellbroker',role:'store_arcane',name:'Rook the Spellbroker',graphic:'npc_arcanist',...front('spellbroker'),desc:'Trades spellbooks, wands, and unusual magical weapons.'},
+    {id:'stash',role:'stash',name:'Nessa Lockbox',graphic:'npc_merchant',...front('lockbox'),desc:'Keeps account equipment safe outside the carried inventory.'},
+    {id:'bounty',role:'bounty',name:'Havenfall Bounty Board',graphic:'npc_quest',x:51,y:27,desc:'Tracks elite, faction, and boss bounties.'},
+    {id:'materials',role:'store_materials',name:'Corin Commonstock',graphic:'npc_merchant',...front('commonstock'),desc:'Sells dependable common supplies: Iron Shards and Arcane Dust. Rare dungeon materials are never stocked.'}
+  ];
+  if(roomId===ARENA_HUB_ROOM_ID){npcs.push({id:'arena-master',role:'arena_master',name:'Havenfall Arena Gate',graphic:'',x:28,y:6,interactRange:3,desc:'Stand within three spaces and enter the ranked arena lobby managed by Arena Master Kael.'},{id:'arena-leaderboard',role:'arena_leaderboard',name:'Arena Champions Board',graphic:'',x:32,y:6,interactRange:3,desc:'Displays the ten highest current player ELO ratings.'})}
+  for(const d of doors)tiles[d.y][d.x]=0;return{roomId,depth,w,h,tiles,rooms:[],spawn:{x:29,y:33},doors,npcs,huts,isTown:true,endRoom:null};
 }
 function generateDungeon(roomId,depth){
   if(isArenaRoomId(roomId))return generateArena(roomId,depth);
@@ -3006,7 +3043,11 @@ function drawSprite(name,x,y,size=52,emoji='?',filter='none',lift=0){const p=wor
 function drawContainedSprite(name,x,y,maxWidth=92,maxHeight=118,emoji='🚪',filter='none',lift=0){const p=worldToScreen(x,y,12+lift),img=drawableGraphic(name),resolved=graphicKey(name);if(imageReady(img)&&!missingImages.has(resolved)){const iw=Math.max(1,Number(img.naturalWidth||img.width)||1),ih=Math.max(1,Number(img.naturalHeight||img.height)||1),scale=Math.min(maxWidth*cam.zoom/iw,maxHeight*cam.zoom/ih),w=iw*scale,h=ih*scale;ctx.save();ctx.filter=filter||'none';ctx.drawImage(img,p.x-w/2,p.y-h*.82,w,h);ctx.restore();return true}ctx.font=`${Math.max(20,38*cam.zoom)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(emoji,p.x,p.y-18*cam.zoom);return false}
 function drawHealthBar(entity,maxHp,color='#e85762'){const p=worldToScreen(entity.x,entity.y,52),w=44*cam.zoom,h=5*cam.zoom;ctx.fillStyle='rgba(0,0,0,.75)';ctx.fillRect(p.x-w/2,p.y,w,h);ctx.fillStyle=color;ctx.fillRect(p.x-w/2,p.y,w*clamp(entity.hp/maxHp,0,1),h)}
 function drawPlayerHealthBar(entity,maxHp,level,color='#72b9ff'){const p=worldToScreen(entity.x,entity.y,84),w=56*cam.zoom,h=Math.max(6,7*cam.zoom),r=Math.max(8,10*cam.zoom),barX=p.x-w/2+r*.72,barW=w-r*.72;ctx.save();ctx.fillStyle='rgba(1,5,4,.9)';ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=Math.max(1,1.25*cam.zoom);ctx.beginPath();ctx.roundRect(barX,p.y-h/2,barW,h,h/2);ctx.fill();ctx.stroke();ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(barX+1,p.y-h/2+1,Math.max(0,(barW-2)*clamp(Number(entity.hp)/Math.max(1,Number(maxHp)||1),0,1)),Math.max(1,h-2),(h-2)/2);ctx.fill();ctx.fillStyle='#07100d';ctx.strokeStyle=color;ctx.lineWidth=Math.max(2,2.2*cam.zoom);ctx.beginPath();ctx.arc(p.x-w/2+r*.72,p.y,r,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle='#fff';ctx.font=`1000 ${Math.max(8,9*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(Math.max(1,Math.floor(Number(level)||1))),p.x-w/2+r*.72,p.y+.5);ctx.restore()}
-function drawHut(h){const cx=h.x+(h.w-1)/2,cy=h.y+(h.h-1)/2;if(!isVisibleTile(Math.round(cx),Math.round(cy)))return;const corners=[worldToScreen(h.x,h.y,58),worldToScreen(h.x+h.w-1,h.y,58),worldToScreen(h.x+h.w-1,h.y+h.h-1,58),worldToScreen(h.x,h.y+h.h-1,58)];ctx.beginPath();ctx.moveTo(corners[0].x,corners[0].y);for(let i=1;i<corners.length;i++)ctx.lineTo(corners[i].x,corners[i].y);ctx.closePath();ctx.fillStyle=h.roof||"#7d5038";ctx.fill();ctx.strokeStyle="rgba(255,220,170,.55)";ctx.lineWidth=2;ctx.stroke();const p=worldToScreen(cx,cy,84);ctx.fillStyle="#ffe2ad";ctx.font=`bold ${Math.max(8,9*cam.zoom)}px sans-serif`;ctx.textAlign="center";ctx.fillText(h.name,p.x,p.y)}
+function drawHut(h){
+  const cx=h.x+(h.w-1)/2,cy=h.y+(h.h-1)/2;if(!isVisibleTile(Math.round(cx),Math.round(cy)))return;
+  if(h.graphic){const base=worldToScreen(cx,cy,4),label=worldToScreen(cx,cy,142),maxWidth=Math.max(126,Number(h.w||4)*34),maxHeight=Math.max(118,Number(h.h||3)*39);ctx.save();ctx.globalAlpha=.34;ctx.fillStyle='rgba(0,0,0,.78)';ctx.beginPath();ctx.ellipse(base.x,base.y,48*cam.zoom,19*cam.zoom,0,0,Math.PI*2);ctx.fill();ctx.restore();drawContainedSprite(h.graphic,cx,cy,maxWidth,maxHeight,'🏠','none',56);ctx.save();ctx.fillStyle='rgba(3,8,6,.9)';ctx.strokeStyle='rgba(255,226,173,.42)';ctx.lineWidth=1;ctx.font=`bold ${Math.max(8,9*cam.zoom)}px sans-serif`;ctx.textAlign='center';const width=ctx.measureText(h.name).width+12;ctx.beginPath();ctx.roundRect(label.x-width/2,label.y-11*cam.zoom,width,16*cam.zoom,6);ctx.fill();ctx.stroke();ctx.fillStyle='#ffe2ad';ctx.fillText(h.name,label.x,label.y);ctx.restore();return}
+  const corners=[worldToScreen(h.x,h.y,58),worldToScreen(h.x+h.w-1,h.y,58),worldToScreen(h.x+h.w-1,h.y+h.h-1,58),worldToScreen(h.x,h.y+h.h-1,58)];ctx.beginPath();ctx.moveTo(corners[0].x,corners[0].y);for(let i=1;i<corners.length;i++)ctx.lineTo(corners[i].x,corners[i].y);ctx.closePath();ctx.fillStyle=h.roof||'#7d5038';ctx.fill();ctx.strokeStyle='rgba(255,220,170,.55)';ctx.lineWidth=2;ctx.stroke();const p=worldToScreen(cx,cy,84);ctx.fillStyle='#ffe2ad';ctx.font=`bold ${Math.max(8,9*cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.fillText(h.name,p.x,p.y)
+}
 function doorGraphicName(d){return dungeonDoorIsGold(d)?'door_gold':d.type==='blue'?'door_blue':'door_red'}
 function drawDoor(d){if(!isVisibleTile(d.x,d.y)&&!discovered.has(keyXY(d.x,d.y)))return;const locked=doorLocked(d)||roomChallengeSealsExits(),gold=dungeonDoorIsGold(d),color=gold?'#ffd75e':locked?'#b86a70':d.type==='blue'?'#78d8ff':'#ff7c72',base=worldToScreen(d.x,d.y,15),top=worldToScreen(d.x,d.y,58);drawDiamond(d.x,d.y,gold?'rgba(220,168,35,.3)':locked?'rgba(105,40,48,.3)':d.type==='blue'?'rgba(70,170,230,.28)':'rgba(220,70,58,.28)',color);ctx.save();ctx.strokeStyle=color;ctx.globalAlpha=.78;ctx.lineWidth=Math.max(2,3*cam.zoom);ctx.beginPath();ctx.moveTo(base.x,base.y);ctx.lineTo(top.x,top.y);ctx.stroke();ctx.globalAlpha=1;ctx.fillStyle=color;ctx.beginPath();ctx.arc(base.x,base.y,Math.max(3,5*cam.zoom),0,Math.PI*2);ctx.fill();ctx.restore();const graphicName=doorGraphicName(d),shown=drawContainedSprite(graphicName,d.x,d.y,104,132,'🚪',locked?'grayscale(.45)':'none',48);if(!shown&&gold)drawContainedSprite('door_red',d.x,d.y,104,132,'🚪','sepia(1) saturate(2.2)',48)}
 function drawDoorLabel(d){if(!isVisibleTile(d.x,d.y)&&!discovered.has(keyXY(d.x,d.y)))return;const locked=doorLocked(d)||roomChallengeSealsExits(),gold=dungeonDoorIsGold(d),levelBlocked=Number(d.levelRequirement)>Number(localPlayer.level),p=worldToScreen(d.x,d.y,148),rank=d.difficultyRank?`#${d.difficultyRank} · `:'',suggestion=gold?`GOLD · Lv ${GOLD_ENEMY_LEVEL} unlocked`:d.recommendedLevel?`${rank}Enemy Band ${d.recommendedLevel}${d.difficulty?` · ${d.difficulty}`:''}`:'',title=locked&&!levelBlocked?'Sealed':d.name,fontSize=Math.max(9,10*cam.zoom);ctx.save();ctx.font=`bold ${fontSize}px sans-serif`;const width=Math.max(ctx.measureText(title).width,ctx.measureText(suggestion).width)+12;ctx.textAlign='center';ctx.fillStyle=gold?'rgba(62,42,5,.95)':'rgba(2,6,5,.92)';ctx.strokeStyle=gold?'#ffd75e':'rgba(255,255,255,.28)';ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(p.x-width/2,p.y-fontSize-6,width,suggestion?fontSize*2.7:fontSize*1.7,6);ctx.fill();ctx.stroke();ctx.lineWidth=3;ctx.strokeStyle='#000';ctx.strokeText(title,p.x,p.y);ctx.fillStyle=gold?'#ffe89a':locked?'#d17c7c':d.type==='blue'?'#8fd8ff':'#f4a2a2';ctx.fillText(title,p.x,p.y);if(suggestion){ctx.font=`bold ${Math.max(8,9*cam.zoom)}px sans-serif`;ctx.strokeText(suggestion,p.x,p.y+13*cam.zoom);ctx.fillStyle=gold?'#ffd75e':'#ffe39a';ctx.fillText(suggestion,p.x,p.y+13*cam.zoom)}ctx.restore()}
