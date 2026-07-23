@@ -1,4 +1,4 @@
-name: Run Academy Research Artifact on PR
+name: Export Current Academy Source
 
 on:
   pull_request:
@@ -9,53 +9,19 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  export:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Execute contained Academy patch script
-        shell: python
-        continue-on-error: true
-        run: |
-          from pathlib import Path
-          import traceback
-          try:
-              workflow = Path('.github/workflows/build-academy-research-optimized.yml').read_text(encoding='utf-8')
-              anchor = workflow.index('      - name: Patch Academy Research workspace only')
-              start = workflow.index('        run: |\n', anchor) + len('        run: |\n')
-              end = workflow.index('\n      - name: Basic structural checks', start)
-              block = workflow[start:end]
-              code = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines()) + '\n'
-              Path('extracted_academy_patch.py').write_text(code, encoding='utf-8')
-              exec(compile(code, 'extracted_academy_patch.py', 'exec'), {})
-          except Exception:
-              details = traceback.format_exc()
-              print(details)
-              Path('academy_patch_failure.txt').write_text(details, encoding='utf-8')
-      - name: Basic structural checks
-        id: checks
-        continue-on-error: true
+      - name: Package current Academy source
         shell: bash
         run: |
-          test -f Academy_Research_Focused_Optimized.txt
-          grep -q "Research Focus Lab" Academy_Research_Focused_Optimized.txt
-          grep -q "Focused Graph Builder" Academy_Research_Focused_Optimized.txt
-          grep -q "loadModels(); loadResearchItems(); loadMetrics(); loadOrgs(); wire();" Academy_Research_Focused_Optimized.txt
-          test "$(grep -c '<!doctype html>' Academy_Research_Focused_Optimized.txt)" -eq 1
-          test "$(grep -c '</html>' Academy_Research_Focused_Optimized.txt)" -eq 1
-          wc -l -c Academy_Research_Focused_Optimized.txt
-      - name: Upload build outputs
-        if: always()
+          cp game/Academy.html Academy_Current_Source.txt
+          wc -l -c Academy_Current_Source.txt
+      - name: Upload exact source
         uses: actions/upload-artifact@v4
         with:
-          name: Academy_Research_Focused_Optimized
-          path: |
-            Academy_Research_Focused_Optimized.txt
-            academy_patch_failure.txt
-            extracted_academy_patch.py
+          name: Academy_Current_Source
+          path: Academy_Current_Source.txt
           if-no-files-found: error
           retention-days: 7
-      - name: Fail when TXT was not produced
-        if: always()
-        shell: bash
-        run: test -f Academy_Research_Focused_Optimized.txt
