@@ -1,0 +1,42 @@
+name: Run Academy Research Artifact on PR
+
+on:
+  pull_request:
+    branches:
+      - agent/academy-research-workflow-base
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute contained Academy patch script
+        shell: python
+        run: |
+          from pathlib import Path
+          import textwrap
+          workflow = Path('.github/workflows/build-academy-research-optimized.yml').read_text(encoding='utf-8')
+          start = workflow.index('        run: |\n', workflow.index('Patch Academy Research workspace only')) + len('        run: |\n')
+          end = workflow.index('\n      - name: Basic structural checks', start)
+          block = workflow[start:end]
+          code = textwrap.dedent(block)
+          exec(compile(code, 'academy_patch_from_workflow.py', 'exec'), {})
+      - name: Basic structural checks
+        shell: bash
+        run: |
+          grep -q "Research Focus Lab" Academy_Research_Focused_Optimized.txt
+          grep -q "Focused Graph Builder" Academy_Research_Focused_Optimized.txt
+          grep -q "loadModels(); loadResearchItems(); loadMetrics(); loadOrgs(); wire();" Academy_Research_Focused_Optimized.txt
+          test "$(grep -c '<!doctype html>' Academy_Research_Focused_Optimized.txt)" -eq 1
+          test "$(grep -c '</html>' Academy_Research_Focused_Optimized.txt)" -eq 1
+          wc -l -c Academy_Research_Focused_Optimized.txt
+      - name: Upload complete TXT file
+        uses: actions/upload-artifact@v4
+        with:
+          name: Academy_Research_Focused_Optimized
+          path: Academy_Research_Focused_Optimized.txt
+          if-no-files-found: error
+          retention-days: 7
