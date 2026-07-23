@@ -18,14 +18,14 @@ jobs:
         continue-on-error: true
         run: |
           from pathlib import Path
-          import textwrap, traceback
+          import traceback
           try:
               workflow = Path('.github/workflows/build-academy-research-optimized.yml').read_text(encoding='utf-8')
               anchor = workflow.index('      - name: Patch Academy Research workspace only')
               start = workflow.index('        run: |\n', anchor) + len('        run: |\n')
               end = workflow.index('\n      - name: Basic structural checks', start)
               block = workflow[start:end]
-              code = textwrap.dedent(block)
+              code = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines()) + '\n'
               Path('extracted_academy_patch.py').write_text(code, encoding='utf-8')
               exec(compile(code, 'extracted_academy_patch.py', 'exec'), {})
           except Exception:
