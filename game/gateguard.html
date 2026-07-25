@@ -458,6 +458,124 @@
       cursor: pointer;
     }
 
+
+    .gameover {
+      width: min(92vw, 420px);
+      max-height: calc(100vh - 36px);
+      overflow-y: auto;
+    }
+
+    .highscores {
+      width: min(100%, 340px);
+      margin: 20px auto 18px;
+      border-top: 1.5px solid var(--black);
+      text-align: left;
+    }
+
+    .highscores-head {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--black);
+    }
+
+    .highscores-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+    }
+
+    .name-pencil {
+      width: 36px;
+      height: 34px;
+      border: 0;
+      background: var(--white);
+      font-size: 21px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .name-pencil[hidden] {
+      display: none;
+    }
+
+    .highscores-status {
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.07em;
+      text-align: center;
+      border-bottom: 1px solid var(--gray);
+    }
+
+    .highscore-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .highscore-row {
+      min-height: 31px;
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      border-bottom: 1px solid var(--gray);
+      font-size: 12px;
+    }
+
+    .highscore-row.current {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    .highscore-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .name-editor {
+      display: none;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--black);
+    }
+
+    .name-editor.show {
+      display: grid;
+    }
+
+    .name-input,
+    .name-save {
+      height: 38px;
+      border: 1.5px solid var(--black);
+      border-radius: 0;
+      background: var(--white);
+      color: var(--black);
+      font: inherit;
+    }
+
+    .name-input {
+      min-width: 0;
+      padding: 0 10px;
+      text-transform: uppercase;
+    }
+
+    .name-save {
+      min-width: 66px;
+      padding: 0 10px;
+      background: var(--black);
+      color: var(--white);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
     @media (max-width: 520px) {
       body {
         padding-left: 6px;
@@ -544,10 +662,25 @@
     <div class="gameover">
       <div class="gameover-number" id="finalRound">0</div>
       <div class="gameover-label">ROUNDS SURVIVED</div>
+      <section class="highscores" aria-label="Top ten high scores">
+        <div class="highscores-head">
+          <span class="highscores-title">TOP 10</span>
+          <button class="name-pencil" id="namePencil" type="button" aria-label="Write your high-score name" title="Write your name" hidden>✎</button>
+        </div>
+        <div class="highscores-status" id="highscoresStatus" aria-live="polite">CONNECTING…</div>
+        <form class="name-editor" id="nameEditor">
+          <input class="name-input" id="highscoreName" type="text" maxlength="16" autocomplete="nickname" aria-label="High-score name" value="PLAYER">
+          <button class="name-save" id="nameSave" type="submit">SAVE</button>
+        </form>
+        <ol class="highscore-list" id="highscoreList"></ol>
+      </section>
       <button class="restart" id="restartButton" type="button">RESTART</button>
     </div>
   </div>
 
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script>
     "use strict";
 
@@ -591,6 +724,12 @@
     const gameOverOverlay = document.getElementById("gameOverOverlay");
     const finalRound = document.getElementById("finalRound");
     const restartButton = document.getElementById("restartButton");
+    const highscoresStatus = document.getElementById("highscoresStatus");
+    const highscoreList = document.getElementById("highscoreList");
+    const namePencil = document.getElementById("namePencil");
+    const nameEditor = document.getElementById("nameEditor");
+    const highscoreName = document.getElementById("highscoreName");
+    const nameSave = document.getElementById("nameSave");
 
     let cells = [];
     let nextId = 1;
@@ -598,6 +737,180 @@
     let selectedHeroId = null;
     let interactionMode = "normal";
     let game = null;
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain: "bible-game-246c0.firebaseapp.com",
+      databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
+      projectId: "bible-game-246c0",
+      storageBucket: "bible-game-246c0.firebasestorage.app",
+      messagingSenderId: "959619818996",
+      appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
+      measurementId: "G-8PR6LVKSH3"
+    };
+
+    const onlineScores = {
+      ready: false,
+      db: null,
+      uid: null,
+      rows: [],
+      currentId: null,
+      currentRef: null,
+      error: ""
+    };
+    let highScoreInitPromise = null;
+
+    function cleanHighScoreName(value) {
+      return String(value || "PLAYER")
+        .replace(/[^a-zA-Z0-9 _.-]/g, "")
+        .trim()
+        .slice(0, 16)
+        .toUpperCase() || "PLAYER";
+    }
+
+    function scoreCollection() {
+      return onlineScores.db
+        .collection("lobbies")
+        .doc("gateguard")
+        .collection("highscores");
+    }
+
+    async function initHighScores() {
+      try {
+        if (!window.firebase) throw new Error("Firebase scripts blocked");
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        onlineScores.db = firebase.firestore();
+        const credential = await firebase.auth().signInAnonymously();
+        onlineScores.uid = credential.user.uid;
+        onlineScores.ready = true;
+        await loadHighScores();
+      } catch (error) {
+        onlineScores.error = error && error.code ? error.code : "OFFLINE";
+        renderHighScores();
+        throw error;
+      }
+    }
+
+    async function loadHighScores() {
+      if (!onlineScores.ready || !onlineScores.db) {
+        renderHighScores();
+        return [];
+      }
+      const snapshot = await scoreCollection().orderBy("rounds", "desc").limit(10).get();
+      onlineScores.rows = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => (Number(b.rounds) || 0) - (Number(a.rounds) || 0) ||
+          (Number(a.createdMs) || 0) - (Number(b.createdMs) || 0));
+      onlineScores.error = "";
+      renderHighScores();
+      return onlineScores.rows;
+    }
+
+    function renderHighScores(message = "") {
+      highscoreList.innerHTML = "";
+      const rows = onlineScores.rows.slice(0, 10);
+
+      if (onlineScores.error && !rows.length) {
+        highscoresStatus.textContent = "HIGHSCORES OFFLINE";
+      } else if (message) {
+        highscoresStatus.textContent = message;
+      } else if (!rows.length) {
+        highscoresStatus.textContent = onlineScores.ready ? "NO SCORES YET" : "CONNECTING…";
+      } else {
+        highscoresStatus.textContent = onlineScores.currentId ? "YOUR SCORE IS MARKED" : "ONLINE";
+      }
+
+      rows.forEach((row, index) => {
+        const item = document.createElement("li");
+        item.className = "highscore-row";
+        if (row.id === onlineScores.currentId) item.classList.add("current");
+
+        const rank = document.createElement("span");
+        rank.textContent = String(index + 1).padStart(2, "0");
+
+        const name = document.createElement("span");
+        name.className = "highscore-name";
+        name.textContent = cleanHighScoreName(row.name);
+
+        const score = document.createElement("span");
+        score.textContent = String(Math.max(0, Math.floor(Number(row.rounds) || 0)));
+
+        item.append(rank, name, score);
+        highscoreList.appendChild(item);
+      });
+
+      namePencil.hidden = !onlineScores.currentRef;
+      if (!onlineScores.currentRef) nameEditor.classList.remove("show");
+    }
+
+    async function submitHighScore(rounds) {
+      highscoresStatus.textContent = "CHECKING TOP 10…";
+      try {
+        await highScoreInitPromise;
+        const createdMs = Date.now();
+        const scoreRef = await scoreCollection().add({
+          name: "PLAYER",
+          rounds: Math.max(0, Math.floor(Number(rounds) || 0)),
+          uid: onlineScores.uid,
+          createdMs,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        const snapshot = await scoreCollection().orderBy("rounds", "desc").limit(40).get();
+        const ranked = snapshot.docs
+          .map(doc => ({ id: doc.id, ref: doc.ref, ...doc.data() }))
+          .sort((a, b) => (Number(b.rounds) || 0) - (Number(a.rounds) || 0) ||
+            (Number(a.createdMs) || 0) - (Number(b.createdMs) || 0));
+        const topTen = ranked.slice(0, 10);
+        const dropped = ranked.slice(10);
+
+        if (dropped.length) {
+          const batch = onlineScores.db.batch();
+          dropped.forEach(row => batch.delete(row.ref));
+          await batch.commit();
+        }
+
+        const current = topTen.find(row => row.id === scoreRef.id) || null;
+        onlineScores.currentId = current ? current.id : null;
+        onlineScores.currentRef = current ? scoreRef : null;
+        onlineScores.rows = topTen.map(({ ref, ...row }) => row);
+        highscoreName.value = cleanHighScoreName(localStorage.getItem("gateguardHighScoreName") || "PLAYER");
+        renderHighScores(current ? "TOP 10 — USE ✎ TO WRITE YOUR NAME" : "SCORE SAVED");
+      } catch (error) {
+        onlineScores.error = error && error.code ? error.code : "OFFLINE";
+        renderHighScores();
+        console.warn("Gate Guard high-score update failed", error);
+      }
+    }
+
+    namePencil.addEventListener("click", () => {
+      if (!onlineScores.currentRef) return;
+      nameEditor.classList.toggle("show");
+      if (nameEditor.classList.contains("show")) {
+        highscoreName.focus();
+        highscoreName.select();
+      }
+    });
+
+    nameEditor.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (!onlineScores.currentRef) return;
+      const cleanName = cleanHighScoreName(highscoreName.value);
+      nameSave.disabled = true;
+      highscoresStatus.textContent = "SAVING…";
+      try {
+        await onlineScores.currentRef.update({ name: cleanName });
+        localStorage.setItem("gateguardHighScoreName", cleanName);
+        const current = onlineScores.rows.find(row => row.id === onlineScores.currentId);
+        if (current) current.name = cleanName;
+        nameEditor.classList.remove("show");
+        renderHighScores("NAME SAVED");
+      } catch (error) {
+        highscoresStatus.textContent = "NAME COULD NOT BE SAVED";
+      } finally {
+        nameSave.disabled = false;
+      }
+    });
 
     function random() {
       seed ^= seed << 13;
@@ -1742,11 +2055,18 @@
     }
 
     function endGame() {
+      if (game.over) return;
       game.over = true;
       game.phase = "over";
-      finalRound.textContent = String(game.completedRounds || Math.max(0, game.round - 1));
+      const survived = game.completedRounds || Math.max(0, game.round - 1);
+      finalRound.textContent = String(survived);
+      onlineScores.currentId = null;
+      onlineScores.currentRef = null;
+      nameEditor.classList.remove("show");
+      renderHighScores("CHECKING TOP 10…");
       gameOverOverlay.classList.add("show");
       render();
+      submitHighScore(survived);
     }
 
     const UPGRADE_POOL = [
@@ -1953,6 +2273,8 @@
 
     restartButton.addEventListener("click", newGame);
 
+    highScoreInitPromise = initHighScores();
+    highScoreInitPromise.catch(() => {});
     createBoard();
     newGame();
   </script>
