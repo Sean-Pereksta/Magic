@@ -534,6 +534,38 @@
       font-size: 13px;
     }
 
+    .piece-info-button {
+      position: absolute;
+      left: 50%;
+      top: -21%;
+      z-index: 14;
+      width: 22px;
+      height: 22px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1.5px solid var(--black);
+      border-radius: 50%;
+      padding: 0;
+      background: var(--white);
+      color: var(--black);
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .piece-info-button:hover,
+    .piece-info-button:focus-visible {
+      background: var(--black);
+      color: var(--white);
+      outline: 2px solid var(--white);
+      outline-offset: 1px;
+    }
+
     .unit-line {
       min-height: 38px;
       display: flex;
@@ -762,6 +794,168 @@
       letter-spacing: 0.12em;
     }
 
+    .piece-info-overlay {
+      z-index: 50;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(3px);
+    }
+
+    .piece-info-dialog {
+      position: relative;
+      width: min(90vw, 680px);
+      max-height: min(86vh, 760px);
+      max-height: min(86dvh, 760px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 2px solid var(--black);
+      background: var(--white);
+      box-shadow: 12px 12px 0 rgba(17, 17, 17, 0.14);
+    }
+
+    .piece-info-close {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      z-index: 3;
+      min-width: 82px;
+      min-height: 38px;
+      border: 1.5px solid var(--black);
+      background: var(--black);
+      color: var(--white);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+    }
+
+    .piece-info-scroll {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      padding: 22px 24px 28px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .piece-info-header {
+      min-height: 124px;
+      display: grid;
+      grid-template-columns: 118px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+      padding-right: 92px;
+      margin-bottom: 20px;
+    }
+
+    .piece-info-portrait {
+      width: 118px;
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid var(--black);
+      background: var(--white);
+      padding: 8px;
+    }
+
+    .piece-info-portrait.enemy-portrait {
+      border-color: var(--red);
+      box-shadow: inset 0 0 0 3px var(--red-soft);
+    }
+
+    .piece-info-portrait.hero-portrait {
+      border-color: var(--green);
+      box-shadow: inset 0 0 0 3px var(--green-soft);
+    }
+
+    .piece-info-portrait .piece-image,
+    .piece-info-portrait .piece-fallback {
+      width: 100%;
+      height: 100%;
+    }
+
+    .piece-info-kicker {
+      margin: 3px 0 6px;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+    }
+
+    .piece-info-title {
+      margin: 0 0 8px;
+      font-size: clamp(22px, 5vw, 34px);
+      line-height: 1;
+      letter-spacing: 0.08em;
+    }
+
+    .piece-info-subtitle {
+      margin: 0;
+      color: #4f4f4f;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .piece-info-section {
+      padding: 15px 0;
+      border-top: 1.5px solid var(--black);
+    }
+
+    .piece-info-section:first-child {
+      border-top-width: 2px;
+    }
+
+    .piece-info-section-title {
+      margin: 0 0 11px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+    }
+
+    .piece-info-list {
+      display: grid;
+      gap: 9px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .piece-info-list li {
+      position: relative;
+      padding-left: 17px;
+      color: #373737;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .piece-info-list li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--black);
+      font-weight: 700;
+    }
+
+    .piece-info-empty {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .piece-info-callout {
+      padding: 12px 14px;
+      border-left: 4px solid var(--red);
+      background: var(--red-soft);
+      color: #5f1111;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .piece-info-callout.safe {
+      border-left-color: var(--green);
+      background: var(--green-soft);
+      color: #124d24;
+    }
+
     @media (max-width: 520px) {
       body {
         padding-left: 4px;
@@ -802,6 +996,64 @@
         min-height: 43px;
         font-size: 10px;
       }
+
+      .piece-info-button {
+        top: -24%;
+        width: 21px;
+        height: 21px;
+        font-size: 11px;
+      }
+
+      .piece-info-overlay {
+        padding:
+          max(7px, env(safe-area-inset-top))
+          max(7px, env(safe-area-inset-right))
+          max(7px, env(safe-area-inset-bottom))
+          max(7px, env(safe-area-inset-left));
+      }
+
+      .piece-info-dialog {
+        width: 100%;
+        max-height: 94vh;
+        max-height: 94dvh;
+        box-shadow: none;
+      }
+
+      .piece-info-close {
+        right: 8px;
+        top: 8px;
+        min-width: 68px;
+        min-height: 34px;
+        font-size: 10px;
+      }
+
+      .piece-info-scroll {
+        padding: 14px 14px 22px;
+      }
+
+      .piece-info-header {
+        min-height: 86px;
+        grid-template-columns: 78px minmax(0, 1fr);
+        gap: 12px;
+        padding-right: 72px;
+        margin-bottom: 14px;
+      }
+
+      .piece-info-portrait {
+        width: 78px;
+        padding: 5px;
+      }
+
+      .piece-info-title {
+        font-size: 21px;
+      }
+
+      .piece-info-subtitle,
+      .piece-info-list li,
+      .piece-info-empty,
+      .piece-info-callout {
+        font-size: 11px;
+      }
     }
 
     @media (orientation: landscape) and (max-height: 700px) {
@@ -835,6 +1087,21 @@
 
       .control.primary {
         grid-column: auto;
+      }
+
+      .piece-info-dialog {
+        width: min(92vw, 700px);
+        max-height: 94vh;
+        max-height: 94dvh;
+      }
+
+      .piece-info-header {
+        min-height: 82px;
+        grid-template-columns: 78px minmax(0, 1fr);
+      }
+
+      .piece-info-portrait {
+        width: 78px;
       }
     }
 
@@ -1009,6 +1276,58 @@
     </div>
   </div>
 
+  <div
+    class="overlay piece-info-overlay"
+    id="pieceInfoOverlay"
+    aria-modal="true"
+    aria-labelledby="pieceInfoTitle"
+    role="dialog"
+  >
+    <section
+      class="piece-info-dialog"
+      id="pieceInfoDialog"
+    >
+      <button
+        class="piece-info-close"
+        id="pieceInfoClose"
+        type="button"
+      >
+        CLOSE ×
+      </button>
+
+      <div
+        class="piece-info-scroll"
+        id="pieceInfoScroll"
+      >
+        <header class="piece-info-header">
+          <div
+            class="piece-info-portrait"
+            id="pieceInfoPortrait"
+          ></div>
+
+          <div>
+            <div
+              class="piece-info-kicker"
+              id="pieceInfoKicker"
+            ></div>
+
+            <h2
+              class="piece-info-title"
+              id="pieceInfoTitle"
+            ></h2>
+
+            <p
+              class="piece-info-subtitle"
+              id="pieceInfoSubtitle"
+            ></p>
+          </div>
+        </header>
+
+        <div id="pieceInfoBody"></div>
+      </div>
+    </section>
+  </div>
+
   <script>
     "use strict";
 
@@ -1130,6 +1449,144 @@
       }
     };
 
+    const HERO_REFERENCE = {
+      blade: {
+        role:
+          "Close-range striker built to clear clustered enemies.",
+
+        abilities: [
+          "MOVE · Move one open space orthogonally.",
+          "ATTACK · Deal 1 damage to an adjacent orthogonal enemy.",
+          "GUARD · Block the next hit received this round."
+        ],
+
+        special:
+          "SWEEP · Choose an adjacent space. Deal 1 damage to that space and the two spaces beside it. Heavy Edge adds damage."
+      },
+
+      shield: {
+        role:
+          "Front-line protector that spreads Guard across a formation.",
+
+        abilities: [
+          "MOVE · Move one open space orthogonally.",
+          "ATTACK · Deal 1 damage to an adjacent orthogonal enemy.",
+          "GUARD · Block the next hit received this round."
+        ],
+
+        special:
+          "BULWARK · Choose the Shield or an adjacent space. Allies in the green plus-shaped area gain Guard. Wide Bulwark adds diagonals."
+      },
+
+      spear: {
+        role:
+          "Line fighter that controls enemies from exact distances.",
+
+        abilities: [
+          "MOVE · Move one open space orthogonally.",
+          "ATTACK · Deal 1 damage to an enemy exactly 2 spaces away in a clear orthogonal line.",
+          "GUARD · Block the next hit received this round."
+        ],
+
+        special:
+          "IMPALE · Strike every enemy in a clear orthogonal line up to 3 spaces away. Survivors are stunned for their next turn."
+      },
+
+      bow: {
+        role:
+          "Long-range attacker that damages groups from safety.",
+
+        abilities: [
+          "MOVE · Move one open space orthogonally.",
+          "ATTACK · Deal 1 damage to the first enemy in an orthogonal line up to 4 spaces away.",
+          "GUARD · Block the next hit received this round."
+        ],
+
+        special:
+          "VOLLEY · Choose a space within 4. Damage enemies in the target plus-shaped area. Wide Volley adds diagonals."
+      },
+
+      banner: {
+        role:
+          "Support leader that protects allies and restores an action.",
+
+        abilities: [
+          "MOVE · Move one open space orthogonally.",
+          "ATTACK · Deal 1 damage to an adjacent orthogonal enemy.",
+          "GUARD · Block the next hit received this round."
+        ],
+
+        special:
+          "RALLY · Choose a space within 2. Allies in the green plus-shaped area gain Guard, then one affected ally that already acted may act again."
+      }
+    };
+
+    const ENEMY_REFERENCE = {
+      grunt: {
+        role:
+          "Basic invader.",
+
+        behavior:
+          "Moves 1 space toward the most vulnerable objective. Attacks for 1 damage when adjacent."
+      },
+
+      raider: {
+        role:
+          "Fast path attacker.",
+
+        behavior:
+          "Charges up to 2 spaces toward its target. Any hero who steps into its shown route will be hit."
+      },
+
+      archer: {
+        role:
+          "Long-range line attacker.",
+
+        behavior:
+          "Shoots a hero aligned 2–6 spaces away when the line is clear. Otherwise advances or attacks adjacent."
+      },
+
+      brute: {
+        role:
+          "Durable displacement attacker.",
+
+        behavior:
+          "Has 3 health. Its adjacent attack deals 1 damage and pushes an unguarded surviving hero backward."
+      },
+
+      hook: {
+        role:
+          "Formation disruptor.",
+
+        behavior:
+          "Pulls an aligned hero from 2–5 spaces away one space closer. Pulling does not deal damage."
+      },
+
+      guardian: {
+        role:
+          "Enemy formation protector.",
+
+        behavior:
+          "The first hit against each adjacent enemy is blocked while this Guardian remains beside it."
+      },
+
+      bomber: {
+        role:
+          "Delayed area threat.",
+
+        behavior:
+          "Marks a 3×3 area, then detonates it on its next turn. The blast deals 1 damage to heroes, 2 to enemies, and destroys the Bomber."
+      },
+
+      commander: {
+        role:
+          "Enemy movement support.",
+
+        behavior:
+          "Commands enemies within 2 spaces. Commanded moving enemies extend their planned route by 1 space."
+      }
+    };
+
     const ASSET_FILES = [
       ...Object.values(HERO_DATA).map((item) => item.image),
       ...Object.values(ENEMY_DATA).map((item) => item.image)
@@ -1160,6 +1617,33 @@
     const finalRound = document.getElementById("finalRound");
     const restartButton = document.getElementById("restartButton");
 
+    const pieceInfoOverlay =
+      document.getElementById("pieceInfoOverlay");
+
+    const pieceInfoDialog =
+      document.getElementById("pieceInfoDialog");
+
+    const pieceInfoClose =
+      document.getElementById("pieceInfoClose");
+
+    const pieceInfoScroll =
+      document.getElementById("pieceInfoScroll");
+
+    const pieceInfoPortrait =
+      document.getElementById("pieceInfoPortrait");
+
+    const pieceInfoKicker =
+      document.getElementById("pieceInfoKicker");
+
+    const pieceInfoTitle =
+      document.getElementById("pieceInfoTitle");
+
+    const pieceInfoSubtitle =
+      document.getElementById("pieceInfoSubtitle");
+
+    const pieceInfoBody =
+      document.getElementById("pieceInfoBody");
+
     const assetStatus = new Map();
 
     const hoverCapable = window.matchMedia(
@@ -1174,6 +1658,7 @@
     let previewTarget = null;
     let previewLocked = false;
     let pendingBanner = null;
+    let pieceInfoReturnFocus = null;
     let game = null;
 
     function random() {
@@ -1236,10 +1721,10 @@
 
       for (let row = 0; row < SIZE; row += 1) {
         for (let column = 0; column < SIZE; column += 1) {
-          const cell = document.createElement("button");
+          const cell = document.createElement("div");
 
-          cell.type = "button";
           cell.className = "cell";
+          cell.tabIndex = 0;
           cell.dataset.r = String(row);
           cell.dataset.c = String(column);
           cell.setAttribute("role", "gridcell");
@@ -1251,6 +1736,21 @@
           cell.addEventListener("click", onCellClick);
           cell.addEventListener("pointerenter", onCellEnter);
           cell.addEventListener("pointerleave", onCellLeave);
+          cell.addEventListener(
+            "keydown",
+            (event) => {
+              if (
+                event.target === cell &&
+                (
+                  event.key === "Enter" ||
+                  event.key === " "
+                )
+              ) {
+                event.preventDefault();
+                cell.click();
+              }
+            }
+          );
 
           boardEl.insertBefore(cell, intentLayer);
           cells.push(cell);
@@ -1373,6 +1873,7 @@
       previewLocked = false;
       pendingBanner = null;
       seed = (Date.now() ^ 0x9e3779b9) >>> 0;
+      closePieceInfo(false);
 
       game = {
         round: 1,
@@ -4338,6 +4839,518 @@
       return wrap;
     }
 
+    function formatPosition(unit) {
+      return (
+        `ROW ${unit.r + 1} · COLUMN ${unit.c + 1}`
+      );
+    }
+
+    function heroNameAt(position) {
+      if (!position) {
+        return "its target";
+      }
+
+      const hero = heroAt(
+        game,
+        position.r,
+        position.c
+      );
+
+      return hero
+        ? HERO_DATA[hero.type].name
+        : `row ${position.r + 1}, column ${position.c + 1}`;
+    }
+
+    function describeEnemyPlan(enemy) {
+      const plan =
+        enemy.plan || {
+          kind: "wait"
+        };
+
+      if (plan.kind === "wait") {
+        return plan.stunned
+          ? "THIS TURN · Stunned. It will take no action."
+          : "THIS TURN · Waiting. It has no effective action.";
+      }
+
+      if (plan.kind === "attack") {
+        return (
+          `THIS TURN · Attacks ${heroNameAt(plan.target)} for 1 damage.`
+        );
+      }
+
+      if (plan.kind === "attackPush") {
+        return (
+          `THIS TURN · Attacks ${heroNameAt(plan.target)} for 1 damage, then pushes it if the hit is not blocked.`
+        );
+      }
+
+      if (plan.kind === "shoot") {
+        return (
+          `THIS TURN · Shoots ${heroNameAt(plan.target)} for 1 damage along the red dashed line.`
+        );
+      }
+
+      if (plan.kind === "pull") {
+        return (
+          `THIS TURN · Pulls ${heroNameAt(plan.target)} one space closer. This does not deal damage.`
+        );
+      }
+
+      if (
+        plan.kind === "move" ||
+        plan.kind === "charge"
+      ) {
+        const routeLength =
+          plan.path?.length || 0;
+
+        return (
+          `THIS TURN · ${plan.kind === "charge" ? "Charges" : "Moves"} ${routeLength} space${routeLength === 1 ? "" : "s"} along the black route. A hero entering that route will be hit.`
+        );
+      }
+
+      if (plan.kind === "mark") {
+        return (
+          `THIS TURN · Marks a 3×3 blast area centered on row ${plan.center.r + 1}, column ${plan.center.c + 1}. It will detonate on the Bomber's next turn if the Bomber survives.`
+        );
+      }
+
+      if (plan.kind === "explode") {
+        return (
+          `THIS TURN · Detonates the marked 3×3 area centered on row ${plan.center.r + 1}, column ${plan.center.c + 1}.`
+        );
+      }
+
+      if (plan.kind === "command") {
+        const count =
+          plan.targetIds?.length || 0;
+
+        return (
+          `THIS TURN · Commands ${count} nearby enem${count === 1 ? "y" : "ies"}, extending planned movement where possible.`
+        );
+      }
+
+      return "THIS TURN · Intent unknown.";
+    }
+
+    function upgradeDescription(
+      upgrade,
+      rank
+    ) {
+      if (upgrade.id === "bladePower") {
+        return (
+          `HEAVY EDGE${rank > 1 ? ` ×${rank}` : ""} · Sweep deals ${rank} additional damage.`
+        );
+      }
+
+      if (upgrade.id === "cooldown") {
+        return (
+          `BATTLE RHYTHM${rank > 1 ? ` ×${rank}` : ""} · This piece's special cooldown is ${rank} round${rank === 1 ? "" : "s"} shorter.`
+        );
+      }
+
+      if (upgrade.id === "reserve") {
+        return (
+          `LAST STAND · The first unguarded squad hit each round is blocked. It is ${game.reserveUsed ? "already spent" : "still available"} this round.`
+        );
+      }
+
+      return (
+        `${upgrade.name}${rank > 1 ? ` ×${rank}` : ""} · ${upgrade.text}`
+      );
+    }
+
+    function heroPowerups(hero) {
+      const specific = {
+        blade: ["bladePower"],
+        shield: ["shieldDiagonal"],
+        spear: [
+          "spearReach",
+          "spearFlexible"
+        ],
+        bow: [
+          "bowDiagonal",
+          "bowPierce"
+        ],
+        banner: ["bannerRange"]
+      };
+
+      const common = [
+        "counter",
+        "cooldown",
+        "reserve",
+        "brace",
+        "finisher"
+      ];
+
+      const ids = [
+        ...(specific[hero.type] || []),
+        ...common
+      ];
+
+      const descriptions = ids
+        .map((id) => {
+          const rank =
+            game.upgradeRanks[id] || 0;
+
+          if (rank <= 0) {
+            return null;
+          }
+
+          const upgrade =
+            UPGRADE_POOL.find(
+              (item) => item.id === id
+            );
+
+          return upgrade
+            ? upgradeDescription(
+                upgrade,
+                rank
+              )
+            : null;
+        })
+        .filter(Boolean);
+
+      if (hero.armor > 0) {
+        descriptions.push(
+          `LIGHT PLATE · ${hero.armor} Armor remaining. Each Armor blocks one future hit.`
+        );
+      }
+
+      if (hero.rallied && hero.guard > 0) {
+        descriptions.push(
+          "RALLY GUARD · Rally supplied the Guard currently protecting this piece."
+        );
+      }
+
+      if (hero.rallyReactivated) {
+        descriptions.push(
+          "RALLY REACTIVATION · Rally returned this piece's action for the current turn."
+        );
+      }
+
+      return descriptions;
+    }
+
+    function addPieceInfoSection(
+      title,
+      lines,
+      emptyMessage = ""
+    ) {
+      const section =
+        document.createElement("section");
+
+      section.className =
+        "piece-info-section";
+
+      const heading =
+        document.createElement("h3");
+
+      heading.className =
+        "piece-info-section-title";
+
+      heading.textContent = title;
+      section.appendChild(heading);
+
+      if (lines.length) {
+        const list =
+          document.createElement("ul");
+
+        list.className =
+          "piece-info-list";
+
+        for (const line of lines) {
+          const item =
+            document.createElement("li");
+
+          item.textContent = line;
+          list.appendChild(item);
+        }
+
+        section.appendChild(list);
+      } else {
+        const empty =
+          document.createElement("p");
+
+        empty.className =
+          "piece-info-empty";
+
+        empty.textContent =
+          emptyMessage ||
+          "Nothing currently applies.";
+
+        section.appendChild(empty);
+      }
+
+      pieceInfoBody.appendChild(section);
+    }
+
+    function addPieceInfoCallout(
+      text,
+      safe = false
+    ) {
+      const callout =
+        document.createElement("div");
+
+      callout.className =
+        "piece-info-callout";
+
+      if (safe) {
+        callout.classList.add("safe");
+      }
+
+      callout.textContent = text;
+      pieceInfoBody.appendChild(callout);
+    }
+
+    function closePieceInfo(
+      restoreFocus = true
+    ) {
+      if (
+        !pieceInfoOverlay.classList.contains(
+          "show"
+        )
+      ) {
+        return;
+      }
+
+      pieceInfoOverlay.classList.remove(
+        "show"
+      );
+
+      if (
+        restoreFocus &&
+        pieceInfoReturnFocus?.isConnected
+      ) {
+        pieceInfoReturnFocus.focus();
+      }
+
+      pieceInfoReturnFocus = null;
+    }
+
+    function openPieceInfo(
+      kind,
+      unit,
+      trigger
+    ) {
+      pieceInfoReturnFocus = trigger;
+      pieceInfoPortrait.innerHTML = "";
+      pieceInfoBody.innerHTML = "";
+      pieceInfoScroll.scrollTop = 0;
+
+      const isHero =
+        kind === "hero";
+
+      const type = unit.type;
+
+      const data = isHero
+        ? HERO_DATA[type]
+        : ENEMY_DATA[type];
+
+      const reference = isHero
+        ? HERO_REFERENCE[type]
+        : ENEMY_REFERENCE[type];
+
+      pieceInfoPortrait.className =
+        `piece-info-portrait ${isHero ? "hero-portrait" : "enemy-portrait"}`;
+
+      pieceInfoPortrait.appendChild(
+        makePieceVisual(
+          data.image,
+          data.letter,
+          `${isHero ? "Hero" : "Enemy"} ${type}`
+        )
+      );
+
+      pieceInfoKicker.textContent =
+        kind === "spawn"
+          ? "INCOMING ENEMY"
+          : isHero
+            ? "SQUAD PIECE"
+            : "ENEMY PIECE";
+
+      pieceInfoTitle.textContent =
+        isHero
+          ? data.name
+          : type.toUpperCase();
+
+      pieceInfoSubtitle.textContent =
+        reference.role;
+
+      if (isHero) {
+        const cooldown =
+          unit.cooldown > 0
+            ? `${unit.cooldown} round${unit.cooldown === 1 ? "" : "s"} remaining`
+            : "ready";
+
+        const threatened =
+          heroesHitThisEnemyTurn().has(
+            unit.id
+          );
+
+        addPieceInfoCallout(
+          threatened
+            ? "DANGER · An enemy plan will hit this piece when the turn ends unless the board state changes."
+            : "SAFE FROM CURRENT HITS · No current enemy damage plan lands on this piece.",
+          !threatened
+        );
+
+        addPieceInfoSection(
+          "CURRENT STATUS",
+          [
+            `HEALTH · ${unit.hp}/${unit.maxHp}`,
+            `ACTION · ${unit.acted ? "Already acted" : "Ready to act"}`,
+            `SPECIAL · ${data.special} is ${cooldown}`,
+            `DEFENSE · ${unit.guard} Guard · ${unit.armor} Armor`,
+            `POSITION · ${formatPosition(unit)}`
+          ]
+        );
+
+        addPieceInfoSection(
+          "ABILITIES",
+          reference.abilities
+        );
+
+        addPieceInfoSection(
+          `SPECIAL · ${data.special}`,
+          [reference.special]
+        );
+
+        addPieceInfoSection(
+          "POWERUPS AFFECTING THIS PIECE",
+          heroPowerups(unit),
+          "No acquired or temporary powerups currently affect this piece."
+        );
+      } else if (kind === "spawn") {
+        addPieceInfoCallout(
+          "INCOMING · This piece enters after the enemy phase if its edge space remains open."
+        );
+
+        addPieceInfoSection(
+          "BASE STATUS",
+          [
+            `HEALTH · ${data.hp}`,
+            `SPAWN SPACE · ${formatPosition(unit)}`
+          ]
+        );
+
+        addPieceInfoSection(
+          "BEHAVIOR",
+          [reference.behavior]
+        );
+      } else {
+        const effects = [];
+
+        if (unit.commanded) {
+          effects.push(
+            "COMMANDED · Its planned movement is extended by 1 space."
+          );
+        }
+
+        if (unit.stunned > 0) {
+          effects.push(
+            "STUNNED · It will skip its next planned action."
+          );
+        }
+
+        if (unit.bombArmed) {
+          effects.push(
+            "BOMB ARMED · Its marked area is set to detonate."
+          );
+        }
+
+        if (unit.shieldBroken) {
+          effects.push(
+            "GUARDIAN BLOCK SPENT · Its protection from an adjacent Guardian has already been used this round."
+          );
+        }
+
+        addPieceInfoCallout(
+          describeEnemyPlan(unit),
+          unit.plan?.kind === "wait"
+        );
+
+        addPieceInfoSection(
+          "CURRENT STATUS",
+          [
+            `HEALTH · ${unit.hp}/${unit.maxHp}`,
+            `ACTION ORDER · ${unit.order || "—"}`,
+            `POSITION · ${formatPosition(unit)}`
+          ]
+        );
+
+        addPieceInfoSection(
+          "BEHAVIOR",
+          [reference.behavior]
+        );
+
+        addPieceInfoSection(
+          "CURRENT EFFECTS",
+          effects,
+          "No additional effects are currently modifying this enemy."
+        );
+      }
+
+      pieceInfoOverlay.classList.add(
+        "show"
+      );
+
+      requestAnimationFrame(() => {
+        pieceInfoClose.focus();
+      });
+    }
+
+    function makePieceInfoButton(
+      kind,
+      unit
+    ) {
+      const button =
+        document.createElement("button");
+
+      const isHero =
+        kind === "hero";
+
+      const name = isHero
+        ? HERO_DATA[unit.type].name
+        : unit.type.toUpperCase();
+
+      button.type = "button";
+      button.className =
+        "piece-info-button";
+
+      button.textContent = "?";
+      button.title =
+        `Open ${name} details`;
+
+      button.setAttribute(
+        "aria-label",
+        `Open ${name} abilities and status`
+      );
+
+      button.addEventListener(
+        "pointerdown",
+        (event) => {
+          event.stopPropagation();
+        }
+      );
+
+      button.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          openPieceInfo(
+            kind,
+            unit,
+            button
+          );
+        }
+      );
+
+      return button;
+    }
+
     function renderHero(
       hero,
       incomingHit = false
@@ -4480,6 +5493,13 @@
         unit.appendChild(rally);
       }
 
+      unit.appendChild(
+        makePieceInfoButton(
+          "hero",
+          hero
+        )
+      );
+
       return unit;
     }
 
@@ -4539,6 +5559,13 @@
 
       unit.appendChild(intent);
 
+      unit.appendChild(
+        makePieceInfoButton(
+          "enemy",
+          enemy
+        )
+      );
+
       return unit;
     }
 
@@ -4560,6 +5587,13 @@
           data.image,
           data.letter,
           `Incoming ${spawn.type}`
+        )
+      );
+
+      wrap.appendChild(
+        makePieceInfoButton(
+          "spawn",
+          spawn
         )
       );
 
@@ -5746,6 +6780,47 @@
       fallen.r = open.r;
       fallen.c = open.c;
     }
+
+    pieceInfoClose.addEventListener(
+      "click",
+      () => closePieceInfo()
+    );
+
+    pieceInfoOverlay.addEventListener(
+      "click",
+      (event) => {
+        if (
+          event.target === pieceInfoOverlay
+        ) {
+          closePieceInfo();
+        }
+      }
+    );
+
+    pieceInfoDialog.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key === "Tab") {
+          event.preventDefault();
+          pieceInfoClose.focus();
+        }
+      }
+    );
+
+    document.addEventListener(
+      "keydown",
+      (event) => {
+        if (
+          event.key === "Escape" &&
+          pieceInfoOverlay.classList.contains(
+            "show"
+          )
+        ) {
+          event.preventDefault();
+          closePieceInfo();
+        }
+      }
+    );
 
     beginButton.addEventListener(
       "click",
