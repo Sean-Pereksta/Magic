@@ -4096,38 +4096,116 @@
       }
     }
 
-    function availableEnemyTypes(round) {
-      const types = ["grunt"];
+    const ENEMY_SPAWN_CURVE = [
+      {
+        type: "grunt",
+        unlock: 1,
+        start: 90,
+        growth: -2.2,
+        min: 18,
+        max: 90
+      },
+      {
+        type: "raider",
+        unlock: 4,
+        start: 30,
+        growth: -0.25,
+        min: 18,
+        max: 30
+      },
+      {
+        type: "archer",
+        unlock: 7,
+        start: 10,
+        growth: 0.12,
+        min: 10,
+        max: 14
+      },
+      {
+        type: "brute",
+        unlock: 10,
+        start: 4,
+        growth: 0.85,
+        min: 4,
+        max: 24
+      },
+      {
+        type: "hook",
+        unlock: 13,
+        start: 3,
+        growth: 0.65,
+        min: 3,
+        max: 18
+      },
+      {
+        type: "guardian",
+        unlock: 16,
+        start: 2.5,
+        growth: 0.55,
+        min: 2.5,
+        max: 17
+      },
+      {
+        type: "bomber",
+        unlock: 20,
+        start: 2,
+        growth: 0.7,
+        min: 2,
+        max: 16
+      },
+      {
+        type: "commander",
+        unlock: 24,
+        start: 1.5,
+        growth: 0.65,
+        min: 1.5,
+        max: 14
+      }
+    ];
 
-      if (round >= 4) {
-        types.push("raider");
+    function enemySpawnWeights(round) {
+      return ENEMY_SPAWN_CURVE
+        .filter(
+          (entry) => round >= entry.unlock
+        )
+        .map((entry) => ({
+          type: entry.type,
+
+          weight: Math.max(
+            entry.min,
+            Math.min(
+              entry.max,
+              entry.start +
+                (
+                  round - entry.unlock
+                ) *
+                  entry.growth
+            )
+          )
+        }));
+    }
+
+    function pickEnemyType(round) {
+      const entries =
+        enemySpawnWeights(round);
+
+      const total = entries.reduce(
+        (sum, entry) =>
+          sum + entry.weight,
+        0
+      );
+
+      let roll = Math.random() * total;
+
+      for (const entry of entries) {
+        roll -= entry.weight;
+
+        if (roll <= 0) {
+          return entry.type;
+        }
       }
 
-      if (round >= 7) {
-        types.push("archer");
-      }
-
-      if (round >= 10) {
-        types.push("brute");
-      }
-
-      if (round >= 13) {
-        types.push("hook");
-      }
-
-      if (round >= 16) {
-        types.push("guardian");
-      }
-
-      if (round >= 20) {
-        types.push("bomber");
-      }
-
-      if (round >= 24) {
-        types.push("commander");
-      }
-
-      return types;
+      return "grunt";
     }
 
     function edgeCells() {
@@ -4182,15 +4260,15 @@
 
       let count = 1;
 
-      if (game.round >= 4) {
+      if (game.round >= 5) {
         count = 2;
       }
 
-      if (game.round >= 10) {
+      if (game.round >= 12) {
         count = 3;
       }
 
-      if (game.round >= 22) {
+      if (game.round >= 25) {
         count = 4;
       }
 
@@ -4213,9 +4291,6 @@
         )
       );
 
-      const types =
-        availableEnemyTypes(game.round);
-
       const incoming = [];
 
       for (
@@ -4225,7 +4300,7 @@
         index += 1
       ) {
         let type =
-          types[randomInt(types.length)];
+          pickEnemyType(game.round);
 
         if (
           ["bomber", "commander"].includes(
