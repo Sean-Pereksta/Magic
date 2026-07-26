@@ -5,16 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
   <title>The Last Five</title>
+
   <style>
     :root {
       --black: #111111;
       --white: #ffffff;
-      --red: #d62828;
-      --red-soft: #ffe7e7;
-      --green: #16803a;
-      --green-soft: #e6f6e9;
-      --gray: #e8e8e8;
-      --muted: #777777;
+      --red: #c91919;
+      --red-soft: #ffe9e9;
+      --red-strong: #ffd0d0;
+      --green: #157a36;
+      --green-soft: #e8f6ec;
+      --gray: #ececec;
+      --muted: #707070;
     }
 
     * {
@@ -28,7 +30,14 @@
       min-height: 100%;
       background: var(--white);
       color: var(--black);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        Monaco,
+        Consolas,
+        "Liberation Mono",
+        monospace;
       overscroll-behavior: none;
     }
 
@@ -36,7 +45,11 @@
       display: flex;
       justify-content: center;
       align-items: flex-start;
-      padding: max(12px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+      padding:
+        max(10px, env(safe-area-inset-top))
+        max(7px, env(safe-area-inset-right))
+        max(10px, env(safe-area-inset-bottom))
+        max(7px, env(safe-area-inset-left));
     }
 
     button {
@@ -46,7 +59,7 @@
     }
 
     .game {
-      width: min(94vw, 620px);
+      width: min(96vw, 680px);
       user-select: none;
     }
 
@@ -56,11 +69,16 @@
       grid-template-columns: 1fr auto 1fr;
       align-items: center;
       font-size: 13px;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.05em;
     }
 
     .round {
       justify-self: start;
+    }
+
+    .score {
+      justify-self: end;
+      color: var(--muted);
     }
 
     .squad {
@@ -84,13 +102,8 @@
     }
 
     .squad-dot.lost {
-      border-color: #c8c8c8;
-      background: #c8c8c8;
-    }
-
-    .score {
-      justify-self: end;
-      color: var(--muted);
+      border-color: #c6c6c6;
+      background: #c6c6c6;
     }
 
     .board {
@@ -102,6 +115,17 @@
       border: 2px solid var(--black);
       background: var(--white);
       position: relative;
+      isolation: isolate;
+    }
+
+    .intent-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none;
+      overflow: visible;
     }
 
     .cell {
@@ -117,7 +141,8 @@
       padding: 0;
       background: var(--white);
       cursor: pointer;
-      overflow: hidden;
+      overflow: visible;
+      z-index: 1;
     }
 
     .cell:nth-child(7n) {
@@ -128,48 +153,108 @@
       border-bottom: 0;
     }
 
-    .cell.move {
+    .cell.legal {
       background: var(--green-soft);
     }
 
-    .cell.move::before {
+    .cell.legal::before {
       content: "";
       position: absolute;
-      width: 18%;
-      aspect-ratio: 1;
-      border-radius: 50%;
-      background: var(--green);
-      opacity: 0.92;
+      inset: 11%;
+      border: 2px solid var(--green);
+      pointer-events: none;
+      z-index: 1;
     }
 
-    .cell.attack {
+    .cell.legal.move-target::before {
+      inset: auto;
+      width: 18%;
+      aspect-ratio: 1;
+      border: 0;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .cell.preview-friendly {
+      background: var(--green-soft);
+    }
+
+    .cell.preview-friendly::after {
+      content: "";
+      position: absolute;
+      inset: 5%;
+      border: 3px solid var(--green);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .cell.preview-hostile {
       background: var(--red-soft);
     }
 
-    .cell.attack::before {
+    .cell.preview-hostile::after {
+      content: "";
+      position: absolute;
+      inset: 5%;
+      border: 3px solid var(--red);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .cell.enemy-danger {
+      background: var(--red-soft);
+    }
+
+    .cell.enemy-danger::after {
       content: "";
       position: absolute;
       inset: 8%;
-      border: 2px solid var(--red);
+      border: 2px solid rgba(201, 25, 25, 0.68);
       pointer-events: none;
+      z-index: 0;
     }
 
-    .cell.threat:not(.attack)::after {
+    .cell.enemy-marked {
+      background-image:
+        radial-gradient(
+          circle,
+          rgba(201, 25, 25, 0.32) 1.4px,
+          transparent 1.6px
+        );
+      background-size: 9px 9px;
+    }
+
+    .cell.enemy-explode {
+      background: var(--red-strong);
+    }
+
+    .cell.enemy-route::before {
       content: "";
       position: absolute;
-      right: 7%;
-      bottom: 7%;
-      width: 11%;
+      width: 10%;
       aspect-ratio: 1;
       border-radius: 50%;
-      background: var(--red);
-      opacity: 0.7;
-      pointer-events: none;
+      background: var(--black);
+      opacity: 0.34;
+      z-index: 0;
     }
 
-    .cell.marked:not(.attack) {
-      background-image: radial-gradient(circle, rgba(214, 40, 40, 0.18) 1px, transparent 1px);
-      background-size: 8px 8px;
+    .cell.forced-destination {
+      background-image:
+        linear-gradient(
+          45deg,
+          transparent 42%,
+          rgba(201, 25, 25, 0.55) 42%,
+          rgba(201, 25, 25, 0.55) 48%,
+          transparent 48%
+        ),
+        linear-gradient(
+          -45deg,
+          transparent 42%,
+          rgba(201, 25, 25, 0.55) 42%,
+          rgba(201, 25, 25, 0.55) 48%,
+          transparent 48%
+        );
     }
 
     .beacon {
@@ -178,169 +263,175 @@
       border: 2px solid var(--black);
       transform: rotate(45deg);
       position: absolute;
-      opacity: 0.3;
+      opacity: 0.25;
+      z-index: 0;
     }
 
     .unit {
-      width: 58%;
+      width: 72%;
       aspect-ratio: 1;
+      position: relative;
+      z-index: 4;
       display: flex;
       align-items: center;
       justify-content: center;
-      position: relative;
-      z-index: 2;
-      font-weight: 700;
-      font-size: clamp(13px, 3.2vw, 23px);
-      line-height: 1;
+      border-radius: 50%;
     }
 
-    .hero {
-      border: 2px solid var(--black);
+    .piece-image {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
       border-radius: 50%;
       background: var(--white);
+      pointer-events: none;
+    }
+
+    .piece-fallback {
+      width: 100%;
+      height: 100%;
+      border: 2px solid var(--black);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--white);
+      font-weight: 700;
+      font-size: clamp(14px, 3vw, 24px);
     }
 
     .hero.selected {
-      outline: 3px solid var(--green);
-      outline-offset: 2px;
+      outline: 4px solid var(--green);
+      outline-offset: 1px;
     }
 
     .hero.acted {
-      opacity: 0.42;
+      opacity: 0.4;
+      filter: grayscale(1);
     }
 
     .enemy {
-      color: var(--white);
-      background: var(--black);
-      border: 2px solid var(--black);
-      border-radius: 5%;
-    }
-
-    .enemy.damaged {
-      box-shadow: inset 0 0 0 3px var(--red);
-    }
-
-    .wound-mark,
-    .armor-mark,
-    .cooldown-mark,
-    .intent-mark,
-    .order-mark {
-      position: absolute;
-      z-index: 4;
-      pointer-events: none;
-      line-height: 1;
-    }
-
-    .wound-mark {
-      width: 22%;
-      aspect-ratio: 1;
-      background: var(--red);
-      border-radius: 50%;
-      right: -8%;
-      top: -8%;
-    }
-
-    .armor-mark {
-      width: 22%;
-      aspect-ratio: 1;
-      border: 1.5px solid var(--black);
+      outline: 3px solid var(--red);
+      outline-offset: 0;
+      border-radius: 12%;
       background: var(--white);
-      left: -8%;
-      top: -8%;
-      transform: rotate(45deg);
     }
 
-    .cooldown-mark {
-      right: -12%;
-      bottom: -10%;
-      min-width: 16px;
-      height: 16px;
-      border: 1px solid var(--black);
-      border-radius: 50%;
-      background: var(--white);
-      color: var(--black);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 9px;
-      font-weight: 700;
-    }
-
-    .intent-mark {
-      right: -14%;
-      top: -14%;
-      color: var(--red);
-      background: var(--white);
-      border: 1px solid var(--red);
-      width: 19px;
-      height: 19px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .order-mark {
-      left: 3px;
-      bottom: 2px;
-      color: var(--white);
-      font-size: 8px;
-      opacity: 0.75;
+    .enemy.commanded {
+      box-shadow: 0 0 0 4px var(--black);
     }
 
     .spawn-ghost {
-      width: 42%;
+      width: 62%;
       aspect-ratio: 1;
-      border: 2px solid var(--red);
-      color: var(--red);
+      position: relative;
+      z-index: 4;
+      opacity: 0.45;
+      border: 2px dashed var(--red);
+      border-radius: 12%;
       background: var(--white);
+      padding: 3%;
+    }
+
+    .spawn-ghost img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 50%;
+    }
+
+    .health-pips {
+      position: absolute;
+      left: 50%;
+      bottom: -10%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 3px;
+      z-index: 8;
+      padding: 2px 3px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 8px;
+      pointer-events: none;
+    }
+
+    .health-pip {
+      width: clamp(5px, 1.25vw, 8px);
+      aspect-ratio: 1;
+      border: 1px solid var(--black);
+      border-radius: 50%;
+      background: var(--white);
+    }
+
+    .health-pip.filled {
+      background: var(--black);
+    }
+
+    .health-pip.last {
+      background: var(--red);
+      border-color: var(--red);
+    }
+
+    .order-mark,
+    .intent-mark,
+    .cooldown-mark,
+    .status-mark {
+      position: absolute;
+      z-index: 9;
+      pointer-events: none;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: clamp(10px, 2.6vw, 18px);
-      font-weight: 700;
-      position: relative;
-      z-index: 2;
-      opacity: 0.78;
-    }
-
-    .controls {
-      display: grid;
-      grid-template-columns: 1fr 1.4fr 1fr;
-      gap: 8px;
-      margin-top: 10px;
-    }
-
-    .control {
-      min-height: 46px;
-      border: 1.5px solid var(--black);
       background: var(--white);
-      cursor: pointer;
-      border-radius: 0;
+      line-height: 1;
       font-weight: 700;
-      letter-spacing: 0.03em;
     }
 
-    .control:disabled {
-      color: #aaaaaa;
-      border-color: #c9c9c9;
-      cursor: default;
+    .order-mark {
+      left: -12%;
+      top: -12%;
+      width: 21px;
+      height: 21px;
+      border: 1.5px solid var(--black);
+      border-radius: 50%;
+      font-size: 10px;
     }
 
-    .control.primary {
-      background: var(--black);
-      color: var(--white);
+    .intent-mark {
+      right: -12%;
+      top: -12%;
+      width: 21px;
+      height: 21px;
+      border: 1.5px solid var(--red);
+      color: var(--red);
+      border-radius: 50%;
+      font-size: 11px;
     }
 
-    .control.special-ready {
-      border-color: var(--green);
+    .cooldown-mark {
+      right: -10%;
+      bottom: -12%;
+      min-width: 21px;
+      height: 21px;
+      padding: 0 4px;
+      border: 1.5px solid var(--black);
+      border-radius: 50%;
+      font-size: 10px;
+    }
+
+    .status-mark {
+      left: -10%;
+      bottom: -12%;
+      width: 20px;
+      height: 20px;
+      border: 1.5px solid var(--green);
       color: var(--green);
+      border-radius: 50%;
+      font-size: 11px;
     }
 
     .unit-line {
-      height: 26px;
+      min-height: 30px;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -350,27 +441,78 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      padding: 3px 0 0;
     }
 
-    .flash {
-      animation: flash 180ms ease-in-out;
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 7px;
+    }
+
+    .control {
+      min-height: 45px;
+      border: 1.5px solid var(--black);
+      background: var(--white);
+      cursor: pointer;
+      border-radius: 0;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      font-size: 12px;
+    }
+
+    .control.active {
+      border-color: var(--green);
+      color: var(--green);
+      box-shadow: inset 0 -4px 0 var(--green);
+    }
+
+    .control:disabled {
+      color: #aaaaaa;
+      border-color: #cecece;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    .control.primary {
+      grid-column: 1 / -1;
+      background: var(--black);
+      color: var(--white);
+    }
+
+    .control.special-ready {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .board.flash {
+      animation: flash 150ms ease-in-out;
     }
 
     @keyframes flash {
-      0% { filter: invert(0); }
-      50% { filter: invert(1); }
-      100% { filter: invert(0); }
+      0% {
+        filter: invert(0);
+      }
+
+      50% {
+        filter: invert(0.92);
+      }
+
+      100% {
+        filter: invert(0);
+      }
     }
 
     .overlay {
       position: fixed;
       inset: 0;
-      z-index: 20;
+      z-index: 30;
       display: none;
       align-items: center;
       justify-content: center;
       padding: 18px;
-      background: rgba(255, 255, 255, 0.94);
+      background: rgba(255, 255, 255, 0.97);
     }
 
     .overlay.show {
@@ -427,11 +569,80 @@
       color: #555555;
     }
 
+    .loading-panel,
     .gameover {
+      width: min(92vw, 600px);
       text-align: center;
+      background: var(--white);
+    }
+
+    .loading-title {
+      margin: 0 0 20px;
+      letter-spacing: 0.18em;
+      font-size: clamp(22px, 5vw, 38px);
+    }
+
+    .loading-icons {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 8px;
+      margin: 0 auto 18px;
+      max-width: 560px;
+    }
+
+    .loading-icon {
+      aspect-ratio: 1;
+      width: 100%;
+      object-fit: contain;
+      border: 1px solid var(--black);
+      border-radius: 50%;
+      opacity: 0.28;
+      transition: opacity 120ms ease;
+    }
+
+    .loading-icon.loaded {
+      opacity: 1;
+    }
+
+    .loading-icon.failed {
+      opacity: 0.1;
+    }
+
+    .loading-track {
+      height: 8px;
+      border: 1.5px solid var(--black);
+      max-width: 440px;
+      margin: 0 auto 16px;
+      background: var(--white);
+    }
+
+    .loading-fill {
+      width: 0;
+      height: 100%;
+      background: var(--black);
+      transition: width 120ms linear;
+    }
+
+    .begin-button,
+    .restart {
+      min-width: 180px;
+      min-height: 48px;
+      border: 2px solid var(--black);
+      background: var(--black);
+      color: var(--white);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .begin-button:disabled {
+      background: var(--white);
+      color: #aaaaaa;
+      border-color: #cccccc;
+    }
+
+    .gameover {
       border: 2px solid var(--black);
       padding: 30px 20px;
-      background: var(--white);
     }
 
     .gameover-number {
@@ -448,151 +659,23 @@
       letter-spacing: 0.12em;
     }
 
-    .restart {
-      min-width: 160px;
-      min-height: 48px;
-      border: 2px solid var(--black);
-      background: var(--black);
-      color: var(--white);
-      font-weight: 700;
-      cursor: pointer;
-    }
-
-
-    .gameover {
-      width: min(92vw, 420px);
-      max-height: calc(100vh - 36px);
-      overflow-y: auto;
-    }
-
-    .highscores {
-      width: min(100%, 340px);
-      margin: 20px auto 18px;
-      border-top: 1.5px solid var(--black);
-      text-align: left;
-    }
-
-    .highscores-head {
-      min-height: 42px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--black);
-    }
-
-    .highscores-title {
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-    }
-
-    .name-pencil {
-      width: 36px;
-      height: 34px;
-      border: 0;
-      background: var(--white);
-      font-size: 21px;
-      line-height: 1;
-      cursor: pointer;
-    }
-
-    .name-pencil[hidden] {
-      display: none;
-    }
-
-    .highscores-status {
-      min-height: 36px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--muted);
-      font-size: 10px;
-      letter-spacing: 0.07em;
-      text-align: center;
-      border-bottom: 1px solid var(--gray);
-    }
-
-    .highscore-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
-    .highscore-row {
-      min-height: 31px;
-      display: grid;
-      grid-template-columns: 30px minmax(0, 1fr) auto;
-      gap: 8px;
-      align-items: center;
-      border-bottom: 1px solid var(--gray);
-      font-size: 12px;
-    }
-
-    .highscore-row.current {
-      color: var(--green);
-      font-weight: 700;
-    }
-
-    .highscore-name {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .name-editor {
-      display: none;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 6px;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--black);
-    }
-
-    .name-editor.show {
-      display: grid;
-    }
-
-    .name-input,
-    .name-save {
-      height: 38px;
-      border: 1.5px solid var(--black);
-      border-radius: 0;
-      background: var(--white);
-      color: var(--black);
-      font: inherit;
-    }
-
-    .name-input {
-      min-width: 0;
-      padding: 0 10px;
-      text-transform: uppercase;
-    }
-
-    .name-save {
-      min-width: 66px;
-      padding: 0 10px;
-      background: var(--black);
-      color: var(--white);
-      font-weight: 700;
-      cursor: pointer;
-    }
-
     @media (max-width: 520px) {
       body {
-        padding-left: 6px;
-        padding-right: 6px;
+        padding-left: 4px;
+        padding-right: 4px;
       }
 
       .game {
-        width: min(98vw, 620px);
+        width: min(99vw, 680px);
       }
 
       .controls {
-        gap: 6px;
+        gap: 4px;
       }
 
       .control {
-        min-height: 44px;
-        font-size: 12px;
+        min-height: 43px;
+        font-size: 10px;
       }
 
       .cards {
@@ -600,92 +683,222 @@
       }
 
       .card {
-        min-height: 118px;
+        min-height: 116px;
+      }
+
+      .loading-icons {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        max-width: 390px;
+      }
+
+      .unit {
+        width: 70%;
       }
     }
 
     @media (orientation: landscape) and (max-height: 700px) {
       body {
-        padding-top: 5px;
-        padding-bottom: 5px;
+        padding-top: 4px;
+        padding-bottom: 4px;
       }
 
       .game {
-        width: min(76vh, 620px);
+        width: min(73vh, 680px);
       }
 
       .topbar {
         height: 24px;
       }
 
+      .unit-line {
+        min-height: 20px;
+        font-size: 10px;
+      }
+
       .controls {
-        margin-top: 6px;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        margin-top: 4px;
       }
 
       .control {
-        min-height: 36px;
+        min-height: 34px;
+        font-size: 10px;
       }
 
-      .unit-line {
-        height: 20px;
+      .control.primary {
+        grid-column: auto;
       }
     }
   </style>
 </head>
+
 <body>
   <main class="game" aria-label="The Last Five tactical board game">
     <div class="topbar">
       <div class="round" id="roundLabel">01</div>
-      <div class="squad" id="squadStatus" aria-label="Squad status"></div>
+
+      <div
+        class="squad"
+        id="squadStatus"
+        aria-label="Squad status"
+      ></div>
+
       <div class="score" id="enemyCount">00</div>
     </div>
 
-    <div class="board" id="board" role="grid" aria-label="Seven by seven battle board"></div>
+    <div
+      class="board"
+      id="board"
+      role="grid"
+      aria-label="Seven by seven battle board"
+    >
+      <svg
+        class="intent-layer"
+        id="intentLayer"
+        viewBox="0 0 700 700"
+        aria-hidden="true"
+      ></svg>
+    </div>
 
-    <div class="unit-line" id="unitLine">SELECT A UNIT</div>
+    <div class="unit-line" id="unitLine">
+      SELECT A UNIT
+    </div>
 
     <div class="controls">
-      <button class="control" id="guardButton" type="button" disabled>GUARD</button>
-      <button class="control" id="specialButton" type="button" disabled>SPECIAL</button>
-      <button class="control primary" id="endButton" type="button">END</button>
+      <button
+        class="control"
+        id="moveButton"
+        type="button"
+        disabled
+      >
+        MOVE
+      </button>
+
+      <button
+        class="control"
+        id="attackButton"
+        type="button"
+        disabled
+      >
+        ATTACK
+      </button>
+
+      <button
+        class="control"
+        id="guardButton"
+        type="button"
+        disabled
+      >
+        GUARD
+      </button>
+
+      <button
+        class="control"
+        id="specialButton"
+        type="button"
+        disabled
+      >
+        SPECIAL
+      </button>
+
+      <button
+        class="control primary"
+        id="endButton"
+        type="button"
+        disabled
+      >
+        END TURN
+      </button>
     </div>
   </main>
 
-  <div class="overlay" id="upgradeOverlay" aria-modal="true" role="dialog">
+  <div
+    class="overlay show"
+    id="loadingOverlay"
+    aria-modal="true"
+    role="dialog"
+  >
+    <div class="loading-panel">
+      <h1 class="loading-title">
+        THE LAST FIVE
+      </h1>
+
+      <div
+        class="loading-icons"
+        id="loadingIcons"
+      ></div>
+
+      <div class="loading-track">
+        <div
+          class="loading-fill"
+          id="loadingFill"
+        ></div>
+      </div>
+
+      <button
+        class="begin-button"
+        id="beginButton"
+        type="button"
+        disabled
+      >
+        BEGIN
+      </button>
+    </div>
+  </div>
+
+  <div
+    class="overlay"
+    id="upgradeOverlay"
+    aria-modal="true"
+    role="dialog"
+  >
     <div class="overlay-inner">
-      <h1 class="overlay-title">CHOOSE ONE</h1>
-      <div class="cards" id="upgradeCards"></div>
+      <h1 class="overlay-title">
+        CHOOSE ONE
+      </h1>
+
+      <div
+        class="cards"
+        id="upgradeCards"
+      ></div>
     </div>
   </div>
 
-  <div class="overlay" id="gameOverOverlay" aria-modal="true" role="dialog">
+  <div
+    class="overlay"
+    id="gameOverOverlay"
+    aria-modal="true"
+    role="dialog"
+  >
     <div class="gameover">
-      <div class="gameover-number" id="finalRound">0</div>
-      <div class="gameover-label">ROUNDS SURVIVED</div>
-      <section class="highscores" aria-label="Top ten high scores">
-        <div class="highscores-head">
-          <span class="highscores-title">TOP 10</span>
-          <button class="name-pencil" id="namePencil" type="button" aria-label="Write your high-score name" title="Write your name" hidden>✎</button>
-        </div>
-        <div class="highscores-status" id="highscoresStatus" aria-live="polite">CONNECTING…</div>
-        <form class="name-editor" id="nameEditor">
-          <input class="name-input" id="highscoreName" type="text" maxlength="16" autocomplete="nickname" aria-label="High-score name" value="PLAYER">
-          <button class="name-save" id="nameSave" type="submit">SAVE</button>
-        </form>
-        <ol class="highscore-list" id="highscoreList"></ol>
-      </section>
-      <button class="restart" id="restartButton" type="button">RESTART</button>
+      <div
+        class="gameover-number"
+        id="finalRound"
+      >
+        0
+      </div>
+
+      <div class="gameover-label">
+        ROUNDS SURVIVED
+      </div>
+
+      <button
+        class="restart"
+        id="restartButton"
+        type="button"
+      >
+        RESTART
+      </button>
     </div>
   </div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script>
     "use strict";
 
     const SIZE = 7;
     const BEACON = { r: 3, c: 3 };
+    const ASSET_ROOT = "../graphics/lastfive/";
+
     const ORTHOGONAL = [
       { r: -1, c: 0 },
       { r: 1, c: 0 },
@@ -693,229 +906,164 @@
       { r: 0, c: 1 }
     ];
 
+    const DIAGONAL = [
+      { r: -1, c: -1 },
+      { r: -1, c: 1 },
+      { r: 1, c: -1 },
+      { r: 1, c: 1 }
+    ];
+
     const HERO_DATA = {
-      blade:  { letter: "B", name: "BLADE",  special: "CLEAVE" },
-      shield: { letter: "D", name: "SHIELD", special: "FORTRESS" },
-      spear:  { letter: "P", name: "SPEAR",  special: "PIN" },
-      bow:    { letter: "A", name: "BOW",    special: "PIERCE" },
-      banner: { letter: "N", name: "BANNER", special: "RALLY" }
+      blade: {
+        letter: "B",
+        name: "BLADE",
+        special: "SWEEP",
+        cooldown: 3,
+        image: "player_blade.png"
+      },
+
+      shield: {
+        letter: "S",
+        name: "SHIELD",
+        special: "BULWARK",
+        cooldown: 4,
+        image: "player_shield.png"
+      },
+
+      spear: {
+        letter: "P",
+        name: "SPEAR",
+        special: "IMPALE",
+        cooldown: 3,
+        image: "player_spear.png"
+      },
+
+      bow: {
+        letter: "W",
+        name: "BOW",
+        special: "VOLLEY",
+        cooldown: 4,
+        image: "player_bow.png"
+      },
+
+      banner: {
+        letter: "N",
+        name: "BANNER",
+        special: "RALLY",
+        cooldown: 5,
+        image: "player_banner.png"
+      }
     };
 
     const ENEMY_DATA = {
-      grunt:    { letter: "G", hp: 1, initiative: 4 },
-      raider:   { letter: "R", hp: 1, initiative: 2 },
-      archer:   { letter: "A", hp: 1, initiative: 6 },
-      brute:    { letter: "B", hp: 2, initiative: 5 },
-      hook:     { letter: "H", hp: 1, initiative: 1 },
-      guardian: { letter: "D", hp: 2, initiative: 3 },
-      bomber:   { letter: "O", hp: 1, initiative: 7 }
+      grunt: {
+        letter: "G",
+        hp: 1,
+        initiative: 5,
+        image: "enemy_grunt.png"
+      },
+
+      raider: {
+        letter: "R",
+        hp: 1,
+        initiative: 3,
+        image: "enemy_raider.png"
+      },
+
+      archer: {
+        letter: "A",
+        hp: 1,
+        initiative: 7,
+        image: "enemy_archer.png"
+      },
+
+      brute: {
+        letter: "B",
+        hp: 3,
+        initiative: 6,
+        image: "enemy_brute.png"
+      },
+
+      hook: {
+        letter: "H",
+        hp: 2,
+        initiative: 2,
+        image: "enemy_hook.png"
+      },
+
+      guardian: {
+        letter: "D",
+        hp: 2,
+        initiative: 4,
+        image: "enemy_guardian.png"
+      },
+
+      bomber: {
+        letter: "O",
+        hp: 1,
+        initiative: 8,
+        image: "enemy_bomber.png"
+      },
+
+      commander: {
+        letter: "C",
+        hp: 2,
+        initiative: 1,
+        image: "enemy_commander.png"
+      }
     };
 
+    const ASSET_FILES = [
+      ...Object.values(HERO_DATA).map((item) => item.image),
+      ...Object.values(ENEMY_DATA).map((item) => item.image)
+    ];
+
     const boardEl = document.getElementById("board");
+    const intentLayer = document.getElementById("intentLayer");
     const roundLabel = document.getElementById("roundLabel");
     const squadStatus = document.getElementById("squadStatus");
     const enemyCount = document.getElementById("enemyCount");
     const unitLine = document.getElementById("unitLine");
+
+    const moveButton = document.getElementById("moveButton");
+    const attackButton = document.getElementById("attackButton");
     const guardButton = document.getElementById("guardButton");
     const specialButton = document.getElementById("specialButton");
     const endButton = document.getElementById("endButton");
+
+    const loadingOverlay = document.getElementById("loadingOverlay");
+    const loadingIcons = document.getElementById("loadingIcons");
+    const loadingFill = document.getElementById("loadingFill");
+    const beginButton = document.getElementById("beginButton");
+
     const upgradeOverlay = document.getElementById("upgradeOverlay");
     const upgradeCards = document.getElementById("upgradeCards");
+
     const gameOverOverlay = document.getElementById("gameOverOverlay");
     const finalRound = document.getElementById("finalRound");
     const restartButton = document.getElementById("restartButton");
-    const highscoresStatus = document.getElementById("highscoresStatus");
-    const highscoreList = document.getElementById("highscoreList");
-    const namePencil = document.getElementById("namePencil");
-    const nameEditor = document.getElementById("nameEditor");
-    const highscoreName = document.getElementById("highscoreName");
-    const nameSave = document.getElementById("nameSave");
+
+    const assetStatus = new Map();
+
+    const hoverCapable = window.matchMedia(
+      "(hover: hover) and (pointer: fine)"
+    ).matches;
 
     let cells = [];
     let nextId = 1;
     let seed = (Date.now() ^ 0x9e3779b9) >>> 0;
     let selectedHeroId = null;
-    let interactionMode = "normal";
+    let actionMode = "move";
+    let previewTarget = null;
+    let previewLocked = false;
+    let pendingBanner = null;
     let game = null;
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
-      authDomain: "bible-game-246c0.firebaseapp.com",
-      databaseURL: "https://bible-game-246c0-default-rtdb.firebaseio.com",
-      projectId: "bible-game-246c0",
-      storageBucket: "bible-game-246c0.firebasestorage.app",
-      messagingSenderId: "959619818996",
-      appId: "1:959619818996:web:5a9fbf492e23c765e445a1",
-      measurementId: "G-8PR6LVKSH3"
-    };
-
-    const onlineScores = {
-      ready: false,
-      db: null,
-      uid: null,
-      rows: [],
-      currentId: null,
-      currentRef: null,
-      error: ""
-    };
-    let highScoreInitPromise = null;
-
-    function cleanHighScoreName(value) {
-      return String(value || "PLAYER")
-        .replace(/[^a-zA-Z0-9 _.-]/g, "")
-        .trim()
-        .slice(0, 16)
-        .toUpperCase() || "PLAYER";
-    }
-
-    function scoreCollection() {
-      return onlineScores.db
-        .collection("lobbies")
-        .doc("gateguard")
-        .collection("highscores");
-    }
-
-    async function initHighScores() {
-      try {
-        if (!window.firebase) throw new Error("Firebase scripts blocked");
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        onlineScores.db = firebase.firestore();
-        const credential = await firebase.auth().signInAnonymously();
-        onlineScores.uid = credential.user.uid;
-        onlineScores.ready = true;
-        await loadHighScores();
-      } catch (error) {
-        onlineScores.error = error && error.code ? error.code : "OFFLINE";
-        renderHighScores();
-        throw error;
-      }
-    }
-
-    async function loadHighScores() {
-      if (!onlineScores.ready || !onlineScores.db) {
-        renderHighScores();
-        return [];
-      }
-      const snapshot = await scoreCollection().orderBy("rounds", "desc").limit(10).get();
-      onlineScores.rows = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .sort((a, b) => (Number(b.rounds) || 0) - (Number(a.rounds) || 0) ||
-          (Number(a.createdMs) || 0) - (Number(b.createdMs) || 0));
-      onlineScores.error = "";
-      renderHighScores();
-      return onlineScores.rows;
-    }
-
-    function renderHighScores(message = "") {
-      highscoreList.innerHTML = "";
-      const rows = onlineScores.rows.slice(0, 10);
-
-      if (onlineScores.error && !rows.length) {
-        highscoresStatus.textContent = "HIGHSCORES OFFLINE";
-      } else if (message) {
-        highscoresStatus.textContent = message;
-      } else if (!rows.length) {
-        highscoresStatus.textContent = onlineScores.ready ? "NO SCORES YET" : "CONNECTING…";
-      } else {
-        highscoresStatus.textContent = onlineScores.currentId ? "YOUR SCORE IS MARKED" : "ONLINE";
-      }
-
-      rows.forEach((row, index) => {
-        const item = document.createElement("li");
-        item.className = "highscore-row";
-        if (row.id === onlineScores.currentId) item.classList.add("current");
-
-        const rank = document.createElement("span");
-        rank.textContent = String(index + 1).padStart(2, "0");
-
-        const name = document.createElement("span");
-        name.className = "highscore-name";
-        name.textContent = cleanHighScoreName(row.name);
-
-        const score = document.createElement("span");
-        score.textContent = String(Math.max(0, Math.floor(Number(row.rounds) || 0)));
-
-        item.append(rank, name, score);
-        highscoreList.appendChild(item);
-      });
-
-      namePencil.hidden = !onlineScores.currentRef;
-      if (!onlineScores.currentRef) nameEditor.classList.remove("show");
-    }
-
-    async function submitHighScore(rounds) {
-      highscoresStatus.textContent = "CHECKING TOP 10…";
-      try {
-        await highScoreInitPromise;
-        const createdMs = Date.now();
-        const scoreRef = await scoreCollection().add({
-          name: "PLAYER",
-          rounds: Math.max(0, Math.floor(Number(rounds) || 0)),
-          uid: onlineScores.uid,
-          createdMs,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        const snapshot = await scoreCollection().orderBy("rounds", "desc").limit(40).get();
-        const ranked = snapshot.docs
-          .map(doc => ({ id: doc.id, ref: doc.ref, ...doc.data() }))
-          .sort((a, b) => (Number(b.rounds) || 0) - (Number(a.rounds) || 0) ||
-            (Number(a.createdMs) || 0) - (Number(b.createdMs) || 0));
-        const topTen = ranked.slice(0, 10);
-        const dropped = ranked.slice(10);
-
-        if (dropped.length) {
-          const batch = onlineScores.db.batch();
-          dropped.forEach(row => batch.delete(row.ref));
-          await batch.commit();
-        }
-
-        const current = topTen.find(row => row.id === scoreRef.id) || null;
-        onlineScores.currentId = current ? current.id : null;
-        onlineScores.currentRef = current ? scoreRef : null;
-        onlineScores.rows = topTen.map(({ ref, ...row }) => row);
-        highscoreName.value = cleanHighScoreName(localStorage.getItem("gateguardHighScoreName") || "PLAYER");
-        renderHighScores(current ? "TOP 10 — USE ✎ TO WRITE YOUR NAME" : "SCORE SAVED");
-      } catch (error) {
-        onlineScores.error = error && error.code ? error.code : "OFFLINE";
-        renderHighScores();
-        console.warn("Gate Guard high-score update failed", error);
-      }
-    }
-
-    namePencil.addEventListener("click", () => {
-      if (!onlineScores.currentRef) return;
-      nameEditor.classList.toggle("show");
-      if (nameEditor.classList.contains("show")) {
-        highscoreName.focus();
-        highscoreName.select();
-      }
-    });
-
-    nameEditor.addEventListener("submit", async event => {
-      event.preventDefault();
-      if (!onlineScores.currentRef) return;
-      const cleanName = cleanHighScoreName(highscoreName.value);
-      nameSave.disabled = true;
-      highscoresStatus.textContent = "SAVING…";
-      try {
-        await onlineScores.currentRef.update({ name: cleanName });
-        localStorage.setItem("gateguardHighScoreName", cleanName);
-        const current = onlineScores.rows.find(row => row.id === onlineScores.currentId);
-        if (current) current.name = cleanName;
-        nameEditor.classList.remove("show");
-        renderHighScores("NAME SAVED");
-      } catch (error) {
-        highscoresStatus.textContent = "NAME COULD NOT BE SAVED";
-      } finally {
-        nameSave.disabled = false;
-      }
-    });
 
     function random() {
       seed ^= seed << 13;
       seed ^= seed >>> 17;
       seed ^= seed << 5;
+
       return (seed >>> 0) / 4294967296;
     }
 
@@ -925,64 +1073,133 @@
 
     function shuffle(items) {
       const copy = items.slice();
-      for (let i = copy.length - 1; i > 0; i -= 1) {
-        const j = randomInt(i + 1);
-        [copy[i], copy[j]] = [copy[j], copy[i]];
+
+      for (let index = copy.length - 1; index > 0; index -= 1) {
+        const replacement = randomInt(index + 1);
+
+        [copy[index], copy[replacement]] = [
+          copy[replacement],
+          copy[index]
+        ];
       }
+
       return copy;
     }
 
-    function key(r, c) {
-      return `${r},${c}`;
+    function key(row, column) {
+      return `${row},${column}`;
     }
 
-    function inside(r, c) {
-      return r >= 0 && r < SIZE && c >= 0 && c < SIZE;
+    function inside(row, column) {
+      return (
+        row >= 0 &&
+        row < SIZE &&
+        column >= 0 &&
+        column < SIZE
+      );
     }
 
-    function manhattan(a, b) {
-      return Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
+    function manhattan(first, second) {
+      return (
+        Math.abs(first.r - second.r) +
+        Math.abs(first.c - second.c)
+      );
     }
 
-    function sameCell(a, b) {
-      return a.r === b.r && a.c === b.c;
-    }
-
-    function directionSymbol(from, to) {
-      const dr = to.r - from.r;
-      const dc = to.c - from.c;
-      if (Math.abs(dr) > Math.abs(dc)) return dr < 0 ? "↑" : "↓";
-      if (dc !== 0) return dc < 0 ? "←" : "→";
-      return "•";
+    function sameCell(first, second) {
+      return first.r === second.r && first.c === second.c;
     }
 
     function createBoard() {
-      boardEl.innerHTML = "";
+      for (const oldCell of boardEl.querySelectorAll(".cell")) {
+        oldCell.remove();
+      }
+
       cells = [];
-      for (let r = 0; r < SIZE; r += 1) {
-        for (let c = 0; c < SIZE; c += 1) {
+
+      for (let row = 0; row < SIZE; row += 1) {
+        for (let column = 0; column < SIZE; column += 1) {
           const cell = document.createElement("button");
+
           cell.type = "button";
           cell.className = "cell";
-          cell.dataset.r = String(r);
-          cell.dataset.c = String(c);
+          cell.dataset.r = String(row);
+          cell.dataset.c = String(column);
           cell.setAttribute("role", "gridcell");
-          cell.setAttribute("aria-label", `Row ${r + 1}, column ${c + 1}`);
+          cell.setAttribute(
+            "aria-label",
+            `Row ${row + 1}, column ${column + 1}`
+          );
+
           cell.addEventListener("click", onCellClick);
-          boardEl.appendChild(cell);
+          cell.addEventListener("pointerenter", onCellEnter);
+          cell.addEventListener("pointerleave", onCellLeave);
+
+          boardEl.insertBefore(cell, intentLayer);
           cells.push(cell);
         }
       }
     }
 
-    function makeHero(type, r, c) {
+    function loadAssets() {
+      loadingIcons.innerHTML = "";
+
+      let completed = 0;
+
+      const jobs = ASSET_FILES.map(
+        (file) =>
+          new Promise((resolve) => {
+            const icon = document.createElement("img");
+
+            icon.className = "loading-icon";
+            icon.alt = "";
+            icon.src = ASSET_ROOT + file;
+
+            loadingIcons.appendChild(icon);
+
+            const finish = (success) => {
+              assetStatus.set(file, success);
+
+              icon.classList.add(
+                success ? "loaded" : "failed"
+              );
+
+              completed += 1;
+
+              loadingFill.style.width =
+                `${(completed / ASSET_FILES.length) * 100}%`;
+
+              resolve();
+            };
+
+            icon.addEventListener(
+              "load",
+              () => finish(true),
+              { once: true }
+            );
+
+            icon.addEventListener(
+              "error",
+              () => finish(false),
+              { once: true }
+            );
+          })
+      );
+
+      Promise.all(jobs).then(() => {
+        beginButton.disabled = false;
+      });
+    }
+
+    function makeHero(type, row, column) {
       return {
         id: nextId++,
         type,
-        r,
-        c,
+        r: row,
+        c: column,
         alive: true,
-        wound: 0,
+        maxHp: 2,
+        hp: 2,
         acted: false,
         guard: 0,
         cooldown: 0,
@@ -990,13 +1207,14 @@
       };
     }
 
-    function makeEnemy(type, r, c) {
+    function makeEnemy(type, row, column) {
       const data = ENEMY_DATA[type];
+
       return {
         id: nextId++,
         type,
-        r,
-        c,
+        r: row,
+        c: column,
         hp: data.hp,
         maxHp: data.hp,
         alive: true,
@@ -1004,17 +1222,22 @@
         shieldBroken: false,
         bombArmed: false,
         bombTarget: null,
-        plan: { kind: "wait" }
+        commanded: false,
+        plan: {
+          kind: "wait"
+        }
       };
     }
 
     function emptyUpgrades() {
       return {
-        bladePower: 1,
+        bladePower: 0,
         shieldDiagonal: false,
+        spearReach: 3,
         spearFlexible: false,
+        bowDiagonal: false,
         bowPierce: false,
-        bannerRange: 1,
+        bannerRange: 2,
         counter: false,
         cooldownReduction: 0,
         reserve: false,
@@ -1026,13 +1249,17 @@
     function newGame() {
       nextId = 1;
       selectedHeroId = null;
-      interactionMode = "normal";
+      actionMode = "move";
+      previewTarget = null;
+      previewLocked = false;
+      pendingBanner = null;
       seed = (Date.now() ^ 0x9e3779b9) >>> 0;
 
       game = {
         round: 1,
         completedRounds: 0,
         phase: "player",
+
         heroes: [
           makeHero("blade", 3, 2),
           makeHero("shield", 3, 3),
@@ -1040,11 +1267,13 @@
           makeHero("bow", 4, 3),
           makeHero("banner", 3, 4)
         ],
+
         enemies: [
           makeEnemy("grunt", 0, 3),
           makeEnemy("grunt", 6, 3),
           makeEnemy("grunt", 3, 0)
         ],
+
         incoming: [],
         upgrades: emptyUpgrades(),
         upgradeRanks: {},
@@ -1055,57 +1284,112 @@
 
       upgradeOverlay.classList.remove("show");
       gameOverOverlay.classList.remove("show");
+
       beginRound();
     }
 
     function aliveHeroes(state = game) {
-      return state.heroes.filter(hero => hero.alive);
+      return state.heroes.filter((hero) => hero.alive);
     }
 
     function aliveEnemies(state = game) {
-      return state.enemies.filter(enemy => enemy.alive);
+      return state.enemies.filter((enemy) => enemy.alive);
     }
 
-    function heroAt(state, r, c) {
-      return state.heroes.find(hero => hero.alive && hero.r === r && hero.c === c) || null;
+    function heroAt(state, row, column) {
+      return (
+        state.heroes.find(
+          (hero) =>
+            hero.alive &&
+            hero.r === row &&
+            hero.c === column
+        ) || null
+      );
     }
 
-    function enemyAt(state, r, c) {
-      return state.enemies.find(enemy => enemy.alive && enemy.r === r && enemy.c === c) || null;
+    function enemyAt(state, row, column) {
+      return (
+        state.enemies.find(
+          (enemy) =>
+            enemy.alive &&
+            enemy.r === row &&
+            enemy.c === column
+        ) || null
+      );
     }
 
-    function occupied(state, r, c, ignoreId = null) {
+    function occupied(
+      state,
+      row,
+      column,
+      ignoredId = null
+    ) {
       return Boolean(
-        state.heroes.some(hero => hero.alive && hero.id !== ignoreId && hero.r === r && hero.c === c) ||
-        state.enemies.some(enemy => enemy.alive && enemy.id !== ignoreId && enemy.r === r && enemy.c === c)
+        state.heroes.some(
+          (hero) =>
+            hero.alive &&
+            hero.id !== ignoredId &&
+            hero.r === row &&
+            hero.c === column
+        ) ||
+        state.enemies.some(
+          (enemy) =>
+            enemy.alive &&
+            enemy.id !== ignoredId &&
+            enemy.r === row &&
+            enemy.c === column
+        )
       );
     }
 
     function selectedHero() {
-      return game.heroes.find(hero => hero.id === selectedHeroId && hero.alive) || null;
+      return (
+        game?.heroes.find(
+          (hero) =>
+            hero.id === selectedHeroId &&
+            hero.alive
+        ) || null
+      );
     }
 
     function beginRound() {
-      if (game.over) return;
+      if (game.over) {
+        return;
+      }
 
       game.phase = "player";
       game.reserveUsed = false;
+
       selectedHeroId = null;
-      interactionMode = "normal";
+      actionMode = "move";
+      previewTarget = null;
+      previewLocked = false;
+      pendingBanner = null;
 
       for (const hero of game.heroes) {
-        if (!hero.alive) continue;
+        if (!hero.alive) {
+          continue;
+        }
+
         hero.acted = false;
         hero.guard = 0;
-        if (hero.cooldown > 0) hero.cooldown -= 1;
+
+        if (hero.cooldown > 0) {
+          hero.cooldown -= 1;
+        }
       }
 
       for (const enemy of game.enemies) {
-        if (!enemy.alive) continue;
+        if (!enemy.alive) {
+          continue;
+        }
+
         enemy.shieldBroken = false;
+        enemy.commanded = false;
         enemy.plan = createEnemyPlan(game, enemy);
       }
 
+      applyCommanderPlanning();
       assignInitiative();
       ensureFlawlessLine();
       prepareIncoming();
@@ -1113,221 +1397,576 @@
     }
 
     function chooseTargetPosition(state, enemy) {
-      const candidates = aliveHeroes(state).map(hero => ({
-        r: hero.r,
-        c: hero.c,
-        weight: hero.wound ? -0.35 : 0
-      }));
-      candidates.push({ r: BEACON.r, c: BEACON.c, weight: 0.75 });
+      const candidates = aliveHeroes(state).map(
+        (hero) => ({
+          r: hero.r,
+          c: hero.c,
+          weight: hero.hp === 1 ? -0.35 : 0
+        })
+      );
 
-      candidates.sort((a, b) => {
-        const da = manhattan(enemy, a) + a.weight;
-        const db = manhattan(enemy, b) + b.weight;
-        return da - db;
+      candidates.push({
+        r: BEACON.r,
+        c: BEACON.c,
+        weight: 0.75
       });
+
+      candidates.sort(
+        (first, second) =>
+          manhattan(enemy, first) +
+          first.weight -
+          (
+            manhattan(enemy, second) +
+            second.weight
+          )
+      );
+
       return candidates[0] || BEACON;
     }
 
-    function nearestAlignedHero(state, enemy, minRange, maxRange) {
-      const targets = aliveHeroes(state)
-        .filter(hero => {
-          const aligned = hero.r === enemy.r || hero.c === enemy.c;
-          const distance = manhattan(hero, enemy);
-          return aligned && distance >= minRange && distance <= maxRange && lineClear(state, enemy, hero, enemy.id, hero.id);
-        })
-        .sort((a, b) => manhattan(a, enemy) - manhattan(b, enemy));
-      return targets[0] || null;
-    }
-
-    function lineClear(state, from, to, ignoreA = null, ignoreB = null) {
-      if (from.r !== to.r && from.c !== to.c) return false;
-      const dr = Math.sign(to.r - from.r);
-      const dc = Math.sign(to.c - from.c);
-      let r = from.r + dr;
-      let c = from.c + dc;
-      while (r !== to.r || c !== to.c) {
-        if (occupied(state, r, c, ignoreA) && !(
-          state.heroes.some(hero => hero.id === ignoreB && hero.alive && hero.r === r && hero.c === c) ||
-          state.enemies.some(enemy => enemy.id === ignoreB && enemy.alive && enemy.r === r && enemy.c === c)
-        )) return false;
-        r += dr;
-        c += dc;
+    function lineClear(
+      state,
+      from,
+      to,
+      ignoredFirst = null,
+      ignoredSecond = null
+    ) {
+      if (
+        from.r !== to.r &&
+        from.c !== to.c
+      ) {
+        return false;
       }
+
+      const rowDirection = Math.sign(to.r - from.r);
+      const columnDirection = Math.sign(to.c - from.c);
+
+      let row = from.r + rowDirection;
+      let column = from.c + columnDirection;
+
+      while (
+        row !== to.r ||
+        column !== to.c
+      ) {
+        const unit =
+          heroAt(state, row, column) ||
+          enemyAt(state, row, column);
+
+        if (
+          unit &&
+          unit.id !== ignoredFirst &&
+          unit.id !== ignoredSecond
+        ) {
+          return false;
+        }
+
+        row += rowDirection;
+        column += columnDirection;
+      }
+
       return true;
     }
 
-    function greedyPath(state, unit, target, maxSteps) {
+    function nearestAlignedHero(
+      state,
+      enemy,
+      minimumRange,
+      maximumRange
+    ) {
+      return (
+        aliveHeroes(state)
+          .filter((hero) => {
+            const aligned =
+              hero.r === enemy.r ||
+              hero.c === enemy.c;
+
+            const distance = manhattan(hero, enemy);
+
+            return (
+              aligned &&
+              distance >= minimumRange &&
+              distance <= maximumRange &&
+              lineClear(
+                state,
+                enemy,
+                hero,
+                enemy.id,
+                hero.id
+              )
+            );
+          })
+          .sort(
+            (first, second) =>
+              manhattan(first, enemy) -
+              manhattan(second, enemy)
+          )[0] || null
+      );
+    }
+
+    function greedyPath(
+      state,
+      unit,
+      target,
+      maximumSteps,
+      start = null
+    ) {
       const path = [];
-      let current = { r: unit.r, c: unit.c };
-      for (let step = 0; step < maxSteps; step += 1) {
+
+      let current = start
+        ? { ...start }
+        : {
+            r: unit.r,
+            c: unit.c
+          };
+
+      for (
+        let step = 0;
+        step < maximumSteps;
+        step += 1
+      ) {
         const options = ORTHOGONAL
-          .map(delta => ({ r: current.r + delta.r, c: current.c + delta.c }))
-          .filter(pos => inside(pos.r, pos.c))
-          .filter(pos => !occupied(state, pos.r, pos.c, unit.id))
-          .sort((a, b) => manhattan(a, target) - manhattan(b, target));
-        if (!options.length || manhattan(options[0], target) >= manhattan(current, target)) break;
+          .map((delta) => ({
+            r: current.r + delta.r,
+            c: current.c + delta.c
+          }))
+          .filter((position) =>
+            inside(position.r, position.c)
+          )
+          .filter(
+            (position) =>
+              !occupied(
+                state,
+                position.r,
+                position.c,
+                unit.id
+              )
+          )
+          .sort(
+            (first, second) =>
+              manhattan(first, target) -
+              manhattan(second, target)
+          );
+
+        if (
+          !options.length ||
+          manhattan(options[0], target) >=
+            manhattan(current, target)
+        ) {
+          break;
+        }
+
         current = options[0];
-        path.push({ r: current.r, c: current.c });
+        path.push({ ...current });
       }
+
       return path;
     }
 
     function createEnemyPlan(state, enemy) {
       if (enemy.stunned > 0) {
         enemy.stunned -= 1;
-        return { kind: "wait", stunned: true };
+
+        return {
+          kind: "wait",
+          stunned: true
+        };
+      }
+
+      if (enemy.type === "commander") {
+        const targetIds = aliveEnemies(state)
+          .filter(
+            (unit) =>
+              unit.id !== enemy.id &&
+              manhattan(unit, enemy) <= 2
+          )
+          .map((unit) => unit.id);
+
+        if (targetIds.length) {
+          return {
+            kind: "command",
+            targetIds
+          };
+        }
       }
 
       if (enemy.type === "bomber") {
-        if (enemy.bombArmed && enemy.bombTarget) {
-          return { kind: "explode", center: { ...enemy.bombTarget } };
+        if (
+          enemy.bombArmed &&
+          enemy.bombTarget
+        ) {
+          return {
+            kind: "explode",
+            center: {
+              ...enemy.bombTarget
+            }
+          };
         }
-        const target = chooseTargetPosition(state, enemy);
-        return { kind: "mark", center: { r: target.r, c: target.c } };
+
+        const target = chooseTargetPosition(
+          state,
+          enemy
+        );
+
+        return {
+          kind: "mark",
+          center: {
+            r: target.r,
+            c: target.c
+          }
+        };
       }
 
       if (enemy.type === "archer") {
-        const target = nearestAlignedHero(state, enemy, 2, 5);
-        if (target) return { kind: "shoot", target: { r: target.r, c: target.c } };
+        const target = nearestAlignedHero(
+          state,
+          enemy,
+          2,
+          6
+        );
+
+        if (target) {
+          return {
+            kind: "shoot",
+            target: {
+              r: target.r,
+              c: target.c
+            }
+          };
+        }
       }
 
       if (enemy.type === "hook") {
-        const target = nearestAlignedHero(state, enemy, 2, 4);
-        if (target) return { kind: "pull", target: { r: target.r, c: target.c } };
+        const target = nearestAlignedHero(
+          state,
+          enemy,
+          2,
+          5
+        );
+
+        if (target) {
+          return {
+            kind: "pull",
+            target: {
+              r: target.r,
+              c: target.c
+            }
+          };
+        }
       }
 
       const adjacent = aliveHeroes(state)
-        .filter(hero => manhattan(hero, enemy) === 1)
-        .sort((a, b) => b.wound - a.wound)[0];
+        .filter(
+          (hero) =>
+            manhattan(hero, enemy) === 1
+        )
+        .sort(
+          (first, second) =>
+            first.hp - second.hp
+        )[0];
 
       if (adjacent) {
         if (enemy.type === "brute") {
-          return { kind: "attackPush", target: { r: adjacent.r, c: adjacent.c } };
+          return {
+            kind: "attackPush",
+            target: {
+              r: adjacent.r,
+              c: adjacent.c
+            }
+          };
         }
-        return { kind: "attack", target: { r: adjacent.r, c: adjacent.c } };
-      }
 
-      const target = chooseTargetPosition(state, enemy);
-
-      if (enemy.type === "raider") {
-        const alignedHero = nearestAlignedHero(state, enemy, 2, 2);
-        if (alignedHero) {
-          const dr = Math.sign(alignedHero.r - enemy.r);
-          const dc = Math.sign(alignedHero.c - enemy.c);
-          const path = [];
-          for (let i = 1; i <= manhattan(enemy, alignedHero); i += 1) {
-            path.push({ r: enemy.r + dr * i, c: enemy.c + dc * i });
+        return {
+          kind: "attack",
+          target: {
+            r: adjacent.r,
+            c: adjacent.c
           }
-          return { kind: "charge", path };
-        }
-        const path = greedyPath(state, enemy, target, 2);
-        return path.length ? { kind: "move", path } : { kind: "wait" };
+        };
       }
 
-      const path = greedyPath(state, enemy, target, 1);
-      return path.length ? { kind: "move", path } : { kind: "wait" };
+      const target = chooseTargetPosition(
+        state,
+        enemy
+      );
+
+      const steps =
+        enemy.type === "raider" ? 2 : 1;
+
+      const path = greedyPath(
+        state,
+        enemy,
+        target,
+        steps
+      );
+
+      return path.length
+        ? {
+            kind:
+              enemy.type === "raider"
+                ? "charge"
+                : "move",
+            path
+          }
+        : {
+            kind: "wait"
+          };
+    }
+
+    function applyCommanderPlanning() {
+      const commanders = aliveEnemies().filter(
+        (enemy) =>
+          enemy.type === "commander" &&
+          enemy.plan.kind === "command"
+      );
+
+      for (const commander of commanders) {
+        for (
+          const targetId of
+          commander.plan.targetIds || []
+        ) {
+          const target = game.enemies.find(
+            (enemy) =>
+              enemy.id === targetId &&
+              enemy.alive
+          );
+
+          if (!target) {
+            continue;
+          }
+
+          target.commanded = true;
+          target.plan.commanded = true;
+
+          if (
+            ["move", "charge"].includes(
+              target.plan.kind
+            )
+          ) {
+            const currentEnd =
+              target.plan.path?.length
+                ? target.plan.path[
+                    target.plan.path.length - 1
+                  ]
+                : target;
+
+            const goal = chooseTargetPosition(
+              game,
+              {
+                ...target,
+                ...currentEnd
+              }
+            );
+
+            const extra = greedyPath(
+              game,
+              target,
+              goal,
+              1,
+              currentEnd
+            )[0];
+
+            if (
+              extra &&
+              !target.plan.path.some(
+                (position) =>
+                  sameCell(position, extra)
+              )
+            ) {
+              target.plan.path.push(extra);
+            }
+          }
+        }
+      }
     }
 
     function assignInitiative() {
-      const ordered = aliveEnemies().slice().sort((a, b) => {
-        const ia = ENEMY_DATA[a.type].initiative;
-        const ib = ENEMY_DATA[b.type].initiative;
-        return ia - ib || a.id - b.id;
-      });
+      const ordered = aliveEnemies()
+        .slice()
+        .sort((first, second) => {
+          const firstInitiative =
+            ENEMY_DATA[first.type].initiative -
+            (first.commanded ? 0.5 : 0);
+
+          const secondInitiative =
+            ENEMY_DATA[second.type].initiative -
+            (second.commanded ? 0.5 : 0);
+
+          return (
+            firstInitiative -
+              secondInitiative ||
+            first.id -
+              second.id
+          );
+        });
+
       ordered.forEach((enemy, index) => {
         enemy.order = index + 1;
       });
     }
 
-    function cloneState(source) {
-      return {
-        heroes: source.heroes.map(hero => ({ ...hero })),
-        enemies: source.enemies.map(enemy => ({
-          ...enemy,
-          bombTarget: enemy.bombTarget ? { ...enemy.bombTarget } : null,
-          plan: clonePlan(enemy.plan)
-        })),
-        upgrades: { ...source.upgrades },
-        reserveUsed: source.reserveUsed,
-        damageEvents: 0
-      };
-    }
-
-    function clonePlan(plan) {
-      if (!plan) return { kind: "wait" };
-      return {
-        ...plan,
-        target: plan.target ? { ...plan.target } : undefined,
-        center: plan.center ? { ...plan.center } : undefined,
-        path: plan.path ? plan.path.map(pos => ({ ...pos })) : undefined
-      };
-    }
-
     function getMoveTargets(state, hero) {
       return ORTHOGONAL
-        .map(delta => ({ r: hero.r + delta.r, c: hero.c + delta.c }))
-        .filter(pos => inside(pos.r, pos.c) && !occupied(state, pos.r, pos.c, hero.id));
+        .map((delta) => ({
+          r: hero.r + delta.r,
+          c: hero.c + delta.c
+        }))
+        .filter(
+          (position) =>
+            inside(position.r, position.c) &&
+            !occupied(
+              state,
+              position.r,
+              position.c,
+              hero.id
+            )
+        );
     }
 
-    function firstUnitInDirection(state, origin, delta, maxRange, allowAllyPass = false) {
-      let passedAlly = false;
-      for (let distance = 1; distance <= maxRange; distance += 1) {
-        const r = origin.r + delta.r * distance;
-        const c = origin.c + delta.c * distance;
-        if (!inside(r, c)) break;
-        const enemy = enemyAt(state, r, c);
-        if (enemy) return { enemy, distance, delta };
-        const hero = heroAt(state, r, c);
-        if (hero) {
-          if (allowAllyPass && !passedAlly) {
-            passedAlly = true;
-            continue;
-          }
+    function firstUnitInDirection(
+      state,
+      origin,
+      delta,
+      maximumRange
+    ) {
+      for (
+        let distance = 1;
+        distance <= maximumRange;
+        distance += 1
+      ) {
+        const row =
+          origin.r +
+          delta.r * distance;
+
+        const column =
+          origin.c +
+          delta.c * distance;
+
+        if (!inside(row, column)) {
+          break;
+        }
+
+        const enemy = enemyAt(
+          state,
+          row,
+          column
+        );
+
+        if (enemy) {
+          return {
+            enemy,
+            distance,
+            delta
+          };
+        }
+
+        if (heroAt(state, row, column)) {
           break;
         }
       }
+
       return null;
     }
 
     function getAttackTargets(state, hero) {
-      if (!hero.alive) return [];
+      if (!hero.alive) {
+        return [];
+      }
 
-      if (hero.type === "blade" || hero.type === "shield" || hero.type === "banner") {
+      if (
+        ["blade", "shield", "banner"].includes(
+          hero.type
+        )
+      ) {
         return ORTHOGONAL
-          .map(delta => enemyAt(state, hero.r + delta.r, hero.c + delta.c))
+          .map((delta) =>
+            enemyAt(
+              state,
+              hero.r + delta.r,
+              hero.c + delta.c
+            )
+          )
           .filter(Boolean)
-          .map(enemy => ({ r: enemy.r, c: enemy.c, enemyId: enemy.id }));
+          .map((enemy) => ({
+            r: enemy.r,
+            c: enemy.c,
+            enemyId: enemy.id
+          }));
       }
 
       if (hero.type === "spear") {
-        const ranges = state.upgrades.spearFlexible ? [1, 2] : [2];
+        const ranges =
+          state.upgrades.spearFlexible
+            ? [1, 2]
+            : [2];
+
         const targets = [];
+
         for (const delta of ORTHOGONAL) {
           for (const distance of ranges) {
-            const r = hero.r + delta.r * distance;
-            const c = hero.c + delta.c * distance;
-            if (!inside(r, c)) continue;
+            const row =
+              hero.r +
+              delta.r * distance;
+
+            const column =
+              hero.c +
+              delta.c * distance;
+
+            if (!inside(row, column)) {
+              continue;
+            }
+
             let blocked = false;
-            for (let step = 1; step < distance; step += 1) {
-              if (occupied(state, hero.r + delta.r * step, hero.c + delta.c * step, hero.id)) {
+
+            for (
+              let step = 1;
+              step < distance;
+              step += 1
+            ) {
+              if (
+                occupied(
+                  state,
+                  hero.r + delta.r * step,
+                  hero.c + delta.c * step,
+                  hero.id
+                )
+              ) {
                 blocked = true;
-                break;
               }
             }
-            if (!blocked) {
-              const enemy = enemyAt(state, r, c);
-              if (enemy) targets.push({ r, c, enemyId: enemy.id });
+
+            const enemy = blocked
+              ? null
+              : enemyAt(
+                  state,
+                  row,
+                  column
+                );
+
+            if (enemy) {
+              targets.push({
+                r: row,
+                c: column,
+                enemyId: enemy.id
+              });
             }
           }
         }
+
         return targets;
       }
 
       if (hero.type === "bow") {
         return ORTHOGONAL
-          .map(delta => firstUnitInDirection(state, hero, delta, 4, false))
+          .map((delta) =>
+            firstUnitInDirection(
+              state,
+              hero,
+              delta,
+              4
+            )
+          )
           .filter(Boolean)
-          .map(result => ({
+          .map((result) => ({
             r: result.enemy.r,
             c: result.enemy.c,
             enemyId: result.enemy.id,
@@ -1338,310 +1977,1642 @@
       return [];
     }
 
-    function adjacentGuardian(state, target) {
-      return state.enemies.find(enemy =>
-        enemy.alive &&
-        enemy.type === "guardian" &&
-        enemy.id !== target.id &&
-        manhattan(enemy, target) === 1
-      ) || null;
+    function getGuardTargets(hero) {
+      return [
+        {
+          r: hero.r,
+          c: hero.c,
+          heroId: hero.id
+        }
+      ];
     }
 
-    function damageEnemy(state, enemyId, amount, sourceHero = null) {
-      const enemy = state.enemies.find(unit => unit.id === enemyId && unit.alive);
-      if (!enemy) return { hit: false, killed: false, blocked: false };
-
-      const guardian = adjacentGuardian(state, enemy);
-      if (guardian && !enemy.shieldBroken) {
-        enemy.shieldBroken = true;
-        return { hit: false, killed: false, blocked: true };
+    function getSpecialTargets(hero) {
+      if (hero.type === "blade") {
+        return ORTHOGONAL
+          .map((delta) => ({
+            r: hero.r + delta.r,
+            c: hero.c + delta.c
+          }))
+          .filter(
+            (position) =>
+              inside(
+                position.r,
+                position.c
+              ) &&
+              !heroAt(
+                game,
+                position.r,
+                position.c
+              )
+          );
       }
 
-      let finalAmount = amount;
-      if (sourceHero && state.upgrades.finisher && enemy.hp < enemy.maxHp) finalAmount += 1;
-      enemy.hp -= finalAmount;
-      if (enemy.hp <= 0) {
-        enemy.alive = false;
-        return { hit: true, killed: true, blocked: false };
+      if (hero.type === "shield") {
+        return [
+          {
+            r: hero.r,
+            c: hero.c
+          },
+
+          ...ORTHOGONAL.map((delta) => ({
+            r: hero.r + delta.r,
+            c: hero.c + delta.c
+          }))
+        ].filter(
+          (position) =>
+            inside(
+              position.r,
+              position.c
+            ) &&
+            !enemyAt(
+              game,
+              position.r,
+              position.c
+            )
+        );
       }
-      return { hit: true, killed: false, blocked: false };
-    }
 
-    function applyBasicAttack(state, hero, enemyId) {
-      const target = state.enemies.find(enemy => enemy.id === enemyId && enemy.alive);
-      if (!target) return;
-      const direction = { r: Math.sign(target.r - hero.r), c: Math.sign(target.c - hero.c) };
-      damageEnemy(state, enemyId, 1, hero);
+      if (hero.type === "spear") {
+        const targets = [];
 
-      if (hero.type === "bow" && state.upgrades.bowPierce) {
-        let foundFirst = false;
-        for (let distance = 1; distance <= 5; distance += 1) {
-          const r = hero.r + direction.r * distance;
-          const c = hero.c + direction.c * distance;
-          if (!inside(r, c)) break;
-          const enemy = enemyAt(state, r, c);
-          if (enemy) {
-            if (!foundFirst && enemy.id === enemyId) {
-              foundFirst = true;
-              continue;
+        for (const delta of ORTHOGONAL) {
+          for (
+            let distance = 1;
+            distance <=
+              game.upgrades.spearReach;
+            distance += 1
+          ) {
+            const row =
+              hero.r +
+              delta.r * distance;
+
+            const column =
+              hero.c +
+              delta.c * distance;
+
+            if (!inside(row, column)) {
+              break;
             }
-            if (foundFirst) {
-              damageEnemy(state, enemy.id, 1, hero);
+
+            const ally = heroAt(
+              game,
+              row,
+              column
+            );
+
+            if (
+              ally &&
+              ally.id !== hero.id
+            ) {
+              break;
+            }
+
+            targets.push({
+              r: row,
+              c: column,
+              delta,
+              distance
+            });
+
+            if (
+              enemyAt(
+                game,
+                row,
+                column
+              )
+            ) {
               break;
             }
           }
-          const ally = heroAt(state, r, c);
-          if (ally && ally.id !== hero.id) break;
+        }
+
+        return targets;
+      }
+
+      if (hero.type === "bow") {
+        const targets = [];
+
+        for (
+          let row = 0;
+          row < SIZE;
+          row += 1
+        ) {
+          for (
+            let column = 0;
+            column < SIZE;
+            column += 1
+          ) {
+            if (
+              manhattan(
+                hero,
+                {
+                  r: row,
+                  c: column
+                }
+              ) <= 4
+            ) {
+              targets.push({
+                r: row,
+                c: column
+              });
+            }
+          }
+        }
+
+        return targets;
+      }
+
+      if (hero.type === "banner") {
+        const targets = [];
+
+        for (
+          let row = 0;
+          row < SIZE;
+          row += 1
+        ) {
+          for (
+            let column = 0;
+            column < SIZE;
+            column += 1
+          ) {
+            if (
+              manhattan(
+                hero,
+                {
+                  r: row,
+                  c: column
+                }
+              ) <= game.upgrades.bannerRange &&
+              !enemyAt(
+                game,
+                row,
+                column
+              )
+            ) {
+              targets.push({
+                r: row,
+                c: column
+              });
+            }
+          }
+        }
+
+        return targets;
+      }
+
+      return [];
+    }
+
+    function getBannerPickTargets() {
+      if (!pendingBanner) {
+        return [];
+      }
+
+      return pendingBanner.eligibleIds
+        .map((id) =>
+          game.heroes.find(
+            (hero) =>
+              hero.id === id &&
+              hero.alive
+          )
+        )
+        .filter(Boolean)
+        .map((hero) => ({
+          r: hero.r,
+          c: hero.c,
+          heroId: hero.id
+        }));
+    }
+
+    function getActionTargets(
+      hero,
+      mode = actionMode
+    ) {
+      if (!hero || hero.acted) {
+        return [];
+      }
+
+      if (mode === "move") {
+        return getMoveTargets(game, hero);
+      }
+
+      if (mode === "attack") {
+        return getAttackTargets(game, hero);
+      }
+
+      if (mode === "guard") {
+        return getGuardTargets(hero);
+      }
+
+      if (mode === "special") {
+        return hero.cooldown === 0
+          ? getSpecialTargets(hero)
+          : [];
+      }
+
+      if (mode === "bannerPick") {
+        return getBannerPickTargets();
+      }
+
+      return [];
+    }
+
+    function bladeSweepArea(hero, target) {
+      const rowDifference =
+        target.r - hero.r;
+
+      const columnDifference =
+        target.c - hero.c;
+
+      const sideFirst =
+        rowDifference !== 0
+          ? {
+              r: target.r,
+              c: target.c - 1
+            }
+          : {
+              r: target.r - 1,
+              c: target.c
+            };
+
+      const sideSecond =
+        rowDifference !== 0
+          ? {
+              r: target.r,
+              c: target.c + 1
+            }
+          : {
+              r: target.r + 1,
+              c: target.c
+            };
+
+      return [
+        target,
+        sideFirst,
+        sideSecond
+      ].filter((position) =>
+        inside(position.r, position.c)
+      );
+    }
+
+    function plusArea(
+      center,
+      includeDiagonal = false
+    ) {
+      const offsets = [
+        {
+          r: 0,
+          c: 0
+        },
+
+        ...ORTHOGONAL,
+
+        ...(includeDiagonal
+          ? DIAGONAL
+          : [])
+      ];
+
+      return offsets
+        .map((delta) => ({
+          r: center.r + delta.r,
+          c: center.c + delta.c
+        }))
+        .filter((position) =>
+          inside(position.r, position.c)
+        );
+    }
+
+    function lineArea(hero, target) {
+      const rowDirection =
+        Math.sign(target.r - hero.r);
+
+      const columnDirection =
+        Math.sign(target.c - hero.c);
+
+      const distance =
+        manhattan(hero, target);
+
+      const area = [];
+
+      for (
+        let step = 1;
+        step <= distance;
+        step += 1
+      ) {
+        area.push({
+          r: hero.r +
+            rowDirection * step,
+
+          c: hero.c +
+            columnDirection * step
+        });
+      }
+
+      return area;
+    }
+
+    function getPreviewArea(
+      hero,
+      mode,
+      target
+    ) {
+      if (!hero || !target) {
+        return {
+          friendly: [],
+          hostile: []
+        };
+      }
+
+      if (
+        mode === "move" ||
+        mode === "guard" ||
+        mode === "bannerPick"
+      ) {
+        return {
+          friendly: [target],
+          hostile: []
+        };
+      }
+
+      if (mode === "attack") {
+        return {
+          friendly: [],
+          hostile: [target]
+        };
+      }
+
+      if (mode !== "special") {
+        return {
+          friendly: [],
+          hostile: []
+        };
+      }
+
+      if (hero.type === "blade") {
+        return {
+          friendly: [],
+          hostile: bladeSweepArea(
+            hero,
+            target
+          )
+        };
+      }
+
+      if (hero.type === "shield") {
+        return {
+          friendly: plusArea(
+            target,
+            game.upgrades.shieldDiagonal
+          ),
+
+          hostile: []
+        };
+      }
+
+      if (hero.type === "spear") {
+        return {
+          friendly: [],
+          hostile: lineArea(
+            hero,
+            target
+          )
+        };
+      }
+
+      if (hero.type === "bow") {
+        return {
+          friendly: [],
+          hostile: plusArea(
+            target,
+            game.upgrades.bowDiagonal
+          )
+        };
+      }
+
+      if (hero.type === "banner") {
+        return {
+          friendly: plusArea(
+            target,
+            false
+          ),
+
+          hostile: []
+        };
+      }
+
+      return {
+        friendly: [],
+        hostile: []
+      };
+    }
+
+    function adjacentGuardian(
+      state,
+      target
+    ) {
+      return (
+        state.enemies.find(
+          (enemy) =>
+            enemy.alive &&
+            enemy.type === "guardian" &&
+            enemy.id !== target.id &&
+            manhattan(enemy, target) === 1
+        ) || null
+      );
+    }
+
+    function damageEnemy(
+      state,
+      enemyId,
+      amount,
+      sourceHero = null
+    ) {
+      const enemy = state.enemies.find(
+        (unit) =>
+          unit.id === enemyId &&
+          unit.alive
+      );
+
+      if (!enemy) {
+        return {
+          hit: false,
+          killed: false,
+          blocked: false
+        };
+      }
+
+      const guardian = adjacentGuardian(
+        state,
+        enemy
+      );
+
+      if (
+        guardian &&
+        !enemy.shieldBroken
+      ) {
+        enemy.shieldBroken = true;
+
+        return {
+          hit: false,
+          killed: false,
+          blocked: true
+        };
+      }
+
+      let finalAmount = amount;
+
+      if (
+        sourceHero &&
+        state.upgrades.finisher &&
+        enemy.hp < enemy.maxHp
+      ) {
+        finalAmount += 1;
+      }
+
+      enemy.hp -= finalAmount;
+
+      if (enemy.hp <= 0) {
+        enemy.alive = false;
+
+        return {
+          hit: true,
+          killed: true,
+          blocked: false
+        };
+      }
+
+      return {
+        hit: true,
+        killed: false,
+        blocked: false
+      };
+    }
+
+    function applyBasicAttack(
+      state,
+      hero,
+      enemyId
+    ) {
+      const target = state.enemies.find(
+        (enemy) =>
+          enemy.id === enemyId &&
+          enemy.alive
+      );
+
+      if (!target) {
+        return;
+      }
+
+      const direction = {
+        r: Math.sign(target.r - hero.r),
+        c: Math.sign(target.c - hero.c)
+      };
+
+      damageEnemy(
+        state,
+        enemyId,
+        1,
+        hero
+      );
+
+      if (
+        hero.type === "bow" &&
+        state.upgrades.bowPierce
+      ) {
+        let passedTarget = false;
+
+        for (
+          let distance = 1;
+          distance <= 6;
+          distance += 1
+        ) {
+          const row =
+            hero.r +
+            direction.r * distance;
+
+          const column =
+            hero.c +
+            direction.c * distance;
+
+          if (!inside(row, column)) {
+            break;
+          }
+
+          const enemy = enemyAt(
+            state,
+            row,
+            column
+          );
+
+          if (enemy) {
+            if (
+              !passedTarget &&
+              enemy.id === enemyId
+            ) {
+              passedTarget = true;
+              continue;
+            }
+
+            if (passedTarget) {
+              damageEnemy(
+                state,
+                enemy.id,
+                1,
+                hero
+              );
+
+              break;
+            }
+          }
+
+          const blockingHero = heroAt(
+            state,
+            row,
+            column
+          );
+
+          if (
+            blockingHero &&
+            !(
+              row === hero.r &&
+              column === hero.c
+            )
+          ) {
+            break;
+          }
         }
       }
     }
 
-    function generateSolverActions(state, hero) {
-      const actions = [{ kind: "wait" }, { kind: "guard" }];
-      for (const target of getMoveTargets(state, hero)) {
-        actions.push({ kind: "move", r: target.r, c: target.c });
+    function finishAction(hero) {
+      hero.acted = true;
+
+      selectedHeroId = null;
+      actionMode = "move";
+      previewTarget = null;
+      previewLocked = false;
+      pendingBanner = null;
+
+      render();
+    }
+
+    function finishSpecial(hero) {
+      const base =
+        HERO_DATA[hero.type].cooldown;
+
+      hero.cooldown = Math.max(
+        1,
+        base -
+          game.upgrades.cooldownReduction
+      );
+
+      finishAction(hero);
+    }
+
+    function executeAction(
+      hero,
+      mode,
+      target
+    ) {
+      if (!hero || hero.acted) {
+        return;
       }
-      for (const target of getAttackTargets(state, hero)) {
-        actions.push({ kind: "attack", enemyId: target.enemyId });
+
+      if (mode === "move") {
+        hero.r = target.r;
+        hero.c = target.c;
+
+        finishAction(hero);
+        return;
       }
+
+      if (mode === "attack") {
+        const enemy = enemyAt(
+          game,
+          target.r,
+          target.c
+        );
+
+        if (enemy) {
+          applyBasicAttack(
+            game,
+            hero,
+            enemy.id
+          );
+        }
+
+        finishAction(hero);
+        return;
+      }
+
+      if (mode === "guard") {
+        hero.guard = Math.max(
+          hero.guard,
+          1
+        );
+
+        finishAction(hero);
+        return;
+      }
+
+      if (mode === "bannerPick") {
+        const ally = game.heroes.find(
+          (unit) =>
+            unit.id === target.heroId &&
+            unit.alive
+        );
+
+        if (ally) {
+          ally.acted = false;
+        }
+
+        const banner = game.heroes.find(
+          (unit) =>
+            unit.id ===
+              pendingBanner?.bannerId &&
+            unit.alive
+        );
+
+        if (banner) {
+          finishSpecial(banner);
+        }
+
+        return;
+      }
+
+      if (mode !== "special") {
+        return;
+      }
+
+      const area = getPreviewArea(
+        hero,
+        mode,
+        target
+      );
+
+      if (hero.type === "blade") {
+        for (const position of area.hostile) {
+          const enemy = enemyAt(
+            game,
+            position.r,
+            position.c
+          );
+
+          if (enemy) {
+            damageEnemy(
+              game,
+              enemy.id,
+              1 +
+                game.upgrades.bladePower,
+              hero
+            );
+          }
+        }
+
+        finishSpecial(hero);
+        return;
+      }
+
+      if (hero.type === "shield") {
+        for (const position of area.friendly) {
+          const ally = heroAt(
+            game,
+            position.r,
+            position.c
+          );
+
+          if (ally) {
+            ally.guard = Math.max(
+              ally.guard,
+              1
+            );
+          }
+        }
+
+        finishSpecial(hero);
+        return;
+      }
+
+      if (hero.type === "spear") {
+        for (const position of area.hostile) {
+          const enemy = enemyAt(
+            game,
+            position.r,
+            position.c
+          );
+
+          if (enemy) {
+            damageEnemy(
+              game,
+              enemy.id,
+              1,
+              hero
+            );
+
+            if (enemy.alive) {
+              enemy.stunned = Math.max(
+                enemy.stunned,
+                1
+              );
+            }
+          }
+        }
+
+        finishSpecial(hero);
+        return;
+      }
+
+      if (hero.type === "bow") {
+        for (const position of area.hostile) {
+          const enemy = enemyAt(
+            game,
+            position.r,
+            position.c
+          );
+
+          if (enemy) {
+            damageEnemy(
+              game,
+              enemy.id,
+              1,
+              hero
+            );
+          }
+        }
+
+        finishSpecial(hero);
+        return;
+      }
+
+      if (hero.type === "banner") {
+        const allies = [];
+
+        for (const position of area.friendly) {
+          const ally = heroAt(
+            game,
+            position.r,
+            position.c
+          );
+
+          if (ally) {
+            ally.guard = Math.max(
+              ally.guard,
+              1
+            );
+
+            allies.push(ally);
+          }
+        }
+
+        const eligible = allies.filter(
+          (ally) =>
+            ally.id !== hero.id &&
+            ally.acted
+        );
+
+        if (!eligible.length) {
+          finishSpecial(hero);
+          return;
+        }
+
+        pendingBanner = {
+          bannerId: hero.id,
+
+          center: {
+            r: target.r,
+            c: target.c
+          },
+
+          eligibleIds: eligible.map(
+            (ally) => ally.id
+          )
+        };
+
+        actionMode = "bannerPick";
+        previewTarget = null;
+        previewLocked = false;
+
+        render();
+      }
+    }
+
+    function clonePlan(plan) {
+      if (!plan) {
+        return {
+          kind: "wait"
+        };
+      }
+
+      return {
+        ...plan,
+
+        target: plan.target
+          ? { ...plan.target }
+          : undefined,
+
+        center: plan.center
+          ? { ...plan.center }
+          : undefined,
+
+        path: plan.path
+          ? plan.path.map(
+              (position) => ({
+                ...position
+              })
+            )
+          : undefined,
+
+        targetIds: plan.targetIds
+          ? plan.targetIds.slice()
+          : undefined
+      };
+    }
+
+    function cloneState(source) {
+      return {
+        heroes: source.heroes.map(
+          (hero) => ({
+            ...hero
+          })
+        ),
+
+        enemies: source.enemies.map(
+          (enemy) => ({
+            ...enemy,
+
+            bombTarget:
+              enemy.bombTarget
+                ? {
+                    ...enemy.bombTarget
+                  }
+                : null,
+
+            plan: clonePlan(enemy.plan)
+          })
+        ),
+
+        upgrades: {
+          ...source.upgrades
+        },
+
+        reserveUsed:
+          source.reserveUsed,
+
+        damageEvents: 0
+      };
+    }
+
+    function generateSolverActions(
+      state,
+      hero
+    ) {
+      const actions = [
+        {
+          kind: "wait"
+        },
+
+        {
+          kind: "guard"
+        }
+      ];
+
+      for (
+        const target of
+        getMoveTargets(state, hero)
+      ) {
+        actions.push({
+          kind: "move",
+          r: target.r,
+          c: target.c
+        });
+      }
+
+      for (
+        const target of
+        getAttackTargets(state, hero)
+      ) {
+        actions.push({
+          kind: "attack",
+          enemyId: target.enemyId
+        });
+      }
+
       return actions;
     }
 
-    function applySolverAction(state, heroId, action) {
-      const hero = state.heroes.find(unit => unit.id === heroId && unit.alive);
-      if (!hero) return;
-      if (action.kind === "guard") hero.guard = 1;
+    function applySolverAction(
+      state,
+      heroId,
+      action
+    ) {
+      const hero = state.heroes.find(
+        (unit) =>
+          unit.id === heroId &&
+          unit.alive
+      );
+
+      if (!hero) {
+        return;
+      }
+
+      if (action.kind === "guard") {
+        hero.guard = 1;
+      }
+
       if (action.kind === "move") {
         hero.r = action.r;
         hero.c = action.c;
       }
-      if (action.kind === "attack") applyBasicAttack(state, hero, action.enemyId);
+
+      if (action.kind === "attack") {
+        applyBasicAttack(
+          state,
+          hero,
+          action.enemyId
+        );
+      }
     }
 
-    function countFlawlessLines(limit = 12) {
+    function countFlawlessLines(limit = 10) {
       const initial = cloneState(game);
-      const heroOrder = initial.heroes.filter(hero => hero.alive).map(hero => hero.id);
+
+      const heroOrder = initial.heroes
+        .filter((hero) => hero.alive)
+        .map((hero) => hero.id);
+
       let count = 0;
 
       function search(state, index) {
-        if (count >= limit) return;
-        if (index >= heroOrder.length) {
-          const result = cloneState(state);
-          simulateEnemyPhase(result);
-          const beaconTaken = result.enemies.some(enemy => enemy.alive && enemy.r === BEACON.r && enemy.c === BEACON.c);
-          if (result.damageEvents === 0 && !beaconTaken && result.heroes.some(hero => hero.alive)) count += 1;
+        if (count >= limit) {
           return;
         }
 
-        const hero = state.heroes.find(unit => unit.id === heroOrder[index] && unit.alive);
+        if (index >= heroOrder.length) {
+          const result = cloneState(state);
+
+          simulateEnemyPhase(result);
+
+          const beaconTaken =
+            result.enemies.some(
+              (enemy) =>
+                enemy.alive &&
+                enemy.r === BEACON.r &&
+                enemy.c === BEACON.c
+            );
+
+          if (
+            result.damageEvents === 0 &&
+            !beaconTaken &&
+            result.heroes.some(
+              (hero) => hero.alive
+            )
+          ) {
+            count += 1;
+          }
+
+          return;
+        }
+
+        const hero = state.heroes.find(
+          (unit) =>
+            unit.id === heroOrder[index] &&
+            unit.alive
+        );
+
         if (!hero) {
           search(state, index + 1);
           return;
         }
 
-        const actions = generateSolverActions(state, hero);
-        for (const action of actions) {
-          if (count >= limit) break;
+        for (
+          const action of
+          generateSolverActions(state, hero)
+        ) {
+          if (count >= limit) {
+            break;
+          }
+
           const next = cloneState(state);
-          applySolverAction(next, hero.id, action);
-          search(next, index + 1);
+
+          applySolverAction(
+            next,
+            hero.id,
+            action
+          );
+
+          search(
+            next,
+            index + 1
+          );
         }
       }
 
       search(initial, 0);
+
       return count;
     }
 
     function planPressure(plan) {
       const values = {
-        explode: 10,
-        shoot: 9,
-        attackPush: 8,
-        charge: 7,
-        attack: 6,
-        pull: 5,
+        explode: 11,
+        shoot: 10,
+        attackPush: 9,
+        charge: 8,
+        attack: 7,
+        pull: 6,
         move: 3,
+        command: 2,
         mark: 1,
         wait: 0
       };
+
       return values[plan.kind] || 0;
     }
 
     function ensureFlawlessLine() {
-      let safe = countFlawlessLines(12);
+      let safe = countFlawlessLines(10);
+
       if (safe > 0) {
         game.safeLines = safe;
         return;
       }
 
       const candidates = aliveEnemies()
-        .filter(enemy => enemy.plan.kind !== "wait")
-        .sort((a, b) => planPressure(b.plan) - planPressure(a.plan) || b.order - a.order);
+        .filter(
+          (enemy) =>
+            enemy.plan.kind !== "wait"
+        )
+        .sort(
+          (first, second) =>
+            planPressure(second.plan) -
+              planPressure(first.plan) ||
+            (second.order || 0) -
+              (first.order || 0)
+        );
 
       for (const enemy of candidates) {
-        enemy.plan = { kind: "wait", forced: true };
-        safe = countFlawlessLines(12);
-        if (safe > 0) break;
+        enemy.plan = {
+          kind: "wait",
+          forced: true
+        };
+
+        safe = countFlawlessLines(10);
+
+        if (safe > 0) {
+          break;
+        }
       }
 
-      game.safeLines = Math.max(1, safe);
+      game.safeLines = Math.max(
+        1,
+        safe
+      );
     }
 
-    function damageHero(state, heroId, attackerId = null, melee = false) {
-      const hero = state.heroes.find(unit => unit.id === heroId && unit.alive);
-      if (!hero) return { blocked: false, killed: false };
+    function damageHero(
+      state,
+      heroId,
+      attackerId = null,
+      melee = false
+    ) {
+      const hero = state.heroes.find(
+        (unit) =>
+          unit.id === heroId &&
+          unit.alive
+      );
+
+      if (!hero) {
+        return {
+          blocked: false,
+          killed: false
+        };
+      }
 
       if (hero.guard > 0) {
         hero.guard -= 1;
-        if (state.upgrades.counter && melee && attackerId) {
-          const attacker = state.enemies.find(enemy => enemy.id === attackerId && enemy.alive);
-          if (attacker && manhattan(attacker, hero) === 1) damageEnemy(state, attacker.id, 1, null);
+
+        if (
+          state.upgrades.counter &&
+          melee &&
+          attackerId
+        ) {
+          const attacker =
+            state.enemies.find(
+              (enemy) =>
+                enemy.id === attackerId &&
+                enemy.alive
+            );
+
+          if (
+            attacker &&
+            manhattan(attacker, hero) === 1
+          ) {
+            damageEnemy(
+              state,
+              attacker.id,
+              1,
+              null
+            );
+          }
         }
-        return { blocked: true, killed: false };
+
+        return {
+          blocked: true,
+          killed: false
+        };
       }
 
       if (hero.armor > 0) {
         hero.armor -= 1;
-        return { blocked: true, killed: false };
+
+        return {
+          blocked: true,
+          killed: false
+        };
       }
 
-      if (state.upgrades.reserve && !state.reserveUsed) {
+      if (
+        state.upgrades.reserve &&
+        !state.reserveUsed
+      ) {
         state.reserveUsed = true;
-        return { blocked: true, killed: false };
+
+        return {
+          blocked: true,
+          killed: false
+        };
       }
 
-      hero.wound += 1;
-      state.damageEvents = (state.damageEvents || 0) + 1;
-      if (hero.wound >= 2) {
+      hero.hp -= 1;
+
+      state.damageEvents =
+        (state.damageEvents || 0) + 1;
+
+      if (hero.hp <= 0) {
         hero.alive = false;
-        return { blocked: false, killed: true };
+
+        return {
+          blocked: false,
+          killed: true
+        };
       }
-      return { blocked: false, killed: false };
+
+      return {
+        blocked: false,
+        killed: false
+      };
     }
 
-    function pushHero(state, hero, enemy) {
-      if (state.upgrades.brace) return;
-      const dr = Math.sign(hero.r - enemy.r);
-      const dc = Math.sign(hero.c - enemy.c);
-      const r = hero.r + dr;
-      const c = hero.c + dc;
-      if (inside(r, c) && !occupied(state, r, c, hero.id)) {
-        hero.r = r;
-        hero.c = c;
-      }
-    }
-
-    function executePlan(state, enemy, plan) {
-      if (!enemy.alive || plan.kind === "wait") return;
-
-      if (plan.kind === "move" || plan.kind === "charge") {
-        for (const step of plan.path || []) {
-          if (!enemy.alive) break;
-          const hero = heroAt(state, step.r, step.c);
-          if (hero) {
-            damageHero(state, hero.id, enemy.id, true);
-            break;
-          }
-          const blocker = enemyAt(state, step.r, step.c);
-          if (blocker && blocker.id !== enemy.id) break;
-          enemy.r = step.r;
-          enemy.c = step.c;
-        }
+    function pushHero(
+      state,
+      hero,
+      enemy
+    ) {
+      if (state.upgrades.brace) {
         return;
       }
 
-      if (plan.kind === "attack" || plan.kind === "shoot" || plan.kind === "attackPush") {
-        const hero = heroAt(state, plan.target.r, plan.target.c);
-        if (!hero) return;
-        const result = damageHero(state, hero.id, enemy.id, plan.kind !== "shoot");
-        if (plan.kind === "attackPush" && !result.blocked && hero.alive) pushHero(state, hero, enemy);
+      const rowDirection =
+        Math.sign(hero.r - enemy.r);
+
+      const columnDirection =
+        Math.sign(hero.c - enemy.c);
+
+      const row =
+        hero.r + rowDirection;
+
+      const column =
+        hero.c + columnDirection;
+
+      if (
+        inside(row, column) &&
+        !occupied(
+          state,
+          row,
+          column,
+          hero.id
+        )
+      ) {
+        hero.r = row;
+        hero.c = column;
+      }
+    }
+
+    function executePlan(
+      state,
+      enemy,
+      plan
+    ) {
+      if (
+        !enemy.alive ||
+        plan.kind === "wait"
+      ) {
+        return;
+      }
+
+      if (plan.kind === "command") {
+        return;
+      }
+
+      if (
+        plan.kind === "move" ||
+        plan.kind === "charge"
+      ) {
+        for (
+          const step of plan.path || []
+        ) {
+          if (!enemy.alive) {
+            break;
+          }
+
+          const hero = heroAt(
+            state,
+            step.r,
+            step.c
+          );
+
+          if (hero) {
+            damageHero(
+              state,
+              hero.id,
+              enemy.id,
+              true
+            );
+
+            break;
+          }
+
+          const blocker = enemyAt(
+            state,
+            step.r,
+            step.c
+          );
+
+          if (
+            blocker &&
+            blocker.id !== enemy.id
+          ) {
+            break;
+          }
+
+          enemy.r = step.r;
+          enemy.c = step.c;
+        }
+
+        return;
+      }
+
+      if (
+        [
+          "attack",
+          "shoot",
+          "attackPush"
+        ].includes(plan.kind)
+      ) {
+        const hero = heroAt(
+          state,
+          plan.target.r,
+          plan.target.c
+        );
+
+        if (!hero) {
+          return;
+        }
+
+        const result = damageHero(
+          state,
+          hero.id,
+          enemy.id,
+          plan.kind !== "shoot"
+        );
+
+        if (
+          plan.kind === "attackPush" &&
+          !result.blocked &&
+          hero.alive
+        ) {
+          pushHero(
+            state,
+            hero,
+            enemy
+          );
+        }
+
         return;
       }
 
       if (plan.kind === "pull") {
-        const hero = heroAt(state, plan.target.r, plan.target.c);
-        if (!hero) return;
-        const r = hero.r + Math.sign(enemy.r - hero.r);
-        const c = hero.c + Math.sign(enemy.c - hero.c);
-        if (!occupied(state, r, c, hero.id)) {
-          hero.r = r;
-          hero.c = c;
+        const hero = heroAt(
+          state,
+          plan.target.r,
+          plan.target.c
+        );
+
+        if (!hero) {
+          return;
         }
+
+        const row =
+          hero.r +
+          Math.sign(enemy.r - hero.r);
+
+        const column =
+          hero.c +
+          Math.sign(enemy.c - hero.c);
+
+        if (
+          inside(row, column) &&
+          !occupied(
+            state,
+            row,
+            column,
+            hero.id
+          )
+        ) {
+          hero.r = row;
+          hero.c = column;
+        }
+
         return;
       }
 
       if (plan.kind === "mark") {
         enemy.bombArmed = true;
-        enemy.bombTarget = { ...plan.center };
+
+        enemy.bombTarget = {
+          ...plan.center
+        };
+
         return;
       }
 
       if (plan.kind === "explode") {
         const heroIds = state.heroes
-          .filter(hero => hero.alive && Math.abs(hero.r - plan.center.r) <= 1 && Math.abs(hero.c - plan.center.c) <= 1)
-          .map(hero => hero.id);
-        const enemyIds = state.enemies
-          .filter(unit => unit.alive && Math.abs(unit.r - plan.center.r) <= 1 && Math.abs(unit.c - plan.center.c) <= 1)
-          .map(unit => unit.id);
+          .filter(
+            (hero) =>
+              hero.alive &&
+              Math.abs(
+                hero.r -
+                plan.center.r
+              ) <= 1 &&
+              Math.abs(
+                hero.c -
+                plan.center.c
+              ) <= 1
+          )
+          .map((hero) => hero.id);
 
-        for (const heroId of heroIds) damageHero(state, heroId, enemy.id, false);
-        for (const enemyId of enemyIds) damageEnemy(state, enemyId, 2, null);
+        const enemyIds = state.enemies
+          .filter(
+            (unit) =>
+              unit.alive &&
+              Math.abs(
+                unit.r -
+                plan.center.r
+              ) <= 1 &&
+              Math.abs(
+                unit.c -
+                plan.center.c
+              ) <= 1
+          )
+          .map((unit) => unit.id);
+
+        for (const heroId of heroIds) {
+          damageHero(
+            state,
+            heroId,
+            enemy.id,
+            false
+          );
+        }
+
+        for (const enemyId of enemyIds) {
+          damageEnemy(
+            state,
+            enemyId,
+            2,
+            null
+          );
+        }
+
         enemy.alive = false;
       }
     }
 
     function simulateEnemyPhase(state) {
       const ordered = state.enemies
-        .filter(enemy => enemy.alive)
+        .filter((enemy) => enemy.alive)
         .slice()
-        .sort((a, b) => (a.order || 999) - (b.order || 999));
-      for (const enemy of ordered) {
-        const liveEnemy = state.enemies.find(unit => unit.id === enemy.id && unit.alive);
-        if (liveEnemy) executePlan(state, liveEnemy, liveEnemy.plan);
+        .sort(
+          (first, second) =>
+            (first.order || 999) -
+            (second.order || 999)
+        );
+
+      for (const planned of ordered) {
+        const enemy = state.enemies.find(
+          (unit) =>
+            unit.id === planned.id &&
+            unit.alive
+        );
+
+        if (enemy) {
+          executePlan(
+            state,
+            enemy,
+            enemy.plan
+          );
+        }
       }
     }
 
     function availableEnemyTypes(round) {
       const types = ["grunt"];
-      if (round >= 4) types.push("raider");
-      if (round >= 7) types.push("archer");
-      if (round >= 10) types.push("brute");
-      if (round >= 13) types.push("hook");
-      if (round >= 16) types.push("guardian");
-      if (round >= 20) types.push("bomber");
+
+      if (round >= 4) {
+        types.push("raider");
+      }
+
+      if (round >= 7) {
+        types.push("archer");
+      }
+
+      if (round >= 10) {
+        types.push("brute");
+      }
+
+      if (round >= 13) {
+        types.push("hook");
+      }
+
+      if (round >= 16) {
+        types.push("guardian");
+      }
+
+      if (round >= 20) {
+        types.push("bomber");
+      }
+
+      if (round >= 24) {
+        types.push("commander");
+      }
+
       return types;
     }
 
     function edgeCells() {
       const result = [];
-      for (let i = 0; i < SIZE; i += 1) {
-        result.push({ r: 0, c: i });
-        result.push({ r: SIZE - 1, c: i });
+
+      for (
+        let index = 0;
+        index < SIZE;
+        index += 1
+      ) {
+        result.push(
+          {
+            r: 0,
+            c: index
+          },
+          {
+            r: SIZE - 1,
+            c: index
+          }
+        );
       }
-      for (let i = 1; i < SIZE - 1; i += 1) {
-        result.push({ r: i, c: 0 });
-        result.push({ r: i, c: SIZE - 1 });
+
+      for (
+        let index = 1;
+        index < SIZE - 1;
+        index += 1
+      ) {
+        result.push(
+          {
+            r: index,
+            c: 0
+          },
+          {
+            r: index,
+            c: SIZE - 1
+          }
+        );
       }
+
       return result;
     }
 
     function prepareIncoming() {
-      const liveCount = aliveEnemies().length;
-      const cap = Math.min(17, 7 + Math.floor(game.round / 2));
-      let count = 1;
-      if (game.round >= 4) count = 2;
-      if (game.round >= 10) count = 3;
-      if (game.round >= 22) count = 4;
-      count = Math.max(0, Math.min(count, cap - liveCount));
+      const liveCount =
+        aliveEnemies().length;
 
-      const freeEdges = shuffle(edgeCells().filter(pos => !occupied(game, pos.r, pos.c)));
-      const types = availableEnemyTypes(game.round);
+      const cap = Math.min(
+        19,
+        7 +
+          Math.floor(game.round / 2)
+      );
+
+      let count = 1;
+
+      if (game.round >= 4) {
+        count = 2;
+      }
+
+      if (game.round >= 10) {
+        count = 3;
+      }
+
+      if (game.round >= 22) {
+        count = 4;
+      }
+
+      count = Math.max(
+        0,
+        Math.min(
+          count,
+          cap - liveCount
+        )
+      );
+
+      const freeEdges = shuffle(
+        edgeCells().filter(
+          (position) =>
+            !occupied(
+              game,
+              position.r,
+              position.c
+            )
+        )
+      );
+
+      const types =
+        availableEnemyTypes(game.round);
+
       const incoming = [];
 
-      for (let i = 0; i < count && i < freeEdges.length; i += 1) {
-        let type = types[randomInt(types.length)];
-        if (type === "bomber" && incoming.some(item => item.type === "bomber")) type = "grunt";
-        incoming.push({ ...freeEdges[i], type });
+      for (
+        let index = 0;
+        index < count &&
+        index < freeEdges.length;
+        index += 1
+      ) {
+        let type =
+          types[randomInt(types.length)];
+
+        if (
+          ["bomber", "commander"].includes(
+            type
+          ) &&
+          incoming.some(
+            (item) => item.type === type
+          )
+        ) {
+          type = "grunt";
+        }
+
+        incoming.push({
+          ...freeEdges[index],
+          type
+        });
       }
 
       game.incoming = incoming;
@@ -1649,388 +3620,1315 @@
 
     function spawnIncoming() {
       for (const spawn of game.incoming) {
-        if (!occupied(game, spawn.r, spawn.c)) {
-          game.enemies.push(makeEnemy(spawn.type, spawn.r, spawn.c));
+        if (
+          !occupied(
+            game,
+            spawn.r,
+            spawn.c
+          )
+        ) {
+          game.enemies.push(
+            makeEnemy(
+              spawn.type,
+              spawn.r,
+              spawn.c
+            )
+          );
         }
       }
+
       game.incoming = [];
     }
 
-    function planThreatCells(enemy) {
-      const plan = enemy.plan || { kind: "wait" };
-      if (["attack", "shoot", "attackPush", "pull"].includes(plan.kind)) return [plan.target];
-      if (["move", "charge"].includes(plan.kind)) return plan.path || [];
-      if (["mark", "explode"].includes(plan.kind)) {
-        const area = [];
-        for (let dr = -1; dr <= 1; dr += 1) {
-          for (let dc = -1; dc <= 1; dc += 1) {
-            const r = plan.center.r + dr;
-            const c = plan.center.c + dc;
-            if (inside(r, c)) area.push({ r, c });
+    function planCellSets() {
+      const danger = new Set();
+      const route = new Set();
+      const marked = new Set();
+      const explode = new Set();
+      const forced = new Set();
+
+      for (const enemy of aliveEnemies()) {
+        const plan =
+          enemy.plan || {
+            kind: "wait"
+          };
+
+        if (
+          [
+            "attack",
+            "shoot",
+            "attackPush",
+            "pull"
+          ].includes(plan.kind) &&
+          plan.target
+        ) {
+          danger.add(
+            key(
+              plan.target.r,
+              plan.target.c
+            )
+          );
+        }
+
+        if (
+          ["move", "charge"].includes(
+            plan.kind
+          )
+        ) {
+          for (
+            const position of
+            plan.path || []
+          ) {
+            route.add(
+              key(
+                position.r,
+                position.c
+              )
+            );
           }
         }
-        return area;
+
+        if (
+          ["mark", "explode"].includes(
+            plan.kind
+          ) &&
+          plan.center
+        ) {
+          for (
+            const position of
+            plusArea(
+              plan.center,
+              true
+            )
+          ) {
+            if (plan.kind === "mark") {
+              marked.add(
+                key(
+                  position.r,
+                  position.c
+                )
+              );
+            } else {
+              explode.add(
+                key(
+                  position.r,
+                  position.c
+                )
+              );
+            }
+          }
+        }
+
+        if (
+          plan.kind === "pull" &&
+          plan.target
+        ) {
+          const row =
+            plan.target.r +
+            Math.sign(
+              enemy.r -
+              plan.target.r
+            );
+
+          const column =
+            plan.target.c +
+            Math.sign(
+              enemy.c -
+              plan.target.c
+            );
+
+          if (inside(row, column)) {
+            forced.add(
+              key(row, column)
+            );
+          }
+        }
+
+        if (
+          plan.kind === "attackPush" &&
+          plan.target
+        ) {
+          const row =
+            plan.target.r +
+            Math.sign(
+              plan.target.r -
+              enemy.r
+            );
+
+          const column =
+            plan.target.c +
+            Math.sign(
+              plan.target.c -
+              enemy.c
+            );
+
+          if (inside(row, column)) {
+            forced.add(
+              key(row, column)
+            );
+          }
+        }
       }
-      return [];
+
+      return {
+        danger,
+        route,
+        marked,
+        explode,
+        forced
+      };
     }
 
     function intentSymbol(enemy) {
-      const plan = enemy.plan || { kind: "wait" };
-      if (plan.kind === "wait") return plan.stunned ? "×" : "·";
-      if (plan.kind === "attack" || plan.kind === "attackPush") return "!";
-      if (plan.kind === "shoot") return "—";
-      if (plan.kind === "pull") return "↶";
-      if (plan.kind === "mark") return "○";
-      if (plan.kind === "explode") return "×";
-      if ((plan.kind === "move" || plan.kind === "charge") && plan.path && plan.path.length) {
-        return directionSymbol(enemy, plan.path[0]);
+      const plan =
+        enemy.plan || {
+          kind: "wait"
+        };
+
+      if (plan.kind === "wait") {
+        return plan.stunned
+          ? "×"
+          : "·";
       }
+
+      if (plan.kind === "attack") {
+        return "!";
+      }
+
+      if (plan.kind === "attackPush") {
+        return "»";
+      }
+
+      if (plan.kind === "shoot") {
+        return "→";
+      }
+
+      if (plan.kind === "pull") {
+        return "↶";
+      }
+
+      if (plan.kind === "mark") {
+        return "○";
+      }
+
+      if (plan.kind === "explode") {
+        return "×";
+      }
+
+      if (plan.kind === "command") {
+        return "+";
+      }
+
+      if (plan.kind === "charge") {
+        return "»";
+      }
+
+      if (plan.kind === "move") {
+        return "›";
+      }
+
       return "·";
     }
 
     function render() {
-      const selected = selectedHero();
-      const moveTargets = selected && !selected.acted && interactionMode === "normal" ? getMoveTargets(game, selected) : [];
-      const attackTargets = selected && !selected.acted && interactionMode === "normal" ? getAttackTargets(game, selected) : [];
-      const specialTargets = selected && !selected.acted && interactionMode === "special" ? getSpecialTargets(selected) : [];
-      const moveKeys = new Set(moveTargets.map(pos => key(pos.r, pos.c)));
-      const attackKeys = new Set(attackTargets.map(pos => key(pos.r, pos.c)));
-      const specialKeys = new Set(specialTargets.map(pos => key(pos.r, pos.c)));
-      const threatKeys = new Set();
-      const markedKeys = new Set();
-
-      for (const enemy of aliveEnemies()) {
-        for (const pos of planThreatCells(enemy)) {
-          threatKeys.add(key(pos.r, pos.c));
-          if (enemy.plan.kind === "mark") markedKeys.add(key(pos.r, pos.c));
-        }
+      if (!game) {
+        return;
       }
 
+      const hero = selectedHero();
+
+      const targets =
+        getActionTargets(hero);
+
+      const targetKeys = new Set(
+        targets.map(
+          (target) =>
+            key(
+              target.r,
+              target.c
+            )
+        )
+      );
+
+      const preview = previewTarget
+        ? getPreviewArea(
+            hero,
+            actionMode,
+            previewTarget
+          )
+        : {
+            friendly: [],
+            hostile: []
+          };
+
+      const friendlyKeys = new Set(
+        preview.friendly.map(
+          (position) =>
+            key(
+              position.r,
+              position.c
+            )
+        )
+      );
+
+      const hostileKeys = new Set(
+        preview.hostile.map(
+          (position) =>
+            key(
+              position.r,
+              position.c
+            )
+        )
+      );
+
+      const planSets =
+        planCellSets();
+
       for (const cell of cells) {
-        const r = Number(cell.dataset.r);
-        const c = Number(cell.dataset.c);
-        const cellKey = key(r, c);
+        const row =
+          Number(cell.dataset.r);
+
+        const column =
+          Number(cell.dataset.c);
+
+        const cellKey =
+          key(row, column);
+
         cell.className = "cell";
         cell.innerHTML = "";
 
-        if (threatKeys.has(cellKey)) cell.classList.add("threat");
-        if (markedKeys.has(cellKey)) cell.classList.add("marked");
-        if (moveKeys.has(cellKey)) cell.classList.add("move");
-        if (attackKeys.has(cellKey)) cell.classList.add("attack");
-
-        if (specialKeys.has(cellKey)) {
-          const targetHero = heroAt(game, r, c);
-          cell.classList.add(targetHero ? "move" : "attack");
+        if (
+          planSets.route.has(cellKey)
+        ) {
+          cell.classList.add(
+            "enemy-route"
+          );
         }
 
-        if (r === BEACON.r && c === BEACON.c) {
-          const beacon = document.createElement("div");
+        if (
+          planSets.danger.has(cellKey)
+        ) {
+          cell.classList.add(
+            "enemy-danger"
+          );
+        }
+
+        if (
+          planSets.marked.has(cellKey)
+        ) {
+          cell.classList.add(
+            "enemy-marked"
+          );
+        }
+
+        if (
+          planSets.explode.has(cellKey)
+        ) {
+          cell.classList.add(
+            "enemy-explode"
+          );
+        }
+
+        if (
+          planSets.forced.has(cellKey)
+        ) {
+          cell.classList.add(
+            "forced-destination"
+          );
+        }
+
+        if (
+          targetKeys.has(cellKey)
+        ) {
+          cell.classList.add("legal");
+
+          if (actionMode === "move") {
+            cell.classList.add(
+              "move-target"
+            );
+          }
+        }
+
+        if (
+          friendlyKeys.has(cellKey)
+        ) {
+          cell.classList.add(
+            "preview-friendly"
+          );
+        }
+
+        if (
+          hostileKeys.has(cellKey)
+        ) {
+          cell.classList.add(
+            "preview-hostile"
+          );
+        }
+
+        if (
+          row === BEACON.r &&
+          column === BEACON.c
+        ) {
+          const beacon =
+            document.createElement("div");
+
           beacon.className = "beacon";
           cell.appendChild(beacon);
         }
 
-        const hero = heroAt(game, r, c);
-        const enemy = enemyAt(game, r, c);
-        const spawn = game.incoming.find(item => item.r === r && item.c === c);
+        const currentHero = heroAt(
+          game,
+          row,
+          column
+        );
 
-        if (hero) cell.appendChild(renderHero(hero));
-        else if (enemy) cell.appendChild(renderEnemy(enemy));
-        else if (spawn) cell.appendChild(renderSpawn(spawn));
+        const enemy = enemyAt(
+          game,
+          row,
+          column
+        );
+
+        const spawn =
+          game.incoming.find(
+            (item) =>
+              item.r === row &&
+              item.c === column
+          );
+
+        if (currentHero) {
+          cell.appendChild(
+            renderHero(currentHero)
+          );
+        } else if (enemy) {
+          cell.appendChild(
+            renderEnemy(enemy)
+          );
+        } else if (spawn) {
+          cell.appendChild(
+            renderSpawn(spawn)
+          );
+        }
       }
 
-      roundLabel.textContent = String(game.round).padStart(2, "0");
-      enemyCount.textContent = String(aliveEnemies().length).padStart(2, "0");
+      drawIntentLayer();
+
+      roundLabel.textContent =
+        String(game.round).padStart(
+          2,
+          "0"
+        );
+
+      enemyCount.textContent =
+        String(
+          aliveEnemies().length
+        ).padStart(2, "0");
+
       renderSquad();
       renderControls();
     }
 
+    function makePieceVisual(
+      file,
+      fallbackLetter,
+      alternativeText
+    ) {
+      if (
+        assetStatus.get(file) !== false
+      ) {
+        const image =
+          document.createElement("img");
+
+        image.className =
+          "piece-image";
+
+        image.src =
+          ASSET_ROOT + file;
+
+        image.alt =
+          alternativeText;
+
+        image.draggable = false;
+
+        image.addEventListener(
+          "error",
+          () => {
+            assetStatus.set(
+              file,
+              false
+            );
+
+            image.replaceWith(
+              makeFallback(
+                fallbackLetter
+              )
+            );
+          },
+          {
+            once: true
+          }
+        );
+
+        return image;
+      }
+
+      return makeFallback(
+        fallbackLetter
+      );
+    }
+
+    function makeFallback(letter) {
+      const fallback =
+        document.createElement("span");
+
+      fallback.className =
+        "piece-fallback";
+
+      fallback.textContent = letter;
+
+      return fallback;
+    }
+
+    function renderHealthPips(
+      current,
+      maximum
+    ) {
+      const wrap =
+        document.createElement("span");
+
+      wrap.className =
+        "health-pips";
+
+      for (
+        let index = 1;
+        index <= maximum;
+        index += 1
+      ) {
+        const pip =
+          document.createElement("span");
+
+        pip.className =
+          "health-pip";
+
+        if (index <= current) {
+          pip.classList.add("filled");
+        }
+
+        if (
+          current === 1 &&
+          index === 1
+        ) {
+          pip.classList.add("last");
+        }
+
+        wrap.appendChild(pip);
+      }
+
+      return wrap;
+    }
+
     function renderHero(hero) {
-      const unit = document.createElement("div");
-      unit.className = "unit hero";
-      if (hero.id === selectedHeroId) unit.classList.add("selected");
-      if (hero.acted) unit.classList.add("acted");
-      unit.textContent = HERO_DATA[hero.type].letter;
-      unit.title = HERO_DATA[hero.type].name;
+      const data =
+        HERO_DATA[hero.type];
 
-      if (hero.wound > 0) {
-        const wound = document.createElement("span");
-        wound.className = "wound-mark";
-        unit.appendChild(wound);
+      const unit =
+        document.createElement("div");
+
+      unit.className =
+        "unit hero";
+
+      if (
+        hero.id === selectedHeroId
+      ) {
+        unit.classList.add("selected");
       }
 
-      if (hero.armor > 0) {
-        const armor = document.createElement("span");
-        armor.className = "armor-mark";
-        unit.appendChild(armor);
+      if (hero.acted) {
+        unit.classList.add("acted");
       }
+
+      unit.title = data.name;
+
+      unit.appendChild(
+        makePieceVisual(
+          data.image,
+          data.letter,
+          data.name
+        )
+      );
+
+      unit.appendChild(
+        renderHealthPips(
+          hero.hp,
+          hero.maxHp
+        )
+      );
 
       if (hero.cooldown > 0) {
-        const cooldown = document.createElement("span");
-        cooldown.className = "cooldown-mark";
-        cooldown.textContent = String(hero.cooldown);
+        const cooldown =
+          document.createElement("span");
+
+        cooldown.className =
+          "cooldown-mark";
+
+        cooldown.textContent =
+          String(hero.cooldown);
+
         unit.appendChild(cooldown);
+      }
+
+      if (
+        hero.guard > 0 ||
+        hero.armor > 0
+      ) {
+        const status =
+          document.createElement("span");
+
+        status.className =
+          "status-mark";
+
+        status.textContent =
+          hero.guard > 0
+            ? "◇"
+            : "□";
+
+        unit.appendChild(status);
       }
 
       return unit;
     }
 
     function renderEnemy(enemy) {
-      const unit = document.createElement("div");
-      unit.className = "unit enemy";
-      if (enemy.hp < enemy.maxHp) unit.classList.add("damaged");
-      unit.textContent = ENEMY_DATA[enemy.type].letter;
-      unit.title = enemy.type.toUpperCase();
+      const data =
+        ENEMY_DATA[enemy.type];
 
-      const intent = document.createElement("span");
-      intent.className = "intent-mark";
-      intent.textContent = intentSymbol(enemy);
+      const unit =
+        document.createElement("div");
+
+      unit.className =
+        "unit enemy";
+
+      if (enemy.commanded) {
+        unit.classList.add(
+          "commanded"
+        );
+      }
+
+      unit.title =
+        enemy.type.toUpperCase();
+
+      unit.appendChild(
+        makePieceVisual(
+          data.image,
+          data.letter,
+          enemy.type
+        )
+      );
+
+      unit.appendChild(
+        renderHealthPips(
+          enemy.hp,
+          enemy.maxHp
+        )
+      );
+
+      const order =
+        document.createElement("span");
+
+      order.className =
+        "order-mark";
+
+      order.textContent =
+        String(enemy.order || "");
+
+      unit.appendChild(order);
+
+      const intent =
+        document.createElement("span");
+
+      intent.className =
+        "intent-mark";
+
+      intent.textContent =
+        intentSymbol(enemy);
+
       unit.appendChild(intent);
 
-      const order = document.createElement("span");
-      order.className = "order-mark";
-      order.textContent = String(enemy.order || "");
-      unit.appendChild(order);
       return unit;
     }
 
     function renderSpawn(spawn) {
-      const unit = document.createElement("div");
-      unit.className = "spawn-ghost";
-      unit.textContent = ENEMY_DATA[spawn.type].letter;
-      unit.title = `Incoming ${spawn.type}`;
-      return unit;
+      const data =
+        ENEMY_DATA[spawn.type];
+
+      const wrap =
+        document.createElement("div");
+
+      wrap.className =
+        "spawn-ghost";
+
+      wrap.title =
+        `Incoming ${spawn.type}`;
+
+      wrap.appendChild(
+        makePieceVisual(
+          data.image,
+          data.letter,
+          `Incoming ${spawn.type}`
+        )
+      );
+
+      return wrap;
     }
 
     function renderSquad() {
       squadStatus.innerHTML = "";
+
       for (const hero of game.heroes) {
-        const dot = document.createElement("span");
-        dot.className = "squad-dot";
-        if (!hero.alive) dot.classList.add("lost");
-        else if (hero.wound) dot.classList.add("wounded");
+        const dot =
+          document.createElement("span");
+
+        dot.className =
+          "squad-dot";
+
+        if (!hero.alive) {
+          dot.classList.add("lost");
+        } else if (hero.hp === 1) {
+          dot.classList.add(
+            "wounded"
+          );
+        }
+
         squadStatus.appendChild(dot);
       }
     }
 
     function renderControls() {
       const hero = selectedHero();
-      const canAct = Boolean(hero && !hero.acted && game.phase === "player");
-      guardButton.disabled = !canAct;
-      specialButton.disabled = !canAct || hero.cooldown > 0;
-      specialButton.classList.toggle("special-ready", canAct && hero.cooldown === 0);
-      endButton.disabled = game.phase !== "player";
+
+      const canAct = Boolean(
+        hero &&
+        !hero.acted &&
+        game.phase === "player"
+      );
+
+      const bannerPick =
+        actionMode === "bannerPick";
+
+      moveButton.disabled =
+        !canAct || bannerPick;
+
+      attackButton.disabled =
+        !canAct || bannerPick;
+
+      guardButton.disabled =
+        !canAct || bannerPick;
+
+      specialButton.disabled =
+        !canAct ||
+        hero.cooldown > 0 ||
+        bannerPick;
+
+      endButton.disabled =
+        game.phase !== "player" ||
+        bannerPick;
+
+      moveButton.classList.toggle(
+        "active",
+        actionMode === "move"
+      );
+
+      attackButton.classList.toggle(
+        "active",
+        actionMode === "attack"
+      );
+
+      guardButton.classList.toggle(
+        "active",
+        actionMode === "guard"
+      );
+
+      specialButton.classList.toggle(
+        "active",
+        actionMode === "special" ||
+        bannerPick
+      );
+
+      specialButton.classList.toggle(
+        "special-ready",
+        canAct &&
+        hero.cooldown === 0
+      );
 
       if (!hero) {
-        unitLine.textContent = game.phase === "player" ? "SELECT A UNIT" : "";
-        specialButton.textContent = "SPECIAL";
+        unitLine.textContent =
+          game.phase === "player"
+            ? "SELECT A UNIT"
+            : "";
+
+        specialButton.textContent =
+          "SPECIAL";
+      } else if (bannerPick) {
+        unitLine.textContent =
+          "RALLY · CHOOSE ONE ALLY";
+
+        specialButton.textContent =
+          "RALLY";
       } else {
-        const data = HERO_DATA[hero.type];
-        const stateText = hero.wound ? " · WOUNDED" : "";
-        unitLine.textContent = `${data.name}${stateText}`;
-        specialButton.textContent = hero.cooldown > 0 ? `${data.special} ${hero.cooldown}` : data.special;
+        const data =
+          HERO_DATA[hero.type];
+
+        const health =
+          `${hero.hp}/${hero.maxHp}`;
+
+        unitLine.textContent =
+          `${data.name} · ${health}`;
+
+        specialButton.textContent =
+          hero.cooldown > 0
+            ? `${data.special} ${hero.cooldown}`
+            : data.special;
       }
+    }
+
+    function cellCenter(position) {
+      return {
+        x: position.c * 100 + 50,
+        y: position.r * 100 + 50
+      };
+    }
+
+    function svgLine(
+      from,
+      to,
+      options = {}
+    ) {
+      const start =
+        cellCenter(from);
+
+      const end =
+        cellCenter(to);
+
+      const line =
+        document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "line"
+        );
+
+      line.setAttribute(
+        "x1",
+        start.x
+      );
+
+      line.setAttribute(
+        "y1",
+        start.y
+      );
+
+      line.setAttribute(
+        "x2",
+        end.x
+      );
+
+      line.setAttribute(
+        "y2",
+        end.y
+      );
+
+      line.setAttribute(
+        "stroke",
+        options.color || "#111111"
+      );
+
+      line.setAttribute(
+        "stroke-width",
+        options.width || "4"
+      );
+
+      line.setAttribute(
+        "stroke-linecap",
+        "round"
+      );
+
+      line.setAttribute(
+        "opacity",
+        options.opacity || "0.82"
+      );
+
+      if (options.dash) {
+        line.setAttribute(
+          "stroke-dasharray",
+          options.dash
+        );
+      }
+
+      if (options.marker) {
+        line.setAttribute(
+          "marker-end",
+          `url(#${options.marker})`
+        );
+      }
+
+      intentLayer.appendChild(line);
+    }
+
+    function drawIntentLayer() {
+      intentLayer.innerHTML = `
+        <defs>
+          <marker
+            id="arrowBlack"
+            markerWidth="8"
+            markerHeight="8"
+            refX="6"
+            refY="4"
+            orient="auto"
+            markerUnits="strokeWidth"
+          >
+            <path
+              d="M0,0 L8,4 L0,8 Z"
+              fill="#111111"
+            ></path>
+          </marker>
+
+          <marker
+            id="arrowRed"
+            markerWidth="8"
+            markerHeight="8"
+            refX="6"
+            refY="4"
+            orient="auto"
+            markerUnits="strokeWidth"
+          >
+            <path
+              d="M0,0 L8,4 L0,8 Z"
+              fill="#c91919"
+            ></path>
+          </marker>
+        </defs>
+      `;
+
+      for (const enemy of aliveEnemies()) {
+        const plan =
+          enemy.plan || {
+            kind: "wait"
+          };
+
+        if (
+          ["move", "charge"].includes(
+            plan.kind
+          ) &&
+          plan.path?.length
+        ) {
+          svgLine(
+            enemy,
+            plan.path[
+              plan.path.length - 1
+            ],
+            {
+              color: "#111111",
+
+              width:
+                plan.kind === "charge"
+                  ? "6"
+                  : "4",
+
+              marker: "arrowBlack",
+
+              dash:
+                plan.kind === "charge"
+                  ? "12 6"
+                  : null
+            }
+          );
+        }
+
+        if (
+          [
+            "attack",
+            "shoot",
+            "attackPush"
+          ].includes(plan.kind) &&
+          plan.target
+        ) {
+          svgLine(
+            enemy,
+            plan.target,
+            {
+              color: "#c91919",
+
+              width:
+                plan.kind === "shoot"
+                  ? "3"
+                  : "5",
+
+              marker: "arrowRed",
+
+              dash:
+                plan.kind === "shoot"
+                  ? "9 5"
+                  : null
+            }
+          );
+        }
+
+        if (
+          plan.kind === "pull" &&
+          plan.target
+        ) {
+          svgLine(
+            enemy,
+            plan.target,
+            {
+              color: "#c91919",
+              width: "4",
+              marker: "arrowRed",
+              dash: "5 5"
+            }
+          );
+        }
+
+        if (
+          plan.kind === "attackPush" &&
+          plan.target
+        ) {
+          const pushTo = {
+            r:
+              plan.target.r +
+              Math.sign(
+                plan.target.r -
+                enemy.r
+              ),
+
+            c:
+              plan.target.c +
+              Math.sign(
+                plan.target.c -
+                enemy.c
+              )
+          };
+
+          if (
+            inside(
+              pushTo.r,
+              pushTo.c
+            )
+          ) {
+            svgLine(
+              plan.target,
+              pushTo,
+              {
+                color: "#c91919",
+                width: "4",
+                marker: "arrowRed"
+              }
+            );
+          }
+        }
+
+        if (plan.kind === "command") {
+          for (
+            const targetId of
+            plan.targetIds || []
+          ) {
+            const target =
+              game.enemies.find(
+                (unit) =>
+                  unit.id === targetId &&
+                  unit.alive
+              );
+
+            if (target) {
+              svgLine(
+                enemy,
+                target,
+                {
+                  color: "#111111",
+                  width: "3",
+                  dash: "6 7",
+                  opacity: "0.6"
+                }
+              );
+            }
+          }
+        }
+      }
+    }
+
+    function setActionMode(mode) {
+      const hero = selectedHero();
+
+      if (
+        !hero ||
+        hero.acted ||
+        game.phase !== "player" ||
+        actionMode === "bannerPick"
+      ) {
+        return;
+      }
+
+      if (
+        mode === "special" &&
+        hero.cooldown > 0
+      ) {
+        return;
+      }
+
+      actionMode = mode;
+      previewTarget = null;
+      previewLocked = false;
+
+      render();
+    }
+
+    function onCellEnter(event) {
+      if (
+        !hoverCapable ||
+        previewLocked ||
+        game?.phase !== "player"
+      ) {
+        return;
+      }
+
+      const hero = selectedHero();
+
+      if (!hero) {
+        return;
+      }
+
+      const target = legalTargetAt(
+        Number(
+          event.currentTarget.dataset.r
+        ),
+        Number(
+          event.currentTarget.dataset.c
+        )
+      );
+
+      if (target) {
+        previewTarget = target;
+        render();
+      }
+    }
+
+    function onCellLeave() {
+      if (
+        !hoverCapable ||
+        previewLocked ||
+        game?.phase !== "player"
+      ) {
+        return;
+      }
+
+      previewTarget = null;
+      render();
+    }
+
+    function legalTargetAt(row, column) {
+      const hero = selectedHero();
+
+      if (!hero) {
+        return null;
+      }
+
+      return (
+        getActionTargets(hero).find(
+          (target) =>
+            target.r === row &&
+            target.c === column
+        ) || null
+      );
     }
 
     function onCellClick(event) {
-      if (game.phase !== "player" || game.over) return;
-      const cell = event.currentTarget;
-      const r = Number(cell.dataset.r);
-      const c = Number(cell.dataset.c);
-      const clickedHero = heroAt(game, r, c);
-      const clickedEnemy = enemyAt(game, r, c);
-      const hero = selectedHero();
-
-      if (interactionMode === "special" && hero) {
-        if (useTargetedSpecial(hero, r, c)) return;
-        interactionMode = "normal";
+      if (
+        !game ||
+        game.phase !== "player" ||
+        game.over
+      ) {
+        return;
       }
 
-      if (clickedHero && !clickedHero.acted) {
-        selectedHeroId = clickedHero.id;
-        interactionMode = "normal";
+      const row = Number(
+        event.currentTarget.dataset.r
+      );
+
+      const column = Number(
+        event.currentTarget.dataset.c
+      );
+
+      const clickedHero = heroAt(
+        game,
+        row,
+        column
+      );
+
+      const current = selectedHero();
+
+      if (
+        actionMode !== "bannerPick" &&
+        clickedHero &&
+        !clickedHero.acted &&
+        (
+          !current ||
+          !legalTargetAt(row, column)
+        )
+      ) {
+        selectedHeroId =
+          clickedHero.id;
+
+        actionMode = "move";
+        previewTarget = null;
+        previewLocked = false;
+        pendingBanner = null;
+
         render();
         return;
       }
 
-      if (!hero || hero.acted) return;
+      if (
+        !current ||
+        current.acted
+      ) {
+        return;
+      }
 
-      const move = getMoveTargets(game, hero).find(pos => pos.r === r && pos.c === c);
-      if (move) {
-        hero.r = r;
-        hero.c = c;
-        hero.acted = true;
-        selectedHeroId = null;
+      const target =
+        legalTargetAt(row, column);
+
+      if (!target) {
+        previewTarget = null;
+        previewLocked = false;
         render();
         return;
       }
 
-      const attack = getAttackTargets(game, hero).find(pos => pos.r === r && pos.c === c);
-      if (attack && clickedEnemy) {
-        applyBasicAttack(game, hero, clickedEnemy.id);
-        hero.acted = true;
-        selectedHeroId = null;
+      const samePreview =
+        previewTarget &&
+        previewTarget.r === row &&
+        previewTarget.c === column;
+
+      if (
+        !hoverCapable &&
+        !samePreview
+      ) {
+        previewTarget = target;
+        previewLocked = true;
         render();
-      }
-    }
-
-    guardButton.addEventListener("click", () => {
-      const hero = selectedHero();
-      if (!hero || hero.acted || game.phase !== "player") return;
-      hero.guard = 1;
-      hero.acted = true;
-      selectedHeroId = null;
-      render();
-    });
-
-    specialButton.addEventListener("click", () => {
-      const hero = selectedHero();
-      if (!hero || hero.acted || hero.cooldown > 0 || game.phase !== "player") return;
-
-      if (hero.type === "blade") {
-        for (const delta of ORTHOGONAL) {
-          const enemy = enemyAt(game, hero.r + delta.r, hero.c + delta.c);
-          if (enemy) damageEnemy(game, enemy.id, game.upgrades.bladePower, hero);
-        }
-        finishSpecial(hero);
         return;
       }
 
-      if (hero.type === "shield") {
-        const offsets = game.upgrades.shieldDiagonal
-          ? [
-              ...ORTHOGONAL,
-              { r: -1, c: -1 }, { r: -1, c: 1 },
-              { r: 1, c: -1 }, { r: 1, c: 1 },
-              { r: 0, c: 0 }
-            ]
-          : [...ORTHOGONAL, { r: 0, c: 0 }];
-        for (const delta of offsets) {
-          const ally = heroAt(game, hero.r + delta.r, hero.c + delta.c);
-          if (ally) ally.guard = Math.max(ally.guard, 1);
-        }
-        finishSpecial(hero);
-        return;
-      }
-
-      interactionMode = "special";
-      render();
-    });
-
-    function getSpecialTargets(hero) {
-      if (hero.type === "spear") {
-        const targets = [];
-        for (const delta of ORTHOGONAL) {
-          const result = firstUnitInDirection(game, hero, delta, 3, false);
-          if (result) targets.push({ r: result.enemy.r, c: result.enemy.c, enemyId: result.enemy.id });
-        }
-        return targets;
-      }
-
-      if (hero.type === "bow") {
-        const targets = [];
-        for (const delta of ORTHOGONAL) {
-          const result = firstUnitInDirection(game, hero, delta, 5, false);
-          if (result) targets.push({ r: result.enemy.r, c: result.enemy.c, enemyId: result.enemy.id, delta });
-        }
-        return targets;
-      }
-
-      if (hero.type === "banner") {
-        return aliveHeroes()
-          .filter(ally => ally.id !== hero.id && ally.acted && manhattan(ally, hero) <= game.upgrades.bannerRange)
-          .map(ally => ({ r: ally.r, c: ally.c, heroId: ally.id }));
-      }
-
-      return [];
+      executeAction(
+        current,
+        actionMode,
+        target
+      );
     }
 
-    function useTargetedSpecial(hero, r, c) {
-      const target = getSpecialTargets(hero).find(pos => pos.r === r && pos.c === c);
-      if (!target) return false;
+    moveButton.addEventListener(
+      "click",
+      () => setActionMode("move")
+    );
 
-      if (hero.type === "spear") {
-        const enemy = game.enemies.find(unit => unit.id === target.enemyId && unit.alive);
-        if (enemy) {
-          damageEnemy(game, enemy.id, 1, hero);
-          if (enemy.alive) enemy.stunned = Math.max(enemy.stunned, 1);
-        }
-        finishSpecial(hero);
-        return true;
-      }
+    attackButton.addEventListener(
+      "click",
+      () => setActionMode("attack")
+    );
 
-      if (hero.type === "bow") {
-        const enemy = game.enemies.find(unit => unit.id === target.enemyId && unit.alive);
-        if (enemy) damageEnemy(game, enemy.id, 1, hero);
-        let passedTarget = false;
-        for (let distance = 1; distance <= 6; distance += 1) {
-          const rr = hero.r + target.delta.r * distance;
-          const cc = hero.c + target.delta.c * distance;
-          if (!inside(rr, cc)) break;
-          const other = enemyAt(game, rr, cc);
-          if (other) {
-            if (!passedTarget && other.id === target.enemyId) {
-              passedTarget = true;
-              continue;
-            }
-            if (passedTarget) {
-              damageEnemy(game, other.id, 1, hero);
-              break;
-            }
-          }
-          const ally = heroAt(game, rr, cc);
-          if (ally && ally.id !== hero.id) break;
-        }
-        finishSpecial(hero);
-        return true;
-      }
+    guardButton.addEventListener(
+      "click",
+      () => setActionMode("guard")
+    );
 
-      if (hero.type === "banner") {
-        const ally = game.heroes.find(unit => unit.id === target.heroId && unit.alive);
-        if (ally) ally.acted = false;
-        finishSpecial(hero);
-        return true;
-      }
+    specialButton.addEventListener(
+      "click",
+      () => setActionMode("special")
+    );
 
-      return false;
-    }
-
-    function finishSpecial(hero) {
-      hero.cooldown = Math.max(2, 4 - game.upgrades.cooldownReduction);
-      hero.acted = true;
-      selectedHeroId = null;
-      interactionMode = "normal";
-      render();
-    }
-
-    endButton.addEventListener("click", endPlayerTurn);
+    endButton.addEventListener(
+      "click",
+      endPlayerTurn
+    );
 
     async function endPlayerTurn() {
-      if (game.phase !== "player" || game.over) return;
+      if (
+        game.phase !== "player" ||
+        game.over ||
+        actionMode === "bannerPick"
+      ) {
+        return;
+      }
+
       game.phase = "enemy";
       selectedHeroId = null;
-      interactionMode = "normal";
+      actionMode = "move";
+      previewTarget = null;
+      previewLocked = false;
+
       render();
 
-      const ordered = aliveEnemies().slice().sort((a, b) => (a.order || 999) - (b.order || 999));
-      for (const plannedEnemy of ordered) {
-        if (game.over) break;
-        const enemy = game.enemies.find(unit => unit.id === plannedEnemy.id && unit.alive);
-        if (!enemy) continue;
-        executePlan(game, enemy, enemy.plan);
+      const ordered = aliveEnemies()
+        .slice()
+        .sort(
+          (first, second) =>
+            (first.order || 999) -
+            (second.order || 999)
+        );
+
+      for (
+        const plannedEnemy of ordered
+      ) {
+        if (game.over) {
+          break;
+        }
+
+        const enemy =
+          game.enemies.find(
+            (unit) =>
+              unit.id ===
+                plannedEnemy.id &&
+              unit.alive
+          );
+
+        if (!enemy) {
+          continue;
+        }
+
+        executePlan(
+          game,
+          enemy,
+          enemy.plan
+        );
+
         render();
         flashBoard();
-        await delay(105);
+
+        await delay(115);
+
         checkGameOver();
       }
 
-      if (game.over) return;
-      spawnIncoming();
-      game.enemies = game.enemies.filter(enemy => enemy.alive);
-      checkGameOver();
-      if (game.over) return;
+      if (game.over) {
+        return;
+      }
 
-      game.completedRounds = game.round;
-      if (game.completedRounds % 5 === 0) {
+      spawnIncoming();
+
+      game.enemies =
+        game.enemies.filter(
+          (enemy) => enemy.alive
+        );
+
+      checkGameOver();
+
+      if (game.over) {
+        return;
+      }
+
+      game.completedRounds =
+        game.round;
+
+      if (
+        game.completedRounds % 5 === 0
+      ) {
         showUpgradeChoices();
       } else {
         game.round += 1;
@@ -2038,35 +4936,64 @@
       }
     }
 
-    function delay(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
+    function delay(milliseconds) {
+      return new Promise(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            milliseconds
+          )
+      );
     }
 
     function flashBoard() {
       boardEl.classList.remove("flash");
+
       void boardEl.offsetWidth;
+
       boardEl.classList.add("flash");
     }
 
     function checkGameOver() {
-      const noHeroes = !game.heroes.some(hero => hero.alive);
-      const beaconTaken = game.enemies.some(enemy => enemy.alive && enemy.r === BEACON.r && enemy.c === BEACON.c);
-      if (noHeroes || beaconTaken) endGame();
+      const noHeroes =
+        !game.heroes.some(
+          (hero) => hero.alive
+        );
+
+      const beaconTaken =
+        game.enemies.some(
+          (enemy) =>
+            enemy.alive &&
+            enemy.r === BEACON.r &&
+            enemy.c === BEACON.c
+        );
+
+      if (
+        noHeroes ||
+        beaconTaken
+      ) {
+        endGame();
+      }
     }
 
     function endGame() {
-      if (game.over) return;
       game.over = true;
       game.phase = "over";
-      const survived = game.completedRounds || Math.max(0, game.round - 1);
-      finalRound.textContent = String(survived);
-      onlineScores.currentId = null;
-      onlineScores.currentRef = null;
-      nameEditor.classList.remove("show");
-      renderHighScores("CHECKING TOP 10…");
-      gameOverOverlay.classList.add("show");
+
+      finalRound.textContent =
+        String(
+          game.completedRounds ||
+          Math.max(
+            0,
+            game.round - 1
+          )
+        );
+
+      gameOverOverlay.classList.add(
+        "show"
+      );
+
       render();
-      submitHighScore(survived);
     }
 
     const UPGRADE_POOL = [
@@ -2075,208 +5002,473 @@
         max: 2,
         symbol: "B+",
         name: "HEAVY EDGE",
-        text: "Blade Cleave deals one more damage.",
-        apply() { game.upgrades.bladePower += 1; }
+        text:
+          "Sweep deals one more damage.",
+
+        apply() {
+          game.upgrades.bladePower += 1;
+        }
       },
+
       {
         id: "shieldDiagonal",
         max: 1,
-        symbol: "D+",
-        name: "WIDE GUARD",
-        text: "Fortress also protects diagonal allies.",
-        apply() { game.upgrades.shieldDiagonal = true; }
+        symbol: "S+",
+        name: "WIDE BULWARK",
+        text:
+          "Bulwark also protects diagonal spaces.",
+
+        apply() {
+          game.upgrades.shieldDiagonal =
+            true;
+        }
       },
+
+      {
+        id: "spearReach",
+        max: 1,
+        symbol: "P+",
+        name: "LONG SHAFT",
+        text:
+          "Impale may target four spaces away.",
+
+        apply() {
+          game.upgrades.spearReach = 4;
+        }
+      },
+
       {
         id: "spearFlexible",
         max: 1,
-        symbol: "P+",
+        symbol: "P1",
         name: "SHORT GRIP",
-        text: "Spear may attack at range one or two.",
-        apply() { game.upgrades.spearFlexible = true; }
+        text:
+          "Spear basic attacks may strike at range one or two.",
+
+        apply() {
+          game.upgrades.spearFlexible =
+            true;
+        }
       },
+
+      {
+        id: "bowDiagonal",
+        max: 1,
+        symbol: "W+",
+        name: "WIDE VOLLEY",
+        text:
+          "Volley also hits diagonal spaces.",
+
+        apply() {
+          game.upgrades.bowDiagonal =
+            true;
+        }
+      },
+
       {
         id: "bowPierce",
         max: 1,
-        symbol: "A+",
+        symbol: "W2",
         name: "PIERCING SHOT",
-        text: "Bow basic attacks may hit a second enemy.",
-        apply() { game.upgrades.bowPierce = true; }
+        text:
+          "Bow basic attacks may hit a second enemy in line.",
+
+        apply() {
+          game.upgrades.bowPierce =
+            true;
+        }
       },
+
       {
         id: "bannerRange",
         max: 1,
         symbol: "N+",
-        name: "LONG RALLY",
-        text: "Banner may Rally an ally two spaces away.",
-        apply() { game.upgrades.bannerRange = 2; }
+        name: "LONG STANDARD",
+        text:
+          "Rally may be placed three spaces away.",
+
+        apply() {
+          game.upgrades.bannerRange = 3;
+        }
       },
+
       {
         id: "counter",
         max: 1,
         symbol: "↺",
         name: "COUNTER",
-        text: "A guarded adjacent attacker takes one damage.",
-        apply() { game.upgrades.counter = true; }
+        text:
+          "A guarded adjacent attacker takes one damage.",
+
+        apply() {
+          game.upgrades.counter = true;
+        }
       },
+
       {
         id: "cooldown",
         max: 2,
         symbol: "★",
-        name: "QUICK SPECIALS",
-        text: "All special cooldowns become one round shorter.",
-        apply() { game.upgrades.cooldownReduction += 1; }
+        name: "BATTLE RHYTHM",
+        text:
+          "All special cooldowns become one round shorter.",
+
+        apply() {
+          game.upgrades.cooldownReduction +=
+            1;
+        }
       },
+
       {
         id: "reserve",
         max: 1,
         symbol: "◇",
         name: "LAST STAND",
-        text: "The first unguarded hit each round is blocked.",
-        apply() { game.upgrades.reserve = true; }
+        text:
+          "The first unguarded hit each round is blocked.",
+
+        apply() {
+          game.upgrades.reserve = true;
+        }
       },
+
       {
         id: "brace",
         max: 1,
         symbol: "▣",
         name: "BRACE",
-        text: "Your warriors can no longer be pushed.",
-        apply() { game.upgrades.brace = true; }
+        text:
+          "Your warriors can no longer be pushed.",
+
+        apply() {
+          game.upgrades.brace = true;
+        }
       },
+
       {
         id: "finisher",
         max: 1,
         symbol: "×2",
         name: "FINISHER",
-        text: "Attacks deal one extra damage to wounded enemies.",
-        apply() { game.upgrades.finisher = true; }
+        text:
+          "Attacks deal one extra damage to wounded enemies.",
+
+        apply() {
+          game.upgrades.finisher = true;
+        }
       },
+
       {
         id: "medic",
         max: 99,
         symbol: "+",
         name: "FIELD MEDIC",
-        text: "Heal every surviving wounded warrior.",
+        text:
+          "Heal every surviving warrior to full health.",
+
         apply() {
-          for (const hero of aliveHeroes()) hero.wound = 0;
+          for (
+            const hero of
+            aliveHeroes()
+          ) {
+            hero.hp = hero.maxHp;
+          }
         }
       },
+
       {
         id: "armor",
         max: 99,
         symbol: "□",
         name: "LIGHT PLATE",
-        text: "Every surviving warrior blocks one future hit.",
+        text:
+          "Every surviving warrior blocks one future hit.",
+
         apply() {
-          for (const hero of aliveHeroes()) hero.armor += 1;
+          for (
+            const hero of
+            aliveHeroes()
+          ) {
+            hero.armor += 1;
+          }
         }
       },
+
       {
         id: "focus",
         max: 99,
         symbol: "◎",
         name: "BATTLE FOCUS",
-        text: "Every surviving warrior's special becomes ready.",
+        text:
+          "Every surviving warrior's special becomes ready.",
+
         apply() {
-          for (const hero of aliveHeroes()) hero.cooldown = 0;
+          for (
+            const hero of
+            aliveHeroes()
+          ) {
+            hero.cooldown = 0;
+          }
         }
       },
+
       {
         id: "rescue",
         max: 99,
         symbol: "●",
         name: "RESCUE",
-        text: "Return one lost warrior in a wounded state.",
-        available() { return game.heroes.some(hero => !hero.alive); },
-        apply() { reviveOneHero(); }
+        text:
+          "Return one lost warrior with one health.",
+
+        available() {
+          return game.heroes.some(
+            (hero) => !hero.alive
+          );
+        },
+
+        apply() {
+          reviveOneHero();
+        }
       }
     ];
 
     function showUpgradeChoices() {
       game.phase = "upgrade";
       selectedHeroId = null;
-      interactionMode = "normal";
-      const options = getUpgradeOptions(3);
+      actionMode = "move";
+      previewTarget = null;
+      pendingBanner = null;
+
+      const options =
+        getUpgradeOptions(3);
+
       upgradeCards.innerHTML = "";
 
       for (const upgrade of options) {
-        const card = document.createElement("button");
+        const card =
+          document.createElement("button");
+
         card.type = "button";
         card.className = "card";
 
-        const symbol = document.createElement("div");
-        symbol.className = "card-symbol";
-        symbol.textContent = upgrade.symbol;
+        const symbol =
+          document.createElement("div");
 
-        const name = document.createElement("div");
-        name.className = "card-name";
-        name.textContent = upgrade.name;
+        symbol.className =
+          "card-symbol";
 
-        const text = document.createElement("div");
-        text.className = "card-text";
-        text.textContent = upgrade.text;
+        symbol.textContent =
+          upgrade.symbol;
 
-        card.append(symbol, name, text);
-        card.addEventListener("click", () => chooseUpgrade(upgrade));
+        const name =
+          document.createElement("div");
+
+        name.className =
+          "card-name";
+
+        name.textContent =
+          upgrade.name;
+
+        const text =
+          document.createElement("div");
+
+        text.className =
+          "card-text";
+
+        text.textContent =
+          upgrade.text;
+
+        card.append(
+          symbol,
+          name,
+          text
+        );
+
+        card.addEventListener(
+          "click",
+          () =>
+            chooseUpgrade(upgrade)
+        );
+
         upgradeCards.appendChild(card);
       }
 
-      upgradeOverlay.classList.add("show");
+      upgradeOverlay.classList.add(
+        "show"
+      );
+
       render();
     }
 
     function getUpgradeOptions(count) {
-      let available = UPGRADE_POOL.filter(upgrade => {
-        const rank = game.upgradeRanks[upgrade.id] || 0;
-        const condition = typeof upgrade.available === "function" ? upgrade.available() : true;
-        return condition && rank < upgrade.max;
-      });
+      let available =
+        UPGRADE_POOL.filter(
+          (upgrade) => {
+            const rank =
+              game.upgradeRanks[
+                upgrade.id
+              ] || 0;
+
+            const condition =
+              typeof upgrade.available ===
+              "function"
+                ? upgrade.available()
+                : true;
+
+            return (
+              condition &&
+              rank < upgrade.max
+            );
+          }
+        );
 
       if (available.length < count) {
-        available = available.concat(UPGRADE_POOL.filter(upgrade => ["medic", "armor", "focus"].includes(upgrade.id)));
+        available = available.concat(
+          UPGRADE_POOL.filter(
+            (upgrade) =>
+              [
+                "medic",
+                "armor",
+                "focus"
+              ].includes(upgrade.id)
+          )
+        );
       }
 
       const choices = [];
-      for (const upgrade of shuffle(available)) {
-        if (!choices.some(choice => choice.id === upgrade.id)) choices.push(upgrade);
-        if (choices.length >= count) break;
+
+      for (
+        const upgrade of
+        shuffle(available)
+      ) {
+        if (
+          !choices.some(
+            (choice) =>
+              choice.id === upgrade.id
+          )
+        ) {
+          choices.push(upgrade);
+        }
+
+        if (
+          choices.length >= count
+        ) {
+          break;
+        }
       }
+
       return choices;
     }
 
     function chooseUpgrade(upgrade) {
-      game.upgradeRanks[upgrade.id] = (game.upgradeRanks[upgrade.id] || 0) + 1;
+      game.upgradeRanks[upgrade.id] =
+        (
+          game.upgradeRanks[
+            upgrade.id
+          ] || 0
+        ) + 1;
+
       upgrade.apply();
-      upgradeOverlay.classList.remove("show");
+
+      upgradeOverlay.classList.remove(
+        "show"
+      );
+
       game.round += 1;
+
       beginRound();
     }
 
     function reviveOneHero() {
-      const fallen = game.heroes.find(hero => !hero.alive);
-      if (!fallen) return;
+      const fallen =
+        game.heroes.find(
+          (hero) => !hero.alive
+        );
+
+      if (!fallen) {
+        return;
+      }
+
       const positions = [
-        { r: 3, c: 3 },
-        { r: 3, c: 2 }, { r: 3, c: 4 },
-        { r: 2, c: 3 }, { r: 4, c: 3 },
+        {
+          r: 3,
+          c: 3
+        },
+
+        {
+          r: 3,
+          c: 2
+        },
+
+        {
+          r: 3,
+          c: 4
+        },
+
+        {
+          r: 2,
+          c: 3
+        },
+
+        {
+          r: 4,
+          c: 3
+        },
+
         ...edgeCells()
       ];
-      const open = positions.find(pos => inside(pos.r, pos.c) && !occupied(game, pos.r, pos.c));
-      if (!open) return;
+
+      const open =
+        positions.find(
+          (position) =>
+            inside(
+              position.r,
+              position.c
+            ) &&
+            !occupied(
+              game,
+              position.r,
+              position.c
+            )
+        );
+
+      if (!open) {
+        return;
+      }
+
       fallen.alive = true;
-      fallen.wound = 1;
+      fallen.hp = 1;
       fallen.acted = true;
       fallen.guard = 0;
-      fallen.cooldown = 0;
+
+      fallen.cooldown =
+        Math.max(
+          2,
+          fallen.cooldown
+        );
+
       fallen.r = open.r;
       fallen.c = open.c;
     }
 
-    restartButton.addEventListener("click", newGame);
+    beginButton.addEventListener(
+      "click",
+      () => {
+        loadingOverlay.classList.remove(
+          "show"
+        );
 
-    highScoreInitPromise = initHighScores();
-    highScoreInitPromise.catch(() => {});
+        newGame();
+      }
+    );
+
+    restartButton.addEventListener(
+      "click",
+      newGame
+    );
+
     createBoard();
-    newGame();
+    loadAssets();
   </script>
 </body>
 </html>
