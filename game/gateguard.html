@@ -153,6 +153,11 @@
       border-bottom: 0;
     }
 
+    .cell:focus-visible {
+      outline: 3px solid var(--green);
+      outline-offset: -4px;
+    }
+
     .cell.legal {
       background: var(--green-soft);
     }
@@ -311,6 +316,12 @@
       filter: grayscale(1);
     }
 
+    .hero.inspected:not(.selected) {
+      box-shadow:
+        0 0 0 3px var(--white),
+        0 0 0 6px var(--black);
+    }
+
     .hero.incoming-hit {
       opacity: 1;
       filter: none;
@@ -397,6 +408,13 @@
 
     .enemy.commanded {
       box-shadow: 0 0 0 4px var(--black);
+    }
+
+    .enemy.inspected,
+    .spawn-ghost.inspected {
+      box-shadow:
+        0 0 0 3px var(--white),
+        0 0 0 6px var(--black);
     }
 
     .spawn-ghost {
@@ -534,38 +552,6 @@
       font-size: 13px;
     }
 
-    .piece-info-button {
-      position: absolute;
-      left: 50%;
-      top: -21%;
-      z-index: 14;
-      width: 22px;
-      height: 22px;
-      transform: translateX(-50%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 1.5px solid var(--black);
-      border-radius: 50%;
-      padding: 0;
-      background: var(--white);
-      color: var(--black);
-      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
-
-    .piece-info-button:hover,
-    .piece-info-button:focus-visible {
-      background: var(--black);
-      color: var(--white);
-      outline: 2px solid var(--white);
-      outline-offset: 1px;
-    }
-
     .unit-line {
       min-height: 38px;
       display: flex;
@@ -581,7 +567,7 @@
 
     .controls {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 6px;
       margin-top: 7px;
     }
@@ -619,6 +605,15 @@
     .control.special-ready {
       border-color: var(--green);
       color: var(--green);
+    }
+
+    .control.info-enemy {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    .control.info-enemy.active {
+      box-shadow: inset 0 -4px 0 var(--red);
     }
 
     .board.flash {
@@ -997,13 +992,6 @@
         font-size: 10px;
       }
 
-      .piece-info-button {
-        top: -24%;
-        width: 21px;
-        height: 21px;
-        font-size: 11px;
-      }
-
       .piece-info-overlay {
         padding:
           max(7px, env(safe-area-inset-top))
@@ -1076,7 +1064,7 @@
       }
 
       .controls {
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
         margin-top: 4px;
       }
 
@@ -1183,6 +1171,15 @@
         disabled
       >
         SPECIAL
+      </button>
+
+      <button
+        class="control"
+        id="infoButton"
+        type="button"
+        disabled
+      >
+        ? INFO
       </button>
 
       <button
@@ -1603,6 +1600,7 @@
     const attackButton = document.getElementById("attackButton");
     const guardButton = document.getElementById("guardButton");
     const specialButton = document.getElementById("specialButton");
+    const infoButton = document.getElementById("infoButton");
     const endButton = document.getElementById("endButton");
 
     const loadingOverlay = document.getElementById("loadingOverlay");
@@ -1658,6 +1656,7 @@
     let previewTarget = null;
     let previewLocked = false;
     let pendingBanner = null;
+    let selectedPieceInfo = null;
     let pieceInfoReturnFocus = null;
     let game = null;
 
@@ -1872,6 +1871,7 @@
       previewTarget = null;
       previewLocked = false;
       pendingBanner = null;
+      selectedPieceInfo = null;
       seed = (Date.now() ^ 0x9e3779b9) >>> 0;
       closePieceInfo(false);
 
@@ -1972,6 +1972,71 @@
       );
     }
 
+    function selectedInfoUnit() {
+      if (!game || !selectedPieceInfo) {
+        return null;
+      }
+
+      if (
+        selectedPieceInfo.kind === "hero"
+      ) {
+        const unit = game.heroes.find(
+          (hero) =>
+            hero.id ===
+              selectedPieceInfo.id &&
+            hero.alive
+        );
+
+        return unit
+          ? {
+              kind: "hero",
+              unit
+            }
+          : null;
+      }
+
+      if (
+        selectedPieceInfo.kind === "enemy"
+      ) {
+        const unit = game.enemies.find(
+          (enemy) =>
+            enemy.id ===
+              selectedPieceInfo.id &&
+            enemy.alive
+        );
+
+        return unit
+          ? {
+              kind: "enemy",
+              unit
+            }
+          : null;
+      }
+
+      if (
+        selectedPieceInfo.kind === "spawn"
+      ) {
+        const unit = game.incoming.find(
+          (spawn) =>
+            spawn.r ===
+              selectedPieceInfo.r &&
+            spawn.c ===
+              selectedPieceInfo.c &&
+            spawn.type ===
+              selectedPieceInfo.type
+        );
+
+        return unit
+          ? {
+              kind: "spawn",
+              unit
+            }
+          : null;
+      }
+
+      return null;
+    }
+
     function beginRound() {
       if (game.over) {
         return;
@@ -1985,6 +2050,7 @@
       previewTarget = null;
       previewLocked = false;
       pendingBanner = null;
+      selectedPieceInfo = null;
 
       for (const hero of game.heroes) {
         if (!hero.alive) {
@@ -3212,6 +3278,7 @@
       hero.rallyReactivated = false;
 
       selectedHeroId = null;
+      selectedPieceInfo = null;
       actionMode = "move";
       previewTarget = null;
       previewLocked = false;
@@ -5300,57 +5367,6 @@
       });
     }
 
-    function makePieceInfoButton(
-      kind,
-      unit
-    ) {
-      const button =
-        document.createElement("button");
-
-      const isHero =
-        kind === "hero";
-
-      const name = isHero
-        ? HERO_DATA[unit.type].name
-        : unit.type.toUpperCase();
-
-      button.type = "button";
-      button.className =
-        "piece-info-button";
-
-      button.textContent = "?";
-      button.title =
-        `Open ${name} details`;
-
-      button.setAttribute(
-        "aria-label",
-        `Open ${name} abilities and status`
-      );
-
-      button.addEventListener(
-        "pointerdown",
-        (event) => {
-          event.stopPropagation();
-        }
-      );
-
-      button.addEventListener(
-        "click",
-        (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-
-          openPieceInfo(
-            kind,
-            unit,
-            button
-          );
-        }
-      );
-
-      return button;
-    }
-
     function renderHero(
       hero,
       incomingHit = false
@@ -5368,6 +5384,16 @@
         hero.id === selectedHeroId
       ) {
         unit.classList.add("selected");
+      }
+
+      if (
+        selectedPieceInfo?.kind ===
+          "hero" &&
+        selectedPieceInfo.id === hero.id
+      ) {
+        unit.classList.add(
+          "inspected"
+        );
       }
 
       if (hero.acted) {
@@ -5493,13 +5519,6 @@
         unit.appendChild(rally);
       }
 
-      unit.appendChild(
-        makePieceInfoButton(
-          "hero",
-          hero
-        )
-      );
-
       return unit;
     }
 
@@ -5516,6 +5535,16 @@
       if (enemy.commanded) {
         unit.classList.add(
           "commanded"
+        );
+      }
+
+      if (
+        selectedPieceInfo?.kind ===
+          "enemy" &&
+        selectedPieceInfo.id === enemy.id
+      ) {
+        unit.classList.add(
+          "inspected"
         );
       }
 
@@ -5559,13 +5588,6 @@
 
       unit.appendChild(intent);
 
-      unit.appendChild(
-        makePieceInfoButton(
-          "enemy",
-          enemy
-        )
-      );
-
       return unit;
     }
 
@@ -5579,6 +5601,19 @@
       wrap.className =
         "spawn-ghost";
 
+      if (
+        selectedPieceInfo?.kind ===
+          "spawn" &&
+        selectedPieceInfo.r === spawn.r &&
+        selectedPieceInfo.c === spawn.c &&
+        selectedPieceInfo.type ===
+          spawn.type
+      ) {
+        wrap.classList.add(
+          "inspected"
+        );
+      }
+
       wrap.title =
         `Incoming ${spawn.type}`;
 
@@ -5587,13 +5622,6 @@
           data.image,
           data.letter,
           `Incoming ${spawn.type}`
-        )
-      );
-
-      wrap.appendChild(
-        makePieceInfoButton(
-          "spawn",
-          spawn
         )
       );
 
@@ -5624,6 +5652,8 @@
 
     function renderControls() {
       const hero = selectedHero();
+      const infoSelection =
+        selectedInfoUnit();
 
       const canAct = Boolean(
         hero &&
@@ -5647,6 +5677,9 @@
         !canAct ||
         hero.cooldown > 0 ||
         bannerPick;
+
+      infoButton.disabled =
+        !infoSelection;
 
       endButton.disabled =
         game.phase !== "player" ||
@@ -5679,11 +5712,41 @@
         hero.cooldown === 0
       );
 
+      infoButton.classList.toggle(
+        "active",
+        Boolean(infoSelection)
+      );
+
+      infoButton.classList.toggle(
+        "info-enemy",
+        Boolean(
+          infoSelection &&
+          infoSelection.kind !== "hero"
+        )
+      );
+
+      infoButton.title =
+        infoSelection
+          ? `Open ${infoSelection.kind === "hero" ? HERO_DATA[infoSelection.unit.type].name : infoSelection.unit.type.toUpperCase()} details`
+          : "Tap a hero or enemy to inspect it.";
+
       if (!hero) {
-        unitLine.textContent =
-          game.phase === "player"
-            ? "SELECT A UNIT · RED GLOW = WILL BE HIT WHEN THE TURN ENDS"
-            : "";
+        if (infoSelection) {
+          const type =
+            infoSelection.unit.type
+              .toUpperCase();
+
+          unitLine.textContent =
+            infoSelection.kind ===
+              "spawn"
+              ? `INCOMING ${type} · PRESS ? INFO`
+              : `${type} · ENEMY · PRESS ? INFO`;
+        } else {
+          unitLine.textContent =
+            game.phase === "player"
+              ? "SELECT A UNIT · RED GLOW = WILL BE HIT WHEN THE TURN ENDS"
+              : "";
+        }
 
         specialButton.textContent =
           "SPECIAL";
@@ -6091,24 +6154,98 @@
         column
       );
 
+      const clickedEnemy = enemyAt(
+        game,
+        row,
+        column
+      );
+
+      const clickedSpawn =
+        game.incoming.find(
+          (spawn) =>
+            spawn.r === row &&
+            spawn.c === column
+        ) || null;
+
       const current = selectedHero();
 
-      if (
-        actionMode !== "bannerPick" &&
-        clickedHero &&
-        !clickedHero.acted &&
-        (
-          !current ||
-          !legalTargetAt(row, column)
-        )
-      ) {
-        selectedHeroId =
-          clickedHero.id;
+      const target =
+        current &&
+        !current.acted
+          ? legalTargetAt(
+              row,
+              column
+            )
+          : null;
 
-        actionMode = "move";
-        previewTarget = null;
-        previewLocked = false;
-        pendingBanner = null;
+      if (
+        clickedHero &&
+        !target
+      ) {
+        selectedPieceInfo = {
+          kind: "hero",
+          id: clickedHero.id
+        };
+
+        if (
+          actionMode !== "bannerPick"
+        ) {
+          selectedHeroId =
+            clickedHero.id;
+
+          actionMode = "move";
+          previewTarget = null;
+          previewLocked = false;
+          pendingBanner = null;
+        }
+
+        render();
+        return;
+      }
+
+      if (
+        clickedEnemy &&
+        !target
+      ) {
+        selectedPieceInfo = {
+          kind: "enemy",
+          id: clickedEnemy.id
+        };
+
+        if (
+          actionMode !== "bannerPick"
+        ) {
+          selectedHeroId = null;
+          actionMode = "move";
+          previewTarget = null;
+          previewLocked = false;
+          pendingBanner = null;
+        }
+
+        render();
+        return;
+      }
+
+      if (
+        clickedSpawn &&
+        !target
+      ) {
+        selectedPieceInfo = {
+          kind: "spawn",
+          r: clickedSpawn.r,
+          c: clickedSpawn.c,
+          type: clickedSpawn.type
+        };
+
+        if (
+          actionMode !== "bannerPick"
+        ) {
+          selectedHeroId = null;
+          actionMode = "move";
+          previewTarget = null;
+          previewLocked = false;
+          pendingBanner = null;
+        }
 
         render();
         return;
@@ -6118,11 +6255,10 @@
         !current ||
         current.acted
       ) {
+        selectedPieceInfo = null;
+        render();
         return;
       }
-
-      const target =
-        legalTargetAt(row, column);
 
       if (!target) {
         previewTarget = null;
@@ -6173,6 +6309,24 @@
       () => setActionMode("special")
     );
 
+    infoButton.addEventListener(
+      "click",
+      () => {
+        const selection =
+          selectedInfoUnit();
+
+        if (!selection) {
+          return;
+        }
+
+        openPieceInfo(
+          selection.kind,
+          selection.unit,
+          infoButton
+        );
+      }
+    );
+
     endButton.addEventListener(
       "click",
       endPlayerTurn
@@ -6189,6 +6343,7 @@
 
       game.phase = "enemy";
       selectedHeroId = null;
+      selectedPieceInfo = null;
       actionMode = "move";
       previewTarget = null;
       previewLocked = false;
@@ -6565,6 +6720,7 @@
     function showUpgradeChoices() {
       game.phase = "upgrade";
       selectedHeroId = null;
+      selectedPieceInfo = null;
       actionMode = "move";
       previewTarget = null;
       pendingBanner = null;
