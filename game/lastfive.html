@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <title>The Last Five</title>
+  <link rel="stylesheet" href="lastfive.css">
+</head>
+<body>
+  <main class="game" aria-label="The Last Five tactical board game">
+    <div class="topbar">
+      <div class="round" id="roundLabel">01</div>
+      <div class="squad" id="squadStatus" aria-label="Squad status"></div>
+      <div class="score" id="enemyCount">00</div>
+    </div>
+
+    <div class="board" id="board" role="grid" aria-label="Seven by seven battle board">
+      <svg class="intent-layer" id="intentLayer" viewBox="0 0 700 700" aria-hidden="true"></svg>
+    </div>
+
+    <div class="unit-line" id="unitLine">SELECT A UNIT</div>
+
+    <div class="controls">
+      <button class="control" id="moveButton" type="button" disabled>MOVE</button>
+      <button class="control" id="attackButton" type="button" disabled>ATTACK</button>
+      <button class="control" id="guardButton" type="button" disabled>GUARD</button>
+      <button class="control" id="specialButton" type="button" disabled>SPECIAL</button>
+      <button class="control primary" id="endButton" type="button" disabled>END TURN</button>
+    </div>
+  </main>
+
+  <div class="overlay show" id="loadingOverlay" aria-modal="true" role="dialog">
+    <div class="loading-panel">
+      <h1 class="loading-title">THE LAST FIVE</h1>
+      <div class="loading-icons" id="loadingIcons"></div>
+      <div class="loading-track"><div class="loading-fill" id="loadingFill"></div></div>
+      <button class="begin-button" id="beginButton" type="button" disabled>BEGIN</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="upgradeOverlay" aria-modal="true" role="dialog">
+    <div class="overlay-inner">
+      <h1 class="overlay-title">CHOOSE ONE</h1>
+      <div class="cards" id="upgradeCards"></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="gameOverOverlay" aria-modal="true" role="dialog">
+    <div class="gameover">
+      <div class="gameover-number" id="finalRound">0</div>
+      <div class="gameover-label">ROUNDS SURVIVED</div>
+      <button class="restart" id="restartButton" type="button">RESTART</button>
+    </div>
+  </div>
+
+  <script src="lastfive-data.js"></script>
+  <script src="lastfive-combat.js"></script>
+  <script src="lastfive-ui.js"></script>
+</body>
+</html>
