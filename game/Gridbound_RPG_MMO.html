@@ -489,6 +489,10 @@ let processingEventIds=new Set();
 let eventRetryTimers=new Map();
 let autosaveTimer=null;
 let profileSaveChain=Promise.resolve();
+let profileTransactionDepth=0;
+let respawnInProgress=false;
+let presenceFailureStreak=0,presenceBackoffUntil=0,lastPresenceFailureNoticeAt=0;
+const rewardClaimFlights=new Map();
 let lastProfileHash='';
 let particles=[];
 let floaters=[];
@@ -2133,7 +2137,9 @@ async function loadProfile(){
   await saveProfileNow();
 }
 async function saveProfileNow(){
-  if(!profileRef||!localPlayer)return;saveQueued=false;localPlayer.updatedAtMs=now();
+  if(!profileRef||!localPlayer)return;
+  if(profileTransactionDepth>0){queueSave(300);return}
+  saveQueued=false;localPlayer.updatedAtMs=now();
   const payload=persistentProfilePayload(localPlayer),hashPayload={...payload};delete hashPayload.updatedAtMs;const hash=compactHash(hashPayload);if(hash===lastProfileHash)return;
   profileSaveChain=profileSaveChain.catch(()=>{}).then(async()=>{await setDoc(profileRef,{username,rpgProfile:payload,rpgUpdatedAt:serverTimestamp()},{mergeFields:['username','rpgProfile','rpgUpdatedAt']});lastProfileHash=hash}).catch(e=>console.warn('profile save failed',e));await profileSaveChain;
 }
@@ -2183,7 +2189,7 @@ async function connectRoom(preparedMap=null){
   playersUnsub=combineUnsubs(onChildAdded(playersCol,upsertPlayer),onChildChanged(playersCol,upsertPlayer),onChildRemoved(playersCol,removePlayer));
   roomUnsub=onValue(roomMetaRef,snap=>{noteSnapshot();const d=snap.val()||{};if(d.roomId&&d.roomId!==currentRoomId)return;const wasDefeated=bossPassageOpen();roomState.version=Number(d.version)||roomState.version;roomState.bossDefeated=map.isTown||roomState.bossDefeated||!!d.bossDefeated;roomState.updatedAtMs=Number(d.updatedAtMs)||roomState.updatedAtMs;if(!wasDefeated&&bossPassageOpen()){doorUiKey='';updateDoorOpenButton(true);toast('Boss defeated · the sealed passage is open!',2600)}syncObjectiveToProfile()});
   controllerUnsub=onValue(controllerRef,snap=>{const controller=snap.val()||null;currentControllerUid=String(controller?.uid||'');if(isController&&!realtimeControllerOwns(controller)){isController=false;controllerLease='';clearInterval(controllerTimer);controllerTimer=null;commandsUnsub?.();commandsUnsub=null}});
-  const upsertEnemy=snap=>{noteSnapshot();const value=snap.val();if(!value)return;const raw={...value,id:value.id||snap.key},index=roomState.enemies.findIndex(enemy=>enemy.id===raw.id),previous=index>=0?roomState.enemies[index]:null,next=interpolateSnapshot(raw,previous),wasDefeated=bossPassageOpen();if(index>=0)roomState.enemies[index]=next;else if(roomState.enemies.length<MAX_ROOM_ENEMIES)roomState.enemies.push(next);stateHashes.enemies.set(safeId(raw.id),realtimeLogicalHash(next));if(next.arenaAvatar&&next.arenaPlayerUid===uid){localPlayer.hp=Number(next.hp)||0;localPlayer.statusEffects={...(next.effects||{})};if(Number(next.spawnProtectedUntil)>now()&&distance(localPlayer,next)>0){localPlayer.x=Math.round(Number(next.x));localPlayer.y=Math.round(Number(next.y));movementPath=[];pendingApproach=null;positionSequence++;positionChangedAtMs=now();markEntityIndexesDirty();setPresence(true)}if(localPlayer.hp<=0){movementPath=[];pendingApproach=null;autoAttackEnabled=false;selectedEnemyId='';deathModal.classList.remove('open')}}markEntityIndexesDirty();actorSortCache.key='';if(enemyIsBoss(next)&&Number(next.hp)<=0&&!wasDefeated&&isController)persistBossDefeat(next).catch(error=>reportRuntimeProblem('boss door unlock',error));if(roomState.objective?.kind==='hunt'&&!roomState.objective.targetId&&next.huntTarget&&next.hp>0)roomState.objective.targetId=next.id};
+  const upsertEnemy=snap=>{noteSnapshot();const value=snap.val();if(!value)return;const raw={...value,id:value.id||snap.key},index=roomState.enemies.findIndex(enemy=>enemy.id===raw.id),previous=index>=0?roomState.enemies[index]:null,next=interpolateSnapshot(raw,previous),wasDefeated=bossPassageOpen();if(index>=0)roomState.enemies[index]=next;else if(roomState.enemies.length<MAX_ROOM_ENEMIES)roomState.enemies.push(next);stateHashes.enemies.set(safeId(raw.id),realtimeLogicalHash(next));if(next.arenaAvatar&&next.arenaPlayerUid===uid){localPlayer.hp=Number(next.hp)||0;localPlayer.statusEffects={...(next.effects||{})};if(Number(next.spawnProtectedUntil)>now()&&distance(localPlayer,next)>0){localPlayer.x=Math.round(Number(next.x));localPlayer.y=Math.round(Number(next.y));movementPath=[];pendingApproach=null;positionSequence++;positionChangedAtMs=now();markEntityIndexesDirty();setPresence(true)}if(localPlayer.hp<=0){movementPath=[];pendingApproach=null;autoAttackEnabled=false;selectedEnemyId='';closeGameModal(deathModal)}}markEntityIndexesDirty();actorSortCache.key='';if(enemyIsBoss(next)&&Number(next.hp)<=0&&!wasDefeated&&isController)persistBossDefeat(next).catch(error=>reportRuntimeProblem('boss door unlock',error));if(roomState.objective?.kind==='hunt'&&!roomState.objective.targetId&&next.huntTarget&&next.hp>0)roomState.objective.targetId=next.id};
   const removeEnemy=snap=>{const id=String(snap.val()?.id||snap.key||'');roomState.enemies=roomState.enemies.filter(enemy=>enemy.id!==id);stateHashes.enemies.delete(safeId(id));markEntityIndexesDirty();actorSortCache.key=''};
   enemiesUnsub=combineUnsubs(onChildAdded(enemiesCol,upsertEnemy),onChildChanged(enemiesCol,upsertEnemy),onChildRemoved(enemiesCol,removeEnemy));rtdbGet(enemiesCol).catch(()=>{}).finally(()=>{enemyCollectionReady=true});
   const upsertTelegraph=snap=>{noteSnapshot();const value=snap.val();if(!value)return;const item={...value,id:value.id||snap.key},index=roomState.telegraphs.findIndex(entry=>entry.id===item.id);if(index>=0)roomState.telegraphs[index]=item;else roomState.telegraphs.push(item);roomState.telegraphs.sort((a,b)=>Number(a.createdAtMs)-Number(b.createdAtMs));if(roomState.telegraphs.length>MAX_TELEGRAPHS)roomState.telegraphs.splice(0,roomState.telegraphs.length-MAX_TELEGRAPHS);stateHashes.telegraphs.set(safeId(item.id),realtimeLogicalHash(item));actorSortCache.key=''};
@@ -2232,8 +2238,74 @@ async function flushPresenceWrites(){
     while(presenceWriteResolvers.length){
       const resolvers=presenceWriteResolvers.splice(0),force=presenceWriteQueuedForce;presenceWriteQueuedForce=false;let success=false;
       if(playerPresenceRef&&localPlayer){
-        const arenaAvatar=map?.isArena?arenaOwnAvatar():null;if(arenaAvatar)localPlayer.hp=Number(arenaAvatar.hp)||0;const s=map?.isArena?arenaHudStats():derivedStats(),t=now(),armor=getItem(localPlayer.equipment?.armor),weapon=equippedWeapon(),arenaPresence={};if(map?.isArena){const team=arenaTeamForUid(uid),matchId=roomState.eventState?.matchId||arenaAssignment?.matchId;if(team)arenaPresence.arenaTeam=team;if(matchId)arenaPresence.arenaMatchId=String(matchId).slice(0,192)}const meaningful={uid,username,x:localPlayer.x,y:localPlayer.y,positionSequence,hp:Math.round(localPlayer.hp),maxHp:s.maxHp,mana:Math.round(localPlayer.mana),maxMana:s.maxMana,level:localPlayer.level,activeAdvancedPath:localPlayer.activeAdvancedPath||null,activeTitle:localPlayer.activeTitle||'',cosmeticEffect:localPlayer.cosmeticEffects?.[0]||null,roomId:currentRoomId,depth:currentDepth,roomSessionId,roomEnteredAtMs,armorBaseId:armor?.baseId||'leather_suit',weaponBaseId:weapon?.baseId||'basic_bow',weaponType:weaponStats().weaponType||'bow',equippedRelic:localPlayer.equippedRelic||null,...arenaPresence,combat:publicCombatData()},hash=compactHash(meaningful),heartbeatDue=t-lastPresenceWriteAt>=HEARTBEAT_MS-100;
-        if(!force&&hash===lastPresenceHash&&!heartbeatDue)success=true;else{const payload={...meaningful,positionChangedAtMs,lastSeenMs:t,lastSeenAt:rtdbServerTimestamp()},started=performance.now(),generation=roomConnectionGeneration,presenceRef=playerPresenceRef;try{await rtdbUpdate(presenceRef,sanitizeRealtimeValue(payload));if(generation===roomConnectionGeneration&&presenceRef===playerPresenceRef){lastPresenceHash=hash;lastPresenceWriteAt=t;metric('presenceWrites',t,120);metric('presenceWriteLatency',performance.now()-started);success=true}}catch(error){if(combatDebug)console.warn('presence sync failed',error)}}
+        const t=now();
+        if(!force&&t<presenceBackoffUntil){for(const resolve of resolvers)resolve(false);continue}
+        const arenaAvatar=map?.isArena?arenaOwnAvatar():null;
+        if(arenaAvatar)localPlayer.hp=Number(arenaAvatar.hp)||0;
+        const s=map?.isArena?arenaHudStats():derivedStats(),armor=getItem(localPlayer.equipment?.armor),weapon=equippedWeapon(),arenaPresence={};
+        if(map?.isArena){
+          const team=arenaTeamForUid(uid),matchId=roomState.eventState?.matchId||arenaAssignment?.matchId;
+          if(team)arenaPresence.arenaTeam=String(team).slice(0,192);
+          if(matchId)arenaPresence.arenaMatchId=String(matchId).slice(0,192)
+        }
+        const maxHp=clamp(Number(s.maxHp)||1,1,1000000000),maxMana=clamp(Number(s.maxMana)||0,0,1000000000);
+        const core={
+          uid:String(uid),
+          username:String(username||'Adventurer').slice(0,64)||'Adventurer',
+          x:clamp(Math.round(Number(localPlayer.x)||0),-10000,10000),
+          y:clamp(Math.round(Number(localPlayer.y)||0),-10000,10000),
+          positionSequence:Math.max(0,Math.round(Number(positionSequence)||0)),
+          hp:clamp(Math.round(Number(localPlayer.hp)||0),0,maxHp),
+          maxHp,
+          mana:clamp(Math.round(Number(localPlayer.mana)||0),0,maxMana),
+          maxMana,
+          level:clamp(Math.round(Number(localPlayer.level)||1),0,10000),
+          roomId:String(currentRoomId||'town-havenfall').slice(0,128),
+          depth:clamp(Math.round(Number(currentDepth)||0),0,10000),
+          roomSessionId:String(roomSessionId||`${safeId(currentRoomId)}-${uid.slice(0,8)}-${t.toString(36)}`).slice(0,192),
+          roomEnteredAtMs:Math.max(0,Math.round(Number(roomEnteredAtMs)||t)),
+          positionChangedAtMs:Math.max(0,Math.round(Number(positionChangedAtMs)||t)),
+          lastSeenMs:t,
+          lastSeenAt:rtdbServerTimestamp()
+        };
+        const meaningful={
+          ...core,
+          activeTitle:String(localPlayer.activeTitle||'').slice(0,192),
+          armorBaseId:String(armor?.baseId||'leather_suit').slice(0,192),
+          weaponBaseId:String(weapon?.baseId||'basic_bow').slice(0,192),
+          weaponType:String(weaponStats().weaponType||'bow').slice(0,192),
+          combat:publicCombatData(),
+          ...arenaPresence
+        };
+        if(localPlayer.activeAdvancedPath)meaningful.activeAdvancedPath=String(localPlayer.activeAdvancedPath).slice(0,192);
+        if(localPlayer.cosmeticEffects?.[0])meaningful.cosmeticEffect=String(localPlayer.cosmeticEffects[0]).slice(0,192);
+        if(localPlayer.equippedRelic)meaningful.equippedRelic=String(localPlayer.equippedRelic).slice(0,192);
+        const hashValue={...meaningful};delete hashValue.lastSeenMs;delete hashValue.lastSeenAt;
+        const hash=compactHash(hashValue),heartbeatDue=t-lastPresenceWriteAt>=HEARTBEAT_MS-100;
+        if(!force&&hash===lastPresenceHash&&!heartbeatDue)success=true;
+        else{
+          const started=performance.now(),generation=roomConnectionGeneration,presenceRef=playerPresenceRef;
+          try{
+            await rtdbUpdate(presenceRef,sanitizeRealtimeValue(meaningful));
+            if(generation===roomConnectionGeneration&&presenceRef===playerPresenceRef){
+              lastPresenceHash=hash;lastPresenceWriteAt=t;metric('presenceWrites',t,120);metric('presenceWriteLatency',performance.now()-started);presenceFailureStreak=0;presenceBackoffUntil=0;success=true
+            }
+          }catch(error){
+            const denied=String(error?.code||error?.message||error).toLowerCase().includes('permission');
+            // Retry only the required rule-safe fields. This avoids optional cosmetics/combat data
+            // preventing death, respawn, or movement synchronization.
+            try{
+              await rtdbUpdate(presenceRef,sanitizeRealtimeValue(core));
+              if(generation===roomConnectionGeneration&&presenceRef===playerPresenceRef){
+                lastPresenceHash='';lastPresenceWriteAt=t;metric('presenceWrites',t,120);metric('presenceWriteLatency',performance.now()-started);presenceFailureStreak=0;presenceBackoffUntil=0;success=true
+              }
+            }catch(coreError){
+              presenceFailureStreak=Math.min(8,presenceFailureStreak+1);
+              presenceBackoffUntil=t+Math.min(15000,750*(2**Math.max(0,presenceFailureStreak-1)));
+              if(t-lastPresenceFailureNoticeAt>5000){lastPresenceFailureNoticeAt=t;console.warn('presence sync failed; local play remains responsive',denied?'RTDB rules rejected the player payload':coreError)}
+            }
+          }
+        }
       }
       for(const resolve of resolvers)resolve(success);
     }
@@ -2638,7 +2710,7 @@ async function handleEnemyDeath(enemy,killer,deathKey='dot'){
     if(rewardUid===uid)claimEnemyRewardPayload(rewardPayload,rewardId,true).catch(error=>reportRuntimeProblem('enemy reward claim',error));
     try{await rtdbSet(eventRef(rewardId),sanitizeRealtimeValue({...rewardPayload,createdAt:rtdbServerTimestamp()}));realtimePublished=true}catch(error){if(combatDebug)console.warn('realtime reward publish failed; legacy queue will be tried',error)}
     const rewardRef=rewardDoc(rewardId);
-    runTransaction(db,async tx=>{const existing=await tx.get(rewardRef);if(existing.exists())return;tx.set(rewardRef,{...rewardPayload,createdAt:serverTimestamp()})}).catch(error=>{if(combatDebug)console.warn('legacy Firestore reward mirror unavailable',error)});
+    setDoc(rewardRef,{...rewardPayload,createdAt:serverTimestamp()}).catch(error=>{if(combatDebug)console.warn('legacy Firestore reward mirror unavailable',error)});
   }));
   if((enemy.effectStacks?.poison||0)>0){const sourceUid=enemy.effectSources?.poison||'',near=roomState.enemies.filter(candidate=>candidate.hp>0&&candidate.id!==enemy.id&&distance(candidate,enemy)<=3).sort((a,b)=>a.id.localeCompare(b.id))[0];if(near){const ref=activeRoomEntityRef('enemies',near.id);await rtdbGet(ref).catch(()=>{});await runRtdbTransaction(ref,current=>{if(!current||current.hp<=0)return;const next=deepClone(current);applyEnemyStatusRecord(next,'poison',now(),sourceUid,0,0);return cleanEnemyForRealtime(next)},{applyLocally:false}).catch(()=>{})}}
   await finishEnemyRewardProcessing(processing);return true
@@ -2654,23 +2726,44 @@ function applyEnemyRewardLocally(data,claimId,claimRecord){
   recordEnemyDefeat(data);recordQuestKill(data.enemyType);advanceQuestChainsForKill(data);applyKillSpecialties(data);applyLevelUps();renderInventory();updateHUD();queueSave(120);for(const [message,duration] of notices)queueRewardNotification(message,duration)
 }
 async function claimEnemyRewardPayload(data,rewardId='',optimistic=false){
-  const claimId=safeId(rewardId||data?.id);if(!data||data.uid!==uid||!claimId||!profileRef)return{ok:false,claimed:false};
-  const alreadyLocal=!!localPlayer?.killRewardClaims?.[claimId],provisionalClaim={claimedAtMs:now(),roomId:String(data.roomId||currentRoomId),enemyId:String(data.enemyId||''),enemyType:String(data.enemyType||''),xp:Math.max(0,Number(data.xp)||0),gold:Math.max(0,Number(data.gold)||0),optimistic:true};
-  if(optimistic&&!alreadyLocal)applyEnemyRewardLocally(data,claimId,provisionalClaim);
-  try{
-    const result=await runTransaction(db,async tx=>{
-      const userSnap=await tx.get(profileRef),p=normalizeProfile(userSnap.exists()?userSnap.data()?.rpgProfile:null),existing=p.killRewardClaims?.[claimId];
-      if(existing)return{claimed:false,already:true,claim:existing};
-      const t=now(),claim={claimedAtMs:t,roomId:String(data.roomId||currentRoomId),enemyId:String(data.enemyId||''),enemyType:String(data.enemyType||''),xp:Math.max(0,Number(data.xp)||0),gold:Math.max(0,Number(data.gold)||0)};p.xp+=claim.xp;p.gold+=claim.gold;
-      if(data.item){if(p.inventory.length<MAX_INVENTORY)p.inventory.push(data.item);else p.pendingLoot.push({...data.item,pendingAtMs:t})}applyCraftingMaterials(p,data.materials||{});if(data.relicId&&RELICS[data.relicId]&&!p.relicInventory.includes(data.relicId))p.relicInventory.push(data.relicId);if(data.trophyId)awardTrophy(p,data.trophyId,{enemyType:data.enemyType});p.killRewardClaims=pruneKillRewardClaims({...p.killRewardClaims,[claimId]:claim});recordInventoryCodex(p);p.updatedAtMs=t;tx.set(profileRef,{username,rpgProfile:persistentProfilePayload(p),rpgUpdatedAt:serverTimestamp()},{mergeFields:['username','rpgProfile','rpgUpdatedAt']});return{claimed:true,already:false,claim}
-    });
-    if(localPlayer&&result?.claim)localPlayer.killRewardClaims=pruneKillRewardClaims({...localPlayer.killRewardClaims,[claimId]:result.claim});
-    if(result?.claimed&&!alreadyLocal&&!optimistic)applyEnemyRewardLocally(data,claimId,result.claim);return{ok:true,...result}
-  }catch(error){if(combatDebug)console.warn('enemy reward profile transaction failed',claimId,error);return{ok:false,claimed:false,error}}
+  const claimId=safeId(rewardId||data?.id);
+  if(!data||data.uid!==uid||!claimId||!profileRef)return{ok:false,claimed:false};
+  if(rewardClaimFlights.has(claimId))return rewardClaimFlights.get(claimId);
+  const flight=(async()=>{
+    const alreadyLocal=!!localPlayer?.killRewardClaims?.[claimId],provisionalClaim={claimedAtMs:now(),roomId:String(data.roomId||currentRoomId),enemyId:String(data.enemyId||''),enemyType:String(data.enemyType||''),xp:Math.max(0,Number(data.xp)||0),gold:Math.max(0,Number(data.gold)||0),optimistic:true};
+    if(optimistic&&!alreadyLocal)applyEnemyRewardLocally(data,claimId,provisionalClaim);
+    try{
+      // Let an already queued profile save finish before opening a transaction on the same user document.
+      await profileSaveChain.catch(()=>{});
+      profileTransactionDepth++;
+      const result=await runTransaction(db,async tx=>{
+        const userSnap=await tx.get(profileRef),p=normalizeProfile(userSnap.exists()?userSnap.data()?.rpgProfile:null),existing=p.killRewardClaims?.[claimId];
+        if(existing)return{claimed:false,already:true,claim:existing};
+        const t=now(),claim={claimedAtMs:t,roomId:String(data.roomId||currentRoomId),enemyId:String(data.enemyId||''),enemyType:String(data.enemyType||''),xp:Math.max(0,Number(data.xp)||0),gold:Math.max(0,Number(data.gold)||0)};
+        p.xp+=claim.xp;p.gold+=claim.gold;
+        if(data.item){if(p.inventory.length<MAX_INVENTORY)p.inventory.push(data.item);else p.pendingLoot.push({...data.item,pendingAtMs:t})}
+        applyCraftingMaterials(p,data.materials||{});
+        if(data.relicId&&RELICS[data.relicId]&&!p.relicInventory.includes(data.relicId))p.relicInventory.push(data.relicId);
+        if(data.trophyId)awardTrophy(p,data.trophyId,{enemyType:data.enemyType});
+        p.killRewardClaims=pruneKillRewardClaims({...p.killRewardClaims,[claimId]:claim});recordInventoryCodex(p);p.updatedAtMs=t;
+        tx.set(profileRef,{username,rpgProfile:persistentProfilePayload(p),rpgUpdatedAt:serverTimestamp()},{mergeFields:['username','rpgProfile','rpgUpdatedAt']});
+        return{claimed:true,already:false,claim}
+      });
+      if(localPlayer&&result?.claim)localPlayer.killRewardClaims=pruneKillRewardClaims({...localPlayer.killRewardClaims,[claimId]:result.claim});
+      if(result?.claimed&&!alreadyLocal&&!optimistic)applyEnemyRewardLocally(data,claimId,result.claim);
+      return{ok:true,...result}
+    }catch(error){if(combatDebug)console.warn('enemy reward profile transaction failed',claimId,error);return{ok:false,claimed:false,error}}
+    finally{profileTransactionDepth=Math.max(0,profileTransactionDepth-1);if(profileTransactionDepth===0&&saveQueued)queueSave(80)}
+  })();
+  rewardClaimFlights.set(claimId,flight);
+  try{return await flight}finally{if(rewardClaimFlights.get(claimId)===flight)rewardClaimFlights.delete(claimId)}
 }
 async function claimRewardDoc(docSnap){
-  const data=docSnap.data();if(!data||data.uid!==uid||data.claimed||knownRewardIds.has(docSnap.id)||processingRewardIds.has(docSnap.id))return;processingRewardIds.add(docSnap.id);
-  try{const result=await claimEnemyRewardPayload({...data,id:data.id||docSnap.id},docSnap.id);if(!result.ok)return;knownRewardIds.add(docSnap.id);await setDoc(docSnap.ref,{claimed:true,claimedAt:serverTimestamp()},{merge:true}).catch(()=>{});setTimeout(()=>deleteDoc(docSnap.ref).catch(()=>{}),6000)}finally{processingRewardIds.delete(docSnap.id)}
+  const data=docSnap.data(),claimId=safeId(docSnap.id);if(!data||data.uid!==uid||data.claimed||knownRewardIds.has(docSnap.id)||processingRewardIds.has(docSnap.id))return;processingRewardIds.add(docSnap.id);
+  try{
+    if(!localPlayer?.killRewardClaims?.[claimId]){const result=await claimEnemyRewardPayload({...data,id:data.id||docSnap.id},docSnap.id);if(!result.ok)return}
+    knownRewardIds.add(docSnap.id);await setDoc(docSnap.ref,{claimed:true,claimedAt:serverTimestamp()},{merge:true}).catch(()=>{});setTimeout(()=>deleteDoc(docSnap.ref).catch(()=>{}),6000)
+  }finally{processingRewardIds.delete(docSnap.id)}
 }
 function scheduleRealtimeEventRetry(eventId,eventData,attempt,eventSessionId){
   const id=safeId(eventId);if(!id||eventSessionId!==roomSessionId||knownEventIds.has(id)||eventRetryTimers.has(id))return;
@@ -3357,8 +3450,31 @@ async function enterRoom(roomId,depth,preparedMap=null){
   const destinationSpawn={x:map.spawn.x,y:map.spawn.y};doorTransitionFallbackTimer=setTimeout(()=>{if(transitionToken!==doorTransitionToken||currentRoomId!==roomId)return;if(localPlayer.roomId!==roomId||!inBoundsForMap(map,localPlayer.x,localPlayer.y)||tileAt(localPlayer.x,localPlayer.y)!==0){localPlayer.roomId=roomId;localPlayer.depth=currentDepth;localPlayer.x=destinationSpawn.x;localPlayer.y=destinationSpawn.y;positionSequence++;positionChangedAtMs=now();movementPath=[];markEntityIndexesDirty();setPresence(true).catch(()=>{});toast('Door placement recovered.',1100)}},DOOR_TRANSITION_FALLBACK_MS);
   loadingText.textContent=map.isTown?'Entering a safe town…':map.isArena?'Entering the Pillared Court…':map.legendMode?`Entering ${routeForRoom(roomId).label} · Gold Level 400…`:`Entering ${routeForRoom(roomId).label} · Level ${map.areaLevel}…`;loading.style.display='flex';let connected=false,lastError=null;for(let attempt=0;attempt<2&&!connected;attempt++){try{await connectRoom(map);connected=true}catch(error){lastError=error;localPlayer.x=destinationSpawn.x;localPlayer.y=destinationSpawn.y;positionSequence++;positionChangedAtMs=now();if(attempt===0)await new Promise(resolve=>setTimeout(resolve,180))}}if(!connected){loading.style.display='none';throw lastError||new Error('Destination room could not be loaded')}if(!map.isArena)restoreSummonsForRoom().catch(error=>reportRuntimeProblem('summon room transfer',error));loading.style.display='none';updateDoorOpenButton(true);toast(map.isTown?'Safe town · recovery greatly increased':map.isArena?'Ranked Arena · normalized combat':map.legendMode?'Gold Level · enemies Level 400':`${routeForRoom(roomId).label} · Level ${map.areaLevel}`,2200);
 }
-function respawn(){
-  const loss=Math.min(localPlayer.gold,Math.max(1,Math.floor(localPlayer.gold*.08)));localPlayer.gold-=loss;const s=derivedStats();localPlayer.hp=Math.max(1,Math.round(s.maxHp*.35));localPlayer.mana=Math.round(s.maxMana*.35);deathModal.classList.remove('open');enterRoom(localPlayer.lastSafeRoomId||safeTownForDepth(currentDepth),currentDepth);toast(`Returned to safety · lost ${loss} gold`,1800);
+async function respawn(){
+  if(respawnInProgress||!localPlayer)return;
+  respawnInProgress=true;
+  const button=document.getElementById('respawnBtn'),originalText=button?.textContent||'Return to Safety';
+  if(button){button.disabled=true;button.textContent='Returning…'}
+  const loss=Math.min(localPlayer.gold,Math.max(1,Math.floor(localPlayer.gold*.08))),safeRoom=localPlayer.lastSafeRoomId||safeTownForDepth(currentDepth),safeDepth=currentDepth;
+  localPlayer.gold-=loss;
+  const s=derivedStats();localPlayer.hp=Math.max(1,Math.round(s.maxHp*.35));localPlayer.mana=Math.round(s.maxMana*.35);
+  movementPath=[];pendingApproach=null;autoAttackEnabled=false;selectedEnemyId='';cancelTargeting();
+  // This must use closeGameModal, not classList.remove, or body.modal-open keeps all game input disabled.
+  closeGameModal(deathModal);
+  try{
+    await enterRoom(safeRoom,safeDepth);
+    queueSave(0);setPresence(true).catch(()=>{});
+    toast(`Returned to safety · lost ${loss} gold`,1800)
+  }catch(error){
+    reportRuntimeProblem('respawn transition',error);
+    loading.style.display='none';
+    currentRoomId=safeRoom;currentDepth=canonicalRoomDepth(safeRoom,safeDepth);localPlayer.roomId=safeRoom;localPlayer.lastSafeRoomId=safeRoom;localPlayer.depth=currentDepth;
+    map=generateDungeon(safeRoom,currentDepth);localPlayer.x=map.spawn.x;localPlayer.y=map.spawn.y;positionSequence++;positionChangedAtMs=now();markEntityIndexesDirty();centerCamera(true);updateHUD();updateDoorOpenButton(true);syncModalChromeState();queueSave(0);
+    toast(`Returned locally · online sync will retry · lost ${loss} gold`,2600)
+  }finally{
+    respawnInProgress=false;
+    if(button){button.disabled=false;button.textContent=originalText}
+  }
 }
 
 function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))}
@@ -3830,7 +3946,7 @@ function input(){
   document.getElementById('confirmTargetBtn').onclick=()=>{if(pendingDangerousCast){const cast={...pendingDangerousCast};castSpotSkill(cast.id,cast.x,cast.y,true);return}if(targetingSkillId&&SKILLS[targetingSkillId]?.targetMode==='enemy'){const target=roomState.enemies.find(e=>e.id===selectedEnemyId&&e.hp>0);if(!target||!validEnemyForSkill(target,SKILLS[targetingSkillId])){targetFailure('Select a valid enemy');return}const id=targetingSkillId;cancelTargeting();useSkill(id,true);return}if(selectedEnemyId){autoAttackEnabled=true;useSkill('attack',true)}};
   document.getElementById('recenterBtn').onclick=()=>centerCamera(true);
   document.getElementById('cameraLockBtn').onclick=()=>{cameraLocked=!cameraLocked;localPlayer.cameraLocked=cameraLocked;document.getElementById('cameraLockBtn').classList.toggle('active',cameraLocked);queueSave(300);if(cameraLocked)centerCamera(true)};
-  document.getElementById('respawnBtn').onclick=respawn;
+  document.getElementById('respawnBtn').onclick=()=>runUiTask('respawn',respawn);
   document.getElementById('hpPotionBtn').onclick=e=>{e.stopPropagation();quickUsePotion('hp')};
   document.getElementById('manaPotionBtn').onclick=e=>{e.stopPropagation();quickUsePotion('mana')};
   doorOpenBtn.onclick=()=>{const door=(map?.doors||[]).find(value=>value.id===doorOpenBtn.dataset.doorId)||nearbyDoor();activateNearbyDoor(door)};
