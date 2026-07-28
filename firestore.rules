@@ -21,8 +21,9 @@ service cloud.firestore {
         allow read, write: if isAuthed();
       }
 
-      // Academy and the other lobby-backed games keep their world state in
-      // authenticated subcollections (accounts, territories, troops, etc.).
+      // Grass Realms and War Realms keep their synchronized match snapshot on
+      // this lobby document and authenticated readiness/deck data in presence/{uid}.
+      // Academy and other lobby-backed games also use authenticated subcollections.
       match /{document=**} {
         allow read, write: if isAuthed();
       }
