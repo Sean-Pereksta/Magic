@@ -304,8 +304,8 @@
     const lobbyId=qp.get("gameId")||qp.get("lobbyId")||"";
     const myName=(qp.get("username")||qp.get("name")||localStorage.getItem("username")||"Commander").trim().slice(0,28);
     const localMode=!lobbyId;
-    const STORAGE_KEY="warRealmsCommandDeckV1";
-    const GAME_VERSION=1,DECK_SIZE=50,MAX_COPIES=4;
+    const STORAGE_KEY="warRealmsCommandDeckV2";
+    const GAME_VERSION=2,DECK_SIZE=50,MAX_COPIES=4;
     const RACES={
       yellow:"Xythe Concord · High-tech alien dominion",
       blue:"Azure Ascendancy · High priesthood and blue-winged knights",
@@ -321,6 +321,11 @@
       {id:"gravity_snare",name:"Gravity Snare",faction:"yellow",cost:4,type:"ship",sigil:"⌁",effect:{combat:3,stun:1},ally:{draw:1},text:"Gain 3 combat and 1 disable.",allyText:"Draw 1 card."},
       {id:"hive_relay",name:"Hive Relay",faction:"yellow",cost:5,type:"base",defense:5,sigil:"⬡",effect:{trade:2},ally:{discard:1},text:"Gain 2 trade.",allyText:"Next enemy discards 1."},
       {id:"sovereign_dreadnought",name:"Sovereign Dreadnought",faction:"yellow",cost:7,type:"ship",sigil:"◈",effect:{combat:6,discard:1},ally:{draw:1,stun:1},text:"Gain 6 combat. Next enemy discards 1.",allyText:"Draw 1 and gain 1 disable."},
+      {id:"salvage_drone",name:"Salvage Drone",faction:"yellow",cost:1,type:"ship",sigil:"⌾",effect:{trade:1},ally:{},scrap:{trade:3},text:"Gain 1 trade.",allyText:"",scrapText:"Scrap: gain 3 trade."},
+      {id:"signal_jammer",name:"Signal Jammer",faction:"yellow",cost:2,type:"ship",sigil:"⌁",effect:{combat:1},ally:{discard:1},scrap:{stun:1},text:"Gain 1 combat.",allyText:"Next enemy discards 1.",scrapText:"Scrap: gain 1 disable."},
+      {id:"quantum_broker",name:"Quantum Broker",faction:"yellow",cost:3,type:"ship",sigil:"◫",effect:{trade:2},ally:{draw:1},scrap:{trade:2,combat:2},text:"Gain 2 trade.",allyText:"Draw 1 card.",scrapText:"Scrap: gain 2 trade and 2 combat."},
+      {id:"null_field_array",name:"Null-Field Array",faction:"yellow",cost:4,type:"base",defense:5,outpost:true,sigil:"⧈",effect:{stun:1},ally:{trade:1},scrap:{draw:1},text:"Outpost. Gain 1 disable.",allyText:"Gain 1 trade.",scrapText:"Sacrifice: draw 1 card."},
+      {id:"reality_harvester",name:"Reality Harvester",faction:"yellow",cost:6,type:"ship",sigil:"◉",effect:{trade:3,combat:3},ally:{stun:1},scrap:{draw:1,trade:2},text:"Gain 3 trade and 3 combat.",allyText:"Gain 1 disable.",scrapText:"Scrap: draw 1 and gain 2 trade."},
 
       {id:"tithe_acolyte",name:"Tithe Acolyte",faction:"blue",cost:1,type:"ship",sigil:"✧",effect:{trade:1,heal:1},ally:{},text:"Gain 1 trade and 1 authority.",allyText:""},
       {id:"seraphic_envoy",name:"Seraphic Envoy",faction:"blue",cost:2,type:"ship",sigil:"𓆩✧𓆪",effect:{trade:2},ally:{heal:2},text:"Gain 2 trade.",allyText:"Gain 2 authority."},
@@ -328,6 +333,11 @@
       {id:"azure_chapel",name:"Azure Chapel",faction:"blue",cost:3,type:"base",defense:4,sigil:"◇",effect:{trade:1,heal:2},ally:{},text:"Gain 1 trade and 2 authority.",allyText:""},
       {id:"choir_of_wings",name:"Choir of Wings",faction:"blue",cost:5,type:"ship",sigil:"𓆩❄𓆪",effect:{trade:2,combat:2,heal:3},ally:{draw:1},text:"Gain 2 trade, 2 combat, and 3 authority.",allyText:"Draw 1 card."},
       {id:"throne_of_tides",name:"Throne of Tides",faction:"blue",cost:7,type:"base",defense:7,outpost:true,sigil:"♛",effect:{trade:3,heal:4},ally:{draw:1},text:"Outpost. Gain 3 trade and 4 authority.",allyText:"Draw 1 card."},
+      {id:"votive_scribe",name:"Votive Scribe",faction:"blue",cost:1,type:"ship",sigil:"✎",effect:{heal:2},ally:{trade:1},scrap:{trade:3},text:"Gain 2 authority.",allyText:"Gain 1 trade.",scrapText:"Scrap: gain 3 trade."},
+      {id:"pilgrim_of_dawn",name:"Pilgrim of Dawn",faction:"blue",cost:2,type:"ship",sigil:"☼",effect:{trade:1,heal:2},ally:{heal:2},scrap:{heal:5},text:"Gain 1 trade and 2 authority.",allyText:"Gain 2 authority.",scrapText:"Scrap: gain 5 authority."},
+      {id:"reliquary_guard",name:"Reliquary Guard",faction:"blue",cost:3,type:"base",defense:5,outpost:true,sigil:"✥",effect:{heal:2},ally:{combat:1},scrap:{trade:2,heal:3},text:"Outpost. Gain 2 authority.",allyText:"Gain 1 combat.",scrapText:"Sacrifice: gain 2 trade and 3 authority."},
+      {id:"absolution_choir",name:"Absolution Choir",faction:"blue",cost:4,type:"ship",sigil:"♫",effect:{heal:4,trade:1},ally:{draw:1},scrap:{draw:1},text:"Gain 4 authority and 1 trade.",allyText:"Draw 1 card.",scrapText:"Scrap: draw 1 card."},
+      {id:"saint_of_the_deep",name:"Saint of the Deep",faction:"blue",cost:6,type:"ship",sigil:"𓆩♢𓆪",effect:{combat:3,heal:5},ally:{trade:2},scrap:{heal:6,combat:2},text:"Gain 3 combat and 5 authority.",allyText:"Gain 2 trade.",scrapText:"Scrap: gain 6 authority and 2 combat."},
 
       {id:"gore_runner",name:"Gore Runner",faction:"green",cost:1,type:"ship",sigil:"⚔",effect:{combat:2},ally:{},text:"Gain 2 combat.",allyText:""},
       {id:"axe_mob",name:"Axe Mob",faction:"green",cost:2,type:"ship",sigil:"🪓",effect:{combat:3},ally:{combat:2},text:"Gain 3 combat.",allyText:"Gain 2 combat."},
@@ -335,13 +345,23 @@
       {id:"war_drum_camp",name:"War Drum Camp",faction:"green",cost:3,type:"base",defense:4,outpost:true,sigil:"◉",effect:{combat:2},ally:{combat:1},text:"Outpost. Gain 2 combat.",allyText:"Gain 1 combat."},
       {id:"skullcrag_warlord",name:"Skullcrag Warlord",faction:"green",cost:5,type:"ship",sigil:"♜",effect:{combat:6},ally:{combat:3},text:"Gain 6 combat.",allyText:"Gain 3 combat."},
       {id:"worldbreaker_horde",name:"Worldbreaker Horde",faction:"green",cost:7,type:"ship",sigil:"⬢",effect:{combat:9},ally:{draw:1},text:"Gain 9 combat.",allyText:"Draw 1 card."},
+      {id:"scrapfang_runt",name:"Scrapfang Runt",faction:"green",cost:1,type:"ship",sigil:"♠",effect:{combat:2},ally:{},scrap:{combat:3},text:"Gain 2 combat.",allyText:"",scrapText:"Scrap: gain 3 combat."},
+      {id:"loot_cart",name:"Loot Cart",faction:"green",cost:2,type:"ship",sigil:"▣",effect:{trade:2},ally:{combat:1},scrap:{trade:3},text:"Gain 2 trade.",allyText:"Gain 1 combat.",scrapText:"Scrap: gain 3 trade."},
+      {id:"rage_caller",name:"Rage Caller",faction:"green",cost:3,type:"ship",sigil:"☄",effect:{combat:4},ally:{combat:2},scrap:{combat:4},text:"Gain 4 combat.",allyText:"Gain 2 combat.",scrapText:"Scrap: gain 4 combat."},
+      {id:"breakneck_stockade",name:"Breakneck Stockade",faction:"green",cost:4,type:"base",defense:5,outpost:true,sigil:"▰",effect:{combat:2},ally:{combat:2},scrap:{combat:6},text:"Outpost. Gain 2 combat.",allyText:"Gain 2 combat.",scrapText:"Sacrifice: gain 6 combat."},
+      {id:"last_charge_titan",name:"Last-Charge Titan",faction:"green",cost:6,type:"ship",sigil:"♞",effect:{combat:7},ally:{draw:1},scrap:{combat:7},text:"Gain 7 combat.",allyText:"Draw 1 card.",scrapText:"Scrap: gain 7 combat."},
 
       {id:"ash_initiate",name:"Ash Initiate",faction:"red",cost:1,type:"ship",sigil:"✦",effect:{trade:1},ally:{},scrap:{combat:3},text:"Gain 1 trade.",allyText:"",scrapText:"Scrap: gain 3 combat."},
       {id:"blood_channeler",name:"Blood Channeler",faction:"red",cost:2,type:"ship",sigil:"♢",effect:{combat:2},ally:{trade:1},scrap:{draw:1},text:"Gain 2 combat.",allyText:"Gain 1 trade.",scrapText:"Scrap: draw 1 card."},
       {id:"grave_bargain",name:"Grave Bargain",faction:"red",cost:3,type:"ship",sigil:"☠",effect:{trade:2,combat:2,scrapMarket:1},ally:{},text:"Gain 2 trade, 2 combat, and scrap 1 market card.",allyText:""},
       {id:"obsidian_altar",name:"Obsidian Altar",faction:"red",cost:3,type:"base",defense:4,sigil:"⛧",effect:{trade:1},ally:{combat:2},scrap:{combat:5},text:"Gain 1 trade.",allyText:"Gain 2 combat.",scrapText:"Sacrifice: gain 5 combat."},
       {id:"soul_furnace",name:"Soul Furnace",faction:"red",cost:5,type:"base",defense:5,outpost:true,sigil:"◐",effect:{combat:3},ally:{scrapMarket:1},scrap:{heal:5,combat:3},text:"Outpost. Gain 3 combat.",allyText:"Scrap 1 market card.",scrapText:"Sacrifice: gain 5 authority and 3 combat."},
-      {id:"eclipse_archon",name:"Eclipse Archon",faction:"red",cost:7,type:"ship",sigil:"◒",effect:{combat:7,draw:1},ally:{combat:3},scrap:{combat:5,heal:5},text:"Gain 7 combat and draw 1.",allyText:"Gain 3 combat.",scrapText:"Scrap: gain 5 combat and 5 authority."}
+      {id:"eclipse_archon",name:"Eclipse Archon",faction:"red",cost:7,type:"ship",sigil:"◒",effect:{combat:7,draw:1},ally:{combat:3},scrap:{combat:5,heal:5},text:"Gain 7 combat and draw 1.",allyText:"Gain 3 combat.",scrapText:"Scrap: gain 5 combat and 5 authority."},
+      {id:"coin_curse",name:"Coin Curse",faction:"red",cost:1,type:"ship",sigil:"¤",effect:{combat:1},ally:{},scrap:{trade:3},text:"Gain 1 combat.",allyText:"",scrapText:"Scrap: gain 3 trade."},
+      {id:"bone_appraiser",name:"Bone Appraiser",faction:"red",cost:2,type:"ship",sigil:"☠",effect:{trade:2},ally:{combat:1},scrap:{trade:2,combat:2},text:"Gain 2 trade.",allyText:"Gain 1 combat.",scrapText:"Scrap: gain 2 trade and 2 combat."},
+      {id:"hexed_portal",name:"Hexed Portal",faction:"red",cost:3,type:"base",defense:4,sigil:"◌",effect:{trade:1,combat:1},ally:{scrapMarket:1},scrap:{draw:1},text:"Gain 1 trade and 1 combat.",allyText:"Scrap 1 market card.",scrapText:"Sacrifice: draw 1 card."},
+      {id:"death_tithe",name:"Death Tithe",faction:"red",cost:4,type:"ship",sigil:"†",effect:{combat:4,heal:2},ally:{trade:2},scrap:{trade:4},text:"Gain 4 combat and 2 authority.",allyText:"Gain 2 trade.",scrapText:"Scrap: gain 4 trade."},
+      {id:"void_auctioneer",name:"Void Auctioneer",faction:"red",cost:6,type:"ship",sigil:"◍",effect:{trade:3,combat:3,scrapMarket:1},ally:{draw:1},scrap:{trade:5,combat:3},text:"Gain 3 trade, 3 combat, and scrap 1 market card.",allyText:"Draw 1 card.",scrapText:"Scrap: gain 5 trade and 3 combat."}
     ];
     const CARDS=Object.fromEntries(CARD_LIST.map(c=>[c.id,c]));
     const STARTERS={
