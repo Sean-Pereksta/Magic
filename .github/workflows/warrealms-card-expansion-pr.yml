@@ -1,0 +1,65 @@
+name: Build War Realms expansion PR
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-expansion:
+    if: github.head_ref == 'agent/warrealms-card-scrap-expansion'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract and run expansion script
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import textwrap
+
+          workflow = Path('.github/workflows/warrealms-card-expansion.yml').read_text(encoding='utf-8')
+          match = re.search(
+              r'- name: Add cards and broaden sacrifice abilities\n\s+shell: python\n\s+run: \|\n(?P<script>.*?)(?=\n\s+- name: Validate expansion)',
+              workflow,
+              re.S,
+          )
+          if not match:
+              raise SystemExit('Could not locate expansion script')
+          script = textwrap.dedent(match.group('script'))
+          exec(compile(script, '<warrealms-expansion>', 'exec'), {})
+      - name: Validate generated game
+        shell: python
+        run: |
+          from pathlib import Path
+          text = Path('game/warrealms.html').read_text(encoding='utf-8')
+          new_ids = [
+              'salvage_drone','signal_jammer','quantum_broker','null_field_array','reality_harvester',
+              'votive_scribe','pilgrim_of_dawn','reliquary_guard','absolution_choir','saint_of_the_deep',
+              'scrapfang_runt','loot_cart','rage_caller','breakneck_stockade','last_charge_titan',
+              'coin_curse','bone_appraiser','hexed_portal','death_tithe','void_auctioneer'
+          ]
+          missing = [card_id for card_id in new_ids if f'id:"{card_id}"' not in text]
+          assert not missing, f'Missing cards: {missing}'
+          assert text.count('scrap:{') >= 20
+          assert 'const GAME_VERSION=2' in text
+          assert 'warRealmsCommandDeckV2' in text
+          print('Validated 20 new cards and cross-faction sacrifice effects')
+      - name: Commit expansion
+        run: |
+          if git diff --quiet -- game/warrealms.html; then
+            echo "Expansion already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/warrealms.html
+          git commit -m "Expand War Realms cards and sacrifice abilities"
+          git push origin HEAD:${{ github.head_ref }}
