@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#080b10" />
+  <title>War Realms</title>
+  <style>
+    :root{
+      --bg:#07090d;--panel:#11161d;--panel2:#171e27;--line:#303a47;--ink:#f5f7fb;--muted:#8995a5;
+      --yellow:#e6c438;--blue:#42a9e8;--green:#67b64c;--red:#bd3c55;--neutral:#a9b0ba;
+      --cardW:clamp(43px,12.4vw,72px);--cardH:calc(var(--cardW)*1.39);--dockH:clamp(130px,27dvh,190px);
+      --shadow:0 12px 30px rgba(0,0,0,.42);--safeBottom:env(safe-area-inset-bottom,0px);
+    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    button{font:inherit;color:inherit;touch-action:manipulation}
+    button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+    .hidden{display:none!important}
+    .topbar{
+      height:36px;padding:0 max(8px,env(safe-area-inset-left));display:flex;align-items:center;gap:7px;
+      background:#0b1016;border-bottom:1px solid #242d38;position:relative;z-index:20
+    }
+    .brand{font-size:12px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+    .brand i{font-style:normal;color:#f0cf42}
+    .tag{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 7px;border:1px solid #303a47;border-radius:999px;color:#aeb9c7;font-size:8px;font-weight:800}
+    .grow{flex:1}
+    .topBtn{height:27px;min-width:29px;border:1px solid #303a47;background:#161d26;border-radius:7px;padding:0 8px;font-size:9px;font-weight:900;cursor:pointer}
+    .topBtn:hover{background:#202a35}
+
+    #board{
+      height:calc(100dvh - 36px - var(--dockH) - var(--safeBottom));
+      min-height:250px;padding:4px;display:grid;grid-template:1fr minmax(78px,1.04fr) 1fr/1fr 12px 1fr;
+      gap:3px;background:
+        radial-gradient(circle at center,rgba(49,71,96,.18),transparent 35%),
+        linear-gradient(135deg,rgba(230,196,56,.035),transparent 28%,rgba(66,169,232,.035) 50%,transparent 72%,rgba(189,60,85,.035))
+    }
+    .seat{
+      min-width:0;min-height:0;border:1px solid #29323d;border-radius:9px;background:rgba(15,20,27,.94);
+      overflow:hidden;display:flex;flex-direction:column;position:relative;transition:.2s ease
+    }
+    .seat.active{border-color:#d8be51;box-shadow:inset 0 0 0 1px rgba(216,190,81,.35),0 0 14px rgba(216,190,81,.12)}
+    .seat.dead{opacity:.48;filter:grayscale(.7)}
+    .seat.nw{grid-area:1/1}.seat.ne{grid-area:1/3}.seat.sw{grid-area:3/1}.seat.se{grid-area:3/3}
+    .seat.bottom{flex-direction:column-reverse}
+    .playerBar{height:25px;flex:0 0 25px;padding:3px 5px;display:flex;align-items:center;gap:5px;background:#141b23;border-bottom:1px solid #28313b}
+    .bottom .playerBar{border-bottom:0;border-top:1px solid #28313b}
+    .avatar{width:17px;height:17px;border-radius:5px;display:grid;place-items:center;background:#263241;font-size:8px;font-weight:950}
+    .playerName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8px;font-weight:900}
+    .turnDot{width:5px;height:5px;border-radius:50%;background:#f1cc3b;box-shadow:0 0 7px #f1cc3b}
+    .hp{margin-left:auto;display:flex;align-items:center;gap:2px;color:#ff6d78;font-size:10px;font-weight:950}
+    .deckCount{font-size:7px;color:var(--muted);white-space:nowrap}
+    .bases{
+      min-height:0;flex:1;display:flex;align-items:flex-end;justify-content:flex-start;gap:3px;padding:3px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none
+    }
+    .bottom .bases{align-items:flex-start}
+    .bases::-webkit-scrollbar,.cardRow::-webkit-scrollbar,.handRow::-webkit-scrollbar{display:none}
+    .emptyBases{margin:auto;color:#465261;font-size:8px;font-weight:800}
+    .attackPlayer{
+      position:absolute;right:4px;bottom:4px;border:1px solid #843447;background:#421e2a;border-radius:6px;padding:3px 5px;font-size:7px;font-weight:900;cursor:pointer;z-index:3
+    }
+    .bottom .attackPlayer{bottom:auto;top:4px}
+    .attackPlayer:disabled{display:none}
+
+    .market{
+      grid-area:2/1/3/4;min-width:0;min-height:0;display:grid;grid-template-columns:31px minmax(0,1fr) 31px;
+      align-items:center;gap:3px;border-block:1px solid #2b3540;background:rgba(7,10,14,.9);padding:3px
+    }
+    .marketStack{
+      height:62px;border:1px solid #3b4654;border-radius:7px;background:linear-gradient(145deg,#1b2430,#0c1118);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:7px;color:#b7c0cb;font-weight:900
+    }
+    .marketStack b{font-size:13px;color:#f1cc3b}
+    .marketStack.explorer{cursor:pointer;border-color:#516274;background:linear-gradient(145deg,#1c3041,#101821)}
+    .marketStack.explorer.afford{box-shadow:0 0 0 1px #4baee6 inset}
+    .cardRow{display:flex;align-items:center;justify-content:center;gap:3px;min-width:0;overflow-x:auto;overflow-y:hidden}
+    .marketTitle{position:absolute;left:50%;transform:translateX(-50%);font-size:7px;color:#627081;text-transform:uppercase;letter-spacing:.14em;margin-top:-72px;pointer-events:none}
+
+    .gameCard{
+      --faction:var(--neutral);width:var(--cardW);height:var(--cardH);flex:0 0 var(--cardW);padding:0;border:1px solid color-mix(in srgb,var(--faction) 66%,#46515e);
+      border-radius:7px;overflow:hidden;background:#151b22;display:flex;flex-direction:column;position:relative;text-align:left;
+      box-shadow:0 5px 12px rgba(0,0,0,.34);cursor:pointer
+    }
+    .gameCard.yellow{--faction:var(--yellow)}.gameCard.blue{--faction:var(--blue)}.gameCard.green{--faction:var(--green)}.gameCard.red{--faction:var(--red)}.gameCard.neutral{--faction:var(--neutral)}
+    .gameCard.afford{box-shadow:0 0 0 1px var(--faction),0 0 11px color-mix(in srgb,var(--faction) 35%,transparent)}
+    .gameCard.disabled{filter:saturate(.6) brightness(.65)}
+    .gameCard.stunned::after{content:"DISABLED";position:absolute;inset:34% 0 auto;background:#171b22e8;color:#f4df72;text-align:center;font-size:7px;font-weight:950;padding:3px;transform:rotate(-8deg)}
+    .cardTop{height:14px;padding:2px 3px;background:color-mix(in srgb,var(--faction) 22%,#11171d);display:flex;align-items:center;gap:2px}
+    .cost{width:11px;height:11px;border-radius:50%;display:grid;place-items:center;background:var(--faction);color:#080a0c;font-size:7px;font-weight:950}
+    .cardName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:6px;font-weight:950}
+    .cardArt{height:35%;min-height:18px;display:grid;place-items:center;background:
+      radial-gradient(circle at 50% 38%,color-mix(in srgb,var(--faction) 37%,transparent),transparent 48%),
+      repeating-linear-gradient(125deg,transparent 0 8px,rgba(255,255,255,.025) 8px 9px),#0c1117;
+      border-block:1px solid color-mix(in srgb,var(--faction) 33%,#252c34)
+    }
+    .sigil{font-size:clamp(13px,4vw,24px);line-height:1;color:var(--faction);font-weight:400;text-shadow:0 0 10px color-mix(in srgb,var(--faction) 56%,transparent)}
+    .cardRules{flex:1;padding:3px;overflow:hidden;font-size:5.8px;line-height:1.16;color:#c6ced8}
+    .cardRules b{color:var(--faction)}
+    .cardFoot{height:12px;padding:1px 3px;display:flex;align-items:center;gap:2px;background:#0b1015;font-size:5.5px;color:#96a1ae}
+    .ownerMark{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .defense{margin-left:auto;font-size:7px;color:#fff;font-weight:950}
+    .scrapBadge{position:absolute;right:2px;top:16px;border-radius:4px;padding:1px 2px;background:#5d1f31;color:#ffdbe2;font-size:5px;font-weight:950}
+    .baseCard{width:calc(var(--cardW)*.83);height:calc(var(--cardH)*.83);flex-basis:calc(var(--cardW)*.83)}
+    .baseCard .cardRules{font-size:5px}
+
+    #dock{
+      height:calc(var(--dockH) + var(--safeBottom));position:relative;z-index:12;background:#0c1117;border-top:1px solid #303b48;
+      padding:4px max(5px,env(safe-area-inset-left)) calc(4px + var(--safeBottom)) max(5px,env(safe-area-inset-right));
+      display:grid;grid-template-rows:27px minmax(0,1fr);gap:3px
+    }
+    .commandBar{display:flex;align-items:center;gap:4px;min-width:0}
+    .turnText{font-size:8px;font-weight:900;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .resources{display:flex;gap:3px}
+    .resource{height:21px;min-width:28px;padding:0 5px;border:1px solid #374351;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:2px;background:#161e27;font-size:8px;font-weight:950}
+    .resource.trade{color:#f3cd3f}.resource.combat{color:#f07177}.resource.control{color:#d8c450}.resource.scrap{color:#db5b76}
+    .cmdBtn{height:24px;border:1px solid #3b4654;border-radius:6px;background:#19212b;padding:0 7px;font-size:7px;font-weight:950;cursor:pointer;white-space:nowrap}
+    .cmdBtn.primary{background:#9d263d;border-color:#cf536b}.cmdBtn.buy{background:#2a6d91;border-color:#439dc8}.cmdBtn:disabled{opacity:.38;cursor:not-allowed}
+    .handArea{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 57px;gap:4px}
+    .handRow{min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;gap:4px;overflow-x:auto;overflow-y:hidden;padding:2px}
+    .handRow .gameCard{width:clamp(49px,15vw,78px);height:calc(clamp(49px,15vw,78px)*1.39);flex-basis:clamp(49px,15vw,78px)}
+    .sideActions{display:flex;flex-direction:column;gap:4px;justify-content:center}
+    .sideActions .cmdBtn{height:31px;padding:0 3px}
+    .playAll{background:#234a3a!important;border-color:#397a5d!important}
+
+    .overlay{
+      position:fixed;inset:0;z-index:100;background:rgba(3,5,8,.92);display:grid;place-items:center;padding:max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom))
+    }
+    .modal{
+      width:min(760px,100%);max-height:100%;overflow:hidden;border:1px solid #384452;border-radius:14px;background:#10161d;box-shadow:var(--shadow);
+      display:flex;flex-direction:column
+    }
+    .modalHead{padding:10px 12px;border-bottom:1px solid #2d3742;display:flex;align-items:center;gap:8px}
+    .modalHead h2{font-size:14px;margin:0}.modalHead p{font-size:8px;color:var(--muted);margin:2px 0 0}
+    .closeBtn{margin-left:auto;width:29px;height:29px;border:1px solid #374250;background:#1b232d;border-radius:8px;cursor:pointer}
+    .modalBody{padding:10px;overflow:auto}
+    .detailLayout{display:grid;grid-template-columns:100px 1fr;gap:12px}
+    .detailArt{height:130px;border:1px solid var(--faction,#51606f);border-radius:10px;display:grid;place-items:center;background:#0a0f14;font-size:45px;color:var(--faction,#fff)}
+    .detailCopy h3{margin:0 0 3px;font-size:18px}.detailCopy .race{color:var(--faction,#9ca8b6);font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
+    .detailCopy p{font-size:11px;line-height:1.45;color:#c5ced8}.detailActions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+    .detailActions button{height:34px;border:1px solid #43505f;border-radius:7px;background:#1b2530;padding:0 11px;font-size:9px;font-weight:900;cursor:pointer}
+    .detailActions .danger{background:#542131;border-color:#9c3b53}
+
+    .builderIntro{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:8px}
+    .factionAuto{border:1px solid #394554;border-radius:8px;background:#171f28;padding:7px 4px;font-size:7px;font-weight:950;cursor:pointer}
+    .factionAuto.yellow{color:var(--yellow)}.factionAuto.blue{color:var(--blue)}.factionAuto.green{color:var(--green)}.factionAuto.red{color:var(--red)}
+    .deckStatus{height:38px;display:flex;align-items:center;gap:8px;padding:0 10px;background:#0c1218;border:1px solid #2f3945;border-radius:9px;margin-bottom:8px}
+    .deckMeter{height:6px;flex:1;border-radius:99px;background:#222c37;overflow:hidden}.deckMeter i{display:block;height:100%;background:linear-gradient(90deg,#c5a92e,#55a7d5);transition:.2s}
+    .deckCountBig{font-size:12px;font-weight:950}.deckCountBig.good{color:#6ecb83}.deckCountBig.bad{color:#f27278}
+    .catalog{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+    .catalogItem{--faction:var(--neutral);border:1px solid color-mix(in srgb,var(--faction) 42%,#37414d);border-radius:9px;background:#151c24;padding:6px;display:grid;grid-template-columns:31px 1fr auto;gap:6px;align-items:center}
+    .catalogItem.yellow{--faction:var(--yellow)}.catalogItem.blue{--faction:var(--blue)}.catalogItem.green{--faction:var(--green)}.catalogItem.red{--faction:var(--red)}
+    .miniArt{width:31px;height:39px;border-radius:6px;display:grid;place-items:center;color:var(--faction);background:#0b1015;border:1px solid color-mix(in srgb,var(--faction) 45%,#303946);font-size:16px}
+    .catalogName{font-size:8px;font-weight:950}.catalogRule{font-size:6px;color:#9ca7b4;line-height:1.25;margin-top:2px}
+    .qty{display:grid;grid-template-columns:20px 22px 20px;align-items:center}
+    .qty button{width:20px;height:22px;padding:0;border:1px solid #3d4855;background:#202a35;cursor:pointer}
+    .qty b{text-align:center;font-size:9px}
+    .builderFoot{padding:8px 10px;border-top:1px solid #303a46;display:flex;justify-content:flex-end;gap:6px}
+    .wideBtn{height:34px;border:1px solid #465362;border-radius:8px;background:#1b2530;padding:0 13px;font-size:9px;font-weight:950;cursor:pointer}
+    .wideBtn.primary{background:#2e789e;border-color:#52a9d2}.wideBtn:disabled{opacity:.4}
+
+    .loadingCard{width:min(390px,92vw);padding:20px;border:1px solid #364250;border-radius:15px;background:#10161d;text-align:center}
+    .loadingCard h1{font-size:22px;letter-spacing:.12em;text-transform:uppercase;margin:0 0 7px}.loadingCard h1 i{font-style:normal;color:#f0c93a}
+    .loadingCard p{font-size:10px;line-height:1.5;color:#a8b2bf}
+    .loadingSpin{width:28px;height:28px;margin:14px auto;border:3px solid #26313c;border-top-color:#e5c43c;border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    #toast{position:fixed;z-index:200;left:50%;top:43px;transform:translate(-50%,-12px);opacity:0;pointer-events:none;background:#e8edf3;color:#111820;border-radius:999px;padding:7px 11px;font-size:9px;font-weight:900;transition:.18s}
+    #toast.show{opacity:1;transform:translate(-50%,0)}
+    .winner{text-align:center;padding:24px}.winner h2{font-size:22px;margin:4px}.winner p{color:#aeb8c5;font-size:11px}
+
+    @media(max-width:520px){
+      :root{--cardW:43px;--dockH:142px}
+      .tag.userTag{display:none}.topbar{gap:4px}.topBtn{padding:0 6px}
+      #board{grid-template-columns:1fr 7px 1fr}
+      .market{grid-template-columns:27px minmax(0,1fr) 27px;padding:2px;gap:2px}.marketStack{height:54px}
+      .cardRow{gap:2px}.gameCard{border-radius:5px}.cardRules{font-size:5.2px;padding:2px}.cardTop{height:12px}.cardFoot{height:10px}.cardArt{min-height:17px}
+      .sigil{font-size:15px}.bases{gap:2px;padding:2px}.playerBar{height:22px;flex-basis:22px}.deckCount{display:none}
+      .handArea{grid-template-columns:minmax(0,1fr) 49px}.handRow{justify-content:flex-start}.sideActions .cmdBtn{font-size:6px}
+      .catalog{grid-template-columns:1fr 1fr}.catalogItem{grid-template-columns:27px 1fr auto;padding:5px}.miniArt{width:27px;height:34px}
+      .detailLayout{grid-template-columns:78px 1fr}.detailArt{height:107px;font-size:34px}
+    }
+    @media(max-width:345px){
+      :root{--cardW:39px;--dockH:136px}
+      .brand{font-size:10px}.tag.lobbyTag{display:none}.gameCard .cardRules{font-size:4.7px}.cardName{font-size:5.3px}
+      .catalog{grid-template-columns:1fr}.resources{gap:1px}.resource{min-width:24px;padding:0 3px}
+    }
+    @media(max-height:610px){
+      :root{--dockH:125px;--cardW:39px}
+      .topbar{height:32px}#board{height:calc(100dvh - 32px - var(--dockH) - var(--safeBottom))}
+      .gameCard .cardRules{font-size:4.7px}.cardArt{height:29%}.seat .baseCard{height:54px}.handRow .gameCard{width:45px;height:63px;flex-basis:45px}
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><i>◆</i> War Realms</div>
+    <span id="lobbyTag" class="tag lobbyTag">Local skirmish</span>
+    <span id="userTag" class="tag userTag"></span>
+    <span id="syncTag" class="tag">Preparing</span>
+    <span class="grow"></span>
+    <button id="deckBtn" class="topBtn">50 Deck</button>
+    <button id="helpBtn" class="topBtn" aria-label="Rules">?</button>
+    <button id="fullBtn" class="topBtn" aria-label="Fullscreen">⛶</button>
+  </header>
+
+  <main id="board">
+    <section id="seat-nw" class="seat nw top"></section>
+    <section id="seat-ne" class="seat ne top"></section>
+    <section class="market">
+      <div class="marketTitle">Combined war market</div>
+      <button id="marketDeck" class="marketStack" disabled><b id="marketCount">0</b>DECK</button>
+      <div id="tradeRow" class="cardRow"></div>
+      <button id="explorerStack" class="marketStack explorer"><b>∞</b>MERC</button>
+    </section>
+    <section id="seat-sw" class="seat sw bottom"></section>
+    <section id="seat-se" class="seat se bottom"></section>
+  </main>
+
+  <section id="dock">
+    <div class="commandBar">
+      <div id="turnText" class="turnText">Preparing battle…</div>
+      <span class="grow"></span>
+      <div class="resources">
+        <span id="tradeRes" class="resource trade">◆ 0</span>
+        <span id="combatRes" class="resource combat">⚔ 0</span>
+        <span id="controlRes" class="resource control">⌁ 0</span>
+        <span id="scrapRes" class="resource scrap">✕ 0</span>
+      </div>
+    </div>
+    <div class="handArea">
+      <div id="handRow" class="handRow"></div>
+      <div class="sideActions">
+        <button id="playAllBtn" class="cmdBtn playAll">Play all</button>
+        <button id="endTurnBtn" class="cmdBtn primary">End turn</button>
+        <button id="leaveBtn" class="cmdBtn">Leave</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="loadingOverlay" class="overlay">
+    <div class="loadingCard">
+      <h1><i>◆</i> War Realms</h1>
+      <p id="loadingText">Assembling every command deck into one shared war market…</p>
+      <div class="loadingSpin"></div>
+    </div>
+  </div>
+
+  <div id="detailOverlay" class="overlay hidden">
+    <div class="modal" style="width:min(510px,100%)">
+      <div class="modalHead"><div><h2 id="detailTitle">Card</h2><p id="detailSubtitle"></p></div><button id="detailClose" class="closeBtn">✕</button></div>
+      <div id="detailBody" class="modalBody"></div>
+    </div>
+  </div>
+
+  <div id="builderOverlay" class="overlay hidden">
+    <div class="modal">
+      <div class="modalHead">
+        <div><h2>Your 50-Card Command Deck</h2><p>These cards are shuffled together with every other player's deck to create the shared market.</p></div>
+        <button id="builderClose" class="closeBtn">✕</button>
+      </div>
+      <div class="modalBody">
+        <div class="builderIntro">
+          <button class="factionAuto yellow" data-auto="yellow">Alien Tech</button>
+          <button class="factionAuto blue" data-auto="blue">High Priesthood</button>
+          <button class="factionAuto green" data-auto="green">Orc Warhost</button>
+          <button class="factionAuto red" data-auto="red">Dark Sorcery</button>
+        </div>
+        <div class="deckStatus">
+          <b id="deckCountBig" class="deckCountBig">50 / 50</b>
+          <span class="deckMeter"><i id="deckMeterFill"></i></span>
+          <span style="font-size:7px;color:#8f9aa8">Maximum 4 copies per card</span>
+        </div>
+        <div id="catalog" class="catalog"></div>
+      </div>
+      <div class="builderFoot">
+        <button id="resetDeckBtn" class="wideBtn">Balanced deck</button>
+        <button id="saveDeckBtn" class="wideBtn primary">Save 50-card deck</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="winnerOverlay" class="overlay hidden">
+    <div class="modal" style="width:min(390px,100%)">
+      <div class="winner"><div style="font-size:34px">◆</div><h2 id="winnerTitle">Victory</h2><p id="winnerText"></p><button id="winnerClose" class="wideBtn primary">Inspect battlefield</button></div>
+    </div>
+  </div>
+  <div id="toast"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, serverTimestamp, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig={
+      apiKey:"AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
+      authDomain:"bible-game-246c0.firebaseapp.com",
+      projectId:"bible-game-246c0",
+      storageBucket:"bible-game-246c0.appspot.com",
+      messagingSenderId:"959619818996",
+      appId:"1:959619818996:web:5a9fbf492e23c765e445a1"
+    };
+    const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+    const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+    const qp=new URLSearchParams(location.search);
+    const lobbyId=qp.get("gameId")||qp.get("lobbyId")||"";
+    const myName=(qp.get("username")||qp.get("name")||localStorage.getItem("username")||"Commander").trim().slice(0,28);
+    const localMode=!lobbyId;
+    const STORAGE_KEY="warRealmsCommandDeckV1";
+    const GAME_VERSION=1,DECK_SIZE=50,MAX_COPIES=4;
+    const RACES={
+      yellow:"Xythe Concord · High-tech alien dominion",
+      blue:"Azure Ascendancy · High priesthood and blue-winged knights",
+      green:"Gorak Warhost · Brutal militaristic orc clans",
+      red:"Umbral Covenant · Dark sorcerers and sacrificial legions",
+      neutral:"Unaligned mercenary"
+    };
+
+    const CARD_LIST=[
+      {id:"probe_skiff",name:"Probe Skiff",faction:"yellow",cost:1,type:"ship",sigil:"⌬",effect:{trade:1},ally:{draw:1},text:"Gain 1 trade.",allyText:"Draw 1 card."},
+      {id:"neural_operative",name:"Neural Operative",faction:"yellow",cost:2,type:"ship",sigil:"◉",effect:{combat:1,discard:1},ally:{trade:1},text:"Gain 1 combat. Next enemy discards 1.",allyText:"Gain 1 trade."},
+      {id:"phase_interdictor",name:"Phase Interdictor",faction:"yellow",cost:3,type:"base",defense:4,outpost:true,sigil:"⟁",effect:{trade:1},ally:{stun:1},text:"Outpost. Gain 1 trade.",allyText:"Gain 1 disable."},
+      {id:"gravity_snare",name:"Gravity Snare",faction:"yellow",cost:4,type:"ship",sigil:"⌁",effect:{combat:3,stun:1},ally:{draw:1},text:"Gain 3 combat and 1 disable.",allyText:"Draw 1 card."},
+      {id:"hive_relay",name:"Hive Relay",faction:"yellow",cost:5,type:"base",defense:5,sigil:"⬡",effect:{trade:2},ally:{discard:1},text:"Gain 2 trade.",allyText:"Next enemy discards 1."},
+      {id:"sovereign_dreadnought",name:"Sovereign Dreadnought",faction:"yellow",cost:7,type:"ship",sigil:"◈",effect:{combat:6,discard:1},ally:{draw:1,stun:1},text:"Gain 6 combat. Next enemy discards 1.",allyText:"Draw 1 and gain 1 disable."},
+
+      {id:"tithe_acolyte",name:"Tithe Acolyte",faction:"blue",cost:1,type:"ship",sigil:"✧",effect:{trade:1,heal:1},ally:{},text:"Gain 1 trade and 1 authority.",allyText:""},
+      {id:"seraphic_envoy",name:"Seraphic Envoy",faction:"blue",cost:2,type:"ship",sigil:"𓆩✧𓆪",effect:{trade:2},ally:{heal:2},text:"Gain 2 trade.",allyText:"Gain 2 authority."},
+      {id:"lumen_knight",name:"Lumen Knight",faction:"blue",cost:3,type:"ship",sigil:"♰",effect:{combat:3,heal:2},ally:{combat:2},text:"Gain 3 combat and 2 authority.",allyText:"Gain 2 combat."},
+      {id:"azure_chapel",name:"Azure Chapel",faction:"blue",cost:3,type:"base",defense:4,sigil:"◇",effect:{trade:1,heal:2},ally:{},text:"Gain 1 trade and 2 authority.",allyText:""},
+      {id:"choir_of_wings",name:"Choir of Wings",faction:"blue",cost:5,type:"ship",sigil:"𓆩❄𓆪",effect:{trade:2,combat:2,heal:3},ally:{draw:1},text:"Gain 2 trade, 2 combat, and 3 authority.",allyText:"Draw 1 card."},
+      {id:"throne_of_tides",name:"Throne of Tides",faction:"blue",cost:7,type:"base",defense:7,outpost:true,sigil:"♛",effect:{trade:3,heal:4},ally:{draw:1},text:"Outpost. Gain 3 trade and 4 authority.",allyText:"Draw 1 card."},
+
+      {id:"gore_runner",name:"Gore Runner",faction:"green",cost:1,type:"ship",sigil:"⚔",effect:{combat:2},ally:{},text:"Gain 2 combat.",allyText:""},
+      {id:"axe_mob",name:"Axe Mob",faction:"green",cost:2,type:"ship",sigil:"🪓",effect:{combat:3},ally:{combat:2},text:"Gain 3 combat.",allyText:"Gain 2 combat."},
+      {id:"siege_boar",name:"Siege Boar",faction:"green",cost:3,type:"ship",sigil:"◆",effect:{combat:4},ally:{},text:"Gain 4 combat.",allyText:""},
+      {id:"war_drum_camp",name:"War Drum Camp",faction:"green",cost:3,type:"base",defense:4,outpost:true,sigil:"◉",effect:{combat:2},ally:{combat:1},text:"Outpost. Gain 2 combat.",allyText:"Gain 1 combat."},
+      {id:"skullcrag_warlord",name:"Skullcrag Warlord",faction:"green",cost:5,type:"ship",sigil:"♜",effect:{combat:6},ally:{combat:3},text:"Gain 6 combat.",allyText:"Gain 3 combat."},
+      {id:"worldbreaker_horde",name:"Worldbreaker Horde",faction:"green",cost:7,type:"ship",sigil:"⬢",effect:{combat:9},ally:{draw:1},text:"Gain 9 combat.",allyText:"Draw 1 card."},
+
+      {id:"ash_initiate",name:"Ash Initiate",faction:"red",cost:1,type:"ship",sigil:"✦",effect:{trade:1},ally:{},scrap:{combat:3},text:"Gain 1 trade.",allyText:"",scrapText:"Scrap: gain 3 combat."},
+      {id:"blood_channeler",name:"Blood Channeler",faction:"red",cost:2,type:"ship",sigil:"♢",effect:{combat:2},ally:{trade:1},scrap:{draw:1},text:"Gain 2 combat.",allyText:"Gain 1 trade.",scrapText:"Scrap: draw 1 card."},
+      {id:"grave_bargain",name:"Grave Bargain",faction:"red",cost:3,type:"ship",sigil:"☠",effect:{trade:2,combat:2,scrapMarket:1},ally:{},text:"Gain 2 trade, 2 combat, and scrap 1 market card.",allyText:""},
+      {id:"obsidian_altar",name:"Obsidian Altar",faction:"red",cost:3,type:"base",defense:4,sigil:"⛧",effect:{trade:1},ally:{combat:2},scrap:{combat:5},text:"Gain 1 trade.",allyText:"Gain 2 combat.",scrapText:"Sacrifice: gain 5 combat."},
+      {id:"soul_furnace",name:"Soul Furnace",faction:"red",cost:5,type:"base",defense:5,outpost:true,sigil:"◐",effect:{combat:3},ally:{scrapMarket:1},scrap:{heal:5,combat:3},text:"Outpost. Gain 3 combat.",allyText:"Scrap 1 market card.",scrapText:"Sacrifice: gain 5 authority and 3 combat."},
+      {id:"eclipse_archon",name:"Eclipse Archon",faction:"red",cost:7,type:"ship",sigil:"◒",effect:{combat:7,draw:1},ally:{combat:3},scrap:{combat:5,heal:5},text:"Gain 7 combat and draw 1.",allyText:"Gain 3 combat.",scrapText:"Scrap: gain 5 combat and 5 authority."}
+    ];
+    const CARDS=Object.fromEntries(CARD_LIST.map(c=>[c.id,c]));
+    const STARTERS={
+      scout:{id:"scout",name:"Scout",faction:"neutral",cost:0,type:"ship",sigil:"◆",effect:{trade:1},ally:{},text:"Gain 1 trade.",allyText:""},
+      viper:{id:"viper",name:"Viper",faction:"neutral",cost:0,type:"ship",sigil:"⚔",effect:{combat:1},ally:{},text:"Gain 1 combat.",allyText:""},
+      mercenary:{id:"mercenary",name:"Frontier Mercenary",faction:"neutral",cost:2,type:"ship",sigil:"◇",effect:{trade:1,combat:1},ally:{},text:"Gain 1 trade and 1 combat.",allyText:""}
+    };
+
+    let state=null,lobbyData=null,user=null,presence=new Map(),unsubLobby=null,unsubPresence=null,actionBusy=false,toastTimer=0,aiTimer=0;
+    let editDeck=loadDeck();
+    const lobbyRef=lobbyId?doc(db,"lobbies",lobbyId):null;
+
+    function clone(v){return JSON.parse(JSON.stringify(v))}
+    function uid(prefix="i"){return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`}
+    function shuffle(arr,seed=Math.floor(Math.random()*2147483647)){
+      const out=[...arr];let x=seed||1;
+      for(let i=out.length-1;i>0;i--){x=(x*48271)%2147483647;const j=x%(i+1);[out[i],out[j]]=[out[j],out[i]]}
+      return out;
+    }
+    function toast(msg){const el=$("#toast");el.textContent=msg;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2100)}
+    function escapeHtml(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+    function deckIsValid(deck){return Array.isArray(deck)&&deck.length===DECK_SIZE&&deck.every(id=>CARDS[id])&&Object.values(countDeck(deck)).every(n=>n<=MAX_COPIES)}
+    function countDeck(deck){return deck.reduce((a,id)=>(a[id]=(a[id]||0)+1,a),{})}
+    function balancedDeck(focus=""){
+      const ordered=focus?[...CARD_LIST.filter(c=>c.faction===focus),...CARD_LIST.filter(c=>c.faction!==focus)]:[...CARD_LIST];
+      const deck=[];let pass=0;
+      while(deck.length<DECK_SIZE&&pass<MAX_COPIES){for(const c of ordered){if(deck.length>=DECK_SIZE)break;deck.push(c.id)}pass++}
+      return deck;
+    }
+    function loadDeck(){
+      try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY));if(deckIsValid(d))return d}catch{}
+      return balancedDeck();
+    }
+    function saveDeck(){
+      if(!deckIsValid(editDeck)){toast("Your deck must contain exactly 50 cards, with no more than 4 copies of each.");return false}
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(editDeck));renderBuilder();publishPresence().catch(()=>{});toast("50-card deck saved.");return true;
+    }
+    function effectSummary(e={}){
+      const parts=[];if(e.trade)parts.push(`◆ ${e.trade}`);if(e.combat)parts.push(`⚔ ${e.combat}`);if(e.heal)parts.push(`♥ ${e.heal}`);
+      if(e.draw)parts.push(`Draw ${e.draw}`);if(e.discard)parts.push(`Discard ${e.discard}`);if(e.stun)parts.push(`Disable ${e.stun}`);if(e.scrapMarket)parts.push(`Scrap row ${e.scrapMarket}`);
+      return parts.join(" · ");
+    }
+    function fullRules(c){
+      const bits=[c.text];if(c.allyText)bits.push(`Ally — ${c.allyText}`);if(c.scrapText)bits.push(c.scrapText);
+      if(c.type==="base")bits.unshift(`${c.outpost?"Outpost base":"Base"} · ${c.defense} defense.`);
+      return bits.filter(Boolean).join(" ");
+    }
+    function cardHtml(entry,opts={}){
+      const c=entry?.id?CARDS[entry.id]||STARTERS[entry.id]:CARDS[entry]||STARTERS[entry];if(!c)return"";
+      const owner=entry?.ownerName||opts.owner||RACES[c.faction].split(" · ")[0];
+      const classes=["gameCard",c.faction,opts.base?"baseCard":"",opts.afford?"afford":"",opts.disabled?"disabled":"",opts.stunned?"stunned":""].filter(Boolean).join(" ");
+      return `<button class="${classes}" data-card="${c.id}" ${opts.instance?`data-instance="${escapeHtml(opts.instance)}"`:""} ${opts.action?`data-action="${opts.action}"`:""}>
+        <div class="cardTop"><span class="cost">${c.cost}</span><span class="cardName">${escapeHtml(c.name)}</span></div>
+        <div class="cardArt"><span class="sigil">${c.sigil}</span></div>
+        <div class="cardRules">${c.type==="base"?`<b>${c.outpost?"OUTPOST":"BASE"} ${c.defense}</b><br>`:""}${escapeHtml(c.text)}${c.allyText?`<br><b>ALLY</b> ${escapeHtml(c.allyText)}`:""}</div>
+        <div class="cardFoot"><span class="ownerMark">${escapeHtml(owner)}</span>${c.type==="base"?`<b class="defense">⬡ ${c.defense}</b>`:""}</div>
+        ${c.scrap||c.effect?.scrapMarket?`<span class="scrapBadge">✕</span>`:""}
+      </button>`;
+    }
+
+    function starterDeck(){return shuffle([...Array(8).fill("scout"),...Array(2).fill("viper")])}
+    function makePlayer(name,playerUid,isAI=false){
+      const draw=starterDeck(),p={id:playerUid||uid("p"),uid:playerUid||"",name,isAI,health:50,draw,discard:[],hand:[],played:[],bases:[],trade:0,combat:0,stun:0,scrapMarket:0,discardPenalty:0,eliminated:false,left:false};
+      drawCards(p,5);return p;
+    }
+    function defaultAIDeck(){return balancedDeck("green")}
+    function contribution(deck,ownerId,ownerName){return deck.map(id=>({id,ownerId,ownerName}))}
+    function createGame(entrants,seed=Math.floor(Math.random()*1e9)){
+      const players=entrants.map(e=>makePlayer(e.name,e.uid,e.isAI));
+      const pool=entrants.flatMap(e=>contribution(deckIsValid(e.deck)?e.deck:balancedDeck(),e.uid||e.name,e.name));
+      const marketDeck=shuffle(pool,seed),tradeRow=marketDeck.splice(0,5);
+      return {kind:"war-realms",schema:GAME_VERSION,createdAt:Date.now(),version:1,turnSerial:1,seed,turn:0,round:1,players,marketDeck,tradeRow,scrapped:[],winner:"",phase:"playing",log:[{at:Date.now(),text:`${pool.length} contributed cards were mixed into the War Market.`}]};
+    }
+    function drawCards(p,n){
+      for(let i=0;i<n;i++){
+        if(!p.draw.length){if(!p.discard.length)break;p.draw=shuffle(p.discard);p.discard=[]}
+        p.hand.push(p.draw.pop());
+      }
+    }
+    function current(game=state){return game?.players?.[game.turn]}
+    function mine(game=state){return game?.players?.find(p=>p.uid&&p.uid===user?.uid)||game?.players?.find(p=>p.name.toLowerCase()===myName.toLowerCase())}
+    function isMyTurn(game=state){const p=current(game),m=mine(game);return !!p&&!!m&&p.id===m.id&&!p.eliminated&&!p.left&&game.phase==="playing"}
+    function living(game){return game.players.filter(p=>!p.eliminated&&!p.left)}
+    function nextLivingIndex(game,from=game.turn){
+      for(let step=1;step<=game.players.length;step++){const i=(from+step)%game.players.length,p=game.players[i];if(!p.eliminated&&!p.left)return i}
+      return from;
+    }
+    function addLog(game,text){game.log=(game.log||[]).slice(-15);game.log.push({at:Date.now(),text})}
+    function applyEffect(game,p,e={}){
+      p.trade+=(e.trade||0);p.combat+=(e.combat||0);p.health=Math.min(50,p.health+(e.heal||0));p.stun+=(e.stun||0);p.scrapMarket+=(e.scrapMarket||0);
+      if(e.draw)drawCards(p,e.draw);
+      if(e.discard){const target=game.players[nextLivingIndex(game,game.players.indexOf(p))];if(target&&target.id!==p.id)target.discardPenalty=Math.min(2,(target.discardPenalty||0)+e.discard)}
+    }
+    function activeFactionCards(game,p,faction){return [...p.played,...p.bases].filter(x=>(CARDS[x.id]||STARTERS[x.id])?.faction===faction&&x.skipSerial!==game.turnSerial)}
+    function triggerAllies(game,p,faction){
+      const active=activeFactionCards(game,p,faction);if(faction==="neutral"||active.length<2)return;
+      for(const entry of active){
+        const c=CARDS[entry.id];if(!c||entry.allySerial===game.turnSerial||!Object.keys(c.ally||{}).length)continue;
+        entry.allySerial=game.turnSerial;applyEffect(game,p,c.ally);
+      }
+    }
+    function playCard(game,p,index){
+      if(index<0||index>=p.hand.length)return"Card is no longer in hand.";
+      const id=p.hand.splice(index,1)[0],c=CARDS[id]||STARTERS[id];if(!c)return"Unknown card.";
+      const instance={id,instance:uid("c"),ownerId:p.id,ownerName:p.name,stunned:0};
+      if(c.type==="base")p.bases.push(instance);else p.played.push(instance);
+      applyEffect(game,p,c.effect);
+      triggerAllies(game,p,c.faction);
+      return"";
+    }
+    function refillMarket(game){while(game.tradeRow.length<5&&game.marketDeck.length)game.tradeRow.push(game.marketDeck.pop())}
+    function beginTurn(game,p){
+      game.turnSerial=(game.turnSerial||0)+1;
+      p.trade=0;p.combat=0;p.stun=0;p.scrapMarket=0;
+      for(const b of p.bases){
+        if(b.stunned){b.stunned=Math.max(0,b.stunned-1);b.skipSerial=game.turnSerial;continue}
+        const c=CARDS[b.id];if(c)applyEffect(game,p,c.effect);
+      }
+      for(const faction of ["yellow","blue","green","red"])triggerAllies(game,p,faction);
+      const amount=Math.max(3,5-(p.discardPenalty||0));p.discardPenalty=0;
+      if(p.hand.length){while(p.hand.length>amount)p.discard.push(p.hand.pop())}
+      else drawCards(p,amount);
+      addLog(game,`${p.name} begins round ${game.round}.`);
+    }
+    function finishCheck(game){
+      const alive=living(game);if(alive.length<=1){game.phase="finished";game.winner=alive[0]?.name||"No one";return true}return false;
+    }
+    function reduce(game,action,actorId){
+      if(!game||game.kind!=="war-realms")return"War Realms state is unavailable.";
+      if(game.phase==="finished")return"The battle is already over.";
+      const p=game.players.find(x=>x.id===actorId);if(!p)return"You do not have a seat.";
+      if(current(game)?.id!==p.id&&!["LEAVE"].includes(action.type))return"It is not your turn.";
+      switch(action.type){
+        case"PLAY":{
+          return playCard(game,p,Number(action.index));
+        }
+        case"PLAY_ALL":{
+          while(p.hand.length){const error=playCard(game,p,0);if(error)return error}
+          addLog(game,`${p.name} deployed their full hand.`);break;
+        }
+        case"BUY":{
+          if(action.mercenary){
+            const c=STARTERS.mercenary;if(p.trade<c.cost)return"Not enough trade.";
+            p.trade-=c.cost;p.discard.push(c.id);addLog(game,`${p.name} recruited a Frontier Mercenary.`);break;
+          }
+          const index=Number(action.index),entry=game.tradeRow[index],c=entry&&CARDS[entry.id];if(!c)return"That market card is gone.";
+          if(p.trade<c.cost)return"Not enough trade.";
+          p.trade-=c.cost;p.discard.push(c.id);game.tradeRow.splice(index,1);refillMarket(game);addLog(game,`${p.name} acquired ${c.name} from ${entry.ownerName}'s command deck.`);break;
+        }
+        case"SCRAP_MARKET":{
+          if(p.scrapMarket<1)return"No market scrap available.";
+          const index=Number(action.index),entry=game.tradeRow[index];if(!entry)return"That market card is gone.";
+          p.scrapMarket--;game.scrapped.push(entry);game.tradeRow.splice(index,1);refillMarket(game);addLog(game,`${p.name} erased ${CARDS[entry.id].name} from the market.`);break;
+        }
+        case"SCRAP_PLAYED":{
+          const zone=action.zone==="bases"?"bases":"played",index=p[zone].findIndex(x=>x.instance===action.instance),entry=p[zone][index],c=entry&&CARDS[entry.id];
+          if(!c?.scrap)return"That card has no sacrifice ability.";
+          p[zone].splice(index,1);game.scrapped.push({id:c.id,ownerId:p.id,ownerName:p.name});applyEffect(game,p,c.scrap);addLog(game,`${p.name} sacrificed ${c.name}.`);break;
+        }
+        case"STUN_BASE":{
+          if(p.stun<1)return"No disable available.";
+          const target=game.players.find(x=>x.id===action.targetId);if(!target||target.id===p.id)return"Invalid target.";
+          const base=target.bases.find(x=>x.instance===action.instance);if(!base)return"That base is gone.";
+          p.stun--;base.stunned=Math.max(base.stunned||0,1);addLog(game,`${p.name} disabled ${CARDS[base.id].name}.`);break;
+        }
+        case"ATTACK_BASE":{
+          const target=game.players.find(x=>x.id===action.targetId);if(!target||target.id===p.id)return"Invalid target.";
+          const index=target.bases.findIndex(x=>x.instance===action.instance),base=target.bases[index],c=base&&CARDS[base.id];if(!c)return"That base is gone.";
+          if(p.combat<c.defense)return`You need ${c.defense} combat.`;
+          p.combat-=c.defense;target.bases.splice(index,1);target.discard.push(c.id);addLog(game,`${p.name} destroyed ${target.name}'s ${c.name}.`);break;
+        }
+        case"ATTACK_PLAYER":{
+          const target=game.players.find(x=>x.id===action.targetId);if(!target||target.id===p.id||target.eliminated||target.left)return"Invalid target.";
+          if(target.bases.some(b=>CARDS[b.id]?.outpost))return"Destroy that realm's outpost first.";
+          if(p.combat<1)return"No combat available.";
+          const damage=p.combat;p.combat=0;target.health=Math.max(0,target.health-damage);
+          addLog(game,`${p.name} struck ${target.name} for ${damage}.`);
+          if(target.health<=0){target.eliminated=true;target.hand=[];addLog(game,`${target.name}'s realm has fallen.`);finishCheck(game)}break;
+        }
+        case"END":{
+          p.discard.push(...p.hand,...p.played.map(x=>x.id));p.hand=[];p.played=[];p.trade=0;p.combat=0;p.stun=0;p.scrapMarket=0;
+          const old=game.turn;game.turn=nextLivingIndex(game,old);if(game.turn<=old)game.round++;
+          beginTurn(game,current(game));break;
+        }
+        case"LEAVE":{
+          p.left=true;p.hand=[];p.health=0;addLog(game,`${p.name} left the war.`);if(game.turn===game.players.indexOf(p))game.turn=nextLivingIndex(game,game.turn);finishCheck(game);break;
+        }
+        case"AI_TURN":{
+          if(!p.isAI)return"";
+          while(p.hand.length)playCard(game,p,0);
+          while(p.scrapMarket>0&&game.tradeRow.length){let ix=0;for(let i=1;i<game.tradeRow.length;i++)if(CARDS[game.tradeRow[i].id].cost<CARDS[game.tradeRow[ix].id].cost)ix=i;reduce(game,{type:"SCRAP_MARKET",index:ix},p.id)}
+          let bought=true;while(bought){bought=false;let best=-1,bestCost=-1;game.tradeRow.forEach((e,i)=>{const c=CARDS[e.id];if(c.cost<=p.trade&&c.cost>bestCost){best=i;bestCost=c.cost}});if(best>=0){reduce(game,{type:"BUY",index:best},p.id);bought=true}}
+          for(const target of game.players.filter(x=>x.id!==p.id&&!x.eliminated&&!x.left)){
+            for(const b of [...target.bases].filter(x=>CARDS[x.id]?.outpost)){if(p.combat>=CARDS[b.id].defense)reduce(game,{type:"ATTACK_BASE",targetId:target.id,instance:b.instance},p.id)}
+          }
+          const target=game.players.find(x=>x.id!==p.id&&!x.eliminated&&!x.left);
+          if(target){for(const b of [...target.bases])if(p.combat>=CARDS[b.id].defense)reduce(game,{type:"ATTACK_BASE",targetId:target.id,instance:b.instance},p.id);if(p.combat>0)reduce(game,{type:"ATTACK_PLAYER",targetId:target.id},p.id)}
+          if(game.phase!=="finished")reduce(game,{type:"END"},p.id);break;
+        }
+        default:return"Unknown action.";
+      }
+      game.version=(game.version||0)+1;return"";
+    }
+
+    async function perform(action){
+      if(actionBusy||!state)return;actionBusy=true;
+      try{
+        const actor=mine();if(!actor){toast("No player seat found.");return}
+        if(localMode){
+          const next=clone(state),error=reduce(next,action,actor.id);if(error)toast(error);else state=next;render();scheduleAI();return;
+        }
+        let response="";
+        await runTransaction(db,async tx=>{
+          const snap=await tx.get(lobbyRef);if(!snap.exists())throw new Error("Lobby no longer exists.");
+          const data=snap.data(),game=clone(data.game);const liveActor=game.players.find(p=>p.uid===user.uid)||game.players.find(p=>p.name.toLowerCase()===myName.toLowerCase());
+          if(!liveActor){response="No player seat found.";return}
+          response=reduce(game,action,liveActor.id);if(!response)tx.update(lobbyRef,{game});
+        });
+        if(response)toast(response);
+      }catch(error){console.error(error);toast(error.message||"The move could not sync.")}
+      finally{actionBusy=false;render()}
+    }
+
+    async function runAI(){
+      if(!state||state.phase!=="playing"||!current()?.isAI)return;
+      if(localMode){const next=clone(state),actor=current(next);reduce(next,{type:"AI_TURN"},actor.id);state=next;render();return}
+      try{await runTransaction(db,async tx=>{const snap=await tx.get(lobbyRef);if(!snap.exists())return;const game=clone(snap.data().game),actor=current(game);if(!actor?.isAI)return;reduce(game,{type:"AI_TURN"},actor.id);tx.update(lobbyRef,{game})})}catch(error){console.warn(error)}
+    }
+    function scheduleAI(){clearTimeout(aiTimer);if(state?.phase==="playing"&&current()?.isAI)aiTimer=setTimeout(runAI,900)}
+
+    function orderedSeats(){
+      if(!state)return[];
+      const me=mine(),others=state.players.filter(p=>p.id!==me?.id),slots=[null,null,null,me||null];
+      [0,1,2].forEach((slot,i)=>slots[slot]=others[i]||null);return slots;
+    }
+    function renderSeat(el,p,slot){
+      const top=slot<2;el.className=`seat ${["nw","ne","sw","se"][slot]} ${top?"top":"bottom"}${p&&current()?.id===p.id?" active":""}${p?.eliminated||p?.left?" dead":""}`;
+      if(!p){el.innerHTML=`<div class="playerBar"><span class="playerName" style="color:#56616f">Open corner</span></div><div class="bases"><span class="emptyBases">No realm</span></div>`;return}
+      const canAct=isMyTurn()&&mine()?.combat>0&&p.id!==mine()?.id&&!p.eliminated&&!p.left;
+      const fieldCards=[
+        ...p.played.map(card=>cardHtml(card,{instance:card.instance,action:"played"})),
+        ...p.bases.map(base=>cardHtml(base,{base:true,instance:base.instance,stunned:base.stunned,action:"base"}))
+      ].join("");
+      el.innerHTML=`<div class="playerBar"><span class="avatar">${escapeHtml(p.name.slice(0,1).toUpperCase())}</span>${current()?.id===p.id?'<i class="turnDot"></i>':""}<span class="playerName">${escapeHtml(p.name)}${p.isAI?" · AI":""}</span><span class="deckCount">▣ ${p.draw.length} ↻ ${p.discard.length}</span><span class="hp">♥ ${p.health}</span></div>
+        <div class="bases">${fieldCards||'<span class="emptyBases">No deployed cards</span>'}</div>
+        <button class="attackPlayer" data-attack-player="${p.id}" ${canAct?"":"disabled"}>⚔ ATTACK</button>`;
+      el.querySelectorAll("[data-action=base]").forEach(btn=>btn.addEventListener("click",()=>openBaseDetail(p,btn.dataset.instance)));
+      el.querySelectorAll("[data-action=played]").forEach(btn=>btn.addEventListener("click",()=>{
+        const entry=p.played.find(card=>card.instance===btn.dataset.instance),card=entry&&CARDS[entry.id];
+        if(!card)return;
+        openDetail(card,p.id===mine()?.id&&card.scrap&&isMyTurn()?{scrapPlayed:true,zone:"played",instance:entry.instance}:{});
+      }));
+      el.querySelector("[data-attack-player]")?.addEventListener("click",()=>perform({type:"ATTACK_PLAYER",targetId:p.id}));
+    }
+    function renderMarket(){
+      const m=mine(),canBuy=isMyTurn(),row=$("#tradeRow");$("#marketCount").textContent=state?.marketDeck?.length||0;
+      row.innerHTML=(state?.tradeRow||[]).map((e,i)=>cardHtml(e,{afford:canBuy&&m.trade>=CARDS[e.id].cost,action:"market",instance:String(i)})).join("");
+      row.querySelectorAll("[data-action=market]").forEach(btn=>btn.addEventListener("click",()=>openMarketDetail(Number(btn.dataset.instance))));
+      $("#explorerStack").classList.toggle("afford",!!(canBuy&&m?.trade>=2));
+      $("#explorerStack").disabled=!canBuy;$("#explorerStack").onclick=()=>openDetail(STARTERS.mercenary,{buyMerc:true});
+    }
+    function renderHand(){
+      const m=mine(),mineTurn=isMyTurn(),row=$("#handRow");
+      if(!m){row.innerHTML='<span class="emptyBases">Spectating</span>';return}
+      if(!m.hand.length)row.innerHTML='<span class="emptyBases">No cards in hand</span>';
+      else row.innerHTML=m.hand.map((id,i)=>cardHtml(id,{action:"hand",instance:String(i),disabled:!mineTurn})).join("");
+      row.querySelectorAll("[data-action=hand]").forEach(btn=>btn.addEventListener("click",()=>mineTurn?perform({type:"PLAY",index:Number(btn.dataset.instance)}):openDetail(CARDS[btn.dataset.card]||STARTERS[btn.dataset.card])));
+    }
+    function renderResources(){
+      const m=mine();$("#tradeRes").textContent=`◆ ${m?.trade||0}`;$("#combatRes").textContent=`⚔ ${m?.combat||0}`;$("#controlRes").textContent=`⌁ ${m?.stun||0}`;$("#scrapRes").textContent=`✕ ${m?.scrapMarket||0}`;
+      const active=current();$("#turnText").textContent=state?.phase==="finished"?`${state.winner} controls the War Realms`:isMyTurn()?`Your turn · Round ${state.round}`:`${active?.name||"Waiting"} is commanding · Round ${state?.round||1}`;
+      $("#playAllBtn").disabled=!isMyTurn()||!m?.hand.length||actionBusy;$("#endTurnBtn").disabled=!isMyTurn()||actionBusy;$("#leaveBtn").disabled=!m||m.left||m.eliminated;
+    }
+    function render(){
+      if(!state)return;
+      orderedSeats().forEach((p,i)=>renderSeat($(`#seat-${["nw","ne","sw","se"][i]}`),p,i));
+      renderMarket();renderHand();renderResources();
+      $("#loadingOverlay").classList.add("hidden");$("#syncTag").textContent=localMode?"Local":actionBusy?"Syncing":"Synced";
+      if(state.phase==="finished"&&!$("#winnerOverlay").dataset.shown){$("#winnerOverlay").dataset.shown="1";$("#winnerTitle").textContent=`${state.winner} wins`;$("#winnerText").textContent="The last surviving realm has authority over the combined market.";$("#winnerOverlay").classList.remove("hidden")}
+      scheduleAI();
+    }
+
+    function openDetail(c,options={}){
+      if(!c)return;const color=`var(--${c.faction})`;$("#detailTitle").textContent=c.name;$("#detailSubtitle").textContent=RACES[c.faction];
+      const actions=[];
+      if(options.buyIndex!=null)actions.push(`<button data-detail-act="buy">Buy for ◆ ${c.cost}</button>`);
+      if(options.scrapIndex!=null)actions.push(`<button class="danger" data-detail-act="scrap-market">Scrap from row</button>`);
+      if(options.buyMerc)actions.push(`<button data-detail-act="merc">Recruit for ◆ 2</button>`);
+      if(options.scrapPlayed)actions.push(`<button class="danger" data-detail-act="scrap-played">Use sacrifice ability</button>`);
+      $("#detailBody").innerHTML=`<div class="detailLayout" style="--faction:${color}"><div class="detailArt">${c.sigil}</div><div class="detailCopy"><span class="race">${escapeHtml(c.type)} · Cost ${c.cost}</span><h3>${escapeHtml(c.name)}</h3><p>${escapeHtml(fullRules(c))}</p><p style="color:#8793a2">${escapeHtml(effectSummary(c.effect))}${c.allyText?`<br>Ally: ${escapeHtml(effectSummary(c.ally))}`:""}${c.scrapText?`<br>Sacrifice: ${escapeHtml(effectSummary(c.scrap))}`:""}</p><div class="detailActions">${actions.join("")}</div></div></div>`;
+      const overlay=$("#detailOverlay");overlay.classList.remove("hidden");
+      overlay.querySelector("[data-detail-act=buy]")?.addEventListener("click",()=>{overlay.classList.add("hidden");perform({type:"BUY",index:options.buyIndex})});
+      overlay.querySelector("[data-detail-act=scrap-market]")?.addEventListener("click",()=>{overlay.classList.add("hidden");perform({type:"SCRAP_MARKET",index:options.scrapIndex})});
+      overlay.querySelector("[data-detail-act=merc]")?.addEventListener("click",()=>{overlay.classList.add("hidden");perform({type:"BUY",mercenary:true})});
+      overlay.querySelector("[data-detail-act=scrap-played]")?.addEventListener("click",()=>{overlay.classList.add("hidden");perform({type:"SCRAP_PLAYED",zone:options.zone,instance:options.instance})});
+    }
+    function openMarketDetail(index){
+      const entry=state.tradeRow[index],m=mine();if(!entry)return;
+      openDetail(CARDS[entry.id],{buyIndex:isMyTurn()&&m.trade>=CARDS[entry.id].cost?index:null,scrapIndex:isMyTurn()&&m.scrapMarket>0?index:null});
+    }
+    function openBaseDetail(owner,instance){
+      const base=owner.bases.find(b=>b.instance===instance),c=base&&CARDS[base.id];if(!c)return;
+      if(owner.id===mine()?.id){openDetail(c,{scrapPlayed:c.scrap&&isMyTurn(),zone:"bases",instance});return}
+      const actions=[];if(isMyTurn()&&mine().combat>=c.defense)actions.push(`<button data-base-act="attack">Destroy for ⚔ ${c.defense}</button>`);
+      if(isMyTurn()&&mine().stun>0)actions.push(`<button data-base-act="stun">Disable base</button>`);
+      openDetail(c);const wrap=$("#detailBody .detailActions");wrap.innerHTML=actions.join("");
+      wrap.querySelector("[data-base-act=attack]")?.addEventListener("click",()=>{$("#detailOverlay").classList.add("hidden");perform({type:"ATTACK_BASE",targetId:owner.id,instance})});
+      wrap.querySelector("[data-base-act=stun]")?.addEventListener("click",()=>{$("#detailOverlay").classList.add("hidden");perform({type:"STUN_BASE",targetId:owner.id,instance})});
+    }
+    function openPlayedDetail(instance){
+      const p=mine(),entry=p.played.find(x=>x.instance===instance);if(entry)openDetail(CARDS[entry.id],{scrapPlayed:true,zone:"played",instance});
+    }
+
+    function renderBuilder(){
+      const counts=countDeck(editDeck),n=editDeck.length;$("#deckCountBig").textContent=`${n} / ${DECK_SIZE}`;$("#deckCountBig").className=`deckCountBig ${n===DECK_SIZE?"good":"bad"}`;$("#deckMeterFill").style.width=`${Math.min(100,n/DECK_SIZE*100)}%`;
+      $("#saveDeckBtn").disabled=!deckIsValid(editDeck);
+      $("#catalog").innerHTML=CARD_LIST.map(c=>`<div class="catalogItem ${c.faction}"><div class="miniArt">${c.sigil}</div><div><div class="catalogName">${escapeHtml(c.name)} · ${c.cost}</div><div class="catalogRule">${escapeHtml(c.text)}${c.allyText?` Ally: ${escapeHtml(c.allyText)}`:""}</div></div><div class="qty"><button data-minus="${c.id}">−</button><b>${counts[c.id]||0}</b><button data-plus="${c.id}" ${(counts[c.id]||0)>=MAX_COPIES||n>=DECK_SIZE?"disabled":""}>+</button></div></div>`).join("");
+      $$("[data-minus]").forEach(b=>b.addEventListener("click",()=>{const i=editDeck.indexOf(b.dataset.minus);if(i>=0)editDeck.splice(i,1);renderBuilder()}));
+      $$("[data-plus]").forEach(b=>b.addEventListener("click",()=>{if(editDeck.length<DECK_SIZE&&(counts[b.dataset.plus]||0)<MAX_COPIES)editDeck.push(b.dataset.plus);renderBuilder()}));
+    }
+    function openBuilder(){editDeck=loadDeck();renderBuilder();$("#builderOverlay").classList.remove("hidden")}
+
+    function normalizeRoster(lobby){
+      const raw=Array.isArray(lobby?.players)?lobby.players:Array.isArray(lobby?.members)?lobby.members:[],out=[];
+      for(const item of raw){
+        const name=(typeof item==="string"?item:item?.username||item?.name||item?.displayName||"").trim();if(!name||out.some(x=>x.name.toLowerCase()===name.toLowerCase()))continue;
+        const match=[...presence.values()].find(p=>p.name?.toLowerCase()===name.toLowerCase());
+        out.push({name,uid:typeof item==="object"?(item.uid||item.userId||match?.uid||""):(match?.uid||"")});
+      }
+      if(!out.length)out.push({name:myName,uid:user?.uid||""});return out.slice(0,4);
+    }
+    async function publishPresence(){
+      if(localMode||!user)return;
+      await setDoc(doc(db,"lobbies",lobbyId,"presence",user.uid),{uid:user.uid,name:myName,active:true,ready:true,game:"war-realms",deck:loadDeck(),deckSize:50,lastSeen:serverTimestamp()},{merge:true});
+    }
+    async function maybeStart(){
+      if(localMode||!lobbyData||lobbyData.game)return;
+      const started=lobbyData.status==="started"||lobbyData.started===true||lobbyData.gameStarted===true;if(!started)return;
+      const roster=normalizeRoster(lobbyData),entrants=roster.map(r=>{const pr=r.uid?presence.get(r.uid):[...presence.values()].find(x=>x.name?.toLowerCase()===r.name.toLowerCase());return{...r,deck:pr?.deck,ready:pr?.ready}});
+      const ready=entrants.filter(e=>e.ready&&deckIsValid(e.deck));if(!ready.length)return;
+      const waited=Date.now()-(Number(lobbyData.warLoadingStartedAt)||Date.now());
+      if(ready.length<roster.length&&waited<8000)return;
+      try{await runTransaction(db,async tx=>{const snap=await tx.get(lobbyRef);if(!snap.exists()||snap.data().game)return;let players=ready.slice(0,4);if(players.length===1)players.push({name:"Gorak Ironmind",uid:"ai_gorak",isAI:true,deck:defaultAIDeck()});tx.update(lobbyRef,{game:createGame(players),warRealmsStartedAt:Date.now()})})}catch(error){console.warn(error)}
+    }
+    function attach(){
+      unsubLobby=onSnapshot(lobbyRef,{includeMetadataChanges:true},snap=>{if(!snap.exists()){toast("Lobby unavailable.");return}lobbyData=snap.data();if(lobbyData.game?.kind==="war-realms")state=lobbyData.game;$("#syncTag").textContent=snap.metadata.hasPendingWrites?"Syncing":snap.metadata.fromCache?"Offline":"Synced";if(state)render();else maybeStart()},error=>{console.error(error);$("#loadingText").textContent=error.message});
+      unsubPresence=onSnapshot(collection(db,"lobbies",lobbyId,"presence"),snap=>{presence=new Map();snap.forEach(d=>presence.set(d.id,{...d.data(),uid:d.id}));maybeStart()},console.warn);
+    }
+    async function waitForUser(){
+      if(auth.currentUser)return auth.currentUser;
+      try{return(await signInAnonymously(auth)).user}catch(error){
+        const existing=await new Promise(resolve=>{const off=onAuthStateChanged(auth,u=>{off();resolve(u)});setTimeout(()=>resolve(null),2500)});if(existing)return existing;throw error
+      }
+    }
+    async function boot(){
+      $("#userTag").textContent=myName;$("#lobbyTag").textContent=localMode?"Local skirmish":`Lobby ${lobbyId}`;
+      if(localMode){
+        state=createGame([{name:myName,uid:"local_player",deck:loadDeck()},{name:"Gorak Ironmind",uid:"ai_gorak",isAI:true,deck:defaultAIDeck()}]);user={uid:"local_player"};render();return;
+      }
+      try{
+        user=await waitForUser();await publishPresence();
+        const snap=await getDoc(lobbyRef);if(!snap.exists())throw new Error("This lobby does not exist.");
+        lobbyData=snap.data();
+        if(!lobbyData.warLoadingStartedAt&&!lobbyData.game)await setDoc(lobbyRef,{warLoadingStartedAt:Date.now()},{merge:true});
+        attach();setInterval(()=>publishPresence().catch(()=>{}),9000);setInterval(()=>maybeStart(),1000);
+      }catch(error){console.error(error);$("#loadingText").textContent=`Unable to enter War Realms: ${error.message}`}
+    }
+
+    $("#playAllBtn").addEventListener("click",()=>perform({type:"PLAY_ALL"}));
+    $("#endTurnBtn").addEventListener("click",()=>perform({type:"END"}));
+    $("#leaveBtn").addEventListener("click",()=>{if(confirm("Leave this war and forfeit your realm?"))perform({type:"LEAVE"})});
+    $("#deckBtn").addEventListener("click",openBuilder);
+    $("#builderClose").addEventListener("click",()=>$("#builderOverlay").classList.add("hidden"));
+    $("#detailClose").addEventListener("click",()=>$("#detailOverlay").classList.add("hidden"));
+    $("#winnerClose").addEventListener("click",()=>$("#winnerOverlay").classList.add("hidden"));
+    $("#saveDeckBtn").addEventListener("click",()=>{if(saveDeck())$("#builderOverlay").classList.add("hidden")});
+    $("#resetDeckBtn").addEventListener("click",()=>{editDeck=balancedDeck();renderBuilder()});
+    $$(".factionAuto").forEach(b=>b.addEventListener("click",()=>{editDeck=balancedDeck(b.dataset.auto);renderBuilder()}));
+    $("#helpBtn").addEventListener("click",()=>{
+      $("#detailTitle").textContent="How War Realms Works";$("#detailSubtitle").textContent="A compact 2–4 player shared-market deckbuilder";
+      $("#detailBody").innerHTML=`<div class="detailCopy"><p><b>Bring 50.</b> Every commander contributes an exactly 50-card command deck. All contributed cards are shuffled into the central War Market; the owner name remains visible on each market card.</p><p><b>Build during battle.</b> Each realm starts with eight Scouts and two Vipers. Play cards for trade, combat, healing, control, and scrapping. Purchased cards enter your discard pile.</p><p><b>Hold the corners.</b> Bases remain in front of each realm and trigger again at the start of their owner's turns. Outposts must be destroyed before that player can take damage.</p><p><b>Faction identities.</b> Yellow alien technology disrupts and disables. Blue priesthood restores authority and builds economy. Green orcs create direct, brutal combat. Red sorcerers sacrifice their own cards and erase cards from the market.</p><p>Tap a hand card to play it. Tap market cards to buy or scrap them. Tap enemy bases to destroy or disable them. Reduce every rival from 50 authority to zero.</p></div>`;
+      $("#detailOverlay").classList.remove("hidden")
+    });
+    $("#fullBtn").addEventListener("click",async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen()}catch{toast("Fullscreen is unavailable on this device.")}});
+    window.addEventListener("beforeunload",()=>{unsubLobby?.();unsubPresence?.()});
+    boot();
+  </script>
+</body>
+</html>
