@@ -3,7 +3,7 @@ name: Apply War Realms card expansion
 on:
   push:
     branches:
-      - agent/warrealms-card-scrap-expansion
+      - agent/activate-warrealms-expansion
     paths:
       - .github/workflows/warrealms-card-expansion.yml
 
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/warrealms-card-scrap-expansion
+          ref: agent/activate-warrealms-expansion
       - name: Add cards and broaden sacrifice abilities
         shell: python
         run: |
@@ -60,9 +60,10 @@ jobs:
       {id:"void_auctioneer",name:"Void Auctioneer",faction:"red",cost:6,type:"ship",sigil:"◍",effect:{trade:3,combat:3,scrapMarket:1},ally:{draw:1},scrap:{trade:5,combat:3},text:"Gain 3 trade, 3 combat, and scrap 1 market card.",allyText:"Draw 1 card.",scrapText:"Scrap: gain 5 trade and 3 combat."}'''
           text = text.replace(red_anchor, red_anchor + ",\n" + red_cards)
 
-          expected = ["salvage_drone", "votive_scribe", "scrapfang_runt", "coin_curse"]
-          if not all(card_id in text for card_id in expected):
-              raise SystemExit("Card insertion failed: expected anchors were not found")
+          expected = ["salvage_drone", "signal_jammer", "quantum_broker", "null_field_array", "reality_harvester", "votive_scribe", "pilgrim_of_dawn", "reliquary_guard", "absolution_choir", "saint_of_the_deep", "scrapfang_runt", "loot_cart", "rage_caller", "breakneck_stockade", "last_charge_titan", "coin_curse", "bone_appraiser", "hexed_portal", "death_tithe", "void_auctioneer"]
+          missing = [card_id for card_id in expected if f'id:"{card_id}"' not in text]
+          if missing:
+              raise SystemExit(f"Card insertion failed: {missing}")
 
           path.write_text(text, encoding="utf-8")
       - name: Validate expansion
@@ -70,17 +71,30 @@ jobs:
         run: |
           from pathlib import Path
           text = Path("game/warrealms.html").read_text(encoding="utf-8")
+          new_ids = [
+              "salvage_drone", "signal_jammer", "quantum_broker", "null_field_array", "reality_harvester",
+              "votive_scribe", "pilgrim_of_dawn", "reliquary_guard", "absolution_choir", "saint_of_the_deep",
+              "scrapfang_runt", "loot_cart", "rage_caller", "breakneck_stockade", "last_charge_titan",
+              "coin_curse", "bone_appraiser", "hexed_portal", "death_tithe", "void_auctioneer"
+          ]
+          missing = [card_id for card_id in new_ids if f'id:"{card_id}"' not in text]
+          assert not missing, f"Missing cards: {missing}"
           assert text.count('faction:"yellow"') >= 11
           assert text.count('faction:"blue"') >= 11
           assert text.count('faction:"green"') >= 11
           assert text.count('faction:"red"') >= 11
           assert text.count('scrap:{') >= 20
           assert 'const GAME_VERSION=2' in text
-          print("War Realms expansion validation passed")
+          assert 'warRealmsCommandDeckV2' in text
+          print("Validated 20 new playable cards and deck migration")
       - name: Commit generated update
         run: |
+          if git diff --quiet -- game/warrealms.html; then
+            echo "Expansion already applied"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add game/warrealms.html
-          git commit -m "Expand War Realms cards and sacrifice abilities"
-          git push
+          git commit -m "Make War Realms expansion cards playable"
+          git push origin HEAD:agent/activate-warrealms-expansion
