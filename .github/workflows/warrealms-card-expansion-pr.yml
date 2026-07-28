@@ -11,34 +11,89 @@ permissions:
 
 jobs:
   apply-expansion:
-    if: github.head_ref == 'agent/warrealms-card-scrap-expansion' || github.head_ref == 'agent/activate-warrealms-expansion'
+    if: github.head_ref == 'agent/activate-warrealms-expansion'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract and run expansion script
+
+      - name: Add 20 expansion cards
         shell: python
         run: |
           from pathlib import Path
-          import re
-          import textwrap
 
-          workflow = Path('.github/workflows/warrealms-card-expansion.yml').read_text(encoding='utf-8')
-          match = re.search(
-              r'- name: Add cards and broaden sacrifice abilities\n\s+shell: python\n\s+run: \|\n(?P<script>.*?)(?=\n\s+- name: Validate expansion)',
-              workflow,
-              re.S,
+          path = Path('game/warrealms.html')
+          text = path.read_text(encoding='utf-8')
+
+          text = text.replace(
+              'const STORAGE_KEY="warRealmsCommandDeckV1";',
+              'const STORAGE_KEY="warRealmsCommandDeckV2";'
           )
-          if not match:
-              raise SystemExit('Could not locate expansion script')
-          script = textwrap.dedent(match.group('script'))
-          exec(compile(script, '<warrealms-expansion>', 'exec'), {})
+          text = text.replace(
+              'const GAME_VERSION=1,DECK_SIZE=50,MAX_COPIES=4;',
+              'const GAME_VERSION=2,DECK_SIZE=50,MAX_COPIES=4;'
+          )
+
+          yellow_anchor = '      {id:"sovereign_dreadnought",name:"Sovereign Dreadnought",faction:"yellow",cost:7,type:"ship",sigil:"◈",effect:{combat:6,discard:1},ally:{draw:1,stun:1},text:"Gain 6 combat. Next enemy discards 1.",allyText:"Draw 1 and gain 1 disable."},'
+          yellow_cards = [
+              '      {id:"salvage_drone",name:"Salvage Drone",faction:"yellow",cost:1,type:"ship",sigil:"⌾",effect:{trade:1},ally:{},scrap:{trade:3},text:"Gain 1 trade.",allyText:"",scrapText:"Scrap: gain 3 trade."},',
+              '      {id:"signal_jammer",name:"Signal Jammer",faction:"yellow",cost:2,type:"ship",sigil:"⌁",effect:{combat:1},ally:{discard:1},scrap:{stun:1},text:"Gain 1 combat.",allyText:"Next enemy discards 1.",scrapText:"Scrap: gain 1 disable."},',
+              '      {id:"quantum_broker",name:"Quantum Broker",faction:"yellow",cost:3,type:"ship",sigil:"◫",effect:{trade:2},ally:{draw:1},scrap:{trade:2,combat:2},text:"Gain 2 trade.",allyText:"Draw 1 card.",scrapText:"Scrap: gain 2 trade and 2 combat."},',
+              '      {id:"null_field_array",name:"Null-Field Array",faction:"yellow",cost:4,type:"base",defense:5,outpost:true,sigil:"⧈",effect:{stun:1},ally:{trade:1},scrap:{draw:1},text:"Outpost. Gain 1 disable.",allyText:"Gain 1 trade.",scrapText:"Sacrifice: draw 1 card."},',
+              '      {id:"reality_harvester",name:"Reality Harvester",faction:"yellow",cost:6,type:"ship",sigil:"◉",effect:{trade:3,combat:3},ally:{stun:1},scrap:{draw:1,trade:2},text:"Gain 3 trade and 3 combat.",allyText:"Gain 1 disable.",scrapText:"Scrap: draw 1 and gain 2 trade."},'
+          ]
+
+          blue_anchor = '      {id:"throne_of_tides",name:"Throne of Tides",faction:"blue",cost:7,type:"base",defense:7,outpost:true,sigil:"♛",effect:{trade:3,heal:4},ally:{draw:1},text:"Outpost. Gain 3 trade and 4 authority.",allyText:"Draw 1 card."},'
+          blue_cards = [
+              '      {id:"votive_scribe",name:"Votive Scribe",faction:"blue",cost:1,type:"ship",sigil:"✎",effect:{heal:2},ally:{trade:1},scrap:{trade:3},text:"Gain 2 authority.",allyText:"Gain 1 trade.",scrapText:"Scrap: gain 3 trade."},',
+              '      {id:"pilgrim_of_dawn",name:"Pilgrim of Dawn",faction:"blue",cost:2,type:"ship",sigil:"☼",effect:{trade:1,heal:2},ally:{heal:2},scrap:{heal:5},text:"Gain 1 trade and 2 authority.",allyText:"Gain 2 authority.",scrapText:"Scrap: gain 5 authority."},',
+              '      {id:"reliquary_guard",name:"Reliquary Guard",faction:"blue",cost:3,type:"base",defense:5,outpost:true,sigil:"✥",effect:{heal:2},ally:{combat:1},scrap:{trade:2,heal:3},text:"Outpost. Gain 2 authority.",allyText:"Gain 1 combat.",scrapText:"Sacrifice: gain 2 trade and 3 authority."},',
+              '      {id:"absolution_choir",name:"Absolution Choir",faction:"blue",cost:4,type:"ship",sigil:"♫",effect:{heal:4,trade:1},ally:{draw:1},scrap:{draw:1},text:"Gain 4 authority and 1 trade.",allyText:"Draw 1 card.",scrapText:"Scrap: draw 1 card."},',
+              '      {id:"saint_of_the_deep",name:"Saint of the Deep",faction:"blue",cost:6,type:"ship",sigil:"𓆩♢𓆪",effect:{combat:3,heal:5},ally:{trade:2},scrap:{heal:6,combat:2},text:"Gain 3 combat and 5 authority.",allyText:"Gain 2 trade.",scrapText:"Scrap: gain 6 authority and 2 combat."},'
+          ]
+
+          green_anchor = '      {id:"worldbreaker_horde",name:"Worldbreaker Horde",faction:"green",cost:7,type:"ship",sigil:"⬢",effect:{combat:9},ally:{draw:1},text:"Gain 9 combat.",allyText:"Draw 1 card."},'
+          green_cards = [
+              '      {id:"scrapfang_runt",name:"Scrapfang Runt",faction:"green",cost:1,type:"ship",sigil:"♠",effect:{combat:2},ally:{},scrap:{combat:3},text:"Gain 2 combat.",allyText:"",scrapText:"Scrap: gain 3 combat."},',
+              '      {id:"loot_cart",name:"Loot Cart",faction:"green",cost:2,type:"ship",sigil:"▣",effect:{trade:2},ally:{combat:1},scrap:{trade:3},text:"Gain 2 trade.",allyText:"Gain 1 combat.",scrapText:"Scrap: gain 3 trade."},',
+              '      {id:"rage_caller",name:"Rage Caller",faction:"green",cost:3,type:"ship",sigil:"☄",effect:{combat:4},ally:{combat:2},scrap:{combat:4},text:"Gain 4 combat.",allyText:"Gain 2 combat.",scrapText:"Scrap: gain 4 combat."},',
+              '      {id:"breakneck_stockade",name:"Breakneck Stockade",faction:"green",cost:4,type:"base",defense:5,outpost:true,sigil:"▰",effect:{combat:2},ally:{combat:2},scrap:{combat:6},text:"Outpost. Gain 2 combat.",allyText:"Gain 2 combat.",scrapText:"Sacrifice: gain 6 combat."},',
+              '      {id:"last_charge_titan",name:"Last-Charge Titan",faction:"green",cost:6,type:"ship",sigil:"♞",effect:{combat:7},ally:{draw:1},scrap:{combat:7},text:"Gain 7 combat.",allyText:"Draw 1 card.",scrapText:"Scrap: gain 7 combat."},'
+          ]
+
+          red_anchor = '      {id:"eclipse_archon",name:"Eclipse Archon",faction:"red",cost:7,type:"ship",sigil:"◒",effect:{combat:7,draw:1},ally:{combat:3},scrap:{combat:5,heal:5},text:"Gain 7 combat and draw 1.",allyText:"Gain 3 combat.",scrapText:"Scrap: gain 5 combat and 5 authority."}'
+          red_cards = [
+              '      {id:"coin_curse",name:"Coin Curse",faction:"red",cost:1,type:"ship",sigil:"¤",effect:{combat:1},ally:{},scrap:{trade:3},text:"Gain 1 combat.",allyText:"",scrapText:"Scrap: gain 3 trade."},',
+              '      {id:"bone_appraiser",name:"Bone Appraiser",faction:"red",cost:2,type:"ship",sigil:"☠",effect:{trade:2},ally:{combat:1},scrap:{trade:2,combat:2},text:"Gain 2 trade.",allyText:"Gain 1 combat.",scrapText:"Scrap: gain 2 trade and 2 combat."},',
+              '      {id:"hexed_portal",name:"Hexed Portal",faction:"red",cost:3,type:"base",defense:4,sigil:"◌",effect:{trade:1,combat:1},ally:{scrapMarket:1},scrap:{draw:1},text:"Gain 1 trade and 1 combat.",allyText:"Scrap 1 market card.",scrapText:"Sacrifice: draw 1 card."},',
+              '      {id:"death_tithe",name:"Death Tithe",faction:"red",cost:4,type:"ship",sigil:"†",effect:{combat:4,heal:2},ally:{trade:2},scrap:{trade:4},text:"Gain 4 combat and 2 authority.",allyText:"Gain 2 trade.",scrapText:"Scrap: gain 4 trade."},',
+              '      {id:"void_auctioneer",name:"Void Auctioneer",faction:"red",cost:6,type:"ship",sigil:"◍",effect:{trade:3,combat:3,scrapMarket:1},ally:{draw:1},scrap:{trade:5,combat:3},text:"Gain 3 trade, 3 combat, and scrap 1 market card.",allyText:"Draw 1 card.",scrapText:"Scrap: gain 5 trade and 3 combat."}'
+          ]
+
+          insertions = [
+              (yellow_anchor, '\n'.join(yellow_cards), False),
+              (blue_anchor, '\n'.join(blue_cards), False),
+              (green_anchor, '\n'.join(green_cards), False),
+              (red_anchor, '\n'.join(red_cards), True)
+          ]
+
+          for anchor, cards, needs_comma in insertions:
+              if cards.split('id:"', 1)[1].split('"', 1)[0] in text:
+                  continue
+              if anchor not in text:
+                  raise SystemExit(f'Expansion anchor not found: {anchor[:80]}')
+              separator = ',\n' if needs_comma else '\n'
+              text = text.replace(anchor, anchor + separator + cards, 1)
+
+          path.write_text(text, encoding='utf-8')
+
       - name: Validate generated game
         shell: python
         run: |
           from pathlib import Path
+
           text = Path('game/warrealms.html').read_text(encoding='utf-8')
           new_ids = [
               'salvage_drone','signal_jammer','quantum_broker','null_field_array','reality_harvester',
@@ -48,10 +103,15 @@ jobs:
           ]
           missing = [card_id for card_id in new_ids if f'id:"{card_id}"' not in text]
           assert not missing, f'Missing cards: {missing}'
+          assert text.count('faction:"yellow"') >= 11
+          assert text.count('faction:"blue"') >= 11
+          assert text.count('faction:"green"') >= 11
+          assert text.count('faction:"red"') >= 11
           assert text.count('scrap:{') >= 20
           assert 'const GAME_VERSION=2' in text
           assert 'warRealmsCommandDeckV2' in text
-          print('Validated 20 new cards and cross-faction sacrifice effects')
+          print('Validated 20 playable expansion cards')
+
       - name: Commit expansion
         run: |
           if git diff --quiet -- game/warrealms.html; then
