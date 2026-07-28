@@ -91,8 +91,9 @@
     .cardArt{height:35%;min-height:18px;display:grid;place-items:center;background:
       radial-gradient(circle at 50% 38%,color-mix(in srgb,var(--faction) 37%,transparent),transparent 48%),
       repeating-linear-gradient(125deg,transparent 0 8px,rgba(255,255,255,.025) 8px 9px),#0c1117;
-      border-block:1px solid color-mix(in srgb,var(--faction) 33%,#252c34)
+      border-block:1px solid color-mix(in srgb,var(--faction) 33%,#252c34);overflow:hidden
     }
+    .cardArt img{width:100%;height:100%;display:block;object-fit:cover}
     .sigil{font-size:clamp(13px,4vw,24px);line-height:1;color:var(--faction);font-weight:400;text-shadow:0 0 10px color-mix(in srgb,var(--faction) 56%,transparent)}
     .cardRules{flex:1;padding:3px;overflow:hidden;font-size:5.8px;line-height:1.16;color:#c6ced8}
     .cardRules b{color:var(--faction)}
@@ -134,7 +135,8 @@
     .closeBtn{margin-left:auto;width:29px;height:29px;border:1px solid #374250;background:#1b232d;border-radius:8px;cursor:pointer}
     .modalBody{padding:10px;overflow:auto}
     .detailLayout{display:grid;grid-template-columns:100px 1fr;gap:12px}
-    .detailArt{height:130px;border:1px solid var(--faction,#51606f);border-radius:10px;display:grid;place-items:center;background:#0a0f14;font-size:45px;color:var(--faction,#fff)}
+    .detailArt{height:130px;border:1px solid var(--faction,#51606f);border-radius:10px;display:grid;place-items:center;background:#0a0f14;font-size:45px;color:var(--faction,#fff);overflow:hidden}
+    .detailArt img,.miniArt img{width:100%;height:100%;display:block;object-fit:cover}
     .detailCopy h3{margin:0 0 3px;font-size:18px}.detailCopy .race{color:var(--faction,#9ca8b6);font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
     .detailCopy p{font-size:11px;line-height:1.45;color:#c5ced8}.detailActions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
     .detailActions button{height:34px;border:1px solid #43505f;border-radius:7px;background:#1b2530;padding:0 11px;font-size:9px;font-weight:900;cursor:pointer}
@@ -149,7 +151,7 @@
     .catalog{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
     .catalogItem{--faction:var(--neutral);border:1px solid color-mix(in srgb,var(--faction) 42%,#37414d);border-radius:9px;background:#151c24;padding:6px;display:grid;grid-template-columns:31px 1fr auto;gap:6px;align-items:center}
     .catalogItem.yellow{--faction:var(--yellow)}.catalogItem.blue{--faction:var(--blue)}.catalogItem.green{--faction:var(--green)}.catalogItem.red{--faction:var(--red)}
-    .miniArt{width:31px;height:39px;border-radius:6px;display:grid;place-items:center;color:var(--faction);background:#0b1015;border:1px solid color-mix(in srgb,var(--faction) 45%,#303946);font-size:16px}
+    .miniArt{width:31px;height:39px;border-radius:6px;display:grid;place-items:center;color:var(--faction);background:#0b1015;border:1px solid color-mix(in srgb,var(--faction) 45%,#303946);font-size:16px;overflow:hidden}
     .catalogName{font-size:8px;font-weight:950}.catalogRule{font-size:6px;color:#9ca7b4;line-height:1.25;margin-top:2px}
     .qty{display:grid;grid-template-columns:20px 22px 20px;align-items:center}
     .qty button{width:20px;height:22px;padding:0;border:1px solid #3d4855;background:#202a35;cursor:pointer}
@@ -306,6 +308,7 @@
     const localMode=!lobbyId;
     const STORAGE_KEY="warRealmsCommandDeckV1";
     const GAME_VERSION=1,DECK_SIZE=50,MAX_COPIES=4;
+    const ASSET_ROOT="../graphics/warrealms/cards/";
     const RACES={
       yellow:"Xythe Concord · High-tech alien dominion",
       blue:"Azure Ascendancy · High priesthood and blue-winged knights",
@@ -351,6 +354,8 @@
     };
 
     let state=null,lobbyData=null,user=null,presence=new Map(),unsubLobby=null,unsubPresence=null,actionBusy=false,toastTimer=0,aiTimer=0;
+    let graphicsReady=false;
+    const cardAssets=new Map(),missingAssets=new Set();
     let editDeck=loadDeck();
     const lobbyRef=lobbyId?doc(db,"lobbies",lobbyId):null;
 
@@ -384,6 +389,25 @@
       if(e.draw)parts.push(`Draw ${e.draw}`);if(e.discard)parts.push(`Discard ${e.discard}`);if(e.stun)parts.push(`Disable ${e.stun}`);if(e.scrapMarket)parts.push(`Scrap row ${e.scrapMarket}`);
       return parts.join(" · ");
     }
+    function assetUrl(id){return `${ASSET_ROOT}${id}.webp`}
+    function artMarkup(c){
+      const url=cardAssets.get(c.id);
+      return url?`<img src="${url}" alt="" draggable="false" decoding="async" />`:`<span class="sigil">${c.sigil}</span>`;
+    }
+    async function preloadGraphics(){
+      const ids=[...CARD_LIST.map(c=>c.id),...Object.keys(STARTERS)],total=ids.length;
+      let complete=0;
+      const update=()=>{$("#loadingText").textContent=`Loading card graphics… ${complete} / ${total}`};
+      update();
+      await Promise.all(ids.map(id=>new Promise(resolve=>{
+        const img=new Image(),url=assetUrl(id);
+        img.onload=()=>{cardAssets.set(id,url);complete++;update();resolve()};
+        img.onerror=()=>{missingAssets.add(id);complete++;update();resolve()};
+        img.src=url;
+      })));
+      graphicsReady=true;
+      $("#loadingText").textContent=missingAssets.size?`Battle ready · ${missingAssets.size} graphic fallback${missingAssets.size===1?"":"s"}`:"All card graphics ready.";
+    }
     function fullRules(c){
       const bits=[c.text];if(c.allyText)bits.push(`Ally — ${c.allyText}`);if(c.scrapText)bits.push(c.scrapText);
       if(c.type==="base")bits.unshift(`${c.outpost?"Outpost base":"Base"} · ${c.defense} defense.`);
@@ -395,7 +419,7 @@
       const classes=["gameCard",c.faction,opts.base?"baseCard":"",opts.afford?"afford":"",opts.disabled?"disabled":"",opts.stunned?"stunned":""].filter(Boolean).join(" ");
       return `<button class="${classes}" data-card="${c.id}" ${opts.instance?`data-instance="${escapeHtml(opts.instance)}"`:""} ${opts.action?`data-action="${opts.action}"`:""}>
         <div class="cardTop"><span class="cost">${c.cost}</span><span class="cardName">${escapeHtml(c.name)}</span></div>
-        <div class="cardArt"><span class="sigil">${c.sigil}</span></div>
+        <div class="cardArt">${artMarkup(c)}</div>
         <div class="cardRules">${c.type==="base"?`<b>${c.outpost?"OUTPOST":"BASE"} ${c.defense}</b><br>`:""}${escapeHtml(c.text)}${c.allyText?`<br><b>ALLY</b> ${escapeHtml(c.allyText)}`:""}</div>
         <div class="cardFoot"><span class="ownerMark">${escapeHtml(owner)}</span>${c.type==="base"?`<b class="defense">⬡ ${c.defense}</b>`:""}</div>
         ${c.scrap||c.effect?.scrapMarket?`<span class="scrapBadge">✕</span>`:""}
@@ -631,7 +655,7 @@
       if(options.scrapIndex!=null)actions.push(`<button class="danger" data-detail-act="scrap-market">Scrap from row</button>`);
       if(options.buyMerc)actions.push(`<button data-detail-act="merc">Recruit for ◆ 2</button>`);
       if(options.scrapPlayed)actions.push(`<button class="danger" data-detail-act="scrap-played">Use sacrifice ability</button>`);
-      $("#detailBody").innerHTML=`<div class="detailLayout" style="--faction:${color}"><div class="detailArt">${c.sigil}</div><div class="detailCopy"><span class="race">${escapeHtml(c.type)} · Cost ${c.cost}</span><h3>${escapeHtml(c.name)}</h3><p>${escapeHtml(fullRules(c))}</p><p style="color:#8793a2">${escapeHtml(effectSummary(c.effect))}${c.allyText?`<br>Ally: ${escapeHtml(effectSummary(c.ally))}`:""}${c.scrapText?`<br>Sacrifice: ${escapeHtml(effectSummary(c.scrap))}`:""}</p><div class="detailActions">${actions.join("")}</div></div></div>`;
+      $("#detailBody").innerHTML=`<div class="detailLayout" style="--faction:${color}"><div class="detailArt">${artMarkup(c)}</div><div class="detailCopy"><span class="race">${escapeHtml(c.type)} · Cost ${c.cost}</span><h3>${escapeHtml(c.name)}</h3><p>${escapeHtml(fullRules(c))}</p><p style="color:#8793a2">${escapeHtml(effectSummary(c.effect))}${c.allyText?`<br>Ally: ${escapeHtml(effectSummary(c.ally))}`:""}${c.scrapText?`<br>Sacrifice: ${escapeHtml(effectSummary(c.scrap))}`:""}</p><div class="detailActions">${actions.join("")}</div></div></div>`;
       const overlay=$("#detailOverlay");overlay.classList.remove("hidden");
       overlay.querySelector("[data-detail-act=buy]")?.addEventListener("click",()=>{overlay.classList.add("hidden");perform({type:"BUY",index:options.buyIndex})});
       overlay.querySelector("[data-detail-act=scrap-market]")?.addEventListener("click",()=>{overlay.classList.add("hidden");perform({type:"SCRAP_MARKET",index:options.scrapIndex})});
@@ -658,7 +682,7 @@
     function renderBuilder(){
       const counts=countDeck(editDeck),n=editDeck.length;$("#deckCountBig").textContent=`${n} / ${DECK_SIZE}`;$("#deckCountBig").className=`deckCountBig ${n===DECK_SIZE?"good":"bad"}`;$("#deckMeterFill").style.width=`${Math.min(100,n/DECK_SIZE*100)}%`;
       $("#saveDeckBtn").disabled=!deckIsValid(editDeck);
-      $("#catalog").innerHTML=CARD_LIST.map(c=>`<div class="catalogItem ${c.faction}"><div class="miniArt">${c.sigil}</div><div><div class="catalogName">${escapeHtml(c.name)} · ${c.cost}</div><div class="catalogRule">${escapeHtml(c.text)}${c.allyText?` Ally: ${escapeHtml(c.allyText)}`:""}</div></div><div class="qty"><button data-minus="${c.id}">−</button><b>${counts[c.id]||0}</b><button data-plus="${c.id}" ${(counts[c.id]||0)>=MAX_COPIES||n>=DECK_SIZE?"disabled":""}>+</button></div></div>`).join("");
+      $("#catalog").innerHTML=CARD_LIST.map(c=>`<div class="catalogItem ${c.faction}"><div class="miniArt">${artMarkup(c)}</div><div><div class="catalogName">${escapeHtml(c.name)} · ${c.cost}</div><div class="catalogRule">${escapeHtml(c.text)}${c.allyText?` Ally: ${escapeHtml(c.allyText)}`:""}</div></div><div class="qty"><button data-minus="${c.id}">−</button><b>${counts[c.id]||0}</b><button data-plus="${c.id}" ${(counts[c.id]||0)>=MAX_COPIES||n>=DECK_SIZE?"disabled":""}>+</button></div></div>`).join("");
       $$("[data-minus]").forEach(b=>b.addEventListener("click",()=>{const i=editDeck.indexOf(b.dataset.minus);if(i>=0)editDeck.splice(i,1);renderBuilder()}));
       $$("[data-plus]").forEach(b=>b.addEventListener("click",()=>{if(editDeck.length<DECK_SIZE&&(counts[b.dataset.plus]||0)<MAX_COPIES)editDeck.push(b.dataset.plus);renderBuilder()}));
     }
@@ -675,7 +699,7 @@
     }
     async function publishPresence(){
       if(localMode||!user)return;
-      await setDoc(doc(db,"lobbies",lobbyId,"presence",user.uid),{uid:user.uid,name:myName,active:true,ready:true,game:"war-realms",deck:loadDeck(),deckSize:50,lastSeen:serverTimestamp()},{merge:true});
+      await setDoc(doc(db,"lobbies",lobbyId,"presence",user.uid),{uid:user.uid,name:myName,active:true,ready:graphicsReady,loading:!graphicsReady,game:"war-realms",deck:loadDeck(),deckSize:50,graphicsMissing:missingAssets.size,lastSeen:serverTimestamp()},{merge:true});
     }
     async function maybeStart(){
       if(localMode||!lobbyData||lobbyData.game)return;
@@ -698,7 +722,9 @@
     }
     async function boot(){
       $("#userTag").textContent=myName;$("#lobbyTag").textContent=localMode?"Local skirmish":`Lobby ${lobbyId}`;
+      const graphicsPromise=preloadGraphics();
       if(localMode){
+        await graphicsPromise;
         state=createGame([{name:myName,uid:"local_player",deck:loadDeck()},{name:"Gorak Ironmind",uid:"ai_gorak",isAI:true,deck:defaultAIDeck()}]);user={uid:"local_player"};render();return;
       }
       try{
@@ -706,6 +732,7 @@
         const snap=await getDoc(lobbyRef);if(!snap.exists())throw new Error("This lobby does not exist.");
         lobbyData=snap.data();
         if(!lobbyData.warLoadingStartedAt&&!lobbyData.game)await setDoc(lobbyRef,{warLoadingStartedAt:Date.now()},{merge:true});
+        await graphicsPromise;await publishPresence();
         attach();setInterval(()=>publishPresence().catch(()=>{}),9000);setInterval(()=>maybeStart(),1000);
       }catch(error){console.error(error);$("#loadingText").textContent=`Unable to enter War Realms: ${error.message}`}
     }
