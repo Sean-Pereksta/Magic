@@ -696,7 +696,6 @@
   }
 
   function cardArtCandidates(cardId) {
-    if (CARD_ART_FALLBACK_ONLY.has(cardId)) return [];
     const aliases = Array.isArray(CARD_ART_ALIASES[cardId]) ? CARD_ART_ALIASES[cardId] : [];
     const fileNames = aliases.length ? aliases : [`${cardId}.png`];
     return [...new Set(fileNames.filter(Boolean))].map(fileName => new URL(fileName, CARD_ART_ROOT).href);
