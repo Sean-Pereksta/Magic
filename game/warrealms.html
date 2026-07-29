@@ -264,7 +264,7 @@
     .battleFallbackSigil{font-size:34px;line-height:1;color:var(--faction);text-shadow:0 0 18px color-mix(in srgb,var(--faction) 55%,transparent)}
     .battleFallbackName{font-size:8px;line-height:1.2;font-weight:950;color:#fff}
     .battleFallbackType{font-size:6px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:#aeb9c6}
-    .cardAbilityRail{min-height:23px;padding:3px 4px;display:flex;align-items:center;gap:3px;overflow:hidden;background:#090e14;border-top:1px solid #25313d}.abilityGlyph{min-width:22px;height:17px;border:1px solid #4a5a6c;border-radius:999px;background:#131d27;display:inline-flex;align-items:center;justify-content:center;gap:2px;padding:0 5px;color:#eef4fb;font-size:7px;font-weight:950;white-space:nowrap}.abilityGlyph.primary{border-color:#65778a}.abilityGlyph.ally{border-color:#d2b94e;color:#f5dc6e}.abilityGlyph.sacrifice{border-color:#b9495e;color:#ff9aaa}.abilityGlyph.more{color:#9fabb8}.detailAbilityGrid{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0 10px}.detailAbilityGrid .abilityGlyph{height:26px;padding:0 8px;font-size:9px}.gameCard.discardChoice{box-shadow:0 0 0 2px #c95268,0 0 24px rgba(201,82,104,.4);animation:discardChoicePulse 1.1s ease-in-out infinite}.gameCard.discardChoice .cardAbilityRail{background:#211018}.forcedDiscardBanner{position:fixed;z-index:116;left:50%;top:calc(68px + var(--safeTop));transform:translateX(-50%);width:min(520px,92vw);border:2px solid #c8546a;border-radius:14px;background:rgba(39,13,21,.97);box-shadow:0 18px 48px rgba(0,0,0,.48),0 0 24px rgba(200,84,106,.25);padding:9px 12px;display:flex;align-items:center;gap:10px;color:#ffe7ea}.forcedDiscardIcon{width:40px;height:40px;flex:0 0 40px;border-radius:11px;background:#5a1e2c;display:grid;place-items:center;font-size:23px;font-weight:1000}.forcedDiscardCopy{min-width:0}.forcedDiscardCopy b{display:block;font-size:12px}.forcedDiscardCopy span{display:block;margin-top:2px;color:#f0b8c1;font-size:8px;line-height:1.35}@keyframes discardChoicePulse{0%,100%{filter:none}50%{filter:brightness(1.18)}}
+    .cardAbilityRail{min-height:23px;padding:3px 4px;display:flex;align-items:center;gap:3px;overflow:hidden;background:#090e14;border-top:1px solid #25313d}.abilityGlyph{min-width:22px;height:17px;border:1px solid #4a5a6c;border-radius:999px;background:#131d27;display:inline-flex;align-items:center;justify-content:center;gap:2px;padding:0 5px;color:#eef4fb;font-size:7px;font-weight:950;white-space:nowrap}.abilityGlyph.primary{border-color:#65778a}.abilityGlyph.ally{border-color:#d2b94e;color:#f5dc6e}.abilityGlyph.doubleAlly{border-color:#8fb7ef;color:#c8dcff;box-shadow:inset 0 0 0 1px rgba(226,197,77,.22)}.abilityGlyph.sacrifice{border-color:#b9495e;color:#ff9aaa}.abilityGlyph.more{color:#9fabb8}.detailAbilityGrid{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0 10px}.detailAbilityGrid .abilityGlyph{height:26px;padding:0 8px;font-size:9px}.gameCard.discardChoice{box-shadow:0 0 0 2px #c95268,0 0 24px rgba(201,82,104,.4);animation:discardChoicePulse 1.1s ease-in-out infinite}.gameCard.discardChoice .cardAbilityRail{background:#211018}.forcedDiscardBanner{position:fixed;z-index:116;left:50%;top:calc(68px + var(--safeTop));transform:translateX(-50%);width:min(520px,92vw);border:2px solid #c8546a;border-radius:14px;background:rgba(39,13,21,.97);box-shadow:0 18px 48px rgba(0,0,0,.48),0 0 24px rgba(200,84,106,.25);padding:9px 12px;display:flex;align-items:center;gap:10px;color:#ffe7ea}.forcedDiscardIcon{width:40px;height:40px;flex:0 0 40px;border-radius:11px;background:#5a1e2c;display:grid;place-items:center;font-size:23px;font-weight:1000}.forcedDiscardCopy{min-width:0}.forcedDiscardCopy b{display:block;font-size:12px}.forcedDiscardCopy span{display:block;margin-top:2px;color:#f0b8c1;font-size:8px;line-height:1.35}@keyframes discardChoicePulse{0%,100%{filter:none}50%{filter:brightness(1.18)}}
     .gameCard .cardActions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;flex-wrap:nowrap;padding:5px;background:#0e141b;border-top:1px solid #26313d}
     .gameCard .cardActions .btn{width:100%;min-width:0;flex:none;white-space:nowrap}
     .gameCard .cardActions .btn:only-child{grid-column:1/-1}
@@ -515,7 +515,7 @@
   const presenceCollection = gameId ? collection(db, "lobbies", gameId, "warrealmsPresence") : null;
 
   const PROFILE_VERSION = 3;
-  const GAME_SCHEMA = 4;
+  const GAME_SCHEMA = 5;
   const STARTING_AUTHORITY = 50;
   const STARTING_SIGILS = 120;
   const STARTER_CARDS_PER_FACTION = 50;
@@ -615,11 +615,12 @@
 
   function normalizeBattleEntry(entry, ownerId, zone, index) {
     if (typeof entry === "string") {
-      return { id: entry, instanceId: legacyInstanceId(ownerId, zone, index, entry), ownerId, allyTurn: 0, disabledTurn: 0, stunTurns: 0 };
+      return { id: entry, instanceId: legacyInstanceId(ownerId, zone, index, entry), ownerId, allyTurn: 0, doubleAllyTurn: 0, disabledTurn: 0, stunTurns: 0 };
     }
     if (!entry || typeof entry !== "object" || !entry.id) return null;
     return {
       allyTurn: 0,
+      doubleAllyTurn: 0,
       disabledTurn: 0,
       stunTurns: 0,
       ownerId,
@@ -909,7 +910,8 @@
     "Authority": "Authority is realm health. Healing restores Authority, but never above the normal maximum unless a card explicitly says otherwise.",
     "Draw": "Draw immediately adds the stated number of cards from your draw pile to your hand. When needed, the discard pile is shuffled into a new draw pile.",
     "Discard": "A discard effect queues a forced choice for the affected player's next turn. After drawing, that player selects the required number of highlighted hand cards and moves them to discard before any other action. It never requires more cards than are actually in hand.",
-    "Ally": "An Ally effect triggers once when enough active cards of the same faction are present during the turn. Persistent bases count toward that faction total.",
+    "Ally": "An Ally effect triggers once when this card and at least one other active card of the same faction are present during the turn. Persistent bases count toward that faction total.",
+    "Double Ally": "A Double Ally effect triggers once when this card and at least two other active cards of the same faction are present during the turn—three matching active cards total. Persistent bases count.",
     "Sacrifice": "Sacrifice permanently removes that deployed card from the current battle to gain its listed sacrifice effect.",
     "Base": "A Base stays deployed after being played and produces its Primary effect again at the start of its owner's turns.",
     "Outpost": "An Outpost is a protective Base. Enemy realms and non-Outpost bases cannot be attacked while that realm controls an Outpost.",
@@ -936,6 +938,8 @@
     "draws": "Draw",
     "discard": "Discard",
     "discards": "Discard",
+    "double faction ally": "Double Ally",
+    "double ally": "Double Ally",
     "faction ally": "Ally",
     "ally": "Ally",
     "sacrifice": "Sacrifice",
@@ -988,11 +992,29 @@
     });
   }
 
+  function doubleAllyEffect(card) {
+    if (!card || typeof card !== "object") return {};
+    const effect = card.doubleAlly || card.double_ally || card.ally2;
+    return effect && typeof effect === "object" ? effect : {};
+  }
+
+  function hasEffect(effect) {
+    return !!effect && typeof effect === "object" && Object.keys(effect).some(key => Number(effect[key]) || effect[key] === true);
+  }
+
+  function completeCardRules(card) {
+    const rules = String(fullCardRules(card) || "");
+    const doubleAlly = effectSummary(doubleAllyEffect(card));
+    if (!doubleAlly || /double ally\s*:/i.test(rules)) return rules;
+    return `${rules}${rules ? " " : ""}Double Ally: ${doubleAlly}.`;
+  }
+
   function cardAbilityGlyphs(card) {
     if (!card) return [];
     const glyphs = [
       ...effectGlyphItems(card.effect, "primary"),
       ...effectGlyphItems(card.ally, "ally"),
+      ...effectGlyphItems(doubleAllyEffect(card), "doubleAlly"),
       ...effectGlyphItems(card.sacrifice, "sacrifice")
     ];
     if (card.outpost) glyphs.unshift({ key: "outpost", icon: "🛡", label: `Outpost ${card.defense || 0}`, amountText: String(card.defense || 0), source: "primary" });
@@ -1001,7 +1023,7 @@
   }
 
   function abilityGlyphHtml(item, detailed = false) {
-    const sourceLabel = item.source === "ally" ? "Ally" : item.source === "sacrifice" ? "Sacrifice" : "Primary";
+    const sourceLabel = item.source === "ally" ? "Ally" : item.source === "doubleAlly" ? "Double Ally" : item.source === "sacrifice" ? "Sacrifice" : "Primary";
     const title = `${sourceLabel}: ${item.label}${item.amountText ? ` ${item.amountText}` : ""}`;
     return `<span class="abilityGlyph ${item.source || "primary"}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><span>${escapeHtml(item.icon)}</span>${item.amountText ? `<b>${escapeHtml(item.amountText)}</b>` : ""}${detailed ? `<span>${escapeHtml(item.label)}</span>` : ""}</span>`;
   }
@@ -1191,7 +1213,7 @@
         <div><div class="storeCardKind">${escapeHtml(FACTIONS[card.faction].title)} · ${displayCardType(card)}</div><h3>${escapeHtml(card.name)}</h3></div>
         <div class="storePriceBox"><div class="storePriceLabel">Store cost</div><div class="storePriceValue"><b>${price}</b><span>War Sigils</span></div><div class="storePriceNote">${firstCopyNote}</div></div>
         <div class="storeOwnedLine">Owned ${owned} / ${MAX_COPIES_PER_CARD}</div>
-        <div class="storeRulesSummary">${escapeHtml(fullCardRules(card))}</div>
+        <div class="storeRulesSummary">${escapeHtml(completeCardRules(card))}</div>
         <div class="storeCardActions"><button class="btn small" data-act="details" data-card-id="${card.id}">Card details</button><button class="btn small primary" data-act="buy-profile-card" data-card-id="${card.id}" ${canBuy ? "" : "disabled"}>Buy for ${price}</button></div>
       </div>
     </article>`;
@@ -1212,7 +1234,7 @@
       <div class="deckMoveCopy">
         <div class="deckMoveTop"><span class="deckMoveCost">${card.cost}</span><span class="deckMoveName">${escapeHtml(card.name)}</span></div>
         <div class="deckMoveType">${displayCardType(card)} · ${escapeHtml(FACTIONS[card.faction].name)}</div>
-        <div class="deckMoveRules">${escapeHtml(fullCardRules(card))}</div>
+        <div class="deckMoveRules">${escapeHtml(completeCardRules(card))}</div>
       </div>
       <div class="deckMoveMeta"><span class="deckCountPill">×${count}</span><span class="deckMoveCue">${cue}</span></div>
     </article>`;
@@ -1417,6 +1439,7 @@
     const faction = FACTIONS[card.faction];
     const effect = effectSummary(card.effect);
     const ally = effectSummary(card.ally);
+    const doubleAlly = effectSummary(doubleAllyEffect(card));
     const sacrifice = effectSummary(card.sacrifice);
     openModal(card.name, `${faction.name} · ${faction.title}`, `
       <div class="detailGrid" style="--faction:var(--${card.faction})">
@@ -1426,9 +1449,10 @@
           <h3>${escapeHtml(card.name)}</h3>
           <p class="effectHint">Tap any highlighted effect term for a quick explanation. The icon row previews the card's abilities.</p>
           ${cardAbilityRailHtml(card, true)}
-          <div class="detailRules">${linkEffectTerms(fullCardRules(card))}</div>
+          <div class="detailRules">${linkEffectTerms(completeCardRules(card))}</div>
           ${effect ? `<div class="detailEffect"><b>${effectLabelHtml("Primary")}:</b> ${linkEffectTerms(effect)}</div>` : ""}
           ${ally ? `<div class="detailEffect"><b>${effectLabelHtml("Ally")}:</b> ${linkEffectTerms(ally)}</div>` : ""}
+          ${doubleAlly ? `<div class="detailEffect"><b>${effectLabelHtml("Double Ally")}:</b> ${linkEffectTerms(doubleAlly)} <span style="color:#8fa0b2">(requires two other matching-faction cards)</span></div>` : ""}
           ${sacrifice ? `<div class="detailEffect"><b>${effectLabelHtml("Sacrifice")}:</b> ${linkEffectTerms(sacrifice)}</div>` : ""}
           <p><i>${escapeHtml(card.flavor || "")}</i></p>
           <div class="modalActions">${extraActions}</div>
@@ -1785,10 +1809,20 @@
     if (active.length < 2) return;
     for (const entry of active) {
       const card = CARD_MAP[entry.id];
-      if (!card || entry.allyTurn === game.turnSerial || !Object.keys(card.ally || {}).length) continue;
-      entry.allyTurn = game.turnSerial;
-      applyEffect(game, player, card.ally, { cardId: card.id, source: "ally" });
-      addLog(game, `${player.name} triggered ${card.name}'s faction ally ability.`);
+      if (!card) continue;
+
+      if (entry.allyTurn !== game.turnSerial && hasEffect(card.ally)) {
+        entry.allyTurn = game.turnSerial;
+        applyEffect(game, player, card.ally, { cardId: card.id, source: "ally" });
+        addLog(game, `${player.name} triggered ${card.name}'s faction ally ability.`);
+      }
+
+      const doubleAlly = doubleAllyEffect(card);
+      if (active.length >= 3 && entry.doubleAllyTurn !== game.turnSerial && hasEffect(doubleAlly)) {
+        entry.doubleAllyTurn = game.turnSerial;
+        applyEffect(game, player, doubleAlly, { cardId: card.id, source: "doubleAlly" });
+        addLog(game, `${player.name} triggered ${card.name}'s Double Ally ability with two additional ${FACTIONS[faction]?.name || faction} cards.`);
+      }
     }
   }
 
@@ -1884,7 +1918,7 @@
           addLog(game, `${actor.name} cleared an obsolete card entry from their hand.`);
           break;
         }
-        const entry = { id: cardId, instanceId: makeId("card"), ownerId: actor.id, allyTurn: 0, disabledTurn: 0, stunTurns: 0 };
+        const entry = { id: cardId, instanceId: makeId("card"), ownerId: actor.id, allyTurn: 0, doubleAllyTurn: 0, disabledTurn: 0, stunTurns: 0 };
         if (card.type === "base") actor.bases.push(entry); else actor.played.push(entry);
         pushActionQueue(game, actor, card);
         pushVisualEvent(game, "card-play", { actorId: actor.id, cardId: card.id, instanceId: entry.instanceId, zone: card.type === "base" ? "bases" : "played" });
@@ -2548,7 +2582,7 @@
         <p><b>Armory mode:</b> When the lobby sends only one player, this file opens the profile store and deck builder instead of starting combat. The store reads every card directly from the shared card pack, supports faction plus owned/unowned filters, and loads artwork as it enters view. The Deck Builder shows separate scrollable In Deck and Out of Deck lists; tap any card to move one copy between them.</p>
         <p><b>Bring 50:</b> Every multiplayer commander contributes their saved 50-card command deck. Those decks are mixed into one shared War Market, and each market card still shows who originally contributed it.</p>
         <p><b>Start with 10:</b> Every player begins the battle with eight Realm Coins and two Militia Blades. Draw five cards at the beginning of your turn. Press Play on a card or drag it upward out of your hand to play it, then spend Trade in the Trade Row.</p>
-        <p><b>Faction allies:</b> When at least two active cards of the same faction are deployed during your turn, each eligible card's Ally ability triggers once that turn. Persistent bases count toward this.</p>
+        <p><b>Faction allies:</b> Ally triggers when the card and one other active matching-faction card are present. Double Ally requires the card and two other active matching-faction cards—three matching cards total. Each ability triggers only once per turn, and persistent bases count.</p>
         <p><b>Bases and Outposts:</b> Bases remain in play and produce their primary effect at the start of their owner's turns. An Outpost has taunt: while a realm controls any Outpost, its health and non-Outpost bases cannot be attacked. Outposts must be destroyed first.</p>
         <p><b>Targeting:</b> Combat is stored in your Combat pool. Choose exactly which attackable base or enemy realm receives it. Bases require Combat equal to their Defense and are destroyed immediately. Attacking a realm spends all remaining Combat.</p>
         <p><b>Current card abilities:</b> Trade, Combat, healing, card draw, forced opponent discard, Disable, Market Erase, permanent Purge, faction Ally triggers, persistent Base production, Outpost protection, and Sacrifice abilities. Compact symbols beneath each card make these effects visible without covering the full artwork.</p>
@@ -2618,7 +2652,7 @@
 
   function cardAiValue(card, bot, difficulty, forPurchase = false) {
     if (!card) return -100;
-    let value = effectAiValue(card.effect) + effectAiValue(card.ally) * .65 + effectAiValue(card.sacrifice) * .35;
+    let value = effectAiValue(card.effect) + effectAiValue(card.ally) * .65 + effectAiValue(doubleAllyEffect(card)) * .48 + effectAiValue(card.sacrifice) * .35;
     if (card.type === "base") value += (card.defense || 0) * .7 + (card.outpost ? 2.5 : 1.2);
     if (forPurchase) value -= card.cost * .25;
     if (difficulty === "hard" || difficulty === "impossible") {
@@ -2627,7 +2661,7 @@
       value += Math.min(4, factionCount * .18);
       if (card.faction === "red" && card.effect?.scrapOwn) value += 1.2;
     }
-    if (difficulty === "impossible") value += effectAiValue(card.ally) * .25 + (card.cost <= 3 ? .5 : 0);
+    if (difficulty === "impossible") value += effectAiValue(card.ally) * .25 + effectAiValue(doubleAllyEffect(card)) * .2 + (card.cost <= 3 ? .5 : 0);
     return value;
   }
 
@@ -2661,7 +2695,10 @@
     return bot.hand.map((cardId, index) => {
       const card = getCard(cardId);
       let score = cardAiValue(card, bot, difficulty);
-      if (card && factionCounts[card.faction] > 1) score += 3;
+      const activeFactionCount = card ? activeFactionEntries(state, bot, card.faction).length : 0;
+      const availableFactionCount = card ? (factionCounts[card.faction] || 0) + activeFactionCount : 0;
+      if (card && availableFactionCount > 1) score += 3;
+      if (card && hasEffect(doubleAllyEffect(card)) && availableFactionCount > 2) score += 4;
       if (card?.effect?.draw) score += 5;
       return { index, score };
     }).sort((left, right) => right.score - left.score)[0].index;
