@@ -1,0 +1,258 @@
+name: Apply War Realms red purge and outpost rules
+
+on:
+  push:
+    branches:
+      - agent/war-realms-red-purge-outposts
+    paths:
+      - .github/workflows/warrealms-red-purge-outposts.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-war-realms:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/war-realms-red-purge-outposts
+
+      - name: Add red purge identity and strict outpost protection
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("game/warrealms.html")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old, new, label):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              'const GAME_VERSION=2,DECK_SIZE=50,MAX_COPIES=4;',
+              'const GAME_VERSION=3,DECK_SIZE=50,MAX_COPIES=4;',
+              'game version',
+          )
+
+          replace_once(
+              '<span id="scrapRes" class="resource scrap">✕ 0</span>',
+              '<span id="scrapRes" class="resource scrap" title="Purge your own cards">✕ 0</span>\n        <span id="marketScrapRes" class="resource scrap" title="Scrap a War Market card">▧ 0</span>',
+              'resource display',
+          )
+
+          replace_once(
+              '<button id="playAllBtn" class="cmdBtn playAll">Play all</button>\n        <button id="endTurnBtn" class="cmdBtn primary">End turn</button>',
+              '<button id="playAllBtn" class="cmdBtn playAll">Play all</button>\n        <button id="purgeBtn" class="cmdBtn">Purge</button>\n        <button id="endTurnBtn" class="cmdBtn primary">End turn</button>',
+              'purge button',
+          )
+
+          red_replacements = {
+              '      {id:"ash_initiate",name:"Ash Initiate",faction:"red",cost:1,type:"ship",sigil:"✦",effect:{trade:1},ally:{},scrap:{combat:3},text:"Gain 1 trade.",allyText:"",scrapText:"Scrap: gain 3 combat."},':
+              '      {id:"ash_initiate",name:"Ash Initiate",faction:"red",cost:1,type:"ship",sigil:"✦",effect:{trade:1},ally:{purge:1},scrap:{combat:3},text:"Gain 1 trade.",allyText:"Purge 1 card from your hand, draw pile, or discard pile.",scrapText:"Scrap: gain 3 combat."},',
+
+              '      {id:"blood_channeler",name:"Blood Channeler",faction:"red",cost:2,type:"ship",sigil:"♢",effect:{combat:2},ally:{trade:1},scrap:{draw:1},text:"Gain 2 combat.",allyText:"Gain 1 trade.",scrapText:"Scrap: draw 1 card."},':
+              '      {id:"blood_channeler",name:"Blood Channeler",faction:"red",cost:2,type:"ship",sigil:"♢",effect:{combat:2,purge:1},ally:{trade:1},scrap:{draw:1},text:"Gain 2 combat and gain 1 purge.",allyText:"Gain 1 trade.",scrapText:"Scrap: draw 1 card."},',
+
+              '      {id:"grave_bargain",name:"Grave Bargain",faction:"red",cost:3,type:"ship",sigil:"☠",effect:{trade:2,combat:2,scrapMarket:1},ally:{},text:"Gain 2 trade, 2 combat, and scrap 1 market card.",allyText:""},':
+              '      {id:"grave_bargain",name:"Grave Bargain",faction:"red",cost:3,type:"ship",sigil:"☠",effect:{trade:2,combat:2,purge:1,scrapMarket:1},ally:{},text:"Gain 2 trade, 2 combat, 1 purge, and scrap 1 market card.",allyText:""},',
+
+              '      {id:"obsidian_altar",name:"Obsidian Altar",faction:"red",cost:3,type:"base",defense:4,sigil:"⛧",effect:{trade:1},ally:{combat:2},scrap:{combat:5},text:"Gain 1 trade.",allyText:"Gain 2 combat.",scrapText:"Sacrifice: gain 5 combat."},':
+              '      {id:"obsidian_altar",name:"Obsidian Altar",faction:"red",cost:3,type:"base",defense:4,sigil:"⛧",effect:{trade:1},ally:{combat:2,purge:1},scrap:{combat:5},text:"Gain 1 trade.",allyText:"Gain 2 combat and 1 purge.",scrapText:"Sacrifice: gain 5 combat."},',
+
+              '      {id:"soul_furnace",name:"Soul Furnace",faction:"red",cost:5,type:"base",defense:5,outpost:true,sigil:"◐",effect:{combat:3},ally:{scrapMarket:1},scrap:{heal:5,combat:3},text:"Outpost. Gain 3 combat.",allyText:"Scrap 1 market card.",scrapText:"Sacrifice: gain 5 authority and 3 combat."},':
+              '      {id:"soul_furnace",name:"Soul Furnace",faction:"red",cost:5,type:"base",defense:5,outpost:true,sigil:"◐",effect:{combat:3,purge:1},ally:{scrapMarket:1},scrap:{heal:5,combat:3},text:"Outpost. Gain 3 combat and 1 purge.",allyText:"Scrap 1 market card.",scrapText:"Sacrifice: gain 5 authority and 3 combat."},',
+
+              '      {id:"eclipse_archon",name:"Eclipse Archon",faction:"red",cost:7,type:"ship",sigil:"◒",effect:{combat:7,draw:1},ally:{combat:3},scrap:{combat:5,heal:5},text:"Gain 7 combat and draw 1.",allyText:"Gain 3 combat.",scrapText:"Scrap: gain 5 combat and 5 authority."},':
+              '      {id:"eclipse_archon",name:"Eclipse Archon",faction:"red",cost:7,type:"ship",sigil:"◒",effect:{combat:7,draw:1,purge:2},ally:{combat:3},scrap:{combat:5,heal:5},text:"Gain 7 combat, draw 1, and gain 2 purge.",allyText:"Gain 3 combat.",scrapText:"Scrap: gain 5 combat and 5 authority."},',
+
+              '      {id:"coin_curse",name:"Coin Curse",faction:"red",cost:1,type:"ship",sigil:"¤",effect:{combat:1},ally:{},scrap:{trade:3},text:"Gain 1 combat.",allyText:"",scrapText:"Scrap: gain 3 trade."},':
+              '      {id:"coin_curse",name:"Coin Curse",faction:"red",cost:1,type:"ship",sigil:"¤",effect:{combat:1},ally:{purge:1},scrap:{trade:3},text:"Gain 1 combat.",allyText:"Gain 1 purge.",scrapText:"Scrap: gain 3 trade."},',
+
+              '      {id:"bone_appraiser",name:"Bone Appraiser",faction:"red",cost:2,type:"ship",sigil:"☠",effect:{trade:2},ally:{combat:1},scrap:{trade:2,combat:2},text:"Gain 2 trade.",allyText:"Gain 1 combat.",scrapText:"Scrap: gain 2 trade and 2 combat."},':
+              '      {id:"bone_appraiser",name:"Bone Appraiser",faction:"red",cost:2,type:"ship",sigil:"☠",effect:{trade:2,purge:1},ally:{combat:1},scrap:{trade:2,combat:2},text:"Gain 2 trade and gain 1 purge.",allyText:"Gain 1 combat.",scrapText:"Scrap: gain 2 trade and 2 combat."},',
+
+              '      {id:"hexed_portal",name:"Hexed Portal",faction:"red",cost:3,type:"base",defense:4,sigil:"◌",effect:{trade:1,combat:1},ally:{scrapMarket:1},scrap:{draw:1},text:"Gain 1 trade and 1 combat.",allyText:"Scrap 1 market card.",scrapText:"Sacrifice: draw 1 card."},':
+              '      {id:"hexed_portal",name:"Hexed Portal",faction:"red",cost:3,type:"base",defense:4,sigil:"◌",effect:{trade:1,combat:1},ally:{scrapMarket:1,purge:1},scrap:{draw:1},text:"Gain 1 trade and 1 combat.",allyText:"Gain 1 purge and scrap 1 market card.",scrapText:"Sacrifice: draw 1 card."},',
+
+              '      {id:"death_tithe",name:"Death Tithe",faction:"red",cost:4,type:"ship",sigil:"†",effect:{combat:4,heal:2},ally:{trade:2},scrap:{trade:4},text:"Gain 4 combat and 2 authority.",allyText:"Gain 2 trade.",scrapText:"Scrap: gain 4 trade."},':
+              '      {id:"death_tithe",name:"Death Tithe",faction:"red",cost:4,type:"ship",sigil:"†",effect:{combat:4,heal:2,purge:1},ally:{trade:2},scrap:{trade:4},text:"Gain 4 combat, 2 authority, and 1 purge.",allyText:"Gain 2 trade.",scrapText:"Scrap: gain 4 trade."},',
+
+              '      {id:"void_auctioneer",name:"Void Auctioneer",faction:"red",cost:6,type:"ship",sigil:"◍",effect:{trade:3,combat:3,scrapMarket:1},ally:{draw:1},scrap:{trade:5,combat:3},text:"Gain 3 trade, 3 combat, and scrap 1 market card.",allyText:"Draw 1 card.",scrapText:"Scrap: gain 5 trade and 3 combat."}':
+              '      {id:"void_auctioneer",name:"Void Auctioneer",faction:"red",cost:6,type:"ship",sigil:"◍",effect:{trade:3,combat:3,purge:1,scrapMarket:1},ally:{draw:1,purge:1},scrap:{trade:5,combat:3},text:"Gain 3 trade, 3 combat, 1 purge, and scrap 1 market card.",allyText:"Draw 1 card and gain 1 purge.",scrapText:"Scrap: gain 5 trade and 3 combat."}',
+          }
+
+          for old, new in red_replacements.items():
+              replace_once(old, new, f"red card {old.split('id:')[1].split(',')[0]}")
+
+          replace_once(
+              'if(e.draw)parts.push(`Draw ${e.draw}`);if(e.discard)parts.push(`Discard ${e.discard}`);if(e.stun)parts.push(`Disable ${e.stun}`);if(e.scrapMarket)parts.push(`Scrap row ${e.scrapMarket}`);',
+              'if(e.draw)parts.push(`Draw ${e.draw}`);if(e.discard)parts.push(`Discard ${e.discard}`);if(e.stun)parts.push(`Disable ${e.stun}`);if(e.purge)parts.push(`Purge ${e.purge}`);if(e.scrapMarket)parts.push(`Scrap row ${e.scrapMarket}`);',
+              'effect summary',
+          )
+
+          replace_once(
+              'const draw=starterDeck(),p={id:playerUid||uid("p"),uid:playerUid||"",name,isAI,health:50,draw,discard:[],hand:[],played:[],bases:[],trade:0,combat:0,stun:0,scrapMarket:0,discardPenalty:0,eliminated:false,left:false};',
+              'const draw=starterDeck(),p={id:playerUid||uid("p"),uid:playerUid||"",name,isAI,health:50,draw,discard:[],hand:[],played:[],bases:[],trade:0,combat:0,stun:0,purge:0,scrapMarket:0,discardPenalty:0,eliminated:false,left:false};',
+              'player purge state',
+          )
+
+          replace_once(
+              'p.trade+=(e.trade||0);p.combat+=(e.combat||0);p.health=Math.min(50,p.health+(e.heal||0));p.stun+=(e.stun||0);p.scrapMarket+=(e.scrapMarket||0);',
+              'p.trade+=(e.trade||0);p.combat+=(e.combat||0);p.health=Math.min(50,p.health+(e.heal||0));p.stun+=(e.stun||0);p.purge+=(e.purge||0);p.scrapMarket+=(e.scrapMarket||0);',
+              'apply purge effect',
+          )
+
+          replace_once(
+              'p.trade=0;p.combat=0;p.stun=0;p.scrapMarket=0;',
+              'p.trade=0;p.combat=0;p.stun=0;p.purge=0;p.scrapMarket=0;',
+              'begin-turn purge reset',
+          )
+
+          replace_once(
+              'function refillMarket(game){while(game.tradeRow.length<5&&game.marketDeck.length)game.tradeRow.push(game.marketDeck.pop())}',
+              '''function refillMarket(game){while(game.tradeRow.length<5&&game.marketDeck.length)game.tradeRow.push(game.marketDeck.pop())}
+    function purgeableCount(p){return (p?.hand?.length||0)+(p?.draw?.length||0)+(p?.discard?.length||0)}
+    function bestAIPurge(p){
+      let best=null;
+      for(const zone of ["discard","draw","hand"]){
+        for(const id of p[zone]||[]){
+          const c=CARDS[id]||STARTERS[id],score=id==="viper"?0:id==="scout"?1:10+(c?.cost||0);
+          if(!best||score<best.score)best={zone,id,score};
+        }
+      }
+      return best;
+    }''',
+              'purge helpers',
+          )
+
+          replace_once(
+              '''        case"SCRAP_MARKET":{
+          if(p.scrapMarket<1)return"No market scrap available.";''',
+              '''        case"PURGE_OWN":{
+          if(p.purge<1)return"No purge available.";
+          const zone=["hand","draw","discard"].includes(action.zone)?action.zone:"",id=String(action.id||"");
+          if(!zone)return"Invalid purge zone.";
+          const index=p[zone].indexOf(id),c=CARDS[id]||STARTERS[id];if(index<0||!c)return"That card is no longer available to purge.";
+          p[zone].splice(index,1);p.purge--;game.scrapped.push({id,ownerId:p.id,ownerName:p.name,source:zone});
+          const zoneName=zone==="hand"?"hand":zone==="draw"?"draw pile":"discard pile";addLog(game,`${p.name} purged ${c.name} from their ${zoneName}.`);break;
+        }
+        case"SCRAP_MARKET":{
+          if(p.scrapMarket<1)return"No market scrap available.";''',
+              'purge reducer action',
+          )
+
+          replace_once(
+              '''          const index=target.bases.findIndex(x=>x.instance===action.instance),base=target.bases[index],c=base&&CARDS[base.id];if(!c)return"That base is gone.";
+          if(p.combat<c.defense)return`You need ${c.defense} combat.`;''',
+              '''          const index=target.bases.findIndex(x=>x.instance===action.instance),base=target.bases[index],c=base&&CARDS[base.id];if(!c)return"That base is gone.";
+          if(target.bases.some(b=>CARDS[b.id]?.outpost)&&!c.outpost)return"Destroy that realm's outpost before attacking its other bases.";
+          if(p.combat<c.defense)return`You need ${c.defense} combat.`;''',
+              'strict outpost base protection',
+          )
+
+          replace_once(
+              'p.discard.push(...p.hand,...p.played.map(x=>x.id));p.hand=[];p.played=[];p.trade=0;p.combat=0;p.stun=0;p.scrapMarket=0;',
+              'p.discard.push(...p.hand,...p.played.map(x=>x.id));p.hand=[];p.played=[];p.trade=0;p.combat=0;p.stun=0;p.purge=0;p.scrapMarket=0;',
+              'end-turn purge reset',
+          )
+
+          replace_once(
+              '''          while(p.hand.length)playCard(game,p,0);
+          while(p.scrapMarket>0&&game.tradeRow.length){''',
+              '''          while(p.hand.length)playCard(game,p,0);
+          while(p.purge>0&&purgeableCount(p)){const choice=bestAIPurge(p);if(!choice)break;reduce(game,{type:"PURGE_OWN",zone:choice.zone,id:choice.id},p.id)}
+          while(p.scrapMarket>0&&game.tradeRow.length){''',
+              'AI purge use',
+          )
+
+          replace_once(
+              'const canAct=isMyTurn()&&mine()?.combat>0&&p.id!==mine()?.id&&!p.eliminated&&!p.left;',
+              'const canAct=isMyTurn()&&mine()?.combat>0&&p.id!==mine()?.id&&!p.eliminated&&!p.left&&!p.bases.some(b=>CARDS[b.id]?.outpost);',
+              'hide player attack behind outpost',
+          )
+
+          replace_once(
+              '''const m=mine();$("#tradeRes").textContent=`◆ ${m?.trade||0}`;$("#combatRes").textContent=`⚔ ${m?.combat||0}`;$("#controlRes").textContent=`⌁ ${m?.stun||0}`;$("#scrapRes").textContent=`✕ ${m?.scrapMarket||0}`;
+      const active=current();$("#turnText").textContent=state?.phase==="finished"?`${state.winner} controls the War Realms`:isMyTurn()?`Your turn · Round ${state.round}`:`${active?.name||"Waiting"} is commanding · Round ${state?.round||1}`;
+      $("#playAllBtn").disabled=!isMyTurn()||!m?.hand.length||actionBusy;$("#endTurnBtn").disabled=!isMyTurn()||actionBusy;$("#leaveBtn").disabled=!m||m.left||m.eliminated;''',
+              '''const m=mine();$("#tradeRes").textContent=`◆ ${m?.trade||0}`;$("#combatRes").textContent=`⚔ ${m?.combat||0}`;$("#controlRes").textContent=`⌁ ${m?.stun||0}`;$("#scrapRes").textContent=`✕ ${m?.purge||0}`;$("#marketScrapRes").textContent=`▧ ${m?.scrapMarket||0}`;
+      const active=current();$("#turnText").textContent=state?.phase==="finished"?`${state.winner} controls the War Realms`:isMyTurn()?`Your turn · Round ${state.round}`:`${active?.name||"Waiting"} is commanding · Round ${state?.round||1}`;
+      $("#playAllBtn").disabled=!isMyTurn()||!m?.hand.length||actionBusy;$("#purgeBtn").disabled=!isMyTurn()||!(m?.purge>0)||!purgeableCount(m)||actionBusy;$("#endTurnBtn").disabled=!isMyTurn()||actionBusy;$("#leaveBtn").disabled=!m||m.left||m.eliminated;''',
+              'render purge resources',
+          )
+
+          replace_once(
+              '''    function openMarketDetail(index){
+      const entry=state.tradeRow[index],m=mine();if(!entry)return;''',
+              '''    function openPurgeChooser(){
+      const p=mine();if(!isMyTurn()||!p?.purge){toast("No purge available.");return}
+      const zoneLabels={hand:"Hand",draw:"Draw pile",discard:"Discard pile"},sections=[];
+      for(const zone of ["hand","draw","discard"]){
+        const counts=(p[zone]||[]).reduce((a,id)=>(a[id]=(a[id]||0)+1,a),{}),cards=Object.entries(counts).map(([id,count])=>{
+          const c=CARDS[id]||STARTERS[id];return c?`<button class="catalogItem ${c.faction}" data-purge-zone="${zone}" data-purge-id="${id}"><div class="miniArt">${c.sigil}</div><div><div class="catalogName">${escapeHtml(c.name)}${count>1?` ×${count}`:""}</div><div class="catalogRule">Permanently remove one from your ${zoneLabels[zone].toLowerCase()}.</div></div><b>✕</b></button>`:"";
+        }).join("");
+        if(cards)sections.push(`<h3 style="font-size:10px;margin:10px 0 5px">${zoneLabels[zone]}</h3><div class="catalog">${cards}</div>`);
+      }
+      $("#detailTitle").textContent=`Purge a card · ${p.purge} available`;$("#detailSubtitle").textContent="Umbral Covenant deck thinning";
+      $("#detailBody").innerHTML=sections.join("")||'<p class="emptyBases">No cards are available to purge.</p>';$("#detailOverlay").classList.remove("hidden");
+      $("#detailBody").querySelectorAll("[data-purge-zone]").forEach(btn=>btn.addEventListener("click",()=>{$("#detailOverlay").classList.add("hidden");perform({type:"PURGE_OWN",zone:btn.dataset.purgeZone,id:btn.dataset.purgeId})}));
+    }
+    function openMarketDetail(index){
+      const entry=state.tradeRow[index],m=mine();if(!entry)return;''',
+              'purge chooser UI',
+          )
+
+          replace_once(
+              '''      const actions=[];if(isMyTurn()&&mine().combat>=c.defense)actions.push(`<button data-base-act="attack">Destroy for ⚔ ${c.defense}</button>`);
+      if(isMyTurn()&&mine().stun>0)actions.push(`<button data-base-act="stun">Disable base</button>`);''',
+              '''      const actions=[],protectedByOutpost=owner.bases.some(b=>CARDS[b.id]?.outpost)&&!c.outpost;
+      if(protectedByOutpost&&isMyTurn())actions.push('<button disabled>Protected by an outpost</button>');
+      else if(isMyTurn()&&mine().combat>=c.defense)actions.push(`<button data-base-act="attack">Destroy for ⚔ ${c.defense}</button>`);
+      if(isMyTurn()&&mine().stun>0)actions.push(`<button data-base-act="stun">Disable base</button>`);''',
+              'outpost detail lock',
+          )
+
+          replace_once(
+              '$("#playAllBtn").addEventListener("click",()=>perform({type:"PLAY_ALL"}));\n    $("#endTurnBtn").addEventListener("click",()=>perform({type:"END"}));',
+              '$("#playAllBtn").addEventListener("click",()=>perform({type:"PLAY_ALL"}));\n    $("#purgeBtn").addEventListener("click",openPurgeChooser);\n    $("#endTurnBtn").addEventListener("click",()=>perform({type:"END"}));',
+              'purge button handler',
+          )
+
+          replace_once(
+              '<p><b>Hold the corners.</b> Bases remain in front of each realm and trigger again at the start of their owner\'s turns. Outposts must be destroyed before that player can take damage.</p><p><b>Faction identities.</b> Yellow alien technology disrupts and disables. Blue priesthood restores authority and builds economy. Green orcs create direct, brutal combat. Red sorcerers sacrifice their own cards and erase cards from the market.</p>',
+              '<p><b>Hold the corners.</b> Bases remain in front of each realm and trigger again at the start of their owner\'s turns. Outposts have taunt: while any outpost remains, combat cannot target that realm or its ordinary bases.</p><p><b>Faction identities.</b> Yellow alien technology disrupts and disables. Blue priesthood restores authority and builds economy. Green orcs create direct, brutal combat. Red sorcerers specialize in purge, permanently thinning cards from their own hand, draw pile, or discard pile; they also sacrifice cards and erase cards from the market.</p>',
+              'help rules',
+          )
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Validate War Realms mechanics
+        shell: python
+        run: |
+          from pathlib import Path
+
+          text = Path("game/warrealms.html").read_text(encoding="utf-8")
+          assert 'const GAME_VERSION=3' in text
+          assert text.count('purge:1') >= 8
+          assert 'effect:{combat:7,draw:1,purge:2}' in text
+          assert 'case"PURGE_OWN"' in text
+          assert 'data-purge-zone' in text
+          assert 'id="purgeBtn"' in text
+          assert 'id="marketScrapRes"' in text
+          assert 'Destroy that realm\'s outpost before attacking its other bases.' in text
+          assert 'Protected by an outpost' in text
+          assert 'Outposts have taunt' in text
+          print("War Realms purge and outpost validation passed")
+
+      - name: Commit generated update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add game/warrealms.html
+          git commit -m "Make red the purge faction and enforce outpost taunt"
+          git push
