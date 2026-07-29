@@ -546,6 +546,8 @@
   const CARD_ART_FALLBACK_ONLY = new Set([
     "starwhisper_scout"
   ]);
+  const CARD_ART_RETRY_ATTEMPTS = 1;
+  const CARD_ART_RETRY_DELAY_MS = 450;
 
   let firebaseUser = null;
   let profile = null;
@@ -562,6 +564,7 @@
   const deckListScroll = { in: 0, out: 0 };
   const cardArtCache = new Map();
   const cardArtInflight = new Map();
+  const cardArtRetryCounts = new Map();
   let catalogArtObserver = null;
   const rewardClaimedKeys = new Set();
   let catalogLoadToken = 0;
@@ -702,26 +705,61 @@
   }
 
   function loadCardArt(cardId) {
-    if (cardArtCache.has(cardId)) return Promise.resolve(cardArtCache.get(cardId));
+    const cached = cardArtCache.get(cardId);
+    if (typeof cached === "string") return Promise.resolve(cached);
+    if (cached === null && (cardArtRetryCounts.get(cardId) || 0) >= CARD_ART_RETRY_ATTEMPTS) {
+      return Promise.resolve(null);
+    }
     if (cardArtInflight.has(cardId)) return cardArtInflight.get(cardId);
+
     const candidates = cardArtCandidates(cardId);
+    const startingRound = cached === null ? (cardArtRetryCounts.get(cardId) || 0) + 1 : 0;
     const promise = new Promise(resolve => {
-      const tryCandidate = index => {
-        if (index >= candidates.length) {
-          cardArtCache.set(cardId, null);
-          resolve(null);
+      const finishMissing = () => {
+        cardArtCache.set(cardId, null);
+        resolve(null);
+      };
+
+      const tryRound = round => {
+        if (!candidates.length) {
+          cardArtRetryCounts.set(cardId, CARD_ART_RETRY_ATTEMPTS);
+          finishMissing();
           return;
         }
-        const image = new Image();
-        image.decoding = "async";
-        image.onload = () => {
-          cardArtCache.set(cardId, candidates[index]);
-          resolve(candidates[index]);
+        if (round > 0) cardArtRetryCounts.set(cardId, round);
+
+        const tryCandidate = index => {
+          if (index >= candidates.length) {
+            if (round < CARD_ART_RETRY_ATTEMPTS) {
+              cardArtCache.set(cardId, null);
+              setTimeout(() => tryRound(round + 1), CARD_ART_RETRY_DELAY_MS);
+            } else {
+              finishMissing();
+            }
+            return;
+          }
+
+          const image = new Image();
+          image.decoding = "async";
+          let requestUrl = candidates[index];
+          if (round > 0) {
+            const retryUrl = new URL(candidates[index]);
+            retryUrl.searchParams.set("wrCardRetry", `${round}-${Date.now()}`);
+            requestUrl = retryUrl.href;
+          }
+          image.onload = () => {
+            cardArtCache.set(cardId, requestUrl);
+            cardArtRetryCounts.delete(cardId);
+            resolve(requestUrl);
+          };
+          image.onerror = () => tryCandidate(index + 1);
+          image.src = requestUrl;
         };
-        image.onerror = () => tryCandidate(index + 1);
-        image.src = candidates[index];
+
+        tryCandidate(0);
       };
-      tryCandidate(0);
+
+      tryRound(startingRound);
     }).finally(() => cardArtInflight.delete(cardId));
     cardArtInflight.set(cardId, promise);
     return promise;
