@@ -198,6 +198,156 @@ export const CARDS = Object.freeze([
     allyText: "The next enemy draws 1 fewer card.",
     flavor: "A thought repeated across a thousand obedient minds."
   },
+   {
+    id: "paradox_warden",
+    name: "Paradox Warden",
+    faction: "yellow",
+    cost: 5,
+    type: "base",
+    defense: 6,
+    outpost: true,
+    sigil: "◈",
+    effect: { shield: 4 },
+    ally: { stun: 1 },
+    sacrifice: { draw: 1 },
+    text: "Outpost. Gain 4 Shield.",
+    allyText: "Gain 1 Disable.",
+    sacrificeText: "Sacrifice: Draw 1 card.",
+    flavor: "The attack arrives. The Warden decides it never did."
+  },
+  {
+    id: "causal_severer",
+    name: "Causal Severer",
+    faction: "yellow",
+    cost: 7,
+    type: "ship",
+    sigil: "◈",
+    effect: { combat: 5, destroyBase: 1 },
+    ally: { opponentDiscard: 1 },
+    text: "Gain 5 Combat and Raze 1.",
+    allyText: "The next enemy draws 1 fewer card.",
+    flavor: "It does not destroy the fortress. It removes the reason it was built."
+  },
+  {
+    id: "aegis_tide_saint",
+    name: "Aegis Tide Saint",
+    faction: "blue",
+    cost: 5,
+    type: "ship",
+    sigil: "✦",
+    effect: { combat: 3, heal: 2, lifelink: 0.5 },
+    ally: { combat: 2 },
+    text: "Gain 3 Combat, 2 Authority, and Lifelink 50% this turn.",
+    allyText: "Gain 2 Combat.",
+    flavor: "Every wound answered by the tide becomes strength for the faithful."
+  },
+  {
+    id: "basilica_of_many_lights",
+    name: "Basilica of Many Lights",
+    faction: "blue",
+    cost: 6,
+    type: "base",
+    defense: 7,
+    outpost: false,
+    sigil: "✦",
+    effect: { trade: 1, healPerBase: 1 },
+    ally: { shield: 3 },
+    text: "Gain 1 Trade and 1 Authority for each active Base you control.",
+    allyText: "Gain 3 Shield.",
+    flavor: "One sanctuary is refuge. Many sanctuaries become a kingdom."
+  },
+  {
+    id: "reliquary_shieldfleet",
+    name: "Reliquary Shieldfleet",
+    faction: "blue",
+    cost: 7,
+    type: "base",
+    defense: 7,
+    outpost: true,
+    sigil: "✦",
+    effect: { combat: 2, shield: 5 },
+    ally: { draw: 1 },
+    sacrifice: { heal: 6 },
+    text: "Outpost. Gain 2 Combat and 5 Shield.",
+    allyText: "Draw 1 card.",
+    sacrificeText: "Sacrifice: Gain 6 Authority.",
+    flavor: "The relic travels only where an entire fleet is willing to stand."
+  },
+  {
+    id: "warcamp_foundry",
+    name: "Warcamp Foundry",
+    faction: "green",
+    cost: 4,
+    type: "base",
+    defense: 5,
+    outpost: false,
+    sigil: "⬢",
+    effect: { tradePerBase: 1 },
+    ally: { combat: 2 },
+    sacrifice: { trade: 3 },
+    text: "Gain 1 Trade for each active Base you control.",
+    allyText: "Gain 2 Combat.",
+    sacrificeText: "Sacrifice: Gain 3 Trade.",
+    flavor: "Every camp feeds the forge. Every forge feeds the war."
+  },
+  {
+    id: "siege_root_colossus",
+    name: "Siege-Root Colossus",
+    faction: "green",
+    cost: 7,
+    type: "ship",
+    sigil: "⬢",
+    effect: { combat: 4, combatPerBase: 2 },
+    ally: { damageAll: 1 },
+    text: "Gain 4 Combat plus 2 Combat for each active Base you control.",
+    allyText: "Damage All 1.",
+    flavor: "Every wall behind it becomes another fist."
+  },
+  {
+    id: "gatebreaker_alpha",
+    name: "Gatebreaker Alpha",
+    faction: "green",
+    cost: 6,
+    type: "ship",
+    sigil: "⬢",
+    effect: { combat: 5, destroyBase: 1 },
+    ally: { combat: 3 },
+    text: "Gain 5 Combat and Raze 1.",
+    allyText: "Gain 3 Combat.",
+    flavor: "A locked gate is simply a challenge written in metal."
+  },
+  {
+    id: "eclipse_harrower",
+    name: "Eclipse Harrower",
+    faction: "red",
+    cost: 7,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 6, scrapOwn: 1, lifelink: 0.5 },
+    ally: { draw: 1 },
+    sacrifice: { damageAll: 2 },
+    text: "Gain 6 Combat, 1 Purge, and Lifelink 50% this turn.",
+    allyText: "Draw 1 card.",
+    sacrificeText: "Sacrifice: Damage All 2.",
+    flavor: "The Covenant wastes neither victory nor what remains after it."
+  },
+  {
+    id: "ashen_tithe_engine",
+    name: "Ashen Tithe Engine",
+    faction: "red",
+    cost: 5,
+    type: "base",
+    defense: 5,
+    outpost: false,
+    sigil: "◒",
+    effect: { damageAll: 1, scrapOwn: 1 },
+    ally: { combat: 2 },
+    sacrifice: { draw: 1 },
+    text: "Damage All 1 and gain 1 Purge.",
+    allyText: "Gain 2 Combat.",
+    sacrificeText: "Sacrifice: Draw 1 card.",
+    flavor: "Every discarded past becomes a debt collected from the living."
+  },
   {
     id: "rift_manta",
     name: "Rift Manta",
@@ -1477,12 +1627,34 @@ export function effectSummary(effect = {}) {
     parts.push(`◆ ${effect.trade} Trade`);
   }
 
+  if (effect.tradePerBase) {
+    parts.push(
+      `◆ ${effect.tradePerBase} per Active Base`
+    );
+  }
+
   if (effect.combat) {
     parts.push(`⚔ ${effect.combat} Combat`);
   }
 
+  if (effect.combatPerBase) {
+    parts.push(
+      `⚔ ${effect.combatPerBase} per Active Base`
+    );
+  }
+
   if (effect.heal) {
     parts.push(`♥ ${effect.heal} Authority`);
+  }
+
+  if (effect.healPerBase) {
+    parts.push(
+      `♥ ${effect.healPerBase} per Active Base`
+    );
+  }
+
+  if (effect.shield) {
+    parts.push(`🛡 ${effect.shield} Shield`);
   }
 
   if (effect.draw) {
@@ -1497,6 +1669,20 @@ export function effectSummary(effect = {}) {
 
   if (effect.stun) {
     parts.push(`⌁ ${effect.stun} Disable`);
+  }
+
+  if (effect.destroyBase) {
+    parts.push(`Raze ${effect.destroyBase}`);
+  }
+
+  if (effect.damageAll) {
+    parts.push(`☄ Damage All ${effect.damageAll}`);
+  }
+
+  if (effect.lifelink) {
+    parts.push(
+      `Lifelink ${Math.round(effect.lifelink * 100)}%`
+    );
   }
 
   if (effect.scrapMarket) {
