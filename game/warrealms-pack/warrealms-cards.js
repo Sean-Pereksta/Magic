@@ -306,6 +306,278 @@ export const CARDS = Object.freeze([
     flavor: "The relic travels only where an entire fleet is willing to stand."
   },
   {
+  id: "sorynth_choice_seer",
+  name: "Sorynth Choice-Seer",
+  image: "sorynth_choice_seer.png",
+  faction: "yellow",
+  cost: 3,
+  shop_cost: 55,
+  type: "ship",
+  sigil: "◈",
+  effect: {
+    or: [
+      {
+        label: "Harvest",
+        effect: { trade: 2 }
+      },
+      {
+        label: "Assault",
+        effect: { combat: 3 }
+      },
+      {
+        label: "Interfere",
+        effect: { stun: 1 }
+      }
+    ]
+  },
+  ally: { shield: 1 },
+  text: "Choose one: gain 2 Trade; gain 3 Combat; or gain 1 Disable.",
+  allyText: "Gain 1 Shield.",
+  flavor: "It studies three futures and permits only the useful one."
+},
+{
+  id: "nhalor_forked_oracle",
+  name: "Nhalor Forked Oracle",
+  image: "nhalor_forked_oracle.png",
+  faction: "yellow",
+  cost: 5,
+  shop_cost: 95,
+  type: "ship",
+  sigil: "◈",
+  effect: {
+    or: [
+      {
+        label: "Foresee",
+        effect: { draw: 1, trade: 1 }
+      },
+      {
+        label: "Deny",
+        effect: {
+          opponentDiscard: 1,
+          shield: 2
+        }
+      },
+      {
+        label: "Collapse",
+        effect: { combat: 5 }
+      }
+    ]
+  },
+  ally: { combat: 1 },
+  text: "Choose one: draw 1 card and gain 1 Trade; gain 2 Shield and the next enemy draws 1 fewer card; or gain 5 Combat.",
+  allyText: "Gain 1 Combat.",
+  flavor: "Every answer is true until Nhalor chooses which truth survives."
+},
+
+// ==========================================================
+// BLUE — CHOICE / OR TROOPS
+// ==========================================================
+{
+  id: "dawnspear_adjudicator",
+  name: "Dawnspear Adjudicator",
+  image: "dawnspear_adjudicator.png",
+  faction: "blue",
+  cost: 3,
+  shop_cost: 50,
+  type: "ship",
+  sigil: "✦",
+  effect: {
+    or: [
+      {
+        label: "Judgment",
+        effect: { combat: 3 }
+      },
+      {
+        label: "Provision",
+        effect: {
+          trade: 2,
+          heal: 2
+        }
+      },
+      {
+        label: "Intercession",
+        effect: { shield: 3 }
+      }
+    ]
+  },
+  ally: { heal: 1 },
+  text: "Choose one: gain 3 Combat; gain 2 Trade and 2 Authority; or gain 3 Shield.",
+  allyText: "Gain 1 Authority.",
+  flavor: "Its verdict may arrive as blade, blessing, or barrier."
+},
+{
+  id: "seraph_of_three_mercies",
+  name: "Seraph of Three Mercies",
+  image: "seraph_of_three_mercies.png",
+  faction: "blue",
+  cost: 5,
+  shop_cost: 90,
+  type: "ship",
+  sigil: "✦",
+  effect: {
+    or: [
+      {
+        label: "Renew",
+        effect: {
+          draw: 1,
+          heal: 2
+        }
+      },
+      {
+        label: "Defend",
+        effect: {
+          combat: 4,
+          shield: 2
+        }
+      },
+      {
+        label: "Sustain",
+        effect: {
+          trade: 3,
+          heal: 3
+        }
+      }
+    ]
+  },
+  ally: { shield: 2 },
+  text: "Choose one: draw 1 card and gain 2 Authority; gain 4 Combat and 2 Shield; or gain 3 Trade and 3 Authority.",
+  allyText: "Gain 2 Shield.",
+  flavor: "Mercy is not indecision. It is the power to answer every need."
+},
+
+// ==========================================================
+// GREEN — CHOICE / OR TROOPS
+// ==========================================================
+{
+  id: "split_tusk_reaver",
+  name: "Split-Tusk Reaver",
+  image: "split_tusk_reaver.png",
+  faction: "green",
+  cost: 3,
+  shop_cost: 45,
+  type: "ship",
+  sigil: "⬢",
+  effect: {
+    or: [
+      {
+        label: "Smash",
+        effect: { combat: 5 }
+      },
+      {
+        label: "Loot",
+        effect: { trade: 3 }
+      }
+    ]
+  },
+  ally: { combat: 2 },
+  text: "Choose one: gain 5 Combat or gain 3 Trade.",
+  allyText: "Gain 2 Combat.",
+  flavor: "One tusk breaks the gate. The other carries away the hinges."
+},
+{
+  id: "rukgar_war_chooser",
+  name: "Rukgar War-Chooser",
+  image: "rukgar_war_chooser.png",
+  faction: "green",
+  cost: 5,
+  shop_cost: 85,
+  type: "ship",
+  sigil: "⬢",
+  effect: {
+    or: [
+      {
+        label: "Crush",
+        effect: { combat: 7 }
+      },
+      {
+        label: "Plunder",
+        effect: {
+          trade: 3,
+          scrapMarket: 1
+        }
+      },
+      {
+        label: "Rally",
+        effect: {
+          draw: 1,
+          combat: 3
+        }
+      }
+    ]
+  },
+  ally: { combat: 2 },
+  text: "Choose one: gain 7 Combat; gain 3 Trade and 1 Market Erase; or draw 1 card and gain 3 Combat.",
+  allyText: "Gain 2 Combat.",
+  flavor: "Rukgar calls it strategy when he chooses what to break first."
+},
+
+// ==========================================================
+// RED — CHOICE / OR TROOPS
+// ==========================================================
+{
+  id: "ashen_crossroads_adept",
+  name: "Ashen Crossroads Adept",
+  image: "ashen_crossroads_adept.png",
+  faction: "red",
+  cost: 3,
+  shop_cost: 55,
+  type: "ship",
+  sigil: "◒",
+  effect: {
+    or: [
+      {
+        label: "Extort",
+        effect: { trade: 2 }
+      },
+      {
+        label: "Torment",
+        effect: { combat: 3 }
+      },
+      {
+        label: "Sever",
+        effect: { scrapOwn: 1 }
+      }
+    ]
+  },
+  ally: { combat: 1 },
+  text: "Choose one: gain 2 Trade; gain 3 Combat; or gain 1 Purge.",
+  allyText: "Gain 1 Combat.",
+  flavor: "Every road demands a payment. The Adept chooses the currency."
+},
+{
+  id: "null_vow_executioner",
+  name: "Null-Vow Executioner",
+  image: "null_vow_executioner.png",
+  faction: "red",
+  cost: 6,
+  shop_cost: 120,
+  type: "ship",
+  sigil: "◒",
+  effect: {
+    or: [
+      {
+        label: "Annihilate",
+        effect: { combat: 7 }
+      },
+      {
+        label: "Claim",
+        effect: { trade: 4 }
+      },
+      {
+        label: "Unmake",
+        effect: {
+          scrapOwn: 2,
+          draw: 1
+        }
+      }
+    ]
+  },
+  ally: { combat: 2 },
+  text: "Choose one: gain 7 Combat; gain 4 Trade; or gain 2 Purge and draw 1 card.",
+  allyText: "Gain 2 Combat.",
+  flavor: "The vow ends only when the speaker, the witness, or the world is gone."
+},
+  {
     id: "warcamp_foundry",
     name: "Warcamp Foundry",
     image: "warcamp_foundry.png",
