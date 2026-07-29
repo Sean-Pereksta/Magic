@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 7;
+export const WAR_REALMS_CARD_VERSION = 8;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -702,6 +702,60 @@ export const CARDS = Object.freeze([
     flavor: "Consensus is merely the first stage of assimilation."
   },
 
+  {
+    id: "veyrix_pathsplitter",
+    name: "Veyrix Pathsplitter",
+    image: "veyrix_pathsplitter.png",
+    faction: "yellow",
+    cost: 3,
+    shop_cost: 110,
+    type: "ship",
+    sigil: "◈",
+    effect: { trade: 1 },
+    ally: { combat: 1 },
+    doubleAlly: { draw: 1, stun: 1 },
+    text: "Gain 1 Trade.",
+    allyText: "Gain 1 Combat.",
+    doubleAllyText: "Draw 1 card and gain 1 Disable.",
+    flavor: "One route reaches the destination. Three routes ensure nothing else does."
+  },
+  {
+    id: "the_third_possibility",
+    name: "The Third Possibility",
+    image: "the_third_possibility.png",
+    faction: "yellow",
+    cost: 5,
+    shop_cost: 195,
+    type: "base",
+    defense: 6,
+    outpost: false,
+    sigil: "◈",
+    effect: { shield: 2 },
+    ally: { trade: 1 },
+    doubleAlly: { draw: 2 },
+    text: "Gain 2 Shield.",
+    allyText: "Gain 1 Trade.",
+    doubleAllyText: "Draw 2 cards.",
+    flavor: "Two minds see the choice. The third discovers the outcome hidden between them."
+  },
+  {
+    id: "orrakai_horizon_eater",
+    name: "Orrakai, Horizon-Eater",
+    image: "orrakai_horizon_eater.png",
+    faction: "yellow",
+    cost: 7,
+    shop_cost: 300,
+    type: "ship",
+    sigil: "◈",
+    effect: { combat: 4, shield: 2 },
+    ally: { draw: 1 },
+    doubleAlly: { combat: 5, stun: 2, opponentDiscard: 1 },
+    text: "Gain 4 Combat and 2 Shield.",
+    allyText: "Draw 1 card.",
+    doubleAllyText: "Gain 5 Combat and 2 Disable. The next enemy draws 1 fewer card.",
+    flavor: "Every future ends at the edge of its gaze."
+  },
+
   // ==========================================================
   // BLUE — AZURE ASCENDANCY
   // ==========================================================
@@ -1145,6 +1199,60 @@ export const CARDS = Object.freeze([
     flavor: "Three captains. One command."
   },
 
+  {
+    id: "saelune_intercessor",
+    name: "Saelune Intercessor",
+    image: "saelune_intercessor.png",
+    faction: "blue",
+    cost: 3,
+    shop_cost: 115,
+    type: "ship",
+    sigil: "✦",
+    effect: { combat: 2, heal: 1 },
+    ally: { shield: 2 },
+    doubleAlly: { draw: 1, shield: 3 },
+    text: "Gain 2 Combat and 1 Authority.",
+    allyText: "Gain 2 Shield.",
+    doubleAllyText: "Draw 1 card and gain 3 Shield.",
+    flavor: "Every shield is a vow made visible."
+  },
+  {
+    id: "monastery_of_the_drowned_star",
+    name: "Monastery of the Drowned Star",
+    image: "monastery_of_the_drowned_star.png",
+    faction: "blue",
+    cost: 6,
+    shop_cost: 250,
+    type: "base",
+    defense: 7,
+    outpost: true,
+    sigil: "✦",
+    effect: { heal: 3 },
+    ally: { shield: 2 },
+    doubleAlly: { draw: 2, heal: 3 },
+    text: "Outpost. Gain 3 Authority.",
+    allyText: "Gain 2 Shield.",
+    doubleAllyText: "Draw 2 cards and gain 3 Authority.",
+    flavor: "The sea buried the star. The faithful built downward to meet it."
+  },
+  {
+    id: "halcyon_vowmarshal",
+    name: "Halcyon Vowmarshal",
+    image: "halcyon_vowmarshal.png",
+    faction: "blue",
+    cost: 7,
+    shop_cost: 300,
+    type: "ship",
+    sigil: "✦",
+    effect: { combat: 4, shield: 2 },
+    ally: { heal: 2 },
+    doubleAlly: { combat: 5, draw: 1, shield: 3 },
+    text: "Gain 4 Combat and 2 Shield.",
+    allyText: "Gain 2 Authority.",
+    doubleAllyText: "Gain 5 Combat, draw 1 card, and gain 3 Shield.",
+    flavor: "A vow spoken in its presence becomes armor, command, and blade."
+  },
+
   // ==========================================================
   // GREEN — GORAK WARHOST
   // ==========================================================
@@ -1579,6 +1687,41 @@ export const CARDS = Object.freeze([
     flavor: "A single root bends. A forest does not."
   },
 
+  {
+    id: "grinskull_manyhand",
+    name: "Grinskull Manyhand",
+    image: "grinskull_manyhand.png",
+    faction: "green",
+    cost: 3,
+    shop_cost: 115,
+    type: "ship",
+    sigil: "⬢",
+    effect: { combat: 3 },
+    ally: { combat: 1 },
+    doubleAlly: { combat: 4, trade: 2 },
+    text: "Gain 3 Combat.",
+    allyText: "Gain 1 Combat.",
+    doubleAllyText: "Gain 4 Combat and 2 Trade.",
+    flavor: "Every hand carries a trophy. Every trophy is still sharp."
+  },
+  {
+    id: "murog_skymaul",
+    name: "Murog Skymaul",
+    image: "murog_skymaul.png",
+    faction: "green",
+    cost: 6,
+    shop_cost: 255,
+    type: "ship",
+    sigil: "⬢",
+    effect: { combat: 6 },
+    ally: { combat: 2 },
+    doubleAlly: { combat: 4, destroyBase: 1 },
+    text: "Gain 6 Combat.",
+    allyText: "Gain 2 Combat.",
+    doubleAllyText: "Gain 4 Combat and 1 Raze.",
+    flavor: "The platform provides altitude. Murog provides the landing."
+  },
+
   // ==========================================================
   // RED — UMBRAL COVENANT
   // ==========================================================
@@ -2002,7 +2145,45 @@ export const CARDS = Object.freeze([
     allyText: "Gain 2 Combat.",
     doubleAllyText: "Gain 5 Combat, draw 1 card, and the next enemy draws 1 fewer card.",
     flavor: "Each rules a kingdom. Together, they rule what remains."
+  },
+
+  {
+    id: "veshras_whispercourt",
+    name: "Veshra’s Whispercourt",
+    image: "veshras_whispercourt.png",
+    faction: "red",
+    cost: 4,
+    shop_cost: 165,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 2 },
+    ally: { trade: 1 },
+    doubleAlly: { draw: 1, opponentDiscard: 1 },
+    text: "Gain 2 Combat.",
+    allyText: "Gain 1 Trade.",
+    doubleAllyText: "Draw 1 card. The next enemy draws 1 fewer card.",
+    flavor: "The ruler never speaks. The court ensures everyone remembers the command."
+  },
+  {
+    id: "the_throne_beneath_night",
+    name: "The Throne Beneath Night",
+    image: "the_throne_beneath_night.png",
+    faction: "red",
+    cost: 7,
+    shop_cost: 300,
+    type: "base",
+    defense: 7,
+    outpost: false,
+    sigil: "◒",
+    effect: { combat: 3 },
+    ally: { scrapOwn: 1 },
+    doubleAlly: { combat: 5, draw: 1, lifelink: 0.5 },
+    text: "Gain 3 Combat.",
+    allyText: "Gain 1 Purge.",
+    doubleAllyText: "Gain 5 Combat, draw 1 card, and gain Lifelink 50% this turn.",
+    flavor: "Every shadow is a road leading downward to its crown."
   }
+
 ]);
 
 export const CARD_MAP = Object.freeze(
