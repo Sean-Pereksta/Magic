@@ -683,8 +683,20 @@
     $("#loadingProgressBar").style.width = `${Math.min(100, Math.round(done / total * 100))}%`;
   }
 
+  function cardArtFileStem(cardId) {
+    const card = getCard(cardId);
+    if (!card || card.faction === "neutral") return String(cardId || "");
+    return String(card.name || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[’']/g, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+
   function directCardArtUrl(cardId) {
-    return new URL(`${cardId}.png`, CARD_ART_ROOT).href;
+    return new URL(`${cardArtFileStem(cardId)}.png`, CARD_ART_ROOT).href;
   }
 
   function loadCardArt(cardId) {
