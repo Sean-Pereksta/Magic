@@ -250,6 +250,44 @@
       body.battleMode .opponentQueue{top:4px;width:96vw}.opponentQueueTitle{font-size:6px;padding:3px 7px}.queueCard{width:62px}.queueCard img,.queueCardArt{height:34px}.queueCardName{font-size:5.5px;padding:3px}
     }
     @media(max-width:620px){.difficultyGrid{grid-template-columns:1fr}.heroActions .btn{width:100%}}
+
+    /* FULL-CARD BATTLE DISPLAY
+       Battle cards now show the complete PNG without rebuilt rules covering it.
+       Card rules live exclusively in the Info modal. */
+    .battleCardVisual{width:100%;aspect-ratio:512/716;min-height:0;display:grid;place-items:center;overflow:hidden;background:radial-gradient(circle at center,color-mix(in srgb,var(--faction) 22%,transparent),transparent 60%),#070b10;border-bottom:1px solid color-mix(in srgb,var(--faction) 34%,#26313d)}
+    .battleCardVisual img,.battleCardVisual .cardArtImage,.battleCardVisual .detailArtImage{width:100%;height:100%;display:block;object-fit:contain;object-position:center;background:#070b10}
+    .battleFallbackCard{width:100%;height:100%;padding:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;text-align:center;background:linear-gradient(145deg,color-mix(in srgb,var(--faction) 19%,#111820),#080d13)}
+    .battleFallbackCost{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;background:var(--faction);color:#080b10;font-size:10px;font-weight:950}
+    .battleFallbackSigil{font-size:34px;line-height:1;color:var(--faction);text-shadow:0 0 18px color-mix(in srgb,var(--faction) 55%,transparent)}
+    .battleFallbackName{font-size:8px;line-height:1.2;font-weight:950;color:#fff}
+    .battleFallbackType{font-size:6px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:#aeb9c6}
+    .gameCard .cardActions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;flex-wrap:nowrap;padding:5px;background:#0e141b;border-top:1px solid #26313d}
+    .gameCard .cardActions .btn{width:100%;min-width:0;flex:none;white-space:nowrap}
+    .gameCard .cardActions .btn:only-child{grid-column:1/-1}
+    .effectHint{margin:8px 0!important;color:#8fa0b2!important;font-size:8px!important}
+    .detailRules{border:1px solid #334252;border-radius:10px;background:#0b1118;padding:10px;margin:9px 0;font-size:10px;line-height:1.55;color:#c5cfda}
+    .effectTermButton{display:inline;padding:0 2px;border:0;border-bottom:1px dotted currentColor;background:transparent;color:#e6ca55;font:inherit;font-weight:900;cursor:pointer}
+    .effectTermButton:hover{color:#fff;border-bottom-style:solid}
+    .effectOverlay{z-index:150;background:rgba(3,5,8,.72);backdrop-filter:blur(5px)}
+    .effectPopup{width:min(430px,100%);border:1px solid #56687c;border-radius:15px;background:#111923;box-shadow:0 28px 80px rgba(0,0,0,.65);overflow:hidden}
+    .effectPopupHead{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #334152;background:#17212c}
+    .effectPopupHead h3{margin:0;font-size:15px}.effectPopupHead button{margin-left:auto}
+    .effectPopupBody{padding:15px;font-size:11px;line-height:1.6;color:#c6d0db}
+    .effectPopupBody p{margin:0}.effectPopupBody .btn{margin-top:13px;width:100%}
+
+    .realmField .battleCardVisual,.marketRow .battleCardVisual,.handRow .battleCardVisual,.ownCards .battleCardVisual{height:auto}
+    .realmField .gameCard,.marketRow .gameCard,.handRow .gameCard,.ownCards .gameCard{align-self:flex-start}
+
+    @media(max-width:620px){
+      body.battleMode .battleShell{grid-template-rows:minmax(118px,.78fr) minmax(145px,.92fr) minmax(178px,1.18fr)}
+      body.battleMode .realmField .gameCard{width:82px;flex-basis:82px}
+      body.battleMode .marketRow .gameCard{width:86px;flex-basis:86px}
+      body.battleMode .handRow .gameCard{width:89px;flex-basis:89px}
+      body.battleMode .gameCard .cardActions{padding:3px;gap:3px}
+      body.battleMode .gameCard .cardActions .btn{min-height:22px;padding:2px 3px;font-size:6px}
+      body.battleMode .battleFallbackCard{padding:4px;gap:4px}.battleFallbackSigil{font-size:24px}.battleFallbackName{font-size:6.5px}.battleFallbackType{font-size:5px}
+    }
+
   </style>
 </head>
 <body>
@@ -394,6 +432,14 @@
   <div class="modal">
     <div class="modalHead"><div><h2 id="modalTitle">War Realms</h2><p id="modalSubtitle"></p></div><button class="modalClose" id="modalClose">✕</button></div>
     <div class="modalBody" id="modalBody"></div>
+  </div>
+</div>
+
+
+<div id="effectOverlay" class="overlay effectOverlay hidden">
+  <div class="effectPopup" role="dialog" aria-modal="true" aria-labelledby="effectTitle">
+    <div class="effectPopupHead"><h3 id="effectTitle">Effect</h3><button class="modalClose" id="effectClose" aria-label="Close effect explanation">✕</button></div>
+    <div class="effectPopupBody"><p id="effectDescription"></p><button class="btn" id="effectBackBtn">Back to card info</button></div>
   </div>
 </div>
 
@@ -699,7 +745,7 @@
       const card = getCard(node.dataset.cardArtId);
       const artUrl = cardArtCache.get(node.dataset.cardArtId);
       if (!card || typeof artUrl !== "string") return;
-      const containArtwork = node.classList.contains("detailArt") || node.classList.contains("storeCardPreview") || node.classList.contains("deckMiniArt");
+      const containArtwork = node.classList.contains("detailArt") || node.classList.contains("storeCardPreview") || node.classList.contains("deckMiniArt") || node.classList.contains("battleCardVisual");
       node.innerHTML = cardArtInnerHtml(card, containArtwork);
     });
   }
@@ -799,8 +845,102 @@
   }
 
   function closeModal() {
+    closeEffectHelp();
     $("#modalOverlay").classList.add("hidden");
     $("#modalBody").innerHTML = "";
+  }
+
+
+  const EFFECT_TERM_HELP = Object.freeze({
+    "Primary": "The card's normal effect. Units resolve it when played. Bases resolve it when they are played and again at the start of their owner's later turns unless disabled.",
+    "Trade": "Trade is spent to acquire a card from the Trade Row. Unspent Trade disappears when the turn ends.",
+    "Combat": "Combat is spent to attack enemy bases or a rival realm. Attacking a realm spends all remaining Combat.",
+    "Authority": "Authority is realm health. Healing restores Authority, but never above the normal maximum unless a card explicitly says otherwise.",
+    "Draw": "Draw immediately adds the stated number of cards from your draw pile to your hand. When needed, the discard pile is shuffled into a new draw pile.",
+    "Discard": "A discard effect makes the affected player move cards from hand to discard before their next actions, according to the card's wording.",
+    "Ally": "An Ally effect triggers once when enough active cards of the same faction are present during the turn. Persistent bases count toward that faction total.",
+    "Sacrifice": "Sacrifice permanently removes that deployed card from the current battle to gain its listed sacrifice effect.",
+    "Base": "A Base stays deployed after being played and produces its Primary effect again at the start of its owner's turns.",
+    "Outpost": "An Outpost is a protective Base. Enemy realms and non-Outpost bases cannot be attacked while that realm controls an Outpost.",
+    "Defense": "Defense is the amount of Combat required to destroy a Base with a normal attack.",
+    "Shield": "Shield absorbs incoming damage before Authority is reduced.",
+    "Purge": "Purge permanently removes a chosen card from your hand, draw pile, or discard pile for the rest of the battle.",
+    "Market Erase": "Market Erase permanently removes a chosen card from the Trade Row and replaces it from the market deck when possible.",
+    "Disable": "Disable prevents a Base from producing its Primary or Ally effect on its owner's next turn.",
+    "Destroy Base": "Destroy Base removes a legal enemy Base without spending normal Combat. Outpost protection still applies unless the effect says otherwise.",
+    "Damage All": "Damage All deals the stated amount to every rival realm rather than choosing only one target.",
+    "Lifelink": "Lifelink restores Authority based on combat damage actually dealt by the effect.",
+    "Control": "Control is a temporary resource used by card effects that manipulate, delay, or redirect enemy options. Unspent Control disappears at turn end."
+  });
+
+  const EFFECT_TERM_ALIASES = Object.freeze({
+    "primary": "Primary",
+    "trade": "Trade",
+    "combat": "Combat",
+    "authority": "Authority",
+    "heal": "Authority",
+    "heals": "Authority",
+    "healing": "Authority",
+    "draw": "Draw",
+    "draws": "Draw",
+    "discard": "Discard",
+    "discards": "Discard",
+    "faction ally": "Ally",
+    "ally": "Ally",
+    "sacrifice": "Sacrifice",
+    "sacrifices": "Sacrifice",
+    "outposts": "Outpost",
+    "outpost": "Outpost",
+    "bases": "Base",
+    "base": "Base",
+    "defense": "Defense",
+    "shield": "Shield",
+    "purge": "Purge",
+    "purges": "Purge",
+    "scrap": "Purge",
+    "scraps": "Purge",
+    "market erase": "Market Erase",
+    "erase": "Market Erase",
+    "disable": "Disable",
+    "disables": "Disable",
+    "destroy base": "Destroy Base",
+    "damage all": "Damage All",
+    "lifelink": "Lifelink",
+    "control": "Control"
+  });
+
+  const EFFECT_TERM_PATTERN = new RegExp(`\\b(${Object.keys(EFFECT_TERM_ALIASES)
+    .sort((left, right) => right.length - left.length)
+    .map(term => term.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&"))
+    .join("|")})\\b`, "gi");
+
+  function linkEffectTerms(value) {
+    const source = String(value || "");
+    let html = "";
+    let lastIndex = 0;
+    source.replace(EFFECT_TERM_PATTERN, (match, _capture, offset) => {
+      html += escapeHtml(source.slice(lastIndex, offset));
+      const canonical = EFFECT_TERM_ALIASES[match.toLowerCase()] || match;
+      html += `<button type="button" class="effectTermButton" data-act="effect-help" data-effect-term="${escapeHtml(canonical)}">${escapeHtml(match)}</button>`;
+      lastIndex = offset + match.length;
+      return match;
+    });
+    return html + escapeHtml(source.slice(lastIndex));
+  }
+
+  function effectLabelHtml(label) {
+    return `<button type="button" class="effectTermButton" data-act="effect-help" data-effect-term="${escapeHtml(label)}">${escapeHtml(label)}</button>`;
+  }
+
+  function showEffectHelp(term) {
+    const canonical = EFFECT_TERM_ALIASES[String(term || "").toLowerCase()] || String(term || "Effect");
+    $("#effectTitle").textContent = canonical;
+    $("#effectDescription").textContent = EFFECT_TERM_HELP[canonical] || "This term is defined by the exact wording on the card. Resolve the card from left to right, using the current battle state.";
+    $("#effectOverlay").classList.remove("hidden");
+  }
+
+  function closeEffectHelp() {
+    $("#effectOverlay").classList.add("hidden");
   }
 
   function createNewPlayerCollection() {
@@ -1165,10 +1305,11 @@
         <div class="detailCopy">
           <div class="detailFaction">${displayCardType(card)} · Cost ${card.cost}${card.type === "base" ? ` · ${card.defense} Defense` : ""}</div>
           <h3>${escapeHtml(card.name)}</h3>
-          <p>${escapeHtml(fullCardRules(card))}</p>
-          ${effect ? `<div class="detailEffect"><b>Primary:</b> ${escapeHtml(effect)}</div>` : ""}
-          ${ally ? `<div class="detailEffect"><b>Faction Ally:</b> ${escapeHtml(ally)}</div>` : ""}
-          ${sacrifice ? `<div class="detailEffect"><b>Sacrifice:</b> ${escapeHtml(sacrifice)}</div>` : ""}
+          <p class="effectHint">Tap any highlighted effect term for a quick explanation.</p>
+          <div class="detailRules">${linkEffectTerms(fullCardRules(card))}</div>
+          ${effect ? `<div class="detailEffect"><b>${effectLabelHtml("Primary")}:</b> ${linkEffectTerms(effect)}</div>` : ""}
+          ${ally ? `<div class="detailEffect"><b>${effectLabelHtml("Ally")}:</b> ${linkEffectTerms(ally)}</div>` : ""}
+          ${sacrifice ? `<div class="detailEffect"><b>${effectLabelHtml("Sacrifice")}:</b> ${linkEffectTerms(sacrifice)}</div>` : ""}
           <p><i>${escapeHtml(card.flavor || "")}</i></p>
           <div class="modalActions">${extraActions}</div>
         </div>
@@ -1837,24 +1978,28 @@
     const card = getCard(cardId);
     const intrinsicData = entry ? `data-instance-id="${escapeHtml(entry.instanceId || "")}" data-card-id="${escapeHtml(cardId || "")}"` : `data-card-id="${escapeHtml(cardId || "")}"`;
     const dataAttributes = `${intrinsicData} ${options.dataAttributes || ""}`.trim();
+    const primaryAction = options.primaryAction || "";
+
     if (!card) {
-      const actions = options.actions || "";
+      const infoAction = `<button class="btn small" disabled>Info</button>`;
       return `<article class="gameCard neutral locked ${options.zoneClass || ""}" ${dataAttributes}>
-        <div class="cardHead"><span class="cardCost">?</span><span class="cardName">Unavailable Card</span><span class="cardType">CARD</span></div>
-        <div class="cardArt"><span class="cardSigil">?</span></div>
-        <div class="cardRules">This saved card ID is not in the current card pack. Play or purge it to clear the stale entry.</div>
-        <div class="cardMeta"><span class="grow">${escapeHtml(String(cardId || "unknown"))}</span></div>
-        ${actions ? `<div class="cardActions">${actions}</div>` : ""}
+        <div class="battleCardVisual">
+          <div class="battleFallbackCard"><span class="battleFallbackCost">?</span><span class="battleFallbackSigil">?</span><span class="battleFallbackName">Unavailable Card</span><span class="battleFallbackType">${escapeHtml(String(cardId || "unknown"))}</span></div>
+        </div>
+        <div class="cardActions">${infoAction}${primaryAction}</div>
       </article>`;
     }
+
     const classes = ["gameCard", card.faction, options.zoneClass || "", options.locked ? "locked" : "", options.attackable ? "attackable" : "", options.disabledBase ? "disabledBase" : ""].filter(Boolean).join(" ");
-    const actions = options.actions || "";
-    return `<article class="${classes}" ${dataAttributes}>
-      <div class="cardHead"><span class="cardCost">${card.cost}</span><span class="cardName">${escapeHtml(card.name)}</span><span class="cardType">${displayCardType(card)}</span></div>
-      ${cardArtPanelHtml(card)}
-      <div class="cardRules">${card.type === "base" ? `<b>${card.outpost ? "OUTPOST" : "BASE"} · ${card.defense}</b><br>` : ""}${escapeHtml(card.text)}${card.allyText ? `<br><b>ALLY</b> ${escapeHtml(card.allyText)}` : ""}</div>
-      <div class="cardMeta"><span class="grow">${escapeHtml(options.ownerName || FACTIONS[card.faction]?.name || "War Realms")}</span>${card.sacrifice ? "<b>†</b>" : ""}</div>
-      ${actions ? `<div class="cardActions">${actions}</div>` : ""}
+    const infoAction = `<button class="btn small" data-act="details" data-card-id="${escapeHtml(card.id)}">Info</button>`;
+    const visual = `<div class="battleCardVisual" data-card-art-id="${escapeHtml(card.id)}">${cardArtCache.has(card.id) && typeof cardArtCache.get(card.id) === "string"
+      ? cardArtInnerHtml(card, true)
+      : `<div class="battleFallbackCard"><span class="battleFallbackCost">${card.cost}</span><span class="battleFallbackSigil">${card.sigil}</span><span class="battleFallbackName">${escapeHtml(card.name)}</span><span class="battleFallbackType">${displayCardType(card)}</span></div>`}
+    </div>`;
+
+    return `<article class="${classes}" ${dataAttributes} aria-label="${escapeHtml(card.name)}">
+      ${visual}
+      <div class="cardActions">${infoAction}${primaryAction}</div>
     </article>`;
   }
 
@@ -1876,20 +2021,16 @@
       if (!card) return battleCardHtml(entry, { ownerName: player.name, zoneClass: isBase ? "baseCard" : "playedCard", locked: true });
       const protectedBase = isBase && blockers.length > 0 && !card.outpost;
       const canAttackBase = canAct && isBase && attackable.includes(entry.instanceId) && (myPlayer()?.combat || 0) >= (card.defense || 0);
-      const canDisable = canAct && isBase && (myPlayer()?.stun || 0) > 0;
-      const canDestroyBase = canAct && isBase && attackable.includes(entry.instanceId) && (myPlayer()?.destroyBase || 0) > 0;
       const ownSacrifice = mine && isMyTurn() && !!card.sacrifice;
-      const actions = [
-        `<button class="btn small" data-act="details" data-card-id="${card.id}">Info</button>`,
-        canAttackBase ? `<button class="btn small primary" data-act="attack-base" data-target-id="${player.id}" data-instance-id="${entry.instanceId}">Attack ${card.defense}</button>` : "",
-        canDisable ? `<button class="btn small blue" data-act="stun-base" data-target-id="${player.id}" data-instance-id="${entry.instanceId}">Disable</button>` : "",
-        canDestroyBase ? `<button class="btn small warning" data-act="destroy-base" data-target-id="${player.id}" data-instance-id="${entry.instanceId}">Destroy</button>` : "",
-        ownSacrifice ? `<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>` : ""
-      ].filter(Boolean).join("");
+      const primaryAction = ownSacrifice
+        ? `<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>`
+        : canAttackBase
+          ? `<button class="btn small primary" data-act="attack-base" data-target-id="${player.id}" data-instance-id="${entry.instanceId}">Attack ${card.defense}</button>`
+          : "";
       return battleCardHtml(entry, {
         ownerName: player.name,
         zoneClass: isBase ? "baseCard" : "playedCard",
-        actions,
+        primaryAction,
         locked: protectedBase,
         attackable: canAttackBase,
         disabledBase: isBase && (entry.stunTurns || 0) > 0
@@ -1917,13 +2058,8 @@
       const card = getCard(entry?.id);
       if (!card) return battleCardHtml(entry, { ownerName: entry?.originalOwnerName || "Unknown", locked: true });
       const canBuy = canAct && (me?.trade || 0) >= card.cost;
-      const canErase = canAct && (me?.scrapMarket || 0) > 0;
-      const actions = [
-        `<button class="btn small" data-act="details" data-card-id="${card.id}">Info</button>`,
-        `<button class="btn small good" data-act="buy-market" data-index="${index}" ${canBuy ? "" : "disabled"}>Buy ${card.cost}</button>`,
-        canErase ? `<button class="btn small warning" data-act="erase-market" data-index="${index}">Erase</button>` : ""
-      ].filter(Boolean).join("");
-      return battleCardHtml(entry, { ownerName: entry.originalOwnerName, actions, attackable: canBuy });
+      const primaryAction = `<button class="btn small good" data-act="buy-market" data-index="${index}" ${canBuy ? "" : "disabled"}>Buy ${card.cost}</button>`;
+      return battleCardHtml(entry, { ownerName: entry.originalOwnerName, primaryAction, attackable: canBuy });
     }).join("") || '<div class="emptyZone">The Trade Row is empty.</div>';
   }
 
@@ -1938,13 +2074,12 @@
     $("#handRow").innerHTML = (me.hand || []).map((cardId, index) => {
       const card = getCard(cardId);
       if (!card) {
-        const actions = `<button class="btn small good" data-act="play-card" data-index="${index}" ${canAct ? "" : "disabled"}>Clear</button>`;
-        return battleCardHtml(cardId, { actions, ownerName: me.name, locked: !canAct, zoneClass: canAct ? "playableCard" : "", dataAttributes: canAct ? `data-hand-index="${index}" data-playable="1" title="Drag upward or press Clear"` : "" });
+        const primaryAction = `<button class="btn small good" data-act="play-card" data-index="${index}" ${canAct ? "" : "disabled"}>Clear</button>`;
+        return battleCardHtml(cardId, { primaryAction, ownerName: me.name, locked: !canAct, zoneClass: canAct ? "playableCard" : "", dataAttributes: canAct ? `data-hand-index="${index}" data-playable="1" title="Drag upward or press Clear"` : "" });
       }
-      const actions = `<button class="btn small" data-act="details" data-card-id="${card.id}">Info</button>
-        <button class="btn small good" data-act="play-card" data-index="${index}" ${canAct ? "" : "disabled"}>Play</button>`;
+      const primaryAction = `<button class="btn small good" data-act="play-card" data-index="${index}" ${canAct ? "" : "disabled"}>Play</button>`;
       return battleCardHtml(cardId, {
-        actions,
+        primaryAction,
         ownerName: me.name,
         attackable: canAct,
         zoneClass: canAct ? "playableCard" : "",
@@ -1956,8 +2091,8 @@
     $("#ownCards").innerHTML = ownEntries.map(entry => {
       const card = getCard(entry.id);
       if (!card) return battleCardHtml(entry, { ownerName: me.name, locked: true });
-      const actions = `<button class="btn small" data-act="details" data-card-id="${card.id}">Info</button>${canAct && card.sacrifice ? `<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>` : ""}`;
-      return battleCardHtml(entry, { actions, ownerName: me.name, disabledBase: entry.zone === "bases" && (entry.stunTurns || 0) > 0 });
+      const primaryAction = canAct && card.sacrifice ? `<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>` : "";
+      return battleCardHtml(entry, { primaryAction, ownerName: me.name, disabledBase: entry.zone === "bases" && (entry.stunTurns || 0) > 0 });
     }).join("") || '<div class="emptyZone">No deployed cards</div>';
   }
 
@@ -2683,6 +2818,7 @@
     if (!button) return;
     const action = button.dataset.act;
     if (action === "details") showCardDetails(button.dataset.cardId);
+    if (action === "effect-help") showEffectHelp(button.dataset.effectTerm);
     if (action === "buy-profile-card") purchaseProfileCard(button.dataset.cardId);
     if (action === "deck-move-in") moveDeckCopy(button.dataset.cardId, true);
     if (action === "deck-move-out") moveDeckCopy(button.dataset.cardId, false);
@@ -2702,6 +2838,10 @@
   });
 
   document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !$("#effectOverlay").classList.contains("hidden")) {
+      closeEffectHelp();
+      return;
+    }
     const card = event.target.closest?.(".deckMoveCard[data-act]");
     if (!card || (event.key !== "Enter" && event.key !== " ")) return;
     event.preventDefault();
@@ -2765,6 +2905,11 @@
   $("#modalClose").addEventListener("click", closeModal);
   $("#modalOverlay").addEventListener("click", event => {
     if (event.target === $("#modalOverlay")) closeModal();
+  });
+  $("#effectClose").addEventListener("click", closeEffectHelp);
+  $("#effectBackBtn").addEventListener("click", closeEffectHelp);
+  $("#effectOverlay").addEventListener("click", event => {
+    if (event.target === $("#effectOverlay")) closeEffectHelp();
   });
   $("#helpBtn").addEventListener("click", showRules);
   $("#lobbyBtn").addEventListener("click", () => {
