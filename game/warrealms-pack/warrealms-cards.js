@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 6;
+export const WAR_REALMS_CARD_VERSION = 7;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -44,6 +44,7 @@ export const STARTER_CARDS = Object.freeze({
   starter_coin: {
     id: "starter_coin",
     name: "Realm Coin",
+    image: "starter_coin.png",
     faction: "neutral",
     cost: 0,
     shop_cost: 3,
@@ -58,6 +59,7 @@ export const STARTER_CARDS = Object.freeze({
   starter_blade: {
     id: "starter_blade",
     name: "Militia Blade",
+    image: "starter_blade.png",
     faction: "neutral",
     cost: 0,
     shop_cost: 3,
@@ -78,6 +80,7 @@ export const CARDS = Object.freeze([
   {
     id: "starwhisper_scout",
     name: "Starwhisper Scout",
+    image: "starwhisper_scout.png",
     faction: "yellow",
     cost: 1,
     shop_cost: 15,
@@ -92,6 +95,7 @@ export const CARDS = Object.freeze([
   {
     id: "neural_leash",
     name: "Neural Leash",
+    image: "neural_leash.png",
     faction: "yellow",
     cost: 2,
     shop_cost: 25,
@@ -106,6 +110,7 @@ export const CARDS = Object.freeze([
   {
     id: "phase_warden",
     name: "Phase Warden",
+    image: "phase_warden.png",
     faction: "yellow",
     cost: 2,
     shop_cost: 25,
@@ -122,6 +127,7 @@ export const CARDS = Object.freeze([
   {
     id: "gravity_hook",
     name: "Gravity Hook",
+    image: "gravity_hook.png",
     faction: "yellow",
     cost: 3,
     shop_cost: 30,
@@ -136,6 +142,7 @@ export const CARDS = Object.freeze([
   {
     id: "mirage_broker",
     name: "Mirage Broker",
+    image: "mirage_broker.png",
     faction: "yellow",
     cost: 3,
     shop_cost: 25,
@@ -150,6 +157,7 @@ export const CARDS = Object.freeze([
   {
     id: "null_prism",
     name: "Null Prism",
+    image: "null_prism.png",
     faction: "yellow",
     cost: 3,
     shop_cost: 35,
@@ -166,6 +174,7 @@ export const CARDS = Object.freeze([
   {
     id: "signal_eater",
     name: "Signal Eater",
+    image: "signal_eater.png",
     faction: "yellow",
     cost: 4,
     shop_cost: 45,
@@ -182,6 +191,7 @@ export const CARDS = Object.freeze([
   {
     id: "chrono_beast",
     name: "Chrono Beast",
+    image: "chrono_beast.png",
     faction: "yellow",
     cost: 4,
     shop_cost: 35,
@@ -196,6 +206,7 @@ export const CARDS = Object.freeze([
   {
     id: "dominion_relay",
     name: "Dominion Relay",
+    image: "dominion_relay.png",
     faction: "yellow",
     cost: 4,
     shop_cost: 40,
@@ -212,6 +223,7 @@ export const CARDS = Object.freeze([
   {
     id: "paradox_warden",
     name: "Paradox Warden",
+    image: "paradox_warden.png",
     faction: "yellow",
     cost: 5,
     shop_cost: 60,
@@ -230,6 +242,7 @@ export const CARDS = Object.freeze([
   {
     id: "causal_severer",
     name: "Causal Severer",
+    image: "causal_severer.png",
     faction: "yellow",
     cost: 7,
     shop_cost: 140,
@@ -244,6 +257,7 @@ export const CARDS = Object.freeze([
   {
     id: "aegis_tide_saint",
     name: "Aegis Tide Saint",
+    image: "aegis_tide_saint.png",
     faction: "blue",
     cost: 5,
     shop_cost: 60,
@@ -258,6 +272,7 @@ export const CARDS = Object.freeze([
   {
     id: "basilica_of_many_lights",
     name: "Basilica of Many Lights",
+    image: "basilica_of_many_lights.png",
     faction: "blue",
     cost: 6,
     shop_cost: 85,
@@ -274,6 +289,7 @@ export const CARDS = Object.freeze([
   {
     id: "reliquary_shieldfleet",
     name: "Reliquary Shieldfleet",
+    image: "reliquary_shieldfleet.png",
     faction: "blue",
     cost: 7,
     shop_cost: 130,
@@ -292,6 +308,7 @@ export const CARDS = Object.freeze([
   {
     id: "warcamp_foundry",
     name: "Warcamp Foundry",
+    image: "warcamp_foundry.png",
     faction: "green",
     cost: 4,
     shop_cost: 45,
@@ -310,6 +327,7 @@ export const CARDS = Object.freeze([
   {
     id: "siege_root_colossus",
     name: "Siege-Root Colossus",
+    image: "siege_root_colossus.png",
     faction: "green",
     cost: 7,
     shop_cost: 140,
@@ -324,6 +342,7 @@ export const CARDS = Object.freeze([
   {
     id: "gatebreaker_alpha",
     name: "Gatebreaker Alpha",
+    image: "gatebreaker_alpha.png",
     faction: "green",
     cost: 6,
     shop_cost: 100,
@@ -338,6 +357,7 @@ export const CARDS = Object.freeze([
   {
     id: "eclipse_harrower",
     name: "Eclipse Harrower",
+    image: "eclipse_harrower.png",
     faction: "red",
     cost: 7,
     shop_cost: 145,
@@ -354,6 +374,7 @@ export const CARDS = Object.freeze([
   {
     id: "ashen_tithe_engine",
     name: "Ashen Tithe Engine",
+    image: "ashen_tithe_engine.png",
     faction: "red",
     cost: 5,
     shop_cost: 70,
@@ -372,6 +393,7 @@ export const CARDS = Object.freeze([
   {
     id: "rift_manta",
     name: "Rift Manta",
+    image: "rift_manta.png",
     faction: "yellow",
     cost: 5,
     shop_cost: 55,
@@ -386,6 +408,7 @@ export const CARDS = Object.freeze([
   {
     id: "mind_crown",
     name: "Mind Crown",
+    image: "mind_crown.png",
     faction: "yellow",
     cost: 5,
     shop_cost: 60,
@@ -402,6 +425,7 @@ export const CARDS = Object.freeze([
   {
     id: "astral_taxer",
     name: "Astral Taxer",
+    image: "astral_taxer.png",
     faction: "yellow",
     cost: 5,
     shop_cost: 55,
@@ -416,6 +440,7 @@ export const CARDS = Object.freeze([
   {
     id: "sovereign_dreadnought",
     name: "Sovereign Dreadnought",
+    image: "soveriegn_dreadnought.png",
     faction: "yellow",
     cost: 6,
     shop_cost: 90,
@@ -430,6 +455,7 @@ export const CARDS = Object.freeze([
   {
     id: "reality_harvester",
     name: "Reality Harvester",
+    image: "reality_harvester.png",
     faction: "yellow",
     cost: 7,
     shop_cost: 125,
@@ -446,6 +472,7 @@ export const CARDS = Object.freeze([
   {
     id: "void_leviathan",
     name: "Void Leviathan",
+    image: "void_leviathan.png",
     faction: "yellow",
     cost: 8,
     shop_cost: 185,
@@ -460,6 +487,7 @@ export const CARDS = Object.freeze([
   {
     id: "threadseer_familiar",
     name: "Threadseer Familiar",
+    image: "threadseer_familiar.png",
     faction: "yellow",
     cost: 3,
     shop_cost: 25,
@@ -474,6 +502,7 @@ export const CARDS = Object.freeze([
   {
     id: "dreamfold_navigator",
     name: "Dreamfold Navigator",
+    image: "dreamfold_navigator.png",
     faction: "yellow",
     cost: 4,
     shop_cost: 40,
@@ -488,6 +517,7 @@ export const CARDS = Object.freeze([
   {
     id: "probability_nursery",
     name: "Probability Nursery",
+    image: "probability_nursery.png",
     faction: "yellow",
     cost: 5,
     shop_cost: 55,
@@ -506,6 +536,7 @@ export const CARDS = Object.freeze([
   {
     id: "many_mind_oracle",
     name: "Many-Mind Oracle",
+    image: "many_mind_oracle.png",
     faction: "yellow",
     cost: 7,
     shop_cost: 130,
@@ -520,6 +551,7 @@ export const CARDS = Object.freeze([
   {
     id: "echo_shepherd",
     name: "Echo Shepherd",
+    image: "echo_shepherd.png",
     faction: "yellow",
     cost: 3,
     shop_cost: 35,
@@ -534,6 +566,7 @@ export const CARDS = Object.freeze([
   {
     id: "stasis_menagerie",
     name: "Stasis Menagerie",
+    image: "stasis_menagerie.png",
     faction: "yellow",
     cost: 5,
     shop_cost: 60,
@@ -552,6 +585,7 @@ export const CARDS = Object.freeze([
   {
     id: "fate_tether_colossus",
     name: "Fate-Tether Colossus",
+    image: "fate_tether_colossus.png",
     faction: "yellow",
     cost: 7,
     shop_cost: 130,
@@ -566,6 +600,7 @@ export const CARDS = Object.freeze([
   {
     id: "hourglass_devourer",
     name: "Hourglass Devourer",
+    image: "hourglass_devourer.png",
     faction: "yellow",
     cost: 4,
     shop_cost: 35,
@@ -580,6 +615,7 @@ export const CARDS = Object.freeze([
   {
     id: "archive_swarm",
     name: "Archive Swarm",
+    image: "archive_swarm.png",
     faction: "yellow",
     cost: 6,
     shop_cost: 95,
@@ -594,6 +630,7 @@ export const CARDS = Object.freeze([
   {
     id: "paradox_gate",
     name: "Paradox Gate",
+    image: "paradox_gate.png",
     faction: "yellow",
     cost: 6,
     shop_cost: 90,
@@ -614,6 +651,7 @@ export const CARDS = Object.freeze([
   {
     id: "triune_oracle",
     name: "Triune Oracle",
+    image: "triune_oracle.png",
     faction: "yellow",
     cost: 4,
     shop_cost: 150,
@@ -630,6 +668,7 @@ export const CARDS = Object.freeze([
   {
     id: "hourglass_convergence",
     name: "Hourglass Convergence",
+    image: "hourglass_convergence.png",
     faction: "yellow",
     cost: 5,
     shop_cost: 190,
@@ -648,6 +687,7 @@ export const CARDS = Object.freeze([
   {
     id: "many_mind_apex",
     name: "Many-Mind Apex",
+    image: "many_mind_apex.png",
     faction: "yellow",
     cost: 7,
     shop_cost: 290,
@@ -668,6 +708,7 @@ export const CARDS = Object.freeze([
   {
     id: "tithe_acolyte",
     name: "Tithe Acolyte",
+    image: "tithe_acolyte.png",
     faction: "blue",
     cost: 1,
     shop_cost: 10,
@@ -682,6 +723,7 @@ export const CARDS = Object.freeze([
   {
     id: "pilgrim_of_dawn",
     name: "Pilgrim of Dawn",
+    image: "pilgrim_of_dawn.png",
     faction: "blue",
     cost: 2,
     shop_cost: 15,
@@ -696,6 +738,7 @@ export const CARDS = Object.freeze([
   {
     id: "votive_scribe",
     name: "Votive Scribe",
+    image: "votive_scribe.png",
     faction: "blue",
     cost: 2,
     shop_cost: 20,
@@ -710,6 +753,7 @@ export const CARDS = Object.freeze([
   {
     id: "seraphic_envoy",
     name: "Seraphic Envoy",
+    image: "seraphic_envoy.png",
     faction: "blue",
     cost: 2,
     shop_cost: 15,
@@ -724,6 +768,7 @@ export const CARDS = Object.freeze([
   {
     id: "azure_chapel",
     name: "Azure Chapel",
+    image: "azure_chapel.png",
     faction: "blue",
     cost: 3,
     shop_cost: 25,
@@ -740,6 +785,7 @@ export const CARDS = Object.freeze([
   {
     id: "lumen_knight",
     name: "Lumen Knight",
+    image: "lumen_knight.png",
     faction: "blue",
     cost: 3,
     shop_cost: 25,
@@ -754,6 +800,7 @@ export const CARDS = Object.freeze([
   {
     id: "reliquary_guard",
     name: "Reliquary Guard",
+    image: "reliquary_guard.png",
     faction: "blue",
     cost: 3,
     shop_cost: 30,
@@ -772,6 +819,7 @@ export const CARDS = Object.freeze([
   {
     id: "choir_of_wings",
     name: "Choir of Wings",
+    image: "choir_of_wings.png",
     faction: "blue",
     cost: 4,
     shop_cost: 40,
@@ -786,6 +834,7 @@ export const CARDS = Object.freeze([
   {
     id: "absolution_choir",
     name: "Absolution Choir",
+    image: "absolution_choir.png",
     faction: "blue",
     cost: 4,
     shop_cost: 40,
@@ -802,6 +851,7 @@ export const CARDS = Object.freeze([
   {
     id: "dawn_bastion",
     name: "Dawn Bastion",
+    image: "dawn_bastion.png",
     faction: "blue",
     cost: 5,
     shop_cost: 55,
@@ -818,6 +868,7 @@ export const CARDS = Object.freeze([
   {
     id: "mercy_herald",
     name: "Mercy Herald",
+    image: "mercy_herald.png",
     faction: "blue",
     cost: 5,
     shop_cost: 50,
@@ -832,6 +883,7 @@ export const CARDS = Object.freeze([
   {
     id: "throne_of_tides",
     name: "Throne of Tides",
+    image: "throne_of_tides.png",
     faction: "blue",
     cost: 6,
     shop_cost: 90,
@@ -848,6 +900,7 @@ export const CARDS = Object.freeze([
   {
     id: "saint_of_the_deep",
     name: "Saint of the Deep",
+    image: "saint_of_the_deep.png",
     faction: "blue",
     cost: 6,
     shop_cost: 85,
@@ -864,6 +917,7 @@ export const CARDS = Object.freeze([
   {
     id: "golden_litany",
     name: "Golden Litany",
+    image: "golden_litany.png",
     faction: "blue",
     cost: 7,
     shop_cost: 120,
@@ -878,6 +932,7 @@ export const CARDS = Object.freeze([
   {
     id: "ascendant_host",
     name: "Ascendant Host",
+    image: "ascendant_host.png",
     faction: "blue",
     cost: 8,
     shop_cost: 170,
@@ -892,6 +947,7 @@ export const CARDS = Object.freeze([
   {
     id: "radiant_lancer",
     name: "Radiant Lancer",
+    image: "radiant_lancer.png",
     faction: "blue",
     cost: 3,
     shop_cost: 25,
@@ -906,6 +962,7 @@ export const CARDS = Object.freeze([
   {
     id: "battle_psalmist",
     name: "Battle Psalmist",
+    image: "battle_psalmist.png",
     faction: "blue",
     cost: 4,
     shop_cost: 40,
@@ -920,6 +977,7 @@ export const CARDS = Object.freeze([
   {
     id: "aegis_gunship",
     name: "Aegis Gunship",
+    image: "aegis_gunship.png",
     faction: "blue",
     cost: 5,
     shop_cost: 55,
@@ -936,6 +994,7 @@ export const CARDS = Object.freeze([
   {
     id: "judgment_seraph",
     name: "Judgment Seraph",
+    image: "judgment_seraph.png",
     faction: "blue",
     cost: 7,
     shop_cost: 125,
@@ -950,6 +1009,7 @@ export const CARDS = Object.freeze([
   {
     id: "tidebound_chaplain",
     name: "Tidebound Chaplain",
+    image: "tidebound_chaplain.png",
     faction: "blue",
     cost: 2,
     shop_cost: 15,
@@ -964,6 +1024,7 @@ export const CARDS = Object.freeze([
   {
     id: "beacon_monastery",
     name: "Beacon Monastery",
+    image: "beacon_monastery.png",
     faction: "blue",
     cost: 4,
     shop_cost: 40,
@@ -982,6 +1043,7 @@ export const CARDS = Object.freeze([
   {
     id: "oathwing_marshal",
     name: "Oathwing Marshal",
+    image: "oathwing_marshal.png",
     faction: "blue",
     cost: 6,
     shop_cost: 85,
@@ -996,6 +1058,7 @@ export const CARDS = Object.freeze([
   {
     id: "tideglass_confessor",
     name: "Tideglass Confessor",
+    image: "tideglass_confessor.png",
     faction: "blue",
     cost: 4,
     shop_cost: 45,
@@ -1010,6 +1073,7 @@ export const CARDS = Object.freeze([
   {
     id: "procession_of_seven_banners",
     name: "Procession of Seven Banners",
+    image: "procession_of_seven_banners.png",
     faction: "blue",
     cost: 6,
     shop_cost: 90,
@@ -1030,6 +1094,7 @@ export const CARDS = Object.freeze([
   {
     id: "threefold_vanguard",
     name: "Threefold Vanguard",
+    image: "threefold_vanguard.png",
     faction: "blue",
     cost: 3,
     shop_cost: 105,
@@ -1046,6 +1111,7 @@ export const CARDS = Object.freeze([
   {
     id: "beacon_trinity",
     name: "Beacon Trinity",
+    image: "beacon_trinity.png",
     faction: "blue",
     cost: 5,
     shop_cost: 185,
@@ -1064,6 +1130,7 @@ export const CARDS = Object.freeze([
   {
     id: "oathfleet_paragon",
     name: "Oathfleet Paragon",
+    image: "oathfleet_paragon.png",
     faction: "blue",
     cost: 6,
     shop_cost: 240,
@@ -1084,6 +1151,7 @@ export const CARDS = Object.freeze([
   {
     id: "gore_runner",
     name: "Gore Runner",
+    image: "gore_runner.png",
     faction: "green",
     cost: 1,
     shop_cost: 10,
@@ -1098,6 +1166,7 @@ export const CARDS = Object.freeze([
   {
     id: "scrapfang_runt",
     name: "Scrapfang Runt",
+    image: "scrapfang_runt.png",
     faction: "green",
     cost: 1,
     shop_cost: 10,
@@ -1114,6 +1183,7 @@ export const CARDS = Object.freeze([
   {
     id: "loot_cart",
     name: "Loot Cart",
+    image: "loot_cart.png",
     faction: "green",
     cost: 2,
     shop_cost: 15,
@@ -1130,6 +1200,7 @@ export const CARDS = Object.freeze([
   {
     id: "axe_mob",
     name: "Axe Mob",
+    image: "axe_mob.png",
     faction: "green",
     cost: 2,
     shop_cost: 15,
@@ -1144,6 +1215,7 @@ export const CARDS = Object.freeze([
   {
     id: "siege_boar",
     name: "Siege Boar",
+    image: "siege_boar.png",
     faction: "green",
     cost: 3,
     shop_cost: 25,
@@ -1158,6 +1230,7 @@ export const CARDS = Object.freeze([
   {
     id: "war_drum_camp",
     name: "War Drum Camp",
+    image: "war_drum_camp.png",
     faction: "green",
     cost: 3,
     shop_cost: 30,
@@ -1174,6 +1247,7 @@ export const CARDS = Object.freeze([
   {
     id: "rage_caller",
     name: "Rage Caller",
+    image: "rage_caller.png",
     faction: "green",
     cost: 3,
     shop_cost: 25,
@@ -1190,6 +1264,7 @@ export const CARDS = Object.freeze([
   {
     id: "breakneck_stockade",
     name: "Breakneck Stockade",
+    image: "breakneck_stockade.png",
     faction: "green",
     cost: 4,
     shop_cost: 40,
@@ -1208,6 +1283,7 @@ export const CARDS = Object.freeze([
   {
     id: "skullcrag_warlord",
     name: "Skullcrag Warlord",
+    image: "skullcrag_warlord.png",
     faction: "green",
     cost: 5,
     shop_cost: 50,
@@ -1222,6 +1298,7 @@ export const CARDS = Object.freeze([
   {
     id: "stampede_totem",
     name: "Stampede Totem",
+    image: "stampede_totem.png",
     faction: "green",
     cost: 5,
     shop_cost: 50,
@@ -1238,6 +1315,7 @@ export const CARDS = Object.freeze([
   {
     id: "last_charge_titan",
     name: "Last-Charge Titan",
+    image: "last_charge_titan.png",
     faction: "green",
     cost: 6,
     shop_cost: 85,
@@ -1254,6 +1332,7 @@ export const CARDS = Object.freeze([
   {
     id: "bone_wagon",
     name: "Bone Wagon",
+    image: "bone_wagon.png",
     faction: "green",
     cost: 6,
     shop_cost: 80,
@@ -1268,6 +1347,7 @@ export const CARDS = Object.freeze([
   {
     id: "worldbreaker_horde",
     name: "Worldbreaker Horde",
+    image: "worldbreaker_horde.png",
     faction: "green",
     cost: 7,
     shop_cost: 120,
@@ -1282,6 +1362,7 @@ export const CARDS = Object.freeze([
   {
     id: "gorak_colossus",
     name: "Gorak Colossus",
+    image: "gorak_colossus.png",
     faction: "green",
     cost: 7,
     shop_cost: 120,
@@ -1296,6 +1377,7 @@ export const CARDS = Object.freeze([
   {
     id: "endwar_mammoth",
     name: "Endwar Mammoth",
+    image: "endwar_mammoth.png",
     faction: "green",
     cost: 8,
     shop_cost: 170,
@@ -1310,6 +1392,7 @@ export const CARDS = Object.freeze([
   {
     id: "plunder_shaman",
     name: "Plunder Shaman",
+    image: "plunder_shaman.png",
     faction: "green",
     cost: 3,
     shop_cost: 25,
@@ -1324,6 +1407,7 @@ export const CARDS = Object.freeze([
   {
     id: "ironroot_encampment",
     name: "Ironroot Encampment",
+    image: "ironroot_encampment.png",
     faction: "green",
     cost: 4,
     shop_cost: 35,
@@ -1340,6 +1424,7 @@ export const CARDS = Object.freeze([
   {
     id: "raidmasters_cache",
     name: "Raidmaster's Cache",
+    image: "raidmaster's_cache.png",
     faction: "green",
     cost: 5,
     shop_cost: 55,
@@ -1358,6 +1443,7 @@ export const CARDS = Object.freeze([
   {
     id: "thunderhoof_quartermaster",
     name: "Thunderhoof Quartermaster",
+    image: "thunderhoof_quartermaster.png",
     faction: "green",
     cost: 6,
     shop_cost: 85,
@@ -1372,6 +1458,7 @@ export const CARDS = Object.freeze([
   {
     id: "chainmaw_ravager",
     name: "Chainmaw Ravager",
+    image: "chainmaw_ravager.png",
     faction: "green",
     cost: 4,
     shop_cost: 40,
@@ -1388,6 +1475,7 @@ export const CARDS = Object.freeze([
   {
     id: "spoils_foundry",
     name: "Spoils Foundry",
+    image: "spoils_foundry.png",
     faction: "green",
     cost: 5,
     shop_cost: 55,
@@ -1406,6 +1494,7 @@ export const CARDS = Object.freeze([
   {
     id: "spoils_harvester",
     name: "Spoils Harvester",
+    image: "spoils_harvester.png",
     faction: "green",
     cost: 3,
     shop_cost: 30,
@@ -1420,6 +1509,7 @@ export const CARDS = Object.freeze([
   {
     id: "chaincamp_drumworks",
     name: "Chaincamp Drumworks",
+    image: "chaincamp_drumworks.png",
     faction: "green",
     cost: 5,
     shop_cost: 60,
@@ -1438,6 +1528,7 @@ export const CARDS = Object.freeze([
   {
     id: "bastion_eater_alpha",
     name: "Bastion-Eater Alpha",
+    image: "bastion_eater_alpha.png",
     faction: "green",
     cost: 7,
     shop_cost: 140,
@@ -1454,6 +1545,7 @@ export const CARDS = Object.freeze([
   {
     id: "spoils_council",
     name: "Spoils Council",
+    image: "spoils_council.png",
     faction: "green",
     cost: 4,
     shop_cost: 145,
@@ -1470,6 +1562,7 @@ export const CARDS = Object.freeze([
   {
     id: "rootbound_legion",
     name: "Rootbound Legion",
+    image: "rootbound_legion.png",
     faction: "green",
     cost: 5,
     shop_cost: 195,
@@ -1492,6 +1585,7 @@ export const CARDS = Object.freeze([
   {
     id: "ash_initiate",
     name: "Ash Initiate",
+    image: "ash_initiate.png",
     faction: "red",
     cost: 1,
     shop_cost: 15,
@@ -1506,6 +1600,7 @@ export const CARDS = Object.freeze([
   {
     id: "coin_curse",
     name: "Coin Curse",
+    image: "coin_curse.png",
     faction: "red",
     cost: 1,
     shop_cost: 10,
@@ -1522,6 +1617,7 @@ export const CARDS = Object.freeze([
   {
     id: "blood_channeler",
     name: "Blood Channeler",
+    image: "blood_channeler.png",
     faction: "red",
     cost: 2,
     shop_cost: 20,
@@ -1538,6 +1634,7 @@ export const CARDS = Object.freeze([
   {
     id: "bone_appraiser",
     name: "Bone Appraiser",
+    image: "bone_appraiser.png",
     faction: "red",
     cost: 2,
     shop_cost: 20,
@@ -1554,6 +1651,7 @@ export const CARDS = Object.freeze([
   {
     id: "grave_bargain",
     name: "Grave Bargain",
+    image: "grave_bargain.png",
     faction: "red",
     cost: 3,
     shop_cost: 30,
@@ -1568,6 +1666,7 @@ export const CARDS = Object.freeze([
   {
     id: "obsidian_altar",
     name: "Obsidian Altar",
+    image: "obsidian_altar.png",
     faction: "red",
     cost: 3,
     shop_cost: 25,
@@ -1586,6 +1685,7 @@ export const CARDS = Object.freeze([
   {
     id: "hexed_portal",
     name: "Hexed Portal",
+    image: "hexed_portal.png",
     faction: "red",
     cost: 3,
     shop_cost: 30,
@@ -1604,6 +1704,7 @@ export const CARDS = Object.freeze([
   {
     id: "flesh_ledger",
     name: "Flesh Ledger",
+    image: "flesh_ledger.png",
     faction: "red",
     cost: 4,
     shop_cost: 40,
@@ -1618,6 +1719,7 @@ export const CARDS = Object.freeze([
   {
     id: "soul_furnace",
     name: "Soul Furnace",
+    image: "soul_furnace.png",
     faction: "red",
     cost: 4,
     shop_cost: 45,
@@ -1636,6 +1738,7 @@ export const CARDS = Object.freeze([
   {
     id: "death_tithe",
     name: "Death Tithe",
+    image: "death_tithe.png",
     faction: "red",
     cost: 4,
     shop_cost: 40,
@@ -1652,6 +1755,7 @@ export const CARDS = Object.freeze([
   {
     id: "cinder_surgeon",
     name: "Cinder Surgeon",
+    image: "cinder_surgeon.png",
     faction: "red",
     cost: 5,
     shop_cost: 55,
@@ -1666,6 +1770,7 @@ export const CARDS = Object.freeze([
   {
     id: "void_auctioneer",
     name: "Void Auctioneer",
+    image: "void_auctioneer.png",
     faction: "red",
     cost: 5,
     shop_cost: 65,
@@ -1682,6 +1787,7 @@ export const CARDS = Object.freeze([
   {
     id: "eclipse_archon",
     name: "Eclipse Archon",
+    image: "eclipse_archon.png",
     faction: "red",
     cost: 6,
     shop_cost: 95,
@@ -1698,6 +1804,7 @@ export const CARDS = Object.freeze([
   {
     id: "black_sun_cathedral",
     name: "Black Sun Cathedral",
+    image: "black_sun_cathedral.png",
     faction: "red",
     cost: 7,
     shop_cost: 125,
@@ -1714,6 +1821,7 @@ export const CARDS = Object.freeze([
   {
     id: "realm_eater",
     name: "Realm Eater",
+    image: "realm_eater.png",
     faction: "red",
     cost: 8,
     shop_cost: 180,
@@ -1728,6 +1836,7 @@ export const CARDS = Object.freeze([
   {
     id: "culling_whisper",
     name: "Culling Whisper",
+    image: "culling_whisper.png",
     faction: "red",
     cost: 3,
     shop_cost: 30,
@@ -1742,6 +1851,7 @@ export const CARDS = Object.freeze([
   {
     id: "memory_pyre",
     name: "Memory Pyre",
+    image: "memory_pyre.png",
     faction: "red",
     cost: 4,
     shop_cost: 45,
@@ -1760,6 +1870,7 @@ export const CARDS = Object.freeze([
   {
     id: "ashen_reclaimer",
     name: "Ashen Reclaimer",
+    image: "ashen_reclaimer.png",
     faction: "red",
     cost: 5,
     shop_cost: 75,
@@ -1774,6 +1885,7 @@ export const CARDS = Object.freeze([
   {
     id: "abyssal_winnower",
     name: "Abyssal Winnower",
+    image: "abyssal_winnower.png",
     faction: "red",
     cost: 6,
     shop_cost: 95,
@@ -1788,6 +1900,7 @@ export const CARDS = Object.freeze([
   {
     id: "severance_adept",
     name: "Severance Adept",
+    image: "severance_adept.png",
     faction: "red",
     cost: 3,
     shop_cost: 30,
@@ -1802,6 +1915,7 @@ export const CARDS = Object.freeze([
   {
     id: "black_sun_auditor",
     name: "Black Sun Auditor",
+    image: "black_sun_auditor.png",
     faction: "red",
     cost: 5,
     shop_cost: 70,
@@ -1820,6 +1934,7 @@ export const CARDS = Object.freeze([
   {
     id: "duskchain_inquisitor",
     name: "Duskchain Inquisitor",
+    image: "duskchain_inquisitor.png",
     faction: "red",
     cost: 4,
     shop_cost: 50,
@@ -1836,6 +1951,7 @@ export const CARDS = Object.freeze([
   {
     id: "nightglass_crucible",
     name: "Nightglass Crucible",
+    image: "nightglass_crucible.png",
     faction: "red",
     cost: 6,
     shop_cost: 95,
@@ -1856,6 +1972,7 @@ export const CARDS = Object.freeze([
   {
     id: "nightglass_coven",
     name: "Nightglass Coven",
+    image: "nightglass_conven.png",
     faction: "red",
     cost: 4,
     shop_cost: 165,
@@ -1872,6 +1989,7 @@ export const CARDS = Object.freeze([
   {
     id: "umbral_triumvir",
     name: "Umbral Triumvir",
+    image: "umbral_triumvir.png",
     faction: "red",
     cost: 7,
     shop_cost: 300,
