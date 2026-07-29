@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 5;
+export const WAR_REALMS_CARD_VERSION = 6;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -209,7 +209,7 @@ export const CARDS = Object.freeze([
     allyText: "The next enemy draws 1 fewer card.",
     flavor: "A thought repeated across a thousand obedient minds."
   },
-   {
+  {
     id: "paradox_warden",
     name: "Paradox Warden",
     faction: "yellow",
@@ -563,7 +563,6 @@ export const CARDS = Object.freeze([
     allyText: "Draw 1 card. The next enemy draws 1 fewer card.",
     flavor: "Every chain fastened to it ends around an enemy possibility."
   },
-
   {
     id: "hourglass_devourer",
     name: "Hourglass Devourer",
@@ -609,6 +608,58 @@ export const CARDS = Object.freeze([
     allyText: "Gain 1 Trade.",
     sacrificeText: "Sacrifice: Gain 1 Raze.",
     flavor: "The gate cannot be breached, because one version of it was never built."
+  },
+
+  // DOUBLE ALLY CARDS
+  {
+    id: "triune_oracle",
+    name: "Triune Oracle",
+    faction: "yellow",
+    cost: 4,
+    shop_cost: 150,
+    type: "ship",
+    sigil: "◈",
+    effect: { trade: 1 },
+    ally: { combat: 1 },
+    doubleAlly: { draw: 2 },
+    text: "Gain 1 Trade.",
+    allyText: "Gain 1 Combat.",
+    doubleAllyText: "Draw 2 cards.",
+    flavor: "One mind predicts. Three minds decide."
+  },
+  {
+    id: "hourglass_convergence",
+    name: "Hourglass Convergence",
+    faction: "yellow",
+    cost: 5,
+    shop_cost: 190,
+    type: "base",
+    defense: 5,
+    outpost: false,
+    sigil: "◈",
+    effect: { trade: 1, shield: 1 },
+    ally: {},
+    doubleAlly: { draw: 1, opponentDiscard: 1 },
+    text: "Gain 1 Trade and 1 Shield.",
+    allyText: "",
+    doubleAllyText: "Draw 1 card. The next enemy draws 1 fewer card.",
+    flavor: "Every future narrows toward the Concord."
+  },
+  {
+    id: "many_mind_apex",
+    name: "Many-Mind Apex",
+    faction: "yellow",
+    cost: 7,
+    shop_cost: 290,
+    type: "ship",
+    sigil: "◈",
+    effect: { combat: 3, shield: 2 },
+    ally: { draw: 1 },
+    doubleAlly: { combat: 4, stun: 2 },
+    text: "Gain 3 Combat and 2 Shield.",
+    allyText: "Draw 1 card.",
+    doubleAllyText: "Gain 4 Combat and 2 Disable.",
+    flavor: "Consensus is merely the first stage of assimilation."
   },
 
   // ==========================================================
@@ -942,7 +993,6 @@ export const CARDS = Object.freeze([
     allyText: "Draw 1 card.",
     flavor: "An entire crusade follows the movement of its wings."
   },
-
   {
     id: "tideglass_confessor",
     name: "Tideglass Confessor",
@@ -974,6 +1024,58 @@ export const CARDS = Object.freeze([
     allyText: "Gain 2 Shield.",
     sacrificeText: "Sacrifice: Damage All 1.",
     flavor: "Where one banner stands, hope survives. Where seven gather, kingdoms endure."
+  },
+
+  // DOUBLE ALLY CARDS
+  {
+    id: "threefold_vanguard",
+    name: "Threefold Vanguard",
+    faction: "blue",
+    cost: 3,
+    shop_cost: 105,
+    type: "ship",
+    sigil: "✦",
+    effect: { combat: 2 },
+    ally: { shield: 1 },
+    doubleAlly: { shield: 4 },
+    text: "Gain 2 Combat.",
+    allyText: "Gain 1 Shield.",
+    doubleAllyText: "Gain 4 Shield.",
+    flavor: "One guards the left. One guards the right. One guards the oath."
+  },
+  {
+    id: "beacon_trinity",
+    name: "Beacon Trinity",
+    faction: "blue",
+    cost: 5,
+    shop_cost: 185,
+    type: "base",
+    defense: 6,
+    outpost: false,
+    sigil: "✦",
+    effect: { trade: 1 },
+    ally: {},
+    doubleAlly: { draw: 2, shield: 2 },
+    text: "Gain 1 Trade.",
+    allyText: "",
+    doubleAllyText: "Draw 2 cards and gain 2 Shield.",
+    flavor: "No vessel is lost while all three lights remain."
+  },
+  {
+    id: "oathfleet_paragon",
+    name: "Oathfleet Paragon",
+    faction: "blue",
+    cost: 6,
+    shop_cost: 240,
+    type: "ship",
+    sigil: "✦",
+    effect: { combat: 4 },
+    ally: { trade: 1 },
+    doubleAlly: { combat: 4, draw: 1 },
+    text: "Gain 4 Combat.",
+    allyText: "Gain 1 Trade.",
+    doubleAllyText: "Gain 4 Combat and draw 1 card.",
+    flavor: "Three captains. One command."
   },
 
   // ==========================================================
@@ -1301,7 +1403,6 @@ export const CARDS = Object.freeze([
     sacrificeText: "Sacrifice: Gain 5 Combat.",
     flavor: "Yesterday's enemy fortress becomes tomorrow's battering ram."
   },
-
   {
     id: "spoils_harvester",
     name: "Spoils Harvester",
@@ -1347,6 +1448,42 @@ export const CARDS = Object.freeze([
     text: "Gain 4 Combat and 1 Raze.",
     allyText: "Gain 1 Trade for each active Base you control.",
     flavor: "It breaks the enemy’s walls and sells the pieces back as weapons."
+  },
+
+  // DOUBLE ALLY CARDS
+  {
+    id: "spoils_council",
+    name: "Spoils Council",
+    faction: "green",
+    cost: 4,
+    shop_cost: 145,
+    type: "ship",
+    sigil: "⬢",
+    effect: { trade: 2 },
+    ally: {},
+    doubleAlly: { trade: 3, combat: 2 },
+    text: "Gain 2 Trade.",
+    allyText: "",
+    doubleAllyText: "Gain 3 Trade and 2 Combat.",
+    flavor: "The first takes the gold. The second takes the steel. The third takes whatever remains."
+  },
+  {
+    id: "rootbound_legion",
+    name: "Rootbound Legion",
+    faction: "green",
+    cost: 5,
+    shop_cost: 195,
+    type: "base",
+    defense: 6,
+    outpost: true,
+    sigil: "⬢",
+    effect: { combat: 2 },
+    ally: { shield: 1 },
+    doubleAlly: { combat: 3, shield: 3 },
+    text: "Outpost. Gain 2 Combat.",
+    allyText: "Gain 1 Shield.",
+    doubleAllyText: "Gain 3 Combat and 3 Shield.",
+    flavor: "A single root bends. A forest does not."
   },
 
   // ==========================================================
@@ -1696,7 +1833,6 @@ export const CARDS = Object.freeze([
     sacrificeText: "Sacrifice: Gain 1 Market Erase.",
     flavor: "First it silences the fortress. Then it removes every memory of its allies."
   },
-
   {
     id: "nightglass_crucible",
     name: "Nightglass Crucible",
@@ -1714,6 +1850,40 @@ export const CARDS = Object.freeze([
     allyText: "Gain 1 Purge.",
     sacrificeText: "Sacrifice: Gain 3 Combat and draw 2 cards.",
     flavor: "Everything placed within returns sharper, darker, or not at all."
+  },
+
+  // DOUBLE ALLY CARDS
+  {
+    id: "nightglass_coven",
+    name: "Nightglass Coven",
+    faction: "red",
+    cost: 4,
+    shop_cost: 165,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 2 },
+    ally: {},
+    doubleAlly: { opponentDiscard: 2 },
+    text: "Gain 2 Combat.",
+    allyText: "",
+    doubleAllyText: "The next enemy draws 2 fewer cards.",
+    flavor: "They do not steal your thoughts. They remove the moment in which you formed them."
+  },
+  {
+    id: "umbral_triumvir",
+    name: "Umbral Triumvir",
+    faction: "red",
+    cost: 7,
+    shop_cost: 300,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 4 },
+    ally: { combat: 2 },
+    doubleAlly: { combat: 5, draw: 1, opponentDiscard: 1 },
+    text: "Gain 4 Combat.",
+    allyText: "Gain 2 Combat.",
+    doubleAllyText: "Gain 5 Combat, draw 1 card, and the next enemy draws 1 fewer card.",
+    flavor: "Each rules a kingdom. Together, they rule what remains."
   }
 ]);
 
@@ -1880,7 +2050,6 @@ export function cardStorePrice(card) {
     return card.shop_cost;
   }
 
-  // Backward-compatible fallback for older card data.
   return Math.max(
     3,
     card.cost * 3 +
@@ -1996,6 +2165,12 @@ export function fullCardRules(card) {
   if (card.allyText) {
     lines.push(
       `Faction Ally — ${card.allyText}`
+    );
+  }
+
+  if (card.doubleAllyText) {
+    lines.push(
+      `Double Ally — ${card.doubleAllyText}`
     );
   }
 
