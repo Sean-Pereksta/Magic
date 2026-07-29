@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 1;
+export const WAR_REALMS_CARD_VERSION = 2;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -71,7 +71,7 @@ export const STARTER_CARDS = Object.freeze({
 
 export const CARDS = Object.freeze([
   // ==========================================================
-  // YELLOW — XYTHE CONCORD (15)
+  // YELLOW — XYTHE CONCORD (19)
   // ==========================================================
   {
     id: "starwhisper_scout",
@@ -281,8 +281,65 @@ export const CARDS = Object.freeze([
     flavor: "When it opens its eyes, fleets lose their next move."
   },
 
+  {
+    id: "threadseer_familiar",
+    name: "Threadseer Familiar",
+    faction: "yellow",
+    cost: 3,
+    type: "ship",
+    sigil: "⌘",
+    effect: { draw: 1 },
+    ally: { trade: 1 },
+    text: "Draw 1 card.",
+    allyText: "Gain 1 Trade.",
+    flavor: "It tugs one useful possibility out of a thousand futures."
+  },
+  {
+    id: "dreamfold_navigator",
+    name: "Dreamfold Navigator",
+    faction: "yellow",
+    cost: 4,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 2, draw: 1 },
+    ally: { stun: 1 },
+    text: "Gain 2 Combat and draw 1 card.",
+    allyText: "Gain 1 Disable.",
+    flavor: "It plots routes through thoughts no enemy has finished thinking."
+  },
+  {
+    id: "probability_nursery",
+    name: "Probability Nursery",
+    faction: "yellow",
+    cost: 5,
+    type: "base",
+    defense: 5,
+    outpost: false,
+    sigil: "❉",
+    effect: { trade: 1 },
+    ally: { draw: 1 },
+    sacrifice: { draw: 2 },
+    text: "Gain 1 Trade.",
+    allyText: "Draw 1 card.",
+    sacrificeText: "Sacrifice: Draw 2 cards.",
+    flavor: "Young futures are cultivated until one becomes useful."
+  },
+  {
+    id: "many_mind_oracle",
+    name: "Many-Mind Oracle",
+    faction: "yellow",
+    cost: 7,
+    type: "ship",
+    sigil: "⟡",
+    effect: { trade: 2, draw: 2 },
+    ally: { opponentDiscard: 1 },
+    text: "Gain 2 Trade and draw 2 cards.",
+    allyText: "The next enemy draws 1 fewer card.",
+    flavor: "Every mind offers an answer; the Oracle keeps only the winning ones."
+  },
+
   // ==========================================================
-  // BLUE — AZURE ASCENDANCY (15)
+  // BLUE — AZURE ASCENDANCY (19)
   // ==========================================================
   {
     id: "tithe_acolyte",
@@ -494,8 +551,63 @@ export const CARDS = Object.freeze([
     flavor: "An army that marches as though the victory were already remembered."
   },
 
+  {
+    id: "radiant_lancer",
+    name: "Radiant Lancer",
+    faction: "blue",
+    cost: 3,
+    type: "ship",
+    sigil: "⚜",
+    effect: { combat: 4 },
+    ally: { draw: 1 },
+    text: "Gain 4 Combat.",
+    allyText: "Draw 1 card.",
+    flavor: "Its charge begins as a prayer and ends as a verdict."
+  },
+  {
+    id: "battle_psalmist",
+    name: "Battle Psalmist",
+    faction: "blue",
+    cost: 4,
+    type: "ship",
+    sigil: "♪",
+    effect: { combat: 3, draw: 1 },
+    ally: { heal: 2 },
+    text: "Gain 3 Combat and draw 1 card.",
+    allyText: "Gain 2 Authority.",
+    flavor: "Each verse names the next strike before it falls."
+  },
+  {
+    id: "aegis_gunship",
+    name: "Aegis Gunship",
+    faction: "blue",
+    cost: 5,
+    type: "base",
+    defense: 6,
+    outpost: true,
+    sigil: "✠",
+    effect: { combat: 3 },
+    ally: { draw: 1 },
+    text: "Outpost. Gain 3 Combat.",
+    allyText: "Draw 1 card.",
+    flavor: "A flying sanctuary whose bells answer with cannon fire."
+  },
+  {
+    id: "judgment_seraph",
+    name: "Judgment Seraph",
+    faction: "blue",
+    cost: 7,
+    type: "ship",
+    sigil: "𓆩⚔𓆪",
+    effect: { combat: 7, draw: 1 },
+    ally: { combat: 3 },
+    text: "Gain 7 Combat and draw 1 card.",
+    allyText: "Gain 3 Combat.",
+    flavor: "Its wings open only when mercy has finished speaking."
+  },
+
   // ==========================================================
-  // GREEN — GORAK WARHOST (15)
+  // GREEN — GORAK WARHOST (19)
   // ==========================================================
   {
     id: "gore_runner",
@@ -709,8 +821,67 @@ export const CARDS = Object.freeze([
     flavor: "Its tusks have ended dynasties that history never named."
   },
 
+  {
+    id: "plunder_shaman",
+    name: "Plunder Shaman",
+    faction: "green",
+    cost: 3,
+    type: "ship",
+    sigil: "☊",
+    effect: { trade: 2 },
+    ally: { draw: 1 },
+    text: "Gain 2 Trade.",
+    allyText: "Draw 1 card.",
+    flavor: "It reads tomorrow's raid in the dents of yesterday's loot."
+  },
+  {
+    id: "ironroot_encampment",
+    name: "Ironroot Encampment",
+    faction: "green",
+    cost: 4,
+    type: "base",
+    defense: 5,
+    outpost: false,
+    sigil: "▥",
+    effect: { trade: 2 },
+    ally: { combat: 2 },
+    text: "Gain 2 Trade.",
+    allyText: "Gain 2 Combat.",
+    flavor: "A market, barracks, and fortress assembled from the same stolen walls."
+  },
+  {
+    id: "raidmasters_cache",
+    name: "Raidmaster's Cache",
+    faction: "green",
+    cost: 5,
+    type: "base",
+    defense: 6,
+    outpost: false,
+    sigil: "▦",
+    effect: { trade: 2 },
+    ally: { draw: 1 },
+    sacrifice: { trade: 4 },
+    text: "Gain 2 Trade.",
+    allyText: "Draw 1 card.",
+    sacrificeText: "Sacrifice: Gain 4 Trade.",
+    flavor: "The best supplies are saved for the warriors least likely to ask."
+  },
+  {
+    id: "thunderhoof_quartermaster",
+    name: "Thunderhoof Quartermaster",
+    faction: "green",
+    cost: 6,
+    type: "ship",
+    sigil: "♞",
+    effect: { trade: 3, combat: 4 },
+    ally: { draw: 1 },
+    text: "Gain 3 Trade and 4 Combat.",
+    allyText: "Draw 1 card.",
+    flavor: "It delivers weapons, rations, and the battle itself."
+  },
+
   // ==========================================================
-  // RED — UMBRAL COVENANT (15)
+  // RED — UMBRAL COVENANT (19)
   // ==========================================================
   {
     id: "ash_initiate",
@@ -933,6 +1104,64 @@ export const CARDS = Object.freeze([
     allyText: "Draw 1 card and gain 2 Combat.",
     flavor: "It becomes stronger by making your past smaller."
   }
+  ,
+  {
+    id: "culling_whisper",
+    name: "Culling Whisper",
+    faction: "red",
+    cost: 3,
+    type: "ship",
+    sigil: "⌁",
+    effect: { combat: 2, scrapOwn: 1 },
+    ally: { trade: 1 },
+    text: "Gain 2 Combat and 1 Purge.",
+    allyText: "Gain 1 Trade.",
+    flavor: "It names the weakest memory and waits for you to agree."
+  },
+  {
+    id: "memory_pyre",
+    name: "Memory Pyre",
+    faction: "red",
+    cost: 4,
+    type: "base",
+    defense: 5,
+    outpost: false,
+    sigil: "♨",
+    effect: { trade: 1, scrapOwn: 1 },
+    ally: { combat: 2 },
+    sacrifice: { draw: 1 },
+    text: "Gain 1 Trade and 1 Purge.",
+    allyText: "Gain 2 Combat.",
+    sacrificeText: "Sacrifice: Draw 1 card.",
+    flavor: "Old failures burn brightest when the Covenant needs direction."
+  },
+  {
+    id: "ashen_reclaimer",
+    name: "Ashen Reclaimer",
+    faction: "red",
+    cost: 5,
+    type: "ship",
+    sigil: "↻",
+    effect: { purgeAndDraw: 2 },
+    ally: { combat: 2 },
+    text: "You may purge up to 2 cards from your hand. Draw 1 card for each card purged this way.",
+    allyText: "Gain 2 Combat.",
+    flavor: "What it removes from your past returns as a sharper future."
+  },
+  {
+    id: "abyssal_winnower",
+    name: "Abyssal Winnower",
+    faction: "red",
+    cost: 6,
+    type: "ship",
+    sigil: "◓",
+    effect: { combat: 5, scrapOwn: 2 },
+    ally: { draw: 1 },
+    text: "Gain 5 Combat and 2 Purge.",
+    allyText: "Draw 1 card.",
+    flavor: "It leaves only the cards ruthless enough to survive your deck."
+  }
+
 ]);
 
 export const CARD_MAP = Object.freeze(Object.fromEntries(CARDS.map(card => [card.id, card])));
@@ -1022,6 +1251,7 @@ export function effectSummary(effect = {}) {
   if (effect.stun) parts.push(`⌁ ${effect.stun} Disable`);
   if (effect.scrapMarket) parts.push(`⊘ ${effect.scrapMarket} Market Erase`);
   if (effect.scrapOwn) parts.push(`✕ ${effect.scrapOwn} Purge`);
+  if (effect.purgeAndDraw) parts.push(`✕ Purge up to ${effect.purgeAndDraw}; draw per Purge`);
   return parts.join(" · ");
 }
 
@@ -1045,9 +1275,9 @@ export function assertCardLibrary() {
     if (!(card.faction in factionCounts)) throw new Error(`Invalid faction on ${card.id}`);
     factionCounts[card.faction] += 1;
   }
-  if (CARDS.length !== 60) throw new Error(`War Realms requires exactly 60 custom cards; found ${CARDS.length}.`);
+  if (CARDS.length !== 76) throw new Error(`War Realms requires exactly 76 custom cards; found ${CARDS.length}.`);
   for (const [faction, count] of Object.entries(factionCounts)) {
-    if (count !== 15) throw new Error(`${faction} requires exactly 15 cards; found ${count}.`);
+    if (count !== 19) throw new Error(`${faction} requires exactly 19 cards; found ${count}.`);
   }
   return true;
 }
