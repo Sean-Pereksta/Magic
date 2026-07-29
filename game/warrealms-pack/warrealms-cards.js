@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 2;
+export const WAR_REALMS_CARD_VERSION = 3;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -71,7 +71,7 @@ export const STARTER_CARDS = Object.freeze({
 
 export const CARDS = Object.freeze([
   // ==========================================================
-  // YELLOW — XYTHE CONCORD (19)
+  // YELLOW — XYTHE CONCORD
   // ==========================================================
   {
     id: "starwhisper_scout",
@@ -280,7 +280,6 @@ export const CARDS = Object.freeze([
     allyText: "Draw 1 card. The next enemy draws 1 fewer card.",
     flavor: "When it opens its eyes, fleets lose their next move."
   },
-
   {
     id: "threadseer_familiar",
     name: "Threadseer Familiar",
@@ -337,9 +336,52 @@ export const CARDS = Object.freeze([
     allyText: "The next enemy draws 1 fewer card.",
     flavor: "Every mind offers an answer; the Oracle keeps only the winning ones."
   },
+  {
+    id: "echo_shepherd",
+    name: "Echo Shepherd",
+    faction: "yellow",
+    cost: 3,
+    type: "ship",
+    sigil: "⌇",
+    effect: { trade: 1, opponentDiscard: 1 },
+    ally: { draw: 1 },
+    text: "Gain 1 Trade. The next enemy draws 1 fewer card.",
+    allyText: "Draw 1 card.",
+    flavor: "It gathers abandoned thoughts and sends them back as commands."
+  },
+  {
+    id: "stasis_menagerie",
+    name: "Stasis Menagerie",
+    faction: "yellow",
+    cost: 5,
+    type: "base",
+    defense: 6,
+    outpost: false,
+    sigil: "◫",
+    effect: { stun: 1 },
+    ally: { trade: 2 },
+    sacrifice: { draw: 2 },
+    text: "Gain 1 Disable.",
+    allyText: "Gain 2 Trade.",
+    sacrificeText: "Sacrifice: Draw 2 cards.",
+    flavor: "Its creatures wait between moments, perfectly awake and perfectly still."
+  },
+  {
+    id: "fate_tether_colossus",
+    name: "Fate-Tether Colossus",
+    faction: "yellow",
+    cost: 7,
+    type: "ship",
+    sigil: "⟡",
+    effect: { combat: 6, stun: 1 },
+    ally: { draw: 1, opponentDiscard: 1 },
+    text: "Gain 6 Combat and 1 Disable.",
+    allyText: "Draw 1 card. The next enemy draws 1 fewer card.",
+    flavor: "Every chain fastened to it ends around an enemy possibility."
+  },
 
   // ==========================================================
-  // BLUE — AZURE ASCENDANCY (19)
+  // BLUE — AZURE ASCENDANCY
   // ==========================================================
   {
     id: "tithe_acolyte",
@@ -550,7 +592,6 @@ export const CARDS = Object.freeze([
     allyText: "Draw 2 cards.",
     flavor: "An army that marches as though the victory were already remembered."
   },
-
   {
     id: "radiant_lancer",
     name: "Radiant Lancer",
@@ -605,9 +646,52 @@ export const CARDS = Object.freeze([
     allyText: "Gain 3 Combat.",
     flavor: "Its wings open only when mercy has finished speaking."
   },
+  {
+    id: "tidebound_chaplain",
+    name: "Tidebound Chaplain",
+    faction: "blue",
+    cost: 2,
+    type: "ship",
+    sigil: "♢",
+    effect: { trade: 1, heal: 2 },
+    ally: { combat: 1 },
+    text: "Gain 1 Trade and 2 Authority.",
+    allyText: "Gain 1 Combat.",
+    flavor: "Its blessings rise and fall with the sacred tide."
+  },
+  {
+    id: "beacon_monastery",
+    name: "Beacon Monastery",
+    faction: "blue",
+    cost: 4,
+    type: "base",
+    defense: 5,
+    outpost: false,
+    sigil: "✧",
+    effect: { heal: 3 },
+    ally: { draw: 1 },
+    sacrifice: { trade: 3, heal: 3 },
+    text: "Gain 3 Authority.",
+    allyText: "Draw 1 card.",
+    sacrificeText: "Sacrifice: Gain 3 Trade and 3 Authority.",
+    flavor: "Its final bell is rung only when the faithful need a road home."
+  },
+  {
+    id: "oathwing_marshal",
+    name: "Oathwing Marshal",
+    faction: "blue",
+    cost: 6,
+    type: "ship",
+    sigil: "𓆩✠𓆪",
+    effect: { combat: 5, heal: 4 },
+    ally: { draw: 1 },
+    text: "Gain 5 Combat and 4 Authority.",
+    allyText: "Draw 1 card.",
+    flavor: "An entire crusade follows the movement of its wings."
+  },
 
   // ==========================================================
-  // GREEN — GORAK WARHOST (19)
+  // GREEN — GORAK WARHOST
   // ==========================================================
   {
     id: "gore_runner",
@@ -820,7 +904,6 @@ export const CARDS = Object.freeze([
     allyText: "Gain 3 Combat and draw 1 card.",
     flavor: "Its tusks have ended dynasties that history never named."
   },
-
   {
     id: "plunder_shaman",
     name: "Plunder Shaman",
@@ -879,9 +962,41 @@ export const CARDS = Object.freeze([
     allyText: "Draw 1 card.",
     flavor: "It delivers weapons, rations, and the battle itself."
   },
+  {
+    id: "chainmaw_ravager",
+    name: "Chainmaw Ravager",
+    faction: "green",
+    cost: 4,
+    type: "ship",
+    sigil: "⛓",
+    effect: { combat: 5 },
+    ally: { combat: 2 },
+    sacrifice: { draw: 1 },
+    text: "Gain 5 Combat.",
+    allyText: "Gain 2 Combat.",
+    sacrificeText: "Sacrifice: Draw 1 card.",
+    flavor: "The chains are not restraints. They are additional weapons."
+  },
+  {
+    id: "spoils_foundry",
+    name: "Spoils Foundry",
+    faction: "green",
+    cost: 5,
+    type: "base",
+    defense: 5,
+    outpost: false,
+    sigil: "⚒",
+    effect: { trade: 2, combat: 2 },
+    ally: { draw: 1 },
+    sacrifice: { combat: 5 },
+    text: "Gain 2 Trade and 2 Combat.",
+    allyText: "Draw 1 card.",
+    sacrificeText: "Sacrifice: Gain 5 Combat.",
+    flavor: "Yesterday's enemy fortress becomes tomorrow's battering ram."
+  },
 
   // ==========================================================
-  // RED — UMBRAL COVENANT (19)
+  // RED — UMBRAL COVENANT
   // ==========================================================
   {
     id: "ash_initiate",
@@ -1103,8 +1218,7 @@ export const CARDS = Object.freeze([
     text: "Gain 9 Combat and 2 Purge.",
     allyText: "Draw 1 card and gain 2 Combat.",
     flavor: "It becomes stronger by making your past smaller."
-  }
-  ,
+  },
   {
     id: "culling_whisper",
     name: "Culling Whisper",
@@ -1160,12 +1274,47 @@ export const CARDS = Object.freeze([
     text: "Gain 5 Combat and 2 Purge.",
     allyText: "Draw 1 card.",
     flavor: "It leaves only the cards ruthless enough to survive your deck."
+  },
+  {
+    id: "severance_adept",
+    name: "Severance Adept",
+    faction: "red",
+    cost: 3,
+    type: "ship",
+    sigil: "✂",
+    effect: { trade: 1, scrapOwn: 1 },
+    ally: { draw: 1 },
+    text: "Gain 1 Trade and 1 Purge.",
+    allyText: "Draw 1 card.",
+    flavor: "It cuts away possessions, loyalties, and inconvenient histories."
+  },
+  {
+    id: "nightglass_crucible",
+    name: "Nightglass Crucible",
+    faction: "red",
+    cost: 6,
+    type: "base",
+    defense: 6,
+    outpost: true,
+    sigil: "◑",
+    effect: { combat: 4 },
+    ally: { scrapOwn: 1 },
+    sacrifice: { combat: 3, draw: 2 },
+    text: "Outpost. Gain 4 Combat.",
+    allyText: "Gain 1 Purge.",
+    sacrificeText: "Sacrifice: Gain 3 Combat and draw 2 cards.",
+    flavor: "Everything placed within returns sharper, darker, or not at all."
   }
-
 ]);
 
-export const CARD_MAP = Object.freeze(Object.fromEntries(CARDS.map(card => [card.id, card])));
-export const ALL_CARD_MAP = Object.freeze({ ...STARTER_CARDS, ...CARD_MAP });
+export const CARD_MAP = Object.freeze(
+  Object.fromEntries(CARDS.map(card => [card.id, card]))
+);
+
+export const ALL_CARD_MAP = Object.freeze({
+  ...STARTER_CARDS,
+  ...CARD_MAP
+});
 
 export function getCard(cardId) {
   return ALL_CARD_MAP[cardId] || null;
@@ -1189,27 +1338,68 @@ export function countCards(cardIds = []) {
   }, {});
 }
 
-export function buildBalancedCommandDeck(owned = defaultOwnedCards()) {
-  const byFaction = ["yellow", "blue", "green", "red"].map(faction =>
-    CARDS.filter(card => card.faction === faction && (owned[card.id] || 0) > 0)
-  );
+export function buildBalancedCommandDeck(
+  owned = defaultOwnedCards()
+) {
+  const factionOrder = ["yellow", "blue", "green", "red"];
   const targets = [13, 13, 12, 12];
+
+  const byFaction = factionOrder.map(faction =>
+    CARDS.filter(
+      card =>
+        card.faction === faction &&
+        (owned[card.id] || 0) > 0
+    )
+  );
+
   const deck = [];
 
   byFaction.forEach((cards, factionIndex) => {
+    if (!cards.length) return;
+
+    const faction = factionOrder[factionIndex];
+    const target = targets[factionIndex];
     let cursor = 0;
-    while (deck.filter(id => CARD_MAP[id]?.faction === cards[0]?.faction).length < targets[factionIndex] && cards.length) {
+
+    while (
+      deck.filter(
+        cardId => CARD_MAP[cardId]?.faction === faction
+      ).length < target
+    ) {
       const card = cards[cursor % cards.length];
-      const used = deck.filter(id => id === card.id).length;
-      const allowed = Math.min(MAX_COPIES_PER_CARD, owned[card.id] || 0);
-      if (used < allowed) deck.push(card.id);
+      const used = deck.filter(
+        cardId => cardId === card.id
+      ).length;
+
+      const allowed = Math.min(
+        MAX_COPIES_PER_CARD,
+        owned[card.id] || 0
+      );
+
+      if (used < allowed) {
+        deck.push(card.id);
+      }
+
       cursor += 1;
-      if (cursor > cards.length * MAX_COPIES_PER_CARD * 2) break;
+
+      if (
+        cursor >
+        cards.length * MAX_COPIES_PER_CARD * 2
+      ) {
+        break;
+      }
     }
   });
 
   for (const card of CARDS) {
-    while (deck.length < COMMAND_DECK_SIZE && deck.filter(id => id === card.id).length < Math.min(MAX_COPIES_PER_CARD, owned[card.id] || 0)) {
+    while (
+      deck.length < COMMAND_DECK_SIZE &&
+      deck.filter(cardId => cardId === card.id).length <
+        Math.min(
+          MAX_COPIES_PER_CARD,
+          owned[card.id] || 0
+        )
+    ) {
       deck.push(card.id);
     }
   }
@@ -1217,68 +1407,178 @@ export function buildBalancedCommandDeck(owned = defaultOwnedCards()) {
   return deck.slice(0, COMMAND_DECK_SIZE);
 }
 
-export function validateCommandDeck(deck, owned = defaultOwnedCards()) {
-  if (!Array.isArray(deck)) return { valid: false, message: "Deck data is missing." };
+export function validateCommandDeck(
+  deck,
+  owned = defaultOwnedCards()
+) {
+  if (!Array.isArray(deck)) {
+    return {
+      valid: false,
+      message: "Deck data is missing."
+    };
+  }
+
   if (deck.length !== COMMAND_DECK_SIZE) {
-    return { valid: false, message: `Your command deck must contain exactly ${COMMAND_DECK_SIZE} cards.` };
+    return {
+      valid: false,
+      message:
+        `Your command deck must contain exactly ` +
+        `${COMMAND_DECK_SIZE} cards.`
+    };
   }
 
   const counts = countCards(deck);
+
   for (const [cardId, count] of Object.entries(counts)) {
-    if (!CARD_MAP[cardId]) return { valid: false, message: `Unknown card in deck: ${cardId}.` };
-    if (count > MAX_COPIES_PER_CARD) {
-      return { valid: false, message: `No more than ${MAX_COPIES_PER_CARD} copies of one card are allowed.` };
+    if (!CARD_MAP[cardId]) {
+      return {
+        valid: false,
+        message: `Unknown card in deck: ${cardId}.`
+      };
     }
+
+    if (count > MAX_COPIES_PER_CARD) {
+      return {
+        valid: false,
+        message:
+          `No more than ${MAX_COPIES_PER_CARD} ` +
+          `copies of one card are allowed.`
+      };
+    }
+
     if (count > (owned[cardId] || 0)) {
-      return { valid: false, message: `You only own ${owned[cardId] || 0} copies of ${CARD_MAP[cardId].name}.` };
+      return {
+        valid: false,
+        message:
+          `You only own ${owned[cardId] || 0} copies of ` +
+          `${CARD_MAP[cardId].name}.`
+      };
     }
   }
 
-  return { valid: true, message: "Deck is ready." };
+  return {
+    valid: true,
+    message: "Deck is ready."
+  };
 }
 
 export function cardStorePrice(card) {
-  return Math.max(3, card.cost * 3 + (card.type === "base" ? 2 : 0));
+  return Math.max(
+    3,
+    card.cost * 3 +
+      (card.type === "base" ? 2 : 0)
+  );
 }
 
 export function effectSummary(effect = {}) {
   const parts = [];
-  if (effect.trade) parts.push(`◆ ${effect.trade} Trade`);
-  if (effect.combat) parts.push(`⚔ ${effect.combat} Combat`);
-  if (effect.heal) parts.push(`♥ ${effect.heal} Authority`);
-  if (effect.draw) parts.push(`Draw ${effect.draw}`);
-  if (effect.opponentDiscard) parts.push(`Enemy -${effect.opponentDiscard} card`);
-  if (effect.stun) parts.push(`⌁ ${effect.stun} Disable`);
-  if (effect.scrapMarket) parts.push(`⊘ ${effect.scrapMarket} Market Erase`);
-  if (effect.scrapOwn) parts.push(`✕ ${effect.scrapOwn} Purge`);
-  if (effect.purgeAndDraw) parts.push(`✕ Purge up to ${effect.purgeAndDraw}; draw per Purge`);
+
+  if (effect.trade) {
+    parts.push(`◆ ${effect.trade} Trade`);
+  }
+
+  if (effect.combat) {
+    parts.push(`⚔ ${effect.combat} Combat`);
+  }
+
+  if (effect.heal) {
+    parts.push(`♥ ${effect.heal} Authority`);
+  }
+
+  if (effect.draw) {
+    parts.push(`Draw ${effect.draw}`);
+  }
+
+  if (effect.opponentDiscard) {
+    parts.push(
+      `Enemy -${effect.opponentDiscard} card`
+    );
+  }
+
+  if (effect.stun) {
+    parts.push(`⌁ ${effect.stun} Disable`);
+  }
+
+  if (effect.scrapMarket) {
+    parts.push(
+      `⊘ ${effect.scrapMarket} Market Erase`
+    );
+  }
+
+  if (effect.scrapOwn) {
+    parts.push(`✕ ${effect.scrapOwn} Purge`);
+  }
+
+  if (effect.purgeAndDraw) {
+    parts.push(
+      `✕ Purge up to ${effect.purgeAndDraw}; ` +
+      `draw per Purge`
+    );
+  }
+
   return parts.join(" · ");
 }
 
 export function fullCardRules(card) {
   const lines = [];
+
   if (card.type === "base") {
-    lines.push(`${card.outpost ? "Outpost" : "Base"} — ${card.defense} Defense.`);
+    lines.push(
+      `${card.outpost ? "Outpost" : "Base"} — ` +
+      `${card.defense} Defense.`
+    );
   }
-  if (card.text) lines.push(card.text);
-  if (card.allyText) lines.push(`Faction Ally — ${card.allyText}`);
-  if (card.sacrificeText) lines.push(card.sacrificeText);
+
+  if (card.text) {
+    lines.push(card.text);
+  }
+
+  if (card.allyText) {
+    lines.push(
+      `Faction Ally — ${card.allyText}`
+    );
+  }
+
+  if (card.sacrificeText) {
+    lines.push(card.sacrificeText);
+  }
+
   return lines.join(" ");
 }
 
 export function assertCardLibrary() {
   const ids = new Set();
-  const factionCounts = { yellow: 0, blue: 0, green: 0, red: 0 };
+
+  const validFactions = new Set([
+    "yellow",
+    "blue",
+    "green",
+    "red"
+  ]);
+
   for (const card of CARDS) {
-    if (ids.has(card.id)) throw new Error(`Duplicate War Realms card id: ${card.id}`);
+    if (!card?.id) {
+      throw new Error(
+        "War Realms card is missing an id."
+      );
+    }
+
+    if (ids.has(card.id)) {
+      throw new Error(
+        `Duplicate War Realms card id: ${card.id}`
+      );
+    }
+
     ids.add(card.id);
-    if (!(card.faction in factionCounts)) throw new Error(`Invalid faction on ${card.id}`);
-    factionCounts[card.faction] += 1;
+
+    if (!validFactions.has(card.faction)) {
+      throw new Error(
+        `Invalid faction on ${card.id}: ` +
+        `${card.faction}`
+      );
+    }
   }
-  if (CARDS.length !== 76) throw new Error(`War Realms requires exactly 76 custom cards; found ${CARDS.length}.`);
-  for (const [faction, count] of Object.entries(factionCounts)) {
-    if (count !== 19) throw new Error(`${faction} requires exactly 19 cards; found ${count}.`);
-  }
+
   return true;
 }
 
