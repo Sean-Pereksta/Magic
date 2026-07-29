@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 3;
+export const WAR_REALMS_CARD_VERSION = 4;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -530,6 +530,50 @@ export const CARDS = Object.freeze([
     flavor: "Every chain fastened to it ends around an enemy possibility."
   },
 
+  {
+    id: "hourglass_devourer",
+    name: "Hourglass Devourer",
+    faction: "yellow",
+    cost: 4,
+    type: "ship",
+    sigil: "◈",
+    effect: { combat: 2, shield: 2 },
+    ally: { stun: 1 },
+    text: "Gain 2 Combat and 2 Shield.",
+    allyText: "Gain 1 Disable.",
+    flavor: "It does not stop time. It eats the moment in which resistance began."
+  },
+  {
+    id: "archive_swarm",
+    name: "Archive Swarm",
+    faction: "yellow",
+    cost: 6,
+    type: "ship",
+    sigil: "◈",
+    effect: { trade: 2, opponentDiscard: 1 },
+    ally: { drawPerBase: 1 },
+    text: "Gain 2 Trade. The next enemy draws 1 fewer card.",
+    allyText: "Draw 1 card for each active Base you control.",
+    flavor: "Every structure remembers. The swarm simply gathers the testimony."
+  },
+  {
+    id: "paradox_gate",
+    name: "Paradox Gate",
+    faction: "yellow",
+    cost: 6,
+    type: "base",
+    defense: 6,
+    outpost: true,
+    sigil: "◈",
+    effect: { shield: 3 },
+    ally: { trade: 1 },
+    sacrifice: { destroyBase: 1 },
+    text: "Outpost. Gain 3 Shield.",
+    allyText: "Gain 1 Trade.",
+    sacrificeText: "Sacrifice: Gain 1 Raze.",
+    flavor: "The gate cannot be breached, because one version of it was never built."
+  },
+
   // ==========================================================
   // BLUE — AZURE ASCENDANCY
   // ==========================================================
@@ -840,6 +884,37 @@ export const CARDS = Object.freeze([
     flavor: "An entire crusade follows the movement of its wings."
   },
 
+  {
+    id: "tideglass_confessor",
+    name: "Tideglass Confessor",
+    faction: "blue",
+    cost: 4,
+    type: "ship",
+    sigil: "✦",
+    effect: { combat: 3, lifelink: 0.5 },
+    ally: { shield: 2 },
+    text: "Gain 3 Combat and Lifelink 50% this turn.",
+    allyText: "Gain 2 Shield.",
+    flavor: "Every blow is a confession. Every answered wound becomes absolution."
+  },
+  {
+    id: "procession_of_seven_banners",
+    name: "Procession of Seven Banners",
+    faction: "blue",
+    cost: 6,
+    type: "base",
+    defense: 6,
+    outpost: false,
+    sigil: "✦",
+    effect: { healPerBase: 1 },
+    ally: { shield: 2 },
+    sacrifice: { damageAll: 1 },
+    text: "Gain 1 Authority for each active Base you control.",
+    allyText: "Gain 2 Shield.",
+    sacrificeText: "Sacrifice: Damage All 1.",
+    flavor: "Where one banner stands, hope survives. Where seven gather, kingdoms endure."
+  },
+
   // ==========================================================
   // GREEN — GORAK WARHOST
   // ==========================================================
@@ -1145,6 +1220,50 @@ export const CARDS = Object.freeze([
     flavor: "Yesterday's enemy fortress becomes tomorrow's battering ram."
   },
 
+  {
+    id: "spoils_harvester",
+    name: "Spoils Harvester",
+    faction: "green",
+    cost: 3,
+    type: "ship",
+    sigil: "⬢",
+    effect: { trade: 2, scrapMarket: 1 },
+    ally: { combat: 2 },
+    text: "Gain 2 Trade and 1 Market Erase.",
+    allyText: "Gain 2 Combat.",
+    flavor: "If the Warhost cannot use it, nobody will."
+  },
+  {
+    id: "chaincamp_drumworks",
+    name: "Chaincamp Drumworks",
+    faction: "green",
+    cost: 5,
+    type: "base",
+    defense: 5,
+    outpost: false,
+    sigil: "⬢",
+    effect: { combatPerBase: 1 },
+    ally: { shield: 2 },
+    sacrifice: { trade: 3 },
+    text: "Gain 1 Combat for each active Base you control.",
+    allyText: "Gain 2 Shield.",
+    sacrificeText: "Sacrifice: Gain 3 Trade.",
+    flavor: "One camp hears the drum. Every camp answers."
+  },
+  {
+    id: "bastion_eater_alpha",
+    name: "Bastion-Eater Alpha",
+    faction: "green",
+    cost: 7,
+    type: "ship",
+    sigil: "⬢",
+    effect: { combat: 4, destroyBase: 1 },
+    ally: { tradePerBase: 1 },
+    text: "Gain 4 Combat and 1 Raze.",
+    allyText: "Gain 1 Trade for each active Base you control.",
+    flavor: "It breaks the enemy’s walls and sells the pieces back as weapons."
+  },
+
   // ==========================================================
   // RED — UMBRAL COVENANT
   // ==========================================================
@@ -1439,6 +1558,39 @@ export const CARDS = Object.freeze([
     flavor: "It cuts away possessions, loyalties, and inconvenient histories."
   },
   {
+    id: "black_sun_auditor",
+    name: "Black Sun Auditor",
+    faction: "red",
+    cost: 5,
+    type: "ship",
+    sigil: "◒",
+    effect: {
+      combat: 2,
+      damageAll: 1,
+      opponentDiscard: 1
+    },
+    ally: { lifelink: 0.5 },
+    text: "Gain 2 Combat, Damage All 1, and the next enemy draws 1 fewer card.",
+    allyText: "Gain Lifelink 50% this turn.",
+    flavor: "The Covenant records every breath as borrowed property."
+  },
+  {
+    id: "duskchain_inquisitor",
+    name: "Duskchain Inquisitor",
+    faction: "red",
+    cost: 4,
+    type: "ship",
+    sigil: "◒",
+    effect: { combat: 3, stun: 1 },
+    ally: { damageAll: 1 },
+    sacrifice: { scrapMarket: 1 },
+    text: "Gain 3 Combat and 1 Disable.",
+    allyText: "Damage All 1.",
+    sacrificeText: "Sacrifice: Gain 1 Market Erase.",
+    flavor: "First it silences the fortress. Then it removes every memory of its allies."
+  },
+
+  {
     id: "nightglass_crucible",
     name: "Nightglass Crucible",
     faction: "red",
@@ -1659,6 +1811,12 @@ export function effectSummary(effect = {}) {
 
   if (effect.draw) {
     parts.push(`Draw ${effect.draw}`);
+  }
+
+  if (effect.drawPerBase) {
+    parts.push(
+      `Draw ${effect.drawPerBase} per Active Base`
+    );
   }
 
   if (effect.opponentDiscard) {
