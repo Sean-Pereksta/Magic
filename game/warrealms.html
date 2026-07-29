@@ -191,7 +191,7 @@
       <section class="armoryHero">
         <div class="eyebrow">Single commander detected</div>
         <h1>The Realm Armory</h1>
-        <p>The store is generated directly from the complete War Realms card pack. Spend Sigils to collect additional copies, filter by collection status, then build an exact 50-card command deck. Multiplayer loads only the card graphics used by that battle.</p>
+        <p>The store is generated directly from the complete War Realms card pack. New commanders begin with exactly 50 custom cards. Spend Sigils to unlock the remaining cards and collect additional copies, then build an exact 50-card command deck. Multiplayer loads only the card graphics used by that battle.</p>
         <div class="heroStats">
           <div class="heroStat">War Sigils<b id="heroSigils">0</b></div>
           <div class="heroStat">Unique cards owned<b id="heroOwned">0</b></div>
@@ -233,7 +233,7 @@
             <div class="factionBars" id="factionBars"></div>
             <button class="btn block" id="autoDeckBtn">Build balanced deck</button>
             <button class="btn primary block" id="saveDeckBtn" style="margin-top:7px">Save command deck</button>
-            <div class="saveStatus" id="saveStatus">Your saved deck is what multiplayer contributes to the shared market.</div>
+            <div class="saveStatus" id="saveStatus">Your saved deck is what multiplayer contributes to the shared market. Existing collections are never automatically replaced.</div>
           </div>
         </aside>
       </div>
@@ -311,6 +311,7 @@
     collection,
     getDoc,
     setDoc,
+    updateDoc,
     onSnapshot,
     runTransaction,
     serverTimestamp
@@ -360,10 +361,13 @@
   const gameRef = gameId ? doc(db, "lobbies", gameId, "warrealms", "state") : null;
   const presenceCollection = gameId ? collection(db, "lobbies", gameId, "warrealmsPresence") : null;
 
-  const PROFILE_VERSION = 2;
+  const PROFILE_VERSION = 3;
   const GAME_SCHEMA = 2;
   const STARTING_AUTHORITY = 50;
   const STARTING_SIGILS = 120;
+  const STARTER_CARDS_PER_FACTION = 50;
+  const STARTER_UNIQUE_CARDS_PER_FACTION = 13;
+  const STARTER_COLLECTION_SIZE = STARTER_CARDS_PER_FACTION * 4;
   const PARTICIPATION_SIGILS = 20;
   const VICTORY_BONUS_SIGILS = 30;
   const MARKET_SIZE = 5;
@@ -601,9 +605,52 @@
     $("#modalBody").innerHTML = "";
   }
 
+  function createNewPlayerCollection() {
+    const owned = Object.fromEntries(CARDS.map(card => [card.id, 0]));
+    const factionIds = ["yellow", "blue", "green", "red"];
+
+    for (const faction of factionIds) {
+      const foundationalCards = CARDS
+        .filter(card => card.faction === faction)
+        .sort((left, right) => left.cost - right.cost || left.name.localeCompare(right.name))
+        .slice(0, STARTER_UNIQUE_CARDS_PER_FACTION);
+
+      let remaining = STARTER_CARDS_PER_FACTION;
+      for (const card of foundationalCards) {
+        if (remaining <= 0) break;
+        const copies = Math.min(MAX_COPIES_PER_CARD, remaining);
+        owned[card.id] = copies;
+        remaining -= copies;
+      }
+
+      if (remaining !== 0) {
+        throw new Error(`${faction} starter collection is short by ${remaining} cards.`);
+      }
+    }
+
+    const factionTotals = Object.fromEntries(factionIds.map(faction => [
+      faction,
+      CARDS.filter(card => card.faction === faction)
+        .reduce((sum, card) => sum + (owned[card.id] || 0), 0)
+    ]));
+    const total = Object.values(factionTotals).reduce((sum, count) => sum + count, 0);
+
+    for (const [faction, count] of Object.entries(factionTotals)) {
+      if (count !== STARTER_CARDS_PER_FACTION) {
+        throw new Error(`${faction} must start with exactly ${STARTER_CARDS_PER_FACTION} cards; found ${count}.`);
+      }
+    }
+    if (total !== STARTER_COLLECTION_SIZE) {
+      throw new Error(`War Realms starter collection must contain exactly ${STARTER_COLLECTION_SIZE} cards; found ${total}.`);
+    }
+    return owned;
+  }
+
   function normalizeProfile(rawUserData = {}, isNewWarProfile = false) {
     const raw = rawUserData.warRealms || {};
-    const owned = { ...defaultOwnedCards() };
+    const owned = Object.fromEntries(CARDS.map(card => [card.id, 0]));
+    if (isNewWarProfile) Object.assign(owned, createNewPlayerCollection());
+
     for (const card of CARDS) {
       const supplied = Number(raw.owned?.[card.id]);
       if (Number.isFinite(supplied)) owned[card.id] = Math.max(0, Math.min(MAX_COPIES_PER_CARD, Math.floor(supplied)));
@@ -638,14 +685,19 @@
   }
 
   async function loadOrCreateProfile() {
-    const snapshot = await getDoc(profileRef);
-    const rawUserData = snapshot.exists() ? snapshot.data() : {};
-    const isNewWarProfile = !rawUserData.warRealms;
-    profile = normalizeProfile(rawUserData, isNewWarProfile);
+    await runTransaction(db, async transaction => {
+      const snapshot = await transaction.get(profileRef);
+      const rawUserData = snapshot.exists() ? snapshot.data() : {};
+      const isNewWarProfile = !rawUserData.warRealms;
+      profile = normalizeProfile(rawUserData, isNewWarProfile);
+
+      // The complete map is written only once, when War Realms does not yet exist.
+      // Existing profiles are read without any automatic rewrite or normalization save.
+      if (isNewWarProfile) {
+        transaction.set(profileRef, { warRealms: profile }, { merge: true });
+      }
+    });
     editDeck = [...profile.deck];
-    if (isNewWarProfile || JSON.stringify(rawUserData.warRealms || {}) !== JSON.stringify(profile)) {
-      await setDoc(profileRef, { warRealms: profile }, { merge: true });
-    }
   }
 
   function renderFactionBars(deck) {
@@ -749,7 +801,17 @@
         currentProfile.sigils -= price;
         currentProfile.owned[cardId] = owned + 1;
         currentProfile.updatedAtMs = Date.now();
-        transaction.set(profileRef, { warRealms: currentProfile }, { merge: true });
+
+        if (!rawData.warRealms) {
+          // Creation fallback only; never replaces an existing War Realms profile.
+          transaction.set(profileRef, { warRealms: currentProfile }, { merge: true });
+        } else {
+          transaction.update(profileRef, {
+            "warRealms.sigils": currentProfile.sigils,
+            [`warRealms.owned.${cardId}`]: currentProfile.owned[cardId],
+            "warRealms.updatedAtMs": currentProfile.updatedAtMs
+          });
+        }
         updatedProfile = currentProfile;
       });
       profile = updatedProfile;
@@ -772,7 +834,10 @@
     actionBusy = true;
     try {
       const nextProfile = { ...profile, deck: [...editDeck], updatedAtMs: Date.now() };
-      await setDoc(profileRef, { warRealms: nextProfile }, { merge: true });
+      await updateDoc(profileRef, {
+        "warRealms.deck": [...editDeck],
+        "warRealms.updatedAtMs": nextProfile.updatedAtMs
+      });
       profile = nextProfile;
       showToast("Your 50-card command deck is saved.", "good");
       renderArmory();
@@ -888,11 +953,20 @@
         currentProfile.games += 1;
         if (won) currentProfile.wins += 1;
         currentProfile.rewardedGames[rewardKey] = reward;
-        currentProfile.rewardedGames = Object.fromEntries(Object.entries(currentProfile.rewardedGames)
-          .sort(([, left], [, right]) => (Number(left.awardedAtMs) || 0) - (Number(right.awardedAtMs) || 0))
-          .slice(-100));
         currentProfile.updatedAtMs = Date.now();
-        transaction.set(profileRef, { warRealms: currentProfile }, { merge: true });
+
+        if (!rawData.warRealms) {
+          // Creation fallback only; never replaces an existing War Realms profile.
+          transaction.set(profileRef, { warRealms: currentProfile }, { merge: true });
+        } else {
+          transaction.update(profileRef, {
+            "warRealms.sigils": currentProfile.sigils,
+            "warRealms.games": currentProfile.games,
+            "warRealms.wins": currentProfile.wins,
+            [`warRealms.rewardedGames.${rewardKey}`]: reward,
+            "warRealms.updatedAtMs": currentProfile.updatedAtMs
+          });
+        }
         profile = currentProfile;
         awarded = reward;
         wasNewAward = true;
