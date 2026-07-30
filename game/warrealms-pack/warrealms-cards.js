@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 10;
+export const WAR_REALMS_CARD_VERSION = 11;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -907,7 +907,7 @@ export const CARDS = Object.freeze([
   token: true,
   transformedFrom: "young_siege_beast",
   cost: 5,
-  shop_cost: 5,
+  shop_cost: 0,
   type: "ship",
   sigil: "⬢",
   effect: { combat: 7 },
@@ -3911,7 +3911,12 @@ export const CARD_MAP = Object.freeze(
 // Cards available for permanent ownership, the Armory, and command decks.
 // Permanent Trade Row cards such as Hired Looter remain in CARD_MAP for battle lookup.
 export const COLLECTIBLE_CARDS = Object.freeze(
-  CARDS.filter(card => card.collectible !== false)
+  CARDS.filter(
+    card =>
+      card.collectible !== false &&
+      card.token !== true &&
+      !card.transformedFrom
+  )
 );
 
 export const COLLECTIBLE_CARD_MAP = Object.freeze(
@@ -4263,8 +4268,11 @@ export function assertCardLibrary() {
     // Collectible cards must have a real Armory price.
     // Tokens, evolved forms, and other noncollectible cards
     // may use shop_cost: 0 because they cannot be purchased.
-    const minimumShopCost =
-      card.collectible === false ? 0 : 1;
+    const isNonShopCard =
+      card.collectible === false ||
+      card.token === true ||
+      Boolean(card.transformedFrom);
+    const minimumShopCost = isNonShopCard ? 0 : 1;
 
     if (
       !Number.isInteger(card.shop_cost) ||
