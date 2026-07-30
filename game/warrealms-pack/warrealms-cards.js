@@ -578,6 +578,367 @@ export const CARDS = Object.freeze([
   flavor: "The vow ends only when the speaker, the witness, or the world is gone."
 },
   {
+  id: "ilyrion_keeper_of_the_unchosen",
+  name: "Ilyrion, Keeper of the Unchosen",
+  image: "ilyrion_keeper_of_the_unchosen.png",
+  faction: "yellow",
+  cost: 9,
+  shop_cost: 475,
+  type: "ship",
+  sigil: "◈",
+  effect: {
+    or: [
+      {
+        label: "Foresee",
+        effect: {
+          draw: 2,
+          trade: 2
+        }
+      },
+      {
+        label: "Deny",
+        effect: {
+          shield: 3,
+          stun: 2,
+          opponentDiscard: 1
+        }
+      },
+      {
+        label: "Collapse",
+        effect: {
+          combat: 11,
+          destroyBase: 1
+        }
+      }
+    ]
+  },
+  ally: {
+    draw: 1
+  },
+  doubleAlly: {
+    stun: 1,
+    opponentDiscard: 1
+  },
+  text: "Choose one: draw 2 cards and gain 2 Trade; gain 3 Shield and 2 Disable, and the next enemy draws 1 fewer card; or gain 11 Combat and 1 Raze.",
+  allyText: "Draw 1 card.",
+  doubleAllyText: "Gain 1 Disable. The next enemy draws 1 fewer card.",
+  flavor: "It remembers every future the universe was forced to abandon."
+},
+
+{
+  id: "the_impossible_citadel",
+  name: "The Impossible Citadel",
+  image: "the_impossible_citadel.png",
+  faction: "yellow",
+  cost: 10,
+  shop_cost: 650,
+  type: "base",
+  defense: 11,
+  outpost: true,
+  sigil: "◈",
+  effect: {
+    shield: 6,
+    stun: 1
+  },
+  ally: {
+    draw: 1,
+    trade: 2
+  },
+  doubleAlly: {
+    opponentDiscard: 2,
+    shield: 4
+  },
+  sacrifice: {
+    destroyBase: 1,
+    draw: 2
+  },
+  text: "Outpost. Gain 6 Shield and 1 Disable.",
+  allyText: "Draw 1 card and gain 2 Trade.",
+  doubleAllyText: "Gain 4 Shield. The next enemy draws 2 fewer cards.",
+  sacrificeText: "Sacrifice: Gain 1 Raze and draw 2 cards.",
+  flavor: "It stands where no fortress could exist and guards a war that never began."
+},
+
+
+// ==========================================================
+// BLUE — AZURE ASCENDANCY
+// ==========================================================
+
+{
+  id: "seraph_of_the_last_dawn",
+  name: "Seraph of the Last Dawn",
+  image: "seraph_of_the_last_dawn.png",
+  faction: "blue",
+  cost: 9,
+  shop_cost: 450,
+  type: "ship",
+  sigil: "✦",
+  effect: {
+    combat: 8,
+    heal: 8,
+    lifelink: 0.5
+  },
+  ally: {
+    draw: 1,
+    shield: 3
+  },
+  doubleAlly: {
+    combat: 4,
+    heal: 4
+  },
+  text: "Gain 8 Combat, 8 Authority, and Lifelink 50% this turn.",
+  allyText: "Draw 1 card and gain 3 Shield.",
+  doubleAllyText: "Gain 4 Combat and 4 Authority.",
+  flavor: "When every other light is extinguished, its wings become the morning."
+},
+
+{
+  id: "eternal_procession",
+  name: "Eternal Procession",
+  image: "eternal_procession.png",
+  faction: "blue",
+  cost: 10,
+  shop_cost: 625,
+  type: "base",
+  defense: 10,
+  outpost: false,
+  sigil: "✦",
+  effect: {
+    trade: 4,
+    healPerBase: 2
+  },
+  ally: {
+    shield: 5
+  },
+  doubleAlly: {
+    draw: 2,
+    heal: 5
+  },
+  sacrifice: {
+    damageAll: 2,
+    heal: 8
+  },
+  text: "Gain 4 Trade and 2 Authority for each active Base you control.",
+  allyText: "Gain 5 Shield.",
+  doubleAllyText: "Draw 2 cards and gain 5 Authority.",
+  sacrificeText: "Sacrifice: Damage All 2 and gain 8 Authority.",
+  flavor: "The first banner began marching before the oldest kingdom had a name."
+},
+
+{
+  id: "tideborne_world_sanctifier",
+  name: "Tideborne World-Sanctifier",
+  image: "tideborne_world_sanctifier.png",
+  faction: "blue",
+  cost: 9,
+  shop_cost: 485,
+  type: "ship",
+  sigil: "✦",
+  effect: {
+    or: [
+      {
+        label: "Judgment",
+        effect: {
+          combat: 10,
+          heal: 4
+        }
+      },
+      {
+        label: "Renewal",
+        effect: {
+          draw: 2,
+          heal: 8
+        }
+      },
+      {
+        label: "Provision",
+        effect: {
+          trade: 6,
+          heal: 5
+        }
+      }
+    ]
+  },
+  ally: {
+    shield: 3
+  },
+  sacrifice: {
+    heal: 10
+  },
+  text: "Choose one: gain 10 Combat and 4 Authority; draw 2 cards and gain 8 Authority; or gain 6 Trade and 5 Authority.",
+  allyText: "Gain 3 Shield.",
+  sacrificeText: "Sacrifice: Gain 10 Authority.",
+  flavor: "Entire worlds are submerged, cleansed, and raised again beneath its blessing."
+},
+
+
+// ==========================================================
+// GREEN — GORAK WARHOST
+// ==========================================================
+
+{
+  id: "morgath_gate_ending",
+  name: "Morgath Gate-Ending",
+  image: "morgath_gate_ending.png",
+  faction: "green",
+  cost: 9,
+  shop_cost: 440,
+  type: "ship",
+  sigil: "⬢",
+  effect: {
+    combat: 13,
+    destroyBase: 1
+  },
+  ally: {
+    combat: 5
+  },
+  sacrifice: {
+    combat: 8
+  },
+  text: "Gain 13 Combat and 1 Raze.",
+  allyText: "Gain 5 Combat.",
+  sacrificeText: "Sacrifice: Gain 8 Combat.",
+  flavor: "Morgath has never encountered a gate twice."
+},
+
+{
+  id: "the_hundred_drum_horde",
+  name: "The Hundred-Drum Horde",
+  image: "the_hundred_drum_horde.png",
+  faction: "green",
+  cost: 10,
+  shop_cost: 600,
+  type: "ship",
+  sigil: "⬢",
+  effect: {
+    combat: 8,
+    combatPerBase: 2
+  },
+  ally: {
+    damageAll: 2
+  },
+  doubleAlly: {
+    combat: 6,
+    draw: 1
+  },
+  text: "Gain 8 Combat plus 2 Combat for each active Base you control.",
+  allyText: "Damage All 2.",
+  doubleAllyText: "Gain 6 Combat and draw 1 card.",
+  flavor: "The first drum calls the army. The hundredth announces that resistance has ended."
+},
+
+{
+  id: "gorak_thronecrusher",
+  name: "Gorak Thronecrusher",
+  image: "gorak_thronecrusher.png",
+  faction: "green",
+  cost: 10,
+  shop_cost: 675,
+  type: "ship",
+  sigil: "⬢",
+  effect: {
+    or: [
+      {
+        label: "Trample",
+        effect: {
+          combat: 16
+        }
+      },
+      {
+        label: "Demolish",
+        effect: {
+          combat: 10,
+          destroyBase: 1
+        }
+      },
+      {
+        label: "Pillage",
+        effect: {
+          trade: 7,
+          scrapMarket: 1
+        }
+      }
+    ]
+  },
+  ally: {
+    combat: 4
+  },
+  sacrifice: {
+    combat: 10
+  },
+  text: "Choose one: gain 16 Combat; gain 10 Combat and 1 Raze; or gain 7 Trade and 1 Market Erase.",
+  allyText: "Gain 4 Combat.",
+  sacrificeText: "Sacrifice: Gain 10 Combat.",
+  flavor: "It does not sit upon conquered thrones. It carries them away as trophies."
+},
+
+
+// ==========================================================
+// RED — UMBRAL COVENANT
+// ==========================================================
+
+{
+  id: "vharos_debt_of_worlds",
+  name: "Vharos, Debt of Worlds",
+  image: "vharos_debt_of_worlds.png",
+  faction: "red",
+  cost: 9,
+  shop_cost: 475,
+  type: "ship",
+  sigil: "◒",
+  effect: {
+    combat: 9,
+    scrapOwn: 2,
+    lifelink: 0.5
+  },
+  ally: {
+    draw: 1,
+    combat: 3
+  },
+  doubleAlly: {
+    destroyBase: 1,
+    opponentDiscard: 1
+  },
+  text: "Gain 9 Combat, 2 Purge, and Lifelink 50% this turn.",
+  allyText: "Draw 1 card and gain 3 Combat.",
+  doubleAllyText: "Gain 1 Raze. The next enemy draws 1 fewer card.",
+  flavor: "Every empire eventually discovers that its victories were purchased on Vharos's credit."
+},
+
+{
+  id: "black_sun_apotheosis",
+  name: "Black Sun Apotheosis",
+  image: "black_sun_apotheosis.png",
+  faction: "red",
+  cost: 10,
+  shop_cost: 700,
+  type: "base",
+  defense: 9,
+  outpost: true,
+  sigil: "◒",
+  effect: {
+    combat: 5,
+    damageAll: 2,
+    scrapOwn: 1
+  },
+  ally: {
+    draw: 1
+  },
+  doubleAlly: {
+    combat: 6,
+    lifelink: 0.5
+  },
+  sacrifice: {
+    combat: 8,
+    draw: 2
+  },
+  text: "Outpost. Gain 5 Combat, Damage All 2, and gain 1 Purge.",
+  allyText: "Draw 1 card.",
+  doubleAllyText: "Gain 6 Combat and Lifelink 50% this turn.",
+  sacrificeText: "Sacrifice: Gain 8 Combat and draw 2 cards.",
+  flavor: "The faithful did not build a temple beneath the eclipse. They taught the eclipse to worship."
+},
+  {
     id: "warcamp_foundry",
     name: "Warcamp Foundry",
     image: "warcamp_foundry.png",
