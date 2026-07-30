@@ -3910,13 +3910,15 @@ export const CARD_MAP = Object.freeze(
 
 // Cards available for permanent ownership, the Armory, and command decks.
 // Permanent Trade Row cards such as Hired Looter remain in CARD_MAP for battle lookup.
+export function isCollectibleCard(card) {
+  return Boolean(card) &&
+    card.collectible !== false &&
+    card.token !== true &&
+    !card.transformedFrom;
+}
+
 export const COLLECTIBLE_CARDS = Object.freeze(
-  CARDS.filter(
-    card =>
-      card.collectible !== false &&
-      card.token !== true &&
-      !card.transformedFrom
-  )
+  CARDS.filter(isCollectibleCard)
 );
 
 export const COLLECTIBLE_CARD_MAP = Object.freeze(
@@ -4268,11 +4270,8 @@ export function assertCardLibrary() {
     // Collectible cards must have a real Armory price.
     // Tokens, evolved forms, and other noncollectible cards
     // may use shop_cost: 0 because they cannot be purchased.
-    const isNonShopCard =
-      card.collectible === false ||
-      card.token === true ||
-      Boolean(card.transformedFrom);
-    const minimumShopCost = isNonShopCard ? 0 : 1;
+    const minimumShopCost =
+      isCollectibleCard(card) ? 1 : 0;
 
     if (
       !Number.isInteger(card.shop_cost) ||
