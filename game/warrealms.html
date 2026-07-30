@@ -826,7 +826,7 @@
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   // Version the module URL so browsers cannot reuse an older validator.
   const cardLibrary = await import(
-    "./warrealms-pack/warrealms-cards.js?v=11"
+    "./warrealms-pack/warrealms-cards.js?v=12"
   );
 
   const {
@@ -836,6 +836,7 @@
     FACTIONS,
     STARTER_CARDS,
     CARDS,
+    COLLECTIBLE_CARDS,
     CARD_MAP,
     ALL_CARD_MAP,
     getCard,
@@ -914,9 +915,9 @@
   const HIRED_LOOTER_ID = HIRED_LOOTER_CARD?.id || "";
   const HIRED_LOOTER_MARKET_OWNER_ID = "war_realms_infinite_supply";
   const HIRED_LOOTER_MARKET_OWNER_NAME = "Always Available · Infinite Supply";
-  // Hired Looter remains in CARD_MAP so gameplay can resolve its effects, art, and purchases.
-  // It is not a collectible/deck-building card; its only supply is the protected sixth Trade Row slot.
-  const DECK_ELIGIBLE_CARDS = Object.freeze(CARDS.filter(card => card?.collectible !== false && !isHiredLooterCardId(card?.id)));
+  // The card library owns the collectible rule, keeping ascendants, tokens, and
+  // permanent-market cards out of the Armory and command decks.
+  const DECK_ELIGIBLE_CARDS = COLLECTIBLE_CARDS;
   const DECK_ELIGIBLE_CARD_IDS = new Set(DECK_ELIGIBLE_CARDS.map(card => card.id));
   const TOTAL_CUSTOM_CARDS = DECK_ELIGIBLE_CARDS.length;
 
