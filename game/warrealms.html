@@ -301,6 +301,122 @@
       body.battleMode .forcedDiscardBanner{top:4px;width:96vw;padding:6px 8px;border-radius:10px}.forcedDiscardIcon{width:31px;height:31px;flex-basis:31px;font-size:18px}.forcedDiscardCopy b{font-size:9px}.forcedDiscardCopy span{font-size:6.5px}
     }
 
+
+    /* HEIGHT-FITTED IN-GAME CARDS
+       Every battle card uses the height supplied by its zone. The full PNG flexes inside
+       the card while the ability rail and action buttons remain attached and visible. */
+    body.battleMode .realmField,
+    body.battleMode .marketRow,
+    body.battleMode .handRow,
+    body.battleMode .ownCards{min-height:0;align-items:stretch;overflow-y:hidden}
+    body.battleMode .handZone,
+    body.battleMode .ownField{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+    body.battleMode .handRow,
+    body.battleMode .ownCards{height:100%;overflow-x:auto;overscroll-behavior-x:contain}
+    body.battleMode .realmField .gameCard,
+    body.battleMode .marketRow .gameCard,
+    body.battleMode .handRow .gameCard,
+    body.battleMode .ownCards .gameCard{
+      align-self:stretch;
+      height:100%;
+      max-height:100%;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+    }
+    body.battleMode .realmField .battleCardVisual,
+    body.battleMode .marketRow .battleCardVisual,
+    body.battleMode .handRow .battleCardVisual,
+    body.battleMode .ownCards .battleCardVisual{
+      flex:1 1 auto;
+      width:100%;
+      height:auto;
+      min-height:0;
+      aspect-ratio:auto;
+    }
+    body.battleMode .battleCardVisual img,
+    body.battleMode .battleCardVisual .cardArtImage{
+      width:100%;
+      height:100%;
+      object-fit:contain;
+      object-position:center;
+    }
+    body.battleMode .cardAbilityRail,
+    body.battleMode .cardActions{flex:0 0 auto}
+    body.battleMode .cardActions .btn{overflow:hidden;text-overflow:ellipsis}
+    body.battleMode .ownCards .baseCard{box-shadow:inset 0 0 0 1px rgba(255,255,255,.09),0 7px 15px rgba(0,0,0,.25)}
+    body.battleMode .ownCards .playedCard{box-shadow:inset 0 0 0 1px rgba(229,202,85,.18),0 7px 15px rgba(0,0,0,.25)}
+
+    @media(max-width:620px){
+      body.battleMode .battleShell{
+        grid-template-rows:minmax(0,.80fr) minmax(0,.94fr) minmax(0,1.34fr);
+        min-height:0;
+        overflow:hidden;
+      }
+      body.battleMode .realmArea,
+      body.battleMode .marketBand,
+      body.battleMode .playerDock{min-height:0;overflow:hidden}
+      body.battleMode .dockBody{
+        height:100%;
+        min-height:0;
+        display:grid;
+        grid-template-columns:minmax(0,1fr);
+        grid-template-rows:minmax(0,1.08fr) minmax(0,.92fr);
+        gap:3px;
+        padding:3px;
+      }
+      body.battleMode .ownField{
+        display:grid;
+        max-height:none;
+        min-height:0;
+        border:1px solid #293542;
+        padding:2px;
+      }
+      body.battleMode .zoneLabel{
+        height:auto;
+        min-height:13px;
+        padding:1px 3px 2px;
+        font-size:5.7px;
+        line-height:1.15;
+      }
+      body.battleMode .handRow,
+      body.battleMode .ownCards{gap:3px}
+      body.battleMode .ownCards .gameCard{width:76px;flex:0 0 76px}
+      body.battleMode .realmField .gameCard{width:72px;flex:0 0 72px}
+      body.battleMode .marketRow .gameCard{width:76px;flex:0 0 76px}
+      body.battleMode .handRow .gameCard{width:80px;flex:0 0 80px}
+      body.battleMode .cardAbilityRail{min-height:16px;padding:1px 2px}
+      body.battleMode .cardAbilityRail .abilityGlyph{height:13px;min-width:17px;padding:0 3px;font-size:5px}
+      body.battleMode .gameCard .cardActions{padding:2px;gap:2px}
+      body.battleMode .gameCard .cardActions .btn{min-height:19px;padding:1px 2px;font-size:5.4px;line-height:1}
+    }
+
+    @media(max-width:620px) and (orientation:landscape){
+      body.battleMode .battleShell{
+        grid-template-rows:minmax(0,.72fr) minmax(0,.88fr) minmax(0,1.18fr);
+      }
+      body.battleMode .dockBody{
+        grid-template-columns:minmax(0,1.28fr) minmax(0,.82fr);
+        grid-template-rows:minmax(0,1fr);
+      }
+      body.battleMode .handZone,
+      body.battleMode .ownField{height:100%}
+      body.battleMode .realmBar{height:22px;flex-basis:22px}
+      body.battleMode .realmField .gameCard{width:65px;flex-basis:65px}
+      body.battleMode .marketRow .gameCard{width:69px;flex-basis:69px}
+      body.battleMode .handRow .gameCard{width:72px;flex-basis:72px}
+      body.battleMode .ownCards .gameCard{width:68px;flex-basis:68px}
+      body.battleMode .cardAbilityRail{min-height:14px}
+      body.battleMode .gameCard .cardActions .btn{min-height:17px;font-size:5px}
+    }
+
+    @media(max-width:420px) and (orientation:portrait){
+      body.battleMode .realmField .gameCard{width:66px;flex-basis:66px}
+      body.battleMode .marketRow .gameCard{width:69px;flex-basis:69px}
+      body.battleMode .handRow .gameCard{width:73px;flex-basis:73px}
+      body.battleMode .ownCards .gameCard{width:69px;flex-basis:69px}
+    }
+
   </style>
 </head>
 <body>
@@ -329,7 +445,7 @@
       <section class="armoryHero">
         <div class="eyebrow">Single commander detected</div>
         <h1>The Realm Armory</h1>
-        <p>The store is generated directly from the complete War Realms card pack. New commanders begin with exactly 50 custom cards. Spend Sigils to unlock the remaining cards and collect additional copies, then build an exact 50-card command deck. Multiplayer loads only the card graphics used by that battle.</p>
+        <p>The store is generated from the collectible War Realms cards; Hired Looter is reserved for its permanent in-game Trade Row supply. New commanders begin with exactly 50 custom cards. Spend Sigils to unlock the remaining cards and collect additional copies, then build an exact 50-card command deck. Multiplayer loads only the card graphics used by that battle.</p>
         <div class="heroStats">
           <div class="heroStat">War Sigils<b id="heroSigils">0</b></div>
           <div class="heroStat">Unique cards owned<b id="heroOwned">0</b></div>
@@ -421,7 +537,7 @@
         </div>
         <div class="dockBody">
           <div class="handZone"><div class="zoneLabel" id="handLabel">Hand</div><div class="handRow" id="handRow"></div></div>
-          <div class="ownField"><div class="zoneLabel">Deployed cards and bases</div><div class="ownCards" id="ownCards"></div></div>
+          <div class="ownField"><div class="zoneLabel">Your bases + cards played this turn</div><div class="ownCards" id="ownCards"></div></div>
         </div>
       </section>
     </div>
@@ -561,7 +677,6 @@
   const ROTATING_MARKET_SIZE = 5;
   const MARKET_SIZE = 6;
   const MAX_PLAYERS = 4;
-  const TOTAL_CUSTOM_CARDS = CARDS.length;
   const FIRST_COPY_PRICE_MULTIPLIER = 1.5;
   const CARD_ART_ROOT = new URL("../graphics/warrealmscards/", import.meta.url).href;
   const HIRED_LOOTER_CARD = (() => {
@@ -573,6 +688,11 @@
   const HIRED_LOOTER_ID = HIRED_LOOTER_CARD?.id || "";
   const HIRED_LOOTER_MARKET_OWNER_ID = "war_realms_infinite_supply";
   const HIRED_LOOTER_MARKET_OWNER_NAME = "Always Available · Infinite Supply";
+  // Hired Looter remains in CARD_MAP so gameplay can resolve its effects, art, and purchases.
+  // It is not a collectible/deck-building card; its only supply is the protected sixth Trade Row slot.
+  const DECK_ELIGIBLE_CARDS = Object.freeze(CARDS.filter(card => card?.collectible !== false && !isHiredLooterCardId(card?.id)));
+  const DECK_ELIGIBLE_CARD_IDS = new Set(DECK_ELIGIBLE_CARDS.map(card => card.id));
+  const TOTAL_CUSTOM_CARDS = DECK_ELIGIBLE_CARDS.length;
 
   let firebaseUser = null;
   let profile = null;
@@ -1265,7 +1385,7 @@
 
     for (const tier of COMMAND_DECK_COST_BREAKDOWN) {
       const tierPool = [];
-      for (const card of CARDS) {
+      for (const card of DECK_ELIGIBLE_CARDS) {
         if (!cardMatchesCostTier(card, tier.key)) continue;
         const availableCopies = owned
           ? Math.max(0, Math.min(MAX_COPIES_PER_CARD, Math.floor(Number(owned[card.id]) || 0)))
@@ -1296,7 +1416,7 @@
       if (!deficit) continue;
 
       owned[cardId] = requiredCopies;
-      const donors = CARDS
+      const donors = DECK_ELIGIBLE_CARDS
         .filter(candidate => candidate.faction === card.faction && candidate.id !== cardId)
         .sort((left, right) => right.cost - left.cost || left.name.localeCompare(right.name));
 
@@ -1318,11 +1438,11 @@
   }
 
   function createNewPlayerCollection() {
-    const owned = Object.fromEntries(CARDS.map(card => [card.id, 0]));
+    const owned = Object.fromEntries(DECK_ELIGIBLE_CARDS.map(card => [card.id, 0]));
     const factionIds = ["yellow", "blue", "green", "red"];
 
     for (const faction of factionIds) {
-      const foundationalCards = CARDS
+      const foundationalCards = DECK_ELIGIBLE_CARDS
         .filter(card => card.faction === faction)
         .sort((left, right) => left.cost - right.cost || left.name.localeCompare(right.name))
         .slice(0, STARTER_UNIQUE_CARDS_PER_FACTION);
@@ -1342,7 +1462,7 @@
 
     const factionTotals = Object.fromEntries(factionIds.map(faction => [
       faction,
-      CARDS.filter(card => card.faction === faction)
+      DECK_ELIGIBLE_CARDS.filter(card => card.faction === faction)
         .reduce((sum, card) => sum + (owned[card.id] || 0), 0)
     ]));
     const total = Object.values(factionTotals).reduce((sum, count) => sum + count, 0);
@@ -1360,19 +1480,19 @@
 
   function normalizeProfile(rawUserData = {}, isNewWarProfile = false) {
     const raw = rawUserData.warRealms || {};
-    const owned = Object.fromEntries(CARDS.map(card => [card.id, 0]));
+    const owned = Object.fromEntries(DECK_ELIGIBLE_CARDS.map(card => [card.id, 0]));
     const newPlayerDeck = isNewWarProfile ? buildCostCurveCommandDeck() : null;
     if (isNewWarProfile) {
       Object.assign(owned, createNewPlayerCollection());
       makeStarterDeckOwned(owned, newPlayerDeck);
     }
 
-    for (const card of CARDS) {
+    for (const card of DECK_ELIGIBLE_CARDS) {
       const supplied = Number(raw.owned?.[card.id]);
       if (Number.isFinite(supplied)) owned[card.id] = Math.max(0, Math.min(MAX_COPIES_PER_CARD, Math.floor(supplied)));
     }
 
-    let deck = Array.isArray(raw.deck) ? raw.deck.filter(id => CARD_MAP[id]) : [];
+    let deck = Array.isArray(raw.deck) ? raw.deck.filter(id => DECK_ELIGIBLE_CARD_IDS.has(id)) : [];
     if (!validateCommandDeck(deck, owned).valid) deck = newPlayerDeck ? [...newPlayerDeck] : buildBalancedCommandDeck(owned);
 
     const rewardedGames = Object.fromEntries(Object.entries(raw.rewardedGames || {})
@@ -1420,7 +1540,7 @@
     const counts = { yellow: 0, blue: 0, green: 0, red: 0 };
     for (const cardId of deck) {
       const card = CARD_MAP[cardId];
-      if (card) counts[card.faction] += 1;
+      if (card && Object.prototype.hasOwnProperty.call(counts, card.faction)) counts[card.faction] += 1;
     }
     $("#factionBars").innerHTML = Object.entries(counts).map(([faction, count]) => `
       <div class="factionBar" style="color:var(--${faction})">
@@ -1542,7 +1662,7 @@
   function renderArmory() {
     if (!profile) return;
     const validation = validateCommandDeck(editDeck, profile.owned);
-    const uniqueOwned = CARDS.filter(card => (profile.owned[card.id] || 0) > 0).length;
+    const uniqueOwned = DECK_ELIGIBLE_CARDS.filter(card => (profile.owned[card.id] || 0) > 0).length;
     const totalOwned = Object.values(profile.owned).reduce((sum, value) => sum + value, 0);
     $("#heroSigils").textContent = profile.sigils;
     $("#heroOwned").textContent = `${uniqueOwned} / ${TOTAL_CUSTOM_CARDS}`;
@@ -1587,7 +1707,7 @@
     $("#catalogNextBtn").disabled = true;
 
     if (deckMode) {
-      const deckCards = CARDS.filter(card => (profile.owned[card.id] || 0) > 0 && matchesFactionAndSearch(card));
+      const deckCards = DECK_ELIGIBLE_CARDS.filter(card => (profile.owned[card.id] || 0) > 0 && matchesFactionAndSearch(card));
       const outsideCopies = deckCards.reduce((sum, card) => sum + Math.max(0, (profile.owned[card.id] || 0) - (countCards(editDeck)[card.id] || 0)), 0);
       $("#catalogPageLabel").textContent = `Tap to move copies · ${editDeck.length} in / ${outsideCopies} out`;
       catalog.innerHTML = deckBuilderHtml(deckCards);
@@ -1596,14 +1716,14 @@
       return;
     }
 
-    const filtered = CARDS.filter(card => {
+    const filtered = DECK_ELIGIBLE_CARDS.filter(card => {
       const owned = profile.owned[card.id] || 0;
       if (!matchesFactionAndSearch(card)) return false;
       if (ownershipFilter === "owned" && owned <= 0) return false;
       if (ownershipFilter === "unowned" && owned > 0) return false;
       return true;
     });
-    $("#catalogPageLabel").textContent = `${filtered.length} of ${CARDS.length} pack cards`;
+    $("#catalogPageLabel").textContent = `${filtered.length} of ${DECK_ELIGIBLE_CARDS.length} collectible cards`;
     catalog.innerHTML = filtered.length
       ? filtered.map(card => catalogCardHtml(card)).join("")
       : `<div class="emptyZone" style="grid-column:1/-1;padding:28px">No store cards match${activeSearchText ? ` “${escapeHtml(activeSearchText)}”` : " the selected filters"}.</div>`;
@@ -1612,7 +1732,7 @@
 
   async function purchaseProfileCard(cardId) {
     const card = CARD_MAP[cardId];
-    if (!card || actionBusy) return;
+    if (!card || !DECK_ELIGIBLE_CARD_IDS.has(cardId) || actionBusy) return;
     actionBusy = true;
     try {
       let updatedProfile = null;
@@ -2579,13 +2699,25 @@
       });
     }).join("") || '<div class="emptyZone">No cards in hand</div>';
 
-    const ownEntries = [...(me.played || []).map(entry => ({ ...entry, zone: "played" })), ...(me.bases || []).map(entry => ({ ...entry, zone: "bases" }))];
+    // Persistent bases/outposts are shown first, followed by cards played during the current turn.
+    // END clears me.played but leaves me.bases intact, so the display naturally removes temporary cards
+    // while keeping bases and outposts visible between turns.
+    const ownEntries = [
+      ...(me.bases || []).map(entry => ({ ...entry, zone: "bases" })),
+      ...(me.played || []).map(entry => ({ ...entry, zone: "played" }))
+    ];
     $("#ownCards").innerHTML = ownEntries.map(entry => {
       const card = getCard(entry.id);
-      if (!card) return battleCardHtml(entry, { ownerName: me.name, locked: true });
+      const zoneClass = entry.zone === "bases" ? "baseCard" : "playedCard";
+      if (!card) return battleCardHtml(entry, { ownerName: me.name, locked: true, zoneClass });
       const primaryAction = canAct && card.sacrifice ? `<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>` : "";
-      return battleCardHtml(entry, { primaryAction, ownerName: me.name, disabledBase: entry.zone === "bases" && (entry.stunTurns || 0) > 0 });
-    }).join("") || '<div class="emptyZone">No deployed cards</div>';
+      return battleCardHtml(entry, {
+        primaryAction,
+        ownerName: me.name,
+        zoneClass,
+        disabledBase: entry.zone === "bases" && (entry.stunTurns || 0) > 0
+      });
+    }).join("") || '<div class="emptyZone">No bases or cards played this turn</div>';
   }
 
   function renderOpponentQueue() {
