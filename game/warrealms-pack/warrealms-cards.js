@@ -356,7 +356,7 @@ export const CARDS = Object.freeze([
   type: "ship",
   sigil: "◈",
   effect: { draw: 1 },
-  ally: {},
+  ally: { trade: 1 },
   text: "Draw 1 card.",
   allyText: "",
   flavor: "A single possibility preserved long enough to become useful."
