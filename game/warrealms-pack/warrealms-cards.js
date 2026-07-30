@@ -4260,9 +4260,15 @@ export function assertCardLibrary() {
       );
     }
 
+    // Collectible cards must have a real Armory price.
+    // Tokens, evolved forms, and other noncollectible cards
+    // may use shop_cost: 0 because they cannot be purchased.
+    const minimumShopCost =
+      card.collectible === false ? 0 : 1;
+
     if (
       !Number.isInteger(card.shop_cost) ||
-      card.shop_cost < 1
+      card.shop_cost < minimumShopCost
     ) {
       throw new Error(
         `Invalid shop_cost on ${card.id}: ` +
