@@ -322,6 +322,175 @@ export const CARDS = Object.freeze([
     sacrificeText: "Sacrifice: Gain 6 Authority.",
     flavor: "The relic travels only where an entire fleet is willing to stand."
   },
+  // ==========================================================
+// 10 LOW-COST CARDS — COST 1–2 — NO ALLY ABILITIES
+// ==========================================================
+
+// ==========================================================
+// YELLOW — XYTHE CONCORD
+// ==========================================================
+{
+  id: "starpath_mite",
+  name: "Starpath Mite",
+  image: "starpath_mite.png",
+  faction: "yellow",
+  cost: 1,
+  shop_cost: 10,
+  type: "ship",
+  sigil: "◈",
+  effect: { trade: 1, combat: 1 },
+  ally: {},
+  text: "Gain 1 Trade and 1 Combat.",
+  allyText: "",
+  flavor: "Even the smallest Concord creature knows where the enemy will step."
+},
+{
+  id: "future_shard",
+  name: "Future Shard",
+  image: "future_shard.png",
+  faction: "yellow",
+  cost: 2,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "◈",
+  effect: { draw: 1 },
+  ally: {},
+  text: "Draw 1 card.",
+  allyText: "",
+  flavor: "A single possibility preserved long enough to become useful."
+},
+{
+  id: "void_current_scout",
+  name: "Void-Current Scout",
+  image: "void_current_scout.png",
+  faction: "yellow",
+  cost: 2,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "◈",
+  effect: { combat: 2, trade: 1 },
+  ally: {},
+  text: "Gain 2 Combat and 1 Trade.",
+  allyText: "",
+  flavor: "It rides the invisible current between profit and violence."
+},
+
+// ==========================================================
+// BLUE — AZURE ASCENDANCY
+// ==========================================================
+{
+  id: "chapel_attendant",
+  name: "Chapel Attendant",
+  image: "chapel_attendant.png",
+  faction: "blue",
+  cost: 1,
+  shop_cost: 10,
+  type: "ship",
+  sigil: "✦",
+  effect: { heal: 2 },
+  ally: {},
+  text: "Gain 2 Authority.",
+  allyText: "",
+  flavor: "A quiet prayer can hold a wounded soldier together."
+},
+{
+  id: "dawn_supply_runner",
+  name: "Dawn Supply Runner",
+  image: "dawn_supply_runner.png",
+  faction: "blue",
+  cost: 2,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "✦",
+  effect: { trade: 2, heal: 1 },
+  ally: {},
+  text: "Gain 2 Trade and 1 Authority.",
+  allyText: "",
+  flavor: "The Ascendancy considers punctual delivery a sacred duty."
+},
+
+// ==========================================================
+// GREEN — GORAK WARHOST
+// ==========================================================
+{
+  id: "mudboot_rusher",
+  name: "Mudboot Rusher",
+  image: "mudboot_rusher.png",
+  faction: "green",
+  cost: 1,
+  shop_cost: 10,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combat: 2 },
+  ally: {},
+  text: "Gain 2 Combat.",
+  allyText: "",
+  flavor: "It has never waited for the ground to become suitable."
+},
+{
+  id: "scrap_pocket_raider",
+  name: "Scrap-Pocket Raider",
+  image: "scrap_pocket_raider.png",
+  faction: "green",
+  cost: 2,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "⬢",
+  effect: { trade: 2, combat: 1 },
+  ally: {},
+  text: "Gain 2 Trade and 1 Combat.",
+  allyText: "",
+  flavor: "Every pocket is full before the raid officially begins."
+},
+{
+  id: "two_axe_runt",
+  name: "Two-Axe Runt",
+  image: "two_axe_runt.png",
+  faction: "green",
+  cost: 2,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combat: 4 },
+  ally: {},
+  text: "Gain 4 Combat.",
+  allyText: "",
+  flavor: "It carries two axes because counting beyond two seemed unnecessary."
+},
+
+// ==========================================================
+// RED — UMBRAL COVENANT
+// ==========================================================
+{
+  id: "candle_blood_apprentice",
+  name: "Candleblood Apprentice",
+  image: "candle_blood_apprentice.png",
+  faction: "red",
+  cost: 1,
+  shop_cost: 10,
+  type: "ship",
+  sigil: "◒",
+  effect: { combat: 1, scrapOwn: 1 },
+  ally: {},
+  text: "Gain 1 Combat and 1 Purge.",
+  allyText: "",
+  flavor: "The first lesson is learning which part of yourself to burn."
+},
+{
+  id: "grave_coin_collector",
+  name: "Grave-Coin Collector",
+  image: "grave_coin_collector.png",
+  faction: "red",
+  cost: 2,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "◒",
+  effect: { trade: 2, scrapOwn: 1 },
+  ally: {},
+  text: "Gain 2 Trade and 1 Purge.",
+  allyText: "",
+  flavor: "The dead have little use for currency or unfinished promises."
+},
   {
   id: "sorynth_choice_seer",
   name: "Sorynth Choice-Seer",
