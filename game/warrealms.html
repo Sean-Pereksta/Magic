@@ -824,7 +824,45 @@
     runTransaction,
     serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-  import {
+  // Load the card library with a validation fix for noncollectible cards.
+  // Evolved/token forms may use shop_cost: 0 because they never enter the Armory.
+  const cardLibraryUrl = "./warrealms-pack/warrealms-cards.js";
+  const cardLibraryResponse = await fetch(cardLibraryUrl);
+
+  if (!cardLibraryResponse.ok) {
+    throw new Error(
+      `Unable to load War Realms card library: ${cardLibraryResponse.status}`
+    );
+  }
+
+  const cardLibrarySource = await cardLibraryResponse.text();
+  const patchedCardLibrarySource = cardLibrarySource.replace(
+    /if\s*\(\s*!Number\.isInteger\(card\.shop_cost\)\s*\|\|\s*card\.shop_cost\s*<\s*1\s*\)\s*\{/,
+    `const minimumShopCost = card.collectible === false ? 0 : 1;
+
+    if (
+      !Number.isInteger(card.shop_cost) ||
+      card.shop_cost < minimumShopCost
+    ) {`
+  );
+
+  if (patchedCardLibrarySource === cardLibrarySource) {
+    throw new Error(
+      "Unable to apply the noncollectible shop_cost validation fix."
+    );
+  }
+
+  const cardLibraryBlobUrl = URL.createObjectURL(
+    new Blob(
+      [patchedCardLibrarySource + "\n//# sourceURL=warrealms-cards-patched.js"],
+      { type: "text/javascript" }
+    )
+  );
+
+  const cardLibrary = await import(cardLibraryBlobUrl);
+  URL.revokeObjectURL(cardLibraryBlobUrl);
+
+  const {
     WAR_REALMS_CARD_VERSION,
     COMMAND_DECK_SIZE,
     MAX_COPIES_PER_CARD,
@@ -842,7 +880,7 @@
     cardStorePrice,
     effectSummary,
     fullCardRules
-  } from "./warrealms-pack/warrealms-cards.js";
+  } = cardLibrary;
 
   const firebaseConfig = {
     apiKey: "AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",
