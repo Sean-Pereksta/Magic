@@ -907,7 +907,7 @@ export const CARDS = Object.freeze([
   token: true,
   transformedFrom: "young_siege_beast",
   cost: 5,
-  shop_cost: 0,
+  shop_cost: 5,
   type: "ship",
   sigil: "⬢",
   effect: { combat: 7 },
