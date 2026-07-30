@@ -203,22 +203,22 @@ export const CARDS = Object.freeze([
     allyText: "The next enemy draws 1 fewer card.",
     flavor: "Its wounds arrive before its claws."
   },
-  {
+ {
   id: "hired_looter",
   name: "Hired Looter",
   image: "hired_looter.png",
-  faction: "green",
+  faction: "neutral",
   cost: 2,
   shop_cost: 20,
   type: "ship",
-  sigil: "⬢",
+  sigil: "◆",
   effect: { trade: 2 },
-  ally: { combat: 1 },
+  ally: {},
   sacrifice: { combat: 2 },
   text: "Gain 2 Trade.",
-  allyText: "Gain 1 Combat.",
+  allyText: "",
   sacrificeText: "Sacrifice: Gain 2 Combat.",
-  flavor: "Pay him today. Point him at the enemy tomorrow."
+  flavor: "His loyalty lasts exactly as long as the coin does."
 },
   {
     id: "dominion_relay",
