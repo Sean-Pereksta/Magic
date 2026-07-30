@@ -289,6 +289,199 @@ export const CARDS = Object.freeze([
     flavor: "Every wound answered by the tide becomes strength for the faithful."
   },
   {
+  id: "discarded_future",
+  name: "Discarded Future",
+  image: "discarded_future.png",
+  faction: "yellow",
+  cost: 1,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "◈",
+  effect: { trade: 1 },
+  ally: {},
+  sacrifice: { draw: 2 },
+  text: "Gain 1 Trade.",
+  allyText: "",
+  sacrificeText: "Sacrifice: Draw 2 cards.",
+  flavor: "The Concord abandons one future so two better paths may survive."
+},
+
+{
+  id: "nullpulse_mite",
+  name: "Nullpulse Mite",
+  image: "nullpulse_mite.png",
+  faction: "yellow",
+  cost: 1,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "◈",
+  effect: { combat: 1 },
+  ally: {},
+  sacrifice: { stun: 3 },
+  text: "Gain 1 Combat.",
+  allyText: "",
+  sacrificeText: "Sacrifice: Gain 3 Disable.",
+  flavor: "Its final pulse leaves entire fortresses unable to remember their purpose."
+},
+
+{
+  id: "probability_splinter",
+  name: "Probability Splinter",
+  image: "probability_splinter.png",
+  faction: "yellow",
+  cost: 3,
+  shop_cost: 40,
+  type: "ship",
+  sigil: "◈",
+  effect: { trade: 2, shield: 1 },
+  ally: { combat: 1 },
+  sacrifice: { draw: 2, stun: 1 },
+  text: "Gain 2 Trade and 1 Shield.",
+  allyText: "Gain 1 Combat.",
+  sacrificeText: "Sacrifice: Draw 2 cards and gain 1 Disable.",
+  flavor: "Break it carefully. Every fragment contains a different victory."
+},
+
+// ==========================================================
+// BLUE — AZURE ASCENDANCY
+// ==========================================================
+
+{
+  id: "last_light_martyr",
+  name: "Last-Light Martyr",
+  image: "last_light_martyr.png",
+  faction: "blue",
+  cost: 1,
+  shop_cost: 15,
+  type: "ship",
+  sigil: "✦",
+  effect: { heal: 2 },
+  ally: {},
+  sacrifice: { heal: 6 },
+  text: "Gain 2 Authority.",
+  allyText: "",
+  sacrificeText: "Sacrifice: Gain 6 Authority.",
+  flavor: "Its light burns brightest only when it knows it will not return."
+},
+
+{
+  id: "votive_reliquary",
+  name: "Votive Reliquary",
+  image: "votive_reliquary.png",
+  faction: "blue",
+  cost: 3,
+  shop_cost: 35,
+  type: "base",
+  defense: 4,
+  outpost: false,
+  sigil: "✦",
+  effect: { trade: 1, heal: 2 },
+  ally: { shield: 1 },
+  sacrifice: { draw: 1, heal: 5 },
+  text: "Gain 1 Trade and 2 Authority.",
+  allyText: "Gain 1 Shield.",
+  sacrificeText: "Sacrifice: Draw 1 card and gain 5 Authority.",
+  flavor: "The vessel may break. The blessing stored within it does not."
+},
+
+// ==========================================================
+// GREEN — GORAK WARHOST
+// ==========================================================
+
+{
+  id: "fuseback_runt",
+  name: "Fuseback Runt",
+  image: "fuseback_runt.png",
+  faction: "green",
+  cost: 1,
+  shop_cost: 15,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combat: 2 },
+  ally: {},
+  sacrifice: { combat: 6 },
+  text: "Gain 2 Combat.",
+  allyText: "",
+  sacrificeText: "Sacrifice: Gain 6 Combat.",
+  flavor: "The Warhost points it toward the enemy and begins counting backward."
+},
+
+{
+  id: "loot_cart_bomber",
+  name: "Loot-Cart Bomber",
+  image: "loot_cart_bomber.png",
+  faction: "green",
+  cost: 3,
+  shop_cost: 35,
+  type: "ship",
+  sigil: "⬢",
+  effect: { trade: 2, combat: 2 },
+  ally: { combat: 1 },
+  sacrifice: { damageAll: 2, combat: 3 },
+  text: "Gain 2 Trade and 2 Combat.",
+  allyText: "Gain 1 Combat.",
+  sacrificeText: "Sacrifice: Damage All 2 and gain 3 Combat.",
+  flavor: "Anything can be delivered quickly when the delivery is also the explosion."
+},
+
+// ==========================================================
+// RED — UMBRAL COVENANT
+// ==========================================================
+
+{
+  id: "gravewax_token",
+  name: "Gravewax Token",
+  image: "gravewax_token.png",
+  faction: "red",
+  cost: 1,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "◒",
+  effect: { trade: 1 },
+  ally: {},
+  sacrifice: { scrapOwn: 3 },
+  text: "Gain 1 Trade.",
+  allyText: "",
+  sacrificeText: "Sacrifice: Gain 3 Purge.",
+  flavor: "Melt the coin, and three unwanted memories vanish with the smoke."
+},
+
+{
+  id: "ashmouth_familiar",
+  name: "Ashmouth Familiar",
+  image: "ashmouth_familiar.png",
+  faction: "red",
+  cost: 2,
+  shop_cost: 25,
+  type: "ship",
+  sigil: "◒",
+  effect: { combat: 2, trade: 1 },
+  ally: {},
+  sacrifice: { scrapMarket: 2 },
+  text: "Gain 2 Combat and 1 Trade.",
+  allyText: "",
+  sacrificeText: "Sacrifice: Gain 2 Market Erase.",
+  flavor: "Its final meal removes two possibilities from everyone else's future."
+},
+
+{
+  id: "bloodscript_initiate",
+  name: "Bloodscript Initiate",
+  image: "bloodscript_initiate.png",
+  faction: "red",
+  cost: 3,
+  shop_cost: 40,
+  type: "ship",
+  sigil: "◒",
+  effect: { combat: 3, scrapOwn: 1 },
+  ally: { trade: 1 },
+  sacrifice: { draw: 2, combat: 3 },
+  text: "Gain 3 Combat and 1 Purge.",
+  allyText: "Gain 1 Trade.",
+  sacrificeText: "Sacrifice: Draw 2 cards and gain 3 Combat.",
+  flavor: "The final line of the ritual is always written with the author."
+},
+  {
     id: "basilica_of_many_lights",
     name: "Basilica of Many Lights",
     image: "basilica_of_many_lights.png",
