@@ -129,6 +129,10 @@
     .turnPanel{height:100%;border:1px solid #344252;border-radius:9px;background:#121a23;padding:7px;display:flex;flex-direction:column;justify-content:center;gap:5px}.turnLine{font-size:8px;line-height:1.3;color:#c6d0db;font-weight:850}.resourceRow{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}.resource{min-height:30px;border:1px solid #354555;border-radius:7px;background:#17212b;display:grid;place-items:center;font-size:8px;font-weight:950}.resource.trade{color:#e3c44d}.resource.combat{color:#ff7b88}.resource.control{color:#88c9f1}.resource.purge{color:#dc6980}.turnActions{display:grid;grid-template-columns:1fr 1fr;gap:4px}
     .playerDock{min-height:0;border:1px solid #303c49;border-radius:12px;background:rgba(13,18,25,.97);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}.dockHead{min-height:36px;padding:5px 7px;display:flex;align-items:center;gap:6px;border-bottom:1px solid #293541;background:#141c25}.dockTitle{font-size:9px;font-weight:950}.dockStatus{font-size:7px;color:#9ba8b6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dockGrow{flex:1}.dockButtons{display:flex;gap:4px}.dockBody{min-height:0;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(170px,.8fr);gap:5px;padding:5px}.handZone,.ownField{min-width:0;min-height:0;border:1px solid #293542;border-radius:9px;background:#0a0f15;padding:4px;overflow:auto}.zoneLabel{font-size:7px;color:#6f7e8e;text-transform:uppercase;letter-spacing:.13em;font-weight:900;padding:2px 3px 5px}.handRow,.ownCards{display:flex;align-items:flex-start;gap:5px;min-width:0}.handRow .gameCard{width:118px;flex:0 0 118px}.ownCards .gameCard{width:100px;flex:0 0 100px}.handRow .cardArt,.ownCards .cardArt{height:31px}.handRow .cardSigil,.ownCards .cardSigil{font-size:22px}.handRow .cardRules,.ownCards .cardRules{min-height:39px;max-height:39px;overflow:hidden;font-size:6.2px;padding:4px}.handRow .cardHead,.ownCards .cardHead{min-height:23px;padding:4px}.handRow .cardMeta,.ownCards .cardMeta{padding:3px 5px}.handRow .cardActions,.ownCards .cardActions{padding:3px}.handRow .btn,.ownCards .btn{min-height:23px;font-size:6.5px;padding:3px}
 
+    .chargeBadge{position:absolute;z-index:4;right:5px;top:5px;min-width:27px;height:22px;border:1px solid #f0cc56;border-radius:999px;background:rgba(24,18,5,.94);display:inline-flex;align-items:center;justify-content:center;gap:2px;padding:0 7px;color:#ffe57d;font-size:8px;font-weight:1000;box-shadow:0 4px 13px rgba(0,0,0,.42),0 0 12px rgba(240,204,86,.2)}
+    .chargeBadge.empty{border-color:#526071;color:#93a0ae;background:rgba(10,15,21,.92);box-shadow:0 4px 13px rgba(0,0,0,.35)}
+    .gameCard.transformReady{box-shadow:0 0 0 2px #cf83ff,0 0 24px rgba(207,131,255,.35)}
+
     /* DIRECT CARD PLAY */
     .gameCard.playableCard{cursor:grab;user-select:none;-webkit-user-select:none;touch-action:pan-x;-webkit-user-drag:none;transition:transform .12s ease,box-shadow .12s ease}
     .gameCard.playableCard:active{cursor:grabbing}
@@ -866,7 +870,7 @@
   const presenceCollection = gameId ? collection(db, "lobbies", gameId, "warrealmsPresence") : null;
 
   const PROFILE_VERSION = 3;
-  const GAME_SCHEMA = 7;
+  const GAME_SCHEMA = 8;
   const STARTING_AUTHORITY = 50;
   const STARTING_SIGILS = 120;
   const STARTER_CARDS_PER_FACTION = 50;
@@ -976,7 +980,7 @@
 
   function normalizeBattleEntry(entry, ownerId, zone, index) {
     if (typeof entry === "string") {
-      return { id: entry, instanceId: legacyInstanceId(ownerId, zone, index, entry), ownerId, allyTurn: 0, doubleAllyTurn: 0, disabledTurn: 0, stunTurns: 0 };
+      return { id: entry, instanceId: legacyInstanceId(ownerId, zone, index, entry), ownerId, allyTurn: 0, doubleAllyTurn: 0, disabledTurn: 0, stunTurns: 0, charges: 0, chargeUsedTurn: 0 };
     }
     if (!entry || typeof entry !== "object" || !entry.id) return null;
     return {
@@ -984,8 +988,12 @@
       doubleAllyTurn: 0,
       disabledTurn: 0,
       stunTurns: 0,
+      charges: 0,
+      chargeUsedTurn: 0,
       ownerId,
       ...entry,
+      charges: Math.max(0, Math.floor(Number(entry.charges) || 0)),
+      chargeUsedTurn: Math.max(0, Math.floor(Number(entry.chargeUsedTurn) || 0)),
       instanceId: entry.instanceId || legacyInstanceId(ownerId, zone, index, entry.id)
     };
   }
@@ -1030,6 +1038,12 @@
       player.discardPenalty = 0;
       player.isBot = !!player.isBot;
       player.difficulty = BOT_DIFFICULTIES[player.difficulty] ? player.difficulty : "";
+      player.temporaryResurrections = player.temporaryResurrections && typeof player.temporaryResurrections === "object" && !Array.isArray(player.temporaryResurrections)
+        ? Object.fromEntries(Object.entries(player.temporaryResurrections).map(([cardId, count]) => [cardId, Math.max(0, Math.floor(Number(count) || 0))]).filter(([, count]) => count > 0))
+        : {};
+      player.transformProgress = player.transformProgress && typeof player.transformProgress === "object" && !Array.isArray(player.transformProgress)
+        ? Object.fromEntries(Object.entries(player.transformProgress).map(([cardId, count]) => [cardId, Math.max(0, Number(count) || 0)]).filter(([, count]) => count > 0))
+        : {};
     });
     return game;
   }
@@ -1293,6 +1307,13 @@
     "Destroy Base": "Destroy Base removes a legal enemy Base without spending normal Combat. Outpost protection still applies unless the effect says otherwise.",
     "Damage All": "Damage All deals the stated amount to every rival realm rather than choosing only one target.",
     "Lifelink": "Lifelink restores Authority based on combat damage actually dealt by the effect.",
+    "Deploy": "A Deploy effect resolves immediately when the card is purchased. The purchased card still enters the discard pile normally.",
+    "Resurrect": "Resurrect moves an eligible card from your discard pile to your hand. A temporarily resurrected card is sacrificed after its revived play resolves.",
+    "Grave Echo": "Grave Echo repeats the allowed Primary ability of one of your previously sacrificed cards without returning that card to your deck.",
+    "Last Stand": "A Last Stand or Authority Threshold bonus activates only when your Authority is at or below the printed amount before the card's Primary ability resolves.",
+    "Charge": "Charge counters are stored on an individual Base. The Base's listed action spends those counters during its owner's turn.",
+    "Echo": "Echo repeats allowed parts of the Primary ability of the previously played ship. It never copies Ally or Sacrifice abilities.",
+    "Transform": "Transform permanently replaces that copy with its listed evolved form after the printed condition is completed.",
     "Control": "Control is a temporary resource used by card effects that manipulate, delay, or redirect enemy options. Unspent Control disappears at turn end."
   });
 
@@ -1334,6 +1355,18 @@
     "destroy base": "Destroy Base",
     "damage all": "Damage All",
     "lifelink": "Lifelink",
+    "deploy": "Deploy",
+    "auto deploy": "Deploy",
+    "resurrect": "Resurrect",
+    "resurrection": "Resurrect",
+    "grave echo": "Grave Echo",
+    "last stand": "Last Stand",
+    "authority threshold": "Last Stand",
+    "charge": "Charge",
+    "charges": "Charge",
+    "echo": "Echo",
+    "transform": "Transform",
+    "transforms": "Transform",
     "control": "Control"
   });
 
@@ -1412,6 +1445,243 @@
     return primary;
   }
 
+  const COPY_BLOCKED_EFFECT_KEYS = new Set(["echo", "resurrect", "graveEcho", "transform", "__resurrect"]);
+
+  function meaningfulCopiedEffect(effect = {}) {
+    const normalized = coreEffect(effect);
+    const numeric = Object.entries(normalized).some(([key, value]) => !COPY_BLOCKED_EFFECT_KEYS.has(key) && (Number(value) || value === true));
+    return numeric || choiceEffectOptions(effect).some(option => meaningfulCopiedEffect(option.effect));
+  }
+
+  function sanitizeCopiedEffect(effect = {}, config = {}) {
+    if (!effect || typeof effect !== "object" || Array.isArray(effect)) return {};
+    const normalized = normalizeEffectAliases(effect);
+    const excluded = new Set([...(config.excludeKeys || []), ...COPY_BLOCKED_EFFECT_KEYS]);
+    const allowed = Array.isArray(config.copyKeys) && config.copyKeys.length ? new Set(config.copyKeys) : null;
+    const result = {};
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (CHOICE_EFFECT_KEYS.includes(key)) {
+        if (excluded.has(key) || allowed) continue;
+        const options = choiceEffectOptions({ [key]: value }).map(option => {
+          const copied = sanitizeCopiedEffect(option.effect, config);
+          return meaningfulCopiedEffect(copied) ? { label: option.label, effect: copied } : null;
+        }).filter(Boolean);
+        if (options.length) result.or = options;
+        continue;
+      }
+      if (excluded.has(key) || (allowed && !allowed.has(key))) continue;
+      if (typeof value !== "number" && typeof value !== "boolean") continue;
+      result[key] = value;
+    }
+
+    if (Number.isFinite(Number(config.maximumCopiedCombat)) && result.combat) {
+      result.combat = Math.min(result.combat, Math.max(0, Number(config.maximumCopiedCombat)));
+    }
+    return result;
+  }
+
+  function queueSpecialChoice(game, player, options, context = {}) {
+    const valid = (Array.isArray(options) ? options : []).filter(option => option?.effect && typeof option.effect === "object");
+    if (!valid.length) return false;
+    player.pendingChoices = Array.isArray(player.pendingChoices) ? player.pendingChoices : [];
+    player.pendingChoices.push({
+      id: makeId("choice"),
+      cardId: String(context.cardId || ""),
+      source: String(context.source || "primary"),
+      createdAtMs: Date.now(),
+      options: valid.map((option, index) => ({ label: String(option.label || ""), effect: clone(option.effect), index }))
+    });
+    return true;
+  }
+
+  function queueResurrectionChoice(game, player, config = {}, context = {}) {
+    const maxCost = Number.isFinite(Number(config.maxCost)) ? Number(config.maxCost) : Infinity;
+    const cardType = String(config.cardType || "").trim();
+    const options = player.discard.map((cardId, discardIndex) => {
+      const card = getCard(cardId);
+      if (!card || card.cost > maxCost || (cardType && card.type !== cardType)) return null;
+      return {
+        label: `${card.name} · Cost ${card.cost}`,
+        effect: {
+          __resurrect: {
+            cardId,
+            discardIndex,
+            sacrificeAfterPlay: config.sacrificeAfterPlay !== false
+          }
+        }
+      };
+    }).filter(Boolean);
+    if (!queueSpecialChoice(game, player, options, { ...context, source: "resurrect" })) {
+      addLog(game, `${player.name} had no eligible card to Resurrect.`);
+      return false;
+    }
+    addLog(game, `${player.name} must choose a card to Resurrect.`);
+    return true;
+  }
+
+  function queueGraveEchoChoice(game, player, config = {}, context = {}) {
+    const maxCost = Number.isFinite(Number(config.maxCost)) ? Number(config.maxCost) : Infinity;
+    const excluded = Array.isArray(config.excludeKeys) ? config.excludeKeys : [];
+    const options = (game.scrapped || []).filter(entry => entry?.originalOwnerId === player.id && String(entry.reason || "").startsWith("sacrifice")).map(entry => {
+      const card = getCard(entry.id);
+      if (!card || card.cost > maxCost) return null;
+      const copied = sanitizeCopiedEffect(primaryCardEffect(card), { excludeKeys: excluded });
+      if (!meaningfulCopiedEffect(copied)) return null;
+      return { label: card.name, effect: copied };
+    }).filter(Boolean);
+    if (!queueSpecialChoice(game, player, options, { ...context, source: "graveEcho" })) {
+      addLog(game, `${player.name}'s Grave Echo found no eligible sacrificed Primary ability.`);
+      return false;
+    }
+    addLog(game, `${player.name} must choose a sacrificed card for Grave Echo.`);
+    return true;
+  }
+
+  function resolveInternalResurrection(game, player, instruction = {}) {
+    const expectedId = String(instruction.cardId || "");
+    let index = Number(instruction.discardIndex);
+    if (!Number.isInteger(index) || player.discard[index] !== expectedId) index = player.discard.findIndex(cardId => cardId === expectedId);
+    if (index < 0) {
+      addLog(game, `${player.name}'s Resurrection target was no longer in the discard pile.`);
+      return false;
+    }
+    const cardId = player.discard.splice(index, 1)[0];
+    player.hand.push(cardId);
+    if (instruction.sacrificeAfterPlay !== false) {
+      player.temporaryResurrections = player.temporaryResurrections || {};
+      player.temporaryResurrections[cardId] = Math.max(0, Number(player.temporaryResurrections[cardId]) || 0) + 1;
+    }
+    pushVisualEvent(game, "card-resurrect", { actorId: player.id, targetId: player.id, cardId });
+    addLog(game, `${player.name} Resurrected ${getCard(cardId)?.name || "a card"} into their hand.`);
+    return true;
+  }
+
+  function consumeTemporaryResurrection(player, cardId) {
+    player.temporaryResurrections = player.temporaryResurrections || {};
+    const count = Math.max(0, Math.floor(Number(player.temporaryResurrections[cardId]) || 0));
+    if (!count) return false;
+    if (count <= 1) delete player.temporaryResurrections[cardId];
+    else player.temporaryResurrections[cardId] = count - 1;
+    return true;
+  }
+
+  function resolveAuthorityThreshold(game, player, card, authorityBefore, context = {}) {
+    const threshold = card?.authorityThreshold;
+    if (!threshold || typeof threshold !== "object") return false;
+    const atOrBelow = Number(threshold.atOrBelow);
+    if (!Number.isFinite(atOrBelow) || Number(authorityBefore) > atOrBelow || !threshold.effect) return false;
+    applyEffect(game, player, threshold.effect, { cardId: card.id, ...context, source: "authorityThreshold" });
+    addLog(game, `${player.name} triggered ${card.name}'s Last Stand at ${authorityBefore} Authority.`);
+    return true;
+  }
+
+  function resolveEcho(game, player, card, previousShipEntry) {
+    const config = card?.echo;
+    if (!config || typeof config !== "object") return false;
+    const previousCard = previousShipEntry && getCard(previousShipEntry.id);
+    if (!previousCard || previousCard.type === "base") {
+      addLog(game, `${card.name} had no previous ship to Echo.`);
+      return false;
+    }
+    const copied = sanitizeCopiedEffect(primaryCardEffect(previousCard), config);
+    if (!meaningfulCopiedEffect(copied)) {
+      addLog(game, `${card.name} could not copy an allowed effect from ${previousCard.name}.`);
+      return false;
+    }
+    applyEffect(game, player, copied, { cardId: card.id, source: "echo" });
+    addLog(game, `${card.name} echoed ${previousCard.name}'s Primary ability.`);
+    return true;
+  }
+
+  function recordTransformProgress(game, player, entry, card) {
+    const transform = card?.transform;
+    if (!transform || typeof transform !== "object" || !transform.into || transform.trigger === "sacrificed") return false;
+    player.transformProgress = player.transformProgress || {};
+    const required = Math.max(1, Number(transform.required) || 1);
+    let gain = 0;
+    if (transform.trigger === "timesPlayed") gain = 1;
+    if (transform.trigger === "cumulativePrimaryEffect") gain = Math.max(0, Number(coreEffect(primaryCardEffect(card))[transform.effectKey]) || 0);
+    if (!gain) return false;
+    const progress = Math.max(0, Number(player.transformProgress[card.id]) || 0) + gain;
+    player.transformProgress[card.id] = progress;
+    if (progress < required || !getCard(transform.into)) return false;
+    delete player.transformProgress[card.id];
+    const previousId = entry.id;
+    entry.id = transform.into;
+    pushVisualEvent(game, "card-transform", { actorId: player.id, targetId: player.id, fromCardId: previousId, cardId: transform.into, instanceId: entry.instanceId });
+    addLog(game, `${player.name}'s ${card.name} transformed into ${getCard(transform.into)?.name || transform.into}.`);
+    return true;
+  }
+
+  function transformedSacrificeId(card) {
+    const transform = card?.transform;
+    return transform?.trigger === "sacrificed" && transform?.replaceSacrificeRemoval && getCard(transform.into) ? transform.into : "";
+  }
+
+  function gainChargeForBase(game, player, entry, trigger, event = {}) {
+    const card = getCard(entry?.id);
+    const charge = card?.charge;
+    if (!charge || charge.trigger !== trigger || entry.disabledTurn === game.turnSerial) return 0;
+    if (trigger === "friendlyFactionPlayed") {
+      if (charge.faction && charge.faction !== event.faction) return 0;
+      if (event.sourceInstanceId && event.sourceInstanceId === entry.instanceId) return 0;
+    }
+    const before = Math.max(0, Math.floor(Number(entry.charges) || 0));
+    const maximum = Math.max(0, Math.floor(Number(charge.max) || 99));
+    entry.charges = Math.min(maximum, before + Math.max(0, Math.floor(Number(charge.gain) || 0)));
+    const gained = entry.charges - before;
+    if (gained) addLog(game, `${player.name}'s ${card.name} gained ${gained} Charge${gained === 1 ? "" : "s"} (${entry.charges}/${maximum}).`);
+    return gained;
+  }
+
+  function triggerChargeEvent(game, player, trigger, event = {}) {
+    for (const entry of player.bases || []) gainChargeForBase(game, player, entry, trigger, event);
+  }
+
+  function chargeActionAvailability(game, player, entry, action = {}) {
+    const charges = Math.max(0, Math.floor(Number(entry?.charges) || 0));
+    if (!entry || entry.disabledTurn === game.turnSerial) return { allowed: false, charges, spend: 0 };
+    if (action.oncePerTurn && entry.chargeUsedTurn === game.turnSerial) return { allowed: false, charges, spend: 0 };
+    if (action.cost === "all") {
+      const minimum = Math.max(1, Math.floor(Number(action.minimum) || 1));
+      return { allowed: charges >= minimum, charges, spend: charges };
+    }
+    const spend = Math.max(1, Math.floor(Number(action.cost) || 1));
+    return { allowed: charges >= spend, charges, spend };
+  }
+
+  function multipliedEffect(effect = {}, multiplier = 1) {
+    const result = {};
+    for (const [key, value] of Object.entries(normalizeEffectAliases(effect))) {
+      if (typeof value === "number") result[key] = value * multiplier;
+    }
+    return result;
+  }
+
+  function chargeResolvedEffect(action = {}, spent = 0) {
+    if (action.effectPerCharge) return multipliedEffect(action.effectPerCharge, spent);
+    return clone(action.effect || {});
+  }
+
+  function chargeBadgeHtml(entry, card) {
+    if (!entry || !card?.charge) return "";
+    const charges = Math.max(0, Math.floor(Number(entry.charges) || 0));
+    return `<span class="chargeBadge${charges ? "" : " empty"}" title="${charges} stored Charge${charges === 1 ? "" : "s"}">⚡ ${charges}</span>`;
+  }
+
+  function chargeButtonsHtml(entry, card, canAct, game = state) {
+    const actions = Array.isArray(card?.charge?.actions) ? card.charge.actions : [];
+    if (!entry || !actions.length) return "";
+    return actions.map((action, actionIndex) => {
+      const availability = game ? chargeActionAvailability(game, myPlayer(game) || {}, entry, action) : { allowed: false, spend: 0 };
+      const enabled = !!canAct && availability.allowed;
+      const costText = action.cost === "all" ? `All ${availability.charges}` : `${Math.max(1, Number(action.cost) || 1)}⚡`;
+      const label = String(action.label || "Release Charge").replace(/ Release$/i, "");
+      return `<button class="btn small blue" data-act="use-charge" data-instance-id="${escapeHtml(entry.instanceId)}" data-action-index="${actionIndex}" ${enabled ? "" : "disabled"}>${escapeHtml(label)} · ${escapeHtml(costText)}</button>`;
+    }).join("");
+  }
+
   const ABILITY_VISUALS = Object.freeze({
     trade: { icon: "◆", label: "Trade" },
     combat: { icon: "⚔", label: "Combat" },
@@ -1466,6 +1736,10 @@
       const firstChoice = allEffects.find(effect => choiceEffectOptions(effect).length > 0);
       additions.push(`${effectDisplaySummary(firstChoice)}.`);
     }
+    for (const extra of [card.onPurchaseText, card.resurrectText, card.graveEchoText, card.thresholdText, card.chargeText, card.echoText, card.transformText]) {
+      const clean = String(extra || "").trim();
+      if (clean && !rules.toLowerCase().includes(clean.toLowerCase())) additions.push(clean.endsWith(".") ? clean : `${clean}.`);
+    }
     return `${rules}${rules && additions.length ? " " : ""}${additions.join(" ")}`;
   }
 
@@ -1494,7 +1768,14 @@
       effectDisplaySummary(card.ally),
       effectDisplaySummary(doubleAllyEffect(card)),
       effectDisplaySummary(card.sacrifice),
-      JSON.stringify({ effect: primaryCardEffect(card), ally: card.ally, doubleAlly: doubleAllyEffect(card), sacrifice: card.sacrifice })
+      card.onPurchaseText,
+      card.resurrectText,
+      card.graveEchoText,
+      card.thresholdText,
+      card.chargeText,
+      card.echoText,
+      card.transformText,
+      JSON.stringify({ effect: primaryCardEffect(card), ally: card.ally, doubleAlly: doubleAllyEffect(card), sacrifice: card.sacrifice, onPurchase: card.onPurchase, authorityThreshold: card.authorityThreshold, charge: card.charge, echo: card.echo, transform: card.transform })
     ].filter(Boolean).join(" "));
   }
 
@@ -1513,13 +1794,21 @@
       ...effectGlyphItems(doubleAllyEffect(card), "doubleAlly"),
       ...effectGlyphItems(card.sacrifice, "sacrifice")
     ];
+    if (card.onPurchase) glyphs.push({ key: "deploy", icon: "↯", label: "Deploy when purchased", amountText: "", source: "deploy" });
+    if (card.effect?.resurrect) glyphs.push({ key: "resurrect", icon: "☥", label: "Resurrect", amountText: String(card.effect.resurrect.maxCost || ""), source: "resurrect" });
+    if (card.effect?.graveEcho) glyphs.push({ key: "graveEcho", icon: "↶", label: "Grave Echo", amountText: "", source: "graveEcho" });
+    if (card.authorityThreshold) glyphs.push({ key: "threshold", icon: "♥≤", label: `Last Stand ${card.authorityThreshold.atOrBelow}`, amountText: String(card.authorityThreshold.atOrBelow || ""), source: "threshold" });
+    if (card.charge) glyphs.push({ key: "charge", icon: "⚡", label: `Charge up to ${card.charge.max || "∞"}`, amountText: String(card.charge.max || ""), source: "charge" });
+    if (card.echo) glyphs.push({ key: "echo", icon: "◉", label: "Echo previous ship", amountText: "", source: "echo" });
+    if (card.transform) glyphs.push({ key: "transform", icon: "⇆", label: `Transform into ${getCard(card.transform.into)?.name || card.transform.into || "new form"}`, amountText: "", source: "transform" });
     if (card.outpost) glyphs.unshift({ key: "outpost", icon: "🛡", label: `Outpost ${card.defense || 0}`, amountText: String(card.defense || 0), source: "primary" });
     else if (card.type === "base") glyphs.unshift({ key: "base", icon: "▣", label: `Base ${card.defense || 0}`, amountText: String(card.defense || 0), source: "primary" });
     return glyphs;
   }
 
   function abilityGlyphHtml(item, detailed = false) {
-    const sourceLabel = item.source === "ally" ? "Ally" : item.source === "doubleAlly" ? "Double Ally" : item.source === "sacrifice" ? "Sacrifice" : item.source === "choice" ? "Choice" : "Primary";
+    const sourceLabels = { ally: "Ally", doubleAlly: "Double Ally", sacrifice: "Sacrifice", choice: "Choice", deploy: "Deploy", resurrect: "Resurrect", graveEcho: "Grave Echo", threshold: "Last Stand", charge: "Charge", echo: "Echo", transform: "Transform" };
+    const sourceLabel = sourceLabels[item.source] || "Primary";
     const title = `${sourceLabel}: ${item.label}${item.amountText ? ` ${item.amountText}` : ""}`;
     return `<span class="abilityGlyph ${item.source || "primary"} ${item.key === "choice" ? "choice" : ""}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><span>${escapeHtml(item.icon)}</span>${item.amountText ? `<b>${escapeHtml(item.amountText)}</b>` : ""}${detailed ? `<span>${escapeHtml(item.label)}</span>` : ""}</span>`;
   }
@@ -2033,6 +2322,13 @@
           ${ally ? `<div class="detailEffect"><b>${effectLabelHtml("Ally")}:</b> ${linkEffectTerms(ally)}</div>` : ""}
           ${doubleAlly ? `<div class="detailEffect"><b>${effectLabelHtml("Double Ally")}:</b> ${linkEffectTerms(doubleAlly)} <span style="color:#8fa0b2">(requires two other matching-faction cards)</span></div>` : ""}
           ${sacrifice ? `<div class="detailEffect"><b>${effectLabelHtml("Sacrifice")}:</b> ${linkEffectTerms(sacrifice)}</div>` : ""}
+          ${card.onPurchaseText ? `<div class="detailEffect"><b>${effectLabelHtml("Deploy")}:</b> ${linkEffectTerms(card.onPurchaseText)}</div>` : ""}
+          ${card.thresholdText ? `<div class="detailEffect"><b>${effectLabelHtml("Last Stand")}:</b> ${linkEffectTerms(card.thresholdText)}</div>` : ""}
+          ${card.chargeText ? `<div class="detailEffect"><b>${effectLabelHtml("Charge")}:</b> ${linkEffectTerms(card.chargeText)}</div>` : ""}
+          ${card.echoText ? `<div class="detailEffect"><b>${effectLabelHtml("Echo")}:</b> ${linkEffectTerms(card.echoText)}</div>` : ""}
+          ${card.transformText ? `<div class="detailEffect"><b>${effectLabelHtml("Transform")}:</b> ${linkEffectTerms(card.transformText)}</div>` : ""}
+          ${card.resurrectText ? `<div class="detailEffect"><b>${effectLabelHtml("Resurrect")}:</b> ${linkEffectTerms(card.resurrectText)}</div>` : ""}
+          ${card.graveEchoText ? `<div class="detailEffect"><b>${effectLabelHtml("Grave Echo")}:</b> ${linkEffectTerms(card.graveEchoText)}</div>` : ""}
           <p><i>${escapeHtml(card.flavor || "")}</i></p>
           <div class="modalActions">${extraActions}</div>
         </div>
@@ -2206,6 +2502,8 @@
       pendingDiscard: 0,
       forcedDiscard: 0,
       pendingChoices: [],
+      temporaryResurrections: {},
+      transformProgress: {},
       discardPenalty: 0,
       handSize: Math.max(2, Math.min(7, Number(entrant.handSize) || 5)),
       isBot: !!entrant.isBot,
@@ -2369,6 +2667,15 @@
 
   function applyEffect(game, player, effect = {}, context = {}) {
     const normalized = coreEffect(effect);
+    const internalResurrection = normalized.__resurrect;
+    const resurrectConfig = normalized.resurrect;
+    const graveEchoConfig = normalized.graveEcho;
+    delete normalized.__resurrect;
+    delete normalized.resurrect;
+    delete normalized.graveEcho;
+    delete normalized.echo;
+    delete normalized.transform;
+
     const activeBases = player.bases.filter(base => base.disabledTurn !== game.turnSerial).length;
     const visualGlyphs = resolvedAbilityGlyphs(normalized, activeBases);
     player.trade += (normalized.trade || 0) + activeBases * (normalized.tradePerBase || 0);
@@ -2390,6 +2697,9 @@
         damageAuthority(game, target, normalized.damageAll, `${player.name}'s card effect`, player.id);
       }
     }
+    if (internalResurrection) resolveInternalResurrection(game, player, internalResurrection);
+    if (resurrectConfig) queueResurrectionChoice(game, player, resurrectConfig, context);
+    if (graveEchoConfig) queueGraveEchoChoice(game, player, graveEchoConfig, context);
     if (visualGlyphs.length) pushVisualEvent(game, "ability-burst", { actorId: player.id, targetId: player.id, cardId: context.cardId || "", source: context.source || "primary", abilities: visualGlyphs });
     queueEffectChoice(game, player, effect, context);
   }
@@ -2445,7 +2755,12 @@
         continue;
       }
       const card = CARD_MAP[base.id];
-      if (card) applyEffect(game, player, primaryCardEffect(card), { cardId: card.id, source: "base" });
+      if (card) {
+        gainChargeForBase(game, player, base, "startOfTurn");
+        const authorityBefore = player.health;
+        applyEffect(game, player, primaryCardEffect(card), { cardId: card.id, source: "base" });
+        resolveAuthorityThreshold(game, player, card, authorityBefore, { source: "base" });
+      }
     }
 
     for (const faction of ["yellow", "blue", "green", "red"]) triggerFactionAllies(game, player, faction);
@@ -2532,6 +2847,7 @@
         const handIndex = Number(action.index);
         if (!Number.isInteger(handIndex) || handIndex < 0 || handIndex >= actor.hand.length) return "That card is no longer in your hand.";
         const cardId = actor.hand.splice(handIndex, 1)[0];
+        consumeTemporaryResurrection(actor, cardId);
         actor.discard.push(cardId);
         actor.forcedDiscard = Math.min(Math.max(0, actor.forcedDiscard - 1), actor.hand.length);
         pushVisualEvent(game, "card-discard", { actorId: actor.id, targetId: actor.id, cardId, remaining: actor.forcedDiscard });
@@ -2548,15 +2864,29 @@
           addLog(game, `${actor.name} cleared an obsolete card entry from their hand.`);
           break;
         }
-        const entry = { id: cardId, instanceId: makeId("card"), ownerId: actor.id, allyTurn: 0, doubleAllyTurn: 0, disabledTurn: 0, stunTurns: 0 };
-        if (card.type === "base") actor.bases.push(entry); else actor.played.push(entry);
+        const previousShipEntry = [...actor.played].reverse().find(previous => getCard(previous.id)?.type !== "base") || null;
+        const revivedPlay = consumeTemporaryResurrection(actor, cardId);
+        const entry = { id: cardId, instanceId: makeId("card"), ownerId: actor.id, allyTurn: 0, doubleAllyTurn: 0, disabledTurn: 0, stunTurns: 0, charges: 0, chargeUsedTurn: 0, sacrificeAfterPlay: revivedPlay };
+        const zone = card.type === "base" ? "bases" : "played";
+        actor[zone].push(entry);
         pushActionQueue(game, actor, card);
-        pushVisualEvent(game, "card-play", { actorId: actor.id, cardId: card.id, instanceId: entry.instanceId, zone: card.type === "base" ? "bases" : "played" });
-        // Primary abilities always resolve first. Ally and Double Ally abilities are additive bonuses,
-        // never replacements for the card's primary effect.
+        pushVisualEvent(game, "card-play", { actorId: actor.id, cardId: card.id, instanceId: entry.instanceId, zone });
+        const authorityBefore = actor.health;
         applyEffect(game, actor, primaryCardEffect(card), { cardId: card.id, source: "primary" });
+        resolveAuthorityThreshold(game, actor, card, authorityBefore);
+        resolveEcho(game, actor, card, previousShipEntry);
+        triggerChargeEvent(game, actor, "friendlyFactionPlayed", { faction: card.faction, cardId: card.id, sourceInstanceId: entry.instanceId });
         triggerFactionAllies(game, actor, card.faction);
+        recordTransformProgress(game, actor, entry, card);
         addLog(game, `${actor.name} played ${card.name}.`);
+
+        if (revivedPlay) {
+          const currentIndex = actor[zone].findIndex(item => item.instanceId === entry.instanceId);
+          if (currentIndex >= 0) actor[zone].splice(currentIndex, 1);
+          game.scrapped.push({ id: entry.id, originalOwnerId: actor.id, originalOwnerName: actor.name, reason: "sacrifice-resurrection" });
+          pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId: entry.id, target: "player", targetId: actor.id, reason: "resurrection", instanceId: entry.instanceId });
+          addLog(game, `${getCard(entry.id)?.name || card.name} was sacrificed after its revived play.`);
+        }
         break;
       }
       case "PLAY_ALL": {
@@ -2577,6 +2907,10 @@
         const permanentSupply = isPermanentHiredLooterEntry(marketEntry);
         if (!permanentSupply) game.tradeRow.splice(marketIndex, 1);
         refillMarket(game);
+        if (card.onPurchase && typeof card.onPurchase === "object") {
+          applyEffect(game, actor, card.onPurchase, { cardId: card.id, source: "deploy" });
+          addLog(game, `${card.name}'s Deploy effect resolved immediately.`);
+        }
         addLog(game, permanentSupply
           ? `${actor.name} bought ${card.name} from the infinite permanent supply.`
           : `${actor.name} bought ${card.name}, originally contributed by ${marketEntry.originalOwnerName}.`);
@@ -2603,9 +2937,11 @@
         const index = Number(action.index);
         if (!zone || !Number.isInteger(index) || index < 0 || index >= actor[zone].length) return "That card is no longer available to purge.";
         const cardId = actor[zone].splice(index, 1)[0];
+        if (zone === "hand") consumeTemporaryResurrection(actor, cardId);
         actor.scrapOwn -= 1;
         game.scrapped.push({ id: cardId, originalOwnerId: actor.id, originalOwnerName: actor.name, reason: "purge" });
         pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId, target: "player", targetId: actor.id, reason: "purge" });
+        triggerChargeEvent(game, actor, "ownCardPurged", { cardId });
         addLog(game, `${actor.name} permanently purged ${getCard(cardId)?.name || "a card"} from their deck.`);
         break;
       }
@@ -2619,7 +2955,29 @@
         game.scrapped.push({ id: card.id, originalOwnerId: actor.id, originalOwnerName: actor.name, reason: "sacrifice" });
         pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId: card.id, target: "player", targetId: actor.id, reason: "sacrifice", instanceId: entry.instanceId });
         applyEffect(game, actor, card.sacrifice, { cardId: card.id, source: "sacrifice" });
+        const transformedId = transformedSacrificeId(card);
+        if (transformedId) {
+          actor.discard.push(transformedId);
+          pushVisualEvent(game, "card-transform", { actorId: actor.id, targetId: actor.id, fromCardId: card.id, cardId: transformedId, instanceId: entry.instanceId });
+          addLog(game, `${card.name} transformed into ${getCard(transformedId)?.name || transformedId} in ${actor.name}'s discard pile.`);
+        }
         addLog(game, `${actor.name} sacrificed ${card.name}.`);
+        break;
+      }
+      case "USE_CHARGE": {
+        const entry = actor.bases.find(base => base.instanceId === action.instanceId);
+        const card = entry && getCard(entry.id);
+        const actions = Array.isArray(card?.charge?.actions) ? card.charge.actions : [];
+        const actionIndex = Number(action.actionIndex);
+        const chargeAction = actions[actionIndex];
+        if (!entry || !card?.charge || !chargeAction) return "That Charge action is no longer available.";
+        const availability = chargeActionAvailability(game, actor, entry, chargeAction);
+        if (!availability.allowed) return entry.disabledTurn === game.turnSerial ? "That Base is disabled this turn." : "That Base does not have enough Charges.";
+        entry.charges = Math.max(0, availability.charges - availability.spend);
+        if (chargeAction.oncePerTurn) entry.chargeUsedTurn = game.turnSerial;
+        const resolved = chargeResolvedEffect(chargeAction, availability.spend);
+        applyEffect(game, actor, resolved, { cardId: card.id, source: "charge" });
+        addLog(game, `${actor.name} spent ${availability.spend} Charge${availability.spend === 1 ? "" : "s"} from ${card.name} to use ${chargeAction.label || "its charged ability"}.`);
         break;
       }
       case "STUN_BASE": {
@@ -2682,6 +3040,7 @@
         break;
       }
       case "END": {
+        for (const cardId of actor.hand) consumeTemporaryResurrection(actor, cardId);
         actor.discard.push(...actor.hand, ...actor.played.map(entry => entry.id));
         actor.hand = [];
         actor.played = [];
@@ -2819,6 +3178,7 @@
 
     return `<article class="${classes}" ${dataAttributes} aria-label="${escapeHtml(card.name)}">
       ${visual}
+      ${chargeBadgeHtml(entry, card)}
       ${cardAbilityRailHtml(card)}
       <div class="cardActions">${infoAction}${primaryAction}</div>
     </article>`;
@@ -2842,12 +3202,11 @@
       if (!card) return battleCardHtml(entry, { ownerName: player.name, zoneClass: isBase ? "baseCard" : "playedCard", locked: true });
       const protectedBase = isBase && blockers.length > 0 && !card.outpost;
       const canAttackBase = canAct && isBase && attackable.includes(entry.instanceId) && (myPlayer()?.combat || 0) >= (card.defense || 0);
-      const ownSacrifice = mine && canUseTurnActions() && !!card.sacrifice;
-      const primaryAction = ownSacrifice
-        ? `<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>`
-        : canAttackBase
-          ? `<button class="btn small primary" data-act="attack-base" data-target-id="${player.id}" data-instance-id="${entry.instanceId}">Attack ${card.defense}</button>`
-          : "";
+      const actionButtons = [];
+      if (mine && canUseTurnActions() && card.sacrifice) actionButtons.push(`<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>`);
+      if (mine && isBase) actionButtons.push(chargeButtonsHtml(entry, card, canUseTurnActions()));
+      if (!mine && canAttackBase) actionButtons.push(`<button class="btn small primary" data-act="attack-base" data-target-id="${player.id}" data-instance-id="${entry.instanceId}">Attack ${card.defense}</button>`);
+      const primaryAction = actionButtons.join("");
       return battleCardHtml(entry, {
         ownerName: player.name,
         zoneClass: isBase ? "baseCard" : "playedCard",
@@ -2927,7 +3286,10 @@
       const card = getCard(entry.id);
       const zoneClass = entry.zone === "bases" ? "baseCard" : "playedCard";
       if (!card) return battleCardHtml(entry, { ownerName: me.name, locked: true, zoneClass });
-      const primaryAction = canAct && card.sacrifice ? `<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>` : "";
+      const actionButtons = [];
+      if (canAct && card.sacrifice) actionButtons.push(`<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>`);
+      if (entry.zone === "bases") actionButtons.push(chargeButtonsHtml(entry, card, canAct));
+      const primaryAction = actionButtons.join("");
       return battleCardHtml(entry, {
         primaryAction,
         ownerName: me.name,
@@ -3068,6 +3430,20 @@
       await new Promise(resolve => setTimeout(resolve, 300));
       return;
     }
+    if (event.type === "card-resurrect") {
+      fxCardGhost(event.cardId, target, false);
+      targetSeat?.classList.add("playPulse");
+      setTimeout(() => targetSeat?.classList.remove("playPulse"), 600);
+      await new Promise(resolve => setTimeout(resolve, 320));
+      return;
+    }
+    if (event.type === "card-transform") {
+      if (event.fromCardId) fxCardGhost(event.fromCardId, target, true);
+      await new Promise(resolve => setTimeout(resolve, 220));
+      fxCardGhost(event.cardId, target, false);
+      await new Promise(resolve => setTimeout(resolve, 360));
+      return;
+    }
     if (event.type === "card-destroy") {
       if (sourceSeat) fireBeam(source, target);
       fxCardGhost(event.cardId, target, true);
@@ -3107,6 +3483,10 @@
     if (String(source).startsWith("ally")) return "Faction Ally choice";
     if (String(source).startsWith("sacrifice")) return "Sacrifice choice";
     if (String(source).startsWith("base")) return "Base choice";
+    if (String(source).startsWith("resurrect")) return "Choose a card to Resurrect";
+    if (String(source).startsWith("graveEcho")) return "Choose a sacrificed Primary ability";
+    if (String(source).startsWith("echo")) return "Echo choice";
+    if (String(source).startsWith("charge")) return "Charge choice";
     return "Primary ability choice";
   }
 
@@ -3123,7 +3503,10 @@
     const card = getCard(choice.cardId);
     $("#choiceSource").textContent = choiceSourceLabel(choice.source);
     $("#choiceTitle").textContent = card ? card.name : "Select an ability";
-    $("#choiceSubtitle").textContent = `Choose exactly one of ${choice.options.length} effects. The other options will not activate.`;
+    const selectingCard = String(choice.source).startsWith("resurrect") || String(choice.source).startsWith("graveEcho");
+    $("#choiceSubtitle").textContent = selectingCard
+      ? `Choose exactly one of ${choice.options.length} eligible cards.`
+      : `Choose exactly one of ${choice.options.length} effects. The other options will not activate.`;
     $("#choiceGrid").innerHTML = choice.options.map((option, index) => {
       const summary = option.label || effectDisplaySummary(option.effect) || `Option ${index + 1}`;
       const glyphs = effectGlyphItems(option.effect, "choice").filter(item => item.key !== "choice");
@@ -3259,7 +3642,8 @@
         <p><b>Faction allies:</b> A card always resolves its Primary ability first. Ally and Double Ally effects are added afterward as bonus effects; they never replace or cancel the Primary ability. Ally requires one other active matching-faction card, while Double Ally requires two others. Each bonus triggers only once per turn, and persistent bases count.</p>
         <p><b>Bases and Outposts:</b> Bases remain in play and produce their primary effect at the start of their owner's turns. An Outpost has taunt: while a realm controls any Outpost, its health and non-Outpost bases cannot be attacked. Outposts must be destroyed first.</p>
         <p><b>Targeting:</b> Combat is stored in your Combat pool. Choose exactly which attackable base or enemy realm receives it. Bases require Combat equal to their Defense and are destroyed immediately. Attacking a realm spends all remaining Combat.</p>
-        <p><b>Current card abilities:</b> Trade, Combat, healing, card draw, forced opponent discard, Disable, Market Erase, permanent Purge, faction Ally triggers, persistent Base production, Outpost protection, and Sacrifice abilities. Compact symbols beneath each card make these effects visible without covering the full artwork.</p>
+        <p><b>Current card abilities:</b> Trade, Combat, healing, card draw, forced opponent discard, Disable, Market Erase, permanent Purge, faction Ally triggers, persistent Base production, Outpost protection, Sacrifice, Deploy-on-purchase, Resurrection, Grave Echo, Authority Thresholds, stored Charges, previous-card Echo, and permanent Transform abilities. Compact symbols beneath each card make these effects visible without covering the full artwork.</p>
+        <p><b>New playstyles:</b> Deploy resolves immediately when a card is bought. Resurrected cards return from discard and are sacrificed after their revived play. Grave Echo copies an allowed Primary ability from your sacrifice history. Last Stand checks Authority before the Primary effect resolves. Charges are stored on individual Bases and spent through their buttons. Echo copies only the previous ship's allowed Primary effects. Transform progress is saved per commander and permanently replaces the copy that completes its condition.</p>
         <p><b>Forced discard:</b> A discard effect queues cards for the next affected turn. After that player draws, they must select the required number of highlighted hand cards and move them to discard before playing, buying, attacking, or ending the turn. The requirement is capped by the cards actually in hand, so an empty hand always resolves it.</p>
         <p><b>New future-card abilities:</b> <b>Lifelink</b> heals the attacker for combat damage actually dealt; <b>Destroy Base</b> removes a legal target without spending Combat; <b>Shield</b> absorbs Authority damage; <b>Damage All</b> hits every rival; and per-base scaling can grant Trade, Combat, healing, or draws for each active base. No existing card definitions are changed by this update.</p>
         <p><b>Red Purge:</b> Purge permanently removes a selected card from your hand, draw pile, or discard pile for the rest of the match. This is the defining strength of the Umbral Covenant.</p>
@@ -3327,6 +3711,7 @@
     return choice.options.map((option, index) => {
       const effect = coreEffect(option.effect);
       let score = effectAiValue(option.effect);
+      if (effect.__resurrect?.cardId) score += cardAiValue(getCard(effect.__resurrect.cardId), bot, difficulty) + 4;
       if (effect.heal) score *= Math.max(.2, (STARTING_AUTHORITY - bot.health) / STARTING_AUTHORITY + .25);
       if (effect.draw && bot.hand.length < 3) score += 2;
       if (effect.trade && bot.hand.length === 0) score -= .4;
@@ -3337,7 +3722,13 @@
 
   function cardAiValue(card, bot, difficulty, forPurchase = false) {
     if (!card) return -100;
-    let value = effectAiValue(primaryCardEffect(card)) + effectAiValue(card.ally) * .65 + effectAiValue(doubleAllyEffect(card)) * .48 + effectAiValue(card.sacrifice) * .35;
+    let value = effectAiValue(primaryCardEffect(card)) + effectAiValue(card.ally) * .65 + effectAiValue(doubleAllyEffect(card)) * .48 + effectAiValue(card.sacrifice) * .35 + effectAiValue(card.onPurchase) * .55;
+    if (card.effect?.resurrect) value += 4 + Math.min(4, Number(card.effect.resurrect.maxCost) || 0) * .4;
+    if (card.effect?.graveEcho) value += 5;
+    if (card.authorityThreshold) value += bot.health <= Number(card.authorityThreshold.atOrBelow) ? effectAiValue(card.authorityThreshold.effect) : effectAiValue(card.authorityThreshold.effect) * .2;
+    if (card.charge) value += 3 + effectAiValue(card.charge.actions?.[0]?.effect || card.charge.actions?.[0]?.effectPerCharge) * .5;
+    if (card.echo) value += 3.5;
+    if (card.transform) value += 3;
     if (card.type === "base") value += (card.defense || 0) * .7 + (card.outpost ? 2.5 : 1.2);
     if (forPurchase) value -= card.cost * .25;
     if (difficulty === "hard" || difficulty === "impossible") {
@@ -3434,6 +3825,42 @@
     }
   }
 
+  function botChargeOptions(game, bot, difficulty) {
+    return (bot.bases || []).flatMap(entry => {
+      const card = getCard(entry.id);
+      const actions = Array.isArray(card?.charge?.actions) ? card.charge.actions : [];
+      return actions.map((action, actionIndex) => {
+        const availability = chargeActionAvailability(game, bot, entry, action);
+        if (!availability.allowed) return null;
+        const effect = chargeResolvedEffect(action, availability.spend);
+        let score = effectAiValue(effect);
+        if (difficulty === "easy") score = Math.random() * 10;
+        if (coreEffect(effect).heal) score *= Math.max(.25, (STARTING_AUTHORITY - bot.health) / STARTING_AUTHORITY + .2);
+        return { entry, card, action, actionIndex, score };
+      }).filter(Boolean);
+    }).filter(Boolean).sort((left, right) => right.score - left.score);
+  }
+
+  async function useBotCharges(token, difficulty) {
+    let safety = 0;
+    while (singlePlayerMode && token === botRunToken && state?.phase === "playing" && currentPlayer(state)?.isBot && safety++ < 8) {
+      const bot = currentPlayer(state);
+      const options = botChargeOptions(state, bot, difficulty);
+      if (!options.length) break;
+      if (difficulty === "easy" && Math.random() < .45) break;
+      const selected = options[0];
+      if (!await applyBotAction({ type: "USE_CHARGE", instanceId: selected.entry.instanceId, actionIndex: selected.actionIndex }, token)) break;
+      await resolveBotPendingChoices(token);
+      let playSafety = 0;
+      while (state?.phase === "playing" && currentPlayer(state)?.isBot && currentPlayer(state).hand.length && playSafety++ < 8) {
+        const drawBot = currentPlayer(state);
+        const index = chooseBotPlayIndex(drawBot, difficulty);
+        if (index < 0 || !await applyBotAction({ type: "PLAY", index }, token)) break;
+        await resolveBotPendingChoices(token);
+      }
+    }
+  }
+
   async function runBotTurn(token) {
     if (!singlePlayerMode || botThinking || token !== botRunToken || state?.phase !== "playing" || !currentPlayer(state)?.isBot) return;
     botThinking = true;
@@ -3461,6 +3888,8 @@
         }
         break;
       }
+
+      await useBotCharges(token, difficulty);
 
       if (state?.phase === "playing" && currentPlayer(state)?.isBot) {
         let bot = currentPlayer(state);
@@ -3520,6 +3949,7 @@
           const index = chooseMarketIndex(state, bot, difficulty);
           if (index < 0) break;
           if (!await applyBotAction({ type: "BUY", index }, token)) break;
+          await resolveBotPendingChoices(token);
           if (difficulty === "easy" && Math.random() < .35) break;
         }
 
@@ -3531,6 +3961,7 @@
             if (!weak || !await applyBotAction({ type: "SCRAP_OWN", zone: weak.zone, index: weak.index }, token)) break;
             bot = currentPlayer(state);
           }
+          await useBotCharges(token, difficulty);
         }
 
         bot = currentPlayer(state);
@@ -3800,6 +4231,7 @@
     if (action === "erase-market") performAction({ type: "SCRAP_MARKET", index: Number(button.dataset.index) });
     if (action === "purge-card") performAction({ type: "SCRAP_OWN", zone: button.dataset.zone, index: Number(button.dataset.index) });
     if (action === "sacrifice") performAction({ type: "SACRIFICE", zone: button.dataset.zone, instanceId: button.dataset.instanceId });
+    if (action === "use-charge") performAction({ type: "USE_CHARGE", instanceId: button.dataset.instanceId, actionIndex: Number(button.dataset.actionIndex) });
     if (action === "stun-base") performAction({ type: "STUN_BASE", targetId: button.dataset.targetId, instanceId: button.dataset.instanceId });
     if (action === "destroy-base") performAction({ type: "DESTROY_BASE", targetId: button.dataset.targetId, instanceId: button.dataset.instanceId });
     if (action === "attack-base") performAction({ type: "ATTACK_BASE", targetId: button.dataset.targetId, instanceId: button.dataset.instanceId });
