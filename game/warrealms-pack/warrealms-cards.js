@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 8;
+export const WAR_REALMS_CARD_VERSION = 9;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -2832,6 +2832,168 @@ export const CARDS = Object.freeze([
     allyText: "Gain 1 Purge.",
     doubleAllyText: "Gain 5 Combat, draw 1 card, and gain Lifelink 50% this turn.",
     flavor: "Every shadow is a road leading downward to its crown."
+  },
+
+  // ==========================================================
+  // NEW LOW-COST CARDS — COST 2–3
+  // ==========================================================
+
+  // YELLOW — XYTHE CONCORD
+  {
+    id: "astral_duelist",
+    name: "Astral Duelist",
+    image: "astral_duelist.png",
+    faction: "yellow",
+    cost: 2,
+    shop_cost: 20,
+    type: "ship",
+    sigil: "◈",
+    effect: { combat: 2 },
+    ally: { trade: 2 },
+    text: "Gain 2 Combat.",
+    allyText: "Gain 2 Trade.",
+    flavor: "It fights in the present and collects payment from the future."
+  },
+  {
+    id: "flicker_collector",
+    name: "Flicker Collector",
+    image: "flicker_collector.png",
+    faction: "yellow",
+    cost: 2,
+    shop_cost: 20,
+    type: "ship",
+    sigil: "◈",
+    effect: { trade: 1, combat: 1 },
+    ally: { draw: 1 },
+    text: "Gain 1 Trade and 1 Combat.",
+    allyText: "Draw 1 card.",
+    flavor: "It gathers brief possibilities before they disappear."
+  },
+  {
+    id: "thoughtpiercer",
+    name: "Thoughtpiercer",
+    image: "thoughtpiercer.png",
+    faction: "yellow",
+    cost: 3,
+    shop_cost: 30,
+    type: "ship",
+    sigil: "◈",
+    effect: { combat: 2, draw: 1 },
+    ally: { trade: 1 },
+    text: "Gain 2 Combat and draw 1 card.",
+    allyText: "Gain 1 Trade.",
+    flavor: "The first strike opens the mind. The second steals its answer."
+  },
+
+  // BLUE — AZURE ASCENDANCY
+  {
+    id: "dawnfield_medic",
+    name: "Dawnfield Medic",
+    image: "dawnfield_medic.png",
+    faction: "blue",
+    cost: 2,
+    shop_cost: 20,
+    type: "ship",
+    sigil: "✦",
+    effect: { combat: 1, heal: 2 },
+    ally: { heal: 1 },
+    text: "Gain 1 Combat and 2 Authority.",
+    allyText: "Gain 1 Authority.",
+    flavor: "Its blade ends one danger while its light mends another."
+  },
+  {
+    id: "lantern_quartermaster",
+    name: "Lantern Quartermaster",
+    image: "lantern_quartermaster.png",
+    faction: "blue",
+    cost: 3,
+    shop_cost: 30,
+    type: "ship",
+    sigil: "✦",
+    effect: { trade: 1, draw: 1 },
+    ally: { heal: 2 },
+    text: "Gain 1 Trade and draw 1 card.",
+    allyText: "Gain 2 Authority.",
+    flavor: "Every lamp, ration, and prayer reaches the correct hands."
+  },
+
+  // GREEN — GORAK WARHOST
+  {
+    id: "ironjaw_scavenger",
+    name: "Ironjaw Scavenger",
+    image: "ironjaw_scavenger.png",
+    faction: "green",
+    cost: 2,
+    shop_cost: 20,
+    type: "ship",
+    sigil: "⬢",
+    effect: { combat: 2, trade: 1 },
+    ally: { combat: 1 },
+    text: "Gain 2 Combat and 1 Trade.",
+    allyText: "Gain 1 Combat.",
+    flavor: "It takes a trophy before the battle has officially started."
+  },
+  {
+    id: "skull_tossers",
+    name: "Skull Tossers",
+    image: "skull_tossers.png",
+    faction: "green",
+    cost: 3,
+    shop_cost: 30,
+    type: "ship",
+    sigil: "⬢",
+    effect: { combat: 3, draw: 1 },
+    ally: {},
+    text: "Gain 3 Combat and draw 1 card.",
+    allyText: "",
+    flavor: "Their ammunition is crude, abundant, and deeply insulting."
+  },
+  {
+    id: "raid_spoils_carrier",
+    name: "Raid-Spoils Carrier",
+    image: "raid_spoils_carrier.png",
+    faction: "green",
+    cost: 3,
+    shop_cost: 30,
+    type: "ship",
+    sigil: "⬢",
+    effect: { trade: 1, combat: 2 },
+    ally: { trade: 2 },
+    text: "Gain 1 Trade and 2 Combat.",
+    allyText: "Gain 2 Trade.",
+    flavor: "The Warhost calls it logistics because theft sounded informal."
+  },
+
+  // RED — UMBRAL COVENANT
+  {
+    id: "ash_sifter",
+    name: "Ash Sifter",
+    image: "ash_sifter.png",
+    faction: "red",
+    cost: 2,
+    shop_cost: 20,
+    type: "ship",
+    sigil: "◒",
+    effect: { trade: 1, scrapOwn: 1 },
+    ally: { combat: 1 },
+    text: "Gain 1 Trade and 1 Purge.",
+    allyText: "Gain 1 Combat.",
+    flavor: "It searches ruined histories for one remaining advantage."
+  },
+  {
+    id: "voidblood_initiate",
+    name: "Voidblood Initiate",
+    image: "voidblood_initiate.png",
+    faction: "red",
+    cost: 3,
+    shop_cost: 35,
+    type: "ship",
+    sigil: "◒",
+    effect: { draw: 1, scrapOwn: 1 },
+    ally: { combat: 2 },
+    text: "Draw 1 card and gain 1 Purge.",
+    allyText: "Gain 2 Combat.",
+    flavor: "Each discarded weakness leaves more room for the void."
   }
 
 ]);
@@ -3137,7 +3299,8 @@ export function assertCardLibrary() {
     "yellow",
     "blue",
     "green",
-    "red"
+    "red",
+    "neutral"
   ]);
 
   for (const card of CARDS) {
