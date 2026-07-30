@@ -539,6 +539,11 @@
   const STARTER_CARDS_PER_FACTION = 50;
   const STARTER_UNIQUE_CARDS_PER_FACTION = 13;
   const STARTER_COLLECTION_SIZE = STARTER_CARDS_PER_FACTION * 4;
+  const COMMAND_DECK_COST_BREAKDOWN = Object.freeze([
+    Object.freeze({ key: "low", label: "cost 1–3", count: 25 }),
+    Object.freeze({ key: "mid", label: "cost 4", count: 15 }),
+    Object.freeze({ key: "high", label: "cost 5+", count: 10 })
+  ]);
   const PARTICIPATION_SIGILS = 20;
   const VICTORY_BONUS_SIGILS = 30;
   const SINGLEPLAYER_REWARDS = Object.freeze({
@@ -1239,6 +1244,79 @@
     $("#effectOverlay").classList.add("hidden");
   }
 
+  function shuffleInPlace(values) {
+    for (let index = values.length - 1; index > 0; index -= 1) {
+      const target = Math.floor(Math.random() * (index + 1));
+      [values[index], values[target]] = [values[target], values[index]];
+    }
+    return values;
+  }
+
+  function cardMatchesCostTier(card, tierKey) {
+    const cost = Number(card?.cost);
+    if (!Number.isFinite(cost)) return false;
+    if (tierKey === "low") return cost >= 1 && cost <= 3;
+    if (tierKey === "mid") return cost === 4;
+    return tierKey === "high" && cost >= 5;
+  }
+
+  function buildCostCurveCommandDeck(owned = null) {
+    const deck = [];
+
+    for (const tier of COMMAND_DECK_COST_BREAKDOWN) {
+      const tierPool = [];
+      for (const card of CARDS) {
+        if (!cardMatchesCostTier(card, tier.key)) continue;
+        const availableCopies = owned
+          ? Math.max(0, Math.min(MAX_COPIES_PER_CARD, Math.floor(Number(owned[card.id]) || 0)))
+          : MAX_COPIES_PER_CARD;
+        for (let copyIndex = 0; copyIndex < availableCopies; copyIndex += 1) tierPool.push(card.id);
+      }
+
+      shuffleInPlace(tierPool);
+      if (tierPool.length < tier.count) {
+        throw new Error(`The card pack needs at least ${tier.count} available ${tier.label} cards to build the required command deck; found ${tierPool.length}.`);
+      }
+      deck.push(...tierPool.slice(0, tier.count));
+    }
+
+    if (deck.length !== COMMAND_DECK_SIZE) {
+      throw new Error(`Cost-curve command deck must contain exactly ${COMMAND_DECK_SIZE} cards; found ${deck.length}.`);
+    }
+    return shuffleInPlace(deck);
+  }
+
+  function makeStarterDeckOwned(owned, deck) {
+    const required = countCards(deck);
+
+    for (const [cardId, requiredCopies] of Object.entries(required)) {
+      const card = CARD_MAP[cardId];
+      if (!card) continue;
+      let deficit = Math.max(0, requiredCopies - (owned[cardId] || 0));
+      if (!deficit) continue;
+
+      owned[cardId] = requiredCopies;
+      const donors = CARDS
+        .filter(candidate => candidate.faction === card.faction && candidate.id !== cardId)
+        .sort((left, right) => right.cost - left.cost || left.name.localeCompare(right.name));
+
+      for (const donor of donors) {
+        if (deficit <= 0) break;
+        const protectedCopies = required[donor.id] || 0;
+        const removable = Math.max(0, (owned[donor.id] || 0) - protectedCopies);
+        const removed = Math.min(removable, deficit);
+        owned[donor.id] = (owned[donor.id] || 0) - removed;
+        deficit -= removed;
+      }
+
+      if (deficit > 0) {
+        throw new Error(`Could not reserve ${requiredCopies} starter-deck copies of ${card.name} without exceeding the ${STARTER_CARDS_PER_FACTION}-card ${card.faction} starter collection.`);
+      }
+    }
+
+    return owned;
+  }
+
   function createNewPlayerCollection() {
     const owned = Object.fromEntries(CARDS.map(card => [card.id, 0]));
     const factionIds = ["yellow", "blue", "green", "red"];
@@ -1283,7 +1361,11 @@
   function normalizeProfile(rawUserData = {}, isNewWarProfile = false) {
     const raw = rawUserData.warRealms || {};
     const owned = Object.fromEntries(CARDS.map(card => [card.id, 0]));
-    if (isNewWarProfile) Object.assign(owned, createNewPlayerCollection());
+    const newPlayerDeck = isNewWarProfile ? buildCostCurveCommandDeck() : null;
+    if (isNewWarProfile) {
+      Object.assign(owned, createNewPlayerCollection());
+      makeStarterDeckOwned(owned, newPlayerDeck);
+    }
 
     for (const card of CARDS) {
       const supplied = Number(raw.owned?.[card.id]);
@@ -1291,7 +1373,7 @@
     }
 
     let deck = Array.isArray(raw.deck) ? raw.deck.filter(id => CARD_MAP[id]) : [];
-    if (!validateCommandDeck(deck, owned).valid) deck = buildBalancedCommandDeck(owned);
+    if (!validateCommandDeck(deck, owned).valid) deck = newPlayerDeck ? [...newPlayerDeck] : buildBalancedCommandDeck(owned);
 
     const rewardedGames = Object.fromEntries(Object.entries(raw.rewardedGames || {})
       .filter(([, reward]) => reward && Number.isFinite(Number(reward.total)))
@@ -2832,7 +2914,7 @@
         <p><b>Forced discard:</b> A discard effect queues cards for the next affected turn. After that player draws, they must select the required number of highlighted hand cards and move them to discard before playing, buying, attacking, or ending the turn. The requirement is capped by the cards actually in hand, so an empty hand always resolves it.</p>
         <p><b>New future-card abilities:</b> <b>Lifelink</b> heals the attacker for combat damage actually dealt; <b>Destroy Base</b> removes a legal target without spending Combat; <b>Shield</b> absorbs Authority damage; <b>Damage All</b> hits every rival; and per-base scaling can grant Trade, Combat, healing, or draws for each active base. No existing card definitions are changed by this update.</p>
         <p><b>Red Purge:</b> Purge permanently removes a selected card from your hand, draw pile, or discard pile for the rest of the match. This is the defining strength of the Umbral Covenant.</p>
-        <p><b>Singleplayer:</b> Choose Easy, Medium, Hard, or Impossible from the Armory. The bot contributes a newly randomized legal 50-card command set and takes turns through the same action reducer as a human. Impossible draws six cards each turn; all other difficulties draw five.</p>
+        <p><b>Singleplayer:</b> Choose Easy, Medium, Hard, or Impossible from the Armory. Every bot brings a legal low-cost-weighted 50-card deck: 25 cards costing 1–3, 15 costing 4, and 10 costing 5 or more. The bot takes turns through the same action reducer as a human. Impossible draws six cards each turn; all other difficulties draw five.</p>
         <p><b>Choice / OR abilities:</b> A card effect can contain two or more alternatives. When it resolves, the current player must select exactly one option before any other action. Choice effects work on Primary, Base, Ally, Double Ally, and Sacrifice abilities, and Warbots select an option automatically.</p>
         <p><b>Battle visuals:</b> Card plays appear in an opponent queue until your turn begins. Trade, Combat, Draw, healing, Shield, Disable, Purge, and other abilities create quick symbol bursts. Forced discard creates a visible threat and card-to-discard animation. Destroyed, sacrificed, purged, and market-erased cards disintegrate; base destruction is synchronized so every multiplayer viewer sees it.</p>
         <p><b>Rewards:</b> Every multiplayer battle awards ${PARTICIPATION_SIGILS} participation Sigils, with ${VICTORY_BONUS_SIGILS} more for the winner. Singleplayer awards less, scaling from ${SINGLEPLAYER_REWARDS.easy.participation + SINGLEPLAYER_REWARDS.easy.victoryBonus} Sigils for an Easy win to ${SINGLEPLAYER_REWARDS.impossible.participation + SINGLEPLAYER_REWARDS.impossible.victoryBonus} for an Impossible win. Rewards, games, and wins are saved once per battle in the player's Firebase profile.</p>
@@ -2842,7 +2924,7 @@
   }
 
   function showBotDifficultySelector() {
-    openModal("Singleplayer Game", "Choose how strategically the opposing commander reasons. Every bot contributes a fresh randomized 50-card set.", `
+    openModal("Singleplayer Game", "Choose how strategically the opposing commander reasons. Every bot brings 25 cost 1–3 cards, 15 cost 4 cards, and 10 cost 5+ cards.", `
       <div class="difficultyGrid">${Object.entries(BOT_DIFFICULTIES).map(([key, config]) => {
         const reward = SINGLEPLAYER_REWARDS[key];
         return `<button class="difficultyChoice" data-act="start-bot" data-difficulty="${key}"><strong>${config.name}</strong><span>${escapeHtml(config.description)}</span><em>${config.handSize}-card hand · Up to ${reward.participation + reward.victoryBonus} Sigils for a win</em></button>`;
@@ -2857,21 +2939,13 @@
         <p><b>Medium:</b> Plays its full hand, buys affordable value, clears Outposts correctly, and uses most available abilities.</p>
         <p><b>Hard:</b> Scores card effects, prefers matching factions, removes weak starter cards, and attacks important persistent bases.</p>
         <p><b>Impossible:</b> Draws six cards instead of five, evaluates faction density and card efficiency, preserves lethal Combat, and aggressively converts every resource.</p>
-        <p>Each challenge creates a newly randomized 50-card bot contribution with no more than four copies of a card. Singleplayer rewards are intentionally lower than multiplayer rewards.</p>
+        <p>Each challenge creates a newly randomized 50-card bot deck containing exactly 25 cost 1–3 cards, 15 cost 4 cards, and 10 cost 5+ cards, with no more than four copies of any card. Singleplayer rewards are intentionally lower than multiplayer rewards.</p>
       </div>
     `);
   }
 
   function randomizedBotCommandDeck() {
-    const pool = [];
-    for (const card of CARDS) {
-      for (let copyIndex = 0; copyIndex < MAX_COPIES_PER_CARD; copyIndex += 1) pool.push(card.id);
-    }
-    for (let index = pool.length - 1; index > 0; index -= 1) {
-      const target = Math.floor(Math.random() * (index + 1));
-      [pool[index], pool[target]] = [pool[target], pool[index]];
-    }
-    return pool.slice(0, COMMAND_DECK_SIZE);
+    return buildCostCurveCommandDeck();
   }
 
   function createSinglePlayerGame(difficulty) {
@@ -2883,7 +2957,7 @@
     game.difficulty = difficulty;
     game.humanId = humanEntrant.uid;
     game.botId = botEntrant.uid;
-    addLog(game, `${botEntrant.name} brought a randomized 50-card command set.`);
+    addLog(game, `${botEntrant.name} brought a low-cost-weighted 50-card command set: 25 cost 1–3, 15 cost 4, and 10 cost 5+.`);
     return game;
   }
 
