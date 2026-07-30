@@ -204,6 +204,23 @@ export const CARDS = Object.freeze([
     flavor: "Its wounds arrive before its claws."
   },
   {
+  id: "hired_looter",
+  name: "Hired Looter",
+  image: "hired_looter.png",
+  faction: "green",
+  cost: 2,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "⬢",
+  effect: { trade: 2 },
+  ally: { combat: 1 },
+  sacrifice: { combat: 2 },
+  text: "Gain 2 Trade.",
+  allyText: "Gain 1 Combat.",
+  sacrificeText: "Sacrifice: Gain 2 Combat.",
+  flavor: "Pay him today. Point him at the enemy tomorrow."
+},
+  {
     id: "dominion_relay",
     name: "Dominion Relay",
     image: "dominion_relay.png",
