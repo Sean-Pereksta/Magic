@@ -463,6 +463,548 @@ export const CARDS = Object.freeze([
   sacrificeText: "Sacrifice: Gain 2 Market Erase.",
   flavor: "Its final meal removes two possibilities from everyone else's future."
 },
+  {
+  id: "preemptive_envoy",
+  name: "Preemptive Envoy",
+  image: "preemptive_envoy.png",
+  faction: "yellow",
+  cost: 3,
+  shop_cost: 45,
+  type: "ship",
+  sigil: "◈",
+  onPurchase: { stun: 1 },
+  effect: { trade: 2 },
+  ally: { shield: 1 },
+  text: "Gain 2 Trade.",
+  onPurchaseText: "Deploy: Gain 1 Disable immediately when purchased.",
+  allyText: "Gain 1 Shield.",
+  flavor: "It arrives one decision before anyone agrees to summon it."
+},
+
+{
+  id: "relief_procession",
+  name: "Relief Procession",
+  image: "relief_procession.png",
+  faction: "blue",
+  cost: 3,
+  shop_cost: 45,
+  type: "ship",
+  sigil: "✦",
+  onPurchase: { heal: 4 },
+  effect: { trade: 2, heal: 2 },
+  ally: {},
+  text: "Gain 2 Trade and 2 Authority.",
+  onPurchaseText: "Deploy: Gain 4 Authority immediately when purchased.",
+  allyText: "",
+  flavor: "The blessing reaches the battlefield before the procession itself."
+},
+
+{
+  id: "rampaging_mercenary",
+  name: "Rampaging Mercenary",
+  image: "rampaging_mercenary.png",
+  faction: "green",
+  cost: 4,
+  shop_cost: 60,
+  type: "ship",
+  sigil: "⬢",
+  onPurchase: { combat: 3 },
+  effect: { combat: 5 },
+  ally: { combat: 1 },
+  text: "Gain 5 Combat.",
+  onPurchaseText: "Deploy: Gain 3 Combat immediately when purchased.",
+  allyText: "Gain 1 Combat.",
+  flavor: "Payment is merely permission to begin the charge."
+},
+
+{
+  id: "blood_price_broker",
+  name: "Blood-Price Broker",
+  image: "blood_price_broker.png",
+  faction: "red",
+  cost: 4,
+  shop_cost: 70,
+  type: "ship",
+  sigil: "◒",
+  onPurchase: { scrapOwn: 1 },
+  effect: { trade: 2, combat: 2 },
+  ally: { combat: 2 },
+  text: "Gain 2 Trade and 2 Combat.",
+  onPurchaseText: "Deploy: Gain 1 Purge immediately when purchased.",
+  allyText: "Gain 2 Combat.",
+  flavor: "The first payment is always something you no longer wish to remember."
+},
+
+
+// ==========================================================
+// RESURRECTION — TEMPORARILY REPLAY CARDS FROM THE DISCARD PILE
+// Cards with sacrificeAfterPlay are removed after the revived play resolves.
+// ==========================================================
+
+{
+  id: "gravebound_reclaimer",
+  name: "Gravebound Reclaimer",
+  image: "gravebound_reclaimer.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 95,
+  type: "ship",
+  sigil: "◒",
+  effect: {
+    combat: 3,
+    resurrect: {
+      count: 1,
+      source: "discard",
+      cardType: "ship",
+      maxCost: 3,
+      destination: "hand",
+      sacrificeAfterPlay: true
+    }
+  },
+  ally: { combat: 2 },
+  text: "Gain 3 Combat. Return a ship costing 3 or less from your discard pile to your hand. Sacrifice it after it is played.",
+  allyText: "Gain 2 Combat.",
+  resurrectText: "Resurrect a ship costing 3 or less. Sacrifice it after its revived play.",
+  flavor: "It returns the fallen for exactly as long as their usefulness survives."
+},
+
+{
+  id: "black_procession_necromancer",
+  name: "Black Procession Necromancer",
+  image: "black_procession_necromancer.png",
+  faction: "red",
+  cost: 7,
+  shop_cost: 155,
+  type: "ship",
+  sigil: "◒",
+  effect: {
+    combat: 5,
+    resurrect: {
+      count: 1,
+      source: "discard",
+      cardType: "ship",
+      maxCost: 6,
+      destination: "hand",
+      sacrificeAfterPlay: true
+    }
+  },
+  ally: { draw: 1 },
+  doubleAlly: { combat: 4 },
+  text: "Gain 5 Combat. Return a ship costing 6 or less from your discard pile to your hand. Sacrifice it after it is played.",
+  allyText: "Draw 1 card.",
+  doubleAllyText: "Gain 4 Combat.",
+  resurrectText: "Resurrect a ship costing 6 or less. Sacrifice it after its revived play.",
+  flavor: "Behind every conqueror marches an army that has already lost once."
+},
+
+{
+  id: "a_grave_remembers",
+  name: "A Grave Remembers",
+  image: "a_grave_remembers.png",
+  faction: "red",
+  cost: 6,
+  shop_cost: 130,
+  type: "base",
+  defense: 6,
+  outpost: false,
+  sigil: "◒",
+  effect: {
+    combat: 2,
+    graveEcho: {
+      source: "sacrificePile",
+      count: 1,
+      copy: "primary",
+      maxCost: 7,
+      excludeKeys: [
+        "draw",
+        "resurrect",
+        "graveEcho",
+        "echo",
+        "transform"
+      ]
+    }
+  },
+  ally: { scrapOwn: 1 },
+  sacrifice: { draw: 1, combat: 3 },
+  text: "Gain 2 Combat. Choose a sacrificed card costing 7 or less and repeat its Primary ability. Draw, Resurrection, Echo, and Transform effects cannot be copied.",
+  allyText: "Gain 1 Purge.",
+  sacrificeText: "Sacrifice: Draw 1 card and gain 3 Combat.",
+  graveEchoText: "Repeat the allowed Primary effects of one card in your sacrifice pile.",
+  flavor: "The earth forgets the name. It never forgets the final act."
+},
+
+
+// ==========================================================
+// AUTHORITY THRESHOLDS — EXTRA EFFECTS WHILE AT LOW AUTHORITY
+// Threshold effects are additional to the normal Primary effect.
+// ==========================================================
+
+{
+  id: "last_wall_confessor",
+  name: "Last-Wall Confessor",
+  image: "last_wall_confessor.png",
+  faction: "blue",
+  cost: 3,
+  shop_cost: 50,
+  type: "ship",
+  sigil: "✦",
+  effect: { heal: 3 },
+  authorityThreshold: {
+    atOrBelow: 25,
+    effect: { heal: 4, draw: 1 }
+  },
+  ally: { shield: 1 },
+  text: "Gain 3 Authority.",
+  thresholdText: "Last Stand — At 25 Authority or less: gain 4 additional Authority and draw 1 card.",
+  allyText: "Gain 1 Shield.",
+  flavor: "Only when the final wall trembles does the truest prayer begin."
+},
+
+{
+  id: "blood_scent_challenger",
+  name: "Blood-Scent Challenger",
+  image: "blood_scent_challenger.png",
+  faction: "green",
+  cost: 4,
+  shop_cost: 65,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combat: 4 },
+  authorityThreshold: {
+    atOrBelow: 20,
+    effect: { combat: 6 }
+  },
+  ally: { combat: 2 },
+  text: "Gain 4 Combat.",
+  thresholdText: "Last Stand — At 20 Authority or less: gain 6 additional Combat.",
+  allyText: "Gain 2 Combat.",
+  flavor: "The closer death stands, the louder its challenge becomes."
+},
+
+{
+  id: "desperation_oracle",
+  name: "Desperation Oracle",
+  image: "desperation_oracle.png",
+  faction: "yellow",
+  cost: 5,
+  shop_cost: 100,
+  type: "ship",
+  sigil: "◈",
+  effect: { trade: 2, shield: 2 },
+  authorityThreshold: {
+    atOrBelow: 15,
+    effect: { draw: 2, stun: 1 }
+  },
+  ally: { combat: 2 },
+  text: "Gain 2 Trade and 2 Shield.",
+  thresholdText: "Last Stand — At 15 Authority or less: draw 2 cards and gain 1 Disable.",
+  allyText: "Gain 2 Combat.",
+  flavor: "Only the futures nearest extinction reveal every hidden path."
+},
+
+
+// ==========================================================
+// CHARGES — BASES BUILD COUNTERS AND SPEND THEM FOR EFFECTS
+// Each physical copy of a Base must track its own charge count.
+// ==========================================================
+
+{
+  id: "storm_vault_monastery",
+  name: "Storm-Vault Monastery",
+  image: "storm_vault_monastery.png",
+  faction: "blue",
+  cost: 5,
+  shop_cost: 95,
+  type: "base",
+  defense: 6,
+  outpost: false,
+  sigil: "✦",
+  effect: { heal: 2 },
+  charge: {
+    trigger: "startOfTurn",
+    gain: 1,
+    max: 4,
+    actions: [
+      {
+        label: "Aegis Release",
+        cost: 1,
+        repeatable: true,
+        effect: { shield: 2 }
+      },
+      {
+        label: "Mercy Release",
+        cost: 1,
+        repeatable: true,
+        effect: { heal: 2 }
+      }
+    ]
+  },
+  ally: { trade: 1 },
+  text: "Gain 2 Authority. At the start of your turn, place 1 Charge here, up to 4.",
+  chargeText: "Spend 1 Charge: gain 2 Shield or 2 Authority. You may repeat this.",
+  allyText: "Gain 1 Trade.",
+  flavor: "Every unanswered prayer is stored until the sky itself replies."
+},
+
+{
+  id: "doomsday_drum",
+  name: "Doomsday Drum",
+  image: "doomsday_drum.png",
+  faction: "green",
+  cost: 5,
+  shop_cost: 100,
+  type: "base",
+  defense: 5,
+  outpost: false,
+  sigil: "⬢",
+  effect: { combat: 1 },
+  charge: {
+    trigger: "friendlyFactionPlayed",
+    faction: "green",
+    gain: 1,
+    max: 6,
+    actions: [
+      {
+        label: "Sound the Horde",
+        cost: "all",
+        minimum: 2,
+        effectPerCharge: { combat: 2 }
+      }
+    ]
+  },
+  ally: { combat: 2 },
+  text: "Gain 1 Combat. Whenever you play another green card, place 1 Charge here, up to 6.",
+  chargeText: "Spend all Charges, with at least 2: gain 2 Combat for each Charge spent.",
+  allyText: "Gain 2 Combat.",
+  flavor: "Each beat is a promise. The final beat is an arrival."
+},
+
+{
+  id: "blackglass_soul_furnace",
+  name: "Blackglass Soul Furnace",
+  image: "blackglass_soul_furnace.png",
+  faction: "red",
+  cost: 6,
+  shop_cost: 125,
+  type: "base",
+  defense: 6,
+  outpost: true,
+  sigil: "◒",
+  effect: { combat: 3 },
+  charge: {
+    trigger: "ownCardPurged",
+    gain: 1,
+    max: 6,
+    actions: [
+      {
+        label: "Consume the Ash",
+        cost: 2,
+        repeatable: false,
+        oncePerTurn: true,
+        effect: { draw: 1, combat: 3 }
+      }
+    ]
+  },
+  ally: { scrapOwn: 1 },
+  text: "Outpost. Gain 3 Combat. Whenever you Purge one of your cards, place 1 Charge here, up to 6.",
+  chargeText: "Once per turn, spend 2 Charges: draw 1 card and gain 3 Combat.",
+  allyText: "Gain 1 Purge.",
+  flavor: "Nothing cast away is wasted. The furnace teaches absence to burn."
+},
+
+
+// ==========================================================
+// ECHO — COPY AN EARLIER CARD PLAYED DURING THE SAME TURN
+// Recursive, Draw, Resurrection, and Transform effects are excluded.
+// ==========================================================
+
+{
+  id: "echo_of_the_unchosen",
+  name: "Echo of the Unchosen",
+  image: "echo_of_the_unchosen.png",
+  faction: "yellow",
+  cost: 5,
+  shop_cost: 110,
+  type: "ship",
+  sigil: "◈",
+  effect: { trade: 1 },
+  echo: {
+    target: "previousPlayedShip",
+    copy: "primary",
+    excludeKeys: [
+      "draw",
+      "echo",
+      "resurrect",
+      "graveEcho",
+      "transform"
+    ]
+  },
+  ally: { shield: 2 },
+  text: "Gain 1 Trade. Repeat the allowed Primary effects of the ship played immediately before this card.",
+  echoText: "Echo cannot copy Draw, Resurrection, Grave Echo, another Echo, or Transform.",
+  allyText: "Gain 2 Shield.",
+  flavor: "The possibility was rejected. Its consequence arrived anyway."
+},
+
+{
+  id: "warhowl_mimic",
+  name: "Warhowl Mimic",
+  image: "warhowl_mimic.png",
+  faction: "green",
+  cost: 4,
+  shop_cost: 75,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combat: 2 },
+  echo: {
+    target: "previousPlayedShip",
+    copyKeys: ["combat"],
+    maximumCopiedCombat: 6
+  },
+  ally: { combat: 2 },
+  text: "Gain 2 Combat. Repeat up to 6 Combat from the ship played immediately before this card.",
+  echoText: "Echo only the previous ship's Primary Combat, to a maximum of 6.",
+  allyText: "Gain 2 Combat.",
+  flavor: "It does not understand the war cry. It understands what follows."
+},
+
+
+// ==========================================================
+// TRANSFORMING CARDS
+// The original card tracks progress per physical copy.
+// The transformed forms are not collectible and never enter the Trade Deck.
+// ==========================================================
+
+{
+  id: "young_siege_beast",
+  name: "Young Siege-Beast",
+  image: "young_siege_beast.png",
+  faction: "green",
+  cost: 2,
+  shop_cost: 35,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combat: 2 },
+  transform: {
+    trigger: "timesPlayed",
+    required: 3,
+    into: "mature_gate_devourer",
+    destination: "discard"
+  },
+  ally: {},
+  text: "Gain 2 Combat.",
+  transformText: "Growth — After this card has been played 3 times, transform it into Mature Gate-Devourer.",
+  allyText: "",
+  flavor: "Today it chews shields. Tomorrow it will discover walls."
+},
+
+{
+  id: "mature_gate_devourer",
+  name: "Mature Gate-Devourer",
+  image: "mature_gate_devourer.png",
+  faction: "green",
+  collectible: false,
+  token: true,
+  transformedFrom: "young_siege_beast",
+  cost: 5,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combat: 7 },
+  ally: { combat: 3 },
+  text: "Gain 7 Combat.",
+  allyText: "Gain 3 Combat.",
+  flavor: "Its childhood ended with the first fortress it swallowed whole."
+},
+
+{
+  id: "candle_vow_pilgrim",
+  name: "Candle-Vow Pilgrim",
+  image: "candle_vow_pilgrim.png",
+  faction: "blue",
+  cost: 2,
+  shop_cost: 35,
+  type: "ship",
+  sigil: "✦",
+  effect: { trade: 1, heal: 2 },
+  transform: {
+    trigger: "cumulativePrimaryEffect",
+    effectKey: "heal",
+    required: 6,
+    into: "dawn_crowned_saint",
+    destination: "discard"
+  },
+  ally: {},
+  text: "Gain 1 Trade and 2 Authority.",
+  transformText: "Ascension — After this card has granted a total of 6 Authority, transform it into Dawn-Crowned Saint.",
+  allyText: "",
+  flavor: "Every mile shortens the distance between pilgrim and relic."
+},
+
+{
+  id: "dawn_crowned_saint",
+  name: "Dawn-Crowned Saint",
+  image: "dawn_crowned_saint.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "candle_vow_pilgrim",
+  cost: 5,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+  effect: { trade: 2, heal: 5 },
+  ally: { draw: 1 },
+  text: "Gain 2 Trade and 5 Authority.",
+  allyText: "Draw 1 card.",
+  flavor: "The road did not lead to the dawn. The road taught the pilgrim to become it."
+},
+
+{
+  id: "graveborn_larva",
+  name: "Graveborn Larva",
+  image: "graveborn_larva.png",
+  faction: "red",
+  cost: 2,
+  shop_cost: 40,
+  type: "ship",
+  sigil: "◒",
+  effect: { combat: 2 },
+  ally: {},
+  sacrifice: { combat: 4 },
+  transform: {
+    trigger: "sacrificed",
+    into: "graveborn_abomination",
+    destination: "discard",
+    replaceSacrificeRemoval: true
+  },
+  text: "Gain 2 Combat.",
+  allyText: "",
+  sacrificeText: "Sacrifice: Gain 4 Combat, then transform this into Graveborn Abomination in your discard pile.",
+  transformText: "Metamorphosis — When sacrificed, replace this card with Graveborn Abomination in your discard pile.",
+  flavor: "The Covenant calls the cocoon a grave because nothing innocent emerges."
+},
+
+{
+  id: "graveborn_abomination",
+  name: "Graveborn Abomination",
+  image: "graveborn_abomination.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "graveborn_larva",
+  cost: 6,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+  effect: { combat: 6, scrapOwn: 1 },
+  ally: { lifelink: 0.5 },
+  sacrifice: { damageAll: 2 },
+  text: "Gain 6 Combat and 1 Purge.",
+  allyText: "Gain Lifelink 50% this turn.",
+  sacrificeText: "Sacrifice: Damage All 2.",
+  flavor: "It remembers being small only as a reason to hate the world."
+},
 
 {
   id: "bloodscript_initiate",
