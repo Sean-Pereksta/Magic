@@ -117,20 +117,45 @@
     .view{display:none}.view.active{display:block}
 
     .hero-banner{
-      --hero-a:#741524;--hero-b:#b4232f;
       min-height:238px;border-radius:28px;overflow:hidden;position:relative;color:#fff;
-      background:
+      background:#111827;box-shadow:var(--shadow);margin-bottom:22px;
+    }
+    .featured-track{
+      min-height:inherit;display:flex;transition:transform .58s cubic-bezier(.22,.72,.18,1);
+      will-change:transform;
+    }
+    .featured-slide{
+      --hero-a:#741524;--hero-b:#b4232f;
+      min-width:100%;min-height:238px;padding:34px;display:flex;align-items:flex-end;
+      position:relative;overflow:hidden;background:
         radial-gradient(460px 250px at 80% 20%,rgba(255,255,255,.18),transparent 65%),
         linear-gradient(120deg,var(--hero-a),var(--hero-b));
-      box-shadow:var(--shadow);padding:34px;display:flex;align-items:flex-end;margin-bottom:22px;
     }
-    .hero-banner::before{
+    .featured-slide::before{
       content:"";position:absolute;inset:0;opacity:.35;pointer-events:none;
       background-image:linear-gradient(30deg,rgba(255,255,255,.08) 12%,transparent 12.5%,transparent 87%,rgba(255,255,255,.08) 87.5%,rgba(255,255,255,.08)),linear-gradient(150deg,rgba(255,255,255,.06) 12%,transparent 12.5%,transparent 87%,rgba(255,255,255,.06) 87.5%);
       background-size:80px 140px;
     }
+    .featured-carousel{touch-action:pan-y;user-select:none}
+    .featured-arrow{
+      position:absolute;z-index:5;top:18px;width:42px;height:42px;border:1px solid rgba(255,255,255,.38);
+      border-radius:50%;background:rgba(17,24,39,.42);color:#fff;display:grid;place-items:center;
+      cursor:pointer;font-size:1.35rem;line-height:1;backdrop-filter:blur(8px);
+      box-shadow:0 8px 22px rgba(0,0,0,.2);
+    }
+    .featured-arrow:hover{background:rgba(17,24,39,.7)}
+    .featured-arrow.prev{right:66px}.featured-arrow.next{right:16px}
+    .featured-dots{
+      position:absolute;z-index:6;right:24px;bottom:18px;display:flex;align-items:center;gap:7px;
+      padding:7px 9px;border-radius:999px;background:rgba(17,24,39,.38);backdrop-filter:blur(8px);
+    }
+    .featured-dot{
+      width:8px;height:8px;padding:0;border:0;border-radius:999px;background:rgba(255,255,255,.5);
+      cursor:pointer;transition:width .22s ease,background .22s ease;
+    }
+    .featured-dot.active{width:24px;background:#fff}
     .hero-copy{position:relative;z-index:2;max-width:680px}
-    .hero-banner.has-art .hero-copy{max-width:min(680px,62%)}
+    .featured-slide.has-art .hero-copy{max-width:min(680px,62%)}
     .hero-art{
       position:absolute;z-index:1;right:clamp(18px,5vw,72px);top:12px;bottom:0;
       width:min(38%,430px);display:flex;align-items:flex-end;justify-content:center;
@@ -348,8 +373,10 @@
     @media(max-width:760px){
       .topbar-inner{min-height:62px;padding:8px 12px}.main-nav{display:none}.brand{min-width:0}.brand-mark{width:41px;height:41px}.brand-title{font-size:.96rem}
       .header-actions .daily,.header-actions .members{display:none}.header-btn{padding:8px 10px}.header-btn .desktop-label{display:none}
-      .shell{padding:14px 12px 90px}.hero-banner{min-height:260px;padding:24px 20px;border-radius:21px}.hero-title{font-size:2.35rem}.hero-actions .btn{width:100%}
-      .hero-banner.has-art .hero-copy{max-width:100%}.hero-art{right:-4%;top:18px;width:58%;opacity:.28}.hero-art img{filter:drop-shadow(0 16px 22px rgba(0,0,0,.3))}
+      .shell{padding:14px 12px 90px}.hero-banner{min-height:260px;border-radius:21px}.featured-slide{min-height:260px;padding:24px 20px}.hero-title{font-size:2.35rem}.hero-actions{padding-right:38px}.hero-actions .btn{width:100%}
+      .featured-slide.has-art .hero-copy{max-width:100%}.hero-art{right:-4%;top:18px;width:58%;opacity:.28}.hero-art img{filter:drop-shadow(0 16px 22px rgba(0,0,0,.3))}
+      .featured-arrow{width:36px;height:36px;top:24px}.featured-arrow.prev{right:56px}.featured-arrow.next{right:14px}
+      .featured-dots{right:auto;left:20px;bottom:14px}
       .toolbar{grid-template-columns:1fr}.toolbar>*{grid-column:auto!important}.online-world-grid,.lobby-grid,.game-grid{grid-template-columns:1fr}.online-world-actions .btn{width:100%}.form-grid{grid-template-columns:1fr}
       .profile-hero{align-items:flex-start;flex-direction:column;padding:22px}.profile-avatar{width:80px;height:80px;font-size:2.6rem}.profile-name{font-size:1.55rem}
       .rank-grid{grid-template-columns:1fr}.current-panel.has-lobby{position:sticky;top:68px;z-index:18}.current-cover{min-height:96px;padding:16px}.current-body{padding:12px}
@@ -400,17 +427,11 @@
 
   <main class="shell">
     <section id="view-multiplayer" class="view active">
-      <div id="featuredHero" class="hero-banner">
-        <div class="hero-copy">
-          <div class="eyebrow">Featured Multiplayer</div>
-          <div id="featuredTitle" class="hero-title">Chess Warlord</div>
-          <p id="featuredDesc" class="hero-desc">Command factions in an eight-player real-time territory war.</p>
-          <div class="hero-actions">
-            <button id="featuredMultiBtn" class="btn">Create a Lobby</button>
-            <button id="featuredFavoriteBtn" class="btn ghost-light">☆ Favorite</button>
-          </div>
-        </div>
-        <div id="featuredArtwork" class="hero-art" hidden></div>
+      <div id="featuredHero" class="hero-banner featured-carousel" aria-label="Featured games" aria-roledescription="carousel">
+        <div id="featuredTrack" class="featured-track"></div>
+        <button id="featuredPrevBtn" class="featured-arrow prev" type="button" aria-label="Previous featured game">‹</button>
+        <button id="featuredNextBtn" class="featured-arrow next" type="button" aria-label="Next featured game">›</button>
+        <div id="featuredDots" class="featured-dots" role="tablist" aria-label="Choose a featured game"></div>
       </div>
 
       <div class="section-head">
@@ -691,7 +712,7 @@
     const GAMES = [
       {key:"cat",title:"Cat & Mouse",emoji:"🐭",imagePath:"/graphics/titlegraphics/cat and mouse.png",desc:"Classic multiplayer chase.",route:"/game/catandmouse.html",category:"Party",modes:["multi"],autoRedirect:true},
       {key:"grass",title:"Grass Realms",emoji:"🌿",imagePath:"/graphics/titlegraphics/grass realms.png",desc:"Battle for a growing multiplayer realm.",route:"/game/grassrealms.html",category:"Strategy",modes:["multi"],autoRedirect:true},
-      {key:"warrealms",title:"War Realms",emoji:"◆⚔️",desc:"Mix every player’s 50-card command deck into one shared market and battle from the corners.",route:"/game/warrealms.html",category:"Cards",modes:["multi"],launchMode:"lobby",minPlayers:2,maxPlayers:4,autoRedirect:true},
+      {key:"warrealms",title:"War Realms",emoji:"◆⚔️",imagePath:"/graphics/titlegraphics/warrealms.png",desc:"Build a 50-card command deck, enter the shared War Market, and battle rival realms or challenge a Warbot alone.",route:"/game/warrealms.html",singleRoute:"/game/warrealms.html?mode=singleplayer",category:"Cards",modes:["single","multi"],launchMode:"lobby",minPlayers:2,maxPlayers:4,autoRedirect:true,autoUsername:true,featured:true},
       {key:"estate",title:"Estate Defense (Incomplete)",emoji:"🏡",desc:"Defend the estate together.",route:"/game/estatedefense.html",category:"Strategy",modes:["multi"]},
       {key:"mountain",title:"Mountain Blade (Incomplete)",multiTitle:"Mountain Blade Skirmish",emoji:"⛰️⚔️",desc:"Command troops through a medieval battlefield.",route:"/game/mountainblade.html",category:"Action",modes:["single","multi"],maxPlayers:4,autoRedirect:true},
       {key:"mountonline",title:"Mountain Blade Online (Incomplete)",emoji:"🗻🌐",desc:"Jump directly into the persistent online battlefield.",route:"/game/mountonline.html",category:"Action",modes:["multi"],launchMode:"realm",joinLabel:"Enter Battlefield"},
@@ -834,6 +855,9 @@
     let favorites=new Set(JSON.parse(read(SK.favorites)||"[]"));
     let recentGames=JSON.parse(read(SK.recent)||"[]");
     let lobbyBrowserUnsub=null,lobbyUnsub=null,inviteUnsub=null;
+    let featuredIndex=0;
+    let featuredTimer=null;
+    let featuredSwipeStart=null;
     const baseProfileCache=new Map();
     const profileBundleCache=new Map();
     let ownProfileRenderSeq=0;
@@ -1159,7 +1183,7 @@
         return;
       }
       if(game.requiresUser&&!username){pendingAction={type:"single",gameKey:game.key};return openModal("accountGateModal");}
-      await logGamePlay(game);let url=game.route;if(game.autoUsername&&username)url+=`${url.includes("?")?"&":"?"}username=${encodeURIComponent(username)}`;
+      await logGamePlay(game);let url=game.singleRoute||game.route;if(game.autoUsername&&username)url+=`${url.includes("?")?"&":"?"}username=${encodeURIComponent(username)}`;
       save(SK.lastGame,game.key);launchGameUrl(url,"single-play");
     }
 
@@ -1199,16 +1223,79 @@
       games.forEach(game=>grid.appendChild(createOnlineWorldCard(game)));
     }
 
-    function renderFeatured(){
-      const featured=MULTI_GAMES.filter(g=>g.featured).sort((a,b)=>(gamePlayCounts[b.key]||0)-(gamePlayCounts[a.key]||0))[0]||getGame("chesswarlord");
-      const mode=getLaunchMode(featured);
-      $("featuredHero").style.setProperty("--hero-a",gameColor(featured.key));$("featuredHero").style.setProperty("--hero-b","#111827");
-      renderLargeGameArtwork("featuredArtwork",featured,"has-art");
-      $("featuredTitle").textContent=featured.title;$("featuredDesc").textContent=featured.desc;
-      $("featuredMultiBtn").textContent=mode===MULTIPLAYER_LAUNCH_MODES.MATCHMAKING?(featured.joinLabel||"Find Match"):mode===MULTIPLAYER_LAUNCH_MODES.REALM?(featured.joinLabel||"Enter World"):"Create a Lobby";
-      $("featuredMultiBtn").onclick=()=>mode===MULTIPLAYER_LAUNCH_MODES.LOBBY?openCreateLobby(featured.key):joinOnlineGame(featured,true);
-      $("featuredFavoriteBtn").textContent=favorites.has(featured.key)?"★ Favorited":"☆ Favorite";$("featuredFavoriteBtn").onclick=()=>toggleFavorite(featured.key);
+    const featuredGames=()=>GAMES.filter(game=>game.featured);
+    function playFeaturedGame(game){
+      if(game.modes.includes("single"))return playSingle(game,true);
+      return getLaunchMode(game)===MULTIPLAYER_LAUNCH_MODES.LOBBY?openCreateLobby(game.key):joinOnlineGame(game,true);
     }
+    function setFeaturedIndex(index,restartTimer=false){
+      const games=featuredGames();
+      if(!games.length)return;
+      featuredIndex=(index+games.length)%games.length;
+      $("featuredTrack").style.transform=`translateX(-${featuredIndex*100}%)`;
+      $("featuredTrack").querySelectorAll(".featured-slide").forEach((slide,slideIndex)=>{
+        const active=slideIndex===featuredIndex;
+        slide.inert=!active;
+        slide.setAttribute("aria-hidden",String(!active));
+      });
+      $("featuredDots").querySelectorAll(".featured-dot").forEach((dot,dotIndex)=>{
+        const active=dotIndex===featuredIndex;
+        dot.classList.toggle("active",active);
+        dot.setAttribute("aria-selected",String(active));
+        dot.tabIndex=active?0:-1;
+      });
+      if(restartTimer)startFeaturedTimer();
+    }
+    function startFeaturedTimer(){
+      clearInterval(featuredTimer);
+      if(featuredGames().length>1&&!matchMedia("(prefers-reduced-motion: reduce)").matches){
+        featuredTimer=setInterval(()=>setFeaturedIndex(featuredIndex+1),6500);
+      }
+    }
+    function renderFeatured(){
+      const games=featuredGames();
+      if(!games.length){$("featuredHero").hidden=true;return;}
+      $("featuredHero").hidden=false;
+      featuredIndex=Math.min(featuredIndex,games.length-1);
+      $("featuredTrack").innerHTML=games.map((game,index)=>{
+        const imagePath=gameImagePath(game);
+        return `<article class="featured-slide ${imagePath?"has-art":""}" style="--hero-a:${gameColor(game.key)};--hero-b:#111827" role="group" aria-roledescription="slide" aria-label="${index+1} of ${games.length}: ${escapeHtml(game.title)}">
+          <div class="hero-copy">
+            <div class="eyebrow">Featured Game</div>
+            <div class="hero-title">${escapeHtml(game.title)}</div>
+            <p class="hero-desc">${escapeHtml(game.desc)}</p>
+            <div class="hero-actions">
+              <button class="btn featured-play" type="button" data-featured-key="${escapeHtml(game.key)}">▶ Play</button>
+              <button class="btn ghost-light featured-favorite" type="button" data-featured-key="${escapeHtml(game.key)}">${favorites.has(game.key)?"★ Favorited":"☆ Favorite"}</button>
+            </div>
+          </div>
+          ${imagePath?`<div class="hero-art"><img src="${escapeHtml(imagePath)}" alt="" decoding="async" onerror="this.parentElement.hidden=true"></div>`:""}
+        </article>`;
+      }).join("");
+      $("featuredDots").innerHTML=games.map((game,index)=>`<button class="featured-dot" type="button" role="tab" aria-label="Show ${escapeHtml(game.title)}" data-featured-index="${index}"></button>`).join("");
+      $("featuredTrack").querySelectorAll(".featured-play").forEach(button=>button.addEventListener("click",()=>playFeaturedGame(getGame(button.dataset.featuredKey))));
+      $("featuredTrack").querySelectorAll(".featured-favorite").forEach(button=>button.addEventListener("click",()=>toggleFavorite(button.dataset.featuredKey)));
+      $("featuredDots").querySelectorAll(".featured-dot").forEach(button=>button.addEventListener("click",()=>setFeaturedIndex(Number(button.dataset.featuredIndex),true)));
+      setFeaturedIndex(featuredIndex);
+      startFeaturedTimer();
+    }
+    $("featuredPrevBtn").addEventListener("click",()=>setFeaturedIndex(featuredIndex-1,true));
+    $("featuredNextBtn").addEventListener("click",()=>setFeaturedIndex(featuredIndex+1,true));
+    $("featuredHero").addEventListener("pointerdown",event=>{
+      if(event.target.closest("button"))return;
+      featuredSwipeStart={x:event.clientX,y:event.clientY,pointerId:event.pointerId};
+    });
+    $("featuredHero").addEventListener("pointerup",event=>{
+      if(!featuredSwipeStart||featuredSwipeStart.pointerId!==event.pointerId)return;
+      const dx=event.clientX-featuredSwipeStart.x,dy=event.clientY-featuredSwipeStart.y;
+      featuredSwipeStart=null;
+      if(Math.abs(dx)>=50&&Math.abs(dx)>Math.abs(dy))setFeaturedIndex(featuredIndex+(dx<0?1:-1),true);
+    });
+    $("featuredHero").addEventListener("pointercancel",()=>{featuredSwipeStart=null;});
+    document.addEventListener("visibilitychange",()=>{
+      if(document.hidden)clearInterval(featuredTimer);
+      else startFeaturedTimer();
+    });
 
     function populateStaticUI(){
       $("categoryPills").innerHTML="";CATEGORIES.forEach(cat=>{const btn=document.createElement("button");btn.className=`category-btn ${cat===selectedCategory?"active":""}`;btn.textContent=cat;btn.onclick=()=>{selectedCategory=cat;populateCategoriesOnly();renderSingleLibrary();};$("categoryPills").appendChild(btn);});
