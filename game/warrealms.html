@@ -533,7 +533,7 @@
   const presenceCollection = gameId ? collection(db, "lobbies", gameId, "warrealmsPresence") : null;
 
   const PROFILE_VERSION = 3;
-  const GAME_SCHEMA = 6;
+  const GAME_SCHEMA = 7;
   const STARTING_AUTHORITY = 50;
   const STARTING_SIGILS = 120;
   const STARTER_CARDS_PER_FACTION = 50;
@@ -553,11 +553,21 @@
     hard: { name: "Hard", handSize: 5, delay: 330, description: "Values faction synergy, purges weak cards, and targets high-impact bases." },
     impossible: { name: "Impossible", handSize: 6, delay: 260, description: "Draws six cards, scores combinations, preserves lethal damage, and uses every resource aggressively." }
   });
-  const MARKET_SIZE = 5;
+  const ROTATING_MARKET_SIZE = 5;
+  const MARKET_SIZE = 6;
   const MAX_PLAYERS = 4;
   const TOTAL_CUSTOM_CARDS = CARDS.length;
   const FIRST_COPY_PRICE_MULTIPLIER = 1.5;
   const CARD_ART_ROOT = new URL("../graphics/warrealmscards/", import.meta.url).href;
+  const HIRED_LOOTER_CARD = (() => {
+    const directMatches = ["hired_looter", "Hired_looter", "hired-looter", "Hired Looter"]
+      .map(candidate => getCard(candidate))
+      .find(Boolean);
+    return directMatches || CARDS.find(card => [card?.id, card?.name, card?.image].some(value => normalizeCardLookupKey(value) === "hiredlooter")) || null;
+  })();
+  const HIRED_LOOTER_ID = HIRED_LOOTER_CARD?.id || "";
+  const HIRED_LOOTER_MARKET_OWNER_ID = "war_realms_infinite_supply";
+  const HIRED_LOOTER_MARKET_OWNER_NAME = "Always Available · Infinite Supply";
 
   let firebaseUser = null;
   let profile = null;
@@ -655,6 +665,7 @@
     };
     game.marketDeck = (Array.isArray(game.marketDeck) ? game.marketDeck : []).map((entry, index) => normalizeMarket(entry, index, "deck")).filter(Boolean);
     game.tradeRow = (Array.isArray(game.tradeRow) ? game.tradeRow : []).map((entry, index) => normalizeMarket(entry, index, "row")).filter(Boolean);
+    refillMarket(game);
     game.scrapped = Array.isArray(game.scrapped) ? game.scrapped : [];
     game.log = Array.isArray(game.log) ? game.log : [];
     game.actionQueue = Array.isArray(game.actionQueue) ? game.actionQueue : [];
@@ -683,6 +694,38 @@
 
   function normalizeName(value) {
     return String(value || "").trim().toLowerCase();
+  }
+
+  function normalizeCardLookupKey(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\.png$/i, "")
+      .replace(/[^a-z0-9]/g, "");
+  }
+
+  function isHiredLooterCardId(cardId) {
+    if (!cardId) return false;
+    if (HIRED_LOOTER_ID && String(cardId) === String(HIRED_LOOTER_ID)) return true;
+    const card = getCard(cardId);
+    return normalizeCardLookupKey(cardId) === "hiredlooter"
+      || [card?.id, card?.name, card?.image].some(value => normalizeCardLookupKey(value) === "hiredlooter");
+  }
+
+  function isPermanentHiredLooterEntry(entry) {
+    return !!entry && isHiredLooterCardId(entry.id)
+      && (entry.permanentMarket === true || entry.originalOwnerId === HIRED_LOOTER_MARKET_OWNER_ID);
+  }
+
+  function permanentHiredLooterEntry() {
+    if (!HIRED_LOOTER_ID) return null;
+    return {
+      id: HIRED_LOOTER_ID,
+      originalOwnerId: HIRED_LOOTER_MARKET_OWNER_ID,
+      originalOwnerName: HIRED_LOOTER_MARKET_OWNER_NAME,
+      instanceId: "war_realms_permanent_hired_looter",
+      permanentMarket: true
+    };
   }
 
   function makeId(prefix = "wr") {
@@ -1787,11 +1830,12 @@
       id: cardId,
       originalOwnerId: entrant.uid,
       originalOwnerName: entrant.name
-    })));
+    }))).filter(entry => !isHiredLooterCardId(entry.id));
     game.marketDeck = shuffleWithGame(game, marketPool);
     refillMarket(game);
     beginTurn(game, currentPlayer(game));
-    addLog(game, `${marketPool.length} contributed cards were mixed into the War Market.`);
+    addLog(game, `${marketPool.length} contributed cards were mixed into the five rotating War Market slots.`);
+    if (HIRED_LOOTER_ID) addLog(game, `${HIRED_LOOTER_CARD.name} occupies the permanent sixth Trade Row slot with infinite copies.`);
     addLog(game, `${currentPlayer(game).name} commands first.`);
     return game;
   }
@@ -2000,9 +2044,22 @@
   }
 
   function refillMarket(game) {
-    while (game.tradeRow.length < MARKET_SIZE && game.marketDeck.length) {
-      game.tradeRow.push(game.marketDeck.pop());
+    game.marketDeck = (Array.isArray(game.marketDeck) ? game.marketDeck : [])
+      .filter(entry => entry && !isHiredLooterCardId(entry.id));
+
+    const rotatingCards = (Array.isArray(game.tradeRow) ? game.tradeRow : [])
+      .filter(entry => entry && !isHiredLooterCardId(entry.id))
+      .slice(0, HIRED_LOOTER_ID ? ROTATING_MARKET_SIZE : MARKET_SIZE);
+    const rotatingTarget = HIRED_LOOTER_ID ? ROTATING_MARKET_SIZE : MARKET_SIZE;
+
+    while (rotatingCards.length < rotatingTarget && game.marketDeck.length) {
+      const next = game.marketDeck.pop();
+      if (next && !isHiredLooterCardId(next.id)) rotatingCards.push(next);
     }
+
+    game.tradeRow = rotatingCards;
+    const permanentCard = permanentHiredLooterEntry();
+    if (permanentCard) game.tradeRow.push(permanentCard);
   }
 
   function finishGameIfNeeded(game) {
@@ -2076,6 +2133,8 @@
         if (card.type === "base") actor.bases.push(entry); else actor.played.push(entry);
         pushActionQueue(game, actor, card);
         pushVisualEvent(game, "card-play", { actorId: actor.id, cardId: card.id, instanceId: entry.instanceId, zone: card.type === "base" ? "bases" : "played" });
+        // Primary abilities always resolve first. Ally and Double Ally abilities are additive bonuses,
+        // never replacements for the card's primary effect.
         applyEffect(game, actor, primaryCardEffect(card), { cardId: card.id, source: "primary" });
         triggerFactionAllies(game, actor, card.faction);
         addLog(game, `${actor.name} played ${card.name}.`);
@@ -2091,14 +2150,17 @@
       case "BUY": {
         const marketIndex = Number(action.index);
         const marketEntry = game.tradeRow[marketIndex];
-        const card = marketEntry && CARD_MAP[marketEntry.id];
+        const card = marketEntry && getCard(marketEntry.id);
         if (!card) return "That market card is no longer available.";
         if (actor.trade < card.cost) return "Not enough Trade.";
         actor.trade -= card.cost;
         actor.discard.push(card.id);
-        game.tradeRow.splice(marketIndex, 1);
+        const permanentSupply = isPermanentHiredLooterEntry(marketEntry);
+        if (!permanentSupply) game.tradeRow.splice(marketIndex, 1);
         refillMarket(game);
-        addLog(game, `${actor.name} bought ${card.name}, originally contributed by ${marketEntry.originalOwnerName}.`);
+        addLog(game, permanentSupply
+          ? `${actor.name} bought ${card.name} from the infinite permanent supply.`
+          : `${actor.name} bought ${card.name}, originally contributed by ${marketEntry.originalOwnerName}.`);
         break;
       }
       case "SCRAP_MARKET": {
@@ -2106,6 +2168,7 @@
         const marketIndex = Number(action.index);
         const marketEntry = game.tradeRow[marketIndex];
         if (!marketEntry) return "That market card is no longer available.";
+        if (isPermanentHiredLooterEntry(marketEntry)) return "Hired Looter is always available and cannot be erased from the Trade Row.";
         actor.scrapMarket -= 1;
         game.scrapped.push({ ...marketEntry, reason: "market" });
         pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId: marketEntry.id, target: "market", reason: "market" });
@@ -2397,7 +2460,8 @@
       const card = getCard(entry?.id);
       if (!card) return battleCardHtml(entry, { ownerName: entry?.originalOwnerName || "Unknown", locked: true });
       const canBuy = canAct && (me?.trade || 0) >= card.cost;
-      const primaryAction = `<button class="btn small good" data-act="buy-market" data-index="${index}" ${canBuy ? "" : "disabled"}>Buy ${card.cost}</button>`;
+      const permanentSupply = isPermanentHiredLooterEntry(entry);
+      const primaryAction = `<button class="btn small good" data-act="buy-market" data-index="${index}" ${canBuy ? "" : "disabled"}>Buy ${card.cost}${permanentSupply ? " · ∞" : ""}</button>`;
       return battleCardHtml(entry, { ownerName: entry.originalOwnerName, primaryAction, attackable: canBuy });
     }).join("") || '<div class="emptyZone">The Trade Row is empty.</div>';
   }
@@ -2749,7 +2813,8 @@
       <div class="selectorGrid">${state.tradeRow.map((entry, index) => {
         const card = getCard(entry.id);
         if (!card) return "";
-        return `<div class="selectorItem"><div class="selectorSigil" style="color:var(--${card.faction})">${card.sigil}</div><div><div class="selectorName">${escapeHtml(card.name)}</div><div class="selectorMeta">Contributed by ${escapeHtml(entry.originalOwnerName)}</div></div><button class="btn small warning" data-act="erase-market" data-index="${index}">Erase</button></div>`;
+        const permanentSupply = isPermanentHiredLooterEntry(entry);
+        return `<div class="selectorItem"><div class="selectorSigil" style="color:var(--${card.faction})">${card.sigil}</div><div><div class="selectorName">${escapeHtml(card.name)}</div><div class="selectorMeta">${permanentSupply ? "Permanent sixth slot · infinite copies" : `Contributed by ${escapeHtml(entry.originalOwnerName)}`}</div></div><button class="btn small warning" data-act="erase-market" data-index="${index}" ${permanentSupply ? "disabled" : ""}>${permanentSupply ? "Protected" : "Erase"}</button></div>`;
       }).join("") || '<div class="emptyZone">The market is empty.</div>'}</div>
     `);
   }
@@ -2758,9 +2823,9 @@
     openModal("How War Realms Works", "A turn-based 2–4 player shared-market deckbuilder", `
       <div class="detailCopy">
         <p><b>Armory mode:</b> When the lobby sends only one player, this file opens the profile store and deck builder instead of starting combat. The store reads every card directly from the shared card pack, supports faction plus owned/unowned filters, and loads artwork as it enters view. The Deck Builder shows separate scrollable In Deck and Out of Deck lists; tap any card to move one copy between them.</p>
-        <p><b>Bring 50:</b> Every multiplayer commander contributes their saved 50-card command deck. Those decks are mixed into one shared War Market, and each market card still shows who originally contributed it.</p>
+        <p><b>Bring 50:</b> Every multiplayer commander contributes their saved 50-card command deck. Those decks supply five rotating Trade Row slots. Hired Looter is always the protected sixth card and can be purchased any number of times.</p>
         <p><b>Start with 10:</b> Every player begins the battle with eight Realm Coins and two Militia Blades. Draw five cards at the beginning of your turn. Press Play on a card or drag it upward out of your hand to play it, then spend Trade in the Trade Row.</p>
-        <p><b>Faction allies:</b> Ally triggers when the card and one other active matching-faction card are present. Double Ally requires the card and two other active matching-faction cards—three matching cards total. Each ability triggers only once per turn, and persistent bases count.</p>
+        <p><b>Faction allies:</b> A card always resolves its Primary ability first. Ally and Double Ally effects are added afterward as bonus effects; they never replace or cancel the Primary ability. Ally requires one other active matching-faction card, while Double Ally requires two others. Each bonus triggers only once per turn, and persistent bases count.</p>
         <p><b>Bases and Outposts:</b> Bases remain in play and produce their primary effect at the start of their owner's turns. An Outpost has taunt: while a realm controls any Outpost, its health and non-Outpost bases cannot be attacked. Outposts must be destroyed first.</p>
         <p><b>Targeting:</b> Combat is stored in your Combat pool. Choose exactly which attackable base or enemy realm receives it. Bases require Combat equal to their Defense and are destroyed immediately. Attacking a realm spends all remaining Combat.</p>
         <p><b>Current card abilities:</b> Trade, Combat, healing, card draw, forced opponent discard, Disable, Market Erase, permanent Purge, faction Ally triggers, persistent Base production, Outpost protection, and Sacrifice abilities. Compact symbols beneath each card make these effects visible without covering the full artwork.</p>
@@ -3047,7 +3112,7 @@
 
         bot = currentPlayer(state);
         if (bot.scrapMarket > 0 && state.tradeRow.length && (difficulty !== "easy" || Math.random() < .35)) {
-          const scored = state.tradeRow.map((entry, index) => ({ index, card: getCard(entry.id) })).filter(item => item.card)
+          const scored = state.tradeRow.map((entry, index) => ({ entry, index, card: getCard(entry.id) })).filter(item => item.card && !isPermanentHiredLooterEntry(item.entry))
             .map(item => ({ ...item, score: cardAiValue(item.card, bot, difficulty, true) })).sort((left, right) => left.score - right.score);
           if (scored[0]) await applyBotAction({ type: "SCRAP_MARKET", index: scored[0].index }, token);
         }
