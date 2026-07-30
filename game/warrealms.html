@@ -417,6 +417,223 @@
       body.battleMode .ownCards .gameCard{width:69px;flex-basis:69px}
     }
 
+    /* MOBILE BATTLEFIELD — SCROLLABLE, COMPLETE, AND ACTION-SAFE */
+    @media(max-width:620px),(max-height:620px) and (pointer:coarse){
+      html,body{height:auto;min-height:100%}
+      body.battleMode{
+        overflow-x:hidden;
+        overflow-y:auto;
+        -webkit-overflow-scrolling:touch;
+        overscroll-behavior-y:auto;
+      }
+      body.battleMode .topbar{
+        display:flex;
+        position:sticky;
+        top:0;
+        min-height:48px;
+        padding:calc(5px + var(--safeTop)) 6px 5px;
+      }
+      body.battleMode .brandText,
+      body.battleMode .topTags{display:none}
+      body.battleMode .brandMark{width:28px;height:28px}
+      body.battleMode .topGrow{min-width:0}
+      body.battleMode .topBtn{min-height:30px;padding:5px 8px;font-size:8px}
+
+      body.battleMode #battleView{
+        height:auto;
+        min-height:calc(100dvh - 48px);
+        overflow:visible;
+      }
+      body.battleMode .battleShell{
+        height:auto;
+        min-height:calc(100dvh - 48px);
+        grid-template-rows:auto auto auto;
+        gap:6px;
+        padding:4px 4px calc(10px + var(--safeBottom));
+        overflow:visible;
+      }
+
+      body.battleMode .realmArea{
+        min-height:0;
+        gap:4px;
+        overflow:visible;
+      }
+      body.battleMode .realmSeat{
+        height:clamp(155px,32dvh,250px);
+        min-height:155px;
+        overflow:hidden;
+      }
+      body.battleMode .realmField{
+        min-height:0;
+        align-items:stretch;
+        overflow-x:auto;
+        overflow-y:auto;
+        overscroll-behavior:contain;
+        scrollbar-width:thin;
+      }
+      body.battleMode .realmField .playedCard{display:flex}
+      body.battleMode .realmField .gameCard{
+        width:92px;
+        flex:0 0 92px;
+        height:100%;
+        max-height:100%;
+      }
+
+      body.battleMode .marketBand{
+        min-height:0;
+        grid-template-columns:34px minmax(0,1fr);
+        grid-template-rows:auto auto;
+        gap:4px;
+        padding:4px;
+        overflow:visible;
+      }
+      body.battleMode .marketInfo{grid-row:1/3}
+      body.battleMode .marketRow{
+        grid-column:2;
+        height:clamp(172px,35dvh,250px);
+        min-height:172px;
+        overflow-x:auto;
+        overflow-y:hidden;
+        overscroll-behavior-x:contain;
+        scrollbar-width:thin;
+      }
+      body.battleMode .marketRow .gameCard{width:96px;flex:0 0 96px}
+      body.battleMode .turnPanel{
+        grid-column:2;
+        display:grid;
+        grid-template-columns:minmax(0,1fr);
+        gap:3px;
+        min-width:0;
+        padding:3px;
+        overflow:visible;
+      }
+      body.battleMode .resourceRow{
+        display:grid;
+        grid-template-columns:repeat(4,minmax(0,1fr));
+        gap:3px;
+        overflow:visible;
+      }
+      body.battleMode .resource{
+        min-width:0;
+        min-height:24px;
+        padding:2px;
+        font-size:6.5px;
+      }
+      body.battleMode .turnActions{
+        display:grid;
+        grid-template-columns:repeat(5,minmax(0,1fr));
+        gap:3px;
+        margin:0;
+      }
+      body.battleMode .turnActions .btn{
+        min-width:0;
+        min-height:25px;
+        padding:2px;
+        font-size:6px;
+        overflow:hidden;
+        text-overflow:ellipsis;
+      }
+
+      body.battleMode .playerDock{
+        min-height:0;
+        display:grid;
+        grid-template-rows:auto auto;
+        overflow:visible;
+      }
+      body.battleMode .dockHead{
+        min-height:34px;
+        display:flex;
+        padding:4px 5px;
+      }
+      body.battleMode .dockStatus{display:none}
+      body.battleMode .dockButtons{flex:0 0 auto}
+      body.battleMode .dockButtons .btn{
+        min-height:26px;
+        min-width:0;
+        padding:3px 6px;
+        font-size:6.5px;
+      }
+      body.battleMode .dockButtons .btn span{display:inline}
+      body.battleMode .dockBody{
+        height:auto;
+        min-height:0;
+        display:grid;
+        grid-template-columns:minmax(0,1fr);
+        grid-template-rows:auto auto;
+        gap:5px;
+        padding:4px;
+      }
+      body.battleMode .handZone,
+      body.battleMode .ownField{
+        height:clamp(180px,38dvh,270px);
+        min-height:180px;
+        display:grid;
+        grid-template-rows:auto minmax(0,1fr);
+        overflow:hidden;
+      }
+      body.battleMode .handRow,
+      body.battleMode .ownCards{
+        height:100%;
+        min-height:0;
+        gap:4px;
+        overflow-x:auto;
+        overflow-y:hidden;
+        overscroll-behavior-x:contain;
+        scrollbar-width:thin;
+      }
+      body.battleMode .handRow .gameCard{width:102px;flex:0 0 102px}
+      body.battleMode .ownCards .gameCard{width:98px;flex:0 0 98px}
+      body.battleMode .zoneLabel{
+        min-height:18px;
+        padding:2px 4px 3px;
+        font-size:6.5px;
+      }
+      body.battleMode .gameCard .cardActions{padding:3px;gap:3px}
+      body.battleMode .gameCard .cardActions .btn{
+        min-height:24px;
+        padding:2px 3px;
+        font-size:6.2px;
+      }
+
+      #modalOverlay{padding:calc(4px + var(--safeTop)) 4px calc(4px + var(--safeBottom))}
+      #modalOverlay .modal{
+        width:min(760px,100%);
+        max-height:calc(100dvh - var(--safeTop) - var(--safeBottom) - 8px);
+      }
+      #modalOverlay .modalHead{padding:9px 10px}
+      #modalOverlay .modalBody{
+        padding:10px;
+        overflow:auto;
+        -webkit-overflow-scrolling:touch;
+        overscroll-behavior:contain;
+      }
+      #modalOverlay .detailGrid{
+        grid-template-columns:minmax(0,1fr);
+        gap:12px;
+      }
+      #modalOverlay .detailArt{
+        width:min(320px,88vw);
+        height:auto;
+        aspect-ratio:512/716;
+        margin:0 auto;
+        font-size:64px;
+      }
+      #modalOverlay .detailCopy h3{font-size:22px}
+      #modalOverlay .detailCopy p{font-size:10px}
+    }
+
+    @media(max-height:620px) and (orientation:landscape) and (pointer:coarse){
+      body.battleMode .realmSeat{height:170px;min-height:170px}
+      body.battleMode .marketRow{height:180px;min-height:180px}
+      body.battleMode .dockBody{
+        grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);
+        grid-template-rows:auto;
+      }
+      body.battleMode .handZone,
+      body.battleMode .ownField{height:190px;min-height:190px}
+      #modalOverlay .detailArt{width:min(280px,58vw)}
+    }
+
   </style>
 </head>
 <body>
@@ -2648,7 +2865,7 @@
         <span class="realmName">${escapeHtml(player.name)}${mine ? " · YOU" : ""}</span>
         <span class="realmStats"><span class="handStat">✋ ${(player.hand || []).length}</span>${pendingChoiceFor(player) ? `<span style="color:#dfa8ff">OR</span>` : ""}${(player.forcedDiscard || player.pendingDiscard) > 0 ? `<span style="color:#ff91a0">↘ ${player.forcedDiscard || player.pendingDiscard}</span>` : ""}<span class="deckStat">▣ ${(player.draw || []).length}</span><span class="discardStat">↻ ${(player.discard || []).length}</span><span class="realmHp">♥ ${player.health}${(player.shield || 0) > 0 ? ` · 🛡 ${player.shield}` : ""}</span></span>
       </div>
-      <div class="realmField">${cardHtml || '<div class="emptyZone">No bases in play</div>'}</div>
+      <div class="realmField">${cardHtml || '<div class="emptyZone">No bases or cards played</div>'}</div>
       ${realmAttackAllowed ? `<button class="btn small primary" style="position:absolute;right:6px;bottom:6px" data-act="attack-player" data-target-id="${player.id}">Attack Realm · ${myPlayer().combat}</button>` : ""}
       ${canAct && blockers.length ? `<div style="position:absolute;right:6px;bottom:6px;font-size:7px;color:#e4c95a;font-weight:900">OUTPOST PROTECTION</div>` : ""}
     </article>`;
