@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 9;
+export const WAR_REALMS_CARD_VERSION = 10;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -208,6 +208,8 @@ export const CARDS = Object.freeze([
   name: "Hired Looter",
   image: "hired_looter.png",
   faction: "neutral",
+  collectible: false,
+  permanentMarket: true,
   cost: 2,
   shop_cost: 20,
   type: "ship",
@@ -3171,6 +3173,22 @@ export const CARD_MAP = Object.freeze(
   Object.fromEntries(CARDS.map(card => [card.id, card]))
 );
 
+// Cards available for permanent ownership, the Armory, and command decks.
+// Permanent Trade Row cards such as Hired Looter remain in CARD_MAP for battle lookup.
+export const COLLECTIBLE_CARDS = Object.freeze(
+  CARDS.filter(card => card.collectible !== false)
+);
+
+export const COLLECTIBLE_CARD_MAP = Object.freeze(
+  Object.fromEntries(
+    COLLECTIBLE_CARDS.map(card => [card.id, card])
+  )
+);
+
+export const PERMANENT_MARKET_CARDS = Object.freeze(
+  CARDS.filter(card => card.permanentMarket === true)
+);
+
 export const ALL_CARD_MAP = Object.freeze({
   ...STARTER_CARDS,
   ...CARD_MAP
@@ -3188,7 +3206,9 @@ export function createStarterDeck() {
 }
 
 export function defaultOwnedCards() {
-  return Object.fromEntries(CARDS.map(card => [card.id, 1]));
+  return Object.fromEntries(
+    COLLECTIBLE_CARDS.map(card => [card.id, 1])
+  );
 }
 
 export function countCards(cardIds = []) {
@@ -3205,7 +3225,7 @@ export function buildBalancedCommandDeck(
   const targets = [13, 13, 12, 12];
 
   const byFaction = factionOrder.map(faction =>
-    CARDS.filter(
+    COLLECTIBLE_CARDS.filter(
       card =>
         card.faction === faction &&
         (owned[card.id] || 0) > 0
@@ -3251,7 +3271,7 @@ export function buildBalancedCommandDeck(
     }
   });
 
-  for (const card of CARDS) {
+  for (const card of COLLECTIBLE_CARDS) {
     while (
       deck.length < COMMAND_DECK_SIZE &&
       deck.filter(cardId => cardId === card.id).length <
@@ -3290,10 +3310,21 @@ export function validateCommandDeck(
   const counts = countCards(deck);
 
   for (const [cardId, count] of Object.entries(counts)) {
-    if (!CARD_MAP[cardId]) {
+    const card = CARD_MAP[cardId];
+
+    if (!card) {
       return {
         valid: false,
         message: `Unknown card in deck: ${cardId}.`
+      };
+    }
+
+    if (card.collectible === false) {
+      return {
+        valid: false,
+        message:
+          `${card.name} is a permanent Trade Row card ` +
+          `and cannot be added to a command deck.`
       };
     }
 
@@ -3311,7 +3342,7 @@ export function validateCommandDeck(
         valid: false,
         message:
           `You only own ${owned[cardId] || 0} copies of ` +
-          `${CARD_MAP[cardId].name}.`
+          `${card.name}.`
       };
     }
   }
