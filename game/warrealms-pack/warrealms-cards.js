@@ -323,6 +323,206 @@ export const CARDS = Object.freeze([
   sacrificeText: "Sacrifice: Gain 3 Disable.",
   flavor: "Its final pulse leaves entire fortresses unable to remember their purpose."
 },
+  {
+  id: "probability_beacon",
+  name: "Probability Beacon",
+  image: "probability_beacon.png",
+  faction: "yellow",
+  cost: 2,
+  shop_cost: 25,
+  type: "base",
+  defense: 3,
+  outpost: false,
+  sigil: "◈",
+  effect: { trade: 1 },
+  ally: { shield: 1 },
+  text: "Gain 1 Trade.",
+  allyText: "Gain 1 Shield.",
+  flavor: "It marks the future most likely to reward those who follow."
+},
+
+{
+  id: "nullfield_pylon",
+  name: "Nullfield Pylon",
+  image: "nullfield_pylon.png",
+  faction: "yellow",
+  cost: 3,
+  shop_cost: 35,
+  type: "base",
+  defense: 4,
+  outpost: true,
+  sigil: "◈",
+  effect: { shield: 1 },
+  ally: { stun: 1 },
+  text: "Outpost. Gain 1 Shield.",
+  allyText: "Gain 1 Disable.",
+  flavor: "Everything near it becomes slightly less certain of its purpose."
+},
+
+{
+  id: "threadway_station",
+  name: "Threadway Station",
+  image: "threadway_station.png",
+  faction: "yellow",
+  cost: 3,
+  shop_cost: 35,
+  type: "base",
+  defense: 4,
+  outpost: false,
+  sigil: "◈",
+  effect: { trade: 1 },
+  ally: { combat: 1 },
+  sacrifice: { draw: 1 },
+  text: "Gain 1 Trade.",
+  allyText: "Gain 1 Combat.",
+  sacrificeText: "Sacrifice: Draw 1 card.",
+  flavor: "Every route passes through it, including several that do not yet exist."
+},
+
+
+// ==========================================================
+// BLUE — AZURE ASCENDANCY
+// ==========================================================
+
+{
+  id: "roadside_shrine",
+  name: "Roadside Shrine",
+  image: "roadside_shrine.png",
+  faction: "blue",
+  cost: 1,
+  shop_cost: 15,
+  type: "base",
+  defense: 3,
+  outpost: false,
+  sigil: "✦",
+  effect: { heal: 1 },
+  ally: {},
+  text: "Gain 1 Authority.",
+  allyText: "",
+  flavor: "A small sanctuary can still shelter a very large hope."
+},
+
+{
+  id: "silver_gate_watch",
+  name: "Silver-Gate Watch",
+  image: "silver_gate_watch.png",
+  faction: "blue",
+  cost: 2,
+  shop_cost: 25,
+  type: "base",
+  defense: 4,
+  outpost: true,
+  sigil: "✦",
+  effect: { shield: 1 },
+  ally: { heal: 1 },
+  text: "Outpost. Gain 1 Shield.",
+  allyText: "Gain 1 Authority.",
+  flavor: "The gate remains open only to those arriving beneath the proper banner."
+},
+
+{
+  id: "pilgrim_supply_chapel",
+  name: "Pilgrim Supply Chapel",
+  image: "pilgrim_supply_chapel.png",
+  faction: "blue",
+  cost: 3,
+  shop_cost: 35,
+  type: "base",
+  defense: 4,
+  outpost: false,
+  sigil: "✦",
+  effect: { trade: 1 },
+  ally: { heal: 2 },
+  sacrifice: { shield: 3 },
+  text: "Gain 1 Trade.",
+  allyText: "Gain 2 Authority.",
+  sacrificeText: "Sacrifice: Gain 3 Shield.",
+  flavor: "Bread, steel, and blessings are distributed from the same sacred counter."
+},
+
+
+// ==========================================================
+// GREEN — GORAK WARHOST
+// ==========================================================
+
+{
+  id: "mudwall_camp",
+  name: "Mudwall Camp",
+  image: "mudwall_camp.png",
+  faction: "green",
+  cost: 1,
+  shop_cost: 15,
+  type: "base",
+  defense: 3,
+  outpost: false,
+  sigil: "⬢",
+  effect: { combat: 1 },
+  ally: {},
+  text: "Gain 1 Combat.",
+  allyText: "",
+  flavor: "It is mostly mud, sharpened stakes, and very confident shouting."
+},
+
+{
+  id: "scrapwood_barricade",
+  name: "Scrapwood Barricade",
+  image: "scrapwood_barricade.png",
+  faction: "green",
+  cost: 2,
+  shop_cost: 25,
+  type: "base",
+  defense: 4,
+  outpost: true,
+  sigil: "⬢",
+  effect: { combat: 1 },
+  ally: { combat: 1 },
+  text: "Outpost. Gain 1 Combat.",
+  allyText: "Gain 1 Combat.",
+  flavor: "Nothing matches, but everything points toward the enemy."
+},
+
+
+// ==========================================================
+// RED — UMBRAL COVENANT
+// ==========================================================
+
+{
+  id: "candlecrypt_altar",
+  name: "Candlecrypt Altar",
+  image: "candlecrypt_altar.png",
+  faction: "red",
+  cost: 2,
+  shop_cost: 25,
+  type: "base",
+  defense: 3,
+  outpost: false,
+  sigil: "◒",
+  effect: { combat: 1 },
+  ally: { scrapOwn: 1 },
+  text: "Gain 1 Combat.",
+  allyText: "Gain 1 Purge.",
+  flavor: "Each candle marks something the Covenant has chosen to forget."
+},
+
+{
+  id: "black_tithe_post",
+  name: "Black Tithe Post",
+  image: "black_tithe_post.png",
+  faction: "red",
+  cost: 3,
+  shop_cost: 35,
+  type: "base",
+  defense: 4,
+  outpost: true,
+  sigil: "◒",
+  effect: { trade: 1 },
+  ally: { combat: 2 },
+  sacrifice: { scrapOwn: 1 },
+  text: "Outpost. Gain 1 Trade.",
+  allyText: "Gain 2 Combat.",
+  sacrificeText: "Sacrifice: Gain 1 Purge.",
+  flavor: "All who pass must leave behind coin, blood, or an unwanted memory."
+},
 
 {
   id: "probability_splinter",
