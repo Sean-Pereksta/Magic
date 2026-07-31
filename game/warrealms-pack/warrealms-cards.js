@@ -728,9 +728,6 @@ export const CARDS = Object.freeze([
   allyText: "Gain 1 Shield.",
   flavor: "It arrives one decision before anyone agrees to summon it."
 },
-  Below are **20 complete cards**: **10 low-cost, single-primary-action cards** and **10 cards that scale with the number of active Bases you control**. Any low-cost card whose primary action is only `draw: 1` now has a small Ally or Double Ally payoff so it is not merely deck-neutral. The cards use effect keys already present in your library. 
-
-```js
 // ==========================================================
 // 20 NEW CARDS
 //
