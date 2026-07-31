@@ -480,6 +480,413 @@ export const CARDS = Object.freeze([
   allyText: "Gain 1 Shield.",
   flavor: "It arrives one decision before anyone agrees to summon it."
 },
+  Below are **20 complete cards**: **10 low-cost, single-primary-action cards** and **10 cards that scale with the number of active Bases you control**. Any low-cost card whose primary action is only `draw: 1` now has a small Ally or Double Ally payoff so it is not merely deck-neutral. The cards use effect keys already present in your library. 
+
+```js
+// ==========================================================
+// 20 NEW CARDS
+//
+// 10 LOW-COST SINGLE-ACTION CARDS
+// 10 CARDS THAT SCALE WITH ACTIVE BASES
+// ==========================================================
+
+
+// ==========================================================
+// LOW-COST SINGLE-ACTION CARDS
+//
+// Each card costs 1–3 and has only one Primary effect type.
+// Draw-only cards receive a small Ally or Double Ally ability.
+// ==========================================================
+
+
+// ==========================================================
+// YELLOW — XYTHE CONCORD
+// ==========================================================
+
+{
+  id: "unspent_possibility",
+  name: "Unspent Possibility",
+  image: "unspent_possibility.png",
+  faction: "yellow",
+  cost: 1,
+  shop_cost: 12,
+  type: "ship",
+  sigil: "◈",
+  effect: { trade: 2 },
+  ally: {},
+  text: "Gain 2 Trade.",
+  allyText: "",
+  flavor: "Even a future that never arrives may still pay its debts."
+},
+
+{
+  id: "thoughtsnare_mite",
+  name: "Thoughtsnare Mite",
+  image: "thoughtsnare_mite.png",
+  faction: "yellow",
+  cost: 2,
+  shop_cost: 22,
+  type: "ship",
+  sigil: "◈",
+  effect: { stun: 1 },
+  ally: {},
+  text: "Gain 1 Disable.",
+  allyText: "",
+  flavor: "It catches one command and leaves an army waiting for instructions."
+},
+
+{
+  id: "fractured_foresight",
+  name: "Fractured Foresight",
+  image: "fractured_foresight.png",
+  faction: "yellow",
+  cost: 2,
+  shop_cost: 25,
+  type: "ship",
+  sigil: "◈",
+  effect: { draw: 1 },
+  ally: { shield: 1 },
+  doubleAlly: { trade: 1 },
+  text: "Draw 1 card.",
+  allyText: "Gain 1 Shield.",
+  doubleAllyText: "Gain 1 Trade.",
+  flavor: "The vision is incomplete, but the missing pieces still shape the path."
+},
+
+
+// ==========================================================
+// BLUE — AZURE ASCENDANCY
+// ==========================================================
+
+{
+  id: "dawnward_attendant",
+  name: "Dawnward Attendant",
+  image: "dawnward_attendant.png",
+  faction: "blue",
+  cost: 1,
+  shop_cost: 12,
+  type: "ship",
+  sigil: "✦",
+  effect: { heal: 3 },
+  ally: {},
+  text: "Gain 3 Authority.",
+  allyText: "",
+  flavor: "The smallest blessing can carry a soldier through the longest night."
+},
+
+{
+  id: "oathplate_novice",
+  name: "Oathplate Novice",
+  image: "oathplate_novice.png",
+  faction: "blue",
+  cost: 2,
+  shop_cost: 20,
+  type: "ship",
+  sigil: "✦",
+  effect: { shield: 3 },
+  ally: {},
+  text: "Gain 3 Shield.",
+  allyText: "",
+  flavor: "The armor is borrowed. The courage is entirely their own."
+},
+
+{
+  id: "reliquary_revelation",
+  name: "Reliquary Revelation",
+  image: "reliquary_revelation.png",
+  faction: "blue",
+  cost: 3,
+  shop_cost: 32,
+  type: "ship",
+  sigil: "✦",
+  effect: { draw: 1 },
+  ally: { heal: 1 },
+  doubleAlly: { shield: 1 },
+  text: "Draw 1 card.",
+  allyText: "Gain 1 Authority.",
+  doubleAllyText: "Gain 1 Shield.",
+  flavor: "The relic offers no answer without also offering hope."
+},
+
+
+// ==========================================================
+// GREEN — GORAK WARHOST
+// ==========================================================
+
+{
+  id: "knucklebone_rusher",
+  name: "Knucklebone Rusher",
+  image: "knucklebone_rusher.png",
+  faction: "green",
+  cost: 1,
+  shop_cost: 12,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combat: 3 },
+  ally: {},
+  text: "Gain 3 Combat.",
+  allyText: "",
+  flavor: "It began charging before anyone finished explaining the target."
+},
+
+{
+  id: "wreckstall_raider",
+  name: "Wreckstall Raider",
+  image: "wreckstall_raider.png",
+  faction: "green",
+  cost: 2,
+  shop_cost: 22,
+  type: "ship",
+  sigil: "⬢",
+  effect: { scrapMarket: 1 },
+  ally: {},
+  text: "Gain 1 Market Erase.",
+  allyText: "",
+  flavor: "What cannot be stolen can still be made unavailable."
+},
+
+
+// ==========================================================
+// RED — UMBRAL COVENANT
+// ==========================================================
+
+{
+  id: "ashledger_acolyte",
+  name: "Ashledger Acolyte",
+  image: "ashledger_acolyte.png",
+  faction: "red",
+  cost: 1,
+  shop_cost: 15,
+  type: "ship",
+  sigil: "◒",
+  effect: { scrapOwn: 1 },
+  ally: {},
+  text: "Gain 1 Purge.",
+  allyText: "",
+  flavor: "Every erased name leaves room for a more useful obligation."
+},
+
+{
+  id: "graveglass_vision",
+  name: "Graveglass Vision",
+  image: "graveglass_vision.png",
+  faction: "red",
+  cost: 3,
+  shop_cost: 35,
+  type: "ship",
+  sigil: "◒",
+  effect: { draw: 1 },
+  ally: { combat: 1 },
+  doubleAlly: { scrapOwn: 1 },
+  text: "Draw 1 card.",
+  allyText: "Gain 1 Combat.",
+  doubleAllyText: "Gain 1 Purge.",
+  flavor: "The glass reveals tomorrow by consuming one unwanted yesterday."
+},
+
+
+// ==========================================================
+// CARDS THAT SCALE WITH ACTIVE BASES
+//
+// These use existing supported scaling keys:
+// - combatPerBase
+// - tradePerBase
+// - healPerBase
+//
+// The scaling includes the Base card itself if it is active.
+// ==========================================================
+
+
+// ==========================================================
+// YELLOW — XYTHE CONCORD
+// ==========================================================
+
+{
+  id: "convergence_tithekeeper",
+  name: "Convergence Tithekeeper",
+  image: "convergence_tithekeeper.png",
+  faction: "yellow",
+  cost: 3,
+  shop_cost: 42,
+  type: "ship",
+  sigil: "◈",
+  effect: { tradePerBase: 1 },
+  ally: { shield: 1 },
+  text: "Gain 1 Trade for each active Base you control.",
+  allyText: "Gain 1 Shield.",
+  flavor: "Every secured reality owes the Concord a portion of its prosperity."
+},
+
+{
+  id: "many_gate_predator",
+  name: "Many-Gate Predator",
+  image: "many_gate_predator.png",
+  faction: "yellow",
+  cost: 5,
+  shop_cost: 80,
+  type: "ship",
+  sigil: "◈",
+  effect: { combat: 2, combatPerBase: 1 },
+  ally: { stun: 1 },
+  text: "Gain 2 Combat plus 1 Combat for each active Base you control.",
+  allyText: "Gain 1 Disable.",
+  flavor: "Each open gate gives it another direction from which to strike."
+},
+
+{
+  id: "network_of_unmade_paths",
+  name: "Network of Unmade Paths",
+  image: "network_of_unmade_paths.png",
+  faction: "yellow",
+  cost: 5,
+  shop_cost: 75,
+  type: "base",
+  defense: 5,
+  outpost: false,
+  sigil: "◈",
+  effect: { tradePerBase: 1 },
+  ally: { shield: 2 },
+  sacrifice: { stun: 2 },
+  text: "Gain 1 Trade for each active Base you control.",
+  allyText: "Gain 2 Shield.",
+  sacrificeText: "Sacrifice: Gain 2 Disable.",
+  flavor: "A single route is travel. A thousand routes become dominion."
+},
+
+
+// ==========================================================
+// BLUE — AZURE ASCENDANCY
+// ==========================================================
+
+{
+  id: "procession_quartermaster",
+  name: "Procession Quartermaster",
+  image: "procession_quartermaster.png",
+  faction: "blue",
+  cost: 3,
+  shop_cost: 40,
+  type: "ship",
+  sigil: "✦",
+  effect: { tradePerBase: 1 },
+  ally: { heal: 1 },
+  text: "Gain 1 Trade for each active Base you control.",
+  allyText: "Gain 1 Authority.",
+  flavor: "Every sanctuary adds another wagon to the sacred procession."
+},
+
+{
+  id: "saint_of_many_shelters",
+  name: "Saint of Many Shelters",
+  image: "saint_of_many_shelters.png",
+  faction: "blue",
+  cost: 4,
+  shop_cost: 58,
+  type: "ship",
+  sigil: "✦",
+  effect: { heal: 1, healPerBase: 1 },
+  ally: { shield: 2 },
+  text: "Gain 1 Authority plus 1 Authority for each active Base you control.",
+  allyText: "Gain 2 Shield.",
+  flavor: "Every roof raised in mercy strengthens the blessing carried between them."
+},
+
+{
+  id: "cathedral_supply_chain",
+  name: "Cathedral Supply Chain",
+  image: "cathedral_supply_chain.png",
+  faction: "blue",
+  cost: 5,
+  shop_cost: 72,
+  type: "base",
+  defense: 5,
+  outpost: false,
+  sigil: "✦",
+  effect: { trade: 1, healPerBase: 1 },
+  ally: { trade: 1 },
+  sacrifice: { heal: 5 },
+  text: "Gain 1 Trade and 1 Authority for each active Base you control.",
+  allyText: "Gain 1 Trade.",
+  sacrificeText: "Sacrifice: Gain 5 Authority.",
+  flavor: "No sanctuary stands alone when every road between them is consecrated."
+},
+
+
+// ==========================================================
+// GREEN — GORAK WARHOST
+// ==========================================================
+
+{
+  id: "campcount_brute",
+  name: "Campcount Brute",
+  image: "campcount_brute.png",
+  faction: "green",
+  cost: 3,
+  shop_cost: 42,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combatPerBase: 2 },
+  ally: {},
+  text: "Gain 2 Combat for each active Base you control.",
+  allyText: "",
+  flavor: "It counts war camps by the number of armies ready to follow it."
+},
+
+{
+  id: "fortress_back_breaker",
+  name: "Fortress-Back Breaker",
+  image: "fortress_back_breaker.png",
+  faction: "green",
+  cost: 5,
+  shop_cost: 78,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combat: 3, combatPerBase: 2 },
+  ally: { combat: 2 },
+  text: "Gain 3 Combat plus 2 Combat for each active Base you control.",
+  allyText: "Gain 2 Combat.",
+  flavor: "Every fortress behind it is another reason to strike harder ahead."
+},
+
+
+// ==========================================================
+// RED — UMBRAL COVENANT
+// ==========================================================
+
+{
+  id: "tithe_of_black_towers",
+  name: "Tithe of Black Towers",
+  image: "tithe_of_black_towers.png",
+  faction: "red",
+  cost: 3,
+  shop_cost: 45,
+  type: "ship",
+  sigil: "◒",
+  effect: { combatPerBase: 1 },
+  ally: { scrapOwn: 1 },
+  text: "Gain 1 Combat for each active Base you control.",
+  allyText: "Gain 1 Purge.",
+  flavor: "Each tower pays its due in fear, blood, and obedient silence."
+},
+
+{
+  id: "covenant_tribute_engine",
+  name: "Covenant Tribute Engine",
+  image: "covenant_tribute_engine.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 75,
+  type: "base",
+  defense: 5,
+  outpost: false,
+  sigil: "◒",
+  effect: { combat: 1, combatPerBase: 1 },
+  ally: { scrapOwn: 1 },
+  sacrifice: { draw: 1 },
+  text: "Gain 1 Combat plus 1 Combat for each active Base you control.",
+  allyText: "Gain 1 Purge.",
+  sacrificeText: "Sacrifice: Draw 1 card.",
+  flavor: "Every altar feeds the engine, and the engine remembers every offering."
+},
 
 {
   id: "relief_procession",
