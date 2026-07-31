@@ -439,7 +439,55 @@ export const CARDS = Object.freeze([
   sacrificeText: "Sacrifice: Gain 3 Shield.",
   flavor: "Bread, steel, and blessings are distributed from the same sacred counter."
 },
+{
+  id: "voidstall_picker",
+  name: "Voidstall Picker",
+  image: "voidstall_picker.png",
+  faction: "yellow",
+  cost: 2,
+  shop_cost: 25,
+  type: "ship",
+  sigil: "◈",
+  effect: { scrapMarket: 1 },
+  ally: { trade: 1 },
+  text: "Gain 1 Market Erase.",
+  allyText: "Gain 1 Trade.",
+  flavor: "It removes the least favorable possibility before anyone else notices it."
+},
 
+{
+  id: "wreckmarket_runt",
+  name: "Wreckmarket Runt",
+  image: "wreckmarket_runt.png",
+  faction: "green",
+  cost: 1,
+  shop_cost: 15,
+  type: "ship",
+  sigil: "⬢",
+  effect: { combat: 1 },
+  ally: {},
+  sacrifice: { scrapMarket: 3 },
+  text: "Gain 1 Combat.",
+  allyText: "",
+  sacrificeText: "Sacrifice: Gain 3 Market Erase.",
+  flavor: "When the runt cannot afford the market, it makes sure nobody else can either."
+},
+
+{
+  id: "ash_contract_broker",
+  name: "Ash-Contract Broker",
+  image: "ash_contract_broker.png",
+  faction: "red",
+  cost: 2,
+  shop_cost: 25,
+  type: "ship",
+  sigil: "◒",
+  effect: { trade: 1, scrapMarket: 1 },
+  ally: {},
+  text: "Gain 1 Trade and 1 Market Erase.",
+  allyText: "",
+  flavor: "Every agreement it signs quietly removes another offer from consideration."
+},
 
 // ==========================================================
 // GREEN — GORAK WARHOST
