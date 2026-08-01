@@ -15,17 +15,22 @@ service cloud.firestore {
         && request.resource.data.category in [
           'map_lives', 'map_timed',
           'flag_lives', 'flag_timed',
-          'flagmap_lives', 'flagmap_timed'
+          'flagmap_lives', 'flagmap_timed',
+          'regions_score', 'stats_score'
         ]
-        && request.resource.data.gameMode in ['map', 'flag', 'flagmap']
-        && request.resource.data.challengeMode in ['lives', 'timed']
+        && request.resource.data.gameMode in ['map', 'flag', 'flagmap', 'regions', 'stats']
+        && request.resource.data.challengeMode in ['lives', 'timed', 'score']
         && request.resource.data.score is int
         && request.resource.data.score >= 0
+        && request.resource.data.maxScore is int
+        && request.resource.data.maxScore >= 1
+        && request.resource.data.maxScore <= 2000000000
+        && request.resource.data.score <= request.resource.data.maxScore
         && request.resource.data.correct is int
         && request.resource.data.correct >= 0
         && request.resource.data.correct <= request.resource.data.total
         && request.resource.data.total is int
-        && request.resource.data.total >= 240
+        && request.resource.data.total >= 25
         && request.resource.data.total <= 300
         && request.resource.data.mistakes is int
         && request.resource.data.mistakes >= 0
@@ -37,7 +42,7 @@ service cloud.firestore {
         && request.resource.data.updatedAt is timestamp
         && request.resource.data.keys().hasOnly([
           'uid', 'displayName', 'category', 'gameMode', 'challengeMode',
-          'score', 'correct', 'total', 'mistakes', 'elapsedMs',
+          'score', 'maxScore', 'correct', 'total', 'mistakes', 'elapsedMs',
           'penaltyMs', 'completed', 'updatedAt'
         ]);
     }
