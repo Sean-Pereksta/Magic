@@ -410,7 +410,7 @@
         min-height: 0;
         height: 100%;
         display: flex;
-        align-items: stretch;
+        align-items: flex-start;
         gap: 4px;
         overflow-x: auto;
         overflow-y: hidden;
@@ -427,20 +427,29 @@
         display: none;
       }
 
-      body.battleMode .gameCard {
-        align-self: stretch;
-        height: 100%;
+      body.battleMode .realmField .gameCard,
+      body.battleMode .marketRow .gameCard,
+      body.battleMode .handRow .gameCard,
+      body.battleMode .ownCards .gameCard {
+        align-self: flex-start;
+        height: auto;
+        max-height: 100%;
         min-height: 0;
+        display: flex;
+        flex-direction: column;
         scroll-snap-align: start;
         border-radius: 8px;
       }
 
-      body.battleMode .battleCardVisual {
-        flex: 1 1 auto;
+      body.battleMode .realmField .battleCardVisual,
+      body.battleMode .marketRow .battleCardVisual,
+      body.battleMode .handRow .battleCardVisual,
+      body.battleMode .ownCards .battleCardVisual {
+        flex: 0 1 auto;
         width: 100%;
         height: auto;
         min-height: 0;
-        aspect-ratio: auto;
+        aspect-ratio: 512 / 716;
       }
 
       body.battleMode .battleCardVisual img {
@@ -450,22 +459,18 @@
       }
 
       body.battleMode .cardAbilityRail {
-        flex: 0 0 auto;
-        min-height: 18px;
-        padding: 2px;
-        gap: 2px;
-      }
-
-      body.battleMode .cardAbilityRail .abilityGlyph {
-        min-width: 18px;
-        height: 14px;
-        padding: 0 3px;
-        font-size: 5.5px;
+        display: none;
       }
 
       body.battleMode .gameCard .cardActions {
-        flex: 0 0 auto;
-        display: block;
+        position: static;
+        z-index: 2;
+        flex: 0 0 30px;
+        height: 30px;
+        min-height: 30px;
+        display: flex;
+        align-items: stretch;
+        gap: 2px;
         padding: 3px;
       }
 
@@ -474,11 +479,13 @@
       }
 
       body.battleMode .gameCard .cardActions .btn {
-        width: 100%;
+        width: auto;
+        flex: 1 1 0;
         min-width: 0;
-        min-height: 29px;
-        padding: 3px 4px;
-        font-size: 7.5px;
+        height: 24px;
+        min-height: 24px;
+        padding: 2px 4px;
+        font-size: 7px;
         line-height: 1;
         white-space: nowrap;
         overflow: hidden;
@@ -525,16 +532,19 @@
       }
 
       body.battleMode .zoneLabel {
-        flex: 0 0 17px;
-        min-height: 17px;
-        padding: 2px 4px;
+        flex: 0 0 14px;
+        min-height: 14px;
+        padding: 1px 3px;
         font-size: 6px;
         line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       body.battleMode .dockHead {
-        min-height: 31px;
-        padding: 3px 5px;
+        min-height: 28px;
+        padding: 2px 5px;
       }
 
       body.battleMode .dockStatus {
@@ -546,9 +556,9 @@
       }
 
       body.battleMode .dockButtons .btn {
-        min-height: 25px;
-        padding: 3px 6px;
-        font-size: 6.5px;
+        min-height: 23px;
+        padding: 2px 5px;
+        font-size: 6px;
       }
 
       body.battleMode .marketInfo {
@@ -611,9 +621,9 @@
         display: grid;
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows:
-          minmax(100px, 23fr)
-          minmax(150px, 31fr)
-          minmax(210px, 46fr);
+          minmax(95px, 21fr)
+          minmax(170px, 34fr)
+          minmax(220px, 45fr);
       }
 
       body.battleMode .realmArea {
@@ -643,8 +653,8 @@
       }
 
       body.battleMode .realmField .gameCard {
-        width: 76px;
-        flex: 0 0 76px;
+        width: 78px;
+        flex: 0 0 78px;
       }
 
       body.battleMode .marketStack {
@@ -673,26 +683,46 @@
       }
 
       body.battleMode .marketRow .gameCard {
-        width: 84px;
-        flex: 0 0 84px;
+        width: 100px;
+        flex: 0 0 100px;
       }
 
       body.battleMode .turnPanel {
         grid-column: 2;
         grid-row: 2;
+        display: grid;
+        grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+        align-items: center;
+      }
+
+      body.battleMode .turnPanel .resourceRow {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      body.battleMode .turnPanel .resource {
+        min-height: 25px;
+        font-size: 6.5px;
+      }
+
+      body.battleMode .turnPanel .turnActions {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+
+      body.battleMode .turnPanel .turnActions .btn {
+        min-height: 25px;
+        padding: 2px;
+        font-size: 6px;
       }
 
       body.battleMode .playerDock {
         display: grid;
-        grid-template-rows: 31px minmax(0, 1fr);
+        grid-template-rows: 28px minmax(0, 1fr);
       }
 
       body.battleMode .dockBody {
         display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        grid-template-rows:
-          minmax(0, 1.18fr)
-          minmax(0, 0.82fr);
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+        grid-template-rows: minmax(0, 1fr);
         gap: 3px;
         padding: 3px;
       }
@@ -702,18 +732,18 @@
         height: auto;
         min-height: 0;
         display: grid;
-        grid-template-rows: 17px minmax(0, 1fr);
+        grid-template-rows: 14px minmax(0, 1fr);
         padding: 2px;
       }
 
       body.battleMode .handRow .gameCard {
-        width: 94px;
-        flex: 0 0 94px;
+        width: 112px;
+        flex: 0 0 112px;
       }
 
       body.battleMode .ownCards .gameCard {
-        width: 80px;
-        flex: 0 0 80px;
+        width: 96px;
+        flex: 0 0 96px;
       }
     }
 
@@ -753,8 +783,8 @@
       }
 
       body.battleMode .realmField .gameCard {
-        width: 70px;
-        flex: 0 0 70px;
+        width: 84px;
+        flex: 0 0 84px;
       }
 
       body.battleMode .marketStack {
@@ -785,20 +815,38 @@
       }
 
       body.battleMode .marketRow .gameCard {
-        width: 82px;
-        flex: 0 0 82px;
+        width: 104px;
+        flex: 0 0 104px;
       }
 
       body.battleMode .turnPanel {
         grid-column: 2;
         grid-row: 2;
+        display: grid;
+        grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+        align-items: center;
+      }
+
+      body.battleMode .turnPanel .resource {
+        min-height: 25px;
+        font-size: 6.5px;
+      }
+
+      body.battleMode .turnPanel .turnActions {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+
+      body.battleMode .turnPanel .turnActions .btn {
+        min-height: 25px;
+        padding: 2px;
+        font-size: 6px;
       }
 
       body.battleMode .playerDock {
         grid-column: 3;
         grid-row: 1;
         display: grid;
-        grid-template-rows: 31px minmax(0, 1fr);
+        grid-template-rows: 28px minmax(0, 1fr);
       }
 
       body.battleMode .dockBody {
@@ -816,18 +864,18 @@
         height: 100%;
         min-height: 0;
         display: grid;
-        grid-template-rows: 17px minmax(0, 1fr);
+        grid-template-rows: 14px minmax(0, 1fr);
         padding: 2px;
       }
 
       body.battleMode .handRow .gameCard {
-        width: 90px;
-        flex: 0 0 90px;
+        width: 112px;
+        flex: 0 0 112px;
       }
 
       body.battleMode .ownCards .gameCard {
-        width: 78px;
-        flex: 0 0 78px;
+        width: 96px;
+        flex: 0 0 96px;
       }
     }
 
