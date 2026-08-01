@@ -27,6 +27,8 @@
       --radius:16px;
       --safeTop:env(safe-area-inset-top,0px);
       --safeBottom:env(safe-area-inset-bottom,0px);
+      --battleZoom:1;
+      --battleZoomWidth:100%;
     }
     *{box-sizing:border-box}
     html,body{min-height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -51,6 +53,10 @@
     .tag{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid #334151;border-radius:999px;background:#131b24;padding:5px 8px;font-size:8px;font-weight:850;color:#bdc7d4}
     .topBtn{min-height:34px;border:1px solid #384758;border-radius:9px;background:#18212b;padding:7px 10px;font-size:9px;font-weight:900;cursor:pointer}
     .topBtn:hover{background:#202c38}.topBtn.danger{border-color:#6d3140;background:#2a161d;color:#ffc2ca}
+    .battleZoomControls{display:none;align-items:center;gap:3px;border:1px solid #344354;border-radius:9px;background:#101720;padding:2px}
+    .battleZoomBtn{width:28px;height:28px;border:0;border-radius:6px;background:#202c38;color:#fff;font-size:16px;font-weight:950;line-height:1;cursor:pointer}
+    .battleZoomBtn:hover{background:#2b3a49}.battleZoomBtn:disabled{opacity:.35;cursor:not-allowed}
+    .battleZoomValue{min-width:34px;text-align:center;color:#aeb9c6;font-size:7px;font-weight:950}
 
     .view{min-height:calc(100dvh - 58px)}
     .shell{width:min(1380px,100%);margin:0 auto;padding:18px 16px calc(32px + var(--safeBottom))}
@@ -127,8 +133,15 @@
     /* BATTLE */
     #battleView{height:calc(100dvh - 58px);overflow:hidden}.battleShell{height:100%;display:grid;grid-template-rows:minmax(112px,1fr) auto minmax(150px,.9fr);gap:5px;padding:5px 7px calc(5px + var(--safeBottom))}
     .realmArea{min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;overflow:auto}.realmSeat{min-height:110px;border:1px solid #2d3947;border-radius:12px;background:rgba(15,21,29,.96);overflow:hidden;display:flex;flex-direction:column;position:relative}.realmSeat.active{border-color:#d5b846;box-shadow:inset 0 0 0 1px rgba(213,184,70,.35),0 0 16px rgba(213,184,70,.12)}.realmSeat.dead{opacity:.42;filter:grayscale(.7)}
-    .realmBar{height:31px;flex:0 0 31px;padding:5px 7px;display:flex;align-items:center;gap:6px;background:#151d27;border-bottom:1px solid #2a3542}.realmAvatar{width:20px;height:20px;border-radius:6px;background:#253242;display:grid;place-items:center;font-size:9px;font-weight:950}.realmName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:950}.realmStats{margin-left:auto;display:flex;gap:7px;font-size:8px;font-weight:900}.realmHp{color:#ff7785}.realmTurn{width:6px;height:6px;border-radius:50%;background:#e2c54d;box-shadow:0 0 8px #e2c54d}
+    .realmBar{min-height:35px;flex:0 0 35px;padding:4px 6px;display:flex;align-items:center;gap:5px;background:#151d27;border-bottom:1px solid #2a3542}.realmAvatar{width:20px;height:20px;border-radius:6px;background:#253242;display:grid;place-items:center;font-size:9px;font-weight:950}.realmName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:950}.realmStats{margin-left:auto;display:flex;gap:6px;font-size:8px;font-weight:900}.realmHp{flex:0 0 auto;border:1px solid #a9475b;border-radius:999px;background:linear-gradient(135deg,#5b1e2c,#27131a);padding:4px 7px;color:#ffd5da;font-size:9px;font-weight:1000;box-shadow:0 0 12px rgba(255,84,108,.16)}.realmHp.low{border-color:#ff6f7f;background:#6b1d2d;color:#fff;box-shadow:0 0 16px rgba(255,90,112,.36)}.realmAttackButton{flex:0 0 auto;min-height:25px!important;padding:3px 7px!important;font-size:7px!important;white-space:nowrap}.realmProtection{flex:0 0 auto;border:1px solid #816d2a;border-radius:999px;background:#302713;padding:4px 6px;color:#f1d36a;font-size:6px;font-weight:950;white-space:nowrap}.realmTurn{width:6px;height:6px;border-radius:50%;background:#e2c54d;box-shadow:0 0 8px #e2c54d}
     .realmField{min-height:0;flex:1;padding:5px;display:flex;align-items:flex-start;gap:5px;overflow:auto}.realmField .gameCard{width:100px;flex:0 0 100px}.realmField .cardArt{height:35px}.realmField .cardSigil{font-size:20px}.realmField .cardRules{min-height:46px;font-size:6.5px;padding:5px}.realmField .cardHead{min-height:23px;padding:4px}.realmField .cardMeta{padding:3px 5px}.realmField .cardActions{padding:4px}.realmField .btn{min-height:25px;font-size:7px;padding:4px}.emptyZone{margin:auto;color:#536171;font-size:8px;font-weight:850;text-align:center;padding:8px}
+    .marketStack{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:4px}
+    .roundEarningsBar{min-width:0;display:flex;align-items:stretch;gap:4px;overflow-x:auto;overscroll-behavior-x:contain}
+    .roundEarningsLabel{flex:0 0 auto;min-width:52px;border:1px solid #3b4a5b;border-radius:9px;background:#101720;padding:4px 5px;display:grid;place-items:center;color:#a9b5c2;font-size:6px;font-weight:950;letter-spacing:.06em;text-align:center}
+    .roundEarningsPlayer{flex:1 0 140px;min-width:0;border:1px solid #344354;border-radius:9px;background:#111923;padding:3px 5px;display:grid;grid-template-columns:repeat(5,minmax(0,auto));align-items:center;justify-content:space-between;gap:2px 4px;color:#9eabb9;font-size:6.5px;font-weight:900}
+    .roundEarningsPlayer.active{border-color:#c5aa43;background:linear-gradient(135deg,rgba(214,187,61,.14),rgba(73,167,232,.07)),#111923;box-shadow:inset 0 0 0 1px rgba(214,187,61,.12)}
+    .roundEarningsName{grid-column:1/-1;min-width:0;max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f2f5f9;font-size:7.5px;font-weight:950}.roundEarningsName em{color:#e5ca55;font-style:normal}
+    .roundEarningsHealth{border:1px solid #8c3c4e;border-radius:999px;background:#35151e;padding:2px 5px;color:#ff9aa7;white-space:nowrap}.roundEarningsResource{white-space:nowrap}.roundEarningsResource.trade{color:#e3c44d}.roundEarningsResource.combat{color:#ff7b88}.roundEarningsResource.control{color:#88c9f1}.roundEarningsResource.purge{color:#dc6980}
     .marketBand{border:1px solid #455568;border-radius:12px;background:linear-gradient(135deg,rgba(73,167,232,.13),rgba(214,187,61,.11)),#101720;padding:5px;display:grid;grid-template-columns:70px minmax(0,1fr) 118px;gap:5px;align-items:center;box-shadow:inset 0 0 24px rgba(73,167,232,.05)}.marketInfo{height:100%;border:1px solid #344252;border-radius:9px;background:#121a23;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:6px;font-size:7px;color:#9eabb9}.marketInfo b{font-size:18px;color:#e0c34b}.marketRow{min-width:0;display:flex;align-items:stretch;gap:4px;overflow-x:auto;padding:4px;border:1px solid #3a4858;border-radius:9px;background:linear-gradient(180deg,rgba(214,187,61,.08),rgba(73,167,232,.07)),#0a1119;box-shadow:inset 0 8px 20px rgba(0,0,0,.2)}.marketRow .gameCard{width:118px;flex:0 0 118px}.marketRow .cardArt{height:32px}.marketRow .cardSigil{font-size:22px}.marketRow .cardRules{min-height:43px;max-height:43px;overflow:hidden;font-size:6.4px;padding:4px}.marketRow .cardHead{min-height:24px;padding:4px 5px}.marketRow .cardMeta{padding:3px 5px}.marketRow .cardActions{padding:3px}.marketRow .btn{min-height:23px;font-size:6.5px;padding:3px}
     .turnPanel{height:100%;border:1px solid #344252;border-radius:9px;background:#121a23;padding:7px;display:flex;flex-direction:column;justify-content:center;gap:5px}.turnLine{font-size:8px;line-height:1.3;color:#c6d0db;font-weight:850}.resourceRow{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}.resource{min-height:30px;border:1px solid #354555;border-radius:7px;background:#17212b;display:grid;place-items:center;font-size:8px;font-weight:950}.resource.trade{color:#e3c44d}.resource.combat{color:#ff7b88}.resource.control{color:#88c9f1}.resource.purge{color:#dc6980}.turnActions{display:grid;grid-template-columns:1fr 1fr;gap:4px}
     .playerDock{min-height:0;border:1px solid #303c49;border-radius:12px;background:rgba(13,18,25,.97);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}.dockHead{min-height:36px;padding:5px 7px;display:flex;align-items:center;gap:6px;border-bottom:1px solid #293541;background:#141c25}.dockTitle{font-size:9px;font-weight:950}.dockStatus{font-size:7px;color:#9ba8b6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dockGrow{flex:1}.dockButtons{display:flex;gap:4px}.dockBody{min-height:0;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(170px,.8fr);gap:5px;padding:5px}.handZone,.ownField{min-width:0;min-height:0;border:1px solid #293542;border-radius:9px;background:#0a0f15;padding:4px;overflow:auto}.zoneLabel{font-size:7px;color:#6f7e8e;text-transform:uppercase;letter-spacing:.13em;font-weight:900;padding:2px 3px 5px}.handRow,.ownCards{display:flex;align-items:flex-start;gap:5px;min-width:0}.handRow .gameCard{width:118px;flex:0 0 118px}.ownCards .gameCard{width:100px;flex:0 0 100px}.handRow .cardArt,.ownCards .cardArt{height:31px}.handRow .cardSigil,.ownCards .cardSigil{font-size:22px}.handRow .cardRules,.ownCards .cardRules{min-height:39px;max-height:39px;overflow:hidden;font-size:6.2px;padding:4px}.handRow .cardHead,.ownCards .cardHead{min-height:23px;padding:4px}.handRow .cardMeta,.ownCards .cardMeta{padding:3px 5px}.handRow .cardActions,.ownCards .cardActions{padding:3px}.handRow .btn,.ownCards .btn{min-height:23px;font-size:6.5px;padding:3px}
@@ -446,11 +459,21 @@
       body.battleMode .brandMark{width:28px;height:28px}
       body.battleMode .topGrow{min-width:0}
       body.battleMode .topBtn{min-height:30px;padding:5px 8px;font-size:8px}
+      body.battleMode .battleZoomControls{display:flex;margin-left:1px}
+      body.battleMode .battleZoomBtn{width:26px;height:26px;font-size:15px}
+      body.battleMode .battleZoomValue{min-width:31px;font-size:6.5px}
+      body.battleMode .realmBar{padding:3px 4px;gap:3px}
+      body.battleMode .realmStats{gap:3px;font-size:6.5px}
+      body.battleMode .realmHp{padding:3px 5px;font-size:7px}
+      body.battleMode .realmAttackButton{min-height:22px!important;padding:2px 4px!important;font-size:6px!important}
+      body.battleMode .realmProtection{padding:3px 4px;font-size:5.5px}
 
       body.battleMode #battleView{
+        width:var(--battleZoomWidth);
         height:auto;
         min-height:calc(100dvh - 48px);
         overflow:visible;
+        zoom:var(--battleZoom);
       }
       body.battleMode .battleShell{
         height:auto;
@@ -467,8 +490,8 @@
         overflow:visible;
       }
       body.battleMode .realmSeat{
-        height:clamp(155px,32dvh,250px);
-        min-height:155px;
+        height:clamp(148px,30dvh,230px);
+        min-height:148px;
         overflow:hidden;
       }
       body.battleMode .realmField{
@@ -481,8 +504,8 @@
       }
       body.battleMode .realmField .playedCard{display:flex}
       body.battleMode .realmField .gameCard{
-        width:92px;
-        flex:0 0 92px;
+        width:clamp(78px,23vw,84px);
+        flex:0 0 clamp(78px,23vw,84px);
         height:100%;
         max-height:100%;
       }
@@ -498,14 +521,14 @@
       body.battleMode .marketInfo{grid-row:1/3}
       body.battleMode .marketRow{
         grid-column:2;
-        height:clamp(172px,35dvh,250px);
-        min-height:172px;
+        height:clamp(158px,32dvh,225px);
+        min-height:158px;
         overflow-x:auto;
         overflow-y:hidden;
         overscroll-behavior-x:contain;
         scrollbar-width:thin;
       }
-      body.battleMode .marketRow .gameCard{width:96px;flex:0 0 96px}
+      body.battleMode .marketRow .gameCard{width:clamp(82px,24vw,88px);flex:0 0 clamp(82px,24vw,88px)}
       body.battleMode .turnPanel{
         grid-column:2;
         display:grid;
@@ -573,8 +596,8 @@
       }
       body.battleMode .handZone,
       body.battleMode .ownField{
-        height:clamp(180px,38dvh,270px);
-        min-height:180px;
+        height:clamp(168px,35dvh,245px);
+        min-height:168px;
         display:grid;
         grid-template-rows:auto minmax(0,1fr);
         overflow:hidden;
@@ -589,8 +612,8 @@
         overscroll-behavior-x:contain;
         scrollbar-width:thin;
       }
-      body.battleMode .handRow .gameCard{width:102px;flex:0 0 102px}
-      body.battleMode .ownCards .gameCard{width:98px;flex:0 0 98px}
+      body.battleMode .handRow .gameCard{width:clamp(86px,25vw,92px);flex:0 0 clamp(86px,25vw,92px)}
+      body.battleMode .ownCards .gameCard{width:clamp(82px,24vw,88px);flex:0 0 clamp(82px,24vw,88px)}
       body.battleMode .zoneLabel{
         min-height:18px;
         padding:2px 4px 3px;
@@ -620,7 +643,7 @@
         gap:12px;
       }
       #modalOverlay .detailArt{
-        width:min(320px,88vw);
+        width:min(390px,94vw);
         height:auto;
         aspect-ratio:512/716;
         margin:0 auto;
@@ -631,15 +654,15 @@
     }
 
     @media(max-height:620px) and (orientation:landscape) and (pointer:coarse){
-      body.battleMode .realmSeat{height:170px;min-height:170px}
-      body.battleMode .marketRow{height:180px;min-height:180px}
+      body.battleMode .realmSeat{height:160px;min-height:160px}
+      body.battleMode .marketRow{height:168px;min-height:168px}
       body.battleMode .dockBody{
         grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);
         grid-template-rows:auto;
       }
       body.battleMode .handZone,
-      body.battleMode .ownField{height:190px;min-height:190px}
-      #modalOverlay .detailArt{width:min(280px,58vw)}
+      body.battleMode .ownField{height:176px;min-height:176px}
+      #modalOverlay .detailArt{width:min(330px,64vw)}
     }
 
 
@@ -684,6 +707,11 @@
     <button class="topBtn" id="helpBtn">Rules</button>
     <button class="topBtn" id="fullscreenBtn">Full</button>
     <button class="topBtn" id="lobbyBtn">Lobby</button>
+    <div class="battleZoomControls" role="group" aria-label="Battlefield zoom">
+      <button class="battleZoomBtn" id="battleZoomOutBtn" type="button" aria-label="Zoom battlefield out" title="Zoom out">−</button>
+      <span class="battleZoomValue" id="battleZoomLabel" aria-live="polite">100%</span>
+      <button class="battleZoomBtn" id="battleZoomInBtn" type="button" aria-label="Zoom battlefield in" title="Zoom in">+</button>
+    </div>
   </header>
 
   <main id="armoryView" class="view hidden">
@@ -767,25 +795,28 @@
     <div class="battleShell">
       <section class="realmArea" id="realmArea"></section>
 
-      <section class="marketBand">
-        <div class="marketInfo"><span>TRADE ROW</span><b id="marketDeckCount">0</b><span>cards remain</span></div>
-        <div class="marketRow" id="marketRow"></div>
-        <aside class="turnPanel">
-          <div class="turnLine" id="turnLine">Waiting for battle</div>
-          <div class="resourceRow">
-            <div class="resource trade" id="tradeResource">◆ 0</div>
-            <div class="resource combat" id="combatResource">⚔ 0</div>
-            <div class="resource control" id="controlResource">⌁ 0</div>
-            <div class="resource purge" id="purgeResource">✕ 0</div>
-          </div>
-          <div class="turnActions">
-            <button class="btn small good" id="playAllBtn">Play all</button>
-            <button class="btn small warning" id="purgeBtn">Purge</button>
-            <button class="btn small blue" id="disableBtn">Disable</button>
-            <button class="btn small warning hidden" id="destroyBaseBtn">Raze</button>
-            <button class="btn small primary" id="endTurnBtn">End</button>
-          </div>
-        </aside>
+      <section class="marketStack">
+        <div class="roundEarningsBar" id="roundEarningsBar" aria-label="Round resources"></div>
+        <section class="marketBand">
+          <div class="marketInfo"><span>TRADE ROW</span><b id="marketDeckCount">0</b><span>cards remain</span></div>
+          <div class="marketRow" id="marketRow"></div>
+          <aside class="turnPanel">
+            <div class="turnLine" id="turnLine">Waiting for battle</div>
+            <div class="resourceRow">
+              <div class="resource trade" id="tradeResource">◆ 0</div>
+              <div class="resource combat" id="combatResource">⚔ 0</div>
+              <div class="resource control" id="controlResource">⌁ 0</div>
+              <div class="resource purge" id="purgeResource">✕ 0</div>
+            </div>
+            <div class="turnActions">
+              <button class="btn small good" id="playAllBtn">Play all</button>
+              <button class="btn small warning" id="purgeBtn">Purge</button>
+              <button class="btn small blue" id="disableBtn">Disable</button>
+              <button class="btn small warning hidden" id="destroyBaseBtn">Raze</button>
+              <button class="btn small primary" id="endTurnBtn">End</button>
+            </div>
+          </aside>
+        </section>
       </section>
 
       <section class="playerDock">
@@ -943,7 +974,7 @@
 
   const PROFILE_VERSION = 3;
   const GAME_SCHEMA = 9;
-  const STARTING_AUTHORITY = 50;
+  const STARTING_AUTHORITY = 60;
   const STARTING_SIGILS = 120;
   const STARTER_CARDS_PER_FACTION = 50;
   const STARTER_UNIQUE_CARDS_PER_FACTION = 13;
@@ -1061,6 +1092,10 @@
   let visualEventChain = Promise.resolve();
   let draftClockInterval = null;
   let draftFinalizeBusy = false;
+  const BATTLE_ZOOM_MIN = .75;
+  const BATTLE_ZOOM_MAX = 1.15;
+  const BATTLE_ZOOM_STEP = .1;
+  let battleZoom = Math.min(BATTLE_ZOOM_MAX, Math.max(BATTLE_ZOOM_MIN, Number(localStorage.getItem("warrealmsBattleZoom")) || 1));
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, char => ({
@@ -1386,6 +1421,16 @@
     return battleArtPromise;
   }
 
+  function applyBattleZoom(nextZoom = battleZoom) {
+    battleZoom = Math.min(BATTLE_ZOOM_MAX, Math.max(BATTLE_ZOOM_MIN, Math.round(Number(nextZoom) * 100) / 100));
+    document.documentElement.style.setProperty("--battleZoom", String(battleZoom));
+    document.documentElement.style.setProperty("--battleZoomWidth", `${100 / battleZoom}%`);
+    $("#battleZoomLabel").textContent = `${Math.round(battleZoom * 100)}%`;
+    $("#battleZoomOutBtn").disabled = battleZoom <= BATTLE_ZOOM_MIN;
+    $("#battleZoomInBtn").disabled = battleZoom >= BATTLE_ZOOM_MAX;
+    localStorage.setItem("warrealmsBattleZoom", String(battleZoom));
+  }
+
   function setMode(nextMode) {
     mode = nextMode;
     document.body.classList.toggle("battleMode", nextMode === "battle");
@@ -1393,6 +1438,7 @@
     $("#battleView").classList.toggle("hidden", nextMode !== "battle");
     $("#modeTag").textContent = nextMode === "armory" ? "Armory" : nextMode === "battle" ? (singlePlayerMode ? `Solo · ${BOT_DIFFICULTIES[singlePlayerDifficulty]?.name || "Bot"}` : "Battle") : "Loading";
     $("#brandSub").textContent = nextMode === "armory" ? "Store, deck builder, and bot challenges" : singlePlayerMode ? "Singleplayer War Realms challenge" : "Shared-market realm warfare";
+    applyBattleZoom();
   }
 
   function openModal(title, subtitle, bodyHtml) {
@@ -3681,17 +3727,41 @@
       });
     }).join("");
 
+    const lowHealth = player.health <= STARTING_AUTHORITY / 3;
+    const topRealmAction = realmAttackAllowed
+      ? `<button class="btn small primary realmAttackButton" data-act="attack-player" data-target-id="${player.id}" aria-label="Attack ${escapeHtml(player.name)} with ${myPlayer().combat} Combat">⚔ ${myPlayer().combat}</button>`
+      : canAct && blockers.length
+      ? `<span class="realmProtection" title="Destroy this realm's Outposts before attacking it">OUTPOST</span>`
+      : "";
+
     return `<article class="realmSeat ${active?.id === player.id ? "active" : ""} ${player.eliminated || player.left ? "dead" : ""} ${player.isBot && botThinking ? "botThinking" : ""}" data-player-id="${escapeHtml(player.id)}">
       <div class="realmBar">
         <span class="realmAvatar">${escapeHtml(player.name.slice(0, 1).toUpperCase())}</span>
         ${active?.id === player.id ? '<span class="realmTurn"></span>' : ""}
         <span class="realmName">${escapeHtml(player.name)}${mine ? " · YOU" : ""}</span>
-        <span class="realmStats"><span class="handStat">✋ ${(player.hand || []).length}</span>${pendingChoiceFor(player) ? `<span style="color:#dfa8ff">OR</span>` : ""}${(player.forcedDiscard || player.pendingDiscard) > 0 ? `<span style="color:#ff91a0">↘ ${player.forcedDiscard || player.pendingDiscard}</span>` : ""}<span class="deckStat">▣ ${(player.draw || []).length}</span><span class="discardStat">↻ ${(player.discard || []).length}</span><span class="realmHp">♥ ${player.health}${(player.shield || 0) > 0 ? ` · 🛡 ${player.shield}` : ""}</span></span>
+        <span class="realmStats"><span class="handStat">✋ ${(player.hand || []).length}</span>${pendingChoiceFor(player) ? `<span style="color:#dfa8ff">OR</span>` : ""}${(player.forcedDiscard || player.pendingDiscard) > 0 ? `<span style="color:#ff91a0">↘ ${player.forcedDiscard || player.pendingDiscard}</span>` : ""}<span class="deckStat">▣ ${(player.draw || []).length}</span><span class="discardStat">↻ ${(player.discard || []).length}</span></span>
+        <span class="realmHp ${lowHealth ? "low" : ""}" aria-label="${player.health} Authority${(player.shield || 0) > 0 ? ` and ${player.shield} Shield` : ""}">♥ ${player.health}${(player.shield || 0) > 0 ? ` · 🛡 ${player.shield}` : ""}</span>
+        ${topRealmAction}
       </div>
       <div class="realmField">${cardHtml || '<div class="emptyZone">No bases or cards played</div>'}</div>
-      ${realmAttackAllowed ? `<button class="btn small primary" style="position:absolute;right:6px;bottom:6px" data-act="attack-player" data-target-id="${player.id}">Attack Realm · ${myPlayer().combat}</button>` : ""}
-      ${canAct && blockers.length ? `<div style="position:absolute;right:6px;bottom:6px;font-size:7px;color:#e4c95a;font-weight:900">OUTPOST PROTECTION</div>` : ""}
     </article>`;
+  }
+
+  function renderRoundEarnings() {
+    const active = currentPlayer();
+    const players = Array.isArray(state?.players) ? state.players : [];
+    $("#roundEarningsBar").innerHTML = `<div class="roundEarningsLabel">ROUND ${state?.round || 1}<br>RESOURCES</div>` + players.map(player => {
+      const activeTurn = active?.id === player.id;
+      const control = (player.stun || 0) + (player.destroyBase || 0);
+      return `<div class="roundEarningsPlayer ${activeTurn ? "active" : ""}">
+        <span class="roundEarningsName">${escapeHtml(player.name)}${activeTurn ? " <em>· TURN</em>" : ""}</span>
+        <span class="roundEarningsHealth">♥ ${player.health}</span>
+        <span class="roundEarningsResource trade">◆ ${player.trade || 0}</span>
+        <span class="roundEarningsResource combat">⚔ ${player.combat || 0}</span>
+        <span class="roundEarningsResource control">⌁ ${control}</span>
+        <span class="roundEarningsResource purge">✕ ${player.scrapOwn || 0}</span>
+      </div>`;
+    }).join("");
   }
 
   function renderMarket() {
@@ -4099,6 +4169,7 @@
     const active = currentPlayer();
     const players = me ? [...state.players.filter(player => player.id !== me.id), me] : [...state.players];
     $("#realmArea").innerHTML = players.map(renderRealmSeat).join("");
+    renderRoundEarnings();
     renderMarket();
     renderHandAndOwnField();
     renderOpponentQueue();
@@ -4234,7 +4305,7 @@
         <p><b>Choice / OR abilities:</b> A card effect can contain two or more alternatives. When it resolves, the current player must select exactly one option before any other action. Choice effects work on Primary, Base, Ally, Double Ally, and Sacrifice abilities, and Warbots select an option automatically.</p>
         <p><b>Battle visuals:</b> Card plays appear in an opponent queue until your turn begins. Trade, Combat, Draw, healing, Shield, Disable, Purge, and other abilities create quick symbol bursts. Forced discard creates a visible threat and card-to-discard animation. Destroyed, sacrificed, purged, and market-erased cards disintegrate; base destruction is synchronized so every multiplayer viewer sees it.</p>
         <p><b>Rewards:</b> Every multiplayer battle awards ${PARTICIPATION_SIGILS} participation Sigils, with ${VICTORY_BONUS_SIGILS} more for the winner. Singleplayer awards less, scaling from ${SINGLEPLAYER_REWARDS.easy.participation + SINGLEPLAYER_REWARDS.easy.victoryBonus} Sigils for an Easy win to ${SINGLEPLAYER_REWARDS.impossible.participation + SINGLEPLAYER_REWARDS.impossible.victoryBonus} for an Impossible win. Rewards, games, and wins are saved once per battle in the player's Firebase profile.</p>
-        <p><b>Win:</b> Reduce every rival from 50 Authority to zero. The last surviving realm wins.</p>
+        <p><b>Win:</b> Reduce every rival from 60 Authority to zero. The last surviving realm wins.</p>
       </div>
     `);
   }
@@ -5050,6 +5121,8 @@
     if (singlePlayerMode) returnToArmory();
     else location.href = `../lobby/lobby.html?username=${encodeURIComponent(username)}`;
   });
+  $("#battleZoomOutBtn").addEventListener("click", () => applyBattleZoom(battleZoom - BATTLE_ZOOM_STEP));
+  $("#battleZoomInBtn").addEventListener("click", () => applyBattleZoom(battleZoom + BATTLE_ZOOM_STEP));
   $("#fullscreenBtn").addEventListener("click", async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
