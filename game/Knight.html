@@ -1,1062 +1,194 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>Nation Draft: Global War Simulator</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#08172f">
+<title>World Quest</title>
 <style>
   :root{
-    --bg:#071018;
-    --panel:#101d2a;
-    --panel2:#15283a;
-    --text:#e9f2ff;
-    --muted:#9bb0c7;
-    --accent:#58d68d;
-    --danger:#ff6b6b;
-    --gold:#f5c542;
-    --blue:#55a7ff;
-    --line:#26394e;
+    --navy:#08172f;--navy-2:#102b52;--ocean:#0f4c75;--land:#f0d58a;--land-2:#dfb964;
+    --ink:#eef7ff;--muted:#a9c0d8;--line:rgba(255,255,255,.16);--panel:rgba(7,24,48,.92);
+    --gold:#ffc857;--good:#30d981;--bad:#ff5d73;--blue:#55b9ff;--shadow:0 18px 50px rgba(0,0,0,.35);
   }
   *{box-sizing:border-box}
-  body{
-    margin:0;
-    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-    background:radial-gradient(circle at top,#132338 0%,#071018 55%,#03070b 100%);
-    color:var(--text);
-  }
-  button,input,select{
-    font:inherit;
-  }
-  .app{
-    max-width:780px;
-    margin:0 auto;
-    min-height:100vh;
-    padding:12px;
-  }
-  .top{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:8px;
-    margin-bottom:10px;
-  }
-  h1{
-    font-size:22px;
-    margin:0;
-    line-height:1.05;
-  }
-  .sub{
-    color:var(--muted);
-    font-size:12px;
-    margin-top:3px;
-  }
-  .btn{
-    background:linear-gradient(180deg,#236f49,#174c34);
-    color:white;
-    border:1px solid #3be38d66;
-    border-radius:10px;
-    padding:10px 12px;
-    cursor:pointer;
-    font-weight:700;
-  }
-  .btn.secondary{
-    background:#18283a;
-    border-color:#35516b;
-  }
-  .btn.danger{
-    background:#4c1d24;
-    border-color:#9c3440;
-  }
-  .btn:disabled{
-    opacity:.45;
-    cursor:not-allowed;
-  }
-  .grid{
-    display:grid;
-    grid-template-columns:1fr;
-    gap:10px;
-  }
-  .card{
-    background:linear-gradient(180deg,var(--panel),#0d1722);
-    border:1px solid var(--line);
-    border-radius:14px;
-    padding:12px;
-    box-shadow:0 10px 25px #0006;
-  }
-  .row{
-    display:flex;
-    gap:8px;
-    align-items:center;
-    flex-wrap:wrap;
-  }
-  label{
-    color:var(--muted);
-    font-size:13px;
-    display:block;
-    margin-bottom:4px;
-  }
-  select,input{
-    width:100%;
-    background:#07111c;
-    color:var(--text);
-    border:1px solid #2d455e;
-    border-radius:10px;
-    padding:10px;
-    outline:none;
-  }
-  .field{
-    flex:1;
-    min-width:120px;
-  }
-  .draftBox{
-    position:relative;
-  }
-  .suggestions{
-    position:absolute;
-    left:0;
-    right:0;
-    top:100%;
-    z-index:10;
-    background:#07111c;
-    border:1px solid #31506b;
-    border-radius:0 0 12px 12px;
-    max-height:240px;
-    overflow:auto;
-    display:none;
-  }
-  .suggestions div{
-    padding:10px;
-    border-bottom:1px solid #1c2e42;
-    cursor:pointer;
-  }
-  .suggestions div:hover{
-    background:#13283c;
-  }
-  .turn{
-    font-size:15px;
-    padding:8px 10px;
-    background:#07111c;
-    border:1px solid #27415a;
-    border-radius:10px;
-    color:var(--gold);
-  }
-  .teams{
-    display:grid;
-    grid-template-columns:1fr;
-    gap:8px;
-  }
-  .team{
-    border:1px solid #29425c;
-    background:#0b1621;
-    border-radius:12px;
-    padding:10px;
-  }
-  .team h3{
-    margin:0 0 7px;
-    font-size:15px;
-  }
-  .pick{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:8px;
-    font-size:13px;
-    padding:6px 0;
-    border-top:1px solid #17283a;
-  }
-  .pill{
-    display:inline-flex;
-    align-items:center;
-    gap:4px;
-    border-radius:999px;
-    padding:3px 8px;
-    font-size:11px;
-    background:#122337;
-    color:#b9cbe0;
-    border:1px solid #2c4662;
-  }
-  .map{
-    height:270px;
-    background:
-      linear-gradient(90deg,#0b1f2c 0 1px,transparent 1px),
-      linear-gradient(#0b1f2c 0 1px,transparent 1px),
-      radial-gradient(circle at 20% 40%,#17364a,#07111c 48%,#040a10);
-    background-size:24px 24px,24px 24px,100% 100%;
-    border-radius:12px;
-    border:1px solid #2d455e;
-    position:relative;
-    overflow:hidden;
-  }
-  .dot{
-    position:absolute;
-    width:8px;
-    height:8px;
-    margin-left:-4px;
-    margin-top:-4px;
-    border-radius:50%;
-    background:#64748b;
-    border:1px solid white;
-    opacity:.75;
-  }
-  .dot.picked{
-    width:13px;
-    height:13px;
-    margin-left:-6px;
-    margin-top:-6px;
-    background:var(--gold);
-    box-shadow:0 0 12px var(--gold);
-    opacity:1;
-  }
-  .dotLabel{
-    position:absolute;
-    transform:translate(7px,-9px);
-    font-size:9px;
-    white-space:nowrap;
-    color:#dfefff;
-    text-shadow:0 1px 3px #000;
-    pointer-events:none;
-  }
-  .stats{
-    display:grid;
-    grid-template-columns:repeat(2,1fr);
-    gap:6px;
-    margin-top:8px;
-  }
-  .stat{
-    background:#07111c;
-    border:1px solid #22384f;
-    border-radius:9px;
-    padding:7px;
-    font-size:12px;
-  }
-  .bar{
-    height:6px;
-    background:#172638;
-    border-radius:99px;
-    overflow:hidden;
-    margin-top:5px;
-  }
-  .fill{
-    height:100%;
-    background:linear-gradient(90deg,#58d68d,#55a7ff);
-  }
-  .results{
-    display:grid;
-    gap:8px;
-  }
-  .result{
-    background:#07111c;
-    border:1px solid #2a4058;
-    border-radius:12px;
-    padding:10px;
-  }
-  .winner{
-    border-color:#f5c542;
-    box-shadow:0 0 18px #f5c54222;
-  }
-  .small{
-    font-size:12px;
-    color:var(--muted);
-  }
-  .log{
-    max-height:220px;
-    overflow:auto;
-    background:#050b11;
-    border:1px solid #203348;
-    border-radius:10px;
-    padding:8px;
-    font-size:12px;
-    color:#c9d9ec;
-  }
-  .hidden{display:none}
-  @media(min-width:720px){
-    .grid{grid-template-columns:1fr 1fr}
-    .wide{grid-column:1 / -1}
-    .teams{grid-template-columns:repeat(2,1fr)}
-    .stats{grid-template-columns:repeat(3,1fr)}
-  }
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--navy);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  button,input{font:inherit}
+  button{touch-action:manipulation}
+  [hidden]{display:none!important}
+  .app{height:100dvh;display:grid;grid-template-rows:auto minmax(0,1fr);background:radial-gradient(circle at 15% -10%,#1e5c88 0,transparent 38%),linear-gradient(160deg,#08172f,#0b2345 55%,#071326)}
+  .topbar{min-height:58px;padding:calc(7px + env(safe-area-inset-top)) 10px 7px;display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--line);background:rgba(4,15,31,.88);backdrop-filter:blur(12px);z-index:20}
+  .brand{display:flex;align-items:center;gap:9px;min-width:0;margin-right:auto}.brand-mark{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(145deg,var(--gold),#ed9b36);box-shadow:0 7px 18px rgba(0,0,0,.28);font-size:22px}.brand-name{font-size:1rem;font-weight:950;letter-spacing:.02em}.brand-sub{font-size:.68rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .icon-btn{min-width:42px;height:42px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.07);color:#fff;font-weight:900;cursor:pointer}.icon-btn:active{transform:scale(.96);background:rgba(255,255,255,.14)}.refresh-btn{width:34px;height:34px;min-width:34px;border-radius:10px}
+  .screen{min-height:0;overflow:hidden}.setup{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:clamp(14px,3vw,28px) max(12px,calc((100vw - 1100px)/2));padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+  .hero{text-align:center;margin:3px auto 20px;max-width:760px}.eyebrow{font-size:.75rem;font-weight:900;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}h1{font-size:clamp(2rem,7vw,4.5rem);line-height:.98;margin:8px 0 10px;letter-spacing:-.04em}.hero p{margin:0;color:var(--muted);line-height:1.45}
+  .setup-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:15px;align-items:start}.panel{border:1px solid var(--line);border-radius:20px;background:var(--panel);box-shadow:var(--shadow);overflow:hidden}.panel-head{padding:13px 15px;border-bottom:1px solid var(--line);font-weight:900;display:flex;align-items:center;justify-content:space-between;gap:10px}.panel-body{padding:14px}
+  .mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.mode-card{min-height:145px;border:2px solid transparent;border-radius:17px;background:rgba(255,255,255,.065);color:var(--ink);padding:13px 10px;text-align:left;cursor:pointer}.mode-card .emoji{display:block;font-size:2rem;margin-bottom:9px}.mode-card b{display:block;font-size:1rem}.mode-card small{display:block;color:var(--muted);line-height:1.35;margin-top:5px}.mode-card.active{border-color:var(--gold);background:rgba(255,200,87,.13);box-shadow:inset 0 0 0 1px rgba(255,200,87,.18)}
+  .seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:13px}.seg-btn{min-height:53px;border:2px solid transparent;border-radius:14px;background:rgba(255,255,255,.06);color:var(--ink);font-weight:900;cursor:pointer}.seg-btn small{display:block;font-weight:600;color:var(--muted);font-size:.7rem;margin-top:2px}.seg-btn.active{border-color:var(--blue);background:rgba(85,185,255,.14)}
+  .field{margin-top:13px}.field label{display:block;font-size:.73rem;color:var(--muted);font-weight:900;text-transform:uppercase;letter-spacing:.09em;margin:0 0 6px}.text-input{width:100%;height:48px;border:1px solid var(--line);border-radius:13px;background:#06152b;color:#fff;padding:0 13px;outline:none;font-size:16px}.text-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(85,185,255,.15)}
+  .start-btn{width:100%;min-height:58px;border:0;border-radius:16px;background:linear-gradient(135deg,var(--gold),#ff9d3d);color:#1e1607;font-weight:950;font-size:1.05rem;margin-top:13px;box-shadow:0 12px 26px rgba(255,157,61,.22);cursor:pointer}.start-btn:disabled{filter:grayscale(.8);opacity:.6}.coverage{margin-top:10px;text-align:center;color:var(--muted);font-size:.75rem}
+  .leader-list{display:grid;gap:7px;min-height:85px}.leader-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:8px;padding:9px;border-radius:12px;background:rgba(255,255,255,.055);font-size:.82rem}.rank{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:rgba(255,200,87,.16);color:var(--gold);font-weight:950}.leader-name{font-weight:850;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.leader-result{text-align:right;font-weight:900}.leader-result small{display:block;color:var(--muted);font-weight:600}.status-note{text-align:center;color:var(--muted);font-size:.78rem;padding:16px 5px}
+  .game{height:100%;display:flex;flex-direction:column;min-height:0;padding:8px 9px calc(8px + env(safe-area-inset-bottom));gap:7px}.hud{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;flex:0 0 auto}.stat{min-width:0;border:1px solid var(--line);border-radius:12px;background:rgba(5,19,39,.82);padding:7px 6px;text-align:center}.stat-label{font-size:.56rem;letter-spacing:.08em;color:var(--muted);font-weight:900;text-transform:uppercase}.stat-value{font-size:.92rem;font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}.stat-value.bad{color:var(--bad)}.stat-value.good{color:var(--good)}
+  .prompt{flex:0 0 auto;min-height:67px;border:1px solid var(--line);border-radius:15px;background:rgba(5,19,39,.88);padding:8px 12px;display:flex;align-items:center;justify-content:center;text-align:center;gap:12px}.prompt-kicker{font-size:.62rem;text-transform:uppercase;letter-spacing:.13em;color:var(--blue);font-weight:950}.prompt-main{font-size:clamp(1.15rem,4vw,1.75rem);font-weight:950;line-height:1.08;margin-top:3px}.prompt-flag{height:55px;width:88px;object-fit:contain;border-radius:7px;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,.32)}.flag-fallback{font-size:3rem;line-height:1}
+  .play-area{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;border:1px solid var(--line);border-radius:17px;background:linear-gradient(#0e4c73,#0b3c62);box-shadow:inset 0 0 45px rgba(0,0,0,.24)}
+  .map-stage{position:absolute;inset:0;touch-action:none;overflow:hidden}.world-map{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}.country{fill:var(--land);stroke:#7d6330;stroke-width:.55;vector-effect:non-scaling-stroke;transition:fill .12s linear}.country.correct{fill:var(--good)!important}.country.wrong{fill:var(--bad)!important}.micro-dot{fill:var(--land-2);stroke:#6c5227;stroke-width:.5;vector-effect:non-scaling-stroke;pointer-events:none}.map-grid{stroke:rgba(255,255,255,.10);stroke-width:.6;vector-effect:non-scaling-stroke;pointer-events:none}.zoom-tools{position:absolute;right:8px;top:8px;display:grid;gap:6px;z-index:3}.zoom-btn{width:43px;height:43px;border:1px solid rgba(255,255,255,.3);border-radius:12px;background:rgba(4,17,35,.82);color:#fff;font-size:1.25rem;font-weight:950;box-shadow:0 6px 14px rgba(0,0,0,.22)}.map-help{position:absolute;left:8px;bottom:7px;padding:5px 8px;border-radius:9px;background:rgba(3,15,31,.74);color:#d8ebff;font-size:.65rem;pointer-events:none}.map-loading{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:var(--muted);font-weight:800}
+  .type-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:radial-gradient(circle at 50% 35%,rgba(43,113,159,.4),transparent 55%)}.type-card{width:min(560px,100%);position:relative}.answer-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.answer-input{height:54px;border:2px solid rgba(255,255,255,.22);border-radius:15px;background:#04152c;color:#fff;padding:0 15px;font-size:17px;outline:none}.answer-input:focus{border-color:var(--blue)}.submit-btn{min-width:90px;border:0;border-radius:15px;background:var(--blue);color:#06172e;font-weight:950;padding:0 16px}.suggestions{position:absolute;left:0;right:98px;top:61px;z-index:8;display:grid;max-height:min(260px,34vh);overflow:auto;border:1px solid var(--line);border-radius:14px;background:#061a35;box-shadow:0 18px 40px rgba(0,0,0,.5)}.suggestion{min-height:42px;border:0;border-bottom:1px solid rgba(255,255,255,.08);background:transparent;color:#eef7ff;text-align:left;padding:8px 12px;font-weight:750}.suggestion:last-child{border-bottom:0}.suggestion:active{background:rgba(85,185,255,.2)}.type-hint{text-align:center;color:var(--muted);font-size:.72rem;margin-top:10px}
+  .feedback{height:26px;flex:0 0 26px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:.79rem;font-weight:850;color:var(--muted)}.feedback.good{color:var(--good)}.feedback.bad{color:var(--bad)}
+  .actions{display:grid;grid-template-columns:1fr auto 1fr;gap:7px;flex:0 0 auto}.action-btn{min-height:44px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.07);color:#fff;font-weight:900;padding:0 12px}.action-btn.danger{color:#ffb2bd}.action-btn.primary{background:rgba(85,185,255,.18);border-color:rgba(85,185,255,.42)}
+  .modal{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:16px;background:rgba(2,9,20,.82);backdrop-filter:blur(9px)}.modal-card{width:min(510px,100%);max-height:90dvh;overflow:auto;border:1px solid var(--line);border-radius:23px;background:#091d39;box-shadow:0 28px 80px rgba(0,0,0,.55);padding:20px;text-align:center}.modal-icon{font-size:3.2rem}.modal-card h2{margin:6px 0;font-size:1.8rem}.modal-card p{color:var(--muted);line-height:1.45}.result-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:15px 0}.result-box{border-radius:13px;background:rgba(255,255,255,.065);padding:11px 6px}.result-box b{display:block;font-size:1.05rem}.result-box small{color:var(--muted);font-size:.65rem}.modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.modal-btn{min-height:50px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.07);color:#fff;font-weight:950}.modal-btn.primary{border:0;background:linear-gradient(135deg,var(--gold),#ff9d3d);color:#241704}
+  @media(max-width:760px){.setup-grid{grid-template-columns:1fr}.mode-card{min-height:128px}.right-panel{order:2}}
+  @media(max-width:520px){.setup{padding-top:12px}.hero{margin-bottom:14px}.mode-grid{grid-template-columns:1fr}.mode-card{min-height:88px;display:grid;grid-template-columns:44px 1fr;column-gap:8px;align-items:center}.mode-card .emoji{grid-row:1/3;margin:0}.mode-card small{margin:2px 0}.panel-body{padding:11px}.hud{gap:4px}.stat{padding:6px 2px}.stat-label{font-size:.49rem}.stat-value{font-size:.78rem}.prompt{min-height:61px}.prompt-flag{height:46px;width:73px}.feedback{font-size:.71rem}.brand-sub{max-width:148px}.topbar{gap:5px}.icon-btn{min-width:39px;width:39px;height:39px}}
+  @media(orientation:landscape) and (max-height:600px){.topbar{min-height:48px;padding-top:calc(4px + env(safe-area-inset-top));padding-bottom:4px}.brand-mark{width:34px;height:34px;border-radius:10px}.icon-btn{height:36px;min-width:38px}.game{display:grid;grid-template-columns:minmax(185px,28vw) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto auto}.hud{grid-column:1/3}.prompt{grid-column:1;grid-row:2;align-self:stretch;flex-direction:column}.play-area{grid-column:2;grid-row:2/5}.feedback{grid-column:1;grid-row:3}.actions{grid-column:1;grid-row:4}.prompt-main{font-size:1.05rem}.prompt-flag{height:50px}}
 </style>
 </head>
 <body>
 <div class="app">
-  <div class="top">
-    <div>
-      <h1>Nation Draft</h1>
-      <div class="sub">Snake draft 5 nations, then 10,000 global battle simulations.</div>
-    </div>
-    <button class="btn secondary" onclick="toggleFullscreen()">Fullscreen</button>
-  </div>
+  <header class="topbar">
+    <div class="brand"><div class="brand-mark">🌍</div><div><div class="brand-name">WORLD QUEST</div><div class="brand-sub">Find every country and territory</div></div></div>
+    <button type="button" class="icon-btn" id="menuBtn" title="Menu" aria-label="Return to game menu">☰</button>
+    <button type="button" class="icon-btn" id="soundBtn" title="Sound" aria-label="Toggle sound">🔊</button>
+    <button type="button" class="icon-btn" id="fullBtn" title="Full screen" aria-label="Toggle full screen">⛶</button>
+  </header>
 
-  <div class="grid">
-    <div class="card">
-      <h2 style="margin-top:0;font-size:17px;">Game Setup</h2>
-      <div class="row">
-        <div class="field">
-          <label>Players</label>
-          <select id="playerCount">
-            <option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option>
-          </select>
+  <main class="screen setup" id="setupScreen" aria-label="World Quest setup">
+    <section class="hero"><div class="eyebrow">The complete atlas challenge</div><h1>How well do you know the world?</h1><p>Flags, blank maps, and every tiny territory. No map labels. No hover clues. Just you and the globe.</p></section>
+    <div class="setup-grid">
+      <section class="panel">
+        <div class="panel-head"><span>Choose a challenge</span><span id="mapStatus">Loading atlas…</span></div>
+        <div class="panel-body">
+          <div class="mode-grid" id="modeGrid">
+            <button type="button" class="mode-card active" data-mode="map"><span class="emoji">🗺️</span><b>Map</b><small>See a country name and tap its exact location.</small></button>
+            <button type="button" class="mode-card" data-mode="flag"><span class="emoji">🚩</span><b>Flag</b><small>See a flag and type the country or territory.</small></button>
+            <button type="button" class="mode-card" data-mode="flagmap"><span class="emoji">📍</span><b>Flag + Map</b><small>See only a flag, then find it on the blank map.</small></button>
+          </div>
+          <div class="seg" id="challengeSeg">
+            <button type="button" class="seg-btn active" data-challenge="lives">❤️ Three Lives<small>How far can you get?</small></button>
+            <button type="button" class="seg-btn" data-challenge="timed">⏱️ Speed Run<small>Wrong: +5 seconds</small></button>
+          </div>
+          <div class="field"><label for="playerName">Leaderboard name</label><input type="text" class="text-input" id="playerName" maxlength="20" autocomplete="nickname" placeholder="World Explorer"></div>
+          <button type="button" class="start-btn" id="startBtn" disabled>Loading the world…</button>
+          <div class="coverage" id="coverage">Preparing every mapped region and flag.</div>
         </div>
-        <div class="field">
-          <label>AI Players</label>
-          <select id="aiMode">
-            <option value="none">None - Hot Seat</option>
-            <option value="last">Only Last Player AI</option>
-            <option value="allButOne">All But Player 1 AI</option>
-          </select>
-        </div>
+      </section>
+      <section class="panel right-panel">
+        <div class="panel-head"><span>🏆 High Scores</span><button type="button" class="icon-btn refresh-btn" id="refreshScores" aria-label="Refresh high scores">↻</button></div>
+        <div class="panel-body"><div class="leader-list" id="leaderboard"><div class="status-note">Connecting to leaderboard…</div></div></div>
+      </section>
+    </div>
+  </main>
+
+  <main class="screen game" id="gameScreen" aria-label="World Quest game" hidden>
+    <div class="hud">
+      <div class="stat"><div class="stat-label">Progress</div><div class="stat-value" id="progressHud">0 / 0</div></div>
+      <div class="stat"><div class="stat-label">Correct</div><div class="stat-value good" id="correctHud">0</div></div>
+      <div class="stat"><div class="stat-label">Mistakes</div><div class="stat-value bad" id="mistakesHud">0</div></div>
+      <div class="stat"><div class="stat-label" id="limitLabel">Lives</div><div class="stat-value" id="limitHud">❤️❤️❤️</div></div>
+      <div class="stat"><div class="stat-label">Time</div><div class="stat-value" id="timeHud">0:00.0</div></div>
+    </div>
+    <section class="prompt" id="prompt"><div id="promptFlagWrap" hidden><img class="prompt-flag" id="promptFlag" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Mystery flag"><span class="flag-fallback" id="flagFallback" hidden>🌐</span></div><div><div class="prompt-kicker" id="promptKicker">Find this country</div><div class="prompt-main" id="promptMain">Loading…</div></div></section>
+    <section class="play-area">
+      <div class="map-stage" id="mapStage">
+        <svg class="world-map" id="worldMap" viewBox="0 0 1010 666" role="group" aria-label="Interactive blank world map"><g id="gridLayer"></g><g id="countryLayer"></g><g id="dotLayer"></g></svg>
+        <div class="map-loading" id="mapLoading">Drawing the world map…</div>
+        <div class="zoom-tools"><button type="button" class="zoom-btn" id="zoomIn" aria-label="Zoom in">＋</button><button type="button" class="zoom-btn" id="zoomOut" aria-label="Zoom out">−</button><button type="button" class="zoom-btn" id="zoomReset" aria-label="Reset map">⌂</button></div>
+        <div class="map-help">Pinch or use +/− • drag to move • no names or hover clues</div>
       </div>
-      <div class="row" style="margin-top:10px;">
-        <button class="btn" onclick="newGame()">Start New Draft</button>
-        <button class="btn secondary" onclick="autoFillDraft()">Auto-Fill Remaining</button>
-        <button class="btn danger" onclick="resetAll()">Reset</button>
-      </div>
-      <p class="small">
-        Stats are 1-100 gameplay ratings. Strategic level and diplomacy matter more in long-distance wars.
-        Naval power protects transportation. Air power damages armor and fleets. Resources and economy sustain armor and air.
-      </p>
-    </div>
-
-    <div class="card">
-      <h2 style="margin-top:0;font-size:17px;">Draft Pick</h2>
-      <div id="turnInfo" class="turn">Start a draft.</div>
-      <div class="draftBox" style="margin-top:10px;">
-        <label>Type a nation</label>
-        <input id="nationInput" placeholder="Example: France, Japan, Brazil..." oninput="showSuggestions()" autocomplete="off" />
-        <div id="suggestions" class="suggestions"></div>
-      </div>
-      <div class="row" style="margin-top:10px;">
-        <button id="draftBtn" class="btn" onclick="draftTyped()" disabled>Draft Nation</button>
-        <button id="battleBtn" class="btn secondary" onclick="runBattle()" disabled>Run 10k Battles</button>
-      </div>
-    </div>
-
-    <div class="card wide">
-      <h2 style="margin-top:0;font-size:17px;">World Grid</h2>
-      <div id="map" class="map"></div>
-      <div class="small" style="margin-top:6px;">Grid uses approximate latitude/longitude placement. Picked nations glow gold.</div>
-    </div>
-
-    <div class="card wide">
-      <h2 style="margin-top:0;font-size:17px;">Teams</h2>
-      <div id="teams" class="teams"></div>
-    </div>
-
-    <div class="card">
-      <h2 style="margin-top:0;font-size:17px;">Selected Nation</h2>
-      <div id="nationDetail" class="small">Tap or draft a nation to inspect it.</div>
-    </div>
-
-    <div class="card">
-      <h2 style="margin-top:0;font-size:17px;">Battle Results</h2>
-      <div id="results" class="results small">No battle run yet.</div>
-    </div>
-
-    <div class="card wide">
-      <h2 style="margin-top:0;font-size:17px;">Simulation Notes</h2>
-      <div id="battleLog" class="log">
-        Battles reward balanced teams. A team with huge air and armor can crush nearby opponents, but weak transport can struggle across oceans.
-      </div>
-    </div>
-  </div>
+      <div class="type-stage" id="typeStage" hidden><div class="type-card"><div class="answer-row"><input type="text" class="answer-input" id="answerInput" autocomplete="off" autocapitalize="words" spellcheck="false" placeholder="Type a country name…"><button type="button" class="submit-btn" id="submitAnswer">Guess</button></div><div class="suggestions" id="suggestions" hidden></div><div class="type-hint">Type any letter to see matching country options.</div></div></div>
+    </section>
+    <div class="feedback" id="feedback">Every location appears once. Tiny islands may require zooming.</div>
+    <div class="actions"><button type="button" class="action-btn danger" id="quitBtn">Quit</button><button type="button" class="action-btn" id="skipBtn">Skip</button><button type="button" class="action-btn primary" id="centerBtn">Reset map</button></div>
+  </main>
 </div>
 
-<script>
-const RAW_NATIONS = `
-United States|38|-97|S|coast|america
-Russia|60|90|S|coast|eurasia
-China|35|103|S|coast|asia
-India|21|78|S|coast|asia
-South Korea|36|128|A|coast|asia
-United Kingdom|55|-3|A|coast|europe
-France|46|2|A|coast|europe
-Japan|36|138|A|coast|asia
-Turkey|39|35|A|coast|eurasia
-Italy|42|12|A|coast|europe
-Germany|51|10|A|coast|europe
-Brazil|-10|-55|A|coast|america
-Indonesia|-2|118|A|coast|asia
-Pakistan|30|70|A|coast|asia
-Egypt|27|30|B|coast|africa
-Australia|-25|133|B|coast|oceania
-Iran|32|53|A|coast|asia
-Israel|31|35|A|coast|asia
-Ukraine|49|32|A|coast|europe
-Saudi Arabia|24|45|B|coast|asia
-Spain|40|-4|B|coast|europe
-Poland|52|20|B|land|europe
-Canada|56|-106|B|coast|america
-Vietnam|16|108|B|coast|asia
-Thailand|15|101|B|coast|asia
-Taiwan|24|121|B|coast|asia
-Greece|39|22|B|coast|europe
-Netherlands|52|5|B|coast|europe
-Norway|61|8|B|coast|europe
-Sweden|62|15|B|coast|europe
-Finland|64|26|B|coast|europe
-Mexico|23|-102|B|coast|america
-Argentina|-34|-64|C|coast|america
-Chile|-30|-71|C|coast|america
-Colombia|4|-74|C|coast|america
-Peru|-10|-76|C|coast|america
-Venezuela|7|-66|C|coast|america
-South Africa|-30|25|C|coast|africa
-Nigeria|9|8|C|coast|africa
-Algeria|28|2|C|coast|africa
-Morocco|32|-6|C|coast|africa
-Ethiopia|9|40|C|land|africa
-Kenya|0|37|D|coast|africa
-Angola|-12|18|D|coast|africa
-Democratic Republic of the Congo|-3|23|D|coast|africa
-Sudan|15|30|D|coast|africa
-Iraq|33|44|C|land|asia
-Syria|35|38|D|coast|asia
-Jordan|31|36|D|land|asia
-United Arab Emirates|24|54|B|coast|asia
-Qatar|25|51|C|coast|asia
-Kuwait|29|47|C|coast|asia
-Oman|21|57|C|coast|asia
-Yemen|15|48|D|coast|asia
-Lebanon|34|36|E|coast|asia
-Afghanistan|34|66|D|land|asia
-Kazakhstan|48|68|C|land|asia
-Uzbekistan|41|64|D|land|asia
-Turkmenistan|39|59|D|land|asia
-Kyrgyzstan|41|75|E|land|asia
-Tajikistan|39|71|E|land|asia
-Mongolia|46|105|E|land|asia
-North Korea|40|127|B|coast|asia
-Malaysia|4|102|C|coast|asia
-Singapore|1.3|104|B|coast|asia
-Philippines|13|122|C|coast|asia
-Bangladesh|24|90|D|coast|asia
-Myanmar|21|96|D|coast|asia
-Cambodia|13|105|E|coast|asia
-Laos|18|105|E|land|asia
-Sri Lanka|7|81|E|coast|asia
-Nepal|28|84|E|land|asia
-Bhutan|27|90|E|land|asia
-Maldives|3|73|E|coast|asia
-New Zealand|-41|174|D|coast|oceania
-Papua New Guinea|-6|147|E|coast|oceania
-Fiji|-17|179|E|coast|oceania
-Solomon Islands|-9|160|E|coast|oceania
-Vanuatu|-16|167|E|coast|oceania
-Samoa|-13|-172|E|coast|oceania
-Tonga|-21|-175|E|coast|oceania
-Kiribati|1.8|-157|E|coast|oceania
-Tuvalu|-8|178|E|coast|oceania
-Nauru|-0.5|166|E|coast|oceania
-Palau|7|134|E|coast|oceania
-Marshall Islands|7|171|E|coast|oceania
-Micronesia|7|158|E|coast|oceania
-Portugal|39|-8|C|coast|europe
-Belgium|51|4|C|coast|europe
-Denmark|56|10|C|coast|europe
-Ireland|53|-8|D|coast|europe
-Switzerland|47|8|C|land|europe
-Austria|47|14|C|land|europe
-Czechia|49|15|C|land|europe
-Slovakia|49|19|D|land|europe
-Hungary|47|20|D|land|europe
-Romania|46|25|C|coast|europe
-Bulgaria|43|25|D|coast|europe
-Serbia|44|21|D|land|europe
-Croatia|45|16|D|coast|europe
-Slovenia|46|15|E|coast|europe
-Bosnia and Herzegovina|44|18|E|coast|europe
-Montenegro|42|19|E|coast|europe
-Albania|41|20|E|coast|europe
-North Macedonia|42|22|E|land|europe
-Kosovo|43|21|E|land|europe
-Moldova|47|29|E|land|europe
-Belarus|53|28|D|land|europe
-Lithuania|56|24|D|coast|europe
-Latvia|57|25|D|coast|europe
-Estonia|59|26|D|coast|europe
-Iceland|65|-19|E|coast|europe
-Luxembourg|50|6|E|land|europe
-Malta|36|14|E|coast|europe
-Cyprus|35|33|E|coast|europe
-Georgia|42|44|D|coast|eurasia
-Armenia|40|45|D|land|eurasia
-Azerbaijan|40|48|C|coast|eurasia
-Bolivia|-17|-65|E|land|america
-Paraguay|-23|-58|E|land|america
-Uruguay|-33|-56|E|coast|america
-Ecuador|-1|-78|D|coast|america
-Guyana|5|-59|E|coast|america
-Suriname|4|-56|E|coast|america
-Panama|9|-80|E|coast|america
-Costa Rica|10|-84|E|coast|america
-Nicaragua|13|-85|E|coast|america
-Honduras|15|-86|E|coast|america
-El Salvador|14|-89|E|coast|america
-Guatemala|15|-90|E|coast|america
-Belize|17|-88|E|coast|america
-Cuba|22|-79|D|coast|america
-Dominican Republic|19|-70|E|coast|america
-Haiti|19|-72|E|coast|america
-Jamaica|18|-77|E|coast|america
-Trinidad and Tobago|11|-61|E|coast|america
-Bahamas|25|-77|E|coast|america
-Barbados|13|-59|E|coast|america
-Saint Lucia|14|-61|E|coast|america
-Grenada|12|-61|E|coast|america
-Saint Vincent and the Grenadines|13|-61|E|coast|america
-Antigua and Barbuda|17|-61|E|coast|america
-Dominica|15|-61|E|coast|america
-Saint Kitts and Nevis|17|-63|E|coast|america
-Tunisia|34|9|D|coast|africa
-Libya|27|17|D|coast|africa
-Mauritania|20|-10|E|coast|africa
-Mali|17|-4|E|land|africa
-Niger|17|9|E|land|africa
-Chad|15|19|E|land|africa
-Senegal|14|-14|E|coast|africa
-Gambia|13|-16|E|coast|africa
-Guinea|10|-10|E|coast|africa
-Guinea-Bissau|12|-15|E|coast|africa
-Sierra Leone|8|-11|E|coast|africa
-Liberia|6|-9|E|coast|africa
-Cote d'Ivoire|8|-5|E|coast|africa
-Ghana|8|-2|D|coast|africa
-Togo|8|1|E|coast|africa
-Benin|9|2|E|coast|africa
-Burkina Faso|13|-2|E|land|africa
-Cameroon|6|12|E|coast|africa
-Central African Republic|7|21|E|land|africa
-Equatorial Guinea|2|10|E|coast|africa
-Gabon|-1|11|E|coast|africa
-Republic of the Congo|-1|15|E|coast|africa
-Rwanda|-2|30|E|land|africa
-Burundi|-3|30|E|land|africa
-Uganda|1|32|E|land|africa
-Tanzania|-6|35|D|coast|africa
-Mozambique|-18|35|E|coast|africa
-Zambia|-14|28|E|land|africa
-Zimbabwe|-19|29|E|land|africa
-Malawi|-13|34|E|land|africa
-Namibia|-22|17|E|coast|africa
-Botswana|-22|24|E|land|africa
-Lesotho|-29|28|E|land|africa
-Eswatini|-26|31|E|land|africa
-Madagascar|-20|47|E|coast|africa
-Mauritius|-20|57|E|coast|africa
-Seychelles|-5|55|E|coast|africa
-Comoros|-12|44|E|coast|africa
-Djibouti|12|43|E|coast|africa
-Eritrea|15|39|E|coast|africa
-Somalia|6|46|E|coast|africa
-South Sudan|7|30|E|land|africa
-Palestine|32|35|E|coast|asia
-Bahrain|26|50|E|coast|asia
-Brunei|4|115|E|coast|asia
-Timor-Leste|-8|126|E|coast|asia
-Andorra|43|1.5|E|land|europe
-Monaco|44|7|E|coast|europe
-San Marino|44|12|E|land|europe
-Liechtenstein|47|9.5|E|land|europe
-Vatican City|42|12|E|land|europe
-`;
+<div class="modal" id="resultModal" hidden>
+  <div class="modal-card"><div class="modal-icon" id="resultIcon">🏆</div><h2 id="resultTitle">Atlas complete!</h2><p id="resultText"></p><div class="result-grid"><div class="result-box"><b id="resultCorrect">0</b><small>Correct</small></div><div class="result-box"><b id="resultMistakes">0</b><small>Mistakes</small></div><div class="result-box"><b id="resultTime">0:00</b><small>Final time</small></div></div><div class="modal-actions"><button type="button" class="modal-btn" id="resultMenu">Menu</button><button type="button" class="modal-btn primary" id="playAgain">Play again</button></div><div class="status-note" id="saveStatus">Saving score…</div></div>
+</div>
 
-const MAJOR_OVERRIDES = {
- "United States":{natural:94,diplomacy:86,strategy:96,land:90,armor:92,air:100,navy:100,subs:98,transport:100,economy:100},
- "Russia":{natural:99,diplomacy:48,strategy:86,land:88,armor:91,air:87,navy:78,subs:94,transport:74,economy:70},
- "China":{natural:88,diplomacy:72,strategy:91,land:96,armor:90,air:92,navy:94,subs:88,transport:91,economy:98},
- "India":{natural:79,diplomacy:76,strategy:84,land:93,armor:85,air:83,navy:77,subs:70,transport:78,economy:88},
- "United Kingdom":{natural:56,diplomacy:91,strategy:88,land:65,armor:68,air:82,navy:86,subs:88,transport:84,economy:82},
- "France":{natural:61,diplomacy:88,strategy:87,land:71,armor:73,air:82,navy:81,subs:83,transport:80,economy:81},
- "Japan":{natural:42,diplomacy:85,strategy:82,land:69,armor:70,air:84,navy:87,subs:83,transport:90,economy:89},
- "Germany":{natural:55,diplomacy:86,strategy:80,land:70,armor:77,air:75,navy:64,subs:66,transport:86,economy:90},
- "South Korea":{natural:50,diplomacy:74,strategy:83,land:86,armor:86,air:84,navy:78,subs:76,transport:82,economy:83},
- "Turkey":{natural:67,diplomacy:68,strategy:80,land:84,armor:82,air:77,navy:72,subs:65,transport:75,economy:73},
- "Italy":{natural:52,diplomacy:80,strategy:77,land:68,armor:71,air:76,navy:80,subs:70,transport:78,economy:79},
- "Brazil":{natural:92,diplomacy:74,strategy:68,land:72,armor:63,air:66,navy:61,subs:48,transport:68,economy:78},
- "Iran":{natural:87,diplomacy:45,strategy:78,land:82,armor:72,air:62,navy:58,subs:64,transport:58,economy:62},
- "Pakistan":{natural:66,diplomacy:58,strategy:75,land:82,armor:78,air:72,navy:57,subs:55,transport:60,economy:58},
- "Israel":{natural:42,diplomacy:71,strategy:92,land:75,armor:81,air:88,navy:55,subs:50,transport:69,economy:72},
- "Ukraine":{natural:72,diplomacy:82,strategy:86,land:84,armor:78,air:62,navy:28,subs:10,transport:60,economy:54},
- "Saudi Arabia":{natural:96,diplomacy:70,strategy:63,land:65,armor:76,air:78,navy:55,subs:20,transport:70,economy:76},
- "Canada":{natural:95,diplomacy:88,strategy:70,land:56,armor:55,air:66,navy:62,subs:35,transport:82,economy:82},
- "Australia":{natural:91,diplomacy:84,strategy:72,land:55,armor:54,air:70,navy:72,subs:62,transport:78,economy:80},
- "North Korea":{natural:48,diplomacy:25,strategy:68,land:86,armor:73,air:55,navy:39,subs:58,transport:38,economy:28}
-};
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script type="module">
+const $=id=>document.getElementById(id);
+const firebaseConfig={apiKey:"AIzaSyB7twY7z31ucB6pGA8JC_HrVMZhA8lNaJA",authDomain:"bible-game-246c0.firebaseapp.com",databaseURL:"https://bible-game-246c0-default-rtdb.firebaseio.com",projectId:"bible-game-246c0",storageBucket:"bible-game-246c0.firebasestorage.app",messagingSenderId:"959619818996",appId:"1:959619818996:web:5a9fbf492e23c765e445a1",measurementId:"G-8PR6LVKSH3"};
+const NAME_OVERRIDES={ax:"Åland Islands",bl:"Saint Barthélemy",bn:"Brunei",bq:"Caribbean Netherlands",cd:"DR Congo",cg:"Republic of the Congo",ci:"Côte d’Ivoire",cv:"Cabo Verde",cz:"Czechia",fm:"Micronesia",la:"Laos",md:"Moldova",mk:"North Macedonia",mo:"Macao",ps:"Palestine",re:"Réunion",st:"São Tomé and Príncipe",sx:"Sint Maarten",sz:"Eswatini",tr:"Türkiye","um-dq":"Jarvis Island","um-fq":"Baker Island","um-hq":"Howland Island","um-jq":"Johnston Atoll","um-mq":"Midway Atoll","um-wq":"Wake Island"};
+const ALIASES={ae:["UAE"],ba:["Bosnia"],bn:["Brunei Darussalam"],bo:["Bolivia"],cd:["Democratic Republic of Congo","Democratic Republic of the Congo","Congo Kinshasa","DRC"],cg:["Republic of Congo","Congo Brazzaville","Congo"],ci:["Ivory Coast","Cote d Ivoire"],cv:["Cape Verde"],cz:["Czech Republic"],fm:["Federated States of Micronesia"],gb:["UK","Great Britain","Britain"],ir:["Iran"],kp:["North Korea","DPRK"],kr:["South Korea","Republic of Korea"],la:["Lao People's Democratic Republic"],md:["Republic of Moldova"],mk:["Macedonia"],mm:["Burma"],ps:["Palestinian Territories","State of Palestine"],ru:["Russian Federation"],st:["Sao Tome and Principe"],sx:["Saint Martin"],sy:["Syrian Arab Republic"],sz:["Swaziland"],tl:["East Timor"],tr:["Turkey"],tz:["United Republic of Tanzania"],us:["USA","United States of America","America"],va:["Holy See"],ve:["Venezuela"],vg:["Virgin Islands British","BVI"],vi:["United States Virgin Islands","Virgin Islands US","USVI"],vn:["Viet Nam"],xk:["Republic of Kosovo"]};
+const state={mode:"map",challenge:"lives",countries:[],queue:[],index:0,correct:0,mistakes:0,lives:3,penaltyMs:0,startMs:0,running:false,locked:false,timer:0,sound:true,view:{x:0,y:0,w:1010,h:666},drag:null,pointers:new Map(),pinch:null,leaderboard:[],online:false,uid:"",db:null,mapReady:false};
+const SVG_NS="http://www.w3.org/2000/svg";
+const els={setup:$("setupScreen"),game:$("gameScreen"),start:$("startBtn"),coverage:$("coverage"),mapStatus:$("mapStatus"),leader:$("leaderboard"),playerName:$("playerName"),map:$("worldMap"),countries:$("countryLayer"),dots:$("dotLayer"),grid:$("gridLayer"),mapLoading:$("mapLoading"),mapStage:$("mapStage"),typeStage:$("typeStage"),input:$("answerInput"),suggestions:$("suggestions"),feedback:$("feedback"),promptMain:$("promptMain"),promptKicker:$("promptKicker"),flagWrap:$("promptFlagWrap"),flag:$("promptFlag"),flagFallback:$("flagFallback"),modal:$("resultModal")};
+function norm(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/&/g," and ").replace(/[^a-z0-9]+/g," ").trim().replace(/^the /,"")}
+function cleanName(v){return String(v||"World Explorer").replace(/[^\p{L}\p{N} _.'-]/gu,"").trim().slice(0,20)||"World Explorer"}
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function fmtTime(ms){ms=Math.max(0,Math.floor(ms));const minutes=Math.floor(ms/60000),seconds=Math.floor(ms%60000/1000),tenths=Math.floor(ms%1000/100);return `${minutes}:${String(seconds).padStart(2,"0")}.${tenths}`}
+function current(){return state.queue[state.index]}
+function category(){return `${state.mode}_${state.challenge}`}
+function flagCode(c){return c.id.startsWith("um-")?"um":(c.id==="ju"||c.id==="go")?"fr":c.id}
+function flagUrl(c){return `https://flagcdn.com/${flagCode(c)}.svg`}
+function flagEmoji(c){const code=flagCode(c).toUpperCase();return /^[A-Z]{2}$/.test(code)?String.fromCodePoint(...[...code].map(x=>127397+x.charCodeAt())):"🌐"}
+function accepted(c){return [c.name,c.originalName,...(ALIASES[c.id]||[])].map(norm)}
+function beep(ok){if(!state.sound)return;try{const C=window.AudioContext||window.webkitAudioContext,ctx=beep.ctx||(beep.ctx=new C()),osc=ctx.createOscillator(),gain=ctx.createGain();osc.type="sine";osc.frequency.value=ok?660:170;gain.gain.setValueAtTime(.075,ctx.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.13);osc.connect(gain).connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+.14)}catch{}}
 
-const TIER = {
- S:{base:86,spread:12},
- A:{base:70,spread:18},
- B:{base:55,spread:20},
- C:{base:42,spread:20},
- D:{base:30,spread:18},
- E:{base:15,spread:18}
-};
-
-let nations = [];
-let teams = [];
-let currentPick = 0;
-let draftOrder = [];
-let picked = new Set();
-let started = false;
-
-function hashNum(str, salt=0){
-  let h = 2166136261 + salt;
-  for(let i=0;i<str.length;i++){
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h,16777619);
-  }
-  return Math.abs(h >>> 0);
+async function loadAtlas(){
+  let world;
+  try{world=(await import("https://cdn.jsdelivr.net/npm/@svg-maps/world@2.0.0/index.js")).default}
+  catch(firstError){try{world=(await import("https://unpkg.com/@svg-maps/world@2.0.0/index.js")).default}catch{els.mapStatus.textContent="Atlas unavailable";els.mapLoading.textContent="The map could not download. Check your connection and reload.";els.coverage.textContent="Map data is temporarily unavailable.";return}}
+  const locations=[...world.locations,{id:"aq",name:"Antarctica",path:"M72 632 Q170 620 260 635 T450 630 T650 636 T938 630 L938 664 L72 664 Z"}];
+  state.countries=locations.map(loc=>({id:loc.id,name:NAME_OVERRIDES[loc.id]||loc.name,originalName:loc.name,path:loc.path})).sort((a,b)=>a.name.localeCompare(b.name));
+  drawGrid();
+  for(const c of state.countries){const path=document.createElementNS(SVG_NS,"path");path.setAttribute("d",c.path);path.setAttribute("class","country");path.dataset.id=c.id;els.countries.appendChild(path);c.el=path}
+  await new Promise(requestAnimationFrame);
+  for(const c of state.countries){try{const b=c.el.getBBox();c.bbox=b;c.cx=b.x+b.width/2;c.cy=b.y+b.height/2;if((b.width<4||b.height<4)&&c.id!=="aq"){const dot=document.createElementNS(SVG_NS,"circle");dot.setAttribute("class","micro-dot");dot.setAttribute("cx",c.cx);dot.setAttribute("cy",c.cy);dot.setAttribute("r","1.1");els.dots.appendChild(dot);c.dot=dot}}catch{}}
+  state.mapReady=true;els.mapLoading.hidden=true;els.mapStatus.textContent=`${state.countries.length} places ready`;els.coverage.textContent=`${state.countries.length} mapped countries, territories, dependencies, remote islands, and Antarctica — every flag included.`;els.start.disabled=false;els.start.textContent="Start World Quest";renderLeaderboard();
 }
-function clamp(n,min=1,max=100){return Math.max(min,Math.min(max,Math.round(n)))}
-function randRating(name,key,tier){
-  const t = TIER[tier] || TIER.E;
-  const h = hashNum(name+key);
-  return clamp(t.base + (h % t.spread) - t.spread/3);
-}
-function parseNations(){
-  nations = RAW_NATIONS.trim().split("\n").map(line=>{
-    const [name,lat,lon,tier,coast,region] = line.split("|");
-    let n = {name,lat:+lat,lon:+lon,tier,coast,region};
-    const coastBonus = coast === "coast" ? 12 : -18;
-    const econRegion = region==="america"||region==="europe"||region==="asia" ? 6 : 0;
-    let generated = {
-      natural: randRating(name,"natural",tier) + (region==="america"||region==="africa"||region==="eurasia"?8:0),
-      diplomacy: randRating(name,"diplomacy",tier) + (region==="europe"?8:0),
-      strategy: randRating(name,"strategy",tier),
-      land: randRating(name,"land",tier),
-      armor: randRating(name,"armor",tier),
-      air: randRating(name,"air",tier),
-      navy: randRating(name,"navy",tier) + coastBonus,
-      subs: randRating(name,"subs",tier) + coastBonus - 8,
-      transport: randRating(name,"transport",tier) + (coast==="coast"?8:-4),
-      economy: randRating(name,"economy",tier) + econRegion
-    };
-    Object.keys(generated).forEach(k=>generated[k]=clamp(generated[k]));
-    Object.assign(n, generated, MAJOR_OVERRIDES[name] || {});
-    n.power = overall(n);
-    return n;
-  }).sort((a,b)=>b.power-a.power);
-}
+function drawGrid(){for(let x=80;x<1010;x+=100){const line=document.createElementNS(SVG_NS,"line");line.setAttribute("x1",x);line.setAttribute("x2",x);line.setAttribute("y1",30);line.setAttribute("y2",650);line.setAttribute("class","map-grid");els.grid.appendChild(line)}for(let y=80;y<666;y+=85){const line=document.createElementNS(SVG_NS,"line");line.setAttribute("x1",20);line.setAttribute("x2",990);line.setAttribute("y1",y);line.setAttribute("y2",y);line.setAttribute("class","map-grid");els.grid.appendChild(line)}}
 
-function overall(n){
-  return clamp(
-    n.natural*.10+n.diplomacy*.09+n.strategy*.14+n.land*.12+n.armor*.10+
-    n.air*.14+n.navy*.10+n.subs*.07+n.transport*.08+n.economy*.06
-  );
-}
+function selectSetup(type,value){state[type]=value;document.querySelectorAll(`[data-${type}]`).forEach(b=>b.classList.toggle("active",b.dataset[type]===value));if(state.online)loadOnlineScores();else renderLeaderboard()}
+function startGame(){if(!state.mapReady)return;state.mode=document.querySelector("[data-mode].active").dataset.mode;state.challenge=document.querySelector("[data-challenge].active").dataset.challenge;const name=cleanName(els.playerName.value);els.playerName.value=name;localStorage.setItem("countryQuestName",name);state.queue=shuffle([...state.countries]);state.index=0;state.correct=0;state.mistakes=0;state.lives=3;state.penaltyMs=0;state.startMs=performance.now();state.running=true;state.locked=false;els.setup.hidden=true;els.game.hidden=false;els.modal.hidden=true;resetView();setPlaySurface();nextQuestion();clearInterval(state.timer);state.timer=setInterval(updateHud,100);updateHud()}
+function setPlaySurface(){const typing=state.mode==="flag";els.typeStage.hidden=!typing;els.mapStage.hidden=typing;$("centerBtn").hidden=typing;els.flagWrap.hidden=state.mode==="map"}
+function nextQuestion(){if(state.index>=state.queue.length){finish(true);return}state.locked=false;clearHighlights();const c=current();els.feedback.className="feedback";els.feedback.textContent=state.mode==="flag"?"Type a letter to open the country list.":"Tap the exact country. Zoom in for small islands and microstates.";if(state.mode==="map"){els.promptKicker.textContent="Find this place on the map";els.promptMain.textContent=c.name}else{els.promptKicker.textContent=state.mode==="flag"?"Name this flag":"Find this flag on the map";els.promptMain.textContent=state.mode==="flag"?"Which place is this?":"Tap its location";showFlag(c)}if(state.mode==="flag"){els.input.value="";els.suggestions.hidden=true;setTimeout(()=>els.input.focus(),50)}preloadFlags();updateHud()}
+function showFlag(c){els.flag.hidden=false;els.flagFallback.hidden=true;els.flag.src=flagUrl(c);els.flag.onerror=()=>{els.flag.hidden=true;els.flagFallback.hidden=false;els.flagFallback.textContent=flagEmoji(c)}}
+function preloadFlags(){for(let i=1;i<=4;i++){const c=state.queue[state.index+i];if(c){const img=new Image();img.src=flagUrl(c)}}}
+function clearHighlights(){state.countries.forEach(c=>c.el.classList.remove("correct","wrong"))}
+function elapsed(){return state.running?performance.now()-state.startMs:state.finalElapsed||0}
+function adjustedElapsed(){return elapsed()+state.penaltyMs}
+function updateHud(){if(!state.queue.length)return;$("progressHud").textContent=`${Math.min(state.index+1,state.queue.length)} / ${state.queue.length}`;$("correctHud").textContent=state.correct;$("mistakesHud").textContent=state.mistakes;$("limitLabel").textContent=state.challenge==="lives"?"Lives":"Penalty";$("limitHud").textContent=state.challenge==="lives"?"❤️".repeat(Math.max(0,state.lives)):`+${Math.round(state.penaltyMs/1000)}s`;$("timeHud").textContent=fmtTime(adjustedElapsed())}
+function wrongAnswer(chosen){if(state.locked||!state.running)return;state.mistakes++;beep(false);if(chosen?.el){chosen.el.classList.add("wrong");setTimeout(()=>chosen.el.classList.remove("wrong"),550)}if(state.challenge==="lives"){state.lives--;els.feedback.textContent=`Wrong — ${state.lives} ${state.lives===1?"life":"lives"} left. Try again.`;if(state.lives<=0){els.feedback.textContent=`That was ${current().name}.`;setTimeout(()=>finish(false),700)}}else{state.penaltyMs+=5000;els.feedback.textContent="Wrong location — 5 second penalty. Try again."}els.feedback.className="feedback bad";updateHud()}
+function correctAnswer(){if(state.locked||!state.running)return;state.locked=true;const c=current();c.el.classList.add("correct");state.correct++;beep(true);els.feedback.className="feedback good";els.feedback.textContent=`Correct — ${c.name}!`;state.index++;updateHud();setTimeout(nextQuestion,420)}
+function skipQuestion(){if(!state.running||state.locked)return;state.locked=true;state.mistakes++;if(state.challenge==="lives")state.lives--;else state.penaltyMs+=10000;const answer=current();answer.el.classList.add("correct");els.feedback.className="feedback bad";els.feedback.textContent=`Skipped: ${answer.name}${state.challenge==="timed"?" (+10 seconds)":""}`;state.index++;updateHud();if(state.challenge==="lives"&&state.lives<=0)setTimeout(()=>finish(false),850);else setTimeout(nextQuestion,850)}
+function submitTyped(){if(!state.running||state.locked)return;const value=norm(els.input.value);if(!value)return;if(accepted(current()).includes(value))correctAnswer();else{wrongAnswer();els.input.select()}}
 
-function newGame(){
-  const count = +document.getElementById("playerCount").value;
-  teams = Array.from({length:count},(_,i)=>({
-    name:"Player "+(i+1),
-    ai:isAI(i,count),
-    picks:[],
-    wins:0,
-    totalScore:0,
-    bestScore:0
-  }));
-  picked = new Set();
-  currentPick = 0;
-  started = true;
-  buildDraftOrder(count);
-  document.getElementById("draftBtn").disabled = false;
-  document.getElementById("battleBtn").disabled = true;
-  document.getElementById("results").innerHTML = "No battle run yet.";
-  document.getElementById("battleLog").textContent = "Draft started. Each player gets 5 nations.";
-  render();
-  maybeAIPick();
-}
+function updateSuggestions(){const q=norm(els.input.value);if(!q){els.suggestions.hidden=true;els.suggestions.innerHTML="";return}const rows=state.countries.filter(c=>[c.name,...(ALIASES[c.id]||[])].some(n=>norm(n).startsWith(q))).slice(0,9);els.suggestions.innerHTML="";for(const c of rows){const b=document.createElement("button");b.className="suggestion";b.type="button";b.textContent=c.name;b.onclick=()=>{els.input.value=c.name;els.suggestions.hidden=true;submitTyped()};els.suggestions.appendChild(b)}els.suggestions.hidden=!rows.length}
 
-function isAI(index,count){
-  const mode = document.getElementById("aiMode").value;
-  if(mode==="none") return false;
-  if(mode==="last") return index === count-1;
-  if(mode==="allButOne") return index > 0;
-  return false;
-}
+function clientToSvg(clientX,clientY){const pt=els.map.createSVGPoint();pt.x=clientX;pt.y=clientY;return pt.matrixTransform(els.map.getScreenCTM().inverse())}
+function mapTap(e){if(!state.running||state.locked||state.mode==="flag")return;const target=document.elementFromPoint(e.clientX,e.clientY)?.closest?.(".country");let picked=target?state.countries.find(c=>c.id===target.dataset.id):null,nearest=null,best=18;for(const c of state.countries){if(!c.dot)continue;const p=els.map.createSVGPoint();p.x=c.cx;p.y=c.cy;const screen=p.matrixTransform(els.map.getScreenCTM()),distance=Math.hypot(screen.x-e.clientX,screen.y-e.clientY);if(distance<best){best=distance;nearest=c}}if(nearest)picked=nearest;if(!picked)return;if(picked.id===current().id)correctAnswer();else wrongAnswer(picked)}
+function setView(x,y,w,h){const minW=1010/24,minH=666/24;w=Math.max(minW,Math.min(1010,w));h=Math.max(minH,Math.min(666,h));x=Math.max(0,Math.min(1010-w,x));y=Math.max(0,Math.min(666-h,y));state.view={x,y,w,h};els.map.setAttribute("viewBox",`${x} ${y} ${w} ${h}`);const z=1010/w;state.countries.forEach(c=>{if(c.dot)c.dot.setAttribute("r",Math.max(.32,1.1/Math.sqrt(z)))})}
+function resetView(){setView(0,0,1010,666)}
+function zoom(factor,clientX,clientY){const v=state.view,p=clientX===undefined?{x:v.x+v.w/2,y:v.y+v.h/2}:clientToSvg(clientX,clientY),nw=v.w/factor,nh=v.h/factor,rx=(p.x-v.x)/v.w,ry=(p.y-v.y)/v.h;setView(p.x-rx*nw,p.y-ry*nh,nw,nh)}
+function pointerDown(e){if(state.mode==="flag")return;els.map.setPointerCapture(e.pointerId);state.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(state.pointers.size===1)state.drag={id:e.pointerId,x:e.clientX,y:e.clientY,v:{...state.view},moved:false};else if(state.pointers.size===2){const p=[...state.pointers.values()],d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);state.pinch={distance:d,view:{...state.view},center:{x:(p[0].x+p[1].x)/2,y:(p[0].y+p[1].y)/2}}}}
+function pointerMove(e){if(!state.pointers.has(e.pointerId))return;state.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(state.pointers.size===2&&state.pinch){const p=[...state.pointers.values()],d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y),factor=d/state.pinch.distance,v=state.pinch.view,nw=v.w/factor,nh=v.h/factor,center=clientToSvg((p[0].x+p[1].x)/2,(p[0].y+p[1].y)/2);setView(center.x-nw/2,center.y-nh/2,nw,nh);if(state.drag)state.drag.moved=true}else if(state.drag&&state.drag.id===e.pointerId){const rect=els.map.getBoundingClientRect(),dx=(e.clientX-state.drag.x)*state.drag.v.w/rect.width,dy=(e.clientY-state.drag.y)*state.drag.v.h/rect.height;if(Math.hypot(e.clientX-state.drag.x,e.clientY-state.drag.y)>7)state.drag.moved=true;setView(state.drag.v.x-dx,state.drag.v.y-dy,state.drag.v.w,state.drag.v.h)}}
+function pointerUp(e){const wasTap=state.drag&&state.drag.id===e.pointerId&&!state.drag.moved&&state.pointers.size===1;state.pointers.delete(e.pointerId);if(wasTap)mapTap(e);if(state.pointers.size<2)state.pinch=null;if(state.pointers.size===0)state.drag=null}
 
-function buildDraftOrder(count){
-  draftOrder = [];
-  for(let round=0; round<5; round++){
-    const order = Array.from({length:count},(_,i)=>i);
-    if(round%2===1) order.reverse();
-    draftOrder.push(...order);
-  }
-}
+function finish(completed){if(!state.running)return;state.finalElapsed=performance.now()-state.startMs;state.running=false;clearInterval(state.timer);updateHud();const final=adjustedElapsed();$("resultIcon").textContent=completed?"🏆":state.challenge==="lives"?"💔":"🌍";$("resultTitle").textContent=completed?"The whole world!":"Expedition over";$("resultText").textContent=completed?`You identified all ${state.queue.length} places in ${fmtTime(final)}.`:`You found ${state.correct} of ${state.queue.length} before your three lives ran out.`;$("resultCorrect").textContent=`${state.correct}/${state.queue.length}`;$("resultMistakes").textContent=state.mistakes;$("resultTime").textContent=fmtTime(final);$("saveStatus").textContent="Saving your result…";els.modal.hidden=false;saveScore(completed)}
+function scoreValue(){const time=Math.floor(adjustedElapsed());return state.challenge==="timed"?Math.max(0,2_000_000_000-time):Math.max(0,state.correct*5_000_000-state.mistakes*25_000-Math.min(time,2_000_000))}
+function scorePayload(){return{uid:state.uid||"local",displayName:cleanName(els.playerName.value),category:category(),gameMode:state.mode,challengeMode:state.challenge,score:scoreValue(),correct:state.correct,total:state.queue.length,mistakes:state.mistakes,elapsedMs:Math.floor(state.finalElapsed||0),penaltyMs:Math.floor(state.penaltyMs),completed:state.correct===state.queue.length,updatedAt:window.firebase?.firestore?.FieldValue.serverTimestamp?.()||new Date()}}
+function isBetter(a,b){return !b||Number(a.score)>Number(b.score)}
+async function saveScore(){const payload=scorePayload(),key=category();saveLocal(payload);if(!state.online||!state.db){$("saveStatus").textContent="Saved on this device.";renderLeaderboard();return}try{const ref=state.db.collection("countryQuestScores").doc(`${state.uid}_${key}`),snap=await ref.get();if(isBetter(payload,snap.exists?snap.data():null))await ref.set(payload);$("saveStatus").textContent="Score saved to the online leaderboard.";await loadOnlineScores()}catch(err){$("saveStatus").textContent="Saved locally; online score could not be updated.";console.warn("Country Quest score save failed",err)}}
+function localScores(){try{return JSON.parse(localStorage.getItem("countryQuestScores")||"[]")}catch{return[]}}
+function saveLocal(row){const rows=localScores().filter(r=>!(r.category===row.category&&r.displayName===row.displayName));rows.push({...row,updatedAt:Date.now()});rows.sort((a,b)=>b.score-a.score);localStorage.setItem("countryQuestScores",JSON.stringify(rows.slice(0,60)))}
+async function initFirebase(){try{if(!window.firebase)return;if(!firebase.apps.length)firebase.initializeApp(firebaseConfig);state.db=firebase.firestore();const cred=await firebase.auth().signInAnonymously();state.uid=cred.user.uid;state.online=true;await loadOnlineScores()}catch(err){console.warn("Country Quest online leaderboard unavailable",err);state.online=false;renderLeaderboard()}}
+async function loadOnlineScores(){if(!state.online||!state.db){renderLeaderboard();return}els.leader.innerHTML='<div class="status-note">Loading scores…</div>';try{const snap=await state.db.collection("countryQuestScores").where("category","==",category()).limit(250).get();state.leaderboard=snap.docs.map(d=>d.data()).sort((a,b)=>Number(b.score)-Number(a.score)).slice(0,10)}catch(err){console.warn("Country Quest score load failed",err);state.leaderboard=[]}renderLeaderboard()}
+function renderLeaderboard(){if(!els.leader)return;const remote=state.online?state.leaderboard:[],local=localScores().filter(r=>r.category===category()),rows=(remote.length?remote:local).sort((a,b)=>Number(b.score)-Number(a.score)).slice(0,10);if(!rows.length){els.leader.innerHTML=`<div class="status-note">No ${state.mode==="flagmap"?"Flag + Map":state.mode[0].toUpperCase()+state.mode.slice(1)} ${state.challenge==="timed"?"speed":"lives"} scores yet.<br>Be the first explorer.</div>`;return}els.leader.innerHTML="";rows.forEach((r,i)=>{const div=document.createElement("div");div.className="leader-row";const result=state.challenge==="timed"?fmtTime((r.elapsedMs||0)+(r.penaltyMs||0)):`${r.correct}/${r.total}`;div.innerHTML=`<span class="rank">${i+1}</span><span class="leader-name"></span><span class="leader-result">${result}<small>${r.mistakes||0} wrong</small></span>`;div.querySelector(".leader-name").textContent=cleanName(r.displayName);els.leader.appendChild(div)})}
+function menu(){state.running=false;clearInterval(state.timer);els.modal.hidden=true;els.game.hidden=true;els.setup.hidden=false;renderLeaderboard()}
 
-function currentTeam(){
-  if(currentPick >= draftOrder.length) return null;
-  return teams[draftOrder[currentPick]];
-}
-
-function draftNation(nationName){
-  if(!started) return;
-  const n = nations.find(x=>x.name.toLowerCase()===nationName.toLowerCase());
-  const team = currentTeam();
-  if(!n || !team || picked.has(n.name)) return;
-  team.picks.push(n);
-  picked.add(n.name);
-  currentPick++;
-  document.getElementById("nationInput").value = "";
-  document.getElementById("suggestions").style.display = "none";
-  inspectNation(n.name);
-  if(currentPick >= draftOrder.length){
-    document.getElementById("draftBtn").disabled = true;
-    document.getElementById("battleBtn").disabled = false;
-    document.getElementById("turnInfo").textContent = "Draft complete. Run the 10,000 battle simulation.";
-  }
-  render();
-  maybeAIPick();
-}
-
-function maybeAIPick(){
-  const t = currentTeam();
-  if(!t || !t.ai) return;
-  setTimeout(()=>{
-    const available = nations.filter(n=>!picked.has(n.name));
-    const pickNumber = t.picks.length;
-    let scored = available.map(n=>{
-      let needScore = n.power;
-      if(pickNumber>=1){
-        const teamAvgNavy = avg(t.picks,"navy");
-        const teamAvgTransport = avg(t.picks,"transport");
-        const teamAvgNatural = avg(t.picks,"natural");
-        if(teamAvgTransport<55) needScore += n.transport*.25;
-        if(teamAvgNavy<55) needScore += n.navy*.22;
-        if(teamAvgNatural<55) needScore += n.natural*.18;
-        needScore += Math.random()*8;
-      }
-      return {n,needScore};
-    }).sort((a,b)=>b.needScore-a.needScore);
-    draftNation(scored[0].n.name);
-  },250);
-}
-
-function draftTyped(){
-  const val = document.getElementById("nationInput").value.trim();
-  const exact = nations.find(n=>n.name.toLowerCase()===val.toLowerCase() && !picked.has(n.name));
-  if(exact) draftNation(exact.name);
-}
-
-function showSuggestions(){
-  const q = document.getElementById("nationInput").value.trim().toLowerCase();
-  const box = document.getElementById("suggestions");
-  if(!q){
-    box.style.display="none";
-    return;
-  }
-  const matches = nations.filter(n=>!picked.has(n.name) && n.name.toLowerCase().includes(q)).slice(0,18);
-  box.innerHTML = matches.map(n=>`
-    <div onclick="draftNation('${n.name.replace(/'/g,"\\'")}')">
-      <b>${n.name}</b> <span class="small">Power ${n.power} · ${n.tier} · ${n.coast}</span>
-    </div>
-  `).join("");
-  box.style.display = matches.length ? "block" : "none";
-}
-
-function render(){
-  renderTeams();
-  renderMap();
-  updateTurn();
-}
-
-function updateTurn(){
-  const info = document.getElementById("turnInfo");
-  if(!started){
-    info.textContent = "Start a draft.";
-    return;
-  }
-  if(currentPick >= draftOrder.length){
-    info.textContent = "Draft complete. Run the 10,000 battle simulation.";
-    return;
-  }
-  const round = Math.floor(currentPick / teams.length)+1;
-  const team = currentTeam();
-  info.textContent = `Round ${round}/5 · ${team.name}${team.ai ? " (AI)" : ""} is drafting.`;
-}
-
-function renderTeams(){
-  const box = document.getElementById("teams");
-  box.innerHTML = teams.map((t,i)=>`
-    <div class="team">
-      <h3>${t.name} ${t.ai ? '<span class="pill">AI</span>' : '<span class="pill">Hot Seat</span>'}</h3>
-      ${t.picks.length ? t.picks.map(n=>`
-        <div class="pick" onclick="inspectNation('${n.name.replace(/'/g,"\\'")}')">
-          <span>${n.name}</span>
-          <span class="pill">Power ${n.power}</span>
-        </div>
-      `).join("") : '<div class="small">No nations drafted yet.</div>'}
-      <div class="small" style="margin-top:7px;">Team rating: ${teamRating(t).toFixed(1)}</div>
-    </div>
-  `).join("");
-}
-
-function renderMap(){
-  const map = document.getElementById("map");
-  map.innerHTML = "";
-  const pickedNames = new Set([...picked]);
-  nations.forEach(n=>{
-    const x = ((n.lon + 180) / 360) * 100;
-    const y = ((90 - n.lat) / 180) * 100;
-    const dot = document.createElement("div");
-    dot.className = "dot" + (pickedNames.has(n.name) ? " picked" : "");
-    dot.style.left = x+"%";
-    dot.style.top = y+"%";
-    dot.title = n.name+" Power "+n.power;
-    dot.onclick = ()=>inspectNation(n.name);
-    map.appendChild(dot);
-    if(pickedNames.has(n.name)){
-      const lab = document.createElement("div");
-      lab.className = "dotLabel";
-      lab.style.left = x+"%";
-      lab.style.top = y+"%";
-      lab.textContent = n.name;
-      map.appendChild(lab);
-    }
-  });
-}
-
-function inspectNation(name){
-  const n = nations.find(x=>x.name===name);
-  if(!n) return;
-  const stats = [
-    ["Natural Resources",n.natural],
-    ["Diplomacy",n.diplomacy],
-    ["Military Strategy",n.strategy],
-    ["Land Forces",n.land],
-    ["Armored Vehicles",n.armor],
-    ["Air Force",n.air],
-    ["Naval Power",n.navy],
-    ["Submarine Power",n.subs],
-    ["Transportation",n.transport],
-    ["Economic Size",n.economy]
-  ];
-  document.getElementById("nationDetail").innerHTML = `
-    <h3 style="margin:0 0 4px;">${n.name}</h3>
-    <div class="small">${n.region} · ${n.coast} · overall power ${n.power} · approximate grid ${n.lat}, ${n.lon}</div>
-    <div class="stats">
-      ${stats.map(([k,v])=>`
-        <div class="stat">
-          <b>${k}</b>: ${v}
-          <div class="bar"><div class="fill" style="width:${v}%"></div></div>
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
-
-function teamRating(team){
-  if(!team.picks.length) return 0;
-  const keys = ["natural","diplomacy","strategy","land","armor","air","navy","subs","transport","economy"];
-  const sums = {};
-  keys.forEach(k=>sums[k]=avg(team.picks,k));
-  const synergy =
-    Math.min(sums.natural,sums.economy)*.10 +
-    Math.min(sums.navy,sums.transport)*.12 +
-    Math.min(sums.air,sums.armor)*.10 +
-    sums.strategy*.16 +
-    sums.diplomacy*.10;
-  const raw =
-    sums.land*.12+sums.armor*.10+sums.air*.14+sums.navy*.10+sums.subs*.07+
-    sums.transport*.08+sums.natural*.09+sums.economy*.08+sums.strategy*.14+sums.diplomacy*.08+
-    synergy*.18;
-  return raw;
-}
-
-function avg(arr,key){
-  if(!arr.length) return 0;
-  return arr.reduce((a,n)=>a+(n[key]||0),0)/arr.length;
-}
-
-function avgDistance(teamA,teamB){
-  let total=0, count=0;
-  teamA.picks.forEach(a=>{
-    teamB.picks.forEach(b=>{
-      total += haversine(a.lat,a.lon,b.lat,b.lon);
-      count++;
-    });
-  });
-  return total / Math.max(1,count);
-}
-
-function haversine(lat1,lon1,lat2,lon2){
-  const R=6371;
-  const dLat=(lat2-lat1)*Math.PI/180;
-  const dLon=(lon2-lon1)*Math.PI/180;
-  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-}
-
-function matchupScore(team, enemy, simIndex){
-  const ns = {};
-  ["natural","diplomacy","strategy","land","armor","air","navy","subs","transport","economy"].forEach(k=>ns[k]=avg(team.picks,k));
-  const es = {};
-  ["natural","diplomacy","strategy","land","armor","air","navy","subs","transport","economy"].forEach(k=>es[k]=avg(enemy.picks,k));
-
-  const distance = avgDistance(team,enemy);
-  const longWar = Math.min(1, distance / 9000);
-  const seaWar = distance > 2500 ? 1 : .35;
-  const resourceSupport = (ns.natural*.55 + ns.economy*.45) / 100;
-  const diplomacySustain = (ns.diplomacy*.55 + ns.strategy*.45) / 100;
-
-  let armorEffective = ns.armor * (.55 + resourceSupport*.45);
-  let airEffective = ns.air * (.60 + resourceSupport*.40);
-  let navyEffective = ns.navy + (ns.subs*.35);
-  let transportEffective = ns.transport + Math.max(0, ns.navy - es.navy)*.18 - Math.max(0, es.navy - ns.navy)*.16;
-  transportEffective = clamp(transportEffective,1,120);
-
-  const enemyArmorDamageFromAir = Math.max(0, airEffective - es.air*.55) * .18;
-  const enemyNavyDamageFromAir = Math.max(0, airEffective - es.air*.45) * .12;
-  const protectedLogistics = Math.min(navyEffective, transportEffective) * seaWar;
-
-  let base =
-    ns.land*.14 +
-    armorEffective*.13 +
-    airEffective*.17 +
-    (navyEffective - enemyNavyDamageFromAir)*.11*seaWar +
-    ns.subs*.06*seaWar +
-    transportEffective*.10 +
-    protectedLogistics*.07 +
-    ns.natural*.07 +
-    ns.economy*.07 +
-    ns.strategy*.12 +
-    ns.diplomacy*.06;
-
-  base -= enemyArmorDamageFromAir*.08;
-
-  const longWarBonus = longWar * (
-    ns.strategy*.16 +
-    ns.diplomacy*.13 +
-    ns.transport*.10 +
-    ns.economy*.09 -
-    es.strategy*.08 -
-    es.diplomacy*.06
-  );
-
-  const strategicFlipChance = ((ns.strategy + ns.diplomacy) - (es.strategy + es.diplomacy)) / 250;
-  const random = gaussian() * 9 + Math.random()*6;
-  const flip = Math.random() < Math.max(0, strategicFlipChance * longWar) ? 18 + ns.strategy*.05 : 0;
-
-  return base + longWarBonus + random + flip;
-}
-
-function gaussian(){
-  let u=0,v=0;
-  while(u===0) u=Math.random();
-  while(v===0) v=Math.random();
-  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
-}
-
-function runBattle(){
-  if(teams.some(t=>t.picks.length<5)){
-    alert("Every player needs 5 nations first.");
-    return;
-  }
-  teams.forEach(t=>{t.wins=0;t.totalScore=0;t.bestScore=0;});
-  const sims = 10000;
-  for(let s=0;s<sims;s++){
-    const scores = teams.map(t=>{
-      let score = 0;
-      teams.forEach(enemy=>{
-        if(enemy!==t) score += matchupScore(t, enemy, s);
-      });
-      score += teamRating(t)*.35;
-      t.totalScore += score;
-      t.bestScore = Math.max(t.bestScore, score);
-      return {team:t,score};
-    }).sort((a,b)=>b.score-a.score);
-    scores[0].team.wins++;
-  }
-  const ranked = [...teams].sort((a,b)=>b.wins-a.wins);
-  document.getElementById("results").innerHTML = ranked.map((t,i)=>`
-    <div class="result ${i===0?'winner':''}">
-      <b>${i===0?'🏆 ':''}${t.name}</b>
-      <div>Wins: <b>${t.wins.toLocaleString()}</b> / ${sims.toLocaleString()} (${(t.wins/sims*100).toFixed(1)}%)</div>
-      <div>Average battle score: ${(t.totalScore/sims).toFixed(1)}</div>
-      <div class="small">Team: ${t.picks.map(n=>n.name).join(", ")}</div>
-    </div>
-  `).join("");
-
-  const w = ranked[0];
-  document.getElementById("battleLog").innerHTML = `
-    <b>${w.name} wins the war draft.</b><br><br>
-    Why this team performed well:<br>
-    ${explainTeam(w)}
-    <br><br>
-    Rule engine used:<br>
-    • Naval power protects transportation across oceans.<br>
-    • Air force damages enemy armor and naval formations.<br>
-    • Armor and air are capped by natural resources and economic depth.<br>
-    • Diplomacy and strategy become more important as distance increases.<br>
-    • Submarine power adds hidden pressure in sea-heavy matchups.<br>
-    • Each of the 10,000 simulations adds uncertainty, logistics strain, and possible strategic flips.
-  `;
-}
-
-function explainTeam(t){
-  const navy = avg(t.picks,"navy");
-  const transport = avg(t.picks,"transport");
-  const air = avg(t.picks,"air");
-  const armor = avg(t.picks,"armor");
-  const strategy = avg(t.picks,"strategy");
-  const diplo = avg(t.picks,"diplomacy");
-  const econ = avg(t.picks,"economy");
-  const natural = avg(t.picks,"natural");
-  const notes = [];
-  if(Math.min(navy,transport)>70) notes.push("Strong navy plus transport gave it reliable global reach.");
-  if(Math.min(air,armor)>70) notes.push("Air and armor worked together for fast battlefield breakthroughs.");
-  if(strategy+diplo>145) notes.push("High strategy and diplomacy made it better in long, distant wars.");
-  if(econ+natural>145) notes.push("Economic size and resources helped sustain advanced forces.");
-  if(!notes.length) notes.push("It won through balanced ratings and favorable simulation variance.");
-  return notes.join("<br>");
-}
-
-function autoFillDraft(){
-  if(!started) newGame();
-  let safety = 100;
-  while(currentPick < draftOrder.length && safety-- > 0){
-    const t = currentTeam();
-    const available = nations.filter(n=>!picked.has(n.name));
-    let pick = available[0];
-    if(t.picks.length){
-      const needsTransport = avg(t.picks,"transport") < 55;
-      const needsNavy = avg(t.picks,"navy") < 55;
-      const needsResource = avg(t.picks,"natural") < 55;
-      pick = available.map(n=>({
-        n,
-        s:n.power + (needsTransport?n.transport*.2:0) + (needsNavy?n.navy*.2:0) + (needsResource?n.natural*.2:0) + Math.random()*5
-      })).sort((a,b)=>b.s-a.s)[0].n;
-    }
-    draftNation(pick.name);
-  }
-}
-
-function resetAll(){
-  started=false;
-  teams=[];
-  picked=new Set();
-  currentPick=0;
-  draftOrder=[];
-  document.getElementById("nationInput").value="";
-  document.getElementById("suggestions").style.display="none";
-  document.getElementById("draftBtn").disabled=true;
-  document.getElementById("battleBtn").disabled=true;
-  document.getElementById("results").innerHTML="No battle run yet.";
-  document.getElementById("battleLog").textContent="Battles reward balanced teams. A team with huge air and armor can crush nearby opponents, but weak transport can struggle across oceans.";
-  document.getElementById("nationDetail").innerHTML="Tap or draft a nation to inspect it.";
-  render();
-}
-
-function toggleFullscreen(){
-  if(!document.fullscreenElement){
-    document.documentElement.requestFullscreen?.();
-  }else{
-    document.exitFullscreen?.();
-  }
-}
-
-parseNations();
-resetAll();
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",()=>selectSetup("mode",b.dataset.mode)));
+document.querySelectorAll("[data-challenge]").forEach(b=>b.addEventListener("click",()=>selectSetup("challenge",b.dataset.challenge)));
+els.start.addEventListener("click",startGame);$("submitAnswer").addEventListener("click",submitTyped);els.input.addEventListener("input",updateSuggestions);els.input.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();submitTyped()}else if(e.key==="Escape")els.suggestions.hidden=true});
+els.map.addEventListener("pointerdown",pointerDown);els.map.addEventListener("pointermove",pointerMove);els.map.addEventListener("pointerup",pointerUp);els.map.addEventListener("pointercancel",pointerUp);els.map.addEventListener("wheel",e=>{e.preventDefault();zoom(e.deltaY<0?1.35:1/1.35,e.clientX,e.clientY)},{passive:false});
+$("zoomIn").onclick=()=>zoom(1.55);$("zoomOut").onclick=()=>zoom(1/1.55);$("zoomReset").onclick=resetView;$("centerBtn").onclick=resetView;$("skipBtn").onclick=skipQuestion;$("quitBtn").onclick=()=>{if(confirm("Quit this run and return to the menu?"))menu()};$("menuBtn").onclick=()=>{if(!state.running||confirm("Leave the current World Quest run?"))menu()};
+$("soundBtn").onclick=()=>{state.sound=!state.sound;$("soundBtn").textContent=state.sound?"🔊":"🔇"};$("fullBtn").onclick=async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen()}catch{}};
+$("playAgain").onclick=startGame;$("resultMenu").onclick=menu;$("refreshScores").onclick=loadOnlineScores;
+document.addEventListener("visibilitychange",()=>{if(state.running&&document.hidden){state.penaltyMs+=0}});
+els.playerName.value=cleanName(localStorage.getItem("countryQuestName")||localStorage.getItem("username")||"World Explorer");
+Promise.allSettled([loadAtlas(),initFirebase()]);
 </script>
 </body>
 </html>
