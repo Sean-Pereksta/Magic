@@ -440,12 +440,17 @@
 
     /* MOBILE BATTLEFIELD — SCROLLABLE, COMPLETE, AND ACTION-SAFE */
     @media(max-width:620px),(max-height:620px) and (pointer:coarse){
-      html,body{height:auto;min-height:100%}
+      html,body{height:auto;min-height:100%;width:100%;max-width:100vw;overflow-x:clip}
       body.battleMode{
-        overflow-x:hidden;
+        overflow-x:clip;
         overflow-y:auto;
         -webkit-overflow-scrolling:touch;
         overscroll-behavior-y:auto;
+      }
+      body.battleMode .app{
+        width:100%;
+        max-width:100vw;
+        overflow-x:clip;
       }
       body.battleMode .topbar{
         display:flex;
@@ -462,37 +467,56 @@
       body.battleMode .battleZoomControls{display:flex;margin-left:1px}
       body.battleMode .battleZoomBtn{width:26px;height:26px;font-size:15px}
       body.battleMode .battleZoomValue{min-width:31px;font-size:6.5px}
-      body.battleMode .realmBar{padding:3px 4px;gap:3px}
+      body.battleMode .realmBar{position:relative;padding:3px 4px;gap:3px;border-radius:11px 11px 0 0}
       body.battleMode .realmStats{gap:3px;font-size:6.5px}
       body.battleMode .realmHp{padding:3px 5px;font-size:7px}
-      body.battleMode .realmAttackButton{min-height:22px!important;padding:2px 4px!important;font-size:6px!important}
+      body.battleMode .realmAttackButton{
+        position:absolute;
+        top:-23px;
+        right:5px;
+        z-index:8;
+        min-width:82px;
+        min-height:38px!important;
+        padding:6px 11px!important;
+        border-width:2px;
+        border-radius:11px;
+        font-size:9px!important;
+        letter-spacing:.04em;
+        box-shadow:0 7px 18px rgba(0,0,0,.55),0 0 16px rgba(255,91,112,.3);
+      }
       body.battleMode .realmProtection{padding:3px 4px;font-size:5.5px}
 
       body.battleMode #battleView{
-        width:var(--battleZoomWidth);
-        height:auto;
+        width:100%;
+        max-width:100vw;
+        height:var(--battleZoomHeight,auto);
         min-height:calc(100dvh - 48px);
-        overflow:visible;
-        zoom:var(--battleZoom);
+        overflow-x:clip;
+        overflow-y:visible;
       }
       body.battleMode .battleShell{
+        width:var(--battleZoomWidth);
+        max-width:none;
         height:auto;
         min-height:calc(100dvh - 48px);
         grid-template-rows:auto auto auto;
         gap:6px;
         padding:4px 4px calc(10px + var(--safeBottom));
         overflow:visible;
+        transform:scale(var(--battleZoom));
+        transform-origin:top left;
       }
 
       body.battleMode .realmArea{
         min-height:0;
         gap:4px;
+        padding-top:24px;
         overflow:visible;
       }
       body.battleMode .realmSeat{
         height:clamp(148px,30dvh,230px);
         min-height:148px;
-        overflow:hidden;
+        overflow:visible;
       }
       body.battleMode .realmField{
         min-height:0;
@@ -1096,6 +1120,7 @@
   const BATTLE_ZOOM_MAX = 1.15;
   const BATTLE_ZOOM_STEP = .1;
   let battleZoom = Math.min(BATTLE_ZOOM_MAX, Math.max(BATTLE_ZOOM_MIN, Number(localStorage.getItem("warrealmsBattleZoom")) || 1));
+  let battleZoomLayoutFrame = 0;
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, char => ({
@@ -1421,14 +1446,28 @@
     return battleArtPromise;
   }
 
+  function syncBattleZoomLayout() {
+    cancelAnimationFrame(battleZoomLayoutFrame);
+    battleZoomLayoutFrame = requestAnimationFrame(() => {
+      const view = $("#battleView");
+      const shell = view?.querySelector(".battleShell");
+      if (!view || !shell || mode !== "battle") return;
+      view.style.setProperty("--battleZoomHeight", `${Math.ceil(shell.scrollHeight * battleZoom)}px`);
+      view.scrollLeft = 0;
+      document.documentElement.scrollLeft = 0;
+      document.body.scrollLeft = 0;
+    });
+  }
+
   function applyBattleZoom(nextZoom = battleZoom) {
     battleZoom = Math.min(BATTLE_ZOOM_MAX, Math.max(BATTLE_ZOOM_MIN, Math.round(Number(nextZoom) * 100) / 100));
     document.documentElement.style.setProperty("--battleZoom", String(battleZoom));
-    document.documentElement.style.setProperty("--battleZoomWidth", `${100 / battleZoom}%`);
+    document.documentElement.style.setProperty("--battleZoomWidth", `${(100 / battleZoom).toFixed(4)}%`);
     $("#battleZoomLabel").textContent = `${Math.round(battleZoom * 100)}%`;
     $("#battleZoomOutBtn").disabled = battleZoom <= BATTLE_ZOOM_MIN;
     $("#battleZoomInBtn").disabled = battleZoom >= BATTLE_ZOOM_MAX;
     localStorage.setItem("warrealmsBattleZoom", String(battleZoom));
+    syncBattleZoomLayout();
   }
 
   function setMode(nextMode) {
@@ -3729,7 +3768,7 @@
 
     const lowHealth = player.health <= STARTING_AUTHORITY / 3;
     const topRealmAction = realmAttackAllowed
-      ? `<button class="btn small primary realmAttackButton" data-act="attack-player" data-target-id="${player.id}" aria-label="Attack ${escapeHtml(player.name)} with ${myPlayer().combat} Combat">⚔ ${myPlayer().combat}</button>`
+      ? `<button class="btn small primary realmAttackButton" data-act="attack-player" data-target-id="${player.id}" aria-label="Attack ${escapeHtml(player.name)} with ${myPlayer().combat} Combat">ATTACK ⚔ ${myPlayer().combat}</button>`
       : canAct && blockers.length
       ? `<span class="realmProtection" title="Destroy this realm's Outposts before attacking it">OUTPOST</span>`
       : "";
@@ -5123,6 +5162,9 @@
   });
   $("#battleZoomOutBtn").addEventListener("click", () => applyBattleZoom(battleZoom - BATTLE_ZOOM_STEP));
   $("#battleZoomInBtn").addEventListener("click", () => applyBattleZoom(battleZoom + BATTLE_ZOOM_STEP));
+  window.addEventListener("resize", syncBattleZoomLayout, { passive: true });
+  window.visualViewport?.addEventListener("resize", syncBattleZoomLayout, { passive: true });
+  if ("ResizeObserver" in window) new ResizeObserver(syncBattleZoomLayout).observe($(".battleShell"));
   $("#fullscreenBtn").addEventListener("click", async () => {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
