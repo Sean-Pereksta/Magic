@@ -57,11 +57,23 @@ service cloud.firestore {
         allow read, write: if isAuthed();
       }
 
+      match /highscores/{scoreId} {
+        allow read: if isAuthed() && gameId == 'world_quest';
+        allow create: if gameId == 'world_quest' && validCountryQuestScore();
+        allow update: if gameId == 'world_quest'
+          && validCountryQuestScore()
+          && resource.data.uid == request.auth.uid
+          && request.resource.data.score >= resource.data.score;
+        allow delete: if gameId == 'world_quest'
+          && isAuthed()
+          && resource.data.uid == request.auth.uid;
+      }
+
       // Grass Realms and War Realms keep their synchronized match snapshot on
       // this lobby document and authenticated readiness/deck data in presence/{uid}.
       // Academy and other lobby-backed games also use authenticated subcollections.
       match /{document=**} {
-        allow read, write: if isAuthed();
+        allow read, write: if isAuthed() && gameId != 'world_quest';
       }
     }
 
@@ -161,18 +173,6 @@ service cloud.firestore {
       match /commands/{cmdId} {
         allow read, write: if isAuthed();
       }
-    }
-
-    // World Quest keeps at most one personal best per player and mode.
-    // Public reads power the leaderboards; only the authenticated owner can
-    // create or improve their own score document.
-    match /countryQuestScores/{scoreId} {
-      allow read: if isAuthed();
-      allow create: if validCountryQuestScore();
-      allow update: if validCountryQuestScore()
-        && resource.data.uid == request.auth.uid
-        && request.resource.data.score >= resource.data.score;
-      allow delete: if isAuthed() && resource.data.uid == request.auth.uid;
     }
 
     match /{document=**} {
