@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 77789)
-Total output lines: 5482
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1860,7 +1857,1455 @@ Total output lines: 5482
   function choiceEffectOptions(effect = {}) {
     if (!effect || typeof effect !== "object" || Array.isArray(effect)) return [];
     const choiceKey = CHOICE_EFFECT_KEYS.find(key => Array.isArray(effect[key]) || (effect[key] && typeof effect[key] === "object"));
-    if (!choiceKey)…17789 tokens truncated…= ability === "purge"
+    if (!choiceKey) return [];
+    const raw = Array.isArray(effect[choiceKey]) ? effect[choiceKey] : Object.values(effect[choiceKey] || {});
+    return raw.map((option, index) => {
+      if (!option || typeof option !== "object" || Array.isArray(option)) return null;
+      const wrapped = option.effect && typeof option.effect === "object" && !Array.isArray(option.effect);
+      const optionEffect = normalizeEffectAliases(wrapped ? option.effect : option);
+      delete optionEffect.label;
+      delete optionEffect.name;
+      delete optionEffect.text;
+      return {
+        index,
+        label: String(option.label || option.name || option.text || "").trim(),
+        effect: optionEffect
+      };
+    }).filter(option => option && Object.keys(option.effect).length > 0);
+  }
+
+  function coreEffect(effect = {}) {
+    const normalized = normalizeEffectAliases(effect);
+    for (const key of CHOICE_EFFECT_KEYS) delete normalized[key];
+    delete normalized.label;
+    delete normalized.name;
+    delete normalized.text;
+    return normalized;
+  }
+
+  function effectDisplaySummary(effect = {}) {
+    const shared = effectSummary(coreEffect(effect));
+    const options = choiceEffectOptions(effect);
+    const choiceText = options.map((option, index) => option.label || effectSummary(coreEffect(option.effect)) || `Option ${index + 1}`).join(" OR ");
+    return [shared, choiceText ? `Choose one: ${choiceText}` : ""].filter(Boolean).join(shared && choiceText ? ". " : "");
+  }
+
+  function pendingChoiceFor(player) {
+    return Array.isArray(player?.pendingChoices) ? player.pendingChoices[0] || null : null;
+  }
+
+  function primaryCardEffect(card) {
+    const primary = card?.effect && typeof card.effect === "object" ? clone(card.effect) : {};
+    const alreadyHasChoice = CHOICE_EFFECT_KEYS.some(key => primary[key] !== undefined);
+    const topLevelChoice = card?.or || card?.choice || card?.chooseOne || card?.choose_one;
+    if (!alreadyHasChoice && topLevelChoice) primary.or = clone(topLevelChoice);
+    return primary;
+  }
+
+  const COPY_BLOCKED_EFFECT_KEYS = new Set(["echo", "resurrect", "graveEcho", "transform", "__resurrect"]);
+
+  function meaningfulCopiedEffect(effect = {}) {
+    const normalized = coreEffect(effect);
+    const numeric = Object.entries(normalized).some(([key, value]) => !COPY_BLOCKED_EFFECT_KEYS.has(key) && (Number(value) || value === true));
+    return numeric || choiceEffectOptions(effect).some(option => meaningfulCopiedEffect(option.effect));
+  }
+
+  function sanitizeCopiedEffect(effect = {}, config = {}) {
+    if (!effect || typeof effect !== "object" || Array.isArray(effect)) return {};
+    const normalized = normalizeEffectAliases(effect);
+    const excluded = new Set([...(config.excludeKeys || []), ...COPY_BLOCKED_EFFECT_KEYS]);
+    const allowed = Array.isArray(config.copyKeys) && config.copyKeys.length ? new Set(config.copyKeys) : null;
+    const result = {};
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (CHOICE_EFFECT_KEYS.includes(key)) {
+        if (excluded.has(key) || allowed) continue;
+        const options = choiceEffectOptions({ [key]: value }).map(option => {
+          const copied = sanitizeCopiedEffect(option.effect, config);
+          return meaningfulCopiedEffect(copied) ? { label: option.label, effect: copied } : null;
+        }).filter(Boolean);
+        if (options.length) result.or = options;
+        continue;
+      }
+      if (excluded.has(key) || (allowed && !allowed.has(key))) continue;
+      if (typeof value !== "number" && typeof value !== "boolean") continue;
+      result[key] = value;
+    }
+
+    if (Number.isFinite(Number(config.maximumCopiedCombat)) && result.combat) {
+      result.combat = Math.min(result.combat, Math.max(0, Number(config.maximumCopiedCombat)));
+    }
+    return result;
+  }
+
+  function queueSpecialChoice(game, player, options, context = {}) {
+    const valid = (Array.isArray(options) ? options : []).filter(option => option?.effect && typeof option.effect === "object");
+    if (!valid.length) return false;
+    player.pendingChoices = Array.isArray(player.pendingChoices) ? player.pendingChoices : [];
+    player.pendingChoices.push({
+      id: makeId("choice"),
+      cardId: String(context.cardId || ""),
+      source: String(context.source || "primary"),
+      createdAtMs: Date.now(),
+      options: valid.map((option, index) => ({ label: String(option.label || ""), effect: clone(option.effect), index }))
+    });
+    return true;
+  }
+
+  function queueResurrectionChoice(game, player, config = {}, context = {}) {
+    const maxCost = Number.isFinite(Number(config.maxCost)) ? Number(config.maxCost) : Infinity;
+    const cardType = String(config.cardType || "").trim();
+    const options = player.discard.map((cardId, discardIndex) => {
+      const card = getCard(cardId);
+      if (!card || card.cost > maxCost || (cardType && card.type !== cardType)) return null;
+      return {
+        label: `${card.name} · Cost ${card.cost}`,
+        effect: {
+          __resurrect: {
+            cardId,
+            discardIndex,
+            sacrificeAfterPlay: config.sacrificeAfterPlay !== false
+          }
+        }
+      };
+    }).filter(Boolean);
+    if (!queueSpecialChoice(game, player, options, { ...context, source: "resurrect" })) {
+      addLog(game, `${player.name} had no eligible card to Resurrect.`);
+      return false;
+    }
+    addLog(game, `${player.name} must choose a card to Resurrect.`);
+    return true;
+  }
+
+  function queueGraveEchoChoice(game, player, config = {}, context = {}) {
+    const maxCost = Number.isFinite(Number(config.maxCost)) ? Number(config.maxCost) : Infinity;
+    const excluded = Array.isArray(config.excludeKeys) ? config.excludeKeys : [];
+    const options = (game.scrapped || []).filter(entry => entry?.originalOwnerId === player.id && String(entry.reason || "").startsWith("sacrifice")).map(entry => {
+      const card = getCard(entry.id);
+      if (!card || card.cost > maxCost) return null;
+      const copied = sanitizeCopiedEffect(primaryCardEffect(card), { excludeKeys: excluded });
+      if (!meaningfulCopiedEffect(copied)) return null;
+      return { label: card.name, effect: copied };
+    }).filter(Boolean);
+    if (!queueSpecialChoice(game, player, options, { ...context, source: "graveEcho" })) {
+      addLog(game, `${player.name}'s Grave Echo found no eligible sacrificed Primary ability.`);
+      return false;
+    }
+    addLog(game, `${player.name} must choose a sacrificed card for Grave Echo.`);
+    return true;
+  }
+
+  function resolveInternalResurrection(game, player, instruction = {}) {
+    const expectedId = String(instruction.cardId || "");
+    let index = Number(instruction.discardIndex);
+    if (!Number.isInteger(index) || player.discard[index] !== expectedId) index = player.discard.findIndex(cardId => cardId === expectedId);
+    if (index < 0) {
+      addLog(game, `${player.name}'s Resurrection target was no longer in the discard pile.`);
+      return false;
+    }
+    const cardId = player.discard.splice(index, 1)[0];
+    player.hand.push(cardId);
+    if (instruction.sacrificeAfterPlay !== false) {
+      player.temporaryResurrections = player.temporaryResurrections || {};
+      player.temporaryResurrections[cardId] = Math.max(0, Number(player.temporaryResurrections[cardId]) || 0) + 1;
+    }
+    pushVisualEvent(game, "card-resurrect", { actorId: player.id, targetId: player.id, cardId });
+    addLog(game, `${player.name} Resurrected ${getCard(cardId)?.name || "a card"} into their hand.`);
+    return true;
+  }
+
+  function consumeTemporaryResurrection(player, cardId) {
+    player.temporaryResurrections = player.temporaryResurrections || {};
+    const count = Math.max(0, Math.floor(Number(player.temporaryResurrections[cardId]) || 0));
+    if (!count) return false;
+    if (count <= 1) delete player.temporaryResurrections[cardId];
+    else player.temporaryResurrections[cardId] = count - 1;
+    return true;
+  }
+
+  function resolveAuthorityThreshold(game, player, card, authorityBefore, context = {}) {
+    const threshold = card?.authorityThreshold;
+    if (!threshold || typeof threshold !== "object") return false;
+    const atOrBelow = Number(threshold.atOrBelow);
+    if (!Number.isFinite(atOrBelow) || Number(authorityBefore) > atOrBelow || !threshold.effect) return false;
+    applyEffect(game, player, threshold.effect, { cardId: card.id, ...context, source: "authorityThreshold" });
+    addLog(game, `${player.name} triggered ${card.name}'s Last Stand at ${authorityBefore} Authority.`);
+    return true;
+  }
+
+  function resolveEcho(game, player, card, previousShipEntry) {
+    const config = card?.echo;
+    if (!config || typeof config !== "object") return false;
+    const previousCard = previousShipEntry && getCard(previousShipEntry.id);
+    if (!previousCard || previousCard.type === "base") {
+      addLog(game, `${card.name} had no previous ship to Echo.`);
+      return false;
+    }
+    const copied = sanitizeCopiedEffect(primaryCardEffect(previousCard), config);
+    if (!meaningfulCopiedEffect(copied)) {
+      addLog(game, `${card.name} could not copy an allowed effect from ${previousCard.name}.`);
+      return false;
+    }
+    applyEffect(game, player, copied, { cardId: card.id, source: "echo" });
+    addLog(game, `${card.name} echoed ${previousCard.name}'s Primary ability.`);
+    return true;
+  }
+
+  function recordTransformProgress(game, player, entry, card) {
+    const transform = card?.transform;
+    if (!transform || typeof transform !== "object" || !transform.into || transform.trigger === "sacrificed") return false;
+    player.transformProgress = player.transformProgress || {};
+    const required = Math.max(1, Number(transform.required) || 1);
+    let gain = 0;
+    if (transform.trigger === "timesPlayed") gain = 1;
+    if (transform.trigger === "cumulativePrimaryEffect") gain = Math.max(0, Number(coreEffect(primaryCardEffect(card))[transform.effectKey]) || 0);
+    if (!gain) return false;
+    const progress = Math.max(0, Number(player.transformProgress[card.id]) || 0) + gain;
+    player.transformProgress[card.id] = progress;
+    if (progress < required || !getCard(transform.into)) return false;
+    delete player.transformProgress[card.id];
+    const previousId = entry.id;
+    entry.id = transform.into;
+    pushVisualEvent(game, "card-transform", { actorId: player.id, targetId: player.id, fromCardId: previousId, cardId: transform.into, instanceId: entry.instanceId });
+    addLog(game, `${player.name}'s ${card.name} transformed into ${getCard(transform.into)?.name || transform.into}.`);
+    return true;
+  }
+
+  function transformedSacrificeId(card) {
+    const transform = card?.transform;
+    return transform?.trigger === "sacrificed" && transform?.replaceSacrificeRemoval && getCard(transform.into) ? transform.into : "";
+  }
+
+  function gainChargeForBase(game, player, entry, trigger, event = {}) {
+    const card = getCard(entry?.id);
+    const charge = card?.charge;
+    if (!charge || charge.trigger !== trigger || entry.disabledTurn === game.turnSerial) return 0;
+    if (trigger === "friendlyFactionPlayed") {
+      if (charge.faction && charge.faction !== event.faction) return 0;
+      if (event.sourceInstanceId && event.sourceInstanceId === entry.instanceId) return 0;
+    }
+    const before = Math.max(0, Math.floor(Number(entry.charges) || 0));
+    const maximum = Math.max(0, Math.floor(Number(charge.max) || 99));
+    entry.charges = Math.min(maximum, before + Math.max(0, Math.floor(Number(charge.gain) || 0)));
+    const gained = entry.charges - before;
+    if (gained) addLog(game, `${player.name}'s ${card.name} gained ${gained} Charge${gained === 1 ? "" : "s"} (${entry.charges}/${maximum}).`);
+    return gained;
+  }
+
+  function triggerChargeEvent(game, player, trigger, event = {}) {
+    for (const entry of player.bases || []) gainChargeForBase(game, player, entry, trigger, event);
+  }
+
+  function chargeActionAvailability(game, player, entry, action = {}) {
+    const charges = Math.max(0, Math.floor(Number(entry?.charges) || 0));
+    if (!entry || entry.disabledTurn === game.turnSerial) return { allowed: false, charges, spend: 0 };
+    if (action.oncePerTurn && entry.chargeUsedTurn === game.turnSerial) return { allowed: false, charges, spend: 0 };
+    if (action.cost === "all") {
+      const minimum = Math.max(1, Math.floor(Number(action.minimum) || 1));
+      return { allowed: charges >= minimum, charges, spend: charges };
+    }
+    const spend = Math.max(1, Math.floor(Number(action.cost) || 1));
+    return { allowed: charges >= spend, charges, spend };
+  }
+
+  function multipliedEffect(effect = {}, multiplier = 1) {
+    const result = {};
+    for (const [key, value] of Object.entries(normalizeEffectAliases(effect))) {
+      if (typeof value === "number") result[key] = value * multiplier;
+    }
+    return result;
+  }
+
+  function chargeResolvedEffect(action = {}, spent = 0) {
+    if (action.effectPerCharge) return multipliedEffect(action.effectPerCharge, spent);
+    return clone(action.effect || {});
+  }
+
+  function chargeBadgeHtml(entry, card) {
+    if (!entry || !card?.charge) return "";
+    const charges = Math.max(0, Math.floor(Number(entry.charges) || 0));
+    return `<span class="chargeBadge${charges ? "" : " empty"}" title="${charges} stored Charge${charges === 1 ? "" : "s"}">⚡ ${charges}</span>`;
+  }
+
+  function chargeButtonsHtml(entry, card, canAct, game = state) {
+    const actions = Array.isArray(card?.charge?.actions) ? card.charge.actions : [];
+    if (!entry || !actions.length) return "";
+    return actions.map((action, actionIndex) => {
+      const availability = game ? chargeActionAvailability(game, myPlayer(game) || {}, entry, action) : { allowed: false, spend: 0 };
+      const enabled = !!canAct && availability.allowed;
+      const costText = action.cost === "all" ? `All ${availability.charges}` : `${Math.max(1, Number(action.cost) || 1)}⚡`;
+      const label = String(action.label || "Release Charge").replace(/ Release$/i, "");
+      return `<button class="btn small blue" data-act="use-charge" data-instance-id="${escapeHtml(entry.instanceId)}" data-action-index="${actionIndex}" ${enabled ? "" : "disabled"}>${escapeHtml(label)} · ${escapeHtml(costText)}</button>`;
+    }).join("");
+  }
+
+  const ABILITY_VISUALS = Object.freeze({
+    trade: { icon: "◆", label: "Trade" },
+    combat: { icon: "⚔", label: "Combat" },
+    heal: { icon: "♥", label: "Authority" },
+    draw: { icon: "⇧", label: "Draw" },
+    opponentDiscard: { icon: "↘", label: "Force Discard" },
+    stun: { icon: "⌁", label: "Disable" },
+    scrapMarket: { icon: "⊘", label: "Market Erase" },
+    scrapOwn: { icon: "✕", label: "Purge" },
+    destroyBase: { icon: "☠", label: "Destroy Base" },
+    shield: { icon: "⬡", label: "Shield" },
+    damageAll: { icon: "⚡", label: "Damage All" },
+    lifelink: { icon: "♥↺", label: "Lifelink" },
+    tradePerBase: { icon: "◆B", label: "Trade per Base" },
+    combatPerBase: { icon: "⚔B", label: "Combat per Base" },
+    healPerBase: { icon: "♥B", label: "Authority per Base" },
+    drawPerBase: { icon: "⇧B", label: "Draw per Base" }
+  });
+
+  function effectGlyphItems(effect = {}, source = "primary") {
+    const normalized = coreEffect(effect);
+    const glyphs = Object.entries(ABILITY_VISUALS).flatMap(([key, meta]) => {
+      const amount = Number(normalized?.[key]) || 0;
+      if (!amount) return [];
+      const amountText = key === "lifelink" && amount > 0 && amount < 1 ? `${Math.round(amount * 100)}%` : String(amount);
+      return [{ key, icon: meta.icon, label: meta.label, amount, amountText, source }];
+    });
+    const choices = choiceEffectOptions(effect);
+    if (choices.length) glyphs.push({ key: "choice", icon: "OR", label: `Choose one of ${choices.length}`, amountText: `1/${choices.length}`, source: "choice" });
+    return glyphs;
+  }
+
+  function doubleAllyEffect(card) {
+    if (!card || typeof card !== "object") return {};
+    const effect = card.doubleAlly || card.double_ally || card.ally2;
+    return effect && typeof effect === "object" ? effect : {};
+  }
+
+  function hasEffect(effect) {
+    const shared = coreEffect(effect);
+    return choiceEffectOptions(effect).length > 0 || Object.keys(shared).some(key => Number(shared[key]) || shared[key] === true);
+  }
+
+  function completeCardRules(card) {
+    const rules = String(fullCardRules(card) || "");
+    const additions = [];
+    const doubleAlly = effectDisplaySummary(doubleAllyEffect(card));
+    if (doubleAlly && !/double ally\s*:/i.test(rules)) additions.push(`Double Ally: ${doubleAlly}.`);
+    const allEffects = [primaryCardEffect(card), card.ally, doubleAllyEffect(card), card.sacrifice];
+    const hasChoice = allEffects.some(effect => choiceEffectOptions(effect).length > 0);
+    if (hasChoice && !/(choose one|select one|\bor\b)/i.test(rules)) {
+      const firstChoice = allEffects.find(effect => choiceEffectOptions(effect).length > 0);
+      additions.push(`${effectDisplaySummary(firstChoice)}.`);
+    }
+    for (const extra of [card.onPurchaseText, card.resurrectText, card.graveEchoText, card.thresholdText, card.chargeText, card.echoText, card.transformText]) {
+      const clean = String(extra || "").trim();
+      if (clean && !rules.toLowerCase().includes(clean.toLowerCase())) additions.push(clean.endsWith(".") ? clean : `${clean}.`);
+    }
+    return `${rules}${rules && additions.length ? " " : ""}${additions.join(" ")}`;
+  }
+
+  function normalizeCardSearch(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[_.-]+/g, " ")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function cardSearchHaystack(card) {
+    const faction = FACTIONS[card.faction] || {};
+    return normalizeCardSearch([
+      card.name,
+      card.id,
+      card.png,
+      card.image,
+      card.filename,
+      displayCardType(card),
+      faction.name,
+      faction.title,
+      completeCardRules(card),
+      effectDisplaySummary(primaryCardEffect(card)),
+      effectDisplaySummary(card.ally),
+      effectDisplaySummary(doubleAllyEffect(card)),
+      effectDisplaySummary(card.sacrifice),
+      card.onPurchaseText,
+      card.resurrectText,
+      card.graveEchoText,
+      card.thresholdText,
+      card.chargeText,
+      card.echoText,
+      card.transformText,
+      JSON.stringify({ effect: primaryCardEffect(card), ally: card.ally, doubleAlly: doubleAllyEffect(card), sacrifice: card.sacrifice, onPurchase: card.onPurchase, authorityThreshold: card.authorityThreshold, charge: card.charge, echo: card.echo, transform: card.transform })
+    ].filter(Boolean).join(" "));
+  }
+
+  function cardMatchesSearch(card, query) {
+    const normalizedQuery = normalizeCardSearch(query);
+    if (!normalizedQuery) return true;
+    const haystack = cardSearchHaystack(card);
+    return normalizedQuery.split(" ").every(term => haystack.includes(term));
+  }
+
+  function cardPrice(card) {
+    const price = Number(card?.cost);
+    return Number.isFinite(price) ? price : 0;
+  }
+
+  function sortCatalogCards(cards) {
+    const factionOrder = { yellow: 0, blue: 1, green: 2, red: 3, neutral: 4 };
+    const typeOrder = card => card?.type === "base" ? (card.outpost ? 0 : 1) : 2;
+    const byName = (a, b) => String(a?.name || "").localeCompare(String(b?.name || ""));
+    return [...cards].sort((a, b) => {
+      if (catalogSort === "price-asc") return cardPrice(a) - cardPrice(b) || byName(a, b);
+      if (catalogSort === "price-desc") return cardPrice(b) - cardPrice(a) || byName(a, b);
+      if (catalogSort === "faction") return (factionOrder[a.faction] ?? 99) - (factionOrder[b.faction] ?? 99) || cardPrice(a) - cardPrice(b) || byName(a, b);
+      if (catalogSort === "type") return typeOrder(a) - typeOrder(b) || cardPrice(a) - cardPrice(b) || byName(a, b);
+      return 0;
+    });
+  }
+
+  function cardAbilityGlyphs(card) {
+    if (!card) return [];
+    const glyphs = [
+      ...effectGlyphItems(primaryCardEffect(card), "primary"),
+      ...effectGlyphItems(card.ally, "ally"),
+      ...effectGlyphItems(doubleAllyEffect(card), "doubleAlly"),
+      ...effectGlyphItems(card.sacrifice, "sacrifice")
+    ];
+    if (card.onPurchase) glyphs.push({ key: "deploy", icon: "↯", label: "Deploy when purchased", amountText: "", source: "deploy" });
+    if (card.effect?.resurrect) glyphs.push({ key: "resurrect", icon: "☥", label: "Resurrect", amountText: String(card.effect.resurrect.maxCost || ""), source: "resurrect" });
+    if (card.effect?.graveEcho) glyphs.push({ key: "graveEcho", icon: "↶", label: "Grave Echo", amountText: "", source: "graveEcho" });
+    if (card.authorityThreshold) glyphs.push({ key: "threshold", icon: "♥≤", label: `Last Stand ${card.authorityThreshold.atOrBelow}`, amountText: String(card.authorityThreshold.atOrBelow || ""), source: "threshold" });
+    if (card.charge) glyphs.push({ key: "charge", icon: "⚡", label: `Charge up to ${card.charge.max || "∞"}`, amountText: String(card.charge.max || ""), source: "charge" });
+    if (card.echo) glyphs.push({ key: "echo", icon: "◉", label: "Echo previous ship", amountText: "", source: "echo" });
+    if (card.transform) glyphs.push({ key: "transform", icon: "⇆", label: `Transform into ${getCard(card.transform.into)?.name || card.transform.into || "new form"}`, amountText: "", source: "transform" });
+    if (card.outpost) glyphs.unshift({ key: "outpost", icon: "🛡", label: `Outpost ${card.defense || 0}`, amountText: String(card.defense || 0), source: "primary" });
+    else if (card.type === "base") glyphs.unshift({ key: "base", icon: "▣", label: `Base ${card.defense || 0}`, amountText: String(card.defense || 0), source: "primary" });
+    return glyphs;
+  }
+
+  function abilityGlyphHtml(item, detailed = false) {
+    const sourceLabels = { ally: "Ally", doubleAlly: "Double Ally", sacrifice: "Sacrifice", choice: "Choice", deploy: "Deploy", resurrect: "Resurrect", graveEcho: "Grave Echo", threshold: "Last Stand", charge: "Charge", echo: "Echo", transform: "Transform" };
+    const sourceLabel = sourceLabels[item.source] || "Primary";
+    const title = `${sourceLabel}: ${item.label}${item.amountText ? ` ${item.amountText}` : ""}`;
+    return `<span class="abilityGlyph ${item.source || "primary"} ${item.key === "choice" ? "choice" : ""}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"><span>${escapeHtml(item.icon)}</span>${item.amountText ? `<b>${escapeHtml(item.amountText)}</b>` : ""}${detailed ? `<span>${escapeHtml(item.label)}</span>` : ""}</span>`;
+  }
+
+  function cardAbilityRailHtml(card, detailed = false) {
+    const all = cardAbilityGlyphs(card);
+    const limit = detailed ? all.length : 6;
+    const shown = all.slice(0, limit);
+    if (!shown.length) return "";
+    return `<div class="${detailed ? "detailAbilityGrid" : "cardAbilityRail"}">${shown.map(item => abilityGlyphHtml(item, detailed)).join("")}${!detailed && all.length > limit ? `<span class="abilityGlyph more" title="${all.length - limit} more abilities">+${all.length - limit}</span>` : ""}</div>`;
+  }
+
+  function resolvedAbilityGlyphs(effect = {}, activeBases = 0) {
+    const normalized = coreEffect(effect);
+    const resolved = [];
+    const add = (key, amount) => {
+      if (!amount || !ABILITY_VISUALS[key]) return;
+      resolved.push({ icon: ABILITY_VISUALS[key].icon, amountText: key === "lifelink" && amount < 1 ? `${Math.round(amount * 100)}%` : String(amount) });
+    };
+    add("trade", (normalized.trade || 0) + activeBases * (normalized.tradePerBase || 0));
+    add("combat", (normalized.combat || 0) + activeBases * (normalized.combatPerBase || 0));
+    add("heal", (normalized.heal || 0) + activeBases * (normalized.healPerBase || 0));
+    add("draw", (normalized.draw || 0) + activeBases * (normalized.drawPerBase || 0));
+    for (const key of ["opponentDiscard", "stun", "scrapMarket", "scrapOwn", "destroyBase", "shield", "damageAll", "lifelink"]) add(key, normalized[key] || 0);
+    return resolved.slice(0, 7);
+  }
+
+  const EFFECT_TERM_PATTERN = new RegExp(`\\b(${Object.keys(EFFECT_TERM_ALIASES)
+    .sort((left, right) => right.length - left.length)
+    .map(term => term.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&"))
+    .join("|")})\\b`, "gi");
+
+  function linkEffectTerms(value) {
+    const source = String(value || "");
+    let html = "";
+    let lastIndex = 0;
+    source.replace(EFFECT_TERM_PATTERN, (match, _capture, offset) => {
+      html += escapeHtml(source.slice(lastIndex, offset));
+      const canonical = EFFECT_TERM_ALIASES[match.toLowerCase()] || match;
+      html += `<button type="button" class="effectTermButton" data-act="effect-help" data-effect-term="${escapeHtml(canonical)}">${escapeHtml(match)}</button>`;
+      lastIndex = offset + match.length;
+      return match;
+    });
+    return html + escapeHtml(source.slice(lastIndex));
+  }
+
+  function effectLabelHtml(label) {
+    return `<button type="button" class="effectTermButton" data-act="effect-help" data-effect-term="${escapeHtml(label)}">${escapeHtml(label)}</button>`;
+  }
+
+  function showEffectHelp(term) {
+    const canonical = EFFECT_TERM_ALIASES[String(term || "").toLowerCase()] || String(term || "Effect");
+    $("#effectTitle").textContent = canonical;
+    $("#effectDescription").textContent = EFFECT_TERM_HELP[canonical] || "This term is defined by the exact wording on the card. Resolve the card from left to right, using the current battle state.";
+    $("#effectOverlay").classList.remove("hidden");
+  }
+
+  function closeEffectHelp() {
+    $("#effectOverlay").classList.add("hidden");
+  }
+
+  function shuffleInPlace(values) {
+    for (let index = values.length - 1; index > 0; index -= 1) {
+      const target = Math.floor(Math.random() * (index + 1));
+      [values[index], values[target]] = [values[target], values[index]];
+    }
+    return values;
+  }
+
+  function cardMatchesCostTier(card, tierKey) {
+    const cost = Number(card?.cost);
+    if (!Number.isFinite(cost)) return false;
+    if (tierKey === "low") return cost >= 1 && cost <= 3;
+    if (tierKey === "mid") return cost === 4;
+    return tierKey === "high" && cost >= 5;
+  }
+
+  function buildCostCurveCommandDeck(owned = null) {
+    const deck = [];
+
+    for (const tier of COMMAND_DECK_COST_BREAKDOWN) {
+      const tierPool = [];
+      for (const card of DECK_ELIGIBLE_CARDS) {
+        if (!cardMatchesCostTier(card, tier.key)) continue;
+        const availableCopies = owned
+          ? Math.max(0, Math.min(MAX_COPIES_PER_CARD, Math.floor(Number(owned[card.id]) || 0)))
+          : MAX_COPIES_PER_CARD;
+        for (let copyIndex = 0; copyIndex < availableCopies; copyIndex += 1) tierPool.push(card.id);
+      }
+
+      shuffleInPlace(tierPool);
+      if (tierPool.length < tier.count) {
+        throw new Error(`The card pack needs at least ${tier.count} available ${tier.label} cards to build the required command deck; found ${tierPool.length}.`);
+      }
+      deck.push(...tierPool.slice(0, tier.count));
+    }
+
+    if (deck.length !== COMMAND_DECK_SIZE) {
+      throw new Error(`Cost-curve command deck must contain exactly ${COMMAND_DECK_SIZE} cards; found ${deck.length}.`);
+    }
+    return shuffleInPlace(deck);
+  }
+
+  function makeStarterDeckOwned(owned, deck) {
+    const required = countCards(deck);
+
+    for (const [cardId, requiredCopies] of Object.entries(required)) {
+      const card = CARD_MAP[cardId];
+      if (!card) continue;
+      let deficit = Math.max(0, requiredCopies - (owned[cardId] || 0));
+      if (!deficit) continue;
+
+      owned[cardId] = requiredCopies;
+      const donors = DECK_ELIGIBLE_CARDS
+        .filter(candidate => candidate.faction === card.faction && candidate.id !== cardId)
+        .sort((left, right) => right.cost - left.cost || left.name.localeCompare(right.name));
+
+      for (const donor of donors) {
+        if (deficit <= 0) break;
+        const protectedCopies = required[donor.id] || 0;
+        const removable = Math.max(0, (owned[donor.id] || 0) - protectedCopies);
+        const removed = Math.min(removable, deficit);
+        owned[donor.id] = (owned[donor.id] || 0) - removed;
+        deficit -= removed;
+      }
+
+      if (deficit > 0) {
+        throw new Error(`Could not reserve ${requiredCopies} starter-deck copies of ${card.name} without exceeding the ${STARTER_CARDS_PER_FACTION}-card ${card.faction} starter collection.`);
+      }
+    }
+
+    return owned;
+  }
+
+  function createNewPlayerCollection() {
+    const owned = Object.fromEntries(DECK_ELIGIBLE_CARDS.map(card => [card.id, 0]));
+    const factionIds = ["yellow", "blue", "green", "red"];
+
+    for (const faction of factionIds) {
+      const foundationalCards = DECK_ELIGIBLE_CARDS
+        .filter(card => card.faction === faction)
+        .sort((left, right) => left.cost - right.cost || left.name.localeCompare(right.name))
+        .slice(0, STARTER_UNIQUE_CARDS_PER_FACTION);
+
+      let remaining = STARTER_CARDS_PER_FACTION;
+      for (const card of foundationalCards) {
+        if (remaining <= 0) break;
+        const copies = Math.min(MAX_COPIES_PER_CARD, remaining);
+        owned[card.id] = copies;
+        remaining -= copies;
+      }
+
+      if (remaining !== 0) {
+        throw new Error(`${faction} starter collection is short by ${remaining} cards.`);
+      }
+    }
+
+    const factionTotals = Object.fromEntries(factionIds.map(faction => [
+      faction,
+      DECK_ELIGIBLE_CARDS.filter(card => card.faction === faction)
+        .reduce((sum, card) => sum + (owned[card.id] || 0), 0)
+    ]));
+    const total = Object.values(factionTotals).reduce((sum, count) => sum + count, 0);
+
+    for (const [faction, count] of Object.entries(factionTotals)) {
+      if (count !== STARTER_CARDS_PER_FACTION) {
+        throw new Error(`${faction} must start with exactly ${STARTER_CARDS_PER_FACTION} cards; found ${count}.`);
+      }
+    }
+    if (total !== STARTER_COLLECTION_SIZE) {
+      throw new Error(`War Realms starter collection must contain exactly ${STARTER_COLLECTION_SIZE} cards; found ${total}.`);
+    }
+    return owned;
+  }
+
+  function normalizeProfile(rawUserData = {}, isNewWarProfile = false) {
+    const raw = rawUserData.warRealms || {};
+    const owned = Object.fromEntries(DECK_ELIGIBLE_CARDS.map(card => [card.id, 0]));
+    const newPlayerDeck = isNewWarProfile ? buildCostCurveCommandDeck() : null;
+    if (isNewWarProfile) {
+      Object.assign(owned, createNewPlayerCollection());
+      makeStarterDeckOwned(owned, newPlayerDeck);
+    }
+
+    for (const card of DECK_ELIGIBLE_CARDS) {
+      const supplied = Number(raw.owned?.[card.id]);
+      if (Number.isFinite(supplied)) owned[card.id] = Math.max(0, Math.min(MAX_COPIES_PER_CARD, Math.floor(supplied)));
+    }
+
+    let deck = Array.isArray(raw.deck) ? raw.deck.filter(id => DECK_ELIGIBLE_CARD_IDS.has(id)) : [];
+    if (!validateCommandDeck(deck, owned).valid) deck = newPlayerDeck ? [...newPlayerDeck] : buildBalancedCommandDeck(owned);
+
+    const rewardedGames = Object.fromEntries(Object.entries(raw.rewardedGames || {})
+      .filter(([, reward]) => reward && Number.isFinite(Number(reward.total)))
+      .sort(([, left], [, right]) => (Number(left.awardedAtMs) || 0) - (Number(right.awardedAtMs) || 0))
+      .slice(-100)
+      .map(([key, reward]) => [key, {
+        participation: Math.max(0, Number(reward.participation) || 0),
+        victoryBonus: Math.max(0, Number(reward.victoryBonus) || 0),
+        total: Math.max(0, Number(reward.total) || 0),
+        won: !!reward.won,
+        awardedAtMs: Math.max(0, Number(reward.awardedAtMs) || 0)
+      }]));
+
+    return {
+      version: PROFILE_VERSION,
+      cardVersion: WAR_REALMS_CARD_VERSION,
+      sigils: Number.isFinite(Number(raw.sigils)) ? Math.max(0, Math.floor(Number(raw.sigils))) : (isNewWarProfile ? STARTING_SIGILS : 0),
+      owned,
+      deck,
+      wins: Math.max(0, Number(raw.wins) || 0),
+      games: Math.max(0, Number(raw.games) || 0),
+      rewardedGames,
+      updatedAtMs: Math.max(0, Number(raw.updatedAtMs) || Date.now())
+    };
+  }
+
+  async function loadOrCreateProfile() {
+    await runTransaction(db, async transaction => {
+      const snapshot = await transaction.get(profileRef);
+      const rawUserData = snapshot.exists() ? snapshot.data() : {};
+      const isNewWarProfile = !rawUserData.warRealms;
+      profile = normalizeProfile(rawUserData, isNewWarProfile);
+
+      // The complete map is written only once, when War Realms does not yet exist.
+      // Existing profiles are read without any automatic rewrite or normalization save.
+      if (isNewWarProfile) {
+        transaction.set(profileRef, { warRealms: profile }, { merge: true });
+      }
+    });
+    editDeck = [...profile.deck];
+  }
+
+  function renderFactionBars(deck) {
+    const counts = { yellow: 0, blue: 0, green: 0, red: 0 };
+    for (const cardId of deck) {
+      const card = CARD_MAP[cardId];
+      if (card && Object.prototype.hasOwnProperty.call(counts, card.faction)) counts[card.faction] += 1;
+    }
+    $("#factionBars").innerHTML = Object.entries(counts).map(([faction, count]) => `
+      <div class="factionBar" style="color:var(--${faction})">
+        <span>${escapeHtml(FACTIONS[faction].name.split(" ")[0])}</span>
+        <span><i style="width:${Math.min(100, count / COMMAND_DECK_SIZE * 100)}%"></i></span>
+        <b>${count}</b>
+      </div>
+    `).join("");
+  }
+
+  function collectionStorePrice(card, ownedCount = 0) {
+    const basePrice = Math.max(0, Number(cardStorePrice(card)) || 0);
+    if (ownedCount > 0) return basePrice;
+    return Math.max(basePrice + 1, Math.ceil(basePrice * FIRST_COPY_PRICE_MULTIPLIER));
+  }
+
+  function catalogCardHtml(card) {
+    const owned = profile.owned[card.id] || 0;
+    const price = collectionStorePrice(card, owned);
+    const canBuy = profile.sigils >= price && owned < MAX_COPIES_PER_CARD;
+    const firstCopyNote = owned <= 0
+      ? `First copy premium: ${Math.round((FIRST_COPY_PRICE_MULTIPLIER - 1) * 100)}% above the normal repeat-copy price.`
+      : `Additional copies use the normal card price.`;
+    return `<article class="storeCatalogItem ${card.faction}">
+      <div class="storeCardPreview" data-card-art-id="${escapeHtml(card.id)}">${cardArtInnerHtml(card, true)}</div>
+      <div class="storeCardSide">
+        <div><div class="storeCardKind">${escapeHtml(FACTIONS[card.faction].title)} · ${displayCardType(card)}</div><h3>${escapeHtml(card.name)}</h3></div>
+        <div class="storePriceBox"><div class="storePriceLabel">Store cost</div><div class="storePriceValue"><b>${price}</b><span>War Sigils</span></div><div class="storePriceNote">${firstCopyNote}</div></div>
+        <div class="storeOwnedLine">Owned ${owned} / ${MAX_COPIES_PER_CARD}</div>
+        <div class="storeRulesSummary">${escapeHtml(completeCardRules(card))}</div>
+        <div class="storeCardActions"><button class="btn small" data-act="details" data-card-id="${card.id}">Card details</button><button class="btn small primary" data-act="buy-profile-card" data-card-id="${card.id}" ${canBuy ? "" : "disabled"}>Buy for ${price}</button></div>
+      </div>
+    </article>`;
+  }
+
+  function deckBuilderCardHtml(card, zone, deckCounts) {
+    const owned = profile.owned[card.id] || 0;
+    const deckCount = deckCounts[card.id] || 0;
+    const availableCount = Math.max(0, owned - deckCount);
+    const count = zone === "in" ? deckCount : availableCount;
+    const movingIn = zone === "out";
+    const canMove = movingIn ? availableCount > 0 && editDeck.length < COMMAND_DECK_SIZE : deckCount > 0;
+    const action = movingIn ? "deck-move-in" : "deck-move-out";
+    const cue = movingIn ? (editDeck.length >= COMMAND_DECK_SIZE ? "Deck is full" : "Tap to move in") : "Tap to move out";
+    const aria = movingIn ? `Move one ${card.name} into the deck` : `Move one ${card.name} out of the deck`;
+    return `<article class="deckMoveCard ${card.faction}${canMove ? "" : " blocked"}" data-act="${action}" data-card-id="${escapeHtml(card.id)}" data-can-move="${canMove ? "1" : "0"}" role="button" tabindex="0" aria-label="${escapeHtml(aria)}">
+      <div class="deckMiniArt" data-card-art-id="${escapeHtml(card.id)}">${cardArtInnerHtml(card, true)}</div>
+      <div class="deckMoveCopy">
+        <div class="deckMoveTop"><span class="deckMoveCost">${card.cost}</span><span class="deckMoveName">${escapeHtml(card.name)}</span></div>
+        <div class="deckMoveType">${displayCardType(card)} · ${escapeHtml(FACTIONS[card.faction].name)}</div>
+        <div class="deckMoveRules">${escapeHtml(completeCardRules(card))}</div>
+      </div>
+      <div class="deckMoveMeta"><span class="deckCountPill">×${count}</span><span class="deckMoveCue">${cue}</span></div>
+    </article>`;
+  }
+
+  function deckBuilderHtml(cards) {
+    const deckCounts = countCards(editDeck);
+    const inDeckCards = cards.filter(card => (deckCounts[card.id] || 0) > 0);
+    const outDeckCards = cards.filter(card => (profile.owned[card.id] || 0) - (deckCounts[card.id] || 0) > 0);
+    const outCopyCount = outDeckCards.reduce((sum, card) => sum + Math.max(0, (profile.owned[card.id] || 0) - (deckCounts[card.id] || 0)), 0);
+    const inHtml = inDeckCards.length
+      ? inDeckCards.map(card => deckBuilderCardHtml(card, "in", deckCounts)).join("")
+      : '<div class="deckEmpty">No matching cards are currently in the deck.<br>Tap a card on the other side to move a copy in.</div>';
+    const outHtml = outDeckCards.length
+      ? outDeckCards.map(card => deckBuilderCardHtml(card, "out", deckCounts)).join("")
+      : '<div class="deckEmpty">No matching owned copies are outside the deck.<br>Tap a card on the other side to move a copy out.</div>';
+    return `<div class="deckWorkspace">
+      <section class="deckColumn inDeck">
+        <div class="deckColumnHead"><div class="deckColumnHeadText"><div class="deckColumnTitle">In Deck</div><div class="deckColumnSub">Every tap moves one copy out.</div></div><div class="deckColumnCount">${editDeck.length}/${COMMAND_DECK_SIZE}</div></div>
+        <div class="deckList" data-deck-zone="in">${inHtml}</div>
+      </section>
+      <section class="deckColumn outDeck">
+        <div class="deckColumnHead"><div class="deckColumnHeadText"><div class="deckColumnTitle">Out of Deck</div><div class="deckColumnSub">Owned copies available to add.</div></div><div class="deckColumnCount">${outCopyCount}</div></div>
+        <div class="deckList" data-deck-zone="out">${outHtml}</div>
+      </section>
+    </div>`;
+  }
+
+  function rememberDeckListScroll() {
+    $$(".deckList[data-deck-zone]").forEach(list => {
+      deckListScroll[list.dataset.deckZone] = list.scrollTop;
+    });
+  }
+
+  function restoreDeckListScroll() {
+    requestAnimationFrame(() => {
+      $$(".deckList[data-deck-zone]").forEach(list => {
+        list.scrollTop = deckListScroll[list.dataset.deckZone] || 0;
+      });
+    });
+  }
+
+  function moveDeckCopy(cardId, movingIn) {
+    const card = CARD_MAP[cardId];
+    if (!card) return;
+    rememberDeckListScroll();
+    const deckCounts = countCards(editDeck);
+    const deckCount = deckCounts[cardId] || 0;
+    const owned = profile.owned[cardId] || 0;
+    if (movingIn) {
+      if (editDeck.length >= COMMAND_DECK_SIZE) {
+        showToast("The command deck already has 50 cards. Move one card out first.", "bad");
+        return;
+      }
+      if (deckCount >= Math.min(MAX_COPIES_PER_CARD, owned)) {
+        showToast("No owned copies of that card remain outside the deck.", "bad");
+        return;
+      }
+      editDeck.push(cardId);
+    } else {
+      const index = editDeck.lastIndexOf(cardId);
+      if (index < 0) return;
+      editDeck.splice(index, 1);
+    }
+    renderArmory();
+  }
+
+  function renderArmory() {
+    if (!profile) return;
+    const validation = validateCommandDeck(editDeck, profile.owned);
+    const uniqueOwned = DECK_ELIGIBLE_CARDS.filter(card => (profile.owned[card.id] || 0) > 0).length;
+    const totalOwned = Object.values(profile.owned).reduce((sum, value) => sum + value, 0);
+    $("#heroSigils").textContent = profile.sigils;
+    $("#heroOwned").textContent = `${uniqueOwned} / ${TOTAL_CUSTOM_CARDS}`;
+    $("#heroDeck").textContent = `${profile.deck.length} / ${COMMAND_DECK_SIZE}`;
+    $("#heroRecord").textContent = `${profile.games} / ${profile.wins}`;
+    $("#summarySigils").textContent = profile.sigils;
+    $("#summaryOwned").textContent = totalOwned;
+    $("#deckSummaryTitle").textContent = `${editDeck.length} / ${COMMAND_DECK_SIZE} cards`;
+    $("#deckMeter").style.width = `${Math.min(100, editDeck.length / COMMAND_DECK_SIZE * 100)}%`;
+    $("#deckValidity").textContent = validation.valid ? "Ready" : "Not ready";
+    $("#deckValidity").style.color = validation.valid ? "var(--good)" : "var(--bad)";
+    $("#saveDeckBtn").disabled = !validation.valid;
+    $("#saveStatus").textContent = `${validation.message} Battles award ${PARTICIPATION_SIGILS} participation Sigils, plus ${VICTORY_BONUS_SIGILS} for victory.`;
+    renderFactionBars(editDeck);
+
+    const deckMode = armoryTab === "deck";
+    document.body.classList.toggle("deckBuilderMode", deckMode);
+    $$('[data-armory-tab]').forEach(button => button.classList.toggle("active", button.dataset.armoryTab === armoryTab));
+    $$('[data-filter]').forEach(button => button.classList.toggle("active", button.dataset.filter === factionFilter));
+    $$('[data-ownership-filter]').forEach(button => {
+      button.classList.toggle("active", button.dataset.ownershipFilter === ownershipFilter);
+      button.classList.toggle("hidden", deckMode);
+    });
+    const priceSelect = $("#catalogPriceFilter");
+    const availablePrices = [...new Set(DECK_ELIGIBLE_CARDS.map(cardPrice))].sort((a, b) => a - b);
+    const expectedPriceOptions = ["all", ...availablePrices.map(String)];
+    if ([...priceSelect.options].map(option => option.value).join("|") !== expectedPriceOptions.join("|")) {
+      priceSelect.innerHTML = `<option value="all">All prices</option>${availablePrices.map(price => `<option value="${price}">${price}</option>`).join("")}`;
+    }
+    if (!expectedPriceOptions.includes(priceFilter)) priceFilter = "all";
+    priceSelect.value = priceFilter;
+    $("#catalogSort").value = catalogSort;
+    const activeSearchText = armorySearch[deckMode ? "deck" : "store"] || "";
+    const searchInput = $("#catalogSearch");
+    searchInput.placeholder = deckMode
+      ? "Search deck and owned cards by name, filename, or ability"
+      : "Search store cards by name, filename, type, or ability";
+    searchInput.setAttribute("aria-label", deckMode ? "Search deck builder cards" : "Search store cards");
+    if (searchInput.value !== activeSearchText) searchInput.value = activeSearchText;
+    $("#catalogSearchClear").hidden = !activeSearchText;
+
+    const matchesFactionAndSearch = card => {
+      if (factionFilter !== "all" && card.faction !== factionFilter) return false;
+      if (priceFilter !== "all" && cardPrice(card) !== Number(priceFilter)) return false;
+      return cardMatchesSearch(card, activeSearchText);
+    };
+
+    const catalog = $("#armoryCatalog");
+    catalog.classList.toggle("storeCatalogGrid", !deckMode);
+    catalog.classList.toggle("deckWorkspaceHost", deckMode);
+    $("#catalogPrevBtn").disabled = true;
+    $("#catalogNextBtn").disabled = true;
+
+    if (deckMode) {
+      const deckCards = sortCatalogCards(DECK_ELIGIBLE_CARDS.filter(card => (profile.owned[card.id] || 0) > 0 && matchesFactionAndSearch(card)));
+      const outsideCopies = deckCards.reduce((sum, card) => sum + Math.max(0, (profile.owned[card.id] || 0) - (countCards(editDeck)[card.id] || 0)), 0);
+      $("#catalogPageLabel").textContent = `Tap to move copies · ${editDeck.length} in / ${outsideCopies} out`;
+      catalog.innerHTML = deckBuilderHtml(deckCards);
+      observeCatalogArt(deckCards);
+      restoreDeckListScroll();
+      return;
+    }
+
+    const filtered = sortCatalogCards(DECK_ELIGIBLE_CARDS.filter(card => {
+      const owned = profile.owned[card.id] || 0;
+      if (!matchesFactionAndSearch(card)) return false;
+      if (ownershipFilter === "owned" && owned <= 0) return false;
+      if (ownershipFilter === "unowned" && owned > 0) return false;
+      return true;
+    }));
+    $("#catalogPageLabel").textContent = `${filtered.length} of ${DECK_ELIGIBLE_CARDS.length} collectible cards`;
+    catalog.innerHTML = filtered.length
+      ? filtered.map(card => catalogCardHtml(card)).join("")
+      : `<div class="emptyZone" style="grid-column:1/-1;padding:28px">No store cards match${activeSearchText ? ` “${escapeHtml(activeSearchText)}”` : " the selected filters"}.</div>`;
+    observeCatalogArt(filtered);
+  }
+
+  async function purchaseProfileCard(cardId) {
+    const card = CARD_MAP[cardId];
+    if (!card || !DECK_ELIGIBLE_CARD_IDS.has(cardId) || actionBusy) return;
+    actionBusy = true;
+    try {
+      let updatedProfile = null;
+      await runTransaction(db, async transaction => {
+        const snapshot = await transaction.get(profileRef);
+        const rawData = snapshot.exists() ? snapshot.data() : {};
+        const currentProfile = normalizeProfile(rawData, !rawData.warRealms);
+        const owned = currentProfile.owned[cardId] || 0;
+        const price = collectionStorePrice(card, owned);
+        if (owned >= MAX_COPIES_PER_CARD) throw new Error("You already own the maximum four copies.");
+        if (currentProfile.sigils < price) throw new Error("Not enough War Sigils.");
+        currentProfile.sigils -= price;
+        currentProfile.owned[cardId] = owned + 1;
+        currentProfile.updatedAtMs = Date.now();
+
+        if (!rawData.warRealms) {
+          // Creation only; never replaces an existing War Realms profile.
+          transaction.set(profileRef, { warRealms: currentProfile }, { merge: true });
+        } else {
+          transaction.update(profileRef, {
+            "warRealms.sigils": currentProfile.sigils,
+            [`warRealms.owned.${cardId}`]: currentProfile.owned[cardId],
+            "warRealms.updatedAtMs": currentProfile.updatedAtMs
+          });
+        }
+        updatedProfile = currentProfile;
+      });
+      profile = updatedProfile;
+      showToast(`${card.name} added to your collection.`, "good");
+      renderArmory();
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || "Purchase failed.", "bad");
+    } finally {
+      actionBusy = false;
+    }
+  }
+
+  async function saveCommandDeck() {
+    const validation = validateCommandDeck(editDeck, profile.owned);
+    if (!validation.valid || actionBusy) {
+      showToast(validation.message, "bad");
+      return;
+    }
+    actionBusy = true;
+    try {
+      const nextProfile = { ...profile, deck: [...editDeck], updatedAtMs: Date.now() };
+      await updateDoc(profileRef, {
+        "warRealms.deck": [...editDeck],
+        "warRealms.updatedAtMs": nextProfile.updatedAtMs
+      });
+      profile = nextProfile;
+      showToast("Your 50-card command deck is saved.", "good");
+      renderArmory();
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || "Deck save failed.", "bad");
+    } finally {
+      actionBusy = false;
+    }
+  }
+
+  function showCardDetails(cardId, extraActions = "") {
+    const card = getCard(cardId);
+    if (!card) return;
+    const faction = FACTIONS[card.faction];
+    const effect = effectDisplaySummary(primaryCardEffect(card));
+    const ally = effectDisplaySummary(card.ally);
+    const doubleAlly = effectDisplaySummary(doubleAllyEffect(card));
+    const sacrifice = effectDisplaySummary(card.sacrifice);
+    openModal(card.name, `${faction.name} · ${faction.title}`, `
+      <div class="detailGrid" style="--faction:var(--${card.faction})">
+        <div class="detailArt" data-card-art-id="${escapeHtml(card.id)}">${cardArtInnerHtml(card, true)}</div>
+        <div class="detailCopy">
+          <div class="detailFaction">${displayCardType(card)} · Cost ${card.cost}${card.type === "base" ? ` · ${card.defense} Defense` : ""}</div>
+          <h3>${escapeHtml(card.name)}</h3>
+          <p class="effectHint">Tap any highlighted effect term for a quick explanation. The icon row previews the card's abilities.</p>
+          ${cardAbilityRailHtml(card, true)}
+          <div class="detailRules">${linkEffectTerms(completeCardRules(card))}</div>
+          ${effect ? `<div class="detailEffect"><b>${effectLabelHtml("Primary")}:</b> ${linkEffectTerms(effect)}</div>` : ""}
+          ${ally ? `<div class="detailEffect"><b>${effectLabelHtml("Ally")}:</b> ${linkEffectTerms(ally)}</div>` : ""}
+          ${doubleAlly ? `<div class="detailEffect"><b>${effectLabelHtml("Double Ally")}:</b> ${linkEffectTerms(doubleAlly)} <span style="color:#8fa0b2">(requires two other matching-faction cards)</span></div>` : ""}
+          ${sacrifice ? `<div class="detailEffect"><b>${effectLabelHtml("Sacrifice")}:</b> ${linkEffectTerms(sacrifice)}</div>` : ""}
+          ${card.onPurchaseText ? `<div class="detailEffect"><b>${effectLabelHtml("Deploy")}:</b> ${linkEffectTerms(card.onPurchaseText)}</div>` : ""}
+          ${card.thresholdText ? `<div class="detailEffect"><b>${effectLabelHtml("Last Stand")}:</b> ${linkEffectTerms(card.thresholdText)}</div>` : ""}
+          ${card.chargeText ? `<div class="detailEffect"><b>${effectLabelHtml("Charge")}:</b> ${linkEffectTerms(card.chargeText)}</div>` : ""}
+          ${card.echoText ? `<div class="detailEffect"><b>${effectLabelHtml("Echo")}:</b> ${linkEffectTerms(card.echoText)}</div>` : ""}
+          ${card.transformText ? `<div class="detailEffect"><b>${effectLabelHtml("Transform")}:</b> ${linkEffectTerms(card.transformText)}</div>` : ""}
+          ${card.resurrectText ? `<div class="detailEffect"><b>${effectLabelHtml("Resurrect")}:</b> ${linkEffectTerms(card.resurrectText)}</div>` : ""}
+          ${card.graveEchoText ? `<div class="detailEffect"><b>${effectLabelHtml("Grave Echo")}:</b> ${linkEffectTerms(card.graveEchoText)}</div>` : ""}
+          <p><i>${escapeHtml(card.flavor || "")}</i></p>
+          <div class="modalActions">${extraActions}</div>
+        </div>
+      </div>
+    `);
+    loadCardArt(card.id).then(() => hydrateCardArt($("#modalBody"))).catch(console.warn);
+  }
+
+  function normalizeRoster(data) {
+    const raw = Array.isArray(data?.players) ? data.players : Array.isArray(data?.members) ? data.members : [];
+    const found = [];
+    for (const entry of raw) {
+      const name = typeof entry === "string"
+        ? entry.trim()
+        : String(entry?.username || entry?.name || entry?.displayName || "").trim();
+      if (!name || found.some(item => normalizeName(item.name) === normalizeName(name))) continue;
+      found.push({
+        name,
+        lobbyUid: typeof entry === "object" ? String(entry.uid || entry.userId || "") : ""
+      });
+    }
+    if (!found.length && username) found.push({ name: username, lobbyUid: "" });
+    return found.slice(0, MAX_PLAYERS);
+  }
+
+  function renderPresence() {
+    if (!roster.length) {
+      $("#presenceList").innerHTML = "";
+      return;
+    }
+    $("#presenceList").innerHTML = roster.map(member => {
+      const match = [...presence.values()].find(item => normalizeName(item.name) === normalizeName(member.name));
+      const ready = !!match && validateCommandDeck(match.deck || [], match.ownedSnapshot || defaultOwnedCards()).valid;
+      return `<div class="presenceItem"><span class="presenceDot ${ready ? "ready" : ""}"></span><span>${escapeHtml(member.name)}</span><span style="margin-left:auto;color:#8794a3">${ready ? "Deck ready" : "Loading deck"}</span></div>`;
+    }).join("");
+  }
+
+  async function publishPresence() {
+    if (!firebaseUser || !presenceCollection || !profile) return;
+    const ref = doc(presenceCollection, firebaseUser.uid);
+    await setDoc(ref, {
+      uid: firebaseUser.uid,
+      name: username,
+      game: "warrealms",
+      deck: [...profile.deck],
+      deckSize: profile.deck.length,
+      cardVersion: WAR_REALMS_CARD_VERSION,
+      active: true,
+      updatedAtMs: Date.now(),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  }
+
+  function battleRewardKey(game) {
+    const scope = game?.singlePlayer ? `solo_${game.difficulty || "bot"}` : (gameId || "battle");
+    const safeLobby = String(scope).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+    return `${safeLobby}_${Math.max(0, Number(game?.createdAtMs) || 0)}`;
+  }
+
+  function rewardForBattle(game, won) {
+    if (!game?.singlePlayer) {
+      return { participation: PARTICIPATION_SIGILS, victoryBonus: won ? VICTORY_BONUS_SIGILS : 0 };
+    }
+    const configured = SINGLEPLAYER_REWARDS[game.difficulty] || SINGLEPLAYER_REWARDS.medium;
+    return { participation: configured.participation, victoryBonus: won ? configured.victoryBonus : 0 };
+  }
+
+  async function claimBattleRewards(finishedGame) {
+    if (!finishedGame || finishedGame.phase !== "finished" || !profile || rewardClaimBusy) return;
+    const me = myPlayer(finishedGame);
+    if (!me) return;
+    const rewardKey = battleRewardKey(finishedGame);
+    if (rewardClaimedKeys.has(rewardKey)) return;
+    rewardClaimBusy = true;
+    try {
+      let awarded = null;
+      let wasNewAward = false;
+      await runTransaction(db, async transaction => {
+        const snapshot = await transaction.get(profileRef);
+        const rawData = snapshot.exists() ? snapshot.data() : {};
+        const currentProfile = normalizeProfile(rawData, !rawData.warRealms);
+        const existing = currentProfile.rewardedGames[rewardKey];
+        if (existing) {
+          awarded = existing;
+          profile = currentProfile;
+          return;
+        }
+        const won = finishedGame.winnerId === me.id || normalizeName(finishedGame.winnerName) === normalizeName(me.name);
+        const rewardValues = rewardForBattle(finishedGame, won);
+        const participation = rewardValues.participation;
+        const victoryBonus = rewardValues.victoryBonus;
+        const total = participation + victoryBonus;
+        const reward = { participation, victoryBonus, total, won, awardedAtMs: Date.now() };
+        currentProfile.sigils += total;
+        currentProfile.games += 1;
+        if (won) currentProfile.wins += 1;
+        currentProfile.rewardedGames[rewardKey] = reward;
+        currentProfile.updatedAtMs = Date.now();
+
+        if (!rawData.warRealms) {
+          // Creation only; never replaces an existing War Realms profile.
+          transaction.set(profileRef, { warRealms: currentProfile }, { merge: true });
+        } else {
+          transaction.update(profileRef, {
+            "warRealms.sigils": currentProfile.sigils,
+            "warRealms.games": currentProfile.games,
+            "warRealms.wins": currentProfile.wins,
+            [`warRealms.rewardedGames.${rewardKey}`]: reward,
+            "warRealms.updatedAtMs": currentProfile.updatedAtMs
+          });
+        }
+        profile = currentProfile;
+        awarded = reward;
+        wasNewAward = true;
+      });
+      rewardClaimedKeys.add(rewardKey);
+      lastRewardSummary = awarded;
+      if (wasNewAward && awarded?.total) showToast(`Battle reward: +${awarded.total} War Sigils.`, "good");
+    } catch (error) {
+      console.error("War Realms reward claim failed", error);
+      showToast("Battle finished, but the Sigil reward could not be saved yet.", "bad");
+    } finally {
+      rewardClaimBusy = false;
+    }
+  }
+
+  function nextRng(game) {
+    game.rngState = ((game.rngState >>> 0) * 1664525 + 1013904223) >>> 0;
+    return game.rngState / 4294967296;
+  }
+
+  function shuffleWithGame(game, input) {
+    const output = [...input];
+    for (let index = output.length - 1; index > 0; index -= 1) {
+      const target = Math.floor(nextRng(game) * (index + 1));
+      [output[index], output[target]] = [output[target], output[index]];
+    }
+    return output;
+  }
+
+  function drawCards(game, player, amount) {
+    for (let index = 0; index < amount; index += 1) {
+      if (!player.draw.length) {
+        if (!player.discard.length) break;
+        player.draw = shuffleWithGame(game, player.discard);
+        player.discard = [];
+      }
+      player.hand.push(player.draw.pop());
+    }
+  }
+
+  function createPlayer(game, entrant) {
+    const draftPool = [...new Set((Array.isArray(entrant.deck) ? entrant.deck : []).filter(cardId => {
+      const card = getCard(cardId);
+      return !!card && DECK_ELIGIBLE_CARD_IDS.has(card.id) && Number(card.cost) >= 1 && Number(card.cost) <= DRAFT_MAX_CARD_COST;
+    }))];
+    const player = {
+      id: entrant.uid,
+      uid: entrant.uid,
+      name: entrant.name,
+      health: STARTING_AUTHORITY,
+      draw: shuffleWithGame(game, createStarterDeck()),
+      discard: [],
+      hand: [],
+      played: [],
+      bases: [],
+      trade: 0,
+      combat: 0,
+      stun: 0,
+      scrapMarket: 0,
+      scrapOwn: 0,
+      destroyBase: 0,
+      lifelink: 0,
+      shield: 0,
+      pendingDiscard: 0,
+      forcedDiscard: 0,
+      pendingChoices: [],
+      temporaryResurrections: {},
+      transformProgress: {},
+      discardPenalty: 0,
+      handSize: Math.max(2, Math.min(7, Number(entrant.handSize) || 5)),
+      isBot: !!entrant.isBot,
+      difficulty: BOT_DIFFICULTIES[entrant.difficulty] ? entrant.difficulty : "",
+      botStrategy: BOT_STRATEGIES[entrant.botStrategy] ? entrant.botStrategy : "",
+      primaryFaction: BOT_FACTION_IDS.includes(entrant.primaryFaction) ? entrant.primaryFaction : "",
+      supportFaction: BOT_FACTION_IDS.includes(entrant.supportFaction) && entrant.supportFaction !== entrant.primaryFaction ? entrant.supportFaction : "",
+      draftPool,
+      draftPicks: [],
+      draftReplacements: [],
+      draftBudget: DRAFT_BUDGET,
+      draftRemaining: DRAFT_BUDGET,
+      draftReady: false,
+      draftTimedOut: false,
+      eliminated: false,
+      left: false
+    };
+    return player;
+  }
+
+  function createGame(entrants) {
+    const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+    const game = {
+      kind: "war-realms",
+      schema: GAME_SCHEMA,
+      cardVersion: WAR_REALMS_CARD_VERSION,
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+      rngState: seed || 1,
+      version: 1,
+      turn: 0,
+      round: 1,
+      turnSerial: 1,
+      phase: "drafting",
+      draftStartedAtMs: Date.now(),
+      draftEndsAtMs: Date.now() + DRAFT_DURATION_MS,
+      draftCompletedAtMs: 0,
+      winnerId: "",
+      winnerName: "",
+      players: [],
+      marketDeck: [],
+      tradeRow: [],
+      scrapped: [],
+      log: [],
+      actionQueue: [],
+      visualEvents: [],
+      singlePlayer: false,
+      difficulty: ""
+    };
+
+    game.players = entrants.map(entrant => createPlayer(game, entrant));
+    game.turn = Math.floor(nextRng(game) * game.players.length);
+    const marketPool = entrants.flatMap(entrant => entrant.deck.map(cardId => ({
+      id: cardId,
+      originalOwnerId: entrant.uid,
+      originalOwnerName: entrant.name
+    }))).filter(entry => !isHiredLooterCardId(entry.id));
+    game.marketDeck = shuffleWithGame(game, marketPool);
+    refillMarket(game);
+    for (const player of game.players.filter(candidate => candidate.isBot)) autoDraftBot(game, player);
+    addLog(game, `${marketPool.length} contributed cards were mixed into the five rotating War Market slots.`);
+    if (HIRED_LOOTER_ID) addLog(game, `${HIRED_LOOTER_CARD.name} occupies the permanent sixth Trade Row slot with infinite copies.`);
+    addLog(game, `Each commander has 60 seconds and 6 Draft Coins to copy unique cost 1–3 cards from their own brought deck into their starting ten.`);
+    return game;
+  }
+
+  function currentPlayer(game = state) {
+    return game?.players?.[game.turn] || null;
+  }
+
+  function myPlayer(game = state) {
+    if (!game || !firebaseUser) return null;
+    return game.players.find(player => player.uid === firebaseUser.uid)
+      || game.players.find(player => normalizeName(player.name) === normalizeName(username))
+      || null;
+  }
+
+  function livingPlayers(game) {
+    return game.players.filter(player => !player.eliminated && !player.left);
+  }
+
+  function nextLivingIndex(game, startIndex) {
+    for (let step = 1; step <= game.players.length; step += 1) {
+      const index = (startIndex + step) % game.players.length;
+      const player = game.players[index];
+      if (!player.eliminated && !player.left) return index;
+    }
+    return startIndex;
+  }
+
+  function addLog(game, text) {
+    game.log = Array.isArray(game.log) ? game.log.slice(-24) : [];
+    game.log.push({ atMs: Date.now(), text });
+  }
+
+  function pushActionQueue(game, player, card) {
+    game.actionQueue = Array.isArray(game.actionQueue) ? game.actionQueue.slice(-7) : [];
+    game.actionQueue.push({ id: makeId("queue"), playerId: player.id, playerName: player.name, cardId: card.id, atMs: Date.now() });
+  }
+
+  function pushVisualEvent(game, type, payload = {}) {
+    game.visualEvents = Array.isArray(game.visualEvents) ? game.visualEvents.slice(-11) : [];
+    game.visualEvents.push({ id: makeId("fx"), type, atMs: Date.now(), ...payload });
+  }
+
+  function resolveOpponentDiscard(game, sourcePlayer, amount) {
+    const discardAmount = Math.max(0, Math.floor(Number(amount) || 0));
+    if (!discardAmount) return;
+    const sourceIndex = game.players.findIndex(player => player.id === sourcePlayer.id);
+    const target = game.players[nextLivingIndex(game, sourceIndex)];
+    if (!target || target.id === sourcePlayer.id) return;
+    target.pendingDiscard = Math.max(0, Number(target.pendingDiscard) || 0) + discardAmount;
+    pushVisualEvent(game, "discard-threat", { actorId: sourcePlayer.id, targetId: target.id, amount: discardAmount });
+    addLog(game, `${target.name} must discard ${discardAmount} card${discardAmount === 1 ? "" : "s"} from their next hand before playing.`);
+  }
+
+  function healPlayer(player, amount) {
+    const healing = Math.max(0, Math.floor(Number(amount) || 0));
+    if (!healing) return 0;
+    const before = player.health;
+    player.health = Math.min(STARTING_AUTHORITY, player.health + healing);
+    return player.health - before;
+  }
+
+  function damageAuthority(game, target, amount, sourceName = "An effect", sourceId = "") {
+    const incoming = Math.max(0, Math.floor(Number(amount) || 0));
+    if (!incoming || target.eliminated || target.left) return 0;
+    target.shield = Math.max(0, Number(target.shield) || 0);
+    const absorbed = Math.min(target.shield, incoming);
+    target.shield -= absorbed;
+    const healthDamage = Math.min(target.health, incoming - absorbed);
+    target.health = Math.max(0, target.health - healthDamage);
+    if (healthDamage || absorbed) pushVisualEvent(game, "health-loss", { sourceId, targetId: target.id, amount: healthDamage, absorbed, sourceName });
+    if (absorbed) addLog(game, `${target.name}'s shield absorbed ${absorbed} damage.`);
+    if (target.health <= 0) {
+      target.eliminated = true;
+      target.hand = [];
+      target.played = [];
+      for (const base of target.bases || []) {
+        pushVisualEvent(game, "card-destroy", { actorId: sourceId, targetId: target.id, cardId: base.id, instanceId: base.instanceId, method: "realm-fall" });
+      }
+      target.bases = [];
+      addLog(game, `${target.name}'s realm has fallen to ${sourceName}.`);
+      finishGameIfNeeded(game);
+    }
+    return healthDamage;
+  }
+
+  function applyLifelink(game, player, damageDealt) {
+    const ratio = Math.max(0, Number(player.lifelink) || 0);
+    if (!ratio || damageDealt <= 0) return;
+    const healed = healPlayer(player, Math.floor(damageDealt * ratio));
+    if (healed) {
+      pushVisualEvent(game, "health-gain", { targetId: player.id, amount: healed, sourceName: "Lifelink" });
+      addLog(game, `${player.name} restored ${healed} Authority through Lifelink.`);
+    }
+  }
+
+  function queueEffectChoice(game, player, effect, context = {}) {
+    const options = choiceEffectOptions(effect);
+    if (!options.length) return false;
+    player.pendingChoices = Array.isArray(player.pendingChoices) ? player.pendingChoices : [];
+    player.pendingChoices.push({
+      id: makeId("choice"),
+      cardId: String(context.cardId || ""),
+      source: String(context.source || "primary"),
+      createdAtMs: Date.now(),
+      options: options.map((option, index) => ({ label: option.label, effect: clone(option.effect), index }))
+    });
+    const cardName = getCard(context.cardId)?.name || "a card";
+    addLog(game, `${player.name} must choose one of ${options.length} effects for ${cardName}.`);
+    return true;
+  }
+
+  function applyEffect(game, player, effect = {}, context = {}) {
+    const normalized = coreEffect(effect);
+    const internalResurrection = normalized.__resurrect;
+    const resurrectConfig = normalized.resurrect;
+    const graveEchoConfig = normalized.graveEcho;
+    delete normalized.__resurrect;
+    delete normalized.resurrect;
+    delete normalized.graveEcho;
+    delete normalized.echo;
+    delete normalized.transform;
+
+    const activeBases = player.bases.filter(base => base.disabledTurn !== game.turnSerial).length;
+    const visualGlyphs = resolvedAbilityGlyphs(normalized, activeBases);
+    player.trade += (normalized.trade || 0) + activeBases * (normalized.tradePerBase || 0);
+    player.combat += (normalized.combat || 0) + activeBases * (normalized.combatPerBase || 0);
+    const healed = healPlayer(player, (normalized.heal || 0) + activeBases * (normalized.healPerBase || 0));
+    if (healed) pushVisualEvent(game, "health-gain", { targetId: player.id, amount: healed, sourceName: "Card effect" });
+    player.stun += normalized.stun || 0;
+    player.scrapMarket += normalized.scrapMarket || 0;
+    player.scrapOwn += normalized.scrapOwn || 0;
+    player.destroyBase = (player.destroyBase || 0) + (normalized.destroyBase || 0);
+    player.lifelink = Math.max(Number(player.lifelink) || 0, Number(normalized.lifelink) || 0);
+    player.shield = Math.min(50, Math.max(0, Number(player.shield) || 0) + (normalized.shield || 0));
+    if (normalized.draw) drawCards(game, player, normalized.draw);
+    if (normalized.drawPerBase) drawCards(game, player, activeBases * normalized.drawPerBase);
+    if (normalized.opponentDiscard) resolveOpponentDiscard(game, player, normalized.opponentDiscard);
+    if (normalized.damageAll) {
+      for (const target of game.players) {
+        if (target.id === player.id || target.eliminated || target.left) continue;
+        damageAuthority(game, target, normalized.damageAll, `${player.name}'s card effect`, player.id);
+      }
+    }
+    if (internalResurrection) resolveInternalResurrection(game, player, internalResurrection);
+    if (resurrectConfig) queueResurrectionChoice(game, player, resurrectConfig, context);
+    if (graveEchoConfig) queueGraveEchoChoice(game, player, graveEchoConfig, context);
+    if (visualGlyphs.length) pushVisualEvent(game, "ability-burst", { actorId: player.id, targetId: player.id, cardId: context.cardId || "", source: context.source || "primary", abilities: visualGlyphs });
+    queueEffectChoice(game, player, effect, context);
+  }
+
+  function activeFactionEntries(game, player, faction) {
+    return [...player.played, ...player.bases].filter(entry => {
+      const card = CARD_MAP[entry.id];
+      if (!card || card.faction !== faction) return false;
+      return entry.disabledTurn !== game.turnSerial;
+    });
+  }
+
+  function triggerFactionAllies(game, player, faction) {
+    if (faction === "neutral") return;
+    const active = activeFactionEntries(game, player, faction);
+    if (active.length < 2) return;
+    for (const entry of active) {
+      const card = CARD_MAP[entry.id];
+      if (!card) continue;
+
+      if (entry.allyTurn !== game.turnSerial && hasEffect(card.ally)) {
+        entry.allyTurn = game.turnSerial;
+        applyEffect(game, player, card.ally, { cardId: card.id, source: "ally" });
+        addLog(game, `${player.name} triggered ${card.name}'s faction ally ability.`);
+      }
+
+      const doubleAlly = doubleAllyEffect(card);
+      if (active.length >= 3 && entry.doubleAllyTurn !== game.turnSerial && hasEffect(doubleAlly)) {
+        entry.doubleAllyTurn = game.turnSerial;
+        applyEffect(game, player, doubleAlly, { cardId: card.id, source: "doubleAlly" });
+        addLog(game, `${player.name} triggered ${card.name}'s Double Ally ability with two additional ${FACTIONS[faction]?.name || faction} cards.`);
+      }
+    }
+  }
+
+  function beginTurn(game, player) {
+    game.turnSerial += 1;
+    game.actionQueue = [];
+    player.trade = 0;
+    player.combat = 0;
+    player.stun = 0;
+    player.scrapMarket = 0;
+    player.scrapOwn = 0;
+    player.destroyBase = 0;
+    player.lifelink = 0;
+    player.shield = Math.max(0, Number(player.shield) || 0);
+
+    for (const base of player.bases) {
+      if ((base.stunTurns || 0) > 0) {
+        base.stunTurns -= 1;
+        base.disabledTurn = game.turnSerial;
+        addLog(game, `${player.name}'s ${CARD_MAP[base.id]?.name || "base"} is disabled this turn.`);
+        continue;
+      }
+      const card = CARD_MAP[base.id];
+      if (card) {
+        gainChargeForBase(game, player, base, "startOfTurn");
+        const authorityBefore = player.health;
+        applyEffect(game, player, primaryCardEffect(card), { cardId: card.id, source: "base" });
+        resolveAuthorityThreshold(game, player, card, authorityBefore, { source: "base" });
+      }
+    }
+
+    for (const faction of ["yellow", "blue", "green", "red"]) triggerFactionAllies(game, player, faction);
+    const drawAmount = Math.max(2, player.handSize || 5);
+    drawCards(game, player, drawAmount);
+    const queuedDiscard = Math.max(0, Math.floor(Number(player.pendingDiscard) || 0));
+    player.pendingDiscard = 0;
+    player.forcedDiscard = Math.min(queuedDiscard, player.hand.length);
+    if (player.forcedDiscard > 0) {
+      pushVisualEvent(game, "discard-required", { targetId: player.id, amount: player.forcedDiscard });
+      addLog(game, `${player.name} drew ${drawAmount} card${drawAmount === 1 ? "" : "s"} and must now discard ${player.forcedDiscard} before taking actions.`);
+    } else {
+      addLog(game, `${player.name} begins round ${game.round} with ${drawAmount} card${drawAmount === 1 ? "" : "s"}.`);
+    }
+  }
+
+  function refillMarket(game) {
+    game.marketDeck = (Array.isArray(game.marketDeck) ? game.marketDeck : [])
+      .filter(entry => entry && !isHiredLooterCardId(entry.id));
+
+    const rotatingCards = (Array.isArray(game.tradeRow) ? game.tradeRow : [])
+      .filter(entry => entry && !isHiredLooterCardId(entry.id))
+      .slice(0, HIRED_LOOTER_ID ? ROTATING_MARKET_SIZE : MARKET_SIZE);
+    const rotatingTarget = HIRED_LOOTER_ID ? ROTATING_MARKET_SIZE : MARKET_SIZE;
+
+    while (rotatingCards.length < rotatingTarget && game.marketDeck.length) {
+      const next = game.marketDeck.pop();
+      if (next && !isHiredLooterCardId(next.id)) rotatingCards.push(next);
+    }
+
+    game.tradeRow = rotatingCards;
+    const permanentCard = permanentHiredLooterEntry();
+    if (permanentCard) game.tradeRow.push(permanentCard);
+  }
+
+  function openingDraftOptions(player) {
+    return (player?.draftPool || []).map(cardId => getCard(cardId)).filter(Boolean)
+      .sort((left, right) => Number(left.cost) - Number(right.cost) || left.name.localeCompare(right.name));
+  }
+
+  function draftEffectHasAbility(effect = {}, ability) {
+    const normalized = coreEffect(effect);
+    const keys = ability === "purge"
       ? ["scrapOwn"]
       : ability === "draw"
         ? ["draw", "drawPerBase"]
