@@ -1,4 +1,4 @@
-export const WAR_REALMS_CARD_VERSION = 11;
+export const WAR_REALMS_CARD_VERSION = 12;
 export const COMMAND_DECK_SIZE = 50;
 export const MAX_COPIES_PER_CARD = 4;
 
@@ -4819,6 +4819,12 @@ export function isCollectibleCard(card) {
     !card.transformedFrom;
 }
 
+// Set collectible_edition: true on an Armory card to allow its cosmetic
+// _collectible.png edition to be unlocked after all four normal copies are owned.
+export function supportsCollectibleEdition(card) {
+  return isCollectibleCard(card) && card.collectible_edition === true;
+}
+
 export const COLLECTIBLE_CARDS = Object.freeze(
   CARDS.filter(isCollectibleCard)
 );
@@ -5182,6 +5188,19 @@ export function assertCardLibrary() {
       throw new Error(
         `Invalid shop_cost on ${card.id}: ` +
         `${card.shop_cost}`
+      );
+    }
+
+    if (card.collectible_edition !== undefined && typeof card.collectible_edition !== "boolean") {
+      throw new Error(
+        `Invalid collectible_edition on ${card.id}: ` +
+        "use true or false."
+      );
+    }
+
+    if (card.collectible_edition === true && !isCollectibleCard(card)) {
+      throw new Error(
+        `Noncollectible card ${card.id} cannot offer a collectible edition.`
       );
     }
   }
