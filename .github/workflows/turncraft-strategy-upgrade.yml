@@ -1,0 +1,61 @@
+name: Apply Turncraft strategy upgrade
+
+on:
+  push:
+    branches:
+      - agent/turncraft-strategy-controls
+    paths:
+      - .github/workflows/turncraft-strategy-upgrade.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out upgrade branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/turncraft-strategy-controls
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply Turncraft patch
+        run: python .github/turncraft_upgrade_patch.py
+
+      - name: Validate embedded JavaScript syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path('game/turncraft.html').read_text(encoding='utf-8')
+          scripts = re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', text, re.S)
+          if not scripts:
+              raise SystemExit('No embedded script found')
+          Path('/tmp/turncraft-module.mjs').write_text(scripts[-1], encoding='utf-8')
+          PY
+          node --check /tmp/turncraft-module.mjs
+
+      - name: Validate requested features
+        run: |
+          grep -q "Strategic Doctrine" game/turncraft.html
+          grep -q "groupAttackMove" game/turncraft.html
+          grep -q "setStructureRally" game/turncraft.html
+          grep -q "postMatchReport" game/turncraft.html
+          grep -q "battleAlerts" game/turncraft.html
+          grep -q "minimapDock" game/turncraft.html
+          grep -q "controlGroupSlots" game/turncraft.html
+
+      - name: Commit validated game update
+        run: |
+          git config user.name "OpenAI Codex"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/turncraft_upgrade_patch.py .github/workflows/turncraft-strategy-upgrade.yml
+          git add game/turncraft.html
+          git commit -m "Add Turncraft strategic controls and progression"
+          git push origin agent/turncraft-strategy-controls
