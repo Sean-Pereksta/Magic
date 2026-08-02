@@ -41,7 +41,9 @@ jobs:
           function startPositions""",'''.replace('          function', 'function')
           if old not in text:
               raise SystemExit('Serialized terrain regex was not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          text = text.replace(old, new, 1)
+          text = text.replace("if(c.type==='doctrine'){chooseDoctrine(c.slot,c.doctrineId,true);return}", "if(c.type==='doctrine'){chooseDoctrine(c.slot,c.doctrineId,false);return}", 1)
+          path.write_text(text, encoding='utf-8')
           PY
 
       - name: Apply Turncraft patch
@@ -69,12 +71,13 @@ jobs:
           grep -q "battleAlerts" game/turncraft.html
           grep -q "minimapDock" game/turncraft.html
           grep -q "controlGroupSlots" game/turncraft.html
+          grep -q "chooseDoctrine(c.slot,c.doctrineId,false)" game/turncraft.html
 
       - name: Commit validated game update
         run: |
           git config user.name "OpenAI Codex"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/turncraft_upgrade_patch.py .github/workflows/turncraft-strategy-upgrade.yml
+          git rm -f .github/turncraft_upgrade_patch.py .github/workflows/turncraft-strategy-upgrade.yml
           git add game/turncraft.html
           git commit -m "Add Turncraft strategic controls and progression"
           git push origin agent/turncraft-strategy-controls
