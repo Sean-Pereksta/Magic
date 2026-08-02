@@ -99,10 +99,89 @@
     background: rgba(2, 5, 12, 0.85);
     color: #fff;
   }
-  #menuCard { text-align:center; background:#111827; padding:32px 40px; border-radius:16px; border:1px solid rgba(255,255,255,.22); }
-  #menuCard h1 { margin:0; font-size:52px; }
-  #menuCard h2 { margin:8px 0 18px; font-size:24px; opacity:.9; font-weight:600; }
-  #menuControls { margin-top:14px; font-size:12px; opacity:.85; line-height:1.5; text-align:left; }
+  #menuCard {
+    width: min(960px, calc(100vw - 40px));
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    text-align: center;
+    background: linear-gradient(145deg, rgba(17,24,39,.98), rgba(8,15,29,.98));
+    padding: 28px 30px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,.22);
+    box-shadow: 0 24px 70px rgba(0,0,0,.58);
+  }
+  #menuCard h1 { margin:0; font-size:48px; }
+  #menuCard h2 { margin:6px 0 18px; font-size:20px; opacity:.8; font-weight:600; }
+  #menuLayout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 290px;
+    gap: 24px;
+    align-items: stretch;
+  }
+  #menuMain { min-width:0; }
+  #characterHeading {
+    margin: 0 0 10px;
+    font-size: 15px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #bfdbfe;
+  }
+  #characterGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .characterCard {
+    position: relative;
+    min-height: 128px;
+    margin: 0;
+    padding: 14px 10px 12px;
+    text-align: left;
+    color: #e5e7eb;
+    background: rgba(15,23,42,.82);
+    border: 2px solid rgba(148,163,184,.25);
+    border-radius: 14px;
+    transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
+  }
+  .characterCard:hover { transform: translateY(-2px); border-color: rgba(147,197,253,.75); }
+  .characterCard.selected {
+    background: linear-gradient(145deg, rgba(29,78,216,.42), rgba(15,23,42,.96));
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 2px rgba(96,165,250,.18), 0 10px 25px rgba(0,0,0,.28);
+  }
+  .characterCard.selected::after {
+    content: "SELECTED";
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    color: #bfdbfe;
+    font-size: 8px;
+    font-weight: 950;
+    letter-spacing: 1px;
+  }
+  .characterName { display:block; margin-bottom:6px; font-size:20px; font-weight:950; color:#fff; }
+  .characterBuild { display:block; min-height:30px; font-size:11px; line-height:1.3; opacity:.82; }
+  .characterStats { display:block; margin-top:9px; font-size:10px; line-height:1.45; color:#bfdbfe; }
+  #menuButtons { display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin-top:4px; }
+  #menuButtons button { margin-top:12px; }
+  #menuControls { margin-top:12px; font-size:11px; opacity:.72; line-height:1.45; text-align:center; }
+  #characterPreviewWrap {
+    display:flex;
+    flex-direction:column;
+    min-height:350px;
+    overflow:hidden;
+    border-radius:18px;
+    border:1px solid rgba(96,165,250,.3);
+    background:
+      radial-gradient(circle at 50% 30%, rgba(59,130,246,.25), transparent 45%),
+      linear-gradient(180deg, rgba(30,41,59,.78), rgba(2,6,23,.9));
+  }
+  #characterPreviewCanvas { flex:1; min-height:285px; }
+  #characterPreviewCanvas canvas { display:block; width:100%; height:100%; }
+  #characterPreviewInfo { padding:9px 12px 12px; border-top:1px solid rgba(255,255,255,.1); }
+  #previewCharacterName { font-size:20px; font-weight:950; }
+  #previewCharacterTrait { margin-top:3px; font-size:11px; color:#bfdbfe; }
 
 
   #twoPlayerScoreboard {
@@ -467,8 +546,27 @@
     .gameOverBoards { grid-template-columns: 1fr; }
     .gameOverActions { margin: 14px -14px -14px; bottom: -14px; }
     #mobileControls.mobile-visible { display: block; }
-    #menuCard { width: min(92vw, 420px); padding: 22px 18px; }
-    #menuCard h1 { font-size: 34px; }
+    #menuCard {
+      width: min(94vw, 460px);
+      max-height: calc(100vh - 18px);
+      padding: 16px 14px;
+      border-radius: 16px;
+    }
+    #menuCard h1 { font-size: 32px; }
+    #menuCard h2 { margin-bottom:12px; font-size:16px; }
+    #menuLayout { grid-template-columns:1fr; gap:12px; }
+    #characterGrid { gap:7px; }
+    .characterCard { min-height:100px; padding:10px 8px; }
+    .characterName { font-size:17px; }
+    .characterBuild { min-height:26px; font-size:9px; }
+    .characterStats { margin-top:6px; font-size:8px; }
+    #characterPreviewWrap { min-height:210px; order:2; }
+    #characterPreviewCanvas { min-height:155px; }
+    #characterPreviewInfo { padding:6px 10px 8px; }
+    #previewCharacterName { font-size:17px; }
+    #previewCharacterTrait { font-size:9px; }
+    #menuButtons button { margin-top:8px; padding:9px 13px; }
+    #menuControls { font-size:9px; margin-top:8px; }
     #twoPlayerScoreboard { transform: translateX(-50%) scale(.85); transform-origin: top center; }
   }
 
@@ -528,7 +626,7 @@
 
 <div id="twoPlayerScoreboard" style="display:none;">
   <div class="tpSide tpP1">
-    <div class="tpName">BLUE CHRIS</div>
+    <div class="tpName" id="p1CharacterName">BLUE CHRIS</div>
     <div class="tpTotal">Total: <span id="p1TotalYards">0</span></div>
     <div class="tpRound">Round: <span id="p1RoundYards">0</span></div>
     <div class="tpStatus" id="p1Status">Runner</div>
@@ -540,7 +638,7 @@
   </div>
 
   <div class="tpSide tpP2">
-    <div class="tpName">ORANGE CHRIS</div>
+    <div class="tpName" id="p2CharacterName">ORANGE CHRIS</div>
     <div class="tpTotal">Total: <span id="p2TotalYards">0</span></div>
     <div class="tpRound">Round: <span id="p2RoundYards">0</span></div>
     <div class="tpStatus" id="p2Status">Runner</div>
@@ -564,20 +662,51 @@
   <div id="menuCard">
     <h1>Chris Runner</h1>
     <h2>Endless 3D Chase</h2>
-    <button onclick="startGame(1)">1 Player</button>
-    <button onclick="startGame(2)">2 Player</button>
-    <button onclick="openReplayLoadPicker()">Load Replay</button>
-    <input id="replayFileInput" type="file" accept=".json,.chrisreplay.json" style="display:none">
-    <div id="menuControls">
-      <div>Player 1: WASD or Arrow Keys, Shift sprint, Space dodge</div>
-      <div>Player 2: IJKL movement, U sprint, O dodge</div>
+    <div id="menuLayout">
+      <div id="menuMain">
+        <h3 id="characterHeading">Choose your runner</h3>
+        <div id="characterGrid" role="group" aria-label="Character selection">
+          <button class="characterCard" type="button" data-character="chris" onclick="selectCharacter('chris')" aria-pressed="true">
+            <span class="characterName">Chris</span>
+            <span class="characterBuild">The original balanced runner.</span>
+            <span class="characterStats">SPEED ●●○<br>LATERAL ●●○</span>
+          </button>
+          <button class="characterCard" type="button" data-character="dawit" onclick="selectCharacter('dawit')" aria-pressed="false">
+            <span class="characterName">Dawit</span>
+            <span class="characterBuild">Very short and built for speed.</span>
+            <span class="characterStats">SPEED ●●●<br>LATERAL ●●○</span>
+          </button>
+          <button class="characterCard" type="button" data-character="jay" onclick="selectCharacter('jay')" aria-pressed="false">
+            <span class="characterName">Jay</span>
+            <span class="characterBuild">Rounder, slower, and quick side to side.</span>
+            <span class="characterStats">SPEED ●○○<br>LATERAL ●●●</span>
+          </button>
+        </div>
+        <div id="menuButtons">
+          <button onclick="startGame(1)">1 Player</button>
+          <button onclick="startGame(2)">2 Player</button>
+          <button onclick="openReplayLoadPicker()">Load Replay</button>
+        </div>
+        <input id="replayFileInput" type="file" accept=".json,.chrisreplay.json" style="display:none">
+        <div id="menuControls">
+          <div>Player 1: WASD or Arrow Keys, Shift sprint, Space dodge</div>
+          <div>Player 2: IJKL movement, U sprint, O dodge</div>
+        </div>
+      </div>
+      <div id="characterPreviewWrap" aria-label="Selected character preview">
+        <div id="characterPreviewCanvas"></div>
+        <div id="characterPreviewInfo">
+          <div id="previewCharacterName">Chris</div>
+          <div id="previewCharacterTrait">Balanced speed and lateral movement</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
 <div id="message">
   <div id="messageBox">
-    <h2>Chris got caught!</h2>
+    <h2>Runner got caught!</h2>
     <p id="finalScore"></p>
     <button onclick="location.reload()">Restart</button>
   </div>
@@ -665,6 +794,57 @@ let highScore = Number(localStorage.getItem("chrisRunnerHighScore") || 0);
 let currentSpeedTier = 0;
 let playerBaseSpeed = 13;
 let playerBaseSprintSpeed = 20;
+const CHARACTER_PROFILES = {
+  chris: {
+    id: "chris",
+    name: "Chris",
+    skin: 0x8a4c2a,
+    hair: 0x111111,
+    modelScale: [1, 1, 1],
+    headScale: [0.92, 1.04, 0.9],
+    forwardSpeed: 1,
+    sprintSpeed: 1,
+    lateralSpeed: 1,
+    roundness: 1,
+    beard: true,
+    trait: "Balanced speed and lateral movement"
+  },
+  dawit: {
+    id: "dawit",
+    name: "Dawit",
+    skin: 0x3f2118,
+    hair: 0x080808,
+    modelScale: [0.82, 0.72, 0.82],
+    headScale: [0.92, 1.02, 0.9],
+    forwardSpeed: 1.15,
+    sprintSpeed: 1.13,
+    lateralSpeed: 1.08,
+    roundness: 0.88,
+    beard: false,
+    trait: "Very short with the fastest forward speed"
+  },
+  jay: {
+    id: "jay",
+    name: "Jay",
+    skin: 0xd8aa82,
+    hair: 0x4a2a1a,
+    modelScale: [1.18, 0.98, 1.14],
+    headScale: [1.05, 1.02, 0.96],
+    forwardSpeed: 0.9,
+    sprintSpeed: 0.9,
+    lateralSpeed: 1.28,
+    roundness: 1.35,
+    beard: false,
+    trait: "Slower forward pace with the fastest lateral movement"
+  }
+};
+let selectedCharacterKey = localStorage.getItem("chrisRunnerCharacter") || "chris";
+if (!CHARACTER_PROFILES[selectedCharacterKey]) selectedCharacterKey = "chris";
+let characterPreviewScene = null;
+let characterPreviewCamera = null;
+let characterPreviewRenderer = null;
+let characterPreviewModel = null;
+let characterPreviewParts = null;
 let enemyBaseSpeedBonus = 0;
 let playerHiddenInGrass = false;
 
@@ -681,7 +861,7 @@ let roundEnding = false;
 let roundToastTimer = null;
 
 const CHRIS_REPLAY_VERSION = 1;
-const GAME_BUILD_VERSION = "chris-runner-basic-replay-v1";
+const GAME_BUILD_VERSION = "chris-runner-character-select-v2";
 
 let replayRecorder = null;
 let replayPlayback = null;
@@ -949,7 +1129,7 @@ function renderGameOverDashboard(extraStatus = "") {
   const statusHtml = extraStatus ? `<div class="leaderboardMuted">${escapeHtml(extraStatus)}</div>` : "";
   const modeLabel = s.gameMode === 2 ? "2 Player" : "1 Player";
   box.innerHTML = `
-    <h2>${escapeHtml(s.reason || "Chris got caught!")}</h2>
+    <h2>${escapeHtml(s.reason || (getSelectedCharacterName() + " got caught!"))}</h2>
     <div class="gameOverScoreBig">${Math.floor(s.finalScore ?? s.finalDistance)} points</div>
     <div class="gameOverSub">${modeLabel} · ${Math.floor(s.finalDistance)} yards${s.finalBonus ? " · +" + Math.floor(s.finalBonus) + " skill bonus" : ""} · Local High Score: ${Math.floor(s.highScore)}${s.highScoreMessage ? " · " + escapeHtml(s.highScoreMessage.trim()) : ""} · Pickups: ${Math.floor(s.pickupCount || 0)}</div>
     ${statusHtml}
@@ -1116,6 +1296,8 @@ function init() {
   }
 
   setupMobileControls();
+  setupCharacterPreview();
+  selectCharacter(selectedCharacterKey);
   initFirebaseHighScores();
 
   const autoMode = Number(sessionStorage.getItem("chrisRunnerAutoStartMode") || 0);
@@ -1300,26 +1482,206 @@ function getBiomeLabel(biome) {
    PLAYER
 ============================================================ */
 
-function createPlayer(index = 1, x = 0, z = START_Z) {
-  playerRig = new THREE.Group();
-  playerRig.position.set(x, 0, z);
+function getSelectedCharacterProfile() {
+  return CHARACTER_PROFILES[selectedCharacterKey] || CHARACTER_PROFILES.chris;
+}
 
-  const skin = new THREE.MeshStandardMaterial({ color: 0x8a4c2a, roughness: 0.65 });
-  const jersey = new THREE.MeshStandardMaterial({ color: index === 1 ? 0x1d4ed8 : 0xea580c, roughness: 0.4 });
+function getSelectedCharacterName() {
+  return getSelectedCharacterProfile().name;
+}
+
+function selectCharacter(key) {
+  if (!CHARACTER_PROFILES[key]) return;
+  selectedCharacterKey = key;
+  localStorage.setItem("chrisRunnerCharacter", key);
+
+  document.querySelectorAll(".characterCard").forEach(card => {
+    const selected = card.dataset.character === key;
+    card.classList.toggle("selected", selected);
+    card.setAttribute("aria-pressed", selected ? "true" : "false");
+  });
+
+  const profile = getSelectedCharacterProfile();
+  const name = document.getElementById("previewCharacterName");
+  const trait = document.getElementById("previewCharacterTrait");
+  if (name) name.textContent = profile.name;
+  if (trait) trait.textContent = profile.trait;
+  refreshCharacterPreview();
+}
+
+function buildCharacterModel(profile, jerseyColor = 0x1d4ed8) {
+  const rig = new THREE.Group();
+  const parts = {};
+  const skin = new THREE.MeshStandardMaterial({ color: profile.skin, roughness: 0.65 });
+  const jersey = new THREE.MeshStandardMaterial({ color: jerseyColor, roughness: 0.4 });
   const shorts = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.45 });
   const shoeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
-  const beardMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: profile.hair, roughness: 0.9 });
+
+  let torso;
+  if (profile.roundness > 1.1) {
+    torso = new THREE.Mesh(new THREE.SphereGeometry(0.96, 22, 18), jersey);
+    torso.scale.set(1.05, 1.18, 0.72);
+    torso.position.y = 3.02;
+  } else {
+    torso = new THREE.Mesh(new THREE.BoxGeometry(1.35 * profile.roundness, 2.2, 0.75 * profile.roundness), jersey);
+    torso.position.y = 3.05;
+  }
+  torso.castShadow = true;
+  rig.add(torso);
+  parts.torso = torso;
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 20, 20), skin);
+  head.position.y = 4.58;
+  head.scale.set(profile.headScale[0], profile.headScale[1], profile.headScale[2]);
+  head.castShadow = true;
+  rig.add(head);
+  parts.head = head;
+
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.6, 18, 8), hairMat);
+  hair.position.set(0, 4.82, -0.03);
+  hair.scale.set(profile.headScale[0], 0.38, profile.headScale[2] * 0.94);
+  hair.castShadow = true;
+  rig.add(hair);
+
+  if (profile.beard) {
+    const beard = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.18, 0.08), hairMat);
+    beard.position.set(0, 4.28, 0.49);
+    rig.add(beard);
+  }
+
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), eyeMat);
+  leftEye.position.set(-0.18, 4.62, 0.51);
+  rig.add(leftEye);
+  const rightEye = leftEye.clone();
+  rightEye.position.x = 0.18;
+  rig.add(rightEye);
+
+  function attachLimb(name, x, y, z, mat, width, height) {
+    const limb = new THREE.Group();
+    limb.position.set(x, y, z);
+    const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(width / 2, height, 6, 10), mat);
+    mesh.castShadow = true;
+    limb.add(mesh);
+    rig.add(limb);
+    parts[name] = limb;
+  }
+
+  const shoulderX = profile.roundness > 1.1 ? 1.08 : 0.95;
+  attachLimb("leftArm", -shoulderX, 3.45, 0, skin, 0.34, 1.35);
+  attachLimb("rightArm", shoulderX, 3.45, 0, skin, 0.34, 1.35);
+  attachLimb("leftLeg", -0.38, 1.85, 0, shorts, 0.42, 1.55);
+  attachLimb("rightLeg", 0.38, 1.85, 0, shorts, 0.42, 1.55);
+
+  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.25, 0.82), shoeMat);
+  leftShoe.position.set(-0.38, 0.45, 0.17);
+  leftShoe.castShadow = true;
+  rig.add(leftShoe);
+  parts.leftShoe = leftShoe;
+  const rightShoe = leftShoe.clone();
+  rightShoe.position.x = 0.38;
+  rig.add(rightShoe);
+  parts.rightShoe = rightShoe;
+
+  rig.scale.set(profile.modelScale[0], profile.modelScale[1], profile.modelScale[2]);
+  rig.userData.characterKey = profile.id;
+  return { rig, parts };
+}
+
+function setupCharacterPreview() {
+  const host = document.getElementById("characterPreviewCanvas");
+  if (!host || characterPreviewRenderer) return;
+
+  characterPreviewScene = new THREE.Scene();
+  characterPreviewCamera = new THREE.PerspectiveCamera(36, 1, 0.1, 40);
+  characterPreviewCamera.position.set(0, 2.8, 9.4);
+  characterPreviewCamera.lookAt(0, 2.45, 0);
+
+  characterPreviewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  characterPreviewRenderer.setClearColor(0x000000, 0);
+  characterPreviewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  characterPreviewRenderer.domElement.setAttribute("aria-hidden", "true");
+  host.appendChild(characterPreviewRenderer.domElement);
+
+  characterPreviewScene.add(new THREE.HemisphereLight(0xffffff, 0x1e293b, 2.2));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.8);
+  keyLight.position.set(4, 7, 5);
+  characterPreviewScene.add(keyLight);
+  const rimLight = new THREE.DirectionalLight(0x60a5fa, 2.2);
+  rimLight.position.set(-5, 4, -3);
+  characterPreviewScene.add(rimLight);
+
+  resizeCharacterPreview();
+  refreshCharacterPreview();
+}
+
+function resizeCharacterPreview() {
+  const host = document.getElementById("characterPreviewCanvas");
+  if (!host || !characterPreviewRenderer || !characterPreviewCamera) return;
+  const width = Math.max(1, host.clientWidth);
+  const height = Math.max(1, host.clientHeight);
+  characterPreviewRenderer.setSize(width, height, false);
+  characterPreviewCamera.aspect = width / height;
+  characterPreviewCamera.updateProjectionMatrix();
+}
+
+function refreshCharacterPreview() {
+  if (!characterPreviewScene) return;
+  if (characterPreviewModel) {
+    characterPreviewScene.remove(characterPreviewModel);
+    characterPreviewModel.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+        materials.forEach(material => material.dispose());
+      }
+    });
+  }
+  const made = buildCharacterModel(getSelectedCharacterProfile(), 0x2563eb);
+  characterPreviewModel = made.rig;
+  characterPreviewParts = made.parts;
+  characterPreviewModel.position.y = -0.1;
+  characterPreviewScene.add(characterPreviewModel);
+}
+
+function renderCharacterPreview() {
+  if (!characterPreviewRenderer || !characterPreviewScene || !characterPreviewCamera || !characterPreviewModel) return;
+  const menu = document.getElementById("menuOverlay");
+  if (!menu || menu.style.display === "none") return;
+
+  const t = performance.now() * 0.001;
+  characterPreviewModel.rotation.y = t * 0.85;
+  characterPreviewModel.position.y = -0.1 + Math.abs(Math.sin(t * 2.2)) * 0.06;
+  if (characterPreviewParts) {
+    const swing = Math.sin(t * 3.3) * 0.12;
+    if (characterPreviewParts.leftArm) characterPreviewParts.leftArm.rotation.x = swing;
+    if (characterPreviewParts.rightArm) characterPreviewParts.rightArm.rotation.x = -swing;
+  }
+  characterPreviewRenderer.render(characterPreviewScene, characterPreviewCamera);
+}
+
+function createPlayer(index = 1, x = 0, z = START_Z) {
+  const profile = getSelectedCharacterProfile();
+  const made = buildCharacterModel(profile, index === 1 ? 0x1d4ed8 : 0xea580c);
+  playerRig = made.rig;
+  playerRig.position.set(x, 0, z);
 
   const created = {
     id: index,
     rig: playerRig,
     velocity: new THREE.Vector3(),
-    speed: playerBaseSpeed,
-    sprintSpeed: playerBaseSprintSpeed,
+    characterKey: profile.id,
+    characterName: profile.name,
+    forwardSpeedMultiplier: profile.forwardSpeed,
+    sprintSpeedMultiplier: profile.sprintSpeed,
+    lateralMultiplier: profile.lateralSpeed,
+    speed: playerBaseSpeed * profile.forwardSpeed,
+    sprintSpeed: playerBaseSprintSpeed * profile.sprintSpeed,
     dodgeCooldown: 0,
     animTime: 0,
     burnCooldown: 0,
-    parts: {},
+    parts: made.parts,
     eliminated: false,
     isChaser: false,
     controlledChaser: null,
@@ -1334,55 +1696,6 @@ function createPlayer(index = 1, x = 0, z = START_Z) {
   };
   player = created;
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(1.35, 2.2, 0.75), jersey);
-  torso.position.y = 3.05;
-  torso.castShadow = true;
-  playerRig.add(torso);
-  player.parts.torso = torso;
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 20, 20), skin);
-  head.position.y = 4.58;
-  head.scale.set(0.92, 1.04, 0.9);
-  head.castShadow = true;
-  playerRig.add(head);
-  player.parts.head = head;
-
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.6, 18, 8), beardMat);
-  hair.position.set(0, 4.82, -0.03);
-  hair.scale.set(0.92, 0.38, 0.85);
-  hair.castShadow = true;
-  playerRig.add(hair);
-
-  const beard = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.18, 0.08), beardMat);
-  beard.position.set(0, 4.28, 0.49);
-  playerRig.add(beard);
-
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-  const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), eyeMat);
-  leftEye.position.set(-0.18, 4.62, 0.51);
-  playerRig.add(leftEye);
-
-  const rightEye = leftEye.clone();
-  rightEye.position.x = 0.18;
-  playerRig.add(rightEye);
-
-  makeLimb("leftArm", -0.95, 3.45, 0, skin, 0.34, 1.35);
-  makeLimb("rightArm", 0.95, 3.45, 0, skin, 0.34, 1.35);
-  makeLimb("leftLeg", -0.38, 1.85, 0, shorts, 0.42, 1.55);
-  makeLimb("rightLeg", 0.38, 1.85, 0, shorts, 0.42, 1.55);
-
-  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.25, 0.82), shoeMat);
-  leftShoe.position.set(-0.38, 0.45, 0.17);
-  leftShoe.castShadow = true;
-  playerRig.add(leftShoe);
-  player.parts.leftShoe = leftShoe;
-
-  const rightShoe = leftShoe.clone();
-  rightShoe.position.x = 0.38;
-  playerRig.add(rightShoe);
-  player.parts.rightShoe = rightShoe;
-
   scene.add(playerRig);
   created.arrow = createPlayerArrow(index === 1 ? 0x3b82f6 : 0xf97316);
   scene.add(created.arrow);
@@ -1395,22 +1708,6 @@ function createPlayerArrow(color) {
   m.rotation.x = Math.PI;
   g.add(m);
   return g;
-}
-
-function makeLimb(name, x, y, z, mat, width, height) {
-  const limb = new THREE.Group();
-  limb.position.set(x, y, z);
-
-  const mesh = new THREE.Mesh(
-    new THREE.CapsuleGeometry(width / 2, height, 6, 10),
-    mat
-  );
-
-  mesh.castShadow = true;
-  limb.add(mesh);
-
-  playerRig.add(limb);
-  player.parts[name] = limb;
 }
 
 /* ============================================================
@@ -2479,7 +2776,7 @@ function updatePlayerActor(p, dt, controlSet) {
     if (move.lengthSq() === 0) move.z = 1;
     move.normalize();
 
-    actor.rig.position.x += move.x * 6;
+    actor.rig.position.x += move.x * 6 * (actor.lateralMultiplier || 1);
     actor.rig.position.z += move.z * 6;
     actor.rig.position.x=clamp(actor.rig.position.x,-WORLD_WIDTH/2+2,WORLD_WIDTH/2-2);
     resolveSlidingCollision(actor,dodgeOldPos,PLAYER_RADIUS);
@@ -2491,10 +2788,10 @@ function updatePlayerActor(p, dt, controlSet) {
 
   if (move.lengthSq() > 0) {
     move.normalize();
-    actor.velocity.x = move.x * speed;
+    actor.velocity.x = move.x * speed * (actor.lateralMultiplier || 1);
     actor.velocity.z = move.z * speed;
 
-    const angle = Math.atan2(move.x, move.z);
+    const angle = Math.atan2(actor.velocity.x, actor.velocity.z);
     actor.rig.rotation.y = angle;
   } else {
     actor.velocity.multiplyScalar(0.82);
@@ -3383,11 +3680,18 @@ function updateSpeedScaling() {
   if (newTier === currentSpeedTier) return;
 
   currentSpeedTier = newTier;
-
   const speedBoost = currentSpeedTier * 1.25;
 
-  player.speed = playerBaseSpeed + speedBoost;
-  player.sprintSpeed = playerBaseSprintSpeed + speedBoost * 1.35;
+  for (const runner of players) {
+    if (!runner) continue;
+    runner.speed = (playerBaseSpeed + speedBoost) * (runner.forwardSpeedMultiplier || 1);
+    runner.sprintSpeed = (playerBaseSprintSpeed + speedBoost * 1.35) * (runner.sprintSpeedMultiplier || 1);
+    if (runner.controlledChaser) {
+      runner.controlledChaser.speed = runner.speed * 0.92;
+      runner.controlledChaser.sprintSpeed = runner.sprintSpeed * 0.92;
+      runner.controlledChaser.lateralMultiplier = runner.lateralMultiplier || 1;
+    }
+  }
 
   enemyBaseSpeedBonus = currentSpeedTier * 0.85;
 
@@ -3626,7 +3930,7 @@ function endGame(reason) {
   }
 
   lastGameOverSummary = {
-    reason: reason || "Chris got caught!",
+    reason: reason || (getSelectedCharacterName() + " got caught!"),
     finalDistance,
     finalBonus,
     finalScore,
@@ -4196,6 +4500,7 @@ function updateTempEffects(dt) {
 function animate() {
   requestAnimationFrame(animate);
   frameCount++;
+  renderCharacterPreview();
 
   const replayHud = document.getElementById("replayHud");
   if (replayHud) replayHud.style.display = replayMode ? "block" : "none";
@@ -4296,6 +4601,7 @@ function onResize() {
 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  resizeCharacterPreview();
 }
 
 function getPlayerDisplayRig(p) {
@@ -4355,10 +4661,11 @@ function convertPlayerToControlledChaser(p, reason) {
   chaser.velocity = new THREE.Vector3();
   chaser.isControlledChaser = true;
   chaser.ownerPlayerId = p.id;
-  chaser.baseControlledSpeed = playerBaseSpeed;
-  chaser.baseControlledSprintSpeed = playerBaseSprintSpeed;
+  chaser.baseControlledSpeed = playerBaseSpeed * (p.forwardSpeedMultiplier || 1);
+  chaser.baseControlledSprintSpeed = playerBaseSprintSpeed * (p.sprintSpeedMultiplier || 1);
   chaser.speed = chaser.baseControlledSpeed * 0.92;
   chaser.sprintSpeed = chaser.baseControlledSprintSpeed * 0.92;
+  chaser.lateralMultiplier = p.lateralMultiplier || 1;
   chaser.energy = p.energy;
   chaser.dodgeCooldown = 0;
   chaser.burnCooldown = 0;
@@ -4396,8 +4703,8 @@ function restorePlayerFromControlledChaser(p) {
 }
 function resetPlayerMovementStats(p) {
   if (!p) return;
-  p.speed = playerBaseSpeed;
-  p.sprintSpeed = playerBaseSprintSpeed;
+  p.speed = playerBaseSpeed * (p.forwardSpeedMultiplier || 1);
+  p.sprintSpeed = playerBaseSprintSpeed * (p.sprintSpeedMultiplier || 1);
   p.energy = 100;
   p.velocity.set(0, 0, 0);
   p.dodgeCooldown = 0;
@@ -4447,7 +4754,7 @@ function handlePlayerCaught(p, reason) {
   recordReplayEvent("player_caught", { playerId: p?.id || 1, reason: reason || "caught", x: Number(p.rig.position.x.toFixed(2)), z: Number(p.rig.position.z.toFixed(2)) });
 
   if (gameMode !== 2) {
-    endGame(reason || "Chris got caught!");
+    endGame(reason || (getSelectedCharacterName() + " got caught!"));
     return;
   }
 
@@ -4569,7 +4876,8 @@ function showRoundTransition(reason) {
   const message = document.getElementById("message"); const box = document.getElementById("messageBox");
   message.style.display = "flex";
   box.className = "";
-  box.innerHTML = `<h2>Round ${twoPlayerRound} Complete!</h2><p>${reason || "Both players were caught!"}</p><p><strong>Blue Chris:</strong> ${Math.floor(twoPlayerScores[1].roundYards)} round yards · ${Math.floor(twoPlayerScores[1].totalYards)} total<br><strong>Orange Chris:</strong> ${Math.floor(twoPlayerScores[2].roundYards)} round yards · ${Math.floor(twoPlayerScores[2].totalYards)} total</p><button onclick="startNextTwoPlayerRound()">Start Round ${twoPlayerRound + 1}</button>`;
+  const runnerName = getSelectedCharacterName();
+  box.innerHTML = `<h2>Round ${twoPlayerRound} Complete!</h2><p>${reason || "Both players were caught!"}</p><p><strong>Blue ${runnerName}:</strong> ${Math.floor(twoPlayerScores[1].roundYards)} round yards · ${Math.floor(twoPlayerScores[1].totalYards)} total<br><strong>Orange ${runnerName}:</strong> ${Math.floor(twoPlayerScores[2].roundYards)} round yards · ${Math.floor(twoPlayerScores[2].totalYards)} total</p><button onclick="startNextTwoPlayerRound()">Start Round ${twoPlayerRound + 1}</button>`;
 }
 function startNextTwoPlayerRound() { twoPlayerRound++; roundActive = true; roundEnding = false; gameOver = false; document.getElementById("message").style.display = "none"; resetWorldForNewTwoPlayerRound(); snapCameraToPlayers(); updateTwoPlayerScoreboard(); }
 function endTwoPlayerMatch(reason) {
@@ -4577,7 +4885,8 @@ function endTwoPlayerMatch(reason) {
   roundActive = false; roundEnding = true; gameOver = true; updateTwoPlayerScoreboard();
   const p1 = Math.floor(twoPlayerScores[1].totalYards); const p2 = Math.floor(twoPlayerScores[2].totalYards);
   let winnerText = "It’s a tie!";
-  if (p1 > p2) winnerText = "BLUE CHRIS WINS!"; else if (p2 > p1) winnerText = "ORANGE CHRIS WINS!";
+  const runnerName = getSelectedCharacterName().toUpperCase();
+  if (p1 > p2) winnerText = "BLUE " + runnerName + " WINS!"; else if (p2 > p1) winnerText = "ORANGE " + runnerName + " WINS!";
   const finalDistance = Math.max(p1, p2);
   let highScoreMessage = "";
   if (!replayMode && finalDistance > highScore) {
@@ -4617,6 +4926,11 @@ function endTwoPlayerRound(reason) {
 }
 function startGame(mode) {
   gameMode = mode; lastPlayedMode = mode; gameStarted = true; gameOver = false; bonusScore = 0; cameraTrauma = 0; document.getElementById("menuOverlay").style.display = "none"; setupMobileControls();
+  const characterName = getSelectedCharacterName().toUpperCase();
+  const p1Name = document.getElementById("p1CharacterName");
+  const p2Name = document.getElementById("p2CharacterName");
+  if (p1Name) p1Name.textContent = "BLUE " + characterName;
+  if (p2Name) p2Name.textContent = "ORANGE " + characterName;
 
   if (!replayMode) {
     replayRecorder = createReplayRecorder(mode);
@@ -4642,6 +4956,7 @@ function createReplayRecorder(mode) {
     gameBuild: GAME_BUILD_VERSION,
     createdAt: new Date().toISOString(),
     mode,
+    characterKey: selectedCharacterKey,
     seed,
     startedAtPerf: performance.now(),
     duration: 0,
@@ -4812,6 +5127,7 @@ function startReplayMode(replay) {
   const message = document.getElementById("message");
   if (message) message.style.display = "none";
 
+  selectCharacter(replay.characterKey || "chris");
   startGame(replay.mode || 1);
 
   replayMode = true;
