@@ -1,0 +1,398 @@
+"use strict";
+
+/*
+  The Last Five: Endless Roguelite Expansion
+  Loaded after the original gateguard core. This file deliberately layers over
+  the mature tactical rules instead of replacing them.
+*/
+(() => {
+  const EXPANSION_VERSION = "1.0.0";
+  const ACT_LENGTH = 8;
+  const RELIC_INTERVAL = 10;
+
+  const HERO_LABELS = {
+    blade: "Blade",
+    shield: "Shield",
+    spear: "Spear",
+    bow: "Bow / Archer",
+    banner: "Banner"
+  };
+
+  const SCRAP_VALUES = {
+    grunt: 1,
+    raider: 2,
+    archer: 2,
+    brute: 4,
+    hook: 3,
+    guardian: 3,
+    bomber: 3,
+    commander: 5
+  };
+
+  const ACTS = [
+    {
+      name: "THE ASH GATE",
+      subtitle: "Scouts and raiders test the last formation.",
+      key: "ash",
+      colors: {
+        page: "#f4eee6",
+        board: "#fffaf3",
+        line: "#362a22",
+        accent: "#b23a2f",
+        haze: "rgba(178,58,47,.13)"
+      },
+      weights: { grunt: 58, raider: 23, archer: 14, brute: 5 }
+    },
+    {
+      name: "THE IRON PASS",
+      subtitle: "Heavy ranks arrive to break the center.",
+      key: "iron",
+      colors: {
+        page: "#e9edf0",
+        board: "#f8fafb",
+        line: "#28313a",
+        accent: "#b65f2a",
+        haze: "rgba(74,92,108,.15)"
+      },
+      weights: { grunt: 25, raider: 17, archer: 11, brute: 22, hook: 14, guardian: 11 }
+    },
+    {
+      name: "THE NIGHT SIEGE",
+      subtitle: "Hooks, arrows, and bombs hunt every opening.",
+      key: "night",
+      colors: {
+        page: "#151923",
+        board: "#202634",
+        line: "#bdc7d8",
+        accent: "#9b7cff",
+        haze: "rgba(106,84,190,.24)"
+      },
+      weights: { raider: 13, archer: 22, brute: 12, hook: 20, guardian: 11, bomber: 14, commander: 8 }
+    },
+    {
+      name: "THE CRIMSON FOUNDRY",
+      subtitle: "Armored engines pour through the molten breach.",
+      key: "foundry",
+      colors: {
+        page: "#241716",
+        board: "#352321",
+        line: "#f4c9b8",
+        accent: "#ef5a3c",
+        haze: "rgba(239,90,60,.21)"
+      },
+      weights: { grunt: 10, raider: 12, brute: 25, hook: 12, guardian: 15, bomber: 18, commander: 8 }
+    },
+    {
+      name: "THE LAST HORIZON",
+      subtitle: "Every enemy order converges on the beacon.",
+      key: "horizon",
+      colors: {
+        page: "#eee7cf",
+        board: "#fff8dc",
+        line: "#332d49",
+        accent: "#6d4bd1",
+        haze: "rgba(109,75,209,.17)"
+      },
+      weights: { grunt: 8, raider: 12, archer: 15, brute: 17, hook: 13, guardian: 13, bomber: 13, commander: 9 }
+    }
+  ];
+
+  const ENDLESS_ACTS = [
+    {
+      name: "ENDLESS ECLIPSE",
+      subtitle: "The sky closes. The ranks do not.",
+      key: "eclipse",
+      colors: {
+        page: "#111015",
+        board: "#1d1922",
+        line: "#e3d8ea",
+        accent: "#d94d72",
+        haze: "rgba(217,77,114,.22)"
+      },
+      weights: { raider: 13, archer: 16, brute: 18, hook: 13, guardian: 14, bomber: 15, commander: 11 }
+    },
+    {
+      name: "THE SHATTERED CROWN",
+      subtitle: "Elite warbands contest every square.",
+      key: "crown",
+      colors: {
+        page: "#18201d",
+        board: "#233029",
+        line: "#d7eddf",
+        accent: "#d5a93f",
+        haze: "rgba(213,169,63,.19)"
+      },
+      weights: { grunt: 5, raider: 14, archer: 13, brute: 21, hook: 13, guardian: 16, bomber: 9, commander: 9 }
+    },
+    {
+      name: "THE VOID MARCH",
+      subtitle: "The siege repeats, stronger than memory.",
+      key: "void",
+      colors: {
+        page: "#111728",
+        board: "#1c2740",
+        line: "#d6e3ff",
+        accent: "#55b8d8",
+        haze: "rgba(85,184,216,.2)"
+      },
+      weights: { raider: 10, archer: 18, brute: 15, hook: 16, guardian: 12, bomber: 17, commander: 12 }
+    }
+  ];
+
+  const RELICS = [
+    {
+      id: "scrapMagnet",
+      symbol: "⌁",
+      name: "SCRAPPER'S MAGNET",
+      max: 3,
+      cost: 7,
+      text: "+1 Scrap from every enemy kill per rank."
+    },
+    {
+      id: "brokenCrown",
+      symbol: "♛",
+      name: "BROKEN CROWN",
+      max: 2,
+      cost: 9,
+      text: "Brutes and Commanders grant +3 additional Scrap per rank."
+    },
+    {
+      id: "longglass",
+      symbol: "◎",
+      name: "LONGLASS",
+      max: 2,
+      cost: 8,
+      text: "Bow attacks from 3+ spaces away deal +1 damage per rank."
+    },
+    {
+      id: "piercingIdol",
+      symbol: "↟",
+      name: "PIERCING IDOL",
+      max: 2,
+      cost: 8,
+      text: "Spear specials deal +1 damage per rank."
+    },
+    {
+      id: "whetstone",
+      symbol: "◇",
+      name: "BLACK WHETSTONE",
+      max: 2,
+      cost: 8,
+      text: "The Blade's first damaging action each round gains +1 damage per rank."
+    },
+    {
+      id: "phalanxSeal",
+      symbol: "▦",
+      name: "PHALANX SEAL",
+      max: 2,
+      cost: 10,
+      text: "Active formations grant stronger start-of-round protection."
+    },
+    {
+      id: "warDrum",
+      symbol: "◉",
+      name: "WAR DRUM",
+      max: 2,
+      cost: 9,
+      text: "Kills while a formation is active reduce a random special cooldown."
+    },
+    {
+      id: "medicThread",
+      symbol: "+",
+      name: "MEDIC'S THREAD",
+      max: 2,
+      cost: 9,
+      text: "Every 8 kills heals the most wounded living hero."
+    },
+    {
+      id: "stormArrow",
+      symbol: "ϟ",
+      name: "STORM ARROW",
+      max: 1,
+      cost: 11,
+      text: "Bow Volley stuns surviving enemies it hits."
+    },
+    {
+      id: "bannerClasp",
+      symbol: "⚑",
+      name: "MARSHAL'S CLASP",
+      max: 2,
+      cost: 9,
+      text: "Rally heals affected heroes and may add Armor at rank 2."
+    },
+    {
+      id: "executionMark",
+      symbol: "×",
+      name: "EXECUTIONER'S MARK",
+      max: 2,
+      cost: 10,
+      text: "Attacks deal +1 damage to wounded enemies per rank."
+    },
+    {
+      id: "scrapArmor",
+      symbol: "▣",
+      name: "SCRAP ARMOR",
+      max: 1,
+      cost: 10,
+      text: "Automatically spend 5 Scrap to block an otherwise lethal hit."
+    },
+    {
+      id: "lastEmber",
+      symbol: "✦",
+      name: "LAST EMBER",
+      max: 1,
+      cost: 13,
+      text: "Once each act, prevent a hero's lethal hit without spending Scrap."
+    },
+    {
+      id: "beaconGlass",
+      symbol: "◈",
+      name: "BEACON GLASS",
+      max: 2,
+      cost: 10,
+      text: "Quest Scrap rewards are 50% larger per rank."
+    },
+    {
+      id: "quicksteel",
+      symbol: "»",
+      name: "QUICKSTEEL SPRING",
+      max: 2,
+      cost: 11,
+      text: "At each act start, reduce all living heroes' cooldowns."
+    },
+    {
+      id: "oathChain",
+      symbol: "∞",
+      name: "OATH CHAIN",
+      max: 2,
+      cost: 10,
+      text: "Shield-adjacent allies begin rounds with stronger Guard."
+    }
+  ];
+
+  const BUILD_TREE = {
+    blade: {
+      title: "BLADE",
+      branches: [
+        {
+          name: "RAVAGER",
+          nodes: [
+            ["blade_ravager_1", "Broad Sweep", "Sweep deals +1 damage.", 1],
+            ["blade_ravager_2", "Opening Cut", "The Blade's first damaging action each round deals +1.", 2],
+            ["blade_ravager_3", "Red Arc", "Blade kills grant +2 Scrap and may restore its action once each round.", 3]
+          ]
+        },
+        {
+          name: "DUELIST",
+          nodes: [
+            ["blade_duelist_1", "Single Combat", "Basic attacks deal +1 when no other enemy is adjacent to the target.", 1],
+            ["blade_duelist_2", "Tempo Kill", "The first Blade basic-attack kill each round restores its action.", 2],
+            ["blade_duelist_3", "Mercyless", "Basic attacks deal +1 to wounded enemies.", 3]
+          ]
+        },
+        {
+          name: "SCAVENGER",
+          nodes: [
+            ["blade_scrap_1", "Salvage Edge", "Blade kills grant +1 Scrap.", 1],
+            ["blade_scrap_2", "Hot Steel", "Blade kills reduce Sweep cooldown by 1.", 2],
+            ["blade_scrap_3", "Masterwork", "Every fifth Blade kill grants 1 Forge Point.", 3]
+          ]
+        }
+      ]
+    },
+    shield: {
+      title: "SHIELD",
+      branches: [
+        {
+          name: "FORTRESS",
+          nodes: [
+            ["shield_fortress_1", "Reinforced", "+1 maximum Health immediately.", 1],
+            ["shield_fortress_2", "Layered Bulwark", "Bulwark also grants Armor to protected allies.", 2],
+            ["shield_fortress_3", "Living Wall", "Shield Wall formations Guard all adjacent allies each round.", 3]
+          ]
+        },
+        {
+          name: "VENGEANCE",
+          nodes: [
+            ["shield_vengeance_1", "Counterweight", "Guarded adjacent attackers take damage.", 1],
+            ["shield_vengeance_2", "Punishing Block", "Blocked melee hits against Shield reduce Bulwark cooldown.", 2],
+            ["shield_vengeance_3", "Iron Reprisal", "Shield counters deal an additional damage.", 3]
+          ]
+        },
+        {
+          name: "WARDEN",
+          nodes: [
+            ["shield_warden_1", "Beacon Watch", "Shield gains Guard while adjacent to the beacon.", 1],
+            ["shield_warden_2", "Hold Center", "Enemies on or next to the beacon take +1 damage from Shield.", 2],
+            ["shield_warden_3", "Unbroken Oath", "The first formation break each act grants the squad Guard.", 3]
+          ]
+        }
+      ]
+    },
+    spear: {
+      title: "SPEAR",
+      branches: [
+        {
+          name: "LANCER",
+          nodes: [
+            ["spear_lancer_1", "Driven Point", "Impale deals +1 damage.", 1],
+            ["spear_lancer_2", "Short Grip", "Basic attacks may strike at range 1 or 2.", 2],
+            ["spear_lancer_3", "Transfix", "Spear attacks deal +1 to enemies 2+ spaces away.", 3]
+          ]
+        },
+        {
+          name: "CONTROLLER",
+          nodes: [
+            ["spear_control_1", "Deep Stun", "Impale stuns survivors for an additional turn.", 1],
+            ["spear_control_2", "Captured Steel", "Killing a stunned enemy grants +3 Scrap.", 2],
+            ["spear_control_3", "Shock Line", "Impale kills reduce all special cooldowns by 1 once per round.", 3]
+          ]
+        },
+        {
+          name: "PHALANX",
+          nodes: [
+            ["spear_phalanx_1", "Pike Screen", "Spear gains +1 damage while adjacent to Shield.", 1],
+            ["spear_phalanx_2", "Set Position", "Spear gains Guard at round start when in a formation.", 2],
+            ["spear_phalanx_3", "Marching Point", "Formation kills by Spear grant +1 Forge progress every 4 kills.", 3]
+          ]
+        }
+      ]
+    },
+    bow: {
+      title: "BOW / ARCHER",
+      branches: [
+        {
+          name: "SNIPER",
+          nodes: [
+            ["bow_sniper_1", "Far Shot", "Bow attacks from 3+ spaces deal +1 damage.", 1],
+            ["bow_sniper_2", "Piercing Shot", "Basic arrows may hit a second enemy in line.", 2],
+            ["bow_sniper_3", "Horizon Kill", "The first 4-space Bow attack each round deals +2 damage.", 3]
+          ]
+        },
+        {
+          name: "STORMCALLER",
+          nodes: [
+            ["bow_storm_1", "Wide Volley", "Volley also hits diagonal spaces.", 1],
+            ["bow_storm_2", "Thunderheads", "Volley stuns surviving enemies.", 2],
+            ["bow_storm_3", "Rolling Storm", "Volley kills reduce Volley cooldown and grant +1 Scrap.", 3]
+          ]
+        },
+        {
+          name: "HUNTER",
+          nodes: [
+            ["bow_hunter_1", "Contract Archer", "Bow kills count twice for Bow-kill quests.", 1],
+            ["bow_hunter_2", "Trophy Fletching", "Bow kills grant +1 Scrap.", 2],
+            ["bow_hunter_3", "Field Rations", "Every third Bow kill heals the most wounded hero.", 3]
+          ]
+        }
+      ]
+    },
+    banner: {
+      title: "BANNER",
+      branches: [
+        {
+          name: "MARSHAL",
+          nodes: [
+            ["banner_marshal_1", "Long Standard", "Rally may be placed 3 spaces away.", 1],
+            ["banner_marshal_2", "Second Order", "Rally reduces the reactivated hero's cooldown by 1.", 2],
+            ["banner_marshal_3", "Command Presence", "Rally grants Armor to affected he

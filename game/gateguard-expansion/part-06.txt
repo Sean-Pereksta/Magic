@@ -1,0 +1,292 @@
+null;
+  }
+
+  function attackBonus(state, enemy, sourceHero, amount) {
+    if (state !== game || !sourceHero || internalDamage) return amount;
+    const meta = ensureMeta();
+    const tactics = detectTactics();
+    let bonus = 0;
+    const mode = actionMode;
+    const distance = manhattan(sourceHero, enemy);
+    if (rank("executionMark") && enemy.hp < enemy.maxHp) bonus += rank("executionMark");
+    if (sourceHero.type === "blade") {
+      if (mode === "special" && hasBuild("blade_ravager_1")) bonus += 1;
+      if (!meta.firstBladeHitUsed && (hasBuild("blade_ravager_2") || rank("whetstone"))) {
+        bonus += Math.max(hasBuild("blade_ravager_2") ? 1 : 0, rank("whetstone"));
+        meta.firstBladeHitUsed = true;
+      }
+      if (mode === "attack" && hasBuild("blade_duelist_1")) {
+        const nearby = game.enemies.filter((unit) => unit.alive && unit.id !== enemy.id && manhattan(unit, enemy) === 1).length;
+        if (!nearby) bonus += 1;
+      }
+      if (mode === "attack" && hasBuild("blade_duelist_3") && enemy.hp < enemy.maxHp) bonus += 1;
+      if (tactics.combos.some((combo) => combo.id === "hammerAnvil")) bonus += 1;
+      if (tactics.formation?.id === "spearhead") bonus += 1;
+    }
+    if (sourceHero.type === "spear") {
+      if (mode === "special" && hasBuild("spear_lancer_1")) bonus += 1;
+      if (mode === "special") bonus += rank("piercingIdol");
+      if (hasBuild("spear_lancer_3") && distance >= 2) bonus += 1;
+      if (hasBuild("spear_phalanx_1") && adjacent(sourceHero, heroOf("shield"))) bonus += 1;
+      if (tactics.combos.some((combo) => combo.id === "pikeScreen")) bonus += 1;
+      if (tactics.combos.some((combo) => combo.id === "longshot") && distance >= 2) bonus += 1;
+      if (tactics.formation?.id === "spearhead") bonus += 1;
+    }
+    if (sourceHero.type === "bow") {
+      if (distance >= 3) bonus += rank("longglass") + (hasBuild("bow_sniper_1") ? 1 : 0);
+      if (!meta.firstLongBowUsed && distance >= 4 && hasBuild("bow_sniper_3")) {
+        bonus += 2;
+        meta.firstLongBowUsed = true;
+      }
+      if (tactics.combos.some((combo) => combo.id === "longshot") && distance >= 2) bonus += 1;
+    }
+    if (sourceHero.type === "shield" && hasBuild("shield_warden_2") && manhattan(enemy, BEACON) <= 1) bonus += 1;
+    return amount + bonus;
+  }
+
+  function registerKill(enemy, sourceHero) {
+    const meta = ensureMeta();
+    const tactics = detectTactics();
+    meta.kills += 1;
+    const heroType = sourceHero?.type || null;
+    if (heroType && meta.heroKills[heroType] !== undefined) meta.heroKills[heroType] += 1;
+    let scrap = SCRAP_VALUES[enemy.type] || 1;
+    scrap += Math.floor((meta.act - 1) / 3);
+    scrap += rank("scrapMagnet");
+    if (["brute", "commander"].includes(enemy.type)) scrap += 3 * rank("brokenCrown");
+    if (enemy.rogueElite) scrap += 2 + Math.floor(meta.act / 3);
+    if (heroType === "blade") {
+      if (hasBuild("blade_ravager_3")) scrap += 2;
+      if (hasBuild("blade_scrap_1")) scrap += 1;
+      meta.bladeKillPulse += 1;
+      if (hasBuild("blade_scrap_2") && sourceHero) sourceHero.cooldown = Math.max(0, sourceHero.cooldown - 1);
+      if (hasBuild("blade_scrap_3") && meta.bladeKillPulse % 5 === 0) {
+        meta.forgePoints += 1;
+        toast("Blade Masterwork · +1 Forge Point");
+      }
+    }
+    if (heroType === "bow") {
+      if (hasBuild("bow_hunter_2")) scrap += 1;
+      if (hasBuild("bow_storm_3") && actionMode === "special") scrap += 1;
+      meta.bowKillPulse += 1;
+      if (hasBuild("bow_hunter_3") && meta.bowKillPulse % 3 === 0) healMostWounded(1);
+    }
+    if (heroType === "spear" && hasBuild("spear_control_2") && enemy.stunned > 0) scrap += 3;
+    if (heroType === "spear" && tactics.formation && hasBuild("spear_phalanx_3")) {
+      meta.spearFormationPulse += 1;
+      if (meta.spearFormationPulse % 4 === 0) {
+        meta.forgePoints += 1;
+        toast("Marching Point · +1 Forge Point");
+      }
+    }
+    if (tactics.combos.some((combo) => combo.id === "huntPack") && ["blade", "bow"].includes(heroType)) scrap += 1;
+    if (tactics.formation && !meta.firstFormationKillUsed && hasBuild("banner_tactics_1")) {
+      scrap += 1;
+      meta.firstFormationKillUsed = true;
+    }
+    gainScrap(scrap, "", enemy, true);
+    emitScrapBurst(enemy);
+    if (heroType) {
+      const questAmount = heroType === "bow" && hasBuild("bow_hunter_1") ? 2 : 1;
+      progressQuest("heroKills", questAmount, { heroType });
+    }
+    if (enemy.rogueElite || ["brute", "commander", "guardian"].includes(enemy.type)) progressQuest("eliteKills", 1);
+    if (enemy.stunned > 0) progressQuest("stunKills", 1);
+    if (rank("warDrum") && tactics.formation) reduceRandomCooldown(rank("warDrum"));
+    if (rank("medicThread") && meta.kills % 8 === 0) healMostWounded(rank("medicThread"));
+    if (heroType === "blade") {
+      const wantsExtra = (actionMode === "attack" && hasBuild("blade_duelist_2")) || hasBuild("blade_ravager_3");
+      if (wantsExtra && !meta.bladeExtraUsed) {
+        meta.bladeExtraUsed = true;
+        meta.extraActionHeroId = sourceHero.id;
+      }
+    }
+    if (heroType === "spear" && actionMode === "special" && hasBuild("spear_control_3") && !meta.spearCooldownPulseUsed) {
+      meta.spearCooldownPulseUsed = true;
+      for (const hero of game.heroes.filter((unit) => unit.alive)) hero.cooldown = Math.max(0, hero.cooldown - 1);
+    }
+    if (heroType === "bow" && actionMode === "special" && hasBuild("bow_storm_3") && sourceHero) {
+      sourceHero.cooldown = Math.max(0, sourceHero.cooldown - 1);
+    }
+    while (meta.kills >= meta.nextRelicKill) {
+      meta.pendingRelics += 1;
+      meta.nextRelicKill += RELIC_INTERVAL;
+    }
+    if (meta.pendingRelics > 0) scheduleRelicShop();
+    updateHud();
+  }
+
+  function healMostWounded(amount) {
+    const hero = game.heroes.filter((unit) => unit.alive && unit.hp < unit.maxHp).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+    if (!hero) return;
+    hero.hp = Math.min(hero.maxHp, hero.hp + amount);
+    emitFloat(hero, `+${amount} HP`, "block");
+  }
+
+  function reduceRandomCooldown(amount) {
+    const candidates = game.heroes.filter((hero) => hero.alive && hero.cooldown > 0);
+    if (!candidates.length) return;
+    const hero = candidates[Math.floor(Math.random() * candidates.length)];
+    hero.cooldown = Math.max(0, hero.cooldown - amount);
+  }
+
+  function scheduleRelicShop() {
+    if (relicTimer) return;
+    relicTimer = setTimeout(() => {
+      relicTimer = null;
+      maybeOpenQueuedRelic();
+    }, 520);
+  }
+
+  function coreOverlayOpen() {
+    return [upgradeOverlay, gameOverOverlay, pieceInfoOverlay].some((overlay) => overlay?.classList.contains("show"));
+  }
+
+  function maybeOpenQueuedRelic() {
+    const meta = ensureMeta();
+    if (!meta.pendingRelics || modalMode || coreOverlayOpen() || game.phase !== "player" || game.over) {
+      if (meta.pendingRelics && !game.over) scheduleRelicShop();
+      return;
+    }
+    openRelicShop();
+  }
+
+  function weightedEnemy(weights) {
+    const entries = Object.entries(weights).filter(([type]) => ENEMY_DATA[type]);
+    const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+    let roll = Math.random() * total;
+    for (const [type, weight] of entries) {
+      roll -= weight;
+      if (roll <= 0) return type;
+    }
+    return entries[0]?.[0] || "grunt";
+  }
+
+  function prepareActRound() {
+    const meta = ensureMeta();
+    const info = actInfo();
+    meta.act = info.number;
+    applyActTheme(info);
+    if (meta.lastActAnnounced !== info.number) {
+      const previous = meta.lastActAnnounced;
+      meta.lastActAnnounced = info.number;
+      meta.forgePoints += previous ? 1 : 0;
+      if (previous) gainScrap(4 + info.number, "Act cleared", null, false);
+      meta.lastEmberAct = 0;
+      meta.medicReviveAct = 0;
+      meta.brokenFormationAct = 0;
+      announceAct(info);
+      if (rank("quicksteel")) {
+        for (const hero of game.heroes.filter((unit) => unit.alive)) hero.cooldown = Math.max(0, hero.cooldown - rank("quicksteel"));
+      }
+    }
+  }
+
+  function beforeRound() {
+    const meta = ensureMeta();
+    if (meta.lastPreparedRound === game.round) return;
+    if (meta.lastPreparedRound > 0 && meta.roundDamage === 0) {
+      progressQuest("noDamageRounds", 1);
+    }
+    resetRoundFlags(meta);
+    if (game.round === 1) document.querySelector(".rogue-final")?.remove();
+    meta.lastPreparedRound = game.round;
+    prepareActRound();
+    if (game.round > 1 && game.round % 3 === 1 && meta.lastForgeRound !== game.round) {
+      meta.lastForgeRound = game.round;
+      meta.forgePoints += 1;
+      toast("Battle experience · +1 Forge Point");
+    }
+    if (meta.quest?.complete && game.round >= meta.nextQuestRound) createQuest(true);
+  }
+
+  function afterRound() {
+    const meta = ensureMeta();
+    const tactics = detectTactics();
+    meta.formation = tactics.formation;
+    meta.combos = tactics.combos;
+    applyRoundTactics(meta, tactics);
+    render();
+    maybeOpenQueuedRelic();
+  }
+
+  function decorateBoard() {
+    if (!game || !cells?.length) return;
+    const tactics = detectTactics();
+    for (const cell of cells) {
+      cell.classList.remove("rogue-elite");
+      for (const old of cell.querySelectorAll(".rogue-elite-mark, .rogue-tactic-mark")) old.remove();
+    }
+    for (const enemy of game.enemies.filter((unit) => unit.alive && unit.rogueElite)) {
+      const cell = cells[enemy.r * SIZE + enemy.c];
+      if (!cell) continue;
+      cell.classList.add("rogue-elite");
+      const mark = document.createElement("span");
+      mark.className = "rogue-elite-mark";
+      mark.textContent = `ELITE ${enemy.rogueTier || ""}`.trim();
+      cell.appendChild(mark);
+    }
+    if (tactics.formation) {
+      for (const hero of game.heroes.filter((unit) => unit.alive)) {
+        const cell = cells[hero.r * SIZE + hero.c];
+        if (!cell) continue;
+        const mark = document.createElement("span");
+        mark.className = "rogue-tactic-mark";
+        mark.textContent = "FORM";
+        cell.appendChild(mark);
+      }
+    }
+  }
+
+  function pointFor(position) {
+    const board = document.getElementById("board");
+    if (!board || !position) return { x: 0, y: 0 };
+    const x = ((position.c + 0.5) / SIZE) * board.clientWidth;
+    const y = ((position.r + 0.5) / SIZE) * board.clientHeight;
+    return { x, y };
+  }
+
+  function emitFloat(position, text, className = "") {
+    if (!fxLayer || !position) return;
+    const point = pointFor(position);
+    const element = document.createElement("span");
+    element.className = `rogue-float ${className}`;
+    element.textContent = text;
+    element.style.left = `${point.x}px`;
+    element.style.top = `${point.y}px`;
+    fxLayer.appendChild(element);
+    setTimeout(() => element.remove(), 850);
+  }
+
+  function emitProjectile(source, target, type = "") {
+    if (!fxLayer || !source || !target) return;
+    const start = pointFor(source);
+    const end = pointFor(target);
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+    const line = document.createElement("span");
+    line.className = `rogue-projectile ${type}`;
+    line.style.left = `${start.x}px`;
+    line.style.top = `${start.y}px`;
+    line.style.width = `${length}px`;
+    line.style.transform = `rotate(${angle}deg)`;
+    fxLayer.appendChild(line);
+    setTimeout(() => line.remove(), 300);
+    const sourceCell = cells[source.r * SIZE + source.c];
+    if (sourceCell) {
+      sourceCell.classList.remove("rogue-source");
+      void sourceCell.offsetWidth;
+      sourceCell.classList.add("rogue-source");
+    }
+  }
+
+  function emitHit(position, amount, blocked = false, killed = false) {
+    if (!fxLayer || !position) return;
+    const point = pointFor(position);
+    const ring = document.createElement("span");
+    ring.className = "rogue-hit-ring";
+    ring.style.left = `${point.x}px`;
+    ring.style.top = `${point.y}px`;
+    fxLayer.appendChi

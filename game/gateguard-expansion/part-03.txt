@@ -1,0 +1,265 @@
+ {
+        position: absolute;
+        left: 2%;
+        bottom: 2%;
+        z-index: 8;
+        padding: 1px 3px;
+        border: 1px solid currentColor;
+        background: color-mix(in srgb, var(--rogue-board) 90%, white 10%);
+        color: var(--rogue-accent);
+        font-size: 7px;
+        font-weight: 900;
+        letter-spacing: .06em;
+      }
+      .rogue-tactic-mark { left: auto; right: 2%; color: #176b3b; }
+      .rogue-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 90;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 12px;
+        background: rgba(10,12,16,.76);
+        backdrop-filter: blur(5px);
+      }
+      .rogue-modal.show { display: flex; }
+      .rogue-panel {
+        width: min(96vw, 760px);
+        max-height: 92vh;
+        max-height: 92dvh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        border: 2px solid #161616;
+        background: #fff;
+        color: #161616;
+        box-shadow: 0 22px 70px rgba(0,0,0,.38);
+      }
+      .rogue-panel-head {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: start;
+        padding: 13px 15px;
+        border-bottom: 2px solid #161616;
+      }
+      .rogue-panel-head h2 { margin: 0; font-size: 19px; letter-spacing: .09em; }
+      .rogue-panel-head p { margin: 4px 0 0; font-size: 10px; color: #626262; line-height: 1.4; }
+      .rogue-close {
+        min-width: 74px;
+        min-height: 34px;
+        border: 1.5px solid #161616;
+        background: #fff;
+        cursor: pointer;
+        font: inherit;
+        font-size: 10px;
+        font-weight: 800;
+      }
+      .rogue-panel-body { overflow: auto; padding: 14px; }
+      .rogue-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+      .rogue-card {
+        border: 2px solid #171717;
+        background: #fff;
+        min-height: 190px;
+        padding: 13px 11px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        text-align: left;
+      }
+      .rogue-card .symbol { font-size: 28px; line-height: 1; color: var(--rogue-accent); }
+      .rogue-card h3 { margin: 0; font-size: 12px; letter-spacing: .08em; }
+      .rogue-card p { margin: 0; font-size: 10px; line-height: 1.45; color: #555; flex: 1; }
+      .rogue-card button, .rogue-wide-button {
+        min-height: 37px;
+        border: 1.5px solid #161616;
+        background: #161616;
+        color: #fff;
+        cursor: pointer;
+        font: inherit;
+        font-size: 10px;
+        font-weight: 800;
+      }
+      .rogue-card button:disabled { background: #ddd; color: #777; border-color: #aaa; cursor: not-allowed; }
+      .rogue-footer-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+      .rogue-wide-button { padding: 8px 12px; }
+      .rogue-wide-button.secondary { background: #fff; color: #161616; }
+      .rogue-tabs { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 10px; }
+      .rogue-tab {
+        flex: 1 0 auto;
+        min-height: 34px;
+        border: 1.5px solid #161616;
+        background: #fff;
+        color: #161616;
+        font: inherit;
+        font-size: 9px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .rogue-tab.active { background: #161616; color: #fff; }
+      .build-summary { display: flex; justify-content: space-between; gap: 10px; margin: 0 0 10px; font-size: 10px; }
+      .build-branches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+      .build-branch { border: 1.5px solid #161616; padding: 9px; }
+      .build-branch h3 { margin: 0 0 7px; font-size: 11px; letter-spacing: .1em; }
+      .build-node {
+        width: 100%;
+        min-height: 92px;
+        margin-top: 6px;
+        border: 1.5px solid #777;
+        background: #fff;
+        color: #161616;
+        padding: 8px;
+        text-align: left;
+        cursor: pointer;
+        font: inherit;
+      }
+      .build-node b { display: block; font-size: 10px; }
+      .build-node span { display: block; margin-top: 4px; font-size: 9px; line-height: 1.35; color: #5d5d5d; }
+      .build-node em { display: block; margin-top: 5px; font-size: 8px; font-style: normal; font-weight: 900; }
+      .build-node.owned { background: #e7f5eb; border-color: #176b3b; }
+      .build-node.locked { opacity: .48; cursor: not-allowed; }
+      .rogue-list { display: grid; gap: 7px; }
+      .rogue-list-item { border: 1.5px solid #222; padding: 9px 10px; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
+      .rogue-list-item .icon { font-size: 22px; color: var(--rogue-accent); }
+      .rogue-list-item b { display: block; font-size: 10px; }
+      .rogue-list-item small { display: block; margin-top: 3px; color: #666; line-height: 1.35; }
+      .tactic-block { border: 1.5px solid #222; padding: 10px; margin-bottom: 8px; }
+      .tactic-block.active { border-color: #176b3b; background: #eef8f1; }
+      .tactic-block h3 { margin: 0 0 5px; font-size: 11px; letter-spacing: .07em; }
+      .tactic-block p { margin: 0; font-size: 9px; line-height: 1.4; color: #555; }
+      .rogue-act-banner {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: none;
+        place-items: center;
+        pointer-events: none;
+        background: color-mix(in srgb, var(--rogue-page) 76%, transparent);
+        backdrop-filter: blur(3px);
+      }
+      .rogue-act-banner.show { display: grid; animation: act-banner-life 1800ms ease forwards; }
+      .rogue-act-card {
+        width: min(88vw, 560px);
+        border: 3px solid var(--rogue-line);
+        background: var(--rogue-board);
+        color: var(--rogue-line);
+        padding: 24px 18px;
+        text-align: center;
+        box-shadow: 0 18px 55px var(--rogue-haze);
+      }
+      .rogue-act-card small { display: block; letter-spacing: .22em; font-size: 10px; }
+      .rogue-act-card h2 { margin: 9px 0 8px; font-size: clamp(22px, 6vw, 42px); letter-spacing: .08em; }
+      .rogue-act-card p { margin: 0; font-size: 11px; line-height: 1.45; }
+      .rogue-toast {
+        position: fixed;
+        z-index: 110;
+        left: 50%;
+        bottom: max(16px, env(safe-area-inset-bottom));
+        transform: translate(-50%, 20px);
+        opacity: 0;
+        max-width: min(92vw, 520px);
+        padding: 9px 13px;
+        border: 2px solid #161616;
+        background: #fff;
+        color: #161616;
+        font-size: 10px;
+        font-weight: 800;
+        text-align: center;
+        pointer-events: none;
+        transition: opacity .18s ease, transform .18s ease;
+      }
+      .rogue-toast.show { opacity: 1; transform: translate(-50%, 0); }
+      .rogue-final { margin: 12px auto 0; font-size: 11px; line-height: 1.65; }
+      @keyframes rogue-float { 0% { opacity: 0; transform: translate(-50%, -25%) scale(.8); } 22% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -145%) scale(1.08); } }
+      @keyframes rogue-projectile { from { opacity: 1; clip-path: inset(0 100% 0 0); } to { opacity: 0; clip-path: inset(0 0 0 0); } }
+      @keyframes rogue-ring { from { opacity: 1; transform: translate(-50%, -50%) scale(.25); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.8); } }
+      @keyframes rogue-shard { from { opacity: 1; transform: translate(-50%, -50%) rotate(var(--r)) scale(1); } to { opacity: 0; transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) rotate(calc(var(--r) + 120deg)) scale(.35); } }
+      @keyframes rogue-cell-hit { 0%,100% { transform: translate(0); } 30% { transform: translate(-3px, 1px); } 65% { transform: translate(3px, -1px); } }
+      @keyframes rogue-source-lunge { 50% { transform: scale(1.06); } }
+      @keyframes act-banner-life { 0% { opacity: 0; } 16%,76% { opacity: 1; } 100% { opacity: 0; } }
+      @media (max-width: 560px) {
+        .rogue-hud { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .rogue-action-row { grid-column: 1 / -1; }
+        .rogue-cards, .build-branches { grid-template-columns: 1fr; }
+        .rogue-card { min-height: 145px; }
+        .build-node { min-height: 72px; }
+      }
+      @media (orientation: landscape) and (max-height: 700px) {
+        .rogue-hud { position: fixed; left: 6px; top: 6px; width: min(250px, 25vw); z-index: 24; grid-template-columns: 1fr 1fr; opacity: .94; }
+        .rogue-stat, .rogue-menu-button { min-height: 29px; padding: 3px 5px; }
+        .rogue-stat b, .rogue-menu-button b { font-size: 9px; }
+        .rogue-action-row { grid-template-columns: 1fr; }
+        .rogue-quest-strip { position: fixed; right: 6px; top: 6px; width: min(250px, 25vw); z-index: 24; margin: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    hud = document.createElement("section");
+    hud.className = "rogue-hud";
+    hud.innerHTML = `
+      <div class="rogue-stat"><small>SCRAP</small><b id="rogueScrap">0</b></div>
+      <div class="rogue-stat"><small>KILLS</small><b id="rogueKills">0 / 10</b></div>
+      <div class="rogue-stat"><small>ACT</small><b id="rogueAct">1</b></div>
+      <div class="rogue-stat"><small>FORMATION</small><b id="rogueFormation">LOOSE</b></div>
+      <div class="rogue-action-row">
+        <button class="rogue-menu-button" id="rogueBuild" type="button"><small>FORGE</small><b>BUILD PATHS</b></button>
+        <button class="rogue-menu-button" id="rogueRelics" type="button"><small>INVENTORY</small><b>RELICS</b></button>
+        <button class="rogue-menu-button" id="rogueTactics" type="button"><small>LIVE</small><b>TACTICS</b></button>
+      </div>
+    `;
+
+    questStrip = document.createElement("button");
+    questStrip.type = "button";
+    questStrip.className = "rogue-quest-strip";
+    questStrip.id = "rogueQuestStrip";
+
+    const gameRoot = document.querySelector(".game");
+    const topbar = document.querySelector(".topbar");
+    if (gameRoot && topbar) {
+      topbar.insertAdjacentElement("afterend", hud);
+      const board = document.getElementById("board");
+      board.insertAdjacentElement("afterend", questStrip);
+    }
+
+    fxLayer = document.createElement("div");
+    fxLayer.className = "rogue-fx-layer";
+    document.getElementById("board").appendChild(fxLayer);
+
+    modal = document.createElement("div");
+    modal.className = "rogue-modal";
+    modal.id = "rogueModal";
+    modal.innerHTML = `
+      <section class="rogue-panel" role="dialog" aria-modal="true" aria-labelledby="rogueModalTitle">
+        <header class="rogue-panel-head">
+          <div>
+            <h2 id="rogueModalTitle"></h2>
+            <p id="rogueModalSubtitle"></p>
+          </div>
+          <button class="rogue-close" id="rogueModalClose" type="button">CLOSE ×</button>
+        </header>
+        <div class="rogue-panel-body" id="rogueModalBody"></div>
+      </section>
+    `;
+    document.body.appendChild(modal);
+    modalTitle = modal.querySelector("#rogueModalTitle");
+    modalSubtitle = modal.querySelector("#rogueModalSubtitle");
+    modalBody = modal.querySelector("#rogueModalBody");
+
+    actBanner = document.createElement("div");
+    actBanner.className = "rogue-act-banner";
+    actBanner.innerHTML = `<div class="rogue-act-card"><small id="rogueActKicker"></small><h2 id="rogueActName"></h2><p id="rogueActSubtitle"></p></div>`;
+    document.body.appendChild(actBanner);
+
+    const toast = document.createElement("div");
+    toast.className = "rogue-toast";
+    toast.id = "rogueToast";
+    document.body.appendChild(toast);
+
+    hud.querySelector("#rogueBuild").addEventListener("click", openBuildPanel);
+    hud.querySelector("#rogueRelics").addEventListener("click", openRelicInventory);
+    hud.querySelector("#rogueTactics").addEventListener("click", openTacticsPanel);
+    questStri

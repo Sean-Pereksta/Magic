@@ -1,0 +1,7623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <title>The Last Five</title>
+
+  <style>
+    :root {
+      --black: #111111;
+      --white: #ffffff;
+      --red: #c91919;
+      --red-soft: #ffe9e9;
+      --red-strong: #ffd0d0;
+      --green: #157a36;
+      --green-soft: #e8f6ec;
+      --gray: #ececec;
+      --muted: #707070;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--white);
+      color: var(--black);
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        Monaco,
+        Consolas,
+        "Liberation Mono",
+        monospace;
+      overscroll-behavior: none;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding:
+        max(10px, env(safe-area-inset-top))
+        max(7px, env(safe-area-inset-right))
+        max(10px, env(safe-area-inset-bottom))
+        max(7px, env(safe-area-inset-left));
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+      touch-action: manipulation;
+    }
+
+    .game {
+      width: min(96vw, 680px);
+      user-select: none;
+    }
+
+    .topbar {
+      height: 34px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      font-size: 13px;
+      letter-spacing: 0.05em;
+    }
+
+    .round {
+      justify-self: start;
+    }
+
+    .score {
+      justify-self: end;
+      color: var(--muted);
+    }
+
+    .squad {
+      justify-self: center;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .squad-dot {
+      width: 9px;
+      height: 9px;
+      border: 1.5px solid var(--black);
+      border-radius: 50%;
+      background: var(--white);
+    }
+
+    .squad-dot.wounded {
+      background: var(--red);
+      border-color: var(--red);
+    }
+
+    .squad-dot.lost {
+      border-color: #c6c6c6;
+      background: #c6c6c6;
+    }
+
+    .board {
+      width: 100%;
+      aspect-ratio: 1;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      grid-template-rows: repeat(7, 1fr);
+      border: 2px solid var(--black);
+      background: var(--white);
+      position: relative;
+      isolation: isolate;
+    }
+
+    .intent-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    .death-effect-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 12;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      grid-template-rows: repeat(7, 1fr);
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .death-effect {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: visible;
+      isolation: isolate;
+      animation:
+        death-effect-life
+        980ms
+        linear
+        forwards;
+    }
+
+    .death-ground-glow {
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      bottom: 8%;
+      height: 28%;
+      z-index: 0;
+      border-radius: 50%;
+      background:
+        radial-gradient(
+          ellipse,
+          rgba(201, 25, 25, 0.58) 0%,
+          rgba(201, 25, 25, 0.2) 48%,
+          transparent 76%
+        );
+      filter: blur(2px);
+      animation:
+        death-ground-pulse
+        720ms
+        ease-out
+        forwards;
+    }
+
+    .death-effect.hero-death
+      .death-ground-glow {
+      background:
+        radial-gradient(
+          ellipse,
+          rgba(255, 238, 169, 0.98) 0%,
+          rgba(255, 207, 74, 0.5) 42%,
+          transparent 76%
+        );
+      box-shadow:
+        0 0 14px 5px
+        rgba(255, 220, 99, 0.38);
+    }
+
+    .death-light {
+      position: absolute;
+      left: 26%;
+      top: -230%;
+      width: 48%;
+      height: 270%;
+      z-index: 0;
+      opacity: 0;
+      transform-origin: 50% 100%;
+      background:
+        linear-gradient(
+          to bottom,
+          transparent 0%,
+          rgba(255, 255, 255, 0.26) 16%,
+          rgba(255, 245, 196, 0.88) 58%,
+          rgba(255, 255, 255, 0.98) 88%,
+          transparent 100%
+        );
+      filter:
+        blur(3px)
+        drop-shadow(
+          0 0 9px
+          rgba(255, 220, 91, 0.95)
+        );
+      clip-path:
+        polygon(
+          36% 0,
+          64% 0,
+          100% 100%,
+          0 100%
+        );
+      animation:
+        hero-light-descend
+        720ms
+        ease-out
+        forwards;
+    }
+
+    .death-burst {
+      position: absolute;
+      inset: 15%;
+      z-index: 1;
+      border: 3px solid
+        rgba(201, 25, 25, 0.82);
+      border-radius: 50%;
+      opacity: 0;
+      animation:
+        death-burst-expand
+        610ms
+        ease-out
+        forwards;
+    }
+
+    .hero-death .death-burst {
+      border-color:
+        rgba(255, 228, 122, 0.96);
+      box-shadow:
+        0 0 15px 6px
+        rgba(255, 228, 122, 0.4);
+    }
+
+    .death-piece-ghost,
+    .death-shard {
+      position: absolute;
+      left: 14%;
+      top: 14%;
+      width: 72%;
+      height: 72%;
+      object-fit: contain;
+      pointer-events: none;
+    }
+
+    .death-piece-ghost {
+      z-index: 2;
+      filter:
+        brightness(1.16)
+        drop-shadow(
+          0 0 7px
+          rgba(201, 25, 25, 0.72)
+        );
+      animation:
+        death-ghost-collapse
+        360ms
+        ease-in
+        forwards;
+    }
+
+    .hero-death .death-piece-ghost {
+      filter:
+        brightness(1.45)
+        sepia(0.22)
+        drop-shadow(
+          0 0 9px
+          rgba(255, 226, 113, 0.96)
+        );
+    }
+
+    .death-shard {
+      z-index: 3;
+      clip-path: var(--shard-clip);
+      filter:
+        brightness(1.08)
+        drop-shadow(
+          0 2px 1px
+          rgba(201, 25, 25, 0.52)
+        );
+      animation:
+        death-shard-fall
+        860ms
+        cubic-bezier(
+          0.18,
+          0.72,
+          0.3,
+          1
+        )
+        forwards;
+    }
+
+    .hero-death .death-shard {
+      filter:
+        brightness(1.32)
+        sepia(0.2)
+        drop-shadow(
+          0 2px 2px
+          rgba(255, 218, 87, 0.82)
+        );
+    }
+
+    .death-spark {
+      position: absolute;
+      left: 48%;
+      top: 48%;
+      width: 6%;
+      aspect-ratio: 1;
+      z-index: 4;
+      border-radius: 1px;
+      background: var(--red);
+      box-shadow:
+        0 0 5px 2px
+        rgba(201, 25, 25, 0.35);
+      animation:
+        death-spark-fly
+        690ms
+        ease-out
+        forwards;
+    }
+
+    .hero-death .death-spark {
+      background: #fff2a8;
+      box-shadow:
+        0 0 7px 3px
+        rgba(255, 220, 91, 0.72);
+    }
+
+    @keyframes death-effect-life {
+      0%,
+      76% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0;
+      }
+    }
+
+    @keyframes death-ground-pulse {
+      0% {
+        opacity: 0;
+        transform: scale(0.3);
+      }
+
+      32% {
+        opacity: 1;
+        transform: scale(1.08);
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(1.38);
+      }
+    }
+
+    @keyframes hero-light-descend {
+      0% {
+        opacity: 0;
+        transform:
+          translateY(-30%)
+          scaleX(0.4);
+      }
+
+      28% {
+        opacity: 0.96;
+      }
+
+      62% {
+        opacity: 0.88;
+        transform:
+          translateY(0)
+          scaleX(1);
+      }
+
+      100% {
+        opacity: 0;
+        transform:
+          translateY(8%)
+          scaleX(1.22);
+      }
+    }
+
+    @keyframes death-burst-expand {
+      0% {
+        opacity: 0;
+        transform: scale(0.28);
+      }
+
+      24% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(1.55);
+      }
+    }
+
+    @keyframes death-ghost-collapse {
+      0% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      62% {
+        opacity: 0.86;
+        transform: scale(1.05);
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(0.72);
+      }
+    }
+
+    @keyframes death-shard-fall {
+      0% {
+        opacity: 1;
+        transform:
+          translate(0, 0)
+          rotate(0)
+          scale(1);
+      }
+
+      28% {
+        opacity: 1;
+        transform:
+          translate(0, -12%)
+          rotate(0)
+          scale(1.02);
+      }
+
+      100% {
+        opacity: 0;
+        transform:
+          translate(
+            var(--shard-x),
+            var(--shard-y)
+          )
+          rotate(
+            var(--shard-rotate)
+          )
+          scale(0.72);
+      }
+    }
+
+    @keyframes death-spark-fly {
+      0% {
+        opacity: 0;
+        transform:
+          translate(0, 0)
+          rotate(0);
+      }
+
+      18% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0;
+        transform:
+          translate(
+            var(--spark-x),
+            var(--spark-y)
+          )
+          rotate(
+            var(--spark-rotate)
+          );
+      }
+    }
+
+    .cell {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      min-height: 0;
+      border: 0;
+      border-right: 1px solid var(--black);
+      border-bottom: 1px solid var(--black);
+      padding: 0;
+      background: var(--white);
+      cursor: pointer;
+      overflow: visible;
+      z-index: 1;
+    }
+
+    .cell[data-c="6"] {
+      border-right: 0;
+    }
+
+    .cell[data-r="6"] {
+      border-bottom: 0;
+    }
+
+    .cell.legal {
+      background: var(--green-soft);
+    }
+
+    .cell.legal::before {
+      content: "";
+      position: absolute;
+      inset: 11%;
+      border: 2px solid var(--green);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .cell.legal.move-target::before {
+      inset: auto;
+      width: 18%;
+      aspect-ratio: 1;
+      border: 0;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .cell.preview-friendly {
+      background: var(--green-soft);
+    }
+
+    .cell.preview-friendly::after {
+      content: "";
+      position: absolute;
+      inset: 5%;
+      border: 3px solid var(--green);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .cell.preview-hostile {
+      background: var(--red-soft);
+    }
+
+    .cell.preview-hostile::after {
+      content: "";
+      position: absolute;
+      inset: 5%;
+      border: 3px solid var(--red);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .cell.enemy-danger {
+      background: var(--red-soft);
+    }
+
+    .cell.enemy-danger::after {
+      content: "";
+      position: absolute;
+      inset: 8%;
+      border: 2px solid rgba(201, 25, 25, 0.68);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .cell.enemy-marked {
+      background-image:
+        radial-gradient(
+          circle,
+          rgba(201, 25, 25, 0.32) 1.4px,
+          transparent 1.6px
+        );
+      background-size: 9px 9px;
+    }
+
+    .cell.enemy-explode {
+      background: var(--red-strong);
+    }
+
+    .cell.enemy-route::before {
+      content: "";
+      position: absolute;
+      width: 10%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: var(--black);
+      opacity: 0.34;
+      z-index: 0;
+    }
+
+    .cell.forced-destination {
+      background-image:
+        linear-gradient(
+          45deg,
+          transparent 42%,
+          rgba(201, 25, 25, 0.55) 42%,
+          rgba(201, 25, 25, 0.55) 48%,
+          transparent 48%
+        ),
+        linear-gradient(
+          -45deg,
+          transparent 42%,
+          rgba(201, 25, 25, 0.55) 42%,
+          rgba(201, 25, 25, 0.55) 48%,
+          transparent 48%
+        );
+    }
+
+    .beacon {
+      width: 22%;
+      aspect-ratio: 1;
+      border: 2px solid var(--black);
+      transform: rotate(45deg);
+      position: absolute;
+      opacity: 0.25;
+      z-index: 0;
+    }
+
+    .unit {
+      width: 72%;
+      aspect-ratio: 1;
+      position: relative;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+    }
+
+    .piece-image {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+      border-radius: 50%;
+      background: var(--white);
+      pointer-events: none;
+    }
+
+    .piece-fallback {
+      width: 100%;
+      height: 100%;
+      border: 2px solid var(--black);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--white);
+      font-weight: 700;
+      font-size: clamp(14px, 3vw, 24px);
+    }
+
+    .hero.selected {
+      outline: 4px solid var(--green);
+      outline-offset: 1px;
+    }
+
+    .hero.acted {
+      opacity: 0.4;
+      filter: grayscale(1);
+    }
+
+    .hero.incoming-hit {
+      opacity: 1;
+      filter: none;
+    }
+
+    .hero.incoming-hit::before {
+      content: "";
+      position: absolute;
+      inset: -15%;
+      z-index: -1;
+      border: 4px solid var(--red);
+      border-radius: 50%;
+      background: rgba(201, 25, 25, 0.16);
+      box-shadow:
+        0 0 0 3px rgba(255, 255, 255, 0.92),
+        0 0 18px 8px rgba(201, 25, 25, 0.72);
+      pointer-events: none;
+      animation: incoming-hit-pulse 850ms ease-in-out infinite;
+    }
+
+    .hero.incoming-hit.acted .piece-image,
+    .hero.incoming-hit.acted .piece-fallback {
+      opacity: 0.48;
+      filter: grayscale(1);
+    }
+
+    .hero.rally-source::before,
+    .hero.rally-eligible::before,
+    .hero.rally-reactivated::before {
+      content: "";
+      position: absolute;
+      inset: -12%;
+      z-index: -1;
+      border: 3px solid var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 14px 5px rgba(21, 122, 54, 0.42);
+      pointer-events: none;
+      animation: rally-pulse 1050ms ease-in-out infinite;
+    }
+
+    .hero.incoming-hit.rally-source::before,
+    .hero.incoming-hit.rally-eligible::before,
+    .hero.incoming-hit.rally-reactivated::before {
+      border-color: var(--red);
+      background: rgba(201, 25, 25, 0.16);
+      box-shadow:
+        0 0 0 3px rgba(255, 255, 255, 0.92),
+        0 0 18px 8px rgba(201, 25, 25, 0.72);
+      animation: incoming-hit-pulse 850ms ease-in-out infinite;
+    }
+
+    @keyframes incoming-hit-pulse {
+      0%,
+      100% {
+        transform: scale(0.96);
+        opacity: 0.58;
+      }
+
+      50% {
+        transform: scale(1.08);
+        opacity: 1;
+      }
+    }
+
+    @keyframes rally-pulse {
+      0%,
+      100% {
+        transform: scale(0.98);
+        opacity: 0.55;
+      }
+
+      50% {
+        transform: scale(1.05);
+        opacity: 0.95;
+      }
+    }
+
+    .enemy {
+      outline: 3px solid var(--red);
+      outline-offset: 0;
+      border-radius: 12%;
+      background: var(--white);
+    }
+
+    .enemy.commanded {
+      box-shadow: 0 0 0 4px var(--black);
+    }
+
+    .spawn-ghost {
+      width: 62%;
+      aspect-ratio: 1;
+      position: relative;
+      z-index: 4;
+      opacity: 0.45;
+      border: 2px dashed var(--red);
+      border-radius: 12%;
+      background: var(--white);
+      padding: 3%;
+    }
+
+    .spawn-ghost img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 50%;
+    }
+
+    .health-pips {
+      position: absolute;
+      left: 50%;
+      bottom: -10%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 3px;
+      z-index: 8;
+      padding: 2px 3px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 8px;
+      pointer-events: none;
+    }
+
+    .health-pip {
+      width: clamp(5px, 1.25vw, 8px);
+      aspect-ratio: 1;
+      border: 1px solid var(--black);
+      border-radius: 50%;
+      background: var(--white);
+    }
+
+    .health-pip.filled {
+      background: var(--black);
+    }
+
+    .health-pip.last {
+      background: var(--red);
+      border-color: var(--red);
+    }
+
+    .order-mark,
+    .intent-mark,
+    .cooldown-mark,
+    .status-mark,
+    .incoming-hit-mark,
+    .rally-mark {
+      position: absolute;
+      z-index: 9;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--white);
+      line-height: 1;
+      font-weight: 700;
+    }
+
+    .order-mark {
+      left: -12%;
+      top: -12%;
+      width: 21px;
+      height: 21px;
+      border: 1.5px solid var(--black);
+      border-radius: 50%;
+      font-size: 10px;
+    }
+
+    .intent-mark {
+      right: -12%;
+      top: -12%;
+      width: 21px;
+      height: 21px;
+      border: 1.5px solid var(--red);
+      color: var(--red);
+      border-radius: 50%;
+      font-size: 11px;
+    }
+
+    .cooldown-mark {
+      right: -10%;
+      bottom: -12%;
+      min-width: 21px;
+      height: 21px;
+      padding: 0 4px;
+      border: 1.5px solid var(--black);
+      border-radius: 50%;
+      font-size: 10px;
+    }
+
+    .status-mark {
+      left: -10%;
+      bottom: -12%;
+      width: 20px;
+      height: 20px;
+      border: 1.5px solid var(--green);
+      color: var(--green);
+      border-radius: 50%;
+      font-size: 11px;
+    }
+
+    .incoming-hit-mark {
+      right: -18%;
+      top: -18%;
+      min-width: 30px;
+      height: 20px;
+      padding: 0 4px;
+      border: 1.5px solid var(--red);
+      border-radius: 10px;
+      background: var(--red);
+      color: var(--white);
+      font-size: 9px;
+      letter-spacing: 0.04em;
+    }
+
+    .rally-mark {
+      left: -16%;
+      top: -16%;
+      width: 22px;
+      height: 22px;
+      border: 1.5px solid var(--green);
+      border-radius: 50%;
+      color: var(--green);
+      font-size: 13px;
+    }
+
+    .piece-info-button {
+      position: absolute;
+      left: 50%;
+      top: -21%;
+      z-index: 14;
+      width: 22px;
+      height: 22px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1.5px solid var(--black);
+      border-radius: 50%;
+      padding: 0;
+      background: var(--white);
+      color: var(--black);
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .piece-info-button:hover,
+    .piece-info-button:focus-visible {
+      background: var(--black);
+      color: var(--white);
+      outline: 2px solid var(--white);
+      outline-offset: 1px;
+    }
+
+    .unit-line {
+      min-height: 38px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 12px;
+      line-height: 1.3;
+      text-align: center;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      padding: 4px 6px 0;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 7px;
+    }
+
+    .control {
+      min-height: 45px;
+      border: 1.5px solid var(--black);
+      background: var(--white);
+      cursor: pointer;
+      border-radius: 0;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      font-size: 12px;
+    }
+
+    .control.active {
+      border-color: var(--green);
+      color: var(--green);
+      box-shadow: inset 0 -4px 0 var(--green);
+    }
+
+    .control:disabled {
+      color: #aaaaaa;
+      border-color: #cecece;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    .control.primary {
+      grid-column: 1 / -1;
+      background: var(--black);
+      color: var(--white);
+    }
+
+    .control.special-ready {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    .board.flash {
+      animation: flash 150ms ease-in-out;
+    }
+
+    @keyframes flash {
+      0% {
+        filter: invert(0);
+      }
+
+      50% {
+        filter: invert(0.92);
+      }
+
+      100% {
+        filter: invert(0);
+      }
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(255, 255, 255, 0.97);
+    }
+
+    .overlay.show {
+      display: flex;
+    }
+
+    .overlay-inner {
+      width: min(94vw, 720px);
+    }
+
+    .overlay-title {
+      text-align: center;
+      margin: 0 0 18px;
+      font-size: clamp(18px, 4vw, 30px);
+      letter-spacing: 0.12em;
+      font-weight: 700;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .card {
+      min-height: 190px;
+      border: 2px solid var(--black);
+      background: var(--white);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 16px 12px;
+      cursor: pointer;
+    }
+
+    .card-symbol {
+      font-size: 31px;
+      margin-bottom: 14px;
+      line-height: 1;
+    }
+
+    .card-name {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin-bottom: 11px;
+    }
+
+    .card-text {
+      font-size: 12px;
+      line-height: 1.45;
+      color: #555555;
+    }
+
+    .loading-panel,
+    .gameover {
+      width: min(92vw, 600px);
+      text-align: center;
+      background: var(--white);
+    }
+
+    .loading-title {
+      margin: 0 0 20px;
+      letter-spacing: 0.18em;
+      font-size: clamp(22px, 5vw, 38px);
+    }
+
+    .loading-icons {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 8px;
+      margin: 0 auto 18px;
+      max-width: 560px;
+    }
+
+    .loading-icon {
+      aspect-ratio: 1;
+      width: 100%;
+      object-fit: contain;
+      border: 1px solid var(--black);
+      border-radius: 50%;
+      opacity: 0.28;
+      transition: opacity 120ms ease;
+    }
+
+    .loading-icon.loaded {
+      opacity: 1;
+    }
+
+    .loading-icon.failed {
+      opacity: 0.1;
+    }
+
+    .loading-track {
+      height: 8px;
+      border: 1.5px solid var(--black);
+      max-width: 440px;
+      margin: 0 auto 16px;
+      background: var(--white);
+    }
+
+    .loading-fill {
+      width: 0;
+      height: 100%;
+      background: var(--black);
+      transition: width 120ms linear;
+    }
+
+    .begin-button,
+    .restart {
+      min-width: 180px;
+      min-height: 48px;
+      border: 2px solid var(--black);
+      background: var(--black);
+      color: var(--white);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .begin-button:disabled {
+      background: var(--white);
+      color: #aaaaaa;
+      border-color: #cccccc;
+    }
+
+    .gameover {
+      border: 2px solid var(--black);
+      padding: 30px 20px;
+    }
+
+    .gameover-number {
+      font-size: clamp(42px, 14vw, 88px);
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+
+    .gameover-label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 26px;
+      letter-spacing: 0.12em;
+    }
+
+    .piece-info-overlay {
+      z-index: 50;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(3px);
+    }
+
+    .piece-info-dialog {
+      position: relative;
+      width: min(90vw, 680px);
+      max-height: min(86vh, 760px);
+      max-height: min(86dvh, 760px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 2px solid var(--black);
+      background: var(--white);
+      box-shadow: 12px 12px 0 rgba(17, 17, 17, 0.14);
+    }
+
+    .piece-info-close {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      z-index: 3;
+      min-width: 82px;
+      min-height: 38px;
+      border: 1.5px solid var(--black);
+      background: var(--black);
+      color: var(--white);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+    }
+
+    .piece-info-scroll {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      padding: 22px 24px 28px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .piece-info-header {
+      min-height: 124px;
+      display: grid;
+      grid-template-columns: 118px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+      padding-right: 92px;
+      margin-bottom: 20px;
+    }
+
+    .piece-info-portrait {
+      width: 118px;
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid var(--black);
+      background: var(--white);
+      padding: 8px;
+    }
+
+    .piece-info-portrait.enemy-portrait {
+      border-color: var(--red);
+      box-shadow: inset 0 0 0 3px var(--red-soft);
+    }
+
+    .piece-info-portrait.hero-portrait {
+      border-color: var(--green);
+      box-shadow: inset 0 0 0 3px var(--green-soft);
+    }
+
+    .piece-info-portrait .piece-image,
+    .piece-info-portrait .piece-fallback {
+      width: 100%;
+      height: 100%;
+    }
+
+    .piece-info-kicker {
+      margin: 3px 0 6px;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+    }
+
+    .piece-info-title {
+      margin: 0 0 8px;
+      font-size: clamp(22px, 5vw, 34px);
+      line-height: 1;
+      letter-spacing: 0.08em;
+    }
+
+    .piece-info-subtitle {
+      margin: 0;
+      color: #4f4f4f;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .piece-info-section {
+      padding: 15px 0;
+      border-top: 1.5px solid var(--black);
+    }
+
+    .piece-info-section:first-child {
+      border-top-width: 2px;
+    }
+
+    .piece-info-section-title {
+      margin: 0 0 11px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+    }
+
+    .piece-info-list {
+      display: grid;
+      gap: 9px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .piece-info-list li {
+      position: relative;
+      padding-left: 17px;
+      color: #373737;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .piece-info-list li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--black);
+      font-weight: 700;
+    }
+
+    .piece-info-empty {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .piece-info-callout {
+      padding: 12px 14px;
+      border-left: 4px solid var(--red);
+      background: var(--red-soft);
+      color: #5f1111;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .piece-info-callout.safe {
+      border-left-color: var(--green);
+      background: var(--green-soft);
+      color: #124d24;
+    }
+
+    @media (max-width: 520px) {
+      body {
+        padding-left: 4px;
+        padding-right: 4px;
+      }
+
+      .game {
+        width: min(99vw, 680px);
+      }
+
+      .controls {
+        gap: 4px;
+      }
+
+      .control {
+        min-height: 43px;
+        font-size: 10px;
+      }
+
+      .cards {
+        grid-template-columns: 1fr;
+      }
+
+      .card {
+        min-height: 116px;
+      }
+
+      .loading-icons {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        max-width: 390px;
+      }
+
+      .unit {
+        width: 70%;
+      }
+
+      .unit-line {
+        min-height: 43px;
+        font-size: 10px;
+      }
+
+      .piece-info-button {
+        top: -24%;
+        width: 21px;
+        height: 21px;
+        font-size: 11px;
+      }
+
+      .piece-info-overlay {
+        padding:
+          max(7px, env(safe-area-inset-top))
+          max(7px, env(safe-area-inset-right))
+          max(7px, env(safe-area-inset-bottom))
+          max(7px, env(safe-area-inset-left));
+      }
+
+      .piece-info-dialog {
+        width: 100%;
+        max-height: 94vh;
+        max-height: 94dvh;
+        box-shadow: none;
+      }
+
+      .piece-info-close {
+        right: 8px;
+        top: 8px;
+        min-width: 68px;
+        min-height: 34px;
+        font-size: 10px;
+      }
+
+      .piece-info-scroll {
+        padding: 14px 14px 22px;
+      }
+
+      .piece-info-header {
+        min-height: 86px;
+        grid-template-columns: 78px minmax(0, 1fr);
+        gap: 12px;
+        padding-right: 72px;
+        margin-bottom: 14px;
+      }
+
+      .piece-info-portrait {
+        width: 78px;
+        padding: 5px;
+      }
+
+      .piece-info-title {
+        font-size: 21px;
+      }
+
+      .piece-info-subtitle,
+      .piece-info-list li,
+      .piece-info-empty,
+      .piece-info-callout {
+        font-size: 11px;
+      }
+    }
+
+    @media (orientation: landscape) and (max-height: 700px) {
+      body {
+        padding-top: 4px;
+        padding-bottom: 4px;
+      }
+
+      .game {
+        width: min(73vh, 680px);
+      }
+
+      .topbar {
+        height: 24px;
+      }
+
+      .unit-line {
+        min-height: 27px;
+        font-size: 10px;
+      }
+
+      .controls {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        margin-top: 4px;
+      }
+
+      .control {
+        min-height: 34px;
+        font-size: 10px;
+      }
+
+      .control.primary {
+        grid-column: auto;
+      }
+
+      .piece-info-dialog {
+        width: min(92vw, 700px);
+        max-height: 94vh;
+        max-height: 94dvh;
+      }
+
+      .piece-info-header {
+        min-height: 82px;
+        grid-template-columns: 78px minmax(0, 1fr);
+      }
+
+      .piece-info-portrait {
+        width: 78px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .hero.incoming-hit::before,
+      .hero.rally-source::before,
+      .hero.rally-eligible::before,
+      .hero.rally-reactivated::before {
+        animation: none;
+      }
+
+      .death-effect,
+      .death-ground-glow,
+      .death-burst,
+      .death-piece-ghost,
+      .death-shard,
+      .death-spark {
+        animation:
+          death-reduced-fade
+          180ms
+          linear
+          forwards;
+      }
+
+      .death-light {
+        display: none;
+      }
+    }
+
+    @keyframes death-reduced-fade {
+      from {
+        opacity: 0.86;
+      }
+
+      to {
+        opacity: 0;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="game" aria-label="The Last Five tactical board game">
+    <div class="topbar">
+      <div class="round" id="roundLabel">01</div>
+
+      <div
+        class="squad"
+        id="squadStatus"
+        aria-label="Squad status"
+      ></div>
+
+      <div class="score" id="enemyCount">00</div>
+    </div>
+
+    <div
+      class="board"
+      id="board"
+      role="grid"
+      aria-label="Seven by seven battle board"
+    >
+      <svg
+        class="intent-layer"
+        id="intentLayer"
+        viewBox="0 0 700 700"
+        aria-hidden="true"
+      ></svg>
+
+      <div
+        class="death-effect-layer"
+        id="deathEffectLayer"
+        aria-hidden="true"
+      ></div>
+    </div>
+
+    <div class="unit-line" id="unitLine">
+      SELECT A UNIT
+    </div>
+
+    <div class="controls">
+      <button
+        class="control"
+        id="moveButton"
+        type="button"
+        disabled
+      >
+        MOVE
+      </button>
+
+      <button
+        class="control"
+        id="attackButton"
+        type="button"
+        disabled
+      >
+        ATTACK
+      </button>
+
+      <button
+        class="control"
+        id="guardButton"
+        type="button"
+        disabled
+      >
+        GUARD
+      </button>
+
+      <button
+        class="control"
+        id="specialButton"
+        type="button"
+        disabled
+      >
+        SPECIAL
+      </button>
+
+      <button
+        class="control primary"
+        id="endButton"
+        type="button"
+        disabled
+      >
+        END TURN
+      </button>
+    </div>
+  </main>
+
+  <div
+    class="overlay show"
+    id="loadingOverlay"
+    aria-modal="true"
+    role="dialog"
+  >
+    <div class="loading-panel">
+      <h1 class="loading-title">
+        THE LAST FIVE
+      </h1>
+
+      <div
+        class="loading-icons"
+        id="loadingIcons"
+      ></div>
+
+      <div class="loading-track">
+        <div
+          class="loading-fill"
+          id="loadingFill"
+        ></div>
+      </div>
+
+      <button
+        class="begin-button"
+        id="beginButton"
+        type="button"
+        disabled
+      >
+        BEGIN
+      </button>
+    </div>
+  </div>
+
+  <div
+    class="overlay"
+    id="upgradeOverlay"
+    aria-modal="true"
+    role="dialog"
+  >
+    <div class="overlay-inner">
+      <h1 class="overlay-title">
+        CHOOSE ONE
+      </h1>
+
+      <div
+        class="cards"
+        id="upgradeCards"
+      ></div>
+    </div>
+  </div>
+
+  <div
+    class="overlay"
+    id="gameOverOverlay"
+    aria-modal="true"
+    role="dialog"
+  >
+    <div class="gameover">
+      <div
+        class="gameover-number"
+        id="finalRound"
+      >
+        0
+      </div>
+
+      <div class="gameover-label">
+        ROUNDS SURVIVED
+      </div>
+
+      <button
+        class="restart"
+        id="restartButton"
+        type="button"
+      >
+        RESTART
+      </button>
+    </div>
+  </div>
+
+  <div
+    class="overlay piece-info-overlay"
+    id="pieceInfoOverlay"
+    aria-modal="true"
+    aria-labelledby="pieceInfoTitle"
+    role="dialog"
+  >
+    <section
+      class="piece-info-dialog"
+      id="pieceInfoDialog"
+    >
+      <button
+        class="piece-info-close"
+        id="pieceInfoClose"
+        type="button"
+      >
+        CLOSE ×
+      </button>
+
+      <div
+        class="piece-info-scroll"
+        id="pieceInfoScroll"
+      >
+        <header class="piece-info-header">
+          <div
+            class="piece-info-portrait"
+            id="pieceInfoPortrait"
+          ></div>
+
+          <div>
+            <div
+              class="piece-info-kicker"
+              id="pieceInfoKicker"
+            ></div>
+
+            <h2
+              class="piece-info-title"
+              id="pieceInfoTitle"
+            ></h2>
+
+            <p
+              class="piece-info-subtitle"
+              id="pieceInfoSubtitle"
+            ></p>
+          </div>
+        </header>
+
+        <div id="pieceInfoBody"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    "use strict";
+
+    const SIZE = 7;
+    const BEACON = { r: 3, c: 3 };
+    const ASSET_ROOT = "../graphics/lastfive/";
+
+    const DEATH_SHARDS = [
+      {
+        clip:
+          "polygon(0 0, 50% 0, 38% 35%, 0 48%)",
+        x: "-54%",
+        y: "30%",
+        rotate: "-42deg"
+      },
+      {
+        clip:
+          "polygon(50% 0, 100% 0, 100% 34%, 62% 42%, 38% 35%)",
+        x: "42%",
+        y: "24%",
+        rotate: "34deg"
+      },
+      {
+        clip:
+          "polygon(0 48%, 38% 35%, 48% 62%, 20% 72%, 0 66%)",
+        x: "-62%",
+        y: "62%",
+        rotate: "-58deg"
+      },
+      {
+        clip:
+          "polygon(38% 35%, 62% 42%, 70% 68%, 48% 62%)",
+        x: "8%",
+        y: "76%",
+        rotate: "28deg"
+      },
+      {
+        clip:
+          "polygon(62% 42%, 100% 34%, 100% 66%, 70% 68%)",
+        x: "64%",
+        y: "56%",
+        rotate: "52deg"
+      },
+      {
+        clip:
+          "polygon(0 66%, 20% 72%, 34% 100%, 0 100%)",
+        x: "-46%",
+        y: "92%",
+        rotate: "-32deg"
+      },
+      {
+        clip:
+          "polygon(20% 72%, 48% 62%, 70% 68%, 64% 100%, 34% 100%)",
+        x: "4%",
+        y: "104%",
+        rotate: "44deg"
+      },
+      {
+        clip:
+          "polygon(70% 68%, 100% 66%, 100% 100%, 64% 100%)",
+        x: "52%",
+        y: "88%",
+        rotate: "66deg"
+      }
+    ];
+
+    const DEATH_SPARKS = [
+      {
+        x: "-58%",
+        y: "-34%",
+        rotate: "-42deg"
+      },
+      {
+        x: "62%",
+        y: "-28%",
+        rotate: "54deg"
+      },
+      {
+        x: "-74%",
+        y: "30%",
+        rotate: "-68deg"
+      },
+      {
+        x: "76%",
+        y: "24%",
+        rotate: "72deg"
+      },
+      {
+        x: "-38%",
+        y: "74%",
+        rotate: "-35deg"
+      },
+      {
+        x: "44%",
+        y: "82%",
+        rotate: "48deg"
+      }
+    ];
+
+    const ORTHOGONAL = [
+      { r: -1, c: 0 },
+      { r: 1, c: 0 },
+      { r: 0, c: -1 },
+      { r: 0, c: 1 }
+    ];
+
+    const DIAGONAL = [
+      { r: -1, c: -1 },
+      { r: -1, c: 1 },
+      { r: 1, c: -1 },
+      { r: 1, c: 1 }
+    ];
+
+    const HERO_DATA = {
+      blade: {
+        letter: "B",
+        name: "BLADE",
+        special: "SWEEP",
+        cooldown: 3,
+        image: "player_blade.png"
+      },
+
+      shield: {
+        letter: "S",
+        name: "SHIELD",
+        special: "BULWARK",
+        cooldown: 4,
+        image: "player_shield.png"
+      },
+
+      spear: {
+        letter: "P",
+        name: "SPEAR",
+        special: "IMPALE",
+        cooldown: 3,
+        image: "player_spear.png"
+      },
+
+      bow: {
+        letter: "W",
+        name: "BOW",
+        special: "VOLLEY",
+        cooldown: 4,
+        image: "player_bow.png"
+      },
+
+      banner: {
+        letter: "N",
+        name: "BANNER",
+        special: "RALLY",
+        cooldown: 5,
+        image: "player_banner.png"
+      }
+    };
+
+    const ENEMY_DATA = {
+      grunt: {
+        letter: "G",
+        hp: 1,
+        initiative: 5,
+        image: "enemy_grunt.png"
+      },
+
+      raider: {
+        letter: "R",
+        hp: 1,
+        initiative: 3,
+        image: "enemy_raider.png"
+      },
+
+      archer: {
+        letter: "A",
+        hp: 1,
+        initiative: 7,
+        image: "enemy_archer.png"
+      },
+
+      brute: {
+        letter: "B",
+        hp: 3,
+        initiative: 6,
+        image: "enemy_brute.png"
+      },
+
+      hook: {
+        letter: "H",
+        hp: 2,
+        initiative: 2,
+        image: "enemy_hook.png"
+      },
+
+      guardian: {
+        letter: "D",
+        hp: 2,
+        initiative: 4,
+        image: "enemy_guardian.png"
+      },
+
+      bomber: {
+        letter: "O",
+        hp: 1,
+        initiative: 8,
+        image: "enemy_bomber.png"
+      },
+
+      commander: {
+        letter: "C",
+        hp: 2,
+        initiative: 1,
+        image: "enemy_commander.png"
+      }
+    };
+
+    const HERO_REFERENCE = {
+      blade: {
+        role:
+          "Close-range striker built to clear clustered enemies.",
+
+        abilities: [
+          "MOVE · Move one open space orthogonally.",
+          "ATTACK · Deal 1 damage to an adjacent orthogonal enemy.",
+          "GUARD · Block the next hit received this round."
+        ],
+
+        special:
+          "SWEEP · Choose an adjacent space. Deal 1 damage to that space and the two spaces beside it. Heavy Edge adds damage."
+      },
+
+      shield: {
+        role:
+          "Front-line protector that spreads Guard across a formation.",
+
+        abilities: [
+          "MOVE · Move one open space orthogonally.",
+          "ATTACK · Deal 1 damage to an adjacent orthogonal enemy.",
+          "GUARD · Block the next hit received this round."
+        ],
+
+        special:
+          "BULWARK · Choose the Shield or an adjacent space. Allies in the green plus-shaped area gain Guard. Wide Bulwark adds diagonals."
+      },
+
+      spear: {
+        role:
+          "Line fighter that controls enemies from exact distances.",
+
+        abilities: [
+          "MOVE · Move one open space orthogonally.",
+          "ATTACK · Deal 1 damage to an enemy exactly 2 spaces away in a clear orthogonal line.",
+          "GUARD · Block the next hit received this round."
+        ],
+
+        special:
+          "IMPALE · Strike every enemy in a clear orthogonal line up to 3 spaces away. Survivors are stunned for their next turn."
+      },
+
+      bow: {
+        role:
+          "Long-range attacker that damages groups from safety.",
+
+        abilities: [
+          "MOVE · Move one open space orthogonally.",
+          "ATTACK · Deal 1 damage to the first enemy in an orthogonal line up to 4 spaces away.",
+          "GUARD · Block the next hit received this round."
+        ],
+
+        special:
+          "VOLLEY · Choose a space within 4. Damage enemies in the target plus-shaped area. Wide Volley adds diagonals."
+      },
+
+      banner: {
+        role:
+          "Support leader that protects allies and restores an action.",
+
+        abilities: [
+          "MOVE · Move one open space orthogonally.",
+          "ATTACK · Deal 1 damage to an adjacent orthogonal enemy.",
+          "GUARD · Block the next hit received this round."
+        ],
+
+        special:
+          "RALLY · Choose a space within 2. Allies in the green plus-shaped area gain Guard, then one affected ally that already acted may act again."
+      }
+    };
+
+    const ENEMY_REFERENCE = {
+      grunt: {
+        role:
+          "Basic invader.",
+
+        behavior:
+          "Moves 1 space toward the most vulnerable objective. Attacks for 1 damage when adjacent."
+      },
+
+      raider: {
+        role:
+          "Fast path attacker.",
+
+        behavior:
+          "Charges up to 2 spaces toward its target. Any hero who steps into its shown route will be hit."
+      },
+
+      archer: {
+        role:
+          "Long-range line attacker.",
+
+        behavior:
+          "Shoots a hero aligned 2–6 spaces away when the line is clear. Otherwise advances or attacks adjacent."
+      },
+
+      brute: {
+        role:
+          "Durable displacement attacker.",
+
+        behavior:
+          "Has 3 health. Its adjacent attack deals 1 damage and pushes an unguarded surviving hero backward."
+      },
+
+      hook: {
+        role:
+          "Formation disruptor.",
+
+        behavior:
+          "Pulls an aligned hero from 2–5 spaces away one space closer. Pulling does not deal damage."
+      },
+
+      guardian: {
+        role:
+          "Enemy formation protector.",
+
+        behavior:
+          "The first hit against each adjacent enemy is blocked while this Guardian remains beside it."
+      },
+
+      bomber: {
+        role:
+          "Delayed area threat.",
+
+        behavior:
+          "Marks a 3×3 area, then detonates it on its next turn. The blast deals 1 damage to heroes, 2 to enemies, and destroys the Bomber."
+      },
+
+      commander: {
+        role:
+          "Enemy movement support.",
+
+        behavior:
+          "Commands enemies within 2 spaces. Commanded moving enemies extend their planned route by 1 space."
+      }
+    };
+
+    const ASSET_FILES = [
+      ...Object.values(HERO_DATA).map((item) => item.image),
+      ...Object.values(ENEMY_DATA).map((item) => item.image)
+    ];
+
+    const boardEl = document.getElementById("board");
+    const intentLayer = document.getElementById("intentLayer");
+    const deathEffectLayer =
+      document.getElementById(
+        "deathEffectLayer"
+      );
+    const roundLabel = document.getElementById("roundLabel");
+    const squadStatus = document.getElementById("squadStatus");
+    const enemyCount = document.getElementById("enemyCount");
+    const unitLine = document.getElementById("unitLine");
+
+    const moveButton = document.getElementById("moveButton");
+    const attackButton = document.getElementById("attackButton");
+    const guardButton = document.getElementById("guardButton");
+    const specialButton = document.getElementById("specialButton");
+    const endButton = document.getElementById("endButton");
+
+    const loadingOverlay = document.getElementById("loadingOverlay");
+    const loadingIcons = document.getElementById("loadingIcons");
+    const loadingFill = document.getElementById("loadingFill");
+    const beginButton = document.getElementById("beginButton");
+
+    const upgradeOverlay = document.getElementById("upgradeOverlay");
+    const upgradeCards = document.getElementById("upgradeCards");
+
+    const gameOverOverlay = document.getElementById("gameOverOverlay");
+    const finalRound = document.getElementById("finalRound");
+    const restartButton = document.getElementById("restartButton");
+
+    const pieceInfoOverlay =
+      document.getElementById("pieceInfoOverlay");
+
+    const pieceInfoDialog =
+      document.getElementById("pieceInfoDialog");
+
+    const pieceInfoClose =
+      document.getElementById("pieceInfoClose");
+
+    const pieceInfoScroll =
+      document.getElementById("pieceInfoScroll");
+
+    const pieceInfoPortrait =
+      document.getElementById("pieceInfoPortrait");
+
+    const pieceInfoKicker =
+      document.getElementById("pieceInfoKicker");
+
+    const pieceInfoTitle =
+      document.getElementById("pieceInfoTitle");
+
+    const pieceInfoSubtitle =
+      document.getElementById("pieceInfoSubtitle");
+
+    const pieceInfoBody =
+      document.getElementById("pieceInfoBody");
+
+    const assetStatus = new Map();
+
+    const hoverCapable = window.matchMedia(
+      "(hover: hover) and (pointer: fine)"
+    ).matches;
+
+    let cells = [];
+    let nextId = 1;
+    let seed = (Date.now() ^ 0x9e3779b9) >>> 0;
+    let selectedHeroId = null;
+    let actionMode = "move";
+    let previewTarget = null;
+    let previewLocked = false;
+    let pendingBanner = null;
+    let pieceInfoReturnFocus = null;
+    let gameOverTimer = null;
+    let game = null;
+
+    function random() {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+
+      return (seed >>> 0) / 4294967296;
+    }
+
+    function randomInt(max) {
+      return Math.floor(random() * max);
+    }
+
+    function shuffle(items) {
+      const copy = items.slice();
+
+      for (let index = copy.length - 1; index > 0; index -= 1) {
+        const replacement = randomInt(index + 1);
+
+        [copy[index], copy[replacement]] = [
+          copy[replacement],
+          copy[index]
+        ];
+      }
+
+      return copy;
+    }
+
+    function key(row, column) {
+      return `${row},${column}`;
+    }
+
+    function inside(row, column) {
+      return (
+        row >= 0 &&
+        row < SIZE &&
+        column >= 0 &&
+        column < SIZE
+      );
+    }
+
+    function manhattan(first, second) {
+      return (
+        Math.abs(first.r - second.r) +
+        Math.abs(first.c - second.c)
+      );
+    }
+
+    function sameCell(first, second) {
+      return first.r === second.r && first.c === second.c;
+    }
+
+    function createBoard() {
+      for (const oldCell of boardEl.querySelectorAll(".cell")) {
+        oldCell.remove();
+      }
+
+      cells = [];
+
+      for (let row = 0; row < SIZE; row += 1) {
+        for (let column = 0; column < SIZE; column += 1) {
+          const cell = document.createElement("div");
+
+          cell.className = "cell";
+          cell.tabIndex = 0;
+          cell.dataset.r = String(row);
+          cell.dataset.c = String(column);
+          cell.setAttribute("role", "gridcell");
+          cell.setAttribute(
+            "aria-label",
+            `Row ${row + 1}, column ${column + 1}`
+          );
+
+          cell.addEventListener("click", onCellClick);
+          cell.addEventListener("pointerenter", onCellEnter);
+          cell.addEventListener("pointerleave", onCellLeave);
+          cell.addEventListener(
+            "keydown",
+            (event) => {
+              if (
+                event.target === cell &&
+                (
+                  event.key === "Enter" ||
+                  event.key === " "
+                )
+              ) {
+                event.preventDefault();
+                cell.click();
+              }
+            }
+          );
+
+          boardEl.insertBefore(cell, intentLayer);
+          cells.push(cell);
+        }
+      }
+    }
+
+    function playDeathAnimation(
+      unit,
+      kind
+    ) {
+      const isHero = kind === "hero";
+
+      const data = isHero
+        ? HERO_DATA[unit.type]
+        : ENEMY_DATA[unit.type];
+
+      if (
+        !data ||
+        !deathEffectLayer
+      ) {
+        return;
+      }
+
+      const effect =
+        document.createElement("div");
+
+      effect.className =
+        `death-effect ${
+          isHero
+            ? "hero-death"
+            : "enemy-death"
+        }`;
+
+      effect.style.gridRow =
+        String(unit.r + 1);
+
+      effect.style.gridColumn =
+        String(unit.c + 1);
+
+      const groundGlow =
+        document.createElement("span");
+
+      groundGlow.className =
+        "death-ground-glow";
+
+      effect.appendChild(groundGlow);
+
+      if (isHero) {
+        const light =
+          document.createElement("span");
+
+        light.className = "death-light";
+        effect.appendChild(light);
+      }
+
+      const burst =
+        document.createElement("span");
+
+      burst.className = "death-burst";
+      effect.appendChild(burst);
+
+      const imageSource =
+        ASSET_ROOT + data.image;
+
+      const ghost =
+        document.createElement("img");
+
+      ghost.className =
+        "death-piece-ghost";
+
+      ghost.src = imageSource;
+      ghost.alt = "";
+      ghost.setAttribute(
+        "aria-hidden",
+        "true"
+      );
+
+      effect.appendChild(ghost);
+
+      for (
+        const shardData of
+        DEATH_SHARDS
+      ) {
+        const shard =
+          document.createElement("img");
+
+        shard.className =
+          "death-shard";
+
+        shard.src = imageSource;
+        shard.alt = "";
+        shard.setAttribute(
+          "aria-hidden",
+          "true"
+        );
+
+        shard.style.setProperty(
+          "--shard-clip",
+          shardData.clip
+        );
+
+        shard.style.setProperty(
+          "--shard-x",
+          shardData.x
+        );
+
+        shard.style.setProperty(
+          "--shard-y",
+          shardData.y
+        );
+
+        shard.style.setProperty(
+          "--shard-rotate",
+          shardData.rotate
+        );
+
+        effect.appendChild(shard);
+      }
+
+      for (
+        const sparkData of
+        DEATH_SPARKS
+      ) {
+        const spark =
+          document.createElement("span");
+
+        spark.className =
+          "death-spark";
+
+        spark.style.setProperty(
+          "--spark-x",
+          sparkData.x
+        );
+
+        spark.style.setProperty(
+          "--spark-y",
+          sparkData.y
+        );
+
+        spark.style.setProperty(
+          "--spark-rotate",
+          sparkData.rotate
+        );
+
+        effect.appendChild(spark);
+      }
+
+      effect.addEventListener(
+        "animationend",
+        (event) => {
+          if (event.target === effect) {
+            effect.remove();
+          }
+        }
+      );
+
+      deathEffectLayer.appendChild(effect);
+
+      window.setTimeout(
+        () => effect.remove(),
+        1300
+      );
+    }
+
+    function loadAssets() {
+      loadingIcons.innerHTML = "";
+
+      let completed = 0;
+
+      const jobs = ASSET_FILES.map(
+        (file) =>
+          new Promise((resolve) => {
+            const icon = document.createElement("img");
+
+            icon.className = "loading-icon";
+            icon.alt = "";
+            icon.src = ASSET_ROOT + file;
+
+            loadingIcons.appendChild(icon);
+
+            const finish = (success) => {
+              assetStatus.set(file, success);
+
+              icon.classList.add(
+                success ? "loaded" : "failed"
+              );
+
+              completed += 1;
+
+              loadingFill.style.width =
+                `${(completed / ASSET_FILES.length) * 100}%`;
+
+              resolve();
+            };
+
+            icon.addEventListener(
+              "load",
+              () => finish(true),
+              { once: true }
+            );
+
+            icon.addEventListener(
+              "error",
+              () => finish(false),
+              { once: true }
+            );
+          })
+      );
+
+      Promise.all(jobs).then(() => {
+        beginButton.disabled = false;
+      });
+    }
+
+    function makeHero(type, row, column) {
+      return {
+        id: nextId++,
+        type,
+        r: row,
+        c: column,
+        alive: true,
+        maxHp: 2,
+        hp: 2,
+        acted: false,
+        guard: 0,
+        cooldown: 0,
+        armor: 0,
+        rallied: false,
+        rallyReactivated: false
+      };
+    }
+
+    function makeEnemy(type, row, column) {
+      const data = ENEMY_DATA[type];
+
+      return {
+        id: nextId++,
+        type,
+        r: row,
+        c: column,
+        hp: data.hp,
+        maxHp: data.hp,
+        alive: true,
+        stunned: 0,
+        shieldBroken: false,
+        bombArmed: false,
+        bombTarget: null,
+        commanded: false,
+        plan: {
+          kind: "wait"
+        }
+      };
+    }
+
+    function emptyUpgrades() {
+      return {
+        bladePower: 0,
+        shieldDiagonal: false,
+        spearReach: 3,
+        spearFlexible: false,
+        bowDiagonal: false,
+        bowPierce: false,
+        bannerRange: 2,
+        counter: false,
+        cooldownReduction: 0,
+        reserve: false,
+        brace: false,
+        finisher: false
+      };
+    }
+
+    function newGame() {
+      nextId = 1;
+      selectedHeroId = null;
+      actionMode = "move";
+      previewTarget = null;
+      previewLocked = false;
+      pendingBanner = null;
+      seed = (Date.now() ^ 0x9e3779b9) >>> 0;
+      closePieceInfo(false);
+      deathEffectLayer.innerHTML = "";
+
+      if (gameOverTimer) {
+        window.clearTimeout(
+          gameOverTimer
+        );
+
+        gameOverTimer = null;
+      }
+
+      game = {
+        round: 1,
+        completedRounds: 0,
+        phase: "player",
+
+        heroes: [
+          makeHero("blade", 3, 2),
+          makeHero("shield", 3, 3),
+          makeHero("spear", 2, 3),
+          makeHero("bow", 4, 3),
+          makeHero("banner", 3, 4)
+        ],
+
+        enemies: [
+          makeEnemy("grunt", 0, 3),
+          makeEnemy("grunt", 6, 3),
+          makeEnemy("grunt", 3, 0)
+        ],
+
+        incoming: [],
+        upgrades: emptyUpgrades(),
+        upgradeRanks: {},
+        reserveUsed: false,
+        safeLines: 0,
+        over: false
+      };
+
+      upgradeOverlay.classList.remove("show");
+      gameOverOverlay.classList.remove("show");
+
+      beginRound();
+    }
+
+    function aliveHeroes(state = game) {
+      return state.heroes.filter((hero) => hero.alive);
+    }
+
+    function aliveEnemies(state = game) {
+      return state.enemies.filter((enemy) => enemy.alive);
+    }
+
+    function heroAt(state, row, column) {
+      return (
+        state.heroes.find(
+          (hero) =>
+            hero.alive &&
+            hero.r === row &&
+            hero.c === column
+        ) || null
+      );
+    }
+
+    function enemyAt(state, row, column) {
+      return (
+        state.enemies.find(
+          (enemy) =>
+            enemy.alive &&
+            enemy.r === row &&
+            enemy.c === column
+        ) || null
+      );
+    }
+
+    function occupied(
+      state,
+      row,
+      column,
+      ignoredId = null
+    ) {
+      return Boolean(
+        state.heroes.some(
+          (hero) =>
+            hero.alive &&
+            hero.id !== ignoredId &&
+            hero.r === row &&
+            hero.c === column
+        ) ||
+        state.enemies.some(
+          (enemy) =>
+            enemy.alive &&
+            enemy.id !== ignoredId &&
+            enemy.r === row &&
+            enemy.c === column
+        )
+      );
+    }
+
+    function selectedHero() {
+      return (
+        game?.heroes.find(
+          (hero) =>
+            hero.id === selectedHeroId &&
+            hero.alive
+        ) || null
+      );
+    }
+
+    function beginRound() {
+      if (game.over) {
+        return;
+      }
+
+      game.phase = "player";
+      game.reserveUsed = false;
+
+      selectedHeroId = null;
+      actionMode = "move";
+      previewTarget = null;
+      previewLocked = false;
+      pendingBanner = null;
+
+      for (const hero of game.heroes) {
+        if (!hero.alive) {
+          continue;
+        }
+
+        hero.acted = false;
+        hero.guard = 0;
+        hero.rallied = false;
+        hero.rallyReactivated = false;
+
+        if (hero.cooldown > 0) {
+          hero.cooldown -= 1;
+        }
+      }
+
+      for (const enemy of game.enemies) {
+        if (!enemy.alive) {
+          continue;
+        }
+
+        enemy.shieldBroken = false;
+        enemy.commanded = false;
+        enemy.plan = createEnemyPlan(game, enemy);
+      }
+
+      applyCommanderPlanning();
+      assignInitiative();
+      ensureFlawlessLine();
+      prepareIncoming();
+      render();
+    }
+
+    function chooseTargetPosition(state, enemy) {
+      const candidates = aliveHeroes(state).map(
+        (hero) => ({
+          r: hero.r,
+          c: hero.c,
+          weight: hero.hp === 1 ? -0.35 : 0
+        })
+      );
+
+      candidates.push({
+        r: BEACON.r,
+        c: BEACON.c,
+        weight: 0.75
+      });
+
+      candidates.sort(
+        (first, second) =>
+          manhattan(enemy, first) +
+          first.weight -
+          (
+            manhattan(enemy, second) +
+            second.weight
+          )
+      );
+
+      return candidates[0] || BEACON;
+    }
+
+    function lineClear(
+      state,
+      from,
+      to,
+      ignoredFirst = null,
+      ignoredSecond = null
+    ) {
+      if (
+        from.r !== to.r &&
+        from.c !== to.c
+      ) {
+        return false;
+      }
+
+      const rowDirection = Math.sign(to.r - from.r);
+      const columnDirection = Math.sign(to.c - from.c);
+
+      let row = from.r + rowDirection;
+      let column = from.c + columnDirection;
+
+      while (
+        row !== to.r ||
+        column !== to.c
+      ) {
+        const unit =
+          heroAt(state, row, column) ||
+          enemyAt(state, row, column);
+
+        if (
+          unit &&
+          unit.id !== ignoredFirst &&
+          unit.id !== ignoredSecond
+        ) {
+          return false;
+        }
+
+        row += rowDirection;
+        column += columnDirection;
+      }
+
+      return true;
+    }
+
+    function nearestAlignedHero(
+      state,
+      enemy,
+      minimumRange,
+      maximumRange
+    ) {
+      return (
+        aliveHeroes(state)
+          .filter((hero) => {
+            const aligned =
+              hero.r === enemy.r ||
+              hero.c === enemy.c;
+
+            const distance = manhattan(hero, enemy);
+
+            return (
+              aligned &&
+              distance >= minimumRange &&
+              distance <= maximumRange &&
+              lineClear(
+                state,
+                enemy,
+                hero,
+                enemy.id,
+                hero.id
+              )
+            );
+          })
+          .sort(
+            (first, second) =>
+              manhattan(first, enemy) -
+              manhattan(second, enemy)
+          )[0] || null
+      );
+    }
+
+    function greedyPath(
+      state,
+      unit,
+      target,
+      maximumSteps,
+      start = null
+    ) {
+      const path = [];
+
+      let current = start
+        ? { ...start }
+        : {
+            r: unit.r,
+            c: unit.c
+          };
+
+      for (
+        let step = 0;
+        step < maximumSteps;
+        step += 1
+      ) {
+        const options = ORTHOGONAL
+          .map((delta) => ({
+            r: current.r + delta.r,
+            c: current.c + delta.c
+          }))
+          .filter((position) =>
+            inside(position.r, position.c)
+          )
+          .filter(
+            (position) =>
+              !occupied(
+                state,
+                position.r,
+                position.c,
+                unit.id
+              )
+          )
+          .sort(
+            (first, second) =>
+              manhattan(first, target) -
+              manhattan(second, target)
+          );
+
+        if (
+          !options.length ||
+          manhattan(options[0], target) >=
+            manhattan(current, target)
+        ) {
+          break;
+        }
+
+        current = options[0];
+        path.push({ ...current });
+      }
+
+      return path;
+    }
+
+    function createEnemyPlan(state, enemy) {
+      if (enemy.stunned > 0) {
+        enemy.stunned -= 1;
+
+        return {
+          kind: "wait",
+          stunned: true
+        };
+      }
+
+      if (enemy.type === "commander") {
+        const targetIds = aliveEnemies(state)
+          .filter(
+            (unit) =>
+              unit.id !== enemy.id &&
+              manhattan(unit, enemy) <= 2
+          )
+          .map((unit) => unit.id);
+
+        if (targetIds.length) {
+          return {
+            kind: "command",
+            targetIds
+          };
+        }
+      }
+
+      if (enemy.type === "bomber") {
+        if (
+          enemy.bombArmed &&
+          enemy.bombTarget
+        ) {
+          return {
+            kind: "explode",
+            center: {
+              ...enemy.bombTarget
+            }
+          };
+        }
+
+        const target = chooseTargetPosition(
+          state,
+          enemy
+        );
+
+        return {
+          kind: "mark",
+          center: {
+            r: target.r,
+            c: target.c
+          }
+        };
+      }
+
+      if (enemy.type === "archer") {
+        const target = nearestAlignedHero(
+          state,
+          enemy,
+          2,
+          6
+        );
+
+        if (target) {
+          return {
+            kind: "shoot",
+            target: {
+              r: target.r,
+              c: target.c
+            }
+          };
+        }
+      }
+
+      if (enemy.type === "hook") {
+        const target = nearestAlignedHero(
+          state,
+          enemy,
+          2,
+          5
+        );
+
+        if (target) {
+          return {
+            kind: "pull",
+            target: {
+              r: target.r,
+              c: target.c
+            }
+          };
+        }
+      }
+
+      const adjacent = aliveHeroes(state)
+        .filter(
+          (hero) =>
+            manhattan(hero, enemy) === 1
+        )
+        .sort(
+          (first, second) =>
+            first.hp - second.hp
+        )[0];
+
+      if (adjacent) {
+        if (enemy.type === "brute") {
+          return {
+            kind: "attackPush",
+            target: {
+              r: adjacent.r,
+              c: adjacent.c
+            }
+          };
+        }
+
+        return {
+          kind: "attack",
+          target: {
+            r: adjacent.r,
+            c: adjacent.c
+          }
+        };
+      }
+
+      const target = chooseTargetPosition(
+        state,
+        enemy
+      );
+
+      const steps =
+        enemy.type === "raider" ? 2 : 1;
+
+      const path = greedyPath(
+        state,
+        enemy,
+        target,
+        steps
+      );
+
+      return path.length
+        ? {
+            kind:
+              enemy.type === "raider"
+                ? "charge"
+                : "move",
+            path
+          }
+        : {
+            kind: "wait"
+          };
+    }
+
+    function applyCommanderPlanning() {
+      const commanders = aliveEnemies().filter(
+        (enemy) =>
+          enemy.type === "commander" &&
+          enemy.plan.kind === "command"
+      );
+
+      for (const commander of commanders) {
+        for (
+          const targetId of
+          commander.plan.targetIds || []
+        ) {
+          const target = game.enemies.find(
+            (enemy) =>
+              enemy.id === targetId &&
+              enemy.alive
+          );
+
+          if (!target) {
+            continue;
+          }
+
+          target.commanded = true;
+          target.plan.commanded = true;
+
+          if (
+            ["move", "charge"].includes(
+              target.plan.kind
+            )
+          ) {
+            const currentEnd =
+              target.plan.path?.length
+                ? target.plan.path[
+                    target.plan.path.length - 1
+                  ]
+                : target;
+
+            const goal = chooseTargetPosition(
+              game,
+              {
+                ...target,
+                ...currentEnd
+              }
+            );
+
+            const extra = greedyPath(
+              game,
+              target,
+              goal,
+              1,
+              currentEnd
+            )[0];
+
+            if (
+              extra &&
+              !target.plan.path.some(
+                (position) =>
+                  sameCell(position, extra)
+              )
+            ) {
+              target.plan.path.push(extra);
+            }
+          }
+        }
+      }
+    }
+
+    function assignInitiative() {
+      const ordered = aliveEnemies()
+        .slice()
+        .sort((first, second) => {
+          const firstInitiative =
+            ENEMY_DATA[first.type].initiative -
+            (first.commanded ? 0.5 : 0);
+
+          const secondInitiative =
+            ENEMY_DATA[second.type].initiative -
+            (second.commanded ? 0.5 : 0);
+
+          return (
+            firstInitiative -
+              secondInitiative ||
+            first.id -
+              second.id
+          );
+        });
+
+      ordered.forEach((enemy, index) => {
+        enemy.order = index + 1;
+      });
+    }
+
+    function getMoveTargets(state, hero) {
+      return ORTHOGONAL
+        .map((delta) => ({
+          r: hero.r + delta.r,
+          c: hero.c + delta.c
+        }))
+        .filter(
+          (position) =>
+            inside(position.r, position.c) &&
+            !occupied(
+              state,
+              position.r,
+              position.c,
+              hero.id
+            )
+        );
+    }
+
+    function firstUnitInDirection(
+      state,
+      origin,
+      delta,
+      maximumRange
+    ) {
+      for (
+        let distance = 1;
+        distance <= maximumRange;
+        distance += 1
+      ) {
+        const row =
+          origin.r +
+          delta.r * distance;
+
+        const column =
+          origin.c +
+          delta.c * distance;
+
+        if (!inside(row, column)) {
+          break;
+        }
+
+        const enemy = enemyAt(
+          state,
+          row,
+          column
+        );
+
+        if (enemy) {
+          return {
+            enemy,
+            distance,
+            delta
+          };
+        }
+
+        if (heroAt(state, row, column)) {
+          break;
+        }
+      }
+
+      return null;
+    }
+
+    function getAttackTargets(state, hero) {
+      if (!hero.alive) {
+        return [];
+      }
+
+      if (
+        ["blade", "shield", "banner"].includes(
+          hero.type
+        )
+      ) {
+        return ORTHOGONAL
+          .map((delta) =>
+            enemyAt(
+              state,
+              hero.r + delta.r,
+              hero.c + delta.c
+            )
+          )
+          .filter(Boolean)
+          .map((enemy) => ({
+            r: enemy.r,
+            c: enemy.c,
+            enemyId: enemy.id
+          }));
+      }
+
+      if (hero.type === "spear") {
+        const ranges =
+          state.upgrades.spearFlexible
+            ? [1, 2]
+            : [2];
+
+        const targets = [];
+
+        for (const delta of ORTHOGONAL) {
+          for (const distance of ranges) {
+            const row =
+              hero.r +
+              delta.r * distance;
+
+            const column =
+              hero.c +
+              delta.c * distance;
+
+            if (!inside(row, column)) {
+              continue;
+            }
+
+            let blocked = false;
+
+            for (
+              let step = 1;
+              step < distance;
+              step += 1
+            ) {
+              if (
+                occupied(
+                  state,
+                  hero.r + delta.r * step,
+                  hero.c + delta.c * step,
+                  hero.id
+                )
+              ) {
+                blocked = true;
+              }
+            }
+
+            const enemy = blocked
+              ? null
+              : enemyAt(
+                  state,
+                  row,
+                  column
+                );
+
+            if (enemy) {
+              targets.push({
+                r: row,
+                c: column,
+                enemyId: enemy.id
+              });
+            }
+          }
+        }
+
+        return targets;
+      }
+
+      if (hero.type === "bow") {
+        return ORTHOGONAL
+          .map((delta) =>
+            firstUnitInDirection(
+              state,
+              hero,
+              delta,
+              4
+            )
+          )
+          .filter(Boolean)
+          .map((result) => ({
+            r: result.enemy.r,
+            c: result.enemy.c,
+            enemyId: result.enemy.id,
+            delta: result.delta
+          }));
+      }
+
+      return [];
+    }
+
+    function getGuardTargets(hero) {
+      return [
+        {
+          r: hero.r,
+          c: hero.c,
+          heroId: hero.id
+        }
+      ];
+    }
+
+    function getSpecialTargets(hero) {
+      if (hero.type === "blade") {
+        return ORTHOGONAL
+          .map((delta) => ({
+            r: hero.r + delta.r,
+            c: hero.c + delta.c
+          }))
+          .filter(
+            (position) =>
+              inside(
+                position.r,
+                position.c
+              ) &&
+              !heroAt(
+                game,
+                position.r,
+                position.c
+              )
+          );
+      }
+
+      if (hero.type === "shield") {
+        return [
+          {
+            r: hero.r,
+            c: hero.c
+          },
+
+          ...ORTHOGONAL.map((delta) => ({
+            r: hero.r + delta.r,
+            c: hero.c + delta.c
+          }))
+        ].filter(
+          (position) =>
+            inside(
+              position.r,
+              position.c
+            ) &&
+            !enemyAt(
+              game,
+              position.r,
+              position.c
+            )
+        );
+      }
+
+      if (hero.type === "spear") {
+        const targets = [];
+
+        for (const delta of ORTHOGONAL) {
+          for (
+            let distance = 1;
+            distance <=
+              game.upgrades.spearReach;
+            distance += 1
+          ) {
+            const row =
+              hero.r +
+              delta.r * distance;
+
+            const column =
+              hero.c +
+              delta.c * distance;
+
+            if (!inside(row, column)) {
+              break;
+            }
+
+            const ally = heroAt(
+              game,
+              row,
+              column
+            );
+
+            if (
+              ally &&
+              ally.id !== hero.id
+            ) {
+              break;
+            }
+
+            targets.push({
+              r: row,
+              c: column,
+              delta,
+              distance
+            });
+
+            if (
+              enemyAt(
+                game,
+                row,
+                column
+              )
+            ) {
+              break;
+            }
+          }
+        }
+
+        return targets;
+      }
+
+      if (hero.type === "bow") {
+        const targets = [];
+
+        for (
+          let row = 0;
+          row < SIZE;
+          row += 1
+        ) {
+          for (
+            let column = 0;
+            column < SIZE;
+            column += 1
+          ) {
+            if (
+              manhattan(
+                hero,
+                {
+                  r: row,
+                  c: column
+                }
+              ) <= 4
+            ) {
+              targets.push({
+                r: row,
+                c: column
+              });
+            }
+          }
+        }
+
+        return targets;
+      }
+
+      if (hero.type === "banner") {
+        const targets = [];
+
+        for (
+          let row = 0;
+          row < SIZE;
+          row += 1
+        ) {
+          for (
+            let column = 0;
+            column < SIZE;
+            column += 1
+          ) {
+            if (
+              manhattan(
+                hero,
+                {
+                  r: row,
+                  c: column
+                }
+              ) <= game.upgrades.bannerRange &&
+              !enemyAt(
+                game,
+                row,
+                column
+              )
+            ) {
+              targets.push({
+                r: row,
+                c: column
+              });
+            }
+          }
+        }
+
+        return targets;
+      }
+
+      return [];
+    }
+
+    function getBannerPickTargets() {
+      if (!pendingBanner) {
+        return [];
+      }
+
+      return pendingBanner.eligibleIds
+        .map((id) =>
+          game.heroes.find(
+            (hero) =>
+              hero.id === id &&
+              hero.alive
+          )
+        )
+        .filter(Boolean)
+        .map((hero) => ({
+          r: hero.r,
+          c: hero.c,
+          heroId: hero.id
+        }));
+    }
+
+    function getActionTargets(
+      hero,
+      mode = actionMode
+    ) {
+      if (!hero || hero.acted) {
+        return [];
+      }
+
+      if (mode === "move") {
+        return getMoveTargets(game, hero);
+      }
+
+      if (mode === "attack") {
+        return getAttackTargets(game, hero);
+      }
+
+      if (mode === "guard") {
+        return getGuardTargets(hero);
+      }
+
+      if (mode === "special") {
+        return hero.cooldown === 0
+          ? getSpecialTargets(hero)
+          : [];
+      }
+
+      if (mode === "bannerPick") {
+        return getBannerPickTargets();
+      }
+
+      return [];
+    }
+
+    function bladeSweepArea(hero, target) {
+      const rowDifference =
+        target.r - hero.r;
+
+      const columnDifference =
+        target.c - hero.c;
+
+      const sideFirst =
+        rowDifference !== 0
+          ? {
+              r: target.r,
+              c: target.c - 1
+            }
+          : {
+              r: target.r - 1,
+              c: target.c
+            };
+
+      const sideSecond =
+        rowDifference !== 0
+          ? {
+              r: target.r,
+              c: target.c + 1
+            }
+          : {
+              r: target.r + 1,
+              c: target.c
+            };
+
+      return [
+        target,
+        sideFirst,
+        sideSecond
+      ].filter((position) =>
+        inside(position.r, position.c)
+      );
+    }
+
+    function plusArea(
+      center,
+      includeDiagonal = false
+    ) {
+      const offsets = [
+        {
+          r: 0,
+          c: 0
+        },
+
+        ...ORTHOGONAL,
+
+        ...(includeDiagonal
+          ? DIAGONAL
+          : [])
+      ];
+
+      return offsets
+        .map((delta) => ({
+          r: center.r + delta.r,
+          c: center.c + delta.c
+        }))
+        .filter((position) =>
+          inside(position.r, position.c)
+        );
+    }
+
+    function lineArea(hero, target) {
+      const rowDirection =
+        Math.sign(target.r - hero.r);
+
+      const columnDirection =
+        Math.sign(target.c - hero.c);
+
+      const distance =
+        manhattan(hero, target);
+
+      const area = [];
+
+      for (
+        let step = 1;
+        step <= distance;
+        step += 1
+      ) {
+        area.push({
+          r: hero.r +
+            rowDirection * step,
+
+          c: hero.c +
+            columnDirection * step
+        });
+      }
+
+      return area;
+    }
+
+    function getPreviewArea(
+      hero,
+      mode,
+      target
+    ) {
+      if (!hero || !target) {
+        return {
+          friendly: [],
+          hostile: []
+        };
+      }
+
+      if (
+        mode === "move" ||
+        mode === "guard" ||
+        mode === "bannerPick"
+      ) {
+        return {
+          friendly: [target],
+          hostile: []
+        };
+      }
+
+      if (mode === "attack") {
+        return {
+          friendly: [],
+          hostile: [target]
+        };
+      }
+
+      if (mode !== "special") {
+        return {
+          friendly: [],
+          hostile: []
+        };
+      }
+
+      if (hero.type === "blade") {
+        return {
+          friendly: [],
+          hostile: bladeSweepArea(
+            hero,
+            target
+          )
+        };
+      }
+
+      if (hero.type === "shield") {
+        return {
+          friendly: plusArea(
+            target,
+            game.upgrades.shieldDiagonal
+          ),
+
+          hostile: []
+        };
+      }
+
+      if (hero.type === "spear") {
+        return {
+          friendly: [],
+          hostile: lineArea(
+            hero,
+            target
+          )
+        };
+      }
+
+      if (hero.type === "bow") {
+        return {
+          friendly: [],
+          hostile: plusArea(
+            target,
+            game.upgrades.bowDiagonal
+          )
+        };
+      }
+
+      if (hero.type === "banner") {
+        return {
+          friendly: plusArea(
+            target,
+            false
+          ),
+
+          hostile: []
+        };
+      }
+
+      return {
+        friendly: [],
+        hostile: []
+      };
+    }
+
+    function adjacentGuardian(
+      state,
+      target
+    ) {
+      return (
+        state.enemies.find(
+          (enemy) =>
+            enemy.alive &&
+            enemy.type === "guardian" &&
+            enemy.id !== target.id &&
+            manhattan(enemy, target) === 1
+        ) || null
+      );
+    }
+
+    function damageEnemy(
+      state,
+      enemyId,
+      amount,
+      sourceHero = null
+    ) {
+      const enemy = state.enemies.find(
+        (unit) =>
+          unit.id === enemyId &&
+          unit.alive
+      );
+
+      if (!enemy) {
+        return {
+          hit: false,
+          killed: false,
+          blocked: false
+        };
+      }
+
+      const guardian = adjacentGuardian(
+        state,
+        enemy
+      );
+
+      if (
+        guardian &&
+        !enemy.shieldBroken
+      ) {
+        enemy.shieldBroken = true;
+
+        return {
+          hit: false,
+          killed: false,
+          blocked: true
+        };
+      }
+
+      let finalAmount = amount;
+
+      if (
+        sourceHero &&
+        state.upgrades.finisher &&
+        enemy.hp < enemy.maxHp
+      ) {
+        finalAmount += 1;
+      }
+
+      enemy.hp -= finalAmount;
+
+      if (enemy.hp <= 0) {
+        if (state === game) {
+          playDeathAnimation(
+            enemy,
+            "enemy"
+          );
+        }
+
+        enemy.alive = false;
+
+        return {
+          hit: true,
+          killed: true,
+          blocked: false
+        };
+      }
+
+      return {
+        hit: true,
+        killed: false,
+        blocked: false
+      };
+    }
+
+    function applyBasicAttack(
+      state,
+      hero,
+      enemyId
+    ) {
+      const target = state.enemies.find(
+        (enemy) =>
+          enemy.id === enemyId &&
+          enemy.alive
+      );
+
+      if (!target) {
+        return;
+      }
+
+      const direction = {
+        r: Math.sign(target.r - hero.r),
+        c: Math.sign(target.c - hero.c)
+      };
+
+      damageEnemy(
+        state,
+        enemyId,
+        1,
+        hero
+      );
+
+      if (
+        hero.type === "bow" &&
+        state.upgrades.bowPierce
+      ) {
+        let passedTarget = false;
+
+        for (
+          let distance = 1;
+          distance <= 6;
+          distance += 1
+        ) {
+          const row =
+            hero.r +
+            direction.r * distance;
+
+          const column =
+            hero.c +
+            direction.c * distance;
+
+          if (!inside(row, column)) {
+            break;
+          }
+
+          const enemy = enemyAt(
+            state,
+            row,
+            column
+          );
+
+          if (enemy) {
+            if (
+              !passedTarget &&
+              enemy.id === enemyId
+            ) {
+              passedTarget = true;
+              continue;
+            }
+
+            if (passedTarget) {
+              damageEnemy(
+                state,
+                enemy.id,
+                1,
+                hero
+              );
+
+              break;
+            }
+          }
+
+          const blockingHero = heroAt(
+            state,
+            row,
+            column
+          );
+
+          if (
+            blockingHero &&
+            !(
+              row === hero.r &&
+              column === hero.c
+            )
+          ) {
+            break;
+          }
+        }
+      }
+    }
+
+    function finishAction(hero) {
+      hero.acted = true;
+      hero.rallyReactivated = false;
+
+      selectedHeroId = null;
+      actionMode = "move";
+      previewTarget = null;
+      previewLocked = false;
+      pendingBanner = null;
+
+      render();
+    }
+
+    function finishSpecial(hero) {
+      const base =
+        HERO_DATA[hero.type].cooldown;
+
+      hero.cooldown = Math.max(
+        1,
+        base -
+          game.upgrades.cooldownReduction
+      );
+
+      finishAction(hero);
+    }
+
+    function executeAction(
+      hero,
+      mode,
+      target
+    ) {
+      if (!hero || hero.acted) {
+        return;
+      }
+
+      if (mode === "move") {
+        hero.r = target.r;
+        hero.c = target.c;
+
+        finishAction(hero);
+        return;
+      }
+
+      if (mode === "attack") {
+        const enemy = enemyAt(
+          game,
+          target.r,
+          target.c
+        );
+
+        if (enemy) {
+          applyBasicAttack(
+            game,
+            hero,
+            enemy.id
+          );
+        }
+
+        finishAction(hero);
+        return;
+      }
+
+      if (mode === "guard") {
+        hero.guard = Math.max(
+          hero.guard,
+          1
+        );
+
+        finishAction(hero);
+        return;
+      }
+
+      if (mode === "bannerPick") {
+        const ally = game.heroes.find(
+          (unit) =>
+            unit.id === target.heroId &&
+            unit.alive
+        );
+
+        if (ally) {
+          ally.acted = false;
+          ally.rallyReactivated = true;
+        }
+
+        const banner = game.heroes.find(
+          (unit) =>
+            unit.id ===
+              pendingBanner?.bannerId &&
+            unit.alive
+        );
+
+        if (banner) {
+          finishSpecial(banner);
+        }
+
+        return;
+      }
+
+      if (mode !== "special") {
+        return;
+      }
+
+      const area = getPreviewArea(
+        hero,
+        mode,
+        target
+      );
+
+      if (hero.type === "blade") {
+        for (const position of area.hostile) {
+          const enemy = enemyAt(
+            game,
+            position.r,
+            position.c
+          );
+
+          if (enemy) {
+            damageEnemy(
+              game,
+              enemy.id,
+              1 +
+                game.upgrades.bladePower,
+              hero
+            );
+          }
+        }
+
+        finishSpecial(hero);
+        return;
+      }
+
+      if (hero.type === "shield") {
+        for (const position of area.friendly) {
+          const ally = heroAt(
+            game,
+            position.r,
+            position.c
+          );
+
+          if (ally) {
+            ally.guard = Math.max(
+              ally.guard,
+              1
+            );
+          }
+        }
+
+        finishSpecial(hero);
+        return;
+      }
+
+      if (hero.type === "spear") {
+        for (const position of area.hostile) {
+          const enemy = enemyAt(
+            game,
+            position.r,
+            position.c
+          );
+
+          if (enemy) {
+            damageEnemy(
+              game,
+              enemy.id,
+              1,
+              hero
+            );
+
+            if (enemy.alive) {
+              enemy.stunned = Math.max(
+                enemy.stunned,
+                1
+              );
+            }
+          }
+        }
+
+        finishSpecial(hero);
+        return;
+      }
+
+      if (hero.type === "bow") {
+        for (const position of area.hostile) {
+          const enemy = enemyAt(
+            game,
+            position.r,
+            position.c
+          );
+
+          if (enemy) {
+            damageEnemy(
+              game,
+              enemy.id,
+              1,
+              hero
+            );
+          }
+        }
+
+        finishSpecial(hero);
+        return;
+      }
+
+      if (hero.type === "banner") {
+        const allies = [];
+
+        for (const position of area.friendly) {
+          const ally = heroAt(
+            game,
+            position.r,
+            position.c
+          );
+
+          if (ally) {
+            ally.guard = Math.max(
+              ally.guard,
+              1
+            );
+
+            ally.rallied = true;
+            allies.push(ally);
+          }
+        }
+
+        const eligible = allies.filter(
+          (ally) =>
+            ally.id !== hero.id &&
+            ally.acted
+        );
+
+        if (!eligible.length) {
+          finishSpecial(hero);
+          return;
+        }
+
+        pendingBanner = {
+          bannerId: hero.id,
+
+          center: {
+            r: target.r,
+            c: target.c
+          },
+
+          eligibleIds: eligible.map(
+            (ally) => ally.id
+          )
+        };
+
+        actionMode = "bannerPick";
+        previewTarget = null;
+        previewLocked = false;
+
+        render();
+      }
+    }
+
+    function clonePlan(plan) {
+      if (!plan) {
+        return {
+          kind: "wait"
+        };
+      }
+
+      return {
+        ...plan,
+
+        target: plan.target
+          ? { ...plan.target }
+          : undefined,
+
+        center: plan.center
+          ? { ...plan.center }
+          : undefined,
+
+        path: plan.path
+          ? plan.path.map(
+              (position) => ({
+                ...position
+              })
+            )
+          : undefined,
+
+        targetIds: plan.targetIds
+          ? plan.targetIds.slice()
+          : undefined
+      };
+    }
+
+    function cloneState(source) {
+      return {
+        heroes: source.heroes.map(
+          (hero) => ({
+            ...hero
+          })
+        ),
+
+        enemies: source.enemies.map(
+          (enemy) => ({
+            ...enemy,
+
+            bombTarget:
+              enemy.bombTarget
+                ? {
+                    ...enemy.bombTarget
+                  }
+                : null,
+
+            plan: clonePlan(enemy.plan)
+          })
+        ),
+
+        upgrades: {
+          ...source.upgrades
+        },
+
+        reserveUsed:
+          source.reserveUsed,
+
+        damageEvents: 0
+      };
+    }
+
+    function generateSolverActions(
+      state,
+      hero
+    ) {
+      const actions = [
+        {
+          kind: "wait"
+        },
+
+        {
+          kind: "guard"
+        }
+      ];
+
+      for (
+        const target of
+        getMoveTargets(state, hero)
+      ) {
+        actions.push({
+          kind: "move",
+          r: target.r,
+          c: target.c
+        });
+      }
+
+      for (
+        const target of
+        getAttackTargets(state, hero)
+      ) {
+        actions.push({
+          kind: "attack",
+          enemyId: target.enemyId
+        });
+      }
+
+      return actions;
+    }
+
+    function applySolverAction(
+      state,
+      heroId,
+      action
+    ) {
+      const hero = state.heroes.find(
+        (unit) =>
+          unit.id === heroId &&
+          unit.alive
+      );
+
+      if (!hero) {
+        return;
+      }
+
+      if (action.kind === "guard") {
+        hero.guard = 1;
+      }
+
+      if (action.kind === "move") {
+        hero.r = action.r;
+        hero.c = action.c;
+      }
+
+      if (action.kind === "attack") {
+        applyBasicAttack(
+          state,
+          hero,
+          action.enemyId
+        );
+      }
+    }
+
+    function countFlawlessLines(limit = 10) {
+      const initial = cloneState(game);
+
+      const heroOrder = initial.heroes
+        .filter((hero) => hero.alive)
+        .map((hero) => hero.id);
+
+      let count = 0;
+
+      function search(state, index) {
+        if (count >= limit) {
+          return;
+        }
+
+        if (index >= heroOrder.length) {
+          const result = cloneState(state);
+
+          simulateEnemyPhase(result);
+
+          const beaconTaken =
+            result.enemies.some(
+              (enemy) =>
+                enemy.alive &&
+                enemy.r === BEACON.r &&
+                enemy.c === BEACON.c
+            );
+
+          if (
+            result.damageEvents === 0 &&
+            !beaconTaken &&
+            result.heroes.some(
+              (hero) => hero.alive
+            )
+          ) {
+            count += 1;
+          }
+
+          return;
+        }
+
+        const hero = state.heroes.find(
+          (unit) =>
+            unit.id === heroOrder[index] &&
+            unit.alive
+        );
+
+        if (!hero) {
+          search(state, index + 1);
+          return;
+        }
+
+        for (
+          const action of
+          generateSolverActions(state, hero)
+        ) {
+          if (count >= limit) {
+            break;
+          }
+
+          const next = cloneState(state);
+
+          applySolverAction(
+            next,
+            hero.id,
+            action
+          );
+
+          search(
+            next,
+            index + 1
+          );
+        }
+      }
+
+      search(initial, 0);
+
+      return count;
+    }
+
+    function planPressure(plan) {
+      const values = {
+        explode: 11,
+        shoot: 10,
+        attackPush: 9,
+        charge: 8,
+        attack: 7,
+        pull: 6,
+        move: 3,
+        command: 2,
+        mark: 1,
+        wait: 0
+      };
+
+      return values[plan.kind] || 0;
+    }
+
+    function ensureFlawlessLine() {
+      let safe = countFlawlessLines(10);
+
+      if (safe > 0) {
+        game.safeLines = safe;
+        return;
+      }
+
+      const candidates = aliveEnemies()
+        .filter(
+          (enemy) =>
+            enemy.plan.kind !== "wait"
+        )
+        .sort(
+          (first, second) =>
+            planPressure(second.plan) -
+              planPressure(first.plan) ||
+            (second.order || 0) -
+              (first.order || 0)
+        );
+
+      for (const enemy of candidates) {
+        enemy.plan = {
+          kind: "wait",
+          forced: true
+        };
+
+        safe = countFlawlessLines(10);
+
+        if (safe > 0) {
+          break;
+        }
+      }
+
+      game.safeLines = Math.max(
+        1,
+        safe
+      );
+    }
+
+    function damageHero(
+      state,
+      heroId,
+      attackerId = null,
+      melee = false
+    ) {
+      const hero = state.heroes.find(
+        (unit) =>
+          unit.id === heroId &&
+          unit.alive
+      );
+
+      if (!hero) {
+        return {
+          blocked: false,
+          killed: false
+        };
+      }
+
+      if (hero.guard > 0) {
+        hero.guard -= 1;
+
+        if (hero.guard === 0) {
+          hero.rallied = false;
+        }
+
+        if (
+          state.upgrades.counter &&
+          melee &&
+          attackerId
+        ) {
+          const attacker =
+            state.enemies.find(
+              (enemy) =>
+                enemy.id === attackerId &&
+                enemy.alive
+            );
+
+          if (
+            attacker &&
+            manhattan(attacker, hero) === 1
+          ) {
+            damageEnemy(
+              state,
+              attacker.id,
+              1,
+              null
+            );
+          }
+        }
+
+        return {
+          blocked: true,
+          killed: false
+        };
+      }
+
+      if (hero.armor > 0) {
+        hero.armor -= 1;
+
+        return {
+          blocked: true,
+          killed: false
+        };
+      }
+
+      if (
+        state.upgrades.reserve &&
+        !state.reserveUsed
+      ) {
+        state.reserveUsed = true;
+
+        return {
+          blocked: true,
+          killed: false
+        };
+      }
+
+      hero.hp -= 1;
+
+      state.damageEvents =
+        (state.damageEvents || 0) + 1;
+
+      if (hero.hp <= 0) {
+        if (state === game) {
+          playDeathAnimation(
+            hero,
+            "hero"
+          );
+        }
+
+        hero.alive = false;
+
+        return {
+          blocked: false,
+          killed: true
+        };
+      }
+
+      return {
+        blocked: false,
+        killed: false
+      };
+    }
+
+    function pushHero(
+      state,
+      hero,
+      enemy
+    ) {
+      if (state.upgrades.brace) {
+        return;
+      }
+
+      const rowDirection =
+        Math.sign(hero.r - enemy.r);
+
+      const columnDirection =
+        Math.sign(hero.c - enemy.c);
+
+      const row =
+        hero.r + rowDirection;
+
+      const column =
+        hero.c + columnDirection;
+
+      if (
+        inside(row, column) &&
+        !occupied(
+          state,
+          row,
+          column,
+          hero.id
+        )
+      ) {
+        hero.r = row;
+        hero.c = column;
+      }
+    }
+
+    function executePlan(
+      state,
+      enemy,
+      plan
+    ) {
+      if (
+        !enemy.alive ||
+        plan.kind === "wait"
+      ) {
+        return;
+      }
+
+      if (plan.kind === "command") {
+        return;
+      }
+
+      if (
+        plan.kind === "move" ||
+        plan.kind === "charge"
+      ) {
+        for (
+          const step of plan.path || []
+        ) {
+          if (!enemy.alive) {
+            break;
+          }
+
+          const hero = heroAt(
+            state,
+            step.r,
+            step.c
+          );
+
+          if (hero) {
+            damageHero(
+              state,
+              hero.id,
+              enemy.id,
+              true
+            );
+
+            break;
+          }
+
+          const blocker = enemyAt(
+            state,
+            step.r,
+            step.c
+          );
+
+          if (
+            blocker &&
+            blocker.id !== enemy.id
+          ) {
+            break;
+          }
+
+          enemy.r = step.r;
+          enemy.c = step.c;
+        }
+
+        return;
+      }
+
+      if (
+        [
+          "attack",
+          "shoot",
+          "attackPush"
+        ].includes(plan.kind)
+      ) {
+        const hero = heroAt(
+          state,
+          plan.target.r,
+          plan.target.c
+        );
+
+        if (!hero) {
+          return;
+        }
+
+        const result = damageHero(
+          state,
+          hero.id,
+          enemy.id,
+          plan.kind !== "shoot"
+        );
+
+        if (
+          plan.kind === "attackPush" &&
+          !result.blocked &&
+          hero.alive
+        ) {
+          pushHero(
+            state,
+            hero,
+            enemy
+          );
+        }
+
+        return;
+      }
+
+      if (plan.kind === "pull") {
+        const hero = heroAt(
+          state,
+          plan.target.r,
+          plan.target.c
+        );
+
+        if (!hero) {
+          return;
+        }
+
+        const row =
+          hero.r +
+          Math.sign(enemy.r - hero.r);
+
+        const column =
+          hero.c +
+          Math.sign(enemy.c - hero.c);
+
+        if (
+          inside(row, column) &&
+          !occupied(
+            state,
+            row,
+            column,
+            hero.id
+          )
+        ) {
+          hero.r = row;
+          hero.c = column;
+        }
+
+        return;
+      }
+
+      if (plan.kind === "mark") {
+        enemy.bombArmed = true;
+
+        enemy.bombTarget = {
+          ...plan.center
+        };
+
+        return;
+      }
+
+      if (plan.kind === "explode") {
+        const heroIds = state.heroes
+          .filter(
+            (hero) =>
+              hero.alive &&
+              Math.abs(
+                hero.r -
+                plan.center.r
+              ) <= 1 &&
+              Math.abs(
+                hero.c -
+                plan.center.c
+              ) <= 1
+          )
+          .map((hero) => hero.id);
+
+        const enemyIds = state.enemies
+          .filter(
+            (unit) =>
+              unit.alive &&
+              Math.abs(
+                unit.r -
+                plan.center.r
+              ) <= 1 &&
+              Math.abs(
+                unit.c -
+                plan.center.c
+              ) <= 1
+          )
+          .map((unit) => unit.id);
+
+        for (const heroId of heroIds) {
+          damageHero(
+            state,
+            heroId,
+            enemy.id,
+            false
+          );
+        }
+
+        for (const enemyId of enemyIds) {
+          damageEnemy(
+            state,
+            enemyId,
+            2,
+            null
+          );
+        }
+
+        if (
+          enemy.alive &&
+          state === game
+        ) {
+          playDeathAnimation(
+            enemy,
+            "enemy"
+          );
+        }
+
+        enemy.alive = false;
+      }
+    }
+
+    function simulateEnemyPhase(state) {
+      const ordered = state.enemies
+        .filter((enemy) => enemy.alive)
+        .slice()
+        .sort(
+          (first, second) =>
+            (first.order || 999) -
+            (second.order || 999)
+        );
+
+      for (const planned of ordered) {
+        const enemy = state.enemies.find(
+          (unit) =>
+            unit.id === planned.id &&
+            unit.alive
+        );
+
+        if (enemy) {
+          executePlan(
+            state,
+            enemy,
+            enemy.plan
+          );
+        }
+      }
+    }
+
+    const ENEMY_SPAWN_CURVE = [
+      {
+        type: "grunt",
+        unlock: 1,
+        start: 90,
+        growth: -2.2,
+        min: 18,
+        max: 90
+      },
+      {
+        type: "raider",
+        unlock: 4,
+        start: 30,
+        growth: -0.25,
+        min: 18,
+        max: 30
+      },
+      {
+        type: "archer",
+        unlock: 7,
+        start: 10,
+        growth: 0.12,
+        min: 10,
+        max: 14
+      },
+      {
+        type: "brute",
+        unlock: 10,
+        start: 4,
+        growth: 0.85,
+        min: 4,
+        max: 24
+      },
+      {
+        type: "hook",
+        unlock: 13,
+        start: 3,
+        growth: 0.65,
+        min: 3,
+        max: 18
+      },
+      {
+        type: "guardian",
+        unlock: 16,
+        start: 2.5,
+        growth: 0.55,
+        min: 2.5,
+        max: 17
+      },
+      {
+        type: "bomber",
+        unlock: 20,
+        start: 2,
+        growth: 0.7,
+        min: 2,
+        max: 16
+      },
+      {
+        type: "commander",
+        unlock: 24,
+        start: 1.5,
+        growth: 0.65,
+        min: 1.5,
+        max: 14
+      }
+    ];
+
+    function enemySpawnWeights(round) {
+      return ENEMY_SPAWN_CURVE
+        .filter(
+          (entry) => round >= entry.unlock
+        )
+        .map((entry) => ({
+          type: entry.type,
+
+          weight: Math.max(
+            entry.min,
+            Math.min(
+              entry.max,
+              entry.start +
+                (
+                  round - entry.unlock
+                ) *
+                  entry.growth
+            )
+          )
+        }));
+    }
+
+    function pickEnemyType(round) {
+      const entries =
+        enemySpawnWeights(round);
+
+      const total = entries.reduce(
+        (sum, entry) =>
+          sum + entry.weight,
+        0
+      );
+
+      let roll = Math.random() * total;
+
+      for (const entry of entries) {
+        roll -= entry.weight;
+
+        if (roll <= 0) {
+          return entry.type;
+        }
+      }
+
+      return "grunt";
+    }
+
+    function edgeCells() {
+      const result = [];
+
+      for (
+        let index = 0;
+        index < SIZE;
+        index += 1
+      ) {
+        result.push(
+          {
+            r: 0,
+            c: index
+          },
+          {
+            r: SIZE - 1,
+            c: index
+          }
+        );
+      }
+
+      for (
+        let index = 1;
+        index < SIZE - 1;
+        index += 1
+      ) {
+        result.push(
+          {
+            r: index,
+            c: 0
+          },
+          {
+            r: index,
+            c: SIZE - 1
+          }
+        );
+      }
+
+      return result;
+    }
+
+    function prepareIncoming() {
+      const liveCount =
+        aliveEnemies().length;
+
+      const cap = Math.min(
+        19,
+        7 +
+          Math.floor(game.round / 2)
+      );
+
+      let count = 1;
+
+      if (game.round >= 5) {
+        count = 2;
+      }
+
+      if (game.round >= 12) {
+        count = 3;
+      }
+
+      if (game.round >= 25) {
+        count = 4;
+      }
+
+      count = Math.max(
+        0,
+        Math.min(
+          count,
+          cap - liveCount
+        )
+      );
+
+      const freeEdges = shuffle(
+        edgeCells().filter(
+          (position) =>
+            !occupied(
+              game,
+              position.r,
+              position.c
+            )
+        )
+      );
+
+      const incoming = [];
+
+      for (
+        let index = 0;
+        index < count &&
+        index < freeEdges.length;
+        index += 1
+      ) {
+        let type =
+          pickEnemyType(game.round);
+
+        if (
+          ["bomber", "commander"].includes(
+            type
+          ) &&
+          incoming.some(
+            (item) => item.type === type
+          )
+        ) {
+          type = "grunt";
+        }
+
+        incoming.push({
+          ...freeEdges[index],
+          type
+        });
+      }
+
+      game.incoming = incoming;
+    }
+
+    function spawnIncoming() {
+      for (const spawn of game.incoming) {
+        if (
+          !occupied(
+            game,
+            spawn.r,
+            spawn.c
+          )
+        ) {
+          game.enemies.push(
+            makeEnemy(
+              spawn.type,
+              spawn.r,
+              spawn.c
+            )
+          );
+        }
+      }
+
+      game.incoming = [];
+    }
+
+    function planCellSets() {
+      const danger = new Set();
+      const route = new Set();
+      const marked = new Set();
+      const explode = new Set();
+      const forced = new Set();
+
+      for (const enemy of aliveEnemies()) {
+        const plan =
+          enemy.plan || {
+            kind: "wait"
+          };
+
+        if (
+          [
+            "attack",
+            "shoot",
+            "attackPush",
+            "pull"
+          ].includes(plan.kind) &&
+          plan.target
+        ) {
+          danger.add(
+            key(
+              plan.target.r,
+              plan.target.c
+            )
+          );
+        }
+
+        if (
+          ["move", "charge"].includes(
+            plan.kind
+          )
+        ) {
+          for (
+            const position of
+            plan.path || []
+          ) {
+            route.add(
+              key(
+                position.r,
+                position.c
+              )
+            );
+          }
+        }
+
+        if (
+          ["mark", "explode"].includes(
+            plan.kind
+          ) &&
+          plan.center
+        ) {
+          for (
+            const position of
+            plusArea(
+              plan.center,
+              true
+            )
+          ) {
+            if (plan.kind === "mark") {
+              marked.add(
+                key(
+                  position.r,
+                  position.c
+                )
+              );
+            } else {
+              explode.add(
+                key(
+                  position.r,
+                  position.c
+                )
+              );
+            }
+          }
+        }
+
+        if (
+          plan.kind === "pull" &&
+          plan.target
+        ) {
+          const row =
+            plan.target.r +
+            Math.sign(
+              enemy.r -
+              plan.target.r
+            );
+
+          const column =
+            plan.target.c +
+            Math.sign(
+              enemy.c -
+              plan.target.c
+            );
+
+          if (inside(row, column)) {
+            forced.add(
+              key(row, column)
+            );
+          }
+        }
+
+        if (
+          plan.kind === "attackPush" &&
+          plan.target
+        ) {
+          const row =
+            plan.target.r +
+            Math.sign(
+              plan.target.r -
+              enemy.r
+            );
+
+          const column =
+            plan.target.c +
+            Math.sign(
+              plan.target.c -
+              enemy.c
+            );
+
+          if (inside(row, column)) {
+            forced.add(
+              key(row, column)
+            );
+          }
+        }
+      }
+
+      return {
+        danger,
+        route,
+        marked,
+        explode,
+        forced
+      };
+    }
+
+    function heroesHitThisEnemyTurn() {
+      const threatened = new Set();
+
+      if (game.phase !== "player") {
+        return threatened;
+      }
+
+      for (const enemy of aliveEnemies()) {
+        const plan =
+          enemy.plan || {
+            kind: "wait"
+          };
+
+        if (
+          [
+            "attack",
+            "shoot",
+            "attackPush"
+          ].includes(plan.kind) &&
+          plan.target
+        ) {
+          const target = heroAt(
+            game,
+            plan.target.r,
+            plan.target.c
+          );
+
+          if (target) {
+            threatened.add(target.id);
+          }
+        }
+
+        if (
+          ["move", "charge"].includes(
+            plan.kind
+          )
+        ) {
+          for (
+            const position of
+            plan.path || []
+          ) {
+            const target = heroAt(
+              game,
+              position.r,
+              position.c
+            );
+
+            if (target) {
+              threatened.add(target.id);
+              break;
+            }
+          }
+        }
+
+        if (
+          plan.kind === "explode" &&
+          plan.center
+        ) {
+          for (const hero of aliveHeroes()) {
+            if (
+              Math.abs(
+                hero.r - plan.center.r
+              ) <= 1 &&
+              Math.abs(
+                hero.c - plan.center.c
+              ) <= 1
+            ) {
+              threatened.add(hero.id);
+            }
+          }
+        }
+      }
+
+      return threatened;
+    }
+
+    function intentSymbol(enemy) {
+      const plan =
+        enemy.plan || {
+          kind: "wait"
+        };
+
+      if (plan.kind === "wait") {
+        return plan.stunned
+          ? "×"
+          : "·";
+      }
+
+      if (plan.kind === "attack") {
+        return "!";
+      }
+
+      if (plan.kind === "attackPush") {
+        return "»";
+      }
+
+      if (plan.kind === "shoot") {
+        return "→";
+      }
+
+      if (plan.kind === "pull") {
+        return "↶";
+      }
+
+      if (plan.kind === "mark") {
+        return "○";
+      }
+
+      if (plan.kind === "explode") {
+        return "×";
+      }
+
+      if (plan.kind === "command") {
+        return "+";
+      }
+
+      if (plan.kind === "charge") {
+        return "»";
+      }
+
+      if (plan.kind === "move") {
+        return "›";
+      }
+
+      return "·";
+    }
+
+    function render() {
+      if (!game) {
+        return;
+      }
+
+      const hero = selectedHero();
+
+      const targets =
+        getActionTargets(hero);
+
+      const targetKeys = new Set(
+        targets.map(
+          (target) =>
+            key(
+              target.r,
+              target.c
+            )
+        )
+      );
+
+      const preview = previewTarget
+        ? getPreviewArea(
+            hero,
+            actionMode,
+            previewTarget
+          )
+        : {
+            friendly: [],
+            hostile: []
+          };
+
+      const friendlyKeys = new Set(
+        preview.friendly.map(
+          (position) =>
+            key(
+              position.r,
+              position.c
+            )
+        )
+      );
+
+      const hostileKeys = new Set(
+        preview.hostile.map(
+          (position) =>
+            key(
+              position.r,
+              position.c
+            )
+        )
+      );
+
+      const planSets =
+        planCellSets();
+
+      const threatenedHeroes =
+        heroesHitThisEnemyTurn();
+
+      for (const cell of cells) {
+        const row =
+          Number(cell.dataset.r);
+
+        const column =
+          Number(cell.dataset.c);
+
+        const cellKey =
+          key(row, column);
+
+        cell.className = "cell";
+        cell.innerHTML = "";
+
+        if (
+          planSets.route.has(cellKey)
+        ) {
+          cell.classList.add(
+            "enemy-route"
+          );
+        }
+
+        if (
+          planSets.danger.has(cellKey)
+        ) {
+          cell.classList.add(
+            "enemy-danger"
+          );
+        }
+
+        if (
+          planSets.marked.has(cellKey)
+        ) {
+          cell.classList.add(
+            "enemy-marked"
+          );
+        }
+
+        if (
+          planSets.explode.has(cellKey)
+        ) {
+          cell.classList.add(
+            "enemy-explode"
+          );
+        }
+
+        if (
+          planSets.forced.has(cellKey)
+        ) {
+          cell.classList.add(
+            "forced-destination"
+          );
+        }
+
+        if (
+          targetKeys.has(cellKey)
+        ) {
+          cell.classList.add("legal");
+
+          if (actionMode === "move") {
+            cell.classList.add(
+              "move-target"
+            );
+          }
+        }
+
+        if (
+          friendlyKeys.has(cellKey)
+        ) {
+          cell.classList.add(
+            "preview-friendly"
+          );
+        }
+
+        if (
+          hostileKeys.has(cellKey)
+        ) {
+          cell.classList.add(
+            "preview-hostile"
+          );
+        }
+
+        if (
+          row === BEACON.r &&
+          column === BEACON.c
+        ) {
+          const beacon =
+            document.createElement("div");
+
+          beacon.className = "beacon";
+          cell.appendChild(beacon);
+        }
+
+        const currentHero = heroAt(
+          game,
+          row,
+          column
+        );
+
+        const enemy = enemyAt(
+          game,
+          row,
+          column
+        );
+
+        const spawn =
+          game.incoming.find(
+            (item) =>
+              item.r === row &&
+              item.c === column
+          );
+
+        if (currentHero) {
+          cell.appendChild(
+            renderHero(
+              currentHero,
+              threatenedHeroes.has(
+                currentHero.id
+              )
+            )
+          );
+        } else if (enemy) {
+          cell.appendChild(
+            renderEnemy(enemy)
+          );
+        } else if (spawn) {
+          cell.appendChild(
+            renderSpawn(spawn)
+          );
+        }
+      }
+
+      drawIntentLayer();
+
+      roundLabel.textContent =
+        String(game.round).padStart(
+          2,
+          "0"
+        );
+
+      enemyCount.textContent =
+        String(
+          aliveEnemies().length
+        ).padStart(2, "0");
+
+      renderSquad();
+      renderControls();
+    }
+
+    function makePieceVisual(
+      file,
+      fallbackLetter,
+      alternativeText
+    ) {
+      if (
+        assetStatus.get(file) !== false
+      ) {
+        const image =
+          document.createElement("img");
+
+        image.className =
+          "piece-image";
+
+        image.src =
+          ASSET_ROOT + file;
+
+        image.alt =
+          alternativeText;
+
+        image.draggable = false;
+
+        image.addEventListener(
+          "error",
+          () => {
+            assetStatus.set(
+              file,
+              false
+            );
+
+            image.replaceWith(
+              makeFallback(
+                fallbackLetter
+              )
+            );
+          },
+          {
+            once: true
+          }
+        );
+
+        return image;
+      }
+
+      return makeFallback(
+        fallbackLetter
+      );
+    }
+
+    function makeFallback(letter) {
+      const fallback =
+        document.createElement("span");
+
+      fallback.className =
+        "piece-fallback";
+
+      fallback.textContent = letter;
+
+      return fallback;
+    }
+
+    function renderHealthPips(
+      current,
+      maximum
+    ) {
+      const wrap =
+        document.createElement("span");
+
+      wrap.className =
+        "health-pips";
+
+      for (
+        let index = 1;
+        index <= maximum;
+        index += 1
+      ) {
+        const pip =
+          document.createElement("span");
+
+        pip.className =
+          "health-pip";
+
+        if (index <= current) {
+          pip.classList.add("filled");
+        }
+
+        if (
+          current === 1 &&
+          index === 1
+        ) {
+          pip.classList.add("last");
+        }
+
+        wrap.appendChild(pip);
+      }
+
+      return wrap;
+    }
+
+    function formatPosition(unit) {
+      return (
+        `ROW ${unit.r + 1} · COLUMN ${unit.c + 1}`
+      );
+    }
+
+    function heroNameAt(position) {
+      if (!position) {
+        return "its target";
+      }
+
+      const hero = heroAt(
+        game,
+        position.r,
+        position.c
+      );
+
+      return hero
+        ? HERO_DATA[hero.type].name
+        : `row ${position.r + 1}, column ${position.c + 1}`;
+    }
+
+    function describeEnemyPlan(enemy) {
+      const plan =
+        enemy.plan || {
+          kind: "wait"
+        };
+
+      if (plan.kind === "wait") {
+        return plan.stunned
+          ? "THIS TURN · Stunned. It will take no action."
+          : "THIS TURN · Waiting. It has no effective action.";
+      }
+
+      if (plan.kind === "attack") {
+        return (
+          `THIS TURN · Attacks ${heroNameAt(plan.target)} for 1 damage.`
+        );
+      }
+
+      if (plan.kind === "attackPush") {
+        return (
+          `THIS TURN · Attacks ${heroNameAt(plan.target)} for 1 damage, then pushes it if the hit is not blocked.`
+        );
+      }
+
+      if (plan.kind === "shoot") {
+        return (
+          `THIS TURN · Shoots ${heroNameAt(plan.target)} for 1 damage along the red dashed line.`
+        );
+      }
+
+      if (plan.kind === "pull") {
+        return (
+          `THIS TURN · Pulls ${heroNameAt(plan.target)} one space closer. This does not deal damage.`
+        );
+      }
+
+      if (
+        plan.kind === "move" ||
+        plan.kind === "charge"
+      ) {
+        const routeLength =
+          plan.path?.length || 0;
+
+        return (
+          `THIS TURN · ${plan.kind === "charge" ? "Charges" : "Moves"} ${routeLength} space${routeLength === 1 ? "" : "s"} along the black route. A hero entering that route will be hit.`
+        );
+      }
+
+      if (plan.kind === "mark") {
+        return (
+          `THIS TURN · Marks a 3×3 blast area centered on row ${plan.center.r + 1}, column ${plan.center.c + 1}. It will detonate on the Bomber's next turn if the Bomber survives.`
+        );
+      }
+
+      if (plan.kind === "explode") {
+        return (
+          `THIS TURN · Detonates the marked 3×3 area centered on row ${plan.center.r + 1}, column ${plan.center.c + 1}.`
+        );
+      }
+
+      if (plan.kind === "command") {
+        const count =
+          plan.targetIds?.length || 0;
+
+        return (
+          `THIS TURN · Commands ${count} nearby enem${count === 1 ? "y" : "ies"}, extending planned movement where possible.`
+        );
+      }
+
+      return "THIS TURN · Intent unknown.";
+    }
+
+    function upgradeDescription(
+      upgrade,
+      rank
+    ) {
+      if (upgrade.id === "bladePower") {
+        return (
+          `HEAVY EDGE${rank > 1 ? ` ×${rank}` : ""} · Sweep deals ${rank} additional damage.`
+        );
+      }
+
+      if (upgrade.id === "cooldown") {
+        return (
+          `BATTLE RHYTHM${rank > 1 ? ` ×${rank}` : ""} · This piece's special cooldown is ${rank} round${rank === 1 ? "" : "s"} shorter.`
+        );
+      }
+
+      if (upgrade.id === "reserve") {
+        return (
+          `LAST STAND · The first unguarded squad hit each round is blocked. It is ${game.reserveUsed ? "already spent" : "still available"} this round.`
+        );
+      }
+
+      return (
+        `${upgrade.name}${rank > 1 ? ` ×${rank}` : ""} · ${upgrade.text}`
+      );
+    }
+
+    function heroPowerups(hero) {
+      const specific = {
+        blade: ["bladePower"],
+        shield: ["shieldDiagonal"],
+        spear: [
+          "spearReach",
+          "spearFlexible"
+        ],
+        bow: [
+          "bowDiagonal",
+          "bowPierce"
+        ],
+        banner: ["bannerRange"]
+      };
+
+      const common = [
+        "counter",
+        "cooldown",
+        "reserve",
+        "brace",
+        "finisher"
+      ];
+
+      const ids = [
+        ...(specific[hero.type] || []),
+        ...common
+      ];
+
+      const descriptions = ids
+        .map((id) => {
+          const rank =
+            game.upgradeRanks[id] || 0;
+
+          if (rank <= 0) {
+            return null;
+          }
+
+          const upgrade =
+            UPGRADE_POOL.find(
+              (item) => item.id === id
+            );
+
+          return upgrade
+            ? upgradeDescription(
+                upgrade,
+                rank
+              )
+            : null;
+        })
+        .filter(Boolean);
+
+      if (hero.armor > 0) {
+        descriptions.push(
+          `LIGHT PLATE · ${hero.armor} Armor remaining. Each Armor blocks one future hit.`
+        );
+      }
+
+      if (hero.rallied && hero.guard > 0) {
+        descriptions.push(
+          "RALLY GUARD · Rally supplied the Guard currently protecting this piece."
+        );
+      }
+
+      if (hero.rallyReactivated) {
+        descriptions.push(
+          "RALLY REACTIVATION · Rally returned this piece's action for the current turn."
+        );
+      }
+
+      return descriptions;
+    }
+
+    function addPieceInfoSection(
+      title,
+      lines,
+      emptyMessage = ""
+    ) {
+      const section =
+        document.createElement("section");
+
+      section.className =
+        "piece-info-section";
+
+      const heading =
+        document.createElement("h3");
+
+      heading.className =
+        "piece-info-section-title";
+
+      heading.textContent = title;
+      section.appendChild(heading);
+
+      if (lines.length) {
+        const list =
+          document.createElement("ul");
+
+        list.className =
+          "piece-info-list";
+
+        for (const line of lines) {
+          const item =
+            document.createElement("li");
+
+          item.textContent = line;
+          list.appendChild(item);
+        }
+
+        section.appendChild(list);
+      } else {
+        const empty =
+          document.createElement("p");
+
+        empty.className =
+          "piece-info-empty";
+
+        empty.textContent =
+          emptyMessage ||
+          "Nothing currently applies.";
+
+        section.appendChild(empty);
+      }
+
+      pieceInfoBody.appendChild(section);
+    }
+
+    function addPieceInfoCallout(
+      text,
+      safe = false
+    ) {
+      const callout =
+        document.createElement("div");
+
+      callout.className =
+        "piece-info-callout";
+
+      if (safe) {
+        callout.classList.add("safe");
+      }
+
+      callout.textContent = text;
+      pieceInfoBody.appendChild(callout);
+    }
+
+    function closePieceInfo(
+      restoreFocus = true
+    ) {
+      if (
+        !pieceInfoOverlay.classList.contains(
+          "show"
+        )
+      ) {
+        return;
+      }
+
+      pieceInfoOverlay.classList.remove(
+        "show"
+      );
+
+      if (
+        restoreFocus &&
+        pieceInfoReturnFocus?.isConnected
+      ) {
+        pieceInfoReturnFocus.focus();
+      }
+
+      pieceInfoReturnFocus = null;
+    }
+
+    function openPieceInfo(
+      kind,
+      unit,
+      trigger
+    ) {
+      pieceInfoReturnFocus = trigger;
+      pieceInfoPortrait.innerHTML = "";
+      pieceInfoBody.innerHTML = "";
+      pieceInfoScroll.scrollTop = 0;
+
+      const isHero =
+        kind === "hero";
+
+      const type = unit.type;
+
+      const data = isHero
+        ? HERO_DATA[type]
+        : ENEMY_DATA[type];
+
+      const reference = isHero
+        ? HERO_REFERENCE[type]
+        : ENEMY_REFERENCE[type];
+
+      pieceInfoPortrait.className =
+        `piece-info-portrait ${isHero ? "hero-portrait" : "enemy-portrait"}`;
+
+      pieceInfoPortrait.appendChild(
+        makePieceVisual(
+          data.image,
+          data.letter,
+          `${isHero ? "Hero" : "Enemy"} ${type}`
+        )
+      );
+
+      pieceInfoKicker.textContent =
+        kind === "spawn"
+          ? "INCOMING ENEMY"
+          : isHero
+            ? "SQUAD PIECE"
+            : "ENEMY PIECE";
+
+      pieceInfoTitle.textContent =
+        isHero
+          ? data.name
+          : type.toUpperCase();
+
+      pieceInfoSubtitle.textContent =
+        reference.role;
+
+      if (isHero) {
+        const cooldown =
+          unit.cooldown > 0
+            ? `${unit.cooldown} round${unit.cooldown === 1 ? "" : "s"} remaining`
+            : "ready";
+
+        const threatened =
+          heroesHitThisEnemyTurn().has(
+            unit.id
+          );
+
+        addPieceInfoCallout(
+          threatened
+            ? "DANGER · An enemy plan will hit this piece when the turn ends unless the board state changes."
+            : "SAFE FROM CURRENT HITS · No current enemy damage plan lands on this piece.",
+          !threatened
+        );
+
+        addPieceInfoSection(
+          "CURRENT STATUS",
+          [
+            `HEALTH · ${unit.hp}/${unit.maxHp}`,
+            `ACTION · ${unit.acted ? "Already acted" : "Ready to act"}`,
+            `SPECIAL · ${data.special} is ${cooldown}`,
+            `DEFENSE · ${unit.guard} Guard · ${unit.armor} Armor`,
+            `POSITION · ${formatPosition(unit)}`
+          ]
+        );
+
+        addPieceInfoSection(
+          "ABILITIES",
+          reference.abilities
+        );
+
+        addPieceInfoSection(
+          `SPECIAL · ${data.special}`,
+          [reference.special]
+        );
+
+        addPieceInfoSection(
+          "POWERUPS AFFECTING THIS PIECE",
+          heroPowerups(unit),
+          "No acquired or temporary powerups currently affect this piece."
+        );
+      } else if (kind === "spawn") {
+        addPieceInfoCallout(
+          "INCOMING · This piece enters after the enemy phase if its edge space remains open."
+        );
+
+        addPieceInfoSection(
+          "BASE STATUS",
+          [
+            `HEALTH · ${data.hp}`,
+            `SPAWN SPACE · ${formatPosition(unit)}`
+          ]
+        );
+
+        addPieceInfoSection(
+          "BEHAVIOR",
+          [reference.behavior]
+        );
+      } else {
+        const effects = [];
+
+        if (unit.commanded) {
+          effects.push(
+            "COMMANDED · Its planned movement is extended by 1 space."
+          );
+        }
+
+        if (unit.stunned > 0) {
+          effects.push(
+            "STUNNED · It will skip its next planned action."
+          );
+        }
+
+        if (unit.bombArmed) {
+          effects.push(
+            "BOMB ARMED · Its marked area is set to detonate."
+          );
+        }
+
+        if (unit.shieldBroken) {
+          effects.push(
+            "GUARDIAN BLOCK SPENT · Its protection from an adjacent Guardian has already been used this round."
+          );
+        }
+
+        addPieceInfoCallout(
+          describeEnemyPlan(unit),
+          unit.plan?.kind === "wait"
+        );
+
+        addPieceInfoSection(
+          "CURRENT STATUS",
+          [
+            `HEALTH · ${unit.hp}/${unit.maxHp}`,
+            `ACTION ORDER · ${unit.order || "—"}`,
+            `POSITION · ${formatPosition(unit)}`
+          ]
+        );
+
+        addPieceInfoSection(
+          "BEHAVIOR",
+          [reference.behavior]
+        );
+
+        addPieceInfoSection(
+          "CURRENT EFFECTS",
+          effects,
+          "No additional effects are currently modifying this enemy."
+        );
+      }
+
+      pieceInfoOverlay.classList.add(
+        "show"
+      );
+
+      requestAnimationFrame(() => {
+        pieceInfoClose.focus();
+      });
+    }
+
+    function makePieceInfoButton(
+      kind,
+      unit
+    ) {
+      const button =
+        document.createElement("button");
+
+      const isHero =
+        kind === "hero";
+
+      const name = isHero
+        ? HERO_DATA[unit.type].name
+        : unit.type.toUpperCase();
+
+      button.type = "button";
+      button.className =
+        "piece-info-button";
+
+      button.textContent = "?";
+      button.title =
+        `Open ${name} details`;
+
+      button.setAttribute(
+        "aria-label",
+        `Open ${name} abilities and status`
+      );
+
+      button.addEventListener(
+        "pointerdown",
+        (event) => {
+          event.stopPropagation();
+        }
+      );
+
+      button.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          openPieceInfo(
+            kind,
+            unit,
+            button
+          );
+        }
+      );
+
+      return button;
+    }
+
+    function renderHero(
+      hero,
+      incomingHit = false
+    ) {
+      const data =
+        HERO_DATA[hero.type];
+
+      const unit =
+        document.createElement("div");
+
+      unit.className =
+        "unit hero";
+
+      if (
+        hero.id === selectedHeroId
+      ) {
+        unit.classList.add("selected");
+      }
+
+      if (hero.acted) {
+        unit.classList.add("acted");
+      }
+
+      if (incomingHit) {
+        unit.classList.add(
+          "incoming-hit"
+        );
+      }
+
+      if (
+        hero.type === "banner" &&
+        hero.id === selectedHeroId &&
+        (
+          actionMode === "special" ||
+          actionMode === "bannerPick"
+        )
+      ) {
+        unit.classList.add(
+          "rally-source"
+        );
+      }
+
+      if (
+        actionMode === "bannerPick" &&
+        pendingBanner?.eligibleIds.includes(
+          hero.id
+        )
+      ) {
+        unit.classList.add(
+          "rally-eligible"
+        );
+      }
+
+      if (hero.rallyReactivated) {
+        unit.classList.add(
+          "rally-reactivated"
+        );
+      }
+
+      unit.title = incomingHit
+        ? `${data.name} · WILL BE HIT THIS ENEMY TURN`
+        : data.name;
+
+      unit.appendChild(
+        makePieceVisual(
+          data.image,
+          data.letter,
+          data.name
+        )
+      );
+
+      unit.appendChild(
+        renderHealthPips(
+          hero.hp,
+          hero.maxHp
+        )
+      );
+
+      if (incomingHit) {
+        const warning =
+          document.createElement("span");
+
+        warning.className =
+          "incoming-hit-mark";
+
+        warning.textContent = "HIT";
+        warning.title =
+          "An enemy will hit this unit when the turn ends.";
+
+        unit.appendChild(warning);
+      }
+
+      if (hero.cooldown > 0) {
+        const cooldown =
+          document.createElement("span");
+
+        cooldown.className =
+          "cooldown-mark";
+
+        cooldown.textContent =
+          String(hero.cooldown);
+
+        unit.appendChild(cooldown);
+      }
+
+      if (
+        hero.guard > 0 ||
+        hero.armor > 0
+      ) {
+        const status =
+          document.createElement("span");
+
+        status.className =
+          "status-mark";
+
+        status.textContent =
+          hero.guard > 0
+            ? "G"
+            : "□";
+
+        status.title =
+          hero.guard > 0
+            ? "GUARD · BLOCKS ONE HIT"
+            : "ARMOR · BLOCKS ONE HIT";
+
+        unit.appendChild(status);
+      }
+
+      if (hero.rallyReactivated) {
+        const rally =
+          document.createElement("span");
+
+        rally.className =
+          "rally-mark";
+
+        rally.textContent = "↻";
+        rally.title =
+          "RALLY · THIS ALLY MAY ACT AGAIN";
+
+        unit.appendChild(rally);
+      }
+
+      unit.appendChild(
+        makePieceInfoButton(
+          "hero",
+          hero
+        )
+      );
+
+      return unit;
+    }
+
+    function renderEnemy(enemy) {
+      const data =
+        ENEMY_DATA[enemy.type];
+
+      const unit =
+        document.createElement("div");
+
+      unit.className =
+        "unit enemy";
+
+      if (enemy.commanded) {
+        unit.classList.add(
+          "commanded"
+        );
+      }
+
+      unit.title =
+        enemy.type.toUpperCase();
+
+      unit.appendChild(
+        makePieceVisual(
+          data.image,
+          data.letter,
+          enemy.type
+        )
+      );
+
+      unit.appendChild(
+        renderHealthPips(
+          enemy.hp,
+          enemy.maxHp
+        )
+      );
+
+      const order =
+        document.createElement("span");
+
+      order.className =
+        "order-mark";
+
+      order.textContent =
+        String(enemy.order || "");
+
+      unit.appendChild(order);
+
+      const intent =
+        document.createElement("span");
+
+      intent.className =
+        "intent-mark";
+
+      intent.textContent =
+        intentSymbol(enemy);
+
+      unit.appendChild(intent);
+
+      unit.appendChild(
+        makePieceInfoButton(
+          "enemy",
+          enemy
+        )
+      );
+
+      return unit;
+    }
+
+    function renderSpawn(spawn) {
+      const data =
+        ENEMY_DATA[spawn.type];
+
+      const wrap =
+        document.createElement("div");
+
+      wrap.className =
+        "spawn-ghost";
+
+      wrap.title =
+        `Incoming ${spawn.type}`;
+
+      wrap.appendChild(
+        makePieceVisual(
+          data.image,
+          data.letter,
+          `Incoming ${spawn.type}`
+        )
+      );
+
+      wrap.appendChild(
+        makePieceInfoButton(
+          "spawn",
+          spawn
+        )
+      );
+
+      return wrap;
+    }
+
+    function renderSquad() {
+      squadStatus.innerHTML = "";
+
+      for (const hero of game.heroes) {
+        const dot =
+          document.createElement("span");
+
+        dot.className =
+          "squad-dot";
+
+        if (!hero.alive) {
+          dot.classList.add("lost");
+        } else if (hero.hp === 1) {
+          dot.classList.add(
+            "wounded"
+          );
+        }
+
+        squadStatus.appendChild(dot);
+      }
+    }
+
+    function renderControls() {
+      const hero = selectedHero();
+
+      const canAct = Boolean(
+        hero &&
+        !hero.acted &&
+        game.phase === "player"
+      );
+
+      const bannerPick =
+        actionMode === "bannerPick";
+
+      moveButton.disabled =
+        !canAct || bannerPick;
+
+      attackButton.disabled =
+        !canAct || bannerPick;
+
+      guardButton.disabled =
+        !canAct || bannerPick;
+
+      specialButton.disabled =
+        !canAct ||
+        hero.cooldown > 0 ||
+        bannerPick;
+
+      endButton.disabled =
+        game.phase !== "player" ||
+        bannerPick;
+
+      moveButton.classList.toggle(
+        "active",
+        actionMode === "move"
+      );
+
+      attackButton.classList.toggle(
+        "active",
+        actionMode === "attack"
+      );
+
+      guardButton.classList.toggle(
+        "active",
+        actionMode === "guard"
+      );
+
+      specialButton.classList.toggle(
+        "active",
+        actionMode === "special" ||
+        bannerPick
+      );
+
+      specialButton.classList.toggle(
+        "special-ready",
+        canAct &&
+        hero.cooldown === 0
+      );
+
+      if (!hero) {
+        unitLine.textContent =
+          game.phase === "player"
+            ? "SELECT A UNIT · RED GLOW = WILL BE HIT WHEN THE TURN ENDS"
+            : "";
+
+        specialButton.textContent =
+          "SPECIAL";
+        specialButton.title = "";
+      } else if (bannerPick) {
+        unitLine.textContent =
+          "RALLY APPLIED · GREEN + ALLIES GAIN GUARD · CHOOSE 1 GLOWING ALLY TO ACT AGAIN";
+
+        specialButton.textContent =
+          "RALLY";
+        specialButton.title =
+          "Rally gave every ally in the green plus-shaped area Guard. Choose one ally that already acted to act again.";
+      } else {
+        const data =
+          HERO_DATA[hero.type];
+
+        const health =
+          `${hero.hp}/${hero.maxHp}`;
+
+        unitLine.textContent =
+          hero.type === "banner"
+            ? `BANNER · ${health} · RALLY: GREEN + ALLIES GAIN GUARD; ONE ACTED ALLY ACTS AGAIN`
+            : `${data.name} · ${health}`;
+
+        specialButton.textContent =
+          hero.cooldown > 0
+            ? `${data.special} ${hero.cooldown}`
+            : data.special;
+
+        specialButton.title =
+          hero.type === "banner"
+            ? "Rally: choose a plus-shaped area. Allies there gain Guard, then one ally that already acted may act again."
+            : data.special;
+      }
+    }
+
+    function cellCenter(position) {
+      return {
+        x: position.c * 100 + 50,
+        y: position.r * 100 + 50
+      };
+    }
+
+    function svgLine(
+      from,
+      to,
+      options = {}
+    ) {
+      const start =
+        cellCenter(from);
+
+      const end =
+        cellCenter(to);
+
+      const line =
+        document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "line"
+        );
+
+      line.setAttribute(
+        "x1",
+        start.x
+      );
+
+      line.setAttribute(
+        "y1",
+        start.y
+      );
+
+      line.setAttribute(
+        "x2",
+        end.x
+      );
+
+      line.setAttribute(
+        "y2",
+        end.y
+      );
+
+      line.setAttribute(
+        "stroke",
+        options.color || "#111111"
+      );
+
+      line.setAttribute(
+        "stroke-width",
+        options.width || "4"
+      );
+
+      line.setAttribute(
+        "stroke-linecap",
+        "round"
+      );
+
+      line.setAttribute(
+        "opacity",
+        options.opacity || "0.82"
+      );
+
+      if (options.dash) {
+        line.setAttribute(
+          "stroke-dasharray",
+          options.dash
+        );
+      }
+
+      if (options.marker) {
+        line.setAttribute(
+          "marker-end",
+          `url(#${options.marker})`
+        );
+      }
+
+      intentLayer.appendChild(line);
+    }
+
+    function drawIntentLayer() {
+      intentLayer.innerHTML = `
+        <defs>
+          <marker
+            id="arrowBlack"
+            markerWidth="8"
+            markerHeight="8"
+            refX="6"
+            refY="4"
+            orient="auto"
+            markerUnits="strokeWidth"
+          >
+            <path
+              d="M0,0 L8,4 L0,8 Z"
+              fill="#111111"
+            ></path>
+          </marker>
+
+          <marker
+            id="arrowRed"
+            markerWidth="8"
+            markerHeight="8"
+            refX="6"
+            refY="4"
+            orient="auto"
+            markerUnits="strokeWidth"
+          >
+            <path
+              d="M0,0 L8,4 L0,8 Z"
+              fill="#c91919"
+            ></path>
+          </marker>
+        </defs>
+      `;
+
+      for (const enemy of aliveEnemies()) {
+        const plan =
+          enemy.plan || {
+            kind: "wait"
+          };
+
+        if (
+          ["move", "charge"].includes(
+            plan.kind
+          ) &&
+          plan.path?.length
+        ) {
+          svgLine(
+            enemy,
+            plan.path[
+              plan.path.length - 1
+            ],
+            {
+              color: "#111111",
+
+              width:
+                plan.kind === "charge"
+                  ? "6"
+                  : "4",
+
+              marker: "arrowBlack",
+
+              dash:
+                plan.kind === "charge"
+                  ? "12 6"
+                  : null
+            }
+          );
+        }
+
+        if (
+          [
+            "attack",
+            "shoot",
+            "attackPush"
+          ].includes(plan.kind) &&
+          plan.target
+        ) {
+          svgLine(
+            enemy,
+            plan.target,
+            {
+              color: "#c91919",
+
+              width:
+                plan.kind === "shoot"
+                  ? "3"
+                  : "5",
+
+              marker: "arrowRed",
+
+              dash:
+                plan.kind === "shoot"
+                  ? "9 5"
+                  : null
+            }
+          );
+        }
+
+        if (
+          plan.kind === "pull" &&
+          plan.target
+        ) {
+          svgLine(
+            enemy,
+            plan.target,
+            {
+              color: "#c91919",
+              width: "4",
+              marker: "arrowRed",
+              dash: "5 5"
+            }
+          );
+        }
+
+        if (
+          plan.kind === "attackPush" &&
+          plan.target
+        ) {
+          const pushTo = {
+            r:
+              plan.target.r +
+              Math.sign(
+                plan.target.r -
+                enemy.r
+              ),
+
+            c:
+              plan.target.c +
+              Math.sign(
+                plan.target.c -
+                enemy.c
+              )
+          };
+
+          if (
+            inside(
+              pushTo.r,
+              pushTo.c
+            )
+          ) {
+            svgLine(
+              plan.target,
+              pushTo,
+              {
+                color: "#c91919",
+                width: "4",
+                marker: "arrowRed"
+              }
+            );
+          }
+        }
+
+        if (plan.kind === "command") {
+          for (
+            const targetId of
+            plan.targetIds || []
+          ) {
+            const target =
+              game.enemies.find(
+                (unit) =>
+                  unit.id === targetId &&
+                  unit.alive
+              );
+
+            if (target) {
+              svgLine(
+                enemy,
+                target,
+                {
+                  color: "#111111",
+                  width: "3",
+                  dash: "6 7",
+                  opacity: "0.6"
+                }
+              );
+            }
+          }
+        }
+      }
+    }
+
+    function setActionMode(mode) {
+      const hero = selectedHero();
+
+      if (
+        !hero ||
+        hero.acted ||
+        game.phase !== "player" ||
+        actionMode === "bannerPick"
+      ) {
+        return;
+      }
+
+      if (
+        mode === "special" &&
+        hero.cooldown > 0
+      ) {
+        return;
+      }
+
+      actionMode = mode;
+      previewTarget = null;
+      previewLocked = false;
+
+      render();
+    }
+
+    function onCellEnter(event) {
+      if (
+        !hoverCapable ||
+        previewLocked ||
+        game?.phase !== "player"
+      ) {
+        return;
+      }
+
+      const hero = selectedHero();
+
+      if (!hero) {
+        return;
+      }
+
+      const target = legalTargetAt(
+        Number(
+          event.currentTarget.dataset.r
+        ),
+        Number(
+          event.currentTarget.dataset.c
+        )
+      );
+
+      if (target) {
+        previewTarget = target;
+        render();
+      }
+    }
+
+    function onCellLeave() {
+      if (
+        !hoverCapable ||
+        previewLocked ||
+        game?.phase !== "player"
+      ) {
+        return;
+      }
+
+      previewTarget = null;
+      render();
+    }
+
+    function legalTargetAt(row, column) {
+      const hero = selectedHero();
+
+      if (!hero) {
+        return null;
+      }
+
+      return (
+        getActionTargets(hero).find(
+          (target) =>
+            target.r === row &&
+            target.c === column
+        ) || null
+      );
+    }
+
+    function onCellClick(event) {
+      if (
+        !game ||
+        game.phase !== "player" ||
+        game.over
+      ) {
+        return;
+      }
+
+      const row = Number(
+        event.currentTarget.dataset.r
+      );
+
+      const column = Number(
+        event.currentTarget.dataset.c
+      );
+
+      const clickedHero = heroAt(
+        game,
+        row,
+        column
+      );
+
+      const current = selectedHero();
+
+      if (
+        actionMode !== "bannerPick" &&
+        clickedHero &&
+        !clickedHero.acted &&
+        (
+          !current ||
+          !legalTargetAt(row, column)
+        )
+      ) {
+        selectedHeroId =
+          clickedHero.id;
+
+        actionMode = "move";
+        previewTarget = null;
+        previewLocked = false;
+        pendingBanner = null;
+
+        render();
+        return;
+      }
+
+      if (
+        !current ||
+        current.acted
+      ) {
+        return;
+      }
+
+      const target =
+        legalTargetAt(row, column);
+
+      if (!target) {
+        previewTarget = null;
+        previewLocked = false;
+        render();
+        return;
+      }
+
+      const samePreview =
+        previewTarget &&
+        previewTarget.r === row &&
+        previewTarget.c === column;
+
+      if (
+        !hoverCapable &&
+        !samePreview
+      ) {
+        previewTarget = target;
+        previewLocked = true;
+        render();
+        return;
+      }
+
+      executeAction(
+        current,
+        actionMode,
+        target
+      );
+    }
+
+    moveButton.addEventListener(
+      "click",
+      () => setActionMode("move")
+    );
+
+    attackButton.addEventListener(
+      "click",
+      () => setActionMode("attack")
+    );
+
+    guardButton.addEventListener(
+      "click",
+      () => setActionMode("guard")
+    );
+
+    specialButton.addEventListener(
+      "click",
+      () => setActionMode("special")
+    );
+
+    endButton.addEventListener(
+      "click",
+      endPlayerTurn
+    );
+
+    async function endPlayerTurn() {
+      if (
+        game.phase !== "player" ||
+        game.over ||
+        actionMode === "bannerPick"
+      ) {
+        return;
+      }
+
+      game.phase = "enemy";
+      selectedHeroId = null;
+      actionMode = "move";
+      previewTarget = null;
+      previewLocked = false;
+
+      render();
+
+      const ordered = aliveEnemies()
+        .slice()
+        .sort(
+          (first, second) =>
+            (first.order || 999) -
+            (second.order || 999)
+        );
+
+      for (
+        const plannedEnemy of ordered
+      ) {
+        if (game.over) {
+          break;
+        }
+
+        const enemy =
+          game.enemies.find(
+            (unit) =>
+              unit.id ===
+                plannedEnemy.id &&
+              unit.alive
+          );
+
+        if (!enemy) {
+          continue;
+        }
+
+        executePlan(
+          game,
+          enemy,
+          enemy.plan
+        );
+
+        render();
+        flashBoard();
+
+        await delay(115);
+
+        checkGameOver();
+      }
+
+      if (game.over) {
+        return;
+      }
+
+      spawnIncoming();
+
+      game.enemies =
+        game.enemies.filter(
+          (enemy) => enemy.alive
+        );
+
+      checkGameOver();
+
+      if (game.over) {
+        return;
+      }
+
+      game.completedRounds =
+        game.round;
+
+      if (
+        game.completedRounds % 5 === 0
+      ) {
+        showUpgradeChoices();
+      } else {
+        game.round += 1;
+        beginRound();
+      }
+    }
+
+    function delay(milliseconds) {
+      return new Promise(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            milliseconds
+          )
+      );
+    }
+
+    function flashBoard() {
+      boardEl.classList.remove("flash");
+
+      void boardEl.offsetWidth;
+
+      boardEl.classList.add("flash");
+    }
+
+    function checkGameOver() {
+      const noHeroes =
+        !game.heroes.some(
+          (hero) => hero.alive
+        );
+
+      const beaconTaken =
+        game.enemies.some(
+          (enemy) =>
+            enemy.alive &&
+            enemy.r === BEACON.r &&
+            enemy.c === BEACON.c
+        );
+
+      if (
+        noHeroes ||
+        beaconTaken
+      ) {
+        endGame();
+      }
+    }
+
+    function endGame() {
+      game.over = true;
+      game.phase = "over";
+
+      finalRound.textContent =
+        String(
+          game.completedRounds ||
+          Math.max(
+            0,
+            game.round - 1
+          )
+        );
+
+      render();
+
+      const showGameOver = () => {
+        if (!game?.over) {
+          return;
+        }
+
+        gameOverOverlay.classList.add(
+          "show"
+        );
+
+        gameOverTimer = null;
+      };
+
+      if (
+        deathEffectLayer.querySelector(
+          ".hero-death"
+        )
+      ) {
+        gameOverTimer =
+          window.setTimeout(
+            showGameOver,
+            760
+          );
+      } else {
+        showGameOver();
+      }
+    }
+
+    const UPGRADE_POOL = [
+      {
+        id: "bladePower",
+        max: 2,
+        symbol: "B+",
+        name: "HEAVY EDGE",
+        text:
+          "Sweep deals one more damage.",
+
+        apply() {
+          game.upgrades.bladePower += 1;
+        }
+      },
+
+      {
+        id: "shieldDiagonal",
+        max: 1,
+        symbol: "S+",
+        name: "WIDE BULWARK",
+        text:
+          "Bulwark also protects diagonal spaces.",
+
+        apply() {
+          game.upgrades.shieldDiagonal =
+            true;
+        }
+      },
+
+      {
+        id: "spearReach",
+        max: 1,
+        symbol: "P+",
+        name: "LONG SHAFT",
+        text:
+          "Impale may target four spaces away.",
+
+        apply() {
+          game.upgrades.spearReach = 4;
+        }
+      },
+
+      {
+        id: "spearFlexible",
+        max: 1,
+        symbol: "P1",
+        name: "SHORT GRIP",
+        text:
+          "Spear basic attacks may strike at range one or two.",
+
+        apply() {
+          game.upgrades.spearFlexible =
+            true;
+        }
+      },
+
+      {
+        id: "bowDiagonal",
+        max: 1,
+        symbol: "W+",
+        name: "WIDE VOLLEY",
+        text:
+          "Volley also hits diagonal spaces.",
+
+        apply() {
+          game.upgrades.bowDiagonal =
+            true;
+        }
+      },
+
+      {
+        id: "bowPierce",
+        max: 1,
+        symbol: "W2",
+        name: "PIERCING SHOT",
+        text:
+          "Bow basic attacks may hit a second enemy in line.",
+
+        apply() {
+          game.upgrades.bowPierce =
+            true;
+        }
+      },
+
+      {
+        id: "bannerRange",
+        max: 1,
+        symbol: "N+",
+        name: "LONG STANDARD",
+        text:
+          "Rally may be placed three spaces away.",
+
+        apply() {
+          game.upgrades.bannerRange = 3;
+        }
+      },
+
+      {
+        id: "counter",
+        max: 1,
+        symbol: "↺",
+        name: "COUNTER",
+        text:
+          "A guarded adjacent attacker takes one damage.",
+
+        apply() {
+          game.upgrades.counter = true;
+        }
+      },
+
+      {
+        id: "cooldown",
+        max: 2,
+        symbol: "★",
+        name: "BATTLE RHYTHM",
+        text:
+          "All special cooldowns become one round shorter.",
+
+        apply() {
+          game.upgrades.cooldownReduction +=
+            1;
+        }
+      },
+
+      {
+        id: "reserve",
+        max: 1,
+        symbol: "◇",
+        name: "LAST STAND",
+        text:
+          "The first unguarded hit each round is blocked.",
+
+        apply() {
+          game.upgrades.reserve = true;
+        }
+      },
+
+      {
+        id: "brace",
+        max: 1,
+        symbol: "▣",
+        name: "BRACE",
+        text:
+          "Your warriors can no longer be pushed.",
+
+        apply() {
+          game.upgrades.brace = true;
+        }
+      },
+
+      {
+        id: "finisher",
+        max: 1,
+        symbol: "×2",
+        name: "FINISHER",
+        text:
+          "Attacks deal one extra damage to wounded enemies.",
+
+        apply() {
+          game.upgrades.finisher = true;
+        }
+      },
+
+      {
+        id: "medic",
+        max: 99,
+        symbol: "+",
+        name: "FIELD MEDIC",
+        text:
+          "Heal every surviving warrior to full health.",
+
+        apply() {
+          for (
+            const hero of
+            aliveHeroes()
+          ) {
+            hero.hp = hero.maxHp;
+          }
+        }
+      },
+
+      {
+        id: "armor",
+        max: 99,
+        symbol: "□",
+        name: "LIGHT PLATE",
+        text:
+          "Every surviving warrior blocks one future hit.",
+
+        apply() {
+          for (
+            const hero of
+            aliveHeroes()
+          ) {
+            hero.armor += 1;
+          }
+        }
+      },
+
+      {
+        id: "focus",
+        max: 99,
+        symbol: "◎",
+        name: "BATTLE FOCUS",
+        text:
+          "Every surviving warrior's special becomes ready.",
+
+        apply() {
+          for (
+            const hero of
+            aliveHeroes()
+          ) {
+            hero.cooldown = 0;
+          }
+        }
+      },
+
+      {
+        id: "rescue",
+        max: 99,
+        symbol: "●",
+        name: "RESCUE",
+        text:
+          "Return one lost warrior with one health.",
+
+        available() {
+          return game.heroes.some(
+            (hero) => !hero.alive
+          );
+        },
+
+        apply() {
+          reviveOneHero();
+        }
+      }
+    ];
+
+    function showUpgradeChoices() {
+      game.phase = "upgrade";
+      selectedHeroId = null;
+      actionMode = "move";
+      previewTarget = null;
+      pendingBanner = null;
+
+      const options =
+        getUpgradeOptions(3);
+
+      upgradeCards.innerHTML = "";
+
+      for (const upgrade of options) {
+        const card =
+          document.createElement("button");
+
+        card.type = "button";
+        card.className = "card";
+
+        const symbol =
+          document.createElement("div");
+
+        symbol.className =
+          "card-symbol";
+
+        symbol.textContent =
+          upgrade.symbol;
+
+        const name =
+          document.createElement("div");
+
+        name.className =
+          "card-name";
+
+        name.textContent =
+          upgrade.name;
+
+        const text =
+          document.createElement("div");
+
+        text.className =
+          "card-text";
+
+        text.textContent =
+          upgrade.text;
+
+        card.append(
+          symbol,
+          name,
+          text
+        );
+
+        card.addEventListener(
+          "click",
+          () =>
+            chooseUpgrade(upgrade)
+        );
+
+        upgradeCards.appendChild(card);
+      }
+
+      upgradeOverlay.classList.add(
+        "show"
+      );
+
+      render();
+    }
+
+    function getUpgradeOptions(count) {
+      let available =
+        UPGRADE_POOL.filter(
+          (upgrade) => {
+            const rank =
+              game.upgradeRanks[
+                upgrade.id
+              ] || 0;
+
+            const condition =
+              typeof upgrade.available ===
+              "function"
+                ? upgrade.available()
+                : true;
+
+            return (
+              condition &&
+              rank < upgrade.max
+            );
+          }
+        );
+
+      if (available.length < count) {
+        available = available.concat(
+          UPGRADE_POOL.filter(
+            (upgrade) =>
+              [
+                "medic",
+                "armor",
+                "focus"
+              ].includes(upgrade.id)
+          )
+        );
+      }
+
+      const choices = [];
+
+      for (
+        const upgrade of
+        shuffle(available)
+      ) {
+        if (
+          !choices.some(
+            (choice) =>
+              choice.id === upgrade.id
+          )
+        ) {
+          choices.push(upgrade);
+        }
+
+        if (
+          choices.length >= count
+        ) {
+          break;
+        }
+      }
+
+      return choices;
+    }
+
+    function chooseUpgrade(upgrade) {
+      game.upgradeRanks[upgrade.id] =
+        (
+          game.upgradeRanks[
+            upgrade.id
+          ] || 0
+        ) + 1;
+
+      upgrade.apply();
+
+      upgradeOverlay.classList.remove(
+        "show"
+      );
+
+      game.round += 1;
+
+      beginRound();
+    }
+
+    function reviveOneHero() {
+      const fallen =
+        game.heroes.find(
+          (hero) => !hero.alive
+        );
+
+      if (!fallen) {
+        return;
+      }
+
+      const positions = [
+        {
+          r: 3,
+          c: 3
+        },
+
+        {
+          r: 3,
+          c: 2
+        },
+
+        {
+          r: 3,
+          c: 4
+        },
+
+        {
+          r: 2,
+          c: 3
+        },
+
+        {
+          r: 4,
+          c: 3
+        },
+
+        ...edgeCells()
+      ];
+
+      const open =
+        positions.find(
+          (position) =>
+            inside(
+              position.r,
+              position.c
+            ) &&
+            !occupied(
+              game,
+              position.r,
+              position.c
+            )
+        );
+
+      if (!open) {
+        return;
+      }
+
+      fallen.alive = true;
+      fallen.hp = 1;
+      fallen.acted = true;
+      fallen.guard = 0;
+
+      fallen.cooldown =
+        Math.max(
+          2,
+          fallen.cooldown
+        );
+
+      fallen.r = open.r;
+      fallen.c = open.c;
+    }
+
+    pieceInfoClose.addEventListener(
+      "click",
+      () => closePieceInfo()
+    );
+
+    pieceInfoOverlay.addEventListener(
+      "click",
+      (event) => {
+        if (
+          event.target === pieceInfoOverlay
+        ) {
+          closePieceInfo();
+        }
+      }
+    );
+
+    pieceInfoDialog.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key === "Tab") {
+          event.preventDefault();
+          pieceInfoClose.focus();
+        }
+      }
+    );
+
+    document.addEventListener(
+      "keydown",
+      (event) => {
+        if (
+          event.key === "Escape" &&
+          pieceInfoOverlay.classList.contains(
+            "show"
+          )
+        ) {
+          event.preventDefault();
+          closePieceInfo();
+        }
+      }
+    );
+
+    beginButton.addEventListener(
+      "click",
+      () => {
+        loadingOverlay.classList.remove(
+          "show"
+        );
+
+        newGame();
+      }
+    );
+
+    restartButton.addEventListener(
+      "click",
+      newGame
+    );
+
+    createBoard();
+    loadAssets();
+  </script>
+</body>
+</html>
