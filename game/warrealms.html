@@ -115,7 +115,7 @@
     .deckMoveCard:focus-visible{outline:2px solid #fff;outline-offset:2px}.deckMoveCard.blocked{opacity:.5;cursor:not-allowed;transform:none}
     .deckMiniArt{width:46px;height:62px;border:1px solid color-mix(in srgb,var(--faction) 55%,#4d5c6c);border-radius:7px;overflow:hidden;background:#080d13;display:grid;place-items:center;color:var(--faction)}
     .deckMiniArt img{width:100%;height:100%;display:block;object-fit:contain;background:#070b10}.deckMiniArt .cardSigil{font-size:22px}
-    .deckMoveCopy{min-width:0}.deckMoveTop{display:flex;align-items:center;gap:6px;min-width:0}.deckMoveCost{width:19px;height:19px;flex:0 0 19px;border-radius:50%;display:grid;place-items:center;background:var(--faction);color:#080b10;font-size:8px;font-weight:950}.deckMoveName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:950}.deckMoveType{margin-top:3px;font-size:7px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;color:var(--faction)}
+    .deckMoveCopy{min-width:0}.deckMoveTop{display:flex;align-items:center;gap:6px;min-width:0}.deckMoveName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;font-weight:950}.deckMoveType{margin-top:3px;font-size:7px;font-weight:900;letter-spacing:.09em;text-transform:uppercase;color:var(--faction)}
     .deckMoveRules{margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:7px;line-height:1.3;color:#9fabb8}
     .deckMoveMeta{align-self:stretch;min-width:62px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:5px}.deckCountPill{min-width:36px;border:1px solid color-mix(in srgb,var(--faction) 55%,#526071);border-radius:999px;background:#0a1017;padding:4px 7px;text-align:center;color:#fff;font-size:9px;font-weight:950}.deckMoveCue{max-width:64px;text-align:right;font-size:6.5px;line-height:1.25;color:#94a3b2;font-weight:850}
     .deckEmpty{height:100%;min-height:130px;display:grid;place-items:center;text-align:center;padding:18px;color:#647486;font-size:8px;line-height:1.5}
@@ -300,6 +300,17 @@
     body.battleMode .cardActions .btn{overflow:hidden;text-overflow:ellipsis}
     body.battleMode .ownCards .baseCard{box-shadow:inset 0 0 0 1px rgba(255,255,255,.09),0 7px 15px rgba(0,0,0,.25)}
     body.battleMode .ownCards .playedCard{box-shadow:inset 0 0 0 1px rgba(229,202,85,.18),0 7px 15px rgba(0,0,0,.25)}
+
+    /* COST ICON OVERLAY
+       The badge occupies the same small top-left footprint on every full card image.
+       Numbered PNGs replace the scalable circle automatically as 0.png–16.png arrive. */
+    [data-card-art-id],.queueCardVisual,.fxGhostVisual{position:relative}
+    .cardCostBadge{position:absolute;z-index:8;left:2.1%;top:1.15%;width:14.25%;aspect-ratio:1;pointer-events:none;color:var(--faction,var(--queueFaction,var(--ghostFaction,#d7e1ec)));filter:drop-shadow(0 1px 2px rgba(0,0,0,.72))}
+    .cardCostBadge>.cardCostFallback,.cardCostBadge>img.cardCostIcon{position:absolute;inset:0;width:100%;height:100%;display:block}
+    .cardCostBadge>img.cardCostIcon{object-fit:contain;object-position:center;background:transparent!important;border:0!important;border-radius:0!important}
+    .cardCostBadge.costIconReady>.cardCostFallback{visibility:hidden}
+    .personalDiscountBadge{left:auto;right:5px}
+    .gameCard:has(.personalDiscountBadge)>.chargeBadge{top:31px}
 
     #modalOverlay{z-index:360}.effectOverlay{z-index:370}.choiceOverlay{z-index:380}.toast{z-index:400}
     @media(max-width:760px){.specializationWorkspace{height:auto;min-height:0;grid-template-columns:1fr;overflow:visible}.specializationPanel{min-height:420px}.specializationList{max-height:50dvh}.deckBuilderTabs{position:sticky;top:0;z-index:3}.specializationCard{grid-template-columns:38px minmax(0,1fr) 72px}.specializationArt{width:38px;height:53px}.specializationActions{min-width:72px}}
@@ -1248,6 +1259,7 @@
   const MAX_PLAYERS = 4;
   const FIRST_COPY_PRICE_MULTIPLIER = 1.5;
   const CARD_ART_ROOT = new URL("../graphics/warrealmscards/", import.meta.url).href;
+  const CARD_COST_ICON_ROOT = CARD_ART_ROOT;
   const HIRED_LOOTER_CARD = (() => {
     const directMatches = ["hired_looter", "Hired_looter", "hired-looter", "Hired Looter"]
       .map(candidate => getCard(candidate))
@@ -1592,11 +1604,31 @@
     }));
   }
 
+  function cardCostBadgeHtml(card) {
+    const numericCost = Number(card?.cost);
+    const hasValidCost = Number.isFinite(numericCost) && numericCost >= 0;
+    const displayCost = hasValidCost ? String(Math.floor(numericCost)) : "?";
+    const canUseNumberedIcon = hasValidCost && Number.isInteger(numericCost) && numericCost <= 16;
+    const iconUrl = canUseNumberedIcon ? new URL(`${displayCost}.png`, CARD_COST_ICON_ROOT).href : "";
+    const textSize = displayCost.length > 1 ? 48 : 58;
+    const icon = iconUrl
+      ? `<img class="cardCostIcon" src="${escapeHtml(iconUrl)}" alt="" draggable="false" onload="this.parentElement.classList.add('costIconReady')" onerror="this.remove()">`
+      : "";
+    return `<span class="cardCostBadge" aria-hidden="true">
+      <svg class="cardCostFallback" viewBox="0 0 100 100" focusable="false" aria-hidden="true">
+        <circle cx="50" cy="50" r="47" fill="#07101b" stroke="#e8eef5" stroke-width="5"></circle>
+        <circle cx="50" cy="50" r="39.5" fill="#0b1726" stroke="currentColor" stroke-width="5"></circle>
+        <text x="50" y="53" text-anchor="middle" dominant-baseline="middle" fill="#fff" stroke="#02050a" stroke-width="4" paint-order="stroke" font-family="Arial, sans-serif" font-size="${textSize}" font-weight="1000">${escapeHtml(displayCost)}</text>
+      </svg>
+      ${icon}
+    </span>`;
+  }
+
   function cardArtInnerHtml(card, detail = false) {
     const className = detail ? "detailArtImage" : "cardArtImage";
     const artUrl = typeof cardArtCache.get(card.id) === "string" ? cardArtCache.get(card.id) : directCardArtUrl(card.id);
-    if (!artUrl) return "";
-    return `<img class="${className}" src="${escapeHtml(artUrl)}" alt="${escapeHtml(card.name)} card graphic" loading="eager" decoding="async">`;
+    const art = artUrl ? `<img class="${className}" src="${escapeHtml(artUrl)}" alt="${escapeHtml(card.name)} card graphic" loading="eager" decoding="async">` : "";
+    return `${art}${cardCostBadgeHtml(card)}`;
   }
 
   function cardArtPanelHtml(card) {
@@ -2632,7 +2664,7 @@
     return `<article class="deckMoveCard ${card.faction}${canMove ? "" : " blocked"}" data-act="${action}" data-card-id="${escapeHtml(card.id)}" data-can-move="${canMove ? "1" : "0"}" role="button" tabindex="0" aria-label="${escapeHtml(aria)}">
       <div class="deckMiniArt" data-card-art-id="${escapeHtml(card.id)}">${cardArtInnerHtml(card, true)}</div>
       <div class="deckMoveCopy">
-        <div class="deckMoveTop"><span class="deckMoveCost">${card.cost}</span><span class="deckMoveName">${escapeHtml(card.name)}</span></div>
+        <div class="deckMoveTop"><span class="deckMoveName">${escapeHtml(card.name)}</span></div>
         <div class="deckMoveType">${displayCardType(card)} · ${escapeHtml(FACTIONS[card.faction].name)}</div>
         <div class="deckMoveRules">${escapeHtml(completeCardRules(card))}</div>
       </div>
@@ -4274,9 +4306,7 @@
     $("#opponentQueueCards").innerHTML = shown.map(item => {
       const card = getCard(item.cardId);
       if (!card) return "";
-      const artUrl = typeof cardArtCache.get(card.id) === "string" ? cardArtCache.get(card.id) : directCardArtUrl(card.id);
-      const art = `<img src="${escapeHtml(artUrl)}" alt="">`;
-      return `<div class="queueCard" style="--queueFaction:var(--${card.faction})">${art}<div class="queueCardName">${escapeHtml(card.name)}</div></div>`;
+      return `<div class="queueCard" style="--queueFaction:var(--${card.faction});--faction:var(--${card.faction})"><div class="queueCardVisual">${cardArtInnerHtml(card, true)}</div><div class="queueCardName">${escapeHtml(card.name)}</div></div>`;
     }).join("") + (queue.length > shown.length ? `<div class="queueMore">+${queue.length - shown.length}</div>` : "");
   }
 
@@ -4294,8 +4324,7 @@
     ghost.style.left = `${point.x}px`;
     ghost.style.top = `${point.y}px`;
     ghost.style.setProperty("--ghostFaction", `var(--${card.faction})`);
-    const artUrl = typeof cardArtCache.get(card.id) === "string" ? cardArtCache.get(card.id) : directCardArtUrl(card.id);
-    ghost.innerHTML = `<img src="${escapeHtml(artUrl)}" alt=""><b>${escapeHtml(card.name)}</b>`;
+    ghost.innerHTML = `<div class="fxGhostVisual" style="--faction:var(--${card.faction})">${cardArtInnerHtml(card, true)}</div><b>${escapeHtml(card.name)}</b>`;
     $("#battleFxLayer").appendChild(ghost);
     setTimeout(() => ghost.remove(), disintegrate ? 900 : 620);
     return ghost;
@@ -4309,8 +4338,7 @@
     ghost.style.left = `${point.x}px`;
     ghost.style.top = `${point.y}px`;
     ghost.style.setProperty("--ghostFaction", `var(--${card.faction})`);
-    const artUrl = typeof cardArtCache.get(card.id) === "string" ? cardArtCache.get(card.id) : directCardArtUrl(card.id);
-    ghost.innerHTML = `<img src="${escapeHtml(artUrl)}" alt=""><b>↻ ${escapeHtml(card.name)}</b>`;
+    ghost.innerHTML = `<div class="fxGhostVisual" style="--faction:var(--${card.faction})">${cardArtInnerHtml(card, true)}</div><b>↻ ${escapeHtml(card.name)}</b>`;
     $("#battleFxLayer").appendChild(ghost);
     setTimeout(() => ghost.remove(), 780);
     return ghost;
