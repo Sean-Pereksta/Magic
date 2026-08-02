@@ -1,0 +1,56 @@
+name: Fix Turncraft selection priority
+
+on:
+  push:
+    branches:
+      - agent/turncraft-strategy-controls
+    paths:
+      - .github/workflows/turncraft-selection-priority.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out upgrade branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/turncraft-strategy-controls
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply selection priority patch
+        run: python .github/turncraft_selection_priority_patch.py
+
+      - name: Validate embedded JavaScript syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path('game/turncraft.html').read_text(encoding='utf-8')
+          scripts = re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', text, re.S)
+          if not scripts:
+              raise SystemExit('No embedded script found')
+          Path('/tmp/turncraft-module.mjs').write_text(scripts[-1], encoding='utf-8')
+          PY
+          node --check /tmp/turncraft-module.mjs
+
+      - name: Validate selection behavior hooks
+        run: |
+          grep -q "friendlyClicked&&!abilityTargeting" game/turncraft.html
+          grep -q "clicked&&clicked.faction===PLAYER)return false" game/turncraft.html
+
+      - name: Commit validated fix
+        run: |
+          git config user.name "OpenAI Codex"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/turncraft_selection_priority_patch.py .github/workflows/turncraft-selection-priority.yml
+          git add game/turncraft.html
+          git commit -m "Prioritize friendly selection over rally commands"
+          git push origin agent/turncraft-strategy-controls
