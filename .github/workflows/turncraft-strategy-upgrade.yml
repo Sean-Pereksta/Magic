@@ -6,12 +6,17 @@ on:
       - agent/turncraft-strategy-controls
     paths:
       - .github/workflows/turncraft-strategy-upgrade.yml
+  pull_request:
+    branches:
+      - main
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: write
 
 jobs:
   patch-and-validate:
+    if: github.head_ref == 'agent/turncraft-strategy-controls' || github.ref_name == 'agent/turncraft-strategy-controls'
     runs-on: ubuntu-latest
     steps:
       - name: Check out upgrade branch
