@@ -96,6 +96,7 @@
     .storeCardSide{min-width:0;display:flex;flex-direction:column;gap:8px}.storeCardSide h3{margin:0;font-size:14px;line-height:1.15}.storeCardKind{font-size:8px;font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:var(--faction)}
     .storePriceBox{border:1px solid color-mix(in srgb,var(--faction) 40%,#384657);border-radius:10px;background:#0a1017;padding:10px}.storePriceLabel{font-size:7px;color:#91a0af;font-weight:900;letter-spacing:.12em;text-transform:uppercase}.storePriceValue{display:flex;align-items:baseline;gap:5px;margin-top:2px;color:#fff}.storePriceValue b{font-size:23px;line-height:1;color:#e5c950}.storePriceValue span{font-size:8px;font-weight:900;color:#aeb9c6}.storePriceNote{margin-top:5px;font-size:7px;line-height:1.35;color:#97a5b4}
     .storeOwnedLine{font-size:8px;font-weight:900;color:#c3ccd6}.storeRulesSummary{font-size:8px;line-height:1.4;color:#aeb9c6;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}.storeCardActions{display:grid;grid-template-columns:1fr;gap:6px;margin-top:auto}.storeCardActions .btn{width:100%}
+    .collectibleEditionBox{border:1px solid #8f77d4;border-radius:10px;background:linear-gradient(135deg,rgba(104,70,166,.2),rgba(40,106,132,.12));padding:8px;display:grid;gap:6px}.collectibleEditionTitle{display:flex;align-items:center;gap:6px;color:#e5d8ff;font-size:8px;font-weight:1000;letter-spacing:.08em;text-transform:uppercase}.collectibleEditionTitle::before{content:"✦";color:#8ff5ff;text-shadow:0 0 8px #a273ff}.collectibleEditionNote{color:#aeb8c8;font-size:7px;line-height:1.35}.collectibleEditionToggle{display:flex;align-items:center;gap:7px;cursor:pointer;color:#e8ecf7;font-size:8px;font-weight:900}.collectibleEditionToggle input{position:absolute;opacity:0;pointer-events:none}.collectibleEditionTrack{position:relative;width:32px;height:18px;flex:0 0 32px;border:1px solid #536175;border-radius:999px;background:#111923;transition:.18s}.collectibleEditionTrack::after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#7e8998;transition:.18s}.collectibleEditionToggle input:checked+.collectibleEditionTrack{border-color:#9eeeff;background:linear-gradient(90deg,#7250b5,#15839e);box-shadow:0 0 10px rgba(115,210,255,.25)}.collectibleEditionToggle input:checked+.collectibleEditionTrack::after{left:16px;background:#fff;box-shadow:0 0 8px #c4fbff}.collectibleEditionToggle input:focus-visible+.collectibleEditionTrack{outline:2px solid #fff;outline-offset:2px}.collectibleEditionBadge{position:absolute;left:7px;bottom:7px;z-index:5;border:1px solid #b9f5ff;border-radius:999px;background:rgba(37,26,67,.92);padding:3px 6px;color:#e8dcff;font-size:6px;font-weight:1000;letter-spacing:.07em;text-transform:uppercase;box-shadow:0 0 11px rgba(127,228,255,.3)}
     .summaryPanel{position:sticky;top:76px}.summaryBody{padding:14px}.summaryTitle{font-size:14px;font-weight:950}.summaryLine{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #293441;padding:9px 0;font-size:10px;color:#b4bfcc}.summaryLine b{color:#fff}.meter{height:8px;border-radius:999px;background:#0a0f15;overflow:hidden;border:1px solid #2e3a47;margin:10px 0}.meter i{display:block;height:100%;background:linear-gradient(90deg,#b82f4a,#e3c74c);width:0;transition:.2s}.factionBars{display:grid;gap:7px;margin:12px 0}.factionBar{display:grid;grid-template-columns:58px 1fr 24px;align-items:center;gap:7px;font-size:8px;color:#aeb9c6}.factionBar span:nth-child(2){height:6px;border-radius:999px;background:#0a0f15;overflow:hidden}.factionBar i{display:block;height:100%;background:currentColor}.saveStatus{min-height:30px;margin-top:10px;font-size:9px;line-height:1.4;color:var(--muted)}
 
 
@@ -1114,7 +1115,7 @@
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   // Version the module URL so browsers cannot reuse an older validator.
   const cardLibrary = await import(
-    "./warrealms-pack/warrealms-cards.js?v=12"
+    "./warrealms-pack/warrealms-cards.js?v=13"
   );
 
   const {
@@ -1134,6 +1135,7 @@
     buildBalancedCommandDeck,
     validateCommandDeck,
     cardStorePrice,
+    supportsCollectibleEdition,
     effectSummary,
     fullCardRules
   } = cardLibrary;
@@ -1163,8 +1165,8 @@
   const gameRef = gameId ? doc(db, "lobbies", gameId, "warrealms", "state") : null;
   const presenceCollection = gameId ? collection(db, "lobbies", gameId, "warrealmsPresence") : null;
 
-  const PROFILE_VERSION = 4;
-  const GAME_SCHEMA = 10;
+  const PROFILE_VERSION = 5;
+  const GAME_SCHEMA = 11;
   const STARTING_AUTHORITY = 60;
   const STARTING_SIGILS = 120;
   const STARTER_CARDS_PER_FACTION = 50;
@@ -1274,6 +1276,8 @@
   const DECK_ELIGIBLE_CARDS = COLLECTIBLE_CARDS;
   const DECK_ELIGIBLE_CARD_IDS = new Set(DECK_ELIGIBLE_CARDS.map(card => card.id));
   const TOTAL_CUSTOM_CARDS = DECK_ELIGIBLE_CARDS.length;
+  const COLLECTIBLE_EDITION_CARDS = DECK_ELIGIBLE_CARDS.filter(supportsCollectibleEdition);
+  const COLLECTIBLE_EDITION_CARD_IDS = new Set(COLLECTIBLE_EDITION_CARDS.map(card => card.id));
 
   let firebaseUser = null;
   let profile = null;
@@ -1416,8 +1420,10 @@
       }
     });
     const normalizeMarket = (entry, index, zone) => {
-      if (typeof entry === "string") return { id: entry, originalOwnerId: "", originalOwnerName: "Unknown", instanceId: legacyInstanceId("market", zone, index, entry) };
-      return entry && typeof entry === "object" && entry.id ? entry : null;
+      if (typeof entry === "string") return { id: entry, originalOwnerId: "", originalOwnerName: "Unknown", instanceId: legacyInstanceId("market", zone, index, entry), collectibleEdition: false };
+      return entry && typeof entry === "object" && entry.id
+        ? { ...entry, collectibleEdition: entry.collectibleEdition === true && COLLECTIBLE_EDITION_CARD_IDS.has(entry.id) }
+        : null;
     };
     game.marketDeck = (Array.isArray(game.marketDeck) ? game.marketDeck : []).map((entry, index) => normalizeMarket(entry, index, "deck")).filter(Boolean);
     game.tradeRow = (Array.isArray(game.tradeRow) ? game.tradeRow : []).map((entry, index) => normalizeMarket(entry, index, "row")).filter(Boolean);
@@ -1448,6 +1454,7 @@
       player.primaryFaction = BOT_FACTION_IDS.includes(player.primaryFaction) ? player.primaryFaction : "";
       player.supportFaction = BOT_FACTION_IDS.includes(player.supportFaction) && player.supportFaction !== player.primaryFaction ? player.supportFaction : "";
       player.botDrawPriority = !!player.botDrawPriority;
+      player.collectibleEditionCardIds = normalizeCollectibleEditionCardIds(player.collectibleEditionCardIds);
       player.discountCardIds = [...new Set((Array.isArray(player.discountCardIds) ? player.discountCardIds : []).filter(cardId => Number(getCard(cardId)?.cost) >= 5))].slice(0, PERSONAL_DISCOUNT_COUNT);
       player.draftPool = [...new Set((Array.isArray(player.draftPool) ? player.draftPool : []).filter(cardId => {
         const card = getCard(cardId);
@@ -1556,20 +1563,36 @@
     $("#loadingProgressBar").style.width = `${Math.min(100, Math.round(done / total * 100))}%`;
   }
 
-  function directCardArtUrl(cardId) {
-    const imageFile = getCard(cardId)?.image;
+  function collectibleEditionImageFile(card) {
+    const imageFile = String(card?.image || "");
+    if (!imageFile) return "";
+    return /\.[a-z0-9]+$/i.test(imageFile)
+      ? imageFile.replace(/(\.[a-z0-9]+)$/i, "_collectible$1")
+      : `${imageFile}_collectible.png`;
+  }
+
+  function cardArtCacheKey(cardId, collectibleEdition = false) {
+    return `${cardId}::${collectibleEdition && COLLECTIBLE_EDITION_CARD_IDS.has(cardId) ? "collectible" : "normal"}`;
+  }
+
+  function directCardArtUrl(cardId, collectibleEdition = false) {
+    const card = getCard(cardId);
+    const useCollectibleEdition = !!collectibleEdition && supportsCollectibleEdition(card);
+    const imageFile = useCollectibleEdition ? collectibleEditionImageFile(card) : card?.image;
     return imageFile ? new URL(imageFile, CARD_ART_ROOT).href : "";
   }
 
-  function loadCardArt(cardId) {
-    const cached = cardArtCache.get(cardId);
+  function loadCardArt(cardId, collectibleEdition = false) {
+    const useCollectibleEdition = !!collectibleEdition && COLLECTIBLE_EDITION_CARD_IDS.has(cardId);
+    const cacheKey = cardArtCacheKey(cardId, useCollectibleEdition);
+    const cached = cardArtCache.get(cacheKey);
     if (typeof cached === "string") return Promise.resolve(cached);
     if (cached === null) return Promise.resolve(null);
-    if (cardArtInflight.has(cardId)) return cardArtInflight.get(cardId);
+    if (cardArtInflight.has(cacheKey)) return cardArtInflight.get(cacheKey);
 
-    const artUrl = directCardArtUrl(cardId);
+    const artUrl = directCardArtUrl(cardId, useCollectibleEdition);
     if (!artUrl) {
-      cardArtCache.set(cardId, null);
+      cardArtCache.set(cacheKey, null);
       return Promise.resolve(null);
     }
 
@@ -1577,28 +1600,41 @@
       const image = new Image();
       image.decoding = "async";
       image.onload = () => {
-        cardArtCache.set(cardId, artUrl);
+        cardArtCache.set(cacheKey, artUrl);
         resolve(artUrl);
       };
       image.onerror = () => {
-        cardArtCache.set(cardId, null);
+        if (useCollectibleEdition) {
+          loadCardArt(cardId, false).then(fallbackUrl => {
+            cardArtCache.set(cacheKey, fallbackUrl);
+            resolve(fallbackUrl);
+          });
+          return;
+        }
+        cardArtCache.set(cacheKey, null);
         resolve(null);
       };
       image.src = artUrl;
-    }).finally(() => cardArtInflight.delete(cardId));
+    }).finally(() => cardArtInflight.delete(cacheKey));
 
-    cardArtInflight.set(cardId, promise);
+    cardArtInflight.set(cacheKey, promise);
     return promise;
   }
 
-  async function preloadCardArt(cardIds, onProgress = null) {
-    const uniqueIds = [...new Set(cardIds)].filter(cardId => !!getCard(cardId));
-    const pending = uniqueIds.filter(cardId => !cardArtCache.has(cardId));
+  async function preloadCardArt(cardRefs, onProgress = null) {
+    const uniqueRefs = new Map();
+    for (const ref of cardRefs || []) {
+      const cardId = typeof ref === "string" ? ref : ref?.cardId;
+      const collectibleEdition = typeof ref === "object" && ref?.collectibleEdition === true;
+      if (!getCard(cardId)) continue;
+      uniqueRefs.set(cardArtCacheKey(cardId, collectibleEdition), { cardId, collectibleEdition });
+    }
+    const pending = [...uniqueRefs.values()].filter(ref => !cardArtCache.has(cardArtCacheKey(ref.cardId, ref.collectibleEdition)));
     if (!pending.length) return;
     let done = 0;
     onProgress?.(done, pending.length);
-    await Promise.all(pending.map(async cardId => {
-      await loadCardArt(cardId);
+    await Promise.all(pending.map(async ref => {
+      await loadCardArt(ref.cardId, ref.collectibleEdition);
       done += 1;
       onProgress?.(done, pending.length);
     }));
@@ -1624,23 +1660,34 @@
     </span>`;
   }
 
-  function cardArtInnerHtml(card, detail = false) {
+  function cardArtInnerHtml(card, detail = false, collectibleEdition = false) {
+    const useCollectibleEdition = !!collectibleEdition && supportsCollectibleEdition(card);
     const className = detail ? "detailArtImage" : "cardArtImage";
-    const artUrl = typeof cardArtCache.get(card.id) === "string" ? cardArtCache.get(card.id) : directCardArtUrl(card.id);
-    const art = artUrl ? `<img class="${className}" src="${escapeHtml(artUrl)}" alt="${escapeHtml(card.name)} card graphic" loading="eager" decoding="async">` : "";
-    return `${art}${cardCostBadgeHtml(card)}`;
+    const cacheKey = cardArtCacheKey(card.id, useCollectibleEdition);
+    const artUrl = typeof cardArtCache.get(cacheKey) === "string" ? cardArtCache.get(cacheKey) : directCardArtUrl(card.id, useCollectibleEdition);
+    const normalArtUrl = directCardArtUrl(card.id, false);
+    const fallback = useCollectibleEdition && normalArtUrl ? ` onerror="this.onerror=null;this.src='${escapeHtml(normalArtUrl)}'"` : "";
+    const art = artUrl ? `<img class="${className}" src="${escapeHtml(artUrl)}" alt="${escapeHtml(card.name)}${useCollectibleEdition ? " collectible edition" : ""} card graphic" loading="eager" decoding="async"${fallback}>` : "";
+    const editionBadge = useCollectibleEdition ? '<span class="collectibleEditionBadge">Collectible</span>' : "";
+    return `${art}${cardCostBadgeHtml(card)}${editionBadge}`;
   }
 
-  function cardArtPanelHtml(card) {
-    return `<div class="cardArt" data-card-art-id="${escapeHtml(card.id)}">${cardArtInnerHtml(card)}</div>`;
+  function cardArtDataAttributes(cardId, collectibleEdition = false) {
+    const useCollectibleEdition = !!collectibleEdition && COLLECTIBLE_EDITION_CARD_IDS.has(cardId);
+    return `data-card-art-id="${escapeHtml(cardId)}" data-card-art-edition="${useCollectibleEdition ? "1" : "0"}"`;
+  }
+
+  function cardArtPanelHtml(card, collectibleEdition = false) {
+    return `<div class="cardArt" ${cardArtDataAttributes(card.id, collectibleEdition)}>${cardArtInnerHtml(card, false, collectibleEdition)}</div>`;
   }
 
   function hydrateCardArt(root = document) {
     root.querySelectorAll?.("[data-card-art-id]").forEach(node => {
       const card = getCard(node.dataset.cardArtId);
       if (!card) return;
+      const collectibleEdition = node.dataset.cardArtEdition === "1";
       const containArtwork = node.classList.contains("detailArt") || node.classList.contains("storeCardPreview") || node.classList.contains("deckMiniArt") || node.classList.contains("battleCardVisual");
-      node.innerHTML = cardArtInnerHtml(card, containArtwork);
+      node.innerHTML = cardArtInnerHtml(card, containArtwork, collectibleEdition);
     });
   }
 
@@ -1653,7 +1700,7 @@
     hydrateCardArt(root);
 
     const unloadedNodes = [...root.querySelectorAll("[data-card-art-id]")]
-      .filter(node => !cardArtCache.has(node.dataset.cardArtId));
+      .filter(node => !cardArtCache.has(cardArtCacheKey(node.dataset.cardArtId, node.dataset.cardArtEdition === "1")));
     if (!unloadedNodes.length) {
       loader.hidden = true;
       return;
@@ -1665,7 +1712,8 @@
 
     const loadNode = node => {
       const cardId = node.dataset.cardArtId;
-      loadCardArt(cardId).then(() => {
+      const collectibleEdition = node.dataset.cardArtEdition === "1";
+      loadCardArt(cardId, collectibleEdition).then(() => {
         if (token !== catalogLoadToken || !node.isConnected) return;
         hydrateCardArt(node.parentElement || root);
       }).catch(error => console.warn("Card art load failed", cardId, error));
@@ -1686,29 +1734,34 @@
     unloadedNodes.forEach(node => catalogArtObserver.observe(node));
   }
 
-  function collectBattleCardIds(game) {
-    const ids = new Set();
-    const add = value => {
+  function collectBattleCardArtRefs(game) {
+    const refs = new Map();
+    const add = (value, collectibleEdition = false) => {
       const cardId = typeof value === "string" ? value : value?.id;
-      if (cardId && getCard(cardId)) ids.add(cardId);
+      if (!cardId || !getCard(cardId)) return;
+      const ref = { cardId, collectibleEdition: !!collectibleEdition && COLLECTIBLE_EDITION_CARD_IDS.has(cardId) };
+      refs.set(cardArtCacheKey(ref.cardId, ref.collectibleEdition), ref);
     };
-    for (const entry of game?.marketDeck || []) add(entry);
-    for (const entry of game?.tradeRow || []) add(entry);
-    for (const entry of game?.scrapped || []) add(entry);
+    for (const entry of game?.marketDeck || []) add(entry, entry?.collectibleEdition === true);
+    for (const entry of game?.tradeRow || []) add(entry, entry?.collectibleEdition === true);
+    for (const entry of game?.scrapped || []) add(entry, entry?.collectibleEdition === true);
     for (const player of game?.players || []) {
       for (const zone of ["draw", "discard", "hand", "played", "bases"]) {
-        for (const entry of player[zone] || []) add(entry);
+        for (const entry of player[zone] || []) {
+          const cardId = typeof entry === "string" ? entry : entry?.id;
+          add(entry, playerUsesCollectibleEdition(player, cardId));
+        }
       }
     }
-    return [...ids];
+    return [...refs.values()];
   }
 
   async function ensureBattleArt(game) {
     const key = `${gameId || "battle"}:${game?.createdAtMs || 0}`;
     if (battleArtPreparedFor === key) return;
     if (battleArtPromise) return battleArtPromise;
-    const cardIds = collectBattleCardIds(game);
-    const pending = cardIds.filter(cardId => !cardArtCache.has(cardId));
+    const cardRefs = collectBattleCardArtRefs(game);
+    const pending = cardRefs.filter(ref => !cardArtCache.has(cardArtCacheKey(ref.cardId, ref.collectibleEdition)));
     if (!pending.length) {
       battleArtPreparedFor = key;
       return;
@@ -2537,6 +2590,40 @@
       .slice(0, PERSONAL_DISCOUNT_COUNT);
   }
 
+  function normalizeCollectibleEditionCardIds(cardIds = []) {
+    return [...new Set(Array.isArray(cardIds) ? cardIds : [])]
+      .filter(cardId => COLLECTIBLE_EDITION_CARD_IDS.has(cardId));
+  }
+
+  function normalizeCollectibleEditionMap(value = {}) {
+    const source = Array.isArray(value)
+      ? Object.fromEntries(value.map(cardId => [cardId, true]))
+      : value && typeof value === "object" ? value : {};
+    return Object.fromEntries(COLLECTIBLE_EDITION_CARDS
+      .filter(card => source[card.id] === true)
+      .map(card => [card.id, true]));
+  }
+
+  function collectibleEditionCardIdsFromProfile(sourceProfile = profile) {
+    if (!sourceProfile) return [];
+    const unlocked = normalizeCollectibleEditionMap(sourceProfile.collectibleEditions);
+    const enabled = normalizeCollectibleEditionMap(sourceProfile.collectibleEditionEnabled);
+    return COLLECTIBLE_EDITION_CARDS
+      .filter(card => unlocked[card.id] && enabled[card.id])
+      .map(card => card.id);
+  }
+
+  function profileUsesCollectibleEdition(cardId, sourceProfile = profile) {
+    return !!sourceProfile && COLLECTIBLE_EDITION_CARD_IDS.has(cardId)
+      && sourceProfile.collectibleEditions?.[cardId] === true
+      && sourceProfile.collectibleEditionEnabled?.[cardId] === true;
+  }
+
+  function playerUsesCollectibleEdition(player, cardId) {
+    return !!player && COLLECTIBLE_EDITION_CARD_IDS.has(cardId)
+      && (player.collectibleEditionCardIds || []).includes(cardId);
+  }
+
   function openingCardsSpent(cardIds = []) {
     return cardIds.reduce((sum, cardId) => sum + Math.max(0, Number(getCard(cardId)?.cost) || 0), 0);
   }
@@ -2577,6 +2664,11 @@
 
     const openingCardIds = normalizeOpeningCardIds(raw.openingCardIds, deck);
     const discountCardIds = normalizeDiscountCardIds(raw.discountCardIds, deck);
+    const collectibleEditions = normalizeCollectibleEditionMap(raw.collectibleEditions);
+    const normalizedEditionEnabled = normalizeCollectibleEditionMap(raw.collectibleEditionEnabled);
+    const collectibleEditionEnabled = Object.fromEntries(Object.keys(normalizedEditionEnabled)
+      .filter(cardId => collectibleEditions[cardId])
+      .map(cardId => [cardId, true]));
 
     return {
       version: PROFILE_VERSION,
@@ -2586,6 +2678,8 @@
       deck,
       openingCardIds,
       discountCardIds,
+      collectibleEditions,
+      collectibleEditionEnabled,
       wins: Math.max(0, Number(raw.wins) || 0),
       games: Math.max(0, Number(raw.games) || 0),
       rewardedGames,
@@ -2632,21 +2726,53 @@
     return Math.max(basePrice + 1, Math.ceil(basePrice * FIRST_COPY_PRICE_MULTIPLIER));
   }
 
+  function collectibleEditionStorePrice(card) {
+    return Math.max(1, Number(cardStorePrice(card)) || 1);
+  }
+
+  function collectibleEditionStoreHtml(card, owned) {
+    if (!supportsCollectibleEdition(card)) return "";
+    const editionOwned = profile.collectibleEditions?.[card.id] === true;
+    const editionEnabled = profileUsesCollectibleEdition(card.id);
+    if (editionOwned) {
+      return `<div class="collectibleEditionBox">
+        <div class="collectibleEditionTitle">Collectible edition owned</div>
+        <label class="collectibleEditionToggle">
+          <input type="checkbox" data-act="toggle-collectible-edition" data-card-id="${escapeHtml(card.id)}" ${editionEnabled ? "checked" : ""} aria-label="Use collectible edition art for ${escapeHtml(card.name)}">
+          <span class="collectibleEditionTrack" aria-hidden="true"></span>
+          <span>${editionEnabled ? "Collectible art on" : "Collectible art off"}</span>
+        </label>
+      </div>`;
+    }
+    if (owned < MAX_COPIES_PER_CARD) {
+      return `<div class="collectibleEditionBox"><div class="collectibleEditionTitle">Collectible edition</div><div class="collectibleEditionNote">Own all four copies to unlock the premium artwork purchase.</div></div>`;
+    }
+    const price = collectibleEditionStorePrice(card);
+    const canBuy = profile.sigils >= price;
+    return `<div class="collectibleEditionBox">
+      <div class="collectibleEditionTitle">Collectible edition available</div>
+      <div class="collectibleEditionNote">Unlocks ${escapeHtml(collectibleEditionImageFile(card))}. It will be enabled immediately and can be toggled at any time.</div>
+      <button class="btn small blue" data-act="buy-collectible-edition" data-card-id="${escapeHtml(card.id)}" ${canBuy ? "" : "disabled"}>Unlock for ${price} Sigils</button>
+    </div>`;
+  }
+
   function catalogCardHtml(card) {
     const owned = profile.owned[card.id] || 0;
     const price = collectionStorePrice(card, owned);
     const canBuy = profile.sigils >= price && owned < MAX_COPIES_PER_CARD;
+    const collectibleEdition = profileUsesCollectibleEdition(card.id);
     const firstCopyNote = owned <= 0
       ? `First copy premium: ${Math.round((FIRST_COPY_PRICE_MULTIPLIER - 1) * 100)}% above the normal repeat-copy price.`
       : `Additional copies use the normal card price.`;
     return `<article class="storeCatalogItem ${card.faction}">
-      <div class="storeCardPreview" data-card-art-id="${escapeHtml(card.id)}">${cardArtInnerHtml(card, true)}</div>
+      <div class="storeCardPreview" ${cardArtDataAttributes(card.id, collectibleEdition)}>${cardArtInnerHtml(card, true, collectibleEdition)}</div>
       <div class="storeCardSide">
         <div><div class="storeCardKind">${escapeHtml(FACTIONS[card.faction].title)} · ${displayCardType(card)}</div><h3>${escapeHtml(card.name)}</h3></div>
         <div class="storePriceBox"><div class="storePriceLabel">Store cost</div><div class="storePriceValue"><b>${price}</b><span>War Sigils</span></div><div class="storePriceNote">${firstCopyNote}</div></div>
         <div class="storeOwnedLine">Owned ${owned} / ${MAX_COPIES_PER_CARD}</div>
         <div class="storeRulesSummary">${escapeHtml(completeCardRules(card))}</div>
-        <div class="storeCardActions"><button class="btn small" data-act="details" data-card-id="${card.id}">Card details</button><button class="btn small primary" data-act="buy-profile-card" data-card-id="${card.id}" ${canBuy ? "" : "disabled"}>Buy for ${price}</button></div>
+        ${collectibleEditionStoreHtml(card, owned)}
+        <div class="storeCardActions"><button class="btn small" data-act="details" data-card-id="${card.id}">Card details</button><button class="btn small primary" data-act="buy-profile-card" data-card-id="${card.id}" ${canBuy ? "" : "disabled"}>${owned >= MAX_COPIES_PER_CARD ? "Four copies owned" : `Buy for ${price}`}</button></div>
       </div>
     </article>`;
   }
@@ -2662,7 +2788,7 @@
     const cue = movingIn ? (editDeck.length >= COMMAND_DECK_SIZE ? "Deck is full" : "Tap to move in") : "Tap to move out";
     const aria = movingIn ? `Move one ${card.name} into the deck` : `Move one ${card.name} out of the deck`;
     return `<article class="deckMoveCard ${card.faction}${canMove ? "" : " blocked"}" data-act="${action}" data-card-id="${escapeHtml(card.id)}" data-can-move="${canMove ? "1" : "0"}" role="button" tabindex="0" aria-label="${escapeHtml(aria)}">
-      <div class="deckMiniArt" data-card-art-id="${escapeHtml(card.id)}">${cardArtInnerHtml(card, true)}</div>
+      <div class="deckMiniArt" ${cardArtDataAttributes(card.id, profileUsesCollectibleEdition(card.id))}>${cardArtInnerHtml(card, true, profileUsesCollectibleEdition(card.id))}</div>
       <div class="deckMoveCopy">
         <div class="deckMoveTop"><span class="deckMoveName">${escapeHtml(card.name)}</span></div>
         <div class="deckMoveType">${displayCardType(card)} · ${escapeHtml(FACTIONS[card.faction].name)}</div>
@@ -2717,7 +2843,7 @@
     if (!selected && kind === "discount" && selectedIds.length >= PERSONAL_DISCOUNT_COUNT) disabledReason = "All three discount slots are assigned.";
     const actionLabel = selected ? "Assigned ✓" : disabledReason ? "Unavailable" : kind === "opening" ? `Assign · ${card.cost}` : "Assign −1";
     return `<article class="specializationCard ${card.faction} ${selected ? "selected" : ""}">
-      <div class="specializationArt" data-card-art-id="${escapeHtml(card.id)}">${cardArtInnerHtml(card, true)}</div>
+      <div class="specializationArt" ${cardArtDataAttributes(card.id, profileUsesCollectibleEdition(card.id))}>${cardArtInnerHtml(card, true, profileUsesCollectibleEdition(card.id))}</div>
       <div class="specializationCopy"><div class="specializationName">${escapeHtml(card.name)}</div><div class="specializationMeta">Cost ${card.cost} · ${escapeHtml(FACTIONS[card.faction]?.name || card.faction)}</div><div class="specializationRules">${escapeHtml(disabledReason || completeCardRules(card))}</div></div>
       <div class="specializationActions"><button class="btn small" data-act="details" data-card-id="${escapeHtml(card.id)}">Info</button><button class="btn small ${selected ? "warning" : "good"}" data-act="${kind}-toggle" data-card-id="${escapeHtml(card.id)}" ${disabledReason ? "disabled" : ""}>${escapeHtml(actionLabel)}</button></div>
     </article>`;
@@ -2957,6 +3083,82 @@
     }
   }
 
+  async function purchaseCollectibleEdition(cardId) {
+    const card = CARD_MAP[cardId];
+    if (!card || !supportsCollectibleEdition(card) || actionBusy) return;
+    actionBusy = true;
+    try {
+      let updatedProfile = null;
+      await runTransaction(db, async transaction => {
+        const snapshot = await transaction.get(profileRef);
+        const rawData = snapshot.exists() ? snapshot.data() : {};
+        const currentProfile = normalizeProfile(rawData, !rawData.warRealms);
+        const price = collectibleEditionStorePrice(card);
+        if ((currentProfile.owned[cardId] || 0) < MAX_COPIES_PER_CARD) throw new Error("Own all four normal copies before unlocking the collectible edition.");
+        if (currentProfile.collectibleEditions[cardId]) throw new Error("You already own this collectible edition.");
+        if (currentProfile.sigils < price) throw new Error("Not enough War Sigils.");
+        currentProfile.sigils -= price;
+        currentProfile.collectibleEditions[cardId] = true;
+        currentProfile.collectibleEditionEnabled[cardId] = true;
+        currentProfile.updatedAtMs = Date.now();
+
+        if (!rawData.warRealms) {
+          transaction.set(profileRef, { warRealms: currentProfile }, { merge: true });
+        } else {
+          transaction.update(profileRef, {
+            "warRealms.version": PROFILE_VERSION,
+            "warRealms.sigils": currentProfile.sigils,
+            "warRealms.collectibleEditions": currentProfile.collectibleEditions,
+            "warRealms.collectibleEditionEnabled": currentProfile.collectibleEditionEnabled,
+            "warRealms.updatedAtMs": currentProfile.updatedAtMs
+          });
+        }
+        updatedProfile = currentProfile;
+      });
+      profile = updatedProfile;
+      showToast(`${card.name} collectible edition unlocked and enabled.`, "good");
+      renderArmory();
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || "Collectible edition purchase failed.", "bad");
+    } finally {
+      actionBusy = false;
+    }
+  }
+
+  async function toggleCollectibleEdition(cardId) {
+    const card = CARD_MAP[cardId];
+    if (!card || !supportsCollectibleEdition(card) || actionBusy) return;
+    actionBusy = true;
+    try {
+      let updatedProfile = null;
+      let nextEnabled = false;
+      await runTransaction(db, async transaction => {
+        const snapshot = await transaction.get(profileRef);
+        const rawData = snapshot.exists() ? snapshot.data() : {};
+        const currentProfile = normalizeProfile(rawData, !rawData.warRealms);
+        if (!currentProfile.collectibleEditions[cardId]) throw new Error("Unlock this collectible edition first.");
+        nextEnabled = !profileUsesCollectibleEdition(cardId, currentProfile);
+        currentProfile.collectibleEditionEnabled[cardId] = nextEnabled;
+        currentProfile.updatedAtMs = Date.now();
+        transaction.update(profileRef, {
+          "warRealms.version": PROFILE_VERSION,
+          "warRealms.collectibleEditionEnabled": currentProfile.collectibleEditionEnabled,
+          "warRealms.updatedAtMs": currentProfile.updatedAtMs
+        });
+        updatedProfile = currentProfile;
+      });
+      profile = updatedProfile;
+      showToast(`${card.name} collectible art ${nextEnabled ? "enabled" : "disabled"}.`, "good");
+      renderArmory();
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || "Collectible edition toggle failed.", "bad");
+    } finally {
+      actionBusy = false;
+    }
+  }
+
   async function saveCommandDeck() {
     const validation = validateCommandDeck(editDeck, profile.owned);
     if (!validation.valid || actionBusy) {
@@ -2991,9 +3193,10 @@
     }
   }
 
-  function showCardDetails(cardId, extraActions = "") {
+  function showCardDetails(cardId, extraActions = "", collectibleEdition = null) {
     const card = getCard(cardId);
     if (!card) return;
+    const useCollectibleEdition = collectibleEdition == null ? profileUsesCollectibleEdition(cardId) : !!collectibleEdition;
     const faction = FACTIONS[card.faction];
     const effect = effectDisplaySummary(primaryCardEffect(card));
     const ally = effectDisplaySummary(card.ally);
@@ -3001,7 +3204,7 @@
     const sacrifice = effectDisplaySummary(card.sacrifice);
     openModal(card.name, `${faction.name} · ${faction.title}`, `
       <div class="detailGrid" style="--faction:var(--${card.faction})">
-        <div class="detailArt" data-card-art-id="${escapeHtml(card.id)}">${cardArtInnerHtml(card, true)}</div>
+        <div class="detailArt" ${cardArtDataAttributes(card.id, useCollectibleEdition)}>${cardArtInnerHtml(card, true, useCollectibleEdition)}</div>
         <div class="detailCopy">
           <div class="detailFaction">${displayCardType(card)} · Cost ${card.cost}${card.type === "base" ? ` · ${card.defense} Defense` : ""}</div>
           <h3>${escapeHtml(card.name)}</h3>
@@ -3024,7 +3227,7 @@
         </div>
       </div>
     `);
-    loadCardArt(card.id).then(() => hydrateCardArt($("#modalBody"))).catch(console.warn);
+    loadCardArt(card.id, useCollectibleEdition).then(() => hydrateCardArt($("#modalBody"))).catch(console.warn);
   }
 
   function normalizeRoster(data) {
@@ -3061,6 +3264,7 @@
     const ref = doc(presenceCollection, firebaseUser.uid);
     const openingCardIds = resolvedOpeningCardIds(profile.deck, profile.openingCardIds);
     const discountCardIds = resolvedDiscountCardIds(profile.deck, profile.discountCardIds);
+    const collectibleEditionCardIds = collectibleEditionCardIdsFromProfile(profile);
     await setDoc(ref, {
       uid: firebaseUser.uid,
       name: username,
@@ -3069,6 +3273,7 @@
       deckSize: profile.deck.length,
       openingCardIds,
       discountCardIds,
+      collectibleEditionCardIds,
       cardVersion: WAR_REALMS_CARD_VERSION,
       active: true,
       updatedAtMs: Date.now(),
@@ -3210,6 +3415,7 @@
       primaryFaction: BOT_FACTION_IDS.includes(entrant.primaryFaction) ? entrant.primaryFaction : "",
       supportFaction: BOT_FACTION_IDS.includes(entrant.supportFaction) && entrant.supportFaction !== entrant.primaryFaction ? entrant.supportFaction : "",
       botDrawPriority: !!entrant.botDrawPriority,
+      collectibleEditionCardIds: normalizeCollectibleEditionCardIds(entrant.collectibleEditionCardIds),
       draftPool,
       draftPicks: [],
       draftReplacements: [],
@@ -3260,7 +3466,8 @@
     const marketPool = entrants.flatMap(entrant => entrant.deck.map(cardId => ({
       id: cardId,
       originalOwnerId: entrant.uid,
-      originalOwnerName: entrant.name
+      originalOwnerName: entrant.name,
+      collectibleEdition: normalizeCollectibleEditionCardIds(entrant.collectibleEditionCardIds).includes(cardId)
     }))).filter(entry => !isHiredLooterCardId(entry.id));
     game.marketDeck = shuffleWithGame(game, marketPool);
     refillMarket(game);
@@ -3319,7 +3526,7 @@
 
   function pushActionQueue(game, player, card) {
     game.actionQueue = Array.isArray(game.actionQueue) ? game.actionQueue.slice(-7) : [];
-    game.actionQueue.push({ id: makeId("queue"), playerId: player.id, playerName: player.name, cardId: card.id, atMs: Date.now() });
+    game.actionQueue.push({ id: makeId("queue"), playerId: player.id, playerName: player.name, cardId: card.id, collectibleEdition: playerUsesCollectibleEdition(player, card.id), atMs: Date.now() });
   }
 
   function pushVisualEvent(game, type, payload = {}) {
@@ -3797,7 +4004,7 @@
         const zone = card.type === "base" ? "bases" : "played";
         actor[zone].push(entry);
         pushActionQueue(game, actor, card);
-        pushVisualEvent(game, "card-play", { actorId: actor.id, cardId: card.id, instanceId: entry.instanceId, zone });
+        pushVisualEvent(game, "card-play", { actorId: actor.id, cardId: card.id, collectibleEdition: playerUsesCollectibleEdition(actor, card.id), instanceId: entry.instanceId, zone });
         const authorityBefore = actor.health;
         applyEffect(game, actor, primaryCardEffect(card), { cardId: card.id, source: "primary" });
         resolveAuthorityThreshold(game, actor, card, authorityBefore);
@@ -3832,6 +4039,9 @@
         if (actor.trade < marketCost) return "Not enough Trade.";
         actor.trade -= marketCost;
         actor.discard.push(card.id);
+        if (marketEntry.collectibleEdition === true) {
+          actor.collectibleEditionCardIds = normalizeCollectibleEditionCardIds([...(actor.collectibleEditionCardIds || []), card.id]);
+        }
         const permanentSupply = isPermanentHiredLooterEntry(marketEntry);
         if (!permanentSupply) game.tradeRow.splice(marketIndex, 1);
         refillMarket(game);
@@ -3853,7 +4063,7 @@
         if (isPermanentHiredLooterEntry(marketEntry)) return "Hired Looter is always available and cannot be erased from the Trade Row.";
         actor.scrapMarket -= 1;
         game.scrapped.push({ ...marketEntry, reason: "market" });
-        pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId: marketEntry.id, target: "market", reason: "market" });
+        pushVisualEvent(game, "card-scrap", { actorId: actor.id, cardId: marketEntry.id, collectibleEdition: marketEntry.collectibleEdition === true, target: "market", reason: "market" });
         game.tradeRow.splice(marketIndex, 1);
         refillMarket(game);
         addLog(game, `${actor.name} erased ${CARD_MAP[marketEntry.id]?.name || "a card"} from the market.`);
@@ -4071,7 +4281,8 @@
         name: member.name,
         deck: [...found.deck],
         openingCardIds: resolvedOpeningCardIds(found.deck, found.openingCardIds),
-        discountCardIds: resolvedDiscountCardIds(found.deck, found.discountCardIds)
+        discountCardIds: resolvedDiscountCardIds(found.deck, found.discountCardIds),
+        collectibleEditionCardIds: normalizeCollectibleEditionCardIds(found.collectibleEditionCardIds)
       });
     }
 
@@ -4103,6 +4314,7 @@
     const card = getCard(cardId);
 
     if (!card) return "";
+    const collectibleEdition = options.collectibleEdition === true && supportsCollectibleEdition(card);
 
     const intrinsicData = entry
       ? `data-instance-id="${escapeHtml(entry.instanceId || "")}"`
@@ -4125,6 +4337,7 @@
       class="${classes}"
       data-act="details"
       data-card-id="${escapeHtml(cardId || "")}"
+      data-collectible-edition="${collectibleEdition ? "1" : "0"}"
       ${intrinsicData}
       ${options.dataAttributes || ""}
       aria-label="${escapeHtml(card.name)}"
@@ -4132,9 +4345,9 @@
     >
       <div
         class="battleCardVisual"
-        data-card-art-id="${escapeHtml(card.id)}"
+        ${cardArtDataAttributes(card.id, collectibleEdition)}
       >
-      ${cardArtInnerHtml(card, true)}
+      ${cardArtInnerHtml(card, true, collectibleEdition)}
       </div>
 
       ${options.personalDiscount ? personalDiscountBadgeHtml(card, options.discountPlayer) : ""}
@@ -4163,7 +4376,8 @@
     const cardHtml = cards.map(entry => {
       const card = getCard(entry.id);
       const isBase = entry.zone === "bases";
-      if (!card) return battleCardHtml(entry, { ownerName: player.name, zoneClass: isBase ? "baseCard" : "playedCard", locked: true });
+      const collectibleEdition = playerUsesCollectibleEdition(player, entry.id);
+      if (!card) return battleCardHtml(entry, { ownerName: player.name, zoneClass: isBase ? "baseCard" : "playedCard", locked: true, collectibleEdition });
       const protectedBase = isBase && blockers.length > 0 && !card.outpost;
       const canAttackBase = canAct && isBase && attackable.includes(entry.instanceId) && (myPlayer()?.combat || 0) >= (card.defense || 0);
       const actionButtons = [];
@@ -4177,7 +4391,8 @@
         primaryAction,
         locked: protectedBase,
         attackable: canAttackBase,
-        disabledBase: isBase && (entry.stunTurns || 0) > 0
+        disabledBase: isBase && (entry.stunTurns || 0) > 0,
+        collectibleEdition
       });
     }).join("");
 
@@ -4224,13 +4439,14 @@
     $("#marketDeckCount").textContent = (state.marketDeck || []).length;
     $("#marketRow").innerHTML = (state.tradeRow || []).map((entry, index) => {
       const card = getCard(entry?.id);
-      if (!card) return battleCardHtml(entry, { ownerName: entry?.originalOwnerName || "Unknown", locked: true });
+      const collectibleEdition = entry?.collectibleEdition === true;
+      if (!card) return battleCardHtml(entry, { ownerName: entry?.originalOwnerName || "Unknown", locked: true, collectibleEdition });
       const marketCost = marketCardCostForPlayer(card, me);
       const personalDiscount = marketCost < Number(card.cost);
       const canBuy = canAct && (me?.trade || 0) >= marketCost;
       const permanentSupply = isPermanentHiredLooterEntry(entry);
       const primaryAction = `<button class="btn small good" data-act="buy-market" data-index="${index}" ${canBuy ? "" : "disabled"}>Buy ${marketCost}${personalDiscount ? " · ◆−1" : ""}${permanentSupply ? " · ∞" : ""}</button>`;
-      return battleCardHtml(entry, { ownerName: entry.originalOwnerName, primaryAction, attackable: canBuy, personalDiscount, discountPlayer: me });
+      return battleCardHtml(entry, { ownerName: entry.originalOwnerName, primaryAction, attackable: canBuy, personalDiscount, discountPlayer: me, collectibleEdition });
     }).join("") || '<div class="emptyZone">The Trade Row is empty.</div>';
   }
 
@@ -4248,13 +4464,14 @@
     const mustDiscard = myTurn && forcedDiscard > 0;
     $("#handRow").innerHTML = (me.hand || []).map((cardId, index) => {
       const card = getCard(cardId);
+      const collectibleEdition = playerUsesCollectibleEdition(me, cardId);
       if (mustDiscard) {
         const primaryAction = `<button class="btn small warning" data-act="forced-discard" data-index="${index}">Discard</button>`;
-        return battleCardHtml(cardId, { primaryAction, ownerName: me.name, discardChoice: true, dataAttributes: `data-hand-index="${index}"` });
+        return battleCardHtml(cardId, { primaryAction, ownerName: me.name, discardChoice: true, dataAttributes: `data-hand-index="${index}"`, collectibleEdition });
       }
       if (!card) {
         const primaryAction = `<button class="btn small good" data-act="play-card" data-index="${index}" ${canAct ? "" : "disabled"}>Clear</button>`;
-        return battleCardHtml(cardId, { primaryAction, ownerName: me.name, locked: !canAct, zoneClass: canAct ? "playableCard" : "", dataAttributes: canAct ? `data-hand-index="${index}" data-playable="1"` : "" });
+        return battleCardHtml(cardId, { primaryAction, ownerName: me.name, locked: !canAct, zoneClass: canAct ? "playableCard" : "", dataAttributes: canAct ? `data-hand-index="${index}" data-playable="1"` : "", collectibleEdition });
       }
       const primaryAction = `<button class="btn small good" data-act="play-card" data-index="${index}" ${canAct ? "" : "disabled"}>Play</button>`;
       return battleCardHtml(cardId, {
@@ -4262,7 +4479,8 @@
         ownerName: me.name,
         attackable: canAct,
         zoneClass: canAct ? "playableCard" : "",
-        dataAttributes: canAct ? `data-hand-index="${index}" data-playable="1"` : ""
+        dataAttributes: canAct ? `data-hand-index="${index}" data-playable="1"` : "",
+        collectibleEdition
       });
     }).join("") || '<div class="emptyZone">No cards in hand</div>';
 
@@ -4276,7 +4494,8 @@
     $("#ownCards").innerHTML = ownEntries.map(entry => {
       const card = getCard(entry.id);
       const zoneClass = entry.zone === "bases" ? "baseCard" : "playedCard";
-      if (!card) return battleCardHtml(entry, { ownerName: me.name, locked: true, zoneClass });
+      const collectibleEdition = playerUsesCollectibleEdition(me, entry.id);
+      if (!card) return battleCardHtml(entry, { ownerName: me.name, locked: true, zoneClass, collectibleEdition });
       const actionButtons = [];
       if (canAct && card.sacrifice) actionButtons.push(`<button class="btn small warning" data-act="sacrifice" data-zone="${entry.zone}" data-instance-id="${entry.instanceId}">Sacrifice</button>`);
       if (entry.zone === "bases") actionButtons.push(chargeButtonsHtml(entry, card, canAct));
@@ -4285,7 +4504,8 @@
         primaryAction,
         ownerName: me.name,
         zoneClass,
-        disabledBase: entry.zone === "bases" && (entry.stunTurns || 0) > 0
+        disabledBase: entry.zone === "bases" && (entry.stunTurns || 0) > 0,
+        collectibleEdition
       });
     }).join("") || '<div class="emptyZone">No bases or cards played this turn</div>';
   }
@@ -4306,7 +4526,7 @@
     $("#opponentQueueCards").innerHTML = shown.map(item => {
       const card = getCard(item.cardId);
       if (!card) return "";
-      return `<div class="queueCard" style="--queueFaction:var(--${card.faction});--faction:var(--${card.faction})"><div class="queueCardVisual">${cardArtInnerHtml(card, true)}</div><div class="queueCardName">${escapeHtml(card.name)}</div></div>`;
+      return `<div class="queueCard" style="--queueFaction:var(--${card.faction});--faction:var(--${card.faction})"><div class="queueCardVisual">${cardArtInnerHtml(card, true, item.collectibleEdition === true)}</div><div class="queueCardName">${escapeHtml(card.name)}</div></div>`;
     }).join("") + (queue.length > shown.length ? `<div class="queueMore">+${queue.length - shown.length}</div>` : "");
   }
 
@@ -4316,7 +4536,7 @@
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }
 
-  function fxCardGhost(cardId, point, disintegrate = false) {
+  function fxCardGhost(cardId, point, disintegrate = false, collectibleEdition = false) {
     const card = getCard(cardId);
     if (!card) return null;
     const ghost = document.createElement("div");
@@ -4324,13 +4544,13 @@
     ghost.style.left = `${point.x}px`;
     ghost.style.top = `${point.y}px`;
     ghost.style.setProperty("--ghostFaction", `var(--${card.faction})`);
-    ghost.innerHTML = `<div class="fxGhostVisual" style="--faction:var(--${card.faction})">${cardArtInnerHtml(card, true)}</div><b>${escapeHtml(card.name)}</b>`;
+    ghost.innerHTML = `<div class="fxGhostVisual" style="--faction:var(--${card.faction})">${cardArtInnerHtml(card, true, collectibleEdition)}</div><b>${escapeHtml(card.name)}</b>`;
     $("#battleFxLayer").appendChild(ghost);
     setTimeout(() => ghost.remove(), disintegrate ? 900 : 620);
     return ghost;
   }
 
-  function fxDiscardGhost(cardId, point) {
+  function fxDiscardGhost(cardId, point, collectibleEdition = false) {
     const card = getCard(cardId);
     if (!card) return null;
     const ghost = document.createElement("div");
@@ -4338,7 +4558,7 @@
     ghost.style.left = `${point.x}px`;
     ghost.style.top = `${point.y}px`;
     ghost.style.setProperty("--ghostFaction", `var(--${card.faction})`);
-    ghost.innerHTML = `<div class="fxGhostVisual" style="--faction:var(--${card.faction})">${cardArtInnerHtml(card, true)}</div><b>↻ ${escapeHtml(card.name)}</b>`;
+    ghost.innerHTML = `<div class="fxGhostVisual" style="--faction:var(--${card.faction})">${cardArtInnerHtml(card, true, collectibleEdition)}</div><b>↻ ${escapeHtml(card.name)}</b>`;
     $("#battleFxLayer").appendChild(ghost);
     setTimeout(() => ghost.remove(), 780);
     return ghost;
@@ -4364,9 +4584,11 @@
     const targetSeat = event.targetId ? playerSeat(event.targetId) : null;
     const source = rectCenter(sourceSeat, { x: innerWidth / 2, y: innerHeight * .78 });
     const target = rectCenter(targetSeat, { x: innerWidth / 2, y: innerHeight * .25 });
+    const editionPlayer = (state?.players || []).find(player => player.id === (event.targetId || event.actorId || event.sourceId));
+    const collectibleEdition = event.collectibleEdition === true || playerUsesCollectibleEdition(editionPlayer, event.cardId);
 
     if (event.type === "card-play") {
-      fxCardGhost(event.cardId, source, false);
+      fxCardGhost(event.cardId, source, false, collectibleEdition);
       sourceSeat?.classList.add("playPulse");
       setTimeout(() => sourceSeat?.classList.remove("playPulse"), 600);
       await new Promise(resolve => setTimeout(resolve, 240));
@@ -4396,7 +4618,7 @@
       return;
     }
     if (event.type === "card-discard") {
-      fxDiscardGhost(event.cardId, target);
+      fxDiscardGhost(event.cardId, target, collectibleEdition);
       await new Promise(resolve => setTimeout(resolve, 300));
       return;
     }
@@ -4418,22 +4640,22 @@
       return;
     }
     if (event.type === "card-resurrect") {
-      fxCardGhost(event.cardId, target, false);
+      fxCardGhost(event.cardId, target, false, collectibleEdition);
       targetSeat?.classList.add("playPulse");
       setTimeout(() => targetSeat?.classList.remove("playPulse"), 600);
       await new Promise(resolve => setTimeout(resolve, 320));
       return;
     }
     if (event.type === "card-transform") {
-      if (event.fromCardId) fxCardGhost(event.fromCardId, target, true);
+      if (event.fromCardId) fxCardGhost(event.fromCardId, target, true, playerUsesCollectibleEdition(editionPlayer, event.fromCardId));
       await new Promise(resolve => setTimeout(resolve, 220));
-      fxCardGhost(event.cardId, target, false);
+      fxCardGhost(event.cardId, target, false, collectibleEdition);
       await new Promise(resolve => setTimeout(resolve, 360));
       return;
     }
     if (event.type === "card-destroy") {
       if (sourceSeat) fireBeam(source, target);
-      fxCardGhost(event.cardId, target, true);
+      fxCardGhost(event.cardId, target, true, collectibleEdition);
       targetSeat?.classList.add("hitPulse");
       setTimeout(() => targetSeat?.classList.remove("hitPulse"), 600);
       await new Promise(resolve => setTimeout(resolve, 420));
@@ -4442,7 +4664,7 @@
     if (event.type === "card-scrap") {
       const market = $(".marketBand");
       const point = event.target === "market" ? rectCenter(market) : target;
-      fxCardGhost(event.cardId, point, true);
+      fxCardGhost(event.cardId, point, true, collectibleEdition);
       if (event.target === "market") {
         market?.classList.add("scrapPulse");
         setTimeout(() => market?.classList.remove("scrapPulse"), 700);
@@ -4737,6 +4959,7 @@
       deck: [...profile.deck],
       openingCardIds: resolvedOpeningCardIds(profile.deck, profile.openingCardIds),
       discountCardIds: resolvedDiscountCardIds(profile.deck, profile.discountCardIds),
+      collectibleEditionCardIds: collectibleEditionCardIdsFromProfile(profile),
       handSize: 5,
       isBot: false,
       difficulty: ""
@@ -5367,9 +5590,11 @@
     const button = event.target.closest("[data-act]");
     if (!button) return;
     const action = button.dataset.act;
-    if (action === "details") showCardDetails(button.dataset.cardId);
+    if (action === "details") showCardDetails(button.dataset.cardId, "", button.hasAttribute("data-collectible-edition") ? button.dataset.collectibleEdition === "1" : null);
     if (action === "effect-help") showEffectHelp(button.dataset.effectTerm);
     if (action === "buy-profile-card") purchaseProfileCard(button.dataset.cardId);
+    if (action === "buy-collectible-edition") purchaseCollectibleEdition(button.dataset.cardId);
+    if (action === "toggle-collectible-edition") toggleCollectibleEdition(button.dataset.cardId);
     if (action === "deck-builder-tab") {
       deckBuilderTab = button.dataset.deckBuilderTab === "cards" ? "cards" : "specialization";
       deckListScroll.in = 0;
