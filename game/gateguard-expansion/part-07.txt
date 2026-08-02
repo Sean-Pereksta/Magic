@@ -1,0 +1,270 @@
+ld(ring);
+    setTimeout(() => ring.remove(), 430);
+    emitFloat(position, blocked ? "BLOCK" : killed ? `-${amount} KO` : `-${amount}`, blocked ? "block" : "");
+    const cell = cells[position.r * SIZE + position.c];
+    if (cell) {
+      cell.classList.remove("rogue-hit");
+      void cell.offsetWidth;
+      cell.classList.add("rogue-hit");
+    }
+  }
+
+  function emitScrapBurst(position) {
+    if (!fxLayer || !position) return;
+    const point = pointFor(position);
+    for (let index = 0; index < 7; index += 1) {
+      const shard = document.createElement("span");
+      shard.className = "rogue-scrap-shard";
+      shard.style.left = `${point.x}px`;
+      shard.style.top = `${point.y}px`;
+      shard.style.setProperty("--x", `${(Math.random() - 0.5) * 80}px`);
+      shard.style.setProperty("--y", `${(Math.random() - 0.35) * 75}px`);
+      shard.style.setProperty("--r", `${Math.random() * 180}deg`);
+      fxLayer.appendChild(shard);
+      setTimeout(() => shard.remove(), 720);
+    }
+  }
+
+  function addGameOverStats() {
+    const panel = document.querySelector(".gameover");
+    if (!panel || panel.querySelector(".rogue-final")) return;
+    const meta = ensureMeta();
+    const info = actInfo();
+    const stats = document.createElement("div");
+    stats.className = "rogue-final";
+    stats.innerHTML = `<b>ACT ${info.number} · ${info.name}</b><br>${meta.kills} enemies defeated · ${meta.scrap} Scrap held<br>${ownedRelicCount()} relic ranks · ${Object.keys(meta.builds).length} build nodes · ${meta.questsCompleted} quests`;
+    panel.insertBefore(stats, restartButton);
+  }
+
+  injectInterface();
+
+  const coreRender = render;
+  render = function expandedRender() {
+    const result = coreRender.apply(this, arguments);
+    if (game) {
+      ensureMeta();
+      decorateBoard();
+      updateHud();
+    }
+    return result;
+  };
+
+  const coreBeginRound = beginRound;
+  beginRound = function expandedBeginRound() {
+    if (!game || game.over) return coreBeginRound.apply(this, arguments);
+    beforeRound();
+    const result = coreBeginRound.apply(this, arguments);
+    afterRound();
+    return result;
+  };
+
+  const corePickEnemyType = pickEnemyType;
+  pickEnemyType = function expandedPickEnemyType(round) {
+    const info = actInfo(round);
+    return info?.weights ? weightedEnemy(info.weights) : corePickEnemyType(round);
+  };
+
+  const coreMakeEnemy = makeEnemy;
+  makeEnemy = function expandedMakeEnemy(type, row, column) {
+    const enemy = coreMakeEnemy(type, row, column);
+    const info = actInfo((freshRunExpected || !game || game.over) ? 1 : (game.round || 1));
+    const heavy = ["brute", "guardian", "commander"].includes(type);
+    let bonusHp = info.number >= 3 && heavy ? Math.floor((info.number - 1) / 3) : 0;
+    if (info.endlessTier > 0) bonusHp += Math.floor((info.endlessTier + 1) / 3);
+    const eliteChance = Math.min(0.38, Math.max(0, (info.number - 1) * 0.035 + info.endlessTier * 0.018));
+    if (Math.random() < eliteChance) {
+      enemy.rogueElite = true;
+      enemy.rogueTier = Math.max(1, Math.ceil(info.number / 3));
+      bonusHp += 1 + Math.floor(info.endlessTier / 4);
+    }
+    if (bonusHp > 0) {
+      enemy.maxHp += bonusHp;
+      enemy.hp += bonusHp;
+    }
+    return enemy;
+  };
+
+  const corePrepareIncoming = prepareIncoming;
+  prepareIncoming = function expandedPrepareIncoming() {
+    corePrepareIncoming.apply(this, arguments);
+    if (!game || game.over) return;
+    const info = actInfo();
+    let bonus = 0;
+    if (info.number >= 4) bonus += 1;
+    if (info.endlessTier >= 4) bonus += 1;
+    const occupiedIncoming = new Set(game.incoming.map((spawn) => key(spawn.r, spawn.c)));
+    const free = edgeCells().filter((position) => !occupied(game, position.r, position.c) && !occupiedIncoming.has(key(position.r, position.c))).sort(() => Math.random() - 0.5);
+    while (bonus > 0 && free.length && aliveEnemies().length + game.incoming.length < 23) {
+      const position = free.pop();
+      game.incoming.push({ ...position, type: pickEnemyType(game.round) });
+      bonus -= 1;
+    }
+  };
+
+  const coreDamageEnemy = damageEnemy;
+  damageEnemy = function expandedDamageEnemy(state, enemyId, amount, sourceHero = null) {
+    const enemy = state.enemies.find((unit) => unit.id === enemyId && unit.alive);
+    if (!enemy) return coreDamageEnemy.apply(this, arguments);
+    const beforeHp = enemy.hp;
+    const finalAmount = attackBonus(state, enemy, sourceHero, amount);
+    if (state === game && sourceHero) emitProjectile(sourceHero, enemy, sourceHero.type);
+    const result = coreDamageEnemy(state, enemyId, finalAmount, sourceHero);
+    if (state === game && result.hit) {
+      const dealt = Math.max(0, beforeHp - enemy.hp);
+      emitHit(enemy, dealt || finalAmount, false, result.killed);
+      const meta = ensureMeta();
+      if (sourceHero) meta.actionHits.push({ enemyId, heroType: sourceHero.type, killed: result.killed });
+      if (result.killed) {
+        if (sourceHero) meta.actionKills.push({ enemyId, heroType: sourceHero.type });
+        registerKill(enemy, sourceHero);
+      }
+    } else if (state === game && result.blocked) {
+      emitHit(enemy, 0, true, false);
+    }
+    return result;
+  };
+
+  const coreDamageHero = damageHero;
+  damageHero = function expandedDamageHero(state, heroId, attackerId = null, melee = false) {
+    const hero = state.heroes.find((unit) => unit.id === heroId && unit.alive);
+    const attacker = state.enemies.find((unit) => unit.id === attackerId && unit.alive);
+    if (!hero) return coreDamageHero.apply(this, arguments);
+    if (state === game) {
+      const lethal = hero.hp <= 1 && hero.guard <= 0 && hero.armor <= 0 && !(state.upgrades.reserve && !state.reserveUsed);
+      const meta = ensureMeta();
+      if (lethal && rank("lastEmber") && meta.lastEmberAct !== meta.act) {
+        hero.guard = 1;
+        meta.lastEmberAct = meta.act;
+        toast("Last Ember prevented a lethal hit");
+      } else if (lethal && rank("scrapArmor") && meta.scrap >= 5) {
+        spendScrap(5);
+        hero.armor += 1;
+        toast("Scrap Armor spent 5 Scrap");
+      }
+      if (attacker) emitProjectile(attacker, hero, "enemy");
+    }
+    const beforeHp = hero.hp;
+    const beforeDefense = hero.guard + hero.armor;
+    const result = coreDamageHero(state, heroId, attackerId, melee);
+    if (state === game) {
+      const blocked = result.blocked || (beforeDefense > hero.guard + hero.armor && hero.hp === beforeHp);
+      emitHit(hero, blocked ? 0 : Math.max(1, beforeHp - hero.hp), blocked, result.killed);
+      if (blocked) progressQuest("guardedHits", 1);
+      if (!blocked && hero.hp < beforeHp) ensureMeta().roundDamage += beforeHp - hero.hp;
+      if (blocked && melee && attacker && hero.type === "shield" && hasBuild("shield_vengeance_2")) {
+        hero.cooldown = Math.max(0, hero.cooldown - 1);
+      }
+      if (blocked && melee && attacker && hero.type === "shield" && hasBuild("shield_vengeance_3") && attacker.alive) {
+        internalDamage = true;
+        const extra = coreDamageEnemy(game, attacker.id, 1, hero);
+        internalDamage = false;
+        if (extra.killed) registerKill(attacker, hero);
+      }
+    }
+    return result;
+  };
+
+  const coreFinishAction = finishAction;
+  finishAction = function expandedFinishAction(hero) {
+    const meta = ensureMeta();
+    const restore = meta.extraActionHeroId === hero.id;
+    if (restore) meta.extraActionHeroId = null;
+    const result = coreFinishAction.apply(this, arguments);
+    meta.actionHits = [];
+    meta.actionKills = [];
+    if (restore && hero.alive && game.phase === "player") {
+      hero.acted = false;
+      selectedHeroId = hero.id;
+      actionMode = "move";
+      toast(`${HERO_LABELS[hero.type]} keeps the initiative`);
+      render();
+    }
+    return result;
+  };
+
+  const coreFinishSpecial = finishSpecial;
+  finishSpecial = function expandedFinishSpecial(hero) {
+    const meta = ensureMeta();
+    progressQuest("specials", 1);
+    if (hero.type === "shield" && hasBuild("shield_fortress_2")) {
+      for (const ally of game.heroes.filter((unit) => unit.alive && unit.guard > 0)) ally.armor += 1;
+    }
+    if (hero.type === "spear" && hasBuild("spear_control_1")) {
+      for (const hit of meta.actionHits) {
+        const enemy = game.enemies.find((unit) => unit.id === hit.enemyId && unit.alive);
+        if (enemy) enemy.stunned = Math.max(enemy.stunned, 2);
+      }
+    }
+    if (hero.type === "bow" && (hasBuild("bow_storm_2") || rank("stormArrow"))) {
+      for (const hit of meta.actionHits) {
+        const enemy = game.enemies.find((unit) => unit.id === hit.enemyId && unit.alive);
+        if (enemy) enemy.stunned = Math.max(enemy.stunned, 1);
+      }
+    }
+    if (hero.type === "banner") {
+      const rallied = game.heroes.filter((unit) => unit.alive && unit.rallied);
+      if (hasBuild("banner_marshal_2")) {
+        const reactivated = game.heroes.find((unit) => unit.alive && unit.rallyReactivated);
+        if (reactivated) reactivated.cooldown = Math.max(0, reactivated.cooldown - 1);
+      }
+      const healing = (hasBuild("banner_medic_1") ? 1 : 0) + rank("bannerClasp");
+      if (healing) for (const ally of rallied) ally.hp = Math.min(ally.maxHp, ally.hp + healing);
+      if (hasBuild("banner_marshal_3") || rank("bannerClasp") >= 2 || detectTactics().combos.some((combo) => combo.id === "standardWall")) {
+        for (const ally of rallied) ally.armor += 1;
+      }
+      if (hasBuild("banner_medic_3") && meta.medicReviveAct !== meta.act && game.heroes.some((unit) => !unit.alive)) {
+        reviveOneHero();
+        meta.medicReviveAct = meta.act;
+        toast("Return to Line revived a fallen hero");
+      }
+    }
+    const result = coreFinishSpecial.apply(this, arguments);
+    meta.actionHits = [];
+    meta.actionKills = [];
+    return result;
+  };
+
+  const coreShowUpgradeChoices = showUpgradeChoices;
+  showUpgradeChoices = function expandedShowUpgradeChoices() {
+    const result = coreShowUpgradeChoices.apply(this, arguments);
+    updateHud();
+    return result;
+  };
+
+  const coreChooseUpgrade = chooseUpgrade;
+  chooseUpgrade = function expandedChooseUpgrade(upgrade) {
+    const result = coreChooseUpgrade.apply(this, arguments);
+    setTimeout(maybeOpenQueuedRelic, 250);
+    return result;
+  };
+
+  const coreEndGame = endGame;
+  endGame = function expandedEndGame() {
+    const result = coreEndGame.apply(this, arguments);
+    setTimeout(addGameOverStats, 50);
+    return result;
+  };
+
+  const coreNewGame = newGame;
+  newGame = function expandedNewGame() {
+    freshRunExpected = true;
+    const result = coreNewGame.apply(this, arguments);
+    freshRunExpected = false;
+    return result;
+  };
+
+  restartButton.addEventListener("click", () => {
+    closeModal();
+    setTimeout(() => {
+      if (game && !game.rogue) {
+        game.rogue = initialMeta();
+        createQuest(true);
+        render();
+      }
+    }, 0);
+  });
+
+  // The core is still on its loading screen when this expansion arrives.
+  // Prepare the visual shell now; run state initializes on BEGIN.
+  applyActTheme(actInfo(1));
+})();

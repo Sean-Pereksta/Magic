@@ -1,0 +1,294 @@
+p.addEventListener("click", openQuestPanel);
+    modal.querySelector("#rogueModalClose").addEventListener("click", closeModal);
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) closeModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && modal.classList.contains("show")) closeModal();
+    });
+  }
+
+  function applyActTheme(info) {
+    const root = document.documentElement;
+    root.style.setProperty("--rogue-page", info.colors.page);
+    root.style.setProperty("--rogue-board", info.colors.board);
+    root.style.setProperty("--rogue-line", info.colors.line);
+    root.style.setProperty("--rogue-accent", info.colors.accent);
+    root.style.setProperty("--rogue-haze", info.colors.haze);
+    document.body.classList.add("rogue-act");
+    const dark = ["night", "foundry", "eclipse", "crown", "void"].includes(info.key);
+    document.body.classList.toggle("rogue-dark", dark);
+    document.body.dataset.rogueAct = info.key;
+  }
+
+  function announceAct(info) {
+    if (!actBanner) return;
+    actBanner.querySelector("#rogueActKicker").textContent = `ACT ${info.number}${info.endlessTier ? ` · ENDLESS TIER ${info.endlessTier}` : ""}`;
+    actBanner.querySelector("#rogueActName").textContent = info.name;
+    actBanner.querySelector("#rogueActSubtitle").textContent = info.subtitle;
+    actBanner.classList.remove("show");
+    void actBanner.offsetWidth;
+    actBanner.classList.add("show");
+    if (actBannerTimer) clearTimeout(actBannerTimer);
+    actBannerTimer = setTimeout(() => actBanner.classList.remove("show"), 1900);
+  }
+
+  let toastTimer = null;
+  function toast(message) {
+    const element = document.getElementById("rogueToast");
+    if (!element) return;
+    element.textContent = message;
+    element.classList.add("show");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => element.classList.remove("show"), 1700);
+  }
+
+  function closeModal() {
+    modalMode = null;
+    modal.classList.remove("show");
+    maybeOpenQueuedRelic();
+  }
+
+  function openModal(title, subtitle, mode) {
+    modalMode = mode;
+    modalTitle.textContent = title;
+    modalSubtitle.textContent = subtitle || "";
+    modalBody.innerHTML = "";
+    modal.classList.add("show");
+  }
+
+  function updateHud() {
+    if (!game || !hud) return;
+    const meta = ensureMeta();
+    const tactics = detectTactics();
+    meta.formation = tactics.formation;
+    meta.combos = tactics.combos;
+    const info = actInfo();
+    hud.querySelector("#rogueScrap").textContent = `${meta.scrap} ⛓`;
+    hud.querySelector("#rogueKills").textContent = `${meta.kills} / ${meta.nextRelicKill}`;
+    hud.querySelector("#rogueAct").textContent = `${info.number} · ${info.name.replace(/^THE /, "")}`;
+    hud.querySelector("#rogueFormation").textContent = tactics.formation ? tactics.formation.name : "LOOSE";
+    hud.querySelector("#rogueBuild b").textContent = `BUILD PATHS · ${meta.forgePoints}`;
+    hud.querySelector("#rogueRelics b").textContent = `RELICS · ${ownedRelicCount()}`;
+    hud.querySelector("#rogueTactics b").textContent = tactics.combos.length ? `TACTICS · ${tactics.combos.length + 1}` : "TACTICS";
+    updateQuestStrip();
+  }
+
+  function updateQuestStrip() {
+    if (!questStrip || !game) return;
+    const quest = ensureMeta().quest;
+    if (!quest) {
+      questStrip.innerHTML = `<div class="rogue-quest-main"><span>NO ACTIVE QUEST</span><span>—</span></div>`;
+      questStrip.style.setProperty("--quest-progress", "0%");
+      return;
+    }
+    const progress = Math.min(quest.target, quest.progress || 0);
+    const percent = quest.target ? (progress / quest.target) * 100 : 0;
+    questStrip.style.setProperty("--quest-progress", `${percent}%`);
+    questStrip.innerHTML = `
+      <div class="rogue-quest-main"><span>QUEST · ${quest.title}</span><span>${progress}/${quest.target}</span></div>
+      <div class="rogue-quest-text">${quest.text} · Reward ${quest.rewardScrap} Scrap + ${quest.rewardForge} Forge</div>
+    `;
+  }
+
+  function ownedRelicCount() {
+    return Object.values(ensureMeta().relicRanks).reduce((sum, value) => sum + value, 0);
+  }
+
+  function relicById(id) {
+    return RELICS.find((relic) => relic.id === id) || null;
+  }
+
+  function gainScrap(amount, reason = "", position = null, countQuest = true) {
+    if (!amount || amount <= 0) return;
+    const meta = ensureMeta();
+    meta.scrap += amount;
+    if (countQuest) progressQuest("scrapEarned", amount);
+    if (position) emitFloat(position, `+${amount} SCRAP`, "scrap");
+    updateHud();
+    if (reason) toast(`${reason} · +${amount} Scrap`);
+  }
+
+  function spendScrap(amount) {
+    const meta = ensureMeta();
+    if (meta.scrap < amount) return false;
+    meta.scrap -= amount;
+    updateHud();
+    return true;
+  }
+
+  function createQuest(force = false) {
+    if (!game) return;
+    const meta = ensureMeta();
+    if (!force && meta.quest && !meta.quest.complete) return;
+    let templates = QUEST_TEMPLATES.filter((template) => template.type !== meta.quest?.type);
+    if (!game.heroes.some((hero) => hero.alive && hero.type === "spear")) {
+      templates = templates.filter((template) => template.type !== "stunKills");
+    }
+    const template = templates[Math.floor(Math.random() * templates.length)] || QUEST_TEMPLATES[0];
+    const made = template.make(meta);
+    meta.questCounter += 1;
+    meta.quest = {
+      id: `${template.type}_${meta.questCounter}`,
+      type: template.type,
+      progress: 0,
+      complete: false,
+      rewardScrap: 7 + meta.act * 2,
+      rewardForge: 1,
+      ...made
+    };
+    updateQuestStrip();
+  }
+
+  function progressQuest(type, amount = 1, detail = null) {
+    const meta = ensureMeta();
+    const quest = meta.quest;
+    if (!quest || quest.complete || quest.type !== type) return;
+    if (type === "heroKills" && detail?.heroType !== quest.heroType) return;
+    quest.progress = Math.min(quest.target, (quest.progress || 0) + amount);
+    updateQuestStrip();
+    if (quest.progress >= quest.target) completeQuest();
+  }
+
+  function completeQuest() {
+    const meta = ensureMeta();
+    const quest = meta.quest;
+    if (!quest || quest.complete) return;
+    quest.complete = true;
+    meta.questsCompleted += 1;
+    const bonus = Math.floor(quest.rewardScrap * 0.5 * rank("beaconGlass"));
+    gainScrap(quest.rewardScrap + bonus, "Quest complete", null, false);
+    meta.forgePoints += quest.rewardForge;
+    if (meta.questsCompleted % 3 === 0) {
+      meta.relicDiscount += 2;
+      toast("Three quests complete · next relic costs 2 less");
+    }
+    meta.nextQuestRound = (game.round || 1) + 1;
+    updateHud();
+    setTimeout(() => openQuestPanel(true), 250);
+  }
+
+  function openQuestPanel(fromCompletion = false) {
+    const quest = ensureMeta().quest;
+    openModal(quest?.complete ? "QUEST COMPLETE" : "ACTIVE QUEST", "Objectives create focused hero and formation challenges.", "quest");
+    if (!quest) {
+      modalBody.innerHTML = `<div class="tactic-block"><h3>NO QUEST</h3><p>A new objective will arrive at the next round.</p></div>`;
+      return;
+    }
+    modalBody.innerHTML = `
+      <div class="tactic-block ${quest.complete ? "active" : ""}">
+        <h3>${quest.title}</h3>
+        <p>${quest.text}</p>
+        <p style="margin-top:8px"><b>Progress:</b> ${Math.min(quest.progress, quest.target)} / ${quest.target}</p>
+        <p style="margin-top:5px"><b>Reward:</b> ${quest.rewardScrap} Scrap + ${quest.rewardForge} Forge Point${quest.rewardForge === 1 ? "" : "s"}</p>
+      </div>
+      ${quest.complete ? `<button class="rogue-wide-button" id="questContinue">CONTINUE</button>` : ""}
+    `;
+    const continueButton = modalBody.querySelector("#questContinue");
+    if (continueButton) {
+      continueButton.addEventListener("click", () => {
+        closeModal();
+        if (game.round >= ensureMeta().nextQuestRound) createQuest(true);
+      });
+    }
+    if (fromCompletion) modal.querySelector("#rogueModalClose").focus();
+  }
+
+  function getBuildNode(id) {
+    for (const hero of Object.values(BUILD_TREE)) {
+      for (const branch of hero.branches) {
+        for (let index = 0; index < branch.nodes.length; index += 1) {
+          const node = branch.nodes[index];
+          if (node[0] === id) return { node, branch, index };
+        }
+      }
+    }
+    return null;
+  }
+
+  function openBuildPanel() {
+    openModal("HERO FORGE", "Spend Forge Points on permanent paths for this run.", "build");
+    renderBuildPanel();
+  }
+
+  function renderBuildPanel() {
+    const meta = ensureMeta();
+    const tabs = Object.keys(BUILD_TREE).map((heroType) => `
+      <button class="rogue-tab ${heroType === buildHero ? "active" : ""}" data-hero="${heroType}" type="button">${BUILD_TREE[heroType].title}</button>
+    `).join("");
+    const hero = BUILD_TREE[buildHero];
+    const branches = hero.branches.map((branch) => {
+      const nodes = branch.nodes.map((node, index) => {
+        const [id, name, text, cost] = node;
+        const owned = hasBuild(id);
+        const prior = index === 0 || hasBuild(branch.nodes[index - 1][0]);
+        const affordable = meta.forgePoints >= cost;
+        const locked = !owned && (!prior || !affordable);
+        return `
+          <button class="build-node ${owned ? "owned" : ""} ${locked ? "locked" : ""}" data-build="${id}" type="button" ${owned || !prior ? "disabled" : ""}>
+            <b>TIER ${index + 1} · ${name}</b>
+            <span>${text}</span>
+            <em>${owned ? "OWNED" : `${cost} FORGE POINT${cost === 1 ? "" : "S"}`}</em>
+          </button>
+        `;
+      }).join("");
+      return `<section class="build-branch"><h3>${branch.name}</h3>${nodes}</section>`;
+    }).join("");
+    modalBody.innerHTML = `
+      <div class="rogue-tabs">${tabs}</div>
+      <div class="build-summary"><b>${hero.title} PATHS</b><b>${meta.forgePoints} FORGE POINT${meta.forgePoints === 1 ? "" : "S"}</b></div>
+      <div class="build-branches">${branches}</div>
+    `;
+    for (const tab of modalBody.querySelectorAll("[data-hero]")) {
+      tab.addEventListener("click", () => {
+        buildHero = tab.dataset.hero;
+        renderBuildPanel();
+      });
+    }
+    for (const button of modalBody.querySelectorAll("[data-build]")) {
+      button.addEventListener("click", () => purchaseBuild(button.dataset.build));
+    }
+  }
+
+  function purchaseBuild(id) {
+    const meta = ensureMeta();
+    const found = getBuildNode(id);
+    if (!found || hasBuild(id)) return;
+    const cost = found.node[3];
+    const prior = found.index === 0 || hasBuild(found.branch.nodes[found.index - 1][0]);
+    if (!prior || meta.forgePoints < cost) return;
+    meta.forgePoints -= cost;
+    meta.builds[id] = true;
+    applyImmediateBuild(id);
+    toast(`${found.node[1]} unlocked`);
+    renderBuildPanel();
+    render();
+  }
+
+  function applyImmediateBuild(id) {
+    const hero = game.heroes.find((unit) => unit.type === id.split("_")[0]);
+    if (id === "shield_fortress_1" && hero) {
+      hero.maxHp += 1;
+      hero.hp += 1;
+    }
+    if (id === "shield_vengeance_1") game.upgrades.counter = true;
+    if (id === "spear_lancer_2") game.upgrades.spearFlexible = true;
+    if (id === "bow_sniper_2") game.upgrades.bowPierce = true;
+    if (id === "bow_storm_1") game.upgrades.bowDiagonal = true;
+    if (id === "banner_marshal_1") game.upgrades.bannerRange = Math.max(3, game.upgrades.bannerRange || 2);
+  }
+
+  function relicCost(relic) {
+    const meta = ensureMeta();
+    const owned = meta.relicRanks[relic.id] || 0;
+    const actTax = Math.floor((meta.act - 1) / 2);
+    return Math.max(1, relic.cost + owned * 4 + actTax - meta.relicDiscount);
+  }
+
+  function getRelicOffers(count = 3) {
+    const meta = ensureMeta();
+    const available = RELICS.filter((relic) => (meta.relicRanks[relic.id] || 0) < relic.max);
+    const shuffled = available.slice().sort(() => Math.random() - 0.5);
+    const offers = shuffled.slice(0, count);
+    if (offers.length < count) {
+      offers.push(...RELICS.filter((relic) => !off

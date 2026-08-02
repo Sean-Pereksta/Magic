@@ -1,0 +1,265 @@
+ers.includes(relic)).slice(0, count - offers.length));
+    }
+    meta.lastOffers = offers.map((relic) => relic.id);
+    return offers;
+  }
+
+  function openRelicShop(reroll = false) {
+    const meta = ensureMeta();
+    if (!reroll && meta.pendingRelics > 0) meta.pendingRelics -= 1;
+    const offers = getRelicOffers(3);
+    openModal("RELIC FORGE", `Every ${RELIC_INTERVAL} kills reveals relics. Spend Scrap on one or save it.`, "relicShop");
+    renderRelicShop(offers);
+  }
+
+  function renderRelicShop(offers) {
+    const meta = ensureMeta();
+    const cards = offers.map((relic) => {
+      const cost = relicCost(relic);
+      const owned = meta.relicRanks[relic.id] || 0;
+      const affordable = meta.scrap >= cost;
+      return `
+        <article class="rogue-card">
+          <div class="symbol">${relic.symbol}</div>
+          <h3>${relic.name}${owned ? ` · RANK ${owned + 1}` : ""}</h3>
+          <p>${relic.text}</p>
+          <button type="button" data-relic-buy="${relic.id}" ${affordable ? "" : "disabled"}>${affordable ? `BUY · ${cost} SCRAP` : `NEED ${cost} SCRAP`}</button>
+        </article>
+      `;
+    }).join("");
+    modalBody.innerHTML = `
+      <div class="build-summary"><b>SCRAP AVAILABLE</b><b>${meta.scrap}</b></div>
+      <div class="rogue-cards">${cards}</div>
+      <div class="rogue-footer-actions">
+        <button class="rogue-wide-button secondary" id="relicReroll" type="button" ${meta.scrap >= 3 ? "" : "disabled"}>REROLL · 3 SCRAP</button>
+        <button class="rogue-wide-button secondary" id="relicSkip" type="button">SAVE SCRAP</button>
+      </div>
+    `;
+    for (const button of modalBody.querySelectorAll("[data-relic-buy]")) {
+      button.addEventListener("click", () => buyRelic(button.dataset.relicBuy));
+    }
+    modalBody.querySelector("#relicReroll").addEventListener("click", () => {
+      if (!spendScrap(3)) return;
+      renderRelicShop(getRelicOffers(3));
+    });
+    modalBody.querySelector("#relicSkip").addEventListener("click", closeModal);
+  }
+
+  function buyRelic(id) {
+    const relic = relicById(id);
+    if (!relic) return;
+    const cost = relicCost(relic);
+    if (!spendScrap(cost)) return;
+    const meta = ensureMeta();
+    meta.relicRanks[id] = (meta.relicRanks[id] || 0) + 1;
+    meta.relicDiscount = 0;
+    applyImmediateRelic(id);
+    toast(`${relic.name} acquired`);
+    closeModal();
+    render();
+  }
+
+  function applyImmediateRelic(id) {
+    // Most relics are evaluated dynamically so ranks combine cleanly with core upgrades.
+    void id;
+  }
+
+  function openRelicInventory() {
+    const meta = ensureMeta();
+    openModal("RELIC INVENTORY", "Relics shape the run and combine with hero paths.", "relicInventory");
+    const owned = RELICS.filter((relic) => (meta.relicRanks[relic.id] || 0) > 0);
+    modalBody.innerHTML = owned.length ? `
+      <div class="rogue-list">
+        ${owned.map((relic) => `
+          <div class="rogue-list-item">
+            <span class="icon">${relic.symbol}</span>
+            <span><b>${relic.name}</b><small>${relic.text}</small></span>
+            <b>R${meta.relicRanks[relic.id]}</b>
+          </div>
+        `).join("")}
+      </div>
+    ` : `<div class="tactic-block"><h3>NO RELICS YET</h3><p>Your first relic selection appears after kill ${meta.nextRelicKill}. Kills create Scrap used to purchase relics.</p></div>`;
+  }
+
+  const FORMATION_RULES = [
+    {
+      id: "bastion",
+      name: "FIVE-POINT BASTION",
+      text: "All five heroes occupy the beacon and its four adjacent spaces. The squad begins the round Guarded and its first formation kill yields bonus Scrap."
+    },
+    {
+      id: "ring",
+      name: "BEACON RING",
+      text: "Four heroes hold the spaces immediately around the beacon. Formation protection centers on the Banner and Shield."
+    },
+    {
+      id: "line",
+      name: "BATTLE LINE",
+      text: "Four living heroes form one tight row or column. Ranged heroes gain damage and cooldown pressure."
+    },
+    {
+      id: "shieldWall",
+      name: "SHIELD WALL",
+      text: "Shield is adjacent to at least two allies. Those allies gain Guard at round start."
+    },
+    {
+      id: "spearhead",
+      name: "SPEARHEAD",
+      text: "Blade, Shield, and Spear form a compact attacking wedge. Blade and Spear attacks gain damage."
+    }
+  ];
+
+  const COMBO_RULES = [
+    { id: "hammerAnvil", name: "HAMMER & ANVIL", text: "Blade adjacent to Shield: Blade gains +1 damage." },
+    { id: "longshot", name: "LONGLINE", text: "Bow and Spear aligned: long-range attacks gain +1 damage." },
+    { id: "standardWall", name: "STANDARD WALL", text: "Banner adjacent to Shield: Rally adds stronger protection." },
+    { id: "huntPack", name: "HUNT PACK", text: "Bow within 2 spaces of Blade: their kills yield +1 Scrap." },
+    { id: "pikeScreen", name: "PIKE SCREEN", text: "Spear adjacent to Shield: Spear gains +1 attack damage." }
+  ];
+
+  function heroOf(type) {
+    return game.heroes.find((hero) => hero.alive && hero.type === type) || null;
+  }
+
+  function adjacent(first, second) {
+    return Boolean(first && second && manhattan(first, second) === 1);
+  }
+
+  function aligned(first, second) {
+    return Boolean(first && second && (first.r === second.r || first.c === second.c));
+  }
+
+  function contiguousLine(heroes) {
+    for (let row = 0; row < SIZE; row += 1) {
+      const columns = heroes.filter((hero) => hero.r === row).map((hero) => hero.c).sort((a, b) => a - b);
+      if (columns.length >= 4 && columns[columns.length - 1] - columns[0] <= columns.length - 1) return true;
+    }
+    for (let column = 0; column < SIZE; column += 1) {
+      const rows = heroes.filter((hero) => hero.c === column).map((hero) => hero.r).sort((a, b) => a - b);
+      if (rows.length >= 4 && rows[rows.length - 1] - rows[0] <= rows.length - 1) return true;
+    }
+    return false;
+  }
+
+  function detectTactics() {
+    if (!game) return { formation: null, combos: [] };
+    const heroes = game.heroes.filter((hero) => hero.alive);
+    const blade = heroOf("blade");
+    const shield = heroOf("shield");
+    const spear = heroOf("spear");
+    const bow = heroOf("bow");
+    const banner = heroOf("banner");
+    const crossKeys = new Set([
+      key(BEACON.r, BEACON.c),
+      key(BEACON.r - 1, BEACON.c),
+      key(BEACON.r + 1, BEACON.c),
+      key(BEACON.r, BEACON.c - 1),
+      key(BEACON.r, BEACON.c + 1)
+    ]);
+    const aroundKeys = new Set([...crossKeys].filter((value) => value !== key(BEACON.r, BEACON.c)));
+    const heroKeys = new Set(heroes.map((hero) => key(hero.r, hero.c)));
+    let formation = null;
+    if (heroes.length === 5 && [...crossKeys].every((value) => heroKeys.has(value))) {
+      formation = FORMATION_RULES[0];
+    } else if (heroes.length >= 4 && [...aroundKeys].every((value) => heroKeys.has(value))) {
+      formation = FORMATION_RULES[1];
+    } else if (contiguousLine(heroes)) {
+      formation = FORMATION_RULES[2];
+    } else if (shield && heroes.filter((hero) => hero.id !== shield.id && adjacent(hero, shield)).length >= 2) {
+      formation = FORMATION_RULES[3];
+    } else if (blade && shield && spear && manhattan(blade, shield) <= 2 && manhattan(spear, shield) <= 2 && manhattan(blade, spear) <= 3) {
+      formation = FORMATION_RULES[4];
+    }
+    const combos = [];
+    if (adjacent(blade, shield)) combos.push(COMBO_RULES[0]);
+    if (aligned(bow, spear) && manhattan(bow, spear) <= 4) combos.push(COMBO_RULES[1]);
+    if (adjacent(banner, shield)) combos.push(COMBO_RULES[2]);
+    if (blade && bow && manhattan(blade, bow) <= 2) combos.push(COMBO_RULES[3]);
+    if (adjacent(spear, shield)) combos.push(COMBO_RULES[4]);
+    return { formation, combos };
+  }
+
+  function openTacticsPanel() {
+    const tactics = detectTactics();
+    openModal("FORMATIONS & COMBINATIONS", "Move heroes into patterns to activate bonuses immediately.", "tactics");
+    modalBody.innerHTML = `
+      <div class="build-summary"><b>ACTIVE FORMATION</b><b>${tactics.formation ? tactics.formation.name : "LOOSE"}</b></div>
+      ${FORMATION_RULES.map((rule) => `<section class="tactic-block ${tactics.formation?.id === rule.id ? "active" : ""}"><h3>${rule.name}${tactics.formation?.id === rule.id ? " · ACTIVE" : ""}</h3><p>${rule.text}</p></section>`).join("")}
+      <div class="build-summary" style="margin-top:14px"><b>HERO COMBINATIONS</b><b>${tactics.combos.length} ACTIVE</b></div>
+      ${COMBO_RULES.map((rule) => `<section class="tactic-block ${tactics.combos.some((combo) => combo.id === rule.id) ? "active" : ""}"><h3>${rule.name}${tactics.combos.some((combo) => combo.id === rule.id) ? " · ACTIVE" : ""}</h3><p>${rule.text}</p></section>`).join("")}
+    `;
+  }
+
+  function applyRoundTactics(meta, tactics) {
+    const heroes = game.heroes.filter((hero) => hero.alive);
+    const formationPower = 1 + rank("phalanxSeal") + (hasBuild("banner_tactics_2") ? 1 : 0);
+    if (meta.previousFormation && !tactics.formation && hasBuild("shield_warden_3") && meta.brokenFormationAct !== meta.act) {
+      meta.brokenFormationAct = meta.act;
+      for (const hero of heroes) hero.guard = Math.max(hero.guard, 1);
+      toast("Unbroken Oath · formation break Guarded the squad");
+    }
+    if (tactics.formation?.id === "bastion") {
+      for (const hero of heroes) hero.guard = Math.max(hero.guard, formationPower);
+    } else if (tactics.formation?.id === "ring") {
+      for (const type of ["shield", "banner"]) {
+        const hero = heroOf(type);
+        if (hero) hero.guard = Math.max(hero.guard, formationPower);
+      }
+    } else if (tactics.formation?.id === "line") {
+      for (const hero of heroes) hero.cooldown = Math.max(0, hero.cooldown - 1);
+    } else if (tactics.formation?.id === "shieldWall") {
+      const shield = heroOf("shield");
+      if (shield) {
+        shield.guard = Math.max(shield.guard, formationPower);
+        for (const hero of heroes) {
+          if (hero.id !== shield.id && adjacent(hero, shield)) hero.guard = Math.max(hero.guard, formationPower);
+        }
+      }
+    } else if (tactics.formation?.id === "spearhead") {
+      for (const type of ["blade", "shield", "spear"]) {
+        const hero = heroOf(type);
+        if (hero) hero.guard = Math.max(hero.guard, 1);
+      }
+    }
+    if (hasBuild("shield_fortress_3") && tactics.formation?.id === "shieldWall") {
+      const shield = heroOf("shield");
+      if (shield) {
+        for (const hero of heroes) {
+          if (hero.id === shield.id || adjacent(hero, shield)) hero.guard = Math.max(hero.guard, formationPower + 1);
+        }
+      }
+    }
+    if (rank("oathChain")) {
+      const shield = heroOf("shield");
+      if (shield) {
+        for (const hero of heroes) {
+          if (hero.id !== shield.id && adjacent(hero, shield)) hero.guard = Math.max(hero.guard, 1 + rank("oathChain"));
+        }
+      }
+    }
+    if (tactics.combos.some((combo) => combo.id === "standardWall")) {
+      const banner = heroOf("banner");
+      const shield = heroOf("shield");
+      if (banner) banner.guard = Math.max(banner.guard, 1);
+      if (shield) shield.guard = Math.max(shield.guard, 1);
+    }
+    if (hasBuild("shield_warden_1")) {
+      const shield = heroOf("shield");
+      if (shield && manhattan(shield, BEACON) === 1) shield.guard = Math.max(shield.guard, 1);
+    }
+    if (hasBuild("spear_phalanx_2") && tactics.formation) {
+      const spear = heroOf("spear");
+      if (spear) spear.guard = Math.max(spear.guard, 1);
+    }
+    if (hasBuild("banner_tactics_3") && tactics.formation) {
+      for (const hero of heroes) hero.cooldown = Math.max(0, hero.cooldown - 1);
+    }
+    if (hasBuild("banner_medic_2")) {
+      const banner = heroOf("banner");
+      if (banner) {
+        const wounded = heroes.filter((hero) => hero.id !== banner.id && adjacent(hero, banner) && hero.hp < hero.maxHp).sort((a, b) => a.hp - b.hp)[0];
+        if (wounded) wounded.hp = Math.min(wounded.maxHp, wounded.hp + 1);
+      }
+    }
+    progressQuest("formationRounds", tactics.formation ? 1 : 0);
+    meta.previousFormation = tactics.formation?.id || 
