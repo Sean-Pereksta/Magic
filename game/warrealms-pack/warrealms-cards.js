@@ -340,6 +340,256 @@ export const CARDS = Object.freeze([
   allyText: "Gain 1 Shield.",
   flavor: "It marks the future most likely to reward those who follow."
 },
+  // ==========================================================
+// NEW ASCENDANT CREATURES
+// Four collectible creatures and their noncollectible final forms.
+// ==========================================================
+
+
+// ==========================================================
+// YELLOW — THE EGG BEYOND TOMORROW
+// Does nothing initially. Ascends after five completed rounds.
+// ==========================================================
+
+{
+  id: "egg_beyond_tomorrow",
+  name: "Egg Beyond Tomorrow",
+  image: "egg_beyond_tomorrow.png",
+  faction: "yellow",
+  cost: 6,
+  shop_cost: 90,
+  type: "ship",
+  sigil: "◈",
+  effect: {},
+  ally: {},
+  transform: {
+    trigger: "turnsOwned",
+    required: 5,
+    into: "voralyth_future_devourer",
+    destination: "discard"
+  },
+  text: "This card has no immediate effect.",
+  allyText: "",
+  transformText: "Ascendant — After you complete 5 rounds while owning this card, transform it into Voralyth, Future-Devourer in your discard pile.",
+  flavor: "The shell contains no heartbeat—only the sound of futures being swallowed."
+},
+
+{
+  id: "voralyth_future_devourer",
+  name: "Voralyth, Future-Devourer",
+  image: "voralyth_future_devourer.png",
+  faction: "yellow",
+  collectible: false,
+  token: true,
+  transformedFrom: "egg_beyond_tomorrow",
+  cost: 14,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◈",
+  effect: {
+    combat: 11,
+    stun: 2,
+    opponentDiscard: 1
+  },
+  ally: {
+    draw: 1
+  },
+  text: "Gain 11 Combat and 2 Disable. The next enemy draws 1 fewer card.",
+  allyText: "Draw 1 card.",
+  flavor: "It hatched five wars too late for the civilizations it was born to consume."
+},
+
+
+// ==========================================================
+// GREEN — THE DOOMCHARGE BEAST
+// Begins as a weak attacker. Its final form exists only to die.
+// ==========================================================
+
+{
+  id: "doomhoof_whelp",
+  name: "Doomhoof Whelp",
+  image: "doomhoof_whelp.png",
+  faction: "green",
+  cost: 4,
+  shop_cost: 55,
+  type: "ship",
+  sigil: "⬢",
+  effect: {
+    combat: 2
+  },
+  ally: {},
+  transform: {
+    trigger: "timesPlayed",
+    required: 3,
+    into: "doomhoof_final_charge",
+    destination: "discard"
+  },
+  text: "Gain 2 Combat.",
+  allyText: "",
+  transformText: "Ascendant — After this card has been played 3 times, transform it into Doomhoof, Final Charge.",
+  flavor: "Every charge teaches it less fear and fewer reasons to return."
+},
+
+{
+  id: "doomhoof_final_charge",
+  name: "Doomhoof, Final Charge",
+  image: "doomhoof_final_charge.png",
+  faction: "green",
+  collectible: false,
+  token: true,
+  transformedFrom: "doomhoof_whelp",
+  cost: 13,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "⬢",
+  effect: {},
+  ally: {},
+  sacrifice: {
+    or: [
+      {
+        label: "Shatter the Fortresses",
+        effect: {
+          destroyBase: 5
+        }
+      },
+      {
+        label: "The Final Charge",
+        effect: {
+          combat: 15
+        }
+      }
+    ]
+  },
+  text: "This card has no immediate effect.",
+  allyText: "",
+  sacrificeText: "Sacrifice — Choose one: gain 5 Raze; or gain 15 Combat.",
+  flavor: "It was bred for one perfect moment and given no instincts for what comes afterward."
+},
+
+
+// ==========================================================
+// BLUE — CHERUB OF THE LAST MERCY
+// Begins with minor protection and ascends into the Death Seraph.
+// ==========================================================
+
+{
+  id: "cherub_of_last_mercy",
+  name: "Cherub of Last Mercy",
+  image: "cherub_of_last_mercy.png",
+  faction: "blue",
+  cost: 5,
+  shop_cost: 70,
+  type: "ship",
+  sigil: "✦",
+  effect: {
+    shield: 2
+  },
+  ally: {},
+  transform: {
+    trigger: "timesPlayed",
+    required: 3,
+    into: "seraph_of_the_final_bell",
+    destination: "discard"
+  },
+  text: "Gain 2 Shield.",
+  allyText: "",
+  transformText: "Ascendant — After this card has been played 3 times, transform it into Seraph of the Final Bell.",
+  flavor: "It shelters the dying because it already knows the road they will travel."
+},
+
+{
+  id: "seraph_of_the_final_bell",
+  name: "Seraph of the Final Bell",
+  image: "seraph_of_the_final_bell.png",
+  faction: "blue",
+  collectible: false,
+  token: true,
+  transformedFrom: "cherub_of_last_mercy",
+  cost: 10,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "✦",
+  effect: {
+    or: [
+      {
+        label: "Final Judgment",
+        effect: {
+          destroyBase: 1
+        }
+      },
+      {
+        label: "Merciful Passage",
+        effect: {
+          combat: 4,
+          shield: 2
+        }
+      }
+    ]
+  },
+  ally: {
+    draw: 1
+  },
+  text: "Choose one: gain 1 Raze; or gain 4 Combat and 2 Shield.",
+  allyText: "Draw 1 card.",
+  flavor: "Its bell does not announce death. It announces that death has already arrived."
+},
+
+
+// ==========================================================
+// RED — THE VILE GREAT LOCUST
+// Expensive and weak at first, but devastating after ascension.
+// ==========================================================
+
+{
+  id: "baby_great_locust",
+  name: "Baby Great Locust",
+  image: "baby_great_locust.png",
+  faction: "red",
+  cost: 5,
+  shop_cost: 75,
+  type: "ship",
+  sigil: "◒",
+  effect: {
+    combat: 1
+  },
+  ally: {},
+  transform: {
+    trigger: "timesPlayed",
+    required: 3,
+    into: "vile_great_locust",
+    destination: "discard"
+  },
+  text: "Gain 1 Combat.",
+  allyText: "",
+  transformText: "Ascendant — After this card has been played 3 times, transform it into the Vile Great Locust.",
+  flavor: "Its first hunger is almost harmless. Almost."
+},
+
+{
+  id: "vile_great_locust",
+  name: "Vile Great Locust",
+  image: "vile_great_locust.png",
+  faction: "red",
+  collectible: false,
+  token: true,
+  transformedFrom: "baby_great_locust",
+  cost: 13,
+  shop_cost: 0,
+  type: "ship",
+  sigil: "◒",
+  effect: {
+    combat: 5
+  },
+  ally: {},
+  doubleAlly: {
+    scrapOwn: 2,
+    draw: 2
+  },
+  text: "Gain 5 Combat.",
+  allyText: "",
+  doubleAllyText: "Gain 2 Purge and draw 2 cards.",
+  flavor: "When its wings darken the realm, nothing unwanted survives—not even memory."
+},
 
 {
   id: "nullfield_pylon",
