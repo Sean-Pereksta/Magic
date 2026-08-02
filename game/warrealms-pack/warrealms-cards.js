@@ -78,20 +78,21 @@ export const CARDS = Object.freeze([
   // YELLOW — XYTHE CONCORD
   // ==========================================================
   {
-    id: "starwhisper_scout",
-    name: "Starwhisper Scout",
-    image: "starwhisper_scout.png",
-    faction: "yellow",
-    cost: 2,
-    shop_cost: 15,
-    type: "ship",
-    sigil: "⌬",
-    effect: { trade: 1 },
-    ally: { draw: 1 },
-    text: "Gain 1 Trade.",
-    allyText: "Draw 1 card.",
-    flavor: "It listens to routes that have not happened yet."
-  },
+  id: "starwhisper_scout",
+  name: "Starwhisper Scout",
+  image: "starwhisper_scout.png",
+  collectible_edition: true,
+  faction: "yellow",
+  cost: 2,
+  shop_cost: 15,
+  type: "ship",
+  sigil: "⌬",
+  effect: { trade: 1 },
+  ally: { draw: 1 },
+  text: "Gain 1 Trade.",
+  allyText: "Draw 1 card.",
+  flavor: "It listens to routes that have not happened yet."
+},
   {
     id: "neural_leash",
     name: "Neural Leash",
