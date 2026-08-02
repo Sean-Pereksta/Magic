@@ -1,11 +1,6 @@
 name: Apply Turncraft strategy upgrade
 
 on:
-  push:
-    branches:
-      - agent/turncraft-strategy-controls
-    paths:
-      - .github/workflows/turncraft-strategy-upgrade.yml
   pull_request:
     branches:
       - main
@@ -14,9 +9,13 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: turncraft-strategy-upgrade
+  cancel-in-progress: true
+
 jobs:
   patch-and-validate:
-    if: github.head_ref == 'agent/turncraft-strategy-controls' || github.ref_name == 'agent/turncraft-strategy-controls'
+    if: github.head_ref == 'agent/turncraft-strategy-controls'
     runs-on: ubuntu-latest
     steps:
       - name: Check out upgrade branch
@@ -29,6 +28,21 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Repair serialized patch expression
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/turncraft_upgrade_patch.py')
+          text = path.read_text(encoding='utf-8')
+          old = r'''    r"function createTerrain\(\)\{.*?\n\}
+          function startPositions",'''.replace('          function', 'function')
+          new = r'''    r"""function createTerrain\(\)\{.*?\n\}
+          function startPositions""",'''.replace('          function', 'function')
+          if old not in text:
+              raise SystemExit('Serialized terrain regex was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
 
       - name: Apply Turncraft patch
         run: python .github/turncraft_upgrade_patch.py
