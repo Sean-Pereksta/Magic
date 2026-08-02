@@ -1592,7 +1592,12 @@
 
   function cardArtInnerHtml(card, detail = false) {
     const className = detail ? "detailArtImage" : "cardArtImage";
-    const artUrl = typeof cardArtCache.get(card.id) === "string" ? cardArtCache.get(card.id) : directCardArtUrl(card.id);
+    const cachedArt = cardArtCache.get(card.id);
+    const artUrl = typeof cachedArt === "string"
+      ? cachedArt
+      : cachedArt === null
+        ? ""
+        : directCardArtUrl(card.id);
     if (!artUrl) return "";
     return `<img class="${className}" src="${escapeHtml(artUrl)}" alt="${escapeHtml(card.name)} card graphic" loading="eager" decoding="async">`;
   }
@@ -1656,21 +1661,25 @@
     const ids = new Set();
     const add = value => {
       const cardId = typeof value === "string" ? value : value?.id;
-      if (cardId && getCard(cardId)) ids.add(cardId);
+      if (!cardId || ids.has(cardId)) return;
+      const card = getCard(cardId);
+      if (!card) return;
+      ids.add(cardId);
+      if (card.transform?.into) add(card.transform.into);
     };
-    // Only warm artwork that can be rendered now. Preloading the entire shared
-    // market made battle startup depend on dozens of off-screen image requests.
+    // Load every distinct card that can appear in this battle before play begins.
+    for (const entry of game?.marketDeck || []) add(entry);
     for (const entry of game?.tradeRow || []) add(entry);
-    for (const entry of game?.actionQueue || []) add(entry?.cardId || entry);
+    for (const entry of game?.scrapped || []) add(entry);
     for (const player of game?.players || []) {
-      for (const zone of ["hand", "played", "bases"]) {
+      for (const zone of ["commandDeck", "draw", "discard", "hand", "played", "bases"]) {
         for (const entry of player[zone] || []) add(entry);
       }
     }
     return [...ids];
   }
 
-  async function ensureBattleArt(game, { showOverlay = true } = {}) {
+  async function ensureBattleArt(game) {
     const key = `${gameId || "battle"}:${game?.createdAtMs || 0}`;
     if (battleArtPreparedFor === key) return;
     if (battleArtPromise) return battleArtPromise;
@@ -1680,11 +1689,8 @@
       battleArtPreparedFor = key;
       return;
     }
-    if (showOverlay) setLoading(`Loading graphics for the ${pending.length} visible cards in this battle…`);
-    const onProgress = showOverlay
-      ? (done, total) => setLoadingProgress(done, total, "Loading battle card graphics…")
-      : null;
-    battleArtPromise = preloadCardArt(pending, onProgress)
+    setLoading(`Loading graphics for all ${pending.length} cards used in this battle…`);
+    battleArtPromise = preloadCardArt(pending, (done, total) => setLoadingProgress(done, total, "Loading all battle card graphics…"))
       .finally(() => {
         battleArtPreparedFor = key;
         battleArtPromise = null;
@@ -5145,12 +5151,13 @@
     hideLoading();
     renderBattle();
     if (state.phase === "playing") {
-      const preparedState = state;
-      ensureBattleArt(preparedState, { showOverlay: false })
-        .then(() => {
-          if (singlePlayerMode && state === preparedState) renderBattle();
-        })
-        .catch(error => console.warn("Battle graphics could not finish loading", error));
+      try {
+        await ensureBattleArt(state);
+      } catch (error) {
+        console.warn("Battle graphics could not finish loading", error);
+      }
+      hideLoading();
+      renderBattle();
       scheduleBotTurn();
     }
   }
