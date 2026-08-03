@@ -493,6 +493,39 @@
   #skillPopupPoints { margin-top:2px; font-size:17px; font-weight:950; color:#fde047; }
   #skillPopup.perfect #skillPopupTitle { color:#7dd3fc; text-shadow:0 0 22px rgba(56,189,248,.9),0 2px 8px rgba(0,0,0,.8); }
   #skillPopup.near #skillPopupTitle { color:#fef08a; text-shadow:0 0 20px rgba(250,204,21,.8),0 2px 8px rgba(0,0,0,.8); }
+  #flowText { color:#a5f3fc; font-weight:950; text-shadow:0 0 10px rgba(34,211,238,.5); }
+
+  #dreamWarning {
+    position:fixed;
+    top:23%;
+    left:50%;
+    transform:translate(-50%,-16px) scale(.92);
+    z-index:19;
+    min-width:280px;
+    padding:10px 18px;
+    border-radius:14px;
+    text-align:center;
+    color:white;
+    pointer-events:none;
+    opacity:0;
+    background:linear-gradient(135deg,rgba(88,28,135,.9),rgba(190,24,93,.9));
+    border:2px solid rgba(255,255,255,.82);
+    box-shadow:0 0 30px rgba(236,72,153,.55),inset 0 0 18px rgba(255,255,255,.12);
+    transition:opacity .12s ease,transform .15s ease,background .12s ease;
+  }
+  #dreamWarning.show { opacity:1; transform:translate(-50%,0) scale(1); }
+  #dreamWarning.urgent {
+    background:linear-gradient(135deg,rgba(194,65,12,.96),rgba(190,18,60,.96));
+    box-shadow:0 0 38px rgba(251,113,133,.88),inset 0 0 20px rgba(255,255,255,.18);
+    animation:dreamWarningPulse .34s infinite alternate;
+  }
+  #dreamWarning.active {
+    background:linear-gradient(135deg,rgba(153,27,27,.98),rgba(225,29,72,.98));
+    box-shadow:0 0 46px rgba(255,40,90,1),inset 0 0 24px rgba(255,255,255,.24);
+  }
+  #dreamWarningTitle { font-size:21px; font-weight:1000; letter-spacing:1.7px; }
+  #dreamWarningText { margin-top:2px; font-size:12px; font-weight:900; letter-spacing:.7px; color:#fff7ed; }
+  @keyframes dreamWarningPulse { from { transform:translate(-50%,0) scale(1); } to { transform:translate(-50%,0) scale(1.045); } }
 
   @media (max-width: 760px), (pointer: coarse) {
     #hud {
@@ -513,6 +546,9 @@
     #skillPopup { top: 11%; min-width: 180px; }
     #skillPopupTitle { font-size: 21px; }
     #skillPopupPoints { font-size: 14px; }
+    #dreamWarning { top:18%; min-width:220px; padding:8px 12px; }
+    #dreamWarningTitle { font-size:17px; }
+    #dreamWarningText { font-size:10px; }
     #speedTierText { font-size: 8px; opacity: .78; line-height: 1.05; }
     #pickupText,
     #enemyText,
@@ -583,6 +619,7 @@
   <div class="hudSecondary">
     <span id="yardsText">0 yards</span>
     <span id="bonusText">+0 bonus</span>
+    <span id="flowText"></span>
     <span id="dangerText">Clear</span>
   </div>
   <div id="highScoreText" class="legacyHudLine">Local High Score: 0</div>
@@ -600,6 +637,10 @@
 <div id="skillPopup" aria-live="polite">
   <div id="skillPopupTitle">NEAR MISS!</div>
   <div id="skillPopupPoints">+25</div>
+</div>
+<div id="dreamWarning" aria-live="assertive">
+  <div id="dreamWarningTitle">DREAM ERUPTION</div>
+  <div id="dreamWarningText">MOVE OUT OF THE CIRCLE</div>
 </div>
 
 <button id="fullScreenBtn" type="button" onclick="toggleFullScreen()">⛶</button>
@@ -668,18 +709,18 @@
         <div id="characterGrid" role="group" aria-label="Character selection">
           <button class="characterCard" type="button" data-character="chris" onclick="selectCharacter('chris')" aria-pressed="true">
             <span class="characterName">Chris</span>
-            <span class="characterBuild">The original balanced runner.</span>
-            <span class="characterStats">SPEED ●●○<br>LATERAL ●●○</span>
+            <span class="characterBuild">Efficient sprinting and a cheaper dodge.</span>
+            <span class="characterStats">SPEED ●●○<br>LATERAL ●●○<br>ENDURANCE ●●●</span>
           </button>
           <button class="characterCard" type="button" data-character="dawit" onclick="selectCharacter('dawit')" aria-pressed="false">
             <span class="characterName">Dawit</span>
-            <span class="characterBuild">Very short and built for speed.</span>
-            <span class="characterStats">SPEED ●●●<br>LATERAL ●●○</span>
+            <span class="characterBuild">Fastest pace and stronger skill bonuses.</span>
+            <span class="characterStats">SPEED ●●●<br>LATERAL ●●○<br>SKILL SCORE ●●●</span>
           </button>
           <button class="characterCard" type="button" data-character="jay" onclick="selectCharacter('jay')" aria-pressed="false">
             <span class="characterName">Jay</span>
-            <span class="characterBuild">Rounder, slower, and quick side to side.</span>
-            <span class="characterStats">SPEED ●○○<br>LATERAL ●●●</span>
+            <span class="characterBuild">Longest dodge and fastest lateral control.</span>
+            <span class="characterStats">SPEED ●○○<br>LATERAL ●●●<br>DODGE ●●●</span>
           </button>
         </div>
         <div id="menuButtons">
@@ -805,9 +846,15 @@ const CHARACTER_PROFILES = {
     forwardSpeed: 1,
     sprintSpeed: 1,
     lateralSpeed: 1,
+    energyRegenMultiplier: 1.22,
+    sprintDrainMultiplier: 0.92,
+    dodgeCost: 15,
+    dodgeDistance: 6.2,
+    dodgeCooldownDuration: 0.55,
+    skillMultiplier: 1.0,
     roundness: 1,
     beard: true,
-    trait: "Balanced speed and lateral movement"
+    trait: "Balanced runner with efficient sprinting and a cheaper dodge"
   },
   dawit: {
     id: "dawit",
@@ -819,9 +866,15 @@ const CHARACTER_PROFILES = {
     forwardSpeed: 1.15,
     sprintSpeed: 1.13,
     lateralSpeed: 1.08,
+    energyRegenMultiplier: 0.95,
+    sprintDrainMultiplier: 1.12,
+    dodgeCost: 18,
+    dodgeDistance: 6.0,
+    dodgeCooldownDuration: 0.65,
+    skillMultiplier: 1.2,
     roundness: 0.88,
     beard: false,
-    trait: "Very short with the fastest forward speed"
+    trait: "Fastest runner and highest skill-score potential, but sprinting drains more energy"
   },
   jay: {
     id: "jay",
@@ -833,9 +886,15 @@ const CHARACTER_PROFILES = {
     forwardSpeed: 0.9,
     sprintSpeed: 0.9,
     lateralSpeed: 1.28,
+    energyRegenMultiplier: 1.05,
+    sprintDrainMultiplier: 1.0,
+    dodgeCost: 17,
+    dodgeDistance: 7.25,
+    dodgeCooldownDuration: 0.48,
+    skillMultiplier: 1.05,
     roundness: 1.35,
     beard: false,
-    trait: "Slower forward pace with the fastest lateral movement"
+    trait: "Fastest lateral runner with the longest and quickest-recharging dodge"
   }
 };
 let selectedCharacterKey = localStorage.getItem("chrisRunnerCharacter") || "chris";
@@ -861,7 +920,7 @@ let roundEnding = false;
 let roundToastTimer = null;
 
 const CHRIS_REPLAY_VERSION = 1;
-const GAME_BUILD_VERSION = "chris-runner-character-select-v2";
+const GAME_BUILD_VERSION = "chris-runner-readability-flow-v3";
 
 let replayRecorder = null;
 let replayPlayback = null;
@@ -1676,6 +1735,12 @@ function createPlayer(index = 1, x = 0, z = START_Z) {
     forwardSpeedMultiplier: profile.forwardSpeed,
     sprintSpeedMultiplier: profile.sprintSpeed,
     lateralMultiplier: profile.lateralSpeed,
+    energyRegenMultiplier: profile.energyRegenMultiplier || 1,
+    sprintDrainMultiplier: profile.sprintDrainMultiplier || 1,
+    dodgeCost: profile.dodgeCost || 18,
+    dodgeDistance: profile.dodgeDistance || 6,
+    dodgeCooldownDuration: profile.dodgeCooldownDuration || 0.65,
+    skillMultiplier: profile.skillMultiplier || 1,
     speed: playerBaseSpeed * profile.forwardSpeed,
     sprintSpeed: playerBaseSprintSpeed * profile.sprintSpeed,
     dodgeCooldown: 0,
@@ -1691,6 +1756,8 @@ function createPlayer(index = 1, x = 0, z = START_Z) {
     shieldCharges: 0,
     shieldMesh: null,
     bonusScore: 0,
+    flowStreak: 0,
+    flowTimer: 0,
     dodgeFlash: 0,
     nearMissCooldown: 0
   };
@@ -1980,48 +2047,156 @@ function updateSpiritDogs(dt) {
   spiritDogs = spiritDogs.filter(d => { const keep = canEnemyDamage(d) && d.rig.position.z > leader.rig.position.z - CLEANUP_BEHIND_DISTANCE; if (!keep) scene.remove(d.rig); return keep; });
 }
 
+function findDreamHazardPosition(zStart, radius) {
+  for (let attempt=0; attempt<18; attempt++) {
+    const pos = new THREE.Vector3(rand(-ROAD_WIDTH/2+radius+1,ROAD_WIDTH/2-radius-1),0,zStart+rand(8,CHUNK_LENGTH-7));
+    if (getCollidingWall(pos,radius+.55)) continue;
+    if (pickups.some(p => flatDistance(p.position,pos) < radius+1.8)) continue;
+    if (dreamHazards.some(h => h.group && flatDistance(h.group.position,pos) < radius+h.radius+2.2)) continue;
+    return pos;
+  }
+  return new THREE.Vector3(0,0,zStart+CHUNK_LENGTH*.62);
+}
+
 function createDreamHazard(chunk, zStart) {
-  const radius = rand(2.1, 3.7);
+  const radius = 3.2;
   const group = new THREE.Group();
-  const fill = new THREE.Mesh(new THREE.CircleGeometry(radius, 28), new THREE.MeshBasicMaterial({ color: 0xff1f3d, transparent: true, opacity: .16, depthWrite: false, side: THREE.DoubleSide }));
-  fill.rotation.x = -Math.PI/2; fill.position.y=.075; group.add(fill);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(radius*.78, radius, 32), new THREE.MeshBasicMaterial({ color: 0xff294f, transparent: true, opacity: .75, depthWrite:false, side:THREE.DoubleSide }));
-  ring.rotation.x=-Math.PI/2; ring.position.y=.085; group.add(ring);
-  const core = new THREE.Mesh(new THREE.CylinderGeometry(radius*.82,radius*.82,.08,30), new THREE.MeshStandardMaterial({ color:0x6b1028, emissive:0xff173d, emissiveIntensity:0, transparent:true, opacity:.25 }));
-  core.position.y=.05; group.add(core);
-  group.position.set(rand(-ROAD_WIDTH/2+3,ROAD_WIDTH/2-3),0,zStart+rand(8,CHUNK_LENGTH-7));
+  const fillMat = new THREE.MeshBasicMaterial({ color:0x7c3aed, transparent:true, opacity:.16, depthWrite:false, side:THREE.DoubleSide });
+  const ringMat = new THREE.MeshBasicMaterial({ color:0xc084fc, transparent:true, opacity:.82, depthWrite:false, side:THREE.DoubleSide });
+  const innerMat = new THREE.MeshBasicMaterial({ color:0x67e8f9, transparent:true, opacity:.62, depthWrite:false, side:THREE.DoubleSide });
+  const fill = new THREE.Mesh(new THREE.CircleGeometry(radius,36),fillMat); fill.rotation.x=-Math.PI/2; fill.position.y=.078; group.add(fill);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(radius*.78,radius,44),ringMat); ring.rotation.x=-Math.PI/2; ring.position.y=.092; group.add(ring);
+  const innerRing = new THREE.Mesh(new THREE.RingGeometry(radius*.47,radius*.6,40),innerMat); innerRing.rotation.x=-Math.PI/2; innerRing.position.y=.1; group.add(innerRing);
+  const countdownRing = new THREE.Mesh(new THREE.RingGeometry(radius*.19,radius*.3,36),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.8,depthWrite:false,side:THREE.DoubleSide})); countdownRing.rotation.x=-Math.PI/2; countdownRing.position.y=.115; group.add(countdownRing);
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(radius*.73,radius*.73,.11,36),new THREE.MeshStandardMaterial({color:0x3b0a64,emissive:0xec4899,emissiveIntensity:.25,transparent:true,opacity:.34,roughness:.22})); core.position.y=.055; core.receiveShadow=true; group.add(core);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(radius*.12,radius*.86,7.5,28,1,true),new THREE.MeshBasicMaterial({color:0xf0abfc,transparent:true,opacity:.08,depthWrite:false,side:THREE.DoubleSide})); beam.position.y=3.75; group.add(beam);
+  const crackGroup = new THREE.Group();
+  for (let i=0;i<10;i++) {
+    const crack = new THREE.Mesh(new THREE.BoxGeometry(.075,.03,radius*1.45),new THREE.MeshBasicMaterial({color:i%2?0x67e8f9:0xf472b6,transparent:true,opacity:.65,depthWrite:false}));
+    crack.position.y=.11;
+    crack.rotation.y=i*Math.PI/5;
+    crackGroup.add(crack);
+  }
+  group.add(crackGroup);
+  const warningOrbs=[];
+  for (let i=0;i<12;i++) {
+    const orb=new THREE.Mesh(new THREE.SphereGeometry(.12,8,7),new THREE.MeshBasicMaterial({color:i%2?0x67e8f9:0xf9a8d4,transparent:true,opacity:.75,depthWrite:false}));
+    const angle=i*Math.PI/6;
+    orb.position.set(Math.cos(angle)*radius*.88,.25,Math.sin(angle)*radius*.88);
+    group.add(orb); warningOrbs.push(orb);
+  }
+  const burstSpikes=[];
+  for (let i=0;i<9;i++) {
+    const spike=new THREE.Mesh(new THREE.ConeGeometry(.18,rand(2.3,4.8),8),new THREE.MeshStandardMaterial({color:0xffd1e8,emissive:0xff174f,emissiveIntensity:2.2,transparent:true,opacity:0}));
+    const angle=i*Math.PI*2/9;
+    spike.position.set(Math.cos(angle)*radius*.55,1.2,Math.sin(angle)*radius*.55);
+    group.add(spike); burstSpikes.push(spike);
+  }
+  const light = new THREE.PointLight(0xec4899,0,18,2); light.position.y=2.6; group.add(light);
+  group.position.copy(findDreamHazardPosition(zStart,radius));
   chunk.add(group);
-  dreamHazards.push({ group, radius, phase:"warning", timer:rand(.8,1.5), cooldown:rand(1.4,2.8), fill, ring, core, hitPlayers:new Set() });
+  const warningDuration=2.4;
+  dreamHazards.push({
+    group,radius,phase:"warning",timer:warningDuration,warningDuration,cooldown:2.8,
+    fill,ring,innerRing,countdownRing,core,beam,crackGroup,warningOrbs,burstSpikes,light,
+    hitPlayers:new Set(),threatenedPlayers:new Set(),escapeCandidates:new Map()
+  });
 }
 
 function updateDreamHazards(dt) {
+  let nearestNotice = null;
   for (const h of dreamHazards) {
     if (!h.group.parent) continue;
     h.timer -= dt;
+    h.innerRing.rotation.z += dt * 1.25;
+    h.countdownRing.rotation.z -= dt * 2.2;
+
     if (h.phase === "warning") {
-      const pulse = .55 + Math.abs(Math.sin(performance.now()*.008))* .45;
-      h.ring.material.opacity = .38 + pulse*.58;
-      h.ring.scale.setScalar(.88 + pulse*.13);
-      h.fill.material.opacity = .08 + pulse*.18;
-      h.core.material.emissiveIntensity = .15;
-      if (h.timer <= 0) { h.phase="burst"; h.timer=.5; h.hitPlayers.clear(); cameraTrauma=Math.max(cameraTrauma,.22); }
-    } else if (h.phase === "burst") {
-      const life = clamp(h.timer/.5,0,1);
-      h.core.material.emissiveIntensity = 2.4; h.core.material.opacity=.68; h.ring.material.opacity=1; h.group.scale.setScalar(1 + (1-life)*.12);
+      const progress=clamp(1-h.timer/h.warningDuration,0,1);
+      const urgent=progress>.64;
+      const pulse=.5+.5*Math.sin(performance.now()*.001*(5+progress*13));
+      const warningColor=progress<.42?0xc084fc:progress<.72?0xfb923c:0xff174f;
+      h.ring.material.color.setHex(warningColor);
+      h.fill.material.color.setHex(progress<.6?0x7c3aed:0xbe123c);
+      h.ring.material.opacity=.68+pulse*.3;
+      h.ring.scale.setScalar(.94+pulse*(urgent?.1:.045));
+      h.fill.material.opacity=.14+progress*.24+pulse*.08;
+      h.innerRing.material.opacity=.45+progress*.4;
+      h.countdownRing.material.opacity=.55+pulse*.42;
+      const countdownScale=Math.max(.38,1-progress*.66);
+      h.countdownRing.scale.setScalar(countdownScale);
+      h.core.material.emissiveIntensity=.35+progress*1.45;
+      h.core.material.opacity=.3+progress*.34;
+      h.beam.material.opacity=.07+progress*.25+pulse*.06;
+      h.beam.scale.set(1+progress*.25,1,1+progress*.25);
+      h.light.intensity=.25+progress*2.35+pulse*.25;
+      h.crackGroup.children.forEach((crack,i)=>{ crack.material.opacity=.3+progress*.55+(i%2?pulse*.12:0); });
+      h.warningOrbs.forEach((orb,i)=>{ orb.position.y=.28+Math.sin(performance.now()*.004+i)*(.18+progress*.32); orb.material.opacity=.55+progress*.35; });
       for (const p of getActiveRunners()) {
-        if (!h.hitPlayers.has(p.id) && flatDistance(p.rig.position,h.group.position) < h.radius) {
+        const d=flatDistance(p.rig.position,h.group.position);
+        if (d<h.radius+1.55) h.threatenedPlayers.add(p.id);
+        if (d<28 && (!nearestNotice || d<nearestNotice.distance)) nearestNotice={hazard:h,distance:d,urgent};
+      }
+      if (h.timer<=0) {
+        h.phase="burst"; h.timer=.7; h.hitPlayers.clear(); h.escapeCandidates.clear();
+        cameraTrauma=Math.max(cameraTrauma,.32);
+      }
+    } else if (h.phase === "burst") {
+      const life=clamp(h.timer/.7,0,1);
+      const expansion=1+(1-life)*.18;
+      h.core.material.emissiveIntensity=4.2;
+      h.core.material.opacity=.9;
+      h.ring.material.color.setHex(0xffffff);
+      h.ring.material.opacity=1;
+      h.fill.material.opacity=.78;
+      h.beam.material.opacity=.92*life+.22;
+      h.beam.scale.set(expansion,1+(1-life)*.35,expansion);
+      h.group.scale.setScalar(expansion);
+      h.light.intensity=5.6*life+1.4;
+      h.burstSpikes.forEach((spike,i)=>{ spike.material.opacity=.9*life; spike.scale.y=.7+(1-life)*.75; spike.rotation.y+=dt*(i%2?2.4:-2.4); });
+      for (const p of getActiveRunners()) {
+        const d=flatDistance(p.rig.position,h.group.position);
+        if (d<26 && (!nearestNotice || d<nearestNotice.distance)) nearestNotice={hazard:h,distance:d,active:true};
+        if (!h.hitPlayers.has(p.id) && d<h.radius) {
           h.hitPlayers.add(p.id);
           if (tryShieldBlock(p,null)) continue;
           handlePlayerCaught(p,"Player " + p.id + " was struck by a dream eruption!");
+        } else if (h.threatenedPlayers.has(p.id) && d>=h.radius && d<h.radius+1.75) {
+          const clearance=d-h.radius;
+          const prior=h.escapeCandidates.get(p.id);
+          h.escapeCandidates.set(p.id,prior===undefined?clearance:Math.min(prior,clearance));
         }
       }
-      if (h.timer <= 0) { h.phase="cooldown"; h.timer=h.cooldown; h.group.scale.setScalar(1); h.core.material.opacity=.12; h.core.material.emissiveIntensity=0; }
+      if (h.timer<=0) {
+        for (const [playerId,clearance] of h.escapeCandidates.entries()) {
+          const p=players.find(player=>player.id===playerId);
+          if (p && !h.hitPlayers.has(playerId)) awardSkillPoints(p,clearance<.45?90:65,clearance<.45?"IMPOSSIBLE ESCAPE!":"ERUPTION ESCAPE!","perfect");
+        }
+        h.phase="cooldown"; h.timer=h.cooldown; h.group.scale.setScalar(1);
+        h.core.material.opacity=.1; h.core.material.emissiveIntensity=0; h.beam.material.opacity=0;
+        h.light.intensity=0; h.burstSpikes.forEach(spike=>spike.material.opacity=0);
+        h.threatenedPlayers.clear(); h.escapeCandidates.clear();
+      }
     } else {
-      h.ring.material.opacity=.08; h.fill.material.opacity=.025;
-      if (h.timer <= 0) { h.phase="warning"; h.timer=rand(1.0,1.8); }
+      h.ring.material.opacity=.06; h.fill.material.opacity=.018; h.innerRing.material.opacity=.04; h.countdownRing.material.opacity=.05;
+      h.beam.material.opacity=0; h.light.intensity=0;
+      if (h.timer<=0) {
+        h.phase="warning"; h.warningDuration=2.4; h.timer=h.warningDuration; h.group.scale.setScalar(1);
+      }
     }
   }
-  dreamHazards = dreamHazards.filter(h => !!h.group.parent);
+
+  const notice=document.getElementById("dreamWarning");
+  if (notice) {
+    const title=document.getElementById("dreamWarningTitle");
+    const detail=document.getElementById("dreamWarningText");
+    if (nearestNotice) {
+      notice.className="show"+(nearestNotice.active?" active":nearestNotice.urgent?" urgent":"");
+      if (title) title.textContent=nearestNotice.active?"DREAM ERUPTION ACTIVE":"DREAM ERUPTION";
+      if (detail) detail.textContent=nearestNotice.active?"CLEAR THE GLOWING CIRCLE NOW":"ERUPTION IN "+Math.max(0,nearestNotice.hazard.timer).toFixed(1)+"s — MOVE OUTSIDE THE RING";
+    } else notice.className="";
+  }
+  dreamHazards=dreamHazards.filter(h=>!!h.group.parent);
 }
 
 function addFallingStars(chunk, zStart) {
@@ -2068,6 +2243,179 @@ function createBiomeGround(width, length, biome) {
   return new THREE.Mesh(new THREE.BoxGeometry(TERRAIN_WIDTH, .5, length), new THREE.MeshStandardMaterial({ color:cfg.groundColor, roughness:.94 }));
 }
 
+
+function enableObjectShadows(root, castShadow = true, receiveShadow = true) {
+  if (!root || !root.traverse) return;
+  root.traverse(obj => {
+    if (!obj.isMesh || obj.userData?.isReadabilityEffect) return;
+    obj.castShadow = castShadow;
+    obj.receiveShadow = receiveShadow;
+  });
+}
+
+function getObstacleReadabilityColors(biome) {
+  return ({
+    forest: { outline:0xffd166, base:0xfde68a, glow:0x8b5a2b },
+    snow: { outline:0xe0f2fe, base:0x7dd3fc, glow:0x38bdf8 },
+    desert: { outline:0xffedd5, base:0xfb923c, glow:0xf59e0b },
+    city: { outline:0xffffff, base:0xfacc15, glow:0xf97316 },
+    dream: { outline:0xe0f2fe, base:0x67e8f9, glow:0xec4899 }
+  })[biome] || { outline:0xffffff, base:0xfacc15, glow:0xf59e0b };
+}
+
+function addReadableObstacleTreatment(obstacle, biome, options = {}) {
+  if (!obstacle || obstacle.userData?.readabilityTreatmentAdded) return;
+  const rx = obstacle.userData?.radiusX || 1.2;
+  const rz = obstacle.userData?.radiusZ || 1.2;
+  const colors = getObstacleReadabilityColors(biome);
+  const isDream = biome === "dream";
+  const originals = [];
+  obstacle.traverse(obj => {
+    if (obj.isMesh && !obj.userData?.isReadabilityEffect) originals.push(obj);
+  });
+
+  for (const mesh of originals) {
+    if (!mesh.geometry) continue;
+    const shell = new THREE.Mesh(
+      mesh.geometry,
+      new THREE.MeshBasicMaterial({
+        color: colors.outline,
+        side: THREE.BackSide,
+        transparent: true,
+        opacity: isDream ? 0.72 : 0.52,
+        depthWrite: false
+      })
+    );
+    shell.scale.setScalar(isDream ? 1.075 : 1.045);
+    shell.renderOrder = 3;
+    shell.userData.isReadabilityEffect = true;
+    mesh.add(shell);
+  }
+
+  const contactShadow = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 32),
+    new THREE.MeshBasicMaterial({ color:0x020617, transparent:true, opacity:isDream ? .48 : .34, depthWrite:false, side:THREE.DoubleSide })
+  );
+  contactShadow.rotation.x = -Math.PI / 2;
+  contactShadow.position.y = .035;
+  contactShadow.scale.set(rx * 1.28, rz * 1.28, 1);
+  contactShadow.renderOrder = 1;
+  contactShadow.userData.isReadabilityEffect = true;
+  obstacle.add(contactShadow);
+
+  const baseRing = new THREE.Mesh(
+    new THREE.TorusGeometry(1, isDream ? .07 : .045, 8, 44),
+    new THREE.MeshBasicMaterial({ color:colors.base, transparent:true, opacity:isDream ? .92 : .56, depthWrite:false })
+  );
+  baseRing.rotation.x = Math.PI / 2;
+  baseRing.position.y = .105;
+  baseRing.scale.set(rx * 1.07, rz * 1.07, 1);
+  baseRing.renderOrder = 4;
+  baseRing.userData.isReadabilityEffect = true;
+  obstacle.add(baseRing);
+
+  if (isDream) {
+    const beacon = new THREE.Mesh(
+      new THREE.CylinderGeometry(.08, Math.max(.35, Math.min(rx, rz) * .5), 5.5, 16, 1, true),
+      new THREE.MeshBasicMaterial({ color:colors.glow, transparent:true, opacity:.18, depthWrite:false, side:THREE.DoubleSide })
+    );
+    beacon.position.y = 2.75;
+    beacon.userData.isReadabilityEffect = true;
+    obstacle.add(beacon);
+
+    for (let i = 0; i < 6; i++) {
+      const root = new THREE.Mesh(
+        new THREE.BoxGeometry(.09, .035, Math.max(1.2, rz * 1.45)),
+        new THREE.MeshBasicMaterial({ color:i % 2 ? colors.base : colors.glow, transparent:true, opacity:.72, depthWrite:false })
+      );
+      root.position.y = .09;
+      root.rotation.y = i * Math.PI / 3;
+      root.userData.isReadabilityEffect = true;
+      obstacle.add(root);
+    }
+  }
+
+  obstacle.userData.readabilityTreatmentAdded = true;
+  obstacle.userData.readabilityRing = baseRing;
+}
+
+function createForestRoadBlock() {
+  const g = new THREE.Group();
+  const bark = new THREE.MeshStandardMaterial({ color:0x6b3f1d, roughness:.92 });
+  const cut = new THREE.MeshStandardMaterial({ color:0xd6a66f, roughness:.78 });
+  const reflector = new THREE.MeshStandardMaterial({ color:0xfff7c2, emissive:0xf59e0b, emissiveIntensity:.75, roughness:.35 });
+  for (let i = 0; i < 2; i++) {
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(.62,.7,4.6,12), bark);
+    log.rotation.z = Math.PI / 2;
+    log.position.set(0, .72 + i * 1.05, (i ? -.2 : .22));
+    g.add(log);
+    for (const side of [-1,1]) {
+      const end = new THREE.Mesh(new THREE.CircleGeometry(.61,12), cut);
+      end.rotation.y = Math.PI / 2;
+      end.position.set(side * 2.31, log.position.y, log.position.z);
+      g.add(end);
+    }
+  }
+  for (const x of [-1.35,1.35]) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(.28,2.15,1.52), reflector);
+    band.position.set(x,1.18,0);
+    g.add(band);
+  }
+  g.userData = { type:"wall", obstacleKind:"forestLogBarricade", radiusX:2.35, radiusZ:1.28 };
+  return g;
+}
+
+function createSnowRoadBlock() {
+  const g = new THREE.Group();
+  const ice = new THREE.MeshStandardMaterial({ color:0x93c5fd, emissive:0x1d4ed8, emissiveIntensity:.16, roughness:.25, metalness:.08, transparent:true, opacity:.94 });
+  const snow = new THREE.MeshStandardMaterial({ color:0xf8fcff, roughness:.96 });
+  const reflector = new THREE.MeshStandardMaterial({ color:0xe0f2fe, emissive:0x38bdf8, emissiveIntensity:.95, roughness:.2 });
+  const pieces = [[-1.35,.75,.1,1.25],[0,.95,-.1,1.5],[1.35,.7,.15,1.15]];
+  for (const [x,y,z,s] of pieces) {
+    const shard = new THREE.Mesh(new THREE.DodecahedronGeometry(s,0), ice);
+    shard.position.set(x,y,z);
+    shard.scale.y = .78;
+    shard.rotation.set(rand(-.2,.2),rand(0,Math.PI),rand(-.15,.15));
+    g.add(shard);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(s*.72,10,7), snow);
+    cap.position.set(x,y+s*.45,z);
+    cap.scale.y=.28;
+    g.add(cap);
+  }
+  for (const x of [-1.55,1.55]) {
+    const marker = new THREE.Mesh(new THREE.CylinderGeometry(.11,.14,2.5,8), reflector);
+    marker.position.set(x,1.25,.15);
+    g.add(marker);
+  }
+  g.userData = { type:"wall", obstacleKind:"snowIceBarricade", radiusX:2.35, radiusZ:1.38 };
+  return g;
+}
+
+function createDesertRoadBlock() {
+  const g = new THREE.Group();
+  const stone = new THREE.MeshStandardMaterial({ color:0xb96f3f, roughness:.92 });
+  const lightStone = new THREE.MeshStandardMaterial({ color:0xe3a66e, roughness:.88 });
+  const warning = new THREE.MeshStandardMaterial({ color:0xfff7ed, emissive:0xfb923c, emissiveIntensity:.65, roughness:.4 });
+  const blocks = [[-1.45,.55,0,1.45,.9,1.35],[0,.72,.05,1.55,1.2,1.45],[1.45,.5,-.05,1.35,.82,1.28]];
+  blocks.forEach((b,i) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(b[3],b[4],b[5]), i % 2 ? lightStone : stone);
+    mesh.position.set(b[0],b[1],b[2]);
+    mesh.rotation.y = rand(-.18,.18);
+    g.add(mesh);
+  });
+  const banner = new THREE.Mesh(new THREE.BoxGeometry(4.3,.35,.12), warning);
+  banner.position.set(0,1.55,.73);
+  g.add(banner);
+  g.userData = { type:"wall", obstacleKind:"desertStoneBarricade", radiusX:2.35, radiusZ:1.35 };
+  return g;
+}
+
+function createBiomeRoadBlock(biome) {
+  if (biome === "snow") return createSnowRoadBlock();
+  if (biome === "desert") return createDesertRoadBlock();
+  return createForestRoadBlock();
+}
+
 function addRoadSurface(chunk,zStart,biome) {
   const cfg=getBiomeConfig(biome);
   const road=new THREE.Mesh(new THREE.BoxGeometry(ROAD_WIDTH,.16,CHUNK_LENGTH),new THREE.MeshStandardMaterial({ color:cfg.roadColor, roughness:biome==="dream"?.34:.86, metalness:biome==="dream"?.18:0 }));
@@ -2091,17 +2439,19 @@ function addOuterTerrainDecor(chunk,zStart,biome) {
   for (let i=0;i<count;i++) {
     const side=gameRandom()<.5?-1:1;
     let deco;
-    if (biome==="dream") deco=gameRandom()<.65?createDreamTree():createDreamRock();
-    else deco=gameRandom()<.68?createBiomeTree(biome):createBiomeRock(biome);
+    if (biome==="dream") deco=gameRandom()<.65?createDreamTree(false):createDreamRock(false);
+    else deco=gameRandom()<.68?createBiomeTree(biome,false):createBiomeRock(biome,false);
     deco.position.set(side*rand(WORLD_WIDTH/2+2,TERRAIN_WIDTH/2-3),0,zStart+rand(1,CHUNK_LENGTH-1));
-    const scale=rand(.75,1.35); deco.scale.multiplyScalar(scale); chunk.add(deco);
+    const scale=rand(.75,1.35); deco.scale.multiplyScalar(scale);
+    enableObjectShadows(deco, true, true);
+    chunk.add(deco);
   }
 }
 
-function createForestTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 6.5, 7), new THREE.MeshStandardMaterial({color:0x6b3f1d, roughness:0.9})); t.position.y=3.25; g.add(t); const c = new THREE.Mesh(new THREE.SphereGeometry(1.9,10,8), new THREE.MeshStandardMaterial({color:0x1f7a35, roughness:0.85})); c.position.y=7.3; g.add(c); return g; }
-function createPineTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.35,8.3,7), new THREE.MeshStandardMaterial({color:0x5a341a, roughness:0.95})); t.position.y=4.15; g.add(t); for (let i=0;i<3;i++){ const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5-i*0.3,3.1,8), new THREE.MeshStandardMaterial({color:0x1d4d2f,roughness:0.86})); cone.position.y=5.6+i*1.5; g.add(cone); const snow = new THREE.Mesh(new THREE.ConeGeometry(0.6-i*0.15,0.9,8), new THREE.MeshStandardMaterial({color:0xf7fbff,roughness:0.95})); snow.position.y=6.6+i*1.5; g.add(snow);} return g; }
-function createPalmTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.45,6.8,7), new THREE.MeshStandardMaterial({color:0x9a6b3e, roughness:0.9})); t.position.set(0.3,3.4,0); t.rotation.z=-0.15; g.add(t); for (let i=0;i<6;i++){const leaf=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.08,2.2),new THREE.MeshStandardMaterial({color:0x2f8a4f,roughness:0.8})); leaf.position.set(0.55,6.8,0); leaf.rotation.y=(Math.PI*2/6)*i; leaf.rotation.x=-0.25; g.add(leaf);} return g; }
-function createCactus() { const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({color:0x3f8f4a,roughness:0.88}); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.45,4.4,8), mat); b.position.y=2.2; g.add(b); const a = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.24,2.0,8), mat); a.position.set(0.52,2.8,0); a.rotation.z=-1.2; g.add(a); return g; }
+function createForestTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 6.5, 7), new THREE.MeshStandardMaterial({color:0x6b3f1d, roughness:0.9})); t.position.y=3.25; g.add(t); const c = new THREE.Mesh(new THREE.SphereGeometry(1.9,10,8), new THREE.MeshStandardMaterial({color:0x1f7a35, roughness:0.85})); c.position.y=7.3; g.add(c); g.userData.treeCollisionRadius=.82; return g; }
+function createPineTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.35,8.3,7), new THREE.MeshStandardMaterial({color:0x5a341a, roughness:0.95})); t.position.y=4.15; g.add(t); for (let i=0;i<3;i++){ const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5-i*0.3,3.1,8), new THREE.MeshStandardMaterial({color:0x1d4d2f,roughness:0.86})); cone.position.y=5.6+i*1.5; g.add(cone); const snow = new THREE.Mesh(new THREE.ConeGeometry(0.6-i*0.15,0.9,8), new THREE.MeshStandardMaterial({color:0xf7fbff,roughness:0.95})); snow.position.y=6.6+i*1.5; g.add(snow);} g.userData.treeCollisionRadius=.76; return g; }
+function createPalmTree() { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.45,6.8,7), new THREE.MeshStandardMaterial({color:0x9a6b3e, roughness:0.9})); t.position.set(0.3,3.4,0); t.rotation.z=-0.15; g.add(t); for (let i=0;i<6;i++){const leaf=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.08,2.2),new THREE.MeshStandardMaterial({color:0x2f8a4f,roughness:0.8})); leaf.position.set(0.55,6.8,0); leaf.rotation.y=(Math.PI*2/6)*i; leaf.rotation.x=-0.25; g.add(leaf);} g.userData.treeCollisionRadius=.88; return g; }
+function createCactus() { const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({color:0x3f8f4a,roughness:0.88}); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.45,4.4,8), mat); b.position.y=2.2; g.add(b); const a = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.24,2.0,8), mat); a.position.set(0.52,2.8,0); a.rotation.z=-1.2; g.add(a); g.userData.treeCollisionRadius=.68; return g; }
 function createForestRock(){ const r=new THREE.Mesh(new THREE.SphereGeometry(1.2,9,8),new THREE.MeshStandardMaterial({color:0x64748b,roughness:0.92})); r.scale.y=0.6; return r; }
 function createSnowRock(){ const g=new THREE.Group(); const b=createForestRock(); b.material=new THREE.MeshStandardMaterial({color:0x4b5563,roughness:0.95}); g.add(b); const cap=new THREE.Mesh(new THREE.SphereGeometry(0.95,8,7),new THREE.MeshStandardMaterial({color:0xf8fcff,roughness:0.98})); cap.position.y=0.55; cap.scale.y=0.5; g.add(cap); return g; }
 function createDesertRock(){ const g=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:0xc98d54,roughness:0.93}); for(let i=0;i<2;i++){const r=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.8,1.1),m); r.position.set(i*0.7-0.35,0.35+i*0.1,0); g.add(r);} return g; }
@@ -2158,10 +2508,72 @@ function createCitySign() {
   g.userData = { type: "wall", radiusX: 1.65, radiusZ: 1.05 };
   return g;
 }
-function createDreamTree() { const g=new THREE.Group(); const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.18,.55,7,7),new THREE.MeshStandardMaterial({color:0x24123d,emissive:0x3b1766,emissiveIntensity:.45,roughness:.7})); trunk.position.y=3.5; trunk.rotation.z=rand(-.18,.18); g.add(trunk); for(let i=0;i<5;i++){const orb=new THREE.Mesh(new THREE.SphereGeometry(rand(.7,1.5),9,7),new THREE.MeshStandardMaterial({color:i%2?0x60a5fa:0xc084fc,emissive:i%2?0x2563eb:0x7e22ce,emissiveIntensity:.7,transparent:true,opacity:.72})); orb.position.set(rand(-1.2,1.2),rand(5.5,8.5),rand(-.8,.8)); g.add(orb);} return g; }
-function createDreamRock() { const g=new THREE.Group(); const mat=new THREE.MeshStandardMaterial({color:0x40246e,emissive:0x6d28d9,emissiveIntensity:.38,roughness:.5}); for(let i=0;i<3;i++){const r=new THREE.Mesh(new THREE.OctahedronGeometry(rand(.45,1.05),0),mat); r.position.set(rand(-.8,.8),rand(.5,2.2),rand(-.6,.6)); r.rotation.set(rand(0,2),rand(0,2),rand(0,2)); g.add(r);} return g; }
-function createBiomeTree(biome) { if (biome === "snow") return createPineTree(); if (biome === "desert") return createPalmTree(); if (biome === "dream") return createDreamTree(); if (biome === "city") { const roll = gameRandom(); if (roll < 0.35) return createStreetLight(); if (roll < 0.65) return createCitySign(); return createParkedCar(); } return createForestTree(); }
-function createBiomeRock(biome) { if (biome === "snow") return createSnowRock(); if (biome === "desert") return createDesertRock(); if (biome === "dream") return createDreamRock(); if (biome === "city") { const roll = gameRandom(); if (roll < 0.5) return createTrafficBarrier(); return createCrashedCar(); } return createForestRock(); }
+function createDreamTree(isBlocker = false) {
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(.18,.55,7,7),
+    new THREE.MeshStandardMaterial({
+      color:isBlocker ? 0x35125e : 0x24123d,
+      emissive:isBlocker ? 0x8b5cf6 : 0x3b1766,
+      emissiveIntensity:isBlocker ? 1.05 : .34,
+      roughness:.62
+    })
+  );
+  trunk.position.y=3.5;
+  trunk.rotation.z=rand(-.12,.12);
+  g.add(trunk);
+  for(let i=0;i<5;i++){
+    const orb=new THREE.Mesh(
+      new THREE.SphereGeometry(rand(.7,1.35),9,7),
+      new THREE.MeshStandardMaterial({
+        color:i%2?0x67e8f9:0xf0abfc,
+        emissive:i%2?0x0891b2:0xc026d3,
+        emissiveIntensity:isBlocker?1.35:.48,
+        transparent:true,
+        opacity:isBlocker?.92:.55,
+        roughness:.25
+      })
+    );
+    orb.position.set(rand(-1.1,1.1),rand(5.5,8.25),rand(-.7,.7));
+    g.add(orb);
+  }
+  if (isBlocker) {
+    const core = new THREE.Mesh(
+      new THREE.OctahedronGeometry(.58,0),
+      new THREE.MeshStandardMaterial({color:0xffffff,emissive:0x67e8f9,emissiveIntensity:2.4,roughness:.12})
+    );
+    core.position.y=2.35;
+    g.add(core);
+    g.userData = { type:"wall", obstacleKind:"dreamTree", radiusX:.82, radiusZ:.82, treeCollisionRadius:.82 };
+  }
+  return g;
+}
+
+function createDreamRock(isBlocker = false) {
+  const g=new THREE.Group();
+  const mat=new THREE.MeshStandardMaterial({
+    color:isBlocker?0x5b21b6:0x40246e,
+    emissive:isBlocker?0xec4899:0x6d28d9,
+    emissiveIntensity:isBlocker?1.05:.3,
+    roughness:.42
+  });
+  const sizes = isBlocker ? [.95,1.15,.82] : [.7,.92,.58];
+  for(let i=0;i<3;i++){
+    const r=new THREE.Mesh(new THREE.OctahedronGeometry(sizes[i],0),mat);
+    r.position.set((i-1)*.62, .62+i*.43, i===1?-.12:.12);
+    r.rotation.set(rand(0,2),rand(0,2),rand(0,2));
+    g.add(r);
+  }
+  if (isBlocker) {
+    const core = new THREE.Mesh(new THREE.SphereGeometry(.38,12,10),new THREE.MeshStandardMaterial({color:0xffffff,emissive:0x67e8f9,emissiveIntensity:2.8,roughness:.08}));
+    core.position.y=1.15;
+    g.add(core);
+    g.userData = { type:"wall", obstacleKind:"dreamCrystal", radiusX:1.35, radiusZ:1.22 };
+  }
+  return g;
+}
+function createBiomeTree(biome, isBlocker = false) { if (biome === "snow") return createPineTree(); if (biome === "desert") return createPalmTree(); if (biome === "dream") return createDreamTree(isBlocker); if (biome === "city") { const roll = gameRandom(); if (roll < 0.35) return createStreetLight(); if (roll < 0.65) return createCitySign(); return createParkedCar(); } return createForestTree(); }
+function createBiomeRock(biome, isBlocker = false) { if (biome === "snow") return createSnowRock(); if (biome === "desert") return createDesertRock(); if (biome === "dream") return createDreamRock(isBlocker); if (biome === "city") { const roll = gameRandom(); if (roll < 0.5) return createTrafficBarrier(); return createCrashedCar(); } return createForestRock(); }
 
 
 
@@ -2196,12 +2608,15 @@ function addCollisionFootprint(obstacle) {
   obstacle.userData.collisionFootprintAdded = true;
 }
 
-function registerObstacle(obstacle) {
+function registerObstacle(obstacle, biome = null) {
   if (!obstacle) return;
   if (!obstacle.userData) obstacle.userData = {};
   if (obstacle.userData.type !== "wall") obstacle.userData.type = "wall";
   if (!obstacle.userData.radiusX) obstacle.userData.radiusX = 1.6;
   if (!obstacle.userData.radiusZ) obstacle.userData.radiusZ = 1.6;
+  obstacle.userData.biome = biome || obstacle.userData.biome || getBiomeForZ(obstacle.position.z);
+  enableObjectShadows(obstacle, true, true);
+  addReadableObstacleTreatment(obstacle, obstacle.userData.biome);
   addCollisionFootprint(obstacle);
   walls.push(obstacle);
 }
@@ -2314,60 +2729,45 @@ function addRoadLines(chunk, zStart, biome) {
 function addCityRoadLines(chunk, zStart) { addRoadLines(chunk, zStart, "city"); }
 
 function addGridWallsWithGuaranteedPaths(chunk, zStart, biome) {
-  const wallMats = [
-    new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.85 }),
-    new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 }),
-    new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85 })
-  ];
-
   const laneXs = [-13.5, -9, -4.5, 0, 4.5, 9, 13.5];
   const rowZs = [];
 
-  for (let z = zStart + 7; z < zStart + CHUNK_LENGTH - 5; z += 7) {
-    rowZs.push(z);
-  }
+  for (let z = zStart + 7; z < zStart + CHUNK_LENGTH - 5; z += 7) rowZs.push(z);
 
   const openLaneA = Math.floor(gameRandom() * laneXs.length);
   let openLaneB = Math.floor(gameRandom() * laneXs.length);
-
-  while (openLaneB === openLaneA) {
-    openLaneB = Math.floor(gameRandom() * laneXs.length);
-  }
+  while (openLaneB === openLaneA) openLaneB = Math.floor(gameRandom() * laneXs.length);
 
   for (let r = 0; r < rowZs.length; r++) {
     for (let c = 0; c < laneXs.length; c++) {
       if (c === openLaneA || c === openLaneB) continue;
-
       const blockChance = distance > 600 ? 0.46 : 0.36;
       if (gameRandom() > blockChance) continue;
 
-      const w = 4.4;
-      const d = 3.5;
-      const h = rand(2.3, 5.7);
-
       let wall;
-
       if (biome === "city") {
         const roll = gameRandom();
         if (roll < 0.55) wall = createParkedCar([0xef4444, 0x2563eb, 0xfacc15, 0x22c55e, 0x64748b][Math.floor(gameRandom() * 5)]);
         else if (roll < 0.8) wall = createCrashedCar();
         else wall = createTrafficBarrier();
         wall.position.set(laneXs[c], 0, rowZs[r]);
-        wall.rotation.y += gameRandom() < 0.5 ? Math.PI / 2 : 0;
+        if (gameRandom() < 0.5) {
+          wall.rotation.y += Math.PI / 2;
+          const oldX = wall.userData.radiusX;
+          wall.userData.radiusX = wall.userData.radiusZ;
+          wall.userData.radiusZ = oldX;
+        }
       } else if (biome === "dream") {
-        wall = gameRandom() < .55 ? createDreamRock() : createDreamTree();
+        wall = gameRandom() < .58 ? createDreamRock(true) : createDreamTree(true);
         wall.position.set(laneXs[c], 0, rowZs[r]);
-        wall.userData = { type:"wall", radiusX: gameRandom()<.5?1.5:2.0, radiusZ: gameRandom()<.5?1.5:2.0 };
       } else {
-        wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMats[Math.floor(gameRandom() * wallMats.length)]);
-        wall.position.set(laneXs[c], h / 2, rowZs[r]);
-        wall.castShadow = h > 4.2;
-        wall.receiveShadow = true;
-        wall.userData = { type: "wall", radiusX: w / 2, radiusZ: d / 2 };
+        wall = createBiomeRoadBlock(biome);
+        wall.position.set(laneXs[c], 0, rowZs[r]);
+        wall.rotation.y = rand(-.08,.08);
       }
 
       chunk.add(wall);
-      registerObstacle(wall);
+      registerObstacle(wall, biome);
     }
   }
 
@@ -2380,8 +2780,8 @@ function addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs, biome) {
     const c = Math.floor(gameRandom() * laneXs.length);
     if (c === openLaneA || c === openLaneB) continue;
 
-    const tree = biome === "desert" && gameRandom() < 0.35 ? createCactus() : createBiomeTree(biome);
-    const trunkRadius = biome === "desert" ? 0.6 : 0.7;
+    const useCactus = biome === "desert" && gameRandom() < 0.35;
+    const tree = useCactus ? createCactus() : createBiomeTree(biome, true);
 
     tree.position.set(
       laneXs[c] + rand(-1.0, 1.0),
@@ -2389,14 +2789,19 @@ function addTallTreeBlocks(chunk, zStart, openLaneA, openLaneB, laneXs, biome) {
       zStart + rand(4, CHUNK_LENGTH - 4)
     );
 
-    tree.userData = {
-      type: "wall",
-      radiusX: trunkRadius + 0.75,
-      radiusZ: trunkRadius + 0.75
-    };
+    if (biome !== "city") {
+      const trunkRadius = tree.userData?.treeCollisionRadius || (biome === "dream" ? .82 : biome === "desert" ? .88 : biome === "snow" ? .76 : .82);
+      tree.userData = {
+        ...tree.userData,
+        type:"wall",
+        obstacleKind:tree.userData?.obstacleKind || (useCactus ? "cactus" : "roadTree"),
+        radiusX:trunkRadius,
+        radiusZ:trunkRadius
+      };
+    }
 
     chunk.add(tree);
-    registerObstacle(tree);
+    registerObstacle(tree, biome);
   }
 }
 
@@ -2662,11 +3067,18 @@ function showSkillPopup(title, points, kind="near") {
 
 function awardSkillPoints(p, points, title, kind="near") {
   if (gameOver || !p || p.isChaser || p.eliminated || points <= 0) return;
-  p.bonusScore=(p.bonusScore||0)+points;
+  p.flowStreak=(p.flowTimer||0)>0?(p.flowStreak||0)+1:1;
+  p.flowTimer=5.5;
+  const flowMultiplier=1+Math.min(4,Math.max(0,p.flowStreak-1))*.2;
+  const characterMultiplier=p.skillMultiplier||1;
+  const awarded=Math.max(1,Math.round(points*flowMultiplier*characterMultiplier));
+  p.bonusScore=(p.bonusScore||0)+awarded;
+  p.energy=clamp((p.energy||0)+(kind==="perfect"?5:2),0,100);
   if (p.id===1 || gameMode===1) bonusScore=p.bonusScore;
-  showSkillPopup(title,points,kind);
+  const flowLabel=flowMultiplier>1?" · FLOW x"+flowMultiplier.toFixed(1):"";
+  showSkillPopup(title+flowLabel,awarded,kind);
   cameraTrauma=Math.max(cameraTrauma,kind==="perfect"?.2:.1);
-  recordReplayEvent("skill_bonus",{playerId:p.id,title,points,totalBonus:p.bonusScore});
+  recordReplayEvent("skill_bonus",{playerId:p.id,title,points:awarded,basePoints:points,flowMultiplier,characterMultiplier,totalBonus:p.bonusScore});
 }
 
 function evaluateDodgeBonus(p, beforeDistance, afterDistance) {
@@ -2697,6 +3109,15 @@ function updateNearMissScoring(dt) {
         state.close=false; state.min=Infinity; state.cooldown=1.35;
       }
     }
+  }
+}
+
+
+function updateFlowState(dt) {
+  for (const p of players) {
+    if (!p) continue;
+    p.flowTimer=Math.max(0,(p.flowTimer||0)-dt);
+    if (p.flowTimer<=0) p.flowStreak=0;
   }
 }
 
@@ -2758,26 +3179,28 @@ function updatePlayerActor(p, dt, controlSet) {
   let speed = sprinting ? actor.sprintSpeed : actor.speed;
 
   if (sprinting && move.lengthSq() > 0) {
-    p.energy -= dt * 22;
+    p.energy -= dt * 22 * (p.sprintDrainMultiplier || 1);
   } else {
-    p.energy += dt * 13;
+    p.energy += dt * 13 * (p.energyRegenMultiplier || 1);
   }
 
   p.energy = clamp(p.energy, 0, 100);
 
   const dodgePressed = keys[controlSet.dodge] || (p.id === 1 && mobileDodgeQueued);
-  if (dodgePressed && actor.dodgeCooldown <= 0 && p.energy >= 18) {
-    actor.dodgeCooldown = 0.65;
+  const dodgeCost=p.dodgeCost || 18;
+  if (dodgePressed && actor.dodgeCooldown <= 0 && p.energy >= dodgeCost) {
+    actor.dodgeCooldown = p.dodgeCooldownDuration || 0.65;
     mobileDodgeQueued = false;
-    p.energy -= 18;
+    p.energy -= dodgeCost;
     const dodgeOldPos=actor.rig.position.clone();
     const threatBefore=closestThreatDistance(dodgeOldPos);
 
     if (move.lengthSq() === 0) move.z = 1;
     move.normalize();
 
-    actor.rig.position.x += move.x * 6 * (actor.lateralMultiplier || 1);
-    actor.rig.position.z += move.z * 6;
+    const dodgeDistance=p.dodgeDistance || 6;
+    actor.rig.position.x += move.x * dodgeDistance * (actor.lateralMultiplier || 1);
+    actor.rig.position.z += move.z * dodgeDistance;
     actor.rig.position.x=clamp(actor.rig.position.x,-WORLD_WIDTH/2+2,WORLD_WIDTH/2-2);
     resolveSlidingCollision(actor,dodgeOldPos,PLAYER_RADIUS);
     evaluateDodgeBonus(p,threatBefore,closestThreatDistance(actor.rig.position));
@@ -3889,6 +4312,11 @@ function updateHUD() {
   const scoreEl=document.getElementById("scoreText"); if(scoreEl) scoreEl.textContent="Score: "+totalScore;
   const yardsEl=document.getElementById("yardsText"); if(yardsEl) yardsEl.textContent=Math.floor(distance)+" yards";
   const bonusEl=document.getElementById("bonusText"); if(bonusEl) bonusEl.textContent="+"+personalBonus+" bonus";
+  const flowEl=document.getElementById("flowText");
+  if(flowEl) {
+    const flowMultiplier=1+Math.min(4,Math.max(0,(focus?.flowStreak||0)-1))*.2;
+    flowEl.textContent=(focus?.flowTimer||0)>0 && (focus?.flowStreak||0)>1?"FLOW x"+flowMultiplier.toFixed(1):"";
+  }
   const biomeEl=document.getElementById("biomeText"); if(biomeEl) biomeEl.textContent=getBiomeLabel(biome);
   const dangerEl=document.getElementById("dangerText");
   if (dangerEl) {
@@ -4546,6 +4974,7 @@ function animate() {
   updateBurstEffects(dt);
   updatePlayerShieldVisuals(dt);
   updateTempEffects(dt);
+  updateFlowState(dt);
   updateNearMissScoring(dt);
   updateCamera(dt);
   updateEnvironmentSky(dt);
