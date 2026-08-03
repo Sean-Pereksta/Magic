@@ -1,0 +1,1882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>PDF Library</title>
+  <style>
+    :root {
+      --bg: #efe9dd;
+      --panel: #fffdf8;
+      --panel-2: #f6f1e7;
+      --ink: #25211c;
+      --muted: #746d63;
+      --line: #d8cfc0;
+      --accent: #76552e;
+      --accent-strong: #523718;
+      --accent-soft: #eadbc3;
+      --danger: #9b2f2f;
+      --shadow: 0 14px 38px rgba(48, 36, 21, 0.14);
+      --header-height: 66px;
+    }
+
+    html[data-theme="dark"] {
+      --bg: #171511;
+      --panel: #23201a;
+      --panel-2: #2d2922;
+      --ink: #f1eadf;
+      --muted: #bdb3a5;
+      --line: #494238;
+      --accent: #d5a565;
+      --accent-strong: #f0c384;
+      --accent-soft: #4b3924;
+      --danger: #ff9191;
+      --shadow: 0 16px 42px rgba(0, 0, 0, 0.38);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", serif;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button,
+    select,
+    input[type="number"],
+    input[type="search"] {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 10px;
+    }
+
+    button {
+      min-height: 38px;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+
+    button:hover:not(:disabled) {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    html[data-theme="dark"] button.primary {
+      color: #21180f;
+    }
+
+    button.icon-button {
+      min-width: 40px;
+      padding: 8px 10px;
+      font-family: system-ui, sans-serif;
+      font-weight: 700;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 310px minmax(0, 1fr);
+      grid-template-rows: var(--header-height) minmax(0, 1fr);
+      width: 100%;
+      height: 100%;
+    }
+
+    .topbar {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 2px 12px rgba(35, 28, 19, 0.06);
+      z-index: 20;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      margin-right: auto;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      flex: 0 0 auto;
+      border-radius: 12px;
+      background: var(--accent);
+      color: white;
+      font: 700 21px/1 system-ui, sans-serif;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
+    }
+
+    html[data-theme="dark"] .brand-mark {
+      color: #21180f;
+    }
+
+    .brand-text {
+      min-width: 0;
+    }
+
+    .brand-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .brand-subtitle {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-top: 2px;
+      color: var(--muted);
+      font: 12px/1.2 system-ui, sans-serif;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+
+    .sidebar {
+      grid-column: 1;
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+      z-index: 10;
+    }
+
+    .sidebar-head {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .sidebar-heading-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .sidebar h2 {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .library-count {
+      color: var(--muted);
+      font: 12px/1 system-ui, sans-serif;
+    }
+
+    #searchInput {
+      width: 100%;
+      height: 40px;
+      padding: 8px 11px;
+      font-family: system-ui, sans-serif;
+    }
+
+    .library-list {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 8px;
+      overscroll-behavior: contain;
+    }
+
+    .book-item {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      min-height: 58px;
+      margin: 0 0 6px;
+      padding: 8px 9px;
+      text-align: left;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--ink);
+    }
+
+    .book-item:hover {
+      background: var(--panel-2);
+      border-color: var(--line);
+    }
+
+    .book-item.active {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+    }
+
+    .book-icon {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 42px;
+      border-radius: 5px 10px 10px 5px;
+      background: var(--accent);
+      color: white;
+      box-shadow: inset 4px 0 0 rgba(0,0,0,.15);
+      font: 700 10px/1 system-ui, sans-serif;
+    }
+
+    html[data-theme="dark"] .book-icon {
+      color: #21180f;
+    }
+
+    .book-copy {
+      min-width: 0;
+    }
+
+    .book-name {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.18;
+    }
+
+    .book-progress {
+      margin-top: 4px;
+      color: var(--muted);
+      font: 11px/1.2 system-ui, sans-serif;
+    }
+
+    .bookmark-badge {
+      display: grid;
+      place-items: center;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--accent-strong);
+      font: 700 11px/1 system-ui, sans-serif;
+    }
+
+    .sidebar-foot {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      padding: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .sidebar-foot button {
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+    }
+
+    .reader {
+      grid-column: 2;
+      grid-row: 2;
+      display: grid;
+      grid-template-rows: auto 5px minmax(0, 1fr) auto;
+      min-width: 0;
+      min-height: 0;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(118, 85, 46, 0.08), transparent 26%),
+        var(--bg);
+    }
+
+    .reader-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 96%, transparent);
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: thin;
+    }
+
+    .mobile-book-select {
+      display: none;
+      min-width: 210px;
+      height: 40px;
+      padding: 7px 10px;
+      font-family: system-ui, sans-serif;
+    }
+
+    .toolbar-spacer {
+      flex: 1 1 auto;
+      min-width: 8px;
+    }
+
+    .page-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      color: var(--muted);
+      font: 13px/1 system-ui, sans-serif;
+    }
+
+    #pageInput {
+      width: 66px;
+      height: 38px;
+      padding: 6px 8px;
+      text-align: center;
+      font-family: system-ui, sans-serif;
+    }
+
+    .zoom-label {
+      min-width: 52px;
+      text-align: center;
+      white-space: nowrap;
+      color: var(--muted);
+      font: 12px/1 system-ui, sans-serif;
+    }
+
+    .reading-progress {
+      position: relative;
+      overflow: hidden;
+      background: var(--line);
+      cursor: pointer;
+    }
+
+    .reading-progress > div {
+      width: 0;
+      height: 100%;
+      background: var(--accent);
+      transition: width 180ms ease;
+    }
+
+    .viewer-scroll {
+      position: relative;
+      min-height: 0;
+      overflow: auto;
+      padding: 26px;
+      overscroll-behavior: contain;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      width: max-content;
+      max-width: 100%;
+      min-width: 1px;
+      min-height: 1px;
+      margin: 0 auto;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+
+    #pdfCanvas {
+      display: block;
+      background: white;
+    }
+
+    .empty-state,
+    .loading-state,
+    .error-state {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      text-align: center;
+      z-index: 2;
+    }
+
+    .state-card {
+      width: min(560px, 100%);
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .state-card h2 {
+      margin: 0 0 10px;
+      font-size: 24px;
+    }
+
+    .state-card p {
+      margin: 0;
+      color: var(--muted);
+      font: 14px/1.55 system-ui, sans-serif;
+    }
+
+    .state-card .state-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .spinner {
+      width: 46px;
+      height: 46px;
+      margin: 0 auto 16px;
+      border: 4px solid var(--line);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 850ms linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .reader-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 34px;
+      padding: 7px 12px;
+      border-top: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      font: 12px/1.25 system-ui, sans-serif;
+    }
+
+    .reader-status strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .status-message {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-left: auto;
+    }
+
+    .bookmark-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(390px, 94vw);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      transform: translateX(105%);
+      border-left: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: -18px 0 46px rgba(25, 20, 14, 0.22);
+      z-index: 60;
+      transition: transform 180ms ease;
+    }
+
+    .bookmark-drawer.open {
+      transform: translateX(0);
+    }
+
+    .drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      background: rgba(18, 14, 10, 0.38);
+      z-index: 50;
+    }
+
+    .drawer-backdrop.open {
+      display: block;
+    }
+
+    .drawer-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .drawer-head h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .drawer-head button {
+      margin-left: auto;
+    }
+
+    .bookmark-list {
+      min-height: 0;
+      overflow: auto;
+      padding: 12px;
+    }
+
+    .bookmark-group {
+      margin-bottom: 16px;
+    }
+
+    .bookmark-group-title {
+      margin: 0 0 7px;
+      padding: 0 4px;
+      color: var(--muted);
+      font: 700 12px/1.3 system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .bookmark-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--panel-2);
+    }
+
+    .bookmark-open {
+      min-width: 0;
+      padding: 3px 5px;
+      text-align: left;
+      border: 0;
+      background: transparent;
+    }
+
+    .bookmark-label {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .bookmark-page {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font: 11px/1.2 system-ui, sans-serif;
+    }
+
+    .bookmark-row .mini {
+      min-width: 34px;
+      min-height: 34px;
+      padding: 5px;
+    }
+
+    .drawer-foot {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    .drawer-foot button {
+      flex: 1;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      max-width: min(520px, calc(100vw - 30px));
+      transform: translate(-50%, 20px);
+      padding: 11px 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--ink);
+      color: var(--panel);
+      box-shadow: var(--shadow);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 100;
+      transition: opacity 160ms ease, transform 160ms ease;
+      font: 13px/1.3 system-ui, sans-serif;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 840px) {
+      :root {
+        --header-height: 58px;
+      }
+
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        display: none;
+      }
+
+      .reader {
+        grid-column: 1;
+      }
+
+      .brand-mark {
+        width: 38px;
+        height: 38px;
+      }
+
+      .brand-title {
+        font-size: 16px;
+      }
+
+      .brand-subtitle {
+        display: none;
+      }
+
+      .top-actions .desktop-label {
+        display: none;
+      }
+
+      .mobile-book-select {
+        display: block;
+        flex: 1 0 min(72vw, 340px);
+      }
+
+      .reader-toolbar {
+        padding: 7px 8px;
+      }
+
+      .viewer-scroll {
+        padding: 12px 8px 20px;
+      }
+
+      .reader-status {
+        min-height: 30px;
+        padding: 6px 9px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .topbar {
+        gap: 7px;
+        padding: 8px;
+      }
+
+      .brand {
+        margin-right: auto;
+      }
+
+      .brand-title {
+        max-width: 38vw;
+      }
+
+      .top-actions {
+        gap: 5px;
+      }
+
+      .top-actions button {
+        min-width: 38px;
+        padding: 7px 9px;
+      }
+
+      .reader-toolbar button {
+        min-width: 38px;
+        padding: 7px 9px;
+      }
+
+      .mobile-book-select {
+        flex-basis: 78vw;
+      }
+
+      .status-message {
+        display: none;
+      }
+    }
+
+    @media print {
+      body {
+        overflow: visible;
+        background: white;
+      }
+
+      .topbar,
+      .sidebar,
+      .reader-toolbar,
+      .reading-progress,
+      .reader-status,
+      .bookmark-drawer,
+      .drawer-backdrop,
+      .toast {
+        display: none !important;
+      }
+
+      .app,
+      .reader,
+      .viewer-scroll {
+        display: block;
+        width: auto;
+        height: auto;
+        overflow: visible;
+        background: white;
+      }
+
+      .canvas-wrap {
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">PDF</div>
+        <div class="brand-text">
+          <div class="brand-title">PDF Library</div>
+          <div class="brand-subtitle">Auto-loaded from Sean-Pereksta/Bible-Data</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="refreshLibraryBtn" class="icon-button" title="Refresh repository library" aria-label="Refresh repository library">↻</button>
+        <button id="themeBtn" class="icon-button" title="Toggle light or dark theme" aria-label="Toggle light or dark theme">☾</button>
+        <button id="bookmarksBtn" title="Open bookmarks"><span class="desktop-label">Bookmarks </span>🔖</button>
+      </div>
+    </header>
+
+    <aside class="sidebar" aria-label="PDF library">
+      <div class="sidebar-head">
+        <div class="sidebar-heading-row">
+          <h2>Library</h2>
+          <span id="libraryCount" class="library-count">Loading…</span>
+        </div>
+        <input id="searchInput" type="search" placeholder="Search PDFs…" autocomplete="off" aria-label="Search PDF library">
+      </div>
+      <div id="libraryList" class="library-list"></div>
+      <div class="sidebar-foot">
+        <button id="openLocalBtn">Open local PDF</button>
+        <button id="repoBtn" class="icon-button" title="Open repository on GitHub" aria-label="Open repository on GitHub">↗</button>
+      </div>
+    </aside>
+
+    <main class="reader">
+      <div class="reader-toolbar" aria-label="PDF controls">
+        <select id="mobileBookSelect" class="mobile-book-select" aria-label="Select a PDF">
+          <option value="">Select a PDF…</option>
+        </select>
+
+        <button id="prevBtn" class="icon-button" title="Previous page" aria-label="Previous page">‹</button>
+        <div class="page-control">
+          <input id="pageInput" type="number" min="1" value="1" aria-label="Current page">
+          <span>of <strong id="pageCount">0</strong></span>
+        </div>
+        <button id="nextBtn" class="icon-button" title="Next page" aria-label="Next page">›</button>
+
+        <button id="zoomOutBtn" class="icon-button" title="Zoom out" aria-label="Zoom out">−</button>
+        <span id="zoomLabel" class="zoom-label">100%</span>
+        <button id="zoomInBtn" class="icon-button" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="fitBtn" title="Fit page width">Fit width</button>
+
+        <div class="toolbar-spacer"></div>
+
+        <button id="addBookmarkBtn" class="primary" title="Bookmark this page">＋ Bookmark</button>
+        <button id="openRawBtn" title="Open the current PDF directly">Open PDF</button>
+      </div>
+
+      <div id="readingProgress" class="reading-progress" title="Click to jump through the document">
+        <div id="readingProgressFill"></div>
+      </div>
+
+      <div id="viewerScroll" class="viewer-scroll">
+        <div id="canvasWrap" class="canvas-wrap hidden">
+          <canvas id="pdfCanvas"></canvas>
+        </div>
+
+        <div id="emptyState" class="empty-state">
+          <div class="state-card">
+            <h2>Your PDF library</h2>
+            <p>Select a title from the library. Your last page, zoom level, and bookmarks are stored locally in this browser.</p>
+            <div class="state-actions">
+              <button id="emptyRefreshBtn" class="primary">Load repository PDFs</button>
+              <button id="emptyLocalBtn">Open a local PDF</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="loadingState" class="loading-state hidden" aria-live="polite">
+          <div class="state-card">
+            <div class="spinner" aria-hidden="true"></div>
+            <h2 id="loadingTitle">Loading PDF…</h2>
+            <p id="loadingMessage">Preparing the document.</p>
+          </div>
+        </div>
+
+        <div id="errorState" class="error-state hidden" role="alert">
+          <div class="state-card">
+            <h2>Could not open this PDF</h2>
+            <p id="errorMessage">The document could not be loaded.</p>
+            <div class="state-actions">
+              <button id="retryBtn" class="primary">Try again</button>
+              <button id="errorOpenRawBtn">Open directly</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="reader-status">
+        <strong id="currentTitle">No PDF selected</strong>
+        <span id="statusMessage" class="status-message">Loading repository library…</span>
+      </div>
+    </main>
+  </div>
+
+  <div id="drawerBackdrop" class="drawer-backdrop"></div>
+  <aside id="bookmarkDrawer" class="bookmark-drawer" aria-label="Bookmarks" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>Bookmarks</h2>
+      <button id="closeDrawerBtn" class="icon-button" aria-label="Close bookmarks">×</button>
+    </div>
+    <div id="bookmarkList" class="bookmark-list"></div>
+    <div class="drawer-foot">
+      <button id="exportBtn">Export backup</button>
+      <button id="importBtn">Import backup</button>
+    </div>
+  </aside>
+
+  <input id="localFileInput" class="hidden" type="file" accept="application/pdf,.pdf">
+  <input id="importFileInput" class="hidden" type="file" accept="application/json,.json">
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module">
+    import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.min.mjs";
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs";
+
+    const CONFIG = Object.freeze({
+      owner: "Sean-Pereksta",
+      repo: "Bible-Data",
+      branch: "main",
+      pdfJsBase: "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284",
+      fallbackPdfs: [
+        "A_History_of_the_Near_Galaxy (1).pdf",
+        "Christianity_and_the_Abolition_of_Slavery.pdf",
+        "Early_Americas_Deep_History.pdf",
+        "Early_Church_Councils_Creeds_and_Canon_Detailed_Study (1).pdf",
+        "Ethiopian_Bible_Enoch_Canon_Quotation_Edition (1).pdf",
+        "Revelation_Conservative_Evangelical_Survey (1).pdf",
+        "The_Better_Continuation_Revised (1).pdf",
+        "The_Roman_Senate_and_Emperors.pdf",
+        "US_Amendments_and_Presidents_Detailed_History.pdf",
+        "Witnesses_After_the_Apostles_Early_Christian_Leaders_and_Canon (1).pdf"
+      ]
+    });
+
+    const STORAGE_PREFIX = `pdf-library:${CONFIG.owner}/${CONFIG.repo}:v1`;
+    const STORAGE_KEYS = Object.freeze({
+      positions: `${STORAGE_PREFIX}:positions`,
+      bookmarks: `${STORAGE_PREFIX}:bookmarks`,
+      lastPath: `${STORAGE_PREFIX}:last-path`,
+      theme: `${STORAGE_PREFIX}:theme`
+    });
+
+    const elements = {
+      libraryCount: document.querySelector("#libraryCount"),
+      searchInput: document.querySelector("#searchInput"),
+      libraryList: document.querySelector("#libraryList"),
+      mobileBookSelect: document.querySelector("#mobileBookSelect"),
+      refreshLibraryBtn: document.querySelector("#refreshLibraryBtn"),
+      emptyRefreshBtn: document.querySelector("#emptyRefreshBtn"),
+      openLocalBtn: document.querySelector("#openLocalBtn"),
+      emptyLocalBtn: document.querySelector("#emptyLocalBtn"),
+      localFileInput: document.querySelector("#localFileInput"),
+      repoBtn: document.querySelector("#repoBtn"),
+      themeBtn: document.querySelector("#themeBtn"),
+      bookmarksBtn: document.querySelector("#bookmarksBtn"),
+      bookmarkDrawer: document.querySelector("#bookmarkDrawer"),
+      drawerBackdrop: document.querySelector("#drawerBackdrop"),
+      closeDrawerBtn: document.querySelector("#closeDrawerBtn"),
+      bookmarkList: document.querySelector("#bookmarkList"),
+      exportBtn: document.querySelector("#exportBtn"),
+      importBtn: document.querySelector("#importBtn"),
+      importFileInput: document.querySelector("#importFileInput"),
+      prevBtn: document.querySelector("#prevBtn"),
+      nextBtn: document.querySelector("#nextBtn"),
+      pageInput: document.querySelector("#pageInput"),
+      pageCount: document.querySelector("#pageCount"),
+      zoomOutBtn: document.querySelector("#zoomOutBtn"),
+      zoomInBtn: document.querySelector("#zoomInBtn"),
+      zoomLabel: document.querySelector("#zoomLabel"),
+      fitBtn: document.querySelector("#fitBtn"),
+      addBookmarkBtn: document.querySelector("#addBookmarkBtn"),
+      openRawBtn: document.querySelector("#openRawBtn"),
+      errorOpenRawBtn: document.querySelector("#errorOpenRawBtn"),
+      readingProgress: document.querySelector("#readingProgress"),
+      readingProgressFill: document.querySelector("#readingProgressFill"),
+      viewerScroll: document.querySelector("#viewerScroll"),
+      canvasWrap: document.querySelector("#canvasWrap"),
+      canvas: document.querySelector("#pdfCanvas"),
+      emptyState: document.querySelector("#emptyState"),
+      loadingState: document.querySelector("#loadingState"),
+      loadingTitle: document.querySelector("#loadingTitle"),
+      loadingMessage: document.querySelector("#loadingMessage"),
+      errorState: document.querySelector("#errorState"),
+      errorMessage: document.querySelector("#errorMessage"),
+      retryBtn: document.querySelector("#retryBtn"),
+      currentTitle: document.querySelector("#currentTitle"),
+      statusMessage: document.querySelector("#statusMessage"),
+      toast: document.querySelector("#toast")
+    };
+
+    const state = {
+      library: [],
+      filteredLibrary: [],
+      activeEntry: null,
+      pdfDocument: null,
+      pageNumber: 1,
+      pageCount: 0,
+      scale: 1.15,
+      zoomMode: "custom",
+      renderTask: null,
+      loadSerial: 0,
+      localObjectUrl: null,
+      positions: readStoredObject(STORAGE_KEYS.positions),
+      bookmarks: readStoredObject(STORAGE_KEYS.bookmarks),
+      librarySource: "loading"
+    };
+
+    let toastTimer = null;
+    let resizeTimer = null;
+    let positionSaveTimer = null;
+
+    function readStoredObject(key) {
+      try {
+        const value = localStorage.getItem(key);
+        const parsed = value ? JSON.parse(value) : {};
+        return parsed && typeof parsed === "object" ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function writeStoredObject(key, value) {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+        return true;
+      } catch {
+        showToast("Browser storage is unavailable; changes may not persist.");
+        return false;
+      }
+    }
+
+    function setStoredValue(key, value) {
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        // The viewer still works without persistence.
+      }
+    }
+
+    function getStoredValue(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
+
+    function encodePath(path) {
+      return String(path)
+        .split("/")
+        .map(segment => encodeURIComponent(segment))
+        .join("/");
+    }
+
+    function rawUrlForPath(path) {
+      return `https://raw.githubusercontent.com/${CONFIG.owner}/${CONFIG.repo}/${CONFIG.branch}/${encodePath(path)}`;
+    }
+
+    function githubUrlForPath(path) {
+      return `https://github.com/${CONFIG.owner}/${CONFIG.repo}/blob/${CONFIG.branch}/${encodePath(path)}`;
+    }
+
+    function repositoryUrl() {
+      return `https://github.com/${CONFIG.owner}/${CONFIG.repo}`;
+    }
+
+    function titleFromPath(path) {
+      const base = String(path).split("/").pop() || path;
+      return base
+        .replace(/\.pdf$/i, "")
+        .replace(/[_-]+/g, " ")
+        .replace(/\s*\(\d+\)\s*$/, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function entryKey(entry) {
+      return entry?.key || entry?.path || "";
+    }
+
+    function makeRepoEntry(path) {
+      return {
+        key: path,
+        path,
+        title: titleFromPath(path),
+        url: rawUrlForPath(path),
+        githubUrl: githubUrlForPath(path),
+        local: false
+      };
+    }
+
+    function naturalSort(a, b) {
+      return a.title.localeCompare(b.title, undefined, {
+        numeric: true,
+        sensitivity: "base"
+      });
+    }
+
+    function showToast(message) {
+      clearTimeout(toastTimer);
+      elements.toast.textContent = message;
+      elements.toast.classList.add("show");
+      toastTimer = setTimeout(() => elements.toast.classList.remove("show"), 2600);
+    }
+
+    function setStatus(message) {
+      elements.statusMessage.textContent = message;
+    }
+
+    function setViewState(view) {
+      elements.emptyState.classList.toggle("hidden", view !== "empty");
+      elements.loadingState.classList.toggle("hidden", view !== "loading");
+      elements.errorState.classList.toggle("hidden", view !== "error");
+      elements.canvasWrap.classList.toggle("hidden", view !== "document");
+    }
+
+    function updateControlState() {
+      const hasDocument = Boolean(state.pdfDocument);
+      elements.prevBtn.disabled = !hasDocument || state.pageNumber <= 1;
+      elements.nextBtn.disabled = !hasDocument || state.pageNumber >= state.pageCount;
+      elements.pageInput.disabled = !hasDocument;
+      elements.zoomOutBtn.disabled = !hasDocument;
+      elements.zoomInBtn.disabled = !hasDocument;
+      elements.fitBtn.disabled = !hasDocument;
+      elements.addBookmarkBtn.disabled = !hasDocument;
+      elements.openRawBtn.disabled = !state.activeEntry;
+      elements.pageInput.value = hasDocument ? String(state.pageNumber) : "1";
+      elements.pageInput.max = hasDocument ? String(state.pageCount) : "1";
+      elements.pageCount.textContent = hasDocument ? String(state.pageCount) : "0";
+      elements.zoomLabel.textContent = `${Math.round(state.scale * 100)}%`;
+
+      const progress = hasDocument && state.pageCount
+        ? ((state.pageNumber - 1) / Math.max(1, state.pageCount - 1)) * 100
+        : 0;
+      elements.readingProgressFill.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+    }
+
+    function getPosition(key) {
+      const saved = state.positions[key];
+      return saved && typeof saved === "object" ? saved : null;
+    }
+
+    function queuePositionSave() {
+      clearTimeout(positionSaveTimer);
+      positionSaveTimer = setTimeout(saveCurrentPosition, 120);
+    }
+
+    function saveCurrentPosition() {
+      if (!state.activeEntry || !state.pdfDocument) return;
+      const key = entryKey(state.activeEntry);
+      state.positions[key] = {
+        page: state.pageNumber,
+        scale: state.scale,
+        zoomMode: state.zoomMode,
+        pageCount: state.pageCount,
+        updatedAt: new Date().toISOString()
+      };
+      writeStoredObject(STORAGE_KEYS.positions, state.positions);
+      setStoredValue(STORAGE_KEYS.lastPath, key);
+      renderLibrary();
+    }
+
+    async function loadLibrary({ restoreLast = true } = {}) {
+      setStatus("Checking the GitHub repository for PDFs…");
+      elements.libraryCount.textContent = "Loading…";
+      elements.refreshLibraryBtn.disabled = true;
+
+      let paths = [];
+      let source = "GitHub";
+
+      try {
+        const endpoint =
+          `https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/git/trees/${encodeURIComponent(CONFIG.branch)}?recursive=1`;
+        const response = await fetch(endpoint, {
+          headers: {
+            Accept: "application/vnd.github+json"
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`GitHub API returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        paths = Array.isArray(data.tree)
+          ? data.tree
+              .filter(item => item?.type === "blob" && /\.pdf$/i.test(item.path || ""))
+              .map(item => item.path)
+          : [];
+
+        if (!paths.length) {
+          throw new Error("No PDFs were returned by the repository tree.");
+        }
+      } catch (error) {
+        console.warn("Using embedded PDF fallback list:", error);
+        paths = [...CONFIG.fallbackPdfs];
+        source = "embedded fallback";
+        showToast("GitHub’s live file list was unavailable; loaded the embedded PDF list.");
+      }
+
+      state.library = [...new Set(paths)].map(makeRepoEntry).sort(naturalSort);
+      state.librarySource = source;
+      applyLibraryFilter();
+      elements.libraryCount.textContent = `${state.library.length} PDF${state.library.length === 1 ? "" : "s"}`;
+      elements.refreshLibraryBtn.disabled = false;
+      setStatus(`Loaded ${state.library.length} PDFs from ${source}.`);
+
+      if (!state.library.length) {
+        setViewState("empty");
+        return;
+      }
+
+      if (restoreLast && !state.activeEntry) {
+        const lastKey = getStoredValue(STORAGE_KEYS.lastPath);
+        const initial =
+          state.library.find(entry => entry.key === lastKey) ||
+          state.library[0];
+        await openPdf(initial);
+      }
+    }
+
+    function applyLibraryFilter() {
+      const query = elements.searchInput.value.trim().toLocaleLowerCase();
+      state.filteredLibrary = query
+        ? state.library.filter(entry =>
+            entry.title.toLocaleLowerCase().includes(query) ||
+            entry.path.toLocaleLowerCase().includes(query)
+          )
+        : [...state.library];
+
+      renderLibrary();
+      renderMobileSelect();
+    }
+
+    function renderLibrary() {
+      elements.libraryList.replaceChildren();
+
+      if (!state.filteredLibrary.length) {
+        const message = document.createElement("div");
+        message.style.padding = "22px 12px";
+        message.style.color = "var(--muted)";
+        message.style.fontFamily = "system-ui, sans-serif";
+        message.style.fontSize = "13px";
+        message.textContent = "No PDFs match this search.";
+        elements.libraryList.append(message);
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+
+      for (const entry of state.filteredLibrary) {
+        const key = entryKey(entry);
+        const saved = getPosition(key);
+        const bookmarks = Array.isArray(state.bookmarks[key]) ? state.bookmarks[key] : [];
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `book-item${state.activeEntry && entryKey(state.activeEntry) === key ? " active" : ""}`;
+        button.dataset.key = key;
+        button.title = entry.title;
+        button.addEventListener("click", () => openPdf(entry));
+
+        const icon = document.createElement("span");
+        icon.className = "book-icon";
+        icon.textContent = "PDF";
+
+        const copy = document.createElement("span");
+        copy.className = "book-copy";
+
+        const name = document.createElement("span");
+        name.className = "book-name";
+        name.textContent = entry.title;
+
+        const progress = document.createElement("span");
+        progress.className = "book-progress";
+        progress.textContent = saved?.page
+          ? `Resume at page ${saved.page}${saved.pageCount ? ` of ${saved.pageCount}` : ""}`
+          : "Not started";
+
+        copy.append(name, progress);
+        button.append(icon, copy);
+
+        if (bookmarks.length) {
+          const badge = document.createElement("span");
+          badge.className = "bookmark-badge";
+          badge.title = `${bookmarks.length} bookmark${bookmarks.length === 1 ? "" : "s"}`;
+          badge.textContent = String(bookmarks.length);
+          button.append(badge);
+        }
+
+        fragment.append(button);
+      }
+
+      elements.libraryList.append(fragment);
+    }
+
+    function renderMobileSelect() {
+      const selectedKey = state.activeEntry ? entryKey(state.activeEntry) : "";
+      elements.mobileBookSelect.replaceChildren();
+
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Select a PDF…";
+      elements.mobileBookSelect.append(placeholder);
+
+      for (const entry of state.filteredLibrary) {
+        const option = document.createElement("option");
+        option.value = entryKey(entry);
+        option.textContent = entry.title;
+        elements.mobileBookSelect.append(option);
+      }
+
+      elements.mobileBookSelect.value = selectedKey;
+    }
+
+    async function openPdf(entry, options = {}) {
+      if (!entry) return;
+
+      const serial = ++state.loadSerial;
+      saveCurrentPosition();
+
+      if (state.renderTask) {
+        try {
+          state.renderTask.cancel();
+        } catch {
+          // No active render to cancel.
+        }
+        state.renderTask = null;
+      }
+
+      if (state.pdfDocument) {
+        try {
+          await state.pdfDocument.destroy();
+        } catch {
+          // Ignore cleanup failures.
+        }
+        state.pdfDocument = null;
+      }
+
+      state.activeEntry = entry;
+      state.pageCount = 0;
+      elements.currentTitle.textContent = entry.title;
+      elements.loadingTitle.textContent = entry.title;
+      elements.loadingMessage.textContent = "Downloading and preparing the PDF…";
+      setViewState("loading");
+      setStatus("Loading document…");
+      renderLibrary();
+      renderMobileSelect();
+      updateControlState();
+
+      const saved = getPosition(entryKey(entry));
+      const requestedPage = Number(options.page);
+      state.pageNumber = Number.isFinite(requestedPage)
+        ? Math.max(1, Math.floor(requestedPage))
+        : Math.max(1, Math.floor(Number(saved?.page) || 1));
+
+      state.scale = Number.isFinite(Number(saved?.scale))
+        ? Math.max(0.35, Math.min(4, Number(saved.scale)))
+        : 1.15;
+      state.zoomMode = saved?.zoomMode === "fit" ? "fit" : "custom";
+
+      try {
+        const loadingTask = pdfjsLib.getDocument({
+          url: entry.url,
+          cMapUrl: `${CONFIG.pdfJsBase}/cmaps/`,
+          cMapPacked: true,
+          standardFontDataUrl: `${CONFIG.pdfJsBase}/standard_fonts/`,
+          wasmUrl: `${CONFIG.pdfJsBase}/wasm/`,
+          enableXfa: true
+        });
+
+        const pdf = await loadingTask.promise;
+        if (serial !== state.loadSerial) {
+          await pdf.destroy();
+          return;
+        }
+
+        state.pdfDocument = pdf;
+        state.pageCount = pdf.numPages;
+        state.pageNumber = Math.min(state.pageNumber, state.pageCount);
+
+        if (state.zoomMode === "fit") {
+          await setFitWidthScale();
+        } else {
+          await renderCurrentPage();
+        }
+
+        setStoredValue(STORAGE_KEYS.lastPath, entryKey(entry));
+        setStatus(`Page ${state.pageNumber} of ${state.pageCount} · ${state.librarySource} library`);
+      } catch (error) {
+        if (serial !== state.loadSerial) return;
+        console.error(error);
+        state.pdfDocument = null;
+        state.pageCount = 0;
+        elements.errorMessage.textContent =
+          "The PDF could not be fetched or rendered. This can happen if the browser blocks cross-origin files or the repository file was renamed.";
+        setViewState("error");
+        setStatus("Document failed to load.");
+        updateControlState();
+      }
+    }
+
+    async function renderCurrentPage() {
+      if (!state.pdfDocument) return;
+
+      const serial = state.loadSerial;
+      const page = await state.pdfDocument.getPage(state.pageNumber);
+      if (serial !== state.loadSerial) return;
+
+      if (state.renderTask) {
+        try {
+          state.renderTask.cancel();
+        } catch {
+          // Ignore already-finished tasks.
+        }
+      }
+
+      const viewport = page.getViewport({ scale: state.scale });
+      const outputScale = Math.min(window.devicePixelRatio || 1, 2.25);
+      const canvas = elements.canvas;
+      const context = canvas.getContext("2d", { alpha: false });
+
+      canvas.width = Math.max(1, Math.floor(viewport.width * outputScale));
+      canvas.height = Math.max(1, Math.floor(viewport.height * outputScale));
+      canvas.style.width = `${Math.floor(viewport.width)}px`;
+      canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+      elements.canvasWrap.style.width = `${Math.floor(viewport.width)}px`;
+      elements.canvasWrap.style.height = `${Math.floor(viewport.height)}px`;
+      setViewState("document");
+
+      const transform = outputScale !== 1
+        ? [outputScale, 0, 0, outputScale, 0, 0]
+        : null;
+
+      state.renderTask = page.render({
+        canvasContext: context,
+        viewport,
+        transform,
+        background: "rgb(255,255,255)"
+      });
+
+      try {
+        await state.renderTask.promise;
+      } catch (error) {
+        if (error?.name !== "RenderingCancelledException") throw error;
+        return;
+      } finally {
+        state.renderTask = null;
+      }
+
+      elements.viewerScroll.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      elements.currentTitle.textContent = state.activeEntry?.title || "PDF";
+      setStatus(`Page ${state.pageNumber} of ${state.pageCount}`);
+      updateControlState();
+      queuePositionSave();
+    }
+
+    async function setFitWidthScale() {
+      if (!state.pdfDocument) return;
+      const page = await state.pdfDocument.getPage(state.pageNumber);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const horizontalPadding = window.innerWidth <= 840 ? 18 : 58;
+      const available = Math.max(180, elements.viewerScroll.clientWidth - horizontalPadding);
+      state.scale = Math.max(0.35, Math.min(4, available / baseViewport.width));
+      state.zoomMode = "fit";
+      await renderCurrentPage();
+    }
+
+    async function goToPage(pageNumber) {
+      if (!state.pdfDocument) return;
+      const next = Math.max(1, Math.min(state.pageCount, Math.floor(Number(pageNumber) || 1)));
+      if (next === state.pageNumber) {
+        updateControlState();
+        return;
+      }
+      state.pageNumber = next;
+
+      if (state.zoomMode === "fit") {
+        await setFitWidthScale();
+      } else {
+        await renderCurrentPage();
+      }
+    }
+
+    async function changeZoom(delta) {
+      if (!state.pdfDocument) return;
+      state.scale = Math.max(0.35, Math.min(4, state.scale + delta));
+      state.zoomMode = "custom";
+      await renderCurrentPage();
+    }
+
+    function currentBookmarks() {
+      if (!state.activeEntry) return [];
+      const key = entryKey(state.activeEntry);
+      return Array.isArray(state.bookmarks[key]) ? state.bookmarks[key] : [];
+    }
+
+    function addBookmark() {
+      if (!state.activeEntry || !state.pdfDocument) return;
+
+      const defaultLabel = `Page ${state.pageNumber}`;
+      const entered = window.prompt("Bookmark name:", defaultLabel);
+      if (entered === null) return;
+
+      const label = entered.trim() || defaultLabel;
+      const key = entryKey(state.activeEntry);
+      const list = Array.isArray(state.bookmarks[key]) ? state.bookmarks[key] : [];
+
+      const existing = list.find(bookmark => Number(bookmark.page) === state.pageNumber);
+      if (existing) {
+        existing.label = label;
+        existing.updatedAt = new Date().toISOString();
+        showToast(`Updated bookmark on page ${state.pageNumber}.`);
+      } else {
+        list.push({
+          id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+          page: state.pageNumber,
+          label,
+          createdAt: new Date().toISOString()
+        });
+        list.sort((a, b) => Number(a.page) - Number(b.page));
+        showToast(`Bookmarked page ${state.pageNumber}.`);
+      }
+
+      state.bookmarks[key] = list;
+      writeStoredObject(STORAGE_KEYS.bookmarks, state.bookmarks);
+      renderBookmarks();
+      renderLibrary();
+    }
+
+    function renameBookmark(key, id) {
+      const list = Array.isArray(state.bookmarks[key]) ? state.bookmarks[key] : [];
+      const bookmark = list.find(item => item.id === id);
+      if (!bookmark) return;
+
+      const entered = window.prompt("Rename bookmark:", bookmark.label || `Page ${bookmark.page}`);
+      if (entered === null) return;
+      bookmark.label = entered.trim() || `Page ${bookmark.page}`;
+      bookmark.updatedAt = new Date().toISOString();
+      writeStoredObject(STORAGE_KEYS.bookmarks, state.bookmarks);
+      renderBookmarks();
+    }
+
+    function deleteBookmark(key, id) {
+      const list = Array.isArray(state.bookmarks[key]) ? state.bookmarks[key] : [];
+      const bookmark = list.find(item => item.id === id);
+      if (!bookmark) return;
+
+      if (!window.confirm(`Delete “${bookmark.label || `Page ${bookmark.page}`}”?`)) return;
+
+      state.bookmarks[key] = list.filter(item => item.id !== id);
+      if (!state.bookmarks[key].length) delete state.bookmarks[key];
+      writeStoredObject(STORAGE_KEYS.bookmarks, state.bookmarks);
+      renderBookmarks();
+      renderLibrary();
+      showToast("Bookmark deleted.");
+    }
+
+    async function openBookmark(key, page) {
+      let entry = state.library.find(item => entryKey(item) === key);
+
+      if (!entry && state.activeEntry && entryKey(state.activeEntry) === key) {
+        entry = state.activeEntry;
+      }
+
+      if (!entry) {
+        showToast("That PDF is no longer in the loaded repository list.");
+        return;
+      }
+
+      closeBookmarkDrawer();
+
+      if (state.activeEntry && entryKey(state.activeEntry) === key && state.pdfDocument) {
+        await goToPage(page);
+      } else {
+        await openPdf(entry, { page });
+      }
+    }
+
+    function renderBookmarks() {
+      elements.bookmarkList.replaceChildren();
+
+      const groups = Object.entries(state.bookmarks)
+        .filter(([, list]) => Array.isArray(list) && list.length)
+        .sort(([keyA], [keyB]) => {
+          const titleA = state.library.find(item => entryKey(item) === keyA)?.title || titleFromPath(keyA);
+          const titleB = state.library.find(item => entryKey(item) === keyB)?.title || titleFromPath(keyB);
+          return titleA.localeCompare(titleB, undefined, { numeric: true, sensitivity: "base" });
+        });
+
+      if (!groups.length) {
+        const card = document.createElement("div");
+        card.className = "state-card";
+        card.style.boxShadow = "none";
+
+        const heading = document.createElement("h2");
+        heading.style.fontSize = "19px";
+        heading.textContent = "No bookmarks yet";
+
+        const copy = document.createElement("p");
+        copy.textContent = "Open a PDF and use “Bookmark” to save a specific page.";
+
+        card.append(heading, copy);
+        elements.bookmarkList.append(card);
+        return;
+      }
+
+      for (const [key, bookmarks] of groups) {
+        const group = document.createElement("section");
+        group.className = "bookmark-group";
+
+        const entry = state.library.find(item => entryKey(item) === key);
+        const title = document.createElement("h3");
+        title.className = "bookmark-group-title";
+        title.textContent = entry?.title || titleFromPath(key);
+        group.append(title);
+
+        const sorted = [...bookmarks].sort((a, b) => Number(a.page) - Number(b.page));
+
+        for (const bookmark of sorted) {
+          const row = document.createElement("div");
+          row.className = "bookmark-row";
+
+          const open = document.createElement("button");
+          open.type = "button";
+          open.className = "bookmark-open";
+          open.addEventListener("click", () => openBookmark(key, bookmark.page));
+
+          const label = document.createElement("span");
+          label.className = "bookmark-label";
+          label.textContent = bookmark.label || `Page ${bookmark.page}`;
+
+          const page = document.createElement("span");
+          page.className = "bookmark-page";
+          page.textContent = `Page ${bookmark.page}`;
+
+          open.append(label, page);
+
+          const rename = document.createElement("button");
+          rename.type = "button";
+          rename.className = "mini icon-button";
+          rename.title = "Rename bookmark";
+          rename.setAttribute("aria-label", "Rename bookmark");
+          rename.textContent = "✎";
+          rename.addEventListener("click", () => renameBookmark(key, bookmark.id));
+
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "mini icon-button";
+          remove.title = "Delete bookmark";
+          remove.setAttribute("aria-label", "Delete bookmark");
+          remove.textContent = "×";
+          remove.addEventListener("click", () => deleteBookmark(key, bookmark.id));
+
+          row.append(open, rename, remove);
+          group.append(row);
+        }
+
+        elements.bookmarkList.append(group);
+      }
+    }
+
+    function openBookmarkDrawer() {
+      renderBookmarks();
+      elements.bookmarkDrawer.classList.add("open");
+      elements.drawerBackdrop.classList.add("open");
+      elements.bookmarkDrawer.setAttribute("aria-hidden", "false");
+    }
+
+    function closeBookmarkDrawer() {
+      elements.bookmarkDrawer.classList.remove("open");
+      elements.drawerBackdrop.classList.remove("open");
+      elements.bookmarkDrawer.setAttribute("aria-hidden", "true");
+    }
+
+    function openCurrentDirectly() {
+      if (!state.activeEntry) return;
+      window.open(state.activeEntry.local ? state.activeEntry.url : state.activeEntry.githubUrl, "_blank", "noopener");
+    }
+
+    function openLocalFile(file) {
+      if (!file) return;
+      if (file.type && file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
+        showToast("Please choose a PDF file.");
+        return;
+      }
+
+      if (state.localObjectUrl) {
+        URL.revokeObjectURL(state.localObjectUrl);
+      }
+
+      state.localObjectUrl = URL.createObjectURL(file);
+      const key = `local:${file.name}:${file.size}:${file.lastModified}`;
+      const entry = {
+        key,
+        path: file.name,
+        title: titleFromPath(file.name),
+        url: state.localObjectUrl,
+        githubUrl: state.localObjectUrl,
+        local: true
+      };
+
+      openPdf(entry);
+    }
+
+    function exportBackup() {
+      const payload = {
+        type: "pdf-library-backup",
+        version: 1,
+        repository: `${CONFIG.owner}/${CONFIG.repo}`,
+        exportedAt: new Date().toISOString(),
+        positions: state.positions,
+        bookmarks: state.bookmarks
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json"
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "bible-data-pdf-library-bookmarks.json";
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      showToast("Bookmark backup exported.");
+    }
+
+    async function importBackup(file) {
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+
+        if (!payload || payload.type !== "pdf-library-backup") {
+          throw new Error("Not a PDF library backup.");
+        }
+
+        const importedPositions =
+          payload.positions && typeof payload.positions === "object" ? payload.positions : {};
+        const importedBookmarks =
+          payload.bookmarks && typeof payload.bookmarks === "object" ? payload.bookmarks : {};
+
+        state.positions = { ...state.positions, ...importedPositions };
+        state.bookmarks = { ...state.bookmarks, ...importedBookmarks };
+
+        writeStoredObject(STORAGE_KEYS.positions, state.positions);
+        writeStoredObject(STORAGE_KEYS.bookmarks, state.bookmarks);
+        renderLibrary();
+        renderBookmarks();
+        showToast("Bookmark backup imported.");
+      } catch (error) {
+        console.error(error);
+        showToast("That file is not a valid library backup.");
+      } finally {
+        elements.importFileInput.value = "";
+      }
+    }
+
+    function applyTheme(theme) {
+      const normalized = theme === "dark" ? "dark" : "light";
+      document.documentElement.dataset.theme = normalized;
+      elements.themeBtn.textContent = normalized === "dark" ? "☀" : "☾";
+      elements.themeBtn.title = normalized === "dark" ? "Use light theme" : "Use dark theme";
+      setStoredValue(STORAGE_KEYS.theme, normalized);
+    }
+
+    function initializeTheme() {
+      const stored = getStoredValue(STORAGE_KEYS.theme);
+      if (stored === "dark" || stored === "light") {
+        applyTheme(stored);
+        return;
+      }
+      applyTheme(window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    }
+
+    elements.searchInput.addEventListener("input", applyLibraryFilter);
+
+    elements.mobileBookSelect.addEventListener("change", () => {
+      const entry = state.library.find(item => entryKey(item) === elements.mobileBookSelect.value);
+      if (entry) openPdf(entry);
+    });
+
+    elements.refreshLibraryBtn.addEventListener("click", () => loadLibrary({ restoreLast: false }));
+    elements.emptyRefreshBtn.addEventListener("click", () => loadLibrary({ restoreLast: true }));
+
+    elements.prevBtn.addEventListener("click", () => goToPage(state.pageNumber - 1));
+    elements.nextBtn.addEventListener("click", () => goToPage(state.pageNumber + 1));
+    elements.pageInput.addEventListener("change", () => goToPage(elements.pageInput.value));
+    elements.pageInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        goToPage(elements.pageInput.value);
+        elements.pageInput.blur();
+      }
+    });
+
+    elements.zoomOutBtn.addEventListener("click", () => changeZoom(-0.15));
+    elements.zoomInBtn.addEventListener("click", () => changeZoom(0.15));
+    elements.fitBtn.addEventListener("click", setFitWidthScale);
+    elements.addBookmarkBtn.addEventListener("click", addBookmark);
+
+    elements.readingProgress.addEventListener("click", event => {
+      if (!state.pdfDocument || state.pageCount < 2) return;
+      const rect = elements.readingProgress.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      goToPage(1 + Math.round(ratio * (state.pageCount - 1)));
+    });
+
+    elements.openRawBtn.addEventListener("click", openCurrentDirectly);
+    elements.errorOpenRawBtn.addEventListener("click", openCurrentDirectly);
+    elements.retryBtn.addEventListener("click", () => state.activeEntry && openPdf(state.activeEntry, { page: state.pageNumber }));
+
+    elements.openLocalBtn.addEventListener("click", () => elements.localFileInput.click());
+    elements.emptyLocalBtn.addEventListener("click", () => elements.localFileInput.click());
+    elements.localFileInput.addEventListener("change", () => {
+      const [file] = elements.localFileInput.files || [];
+      openLocalFile(file);
+      elements.localFileInput.value = "";
+    });
+
+    elements.repoBtn.addEventListener("click", () => window.open(repositoryUrl(), "_blank", "noopener"));
+
+    elements.bookmarksBtn.addEventListener("click", openBookmarkDrawer);
+    elements.closeDrawerBtn.addEventListener("click", closeBookmarkDrawer);
+    elements.drawerBackdrop.addEventListener("click", closeBookmarkDrawer);
+    elements.exportBtn.addEventListener("click", exportBackup);
+    elements.importBtn.addEventListener("click", () => elements.importFileInput.click());
+    elements.importFileInput.addEventListener("change", () => {
+      const [file] = elements.importFileInput.files || [];
+      importBackup(file);
+    });
+
+    elements.themeBtn.addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      applyTheme(next);
+    });
+
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (state.pdfDocument && state.zoomMode === "fit") {
+          setFitWidthScale();
+        }
+      }, 160);
+    });
+
+    window.addEventListener("beforeunload", () => {
+      saveCurrentPosition();
+      if (state.localObjectUrl) URL.revokeObjectURL(state.localObjectUrl);
+    });
+
+    document.addEventListener("keydown", event => {
+      const target = event.target;
+      const isTyping =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement;
+
+      if (event.key === "Escape") {
+        closeBookmarkDrawer();
+        return;
+      }
+
+      if (isTyping || event.ctrlKey || event.metaKey || event.altKey) return;
+
+      if (event.key === "ArrowRight" || event.key === "PageDown") {
+        event.preventDefault();
+        goToPage(state.pageNumber + 1);
+      } else if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        goToPage(state.pageNumber - 1);
+      } else if (event.key.toLowerCase() === "b") {
+        event.preventDefault();
+        addBookmark();
+      } else if (event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setFitWidthScale();
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        goToPage(1);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        goToPage(state.pageCount);
+      }
+    });
+
+    initializeTheme();
+    updateControlState();
+    renderBookmarks();
+    loadLibrary({ restoreLast: true });
+  </script>
+</body>
+</html>
