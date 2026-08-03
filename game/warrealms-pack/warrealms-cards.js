@@ -349,7 +349,7 @@ export const CARDS = Object.freeze([
 
 // ==========================================================
 // YELLOW — THE EGG BEYOND TOMORROW
-// Does nothing initially. Ascends after five completed rounds.
+// Does nothing initially. Ascends after five plays.
 // ==========================================================
 
 {
@@ -364,14 +364,14 @@ export const CARDS = Object.freeze([
   effect: {},
   ally: {},
   transform: {
-    trigger: "turnsOwned",
+    trigger: "timesPlayed",
     required: 5,
     into: "voralyth_future_devourer",
     destination: "discard"
   },
   text: "This card has no immediate effect.",
   allyText: "",
-  transformText: "Ascendant — After you complete 5 rounds while owning this card, transform it into Voralyth, Future-Devourer in your discard pile.",
+  transformText: "Ascendant — After this card has been played 5 times, transform it into Voralyth, Future-Devourer in your discard pile.",
   flavor: "The shell contains no heartbeat—only the sound of futures being swallowed."
 },
 
