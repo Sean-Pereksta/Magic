@@ -320,7 +320,7 @@
       grid-column: 2;
       grid-row: 2;
       display: grid;
-      grid-template-rows: auto 5px minmax(0, 1fr) auto;
+      grid-template-rows: auto auto 5px minmax(0, 1fr) auto;
       min-width: 0;
       min-height: 0;
       background:
@@ -339,6 +339,84 @@
       overflow-x: auto;
       overscroll-behavior-x: contain;
       scrollbar-width: thin;
+    }
+
+    .speech-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: thin;
+      font-family: system-ui, sans-serif;
+    }
+
+    .speech-toolbar button,
+    .speech-toolbar select,
+    .speech-toolbar input {
+      font-family: system-ui, sans-serif;
+    }
+
+    .speech-icon {
+      display: grid;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      border-radius: 10px;
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-size: 17px;
+    }
+
+    #speechToggleBtn {
+      min-width: 96px;
+      white-space: nowrap;
+    }
+
+    #speechStopBtn {
+      white-space: nowrap;
+    }
+
+    #speechVoiceSelect {
+      width: min(260px, 32vw);
+      min-width: 180px;
+      height: 38px;
+      padding: 6px 9px;
+    }
+
+    .speech-rate-control {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 205px;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    #speechRate {
+      width: 112px;
+      accent-color: var(--accent);
+    }
+
+    #speechRateLabel {
+      min-width: 34px;
+      color: var(--ink);
+      text-align: right;
+    }
+
+    #speechHint {
+      flex: 1 0 210px;
+      min-width: 210px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.25;
     }
 
     .mobile-book-select {
@@ -415,6 +493,53 @@
     #pdfCanvas {
       display: block;
       background: white;
+    }
+
+    .text-layer {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      z-index: 3;
+      line-height: 1;
+      user-select: text;
+      -webkit-user-select: text;
+      touch-action: pan-x pan-y;
+    }
+
+    .text-item {
+      position: absolute;
+      margin: 0;
+      padding: 0;
+      color: transparent;
+      white-space: pre;
+      line-height: 1;
+      transform-origin: 0 0;
+      pointer-events: auto;
+    }
+
+    .pdf-word {
+      position: relative;
+      display: inline;
+      color: transparent;
+      border-radius: 2px;
+      cursor: pointer;
+      transition: background 90ms ease, box-shadow 90ms ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .pdf-word:hover {
+      background: rgba(255, 205, 75, 0.24);
+      box-shadow: 0 0 0 1px rgba(118, 85, 46, 0.28);
+    }
+
+    .pdf-word.speech-cursor-word {
+      background: rgba(108, 177, 255, 0.30);
+      box-shadow: 0 0 0 1px rgba(42, 107, 174, 0.48);
+    }
+
+    .pdf-word.speech-active-word {
+      background: rgba(255, 214, 55, 0.58);
+      box-shadow: 0 0 0 1px rgba(149, 99, 0, 0.58), 0 0 8px rgba(255, 201, 38, 0.30);
     }
 
     .empty-state,
@@ -692,6 +817,15 @@
         padding: 7px 8px;
       }
 
+      .speech-toolbar {
+        padding: 7px 8px;
+      }
+
+      #speechVoiceSelect {
+        width: 230px;
+        min-width: 230px;
+      }
+
       .viewer-scroll {
         padding: 12px 8px 20px;
       }
@@ -725,9 +859,19 @@
         padding: 7px 9px;
       }
 
-      .reader-toolbar button {
+      .reader-toolbar button,
+      .speech-toolbar button {
         min-width: 38px;
         padding: 7px 9px;
+      }
+
+      #speechToggleBtn {
+        min-width: 88px;
+      }
+
+      #speechHint {
+        min-width: 170px;
+        flex-basis: 170px;
       }
 
       .mobile-book-select {
@@ -748,7 +892,9 @@
       .topbar,
       .sidebar,
       .reader-toolbar,
+      .speech-toolbar,
       .reading-progress,
+      .text-layer,
       .reader-status,
       .bookmark-drawer,
       .drawer-backdrop,
@@ -828,6 +974,21 @@
         <button id="openRawBtn" title="Open the current PDF directly">Open PDF</button>
       </div>
 
+      <div class="speech-toolbar" aria-label="Text to speech controls">
+        <span class="speech-icon" aria-hidden="true">🔊</span>
+        <button id="speechToggleBtn" class="primary" title="Read from the selected word">▶ Read</button>
+        <button id="speechStopBtn" title="Stop narration">■ Stop</button>
+        <select id="speechVoiceSelect" aria-label="Narration voice">
+          <option value="">Default browser voice</option>
+        </select>
+        <label class="speech-rate-control" for="speechRate">
+          Speed
+          <input id="speechRate" type="range" min="0.6" max="2" step="0.1" value="1" aria-label="Narration speed">
+          <span id="speechRateLabel">1.0×</span>
+        </label>
+        <span id="speechHint">Tap any word on the page to begin reading there.</span>
+      </div>
+
       <div id="readingProgress" class="reading-progress" title="Click to jump through the document">
         <div id="readingProgressFill"></div>
       </div>
@@ -835,6 +996,7 @@
       <div id="viewerScroll" class="viewer-scroll">
         <div id="canvasWrap" class="canvas-wrap hidden">
           <canvas id="pdfCanvas"></canvas>
+          <div id="textLayer" class="text-layer" aria-label="Selectable PDF text"></div>
         </div>
 
         <div id="emptyState" class="empty-state">
@@ -922,7 +1084,9 @@
       positions: `${STORAGE_PREFIX}:positions`,
       bookmarks: `${STORAGE_PREFIX}:bookmarks`,
       lastPath: `${STORAGE_PREFIX}:last-path`,
-      theme: `${STORAGE_PREFIX}:theme`
+      theme: `${STORAGE_PREFIX}:theme`,
+      speechRate: `${STORAGE_PREFIX}:speech-rate`,
+      speechVoice: `${STORAGE_PREFIX}:speech-voice`
     });
 
     const elements = {
@@ -961,6 +1125,13 @@
       viewerScroll: document.querySelector("#viewerScroll"),
       canvasWrap: document.querySelector("#canvasWrap"),
       canvas: document.querySelector("#pdfCanvas"),
+      textLayer: document.querySelector("#textLayer"),
+      speechToggleBtn: document.querySelector("#speechToggleBtn"),
+      speechStopBtn: document.querySelector("#speechStopBtn"),
+      speechVoiceSelect: document.querySelector("#speechVoiceSelect"),
+      speechRate: document.querySelector("#speechRate"),
+      speechRateLabel: document.querySelector("#speechRateLabel"),
+      speechHint: document.querySelector("#speechHint"),
       emptyState: document.querySelector("#emptyState"),
       loadingState: document.querySelector("#loadingState"),
       loadingTitle: document.querySelector("#loadingTitle"),
@@ -987,12 +1158,29 @@
       localObjectUrl: null,
       positions: readStoredObject(STORAGE_KEYS.positions),
       bookmarks: readStoredObject(STORAGE_KEYS.bookmarks),
-      librarySource: "loading"
+      librarySource: "loading",
+      textCache: new Map(),
+      currentPageTextModel: null,
+      speech: {
+        supported: "speechSynthesis" in window && "SpeechSynthesisUtterance" in window,
+        active: false,
+        paused: false,
+        session: 0,
+        page: 1,
+        wordIndex: 0,
+        cursorPage: 1,
+        cursorWord: 0,
+        currentUtterance: null,
+        highlightedSpan: null,
+        rate: Math.max(0.6, Math.min(2, Number(getStoredValue(STORAGE_KEYS.speechRate)) || 1)),
+        voiceURI: getStoredValue(STORAGE_KEYS.speechVoice) || ""
+      }
     };
 
     let toastTimer = null;
     let resizeTimer = null;
     let positionSaveTimer = null;
+    const textMeasureContext = document.createElement("canvas").getContext("2d");
 
     function readStoredObject(key) {
       try {
@@ -1109,6 +1297,13 @@
       elements.fitBtn.disabled = !hasDocument;
       elements.addBookmarkBtn.disabled = !hasDocument;
       elements.openRawBtn.disabled = !state.activeEntry;
+
+      const hasPageText = Boolean(state.currentPageTextModel?.words?.length);
+      elements.speechToggleBtn.disabled = !state.speech.supported || !hasDocument || (!hasPageText && !state.speech.active);
+      elements.speechStopBtn.disabled = !state.speech.supported || (!state.speech.active && !state.speech.paused);
+      elements.speechToggleBtn.textContent = state.speech.active
+        ? (state.speech.paused ? "▶ Resume" : "⏸ Pause")
+        : "▶ Read";
       elements.pageInput.value = hasDocument ? String(state.pageNumber) : "1";
       elements.pageInput.max = hasDocument ? String(state.pageCount) : "1";
       elements.pageCount.textContent = hasDocument ? String(state.pageCount) : "0";
@@ -1138,6 +1333,8 @@
         scale: state.scale,
         zoomMode: state.zoomMode,
         pageCount: state.pageCount,
+        speechPage: state.speech.cursorPage,
+        speechWord: state.speech.cursorWord,
         updatedAt: new Date().toISOString()
       };
       writeStoredObject(STORAGE_KEYS.positions, state.positions);
@@ -1301,8 +1498,12 @@
     async function openPdf(entry, options = {}) {
       if (!entry) return;
 
-      const serial = ++state.loadSerial;
       saveCurrentPosition();
+      stopSpeech({ silent: true, resetCursor: true });
+      const serial = ++state.loadSerial;
+      state.textCache.clear();
+      state.currentPageTextModel = null;
+      elements.textLayer.replaceChildren();
 
       if (state.renderTask) {
         try {
@@ -1343,6 +1544,10 @@
         ? Math.max(0.35, Math.min(4, Number(saved.scale)))
         : 1.15;
       state.zoomMode = saved?.zoomMode === "fit" ? "fit" : "custom";
+      state.speech.cursorPage = state.pageNumber;
+      state.speech.cursorWord = Math.max(0, Math.floor(Number(saved?.speechWord) || 0));
+      state.speech.page = state.speech.cursorPage;
+      state.speech.wordIndex = state.speech.cursorWord;
 
       try {
         const loadingTask = pdfjsLib.getDocument({
@@ -1388,6 +1593,10 @@
     async function renderCurrentPage() {
       if (!state.pdfDocument) return;
 
+      state.currentPageTextModel = null;
+      elements.textLayer.replaceChildren();
+      updateControlState();
+
       const serial = state.loadSerial;
       const page = await state.pdfDocument.getPage(state.pageNumber);
       if (serial !== state.loadSerial) return;
@@ -1412,6 +1621,8 @@
 
       elements.canvasWrap.style.width = `${Math.floor(viewport.width)}px`;
       elements.canvasWrap.style.height = `${Math.floor(viewport.height)}px`;
+      elements.textLayer.style.width = `${Math.floor(viewport.width)}px`;
+      elements.textLayer.style.height = `${Math.floor(viewport.height)}px`;
       setViewState("document");
 
       const transform = outputScale !== 1
@@ -1434,11 +1645,444 @@
         state.renderTask = null;
       }
 
+      await renderInteractiveTextLayer(page, viewport, serial);
+      if (serial !== state.loadSerial) return;
+
       elements.viewerScroll.scrollTo({ top: 0, left: 0, behavior: "auto" });
       elements.currentTitle.textContent = state.activeEntry?.title || "PDF";
       setStatus(`Page ${state.pageNumber} of ${state.pageCount}`);
       updateControlState();
       queuePositionSave();
+    }
+
+    async function getPageTextModel(pageNumber, pageProxy = null) {
+      if (state.textCache.has(pageNumber)) {
+        return state.textCache.get(pageNumber);
+      }
+
+      const page = pageProxy || await state.pdfDocument.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      const records = [];
+      const words = [];
+
+      for (const item of textContent.items || []) {
+        if (!item || typeof item.str !== "string" || !item.str.trim()) continue;
+
+        const matches = [...item.str.matchAll(/\S+/gu)];
+        if (!matches.length) continue;
+
+        const wordIndices = matches.map(match => {
+          const index = words.length;
+          words.push({
+            index,
+            text: match[0],
+            span: null
+          });
+          return index;
+        });
+
+        records.push({ item, matches, wordIndices });
+      }
+
+      const model = {
+        pageNumber,
+        textContent,
+        records,
+        words,
+        language: textContent.lang || document.documentElement.lang || "en"
+      };
+
+      state.textCache.set(pageNumber, model);
+      return model;
+    }
+
+    async function renderInteractiveTextLayer(page, viewport, serial) {
+      const model = await getPageTextModel(state.pageNumber, page);
+      if (serial !== state.loadSerial) return;
+
+      elements.textLayer.replaceChildren();
+      for (const word of model.words) word.span = null;
+
+      const fragment = document.createDocumentFragment();
+
+      for (const record of model.records) {
+        const { item, matches, wordIndices } = record;
+        const style = model.textContent.styles?.[item.fontName] || {};
+        const transform = pdfjsLib.Util.transform(viewport.transform, item.transform);
+        let angle = Math.atan2(transform[1], transform[0]);
+        if (style.vertical) angle += Math.PI / 2;
+
+        const fontHeight = Math.max(1, Math.hypot(transform[2], transform[3]));
+        let fontAscent = fontHeight;
+        if (Number.isFinite(style.ascent)) {
+          fontAscent = style.ascent * fontHeight;
+        } else if (Number.isFinite(style.descent)) {
+          fontAscent = (1 + style.descent) * fontHeight;
+        }
+
+        const left = transform[4];
+        const top = transform[5] - fontAscent;
+        const fontFamily = style.fontFamily || "sans-serif";
+        const targetWidth = Math.max(
+          1,
+          (style.vertical ? Number(item.height) : Number(item.width)) * viewport.scale
+        );
+
+        textMeasureContext.font = `${fontHeight}px ${fontFamily}`;
+        const measuredWidth = Math.max(1, textMeasureContext.measureText(item.str).width);
+        const horizontalScale = Math.max(0.05, Math.min(20, targetWidth / measuredWidth));
+
+        const itemElement = document.createElement("span");
+        itemElement.className = "text-item";
+        itemElement.style.left = `${left}px`;
+        itemElement.style.top = `${top}px`;
+        itemElement.style.fontSize = `${fontHeight}px`;
+        itemElement.style.fontFamily = fontFamily;
+        itemElement.style.direction = item.dir || "ltr";
+        itemElement.style.transform = `rotate(${angle}rad) scaleX(${horizontalScale})`;
+
+        let cursor = 0;
+        matches.forEach((match, matchIndex) => {
+          if (match.index > cursor) {
+            itemElement.append(document.createTextNode(item.str.slice(cursor, match.index)));
+          }
+
+          const wordIndex = wordIndices[matchIndex];
+          const wordSpan = document.createElement("span");
+          wordSpan.className = "pdf-word";
+          wordSpan.dataset.wordIndex = String(wordIndex);
+          wordSpan.dataset.pageNumber = String(state.pageNumber);
+          wordSpan.textContent = match[0];
+          wordSpan.title = `Read from “${match[0]}”`;
+          wordSpan.addEventListener("click", event => {
+            event.preventDefault();
+            event.stopPropagation();
+            startSpeechAt(state.pageNumber, wordIndex);
+          });
+
+          model.words[wordIndex].span = wordSpan;
+          itemElement.append(wordSpan);
+          cursor = match.index + match[0].length;
+        });
+
+        if (cursor < item.str.length) {
+          itemElement.append(document.createTextNode(item.str.slice(cursor)));
+        }
+
+        fragment.append(itemElement);
+      }
+
+      elements.textLayer.append(fragment);
+      state.currentPageTextModel = model;
+
+      if (!state.speech.active && state.speech.cursorPage !== state.pageNumber) {
+        state.speech.cursorPage = state.pageNumber;
+        state.speech.cursorWord = 0;
+      }
+      if (state.speech.cursorPage === state.pageNumber && model.words.length) {
+        state.speech.cursorWord = Math.max(0, Math.min(model.words.length - 1, state.speech.cursorWord));
+      }
+
+      if (state.speech.active && state.speech.page === state.pageNumber) {
+        highlightSpeechWord(state.speech.wordIndex, true, false);
+      } else if (state.speech.cursorPage === state.pageNumber) {
+        highlightSpeechWord(state.speech.cursorWord, false, false);
+      }
+
+      elements.speechHint.textContent = model.words.length
+        ? "Tap any word on the page to begin reading there."
+        : "This page has no selectable text. Image-only pages require OCR.";
+      updateControlState();
+    }
+
+    function clearSpeechHighlight() {
+      if (state.speech.highlightedSpan) {
+        state.speech.highlightedSpan.classList.remove("speech-active-word", "speech-cursor-word");
+      }
+      state.speech.highlightedSpan = null;
+    }
+
+    function highlightSpeechWord(wordIndex, speaking = true, autoScroll = true) {
+      clearSpeechHighlight();
+      if (state.pageNumber !== state.speech.page && speaking) return;
+      if (state.pageNumber !== state.speech.cursorPage && !speaking) return;
+
+      const model = state.currentPageTextModel;
+      const span = model?.words?.[wordIndex]?.span;
+      if (!span) return;
+
+      span.classList.add(speaking ? "speech-active-word" : "speech-cursor-word");
+      state.speech.highlightedSpan = span;
+
+      if (autoScroll) {
+        const wordRect = span.getBoundingClientRect();
+        const viewerRect = elements.viewerScroll.getBoundingClientRect();
+        const outside =
+          wordRect.top < viewerRect.top + 46 ||
+          wordRect.bottom > viewerRect.bottom - 46 ||
+          wordRect.left < viewerRect.left + 24 ||
+          wordRect.right > viewerRect.right - 24;
+
+        if (outside) {
+          span.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+        }
+      }
+    }
+
+    function selectedSpeechVoice() {
+      if (!state.speech.supported || !state.speech.voiceURI) return null;
+      return window.speechSynthesis.getVoices().find(voice => voice.voiceURI === state.speech.voiceURI) || null;
+    }
+
+    function buildSpeechChunk(words, startIndex) {
+      const charStarts = [];
+      const pieces = [];
+      let length = 0;
+      let endIndex = startIndex;
+
+      while (endIndex < words.length && pieces.length < 72) {
+        const word = words[endIndex].text;
+        const extra = (pieces.length ? 1 : 0) + word.length;
+        if (pieces.length && length + extra > 760) break;
+        charStarts.push(length + (pieces.length ? 1 : 0));
+        pieces.push(word);
+        length += extra;
+        endIndex += 1;
+      }
+
+      return {
+        text: pieces.join(" "),
+        charStarts,
+        endIndex
+      };
+    }
+
+    function wordOffsetForCharacter(charStarts, charIndex) {
+      let low = 0;
+      let high = charStarts.length - 1;
+      let result = 0;
+
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        if (charStarts[middle] <= charIndex) {
+          result = middle;
+          low = middle + 1;
+        } else {
+          high = middle - 1;
+        }
+      }
+
+      return result;
+    }
+
+    function stopSpeech({ silent = false, resetCursor = false } = {}) {
+      state.speech.session += 1;
+      if (state.speech.supported) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {
+          // Narration cleanup should never prevent document use.
+        }
+      }
+
+      state.speech.active = false;
+      state.speech.paused = false;
+      state.speech.currentUtterance = null;
+
+      if (resetCursor) {
+        state.speech.cursorPage = state.pageNumber;
+        state.speech.cursorWord = 0;
+        state.speech.page = state.pageNumber;
+        state.speech.wordIndex = 0;
+      } else {
+        state.speech.cursorPage = state.speech.page;
+        state.speech.cursorWord = state.speech.wordIndex;
+      }
+
+      highlightSpeechWord(state.speech.cursorWord, false, false);
+      if (!silent) elements.speechHint.textContent = "Narration stopped. Tap a word or press Read to continue.";
+      updateControlState();
+      queuePositionSave();
+    }
+
+    async function startSpeechAt(pageNumber, wordIndex = 0) {
+      if (!state.speech.supported) {
+        showToast("Text to speech is not supported by this browser.");
+        return;
+      }
+      if (!state.pdfDocument) return;
+
+      stopSpeech({ silent: true });
+      const session = ++state.speech.session;
+      state.speech.active = true;
+      state.speech.paused = false;
+      state.speech.page = Math.max(1, Math.min(state.pageCount, Number(pageNumber) || 1));
+      state.speech.wordIndex = Math.max(0, Math.floor(Number(wordIndex) || 0));
+      state.speech.cursorPage = state.speech.page;
+      state.speech.cursorWord = state.speech.wordIndex;
+      elements.speechHint.textContent = "Preparing narration…";
+      updateControlState();
+
+      await continueSpeech(session);
+    }
+
+    async function continueSpeech(session) {
+      while (state.speech.active && session === state.speech.session && state.speech.page <= state.pageCount) {
+        if (state.pageNumber !== state.speech.page) {
+          await goToPage(state.speech.page, { fromSpeech: true });
+          if (!state.speech.active || session !== state.speech.session) return;
+        }
+
+        const model = await getPageTextModel(state.speech.page);
+        if (!state.speech.active || session !== state.speech.session) return;
+
+        if (!model.words.length || state.speech.wordIndex >= model.words.length) {
+          state.speech.page += 1;
+          state.speech.wordIndex = 0;
+          state.speech.cursorPage = state.speech.page;
+          state.speech.cursorWord = 0;
+          continue;
+        }
+
+        speakChunk(model, session);
+        return;
+      }
+
+      if (state.speech.active && session === state.speech.session) {
+        state.speech.active = false;
+        state.speech.paused = false;
+        state.speech.currentUtterance = null;
+        elements.speechHint.textContent = "Finished reading the document.";
+        updateControlState();
+        showToast("Finished reading the document.");
+      }
+    }
+
+    function speakChunk(model, session) {
+      const chunkStart = state.speech.wordIndex;
+      const chunk = buildSpeechChunk(model.words, chunkStart);
+      if (!chunk.text) {
+        state.speech.wordIndex = model.words.length;
+        continueSpeech(session);
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(chunk.text);
+      const voice = selectedSpeechVoice();
+      if (voice) utterance.voice = voice;
+      utterance.lang = voice?.lang || model.language || "en-US";
+      utterance.rate = state.speech.rate;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      state.speech.currentUtterance = utterance;
+
+      utterance.onstart = () => {
+        if (!state.speech.active || session !== state.speech.session) return;
+        highlightSpeechWord(chunkStart, true);
+        elements.speechHint.textContent = `Reading page ${state.speech.page} of ${state.pageCount}…`;
+        updateControlState();
+      };
+
+      utterance.onboundary = event => {
+        if (!state.speech.active || session !== state.speech.session) return;
+        const localOffset = wordOffsetForCharacter(chunk.charStarts, Number(event.charIndex) || 0);
+        const globalIndex = Math.min(chunk.endIndex - 1, chunkStart + localOffset);
+        state.speech.wordIndex = globalIndex;
+        state.speech.cursorPage = state.speech.page;
+        state.speech.cursorWord = globalIndex;
+        highlightSpeechWord(globalIndex, true);
+        if (globalIndex % 12 === 0) queuePositionSave();
+      };
+
+      utterance.onend = () => {
+        if (!state.speech.active || session !== state.speech.session) return;
+        state.speech.wordIndex = chunk.endIndex;
+        state.speech.cursorPage = state.speech.page;
+        state.speech.cursorWord = Math.max(0, Math.min(model.words.length - 1, chunk.endIndex));
+        queuePositionSave();
+        window.setTimeout(() => continueSpeech(session), 0);
+      };
+
+      utterance.onerror = event => {
+        if (session !== state.speech.session || ["canceled", "interrupted"].includes(event.error)) return;
+        console.error("Speech synthesis error:", event.error);
+        state.speech.active = false;
+        state.speech.paused = false;
+        state.speech.currentUtterance = null;
+        elements.speechHint.textContent = "Narration stopped because the browser speech engine reported an error.";
+        updateControlState();
+        showToast("The browser narration engine stopped unexpectedly.");
+      };
+
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function toggleSpeech() {
+      if (!state.speech.supported) {
+        showToast("Text to speech is not supported by this browser.");
+        return;
+      }
+
+      if (state.speech.active) {
+        if (state.speech.paused) {
+          window.speechSynthesis.resume();
+          state.speech.paused = false;
+          elements.speechHint.textContent = `Reading page ${state.speech.page} of ${state.pageCount}…`;
+        } else {
+          window.speechSynthesis.pause();
+          state.speech.paused = true;
+          elements.speechHint.textContent = "Narration paused.";
+        }
+        updateControlState();
+        return;
+      }
+
+      const page = state.speech.cursorPage === state.pageNumber
+        ? state.speech.cursorPage
+        : state.pageNumber;
+      const word = page === state.speech.cursorPage ? state.speech.cursorWord : 0;
+      startSpeechAt(page, word);
+    }
+
+    function populateSpeechVoices() {
+      if (!state.speech.supported) {
+        elements.speechVoiceSelect.replaceChildren();
+        const option = document.createElement("option");
+        option.textContent = "Speech unavailable";
+        elements.speechVoiceSelect.append(option);
+        elements.speechVoiceSelect.disabled = true;
+        elements.speechRate.disabled = true;
+        elements.speechHint.textContent = "This browser does not provide text to speech.";
+        updateControlState();
+        return;
+      }
+
+      const voices = [...window.speechSynthesis.getVoices()].sort((a, b) => {
+        const aEnglish = /^en\b/i.test(a.lang) ? 0 : 1;
+        const bEnglish = /^en\b/i.test(b.lang) ? 0 : 1;
+        return aEnglish - bEnglish || a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name);
+      });
+
+      const selected = state.speech.voiceURI;
+      elements.speechVoiceSelect.replaceChildren();
+
+      const defaultOption = document.createElement("option");
+      defaultOption.value = "";
+      defaultOption.textContent = "Default browser voice";
+      elements.speechVoiceSelect.append(defaultOption);
+
+      for (const voice of voices) {
+        const option = document.createElement("option");
+        option.value = voice.voiceURI;
+        option.textContent = `${voice.name} — ${voice.lang}${voice.localService ? "" : " (online)"}`;
+        elements.speechVoiceSelect.append(option);
+      }
+
+      elements.speechVoiceSelect.value = voices.some(voice => voice.voiceURI === selected) ? selected : "";
+      if (selected && !elements.speechVoiceSelect.value) {
+        state.speech.voiceURI = "";
+        setStoredValue(STORAGE_KEYS.speechVoice, "");
+      }
     }
 
     async function setFitWidthScale() {
@@ -1452,8 +2096,9 @@
       await renderCurrentPage();
     }
 
-    async function goToPage(pageNumber) {
+    async function goToPage(pageNumber, { fromSpeech = false } = {}) {
       if (!state.pdfDocument) return;
+      if (!fromSpeech && state.speech.active) stopSpeech({ silent: true });
       const next = Math.max(1, Math.min(state.pageCount, Math.floor(Number(pageNumber) || 1)));
       if (next === state.pageNumber) {
         updateControlState();
@@ -1787,6 +2432,25 @@
     elements.zoomInBtn.addEventListener("click", () => changeZoom(0.15));
     elements.fitBtn.addEventListener("click", setFitWidthScale);
     elements.addBookmarkBtn.addEventListener("click", addBookmark);
+    elements.speechToggleBtn.addEventListener("click", toggleSpeech);
+    elements.speechStopBtn.addEventListener("click", () => stopSpeech());
+    elements.speechVoiceSelect.addEventListener("change", () => {
+      state.speech.voiceURI = elements.speechVoiceSelect.value;
+      setStoredValue(STORAGE_KEYS.speechVoice, state.speech.voiceURI);
+      if (state.speech.active) {
+        startSpeechAt(state.speech.page, state.speech.wordIndex);
+      }
+    });
+    elements.speechRate.addEventListener("input", () => {
+      state.speech.rate = Math.max(0.6, Math.min(2, Number(elements.speechRate.value) || 1));
+      elements.speechRateLabel.textContent = `${state.speech.rate.toFixed(1)}×`;
+      setStoredValue(STORAGE_KEYS.speechRate, String(state.speech.rate));
+    });
+    elements.speechRate.addEventListener("change", () => {
+      if (state.speech.active) {
+        startSpeechAt(state.speech.page, state.speech.wordIndex);
+      }
+    });
 
     elements.readingProgress.addEventListener("click", event => {
       if (!state.pdfDocument || state.pageCount < 2) return;
@@ -1834,6 +2498,7 @@
     });
 
     window.addEventListener("beforeunload", () => {
+      if (state.speech.supported) window.speechSynthesis.cancel();
       saveCurrentPosition();
       if (state.localObjectUrl) URL.revokeObjectURL(state.localObjectUrl);
     });
@@ -1858,6 +2523,12 @@
       } else if (event.key === "ArrowLeft" || event.key === "PageUp") {
         event.preventDefault();
         goToPage(state.pageNumber - 1);
+      } else if (event.key === " " && state.pdfDocument) {
+        event.preventDefault();
+        toggleSpeech();
+      } else if (event.key.toLowerCase() === "s" && state.speech.active) {
+        event.preventDefault();
+        stopSpeech();
       } else if (event.key.toLowerCase() === "b") {
         event.preventDefault();
         addBookmark();
@@ -1874,9 +2545,17 @@
     });
 
     initializeTheme();
+    elements.speechRate.value = String(state.speech.rate);
+    elements.speechRateLabel.textContent = `${state.speech.rate.toFixed(1)}×`;
+    populateSpeechVoices();
+    if (state.speech.supported) {
+      window.speechSynthesis.addEventListener?.("voiceschanged", populateSpeechVoices);
+      window.speechSynthesis.onvoiceschanged = populateSpeechVoices;
+    }
     updateControlState();
     renderBookmarks();
     loadLibrary({ restoreLast: true });
   </script>
 </body>
 </html>
+
